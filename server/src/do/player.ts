@@ -19,7 +19,8 @@ export class PlayerDO extends DurableObject<Env> {
       master: loadMaster(), rng: cryptoRng, clock: systemClock, verifiers: makeVerifiers(env.DEV_MODE === '1'),
       onPaidBalance: (snap) => {
         const acc = env.ACCOUNTING.get(env.ACCOUNTING.idFromName('global')) as unknown as { record(s: typeof snap): Promise<void> };
-        ctx.waitUntil(acc.record(snap));
+        // Ordering is safe (seq-guarded); retry once so a transient failure does not leave a stale balance.
+        ctx.waitUntil(acc.record(snap).catch(() => acc.record(snap)).catch((e) => console.error('paid balance record failed', snap.playerId, e)));
       },
     });
   }

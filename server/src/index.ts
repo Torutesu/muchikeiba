@@ -57,8 +57,22 @@ export function makeContext(env: Env): AppContext {
   };
 }
 
+const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
+
+/**
+ * DEV_MODE (x-dev-user impersonation + fake store) only ever works on loopback. If it leaks into a
+ * deployed environment, every request fails closed instead of letting anyone mint coins (bug review #12).
+ */
+export function devModeRefused(req: Request, env: Pick<Env, 'DEV_MODE'>): boolean {
+  return env.DEV_MODE === '1' && !LOOPBACK.has(new URL(req.url).hostname);
+}
+
 export default {
   fetch(req: Request, env: Env): Promise<Response> {
+    if (devModeRefused(req, env)) {
+      console.error('DEV_MODE is set on a non-loopback host; refusing all requests');
+      return Promise.resolve(Response.json({ error: 'DEV_MODE_REFUSED' }, { status: 500 }));
+    }
     return handle(req, {}, makeContext(env));
   },
 } satisfies ExportedHandler<Env>;

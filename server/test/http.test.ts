@@ -118,7 +118,7 @@ describe('race tickets and orchestration', () => {
     const svc = new PlayerService(new MemoryPlayerRepo(), { master: m, rng: seededRng(1), clock: () => 0, verifiers: {} });
     const entries = [];
     for (const p of ['a', 'b']) {
-      const d = await svc.tutorialDraw(p, 't');
+      const d = await svc.tutorialDraw(p, 'c:t');
       entries.push(await svc.raceEntry(p, d.results.find((r) => r.horseId)!.horseId!));
     }
     entries[1] = { ...entries[1]!, statCap: 2000 };

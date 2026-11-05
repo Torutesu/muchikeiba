@@ -30,6 +30,9 @@ export function bannerProblems(b: BannerDef, m: Pick<Master, 'templateById'>, gm
   }
   if (!(b.priceSingle > 0) || !(b.priceTen > 0)) p.push(`${b.id}: price must be > 0`);
   if (!gm.pityGroups[b.pityGroup]) p.push(`${b.id}: unknown pity group ${b.pityGroup}`);
+  const g = gm.pityGroups[b.pityGroup];
+  if (g?.endAtMs !== undefined && !gm.pityGroups[g.convertTo ?? 'standard']) p.push(`${b.pityGroup}: convertTo group ${g.convertTo ?? 'standard'} does not exist`);
+  if (g?.endAtMs !== undefined && b.endAtMs !== undefined && b.endAtMs > g.endAtMs) p.push(`${b.id}: banner outlives its pity group`);
   for (const t of b.pityTargets) if (!b.pool.some((e) => e.templateId === t)) p.push(`${b.id}: pity target ${t} not in pool`);
   return p;
 }
@@ -149,12 +152,23 @@ export function drawGacha(m: Master, s: PlayerState, bannerId: string, count: 1 
 /** REQ-GACHA-005: exchange pity points for a target. */
 export function exchangePity(m: Master, s: PlayerState, bannerId: string, templateId: string, now: number) {
   const b = findBanner(m, bannerId);
+  // exchange only through an open banner (bug review #13); closed groups were converted by settlePityGroups
+  if ((b.startAtMs !== undefined && now < b.startAtMs) || (b.endAtMs !== undefined && now >= b.endAtMs)) throw new AppError('BANNER_CLOSED');
   if (!b.pityTargets.includes(templateId)) throw new AppError('BAD_REQUEST', 'not an exchange target');
   const cost = m.gacha.pityGroups[b.pityGroup]!.cost;
   const have = s.pity[b.pityGroup] ?? 0;
   if (have < cost) throw new AppError('PITY_INSUFFICIENT', `${have}/${cost}`);
   s.pity[b.pityGroup] = have - cost;
   return grantPull(m, s, m.templateById.get(templateId)!, now, false);
+}
+
+/** Apply period-end conversion for every closed pity group (idempotent; run on every player transaction). */
+export function settlePityGroups(m: Master, s: PlayerState, now: number): number {
+  let moved = 0;
+  for (const [id, g] of Object.entries(m.gacha.pityGroups)) {
+    if (g.endAtMs !== undefined && now >= g.endAtMs) moved += convertPityGroup(s, id, g.convertTo ?? 'standard');
+  }
+  return moved;
 }
 
 /** End of a limited period: carry pity points of a closed group into another group (default policy). */

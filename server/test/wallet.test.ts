@@ -120,9 +120,9 @@ describe('purchase flow (REQ-PUR-*)', () => {
 describe('payment services act aggregation (REQ-WAL-005)', () => {
   it('sums the latest snapshot per player and flags the 10M yen threshold', () => {
     const r = aggregatePaidBalances([
-      { playerId: 'a', date: '2027-03-30', paidCoins: 10, paidYen: 999 },
-      { playerId: 'a', date: '2027-03-31', paidCoins: 5, paidYen: 6_000_000 },
-      { playerId: 'b', date: '2027-03-31', paidCoins: 5, paidYen: 4_000_001 },
+      { playerId: 'a', date: '2027-03-30', paidCoins: 10, paidYen: 999, seq: 1 },
+      { playerId: 'a', date: '2027-03-31', paidCoins: 5, paidYen: 6_000_000, seq: 2 },
+      { playerId: 'b', date: '2027-03-31', paidCoins: 5, paidYen: 4_000_001, seq: 1 },
     ]);
     expect(r).toMatchObject({ players: 2, totalPaidYen: 10_000_001, exceedsThreshold: true, requiredDepositYen: 5_000_001 });
     expect(isBaseDate(Date.UTC(2027, 2, 31, 3))).toBe(true);

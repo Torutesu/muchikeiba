@@ -5,7 +5,7 @@ import type { Rng } from './rng.js';
 import type { Clock } from './time.js';
 import { seasonIdFor, rollSeason, classDef } from './season.js';
 import { applyRefund, applyVerifiedPurchase, checkPurchaseIntent, registerAge, type StoreVerifier } from './purchase.js';
-import { drawGacha, exchangePity } from './gacha.js';
+import { drawGacha, exchangePity, settlePityGroups } from './gacha.js';
 import { awaken, breed, breedingPreview, getHorse, nameHorse, pedigree, retire } from './horses.js';
 import { applyRaceResult, claimLoginBonus, claimMission, claimPass, missionsView, passLevel, type RaceResultForPlayer } from './rewards.js';
 import { toRaceHorse } from './raceConfig.js';
@@ -64,6 +64,7 @@ export class PlayerService {
     const draft: PlayerState = structuredClone(current);
     const now = this.d.clock();
     rollSeason(this.d.master, draft, now);
+    settlePityGroups(this.d.master, draft, now);
     const paidBefore = draft.wallet.paid;
     const result = fn(draft, now);
     if (!invariantsHold(draft)) throw new Error('wallet invariant violated');
@@ -73,13 +74,15 @@ export class PlayerService {
     }
     await this.repo.put(draft);
     if (draft.wallet.paid !== paidBefore && this.d.onPaidBalance) {
-      await this.d.onPaidBalance({ playerId: id, date: jstDateKey(now), paidCoins: draft.wallet.paid, paidYen: paidBalanceYen(draft) });
+      await this.d.onPaidBalance({ playerId: id, date: jstDateKey(now), paidCoins: draft.wallet.paid, paidYen: paidBalanceYen(draft), seq: draft.ledgerSeq });
     }
     return result;
   }
 
+  /** Keys passed in from clients must be namespaced (`c:` prefix, see http/app.ts clientIdemKey). */
   private requireKey(k: string | null | undefined): string {
     if (!k) throw new AppError('IDEMPOTENCY_KEY_REQUIRED');
+    if (!k.startsWith('c:')) throw new AppError('BAD_REQUEST', 'client idempotency key must be namespaced');
     return k;
   }
 

@@ -56,12 +56,26 @@ async function body<T>(req: Request, schema: z.ZodType<T>): Promise<T> {
   if (!r.success) throw new AppError('BAD_REQUEST', r.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '));
   return r.data;
 }
-const idem = (req: Request) => {
+/**
+ * Client idempotency keys live in their own namespace, scoped by endpoint, so a client can never
+ * produce a server-internal key such as `refund:<tx>`, `purchase:<tx>` or `race:<raceId>`.
+ */
+export const clientIdemKey = (req: Request) => {
   const k = req.headers.get('idempotency-key');
   if (!k || k.length > 128) throw new AppError('IDEMPOTENCY_KEY_REQUIRED');
-  return k;
+  return `c:${new URL(req.url).pathname}:${k}`;
 };
+const idem = clientIdemKey;
 const id = z.string().min(1).max(64);
+
+/** Constant-time string comparison (length is not secret). */
+export function timingSafeEqual(a: string, b: string): boolean {
+  const x = new TextEncoder().encode(a);
+  const y = new TextEncoder().encode(b);
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
+  return diff === 0;
+}
 
 type Handler = (req: Request, p: Record<string, string>, ctx: AppContext) => Promise<Response>;
 interface Route { method: string; path: string; auth: 'player' | 'admin' | 'none' | 'ws'; handler: (req: Request, p: Record<string, string>, ctx: AppContext, uid: string) => Promise<unknown> }
@@ -185,7 +199,7 @@ export const handle: Handler = async (req, _p, ctx) => {
       }
       let uid = '';
       if (r.auth === 'player') uid = await ctx.authenticate(req);
-      if (r.auth === 'admin' && (!ctx.adminToken || req.headers.get('authorization') !== `Bearer ${ctx.adminToken}`)) throw new AppError('UNAUTHORIZED');
+      if (r.auth === 'admin' && (!ctx.adminToken || !timingSafeEqual(req.headers.get('authorization') ?? '', `Bearer ${ctx.adminToken}`))) throw new AppError('UNAUTHORIZED');
       return json(await r.handler(req, params, ctx, uid));
     }
     return methodMismatch ? json({ error: { code: 'BAD_REQUEST', message: 'method not allowed' } }, 405) : errorResponse(new AppError('NOT_FOUND'));

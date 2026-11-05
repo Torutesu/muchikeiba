@@ -45,7 +45,9 @@ export interface BannerDef {
   pityGroup: string; pityTargets: string[]; pool: PoolEntry[]; guaranteePool: PoolEntry[];
   startAtMs?: number; endAtMs?: number;
 }
-export interface GachaMaster { duplicateMaterial: Record<Rarity, number>; pityGroups: Record<string, { cost: number }>; banners: BannerDef[] }
+/** A limited pity group may close at `endAtMs`; leftover points then move to `convertTo` (REQ-GACHA-005). */
+export interface PityGroupDef { cost: number; endAtMs?: number; convertTo?: string }
+export interface GachaMaster { duplicateMaterial: Record<Rarity, number>; pityGroups: Record<string, PityGroupDef>; banners: BannerDef[] }
 export interface Master {
   tracks: Track[]; templates: HorseTemplate[]; templateById: Map<string, HorseTemplate>;
   gacha: GachaMaster; nicks: { bonus: number; pairs: [string, string][] }; ng: { exact: string[]; contains: string[] };

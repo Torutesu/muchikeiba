@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ムチ一閃 フロント確認ギャラリー</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand">ムチ一閃 <span>フロント確認ギャラリー</span></div>
+  <nav id="tabs">
+    <button data-tab="screens" class="on">画面（18）</button>
+    <button data-tab="race">レース再生（エンジン）</button>
+    <button data-tab="models">3Dモデル</button>
+    <button data-tab="art">アート素材</button>
+    <button data-tab="assets">アセット対応</button>
+  </nav>
+  <div id="stamp"></div>
+</header>
+<main>
+  <section id="screens" class="tab on"><div class="grid" id="screen-grid"></div></section>
+  <section id="race" class="tab">
+    <div class="race-wrap">
+      <canvas id="track" width="960" height="600"></canvas>
+      <aside>
+        <div class="controls"><button id="play">▶ 再生</button><button id="restart">↺</button>
+          <label>速度 <select id="speed"><option value="1">1×</option><option value="2" selected>2×</option><option value="4">4×</option></select></label></div>
+        <div id="clock"></div>
+        <div id="subtitle"></div>
+        <ol id="standings"></ol>
+        <p class="note" id="race-note"></p>
+      </aside>
+    </div>
+  </section>
+  <section id="models" class="tab">
+    <div class="grid" id="preview-grid"></div>
+    <h2>毛色 × 勝負服（25組）</h2>
+    <table id="partner-table"></table>
+  </section>
+  <section id="art" class="tab"><div class="grid small" id="art-grid"></div></section>
+  <section id="assets" class="tab"><div id="asset-summary"></div></section>
+</main>
+<div id="lightbox" hidden><img alt=""><p></p></div>
+<script src="app.js"></script>
+</body>
+</html>

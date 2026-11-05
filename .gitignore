@@ -14,3 +14,7 @@ coverage/
 
 # Claude Code agent worktrees
 .claude/worktrees/
+
+# Figma gallery build outputs
+tools/figma-gallery/site/img/
+tools/figma-gallery/site/data/

@@ -9,7 +9,14 @@ VERIFIER_URL = "https://verifier.example.invalid"
 FIREBASE_PROJECT_ID = "muchi-issen-dev"
 VERIFY_SAMPLE_RATE = "0.05"
 # DEV_MODE = "1"   # local only: fake store + x-dev-user header. NEVER in production.
-# Secrets (wrangler secret put): TICKET_SECRET, ADMIN_TOKEN
+# Secrets (wrangler secret put): TICKET_SECRET, ADMIN_TOKEN, GOOGLE_SERVICE_ACCOUNT_JSON
+# Stores (server/README.md「ストア連携」). Unset => that store rejects every receipt.
+# APPLE_BUNDLE_ID = "jp.example.muchi"
+# APPLE_ACCEPT_SANDBOX = "1"              # "0" rejects Sandbox (App Review uses Sandbox)
+# GOOGLE_PACKAGE_NAME = "jp.example.muchi"
+# GOOGLE_ACCEPT_TEST = "1"                # "0" rejects license-testing purchases
+# GOOGLE_PUBSUB_AUDIENCE = "https://api.example.com/v1/store/notifications/google"
+# GOOGLE_PUBSUB_SERVICE_ACCOUNT = "rtdn-push@<project>.iam.gserviceaccount.com"
 
 [[durable_objects.bindings]]
 name = "RACE_ROOM"
@@ -27,10 +34,30 @@ class_name = "MatchmakerDO"
 name = "ACCOUNTING"
 class_name = "AccountingDO"
 
+[[durable_objects.bindings]]
+name = "LEADERBOARD"
+class_name = "LeaderboardDO"
+
+[[durable_objects.bindings]]
+name = "DIRECTORY"
+class_name = "DirectoryDO"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["RaceRoomDO", "PlayerDO", "MatchmakerDO", "AccountingDO"]
 
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["LeaderboardDO", "DirectoryDO"]
+
 [[r2_buckets]]
 binding = "REPLAYS"
 bucket_name = "muchi-replays"
+
+[[r2_buckets]]
+binding = "SNAPSHOTS"
+bucket_name = "muchi-public"
+
+# Leaderboard snapshots + season rollover every 5 min; replay retention sweep daily 03:23 JST (src/domain/scheduled.ts)
+[triggers]
+crons = ["*/5 * * * *", "23 18 * * *"]

@@ -31,9 +31,14 @@ src/domain/     純粋ロジック（I/Oなし・時刻と乱数は注入）
   horses.ts       覚醒、命名（正規化＋NG）、引退、配合、ニックス、5代血統、近親ペナルティ、予想
   rewards.ts      ログボ、デイリーミッション、シーズンパス、レース報酬
   service.ts      PlayerService（ドラフト上で実行→成功時のみ保存、冪等キー）
-src/race/       レース作成（チケット発行）と精算（着順→報酬・レート）
+  stats.ts        戦績（入力ログからスタート反応・ムチ）、称号の判定と装備、表示名、公開プロフィール
+  leaderboard.ts  ランキングの集計ファイル・順位、シーズン締めの再開可能な処理
+  friends.ts      フレンドコード、申請〜解除の各段階、招待、FriendsService（2人の更新を順番に＋取り消し）
+  retention.ts    リプレイログの保存期限（保留は残す）
+  scheduled.ts    cronの振り分け
+src/race/       レース作成（チケット発行）、精算（着順→報酬・レート・戦績）、settlement.ts（検証と精算をアラームから再試行つきで実行）
 src/http/       ルーター、Firebase IDトークン検証、レース入場チケット、ストアアダプタ
-src/do/         Durable Objects（PlayerDO / RaceRoomDO / MatchmakerDO / AccountingDO）
+src/do/         Durable Objects（PlayerDO / RaceRoomDO / MatchmakerDO / AccountingDO / LeaderboardDO / DirectoryDO）
 master/         マスターデータ（全て架空。金額・確率は暫定）
 ```
 
@@ -54,8 +59,9 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | PUT | `/v1/player/age` | 要 | | `{birthYear, birthMonth, guardianConsent}` → 年齢帯と月額上限 |
 | GET | `/v1/shop/products` | なし | | 商品一覧 |
 | POST | `/v1/shop/purchase-intent` | 要 | | `{productId}` ストア購入を始めてよいか（`AGE_REQUIRED` / `GUARDIAN_CONSENT_REQUIRED` / `AGE_LIMIT_EXCEEDED` / `ALREADY_PURCHASED` / `UNSETTLED_DEBT`） |
-| POST | `/v1/shop/purchase` | 要 | （取引IDで自動） | `{platform: apple\|google\|fake, productId, receipt}` |
-| POST | `/v1/store/notifications/:platform` | なし | | ストアからの返金通知（Apple/Googleは署名検証の実装待ち、`fake`は開発用） |
+| GET | `/v1/shop/store-account` | 要 | | `{appleAppAccountToken, googleObfuscatedAccountId}` 購入時にストアへ渡す値（下記「ストア連携」） |
+| POST | `/v1/shop/purchase` | 要 | （取引IDで自動） | `{platform: apple\|google\|fake, productId, receipt}`。apple＝`Transaction.jwsRepresentation`、google＝`{"purchaseToken":"…"}` |
+| POST | `/v1/store/notifications/:platform` | 署名 | | `apple`：App Store Server Notifications V2、`google`：RTDN（Pub/Sub push、OIDC）、`fake`：開発用 |
 | GET | `/v1/gacha/banners` | なし | | |
 | GET | `/v1/gacha/:bannerId/odds` | なし | | 提供割合（抽選と同じ定義から生成）、保証枠、天井 |
 | POST | `/v1/gacha/:bannerId/draw` | 要 | 必須 | `{count: 1\|10}` |
@@ -82,6 +88,20 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | POST | `/v1/race/tutorial` | 要 | | `{horseId}` → 割り当て（CPU11頭・弱め） |
 | GET | `/v1/race/:raceId/ws` | チケット | | WebSocket。最初に `{"t":"hello","raceId","token":<ticket>,"lastTick":-1}` |
 | POST | `/v1/race/:raceId/report` | 要 | | 不正の通報（サーバー検証を強制） |
+| PUT | `/v1/player/profile` | 要 | | `{displayName}` 1〜12文字、NGリスト |
+| GET | `/v1/titles` | 要 | | 称号一覧（解放済みか）と装備中 |
+| PUT | `/v1/player/title` | 要 | | `{titleId \| null}` 解放済みのみ |
+| GET | `/v1/stats` | 要 | | 戦績（脚質別・コース別ベスト・スタート・ムチ） |
+| GET | `/v1/leaderboards/:seasonId/:board` | なし | | `seasonId`=`YYYY-MM`\|`current`、`board`=`class-C`等\|`rating`\|`index`。R2の集計ファイル（5分ごと更新） |
+| GET | `/v1/leaderboards/me` | 要 | | 今シーズンの自分の順位（直近集計）と現在の成績 |
+| GET | `/v1/friends` | 要 | | フレンド・受信/送信中の申請・招待（公開プロフィール付き） |
+| GET | `/v1/friends/code` | 要 | | 自分のフレンドコード（9桁） |
+| POST | `/v1/friends/requests` | 要 | | `{code}` 申請（相互申請なら即フレンド） |
+| POST | `/v1/friends/requests/:fromId/accept` | 要 | | 承認 |
+| POST | `/v1/friends/requests/:fromId/decline` | 要 | | 拒否 |
+| DELETE | `/v1/friends/requests/:toId` | 要 | | 自分の申請を取り消し |
+| DELETE | `/v1/friends/:friendId` | 要 | | フレンド解除（双方） |
+| POST | `/v1/friend-rooms/:passphrase/invite` | 要 | | `{friendId}` 部屋のメンバーがフレンドを招待 |
 | GET | `/v1/admin/paid-balance` | 管理 | | 有償コイン未使用残高の集計（資金決済法） |
 | GET | `/v1/admin/replays/:raceId` | 管理 | | リプレイログ |
 
@@ -91,11 +111,52 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 - お金・抽選・配合の乱数はすべてサーバー（`crypto.getRandomValues`）。端末の値は信用しない。
 - PlayerService の各操作は状態のコピーに対して実行し、最後まで成功したときだけ保存（ガチャ途中の失敗で巻き戻る）。
 - 有償コインは購入ごとの「ロット」で管理し、購入単価で円換算できる（基準日の未使用残高）。
-- レース部屋は計算しない。tickを確定して入力を配り、結果ハッシュの合意を取るだけ。合意できない／人間1人のランク戦／通報／抜き取りは検証サーバーで再計算。検証サーバーに届かなければ無効。
+- レース部屋は計算しない。tickを確定して入力を配り、結果ハッシュの合意を取るだけ。合意できない／人間1人のランク戦／通報／抜き取りは検証サーバーで再計算。検証サーバーに届かなければ3回まで再試行してから無効。検証と精算はアラームからだけ実行（`src/race/settlement.ts`）。
+- 1件の結果で部屋は止まらない。ありえない早さの結果は拒否、合意は人間スロットの2/3が必要（REQ-NET-012）。
+- ランキングは1シーズン＝1オブジェクト（`LeaderboardDO`、`lb:YYYY-MM`）。フレンドコードと公開プロフィールは16シャード（`DirectoryDO`、`dir:n`）。
 - ゴールデン `contracts/golden/ts-config-*.json` はルールセットのファイルを埋め込むので、ルールセットを変えたら `npm run gen:golden`。
 
+## ストア連携（`src/stores/`）
+
+| | Apple（StoreKit 2） | Google Play |
+|---|---|---|
+| アプリが送る `receipt` | `Transaction.jwsRepresentation` | `{"purchaseToken":"…"}` |
+| 検証 | x5c 証明書チェーンを Apple Root CA - G3 まで検証（Apple独自のOID・有効期限・ECDSA署名）、ES256署名、bundleId・環境・商品ID・取り消し | Play Developer API（サービスアカウントJWT→OAuth、トークンはキャッシュ）の purchases.products / subscriptionsv2 で状態・商品・アカウントを確認 |
+| 本人との紐付け | 購入時に `appAccountToken` = `/v1/shop/store-account` の `appleAppAccountToken` | `setObfuscatedAccountId` = `googleObfuscatedAccountId` |
+| 付与後 | — | コインは consume、パスは acknowledge（3日以内に必要。失敗してもアプリが再送すれば再試行） |
+| サーバー通知 | V2 の `signedPayload` を同じ方法で検証。REFUND/REVOKE→返金、SUBSCRIBED/DID_RENEW→期間延長、EXPIRED/GRACE_PERIOD_EXPIRED→終了、DID_FAIL_TO_RENEW→猶予/再試行、CONSUMPTION_REQUEST・TEST→受領のみ | Pub/Sub の OIDC トークン（発行者・audience・サービスアカウントのメール）を検証。voided→返金、RENEWED等→期間延長、EXPIRED/REVOKED/ON_HOLD/PAUSED→終了、IN_GRACE_PERIOD→猶予 |
+| テスト購入 | Sandbox/Xcode は既定で受け付け（App Review が Sandbox を使うため）、金額0円として記録。`APPLE_ACCEPT_SANDBOX=0` で拒否 | ライセンステストは既定で受け付け、0円。`GOOGLE_ACCEPT_TEST=0` で拒否 |
+
+- 取引IDは `apple:<transactionId>` / `google:<orderId>` で保存し、プラットフォーム間で衝突しない。
+- **1つのレシートは1人にしか付与されない**：全体の取引インデックス（AccountingDO の `store_tx`）に「取引ID・サブスクIDの持ち主」を先着で記録。サーバー通知もここで持ち主を探す。見つからない通知は 200 で受領して無視（アプリ側の購入処理が後で付与する）。
+- 返金では、付与した有償コイン・初回ボーナス（無償／有償）・同梱アイテムをすべて回収。使ってしまった分はコインの負債（`debt`）／アイテムの負債（`itemDebt`）になり、精算までガチャと購入が止まる。1回限りの商品は返金後も「購入済み」。
+- 年齢は一度登録したら「若くなる方向」にしか変えられない（保護者同意の追加は可）。月額上限を超えた購入が記録された月は、以降の購入前チェックが `AGE_LIMIT_EXCEEDED` になり、`supportFlags` にサポート用の印が付く。
+
+### 本番で必要な設定（`wrangler.toml` の vars / `wrangler secret put`）
+
+| 名前 | 種別 | 内容 |
+|---|---|---|
+| `APPLE_BUNDLE_ID` | var | iOS の bundle id。未設定なら Apple は全て拒否 |
+| `APPLE_ACCEPT_SANDBOX` | var | `0` で Sandbox を拒否（既定は受け付け） |
+| `GOOGLE_PACKAGE_NAME` | var | Android のパッケージ名 |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | secret | Play Console で注文の閲覧・管理権限を付けたサービスアカウントの鍵JSON |
+| `GOOGLE_ACCEPT_TEST` | var | `0` でライセンステスト購入を拒否 |
+| `GOOGLE_PUBSUB_AUDIENCE` | var | RTDN の Pub/Sub push サブスクリプションに設定した audience |
+| `GOOGLE_PUBSUB_SERVICE_ACCOUNT` | var | push が認証に使うサービスアカウントのメール |
+
+App Store Connect では通知URLに `https://<host>/v1/store/notifications/apple`（Version 2）を設定。Google は RTDN のトピックに push サブスクリプション（エンドポイント `https://<host>/v1/store/notifications/google`、認証あり）を作る。
+App Store Server API（`AppStoreServerApi`、ES256 JWT）はアプリが報告し損ねた取引の照会用に用意してあるが、まだルートには繋いでいない（鍵：Issuer ID・Key ID・.p8）。
+
+## 定期実行（wrangler.toml `[triggers]`）
+| cron (UTC) | 内容 |
+|---|---|
+| `*/5 * * * *` | 今シーズンのランキング集計をR2（`SNAPSHOTS`）へ（変化があった時だけ）＋前シーズンの締めを1段階進める（完了後は何もしない） |
+| `23 18 * * *`（03:23 JST） | リプレイログの保存期限切れを削除（保留中は残す） |
+
+ローカルでは `wrangler dev --test-scheduled` で `/__scheduled?cron=*/5+*+*+*+*` を叩いて確認できる。
+
 ## 未実装・要対応
-- Apple / Google のレシート検証と返金通知の署名検証（認証情報が必要。現状は全て拒否＝何も付与しない安全側）
+- Apple / Google の実機・本番の認証情報での疎通確認（コードとテストは自前の証明書チェーン・偽APIで検証済み）
 - 年齢帯ごとの月額上限の金額（`master/age-limits.json` は仮値・未確定）
 - NGリストの本番版（`master/ng-names.json` は仮）
 - マッチングは1シャード（`ranked-jp`）。規模に応じて地域・レート帯で分割する

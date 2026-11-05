@@ -182,6 +182,10 @@ namespace Muchi.Net
                 var order = JsonNode.Arr();
                 foreach (var s in Sim.Result.Order) order.Add(JsonNode.Num(s));
                 o.Set("order", order);
+                // optional (protocol §4): finish ticks in `order` order, -1 = did not finish → best times on consensus races
+                var ft = JsonNode.Arr();
+                foreach (var f in Sim.Result.FinishTicks) ft.Add(JsonNode.Num(f));
+                o.Set("finishTicks", ft);
                 _transport.Send(o.ToString());
             }
         }

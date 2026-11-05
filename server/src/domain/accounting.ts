@@ -3,7 +3,8 @@ import { jstDateKey } from './time.js';
 /** 資金決済法: unused paid balance on base dates (Mar 31 / Sep 30) above ¥10M requires filing + 50% deposit. */
 export const PAYMENT_ACT_THRESHOLD_YEN = 10_000_000;
 
-export interface PaidBalanceSnapshot { playerId: string; date: string; paidCoins: number; paidYen: number }
+/** `seq` is the player's ledger sequence; the store keeps only the newest snapshot per player. */
+export interface PaidBalanceSnapshot { playerId: string; date: string; paidCoins: number; paidYen: number; seq: number }
 
 export function isBaseDate(ms: number): boolean {
   const d = jstDateKey(ms).slice(5);
@@ -15,7 +16,7 @@ export function aggregatePaidBalances(snapshots: PaidBalanceSnapshot[]) {
   const latest = new Map<string, PaidBalanceSnapshot>();
   for (const s of snapshots) {
     const prev = latest.get(s.playerId);
-    if (!prev || prev.date <= s.date) latest.set(s.playerId, s);
+    if (!prev || prev.seq < s.seq || (prev.seq === s.seq && prev.date <= s.date)) latest.set(s.playerId, s);
   }
   let totalCoins = 0;
   let totalYen = 0;

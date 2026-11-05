@@ -17,6 +17,7 @@ async function call(method: string, path: string, body?: unknown, idem = true) {
   return j as any;
 }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+let lastPing = 0;
 
 await call('POST', '/v1/player/bootstrap');
 await call('PUT', '/v1/player/age', { birthYear: 1990, birthMonth: 1, guardianConsent: false });
@@ -43,11 +44,13 @@ await new Promise<void>((resolve, reject) => {
     if (msg.t === 'b') {
       lastTick = msg.to;
       if (msg.to >= 60 && msg.to < 62) ws.send(JSON.stringify({ t: 'in', tick: msg.to + 3, cmd: 1 }));
-      if (msg.to >= 100) ws.send(JSON.stringify({ t: 'res', h: 'a'.repeat(64), order: [a.slot] }));
+      if (Date.now() - lastPing > 1000) { lastPing = Date.now(); ws.send(JSON.stringify({ t: 'ping', c: lastPing })); } // keep-alive (silence = disconnect)
+      // results before the earliest plausible finish are rejected (REQ-NET-012); 1100 ticks is past it on every course
+      if (msg.to >= 1100) ws.send(JSON.stringify({ t: 'res', h: 'a'.repeat(64), order: [a.slot] }));
     }
     if (msg.t === 'final') { console.log('final', msg.status); resolve(); }
   };
-  setTimeout(() => reject(new Error('timeout; got ' + got.join(','))), 30_000);
+  setTimeout(() => reject(new Error('timeout; got ' + got.join(','))), 120_000);
 });
 ws.close();
 console.log('messages', [...new Set(got)].join(','), 'lastTick', lastTick);
@@ -74,10 +77,11 @@ await new Promise<void>((resolve, reject) => {
   ws2.onopen = () => ws2.send(JSON.stringify({ t: 'hello', raceId: st.raceId, token: st.ticket, lastTick: -1 }));
   ws2.onmessage = (ev) => {
     const msg = JSON.parse(String(ev.data));
-    if (msg.t === 'b' && msg.to >= 40) ws2.send(JSON.stringify({ t: 'res', h: 'b'.repeat(64), order: [st.slot] }));
+    if (msg.t === 'b' && Date.now() - lastPing > 1000) { lastPing = Date.now(); ws2.send(JSON.stringify({ t: 'ping', c: lastPing })); }
+    if (msg.t === 'b' && msg.to >= 1100) ws2.send(JSON.stringify({ t: 'res', h: 'b'.repeat(64), order: [st.slot] }));
     if (msg.t === 'final') { console.log('ranked final', msg.status); if (msg.status !== 'verifying') resolve(); }
   };
-  setTimeout(() => reject(new Error('ranked timeout')), 40_000);
+  setTimeout(() => reject(new Error('ranked timeout')), 180_000);
 });
 ws2.close();
 console.log('SMOKE OK');

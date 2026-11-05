@@ -8,8 +8,10 @@
 |---|---|---|---|
 | `Muchi.Engine/` | netstandard2.1 / C# 9 | なし | 決定論レースエンジン。Unityにそのまま入れる（`Muchi.Engine.asmdef` 同梱） |
 | `Muchi.Net/` | netstandard2.1 / C# 9 | Engine | ロックステップのクライアント、ミニJSON、プロトコルのコーデック（`Muchi.Net.asmdef` 同梱） |
+| `Muchi.Client/` | netstandard2.1 / C# 9 | Engine, Net | Unity向けクライアントSDK：API呼び出し、オンラインレースの接続管理、オフラインレース、実況テキスト（`Muchi.Client.asmdef` 同梱） |
 | `Muchi.Verifier/` | net8.0 | Engine, Net, ASP.NET | 検証サーバー（CLI/HTTP）、ゴールデン生成、バランス計測 |
-| `Muchi.Engine.Tests/` | net8.0 | xUnit | 81テスト |
+| `Muchi.Bot/` | net8.0 | Engine, Net | 結合テスト用のヘッドレスプレイヤー |
+| `Muchi.Engine.Tests/` | net8.0 | xUnit | 144テスト |
 
 ```bash
 export PATH=/opt/dotnet:$PATH          # この環境の .NET 8 SDK
@@ -24,9 +26,81 @@ dotnet run --project engine/Muchi.Verifier -- balance contracts/ruleset-params.d
 
 ## Unity / Codex 向け API
 
-Unity には `Muchi.Engine/*.cs + .asmdef` と `Muchi.Net/*.cs + .asmdef` だけをコピーする（`bin/` `obj/` は入れない）。
+Unity には `Muchi.Engine/`、`Muchi.Net/`、`Muchi.Client/` の `*.cs + .asmdef` と `Muchi.Client/Data/commentary-ja.json` をコピーする（`bin/` `obj/` は入れない）。
+通常は下の **Muchi.Client（推奨）** だけを使えばよい。`LockstepClient` を直接使うのは独自の接続管理をしたい場合のみ。
 
-### 対戦の流れ
+## Muchi.Client（Unity 統合ガイド）
+
+Codex（見た目）側で実装するのは次の3つのアダプタだけ。ロジックはすべてSDK側にある。
+
+| インターフェイス | Unity 側の実装例 | 役割 |
+|---|---|---|
+| `IHttp` | `UnityWebRequest` | `SendAsync(HttpRequest)` → `HttpResponse(status, body)`。応答が無い（DNS・タイムアウト・切断）ときは例外を投げる |
+| `IAuthTokenProvider` | Firebase Auth SDK | `GetTokenAsync(forceRefresh)` → IDトークン（匿名ログイン可） |
+| `ITransportFactory` | 任意の WebSocket ライブラリ | `Open(url, onOpen, onMessage, onClosed)` → `IConnection`（`Send` / `Close`）。コールバックはどのスレッドから呼んでもよい |
+
+### 1. API（`ApiClient`）
+```csharp
+var api = new ApiClient(new UnityHttp(), new FirebaseTokens(), new ApiClientOptions { BaseUrl = "https://api.example.com" });
+var me = await api.BootstrapAsync();                       // 起動ごとに呼んでよい
+var draw = await api.DrawAsync("standard", 10);            // 冪等キーは自動（リトライでも同じキー）
+try { await api.PurchaseIntentAsync("coin_1500"); }        // ストアを開く前に必ず確認
+catch (PurchaseBlockedException e) { /* e.Code: AgeRequired / GuardianConsentRequired / AgeLimitExceeded / AlreadyPurchased / UnsettledDebt */ }
+```
+- `server/README.md` のプレイヤー向けAPIをすべて型付きで持つ（管理API・ストア通知・WebSocketは除く）。
+- **冪等キー**：ガチャ・覚醒・配合・報酬受け取りなどは呼び出しごとにキーを1つ作り、リトライでも同じキーを送る。アプリ再起動をまたいで再送したいときは `NewIdempotencyKey()` で作ったキーを保存し、引数で渡す。
+- **リトライ**：安全なリクエスト（GET、冪等な書き込み、キー付きの書き込み）だけを、通信失敗・5xx・429のときに指数バックオフ（300ms→600ms→1200ms＋ゆらぎ、最大3回）で再送する。`EnqueueRankedAsync` / `RetireAsync` / フレンド部屋の作成・参加・開始 / チュートリアルレース開始は再送しない。
+- **401**：トークンを強制更新して1回だけ再送。
+- **購入**：`PurchaseAsync` はサーバーが取引IDで重複を弾くので、ストアのトランザクションを finish する前にクラッシュしても、起動時に同じレシートを再送すればよい（`Duplicate=true` が返る）。
+- **エラー**：`ApiException`（`Code`=型付きコード、`WireCode`=生の文字列、`Status`）。サブクラスで画面を分ける：`AuthException`（再ログイン）、`ValidationException`（入力を直す。`NG_NAME` など）、`NotFoundException`、`PurchaseBlockedException`、`InsufficientCoinsException`（ショップへ）、`ConflictException`（`ALREADY_CLAIMED` などゲームルール）、`ServerException`、`NetworkException`（通信不可）。
+- 開発時（サーバー `DEV_MODE=1`）は `ApiClientOptions.DevUserId` を入れるとトークン無しで動く。
+- **プロフィール・称号・戦績**：`SetDisplayNameAsync`（NGリスト判定）、`GetTitlesAsync` / `EquipTitleAsync(null で外す)`、`GetStatsAsync`（コース別ベストは `BestFinishTick × 50ms`）。
+- **ランキング**：`GetMyRankAsync`（スナップショット前は `Rank=null`）、`GetLeaderboardAsync("current" または "yyyy-mm", "class-A" / "rating" / "index")`。ランキングは認証不要の公開スナップショット（数分おきに更新）。
+- **フレンド**：`GetFriendCodeAsync`、`SendFriendRequestAsync(9桁コード)`（相手からも申請済みなら即フレンド）、`AcceptFriendRequestAsync` / `DeclineFriendRequestAsync` / `CancelFriendRequestAsync` / `RemoveFriendAsync`、`GetFriendsAsync`（フレンド・受信・送信中・部屋への招待）、`InviteToFriendRoomAsync`。サーバー側で重複操作は無害なので、すべて再送対象。
+- **新しいエラー**：`FRIEND_LIMIT`、`ALREADY_IN_RACE`（ランク戦は同時に1レースまで）、`ROOM_TOO_SMALL`（フレンド部屋は2人から）はいずれも `ConflictException`。
+
+### 2. オンラインレース（`RaceSession`）
+```csharp
+var a = (await api.GetMatchStatusAsync()).Assignment;      // または StartTutorialRaceAsync / StartFriendRoomAsync
+var race = new RaceSession(new UnityWebSocketFactory(), api.RaceWebSocketUrl(a), a.RaceId, a.Ticket);
+race.StateChanged += (from, to) => ShowState(to);
+race.Start(NowMs());
+// 毎フレーム（メインスレッド）:
+race.Update(NowMs());                                      // 受信処理・ping・再接続はすべてここで
+race.Input(Cmd.Whip);                                      // ボタン
+int alpha = race.InterpolationAlphaPermille(NowMs());      // GetPreviousHorse→GetHorse の補間
+```
+- 状態：`Connecting → Waiting → Racing → Finished → (Verifying →) Confirmed / Void`。通信が切れると `Reconnecting`（0.5秒→1秒→2秒…最大8秒、8回まで）。諦めると `Failed`（`FailureReason`）。
+- 再接続すると hello で最後のtickを伝え、部屋から届いた分を早送りして追いつく。切れている間の入力は捨てる（部屋がCPUに引き継いでいる）。
+- `NowMs()` は単調増加の時計（`Time.realtimeSinceStartupAsDouble * 1000` を long にしたもの等）。
+- ゴールすると `res`（結果ハッシュ・着順・`finishTicks`）を自動で送る。`finishTicks` があると、合意で確定したレースでもベストタイムが記録される。
+- 部屋は一定時間何も届かない端末をCPUに引き継ぐ。`Update` を毎フレーム呼んでいれば ping が2秒ごとに出るので問題ない（バックグラウンドに回ると引き継がれ、戻ると操作が戻る）。
+
+### 3. オフラインレース（`OfflineRace` / `OfflinePresets`）
+```csharp
+var race = new OfflineRace(OfflinePresets.Tutorial(ruleset), OfflinePresets.TutorialPlayerSlot) { AutoStart = true };
+race.Start(NowMs());
+race.Update(NowMs());     // 毎フレーム。固定ステップ（50ms）、1フレームの追いつきは最大10tick
+race.Input(Cmd.Whip);
+race.Pause(NowMs()); race.Resume(NowMs());
+```
+- **チュートリアル**（いきなり本番）：400mの直線だけ。スタートは自動、操作はムチだけ。残り200〜400mからムチを入れればほぼ必ず勝ち（60シード中58以上）、ムチ無し・残り60mからのムチではほぼ負ける（テストで固定）。
+- **タイムアタック**：`OfflinePresets.TimeAttack(track, horse, ruleset)`、`FinishTimeMs(slot)` でタイム。
+- `ruleset` はサーバーから受け取ったもの（オンラインと同じ値）を使う。
+
+### 4. 実況（`Commentator`）
+```csharp
+var templates = CommentaryTemplates.Parse(commentaryJsonTextAsset.text);
+var commentator = new Commentator(templates, race.Sim.Config, focusSlot: mySlot);
+// tickが進むたび:
+foreach (var line in commentator.Process(race.Sim)) PlayLine(line); // line.Text（字幕）, line.ClipKeys（音声）
+```
+- 行は重ならない（`DurationTicks` の間は次を出さない）。重要な場面（ゲート、先頭交代、最後の直線、1着、着順）は捨てずに遅らせて必ず言う。
+- 言い回しはレースのシードから決定的に選ぶ（同じリプレイは同じ実況）。
+- **音声は作り置き**：`templates.AllFixedClips()` が「固定フレーズID→文」を返すので一度だけ音声合成しておく。馬名は `name:<horseId>`（命名時に1回生成）、数字は `num:<n>`。`ClipKeys` を順に再生すれば `Text` と同じ文になる。
+- 文面は `Data/commentary-ja.json` を編集する（`{name}` `{name2}` `{name3}` `{place}` が使える）。
+
+### 対戦の流れ（LockstepClient を直接使う場合）
 ```csharp
 var client = new LockstepClient(transport, raceId, firebaseIdToken);   // transport: ITransport（WebSocket実装はUnity側）
 client.RaceStarted += c => { /* c.Sim, c.Slot, c.Config, c.StartAtMs が使える */ };
@@ -54,7 +128,7 @@ client.SendPing(localNowMs);
 | `Fx` | Q16.16。表示には `ToMilli()`（×1000の整数）を使い、`float` へは表示層でだけ変換する |
 
 ### オフライン（チュートリアル・タイムアタック）
-`new RaceSim(config)` を作り、毎tick `Step(cmdsBySlot)` を呼ぶだけ。`RaceReplay.Run(config, inputs)` でリプレイ。
+通常は `Muchi.Client.OfflineRace` を使う。低レベルには `new RaceSim(config)` を作り、毎tick `Step(cmdsBySlot)` を呼ぶだけ。`RaceReplay.Run(config, inputs)` でリプレイ。
 
 ## 決定論の担保
 - 浮動小数点ゼロ（`NoFloatTests` がソースとIL両方を検査）。乱数は PCG32＋SplitMix64（参照値テストあり）。

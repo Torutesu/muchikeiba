@@ -26,6 +26,11 @@ export class MatchmakerCore<P = unknown> {
     this.queue.push(e);
   }
 
+  /** Puts players of a match that could not be started back in the queue, keeping their wait time. */
+  requeue(entries: QueueEntry<P>[]) {
+    for (const e of entries) if (!this.has(e.playerId)) this.queue.push(e);
+  }
+
   cancel(playerId: string) {
     const n = this.queue.length;
     this.queue = this.queue.filter((e) => e.playerId !== playerId);
@@ -74,7 +79,18 @@ export interface FriendRoom<P = unknown> { passphrase: string; hostId: string; c
 
 export class FriendRooms<P = unknown> {
   rooms = new Map<string, FriendRoom<P>>();
-  constructor(private readonly maxPlayers = 12, private readonly ttlMs = 30 * 60_000) {}
+  constructor(private readonly maxPlayers = 12, private readonly ttlMs = 30 * 60_000, private readonly minPlayers = 2) {}
+
+  isMember(passphrase: string, playerId: string) {
+    return this.rooms.get(passphrase)?.members.some((m) => m.playerId === playerId) ?? false;
+  }
+
+  toJSON() { return [...this.rooms.values()]; }
+  static fromJSON<P>(rooms: FriendRoom<P>[] | undefined, maxPlayers = 12): FriendRooms<P> {
+    const f = new FriendRooms<P>(maxPlayers);
+    for (const r of rooms ?? []) f.rooms.set(r.passphrase, r);
+    return f;
+  }
 
   create(hostId: string, payload: P, now: number, rng: Rng): FriendRoom<P> {
     this.gc(now);
@@ -100,6 +116,8 @@ export class FriendRooms<P = unknown> {
     const r = this.rooms.get(passphrase);
     if (!r) throw new AppError('ROOM_NOT_FOUND');
     if (r.hostId !== playerId) throw new AppError('NOT_HOST');
+    // REQ-MM-004: a friend race needs at least two humans (a solo room would be a free reward farm)
+    if (r.members.length < this.minPlayers) throw new AppError('ROOM_TOO_SMALL', 'a friend race needs at least 2 players');
     this.rooms.delete(passphrase);
     return r;
   }
@@ -107,4 +125,13 @@ export class FriendRooms<P = unknown> {
   private gc(now: number) {
     for (const [k, r] of this.rooms) if (now - r.createdAt > this.ttlMs) this.rooms.delete(k);
   }
+}
+
+/** How long a match assignment counts as a race in progress (start delay + longest race + settle margin). */
+export const LIVE_RACE_MS = 6 * 60_000;
+
+/** REQ-MM-005: one live race per player — joining a queue or a race while one is running is refused. */
+export function assertNotInLiveRace(assignments: Map<string, { at: number }>, playerId: string, now: number) {
+  const a = assignments.get(playerId);
+  if (a && now - a.at < LIVE_RACE_MS) throw new AppError('ALREADY_IN_RACE');
 }

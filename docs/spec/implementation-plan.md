@@ -38,7 +38,7 @@ docs/                           企画・要件・計画
 ### 2.2 ロックステップ（C#クライアント／TS部屋）
 - 部屋（TS）`RaceRoomCore`：純粋クラス。`join` / `onMessage` / `advance(nowMs)` / `onDisconnect` を持ち、送るべきメッセージの配列を返す。時刻は引数で受け取る（テストで自由に進められる）。
 - Durable Object `RaceRoomDO`：WebSocket休止APIで受信し `RaceRoomCore` に渡す。レース中だけアラームで `advance` を呼ぶ。
-- クライアント（C#）`LockstepClient`：送信待ちの入力、確定入力のバッファ、`RaceSim` を進める、チェックサム送信、再接続時の早送り。通信は `ITransport` インターフェイス（UnityのWebSocket実装はCodex側で差し込む）。
+- クライアント（C#）`LockstepClient`：送信待ちの入力、確定入力のバッファ、`RaceSim` を進める、チェックサム送信、再接続時の早送り。通信は `ITransport` インターフェイス（UnityのWebSocket実装を接続する）。
 - 試験用に C# 側に `InMemoryRelay`（部屋の動きを模した偽物）を用意し、12クライアントを同時に動かすテストで、全員のチェックサムと結果ハッシュが一致することを確認する。
 
 ### 2.3 サーバー（TS）
@@ -77,7 +77,7 @@ docs/                           企画・要件・計画
 - 確率：固定シードで大量に引き、各レア度の出現率が許容範囲（統計的検定）に入る。表示データの合計が100%で、抽選テーブルと一致。
 - 法務ガード：コンプガチャ条件を含む設定が拒否される、NG名が拒否される、年齢上限を超える購入が拒否される。
 
-## 5. Codex（見た目）への引き渡し
+## 5. Unityクライアントへの引き渡し
 - Unity には `engine/Muchi.Engine` と `engine/Muchi.Net` のソースをそのまま入れる（asmdef を同梱）。
 - 表示は `RaceSim` の読み取りAPI（毎tickの全馬状態・前tick状態・イベント）を使い、tick間を補間して描く。
 - 入力は `LockstepClient.QueueInput(cmd)` を呼ぶだけ。

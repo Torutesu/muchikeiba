@@ -1,0 +1,525 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2960" height="4500"><rect width="2960" height="4500" fill="#e5e6df"/><g transform="translate(40,100)"><text y="-20" fill="#183b30" font-size="20">1 / はじめに</text><rect x="0" y="0" width="1380" height="770" rx="7" fill="rgb(246, 244, 236)" stroke="rgb(204, 211, 193)"/>
+<rect x="1" y="1" width="75" height="768" rx="0" fill="rgb(24, 59, 48)" stroke="none"/>
+<text x="23.0625" y="63.3" fill="rgb(210, 204, 170)" font-size="38px" font-weight="400" font-family="Noto Sans JP, sans-serif">M</text>
+<text x="25.484375" y="94.5" fill="rgb(210, 204, 170)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">一閃</text>
+<rect x="38" y="131" width="1" height="55" rx="0" fill="rgba(255, 255, 255, 0.19)" stroke="none"/>
+<text x="33" y="222.8" fill="rgb(210, 204, 170)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">RIDE YOUR OWN STORY</text>
+<text x="33" y="674.878125" fill="rgb(210, 204, 170)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">EST. 2026</text>
+<text x="118" y="38.9" fill="rgb(24, 59, 48)" font-size="24px" font-weight="700" font-family="Noto Sans JP, sans-serif">ムチ一閃</text>
+<text x="118" y="66.3" fill="rgb(24, 59, 48)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">JOCKEY RACING CLUB</text>
+<text x="1123.046875" y="46.2" fill="rgb(166, 139, 80)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">◈</text>
+<text x="1138.96875" y="46.2" fill="rgb(166, 139, 80)" font-size="12px" font-weight="500" font-family="Noto Sans JP, sans-serif">1,200</text>
+<text x="1175.65625" y="47.8" fill="rgb(139, 150, 127)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">無償</text>
+<text x="1216.65625" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">◎</text>
+<text x="1235.359375" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="500" font-family="Noto Sans JP, sans-serif">24,800</text>
+<rect x="1301" y="26.5" width="36" height="36" rx="50" fill="rgb(230, 235, 220)" stroke="rgb(204, 212, 190)"/>
+<text x="1315.8125" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">Y</text>
+<rect x="118" y="191.3125" width="20" height="1" rx="0" fill="rgb(162, 138, 82)" stroke="none"/>
+<text x="147" y="192.9625" fill="rgb(162, 138, 82)" font-size="9px" font-weight="400" font-family="Noto Sans JP, sans-serif">YOUR STORY STARTS HERE</text>
+<text x="118" y="262.1125" fill="rgb(24, 59, 48)" font-size="48px" font-weight="600" font-family="Noto Sans JP, sans-serif">あなたと、</text>
+<text x="118" y="341.3" fill="rgb(24, 59, 48)" font-size="48px" font-weight="600" font-family="Noto Sans JP, sans-serif">まだ見ぬ</text>
+<text x="317.6875" y="341.3" fill="rgb(159, 130, 80)" font-size="48px" font-weight="600" font-family="Noto Sans JP, sans-serif">直線へ。</text>
+<text x="118" y="412.7375" fill="rgb(121, 132, 113)" font-size="13px" font-weight="400" font-family="Noto Sans JP, sans-serif">一瞬の判断が、運命を変える。</text>
+<text x="118" y="438.7375" fill="rgb(121, 132, 113)" font-size="13px" font-weight="400" font-family="Noto Sans JP, sans-serif">相棒と駆ける、90秒の物語。</text>
+<text x="138" y="508.6875" fill="#183b30" font-size="18">on</text>
+<text x="145" y="486.1875" fill="rgb(120, 134, 108)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">利用規約・プライバシーポリシーに同意する</text>
+<rect x="118" y="508.6875" width="320" height="62" rx="3" fill="rgb(24, 59, 48)" stroke="none"/>
+<text x="141" y="541.2375" fill="rgb(255, 253, 240)" font-size="13px" font-weight="400" font-family="Noto Sans JP, sans-serif">はじめてのレースへ</text>
+<text x="396" y="541.9875" fill="rgb(219, 199, 138)" font-size="18px" font-weight="400" font-family="Noto Sans JP, sans-serif">↗</text>
+<text x="118" y="594.1875" fill="rgb(140, 150, 127)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">登録不要。まずは、走ってみよう。</text>
+<rect x="884.515625" y="191.59375" width="316.4375" height="316.4375" rx="50" fill="rgb(245, 239, 214)" stroke="none"/>
+<svg x="632.796875" y="134" width="719.203125" height="480" viewBox="0 0 640 440"><defs><linearGradient id="coat" x2="1" y2="1"><stop stop-color="#bb7955"></stop><stop offset="1" stop-color="#55362e"></stop></linearGradient></defs><path d="M68 362Q310 310 593 356" fill="none" stroke="#c5d1b4" stroke-width="2"></path><path d="M153 208Q91 205 75 255Q100 242 157 243L215 279L274 282L337 250L403 235L449 176L485 163L499 132L476 110L465 76L451 106L430 87L431 129L400 161L355 174L284 164L216 173Z" fill="url(#coat)"></path><path d="M187 239L211 280L171 329L113 347L108 358L183 350L247 281M270 257L285 292L239 345L243 356L269 343L318 291L311 247M346 232L392 282L459 309L471 305L432 277L399 222M390 207L449 228L491 270L505 270L472 217L419 181" fill="none" stroke="#694432" stroke-width="19" stroke-linejoin="round"></path><path d="M156 211Q102 177 69 198Q93 208 106 236" fill="#2b2925"></path><path d="M430 130L405 163L385 174" fill="none" stroke="#2b2925" stroke-width="14"></path><path d="M265 170L330 177L321 224L263 216Z" fill="#e7dfc4"></path><text x="284" y="206" fill="#17382c" font-size="28" font-family="serif">7</text><path d="M294 172L320 136L350 144L365 171" fill="none" stroke="#f2e9cf" stroke-width="16"></path><path d="M313 142L303 116L327 99L348 124L367 145L410 151" fill="none" stroke="#315d47" stroke-width="19"></path><circle cx="332" cy="88" r="15" fill="#d4ad86"></circle><path d="M316 85Q315 63 336 67L350 83Z" fill="#e4bb62"></path><path d="M360 146L454 150" stroke="#d2bb84" fill="none" stroke-width="2"></path><circle cx="475" cy="133" r="3" fill="#161e19"></circle></svg>
+<text x="719.09375" y="571.409375" fill="rgb(124, 137, 105)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">THE NEXT CHAPTER IS YOURS.</text>
+<text x="1055.625" y="660.8" fill="rgb(141, 152, 126)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">01 / THE BEGINNING</text>
+<text x="1197.390625" y="662.5" fill="rgb(141, 152, 126)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">最後の直線、あなたの一手で。</text>
+<rect x="76" y="717" width="1303" height="52" rx="0" fill="none" stroke="rgb(216, 223, 205) rgb(145, 155, 132) rgb(145, 155, 132)"/>
+<text x="118" y="744.8" fill="rgb(145, 155, 132)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">© MUCHI ISSEN　 /　 DEVELOPMENT PREVIEW</text>
+<text x="1204.703125" y="744.8" fill="rgb(145, 155, 132)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">JAPAN · TURF · 2,000m</text>
+<text x="1327.5" y="744.8" fill="rgb(146, 163, 101)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">●</text></g>
+<g transform="translate(1500,100)"><text y="-20" fill="#183b30" font-size="20">2 / 初めての直線</text><rect x="0" y="0" width="1380" height="770" rx="7" fill="rgb(246, 244, 236)" stroke="rgb(204, 211, 193)"/>
+<rect x="1" y="1" width="75" height="768" rx="0" fill="rgb(24, 59, 48)" stroke="none"/>
+<text x="23.0625" y="63.3" fill="rgb(210, 204, 170)" font-size="38px" font-weight="400" font-family="Noto Sans JP, sans-serif">M</text>
+<text x="25.484375" y="94.5" fill="rgb(210, 204, 170)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">一閃</text>
+<rect x="38" y="131" width="1" height="55" rx="0" fill="rgba(255, 255, 255, 0.19)" stroke="none"/>
+<text x="33" y="222.8" fill="rgb(210, 204, 170)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">RIDE YOUR OWN STORY</text>
+<text x="33" y="674.878125" fill="rgb(210, 204, 170)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">EST. 2026</text>
+<text x="118" y="38.9" fill="rgb(24, 59, 48)" font-size="24px" font-weight="700" font-family="Noto Sans JP, sans-serif">ムチ一閃</text>
+<text x="118" y="66.3" fill="rgb(24, 59, 48)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">JOCKEY RACING CLUB</text>
+<text x="1123.046875" y="46.2" fill="rgb(166, 139, 80)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">◈</text>
+<text x="1138.96875" y="46.2" fill="rgb(166, 139, 80)" font-size="12px" font-weight="500" font-family="Noto Sans JP, sans-serif">1,200</text>
+<text x="1175.65625" y="47.8" fill="rgb(139, 150, 127)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">無償</text>
+<text x="1216.65625" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">◎</text>
+<text x="1235.359375" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="500" font-family="Noto Sans JP, sans-serif">24,800</text>
+<rect x="1301" y="26.5" width="36" height="36" rx="50" fill="rgb(230, 235, 220)" stroke="rgb(204, 212, 190)"/>
+<text x="1315.8125" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">Y</text>
+<text x="118" y="149" fill="rgb(24, 59, 48)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">FIRST RIDE / チュートリアル</text>
+<text x="728.5625" y="153" fill="rgb(24, 59, 48)" font-size="40px" font-weight="400" font-family="Noto Sans JP, sans-serif">3</text>
+<text x="751.765625" y="161.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">/ 12 位</text>
+<text x="1258.421875" y="149" fill="rgb(24, 59, 48)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">芝 2,000m · 良</text>
+<svg x="288.65625" y="238" width="792.34375" height="330" viewBox="0 0 640 440"><defs><linearGradient id="coat" x2="1" y2="1"><stop stop-color="#bb7955"></stop><stop offset="1" stop-color="#55362e"></stop></linearGradient></defs><path d="M68 362Q310 310 593 356" fill="none" stroke="#c5d1b4" stroke-width="2"></path><path d="M153 208Q91 205 75 255Q100 242 157 243L215 279L274 282L337 250L403 235L449 176L485 163L499 132L476 110L465 76L451 106L430 87L431 129L400 161L355 174L284 164L216 173Z" fill="url(#coat)"></path><path d="M187 239L211 280L171 329L113 347L108 358L183 350L247 281M270 257L285 292L239 345L243 356L269 343L318 291L311 247M346 232L392 282L459 309L471 305L432 277L399 222M390 207L449 228L491 270L505 270L472 217L419 181" fill="none" stroke="#694432" stroke-width="19" stroke-linejoin="round"></path><path d="M156 211Q102 177 69 198Q93 208 106 236" fill="#2b2925"></path><path d="M430 130L405 163L385 174" fill="none" stroke="#2b2925" stroke-width="14"></path><path d="M265 170L330 177L321 224L263 216Z" fill="#e7dfc4"></path><text x="284" y="206" fill="#17382c" font-size="28" font-family="serif">7</text><path d="M294 172L320 136L350 144L365 171" fill="none" stroke="#f2e9cf" stroke-width="16"></path><path d="M313 142L303 116L327 99L348 124L367 145L410 151" fill="none" stroke="#315d47" stroke-width="19"></path><circle cx="332" cy="88" r="15" fill="#d4ad86"></circle><path d="M316 85Q315 63 336 67L350 83Z" fill="#e4bb62"></path><path d="M360 146L454 150" stroke="#d2bb84" fill="none" stroke-width="2"></path><circle cx="475" cy="133" r="3" fill="#161e19"></circle></svg>
+<text x="1201.703125" y="248.5" fill="rgb(24, 59, 48)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">LAST</text>
+<text x="1237.21875" y="242.2" fill="rgb(24, 59, 48)" font-size="32px" font-weight="400" font-family="Noto Sans JP, sans-serif">200</text>
+<text x="1296.5" y="248.5" fill="rgb(24, 59, 48)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">m</text>
+<rect x="564.15625" y="490" width="326.6875" height="43" rx="3" fill="rgba(21, 57, 45, 0.9)" stroke="rgba(255, 255, 255, 0.19)"/>
+<text x="590.15625" y="513.2" fill="rgb(249, 246, 227)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">最後の直線。タイミングを合わせて、差し切ろう。</text>
+<rect x="118" y="575.5" width="240" height="57" rx="3" fill="none" stroke="rgb(182, 193, 167)"/>
+<text x="142" y="605.55" fill="rgb(24, 59, 48)" font-size="13px" font-weight="400" font-family="Noto Sans JP, sans-serif">← 手綱を引く</text>
+<text x="703.796875" y="585.8" fill="rgb(24, 59, 48)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">STAMINA</text>
+<rect x="388" y="600" width="679" height="6" rx="0" fill="rgb(220, 225, 208)" stroke="none"/>
+<rect x="388" y="600" width="543.1875" height="6" rx="0" fill="rgb(139, 157, 98)" stroke="none"/>
+<text x="686.609375" y="623.65" fill="rgb(146, 159, 124)" font-size="9px" font-weight="400" font-family="Noto Sans JP, sans-serif">折り合い GOOD</text>
+<rect x="1097" y="573" width="240" height="62" rx="3" fill="rgb(181, 153, 86)" stroke="none"/>
+<text x="1120" y="605.55" fill="rgb(255, 253, 240)" font-size="13px" font-weight="400" font-family="Noto Sans JP, sans-serif">仕掛ける</text>
+<text x="1273.875" y="606.3" fill="rgb(255, 244, 202)" font-size="18px" font-weight="400" font-family="Noto Sans JP, sans-serif">⚡</text>
+<text x="1302.375" y="606.3" fill="rgb(255, 244, 202)" font-size="18px" font-weight="700" font-family="Noto Sans JP, sans-serif">6</text>
+<rect x="76" y="717" width="1303" height="52" rx="0" fill="none" stroke="rgb(216, 223, 205) rgb(145, 155, 132) rgb(145, 155, 132)"/>
+<text x="118" y="744.8" fill="rgb(145, 155, 132)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">© MUCHI ISSEN　 /　 DEVELOPMENT PREVIEW</text>
+<text x="1204.703125" y="744.8" fill="rgb(145, 155, 132)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">JAPAN · TURF · 2,000m</text>
+<text x="1327.5" y="744.8" fill="rgb(146, 163, 101)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">●</text></g>
+<g transform="translate(40,980)"><text y="-20" fill="#183b30" font-size="20">3 / 相棒の命名</text><rect x="0" y="0" width="1380" height="770" rx="7" fill="rgb(246, 244, 236)" stroke="rgb(204, 211, 193)"/>
+<rect x="1" y="1" width="75" height="768" rx="0" fill="rgb(24, 59, 48)" stroke="none"/>
+<text x="23.0625" y="63.3" fill="rgb(210, 204, 170)" font-size="38px" font-weight="400" font-family="Noto Sans JP, sans-serif">M</text>
+<text x="25.484375" y="94.5" fill="rgb(210, 204, 170)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">一閃</text>
+<rect x="38" y="131" width="1" height="55" rx="0" fill="rgba(255, 255, 255, 0.19)" stroke="none"/>
+<text x="33" y="222.8" fill="rgb(210, 204, 170)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">RIDE YOUR OWN STORY</text>
+<text x="33" y="674.878125" fill="rgb(210, 204, 170)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">EST. 2026</text>
+<text x="118" y="38.9" fill="rgb(24, 59, 48)" font-size="24px" font-weight="700" font-family="Noto Sans JP, sans-serif">ムチ一閃</text>
+<text x="118" y="66.3" fill="rgb(24, 59, 48)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">JOCKEY RACING CLUB</text>
+<text x="1123.046875" y="46.2" fill="rgb(166, 139, 80)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">◈</text>
+<text x="1138.96875" y="46.2" fill="rgb(166, 139, 80)" font-size="12px" font-weight="500" font-family="Noto Sans JP, sans-serif">1,200</text>
+<text x="1175.65625" y="47.8" fill="rgb(139, 150, 127)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">無償</text>
+<text x="1216.65625" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">◎</text>
+<text x="1235.359375" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="500" font-family="Noto Sans JP, sans-serif">24,800</text>
+<rect x="1301" y="26.5" width="36" height="36" rx="50" fill="rgb(230, 235, 220)" stroke="rgb(204, 212, 190)"/>
+<text x="1315.8125" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">Y</text>
+<rect x="319.0625" y="216.796875" width="252.765625" height="252.765625" rx="50" fill="rgb(245, 239, 214)" stroke="none"/>
+<svg x="118" y="164" width="574.5" height="440" viewBox="0 0 640 440"><defs><linearGradient id="coat" x2="1" y2="1"><stop stop-color="#bb7955"></stop><stop offset="1" stop-color="#55362e"></stop></linearGradient></defs><path d="M68 362Q310 310 593 356" fill="none" stroke="#c5d1b4" stroke-width="2"></path><path d="M153 208Q91 205 75 255Q100 242 157 243L215 279L274 282L337 250L403 235L449 176L485 163L499 132L476 110L465 76L451 106L430 87L431 129L400 161L355 174L284 164L216 173Z" fill="url(#coat)"></path><path d="M187 239L211 280L171 329L113 347L108 358L183 350L247 281M270 257L285 292L239 345L243 356L269 343L318 291L311 247M346 232L392 282L459 309L471 305L432 277L399 222M390 207L449 228L491 270L505 270L472 217L419 181" fill="none" stroke="#694432" stroke-width="19" stroke-linejoin="round"></path><path d="M156 211Q102 177 69 198Q93 208 106 236" fill="#2b2925"></path><path d="M430 130L405 163L385 174" fill="none" stroke="#2b2925" stroke-width="14"></path><path d="M265 170L330 177L321 224L263 216Z" fill="#e7dfc4"></path><text x="284" y="206" fill="#17382c" font-size="28" font-family="serif">7</text><path d="M294 172L320 136L350 144L365 171" fill="none" stroke="#f2e9cf" stroke-width="16"></path><path d="M313 142L303 116L327 99L348 124L367 145L410 151" fill="none" stroke="#315d47" stroke-width="19"></path><circle cx="332" cy="88" r="15" fill="#d4ad86"></circle><path d="M316 85Q315 63 336 67L350 83Z" fill="#e4bb62"></path><path d="M360 146L454 150" stroke="#d2bb84" fill="none" stroke-width="2"></path><circle cx="475" cy="133" r="3" fill="#161e19"></circle></svg>
+<text x="186.9375" y="564.6125" fill="rgb(124, 137, 105)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">THE NEXT CHAPTER IS YOURS.</text>
+<rect x="762.5" y="169.40625" width="20" height="1" rx="0" fill="rgb(162, 138, 82)" stroke="none"/>
+<text x="791.5" y="171.05625" fill="rgb(162, 138, 82)" font-size="9px" font-weight="400" font-family="Noto Sans JP, sans-serif">MEET YOUR PARTNER</text>
+<text x="762.5" y="226.30625" fill="rgb(24, 59, 48)" font-size="34px" font-weight="600" font-family="Noto Sans JP, sans-serif">その出会いに、</text>
+<text x="762.5" y="282.4" fill="rgb(24, 59, 48)" font-size="34px" font-weight="600" font-family="Noto Sans JP, sans-serif">名前をつけよう。</text>
+<text x="762.5" y="340.64375" fill="rgb(121, 132, 113)" font-size="13px" font-weight="400" font-family="Noto Sans JP, sans-serif">初めての勝利を、一緒につかんだ相棒。</text>
+<text x="762.5" y="366.64375" fill="rgb(121, 132, 113)" font-size="13px" font-weight="400" font-family="Noto Sans JP, sans-serif">これからの物語は、あなたたちのもの。</text>
+<text x="762.5" y="408.79375" fill="rgb(24, 59, 48)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">相棒の名前</text>
+<text x="1290.34375" y="407.09375" fill="rgb(138, 150, 123)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">2〜12文字</text>
+<rect x="762.5" y="427.59375" width="574.5" height="60" rx="3" fill="rgb(255, 253, 245)" stroke="rgb(186, 198, 171)"/>
+<text x="778.5" y="457.59375" fill="#183b30" font-size="18">ハルカゼ</text>
+<text x="762.5" y="508.09375" fill="rgb(121, 132, 113)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">あとから変更できます。</text>
+<rect x="762.5" y="542.59375" width="248.484375" height="62" rx="3" fill="rgb(24, 59, 48)" stroke="none"/>
+<text x="785.5" y="575.14375" fill="rgb(255, 253, 240)" font-size="13px" font-weight="400" font-family="Noto Sans JP, sans-serif">この名前で、一緒に走る</text>
+<text x="968.984375" y="575.89375" fill="rgb(219, 199, 138)" font-size="18px" font-weight="400" font-family="Noto Sans JP, sans-serif">↗</text>
+<rect x="76" y="717" width="1303" height="52" rx="0" fill="none" stroke="rgb(216, 223, 205) rgb(145, 155, 132) rgb(145, 155, 132)"/>
+<text x="118" y="744.8" fill="rgb(145, 155, 132)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">© MUCHI ISSEN　 /　 DEVELOPMENT PREVIEW</text>
+<text x="1204.703125" y="744.8" fill="rgb(145, 155, 132)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">JAPAN · TURF · 2,000m</text>
+<text x="1327.5" y="744.8" fill="rgb(146, 163, 101)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">●</text></g>
+<g transform="translate(1500,980)"><text y="-20" fill="#183b30" font-size="20">4 / 無料スカウト</text><rect x="0" y="0" width="1380" height="851.6875" rx="7" fill="rgb(246, 244, 236)" stroke="rgb(204, 211, 193)"/>
+<rect x="1" y="1" width="75" height="849.6875" rx="0" fill="rgb(24, 59, 48)" stroke="none"/>
+<text x="23.0625" y="63.3" fill="rgb(210, 204, 170)" font-size="38px" font-weight="400" font-family="Noto Sans JP, sans-serif">M</text>
+<text x="25.484375" y="94.5" fill="rgb(210, 204, 170)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">一閃</text>
+<rect x="38" y="131" width="1" height="55" rx="0" fill="rgba(255, 255, 255, 0.19)" stroke="none"/>
+<text x="33" y="222.8" fill="rgb(210, 204, 170)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">RIDE YOUR OWN STORY</text>
+<text x="33" y="756.565625" fill="rgb(210, 204, 170)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">EST. 2026</text>
+<text x="118" y="38.9" fill="rgb(24, 59, 48)" font-size="24px" font-weight="700" font-family="Noto Sans JP, sans-serif">ムチ一閃</text>
+<text x="118" y="66.3" fill="rgb(24, 59, 48)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">JOCKEY RACING CLUB</text>
+<text x="1123.046875" y="46.2" fill="rgb(166, 139, 80)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">◈</text>
+<text x="1138.96875" y="46.2" fill="rgb(166, 139, 80)" font-size="12px" font-weight="500" font-family="Noto Sans JP, sans-serif">1,200</text>
+<text x="1175.65625" y="47.8" fill="rgb(139, 150, 127)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">無償</text>
+<text x="1216.65625" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">◎</text>
+<text x="1235.359375" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="500" font-family="Noto Sans JP, sans-serif">24,800</text>
+<rect x="1301" y="26.5" width="36" height="36" rx="50" fill="rgb(230, 235, 220)" stroke="rgb(204, 212, 190)"/>
+<text x="1315.8125" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">Y</text>
+<rect x="118" y="125" width="20" height="1" rx="0" fill="rgb(162, 138, 82)" stroke="none"/>
+<text x="147" y="126.65" fill="rgb(162, 138, 82)" font-size="9px" font-weight="400" font-family="Noto Sans JP, sans-serif">THE PADDOCK / SCOUT</text>
+<text x="118" y="181.9" fill="rgb(24, 59, 48)" font-size="34px" font-weight="600" font-family="Noto Sans JP, sans-serif">新しい出会いが、待っている。</text>
+<text x="118" y="230.14375" fill="rgb(121, 132, 113)" font-size="13px" font-weight="400" font-family="Noto Sans JP, sans-serif">走り方も、個性も、十頭十色。次の相棒を見つけよう。</text>
+<text x="1238.8125" y="173.346875" fill="rgb(137, 151, 125)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">MUCHI ISSEN</text>
+<text x="1238.8125" y="189.346875" fill="rgb(137, 151, 125)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">RACING CLUB / 01</text>
+<rect x="118" y="266.09375" width="1219" height="422.59375" rx="5" fill="rgb(230, 234, 220)" stroke="rgb(210, 220, 197)"/>
+<rect x="159" y="305.09375" width="20" height="1" rx="0" fill="rgb(162, 138, 82)" stroke="none"/>
+<text x="188" y="306.74375" fill="rgb(162, 138, 82)" font-size="9px" font-weight="400" font-family="Noto Sans JP, sans-serif">WELCOME GIFT</text>
+<text x="159" y="362.99375" fill="rgb(24, 59, 48)" font-size="34px" font-weight="600" font-family="Noto Sans JP, sans-serif">最初の10頭に、</text>
+<text x="159" y="420.790625" fill="rgb(24, 59, 48)" font-size="34px" font-weight="600" font-family="Noto Sans JP, sans-serif">無限の可能性。</text>
+<text x="159" y="474.7375" fill="rgb(121, 132, 113)" font-size="13px" font-weight="400" font-family="Noto Sans JP, sans-serif">チュートリアル限定・初回10連無料</text>
+<text x="159" y="500.7375" fill="rgb(121, 132, 113)" font-size="13px" font-weight="400" font-family="Noto Sans JP, sans-serif">SR以上の馬が1頭以上登場します。</text>
+<rect x="159" y="527.6875" width="240" height="62" rx="3" fill="rgb(24, 59, 48)" stroke="none"/>
+<text x="182" y="560.2375" fill="rgb(255, 253, 240)" font-size="13px" font-weight="400" font-family="Noto Sans JP, sans-serif">無料で10連スカウト</text>
+<text x="359.90625" y="560.9875" fill="rgb(219, 199, 138)" font-size="18px" font-weight="400" font-family="Noto Sans JP, sans-serif">✧</text>
+<text x="159" y="616.1875" fill="rgb(124, 137, 107)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">提供割合・スカウトについて ↗</text>
+<rect x="933.46875" y="328.125" width="258.9375" height="258.9375" rx="50" fill="rgb(245, 239, 214)" stroke="none"/>
+<svg x="727.5" y="279.09375" width="588.5" height="408.59375" viewBox="0 0 640 440"><defs><linearGradient id="coat" x2="1" y2="1"><stop stop-color="#bb7955"></stop><stop offset="1" stop-color="#55362e"></stop></linearGradient></defs><path d="M68 362Q310 310 593 356" fill="none" stroke="#c5d1b4" stroke-width="2"></path><path d="M153 208Q91 205 75 255Q100 242 157 243L215 279L274 282L337 250L403 235L449 176L485 163L499 132L476 110L465 76L451 106L430 87L431 129L400 161L355 174L284 164L216 173Z" fill="url(#coat)"></path><path d="M187 239L211 280L171 329L113 347L108 358L183 350L247 281M270 257L285 292L239 345L243 356L269 343L318 291L311 247M346 232L392 282L459 309L471 305L432 277L399 222M390 207L449 228L491 270L505 270L472 217L419 181" fill="none" stroke="#694432" stroke-width="19" stroke-linejoin="round"></path><path d="M156 211Q102 177 69 198Q93 208 106 236" fill="#2b2925"></path><path d="M430 130L405 163L385 174" fill="none" stroke="#2b2925" stroke-width="14"></path><path d="M265 170L330 177L321 224L263 216Z" fill="#e7dfc4"></path><text x="284" y="206" fill="#17382c" font-size="28" font-family="serif">7</text><path d="M294 172L320 136L350 144L365 171" fill="none" stroke="#f2e9cf" stroke-width="16"></path><path d="M313 142L303 116L327 99L348 124L367 145L410 151" fill="none" stroke="#315d47" stroke-width="19"></path><circle cx="332" cy="88" r="15" fill="#d4ad86"></circle><path d="M316 85Q315 63 336 67L350 83Z" fill="#e4bb62"></path><path d="M360 146L454 150" stroke="#d2bb84" fill="none" stroke-width="2"></path><circle cx="475" cy="133" r="3" fill="#161e19"></circle></svg>
+<text x="798.109375" y="650.8" fill="rgb(124, 137, 105)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">THE NEXT CHAPTER IS YOURS.</text>
+<rect x="118" y="713.6875" width="1219" height="65" rx="0" fill="none" stroke="rgb(215, 223, 205) rgb(24, 59, 48) rgb(24, 59, 48)"/>
+<text x="402.984375" y="755.3875" fill="rgb(142, 154, 128)" font-size="22px" font-weight="400" font-family="Noto Sans JP, sans-serif">⌂</text>
+<text x="428.953125" y="754.0375" fill="rgb(142, 154, 128)" font-size="11px" font-weight="400" font-family="Noto Sans JP, sans-serif">ホーム</text>
+<text x="541.625" y="755.3875" fill="rgb(142, 154, 128)" font-size="22px" font-weight="400" font-family="Noto Sans JP, sans-serif">♞</text>
+<text x="573.359375" y="754.0375" fill="rgb(142, 154, 128)" font-size="11px" font-weight="400" font-family="Noto Sans JP, sans-serif">厩舎</text>
+<text x="675.359375" y="755.3875" fill="rgb(142, 154, 128)" font-size="22px" font-weight="400" font-family="Noto Sans JP, sans-serif">⚑</text>
+<text x="707.09375" y="754.0375" fill="rgb(142, 154, 128)" font-size="11px" font-weight="400" font-family="Noto Sans JP, sans-serif">レース</text>
+<rect x="799.546875" y="726.6875" width="114.4375" height="52" rx="4" fill="rgb(229, 234, 219)" stroke="none"/>
+<text x="819.546875" y="755.3875" fill="rgb(24, 59, 48)" font-size="22px" font-weight="400" font-family="Noto Sans JP, sans-serif">✧</text>
+<text x="849.984375" y="754.0375" fill="rgb(24, 59, 48)" font-size="11px" font-weight="400" font-family="Noto Sans JP, sans-serif">スカウト</text>
+<text x="973.984375" y="755.3875" fill="rgb(142, 154, 128)" font-size="22px" font-weight="400" font-family="Noto Sans JP, sans-serif">◇</text>
+<text x="1008" y="754.0375" fill="rgb(142, 154, 128)" font-size="11px" font-weight="400" font-family="Noto Sans JP, sans-serif">ショップ</text>
+<rect x="76" y="798.6875" width="1303" height="52" rx="0" fill="none" stroke="rgb(216, 223, 205) rgb(145, 155, 132) rgb(145, 155, 132)"/>
+<text x="118" y="826.4875" fill="rgb(145, 155, 132)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">© MUCHI ISSEN　 /　 DEVELOPMENT PREVIEW</text>
+<text x="1204.703125" y="826.4875" fill="rgb(145, 155, 132)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">JAPAN · TURF · 2,000m</text>
+<text x="1327.5" y="826.4875" fill="rgb(146, 163, 101)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">●</text></g>
+<g transform="translate(40,1860)"><text y="-20" fill="#183b30" font-size="20">5 / ホーム</text><rect x="0" y="0" width="1380" height="778.1875" rx="7" fill="rgb(246, 244, 236)" stroke="rgb(204, 211, 193)"/>
+<rect x="1" y="1" width="75" height="776.1875" rx="0" fill="rgb(24, 59, 48)" stroke="none"/>
+<text x="23.0625" y="63.3" fill="rgb(210, 204, 170)" font-size="38px" font-weight="400" font-family="Noto Sans JP, sans-serif">M</text>
+<text x="25.484375" y="94.5" fill="rgb(210, 204, 170)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">一閃</text>
+<rect x="38" y="131" width="1" height="55" rx="0" fill="rgba(255, 255, 255, 0.19)" stroke="none"/>
+<text x="33" y="222.8" fill="rgb(210, 204, 170)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">RIDE YOUR OWN STORY</text>
+<text x="33" y="683.065625" fill="rgb(210, 204, 170)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">EST. 2026</text>
+<text x="118" y="38.9" fill="rgb(24, 59, 48)" font-size="24px" font-weight="700" font-family="Noto Sans JP, sans-serif">ムチ一閃</text>
+<text x="118" y="66.3" fill="rgb(24, 59, 48)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">JOCKEY RACING CLUB</text>
+<text x="1123.046875" y="46.2" fill="rgb(166, 139, 80)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">◈</text>
+<text x="1138.96875" y="46.2" fill="rgb(166, 139, 80)" font-size="12px" font-weight="500" font-family="Noto Sans JP, sans-serif">1,200</text>
+<text x="1175.65625" y="47.8" fill="rgb(139, 150, 127)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">無償</text>
+<text x="1216.65625" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">◎</text>
+<text x="1235.359375" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="500" font-family="Noto Sans JP, sans-serif">24,800</text>
+<rect x="1301" y="26.5" width="36" height="36" rx="50" fill="rgb(230, 235, 220)" stroke="rgb(204, 212, 190)"/>
+<text x="1315.8125" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">Y</text>
+<rect x="118" y="125" width="20" height="1" rx="0" fill="rgb(162, 138, 82)" stroke="none"/>
+<text x="147" y="126.65" fill="rgb(162, 138, 82)" font-size="9px" font-weight="400" font-family="Noto Sans JP, sans-serif">A NEW DAY, A NEW RACE</text>
+<text x="118" y="166.8" fill="rgb(24, 59, 48)" font-size="28px" font-weight="600" font-family="Noto Sans JP, sans-serif">おかえり、ジョッキー。</text>
+<text x="1277.484375" y="128.39375" fill="rgb(160, 138, 80)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">SEASON 01</text>
+<text x="1232.34375" y="153.89375" fill="rgb(24, 59, 48)" font-size="18px" font-weight="400" font-family="Noto Sans JP, sans-serif">ブロンズ II</text>
+<text x="1246.359375" y="178.24375" fill="rgb(140, 152, 125)" font-size="9px" font-weight="400" font-family="Noto Sans JP, sans-serif">次のクラスまで 240 pt</text>
+<rect x="118" y="211.1875" width="1219" height="302" rx="5" fill="rgb(228, 233, 217)" stroke="none"/>
+<rect x="158" y="243.1875" width="148.09375" height="29" rx="0" fill="none" stroke="rgba(181, 167, 120, 0.333)"/>
+<text x="169" y="258.8375" fill="rgb(161, 138, 80)" font-size="9px" font-weight="400" font-family="Noto Sans JP, sans-serif">YOUR PARTNER · SSR</text>
+<text x="158" y="319.4875" fill="rgb(24, 59, 48)" font-size="38px" font-weight="600" font-family="Noto Sans JP, sans-serif">ハルカゼ</text>
+<text x="158" y="362.2375" fill="rgb(121, 132, 113)" font-size="13px" font-weight="400" font-family="Noto Sans JP, sans-serif">今日も、いい走りができそうだ。</text>
+<text x="158" y="397.6875" fill="rgb(107, 125, 91)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">差し</text>
+<text x="193" y="397.6875" fill="rgb(107, 125, 91)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">芝適性 A</text>
+<text x="246.328125" y="397.6875" fill="rgb(107, 125, 91)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">中距離</text>
+<rect x="158" y="427.1875" width="240" height="54" rx="3" fill="rgb(24, 59, 48)" stroke="none"/>
+<text x="178" y="455.7375" fill="rgb(255, 253, 240)" font-size="13px" font-weight="400" font-family="Noto Sans JP, sans-serif">レースへ向かう</text>
+<text x="359" y="456.4875" fill="rgb(219, 199, 138)" font-size="18px" font-weight="400" font-family="Noto Sans JP, sans-serif">↗</text>
+<rect x="845.75" y="239.375" width="332.53125" height="332.53125" rx="50" fill="rgb(245, 239, 214)" stroke="none"/>
+<svg x="581.234375" y="196.1875" width="755.765625" height="360" viewBox="0 0 640 440"><defs><linearGradient id="coat" x2="1" y2="1"><stop stop-color="#bb7955"></stop><stop offset="1" stop-color="#55362e"></stop></linearGradient></defs><path d="M68 362Q310 310 593 356" fill="none" stroke="#c5d1b4" stroke-width="2"></path><path d="M153 208Q91 205 75 255Q100 242 157 243L215 279L274 282L337 250L403 235L449 176L485 163L499 132L476 110L465 76L451 106L430 87L431 129L400 161L355 174L284 164L216 173Z" fill="url(#coat)"></path><path d="M187 239L211 280L171 329L113 347L108 358L183 350L247 281M270 257L285 292L239 345L243 356L269 343L318 291L311 247M346 232L392 282L459 309L471 305L432 277L399 222M390 207L449 228L491 270L505 270L472 217L419 181" fill="none" stroke="#694432" stroke-width="19" stroke-linejoin="round"></path><path d="M156 211Q102 177 69 198Q93 208 106 236" fill="#2b2925"></path><path d="M430 130L405 163L385 174" fill="none" stroke="#2b2925" stroke-width="14"></path><path d="M265 170L330 177L321 224L263 216Z" fill="#e7dfc4"></path><text x="284" y="206" fill="#17382c" font-size="28" font-family="serif">7</text><path d="M294 172L320 136L350 144L365 171" fill="none" stroke="#f2e9cf" stroke-width="16"></path><path d="M313 142L303 116L327 99L348 124L367 145L410 151" fill="none" stroke="#315d47" stroke-width="19"></path><circle cx="332" cy="88" r="15" fill="#d4ad86"></circle><path d="M316 85Q315 63 336 67L350 83Z" fill="#e4bb62"></path><path d="M360 146L454 150" stroke="#d2bb84" fill="none" stroke-width="2"></path><circle cx="475" cy="133" r="3" fill="#161e19"></circle></svg>
+<text x="1232.71875" y="488.9875" fill="rgb(126, 142, 108)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">01 — PARTNER</text>
+<rect x="118" y="533.1875" width="394.328125" height="82" rx="0" fill="rgb(250, 249, 242)" stroke="rgb(213, 222, 202)"/>
+<text x="139" y="560.9875" fill="rgb(161, 138, 80)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">STABLE / 03</text>
+<text x="139" y="586.3875" fill="rgb(0, 0, 0)" font-size="12px" font-weight="500" font-family="Noto Sans JP, sans-serif">相棒たちに会いにいく</text>
+<text x="484.3125" y="562.3875" fill="rgb(140, 155, 122)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">↗</text>
+<rect x="530.328125" y="532.368896484375" width="394.328125" height="82" rx="0" fill="rgb(250, 249, 242)" stroke="rgb(213, 222, 202)"/>
+<text x="551.328125" y="560.168896484375" fill="rgb(161, 138, 80)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">DAILY MISSIONS</text>
+<text x="551.328125" y="585.568896484375" fill="rgb(0, 0, 0)" font-size="12px" font-weight="500" font-family="Noto Sans JP, sans-serif">今日の一歩、次の勝利へ</text>
+<text x="885.25" y="561.568896484375" fill="rgb(140, 155, 122)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">2 / 3</text>
+<rect x="942.65625" y="533.1875" width="394.34375" height="82" rx="0" fill="rgb(250, 249, 242)" stroke="rgb(213, 222, 202)"/>
+<text x="963.65625" y="560.9875" fill="rgb(161, 138, 80)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">WELCOME SCOUT</text>
+<text x="963.65625" y="586.3875" fill="rgb(0, 0, 0)" font-size="12px" font-weight="500" font-family="Noto Sans JP, sans-serif">まだ見ぬ才能と出会う</text>
+<text x="1310.9375" y="562.3875" fill="rgb(140, 155, 122)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">✧</text>
+<rect x="118" y="640.1875" width="1219" height="65" rx="0" fill="none" stroke="rgb(215, 223, 205) rgb(24, 59, 48) rgb(24, 59, 48)"/>
+<rect x="382.984375" y="653.1875" width="98.640625" height="52" rx="4" fill="rgb(229, 234, 219)" stroke="none"/>
+<text x="402.984375" y="681.8875" fill="rgb(24, 59, 48)" font-size="22px" font-weight="400" font-family="Noto Sans JP, sans-serif">⌂</text>
+<text x="428.953125" y="680.5375" fill="rgb(24, 59, 48)" font-size="11px" font-weight="400" font-family="Noto Sans JP, sans-serif">ホーム</text>
+<text x="541.625" y="681.8875" fill="rgb(142, 154, 128)" font-size="22px" font-weight="400" font-family="Noto Sans JP, sans-serif">♞</text>
+<text x="573.359375" y="680.5375" fill="rgb(142, 154, 128)" font-size="11px" font-weight="400" font-family="Noto Sans JP, sans-serif">厩舎</text>
+<text x="675.359375" y="681.8875" fill="rgb(142, 154, 128)" font-size="22px" font-weight="400" font-family="Noto Sans JP, sans-serif">⚑</text>
+<text x="707.09375" y="680.5375" fill="rgb(142, 154, 128)" font-size="11px" font-weight="400" font-family="Noto Sans JP, sans-serif">レース</text>
+<text x="819.546875" y="681.8875" fill="rgb(142, 154, 128)" font-size="22px" font-weight="400" font-family="Noto Sans JP, sans-serif">✧</text>
+<text x="849.984375" y="680.5375" fill="rgb(142, 154, 128)" font-size="11px" font-weight="400" font-family="Noto Sans JP, sans-serif">スカウト</text>
+<text x="973.984375" y="681.8875" fill="rgb(142, 154, 128)" font-size="22px" font-weight="400" font-family="Noto Sans JP, sans-serif">◇</text>
+<text x="1008" y="680.5375" fill="rgb(142, 154, 128)" font-size="11px" font-weight="400" font-family="Noto Sans JP, sans-serif">ショップ</text>
+<rect x="76" y="725.1875" width="1303" height="52" rx="0" fill="none" stroke="rgb(216, 223, 205) rgb(145, 155, 132) rgb(145, 155, 132)"/>
+<text x="118" y="752.9875" fill="rgb(145, 155, 132)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">© MUCHI ISSEN　 /　 DEVELOPMENT PREVIEW</text>
+<text x="1204.703125" y="752.9875" fill="rgb(145, 155, 132)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">JAPAN · TURF · 2,000m</text>
+<text x="1327.5" y="752.9875" fill="rgb(146, 163, 101)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">●</text></g>
+<g transform="translate(1500,1860)"><text y="-20" fill="#183b30" font-size="20">6 / 厩舎</text><rect x="0" y="0" width="1380" height="883.09375" rx="7" fill="rgb(246, 244, 236)" stroke="rgb(204, 211, 193)"/>
+<rect x="1" y="1" width="75" height="881.09375" rx="0" fill="rgb(24, 59, 48)" stroke="none"/>
+<text x="23.0625" y="63.3" fill="rgb(210, 204, 170)" font-size="38px" font-weight="400" font-family="Noto Sans JP, sans-serif">M</text>
+<text x="25.484375" y="94.5" fill="rgb(210, 204, 170)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">一閃</text>
+<rect x="38" y="131" width="1" height="55" rx="0" fill="rgba(255, 255, 255, 0.19)" stroke="none"/>
+<text x="33" y="222.8" fill="rgb(210, 204, 170)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">RIDE YOUR OWN STORY</text>
+<text x="33" y="787.971875" fill="rgb(210, 204, 170)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">EST. 2026</text>
+<text x="118" y="38.9" fill="rgb(24, 59, 48)" font-size="24px" font-weight="700" font-family="Noto Sans JP, sans-serif">ムチ一閃</text>
+<text x="118" y="66.3" fill="rgb(24, 59, 48)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">JOCKEY RACING CLUB</text>
+<text x="1123.046875" y="46.2" fill="rgb(166, 139, 80)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">◈</text>
+<text x="1138.96875" y="46.2" fill="rgb(166, 139, 80)" font-size="12px" font-weight="500" font-family="Noto Sans JP, sans-serif">1,200</text>
+<text x="1175.65625" y="47.8" fill="rgb(139, 150, 127)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">無償</text>
+<text x="1216.65625" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">◎</text>
+<text x="1235.359375" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="500" font-family="Noto Sans JP, sans-serif">24,800</text>
+<rect x="1301" y="26.5" width="36" height="36" rx="50" fill="rgb(230, 235, 220)" stroke="rgb(204, 212, 190)"/>
+<text x="1315.8125" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">Y</text>
+<rect x="118" y="125" width="20" height="1" rx="0" fill="rgb(162, 138, 82)" stroke="none"/>
+<text x="147" y="126.65" fill="rgb(162, 138, 82)" font-size="9px" font-weight="400" font-family="Noto Sans JP, sans-serif">YOUR STABLE</text>
+<text x="118" y="181.9" fill="rgb(24, 59, 48)" font-size="34px" font-weight="600" font-family="Noto Sans JP, sans-serif">一頭ずつ、ひとつの物語。</text>
+<text x="118" y="230.14375" fill="rgb(121, 132, 113)" font-size="13px" font-weight="400" font-family="Noto Sans JP, sans-serif">相棒の個性を知ることが、勝利への近道。</text>
+<text x="1238.8125" y="173.346875" fill="rgb(137, 151, 125)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">MUCHI ISSEN</text>
+<text x="1238.8125" y="189.346875" fill="rgb(137, 151, 125)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">RACING CLUB / 01</text>
+<text x="122" y="289.99375" fill="rgb(24, 59, 48)" font-size="14px" font-weight="400" font-family="Noto Sans JP, sans-serif">所属馬</text>
+<text x="179.140625" y="290.59375" fill="rgb(24, 59, 48)" font-size="10px" font-weight="700" font-family="Noto Sans JP, sans-serif">3</text>
+<text x="218.046875" y="290.99375" fill="rgb(139, 153, 124)" font-size="14px" font-weight="400" font-family="Noto Sans JP, sans-serif">配合</text>
+<text x="1299.703125" y="290.09375" fill="rgb(139, 153, 124)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">3 / 20 頭</text>
+<rect x="118" y="336.09375" width="391.65625" height="384" rx="5" fill="rgb(250, 249, 242)" stroke="rgb(132, 153, 104)"/>
+<text x="137" y="370.39375" fill="rgb(172, 144, 80)" font-size="18px" font-weight="400" font-family="Noto Sans JP, sans-serif">SSR</text>
+<text x="434.65625" y="369.39375" fill="rgb(133, 150, 117)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">出走馬に選択中</text>
+<rect x="257.765625" y="415.484375" width="164.40625" height="164.40625" rx="50" fill="rgb(245, 239, 214)" stroke="none"/>
+<svg x="127" y="395.09375" width="373.65625" height="170" viewBox="0 0 640 440"><defs><linearGradient id="coat" x2="1" y2="1"><stop stop-color="#bb7955"></stop><stop offset="1" stop-color="#55362e"></stop></linearGradient></defs><path d="M68 362Q310 310 593 356" fill="none" stroke="#c5d1b4" stroke-width="2"></path><path d="M153 208Q91 205 75 255Q100 242 157 243L215 279L274 282L337 250L403 235L449 176L485 163L499 132L476 110L465 76L451 106L430 87L431 129L400 161L355 174L284 164L216 173Z" fill="url(#coat)"></path><path d="M187 239L211 280L171 329L113 347L108 358L183 350L247 281M270 257L285 292L239 345L243 356L269 343L318 291L311 247M346 232L392 282L459 309L471 305L432 277L399 222M390 207L449 228L491 270L505 270L472 217L419 181" fill="none" stroke="#694432" stroke-width="19" stroke-linejoin="round"></path><path d="M156 211Q102 177 69 198Q93 208 106 236" fill="#2b2925"></path><path d="M430 130L405 163L385 174" fill="none" stroke="#2b2925" stroke-width="14"></path><path d="M265 170L330 177L321 224L263 216Z" fill="#e7dfc4"></path><text x="284" y="206" fill="#17382c" font-size="28" font-family="serif">7</text><path d="M294 172L320 136L350 144L365 171" fill="none" stroke="#f2e9cf" stroke-width="16"></path><path d="M313 142L303 116L327 99L348 124L367 145L410 151" fill="none" stroke="#315d47" stroke-width="19"></path><circle cx="332" cy="88" r="15" fill="#d4ad86"></circle><path d="M316 85Q315 63 336 67L350 83Z" fill="#e4bb62"></path><path d="M360 146L454 150" stroke="#d2bb84" fill="none" stroke-width="2"></path><circle cx="475" cy="133" r="3" fill="#161e19"></circle></svg>
+<text x="137" y="593.79375" fill="rgb(0, 0, 0)" font-size="22px" font-weight="600" font-family="Noto Sans JP, sans-serif">ハルカゼ</text>
+<text x="137" y="624.59375" fill="rgb(121, 132, 113)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">差し</text>
+<text x="442.25" y="624.59375" fill="rgb(121, 132, 113)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">芝 / 中距離</text>
+<rect x="137" y="651.09375" width="353.65625" height="50" rx="0" fill="none" stroke="rgb(221, 227, 211) rgb(141, 154, 126) rgb(141, 154, 126)"/>
+<text x="137" y="683.89375" fill="rgb(141, 154, 126)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">TOTAL RATING</text>
+<text x="458.78125" y="686.19375" fill="rgb(24, 59, 48)" font-size="26px" font-weight="400" font-family="Noto Sans JP, sans-serif">94</text>
+<rect x="531.65625" y="335.6507263183594" width="391.671875" height="384.0000305175781" rx="5" fill="rgb(250, 249, 242)" stroke="rgb(211, 221, 199)"/>
+<text x="550.65625" y="369.9507263183594" fill="rgb(172, 144, 80)" font-size="18px" font-weight="400" font-family="Noto Sans JP, sans-serif">SR</text>
+<text x="853.90625" y="368.9507263183594" fill="rgb(133, 150, 117)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">PARTNER / 02</text>
+<rect x="671.4375" y="415.0413818359375" width="164.40625" height="164.40625" rx="50" fill="rgb(245, 239, 214)" stroke="none"/>
+<svg x="540.65625" y="394.6507568359375" width="373.671875" height="170" viewBox="0 0 640 440"><defs><linearGradient id="coat" x2="1" y2="1"><stop stop-color="#bb7955"></stop><stop offset="1" stop-color="#55362e"></stop></linearGradient></defs><path d="M68 362Q310 310 593 356" fill="none" stroke="#c5d1b4" stroke-width="2"></path><path d="M153 208Q91 205 75 255Q100 242 157 243L215 279L274 282L337 250L403 235L449 176L485 163L499 132L476 110L465 76L451 106L430 87L431 129L400 161L355 174L284 164L216 173Z" fill="url(#coat)"></path><path d="M187 239L211 280L171 329L113 347L108 358L183 350L247 281M270 257L285 292L239 345L243 356L269 343L318 291L311 247M346 232L392 282L459 309L471 305L432 277L399 222M390 207L449 228L491 270L505 270L472 217L419 181" fill="none" stroke="#694432" stroke-width="19" stroke-linejoin="round"></path><path d="M156 211Q102 177 69 198Q93 208 106 236" fill="#2b2925"></path><path d="M430 130L405 163L385 174" fill="none" stroke="#2b2925" stroke-width="14"></path><path d="M265 170L330 177L321 224L263 216Z" fill="#e7dfc4"></path><text x="284" y="206" fill="#17382c" font-size="28" font-family="serif">7</text><path d="M294 172L320 136L350 144L365 171" fill="none" stroke="#f2e9cf" stroke-width="16"></path><path d="M313 142L303 116L327 99L348 124L367 145L410 151" fill="none" stroke="#315d47" stroke-width="19"></path><circle cx="332" cy="88" r="15" fill="#d4ad86"></circle><path d="M316 85Q315 63 336 67L350 83Z" fill="#e4bb62"></path><path d="M360 146L454 150" stroke="#d2bb84" fill="none" stroke-width="2"></path><circle cx="475" cy="133" r="3" fill="#161e19"></circle></svg>
+<text x="550.65625" y="593.3507568359375" fill="rgb(0, 0, 0)" font-size="22px" font-weight="600" font-family="Noto Sans JP, sans-serif">コハク</text>
+<text x="550.65625" y="624.1507568359375" fill="rgb(121, 132, 113)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">先行</text>
+<text x="855.921875" y="624.1507568359375" fill="rgb(121, 132, 113)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">芝 / 短距離</text>
+<rect x="550.65625" y="650.6507568359375" width="353.671875" height="50" rx="0" fill="none" stroke="rgb(221, 227, 211) rgb(141, 154, 126) rgb(141, 154, 126)"/>
+<text x="550.65625" y="683.4507568359375" fill="rgb(141, 154, 126)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">TOTAL RATING</text>
+<text x="872.453125" y="685.7507568359375" fill="rgb(24, 59, 48)" font-size="26px" font-weight="400" font-family="Noto Sans JP, sans-serif">88</text>
+<rect x="945.328125" y="336.09375" width="391.65625" height="384" rx="5" fill="rgb(250, 249, 242)" stroke="rgb(211, 221, 199)"/>
+<text x="964.328125" y="370.39375" fill="rgb(172, 144, 80)" font-size="18px" font-weight="400" font-family="Noto Sans JP, sans-serif">SR</text>
+<text x="1267.5625" y="369.39375" fill="rgb(133, 150, 117)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">PARTNER / 03</text>
+<rect x="1085.09375" y="415.484375" width="164.40625" height="164.40625" rx="50" fill="rgb(245, 239, 214)" stroke="none"/>
+<svg x="954.328125" y="395.09375" width="373.65625" height="170" viewBox="0 0 640 440"><defs><linearGradient id="coat" x2="1" y2="1"><stop stop-color="#bb7955"></stop><stop offset="1" stop-color="#55362e"></stop></linearGradient></defs><path d="M68 362Q310 310 593 356" fill="none" stroke="#c5d1b4" stroke-width="2"></path><path d="M153 208Q91 205 75 255Q100 242 157 243L215 279L274 282L337 250L403 235L449 176L485 163L499 132L476 110L465 76L451 106L430 87L431 129L400 161L355 174L284 164L216 173Z" fill="url(#coat)"></path><path d="M187 239L211 280L171 329L113 347L108 358L183 350L247 281M270 257L285 292L239 345L243 356L269 343L318 291L311 247M346 232L392 282L459 309L471 305L432 277L399 222M390 207L449 228L491 270L505 270L472 217L419 181" fill="none" stroke="#694432" stroke-width="19" stroke-linejoin="round"></path><path d="M156 211Q102 177 69 198Q93 208 106 236" fill="#2b2925"></path><path d="M430 130L405 163L385 174" fill="none" stroke="#2b2925" stroke-width="14"></path><path d="M265 170L330 177L321 224L263 216Z" fill="#e7dfc4"></path><text x="284" y="206" fill="#17382c" font-size="28" font-family="serif">7</text><path d="M294 172L320 136L350 144L365 171" fill="none" stroke="#f2e9cf" stroke-width="16"></path><path d="M313 142L303 116L327 99L348 124L367 145L410 151" fill="none" stroke="#315d47" stroke-width="19"></path><circle cx="332" cy="88" r="15" fill="#d4ad86"></circle><path d="M316 85Q315 63 336 67L350 83Z" fill="#e4bb62"></path><path d="M360 146L454 150" stroke="#d2bb84" fill="none" stroke-width="2"></path><circle cx="475" cy="133" r="3" fill="#161e19"></circle></svg>
+<text x="964.328125" y="593.79375" fill="rgb(0, 0, 0)" font-size="22px" font-weight="600" font-family="Noto Sans JP, sans-serif">シラナミ</text>
+<text x="964.328125" y="624.59375" fill="rgb(121, 132, 113)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">追込</text>
+<text x="1269.578125" y="624.59375" fill="rgb(121, 132, 113)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">芝 / 長距離</text>
+<rect x="964.328125" y="651.09375" width="353.65625" height="50" rx="0" fill="none" stroke="rgb(221, 227, 211) rgb(141, 154, 126) rgb(141, 154, 126)"/>
+<text x="964.328125" y="683.89375" fill="rgb(141, 154, 126)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">TOTAL RATING</text>
+<text x="1286.109375" y="686.19375" fill="rgb(24, 59, 48)" font-size="26px" font-weight="400" font-family="Noto Sans JP, sans-serif">86</text>
+<rect x="118" y="745.09375" width="1219" height="65" rx="0" fill="none" stroke="rgb(215, 223, 205) rgb(24, 59, 48) rgb(24, 59, 48)"/>
+<text x="402.984375" y="786.79375" fill="rgb(142, 154, 128)" font-size="22px" font-weight="400" font-family="Noto Sans JP, sans-serif">⌂</text>
+<text x="428.953125" y="785.44375" fill="rgb(142, 154, 128)" font-size="11px" font-weight="400" font-family="Noto Sans JP, sans-serif">ホーム</text>
+<rect x="521.625" y="758.09375" width="93.734375" height="52" rx="4" fill="rgb(229, 234, 219)" stroke="none"/>
+<text x="541.625" y="786.79375" fill="rgb(24, 59, 48)" font-size="22px" font-weight="400" font-family="Noto Sans JP, sans-serif">♞</text>
+<text x="573.359375" y="785.44375" fill="rgb(24, 59, 48)" font-size="11px" font-weight="400" font-family="Noto Sans JP, sans-serif">厩舎</text>
+<text x="675.359375" y="786.79375" fill="rgb(142, 154, 128)" font-size="22px" font-weight="400" font-family="Noto Sans JP, sans-serif">⚑</text>
+<text x="707.09375" y="785.44375" fill="rgb(142, 154, 128)" font-size="11px" font-weight="400" font-family="Noto Sans JP, sans-serif">レース</text>
+<text x="819.546875" y="786.79375" fill="rgb(142, 154, 128)" font-size="22px" font-weight="400" font-family="Noto Sans JP, sans-serif">✧</text>
+<text x="849.984375" y="785.44375" fill="rgb(142, 154, 128)" font-size="11px" font-weight="400" font-family="Noto Sans JP, sans-serif">スカウト</text>
+<text x="973.984375" y="786.79375" fill="rgb(142, 154, 128)" font-size="22px" font-weight="400" font-family="Noto Sans JP, sans-serif">◇</text>
+<text x="1008" y="785.44375" fill="rgb(142, 154, 128)" font-size="11px" font-weight="400" font-family="Noto Sans JP, sans-serif">ショップ</text>
+<rect x="76" y="830.09375" width="1303" height="52" rx="0" fill="none" stroke="rgb(216, 223, 205) rgb(145, 155, 132) rgb(145, 155, 132)"/>
+<text x="118" y="857.89375" fill="rgb(145, 155, 132)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">© MUCHI ISSEN　 /　 DEVELOPMENT PREVIEW</text>
+<text x="1204.703125" y="857.89375" fill="rgb(145, 155, 132)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">JAPAN · TURF · 2,000m</text>
+<text x="1327.5" y="857.89375" fill="rgb(146, 163, 101)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">●</text></g>
+<g transform="translate(40,2740)"><text y="-20" fill="#183b30" font-size="20">7 / 出走登録</text><rect x="0" y="0" width="1380" height="850.09375" rx="7" fill="rgb(246, 244, 236)" stroke="rgb(204, 211, 193)"/>
+<rect x="1" y="1" width="75" height="848.09375" rx="0" fill="rgb(24, 59, 48)" stroke="none"/>
+<text x="23.0625" y="63.3" fill="rgb(210, 204, 170)" font-size="38px" font-weight="400" font-family="Noto Sans JP, sans-serif">M</text>
+<text x="25.484375" y="94.5" fill="rgb(210, 204, 170)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">一閃</text>
+<rect x="38" y="131" width="1" height="55" rx="0" fill="rgba(255, 255, 255, 0.19)" stroke="none"/>
+<text x="33" y="222.8" fill="rgb(210, 204, 170)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">RIDE YOUR OWN STORY</text>
+<text x="33" y="754.971875" fill="rgb(210, 204, 170)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">EST. 2026</text>
+<text x="118" y="38.9" fill="rgb(24, 59, 48)" font-size="24px" font-weight="700" font-family="Noto Sans JP, sans-serif">ムチ一閃</text>
+<text x="118" y="66.3" fill="rgb(24, 59, 48)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">JOCKEY RACING CLUB</text>
+<text x="1123.046875" y="46.2" fill="rgb(166, 139, 80)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">◈</text>
+<text x="1138.96875" y="46.2" fill="rgb(166, 139, 80)" font-size="12px" font-weight="500" font-family="Noto Sans JP, sans-serif">1,200</text>
+<text x="1175.65625" y="47.8" fill="rgb(139, 150, 127)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">無償</text>
+<text x="1216.65625" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">◎</text>
+<text x="1235.359375" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="500" font-family="Noto Sans JP, sans-serif">24,800</text>
+<rect x="1301" y="26.5" width="36" height="36" rx="50" fill="rgb(230, 235, 220)" stroke="rgb(204, 212, 190)"/>
+<text x="1315.8125" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">Y</text>
+<rect x="118" y="125" width="20" height="1" rx="0" fill="rgb(162, 138, 82)" stroke="none"/>
+<text x="147" y="126.65" fill="rgb(162, 138, 82)" font-size="9px" font-weight="400" font-family="Noto Sans JP, sans-serif">RACE ENTRY</text>
+<text x="118" y="181.9" fill="rgb(24, 59, 48)" font-size="34px" font-weight="600" font-family="Noto Sans JP, sans-serif">さあ、ゲートの向こうへ。</text>
+<text x="118" y="230.14375" fill="rgb(121, 132, 113)" font-size="13px" font-weight="400" font-family="Noto Sans JP, sans-serif">腕を試す一戦も、仲間との一戦も。あなたのペースで。</text>
+<text x="1238.8125" y="173.346875" fill="rgb(137, 151, 125)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">MUCHI ISSEN</text>
+<text x="1238.8125" y="189.346875" fill="rgb(137, 151, 125)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">RACING CLUB / 01</text>
+<rect x="118" y="266.09375" width="674.859375" height="421" rx="5" fill="rgb(24, 59, 48)" stroke="none"/>
+<rect x="146" y="294.09375" width="103.078125" height="29" rx="0" fill="none" stroke="rgba(181, 167, 120, 0.333)"/>
+<text x="157" y="309.74375" fill="rgb(161, 138, 80)" font-size="9px" font-weight="400" font-family="Noto Sans JP, sans-serif">RANKED RACE</text>
+<text x="146" y="361.89375" fill="rgb(244, 238, 215)" font-size="28px" font-weight="600" font-family="Noto Sans JP, sans-serif">グリーンフィールド杯</text>
+<text x="146" y="399.14375" fill="rgb(172, 185, 158)" font-size="13px" font-weight="400" font-family="Noto Sans JP, sans-serif">芝 2,000m / 左回り / 良</text>
+<svg x="275.421875" y="411.09375" width="360" height="126" viewBox="0 0 640 440"><rect x="25" y="20" width="350" height="100" rx="50" fill="none" stroke="#bfa975" stroke-width="15"></rect><path d="M210 110h60" stroke="#fff" stroke-width="3"></path><circle cx="270" cy="110" r="6" fill="#f8d581"></circle></svg>
+<text x="146" y="556.29375" fill="rgb(244, 238, 215)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">最大12頭</text>
+<text x="146" y="576.74375" fill="rgb(164, 180, 150)" font-size="9px" font-weight="400" font-family="Noto Sans JP, sans-serif">空き枠はCPUが参加</text>
+<text x="683.84375" y="556.29375" fill="rgb(244, 238, 215)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">能力上限あり</text>
+<text x="683.84375" y="576.74375" fill="rgb(164, 180, 150)" font-size="9px" font-weight="400" font-family="Noto Sans JP, sans-serif">腕で勝てるランク戦</text>
+<rect x="146" y="605.09375" width="618.859375" height="54" rx="3" fill="rgb(224, 205, 149)" stroke="none"/>
+<text x="166" y="633.64375" fill="rgb(24, 59, 48)" font-size="13px" font-weight="400" font-family="Noto Sans JP, sans-serif">このレースに出走</text>
+<text x="725.859375" y="634.39375" fill="rgb(24, 59, 48)" font-size="18px" font-weight="400" font-family="Noto Sans JP, sans-serif">↗</text>
+<rect x="817.859375" y="266.09375" width="519.125" height="421" rx="5" fill="none" stroke="rgb(209, 220, 195)"/>
+<text x="842.859375" y="298.74375" fill="rgb(162, 138, 82)" font-size="9px" font-weight="400" font-family="Noto Sans JP, sans-serif">SELECTED PARTNER</text>
+<text x="842.859375" y="342.49375" fill="rgb(24, 59, 48)" font-size="24px" font-weight="600" font-family="Noto Sans JP, sans-serif">ハルカゼ</text>
+<rect x="1007.046875" y="378.09375" width="206.40625" height="206.40625" rx="50" fill="rgb(245, 239, 214)" stroke="none"/>
+<svg x="842.859375" y="357.09375" width="469.125" height="175" viewBox="0 0 640 440"><defs><linearGradient id="coat" x2="1" y2="1"><stop stop-color="#bb7955"></stop><stop offset="1" stop-color="#55362e"></stop></linearGradient></defs><path d="M68 362Q310 310 593 356" fill="none" stroke="#c5d1b4" stroke-width="2"></path><path d="M153 208Q91 205 75 255Q100 242 157 243L215 279L274 282L337 250L403 235L449 176L485 163L499 132L476 110L465 76L451 106L430 87L431 129L400 161L355 174L284 164L216 173Z" fill="url(#coat)"></path><path d="M187 239L211 280L171 329L113 347L108 358L183 350L247 281M270 257L285 292L239 345L243 356L269 343L318 291L311 247M346 232L392 282L459 309L471 305L432 277L399 222M390 207L449 228L491 270L505 270L472 217L419 181" fill="none" stroke="#694432" stroke-width="19" stroke-linejoin="round"></path><path d="M156 211Q102 177 69 198Q93 208 106 236" fill="#2b2925"></path><path d="M430 130L405 163L385 174" fill="none" stroke="#2b2925" stroke-width="14"></path><path d="M265 170L330 177L321 224L263 216Z" fill="#e7dfc4"></path><text x="284" y="206" fill="#17382c" font-size="28" font-family="serif">7</text><path d="M294 172L320 136L350 144L365 171" fill="none" stroke="#f2e9cf" stroke-width="16"></path><path d="M313 142L303 116L327 99L348 124L367 145L410 151" fill="none" stroke="#315d47" stroke-width="19"></path><circle cx="332" cy="88" r="15" fill="#d4ad86"></circle><path d="M316 85Q315 63 336 67L350 83Z" fill="#e4bb62"></path><path d="M360 146L454 150" stroke="#d2bb84" fill="none" stroke-width="2"></path><circle cx="475" cy="133" r="3" fill="#161e19"></circle></svg>
+<text x="899.140625" y="513.89375" fill="rgb(124, 137, 105)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">THE NEXT CHAPTER IS YOURS.</text>
+<rect x="842.859375" y="542.09375" width="469.125" height="45" rx="3" fill="none" stroke="rgb(182, 193, 167)"/>
+<text x="859.859375" y="566.14375" fill="rgb(24, 59, 48)" font-size="13px" font-weight="400" font-family="Noto Sans JP, sans-serif">出走馬を変更する</text>
+<text x="1280.96875" y="566.14375" fill="rgb(24, 59, 48)" font-size="13px" font-weight="400" font-family="Noto Sans JP, sans-serif">↗</text>
+<rect x="842.859375" y="601.09375" width="469.125" height="34" rx="0" fill="none" stroke="rgb(212, 222, 202) rgb(24, 59, 48) rgb(24, 59, 48)"/>
+<text x="842.859375" y="628.29375" fill="rgb(24, 59, 48)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">フレンドルーム</text>
+<text x="1299.96875" y="628.29375" fill="rgb(24, 59, 48)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">＋</text>
+<rect x="118" y="712.09375" width="1219" height="65" rx="0" fill="none" stroke="rgb(215, 223, 205) rgb(24, 59, 48) rgb(24, 59, 48)"/>
+<text x="402.984375" y="753.79375" fill="rgb(142, 154, 128)" font-size="22px" font-weight="400" font-family="Noto Sans JP, sans-serif">⌂</text>
+<text x="428.953125" y="752.44375" fill="rgb(142, 154, 128)" font-size="11px" font-weight="400" font-family="Noto Sans JP, sans-serif">ホーム</text>
+<text x="541.625" y="753.79375" fill="rgb(142, 154, 128)" font-size="22px" font-weight="400" font-family="Noto Sans JP, sans-serif">♞</text>
+<text x="573.359375" y="752.44375" fill="rgb(142, 154, 128)" font-size="11px" font-weight="400" font-family="Noto Sans JP, sans-serif">厩舎</text>
+<rect x="655.359375" y="725.09375" width="104.1875" height="52" rx="4" fill="rgb(229, 234, 219)" stroke="none"/>
+<text x="675.359375" y="753.79375" fill="rgb(24, 59, 48)" font-size="22px" font-weight="400" font-family="Noto Sans JP, sans-serif">⚑</text>
+<text x="707.09375" y="752.44375" fill="rgb(24, 59, 48)" font-size="11px" font-weight="400" font-family="Noto Sans JP, sans-serif">レース</text>
+<text x="819.546875" y="753.79375" fill="rgb(142, 154, 128)" font-size="22px" font-weight="400" font-family="Noto Sans JP, sans-serif">✧</text>
+<text x="849.984375" y="752.44375" fill="rgb(142, 154, 128)" font-size="11px" font-weight="400" font-family="Noto Sans JP, sans-serif">スカウト</text>
+<text x="973.984375" y="753.79375" fill="rgb(142, 154, 128)" font-size="22px" font-weight="400" font-family="Noto Sans JP, sans-serif">◇</text>
+<text x="1008" y="752.44375" fill="rgb(142, 154, 128)" font-size="11px" font-weight="400" font-family="Noto Sans JP, sans-serif">ショップ</text>
+<rect x="76" y="797.09375" width="1303" height="52" rx="0" fill="none" stroke="rgb(216, 223, 205) rgb(145, 155, 132) rgb(145, 155, 132)"/>
+<text x="118" y="824.89375" fill="rgb(145, 155, 132)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">© MUCHI ISSEN　 /　 DEVELOPMENT PREVIEW</text>
+<text x="1204.703125" y="824.89375" fill="rgb(145, 155, 132)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">JAPAN · TURF · 2,000m</text>
+<text x="1327.5" y="824.89375" fill="rgb(146, 163, 101)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">●</text></g>
+<g transform="translate(1500,2740)"><text y="-20" fill="#183b30" font-size="20">8 / レース</text><rect x="0" y="0" width="1380" height="770" rx="7" fill="rgb(246, 244, 236)" stroke="rgb(204, 211, 193)"/>
+<rect x="1" y="1" width="75" height="768" rx="0" fill="rgb(24, 59, 48)" stroke="none"/>
+<text x="23.0625" y="63.3" fill="rgb(210, 204, 170)" font-size="38px" font-weight="400" font-family="Noto Sans JP, sans-serif">M</text>
+<text x="25.484375" y="94.5" fill="rgb(210, 204, 170)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">一閃</text>
+<rect x="38" y="131" width="1" height="55" rx="0" fill="rgba(255, 255, 255, 0.19)" stroke="none"/>
+<text x="33" y="222.8" fill="rgb(210, 204, 170)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">RIDE YOUR OWN STORY</text>
+<text x="33" y="674.878125" fill="rgb(210, 204, 170)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">EST. 2026</text>
+<text x="118" y="38.9" fill="rgb(24, 59, 48)" font-size="24px" font-weight="700" font-family="Noto Sans JP, sans-serif">ムチ一閃</text>
+<text x="118" y="66.3" fill="rgb(24, 59, 48)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">JOCKEY RACING CLUB</text>
+<text x="1123.046875" y="46.2" fill="rgb(166, 139, 80)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">◈</text>
+<text x="1138.96875" y="46.2" fill="rgb(166, 139, 80)" font-size="12px" font-weight="500" font-family="Noto Sans JP, sans-serif">1,200</text>
+<text x="1175.65625" y="47.8" fill="rgb(139, 150, 127)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">無償</text>
+<text x="1216.65625" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">◎</text>
+<text x="1235.359375" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="500" font-family="Noto Sans JP, sans-serif">24,800</text>
+<rect x="1301" y="26.5" width="36" height="36" rx="50" fill="rgb(230, 235, 220)" stroke="rgb(204, 212, 190)"/>
+<text x="1315.8125" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">Y</text>
+<text x="118" y="149" fill="rgb(24, 59, 48)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">GREENFIELD CUP / ランク戦</text>
+<text x="729.21875" y="153" fill="rgb(24, 59, 48)" font-size="40px" font-weight="400" font-family="Noto Sans JP, sans-serif">3</text>
+<text x="752.421875" y="161.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">/ 12 位</text>
+<text x="1258.421875" y="149" fill="rgb(24, 59, 48)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">芝 2,000m · 良</text>
+<svg x="288.65625" y="238" width="792.34375" height="330" viewBox="0 0 640 440"><defs><linearGradient id="coat" x2="1" y2="1"><stop stop-color="#bb7955"></stop><stop offset="1" stop-color="#55362e"></stop></linearGradient></defs><path d="M68 362Q310 310 593 356" fill="none" stroke="#c5d1b4" stroke-width="2"></path><path d="M153 208Q91 205 75 255Q100 242 157 243L215 279L274 282L337 250L403 235L449 176L485 163L499 132L476 110L465 76L451 106L430 87L431 129L400 161L355 174L284 164L216 173Z" fill="url(#coat)"></path><path d="M187 239L211 280L171 329L113 347L108 358L183 350L247 281M270 257L285 292L239 345L243 356L269 343L318 291L311 247M346 232L392 282L459 309L471 305L432 277L399 222M390 207L449 228L491 270L505 270L472 217L419 181" fill="none" stroke="#694432" stroke-width="19" stroke-linejoin="round"></path><path d="M156 211Q102 177 69 198Q93 208 106 236" fill="#2b2925"></path><path d="M430 130L405 163L385 174" fill="none" stroke="#2b2925" stroke-width="14"></path><path d="M265 170L330 177L321 224L263 216Z" fill="#e7dfc4"></path><text x="284" y="206" fill="#17382c" font-size="28" font-family="serif">7</text><path d="M294 172L320 136L350 144L365 171" fill="none" stroke="#f2e9cf" stroke-width="16"></path><path d="M313 142L303 116L327 99L348 124L367 145L410 151" fill="none" stroke="#315d47" stroke-width="19"></path><circle cx="332" cy="88" r="15" fill="#d4ad86"></circle><path d="M316 85Q315 63 336 67L350 83Z" fill="#e4bb62"></path><path d="M360 146L454 150" stroke="#d2bb84" fill="none" stroke-width="2"></path><circle cx="475" cy="133" r="3" fill="#161e19"></circle></svg>
+<text x="1201.703125" y="248.5" fill="rgb(24, 59, 48)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">LAST</text>
+<text x="1237.21875" y="242.2" fill="rgb(24, 59, 48)" font-size="32px" font-weight="400" font-family="Noto Sans JP, sans-serif">200</text>
+<text x="1296.5" y="248.5" fill="rgb(24, 59, 48)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">m</text>
+<rect x="617.796875" y="490" width="219.40625" height="43" rx="3" fill="rgba(21, 57, 45, 0.9)" stroke="rgba(255, 255, 255, 0.19)"/>
+<text x="643.796875" y="513.2" fill="rgb(249, 246, 227)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">脚をためて、ここで仕掛ける。</text>
+<rect x="118" y="575.5" width="240" height="57" rx="3" fill="none" stroke="rgb(182, 193, 167)"/>
+<text x="142" y="605.55" fill="rgb(24, 59, 48)" font-size="13px" font-weight="400" font-family="Noto Sans JP, sans-serif">← 手綱を引く</text>
+<text x="703.796875" y="585.8" fill="rgb(24, 59, 48)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">STAMINA</text>
+<rect x="388" y="600" width="679" height="6" rx="0" fill="rgb(220, 225, 208)" stroke="none"/>
+<rect x="388" y="600" width="543.1875" height="6" rx="0" fill="rgb(139, 157, 98)" stroke="none"/>
+<text x="686.609375" y="623.65" fill="rgb(146, 159, 124)" font-size="9px" font-weight="400" font-family="Noto Sans JP, sans-serif">折り合い GOOD</text>
+<rect x="1097" y="573" width="240" height="62" rx="3" fill="rgb(181, 153, 86)" stroke="none"/>
+<text x="1120" y="605.55" fill="rgb(255, 253, 240)" font-size="13px" font-weight="400" font-family="Noto Sans JP, sans-serif">仕掛ける</text>
+<text x="1273.875" y="606.3" fill="rgb(255, 244, 202)" font-size="18px" font-weight="400" font-family="Noto Sans JP, sans-serif">⚡</text>
+<text x="1302.375" y="606.3" fill="rgb(255, 244, 202)" font-size="18px" font-weight="700" font-family="Noto Sans JP, sans-serif">6</text>
+<rect x="76" y="717" width="1303" height="52" rx="0" fill="none" stroke="rgb(216, 223, 205) rgb(145, 155, 132) rgb(145, 155, 132)"/>
+<text x="118" y="744.8" fill="rgb(145, 155, 132)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">© MUCHI ISSEN　 /　 DEVELOPMENT PREVIEW</text>
+<text x="1204.703125" y="744.8" fill="rgb(145, 155, 132)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">JAPAN · TURF · 2,000m</text>
+<text x="1327.5" y="744.8" fill="rgb(146, 163, 101)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">●</text></g>
+<g transform="translate(40,3620)"><text y="-20" fill="#183b30" font-size="20">9 / リザルト</text><rect x="0" y="0" width="1380" height="770" rx="7" fill="rgb(246, 244, 236)" stroke="rgb(204, 211, 193)"/>
+<rect x="1" y="1" width="75" height="768" rx="0" fill="rgb(24, 59, 48)" stroke="none"/>
+<text x="23.0625" y="63.3" fill="rgb(210, 204, 170)" font-size="38px" font-weight="400" font-family="Noto Sans JP, sans-serif">M</text>
+<text x="25.484375" y="94.5" fill="rgb(210, 204, 170)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">一閃</text>
+<rect x="38" y="131" width="1" height="55" rx="0" fill="rgba(255, 255, 255, 0.19)" stroke="none"/>
+<text x="33" y="222.8" fill="rgb(210, 204, 170)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">RIDE YOUR OWN STORY</text>
+<text x="33" y="674.878125" fill="rgb(210, 204, 170)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">EST. 2026</text>
+<text x="118" y="38.9" fill="rgb(24, 59, 48)" font-size="24px" font-weight="700" font-family="Noto Sans JP, sans-serif">ムチ一閃</text>
+<text x="118" y="66.3" fill="rgb(24, 59, 48)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">JOCKEY RACING CLUB</text>
+<text x="1123.046875" y="46.2" fill="rgb(166, 139, 80)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">◈</text>
+<text x="1138.96875" y="46.2" fill="rgb(166, 139, 80)" font-size="12px" font-weight="500" font-family="Noto Sans JP, sans-serif">1,200</text>
+<text x="1175.65625" y="47.8" fill="rgb(139, 150, 127)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">無償</text>
+<text x="1216.65625" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">◎</text>
+<text x="1235.359375" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="500" font-family="Noto Sans JP, sans-serif">24,800</text>
+<rect x="1301" y="26.5" width="36" height="36" rx="50" fill="rgb(230, 235, 220)" stroke="rgb(204, 212, 190)"/>
+<text x="1315.8125" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">Y</text>
+<rect x="118" y="135" width="20" height="1" rx="0" fill="rgb(162, 138, 82)" stroke="none"/>
+<text x="147" y="136.65" fill="rgb(162, 138, 82)" font-size="9px" font-weight="400" font-family="Noto Sans JP, sans-serif">GREENFIELD CUP / RACE RESULT</text>
+<text x="118" y="279" fill="rgb(165, 138, 73)" font-size="190px" font-weight="400" font-family="Noto Sans JP, sans-serif">1</text>
+<text x="244.8125" y="243.00625" fill="rgb(165, 138, 73)" font-size="16px" font-weight="400" font-family="Noto Sans JP, sans-serif">ST</text>
+<text x="244.8125" y="268.6" fill="rgb(165, 138, 73)" font-size="16px" font-weight="400" font-family="Noto Sans JP, sans-serif">PLACE</text>
+<text x="118" y="371.25" fill="rgb(24, 59, 48)" font-size="25px" font-weight="600" font-family="Noto Sans JP, sans-serif">その一瞬が、勝利になった。</text>
+<text x="118" y="412.05" fill="rgb(121, 132, 113)" font-size="13px" font-weight="400" font-family="Noto Sans JP, sans-serif">ハルカゼ とつかんだ、最高の直線。</text>
+<rect x="893.28125" y="167" width="300.34375" height="300.34375" rx="50" fill="rgb(245, 239, 214)" stroke="none"/>
+<svg x="654.375" y="119" width="682.625" height="400" viewBox="0 0 640 440"><defs><linearGradient id="coat" x2="1" y2="1"><stop stop-color="#bb7955"></stop><stop offset="1" stop-color="#55362e"></stop></linearGradient></defs><path d="M68 362Q310 310 593 356" fill="none" stroke="#c5d1b4" stroke-width="2"></path><path d="M153 208Q91 205 75 255Q100 242 157 243L215 279L274 282L337 250L403 235L449 176L485 163L499 132L476 110L465 76L451 106L430 87L431 129L400 161L355 174L284 164L216 173Z" fill="url(#coat)"></path><path d="M187 239L211 280L171 329L113 347L108 358L183 350L247 281M270 257L285 292L239 345L243 356L269 343L318 291L311 247M346 232L392 282L459 309L471 305L432 277L399 222M390 207L449 228L491 270L505 270L472 217L419 181" fill="none" stroke="#694432" stroke-width="19" stroke-linejoin="round"></path><path d="M156 211Q102 177 69 198Q93 208 106 236" fill="#2b2925"></path><path d="M430 130L405 163L385 174" fill="none" stroke="#2b2925" stroke-width="14"></path><path d="M265 170L330 177L321 224L263 216Z" fill="#e7dfc4"></path><text x="284" y="206" fill="#17382c" font-size="28" font-family="serif">7</text><path d="M294 172L320 136L350 144L365 171" fill="none" stroke="#f2e9cf" stroke-width="16"></path><path d="M313 142L303 116L327 99L348 124L367 145L410 151" fill="none" stroke="#315d47" stroke-width="19"></path><circle cx="332" cy="88" r="15" fill="#d4ad86"></circle><path d="M316 85Q315 63 336 67L350 83Z" fill="#e4bb62"></path><path d="M360 146L454 150" stroke="#d2bb84" fill="none" stroke-width="2"></path><circle cx="475" cy="133" r="3" fill="#161e19"></circle></svg>
+<text x="736.28125" y="482.8" fill="rgb(124, 137, 105)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">THE NEXT CHAPTER IS YOURS.</text>
+<rect x="118" y="556" width="1219" height="93" rx="0" fill="none" stroke="rgb(211, 220, 198) rgb(24, 59, 48) rgb(24, 59, 48)"/>
+<text x="118" y="596.3" fill="rgb(146, 156, 135)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">TIME</text>
+<text x="118" y="631.6" fill="rgb(24, 59, 48)" font-size="26px" font-weight="400" font-family="Noto Sans JP, sans-serif">1:58.4</text>
+<text x="235.1875" y="596.3" fill="rgb(146, 156, 135)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">RANK POINT</text>
+<text x="235.1875" y="631.6" fill="rgb(24, 59, 48)" font-size="26px" font-weight="400" font-family="Noto Sans JP, sans-serif">＋120</text>
+<text x="310.3125" y="635.7" fill="rgb(24, 59, 48)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">pt</text>
+<text x="367.0625" y="596.3" fill="rgb(146, 156, 135)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">REWARD</text>
+<text x="367.0625" y="631.6" fill="rgb(24, 59, 48)" font-size="26px" font-weight="400" font-family="Noto Sans JP, sans-serif">◎ 800</text>
+<rect x="1097" y="587" width="240" height="62" rx="3" fill="rgb(24, 59, 48)" stroke="none"/>
+<text x="1120" y="619.55" fill="rgb(255, 253, 240)" font-size="13px" font-weight="400" font-family="Noto Sans JP, sans-serif">ホームへ戻る</text>
+<text x="1295" y="620.3" fill="rgb(219, 199, 138)" font-size="18px" font-weight="400" font-family="Noto Sans JP, sans-serif">↗</text>
+<rect x="76" y="717" width="1303" height="52" rx="0" fill="none" stroke="rgb(216, 223, 205) rgb(145, 155, 132) rgb(145, 155, 132)"/>
+<text x="118" y="744.8" fill="rgb(145, 155, 132)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">© MUCHI ISSEN　 /　 DEVELOPMENT PREVIEW</text>
+<text x="1204.703125" y="744.8" fill="rgb(145, 155, 132)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">JAPAN · TURF · 2,000m</text>
+<text x="1327.5" y="744.8" fill="rgb(146, 163, 101)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">●</text></g>
+<g transform="translate(1500,3620)"><text y="-20" fill="#183b30" font-size="20">10 / ショップ</text><rect x="0" y="0" width="1380" height="943.09375" rx="7" fill="rgb(246, 244, 236)" stroke="rgb(204, 211, 193)"/>
+<rect x="1" y="1" width="75" height="941.09375" rx="0" fill="rgb(24, 59, 48)" stroke="none"/>
+<text x="23.0625" y="63.3" fill="rgb(210, 204, 170)" font-size="38px" font-weight="400" font-family="Noto Sans JP, sans-serif">M</text>
+<text x="25.484375" y="94.5" fill="rgb(210, 204, 170)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">一閃</text>
+<rect x="38" y="131" width="1" height="55" rx="0" fill="rgba(255, 255, 255, 0.19)" stroke="none"/>
+<text x="33" y="222.8" fill="rgb(210, 204, 170)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">RIDE YOUR OWN STORY</text>
+<text x="33" y="847.971875" fill="rgb(210, 204, 170)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">EST. 2026</text>
+<text x="118" y="38.9" fill="rgb(24, 59, 48)" font-size="24px" font-weight="700" font-family="Noto Sans JP, sans-serif">ムチ一閃</text>
+<text x="118" y="66.3" fill="rgb(24, 59, 48)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">JOCKEY RACING CLUB</text>
+<text x="1123.046875" y="46.2" fill="rgb(166, 139, 80)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">◈</text>
+<text x="1138.96875" y="46.2" fill="rgb(166, 139, 80)" font-size="12px" font-weight="500" font-family="Noto Sans JP, sans-serif">1,200</text>
+<text x="1175.65625" y="47.8" fill="rgb(139, 150, 127)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">無償</text>
+<text x="1216.65625" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">◎</text>
+<text x="1235.359375" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="500" font-family="Noto Sans JP, sans-serif">24,800</text>
+<rect x="1301" y="26.5" width="36" height="36" rx="50" fill="rgb(230, 235, 220)" stroke="rgb(204, 212, 190)"/>
+<text x="1315.8125" y="46.2" fill="rgb(24, 59, 48)" font-size="12px" font-weight="400" font-family="Noto Sans JP, sans-serif">Y</text>
+<rect x="118" y="125" width="20" height="1" rx="0" fill="rgb(162, 138, 82)" stroke="none"/>
+<text x="147" y="126.65" fill="rgb(162, 138, 82)" font-size="9px" font-weight="400" font-family="Noto Sans JP, sans-serif">CLUB STORE</text>
+<text x="118" y="181.9" fill="rgb(24, 59, 48)" font-size="34px" font-weight="600" font-family="Noto Sans JP, sans-serif">走る日々を、あなたらしく。</text>
+<text x="118" y="230.14375" fill="rgb(121, 132, 113)" font-size="13px" font-weight="400" font-family="Noto Sans JP, sans-serif">勝負服も、新しい出会いも。楽しみ方を広げよう。</text>
+<text x="1238.8125" y="173.346875" fill="rgb(137, 151, 125)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">MUCHI ISSEN</text>
+<text x="1238.8125" y="189.346875" fill="rgb(137, 151, 125)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">RACING CLUB / 01</text>
+<rect x="118" y="266.09375" width="1219" height="168" rx="5" fill="rgb(228, 232, 216)" stroke="rgb(210, 220, 196)"/>
+<rect x="149" y="303.09375" width="20" height="1" rx="0" fill="rgb(162, 138, 82)" stroke="none"/>
+<text x="178" y="304.74375" fill="rgb(162, 138, 82)" font-size="9px" font-weight="400" font-family="Noto Sans JP, sans-serif">SEASON 01 / NOVEMBER</text>
+<text x="149" y="351.89375" fill="rgb(24, 59, 48)" font-size="28px" font-weight="600" font-family="Noto Sans JP, sans-serif">次の季節も、相棒と。</text>
+<text x="149" y="391.14375" fill="rgb(121, 132, 113)" font-size="13px" font-weight="400" font-family="Noto Sans JP, sans-serif">シーズンパス · 限定勝負服と毎日の報酬</text>
+<rect x="1066" y="321.59375" width="240" height="57" rx="3" fill="none" stroke="rgb(182, 193, 167)"/>
+<text x="1090" y="351.64375" fill="rgb(24, 59, 48)" font-size="13px" font-weight="400" font-family="Noto Sans JP, sans-serif">¥1,000</text>
+<text x="1267.984375" y="351.64375" fill="rgb(24, 59, 48)" font-size="13px" font-weight="400" font-family="Noto Sans JP, sans-serif">↗</text>
+<rect x="118" y="458.09375" width="291.25" height="288" rx="5" fill="rgb(250, 249, 242)" stroke="rgb(215, 221, 204)"/>
+<text x="139" y="492.89375" fill="rgb(143, 155, 128)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">COIN PACK</text>
+<text x="236.703125" y="568.59375" fill="rgb(188, 160, 99)" font-size="70px" font-weight="400" font-family="Noto Sans JP, sans-serif">◈</text>
+<text x="139" y="639.64375" fill="rgb(0, 0, 0)" font-size="23px" font-weight="600" font-family="Noto Sans JP, sans-serif">100</text>
+<text x="139" y="666.74375" fill="rgb(143, 155, 128)" font-size="9px" font-weight="400" font-family="Noto Sans JP, sans-serif">有償コイン</text>
+<rect x="139" y="690.09375" width="249.25" height="35" rx="0" fill="none" stroke="rgb(217, 223, 207) rgb(0, 0, 0) rgb(0, 0, 0)"/>
+<text x="139" y="717.14375" fill="rgb(0, 0, 0)" font-size="13px" font-weight="500" font-family="Noto Sans JP, sans-serif">¥160 ↗</text>
+<rect x="427.25" y="457.276611328125" width="291.25" height="288" rx="5" fill="rgb(250, 249, 242)" stroke="rgb(215, 221, 204)"/>
+<text x="448.25" y="492.076611328125" fill="rgb(143, 155, 128)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">COIN PACK</text>
+<text x="545.953125" y="567.776611328125" fill="rgb(188, 160, 99)" font-size="70px" font-weight="400" font-family="Noto Sans JP, sans-serif">◈</text>
+<text x="448.25" y="638.826611328125" fill="rgb(0, 0, 0)" font-size="23px" font-weight="600" font-family="Noto Sans JP, sans-serif">310</text>
+<text x="448.25" y="665.926611328125" fill="rgb(143, 155, 128)" font-size="9px" font-weight="400" font-family="Noto Sans JP, sans-serif">有償コイン</text>
+<rect x="448.25" y="689.276611328125" width="249.25" height="35" rx="0" fill="none" stroke="rgb(217, 223, 207) rgb(0, 0, 0) rgb(0, 0, 0)"/>
+<text x="448.25" y="716.326611328125" fill="rgb(0, 0, 0)" font-size="13px" font-weight="500" font-family="Noto Sans JP, sans-serif">¥480 ↗</text>
+<rect x="736.5" y="458.09375" width="291.25" height="288" rx="5" fill="rgb(250, 249, 242)" stroke="rgb(215, 221, 204)"/>
+<text x="757.5" y="492.89375" fill="rgb(143, 155, 128)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">COIN PACK</text>
+<text x="855.203125" y="568.59375" fill="rgb(188, 160, 99)" font-size="70px" font-weight="400" font-family="Noto Sans JP, sans-serif">◈</text>
+<text x="757.5" y="639.64375" fill="rgb(0, 0, 0)" font-size="23px" font-weight="600" font-family="Noto Sans JP, sans-serif">530</text>
+<text x="757.5" y="666.74375" fill="rgb(143, 155, 128)" font-size="9px" font-weight="400" font-family="Noto Sans JP, sans-serif">有償コイン</text>
+<rect x="757.5" y="690.09375" width="249.25" height="35" rx="0" fill="none" stroke="rgb(217, 223, 207) rgb(0, 0, 0) rgb(0, 0, 0)"/>
+<text x="757.5" y="717.14375" fill="rgb(0, 0, 0)" font-size="13px" font-weight="500" font-family="Noto Sans JP, sans-serif">¥800 ↗</text>
+<rect x="1045.75" y="458.09375" width="291.25" height="288" rx="5" fill="rgb(250, 249, 242)" stroke="rgb(215, 221, 204)"/>
+<text x="1066.75" y="492.89375" fill="rgb(143, 155, 128)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">COIN PACK</text>
+<text x="1164.453125" y="568.59375" fill="rgb(188, 160, 99)" font-size="70px" font-weight="400" font-family="Noto Sans JP, sans-serif">◈</text>
+<text x="1066.75" y="639.64375" fill="rgb(0, 0, 0)" font-size="23px" font-weight="600" font-family="Noto Sans JP, sans-serif">1,020</text>
+<text x="1066.75" y="666.74375" fill="rgb(143, 155, 128)" font-size="9px" font-weight="400" font-family="Noto Sans JP, sans-serif">有償コイン</text>
+<rect x="1066.75" y="690.09375" width="249.25" height="35" rx="0" fill="none" stroke="rgb(217, 223, 207) rgb(0, 0, 0) rgb(0, 0, 0)"/>
+<text x="1066.75" y="717.14375" fill="rgb(0, 0, 0)" font-size="13px" font-weight="500" font-family="Noto Sans JP, sans-serif">¥1,500 ↗</text>
+<text x="118" y="771.59375" fill="rgb(140, 150, 127)" font-size="10px" font-weight="400" font-family="Noto Sans JP, sans-serif">有償残高 0 / 無償残高 1200　・　購入前に年齢と月額上限を確認します。</text>
+<rect x="118" y="805.09375" width="1219" height="65" rx="0" fill="none" stroke="rgb(215, 223, 205) rgb(24, 59, 48) rgb(24, 59, 48)"/>
+<text x="402.984375" y="846.79375" fill="rgb(142, 154, 128)" font-size="22px" font-weight="400" font-family="Noto Sans JP, sans-serif">⌂</text>
+<text x="428.953125" y="845.44375" fill="rgb(142, 154, 128)" font-size="11px" font-weight="400" font-family="Noto Sans JP, sans-serif">ホーム</text>
+<text x="541.625" y="846.79375" fill="rgb(142, 154, 128)" font-size="22px" font-weight="400" font-family="Noto Sans JP, sans-serif">♞</text>
+<text x="573.359375" y="845.44375" fill="rgb(142, 154, 128)" font-size="11px" font-weight="400" font-family="Noto Sans JP, sans-serif">厩舎</text>
+<text x="675.359375" y="846.79375" fill="rgb(142, 154, 128)" font-size="22px" font-weight="400" font-family="Noto Sans JP, sans-serif">⚑</text>
+<text x="707.09375" y="845.44375" fill="rgb(142, 154, 128)" font-size="11px" font-weight="400" font-family="Noto Sans JP, sans-serif">レース</text>
+<text x="819.546875" y="846.79375" fill="rgb(142, 154, 128)" font-size="22px" font-weight="400" font-family="Noto Sans JP, sans-serif">✧</text>
+<text x="849.984375" y="845.44375" fill="rgb(142, 154, 128)" font-size="11px" font-weight="400" font-family="Noto Sans JP, sans-serif">スカウト</text>
+<rect x="953.984375" y="818.09375" width="118.015625" height="52" rx="4" fill="rgb(229, 234, 219)" stroke="none"/>
+<text x="973.984375" y="846.79375" fill="rgb(24, 59, 48)" font-size="22px" font-weight="400" font-family="Noto Sans JP, sans-serif">◇</text>
+<text x="1008" y="845.44375" fill="rgb(24, 59, 48)" font-size="11px" font-weight="400" font-family="Noto Sans JP, sans-serif">ショップ</text>
+<rect x="76" y="890.09375" width="1303" height="52" rx="0" fill="none" stroke="rgb(216, 223, 205) rgb(145, 155, 132) rgb(145, 155, 132)"/>
+<text x="118" y="917.89375" fill="rgb(145, 155, 132)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">© MUCHI ISSEN　 /　 DEVELOPMENT PREVIEW</text>
+<text x="1204.703125" y="917.89375" fill="rgb(145, 155, 132)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">JAPAN · TURF · 2,000m</text>
+<text x="1327.5" y="917.89375" fill="rgb(146, 163, 101)" font-size="8px" font-weight="400" font-family="Noto Sans JP, sans-serif">●</text></g></svg>

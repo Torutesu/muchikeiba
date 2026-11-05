@@ -178,6 +178,11 @@ client.QueueInput(Cmd.Whip);            // Start / LaneIn / LaneOut / ReinPress 
 client.SendPing(localNowMs);
 ```
 - エンジンは部屋が確定したtickだけ進む。描画は `GetPreviousHorse(slot)` と `GetHorse(slot)` を `client.InterpolationAlphaPermille(localNowMs)`（0〜1000）で補間する。
+- **オンライン対戦の描画は `TryGetRenderState(slot, localNowMs, out from, out to, out alpha)` を使う**（`RaceSession` / `LockstepClient`）。直近64tickの状態を保持し、部屋の時計から「バンドル間隔＋50ms」遅れた時刻を描くので、1つのバンドルで2tick届いても毎フレーム滑らかに動く。描画位置は `from + (to − from) × alpha / 1000`。`InterpolationAlphaPermille` は旧方式（1tick分だけ補間するため、まとめて届くとカクつく）。
+- **Unityのメインスレッド**：SDKは `ConfigureAwait(false)` を使わないので、メインスレッドから呼べば `IHttp`・`IAuthTokenProvider`・`IAnalyticsStore` もメインスレッドで呼ばれる（UnityWebRequest・PlayerPrefsがそのまま使える）。保存の失敗は `AnalyticsClient.StorageError` で通知される。
+- **致命的なエラー**：部屋が `UNAUTHORIZED`（チケット期限切れ等）か `NOT_IN_RACE` を返したら、`RaceSession` は再接続せず `Failed`（`FailureReason` にコード）になる。
+- **タイムアタックの入力数**：`OfflineRace` は効果のない連打を記録しない（結果は同じ）。記録は `TimeAttackLimits.MaxInputs`（400）まで。超えたら以降の入力を無視して `InputCapReached` が立つ。
+- **実況**：馬場の前口上はゲートが開いた瞬間に打ち切られ（`CommentaryLine.Interrupted`＝音声を止める）、「スタートしました」がゲートと同時に出る。
 - 再接続：同じ `LockstepClient` で `Connect()` → 続きから。アプリ再起動なら新しい `LockstepClient` で `Connect()` → 全tickを早送り。
 
 ### 描画用の読み取り API（`RaceSim`）

@@ -110,15 +110,18 @@ namespace Muchi.Engine
             if (string.IsNullOrEmpty(RaceId)) throw new ArgumentException("raceId required");
             if (Track == null) throw new ArgumentException("track required");
             if (Ruleset == null) throw new ArgumentException("ruleset required");
-            if (Net == null || Net.TickHz <= 0) throw new ArgumentException("net.tickHz must be > 0");
+            // bounds keep 1000 / tickHz > 0 and the fixed-point math far from overflow
+            if (Net == null || Net.TickHz < 1 || Net.TickHz > 60) throw new ArgumentException("net.tickHz must be 1..60");
             if (Net.ChecksumIntervalTicks <= 0) throw new ArgumentException("net.checksumIntervalTicks must be > 0");
+            if (Net.InputDelayTicks < 0 || Net.InputDelayTicks > 60) throw new ArgumentException("net.inputDelayTicks must be 0..60");
+            if (Net.BundleIntervalTicks < 1 || Net.BundleIntervalTicks > 60) throw new ArgumentException("net.bundleIntervalTicks must be 1..60");
             if (Track.DistanceM <= 0 || Track.DistanceM > 4000) throw new ArgumentException("track.distanceM out of range");
             if (Track.Segments == null || Track.Segments.Count == 0) throw new ArgumentException("track.segments required");
             long sum = 0;
             foreach (var s in Track.Segments)
             {
                 if (s.LengthM < 1) throw new ArgumentException("segment lengthM must be >= 1");
-                if (s.Kind == SegmentKind.Corner && s.RadiusM < 1) throw new ArgumentException("corner radiusM must be >= 1");
+                if (s.Kind == SegmentKind.Corner && (s.RadiusM < 1 || s.RadiusM > MaxCornerRadiusM)) throw new ArgumentException("corner radiusM must be 1.." + MaxCornerRadiusM);
                 sum += s.LengthM;
             }
             if (sum != Track.DistanceM) throw new ArgumentException("segment lengths must sum to distanceM");
@@ -138,5 +141,8 @@ namespace Muchi.Engine
         }
 
         private static bool InStat(int v) => v >= 0 && v <= 1000;
+
+        /// <summary>Largest corner radius accepted (real ovals are ~100-300 m; huge radii would overflow Fx math).</summary>
+        public const int MaxCornerRadiusM = 10000;
     }
 }

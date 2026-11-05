@@ -19,6 +19,13 @@ namespace Muchi.Client
     // =====================================================================================================
 
     /// <summary>A time attack session issued by the server (POST /v1/time-attack/start).</summary>
+    /// <summary>Server limits for time attack submissions (server/master/progression.json timeAttack).</summary>
+    public static class TimeAttackLimits
+    {
+        /// <summary>Most input records a submission may carry (timeAttack.maxInputs).</summary>
+        public const int MaxInputs = 400;
+    }
+
     public sealed class TimeAttackSession
     {
         public string SessionId, Token;
@@ -226,7 +233,7 @@ namespace Muchi.Client
         {
             Session = session ?? throw new ArgumentNullException(nameof(session));
             if (session.Config.Mode != RaceMode.TimeAttack) throw new ArgumentException("not a time attack config");
-            Race = new OfflineRace(session.Config, 0);
+            Race = new OfflineRace(session.Config, 0) { MaxRecordedInputs = TimeAttackLimits.MaxInputs };
             Race.TicksAdvanced += (_, lastTick) => { foreach (var g in Ghosts) g.AdvanceTo(lastTick); };
         }
 

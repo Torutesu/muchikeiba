@@ -8,7 +8,10 @@ const CLIENT_MASK = 0x3f;
 export interface RoomOptions {
   /** Probability (0..1) that an otherwise-confirmed race is re-simulated anyway (REQ-NET-008). */
   verifySampleRate: number;
-  /** How long to wait for results after the room stops advancing. */
+  /**
+   * How long to wait for the remaining results once a majority of connected humans has reported
+   * (or after the room hit maxTicks).
+   */
   resultWaitMs: number;
   rng: Rng;
 }
@@ -17,7 +20,12 @@ export const DEFAULT_ROOM_OPTIONS = { verifySampleRate: 0.05, resultWaitMs: 5000
 export type Outbound = { to: number | 'all'; msg: ServerMessage };
 export type RoomPhase = 'running' | 'awaitingResults' | 'verifying' | 'final';
 
-interface Conn { connected: boolean; disconnectedAt: number | null; cpu: boolean; everConnected: boolean }
+interface ReportedResult { h: string; order: number[]; finishTicks?: number[] }
+interface Conn {
+  connected: boolean; disconnectedAt: number | null; cpu: boolean; everConnected: boolean;
+  /** Last message time (REQ-NET-013: a silent socket counts as disconnected after disconnectGraceMs). */
+  lastMsgAt?: number;
+}
 
 export interface FinalOutcome {
   status: 'confirmed' | 'void';
@@ -26,13 +34,17 @@ export interface FinalOutcome {
   via: 'consensus' | 'verifier' | 'none';
   /** Human slots whose reported hash disagreed with the final result (cheat/desync suspects). */
   suspects: number[];
+  /** Finish ticks in `order` (verifier output, or identical reports of all agreeing clients). Optional. */
+  finishTicks?: number[];
 }
 
 export interface RoomSnapshot {
   config: RaceStartConfig; startAtMs: number; opts: Omit<RoomOptions, 'rng'>;
   conns: [number, Conn][]; pending: [number, [number, number][]][]; log: InputTriple[];
   confirmedTick: number; lastBundledTick: number; phase: RoomPhase; stoppedAtMs: number | null;
-  checksums: [number, [number, string][]][]; desync: number[]; results: [number, { h: string; order: number[] }][];
+  /** When a majority of connected humans had reported (absent in snapshots from older builds). */
+  majorityAtMs?: number | null;
+  checksums: [number, [number, string][]][]; desync: number[]; results: [number, ReportedResult][];
   reported: boolean; final: FinalOutcome | null;
 }
 
@@ -48,16 +60,20 @@ export class RaceRoomCore {
   private lastBundledTick = -1;
   private _phase: RoomPhase = 'running';
   private stoppedAtMs: number | null = null;
+  private majorityAtMs: number | null = null;
   private checksums = new Map<number, Map<number, string>>();
   private desync = new Set<number>();
-  private results = new Map<number, { h: string; order: number[] }>();
+  private results = new Map<number, ReportedResult>();
   private reported = false;
   private _final: FinalOutcome | null = null;
   readonly humanSlots: number[];
+  /** Earliest tick on which any horse could possibly finish; results before it are rejected (REQ-NET-012). */
+  readonly minResultTick: number;
 
   constructor(readonly config: RaceStartConfig, readonly startAtMs: number, private readonly opts: RoomOptions) {
     this.humanSlots = config.entrants.filter((e) => e.kind === 'human').map((e) => e.slot);
     for (const s of this.humanSlots) this.conns.set(s, { connected: false, disconnectedAt: null, cpu: false, everConnected: false });
+    this.minResultTick = minPlausibleFinishTick(config);
   }
 
   get phase() { return this._phase; }
@@ -91,14 +107,7 @@ export class RaceRoomCore {
     const c = this.conns.get(slot);
     if (!c) return [{ to: slot, msg: { t: 'err', code: 'NOT_IN_RACE' } }];
     const out: Outbound[] = [{ to: slot, msg: { t: 'start', you: slot, startAtMs: this.startAtMs, config: this.config } }];
-    c.connected = true;
-    c.disconnectedAt = null;
-    c.everConnected = true;
-    if (c.cpu && this.isAdvancing()) {
-      // REQ-NET-007: hand control back at the next unconfirmed tick
-      this.addCmd(this.confirmedTick + 1, slot, CMD.HUMAN_RESUME);
-      c.cpu = false;
-    }
+    this.markAlive(c, slot, now);
     const from = Math.max(0, lastTick + 1);
     if (this.confirmedTick >= from) out.push({ to: slot, msg: this.bundle(from, this.confirmedTick) });
     if (this._final) out.push({ to: slot, msg: this.finalMsg() });
@@ -115,9 +124,25 @@ export class RaceRoomCore {
 
   private isAdvancing() { return this._phase === 'running'; }
 
+  private markAlive(c: Conn, slot: number, now: number) {
+    c.connected = true;
+    c.disconnectedAt = null;
+    c.everConnected = true;
+    c.lastMsgAt = now;
+    if (c.cpu && this.isAdvancing()) {
+      // REQ-NET-007: hand control back at the next unconfirmed tick
+      this.addCmd(this.confirmedTick + 1, slot, CMD.HUMAN_RESUME);
+      c.cpu = false;
+    }
+  }
+
   message(slot: number, msg: ClientMessage, now: number): Outbound[] {
     const c = this.conns.get(slot);
     if (!c) return [{ to: slot, msg: { t: 'err', code: 'NOT_IN_RACE' } }];
+    if (msg.t !== 'hello') {
+      if (c.connected) c.lastMsgAt = now;
+      else if (c.everConnected) this.markAlive(c, slot, now); // a client we had written off is talking again
+    }
     switch (msg.t) {
       case 'hello':
         return this.hello(slot, msg.lastTick, now);
@@ -138,8 +163,10 @@ export class RaceRoomCore {
         return this.onChecksum(slot, msg.tick, msg.h);
       case 'res':
         if (this._phase !== 'running' && this._phase !== 'awaitingResults') return [{ to: slot, msg: { t: 'err', code: 'RACE_OVER' } }];
-        this.results.set(slot, { h: msg.h, order: msg.order });
-        return this.maybeStopOnResults(now);
+        if (this.results.has(slot)) return []; // first report counts; a client cannot swap its hash later
+        if (this.confirmedTick < this.minResultTick) return [{ to: slot, msg: { t: 'err', code: 'RESULT_TOO_EARLY' } }];
+        this.results.set(slot, msg.finishTicks ? { h: msg.h, order: msg.order, finishTicks: msg.finishTicks } : { h: msg.h, order: msg.order });
+        return this.checkResults(now);
     }
   }
 
@@ -165,17 +192,28 @@ export class RaceRoomCore {
     return out;
   }
 
+  private connectedHumans() { return this.humanSlots.filter((s) => this.conns.get(s)!.connected); }
+
   /**
-   * The first result means that client has simulated to the finish, so the room stops confirming
-   * ticks (clients already hold bundles past the end tick). The decision is made once every
-   * connected human has reported, or after `resultWaitMs`.
+   * REQ-NET-008 / REQ-NET-012: a single `res` never stops the room (one client finishing early — or
+   * lying — must not freeze honest clients mid-race; ticks past a client's end are harmless). The room
+   * stops and decides when every connected human has reported, or when a strict majority of connected
+   * humans has reported and `resultWaitMs` has passed since then, or (in advance()) at maxTicks.
    */
-  private maybeStopOnResults(now: number): Outbound[] {
+  private checkResults(now: number): Outbound[] {
+    const connected = this.connectedHumans();
+    const reported = connected.filter((s) => this.results.has(s)).length;
     const out: Outbound[] = [];
-    if (this._phase === 'running') out.push(...this.stop(now));
-    const connected = this.humanSlots.filter((s) => this.conns.get(s)!.connected);
-    const allIn = connected.length > 0 && connected.every((s) => this.results.has(s));
-    if (allIn && this._phase === 'awaitingResults') out.push(...this.decide());
+    if (connected.length > 0 && reported === connected.length) {
+      if (this._phase === 'running') out.push(...this.stop(now));
+      if (this._phase === 'awaitingResults') out.push(...this.decide());
+      return out;
+    }
+    if (this.majorityAtMs === null && reported * 2 > connected.length) this.majorityAtMs = now;
+    if (this._phase === 'running' && this.majorityAtMs !== null && now - this.majorityAtMs >= this.opts.resultWaitMs) {
+      out.push(...this.stop(now));
+      out.push(...this.decide());
+    }
     return out;
   }
 
@@ -195,6 +233,11 @@ export class RaceRoomCore {
     const out: Outbound[] = [];
     if (this._phase === 'running') {
       for (const [slot, c] of this.conns) {
+        // REQ-NET-013: silence counts as a disconnect (a half-open socket never fires close)
+        if (c.connected && !this.results.has(slot) && now - Math.max(c.lastMsgAt ?? this.startAtMs, this.startAtMs) >= this.config.net.disconnectGraceMs) {
+          c.connected = false;
+          c.disconnectedAt = Math.max(c.lastMsgAt ?? this.startAtMs, this.startAtMs);
+        }
         if (!c.connected && !c.cpu && (c.disconnectedAt === null ? !c.everConnected && now - this.startAtMs >= this.config.net.disconnectGraceMs : now - c.disconnectedAt >= this.config.net.disconnectGraceMs)) {
           // REQ-NET-006: deterministic CPU takeover, inserted as an input for everyone
           this.addCmd(this.confirmedTick + 1, slot, CMD.CPU_TAKEOVER);
@@ -219,13 +262,29 @@ export class RaceRoomCore {
         this.lastBundledTick = this.confirmedTick;
       }
       if (this.confirmedTick >= this.maxTicks - 1) out.push(...this.stop(now));
+      else if (this.results.size > 0) out.push(...this.checkResults(now)); // disconnects / majority timeout
     }
     if (this._phase === 'awaitingResults' && this.stoppedAtMs !== null && now - this.stoppedAtMs >= this.opts.resultWaitMs) out.push(...this.decide());
     return out;
   }
 
-  /** A player reported foul play: forces server verification. */
+  /** A player reported foul play: forces server verification (or, after the result, keeps the replay). */
   report() { this.reported = true; }
+
+  /**
+   * REQ-OPS-001: why this race's replay must survive the retention sweep (null = may be deleted).
+   * Reported, disputed (suspects / desync), verified or void races are kept for support and audits.
+   */
+  retentionHold(): string | null {
+    if (this.reported) return 'reported';
+    if (this.desync.size > 0) return 'desync';
+    const f = this._final;
+    if (!f) return null;
+    if (f.status === 'void') return 'void';
+    if (f.suspects.length > 0) return 'disputed';
+    if (f.via === 'verifier') return 'verified';
+    return null;
+  }
 
   private finalMsg(): ServerMessage {
     const f = this._final!;
@@ -243,14 +302,17 @@ export class RaceRoomCore {
     }
     const best = [...counts.entries()].sort((a, b) => b[1].n - a[1].n)[0];
     const ranked = this.config.mode === 'ranked';
+    const humans = this.humanSlots.length;
     let verify = false;
     if (this.reported) verify = true;
-    else if (ranked && this.humanSlots.length < 2) verify = true;
-    else if (reporters.length >= 2) {
-      const ok = best !== undefined && best[1].n >= 2 && best[1].n * 3 >= reporters.length * 2;
+    else if (reporters.length === 0) verify = true;
+    else if (humans === 1) verify = ranked; // tutorial / solo: the lone client is trusted unless ranked
+    else if (reporters.length < 2) verify = true; // one voice among several humans proves nothing
+    else {
+      // quorum: the winning hash needs 2/3 of all human slots (not just of those who reported)
+      const ok = best !== undefined && best[1].n >= 2 && best[1].n * 3 >= humans * 2;
       verify = !ok || this.opts.rng.nextU32() / 0x100000000 < this.opts.verifySampleRate;
-    } else if (reporters.length === 1) verify = ranked;
-    else verify = true;
+    }
 
     if (verify) {
       this._phase = 'verifying';
@@ -258,6 +320,8 @@ export class RaceRoomCore {
     }
     const [hash, { order }] = best!;
     this._final = { status: 'confirmed', order, hash, via: 'consensus', suspects: reporters.filter(([, r]) => r.h !== hash).map(([s]) => s) };
+    const ft = agreedFinishTicks(reporters.filter(([, r]) => r.h === hash).map(([, r]) => r), order.length);
+    if (ft) this._final.finishTicks = ft;
     this._phase = 'final';
     return [{ to: 'all', msg: this.finalMsg() }];
   }
@@ -266,7 +330,7 @@ export class RaceRoomCore {
   applyVerification(out: VerifierOutput | null): Outbound[] {
     if (this._phase !== 'verifying') return [];
     if (!out) this._final = { status: 'void', order: [], hash: '', via: 'none', suspects: [] };
-    else this._final = { status: 'confirmed', order: out.order, hash: out.resultHash, via: 'verifier', suspects: [...this.results.entries()].filter(([, r]) => r.h !== out.resultHash).map(([s]) => s) };
+    else this._final = { status: 'confirmed', order: out.order, hash: out.resultHash, via: 'verifier', suspects: [...this.results.entries()].filter(([, r]) => r.h !== out.resultHash).map(([s]) => s), finishTicks: out.finishTicks };
     this._phase = 'final';
     return [{ to: 'all', msg: this.finalMsg() }];
   }
@@ -280,7 +344,7 @@ export class RaceRoomCore {
       config: this.config, startAtMs: this.startAtMs, opts: { verifySampleRate: this.opts.verifySampleRate, resultWaitMs: this.opts.resultWaitMs },
       conns: [...this.conns.entries()].map(([k, v]) => [k, { ...v }]),
       pending: [...this.pending.entries()].map(([t, m]) => [t, [...m.entries()]]),
-      log: this.log, confirmedTick: this.confirmedTick, lastBundledTick: this.lastBundledTick, phase: this._phase, stoppedAtMs: this.stoppedAtMs,
+      log: this.log, confirmedTick: this.confirmedTick, lastBundledTick: this.lastBundledTick, phase: this._phase, stoppedAtMs: this.stoppedAtMs, majorityAtMs: this.majorityAtMs,
       checksums: [...this.checksums.entries()].map(([t, m]) => [t, [...m.entries()]]), desync: [...this.desync],
       results: [...this.results.entries()], reported: this.reported, final: this._final,
     };
@@ -295,6 +359,7 @@ export class RaceRoomCore {
     r.lastBundledTick = s.lastBundledTick;
     r._phase = s.phase;
     r.stoppedAtMs = s.stoppedAtMs;
+    r.majorityAtMs = s.majorityAtMs ?? null;
     r.checksums = new Map(s.checksums.map(([t, e]) => [t, new Map(e)]));
     r.desync = new Set(s.desync);
     r.results = new Map(s.results);
@@ -302,4 +367,25 @@ export class RaceRoomCore {
     r._final = s.final;
     return r;
   }
+}
+
+/** Finish ticks are trusted only when every client that agreed on the hash sent the same array. */
+function agreedFinishTicks(agreeing: ReportedResult[], n: number): number[] | null {
+  const first = agreeing[0]?.finishTicks;
+  if (!first || first.length !== n) return null;
+  return agreeing.every((r) => r.finishTicks && r.finishTicks.length === n && r.finishTicks.every((v, i) => v === first[i])) ? [...first] : null;
+}
+
+/**
+ * Lower bound on the first possible finish tick: gate + distance at an over-estimated top speed
+ * (every speed bonus at once, no acceleration). Used only to reject impossibly early results.
+ */
+export function minPlausibleFinishTick(config: RaceStartConfig): number {
+  const r = config.ruleset as Record<string, unknown>;
+  const n = (k: string) => (typeof r[k] === 'number' ? (r[k] as number) : 0);
+  const vmax = n('baseCruiseSpeedMmPerSec') + n('speedStatBonusMmPerSecPer1000') + n('spurtSpeedBonusMaxMmPerSec') + n('whipSpeedBonusMmPerSec');
+  if (vmax <= 0) return 0;
+  const boosted = Math.ceil((vmax * (1000 + Math.max(0, n('startBoostPermille')))) / 1000);
+  const raceTicks = Math.floor((config.track.distanceM * 1000 * config.net.tickHz) / boosted);
+  return Math.max(0, n('gateOpenTick') + raceTicks);
 }

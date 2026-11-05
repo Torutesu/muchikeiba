@@ -1,5 +1,5 @@
 import type { Env } from './env.js';
-import { handle, type AppContext, type PlayerInvoker, type RaceEntry } from './http/app.js';
+import { handle, makeFriendsService, type AppContext, type PlayerInvoker, type RaceEntry } from './http/app.js';
 import { bearer, verifyFirebaseIdToken } from './http/auth.js';
 import { parseStoreNotification } from './http/stores.js';
 import { loadMaster } from './domain/master.js';
@@ -11,6 +11,12 @@ export { PlayerDO } from './do/player.js';
 export { RaceRoomDO } from './do/raceRoom.js';
 export { MatchmakerDO } from './do/matchmaker.js';
 export { AccountingDO } from './do/accounting.js';
+export { LeaderboardDO } from './do/leaderboard.js';
+export { DirectoryDO } from './do/directory.js';
+import { shardedDirectory } from './do/directory.js';
+import { boardKey, indexKey, type RolloverState } from './domain/leaderboard.js';
+import { runScheduled } from './domain/scheduled.js';
+import { sweepReplays, type ReplayBucket } from './domain/retention.js';
 
 const master = loadMaster();
 validateGacha(master); // fail fast on a broken gacha/master definition (REQ-GACHA-003/008)
@@ -22,6 +28,11 @@ export function makeContext(env: Env): AppContext {
   const dev = env.DEV_MODE === '1';
   const mm = () => stub(env.MATCHMAKER, 'ranked-jp');
   const call = async (p: Promise<Envelope<unknown>>) => unwrap(await p);
+  const lb = (seasonId: string) => stub(env.LEADERBOARD, `lb:${seasonId}`);
+  const player = (uid: string): PlayerInvoker => {
+    const s = stub(env.PLAYER, uid);
+    return { invoke: (async (m: string, ...args: unknown[]) => call(s.invoke!(m, args))) as PlayerInvoker['invoke'] };
+  };
   return {
     master,
     async authenticate(req) {
@@ -29,10 +40,7 @@ export function makeContext(env: Env): AppContext {
       if (dev && devUser) return devUser;
       return verifyFirebaseIdToken(bearer(req), env.FIREBASE_PROJECT_ID);
     },
-    player(uid): PlayerInvoker {
-      const s = stub(env.PLAYER, uid);
-      return { invoke: (async (m: string, ...args: unknown[]) => call(s.invoke!(m, args))) as PlayerInvoker['invoke'] };
-    },
+    player,
     match: {
       enqueue: (p, e: RaceEntry) => call(mm().enqueue!(p, e)),
       cancel: (p) => call(mm().cancel!(p)),
@@ -41,6 +49,7 @@ export function makeContext(env: Env): AppContext {
       friendJoin: (pass, p, e) => call(mm().friendJoin!(pass, p, e)),
       friendStart: (pass, p) => call(mm().friendStart!(pass, p)),
       tutorial: (p, e) => call(mm().tutorial!(p, e)),
+      friendMember: async (pass, p) => (await call(mm().friendMember!(pass, p))) as boolean,
     },
     race: {
       websocket: (raceId, req) => (env.RACE_ROOM.get(env.RACE_ROOM.idFromName(raceId)) as unknown as { fetch(r: Request): Promise<Response> }).fetch(req),
@@ -51,14 +60,45 @@ export function makeContext(env: Env): AppContext {
         return obj.json();
       },
     },
+    friends: makeFriendsService((uid) => player(uid), shardedDirectory(env.DIRECTORY)),
+    leaderboard: {
+      board: async (seasonId, board) => {
+        const obj = await env.SNAPSHOTS.get(board === 'index' ? indexKey(seasonId) : boardKey(seasonId, board));
+        if (!obj) return { seasonId, board, generatedAt: null, total: 0, entries: [] };
+        return obj.json();
+      },
+      myRank: async (playerId, seasonId) => call(lb(seasonId).rankOf!(playerId)),
+    },
     paidBalance: () => (stub(env.ACCOUNTING, 'global') as unknown as { summary(): Promise<unknown> }).summary(),
     adminToken: env.ADMIN_TOKEN,
     parseStoreNotification: (platform, req) => parseStoreNotification(platform, req, dev),
   };
 }
 
+/** R2Bucket → the minimal interface the retention sweep uses. */
+const replayBucket = (b: R2Bucket): ReplayBucket => ({
+  list: async (o) => {
+    const r = await b.list({ prefix: o.prefix, limit: o.limit ?? 1000, include: ['customMetadata'], ...(o.cursor ? { cursor: o.cursor } : {}) });
+    return { objects: r.objects.map((x) => ({ key: x.key, uploaded: x.uploaded, ...(x.customMetadata ? { customMetadata: x.customMetadata } : {}) })), truncated: r.truncated, ...(r.truncated ? { cursor: r.cursor } : {}) };
+  },
+  delete: (keys) => b.delete(keys),
+});
+
 export default {
   fetch(req: Request, env: Env): Promise<Response> {
     return handle(req, {}, makeContext(env));
+  },
+  /** Cron triggers (wrangler.toml [triggers]): leaderboards, season rollover, replay retention. */
+  async scheduled(event: ScheduledController, env: Env) {
+    const lb = (seasonId: string) => env.LEADERBOARD.get(env.LEADERBOARD.idFromName(`lb:${seasonId}`)) as unknown as {
+      snapshot(s: string, now: number): Promise<Envelope<unknown>>; rolloverStep(s: string, now: number): Promise<Envelope<RolloverState>>;
+    };
+    const now = event.scheduledTime;
+    const done = await runScheduled(event.cron, now, {
+      snapshot: async (seasonId) => unwrap(await lb(seasonId).snapshot(seasonId, now)),
+      rolloverStep: async (seasonId) => unwrap(await lb(seasonId).rolloverStep(seasonId, now)),
+      sweepReplays: (t) => sweepReplays(replayBucket(env.REPLAYS), t, Number(env.REPLAY_RETENTION_DAYS ?? master.progression.replayRetentionDays)),
+    });
+    console.log('scheduled', event.cron, done.join(' '));
   },
 } satisfies ExportedHandler<Env>;

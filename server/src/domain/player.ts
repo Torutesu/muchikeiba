@@ -23,6 +23,29 @@ export interface PurchaseRecord {
   paidCoinsGranted: number; bonusCoinsGranted: number; lotId: string | null; refunded: boolean; limitBreach: boolean;
 }
 
+/** REQ-STAT-001: per-player race statistics (ranked + friend races; tutorial excluded). */
+export interface PlayerStats {
+  races: number; wins: number; top3: number;
+  byStyle: Partial<Record<Style, { races: number; wins: number }>>;
+  byTrack: Record<string, { races: number; wins: number; bestFinishTick: number | null }>;
+  /** Wins with at least 3 whips and no mashing (no two whips inside the diminishing window). */
+  whipPerfectWins: number;
+  /** Ticks between the gate opening and the player's START input (0 = perfect). */
+  bestStartReactionTicks: number | null;
+  /** Starts with a reaction of at most 1 tick. */
+  perfectStarts: number;
+}
+
+/** Closed season record kept for rewards (REQ-SEASON-002). */
+export interface SeasonRecord { seasonId: string; classId: string; points: number; races: number; nextClassId: string; rank: number | null; rewarded: boolean }
+
+export interface FriendsState {
+  ids: string[];
+  incoming: { from: string; at: number }[];
+  outgoing: { to: string; at: number }[];
+  invites: { from: string; passphrase: string; at: number }[];
+}
+
 export interface PlayerState {
   v: 1;
   id: string;
@@ -45,8 +68,31 @@ export interface PlayerState {
   missions: { date: string; progress: Record<string, number>; claimed: string[] };
   breeding: { date: string | null; count: number };
   rating: { r: number; rd: number; vol: number; rankedRaces: number };
-  season: { id: string; classId: string; points: number };
+  season: { id: string; classId: string; points: number; races: number };
   counters: { horseSeq: number; lotSeq: number };
+  profile: { displayName: string; titleId: string | null; lastSeenAt: number; lastPushedAt: number };
+  stats: PlayerStats;
+  titles: string[];
+  friends: FriendsState;
+  seasonHistory: SeasonRecord[];
+  /** Friend-race rewards paid today (daily cap, REQ-REW-004). */
+  friendRewards: { date: string; count: number };
+}
+
+export const newStats = (): PlayerStats => ({ races: 0, wins: 0, top3: 0, byStyle: {}, byTrack: {}, whipPerfectWins: 0, bestStartReactionTicks: null, perfectStarts: 0 });
+export const defaultDisplayName = (id: string) => `騎手${id.replace(/[^A-Za-z0-9]/g, '').slice(-4).toUpperCase() || '0000'}`;
+
+/** Fills fields added after a player's state was first stored (states are never rewritten in bulk). */
+export function migratePlayer(s: PlayerState): PlayerState {
+  const x = s as Partial<PlayerState> & PlayerState;
+  if (x.season.races === undefined) x.season.races = 0;
+  x.profile ??= { displayName: defaultDisplayName(x.id), titleId: null, lastSeenAt: 0, lastPushedAt: 0 };
+  x.stats ??= newStats();
+  x.titles ??= [];
+  x.friends ??= { ids: [], incoming: [], outgoing: [], invites: [] };
+  x.seasonHistory ??= [];
+  x.friendRewards ??= { date: '', count: 0 };
+  return x;
 }
 
 export function newPlayer(id: string, now: number, seasonId: string): PlayerState {
@@ -60,8 +106,14 @@ export function newPlayer(id: string, now: number, seasonId: string): PlayerStat
     missions: { date: '', progress: {}, claimed: [] },
     breeding: { date: null, count: 0 },
     rating: { r: 1500, rd: 350, vol: 0.06, rankedRaces: 0 },
-    season: { id: seasonId, classId: 'C', points: 0 },
+    season: { id: seasonId, classId: 'C', points: 0, races: 0 },
     counters: { horseSeq: 0, lotSeq: 0 },
+    profile: { displayName: defaultDisplayName(id), titleId: null, lastSeenAt: now, lastPushedAt: 0 },
+    stats: newStats(),
+    titles: [],
+    friends: { ids: [], incoming: [], outgoing: [], invites: [] },
+    seasonHistory: [],
+    friendRewards: { date: '', count: 0 },
   };
 }
 
@@ -73,5 +125,7 @@ export function playerView(s: PlayerState) {
     items: s.items, materials: s.materials, pity: s.pity, horses: s.horses,
     ageRegistered: s.age !== null, flags: s.flags, seasonPass: s.seasonPass, loginBonus: s.loginBonus,
     rating: { r: Math.round(s.rating.r), rd: Math.round(s.rating.rd), rankedRaces: s.rating.rankedRaces }, season: s.season,
+    profile: { displayName: s.profile.displayName, titleId: s.profile.titleId }, titles: s.titles, stats: s.stats,
+    seasonHistory: s.seasonHistory,
   };
 }

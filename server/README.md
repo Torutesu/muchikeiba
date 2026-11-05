@@ -31,9 +31,14 @@ src/domain/     純粋ロジック（I/Oなし・時刻と乱数は注入）
   horses.ts       覚醒、命名（正規化＋NG）、引退、配合、ニックス、5代血統、近親ペナルティ、予想
   rewards.ts      ログボ、デイリーミッション、シーズンパス、レース報酬
   service.ts      PlayerService（ドラフト上で実行→成功時のみ保存、冪等キー）
-src/race/       レース作成（チケット発行）と精算（着順→報酬・レート）
+  stats.ts        戦績（入力ログからスタート反応・ムチ）、称号の判定と装備、表示名、公開プロフィール
+  leaderboard.ts  ランキングの集計ファイル・順位、シーズン締めの再開可能な処理
+  friends.ts      フレンドコード、申請〜解除の各段階、招待、FriendsService（2人の更新を順番に＋取り消し）
+  retention.ts    リプレイログの保存期限（保留は残す）
+  scheduled.ts    cronの振り分け
+src/race/       レース作成（チケット発行）、精算（着順→報酬・レート・戦績）、settlement.ts（検証と精算をアラームから再試行つきで実行）
 src/http/       ルーター、Firebase IDトークン検証、レース入場チケット、ストアアダプタ
-src/do/         Durable Objects（PlayerDO / RaceRoomDO / MatchmakerDO / AccountingDO）
+src/do/         Durable Objects（PlayerDO / RaceRoomDO / MatchmakerDO / AccountingDO / LeaderboardDO / DirectoryDO）
 master/         マスターデータ（全て架空。金額・確率は暫定）
 ```
 
@@ -82,6 +87,20 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | POST | `/v1/race/tutorial` | 要 | | `{horseId}` → 割り当て（CPU11頭・弱め） |
 | GET | `/v1/race/:raceId/ws` | チケット | | WebSocket。最初に `{"t":"hello","raceId","token":<ticket>,"lastTick":-1}` |
 | POST | `/v1/race/:raceId/report` | 要 | | 不正の通報（サーバー検証を強制） |
+| PUT | `/v1/player/profile` | 要 | | `{displayName}` 1〜12文字、NGリスト |
+| GET | `/v1/titles` | 要 | | 称号一覧（解放済みか）と装備中 |
+| PUT | `/v1/player/title` | 要 | | `{titleId \| null}` 解放済みのみ |
+| GET | `/v1/stats` | 要 | | 戦績（脚質別・コース別ベスト・スタート・ムチ） |
+| GET | `/v1/leaderboards/:seasonId/:board` | なし | | `seasonId`=`YYYY-MM`\|`current`、`board`=`class-C`等\|`rating`\|`index`。R2の集計ファイル（5分ごと更新） |
+| GET | `/v1/leaderboards/me` | 要 | | 今シーズンの自分の順位（直近集計）と現在の成績 |
+| GET | `/v1/friends` | 要 | | フレンド・受信/送信中の申請・招待（公開プロフィール付き） |
+| GET | `/v1/friends/code` | 要 | | 自分のフレンドコード（9桁） |
+| POST | `/v1/friends/requests` | 要 | | `{code}` 申請（相互申請なら即フレンド） |
+| POST | `/v1/friends/requests/:fromId/accept` | 要 | | 承認 |
+| POST | `/v1/friends/requests/:fromId/decline` | 要 | | 拒否 |
+| DELETE | `/v1/friends/requests/:toId` | 要 | | 自分の申請を取り消し |
+| DELETE | `/v1/friends/:friendId` | 要 | | フレンド解除（双方） |
+| POST | `/v1/friend-rooms/:passphrase/invite` | 要 | | `{friendId}` 部屋のメンバーがフレンドを招待 |
 | GET | `/v1/admin/paid-balance` | 管理 | | 有償コイン未使用残高の集計（資金決済法） |
 | GET | `/v1/admin/replays/:raceId` | 管理 | | リプレイログ |
 
@@ -91,8 +110,18 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 - お金・抽選・配合の乱数はすべてサーバー（`crypto.getRandomValues`）。端末の値は信用しない。
 - PlayerService の各操作は状態のコピーに対して実行し、最後まで成功したときだけ保存（ガチャ途中の失敗で巻き戻る）。
 - 有償コインは購入ごとの「ロット」で管理し、購入単価で円換算できる（基準日の未使用残高）。
-- レース部屋は計算しない。tickを確定して入力を配り、結果ハッシュの合意を取るだけ。合意できない／人間1人のランク戦／通報／抜き取りは検証サーバーで再計算。検証サーバーに届かなければ無効。
+- レース部屋は計算しない。tickを確定して入力を配り、結果ハッシュの合意を取るだけ。合意できない／人間1人のランク戦／通報／抜き取りは検証サーバーで再計算。検証サーバーに届かなければ3回まで再試行してから無効。検証と精算はアラームからだけ実行（`src/race/settlement.ts`）。
+- 1件の結果で部屋は止まらない。ありえない早さの結果は拒否、合意は人間スロットの2/3が必要（REQ-NET-012）。
+- ランキングは1シーズン＝1オブジェクト（`LeaderboardDO`、`lb:YYYY-MM`）。フレンドコードと公開プロフィールは16シャード（`DirectoryDO`、`dir:n`）。
 - ゴールデン `contracts/golden/ts-config-*.json` はルールセットのファイルを埋め込むので、ルールセットを変えたら `npm run gen:golden`。
+
+## 定期実行（wrangler.toml `[triggers]`）
+| cron (UTC) | 内容 |
+|---|---|
+| `*/5 * * * *` | 今シーズンのランキング集計をR2（`SNAPSHOTS`）へ（変化があった時だけ）＋前シーズンの締めを1段階進める（完了後は何もしない） |
+| `23 18 * * *`（03:23 JST） | リプレイログの保存期限切れを削除（保留中は残す） |
+
+ローカルでは `wrangler dev --test-scheduled` で `/__scheduled?cron=*/5+*+*+*+*` を叩いて確認できる。
 
 ## 未実装・要対応
 - Apple / Google のレシート検証と返金通知の署名検証（認証情報が必要。現状は全て拒否＝何も付与しない安全側）

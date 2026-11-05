@@ -84,6 +84,7 @@ describe('disconnect / reconnect (REQ-NET-006/007)', () => {
     const cfg = makeConfig(2);
     const r = new RaceRoomCore(cfg, START, { verifySampleRate: 0, resultWaitMs: 5000, rng: seededRng(1) });
     r.hello(r.humanSlots[0]!, -1, 0);
+    r.message(r.humanSlots[0]!, { t: 'ping', c: 1 }, START + 2500); // the connected client keeps talking
     r.advance(START + 3000);
     expect(r.isCpuControlled(r.humanSlots[1]!)).toBe(true);
     expect(r.isCpuControlled(r.humanSlots[0]!)).toBe(false);
@@ -109,13 +110,33 @@ describe('checksums (REQ-NET-005)', () => {
   });
 });
 
-describe('result consensus (REQ-NET-008)', () => {
-  const finish = (r: RaceRoomCore, slots: number[], hashes: string[]) => {
-    r.advance(at(100));
+describe('result consensus (REQ-NET-008/012)', () => {
+  /** Advance to `tick` in 1-second steps while every listed client keeps talking (pings). */
+  const runTo = (r: RaceRoomCore, alive: number[], tick: number) => {
     let out: Outbound[] = [];
-    slots.forEach((s, i) => { out = r.message(s, { t: 'res', h: hashes[i]!, order: [s] }, at(100)); });
+    for (let t = Math.max(0, r.lastConfirmedTick); t < tick; t = Math.min(tick, t + 20)) {
+      for (const s of alive) r.message(s, { t: 'ping', c: 0 }, at(t));
+      out = out.concat(r.advance(at(Math.min(tick, t + 20))));
+    }
+    for (const s of alive) r.message(s, { t: 'ping', c: 0 }, at(tick));
     return out;
   };
+  const end = (r: RaceRoomCore) => r.minResultTick + 20;
+  const finish = (r: RaceRoomCore, slots: number[], hashes: string[]) => {
+    const e = end(r);
+    runTo(r, slots, e);
+    let out: Outbound[] = [];
+    slots.forEach((s, i) => { out = r.message(s, { t: 'res', h: hashes[i]!, order: [s] }, at(e)); });
+    return out;
+  };
+
+  it('has a plausible minimum finish tick and rejects results before it', () => {
+    const { r, slots } = room(3);
+    expect(r.minResultTick).toBeGreaterThan(600);
+    expect(r.minResultTick).toBeLessThan(1600); // the engine's real winners finish around tick 1840
+    runTo(r, slots, 100);
+    expect(r.message(slots[0]!, { t: 'res', h: H('a'), order: [0] }, at(100))[0]!.msg).toEqual({ t: 'err', code: 'RESULT_TOO_EARLY' });
+  });
 
   it('confirms when all clients agree, and stops advancing', () => {
     const { r, slots } = room(3);
@@ -123,12 +144,12 @@ describe('result consensus (REQ-NET-008)', () => {
     expect(out.at(-1)!.msg).toMatchObject({ t: 'final', status: 'confirmed', h: H('a') });
     expect(r.final).toMatchObject({ status: 'confirmed', via: 'consensus', suspects: [] });
     const tick = r.lastConfirmedTick;
-    r.advance(at(300));
+    r.advance(at(tick + 300));
     expect(r.lastConfirmedTick).toBe(tick);
-    expect(r.message(slots[0]!, { t: 'in', tick: tick + 1, cmd: 1 }, at(300))[0]!.msg).toEqual({ t: 'err', code: 'RACE_OVER' });
+    expect(r.message(slots[0]!, { t: 'in', tick: tick + 1, cmd: 1 }, at(tick + 300))[0]!.msg).toEqual({ t: 'err', code: 'RACE_OVER' });
   });
 
-  it('confirms a 2/3 majority and marks the dissenter as suspect', () => {
+  it('confirms a 2/3 majority of human slots and marks the dissenter as suspect', () => {
     const { r, slots } = room(3);
     finish(r, slots, [H('a'), H('b'), H('a')]);
     expect(r.final).toMatchObject({ status: 'confirmed', hash: H('a'), suspects: [slots[1]] });
@@ -141,7 +162,7 @@ describe('result consensus (REQ-NET-008)', () => {
     expect(r.phase).toBe('verifying');
     const fin = r.applyVerification({ resultHash: H('b'), order: [1, 0], finishTicks: [10, 11], checksums: {} });
     expect(fin[0]!.msg).toMatchObject({ t: 'final', status: 'confirmed', h: H('b') });
-    expect(r.final).toMatchObject({ via: 'verifier', suspects: [slots[0]] });
+    expect(r.final).toMatchObject({ via: 'verifier', suspects: [slots[0]], finishTicks: [10, 11] });
   });
 
   it('voids the race when the verifier is unavailable', () => {
@@ -157,10 +178,35 @@ describe('result consensus (REQ-NET-008)', () => {
     expect(r.phase).toBe('verifying');
   });
 
-  it('accepts a single-human friend race', () => {
-    const { r, slots } = room(1, 'friend');
+  it('accepts a single-human tutorial race', () => {
+    const { r, slots } = room(1, 'tutorial');
     finish(r, slots, [H('a')]);
     expect(r.final?.status).toBe('confirmed');
+  });
+
+  it('never lets one reporter confirm its own order when several humans raced, in any mode', () => {
+    for (const mode of ['friend', 'ranked'] as const) {
+      const { r, slots } = room(3, mode);
+      const e = end(r);
+      runTo(r, slots, e);
+      r.message(slots[0]!, { t: 'res', h: H('a'), order: [slots[0]!] }, at(e));
+      r.disconnect(slots[1]!, at(e));
+      r.disconnect(slots[2]!, at(e));
+      r.advance(at(e + 1));
+      expect(r.phase).toBe('verifying');
+    }
+  });
+
+  it('needs 2/3 of all human slots, not just of the reporters', () => {
+    const { r, slots } = room(4, 'friend');
+    const e = end(r);
+    runTo(r, slots, e);
+    r.message(slots[0]!, { t: 'res', h: H('a'), order: [0] }, at(e));
+    r.message(slots[1]!, { t: 'res', h: H('a'), order: [0] }, at(e)); // 2 of 4 humans
+    r.disconnect(slots[2]!, at(e));
+    r.disconnect(slots[3]!, at(e));
+    r.advance(at(e + 1));
+    expect(r.phase).toBe('verifying');
   });
 
   it('verifies when reported or sampled', () => {
@@ -173,31 +219,115 @@ describe('result consensus (REQ-NET-008)', () => {
     expect(b.r.phase).toBe('verifying');
   });
 
-  it('stops confirming ticks at the first result and decides when everyone reported', () => {
+  it('keeps confirming ticks after an early result and decides when everyone reported (REQ-NET-012)', () => {
     const { r, slots } = room(3);
-    r.advance(at(100));
-    const out = r.message(slots[0]!, { t: 'res', h: H('a'), order: [0] }, at(100));
-    expect(r.phase).toBe('awaitingResults');
+    const e = end(r);
+    runTo(r, slots, e);
+    const out = r.message(slots[0]!, { t: 'res', h: H('a'), order: [0] }, at(e));
+    expect(r.phase).toBe('running');
     expect(out.every((o) => o.msg.t !== 'final')).toBe(true);
-    r.advance(at(150));
-    expect(r.lastConfirmedTick).toBe(100);
-    r.message(slots[1]!, { t: 'res', h: H('a'), order: [0] }, at(150));
-    const fin = r.message(slots[2]!, { t: 'res', h: H('a'), order: [0] }, at(150));
+    runTo(r, slots, e + 50);
+    expect(r.lastConfirmedTick).toBe(e + 50);
+    r.message(slots[1]!, { t: 'res', h: H('a'), order: [0] }, at(e + 50));
+    const fin = r.message(slots[2]!, { t: 'res', h: H('a'), order: [0] }, at(e + 50));
     expect(fin.at(-1)!.msg).toMatchObject({ t: 'final', status: 'confirmed' });
-    expect(r.replayLog().endTick).toBe(100);
+    expect(r.replayLog().endTick).toBe(e + 50);
+  });
+
+  it('an early fake result cannot freeze honest clients; the cheater is flagged (REQ-NET-012)', () => {
+    const { r, slots } = room(3);
+    const e = end(r);
+    runTo(r, slots, e);
+    // slot A claims to have finished as soon as that is plausible, with a forged hash
+    expect(r.message(slots[0]!, { t: 'res', h: H('f'), order: [slots[0]!] }, at(e))).toEqual([]);
+    // honest clients keep receiving bundles all the way to their real finish
+    const bs = bundles(runTo(r, slots, 1900));
+    expect(r.phase).toBe('running');
+    expect(bs.at(-1)!.to).toBe(1900);
+    // the cheater cannot swap its hash afterwards
+    expect(r.message(slots[0]!, { t: 'res', h: H('a'), order: [0] }, at(1900))).toEqual([]);
+    r.message(slots[1]!, { t: 'res', h: H('a'), order: [1, 0] }, at(1900));
+    const fin = r.message(slots[2]!, { t: 'res', h: H('a'), order: [1, 0] }, at(1900));
+    expect(fin.at(-1)!.msg).toMatchObject({ t: 'final', status: 'confirmed', h: H('a') });
+    expect(r.final).toMatchObject({ hash: H('a'), via: 'consensus', suspects: [slots[0]] });
+  });
+
+  it('decides resultWaitMs after a majority reported, without waiting for a silent client', () => {
+    const { r, slots } = room(3);
+    const e = end(r);
+    runTo(r, slots, e);
+    r.message(slots[0]!, { t: 'res', h: H('a'), order: [0] }, at(e));
+    r.message(slots[1]!, { t: 'res', h: H('a'), order: [0] }, at(e)); // 2 of 3 → majority from now
+    r.message(slots[2]!, { t: 'ping', c: 0 }, at(e) + 2500);
+    expect(r.advance(at(e) + 4999).some((o) => o.msg.t === 'final')).toBe(false);
+    expect(r.phase).toBe('running');
+    const out = r.advance(at(e) + 5000);
+    expect(out.at(-1)!.msg).toMatchObject({ t: 'final', status: 'confirmed', h: H('a') });
+  });
+
+  it('decides when the only unreported client disconnects', () => {
+    const { r, slots } = room(3);
+    const e = end(r);
+    runTo(r, slots, e);
+    r.message(slots[0]!, { t: 'res', h: H('a'), order: [0] }, at(e));
+    r.message(slots[1]!, { t: 'res', h: H('a'), order: [0] }, at(e));
+    r.disconnect(slots[2]!, at(e + 1));
+    const out = r.advance(at(e + 2));
+    expect(out.at(-1)!.msg).toMatchObject({ t: 'final', status: 'confirmed' });
+  });
+
+  it('keeps the majority timer across a snapshot round trip', () => {
+    const { r, slots } = room(3);
+    const e = end(r);
+    runTo(r, slots, e);
+    r.message(slots[0]!, { t: 'res', h: H('a'), order: [0] }, at(e));
+    r.message(slots[1]!, { t: 'res', h: H('a'), order: [0] }, at(e));
+    r.message(slots[2]!, { t: 'ping', c: 0 }, at(e) + 2500);
+    const copy = RaceRoomCore.fromJSON(JSON.parse(JSON.stringify(r.toJSON())), seededRng(7));
+    expect(copy.advance(at(e) + 5000).at(-1)!.msg).toMatchObject({ t: 'final', status: 'confirmed' });
   });
 
   it('stops at maxTicks and decides after the result wait', () => {
     const { r, slots } = room(3);
     const max = r.maxTicks;
-    r.advance(at(max + 50));
+    runTo(r, slots, max);
     expect(r.lastConfirmedTick).toBe(max - 1);
     expect(r.phase).toBe('awaitingResults');
-    r.message(slots[0]!, { t: 'res', h: H('a'), order: [0] }, at(max + 50));
-    r.message(slots[1]!, { t: 'res', h: H('a'), order: [0] }, at(max + 50));
-    expect(r.advance(at(max + 50) + 4999)).toEqual([]);
-    const out = r.advance(at(max + 50) + 5000);
+    r.message(slots[0]!, { t: 'res', h: H('a'), order: [0] }, at(max));
+    r.message(slots[1]!, { t: 'res', h: H('a'), order: [0] }, at(max));
+    expect(r.advance(at(max) + 4999)).toEqual([]);
+    const out = r.advance(at(max) + 5000);
     expect(out[0]!.msg).toMatchObject({ t: 'final', status: 'confirmed' });
+  });
+
+  it('takes finish ticks only from identical reports of the agreeing clients', () => {
+    const { r, slots } = room(3);
+    const e = end(r);
+    runTo(r, slots, e);
+    slots.forEach((s) => r.message(s, { t: 'res', h: H('a'), order: [2, 1, 0], finishTicks: [1800, 1810, 1820] }, at(e)));
+    expect(r.final?.finishTicks).toEqual([1800, 1810, 1820]);
+    const b = room(3);
+    runTo(b.r, b.slots, e);
+    b.slots.forEach((s, i) => b.r.message(s, { t: 'res', h: H('a'), order: [2, 1, 0], finishTicks: [1800, 1810, 1820 + i] }, at(e)));
+    expect(b.r.final?.status).toBe('confirmed');
+    expect(b.r.final?.finishTicks).toBeUndefined();
+  });
+});
+
+describe('silence detection (REQ-NET-013)', () => {
+  it('takes over a client whose socket went silent, and resumes when it talks again', () => {
+    const { r, slots } = room(2);
+    const [a, b] = [slots[0]!, slots[1]!];
+    for (let t = 0; t <= 200; t += 20) {
+      r.message(a, { t: 'ping', c: 0 }, at(t)); // only A keeps talking
+      r.advance(at(t));
+    }
+    expect(r.isCpuControlled(a)).toBe(false);
+    expect(r.isCpuControlled(b)).toBe(true);
+    r.message(b, { t: 'chk', tick: 200, h: 'aaaaaaaaaaaaaaaa' }, at(201));
+    expect(r.isCpuControlled(b)).toBe(false);
+    r.advance(at(202));
+    expect(r.replayLog().inputs.filter(([, s]) => s === b).map(([, , c]) => c)).toEqual([CMD.CPU_TAKEOVER, CMD.HUMAN_RESUME]);
   });
 });
 

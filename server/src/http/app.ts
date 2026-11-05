@@ -3,12 +3,16 @@ import { AppError } from '../domain/errors.js';
 import { findBanner, oddsDisclosure } from '../domain/gacha.js';
 import type { Master } from '../domain/master.js';
 import type { PlayerService } from '../domain/service.js';
+import { FriendsService, type Directory, type FriendPlayers } from '../domain/friends.js';
+import { jstMonthKey } from '../domain/time.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
   | 'bootstrap' | 'view' | 'setAge' | 'purchaseIntent' | 'purchase' | 'refund' | 'draw' | 'tutorialDraw' | 'pityExchange'
   | 'nameHorse' | 'awaken' | 'retire' | 'breedingPreview' | 'breed' | 'pedigree' | 'claimLogin' | 'missions'
-  | 'claimMission' | 'passView' | 'claimPass' | 'applyRace' | 'raceEntry';
+  | 'claimMission' | 'passView' | 'claimPass' | 'applyRace' | 'raceEntry'
+  | 'setDisplayName' | 'equipTitle' | 'titles' | 'stats' | 'publicProfile' | 'closeSeason'
+  | 'friendSend' | 'friendReceive' | 'friendAccept' | 'friendAccepted' | 'friendDecline' | 'friendCancel' | 'friendRemove' | 'friendInvite' | 'friendsState';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -24,6 +28,13 @@ export interface MatchApi {
   friendJoin(passphrase: string, playerId: string, entry: RaceEntry): Promise<unknown>;
   friendStart(passphrase: string, playerId: string): Promise<unknown>;
   tutorial(playerId: string, entry: RaceEntry): Promise<unknown>;
+  /** Is the player a member of this friend room (invitation check)? */
+  friendMember(passphrase: string, playerId: string): Promise<boolean>;
+}
+export interface LeaderboardApi {
+  /** Public snapshot file (R2), never touches a Durable Object. */
+  board(seasonId: string, board: string): Promise<unknown>;
+  myRank(playerId: string, seasonId: string): Promise<unknown>;
 }
 export interface RaceApi {
   websocket(raceId: string, req: Request): Promise<Response>;
@@ -37,6 +48,9 @@ export interface AppContext {
   player(uid: string): PlayerInvoker;
   match: MatchApi;
   race: RaceApi;
+  friends: FriendsService;
+  leaderboard: LeaderboardApi;
+  clock?: () => number;
   paidBalance(): Promise<unknown>;
   adminToken: string | undefined;
   parseStoreNotification(platform: string, req: Request): Promise<StoreNotification | null>;
@@ -152,6 +166,40 @@ export const routes: Route[] = [
   } },
   { method: 'GET', path: '/v1/race/:raceId/ws', auth: 'ws', handler: async () => ok(null) },
   { method: 'POST', path: '/v1/race/:raceId/report', auth: 'player', handler: async (_r, p, c, u) => c.race.report(p.raceId!, u) },
+  // profile, titles, stats (REQ-STAT-*, REQ-TITLE-*, REQ-SOCIAL-006)
+  { method: 'PUT', path: '/v1/player/profile', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ displayName: z.string().min(1).max(40) }));
+    return c.player(u).invoke('setDisplayName', u, b.displayName);
+  } },
+  { method: 'GET', path: '/v1/titles', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('titles', u) },
+  { method: 'PUT', path: '/v1/player/title', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ titleId: id.nullable() }));
+    return c.player(u).invoke('equipTitle', u, b.titleId);
+  } },
+  { method: 'GET', path: '/v1/stats', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('stats', u) },
+  // leaderboards (REQ-LB-*)
+  { method: 'GET', path: '/v1/leaderboards/me', auth: 'player', handler: async (_r, _p, c, u) => c.leaderboard.myRank(u, jstMonthKey((c.clock ?? Date.now)())) },
+  { method: 'GET', path: '/v1/leaderboards/:seasonId/:board', auth: 'none', handler: async (_r, p, c) => {
+    const season = p.seasonId === 'current' ? jstMonthKey((c.clock ?? Date.now)()) : p.seasonId!;
+    if (!/^\d{4}-\d{2}$/.test(season) || !/^(class-[A-Z]|rating|index)$/.test(p.board!)) throw new AppError('BAD_REQUEST', 'bad season or board');
+    return c.leaderboard.board(season, p.board!);
+  } },
+  // friends (REQ-SOCIAL-*)
+  { method: 'GET', path: '/v1/friends', auth: 'player', handler: async (_r, _p, c, u) => c.friends.list(u) },
+  { method: 'GET', path: '/v1/friends/code', auth: 'player', handler: async (_r, _p, c, u) => c.friends.myCode(u) },
+  { method: 'POST', path: '/v1/friends/requests', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ code: z.string().regex(/^\d{9}$/) }));
+    return c.friends.request(u, b.code);
+  } },
+  { method: 'POST', path: '/v1/friends/requests/:fromId/accept', auth: 'player', handler: async (_r, p, c, u) => c.friends.accept(u, p.fromId!) },
+  { method: 'POST', path: '/v1/friends/requests/:fromId/decline', auth: 'player', handler: async (_r, p, c, u) => c.friends.decline(u, p.fromId!) },
+  { method: 'DELETE', path: '/v1/friends/requests/:toId', auth: 'player', handler: async (_r, p, c, u) => c.friends.cancel(u, p.toId!) },
+  { method: 'DELETE', path: '/v1/friends/:friendId', auth: 'player', handler: async (_r, p, c, u) => c.friends.remove(u, p.friendId!) },
+  { method: 'POST', path: '/v1/friend-rooms/:passphrase/invite', auth: 'player', handler: async (r, p, c, u) => {
+    const b = await body(r, z.object({ friendId: id }));
+    if (!(await c.match.friendMember(p.passphrase!, u))) throw new AppError('NOT_ELIGIBLE', 'not a member of this room');
+    return c.friends.invite(u, b.friendId, p.passphrase!);
+  } },
   // admin
   { method: 'GET', path: '/v1/admin/paid-balance', auth: 'admin', handler: async (_r, _p, c) => c.paidBalance() },
   { method: 'GET', path: '/v1/admin/replays/:raceId', auth: 'admin', handler: async (_r, p, c) => c.race.replay(p.raceId!) },
@@ -195,3 +243,19 @@ export const handle: Handler = async (req, _p, ctx) => {
     return json({ error: { code: 'INTERNAL', message: 'internal error' } }, 500);
   }
 };
+
+/** Adapts per-player invocations (Durable Object RPC or PlayerService) to the friends orchestration. */
+export function makeFriendsService(player: (uid: string) => PlayerInvoker, dir: Directory): FriendsService {
+  const ports: FriendPlayers = {
+    send: (u, t) => player(u).invoke('friendSend', u, t),
+    receive: (u, f) => player(u).invoke('friendReceive', u, f),
+    accept: (u, f) => player(u).invoke('friendAccept', u, f),
+    accepted: (u, b) => player(u).invoke('friendAccepted', u, b),
+    decline: (u, f) => player(u).invoke('friendDecline', u, f),
+    cancel: (u, t) => player(u).invoke('friendCancel', u, t),
+    remove: (u, o) => player(u).invoke('friendRemove', u, o),
+    invite: (u, f, pass) => player(u).invoke('friendInvite', u, f, pass),
+    friendsState: (u) => player(u).invoke('friendsState', u),
+  };
+  return new FriendsService(ports, dir);
+}

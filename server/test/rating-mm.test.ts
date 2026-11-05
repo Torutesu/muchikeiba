@@ -37,7 +37,7 @@ describe('season classes (REQ-RATE-002)', () => {
     s.seasonPass.xp = 900;
     const r = rollSeason(m, s, Date.UTC(2026, 11, 2));
     expect(r).toEqual({ closed: true, from: 'C', to: 'B' });
-    expect(s.season).toEqual({ id: '2026-12', classId: 'B', points: 0 });
+    expect(s.season).toEqual({ id: '2026-12', classId: 'B', points: 0, races: 0 });
     expect(s.seasonPass.xp).toBe(0);
     s.season.points = 10;
     expect(rollSeason(m, s, Date.UTC(2027, 0, 2)).to).toBe('C');

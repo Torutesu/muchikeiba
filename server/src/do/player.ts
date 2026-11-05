@@ -8,6 +8,7 @@ import type { PlayerMethod } from '../http/app.js';
 import { makeVerifiers } from '../http/stores.js';
 import { SqlPlayerRepo } from './sqlRepo.js';
 import { wrap, type Envelope } from './rpc.js';
+import { shardedDirectory } from './directory.js';
 
 /** One player = one Durable Object (wallet, ledger, horses, gacha pity, purchases). */
 export class PlayerDO extends DurableObject<Env> {
@@ -20,6 +21,13 @@ export class PlayerDO extends DurableObject<Env> {
       onPaidBalance: (snap) => {
         const acc = env.ACCOUNTING.get(env.ACCOUNTING.idFromName('global')) as unknown as { record(s: typeof snap): Promise<void> };
         ctx.waitUntil(acc.record(snap));
+      },
+      onSeasonEntry: (e) => {
+        const lb = env.LEADERBOARD.get(env.LEADERBOARD.idFromName(`lb:${e.seasonId}`)) as unknown as { upsert(x: typeof e): Promise<unknown> };
+        ctx.waitUntil(lb.upsert(e));
+      },
+      onProfile: (p) => {
+        ctx.waitUntil(shardedDirectory(env.DIRECTORY).putProfile(p));
       },
     });
   }

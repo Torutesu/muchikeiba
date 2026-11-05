@@ -83,7 +83,7 @@ C#（端末・検証サーバー）とTypeScript（Cloudflareサーバー）の�
 | `hello` | `{"t":"hello","raceId":"…","token":"…","lastTick":-1}` | 参加・再接続。`lastTick`は計算済みの最後のtick（初回は-1） |
 | `in` | `{"t":"in","tick":123,"cmd":32}` | 入力。`tick`は宛先tick |
 | `chk` | `{"t":"chk","tick":120,"h":"0123456789abcdef"}` | チェックサム（`tick`は`checksumIntervalTicks`の倍数） |
-| `res` | `{"t":"res","h":"<64hex>","order":[3,0,…]}` | 結果ハッシュと着順 |
+| `res` | `{"t":"res","h":"<64hex>","order":[3,0,…],"finishTicks":[1830,1835,…]}` | 結果ハッシュと着順。`finishTicks`は任意（`order`と同じ並び、未完走は-1）。合意した全員が同じ値を送った時だけ戦績のベストタイムに使う。最も速い馬でもゴールできないtickより前の`res`は`err` `RESULT_TOO_EARLY`、2回目以降の`res`は無視 |
 | `ping` | `{"t":"ping","c":1730000000000}` | 時刻合わせ |
 
 ### 部屋 → 端末
@@ -94,7 +94,7 @@ C#（端末・検証サーバー）とTypeScript（Cloudflareサーバー）の�
 | `desync` | `{"t":"desync","tick":120}` | あなたのチェックサムが多数派と違う |
 | `final` | `{"t":"final","status":"confirmed","order":[3,0,…],"h":"<64hex>"}` | `status`: `confirmed` / `verifying` / `void` |
 | `pong` | `{"t":"pong","c":…,"s":…}` | `s`はサーバー時刻 |
-| `err` | `{"t":"err","code":"…"}` | `BAD_MESSAGE` / `NOT_IN_RACE` / `RACE_OVER` など |
+| `err` | `{"t":"err","code":"…"}` | `BAD_MESSAGE` / `NOT_IN_RACE` / `RACE_OVER` / `TOO_EARLY` / `RESULT_TOO_EARLY` など |
 
 確定の規則
 - tick `n` は、部屋の時計が `startAtMs + (n + 1) * 1000 / tickHz` を過ぎた時点で確定。

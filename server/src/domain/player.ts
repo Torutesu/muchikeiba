@@ -1,3 +1,4 @@
+import type { GoingAptitude } from './schemas.js';
 import type { Rarity, Sex, Stats, Style } from './master.js';
 import type { PushState } from './push.js';
 import type { KpiState } from './kpi.js';
@@ -19,6 +20,8 @@ export interface HorseInstance {
   distMinM: number; distMaxM: number; surface: 'turf' | 'dirt' | 'both'; line: string;
   base: Stats; awakening: number; bornAt: number; status: 'active' | 'retired';
   sireId: string | null; damId: string | null; sireName: string | null; damName: string | null; named: boolean;
+  /** Ground preference (REQ-RACE-035). Absent = any (horses created before it existed). */
+  goingAptitude?: GoingAptitude;
 }
 
 export interface PurchaseRecord {

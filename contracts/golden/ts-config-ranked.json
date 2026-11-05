@@ -30,7 +30,9 @@
         "kind": "straight",
         "lengthM": 500
       }
-    ]
+    ],
+    "going": "yielding",
+    "night": false
   },
   "net": {
     "tickHz": 20,
@@ -93,7 +95,25 @@
     "cpuTargetRankNigePermille": 0,
     "cpuTargetRankSenkoPermille": 400,
     "cpuTargetRankSashiPermille": 550,
-    "cpuTargetRankOikomiPermille": 800
+    "cpuTargetRankOikomiPermille": 800,
+    "goingTurfFirmSpeedPermille": 1008,
+    "goingTurfGoodSpeedPermille": 1000,
+    "goingTurfYieldingSpeedPermille": 975,
+    "goingTurfSoftSpeedPermille": 948,
+    "goingDirtFastSpeedPermille": 995,
+    "goingDirtGoodSpeedPermille": 1000,
+    "goingDirtMuddySpeedPermille": 1005,
+    "goingDirtSloppySpeedPermille": 1010,
+    "goingTurfFirmDrainPermille": 970,
+    "goingTurfGoodDrainPermille": 1000,
+    "goingTurfYieldingDrainPermille": 1040,
+    "goingTurfSoftDrainPermille": 1080,
+    "goingDirtFastDrainPermille": 1110,
+    "goingDirtGoodDrainPermille": 1100,
+    "goingDirtMuddyDrainPermille": 1080,
+    "goingDirtSloppyDrainPermille": 1060,
+    "dirtSpeedPermille": 965,
+    "goingSpecialistPermille": 8
   },
   "entrants": [
     {
@@ -102,14 +122,14 @@
       "playerId": null,
       "cpuLevel": 3,
       "horse": {
-        "id": "cpu_t_ginga",
-        "name": "ギンガノカナタ",
-        "speed": 691,
-        "stamina": 709,
-        "burst": 657,
-        "guts": 622,
-        "temper": 518,
-        "style": "senko",
+        "id": "cpu_t_akanegumo",
+        "name": "アカネグモ",
+        "speed": 570,
+        "stamina": 650,
+        "burst": 630,
+        "guts": 530,
+        "temper": 510,
+        "style": "oikomi",
         "distMinM": 1800,
         "distMaxM": 2600,
         "surface": "turf"
@@ -121,17 +141,18 @@
       "playerId": null,
       "cpuLevel": 3,
       "horse": {
-        "id": "cpu_t_hinode",
-        "name": "ヒノデエクスプレス",
-        "speed": 640,
-        "stamina": 530,
-        "burst": 500,
-        "guts": 610,
-        "temper": 440,
-        "style": "nige",
-        "distMinM": 1400,
-        "distMaxM": 2000,
-        "surface": "turf"
+        "id": "cpu_t_minamo",
+        "name": "ミナモノリズム",
+        "speed": 580,
+        "stamina": 640,
+        "burst": 620,
+        "guts": 520,
+        "temper": 540,
+        "style": "oikomi",
+        "distMinM": 1800,
+        "distMaxM": 2600,
+        "surface": "turf",
+        "goingAptitude": "heavy"
       }
     },
     {
@@ -178,17 +199,18 @@
       "playerId": null,
       "cpuLevel": 3,
       "horse": {
-        "id": "cpu_t_akanegumo",
-        "name": "アカネグモ",
-        "speed": 570,
-        "stamina": 650,
-        "burst": 630,
-        "guts": 530,
-        "temper": 510,
-        "style": "oikomi",
-        "distMinM": 1800,
-        "distMaxM": 2600,
-        "surface": "turf"
+        "id": "cpu_t_inazuma",
+        "name": "イナズマランナー",
+        "speed": 750,
+        "stamina": 580,
+        "burst": 620,
+        "guts": 700,
+        "temper": 420,
+        "style": "nige",
+        "distMinM": 1200,
+        "distMaxM": 1800,
+        "surface": "turf",
+        "goingAptitude": "fast"
       }
     },
     {
@@ -197,16 +219,16 @@
       "playerId": null,
       "cpuLevel": 3,
       "horse": {
-        "id": "cpu_t_yukimi",
-        "name": "ユキミザクラ",
+        "id": "cpu_t_hoshifuru",
+        "name": "ホシフルオカ",
         "speed": 600,
-        "stamina": 580,
-        "burst": 560,
+        "stamina": 600,
+        "burst": 590,
         "guts": 560,
         "temper": 500,
-        "style": "senko",
-        "distMinM": 1400,
-        "distMaxM": 2000,
+        "style": "sashi",
+        "distMinM": 1600,
+        "distMaxM": 2400,
         "surface": "turf"
       }
     },
@@ -216,17 +238,17 @@
       "playerId": null,
       "cpuLevel": 3,
       "horse": {
-        "id": "cpu_t_kazamidori",
-        "name": "カザミドリノウタ",
-        "speed": 595,
-        "stamina": 570,
-        "burst": 560,
+        "id": "cpu_t_morino",
+        "name": "モリノシズク",
+        "speed": 620,
+        "stamina": 540,
+        "burst": 530,
         "guts": 590,
-        "temper": 530,
-        "style": "senko",
-        "distMinM": 1400,
-        "distMaxM": 2000,
-        "surface": "both"
+        "temper": 460,
+        "style": "nige",
+        "distMinM": 1200,
+        "distMaxM": 1800,
+        "surface": "turf"
       }
     },
     {
@@ -235,17 +257,18 @@
       "playerId": null,
       "cpuLevel": 3,
       "horse": {
-        "id": "cpu_t_umineko",
-        "name": "ウミネコパレード",
-        "speed": 679,
-        "stamina": 689,
-        "burst": 708,
-        "guts": 571,
-        "temper": 551,
-        "style": "sashi",
-        "distMinM": 1600,
-        "distMaxM": 2400,
-        "surface": "turf"
+        "id": "cpu_t_dorobune",
+        "name": "ドロブネ",
+        "speed": 600,
+        "stamina": 600,
+        "burst": 540,
+        "guts": 600,
+        "temper": 510,
+        "style": "senko",
+        "distMinM": 1400,
+        "distMaxM": 2000,
+        "surface": "dirt",
+        "goingAptitude": "heavy"
       }
     },
     {
@@ -273,17 +296,18 @@
       "playerId": null,
       "cpuLevel": 3,
       "horse": {
-        "id": "cpu_t_kurogane",
-        "name": "クロガネオウジ",
-        "speed": 680,
-        "stamina": 720,
-        "burst": 740,
-        "guts": 600,
-        "temper": 450,
-        "style": "oikomi",
-        "distMinM": 1800,
-        "distMaxM": 2600,
-        "surface": "turf"
+        "id": "cpu_t_kohaku",
+        "name": "コハクノヒカリ",
+        "speed": 795,
+        "stamina": 591,
+        "burst": 647,
+        "guts": 721,
+        "temper": 443,
+        "style": "nige",
+        "distMinM": 1400,
+        "distMaxM": 2000,
+        "surface": "turf",
+        "goingAptitude": "fast"
       }
     },
     {
@@ -292,16 +316,16 @@
       "playerId": null,
       "cpuLevel": 3,
       "horse": {
-        "id": "cpu_t_morino",
-        "name": "モリノシズク",
-        "speed": 620,
-        "stamina": 540,
-        "burst": 530,
-        "guts": 590,
-        "temper": 460,
-        "style": "nige",
-        "distMinM": 1200,
-        "distMaxM": 1800,
+        "id": "cpu_t_umineko",
+        "name": "ウミネコパレード",
+        "speed": 679,
+        "stamina": 689,
+        "burst": 708,
+        "guts": 571,
+        "temper": 551,
+        "style": "sashi",
+        "distMinM": 1600,
+        "distMaxM": 2400,
         "surface": "turf"
       }
     },
@@ -311,16 +335,16 @@
       "playerId": null,
       "cpuLevel": 3,
       "horse": {
-        "id": "cpu_t_aozora",
-        "name": "アオゾラマーチ",
-        "speed": 630,
-        "stamina": 520,
-        "burst": 520,
-        "guts": 600,
-        "temper": 480,
-        "style": "nige",
-        "distMinM": 1200,
-        "distMaxM": 1800,
+        "id": "cpu_t_sakura",
+        "name": "サクラナミキ",
+        "speed": 680,
+        "stamina": 671,
+        "burst": 641,
+        "guts": 641,
+        "temper": 564,
+        "style": "senko",
+        "distMinM": 1600,
+        "distMaxM": 2400,
         "surface": "turf"
       }
     }

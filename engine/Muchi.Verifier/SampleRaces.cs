@@ -36,6 +36,29 @@ namespace Muchi.Verifier
             },
         };
 
+        public static TrackSpec Dirt1800(Going? going = null) => new TrackSpec
+        {
+            Id = "sample_dirt_1800",
+            Surface = Surface.Dirt,
+            DistanceM = 1800,
+            Going = going,
+            Segments =
+            {
+                new TrackSegment(SegmentKind.Straight, 300),
+                new TrackSegment(SegmentKind.Corner, 500, 100),
+                new TrackSegment(SegmentKind.Straight, 350),
+                new TrackSegment(SegmentKind.Corner, 300, 95),
+                new TrackSegment(SegmentKind.Straight, 350),
+            },
+        };
+
+        public static TrackSpec WithGoing(TrackSpec t, Going? going, bool? night = null)
+        {
+            t.Going = going;
+            t.Night = night;
+            return t;
+        }
+
         public static HorseSpec Horse(string id, int stat, RunningStyle style, int temper = 500)
         {
             return new HorseSpec
@@ -133,6 +156,40 @@ namespace Muchi.Verifier
             }
             inputs.Sort((a, b) => a.Tick != b.Tick ? a.Tick.CompareTo(b.Tick) : a.Slot.CompareTo(b.Slot));
             yield return ("race-turf1600-mixed.json", new ReplayLog { Config = cfg2, Inputs = inputs });
+
+            // 3) heavy (soft) turf at night, mixed ground aptitudes, two humans (REQ-RACE-034/035)
+            var rng3 = new Pcg32(7031, 11);
+            var horses3 = new List<HorseSpec>();
+            for (int i = 0; i < 12; i++)
+            {
+                var h = SampleRaces.RandomHorse(ref rng3, "g3_" + i);
+                h.GoingAptitude = (GoingAptitude)(i % 3);
+                horses3.Add(h);
+            }
+            var cfg3 = SampleRaces.Config("golden_turf2000_soft_night", 9007199254740993UL,
+                SampleRaces.WithGoing(SampleRaces.Turf2000(), Going.SoftOrSloppy, true), ruleset, horses3, 2, 3);
+            var inputs3 = new List<InputRecord>
+            {
+                new InputRecord(gate, 0, Cmd.Start),
+                new InputRecord(gate + 2, 1, Cmd.Start),
+                new InputRecord(gate + 300, 1, Cmd.ReinPress),
+                new InputRecord(gate + 700, 1, Cmd.ReinRelease),
+            };
+            for (int k = 0; k < 6; k++) inputs3.Add(new InputRecord(gate + 1350 + k * 25, 1, Cmd.Whip));
+            yield return ("race-turf2000-soft-night.json", new ReplayLog { Config = cfg3, Inputs = inputs3 });
+
+            // 4) sloppy dirt, dirt-bred field with mixed ground aptitudes, all CPU
+            var rng4 = new Pcg32(5150, 13);
+            var horses4 = new List<HorseSpec>();
+            for (int i = 0; i < 12; i++)
+            {
+                var h = SampleRaces.RandomHorse(ref rng4, "g4_" + i);
+                h.Surface = i % 4 == 3 ? Surface.Turf : i % 4 == 2 ? Surface.Both : Surface.Dirt; // some off-surface runners
+                h.GoingAptitude = (GoingAptitude)((i + 1) % 3);
+                horses4.Add(h);
+            }
+            var cfg4 = SampleRaces.Config("golden_dirt1800_sloppy", 424242424242UL, SampleRaces.Dirt1800(Going.SoftOrSloppy), ruleset, horses4, 0, 4);
+            yield return ("race-dirt1800-sloppy.json", new ReplayLog { Config = cfg4, Inputs = new List<InputRecord>() });
         }
 
         public static List<string> WriteAll(string outDir, string rulesetJson)

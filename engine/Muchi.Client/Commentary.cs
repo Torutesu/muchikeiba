@@ -149,7 +149,7 @@ namespace Muchi.Client
         private int _eventIndex;
         private int _busyUntil;
         private int _leader = -1, _leaderSince, _announcedLeader = -1;
-        private bool _spurtSaid, _focusWhipSaid, _anyFinished, _flushed;
+        private bool _spurtSaid, _focusWhipSaid, _anyFinished, _flushed, _introDone;
         private int _lastPositionCall = -1;
 
         public IReadOnlyList<CommentaryLine> Lines => _lines;
@@ -168,6 +168,12 @@ namespace Muchi.Client
             var started = new List<CommentaryLine>();
             int now = sim.Tick - 1;
             var events = sim.Events;
+            if (!_introDone)
+            {
+                _introDone = true;
+                string intro = IntroKind(_cfg.Track);
+                if (intro != null && _t.Phrases.ContainsKey(intro)) Add(intro, now, -1);
+            }
             for (; _eventIndex < events.Count; _eventIndex++) OnEvent(sim, events[_eventIndex]);
 
             if (!_anyFinished && _leader >= 0 && _leader != _announcedLeader && now - _leaderSince >= _t.LeaderStableTicks)
@@ -197,6 +203,18 @@ namespace Muchi.Client
                 while (_pending.Count > 0) started.Add(Speak(PickNext(), Math.Max(now, _busyUntil)));
             }
             return started;
+        }
+
+        /// <summary>
+        /// Phrase kind for the pre-gate line about the ground and lighting (REQ-RACE-036), e.g. "ground_turf_soft_night".
+        /// Null when the config carries neither going nor night (old configs: no extra line, same commentary as before).
+        /// </summary>
+        public static string IntroKind(TrackSpec track)
+        {
+            if (track == null || (track.Going == null && track.Night != true)) return null;
+            string surface = track.Surface == Surface.Dirt ? "dirt" : "turf";
+            string kind = "ground_" + surface + "_" + ProtocolCodec.GoingToString(track.EffectiveGoing, track.Surface);
+            return track.Night == true ? kind + "_night" : kind;
         }
 
         private void OnEvent(RaceSim sim, RaceEvent e)

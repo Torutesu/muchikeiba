@@ -384,5 +384,28 @@
         }
       }
     ]
+  },
+  "weather": {
+    "_note": "REQ-RACE-037: その日の馬場はJSTの日付とコースから決まる（同じ日・同じコースは誰が走っても同じ）。重みは合計自由。overrides は運営が期間を指定して上書きする（リモート設定で変更可）。",
+    "salt": "muchi-weather-v1",
+    "turf": {
+      "firm": 15,
+      "good": 50,
+      "yielding": 22,
+      "soft": 13
+    },
+    "dirt": {
+      "fast": 20,
+      "good": 45,
+      "muddy": 22,
+      "sloppy": 13
+    },
+    "nightFromHourJst": 18,
+    "nightToHourJst": 4,
+    "modes": [
+      "ranked",
+      "friend"
+    ],
+    "overrides": []
   }
 }

@@ -20,6 +20,9 @@ namespace Muchi.Verifier
         public long[] StyleSpurtStaminaPermille = new long[4];
         public long[] StyleSpurtRankSum = new long[4];
         public int[] StyleSpurtCount = new int[4];
+        public int[] AptRunners = new int[3];   // by GoingAptitude (any / fast / heavy)
+        public int[] AptWins = new int[3];
+        public double AptWinRate(GoingAptitude a) => AptRunners[(int)a] == 0 ? 0 : (double)AptWins[(int)a] / AptRunners[(int)a];
 
         public double AvgWinnerSeconds(int tickHz, int gate) => (double)WinnerTicksSum / Races / tickHz - (double)gate / tickHz;
         public double AvgLastSeconds(int tickHz, int gate) => (double)LastTicksSum / Races / tickHz - (double)gate / tickHz;
@@ -39,6 +42,9 @@ namespace Muchi.Verifier
             for (int s = 0; s < 4; s++)
                 if (StyleSpurtCount[s] > 0)
                     sb.AppendLine(((RunningStyle)s) + " at spurt: stamina " + (StyleSpurtStaminaPermille[s] / StyleSpurtCount[s]) + "‰ rank " + ((double)StyleSpurtRankSum[s] / StyleSpurtCount[s]).ToString("F1", ci));
+            if (AptRunners[1] + AptRunners[2] > 0)
+                for (int a = 0; a < 3; a++)
+                    sb.AppendLine("goingAptitude " + ((GoingAptitude)a) + " win-rate-per-runner " + AptWinRate((GoingAptitude)a).ToString("P1", ci) + " (runners " + AptRunners[a] + ")");
             sb.AppendLine("finishers with empty stamina " + ((double)ExhaustedFinishers / Math.Max(1, Finishers)).ToString("P1", ci));
             return sb.ToString();
         }
@@ -46,7 +52,8 @@ namespace Muchi.Verifier
 
     public static class BalanceProbe
     {
-        public static BalanceReport Run(RulesetParams ruleset, int races, ulong seedBase = 1, int spread = 150, TrackSpec track = null)
+        /// <param name="aptMix">Give slots goingAptitude any/fast/heavy round-robin and report win rates per aptitude.</param>
+        public static BalanceReport Run(RulesetParams ruleset, int races, ulong seedBase = 1, int spread = 150, TrackSpec track = null, bool aptMix = false)
         {
             var rep = new BalanceReport();
             for (int r = 0; r < races; r++)
@@ -54,6 +61,12 @@ namespace Muchi.Verifier
                 var rng = new Pcg32(seedBase + (ulong)r * 7919UL, 3);
                 var horses = new List<HorseSpec>();
                 for (int i = 0; i < 12; i++) horses.Add(SampleRaces.RandomHorse(ref rng, "b" + i, 500, spread));
+                var surface = (track ?? SampleRaces.Turf2000()).Surface;
+                for (int i = 0; i < 12; i++)
+                {
+                    horses[i].Surface = surface; // measure the ground, not surface aptitude
+                    if (aptMix) horses[i].GoingAptitude = (GoingAptitude)(i % 3);
+                }
                 var cfg = SampleRaces.Config("balance_" + r, SeedMix.Mix(seedBase + (ulong)r), track ?? SampleRaces.Turf2000(), ruleset, horses, 0, 3);
                 var sim = new RaceSim(cfg);
                 var seen = new bool[12];
@@ -85,6 +98,11 @@ namespace Muchi.Verifier
                     rep.StyleRunners[(int)h.Style]++;
                 }
                 rep.StyleWins[(int)horses[res.Order[0]].Style]++;
+                if (aptMix)
+                {
+                    for (int i = 0; i < 12; i++) rep.AptRunners[i % 3]++;
+                    rep.AptWins[res.Order[0] % 3]++;
+                }
                 if (res.Order[0] == strongest) rep.StrongestWins++;
                 for (int p = 0; p < 3; p++) if (res.Order[p] == strongest) rep.StrongestTop3++;
                 int win = res.FinishTicks[0];

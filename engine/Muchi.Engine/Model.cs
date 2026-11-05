@@ -25,6 +25,15 @@ namespace Muchi.Engine
     public enum EntrantKind { Human = 0, Cpu = 1 }
     public enum RaceMode { Ranked = 0, Friend = 1, Tutorial = 2, TimeAttack = 3 }
 
+    /// <summary>
+    /// Ground condition (REQ-RACE-034). Turf: firm/good/yielding/soft. Dirt: fast/good/muddy/sloppy.
+    /// The numeric value is the "wetness" index 0..3 (good = 1) used to pick ruleset coefficients.
+    /// </summary>
+    public enum Going { FirmOrFast = 0, Good = 1, YieldingOrMuddy = 2, SoftOrSloppy = 3 }
+
+    /// <summary>Horse preference for the ground (REQ-RACE-035). Any = no preference.</summary>
+    public enum GoingAptitude { Any = 0, Fast = 1, Heavy = 2 }
+
     public sealed class TrackSegment
     {
         public SegmentKind Kind;
@@ -44,6 +53,12 @@ namespace Muchi.Engine
         public Surface Surface;
         public int DistanceM;
         public List<TrackSegment> Segments = new List<TrackSegment>();
+        /// <summary>Ground condition; null = not sent (treated as Good; old configs, byte-identical results).</summary>
+        public Going? Going;
+        /// <summary>Night race; null = not sent. Visual/commentary only — no effect on the simulation.</summary>
+        public bool? Night;
+
+        public Going EffectiveGoing => Going ?? Muchi.Engine.Going.Good;
     }
 
     public sealed class HorseSpec
@@ -54,6 +69,8 @@ namespace Muchi.Engine
         public RunningStyle Style;
         public int DistMinM, DistMaxM;
         public Surface Surface;
+        /// <summary>Ground preference; null = not sent (Any).</summary>
+        public GoingAptitude? GoingAptitude;
     }
 
     public sealed class Entrant

@@ -1,6 +1,7 @@
+import { weatherProblems } from '../domain/ground.js';
 import { z } from 'zod';
 import { AppError } from '../domain/errors.js';
-import { buildBanner, type Master, type Progression, type RawBanner } from '../domain/master.js';
+import { buildBanner, splitMasterTrack, type Master, type Progression, type RawBanner } from '../domain/master.js';
 import { validateGacha } from '../domain/gacha.js';
 import { buildRuleset, DEFAULT_RULESET, type Ruleset } from '../domain/ruleset.js';
 import { trackSchema } from '../domain/schemas.js';
@@ -65,12 +66,14 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
   }
 
   let tracks = base.tracks;
+  let litTracks = base.litTracks;
   if (b.tracks) {
     tracks = [];
+    litTracks = new Set();
     b.tracks.forEach((t, i) => {
-      const { name: _n, ...rest } = t;
+      const { track: rest, lights } = splitMasterTrack(t);
       const r = trackSchema.safeParse(rest);
-      if (r.success) tracks.push(r.data);
+      if (r.success) { tracks.push(r.data); if (lights) litTracks.add(r.data.id); }
       else problems.push(`tracks[${i}]: ${r.error.issues.map((x) => x.message).join(', ')}`);
     });
     if (tracks.length === 0) problems.push('tracks: at least one track is required');
@@ -93,8 +96,9 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
 
   const progression = b.progression ? ({ ...base.progression, ...b.progression } as Progression) : base.progression;
   for (const k of Object.keys(b.progression ?? {})) if (!(k in base.progression)) problems.push(`progression: unknown key ${k}`);
+  if (b.progression && 'weather' in b.progression) problems.push(...weatherProblems(progression.weather));
 
-  const master: Master = { ...base, tracks, gacha: { ...base.gacha, pityGroups, banners }, progression, ng: b.ng ?? base.ng };
+  const master: Master = { ...base, tracks, litTracks, gacha: { ...base.gacha, pityGroups, banners }, progression, ng: b.ng ?? base.ng };
   if (problems.length === 0) {
     try {
       validateGacha(master); // ppm sums, pools, pity groups, comp-gacha lint (REQ-GACHA-003/008)

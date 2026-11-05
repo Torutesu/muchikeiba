@@ -25,7 +25,9 @@ C#（端末・検証サーバー）とTypeScript（Cloudflareサーバー）の�
       { "kind": "corner", "lengthM": 600, "radiusM": 120 },
       { "kind": "straight", "lengthM": 450 },
       { "kind": "straight", "lengthM": 600 }
-    ]
+    ],
+    "going": "soft",                // 省略可。芝 "firm"|"good"|"yielding"|"soft"、ダート "fast"|"good"|"muddy"|"sloppy"。省略 = good
+    "night": true                   // 省略可。ナイター（演出と実況だけ。計算には影響しない）。省略 = 昼
   },
   "net": {
     "tickHz": 20,
@@ -47,7 +49,8 @@ C#（端末・検証サーバー）とTypeScript（Cloudflareサーバー）の�
         "speed": 720, "stamina": 650, "burst": 800, "guts": 600, "temper": 500,   // 0..1000（ランク戦は正規化済み）
         "style": "sashi",           // "nige" | "senko" | "sashi" | "oikomi"
         "distMinM": 1600, "distMaxM": 2400,
-        "surface": "turf"           // "turf" | "dirt" | "both"
+        "surface": "turf",          // "turf" | "dirt" | "both"
+        "goingAptitude": "heavy"    // 省略可。"any"|"fast"|"heavy"（得意な馬場）。省略 = any
       }
     }
   ]
@@ -58,6 +61,9 @@ C#（端末・検証サーバー）とTypeScript（Cloudflareサーバー）の�
 - `entrants` はスロット昇順、スロットは0から連番（欠番なし）、1〜12頭。
 - `segments` の `lengthM` は1以上、`corner` の `radiusM` は1以上。合計が `distanceM` と一致。
 - `ruleset` のキーは `contracts/ruleset-params.default.json` と同じ集合でなければならない（多い・少ないはエラー）。値は全て整数。サーバー（TS）が必ず読むキーは `rulesetVersion`（文字列）と `maxTicks` のみ。それ以外はTSにとって不透明な値として素通しする。
+  - **例外（後から追加したキー）**：馬場状態のキー（`going*`、`dirtSpeedPermille`、`goingSpecialistPermille` の18個。一覧は `RulesetParams.OptionalIntKeys` と `server/src/domain/ruleset.ts` の `OPTIONAL_RULESET_KEYS`、両者の一致はテストで保証）は**全部あるか、全部ないか**のどちらか。全部ない＝追加前のリプレイで、中立値（1000‰、専門0）として計算し、当時と同じ結果になる。一部だけはエラー。
+- `track.going` は `track.surface` に合った名前でなければエラー（芝に "sloppy" など）。
+- `track.going` / `track.night` / `horse.goingAptitude` は**値があるときだけ書く**（省略と既定値は同じ計算結果。省略した設定を読み書きしても1バイトも変わらない）。
 
 ## 3. 入力（1バイトのビットフラグ）
 
@@ -148,3 +154,11 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 ## 9. ゴールデンファイル（`contracts/golden/`）
 - `race-*.json`：`{ "log": リプレイログ, "expected": 検証APIの出力 }`。C#側が生成し、C#テストで再計算一致を、TSテストでスキーマ適合を確認する。
 - `ts-config-*.json`：TSのレース設定ビルダーが生成した設定。C#テストで読み込み・完走できることを確認する。
+
+## 10. 馬場状態とナイター（REQ-RACE-034〜037）
+- 馬場の名前は湿り具合の段階 0〜3 に対応する：芝 firm=0 / good=1 / yielding=2 / soft=3、ダート fast=0 / good=1 / muddy=2 / sloppy=3。
+- 最高速 ×= `goingTurf{X}SpeedPermille`（ダートは `dirtSpeedPermille` × `goingDirt{X}SpeedPermille` / 1000）。脚の消費 ×= `going{Turf|Dirt}{X}DrainPermille`。
+- 得意馬場：`goingAptitude` が fast の馬は段階0で +`goingSpecialistPermille`、段階2で −半分、段階3で −全部。heavy の馬はその逆。any は0。
+- `night` は計算に使わない（チェックサム・結果ハッシュにも入らない）。表示と実況（ゲート前の一言）だけに使う。
+- サーバーは、ランク戦・フレンド戦で「その日（JST）のそのコースの馬場」を決めて送る（同じ日・同じコースは誰でも同じ）。照明のある競馬場では、JSTの夜の時間帯のレースが night になる。チュートリアルとタイムアタックは送らない（＝良馬場・昼）。
+

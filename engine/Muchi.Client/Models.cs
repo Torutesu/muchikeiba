@@ -455,4 +455,146 @@ namespace Muchi.Client
         public string[] Members = new string[0];
         internal static FriendRoom Parse(JsonNode o) => new FriendRoom { Passphrase = J.Str(o, "passphrase"), Members = J.Strs(o, "members") };
     }
+
+    public sealed class TitleInfo
+    {
+        public string Id, Name;
+        public bool Unlocked;
+        internal static TitleInfo Parse(JsonNode o) => new TitleInfo { Id = J.Str(o, "id"), Name = J.Str(o, "name"), Unlocked = J.Bool(o, "unlocked") };
+    }
+
+    public sealed class TitleList
+    {
+        public string Equipped;
+        public List<TitleInfo> Titles = new List<TitleInfo>();
+        internal static TitleList Parse(JsonNode o) => new TitleList { Equipped = J.Str(o, "equipped"), Titles = J.List(o, "titles", TitleInfo.Parse) };
+    }
+
+    public sealed class WinCount
+    {
+        public int Races, Wins;
+        public int? BestFinishTick;
+        internal static WinCount Parse(JsonNode o) => new WinCount { Races = J.Int(o, "races"), Wins = J.Int(o, "wins"), BestFinishTick = J.IntN(o, "bestFinishTick") };
+    }
+
+    public sealed class PlayerStats
+    {
+        public int Races, Wins, Top3, WhipPerfectWins, PerfectStarts;
+        /// <summary>Ticks between the gate opening and the player's START (0 = perfect); null until recorded.</summary>
+        public int? BestStartReactionTicks;
+        public Dictionary<string, WinCount> ByStyle = new Dictionary<string, WinCount>();
+        /// <summary>Per track id; BestFinishTick × 50 ms = best time.</summary>
+        public Dictionary<string, WinCount> ByTrack = new Dictionary<string, WinCount>();
+        internal static PlayerStats Parse(JsonNode o) => new PlayerStats
+        {
+            Races = J.Int(o, "races"), Wins = J.Int(o, "wins"), Top3 = J.Int(o, "top3"), WhipPerfectWins = J.Int(o, "whipPerfectWins"),
+            PerfectStarts = J.Int(o, "perfectStarts"), BestStartReactionTicks = J.IntN(o, "bestStartReactionTicks"),
+            ByStyle = J.Map(o, "byStyle", WinCount.Parse), ByTrack = J.Map(o, "byTrack", WinCount.Parse),
+        };
+    }
+
+    public sealed class RankInfo
+    {
+        public string ClassId;
+        public int ClassRank, ClassTotal, RatingRank, RatingTotal;
+        internal static RankInfo Parse(JsonNode o) => o == null ? null : new RankInfo
+        {
+            ClassId = J.Str(o, "classId"), ClassRank = J.Int(o, "classRank"), ClassTotal = J.Int(o, "classTotal"),
+            RatingRank = J.Int(o, "ratingRank"), RatingTotal = J.Int(o, "ratingTotal"),
+        };
+    }
+
+    public sealed class Standing
+    {
+        public string ClassId;
+        public int Points, Rating, Races;
+        internal static Standing Parse(JsonNode o) => o == null ? null : new Standing { ClassId = J.Str(o, "classId"), Points = J.Int(o, "points"), Rating = J.Int(o, "rating"), Races = J.Int(o, "races") };
+    }
+
+    public sealed class MyRank
+    {
+        /// <summary>Null until the player appears in a published snapshot.</summary>
+        public RankInfo Rank;
+        public Standing Standing;
+        public long? GeneratedAt;
+        internal static MyRank Parse(JsonNode o) => new MyRank { Rank = RankInfo.Parse(J.Opt(o, "rank")), Standing = Standing.Parse(J.Opt(o, "standing")), GeneratedAt = J.LongN(o, "generatedAt") };
+    }
+
+    public sealed class BoardRow
+    {
+        public int Rank, Points, Rating, Races;
+        public string PlayerId, DisplayName, TitleId, ClassId;
+        internal static BoardRow Parse(JsonNode o) => new BoardRow
+        {
+            Rank = J.Int(o, "rank"), PlayerId = J.Str(o, "playerId"), DisplayName = J.Str(o, "displayName"), TitleId = J.Str(o, "titleId"),
+            ClassId = J.Str(o, "classId"), Points = J.Int(o, "points"), Rating = J.Int(o, "rating"), Races = J.Int(o, "races"),
+        };
+    }
+
+    public sealed class BoardIndexEntry
+    {
+        public string Board, Key;
+        public int Total;
+        internal static BoardIndexEntry Parse(JsonNode o) => new BoardIndexEntry { Board = J.Str(o, "board"), Key = J.Str(o, "key"), Total = J.Int(o, "total") };
+    }
+
+    /// <summary>A leaderboard snapshot (or, for board "index", the list of boards in <see cref="Boards"/>).</summary>
+    public sealed class LeaderboardFile
+    {
+        public string SeasonId, Board;
+        public long? GeneratedAt;
+        public int Total;
+        public List<BoardRow> Entries = new List<BoardRow>();
+        public List<BoardIndexEntry> Boards = new List<BoardIndexEntry>();
+        internal static LeaderboardFile Parse(JsonNode o) => new LeaderboardFile
+        {
+            SeasonId = J.Str(o, "seasonId"), Board = J.Str(o, "board"), GeneratedAt = J.LongN(o, "generatedAt"), Total = J.Int(o, "total"),
+            Entries = J.List(o, "entries", BoardRow.Parse), Boards = J.List(o, "boards", BoardIndexEntry.Parse),
+        };
+    }
+
+    public sealed class PublicProfile
+    {
+        public string PlayerId, DisplayName, TitleId, ClassId;
+        public int Rating, Races, Wins, Top3;
+        public long LastSeenAt;
+        /// <summary>Only on incoming/outgoing requests.</summary>
+        public long? RequestedAt;
+        internal static PublicProfile Parse(JsonNode o)
+        {
+            var st = J.Opt(o, "stats");
+            return new PublicProfile
+            {
+                PlayerId = J.Str(o, "playerId"), DisplayName = J.Str(o, "displayName"), TitleId = J.Str(o, "titleId"), ClassId = J.Str(o, "classId"),
+                Rating = J.Int(o, "rating"), Races = J.Int(st, "races"), Wins = J.Int(st, "wins"), Top3 = J.Int(st, "top3"),
+                LastSeenAt = J.Long(o, "lastSeenAt"), RequestedAt = J.LongN(o, "requestedAt"),
+            };
+        }
+    }
+
+    public sealed class FriendInvite
+    {
+        public PublicProfile From;
+        public string Passphrase;
+        public long At;
+        internal static FriendInvite Parse(JsonNode o) => new FriendInvite { From = PublicProfile.Parse(J.Opt(o, "from")), Passphrase = J.Str(o, "passphrase"), At = J.Long(o, "at") };
+    }
+
+    public sealed class FriendList
+    {
+        public List<PublicProfile> Friends = new List<PublicProfile>(), Incoming = new List<PublicProfile>(), Outgoing = new List<PublicProfile>();
+        public List<FriendInvite> Invites = new List<FriendInvite>();
+        internal static FriendList Parse(JsonNode o) => new FriendList
+        {
+            Friends = J.List(o, "friends", PublicProfile.Parse), Incoming = J.List(o, "incoming", PublicProfile.Parse),
+            Outgoing = J.List(o, "outgoing", PublicProfile.Parse), Invites = J.List(o, "invites", FriendInvite.Parse),
+        };
+    }
+
+    public sealed class FriendOpResult
+    {
+        /// <summary>"requested" or "friends".</summary>
+        public string Status, PlayerId;
+        internal static FriendOpResult Parse(JsonNode o) => new FriendOpResult { Status = J.Str(o, "status"), PlayerId = J.Str(o, "playerId") };
+    }
 }

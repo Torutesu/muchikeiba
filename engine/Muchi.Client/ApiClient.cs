@@ -222,6 +222,83 @@ namespace Muchi.Client
         public Task<bool> ReportRaceAsync(string raceId, CancellationToken ct = default)
             => Call("POST", "/v1/race/" + Seg(raceId) + "/report", JsonNode.Obj(), true, null, true, o => J.Bool(o, "ok"), ct);
 
+        // ------------------------------------------------------------------ profile, titles, stats (REQ-STAT/TITLE/SOCIAL)
+
+        /// <summary>Display name shown to friends and on leaderboards (NG-list checked; throws ValidationException NG_NAME).</summary>
+        public Task<string> SetDisplayNameAsync(string displayName, CancellationToken ct = default)
+        {
+            var b = JsonNode.Obj();
+            b.Set("displayName", displayName);
+            return Call("PUT", "/v1/player/profile", b, true, null, true, o => J.Str(o, "displayName"), ct);
+        }
+
+        public Task<TitleList> GetTitlesAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/titles", null, true, null, true, TitleList.Parse, ct);
+
+        /// <summary>Equip an unlocked title, or pass null to clear it.</summary>
+        public Task<string> EquipTitleAsync(string titleId, CancellationToken ct = default)
+        {
+            var b = JsonNode.Obj();
+            if (titleId == null) b.Set("titleId", JsonNode.Null()); else b.Set("titleId", titleId);
+            return Call("PUT", "/v1/player/title", b, true, null, true, o => J.Str(o, "titleId"), ct);
+        }
+
+        public Task<PlayerStats> GetStatsAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/stats", null, true, null, true, PlayerStats.Parse, ct);
+
+        // ------------------------------------------------------------------ leaderboards (REQ-LB)
+
+        /// <summary>The player's rank in the current season (null fields until the next snapshot).</summary>
+        public Task<MyRank> GetMyRankAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/leaderboards/me", null, true, null, true, MyRank.Parse, ct);
+
+        /// <summary>
+        /// A published snapshot. <paramref name="seasonId"/> is "yyyy-mm" or "current";
+        /// <paramref name="board"/> is "class-S"/"class-A"/…, "rating", or "index".
+        /// </summary>
+        public Task<LeaderboardFile> GetLeaderboardAsync(string seasonId, string board, CancellationToken ct = default)
+            => Call("GET", "/v1/leaderboards/" + Seg(seasonId) + "/" + Seg(board), null, false, null, true, LeaderboardFile.Parse, ct);
+
+        // ------------------------------------------------------------------ friends (REQ-SOCIAL)
+        // The server treats repeated friend operations as no-ops (already requested / already friends / nothing to
+        // remove), so they are all retried on transient failures.
+
+        public Task<FriendList> GetFriendsAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/friends", null, true, null, true, FriendList.Parse, ct);
+
+        /// <summary>Your 9-digit friend code.</summary>
+        public Task<string> GetFriendCodeAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/friends/code", null, true, null, true, o => J.Str(o, "code"), ct);
+
+        /// <summary>Send a request by friend code. If they already asked you, you become friends immediately (Status "friends").</summary>
+        public Task<FriendOpResult> SendFriendRequestAsync(string friendCode, CancellationToken ct = default)
+        {
+            var b = JsonNode.Obj();
+            b.Set("code", friendCode);
+            return Call("POST", "/v1/friends/requests", b, true, null, true, FriendOpResult.Parse, ct);
+        }
+
+        public Task<FriendOpResult> AcceptFriendRequestAsync(string fromId, CancellationToken ct = default)
+            => Call("POST", "/v1/friends/requests/" + Seg(fromId) + "/accept", JsonNode.Obj(), true, null, true, FriendOpResult.Parse, ct);
+
+        public Task<bool> DeclineFriendRequestAsync(string fromId, CancellationToken ct = default)
+            => Call("POST", "/v1/friends/requests/" + Seg(fromId) + "/decline", JsonNode.Obj(), true, null, true, o => J.Bool(o, "ok"), ct);
+
+        /// <summary>Withdraw a request you sent.</summary>
+        public Task<bool> CancelFriendRequestAsync(string toId, CancellationToken ct = default)
+            => Call("DELETE", "/v1/friends/requests/" + Seg(toId), null, true, null, true, o => J.Bool(o, "ok"), ct);
+
+        public Task<bool> RemoveFriendAsync(string friendId, CancellationToken ct = default)
+            => Call("DELETE", "/v1/friends/" + Seg(friendId), null, true, null, true, o => J.Bool(o, "ok"), ct);
+
+        /// <summary>Invite a friend to a friend room you are in (NOT_ELIGIBLE if not a member or not friends).</summary>
+        public Task<bool> InviteToFriendRoomAsync(string passphrase, string friendId, CancellationToken ct = default)
+        {
+            var b = JsonNode.Obj();
+            b.Set("friendId", friendId);
+            return Call("POST", "/v1/friend-rooms/" + Seg(passphrase) + "/invite", b, true, null, true, o => J.Bool(o, "ok"), ct);
+        }
+
         // ------------------------------------------------------------------ core
 
         private static string Seg(string s)

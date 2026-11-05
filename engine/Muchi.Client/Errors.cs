@@ -14,6 +14,7 @@ namespace Muchi.Client
         HorseNotFound, HorseNotActive, HorseNotRetired, BreedingInvalidPair,
         BreedingDailyLimit, AwakeningMax, AlreadyClaimed, NotEligible,
         AlreadyQueued, NotInQueue, RoomNotFound, RoomFull, NotHost, ConfigInvalid,
+        FriendLimit, AlreadyInRace, RoomTooSmall,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -55,6 +56,9 @@ namespace Muchi.Client
             ["ROOM_FULL"] = ApiErrorCode.RoomFull,
             ["NOT_HOST"] = ApiErrorCode.NotHost,
             ["CONFIG_INVALID"] = ApiErrorCode.ConfigInvalid,
+            ["FRIEND_LIMIT"] = ApiErrorCode.FriendLimit,
+            ["ALREADY_IN_RACE"] = ApiErrorCode.AlreadyInRace,
+            ["ROOM_TOO_SMALL"] = ApiErrorCode.RoomTooSmall,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };
 

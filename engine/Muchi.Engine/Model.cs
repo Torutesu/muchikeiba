@@ -23,7 +23,7 @@ namespace Muchi.Engine
     public enum Surface { Turf = 0, Dirt = 1, Both = 2 }
     public enum SegmentKind { Straight = 0, Corner = 1 }
     public enum EntrantKind { Human = 0, Cpu = 1 }
-    public enum RaceMode { Ranked = 0, Friend = 1, Tutorial = 2 }
+    public enum RaceMode { Ranked = 0, Friend = 1, Tutorial = 2, TimeAttack = 3 }
 
     public sealed class TrackSegment
     {

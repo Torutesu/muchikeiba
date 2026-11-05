@@ -317,5 +317,72 @@
     "rolloverBatch": 50
   },
   "replayRetentionDays": 30,
-  "friendRewardDailyCap": 10
+  "friendRewardDailyCap": 10,
+  "timeAttack": {
+    "_note": "REQ-TA-*。statCap はランク戦B級と同じ。マイルストーン秒数（暫定）: gold は上限いっぱいの馬を上手く乗った実測値（1600m≈67.3s / 2000m≈85.6s / 2400m≈106.3s, engine TimeAttackTests.MeasureTypicalTimesPerTrack）、bronze は約3〜4%遅い。",
+    "statCap": 3200,
+    "maxAttemptsPerDay": 30,
+    "sessionTtlMs": 600000,
+    "maxInputs": 400,
+    "keepSessions": 20,
+    "topN": 100,
+    "milestones": [
+      {
+        "id": "ta_first_clear",
+        "trackId": null,
+        "maxTimeMs": null,
+        "reward": {
+          "freeCoins": 50
+        }
+      },
+      {
+        "id": "ta_aoba_1600_bronze",
+        "trackId": "aoba_turf_1600",
+        "maxTimeMs": 70000,
+        "reward": {
+          "freeCoins": 30
+        }
+      },
+      {
+        "id": "ta_aoba_1600_gold",
+        "trackId": "aoba_turf_1600",
+        "maxTimeMs": 67400,
+        "reward": {
+          "freeCoins": 100
+        }
+      },
+      {
+        "id": "ta_kirameki_2000_bronze",
+        "trackId": "kirameki_turf_2000",
+        "maxTimeMs": 89000,
+        "reward": {
+          "freeCoins": 30
+        }
+      },
+      {
+        "id": "ta_kirameki_2000_gold",
+        "trackId": "kirameki_turf_2000",
+        "maxTimeMs": 85700,
+        "reward": {
+          "freeCoins": 100
+        }
+      },
+      {
+        "id": "ta_minato_2400_bronze",
+        "trackId": "minato_turf_2400",
+        "maxTimeMs": 111000,
+        "reward": {
+          "freeCoins": 30
+        }
+      },
+      {
+        "id": "ta_minato_2400_gold",
+        "trackId": "minato_turf_2400",
+        "maxTimeMs": 106500,
+        "reward": {
+          "freeCoins": 100
+        }
+      }
+    ]
+  }
 }

@@ -10,7 +10,7 @@ const stat = int.min(0).max(1000);
 export const styleSchema = z.enum(['nige', 'senko', 'sashi', 'oikomi']);
 export const surfaceSchema = z.enum(['turf', 'dirt']);
 export const aptSurfaceSchema = z.enum(['turf', 'dirt', 'both']);
-export const modeSchema = z.enum(['ranked', 'friend', 'tutorial']);
+export const modeSchema = z.enum(['ranked', 'friend', 'tutorial', 'timeattack']);
 
 export const segmentSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('straight'), lengthM: int.min(1) }).strict(),
@@ -114,8 +114,11 @@ export const verifierOutputSchema = z
     resultHash: hex64,
     order: z.array(int.min(0).max(11)),
     finishTicks: z.array(int.min(-1)),
+    /** Q16.16 fraction of the finish tick per place, -1 = did not finish (optional for older verifiers). */
+    finishFracs: z.array(int.min(-1).max(65535)).optional(),
     checksums: z.record(z.string().regex(/^\d+$/), hex16),
   })
   .strict()
-  .refine((o) => o.order.length === o.finishTicks.length, 'order/finishTicks length mismatch');
+  .refine((o) => o.order.length === o.finishTicks.length, 'order/finishTicks length mismatch')
+  .refine((o) => !o.finishFracs || o.finishFracs.length === o.order.length, 'order/finishFracs length mismatch');
 export type VerifierOutput = z.infer<typeof verifierOutputSchema>;

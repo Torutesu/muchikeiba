@@ -1,6 +1,7 @@
 import type { Rarity, Sex, Stats, Style } from './master.js';
 import type { PushState } from './push.js';
 import type { KpiState } from './kpi.js';
+import type { TimeAttackState } from './timeAttack.js';
 
 export type Currency = 'paid' | 'free';
 
@@ -91,6 +92,8 @@ export interface PlayerState {
   seasonHistory: SeasonRecord[];
   /** Friend-race rewards paid today (daily cap, REQ-REW-004). */
   friendRewards: { date: string; count: number };
+  /** Time attack sessions, bests and milestones (REQ-TA-*). Created lazily. */
+  timeAttack?: TimeAttackState;
   /** REQ-PUSH-*: devices, preferences, outbox (created on first use; see push.ts ensurePush). */
   push?: PushState;
   /** REQ-KPI-*: first_open flag and client ingestion rate counters (see kpi.ts ensureKpi). */

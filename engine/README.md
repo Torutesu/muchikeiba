@@ -85,8 +85,28 @@ race.Input(Cmd.Whip);
 race.Pause(NowMs()); race.Resume(NowMs());
 ```
 - **チュートリアル**（いきなり本番）：400mの直線だけ。スタートは自動、操作はムチだけ。残り200〜400mからムチを入れればほぼ必ず勝ち（60シード中58以上）、ムチ無し・残り60mからのムチではほぼ負ける（テストで固定）。
-- **タイムアタック**：`OfflinePresets.TimeAttack(track, horse, ruleset)`、`FinishTimeMs(slot)` でタイム。
+- **練習用タイムアタック**（記録なし）：`OfflinePresets.TimeAttack(track, horse, ruleset)`、`FinishTimeMs(slot)` でタイム。
 - `ruleset` はサーバーから受け取ったもの（オンラインと同じ値）を使う。
+- `OfflineRace.RecordedInputs` に、自分の馬に実際に適用した入力（tickごとに1つ）が残る。設定＋この入力でレースを完全に再現できる（タイムアタックの提出に使う）。
+
+### 3.1 タイムアタックとゴースト（記録あり、REQ-TA-*）
+```csharp
+var session = await api.StartTimeAttackAsync(trackId, horseId);   // サーバーが設定（シード・コース・正規化した馬）を発行。1日の回数を消費、自動再試行しない
+var run = new TimeAttackRun(session);                              // 自分の OfflineRace（slot 0）
+var list = await api.GetGhostsAsync(trackId, GhostKind.Top);       // Top / Friends / Me
+run.AddGhost(await api.GetGhostAsync(list.Ghosts[0]));             // 何体でも
+run.Race.Start(nowMs);
+// 毎フレーム: run.Race.Update(nowMs) — ゴーストは自動で同じtickまで進む。入力は run.Race.Input(Cmd.Whip) など
+// 描画: run.Race.Sim.GetHorse(0) と run.Ghosts[i].Horse / PreviousHorse（半透明で）
+// ゴール後:
+var result = await api.SubmitTimeAttackAsync(session, run.Race);   // 入力と結果ハッシュだけ送る。安全に再試行される
+// result.TimeMs, SeasonBest, AllTimeBest, Milestones（報酬）, Published（ランキングとゴーストに載った）
+```
+- **ゴーストは別のシミュレーション**：ゴーストごとに自分の設定（馬・シード）で `RaceSim` を作り、記録された入力で同じtick数だけ進める。プレイヤーの馬とは干渉しない（スリップストリーム・進路妨害なし）ので、プレイヤーの走りは「発行された設定＋自分の入力」だけで決まり、サーバーの再計算と必ず一致する。ゴーストも記録どおりのゴールtickで終わる（テストで確認）。
+- タイムは `run.Race.FinishTimeMs(0)` / `GhostPlayer.FinishTimeMs`。サーバーの式と同一（`contracts/protocol.md` §8.1）。
+- 改ざん（入力の書き換え、強い馬への差し替え）は再計算のハッシュが合わず `TA_RESULT_MISMATCH`（ConflictException）。検証サーバー停止中は `VERIFIER_UNAVAILABLE`（ServerException）で、セッションの期限内なら同じ `SubmitTimeAttackAsync` をもう一度呼べばよい。
+- ゴーストは `Ghost.Parse(JsonNode)` で読み込めるので、ダウンロードしたものを端末に保存しておける。
+- 計測（上限いっぱいの馬を上手く乗った場合、`TimeAttackTests.MeasureTypicalTimesPerTrack`）：1600m≈67.3秒、2000m≈85.6秒、2400m≈106.3秒。節目報酬の秒数（`server/master/progression.json` の `timeAttack.milestones`）はこれを基準にした暫定値。
 
 ### 4. 実況（`Commentator`）
 ```csharp

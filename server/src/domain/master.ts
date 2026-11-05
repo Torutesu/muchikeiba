@@ -5,6 +5,7 @@ import nicksJson from '../../master/nicks.json';
 import ngJson from '../../master/ng-names.json';
 import ageJson from '../../master/age-limits.json';
 import productsJson from '../../master/products.json';
+import type { TimeAttackConfig } from './timeAttack.js';
 import progressionJson from '../../master/progression.json';
 import titlesJson from '../../master/titles.json';
 import pushJson from '../../master/push.json';
@@ -47,6 +48,8 @@ export interface Progression {
   replayRetentionDays: number;
   /** REQ-REW-004: friend races that pay rewards per JST day (anti-farming). */
   friendRewardDailyCap: number;
+  /** REQ-TA-*: time attack rules. */
+  timeAttack: TimeAttackConfig;
 }
 export type TitleCondition =
   | { kind: 'races' | 'wins' | 'top3' | 'perfectStarts' | 'whipPerfectWins'; value: number }

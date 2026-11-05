@@ -20,5 +20,11 @@ export function goldenConfigs(): Record<string, RaceStartConfig> {
     humans: [{ playerId: 'p_alice', horse: horse('t_ginga') }, { playerId: 'p_bob', horse: horse('t_tsukikage') }],
     cpuCount: 4, cpuLevel: 2, statCap: null, rng: seededRng(42),
   });
-  return { 'ts-config-ranked.json': ranked, 'ts-config-friend.json': friend };
+  // time attack (REQ-TA-002): exactly what startTimeAttack builds — one human, no CPU, normalised stats
+  const timeattack = buildRaceConfig(m, {
+    raceId: 'ta_golden', mode: 'timeattack', trackId: 'kirameki_turf_2000',
+    humans: [{ playerId: 'p_alice', horse: horse('t_akatsuki') }],
+    cpuCount: 0, cpuLevel: 3, statCap: m.progression.timeAttack.statCap, rng: seededRng(777),
+  });
+  return { 'ts-config-ranked.json': ranked, 'ts-config-friend.json': friend, 'ts-config-timeattack.json': timeattack };
 }

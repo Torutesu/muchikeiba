@@ -31,6 +31,7 @@ async function setup(opts: { rate?: Record<'read' | 'write', RateLimitPolicy>; b
     match: { enqueue: async () => ({}), cancel: async () => ({}), status: async () => ({}), friendCreate: async () => ({}), friendJoin: async () => ({}), friendStart: async () => ({}), tutorial: async () => ({}), friendMember: async () => false },
     friends: makeFriendsService(() => invoker, new MemoryDirectory()),
     leaderboard: { board: async (season, board) => opts.board ?? { season, board, entries: [], total: 0 }, myRank: async () => ({}) },
+    timeAttack: {} as AppContext['timeAttack'],
     clock: () => now,
     race: { websocket: async () => new Response(null), report: async () => ({ ok: true }), replay: async (id) => ({ raceId: id }) },
     paidBalance: async () => ({ totalPaidYen: 0 }),

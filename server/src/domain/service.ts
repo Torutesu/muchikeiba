@@ -22,6 +22,9 @@ import { admitClientBatch, clientToKpi, ensureKpi, isPayer, kpiRecord, type Clie
 
 /** Collects analytics events inside a transaction; they are emitted only if the transaction is saved. */
 export type Emit = (e: KpiEvent) => void;
+import { abortSubmit, prepareSubmit, recordResult, startTimeAttack, timeAttackView } from './timeAttack.js';
+import type { VerifierOutput } from './schemas.js';
+import { trackById } from './master.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
 export interface PlayerRepo {
@@ -409,5 +412,25 @@ export class PlayerService {
     });
     if (r.records.length > 0 && this.d.onKpi) await this.d.onKpi(id, r.records);
     return { accepted: r.accepted, dropped: r.dropped };
+  }
+
+  // ---- time attack (REQ-TA-*) ----
+  /** Issue a session. The id is random (crypto in production) and doubles as the race id suffix. */
+  taStart(id: string, trackId: string, horseId: string) {
+    return this.tx(id, null, (s, now) => {
+      const sessionId = [0, 0, 0].map(() => this.d.rng.nextU32().toString(36)).join('');
+      return startTimeAttack(this.d.master, s, this.d.master.progression.timeAttack, trackId, horseId, sessionId, this.d.rng, now);
+    });
+  }
+  taPrepare(id: string, sessionId: string, inputs: unknown, resultHash: string, echoedConfig: unknown) {
+    return this.tx(id, null, (s, now) => prepareSubmit(s, this.d.master.progression.timeAttack, sessionId, inputs, resultHash, echoedConfig, now));
+  }
+  taAbort(id: string, sessionId: string) { return this.tx(id, null, (s) => abortSubmit(s, sessionId)); }
+  taRecord(id: string, sessionId: string, out: VerifierOutput, claimedHash: string) {
+    return this.tx(id, null, (s, now) => recordResult(this.d.master, s, this.d.master.progression.timeAttack, sessionId, out, claimedHash, now));
+  }
+  async taView(id: string, trackId: string) {
+    trackById(this.d.master, trackId);
+    return timeAttackView(await this.load(id), this.d.master.progression.timeAttack, trackId, this.d.clock());
   }
 }

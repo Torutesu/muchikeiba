@@ -19,6 +19,7 @@ namespace Muchi.Client
         Banned,
         /// <summary>403 / 429: admin-only codes; never expected by the game client.</summary>
         Forbidden, RateLimited,
+        TaLimitReached, TaSessionExpired, TaSessionUsed, TaConfigMismatch, TaResultMismatch, VerifierUnavailable,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -66,6 +67,12 @@ namespace Muchi.Client
             ["BANNED"] = ApiErrorCode.Banned,
             ["FORBIDDEN"] = ApiErrorCode.Forbidden,
             ["RATE_LIMITED"] = ApiErrorCode.RateLimited,
+            ["TA_LIMIT_REACHED"] = ApiErrorCode.TaLimitReached,
+            ["TA_SESSION_EXPIRED"] = ApiErrorCode.TaSessionExpired,
+            ["TA_SESSION_USED"] = ApiErrorCode.TaSessionUsed,
+            ["TA_CONFIG_MISMATCH"] = ApiErrorCode.TaConfigMismatch,
+            ["TA_RESULT_MISMATCH"] = ApiErrorCode.TaResultMismatch,
+            ["VERIFIER_UNAVAILABLE"] = ApiErrorCode.VerifierUnavailable,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };
 
@@ -85,6 +92,7 @@ namespace Muchi.Client
                 case ApiErrorCode.IdempotencyKeyRequired:
                 case ApiErrorCode.InvalidName:
                 case ApiErrorCode.NgName:
+                case ApiErrorCode.TaConfigMismatch:
                     return new ValidationException(code, wire, message, status);
                 case ApiErrorCode.NotFound:
                 case ApiErrorCode.HorseNotFound:
@@ -103,6 +111,7 @@ namespace Muchi.Client
                     return new RateLimitedException(wire, message, status);
                 case ApiErrorCode.Internal:
                 case ApiErrorCode.ConfigInvalid:
+                case ApiErrorCode.VerifierUnavailable:
                     return new ServerException(code, wire, message, status);
                 default:
                     if (status >= 500) return new ServerException(code, wire, message, status);

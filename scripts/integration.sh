@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# Cross-language end-to-end test:
+#   C# verifier (Muchi.Verifier serve)  <-- HTTP --  TS server (wrangler dev)  <-- WebSocket --  C# bots (Muchi.Bot)
+# Checks that real races confirm, that the server's final hash equals each bot's own simulation,
+# that a solo ranked race is settled by the real C# verifier, and that the stored replay log
+# reproduces the same hash offline.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+VERIFIER_PORT="${VERIFIER_PORT:-8090}"
+SERVER_PORT="${SERVER_PORT:-8787}"
+BASE="http://127.0.0.1:${SERVER_PORT}"
+LOG_DIR="$(mktemp -d)"
+export DOTNET_CLI_TELEMETRY_OPTOUT=1
+
+cleanup() {
+  [[ -n "${VERIFIER_PID:-}" ]] && kill "$VERIFIER_PID" 2>/dev/null || true
+  [[ -n "${SERVER_PID:-}" ]] && kill "$SERVER_PID" 2>/dev/null || true
+  wait 2>/dev/null || true
+}
+trap cleanup EXIT
+
+wait_for() { # url, name
+  for _ in $(seq 1 120); do
+    if curl -fsS "$1" >/dev/null 2>&1; then return 0; fi
+    sleep 1
+  done
+  echo "timed out waiting for $2"; cat "$LOG_DIR"/*.log; exit 1
+}
+
+echo "== build"
+(cd "$ROOT/engine" && dotnet build Muchi.sln -c Release --nologo -v q)
+
+echo "== start C# verifier on :$VERIFIER_PORT"
+(cd "$ROOT/engine" && dotnet Muchi.Verifier/bin/Release/net8.0/Muchi.Verifier.dll serve --urls "http://127.0.0.1:${VERIFIER_PORT}" >"$LOG_DIR/verifier.log" 2>&1) &
+VERIFIER_PID=$!
+wait_for "http://127.0.0.1:${VERIFIER_PORT}/healthz" verifier
+
+echo "== start TS server (wrangler dev) on :$SERVER_PORT"
+(cd "$ROOT/server" && npx wrangler dev --port "$SERVER_PORT" --ip 127.0.0.1 \
+  --var DEV_MODE:1 --var TICKET_SECRET:devsecret --var ADMIN_TOKEN:dev-admin \
+  --var "VERIFIER_URL:http://127.0.0.1:${VERIFIER_PORT}" >"$LOG_DIR/server.log" 2>&1) &
+SERVER_PID=$!
+wait_for "${BASE}/v1/health" server
+
+BOT="dotnet $ROOT/engine/Muchi.Bot/bin/Release/net8.0/Muchi.Bot.dll"
+fail=0
+
+echo "== 1) tutorial race (1 human + CPU, not ranked) → confirmed by the room"
+$BOT "$BASE" tutorial | tee "$LOG_DIR/tutorial.jsonl" || fail=1
+
+echo "== 2) ranked, 2 humans → confirmed by consensus"
+$BOT "$BASE" ranked 2 | tee "$LOG_DIR/ranked2.jsonl" || fail=1
+
+echo "== 3) ranked, 1 human → verifying → confirmed by the C# verifier"
+$BOT "$BASE" ranked 1 | tee "$LOG_DIR/ranked1.jsonl" || fail=1
+grep -q '"statuses":\["verifying","confirmed"\]' "$LOG_DIR/ranked1.jsonl" || { echo "solo ranked race was not settled through the verifier"; fail=1; }
+
+echo "== 4) stored replay log reproduces the same hash offline"
+RACE_ID=$(node -e 'const l=require("fs").readFileSync(process.argv[1],"utf8").trim().split("\n")[0];console.log(JSON.parse(l).raceId)' "$LOG_DIR/ranked1.jsonl")
+LOCAL_HASH=$(node -e 'const l=require("fs").readFileSync(process.argv[1],"utf8").trim().split("\n")[0];console.log(JSON.parse(l).localHash)' "$LOG_DIR/ranked1.jsonl")
+curl -fsS -H 'authorization: Bearer dev-admin' "${BASE}/v1/admin/replays/${RACE_ID}" >"$LOG_DIR/replay.json"
+REPLAY_HASH=$(cd "$ROOT/engine" && dotnet Muchi.Verifier/bin/Release/net8.0/Muchi.Verifier.dll replay "$LOG_DIR/replay.json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).resultHash))')
+echo "bot=$LOCAL_HASH replay=$REPLAY_HASH"
+[[ "$LOCAL_HASH" == "$REPLAY_HASH" ]] || { echo "replay hash mismatch"; fail=1; }
+
+if [[ $fail -ne 0 ]]; then
+  echo "== INTEGRATION FAILED"; echo "--- server log"; tail -50 "$LOG_DIR/server.log"; echo "--- verifier log"; tail -20 "$LOG_DIR/verifier.log"
+  exit 1
+fi
+echo "== INTEGRATION OK"

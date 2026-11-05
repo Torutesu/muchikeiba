@@ -23,6 +23,7 @@ namespace Muchi.Engine
         public int LaneChangeTicks;
         public int LaneChangeClearanceMm;
         public int BlockRangeMm;
+        public int MinGapMm;
         public int SlipstreamRangeMm;
         public int SlipstreamSavePermille;
         public int BaseCruiseSpeedMmPerSec;
@@ -36,7 +37,7 @@ namespace Muchi.Engine
         public int SpurtSpeedBonusMaxMmPerSec;
         public int StaminaBase;
         public int StaminaPerStatPoint;
-        public int DrainMilliPerSpeedSqPerTick;
+        public int DrainMicroPerSpeedSqPerTick;
         public int GutsFloorMinPermille;
         public int GutsFloorMaxPermille;
         public int AptitudeOutPenaltyPermille;
@@ -59,6 +60,7 @@ namespace Muchi.Engine
         public int WhipStaminaCost;
         public int CpuDecisionIntervalTicks;
         public int CpuWhipIntervalTicks;
+        public int CpuWhipStartDistanceM;
         public int CpuTargetRankNigePermille;
         public int CpuTargetRankSenkoPermille;
         public int CpuTargetRankSashiPermille;
@@ -69,16 +71,16 @@ namespace Muchi.Engine
         {
             "maxTicks", "gateOpenTick", "startReactionWindowTicks", "startBoostPermille", "startBoostTicks",
             "autoStartDelayTicks", "laneCount", "laneWidthMm", "laneChangeTicks", "laneChangeClearanceMm",
-            "blockRangeMm", "slipstreamRangeMm", "slipstreamSavePermille", "baseCruiseSpeedMmPerSec",
+            "blockRangeMm", "minGapMm", "slipstreamRangeMm", "slipstreamSavePermille", "baseCruiseSpeedMmPerSec",
             "speedStatBonusMmPerSecPer1000", "cruiseSpeedPermille", "accelMmPerSec2", "decelMmPerSec2",
             "reinSpeedPermille", "reinDrainPermille", "spurtDistanceM", "spurtSpeedBonusMaxMmPerSec",
-            "staminaBase", "staminaPerStatPoint", "drainMilliPerSpeedSqPerTick", "gutsFloorMinPermille",
+            "staminaBase", "staminaPerStatPoint", "drainMicroPerSpeedSqPerTick", "gutsFloorMinPermille",
             "gutsFloorMaxPermille", "aptitudeOutPenaltyPermille", "badComposureThreshold",
             "badComposureExtraDrainPermille", "kakariChancePer100000PerTickAtTemper0", "kakariDurationTicks",
             "kakariComposureLossPerTick", "reinComposureRecoverPerTick", "naturalComposureRecoverPerTick",
             "blockedComposureLossIntervalTicks", "maxWhips", "whipEffectTicks", "whipAccelBonusMmPerSec2",
             "whipSpeedBonusMmPerSec", "whipDiminishWindowTicks", "whipDiminishPermille", "earlyWhipEffectPermille",
-            "earlyWhipComposurePenalty", "whipStaminaCost", "cpuDecisionIntervalTicks", "cpuWhipIntervalTicks",
+            "earlyWhipComposurePenalty", "whipStaminaCost", "cpuDecisionIntervalTicks", "cpuWhipIntervalTicks", "cpuWhipStartDistanceM",
             "cpuTargetRankNigePermille", "cpuTargetRankSenkoPermille", "cpuTargetRankSashiPermille",
             "cpuTargetRankOikomiPermille",
         };
@@ -113,6 +115,7 @@ namespace Muchi.Engine
             p.LaneChangeTicks = G("laneChangeTicks");
             p.LaneChangeClearanceMm = G("laneChangeClearanceMm");
             p.BlockRangeMm = G("blockRangeMm");
+            p.MinGapMm = G("minGapMm");
             p.SlipstreamRangeMm = G("slipstreamRangeMm");
             p.SlipstreamSavePermille = G("slipstreamSavePermille");
             p.BaseCruiseSpeedMmPerSec = G("baseCruiseSpeedMmPerSec");
@@ -126,7 +129,7 @@ namespace Muchi.Engine
             p.SpurtSpeedBonusMaxMmPerSec = G("spurtSpeedBonusMaxMmPerSec");
             p.StaminaBase = G("staminaBase");
             p.StaminaPerStatPoint = G("staminaPerStatPoint");
-            p.DrainMilliPerSpeedSqPerTick = G("drainMilliPerSpeedSqPerTick");
+            p.DrainMicroPerSpeedSqPerTick = G("drainMicroPerSpeedSqPerTick");
             p.GutsFloorMinPermille = G("gutsFloorMinPermille");
             p.GutsFloorMaxPermille = G("gutsFloorMaxPermille");
             p.AptitudeOutPenaltyPermille = G("aptitudeOutPenaltyPermille");
@@ -149,6 +152,7 @@ namespace Muchi.Engine
             p.WhipStaminaCost = G("whipStaminaCost");
             p.CpuDecisionIntervalTicks = G("cpuDecisionIntervalTicks");
             p.CpuWhipIntervalTicks = G("cpuWhipIntervalTicks");
+            p.CpuWhipStartDistanceM = G("cpuWhipStartDistanceM");
             p.CpuTargetRankNigePermille = G("cpuTargetRankNigePermille");
             p.CpuTargetRankSenkoPermille = G("cpuTargetRankSenkoPermille");
             p.CpuTargetRankSashiPermille = G("cpuTargetRankSashiPermille");
@@ -165,16 +169,16 @@ namespace Muchi.Engine
             {
                 MaxTicks, GateOpenTick, StartReactionWindowTicks, StartBoostPermille, StartBoostTicks,
                 AutoStartDelayTicks, LaneCount, LaneWidthMm, LaneChangeTicks, LaneChangeClearanceMm,
-                BlockRangeMm, SlipstreamRangeMm, SlipstreamSavePermille, BaseCruiseSpeedMmPerSec,
+                BlockRangeMm, MinGapMm, SlipstreamRangeMm, SlipstreamSavePermille, BaseCruiseSpeedMmPerSec,
                 SpeedStatBonusMmPerSecPer1000, CruiseSpeedPermille, AccelMmPerSec2, DecelMmPerSec2,
                 ReinSpeedPermille, ReinDrainPermille, SpurtDistanceM, SpurtSpeedBonusMaxMmPerSec,
-                StaminaBase, StaminaPerStatPoint, DrainMilliPerSpeedSqPerTick, GutsFloorMinPermille,
+                StaminaBase, StaminaPerStatPoint, DrainMicroPerSpeedSqPerTick, GutsFloorMinPermille,
                 GutsFloorMaxPermille, AptitudeOutPenaltyPermille, BadComposureThreshold,
                 BadComposureExtraDrainPermille, KakariChancePer100000PerTickAtTemper0, KakariDurationTicks,
                 KakariComposureLossPerTick, ReinComposureRecoverPerTick, NaturalComposureRecoverPerTick,
                 BlockedComposureLossIntervalTicks, MaxWhips, WhipEffectTicks, WhipAccelBonusMmPerSec2,
                 WhipSpeedBonusMmPerSec, WhipDiminishWindowTicks, WhipDiminishPermille, EarlyWhipEffectPermille,
-                EarlyWhipComposurePenalty, WhipStaminaCost, CpuDecisionIntervalTicks, CpuWhipIntervalTicks,
+                EarlyWhipComposurePenalty, WhipStaminaCost, CpuDecisionIntervalTicks, CpuWhipIntervalTicks, CpuWhipStartDistanceM,
                 CpuTargetRankNigePermille, CpuTargetRankSenkoPermille, CpuTargetRankSashiPermille,
                 CpuTargetRankOikomiPermille,
             };
@@ -191,6 +195,7 @@ namespace Muchi.Engine
             if (AccelMmPerSec2 < 1 || DecelMmPerSec2 < 1) throw new ArgumentException("accel/decel must be >= 1");
             if (CpuDecisionIntervalTicks < 1) throw new ArgumentException("cpuDecisionIntervalTicks must be >= 1");
             if (MaxWhips < 0) throw new ArgumentException("maxWhips must be >= 0");
+            if (MinGapMm < 0 || MinGapMm > BlockRangeMm) throw new ArgumentException("minGapMm must be 0..blockRangeMm");
             if (GutsFloorMaxPermille < GutsFloorMinPermille) throw new ArgumentException("guts floor range invalid");
         }
     }

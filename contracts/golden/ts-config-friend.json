@@ -1,0 +1,214 @@
+{
+  "v": 1,
+  "raceId": "r_golden_friend",
+  "mode": "friend",
+  "seed": "4036890119655709060",
+  "track": {
+    "id": "minato_turf_2400",
+    "surface": "turf",
+    "distanceM": 2400,
+    "segments": [
+      {
+        "kind": "straight",
+        "lengthM": 400
+      },
+      {
+        "kind": "corner",
+        "lengthM": 300,
+        "radiusM": 130
+      },
+      {
+        "kind": "straight",
+        "lengthM": 500
+      },
+      {
+        "kind": "corner",
+        "lengthM": 600,
+        "radiusM": 130
+      },
+      {
+        "kind": "straight",
+        "lengthM": 600
+      }
+    ]
+  },
+  "net": {
+    "tickHz": 20,
+    "inputDelayTicks": 3,
+    "bundleIntervalTicks": 2,
+    "checksumIntervalTicks": 20,
+    "disconnectGraceMs": 3000
+  },
+  "ruleset": {
+    "rulesetVersion": "1.0.0",
+    "maxTicks": 4800,
+    "gateOpenTick": 60,
+    "startReactionWindowTicks": 4,
+    "startBoostPermille": 500,
+    "startBoostTicks": 40,
+    "autoStartDelayTicks": 10,
+    "laneCount": 12,
+    "laneWidthMm": 1200,
+    "laneChangeTicks": 6,
+    "laneChangeClearanceMm": 2500,
+    "blockRangeMm": 2000,
+    "minGapMm": 1000,
+    "slipstreamRangeMm": 6000,
+    "slipstreamSavePermille": 300,
+    "baseCruiseSpeedMmPerSec": 21000,
+    "speedStatBonusMmPerSecPer1000": 5000,
+    "cruiseSpeedPermille": 940,
+    "accelMmPerSec2": 3500,
+    "decelMmPerSec2": 2500,
+    "reinSpeedPermille": 950,
+    "reinDrainPermille": 450,
+    "spurtDistanceM": 800,
+    "spurtSpeedBonusMaxMmPerSec": 6000,
+    "staminaBase": 4000,
+    "staminaPerStatPoint": 10,
+    "drainMicroPerSpeedSqPerTick": 11300,
+    "gutsFloorMinPermille": 600,
+    "gutsFloorMaxPermille": 850,
+    "aptitudeOutPenaltyPermille": 50,
+    "badComposureThreshold": 40,
+    "badComposureExtraDrainPermille": 300,
+    "kakariChancePer100000PerTickAtTemper0": 60,
+    "kakariDurationTicks": 40,
+    "kakariComposureLossPerTick": 2,
+    "reinComposureRecoverPerTick": 2,
+    "naturalComposureRecoverPerTick": 0,
+    "blockedComposureLossIntervalTicks": 20,
+    "maxWhips": 6,
+    "whipEffectTicks": 20,
+    "whipAccelBonusMmPerSec2": 2000,
+    "whipSpeedBonusMmPerSec": 2000,
+    "whipDiminishWindowTicks": 20,
+    "whipDiminishPermille": 500,
+    "earlyWhipEffectPermille": 300,
+    "earlyWhipComposurePenalty": 10,
+    "whipStaminaCost": 20,
+    "cpuDecisionIntervalTicks": 4,
+    "cpuWhipIntervalTicks": 24,
+    "cpuWhipStartDistanceM": 400,
+    "cpuTargetRankNigePermille": 0,
+    "cpuTargetRankSenkoPermille": 400,
+    "cpuTargetRankSashiPermille": 550,
+    "cpuTargetRankOikomiPermille": 800
+  },
+  "entrants": [
+    {
+      "slot": 0,
+      "kind": "cpu",
+      "playerId": null,
+      "cpuLevel": 2,
+      "horse": {
+        "id": "cpu_t_akanegumo",
+        "name": "アカネグモ",
+        "speed": 570,
+        "stamina": 650,
+        "burst": 630,
+        "guts": 530,
+        "temper": 510,
+        "style": "oikomi",
+        "distMinM": 1800,
+        "distMaxM": 2600,
+        "surface": "turf"
+      }
+    },
+    {
+      "slot": 1,
+      "kind": "cpu",
+      "playerId": null,
+      "cpuLevel": 2,
+      "horse": {
+        "id": "cpu_t_akatsuki",
+        "name": "シンセイアカツキ",
+        "speed": 820,
+        "stamina": 700,
+        "burst": 900,
+        "guts": 650,
+        "temper": 520,
+        "style": "sashi",
+        "distMinM": 1600,
+        "distMaxM": 2400,
+        "surface": "turf"
+      }
+    },
+    {
+      "slot": 2,
+      "kind": "human",
+      "playerId": "p_alice",
+      "cpuLevel": 3,
+      "horse": {
+        "id": "h4",
+        "name": "ギンガノカナタ",
+        "speed": 800,
+        "stamina": 820,
+        "burst": 760,
+        "guts": 720,
+        "temper": 600,
+        "style": "senko",
+        "distMinM": 1800,
+        "distMaxM": 2600,
+        "surface": "turf"
+      }
+    },
+    {
+      "slot": 3,
+      "kind": "human",
+      "playerId": "p_bob",
+      "cpuLevel": 3,
+      "horse": {
+        "id": "h5",
+        "name": "ツキカゲロード",
+        "speed": 780,
+        "stamina": 860,
+        "burst": 880,
+        "guts": 600,
+        "temper": 560,
+        "style": "oikomi",
+        "distMinM": 2000,
+        "distMaxM": 3000,
+        "surface": "turf"
+      }
+    },
+    {
+      "slot": 4,
+      "kind": "cpu",
+      "playerId": null,
+      "cpuLevel": 2,
+      "horse": {
+        "id": "cpu_t_umineko",
+        "name": "ウミネコパレード",
+        "speed": 690,
+        "stamina": 700,
+        "burst": 720,
+        "guts": 580,
+        "temper": 560,
+        "style": "sashi",
+        "distMinM": 1600,
+        "distMaxM": 2400,
+        "surface": "turf"
+      }
+    },
+    {
+      "slot": 5,
+      "kind": "cpu",
+      "playerId": null,
+      "cpuLevel": 2,
+      "horse": {
+        "id": "cpu_t_harukaze",
+        "name": "ハルカゼノミチ",
+        "speed": 700,
+        "stamina": 680,
+        "burst": 600,
+        "guts": 650,
+        "temper": 500,
+        "style": "nige",
+        "distMinM": 1600,
+        "distMaxM": 2200,
+        "surface": "turf"
+      }
+    }
+  ]
+}

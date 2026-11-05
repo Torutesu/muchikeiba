@@ -1,0 +1,36 @@
+name = "muchi-server"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# C# verifier service (engine/Muchi.Verifier), scale-to-zero (e.g. Cloud Run)
+VERIFIER_URL = "https://verifier.example.invalid"
+FIREBASE_PROJECT_ID = "muchi-issen-dev"
+VERIFY_SAMPLE_RATE = "0.05"
+# DEV_MODE = "1"   # local only: fake store + x-dev-user header. NEVER in production.
+# Secrets (wrangler secret put): TICKET_SECRET, ADMIN_TOKEN
+
+[[durable_objects.bindings]]
+name = "RACE_ROOM"
+class_name = "RaceRoomDO"
+
+[[durable_objects.bindings]]
+name = "PLAYER"
+class_name = "PlayerDO"
+
+[[durable_objects.bindings]]
+name = "MATCHMAKER"
+class_name = "MatchmakerDO"
+
+[[durable_objects.bindings]]
+name = "ACCOUNTING"
+class_name = "AccountingDO"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RaceRoomDO", "PlayerDO", "MatchmakerDO", "AccountingDO"]
+
+[[r2_buckets]]
+binding = "REPLAYS"
+bucket_name = "muchi-replays"

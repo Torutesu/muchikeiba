@@ -63,6 +63,7 @@ else if (mode == "event")
     foreach (var b in bots)
     {
         await b.PostAsync("/v1/rewards/login-bonus", new { });
+        await b.RecordFreeCoinsBeforeEntryAsync();
         await b.PostAsync($"/v1/events/{EventId}/enqueue", new { horseId = b.HorseId });
     }
     var assignments = await Task.WhenAll(bots.Select(b => b.WaitMatchAsync()));
@@ -139,6 +140,14 @@ sealed class Bot
     /// After an event race: the settlement (applied by the race room after the final result) must have added
     /// event points, and the free-coin fee must have been consumed exactly once.
     /// </summary>
+    private int _freeBeforeEntry = -1;
+
+    public async Task RecordFreeCoinsBeforeEntryAsync()
+    {
+        var player = JsonDocument.Parse(await _http.GetStringAsync("/v1/player")).RootElement;
+        _freeBeforeEntry = player.GetProperty("wallet").GetProperty("free").GetInt32();
+    }
+
     public async Task CheckEventAsync(string eventId)
     {
         for (int i = 0; i < 30; i++)
@@ -157,8 +166,10 @@ sealed class Bot
         if (Report.eventRaces == 0) Report.problems.Add("event result was never applied");
         var player = JsonDocument.Parse(await _http.GetStringAsync("/v1/player")).RootElement;
         Report.freeCoins = player.GetProperty("wallet").GetProperty("free").GetInt32();
-        // login bonus day 1 (100) − entry fee (30) + race coins for an event race (none)
-        if (Report.freeCoins != 70) Report.problems.Add($"free coins {Report.freeCoins}, expected 70");
+        // balance before entry − entry fee (30, master/events.json) + race coins for an event race (none);
+        // read from the wallet instead of assuming the login-bonus amount, which is a tuning value
+        int expected = _freeBeforeEntry - 30;
+        if (Report.freeCoins != expected) Report.problems.Add($"free coins {Report.freeCoins}, expected {expected} ({_freeBeforeEntry} before entry − fee 30)");
     }
 
     public async Task<JsonElement> GetJsonAsync(string path) => JsonDocument.Parse(await _http.GetStringAsync(path)).RootElement.Clone();

@@ -196,6 +196,8 @@ namespace Muchi.Client
         public static RaceConfig Tutorial(RulesetParams baseRuleset, ulong seed, int playerStat, int cpuStat, int cpuWhipStartM)
         {
             var rs = Override(baseRuleset, ("gateOpenTick", 20), ("maxTicks", 1200), ("kakariChancePer100000PerTickAtTemper0", 0), ("cpuWhipStartDistanceM", cpuWhipStartM));
+            // the tutorial teaches one thing (the whip): no day-to-day form and no casual-style CPUs, when the ruleset has them
+            if (rs.HasBalanceKeys) rs = Override(rs, ("conditionVariancePermille", 0), ("cpuSloppyMaxLevel", 0));
             var cfg = new RaceConfig
             {
                 RaceId = "offline_tutorial",
@@ -229,6 +231,14 @@ namespace Muchi.Client
         /// <summary>Solo time attack on any track (no CPUs).</summary>
         public static RaceConfig TimeAttack(TrackSpec track, HorseSpec horse, RulesetParams ruleset, ulong seed = 1)
         {
+            // like the server's time attack (timeAttackRuleset): no day-to-day form, so a time reflects only the ride
+            if (ruleset.HasBalanceKeys && ruleset.ConditionVariancePermille != 0)
+            {
+                var node = ProtocolCodec.RulesetToJson(ruleset);
+                node.Set("conditionVariancePermille", 0);
+                node.Set("rulesetVersion", ruleset.RulesetVersion + "+ta");
+                ruleset = ProtocolCodec.ParseRuleset(node);
+            }
             var cfg = new RaceConfig { RaceId = "offline_ta_" + track.Id, Mode = RaceMode.Friend, Seed = seed, Ruleset = ruleset, Track = track };
             cfg.Entrants.Add(new Entrant { Slot = 0, Kind = EntrantKind.Human, PlayerId = "local", CpuLevel = 3, Horse = horse });
             cfg.Validate();

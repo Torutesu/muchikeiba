@@ -1,3 +1,4 @@
+import { timeAttackRuleset } from './ruleset.js';
 import { AppError } from './errors.js';
 import { trackById, type Master, type Reward } from './master.js';
 import type { PlayerState } from './player.js';
@@ -108,6 +109,7 @@ export function startTimeAttack(m: Master, s: PlayerState, cfg: TimeAttackConfig
   st.daily.count++;
   const config = buildRaceConfig(m, {
     raceId: `ta_${sessionId}`, mode: 'timeattack', trackId, cpuCount: 0, cpuLevel: 3, statCap: cfg.statCap, rng,
+    rulesetOverrides: timeAttackRuleset(), // no day-to-day form in time attack (ruleset 1.1)
     humans: [{ playerId: s.id, horse: toRaceHorse(m, h) }],
   });
   const session: TaSession = { id: sessionId, trackId, horseId, seasonId: jstMonthKey(now), config, issuedAt: now, expiresAt: now + cfg.sessionTtlMs, status: 'issued', result: null };

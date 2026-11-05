@@ -168,3 +168,10 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 - `night` は計算に使わない（チェックサム・結果ハッシュにも入らない）。表示と実況（ゲート前の一言）だけに使う。
 - サーバーは、ランク戦・フレンド戦で「その日（JST）のそのコースの馬場」を決めて送る（同じ日・同じコースは誰でも同じ）。照明のある競馬場では、JSTの夜の時間帯のレースが night になる。チュートリアルとタイムアタックは送らない（＝良馬場・昼）。
 
+
+## 11. ルールセット 1.1 のバランスキー（docs/spec/balance-targets.md）
+- 追加キー：`conditionVariancePermille`、`cpuStaminaReinMinLevel`、`cpuRailMinLevel`、`autoRailIntervalTicks`、`autoRailHoldTicks`、`cpuSloppyMaxLevel`。**全部あるか全部ないか**（馬場のキー群とは独立）。ない場合の中立値は 0 / 1 / 3 / 0 / 0 / 0 で、1.0.x と同じ結果になる。C# `RulesetParams.BalanceIntKeys` と TS `BALANCE_RULESET_KEYS` は一致させる（テストで確認）。
+- **その日の調子**：`conditionVariancePermille` > 0 のとき、各馬の最高速（適性・馬場・得意馬場を掛けた後）に `(1000 + r) / 1000` を掛ける。`r` は `Pcg32(SeedMix.Derive(seed, 0x464F524D, slot), slot + 200).Range(-v, v)`（他の乱数列は消費しない）。
+- **騎手の自動の内寄せ**：`autoRailIntervalTicks` > 0 のとき、そのtickに内外の入力がなく、レーン移動中でなく、`(tick + slot) % interval == 0`、最後に内外を入力してから `autoRailHoldTicks` 以上経ち、スパート区間の外で、内側のレーンが空いていて（通常のレーン変更と同じ判定）、その内側レーンの前方 `blockRangeMm × 3` 以内に自分より遅い馬がいなければ、1レーン内へ寄る（`LaneChange` イベントあり）。CPUの入力も「内外の入力」に数える。
+- **CPUの癖**：レベル ≤ `cpuSloppyMaxLevel` のCPUは、スタート反応の最大遅れ +3tick、ムチは残り `250 + Range(0,350)` m から間隔 `6 + Range(0,30)` tick、脚の温存のための手綱を使わない（乱数はそのCPUの乱数列から、癖があるときだけ引く）。
+- **タイムアタック**：サーバーは調子を 0 にしたルールセットで発行し、`rulesetVersion` に `+ta` を付ける（例：`1.1.0+ta`）。チュートリアル（端末内）も調子 0・癖なし。

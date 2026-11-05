@@ -1,10 +1,10 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { m, makeConfig } from './helpers.js';
 import { dailyGoing, groundFor, inNightWindow, jstHour, weatherProblems } from '../src/domain/ground.js';
 import { buildRaceConfig, toRaceHorse } from '../src/domain/raceConfig.js';
-import { OPTIONAL_RULESET_KEYS, DEFAULT_RULESET, rulesetKeyProblems } from '../src/domain/ruleset.js';
+import { OPTIONAL_RULESET_KEYS, BALANCE_RULESET_KEYS, DEFAULT_RULESET, rulesetKeyProblems } from '../src/domain/ruleset.js';
 import { raceStartConfigSchema, replayLogSchema } from '../src/domain/schemas.js';
 import { createHorseFromTemplate, breed, goingAptitudeOdds } from '../src/domain/horses.js';
 import { newPlayer, type HorseInstance } from '../src/domain/player.js';
@@ -132,9 +132,28 @@ describe('ruleset ground keys', () => {
     for (const k of OPTIONAL_RULESET_KEYS) expect(DEFAULT_RULESET).toHaveProperty(k);
   });
 
+  it('the balance key group matches the engine list and is all-or-none', () => {
+    const cs = readFileSync(repo('engine/Muchi.Engine/RulesetParams.cs'), 'utf8');
+    const block = cs.slice(cs.indexOf('BalanceIntKeys ='), cs.indexOf('BalanceNeutralValues'));
+    const engineKeys = [...block.matchAll(/"([a-z][A-Za-z]+)"/g)].map((x) => x[1]);
+    expect(engineKeys).toEqual([...BALANCE_RULESET_KEYS]);
+    const v100: Record<string, unknown> = { ...DEFAULT_RULESET };
+    for (const k of BALANCE_RULESET_KEYS) delete v100[k];
+    expect(rulesetKeyProblems(v100)).toEqual([]);
+    expect(rulesetKeyProblems({ ...v100, cpuSloppyMaxLevel: 3 }).join()).toMatch(/balance \(1\.1\) keys must be all present or all absent/);
+  });
+
+  it('every archived golden (ruleset 1.0 and 1.0.0) still validates', () => {
+    const dir = repo('contracts/golden/legacy');
+    for (const f of readdirSync(dir)) {
+      const doc = JSON.parse(readFileSync(`${dir}/${f}`, 'utf8'));
+      expect(replayLogSchema.safeParse(doc.log).success, f).toBe(true);
+    }
+  });
+
   it('a pre-ground ruleset (all optional keys absent) is valid; a partial set is not', () => {
     const legacy: Record<string, unknown> = { ...DEFAULT_RULESET };
-    for (const k of OPTIONAL_RULESET_KEYS) delete legacy[k];
+    for (const k of [...OPTIONAL_RULESET_KEYS, ...BALANCE_RULESET_KEYS]) delete legacy[k];
     expect(rulesetKeyProblems(legacy)).toEqual([]);
     const partial = { ...legacy, goingSpecialistPermille: 8 };
     expect(rulesetKeyProblems(partial).join()).toMatch(/all present or all absent/);

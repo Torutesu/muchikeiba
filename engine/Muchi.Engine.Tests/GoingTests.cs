@@ -40,10 +40,47 @@ namespace Muchi.Engine.Tests
         [InlineData("race-turf1600-mixed")]
         public void AddingTheGroundKeysDidNotChangeExistingGoldenResults(string name)
         {
+            // ruleset 1.0.0 with ground keys (archived when 1.1.0 retuned the values) == 1.0 before the ground keys
             var legacy = JsonNode.Parse(File.ReadAllText(Golden(Path.Combine("legacy", name + ".ruleset-1.0.json"))));
-            var current = JsonNode.Parse(File.ReadAllText(Golden(name + ".json")));
-            Assert.Equal(legacy.Get("expected").ToString(), current.Get("expected").ToString());
-            Assert.True(current.Get("log").Get("config").Get("ruleset").Has("goingTurfSoftSpeedPermille"));
+            var withGround = JsonNode.Parse(File.ReadAllText(Golden(Path.Combine("legacy", name + ".ruleset-1.0.0.json"))));
+            Assert.Equal(legacy.Get("expected").ToString(), withGround.Get("expected").ToString());
+            Assert.True(withGround.Get("log").Get("config").Get("ruleset").Has("goingTurfSoftSpeedPermille"));
+        }
+
+        [Fact]
+        public void EveryArchivedGoldenStillVerifiesWithItsRecordedOutput()
+        {
+            // replays and ghosts embed the ruleset they ran with: every older ruleset must keep verifying exactly
+            var files = Directory.GetFiles(Path.GetDirectoryName(Golden(Path.Combine("legacy", "x")))!, "*.json");
+            Assert.True(files.Length >= 6, "expected archived goldens for ruleset 1.0 and 1.0.0");
+            foreach (var f in files)
+            {
+                var doc = JsonNode.Parse(File.ReadAllText(f));
+                var (hash, body) = Replay(f);
+                Assert.Equal(doc.Get("expected").Get("resultHash").AsString(), hash);
+                Assert.Equal(doc.Get("expected").ToString(), JsonNode.Parse(body).ToString());
+            }
+        }
+
+        [Fact]
+        public void Ruleset100WithoutBalanceKeysParsesAndRoundTrips()
+        {
+            var doc = JsonNode.Parse(File.ReadAllText(Golden(Path.Combine("legacy", "race-turf2000-cpu12.ruleset-1.0.0.json"))));
+            var cfgNode = doc.Get("log").Get("config");
+            var cfg = ProtocolCodec.ParseConfig(cfgNode);
+            Assert.True(cfg.Ruleset.HasGoingKeys);
+            Assert.False(cfg.Ruleset.HasBalanceKeys);
+            Assert.Equal(0, cfg.Ruleset.ConditionVariancePermille);
+            Assert.Equal(cfgNode.ToString(), ProtocolCodec.ConfigToJson(cfg).ToString());
+        }
+
+        [Fact]
+        public void PartialBalanceKeySetIsRejected()
+        {
+            var node = JsonNode.Parse(File.ReadAllText(TestUtil.DefaultRulesetPath));
+            var trimmed = JsonNode.Obj();
+            foreach (var p in node.Props) if (p.Key != "cpuSloppyMaxLevel") trimmed.Set(p.Key, p.Value);
+            Assert.Throws<FormatException>(() => ProtocolCodec.ParseRuleset(trimmed));
         }
 
         [Fact]

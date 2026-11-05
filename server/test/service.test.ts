@@ -94,6 +94,6 @@ describe('idempotency key namespaces (bug review #2)', () => {
   });
   it('the service refuses un-namespaced client keys', async () => {
     const { svc } = setup();
-    await expect(svc.claimLogin('p9', 'c:refund:T_1')).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    await expect(svc.claimLogin('p9', 'refund:T_1')).rejects.toMatchObject({ code: 'BAD_REQUEST' });
   });
 });

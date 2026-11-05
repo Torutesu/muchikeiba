@@ -1,0 +1,89 @@
+# 実装計画（ロジック・サーバー）
+
+要件は [requirements.md](requirements.md)、C#とTSの境界は [../../contracts/protocol.md](../../contracts/protocol.md)。
+
+## 1. リポジトリ構成
+
+```
+contracts/                      C#とTSの共有仕様（唯一の正）
+  protocol.md
+  ruleset-params.default.json   レース調整値の既定（キー集合の正）
+  golden/                       言語をまたぐ一致テスト用のファイル
+engine/                         .NET（C#）
+  Muchi.Engine/                 レースエンジン（netstandard2.1、外部依存なし）→ Unityにそのまま入れる
+  Muchi.Net/                    ロックステップのクライアント側ロジック（netstandard2.1、外部依存なし）
+  Muchi.Verifier/               検証サーバー（net8.0、CLI＋HTTP）
+  Muchi.Engine.Tests/           xUnit
+server/                         TypeScript（Cloudflare Workers + Durable Objects）
+  src/domain/                   純粋ロジック（通信・保存に依存しない）
+  src/do/                       Durable Object（WebSocket・保存との橋渡しだけ）
+  src/http/                     APIのルーティング・認証・入力検証
+  master/                       マスターデータ（コース、馬、ガチャ、NGリスト、上限金額など）
+  test/                         vitest
+docs/                           企画・要件・計画
+.github/workflows/ci.yml        dotnet test と npm test
+```
+
+## 2. 設計の要点
+
+### 2.1 レースエンジン（C#）
+- `Fx`：Q16.16 の固定小数点（`long`）。四則・比較・`FromInt`/`FromPermille`。乗算は `(a*b)>>16`。オーバーフローしない値域で使う（距離は最大4,000m）。
+- `Pcg32`：決定論乱数。レースのシードからスロットごとの派生シードを作る。
+- `RaceSim`：`Step(ReadOnlySpan<byte> cmdsBySlot)` で1tick進める。内部の配列はスロット順。列挙順が変わる構造は使わない。
+- `HorseState`（構造体）：距離・レーン・速度・残り脚・折り合い・ムチ・手綱・ゴール情報。
+- `CpuBrain`：毎tick、状態から入力バイトを決める（人のスロットと同じ入力経路を通す）。
+- `RaceEvents`：実況用イベントのリスト（tick付き）。
+- `Checksum`（FNV-1a）と `ResultHasher`（SHA-256）。SHA-256 は `System.Security.Cryptography` を使う（Unityでも利用可）。
+
+### 2.2 ロックステップ（C#クライアント／TS部屋）
+- 部屋（TS）`RaceRoomCore`：純粋クラス。`join` / `onMessage` / `advance(nowMs)` / `onDisconnect` を持ち、送るべきメッセージの配列を返す。時刻は引数で受け取る（テストで自由に進められる）。
+- Durable Object `RaceRoomDO`：WebSocket休止APIで受信し `RaceRoomCore` に渡す。レース中だけアラームで `advance` を呼ぶ。
+- クライアント（C#）`LockstepClient`：送信待ちの入力、確定入力のバッファ、`RaceSim` を進める、チェックサム送信、再接続時の早送り。通信は `ITransport` インターフェイス（UnityのWebSocket実装はCodex側で差し込む）。
+- 試験用に C# 側に `InMemoryRelay`（部屋の動きを模した偽物）を用意し、12クライアントを同時に動かすテストで、全員のチェックサムと結果ハッシュが一致することを確認する。
+
+### 2.3 サーバー（TS）
+- 実行環境：Cloudflare Workers。ドメインロジックは Node でも動く純粋TSにし、vitest で高速にテストする。
+- `PlayerDO`：プレイヤー1人＝1オブジェクト。SQLite 保存（Durable Objects の SQLite ストレージ）。財布・台帳・所持馬・ガチャ天井・購入履歴・年齢情報を1か所で持ち、全ての変更を1トランザクションで行う。
+- ドメインは保存先をインターフェイス（`PlayerRepo`）越しに使い、テストではメモリ実装を使う。
+- `MatchmakerDO`：モード・地域ごとに1つ。待ち行列とレート幅の拡大、CPU補完。
+- `RaceRoomDO`：上記。
+- 検証サーバーは HTTP で呼ぶ（`VerifierClient`）。テストでは偽物に差し替え。
+- 認証：Firebase ID トークンを `jose` で検証。テストでは自前の鍵で署名したトークンを使う。
+- 入力検証：`zod`。
+
+### 2.4 乱数の使い分け
+| 用途 | 乱数 |
+|---|---|
+| レース（シード、CPU、かかり） | シードはサーバーが暗号学的乱数で決め、計算は決定論乱数 |
+| ガチャ・配合 | サーバーの暗号学的乱数（`crypto.getRandomValues`）。テストでは差し替え |
+
+## 3. マイルストーン
+
+| # | 内容 | 完了条件 |
+|---|---|---|
+| M1 | 共有仕様・要件・計画 | 本書、`contracts/` |
+| M2 | レースエンジン | 12頭が完走、決定論テスト（同じ入力→同じハッシュ×多数回）、脚質・ムチ・スリップストリーム・コーナー・進路妨害・折り合いの単体テスト |
+| M3 | ロックステップ（C#クライアント＋偽の部屋） | 12クライアント同時、遅延入力、切断→CPU引き継ぎ→再接続で全員一致 |
+| M4 | 検証CLI・HTTP、ゴールデンファイル生成 | ゴールデンの再計算が一致 |
+| M5 | サーバーのドメイン | 財布・購入・年齢上限・ガチャ・天井・配合・命名・レート・正規化・マッチング・部屋のテスト |
+| M6 | Durable Object と HTTP API | 型チェック通過、ルーティングと認証のテスト |
+| M7 | 結合 | TSで作った設定をC#が完走、C#のゴールデンをTSスキーマが受理、検証APIの呼び出し |
+| M8 | CI | GitHub Actions で両方のテスト |
+
+## 4. テスト方針
+- 決定論：同じ設定と入力で1,000レース分ハッシュが一致、シードを変えると結果が変わる、異なる順序で生成した設定でも同じ結果。
+- 性質テスト：ムチ0回の馬よりムチを適切に入れた馬が速い、スリップストリームで脚が残る、外を回ると遅い、能力の高い馬が平均して勝つ、CPU同士のレースで脚質ごとの勝率が極端に偏らない（バランスの監視指標）。
+- お金：残高が負にならない、有償から先に消費、冪等、ガチャの失敗時に巻き戻る、返金時の未精算。
+- 確率：固定シードで大量に引き、各レア度の出現率が許容範囲（統計的検定）に入る。表示データの合計が100%で、抽選テーブルと一致。
+- 法務ガード：コンプガチャ条件を含む設定が拒否される、NG名が拒否される、年齢上限を超える購入が拒否される。
+
+## 5. Codex（見た目）への引き渡し
+- Unity には `engine/Muchi.Engine` と `engine/Muchi.Net` のソースをそのまま入れる（asmdef を同梱）。
+- 表示は `RaceSim` の読み取りAPI（毎tickの全馬状態・前tick状態・イベント）を使い、tick間を補間して描く。
+- 入力は `LockstepClient.QueueInput(cmd)` を呼ぶだけ。
+- 通信は `ITransport` を Unity の WebSocket ライブラリで実装して渡す。
+- サーバーAPIの一覧は `server/README.md` に記載する。
+
+## 6. 進め方
+- 共有仕様を先に固め、C#（M2〜M4）とTS（M5〜M6）を並行で作る。
+- 最後に M7 の結合テストで境界のズレを潰す。

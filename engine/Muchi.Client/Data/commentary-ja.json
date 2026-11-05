@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "language": "ja",
+  "ticksPerChar": 3,
+  "minLineTicks": 24,
+  "gapTicks": 4,
+  "leaderStableTicks": 30,
+  "positionCallIntervalTicks": 240,
+  "pendingExpiryTicks": 60,
+  "phrases": {
+    "gate_open": {
+      "priority": 100, "mustSay": true,
+      "variants": [
+        { "id": "gate_open_1", "text": "ゲートが開いた！各馬いっせいにスタート！" },
+        { "id": "gate_open_2", "text": "スタートしました！" },
+        { "id": "gate_open_3", "text": "さあゲートオープン！" }
+      ]
+    },
+    "good_start": {
+      "priority": 55,
+      "variants": [
+        { "id": "good_start_1", "text": "{name}、好スタート！" },
+        { "id": "good_start_2", "text": "{name}がポンと出ました！" }
+      ]
+    },
+    "late_start": {
+      "priority": 60,
+      "variants": [
+        { "id": "late_start_1", "text": "{name}、出遅れた！" },
+        { "id": "late_start_2", "text": "おっと{name}はスタートで後手！" }
+      ]
+    },
+    "leader": {
+      "priority": 80, "mustSay": true,
+      "variants": [
+        { "id": "leader_1", "text": "先頭は{name}！" },
+        { "id": "leader_2", "text": "ハナを切ったのは{name}！" },
+        { "id": "leader_3", "text": "{name}が先頭に立った！" }
+      ]
+    },
+    "position_call": {
+      "priority": 20,
+      "variants": [
+        { "id": "position_call_1", "text": "先頭{name}、二番手に{name2}、その後ろ{name3}。" },
+        { "id": "position_call_2", "text": "{name}が引っ張って、{name2}、{name3}と続きます。" }
+      ]
+    },
+    "kakari": {
+      "priority": 50,
+      "variants": [
+        { "id": "kakari_1", "text": "{name}、かかっている！" },
+        { "id": "kakari_2", "text": "{name}は行きたがっています！" }
+      ]
+    },
+    "spurt": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "spurt_1", "text": "さあ最後の直線！" },
+        { "id": "spurt_2", "text": "直線コースに向いた！" }
+      ]
+    },
+    "focus_whip": {
+      "priority": 45,
+      "variants": [
+        { "id": "focus_whip_1", "text": "{name}にムチが入った！" },
+        { "id": "focus_whip_2", "text": "{name}、ムチに応えて伸びる！" }
+      ]
+    },
+    "cpu_takeover": {
+      "priority": 40,
+      "variants": [
+        { "id": "cpu_takeover_1", "text": "{name}は自動騎乗に切り替わりました。" }
+      ]
+    },
+    "finish_win": {
+      "priority": 110, "mustSay": true,
+      "variants": [
+        { "id": "finish_win_1", "text": "{name}、一着でゴールイン！" },
+        { "id": "finish_win_2", "text": "差し切った！{name}だ！" },
+        { "id": "finish_win_3", "text": "{name}、先頭でゴール！" }
+      ]
+    },
+    "focus_finish": {
+      "priority": 70,
+      "variants": [
+        { "id": "focus_finish_1", "text": "{name}は{place}着。" }
+      ]
+    },
+    "result": {
+      "priority": 105, "mustSay": true,
+      "variants": [
+        { "id": "result_1", "text": "一着{name}、二着{name2}、三着{name3}。" }
+      ]
+    }
+  }
+}

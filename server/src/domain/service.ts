@@ -25,6 +25,7 @@ export type Emit = (e: KpiEvent) => void;
 import { abortSubmit, prepareSubmit, recordResult, startTimeAttack, timeAttackView } from './timeAttack.js';
 import type { VerifierOutput } from './schemas.js';
 import { trackById } from './master.js';
+import { appearanceOf, assetKeys, defaultSilks, validateSilks, type EntrantVisual, type Silks } from './visuals.js';
 import { ensureTeam, playerAbortJoin, playerAddOutgoing, playerCommitJoin, playerLeft, playerPrepareJoin, playerRemoveOutgoing, playerTeamReward, snapshotOf } from './teams.js';
 import { applyEventResult, cancelEntry, closeEventForPlayer, ensureEvent, enterEvent, eventsForPlayer, findEvent, type EventEntry } from './events.js';
 
@@ -317,6 +318,8 @@ export class PlayerService {
     return {
       moderation: moderationOf(s, this.d.clock()),
       playerId: id, horse: toRaceHorse(this.d.master, h),
+      // REQ-ASSET-006: look of this runner for the other clients (never part of the hashed config)
+      ...({ visual: { appearance: appearanceOf(h, id), silks: s.profile.silks ?? defaultSilks(`p:${id}`), displayName: s.profile.displayName, titleId: s.profile.titleId } } as { visual?: EntrantVisual }),
       rating: { r: s.rating.r, rd: s.rating.rd, vol: s.rating.vol },
       classId: cls.id, statCap: cls.statCap, beginner: s.rating.rankedRaces < this.d.master.progression.beginnerRaces,
     };
@@ -325,9 +328,13 @@ export class PlayerService {
   // ---- profile, titles, stats (REQ-STAT-*, REQ-TITLE-*, REQ-SOCIAL-006) ----
   setDisplayName(id: string, name: string) { return this.tx(id, null, (s) => setDisplayName(this.d.master, s, name)); }
   equipTitle(id: string, titleId: string | null) { return this.tx(id, null, (s) => equipTitle(this.d.master, s, titleId)); }
+  /** REQ-ASSET-005: choose silks (unlockable patterns need their costume item). */
+  setSilks(id: string, silks: Silks) {
+    return this.tx(id, null, (s) => { s.profile.silks = validateSilks(silks, s.items); return { silks: s.profile.silks }; });
+  }
   async titles(id: string) {
     const s = await this.load(id);
-    return { equipped: s.profile.titleId, titles: this.d.master.titles.map((t) => ({ id: t.id, name: t.name, unlocked: s.titles.includes(t.id) })) };
+    return { equipped: s.profile.titleId, titles: this.d.master.titles.map((t) => ({ id: t.id, name: t.name, icon: assetKeys.title(t.id), unlocked: s.titles.includes(t.id) })) };
   }
   async stats(id: string) { return (await this.load(id)).stats; }
   async publicProfile(id: string) { return publicProfile(await this.load(id)); }

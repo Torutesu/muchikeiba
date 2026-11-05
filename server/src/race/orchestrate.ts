@@ -11,13 +11,18 @@ import type { FinalOutcome } from '../domain/raceRoom.js';
 import type { RaceResultForPlayer } from '../domain/rewards.js';
 import type { RaceEntry } from '../http/app.js';
 import { signTicket } from '../http/ticket.js';
+import { startVisuals, type StartVisuals } from '../domain/visuals.js';
 
 export const START_DELAY_MS = 6000; // time for clients to connect + countdown before tick 0
 export const TICKET_TTL_MS = 10 * 60_000;
 
 export interface Assignment { raceId: string; slot: number; ticket: string; startAtMs: number; wsPath: string }
 
-export interface CreatedRace { config: RaceStartConfig; startAtMs: number; ratings: Record<string, Rating>; assignments: Record<string, Assignment> }
+export interface CreatedRace {
+  config: RaceStartConfig; startAtMs: number; ratings: Record<string, Rating>; assignments: Record<string, Assignment>;
+  /** REQ-ASSET-006: looks of every runner + the track scene; sent in `start` beside the (hashed) config. */
+  visuals: StartVisuals;
+}
 
 export interface CreateRaceOptions {
   mode: RaceMode; humans: RaceEntry[]; cpuCount: number; cpuLevel: number; rng: Rng; now: number; ticketSecret: string;
@@ -50,7 +55,9 @@ export async function createRace(m: Master, o: CreateRaceOptions): Promise<Creat
   }
   const ratings: Record<string, Rating> = {};
   for (const h of o.humans) ratings[h.playerId] = h.rating;
-  return { config, startAtMs, ratings, assignments };
+  // entries queued by older builds have no `visual`; startVisuals falls back to derived looks
+  const visuals = startVisuals(config, Object.fromEntries(o.humans.map((h) => [h.playerId, (h as { visual?: RaceEntry['visual'] }).visual])));
+  return { config, startAtMs, ratings, assignments, visuals };
 }
 
 /**

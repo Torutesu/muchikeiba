@@ -1,4 +1,5 @@
 import { AppError } from './errors.js';
+import type { Emblem } from './visuals.js';
 import type { Master } from './master.js';
 import { randInt, type Rng } from './rng.js';
 import {
@@ -32,7 +33,7 @@ export interface TeamPort {
   kick(teamId: string, actor: string, target: string): Promise<void>;
   setRole(teamId: string, actor: string, target: string, role: 'officer' | 'member'): Promise<void>;
   transfer(teamId: string, actor: string, target: string): Promise<void>;
-  update(teamId: string, actor: string, patch: { announcement?: string; joinPolicy?: JoinPolicy }): Promise<void>;
+  update(teamId: string, actor: string, patch: { announcement?: string; joinPolicy?: JoinPolicy; emblem?: Emblem }): Promise<void>;
   disband(teamId: string, actor: string): Promise<void>;
   /** Leader and officers (push targets for new requests). */
   managers(teamId: string): Promise<string[]>;
@@ -216,7 +217,7 @@ export class TeamsService {
     return this.teams.view(teamId, actor);
   }
 
-  async update(actor: string, patch: { announcement?: string; joinPolicy?: JoinPolicy }) {
+  async update(actor: string, patch: { announcement?: string; joinPolicy?: JoinPolicy; emblem?: Emblem }) {
     const teamId = await this.myTeamId(actor);
     await this.teams.update(teamId, actor, patch);
     return this.teams.view(teamId, actor);
@@ -289,7 +290,7 @@ export class TeamCore {
   kick(actor: string, target: string) { kick(this.t, this.cfg, actor, target, this.clock()); }
   setRole(actor: string, target: string, role: 'officer' | 'member') { setRole(this.t, this.cfg, actor, target, role); }
   transfer(actor: string, target: string) { transfer(this.t, actor, target); }
-  update(actor: string, patch: { announcement?: string; joinPolicy?: JoinPolicy }) { updateTeam(this.master(), this.cfg, this.t, actor, patch); }
+  update(actor: string, patch: { announcement?: string; joinPolicy?: JoinPolicy; emblem?: Emblem }) { updateTeam(this.master(), this.cfg, this.t, actor, patch); }
   disband(actor: string) { disband(this.t, this.cfg, actor, this.clock()); }
   managers() {
     assertAlive(this.t);
@@ -348,7 +349,7 @@ export class MemoryTeams implements TeamPort, TeamDirectoryPort, TeamBoardPort {
   kick(teamId: string, a: string, t: string) { return this.run(teamId, (c) => c.kick(a, t)); }
   setRole(teamId: string, a: string, t: string, r: 'officer' | 'member') { return this.run(teamId, (c) => c.setRole(a, t, r)); }
   transfer(teamId: string, a: string, t: string) { return this.run(teamId, (c) => c.transfer(a, t)); }
-  update(teamId: string, a: string, patch: { announcement?: string; joinPolicy?: JoinPolicy }) { return this.run(teamId, (c) => c.update(a, patch)); }
+  update(teamId: string, a: string, patch: { announcement?: string; joinPolicy?: JoinPolicy; emblem?: Emblem }) { return this.run(teamId, (c) => c.update(a, patch)); }
   disband(teamId: string, a: string) { return this.run(teamId, (c) => c.disband(a)); }
   managers(teamId: string) { return this.run(teamId, (c) => c.managers()); }
   async reportPoints(teamId: string, p: string, season: string, points: number, name: string) { await this.run(teamId, (c) => c.reportPoints(p, season, points, name)); }

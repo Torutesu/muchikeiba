@@ -44,6 +44,8 @@ namespace Muchi.Net
 
         public RaceSim Sim { get; private set; }
         public RaceConfig Config { get; private set; }
+        /// <summary>Raw `start.visuals` (runner looks + track scene; not hashed). Null on servers without the visual contract.</summary>
+        public JsonNode StartVisuals { get; private set; }
         /// <summary>Our slot, -1 until the room sends "start".</summary>
         public int Slot { get; private set; } = -1;
         /// <summary>Server epoch ms of tick 0.</summary>
@@ -125,6 +127,7 @@ namespace Muchi.Net
         {
             if (Sim != null) return; // reconnect: keep our simulation
             Config = ProtocolCodec.ParseConfig(m.Get("config"));
+            StartVisuals = m.TryGet("visuals", out var vis) && vis.Kind == JsonKind.Object ? vis : null;
             Slot = m.Get("you").AsInt();
             StartAtMs = m.Get("startAtMs").AsLong();
             Sim = new RaceSim(Config);

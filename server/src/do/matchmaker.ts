@@ -46,7 +46,7 @@ export class MatchmakerDO extends DurableObject<Env> {
 
   private async startRace(created: CreatedRace, now: number, eventId: string | null = null) {
     const room = this.env.RACE_ROOM.get(this.env.RACE_ROOM.idFromName(created.config.raceId)) as unknown as DurableObjectStub<RaceRoomDO>;
-    await room.init({ config: created.config, startAtMs: created.startAtMs, ratings: created.ratings, eventId });
+    await room.init({ config: created.config, startAtMs: created.startAtMs, ratings: created.ratings, eventId, visuals: created.visuals });
     for (const [pid, a] of Object.entries(created.assignments)) this.assignments.set(pid, { ...a, at: now });
   }
 

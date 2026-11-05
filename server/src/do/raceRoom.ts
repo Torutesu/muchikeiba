@@ -1,4 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
+import type { StartVisuals } from '../domain/visuals.js';
 import type { Env } from '../env.js';
 import { RaceRoomCore, DEFAULT_ROOM_OPTIONS, type Outbound, type RoomPhase, type RoomSnapshot } from '../domain/raceRoom.js';
 import { clientMessageSchema, type RaceStartConfig, type ReplayLog } from '../domain/schemas.js';
@@ -43,9 +44,9 @@ export class RaceRoomDO extends DurableObject<Env> {
     return Number.isFinite(v) ? v : DEFAULT_ROOM_OPTIONS.verifySampleRate;
   }
 
-  async init(o: { config: RaceStartConfig; startAtMs: number; ratings: Record<string, Rating>; eventId?: string | null }) {
+  async init(o: { config: RaceStartConfig; startAtMs: number; ratings: Record<string, Rating>; eventId?: string | null; visuals?: StartVisuals }) {
     if (this.core) return; // idempotent
-    this.core = new RaceRoomCore(o.config, o.startAtMs, { verifySampleRate: this.sampleRate(), resultWaitMs: DEFAULT_ROOM_OPTIONS.resultWaitMs, rng: cryptoRng });
+    this.core = new RaceRoomCore(o.config, o.startAtMs, { verifySampleRate: this.sampleRate(), resultWaitMs: DEFAULT_ROOM_OPTIONS.resultWaitMs, rng: cryptoRng, ...(o.visuals ? { visuals: o.visuals } : {}) });
     this.meta = newSettleMeta(o.ratings, o.eventId ?? null);
     await this.persist();
     await this.ctx.storage.setAlarm(o.startAtMs);

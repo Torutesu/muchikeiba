@@ -95,6 +95,8 @@ namespace Muchi.Client
         public long BornAt;
         public bool Named;
         public Stats Base;
+        /// <summary>Look (contracts/assets.md). Use AssetKeys.HorseKeys(Appearance).</summary>
+        public Appearance Appearance = new Appearance();
         public bool IsActive => Status == "active";
         public bool IsRetired => Status == "retired";
 
@@ -107,6 +109,7 @@ namespace Muchi.Client
             DistMinM = J.Int(o, "distMinM"), DistMaxM = J.Int(o, "distMaxM"), Awakening = J.Int(o, "awakening"),
             BornAt = J.Long(o, "bornAt"), Named = J.Bool(o, "named"), Base = Stats.Parse(J.Opt(o, "base")),
             GoingAptitude = J.Str(o, "goingAptitude") ?? "any",
+            Appearance = Appearance.Parse(J.Opt(o, "appearance")) ?? new Appearance(),
         };
     }
 
@@ -153,10 +156,14 @@ namespace Muchi.Client
         public int Rating, RatingDeviation, RankedRaces;
         public string SeasonId, ClassId;
         public int SeasonPoints;
+        public string DisplayName, TitleId;
+        /// <summary>Your silks (contracts/assets.md §3). Change with ApiClient.SetSilksAsync.</summary>
+        public Silks Silks = new Silks();
 
         internal static PlayerView Parse(JsonNode o)
         {
             var lb = J.Opt(o, "loginBonus");
+            var pr = J.Opt(o, "profile");
             var r = J.Opt(o, "rating");
             var s = J.Opt(o, "season");
             return new PlayerView
@@ -169,6 +176,7 @@ namespace Muchi.Client
                 LoginStreakDay = J.Int(lb, "streakDay"), LoginLastClaimDate = J.Str(lb, "lastClaimDate"),
                 Rating = J.Int(r, "r"), RatingDeviation = J.Int(r, "rd"), RankedRaces = J.Int(r, "rankedRaces"),
                 SeasonId = J.Str(s, "id"), ClassId = J.Str(s, "classId"), SeasonPoints = J.Int(s, "points"),
+                DisplayName = J.Str(pr, "displayName"), TitleId = J.Str(pr, "titleId"), Silks = Silks.Parse(J.Opt(pr, "silks")) ?? new Silks(),
             };
         }
     }
@@ -208,10 +216,13 @@ namespace Muchi.Client
     {
         public string VersionId, Hash, RulesetVersion;
         public long? ActivatedAt;
+        /// <summary>Version of GET /v1/visuals; refetch the catalog when it changes.</summary>
+        public int VisualsVersion;
         internal static ConfigInfo Parse(JsonNode o) => new ConfigInfo
         {
             VersionId = J.Str(o, "versionId"), Hash = J.Str(o, "hash"), RulesetVersion = J.Str(o, "rulesetVersion"),
             ActivatedAt = J.Opt(o, "activatedAt") is JsonNode n && !n.IsNull ? n.AsLong() : (long?)null,
+            VisualsVersion = J.Int(o, "visualsVersion"),
         };
     }
 
@@ -329,10 +340,13 @@ namespace Muchi.Client
         public string HorseId;
         public bool Duplicate, Guaranteed;
         public int Material;
+        /// <summary>Look of the pulled horse (the template's look for a duplicate) for the reveal animation.</summary>
+        public Appearance Appearance;
         internal static PullResult Parse(JsonNode o) => new PullResult
         {
             TemplateId = J.Str(o, "templateId"), Rarity = J.Str(o, "rarity"), HorseId = J.Str(o, "horseId"),
             Duplicate = J.Bool(o, "duplicate"), Guaranteed = J.Bool(o, "guaranteed"), Material = J.Int(o, "material"),
+            Appearance = Appearance.Parse(J.Opt(o, "appearance")),
         };
     }
 
@@ -476,8 +490,10 @@ namespace Muchi.Client
     public sealed class TitleInfo
     {
         public string Id, Name;
+        /// <summary>Asset key of the title icon (title/&lt;id&gt;).</summary>
+        public string Icon;
         public bool Unlocked;
-        internal static TitleInfo Parse(JsonNode o) => new TitleInfo { Id = J.Str(o, "id"), Name = J.Str(o, "name"), Unlocked = J.Bool(o, "unlocked") };
+        internal static TitleInfo Parse(JsonNode o) => new TitleInfo { Id = J.Str(o, "id"), Name = J.Str(o, "name"), Icon = J.Str(o, "icon") ?? AssetKeys.Title(J.Str(o, "id") ?? "default"), Unlocked = J.Bool(o, "unlocked") };
     }
 
     public sealed class TitleList
@@ -575,6 +591,7 @@ namespace Muchi.Client
         public string PlayerId, DisplayName, TitleId, ClassId;
         public int Rating, Races, Wins, Top3;
         public long LastSeenAt;
+        public Silks Silks;
         /// <summary>Only on incoming/outgoing requests.</summary>
         public long? RequestedAt;
         internal static PublicProfile Parse(JsonNode o)
@@ -584,7 +601,7 @@ namespace Muchi.Client
             {
                 PlayerId = J.Str(o, "playerId"), DisplayName = J.Str(o, "displayName"), TitleId = J.Str(o, "titleId"), ClassId = J.Str(o, "classId"),
                 Rating = J.Int(o, "rating"), Races = J.Int(st, "races"), Wins = J.Int(st, "wins"), Top3 = J.Int(st, "top3"),
-                LastSeenAt = J.Long(o, "lastSeenAt"), RequestedAt = J.LongN(o, "requestedAt"),
+                LastSeenAt = J.Long(o, "lastSeenAt"), RequestedAt = J.LongN(o, "requestedAt"), Silks = Silks.Parse(J.Opt(o, "silks")),
             };
         }
     }
@@ -740,6 +757,7 @@ namespace Muchi.Client
         public TeamRole? MyRole;
         /// <summary>Pending join requests (only shown to the leader and officers).</summary>
         public List<TeamRequestInfo> Requests = new List<TeamRequestInfo>();
+        public Emblem Emblem;
         internal static TeamInfo Parse(JsonNode o)
         {
             if (o == null) return null;
@@ -750,6 +768,7 @@ namespace Muchi.Client
                 JoinPolicy = TeamWire.Policy(J.Str(o, "joinPolicy")), CreatedAt = J.Long(o, "createdAt"), Disbanded = J.Bool(o, "disbanded"),
                 Points = J.Int(o, "points"), MaxMembers = J.Int(o, "maxMembers"), Members = J.List(o, "members", TeamMemberInfo.Parse),
                 MyRole = role == null ? (TeamRole?)null : TeamWire.Role(role), Requests = J.List(o, "requests", TeamRequestInfo.Parse),
+                Emblem = Emblem.Parse(J.Opt(o, "emblem")),
             };
         }
     }
@@ -776,10 +795,11 @@ namespace Muchi.Client
         public TeamJoinPolicy JoinPolicy;
         public int Members, Points;
         public long UpdatedAt;
+        public Emblem Emblem;
         internal static TeamSummary Parse(JsonNode o) => new TeamSummary
         {
             TeamId = J.Str(o, "teamId"), Name = J.Str(o, "name"), Season = J.Str(o, "season"), JoinPolicy = TeamWire.Policy(J.Str(o, "joinPolicy")),
-            Members = J.Int(o, "members"), Points = J.Int(o, "points"), UpdatedAt = J.Long(o, "updatedAt"),
+            Members = J.Int(o, "members"), Points = J.Int(o, "points"), UpdatedAt = J.Long(o, "updatedAt"), Emblem = Emblem.Parse(J.Opt(o, "emblem")),
         };
         internal static List<TeamSummary> ParseList(JsonNode o) => TeamWire.Array(o, Parse);
     }
@@ -833,6 +853,8 @@ namespace Muchi.Client
     public sealed class EventInfo
     {
         public string Id, Name;
+        /// <summary>Asset key of the event banner (banner/event/&lt;id&gt;).</summary>
+        public string Banner;
         /// <summary>"upcoming", "open" or "closed".</summary>
         public string Status;
         public long StartAtMs, EndAtMs;
@@ -844,7 +866,7 @@ namespace Muchi.Client
         public EventProgress Me;
         internal static EventInfo Parse(JsonNode o) => o == null ? null : new EventInfo
         {
-            Id = J.Str(o, "id"), Name = J.Str(o, "name"), Status = J.Str(o, "status"), StartAtMs = J.Long(o, "startAtMs"), EndAtMs = J.Long(o, "endAtMs"),
+            Id = J.Str(o, "id"), Name = J.Str(o, "name"), Banner = J.Str(o, "banner") ?? AssetKeys.EventBanner(J.Str(o, "id") ?? "default"), Status = J.Str(o, "status"), StartAtMs = J.Long(o, "startAtMs"), EndAtMs = J.Long(o, "endAtMs"),
             TrackIds = J.List(o, "trackIds", x => x.AsString()), Fee = EventFee.Parse(J.Opt(o, "fee")), Eligible = J.Bool(o, "eligible"),
             NotEligibleReasons = J.List(o, "notEligibleReasons", x => x.AsString()), Me = EventProgress.Parse(J.Opt(o, "me")),
         };

@@ -1,4 +1,5 @@
 import { AppError } from './errors.js';
+import { assetKeys } from './visuals.js';
 import { addItems, grantReward } from './items.js';
 import { STAT_KEYS, type EventDef, type EventFee, type Master, type Reward } from './master.js';
 import type { HorseInstance, PlayerState } from './player.js';
@@ -246,7 +247,7 @@ export function buildEventBoard(eventId: string, entries: EventEntry[], now: num
 
 export function eventPublic(ev: EventDef, now: number) {
   return {
-    id: ev.id, name: ev.name, status: eventStatus(ev, now), startAtMs: ev.startAtMs, endAtMs: ev.endAtMs, trackIds: ev.trackIds,
+    id: ev.id, name: ev.name, banner: assetKeys.eventBanner(ev.id), status: eventStatus(ev, now), startAtMs: ev.startAtMs, endAtMs: ev.endAtMs, trackIds: ev.trackIds,
     entry: ev.entry, fee: ev.fee,
     rules: { fixedStats: ev.rules.fixedStats, statCap: ev.rules.statCap, rulesetOverrides: ev.rules.rulesetOverrides, maxPlayers: ev.rules.maxPlayers },
     points: ev.points, milestones: ev.milestones, rankRewards: ev.rankRewards,

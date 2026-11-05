@@ -1,4 +1,5 @@
 import { AppError } from './errors.js';
+import { defaultEmblem, validateEmblem, type Emblem } from './visuals.js';
 import { grantReward } from './items.js';
 import type { Master, Reward, TeamsConfig } from './master.js';
 import type { PlayerState } from './player.js';
@@ -33,6 +34,8 @@ export interface TeamSeasonClose { rank: number | null; total: number; eligible:
 
 export interface TeamState {
   v: 1; id: string; name: string; createdAt: number; joinPolicy: JoinPolicy; announcement: string;
+  /** REQ-ASSET-007: emblem from the fixed parts set; absent = derived from the team id. */
+  emblem?: Emblem;
   members: TeamMember[]; former: TeamFormer[]; requests: TeamRequest[];
   /** Slots held while a player's own object commits the join (expire after RESERVE_TTL_MS). */
   reserved: { playerId: string; at: number }[];
@@ -231,7 +234,11 @@ export function disband(t: TeamState, cfg: TeamsConfig, actor: string, now: numb
   t.disbanded = true;
 }
 
-export function updateTeam(m: Master, cfg: TeamsConfig, t: TeamState, actor: string, patch: { announcement?: string; joinPolicy?: JoinPolicy }) {
+export function updateTeam(m: Master, cfg: TeamsConfig, t: TeamState, actor: string, patch: { announcement?: string; joinPolicy?: JoinPolicy; emblem?: Emblem }) {
+  if (patch.emblem !== undefined) {
+    assertMay(t, actor, 'announce');
+    t.emblem = validateEmblem(patch.emblem);
+  }
   if (patch.joinPolicy !== undefined) {
     assertMay(t, actor, 'policy');
     t.joinPolicy = patch.joinPolicy;
@@ -347,10 +354,10 @@ export function buildTeamBoard(seasonId: string, teams: TeamSummary[], now: numb
 
 // ------------------------------------------------------------------------------------- views
 
-export interface TeamSummary { teamId: string; name: string; joinPolicy: JoinPolicy; members: number; points: number; season: string; updatedAt: number }
+export interface TeamSummary { teamId: string; name: string; joinPolicy: JoinPolicy; members: number; points: number; season: string; updatedAt: number; emblem?: Emblem }
 
 export function teamSummary(t: TeamState, season: string, cap: number, now: number): TeamSummary {
-  return { teamId: t.id, name: t.name, joinPolicy: t.joinPolicy, members: t.members.length, points: teamPoints(t, season, cap), season, updatedAt: now };
+  return { teamId: t.id, name: t.name, joinPolicy: t.joinPolicy, members: t.members.length, points: teamPoints(t, season, cap), season, updatedAt: now, emblem: t.emblem ?? defaultEmblem(t.id) };
 }
 
 /** Public view; requests are shown only to the leader and officers. */
@@ -358,7 +365,7 @@ export function teamView(t: TeamState, cfg: TeamsConfig, season: string, viewer:
   const role = viewer ? memberOf(t, viewer)?.role ?? null : null;
   gcRequests(t, cfg, now);
   return {
-    teamId: t.id, name: t.name, joinPolicy: t.joinPolicy, announcement: t.announcement, createdAt: t.createdAt,
+    teamId: t.id, name: t.name, joinPolicy: t.joinPolicy, announcement: t.announcement, createdAt: t.createdAt, emblem: t.emblem ?? defaultEmblem(t.id),
     disbanded: t.disbanded, season, points: teamPoints(t, season, cfg.memberPointsCap), maxMembers: cfg.maxMembers,
     members: t.members.map((m) => ({ playerId: m.playerId, displayName: m.displayName, role: m.role, joinedAt: m.joinedAt, contribution: contribution(m, season, cfg.memberPointsCap) })),
     myRole: role,

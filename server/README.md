@@ -210,7 +210,7 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | 本人との紐付け | 購入時に `appAccountToken` = `/v1/shop/store-account` の `appleAppAccountToken` | `setObfuscatedAccountId` = `googleObfuscatedAccountId` |
 | 付与後 | — | コインは consume、パスは acknowledge（3日以内に必要。失敗してもアプリが再送すれば再試行） |
 | サーバー通知 | V2 の `signedPayload` を同じ方法で検証。REFUND/REVOKE→返金、SUBSCRIBED/DID_RENEW→期間延長、EXPIRED/GRACE_PERIOD_EXPIRED→終了、DID_FAIL_TO_RENEW→猶予/再試行、CONSUMPTION_REQUEST・TEST→受領のみ | Pub/Sub の OIDC トークン（発行者・audience・サービスアカウントのメール）を検証。voided→返金、RENEWED等→期間延長、EXPIRED/REVOKED/ON_HOLD/PAUSED→終了、IN_GRACE_PERIOD→猶予 |
-| テスト購入 | Sandbox/Xcode は既定で受け付け（App Review が Sandbox を使うため）、金額0円として記録。`APPLE_ACCEPT_SANDBOX=0` で拒否 | ライセンステストは既定で受け付け、0円。`GOOGLE_ACCEPT_TEST=0` で拒否 |
+| テスト購入 | Sandbox/Xcode は `APPLE_ACCEPT_SANDBOX=1` のときだけ受け付け（未設定は拒否）。金額0円で記録し、コインは**無償コイン**として付与（有償ロット・負債精算・初回ボーナスなし） | ライセンステストは既定で受け付け、0円。`GOOGLE_ACCEPT_TEST=0` で拒否 |
 
 - 取引IDは `apple:<transactionId>` / `google:<orderId>` で保存し、プラットフォーム間で衝突しない。
 - **1つのレシートは1人にしか付与されない**：全体の取引インデックス（AccountingDO の `store_tx`）に「取引ID・サブスクIDの持ち主」を先着で記録。サーバー通知もここで持ち主を探す。見つからない通知は 200 で受領して無視（アプリ側の購入処理が後で付与する）。
@@ -222,7 +222,7 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | 名前 | 種別 | 内容 |
 |---|---|---|
 | `APPLE_BUNDLE_ID` | var | iOS の bundle id。未設定なら Apple は全て拒否 |
-| `APPLE_ACCEPT_SANDBOX` | var | `0` で Sandbox を拒否（既定は受け付け） |
+| `APPLE_ACCEPT_SANDBOX` | var | `1` で Sandbox を受け付け（無償コインとして付与）。未設定・`0` は拒否。本番は審査中のみ `1` |
 | `GOOGLE_PACKAGE_NAME` | var | Android のパッケージ名 |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | secret | Play Console で注文の閲覧・管理権限を付けたサービスアカウントの鍵JSON |
 | `GOOGLE_ACCEPT_TEST` | var | `0` でライセンステスト購入を拒否 |

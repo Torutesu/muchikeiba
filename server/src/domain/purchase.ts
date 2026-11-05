@@ -89,7 +89,8 @@ export function checkPurchaseIntent(m: Master, s: PlayerState, productId: string
   if (p.once && s.purchases.some((x) => x.productId === p.id)) throw new AppError('ALREADY_PURCHASED');
   const month = jstMonthKey(now);
   // A purchase that went over the limit this month (e.g. the app skipped this check) blocks further purchases.
-  if (s.purchases.some((x) => x.limitBreach && !x.sandbox && jstMonthKey(x.at) === month)) throw new AppError('AGE_LIMIT_EXCEEDED', 'monthly limit already exceeded this month');
+  // the breach belongs to the month of purchase (as monthlySpendYen and the support flag), not of grant
+  if (s.purchases.some((x) => x.limitBreach && !x.sandbox && (x.month ?? jstMonthKey(x.at)) === month)) throw new AppError('AGE_LIMIT_EXCEEDED', 'monthly limit already exceeded this month');
   const spent = s.monthlySpendYen[month] ?? 0;
   const limit = ab.band.monthlyLimitYen;
   if (limit !== null && spent + p.priceYen > limit) throw new AppError('AGE_LIMIT_EXCEEDED', `monthly ${spent}+${p.priceYen} > ${limit}`);
@@ -120,29 +121,42 @@ export function applyVerifiedPurchase(m: Master, s: PlayerState, platform: Purch
   let lotId: string | null = null;
   let bonusLotId: string | null = null;
   let bonus = 0;
-  if (p.paidCoins > 0) {
+  let sandboxFree = 0;
+  if (r.sandbox) {
+    // Sandbox / TestFlight / license-test purchases cost nothing: credit FREE coins only — never a paid lot
+    // (usable on paidOnly banners, counted for 資金決済法) and never debt settlement; no first-purchase
+    // bonus either (review r5 #7).
+    if (p.paidCoins > 0) {
+      sandboxFree = p.paidCoins;
+      grantFree(s, sandboxFree, now, `sandbox purchase ${p.id}`, r.transactionId, 'grant');
+    }
+  } else if (p.paidCoins > 0) {
     lotId = grantPaid(s, p.paidCoins, r.priceYen, now, `purchase ${p.id}`, r.transactionId);
   }
-  if (p.kind === 'coins' && !s.firstPurchased.includes(p.id)) {
+  if (p.kind === 'coins' && !r.sandbox && !s.firstPurchased.includes(p.id)) {
     s.firstPurchased.push(p.id);
     bonus = p.paidCoins;
     if (m.firstPurchaseBonusAsPaid) bonusLotId = grantPaid(s, bonus, 0, now, `first purchase bonus ${p.id}`, r.transactionId);
     else grantFree(s, bonus, now, `first purchase bonus ${p.id}`, r.transactionId, 'bonus');
   }
   if (p.items) addItems(s, p.items);
+  let passUntil: number | undefined;
   if (p.kind === 'season_pass') {
     if (r.expiresAt !== undefined) {
       // Store subscription: the store's period end is authoritative (renewals arrive as new transactions).
+      passUntil = r.expiresAt;
       s.seasonPass.expiresAt = Math.max(s.seasonPass.expiresAt, r.expiresAt);
     } else {
       const base = Math.max(s.seasonPass.expiresAt, now);
-      s.seasonPass.expiresAt = base + (p.durationDays ?? 30) * DAY_MS;
+      passUntil = base + (p.durationDays ?? 30) * DAY_MS;
+      s.seasonPass.expiresAt = passUntil;
     }
   }
   const record: PurchaseRecord = {
-    txId: r.transactionId, platform, productId: p.id, priceYen: r.priceYen, at: now, paidCoinsGranted: p.paidCoins, bonusCoinsGranted: bonus, lotId, refunded: false, limitBreach,
+    txId: r.transactionId, platform, productId: p.id, priceYen: r.priceYen, at: now, paidCoinsGranted: r.sandbox ? 0 : p.paidCoins, bonusCoinsGranted: bonus, lotId, refunded: false, limitBreach,
+    ...(sandboxFree > 0 ? { sandboxFreeGranted: sandboxFree } : {}), month,
     ...(r.sandbox ? { sandbox: true } : {}), ...(r.originalTransactionId ? { originalTxId: r.originalTransactionId } : {}),
-    ...(bonusLotId ? { bonusLotId } : {}),
+    ...(bonusLotId ? { bonusLotId } : {}), ...(passUntil !== undefined ? { passUntil } : {}),
   };
   s.purchases.push(record);
   return { record, duplicate: false };
@@ -162,6 +176,7 @@ export function applyRefund(m: Master, s: PlayerState, transactionId: string, no
   const p = findProduct(m, rec.productId);
   const res = refundPaid(s, rec.lotId, rec.paidCoinsGranted, now, transactionId);
   let removed = res.removed;
+  if (rec.sandboxFreeGranted) removed += clawbackFree(s, rec.sandboxFreeGranted, now, transactionId).removed;
   if (rec.bonusCoinsGranted > 0) {
     const b = m.firstPurchaseBonusAsPaid || rec.bonusLotId
       ? refundPaid(s, rec.bonusLotId ?? null, rec.bonusCoinsGranted, now, transactionId)
@@ -169,17 +184,41 @@ export function applyRefund(m: Master, s: PlayerState, transactionId: string, no
     removed += b.removed;
   }
   const itemsOwed = p.items ? clawbackItems(s, p.items) : {};
-  if (p.kind === 'season_pass') s.seasonPass.expiresAt = Math.min(s.seasonPass.expiresAt, now);
+  if (p.kind === 'season_pass') recomputePass(m, s, now);
   return { removed, debt: s.wallet.debt, alreadyRefunded: false, itemsOwed };
+}
+
+/**
+ * Season pass entitlement = the latest end over every non-refunded pass purchase, each capped by the state
+ * of its own store subscription (review r5 #6). A refund, expiry or revocation of one subscription can no
+ * longer cut a period paid through another (e.g. iOS ended, Android still active).
+ * States written before `passUntil` existed fall back to the old clamp.
+ */
+function recomputePass(m: Master, s: PlayerState, now: number, legacyClampTo: number = now) {
+  const passes = s.purchases.filter((x) => findProduct(m, x.productId).kind === 'season_pass');
+  if (passes.some((x) => x.passUntil === undefined)) {
+    s.seasonPass.expiresAt = Math.min(s.seasonPass.expiresAt, legacyClampTo);
+    return;
+  }
+  let end = 0;
+  for (const x of passes) {
+    if (x.refunded) continue;
+    let e = x.passUntil!;
+    const sub = x.originalTxId ? s.storeSubscriptions?.[x.originalTxId] : undefined;
+    if (sub?.status === 'revoked' || sub?.status === 'paused') e = Math.min(e, sub.updatedAt);
+    if (sub?.status === 'expired') e = Math.min(e, sub.expiresAt ?? sub.updatedAt);
+    end = Math.max(end, e);
+  }
+  s.seasonPass.expiresAt = end;
 }
 
 export type SubscriptionStatus = 'active' | 'canceled' | 'grace' | 'billing_retry' | 'paused' | 'expired' | 'revoked';
 
 /** Store subscription state change (auto-renewing season pass). Entitlement ends on expired/revoked/paused. */
-export function applySubscriptionStatus(s: PlayerState, platform: PurchaseRecord['platform'], key: string, status: SubscriptionStatus, expiresAt: number | null, now: number) {
+export function applySubscriptionStatus(m: Master, s: PlayerState, platform: PurchaseRecord['platform'], key: string, status: SubscriptionStatus, expiresAt: number | null, now: number) {
   s.storeSubscriptions ??= {};
   s.storeSubscriptions[key] = { platform, status, expiresAt, updatedAt: now };
-  if (status === 'revoked' || status === 'paused') s.seasonPass.expiresAt = Math.min(s.seasonPass.expiresAt, now);
-  if (status === 'expired') s.seasonPass.expiresAt = Math.min(s.seasonPass.expiresAt, expiresAt ?? now);
+  if (status === 'revoked' || status === 'paused') recomputePass(m, s, now, now);
+  if (status === 'expired') recomputePass(m, s, now, expiresAt ?? now);
   return { key, status, passExpiresAt: s.seasonPass.expiresAt };
 }

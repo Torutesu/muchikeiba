@@ -89,6 +89,8 @@ export function lintDeployConfig(tomlText: string, envName: string, opts: LintOp
   }
   if (envName === 'production') {
     if (vars.GOOGLE_ACCEPT_TEST !== '0') err('production must set GOOGLE_ACCEPT_TEST = "0" (license-testing purchases are not revenue)');
+    if (vars.APPLE_ACCEPT_SANDBOX !== '0' && vars.APPLE_ACCEPT_SANDBOX !== '1') err('production must set APPLE_ACCEPT_SANDBOX explicitly ("1" only while App Review needs sandbox IAP on this backend, else "0")');
+    if (vars.APPLE_ACCEPT_SANDBOX === '1') warn('production accepts Apple sandbox receipts (App Review). They credit free coins only; point TestFlight builds at staging and set "0" after review');
     if (env.workers_dev !== false) err('production must set workers_dev = false (serve only on the custom domain)');
     if (strings(env.routes).length === 0 && arr(env.routes).length === 0) err('production needs routes (custom domain)');
   }

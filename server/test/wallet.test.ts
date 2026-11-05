@@ -97,7 +97,10 @@ describe('purchase flow (REQ-PUR-*)', () => {
     applyVerifiedPurchase(m, s, 'fake', receipt('season_pass', 1000, 'sp2'), NOW);
     expect(s.seasonPass.expiresAt).toBe(NOW + 60 * 86400000);
     applyRefund(m, s, 'sp2', NOW + 1);
-    expect(s.seasonPass.expiresAt).toBe(NOW + 1);
+    // the refunded period goes; the first, still-paid 30 days stay (review r5 #6)
+    expect(s.seasonPass.expiresAt).toBe(NOW + 30 * 86400000);
+    applyRefund(m, s, 'sp1', NOW + 1);
+    expect(s.seasonPass.expiresAt).toBe(0);
     expect(applyRefund(m, s, 'sp2', NOW + 2).alreadyRefunded).toBe(true);
   });
   it('blocks new purchases while refund debt is unsettled', () => {

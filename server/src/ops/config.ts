@@ -100,9 +100,20 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
 
   const progression = b.progression ? ({ ...base.progression, ...b.progression } as Progression) : base.progression;
   for (const k of Object.keys(b.progression ?? {})) if (!(k in base.progression)) problems.push(`progression: unknown key ${k}`);
+  for (const [k, v] of Object.entries(b.progression ?? {})) {
+    if (k in base.progression) problems.push(...shapeProblems(`progression.${k}`, (base.progression as unknown as Record<string, unknown>)[k], v));
+  }
   if (b.progression && 'weather' in b.progression) problems.push(...weatherProblems(progression.weather));
 
   const events = (b.events as EventDef[] | undefined) ?? base.events;
+  if (b.events) {
+    const tpl = base.events[0];
+    for (const ev of b.events as unknown as EventDef[]) {
+      problems.push(...shapeProblems(`event ${ev.id}.points`, tpl?.points, ev.points));
+      problems.push(...shapeProblems(`event ${ev.id}.milestones`, tpl?.milestones, ev.milestones));
+      problems.push(...shapeProblems(`event ${ev.id}.rankRewards`, tpl?.rankRewards, ev.rankRewards));
+    }
+  }
   const master: Master = { ...base, tracks, litTracks, gacha: { ...base.gacha, pityGroups, banners }, progression, ng: b.ng ?? base.ng, events };
   problems.push(...eventProblems(master, events, ruleset));
   if (problems.length === 0) {
@@ -114,6 +125,36 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
   }
   if (problems.length) throw new AppError('CONFIG_INVALID', problems.join('; '));
   return { master, ruleset };
+}
+
+/**
+ * Structural check of a remote-config override against the shipped master value (review r5 #9): same
+ * types, non-empty tables where the base table is non-empty, finite non-negative numbers, integers where
+ * the base is an integer, and `every` ≥ 1. Rejects e.g. `loginBonus: []`, `passRewards.every: 0` or
+ * negative reward coins before they can crash claims or stall a rollover.
+ */
+export function shapeProblems(path: string, base: unknown, v: unknown): string[] {
+  if (base === undefined) return [];
+  if (v === null) return base === null || typeof base === 'number' ? [] : [`${path}: must not be null`];
+  if (base === null) return typeof v === 'number' ? shapeProblems(path, 0, v) : [];
+  if (typeof base === 'number') {
+    if (typeof v !== 'number' || !Number.isFinite(v)) return [`${path}: must be a number`];
+    if (v < 0) return [`${path}: must not be negative`];
+    if (Number.isInteger(base) && !Number.isInteger(v)) return [`${path}: must be an integer`];
+    if (/(^|\.)every$/.test(path) && v < 1) return [`${path}: must be ≥ 1`];
+    return [];
+  }
+  if (Array.isArray(base)) {
+    if (!Array.isArray(v)) return [`${path}: must be an array`];
+    if (base.length > 0 && v.length === 0) return [`${path}: must not be empty`];
+    return v.flatMap((x, i) => shapeProblems(`${path}[${i}]`, base[i] ?? base[0], x));
+  }
+  if (typeof base === 'object') {
+    if (typeof v !== 'object' || Array.isArray(v)) return [`${path}: must be an object`];
+    const b = base as Record<string, unknown>;
+    return Object.entries(v as Record<string, unknown>).flatMap(([k, x]) => shapeProblems(`${path}.${k}`, b[k], x));
+  }
+  return typeof v === typeof base ? [] : [`${path}: must be a ${typeof base}`];
 }
 
 // ---------------------------------------------------------------------------------- versions store

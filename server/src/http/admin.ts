@@ -55,6 +55,8 @@ interface AdminRequest { params: Record<string, string>; query: URLSearchParams;
 const reasonSchema = z.string().trim().min(3).max(500);
 const pid = z.string().min(1).max(128);
 const opKeySchema = z.string().regex(/^[A-Za-z0-9_.:-]{4,100}$/);
+/** Bulk grant per-recipient op key; '/' is outside opKeySchema so it can never equal a single-grant key. */
+export const bulkOpKey = (opKey: string, playerId: string) => `bulk/${opKey}/${playerId}`;
 export const BULK_MAX_RECIPIENTS = 200;
 export const BULK_MAX_TOTAL_COINS = 1_000_000;
 
@@ -143,8 +145,9 @@ export const adminRoutes: AdminRoute[] = [
     const results: { playerId: string; ok: boolean; error?: string }[] = [];
     for (const id of ids) {
       try {
-        // per-recipient key: re-running the same bulk call never grants twice
-        await r.ctx.player(id).invoke('adminGrant', id, b.grant as Grant, r.reason!, r.principal.id, `${b.opKey}:${id}`);
+        // per-recipient key: re-running the same bulk call never grants twice. '/' cannot appear in a client
+        // opKey (opKeySchema), so bulk keys never collide with single-grant keys (review r5 #5).
+        await r.ctx.player(id).invoke('adminGrant', id, b.grant as Grant, r.reason!, r.principal.id, bulkOpKey(b.opKey, id));
         results.push({ playerId: id, ok: true });
       } catch (e) {
         results.push({ playerId: id, ok: false, error: e instanceof AppError ? e.code : 'INTERNAL' });

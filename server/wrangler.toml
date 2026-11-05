@@ -198,6 +198,8 @@ VERIFIER_URL = "https://muchi-verifier-production-REPLACE_ME.a.run.app"
 FIREBASE_PROJECT_ID = "REPLACE_ME-production"
 VERIFY_SAMPLE_RATE = "0.05"
 APPLE_BUNDLE_ID = "REPLACE_ME.muchi"
+# "1" only while App Review needs sandbox IAP against production (sandbox receipts credit FREE coins only;
+# TestFlight builds should point at staging). Set "0" once the app is approved. Opt-in: unset = rejected.
 APPLE_ACCEPT_SANDBOX = "1"
 GOOGLE_PACKAGE_NAME = "REPLACE_ME.muchi"
 GOOGLE_ACCEPT_TEST = "0"

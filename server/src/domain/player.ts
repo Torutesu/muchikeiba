@@ -35,6 +35,12 @@ export interface PurchaseRecord {
   originalTxId?: string;
   /** Lot of a first-purchase bonus granted as PAID coins (firstPurchaseBonusAsPaid). */
   bonusLotId?: string | null;
+  /** JST month of the store purchase (purchasedAt), used for the monthly limit. */
+  month?: string;
+  /** Sandbox purchase: coins credited as FREE coins (never paid lots; review r5 #7). */
+  sandboxFreeGranted?: number;
+  /** Season pass: end of the period this purchase paid for (review r5 #6). */
+  passUntil?: number;
 }
 
 /** REQ-STAT-001: per-player race statistics (ranked + friend races; tutorial excluded). */
@@ -109,6 +115,8 @@ export interface PlayerState {
   events?: Record<string, PlayerEventState>;
   /** Anti-cheat status pushed by the integrity service (REQ-OPS-035). Absent = ok. */
   moderation?: { status: 'ok' | 'quarantined' | 'banned'; until: number | null; reason: string; at: number };
+  /** Results of admin money operations by op key; never evicted, so an opKey can never pay twice (review r5 #4). */
+  adminOps?: Record<string, unknown>;
 }
 
 /** Effective moderation status at `now` (expired quarantines/bans read as ok). */

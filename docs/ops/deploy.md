@@ -95,7 +95,7 @@ Apple / Google：レシート検証・サーバー通知
 | アプリID | バンドルID → `APPLE_BUNDLE_ID` | パッケージ名 → `GOOGLE_PACKAGE_NAME` |
 | サーバー通知 | App Store Server Notifications **Version 2**、URL `https://<api>/v1/store/notifications/apple`（本番とサンドボックスの両方） | RTDN：Pub/Sub トピックを作り、Play Console に登録。push サブスクリプションのエンドポイントは `https://<api>/v1/store/notifications/google`、「認証を有効化」して、そのサービスアカウントを `GOOGLE_PUBSUB_SERVICE_ACCOUNT`、オーディエンスを `GOOGLE_PUBSUB_AUDIENCE` に入れる |
 | API用の鍵 | （任意）App Store Server API：Issuer ID・Key ID・.p8 | サービスアカウントを Play Console に招待し、「注文の管理」権限を付けて、鍵JSONを `GOOGLE_SERVICE_ACCOUNT_JSON` に入れる |
-| テスト購入 | `APPLE_ACCEPT_SANDBOX=1`（審査はサンドボックスで行われるため本番でも1） | `GOOGLE_ACCEPT_TEST`：staging は 1、**production は 0**（lint が確認します） |
+| テスト購入 | `APPLE_ACCEPT_SANDBOX` は明示が必要（未設定＝拒否）。本番は審査中だけ `1`、承認後は `0`。サンドボックス購入は**無償コインとしてのみ付与**（有償ロット・負債の精算・初回ボーナスなし、資金決済法の集計外）。TestFlight はステージングに向ける | `GOOGLE_ACCEPT_TEST`：staging は 1、**production は 0**（lint が確認します） |
 
 ## 5. 変数とシークレットの一覧（環境ごと）
 

@@ -4,6 +4,7 @@ import type { PlayerState } from './player.js';
 import { randInt, type Rng } from './rng.js';
 import { spend } from './wallet.js';
 import { createHorseFromTemplate } from './horses.js';
+import { hasItemDebt } from './items.js';
 
 const rank = (r: Rarity) => RARITY_ORDER.indexOf(r);
 
@@ -32,13 +33,32 @@ export function bannerProblems(b: BannerDef, m: Pick<Master, 'templateById'>, gm
   if (!gm.pityGroups[b.pityGroup]) p.push(`${b.id}: unknown pity group ${b.pityGroup}`);
   const g = gm.pityGroups[b.pityGroup];
   if (g?.endAtMs !== undefined && !gm.pityGroups[g.convertTo ?? 'standard']) p.push(`${b.pityGroup}: convertTo group ${g.convertTo ?? 'standard'} does not exist`);
-  if (g?.endAtMs !== undefined && b.endAtMs !== undefined && b.endAtMs > g.endAtMs) p.push(`${b.id}: banner outlives its pity group`);
+  // A closing pity group needs every banner on it to close no later; a permanent banner would keep
+  // disclosing a pity that settlePityGroups makes unreachable (review r5 #8).
+  if (g?.endAtMs !== undefined && (b.endAtMs === undefined || b.endAtMs > g.endAtMs)) p.push(`${b.id}: banner outlives its pity group`);
   for (const t of b.pityTargets) if (!b.pool.some((e) => e.templateId === t)) p.push(`${b.id}: pity target ${t} not in pool`);
+  return p;
+}
+
+/** Closing pity groups must convert along an acyclic chain that ends in a group that never closes. */
+export function pityGroupProblems(gm: Pick<GachaMaster, 'pityGroups'>): string[] {
+  const p: string[] = [];
+  for (const start of Object.keys(gm.pityGroups)) {
+    const seen = new Set<string>();
+    let cur: string | undefined = start;
+    while (cur !== undefined && gm.pityGroups[cur]?.endAtMs !== undefined) {
+      if (seen.has(cur)) { p.push(`pity group ${start}: convertTo chain has a cycle`); break; }
+      seen.add(cur);
+      cur = gm.pityGroups[cur]!.convertTo ?? 'standard';
+      if (!gm.pityGroups[cur]) break; // reported by bannerProblems
+    }
+  }
   return p;
 }
 
 export function validateGacha(m: Master): void {
   const problems = m.gacha.banners.flatMap((b) => bannerProblems(b, m, m.gacha));
+  problems.push(...pityGroupProblems(m.gacha));
   // every banner can be paid with paid coins, so nothing in a pool counts as freely obtainable
   problems.push(...compGachaProblems(m.progression.collectionMissions, m.gacha.banners, new Set()));
   if (problems.length) throw new AppError('CONFIG_INVALID', problems.join('; '));
@@ -154,6 +174,8 @@ export function exchangePity(m: Master, s: PlayerState, bannerId: string, templa
   const b = findBanner(m, bannerId);
   // exchange only through an open banner (bug review #13); closed groups were converted by settlePityGroups
   if ((b.startAtMs !== undefined && now < b.startAtMs) || (b.endAtMs !== undefined && now >= b.endAtMs)) throw new AppError('BANNER_CLOSED');
+  // pity earned by pulls that were later refunded must not be cashed in while that debt is open (review r5)
+  if (s.wallet.debt > 0 || hasItemDebt(s)) throw new AppError('UNSETTLED_DEBT');
   if (!b.pityTargets.includes(templateId)) throw new AppError('BAD_REQUEST', 'not an exchange target');
   const cost = m.gacha.pityGroups[b.pityGroup]!.cost;
   const have = s.pity[b.pityGroup] ?? 0;

@@ -1,6 +1,6 @@
 {
  "_note": "見た目の取り決め（contracts/assets.md）。アセットキーはここと各マスターから規則で作り、contracts/assets.manifest.json に書き出す（npm run gen:assets）。勝負服の模様・色・帽子はすべて架空。実在の馬主の登録服色と同じ組み合わせは silks.banned に入れて弾く（リリース前に公開されている登録服色と照合して追記すること）。",
- "version": 1,
+ "version": 2,
  "palette": [
   {
    "id": "white",
@@ -521,7 +521,8 @@
     "id": "wings",
     "colors": 3,
     "unlockItem": "costume_login"
-   }
+   },
+      { "id": "laurel", "colors": 3, "unlockItem": "costume_silks_laurel" }
   ],
   "caps": [
    {

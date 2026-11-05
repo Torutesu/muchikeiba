@@ -120,7 +120,17 @@ export interface PlayerState {
   moderation?: { status: 'ok' | 'quarantined' | 'banned'; until: number | null; reason: string; at: number };
   /** Results of admin money operations by op key; never evicted, so an opKey can never pay twice (review r5 #4). */
   adminOps?: Record<string, unknown>;
+  /** REQ-ITEM-006: equipped cosmetics (tack per slot, stable decor slots). Optional for older states. */
+  equipment?: Equipment;
+  /** REQ-ITEM-008: append-only log of item spends and cosmetic purchases (last ITEM_LOG_KEEP kept). */
+  itemLog?: ItemLogEntry[];
+  /** REQ-ITEM-003: extra breedings bought with material today (JST date). */
+  breedingExtra?: { date: string; count: number };
 }
+
+export interface Equipment { tack: Partial<Record<'bridle' | 'saddlecloth', string>>; decor: (string | null)[] }
+export interface ItemLogEntry { seq: number; at: number; itemId: string; delta: number; reason: string; ref: string }
+export const ITEM_LOG_KEEP = 200;
 
 /** Effective moderation status at `now` (expired quarantines/bans read as ok). */
 export function moderationOf(s: PlayerState, now: number): 'ok' | 'quarantined' | 'banned' {
@@ -180,6 +190,7 @@ export function playerView(s: PlayerState) {
     ageRegistered: s.age !== null, flags: s.flags, seasonPass: s.seasonPass, loginBonus: s.loginBonus,
     rating: { r: Math.round(s.rating.r), rd: Math.round(s.rating.rd), rankedRaces: s.rating.rankedRaces }, season: s.season,
     profile: { displayName: s.profile.displayName, titleId: s.profile.titleId, silks: s.profile.silks ?? defaultSilks(`p:${s.id}`) }, titles: s.titles, stats: s.stats,
+    equipment: s.equipment ?? { tack: {}, decor: [] },
     seasonHistory: s.seasonHistory,
   };
 }

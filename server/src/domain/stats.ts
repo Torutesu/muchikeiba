@@ -140,11 +140,14 @@ export interface PublicProfile {
   stats: { races: number; wins: number; top3: number }; lastSeenAt: number;
   /** REQ-ASSET-005 (absent in profiles pushed by older builds). */
   silks?: Silks;
+  /** REQ-ITEM-006: equipped tack, so other players can render it (absent = default tack). */
+  tack?: Partial<Record<'bridle' | 'saddlecloth', string>>;
 }
 
 export function publicProfile(s: PlayerState): PublicProfile {
   return {
     playerId: s.id, displayName: s.profile.displayName, titleId: s.profile.titleId, silks: s.profile.silks ?? defaultSilks(`p:${s.id}`), classId: s.season.classId,
     rating: Math.round(s.rating.r), stats: { races: s.stats.races, wins: s.stats.wins, top3: s.stats.top3 }, lastSeenAt: s.profile.lastSeenAt,
+    ...(s.equipment && Object.keys(s.equipment.tack).length > 0 ? { tack: { ...s.equipment.tack } } : {}),
   };
 }

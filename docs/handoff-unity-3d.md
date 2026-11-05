@@ -52,6 +52,12 @@ Updated: 2026-11-05（エンジン・サーバー接続を追加）
 - 自分の馬はワードローブで選んだモデル（ローカル）、他の馬は `start.visuals` から上の対応で選ぶ
 - `unity/Checks~/GameChecks` が、マニフェストの horse/* silks/* キーとパレット全色が「モデルに対応」か「表現しない種類として明記」のどちらかであること、25モデルとLODのFBXが存在することを確認する
 
+### 着せ替え・馬具・厩舎の飾り（`CosmeticArt` / `ItemsBackend`、REQ-ITEM-004..007）
+
+- `tack/bridle*` → `Art/Cosmetics/bridle`、`tack/saddlecloth*` → `saddlecloth`、`silks/pattern/*` → `silk-jacket`、`decor/*` → `stable-plaque`（試作アートは種類ごとに1枚。専用アートができたら `CosmeticArt` の対応表に足す）
+- `ItemsBackend` がワードローブ・コスメ直販・厩舎の飾り枠・券の使用をサーバーへ送る。オフラインは同梱のプレビュー（LOCAL ONLY）だけで、購入・装備・券は使えない
+- `GameChecks` が、マニフェストの tack/* decor/* キーが全部アートに解決できること、オフラインのプレビューが `server/master/items.json` にある品だけであることを確認する
+
 ### コースの置き方（`CourseFrame`）
 
 エンジンのコース（内ラチ沿いの距離＋外向きの横位置）を `TrackGeometry` で3Dにし、**ゴールが (0, 0, 420) で +Z 向き**（スタンドとゴール板の位置）になるよう回転・平行移動する。直線だけのコース（初レース）はCodexの Greenfield 直線（ラチ x=±15）をそのまま使い、馬群をラチの間に寄せる。コーナーのあるコースはラチ・走路をコース形状から生成し、スタンドを外側に置く。ナイターは照明を暗くする。

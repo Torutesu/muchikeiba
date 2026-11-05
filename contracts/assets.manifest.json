@@ -1,6 +1,6 @@
 {
  "_note": "生成ファイル（npm run gen:assets）。手で編集しない。キーの規則と各kindの意味は contracts/assets.md。dynamic なkindは実行時に増える（ここには既知のものだけ載る）。",
- "version": 1,
+ "version": 2,
  "kinds": {
   "horse/coat": {
    "fallback": "horse/coat/default",
@@ -36,7 +36,7 @@
    "fallback": "silks/pattern/default",
    "description": "勝負服の模様（色はパレットで着色）",
    "dynamic": false,
-   "count": 16
+   "count": 17
   },
   "silks/cap": {
    "fallback": "silks/cap/default",
@@ -50,11 +50,23 @@
    "dynamic": false,
    "count": 9
   },
+  "tack": {
+   "fallback": "tack/default",
+   "description": "馬具（頭絡・ゼッケン布）。馬のモデルに重ねる見た目（REQ-ITEM-006）",
+   "dynamic": false,
+   "count": 5
+  },
+  "decor": {
+   "fallback": "decor/default",
+   "description": "厩舎の飾り（REQ-ITEM-006）",
+   "dynamic": false,
+   "count": 5
+  },
   "item": {
    "fallback": "item/default",
    "description": "アイテムのアイコン",
    "dynamic": false,
-   "count": 8
+   "count": 17
   },
   "banner/gacha": {
    "fallback": "banner/gacha/default",
@@ -149,6 +161,11 @@
   "banner/gacha/pickup_akatsuki",
   "banner/gacha/standard",
   "banner/gacha/stepup_paid",
+  "decor/default",
+  "decor/flower_box",
+  "decor/golden_horseshoe",
+  "decor/stable_plaque",
+  "decor/trophy_shelf",
   "emblem/shape/circle",
   "emblem/shape/default",
   "emblem/shape/diamond",
@@ -203,10 +220,19 @@
   "item/breeding_material",
   "item/costume_login",
   "item/costume_season_limited",
+  "item/costume_silks_laurel",
   "item/costume_starter",
+  "item/decor_flower_box",
+  "item/decor_golden_horseshoe",
+  "item/decor_stable_plaque",
+  "item/decor_trophy_shelf",
   "item/default",
   "item/event_ticket",
   "item/gacha_ticket",
+  "item/tack_bridle_classic",
+  "item/tack_bridle_gold",
+  "item/tack_saddlecloth_crimson",
+  "item/tack_saddlecloth_navy",
   "item/ticket_sr_plus",
   "scene/night/default",
   "scene/night/minato",
@@ -256,6 +282,7 @@
   "silks/pattern/flame",
   "silks/pattern/halves",
   "silks/pattern/hoops",
+  "silks/pattern/laurel",
   "silks/pattern/lightning",
   "silks/pattern/plain",
   "silks/pattern/quartered",
@@ -264,6 +291,11 @@
   "silks/pattern/stars",
   "silks/pattern/stripes",
   "silks/pattern/wings",
+  "tack/bridle_classic",
+  "tack/bridle_gold",
+  "tack/default",
+  "tack/saddlecloth_crimson",
+  "tack/saddlecloth_navy",
   "title/class_a",
   "title/class_s",
   "title/debut",

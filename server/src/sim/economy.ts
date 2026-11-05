@@ -43,6 +43,8 @@ export interface EconomyResult {
   firstPityDay: number | null;
   breedingMaterial: number;
   gachaTickets: number;
+  /** Pulls paid with tickets instead of coins (REQ-ITEM-001/002). */
+  ticketPulls: number;
   /** Derived. */
   freeCoinsPerActiveDay: number;
   pullsPerMonth: number;
@@ -71,7 +73,7 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
   const k = () => `c:sim:${key++}`;
   const r: EconomyResult = {
     persona: persona.id, days, activeDays: 0, freeCoinsEarned: 0, paidCoinsBought: 0, yenSpent: 0, pulls: 0, ssr: 0, sr: 0,
-    pityExchanges: 0, firstPityDay: null, breedingMaterial: 0, gachaTickets: 0, freeCoinsPerActiveDay: 0, pullsPerMonth: 0, ssrPerMonth: 0,
+    pityExchanges: 0, firstPityDay: null, breedingMaterial: 0, gachaTickets: 0, ticketPulls: 0, freeCoinsPerActiveDay: 0, pullsPerMonth: 0, ssrPerMonth: 0,
   };
   await svc.bootstrap(id);
   await svc.setAge(id, 1990, 1, false);
@@ -127,6 +129,23 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
         r.firstPityDay ??= d + 1;
       }
     }
+    // REQ-ITEM-001/002: tickets are spent as soon as they arrive (one standard pull each; SR+ ticket = one SR+ horse)
+    for (const [itemId, def] of Object.entries(master.items.tickets)) {
+      let have = (await svc.view(id)).items[itemId] ?? 0;
+      for (; have > 0; have--) {
+        const tr = await svc.useTicket(id, itemId, def.kind === 'single' ? 'standard' : null, k());
+        r.pulls++;
+        r.ticketPulls++;
+        if (tr.result.rarity === 'SSR') r.ssr++;
+        if (tr.result.rarity === 'SR') r.sr++;
+        if (tr.pityPoints !== null && tr.pityPoints >= master.gacha.pityGroups.standard!.cost) {
+          await svc.pityExchange(id, 'standard', pityTarget, k());
+          r.pityExchanges++;
+          r.ssr++;
+          r.firstPityDay ??= d + 1;
+        }
+      }
+    }
   }
   const s = await svc.state(id);
   r.freeCoinsEarned = s.wallet.free - freeAtStart + freeSpent - freeFromPurchases;
@@ -149,7 +168,7 @@ export async function simulateAll(master: Master, days = 90, seeds = [1, 2, 3]) 
       activeDays: avg((x) => x.activeDays), freeCoinsEarned: avg((x) => x.freeCoinsEarned), paidCoinsBought: avg((x) => x.paidCoinsBought),
       yenSpent: avg((x) => x.yenSpent), pulls: avg((x) => x.pulls), ssr: avg((x) => x.ssr), sr: avg((x) => x.sr), pityExchanges: avg((x) => x.pityExchanges),
       firstPityDay: firsts.length ? firsts.reduce((a, b) => a + b, 0) / firsts.length : null,
-      breedingMaterial: avg((x) => x.breedingMaterial), gachaTickets: avg((x) => x.gachaTickets),
+      breedingMaterial: avg((x) => x.breedingMaterial), gachaTickets: avg((x) => x.gachaTickets), ticketPulls: avg((x) => x.ticketPulls),
       freeCoinsPerActiveDay: avg((x) => x.freeCoinsPerActiveDay), pullsPerMonth: avg((x) => x.pullsPerMonth), ssrPerMonth: avg((x) => x.ssrPerMonth),
     };
   }

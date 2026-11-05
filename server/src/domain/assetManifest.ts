@@ -49,6 +49,7 @@ export function buildAssetManifest(m: Master, commentary: CommentaryJson, v: Vis
   v.silks.caps.forEach((c) => add(assetKeys.silksCap(c.id)));
   v.gateBrackets.forEach((g) => add(assetKeys.gate(g.bracket)));
   collectItemIds(m, v).forEach((id) => add(assetKeys.item(id)));
+  for (const c of m.items?.cosmetics ?? []) if (c.kind !== 'silks') add(c.asset); // tack/*, decor/* (REQ-ITEM-006)
   m.gacha.banners.forEach((b) => add(assetKeys.gachaBanner(b.id)));
   m.events.forEach((e) => add(assetKeys.eventBanner(e.id)));
   m.titles.forEach((t) => add(assetKeys.title(t.id)));

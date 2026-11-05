@@ -126,7 +126,7 @@
    "fallback": "voice/ja/phrase/default",
    "description": "実況の定型フレーズ（Data/commentary-ja.json の各断片）",
    "dynamic": false,
-   "count": 70
+   "count": 74
   },
   "voice/ja/num": {
    "fallback": "voice/ja/num/default",
@@ -396,6 +396,10 @@
   "voice/ja/phrase/result_1_p1",
   "voice/ja/phrase/result_1_p2",
   "voice/ja/phrase/result_1_p3",
+  "voice/ja/phrase/result_solo_1_p0",
+  "voice/ja/phrase/result_two_1_p0",
+  "voice/ja/phrase/result_two_1_p1",
+  "voice/ja/phrase/result_two_1_p2",
   "voice/ja/phrase/spurt_1_p0",
   "voice/ja/phrase/spurt_2_p0"
  ]

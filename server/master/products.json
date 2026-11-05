@@ -1,0 +1,16 @@
+{
+  "_note": "コインのパックは docs/planning/04 の暫定値。初回は有償コインと同数を無償コインでボーナス付与（2倍）。",
+  "firstPurchaseBonusAsPaid": false,
+  "products": [
+    { "id": "coin_160", "kind": "coins", "priceYen": 160, "paidCoins": 100 },
+    { "id": "coin_480", "kind": "coins", "priceYen": 480, "paidCoins": 310 },
+    { "id": "coin_800", "kind": "coins", "priceYen": 800, "paidCoins": 530 },
+    { "id": "coin_1500", "kind": "coins", "priceYen": 1500, "paidCoins": 1020 },
+    { "id": "coin_2400", "kind": "coins", "priceYen": 2400, "paidCoins": 1660 },
+    { "id": "coin_3800", "kind": "coins", "priceYen": 3800, "paidCoins": 2680 },
+    { "id": "coin_5000", "kind": "coins", "priceYen": 5000, "paidCoins": 3600 },
+    { "id": "coin_10000", "kind": "coins", "priceYen": 10000, "paidCoins": 7400 },
+    { "id": "starter_pack", "kind": "starter", "priceYen": 480, "paidCoins": 300, "once": true, "items": [ { "itemId": "ticket_sr_plus", "qty": 1 }, { "itemId": "costume_starter", "qty": 1 } ] },
+    { "id": "season_pass", "kind": "season_pass", "priceYen": 1000, "paidCoins": 0, "durationDays": 30, "items": [ { "itemId": "costume_season_limited", "qty": 1 } ] }
+  ]
+}

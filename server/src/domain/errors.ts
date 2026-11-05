@@ -1,0 +1,26 @@
+/** Machine-readable error codes (REQ-API-004). */
+export type ErrorCode =
+  | 'BAD_REQUEST' | 'UNAUTHORIZED' | 'NOT_FOUND' | 'CONFLICT' | 'IDEMPOTENCY_KEY_REQUIRED'
+  | 'INSUFFICIENT_COINS' | 'UNSETTLED_DEBT' | 'AGE_REQUIRED' | 'GUARDIAN_CONSENT_REQUIRED'
+  | 'AGE_LIMIT_EXCEEDED' | 'ALREADY_PURCHASED' | 'UNKNOWN_PRODUCT' | 'RECEIPT_INVALID'
+  | 'BANNER_CLOSED' | 'TUTORIAL_GACHA_USED' | 'PITY_INSUFFICIENT' | 'INVALID_NAME' | 'NG_NAME'
+  | 'HORSE_NOT_FOUND' | 'HORSE_NOT_ACTIVE' | 'HORSE_NOT_RETIRED' | 'BREEDING_INVALID_PAIR'
+  | 'BREEDING_DAILY_LIMIT' | 'AWAKENING_MAX' | 'ALREADY_CLAIMED' | 'NOT_ELIGIBLE'
+  | 'ALREADY_QUEUED' | 'NOT_IN_QUEUE' | 'ROOM_NOT_FOUND' | 'ROOM_FULL' | 'NOT_HOST' | 'CONFIG_INVALID';
+
+const STATUS: Partial<Record<ErrorCode, number>> = {
+  BAD_REQUEST: 400, CONFIG_INVALID: 500, UNAUTHORIZED: 401, NOT_FOUND: 404, HORSE_NOT_FOUND: 404,
+  ROOM_NOT_FOUND: 404, UNKNOWN_PRODUCT: 404, IDEMPOTENCY_KEY_REQUIRED: 400, INVALID_NAME: 400, NG_NAME: 400,
+};
+
+export class AppError extends Error {
+  readonly status: number;
+  constructor(readonly code: ErrorCode, message?: string, status?: number) {
+    super(message ?? code);
+    this.status = status ?? STATUS[code] ?? 409;
+  }
+}
+
+export function assert(cond: unknown, code: ErrorCode, message?: string): asserts cond {
+  if (!cond) throw new AppError(code, message);
+}

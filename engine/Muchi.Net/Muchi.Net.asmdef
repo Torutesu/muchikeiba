@@ -1,0 +1,11 @@
+{
+  "name": "Muchi.Net",
+  "rootNamespace": "Muchi.Net",
+  "references": ["Muchi.Engine"],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "autoReferenced": true,
+  "noEngineReferences": true
+}

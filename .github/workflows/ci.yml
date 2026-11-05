@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  engine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Test engine
+        working-directory: engine
+        run: dotnet test --nologo
+
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Install
+        working-directory: server
+        run: npm ci
+      - name: Typecheck
+        working-directory: server
+        run: npm run typecheck
+      - name: Test
+        working-directory: server
+        run: npm test
+
+  integration:
+    needs: [engine, server]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Install server deps
+        working-directory: server
+        run: npm ci
+      - name: Golden files are up to date
+        run: |
+          (cd server && npm run gen:golden)
+          dotnet run --project engine/Muchi.Verifier -- golden "$PWD/contracts/golden" "$PWD/contracts/ruleset-params.default.json"
+          git status --porcelain contracts/golden
+          test -z "$(git status --porcelain contracts/golden)"
+      - name: Cross-language integration
+        run: bash scripts/integration.sh

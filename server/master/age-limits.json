@@ -1,0 +1,11 @@
+{
+  "_note": "月額上限の金額は 未確定（JOGAの指針と法務確認の上で決定）。成年年齢は18歳（2022年民法改正）。",
+  "status": "未確定",
+  "guardianConsentUnderAge": 18,
+  "bands": [
+    { "id": "under16", "minAge": 0, "maxAge": 15, "monthlyLimitYen": 5000 },
+    { "id": "16to17", "minAge": 16, "maxAge": 17, "monthlyLimitYen": 10000 },
+    { "id": "18to19", "minAge": 18, "maxAge": 19, "monthlyLimitYen": 30000 },
+    { "id": "adult", "minAge": 20, "maxAge": 200, "monthlyLimitYen": null }
+  ]
+}

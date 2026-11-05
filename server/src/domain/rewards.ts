@@ -7,6 +7,7 @@ import { seasonPointsFor } from './season.js';
 import { DAY_MS, jstDateKey } from './time.js';
 import { grantFree } from './wallet.js';
 import type { Rating } from './rating.js';
+import { applyStats, evaluateTitles, type RaceDetails } from './stats.js';
 
 /** REQ-REW-002: 7-day login bonus, once per JST day, cumulative (missing days does not reset). */
 export function claimLoginBonus(m: Master, s: PlayerState, now: number) {
@@ -58,31 +59,67 @@ export function claimPass(m: Master, s: PlayerState, track: 'free' | 'premium', 
   return def.reward;
 }
 
-export interface RaceResultForPlayer { raceId: string; mode: RaceMode; place: number; fieldSize: number; newRating: Rating | null; void: boolean }
+export interface RaceResultForPlayer {
+  raceId: string; mode: RaceMode; place: number; fieldSize: number; newRating: Rating | null; void: boolean;
+  /** Ride details derived from the confirmed input log (REQ-STAT-002). Absent for results from older rooms. */
+  details?: RaceDetails | null;
+  /** Human riders in the race (REQ-REW-004: friend races need at least 2). */
+  humans?: number;
+  /** Rating snapshot the race was matched with; the update is applied as a delta against it (REQ-RATE-004). */
+  oldRating?: Rating | null;
+}
+
+/** REQ-RATE-004: apply the race's rating change as a delta, so a newer rating is never overwritten by a stale snapshot. */
+export function applyRatingChange(s: PlayerState, oldR: Rating | null | undefined, newR: Rating) {
+  const cur = s.rating;
+  if (!oldR || (cur.r === oldR.r && cur.rd === oldR.rd && cur.vol === oldR.vol)) {
+    s.rating = { ...newR, rankedRaces: cur.rankedRaces };
+    return;
+  }
+  s.rating = { r: cur.r + (newR.r - oldR.r), rd: Math.max(30, Math.min(cur.rd, newR.rd)), vol: newR.vol, rankedRaces: cur.rankedRaces };
+}
+
+/** REQ-REW-004: friend races pay only with ≥2 humans and at most friendRewardDailyCap times per JST day. */
+export function friendRewardAllowed(m: Master, s: PlayerState, r: RaceResultForPlayer, now: number): boolean {
+  if (r.mode !== 'friend') return true;
+  if ((r.humans ?? 0) < 2) return false;
+  const today = jstDateKey(now);
+  if (s.friendRewards.date !== today) s.friendRewards = { date: today, count: 0 };
+  if (s.friendRewards.count >= m.progression.friendRewardDailyCap) return false;
+  s.friendRewards.count++;
+  return true;
+}
 
 /** REQ-REW-001: apply a confirmed race outcome to one player. Idempotency is handled by the caller (key = race id). */
 export function applyRaceResult(m: Master, s: PlayerState, r: RaceResultForPlayer, now: number) {
-  if (r.void) return { coins: 0, seasonPoints: 0 };
-  const coins = m.progression.raceFreeCoinsByPlace[r.mode][r.place - 1] ?? 0;
-  grantFree(s, coins, now, `race ${r.mode} place ${r.place}`, r.raceId);
+  if (r.void) return { coins: 0, seasonPoints: 0, titles: [] as string[], rewarded: false };
+  const rewarded = friendRewardAllowed(m, s, r, now);
+  const coins = rewarded ? m.progression.raceFreeCoinsByPlace[r.mode][r.place - 1] ?? 0 : 0;
+  if (coins > 0) grantFree(s, coins, now, `race ${r.mode} place ${r.place}`, r.raceId);
   let seasonPoints = 0;
   if (r.mode === 'ranked') {
     seasonPoints = seasonPointsFor(m, r.place);
     s.season.points += seasonPoints;
+    s.season.races += 1;
     s.rating.rankedRaces += 1;
-    if (r.newRating) s.rating = { ...r.newRating, rankedRaces: s.rating.rankedRaces };
+    if (r.newRating) applyRatingChange(s, r.oldRating, r.newRating);
   }
   if (r.mode !== 'tutorial') {
-    s.seasonPass.xp += m.progression.passXpPerRace;
-    ensureMissionDay(s, now);
-    const inc = (k: string) => (s.missions.progress[k] = (s.missions.progress[k] ?? 0) + 1);
-    for (const d of m.progression.dailyMissions) {
-      if (d.kind === 'races') inc(d.id);
-      if (d.kind === 'wins' && r.place === 1) inc(d.id);
-      if (d.kind === 'top3' && r.place <= 3) inc(d.id);
+    if (rewarded) {
+      s.seasonPass.xp += m.progression.passXpPerRace;
+      ensureMissionDay(s, now);
+      const inc = (k: string) => (s.missions.progress[k] = (s.missions.progress[k] ?? 0) + 1);
+      for (const d of m.progression.dailyMissions) {
+        if (d.kind === 'races') inc(d.id);
+        if (d.kind === 'wins' && r.place === 1) inc(d.id);
+        if (d.kind === 'top3' && r.place <= 3) inc(d.id);
+      }
     }
+    // statistics are records, not rewards: friend races with ≥2 humans count even over the daily cap
+    if (r.details && (r.mode === 'ranked' || (r.humans ?? 0) >= 2)) applyStats(s, r.place, r.details);
   }
-  return { coins, seasonPoints };
+  const titles = evaluateTitles(m, s);
+  return { coins, seasonPoints, titles, rewarded };
 }
 
 export { DAY_MS };

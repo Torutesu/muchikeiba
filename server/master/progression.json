@@ -1,33 +1,321 @@
 {
   "classes": [
-    { "id": "C", "statCap": 2800, "promotePoints": 300, "demoteBelowPoints": null },
-    { "id": "B", "statCap": 3200, "promotePoints": 400, "demoteBelowPoints": 50 },
-    { "id": "A", "statCap": 3600, "promotePoints": 500, "demoteBelowPoints": 80 },
-    { "id": "S", "statCap": 4000, "promotePoints": null, "demoteBelowPoints": 100 }
+    {
+      "id": "C",
+      "statCap": 2800,
+      "promotePoints": 300,
+      "demoteBelowPoints": null
+    },
+    {
+      "id": "B",
+      "statCap": 3200,
+      "promotePoints": 400,
+      "demoteBelowPoints": 50
+    },
+    {
+      "id": "A",
+      "statCap": 3600,
+      "promotePoints": 500,
+      "demoteBelowPoints": 80
+    },
+    {
+      "id": "S",
+      "statCap": 4000,
+      "promotePoints": null,
+      "demoteBelowPoints": 100
+    }
   ],
-  "seasonPointsByPlace": [30, 20, 15, 12, 10, 8, 6, 5, 4, 3, 2, 1],
-  "raceFreeCoinsByPlace": { "ranked": [100, 60, 40, 30, 25, 20, 15, 15, 10, 10, 10, 10], "friend": [20, 15, 10, 10, 5, 5, 5, 5, 5, 5, 5, 5], "tutorial": [0,0,0,0,0,0,0,0,0,0,0,0] },
+  "seasonPointsByPlace": [
+    30,
+    20,
+    15,
+    12,
+    10,
+    8,
+    6,
+    5,
+    4,
+    3,
+    2,
+    1
+  ],
+  "raceFreeCoinsByPlace": {
+    "ranked": [
+      100,
+      60,
+      40,
+      30,
+      25,
+      20,
+      15,
+      15,
+      10,
+      10,
+      10,
+      10
+    ],
+    "friend": [
+      20,
+      15,
+      10,
+      10,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5
+    ],
+    "tutorial": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  },
   "passXpPerRace": 20,
   "passXpPerLevel": 100,
   "passMaxLevel": 30,
   "passRewards": {
-    "free": { "every": 1, "reward": { "freeCoins": 30 } },
-    "premium": { "every": 1, "reward": { "freeCoins": 50, "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
+    "free": {
+      "every": 1,
+      "reward": {
+        "freeCoins": 30
+      }
+    },
+    "premium": {
+      "every": 1,
+      "reward": {
+        "freeCoins": 50,
+        "items": [
+          {
+            "itemId": "breeding_material",
+            "qty": 1
+          }
+        ]
+      }
+    }
   },
   "loginBonus": [
-    { "day": 1, "freeCoins": 100 }, { "day": 2, "items": [ { "itemId": "breeding_material", "qty": 3 } ] },
-    { "day": 3, "items": [ { "itemId": "costume_login", "qty": 1 } ] }, { "day": 4, "freeCoins": 150 },
-    { "day": 5, "items": [ { "itemId": "gacha_ticket", "qty": 1 } ] }, { "day": 6, "freeCoins": 200 },
-    { "day": 7, "items": [ { "itemId": "ticket_sr_plus", "qty": 1 } ] }
+    {
+      "day": 1,
+      "freeCoins": 100
+    },
+    {
+      "day": 2,
+      "items": [
+        {
+          "itemId": "breeding_material",
+          "qty": 3
+        }
+      ]
+    },
+    {
+      "day": 3,
+      "items": [
+        {
+          "itemId": "costume_login",
+          "qty": 1
+        }
+      ]
+    },
+    {
+      "day": 4,
+      "freeCoins": 150
+    },
+    {
+      "day": 5,
+      "items": [
+        {
+          "itemId": "gacha_ticket",
+          "qty": 1
+        }
+      ]
+    },
+    {
+      "day": 6,
+      "freeCoins": 200
+    },
+    {
+      "day": 7,
+      "items": [
+        {
+          "itemId": "ticket_sr_plus",
+          "qty": 1
+        }
+      ]
+    }
   ],
   "dailyMissions": [
-    { "id": "race3", "kind": "races", "target": 3, "reward": { "freeCoins": 50 } },
-    { "id": "win1", "kind": "wins", "target": 1, "reward": { "freeCoins": 80 } },
-    { "id": "top3x2", "kind": "top3", "target": 2, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
+    {
+      "id": "race3",
+      "kind": "races",
+      "target": 3,
+      "reward": {
+        "freeCoins": 50
+      }
+    },
+    {
+      "id": "win1",
+      "kind": "wins",
+      "target": 1,
+      "reward": {
+        "freeCoins": 80
+      }
+    },
+    {
+      "id": "top3x2",
+      "kind": "top3",
+      "target": 2,
+      "reward": {
+        "items": [
+          {
+            "itemId": "breeding_material",
+            "qty": 1
+          }
+        ]
+      }
+    }
   ],
   "collectionMissions": [],
-  "awakeningCost": [5, 10, 20, 40, 80],
+  "awakeningCost": [
+    5,
+    10,
+    20,
+    40,
+    80
+  ],
   "awakeningStatPermillePerLevel": 40,
   "breedingPerDay": 1,
-  "beginnerRaces": 5
+  "beginnerRaces": 5,
+  "seasonRewards": {
+    "C": [
+      {
+        "maxRank": 10,
+        "reward": {
+          "freeCoins": 300
+        }
+      },
+      {
+        "maxRank": 100,
+        "reward": {
+          "freeCoins": 150
+        }
+      },
+      {
+        "maxRank": null,
+        "reward": {
+          "freeCoins": 50
+        }
+      }
+    ],
+    "B": [
+      {
+        "maxRank": 10,
+        "reward": {
+          "freeCoins": 500
+        }
+      },
+      {
+        "maxRank": 100,
+        "reward": {
+          "freeCoins": 250
+        }
+      },
+      {
+        "maxRank": null,
+        "reward": {
+          "freeCoins": 80
+        }
+      }
+    ],
+    "A": [
+      {
+        "maxRank": 10,
+        "reward": {
+          "freeCoins": 800,
+          "items": [
+            {
+              "itemId": "gacha_ticket",
+              "qty": 1
+            }
+          ]
+        }
+      },
+      {
+        "maxRank": 100,
+        "reward": {
+          "freeCoins": 400
+        }
+      },
+      {
+        "maxRank": null,
+        "reward": {
+          "freeCoins": 120
+        }
+      }
+    ],
+    "S": [
+      {
+        "maxRank": 1,
+        "reward": {
+          "freeCoins": 3000,
+          "items": [
+            {
+              "itemId": "ticket_sr_plus",
+              "qty": 1
+            }
+          ]
+        }
+      },
+      {
+        "maxRank": 10,
+        "reward": {
+          "freeCoins": 1500,
+          "items": [
+            {
+              "itemId": "gacha_ticket",
+              "qty": 2
+            }
+          ]
+        }
+      },
+      {
+        "maxRank": 100,
+        "reward": {
+          "freeCoins": 600
+        }
+      },
+      {
+        "maxRank": null,
+        "reward": {
+          "freeCoins": 200
+        }
+      }
+    ]
+  },
+  "social": {
+    "maxFriends": 50,
+    "maxIncoming": 30,
+    "maxOutgoing": 20,
+    "maxInvites": 10,
+    "inviteTtlMs": 1800000,
+    "profilePushIntervalMs": 300000
+  },
+  "leaderboard": {
+    "topN": 100,
+    "rolloverBatch": 50
+  },
+  "replayRetentionDays": 30,
+  "friendRewardDailyCap": 10
 }

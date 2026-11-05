@@ -1,7 +1,8 @@
 import type { Master } from '../domain/master.js';
 import { buildRaceConfig } from '../domain/raceConfig.js';
 import { randInt, randomId, type Rng } from '../domain/rng.js';
-import type { RaceMode, RaceStartConfig } from '../domain/schemas.js';
+import type { RaceMode, RaceStartConfig, ReplayLog } from '../domain/schemas.js';
+import { raceDetailsFor } from '../domain/stats.js';
 import { updateRace, type Rating } from '../domain/rating.js';
 import type { FinalOutcome } from '../domain/raceRoom.js';
 import type { RaceResultForPlayer } from '../domain/rewards.js';
@@ -35,8 +36,11 @@ export async function createRace(m: Master, o: { mode: RaceMode; humans: RaceEnt
   return { config, startAtMs, ratings, assignments };
 }
 
-/** Turns a final race outcome into per-player results (places, rating updates for ranked). */
-export function settleRace(config: RaceStartConfig, final: FinalOutcome, ratings: Record<string, Rating>): Record<string, RaceResultForPlayer> {
+/**
+ * Turns a final race outcome into per-player results (places, rating updates for ranked, ride details
+ * for statistics/titles derived from the confirmed input log when it is given).
+ */
+export function settleRace(config: RaceStartConfig, final: FinalOutcome, ratings: Record<string, Rating>, log?: ReplayLog): Record<string, RaceResultForPlayer> {
   const out: Record<string, RaceResultForPlayer> = {};
   const humans = config.entrants.filter((e) => e.kind === 'human');
   if (final.status === 'void') {
@@ -48,10 +52,16 @@ export function settleRace(config: RaceStartConfig, final: FinalOutcome, ratings
   const newRatings = config.mode === 'ranked' && humanOrder.length >= 2
     ? updateRace(new Map(humanOrder.map((p) => [p, ratings[p] ?? { r: 1500, rd: 350, vol: 0.06 }])), humanOrder)
     : new Map<string, Rating>();
+  const finishOf = new Map<number, number>();
+  if (final.finishTicks && final.finishTicks.length === final.order.length) final.order.forEach((slot, i) => finishOf.set(slot, final.finishTicks![i]!));
   for (const h of humans) {
+    const ft = finishOf.get(h.slot);
     out[h.playerId!] = {
       raceId: config.raceId, mode: config.mode, place: placeOf.get(h.slot) ?? config.entrants.length,
       fieldSize: config.entrants.length, newRating: newRatings.get(h.playerId!) ?? null, void: false,
+      details: log && config.mode !== 'tutorial' ? raceDetailsFor(config, log, h.slot, ft === undefined || ft < 0 ? null : ft) : null,
+      humans: humans.length,
+      oldRating: ratings[h.playerId!] ?? null,
     };
   }
   return out;

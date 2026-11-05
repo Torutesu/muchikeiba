@@ -4,7 +4,13 @@ export interface Env {
   PLAYER: DurableObjectNamespace;
   MATCHMAKER: DurableObjectNamespace;
   ACCOUNTING: DurableObjectNamespace;
+  /** One per season: `lb:<seasonId>` (REQ-LB-*). */
+  LEADERBOARD: DurableObjectNamespace;
+  /** Friend codes + public profiles, sharded `dir:<n>` (REQ-SOCIAL-*). */
+  DIRECTORY: DurableObjectNamespace;
   REPLAYS: R2Bucket;
+  /** Public, CDN-cacheable JSON (leaderboard snapshots). */
+  SNAPSHOTS: R2Bucket;
   VERIFIER_URL: string;
   FIREBASE_PROJECT_ID: string;
   TICKET_SECRET: string;
@@ -26,4 +32,6 @@ export interface Env {
   /** RTDN Pub/Sub push: audience set on the push subscription, and the service account it authenticates as. */
   GOOGLE_PUBSUB_AUDIENCE?: string;
   GOOGLE_PUBSUB_SERVICE_ACCOUNT?: string;
+  /** Overrides master progression.replayRetentionDays. */
+  REPLAY_RETENTION_DAYS?: string;
 }

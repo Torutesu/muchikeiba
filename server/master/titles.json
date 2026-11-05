@@ -1,0 +1,22 @@
+{
+  "_note": "称号の定義（全て架空の名称）。condition の kind: races / wins / top3 / winsByStyle(style) / perfectStarts / startReaction(≦value tick) / whipPerfectWins / trackWins(trackId) / bestTime(trackId, ≦value tick) / classReached(classId) / rating(≧value)",
+  "titles": [
+    { "id": "debut", "name": "デビュー", "condition": { "kind": "races", "value": 1 } },
+    { "id": "first_win", "name": "初勝利", "condition": { "kind": "wins", "value": 1 } },
+    { "id": "ten_wins", "name": "十勝の騎手", "condition": { "kind": "wins", "value": 10 } },
+    { "id": "hundred_races", "name": "百戦錬磨", "condition": { "kind": "races", "value": 100 } },
+    { "id": "podium_50", "name": "常連の上位", "condition": { "kind": "top3", "value": 50 } },
+    { "id": "nige_master", "name": "逃げの名手", "condition": { "kind": "winsByStyle", "style": "nige", "value": 10 } },
+    { "id": "senko_master", "name": "先行の名手", "condition": { "kind": "winsByStyle", "style": "senko", "value": 10 } },
+    { "id": "sashi_master", "name": "差しの職人", "condition": { "kind": "winsByStyle", "style": "sashi", "value": 10 } },
+    { "id": "oikomi_master", "name": "大外一気", "condition": { "kind": "winsByStyle", "style": "oikomi", "value": 10 } },
+    { "id": "lightning_start", "name": "電光石火", "condition": { "kind": "startReaction", "value": 0 } },
+    { "id": "start_artist", "name": "ゲートの達人", "condition": { "kind": "perfectStarts", "value": 10 } },
+    { "id": "whip_artist", "name": "追い比べの名手", "condition": { "kind": "whipPerfectWins", "value": 5 } },
+    { "id": "kirameki_king", "name": "きらめきの主", "condition": { "kind": "trackWins", "trackId": "kirameki_turf_2000", "value": 10 } },
+    { "id": "kirameki_record", "name": "きらめきレコード", "condition": { "kind": "bestTime", "trackId": "kirameki_turf_2000", "value": 1840 } },
+    { "id": "class_a", "name": "A級騎手", "condition": { "kind": "classReached", "classId": "A" } },
+    { "id": "class_s", "name": "S級騎手", "condition": { "kind": "classReached", "classId": "S" } },
+    { "id": "rating_1800", "name": "実力派", "condition": { "kind": "rating", "value": 1800 } }
+  ]
+}

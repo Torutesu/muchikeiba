@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { exportJWK, generateKeyPair, SignJWT, createLocalJWKSet } from 'jose';
-import { handle, type AppContext, type PlayerInvoker } from '../src/http/app.js';
+import { handle, makeFriendsService, type AppContext, type PlayerInvoker } from '../src/http/app.js';
+import { MemoryDirectory } from '../src/domain/friends.js';
 import { verifyFirebaseIdToken } from '../src/http/auth.js';
 import { signTicket, verifyTicket } from '../src/http/ticket.js';
 import { MemoryPlayerRepo, PlayerService } from '../src/domain/service.js';
@@ -26,8 +27,11 @@ function ctx(): { c: AppContext; svc: PlayerService; store: FakeStoreVerifier; e
     match: {
       enqueue: async (p, e) => { enq.push([p, e]); return { state: 'queued' }; },
       cancel: async () => ({}), status: async () => ({ state: 'none' }), friendCreate: async () => ({}), friendJoin: async () => ({}),
-      friendStart: async () => ({}), tutorial: async () => ({}),
+      friendStart: async () => ({}), tutorial: async () => ({}), friendMember: async (pass) => pass === '123456',
     },
+    friends: makeFriendsService(() => invoker, new MemoryDirectory()),
+    leaderboard: { board: async (season, board) => ({ season, board }), myRank: async (p, season) => ({ p, season }) },
+    clock: () => Date.UTC(2026, 10, 5, 3),
     race: { websocket: async () => new Response(null, { status: 200 }), report: async () => ({ ok: true }), replay: async () => ({}) },
     paidBalance: async () => ({ totalPaidYen: 0 }),
     adminToken: 'admintoken',

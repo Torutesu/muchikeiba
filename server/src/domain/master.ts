@@ -6,6 +6,7 @@ import ngJson from '../../master/ng-names.json';
 import ageJson from '../../master/age-limits.json';
 import productsJson from '../../master/products.json';
 import progressionJson from '../../master/progression.json';
+import titlesJson from '../../master/titles.json';
 import { trackSchema, type Track } from './schemas.js';
 import { AppError } from './errors.js';
 
@@ -38,7 +39,23 @@ export interface Progression {
   passRewards: Record<'free' | 'premium', { every: number; reward: Reward }>;
   loginBonus: ({ day: number } & Reward)[]; dailyMissions: MissionDef[]; collectionMissions: CollectionMissionDef[];
   awakeningCost: number[]; awakeningStatPermillePerLevel: number; breedingPerDay: number; beginnerRaces: number;
+  /** REQ-SEASON-002: per closed class, rank bands in ascending maxRank; maxRank null = participation. */
+  seasonRewards: Record<string, { maxRank: number | null; reward: Reward }[]>;
+  social: { maxFriends: number; maxIncoming: number; maxOutgoing: number; maxInvites: number; inviteTtlMs: number; profilePushIntervalMs: number };
+  leaderboard: { topN: number; rolloverBatch: number };
+  replayRetentionDays: number;
+  /** REQ-REW-004: friend races that pay rewards per JST day (anti-farming). */
+  friendRewardDailyCap: number;
 }
+export type TitleCondition =
+  | { kind: 'races' | 'wins' | 'top3' | 'perfectStarts' | 'whipPerfectWins'; value: number }
+  | { kind: 'winsByStyle'; style: Style; value: number }
+  | { kind: 'startReaction'; value: number }
+  | { kind: 'trackWins'; trackId: string; value: number }
+  | { kind: 'bestTime'; trackId: string; value: number }
+  | { kind: 'classReached'; classId: string }
+  | { kind: 'rating'; value: number };
+export interface TitleDef { id: string; name: string; condition: TitleCondition }
 export interface PoolEntry { templateId: string; ppm: number }
 export interface BannerDef {
   id: string; name: string; currency: 'any' | 'paidOnly'; priceSingle: number; priceTen: number;
@@ -52,6 +69,7 @@ export interface Master {
   tracks: Track[]; templates: HorseTemplate[]; templateById: Map<string, HorseTemplate>;
   gacha: GachaMaster; nicks: { bonus: number; pairs: [string, string][] }; ng: { exact: string[]; contains: string[] };
   ageLimits: AgeLimits; products: Product[]; firstPurchaseBonusAsPaid: boolean; progression: Progression;
+  titles: TitleDef[];
 }
 
 export const PPM_TOTAL = 1_000_000;
@@ -115,6 +133,7 @@ export function loadMaster(): Master {
     ageLimits: ageJson as unknown as AgeLimits,
     products: p.products, firstPurchaseBonusAsPaid: p.firstPurchaseBonusAsPaid,
     progression: progressionJson as unknown as Progression,
+    titles: (titlesJson as unknown as { titles: TitleDef[] }).titles,
   };
   cached = m;
   return m;

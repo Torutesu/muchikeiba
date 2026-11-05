@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { Env } from '../env.js';
 import { loadMaster } from '../domain/master.js';
-import { FriendRooms, MatchmakerCore, type QueueEntry } from '../domain/matchmaker.js';
+import { assertNotInLiveRace, FriendRooms, MatchmakerCore, type FriendRoom, type QueueEntry } from '../domain/matchmaker.js';
 import { cryptoRng } from '../domain/rng.js';
 import { AppError } from '../domain/errors.js';
 import type { RaceEntry } from '../http/app.js';
@@ -12,7 +12,7 @@ import type { RaceRoomDO } from './raceRoom.js';
 const ASSIGNMENT_TTL_MS = 10 * 60_000;
 const TICK_MS = 1000;
 
-interface Persisted { queue: QueueEntry<RaceEntry>[]; assignments: [string, Assignment & { at: number }][] }
+interface Persisted { queue: QueueEntry<RaceEntry>[]; assignments: [string, Assignment & { at: number }][]; friendRooms?: FriendRoom<RaceEntry>[] }
 
 /**
  * Ranked queue + friend rooms + tutorial races (REQ-MM-*). One instance per region/mode shard.
@@ -30,12 +30,13 @@ export class MatchmakerDO extends DurableObject<Env> {
       if (s) {
         this.core = MatchmakerCore.fromJSON(s);
         this.assignments = new Map(s.assignments);
+        this.friends = FriendRooms.fromJSON(s.friendRooms);
       }
     });
   }
 
   private async persist() {
-    await this.ctx.storage.put<Persisted>('mm', { queue: this.core.entries(), assignments: [...this.assignments] });
+    await this.ctx.storage.put<Persisted>('mm', { queue: this.core.entries(), assignments: [...this.assignments], friendRooms: this.friends.toJSON() });
   }
 
   private async startRace(created: CreatedRace, now: number) {
@@ -46,6 +47,7 @@ export class MatchmakerDO extends DurableObject<Env> {
 
   async enqueue(playerId: string, entry: RaceEntry): Promise<Envelope<unknown>> {
     return wrap(async () => {
+      assertNotInLiveRace(this.assignments, playerId, Date.now()); // REQ-MM-005: no second race while one runs
       this.assignments.delete(playerId);
       this.core.enqueue({ playerId, rating: entry.rating.r, beginner: entry.beginner, enqueuedAt: Date.now(), payload: entry });
       await this.persist();
@@ -72,23 +74,26 @@ export class MatchmakerDO extends DurableObject<Env> {
   }
 
   async friendCreate(playerId: string, entry: RaceEntry): Promise<Envelope<unknown>> {
-    return wrap(() => {
+    return wrap(async () => {
       const r = this.friends.create(playerId, entry, Date.now(), cryptoRng);
+      await this.persist();
       return { passphrase: r.passphrase, members: r.members.map((m) => m.playerId) };
     });
   }
 
   async friendJoin(passphrase: string, playerId: string, entry: RaceEntry): Promise<Envelope<unknown>> {
-    return wrap(() => {
+    return wrap(async () => {
       const r = this.friends.join(passphrase, playerId, entry, Date.now());
+      await this.persist();
       return { passphrase: r.passphrase, members: r.members.map((m) => m.playerId) };
     });
   }
 
   async friendStart(passphrase: string, playerId: string): Promise<Envelope<unknown>> {
     return wrap(async () => {
-      const r = this.friends.start(passphrase, playerId);
       const now = Date.now();
+      for (const m of this.friends.rooms.get(passphrase)?.members ?? []) assertNotInLiveRace(this.assignments, m.playerId, now);
+      const r = this.friends.start(passphrase, playerId);
       const created = await createRace(loadMaster(), { mode: 'friend', humans: r.members.map((m) => m.payload), cpuCount: 0, cpuLevel: 3, rng: cryptoRng, now, ticketSecret: this.env.TICKET_SECRET });
       await this.startRace(created, now);
       await this.persist();
@@ -100,6 +105,7 @@ export class MatchmakerDO extends DurableObject<Env> {
     return wrap(async () => {
       if (this.core.has(playerId)) throw new AppError('ALREADY_QUEUED');
       const now = Date.now();
+      assertNotInLiveRace(this.assignments, playerId, now);
       const created = await createRace(loadMaster(), { mode: 'tutorial', humans: [entry], cpuCount: 11, cpuLevel: 1, rng: cryptoRng, now, ticketSecret: this.env.TICKET_SECRET });
       await this.startRace(created, now);
       await this.persist();
@@ -107,11 +113,31 @@ export class MatchmakerDO extends DurableObject<Env> {
     });
   }
 
+  /** Friend room membership (used to authorize invitations, REQ-SOCIAL-005). */
+  async friendMember(passphrase: string, playerId: string): Promise<Envelope<boolean>> {
+    return wrap(() => this.friends.isMember(passphrase, playerId));
+  }
+
+  /** Called by the race room once a race is settled: the players are free to queue again. */
+  async raceFinished(raceId: string, playerIds: string[]): Promise<Envelope<unknown>> {
+    return wrap(async () => {
+      for (const p of playerIds) if (this.assignments.get(p)?.raceId === raceId) this.assignments.delete(p);
+      await this.persist();
+      return { ok: true };
+    });
+  }
+
   override async alarm() {
     const now = Date.now();
     for (const m of this.core.tick(now)) {
-      const created = await createRace(loadMaster(), { mode: 'ranked', humans: m.players.map((p) => p.payload), cpuCount: m.cpuCount, cpuLevel: m.cpuLevel, rng: cryptoRng, now, ticketSecret: this.env.TICKET_SECRET });
-      await this.startRace(created, now);
+      try {
+        const created = await createRace(loadMaster(), { mode: 'ranked', humans: m.players.map((p) => p.payload), cpuCount: m.cpuCount, cpuLevel: m.cpuLevel, rng: cryptoRng, now, ticketSecret: this.env.TICKET_SECRET });
+        await this.startRace(created, now);
+      } catch (e) {
+        // never drop dequeued players: put them back with their original wait time (next alarm retries)
+        console.error('ranked race start failed; requeueing', e);
+        this.core.requeue(m.players);
+      }
     }
     for (const [k, a] of this.assignments) if (now - a.at > ASSIGNMENT_TTL_MS) this.assignments.delete(k);
     await this.persist();

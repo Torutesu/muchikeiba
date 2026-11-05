@@ -34,10 +34,30 @@ class_name = "MatchmakerDO"
 name = "ACCOUNTING"
 class_name = "AccountingDO"
 
+[[durable_objects.bindings]]
+name = "LEADERBOARD"
+class_name = "LeaderboardDO"
+
+[[durable_objects.bindings]]
+name = "DIRECTORY"
+class_name = "DirectoryDO"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["RaceRoomDO", "PlayerDO", "MatchmakerDO", "AccountingDO"]
 
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["LeaderboardDO", "DirectoryDO"]
+
 [[r2_buckets]]
 binding = "REPLAYS"
 bucket_name = "muchi-replays"
+
+[[r2_buckets]]
+binding = "SNAPSHOTS"
+bucket_name = "muchi-public"
+
+# Leaderboard snapshots + season rollover every 5 min; replay retention sweep daily 03:23 JST (src/domain/scheduled.ts)
+[triggers]
+crons = ["*/5 * * * *", "23 18 * * *"]

@@ -143,7 +143,7 @@ describe('App Store Server Notifications V2', () => {
     const invoker: PlayerInvoker = { invoke: (async (method: string, ...args: unknown[]) => (svc as unknown as Record<string, (...a: unknown[]) => unknown>)[method]!.apply(svc, args)) as PlayerInvoker['invoke'] };
     return {
       master: m, authenticate: async () => { throw new AppError('UNAUTHORIZED'); }, player: () => invoker,
-      match: {} as AppContext['match'], race: {} as AppContext['race'], paidBalance: async () => ({}), adminToken: undefined,
+      match: {} as AppContext['match'], race: {} as AppContext['race'], friends: {} as AppContext['friends'], leaderboard: {} as AppContext['leaderboard'], paidBalance: async () => ({}), adminToken: undefined,
       parseStoreNotification: async (platform, req) => resolveStoreEvent(platform as 'apple', await parseAppleNotification(await req.json(), cfg), index),
     };
   }

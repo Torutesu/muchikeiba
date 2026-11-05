@@ -168,8 +168,12 @@ namespace Muchi.Client
             if (!IsTerminal) Fail("disposed");
         }
 
-        /// <summary>Interpolation factor for rendering between GetPreviousHorse and GetHorse.</summary>
+        /// <summary>Interpolation factor for rendering between GetPreviousHorse and GetHorse (legacy; prefer <see cref="TryGetRenderState"/>).</summary>
         public int InterpolationAlphaPermille(long nowMs) => Client.InterpolationAlphaPermille(nowMs);
+
+        /// <summary>Smooth rendering across buffered ticks: draw from + (to − from) × alpha / 1000 (see LockstepClient.TryGetRenderState).</summary>
+        public bool TryGetRenderState(int slot, long nowMs, out HorseState from, out HorseState to, out int alphaPermille)
+            => Client.TryGetRenderState(slot, nowMs, out from, out to, out alphaPermille);
 
         void ITransport.Send(string message)
         {
@@ -206,16 +210,45 @@ namespace Muchi.Client
             Client.Connect(); // hello with lastTick → the room re-sends everything we missed
         }
 
+        /// <summary>Room error codes after which reconnecting cannot help (expired/invalid ticket, not a member).</summary>
+        public static readonly string[] FatalRoomErrors = { "UNAUTHORIZED", "NOT_IN_RACE" };
+
         private void OnMessage(string msg)
         {
-            _attempts = 0; // the connection works again
             var before = Client.Errors.Count;
+            bool startedBefore = _started;
+            int confirmedBefore = Client.ConfirmedTick;
+            var finalBefore = Client.Final;
             Client.HandleMessage(msg, _now);
+
+            for (int i = before; i < Client.Errors.Count; i++)
+            {
+                string code = Client.Errors[i];
+                if (Array.IndexOf(FatalRoomErrors, code) >= 0)
+                {
+                    // e.g. the ticket expired while the app was in the background: retrying would loop forever
+                    CloseConnection();
+                    Fail(code);
+                    return;
+                }
+                if (code == "GAP_IN_BUNDLES") { CloseConnection(); ScheduleReconnect("gap in bundles"); return; }
+            }
+
+            // Only real progress proves the connection works again (an "err" or "pong" does not).
+            if ((!startedBefore && _started) || Client.ConfirmedTick > confirmedBefore || !ReferenceEquals(Client.Final, finalBefore))
+                _attempts = 0;
+
             if (!_started) return;
             if (State == RaceSessionState.Reconnecting)
-                SetState(Sim.IsFinished ? RaceSessionState.Finished : Client.ConfirmedTick >= 0 ? RaceSessionState.Racing : RaceSessionState.Waiting);
-            for (int i = before; i < Client.Errors.Count; i++)
-                if (Client.Errors[i] == "GAP_IN_BUNDLES") { CloseConnection(); ScheduleReconnect("gap in bundles"); return; }
+                SetState(RestoredState());
+        }
+
+        /// <summary>State to return to after a reconnect (keeps "verifying" if the room already said so).</summary>
+        private RaceSessionState RestoredState()
+        {
+            if (Client.Final != null && Client.Final.Status == FinalStatus.Verifying) return RaceSessionState.Verifying;
+            if (Sim.IsFinished) return RaceSessionState.Finished;
+            return Client.ConfirmedTick >= 0 ? RaceSessionState.Racing : RaceSessionState.Waiting;
         }
 
         private void OnClosed()

@@ -38,6 +38,8 @@ namespace Muchi.Net
             return this;
         }
         public JsonNode Set(string key, long v) => Set(key, Num(v));
+        /// <summary>Append without the duplicate scan (the parser checks duplicates itself).</summary>
+        internal void AddPropUnchecked(string key, JsonNode value) => _props.Add(new KeyValuePair<string, JsonNode>(key, value));
         public JsonNode Set(string key, string v) => Set(key, Str(v));
         public JsonNode Set(string key, bool v) => Set(key, Bool(v));
 
@@ -229,15 +231,49 @@ namespace Muchi.Net
                 Pos += lit.Length;
             }
 
+            private bool Digit(int i) => i < _s.Length && _s[i] >= '0' && _s[i] <= '9';
+
+            /// <summary>Strict RFC 8259 number: -?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?</summary>
             private JsonNode ParseNumber()
             {
                 int start = Pos;
                 if (_s[Pos] == '-') Pos++;
-                while (Pos < _s.Length && ((_s[Pos] >= '0' && _s[Pos] <= '9') || _s[Pos] == '.' || _s[Pos] == 'e' || _s[Pos] == 'E' || _s[Pos] == '+' || _s[Pos] == '-'))
+                if (!Digit(Pos)) throw new FormatException("invalid number at " + start);
+                if (_s[Pos] == '0')
+                {
                     Pos++;
-                string raw = _s.Substring(start, Pos - start);
-                if (raw == "-" || raw.Length == 0) throw new FormatException("invalid number at " + start);
-                return NumRaw(raw);
+                    if (Digit(Pos)) throw new FormatException("leading zero in number at " + start);
+                }
+                else while (Digit(Pos)) Pos++;
+                if (Pos < _s.Length && _s[Pos] == '.')
+                {
+                    Pos++;
+                    if (!Digit(Pos)) throw new FormatException("invalid fraction at " + start);
+                    while (Digit(Pos)) Pos++;
+                }
+                if (Pos < _s.Length && (_s[Pos] == 'e' || _s[Pos] == 'E'))
+                {
+                    Pos++;
+                    if (Pos < _s.Length && (_s[Pos] == '+' || _s[Pos] == '-')) Pos++;
+                    if (!Digit(Pos)) throw new FormatException("invalid exponent at " + start);
+                    while (Digit(Pos)) Pos++;
+                }
+                return NumRaw(_s.Substring(start, Pos - start));
+            }
+
+            private int Hex4()
+            {
+                if (Pos + 4 > _s.Length) throw new FormatException("bad unicode escape");
+                int v = 0;
+                for (int i = 0; i < 4; i++)
+                {
+                    char h = _s[Pos + i];
+                    int d = h >= '0' && h <= '9' ? h - '0' : h >= 'a' && h <= 'f' ? h - 'a' + 10 : h >= 'A' && h <= 'F' ? h - 'A' + 10 : -1;
+                    if (d < 0) throw new FormatException("bad unicode escape");
+                    v = v * 16 + d;
+                }
+                Pos += 4;
+                return v;
             }
 
             private string ParseString()
@@ -264,16 +300,34 @@ namespace Muchi.Net
                             case 'r': sb.Append('\r'); break;
                             case 't': sb.Append('\t'); break;
                             case 'u':
-                                if (Pos + 4 > _s.Length) throw new FormatException("bad unicode escape");
-                                sb.Append((char)int.Parse(_s.Substring(Pos, 4), NumberStyles.HexNumber, CultureInfo.InvariantCulture));
-                                Pos += 4;
+                            {
+                                char u = (char)Hex4();
+                                if (char.IsHighSurrogate(u))
+                                {
+                                    // must be followed by an escaped low surrogate
+                                    if (Pos + 6 > _s.Length || _s[Pos] != '\\' || _s[Pos + 1] != 'u') throw new FormatException("lone surrogate in string");
+                                    Pos += 2;
+                                    char lo = (char)Hex4();
+                                    if (!char.IsLowSurrogate(lo)) throw new FormatException("lone surrogate in string");
+                                    sb.Append(u).Append(lo);
+                                }
+                                else if (char.IsLowSurrogate(u)) throw new FormatException("lone surrogate in string");
+                                else sb.Append(u);
                                 break;
+                            }
                             default: throw new FormatException("bad escape \\" + e);
                         }
                     }
                     else
                     {
                         if (c < 0x20) throw new FormatException("control character in string");
+                        if (char.IsHighSurrogate(c))
+                        {
+                            if (Pos >= _s.Length || !char.IsLowSurrogate(_s[Pos])) throw new FormatException("lone surrogate in string");
+                            sb.Append(c).Append(_s[Pos++]);
+                            continue;
+                        }
+                        if (char.IsLowSurrogate(c)) throw new FormatException("lone surrogate in string");
                         sb.Append(c);
                     }
                 }
@@ -304,6 +358,7 @@ namespace Muchi.Net
                 var o = Obj();
                 SkipWs();
                 if (Peek() == '}') { Pos++; return o; }
+                HashSet<string> seen = null; // only for objects with many keys (keeps small objects cheap; O(n) overall)
                 while (true)
                 {
                     SkipWs();
@@ -312,8 +367,15 @@ namespace Muchi.Net
                     Expect(':');
                     SkipWs();
                     var v = ParseValue(depth + 1);
-                    if (o.Has(key)) throw new FormatException("duplicate key: " + key);
-                    o.Set(key, v);
+                    bool dup;
+                    if (seen == null && o.Count < 8) dup = o.Has(key);
+                    else
+                    {
+                        if (seen == null) { seen = new HashSet<string>(StringComparer.Ordinal); foreach (var kv in o.Props) seen.Add(kv.Key); }
+                        dup = !seen.Add(key);
+                    }
+                    if (dup) throw new FormatException("duplicate key: " + key);
+                    o.AddPropUnchecked(key, v);
                     SkipWs();
                     char c = Peek();
                     Pos++;

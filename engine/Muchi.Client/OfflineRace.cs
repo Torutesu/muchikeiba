@@ -25,6 +25,13 @@ namespace Muchi.Client
         /// <summary>Press START automatically when the gate opens (tutorial "only the whip matters").</summary>
         public bool AutoStart { get; set; }
         public int MaxCatchUpTicks { get; set; } = 10;
+        /// <summary>
+        /// Upper bound on <see cref="RecordedInputs"/> (time attack: the server accepts at most
+        /// <see cref="TimeAttackLimits.MaxInputs"/>). Once reached, further player inputs are ignored so the run
+        /// stays submittable and reproducible; <see cref="InputCapReached"/> tells the UI.
+        /// </summary>
+        public int MaxRecordedInputs { get; set; } = int.MaxValue;
+        public bool InputCapReached { get; private set; }
         public bool IsPaused => _pausedAt >= 0;
         public bool IsFinished => Sim.IsFinished;
 
@@ -98,6 +105,8 @@ namespace Muchi.Client
                 foreach (var q in _queued) c |= q;
                 _queued.Clear();
                 if (AutoStart && (Sim.Tick == Sim.P.GateOpenTick || Sim.Tick == Sim.P.GateOpenTick + 1)) c |= Cmd.Start;
+                c = EffectiveCommand(Sim, PlayerSlot, c);
+                if (c != 0 && _recorded.Count >= MaxRecordedInputs) { c = 0; InputCapReached = true; }
                 _cmds[PlayerSlot] = c;
                 if (c != 0) _recorded.Add(new InputRecord(Sim.Tick, PlayerSlot, c));
             }
@@ -107,7 +116,42 @@ namespace Muchi.Client
         private readonly List<InputRecord> _recorded = new List<InputRecord>();
 
         /// <summary>
-        /// Every non-zero command applied to the player's horse, in tick order (one per tick). Together with
+        /// The command with every bit removed that provably does nothing in <see cref="RaceSim"/> this tick (it
+        /// mirrors RaceSim's command resolution and ApplyCommands), so mashing does not bloat the recording.
+        /// Applying the result gives exactly the same simulation as applying <paramref name="c"/>.
+        /// </summary>
+        public static byte EffectiveCommand(RaceSim sim, int slot, byte c)
+        {
+            var h = sim.GetHorse(slot);
+            if (h.Finished || h.CpuControlled) return 0;
+            var p = sim.P;
+            int t = sim.Tick;
+            c = (byte)(c & Cmd.ClientMask);
+            // same conflict resolution as RaceSim.Step
+            if ((c & Cmd.LaneIn) != 0 && (c & Cmd.LaneOut) != 0) c = (byte)(c & ~(Cmd.LaneIn | Cmd.LaneOut));
+            if ((c & Cmd.ReinPress) != 0 && (c & Cmd.ReinRelease) != 0) c = (byte)(c & ~Cmd.ReinPress);
+
+            // START only matters on the tick it releases the horse from the gate
+            if ((c & Cmd.Start) != 0 && (h.Departed || t < p.GateOpenTick)) c = (byte)(c & ~Cmd.Start);
+            bool departs = h.Departed || (t >= p.GateOpenTick && ((c & Cmd.Start) != 0 || t - p.GateOpenTick >= p.AutoStartDelayTicks));
+
+            // rein is a level: pressing while held / releasing while free changes nothing
+            if ((c & Cmd.ReinPress) != 0 && h.Reining) c = (byte)(c & ~Cmd.ReinPress);
+            if ((c & Cmd.ReinRelease) != 0 && !h.Reining) c = (byte)(c & ~Cmd.ReinRelease);
+
+            if (!departs) return (byte)(c & ~(Cmd.LaneIn | Cmd.LaneOut | Cmd.Whip));
+            if ((c & (Cmd.LaneIn | Cmd.LaneOut)) != 0)
+            {
+                int target = h.LaneTarget + ((c & Cmd.LaneIn) != 0 ? -1 : 1);
+                if (h.IsChangingLane || target < 0 || target >= p.LaneCount) c = (byte)(c & ~(Cmd.LaneIn | Cmd.LaneOut));
+            }
+            if ((c & Cmd.Whip) != 0 && h.WhipsLeft <= 0) c = (byte)(c & ~Cmd.Whip);
+            return c;
+        }
+
+        /// <summary>
+        /// Every non-zero effective command applied to the player's horse (no-op taps are not recorded), in tick
+        /// order (one per tick). Together with
         /// <see cref="Config"/> this reproduces the run exactly: it is what a time attack submits (REQ-TA-003).
         /// </summary>
         public IReadOnlyList<InputRecord> RecordedInputs => _recorded;

@@ -106,7 +106,7 @@ namespace Muchi.Client
         private readonly IAnalyticsStore _store;
         private readonly object _gate = new object();
         private readonly List<AnalyticsEvent> _queue = new List<AnalyticsEvent>();
-        private Task _inFlight;
+        private Task<bool> _inFlight;
         private long _nextFlushAt, _retryAt;
         private int _failures;
 
@@ -125,6 +125,13 @@ namespace Muchi.Client
             _nextFlushAt = nowMs + _opt.FlushIntervalMs;
             Restore();
         }
+
+        /// <summary>
+        /// Raised when the store failed to save or load (the queue stays in memory). Persisting runs on the thread
+        /// that drives this client (call it from the Unity main thread so PlayerPrefs/File work).
+        /// </summary>
+        public event Action<Exception> StorageError;
+        public Exception LastStorageError { get; private set; }
 
         public int Pending { get { lock (_gate) return _queue.Count; } }
         public bool Flushing { get { lock (_gate) return _inFlight != null && !_inFlight.IsCompleted; } }
@@ -153,8 +160,19 @@ namespace Muchi.Client
                 if (_inFlight != null && !_inFlight.IsCompleted) return false;
                 if (_queue.Count == 0 || nowMs < _retryAt) return false;
                 if (_queue.Count < _opt.MaxBatch && nowMs < _nextFlushAt) return false;
-                _inFlight = FlushOnceAsync(nowMs, CancellationToken.None);
+                _inFlight = FlushCoreAsync(nowMs, CancellationToken.None);
                 return true;
+            }
+        }
+
+        /// <summary>The flush already in flight, or a new one. Only one request is ever outstanding.</summary>
+        private Task<bool> StartOrJoin(long nowMs, CancellationToken ct)
+        {
+            lock (_gate)
+            {
+                if (_inFlight != null && !_inFlight.IsCompleted) return _inFlight;
+                _inFlight = FlushCoreAsync(nowMs, ct);
+                return _inFlight;
             }
         }
 
@@ -163,15 +181,17 @@ namespace Muchi.Client
         {
             while (Pending > 0)
             {
-                Task running;
-                lock (_gate) running = _inFlight;
-                if (running != null && !running.IsCompleted) { await running.ConfigureAwait(false); continue; }
-                if (!await FlushOnceAsync(nowMs, ct).ConfigureAwait(false)) return;
+                if (!await StartOrJoin(nowMs, ct)) return;
             }
         }
 
-        /// <summary>One request with up to MaxBatch events. Returns true when the batch left the queue (sent or rejected).</summary>
-        public async Task<bool> FlushOnceAsync(long nowMs, CancellationToken ct = default)
+        /// <summary>
+        /// One request with up to MaxBatch events (or waits for the one already in flight). Returns true when the
+        /// batch left the queue (sent or rejected).
+        /// </summary>
+        public Task<bool> FlushOnceAsync(long nowMs, CancellationToken ct = default) => StartOrJoin(nowMs, ct);
+
+        private async Task<bool> FlushCoreAsync(long nowMs, CancellationToken ct)
         {
             List<AnalyticsEvent> batch;
             lock (_gate)
@@ -184,7 +204,7 @@ namespace Muchi.Client
             }
             try
             {
-                var r = await _send(_opt.Platform, _opt.AppVersion, batch, ct).ConfigureAwait(false);
+                var r = await _send(_opt.Platform, _opt.AppVersion, batch, ct);
                 lock (_gate)
                 {
                     Remove(batch);
@@ -242,14 +262,21 @@ namespace Muchi.Client
             if (_store == null) return;
             var arr = JsonNode.Arr();
             foreach (var e in _queue) arr.Add(e.ToJson());
-            try { _store.Save(arr.ToString()); } catch (Exception) { /* storage is best-effort */ }
+            try { _store.Save(arr.ToString()); }
+            catch (Exception e) { ReportStorageError(e); }
+        }
+
+        private void ReportStorageError(Exception e)
+        {
+            LastStorageError = e;
+            try { StorageError?.Invoke(e); } catch (Exception) { /* a faulty handler must not break analytics */ }
         }
 
         private void Restore()
         {
             if (_store == null) return;
             string json;
-            try { json = _store.Load(); } catch (Exception) { return; }
+            try { json = _store.Load(); } catch (Exception e) { ReportStorageError(e); return; }
             if (string.IsNullOrEmpty(json)) return;
             try
             {

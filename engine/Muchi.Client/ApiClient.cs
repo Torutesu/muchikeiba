@@ -484,6 +484,10 @@ namespace Muchi.Client
 
         public Task<TimeAttackResult> SubmitTimeAttackAsync(TimeAttackSession session, IReadOnlyList<Muchi.Engine.InputRecord> inputs, string resultHash, CancellationToken ct = default)
         {
+            if (inputs == null) throw new ArgumentNullException(nameof(inputs));
+            // fail before the request: the server would reject it with 400 after the day's attempt was spent
+            if (inputs.Count > TimeAttackLimits.MaxInputs)
+                throw new ArgumentException("too many inputs: " + inputs.Count + " (max " + TimeAttackLimits.MaxInputs + ")", nameof(inputs));
             var b = JsonNode.Obj();
             b.Set("sessionId", session.SessionId);
             b.Set("token", session.Token);
@@ -559,13 +563,13 @@ namespace Muchi.Client
                 if (auth)
                 {
                     if (!string.IsNullOrEmpty(_opt.DevUserId)) req.Headers["x-dev-user"] = _opt.DevUserId;
-                    else req.Headers["authorization"] = "Bearer " + await _auth.GetTokenAsync(refreshedToken, ct).ConfigureAwait(false);
+                    else req.Headers["authorization"] = "Bearer " + await _auth.GetTokenAsync(refreshedToken, ct);
                 }
 
                 HttpResponse res;
                 try
                 {
-                    res = await _http.SendAsync(req, ct).ConfigureAwait(false);
+                    res = await _http.SendAsync(req, ct);
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
@@ -575,7 +579,7 @@ namespace Muchi.Client
                 {
                     if (retryable && attempt < _opt.Retry.MaxRetries)
                     {
-                        await _delay.Delay(_opt.Retry.DelayFor(attempt++), ct).ConfigureAwait(false);
+                        await _delay.Delay(_opt.Retry.DelayFor(attempt++), ct);
                         continue;
                     }
                     throw new NetworkException(method + " " + path + ": " + e.Message, e);
@@ -595,7 +599,7 @@ namespace Muchi.Client
 
                 if ((res.Status >= 500 || res.Status == 429) && retryable && attempt < _opt.Retry.MaxRetries)
                 {
-                    await _delay.Delay(_opt.Retry.DelayFor(attempt++), ct).ConfigureAwait(false);
+                    await _delay.Delay(_opt.Retry.DelayFor(attempt++), ct);
                     continue;
                 }
 

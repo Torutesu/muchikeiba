@@ -19,6 +19,10 @@ export interface ScheduledDeps {
   sweepReplays(now: number): Promise<{ deleted: number }>;
   /** REQ-PUSH-006: broadcast today's season reminder if there is one; returns the template sent or null. */
   seasonReminder?(now: number): Promise<string | null>;
+  /** REQ-TEAM-008: advance the previous season's team reward payout by one bounded step. */
+  teamRolloverStep?(seasonId: string): Promise<{ status: string }>;
+  /** REQ-EVENT-007..009: event boards, start notifications and end-of-event rewards; returns a short log. */
+  eventsStep?(now: number): Promise<string[]>;
 }
 
 /**
@@ -33,6 +37,8 @@ export async function runScheduled(cron: string, now: number, deps: ScheduledDep
     const prev = previousSeasonId(now);
     const r = await deps.rolloverStep(prev);
     done.push(`rollover:${prev}:${r.status}`);
+    if (deps.teamRolloverStep) done.push(`teamRollover:${prev}:${(await deps.teamRolloverStep(prev)).status}`);
+    if (deps.eventsStep) done.push(...(await deps.eventsStep(now)));
   } else if (cron === CRONS.noon) {
     const t = deps.seasonReminder ? await deps.seasonReminder(now) : null;
     done.push(`reminder:${t ?? 'none'}`);

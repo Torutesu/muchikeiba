@@ -5,6 +5,8 @@ import { buildBanner, splitMasterTrack, type Master, type Progression, type RawB
 import { validateGacha } from '../domain/gacha.js';
 import { buildRuleset, DEFAULT_RULESET, type Ruleset } from '../domain/ruleset.js';
 import { trackSchema } from '../domain/schemas.js';
+import { eventProblems } from '../domain/events.js';
+import type { EventDef } from '../domain/master.js';
 import { canonicalJson, hashOf } from './hash.js';
 
 /**
@@ -37,6 +39,8 @@ export const configBundleSchema = z.object({
   /** Shallow override of master progression values (reward tables, caps, retention…). */
   progression: z.record(z.string(), z.unknown()).optional(),
   ng: z.object({ exact: z.array(z.string()), contains: z.array(z.string()) }).strict().optional(),
+  /** REQ-EVENT-001: replaces the event list; each event is validated like at boot (tracks, ruleset override keys, fees). */
+  events: z.array(z.record(z.string(), z.unknown())).optional(),
 }).strict();
 export type ConfigBundle = z.infer<typeof configBundleSchema>;
 
@@ -98,7 +102,9 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
   for (const k of Object.keys(b.progression ?? {})) if (!(k in base.progression)) problems.push(`progression: unknown key ${k}`);
   if (b.progression && 'weather' in b.progression) problems.push(...weatherProblems(progression.weather));
 
-  const master: Master = { ...base, tracks, litTracks, gacha: { ...base.gacha, pityGroups, banners }, progression, ng: b.ng ?? base.ng };
+  const events = (b.events as EventDef[] | undefined) ?? base.events;
+  const master: Master = { ...base, tracks, litTracks, gacha: { ...base.gacha, pityGroups, banners }, progression, ng: b.ng ?? base.ng, events };
+  problems.push(...eventProblems(master, events, ruleset));
   if (problems.length === 0) {
     try {
       validateGacha(master); // ppm sums, pools, pity groups, comp-gacha lint (REQ-GACHA-003/008)

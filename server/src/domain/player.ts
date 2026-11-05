@@ -3,6 +3,8 @@ import type { Rarity, Sex, Stats, Style } from './master.js';
 import type { PushState } from './push.js';
 import type { KpiState } from './kpi.js';
 import type { TimeAttackState } from './timeAttack.js';
+import type { PlayerTeamState } from './teams.js';
+import type { PlayerEventState } from './events.js';
 
 export type Currency = 'paid' | 'free';
 
@@ -101,6 +103,10 @@ export interface PlayerState {
   push?: PushState;
   /** REQ-KPI-*: first_open flag and client ingestion rate counters (see kpi.ts ensureKpi). */
   kpi?: KpiState;
+  /** REQ-TEAM-*: team membership, cooldown and paid team seasons (created on first use; see teams.ts ensureTeam). */
+  team?: PlayerTeamState;
+  /** REQ-EVENT-*: per-event progress, pending entry fee and paid rewards (see events.ts). */
+  events?: Record<string, PlayerEventState>;
   /** Anti-cheat status pushed by the integrity service (REQ-OPS-035). Absent = ok. */
   moderation?: { status: 'ok' | 'quarantined' | 'banned'; until: number | null; reason: string; at: number };
 }

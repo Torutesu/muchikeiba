@@ -1,5 +1,5 @@
 import type { Env } from './env.js';
-import { handle, makeFriendsService, type AppContext, type PlayerInvoker, type RaceEntry } from './http/app.js';
+import { eventPlayersFrom, handle, makeFriendsService, teamPlayersFrom, type AppContext, type PlayerInvoker, type RaceEntry } from './http/app.js';
 import { bearer, verifyFirebaseIdToken } from './http/auth.js';
 import { parseStoreNotification, storeSettingsFromEnv } from './http/stores.js';
 import { accountingStoreIndex } from './do/storeIndex.js';
@@ -16,6 +16,14 @@ export { LeaderboardDO } from './do/leaderboard.js';
 export { DirectoryDO } from './do/directory.js';
 export { OpsDO } from './do/ops.js';
 export { IntegrityDO } from './do/integrity.js';
+export { TeamDO, TeamDirectoryDO } from './do/team.js';
+export { EventDO } from './do/event.js';
+import { TeamsService, type TeamPort, type TeamView } from './domain/teamService.js';
+import type { TeamSummary } from './domain/teams.js';
+import { EventsService } from './domain/eventService.js';
+import { eventBoardKey, eventCronPlan, validateEvents } from './domain/events.js';
+import { cryptoRng } from './domain/rng.js';
+import type { Master } from './domain/master.js';
 import type { OpsApi } from './http/admin.js';
 import { authenticateAdmin, parseAdminTokens, type AdminAuthConfig, type AdminRole } from './ops/admin.js';
 import { activeConfig } from './ops/activeConfig.js';
@@ -47,6 +55,70 @@ async function broadcastSeasonReminder(env: Env, now: number): Promise<string | 
 
 const baseMaster = loadMaster();
 validateGacha(baseMaster); // fail fast on a broken gacha/master definition (REQ-GACHA-003/008)
+validateEvents(baseMaster, baseMaster.events); // REQ-EVENT-001
+
+/** REQ-TEAM-*: team orchestration over TeamDOs, the team directory and the season board in LeaderboardDO. */
+function makeTeamsService(env: Env, master: () => Master, player: (uid: string) => PlayerInvoker): TeamsService {
+  const call = async (p: Promise<Envelope<unknown>>) => unwrap(await p);
+  const team = (id: string) => stub(env.TEAMS, id);
+  const port: TeamPort = {
+    create: async (id, init) => (await call(team(id).create!(id, init))) as TeamView,
+    view: async (id, viewer) => (await call(team(id).view!(viewer))) as TeamView,
+    reserve: async (id, p) => { await call(team(id).reserve!(p)); },
+    release: async (id, p) => { await call(team(id).release!(p)); },
+    commit: async (id, m) => { await call(team(id).commit!(m)); },
+    request: async (id, p, n) => (await call(team(id).request!(p, n))) as 'requested' | 'already',
+    checkRequest: async (id, a, p) => { await call(team(id).checkRequest!(a, p)); },
+    dropRequest: async (id, p) => (await call(team(id).dropRequest!(p))) as boolean,
+    decline: async (id, a, p) => (await call(team(id).decline!(a, p))) as boolean,
+    leave: async (id, p) => (await call(team(id).leave!(p))) as { disbanded: boolean },
+    kick: async (id, a, t) => { await call(team(id).kick!(a, t)); },
+    setRole: async (id, a, t, r) => { await call(team(id).setRole!(a, t, r)); },
+    transfer: async (id, a, t) => { await call(team(id).transfer!(a, t)); },
+    update: async (id, a, patch) => { await call(team(id).update!(a, patch)); },
+    disband: async (id, a) => { await call(team(id).disband!(a)); },
+    managers: async (id) => (await call(team(id).managers!())) as string[],
+    reportPoints: async (id, p, s, pts, n) => { await call(team(id).reportPoints!(p, s, pts, n)); },
+  };
+  const dir = () => stub(env.TEAM_DIRECTORY, 'global');
+  return new TeamsService(master, port, teamPlayersFrom(player), {
+    search: async (q, limit) => (await call(dir().search!(q, limit))) as TeamSummary[],
+  }, {
+    board: async (seasonId) => {
+      const obj = await env.SNAPSHOTS.get(boardKey(seasonId, 'teams'));
+      return obj ? obj.json() : { seasonId, board: 'teams', generatedAt: null, total: 0, entries: [] };
+    },
+    rankOf: async (seasonId, teamId) => (await call(stub(env.LEADERBOARD, `lb:${seasonId}`).teamRankOf!(teamId))) as { rank: number; total: number; generatedAt: number | null } | null,
+  }, cryptoRng);
+}
+
+/** REQ-EVENT-007..009: one cron pass over the configured events. */
+async function eventsStep(env: Env, now: number): Promise<string[]> {
+  const { master } = await activeConfig(env);
+  const log: string[] = [];
+  for (const a of eventCronPlan(master.events, now)) {
+    const ev = stub(env.EVENTS, `ev:${a.eventId}`);
+    try {
+      if (a.snapshot) unwrap(await ev.snapshot!(a.eventId, now));
+      if (a.notifyStart && (unwrap(await ev.markStartNotified!()) as boolean)) {
+        const def = master.events.find((e) => e.id === a.eventId)!;
+        const t = master.push.templates.event_start;
+        const topic = master.push.topics.events;
+        const sender = fcmFromEnv(env);
+        if (t && topic && sender) {
+          const out = await sender.sendTopic(topic, renderTemplate(t, 'event_start', { event: def.name }));
+          if (out.kind !== 'ok') console.error('event start push failed', a.eventId, out);
+        }
+        log.push(`eventStart:${a.eventId}`);
+      }
+      if (a.close) log.push(`eventClose:${a.eventId}:${(unwrap(await ev.closeStep!(a.eventId, now)) as RolloverState).status}`);
+    } catch (e) {
+      log.push(`eventError:${a.eventId}`);
+      console.error('event cron step failed', a.eventId, (e as Error).message);
+    }
+  }
+  return log;
+}
 
 type Rpc = Record<string, (...a: unknown[]) => Promise<Envelope<unknown>>>;
 const stub = (ns: DurableObjectNamespace, name: string) => ns.get(ns.idFromName(name)) as unknown as Rpc;
@@ -134,6 +206,17 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
       },
     },
     friends: makeFriendsService((uid) => player(uid), shardedDirectory(env.DIRECTORY)),
+    teams: makeTeamsService(env, () => master, player),
+    events: new EventsService(() => master, eventPlayersFrom(player), {
+      enqueue: (eventId, p, e) => call(mm().eventEnqueue!(eventId, p, e)),
+      cancel: (eventId, p) => call(mm().eventCancel!(eventId, p)),
+    }, {
+      board: async (eventId) => {
+        const obj = await env.SNAPSHOTS.get(eventBoardKey(eventId));
+        return obj ? obj.json() : { eventId, generatedAt: null, total: 0, entries: [] };
+      },
+      rankOf: async (eventId, p) => (await call(stub(env.EVENTS, `ev:${eventId}`).rankOf!(p))) as { rank: number; total: number; generatedAt: number | null } | null,
+    }),
     leaderboard: {
       board: async (seasonId, board) => {
         const obj = await env.SNAPSHOTS.get(board === 'index' ? indexKey(seasonId) : boardKey(seasonId, board));
@@ -202,6 +285,8 @@ export default {
       rolloverStep: async (seasonId) => unwrap(await lb(seasonId).rolloverStep(seasonId, now)),
       sweepReplays: async (t) => sweepReplays(replayBucket(env.REPLAYS), t, Number(env.REPLAY_RETENTION_DAYS ?? (await activeConfig(env)).master.progression.replayRetentionDays)),
       seasonReminder: (t) => broadcastSeasonReminder(env, t),
+      teamRolloverStep: async (seasonId) => unwrap(await (stub(env.LEADERBOARD, `lb:${seasonId}`).teamRolloverStep!(seasonId, now))) as RolloverState,
+      eventsStep: (t) => eventsStep(env, t),
     });
     console.log('scheduled', event.cron, done.join(' '));
   },

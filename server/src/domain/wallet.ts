@@ -78,6 +78,19 @@ export function spend(s: PlayerState, amount: number, opts: { paidOnly: boolean 
 }
 
 /**
+ * Spends FREE coins only (REQ-EVENT-004: contest entry fees must never be paid currency — paying
+ * money for a chance at prizes is kept out of the design for gambling / premium-regulation reasons).
+ */
+export function spendFree(s: PlayerState, amount: number, at: number, reason: string, ref: string) {
+  checkInt(amount);
+  if (amount === 0) return;
+  if (s.wallet.debt > 0 || Object.values(s.itemDebt ?? {}).some((n) => n > 0)) throw new AppError('UNSETTLED_DEBT');
+  if (s.wallet.free < amount) throw new AppError('INSUFFICIENT_COINS', `need ${amount} free coins, have ${s.wallet.free}`);
+  s.wallet.free -= amount;
+  ledger(s, at, 'spend', 'free', -amount, reason, ref);
+}
+
+/**
  * Refund of a purchase: removes the coins it granted (that lot first, then other paid lots).
  * Whatever cannot be removed becomes debt, which blocks gacha/purchases until settled (REQ-PUR-006).
  */

@@ -9,6 +9,7 @@ import type { TimeAttackConfig } from './timeAttack.js';
 import progressionJson from '../../master/progression.json';
 import titlesJson from '../../master/titles.json';
 import pushJson from '../../master/push.json';
+import eventsJson from '../../master/events.json';
 import { trackSchema, type GoingAptitude, type Going, type Track } from './schemas.js';
 import { AppError } from './errors.js';
 
@@ -54,6 +55,8 @@ export interface Progression {
   timeAttack: TimeAttackConfig;
   /** REQ-RACE-037: daily ground per course and night racing at lit venues. */
   weather: WeatherConfig;
+  /** REQ-TEAM-*: 支部 (teams). */
+  teams: TeamsConfig;
 }
 export interface WeatherOverride { trackId?: string; fromMs: number; toMs: number; going: Going; night?: boolean }
 export interface WeatherConfig {
@@ -66,6 +69,34 @@ export interface WeatherConfig {
   /** Modes that get weather; others (tutorial, time attack) race on good ground by day with no fields sent. */
   modes: string[];
   overrides: WeatherOverride[];
+}
+
+/** REQ-TEAM-*: team limits, anti-abuse rules and season reward bands (ascending maxRank; null = any rank). */
+export interface TeamsConfig {
+  maxMembers: number; maxOfficers: number; memberPointsCap: number; rejoinCooldownMs: number; rewardMinDays: number;
+  maxPendingRequests: number; requestTtlMs: number; maxOutgoingRequests: number; announcementMax: number;
+  formerMemberKeepMs: number; topN: number; rolloverBatch: number;
+  seasonRewards: { maxRank: number | null; reward: Reward }[];
+}
+
+/** REQ-EVENT-*: one event race definition (master/events.json or remote config). */
+export type EventFee = { kind: 'none' } | { kind: 'free'; freeCoins: number } | { kind: 'item'; itemId: string; qty: number };
+export interface EventDef {
+  id: string; name: string; startAtMs: number; endAtMs: number; trackIds: string[];
+  entry: { classIds: string[] | null; styles: Style[] | null; minRankedRaces: number };
+  fee: EventFee;
+  rules: {
+    /** Changes to ruleset values (the key set never changes; rulesetVersion becomes `<active>+ev.<id>`). */
+    rulesetOverrides: Record<string, number>;
+    /** Every entrant (players and CPU) races with these stats when set. */
+    fixedStats: Stats | null;
+    /** Stat total cap applied to every entrant (like ranked normalization); null = none. */
+    statCap: number | null;
+    cpuLevel: number; maxPlayers: number; cpuFillAfterMs: number;
+  };
+  points: { byPlace: number[]; participation: number };
+  milestones: { points: number; reward: Reward }[];
+  rankRewards: { maxRank: number | null; reward: Reward }[];
 }
 export type TitleCondition =
   | { kind: 'races' | 'wins' | 'top3' | 'perfectStarts' | 'whipPerfectWins'; value: number }
@@ -106,6 +137,8 @@ export interface Master {
   ageLimits: AgeLimits; products: Product[]; firstPurchaseBonusAsPaid: boolean; progression: Progression;
   titles: TitleDef[];
   push: PushMaster;
+  /** REQ-EVENT-*: event race definitions. */
+  events: EventDef[];
 }
 
 export const PPM_TOTAL = 1_000_000;
@@ -170,6 +203,7 @@ export function loadMaster(): Master {
     progression: progressionJson as unknown as Progression,
     titles: (titlesJson as unknown as { titles: TitleDef[] }).titles,
     push: pushJson as unknown as PushMaster,
+    events: (eventsJson as unknown as { events: EventDef[] }).events,
   };
   cached = m;
   return m;

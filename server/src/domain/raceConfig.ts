@@ -40,6 +40,8 @@ export interface BuildRaceInput {
   rulesetOverrides?: Record<string, string | number>;
   /** REQ-RACE-034/036: ground and lighting; omitted = no fields sent (good ground by day). */
   ground?: Ground | null;
+  /** REQ-EVENT-003: every entrant (players and CPU) races with exactly these stats. */
+  fixedStats?: Stats | null;
 }
 
 /** REQ-MM-005: builds a validated RaceStartConfig. Seed comes from `rng` (crypto in production). */
@@ -59,7 +61,11 @@ export function buildRaceConfig(m: Master, input: BuildRaceInput): RaceStartConf
     const j = randInt(input.rng, i + 1);
     [raw[i], raw[j]] = [raw[j]!, raw[i]!];
   }
-  const entrants: Entrant[] = raw.map((e, slot) => ({ slot, ...e, horse: input.statCap === null ? e.horse : withStats(e.horse, normalizeStats(e.horse, input.statCap)) }));
+  const fixed = input.fixedStats ?? null;
+  const entrants: Entrant[] = raw.map((e, slot) => ({
+    slot, ...e,
+    horse: fixed ? withStats(e.horse, fixed) : input.statCap === null ? e.horse : withStats(e.horse, normalizeStats(e.horse, input.statCap)),
+  }));
   const config: RaceStartConfig = {
     v: 1, raceId: input.raceId, mode: input.mode, seed,
     track: input.ground ? { ...trackById(m, input.trackId), going: input.ground.going, night: input.ground.night } : trackById(m, input.trackId),

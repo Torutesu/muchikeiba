@@ -1,4 +1,26 @@
 {
+  "teams": {
+    "_comment": "支部（REQ-TEAM-*）。報酬は暫定値。memberPointsCap は1人がチームに入れられるシーズンポイントの上限（強い1人に頼る“キャリー”を防ぐ）。",
+    "maxMembers": 20,
+    "maxOfficers": 3,
+    "memberPointsCap": 400,
+    "rejoinCooldownMs": 86400000,
+    "rewardMinDays": 7,
+    "maxPendingRequests": 30,
+    "requestTtlMs": 604800000,
+    "maxOutgoingRequests": 3,
+    "announcementMax": 140,
+    "formerMemberKeepMs": 3456000000,
+    "topN": 100,
+    "rolloverBatch": 50,
+    "seasonRewards": [
+      { "maxRank": 1, "reward": { "freeCoins": 1500 } },
+      { "maxRank": 3, "reward": { "freeCoins": 1000 } },
+      { "maxRank": 10, "reward": { "freeCoins": 500 } },
+      { "maxRank": 100, "reward": { "freeCoins": 200 } },
+      { "maxRank": null, "reward": { "freeCoins": 50 } }
+    ]
+  },
   "classes": [
     {
       "id": "C",

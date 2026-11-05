@@ -8,6 +8,12 @@ export interface Env {
   LEADERBOARD: DurableObjectNamespace;
   /** Friend codes + public profiles, sharded `dir:<n>` (REQ-SOCIAL-*). */
   DIRECTORY: DurableObjectNamespace;
+  /** One per 支部, named by team id (REQ-TEAM-*). */
+  TEAMS: DurableObjectNamespace;
+  /** Singleton `global`: team search (REQ-TEAM-009). */
+  TEAM_DIRECTORY: DurableObjectNamespace;
+  /** One per event race, `ev:<eventId>`: standings, board snapshots, end-of-event rewards (REQ-EVENT-*). */
+  EVENTS: DurableObjectNamespace;
   /** Singleton `global`: remote config versions, admin audit log, admin rate limits (REQ-OPS-*). */
   OPS?: DurableObjectNamespace;
   /** Singleton `global`: anti-cheat flags, moderation (quarantine/ban), race reports queue (REQ-OPS-03x). */

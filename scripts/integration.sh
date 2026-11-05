@@ -82,6 +82,12 @@ echo "bot=$LOCAL_HASH replay=$REPLAY_HASH"
 echo "== 5) time attack: device run → server re-simulation (C# verifier) → personal best, ghost replay; tampered run rejected"
 $BOT "$BASE" timeattack | tee "$LOG_DIR/timeattack.jsonl" || fail=1
 
+echo "== 6) event race: free-coin fee → event pool (CPU fill) → solo human verified by the C# verifier → event points applied"
+$BOT "$BASE" event 1 | tee "$LOG_DIR/event.jsonl" || fail=1
+
+echo "== 7) teams: create → open join → directory search → leave (cooldown) → lone leader leaves = disband"
+$BOT "$BASE" team | tee "$LOG_DIR/team.jsonl" || fail=1
+
 if [[ $fail -ne 0 ]]; then
   echo "== INTEGRATION FAILED"; echo "--- server log"; tail -50 "$LOG_DIR/server.log"; echo "--- verifier log"; tail -20 "$LOG_DIR/verifier.log"
   exit 1

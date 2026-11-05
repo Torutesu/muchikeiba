@@ -6,6 +6,7 @@ import {
   type BoardFile, type RankInfo, type RolloverState, type SeasonEntry, type SnapshotIndex,
 } from '../domain/leaderboard.js';
 import { betterTa, buildTaBoards, type TaEntry } from '../domain/timeAttack.js';
+import { buildTeamBoard, type TeamSummary } from '../domain/teams.js';
 
 type TaRowDb = { player_id: string; track_id: string; time_ms: number; finish_tick: number; finish_frac: number; display_name: string; title_id: string | null; horse_name: string; updated_at: number };
 import { unwrap, wrap, type Envelope } from './rpc.js';
@@ -30,6 +31,73 @@ export class LeaderboardDO extends DurableObject<Env> {
     // time attack (REQ-TA-006): best verified run per player and track this season
     this.sql.exec(`CREATE TABLE IF NOT EXISTS ta_entries (player_id TEXT NOT NULL, track_id TEXT NOT NULL, time_ms INTEGER NOT NULL, finish_tick INTEGER NOT NULL, finish_frac INTEGER NOT NULL, display_name TEXT NOT NULL, title_id TEXT, horse_name TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (player_id, track_id))`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS ta_ranks (player_id TEXT NOT NULL, track_id TEXT NOT NULL, rank INTEGER NOT NULL, total INTEGER NOT NULL, PRIMARY KEY (player_id, track_id))`);
+    // teams (REQ-TEAM-009): one summary per team for this season, pushed by the TeamDOs
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS team_entries (team_id TEXT PRIMARY KEY, name TEXT NOT NULL, join_policy TEXT NOT NULL, members INTEGER NOT NULL, points INTEGER NOT NULL, updated_at INTEGER NOT NULL)`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS team_ranks (team_id TEXT PRIMARY KEY, rank INTEGER NOT NULL, total INTEGER NOT NULL, points INTEGER NOT NULL)`);
+  }
+
+  private teamSummaries(seasonId: string): TeamSummary[] {
+    return this.sql.exec<{ team_id: string; name: string; join_policy: string; members: number; points: number; updated_at: number }>('SELECT * FROM team_entries').toArray()
+      .map((r) => ({ teamId: r.team_id, name: r.name, joinPolicy: r.join_policy as TeamSummary['joinPolicy'], members: r.members, points: r.points, season: seasonId, updatedAt: r.updated_at }));
+  }
+
+  /** REQ-TEAM-009: latest summary of a team for this season (frozen once the season's rollover started). */
+  async upsertTeam(s: TeamSummary): Promise<Envelope<boolean>> {
+    return wrap(() => {
+      const st = this.kvGet<RolloverState>('teamRollover');
+      if (st && st.status !== 'open') return false;
+      this.sql.exec(
+        `INSERT INTO team_entries (team_id, name, join_policy, members, points, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(team_id) DO UPDATE SET name = excluded.name, join_policy = excluded.join_policy, members = excluded.members, points = excluded.points,
+           updated_at = excluded.updated_at WHERE excluded.updated_at >= team_entries.updated_at`,
+        s.teamId, s.name, s.joinPolicy, s.members, s.points, s.updatedAt,
+      );
+      this.kvPut('dirty', true);
+      return true;
+    });
+  }
+
+  async teamRankOf(teamId: string): Promise<Envelope<{ rank: number; total: number; generatedAt: number | null } | null>> {
+    return wrap(() => {
+      const r = this.sql.exec<{ rank: number; total: number }>('SELECT rank, total FROM team_ranks WHERE team_id = ?', teamId).toArray()[0];
+      return r ? { rank: r.rank, total: r.total, generatedAt: this.kvGet<number>('generatedAt') } : null;
+    });
+  }
+
+  /**
+   * REQ-TEAM-008: after the season ended, take the final team ranking and let every ranked team pay its
+   * eligible members (one bounded, resumable step per cron run; a team that is not done holds the cursor).
+   */
+  async teamRolloverStep(seasonId: string, now: number): Promise<Envelope<RolloverState>> {
+    return wrap(async () => {
+      let st = this.kvGet<RolloverState>('teamRollover') ?? newRolloverState(seasonId);
+      if (st.status === 'closed' || !seasonIsOver(seasonId, now)) return st;
+      if (st.status === 'open') {
+        st = { ...st, status: 'closing' };
+        this.kvPut('teamRollover', st); // freezes team_entries first
+        unwrap(await this.snapshot(seasonId, now, true)); // final team ranks
+      }
+      const batch = (await activeConfig(this.env)).master.progression.teams.rolloverBatch;
+      const todo = this.sql.exec<{ team_id: string; rank: number; points: number }>('SELECT team_id, rank, points FROM team_ranks WHERE team_id > ? ORDER BY team_id LIMIT ?', st.cursor, batch).toArray();
+      for (const t of todo) {
+        const team = this.env.TEAMS.get(this.env.TEAMS.idFromName(t.team_id)) as unknown as { closeSeasonStep(s: string, r: number, p: number): Promise<Envelope<{ done: boolean }>> };
+        let done = false;
+        try {
+          done = unwrap(await team.closeSeasonStep(seasonId, t.rank, t.points)).done;
+        } catch (e) {
+          st = { ...st, lastError: `${t.team_id}: ${(e as Error).message}` };
+        }
+        if (!done) {
+          this.kvPut('teamRollover', st); // resume with this team next run
+          return st;
+        }
+        st = { ...st, cursor: t.team_id, processed: st.processed + 1, lastError: null };
+        this.kvPut('teamRollover', st);
+      }
+      if (todo.length < batch) st = { ...st, status: 'closed' };
+      this.kvPut('teamRollover', st);
+      return st;
+    });
   }
 
   private taEntries(seasonId: string, where = '', ...args: (string | number)[]): TaEntry[] {
@@ -114,6 +182,12 @@ export class LeaderboardDO extends DurableObject<Env> {
         snap.files.unshift({ key: boardKey(seasonId, f.board), body: f.body as unknown as BoardFile });
         idx?.boards.push({ board: f.board, total: f.body.total, key: boardKey(seasonId, f.board) });
       }
+      // team ranking (REQ-TEAM-009) is published with the same snapshot and listed in the index
+      const tb = buildTeamBoard(seasonId, this.teamSummaries(seasonId), now, m.progression.teams.topN);
+      snap.files.unshift({ key: boardKey(seasonId, 'teams'), body: tb.file as unknown as BoardFile });
+      idx?.boards.push({ board: 'teams', total: tb.file.total, key: boardKey(seasonId, 'teams') });
+      this.sql.exec('DELETE FROM team_ranks');
+      for (const [tid, r] of tb.ranks) this.sql.exec('INSERT INTO team_ranks (team_id, rank, total, points) VALUES (?, ?, ?, ?)', tid, r.rank, r.total, r.points);
       this.sql.exec('DELETE FROM ta_ranks');
       for (const r of ta.ranks) this.sql.exec('INSERT INTO ta_ranks (player_id, track_id, rank, total) VALUES (?, ?, ?, ?)', r.playerId, r.trackId, r.rank, r.total);
       for (const f of snap.files) {

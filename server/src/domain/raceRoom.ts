@@ -311,7 +311,10 @@ export class RaceRoomCore {
     else {
       // quorum: the winning hash needs 2/3 of all human slots (not just of those who reported)
       const ok = best !== undefined && best[1].n >= 2 && best[1].n * 3 >= humans * 2;
-      verify = !ok || this.opts.rng.nextU32() / 0x100000000 < this.opts.verifySampleRate;
+      // any dissenting reporter goes to the verifier: otherwise colluding accounts that reach the quorum
+      // could confirm a forged order and get the honest player flagged as a suspect (REQ-NET-008)
+      const dissent = counts.size > 1;
+      verify = !ok || dissent || this.opts.rng.nextU32() / 0x100000000 < this.opts.verifySampleRate;
     }
 
     if (verify) {

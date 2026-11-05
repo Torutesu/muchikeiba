@@ -80,12 +80,30 @@ export class MatchmakerCore<P = unknown> {
 /** REQ-MM-004: friend rooms joined by passphrase; host starts; no rating change. */
 export interface FriendRoom<P = unknown> { passphrase: string; hostId: string; createdAt: number; members: { playerId: string; payload: P }[] }
 
+/** Upper bound of open rooms in one matchmaker (each host has at most one; this caps total storage). */
+export const MAX_OPEN_ROOMS = 20_000;
+
 export class FriendRooms<P = unknown> {
   rooms = new Map<string, FriendRoom<P>>();
-  constructor(private readonly maxPlayers = 12, private readonly ttlMs = 30 * 60_000, private readonly minPlayers = 2) {}
+  constructor(private readonly maxPlayers = 12, private readonly ttlMs = 30 * 60_000, private readonly minPlayers = 2, private readonly maxRooms = MAX_OPEN_ROOMS) {}
 
-  isMember(passphrase: string, playerId: string) {
+  isMember(passphrase: string, playerId: string, now?: number) {
+    if (now !== undefined) this.gc(now);
     return this.rooms.get(passphrase)?.members.some((m) => m.playerId === playerId) ?? false;
+  }
+
+  /** Expired rooms are dropped on every operation (and by the matchmaker's alarm). */
+  prune(now: number) { return this.gc(now); }
+
+  /** The open room the player hosts, if any. */
+  hostedBy(hostId: string): FriendRoom<P> | null {
+    for (const r of this.rooms.values()) if (r.hostId === hostId) return r;
+    return null;
+  }
+
+  /** Puts a room back after a start that failed (members keep their room and passphrase). */
+  restore(room: FriendRoom<P>) {
+    if (!this.rooms.has(room.passphrase)) this.rooms.set(room.passphrase, room);
   }
 
   toJSON() { return [...this.rooms.values()]; }
@@ -95,8 +113,19 @@ export class FriendRooms<P = unknown> {
     return f;
   }
 
+  /**
+   * One open room per host: creating again returns the host's existing room (refreshing its entry), so a
+   * single account can no longer fill the matchmaker's storage with rooms.
+   */
   create(hostId: string, payload: P, now: number, rng: Rng): FriendRoom<P> {
     this.gc(now);
+    const own = this.hostedBy(hostId);
+    if (own) {
+      const host = own.members.find((m) => m.playerId === hostId);
+      if (host) host.payload = payload;
+      return own;
+    }
+    if (this.rooms.size >= this.maxRooms) throw new AppError('RATE_LIMITED', 'too many open friend rooms; try again later');
     let pass: string;
     do pass = String(randInt(rng, 1_000_000)).padStart(6, '0');
     while (this.rooms.has(pass));
@@ -115,7 +144,8 @@ export class FriendRooms<P = unknown> {
     return r;
   }
 
-  start(passphrase: string, playerId: string): FriendRoom<P> {
+  start(passphrase: string, playerId: string, now?: number): FriendRoom<P> {
+    if (now !== undefined) this.gc(now);
     const r = this.rooms.get(passphrase);
     if (!r) throw new AppError('ROOM_NOT_FOUND');
     if (r.hostId !== playerId) throw new AppError('NOT_HOST');
@@ -126,9 +156,36 @@ export class FriendRooms<P = unknown> {
   }
 
   private gc(now: number) {
-    for (const [k, r] of this.rooms) if (now - r.createdAt > this.ttlMs) this.rooms.delete(k);
+    let n = 0;
+    for (const [k, r] of this.rooms) if (now - r.createdAt > this.ttlMs) { this.rooms.delete(k); n++; }
+    return n;
   }
 }
+
+/**
+ * Persisted rows of a matchmaker, keyed for row-level storage (REQ-MM-007): one row per queued player
+ * per pool, per assignment and per friend room — never one blob (a single value has a 2 MiB ceiling
+ * that a few thousand concurrent players, or one abusive account, would reach).
+ */
+export type RowMap = Map<string, string>;
+
+/** Rows to write and delete to go from the last persisted state to the current one (only changes). */
+export function diffRows(prev: RowMap, next: RowMap): { upserts: [string, string][]; deletes: string[] } {
+  const upserts: [string, string][] = [];
+  const deletes: string[] = [];
+  for (const [k, v] of next) if (prev.get(k) !== v) upserts.push([k, v]);
+  for (const k of prev.keys()) if (!next.has(k)) deletes.push(k);
+  return { upserts, deletes };
+}
+
+/**
+ * Marker written for every player of a match *before* the race is created (an await that lets other
+ * requests in): while it is present the player counts as in a live race, so a concurrent enqueue,
+ * event cancel or friend start cannot slip through the gap. It is replaced by the real assignment, or
+ * removed if starting the race fails.
+ */
+export const PENDING_RACE_ID = 'pending';
+export const isPendingAssignment = (a: { raceId: string }) => a.raceId === PENDING_RACE_ID;
 
 /** How long a match assignment counts as a race in progress (start delay + longest race + settle margin). */
 export const LIVE_RACE_MS = 6 * 60_000;
@@ -175,7 +232,15 @@ export class EventPools<P = unknown> {
     return true;
   }
 
-  requeue(eventId: string, entries: QueueEntry<P>[]) { this.pools.get(eventId)?.requeue(entries); }
+  /**
+   * Puts the players of a match that could not start back in their event's pool. tick() drops a pool
+   * once it is empty, so the pool is recreated when needed (otherwise the players would be lost).
+   */
+  requeue(eventId: string, entries: QueueEntry<P>[], ev?: EventDef) {
+    let pool = this.pools.get(eventId);
+    if (!pool && ev) this.pools.set(eventId, (pool = new MatchmakerCore<P>(this.optsFor(ev))));
+    pool?.requeue(entries);
+  }
 
   /** Matches per event; pools whose event is over (or gone) are emptied and reported as dropped. */
   tick(now: number, events: EventDef[]): { eventId: string; event: EventDef; match: Match<P> }[] {

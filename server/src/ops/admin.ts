@@ -50,7 +50,8 @@ export async function authenticateAdmin(req: Request, cfg: AdminAuthConfig): Pro
     try {
       const { payload } = await jwtVerify(accessJwt, a.jwks ?? remoteJwks.get, { issuer: `https://${a.teamDomain}`, audience: a.audience });
       const email = typeof payload.email === 'string' ? payload.email.toLowerCase() : null;
-      const role = email ? a.roles[email] : undefined;
+      // role keys are configured by hand (ACCESS_ROLES); compare case-insensitively like the email
+      const role = email ? Object.entries(a.roles).find(([k]) => k.trim().toLowerCase() === email)?.[1] : undefined;
       if (!email || !role) throw new AppError('FORBIDDEN', 'no admin role for this identity');
       return { id: email, role, via: 'access' };
     } catch (e) {

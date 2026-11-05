@@ -77,6 +77,8 @@ export class PlayerDO extends DurableObject<Env> {
   override async alarm() {
     const id = await this.ctx.storage.get<string>('playerId');
     if (!id) return;
+    // templates may exist only in remote config (REQ-OPS-005); a fresh object starts with the base master
+    this.svc.setMaster((await activeConfig(this.env)).master);
     const r = await deliverDuePushes({ take: (p) => this.svc.pushTake(p), settle: (p, o) => this.svc.pushSettle(p, o) }, id, this.sender);
     if (r.nextAt !== null) await this.ctx.storage.setAlarm(Math.max(r.nextAt, Date.now() + 1000));
     if (r.attempted > 0 || r.expired > 0) console.log('push', id, JSON.stringify(r));

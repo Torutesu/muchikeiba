@@ -265,7 +265,7 @@ describe('cron (REQ-EVENT-007..009, REQ-TEAM-008)', () => {
       teamRolloverStep: async (s) => { calls.push(`team:${s}`); return { status: 'open' }; },
       eventsStep: async () => ['eventStart:x'],
     });
-    expect(calls).toEqual(['snap', 'team:2026-10']);
+    expect(calls).toEqual(['snap', 'team:2026-10', 'team:2026-09', 'team:2026-08']);
     expect(done).toContain('eventStart:x');
   });
 });

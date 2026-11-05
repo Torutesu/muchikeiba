@@ -139,10 +139,11 @@ describe('scheduled dispatch', () => {
       rolloverStep: async (s: string) => { calls.push(`roll ${s}`); return { status: 'closed' }; },
       sweepReplays: async () => { calls.push('sweep'); return { deleted: 3 }; },
     };
-    expect(await runScheduled(CRONS.frequent, DEC, deps)).toEqual(['snapshot', 'rollover:2026-11:closed']);
+    // the last ROLLOVER_LOOKBACK seasons are stepped (closed ones are cheap no-ops), newest first
+    expect(await runScheduled(CRONS.frequent, DEC, deps)).toEqual(['snapshot', 'rollover:2026-11:closed', 'rollover:2026-10:closed', 'rollover:2026-09:closed']);
     expect(await runScheduled(CRONS.daily, DEC, deps)).toEqual(['sweep:3']);
     expect(await runScheduled('0 0 * * *', DEC, deps)).toEqual(['unknown:0 0 * * *']);
-    expect(calls).toEqual(['snap 2026-12', 'roll 2026-11', 'sweep']);
+    expect(calls).toEqual(['snap 2026-12', 'roll 2026-11', 'roll 2026-10', 'roll 2026-09', 'sweep']);
   });
 });
 
@@ -171,7 +172,7 @@ describe('replay retention (REQ-OPS-001)', () => {
       async delete(keys) { for (const k of keys) store.delete(k); },
     };
     const r = await sweepReplays(bucket, now, 30);
-    expect(r).toEqual({ deleted: 1000, scanned: 2500 }); // 1250 old, 250 of them on hold
+    expect(r).toEqual({ deleted: 1000, scanned: 2500, reachedEnd: true }); // 1250 old, 250 of them on hold
     expect(store.size).toBe(1500);
   });
 });

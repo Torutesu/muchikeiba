@@ -2,6 +2,26 @@ import { DurableObject } from 'cloudflare:workers';
 import type { Env } from '../env.js';
 import { IntegrityCore, statusOf, type IntegrityRepo, type ModerationChange, type ModerationStatus, type PlayerIntegrity, type RaceIntegrityReport, type RaceReport } from '../ops/integrity.js';
 import { unwrap, wrap, type Envelope } from './rpc.js';
+import { enqueueModeration, flushModeration, type ModerationOutboxStore, type OutboxItem } from '../ops/moderationOutbox.js';
+
+/** SQLite-backed moderation outbox (one row per player; see ops/moderationOutbox.ts). */
+export class SqlModerationOutbox implements ModerationOutboxStore {
+  constructor(private readonly sql: SqlStorage) {
+    sql.exec('CREATE TABLE IF NOT EXISTS moderation_outbox (player_id TEXT PRIMARY KEY, seq INTEGER NOT NULL, next_at INTEGER NOT NULL, json TEXT NOT NULL)');
+    sql.exec('CREATE TABLE IF NOT EXISTS moderation_seq (id INTEGER PRIMARY KEY CHECK (id = 1), seq INTEGER NOT NULL)');
+  }
+  get(id: string) { const r = this.sql.exec<{ json: string }>('SELECT json FROM moderation_outbox WHERE player_id = ?', id).toArray()[0]; return r ? (JSON.parse(r.json) as OutboxItem) : null; }
+  put(i: OutboxItem) {
+    this.sql.exec('INSERT INTO moderation_outbox (player_id, seq, next_at, json) VALUES (?, ?, ?, ?) ON CONFLICT(player_id) DO UPDATE SET seq = excluded.seq, next_at = excluded.next_at, json = excluded.json', i.change.playerId, i.seq, i.nextAt, JSON.stringify(i));
+  }
+  delete(id: string, seq: number) { this.sql.exec('DELETE FROM moderation_outbox WHERE player_id = ? AND seq = ?', id, seq); }
+  due(now: number, limit: number) { return this.sql.exec<{ json: string }>('SELECT json FROM moderation_outbox WHERE next_at <= ? ORDER BY next_at LIMIT ?', now, limit).toArray().map((r) => JSON.parse(r.json) as OutboxItem); }
+  nextAt() { const r = this.sql.exec<{ t: number | null }>('SELECT MIN(next_at) AS t FROM moderation_outbox').one(); return r.t ?? null; }
+  nextSeq() {
+    this.sql.exec('INSERT INTO moderation_seq (id, seq) VALUES (1, 1) ON CONFLICT(id) DO UPDATE SET seq = seq + 1');
+    return this.sql.exec<{ seq: number }>('SELECT seq FROM moderation_seq WHERE id = 1').one().seq;
+  }
+}
 
 export class SqlIntegrityRepo implements IntegrityRepo {
   constructor(private readonly sql: SqlStorage) {
@@ -38,18 +58,44 @@ export class SqlIntegrityRepo implements IntegrityRepo {
  */
 export class IntegrityDO extends DurableObject<Env> {
   private readonly core: IntegrityCore;
+  private readonly outbox: ModerationOutboxStore;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.core = new IntegrityCore(new SqlIntegrityRepo(ctx.storage.sql));
+    this.outbox = new SqlModerationOutbox(ctx.storage.sql);
   }
 
-  private async push(changes: ModerationChange[]) {
-    for (const c of changes) {
-      const p = this.env.PLAYER.get(this.env.PLAYER.idFromName(c.playerId)) as unknown as { invoke(m: string, a: unknown[]): Promise<Envelope<unknown>> };
-      unwrap(await p.invoke('setModeration', [c.playerId, c.status, c.until, c.reason]));
-    }
+  private async pushOne(c: ModerationChange) {
+    const p = this.env.PLAYER.get(this.env.PLAYER.idFromName(c.playerId)) as unknown as { invoke(m: string, a: unknown[]): Promise<Envelope<unknown>> };
+    unwrap(await p.invoke('setModeration', [c.playerId, c.status, c.until, c.reason]));
   }
+
+  /**
+   * The decisions are written to the outbox (in the same synchronous step as the core's own writes),
+   * then pushed; anything that fails stays queued and is retried by the alarm (REQ-OPS-035).
+   */
+  private async push(changes: ModerationChange[]) {
+    const now = Date.now();
+    enqueueModeration(this.outbox, changes, now);
+    const r = await flushModeration(this.outbox, (c) => this.pushOne(c), now);
+    if (r.failed > 0) console.error('moderation push failed; queued for retry', r.failed);
+    await this.armAlarm(r.nextAt);
+  }
+
+  private async armAlarm(at: number | null) {
+    if (at === null) return;
+    const cur = await this.ctx.storage.getAlarm();
+    if (cur === null || at < cur) await this.ctx.storage.setAlarm(Math.max(at, Date.now() + 1000));
+  }
+
+  override async alarm() {
+    const r = await flushModeration(this.outbox, (c) => this.pushOne(c), Date.now());
+    if (r.nextAt !== null) await this.ctx.storage.setAlarm(Math.max(r.nextAt, Date.now() + 1000));
+  }
+
+  /** Ops view of decisions still waiting to reach players' objects. */
+  pendingModeration() { return wrap(() => this.outbox.due(Number.MAX_SAFE_INTEGER, 500)); }
 
   recordRace(r: RaceIntegrityReport) {
     return wrap(async () => {

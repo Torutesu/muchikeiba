@@ -149,10 +149,19 @@ describe('result consensus (REQ-NET-008/012)', () => {
     expect(r.message(slots[0]!, { t: 'in', tick: tick + 1, cmd: 1 }, at(tick + 300))[0]!.msg).toEqual({ t: 'err', code: 'RACE_OVER' });
   });
 
-  it('confirms a 2/3 majority of human slots and marks the dissenter as suspect', () => {
+  it('confirms unanimous results by consensus', () => {
     const { r, slots } = room(3);
-    finish(r, slots, [H('a'), H('b'), H('a')]);
-    expect(r.final).toMatchObject({ status: 'confirmed', hash: H('a'), suspects: [slots[1]] });
+    finish(r, slots, [H('a'), H('a'), H('a')]);
+    expect(r.final).toMatchObject({ status: 'confirmed', hash: H('a'), via: 'consensus', suspects: [] });
+  });
+
+  it('a dissenter below quorum is not outvoted: the verifier decides (colluders cannot frame an honest player)', () => {
+    const { r, slots } = room(3);
+    // two colluding accounts report a forged hash; the honest player reports the real one
+    const out = finish(r, slots, [H('forged'), H('real'), H('forged')]);
+    expect(out.at(-1)!.msg).toMatchObject({ t: 'final', status: 'verifying' });
+    r.applyVerification({ resultHash: H('real'), order: [1, 0, 2], finishTicks: [10, 11, 12], checksums: {} });
+    expect(r.final).toMatchObject({ status: 'confirmed', hash: H('real'), via: 'verifier', suspects: [slots[0], slots[2]] });
   });
 
   it('sends a split result to the verifier and applies its answer', () => {
@@ -248,8 +257,10 @@ describe('result consensus (REQ-NET-008/012)', () => {
     expect(r.message(slots[0]!, { t: 'res', h: H('a'), order: [0] }, at(1900))).toEqual([]);
     r.message(slots[1]!, { t: 'res', h: H('a'), order: [1, 0] }, at(1900));
     const fin = r.message(slots[2]!, { t: 'res', h: H('a'), order: [1, 0] }, at(1900));
-    expect(fin.at(-1)!.msg).toMatchObject({ t: 'final', status: 'confirmed', h: H('a') });
-    expect(r.final).toMatchObject({ hash: H('a'), via: 'consensus', suspects: [slots[0]] });
+    // a dissenting result always goes to the verifier, which settles it and flags the cheater
+    expect(fin.at(-1)!.msg).toMatchObject({ t: 'final', status: 'verifying' });
+    r.applyVerification({ resultHash: H('a'), order: [1, 0], finishTicks: [10, 11], checksums: {} });
+    expect(r.final).toMatchObject({ hash: H('a'), via: 'verifier', suspects: [slots[0]] });
   });
 
   it('decides resultWaitMs after a majority reported, without waiting for a silent client', () => {

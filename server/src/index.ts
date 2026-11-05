@@ -31,7 +31,7 @@ import type { ResolvedConfig } from './ops/config.js';
 import { shardedDirectory } from './do/directory.js';
 import { boardKey, indexKey, type RolloverState } from './domain/leaderboard.js';
 import { runScheduled } from './domain/scheduled.js';
-import { sweepReplays, type ReplayBucket } from './domain/retention.js';
+import { sweepReplays, SWEEP_CURSOR_KEY, type ReplayBucket, type SweepCursorStore } from './domain/retention.js';
 import { renderTemplate, seasonReminderFor } from './domain/push.js';
 import { fcmFromEnv } from './push/fcm.js';
 import { TimeAttackService } from './race/timeAttack.js';
@@ -265,6 +265,11 @@ const replayBucket = (b: R2Bucket): ReplayBucket => ({
   },
   delete: (keys) => b.delete(keys),
 });
+/** The sweep's position lives next to the replays (outside the `replays/` prefix it lists). */
+const sweepCursor = (b: R2Bucket): SweepCursorStore => ({
+  get: async () => (await (await b.get(SWEEP_CURSOR_KEY))?.text()) || null,
+  set: async (c) => { if (c === null) await b.delete(SWEEP_CURSOR_KEY); else await b.put(SWEEP_CURSOR_KEY, c); },
+});
 
 export default {
   fetch(req: Request, env: Env): Promise<Response> {
@@ -283,7 +288,7 @@ export default {
     const done = await runScheduled(event.cron, now, {
       snapshot: async (seasonId) => unwrap(await lb(seasonId).snapshot(seasonId, now)),
       rolloverStep: async (seasonId) => unwrap(await lb(seasonId).rolloverStep(seasonId, now)),
-      sweepReplays: async (t) => sweepReplays(replayBucket(env.REPLAYS), t, Number(env.REPLAY_RETENTION_DAYS ?? (await activeConfig(env)).master.progression.replayRetentionDays)),
+      sweepReplays: async (t) => sweepReplays(replayBucket(env.REPLAYS), t, Number(env.REPLAY_RETENTION_DAYS ?? (await activeConfig(env)).master.progression.replayRetentionDays), 20, sweepCursor(env.REPLAYS)),
       seasonReminder: (t) => broadcastSeasonReminder(env, t),
       teamRolloverStep: async (seasonId) => unwrap(await (stub(env.LEADERBOARD, `lb:${seasonId}`).teamRolloverStep!(seasonId, now))) as RolloverState,
       eventsStep: (t) => eventsStep(env, t),

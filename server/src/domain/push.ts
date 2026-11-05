@@ -171,21 +171,25 @@ export function nextPushWake(s: PlayerState): number | null {
 }
 
 /** Drops expired items and returns the deliveries due now (the outbox keeps them until settled). */
-export function takeDuePushes(m: Master, s: PlayerState, now: number): { due: DueDelivery[]; expired: number } {
+export function takeDuePushes(m: Master, s: PlayerState, now: number): { due: DueDelivery[]; expired: number; undeliverable: number } {
   const p = ensurePush(m, s);
   const before = p.outbox.length;
   p.outbox = p.outbox.filter((x) => x.expiresAt > now);
   const expired = before - p.outbox.length;
   const all = p.devices.map((d) => d.token);
   const due: DueDelivery[] = [];
+  const dead = new Set<string>();
   for (const x of p.outbox) {
     if (x.notBefore > now) continue;
     const t = m.push.templates[x.templateId];
     const tokens = (x.tokens ?? all).filter((tk) => all.includes(tk));
-    if (!t || tokens.length === 0) continue;
+    // A due item with no device left or no template can never be delivered: drop it now, otherwise its
+    // past notBefore would re-arm the alarm every second until it expires (up to its TTL).
+    if (!t || tokens.length === 0) { dead.add(x.id); continue; }
     due.push({ id: x.id, message: renderTemplate(t, x.templateId, x.vars), tokens });
   }
-  return { due, expired };
+  if (dead.size > 0) p.outbox = p.outbox.filter((x) => !dead.has(x.id));
+  return { due, expired, undeliverable: dead.size };
 }
 
 /** REQ-PUSH-005: prune dead tokens, reschedule transient failures with backoff, drop finished items. */

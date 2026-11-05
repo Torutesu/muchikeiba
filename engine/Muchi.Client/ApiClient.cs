@@ -85,6 +85,14 @@ namespace Muchi.Client
         public Task<ProductList> GetProductsAsync(CancellationToken ct = default)
             => Call("GET", "/v1/shop/products", null, false, null, true, ProductList.Parse, ct);
 
+        /// <summary>
+        /// Per-player tokens to attach to the store purchase so receipts and store notifications map back to this player:
+        /// pass AppleAppAccountToken as StoreKit 2 <c>appAccountToken</c>, GoogleObfuscatedAccountId as Play Billing
+        /// <c>setObfuscatedAccountId</c>. Fetch once per session before the first purchase.
+        /// </summary>
+        public Task<StoreAccount> GetStoreAccountAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/shop/store-account", null, true, null, true, StoreAccount.Parse, ct);
+
         /// <summary>Ask before opening the store sheet. Throws <see cref="PurchaseBlockedException"/> when the purchase must not start.</summary>
         public Task<PurchaseIntent> PurchaseIntentAsync(string productId, CancellationToken ct = default)
         {

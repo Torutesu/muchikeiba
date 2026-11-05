@@ -201,6 +201,15 @@ namespace Muchi.Client
         internal static ProductList Parse(JsonNode o) => new ProductList { Products = J.List(o, "products", Product.Parse), Notice = J.Str(o, "notice") };
     }
 
+    public sealed class StoreAccount
+    {
+        public string AppleAppAccountToken, GoogleObfuscatedAccountId;
+        internal static StoreAccount Parse(JsonNode o) => new StoreAccount
+        {
+            AppleAppAccountToken = J.Str(o, "appleAppAccountToken"), GoogleObfuscatedAccountId = J.Str(o, "googleObfuscatedAccountId"),
+        };
+    }
+
     public sealed class PurchaseIntent
     {
         public Product Product;

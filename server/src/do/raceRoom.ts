@@ -43,10 +43,10 @@ export class RaceRoomDO extends DurableObject<Env> {
     return Number.isFinite(v) ? v : DEFAULT_ROOM_OPTIONS.verifySampleRate;
   }
 
-  async init(o: { config: RaceStartConfig; startAtMs: number; ratings: Record<string, Rating> }) {
+  async init(o: { config: RaceStartConfig; startAtMs: number; ratings: Record<string, Rating>; eventId?: string | null }) {
     if (this.core) return; // idempotent
     this.core = new RaceRoomCore(o.config, o.startAtMs, { verifySampleRate: this.sampleRate(), resultWaitMs: DEFAULT_ROOM_OPTIONS.resultWaitMs, rng: cryptoRng });
-    this.meta = newSettleMeta(o.ratings);
+    this.meta = newSettleMeta(o.ratings, o.eventId ?? null);
     await this.persist();
     await this.ctx.storage.setAlarm(o.startAtMs);
   }

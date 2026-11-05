@@ -20,6 +20,8 @@ namespace Muchi.Client
         /// <summary>403 / 429: admin-only codes; never expected by the game client.</summary>
         Forbidden, RateLimited,
         TaLimitReached, TaSessionExpired, TaSessionUsed, TaConfigMismatch, TaResultMismatch, VerifierUnavailable,
+        AlreadyInTeam, NotInTeam, TeamFull, TeamCooldown, TeamLimit, TeamLeaderMustTransfer,
+        EventClosed, InsufficientItems,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -72,6 +74,14 @@ namespace Muchi.Client
             ["TA_SESSION_USED"] = ApiErrorCode.TaSessionUsed,
             ["TA_CONFIG_MISMATCH"] = ApiErrorCode.TaConfigMismatch,
             ["TA_RESULT_MISMATCH"] = ApiErrorCode.TaResultMismatch,
+            ["ALREADY_IN_TEAM"] = ApiErrorCode.AlreadyInTeam,
+            ["NOT_IN_TEAM"] = ApiErrorCode.NotInTeam,
+            ["TEAM_FULL"] = ApiErrorCode.TeamFull,
+            ["TEAM_COOLDOWN"] = ApiErrorCode.TeamCooldown,
+            ["TEAM_LIMIT"] = ApiErrorCode.TeamLimit,
+            ["TEAM_LEADER_MUST_TRANSFER"] = ApiErrorCode.TeamLeaderMustTransfer,
+            ["EVENT_CLOSED"] = ApiErrorCode.EventClosed,
+            ["INSUFFICIENT_ITEMS"] = ApiErrorCode.InsufficientItems,
             ["VERIFIER_UNAVAILABLE"] = ApiErrorCode.VerifierUnavailable,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };
@@ -97,6 +107,7 @@ namespace Muchi.Client
                 case ApiErrorCode.NotFound:
                 case ApiErrorCode.HorseNotFound:
                 case ApiErrorCode.RoomNotFound:
+                case ApiErrorCode.NotInTeam:
                 case ApiErrorCode.UnknownProduct:
                     return new NotFoundException(code, wire, message, status);
                 case ApiErrorCode.AgeRequired:

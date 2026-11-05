@@ -13,10 +13,10 @@ using System.Text.Json;
 using Muchi.Engine;
 using Muchi.Net;
 
-if (args.Length < 2) { Console.Error.WriteLine("usage: Muchi.Bot <baseUrl> tutorial | ranked <players> | timeattack"); return 2; }
+if (args.Length < 2) { Console.Error.WriteLine("usage: Muchi.Bot <baseUrl> tutorial | ranked <players> | event <players> | timeattack"); return 2; }
 string baseUrl = args[0].TrimEnd('/');
 string mode = args[1];
-int players = mode == "ranked" && args.Length >= 3 ? int.Parse(args[2]) : 1;
+int players = (mode == "ranked" || mode == "event") && args.Length >= 3 ? int.Parse(args[2]) : 1;
 
 var bots = Enumerable.Range(0, players).Select(i => new Bot(baseUrl, $"bot_{mode}_{DateTime.UtcNow.Ticks}_{i}")).ToArray();
 foreach (var b in bots) await b.SetupAsync();
@@ -28,9 +28,46 @@ if (mode == "timeattack")
     return ta.ok ? 0 : 1;
 }
 
+const string EventId = "sprint_cup_2026_11";
+if (mode == "team")
+{
+    // REQ-TEAM-*: TeamDO + TeamDirectoryDO + LeaderboardDO over real Durable Objects (no race needed)
+    var problems = new List<string>();
+    var lead = bots[0];
+    var created = await lead.PostAsync("/v1/teams", new { name = $"結合{DateTime.UtcNow.Ticks % 100000}", joinPolicy = "open", announcement = "テスト" });
+    string teamId = created.GetProperty("teamId").GetString();
+    var member = new Bot(baseUrl, $"bot_team_member_{DateTime.UtcNow.Ticks}");
+    await member.SetupAsync();
+    var joined = await member.PostAsync($"/v1/teams/{teamId}/join", new { });
+    if (joined.GetProperty("status").GetString() != "joined") problems.Add("open join did not join");
+    var me = await lead.GetJsonAsync("/v1/teams/me");
+    if (me.GetProperty("team").GetProperty("members").GetArrayLength() != 2) problems.Add("member count");
+    var search = await lead.GetJsonAsync("/v1/teams/search?q=" + Uri.EscapeDataString(created.GetProperty("name").GetString()));
+    if (!search.EnumerateArray().Any(t => t.GetProperty("teamId").GetString() == teamId)) problems.Add("directory search did not find the team");
+    await member.PostAsync("/v1/teams/me/leave", new { });
+    var (st, body) = await member.SendRawAsync(HttpMethod.Post, $"/v1/teams/{teamId}/join", "{}");
+    if (st != 409 || !body.Contains("TEAM_COOLDOWN")) problems.Add($"rejoin after leaving: {st} {body}");
+    var (st2, body2) = await lead.SendRawAsync(HttpMethod.Post, "/v1/teams/me/leave", "{}");
+    if (st2 != 200 || !body2.Contains("\"disbanded\":true")) problems.Add($"lone leader leave should disband: {st2} {body2}");
+    Console.WriteLine(JsonSerializer.Serialize(new { ok = problems.Count == 0, teamId, problems }));
+    return problems.Count == 0 ? 0 : 1;
+}
 if (mode == "tutorial")
 {
     await bots[0].PlayAsync(await bots[0].PostAsync("/v1/race/tutorial", new { horseId = bots[0].HorseId }));
+}
+else if (mode == "event")
+{
+    // REQ-EVENT-*: free coins from the login bonus pay the (free-coin) entry fee; the event pool matches and
+    // the room settles the race (a lone human is verified by the C# verifier, like ranked)
+    foreach (var b in bots)
+    {
+        await b.PostAsync("/v1/rewards/login-bonus", new { });
+        await b.PostAsync($"/v1/events/{EventId}/enqueue", new { horseId = b.HorseId });
+    }
+    var assignments = await Task.WhenAll(bots.Select(b => b.WaitMatchAsync()));
+    await Task.WhenAll(bots.Select((b, i) => b.PlayAsync(assignments[i])));
+    foreach (var b in bots) await b.CheckEventAsync(EventId);
 }
 else
 {
@@ -44,6 +81,7 @@ foreach (var b in bots)
 {
     Console.WriteLine(JsonSerializer.Serialize(b.Report));
     ok &= b.Report.status == "confirmed" && b.Report.serverHash == b.Report.localHash && b.Report.desyncs == 0;
+    if (mode == "event") ok &= b.Report.eventPoints > 0 && b.Report.eventRaces == 1 && b.Report.problems.Count == 0;
 }
 return ok ? 0 : 1;
 
@@ -60,6 +98,11 @@ sealed class Report
     public int desyncs { get; set; }
     public string[] errors { get; set; }
     public List<string> statuses { get; set; } = new();
+    // event scenario
+    public int eventPoints { get; set; }
+    public int eventRaces { get; set; }
+    public int freeCoins { get; set; }
+    public List<string> problems { get; set; } = new();
 }
 
 sealed class Bot
@@ -87,6 +130,34 @@ sealed class Bot
         if (!res.IsSuccessStatusCode) throw new Exception($"POST {path} → {(int)res.StatusCode} {text}");
         return JsonDocument.Parse(text).RootElement.Clone();
     }
+
+    /// <summary>
+    /// After an event race: the settlement (applied by the race room after the final result) must have added
+    /// event points, and the free-coin fee must have been consumed exactly once.
+    /// </summary>
+    public async Task CheckEventAsync(string eventId)
+    {
+        for (int i = 0; i < 30; i++)
+        {
+            var me = JsonDocument.Parse(await _http.GetStringAsync($"/v1/events/{eventId}/me")).RootElement;
+            var ev = me.GetProperty("event");
+            if (ev.ValueKind == JsonValueKind.Object && ev.TryGetProperty("me", out var p) && p.ValueKind == JsonValueKind.Object && p.GetProperty("races").GetInt32() > 0)
+            {
+                Report.eventPoints = p.GetProperty("points").GetInt32();
+                Report.eventRaces = p.GetProperty("races").GetInt32();
+                if (p.GetProperty("pending").GetBoolean()) Report.problems.Add("fee still held after the race");
+                break;
+            }
+            await Task.Delay(500);
+        }
+        if (Report.eventRaces == 0) Report.problems.Add("event result was never applied");
+        var player = JsonDocument.Parse(await _http.GetStringAsync("/v1/player")).RootElement;
+        Report.freeCoins = player.GetProperty("wallet").GetProperty("free").GetInt32();
+        // login bonus day 1 (100) − entry fee (30) + race coins for an event race (none)
+        if (Report.freeCoins != 70) Report.problems.Add($"free coins {Report.freeCoins}, expected 70");
+    }
+
+    public async Task<JsonElement> GetJsonAsync(string path) => JsonDocument.Parse(await _http.GetStringAsync(path)).RootElement.Clone();
 
     /// <summary>Raw request: status + body text (no throw), for checks on error responses.</summary>
     public async Task<(int status, string text)> SendRawAsync(HttpMethod method, string path, string jsonBody = null)

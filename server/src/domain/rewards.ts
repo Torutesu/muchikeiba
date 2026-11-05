@@ -67,6 +67,8 @@ export interface RaceResultForPlayer {
   humans?: number;
   /** Rating snapshot the race was matched with; the update is applied as a delta against it (REQ-RATE-004). */
   oldRating?: Rating | null;
+  /** REQ-EVENT-005: set for event races. */
+  eventId?: string;
 }
 
 /** REQ-RATE-004: apply the race's rating change as a delta, so a newer rating is never overwritten by a stale snapshot. */

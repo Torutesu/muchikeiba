@@ -151,6 +151,18 @@ _ = analytics.FlushAllAsync(NowMs());
 - `IAnalyticsStore`（`Load()`/`Save(json)`）を渡すと、未送信分がアプリ再起動後も残る。7日より古いものは送らずに捨てる。
 - `NowMs()` は Unix 時間のミリ秒（`DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()`）。
 
+### 7. 支部（チーム戦、REQ-TEAM-*）
+- `GetMyTeamAsync()` → `MyTeam`（`Team` が null なら未所属。`CooldownUntil` は脱退後に再加入できる時刻、`Rank` は支部の順位）。
+- 作成 `CreateTeamAsync(name, policy, announcement)`、加入 `JoinTeamAsync(teamId)`（自由加入は `"joined"`、承認制は `"requested"`）、脱退 `LeaveTeamAsync()`、検索 `SearchTeamsAsync(q)`、ランキング `GetTeamLeaderboardAsync("current")`（認証不要）。
+- リーダー／幹部向け：`ApproveTeamRequestAsync` / `DeclineTeamRequestAsync` / `KickTeamMemberAsync` / `SetTeamRoleAsync` / `TransferTeamLeadershipAsync` / `UpdateTeamAsync` / `DisbandTeamAsync`。申請一覧は `TeamInfo.Requests`（リーダー・幹部にだけ入る）。
+- 作成と加入は自動リトライしない（見えなかった成功のあとに再送すると `ALREADY_IN_TEAM` になるため）。主なエラー：`TEAM_FULL` / `TEAM_COOLDOWN` / `TEAM_LIMIT` / `TEAM_LEADER_MUST_TRANSFER` / `NOT_IN_TEAM`。
+
+### 8. イベントレース（REQ-EVENT-*）
+- `GetEventsAsync()` → 開催中・予定のイベント（`Eligible` と `NotEligibleReasons`、参加費 `Fee`、自分の成績 `Me`）。
+- `EnqueueEventAsync(eventId, horseId, idempotencyKey)` で参加費（無償コインかチケット。有償コインは使えない）を預けて待ち行列へ。同じキーで再送しても二重に引かれない。席は通常どおり `GetMatchStatusAsync()` で受け取り、`RaceSession` で走る（`RaceConfig.Mode` は `RaceMode.Event`）。
+- `CancelEventQueueAsync(eventId)` で抜けると参加費が戻る。ランキングは `GetEventLeaderboardAsync`、自分の順位は `GetMyEventAsync`。
+- イベントの特別ルール（例：ムチなし＝`maxWhips` 0、能力固定）はレース設定の中に入って届くので、クライアント側で特別な処理は要らない（UIで残りムチ0本を表示するだけ）。
+
 ### 対戦の流れ（LockstepClient を直接使う場合）
 ```csharp
 var client = new LockstepClient(transport, raceId, firebaseIdToken);   // transport: ITransport（WebSocket実装はUnity側）

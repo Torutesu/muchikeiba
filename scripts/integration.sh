@@ -12,9 +12,17 @@ BASE="http://127.0.0.1:${SERVER_PORT}"
 LOG_DIR="$(mktemp -d)"
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 
+# The background PIDs are subshells; dotnet / npm → wrangler → workerd run as their descendants.
+# Killing only the subshell left servers running (and a later run silently talked to a stale build),
+# so stop the whole process tree, children first.
+kill_tree() {
+  local pid="$1" child
+  for child in $(pgrep -P "$pid" 2>/dev/null); do kill_tree "$child"; done
+  kill "$pid" 2>/dev/null || true
+}
 cleanup() {
-  [[ -n "${VERIFIER_PID:-}" ]] && kill "$VERIFIER_PID" 2>/dev/null || true
-  [[ -n "${SERVER_PID:-}" ]] && kill "$SERVER_PID" 2>/dev/null || true
+  [[ -n "${VERIFIER_PID:-}" ]] && kill_tree "$VERIFIER_PID"
+  [[ -n "${SERVER_PID:-}" ]] && kill_tree "$SERVER_PID"
   wait 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -70,6 +78,12 @@ echo "bot=$LOCAL_HASH replay=$REPLAY_HASH"
 
 echo "== 5) time attack: device run → server re-simulation (C# verifier) → personal best, ghost replay; tampered run rejected"
 $BOT "$BASE" timeattack | tee "$LOG_DIR/timeattack.jsonl" || fail=1
+
+echo "== 6) event race: free-coin fee → event pool (CPU fill) → solo human verified by the C# verifier → event points applied"
+$BOT "$BASE" event 1 | tee "$LOG_DIR/event.jsonl" || fail=1
+
+echo "== 7) teams: create → open join → directory search → leave (cooldown) → lone leader leaves = disband"
+$BOT "$BASE" team | tee "$LOG_DIR/team.jsonl" || fail=1
 
 if [[ $fail -ne 0 ]]; then
   echo "== INTEGRATION FAILED"; echo "--- server log"; tail -50 "$LOG_DIR/server.log"; echo "--- verifier log"; tail -20 "$LOG_DIR/verifier.log"

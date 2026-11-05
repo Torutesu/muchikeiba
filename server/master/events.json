@@ -1,0 +1,50 @@
+{
+  "_comment": "イベントレース（REQ-EVENT-*）。期間はUTCミリ秒。参加費は無償コインかチケットのみ（有償コインを払って賞品を競う形は賭博・景品規制の観点で避ける）。rulesetOverrides は contracts/ruleset-params.default.json に存在するキーだけ変更できる（rulesetVersion は自動で「元の版+ev.<id>」になる）。報酬・ポイントは暫定値。",
+  "events": [
+    {
+      "id": "sprint_cup_2026_11",
+      "name": "青葉スプリント杯",
+      "startAtMs": 1793458800000,
+      "endAtMs": 1796050800000,
+      "trackIds": ["aoba_turf_1600"],
+      "entry": { "classIds": null, "styles": null, "minRankedRaces": 0 },
+      "fee": { "kind": "free", "freeCoins": 30 },
+      "rules": { "rulesetOverrides": {}, "fixedStats": null, "statCap": 3200, "cpuLevel": 3, "maxPlayers": 12, "cpuFillAfterMs": 15000 },
+      "points": { "byPlace": [100, 70, 55, 45, 38, 32, 27, 23, 20, 17, 15, 13], "participation": 10 },
+      "milestones": [
+        { "points": 300, "reward": { "freeCoins": 50 } },
+        { "points": 1000, "reward": { "freeCoins": 150 } },
+        { "points": 2500, "reward": { "items": [{ "itemId": "breeding_material", "qty": 2 }] } }
+      ],
+      "rankRewards": [
+        { "maxRank": 1, "reward": { "freeCoins": 1000 } },
+        { "maxRank": 10, "reward": { "freeCoins": 400 } },
+        { "maxRank": 100, "reward": { "freeCoins": 150 } },
+        { "maxRank": null, "reward": { "freeCoins": 30 } }
+      ]
+    },
+    {
+      "id": "no_whip_cup_2026_12",
+      "name": "ムチなし杯（脚の配分勝負）",
+      "startAtMs": 1796396400000,
+      "endAtMs": 1798210800000,
+      "trackIds": ["kirameki_turf_2000", "minato_turf_2400"],
+      "entry": { "classIds": ["B", "A", "S"], "styles": null, "minRankedRaces": 10 },
+      "fee": { "kind": "item", "itemId": "event_ticket", "qty": 1 },
+      "rules": {
+        "rulesetOverrides": { "maxWhips": 0 },
+        "fixedStats": { "speed": 700, "stamina": 700, "burst": 700, "guts": 700, "temper": 700 },
+        "statCap": null, "cpuLevel": 4, "maxPlayers": 12, "cpuFillAfterMs": 20000
+      },
+      "points": { "byPlace": [120, 85, 65, 52, 44, 37, 31, 26, 22, 19, 16, 14], "participation": 10 },
+      "milestones": [
+        { "points": 500, "reward": { "freeCoins": 100 } }
+      ],
+      "rankRewards": [
+        { "maxRank": 1, "reward": { "freeCoins": 1500 } },
+        { "maxRank": 10, "reward": { "freeCoins": 500 } },
+        { "maxRank": null, "reward": { "freeCoins": 50 } }
+      ]
+    }
+  ]
+}

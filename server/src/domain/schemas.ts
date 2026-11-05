@@ -10,7 +10,7 @@ const stat = int.min(0).max(1000);
 export const styleSchema = z.enum(['nige', 'senko', 'sashi', 'oikomi']);
 export const surfaceSchema = z.enum(['turf', 'dirt']);
 export const aptSurfaceSchema = z.enum(['turf', 'dirt', 'both']);
-export const modeSchema = z.enum(['ranked', 'friend', 'tutorial', 'timeattack']);
+export const modeSchema = z.enum(['ranked', 'friend', 'tutorial', 'timeattack', 'event']);
 
 export const segmentSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('straight'), lengthM: int.min(1) }).strict(),

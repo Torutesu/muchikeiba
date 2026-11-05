@@ -20,10 +20,12 @@ export interface SettleMeta {
   results: Record<string, RaceResultForPlayer> | null;
   pending: string[];
   retryAt: number | null;
+  /** REQ-EVENT-005: event the race belongs to (results carry it to the players). */
+  eventId?: string | null;
 }
 
-export const newSettleMeta = (ratings: Record<string, Rating>): SettleMeta => ({
-  ratings, settled: false, verifyAttempts: 0, settleAttempts: 0, replayStored: false, results: null, pending: [], retryAt: null,
+export const newSettleMeta = (ratings: Record<string, Rating>, eventId: string | null = null): SettleMeta => ({
+  ratings, settled: false, verifyAttempts: 0, settleAttempts: 0, replayStored: false, results: null, pending: [], retryAt: null, eventId,
 });
 
 /** Older stored metas only had {ratings, settled}. */
@@ -77,7 +79,7 @@ export async function driveSettlement(core: RaceRoomCore, meta: SettleMeta, deps
   if (core.phase === 'final' && !meta.settled && core.final) {
     const log = core.replayLog();
     if (!meta.results) {
-      meta.results = settleRace(core.config, core.final, meta.ratings, log);
+      meta.results = settleRace(core.config, core.final, meta.ratings, log, meta.eventId ?? null);
       meta.pending = Object.keys(meta.results).sort();
       await deps.persist();
     }

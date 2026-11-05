@@ -59,6 +59,20 @@ class_name = "OpsDO"
 name = "INTEGRITY"
 class_name = "IntegrityDO"
 
+# 支部 (REQ-TEAM-*): one object per team + a singleton search directory
+[[durable_objects.bindings]]
+name = "TEAMS"
+class_name = "TeamDO"
+
+[[durable_objects.bindings]]
+name = "TEAM_DIRECTORY"
+class_name = "TeamDirectoryDO"
+
+# event races (REQ-EVENT-*): one object per event `ev:<eventId>`
+[[durable_objects.bindings]]
+name = "EVENTS"
+class_name = "EventDO"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["RaceRoomDO", "PlayerDO", "MatchmakerDO", "AccountingDO"]
@@ -70,6 +84,10 @@ new_sqlite_classes = ["LeaderboardDO", "DirectoryDO"]
 [[migrations]]
 tag = "v3"
 new_sqlite_classes = ["OpsDO", "IntegrityDO"]
+
+[[migrations]]
+tag = "v4"
+new_sqlite_classes = ["TeamDO", "TeamDirectoryDO", "EventDO"]
 
 [[r2_buckets]]
 binding = "REPLAYS"

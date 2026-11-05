@@ -301,7 +301,7 @@ export class RaceRoomCore {
       else counts.set(r.h, { n: 1, order: r.order });
     }
     const best = [...counts.entries()].sort((a, b) => b[1].n - a[1].n)[0];
-    const ranked = this.config.mode === 'ranked';
+    const ranked = this.config.mode === 'ranked' || this.config.mode === 'event'; // modes with rewards at stake (REQ-EVENT-006)
     const humans = this.humanSlots.length;
     let verify = false;
     if (this.reported) verify = true;

@@ -1,5 +1,7 @@
 import { AppError } from './errors.js';
 import { randInt, type Rng } from './rng.js';
+import type { EventDef } from './master.js';
+import { eventStatus } from './events.js';
 
 /** `quarantined` players (REQ-OPS-032) are matched only with each other, or filled with CPU. */
 export interface QueueEntry<P = unknown> { playerId: string; rating: number; beginner: boolean; enqueuedAt: number; payload: P; quarantined?: boolean }
@@ -135,6 +137,72 @@ export const LIVE_RACE_MS = 6 * 60_000;
 export function assertNotInLiveRace(assignments: Map<string, { at: number }>, playerId: string, now: number) {
   const a = assignments.get(playerId);
   if (a && now - a.at < LIVE_RACE_MS) throw new AppError('ALREADY_IN_RACE');
+}
+
+/**
+ * REQ-EVENT-006: one separate pool per event (players never meet ranked players in an event race).
+ * Each pool uses the event's own field size and CPU-fill wait. Pools of closed or removed events are
+ * dropped on the next tick; the players' held fees are refunded by the player side (stale entry / event close).
+ */
+export class EventPools<P = unknown> {
+  private pools = new Map<string, MatchmakerCore<P>>();
+
+  private optsFor(ev: EventDef): MatchmakerOptions {
+    return { ...DEFAULT_MM, maxPlayers: ev.rules.maxPlayers, cpuFillAfterMs: ev.rules.cpuFillAfterMs };
+  }
+
+  has(playerId: string) { return [...this.pools.values()].some((p) => p.has(playerId)); }
+  eventOf(playerId: string) { return [...this.pools.entries()].find(([, p]) => p.has(playerId))?.[0] ?? null; }
+  get size() { return [...this.pools.values()].reduce((a, p) => a + p.size, 0); }
+
+  /** Re-queueing for the same event is an idempotent success ('already'); another event's queue is a conflict. */
+  enqueue(ev: EventDef, e: QueueEntry<P>, now: number): 'queued' | 'already' {
+    if (eventStatus(ev, now) !== 'open') throw new AppError('EVENT_CLOSED');
+    const current = this.eventOf(e.playerId);
+    if (current === ev.id) return 'already';
+    if (current) throw new AppError('ALREADY_QUEUED', `queued for event ${current}`);
+    let pool = this.pools.get(ev.id);
+    if (!pool) this.pools.set(ev.id, (pool = new MatchmakerCore<P>(this.optsFor(ev))));
+    pool.enqueue(e);
+    return 'queued';
+  }
+
+  /** Returns false when the player was not queued for this event (nothing to cancel). */
+  cancel(eventId: string, playerId: string): boolean {
+    const pool = this.pools.get(eventId);
+    if (!pool?.has(playerId)) return false;
+    pool.cancel(playerId);
+    return true;
+  }
+
+  requeue(eventId: string, entries: QueueEntry<P>[]) { this.pools.get(eventId)?.requeue(entries); }
+
+  /** Matches per event; pools whose event is over (or gone) are emptied and reported as dropped. */
+  tick(now: number, events: EventDef[]): { eventId: string; event: EventDef; match: Match<P> }[] {
+    const out: { eventId: string; event: EventDef; match: Match<P> }[] = [];
+    for (const [id, pool] of [...this.pools]) {
+      const ev = events.find((e) => e.id === id);
+      if (!ev || eventStatus(ev, now) === 'closed') {
+        this.pools.delete(id);
+        continue;
+      }
+      for (const match of pool.tick(now)) out.push({ eventId: id, event: ev, match });
+      if (pool.size === 0) this.pools.delete(id);
+    }
+    return out;
+  }
+
+  toJSON(): Record<string, QueueEntry<P>[]> {
+    return Object.fromEntries([...this.pools].map(([k, p]) => [k, p.entries()]));
+  }
+  static fromJSON<P>(s: Record<string, QueueEntry<P>[]> | undefined, events: EventDef[]): EventPools<P> {
+    const e = new EventPools<P>();
+    for (const [id, queue] of Object.entries(s ?? {})) {
+      const ev = events.find((x) => x.id === id);
+      if (ev) e.pools.set(id, MatchmakerCore.fromJSON({ queue }, e.optsFor(ev)));
+    }
+    return e;
+  }
 }
 
 /** REQ-OPS-033: banned players cannot queue or join rooms. */

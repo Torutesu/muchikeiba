@@ -1,0 +1,13 @@
+# .NET
+bin/
+obj/
+*.user
+.vs/
+TestResults/
+# Node
+node_modules/
+.wrangler/
+dist/
+coverage/
+# OS
+.DS_Store

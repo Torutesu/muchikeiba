@@ -15,6 +15,18 @@ export class AccountingDO extends DurableObject<Env> {
     const cols = sql.exec<{ name: string }>('PRAGMA table_info(paid)').toArray().map((c) => c.name);
     if (!cols.includes('seq')) sql.exec('ALTER TABLE paid ADD COLUMN seq INTEGER NOT NULL DEFAULT 0');
     sql.exec('CREATE TABLE IF NOT EXISTS paid_daily (date TEXT PRIMARY KEY, players INTEGER NOT NULL, coins INTEGER NOT NULL, yen INTEGER NOT NULL, closed_at INTEGER NOT NULL)');
+    sql.exec('CREATE TABLE IF NOT EXISTS store_tx (key TEXT PRIMARY KEY, player_id TEXT NOT NULL, at INTEGER NOT NULL)');
+  }
+
+  /** Global store-transaction owner index (first claim wins): one receipt credits one player; routes store notifications. */
+  async claimStoreKey(key: string, playerId: string): Promise<string> {
+    this.ctx.storage.sql.exec('INSERT INTO store_tx (key, player_id, at) VALUES (?, ?, ?) ON CONFLICT(key) DO NOTHING', key, playerId, Date.now());
+    return this.ctx.storage.sql.exec<{ player_id: string }>('SELECT player_id FROM store_tx WHERE key = ?', key).one().player_id;
+  }
+
+  async lookupStoreKey(key: string): Promise<string | null> {
+    const rows = this.ctx.storage.sql.exec<{ player_id: string }>('SELECT player_id FROM store_tx WHERE key = ?', key).toArray();
+    return rows[0]?.player_id ?? null;
   }
 
   async record(s: PaidBalanceSnapshot) {

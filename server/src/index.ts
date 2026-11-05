@@ -1,7 +1,8 @@
 import type { Env } from './env.js';
 import { handle, type AppContext, type PlayerInvoker, type RaceEntry } from './http/app.js';
 import { bearer, verifyFirebaseIdToken } from './http/auth.js';
-import { parseStoreNotification } from './http/stores.js';
+import { parseStoreNotification, storeSettingsFromEnv } from './http/stores.js';
+import { accountingStoreIndex } from './do/storeIndex.js';
 import { loadMaster } from './domain/master.js';
 import { validateGacha } from './domain/gacha.js';
 import { unwrap, type Envelope } from './do/rpc.js';
@@ -53,7 +54,7 @@ export function makeContext(env: Env): AppContext {
     },
     paidBalance: () => (stub(env.ACCOUNTING, 'global') as unknown as { summary(): Promise<unknown> }).summary(),
     adminToken: env.ADMIN_TOKEN,
-    parseStoreNotification: (platform, req) => parseStoreNotification(platform, req, dev),
+    parseStoreNotification: (platform, req) => parseStoreNotification(platform, req, storeSettingsFromEnv(env, master), accountingStoreIndex(env)),
   };
 }
 

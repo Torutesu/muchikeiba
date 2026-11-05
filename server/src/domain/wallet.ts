@@ -61,7 +61,7 @@ export interface SpendResult { paid: number; free: number }
 /** Spends coins, paid first. `paidOnly` products can only use paid coins. */
 export function spend(s: PlayerState, amount: number, opts: { paidOnly: boolean }, at: number, reason: string, ref: string): SpendResult {
   checkInt(amount);
-  if (s.wallet.debt > 0) throw new AppError('UNSETTLED_DEBT');
+  if (s.wallet.debt > 0 || Object.values(s.itemDebt ?? {}).some((n) => n > 0)) throw new AppError('UNSETTLED_DEBT');
   const available = opts.paidOnly ? s.wallet.paid : s.wallet.paid + s.wallet.free;
   if (available < amount) throw new AppError('INSUFFICIENT_COINS', `need ${amount}, have ${available}`);
   const fromPaid = Math.min(s.wallet.paid, amount);
@@ -104,6 +104,25 @@ export function refundPaid(s: PlayerState, lotId: string | null, amount: number,
   if (left > 0) {
     s.wallet.debt += left;
     ledger(s, at, 'debt', 'paid', 0, `unsettled refund ${left}`, ref);
+  }
+  return { removed, debt: left };
+}
+
+/**
+ * Refund of FREE coins granted with a purchase (first-purchase bonus). Shortfall becomes debt, which is
+ * settled by the next paid grant like any other refund debt.
+ */
+export function clawbackFree(s: PlayerState, amount: number, at: number, ref: string): { removed: number; debt: number } {
+  checkInt(amount);
+  const removed = Math.min(s.wallet.free, amount);
+  if (removed > 0) {
+    s.wallet.free -= removed;
+    ledger(s, at, 'refund', 'free', -removed, 'store refund (bonus)', ref);
+  }
+  const left = amount - removed;
+  if (left > 0) {
+    s.wallet.debt += left;
+    ledger(s, at, 'debt', 'free', 0, `unsettled bonus refund ${left}`, ref);
   }
   return { removed, debt: left };
 }

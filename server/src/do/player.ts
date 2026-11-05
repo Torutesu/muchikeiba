@@ -5,7 +5,8 @@ import { PlayerService } from '../domain/service.js';
 import { cryptoRng } from '../domain/rng.js';
 import { systemClock } from '../domain/time.js';
 import type { PlayerMethod } from '../http/app.js';
-import { makeVerifiers } from '../http/stores.js';
+import { makeVerifiers, storeSettingsFromEnv } from '../http/stores.js';
+import { accountingStoreIndex } from './storeIndex.js';
 import { SqlPlayerRepo } from './sqlRepo.js';
 import { wrap, type Envelope } from './rpc.js';
 
@@ -15,8 +16,10 @@ export class PlayerDO extends DurableObject<Env> {
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    const master = loadMaster();
     this.svc = new PlayerService(new SqlPlayerRepo(ctx.storage.sql), {
-      master: loadMaster(), rng: cryptoRng, clock: systemClock, verifiers: makeVerifiers(env.DEV_MODE === '1'),
+      master, rng: cryptoRng, clock: systemClock, verifiers: makeVerifiers(storeSettingsFromEnv(env, master)),
+      storeIndex: accountingStoreIndex(env),
       onPaidBalance: (snap) => {
         const acc = env.ACCOUNTING.get(env.ACCOUNTING.idFromName('global')) as unknown as { record(s: typeof snap): Promise<void> };
         // Ordering is safe (seq-guarded); retry once so a transient failure does not leave a stale balance.

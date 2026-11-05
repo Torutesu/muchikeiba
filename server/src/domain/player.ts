@@ -21,6 +21,12 @@ export interface HorseInstance {
 export interface PurchaseRecord {
   txId: string; platform: 'apple' | 'google' | 'fake'; productId: string; priceYen: number; at: number;
   paidCoinsGranted: number; bonusCoinsGranted: number; lotId: string | null; refunded: boolean; limitBreach: boolean;
+  /** Sandbox / license-test purchase (no real money; priceYen 0). */
+  sandbox?: boolean;
+  /** Subscription id across renewals. */
+  originalTxId?: string;
+  /** Lot of a first-purchase bonus granted as PAID coins (firstPurchaseBonusAsPaid). */
+  bonusLotId?: string | null;
 }
 
 export interface PlayerState {
@@ -47,6 +53,12 @@ export interface PlayerState {
   rating: { r: number; rd: number; vol: number; rankedRaces: number };
   season: { id: string; classId: string; points: number };
   counters: { horseSeq: number; lotSeq: number };
+  /** Items owed back after a refund of a purchase whose items were already used (settled by later grants). */
+  itemDebt?: Record<string, number>;
+  /** Flags for customer support (e.g. `monthly_limit_breach:2026-11`). */
+  supportFlags?: string[];
+  /** Store subscriptions (auto-renewing season pass), keyed by original transaction id. Optional for older states. */
+  storeSubscriptions?: Record<string, { platform: PurchaseRecord['platform']; status: string; expiresAt: number | null; updatedAt: number }>;
 }
 
 export function newPlayer(id: string, now: number, seasonId: string): PlayerState {

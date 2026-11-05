@@ -1,4 +1,6 @@
 import { weatherProblems } from '../domain/ground.js';
+import { BASE_BANNED_SILKS, bannedSilksListSchema, bannedSilksProblems, type BannedSilksList } from '../domain/bannedSilks.js';
+import { VISUALS } from '../domain/visuals.js';
 import { z } from 'zod';
 import { AppError } from '../domain/errors.js';
 import { buildBanner, splitMasterTrack, type Master, type Progression, type RawBanner } from '../domain/master.js';
@@ -39,6 +41,8 @@ export const configBundleSchema = z.object({
   /** Shallow override of master progression values (reward tables, caps, retention…). */
   progression: z.record(z.string(), z.unknown()).optional(),
   ng: z.object({ exact: z.array(z.string()), contains: z.array(z.string()) }).strict().optional(),
+  /** REQ-OPS-040: replaces the banned real-silks list (admin import stages a version carrying it). */
+  bannedSilks: bannedSilksListSchema.optional(),
   /** REQ-EVENT-001: replaces the event list; each event is validated like at boot (tracks, ruleset override keys, fees). */
   events: z.array(z.record(z.string(), z.unknown())).optional(),
 }).strict();
@@ -114,7 +118,9 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
       problems.push(...shapeProblems(`event ${ev.id}.rankRewards`, tpl?.rankRewards, ev.rankRewards));
     }
   }
-  const master: Master = { ...base, tracks, litTracks, gacha: { ...base.gacha, pityGroups, banners }, progression, ng: b.ng ?? base.ng, events };
+  const bannedSilks = (b.bannedSilks as BannedSilksList | undefined) ?? base.bannedSilks ?? BASE_BANNED_SILKS;
+  if (b.bannedSilks) problems.push(...bannedSilksProblems(bannedSilks, VISUALS).map((x) => `bannedSilks: ${x}`));
+  const master: Master = { ...base, tracks, litTracks, gacha: { ...base.gacha, pityGroups, banners }, progression, ng: b.ng ?? base.ng, events, bannedSilks };
   problems.push(...eventProblems(master, events, ruleset));
   if (problems.length === 0) {
     try {

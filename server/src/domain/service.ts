@@ -22,6 +22,7 @@ import { admitClientBatch, clientToKpi, ensureKpi, isPayer, kpiRecord, type Clie
 
 /** Collects analytics events inside a transaction; they are emitted only if the transaction is saved. */
 export type Emit = (e: KpiEvent) => void;
+import type { Ruleset } from './ruleset.js';
 import { abortSubmit, prepareSubmit, recordResult, startTimeAttack, timeAttackView } from './timeAttack.js';
 import type { VerifierOutput } from './schemas.js';
 import { trackById } from './master.js';
@@ -331,7 +332,7 @@ export class PlayerService {
   equipTitle(id: string, titleId: string | null) { return this.tx(id, null, (s) => equipTitle(this.d.master, s, titleId)); }
   /** REQ-ASSET-005: choose silks (unlockable patterns need their costume item). */
   setSilks(id: string, silks: Silks) {
-    return this.tx(id, null, (s) => { s.profile.silks = validateSilks(silks, s.items); return { silks: s.profile.silks }; });
+    return this.tx(id, null, (s) => { s.profile.silks = validateSilks(silks, s.items, undefined, this.d.master.bannedSilks); return { silks: s.profile.silks }; });
   }
   async titles(id: string) {
     const s = await this.load(id);
@@ -458,10 +459,11 @@ export class PlayerService {
 
   // ---- time attack (REQ-TA-*) ----
   /** Issue a session. The id is random (crypto in production) and doubles as the race id suffix. */
-  taStart(id: string, trackId: string, horseId: string) {
+  /** `ruleset` is the active remote-config ruleset (REQ-TA-009); omitted = the built-in default. */
+  taStart(id: string, trackId: string, horseId: string, ruleset?: Ruleset) {
     return this.tx(id, null, (s, now) => {
       const sessionId = [0, 0, 0].map(() => this.d.rng.nextU32().toString(36)).join('');
-      return startTimeAttack(this.d.master, s, this.d.master.progression.timeAttack, trackId, horseId, sessionId, this.d.rng, now);
+      return startTimeAttack(this.d.master, s, this.d.master.progression.timeAttack, trackId, horseId, sessionId, this.d.rng, now, ruleset);
     });
   }
   taPrepare(id: string, sessionId: string, inputs: unknown, resultHash: string, echoedConfig: unknown) {

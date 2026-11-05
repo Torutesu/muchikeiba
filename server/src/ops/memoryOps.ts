@@ -4,12 +4,13 @@ import type { PlayerInvoker } from '../http/app.js';
 import { ConfigStore, MemoryConfigRepo } from './config.js';
 import { auditValue, MemoryAuditRepo, RateLimiter, ADMIN_RATE, type RateLimitPolicy } from './admin.js';
 import { IntegrityCore, MemoryIntegrityRepo, type ModerationChange } from './integrity.js';
+import { DeadLetterService, MemoryDeadLetterRegistry, type DeadLetterOwner, type DeadLetterSource } from './deadLetter.js';
 
 /**
  * In-memory OpsApi (same domain classes as OpsDO / IntegrityDO, without Durable Objects).
  * Used by tests and local tooling. Moderation changes are pushed to the player like IntegrityDO does.
  */
-export function memoryOps(base: Master, player: (uid: string) => PlayerInvoker, opts: { rate?: Record<'read' | 'write', RateLimitPolicy> } = {}) {
+export function memoryOps(base: Master, player: (uid: string) => PlayerInvoker, opts: { rate?: Record<'read' | 'write', RateLimitPolicy>; deadLetterOwners?: Partial<Record<DeadLetterSource, DeadLetterOwner>> } = {}) {
   const configRepo = new MemoryConfigRepo();
   const config = new ConfigStore(configRepo, base);
   const audits = new MemoryAuditRepo();
@@ -19,7 +20,9 @@ export function memoryOps(base: Master, player: (uid: string) => PlayerInvoker, 
   const push = async (cs: ModerationChange[]) => {
     for (const c of cs) await player(c.playerId).invoke('setModeration', c.playerId, c.status, c.until, c.reason);
   };
+  const deadLetterRegistry = new MemoryDeadLetterRegistry();
   const api: OpsApi = {
+    deadLetters: new DeadLetterService(deadLetterRegistry, opts.deadLetterOwners ?? {}),
     admit: async (id, kind, now) => { limiter.take(id, kind, now); return true; },
     audit: async (e, now) => audits.append({ ...e, before: auditValue(e.before), after: auditValue(e.after), at: now }),
     auditQuery: async (q) => audits.query(q),
@@ -45,5 +48,5 @@ export function memoryOps(base: Master, player: (uid: string) => PlayerInvoker, 
       release: async (pid, reason, by, now) => { const c = integrity.release(pid, reason, by, now); await push([c]); return c; },
     },
   };
-  return { api, config, audits, integrity, integrityRepo };
+  return { api, config, audits, integrity, integrityRepo, deadLetterRegistry };
 }

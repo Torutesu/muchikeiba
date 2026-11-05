@@ -27,6 +27,10 @@ export interface SettleMeta {
    * the room stops retrying so a deterministic failure cannot keep the alarm firing forever).
    */
   deadLetter?: string[];
+  /** Last error per player while retrying (shown to ops with the dead letter, REQ-OPS-041). */
+  deadLetterErrors?: Record<string, { error: string; attempts: number }>;
+  /** Dead letters ops dismissed (handled by hand), kept for the audit trail. */
+  dismissed?: { id: string; error: string; by: string; note: string; at: number }[];
 }
 
 export const MAX_SETTLE_ATTEMPTS = 10;
@@ -99,6 +103,8 @@ export async function driveSettlement(core: RaceRoomCore, meta: SettleMeta, deps
         await deps.persist();
       } catch (e) {
         console.error('applyRace failed; will retry', pid, (e as Error).message);
+        const prev = meta.deadLetterErrors?.[pid];
+        meta.deadLetterErrors = { ...(meta.deadLetterErrors ?? {}), [pid]: { error: (e as Error).message, attempts: (prev?.attempts ?? 0) + 1 } };
       }
     }
     if (meta.pending.length > 0) {

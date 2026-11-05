@@ -11,6 +11,8 @@ import { buildTeamBoard, type TeamSummary } from '../domain/teams.js';
 type TaRowDb = { player_id: string; track_id: string; time_ms: number; finish_tick: number; finish_frac: number; display_name: string; title_id: string | null; horse_name: string; updated_at: number };
 import { unwrap, wrap, type Envelope } from './rpc.js';
 import { DirtyTracker } from '../domain/dirty.js';
+import { dismissRolloverItem, retryRolloverItem, rolloverDeadLetters, type DeadLetterItem, type RetryOutcome, type RolloverWithLog } from '../ops/deadLetter.js';
+import { newlyDead, reportDeadLetters } from './deadLetters.js';
 
 /** Wall-clock budget of one cron rollover call (the cron runs every 5 minutes). */
 const ROLLOVER_BUDGET_MS = 20_000;
@@ -74,6 +76,17 @@ export class LeaderboardDO extends DurableObject<Env> {
    */
   async teamRolloverStep(seasonId: string, now: number): Promise<Envelope<RolloverState>> {
     return wrap(async () => {
+      const deadBefore = rolloverDeadLetters(this.kvGet<RolloverState>('teamRollover'));
+      try {
+        return await this.teamRolloverRun(seasonId, now);
+      } finally {
+        await reportDeadLetters(this.env, 'team', seasonId, newlyDead(deadBefore, rolloverDeadLetters(this.kvGet<RolloverState>('teamRollover'))), now);
+      }
+    });
+  }
+
+  private async teamRolloverRun(seasonId: string, now: number): Promise<RolloverState> {
+    {
       let st = this.kvGet<RolloverState>('teamRollover') ?? newRolloverState(seasonId);
       if (st.status === 'closed' || !seasonIsOver(seasonId, now)) return st;
       if (st.status === 'open') {
@@ -117,7 +130,7 @@ export class LeaderboardDO extends DurableObject<Env> {
         this.kvPut('teamRollover', st);
       }
       return st;
-    });
+    }
   }
 
   private taEntries(seasonId: string, where = '', ...args: (string | number)[]): TaEntry[] {
@@ -241,6 +254,17 @@ export class LeaderboardDO extends DurableObject<Env> {
   /** REQ-SEASON-001/003: one bounded, resumable rollover step (no-op while the season is running or once closed). */
   async rolloverStep(seasonId: string, now: number): Promise<Envelope<RolloverState>> {
     return wrap(async () => {
+      const deadBefore = rolloverDeadLetters(this.kvGet<RolloverState>('rollover'));
+      try {
+        return await this.seasonRolloverRun(seasonId, now);
+      } finally {
+        await reportDeadLetters(this.env, 'season', seasonId, newlyDead(deadBefore, rolloverDeadLetters(this.kvGet<RolloverState>('rollover'))), now);
+      }
+    });
+  }
+
+  private async seasonRolloverRun(seasonId: string, now: number): Promise<RolloverState> {
+    {
       let st = this.rollover(seasonId);
       if (st.status === 'closed' || !seasonIsOver(seasonId, now)) return st;
       if (st.status === 'open') {
@@ -269,6 +293,42 @@ export class LeaderboardDO extends DurableObject<Env> {
         if (st.lastError !== null) break;
       }
       return st;
+    }
+  }
+
+  // ---- dead letters (REQ-OPS-041): players / teams set aside by the rollovers ----
+  private dlKey(kind: 'season' | 'team') { return kind === 'season' ? 'rollover' : 'teamRollover'; }
+  async dlList(kind: 'season' | 'team'): Promise<Envelope<DeadLetterItem[]>> {
+    return wrap(() => rolloverDeadLetters(this.kvGet<RolloverState>(this.dlKey(kind))));
+  }
+  async dlRetry(kind: 'season' | 'team', seasonId: string, itemId: string): Promise<Envelope<RetryOutcome>> {
+    return wrap(async () => {
+      const st = this.kvGet<RolloverWithLog>(this.dlKey(kind));
+      if (!st) return { ok: false, error: 'no rollover state' };
+      const run = kind === 'season'
+        ? async () => {
+          const r = this.sql.exec<RankRow>('SELECT * FROM ranks WHERE player_id = ?', itemId).toArray()[0];
+          const stub = this.env.PLAYER.get(this.env.PLAYER.idFromName(itemId)) as unknown as { invoke(m: string, a: unknown[]): Promise<Envelope<unknown>> };
+          unwrap(await stub.invoke('closeSeason', [itemId, seasonId, r ? r.class_rank : null]));
+        }
+        : async () => {
+          const t = this.sql.exec<{ rank: number; points: number }>('SELECT rank, points FROM team_ranks WHERE team_id = ?', itemId).toArray()[0];
+          const team = this.env.TEAMS.get(this.env.TEAMS.idFromName(itemId)) as unknown as { closeSeasonStep(s: string, r: number | null, p: number): Promise<Envelope<{ done: boolean }>> };
+          // a team pays its members in bounded steps; keep stepping (each step is idempotent) until done
+          for (let i = 0; i < 50; i++) if (unwrap(await team.closeSeasonStep(seasonId, t ? t.rank : null, t ? t.points : 0)).done) return;
+          throw new Error('team payout did not finish in 50 steps');
+        };
+      const out = await retryRolloverItem(st, itemId, run);
+      this.kvPut(this.dlKey(kind), out.st);
+      return out.outcome;
+    });
+  }
+  async dlDismiss(kind: 'season' | 'team', itemId: string, by: string, note: string, now: number): Promise<Envelope<boolean>> {
+    return wrap(() => {
+      const st = this.kvGet<RolloverWithLog>(this.dlKey(kind));
+      if (!st) return false;
+      this.kvPut(this.dlKey(kind), dismissRolloverItem(st, itemId, by, note, now));
+      return true;
     });
   }
 }

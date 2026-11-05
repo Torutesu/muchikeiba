@@ -26,12 +26,13 @@ import { cryptoRng } from './domain/rng.js';
 import type { Master } from './domain/master.js';
 import type { OpsApi } from './http/admin.js';
 import { authenticateAdmin, parseAdminTokens, type AdminAuthConfig, type AdminRole } from './ops/admin.js';
+import { DeadLetterService, type DeadLetterOwner, type DeadLetterRegistry, type DeadLetterSource } from './ops/deadLetter.js';
 import { activeConfig } from './ops/activeConfig.js';
 import type { ResolvedConfig } from './ops/config.js';
 import { shardedDirectory } from './do/directory.js';
 import { boardKey, indexKey, type RolloverState } from './domain/leaderboard.js';
 import { runScheduled } from './domain/scheduled.js';
-import { sweepReplays, SWEEP_CURSOR_KEY, type ReplayBucket, type SweepCursorStore } from './domain/retention.js';
+import { DEFAULT_HOLD_POLICY, sweepReplays, SWEEP_CURSOR_KEY, type ReplayBucket, type SweepCursorStore } from './domain/retention.js';
 import { renderTemplate, seasonReminderFor } from './domain/push.js';
 import { fcmFromEnv } from './push/fcm.js';
 import { TimeAttackService } from './race/timeAttack.js';
@@ -154,7 +155,47 @@ export function makeOpsApi(env: Env): OpsApi | undefined {
       unban: (pid, reason, by, now) => call(integ().unban!(pid, reason, by, now)),
       release: (pid, reason, by, now) => call(integ().release!(pid, reason, by, now)),
     },
+    deadLetters: makeDeadLetters(env),
   };
+}
+
+/** REQ-OPS-041: dead letters — index in OpsDO, truth (and retry/dismiss) in the owning objects. */
+function makeDeadLetters(env: Env): DeadLetterService {
+  const call = async <T>(p: Promise<Envelope<unknown>>) => unwrap(await p) as T;
+  const ops = () => stub(env.OPS!, 'global');
+  const registry: DeadLetterRegistry = {
+    upsert: async (r) => { await call(ops().dlUpsert!(r)); },
+    get: (s, sc, i) => call(ops().dlGet!(s, sc, i)),
+    list: (q) => call(ops().dlList!(q)),
+  };
+  const lb = (seasonId: string) => stub(env.LEADERBOARD, `lb:${seasonId}`);
+  const rollover = (kind: 'season' | 'team'): DeadLetterOwner => ({
+    list: (scope) => call(lb(scope).dlList!(kind)),
+    retry: (scope, id) => call(lb(scope).dlRetry!(kind, scope, id)),
+    dismiss: async (scope, id, by, note, now) => { await call(lb(scope).dlDismiss!(kind, id, by, note, now)); },
+  });
+  const owners: Partial<Record<DeadLetterSource, DeadLetterOwner>> = {
+    season: rollover('season'),
+    team: rollover('team'),
+    event: {
+      list: (scope) => call(stub(env.EVENTS, `ev:${scope}`).dlList!()),
+      retry: (scope, id) => call(stub(env.EVENTS, `ev:${scope}`).dlRetry!(scope, id)),
+      dismiss: async (scope, id, by, note, now) => { await call(stub(env.EVENTS, `ev:${scope}`).dlDismiss!(id, by, note, now)); },
+    },
+    settlement: {
+      list: (scope) => call(stub(env.RACE_ROOM, scope).dlList!()),
+      retry: (scope, id) => call(stub(env.RACE_ROOM, scope).dlRetry!(id)),
+      dismiss: async (scope, id, by, note, now) => { await call(stub(env.RACE_ROOM, scope).dlDismiss!(id, by, note, now)); },
+    },
+    ...(env.INTEGRITY ? {
+      moderation: {
+        list: () => call(stub(env.INTEGRITY!, 'global').dlList!()),
+        retry: (_scope: string, id: string) => call(stub(env.INTEGRITY!, 'global').dlRetry!(id)),
+        dismiss: async (_scope: string, id: string) => { await call(stub(env.INTEGRITY!, 'global').dlDismiss!(id)); },
+      } satisfies DeadLetterOwner,
+    } : {}),
+  };
+  return new DeadLetterService(registry, owners);
 }
 
 export function adminAuthConfig(env: Env): AdminAuthConfig {
@@ -230,6 +271,7 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
       verifier: new HttpVerifierClient(env.VERIFIER_URL, undefined, undefined, env.VERIFIER_TOKEN),
       ticketSecret: env.TICKET_SECRET,
       clock: () => Date.now(),
+      activeRuleset: async () => (await activeConfig(env)).ruleset, // REQ-TA-009
       board: {
         upsert: async (e) => (await call(lb(e.seasonId).upsertTimeAttack!(e))) as boolean,
         rankOf: async (seasonId, trackId, pid) => (await call(lb(seasonId).taRankOf!(trackId, pid))) as { rank: number; total: number; generatedAt: number | null } | null,
@@ -288,7 +330,8 @@ export default {
     const done = await runScheduled(event.cron, now, {
       snapshot: async (seasonId) => unwrap(await lb(seasonId).snapshot(seasonId, now)),
       rolloverStep: async (seasonId) => unwrap(await lb(seasonId).rolloverStep(seasonId, now)),
-      sweepReplays: async (t) => sweepReplays(replayBucket(env.REPLAYS), t, Number(env.REPLAY_RETENTION_DAYS ?? (await activeConfig(env)).master.progression.replayRetentionDays), 20, sweepCursor(env.REPLAYS)),
+      sweepReplays: async (t) => sweepReplays(replayBucket(env.REPLAYS), t, Number(env.REPLAY_RETENTION_DAYS ?? (await activeConfig(env)).master.progression.replayRetentionDays), 20, sweepCursor(env.REPLAYS),
+        (await activeConfig(env)).master.progression.replayHoldDays ?? DEFAULT_HOLD_POLICY),
       seasonReminder: (t) => broadcastSeasonReminder(env, t),
       teamRolloverStep: async (seasonId) => unwrap(await (stub(env.LEADERBOARD, `lb:${seasonId}`).teamRolloverStep!(seasonId, now))) as RolloverState,
       eventsStep: (t) => eventsStep(env, t),

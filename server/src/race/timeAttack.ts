@@ -4,6 +4,7 @@ import { signTicket, verifyTicket } from '../http/ticket.js';
 import type { VerifierClient } from '../domain/verifier.js';
 import { ghostKey, type GhostFile, type TaBoardFile, type TaEntry, type TaResult } from '../domain/timeAttack.js';
 import { jstMonthKey } from '../domain/time.js';
+import type { Ruleset } from '../domain/ruleset.js';
 
 /** Season time-attack standings (implemented by LeaderboardDO `lb:<seasonId>`). */
 export interface TaBoardPort {
@@ -27,6 +28,8 @@ export interface TimeAttackPorts {
   ghosts: GhostStore;
   ticketSecret: string;
   clock: () => number;
+  /** REQ-TA-009: the active remote-config ruleset (time attack must follow it, not the built-in default). */
+  activeRuleset?: () => Promise<Ruleset>;
 }
 
 export interface SubmitBody { sessionId: string; token: string; inputs: unknown; resultHash: string; config?: unknown }
@@ -44,7 +47,8 @@ export class TimeAttackService {
 
   /** REQ-TA-001: issue a session and a short-lived token bound to player + session. */
   async start(uid: string, trackId: string, horseId: string) {
-    const r = await this.p.player(uid).invoke('taStart', uid, trackId, horseId);
+    const ruleset = this.p.activeRuleset ? await this.p.activeRuleset() : undefined;
+    const r = await this.p.player(uid).invoke('taStart', uid, trackId, horseId, ruleset);
     const token = await signTicket({ raceId: raceIdOf(r.sessionId), slot: 0, playerId: uid, exp: r.expiresAt }, this.p.ticketSecret);
     return { ...r, token };
   }

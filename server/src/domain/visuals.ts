@@ -7,6 +7,7 @@
  * Nothing here takes part in the race simulation or the result hash.
  */
 import visualsJson from '../../master/visuals.json';
+import { BASE_BANNED_SILKS, bannedMatch, combinedBanned, type BannedSilksList } from './bannedSilks.js';
 import { AppError } from './errors.js';
 import type { Master } from './master.js';
 import { randInt, type Rng } from './rng.js';
@@ -204,8 +205,13 @@ export function defaultSilks(seed: string, v: VisualsMaster = VISUALS): Silks {
   return { pattern: 'plain', colors: ['white', 'navy'], cap: 'plain' };
 }
 
-export function isBannedSilks(s: Silks, v: VisualsMaster = VISUALS): boolean {
-  return v.silks.banned.some((b) => b.pattern === s.pattern && b.colors.length === s.colors.length && b.colors.every((c, i) => c === s.colors[i]) && (b.cap === undefined || b.cap === s.cap));
+/**
+ * REQ-ASSET-010: real registered silks are reserved. `list` is the active banned list (master/banned-silks.json
+ * or a remote-config import); visuals.json's own silks.banned is always included. Matching is on the
+ * normalised colour-family signature (see bannedSilks.ts), so near-identical shades are caught too.
+ */
+export function isBannedSilks(s: Silks, v: VisualsMaster = VISUALS, list: BannedSilksList = BASE_BANNED_SILKS): boolean {
+  return bannedMatch(combinedBanned(list, v), s) !== null;
 }
 
 /**
@@ -213,7 +219,7 @@ export function isBannedSilks(s: Silks, v: VisualsMaster = VISUALS): boolean {
  * colours must be palette ids in the pattern's count with at least two different colours, cap must exist,
  * and the combination must not be on the banned (real registered silks) list.
  */
-export function validateSilks(input: Silks, ownedItems: Record<string, number>, v: VisualsMaster = VISUALS): Silks {
+export function validateSilks(input: Silks, ownedItems: Record<string, number>, v: VisualsMaster = VISUALS, banned: BannedSilksList = BASE_BANNED_SILKS): Silks {
   const p = v.silks.patterns.find((x) => x.id === input.pattern);
   if (!p) throw new AppError('BAD_REQUEST', `unknown silks pattern ${input.pattern}`);
   if (p.unlockItem && !((ownedItems[p.unlockItem] ?? 0) > 0)) throw new AppError('NOT_ELIGIBLE', `pattern ${p.id} needs item ${p.unlockItem}`);
@@ -223,7 +229,7 @@ export function validateSilks(input: Silks, ownedItems: Record<string, number>, 
   if (new Set(input.colors).size < 2) throw new AppError('BAD_REQUEST', 'use at least two different colours');
   if (!v.silks.caps.some((c) => c.id === input.cap)) throw new AppError('BAD_REQUEST', `unknown cap ${input.cap}`);
   const s: Silks = { pattern: p.id, colors: [...input.colors], cap: input.cap };
-  if (isBannedSilks(s, v)) throw new AppError('BAD_REQUEST', 'this combination is reserved');
+  if (isBannedSilks(s, v, banned)) throw new AppError('BAD_REQUEST', 'this combination is reserved');
   return s;
 }
 

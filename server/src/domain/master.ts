@@ -1,4 +1,5 @@
 import tracksJson from '../../master/tracks.json';
+import { BASE_BANNED_SILKS, type BannedSilksList } from './bannedSilks.js';
 import horsesJson from '../../master/horses.json';
 import gachaJson from '../../master/gacha.json';
 import nicksJson from '../../master/nicks.json';
@@ -49,6 +50,8 @@ export interface Progression {
   social: { maxFriends: number; maxIncoming: number; maxOutgoing: number; maxInvites: number; inviteTtlMs: number; profilePushIntervalMs: number };
   leaderboard: { topN: number; rolloverBatch: number };
   replayRetentionDays: number;
+  /** REQ-OPS-001a: days a held replay is kept per hold reason (absent/null = until ops act). */
+  replayHoldDays?: Record<string, number | null>;
   /** REQ-REW-004: friend races that pay rewards per JST day (anti-farming). */
   friendRewardDailyCap: number;
   /** REQ-TA-*: time attack rules. */
@@ -139,6 +142,8 @@ export interface Master {
   push: PushMaster;
   /** REQ-EVENT-*: event race definitions. */
   events: EventDef[];
+  /** REQ-ASSET-010: real registered silks players may not reproduce (master/banned-silks.json or a remote-config import). */
+  bannedSilks?: BannedSilksList;
 }
 
 export const PPM_TOTAL = 1_000_000;
@@ -204,6 +209,7 @@ export function loadMaster(): Master {
     titles: (titlesJson as unknown as { titles: TitleDef[] }).titles,
     push: pushJson as unknown as PushMaster,
     events: (eventsJson as unknown as { events: EventDef[] }).events,
+    bannedSilks: BASE_BANNED_SILKS,
   };
   cached = m;
   return m;

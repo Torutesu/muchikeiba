@@ -5,6 +5,19 @@ import { requireRole, type AdminPrincipal, type AdminRole, type AuditEntry, type
 import { checkGrantLimits, grantSchema, itemIdSchema, type Grant } from '../ops/support.js';
 import type { ModerationChange, ModerationStatus, RaceIntegrityReport, RaceReport } from '../ops/integrity.js';
 import type { LeaderboardApi, PlayerInvoker } from './app.js';
+import { BASE_BANNED_SILKS, bannedMatch, bannedSilksListSchema, bannedSilksProblems, combinedBanned, type BannedSilksList } from '../domain/bannedSilks.js';
+import { VISUALS } from '../domain/visuals.js';
+import { DEAD_LETTER_SOURCES, type DeadLetterApi, type DeadLetterSource, type DeadLetterStatus } from '../ops/deadLetter.js';
+
+const dl = (ctx: AdminContext): DeadLetterApi => {
+  if (!ctx.ops.deadLetters) throw new AppError('NOT_FOUND', 'dead letters are not available');
+  return ctx.ops.deadLetters;
+};
+const dlSource = (s: string | undefined): DeadLetterSource => {
+  if (!s || !(DEAD_LETTER_SOURCES as readonly string[]).includes(s)) throw new AppError('BAD_REQUEST', `source must be one of ${DEAD_LETTER_SOURCES.join('|')}`);
+  return s as DeadLetterSource;
+};
+const dlScope = z.string().regex(/^[A-Za-z0-9_.:-]{1,80}$/);
 
 /** Ops backend as seen by the admin API (Durable Objects in production, in-memory in tests). */
 export interface OpsApi {
@@ -32,6 +45,8 @@ export interface OpsApi {
     unban(playerId: string, reason: string, by: string, now: number): Promise<ModerationChange>;
     release(playerId: string, reason: string, by: string, now: number): Promise<ModerationChange>;
   };
+  /** REQ-OPS-041: dead letters (optional so deployments/tests without the owners still boot). */
+  deadLetters?: DeadLetterApi;
 }
 
 export interface AdminContext {
@@ -199,6 +214,63 @@ export const adminRoutes: AdminRoute[] = [
     const c = await r.ctx.ops.integrity.unban(id, r.reason!, r.principal.id, r.now);
     return { result: c, target: `player:${id}`, before: { status: 'banned' }, after: { status: c.status } };
   } },
+  // ---- dead letters (REQ-OPS-041) ----
+  { method: 'GET', path: '/v1/admin/dead-letters', role: 'viewer', write: false, action: 'deadletter.list', handler: async (r) => {
+    const st = r.query.get('status') ?? 'open';
+    if (!['open', 'resolved', 'dismissed', 'all'].includes(st)) throw new AppError('BAD_REQUEST', 'status must be open|resolved|dismissed|all');
+    const src = r.query.get('source');
+    const items = await dl(r.ctx).list({ ...(st !== 'all' ? { status: st as DeadLetterStatus } : {}), ...(src ? { source: dlSource(src) } : {}), limit: Math.min(500, num(r.query, 'limit', 100)) });
+    return { result: { items } };
+  } },
+  { method: 'GET', path: '/v1/admin/dead-letters/:source/:scope', role: 'viewer', write: false, action: 'deadletter.inspect', handler: async (r) => {
+    const source = dlSource(r.params.source);
+    const scope = parse(dlScope, r.params.scope);
+    return { result: { items: await dl(r.ctx).inspect(source, scope, r.now) }, target: `deadletter:${source}/${scope}` };
+  } },
+  { method: 'POST', path: '/v1/admin/dead-letters/:source/:scope/:itemId/retry', role: 'operator', write: true, action: 'deadletter.retry', handler: async (r) => {
+    const source = dlSource(r.params.source);
+    const scope = parse(dlScope, r.params.scope);
+    const itemId = parse(pid, r.params.itemId);
+    const rec = await dl(r.ctx).retry(source, scope, itemId, r.principal.id, r.now);
+    return { result: rec, target: `deadletter:${source}/${scope}/${itemId}`, after: { status: rec.status, error: rec.status === 'open' ? rec.error : null } };
+  } },
+  { method: 'POST', path: '/v1/admin/dead-letters/:source/:scope/:itemId/dismiss', role: 'admin', write: true, action: 'deadletter.dismiss', handler: async (r) => {
+    const source = dlSource(r.params.source);
+    const scope = parse(dlScope, r.params.scope);
+    const itemId = parse(pid, r.params.itemId);
+    const b = parse(z.object({ note: z.string().trim().min(3).max(500), reason: z.string() }), r.body);
+    const rec = await dl(r.ctx).dismiss(source, scope, itemId, r.principal.id, b.note, r.now);
+    return { result: rec, target: `deadletter:${source}/${scope}/${itemId}`, before: { status: 'open' }, after: { status: rec.status, note: b.note } };
+  } },
+
+  // ---- banned real silks (REQ-OPS-040) ----
+  { method: 'GET', path: '/v1/admin/silks/banned', role: 'viewer', write: false, action: 'silks.banned.view', handler: async (r) => {
+    const a = await r.ctx.ops.config.active(r.now, null);
+    const list = (a.bundle?.bannedSilks as BannedSilksList | undefined) ?? BASE_BANNED_SILKS;
+    return { result: { versionId: a.versionId, source: a.bundle?.bannedSilks ? 'remote-config' : 'master/banned-silks.json', list } };
+  } },
+  { method: 'POST', path: '/v1/admin/silks/banned/check', role: 'viewer', write: false, action: 'silks.banned.check', handler: async (r) => {
+    const s = parse(z.object({ pattern: z.string(), colors: z.array(z.string()).min(2).max(3), cap: z.string() }).strict(), r.body.silks);
+    const a = await r.ctx.ops.config.active(r.now, null);
+    const list = (a.bundle?.bannedSilks as BannedSilksList | undefined) ?? BASE_BANNED_SILKS;
+    return { result: { banned: bannedMatch(combinedBanned(list, VISUALS), s) } };
+  } },
+  /**
+   * Imports a full replacement list: validated against the visuals catalogue, then staged as a NEW remote-config
+   * version on top of the active bundle (activation stays a separate admin step, like every config change).
+   */
+  { method: 'POST', path: '/v1/admin/silks/banned/import', role: 'admin', write: true, action: 'silks.banned.import', handler: async (r) => {
+    const b = parse(z.object({ list: bannedSilksListSchema, reason: z.string() }).strict(), r.body);
+    const list = b.list as BannedSilksList;
+    const problems = bannedSilksProblems(list, VISUALS);
+    if (problems.length) throw new AppError('BAD_REQUEST', problems.join('; '));
+    const active = await r.ctx.ops.config.active(r.now, null);
+    const bundle = { ...(active.bundle ?? {}), bannedSilks: list } as ConfigBundle;
+    const out = await r.ctx.ops.config.stage(bundle, r.principal.id, `banned silks import: ${list.entries.length} entries`, r.now);
+    const before = (active.bundle?.bannedSilks as BannedSilksList | undefined) ?? BASE_BANNED_SILKS;
+    return { result: { ...out, entries: list.entries.length, note: 'staged; activate it with POST /v1/admin/config/activations' }, target: `config:${out.version.id}`, before: { entries: before.entries.length, basedOn: active.versionId }, after: { entries: list.entries.length, version: out.version.id } };
+  } },
+
   { method: 'GET', path: '/v1/admin/reports', role: 'viewer', write: false, action: 'reports.list', handler: async (r) => {
     const st = r.query.get('status');
     if (st && st !== 'open' && st !== 'resolved') throw new AppError('BAD_REQUEST', 'bad status');

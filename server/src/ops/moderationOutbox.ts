@@ -57,3 +57,34 @@ export class MemoryModerationOutbox implements ModerationOutboxStore {
   nextAt() { const v = [...this.items.values()].map((i) => i.nextAt); return v.length ? Math.min(...v) : null; }
   nextSeq() { return ++this.seq; }
 }
+
+// ---- dead-letter view (REQ-OPS-041): items that failed at least MODERATION_DEAD_AFTER times ----
+
+/** Decisions that keep failing to reach the player's object (they are still retried automatically). */
+export function stuckModeration(store: ModerationOutboxStore, minAttempts: number): OutboxItem[] {
+  return store.due(Number.MAX_SAFE_INTEGER, 5000).filter((i) => i.attempts >= minAttempts);
+}
+
+/** Pushes one player's pending decision now (ops "retry"). */
+export async function retryModerationNow(store: ModerationOutboxStore, playerId: string, push: (c: ModerationChange) => Promise<void>, now: number): Promise<{ ok: boolean; error?: string }> {
+  const item = store.get(playerId);
+  if (!item) return { ok: true }; // already delivered
+  try {
+    await push(item.change);
+    store.delete(playerId, item.seq);
+    return { ok: true };
+  } catch (e) {
+    const attempts = item.attempts + 1;
+    const cur = store.get(playerId);
+    if (cur && cur.seq === item.seq) store.put({ ...item, attempts, nextAt: now + OUTBOX_BACKOFF_MS[Math.min(attempts - 1, OUTBOX_BACKOFF_MS.length - 1)]!, lastError: (e as Error).message });
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/** Ops "dismiss": stop pushing this decision (the integrity record keeps it; ops handle the player by hand). */
+export function dropModeration(store: ModerationOutboxStore, playerId: string): boolean {
+  const item = store.get(playerId);
+  if (!item) return false;
+  store.delete(playerId, item.seq);
+  return true;
+}

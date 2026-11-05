@@ -158,6 +158,21 @@ describe('replay retention (REQ-OPS-001)', () => {
     ];
     expect(replaysToDelete(objs, now, 30)).toEqual(['replays/old.json']);
   });
+  it('verified holds expire after their policy period; disputed/reported/desync/void are kept (REQ-OPS-001a)', () => {
+    const objs = [
+      { key: 'replays/v-old.json', uploaded: now - 91 * DAY_MS, hold: 'verified' },
+      { key: 'replays/v-new.json', uploaded: now - 60 * DAY_MS, hold: 'verified' },
+      { key: 'replays/rep.json', uploaded: now - 400 * DAY_MS, hold: 'reported' },
+      { key: 'replays/dis.json', uploaded: now - 400 * DAY_MS, hold: 'disputed' },
+      { key: 'replays/des.json', uploaded: now - 400 * DAY_MS, hold: 'desync' },
+      { key: 'replays/void.json', uploaded: now - 400 * DAY_MS, hold: 'void' },
+      { key: 'ghosts/2026-01/t/p.json', uploaded: now - 400 * DAY_MS, hold: null },
+    ];
+    expect(replaysToDelete(objs, now, 30)).toEqual(['replays/v-old.json']);
+    // ops can tune or disable the policy from remote config
+    expect(replaysToDelete(objs, now, 30, { verified: 30 })).toEqual(['replays/v-old.json', 'replays/v-new.json']);
+    expect(replaysToDelete(objs, now, 30, { verified: null })).toEqual([]);
+  });
   it('sweeps page by page', async () => {
     const store = new Map<string, { uploaded: Date; customMetadata?: Record<string, string> }>();
     for (let i = 0; i < 2500; i++) store.set(`replays/r${String(i).padStart(4, '0')}.json`, { uploaded: new Date(now - (i % 2 ? 40 : 1) * DAY_MS), ...(i % 10 === 1 ? { customMetadata: { hold: 'reported' } } : {}) });

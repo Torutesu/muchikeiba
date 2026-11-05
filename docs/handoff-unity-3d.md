@@ -61,7 +61,7 @@ Updated: 2026-11-05（エンジン・サーバー接続を追加）
 1. サーバー：`cd server && npm ci && npm run dev`（`DEV_MODE=1`、`http://127.0.0.1:8787`）。ランク戦を1人で確定させるには検証サーバーも必要：`dotnet run --project engine/Muchi.Verifier -- serve --urls http://127.0.0.1:8090` を起動し、`npm run dev` に `--var VERIFIER_URL:http://127.0.0.1:8090` を足す（なければ1人ランク戦は「無効」で終わる）。
 2. Unity：`unity/` を開く → 初回はパッケージ（Muchi Engine / Net / Client SDK）の取り込みを待つ → **Muchi → Create Frontend Scene** → Play。
 3. 接続先は `unity/Assets/Resources/Muchi/server-config.json`（既定 `local` / `http://127.0.0.1:8787`、`x-dev-user` は端末ごとに自動生成）。実機から PC のサーバーへは PlayerPrefs `muchi.server.baseUrl` に PC のIPを入れる。サーバーなしで試すときは `muchi.server.offline` = `1`。
-4. staging / production は Firebase 認証が必要。Firebase SDK を入れたら `MuchiServices.FirebaseTokens` に `IAuthTokenProvider` を設定する（未設定ならオフラインで起動する）。
+4. staging / production は Firebase 認証が必要。Firebase Unity SDK（FirebaseAuth）を取り込み、Scripting Define Symbols に `MUCHI_FIREBASE` を追加して、起動時に `await MuchiFirebase.InitializeAsync()` を呼んでから `MuchiServices.Create()` を呼ぶ（`Assets/Muchi/Integration/FirebaseSdkAuth.cs`）。匿名ログイン→Apple/Googleの紐付け→別アカウント時の切り替えのロジックは `Assets/Muchi/Game/FirebaseAuth.cs` にあり、`unity/Checks~/GameChecks` でテスト済み。定義が無い間は従来どおり（ローカルは開発用認証、それ以外はオフライン）。
 
 ## Unity エディタでの確認が必要なこと（ここでは未確認）
 

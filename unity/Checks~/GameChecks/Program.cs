@@ -39,6 +39,8 @@ static class Program
         PartnerCatalogCoverage();
         SettingsAndOfflineBackend();
         await OfflineFallbackWhenServerUnreachable();
+        Console.WriteLine("== Firebase auth token provider");
+        await AuthChecks.Run(Check);
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

@@ -53,6 +53,12 @@ Apple / Google：レシート検証・サーバー通知
 3. **Cloud Messaging**：iOS は APNs 認証キー（.p8）をアップロードします。Android は特に設定不要です。
 4. **Webアプリ**を1つ登録し、その **Web API キー**を GitHub の環境変数 `FIREBASE_WEB_API_KEY` に入れます（デプロイ後のスモークテストで、匿名ユーザーを作るために使います。公開されても問題ない値です）。
 5. **FCM用のサービスアカウント**：「Firebase Cloud Messaging API 管理者」ロールを付けて鍵JSONを発行し、Worker のシークレット `FCM_SERVICE_ACCOUNT_JSON` に入れます（設定しない場合は `GOOGLE_SERVICE_ACCOUNT_JSON` が使われます）。
+6. **Unityアプリ**（REQ-API-005）：
+   - iOS／Android アプリを登録し、`GoogleService-Info.plist` と `google-services.json` を `unity/Assets/` に置く（環境ごとに別ファイル。リポジトリには入れない）。
+   - Firebase Unity SDK の `FirebaseAuth.unitypackage` を取り込み、Player Settings の Scripting Define Symbols に `MUCHI_FIREBASE` を追加する。
+   - 起動時に `await MuchiFirebase.InitializeAsync()` を呼んでから `MuchiServices.Create()` を呼ぶ（匿名ログインまで済ませ、`MuchiServices.FirebaseTokens` を設定する）。
+   - Sign in with Apple はランダムな nonce を作り、SHA-256 したものを Apple に、元の値を `FederatedCredential.FromApple(idToken, rawNonce)` に渡す。Google は Google Sign-In の ID トークンを `FromGoogle(idToken)` に渡す。
+   - 引き継ぎ：`LinkAsync` が `CredentialInUse` を返したら、プレイヤーに「この端末の進行は残りません」と確認してから `SwitchToExistingAccountAsync` を呼ぶ。
 
 ## 3. GCP（検証サーバー：Cloud Run）
 
@@ -202,6 +208,12 @@ gcloud run services update-traffic muchi-verifier-production --to-revisions=<前
 - Durable Object の**マイグレーション（`[[migrations]]`）は戻せません**。新しいクラスを追加するデプロイは、staging で十分確認してから本番に出してください。
 - ルールセットを変えた場合でも、過去のレースはリプレイログに含まれるルールセットで検証されるので、検証サーバーを戻しても古いレースの検証は壊れません。
 - C#エンジンの計算を変える変更は、**新しいルールセットのバージョンと組で**出す（同じバージョンで計算結果が変わると、既存のリプレイの検証が失敗する）。
+
+## 9.5 失敗リスト・禁止勝負服の運用
+
+- **失敗リスト**（REQ-OPS-041）：シーズン締め・支部の報酬・イベント報酬・レース精算・隔離の反映で、自動の再試行を使い切った項目は `GET /v1/admin/dead-letters` に出る。原因を直したら `POST …/:itemId/retry`（operator）、手作業で対応したら `POST …/:itemId/dismiss`（admin、メモ必須）。シーズン締めのあとは `GET /v1/admin/dead-letters/season/<YYYY-MM>` と `…/team/<YYYY-MM>` を確認する。
+- **禁止勝負服**（REQ-OPS-040）：公開されている登録服色と照合した一覧を `POST /v1/admin/silks/banned/import` で取り込む（設定の新しい版として登録されるので、`/v1/admin/config/activations` で有効化）。`server/master/banned-silks.json` も同じ内容に更新しておく。
+- **リプレイの保存**：「検証で確定」の保留は既定90日で削除される（`progression.replayHoldDays`）。通報・不一致・無効は残る。
 
 ## 10. 費用のガードレール
 

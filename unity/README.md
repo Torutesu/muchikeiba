@@ -22,7 +22,7 @@ Races run on the authoritative engine (`engine/Muchi.Engine`, imported as a loca
 
 ## Server connection
 
-`Assets/Resources/Muchi/server-config.json` selects the server (default: `local`, `http://127.0.0.1:8787`, dev auth with an auto-generated `x-dev-user`). Run the server with `cd server && npm ci && npm run dev`. Per device, PlayerPrefs `muchi.server.baseUrl` overrides the URL and `muchi.server.offline` = `1` forces offline mode. If the server is unreachable at start-up the app runs offline (local data, offline races). Staging/production need Firebase auth (`MuchiServices.FirebaseTokens`), not integrated yet.
+`Assets/Resources/Muchi/server-config.json` selects the server (default: `local`, `http://127.0.0.1:8787`, dev auth with an auto-generated `x-dev-user`). Run the server with `cd server && npm ci && npm run dev`. Per device, PlayerPrefs `muchi.server.baseUrl` overrides the URL and `muchi.server.offline` = `1` forces offline mode. If the server is unreachable at start-up the app runs offline (local data, offline races). Staging/production need Firebase auth: import the Firebase Unity SDK (FirebaseAuth), add the scripting define `MUCHI_FIREBASE`, and call `await MuchiFirebase.InitializeAsync()` before `MuchiServices.Create()` (anonymous sign-in, Apple/Google linking and account switching; logic in `Assets/Muchi/Game/FirebaseAuth.cs`, SDK adapter in `Assets/Muchi/Integration/FirebaseSdkAuth.cs`). Without the define the app behaves as before.
 
 ## 3D asset library
 

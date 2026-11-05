@@ -176,6 +176,13 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | POST | `/v1/admin/integrity/players/:playerId/unban` | admin | `{reason}` |
 | GET | `/v1/admin/reports` | viewer | `?status=open\|resolved` 通報の列 |
 | POST | `/v1/admin/reports/:reportId/resolve` | operator | `{resolution, reason}` |
+| GET | `/v1/admin/dead-letters` | viewer | `?status=open\|resolved\|dismissed\|all&source=&limit=` 失敗リストの索引（REQ-OPS-041） |
+| GET | `/v1/admin/dead-letters/:source/:scope` | viewer | 持ち主の現在の失敗リスト（索引も更新）。`source`＝`season`（scope＝シーズン）／`team`（シーズン）／`event`（イベントID）／`settlement`（レースID）／`moderation`（`global`） |
+| POST | `/v1/admin/dead-letters/:source/:scope/:itemId/retry` | operator | `{reason}` 再試行（冪等。成功で `resolved`、失敗ならエラーと回数を更新） |
+| POST | `/v1/admin/dead-letters/:source/:scope/:itemId/dismiss` | admin | `{note, reason}` 手作業で対応済みとして取り下げ |
+| GET | `/v1/admin/silks/banned` | viewer | 有効な禁止勝負服の一覧（REQ-OPS-040） |
+| POST | `/v1/admin/silks/banned/check` | viewer | `{silks:{pattern, colors, cap}}` 当たるか確認 |
+| POST | `/v1/admin/silks/banned/import` | admin | `{list, reason}` 一覧を丸ごと取り込み、設定の新しい版として登録（有効化は `/v1/admin/config/activations`） |
 
 ### 設定配信（リモートコンフィグ）
 - バンドルで変えられるもの：`ruleset`（一部でも全部でも可。キー集合は固定）、`gacha.banners`（一覧ごと置き換え。開催日程は `startAtMs`/`endAtMs`）、`gacha.pityGroups`、`tracks`、`progression`（浅いマージ）、`ng`。

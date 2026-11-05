@@ -23,6 +23,8 @@ namespace Muchi.Engine
         public int WhipTicksLeft;
         public int WhipEffectPermille;
         public int LastWhipTick;
+        /// <summary>Tick of the last lane change the rider asked for (auto-steer holds off after it).</summary>
+        public int LastManualLaneTick;
         public bool Reining;
         public bool Departed;
         public int DepartTick;

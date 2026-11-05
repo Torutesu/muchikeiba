@@ -14,6 +14,7 @@ namespace Muchi.Engine
     {
         private const ulong SaltKakari = 0x4B414B41UL;
         private const ulong SaltCpu = 0x43505531UL;
+        private const ulong SaltForm = 0x464F524DUL;
 
         public readonly RaceConfig Config;
         public readonly RulesetParams P;
@@ -94,6 +95,12 @@ namespace Muchi.Engine
                 if (goingSpeedPermille != 1000) topMm = topMm * goingSpeedPermille / 1000;
                 int spec = GoingSpecialistPermille(h.GoingAptitude ?? GoingAptitude.Any, config.Track.EffectiveGoing, P.GoingSpecialistPermille);
                 if (spec != 0) topMm = topMm * (1000 + spec) / 1000;
+                if (P.ConditionVariancePermille > 0)
+                {
+                    // per-race form (調子): its own seeded stream, so no other random draw shifts (ruleset 1.1)
+                    var form = new Pcg32(SeedMix.Derive(config.Seed, SaltForm, (ulong)i), (ulong)i + 200);
+                    topMm = topMm * (1000 + form.Range(-P.ConditionVariancePermille, P.ConditionVariancePermille)) / 1000;
+                }
                 _topSpeed[i] = Fx.FromMilli(topMm);
                 long stamina = P.StaminaBase + (long)h.Stamina * P.StaminaPerStatPoint;
                 stamina = stamina * (1000 - penalty) / 1000;
@@ -112,6 +119,7 @@ namespace Muchi.Engine
                     Composure = 100,
                     WhipsLeft = P.MaxWhips,
                     LastWhipTick = -100000,
+                    LastManualLaneTick = -100000,
                     DepartTick = -1,
                     FinishTick = -1,
                     Rank = i,
@@ -258,14 +266,26 @@ namespace Muchi.Engine
             if (!h.Departed) return;
 
             // Lane change (REQ-RACE-045)
-            if ((c & (Cmd.LaneIn | Cmd.LaneOut)) != 0 && !h.IsChangingLane)
+            if ((c & (Cmd.LaneIn | Cmd.LaneOut)) != 0)
             {
-                int target = h.LaneTarget + ((c & Cmd.LaneIn) != 0 ? -1 : 1);
-                if (target >= 0 && target < P.LaneCount && LaneClear(i, target))
+                h.LastManualLaneTick = t;
+                if (!h.IsChangingLane)
                 {
-                    h.LaneTarget = target;
-                    _events.Add(new RaceEvent(t, RaceEventType.LaneChange, i, target));
+                    int target = h.LaneTarget + ((c & Cmd.LaneIn) != 0 ? -1 : 1);
+                    if (target >= 0 && target < P.LaneCount && LaneClear(i, target))
+                    {
+                        h.LaneTarget = target;
+                        _events.Add(new RaceEvent(t, RaceEventType.LaneChange, i, target));
+                    }
                 }
+            }
+            else if (P.AutoRailIntervalTicks > 0 && !h.IsChangingLane && h.LaneTarget > 0
+                && (t + i) % P.AutoRailIntervalTicks == 0 && t - h.LastManualLaneTick >= P.AutoRailHoldTicks
+                && Track.Distance - h.Distance > _spurtDist && LaneClear(i, h.LaneTarget - 1) && !SlowerAheadIn(i, h.LaneTarget - 1))
+            {
+                // auto-steer toward the rail (ruleset 1.1): the jockey saves ground unless the rider chose a line
+                h.LaneTarget--;
+                _events.Add(new RaceEvent(t, RaceEventType.LaneChange, i, h.LaneTarget));
             }
 
             // Whip (REQ-RACE-047)
@@ -287,6 +307,24 @@ namespace Muchi.Engine
                 h.Stamina = Fx.Max(Fx.Zero, h.Stamina - Fx.FromInt(P.WhipStaminaCost));
                 _events.Add(new RaceEvent(t, RaceEventType.Whip, i, h.WhipsLeft));
             }
+        }
+
+        /// <summary>Would moving into <paramref name="lane"/> put this horse right behind a slower one? (pre-step state)</summary>
+        private bool SlowerAheadIn(int self, int lane)
+        {
+            Fx laneFx = Fx.FromInt(lane);
+            Fx range = _blockRange * 3;
+            var me = _prev[self];
+            for (int j = 0; j < _n; j++)
+            {
+                if (j == self) continue;
+                var o = _prev[j];
+                if (o.Finished) continue;
+                if ((o.Lane - laneFx).Abs() > _halfLane) continue;
+                Fx gap = o.Distance - me.Distance;
+                if (gap.Raw > 0 && gap <= range && o.Speed < me.Speed) return true;
+            }
+            return false;
         }
 
         /// <summary>Is the target lane free of horses within the clearance distance? Uses pre-step positions and targets already accepted this tick.</summary>

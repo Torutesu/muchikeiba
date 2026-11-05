@@ -22,14 +22,31 @@ export const OPTIONAL_RULESET_KEYS: readonly string[] = [
   'dirtSpeedPermille', 'goingSpecialistPermille',
 ];
 
+/**
+ * Second optional group, added by ruleset 1.1 (docs/spec/balance-targets.md): form variance, CPU level habits and
+ * the jockey auto-steer. Absent in 1.0.x rulesets (stored replays/ghosts), which then keep their old behaviour.
+ * All or none; independent of the ground group. Must equal RulesetParams.BalanceIntKeys (checked by a test).
+ */
+export const BALANCE_RULESET_KEYS: readonly string[] = [
+  'conditionVariancePermille', 'cpuStaminaReinMinLevel', 'cpuRailMinLevel', 'autoRailIntervalTicks', 'autoRailHoldTicks', 'cpuSloppyMaxLevel',
+];
+
+const OPTIONAL_GROUPS: { keys: readonly string[]; label: string }[] = [
+  { keys: OPTIONAL_RULESET_KEYS, label: 'ground-condition' },
+  { keys: BALANCE_RULESET_KEYS, label: 'balance (1.1)' },
+];
+
 export function rulesetKeyProblems(candidate: Record<string, unknown>, reference: Record<string, unknown> = DEFAULT_RULESET): string[] {
   const problems: string[] = [];
   const refKeys = new Set(Object.keys(reference));
   const keys = new Set(Object.keys(candidate));
-  const optional = new Set(OPTIONAL_RULESET_KEYS);
-  const optionalPresent = OPTIONAL_RULESET_KEYS.filter((k) => keys.has(k)).length;
-  if (optionalPresent !== 0 && optionalPresent !== OPTIONAL_RULESET_KEYS.length) problems.push('ground-condition keys must be all present or all absent');
-  for (const k of refKeys) if (!keys.has(k) && !(optional.has(k) && optionalPresent === 0)) problems.push(`missing key: ${k}`);
+  const absentGroup = new Set<string>();
+  for (const g of OPTIONAL_GROUPS) {
+    const present = g.keys.filter((k) => keys.has(k)).length;
+    if (present !== 0 && present !== g.keys.length) problems.push(`${g.label} keys must be all present or all absent`);
+    if (present === 0) for (const k of g.keys) absentGroup.add(k);
+  }
+  for (const k of refKeys) if (!keys.has(k) && !absentGroup.has(k)) problems.push(`missing key: ${k}`);
   for (const k of keys) if (!refKeys.has(k)) problems.push(`unknown key: ${k}`);
   for (const [k, v] of Object.entries(candidate)) {
     if (k === 'rulesetVersion') {
@@ -39,6 +56,15 @@ export function rulesetKeyProblems(candidate: Record<string, unknown>, reference
     }
   }
   return problems;
+}
+
+/**
+ * Time attack is pure skill: the day's form (conditionVariancePermille, ruleset 1.1) is switched off so a best time
+ * never depends on rerolling sessions for good form. The version is suffixed like event rulesets (`+ta`).
+ */
+export function timeAttackRuleset(base: Ruleset = DEFAULT_RULESET): Ruleset {
+  if (!('conditionVariancePermille' in base) || Number(base.conditionVariancePermille) === 0) return base;
+  return buildRuleset({ ...base, conditionVariancePermille: 0, rulesetVersion: `${base.rulesetVersion}+ta` });
 }
 
 /** Validates and returns a ruleset; overrides (Remote Config) may change values but never the key set. */

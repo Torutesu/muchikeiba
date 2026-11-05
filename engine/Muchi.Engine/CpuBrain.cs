@@ -14,6 +14,9 @@ namespace Muchi.Engine
         private readonly int _startTick;
         private int _nextWhipTick = -1;
         private readonly int _decisionOffset;
+        /// <summary>Rides like a casual player (ruleset 1.1 cpuSloppyMaxLevel); extra random draws happen only then.</summary>
+        private readonly bool _sloppy;
+        private readonly int _sloppyWhipFromM;
 
         public CpuBrain(RaceSim sim, int slot, int level, Pcg32 rng)
         {
@@ -32,7 +35,10 @@ namespace Muchi.Engine
                 case 2: maxDelay = 5; break;
                 default: maxDelay = 8; break;
             }
+            _sloppy = level <= p.CpuSloppyMaxLevel;
+            if (_sloppy) maxDelay += 3; // casual reactions: often misses the start window
             _startTick = p.GateOpenTick + _rng.Range(0, maxDelay);
+            if (_sloppy) _sloppyWhipFromM = 250 + _rng.Range(0, 350);
             _decisionOffset = slot % p.CpuDecisionIntervalTicks;
         }
 
@@ -64,8 +70,17 @@ namespace Muchi.Engine
             Fx remaining = _sim.Track.Distance - me.Distance;
             bool spurt = remaining <= _sim.SpurtDistance;
 
+            if (_sloppy)
+            {
+                // casual habits: whips from a random point with uneven spacing
+                if (remaining <= Fx.FromInt(_sloppyWhipFromM) && me.WhipsLeft > 0)
+                {
+                    if (_nextWhipTick < 0) _nextWhipTick = t;
+                    if (t >= _nextWhipTick) { c |= Cmd.Whip; _nextWhipTick = t + 6 + _rng.Range(0, 30); }
+                }
+            }
             // whips in the spurt zone, spaced out (never mash)
-            if (remaining <= Fx.FromInt(p.CpuWhipStartDistanceM + Jitter(100)) && me.WhipsLeft > 0)
+            else if (remaining <= Fx.FromInt(p.CpuWhipStartDistanceM + Jitter(100)) && me.WhipsLeft > 0)
             {
                 if (_nextWhipTick < 0) _nextWhipTick = t + Jitter(8);
                 if (t >= _nextWhipTick)
@@ -100,7 +115,7 @@ namespace Muchi.Engine
                 long remainingPermille = remaining.Raw * 1000 / _sim.Track.Distance.Raw;
                 bool tooFarForward = style != RunningStyle.Nige && rankPermille + 100 < targetRank;
                 bool composureBad = me.Composure < p.BadComposureThreshold + 10 || me.IsKakari;
-                bool staminaShort = me.StaminaPermille + 50 < remainingPermille;
+                bool staminaShort = !_sloppy && _level >= p.CpuStaminaReinMinLevel && me.StaminaPermille + 50 < remainingPermille;
                 wantRein = tooFarForward || composureBad || staminaShort;
             }
             if (wantRein && !me.Reining) c |= Cmd.ReinPress;
@@ -118,7 +133,7 @@ namespace Muchi.Engine
                 else if (!spurt && me.LaneTarget > 0)
                 {
                     // save ground: drift toward the rail when there is room (weaker riders do it less)
-                    bool tryIn = _level >= 3 || _rng.Chance(1, 2);
+                    bool tryIn = _level >= p.CpuRailMinLevel || _rng.Chance(1, 2);
                     if (tryIn && _sim.LaneClear(_slot, me.LaneTarget - 1) && !WouldBeBlockedIn(me, me.LaneTarget - 1)) c |= Cmd.LaneIn;
                 }
             }

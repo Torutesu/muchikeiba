@@ -33,8 +33,8 @@ describe('remote config: validation (REQ-OPS-003)', () => {
   });
 
   it('rejects unknown ruleset keys and non-integer values', () => {
-    expect(store().validate({ ruleset: { ...newRuleset('1.1.0'), bogusKey: 3 } }).join()).toMatch(/unknown key: bogusKey/);
-    expect(store().validate({ ruleset: { rulesetVersion: '1.1.0', maxWhips: 2.5 } }).join()).toMatch(/maxWhips must be a 32-bit integer/);
+    expect(store().validate({ ruleset: { ...newRuleset('2.1.0'), bogusKey: 3 } }).join()).toMatch(/unknown key: bogusKey/);
+    expect(store().validate({ ruleset: { rulesetVersion: '2.1.0', maxWhips: 2.5 } }).join()).toMatch(/maxWhips must be a 32-bit integer/);
   });
 
   it('rejects changed ruleset values without a new rulesetVersion', () => {
@@ -65,36 +65,36 @@ describe('remote config: validation (REQ-OPS-003)', () => {
 describe('remote config: versions, scheduling, rollback (REQ-OPS-002/004)', () => {
   it('versions are immutable and content-addressed; re-staging identical content is idempotent', async () => {
     const s = store();
-    const a = await s.stage({ ruleset: newRuleset('1.1.0') }, 'alice', 'fewer whips', T0);
-    const reordered = JSON.parse(JSON.stringify({ ruleset: Object.fromEntries(Object.entries(newRuleset('1.1.0')).reverse()) })) as ConfigBundle;
+    const a = await s.stage({ ruleset: newRuleset('2.1.0') }, 'alice', 'fewer whips', T0);
+    const reordered = JSON.parse(JSON.stringify({ ruleset: Object.fromEntries(Object.entries(newRuleset('2.1.0')).reverse()) })) as ConfigBundle;
     const b = await s.stage(reordered, 'bob', 'same thing', T0 + 1);
     expect(a.created).toBe(true);
     expect(b.created).toBe(false);
     expect(b.version.id).toBe(a.version.id);
     expect(a.version.hash).toBe(await hashOf(reordered));
     expect(a.version.hash).toMatch(/^[0-9a-f]{64}$/);
-    expect(a.version.rulesetVersion).toBe('1.1.0');
+    expect(a.version.rulesetVersion).toBe('2.1.0');
   });
 
   it('a rulesetVersion can never be reused for different values', async () => {
     const s = store();
-    await s.stage({ ruleset: newRuleset('1.1.0', 5) }, 'alice', '', T0);
-    await expect(s.stage({ ruleset: newRuleset('1.1.0', 4) }, 'alice', '', T0)).rejects.toMatchObject({ code: 'CONFIG_INVALID', message: expect.stringMatching(/already used/) });
+    await s.stage({ ruleset: newRuleset('2.1.0', 5) }, 'alice', '', T0);
+    await expect(s.stage({ ruleset: newRuleset('2.1.0', 4) }, 'alice', '', T0)).rejects.toMatchObject({ code: 'CONFIG_INVALID', message: expect.stringMatching(/already used/) });
     // same values + other changes is fine
     const b = banners();
     b[1]!.endAtMs = T0 + 1000;
-    await expect(s.stage({ ruleset: newRuleset('1.1.0', 5), gacha: { banners: b } }, 'alice', '', T0)).resolves.toMatchObject({ created: true });
+    await expect(s.stage({ ruleset: newRuleset('2.1.0', 5), gacha: { banners: b } }, 'alice', '', T0)).resolves.toMatchObject({ created: true });
   });
 
   it('scheduled activation takes effect at its time; cancel only before it', async () => {
     const s = store();
-    const { version } = await s.stage({ ruleset: newRuleset('1.1.0') }, 'alice', '', T0);
+    const { version } = await s.stage({ ruleset: newRuleset('2.1.0') }, 'alice', '', T0);
     const act = s.schedule(version.id, T0 + 3600_000, 'alice', 'Tuesday maintenance', T0);
     expect(s.activeAt(T0)).toBeNull();
     expect(s.activeFor(T0, null)).toMatchObject({ versionId: BASE_VERSION_ID, nextChangeAt: T0 + 3600_000 });
     expect(s.activeAt(T0 + 3600_000)!.versionId).toBe(version.id);
     const s2 = store();
-    const v2 = (await s2.stage({ ruleset: newRuleset('1.2.0') }, 'a', '', T0)).version;
+    const v2 = (await s2.stage({ ruleset: newRuleset('2.2.0') }, 'a', '', T0)).version;
     const a2 = s2.schedule(v2.id, T0 + 1000, 'a', 'later', T0);
     expect(s2.cancel(a2.id, T0 + 500).cancelled).toBe(true);
     expect(s2.activeAt(T0 + 2000)).toBeNull();
@@ -103,8 +103,8 @@ describe('remote config: versions, scheduling, rollback (REQ-OPS-002/004)', () =
 
   it('rollback returns to the previous version, then to base', async () => {
     const s = store();
-    const v1 = (await s.stage({ ruleset: newRuleset('1.1.0') }, 'a', '', T0)).version;
-    const v2 = (await s.stage({ ruleset: newRuleset('1.2.0', 4) }, 'a', '', T0)).version;
+    const v1 = (await s.stage({ ruleset: newRuleset('2.1.0') }, 'a', '', T0)).version;
+    const v2 = (await s.stage({ ruleset: newRuleset('2.2.0', 4) }, 'a', '', T0)).version;
     s.schedule(v1.id, T0, 'a', 'go', T0);
     s.schedule(v2.id, T0 + 10, 'a', 'go', T0 + 10);
     expect(s.activeAt(T0 + 20)!.versionId).toBe(v2.id);
@@ -117,7 +117,7 @@ describe('remote config: versions, scheduling, rollback (REQ-OPS-002/004)', () =
 
   it('workers get the bundle only when they do not have it; the resolver caches per hash', async () => {
     const s = store();
-    const { version } = await s.stage({ ruleset: newRuleset('1.1.0') }, 'a', '', T0);
+    const { version } = await s.stage({ ruleset: newRuleset('2.1.0') }, 'a', '', T0);
     s.schedule(version.id, T0, 'a', 'go', T0);
     const first = s.activeFor(T0, null);
     expect(first.bundle).not.toBeNull();
@@ -132,12 +132,12 @@ describe('remote config: versions, scheduling, rollback (REQ-OPS-002/004)', () =
 
 describe('races record the ruleset they used (REQ-OPS-006)', () => {
   it('the active ruleset is embedded in the race config, so the replay log carries it to the verifier', async () => {
-    const { ruleset } = resolveBundle(m, { ruleset: newRuleset('1.1.0') });
+    const { ruleset } = resolveBundle(m, { ruleset: newRuleset('2.1.0') });
     const p = newPlayer('p0', T0, '2026-11');
     const horse = toRaceHorse(m, createHorseFromTemplate(p, m.templates[0]!, T0));
     const entry = { playerId: 'p0', horse, rating: { r: 1500, rd: 350, vol: 0.06 }, classId: 'C', statCap: 3200, beginner: false, moderation: 'ok' as const };
     const created = await createRace(m, { mode: 'friend', humans: [entry, { ...entry, playerId: 'p1' }], cpuCount: 0, cpuLevel: 3, rng: seededRng(5), now: T0, ticketSecret: 's', ruleset });
-    expect(created.config.ruleset.rulesetVersion).toBe('1.1.0');
+    expect(created.config.ruleset.rulesetVersion).toBe('2.1.0');
     expect(created.config.ruleset.maxWhips).toBe(5);
     const core = new RaceRoomCore(created.config, created.startAtMs, { verifySampleRate: 0, resultWaitMs: 5000, rng: seededRng(1) });
     expect(canonicalJson(core.replayLog().config.ruleset)).toBe(canonicalJson(ruleset));

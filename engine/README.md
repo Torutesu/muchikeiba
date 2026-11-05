@@ -11,7 +11,7 @@
 | `Muchi.Client/` | netstandard2.1 / C# 9 | Engine, Net | Unity向けクライアントSDK：API呼び出し、オンラインレースの接続管理、オフラインレース、実況テキスト（`Muchi.Client.asmdef` 同梱） |
 | `Muchi.Verifier/` | net8.0 | Engine, Net, ASP.NET | 検証サーバー（CLI/HTTP）、ゴールデン生成、バランス計測 |
 | `Muchi.Bot/` | net8.0 | Engine, Net | 結合テスト用のヘッドレスプレイヤー |
-| `Muchi.Engine.Tests/` | net8.0 | xUnit | 144テスト |
+| `Muchi.Engine.Tests/` | net8.0 | xUnit | 220テスト |
 
 ```bash
 export PATH=/opt/dotnet:$PATH          # この環境の .NET 8 SDK
@@ -20,7 +20,10 @@ dotnet run --project engine/Muchi.Verifier -- replay "$PWD/contracts/golden/race
 dotnet run --project engine/Muchi.Verifier -- serve --urls http://0.0.0.0:8080                 # POST /verify, GET /healthz（VERIFIER_AUTH_SECRET を設定すると Bearer 必須。$PORT にも対応）
 docker build -f engine/Muchi.Verifier/Dockerfile -t muchi-verifier engine                      # Cloud Run 用イメージ（VERIFIER_REQUIRE_AUTH=1：シークレットなしでは起動しない。docs/ops/deploy.md）
 dotnet run --project engine/Muchi.Verifier -- golden "$PWD/contracts/golden" "$PWD/contracts/ruleset-params.default.json"   # パスは絶対パスで（Web SDKは実行時の作業ディレクトリをプロジェクトに変えるため）
-dotnet run --project engine/Muchi.Verifier -- balance contracts/ruleset-params.default.json 1000 [key=value ...]
+dotnet run --project engine/Muchi.Verifier -- balance "$PWD/contracts/ruleset-params.default.json" 1000 [key=value ...]
+dotnet run -c Release --project engine/Muchi.Verifier -- harness "$PWD/contracts/ruleset-params.default.json" [key=value ...]   # バランス目標の全項目（docs/spec/balance-targets.md）
+dotnet run -c Release --project engine/Muchi.Verifier -- ta-thresholds "$PWD/contracts/ruleset-params.default.json" "$PWD/server/master/tracks.json" 3200   # タイムアタックのメダル秒数
+dotnet run -c Release --project engine/Muchi.Verifier -- rider-sweep "$PWD/contracts/ruleset-params.default.json"   # 乗り方の比較（上手い人・初心者のモデル調整用）
 ```
 
 ルールセットや物理を変えたら `golden` を再生成してコミットする（`GoldenGeneratorIsStable` テストが差分を検出する）。
@@ -205,7 +208,7 @@ client.SendPing(localNowMs);
 
 | キー | 既定 | 意味 |
 |---|---|---|
-| rulesetVersion | 1.0.0 | 結果ハッシュに含まれるバージョン文字列 |
+| rulesetVersion | 1.1.0 | 結果ハッシュに含まれるバージョン文字列 |
 | maxTicks | 4800 | これに達したらレース終了（240秒） |
 | gateOpenTick | 60 | ゲートが開くtick（3秒のカウントダウン） |
 | startReactionWindowTicks | 4 | 開いてからこのtick数以内のSTARTで好スタート |
@@ -213,7 +216,7 @@ client.SendPing(localNowMs);
 | startBoostTicks | 40 | 加速ボーナスの継続tick |
 | autoStartDelayTicks | 10 | STARTしない馬が自動で出るまでのtick（出遅れ） |
 | laneCount | 12 | レーン数（0=最内） |
-| laneWidthMm | 1200 | 1レーンの幅。コーナーで外を回る距離の計算に使う |
+| laneWidthMm | 500 | 1レーンの幅。コーナーで外を回る距離の計算に使う（1.0は1200。外を回る損が大きすぎ、枠順で勝負が決まっていた） |
 | laneChangeTicks | 6 | 1レーン移動にかかるtick |
 | laneChangeClearanceMm | 2500 | 移動先の前後この距離に馬がいたら移動できない |
 | blockRangeMm | 2000 | 同レーン前方この距離内の遅い馬は抜けない |
@@ -226,8 +229,8 @@ client.SendPing(localNowMs);
 | accelMmPerSec2 / decelMmPerSec2 | 3500 / 2500 | 加速・減速の上限 |
 | reinSpeedPermille | 950 | 手綱中の目標速度（比） |
 | reinDrainPermille | 450 | 手綱中の脚の消費（比） |
-| spurtDistanceM | 800 | 残りこの距離からスパート区間 |
-| spurtSpeedBonusMaxMmPerSec | 6000 | スパートの上乗せ上限（×burst/1000×残り脚の割合） |
+| spurtDistanceM | 700 | 残りこの距離からスパート区間 |
+| spurtSpeedBonusMaxMmPerSec | 5000 | スパートの上乗せ上限（×burst/1000×残り脚の割合） |
 | staminaBase / staminaPerStatPoint | 4000 / 10 | 脚の量 = base + stamina × per |
 | drainMicroPerSpeedSqPerTick | 11300 | 1tickの消費 = 速度²(m²/s²) × 値 / 1,000,000 |
 | gutsFloorMinPermille / MaxPermille | 600 / 850 | 脚が尽きたときの速度下限（根性0〜1000で補間） |
@@ -244,8 +247,8 @@ client.SendPing(localNowMs);
 | whipEffectTicks | 20 | 1発の効果時間 |
 | whipAccelBonusMmPerSec2 / whipSpeedBonusMmPerSec | 2000 / 2000 | ムチの加速・速度ボーナス |
 | whipDiminishWindowTicks / whipDiminishPermille | 20 / 500 | この間隔内の連打は効果が半分ずつに |
-| earlyWhipEffectPermille / earlyWhipComposurePenalty | 300 / 10 | スパート前のムチは効果30%、折り合い-10 |
-| whipStaminaCost | 20 | ムチ1発の脚の消費 |
+| earlyWhipEffectPermille / earlyWhipComposurePenalty | 150 / 10 | スパート前のムチは効果15%、折り合い-10 |
+| whipStaminaCost | 25 | ムチ1発の脚の消費 |
 | cpuDecisionIntervalTicks | 4 | CPUの判断間隔 |
 | cpuWhipIntervalTicks / cpuWhipStartDistanceM | 24 / 400 | CPUのムチ間隔と開始地点（残り距離） |
 | cpuTargetRank*Permille | 0 / 400 / 550 / 800 | 脚質ごとの道中の目標位置（0=先頭、1000=最後方） |
@@ -256,39 +259,37 @@ client.SendPing(localNowMs);
 |---|---|---|
 | goingTurf{Firm,Good,Yielding,Soft}SpeedPermille | 1008 / 1000 / 975 / 948 | 芝の馬場ごとの最高速 |
 | goingDirt{Fast,Good,Muddy,Sloppy}SpeedPermille | 995 / 1000 / 1005 / 1010 | ダートの馬場ごとの最高速（湿ると速い） |
-| goingTurf{…}DrainPermille | 970 / 1000 / 1040 / 1080 | 芝の馬場ごとの脚の消費 |
-| goingDirt{…}DrainPermille | 1110 / 1100 / 1080 / 1060 | ダートの脚の消費（乾いた砂ほど力が要る） |
+| goingTurf{…}DrainPermille | 970 / 1000 / 1020 / 1040 | 芝の馬場ごとの脚の消費 |
+| goingDirt{…}DrainPermille | 1110 / 1100 / 1100 / 1120 | ダートの脚の消費 |
 | dirtSpeedPermille | 965 | ダートは芝より遅い |
 | goingSpecialistPermille | 8 | 得意馬場の最高速ボーナス（逆の馬場では同じだけ減る、稍重は半分） |
 
 `track.night` は計算に使わない（演出と実況だけ）。
 
-## 計測したバランス（既定ルールセット、2000m芝、平均能力±150のCPU12頭×1000レース）
+### バランス調整のキー（ルールセット1.1で追加。全部あるか全部ないか。ない＝下の中立値で1.0と同じ結果）
 
-| 指標 | 値 |
-|---|---|
-| 勝ち時計の平均 | 89.2秒（最速86.8秒） |
-| 最下位の平均 | 96.1秒（最遅99.8秒）、未完走 0 |
-| 脚質別の1頭あたり勝率（均等なら8.3%） | 逃げ 9.2% / 先行 9.1% / 差し 8.2% / 追込 6.8% |
-| 能力合計が最も高い馬の勝率 / 3着内率 | 31.7% / 67.0% |
-| 脚を使い切ってゴールした馬 | 52.3% |
+| キー | 既定（中立値） | 意味 |
+|---|---|---|
+| conditionVariancePermille | 25（0） | その日の調子：各馬の最高速をレースごとに ±この千分率で揺らす（シードから決まる専用の乱数。タイムアタックとチュートリアルでは0） |
+| cpuStaminaReinMinLevel | 1（1） | このレベル未満のCPUは脚の温存のための手綱を使わない |
+| cpuRailMinLevel | 3（3） | このレベル以上のCPUは空いていれば必ず内へ寄る（未満は半分の確率） |
+| autoRailIntervalTicks | 10（0） | 騎手の自動の内寄せ：安全な時はこの間隔で1レーン内へ（0=なし）。スパート区間では動かない |
+| autoRailHoldTicks | 60（0） | プレイヤー（CPU含む）が内外を操作した後この間は自動の内寄せをしない |
+| cpuSloppyMaxLevel | 3（0） | このレベル以下のCPUは初心者の癖で走る（スタート反応+3tick、ムチは残り250〜600mから不規則、脚の温存なし） |
 
-### 馬場状態ごと（各500レース、`balance <ruleset> 500 going=… [surface=dirt] apt=mix`。芝は2000m、ダートは1800m。得意馬場は3頭に1頭ずつ any / fast / heavy）
+## 計測したバランス（ルールセット1.1.0）
 
-| コース | 勝ち時計の平均 | 脚質別の勝率（逃げ / 先行 / 差し / 追込） | 得意馬場別の勝率（any / fast / heavy） |
-|---|---|---|---|
-| 芝・良（firm） | 88.3秒（−1.0%） | 11.3% / 7.6% / 7.3% / 7.2% | 8.0% / 14.1% / 2.9% |
-| 芝・良（good） | 89.2秒（旧来と同一） | 9.0% / 9.3% / 8.3% / 6.7% | 9.2% / 8.5% / 7.2% |
-| 芝・稍重 | 91.4秒（+2.5%） | 8.0% / 8.7% / 8.8% / 7.8% | 9.5% / 6.6% / 9.0% |
-| 芝・重 | 93.8秒（+5.2%） | 5.9% / 9.8% / 8.8% / 8.9% | 8.0% / 4.4% / 12.6% |
-| ダート・良（fast） | 82.8秒 | 11.3% / 7.7% / 7.3% / 7.1% | 7.9% / 14.1% / 3.0% |
-| ダート・良（good） | 82.5秒 | 11.7% / 7.6% / 7.0% / 7.1% | 9.0% / 8.7% / 7.2% |
-| ダート・稍重 | 82.1秒 | 13.9% / 6.7% / 6.8% / 6.0% | 9.0% / 6.8% / 9.1% |
-| ダート・不良 | 81.6秒 | 14.6% / 7.0% / 5.9% / 6.0% | 8.3% / 4.5% / 12.1% |
+目標・計測方法・変更前後の全表は [docs/spec/balance-targets.md](../docs/spec/balance-targets.md)。`harness` が全項目を測り、`BalanceTests.DefaultRulesetMeetsEveryHarnessTarget` が毎回チェックする（約10秒）。
 
-（全馬場で脚質の勝率が4〜17%に収まることを `GroundDoesNotSkewRunningStylesExcessively` で確認）
-- 重馬場は良より5%前後遅く、スタミナ勝負になって逃げが不利・追込が有利に寄る。
-- ダートは芝より1mあたり約2%遅く、湿るほど時計が速くなり逃げが残りやすい（実際の傾向に合わせた）。
-- 得意馬場の差は「勝ちやすくなる」程度（重で heavy 12.6% 対 fast 4.4%）。
+| 指標 | 1.0.0 | 1.1.0 |
+|---|---|---|
+| 2000m良の勝ち時計 | 89.2秒 | 89.6秒 |
+| 脚質別の1頭あたり勝率（全8馬場の最小〜最大、一様=8.3%） | 5.1〜15.5% | 7.0〜9.8% |
+| 内枠(1-4)と外枠(9-12)の1頭あたり勝率 | 15.6% / 3.8% | 8.8% / 7.7% |
+| 上手い人が同じ馬でCPU(レベル3)より上げる着順 | +1.6 | +2.1 |
+| 初心者が同じ馬でCPU(レベル3)より上げる着順 | −3.9 | −0.9 |
+| 上手い人(500)が上手い人(525)に先着 | 30% | 32% |
+| 能力合計が最大の馬の勝率 | 37.9% | 28.7% |
+| 重馬場が得意な馬の勝率（重、一様比） | 1.48倍 | 1.49倍 |
 
-性質テスト：間隔をあけて残り400mからムチ6発 → ムチなしより速い。残り400m内の連打 → 間隔をあけるより遅い。風よけで後ろの馬の脚が残る。コーナーで外を回ると遅い（直線では差なし）。レベル5のCPUがレベル1より勝つ。
+性質テスト：間隔をあけたムチ6発 → ムチなしより速い（残り400mからでも）。連打・早打ち → 損。風よけで後ろの馬の脚が残る。コーナーで外を回ると遅い（直線では差なし）。CPUレベル1〜5の勝率は単調。

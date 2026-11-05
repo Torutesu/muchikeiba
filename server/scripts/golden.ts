@@ -5,7 +5,7 @@ import { newPlayer } from '../src/domain/player.js';
 import { createHorseFromTemplate } from '../src/domain/horses.js';
 import type { RaceStartConfig } from '../src/domain/schemas.js';
 import { eventRuleset } from '../src/domain/events.js';
-import { DEFAULT_RULESET } from '../src/domain/ruleset.js';
+import { DEFAULT_RULESET, timeAttackRuleset } from '../src/domain/ruleset.js';
 
 /** Configs written to contracts/golden for the C# side to run (contracts/protocol.md §9). Fixed seeds. */
 export function goldenConfigs(): Record<string, RaceStartConfig> {
@@ -33,7 +33,7 @@ export function goldenConfigs(): Record<string, RaceStartConfig> {
   });
   // time attack (REQ-TA-002): exactly what startTimeAttack builds — one human, no CPU, normalised stats
   const timeattack = buildRaceConfig(m, {
-    raceId: 'ta_golden', mode: 'timeattack', trackId: 'kirameki_turf_2000',
+    raceId: 'ta_golden', mode: 'timeattack', trackId: 'kirameki_turf_2000', rulesetOverrides: timeAttackRuleset(), // as startTimeAttack issues it
     humans: [{ playerId: 'p_alice', horse: horse('t_akatsuki') }],
     cpuCount: 0, cpuLevel: 3, statCap: m.progression.timeAttack.statCap, rng: seededRng(777),
   });

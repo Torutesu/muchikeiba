@@ -30,7 +30,9 @@
         "kind": "straight",
         "lengthM": 600
       }
-    ]
+    ],
+    "going": "soft",
+    "night": true
   },
   "net": {
     "tickHz": 20,
@@ -93,7 +95,25 @@
     "cpuTargetRankNigePermille": 0,
     "cpuTargetRankSenkoPermille": 400,
     "cpuTargetRankSashiPermille": 550,
-    "cpuTargetRankOikomiPermille": 800
+    "cpuTargetRankOikomiPermille": 800,
+    "goingTurfFirmSpeedPermille": 1008,
+    "goingTurfGoodSpeedPermille": 1000,
+    "goingTurfYieldingSpeedPermille": 975,
+    "goingTurfSoftSpeedPermille": 948,
+    "goingDirtFastSpeedPermille": 995,
+    "goingDirtGoodSpeedPermille": 1000,
+    "goingDirtMuddySpeedPermille": 1005,
+    "goingDirtSloppySpeedPermille": 1010,
+    "goingTurfFirmDrainPermille": 970,
+    "goingTurfGoodDrainPermille": 1000,
+    "goingTurfYieldingDrainPermille": 1040,
+    "goingTurfSoftDrainPermille": 1080,
+    "goingDirtFastDrainPermille": 1110,
+    "goingDirtGoodDrainPermille": 1100,
+    "goingDirtMuddyDrainPermille": 1080,
+    "goingDirtSloppyDrainPermille": 1060,
+    "dirtSpeedPermille": 965,
+    "goingSpecialistPermille": 8
   },
   "entrants": [
     {
@@ -102,17 +122,18 @@
       "playerId": null,
       "cpuLevel": 2,
       "horse": {
-        "id": "cpu_t_akanegumo",
-        "name": "アカネグモ",
-        "speed": 570,
-        "stamina": 650,
-        "burst": 630,
-        "guts": 530,
-        "temper": 510,
+        "id": "cpu_t_kurogane",
+        "name": "クロガネオウジ",
+        "speed": 680,
+        "stamina": 720,
+        "burst": 740,
+        "guts": 600,
+        "temper": 450,
         "style": "oikomi",
         "distMinM": 1800,
         "distMaxM": 2600,
-        "surface": "turf"
+        "surface": "turf",
+        "goingAptitude": "heavy"
       }
     },
     {
@@ -121,17 +142,18 @@
       "playerId": null,
       "cpuLevel": 2,
       "horse": {
-        "id": "cpu_t_akatsuki",
-        "name": "シンセイアカツキ",
-        "speed": 820,
-        "stamina": 700,
-        "burst": 900,
-        "guts": 650,
-        "temper": 520,
-        "style": "sashi",
-        "distMinM": 1600,
-        "distMaxM": 2400,
-        "surface": "turf"
+        "id": "cpu_t_aozora",
+        "name": "アオゾラマーチ",
+        "speed": 630,
+        "stamina": 520,
+        "burst": 520,
+        "guts": 600,
+        "temper": 480,
+        "style": "nige",
+        "distMinM": 1200,
+        "distMaxM": 1800,
+        "surface": "turf",
+        "goingAptitude": "fast"
       }
     },
     {
@@ -150,7 +172,8 @@
         "style": "senko",
         "distMinM": 1800,
         "distMaxM": 2600,
-        "surface": "turf"
+        "surface": "turf",
+        "goingAptitude": "heavy"
       }
     },
     {
@@ -169,7 +192,8 @@
         "style": "oikomi",
         "distMinM": 2000,
         "distMaxM": 3000,
-        "surface": "turf"
+        "surface": "turf",
+        "goingAptitude": "heavy"
       }
     },
     {
@@ -178,17 +202,17 @@
       "playerId": null,
       "cpuLevel": 2,
       "horse": {
-        "id": "cpu_t_umineko",
-        "name": "ウミネコパレード",
-        "speed": 690,
-        "stamina": 700,
-        "burst": 720,
-        "guts": 580,
-        "temper": 560,
-        "style": "sashi",
-        "distMinM": 1600,
-        "distMaxM": 2400,
-        "surface": "turf"
+        "id": "cpu_t_kazamidori",
+        "name": "カザミドリノウタ",
+        "speed": 595,
+        "stamina": 570,
+        "burst": 560,
+        "guts": 590,
+        "temper": 530,
+        "style": "senko",
+        "distMinM": 1400,
+        "distMaxM": 2000,
+        "surface": "both"
       }
     },
     {
@@ -197,17 +221,18 @@
       "playerId": null,
       "cpuLevel": 2,
       "horse": {
-        "id": "cpu_t_harukaze",
-        "name": "ハルカゼノミチ",
-        "speed": 700,
-        "stamina": 680,
+        "id": "cpu_t_sunaarashi",
+        "name": "スナアラシ",
+        "speed": 720,
+        "stamina": 640,
         "burst": 600,
-        "guts": 650,
-        "temper": 500,
+        "guts": 720,
+        "temper": 470,
         "style": "nige",
-        "distMinM": 1600,
-        "distMaxM": 2200,
-        "surface": "turf"
+        "distMinM": 1200,
+        "distMaxM": 1800,
+        "surface": "dirt",
+        "goingAptitude": "heavy"
       }
     }
   ]

@@ -9,11 +9,27 @@ export type Ruleset = { rulesetVersion: string; maxTicks: number } & Record<stri
 
 export const DEFAULT_RULESET: Ruleset = Object.freeze({ ...(defaultRulesetJson as unknown as Ruleset) });
 
+/**
+ * Keys added after the first ruleset (ground conditions, REQ-RACE-034/035). Replays stored before they existed
+ * omit all of them; the engine then uses neutral values that reproduce the old results. All or none.
+ * Must equal RulesetParams.OptionalIntKeys in engine/Muchi.Engine (checked by a test).
+ */
+export const OPTIONAL_RULESET_KEYS: readonly string[] = [
+  'goingTurfFirmSpeedPermille', 'goingTurfGoodSpeedPermille', 'goingTurfYieldingSpeedPermille', 'goingTurfSoftSpeedPermille',
+  'goingDirtFastSpeedPermille', 'goingDirtGoodSpeedPermille', 'goingDirtMuddySpeedPermille', 'goingDirtSloppySpeedPermille',
+  'goingTurfFirmDrainPermille', 'goingTurfGoodDrainPermille', 'goingTurfYieldingDrainPermille', 'goingTurfSoftDrainPermille',
+  'goingDirtFastDrainPermille', 'goingDirtGoodDrainPermille', 'goingDirtMuddyDrainPermille', 'goingDirtSloppyDrainPermille',
+  'dirtSpeedPermille', 'goingSpecialistPermille',
+];
+
 export function rulesetKeyProblems(candidate: Record<string, unknown>, reference: Record<string, unknown> = DEFAULT_RULESET): string[] {
   const problems: string[] = [];
   const refKeys = new Set(Object.keys(reference));
   const keys = new Set(Object.keys(candidate));
-  for (const k of refKeys) if (!keys.has(k)) problems.push(`missing key: ${k}`);
+  const optional = new Set(OPTIONAL_RULESET_KEYS);
+  const optionalPresent = OPTIONAL_RULESET_KEYS.filter((k) => keys.has(k)).length;
+  if (optionalPresent !== 0 && optionalPresent !== OPTIONAL_RULESET_KEYS.length) problems.push('ground-condition keys must be all present or all absent');
+  for (const k of refKeys) if (!keys.has(k) && !(optional.has(k) && optionalPresent === 0)) problems.push(`missing key: ${k}`);
   for (const k of keys) if (!refKeys.has(k)) problems.push(`unknown key: ${k}`);
   for (const [k, v] of Object.entries(candidate)) {
     if (k === 'rulesetVersion') {

@@ -93,7 +93,25 @@
     "cpuTargetRankNigePermille": 0,
     "cpuTargetRankSenkoPermille": 400,
     "cpuTargetRankSashiPermille": 550,
-    "cpuTargetRankOikomiPermille": 800
+    "cpuTargetRankOikomiPermille": 800,
+    "goingTurfFirmSpeedPermille": 1008,
+    "goingTurfGoodSpeedPermille": 1000,
+    "goingTurfYieldingSpeedPermille": 975,
+    "goingTurfSoftSpeedPermille": 948,
+    "goingDirtFastSpeedPermille": 995,
+    "goingDirtGoodSpeedPermille": 1000,
+    "goingDirtMuddySpeedPermille": 1005,
+    "goingDirtSloppySpeedPermille": 1010,
+    "goingTurfFirmDrainPermille": 970,
+    "goingTurfGoodDrainPermille": 1000,
+    "goingTurfYieldingDrainPermille": 1040,
+    "goingTurfSoftDrainPermille": 1080,
+    "goingDirtFastDrainPermille": 1110,
+    "goingDirtGoodDrainPermille": 1100,
+    "goingDirtMuddyDrainPermille": 1080,
+    "goingDirtSloppyDrainPermille": 1060,
+    "dirtSpeedPermille": 965,
+    "goingSpecialistPermille": 8
   },
   "entrants": [
     {
@@ -102,7 +120,7 @@
       "playerId": "p_alice",
       "cpuLevel": 3,
       "horse": {
-        "id": "h6",
+        "id": "h8",
         "name": "シンセイアカツキ",
         "speed": 730,
         "stamina": 623,

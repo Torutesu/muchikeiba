@@ -1,11 +1,15 @@
 {
-  "_note": "すべて架空の競馬場。segments の lengthM 合計は distanceM と一致させること。",
+  "_note": "すべて架空の競馬場。segments の lengthM 合計は distanceM と一致させること。lights: true はナイター開催ができる競馬場（夜の時間帯のレースは night になる）。",
   "tracks": [
     { "id": "aoba_turf_1600", "name": "青葉競馬場 芝1600m", "surface": "turf", "distanceM": 1600,
       "segments": [ { "kind": "straight", "lengthM": 350 }, { "kind": "corner", "lengthM": 600, "radiusM": 120 }, { "kind": "straight", "lengthM": 650 } ] },
     { "id": "kirameki_turf_2000", "name": "きらめき競馬場 芝2000m", "surface": "turf", "distanceM": 2000,
       "segments": [ { "kind": "straight", "lengthM": 300 }, { "kind": "corner", "lengthM": 300, "radiusM": 110 }, { "kind": "straight", "lengthM": 450 }, { "kind": "corner", "lengthM": 450, "radiusM": 110 }, { "kind": "straight", "lengthM": 500 } ] },
-    { "id": "minato_turf_2400", "name": "みなと競馬場 芝2400m", "surface": "turf", "distanceM": 2400,
-      "segments": [ { "kind": "straight", "lengthM": 400 }, { "kind": "corner", "lengthM": 300, "radiusM": 130 }, { "kind": "straight", "lengthM": 500 }, { "kind": "corner", "lengthM": 600, "radiusM": 130 }, { "kind": "straight", "lengthM": 600 } ] }
+    { "id": "minato_turf_2400", "name": "みなと競馬場 芝2400m", "surface": "turf", "lights": true, "distanceM": 2400,
+      "segments": [ { "kind": "straight", "lengthM": 400 }, { "kind": "corner", "lengthM": 300, "radiusM": 130 }, { "kind": "straight", "lengthM": 500 }, { "kind": "corner", "lengthM": 600, "radiusM": 130 }, { "kind": "straight", "lengthM": 600 } ] },
+    { "id": "aoba_dirt_1400", "name": "青葉競馬場 ダート1400m", "surface": "dirt", "distanceM": 1400,
+      "segments": [ { "kind": "straight", "lengthM": 350 }, { "kind": "corner", "lengthM": 550, "radiusM": 100 }, { "kind": "straight", "lengthM": 500 } ] },
+    { "id": "minato_dirt_1800", "name": "みなと競馬場 ダート1800m", "surface": "dirt", "lights": true, "distanceM": 1800,
+      "segments": [ { "kind": "straight", "lengthM": 300 }, { "kind": "corner", "lengthM": 500, "radiusM": 100 }, { "kind": "straight", "lengthM": 350 }, { "kind": "corner", "lengthM": 300, "radiusM": 95 }, { "kind": "straight", "lengthM": 350 } ] }
   ]
 }

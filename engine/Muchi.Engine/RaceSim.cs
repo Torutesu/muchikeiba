@@ -43,6 +43,7 @@ namespace Muchi.Engine
         private readonly Fx _laneWidth;      // meters
         private readonly Fx _blockRange, _slipRange, _clearance, _spurtDist, _halfLane, _minGap;
         private readonly int _tickHz;
+        private readonly int _goingDrainPermille; // race-wide stamina drain factor from the ground (1000 = neutral)
 
         public RaceSim(RaceConfig config)
         {
@@ -72,6 +73,15 @@ namespace Muchi.Engine
             _halfLane = Fx.FromRatio(1, 2);
             _minGap = Fx.FromMilli(P.MinGapMm);
 
+            // ground condition (REQ-RACE-034): absent going = Good, which is neutral (1000‰) on turf,
+            // so configs without the new fields reproduce exactly the same results as before.
+            int g = (int)config.Track.EffectiveGoing;
+            bool dirt = config.Track.Surface == Surface.Dirt;
+            int goingSpeedPermille = dirt
+                ? (int)((long)P.DirtSpeedPermille * P.GoingDirtSpeedPermille[g] / 1000)
+                : P.GoingTurfSpeedPermille[g];
+            _goingDrainPermille = dirt ? P.GoingDirtDrainPermille[g] : P.GoingTurfDrainPermille[g];
+
             for (int i = 0; i < _n; i++)
             {
                 var e = config.Entrants[i];
@@ -81,6 +91,9 @@ namespace Muchi.Engine
                 if (h.Surface != Surface.Both && h.Surface != config.Track.Surface) penalty += P.AptitudeOutPenaltyPermille;
                 long topMm = P.BaseCruiseSpeedMmPerSec + (long)h.Speed * P.SpeedStatBonusMmPerSecPer1000 / 1000;
                 topMm = topMm * (1000 - penalty) / 1000;
+                if (goingSpeedPermille != 1000) topMm = topMm * goingSpeedPermille / 1000;
+                int spec = GoingSpecialistPermille(h.GoingAptitude ?? GoingAptitude.Any, config.Track.EffectiveGoing, P.GoingSpecialistPermille);
+                if (spec != 0) topMm = topMm * (1000 + spec) / 1000;
                 _topSpeed[i] = Fx.FromMilli(topMm);
                 long stamina = P.StaminaBase + (long)h.Stamina * P.StaminaPerStatPoint;
                 stamina = stamina * (1000 - penalty) / 1000;
@@ -108,6 +121,25 @@ namespace Muchi.Engine
                 _prev[i] = s;
                 _rankOrder[i] = i;
             }
+        }
+
+        /// <summary>
+        /// Top-speed adjustment (‰) for a horse's ground preference (REQ-RACE-035): a fast-ground horse gains on
+        /// firm/fast and loses on soft/sloppy (half on yielding/muddy); a heavy-ground horse the opposite.
+        /// </summary>
+        public static int GoingSpecialistPermille(GoingAptitude apt, Going going, int maxPermille)
+        {
+            if (apt == GoingAptitude.Any || maxPermille == 0) return 0;
+            int wet; // -2 firm, 0 good, +1 yielding, +2 soft (in half steps of maxPermille)
+            switch (going)
+            {
+                case Going.FirmOrFast: wet = -2; break;
+                case Going.YieldingOrMuddy: wet = 1; break;
+                case Going.SoftOrSloppy: wet = 2; break;
+                default: wet = 0; break;
+            }
+            int sign = apt == GoingAptitude.Heavy ? 1 : -1;
+            return sign * wet * maxPermille / 2;
         }
 
         // ------------------------------------------------------------------ read API
@@ -368,6 +400,7 @@ namespace Muchi.Engine
             if (slip) drainRaw = drainRaw * (1000 - P.SlipstreamSavePermille) / 1000;
             if (h.Reining) drainRaw = drainRaw * P.ReinDrainPermille / 1000;
             if (h.Composure < P.BadComposureThreshold) drainRaw = drainRaw * (1000 + P.BadComposureExtraDrainPermille) / 1000;
+            if (_goingDrainPermille != 1000) drainRaw = drainRaw * _goingDrainPermille / 1000;
             h.Stamina = Fx.FromRaw(Math.Max(0, h.Stamina.Raw - drainRaw));
 
             // movement with corner geometry (REQ-RACE-043)

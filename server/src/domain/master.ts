@@ -9,7 +9,7 @@ import type { TimeAttackConfig } from './timeAttack.js';
 import progressionJson from '../../master/progression.json';
 import titlesJson from '../../master/titles.json';
 import pushJson from '../../master/push.json';
-import { trackSchema, type Track } from './schemas.js';
+import { trackSchema, type GoingAptitude, type Going, type Track } from './schemas.js';
 import { AppError } from './errors.js';
 
 export type Rarity = 'R' | 'SR' | 'SSR';
@@ -22,6 +22,8 @@ export const STAT_KEYS: (keyof Stats)[] = ['speed', 'stamina', 'burst', 'guts', 
 export interface HorseTemplate {
   id: string; name: string; rarity: Rarity; sex: Sex; style: Style; distMinM: number; distMaxM: number;
   surface: 'turf' | 'dirt' | 'both'; line: string; sireName: string; damName: string; stats: Stats;
+  /** Ground preference (REQ-RACE-035). Absent = any. */
+  goingAptitude?: GoingAptitude;
 }
 export interface ItemQty { itemId: string; qty: number }
 export interface Reward { freeCoins?: number; items?: ItemQty[] }
@@ -50,6 +52,20 @@ export interface Progression {
   friendRewardDailyCap: number;
   /** REQ-TA-*: time attack rules. */
   timeAttack: TimeAttackConfig;
+  /** REQ-RACE-037: daily ground per course and night racing at lit venues. */
+  weather: WeatherConfig;
+}
+export interface WeatherOverride { trackId?: string; fromMs: number; toMs: number; going: Going; night?: boolean }
+export interface WeatherConfig {
+  salt: string;
+  /** Relative weights per going name. */
+  turf: Partial<Record<'firm' | 'good' | 'yielding' | 'soft', number>>;
+  dirt: Partial<Record<'fast' | 'good' | 'muddy' | 'sloppy', number>>;
+  /** Races at lit venues between these JST hours (from inclusive, to exclusive; may wrap midnight) run at night. */
+  nightFromHourJst: number; nightToHourJst: number;
+  /** Modes that get weather; others (tutorial, time attack) race on good ground by day with no fields sent. */
+  modes: string[];
+  overrides: WeatherOverride[];
 }
 export type TitleCondition =
   | { kind: 'races' | 'wins' | 'top3' | 'perfectStarts' | 'whipPerfectWins'; value: number }
@@ -84,6 +100,8 @@ export interface PityGroupDef { cost: number; endAtMs?: number; convertTo?: stri
 export interface GachaMaster { duplicateMaterial: Record<Rarity, number>; pityGroups: Record<string, PityGroupDef>; banners: BannerDef[] }
 export interface Master {
   tracks: Track[]; templates: HorseTemplate[]; templateById: Map<string, HorseTemplate>;
+  /** Track ids of venues with floodlights (night racing possible). Master-only; never sent in a race config. */
+  litTracks: Set<string>;
   gacha: GachaMaster; nicks: { bonus: number; pairs: [string, string][] }; ng: { exact: string[]; contains: string[] };
   ageLimits: AgeLimits; products: Product[]; firstPurchaseBonusAsPaid: boolean; progression: Progression;
   titles: TitleDef[];
@@ -137,14 +155,13 @@ export function loadMaster(): Master {
   if (cached) return cached;
   const templates = (horsesJson as { templates: HorseTemplate[] }).templates;
   const templateById = new Map(templates.map((t) => [t.id, t]));
-  const tracks = (tracksJson as { tracks: unknown[] }).tracks.map((t) => {
-    const { name: _name, ...rest } = t as Record<string, unknown>;
-    return trackSchema.parse(rest);
-  });
+  const split = (tracksJson as { tracks: Record<string, unknown>[] }).tracks.map(splitMasterTrack);
+  const tracks = split.map((x) => trackSchema.parse(x.track));
+  const litTracks = new Set(split.filter((x) => x.lights).map((x) => tracks[split.indexOf(x)]!.id));
   const g = gachaJson as unknown as { duplicateMaterial: Record<Rarity, number>; pityGroups: Record<string, { cost: number }>; banners: RawBanner[] };
   const p = productsJson as unknown as { firstPurchaseBonusAsPaid: boolean; products: Product[] };
   const m: Master = {
-    tracks, templates, templateById,
+    tracks, templates, templateById, litTracks,
     gacha: { duplicateMaterial: g.duplicateMaterial, pityGroups: g.pityGroups, banners: g.banners.map((b) => buildBanner(b, templates)) },
     nicks: nicksJson as unknown as Master['nicks'],
     ng: ngJson as unknown as Master['ng'],
@@ -156,6 +173,12 @@ export function loadMaster(): Master {
   };
   cached = m;
   return m;
+}
+
+/** Separates master-only track fields (name, lights) from the race-config track. */
+export function splitMasterTrack(raw: Record<string, unknown>): { track: Record<string, unknown>; lights: boolean } {
+  const { name: _name, lights, ...track } = raw;
+  return { track, lights: lights === true };
 }
 
 export function trackById(m: Master, id: string): Track {

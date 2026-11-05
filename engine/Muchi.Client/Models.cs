@@ -89,6 +89,8 @@ namespace Muchi.Client
     public sealed class Horse
     {
         public string Id, TemplateId, Name, Rarity, Sex, Style, Surface, Line, Status, SireId, DamId, SireName, DamName;
+        /// <summary>Ground preference: "any" | "fast" (firm/fast ground) | "heavy" (soft/sloppy ground). REQ-RACE-035.</summary>
+        public string GoingAptitude = "any";
         public int DistMinM, DistMaxM, Awakening;
         public long BornAt;
         public bool Named;
@@ -104,6 +106,7 @@ namespace Muchi.Client
             SireName = J.Str(o, "sireName"), DamName = J.Str(o, "damName"),
             DistMinM = J.Int(o, "distMinM"), DistMaxM = J.Int(o, "distMaxM"), Awakening = J.Int(o, "awakening"),
             BornAt = J.Long(o, "bornAt"), Named = J.Bool(o, "named"), Base = Stats.Parse(J.Opt(o, "base")),
+            GoingAptitude = J.Str(o, "goingAptitude") ?? "any",
         };
     }
 
@@ -380,6 +383,8 @@ namespace Muchi.Client
         public Dictionary<string, long> StyleMilliPercent = new Dictionary<string, long>();
         public int DistanceMinM, DistanceMaxM;
         public string Surface;
+        /// <summary>Foal ground preference odds in permille ("any" / "fast" / "heavy"), same function as the real breeding.</summary>
+        public Dictionary<string, int> GoingAptitudePermille = new Dictionary<string, int>();
         internal static BreedingPreview Parse(JsonNode o)
         {
             var d = J.Opt(o, "distance");
@@ -387,6 +392,7 @@ namespace Muchi.Client
             {
                 Stats = J.Map(o, "stats", StatRange.Parse), Nick = J.Bool(o, "nick"), InbreedingCount = J.Int(o, "inbreedingCount"),
                 StyleMilliPercent = J.Map(o, "styles", J.Milli), DistanceMinM = J.Int(d, "minM"), DistanceMaxM = J.Int(d, "maxM"), Surface = J.Str(o, "surface"),
+                GoingAptitudePermille = J.Opt(o, "goingAptitude") == null ? new Dictionary<string, int>() : J.Map(o, "goingAptitude", n => n.AsInt()),
             };
         }
     }

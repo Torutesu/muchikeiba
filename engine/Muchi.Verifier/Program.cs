@@ -23,10 +23,21 @@ if (args.Length >= 3 && args[0] == "golden")
 if (args.Length >= 2 && args[0] == "balance")
 {
     var rsNode = Muchi.Net.JsonNode.Parse(File.ReadAllText(args[1]));
-    foreach (var kv in args.Skip(3)) { var parts = kv.Split('='); rsNode.Set(parts[0], long.Parse(parts[1])); }
+    // track options: surface=turf|dirt going=<name> apt=mix ; everything else overrides a ruleset key
+    string surface = "turf", goingName = null; bool aptMix = false;
+    foreach (var kv in args.Skip(3))
+    {
+        var parts = kv.Split('=');
+        if (parts[0] == "surface") surface = parts[1];
+        else if (parts[0] == "going") goingName = parts[1];
+        else if (parts[0] == "apt") aptMix = parts[1] == "mix";
+        else rsNode.Set(parts[0], long.Parse(parts[1]));
+    }
     var rs = Muchi.Net.ProtocolCodec.ParseRuleset(rsNode);
     int n = args.Length >= 3 ? int.Parse(args[2]) : 200;
-    var rep = BalanceProbe.Run(rs, n);
+    var track = surface == "dirt" ? SampleRaces.Dirt1800() : SampleRaces.Turf2000();
+    if (goingName != null) track.Going = Muchi.Net.ProtocolCodec.ParseGoing(goingName, track.Surface);
+    var rep = BalanceProbe.Run(rs, n, 1, 150, track, aptMix);
     Console.Write(rep.Describe(20, rs.GateOpenTick));
     return 0;
 }

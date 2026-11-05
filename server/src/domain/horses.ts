@@ -1,6 +1,7 @@
 import { AppError, assert } from './errors.js';
 import { STAT_KEYS, type HorseTemplate, type Master, type Rarity, type Sex, type Stats, type Style } from './master.js';
 import type { HorseInstance, PlayerState } from './player.js';
+import type { GoingAptitude } from './schemas.js';
 import { randInt, randRange, type Rng } from './rng.js';
 import { jstDateKey } from './time.js';
 
@@ -11,6 +12,7 @@ export function createHorseFromTemplate(s: PlayerState, t: HorseTemplate, now: n
     distMinM: t.distMinM, distMaxM: t.distMaxM, surface: t.surface, line: t.line, base: { ...t.stats }, awakening: 0,
     bornAt: now, status: 'active', sireId: null, damId: null, sireName: t.sireName, damName: t.damName, named: false,
   };
+  if (t.goingAptitude && t.goingAptitude !== 'any') h.goingAptitude = t.goingAptitude;
   s.horses.push(h);
   return h;
 }
@@ -156,6 +158,31 @@ export function rarityForTotal(total: number): Rarity {
   return total >= 3700 ? 'SSR' : total >= 3200 ? 'SR' : 'R';
 }
 
+/**
+ * Ground preference inheritance (REQ-RACE-035), in permille per aptitude. Used by both breed() and the
+ * preview so the shown odds are the real ones. A parent without a preference counts as "any".
+ */
+export function goingAptitudeOdds(sire: Pick<HorseInstance, 'goingAptitude'>, dam: Pick<HorseInstance, 'goingAptitude'>): Record<GoingAptitude, number> {
+  const a = sire.goingAptitude ?? 'any';
+  const b = dam.goingAptitude ?? 'any';
+  if (a === b) return a === 'any' ? { any: 1000, fast: 0, heavy: 0 } : { any: 200, fast: a === 'fast' ? 800 : 0, heavy: a === 'heavy' ? 800 : 0 };
+  if (a === 'any' || b === 'any') {
+    const x = a === 'any' ? b : a;
+    return { any: 500, fast: x === 'fast' ? 500 : 0, heavy: x === 'heavy' ? 500 : 0 };
+  }
+  return { any: 200, fast: 400, heavy: 400 }; // fast × heavy
+}
+
+function rollGoingAptitude(odds: Record<GoingAptitude, number>, rng: Rng): GoingAptitude {
+  if (odds.any === 1000) return 'any'; // no draw: keeps RNG use unchanged for parents without preferences
+  let r = randInt(rng, 1000);
+  for (const k of ['fast', 'heavy', 'any'] as const) {
+    if (r < odds[k]) return k;
+    r -= odds[k];
+  }
+  return 'any';
+}
+
 /** Breeding preview from the same baseline function (REQ-HORSE-008). */
 export function breedingPreview(m: Master, s: PlayerState, sireId: string, damId: string) {
   const { sire, dam } = checkPair(s, sireId, damId);
@@ -172,6 +199,7 @@ export function breedingPreview(m: Master, s: PlayerState, sireId: string, damId
     styles: styleOdds,
     distance: { minM: Math.max(1000, b.distMin - jitter), maxM: b.distMax + jitter },
     surface: sire.surface === dam.surface ? sire.surface : 'both or a parent\'s',
+    goingAptitude: goingAptitudeOdds(sire, dam),
   };
 }
 
@@ -199,6 +227,8 @@ export function breed(m: Master, s: PlayerState, sireId: string, damId: string, 
     distMinM, distMaxM, surface, line: sire.line, base: stats, awakening: 0, bornAt: now, status: 'active',
     sireId: sire.id, damId: dam.id, sireName: sire.name, damName: dam.name, named: false,
   };
+  const apt = rollGoingAptitude(goingAptitudeOdds(sire, dam), rng);
+  if (apt !== 'any') foal.goingAptitude = apt;
   s.horses.push(foal);
   s.breeding.count += 1;
   assert(foal.distMinM <= foal.distMaxM, 'CONFIG_INVALID');

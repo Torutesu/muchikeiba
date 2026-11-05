@@ -66,6 +66,19 @@ namespace Muchi.Engine
         public int CpuTargetRankSashiPermille;
         public int CpuTargetRankOikomiPermille;
 
+        // ---- ground conditions (ruleset additions; REQ-RACE-034/035) ----
+        // Indexed by Going (0 firm|fast, 1 good, 2 yielding|muddy, 3 soft|sloppy).
+        public readonly int[] GoingTurfSpeedPermille = { 1000, 1000, 1000, 1000 };
+        public readonly int[] GoingDirtSpeedPermille = { 1000, 1000, 1000, 1000 };
+        public readonly int[] GoingTurfDrainPermille = { 1000, 1000, 1000, 1000 };
+        public readonly int[] GoingDirtDrainPermille = { 1000, 1000, 1000, 1000 };
+        /// <summary>Dirt is slower than turf at the same going.</summary>
+        public int DirtSpeedPermille = 1000;
+        /// <summary>Top-speed bonus for a horse whose GoingAptitude matches the ground (and the same penalty when opposite).</summary>
+        public int GoingSpecialistPermille;
+        /// <summary>True when the ground keys were present (they are optional so pre-1.1 rulesets in stored replays still parse).</summary>
+        public bool HasGoingKeys;
+
         /// <summary>Every integer key, in canonical order (rulesetVersion is the extra string key).</summary>
         public static readonly string[] IntKeys =
         {
@@ -87,13 +100,40 @@ namespace Muchi.Engine
 
         public const string VersionKey = "rulesetVersion";
 
+        /// <summary>
+        /// Keys added after the first ruleset. They may be absent (stored replays from before they existed);
+        /// absent keys take the neutral value below, which reproduces the old behaviour exactly.
+        /// Either all of them are present or none (partial sets are rejected).
+        /// </summary>
+        public static readonly string[] OptionalIntKeys =
+        {
+            "goingTurfFirmSpeedPermille", "goingTurfGoodSpeedPermille", "goingTurfYieldingSpeedPermille", "goingTurfSoftSpeedPermille",
+            "goingDirtFastSpeedPermille", "goingDirtGoodSpeedPermille", "goingDirtMuddySpeedPermille", "goingDirtSloppySpeedPermille",
+            "goingTurfFirmDrainPermille", "goingTurfGoodDrainPermille", "goingTurfYieldingDrainPermille", "goingTurfSoftDrainPermille",
+            "goingDirtFastDrainPermille", "goingDirtGoodDrainPermille", "goingDirtMuddyDrainPermille", "goingDirtSloppyDrainPermille",
+            "dirtSpeedPermille", "goingSpecialistPermille",
+        };
+
+        /// <summary>Neutral values for <see cref="OptionalIntKeys"/> (same order).</summary>
+        public static readonly int[] OptionalNeutralValues =
+        {
+            1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000,
+            1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000,
+            1000, 0,
+        };
+
         /// <summary>Builds params from a key/value map. Missing or unknown keys throw ArgumentException.</summary>
         public static RulesetParams FromValues(string rulesetVersion, IDictionary<string, long> values)
         {
             if (string.IsNullOrEmpty(rulesetVersion)) throw new ArgumentException("rulesetVersion required");
             var known = new HashSet<string>(IntKeys);
+            foreach (var k in OptionalIntKeys) known.Add(k);
             foreach (var k in values.Keys)
                 if (!known.Contains(k)) throw new ArgumentException("unknown ruleset key: " + k);
+            int optionalPresent = 0;
+            foreach (var k in OptionalIntKeys) if (values.ContainsKey(k)) optionalPresent++;
+            if (optionalPresent != 0 && optionalPresent != OptionalIntKeys.Length)
+                throw new ArgumentException("ground-condition ruleset keys must be all present or all absent");
             foreach (var k in IntKeys)
                 if (!values.ContainsKey(k)) throw new ArgumentException("missing ruleset key: " + k);
 
@@ -157,6 +197,20 @@ namespace Muchi.Engine
             p.CpuTargetRankSenkoPermille = G("cpuTargetRankSenkoPermille");
             p.CpuTargetRankSashiPermille = G("cpuTargetRankSashiPermille");
             p.CpuTargetRankOikomiPermille = G("cpuTargetRankOikomiPermille");
+            if (optionalPresent > 0)
+            {
+                p.HasGoingKeys = true;
+                string[] g = { "Firm", "Good", "Yielding", "Soft" }, d = { "Fast", "Good", "Muddy", "Sloppy" };
+                for (int i = 0; i < 4; i++)
+                {
+                    p.GoingTurfSpeedPermille[i] = G("goingTurf" + g[i] + "SpeedPermille");
+                    p.GoingDirtSpeedPermille[i] = G("goingDirt" + d[i] + "SpeedPermille");
+                    p.GoingTurfDrainPermille[i] = G("goingTurf" + g[i] + "DrainPermille");
+                    p.GoingDirtDrainPermille[i] = G("goingDirt" + d[i] + "DrainPermille");
+                }
+                p.DirtSpeedPermille = G("dirtSpeedPermille");
+                p.GoingSpecialistPermille = G("goingSpecialistPermille");
+            }
             p.Validate();
             return p;
         }
@@ -183,6 +237,18 @@ namespace Muchi.Engine
                 CpuTargetRankOikomiPermille,
             };
             for (int i = 0; i < IntKeys.Length; i++) v.Add(new KeyValuePair<string, long>(IntKeys[i], vals[i]));
+            if (HasGoingKeys)
+            {
+                int[] opt =
+                {
+                    GoingTurfSpeedPermille[0], GoingTurfSpeedPermille[1], GoingTurfSpeedPermille[2], GoingTurfSpeedPermille[3],
+                    GoingDirtSpeedPermille[0], GoingDirtSpeedPermille[1], GoingDirtSpeedPermille[2], GoingDirtSpeedPermille[3],
+                    GoingTurfDrainPermille[0], GoingTurfDrainPermille[1], GoingTurfDrainPermille[2], GoingTurfDrainPermille[3],
+                    GoingDirtDrainPermille[0], GoingDirtDrainPermille[1], GoingDirtDrainPermille[2], GoingDirtDrainPermille[3],
+                    DirtSpeedPermille, GoingSpecialistPermille,
+                };
+                for (int i = 0; i < OptionalIntKeys.Length; i++) v.Add(new KeyValuePair<string, long>(OptionalIntKeys[i], opt[i]));
+            }
             return v;
         }
 
@@ -197,6 +263,14 @@ namespace Muchi.Engine
             if (MaxWhips < 0) throw new ArgumentException("maxWhips must be >= 0");
             if (MinGapMm < 0 || MinGapMm > BlockRangeMm) throw new ArgumentException("minGapMm must be 0..blockRangeMm");
             if (GutsFloorMaxPermille < GutsFloorMinPermille) throw new ArgumentException("guts floor range invalid");
+            for (int i = 0; i < 4; i++)
+            {
+                if (!Permille(GoingTurfSpeedPermille[i]) || !Permille(GoingDirtSpeedPermille[i]) || !Permille(GoingTurfDrainPermille[i]) || !Permille(GoingDirtDrainPermille[i]))
+                    throw new ArgumentException("going permille values must be 500..2000");
+            }
+            if (!Permille(DirtSpeedPermille)) throw new ArgumentException("dirtSpeedPermille must be 500..2000");
+            if (GoingSpecialistPermille < 0 || GoingSpecialistPermille > 200) throw new ArgumentException("goingSpecialistPermille must be 0..200");
         }
+        private static bool Permille(int v) => v >= 500 && v <= 2000;
     }
 }

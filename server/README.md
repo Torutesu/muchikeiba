@@ -170,6 +170,14 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 - ランキングは1シーズン＝1オブジェクト（`LeaderboardDO`、`lb:YYYY-MM`）。フレンドコードと公開プロフィールは16シャード（`DirectoryDO`、`dir:n`）。
 - ゴールデン `contracts/golden/ts-config-*.json` はルールセットのファイルを埋め込むので、ルールセットを変えたら `npm run gen:golden`。
 
+## 馬場状態・ダート・ナイター（`src/domain/ground.ts`、REQ-RACE-034〜038）
+- ランク戦・フレンド戦の設定には `track.going`（その日の馬場）と `track.night` が入る。チュートリアルとタイムアタックには入らない（良・昼）。
+- その日の馬場：`fnv1a32(salt|JSTの日付|コースID)` で `master/progression.json` の `weather.turf` / `weather.dirt` の重みから選ぶ。同じ日・同じコースは誰が走っても同じ。
+- 運営の上書き：`weather.overrides` に `{trackId?, fromMs, toMs, going, night?}`。コース指定が全体指定より優先。リモート設定（`progression.weather`）でも変えられ、登録時に `weatherProblems` で検証する。
+- ナイター：`master/tracks.json` で `lights: true` の競馬場（今はみなと競馬場）で、JST の `nightFromHourJst`〜`nightToHourJst`（既定 18〜4時）のレース。`lights` はマスター専用でレース設定には入らない。
+- 馬の `goingAptitude`（any / fast / heavy）はテンプレートから引き継ぎ、配合では `goingAptitudeOdds` の確率で受け継ぐ（配合予想も同じ関数）。any の馬はレース設定に項目を書かない。
+- ルールセットの馬場キー18個は「全部あるか全部ないか」。全部ない古いリプレイも検証できる（`OPTIONAL_RULESET_KEYS`）。
+
 ## ストア連携（`src/stores/`）
 
 | | Apple（StoreKit 2） | Google Play |

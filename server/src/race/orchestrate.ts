@@ -1,6 +1,7 @@
 import type { Master } from '../domain/master.js';
 import type { Ruleset } from '../domain/ruleset.js';
 import { buildRaceConfig } from '../domain/raceConfig.js';
+import { groundFor } from '../domain/ground.js';
 import { randInt, randomId, type Rng } from '../domain/rng.js';
 import type { RaceMode, RaceStartConfig, ReplayLog } from '../domain/schemas.js';
 import { raceDetailsFor } from '../domain/stats.js';
@@ -23,6 +24,7 @@ export async function createRace(m: Master, o: { mode: RaceMode; humans: RaceEnt
   const statCap = o.mode === 'ranked' ? Math.min(...o.humans.map((h) => h.statCap)) : null;
   const config = buildRaceConfig(m, {
     raceId, mode: o.mode, trackId, statCap, cpuCount: o.cpuCount, cpuLevel: o.cpuLevel, rng: o.rng,
+    ground: groundFor(m, trackId, o.mode, o.now), // REQ-RACE-037: the day's going for this course; night at lit venues in the evening
     humans: o.humans.map((h) => ({ playerId: h.playerId, horse: h.horse, cpuLevel: 3 })),
     // REQ-OPS-006: the active ruleset is embedded in the config, so the replay log carries it to the verifier
     ...(o.ruleset ? { rulesetOverrides: o.ruleset } : {}),

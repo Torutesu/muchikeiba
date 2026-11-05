@@ -127,13 +127,14 @@ export interface Directory {
 /** Subset of PlayerService calls the orchestration needs (Durable Object RPC in production). */
 export interface FriendPlayers {
   send(uid: string, toId: string): Promise<SendOutcome>;
-  receive(uid: string, fromId: string): Promise<'received' | 'already'>;
+  /** `fromName` is only used for the push notification text (REQ-PUSH-002). */
+  receive(uid: string, fromId: string, fromName?: string): Promise<'received' | 'already'>;
   accept(uid: string, fromId: string): Promise<'accepted' | 'already_friends'>;
-  accepted(uid: string, byId: string): Promise<unknown>;
+  accepted(uid: string, byId: string, byName?: string): Promise<unknown>;
   decline(uid: string, fromId: string): Promise<unknown>;
   cancel(uid: string, toId: string): Promise<unknown>;
   remove(uid: string, otherId: string): Promise<unknown>;
-  invite(uid: string, fromId: string, passphrase: string): Promise<unknown>;
+  invite(uid: string, fromId: string, passphrase: string, fromName?: string): Promise<unknown>;
   friendsState(uid: string): Promise<{ ids: string[]; incoming: { from: string; at: number }[]; outgoing: { to: string; at: number }[]; invites: { from: string; passphrase: string; at: number }[] }>;
 }
 
@@ -142,19 +143,29 @@ export class FriendsService {
 
   myCode(uid: string) { return this.dir.codeOf(uid).then((code) => ({ code })); }
 
+  /** Display name for notification text; a missing profile (not yet published) falls back to the template default. */
+  private async nameOf(uid: string): Promise<string | undefined> {
+    try {
+      return (await this.dir.profiles([uid]))[0]?.displayName;
+    } catch {
+      return undefined;
+    }
+  }
+
   /** REQ-SOCIAL-002: request by friend code. Sender step first (limits), then receiver; compensates on failure. */
   async request(uid: string, code: string) {
     const target = await this.dir.lookup(code);
     if (!target) throw new AppError('NOT_FOUND', 'unknown friend code');
     if (target === uid) throw new AppError('BAD_REQUEST', 'cannot befriend yourself');
     const out = await this.players.send(uid, target);
+    const myName = await this.nameOf(uid);
     if (out === 'mutual') {
-      await this.players.accepted(target, uid);
+      await this.players.accepted(target, uid, myName);
       return { status: 'friends' as const, playerId: target };
     }
     if (out === 'already_friends') return { status: 'friends' as const, playerId: target };
     try {
-      await this.players.receive(target, uid);
+      await this.players.receive(target, uid, myName);
     } catch (e) {
       if (out === 'sent') await this.players.cancel(uid, target);
       throw e;
@@ -164,7 +175,7 @@ export class FriendsService {
 
   async accept(uid: string, fromId: string) {
     await this.players.accept(uid, fromId);
-    await this.players.accepted(fromId, uid);
+    await this.players.accepted(fromId, uid, await this.nameOf(uid));
     return { status: 'friends' as const, playerId: fromId };
   }
 
@@ -204,7 +215,7 @@ export class FriendsService {
   async invite(uid: string, friendId: string, passphrase: string) {
     const st = await this.players.friendsState(uid);
     if (!st.ids.includes(friendId)) throw new AppError('NOT_ELIGIBLE', 'not friends');
-    await this.players.invite(friendId, uid, passphrase);
+    await this.players.invite(friendId, uid, passphrase, await this.nameOf(uid));
     return { ok: true };
   }
 }

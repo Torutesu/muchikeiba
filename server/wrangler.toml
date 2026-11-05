@@ -23,6 +23,9 @@ VERIFY_SAMPLE_RATE = "0.05"
 # GOOGLE_ACCEPT_TEST = "1"                # "0" rejects license-testing purchases
 # GOOGLE_PUBSUB_AUDIENCE = "https://api.example.com/v1/store/notifications/google"
 # GOOGLE_PUBSUB_SERVICE_ACCOUNT = "rtdn-push@<project>.iam.gserviceaccount.com"
+# Push notifications (server/README.md「プッシュ通知」). Unset => queued messages are dropped.
+# FCM_PROJECT_ID = "muchi-issen-prod"        # defaults to the service account's project_id
+# Secrets: FCM_SERVICE_ACCOUNT_JSON (falls back to GOOGLE_SERVICE_ACCOUNT_JSON), KPI_SALT (analytics id hashing)
 
 [[durable_objects.bindings]]
 name = "RACE_ROOM"
@@ -76,6 +79,12 @@ bucket_name = "muchi-replays"
 binding = "SNAPSHOTS"
 bucket_name = "muchi-public"
 
-# Leaderboard snapshots + season rollover every 5 min; replay retention sweep daily 03:23 JST (src/domain/scheduled.ts)
+# KPI analytics (REQ-KPI-*): rows are written only when KPI_SALT is also set. Queries: docs/ops/kpi-queries.md
+[[analytics_engine_datasets]]
+binding = "ANALYTICS"
+dataset = "muchi_kpi"
+
+# Leaderboard snapshots + season rollover every 5 min; replay retention sweep daily 03:23 JST;
+# season reminder push daily 12:07 JST (src/domain/scheduled.ts)
 [triggers]
-crons = ["*/5 * * * *", "23 18 * * *"]
+crons = ["*/5 * * * *", "23 18 * * *", "7 3 * * *"]

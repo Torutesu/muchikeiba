@@ -44,4 +44,14 @@ export interface Env {
   GOOGLE_PUBSUB_SERVICE_ACCOUNT?: string;
   /** Overrides master progression.replayRetentionDays. */
   REPLAY_RETENTION_DAYS?: string;
+  // ---- push notifications (REQ-PUSH-*). Unset => messages are queued and dropped, nothing is sent.
+  /** Firebase project id for FCM HTTP v1 (defaults to the service account's project_id). */
+  FCM_PROJECT_ID?: string;
+  /** Secret: service-account JSON with the Firebase Cloud Messaging API (falls back to GOOGLE_SERVICE_ACCOUNT_JSON). */
+  FCM_SERVICE_ACCOUNT_JSON?: string;
+  // ---- KPI analytics (REQ-KPI-*). Both required, otherwise no analytics are written.
+  /** Workers Analytics Engine dataset (wrangler.toml [[analytics_engine_datasets]]). */
+  ANALYTICS?: AnalyticsEngineDataset;
+  /** Secret: salt for hashing player ids before they reach analytics (no PII). */
+  KPI_SALT?: string;
 }

@@ -99,6 +99,8 @@ namespace Muchi.Client
                     return new PurchaseBlockedException(code, wire, message, status);
                 case ApiErrorCode.InsufficientCoins:
                     return new InsufficientCoinsException(wire, message, status);
+                case ApiErrorCode.RateLimited:
+                    return new RateLimitedException(wire, message, status);
                 case ApiErrorCode.Internal:
                 case ApiErrorCode.ConfigInvalid:
                     return new ServerException(code, wire, message, status);
@@ -157,6 +159,12 @@ namespace Muchi.Client
     public sealed class ConflictException : ApiException
     {
         public ConflictException(ApiErrorCode c, string wire, string message, int status) : base(c, wire, message, status) { }
+    }
+
+    /// <summary>429 RATE_LIMITED (e.g. analytics ingestion quota). Back off before sending again.</summary>
+    public sealed class RateLimitedException : ApiException
+    {
+        public RateLimitedException(string wire, string message, int status) : base(ApiErrorCode.RateLimited, wire, message, status) { }
     }
 
     public sealed class ServerException : ApiException

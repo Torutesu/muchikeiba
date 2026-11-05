@@ -7,6 +7,8 @@ export const CRONS = {
   frequent: '*/5 * * * *',
   /** Replay retention sweep, daily at 03:23 JST. */
   daily: '23 18 * * *',
+  /** Season reminder broadcast (FCM topic), daily at 12:07 JST — outside everyone's default quiet hours. */
+  noon: '7 3 * * *',
 } as const;
 
 export interface ScheduledDeps {
@@ -15,6 +17,8 @@ export interface ScheduledDeps {
   /** Advance the previous season's rollover by one bounded step (no-op once closed). */
   rolloverStep(seasonId: string): Promise<{ status: string }>;
   sweepReplays(now: number): Promise<{ deleted: number }>;
+  /** REQ-PUSH-006: broadcast today's season reminder if there is one; returns the template sent or null. */
+  seasonReminder?(now: number): Promise<string | null>;
 }
 
 /**
@@ -29,6 +33,9 @@ export async function runScheduled(cron: string, now: number, deps: ScheduledDep
     const prev = previousSeasonId(now);
     const r = await deps.rolloverStep(prev);
     done.push(`rollover:${prev}:${r.status}`);
+  } else if (cron === CRONS.noon) {
+    const t = deps.seasonReminder ? await deps.seasonReminder(now) : null;
+    done.push(`reminder:${t ?? 'none'}`);
   } else if (cron === CRONS.daily) {
     const r = await deps.sweepReplays(now);
     done.push(`sweep:${r.deleted}`);

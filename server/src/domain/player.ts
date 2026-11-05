@@ -1,4 +1,6 @@
 import type { Rarity, Sex, Stats, Style } from './master.js';
+import type { PushState } from './push.js';
+import type { KpiState } from './kpi.js';
 
 export type Currency = 'paid' | 'free';
 
@@ -89,6 +91,10 @@ export interface PlayerState {
   seasonHistory: SeasonRecord[];
   /** Friend-race rewards paid today (daily cap, REQ-REW-004). */
   friendRewards: { date: string; count: number };
+  /** REQ-PUSH-*: devices, preferences, outbox (created on first use; see push.ts ensurePush). */
+  push?: PushState;
+  /** REQ-KPI-*: first_open flag and client ingestion rate counters (see kpi.ts ensureKpi). */
+  kpi?: KpiState;
   /** Anti-cheat status pushed by the integrity service (REQ-OPS-035). Absent = ok. */
   moderation?: { status: 'ok' | 'quarantined' | 'banned'; until: number | null; reason: string; at: number };
 }

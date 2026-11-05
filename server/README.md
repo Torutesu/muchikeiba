@@ -103,6 +103,13 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | DELETE | `/v1/friends/:friendId` | 要 | | フレンド解除（双方） |
 | POST | `/v1/friend-rooms/:passphrase/invite` | 要 | | `{friendId}` 部屋のメンバーがフレンドを招待 |
 | GET | `/v1/config` | なし | | 有効な設定の版 `{versionId, hash, rulesetVersion, activatedAt}`。アプリはhashごとにマスターデータをキャッシュ（REQ-OPS-007） |
+| PUT | `/v1/push/devices` | 要 | | `{token, platform: ios\|android}` FCMトークンを登録（1人最大5台。古い順に外れる） |
+| POST | `/v1/push/devices/unregister` | 要 | | `{token}` ログアウト・通知オフ時に外す |
+| GET | `/v1/push/preferences` | 要 | | 種類別の受信設定・静かな時間帯・1日の上限・登録台数・購読するFCMトピック |
+| PUT | `/v1/push/preferences` | 要 | | `{categories?: {season,friends,invites,events}, quietHours?: {startHour,endHour}\|null}` → 上と同じ形。返ってきた `topics.subscribe/unsubscribe` をアプリがFCMで購読・解除する |
+| POST | `/v1/analytics/events` | 要 | | `{platform, appVersion, events: [{name, at, props}]}`（最大50件）。クライアントでしか分からないイベントだけ受け付ける（`docs/ops/kpi-queries.md`）。1人あたり30回/分・2,000件/日まで（`RATE_LIMITED`=429） |
+| GET | `/v1/admin/paid-balance` | 管理 | | 有償コイン未使用残高の集計（資金決済法） |
+| GET | `/v1/admin/replays/:raceId` | 管理 | | リプレイログ |
 
 レース中のメッセージは `contracts/protocol.md` §4。BAN中のプレイヤーはランク戦・フレンド部屋・購入前チェックで `403 BANNED`。
 
@@ -194,8 +201,29 @@ App Store Server API（`AppStoreServerApi`、ES256 JWT）はアプリが報告�
 |---|---|
 | `*/5 * * * *` | 今シーズンのランキング集計をR2（`SNAPSHOTS`）へ（変化があった時だけ）＋前シーズンの締めを1段階進める（完了後は何もしない） |
 | `23 18 * * *`（03:23 JST） | リプレイログの保存期限切れを削除（保留中は残す） |
+| `7 3 * * *`（12:07 JST） | シーズンのお知らせ（開幕・終了2日前・最終日）をFCMトピックへ1回だけ送る |
 
 ローカルでは `wrangler dev --test-scheduled` で `/__scheduled?cron=*/5+*+*+*+*` を叩いて確認できる。
+
+## プッシュ通知（`src/domain/push.ts`、`src/push/`）
+
+- **送り方**：FCM HTTP v1。サービスアカウントのJWTからOAuthトークンを取り（`google/serviceAuth.ts`、Google Playと共通）、キャッシュする。
+- **個別通知**（フレンド申請・フレンド成立・フレンド部屋への招待）はプレイヤーごとの送信待ち（outbox）に積み、**そのプレイヤーのDurable Objectのアラーム**で送る。リクエスト処理はFCMを待たない。
+  - Cloudflare Queues を使わない理由：送信待ちはプレイヤーの保存領域にあり、アラームは退避・デプロイをまたいで確実に動く。再試行は次のアラームで済み、追加の有料バインディングが要らない。
+  - 失敗時：`UNREGISTERED`・`INVALID_ARGUMENT`・`SENDER_ID_MISMATCH`（404/400/403）はその端末を削除。429/5xx/401 は `retry.backoffMs`（30秒→2分→10分→1時間、`Retry-After` が長ければそちら）で再送し、`maxAttempts` 回で諦める。TTLを過ぎたものは捨てる。
+- **受信設定**：種類（season / friends / invites / events）ごとのオン・オフ、静かな時間帯（JST、既定22〜8時）、1日の上限（既定5件）。
+  - 静かな時間帯：急ぎの通知（招待）は送らない。それ以外は静かな時間帯が明けるまで遅らせる。
+- **一斉通知**（シーズンのお知らせ）はFCMトピック（`season_ja` など）に1回送るだけ。プレイヤー全員に個別に送らないので、人数が増えても費用が増えない。購読・解除はアプリ側（設定画面の結果 `topics` に従う）。
+- 文言はすべて `master/push.json`（日本語テンプレート）。
+- 設定：`FCM_PROJECT_ID`（var、省略時はサービスアカウントの `project_id`）、`FCM_SERVICE_ACCOUNT_JSON`（secret、省略時は `GOOGLE_SERVICE_ACCOUNT_JSON`）。未設定なら通知は積まれても送られずに捨てられる。
+- 未対応：ランク戦の検証結果の通知（任意項目）。
+
+## KPI計測（`src/domain/kpi.ts`）
+
+- サーバーで分かるイベント（初回起動・購入・返金・ガチャ・レース結果・シーズン締め・フレンド・パスの更新）は、プレイヤーの処理が保存されたあとに Workers Analytics Engine（バインディング `ANALYTICS`、データセット `muchi_kpi`）へ書く。保存に失敗した処理のイベントは出ない。
+- クライアントでしか分からないイベント（セッション・チュートリアルの各ステップ・画面・購入画面の操作・通知の開封など）は `POST /v1/analytics/events` で受ける。種類ごとにスキーマで検証し、時刻が7日より古いか5分より未来のものは捨てる。
+- 個人情報は送らない。プレイヤーIDはソルト（secret `KPI_SALT`）付きSHA-256の先頭16桁に置き換える。`KPI_SALT` が無ければ何も書かない。
+- 列の並びとクエリ（継続率・チュートリアル・初回課金・ARPDAU・課金率・パス継続・課金者と無課金者の勝率差）は `docs/ops/kpi-queries.md`。
 
 ## 未実装・要対応
 - Apple / Google の実機・本番の認証情報での疎通確認（コードとテストは自前の証明書チェーン・偽APIで検証済み）

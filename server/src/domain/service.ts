@@ -17,6 +17,11 @@ import { toRaceHorse } from './raceConfig.js';
 import { paidBalanceYen, invariantsHold } from './wallet.js';
 import type { PaidBalanceSnapshot } from './accounting.js';
 import { jstDateKey } from './time.js';
+import { enqueuePush, ensurePush, nextPushWake, pushPrefsView, registerDevice, setPushPrefs, settlePushes, takeDuePushes, unregisterDevice, type DeliveryOutcome, type DevicePlatform, type PrefsPatch } from './push.js';
+import { admitClientBatch, clientToKpi, ensureKpi, isPayer, kpiRecord, type ClientBatch, type KpiEvent, type KpiRecord } from './kpi.js';
+
+/** Collects analytics events inside a transaction; they are emitted only if the transaction is saved. */
+export type Emit = (e: KpiEvent) => void;
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
 export interface PlayerRepo {
@@ -47,6 +52,10 @@ export interface PlayerServiceDeps {
   onSeasonEntry?: (e: SeasonEntry) => void | Promise<void>;
   /** REQ-SOCIAL-004: called when the public profile changed or the last push is older than profilePushIntervalMs. */
   onProfile?: (p: PublicProfile) => void | Promise<void>;
+  /** REQ-PUSH-005: the push outbox needs attention at `at` (the Durable Object sets its alarm). */
+  onPushWake?: (at: number) => void | Promise<void>;
+  /** REQ-KPI-002: analytics events from a saved transaction (the Durable Object writes them to Analytics Engine). */
+  onKpi?: (playerId: string, records: KpiRecord[]) => void | Promise<void>;
 }
 
 const standingKey = (s: PlayerState) => JSON.stringify([s.season.id, s.season.classId, s.season.points, s.season.races, Math.round(s.rating.r), s.profile.displayName, s.profile.titleId]);
@@ -72,7 +81,7 @@ export class PlayerService {
     return newPlayer(id, now, seasonIdFor(now));
   }
 
-  async tx<T>(id: string, idemKey: string | null, fn: (s: PlayerState, now: number) => T): Promise<T> {
+  async tx<T>(id: string, idemKey: string | null, fn: (s: PlayerState, now: number, emit: Emit) => T): Promise<T> {
     const current = await this.load(id);
     if (idemKey) {
       const hit = current.idem.find((e) => e.key === idemKey);
@@ -85,7 +94,10 @@ export class PlayerService {
     const paidBefore = draft.wallet.paid;
     const standingBefore = standingKey(draft);
     const profileBefore = profileKey(draft);
-    const result = fn(draft, now);
+    const wakeBefore = nextPushWake(draft);
+    const kpi: KpiRecord[] = [];
+    const emit: Emit = (e) => { kpi.push(kpiRecord(draft, now, e)); };
+    const result = fn(draft, now, emit);
     if (!invariantsHold(draft)) throw new Error('wallet invariant violated');
     if (idemKey) {
       draft.idem.push({ key: idemKey, result: JSON.parse(JSON.stringify(result ?? null)) });
@@ -95,6 +107,9 @@ export class PlayerService {
     const pushProfile = this.d.onProfile && (profileKey(draft) !== profileBefore || now - draft.profile.lastPushedAt >= this.d.master.progression.social.profilePushIntervalMs);
     if (pushProfile) draft.profile.lastPushedAt = now;
     await this.repo.put(draft);
+    const wake = nextPushWake(draft);
+    if (wake !== null && wake !== wakeBefore && this.d.onPushWake) await this.d.onPushWake(wake);
+    if (kpi.length > 0 && this.d.onKpi) await this.d.onKpi(id, kpi);
     if (pushProfile) await this.d.onProfile!(publicProfile(draft));
     if (this.d.onSeasonEntry && draft.season.races > 0 && standingKey(draft) !== standingBefore) {
       await this.d.onSeasonEntry({
@@ -122,7 +137,13 @@ export class PlayerService {
 
   async state(id: string) { return this.load(id); }
 
-  bootstrap(id: string) { return this.tx(id, null, (s) => playerView(s)); }
+  bootstrap(id: string) {
+    return this.tx(id, null, (s, _now, emit) => {
+      const k = ensureKpi(s);
+      if (!k.firstOpenSent) { k.firstOpenSent = true; emit({ name: 'first_open' }); }
+      return playerView(s);
+    });
+  }
 
   setAge(id: string, birthYear: number, birthMonth: number, guardianConsent: boolean) {
     return this.tx(id, null, (s, now) => {
@@ -142,10 +163,12 @@ export class PlayerService {
     if (!v) throw new AppError('BAD_REQUEST', `unsupported platform ${platform}`);
     const r = await v.verify(receipt, productId, { playerId: id }); // throws RECEIPT_INVALID
     await this.claimStoreKeys(id, r);
-    const out = await this.tx(id, `purchase:${r.transactionId}`, (s, now) => {
+    const out = await this.tx(id, `purchase:${r.transactionId}`, (s, now, emit) => {
+      const first = !isPayer(s);
       const { record, duplicate } = applyVerifiedPurchase(this.d.master, s, platform, r, now);
       // A completed store payment is always credited; a banned account gets a support flag (refund via support).
       if (!duplicate && moderationOf(s, now) === 'banned') (s.supportFlags ??= []).push(`purchase_while_banned:${record.txId}`);
+      if (!duplicate) emit({ name: 'purchase', s1: record.productId, s2: platform, s3: record.sandbox ? 'sandbox' : 'real', amountYen: record.priceYen, paidCoins: record.paidCoinsGranted, freeCoins: record.bonusCoinsGranted, isFirst: first && record.priceYen > 0 && !record.sandbox });
       return { record, duplicate, wallet: playerView(s).wallet };
     });
     if (v.finalize) {
@@ -171,30 +194,46 @@ export class PlayerService {
   /** Store server notification: a new subscription period (Apple DID_RENEW/SUBSCRIBED, Google RENEWED…). Idempotent. */
   async storeRenewal(id: string, platform: PurchaseRecord['platform'], r: VerifiedReceipt) {
     await this.claimStoreKeys(id, r);
-    return this.tx(id, `purchase:${r.transactionId}`, (s, now) => {
+    return this.tx(id, `purchase:${r.transactionId}`, (s, now, emit) => {
       const { record, duplicate } = applyVerifiedPurchase(this.d.master, s, platform, r, now);
+      if (!duplicate) emit({ name: 'pass_renew', s1: record.productId, s2: platform, amountYen: record.priceYen });
       return { record, duplicate, passExpiresAt: s.seasonPass.expiresAt };
     });
   }
 
   /** Store server notification: subscription status change (expired, revoked, grace…). */
   subscriptionStatus(id: string, platform: PurchaseRecord['platform'], key: string, status: SubscriptionStatus, expiresAt: number | null) {
-    return this.tx(id, null, (s, now) => applySubscriptionStatus(s, platform, key, status, expiresAt, now));
+    return this.tx(id, null, (s, now, emit) => {
+      const r = applySubscriptionStatus(s, platform, key, status, expiresAt, now);
+      emit({ name: 'pass_status', s1: String(status), s2: platform });
+      return r;
+    });
   }
 
   refund(id: string, transactionId: string) {
-    return this.tx(id, `refund:${transactionId}`, (s, now) => applyRefund(this.d.master, s, transactionId, now));
+    return this.tx(id, `refund:${transactionId}`, (s, now, emit) => {
+      const rec = s.purchases.find((x) => x.txId === transactionId);
+      const wasRefunded = rec?.refunded ?? true;
+      const r = applyRefund(this.d.master, s, transactionId, now);
+      if (rec && !wasRefunded) emit({ name: 'refund', s1: rec.productId, s2: rec.platform, amountYen: -rec.priceYen });
+      return r;
+    });
   }
 
   async draw(id: string, bannerId: string, count: 1 | 10, idemKey: string | null) {
-    return this.tx(id, this.requireKey(idemKey), (s, now) => {
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => {
       const r = drawGacha(this.d.master, s, bannerId, count, this.d.rng, now);
+      emit({ name: 'gacha_draw', s1: bannerId, count, paidCoins: r.spent.paid, freeCoins: r.spent.free, value: r.results.filter((x) => x.rarity === 'SSR').length });
       return { ...r, wallet: playerView(s).wallet };
     });
   }
 
   async tutorialDraw(id: string, idemKey: string | null) {
-    return this.tx(id, this.requireKey(idemKey), (s, now) => drawGacha(this.d.master, s, 'standard', 10, this.d.rng, now, { tutorialFree: true }));
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => {
+      const r = drawGacha(this.d.master, s, 'standard', 10, this.d.rng, now, { tutorialFree: true });
+      emit({ name: 'tutorial_gacha', count: 10 });
+      return r;
+    });
   }
 
   async pityExchange(id: string, bannerId: string, templateId: string, idemKey: string | null) {
@@ -213,7 +252,13 @@ export class PlayerService {
   }
   async pedigree(id: string, horseId: string) { return pedigree(await this.load(id), horseId); }
 
-  async claimLogin(id: string, idemKey: string | null) { return this.tx(id, this.requireKey(idemKey), (s, now) => claimLoginBonus(this.d.master, s, now)); }
+  async claimLogin(id: string, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => {
+      const r = claimLoginBonus(this.d.master, s, now);
+      emit({ name: 'login_bonus', value: r.day });
+      return r;
+    });
+  }
   async missions(id: string) { return this.tx(id, null, (s, now) => missionsView(this.d.master, s, now)); }
   async claimMission(id: string, missionId: string, idemKey: string | null) { return this.tx(id, this.requireKey(idemKey), (s, now) => claimMission(this.d.master, s, missionId, now)); }
   async passView(id: string) {
@@ -226,7 +271,17 @@ export class PlayerService {
 
   /** Called by the race room after a race is final (idempotent per race). */
   applyRace(id: string, r: RaceResultForPlayer) {
-    return this.tx(id, `race:${r.raceId}`, (s, now) => applyRaceResult(this.d.master, s, r, now));
+    return this.tx(id, `race:${r.raceId}`, (s, now, emit) => {
+      const out = applyRaceResult(this.d.master, s, r, now);
+      if (!r.void) {
+        emit({
+          name: 'race_finish', s1: r.mode, s2: r.details?.style ?? '', s3: r.details?.trackId ?? '',
+          place: r.place, count: r.fieldSize, value: r.humans ?? 0,
+          ...(r.details?.finishTick != null ? { durationMs: r.details.finishTick * 50 } : {}),
+        });
+      }
+      return out;
+    });
   }
 
   /** Snapshot used by the matchmaker: horse for the race, rating, class cap, beginner flag. */
@@ -255,22 +310,56 @@ export class PlayerService {
 
   /** REQ-SEASON-002: rollover job → reward the closed season once (idempotent via the season record). */
   closeSeason(id: string, seasonId: string, rank: number | null) {
-    return this.tx(id, null, (s, now) => {
+    return this.tx(id, null, (s, now, emit) => {
       const r = closeSeason(this.d.master, s, seasonId, rank, now);
+      if (r.status === 'rewarded') emit({ name: 'season_close', s1: seasonId, s2: r.classId ?? '', s3: r.nextClassId ?? '', ...(rank !== null ? { place: rank } : {}) });
       const titles = evaluateTitles(this.d.master, s); // class titles (promotion happened in rollSeason)
       return { ...r, titles };
     });
   }
 
   // ---- friends: per-player steps, orchestrated by FriendsService (REQ-SOCIAL-*) ----
-  friendSend(id: string, toId: string) { return this.tx(id, null, (s, now) => friendSend(this.d.master, s, toId, now)); }
-  friendReceive(id: string, fromId: string) { return this.tx(id, null, (s, now) => friendReceive(this.d.master, s, fromId, now)); }
-  friendAccept(id: string, fromId: string) { return this.tx(id, null, (s) => friendAccept(this.d.master, s, fromId)); }
-  friendAccepted(id: string, byId: string) { return this.tx(id, null, (s) => friendAccepted(s, byId)); }
+  friendSend(id: string, toId: string) {
+    return this.tx(id, null, (s, now, emit) => {
+      const out = friendSend(this.d.master, s, toId, now);
+      if (out === 'sent' || out === 'mutual') emit({ name: 'friend_request', s1: out });
+      return out;
+    });
+  }
+  /** REQ-PUSH-002: the receiver is notified (`fromName` comes from the public profile directory). */
+  friendReceive(id: string, fromId: string, fromName?: string) {
+    return this.tx(id, null, (s, now) => {
+      const out = friendReceive(this.d.master, s, fromId, now);
+      if (out === 'received') enqueuePush(this.d.master, s, 'friend_request', { name: fromName ?? 'フレンド' }, now);
+      return out;
+    });
+  }
+  friendAccept(id: string, fromId: string) {
+    return this.tx(id, null, (s, _now, emit) => {
+      const out = friendAccept(this.d.master, s, fromId);
+      if (out === 'accepted') emit({ name: 'friend_accept' });
+      return out;
+    });
+  }
+  friendAccepted(id: string, byId: string, byName?: string) {
+    return this.tx(id, null, (s, now) => {
+      const was = s.friends.ids.includes(byId);
+      const out = friendAccepted(s, byId);
+      if (!was) enqueuePush(this.d.master, s, 'friend_accepted', { name: byName ?? 'フレンド' }, now);
+      return out;
+    });
+  }
   friendDecline(id: string, fromId: string) { return this.tx(id, null, (s) => friendDecline(s, fromId)); }
   friendCancel(id: string, toId: string) { return this.tx(id, null, (s) => friendCancel(s, toId)); }
   friendRemove(id: string, otherId: string) { return this.tx(id, null, (s) => friendRemove(s, otherId)); }
-  friendInvite(id: string, fromId: string, passphrase: string) { return this.tx(id, null, (s, now) => receiveInvite(this.d.master, s, fromId, passphrase, now)); }
+  friendInvite(id: string, fromId: string, passphrase: string, fromName?: string) {
+    return this.tx(id, null, (s, now) => {
+      const out = receiveInvite(this.d.master, s, fromId, passphrase, now);
+      // The passphrase stays out of the notification text; the app reads it from GET /v1/friends (invites).
+      enqueuePush(this.d.master, s, 'room_invite', { name: fromName ?? 'フレンド' }, now);
+      return out;
+    });
+  }
   async friendsState(id: string) {
     const s = await this.load(id);
     pruneInvites(this.d.master, s, this.d.clock());
@@ -293,5 +382,32 @@ export class PlayerService {
   }
   setModeration(id: string, status: 'ok' | 'quarantined' | 'banned', until: number | null, reason: string) {
     return this.tx(id, null, (s, now) => setModeration(s, status, until, reason, now));
+  }
+
+  // ---- push notifications (REQ-PUSH-*) ----
+  registerDevice(id: string, token: string, platform: DevicePlatform) { return this.tx(id, null, (s, now) => registerDevice(this.d.master, s, token, platform, now)); }
+  unregisterDevice(id: string, token: string) { return this.tx(id, null, (s) => unregisterDevice(this.d.master, s, token)); }
+  async pushPreferences(id: string) { return pushPrefsView(this.d.master, await this.load(id)); }
+  setPushPreferences(id: string, patch: PrefsPatch) { return this.tx(id, null, (s) => setPushPrefs(this.d.master, s, patch)); }
+  /** Alarm step 1: drop expired messages and return what is due (kept in the outbox until settled). */
+  pushTake(id: string) { return this.tx(id, null, (s, now) => takeDuePushes(this.d.master, s, now)); }
+  /** Alarm step 2: apply send results (prune dead tokens, back off retries). */
+  pushSettle(id: string, outcomes: DeliveryOutcome[]) {
+    return this.tx(id, null, (s, now) => ({ ...settlePushes(this.d.master, s, outcomes, now), nextAt: nextPushWake(s) }));
+  }
+  /** Ops/test hook: queue a templated push for this player (same rules as event-driven pushes). */
+  queuePush(id: string, templateId: string, vars: Record<string, string>) {
+    return this.tx(id, null, (s, now) => { ensurePush(this.d.master, s); return enqueuePush(this.d.master, s, templateId, vars, now); });
+  }
+
+  // ---- analytics (REQ-KPI-003/004) ----
+  /** Client events: rate-limited per player, enriched with cohort/payer like server events, then emitted via onKpi. */
+  async kpiIngest(id: string, batch: ClientBatch) {
+    const r = await this.tx(id, null, (s, now) => {
+      const events = admitClientBatch(s, batch, now);
+      return { accepted: events.length, dropped: batch.events.length - events.length, records: events.map((e) => kpiRecord(s, now, clientToKpi(e), 'client', { platform: batch.platform, appVersion: batch.appVersion, at: e.at })) };
+    });
+    if (r.records.length > 0 && this.d.onKpi) await this.d.onKpi(id, r.records);
+    return { accepted: r.accepted, dropped: r.dropped };
   }
 }

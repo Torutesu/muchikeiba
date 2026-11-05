@@ -10,6 +10,8 @@ namespace Muchi.Client
 
     public enum PassTrack { Free, Premium }
 
+    public enum PushPlatform { Ios, Android }
+
     public sealed class ApiClientOptions
     {
         /// <summary>e.g. "https://api.example.com" (no trailing slash needed).</summary>
@@ -304,6 +306,51 @@ namespace Muchi.Client
             var b = JsonNode.Obj();
             b.Set("friendId", friendId);
             return Call("POST", "/v1/friend-rooms/" + Seg(passphrase) + "/invite", b, true, null, true, o => J.Bool(o, "ok"), ct);
+        }
+
+        // ------------------------------------------------------------------ push notifications (REQ-PUSH)
+        // All push calls are idempotent on the server (same token / same settings), so they are retried.
+
+        /// <summary>Register this device's FCM token (call on every app start and whenever FCM rotates the token).</summary>
+        public Task<int> RegisterPushDeviceAsync(string fcmToken, PushPlatform platform, CancellationToken ct = default)
+        {
+            var b = JsonNode.Obj();
+            b.Set("token", fcmToken);
+            b.Set("platform", platform == PushPlatform.Ios ? "ios" : "android");
+            return Call("PUT", "/v1/push/devices", b, true, null, true, o => J.Int(o, "devices"), ct);
+        }
+
+        /// <summary>Remove a token (logout, or the user turned notifications off in the OS).</summary>
+        public Task<int> UnregisterPushDeviceAsync(string fcmToken, CancellationToken ct = default)
+        {
+            var b = JsonNode.Obj();
+            b.Set("token", fcmToken);
+            return Call("POST", "/v1/push/devices/unregister", b, true, null, true, o => J.Int(o, "removed"), ct);
+        }
+
+        /// <summary>Current settings plus the FCM topics to (un)subscribe — apply <see cref="PushPreferences.SubscribeTopics"/> after every call.</summary>
+        public Task<PushPreferences> GetPushPreferencesAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/push/preferences", null, true, null, true, PushPreferences.Parse, ct);
+
+        /// <summary>Change only what is set in <paramref name="patch"/>. Returns the full settings and the topics to apply.</summary>
+        public Task<PushPreferences> SetPushPreferencesAsync(PushPreferencesPatch patch, CancellationToken ct = default)
+            => Call("PUT", "/v1/push/preferences", patch.ToJson(), true, null, true, PushPreferences.Parse, ct);
+
+        // ------------------------------------------------------------------ analytics (REQ-KPI)
+
+        /// <summary>
+        /// Sends one batch of client analytics events (max 50). Not retried here — <see cref="AnalyticsClient"/>
+        /// keeps unsent events and decides when to try again. Throws <see cref="RateLimitedException"/> on 429.
+        /// </summary>
+        public Task<AnalyticsIngestResult> SendAnalyticsAsync(string platform, string appVersion, IReadOnlyList<AnalyticsEvent> events, CancellationToken ct = default)
+        {
+            var b = JsonNode.Obj();
+            b.Set("platform", platform);
+            b.Set("appVersion", appVersion);
+            var arr = JsonNode.Arr();
+            foreach (var e in events) arr.Add(e.ToJson());
+            b.Set("events", arr);
+            return Call("POST", "/v1/analytics/events", b, true, null, false, AnalyticsIngestResult.Parse, ct);
         }
 
         // ------------------------------------------------------------------ core

@@ -100,6 +100,37 @@ foreach (var line in commentator.Process(race.Sim)) PlayLine(line); // line.Text
 - **音声は作り置き**：`templates.AllFixedClips()` が「固定フレーズID→文」を返すので一度だけ音声合成しておく。馬名は `name:<horseId>`（命名時に1回生成）、数字は `num:<n>`。`ClipKeys` を順に再生すれば `Text` と同じ文になる。
 - 文面は `Data/commentary-ja.json` を編集する（`{name}` `{name2}` `{name3}` `{place}` が使える）。
 
+### 5. プッシュ通知（`ApiClient` の push 系）
+```csharp
+// 起動時とFCMトークンが変わった時（Firebase Messaging の TokenReceived）
+await api.RegisterPushDeviceAsync(fcmToken, PushPlatform.Android);
+// 設定画面
+var prefs = await api.SetPushPreferencesAsync(new PushPreferencesPatch { Invites = false, QuietStartHour = 23, QuietEndHour = 7 });
+// 返ってきたトピックを必ず反映する（シーズンのお知らせなどの一斉通知はトピック宛て）
+foreach (var t in prefs.SubscribeTopics) FirebaseMessaging.SubscribeAsync(t);
+foreach (var t in prefs.UnsubscribeTopics) FirebaseMessaging.UnsubscribeAsync(t);
+// ログアウト時
+await api.UnregisterPushDeviceAsync(fcmToken);
+```
+- 個別通知（フレンド申請・フレンド成立・フレンド部屋への招待）はサーバーが送る。通知の `data` に `templateId` と `category` が入っているので、開いた時の遷移先を決めるのに使う（招待の合言葉は通知に載らない。`GetFriendsAsync()` の `Invites` から取る）。
+- 静かな時間帯（JST）・種類ごとのオン・オフ・1日の上限はサーバー側で判定する。
+
+### 6. 分析（`AnalyticsClient`）
+```csharp
+var analytics = new AnalyticsClient(api, new AnalyticsOptions { Platform = "android", AppVersion = Application.version }, new FileAnalyticsStore(path), NowMs());
+analytics.Track(AnalyticsEvent.SessionStart(NowMs()));
+analytics.Track(AnalyticsEvent.TutorialStep(NowMs(), "first_whip", 2));
+// 毎フレーム（数秒おきでも可）
+analytics.Update(NowMs());
+// バックグラウンドへ行く時
+analytics.Track(AnalyticsEvent.SessionEnd(NowMs(), sessionMs));
+_ = analytics.FlushAllAsync(NowMs());
+```
+- 送れるのは「クライアントでしか分からないイベント」だけ（セッション・チュートリアルの各ステップ・画面・購入画面の操作・通知の開封・通知の許可）。購入・ガチャ・レース結果などはサーバーが自分で記録するので送らない。
+- 50件ごと、または30秒ごとにまとめて送る。通信に失敗したら残して指数的に間隔をあけて再送（429なら1分以上待つ）。サーバーが400で拒否したまとまりは捨てる（同じ失敗を繰り返さないため）。
+- `IAnalyticsStore`（`Load()`/`Save(json)`）を渡すと、未送信分がアプリ再起動後も残る。7日より古いものは送らずに捨てる。
+- `NowMs()` は Unix 時間のミリ秒（`DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()`）。
+
 ### 対戦の流れ（LockstepClient を直接使う場合）
 ```csharp
 var client = new LockstepClient(transport, raceId, firebaseIdToken);   // transport: ITransport（WebSocket実装はUnity側）

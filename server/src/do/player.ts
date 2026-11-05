@@ -11,14 +11,20 @@ import { SqlPlayerRepo } from './sqlRepo.js';
 import { wrap, type Envelope } from './rpc.js';
 import { activeConfig } from '../ops/activeConfig.js';
 import { shardedDirectory } from './directory.js';
+import { fcmFromEnv, type PushSender } from '../push/fcm.js';
+import { deliverDuePushes } from '../push/dispatch.js';
+import { makeKpiWriter } from '../push/analytics.js';
 
-/** One player = one Durable Object (wallet, ledger, horses, gacha pity, purchases). */
+/** One player = one Durable Object (wallet, ledger, horses, gacha pity, purchases, push outbox). */
 export class PlayerDO extends DurableObject<Env> {
   private readonly svc: PlayerService;
+  private readonly sender: PushSender | null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     const master = loadMaster();
+    this.sender = fcmFromEnv(env);
+    const kpi = makeKpiWriter(env.ANALYTICS, env.KPI_SALT);
     this.svc = new PlayerService(new SqlPlayerRepo(ctx.storage.sql), {
       master, rng: cryptoRng, clock: systemClock, verifiers: makeVerifiers(storeSettingsFromEnv(env, master)),
       storeIndex: accountingStoreIndex(env),
@@ -34,13 +40,35 @@ export class PlayerDO extends DurableObject<Env> {
       onProfile: (p) => {
         ctx.waitUntil(shardedDirectory(env.DIRECTORY).putProfile(p));
       },
+      // REQ-PUSH-005: deliveries run from this object's alarm, never on the request path.
+      onPushWake: async (at) => {
+        const cur = await ctx.storage.getAlarm();
+        if (cur === null || at < cur) await ctx.storage.setAlarm(Math.max(at, Date.now()));
+      },
+      ...(kpi ? { onKpi: (id: string, recs: Parameters<typeof kpi>[1]) => { ctx.waitUntil(kpi(id, recs)); } } : {}),
     });
   }
 
+  private idKnown = false;
+
   async invoke(method: PlayerMethod, args: unknown[]): Promise<Envelope<unknown>> {
+    // Every PlayerService method takes the player id first; remember it for the alarm (which has no caller).
+    if (!this.idKnown && typeof args[0] === 'string') {
+      if ((await this.ctx.storage.get<string>('playerId')) !== args[0]) await this.ctx.storage.put('playerId', args[0]);
+      this.idKnown = true;
+    }
     return wrap(async () => {
       this.svc.setMaster((await activeConfig(this.env)).master); // REQ-OPS-005: gacha schedule, rewards… follow remote config
       return (this.svc[method] as (...a: unknown[]) => unknown)(...args);
     });
+  }
+
+  /** Push outbox delivery (and retries with backoff). The player id was stored by the first invoke(). */
+  override async alarm() {
+    const id = await this.ctx.storage.get<string>('playerId');
+    if (!id) return;
+    const r = await deliverDuePushes({ take: (p) => this.svc.pushTake(p), settle: (p, o) => this.svc.pushSettle(p, o) }, id, this.sender);
+    if (r.nextAt !== null) await this.ctx.storage.setAlarm(Math.max(r.nextAt, Date.now() + 1000));
+    if (r.attempted > 0 || r.expired > 0) console.log('push', id, JSON.stringify(r));
   }
 }

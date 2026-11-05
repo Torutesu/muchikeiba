@@ -13,6 +13,10 @@ import type { AdminPrincipal } from '../ops/admin.js';
 import { clientBatchSchema } from '../domain/kpi.js';
 import type { TimeAttackService } from '../race/timeAttack.js';
 import { TA_BOARD_RE } from '../domain/timeAttack.js';
+import { TeamsService, type TeamPlayers } from '../domain/teamService.js';
+import { EventsService, type EventPlayers } from '../domain/eventService.js';
+import { TEAM_ID_RE } from '../domain/teams.js';
+import { EVENT_ID_RE } from '../domain/events.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -24,7 +28,9 @@ export type PlayerMethod =
   | 'friendSend' | 'friendReceive' | 'friendAccept' | 'friendAccepted' | 'friendDecline' | 'friendCancel' | 'friendRemove' | 'friendInvite' | 'friendsState'
   | 'adminView' | 'adminGrant' | 'adminSettleDebt' | 'adminCorrectAge' | 'adminResetName' | 'setModeration'
   | 'registerDevice' | 'unregisterDevice' | 'pushPreferences' | 'setPushPreferences' | 'kpiIngest'
-  | 'taStart' | 'taPrepare' | 'taAbort' | 'taRecord' | 'taView';
+  | 'taStart' | 'taPrepare' | 'taAbort' | 'taRecord' | 'taView'
+  | 'teamPrepareJoin' | 'teamCommitJoin' | 'teamAbortJoin' | 'teamAddOutgoing' | 'teamRemoveOutgoing' | 'teamLeft' | 'teamState' | 'teamSeasonReward' | 'queuePush'
+  | 'eventsView' | 'eventEnter' | 'eventCancel' | 'eventClose';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -68,6 +74,10 @@ export interface AppContext {
   friends: FriendsService;
   leaderboard: LeaderboardApi;
   timeAttack: TimeAttackService;
+  /** REQ-TEAM-*: 支部. Absent in contexts that do not serve teams (routes answer NOT_FOUND). */
+  teams?: TeamsService;
+  /** REQ-EVENT-*: event races. */
+  events?: EventsService;
   clock?: () => number;
   paidBalance(): Promise<unknown>;
   adminToken: string | undefined;
@@ -105,6 +115,23 @@ export const clientIdemKey = (req: Request) => {
 };
 const idem = clientIdemKey;
 const id = z.string().min(1).max(64);
+
+const teams = (c: AppContext) => {
+  if (!c.teams) throw new AppError('NOT_FOUND', 'teams are not available');
+  return c.teams;
+};
+const events = (c: AppContext) => {
+  if (!c.events) throw new AppError('NOT_FOUND', 'events are not available');
+  return c.events;
+};
+const teamIdParam = (s: string) => {
+  if (!TEAM_ID_RE.test(s)) throw new AppError('BAD_REQUEST', 'bad team id');
+  return s;
+};
+const eventIdParam = (s: string) => {
+  if (!EVENT_ID_RE.test(s)) throw new AppError('BAD_REQUEST', 'bad event id');
+  return s;
+};
 
 /** Constant-time string comparison (length is not secret). */
 export function timingSafeEqual(a: string, b: string): boolean {
@@ -240,6 +267,44 @@ export const routes: Route[] = [
     if (!/^\d{4}-\d{2}$/.test(season) || !(/^(class-[A-Z]|rating|index)$/.test(p.board!) || TA_BOARD_RE.test(p.board!))) throw new AppError('BAD_REQUEST', 'bad season or board');
     return c.leaderboard.board(season, p.board!);
   } },
+  // teams / 支部 (REQ-TEAM-*) — /me routes before /:teamId
+  { method: 'GET', path: '/v1/teams/me', auth: 'player', handler: async (_r, _p, c, u) => teams(c).me(u) },
+  { method: 'POST', path: '/v1/teams', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ name: z.string().min(1).max(40), joinPolicy: z.enum(['open', 'approval']), announcement: z.string().max(400).optional() }));
+    return teams(c).create(u, b.name, b.joinPolicy, b.announcement ?? '');
+  } },
+  { method: 'PUT', path: '/v1/teams/me', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ announcement: z.string().max(400).optional(), joinPolicy: z.enum(['open', 'approval']).optional() }));
+    return teams(c).update(u, { ...(b.announcement !== undefined ? { announcement: b.announcement } : {}), ...(b.joinPolicy ? { joinPolicy: b.joinPolicy } : {}) });
+  } },
+  { method: 'DELETE', path: '/v1/teams/me', auth: 'player', handler: async (_r, _p, c, u) => teams(c).disband(u) },
+  { method: 'POST', path: '/v1/teams/me/leave', auth: 'player', handler: async (_r, _p, c, u) => teams(c).leave(u) },
+  { method: 'POST', path: '/v1/teams/me/kick', auth: 'player', handler: async (r, _p, c, u) => teams(c).kick(u, (await body(r, z.object({ playerId: id }))).playerId) },
+  { method: 'PUT', path: '/v1/teams/me/roles', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ playerId: id, role: z.enum(['officer', 'member']) }));
+    return teams(c).setRole(u, b.playerId, b.role);
+  } },
+  { method: 'POST', path: '/v1/teams/me/transfer', auth: 'player', handler: async (r, _p, c, u) => teams(c).transfer(u, (await body(r, z.object({ playerId: id }))).playerId) },
+  { method: 'POST', path: '/v1/teams/me/requests/:playerId/approve', auth: 'player', handler: async (_r, p, c, u) => teams(c).approve(u, p.playerId!) },
+  { method: 'POST', path: '/v1/teams/me/requests/:playerId/decline', auth: 'player', handler: async (_r, p, c, u) => teams(c).decline(u, p.playerId!) },
+  { method: 'GET', path: '/v1/teams/search', auth: 'player', handler: async (r, _p, c) => teams(c).search(new URL(r.url).searchParams.get('q') ?? '') },
+  { method: 'GET', path: '/v1/teams/leaderboard/:seasonId', auth: 'none', handler: async (_r, p, c) => {
+    const season = p.seasonId === 'current' ? jstMonthKey((c.clock ?? Date.now)()) : p.seasonId!;
+    if (!/^\d{4}-\d{2}$/.test(season)) throw new AppError('BAD_REQUEST', 'bad season');
+    return teams(c).leaderboard(season);
+  } },
+  { method: 'GET', path: '/v1/teams/:teamId', auth: 'player', handler: async (_r, p, c, u) => teams(c).view(teamIdParam(p.teamId!), u) },
+  { method: 'POST', path: '/v1/teams/:teamId/join', auth: 'player', handler: async (_r, p, c, u) => teams(c).join(u, teamIdParam(p.teamId!)) },
+  { method: 'DELETE', path: '/v1/teams/:teamId/request', auth: 'player', handler: async (_r, p, c, u) => teams(c).cancelRequest(u, teamIdParam(p.teamId!)) },
+  // event races (REQ-EVENT-*)
+  { method: 'GET', path: '/v1/events', auth: 'player', handler: async (_r, _p, c, u) => events(c).list(u) },
+  { method: 'POST', path: '/v1/events/:eventId/enqueue', auth: 'player', handler: async (r, p, c, u) => {
+    const b = await body(r, z.object({ horseId: id }));
+    return events(c).enqueue(u, eventIdParam(p.eventId!), b.horseId, idem(r));
+  } },
+  { method: 'POST', path: '/v1/events/:eventId/cancel', auth: 'player', handler: async (_r, p, c, u) => events(c).cancel(u, eventIdParam(p.eventId!)) },
+  { method: 'GET', path: '/v1/events/:eventId/leaderboard', auth: 'none', handler: async (_r, p, c) => events(c).board(eventIdParam(p.eventId!)) },
+  { method: 'GET', path: '/v1/events/:eventId/me', auth: 'player', handler: async (_r, p, c, u) => events(c).me(u, eventIdParam(p.eventId!)) },
   // friends (REQ-SOCIAL-*)
   { method: 'GET', path: '/v1/friends', auth: 'player', handler: async (_r, _p, c, u) => c.friends.list(u) },
   { method: 'GET', path: '/v1/friends/code', auth: 'player', handler: async (_r, _p, c, u) => c.friends.myCode(u) },
@@ -368,4 +433,28 @@ export function makeFriendsService(player: (uid: string) => PlayerInvoker, dir: 
     friendsState: (u) => player(u).invoke('friendsState', u),
   };
   return new FriendsService(ports, dir);
+}
+
+/** Adapts per-player invocations to the team orchestration (REQ-TEAM-*). */
+export function teamPlayersFrom(player: (uid: string) => PlayerInvoker): TeamPlayers {
+  return {
+    prepareJoin: (u, t) => player(u).invoke('teamPrepareJoin', u, t),
+    commitJoin: (u, t) => player(u).invoke('teamCommitJoin', u, t),
+    abortJoin: (u, t) => player(u).invoke('teamAbortJoin', u, t),
+    addOutgoing: (u, t) => player(u).invoke('teamAddOutgoing', u, t),
+    removeOutgoing: (u, t) => player(u).invoke('teamRemoveOutgoing', u, t),
+    left: (u, t, byChoice) => player(u).invoke('teamLeft', u, t, byChoice),
+    state: (u) => player(u).invoke('teamState', u),
+    push: (u, templateId, vars) => player(u).invoke('queuePush', u, templateId, vars),
+  };
+}
+
+/** Adapts per-player invocations to the event orchestration (REQ-EVENT-*). */
+export function eventPlayersFrom(player: (uid: string) => PlayerInvoker): EventPlayers {
+  return {
+    raceEntry: (u, h) => player(u).invoke('raceEntry', u, h),
+    enter: (u, e, h, k) => player(u).invoke('eventEnter', u, e, h, k),
+    cancel: (u, e, entryId) => player(u).invoke('eventCancel', u, e, entryId),
+    view: (u) => player(u).invoke('eventsView', u),
+  };
 }

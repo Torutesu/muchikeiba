@@ -177,8 +177,11 @@ namespace Muchi.Engine.Tests
         {
             var node = JsonNode.Parse(File.ReadAllText(TestUtil.DefaultRulesetPath));
             var keys = node.Props.Select(p => p.Key).Where(k => k != RulesetParams.VersionKey).ToHashSet();
-            Assert.True(keys.SetEquals(RulesetParams.IntKeys), "file and RulesetParams.IntKeys differ");
+            // the default file always carries every key, including the later-added optional (ground) ones
+            Assert.True(keys.SetEquals(RulesetParams.IntKeys.Concat(RulesetParams.OptionalIntKeys)), "file and RulesetParams keys differ");
             Assert.Equal(RulesetParams.IntKeys.Length, RulesetParams.IntKeys.Distinct().Count());
+            Assert.Empty(RulesetParams.IntKeys.Intersect(RulesetParams.OptionalIntKeys));
+            Assert.Equal(RulesetParams.OptionalIntKeys.Length, RulesetParams.OptionalNeutralValues.Length);
             Assert.True(node.Has("rulesetVersion"));
             Assert.True(node.Has("maxTicks"));
             foreach (var p in node.Props) if (p.Key != "rulesetVersion") p.Value.AsLong();

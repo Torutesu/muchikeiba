@@ -1,6 +1,8 @@
-import type { Master } from '../domain/master.js';
-import type { Ruleset } from '../domain/ruleset.js';
+import type { EventDef, Master } from '../domain/master.js';
+import { eventRuleset } from '../domain/events.js';
+import { DEFAULT_RULESET, type Ruleset } from '../domain/ruleset.js';
 import { buildRaceConfig } from '../domain/raceConfig.js';
+import { groundFor } from '../domain/ground.js';
 import { randInt, randomId, type Rng } from '../domain/rng.js';
 import type { RaceMode, RaceStartConfig, ReplayLog } from '../domain/schemas.js';
 import { raceDetailsFor } from '../domain/stats.js';
@@ -17,15 +19,27 @@ export interface Assignment { raceId: string; slot: number; ticket: string; star
 
 export interface CreatedRace { config: RaceStartConfig; startAtMs: number; ratings: Record<string, Rating>; assignments: Record<string, Assignment> }
 
-export async function createRace(m: Master, o: { mode: RaceMode; humans: RaceEntry[]; cpuCount: number; cpuLevel: number; rng: Rng; now: number; ticketSecret: string; trackId?: string; ruleset?: Ruleset }): Promise<CreatedRace> {
+export interface CreateRaceOptions {
+  mode: RaceMode; humans: RaceEntry[]; cpuCount: number; cpuLevel: number; rng: Rng; now: number; ticketSecret: string;
+  trackId?: string; ruleset?: Ruleset;
+  /** REQ-EVENT-003: event races choose among the event's tracks and apply its entrant rules. */
+  event?: EventDef;
+}
+
+export async function createRace(m: Master, o: CreateRaceOptions): Promise<CreatedRace> {
   const raceId = randomId('r', o.rng);
-  const trackId = o.trackId ?? (o.mode === 'tutorial' ? 'aoba_turf_1600' : m.tracks[randInt(o.rng, m.tracks.length)]!.id);
-  const statCap = o.mode === 'ranked' ? Math.min(...o.humans.map((h) => h.statCap)) : null;
+  const ev = o.event;
+  const trackId = o.trackId
+    ?? (ev ? ev.trackIds[randInt(o.rng, ev.trackIds.length)]! : o.mode === 'tutorial' ? 'aoba_turf_1600' : m.tracks[randInt(o.rng, m.tracks.length)]!.id);
+  const statCap = ev ? ev.rules.statCap : o.mode === 'ranked' ? Math.min(...o.humans.map((h) => h.statCap)) : null;
+  const ruleset = ev ? eventRuleset(o.ruleset ?? DEFAULT_RULESET, ev) : o.ruleset;
   const config = buildRaceConfig(m, {
     raceId, mode: o.mode, trackId, statCap, cpuCount: o.cpuCount, cpuLevel: o.cpuLevel, rng: o.rng,
+    ground: groundFor(m, trackId, o.mode, o.now), // REQ-RACE-037: the day's going for this course; night at lit venues in the evening
     humans: o.humans.map((h) => ({ playerId: h.playerId, horse: h.horse, cpuLevel: 3 })),
     // REQ-OPS-006: the active ruleset is embedded in the config, so the replay log carries it to the verifier
-    ...(o.ruleset ? { rulesetOverrides: o.ruleset } : {}),
+    ...(ruleset ? { rulesetOverrides: ruleset } : {}),
+    ...(ev?.rules.fixedStats ? { fixedStats: ev.rules.fixedStats } : {}),
   });
   const startAtMs = o.now + START_DELAY_MS;
   const assignments: Record<string, Assignment> = {};
@@ -43,11 +57,12 @@ export async function createRace(m: Master, o: { mode: RaceMode; humans: RaceEnt
  * Turns a final race outcome into per-player results (places, rating updates for ranked, ride details
  * for statistics/titles derived from the confirmed input log when it is given).
  */
-export function settleRace(config: RaceStartConfig, final: FinalOutcome, ratings: Record<string, Rating>, log?: ReplayLog): Record<string, RaceResultForPlayer> {
+export function settleRace(config: RaceStartConfig, final: FinalOutcome, ratings: Record<string, Rating>, log?: ReplayLog, eventId: string | null = null): Record<string, RaceResultForPlayer> {
+  const ev = eventId ? { eventId } : {};
   const out: Record<string, RaceResultForPlayer> = {};
   const humans = config.entrants.filter((e) => e.kind === 'human');
   if (final.status === 'void') {
-    for (const h of humans) out[h.playerId!] = { raceId: config.raceId, mode: config.mode, place: 0, fieldSize: config.entrants.length, newRating: null, void: true };
+    for (const h of humans) out[h.playerId!] = { raceId: config.raceId, mode: config.mode, place: 0, fieldSize: config.entrants.length, newRating: null, void: true, ...ev };
     return out;
   }
   const placeOf = new Map(final.order.map((slot, i) => [slot, i + 1]));
@@ -65,6 +80,7 @@ export function settleRace(config: RaceStartConfig, final: FinalOutcome, ratings
       details: log && config.mode !== 'tutorial' ? raceDetailsFor(config, log, h.slot, ft === undefined || ft < 0 ? null : ft) : null,
       humans: humans.length,
       oldRating: ratings[h.playerId!] ?? null,
+      ...ev,
     };
   }
   return out;

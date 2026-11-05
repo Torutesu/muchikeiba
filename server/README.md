@@ -12,6 +12,9 @@
 | `npm run dev` | ローカル実行（`DEV_MODE=1`：偽ストア＋`x-dev-user`ヘッダー） |
 | `npm run smoke` | `npm run dev` 中に実行する通しテスト（購入→ガチャ→チュートリアルレース→WebSocket→ランク戦→検証） |
 | `npm run gen:golden` | `contracts/golden/ts-config-*.json` を再生成（ルールセット・マスター変更時に必須） |
+| `npm run lint:deploy -- --env <staging\|production>` | デプロイ前の設定チェック（`DEV_MODE`禁止・`REPLACE_ME`残り・バインディング漏れ・環境間のストレージ共有・シークレットの[vars]混入）。`--allow-placeholders` で構造だけ確認、`--secrets <wrangler secret list の出力>` で必須シークレットの有無も確認 |
+
+デプロイ（staging / production の環境、シークレット、CI、切り戻し）は [../docs/ops/deploy.md](../docs/ops/deploy.md)。
 
 ## 構成
 
@@ -99,6 +102,26 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | GET | `/v1/time-attack/:trackId/ghosts` | 要 | | `?kind=top\|friends\|me&seasonId=` ゴースト候補（名前・タイム・ダウンロード `path`） |
 | GET | `/v1/time-attack/ghosts/:seasonId/:trackId/:playerId` | 要 | | ゴースト本体 `{meta, log}`（検証済みリプレイログ） |
 | GET | `/v1/leaderboards/me` | 要 | | 今シーズンの自分の順位（直近集計）と現在の成績 |
+| GET | `/v1/teams/me` | 要 | | 所属支部（メンバー・役職・貢献ポイント・申請一覧はリーダー/幹部のみ）、再加入できる時刻、送信中の申請、支部の順位 |
+| POST | `/v1/teams` | 要 | | `{name, joinPolicy: open\|approval, announcement?}` 支部を作る（作成者がリーダー）。`ALREADY_IN_TEAM` / `TEAM_COOLDOWN` / `INVALID_NAME` / `NG_NAME` |
+| PUT | `/v1/teams/me` | 要 | | `{announcement?, joinPolicy?}` お知らせ（リーダー/幹部）・加入方針（リーダー） |
+| DELETE | `/v1/teams/me` | 要 | | 解散（リーダーが最後の1人のときだけ） |
+| POST | `/v1/teams/me/leave` | 要 | | 脱退。再加入の待ち時間が始まる。リーダーは `TEAM_LEADER_MUST_TRANSFER`（1人なら解散） |
+| POST | `/v1/teams/me/kick` | 要 | | `{playerId}` 除名（幹部はメンバーのみ）。除名された側に待ち時間は無い |
+| PUT | `/v1/teams/me/roles` | 要 | | `{playerId, role: officer\|member}` 役職の変更（リーダーのみ、幹部は上限あり `TEAM_LIMIT`） |
+| POST | `/v1/teams/me/transfer` | 要 | | `{playerId}` リーダー譲渡（元リーダーは幹部に） |
+| POST | `/v1/teams/me/requests/:playerId/approve` | 要 | | 加入申請の承認（リーダー/幹部）。申請者が他所に入っていれば申請は消える |
+| POST | `/v1/teams/me/requests/:playerId/decline` | 要 | | 加入申請の却下 |
+| GET | `/v1/teams/search` | 要 | | `?q=` 支部名の部分一致（または支部ID）。空なら今シーズン活発な支部 |
+| GET | `/v1/teams/leaderboard/:seasonId` | なし | | 支部ランキングのスナップショット（R2、`current` 可） |
+| GET | `/v1/teams/:teamId` | 要 | | 支部の公開情報 |
+| POST | `/v1/teams/:teamId/join` | 要 | | 自由加入なら `{status:"joined"}`、承認制なら `{status:"requested"}`（リーダー/幹部へ通知）。`TEAM_FULL` / `TEAM_COOLDOWN` / `TEAM_LIMIT` |
+| DELETE | `/v1/teams/:teamId/request` | 要 | | 自分の加入申請を取り下げる |
+| GET | `/v1/events` | 要 | | 開催中・予定のイベント（参加条件・参加できない理由・自分の成績） |
+| POST | `/v1/events/:eventId/enqueue` | 要 | 要 | `{horseId}` 参加費（無償コインかチケット）を預かってイベントの待ち行列へ。マッチ後の席は `/v1/match/status`。`EVENT_CLOSED` / `NOT_ELIGIBLE` / `INSUFFICIENT_COINS` / `INSUFFICIENT_ITEMS` |
+| POST | `/v1/events/:eventId/cancel` | 要 | | 待ち行列から抜けて参加費を返す（レース中は `ALREADY_IN_RACE`） |
+| GET | `/v1/events/:eventId/leaderboard` | なし | | イベントランキングのスナップショット（R2） |
+| GET | `/v1/events/:eventId/me` | 要 | | 自分のイベント成績と順位（直近集計） |
 | GET | `/v1/friends` | 要 | | フレンド・受信/送信中の申請・招待（公開プロフィール付き） |
 | GET | `/v1/friends/code` | 要 | | 自分のフレンドコード（9桁） |
 | POST | `/v1/friends/requests` | 要 | | `{code}` 申請（相互申請なら即フレンド） |
@@ -170,6 +193,14 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 - ランキングは1シーズン＝1オブジェクト（`LeaderboardDO`、`lb:YYYY-MM`）。フレンドコードと公開プロフィールは16シャード（`DirectoryDO`、`dir:n`）。
 - ゴールデン `contracts/golden/ts-config-*.json` はルールセットのファイルを埋め込むので、ルールセットを変えたら `npm run gen:golden`。
 
+## 馬場状態・ダート・ナイター（`src/domain/ground.ts`、REQ-RACE-034〜038）
+- ランク戦・フレンド戦の設定には `track.going`（その日の馬場）と `track.night` が入る。チュートリアルとタイムアタックには入らない（良・昼）。
+- その日の馬場：`fnv1a32(salt|JSTの日付|コースID)` で `master/progression.json` の `weather.turf` / `weather.dirt` の重みから選ぶ。同じ日・同じコースは誰が走っても同じ。
+- 運営の上書き：`weather.overrides` に `{trackId?, fromMs, toMs, going, night?}`。コース指定が全体指定より優先。リモート設定（`progression.weather`）でも変えられ、登録時に `weatherProblems` で検証する。
+- ナイター：`master/tracks.json` で `lights: true` の競馬場（今はみなと競馬場）で、JST の `nightFromHourJst`〜`nightToHourJst`（既定 18〜4時）のレース。`lights` はマスター専用でレース設定には入らない。
+- 馬の `goingAptitude`（any / fast / heavy）はテンプレートから引き継ぎ、配合では `goingAptitudeOdds` の確率で受け継ぐ（配合予想も同じ関数）。any の馬はレース設定に項目を書かない。
+- ルールセットの馬場キー18個は「全部あるか全部ないか」。全部ない古いリプレイも検証できる（`OPTIONAL_RULESET_KEYS`）。
+
 ## ストア連携（`src/stores/`）
 
 | | Apple（StoreKit 2） | Google Play |
@@ -204,7 +235,7 @@ App Store Server API（`AppStoreServerApi`、ES256 JWT）はアプリが報告�
 ## 定期実行（wrangler.toml `[triggers]`）
 | cron (UTC) | 内容 |
 |---|---|
-| `*/5 * * * *` | 今シーズンのランキング集計をR2（`SNAPSHOTS`）へ（変化があった時だけ）＋前シーズンの締めを1段階進める（完了後は何もしない） |
+| `*/5 * * * *` | 今シーズンのランキング集計（個人・タイムアタック・支部）をR2（`SNAPSHOTS`）へ（変化があった時だけ）＋前シーズンの締め（個人・支部報酬）を1段階ずつ進める＋イベント（開催中は集計、開始時に1回だけ通知、終了後は順位報酬を1段階ずつ配布） |
 | `23 18 * * *`（03:23 JST） | リプレイログの保存期限切れを削除（保留中は残す） |
 | `7 3 * * *`（12:07 JST） | シーズンのお知らせ（開幕・終了2日前・最終日）をFCMトピックへ1回だけ送る |
 

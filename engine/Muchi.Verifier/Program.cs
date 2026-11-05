@@ -23,20 +23,39 @@ if (args.Length >= 3 && args[0] == "golden")
 if (args.Length >= 2 && args[0] == "balance")
 {
     var rsNode = Muchi.Net.JsonNode.Parse(File.ReadAllText(args[1]));
-    foreach (var kv in args.Skip(3)) { var parts = kv.Split('='); rsNode.Set(parts[0], long.Parse(parts[1])); }
+    // track options: surface=turf|dirt going=<name> apt=mix ; everything else overrides a ruleset key
+    string surface = "turf", goingName = null; bool aptMix = false;
+    foreach (var kv in args.Skip(3))
+    {
+        var parts = kv.Split('=');
+        if (parts[0] == "surface") surface = parts[1];
+        else if (parts[0] == "going") goingName = parts[1];
+        else if (parts[0] == "apt") aptMix = parts[1] == "mix";
+        else rsNode.Set(parts[0], long.Parse(parts[1]));
+    }
     var rs = Muchi.Net.ProtocolCodec.ParseRuleset(rsNode);
     int n = args.Length >= 3 ? int.Parse(args[2]) : 200;
-    var rep = BalanceProbe.Run(rs, n);
+    var track = surface == "dirt" ? SampleRaces.Dirt1800() : SampleRaces.Turf2000();
+    if (goingName != null) track.Going = Muchi.Net.ProtocolCodec.ParseGoing(goingName, track.Surface);
+    var rep = BalanceProbe.Run(rs, n, 1, 150, track, aptMix);
     Console.Write(rep.Describe(20, rs.GateOpenTick));
     return 0;
 }
 if (args.Length >= 1 && args[0] == "serve")
 {
-    var builder = WebApplication.CreateBuilder(args.Skip(1).ToArray());
+    string authSecret = VerifierAuth.FromEnvironment(Environment.GetEnvironmentVariable); // fails closed when required
+    var serveArgs = args.Skip(1).ToArray();
+    var builder = WebApplication.CreateBuilder(serveArgs);
+    // Cloud Run passes the port in $PORT; an explicit --urls wins.
+    string port = Environment.GetEnvironmentVariable("PORT");
+    if (!serveArgs.Contains("--urls") && !string.IsNullOrEmpty(port)) builder.WebHost.UseUrls("http://0.0.0.0:" + port);
     var app = builder.Build();
+    if (authSecret == null) app.Logger.LogWarning("verifier auth is OFF (no {Env}); only acceptable for local development", VerifierAuth.SecretEnv);
     app.MapGet("/healthz", () => Results.Text("ok"));
     app.MapPost("/verify", async (HttpRequest req) =>
     {
+        if (!VerifierAuth.IsAuthorized(req.Headers.Authorization.ToString(), authSecret))
+            return Results.Text("{\"error\":\"unauthorized\"}", "application/json", statusCode: 401);
         using var reader = new StreamReader(req.Body);
         string body = await reader.ReadToEndAsync();
         if (body.Length > VerifyService.MaxBodyBytes) return Results.Text("{\"error\":\"body too large\"}", "application/json", statusCode: 413);

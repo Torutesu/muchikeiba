@@ -89,6 +89,8 @@ namespace Muchi.Client
     public sealed class Horse
     {
         public string Id, TemplateId, Name, Rarity, Sex, Style, Surface, Line, Status, SireId, DamId, SireName, DamName;
+        /// <summary>Ground preference: "any" | "fast" (firm/fast ground) | "heavy" (soft/sloppy ground). REQ-RACE-035.</summary>
+        public string GoingAptitude = "any";
         public int DistMinM, DistMaxM, Awakening;
         public long BornAt;
         public bool Named;
@@ -104,6 +106,7 @@ namespace Muchi.Client
             SireName = J.Str(o, "sireName"), DamName = J.Str(o, "damName"),
             DistMinM = J.Int(o, "distMinM"), DistMaxM = J.Int(o, "distMaxM"), Awakening = J.Int(o, "awakening"),
             BornAt = J.Long(o, "bornAt"), Named = J.Bool(o, "named"), Base = Stats.Parse(J.Opt(o, "base")),
+            GoingAptitude = J.Str(o, "goingAptitude") ?? "any",
         };
     }
 
@@ -380,6 +383,8 @@ namespace Muchi.Client
         public Dictionary<string, long> StyleMilliPercent = new Dictionary<string, long>();
         public int DistanceMinM, DistanceMaxM;
         public string Surface;
+        /// <summary>Foal ground preference odds in permille ("any" / "fast" / "heavy"), same function as the real breeding.</summary>
+        public Dictionary<string, int> GoingAptitudePermille = new Dictionary<string, int>();
         internal static BreedingPreview Parse(JsonNode o)
         {
             var d = J.Opt(o, "distance");
@@ -387,6 +392,7 @@ namespace Muchi.Client
             {
                 Stats = J.Map(o, "stats", StatRange.Parse), Nick = J.Bool(o, "nick"), InbreedingCount = J.Int(o, "inbreedingCount"),
                 StyleMilliPercent = J.Map(o, "styles", J.Milli), DistanceMinM = J.Int(d, "minM"), DistanceMaxM = J.Int(d, "maxM"), Surface = J.Str(o, "surface"),
+                GoingAptitudePermille = J.Opt(o, "goingAptitude") == null ? new Dictionary<string, int>() : J.Map(o, "goingAptitude", n => n.AsInt()),
             };
         }
     }
@@ -674,5 +680,204 @@ namespace Muchi.Client
         /// <summary>"requested" or "friends".</summary>
         public string Status, PlayerId;
         internal static FriendOpResult Parse(JsonNode o) => new FriendOpResult { Status = J.Str(o, "status"), PlayerId = J.Str(o, "playerId") };
+    }
+
+    // ------------------------------------------------------------------ teams / 支部 (REQ-TEAM)
+
+    public enum TeamJoinPolicy { Open, Approval }
+    public enum TeamRole { Member, Officer, Leader }
+
+    /// <summary>Rank as of the last snapshot (team ranking, event ranking).</summary>
+    public sealed class PlaceInfo
+    {
+        public int Rank, Total;
+        public long? GeneratedAt;
+        internal static PlaceInfo Parse(JsonNode o) => o == null ? null : new PlaceInfo { Rank = J.Int(o, "rank"), Total = J.Int(o, "total"), GeneratedAt = J.LongN(o, "generatedAt") };
+    }
+
+    internal static class TeamWire
+    {
+        public static TeamJoinPolicy Policy(string s) => s == "approval" ? TeamJoinPolicy.Approval : TeamJoinPolicy.Open;
+        public static TeamRole Role(string s) => s == "leader" ? TeamRole.Leader : s == "officer" ? TeamRole.Officer : TeamRole.Member;
+        public static List<T> Array<T>(JsonNode o, Func<JsonNode, T> f)
+        {
+            var list = new List<T>();
+            if (o != null && o.Kind == JsonKind.Array) foreach (var it in o.Items) list.Add(f(it));
+            return list;
+        }
+    }
+
+    public sealed class TeamMemberInfo
+    {
+        public string PlayerId, DisplayName;
+        public TeamRole Role;
+        public long JoinedAt;
+        /// <summary>Season points this member adds to the team (earned since joining, capped per member).</summary>
+        public int Contribution;
+        internal static TeamMemberInfo Parse(JsonNode o) => new TeamMemberInfo
+        {
+            PlayerId = J.Str(o, "playerId"), DisplayName = J.Str(o, "displayName"), Role = TeamWire.Role(J.Str(o, "role")),
+            JoinedAt = J.Long(o, "joinedAt"), Contribution = J.Int(o, "contribution"),
+        };
+    }
+
+    public sealed class TeamRequestInfo
+    {
+        public string PlayerId, DisplayName;
+        public long At;
+        internal static TeamRequestInfo Parse(JsonNode o) => new TeamRequestInfo { PlayerId = J.Str(o, "playerId"), DisplayName = J.Str(o, "displayName"), At = J.Long(o, "at") };
+    }
+
+    public sealed class TeamInfo
+    {
+        public string TeamId, Name, Announcement, Season;
+        public TeamJoinPolicy JoinPolicy;
+        public long CreatedAt;
+        public bool Disbanded;
+        public int Points, MaxMembers;
+        public List<TeamMemberInfo> Members = new List<TeamMemberInfo>();
+        /// <summary>Your role when you are a member, else null.</summary>
+        public TeamRole? MyRole;
+        /// <summary>Pending join requests (only shown to the leader and officers).</summary>
+        public List<TeamRequestInfo> Requests = new List<TeamRequestInfo>();
+        internal static TeamInfo Parse(JsonNode o)
+        {
+            if (o == null) return null;
+            var role = J.Str(o, "myRole");
+            return new TeamInfo
+            {
+                TeamId = J.Str(o, "teamId"), Name = J.Str(o, "name"), Announcement = J.Str(o, "announcement"), Season = J.Str(o, "season"),
+                JoinPolicy = TeamWire.Policy(J.Str(o, "joinPolicy")), CreatedAt = J.Long(o, "createdAt"), Disbanded = J.Bool(o, "disbanded"),
+                Points = J.Int(o, "points"), MaxMembers = J.Int(o, "maxMembers"), Members = J.List(o, "members", TeamMemberInfo.Parse),
+                MyRole = role == null ? (TeamRole?)null : TeamWire.Role(role), Requests = J.List(o, "requests", TeamRequestInfo.Parse),
+            };
+        }
+    }
+
+    public sealed class MyTeam
+    {
+        /// <summary>Null when you are not in a team.</summary>
+        public TeamInfo Team;
+        /// <summary>Epoch ms; joining another team is refused before this (after leaving by choice).</summary>
+        public long CooldownUntil;
+        /// <summary>Teams you have pending join requests with.</summary>
+        public List<string> Outgoing = new List<string>();
+        public PlaceInfo Rank;
+        internal static MyTeam Parse(JsonNode o) => new MyTeam
+        {
+            Team = TeamInfo.Parse(J.Opt(o, "team")), CooldownUntil = J.Long(o, "cooldownUntil"),
+            Outgoing = J.List(o, "outgoing", x => x.AsString()), Rank = PlaceInfo.Parse(J.Opt(o, "rank")),
+        };
+    }
+
+    public sealed class TeamSummary
+    {
+        public string TeamId, Name, Season;
+        public TeamJoinPolicy JoinPolicy;
+        public int Members, Points;
+        public long UpdatedAt;
+        internal static TeamSummary Parse(JsonNode o) => new TeamSummary
+        {
+            TeamId = J.Str(o, "teamId"), Name = J.Str(o, "name"), Season = J.Str(o, "season"), JoinPolicy = TeamWire.Policy(J.Str(o, "joinPolicy")),
+            Members = J.Int(o, "members"), Points = J.Int(o, "points"), UpdatedAt = J.Long(o, "updatedAt"),
+        };
+        internal static List<TeamSummary> ParseList(JsonNode o) => TeamWire.Array(o, Parse);
+    }
+
+    public sealed class TeamBoardRow
+    {
+        public int Rank, Points, Members;
+        public string TeamId, Name;
+        internal static TeamBoardRow Parse(JsonNode o) => new TeamBoardRow { Rank = J.Int(o, "rank"), Points = J.Int(o, "points"), Members = J.Int(o, "members"), TeamId = J.Str(o, "teamId"), Name = J.Str(o, "name") };
+    }
+
+    public sealed class TeamBoard
+    {
+        public string SeasonId;
+        public long? GeneratedAt;
+        public int Total;
+        public List<TeamBoardRow> Entries = new List<TeamBoardRow>();
+        internal static TeamBoard Parse(JsonNode o) => new TeamBoard
+        {
+            SeasonId = J.Str(o, "seasonId"), GeneratedAt = J.LongN(o, "generatedAt"), Total = J.Int(o, "total"), Entries = J.List(o, "entries", TeamBoardRow.Parse),
+        };
+    }
+
+    // ------------------------------------------------------------------ event races (REQ-EVENT)
+
+    public sealed class EventFee
+    {
+        /// <summary>"none", "free" (free coins only) or "item" (a ticket).</summary>
+        public string Kind, ItemId;
+        public int FreeCoins, Qty;
+        internal static EventFee Parse(JsonNode o) => o == null ? new EventFee { Kind = "none" } : new EventFee
+        {
+            Kind = J.Str(o, "kind"), ItemId = J.Str(o, "itemId"), FreeCoins = J.Int(o, "freeCoins"), Qty = J.Int(o, "qty"),
+        };
+    }
+
+    public sealed class EventProgress
+    {
+        public int Points, Races, Wins;
+        /// <summary>An entry fee is held for a queued race.</summary>
+        public bool Pending, Closed;
+        public int? Rank;
+        public int[] Milestones = new int[0];
+        internal static EventProgress Parse(JsonNode o) => o == null ? null : new EventProgress
+        {
+            Points = J.Int(o, "points"), Races = J.Int(o, "races"), Wins = J.Int(o, "wins"), Pending = J.Bool(o, "pending"),
+            Closed = J.Bool(o, "closed"), Rank = J.IntN(o, "rank"), Milestones = J.Ints(o, "milestones"),
+        };
+    }
+
+    public sealed class EventInfo
+    {
+        public string Id, Name;
+        /// <summary>"upcoming", "open" or "closed".</summary>
+        public string Status;
+        public long StartAtMs, EndAtMs;
+        public List<string> TrackIds = new List<string>();
+        public EventFee Fee;
+        public bool Eligible;
+        /// <summary>e.g. "class", "ranked_races", "style".</summary>
+        public List<string> NotEligibleReasons = new List<string>();
+        public EventProgress Me;
+        internal static EventInfo Parse(JsonNode o) => o == null ? null : new EventInfo
+        {
+            Id = J.Str(o, "id"), Name = J.Str(o, "name"), Status = J.Str(o, "status"), StartAtMs = J.Long(o, "startAtMs"), EndAtMs = J.Long(o, "endAtMs"),
+            TrackIds = J.List(o, "trackIds", x => x.AsString()), Fee = EventFee.Parse(J.Opt(o, "fee")), Eligible = J.Bool(o, "eligible"),
+            NotEligibleReasons = J.List(o, "notEligibleReasons", x => x.AsString()), Me = EventProgress.Parse(J.Opt(o, "me")),
+        };
+        internal static List<EventInfo> ParseList(JsonNode o) => TeamWire.Array(o, Parse);
+    }
+
+    public sealed class EventBoardRow
+    {
+        public int Rank, Points, Races, Wins;
+        public string PlayerId, DisplayName;
+        internal static EventBoardRow Parse(JsonNode o) => new EventBoardRow
+        {
+            Rank = J.Int(o, "rank"), Points = J.Int(o, "points"), Races = J.Int(o, "races"), Wins = J.Int(o, "wins"),
+            PlayerId = J.Str(o, "playerId"), DisplayName = J.Str(o, "displayName"),
+        };
+    }
+
+    public sealed class EventBoard
+    {
+        public string EventId;
+        public long? GeneratedAt;
+        public int Total;
+        public List<EventBoardRow> Entries = new List<EventBoardRow>();
+        internal static EventBoard Parse(JsonNode o) => new EventBoard
+        {
+            EventId = J.Str(o, "eventId"), GeneratedAt = J.LongN(o, "generatedAt"), Total = J.Int(o, "total"), Entries = J.List(o, "entries", EventBoardRow.Parse),
+        };
+    }
+
+    public sealed class MyEvent
+    {
+        public EventInfo Event;
+        public PlaceInfo Rank;
+        internal static MyEvent Parse(JsonNode o) => new MyEvent { Event = EventInfo.Parse(J.Opt(o, "event")), Rank = PlaceInfo.Parse(J.Opt(o, "rank")) };
     }
 }

@@ -214,7 +214,7 @@ namespace Muchi.Engine.Tests
             var groups = _results.GroupBy(kv => kv.Value).OrderByDescending(g => g.Count()).ToList();
             int reporting = _results.Count;
             var top = groups[0];
-            bool ranked = Config.Mode == RaceMode.Ranked;
+            bool ranked = Config.Mode == RaceMode.Ranked || Config.Mode == RaceMode.Event; // same rule as the TS room (REQ-EVENT-006)
             if (reporting >= 2 && top.Count() >= 2 && top.Count() * 3 >= reporting * 2) FinalStatus = "confirmed";
             else FinalStatus = ranked ? "verifying" : "confirmed";
             FinalHash = top.Key;

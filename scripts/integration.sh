@@ -12,9 +12,17 @@ BASE="http://127.0.0.1:${SERVER_PORT}"
 LOG_DIR="$(mktemp -d)"
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 
+# Shared secret between the server (VERIFIER_TOKEN) and the verifier (VERIFIER_AUTH_SECRET), as in production.
+VERIFIER_SECRET="integration-$(date +%s)-0123456789abcdef0123456789"
+
+kill_tree() { # pid: the process and every descendant (npx → wrangler → workerd would otherwise outlive the script)
+  local pid=$1 child
+  for child in $(pgrep -P "$pid" 2>/dev/null); do kill_tree "$child"; done
+  kill "$pid" 2>/dev/null || true
+}
 cleanup() {
-  [[ -n "${VERIFIER_PID:-}" ]] && kill "$VERIFIER_PID" 2>/dev/null || true
-  [[ -n "${SERVER_PID:-}" ]] && kill "$SERVER_PID" 2>/dev/null || true
+  [[ -n "${VERIFIER_PID:-}" ]] && kill_tree "$VERIFIER_PID"
+  [[ -n "${SERVER_PID:-}" ]] && kill_tree "$SERVER_PID"
   wait 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -36,14 +44,17 @@ echo "== build"
 (cd "$ROOT/engine" && dotnet build Muchi.sln -c Release --nologo -v q)
 
 echo "== start C# verifier on :$VERIFIER_PORT"
-(cd "$ROOT/engine" && dotnet Muchi.Verifier/bin/Release/net8.0/Muchi.Verifier.dll serve --urls "http://127.0.0.1:${VERIFIER_PORT}" >"$LOG_DIR/verifier.log" 2>&1) &
+(cd "$ROOT/engine" && VERIFIER_REQUIRE_AUTH=1 VERIFIER_AUTH_SECRET="$VERIFIER_SECRET" \
+  exec dotnet Muchi.Verifier/bin/Release/net8.0/Muchi.Verifier.dll serve --urls "http://127.0.0.1:${VERIFIER_PORT}" >"$LOG_DIR/verifier.log" 2>&1) &
 VERIFIER_PID=$!
 wait_for "http://127.0.0.1:${VERIFIER_PORT}/healthz" verifier
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -d '{}' "http://127.0.0.1:${VERIFIER_PORT}/verify")
+[[ "$code" == "401" ]] || { echo "verifier accepted an unauthenticated call (HTTP $code)"; exit 1; }
 
 echo "== start TS server (wrangler dev) on :$SERVER_PORT"
-(cd "$ROOT/server" && npx wrangler dev --port "$SERVER_PORT" --ip 127.0.0.1 \
+(cd "$ROOT/server" && exec npx wrangler dev --port "$SERVER_PORT" --ip 127.0.0.1 \
   --var DEV_MODE:1 --var TICKET_SECRET:devsecret --var ADMIN_TOKEN:dev-admin \
-  --var "VERIFIER_URL:http://127.0.0.1:${VERIFIER_PORT}" >"$LOG_DIR/server.log" 2>&1) &
+  --var "VERIFIER_URL:http://127.0.0.1:${VERIFIER_PORT}" --var "VERIFIER_TOKEN:${VERIFIER_SECRET}" >"$LOG_DIR/server.log" 2>&1) &
 SERVER_PID=$!
 wait_for "${BASE}/v1/health" server
 
@@ -70,6 +81,12 @@ echo "bot=$LOCAL_HASH replay=$REPLAY_HASH"
 
 echo "== 5) time attack: device run → server re-simulation (C# verifier) → personal best, ghost replay; tampered run rejected"
 $BOT "$BASE" timeattack | tee "$LOG_DIR/timeattack.jsonl" || fail=1
+
+echo "== 6) event race: free-coin fee → event pool (CPU fill) → solo human verified by the C# verifier → event points applied"
+$BOT "$BASE" event 1 | tee "$LOG_DIR/event.jsonl" || fail=1
+
+echo "== 7) teams: create → open join → directory search → leave (cooldown) → lone leader leaves = disband"
+$BOT "$BASE" team | tee "$LOG_DIR/team.jsonl" || fail=1
 
 if [[ $fail -ne 0 ]]; then
   echo "== INTEGRATION FAILED"; echo "--- server log"; tail -50 "$LOG_DIR/server.log"; echo "--- verifier log"; tail -20 "$LOG_DIR/verifier.log"

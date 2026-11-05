@@ -40,6 +40,16 @@ export class PlayerDO extends DurableObject<Env> {
       onProfile: (p) => {
         ctx.waitUntil(shardedDirectory(env.DIRECTORY).putProfile(p));
       },
+      // REQ-TEAM-005: the team recomputes its points from members' reported standings
+      onTeamPoints: (p) => {
+        const team = env.TEAMS.get(env.TEAMS.idFromName(p.teamId)) as unknown as { reportPoints(a: string, b: string, c: number, d: string): Promise<unknown> };
+        ctx.waitUntil(team.reportPoints(p.playerId, p.seasonId, p.points, p.displayName).catch((e) => console.error('team points report failed', p.teamId, e)));
+      },
+      // REQ-EVENT-007: event standing → the event's board
+      onEventEntry: (e) => {
+        const ev = env.EVENTS.get(env.EVENTS.idFromName(`ev:${e.eventId}`)) as unknown as { upsert(x: typeof e): Promise<unknown> };
+        ctx.waitUntil(ev.upsert(e).catch((err) => console.error('event entry upsert failed', e.eventId, err)));
+      },
       // REQ-PUSH-005: deliveries run from this object's alarm, never on the request path.
       onPushWake: async (at) => {
         const cur = await ctx.storage.getAlarm();

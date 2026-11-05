@@ -40,6 +40,32 @@ namespace Muchi.Net
             }
         }
 
+        // ground condition (REQ-RACE-034/035): names depend on the surface
+        private static readonly string[] TurfGoing = { "firm", "good", "yielding", "soft" };
+        private static readonly string[] DirtGoing = { "fast", "good", "muddy", "sloppy" };
+
+        public static string GoingToString(Going g, Surface s) => (s == Surface.Dirt ? DirtGoing : TurfGoing)[(int)g];
+
+        public static Going ParseGoing(string s, Surface surface)
+        {
+            var names = surface == Surface.Dirt ? DirtGoing : TurfGoing;
+            for (int i = 0; i < names.Length; i++) if (names[i] == s) return (Going)i;
+            throw new FormatException("invalid going for " + SurfaceToString(surface) + ": " + s);
+        }
+
+        public static string GoingAptitudeToString(GoingAptitude a) => a == GoingAptitude.Fast ? "fast" : a == GoingAptitude.Heavy ? "heavy" : "any";
+
+        public static GoingAptitude ParseGoingAptitude(string s)
+        {
+            switch (s)
+            {
+                case "any": return GoingAptitude.Any;
+                case "fast": return GoingAptitude.Fast;
+                case "heavy": return GoingAptitude.Heavy;
+            }
+            throw new FormatException("invalid goingAptitude: " + s);
+        }
+
         public static string SurfaceToString(Surface s) => s == Surface.Turf ? "turf" : s == Surface.Dirt ? "dirt" : "both";
 
         public static Surface ParseSurface(string s, bool allowBoth)
@@ -55,7 +81,7 @@ namespace Muchi.Net
             throw new FormatException("invalid surface: " + s);
         }
 
-        public static string ModeToString(RaceMode m) => m == RaceMode.Ranked ? "ranked" : m == RaceMode.Friend ? "friend" : m == RaceMode.TimeAttack ? "timeattack" : "tutorial";
+        public static string ModeToString(RaceMode m) => m == RaceMode.Ranked ? "ranked" : m == RaceMode.Friend ? "friend" : m == RaceMode.TimeAttack ? "timeattack" : m == RaceMode.Event ? "event" : "tutorial";
 
         public static RaceMode ParseMode(string s)
         {
@@ -65,6 +91,7 @@ namespace Muchi.Net
                 case "friend": return RaceMode.Friend;
                 case "tutorial": return RaceMode.Tutorial;
                 case "timeattack": return RaceMode.TimeAttack;
+                case "event": return RaceMode.Event;
                 default: throw new FormatException("invalid mode: " + s);
             }
         }
@@ -124,6 +151,8 @@ namespace Muchi.Net
                 else throw new FormatException("invalid segment kind: " + kind);
                 c.Track.Segments.Add(seg);
             }
+            if (t.TryGet("going", out var gn) && !gn.IsNull) c.Track.Going = ParseGoing(gn.AsString(), c.Track.Surface);
+            if (t.TryGet("night", out var nn) && !nn.IsNull) c.Track.Night = nn.AsBool();
 
             var n = o.Get("net");
             c.Net = new NetParams
@@ -162,6 +191,7 @@ namespace Muchi.Net
                     DistMaxM = h.Get("distMaxM").AsInt(),
                     Surface = ParseSurface(h.Get("surface").AsString(), true),
                 };
+                if (h.TryGet("goingAptitude", out var ga) && !ga.IsNull) ent.Horse.GoingAptitude = ParseGoingAptitude(ga.AsString());
                 c.Entrants.Add(ent);
             }
             try { c.Validate(); }
@@ -190,6 +220,9 @@ namespace Muchi.Net
                 segs.Add(so);
             }
             t.Set("segments", segs);
+            // optional fields are written only when present, so old configs round-trip byte-for-byte
+            if (c.Track.Going.HasValue) t.Set("going", GoingToString(c.Track.Going.Value, c.Track.Surface));
+            if (c.Track.Night.HasValue) t.Set("night", JsonNode.Bool(c.Track.Night.Value));
             o.Set("track", t);
             var n = JsonNode.Obj();
             n.Set("tickHz", c.Net.TickHz);
@@ -220,6 +253,7 @@ namespace Muchi.Net
                 ho.Set("distMinM", h.DistMinM);
                 ho.Set("distMaxM", h.DistMaxM);
                 ho.Set("surface", SurfaceToString(h.Surface));
+                if (h.GoingAptitude.HasValue) ho.Set("goingAptitude", GoingAptitudeToString(h.GoingAptitude.Value));
                 eo.Set("horse", ho);
                 es.Add(eo);
             }

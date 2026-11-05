@@ -91,6 +91,118 @@
       "variants": [
         { "id": "result_1", "text": "一着{name}、二着{name2}、三着{name3}。" }
       ]
+    },
+    "ground_turf_firm": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_turf_firm_1", "text": "芝は絶好の良馬場。速い時計の決着になりそうです。" },
+        { "id": "ground_turf_firm_2", "text": "パンパンの良馬場。スピード自慢には願ってもない芝です。" }
+      ]
+    },
+    "ground_turf_firm_night": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_turf_firm_night_1", "text": "ナイターの照明の下、芝は絶好の良馬場。速い時計の決着になりそうです。" },
+        { "id": "ground_turf_firm_night_2", "text": "ナイターの照明の下、パンパンの良馬場。スピード自慢には願ってもない芝です。" }
+      ]
+    },
+    "ground_turf_good": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_turf_good_1", "text": "芝コースは良馬場の発表です。" },
+        { "id": "ground_turf_good_2", "text": "芝は良。実力どおりの勝負になりそうです。" }
+      ]
+    },
+    "ground_turf_good_night": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_turf_good_night_1", "text": "ナイターの照明の下、芝コースは良馬場の発表です。" },
+        { "id": "ground_turf_good_night_2", "text": "ナイターの照明の下、芝は良。実力どおりの勝負になりそうです。" }
+      ]
+    },
+    "ground_turf_yielding": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_turf_yielding_1", "text": "芝は稍重。少し力の要る馬場です。" },
+        { "id": "ground_turf_yielding_2", "text": "やや渋った芝、稍重での一戦です。" }
+      ]
+    },
+    "ground_turf_yielding_night": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_turf_yielding_night_1", "text": "ナイターの照明の下、芝は稍重。少し力の要る馬場です。" },
+        { "id": "ground_turf_yielding_night_2", "text": "ナイターの照明の下、やや渋った芝、稍重での一戦です。" }
+      ]
+    },
+    "ground_turf_soft": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_turf_soft_1", "text": "雨の影響で芝は重馬場。スタミナ勝負になりそうです。" },
+        { "id": "ground_turf_soft_2", "text": "芝は重。道悪の巧拙が問われます。" }
+      ]
+    },
+    "ground_turf_soft_night": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_turf_soft_night_1", "text": "ナイターの照明の下、雨の影響で芝は重馬場。スタミナ勝負になりそうです。" },
+        { "id": "ground_turf_soft_night_2", "text": "ナイターの照明の下、芝は重。道悪の巧拙が問われます。" }
+      ]
+    },
+    "ground_dirt_fast": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_dirt_fast_1", "text": "ダートは乾いた良馬場。力の要る砂です。" },
+        { "id": "ground_dirt_fast_2", "text": "ダートは良。パサパサの砂で時計がかかりそうです。" }
+      ]
+    },
+    "ground_dirt_fast_night": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_dirt_fast_night_1", "text": "ナイターの照明の下、ダートは乾いた良馬場。力の要る砂です。" },
+        { "id": "ground_dirt_fast_night_2", "text": "ナイターの照明の下、ダートは良。パサパサの砂で時計がかかりそうです。" }
+      ]
+    },
+    "ground_dirt_good": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_dirt_good_1", "text": "ダートコースは良馬場の発表です。" },
+        { "id": "ground_dirt_good_2", "text": "ダートは良。力比べの一戦です。" }
+      ]
+    },
+    "ground_dirt_good_night": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_dirt_good_night_1", "text": "ナイターの照明の下、ダートコースは良馬場の発表です。" },
+        { "id": "ground_dirt_good_night_2", "text": "ナイターの照明の下、ダートは良。力比べの一戦です。" }
+      ]
+    },
+    "ground_dirt_muddy": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_dirt_muddy_1", "text": "ダートは稍重。脚抜きのいい馬場です。" },
+        { "id": "ground_dirt_muddy_2", "text": "湿ったダート、稍重での一戦です。" }
+      ]
+    },
+    "ground_dirt_muddy_night": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_dirt_muddy_night_1", "text": "ナイターの照明の下、ダートは稍重。脚抜きのいい馬場です。" },
+        { "id": "ground_dirt_muddy_night_2", "text": "ナイターの照明の下、湿ったダート、稍重での一戦です。" }
+      ]
+    },
+    "ground_dirt_sloppy": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_dirt_sloppy_1", "text": "ダートは不良馬場。前が止まりにくい馬場です。" },
+        { "id": "ground_dirt_sloppy_2", "text": "水の浮いた不良馬場。逃げ馬が残りそうです。" }
+      ]
+    },
+    "ground_dirt_sloppy_night": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_dirt_sloppy_night_1", "text": "ナイターの照明の下、ダートは不良馬場。前が止まりにくい馬場です。" },
+        { "id": "ground_dirt_sloppy_night_2", "text": "ナイターの照明の下、水の浮いた不良馬場。逃げ馬が残りそうです。" }
+      ]
     }
   }
 }

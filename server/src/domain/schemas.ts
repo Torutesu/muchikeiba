@@ -10,7 +10,15 @@ const stat = int.min(0).max(1000);
 export const styleSchema = z.enum(['nige', 'senko', 'sashi', 'oikomi']);
 export const surfaceSchema = z.enum(['turf', 'dirt']);
 export const aptSurfaceSchema = z.enum(['turf', 'dirt', 'both']);
-export const modeSchema = z.enum(['ranked', 'friend', 'tutorial', 'timeattack']);
+export const modeSchema = z.enum(['ranked', 'friend', 'tutorial', 'timeattack', 'event']);
+/** Ground condition names per surface (REQ-RACE-034). Absent = good. */
+export const TURF_GOINGS = ['firm', 'good', 'yielding', 'soft'] as const;
+export const DIRT_GOINGS = ['fast', 'good', 'muddy', 'sloppy'] as const;
+export type Going = (typeof TURF_GOINGS)[number] | (typeof DIRT_GOINGS)[number];
+export const goingSchema = z.enum(['firm', 'good', 'yielding', 'soft', 'fast', 'muddy', 'sloppy']);
+export const goingAptitudeSchema = z.enum(['any', 'fast', 'heavy']);
+export type GoingAptitude = z.infer<typeof goingAptitudeSchema>;
+export const goingsFor = (surface: 'turf' | 'dirt'): readonly Going[] => (surface === 'dirt' ? DIRT_GOINGS : TURF_GOINGS);
 
 export const segmentSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('straight'), lengthM: int.min(1) }).strict(),
@@ -18,15 +26,21 @@ export const segmentSchema = z.discriminatedUnion('kind', [
 ]);
 
 export const trackSchema = z
-  .object({ id: z.string().min(1), surface: surfaceSchema, distanceM: int.min(1).max(4000), segments: z.array(segmentSchema).min(1) })
+  .object({
+    id: z.string().min(1), surface: surfaceSchema, distanceM: int.min(1).max(4000), segments: z.array(segmentSchema).min(1),
+    // optional ground fields (REQ-RACE-034/036): absent = good / day; old configs stay valid and unchanged
+    going: goingSchema.optional(), night: z.boolean().optional(),
+  })
   .strict()
-  .refine((t) => t.segments.reduce((a, s) => a + s.lengthM, 0) === t.distanceM, 'segment lengths must sum to distanceM');
+  .refine((t) => t.segments.reduce((a, s) => a + s.lengthM, 0) === t.distanceM, 'segment lengths must sum to distanceM')
+  .refine((t) => t.going === undefined || (goingsFor(t.surface) as readonly string[]).includes(t.going), 'going does not match the surface');
 
 export const raceHorseSchema = z
   .object({
     id: z.string().min(1), name: z.string().min(1),
     speed: stat, stamina: stat, burst: stat, guts: stat, temper: stat,
     style: styleSchema, distMinM: int.min(0), distMaxM: int.min(0), surface: aptSurfaceSchema,
+    goingAptitude: goingAptitudeSchema.optional(),
   })
   .strict()
   .refine((h) => h.distMinM <= h.distMaxM, 'distMinM > distMaxM');

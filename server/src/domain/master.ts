@@ -9,7 +9,8 @@ import type { TimeAttackConfig } from './timeAttack.js';
 import progressionJson from '../../master/progression.json';
 import titlesJson from '../../master/titles.json';
 import pushJson from '../../master/push.json';
-import { trackSchema, type Track } from './schemas.js';
+import eventsJson from '../../master/events.json';
+import { trackSchema, type GoingAptitude, type Going, type Track } from './schemas.js';
 import { AppError } from './errors.js';
 
 export type Rarity = 'R' | 'SR' | 'SSR';
@@ -22,6 +23,8 @@ export const STAT_KEYS: (keyof Stats)[] = ['speed', 'stamina', 'burst', 'guts', 
 export interface HorseTemplate {
   id: string; name: string; rarity: Rarity; sex: Sex; style: Style; distMinM: number; distMaxM: number;
   surface: 'turf' | 'dirt' | 'both'; line: string; sireName: string; damName: string; stats: Stats;
+  /** Ground preference (REQ-RACE-035). Absent = any. */
+  goingAptitude?: GoingAptitude;
 }
 export interface ItemQty { itemId: string; qty: number }
 export interface Reward { freeCoins?: number; items?: ItemQty[] }
@@ -50,6 +53,50 @@ export interface Progression {
   friendRewardDailyCap: number;
   /** REQ-TA-*: time attack rules. */
   timeAttack: TimeAttackConfig;
+  /** REQ-RACE-037: daily ground per course and night racing at lit venues. */
+  weather: WeatherConfig;
+  /** REQ-TEAM-*: 支部 (teams). */
+  teams: TeamsConfig;
+}
+export interface WeatherOverride { trackId?: string; fromMs: number; toMs: number; going: Going; night?: boolean }
+export interface WeatherConfig {
+  salt: string;
+  /** Relative weights per going name. */
+  turf: Partial<Record<'firm' | 'good' | 'yielding' | 'soft', number>>;
+  dirt: Partial<Record<'fast' | 'good' | 'muddy' | 'sloppy', number>>;
+  /** Races at lit venues between these JST hours (from inclusive, to exclusive; may wrap midnight) run at night. */
+  nightFromHourJst: number; nightToHourJst: number;
+  /** Modes that get weather; others (tutorial, time attack) race on good ground by day with no fields sent. */
+  modes: string[];
+  overrides: WeatherOverride[];
+}
+
+/** REQ-TEAM-*: team limits, anti-abuse rules and season reward bands (ascending maxRank; null = any rank). */
+export interface TeamsConfig {
+  maxMembers: number; maxOfficers: number; memberPointsCap: number; rejoinCooldownMs: number; rewardMinDays: number;
+  maxPendingRequests: number; requestTtlMs: number; maxOutgoingRequests: number; announcementMax: number;
+  formerMemberKeepMs: number; topN: number; rolloverBatch: number;
+  seasonRewards: { maxRank: number | null; reward: Reward }[];
+}
+
+/** REQ-EVENT-*: one event race definition (master/events.json or remote config). */
+export type EventFee = { kind: 'none' } | { kind: 'free'; freeCoins: number } | { kind: 'item'; itemId: string; qty: number };
+export interface EventDef {
+  id: string; name: string; startAtMs: number; endAtMs: number; trackIds: string[];
+  entry: { classIds: string[] | null; styles: Style[] | null; minRankedRaces: number };
+  fee: EventFee;
+  rules: {
+    /** Changes to ruleset values (the key set never changes; rulesetVersion becomes `<active>+ev.<id>`). */
+    rulesetOverrides: Record<string, number>;
+    /** Every entrant (players and CPU) races with these stats when set. */
+    fixedStats: Stats | null;
+    /** Stat total cap applied to every entrant (like ranked normalization); null = none. */
+    statCap: number | null;
+    cpuLevel: number; maxPlayers: number; cpuFillAfterMs: number;
+  };
+  points: { byPlace: number[]; participation: number };
+  milestones: { points: number; reward: Reward }[];
+  rankRewards: { maxRank: number | null; reward: Reward }[];
 }
 export type TitleCondition =
   | { kind: 'races' | 'wins' | 'top3' | 'perfectStarts' | 'whipPerfectWins'; value: number }
@@ -84,10 +131,14 @@ export interface PityGroupDef { cost: number; endAtMs?: number; convertTo?: stri
 export interface GachaMaster { duplicateMaterial: Record<Rarity, number>; pityGroups: Record<string, PityGroupDef>; banners: BannerDef[] }
 export interface Master {
   tracks: Track[]; templates: HorseTemplate[]; templateById: Map<string, HorseTemplate>;
+  /** Track ids of venues with floodlights (night racing possible). Master-only; never sent in a race config. */
+  litTracks: Set<string>;
   gacha: GachaMaster; nicks: { bonus: number; pairs: [string, string][] }; ng: { exact: string[]; contains: string[] };
   ageLimits: AgeLimits; products: Product[]; firstPurchaseBonusAsPaid: boolean; progression: Progression;
   titles: TitleDef[];
   push: PushMaster;
+  /** REQ-EVENT-*: event race definitions. */
+  events: EventDef[];
 }
 
 export const PPM_TOTAL = 1_000_000;
@@ -137,14 +188,13 @@ export function loadMaster(): Master {
   if (cached) return cached;
   const templates = (horsesJson as { templates: HorseTemplate[] }).templates;
   const templateById = new Map(templates.map((t) => [t.id, t]));
-  const tracks = (tracksJson as { tracks: unknown[] }).tracks.map((t) => {
-    const { name: _name, ...rest } = t as Record<string, unknown>;
-    return trackSchema.parse(rest);
-  });
+  const split = (tracksJson as { tracks: Record<string, unknown>[] }).tracks.map(splitMasterTrack);
+  const tracks = split.map((x) => trackSchema.parse(x.track));
+  const litTracks = new Set(split.filter((x) => x.lights).map((x) => tracks[split.indexOf(x)]!.id));
   const g = gachaJson as unknown as { duplicateMaterial: Record<Rarity, number>; pityGroups: Record<string, { cost: number }>; banners: RawBanner[] };
   const p = productsJson as unknown as { firstPurchaseBonusAsPaid: boolean; products: Product[] };
   const m: Master = {
-    tracks, templates, templateById,
+    tracks, templates, templateById, litTracks,
     gacha: { duplicateMaterial: g.duplicateMaterial, pityGroups: g.pityGroups, banners: g.banners.map((b) => buildBanner(b, templates)) },
     nicks: nicksJson as unknown as Master['nicks'],
     ng: ngJson as unknown as Master['ng'],
@@ -153,9 +203,16 @@ export function loadMaster(): Master {
     progression: progressionJson as unknown as Progression,
     titles: (titlesJson as unknown as { titles: TitleDef[] }).titles,
     push: pushJson as unknown as PushMaster,
+    events: (eventsJson as unknown as { events: EventDef[] }).events,
   };
   cached = m;
   return m;
+}
+
+/** Separates master-only track fields (name, lights) from the race-config track. */
+export function splitMasterTrack(raw: Record<string, unknown>): { track: Record<string, unknown>; lights: boolean } {
+  const { name: _name, lights, ...track } = raw;
+  return { track, lights: lights === true };
 }
 
 export function trackById(m: Master, id: string): Track {

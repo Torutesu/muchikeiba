@@ -25,6 +25,8 @@ export type Emit = (e: KpiEvent) => void;
 import { abortSubmit, prepareSubmit, recordResult, startTimeAttack, timeAttackView } from './timeAttack.js';
 import type { VerifierOutput } from './schemas.js';
 import { trackById } from './master.js';
+import { ensureTeam, playerAbortJoin, playerAddOutgoing, playerCommitJoin, playerLeft, playerPrepareJoin, playerRemoveOutgoing, playerTeamReward, snapshotOf } from './teams.js';
+import { applyEventResult, cancelEntry, closeEventForPlayer, ensureEvent, enterEvent, eventsForPlayer, findEvent, type EventEntry } from './events.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
 export interface PlayerRepo {
@@ -59,6 +61,10 @@ export interface PlayerServiceDeps {
   onPushWake?: (at: number) => void | Promise<void>;
   /** REQ-KPI-002: analytics events from a saved transaction (the Durable Object writes them to Analytics Engine). */
   onKpi?: (playerId: string, records: KpiRecord[]) => void | Promise<void>;
+  /** REQ-TEAM-005: the player's season standing changed while in a team (the Durable Object tells the team). */
+  onTeamPoints?: (p: { teamId: string; playerId: string; seasonId: string; points: number; displayName: string }) => void | Promise<void>;
+  /** REQ-EVENT-007: event standing after an event race (the Durable Object tells the event board). */
+  onEventEntry?: (e: EventEntry) => void | Promise<void>;
 }
 
 const standingKey = (s: PlayerState) => JSON.stringify([s.season.id, s.season.classId, s.season.points, s.season.races, Math.round(s.rating.r), s.profile.displayName, s.profile.titleId]);
@@ -119,6 +125,10 @@ export class PlayerService {
         playerId: id, seasonId: draft.season.id, classId: draft.season.classId, points: draft.season.points, rating: Math.round(draft.rating.r),
         races: draft.season.races, displayName: draft.profile.displayName, titleId: draft.profile.titleId, updatedAt: now,
       });
+    }
+    const teamId = draft.team?.teamId ?? null;
+    if (this.d.onTeamPoints && teamId && (standingKey(draft) !== standingBefore || teamId !== (current.team?.teamId ?? null))) {
+      await this.d.onTeamPoints({ teamId, playerId: id, seasonId: draft.season.id, points: draft.season.points, displayName: draft.profile.displayName });
     }
     if (draft.wallet.paid !== paidBefore && this.d.onPaidBalance) {
       await this.d.onPaidBalance({ playerId: id, date: jstDateKey(now), paidCoins: draft.wallet.paid, paidYen: paidBalanceYen(draft), seq: draft.ledgerSeq });
@@ -273,9 +283,9 @@ export class PlayerService {
   }
 
   /** Called by the race room after a race is final (idempotent per race). */
-  applyRace(id: string, r: RaceResultForPlayer) {
-    return this.tx(id, `race:${r.raceId}`, (s, now, emit) => {
-      const out = applyRaceResult(this.d.master, s, r, now);
+  async applyRace(id: string, r: RaceResultForPlayer) {
+    const out = await this.tx(id, `race:${r.raceId}`, (s, now, emit) => {
+      const base = applyRaceResult(this.d.master, s, r, now);
       if (!r.void) {
         emit({
           name: 'race_finish', s1: r.mode, s2: r.details?.style ?? '', s3: r.details?.trackId ?? '',
@@ -283,8 +293,19 @@ export class PlayerService {
           ...(r.details?.finishTick != null ? { durationMs: r.details.finishTick * 50 } : {}),
         });
       }
-      return out;
+      // REQ-EVENT-005: event points, milestones and the held entry fee
+      const ev = r.mode === 'event' && r.eventId ? this.d.master.events.find((e) => e.id === r.eventId) : undefined;
+      if (!ev) return { ...base, event: null };
+      const e = applyEventResult(ev, s, r, now);
+      const st = s.events![ev.id]!;
+      return {
+        ...base,
+        event: { eventId: ev.id, gained: e.gained, total: e.total, milestones: e.milestones, refunded: e.refunded,
+          entry: { playerId: id, eventId: ev.id, points: st.points, races: st.races, wins: st.wins, displayName: s.profile.displayName, updatedAt: now } as EventEntry },
+      };
     });
+    if (out.event && out.event.entry.races > 0 && this.d.onEventEntry) await this.d.onEventEntry(out.event.entry);
+    return out;
   }
 
   /** Snapshot used by the matchmaker: horse for the race, rating, class cap, beginner flag. */
@@ -432,5 +453,65 @@ export class PlayerService {
   async taView(id: string, trackId: string) {
     trackById(this.d.master, trackId);
     return timeAttackView(await this.load(id), this.d.master.progression.timeAttack, trackId, this.d.clock());
+  }
+
+  // ---- teams: per-player steps, orchestrated by TeamsService (REQ-TEAM-*) ----
+  teamPrepareJoin(id: string, teamId: string) { return this.tx(id, null, (s, now) => playerPrepareJoin(s, teamId, now)); }
+  teamCommitJoin(id: string, teamId: string) {
+    return this.tx(id, null, (s, now, emit) => {
+      const was = s.team?.teamId ?? null;
+      const r = playerCommitJoin(s, teamId, now);
+      if (was !== teamId) emit({ name: 'team_join', s1: teamId });
+      return r;
+    });
+  }
+  teamAbortJoin(id: string, teamId: string) { return this.tx(id, null, (s) => playerAbortJoin(s, teamId)); }
+  teamAddOutgoing(id: string, teamId: string) { return this.tx(id, null, (s, now) => playerAddOutgoing(s, this.d.master.progression.teams, teamId, now)); }
+  teamRemoveOutgoing(id: string, teamId: string) { return this.tx(id, null, (s) => playerRemoveOutgoing(s, teamId)); }
+  teamLeft(id: string, teamId: string, byChoice: boolean) {
+    return this.tx(id, null, (s, now, emit) => {
+      const r = playerLeft(s, this.d.master.progression.teams, teamId, now, byChoice);
+      if (r.changed) emit({ name: 'team_leave', s1: teamId, s2: byChoice ? 'leave' : 'removed' });
+      return r;
+    });
+  }
+  async teamState(id: string) {
+    const s = await this.load(id);
+    const t = ensureTeam(s);
+    return { teamId: t.teamId, joinedAt: t.joinedAt, cooldownUntil: t.cooldownUntil, outgoing: t.outgoing.map((o) => o.teamId), snapshot: snapshotOf(s) };
+  }
+  /** REQ-TEAM-008: team season reward (rollover job; idempotent per season). */
+  teamSeasonReward(id: string, seasonId: string, teamId: string, rank: number | null, total: number) {
+    return this.tx(id, null, (s, now) => playerTeamReward(s, this.d.master.progression.teams, seasonId, teamId, rank, total, now));
+  }
+
+  // ---- event races (REQ-EVENT-*) ----
+  async eventsView(id: string) { return eventsForPlayer(this.d.master, await this.load(id), this.d.clock()); }
+  /** Takes (or returns the already held) entry fee; the caller then queues the player in the event pool. */
+  async eventEnter(id: string, eventId: string, horseId: string, idemKey: string | null) {
+    const key = this.requireKey(idemKey);
+    return this.tx(id, key, (s, now, emit) => {
+      const ev = findEvent(this.d.master, eventId);
+      const entryId = [0, 0].map(() => this.d.rng.nextU32().toString(36)).join('');
+      const r = enterEvent(ev, s, getHorse(s, horseId), entryId, now);
+      if (!r.existing) emit({ name: 'event_entry', s1: eventId, s2: r.fee.kind });
+      return r;
+    });
+  }
+  /** Refunds a held entry fee (queue cancelled / refused). `entryId` null = whatever is held. */
+  eventCancel(id: string, eventId: string, entryId: string | null) {
+    return this.tx(id, null, (s, now) => cancelEntry(s, eventId, entryId, now));
+  }
+  /** REQ-EVENT-008: final rank reward (event end job; idempotent). An event removed from config pays nothing. */
+  eventClose(id: string, eventId: string, rank: number | null) {
+    return this.tx(id, null, (s, now) => {
+      const ev = this.d.master.events.find((e) => e.id === eventId);
+      if (!ev) {
+        const st = ensureEvent(s, eventId);
+        st.closed = true;
+        return { status: 'unknown_event' as const, reward: null };
+      }
+      return closeEventForPlayer(ev, s, rank, now);
+    });
   }
 }

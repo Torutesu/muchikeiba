@@ -35,7 +35,7 @@ export interface PlayerIntegrity {
 }
 
 export interface RaceIntegrityReport {
-  raceId: string; mode: 'ranked' | 'friend' | 'tutorial' | 'timeattack'; at: number;
+  raceId: string; mode: 'ranked' | 'friend' | 'tutorial' | 'timeattack' | 'event'; at: number;
   /** Player ids (humans only). */
   suspects: string[]; desync: string[];
 }

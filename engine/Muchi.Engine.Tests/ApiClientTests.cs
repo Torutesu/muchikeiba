@@ -243,6 +243,25 @@ namespace Muchi.Engine.Tests
         }
 
         [Fact]
+        public async Task GroundPreferencesParse()
+        {
+            // REQ-RACE-035: horses and the breeding preview carry goingAptitude; absent = "any"
+            _http.Reply(200, "{\"stats\":{},\"nick\":false,\"inbreedingCount\":0,\"styles\":{\"sashi\":100},\"distance\":{\"minM\":1400,\"maxM\":2600},\"surface\":\"dirt\",\"goingAptitude\":{\"any\":200,\"fast\":0,\"heavy\":800}}");
+            var p = await _api.BreedingPreviewAsync("h1", "h2");
+            Assert.Equal(800, p.GoingAptitudePermille["heavy"]);
+            Assert.Equal(1000, p.GoingAptitudePermille.Values.Sum());
+
+            _http.Requests.Clear();
+            _http.Reply(200, "{\"foal\":" + HorseJson.Replace("\"surface\":\"turf\"", "\"surface\":\"dirt\",\"goingAptitude\":\"heavy\"") + ",\"nick\":false,\"inbreedingCount\":0}");
+            var b = await _api.BreedAsync("h1", "h2");
+            Assert.Equal("heavy", b.Foal.GoingAptitude);
+
+            _http.Requests.Clear();
+            _http.Reply(200, "{\"foal\":" + HorseJson + ",\"nick\":false,\"inbreedingCount\":0}");
+            Assert.Equal("any", (await _api.BreedAsync("h1", "h2")).Foal.GoingAptitude);
+        }
+
+        [Fact]
         public async Task Breeding()
         {
             _http.Reply(200, "{\"stats\":{\"speed\":{\"min\":600,\"max\":720},\"stamina\":{\"min\":500,\"max\":620},\"burst\":{\"min\":640,\"max\":760},\"guts\":{\"min\":540,\"max\":660},\"temper\":{\"min\":440,\"max\":560}},\"nick\":true,\"inbreedingCount\":0,\"styles\":{\"sashi\":47.5,\"nige\":47.5,\"senko\":2.5,\"oikomi\":2.5},\"distance\":{\"minM\":1400,\"maxM\":2600},\"surface\":\"turf\"}");

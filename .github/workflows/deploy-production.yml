@@ -1,0 +1,28 @@
+# Production is deployed only by hand. The "production" GitHub environment must have required reviewers
+# (Settings → Environments → production → Required reviewers) and allow only the main branch / release tags,
+# so every job that touches production waits for approval. docs/ops/deploy.md「本番デプロイ」
+name: deploy-production
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit SHA or tag to deploy (must already be deployed to staging)"
+        required: true
+        type: string
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: production
+      ref: ${{ inputs.ref }}
+    secrets: inherit

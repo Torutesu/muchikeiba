@@ -308,6 +308,109 @@ namespace Muchi.Client
             return Call("POST", "/v1/friend-rooms/" + Seg(passphrase) + "/invite", b, true, null, true, o => J.Bool(o, "ok"), ct);
         }
 
+        // ------------------------------------------------------------------ teams / 支部 (REQ-TEAM)
+        // Creating and joining are not retried automatically (a retry after an unseen success would hit
+        // ALREADY_IN_TEAM); every other team call is safe to retry.
+
+        /// <summary>Your team (null when not in one), your cooldown, pending requests and the team's rank.</summary>
+        public Task<MyTeam> GetMyTeamAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/teams/me", null, true, null, true, MyTeam.Parse, ct);
+
+        public Task<TeamInfo> CreateTeamAsync(string name, TeamJoinPolicy policy, string announcement = null, CancellationToken ct = default)
+        {
+            var b = JsonNode.Obj();
+            b.Set("name", name);
+            b.Set("joinPolicy", policy == TeamJoinPolicy.Approval ? "approval" : "open");
+            if (announcement != null) b.Set("announcement", announcement);
+            return Call("POST", "/v1/teams", b, true, null, false, TeamInfo.Parse, ct);
+        }
+
+        /// <summary>Leader/officer: change the announcement and/or the join policy (null = unchanged).</summary>
+        public Task<TeamInfo> UpdateTeamAsync(string announcement = null, TeamJoinPolicy? policy = null, CancellationToken ct = default)
+        {
+            var b = JsonNode.Obj();
+            if (announcement != null) b.Set("announcement", announcement);
+            if (policy.HasValue) b.Set("joinPolicy", policy.Value == TeamJoinPolicy.Approval ? "approval" : "open");
+            return Call("PUT", "/v1/teams/me", b, true, null, true, TeamInfo.Parse, ct);
+        }
+
+        /// <summary>Leader only, when no other member is left.</summary>
+        public Task<string> DisbandTeamAsync(CancellationToken ct = default)
+            => Call("DELETE", "/v1/teams/me", null, true, null, true, o => J.Str(o, "disbanded"), ct);
+
+        /// <summary>Leaving starts the rejoin cooldown (TEAM_COOLDOWN). The leader must transfer first.</summary>
+        public Task<bool> LeaveTeamAsync(CancellationToken ct = default)
+            => Call("POST", "/v1/teams/me/leave", JsonNode.Obj(), true, null, true, o => J.Bool(o, "disbanded"), ct);
+
+        public Task<bool> KickTeamMemberAsync(string playerId, CancellationToken ct = default)
+            => Call("POST", "/v1/teams/me/kick", PlayerBody(playerId), true, null, true, o => J.Str(o, "kicked") != null, ct);
+
+        public Task<TeamInfo> SetTeamRoleAsync(string playerId, TeamRole role, CancellationToken ct = default)
+        {
+            var b = PlayerBody(playerId);
+            b.Set("role", role == TeamRole.Officer ? "officer" : "member");
+            return Call("PUT", "/v1/teams/me/roles", b, true, null, true, TeamInfo.Parse, ct);
+        }
+
+        public Task<TeamInfo> TransferTeamLeadershipAsync(string playerId, CancellationToken ct = default)
+            => Call("POST", "/v1/teams/me/transfer", PlayerBody(playerId), true, null, true, TeamInfo.Parse, ct);
+
+        public Task<bool> ApproveTeamRequestAsync(string playerId, CancellationToken ct = default)
+            => Call("POST", "/v1/teams/me/requests/" + Seg(playerId) + "/approve", JsonNode.Obj(), true, null, false, o => J.Str(o, "status") == "joined", ct);
+
+        public Task<bool> DeclineTeamRequestAsync(string playerId, CancellationToken ct = default)
+            => Call("POST", "/v1/teams/me/requests/" + Seg(playerId) + "/decline", JsonNode.Obj(), true, null, true, o => J.Bool(o, "declined"), ct);
+
+        /// <summary>Teams whose name contains <paramref name="query"/> (or the exact team id); empty query = active teams.</summary>
+        public Task<List<TeamSummary>> SearchTeamsAsync(string query, CancellationToken ct = default)
+            => Call("GET", "/v1/teams/search?q=" + Uri.EscapeDataString(query ?? ""), null, true, null, true, o => TeamSummary.ParseList(o), ct);
+
+        /// <summary>Season team ranking ("current" for this season). Public snapshot, no auth.</summary>
+        public Task<TeamBoard> GetTeamLeaderboardAsync(string seasonId = "current", CancellationToken ct = default)
+            => Call("GET", "/v1/teams/leaderboard/" + Seg(seasonId), null, false, null, true, TeamBoard.Parse, ct);
+
+        public Task<TeamInfo> GetTeamAsync(string teamId, CancellationToken ct = default)
+            => Call("GET", "/v1/teams/" + Seg(teamId), null, true, null, true, TeamInfo.Parse, ct);
+
+        /// <summary>Open teams: joined at once ("joined"). Approval teams: a request is sent ("requested").</summary>
+        public Task<string> JoinTeamAsync(string teamId, CancellationToken ct = default)
+            => Call("POST", "/v1/teams/" + Seg(teamId) + "/join", JsonNode.Obj(), true, null, false, o => J.Str(o, "status"), ct);
+
+        /// <summary>Withdraw your pending request to an approval team.</summary>
+        public Task<bool> CancelTeamRequestAsync(string teamId, CancellationToken ct = default)
+            => Call("DELETE", "/v1/teams/" + Seg(teamId) + "/request", null, true, null, true, o => J.Bool(o, "cancelled"), ct);
+
+        // ------------------------------------------------------------------ event races (REQ-EVENT)
+
+        /// <summary>Current/upcoming events with eligibility and your progress.</summary>
+        public Task<List<EventInfo>> GetEventsAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/events", null, true, null, true, EventInfo.ParseList, ct);
+
+        /// <summary>
+        /// Pays the entry fee (free coins or a ticket — never paid coins) and queues for the event. Keyed: a retry with
+        /// the same <paramref name="idempotencyKey"/> never charges twice. Poll <see cref="GetMatchStatusAsync"/> for the seat.
+        /// </summary>
+        public Task<string> EnqueueEventAsync(string eventId, string horseId, string idempotencyKey = null, CancellationToken ct = default)
+            => Call("POST", "/v1/events/" + Seg(eventId) + "/enqueue", HorseBody(horseId), true, idempotencyKey ?? NewIdempotencyKey(), true, o => J.Str(o, "state"), ct);
+
+        /// <summary>Leave the event queue; the held fee is refunded (refused while the race is running).</summary>
+        public Task<bool> CancelEventQueueAsync(string eventId, CancellationToken ct = default)
+            => Call("POST", "/v1/events/" + Seg(eventId) + "/cancel", JsonNode.Obj(), true, null, true, o => J.Bool(o, "refunded"), ct);
+
+        /// <summary>Event ranking snapshot (public, no auth).</summary>
+        public Task<EventBoard> GetEventLeaderboardAsync(string eventId, CancellationToken ct = default)
+            => Call("GET", "/v1/events/" + Seg(eventId) + "/leaderboard", null, false, null, true, EventBoard.Parse, ct);
+
+        public Task<MyEvent> GetMyEventAsync(string eventId, CancellationToken ct = default)
+            => Call("GET", "/v1/events/" + Seg(eventId) + "/me", null, true, null, true, MyEvent.Parse, ct);
+
+        private static JsonNode PlayerBody(string playerId)
+        {
+            var b = JsonNode.Obj();
+            b.Set("playerId", playerId);
+            return b;
+        }
+
         // ------------------------------------------------------------------ push notifications (REQ-PUSH)
         // All push calls are idempotent on the server (same token / same settings), so they are retried.
 

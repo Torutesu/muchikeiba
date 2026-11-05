@@ -43,10 +43,10 @@ export class RaceRoomDO extends DurableObject<Env> {
     return Number.isFinite(v) ? v : DEFAULT_ROOM_OPTIONS.verifySampleRate;
   }
 
-  async init(o: { config: RaceStartConfig; startAtMs: number; ratings: Record<string, Rating> }) {
+  async init(o: { config: RaceStartConfig; startAtMs: number; ratings: Record<string, Rating>; eventId?: string | null }) {
     if (this.core) return; // idempotent
     this.core = new RaceRoomCore(o.config, o.startAtMs, { verifySampleRate: this.sampleRate(), resultWaitMs: DEFAULT_ROOM_OPTIONS.resultWaitMs, rng: cryptoRng });
-    this.meta = newSettleMeta(o.ratings);
+    this.meta = newSettleMeta(o.ratings, o.eventId ?? null);
     await this.persist();
     await this.ctx.storage.setAlarm(o.startAtMs);
   }
@@ -159,7 +159,7 @@ export class RaceRoomDO extends DurableObject<Env> {
       await this.ctx.storage.setAlarm(Date.now() + WATCHDOG_MS);
       const core = this.core;
       const r = await driveSettlement(core, this.meta, {
-        verify: (log) => new HttpVerifierClient(this.env.VERIFIER_URL).verify(log),
+        verify: (log) => new HttpVerifierClient(this.env.VERIFIER_URL, undefined, undefined, this.env.VERIFIER_TOKEN).verify(log),
         putReplay: (log, hold) => this.putReplay(log, hold),
         applyRace: async (pid, res) => {
           const stub = this.env.PLAYER.get(this.env.PLAYER.idFromName(pid)) as unknown as { invoke(m: string, a: unknown[]): Promise<Envelope<unknown>> };

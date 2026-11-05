@@ -17,7 +17,8 @@
 export PATH=/opt/dotnet:$PATH          # この環境の .NET 8 SDK
 dotnet test engine/Muchi.Engine.Tests
 dotnet run --project engine/Muchi.Verifier -- replay "$PWD/contracts/golden/race-turf1600-mixed.json"   # リプレイログ（ゴールデンファイルも可）
-dotnet run --project engine/Muchi.Verifier -- serve --urls http://0.0.0.0:8080                 # POST /verify, GET /healthz
+dotnet run --project engine/Muchi.Verifier -- serve --urls http://0.0.0.0:8080                 # POST /verify, GET /healthz（VERIFIER_AUTH_SECRET を設定すると Bearer 必須。$PORT にも対応）
+docker build -f engine/Muchi.Verifier/Dockerfile -t muchi-verifier engine                      # Cloud Run 用イメージ（VERIFIER_REQUIRE_AUTH=1：シークレットなしでは起動しない。docs/ops/deploy.md）
 dotnet run --project engine/Muchi.Verifier -- golden "$PWD/contracts/golden" "$PWD/contracts/ruleset-params.default.json"   # パスは絶対パスで（Web SDKは実行時の作業ディレクトリをプロジェクトに変えるため）
 dotnet run --project engine/Muchi.Verifier -- balance contracts/ruleset-params.default.json 1000 [key=value ...]
 ```
@@ -151,6 +152,18 @@ _ = analytics.FlushAllAsync(NowMs());
 - `IAnalyticsStore`（`Load()`/`Save(json)`）を渡すと、未送信分がアプリ再起動後も残る。7日より古いものは送らずに捨てる。
 - `NowMs()` は Unix 時間のミリ秒（`DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()`）。
 
+### 7. 支部（チーム戦、REQ-TEAM-*）
+- `GetMyTeamAsync()` → `MyTeam`（`Team` が null なら未所属。`CooldownUntil` は脱退後に再加入できる時刻、`Rank` は支部の順位）。
+- 作成 `CreateTeamAsync(name, policy, announcement)`、加入 `JoinTeamAsync(teamId)`（自由加入は `"joined"`、承認制は `"requested"`）、脱退 `LeaveTeamAsync()`、検索 `SearchTeamsAsync(q)`、ランキング `GetTeamLeaderboardAsync("current")`（認証不要）。
+- リーダー／幹部向け：`ApproveTeamRequestAsync` / `DeclineTeamRequestAsync` / `KickTeamMemberAsync` / `SetTeamRoleAsync` / `TransferTeamLeadershipAsync` / `UpdateTeamAsync` / `DisbandTeamAsync`。申請一覧は `TeamInfo.Requests`（リーダー・幹部にだけ入る）。
+- 作成と加入は自動リトライしない（見えなかった成功のあとに再送すると `ALREADY_IN_TEAM` になるため）。主なエラー：`TEAM_FULL` / `TEAM_COOLDOWN` / `TEAM_LIMIT` / `TEAM_LEADER_MUST_TRANSFER` / `NOT_IN_TEAM`。
+
+### 8. イベントレース（REQ-EVENT-*）
+- `GetEventsAsync()` → 開催中・予定のイベント（`Eligible` と `NotEligibleReasons`、参加費 `Fee`、自分の成績 `Me`）。
+- `EnqueueEventAsync(eventId, horseId, idempotencyKey)` で参加費（無償コインかチケット。有償コインは使えない）を預けて待ち行列へ。同じキーで再送しても二重に引かれない。席は通常どおり `GetMatchStatusAsync()` で受け取り、`RaceSession` で走る（`RaceConfig.Mode` は `RaceMode.Event`）。
+- `CancelEventQueueAsync(eventId)` で抜けると参加費が戻る。ランキングは `GetEventLeaderboardAsync`、自分の順位は `GetMyEventAsync`。
+- イベントの特別ルール（例：ムチなし＝`maxWhips` 0、能力固定）はレース設定の中に入って届くので、クライアント側で特別な処理は要らない（UIで残りムチ0本を表示するだけ）。
+
 ### 対戦の流れ（LockstepClient を直接使う場合）
 ```csharp
 var client = new LockstepClient(transport, raceId, firebaseIdToken);   // transport: ITransport（WebSocket実装はUnity側）
@@ -237,6 +250,19 @@ client.SendPing(localNowMs);
 | cpuWhipIntervalTicks / cpuWhipStartDistanceM | 24 / 400 | CPUのムチ間隔と開始地点（残り距離） |
 | cpuTargetRank*Permille | 0 / 400 / 550 / 800 | 脚質ごとの道中の目標位置（0=先頭、1000=最後方） |
 
+### 馬場状態のキー（後から追加。全部あるか全部ないか。ない＝中立値で旧来と同じ結果）
+
+| キー | 既定 | 意味 |
+|---|---|---|
+| goingTurf{Firm,Good,Yielding,Soft}SpeedPermille | 1008 / 1000 / 975 / 948 | 芝の馬場ごとの最高速 |
+| goingDirt{Fast,Good,Muddy,Sloppy}SpeedPermille | 995 / 1000 / 1005 / 1010 | ダートの馬場ごとの最高速（湿ると速い） |
+| goingTurf{…}DrainPermille | 970 / 1000 / 1040 / 1080 | 芝の馬場ごとの脚の消費 |
+| goingDirt{…}DrainPermille | 1110 / 1100 / 1080 / 1060 | ダートの脚の消費（乾いた砂ほど力が要る） |
+| dirtSpeedPermille | 965 | ダートは芝より遅い |
+| goingSpecialistPermille | 8 | 得意馬場の最高速ボーナス（逆の馬場では同じだけ減る、稍重は半分） |
+
+`track.night` は計算に使わない（演出と実況だけ）。
+
 ## 計測したバランス（既定ルールセット、2000m芝、平均能力±150のCPU12頭×1000レース）
 
 | 指標 | 値 |
@@ -246,5 +272,23 @@ client.SendPing(localNowMs);
 | 脚質別の1頭あたり勝率（均等なら8.3%） | 逃げ 9.2% / 先行 9.1% / 差し 8.2% / 追込 6.8% |
 | 能力合計が最も高い馬の勝率 / 3着内率 | 31.7% / 67.0% |
 | 脚を使い切ってゴールした馬 | 52.3% |
+
+### 馬場状態ごと（各500レース、`balance <ruleset> 500 going=… [surface=dirt] apt=mix`。芝は2000m、ダートは1800m。得意馬場は3頭に1頭ずつ any / fast / heavy）
+
+| コース | 勝ち時計の平均 | 脚質別の勝率（逃げ / 先行 / 差し / 追込） | 得意馬場別の勝率（any / fast / heavy） |
+|---|---|---|---|
+| 芝・良（firm） | 88.3秒（−1.0%） | 11.3% / 7.6% / 7.3% / 7.2% | 8.0% / 14.1% / 2.9% |
+| 芝・良（good） | 89.2秒（旧来と同一） | 9.0% / 9.3% / 8.3% / 6.7% | 9.2% / 8.5% / 7.2% |
+| 芝・稍重 | 91.4秒（+2.5%） | 8.0% / 8.7% / 8.8% / 7.8% | 9.5% / 6.6% / 9.0% |
+| 芝・重 | 93.8秒（+5.2%） | 5.9% / 9.8% / 8.8% / 8.9% | 8.0% / 4.4% / 12.6% |
+| ダート・良（fast） | 82.8秒 | 11.3% / 7.7% / 7.3% / 7.1% | 7.9% / 14.1% / 3.0% |
+| ダート・良（good） | 82.5秒 | 11.7% / 7.6% / 7.0% / 7.1% | 9.0% / 8.7% / 7.2% |
+| ダート・稍重 | 82.1秒 | 13.9% / 6.7% / 6.8% / 6.0% | 9.0% / 6.8% / 9.1% |
+| ダート・不良 | 81.6秒 | 14.6% / 7.0% / 5.9% / 6.0% | 8.3% / 4.5% / 12.1% |
+
+（全馬場で脚質の勝率が4〜17%に収まることを `GroundDoesNotSkewRunningStylesExcessively` で確認）
+- 重馬場は良より5%前後遅く、スタミナ勝負になって逃げが不利・追込が有利に寄る。
+- ダートは芝より1mあたり約2%遅く、湿るほど時計が速くなり逃げが残りやすい（実際の傾向に合わせた）。
+- 得意馬場の差は「勝ちやすくなる」程度（重で heavy 12.6% 対 fast 4.4%）。
 
 性質テスト：間隔をあけて残り400mからムチ6発 → ムチなしより速い。残り400m内の連打 → 間隔をあけるより遅い。風よけで後ろの馬の脚が残る。コーナーで外を回ると遅い（直線では差なし）。レベル5のCPUがレベル1より勝つ。

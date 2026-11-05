@@ -4,6 +4,8 @@ import { seededRng } from '../src/domain/rng.js';
 import { newPlayer } from '../src/domain/player.js';
 import { createHorseFromTemplate } from '../src/domain/horses.js';
 import type { RaceStartConfig } from '../src/domain/schemas.js';
+import { eventRuleset } from '../src/domain/events.js';
+import { DEFAULT_RULESET } from '../src/domain/ruleset.js';
 
 /** Configs written to contracts/golden for the C# side to run (contracts/protocol.md §9). Fixed seeds. */
 export function goldenConfigs(): Record<string, RaceStartConfig> {
@@ -14,11 +16,20 @@ export function goldenConfigs(): Record<string, RaceStartConfig> {
     raceId: 'r_golden_ranked', mode: 'ranked', trackId: 'kirameki_turf_2000',
     humans: [{ playerId: 'p_alice', horse: horse('t_akatsuki') }, { playerId: 'p_bob', horse: horse('t_harukaze') }, { playerId: 'p_carol', horse: horse('t_natsu') }],
     cpuCount: 9, cpuLevel: 3, statCap: 3200, rng: seededRng(20261105),
+    ground: { going: 'yielding', night: false }, // REQ-RACE-034: ranked races carry the day's going
   });
   const friend = buildRaceConfig(m, {
     raceId: 'r_golden_friend', mode: 'friend', trackId: 'minato_turf_2400',
     humans: [{ playerId: 'p_alice', horse: horse('t_ginga') }, { playerId: 'p_bob', horse: horse('t_tsukikage') }],
     cpuCount: 4, cpuLevel: 2, statCap: null, rng: seededRng(42),
+    ground: { going: 'soft', night: true }, // lit venue, evening: heavy turf under the lights
+  });
+  // dirt at the lit venue, sloppy, night (REQ-RACE-034/036): dirt-bred horses with ground preferences
+  const dirt = buildRaceConfig(m, {
+    raceId: 'r_golden_dirt_night', mode: 'ranked', trackId: 'minato_dirt_1800',
+    humans: [{ playerId: 'p_alice', horse: horse('t_sunaarashi') }, { playerId: 'p_bob', horse: horse('t_kawarabi') }],
+    cpuCount: 10, cpuLevel: 4, statCap: 3200, rng: seededRng(1800),
+    ground: { going: 'sloppy', night: true },
   });
   // time attack (REQ-TA-002): exactly what startTimeAttack builds — one human, no CPU, normalised stats
   const timeattack = buildRaceConfig(m, {
@@ -26,5 +37,14 @@ export function goldenConfigs(): Record<string, RaceStartConfig> {
     humans: [{ playerId: 'p_alice', horse: horse('t_akatsuki') }],
     cpuCount: 0, cpuLevel: 3, statCap: m.progression.timeAttack.statCap, rng: seededRng(777),
   });
-  return { 'ts-config-ranked.json': ranked, 'ts-config-friend.json': friend, 'ts-config-timeattack.json': timeattack };
+  // event race (REQ-EVENT-003): exactly what createRace builds for an event — event track, ruleset
+  // overrides (maxWhips 0, version suffixed) and fixed stats for every entrant incl. CPU
+  const ev = m.events.find((e) => e.id === 'no_whip_cup_2026_12')!;
+  const event = buildRaceConfig(m, {
+    raceId: 'r_golden_event', mode: 'event', trackId: ev.trackIds[0]!,
+    humans: [{ playerId: 'p_alice', horse: horse('t_akatsuki') }, { playerId: 'p_bob', horse: horse('t_harukaze') }],
+    cpuCount: 6, cpuLevel: ev.rules.cpuLevel, statCap: ev.rules.statCap, rng: seededRng(1225),
+    rulesetOverrides: eventRuleset(DEFAULT_RULESET, ev), fixedStats: ev.rules.fixedStats,
+  });
+  return { 'ts-config-ranked.json': ranked, 'ts-config-friend.json': friend, 'ts-config-timeattack.json': timeattack, 'ts-config-dirt-night.json': dirt, 'ts-config-event.json': event };
 }

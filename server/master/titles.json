@@ -1,5 +1,5 @@
 {
-  "_note": "称号の定義（全て架空の名称）。condition の kind: races / wins / top3 / winsByStyle(style) / perfectStarts / startReaction(≦value tick) / whipPerfectWins / trackWins(trackId) / bestTime(trackId, ≦value tick) / classReached(classId) / rating(≧value)",
+  "_note": "称号の定義（全て架空の名称）。condition の kind: races / wins / top3 / winsByStyle(style) / perfectStarts / startReaction(≦value tick) / whipPerfectWins / trackWins(trackId) / bestTime(trackId, ≦value tick) / classReached(classId) / rating(≧value) / bondLevel(≧value、いずれかの馬の絆レベル)",
   "titles": [
     { "id": "debut", "name": "デビュー", "condition": { "kind": "races", "value": 1 } },
     { "id": "first_win", "name": "初勝利", "condition": { "kind": "wins", "value": 1 } },
@@ -17,6 +17,8 @@
     { "id": "kirameki_record", "name": "きらめきレコード", "condition": { "kind": "bestTime", "trackId": "kirameki_turf_2000", "value": 1840 } },
     { "id": "class_a", "name": "A級騎手", "condition": { "kind": "classReached", "classId": "A" } },
     { "id": "class_s", "name": "S級騎手", "condition": { "kind": "classReached", "classId": "S" } },
-    { "id": "rating_1800", "name": "実力派", "condition": { "kind": "rating", "value": 1800 } }
+    { "id": "rating_1800", "name": "実力派", "condition": { "kind": "rating", "value": 1800 } },
+    { "id": "bond_first", "name": "絆の芽生え", "condition": { "kind": "bondLevel", "value": 3 } },
+    { "id": "bond_master", "name": "人馬一体", "condition": { "kind": "bondLevel", "value": 10 } }
   ]
 }

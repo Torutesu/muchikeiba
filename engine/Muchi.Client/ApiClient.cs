@@ -181,6 +181,48 @@ namespace Muchi.Client
         public Task<PedigreeNode> GetPedigreeAsync(string horseId, CancellationToken ct = default)
             => Call("GET", "/v1/horses/" + Seg(horseId) + "/pedigree", null, true, null, true, PedigreeNode.Parse, ct);
 
+        // ------------------------------------------------------------------ stable care / bond (REQ-BOND-*)
+
+        /// <summary>Bond level of every horse (horse id → level) for the stable list.</summary>
+        public Task<Dictionary<string, int>> GetBondLevelsAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/bond", null, true, null, true, o => J.Map(o, "levels", v => v.AsInt()), ct);
+
+        public Task<BondView> GetBondAsync(string horseId, CancellationToken ct = default)
+            => Call("GET", "/v1/horses/" + Seg(horseId) + "/bond", null, true, null, true, BondView.Parse, ct);
+
+        /// <summary>
+        /// One care action (e.g. "grain_apple"). Keyed, so a retried request never cares twice. Throws
+        /// <see cref="ConflictException"/> with <see cref="ApiErrorCode.Cooldown"/> while the action is cooling down.
+        /// Bond never changes ranked, event or time attack stats.
+        /// </summary>
+        public Task<CareResult> CareAsync(string horseId, string action, string idempotencyKey = null, CancellationToken ct = default)
+        {
+            var b = JsonNode.Obj();
+            b.Set("action", action);
+            return Call("POST", "/v1/horses/" + Seg(horseId) + "/care", b, true, idempotencyKey ?? NewIdempotencyKey(), true, CareResult.Parse, ct);
+        }
+
+        // ------------------------------------------------------------------ presets (REQ-ROOM-*)
+
+        public Task<Presets> GetPresetsAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/presets", null, true, null, true, Presets.Parse, ct);
+
+        /// <summary>Equip a racecourse look (null = default). Looks other than the default need their unlock item.</summary>
+        public Task<Presets> SetCourseLookAsync(string lookId, CancellationToken ct = default)
+        {
+            var b = JsonNode.Obj();
+            b.Set("lookId", lookId == null ? JsonNode.Null() : JsonNode.Str(lookId));
+            return Call("PUT", "/v1/presets/course-look", b, true, null, true, Presets.Parse, ct);
+        }
+
+        /// <summary>Store the private-room conditions used when this player hosts a friend room.</summary>
+        public Task<Presets> SetRoomConditionsAsync(RoomConditions conditions, CancellationToken ct = default)
+            => Call("PUT", "/v1/presets/room", conditions.ToJson(), true, null, true, Presets.Parse, ct);
+
+        /// <summary>Back to automatic conditions (random course, the day's ground).</summary>
+        public Task<Presets> ClearRoomConditionsAsync(CancellationToken ct = default)
+            => Call("DELETE", "/v1/presets/room", null, true, null, true, Presets.Parse, ct);
+
         public Task<BreedingPreview> BreedingPreviewAsync(string sireId, string damId, CancellationToken ct = default)
             => Call("POST", "/v1/breeding/preview", Pair(sireId, damId), true, null, true, BreedingPreview.Parse, ct);
 

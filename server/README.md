@@ -75,6 +75,13 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | POST | `/v1/horses/:horseId/awaken` | 要 | 必須 | |
 | POST | `/v1/horses/:horseId/retire` | 要 | | |
 | GET | `/v1/horses/:horseId/pedigree` | 要 | | 5代血統表 |
+| GET | `/v1/horses/:horseId/bond` | 要 | | 絆（レベル・ポイント・ケアごとの残りクールダウン）。REQ-BOND-* |
+| POST | `/v1/horses/:horseId/care` | 要 | 必須 | `{action}` ケア。クールダウン中・1日上限は `409 COOLDOWN`。レベル報酬・称号を返す |
+| GET | `/v1/bond` | 要 | | `{levels: {horseId: level}}` |
+| GET | `/v1/presets` | 要 | | コースの見た目・フレンドルームの条件。REQ-ROOM-* |
+| PUT | `/v1/presets/course-look` | 要 | | `{lookId \| null}` 持っている見た目だけ |
+| PUT | `/v1/presets/room` | 要 | | `{trackId?, going?, night?, weather, temperatureC, windKmh}` 自分がホストのフレンドルームに使う |
+| DELETE | `/v1/presets/room` | 要 | | 条件を消す（自動に戻す） |
 | POST | `/v1/breeding/preview` | 要 | | `{sireId, damId}` 能力の範囲・脚質・距離・ニックス・近親 |
 | POST | `/v1/breeding` | 要 | 必須 | `{sireId, damId}` 1日1回 |
 | POST | `/v1/rewards/login-bonus` | 要 | 必須 | |

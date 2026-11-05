@@ -28,6 +28,8 @@ import { trackById } from './master.js';
 import { appearanceOf, assetKeys, defaultSilks, validateSilks, type EntrantVisual, type Silks } from './visuals.js';
 import { ensureTeam, playerAbortJoin, playerAddOutgoing, playerCommitJoin, playerLeft, playerPrepareJoin, playerRemoveOutgoing, playerTeamReward, snapshotOf } from './teams.js';
 import { applyEventResult, cancelEntry, closeEventForPlayer, ensureEvent, enterEvent, eventsForPlayer, findEvent, type EventEntry } from './events.js';
+import { bondLevels, bondView, careHorse, horseBondLevel } from './bond.js';
+import { clearRoomConditions, presetsView, setCourseLook, setRoomConditions, type RoomConditions } from './presets.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
 export interface PlayerRepo {
@@ -320,10 +322,26 @@ export class PlayerService {
       moderation: moderationOf(s, this.d.clock()),
       playerId: id, horse: toRaceHorse(this.d.master, h),
       // REQ-ASSET-006: look of this runner for the other clients (never part of the hashed config)
-      ...({ visual: { appearance: appearanceOf(h, id), silks: s.profile.silks ?? defaultSilks(`p:${id}`), displayName: s.profile.displayName, titleId: s.profile.titleId } } as { visual?: EntrantVisual }),
+      ...({ visual: { appearance: appearanceOf(h, id), silks: s.profile.silks ?? defaultSilks(`p:${id}`), displayName: s.profile.displayName, titleId: s.profile.titleId, bondLevel: horseBondLevel(this.d.master, s, h.id) } } as { visual?: EntrantVisual }),
+      // REQ-ROOM-003: the host's private-room conditions (used only when this entry hosts a friend room)
+      ...({ roomPreset: s.presets?.room ?? null } as { roomPreset?: RoomConditions | null }),
       rating: { r: s.rating.r, rd: s.rating.rd, vol: s.rating.vol },
       classId: cls.id, statCap: cls.statCap, beginner: s.rating.rankedRaces < this.d.master.progression.beginnerRaces,
     };
+  }
+
+  // ---- bond / stable care (REQ-BOND-*) ----
+  async bond(id: string, horseId: string) { return bondView(this.d.master, await this.load(id), horseId, this.d.clock()); }
+  async bondLevels(id: string) { return { levels: bondLevels(this.d.master, await this.load(id)) }; }
+  async care(id: string, horseId: string, action: string, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now) => careHorse(this.d.master, s, horseId, action, now));
+  }
+
+  // ---- presets: course look and private-room conditions (REQ-ROOM-*) ----
+  async presets(id: string) { return presetsView(await this.load(id)); }
+  setCourseLook(id: string, lookId: string | null) { return this.tx(id, null, (s) => setCourseLook(s, lookId)); }
+  setRoomConditions(id: string, c: RoomConditions | null) {
+    return this.tx(id, null, (s) => (c === null ? clearRoomConditions(s) : setRoomConditions(this.d.master, s, c)));
   }
 
   // ---- profile, titles, stats (REQ-STAT-*, REQ-TITLE-*, REQ-SOCIAL-006) ----

@@ -526,5 +526,97 @@
       "friend"
     ],
     "overrides": []
+  },
+  "bond": {
+    "_note": "絆（REQ-BOND-*）。ランク戦・イベント・タイムアタックの能力には一切影響しない。levelRewards はプレイヤー単位で各レベル1回だけ（馬の数で増えない）。friendRoomEffect は既定で無効。",
+    "actions": {
+      "grain_apple": {
+        "focus": "balanced",
+        "points": 10,
+        "cooldownMs": 21600000
+      },
+      "hay_carrot": {
+        "focus": "endurance",
+        "points": 10,
+        "cooldownMs": 21600000
+      },
+      "fresh_water": {
+        "focus": "calm",
+        "points": 6,
+        "cooldownMs": 10800000
+      }
+    },
+    "dailyActionsPerHorse": 4,
+    "levels": [
+      0,
+      30,
+      80,
+      150,
+      250,
+      380,
+      550,
+      760,
+      1000,
+      1300
+    ],
+    "levelRewards": [
+      {
+        "level": 2,
+        "reward": {
+          "freeCoins": 30
+        }
+      },
+      {
+        "level": 4,
+        "reward": {
+          "freeCoins": 50
+        }
+      },
+      {
+        "level": 6,
+        "reward": {
+          "freeCoins": 80
+        }
+      },
+      {
+        "level": 8,
+        "reward": {
+          "freeCoins": 100
+        }
+      },
+      {
+        "level": 10,
+        "reward": {
+          "freeCoins": 150
+        }
+      }
+    ],
+    "commentaryLevel": 5,
+    "friendRoomEffect": {
+      "enabled": false,
+      "permillePerLevel": 1,
+      "maxPermille": 5
+    }
+  },
+  "rooms": {
+    "_note": "フレンド部屋の条件（REQ-ROOM-*）。天気・気温・風は演出のみ。",
+    "weather": [
+      "sunny",
+      "cloudy",
+      "rain",
+      "fog"
+    ],
+    "temperaturesC": [
+      14,
+      18,
+      22,
+      26
+    ],
+    "windsKmh": [
+      0,
+      5,
+      10,
+      15
+    ]
   }
 }

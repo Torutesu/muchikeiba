@@ -39,6 +39,7 @@ static class Program
         PartnerCatalogCoverage();
         SettingsAndOfflineBackend();
         await OfflineFallbackWhenServerUnreachable();
+        await OfflineScreenModels();
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);
@@ -219,6 +220,48 @@ static class Program
         Check(b.CreatePracticeRace(7) != null, "offline mode still races (practice)");
     }
 
+    // ---------------------------------------------------------------- round 6 screen models offline (local fallback)
+    static async Task OfflineScreenModels()
+    {
+        var kv = new MemoryKeyValueStore();
+        var b = new GameBackend(new GameSettings { OfflineOnly = true }, null, null, kv, Ruleset());
+        await b.InitializeAsync();
+        var care = new CareModel(b, kv);
+        await care.LoadAsync();
+        Check(!care.Online && care.Bond == null && care.SelectedCard == 0, "care screen offline: local data, first card selected");
+        var cr = await care.CareAsync(2);
+        Check(cr.Ok && care.SelectedCard == 2 && kv.Get(CareModel.KeyLocalFeed) == "2", "offline care choice is kept on the device (muchi.care.feed)");
+        var care2 = new CareModel(b, kv); await care2.LoadAsync();
+        Check(care2.SelectedCard == 2 && !care2.AffectsRankedStats, "…and restored on the next visit; bond never affects ranked stats");
+
+        var looks = new CourseLooksModel(b, kv);
+        await looks.LoadAsync();
+        Check(looks.Owned(0) && !looks.Owned(1) && looks.EquippedKey == "scene/look/greenfield", "offline course looks: standard owned, key scene/look/greenfield");
+        Check(!(await looks.EquipAsync(2)).Ok && (await looks.EquipAsync(0)).Ok, "offline: premium look needs the server, standard look equips");
+
+        var room = new RoomConditionsModel(b, kv);
+        await room.LoadAsync();
+        Check(room.Ground == 1 && room.Temperature == 1 && room.Weather == 0, "room conditions default to GOOD / 18 °C / SUNNY");
+        room.Weather = 3; room.Ground = 2; room.Wind = 2;
+        Check((await room.SaveAsync()).Ok, "offline room conditions save locally");
+        var c = room.ToConditions();
+        Check(c.Weather == "fog" && c.Going == "yielding" && c.TemperatureC == 18 && c.WindKmh == 10, "screen indices map to server ids (fog / yielding / 18 / 10)");
+        var room2 = new RoomConditionsModel(b, kv); await room2.LoadAsync();
+        Check(room2.Weather == 3 && room2.Ground == 2 && room2.Wind == 2, "…restored from the device (muchi.race.*)");
+        Check(RoomConditionsModel.TurfStep("sloppy") == "soft" && RoomConditionsModel.TurfStep("fast") == "firm", "dirt going maps back onto the four ground buttons");
+
+        var friends = new FriendsModel(b); await friends.LoadAsync();
+        var teams = new TeamsModel(b); await teams.LoadAsync();
+        var events = new EventsModel(b); await events.LoadAsync();
+        var ta = new TimeAttackModel(b); await ta.LoadAsync("aoba_turf_1600");
+        var lb = new LeaderboardModel(b); await lb.LoadAsync();
+        Check(new ScreenModel[] { friends, teams, events, ta, lb }.All(m => !m.Online && m.Message != null && m.Message.StartsWith("OFFLINE")),
+            "friends / teams / events / time attack / leaderboards explain they need the server offline");
+        Check(!(await friends.SendAsync("ABCD")).Ok && !(await teams.JoinAsync("t_x")).Ok && !(await events.EnterAsync("e_x")).Ok, "offline social actions refuse with a message instead of throwing");
+        var (taDriver, taMsg) = await ta.StartAsync("aoba_turf_1600");
+        Check(taDriver == null && taMsg != null, "offline time attack does not start a session");
+    }
+
     // ---------------------------------------------------------------- online: the screens' server flow + a ranked race
     sealed class NetHttp : IHttp
     {
@@ -257,6 +300,8 @@ static class Program
         Check(!string.IsNullOrEmpty(check.Message), "purchase check answers (" + check.Message + ")");
         Check(await b.SeasonPassAsync() != null, "season pass view loads");
 
+        await OnlineScreens(b);
+
         int pointsBefore = b.Player.SeasonPoints;
         var sw = Stopwatch.StartNew();
         var (d, message) = await b.StartRankedAsync(null);
@@ -287,5 +332,63 @@ static class Program
         await b.RefreshAsync();
         Check(b.Player.RankedRaces >= 1, "ranked race settled on the server (ranked races " + b.Player.RankedRaces + ", season pt " + pointsBefore + " → " + b.Player.SeasonPoints + ")");
         d.Dispose();
+    }
+
+    // round 6: care / course looks / room conditions / friends / teams / events / time attack / leaderboards
+    static async Task OnlineScreens(GameBackend b)
+    {
+        var kv = new MemoryKeyValueStore();
+        var care = new CareModel(b, kv);
+        await care.LoadAsync();
+        Check(care.Online && care.Bond != null && care.Level == 1 && !care.Bond.AffectsRankedStats, "care screen loads the partner's bond from the server (level " + care.Level + ")");
+        var c1 = await care.CareAsync(0);
+        Check(c1.Ok && care.Bond.Points > 0 && !care.Card(0).Ready, "care with GRAIN & APPLE: bond points up, that card rests (" + c1.Message + ")");
+        var c2 = await care.CareAsync(0);
+        Check(!c2.Ok && c2.Message.StartsWith("COOLDOWN"), "same card again → COOLDOWN message (" + c2.Message + ")");
+
+        var looks = new CourseLooksModel(b, kv);
+        await looks.LoadAsync();
+        Check(looks.Online && looks.Owned(0) && looks.EquippedIndex == 0, "course looks load from the server (standard owned)");
+        Check((await looks.EquipAsync(0)).Ok && looks.Presets.CourseLook == "greenfield", "equipping the standard look is stored on the server");
+        var notOwned = await looks.EquipAsync(2);
+        Check(looks.Owned(2) ? notOwned.Ok : !notOwned.Ok, "an unowned look is refused (" + (notOwned.Message ?? "ok") + ")");
+
+        var room = new RoomConditionsModel(b, kv);
+        await room.LoadAsync();
+        room.Weather = 2; room.Ground = 3; room.Temperature = 0; room.Wind = 3;
+        var saved = await room.SaveAsync();
+        Check(saved.Ok, "room conditions saved to the server (" + saved.Message + ")");
+        var room2 = new RoomConditionsModel(b, new MemoryKeyValueStore());
+        await room2.LoadAsync();
+        Check(room2.Online && room2.Weather == 2 && room2.Ground == 3 && room2.Temperature == 0 && room2.Wind == 3, "…and read back on another device (RAIN / HEAVY / 14 °C / 15 km/h)");
+        Check((await room2.ResetAsync()).Ok && (await b.Api.GetPresetsAsync()).Room == null, "reset → automatic conditions");
+
+        var friends = new FriendsModel(b); await friends.LoadAsync();
+        Check(friends.Online && !string.IsNullOrEmpty(friends.MyCode) && friends.List.Friends.Count == 0, "friends screen: my friend code (" + friends.MyCode + ") and an empty list");
+        var self = await friends.SendAsync(friends.MyCode);
+        Check(!self.Ok, "sending a request to my own code is refused (" + self.Message + ")");
+
+        var teams = new TeamsModel(b); await teams.LoadAsync();
+        Check(teams.Online && !teams.InTeam, "teams screen: not in a team yet");
+        Check((await teams.SearchAsync("")).Ok, "team search answers (" + teams.Search.Count + " teams)");
+
+        var events = new EventsModel(b); await events.LoadAsync();
+        Check(events.Online && events.Events != null, "events screen lists events (" + events.Events.Count + ")");
+
+        var lb = new LeaderboardModel(b); await lb.LoadAsync();
+        Check(lb.Online && lb.Mine != null, "leaderboard screen: my rank loads (" + (lb.Message ?? "snapshot ok") + ")");
+
+        var ta = new TimeAttackModel(b); await ta.LoadAsync("aoba_turf_1600");
+        Check(ta.Online && ta.Me != null, "time attack screen loads my records (attempts left " + ta.Me?.AttemptsLeft + ")");
+        var (d, msg) = await ta.StartAsync("aoba_turf_1600");
+        Check(d != null, "time attack session starts (" + (msg ?? "ok") + ")");
+        if (d == null) return;
+        var input = new RaceInput();
+        int[] lastWhip = { -100 };
+        long now = 5_000_000;
+        for (int frame = 0; frame < 60 * 150 && !d.Done; frame++) { Ride(d, input, lastWhip); d.Update(now); now += 16; }
+        Check(d.Done, "time attack run finishes locally");
+        var sub = await ta.SubmitAsync();
+        Check(sub.Ok && ta.Result != null && ta.Result.Finished && ta.Result.ResultHash == d.Sim.Result.Hash, "submitted run is re-simulated by the server to the same hash (" + sub.Message + ")");
     }
 }

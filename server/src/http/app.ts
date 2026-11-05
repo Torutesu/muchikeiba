@@ -18,6 +18,7 @@ import { TeamsService, type TeamPlayers } from '../domain/teamService.js';
 import { EventsService, type EventPlayers } from '../domain/eventService.js';
 import { TEAM_ID_RE } from '../domain/teams.js';
 import { EVENT_ID_RE } from '../domain/events.js';
+import { goingSchema } from '../domain/schemas.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -31,7 +32,8 @@ export type PlayerMethod =
   | 'registerDevice' | 'unregisterDevice' | 'pushPreferences' | 'setPushPreferences' | 'kpiIngest'
   | 'taStart' | 'taPrepare' | 'taAbort' | 'taRecord' | 'taView'
   | 'teamPrepareJoin' | 'teamCommitJoin' | 'teamAbortJoin' | 'teamAddOutgoing' | 'teamRemoveOutgoing' | 'teamLeft' | 'teamState' | 'teamSeasonReward' | 'queuePush'
-  | 'eventsView' | 'eventEnter' | 'eventCancel' | 'eventClose';
+  | 'eventsView' | 'eventEnter' | 'eventCancel' | 'eventClose'
+  | 'bond' | 'bondLevels' | 'care' | 'presets' | 'setCourseLook' | 'setRoomConditions';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -212,6 +214,27 @@ export const routes: Route[] = [
   { method: 'POST', path: '/v1/horses/:horseId/awaken', auth: 'player', handler: async (r, p, c, u) => c.player(u).invoke('awaken', u, p.horseId!, idem(r)) },
   { method: 'POST', path: '/v1/horses/:horseId/retire', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('retire', u, p.horseId!) },
   { method: 'GET', path: '/v1/horses/:horseId/pedigree', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('pedigree', u, p.horseId!) },
+  // stable care / bond (REQ-BOND-*): never affects ranked, event or time attack stats
+  { method: 'GET', path: '/v1/bond', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('bondLevels', u) },
+  { method: 'GET', path: '/v1/horses/:horseId/bond', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('bond', u, p.horseId!) },
+  { method: 'POST', path: '/v1/horses/:horseId/care', auth: 'player', handler: async (r, p, c, u) => {
+    const b = await body(r, z.object({ action: z.string().min(1).max(40) }));
+    return c.player(u).invoke('care', u, p.horseId!, b.action, idem(r));
+  } },
+  // presets: course look and private-room conditions (REQ-ROOM-*)
+  { method: 'GET', path: '/v1/presets', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('presets', u) },
+  { method: 'PUT', path: '/v1/presets/course-look', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ lookId: z.string().min(1).max(40).nullable() }));
+    return c.player(u).invoke('setCourseLook', u, b.lookId);
+  } },
+  { method: 'PUT', path: '/v1/presets/room', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({
+      trackId: z.string().min(1).max(64).nullable(), going: goingSchema.nullable(), night: z.boolean().nullable(),
+      weather: z.string().min(1).max(20), temperatureC: z.number().int(), windKmh: z.number().int(),
+    }));
+    return c.player(u).invoke('setRoomConditions', u, b);
+  } },
+  { method: 'DELETE', path: '/v1/presets/room', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('setRoomConditions', u, null) },
   { method: 'POST', path: '/v1/breeding/preview', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ sireId: id, damId: id }));
     return c.player(u).invoke('breedingPreview', u, b.sireId, b.damId);

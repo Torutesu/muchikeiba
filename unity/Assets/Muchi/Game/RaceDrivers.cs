@@ -47,6 +47,12 @@ namespace Muchi.Game
             _race = new OfflineRace(config, playerSlot) { AutoStart = autoStart };
         }
 
+        /// <summary>Drives an existing local race (e.g. <c>TimeAttackRun.Race</c>, whose inputs are submitted afterwards).</summary>
+        public OfflineRaceDriver(OfflineRace race)
+        {
+            _race = race ?? throw new ArgumentNullException(nameof(race));
+        }
+
         public OfflineRace Race => _race;
         public bool Online => false;
         public RaceConfig Config => _race.Config;

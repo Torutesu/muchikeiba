@@ -62,6 +62,8 @@ export function buildAssetManifest(m: Master, commentary: CommentaryJson, v: Vis
     if (m.litTracks.has(t.id)) add(assetKeys.night(venue));
   }
   for (const g of new Set<string>([...TURF_GOINGS, ...DIRT_GOINGS])) if (g !== 'good') add(assetKeys.going(g));
+  (v.courseLooks ?? []).forEach((l) => add(l.key));
+  (v.weather ?? []).forEach((w) => add(assetKeys.weather(w)));
   v.sfx.race.forEach((x) => add(assetKeys.sfxRace(x)));
   v.sfx.ui.forEach((x) => add(assetKeys.sfxUi(x)));
   for (const p of Object.values(commentary.phrases)) for (const vr of p.variants) phraseClipIds(vr.id, vr.text).forEach((c) => add(assetKeys.voicePhrase(c)));

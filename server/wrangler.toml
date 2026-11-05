@@ -9,7 +9,14 @@ VERIFIER_URL = "https://verifier.example.invalid"
 FIREBASE_PROJECT_ID = "muchi-issen-dev"
 VERIFY_SAMPLE_RATE = "0.05"
 # DEV_MODE = "1"   # local only: fake store + x-dev-user header. NEVER in production.
-# Secrets (wrangler secret put): TICKET_SECRET, ADMIN_TOKEN
+# Secrets (wrangler secret put): TICKET_SECRET, ADMIN_TOKEN, GOOGLE_SERVICE_ACCOUNT_JSON
+# Stores (server/README.md「ストア連携」). Unset => that store rejects every receipt.
+# APPLE_BUNDLE_ID = "jp.example.muchi"
+# APPLE_ACCEPT_SANDBOX = "1"              # "0" rejects Sandbox (App Review uses Sandbox)
+# GOOGLE_PACKAGE_NAME = "jp.example.muchi"
+# GOOGLE_ACCEPT_TEST = "1"                # "0" rejects license-testing purchases
+# GOOGLE_PUBSUB_AUDIENCE = "https://api.example.com/v1/store/notifications/google"
+# GOOGLE_PUBSUB_SERVICE_ACCOUNT = "rtdn-push@<project>.iam.gserviceaccount.com"
 
 [[durable_objects.bindings]]
 name = "RACE_ROOM"

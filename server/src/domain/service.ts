@@ -4,7 +4,7 @@ import { newPlayer, playerView, type PlayerState, type PurchaseRecord } from './
 import type { Rng } from './rng.js';
 import type { Clock } from './time.js';
 import { seasonIdFor, rollSeason, classDef } from './season.js';
-import { applyRefund, applyVerifiedPurchase, checkPurchaseIntent, registerAge, type StoreVerifier } from './purchase.js';
+import { applyRefund, applySubscriptionStatus, applyVerifiedPurchase, checkPurchaseIntent, registerAge, type StoreVerifier, type SubscriptionStatus, type VerifiedReceipt } from './purchase.js';
 import { drawGacha, exchangePity } from './gacha.js';
 import { awaken, breed, breedingPreview, getHorse, nameHorse, pedigree, retire } from './horses.js';
 import { applyRaceResult, claimLoginBonus, claimMission, claimPass, missionsView, passLevel, type RaceResultForPlayer } from './rewards.js';
@@ -36,6 +36,8 @@ export interface PlayerServiceDeps {
   clock: Clock;
   verifiers: Partial<Record<PurchaseRecord['platform'], StoreVerifier>>;
   onPaidBalance?: (snap: PaidBalanceSnapshot) => void | Promise<void>;
+  /** Global store-transaction owner index: one receipt can only ever credit one player. */
+  storeIndex?: { claim(key: string, playerId: string): Promise<string> };
 }
 
 const IDEM_KEEP = 200;
@@ -107,11 +109,44 @@ export class PlayerService {
   async purchase(id: string, platform: PurchaseRecord['platform'], productId: string, receipt: string) {
     const v = this.d.verifiers[platform];
     if (!v) throw new AppError('BAD_REQUEST', `unsupported platform ${platform}`);
-    const r = await v.verify(receipt, productId); // throws RECEIPT_INVALID
-    return this.tx(id, `purchase:${r.transactionId}`, (s, now) => {
+    const r = await v.verify(receipt, productId, { playerId: id }); // throws RECEIPT_INVALID
+    await this.claimStoreKeys(id, r);
+    const out = await this.tx(id, `purchase:${r.transactionId}`, (s, now) => {
       const { record, duplicate } = applyVerifiedPurchase(this.d.master, s, platform, r, now);
       return { record, duplicate, wallet: playerView(s).wallet };
     });
+    if (v.finalize) {
+      // Consume/acknowledge only after the grant is saved. A failure is retried when the app re-sends the receipt.
+      try {
+        await v.finalize(r);
+      } catch (e) {
+        console.error('store finalize failed', platform, r.transactionId, e);
+      }
+    }
+    return out;
+  }
+
+  private async claimStoreKeys(id: string, r: VerifiedReceipt) {
+    if (!this.d.storeIndex) return;
+    for (const key of [r.transactionId, r.originalTransactionId]) {
+      if (!key) continue;
+      const owner = await this.d.storeIndex.claim(key, id);
+      if (owner !== id) throw new AppError('RECEIPT_INVALID', 'this purchase is already linked to another player');
+    }
+  }
+
+  /** Store server notification: a new subscription period (Apple DID_RENEW/SUBSCRIBED, Google RENEWED…). Idempotent. */
+  async storeRenewal(id: string, platform: PurchaseRecord['platform'], r: VerifiedReceipt) {
+    await this.claimStoreKeys(id, r);
+    return this.tx(id, `purchase:${r.transactionId}`, (s, now) => {
+      const { record, duplicate } = applyVerifiedPurchase(this.d.master, s, platform, r, now);
+      return { record, duplicate, passExpiresAt: s.seasonPass.expiresAt };
+    });
+  }
+
+  /** Store server notification: subscription status change (expired, revoked, grace…). */
+  subscriptionStatus(id: string, platform: PurchaseRecord['platform'], key: string, status: SubscriptionStatus, expiresAt: number | null) {
+    return this.tx(id, null, (s, now) => applySubscriptionStatus(s, platform, key, status, expiresAt, now));
   }
 
   refund(id: string, transactionId: string) {

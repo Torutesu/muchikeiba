@@ -3,12 +3,16 @@ import { AppError } from '../domain/errors.js';
 import { findBanner, oddsDisclosure } from '../domain/gacha.js';
 import type { Master } from '../domain/master.js';
 import type { PlayerService } from '../domain/service.js';
+import type { SubscriptionStatus, VerifiedReceipt } from '../domain/purchase.js';
+import type { PurchaseRecord } from '../domain/player.js';
+import { appleAccountToken, googleAccountId } from '../stores/binding.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
   | 'bootstrap' | 'view' | 'setAge' | 'purchaseIntent' | 'purchase' | 'refund' | 'draw' | 'tutorialDraw' | 'pityExchange'
   | 'nameHorse' | 'awaken' | 'retire' | 'breedingPreview' | 'breed' | 'pedigree' | 'claimLogin' | 'missions'
-  | 'claimMission' | 'passView' | 'claimPass' | 'applyRace' | 'raceEntry';
+  | 'claimMission' | 'passView' | 'claimPass' | 'applyRace' | 'raceEntry'
+  | 'storeRenewal' | 'subscriptionStatus';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -30,7 +34,12 @@ export interface RaceApi {
   report(raceId: string, playerId: string): Promise<unknown>;
   replay(raceId: string): Promise<unknown>;
 }
-export interface StoreNotification { playerId: string; transactionId: string; kind: 'refund' }
+/** A verified store server notification, resolved to its player (see http/stores.ts). */
+export type StoreNotification =
+  | { kind: 'refund'; playerId: string; transactionId: string }
+  | { kind: 'renewal'; playerId: string; platform: PurchaseRecord['platform']; receipt: VerifiedReceipt }
+  | { kind: 'subscription'; playerId: string; platform: PurchaseRecord['platform']; key: string; status: SubscriptionStatus; expiresAt: number | null }
+  | { kind: 'ignored'; reason: string };
 export interface AppContext {
   master: Master;
   authenticate(req: Request): Promise<string>;
@@ -87,10 +96,21 @@ export const routes: Route[] = [
     const b = await body(r, z.object({ platform: z.enum(['apple', 'google', 'fake']), productId: id, receipt: z.string().min(1).max(20000) }));
     return c.player(u).invoke('purchase', u, b.platform, b.productId, b.receipt);
   } },
+  { method: 'GET', path: '/v1/shop/store-account', auth: 'player', handler: async (_r, _p, _c, u) => ({ appleAppAccountToken: await appleAccountToken(u), googleObfuscatedAccountId: await googleAccountId(u) }) },
   { method: 'POST', path: '/v1/store/notifications/:platform', auth: 'none', handler: async (r, p, c) => {
     const n = await c.parseStoreNotification(p.platform!, r);
     if (!n) throw new AppError('BAD_REQUEST', 'unrecognized notification');
-    return c.player(n.playerId).invoke('refund', n.playerId, n.transactionId);
+    // Answer 2xx for verified notifications we cannot apply, or the store retries for days.
+    if (n.kind === 'ignored') return { ok: true, ignored: n.reason };
+    const pl = c.player(n.playerId);
+    try {
+      if (n.kind === 'refund') return await pl.invoke('refund', n.playerId, n.transactionId);
+      if (n.kind === 'renewal') return await pl.invoke('storeRenewal', n.playerId, n.platform, n.receipt);
+      return await pl.invoke('subscriptionStatus', n.playerId, n.platform, n.key, n.status, n.expiresAt);
+    } catch (e) {
+      if (e instanceof AppError && e.code === 'NOT_FOUND') return { ok: true, ignored: 'purchase not found for player' };
+      throw e;
+    }
   } },
   // gacha
   { method: 'GET', path: '/v1/gacha/banners', auth: 'none', handler: async (_r, _p, c) => ({ banners: c.master.gacha.banners.map((b) => ({ id: b.id, name: b.name, currency: b.currency, priceSingle: b.priceSingle, priceTen: b.priceTen, startAtMs: b.startAtMs ?? null, endAtMs: b.endAtMs ?? null })) }) },

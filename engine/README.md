@@ -30,7 +30,10 @@ dotnet run -c Release --project engine/Muchi.Verifier -- rider-sweep "$PWD/contr
 
 ## Unity / Codex 向け API
 
-Unity には `Muchi.Engine/`、`Muchi.Net/`、`Muchi.Client/` の `*.cs + .asmdef` と `Muchi.Client/Data/commentary-ja.json` をコピーする（`bin/` `obj/` は入れない）。
+`Muchi.Engine/`、`Muchi.Net/`、`Muchi.Client/` は Unity のローカルパッケージ（`com.muchi.engine` / `com.muchi.net` / `com.muchi.client`、各フォルダの `package.json`）で、`unity/Packages/manifest.json` が `file:../../engine/...` で参照する。コピーは不要。
+- `engine/Directory.Build.props` がこの3つの `bin/` `obj/` を `engine/.build/` に出すので、`dotnet build/test` の生成物は Unity に入らない（`UnityPackageTests` が確認）。
+- 実行時データは `Muchi.Client/Resources/Muchi/`：`commentary-ja.json`（実況テンプレート）と `ruleset-params.default.json`（オフラインレース用の既定ルールセット。`contracts/ruleset-params.default.json` のコピーで、変えたら `scripts/sync-unity-data.sh` を実行。ずれると `UnityPackageTests` が失敗する）。Unity では `Resources.Load<TextAsset>("Muchi/commentary-ja")` で読む。
+- Unity アプリ側の接続（`unity/Assets/Muchi/Game` と `Integration`）は [docs/handoff-unity-3d.md](../docs/handoff-unity-3d.md) を参照。
 通常は下の **Muchi.Client（推奨）** だけを使えばよい。`LockstepClient` を直接使うのは独自の接続管理をしたい場合のみ。
 
 ## Muchi.Client（Unity 統合ガイド）
@@ -138,7 +141,7 @@ foreach (var line in commentator.Process(race.Sim)) PlayLine(line); // line.Text
 - 行は重ならない（`DurationTicks` の間は次を出さない）。重要な場面（ゲート、先頭交代、最後の直線、1着、着順）は捨てずに遅らせて必ず言う。
 - 言い回しはレースのシードから決定的に選ぶ（同じリプレイは同じ実況）。
 - **音声は作り置き**：`templates.AllFixedClips()` が「固定フレーズID→文」を返すので一度だけ音声合成しておく。馬名は `name:<horseId>`（命名時に1回生成）、数字は `num:<n>`。`ClipKeys` を順に再生すれば `Text` と同じ文になる。
-- 文面は `Data/commentary-ja.json` を編集する（`{name}` `{name2}` `{name3}` `{place}` が使える）。
+- 文面は `Resources/Muchi/commentary-ja.json` を編集する（`{name}` `{name2}` `{name3}` `{place}` が使える）。
 
 ### 5. プッシュ通知（`ApiClient` の push 系）
 ```csharp

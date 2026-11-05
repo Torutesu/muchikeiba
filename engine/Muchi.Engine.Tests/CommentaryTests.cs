@@ -7,7 +7,7 @@ namespace Muchi.Engine.Tests
     public class CommentaryTests
     {
         internal static CommentaryTemplates Templates()
-            => CommentaryTemplates.Parse(File.ReadAllText(Path.Combine(TestUtil.RepoRoot, "engine", "Muchi.Client", "Data", "commentary-ja.json")));
+            => CommentaryTemplates.Parse(File.ReadAllText(Path.Combine(TestUtil.RepoRoot, "engine", "Muchi.Client", "Resources", "Muchi", "commentary-ja.json")));
 
         private static (RaceSim sim, Commentator c) Run(ulong seed, int focus = 0)
         {

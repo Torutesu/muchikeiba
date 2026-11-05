@@ -1,0 +1,11 @@
+{
+  "name": "Muchi.Unity",
+  "rootNamespace": "Muchi.Unity",
+  "references": ["Muchi.Game", "Muchi.Client", "Muchi.Net", "Muchi.Engine"],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "autoReferenced": true,
+  "noEngineReferences": false
+}

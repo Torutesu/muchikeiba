@@ -16,7 +16,13 @@ To add a language, add Assets/Resources/Localization/{locale}.json with a locale
 
 ## Input
 
-Keyboard: left/right arrows change lane, E uses a spur, and holding Space reins in. Touch: lane arrows, SPUR, and press-and-hold REIN. The local presentation race starts 420m from the finish. It updates position, stamina, cooldown, timing feedback, distance, and runner map. This is local screen presentation logic, not the authoritative race engine or an online match.
+Keyboard: left/right arrows change lane, E uses a spur, and holding Space reins in. Touch: lane arrows, SPUR, and press-and-hold REIN.
+
+Races run on the authoritative engine (`engine/Muchi.Engine`, imported as a local UPM package). The controls become engine inputs (`Assets/Muchi/Game/RaceInput.cs`): screen left/right → inside/outside lane (mirrored on right-handed courses), SPUR → START before the horse leaves the gate and WHIP afterwards, REIN hold → REIN_PRESS / REIN_RELEASE. The HUD (position, distance, stamina‰, whips, kakari, gate countdown) and the runner positions are read from the engine state; the first ride is the engine's 400 m tutorial preset, offline practice is a 12-runner 2000 m race, and online ranked races are lockstep races through the server. See [docs/handoff-unity-3d.md](../docs/handoff-unity-3d.md) for the full wiring.
+
+## Server connection
+
+`Assets/Resources/Muchi/server-config.json` selects the server (default: `local`, `http://127.0.0.1:8787`, dev auth with an auto-generated `x-dev-user`). Run the server with `cd server && npm ci && npm run dev`. Per device, PlayerPrefs `muchi.server.baseUrl` overrides the URL and `muchi.server.offline` = `1` forces offline mode. If the server is unreachable at start-up the app runs offline (local data, offline races). Staging/production need Firebase auth (`MuchiServices.FirebaseTokens`), not integrated yet.
 
 ## 3D asset library
 
@@ -42,8 +48,11 @@ No Figma document was updated remotely: the Figma app tag was received, but Figm
 
 ## Validation
 
-This environment has no Unity Editor or player runtime. Unity compilation, Play Mode, Android/iOS builds, and visual performance are unverified. Local C# presentation checks can run outside Unity using .NET 8:
+This environment has no Unity Editor or player runtime. Unity compilation, Play Mode, Android/iOS builds, and visual performance are unverified. Checks that run outside Unity with .NET 8 (also in CI):
 
-    dotnet run --project 'Checks~/PresentationChecks.csproj'
+    dotnet build 'Checks~/Muchi.Game'      # game layer, compiled like Unity (netstandard2.1, C# 9, no UnityEngine)
+    dotnet build 'Checks~/UnityRuntime'    # Integration + Runtime scripts type-checked against UnityEngine 2022.3.62 reference assemblies
+    dotnet run --project 'Checks~/GameChecks'                              # input, HUD, course placement, partner mapping, offline races
+    dotnet run --project 'Checks~/GameChecks' -c Release -- online http://127.0.0.1:8787   # + naming, scout, shop, pass and a ranked race on a running server
 
-They exercise race-state logic only; they do not establish Unity rendering or build readiness. Multiplayer, ranked progression, server-backed scouting, purchases, and authoritative-engine integration are not implemented.
+The UnityEngine references come from a third-party NuGet redistribution (`RocketModFix.UnityEngine.Redist`) and are used only as compile-time references. These checks do not replace an Editor import, Play Mode, or device builds; real billing, Firebase auth and server-side cosmetics (wardrobe, course looks, care, conditions — marked LOCAL ONLY on screen) are not connected.

@@ -3,3 +3,7 @@ obj/
 *.user
 .vs/
 TestResults/
+.build/
+# Unity generates .meta files when it imports these folders as local packages (unity/Packages/manifest.json).
+# Scripts are referenced by assembly name and data by Resources path, so the GUIDs need not be shared.
+*.meta

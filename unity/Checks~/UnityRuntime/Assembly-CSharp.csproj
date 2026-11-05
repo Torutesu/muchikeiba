@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Type-checks the app scripts without an asmdef (unity/Assets/Muchi/Runtime → Unity's Assembly-CSharp),
+    referencing the same assemblies Unity gives them: the auto-referenced asmdefs (Muchi.Unity, Muchi.Game,
+    engine packages) and UnityEngine + UnityEngine.UI (see ../UnityAdapters for the redist note).
+    Editor scripts (Assets/Muchi/Editor) need UnityEditor and are not checked here.
+  -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <AssemblyName>Assembly-CSharp</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NoWarn>CS0618;CS0649;CS0414</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Assets/Muchi/Runtime/**/*.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../UnityAdapters/Muchi.Unity.csproj" />
+    <PackageReference Include="RocketModFix.UnityEngine.Redist" Version="2022.3.62.3" />
+  </ItemGroup>
+</Project>

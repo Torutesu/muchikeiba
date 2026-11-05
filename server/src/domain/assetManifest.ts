@@ -7,7 +7,7 @@ import type { Master } from './master.js';
 import { DIRT_GOINGS, TURF_GOINGS } from './schemas.js';
 import { ASSET_KEY_RE, ASSET_KINDS, assetKeys, collectItemIds, fallbackKey, kindOf, VISUALS, type VisualsMaster } from './visuals.js';
 
-/** engine/Muchi.Client/Data/commentary-ja.json (only the parts the manifest needs). */
+/** engine/Muchi.Client/Resources/Muchi/commentary-ja.json (only the parts the manifest needs). */
 export interface CommentaryJson { phrases: Record<string, { variants: { id: string; text: string }[] }> }
 
 /** Fixed clip ids of a template text, split exactly like Muchi.Client Commentary (`<variantId>#<n>`). */

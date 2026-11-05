@@ -7,3 +7,6 @@
 .vs/
 *.csproj
 *.sln
+
+# dotnet check projects outside the Unity asset database (Checks~ is ignored by Unity)
+!Checks~/**/*.csproj

@@ -1,0 +1,9 @@
+{
+  "name": "com.muchi.net",
+  "version": "0.5.0",
+  "displayName": "Muchi Net",
+  "description": "Lockstep client and protocol codec (contracts/protocol.md).",
+  "unity": "2022.3",
+  "author": { "name": "Muchi Issen" },
+  "dependencies": { "com.muchi.engine": "0.5.0" }
+}

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Compiles unity/Assets/Muchi/Game (asmdef Muchi.Game, noEngineReferences) exactly as Unity does:
+    netstandard2.1, C# 9, references only the engine packages — so any UnityEngine use there fails here.
+  -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <AssemblyName>Muchi.Game</AssemblyName>
+    <RootNamespace>Muchi.Game</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Assets/Muchi/Game/**/*.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../engine/Muchi.Client/Muchi.Client.csproj" />
+  </ItemGroup>
+</Project>

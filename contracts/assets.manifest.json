@@ -124,7 +124,7 @@
   },
   "voice/ja/phrase": {
    "fallback": "voice/ja/phrase/default",
-   "description": "実況の定型フレーズ（Data/commentary-ja.json の各断片）",
+   "description": "実況の定型フレーズ（Resources/Muchi/commentary-ja.json の各断片）",
    "dynamic": false,
    "count": 74
   },

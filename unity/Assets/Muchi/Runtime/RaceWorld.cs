@@ -1,9 +1,18 @@
 using System;
 using System.Collections.Generic;
+using Muchi.Client;
+using Muchi.Engine;
+using Muchi.Game;
 using UnityEngine;
 
 namespace Muchi.Client
 {
+    /// <summary>
+    /// Race presentation. Positions come only from the authoritative engine (IRaceDriver → RaceSim states),
+    /// mapped to the scene by CourseFrame (finish line at z=420 facing +Z, where the grandstand is).
+    /// Straight-only courses (the first-ride tutorial) use the original Greenfield straight; courses with
+    /// corners get rails and turf generated from the engine's track geometry.
+    /// </summary>
     public sealed class RaceWorld : MonoBehaviour
     {
         public GameObject HorsePrefab;
@@ -12,10 +21,14 @@ namespace Muchi.Client
         readonly List<Material> materials = new List<Material>();
         GameObject[] partnerPrefabs = Array.Empty<GameObject>();
         GameObject[] partnerLodPrefabs = Array.Empty<GameObject>();
-        Transform course;
+        Transform course, staticCourse, generatedCourse, stands;
         Camera view;
+        Light sun;
         bool racing;
-        float lane;
+        CourseFrame frame;
+        double xShift;
+        int runners;
+        int playerSlot;
         public void Initialize()
         {
             partnerPrefabs = Resources.LoadAll<GameObject>("Models/Partners");
@@ -24,32 +37,28 @@ namespace Muchi.Client
             RenderSettings.ambientLight = new Color(.66f, .76f, .86f);
             RenderSettings.fog = true; RenderSettings.fogColor = new Color(.68f,.83f,.95f);
             RenderSettings.fogMode = FogMode.ExponentialSquared; RenderSettings.fogDensity = .0014f;
-            var light = new GameObject("Afternoon sun").AddComponent<Light>();
-            light.transform.SetParent(transform); light.type = LightType.Directional;
-            light.intensity = 1.25f; light.shadows = LightShadows.Soft;
-            light.transform.rotation = Quaternion.Euler(38,-35,0);
+            sun = new GameObject("Afternoon sun").AddComponent<Light>();
+            sun.transform.SetParent(transform); sun.type = LightType.Directional;
+            sun.intensity = 1.25f; sun.shadows = LightShadows.Soft;
+            sun.transform.rotation = Quaternion.Euler(38,-35,0);
             view = new GameObject("Chase camera").AddComponent<Camera>();
             view.transform.SetParent(transform); view.backgroundColor = new Color(.39f,.69f,.94f);
             view.clearFlags = CameraClearFlags.SolidColor; view.fieldOfView = 57; view.farClipPlane = 1200;
             view.gameObject.AddComponent<AudioListener>();
             course = new GameObject("Greenfield racecourse").transform; course.SetParent(transform);
+            staticCourse = new GameObject("Greenfield straight").transform; staticCourse.SetParent(course);
             var turf = Mat(new Color(.23f,.48f,.12f)); var rail = Mat(new Color(.95f,.96f,.91f));
-            Box("Turf",new Vector3(0,-.22f,220),new Vector3(250,.4f,650),turf,course);
+            Box("Turf",new Vector3(0,-.22f,220),new Vector3(250,.4f,650),turf,staticCourse);
             for (int z = -60; z < 500; z += 10)
             {
-                if (z % 20 == 0) Box("Mown turf stripe",new Vector3(0,-.008f,z),new Vector3(28,.012f,10),Mat(new Color(.27f,.52f,.14f)),course);
+                if (z % 20 == 0) Box("Mown turf stripe",new Vector3(0,-.008f,z),new Vector3(28,.012f,10),Mat(new Color(.27f,.52f,.14f)),staticCourse);
                 foreach (float x in new[]{-15f,15f})
                 {
-                    Box("Rail post",new Vector3(x,.65f,z),new Vector3(.15f,1.3f,.15f),rail,course);
-                    Box("Running rail",new Vector3(x,1.25f,z+5),new Vector3(.15f,.15f,10),rail,course);
+                    Box("Rail post",new Vector3(x,.65f,z),new Vector3(.15f,1.3f,.15f),rail,staticCourse);
+                    Box("Running rail",new Vector3(x,1.25f,z+5),new Vector3(.15f,.15f,10),rail,staticCourse);
                 }
             }
-            var concrete = Mat(new Color(.58f,.65f,.70f)); var roof = Mat(new Color(.12f,.23f,.32f));
-            for (int tier = 0; tier < 5; tier++)
-                Box("Grandstand terrace",new Vector3(-35-tier*3,1+tier*2,160),new Vector3(8,2,230),concrete,course);
-            Box("Grandstand canopy",new Vector3(-42,15,160),new Vector3(29,.5f,250),roof,course);
-            var crowdMats = new[]{Mat(new Color(.9f,.3f,.25f)),Mat(new Color(.9f,.85f,.7f)),Mat(new Color(.15f,.35f,.65f))};
-            for(int i=0;i<300;i++) Box("Crowd block",new Vector3(-34-(i%5)*3,2+(i%5)*2,48+(i/5)*3.8f),new Vector3(.65f,.85f,.65f),crowdMats[i%3],course);
+            BuildStands(-1);
             Box("Finish beam",new Vector3(0,7,420),new Vector3(32,.35f,.4f),rail,course);
             foreach(float x in new[]{-15f,15f}) Box("Finish post",new Vector3(x,3.5f,420),new Vector3(.4f,7,.4f),rail,course);
             for(int i=0;i<12;i++)
@@ -59,26 +68,52 @@ namespace Muchi.Client
             }
             Lobby();
         }
+        // Grandstand, canopy and crowd along the home straight, on the outside of the course (side = -1 left, +1 right).
+        int standsSide;
+        void BuildStands(int side)
+        {
+            if(stands!=null&&standsSide==side)return;
+            standsSide=side;
+            if(stands!=null)Destroy(stands.gameObject);
+            stands=new GameObject("Grandstand").transform;stands.SetParent(course);
+            var concrete = Mat(new Color(.58f,.65f,.70f)); var roof = Mat(new Color(.12f,.23f,.32f));
+            for (int tier = 0; tier < 5; tier++)
+                Box("Grandstand terrace",new Vector3(side*(35+tier*3),1+tier*2,160),new Vector3(8,2,230),concrete,stands);
+            Box("Grandstand canopy",new Vector3(side*42,15,160),new Vector3(29,.5f,250),roof,stands);
+            var crowdMats = new[]{Mat(new Color(.9f,.3f,.25f)),Mat(new Color(.9f,.85f,.7f)),Mat(new Color(.15f,.35f,.65f))};
+            for(int i=0;i<300;i++) Box("Crowd block",new Vector3(side*(34+(i%5)*3),2+(i%5)*2,48+(i/5)*3.8f),new Vector3(.65f,.85f,.65f),crowdMats[i%3],stands);
+        }
+        // Lobby / wardrobe model (Codex's featured partners; slot 0).
         Transform CreatePartner(int slot)
         {
             if(HorsePrefab!=null)return Instantiate(HorsePrefab,transform).transform;
             if(partnerPrefabs.Length==0)return ProxyHorse(slot);
-            string[] featured={"Partner_Bay_Crimson","Partner_Chestnut_Azure","Partner_DappleGrey_Violet","Partner_Black_Emerald","Partner_Palomino_Gold"};
-            int featuredIndex=Mathf.Clamp(PlayerPartnerIndex,0,featured.Length-1);
-            int playerChoice=Array.FindIndex(partnerPrefabs,p=>p.name==featured[featuredIndex]);
+            int featuredIndex=Mathf.Clamp(PlayerPartnerIndex,0,PartnerCatalog.Featured.Length-1);
+            int playerChoice=Array.FindIndex(partnerPrefabs,p=>p.name==PartnerCatalog.Featured[featuredIndex]);
             int choice=slot==0?(playerChoice>=0?playerChoice:0):(slot*7+3)%partnerPrefabs.Length;
-            var anchor=new GameObject("Partner lane "+slot).transform;anchor.SetParent(transform,false);
             var modelSource=partnerPrefabs[choice];
             if(slot>0)
             {
                 int lod=Array.FindIndex(partnerLodPrefabs,p=>p.name==modelSource.name+"_LOD1");
                 if(lod>=0)modelSource=partnerLodPrefabs[lod];
             }
+            return Anchor(slot,modelSource);
+        }
+        // A partner model from the catalog (resource path), falling back to the primitive proxy.
+        Transform CreatePartner(int slot,string resourcePath)
+        {
+            if(HorsePrefab!=null)return Instantiate(HorsePrefab,transform).transform;
+            var source=string.IsNullOrEmpty(resourcePath)?null:Resources.Load<GameObject>(resourcePath);
+            return source==null?ProxyHorse(slot):Anchor(slot,source);
+        }
+        Transform Anchor(int slot,GameObject modelSource)
+        {
+            var anchor=new GameObject("Partner lane "+slot).transform;anchor.SetParent(transform,false);
             var model=Instantiate(modelSource,anchor,false);model.name=modelSource.name+" / model";
-            model.localPosition=Vector3.zero;
+            model.transform.localPosition=Vector3.zero;
             // Blender source scenes use Z-up with the horse facing +Y. FBX export maps this to Unity -Z-forward.
-            model.localRotation=Quaternion.Euler(0,180f,0);
-            model.localScale=Vector3.one*.95f;
+            model.transform.localRotation=Quaternion.Euler(0,180f,0);
+            model.transform.localScale=Vector3.one*.95f;
             var motion=anchor.gameObject.AddComponent<PartnerGallop>();motion.Bind(model.transform);
             return anchor;
         }
@@ -130,24 +165,100 @@ namespace Muchi.Client
         public void Lobby()
         {
             racing=false;
+            if(generatedCourse!=null){Destroy(generatedCourse.gameObject);generatedCourse=null;}
+            staticCourse.gameObject.SetActive(true);BuildStands(-1);SetNight(false);
             foreach(var h in Horses){var motion=h.GetComponent<PartnerGallop>();if(motion!=null)motion.SetRacing(false);}
             for(int i=0;i<Horses.Count;i++) { Horses[i].gameObject.SetActive(i==0);Horses[i].position=new Vector3(0,0,25);Horses[i].rotation=Quaternion.Euler(0,-25,0); }
             view.transform.position=new Vector3(4,2.8f,31); view.transform.LookAt(new Vector3(0,1.65f,25));
         }
-        public void StartRace(){racing=true;lane=0;foreach(var h in Horses){h.gameObject.SetActive(true);h.rotation=Quaternion.identity;var motion=h.GetComponent<PartnerGallop>();if(motion!=null)motion.SetRacing(true);}}
-        public void MoveLane(float direction){lane=Mathf.Clamp(lane+direction*2,-11,11);}
-        public void Present(RacePresentation state)
+        /// <summary>
+        /// Prepare a race from the engine config: course from the track geometry, one partner model per entrant
+        /// (player = equipped wardrobe partner; others from start.visuals through the partner catalog).
+        /// </summary>
+        public void StartRace(RaceConfig config,RaceVisuals visuals,int player,PartnerCatalog catalog)
         {
-            if(!racing)return;
-            for(int i=0;i<12;i++)
+            racing=true;playerSlot=player;runners=config.Entrants.Count;
+            frame=CourseFrame.For(config,visuals);
+            bool straight=config.Track.Segments.TrueForAll(s=>s.Kind==SegmentKind.Straight);
+            // Straight courses reuse the Greenfield straight (rails at x=±15): centre the field between its rails.
+            xShift=straight?-(frame.LaneCount*frame.LaneWidthMm/1000.0)/2:0;
+            staticCourse.gameObject.SetActive(straight);
+            BuildStands(straight?-1:(int)frame.OutsideSign);
+            if(generatedCourse!=null){Destroy(generatedCourse.gameObject);generatedCourse=null;}
+            if(!straight)BuildCourse(config.Track.Surface==Surface.Dirt);
+            SetNight(visuals?.Track!=null&&visuals.Track.Night);
+            foreach(var h in Horses)if(h!=null)Destroy(h.gameObject);
+            Horses.Clear();
+            for(int i=0;i<runners;i++)
             {
-                var p=new Vector3(i==0?Mathf.Lerp(Horses[0].position.x,lane,Time.deltaTime*6):(i%6-2.5f)*3, .06f*Mathf.Sin(state.Time*13+i), state.Distance[i]-(i==0?0:(i/6)*4));
-                Horses[i].position=p;
-                var animator=Horses[i].GetComponentInChildren<Animator>();if(animator!=null)animator.SetFloat("Speed",1);
+                string path=null;
+                if(catalog!=null)
+                {
+                    PartnerVariant v;
+                    if(i==playerSlot)v=catalog.Get(PartnerCatalog.Featured[Mathf.Clamp(PlayerPartnerIndex,0,4)]);
+                    else{var e=visuals?.ForSlot(i);v=catalog.Resolve(e?.Appearance,e?.Silks);}
+                    if(v!=null)path=i==playerSlot?v.Model:(v.OpponentLod??v.Model);
+                }
+                var h=path!=null?CreatePartner(i,path):CreatePartner(i==playerSlot?0:i);
+                h.gameObject.SetActive(true);
+                var motion=h.GetComponent<PartnerGallop>();if(motion!=null)motion.SetRacing(true);
+                Horses.Add(h);
             }
-            var target=Horses[0].position+new Vector3(0,3,-6.5f);
+        }
+        void SetNight(bool night)
+        {
+            sun.intensity=night?.35f:1.25f;
+            RenderSettings.ambientLight=night?new Color(.22f,.26f,.36f):new Color(.66f,.76f,.86f);
+            view.backgroundColor=night?new Color(.04f,.06f,.12f):new Color(.39f,.69f,.94f);
+            RenderSettings.fogColor=night?new Color(.05f,.07f,.12f):new Color(.68f,.83f,.95f);
+        }
+        // Rails and running surface generated from the engine's track geometry (render-only).
+        void BuildCourse(bool dirt)
+        {
+            generatedCourse=new GameObject("Generated course").transform;generatedCourse.SetParent(course);
+            var b=frame.Bounds();
+            var ground=Mat(new Color(.20f,.42f,.11f));
+            Box("Infield and surrounds",new Vector3((float)((b.minX+b.maxX)/2),-.25f,(float)((b.minZ+b.maxZ)/2)),new Vector3((float)(b.maxX-b.minX)+160,.4f,(float)(b.maxZ-b.minZ)+160),ground,generatedCourse);
+            var surface=Mat(dirt?new Color(.55f,.40f,.26f):new Color(.27f,.53f,.15f));
+            var rail=Mat(new Color(.95f,.96f,.91f));
+            double mid=(CourseFrame.InnerRailM+frame.OuterRailM)/2, width=frame.OuterRailM-CourseFrame.InnerRailM+1;
+            Ribbon("Running surface",frame.Line(mid,8),(float)width,.02f,-.03f,surface);
+            foreach(var lat in new[]{CourseFrame.InnerRailM,frame.OuterRailM})
+            {
+                var line=frame.Line(lat,10);
+                Ribbon("Running rail",line,.15f,.15f,1.25f,rail);
+                foreach(var p in line)Box("Rail post",new Vector3((float)p.X,.65f,(float)p.Z),new Vector3(.15f,1.3f,.15f),rail,generatedCourse);
+            }
+        }
+        // Boxes between consecutive points (a thin strip or bar following the course).
+        void Ribbon(string name,List<WorldPose> line,float width,float height,float y,Material m)
+        {
+            for(int i=1;i<line.Count;i++)
+            {
+                var a=line[i-1];var c=line[i];
+                var d=new Vector3((float)(c.X-a.X),0,(float)(c.Z-a.Z));
+                if(d.sqrMagnitude<1e-4f)continue;
+                var t=Box(name,new Vector3((float)(a.X+c.X)/2,y,(float)(a.Z+c.Z)/2),new Vector3(width,height,d.magnitude+.05f),m,generatedCourse);
+                t.localRotation=Quaternion.LookRotation(d.normalized,Vector3.up);
+            }
+        }
+        /// <summary>Draw every runner from the engine's interpolated state; chase camera behind the player.</summary>
+        public void Present(IRaceDriver race,long nowMs)
+        {
+            if(!racing||frame==null)return;
+            for(int i=0;i<Horses.Count;i++)
+            {
+                if(!race.TryGetRender(i,nowMs,out var from,out var to,out var alpha)){continue;}
+                var p=frame.Horse(from,to,alpha);
+                Horses[i].position=new Vector3((float)(p.X+xShift),.06f*Mathf.Sin(Time.time*13+i),(float)p.Z);
+                Horses[i].rotation=Quaternion.Euler(0,(float)p.YawDegrees,0);
+                var animator=Horses[i].GetComponentInChildren<Animator>();if(animator!=null)animator.SetFloat("Speed",to.Departed&&!to.Finished?1:0);
+            }
+            if(playerSlot<0||playerSlot>=Horses.Count)return;
+            var me=Horses[playerSlot];
+            var target=me.position-me.forward*6.5f+Vector3.up*3;
             view.transform.position=Vector3.Lerp(view.transform.position,target,1-Mathf.Exp(-Time.deltaTime*6));
-            view.transform.LookAt(Horses[0].position+new Vector3(0,1.8f,9));
+            view.transform.LookAt(me.position+me.forward*9+Vector3.up*1.8f);
         }
         void OnDestroy(){foreach(var m in materials)if(m!=null)Destroy(m);}
     }

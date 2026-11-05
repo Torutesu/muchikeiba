@@ -32,7 +32,7 @@ namespace Muchi.Client
         public List<PhraseVariant> Variants = new List<PhraseVariant>();
     }
 
-    /// <summary>Commentary templates (engine/Muchi.Client/Data/commentary-ja.json). In Unity load the file as a TextAsset.</summary>
+    /// <summary>Commentary templates (engine/Muchi.Client/Resources/Muchi/commentary-ja.json). In Unity load the file as a TextAsset.</summary>
     public sealed class CommentaryTemplates
     {
         public int TicksPerChar = 3;

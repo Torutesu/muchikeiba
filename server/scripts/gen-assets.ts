@@ -8,7 +8,7 @@ import { visualsProblems } from '../src/domain/visuals.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 export const MANIFEST_PATH = resolve(root, 'contracts/assets.manifest.json');
-export const COMMENTARY_PATH = resolve(root, 'engine/Muchi.Client/Data/commentary-ja.json');
+export const COMMENTARY_PATH = resolve(root, 'engine/Muchi.Client/Resources/Muchi/commentary-ja.json');
 
 export function renderManifest(): string {
   const m = loadMaster();

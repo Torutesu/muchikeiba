@@ -54,6 +54,10 @@ catch (PurchaseBlockedException e) { /* e.Code: AgeRequired / GuardianConsentReq
 - **購入**：`PurchaseAsync` はサーバーが取引IDで重複を弾くので、ストアのトランザクションを finish する前にクラッシュしても、起動時に同じレシートを再送すればよい（`Duplicate=true` が返る）。
 - **エラー**：`ApiException`（`Code`=型付きコード、`WireCode`=生の文字列、`Status`）。サブクラスで画面を分ける：`AuthException`（再ログイン）、`ValidationException`（入力を直す。`NG_NAME` など）、`NotFoundException`、`PurchaseBlockedException`、`InsufficientCoinsException`（ショップへ）、`ConflictException`（`ALREADY_CLAIMED` などゲームルール）、`ServerException`、`NetworkException`（通信不可）。
 - 開発時（サーバー `DEV_MODE=1`）は `ApiClientOptions.DevUserId` を入れるとトークン無しで動く。
+- **プロフィール・称号・戦績**：`SetDisplayNameAsync`（NGリスト判定）、`GetTitlesAsync` / `EquipTitleAsync(null で外す)`、`GetStatsAsync`（コース別ベストは `BestFinishTick × 50ms`）。
+- **ランキング**：`GetMyRankAsync`（スナップショット前は `Rank=null`）、`GetLeaderboardAsync("current" または "yyyy-mm", "class-A" / "rating" / "index")`。ランキングは認証不要の公開スナップショット（数分おきに更新）。
+- **フレンド**：`GetFriendCodeAsync`、`SendFriendRequestAsync(9桁コード)`（相手からも申請済みなら即フレンド）、`AcceptFriendRequestAsync` / `DeclineFriendRequestAsync` / `CancelFriendRequestAsync` / `RemoveFriendAsync`、`GetFriendsAsync`（フレンド・受信・送信中・部屋への招待）、`InviteToFriendRoomAsync`。サーバー側で重複操作は無害なので、すべて再送対象。
+- **新しいエラー**：`FRIEND_LIMIT`、`ALREADY_IN_RACE`（ランク戦は同時に1レースまで）、`ROOM_TOO_SMALL`（フレンド部屋は2人から）はいずれも `ConflictException`。
 
 ### 2. オンラインレース（`RaceSession`）
 ```csharp
@@ -69,6 +73,8 @@ int alpha = race.InterpolationAlphaPermille(NowMs());      // GetPreviousHorse�
 - 状態：`Connecting → Waiting → Racing → Finished → (Verifying →) Confirmed / Void`。通信が切れると `Reconnecting`（0.5秒→1秒→2秒…最大8秒、8回まで）。諦めると `Failed`（`FailureReason`）。
 - 再接続すると hello で最後のtickを伝え、部屋から届いた分を早送りして追いつく。切れている間の入力は捨てる（部屋がCPUに引き継いでいる）。
 - `NowMs()` は単調増加の時計（`Time.realtimeSinceStartupAsDouble * 1000` を long にしたもの等）。
+- ゴールすると `res`（結果ハッシュ・着順・`finishTicks`）を自動で送る。`finishTicks` があると、合意で確定したレースでもベストタイムが記録される。
+- 部屋は一定時間何も届かない端末をCPUに引き継ぐ。`Update` を毎フレーム呼んでいれば ping が2秒ごとに出るので問題ない（バックグラウンドに回ると引き継がれ、戻ると操作が戻る）。
 
 ### 3. オフラインレース（`OfflineRace` / `OfflinePresets`）
 ```csharp

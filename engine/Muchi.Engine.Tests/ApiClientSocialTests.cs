@@ -180,7 +180,7 @@ namespace Muchi.Engine.Tests
         [InlineData("ROOM_TOO_SMALL", ApiErrorCode.RoomTooSmall)]
         public async Task NewRuleErrorsAreTypedConflicts(string wire, ApiErrorCode code)
         {
-            _http.Reply(409, "{\"error\":\"" + wire + "\",\"message\":\"x\"}");
+            _http.Reply(409, "{\"error\":{\"code\":\"" + wire + "\",\"message\":\"x\"}}");
             var e = await Assert.ThrowsAsync<ConflictException>(() => _api.SendFriendRequestAsync("123456789"));
             Assert.Equal(code, e.Code);
         }

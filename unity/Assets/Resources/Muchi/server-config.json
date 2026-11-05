@@ -1,0 +1,9 @@
+{
+  "environment": "local",
+  "baseUrl": "http://127.0.0.1:8787",
+  "devUserId": "",
+  "offlineOnly": false,
+  "requestTimeoutMs": 10000,
+  "matchPollMs": 1000,
+  "matchTimeoutMs": 60000
+}

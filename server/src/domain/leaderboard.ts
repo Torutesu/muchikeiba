@@ -72,7 +72,34 @@ export function acceptEntry(seasonId: string, status: RolloverStatus, e: SeasonE
 }
 
 export type RolloverStatus = 'open' | 'closing' | 'closed';
-export interface RolloverState { seasonId: string; status: RolloverStatus; cursor: string; processed: number; lastError: string | null }
+/**
+ * `failures` counts consecutive failed attempts for the item at the cursor; after MAX_ROLLOVER_ATTEMPTS
+ * the item is moved to `deadLetter` (for ops to settle by hand) and the cursor moves on, so one broken
+ * player or team can never block everyone after it.
+ */
+export interface RolloverState {
+  seasonId: string; status: RolloverStatus; cursor: string; processed: number; lastError: string | null;
+  failures?: Record<string, number>;
+  deadLetter?: { id: string; error: string; attempts: number }[];
+}
+export const MAX_ROLLOVER_ATTEMPTS = 5;
+
+/** Records one failed attempt; returns true when the item has now been dead-lettered (caller moves past it). */
+export function recordRolloverFailure(st: RolloverState, id: string, error: string, max = MAX_ROLLOVER_ATTEMPTS): boolean {
+  const failures = { ...(st.failures ?? {}) };
+  const n = (failures[id] ?? 0) + 1;
+  st.lastError = `${id}: ${error}`;
+  if (n >= max) {
+    delete failures[id];
+    st.failures = failures;
+    st.deadLetter = [...(st.deadLetter ?? []), { id, error, attempts: n }].slice(-500);
+    console.error('rollover item dead-lettered', st.seasonId, id, error);
+    return true;
+  }
+  failures[id] = n;
+  st.failures = failures;
+  return false;
+}
 export const newRolloverState = (seasonId: string): RolloverState => ({ seasonId, status: 'open', cursor: '', processed: 0, lastError: null });
 
 /** The JST month before `now`'s month ("YYYY-MM"). */
@@ -109,12 +136,13 @@ export async function rolloverStep(
     const r = rankOf(p.playerId);
     try {
       await close(p.playerId, r?.classRank ?? null, r?.classTotal ?? 0);
+      next.processed++;
+      if (next.failures?.[p.playerId]) { const f = { ...next.failures }; delete f[p.playerId]; next.failures = f; }
     } catch (e) {
-      next.lastError = `${p.playerId}: ${(e as Error).message}`;
-      return next;
+      // retry this player next run; after MAX_ROLLOVER_ATTEMPTS it goes to the dead-letter list instead
+      if (!recordRolloverFailure(next, p.playerId, (e as Error).message)) return next;
     }
     next.cursor = p.playerId;
-    next.processed++;
   }
   if (todo.length < batch) next.status = 'closed';
   return next;

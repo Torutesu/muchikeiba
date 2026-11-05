@@ -2,7 +2,7 @@ import { DurableObject } from 'cloudflare:workers';
 import type { Env } from '../env.js';
 import { activeConfig } from '../ops/activeConfig.js';
 import {
-  acceptEntry, boardKey, buildSnapshot, indexKey, newRolloverState, rolloverStep, seasonIsOver,
+  acceptEntry, boardKey, buildSnapshot, indexKey, newRolloverState, recordRolloverFailure, rolloverStep, seasonIsOver,
   type BoardFile, type RankInfo, type RolloverState, type SeasonEntry, type SnapshotIndex,
 } from '../domain/leaderboard.js';
 import { betterTa, buildTaBoards, type TaEntry } from '../domain/timeAttack.js';
@@ -10,6 +10,10 @@ import { buildTeamBoard, type TeamSummary } from '../domain/teams.js';
 
 type TaRowDb = { player_id: string; track_id: string; time_ms: number; finish_tick: number; finish_frac: number; display_name: string; title_id: string | null; horse_name: string; updated_at: number };
 import { unwrap, wrap, type Envelope } from './rpc.js';
+import { DirtyTracker } from '../domain/dirty.js';
+
+/** Wall-clock budget of one cron rollover call (the cron runs every 5 minutes). */
+const ROLLOVER_BUDGET_MS = 20_000;
 
 type EntryRow = { player_id: string; season_id: string; class_id: string; points: number; rating: number; races: number; display_name: string; title_id: string | null; updated_at: number };
 type RankRow = { player_id: string; class_id: string; class_rank: number; class_total: number; rating_rank: number; rating_total: number };
@@ -52,7 +56,7 @@ export class LeaderboardDO extends DurableObject<Env> {
            updated_at = excluded.updated_at WHERE excluded.updated_at >= team_entries.updated_at`,
         s.teamId, s.name, s.joinPolicy, s.members, s.points, s.updatedAt,
       );
-      this.kvPut('dirty', true);
+      this.markDirty();
       return true;
     });
   }
@@ -78,24 +82,40 @@ export class LeaderboardDO extends DurableObject<Env> {
         unwrap(await this.snapshot(seasonId, now, true)); // final team ranks
       }
       const batch = (await activeConfig(this.env)).master.progression.teams.rolloverBatch;
-      const todo = this.sql.exec<{ team_id: string; rank: number; points: number }>('SELECT team_id, rank, points FROM team_ranks WHERE team_id > ? ORDER BY team_id LIMIT ?', st.cursor, batch).toArray();
-      for (const t of todo) {
-        const team = this.env.TEAMS.get(this.env.TEAMS.idFromName(t.team_id)) as unknown as { closeSeasonStep(s: string, r: number, p: number): Promise<Envelope<{ done: boolean }>> };
-        let done = false;
-        try {
-          done = unwrap(await team.closeSeasonStep(seasonId, t.rank, t.points)).done;
-        } catch (e) {
-          st = { ...st, lastError: `${t.team_id}: ${(e as Error).message}` };
+      const deadline = Date.now() + ROLLOVER_BUDGET_MS;
+      // time-budgeted: keep taking batches until the season is done or this run's budget is spent
+      while (st.status !== 'closed' && Date.now() < deadline) {
+        const todo = this.sql.exec<{ team_id: string; rank: number; points: number }>('SELECT team_id, rank, points FROM team_ranks WHERE team_id > ? ORDER BY team_id LIMIT ?', st.cursor, batch).toArray();
+        for (const t of todo) {
+          const team = this.env.TEAMS.get(this.env.TEAMS.idFromName(t.team_id)) as unknown as { closeSeasonStep(s: string, r: number, p: number): Promise<Envelope<{ done: boolean }>> };
+          let done = false;
+          let error: string | null = null;
+          try {
+            done = unwrap(await team.closeSeasonStep(seasonId, t.rank, t.points)).done;
+          } catch (e) {
+            error = (e as Error).message;
+          }
+          if (!done) {
+            // a team that is not done yet (its members are paid in bounded steps) holds the cursor; an
+            // erroring one is retried a few runs and then dead-lettered so the teams after it get paid
+            const next = { ...st };
+            if (error === null || !recordRolloverFailure(next, t.team_id, error)) {
+              if (error !== null) st = next;
+              this.kvPut('teamRollover', st); // resume with this team next run
+              return st;
+            }
+            st = next;
+          } else if (st.failures?.[t.team_id]) {
+            const f = { ...st.failures };
+            delete f[t.team_id];
+            st = { ...st, failures: f };
+          }
+          st = { ...st, cursor: t.team_id, processed: st.processed + (done ? 1 : 0), lastError: done ? null : st.lastError };
+          this.kvPut('teamRollover', st);
         }
-        if (!done) {
-          this.kvPut('teamRollover', st); // resume with this team next run
-          return st;
-        }
-        st = { ...st, cursor: t.team_id, processed: st.processed + 1, lastError: null };
+        if (todo.length < batch) st = { ...st, status: 'closed' };
         this.kvPut('teamRollover', st);
       }
-      if (todo.length < batch) st = { ...st, status: 'closed' };
-      this.kvPut('teamRollover', st);
       return st;
     });
   }
@@ -119,7 +139,7 @@ export class LeaderboardDO extends DurableObject<Env> {
            display_name = excluded.display_name, title_id = excluded.title_id, horse_name = excluded.horse_name, updated_at = excluded.updated_at`,
         e.playerId, e.trackId, e.timeMs, e.finishTick, e.finishFrac, e.displayName, e.titleId, e.horseName, e.updatedAt,
       );
-      this.kvPut('dirty', true);
+      this.markDirty();
       return true;
     });
   }
@@ -147,6 +167,8 @@ export class LeaderboardDO extends DurableObject<Env> {
     this.sql.exec('INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v', k, JSON.stringify(v));
   }
   private rollover(seasonId: string): RolloverState { return this.kvGet<RolloverState>('rollover') ?? newRolloverState(seasonId); }
+  private readonly dirty = new DirtyTracker({ get: <T>(k: string) => this.kvGet<T>(k), put: (k, v) => this.kvPut(k, v) });
+  private markDirty() { this.dirty.mark(); }
 
   private entries(): SeasonEntry[] {
     return this.sql.exec<EntryRow>('SELECT * FROM entries').toArray().map((r) => ({
@@ -164,7 +186,7 @@ export class LeaderboardDO extends DurableObject<Env> {
            display_name = excluded.display_name, title_id = excluded.title_id, updated_at = excluded.updated_at WHERE excluded.updated_at >= entries.updated_at`,
         e.playerId, e.seasonId, e.classId, e.points, e.rating, e.races, e.displayName, e.titleId, e.updatedAt,
       );
-      this.kvPut('dirty', true);
+      this.markDirty();
       return true;
     });
   }
@@ -172,8 +194,11 @@ export class LeaderboardDO extends DurableObject<Env> {
   /** REQ-LB-001: publish snapshot files and store ranks. Skipped when nothing changed (cheap cron). */
   async snapshot(seasonId: string, now: number, force = false): Promise<Envelope<{ published: boolean; files: number }>> {
     return wrap(async () => {
-      if (!force && !this.kvGet<boolean>('dirty')) return { published: false, files: 0 };
+      if (this.dirty.begin(force) === null) return { published: false, files: 0 };
       const m = (await activeConfig(this.env)).master; // follow remote config (REQ-OPS-005)
+      // the generation is taken right before the rows are read (no await in between): an upsert that
+      // lands during the R2 writes below bumps it again and keeps the board dirty for the next run
+      const gen = this.dirty.begin(true)!;
       const snap = buildSnapshot(seasonId, this.entries(), now, m.progression.leaderboard.topN);
       // time attack boards (REQ-TA-006) are published with the same snapshot and listed in the index
       const ta = buildTaBoards(seasonId, this.taEntries(seasonId), now, m.progression.timeAttack.topN);
@@ -197,7 +222,7 @@ export class LeaderboardDO extends DurableObject<Env> {
       for (const [pid, r] of snap.ranks) {
         this.sql.exec('INSERT INTO ranks (player_id, class_id, class_rank, class_total, rating_rank, rating_total) VALUES (?, ?, ?, ?, ?, ?)', pid, r.classId, r.classRank, r.classTotal, r.ratingRank, r.ratingTotal);
       }
-      this.kvPut('dirty', false);
+      this.dirty.end(gen);
       this.kvPut('generatedAt', now);
       return { published: true, files: snap.files.length };
     });
@@ -224,15 +249,25 @@ export class LeaderboardDO extends DurableObject<Env> {
         this.kvPut('rollover', st);
       }
       const batch = (await activeConfig(this.env)).master.progression.leaderboard.rolloverBatch;
-      const participants = this.sql.exec<{ player_id: string; class_id: string }>('SELECT player_id, class_id FROM entries WHERE player_id > ? AND races > 0 ORDER BY player_id LIMIT ?', st.cursor, batch)
-        .toArray().map((r) => ({ playerId: r.player_id, classId: r.class_id }));
-      const ranks = new Map(this.sql.exec<RankRow>('SELECT * FROM ranks').toArray().map((r) => [r.player_id, { classId: r.class_id, classRank: r.class_rank, classTotal: r.class_total, ratingRank: r.rating_rank, ratingTotal: r.rating_total }]));
-      st = await rolloverStep(st, participants, (p) => ranks.get(p), async (pid, rank) => {
-        const stub = this.env.PLAYER.get(this.env.PLAYER.idFromName(pid)) as unknown as { invoke(m: string, a: unknown[]): Promise<Envelope<unknown>> };
-        unwrap(await stub.invoke('closeSeason', [pid, seasonId, rank]));
-        this.kvPut('rollover', { ...st, cursor: pid }); // durable cursor after every player
-      }, batch);
-      this.kvPut('rollover', st);
+      const deadline = Date.now() + ROLLOVER_BUDGET_MS;
+      const rankOfPlayer = (pid: string): RankInfo | undefined => {
+        const r = this.sql.exec<RankRow>('SELECT * FROM ranks WHERE player_id = ?', pid).toArray()[0];
+        return r ? { classId: r.class_id, classRank: r.class_rank, classTotal: r.class_total, ratingRank: r.rating_rank, ratingTotal: r.rating_total } : undefined;
+      };
+      // time-budgeted: keep taking batches until the season is closed, a player needs a retry, or the budget is spent
+      while (st.status !== 'closed' && Date.now() < deadline) {
+        const participants = this.sql.exec<{ player_id: string; class_id: string }>('SELECT player_id, class_id FROM entries WHERE player_id > ? AND races > 0 ORDER BY player_id LIMIT ?', st.cursor, batch)
+          .toArray().map((r) => ({ playerId: r.player_id, classId: r.class_id }));
+        const cur = st;
+        st = await rolloverStep(cur, participants, rankOfPlayer, async (pid, rank) => {
+          const stub = this.env.PLAYER.get(this.env.PLAYER.idFromName(pid)) as unknown as { invoke(m: string, a: unknown[]): Promise<Envelope<unknown>> };
+          unwrap(await stub.invoke('closeSeason', [pid, seasonId, rank]));
+          this.kvPut('rollover', { ...cur, cursor: pid }); // durable cursor after every player
+        }, batch);
+        this.kvPut('rollover', st);
+        // a failed close is retried on the next run (not in a tight loop, so the attempt cap means "runs")
+        if (st.lastError !== null) break;
+      }
       return st;
     });
   }

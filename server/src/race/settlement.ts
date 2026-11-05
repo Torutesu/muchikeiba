@@ -22,7 +22,14 @@ export interface SettleMeta {
   retryAt: number | null;
   /** REQ-EVENT-005: event the race belongs to (results carry it to the players). */
   eventId?: string | null;
+  /**
+   * Players whose result could not be applied after MAX_SETTLE_ATTEMPTS (kept for ops to apply by hand;
+   * the room stops retrying so a deterministic failure cannot keep the alarm firing forever).
+   */
+  deadLetter?: string[];
 }
+
+export const MAX_SETTLE_ATTEMPTS = 10;
 
 export const newSettleMeta = (ratings: Record<string, Rating>, eventId: string | null = null): SettleMeta => ({
   ratings, settled: false, verifyAttempts: 0, settleAttempts: 0, replayStored: false, results: null, pending: [], retryAt: null, eventId,
@@ -96,9 +103,15 @@ export async function driveSettlement(core: RaceRoomCore, meta: SettleMeta, deps
     }
     if (meta.pending.length > 0) {
       meta.settleAttempts++;
-      meta.retryAt = now + backoffMs(meta.settleAttempts);
-      await deps.persist();
-      return { out, retryAt: meta.retryAt };
+      if (meta.settleAttempts < MAX_SETTLE_ATTEMPTS) {
+        meta.retryAt = now + backoffMs(meta.settleAttempts);
+        await deps.persist();
+        return { out, retryAt: meta.retryAt };
+      }
+      // give up on these players (ops dead-letter) and finish the race for everyone else
+      console.error('settlement dead-lettered', core.config.raceId, meta.pending.join(','));
+      meta.deadLetter = [...(meta.deadLetter ?? []), ...meta.pending];
+      meta.pending = [];
     }
     meta.settled = true;
     meta.retryAt = null;

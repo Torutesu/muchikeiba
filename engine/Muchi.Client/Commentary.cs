@@ -32,7 +32,7 @@ namespace Muchi.Client
         public List<PhraseVariant> Variants = new List<PhraseVariant>();
     }
 
-    /// <summary>Commentary templates (engine/Muchi.Client/Data/commentary-ja.json). In Unity load the file as a TextAsset.</summary>
+    /// <summary>Commentary templates (engine/Muchi.Client/Resources/Muchi/commentary-ja.json). In Unity load the file as a TextAsset.</summary>
     public sealed class CommentaryTemplates
     {
         public int TicksPerChar = 3;
@@ -41,6 +41,11 @@ namespace Muchi.Client
         public int LeaderStableTicks = 30;
         public int PositionCallIntervalTicks = 240;
         public int PendingExpiryTicks = 60;
+        /// <summary>
+        /// Key moments are delayed, never dropped — unless they are this stale (Process called in a batch after a
+        /// reconnect fast-forward or catch-up). Finish and result lines are never dropped.
+        /// </summary>
+        public int MustSayExpiryTicks = 200;
         public readonly Dictionary<string, PhraseDef> Phrases = new Dictionary<string, PhraseDef>();
 
         public static readonly string[] RequiredKinds =
@@ -60,6 +65,7 @@ namespace Muchi.Client
                 LeaderStableTicks = J.Int(o, "leaderStableTicks", 30),
                 PositionCallIntervalTicks = J.Int(o, "positionCallIntervalTicks", 240),
                 PendingExpiryTicks = J.Int(o, "pendingExpiryTicks", 60),
+                MustSayExpiryTicks = J.Int(o, "mustSayExpiryTicks", 200),
             };
             foreach (var kv in o.Get("phrases").Props)
             {
@@ -121,6 +127,11 @@ namespace Muchi.Client
         public string Text;
         /// <summary>Audio clips to play in order: fixed clip ids, "name:&lt;horseId&gt;" and "num:&lt;n&gt;".</summary>
         public string[] ClipKeys;
+        /// <summary>
+        /// The line was cut short by a more urgent one (the pre-gate ground intro when the gate opens): stop or
+        /// fade its audio after <see cref="DurationTicks"/>.
+        /// </summary>
+        public bool Interrupted;
 
         public override string ToString() => Tick + " [" + Kind + "] " + Text;
     }
@@ -151,6 +162,7 @@ namespace Muchi.Client
         private int _leader = -1, _leaderSince, _announcedLeader = -1;
         private bool _spurtSaid, _focusWhipSaid, _anyFinished, _flushed, _introDone;
         private int _lastPositionCall = -1;
+        private CommentaryLine _current;
 
         public IReadOnlyList<CommentaryLine> Lines => _lines;
 
@@ -171,8 +183,9 @@ namespace Muchi.Client
             if (!_introDone)
             {
                 _introDone = true;
+                // the ground/night intro belongs before the gate; skip it when processing starts after the gate
                 string intro = IntroKind(_cfg.Track);
-                if (intro != null && _t.Phrases.ContainsKey(intro)) Add(intro, now, -1);
+                if (intro != null && _t.Phrases.ContainsKey(intro) && !sim.GateOpened) Add(intro, now, -1);
             }
             for (; _eventIndex < events.Count; _eventIndex++) OnEvent(sim, events[_eventIndex]);
 
@@ -193,6 +206,9 @@ namespace Muchi.Client
             }
 
             _pending.RemoveAll(c => !c.Def.MustSay && now - c.CreatedTick > _t.PendingExpiryTicks);
+            // stale key moments (batched Process after a fast-forward) and an intro that missed the gate
+            _pending.RemoveAll(c => c.Def.MustSay && !NeverExpires(c.Kind) && now - c.CreatedTick > _t.MustSayExpiryTicks);
+            if (sim.GateOpened) _pending.RemoveAll(c => IsIntro(c.Kind));
 
             if (now >= _busyUntil && _pending.Count > 0) started.Add(Speak(PickNext(), now));
 
@@ -217,11 +233,21 @@ namespace Muchi.Client
             return track.Night == true ? kind + "_night" : kind;
         }
 
+        private static bool IsIntro(string kind) => kind.StartsWith("ground_", StringComparison.Ordinal);
+        private static bool NeverExpires(string kind) => kind == "finish_win" || kind == "focus_finish" || kind.StartsWith("result", StringComparison.Ordinal);
+
         private void OnEvent(RaceSim sim, RaceEvent e)
         {
             switch (e.Type)
             {
                 case RaceEventType.GateOpen:
+                    // the gate call pre-empts the pre-gate intro if it is still running
+                    if (_current != null && IsIntro(_current.Kind) && _busyUntil > e.Tick)
+                    {
+                        _current.DurationTicks = Math.Max(0, e.Tick - _current.Tick);
+                        _current.Interrupted = true;
+                        _busyUntil = e.Tick;
+                    }
                     Add("gate_open", e.Tick, -1);
                     _lastPositionCall = e.Tick;
                     break;
@@ -266,6 +292,14 @@ namespace Muchi.Client
                         var c = Add("result", e.Tick, order[0]);
                         c.Slot2 = order[1];
                         c.Slot3 = order[2];
+                    }
+                    else if (order != null && order.Length == 2 && _t.Phrases.ContainsKey("result_two"))
+                    {
+                        Add("result_two", e.Tick, order[0]).Slot2 = order[1];
+                    }
+                    else if (order != null && order.Length == 1 && _t.Phrases.ContainsKey("result_solo"))
+                    {
+                        Add("result_solo", e.Tick, order[0]);
                     }
                     break;
             }
@@ -319,6 +353,7 @@ namespace Muchi.Client
                 DurationTicks = dur, Text = s, ClipKeys = clips.ToArray(),
             };
             _busyUntil = tick + dur;
+            _current = line;
             _lines.Add(line);
             return line;
         }

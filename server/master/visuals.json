@@ -1,0 +1,664 @@
+{
+ "_note": "見た目の取り決め（contracts/assets.md）。アセットキーはここと各マスターから規則で作り、contracts/assets.manifest.json に書き出す（npm run gen:assets）。勝負服の模様・色・帽子はすべて架空。実在の馬主の登録服色と同じ組み合わせは silks.banned に入れて弾く（リリース前に公開されている登録服色と照合して追記すること）。",
+ "version": 1,
+ "palette": [
+  {
+   "id": "white",
+   "hex": "#F5F5F2"
+  },
+  {
+   "id": "black",
+   "hex": "#1C1C1E"
+  },
+  {
+   "id": "red",
+   "hex": "#D3302F"
+  },
+  {
+   "id": "blue",
+   "hex": "#2457C5"
+  },
+  {
+   "id": "yellow",
+   "hex": "#F4C430"
+  },
+  {
+   "id": "green",
+   "hex": "#2E8B57"
+  },
+  {
+   "id": "orange",
+   "hex": "#F28C28"
+  },
+  {
+   "id": "pink",
+   "hex": "#E87AA4"
+  },
+  {
+   "id": "purple",
+   "hex": "#7B4BB3"
+  },
+  {
+   "id": "sky",
+   "hex": "#6EC6F0"
+  },
+  {
+   "id": "navy",
+   "hex": "#1F2F5C"
+  },
+  {
+   "id": "maroon",
+   "hex": "#7A1F2B"
+  },
+  {
+   "id": "gold",
+   "hex": "#C9A227"
+  },
+  {
+   "id": "silver",
+   "hex": "#B8BCC2"
+  },
+  {
+   "id": "brown",
+   "hex": "#7B4F2C"
+  },
+  {
+   "id": "lime",
+   "hex": "#9BCB3C"
+  }
+ ],
+ "horse": {
+  "coats": [
+   {
+    "id": "chestnut",
+    "weight": 30
+   },
+   {
+    "id": "bay",
+    "weight": 30
+   },
+   {
+    "id": "dark_bay",
+    "weight": 15
+   },
+   {
+    "id": "brown",
+    "weight": 10
+   },
+   {
+    "id": "black",
+    "weight": 8
+   },
+   {
+    "id": "gray",
+    "weight": 6
+   },
+   {
+    "id": "white",
+    "weight": 1
+   }
+  ],
+  "faces": [
+   {
+    "id": "none",
+    "weight": 40
+   },
+   {
+    "id": "star",
+    "weight": 20
+   },
+   {
+    "id": "stripe",
+    "weight": 12
+   },
+   {
+    "id": "star_stripe",
+    "weight": 12
+   },
+   {
+    "id": "blaze",
+    "weight": 12
+   },
+   {
+    "id": "white_face",
+    "weight": 4
+   }
+  ],
+  "legs": [
+   {
+    "id": "none",
+    "weight": 60
+   },
+   {
+    "id": "coronet",
+    "weight": 15
+   },
+   {
+    "id": "sock",
+    "weight": 17
+   },
+   {
+    "id": "stocking",
+    "weight": 8
+   }
+  ],
+  "manes": [
+   {
+    "id": "normal",
+    "weight": 80
+   },
+   {
+    "id": "flaxen",
+    "weight": 10
+   },
+   {
+    "id": "dark",
+    "weight": 10
+   }
+  ],
+  "builds": [
+   {
+    "id": "standard",
+    "weight": 50
+   },
+   {
+    "id": "compact",
+    "weight": 20
+   },
+   {
+    "id": "rangy",
+    "weight": 20
+   },
+   {
+    "id": "powerful",
+    "weight": 10
+   }
+  ],
+  "templates": {
+   "t_akatsuki": {
+    "coat": "chestnut",
+    "face": "blaze",
+    "legs": [
+     "none",
+     "sock",
+     "none",
+     "sock"
+    ],
+    "mane": "flaxen",
+    "build": "rangy"
+   },
+   "t_ginga": {
+    "coat": "gray",
+    "face": "none",
+    "legs": [
+     "none",
+     "none",
+     "none",
+     "none"
+    ],
+    "mane": "normal",
+    "build": "powerful"
+   },
+   "t_kohaku": {
+    "coat": "chestnut",
+    "face": "star",
+    "legs": [
+     "coronet",
+     "none",
+     "none",
+     "none"
+    ],
+    "mane": "normal",
+    "build": "compact"
+   },
+   "t_tsukikage": {
+    "coat": "black",
+    "face": "star_stripe",
+    "legs": [
+     "none",
+     "none",
+     "stocking",
+     "none"
+    ],
+    "mane": "dark",
+    "build": "rangy"
+   },
+   "t_harukaze": {
+    "coat": "dark_bay",
+    "face": "none",
+    "legs": [
+     "none",
+     "none",
+     "none",
+     "none"
+    ],
+    "mane": "dark",
+    "build": "standard"
+   },
+   "t_kurogane": {
+    "coat": "bay",
+    "face": "star_stripe",
+    "legs": [
+     "none",
+     "stocking",
+     "none",
+     "none"
+    ],
+    "mane": "normal",
+    "build": "compact"
+   },
+   "t_hanabi": {
+    "coat": "chestnut",
+    "face": "none",
+    "legs": [
+     "sock",
+     "none",
+     "none",
+     "none"
+    ],
+    "mane": "normal",
+    "build": "rangy"
+   },
+   "t_umineko": {
+    "coat": "gray",
+    "face": "star_stripe",
+    "legs": [
+     "none",
+     "none",
+     "stocking",
+     "none"
+    ],
+    "mane": "normal",
+    "build": "powerful"
+   },
+   "t_inazuma": {
+    "coat": "black",
+    "face": "none",
+    "legs": [
+     "none",
+     "sock",
+     "none",
+     "none"
+    ],
+    "mane": "dark",
+    "build": "standard"
+   },
+   "t_sakura": {
+    "coat": "brown",
+    "face": "star_stripe",
+    "legs": [
+     "coronet",
+     "none",
+     "none",
+     "stocking"
+    ],
+    "mane": "normal",
+    "build": "compact"
+   },
+   "t_yukimi": {
+    "coat": "dark_bay",
+    "face": "none",
+    "legs": [
+     "none",
+     "none",
+     "sock",
+     "none"
+    ],
+    "mane": "normal",
+    "build": "rangy"
+   },
+   "t_natsu": {
+    "coat": "bay",
+    "face": "star_stripe",
+    "legs": [
+     "none",
+     "coronet",
+     "none",
+     "none"
+    ],
+    "mane": "normal",
+    "build": "powerful"
+   },
+   "t_aozora": {
+    "coat": "chestnut",
+    "face": "none",
+    "legs": [
+     "none",
+     "none",
+     "none",
+     "sock"
+    ],
+    "mane": "flaxen",
+    "build": "standard"
+   },
+   "t_yuyake": {
+    "coat": "gray",
+    "face": "star_stripe",
+    "legs": [
+     "none",
+     "none",
+     "coronet",
+     "none"
+    ],
+    "mane": "normal",
+    "build": "compact"
+   },
+   "t_minamo": {
+    "coat": "black",
+    "face": "none",
+    "legs": [
+     "none",
+     "none",
+     "none",
+     "none"
+    ],
+    "mane": "normal",
+    "build": "rangy"
+   },
+   "t_hoshifuru": {
+    "coat": "brown",
+    "face": "star_stripe",
+    "legs": [
+     "stocking",
+     "none",
+     "none",
+     "coronet"
+    ],
+    "mane": "normal",
+    "build": "powerful"
+   },
+   "t_kazamidori": {
+    "coat": "dark_bay",
+    "face": "none",
+    "legs": [
+     "none",
+     "none",
+     "none",
+     "none"
+    ],
+    "mane": "dark",
+    "build": "standard"
+   },
+   "t_morino": {
+    "coat": "bay",
+    "face": "star_stripe",
+    "legs": [
+     "none",
+     "stocking",
+     "none",
+     "none"
+    ],
+    "mane": "normal",
+    "build": "compact"
+   },
+   "t_hinode": {
+    "coat": "chestnut",
+    "face": "none",
+    "legs": [
+     "sock",
+     "none",
+     "none",
+     "none"
+    ],
+    "mane": "normal",
+    "build": "rangy"
+   },
+   "t_akanegumo": {
+    "coat": "gray",
+    "face": "star_stripe",
+    "legs": [
+     "none",
+     "none",
+     "stocking",
+     "none"
+    ],
+    "mane": "normal",
+    "build": "powerful"
+   },
+   "t_sunaarashi": {
+    "coat": "black",
+    "face": "none",
+    "legs": [
+     "none",
+     "sock",
+     "none",
+     "none"
+    ],
+    "mane": "dark",
+    "build": "standard"
+   },
+   "t_dorobune": {
+    "coat": "brown",
+    "face": "star_stripe",
+    "legs": [
+     "coronet",
+     "none",
+     "none",
+     "stocking"
+    ],
+    "mane": "normal",
+    "build": "compact"
+   },
+   "t_kawarabi": {
+    "coat": "dark_bay",
+    "face": "none",
+    "legs": [
+     "none",
+     "none",
+     "sock",
+     "none"
+    ],
+    "mane": "normal",
+    "build": "rangy"
+   }
+  },
+  "inheritance": {
+   "mutationPermille": 60,
+   "grayFromGrayParentPermille": 500
+  }
+ },
+ "silks": {
+  "patterns": [
+   {
+    "id": "plain",
+    "colors": 2
+   },
+   {
+    "id": "hoops",
+    "colors": 2
+   },
+   {
+    "id": "stripes",
+    "colors": 2
+   },
+   {
+    "id": "sash",
+    "colors": 2
+   },
+   {
+    "id": "cross_sashes",
+    "colors": 2
+   },
+   {
+    "id": "chevrons",
+    "colors": 2
+   },
+   {
+    "id": "diamonds",
+    "colors": 2
+   },
+   {
+    "id": "quartered",
+    "colors": 2
+   },
+   {
+    "id": "halves",
+    "colors": 2
+   },
+   {
+    "id": "stars",
+    "colors": 3
+   },
+   {
+    "id": "spots",
+    "colors": 3
+   },
+   {
+    "id": "braces",
+    "colors": 3
+   },
+   {
+    "id": "lightning",
+    "colors": 3,
+    "unlockItem": "costume_starter"
+   },
+   {
+    "id": "flame",
+    "colors": 3,
+    "unlockItem": "costume_season_limited"
+   },
+   {
+    "id": "wings",
+    "colors": 3,
+    "unlockItem": "costume_login"
+   }
+  ],
+  "caps": [
+   {
+    "id": "plain"
+   },
+   {
+    "id": "quartered"
+   },
+   {
+    "id": "star"
+   },
+   {
+    "id": "hooped"
+   },
+   {
+    "id": "peak"
+   }
+  ],
+  "banned": [],
+  "_bannedNote": "banned には {pattern, colors, cap?} を入れる。colors は順番どおりに一致したら拒否（cap 省略時は帽子を問わない）。現在は空。リリース前に実在の登録服色と照合して追加すること。"
+ },
+ "gateBrackets": [
+  {
+   "bracket": 1,
+   "cloth": "white",
+   "number": "black"
+  },
+  {
+   "bracket": 2,
+   "cloth": "black",
+   "number": "white"
+  },
+  {
+   "bracket": 3,
+   "cloth": "red",
+   "number": "white"
+  },
+  {
+   "bracket": 4,
+   "cloth": "blue",
+   "number": "white"
+  },
+  {
+   "bracket": 5,
+   "cloth": "yellow",
+   "number": "black"
+  },
+  {
+   "bracket": 6,
+   "cloth": "green",
+   "number": "white"
+  },
+  {
+   "bracket": 7,
+   "cloth": "orange",
+   "number": "white"
+  },
+  {
+   "bracket": 8,
+   "cloth": "pink",
+   "number": "white"
+  }
+ ],
+ "venues": {
+  "aoba": {
+   "name": "青葉競馬場",
+   "direction": "left"
+  },
+  "kirameki": {
+   "name": "きらめき競馬場",
+   "direction": "right"
+  },
+  "minato": {
+   "name": "みなと競馬場",
+   "direction": "left"
+  }
+ },
+ "tracks": {
+  "aoba_turf_1600": {
+   "venue": "aoba"
+  },
+  "kirameki_turf_2000": {
+   "venue": "kirameki"
+  },
+  "minato_turf_2400": {
+   "venue": "minato"
+  },
+  "aoba_dirt_1400": {
+   "venue": "aoba"
+  },
+  "minato_dirt_1800": {
+   "venue": "minato"
+  }
+ },
+ "emblem": {
+  "shapes": [
+   "shield",
+   "circle",
+   "star",
+   "horseshoe",
+   "diamond"
+  ],
+  "symbols": [
+   "horse_head",
+   "crown",
+   "wing",
+   "lightning",
+   "flower",
+   "sun",
+   "moon",
+   "anchor"
+  ]
+ },
+ "sfx": {
+  "race": [
+   "countdown",
+   "gate_open",
+   "start",
+   "late_start",
+   "lead_change",
+   "kakari",
+   "whip",
+   "spurt",
+   "lane_change",
+   "finish",
+   "photo_finish",
+   "crowd_roar"
+  ],
+  "ui": [
+   "tap",
+   "back",
+   "gacha_r",
+   "gacha_sr",
+   "gacha_ssr",
+   "reward",
+   "level_up",
+   "error"
+  ]
+ }
+}

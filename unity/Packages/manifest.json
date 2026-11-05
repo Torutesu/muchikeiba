@@ -1,0 +1,16 @@
+{
+  "dependencies": {
+    "com.muchi.engine": "file:../../engine/Muchi.Engine",
+    "com.muchi.net": "file:../../engine/Muchi.Net",
+    "com.muchi.client": "file:../../engine/Muchi.Client",
+    "com.unity.ugui": "1.0.0",
+    "com.unity.modules.ui": "1.0.0",
+    "com.unity.modules.physics": "1.0.0",
+    "com.unity.modules.animation": "1.0.0",
+    "com.unity.modules.audio": "1.0.0",
+    "com.unity.modules.inputlegacy": "1.0.0",
+    "com.unity.modules.unitywebrequest": "1.0.0",
+    "com.unity.modules.imageconversion": "1.0.0",
+    "com.unity.modules.jsonserialize": "1.0.0"
+  }
+}

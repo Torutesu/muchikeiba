@@ -89,7 +89,9 @@ namespace Muchi.Engine.Tests
 
     public class RaceRulesTests
     {
-        private static readonly RulesetParams Rs = TestUtil.Ruleset();
+        // single-mechanic tests: form variance and auto-steer (ruleset 1.1) are switched off so each rule is isolated;
+        // they have their own tests below and the full ruleset is covered by BalanceTests and the goldens.
+        private static readonly RulesetParams Rs = TestUtil.Ruleset(("conditionVariancePermille", 0), ("autoRailIntervalTicks", 0));
 
         private static RaceConfig Solo(TrackSpec track, RulesetParams rs = null, HorseSpec horse = null)
             => TestUtil.Cfg(track, rs ?? Rs, new List<HorseSpec> { horse ?? TestUtil.H("solo") }, 1);
@@ -210,6 +212,53 @@ namespace Muchi.Engine.Tests
             Assert.True(reined.Speed < free.Speed);
             Assert.True(reined.Stamina > free.Stamina);
             Assert.True(reined.Reining);
+        }
+
+        // ---------------------------------------------------------------- ruleset 1.1 additions
+
+        [Fact]
+        public void FormVarianceIsSeededBoundedAndOffAtZero()
+        {
+            var on = TestUtil.Ruleset(("conditionVariancePermille", 25), ("autoRailIntervalTicks", 0));
+            var horses = Enumerable.Range(0, 12).Select(i => TestUtil.H("f" + i)).ToList();
+            var a = new RaceSim(TestUtil.Cfg(SampleRaces.Turf2000(), on, horses, 0, 77));
+            var b = new RaceSim(TestUtil.Cfg(SampleRaces.Turf2000(), on, horses, 0, 77));
+            var c = new RaceSim(TestUtil.Cfg(SampleRaces.Turf2000(), on, horses, 0, 78));
+            var off = new RaceSim(TestUtil.Cfg(SampleRaces.Turf2000(), Rs, horses, 0, 77));
+            var tops = Enumerable.Range(0, 12).Select(i => a.TopSpeed(i)).ToList();
+            Assert.Equal(tops, Enumerable.Range(0, 12).Select(i => b.TopSpeed(i)).ToList()); // same seed → same form
+            Assert.NotEqual(tops, Enumerable.Range(0, 12).Select(i => c.TopSpeed(i)).ToList()); // another race → other form
+            Assert.True(tops.Distinct().Count() > 1, "identical horses should differ on the day");
+            Fx baseTop = off.TopSpeed(0);
+            Assert.All(Enumerable.Range(0, 12), i => Assert.Equal(baseTop, off.TopSpeed(i)));
+            foreach (var t in tops)
+            {
+                Assert.True(t >= baseTop.MulPermille(975) - Fx.FromRatio(1, 100));
+                Assert.True(t <= baseTop.MulPermille(1025) + Fx.FromRatio(1, 100));
+            }
+        }
+
+        [Fact]
+        public void AutoSteerTucksInUnlessTheRiderChoseALine()
+        {
+            var rs = TestUtil.Ruleset(("conditionVariancePermille", 0), ("autoRailIntervalTicks", 10), ("autoRailHoldTicks", 60));
+            int gate = rs.GateOpenTick;
+            // one horse drawn wide (slot 5 of 6); no lane input at all → it works its way to the rail
+            var horses = Enumerable.Range(0, 6).Select(i => TestUtil.H("r" + i, i == 5 ? 900 : 400)).ToList(); // the wide one is quicker, so it clears the others
+            var cfg = TestUtil.Cfg(TestUtil.CornerTrack(), rs, horses, 6);
+            var free = TestUtil.RunScripted(cfg, (s, t) => t == gate ? Enumerable.Repeat(Cmd.Start, 6).ToArray() : null);
+            Assert.True(free.GetHorse(5).LaneTarget < 5, "auto-steer should move the wide horse in");
+            // the rider who keeps steering out holds the chosen line
+            var wide = TestUtil.RunScripted(TestUtil.Cfg(TestUtil.CornerTrack(), rs, horses, 6), (s, t) =>
+            {
+                if (t == gate) return Enumerable.Repeat(Cmd.Start, 6).ToArray();
+                if (t > gate && t % 40 == 0) { var c = new byte[6]; c[5] = Cmd.LaneOut; return c; }
+                return null;
+            });
+            Assert.True(wide.GetHorse(5).LaneTarget >= 5, "manual steering must not be undone by auto-steer");
+            // off when the key is 0
+            var noAuto = TestUtil.RunScripted(TestUtil.Cfg(TestUtil.CornerTrack(), Rs, horses, 6), (s, t) => t == gate ? Enumerable.Repeat(Cmd.Start, 6).ToArray() : null);
+            Assert.Equal(5, noAuto.GetHorse(5).LaneTarget);
         }
 
         [Fact]
@@ -494,6 +543,18 @@ namespace Muchi.Engine.Tests
 
     public class BalanceTests
     {
+        private readonly Xunit.Abstractions.ITestOutputHelper _out;
+        public BalanceTests(Xunit.Abstractions.ITestOutputHelper output) { _out = output; }
+
+        [Fact]
+        public void DefaultRulesetMeetsEveryHarnessTarget()
+        {
+            // docs/spec/balance-targets.md: every race-side target, fixed seeds (~10s)
+            var rep = BalanceHarness.Run(TestUtil.Ruleset());
+            _out.WriteLine(rep.Markdown());
+            Assert.True(rep.AllPass, "balance targets missed:\n" + string.Join("\n", rep.Metrics.Where(m => !m.Pass)));
+        }
+
         [Fact]
         public void DefaultRulesetMeetsBalanceTargets()
         {

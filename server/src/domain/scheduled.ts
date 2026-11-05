@@ -1,4 +1,3 @@
-import { previousSeasonId } from './leaderboard.js';
 import { jstMonthKey } from './time.js';
 
 /** Cron expressions configured in wrangler.toml (UTC). */
@@ -25,26 +24,52 @@ export interface ScheduledDeps {
   eventsStep?(now: number): Promise<string[]>;
 }
 
+/** How many past seasons the cron keeps stepping until they report closed (a stalled one is not abandoned). */
+export const ROLLOVER_LOOKBACK = 3;
+
+/** The `n` seasons before `now`'s season, newest first ("YYYY-MM"). */
+export function pastSeasons(now: number, n = ROLLOVER_LOOKBACK): string[] {
+  const out: string[] = [];
+  let [y, m] = jstMonthKey(now).split('-').map(Number) as [number, number];
+  for (let i = 0; i < n; i++) {
+    m -= 1;
+    if (m === 0) { m = 12; y -= 1; }
+    out.push(`${y}-${String(m).padStart(2, '0')}`);
+  }
+  return out;
+}
+
 /**
  * REQ-LB-001 / REQ-SEASON-001 / REQ-OPS-001: dispatch for the Worker's scheduled() handler.
- * Every step is idempotent, so overlapping or repeated runs are harmless.
+ * Every step is idempotent, so overlapping or repeated runs are harmless. Each step runs in its own
+ * try: one failing step (a snapshot, one season's rollover) never skips the others in the same run.
+ * Rollovers are stepped for the last few seasons, not only the previous one, so a season whose payout
+ * stalled or ran past month end keeps progressing (closed seasons answer with a cheap no-op).
  */
 export async function runScheduled(cron: string, now: number, deps: ScheduledDeps) {
   const done: string[] = [];
+  const step = async (name: string, f: () => Promise<string | string[]>) => {
+    try {
+      const r = await f();
+      done.push(...(Array.isArray(r) ? r : [r]));
+    } catch (e) {
+      console.error('scheduled step failed', name, e);
+      done.push(`${name}:error`);
+    }
+  };
   if (cron === CRONS.frequent) {
-    await deps.snapshot(jstMonthKey(now));
-    done.push('snapshot');
-    const prev = previousSeasonId(now);
-    const r = await deps.rolloverStep(prev);
-    done.push(`rollover:${prev}:${r.status}`);
-    if (deps.teamRolloverStep) done.push(`teamRollover:${prev}:${(await deps.teamRolloverStep(prev)).status}`);
-    if (deps.eventsStep) done.push(...(await deps.eventsStep(now)));
+    await step('snapshot', async () => { await deps.snapshot(jstMonthKey(now)); return 'snapshot'; });
+    for (const season of pastSeasons(now)) {
+      await step(`rollover:${season}`, async () => `rollover:${season}:${(await deps.rolloverStep(season)).status}`);
+      const team = deps.teamRolloverStep;
+      if (team) await step(`teamRollover:${season}`, async () => `teamRollover:${season}:${(await team(season)).status}`);
+    }
+    const events = deps.eventsStep;
+    if (events) await step('events', () => events(now));
   } else if (cron === CRONS.noon) {
-    const t = deps.seasonReminder ? await deps.seasonReminder(now) : null;
-    done.push(`reminder:${t ?? 'none'}`);
+    await step('reminder', async () => `reminder:${(deps.seasonReminder ? await deps.seasonReminder(now) : null) ?? 'none'}`);
   } else if (cron === CRONS.daily) {
-    const r = await deps.sweepReplays(now);
-    done.push(`sweep:${r.deleted}`);
+    await step('sweep', async () => `sweep:${(await deps.sweepReplays(now)).deleted}`);
   } else {
     done.push(`unknown:${cron}`);
   }

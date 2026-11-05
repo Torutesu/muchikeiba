@@ -79,6 +79,22 @@ namespace Muchi.Engine
         /// <summary>True when the ground keys were present (they are optional so pre-1.1 rulesets in stored replays still parse).</summary>
         public bool HasGoingKeys;
 
+        // ---- balance additions (ruleset 1.1, docs/spec/balance-targets.md) ----
+        /// <summary>Per-race form: each horse's top speed is scaled by a seeded random ±this‰ (0 = none).</summary>
+        public int ConditionVariancePermille;
+        /// <summary>CPUs below this level never use the rein to save stamina (only to settle a pulling horse).</summary>
+        public int CpuStaminaReinMinLevel = 1;
+        /// <summary>CPUs at or above this level always tuck in toward the rail when there is room; lower levels half the time.</summary>
+        public int CpuRailMinLevel = 3;
+        /// <summary>Auto-steer: every N ticks a horse tucks one lane toward the rail when it is safe (0 = off).</summary>
+        public int AutoRailIntervalTicks;
+        /// <summary>Auto-steer stays off for this many ticks after the rider steered (so a chosen line is kept).</summary>
+        public int AutoRailHoldTicks;
+        /// <summary>CPUs at or below this level ride like a casual player (late starts, scattered whips, no stamina rein). 0 = none.</summary>
+        public int CpuSloppyMaxLevel;
+        /// <summary>True when the balance keys were present (absent in rulesets before 1.1; then the values above apply).</summary>
+        public bool HasBalanceKeys;
+
         /// <summary>Every integer key, in canonical order (rulesetVersion is the extra string key).</summary>
         public static readonly string[] IntKeys =
         {
@@ -122,18 +138,35 @@ namespace Muchi.Engine
             1000, 0,
         };
 
+        /// <summary>
+        /// Second group of optional keys (ruleset 1.1 balance). Independent of the ground group; all or none.
+        /// Absent = the neutral values below, which reproduce 1.0 behaviour exactly.
+        /// </summary>
+        public static readonly string[] BalanceIntKeys =
+        {
+            "conditionVariancePermille", "cpuStaminaReinMinLevel", "cpuRailMinLevel", "autoRailIntervalTicks", "autoRailHoldTicks", "cpuSloppyMaxLevel",
+        };
+
+        /// <summary>Neutral values for <see cref="BalanceIntKeys"/> (same order).</summary>
+        public static readonly int[] BalanceNeutralValues = { 0, 1, 3, 0, 0, 0 };
+
         /// <summary>Builds params from a key/value map. Missing or unknown keys throw ArgumentException.</summary>
         public static RulesetParams FromValues(string rulesetVersion, IDictionary<string, long> values)
         {
             if (string.IsNullOrEmpty(rulesetVersion)) throw new ArgumentException("rulesetVersion required");
             var known = new HashSet<string>(IntKeys);
             foreach (var k in OptionalIntKeys) known.Add(k);
+            foreach (var k in BalanceIntKeys) known.Add(k);
             foreach (var k in values.Keys)
                 if (!known.Contains(k)) throw new ArgumentException("unknown ruleset key: " + k);
             int optionalPresent = 0;
             foreach (var k in OptionalIntKeys) if (values.ContainsKey(k)) optionalPresent++;
             if (optionalPresent != 0 && optionalPresent != OptionalIntKeys.Length)
                 throw new ArgumentException("ground-condition ruleset keys must be all present or all absent");
+            int balancePresent = 0;
+            foreach (var k in BalanceIntKeys) if (values.ContainsKey(k)) balancePresent++;
+            if (balancePresent != 0 && balancePresent != BalanceIntKeys.Length)
+                throw new ArgumentException("balance ruleset keys must be all present or all absent");
             foreach (var k in IntKeys)
                 if (!values.ContainsKey(k)) throw new ArgumentException("missing ruleset key: " + k);
 
@@ -211,6 +244,16 @@ namespace Muchi.Engine
                 p.DirtSpeedPermille = G("dirtSpeedPermille");
                 p.GoingSpecialistPermille = G("goingSpecialistPermille");
             }
+            if (balancePresent > 0)
+            {
+                p.HasBalanceKeys = true;
+                p.ConditionVariancePermille = G("conditionVariancePermille");
+                p.CpuStaminaReinMinLevel = G("cpuStaminaReinMinLevel");
+                p.CpuRailMinLevel = G("cpuRailMinLevel");
+                p.AutoRailIntervalTicks = G("autoRailIntervalTicks");
+                p.AutoRailHoldTicks = G("autoRailHoldTicks");
+                p.CpuSloppyMaxLevel = G("cpuSloppyMaxLevel");
+            }
             p.Validate();
             return p;
         }
@@ -249,6 +292,11 @@ namespace Muchi.Engine
                 };
                 for (int i = 0; i < OptionalIntKeys.Length; i++) v.Add(new KeyValuePair<string, long>(OptionalIntKeys[i], opt[i]));
             }
+            if (HasBalanceKeys)
+            {
+                int[] bal = { ConditionVariancePermille, CpuStaminaReinMinLevel, CpuRailMinLevel, AutoRailIntervalTicks, AutoRailHoldTicks, CpuSloppyMaxLevel };
+                for (int i = 0; i < BalanceIntKeys.Length; i++) v.Add(new KeyValuePair<string, long>(BalanceIntKeys[i], bal[i]));
+            }
             return v;
         }
 
@@ -270,6 +318,11 @@ namespace Muchi.Engine
             }
             if (!Permille(DirtSpeedPermille)) throw new ArgumentException("dirtSpeedPermille must be 500..2000");
             if (GoingSpecialistPermille < 0 || GoingSpecialistPermille > 200) throw new ArgumentException("goingSpecialistPermille must be 0..200");
+            if (ConditionVariancePermille < 0 || ConditionVariancePermille > 100) throw new ArgumentException("conditionVariancePermille must be 0..100");
+            if (CpuStaminaReinMinLevel < 1 || CpuStaminaReinMinLevel > 6) throw new ArgumentException("cpuStaminaReinMinLevel must be 1..6");
+            if (CpuRailMinLevel < 1 || CpuRailMinLevel > 6) throw new ArgumentException("cpuRailMinLevel must be 1..6");
+            if (AutoRailIntervalTicks < 0 || AutoRailHoldTicks < 0) throw new ArgumentException("autoRail values must be >= 0");
+            if (CpuSloppyMaxLevel < 0 || CpuSloppyMaxLevel > 5) throw new ArgumentException("cpuSloppyMaxLevel must be 0..5");
         }
         private static bool Permille(int v) => v >= 500 && v <= 2000;
     }

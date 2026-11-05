@@ -25,6 +25,7 @@ export type Emit = (e: KpiEvent) => void;
 import { abortSubmit, prepareSubmit, recordResult, startTimeAttack, timeAttackView } from './timeAttack.js';
 import type { VerifierOutput } from './schemas.js';
 import { trackById } from './master.js';
+import { appearanceOf, assetKeys, defaultSilks, validateSilks, type EntrantVisual, type Silks } from './visuals.js';
 import { ensureTeam, playerAbortJoin, playerAddOutgoing, playerCommitJoin, playerLeft, playerPrepareJoin, playerRemoveOutgoing, playerTeamReward, snapshotOf } from './teams.js';
 import { applyEventResult, cancelEntry, closeEventForPlayer, ensureEvent, enterEvent, eventsForPlayer, findEvent, type EventEntry } from './events.js';
 
@@ -200,6 +201,7 @@ export class PlayerService {
     for (const key of [r.transactionId, r.originalTransactionId]) {
       if (!key) continue;
       const owner = await this.d.storeIndex.claim(key, id);
+      if (owner === '__revoked__') throw new AppError('RECEIPT_INVALID', 'this purchase was refunded or revoked');
       if (owner !== id) throw new AppError('RECEIPT_INVALID', 'this purchase is already linked to another player');
     }
   }
@@ -217,7 +219,7 @@ export class PlayerService {
   /** Store server notification: subscription status change (expired, revoked, grace…). */
   subscriptionStatus(id: string, platform: PurchaseRecord['platform'], key: string, status: SubscriptionStatus, expiresAt: number | null) {
     return this.tx(id, null, (s, now, emit) => {
-      const r = applySubscriptionStatus(s, platform, key, status, expiresAt, now);
+      const r = applySubscriptionStatus(this.d.master, s, platform, key, status, expiresAt, now);
       emit({ name: 'pass_status', s1: String(status), s2: platform });
       return r;
     });
@@ -317,6 +319,8 @@ export class PlayerService {
     return {
       moderation: moderationOf(s, this.d.clock()),
       playerId: id, horse: toRaceHorse(this.d.master, h),
+      // REQ-ASSET-006: look of this runner for the other clients (never part of the hashed config)
+      ...({ visual: { appearance: appearanceOf(h, id), silks: s.profile.silks ?? defaultSilks(`p:${id}`), displayName: s.profile.displayName, titleId: s.profile.titleId } } as { visual?: EntrantVisual }),
       rating: { r: s.rating.r, rd: s.rating.rd, vol: s.rating.vol },
       classId: cls.id, statCap: cls.statCap, beginner: s.rating.rankedRaces < this.d.master.progression.beginnerRaces,
     };
@@ -325,9 +329,13 @@ export class PlayerService {
   // ---- profile, titles, stats (REQ-STAT-*, REQ-TITLE-*, REQ-SOCIAL-006) ----
   setDisplayName(id: string, name: string) { return this.tx(id, null, (s) => setDisplayName(this.d.master, s, name)); }
   equipTitle(id: string, titleId: string | null) { return this.tx(id, null, (s) => equipTitle(this.d.master, s, titleId)); }
+  /** REQ-ASSET-005: choose silks (unlockable patterns need their costume item). */
+  setSilks(id: string, silks: Silks) {
+    return this.tx(id, null, (s) => { s.profile.silks = validateSilks(silks, s.items); return { silks: s.profile.silks }; });
+  }
   async titles(id: string) {
     const s = await this.load(id);
-    return { equipped: s.profile.titleId, titles: this.d.master.titles.map((t) => ({ id: t.id, name: t.name, unlocked: s.titles.includes(t.id) })) };
+    return { equipped: s.profile.titleId, titles: this.d.master.titles.map((t) => ({ id: t.id, name: t.name, icon: assetKeys.title(t.id), unlocked: s.titles.includes(t.id) })) };
   }
   async stats(id: string) { return (await this.load(id)).stats; }
   async publicProfile(id: string) { return publicProfile(await this.load(id)); }
@@ -392,11 +400,24 @@ export class PlayerService {
 
   // ---- support / anti-cheat (admin API only; REQ-OPS-020..025, REQ-OPS-032) ----
   async adminView(id: string) { return supportView(this.d.master, await this.load(id), this.d.clock()); }
+  /**
+   * Admin money operations are idempotent per opKey FOREVER (review r5 #4): the general idempotency cache
+   * keeps only the last IDEM_KEEP results, so their results live in a never-evicted per-player record.
+   */
+  private adminOnce<T>(id: string, key: string, fn: (s: PlayerState, now: number) => T): Promise<T> {
+    return this.tx(id, null, (s, now) => {
+      const ops = (s.adminOps ??= {});
+      if (key in ops) return ops[key] as T;
+      const r = fn(s, now);
+      ops[key] = JSON.parse(JSON.stringify(r ?? null));
+      return r;
+    });
+  }
   adminGrant(id: string, grant: Grant, reason: string, actor: string, opKey: string) {
-    return this.tx(id, `admin:grant:${opKey}`, (s, now) => supportGrant(s, grant, reason, actor, `admin:${opKey}`, now));
+    return this.adminOnce(id, `grant:${opKey}`, (s, now) => supportGrant(s, grant, reason, actor, `admin:${opKey}`, now));
   }
   adminSettleDebt(id: string, coins: number, items: Record<string, number>, reason: string, actor: string, opKey: string) {
-    return this.tx(id, `admin:settle:${opKey}`, (s, now) => supportSettleDebt(s, coins, items, reason, actor, `admin:${opKey}`, now));
+    return this.adminOnce(id, `settle:${opKey}`, (s, now) => supportSettleDebt(s, coins, items, reason, actor, `admin:${opKey}`, now));
   }
   adminCorrectAge(id: string, birthYear: number, birthMonth: number, guardianConsent: boolean, actor: string) {
     return this.tx(id, null, (s, now) => supportCorrectAge(this.d.master, s, birthYear, birthMonth, guardianConsent, actor, now));
@@ -489,8 +510,11 @@ export class PlayerService {
   async eventsView(id: string) { return eventsForPlayer(this.d.master, await this.load(id), this.d.clock()); }
   /** Takes (or returns the already held) entry fee; the caller then queues the player in the event pool. */
   async eventEnter(id: string, eventId: string, horseId: string, idemKey: string | null) {
-    const key = this.requireKey(idemKey);
-    return this.tx(id, key, (s, now, emit) => {
+    // The client key is still required (API contract) but NOT used as a result cache: the domain is
+    // idempotent through `pending`, and a cached result would let a resent key re-queue after the race
+    // settled without paying again (review r5 #1).
+    this.requireKey(idemKey);
+    return this.tx(id, null, (s, now, emit) => {
       const ev = findEvent(this.d.master, eventId);
       const entryId = [0, 0].map(() => this.d.rng.nextU32().toString(36)).join('');
       const r = enterEvent(ev, s, getHorse(s, horseId), entryId, now);

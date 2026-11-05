@@ -14,11 +14,36 @@
     "topN": 100,
     "rolloverBatch": 50,
     "seasonRewards": [
-      { "maxRank": 1, "reward": { "freeCoins": 1500 } },
-      { "maxRank": 3, "reward": { "freeCoins": 1000 } },
-      { "maxRank": 10, "reward": { "freeCoins": 500 } },
-      { "maxRank": 100, "reward": { "freeCoins": 200 } },
-      { "maxRank": null, "reward": { "freeCoins": 50 } }
+      {
+        "maxRank": 1,
+        "reward": {
+          "freeCoins": 1500
+        }
+      },
+      {
+        "maxRank": 3,
+        "reward": {
+          "freeCoins": 1000
+        }
+      },
+      {
+        "maxRank": 10,
+        "reward": {
+          "freeCoins": 500
+        }
+      },
+      {
+        "maxRank": 100,
+        "reward": {
+          "freeCoins": 200
+        }
+      },
+      {
+        "maxRank": null,
+        "reward": {
+          "freeCoins": 50
+        }
+      }
     ]
   },
   "classes": [
@@ -63,32 +88,32 @@
   ],
   "raceFreeCoinsByPlace": {
     "ranked": [
-      100,
-      60,
       40,
-      30,
       25,
-      20,
-      15,
-      15,
-      10,
-      10,
-      10,
-      10
+      18,
+      14,
+      11,
+      9,
+      7,
+      6,
+      5,
+      4,
+      4,
+      4
     ],
     "friend": [
-      20,
-      15,
       10,
-      10,
+      8,
+      6,
       5,
-      5,
-      5,
-      5,
-      5,
-      5,
-      5,
-      5
+      4,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3
     ],
     "tutorial": [
       0,
@@ -112,7 +137,7 @@
     "free": {
       "every": 1,
       "reward": {
-        "freeCoins": 30
+        "freeCoins": 20
       }
     },
     "premium": {
@@ -131,7 +156,7 @@
   "loginBonus": [
     {
       "day": 1,
-      "freeCoins": 100
+      "freeCoins": 50
     },
     {
       "day": 2,
@@ -153,7 +178,7 @@
     },
     {
       "day": 4,
-      "freeCoins": 150
+      "freeCoins": 100
     },
     {
       "day": 5,
@@ -166,7 +191,7 @@
     },
     {
       "day": 6,
-      "freeCoins": 200
+      "freeCoins": 100
     },
     {
       "day": 7,
@@ -184,7 +209,7 @@
       "kind": "races",
       "target": 3,
       "reward": {
-        "freeCoins": 50
+        "freeCoins": 30
       }
     },
     {
@@ -192,7 +217,7 @@
       "kind": "wins",
       "target": 1,
       "reward": {
-        "freeCoins": 80
+        "freeCoins": 50
       }
     },
     {
@@ -339,9 +364,9 @@
     "rolloverBatch": 50
   },
   "replayRetentionDays": 30,
-  "friendRewardDailyCap": 10,
+  "friendRewardDailyCap": 5,
   "timeAttack": {
-    "_note": "REQ-TA-*。statCap はランク戦B級と同じ。マイルストーン秒数（暫定）: gold は上限いっぱいの馬を上手く乗った実測値（1600m≈67.3s / 2000m≈85.6s / 2400m≈106.3s, engine TimeAttackTests.MeasureTypicalTimesPerTrack）、bronze は約3〜4%遅い。",
+    "_note": "REQ-TA-*。statCap はランク戦B級と同じ。メダル秒数は docs/spec/balance-targets.md の方法でシミュレーションから決める（ルールセット1.1.0・タイムアタックは調子の揺らぎなし、上限いっぱいの馬80本）: gold = 上手い人の上位10%、silver = 上手い人の中央値、bronze = 初心者の中央値。再計算: `dotnet run --project engine/Muchi.Verifier -- ta-thresholds <ruleset.json> <server/master/tracks.json> 3200`（絶対パス）。",
     "statCap": 3200,
     "maxAttemptsPerDay": 30,
     "sessionTtlMs": 600000,
@@ -360,15 +385,23 @@
       {
         "id": "ta_aoba_1600_bronze",
         "trackId": "aoba_turf_1600",
-        "maxTimeMs": 70000,
+        "maxTimeMs": 70100,
         "reward": {
           "freeCoins": 30
         }
       },
       {
+        "id": "ta_aoba_1600_silver",
+        "trackId": "aoba_turf_1600",
+        "maxTimeMs": 69500,
+        "reward": {
+          "freeCoins": 60
+        }
+      },
+      {
         "id": "ta_aoba_1600_gold",
         "trackId": "aoba_turf_1600",
-        "maxTimeMs": 67400,
+        "maxTimeMs": 68200,
         "reward": {
           "freeCoins": 100
         }
@@ -376,15 +409,23 @@
       {
         "id": "ta_kirameki_2000_bronze",
         "trackId": "kirameki_turf_2000",
-        "maxTimeMs": 89000,
+        "maxTimeMs": 89700,
         "reward": {
           "freeCoins": 30
         }
       },
       {
+        "id": "ta_kirameki_2000_silver",
+        "trackId": "kirameki_turf_2000",
+        "maxTimeMs": 87800,
+        "reward": {
+          "freeCoins": 60
+        }
+      },
+      {
         "id": "ta_kirameki_2000_gold",
         "trackId": "kirameki_turf_2000",
-        "maxTimeMs": 85700,
+        "maxTimeMs": 86100,
         "reward": {
           "freeCoins": 100
         }
@@ -392,15 +433,71 @@
       {
         "id": "ta_minato_2400_bronze",
         "trackId": "minato_turf_2400",
-        "maxTimeMs": 111000,
+        "maxTimeMs": 111600,
         "reward": {
           "freeCoins": 30
         }
       },
       {
-        "id": "ta_minato_2400_gold",
+        "id": "ta_minato_2400_silver",
         "trackId": "minato_turf_2400",
         "maxTimeMs": 106500,
+        "reward": {
+          "freeCoins": 60
+        }
+      },
+      {
+        "id": "ta_minato_2400_gold",
+        "trackId": "minato_turf_2400",
+        "maxTimeMs": 104000,
+        "reward": {
+          "freeCoins": 100
+        }
+      },
+      {
+        "id": "ta_aoba_dirt_1400_bronze",
+        "trackId": "aoba_dirt_1400",
+        "maxTimeMs": 63000,
+        "reward": {
+          "freeCoins": 30
+        }
+      },
+      {
+        "id": "ta_aoba_dirt_1400_silver",
+        "trackId": "aoba_dirt_1400",
+        "maxTimeMs": 62400,
+        "reward": {
+          "freeCoins": 60
+        }
+      },
+      {
+        "id": "ta_aoba_dirt_1400_gold",
+        "trackId": "aoba_dirt_1400",
+        "maxTimeMs": 61200,
+        "reward": {
+          "freeCoins": 100
+        }
+      },
+      {
+        "id": "ta_minato_dirt_1800_bronze",
+        "trackId": "minato_dirt_1800",
+        "maxTimeMs": 82900,
+        "reward": {
+          "freeCoins": 30
+        }
+      },
+      {
+        "id": "ta_minato_dirt_1800_silver",
+        "trackId": "minato_dirt_1800",
+        "maxTimeMs": 81400,
+        "reward": {
+          "freeCoins": 60
+        }
+      },
+      {
+        "id": "ta_minato_dirt_1800_gold",
+        "trackId": "minato_dirt_1800",
+        "maxTimeMs": 79900,
         "reward": {
           "freeCoins": 100
         }

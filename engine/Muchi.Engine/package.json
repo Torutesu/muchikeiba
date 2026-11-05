@@ -1,0 +1,8 @@
+{
+  "name": "com.muchi.engine",
+  "version": "0.5.0",
+  "displayName": "Muchi Engine",
+  "description": "Deterministic fixed-point race simulation (authoritative; shared with the C# verifier). No floats, no Unity references.",
+  "unity": "2022.3",
+  "author": { "name": "Muchi Issen" }
+}

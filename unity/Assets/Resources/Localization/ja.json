@@ -1,0 +1,1273 @@
+{
+  "locale": "ja",
+  "entries": [
+    {
+      "key": "LOCAL PRESENTATION DEMO",
+      "value": "ローカル演出プレビュー"
+    },
+    {
+      "key": "MUCHI ISSEN  /  JOCKEY RACING",
+      "value": "ジョッキーレーシングゲーム"
+    },
+    {
+      "key": "A RACE IS WON IN THE LAST STRAIGHT.",
+      "value": "最後の直線で、勝負が決まる。"
+    },
+    {
+      "key": "RACE  /  START",
+      "value": "レースをはじめる"
+    },
+    {
+      "key": "TAP TO RIDE",
+      "value": "タップして騎乗"
+    },
+    {
+      "key": "SEASON 01    •    TURF SERIES",
+      "value": "シーズン 01　・　芝シリーズ"
+    },
+    {
+      "key": "JOCKEY  001  ·  TURF SERIES",
+      "value": "ジョッキー 001　・　芝シリーズ"
+    },
+    {
+      "key": "◎  1,200     ◈  240",
+      "value": "◎  1,200　　◈  240"
+    },
+    {
+      "key": "YOUR PARTNER",
+      "value": "あなたの相棒"
+    },
+    {
+      "key": "CLOSER  /  TURF  /  2,000m",
+      "value": "追込　/　芝　/　2,000m"
+    },
+    {
+      "key": "STABLE",
+      "value": "厩舎"
+    },
+    {
+      "key": "SCOUT",
+      "value": "スカウト"
+    },
+    {
+      "key": "MISSIONS",
+      "value": "ミッション"
+    },
+    {
+      "key": "RACE  >>",
+      "value": "レースへ　>>"
+    },
+    {
+      "key": "RANKED  /  GREENFIELD CUP",
+      "value": "ランク戦　/　グリーンフィールド杯"
+    },
+    {
+      "key": "HOME   ·   STABLE   ·   RACE",
+      "value": "ホーム　・　厩舎　・　レース"
+    },
+    {
+      "key": "01  /  YOUR FIRST PARTNER",
+      "value": "01　/　はじめての相棒"
+    },
+    {
+      "key": "NAME YOUR PARTNER",
+      "value": "相棒に名前をつけよう"
+    },
+    {
+      "key": "A good name makes a great story.",
+      "value": "名前をつけたら、物語のはじまり。"
+    },
+    {
+      "key": "PARTNER NAME",
+      "value": "相棒の名前"
+    },
+    {
+      "key": "SPEED   84        STAMINA   78\nPOWER   81        STYLE       CLOSER",
+      "value": "スピード　84　　 スタミナ　78\nパワー　　81　　 脚質　　　追込"
+    },
+    {
+      "key": "You can change the name later.",
+      "value": "名前はあとから変更できます。"
+    },
+    {
+      "key": "CONFIRM  >>",
+      "value": "この名前に決定　>>"
+    },
+    {
+      "key": "BACK",
+      "value": "戻る"
+    },
+    {
+      "key": "STABLE  /  01 OF 20",
+      "value": "厩舎　/　20頭中 1頭"
+    },
+    {
+      "key": "SSR   ·   CLOSER",
+      "value": "SSR　・　追込"
+    },
+    {
+      "key": "SPEED",
+      "value": "スピード"
+    },
+    {
+      "key": "STAMINA",
+      "value": "スタミナ"
+    },
+    {
+      "key": "POWER",
+      "value": "パワー"
+    },
+    {
+      "key": "APTITUDE",
+      "value": "適性"
+    },
+    {
+      "key": "TURF  A       MIDDLE  A       GOOD  A",
+      "value": "芝 A　　 中距離 A　　 良馬場 A"
+    },
+    {
+      "key": "SELECT FOR RACE  >>",
+      "value": "この馬で出走　>>"
+    },
+    {
+      "key": "WELCOME SCOUT  /  FREE 10",
+      "value": "ようこそスカウトへ　/　初回無料"
+    },
+    {
+      "key": "MEET YOUR\nNEXT PARTNER",
+      "value": "新しい相棒に\n出会おう"
+    },
+    {
+      "key": "SR+  GUARANTEED",
+      "value": "SR以上 1頭確定"
+    },
+    {
+      "key": "Ten horses. One new story.",
+      "value": "10頭との出会い。新しい物語。"
+    },
+    {
+      "key": "This first scout is free.\nAt least one SR horse is included.",
+      "value": "初回のスカウトは無料です。\nSR以上の馬が1頭以上登場します。"
+    },
+    {
+      "key": "PREVIEW ONLY  /  NO CURRENCY USED",
+      "value": "プレビュー　/　通貨は消費されません"
+    },
+    {
+      "key": "FREE 10-HORSE SCOUT",
+      "value": "無料10連スカウト"
+    },
+    {
+      "key": "SKIP",
+      "value": "スキップ"
+    },
+    {
+      "key": "NEW PARTNERS  /  10",
+      "value": "新しい仲間　/　10頭"
+    },
+    {
+      "key": "KOHAKU",
+      "value": "コハク"
+    },
+    {
+      "key": "SR  ·  FRONT RUNNER",
+      "value": "SR　・　先行"
+    },
+    {
+      "key": "A bold start and a steady stride.\nTURF  /  SHORT DISTANCE",
+      "value": "積極的な走りと、安定した末脚。\n芝　/　短距離"
+    },
+    {
+      "key": "SHIRANAMI",
+      "value": "シラナミ"
+    },
+    {
+      "key": "SR  ·  CLOSER",
+      "value": "SR　・　追込"
+    },
+    {
+      "key": "Eight more partners joined your stable.",
+      "value": "ほかにも8頭が厩舎に加わりました。"
+    },
+    {
+      "key": "Fixed art preview; no server draw or currency transaction.",
+      "value": "固定表示のプレビューです。抽選・通貨消費はありません。"
+    },
+    {
+      "key": "GO TO HOME  >>",
+      "value": "ホームへ　>>"
+    },
+    {
+      "key": "TURF  ·  2,000 m  ·  LEFT",
+      "value": "芝　・　2,000m　・　左回り"
+    },
+    {
+      "key": "HOME STRAIGHT  ━━━━━━━  FINISH",
+      "value": "直線コース　━━━━━━━━　ゴール"
+    },
+    {
+      "key": "12 runners   /   CPU fills empty gates\nRanked race   /   ability cap enabled\nPartner   /   ",
+      "value": "最大12頭　/　空き枠はCPUが参加\nランク戦　/　能力上限あり\n出走馬　/　"
+    },
+    {
+      "key": "ENTER THE RACE  >>",
+      "value": "出走する　>>"
+    },
+    {
+      "key": "TIME YOUR SPUR",
+      "value": "タイミングを合わせよう"
+    },
+    {
+      "key": "FINAL STRAIGHT",
+      "value": "最後の直線"
+    },
+    {
+      "key": "SPURS  6 / 6",
+      "value": "仕掛け　6 / 6"
+    },
+    {
+      "key": "SPUR",
+      "value": "仕掛ける"
+    },
+    {
+      "key": "Hold SPACE to rein / Arrow keys to steer / E to spur",
+      "value": "手綱：Space　進路：← →　仕掛け：E"
+    },
+    {
+      "key": "REIN",
+      "value": "手綱"
+    },
+    {
+      "key": "EXIT",
+      "value": "もどる"
+    },
+    {
+      "key": "RANKED RACE  /  ENTRY",
+      "value": "ランク戦　/　出走登録"
+    },
+    {
+      "key": "GREENFIELD CUP",
+      "value": "グリーンフィールド杯"
+    },
+    {
+      "key": "RACE RESULT  /  GREENFIELD CUP",
+      "value": "レース結果　/　グリーンフィールド杯"
+    },
+    {
+      "key": "VICTORY",
+      "value": "勝利"
+    },
+    {
+      "key": "RACE COMPLETE",
+      "value": "レース完走"
+    },
+    {
+      "key": "TIME",
+      "value": "タイム"
+    },
+    {
+      "key": "RANK POINTS",
+      "value": "ランクポイント"
+    },
+    {
+      "key": "Your first race is complete.",
+      "value": "初めてのレース、おつかれさま。"
+    },
+    {
+      "key": "A new race is waiting.",
+      "value": "次のレースが待っています。"
+    },
+    {
+      "key": "MEET YOUR PARTNER",
+      "value": "相棒に会いにいく"
+    },
+    {
+      "key": "CONTINUE  >>",
+      "value": "つづける　>>"
+    },
+    {
+      "key": "DAILY MISSIONS",
+      "value": "デイリーミッション"
+    },
+    {
+      "key": "Complete a race today to receive your training reward.",
+      "value": "今日レースに出走して、育成報酬を受け取ろう。"
+    },
+    {
+      "key": "NAME REQUIRED",
+      "value": "名前を入力してください"
+    },
+    {
+      "key": "Use 2 to 12 characters.",
+      "value": "2〜12文字で入力してください。"
+    },
+    {
+      "key": "SELECT & RACE",
+      "value": "出走馬を選んでレースへ"
+    },
+    {
+      "key": "LOCAL PRESENTATION PREVIEW",
+      "value": "ローカル演出プレビュー"
+    },
+    {
+      "key": "200 m",
+      "value": "残り 200 m"
+    },
+    {
+      "key": "420 m",
+      "value": "残り 420 m"
+    },
+    {
+      "key": "PERFECT TIMING",
+      "value": "完璧なタイミング"
+    },
+    {
+      "key": "SPUR!",
+      "value": "仕掛ける！"
+    },
+    {
+      "key": "SPUR WINDOW",
+      "value": "仕掛けの好機"
+    },
+    {
+      "key": "HOLD YOUR LINE",
+      "value": "進路を保て"
+    },
+    {
+      "key": "12 / 12",
+      "value": "12位 / 12位"
+    },
+    {
+      "key": "FREE  ◎  1,200",
+      "value": "無償コイン ◎ 1,200"
+    },
+    {
+      "key": "PAID  ◈  240",
+      "value": "有償コイン ◈ 240"
+    },
+    {
+      "key": "Wallet balance",
+      "value": "所持コイン"
+    },
+    {
+      "key": "WARDROBE",
+      "value": "衣装"
+    },
+    {
+      "key": "COURSE",
+      "value": "競馬場"
+    },
+    {
+      "key": "SEASON PASS",
+      "value": "シーズンパス"
+    },
+    {
+      "key": "SHOP",
+      "value": "ショップ"
+    },
+    {
+      "key": "CARE / FEED",
+      "value": "お世話・餌"
+    },
+    {
+      "key": "CONDITIONS",
+      "value": "レース条件"
+    },
+    {
+      "key": "JOCKEY WARDROBE  /  APPEARANCE ONLY",
+      "value": "ジョッキー衣装 / 見た目アイテム"
+    },
+    {
+      "key": "No stat changes in ranked races.",
+      "value": "ランク戦の能力は変わりません。"
+    },
+    {
+      "key": "EQUIPPED",
+      "value": "装備中"
+    },
+    {
+      "key": "CRIMSON SILK",
+      "value": "紅の勝負服"
+    },
+    {
+      "key": "CYAN STRIDE",
+      "value": "蒼の疾走"
+    },
+    {
+      "key": "VIOLET STAR",
+      "value": "紫の星"
+    },
+    {
+      "key": "EQUIPPED  /  CRIMSON SILK",
+      "value": "装備中 / 紅の勝負服"
+    },
+    {
+      "key": "EQUIPPED  /  CYAN STRIDE",
+      "value": "装備中 / 蒼の疾走"
+    },
+    {
+      "key": "EQUIPPED  /  VIOLET STAR",
+      "value": "装備中 / 紫の星"
+    },
+    {
+      "key": "EQUIPPED  ·  N",
+      "value": "装備中・ノーマル"
+    },
+    {
+      "key": "OWNED  ·  N",
+      "value": "所持・ノーマル"
+    },
+    {
+      "key": "EQUIP",
+      "value": "装備する"
+    },
+    {
+      "key": "HORSE TACK  /  TACK DOES NOT ALTER ATTRIBUTES",
+      "value": "馬具 / 能力への影響なし"
+    },
+    {
+      "key": "BROWSE COSMETICS",
+      "value": "見た目アイテムを見る"
+    },
+    {
+      "key": "RACECOURSE LOOKS  /  COSMETIC",
+      "value": "競馬場の景観 / 見た目アイテム"
+    },
+    {
+      "key": "Course skins change the scene only. Ranked rules stay the same for everyone.",
+      "value": "競馬場スキンは景観だけを変更します。ランク戦の条件は全員共通です。"
+    },
+    {
+      "key": "GREENFIELD TURF",
+      "value": "グリーンフィールド芝"
+    },
+    {
+      "key": "SPRING MEADOW",
+      "value": "春の牧草地"
+    },
+    {
+      "key": "AUTUMN GOLD",
+      "value": "秋の黄金色"
+    },
+    {
+      "key": "N  ·  OWNED",
+      "value": "N・所持済み"
+    },
+    {
+      "key": "SR  ·  PREVIEW",
+      "value": "SR・プレビュー"
+    },
+    {
+      "key": "SSR  ·  PREVIEW",
+      "value": "SSR・プレビュー"
+    },
+    {
+      "key": "Standard course environment.",
+      "value": "標準の競馬場です。"
+    },
+    {
+      "key": "Visual environment preview. No gameplay advantage.",
+      "value": "景観プレビューです。ゲーム上の有利さはありません。"
+    },
+    {
+      "key": "EQUIP STANDARD",
+      "value": "標準を装備"
+    },
+    {
+      "key": "PREVIEW",
+      "value": "プレビュー"
+    },
+    {
+      "key": "USE LOOK",
+      "value": "この景観を使う"
+    },
+    {
+      "key": "VIEW IN SHOP",
+      "value": "ショップを見る"
+    },
+    {
+      "key": "Preview changes are temporary until a theme is owned and equipped.",
+      "value": "景観の変更は、所持アイテムを装備するまでプレビューです。"
+    },
+    {
+      "key": "COURSE THEME SHOP",
+      "value": "競馬場スキンのショップ"
+    },
+    {
+      "key": "RACE CONDITIONS  /  PRIVATE ROOM PRESET",
+      "value": "レース条件 / プライベートルーム設定"
+    },
+    {
+      "key": "Ranked races use official shared conditions. These settings are for private-room design.",
+      "value": "ランク戦は全員共通の公式条件です。この設定はプライベートルーム用です。"
+    },
+    {
+      "key": "SUNNY",
+      "value": "晴れ"
+    },
+    {
+      "key": "CLOUDY",
+      "value": "曇り"
+    },
+    {
+      "key": "RAIN",
+      "value": "雨"
+    },
+    {
+      "key": "MORNING FOG",
+      "value": "朝霧"
+    },
+    {
+      "key": "SELECTED",
+      "value": "選択中"
+    },
+    {
+      "key": "GROUND",
+      "value": "馬場"
+    },
+    {
+      "key": "FIRM",
+      "value": "硬め"
+    },
+    {
+      "key": "GOOD",
+      "value": "良"
+    },
+    {
+      "key": "SOFT",
+      "value": "稍重"
+    },
+    {
+      "key": "HEAVY",
+      "value": "重"
+    },
+    {
+      "key": "TEMPERATURE",
+      "value": "気温"
+    },
+    {
+      "key": "WIND",
+      "value": "風"
+    },
+    {
+      "key": "14 °C",
+      "value": "14 ℃"
+    },
+    {
+      "key": "18 °C",
+      "value": "18 ℃"
+    },
+    {
+      "key": "22 °C",
+      "value": "22 ℃"
+    },
+    {
+      "key": "26 °C",
+      "value": "26 ℃"
+    },
+    {
+      "key": "0 km/h",
+      "value": "0 km/h"
+    },
+    {
+      "key": "5 km/h",
+      "value": "5 km/h"
+    },
+    {
+      "key": "10 km/h",
+      "value": "10 km/h"
+    },
+    {
+      "key": "15 km/h",
+      "value": "15 km/h"
+    },
+    {
+      "key": "Weather, ground, temperature and wind are saved as a room preset. They grant no paid advantage.",
+      "value": "天候・馬場・気温・風をルーム設定として保存します。課金による有利さはありません。"
+    },
+    {
+      "key": "WEATHER EFFECTS",
+      "value": "天候エフェクト"
+    },
+    {
+      "key": "STABLE CARE  /  DAILY ROUTINE",
+      "value": "厩舎のお世話 / 毎日のルーティン"
+    },
+    {
+      "key": "Choose a care focus freely. Ranked stats are normalized for fair competition.",
+      "value": "好みのお世話を選べます。ランク戦の能力は公平性のため調整されます。"
+    },
+    {
+      "key": "GRAIN & APPLE",
+      "value": "穀物とりんご"
+    },
+    {
+      "key": "HAY & CARROT",
+      "value": "干し草とにんじん"
+    },
+    {
+      "key": "FRESH WATER",
+      "value": "新鮮な水"
+    },
+    {
+      "key": "N  ·  COMMON",
+      "value": "N・ノーマル"
+    },
+    {
+      "key": "R  ·  SELECT",
+      "value": "R・セレクト"
+    },
+    {
+      "key": "SR  ·  REFINED",
+      "value": "SR・リファイン"
+    },
+    {
+      "key": "Balanced condition",
+      "value": "体調を整える"
+    },
+    {
+      "key": "Endurance routine",
+      "value": "持久力のケア"
+    },
+    {
+      "key": "Calm handling",
+      "value": "落ち着いた手入れ"
+    },
+    {
+      "key": "TODAY'S CARE SET",
+      "value": "今日のお世話に設定"
+    },
+    {
+      "key": "CHOOSE CARE",
+      "value": "お世話を選ぶ"
+    },
+    {
+      "key": "SSR STABLE BOWL  /  DECOR ONLY  /  NO FEED BONUS",
+      "value": "SSR 厩舎ボウル / 飾り専用 / 餌効果なし"
+    },
+    {
+      "key": "VIEW DECOR",
+      "value": "厩舎の飾りを見る"
+    },
+    {
+      "key": "MUCHI STORE  /  DIRECT, CLEAR PRICES",
+      "value": "ムチ一閃ショップ / 明瞭な直接販売"
+    },
+    {
+      "key": "FREE  ◎  1,200     PAID  ◈  240",
+      "value": "無償 ◎ 1,200　有償 ◈ 240"
+    },
+    {
+      "key": "COINS",
+      "value": "コイン"
+    },
+    {
+      "key": "COSMETICS",
+      "value": "見た目アイテム"
+    },
+    {
+      "key": "COURSE THEMES",
+      "value": "競馬場スキン"
+    },
+    {
+      "key": "Store checkout is not connected in this build. No purchase can be completed here.",
+      "value": "このビルドではストア決済に接続していません。購入は完了しません。"
+    },
+    {
+      "key": "FIRST TOP-UP  /  2× BONUS",
+      "value": "各パック初回購入で2倍"
+    },
+    {
+      "key": "VIEW",
+      "value": "確認"
+    },
+    {
+      "key": "PAID COINS",
+      "value": "有償コイン"
+    },
+    {
+      "key": "100 PAID COINS",
+      "value": "有償コイン 100枚"
+    },
+    {
+      "key": "310 PAID COINS",
+      "value": "有償コイン 310枚"
+    },
+    {
+      "key": "530 PAID COINS",
+      "value": "有償コイン 530枚"
+    },
+    {
+      "key": "1,020 PAID COINS",
+      "value": "有償コイン 1,020枚"
+    },
+    {
+      "key": "1,660 PAID COINS",
+      "value": "有償コイン 1,660枚"
+    },
+    {
+      "key": "2,680 PAID COINS",
+      "value": "有償コイン 2,680枚"
+    },
+    {
+      "key": "3,600 PAID COINS",
+      "value": "有償コイン 3,600枚"
+    },
+    {
+      "key": "7,400 PAID COINS",
+      "value": "有償コイン 7,400枚"
+    },
+    {
+      "key": "Paid and free coins are shown separately. Bonus is limited to one first purchase per pack.",
+      "value": "有償・無償コインは分けて表示します。初回2倍ボーナスは各パック1回です。"
+    },
+    {
+      "key": "No random draw. The item and rarity are visible before purchase.",
+      "value": "ランダム抽選はありません。購入前にアイテムとレアリティを確認できます。"
+    },
+    {
+      "key": "CRIMSON SILK JACKET",
+      "value": "紅の勝負服"
+    },
+    {
+      "key": "SSR  ·  COSMETIC",
+      "value": "SSR・見た目アイテム"
+    },
+    {
+      "key": "BRASS-FIT BRIDLE",
+      "value": "真鍮飾りの頭絡"
+    },
+    {
+      "key": "SR  ·  COSMETIC",
+      "value": "SR・見た目アイテム"
+    },
+    {
+      "key": "STAR SADDLECLOTH",
+      "value": "星刺繍の鞍下布"
+    },
+    {
+      "key": "R  ·  COSMETIC",
+      "value": "R・見た目アイテム"
+    },
+    {
+      "key": "STABLE NAMEPLATE",
+      "value": "厩舎のネームプレート"
+    },
+    {
+      "key": "SSR  ·  DECOR ONLY",
+      "value": "SSR・飾り専用"
+    },
+    {
+      "key": "Racewear  /  no ranked stat bonus",
+      "value": "勝負服 / ランク能力への影響なし"
+    },
+    {
+      "key": "Horse tack  /  no ranked stat bonus",
+      "value": "馬具 / ランク能力への影響なし"
+    },
+    {
+      "key": "Stable decor  /  no ranked stat bonus",
+      "value": "厩舎の飾り / ランク能力への影響なし"
+    },
+    {
+      "key": "¥160",
+      "value": "160円"
+    },
+    {
+      "key": "¥480",
+      "value": "480円"
+    },
+    {
+      "key": "¥800",
+      "value": "800円"
+    },
+    {
+      "key": "¥1,500",
+      "value": "1,500円"
+    },
+    {
+      "key": "¥2,400",
+      "value": "2,400円"
+    },
+    {
+      "key": "¥3,800",
+      "value": "3,800円"
+    },
+    {
+      "key": "¥5,000",
+      "value": "5,000円"
+    },
+    {
+      "key": "¥10,000",
+      "value": "10,000円"
+    },
+    {
+      "key": "¥480 (proposed)",
+      "value": "480円（価格案）"
+    },
+    {
+      "key": "¥320 (proposed)",
+      "value": "320円（価格案）"
+    },
+    {
+      "key": "¥240 (proposed)",
+      "value": "240円（価格案）"
+    },
+    {
+      "key": "¥680 (proposed)",
+      "value": "680円（価格案）"
+    },
+    {
+      "key": "REVIEW",
+      "value": "内容を確認"
+    },
+    {
+      "key": "STAR STABLE BOWL",
+      "value": "星柄の厩舎ボウル"
+    },
+    {
+      "key": "SR  ·  COURSE SKIN",
+      "value": "SR・競馬場スキン"
+    },
+    {
+      "key": "SSR  ·  COURSE SKIN",
+      "value": "SSR・競馬場スキン"
+    },
+    {
+      "key": "SSR  ·  LIGHTING AND WEATHER EFFECTS ONLY",
+      "value": "SSR・照明と天候の演出のみ"
+    },
+    {
+      "key": "Visual add-on for private rooms. Ranked weather is fixed by the event.",
+      "value": "プライベートルーム用の景観追加。ランク戦の天候はイベント固定です。"
+    },
+    {
+      "key": "TWILIGHT RAIN ATMOSPHERE",
+      "value": "夕暮れの雨エフェクト"
+    },
+    {
+      "key": "no gameplay change",
+      "value": "ゲーム内容への影響なし"
+    },
+    {
+      "key": "TURF SERIES  /  SEASON 01",
+      "value": "芝シリーズ / シーズン01"
+    },
+    {
+      "key": "VIOLET STAR SILKS",
+      "value": "紫の星の勝負服"
+    },
+    {
+      "key": "Immediate reward with Premium Pass.",
+      "value": "プレミアムパス購入時にすぐ獲得。"
+    },
+    {
+      "key": "FREE + PREMIUM REWARD TRACKS",
+      "value": "無料・プレミアム報酬ライン"
+    },
+    {
+      "key": "Earn tiers by racing. No stamina gate.",
+      "value": "レースで報酬を獲得。スタミナ制限なし。"
+    },
+    {
+      "key": "TIER  1",
+      "value": "ティア 1"
+    },
+    {
+      "key": "TIER  2",
+      "value": "ティア 2"
+    },
+    {
+      "key": "TIER  3",
+      "value": "ティア 3"
+    },
+    {
+      "key": "TIER  4",
+      "value": "ティア 4"
+    },
+    {
+      "key": "TIER  5",
+      "value": "ティア 5"
+    },
+    {
+      "key": "100 COINS",
+      "value": "コイン 100枚"
+    },
+    {
+      "key": "200 COINS",
+      "value": "コイン 200枚"
+    },
+    {
+      "key": "300 COINS",
+      "value": "コイン 300枚"
+    },
+    {
+      "key": "R CARE KIT",
+      "value": "R お手入れセット"
+    },
+    {
+      "key": "SADDLE TAG",
+      "value": "鞍のタグ"
+    },
+    {
+      "key": "SILK SET",
+      "value": "勝負服セット"
+    },
+    {
+      "key": "SR TICKET",
+      "value": "SRチケット"
+    },
+    {
+      "key": "STABLE DECOR",
+      "value": "厩舎の飾り"
+    },
+    {
+      "key": "SSR TACK",
+      "value": "SSR馬具"
+    },
+    {
+      "key": "FREE",
+      "value": "無料"
+    },
+    {
+      "key": "PREMIUM",
+      "value": "プレミアム"
+    },
+    {
+      "key": "¥1,000 / 30 days  ·  renews through platform settings",
+      "value": "30日間 1,000円・更新はプラットフォーム設定から"
+    },
+    {
+      "key": "No charge until platform billing and age checks are configured.",
+      "value": "プラットフォーム決済と年齢確認が整うまで請求しません。"
+    },
+    {
+      "key": "REVIEW PREMIUM PASS",
+      "value": "プレミアムパスを確認"
+    },
+    {
+      "key": "OPEN STORE",
+      "value": "ショップへ"
+    },
+    {
+      "key": "PURCHASE REVIEW  /  AGE AND BILLING CHECK",
+      "value": "購入確認 / 年齢・決済確認"
+    },
+    {
+      "key": "Selected item",
+      "value": "選択アイテム"
+    },
+    {
+      "key": "COIN PACK",
+      "value": "コインパック"
+    },
+    {
+      "key": "COSMETIC",
+      "value": "見た目アイテム"
+    },
+    {
+      "key": "Select the age range to design the age-check step.",
+      "value": "年齢確認画面の設計用に年齢区分を選択してください。"
+    },
+    {
+      "key": "UNDER 16",
+      "value": "16歳未満"
+    },
+    {
+      "key": "16–17",
+      "value": "16〜17歳"
+    },
+    {
+      "key": "18+",
+      "value": "18歳以上"
+    },
+    {
+      "key": "Age-based monthly limits and guardian consent rules must be supplied by the service.",
+      "value": "年齢別の月間上限と保護者同意のルールは、運営側で設定する必要があります。"
+    },
+    {
+      "key": "CHECKOUT DISABLED  /  PLATFORM BILLING NOT CONNECTED",
+      "value": "決済停止中 / プラットフォーム未接続"
+    },
+    {
+      "key": "Displayed prices for cosmetics are proposals. No charge is made in this prototype.",
+      "value": "見た目アイテムの価格は案です。このプロトタイプで請求は発生しません。"
+    },
+    {
+      "key": "BACK TO STORE",
+      "value": "ショップに戻る"
+    },
+    {
+      "key": "CLOSE",
+      "value": "閉じる"
+    },
+    {
+      "key": "Course atmosphere effects",
+      "value": "競馬場の天候演出"
+    },
+    {
+      "key": "Twilight rain atmosphere",
+      "value": "夕暮れの雨エフェクト"
+    },
+    {
+      "key": "Spring Meadow",
+      "value": "春の牧草地"
+    },
+    {
+      "key": "Autumn Gold",
+      "value": "秋の黄金色"
+    },
+    {
+      "key": "Win together on the final straight.",
+      "value": "最後の直線を、相棒と。"
+    },
+    {
+      "key": "ROOKIE II  /  SEASON 01",
+      "value": "ルーキー II / シーズン 01"
+    },
+    {
+      "key": "HOME   ·   ABILITY-CAPPED RANKED RACE",
+      "value": "ホーム ・ 能力上限ありのランク戦"
+    },
+    {
+      "key": "Your first 10-pull is free.\nAt least one SR horse is included.",
+      "value": "初回の10連は無料です。\nSR以上の馬が1頭以上登場します。"
+    },
+    {
+      "key": "FREE PREVIEW  /  NO CURRENCY USED",
+      "value": "無料プレビュー / 通貨は消費されません"
+    },
+    {
+      "key": "Paid scout: 100 coins / 1 pull\n10-pull: 1 SR+ guaranteed\nExchange at 100 pulls.",
+      "value": "有償スカウトは1回コイン100枚\n10連でSR以上1頭確定\n100回で対象馬と交換"
+    },
+    {
+      "key": "PAID SCOUT PAUSED  /  RATE TABLE NOT SET",
+      "value": "有償スカウト停止中 / 提供割合未設定"
+    },
+    {
+      "key": "We will enable draws after official rates are configured.",
+      "value": "正式な提供割合を設定後にスカウトを開始します。"
+    },
+    {
+      "key": "VIEW COIN SHOP",
+      "value": "コインショップを見る"
+    },
+    {
+      "key": "BACK TO HOME",
+      "value": "ホームに戻る"
+    },
+    {
+      "key": "¥1,000 / 30 days",
+      "value": "30日間 1,000円"
+    },
+    {
+      "key": "TURF SERIES PREMIUM PASS",
+      "value": "芝シリーズ プレミアムパス"
+    },
+    {
+      "key": "PARTNER WARDROBE  /  3D RACE MODELS",
+      "value": "相棒の着せ替え / 3Dレースモデル"
+    },
+    {
+      "key": "Five thoroughbred coats and five racing silk sets. Appearance only in ranked races.",
+      "value": "5種類のサラブレッドの毛色と5種類の勝負服。ランク戦の能力には影響しません。"
+    },
+    {
+      "key": "KOHAKU  /  BAY · CRIMSON",
+      "value": "コハク / 鹿毛・紅"
+    },
+    {
+      "key": "AKANE  /  CHESTNUT · AZURE",
+      "value": "アカネ / 栗毛・蒼"
+    },
+    {
+      "key": "SHIRANAMI  /  DAPPLE · VIOLET",
+      "value": "シラナミ / 芦毛・紫"
+    },
+    {
+      "key": "YORU  /  BLACK · EMERALD",
+      "value": "ヨル / 青毛・翠"
+    },
+    {
+      "key": "KINAKO  /  PALOMINO · GOLD",
+      "value": "キナコ / 月毛・金"
+    },
+    {
+      "key": "FULL 3D HORSE + JOCKEY PAIR",
+      "value": "馬と騎手の3Dモデル"
+    },
+    {
+      "key": "Original coat, tack, racing silks and rider details.",
+      "value": "毛色、鞍具、勝負服、騎手まで一組で表示します。"
+    },
+    {
+      "key": "KOHAKU · CRIMSON LAUREL",
+      "value": "コハク・紅の月桂樹"
+    },
+    {
+      "key": "AKANE · AZURE CHEVRON",
+      "value": "アカネ・蒼のシェブロン"
+    },
+    {
+      "key": "SHIRANAMI · VIOLET STAR",
+      "value": "シラナミ・紫の星"
+    },
+    {
+      "key": "YORU · EMERALD CHECK",
+      "value": "ヨル・翡翠チェック"
+    },
+    {
+      "key": "KINAKO · MIDNIGHT GOLD",
+      "value": "キナコ・真夜中の金"
+    },
+    {
+      "key": "EQUIP PARTNER",
+      "value": "相棒にする"
+    },
+    {
+      "key": "HORSE COAT  /  RACING SILKS  /  SADDLE  /  BRIDLE  ·  COSMETIC ONLY",
+      "value": "毛色 / 勝負服 / 鞍 / 頭絡 ・ 見た目のみ"
+    },
+    {
+      "key": "START",
+      "value": "スタート"
+    },
+    {
+      "key": "GO!",
+      "value": "出た！"
+    },
+    {
+      "key": "START!",
+      "value": "スタート！"
+    },
+    {
+      "key": "HOLD THE REIN",
+      "value": "手綱で抑えろ"
+    },
+    {
+      "key": "FINISH",
+      "value": "ゴール"
+    },
+    {
+      "key": "GET READY",
+      "value": "まもなく発走"
+    },
+    {
+      "key": "CONNECTING…",
+      "value": "接続中…"
+    },
+    {
+      "key": "RECONNECTING…",
+      "value": "再接続中…"
+    },
+    {
+      "key": "WAITING FOR THE RESULT…",
+      "value": "結果を待っています…"
+    },
+    {
+      "key": "VERIFYING THE RESULT…",
+      "value": "結果を検証中…"
+    },
+    {
+      "key": "CONNECTION LOST",
+      "value": "接続が切れました"
+    },
+    {
+      "key": "STAMINA  ·  KAKARI",
+      "value": "残り脚　・　かかっている"
+    },
+    {
+      "key": "STAMINA  ·  REIN",
+      "value": "残り脚　・　手綱"
+    },
+    {
+      "key": "OFFLINE  /  LOCAL DATA",
+      "value": "オフライン　/　端末のデータ"
+    },
+    {
+      "key": "RANKED  /  MATCHING",
+      "value": "ランク戦　/　マッチング"
+    },
+    {
+      "key": "FINDING RIDERS…",
+      "value": "対戦相手を探しています…"
+    },
+    {
+      "key": "Riders of similar rating are grouped.\nCPU riders fill the gates after about 15 seconds.",
+      "value": "近いレートの騎手と組みます。\n約15秒で空き枠はCPUが埋めます。"
+    },
+    {
+      "key": "CANCEL",
+      "value": "キャンセル"
+    },
+    {
+      "key": "MATCHING FAILED",
+      "value": "マッチングできませんでした"
+    },
+    {
+      "key": "NAME NOT ACCEPTED",
+      "value": "その名前は使えません"
+    },
+    {
+      "key": "SCOUT FAILED",
+      "value": "スカウトできませんでした"
+    },
+    {
+      "key": "PRACTICE RACE  /  OFFLINE",
+      "value": "練習レース　/　オフライン"
+    },
+    {
+      "key": "RANKED MATCH",
+      "value": "ランク戦"
+    },
+    {
+      "key": "RANKED  /  ONLINE MATCH",
+      "value": "ランク戦　/　オンライン対戦"
+    },
+    {
+      "key": "PRACTICE  /  OFFLINE",
+      "value": "練習　/　オフライン"
+    },
+    {
+      "key": "CONFIRMED BY THE SERVER",
+      "value": "サーバーで確定"
+    },
+    {
+      "key": "RACE VOID  /  NO REWARDS",
+      "value": "レース無効　/　報酬なし"
+    },
+    {
+      "key": "PRACTICE  /  NO RANK POINTS",
+      "value": "練習　/　ランクポイントなし"
+    },
+    {
+      "key": "RACE RESULT  /  RANKED",
+      "value": "レース結果　/　ランク戦"
+    },
+    {
+      "key": "SEASON PT",
+      "value": "シーズンpt"
+    },
+    {
+      "key": "MODE",
+      "value": "モード"
+    },
+    {
+      "key": "OFFLINE",
+      "value": "オフライン"
+    },
+    {
+      "key": "CHECKING WITH SERVER…",
+      "value": "サーバーに確認中…"
+    },
+    {
+      "key": "STABLE  /  YOUR PARTNER",
+      "value": "厩舎　/　あなたの相棒"
+    },
+    {
+      "key": "Sample balance (offline)",
+      "value": "サンプル残高（オフライン）"
+    }
+  ]
+}

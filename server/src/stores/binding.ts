@@ -26,6 +26,9 @@ export async function googleAccountId(playerId: string): Promise<string> {
 }
 
 /** Global "which player owns this store transaction / subscription" index (REQ-WAL-004 across players). */
+/** Tombstone owner for store keys refunded/revoked before any player claimed them (review r5 #3). */
+export const REVOKED_OWNER = '__revoked__';
+
 export interface StoreTxIndex {
   /** First caller wins; returns the owner after the call. */
   claim(key: string, playerId: string): Promise<string>;

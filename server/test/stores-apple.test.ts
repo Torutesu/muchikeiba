@@ -166,6 +166,17 @@ describe('App Store Server Notifications V2', () => {
     expect((await svc.view('p1')).wallet).toEqual(before.wallet);
   });
 
+  it('REFUND for a purchase the app never reported revokes the receipt; the saved JWS is refused later (review r5 #3)', async () => {
+    const { svc, index } = setup();
+    await svc.setAge('p1', 1990, 1, false);
+    const t = tx({ transactionId: '2000000999', originalTransactionId: '2000000999' });
+    const res = await handle(post(await note('REFUND', t)), {}, ctx(svc, index));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ignored: expect.stringMatching(/revoked/) });
+    await expect(svc.purchase('p1', 'apple', 'coin_1500', await signAppleJws(t, pki))).rejects.toMatchObject({ code: 'RECEIPT_INVALID', message: expect.stringMatching(/refunded or revoked/) });
+    expect((await svc.view('p1')).wallet).toMatchObject({ paid: 0, free: 0 });
+  });
+
   it('DID_RENEW extends the season pass, EXPIRED/REVOKE end it', async () => {
     const { svc, index } = setup();
     await svc.setAge('p1', 1990, 1, false);
@@ -181,7 +192,8 @@ describe('App Store Server Notifications V2', () => {
     expect(ex).toMatchObject({ status: 'expired', passExpiresAt: NOW + 45 * 86400_000 });
     const rev = (await (await handle(post(await note('REVOKE', renewal)), {}, ctx(svc, index))).json()) as { alreadyRefunded: boolean };
     expect(rev.alreadyRefunded).toBe(false);
-    expect((await svc.view('p1')).seasonPass.expiresAt).toBe(NOW);
+    // only the revoked (renewal) period is taken back; the first, still-paid period stays (review r5 #6)
+    expect((await svc.view('p1')).seasonPass.expiresAt).toBe(NOW + 30 * 86400_000);
   });
 
   it('acknowledges TEST, CONSUMPTION_REQUEST and unknown purchases; rejects forged payloads', async () => {
@@ -189,7 +201,7 @@ describe('App Store Server Notifications V2', () => {
     const c = ctx(svc, index);
     expect(await (await handle(post(await note('TEST', null)), {}, c)).json()).toMatchObject({ ok: true, ignored: 'TEST' });
     expect(await (await handle(post(await note('CONSUMPTION_REQUEST', tx())), {}, c)).json()).toMatchObject({ ok: true });
-    expect(await (await handle(post(await note('REFUND', tx({ transactionId: '999' }))), {}, c)).json()).toMatchObject({ ok: true, ignored: expect.stringMatching(/unknown purchase/) });
+    expect(await (await handle(post(await note('REFUND', tx({ transactionId: '999' }))), {}, c)).json()).toMatchObject({ ok: true, ignored: expect.stringMatching(/unreported purchase: receipt revoked/) });
     const other = await makeApplePki();
     const forged = { signedPayload: await signAppleJws({ notificationType: 'REFUND', notificationUUID: 'x', data: { bundleId: BUNDLE } }, other) };
     expect((await handle(post(forged), {}, c)).status).toBe(401);

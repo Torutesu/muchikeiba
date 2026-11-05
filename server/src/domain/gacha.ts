@@ -1,9 +1,11 @@
 import { AppError, assert } from './errors.js';
+import { templateAppearance, type Appearance } from './visuals.js';
 import { PPM_TOTAL, RARITY_ORDER, type BannerDef, type CollectionMissionDef, type GachaMaster, type HorseTemplate, type Master, type PoolEntry, type Rarity } from './master.js';
 import type { PlayerState } from './player.js';
 import { randInt, type Rng } from './rng.js';
 import { spend } from './wallet.js';
 import { createHorseFromTemplate } from './horses.js';
+import { hasItemDebt } from './items.js';
 
 const rank = (r: Rarity) => RARITY_ORDER.indexOf(r);
 
@@ -32,13 +34,32 @@ export function bannerProblems(b: BannerDef, m: Pick<Master, 'templateById'>, gm
   if (!gm.pityGroups[b.pityGroup]) p.push(`${b.id}: unknown pity group ${b.pityGroup}`);
   const g = gm.pityGroups[b.pityGroup];
   if (g?.endAtMs !== undefined && !gm.pityGroups[g.convertTo ?? 'standard']) p.push(`${b.pityGroup}: convertTo group ${g.convertTo ?? 'standard'} does not exist`);
-  if (g?.endAtMs !== undefined && b.endAtMs !== undefined && b.endAtMs > g.endAtMs) p.push(`${b.id}: banner outlives its pity group`);
+  // A closing pity group needs every banner on it to close no later; a permanent banner would keep
+  // disclosing a pity that settlePityGroups makes unreachable (review r5 #8).
+  if (g?.endAtMs !== undefined && (b.endAtMs === undefined || b.endAtMs > g.endAtMs)) p.push(`${b.id}: banner outlives its pity group`);
   for (const t of b.pityTargets) if (!b.pool.some((e) => e.templateId === t)) p.push(`${b.id}: pity target ${t} not in pool`);
+  return p;
+}
+
+/** Closing pity groups must convert along an acyclic chain that ends in a group that never closes. */
+export function pityGroupProblems(gm: Pick<GachaMaster, 'pityGroups'>): string[] {
+  const p: string[] = [];
+  for (const start of Object.keys(gm.pityGroups)) {
+    const seen = new Set<string>();
+    let cur: string | undefined = start;
+    while (cur !== undefined && gm.pityGroups[cur]?.endAtMs !== undefined) {
+      if (seen.has(cur)) { p.push(`pity group ${start}: convertTo chain has a cycle`); break; }
+      seen.add(cur);
+      cur = gm.pityGroups[cur]!.convertTo ?? 'standard';
+      if (!gm.pityGroups[cur]) break; // reported by bannerProblems
+    }
+  }
   return p;
 }
 
 export function validateGacha(m: Master): void {
   const problems = m.gacha.banners.flatMap((b) => bannerProblems(b, m, m.gacha));
+  problems.push(...pityGroupProblems(m.gacha));
   // every banner can be paid with paid coins, so nothing in a pool counts as freely obtainable
   problems.push(...compGachaProblems(m.progression.collectionMissions, m.gacha.banners, new Set()));
   if (problems.length) throw new AppError('CONFIG_INVALID', problems.join('; '));
@@ -95,7 +116,8 @@ export function drawFromPool(pool: PoolEntry[], rng: Rng): string {
   throw new Error('pool does not sum to PPM_TOTAL');
 }
 
-export interface PullResult { templateId: string; rarity: Rarity; horseId: string | null; duplicate: boolean; material: number; guaranteed: boolean }
+/** appearance: the new horse's look, or the template's look for a duplicate (REQ-ASSET-006). */
+export interface PullResult { templateId: string; rarity: Rarity; horseId: string | null; duplicate: boolean; material: number; guaranteed: boolean; appearance: Appearance | null }
 
 export function findBanner(m: Master, id: string): BannerDef {
   const b = m.gacha.banners.find((x) => x.id === id);
@@ -108,10 +130,10 @@ function grantPull(m: Master, s: PlayerState, tpl: HorseTemplate, now: number, g
   if (owned) {
     const material = m.gacha.duplicateMaterial[tpl.rarity];
     s.materials.awakening += material;
-    return { templateId: tpl.id, rarity: tpl.rarity, horseId: null, duplicate: true, material, guaranteed };
+    return { templateId: tpl.id, rarity: tpl.rarity, horseId: null, duplicate: true, material, guaranteed, appearance: templateAppearance(tpl.id) };
   }
   const h = createHorseFromTemplate(s, tpl, now);
-  return { templateId: tpl.id, rarity: tpl.rarity, horseId: h.id, duplicate: false, material: 0, guaranteed };
+  return { templateId: tpl.id, rarity: tpl.rarity, horseId: h.id, duplicate: false, material: 0, guaranteed, appearance: h.appearance ?? null };
 }
 
 /** The pull itself (no payment). 10-pull: slot 10 uses the guarantee table if slots 1-9 had no SR+. */
@@ -154,6 +176,8 @@ export function exchangePity(m: Master, s: PlayerState, bannerId: string, templa
   const b = findBanner(m, bannerId);
   // exchange only through an open banner (bug review #13); closed groups were converted by settlePityGroups
   if ((b.startAtMs !== undefined && now < b.startAtMs) || (b.endAtMs !== undefined && now >= b.endAtMs)) throw new AppError('BANNER_CLOSED');
+  // pity earned by pulls that were later refunded must not be cashed in while that debt is open (review r5)
+  if (s.wallet.debt > 0 || hasItemDebt(s)) throw new AppError('UNSETTLED_DEBT');
   if (!b.pityTargets.includes(templateId)) throw new AppError('BAD_REQUEST', 'not an exchange target');
   const cost = m.gacha.pityGroups[b.pityGroup]!.cost;
   const have = s.pity[b.pityGroup] ?? 0;

@@ -44,6 +44,8 @@ namespace Muchi.Net
 
         public RaceSim Sim { get; private set; }
         public RaceConfig Config { get; private set; }
+        /// <summary>Raw `start.visuals` (runner looks + track scene; not hashed). Null on servers without the visual contract.</summary>
+        public JsonNode StartVisuals { get; private set; }
         /// <summary>Our slot, -1 until the room sends "start".</summary>
         public int Slot { get; private set; } = -1;
         /// <summary>Server epoch ms of tick 0.</summary>
@@ -73,6 +75,9 @@ namespace Muchi.Net
             o.Set("token", _token);
             o.Set("lastTick", Sim == null ? -1 : Sim.Tick - 1);
             _transport.Send(o.ToString());
+            // The socket may have dropped right after our result went out: send it again so the room does not
+            // wait until maxTicks. The room ignores a second "res" from the same slot.
+            if (_resultSent && Sim != null && Sim.IsFinished && Final == null) SendResult();
         }
 
         /// <summary>Queue a player input for tick ConfirmedTick + inputDelayTicks (REQ-NET-002).</summary>
@@ -105,19 +110,27 @@ namespace Muchi.Net
             try { m = JsonNode.Parse(json); }
             catch (FormatException) { Errors.Add("BAD_JSON"); return; }
             string t = m.TryGet("t", out var tn) && tn.Kind == JsonKind.String ? tn.AsString() : null;
-            switch (t)
+            try
             {
-                case "start": OnStart(m); break;
-                case "b": OnBundle(m); break;
-                case "desync": DesyncTicks.Add(m.Get("tick").AsInt()); break;
-                case "final": OnFinal(m); break;
-                case "pong":
-                    long c = m.Get("c").AsLong(), s = m.Get("s").AsLong();
-                    LastRttMs = localNowMs - c;
-                    ServerClockOffsetMs = s - (c + LastRttMs / 2);
-                    break;
-                case "err": Errors.Add(m.Get("code").AsString()); break;
-                default: Errors.Add("UNKNOWN_MESSAGE"); break;
+                switch (t)
+                {
+                    case "start": OnStart(m); break;
+                    case "b": OnBundle(m); break;
+                    case "desync": DesyncTicks.Add(m.Get("tick").AsInt()); break;
+                    case "final": OnFinal(m); break;
+                    case "pong":
+                        long c = m.Get("c").AsLong(), s = m.Get("s").AsLong();
+                        LastRttMs = localNowMs - c;
+                        ServerClockOffsetMs = s - (c + LastRttMs / 2);
+                        break;
+                    case "err": Errors.Add(m.Get("code").AsString()); break;
+                    default: Errors.Add("UNKNOWN_MESSAGE"); break;
+                }
+            }
+            catch (Exception e) when (e is FormatException || e is ArgumentException || e is InvalidOperationException || e is OverflowException)
+            {
+                // a malformed known message must never escape into the app's frame loop (RaceSession.Update)
+                Errors.Add("BAD_MESSAGE:" + (t ?? "?"));
             }
         }
 
@@ -125,10 +138,15 @@ namespace Muchi.Net
         {
             if (Sim != null) return; // reconnect: keep our simulation
             Config = ProtocolCodec.ParseConfig(m.Get("config"));
+            StartVisuals = m.TryGet("visuals", out var vis) && vis.Kind == JsonKind.Object ? vis : null;
             Slot = m.Get("you").AsInt();
             StartAtMs = m.Get("startAtMs").AsLong();
             Sim = new RaceSim(Config);
             _scratch = new byte[Config.Entrants.Count];
+            _history = new HorseState[Math.Max(4, RenderHistoryCapacity)][];
+            for (int i = 0; i < _history.Length; i++) _history[i] = new HorseState[Config.Entrants.Count];
+            _historyCount = 0;
+            Record(); // state at tick-count 0 (before the first step)
             RaceStarted?.Invoke(this);
         }
 
@@ -162,6 +180,7 @@ namespace Muchi.Net
                 if (_inputs.TryGetValue(tick, out var arr)) { cmds = arr; _inputs.Remove(tick); }
                 else { Array.Clear(_scratch, 0, _scratch.Length); cmds = _scratch; }
                 Sim.Step(cmds);
+                Record();
                 if (Sim.ChecksumDueForLastTick)
                 {
                     SentChecksums[Sim.LastChecksumTick] = Sim.LastChecksum;
@@ -176,6 +195,13 @@ namespace Muchi.Net
             if (Sim.IsFinished && !_resultSent)
             {
                 _resultSent = true;
+                SendResult();
+            }
+        }
+
+        private void SendResult()
+        {
+            {
                 var o = JsonNode.Obj();
                 o.Set("t", "res");
                 o.Set("h", Sim.Result.Hash);
@@ -193,6 +219,12 @@ namespace Muchi.Net
         private void OnFinal(JsonNode m)
         {
             string st = m.Get("status").AsString();
+            if (st != "confirmed" && st != "verifying" && st != "void")
+            {
+                // an unknown status (newer server?) must not end the race as Void
+                Errors.Add("BAD_FINAL_STATUS");
+                return;
+            }
             var f = new FinalMessage
             {
                 Status = st == "confirmed" ? FinalStatus.Confirmed : st == "verifying" ? FinalStatus.Verifying : FinalStatus.Void,
@@ -208,6 +240,8 @@ namespace Muchi.Net
         }
 
         /// <summary>
+        /// Legacy single-tick interpolation; prefer <see cref="TryGetRenderState"/>, which renders across the
+        /// buffered tick history and stays smooth when bundles carry several ticks.
         /// For rendering: fractional tick position to interpolate at, given the local clock.
         /// Returns a value in [Sim.Tick-1, Sim.Tick] (clamped so we never extrapolate past confirmed state).
         /// alphaPermille is the interpolation factor between GetPreviousHorse and GetHorse.
@@ -222,6 +256,63 @@ namespace Muchi.Net
             if (behind <= 0) return 0;
             if (behind >= msPerTick) return 1000;
             return (int)(behind * 1000 / msPerTick);
+        }
+
+        // ------------------------------------------------------------------ rendering (REQ-NET-004)
+
+        private HorseState[][] _history;   // ring buffer: snapshot after k steps lives at k % length
+        private int _historyCount;         // number of snapshots recorded (= Sim.Tick + 1 while running)
+
+        /// <summary>How many past tick states are kept for smooth rendering (set before "start").</summary>
+        public int RenderHistoryCapacity { get; set; } = 64;
+
+        /// <summary>
+        /// Extra render delay on top of one bundle interval (ms). Rendering this far behind the room's clock means
+        /// the confirmed ticks are almost always already here, so horses move every frame instead of in bursts.
+        /// </summary>
+        public int RenderExtraDelayMs { get; set; } = 50;
+
+        private void Record()
+        {
+            var slot = _history[_historyCount % _history.Length];
+            for (int i = 0; i < slot.Length; i++) slot[i] = Sim.GetHorse(i);
+            _historyCount++;
+        }
+
+        /// <summary>
+        /// Render position in thousandths of a tick (tick-count units: 1000 = state after the first step), from the
+        /// local clock: server time − (bundle interval + <see cref="RenderExtraDelayMs"/>), clamped to the states we
+        /// actually hold (never extrapolates). Returns -1 before "start".
+        /// </summary>
+        public long RenderTickPermille(long localNowMs)
+        {
+            if (Sim == null || Config == null || _historyCount == 0) return -1;
+            long msPerTick = Math.Max(1, 1000 / Config.Net.TickHz);
+            long serverNow = localNowMs + ServerClockOffsetMs;
+            long delayMs = (long)Config.Net.BundleIntervalTicks * msPerTick + RenderExtraDelayMs;
+            long f = (serverNow - StartAtMs - delayMs) * 1000 / msPerTick;
+            long newest = (long)(_historyCount - 1) * 1000;
+            long oldest = (long)Math.Max(0, _historyCount - _history.Length) * 1000;
+            if (f > newest) f = newest;
+            if (f < oldest) f = oldest;
+            return f;
+        }
+
+        /// <summary>
+        /// The two tick states to draw between and the blend factor (‰) for <paramref name="slot"/> at the local
+        /// time. Draw <c>from + (to − from) × alpha / 1000</c>. False before "start".
+        /// </summary>
+        public bool TryGetRenderState(int slot, long localNowMs, out HorseState from, out HorseState to, out int alphaPermille)
+        {
+            from = default; to = default; alphaPermille = 0;
+            long f = RenderTickPermille(localNowMs);
+            if (f < 0 || slot < 0 || slot >= Config.Entrants.Count) return false;
+            int a = (int)(f / 1000);
+            int b = Math.Min(a + 1, _historyCount - 1);
+            alphaPermille = b == a ? 0 : (int)(f % 1000);
+            from = _history[a % _history.Length][slot];
+            to = _history[b % _history.Length][slot];
+            return true;
         }
 
         public override string ToString() => "LockstepClient(slot=" + Slot.ToString(CultureInfo.InvariantCulture) + ", confirmed=" + ConfirmedTick.ToString(CultureInfo.InvariantCulture) + ")";

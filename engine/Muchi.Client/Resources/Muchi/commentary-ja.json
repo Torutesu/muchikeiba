@@ -7,6 +7,7 @@
   "leaderStableTicks": 30,
   "positionCallIntervalTicks": 240,
   "pendingExpiryTicks": 60,
+  "mustSayExpiryTicks": 200,
   "phrases": {
     "gate_open": {
       "priority": 100, "mustSay": true,
@@ -90,6 +91,18 @@
       "priority": 105, "mustSay": true,
       "variants": [
         { "id": "result_1", "text": "一着{name}、二着{name2}、三着{name3}。" }
+      ]
+    },
+    "result_two": {
+      "priority": 105, "mustSay": true,
+      "variants": [
+        { "id": "result_two_1", "text": "一着{name}、二着{name2}。" }
+      ]
+    },
+    "result_solo": {
+      "priority": 105, "mustSay": true,
+      "variants": [
+        { "id": "result_solo_1", "text": "{name}、見事に走り切りました！" }
       ]
     },
     "ground_turf_firm": {

@@ -5,6 +5,7 @@ import { buildEventBoard, EVENT_SETTLE_GRACE_MS, eventBoardKey, type EventEntry 
 import { newRolloverState, rolloverStep, type RolloverState } from '../domain/leaderboard.js';
 import type { EventDef } from '../domain/master.js';
 import { unwrap, wrap, type Envelope } from './rpc.js';
+import { DirtyTracker } from '../domain/dirty.js';
 
 type Row = { player_id: string; points: number; races: number; wins: number; display_name: string; updated_at: number };
 
@@ -31,6 +32,7 @@ export class EventDO extends DurableObject<Env> {
   private kvPut(k: string, v: unknown) {
     this.sql.exec('INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v', k, JSON.stringify(v));
   }
+  private readonly dirty = new DirtyTracker({ get: <T>(k: string) => this.kvGet<T>(k), put: (k, v) => this.kvPut(k, v) });
   private entries(eventId: string): EventEntry[] {
     return this.sql.exec<Row>('SELECT * FROM entries').toArray().map((r) => ({
       playerId: r.player_id, eventId, points: r.points, races: r.races, wins: r.wins, displayName: r.display_name, updatedAt: r.updated_at,
@@ -52,7 +54,7 @@ export class EventDO extends DurableObject<Env> {
            display_name = excluded.display_name, updated_at = excluded.updated_at WHERE excluded.updated_at >= entries.updated_at`,
         e.playerId, e.points, e.races, e.wins, e.displayName, e.updatedAt,
       );
-      this.kvPut('dirty', true);
+      this.dirty.mark();
       return true;
     });
   }
@@ -60,13 +62,14 @@ export class EventDO extends DurableObject<Env> {
   /** REQ-EVENT-007: publish the board (skipped when nothing changed). */
   async snapshot(eventId: string, now: number, force = false): Promise<Envelope<{ published: boolean }>> {
     return wrap(async () => {
-      if (!force && !this.kvGet<boolean>('dirty')) return { published: false };
+      if (this.dirty.begin(force) === null) return { published: false };
       const topN = (await activeConfig(this.env)).master.progression.leaderboard.topN;
+      const gen = this.dirty.begin(true)!; // read right before the rows; later upserts keep it dirty
       const b = buildEventBoard(eventId, this.entries(eventId), now, topN);
       await this.env.SNAPSHOTS.put(eventBoardKey(eventId), JSON.stringify(b.file), { httpMetadata: { contentType: 'application/json', cacheControl: 'public, max-age=60' } });
       this.sql.exec('DELETE FROM ranks');
       for (const [pid, r] of b.ranks) this.sql.exec('INSERT INTO ranks (player_id, rank, total) VALUES (?, ?, ?)', pid, r.rank, r.total);
-      this.kvPut('dirty', false);
+      this.dirty.end(gen);
       this.kvPut('generatedAt', now);
       return { published: true };
     });

@@ -3,7 +3,7 @@ import type { Master } from '../domain/master.js';
 import { FakeStoreVerifier, type StoreVerifier, type VerifiedReceipt } from '../domain/purchase.js';
 import type { Env } from '../env.js';
 import { AppleStoreVerifier, parseAppleNotification, type AppleConfig, type StoreEvent } from '../stores/apple.js';
-import type { StoreTxIndex } from '../stores/binding.js';
+import { REVOKED_OWNER, type StoreTxIndex } from '../stores/binding.js';
 import { GooglePlayApi, GoogleServiceAuth, GoogleStoreVerifier, parseGoogleRtdn, type RtdnConfig, type ServiceAccount } from '../stores/google.js';
 import type { StoreNotification } from './app.js';
 
@@ -39,7 +39,8 @@ export function storeSettingsFromEnv(env: Env, master: Master): StoreSettings {
   const subscriptionProductIds = new Set(master.products.filter((p) => p.kind === 'season_pass').map((p) => p.id));
   const priceYen = (id: string) => master.products.find((p) => p.id === id)?.priceYen ?? 0;
   const apple: AppleConfig | null = env.APPLE_BUNDLE_ID
-    ? { bundleId: env.APPLE_BUNDLE_ID, acceptSandbox: env.APPLE_ACCEPT_SANDBOX !== '0', subscriptionProductIds, priceYen }
+    // Sandbox is opt-in (review r5 #7). Accepted sandbox purchases only ever credit free coins.
+    ? { bundleId: env.APPLE_BUNDLE_ID, acceptSandbox: env.APPLE_ACCEPT_SANDBOX === '1', subscriptionProductIds, priceYen }
     : null;
   let google: StoreSettings['google'] = null;
   if (env.GOOGLE_PACKAGE_NAME && env.GOOGLE_SERVICE_ACCOUNT_JSON) {
@@ -71,7 +72,7 @@ export function makeVerifiers(st: StoreSettings): Partial<Record<'apple' | 'goog
  * Store server notifications (REQ-PUR-006): verify, interpret, and find the owning player through the
  * global transaction index. Unknown purchases are acknowledged and ignored (the app flow grants them).
  */
-export async function parseStoreNotification(platform: string, req: Request, st: StoreSettings, index: Pick<StoreTxIndex, 'lookup'>): Promise<StoreNotification | null> {
+export async function parseStoreNotification(platform: string, req: Request, st: StoreSettings, index: Pick<StoreTxIndex, 'lookup' | 'claim'>): Promise<StoreNotification | null> {
   if (platform === 'fake' && st.devMode) {
     const b = (await req.json()) as { playerId?: string; transactionId?: string };
     return b.playerId && b.transactionId ? { kind: 'refund', playerId: b.playerId, transactionId: b.transactionId } : null;
@@ -95,14 +96,23 @@ export async function parseStoreNotification(platform: string, req: Request, st:
   return resolveStoreEvent(platform, ev, index);
 }
 
-export async function resolveStoreEvent(platform: 'apple' | 'google', ev: StoreEvent, index: Pick<StoreTxIndex, 'lookup'>): Promise<StoreNotification> {
+export async function resolveStoreEvent(platform: 'apple' | 'google', ev: StoreEvent, index: Pick<StoreTxIndex, 'lookup' | 'claim'>): Promise<StoreNotification> {
   if (ev.kind === 'ignored') return ev;
   let playerId: string | null = null;
   for (const k of ev.lookupKeys) {
     playerId = await index.lookup(k);
     if (playerId) break;
   }
-  if (!playerId) return { kind: 'ignored', reason: 'unknown purchase (not yet reported by the app)' };
+  if (!playerId) {
+    if (ev.kind === 'refund') {
+      // Refunded before the app reported it: claim the keys for a tombstone owner so the saved (still
+      // validly signed) receipt can never be credited later (review r5 #3).
+      for (const k of ev.lookupKeys) await index.claim(k, REVOKED_OWNER);
+      return { kind: 'ignored', reason: 'refund for an unreported purchase: receipt revoked' };
+    }
+    return { kind: 'ignored', reason: 'unknown purchase (not yet reported by the app)' };
+  }
+  if (playerId === REVOKED_OWNER) return { kind: 'ignored', reason: 'purchase already revoked' };
   switch (ev.kind) {
     case 'refund': return { kind: 'refund', playerId, transactionId: ev.transactionId };
     case 'renewal': return { kind: 'renewal', playerId, platform, receipt: ev.receipt };

@@ -94,6 +94,8 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | PUT | `/v1/player/profile` | 要 | | `{displayName}` 1〜12文字、NGリスト |
 | GET | `/v1/titles` | 要 | | 称号一覧（解放済みか）と装備中 |
 | PUT | `/v1/player/title` | 要 | | `{titleId \| null}` 解放済みのみ |
+| PUT | `/v1/player/silks` | 要 | | `{pattern, colors[2〜3], cap}` 勝負服。解放アイテムが無い模様は `NOT_ELIGIBLE`、不明な色・同色のみ・禁止の組み合わせは `BAD_REQUEST`（`contracts/assets.md` §3.2） |
+| GET | `/v1/visuals` | なし | | 見た目のカタログ（パレット・毛色・模様・帽子・枠色・競馬場と回り・テンプレート馬の見た目・各アイコンのキー）。`version` ごとにキャッシュ（`contracts/assets.md`） |
 | GET | `/v1/stats` | 要 | | 戦績（脚質別・コース別ベスト・スタート・ムチ） |
 | GET | `/v1/leaderboards/:seasonId/:board` | なし | | `seasonId`=`YYYY-MM`\|`current`、`board`=`class-C`等\|`rating`\|`index`\|`ta-<trackId>`（タイムアタック）。R2の集計ファイル（5分ごと更新） |
 | POST | `/v1/time-attack/start` | 要 | | `{trackId, horseId}` → `{sessionId, token, config, expiresAt, attemptsLeft}`。1日の回数を消費（`TA_LIMIT_REACHED`） |
@@ -130,7 +132,7 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | DELETE | `/v1/friends/requests/:toId` | 要 | | 自分の申請を取り消し |
 | DELETE | `/v1/friends/:friendId` | 要 | | フレンド解除（双方） |
 | POST | `/v1/friend-rooms/:passphrase/invite` | 要 | | `{friendId}` 部屋のメンバーがフレンドを招待 |
-| GET | `/v1/config` | なし | | 有効な設定の版 `{versionId, hash, rulesetVersion, activatedAt}`。アプリはhashごとにマスターデータをキャッシュ（REQ-OPS-007） |
+| GET | `/v1/config` | なし | | 有効な設定の版 `{versionId, hash, rulesetVersion, activatedAt, visualsVersion}`。アプリはhashごとにマスターデータ、visualsVersion ごとに `/v1/visuals` をキャッシュ（REQ-OPS-007） |
 | PUT | `/v1/push/devices` | 要 | | `{token, platform: ios\|android}` FCMトークンを登録（1人最大5台。古い順に外れる） |
 | POST | `/v1/push/devices/unregister` | 要 | | `{token}` ログアウト・通知オフ時に外す |
 | GET | `/v1/push/preferences` | 要 | | 種類別の受信設定・静かな時間帯・1日の上限・登録台数・購読するFCMトピック |
@@ -140,6 +142,8 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | GET | `/v1/admin/replays/:raceId` | 管理 | | リプレイログ |
 
 レース中のメッセージは `contracts/protocol.md` §4。BAN中のプレイヤーはランク戦・フレンド部屋・購入前チェックで `403 BANNED`。
+
+見た目（REQ-ASSET-*）：所持馬・ガチャ結果は `appearance`、プロフィール（自分・フレンド）は `silks`、支部は `emblem`（`PUT /v1/teams/me` の `{emblem: {shape, symbol, colors[2]}}` で変更、支部長・副長）、称号一覧は `icon`、イベントは `banner`、レースの `start` は `visuals` を含む。キーの規則と一覧は `contracts/assets.md` と `contracts/assets.manifest.json`（`npm run gen:assets` で再生成）。
 
 ## 管理API（`src/http/admin.ts`、REQ-OPS-*）
 
@@ -210,7 +214,7 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | 本人との紐付け | 購入時に `appAccountToken` = `/v1/shop/store-account` の `appleAppAccountToken` | `setObfuscatedAccountId` = `googleObfuscatedAccountId` |
 | 付与後 | — | コインは consume、パスは acknowledge（3日以内に必要。失敗してもアプリが再送すれば再試行） |
 | サーバー通知 | V2 の `signedPayload` を同じ方法で検証。REFUND/REVOKE→返金、SUBSCRIBED/DID_RENEW→期間延長、EXPIRED/GRACE_PERIOD_EXPIRED→終了、DID_FAIL_TO_RENEW→猶予/再試行、CONSUMPTION_REQUEST・TEST→受領のみ | Pub/Sub の OIDC トークン（発行者・audience・サービスアカウントのメール）を検証。voided→返金、RENEWED等→期間延長、EXPIRED/REVOKED/ON_HOLD/PAUSED→終了、IN_GRACE_PERIOD→猶予 |
-| テスト購入 | Sandbox/Xcode は既定で受け付け（App Review が Sandbox を使うため）、金額0円として記録。`APPLE_ACCEPT_SANDBOX=0` で拒否 | ライセンステストは既定で受け付け、0円。`GOOGLE_ACCEPT_TEST=0` で拒否 |
+| テスト購入 | Sandbox/Xcode は `APPLE_ACCEPT_SANDBOX=1` のときだけ受け付け（未設定は拒否）。金額0円で記録し、コインは**無償コイン**として付与（有償ロット・負債精算・初回ボーナスなし） | ライセンステストは既定で受け付け、0円。`GOOGLE_ACCEPT_TEST=0` で拒否 |
 
 - 取引IDは `apple:<transactionId>` / `google:<orderId>` で保存し、プラットフォーム間で衝突しない。
 - **1つのレシートは1人にしか付与されない**：全体の取引インデックス（AccountingDO の `store_tx`）に「取引ID・サブスクIDの持ち主」を先着で記録。サーバー通知もここで持ち主を探す。見つからない通知は 200 で受領して無視（アプリ側の購入処理が後で付与する）。
@@ -222,7 +226,7 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | 名前 | 種別 | 内容 |
 |---|---|---|
 | `APPLE_BUNDLE_ID` | var | iOS の bundle id。未設定なら Apple は全て拒否 |
-| `APPLE_ACCEPT_SANDBOX` | var | `0` で Sandbox を拒否（既定は受け付け） |
+| `APPLE_ACCEPT_SANDBOX` | var | `1` で Sandbox を受け付け（無償コインとして付与）。未設定・`0` は拒否。本番は審査中のみ `1` |
 | `GOOGLE_PACKAGE_NAME` | var | Android のパッケージ名 |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | secret | Play Console で注文の閲覧・管理権限を付けたサービスアカウントの鍵JSON |
 | `GOOGLE_ACCEPT_TEST` | var | `0` でライセンステスト購入を拒否 |

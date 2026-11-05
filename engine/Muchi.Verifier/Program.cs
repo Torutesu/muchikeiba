@@ -41,6 +41,69 @@ if (args.Length >= 2 && args[0] == "balance")
     Console.Write(rep.Describe(20, rs.GateOpenTick));
     return 0;
 }
+if (args.Length >= 2 && args[0] == "harness")
+{
+    // harness <ruleset.json> [scale] → every race-side balance target (docs/spec/balance-targets.md)
+    var hNode = Muchi.Net.JsonNode.Parse(File.ReadAllText(args[1]));
+    int scale = 1;
+    foreach (var kv in args.Skip(2))
+    {
+        if (!kv.Contains('=')) { scale = int.Parse(kv); continue; }
+        var parts = kv.Split('=');
+        hNode.Set(parts[0], long.Parse(parts[1]));
+    }
+    var rs = Muchi.Net.ProtocolCodec.ParseRuleset(hNode);
+    var sw = System.Diagnostics.Stopwatch.StartNew();
+    var rep = BalanceHarness.Run(rs, scale);
+    Console.Write(rep.Markdown());
+    Console.WriteLine("elapsed " + sw.ElapsedMilliseconds + "ms, all pass: " + rep.AllPass);
+    return rep.AllPass ? 0 : 1;
+}
+if (args.Length >= 3 && args[0] == "ta-thresholds")
+{
+    // ta-thresholds <ruleset.json> <server/master/tracks.json> [statCap] → gold/silver/bronze per track (ms)
+    var rs = SampleRaces.LoadRuleset(args[1]);
+    int cap = args.Length >= 4 ? int.Parse(args[3]) : 3200;
+    foreach (var (track, gold, silver, bronze) in BalanceHarness.TimeAttackThresholds(rs, BalanceHarness.LoadServerTracks(args[2]), cap, 80))
+        Console.WriteLine(track + " gold " + gold + " silver " + silver + " bronze " + bronze);
+    return 0;
+}
+if (args.Length >= 2 && args[0] == "rider-sweep")
+{
+    var rs = SampleRaces.LoadRuleset(args[1]);
+    int n = args.Length >= 3 ? int.Parse(args[2]) : 144;
+    var variants = new List<(string, Func<IRider>)>
+    {
+        ("skilled", () => new SkilledRider()),
+        ("skilled rein-50", () => new SkilledRider { ReinMargin = -50 }),
+        ("skilled rein-200", () => new SkilledRider { ReinMargin = -200 }),
+        ("casual", () => new CasualRider()),
+        ("casual+start", () => new CasualRider { PerfectStart = true }),
+        ("casual+rail", () => new CasualRider { DriftToRail = true }),
+        ("casual+whip", () => new CasualRider { GoodWhips = true }),
+        ("casual+start+rail", () => new CasualRider { PerfectStart = true, DriftToRail = true }),
+        ("casual+all", () => new CasualRider { PerfectStart = true, DriftToRail = true, GoodWhips = true }),
+    };
+    foreach (var (name, f) in variants)
+    {
+        var r = BalanceHarness.RiderVsCpu(rs, f, n, 777);
+        Console.WriteLine(name.PadRight(22) + " gained " + r.placesGained.ToString("F2") + " win " + (r.riderWin * 100).ToString("F1") + "% vs cpu " + (r.cpuWin * 100).ToString("F1") + "%");
+    }
+    return 0;
+}
+if (args.Length >= 2 && args[0] == "gate-debug")
+{
+    var node = Muchi.Net.JsonNode.Parse(File.ReadAllText(args[1]));
+    foreach (var kv in args.Skip(2)) { var parts = kv.Split('='); node.Set(parts[0], long.Parse(parts[1])); }
+    var rs = Muchi.Net.ProtocolCodec.ParseRuleset(node);
+    var straight = new Muchi.Engine.TrackSpec { Id = "straight", Surface = Muchi.Engine.Surface.Turf, DistanceM = 2000, Segments = { new Muchi.Engine.TrackSegment(Muchi.Engine.SegmentKind.Straight, 2000) } };
+    foreach (var (name, t) in new[] { ("turf2000", SampleRaces.Turf2000()), ("straight2000", straight) })
+    {
+        var g = BalanceHarness.GateGroupWinRates(rs, 600, 31, t);
+        Console.WriteLine(name + " inner " + (g[0] * 100).ToString("F1") + "% mid " + (g[1] * 100).ToString("F1") + "% outer " + (g[2] * 100).ToString("F1") + "%");
+    }
+    return 0;
+}
 if (args.Length >= 1 && args[0] == "serve")
 {
     string authSecret = VerifierAuth.FromEnvironment(Environment.GetEnvironmentVariable); // fails closed when required

@@ -1,0 +1,13 @@
+<Project>
+  <!--
+    Muchi.Engine / Muchi.Net / Muchi.Client are also Unity packages (unity/Packages/manifest.json → file:../../engine/...).
+    Unity compiles every .cs (and imports every .dll) inside a package folder, so dotnet build outputs must not
+    live there: redirect bin/obj of these three projects to engine/.build/ (dot-folders are ignored by Unity).
+  -->
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'Muchi.Engine' Or '$(MSBuildProjectName)' == 'Muchi.Net' Or '$(MSBuildProjectName)' == 'Muchi.Client'">
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory).build/$(MSBuildProjectName)/obj/</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(MSBuildThisFileDirectory).build/$(MSBuildProjectName)/bin/</BaseOutputPath>
+    <!-- A checkout that was built before this redirect still has bin/obj inside the project folder: never compile those. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);bin/**;obj/**</DefaultItemExcludes>
+  </PropertyGroup>
+</Project>

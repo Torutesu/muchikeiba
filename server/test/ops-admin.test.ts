@@ -65,7 +65,7 @@ describe('admin authentication and roles (REQ-OPS-010/011)', () => {
     const r = await call('viewer', 'POST', '/v1/admin/players/p1/grants', { grant: { freeCoins: 10 }, opKey: 'comp-0001', reason: 'outage' });
     expect(r.status).toBe(403);
     expect(r.body.error.code).toBe('FORBIDDEN');
-    const st = await call('operator', 'POST', '/v1/admin/config/versions', { bundle: { ruleset: { ...DEFAULT_RULESET, rulesetVersion: '1.1.0', maxWhips: 5 } }, note: 'n', reason: 'balance patch' });
+    const st = await call('operator', 'POST', '/v1/admin/config/versions', { bundle: { ruleset: { ...DEFAULT_RULESET, rulesetVersion: '2.1.0', maxWhips: 5 } }, note: 'n', reason: 'balance patch' });
     expect(st.status).toBe(200);
     const act = await call('operator', 'POST', '/v1/admin/config/activations', { versionId: st.body.version.id, reason: 'ship it' });
     expect(act.status).toBe(403);
@@ -180,7 +180,7 @@ describe('config over the admin API and to clients (REQ-OPS-007)', () => {
     expect(bad.body.error.message).toMatch(/rulesetVersion was not changed/);
     const dry = await call('viewer', 'POST', '/v1/admin/config/validate', { bundle: { ruleset: { maxWhips: 9 } } });
     expect(dry.body.problems.length).toBe(1);
-    const st = await call('operator', 'POST', '/v1/admin/config/versions', { bundle: { ruleset: { ...DEFAULT_RULESET, rulesetVersion: '1.1.0', maxWhips: 5 } }, reason: 'whip patch' });
+    const st = await call('operator', 'POST', '/v1/admin/config/versions', { bundle: { ruleset: { ...DEFAULT_RULESET, rulesetVersion: '2.1.0', maxWhips: 5 } }, reason: 'whip patch' });
     await call('admin', 'POST', '/v1/admin/config/activations', { versionId: st.body.version.id, at: NOW + 60_000, reason: 'maintenance window' });
     const list = await call('viewer', 'GET', '/v1/admin/config');
     expect(list.body.active.versionId).toBe('base');

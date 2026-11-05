@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Runs the Unity app's game layer (Assets/Muchi/Game → Muchi.Game) outside Unity against the real engine
+    packages. Offline checks always run; the "online BASEURL" arguments also play the screens' server flow and a ranked
+    race against a running server (scripts/integration.sh does this against wrangler dev + the C# verifier).
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Muchi.Game/Muchi.Game.csproj" />
+  </ItemGroup>
+</Project>

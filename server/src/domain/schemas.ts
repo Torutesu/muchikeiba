@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { StartVisuals } from './visuals.js';
 import { rulesetKeyProblems } from './ruleset.js';
 
 const U64_MAX = (1n << 64n) - 1n;
@@ -103,7 +104,7 @@ export const inputTripleSchema = z.tuple([tickN, int.min(0).max(11), int.min(1).
 export type InputTriple = z.infer<typeof inputTripleSchema>;
 
 export type ServerMessage =
-  | { t: 'start'; you: number; startAtMs: number; config: RaceStartConfig }
+  | { t: 'start'; you: number; startAtMs: number; config: RaceStartConfig; visuals?: StartVisuals }
   | { t: 'b'; from: number; to: number; in: InputTriple[] }
   | { t: 'desync'; tick: number }
   | { t: 'final'; status: 'confirmed' | 'verifying' | 'void'; order: number[]; h: string }

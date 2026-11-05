@@ -47,9 +47,9 @@ export class EventsService {
       const r = await this.match.enqueue(eventId, uid, { ...entry, eventEntryId: e.entryId });
       return { ...(r as object), eventId, entryId: e.entryId };
     } catch (err) {
-      // re-queueing for the same event succeeds idempotently in the pool, so any refusal here means the
-      // player is NOT queued for this event: the held fee goes back
-      await this.players.cancel(uid, eventId, e.entryId);
+      // Refund only a fee THIS call charged. An existing entry may be backing a live event race (the pool
+      // answers ALREADY_IN_RACE); refunding it would let every race be run for free (review r5 #2).
+      if (!e.existing) await this.players.cancel(uid, eventId, e.entryId);
       throw err;
     }
   }

@@ -137,7 +137,7 @@ describe('settle: prune, retry with backoff, give up (REQ-PUSH-005)', () => {
   it('expires stale items (TTL)', () => {
     const s = player();
     enqueuePush(m, s, 'friend_request', { name: 'A' }, NOON);
-    expect(takeDuePushes(m, s, NOON + m.push.templates.friend_request!.ttlSec * 1000 + 1)).toEqual({ due: [], expired: 1 });
+    expect(takeDuePushes(m, s, NOON + m.push.templates.friend_request!.ttlSec * 1000 + 1)).toEqual({ due: [], expired: 1, undeliverable: 0 });
   });
 });
 

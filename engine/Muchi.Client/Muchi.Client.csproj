@@ -11,6 +11,6 @@
     <ProjectReference Include="..\Muchi.Net\Muchi.Net.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="Data\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Resources\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

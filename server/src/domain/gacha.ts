@@ -1,4 +1,5 @@
 import { AppError, assert } from './errors.js';
+import { templateAppearance, type Appearance } from './visuals.js';
 import { PPM_TOTAL, RARITY_ORDER, type BannerDef, type CollectionMissionDef, type GachaMaster, type HorseTemplate, type Master, type PoolEntry, type Rarity } from './master.js';
 import type { PlayerState } from './player.js';
 import { randInt, type Rng } from './rng.js';
@@ -115,7 +116,8 @@ export function drawFromPool(pool: PoolEntry[], rng: Rng): string {
   throw new Error('pool does not sum to PPM_TOTAL');
 }
 
-export interface PullResult { templateId: string; rarity: Rarity; horseId: string | null; duplicate: boolean; material: number; guaranteed: boolean }
+/** appearance: the new horse's look, or the template's look for a duplicate (REQ-ASSET-006). */
+export interface PullResult { templateId: string; rarity: Rarity; horseId: string | null; duplicate: boolean; material: number; guaranteed: boolean; appearance: Appearance | null }
 
 export function findBanner(m: Master, id: string): BannerDef {
   const b = m.gacha.banners.find((x) => x.id === id);
@@ -128,10 +130,10 @@ function grantPull(m: Master, s: PlayerState, tpl: HorseTemplate, now: number, g
   if (owned) {
     const material = m.gacha.duplicateMaterial[tpl.rarity];
     s.materials.awakening += material;
-    return { templateId: tpl.id, rarity: tpl.rarity, horseId: null, duplicate: true, material, guaranteed };
+    return { templateId: tpl.id, rarity: tpl.rarity, horseId: null, duplicate: true, material, guaranteed, appearance: templateAppearance(tpl.id) };
   }
   const h = createHorseFromTemplate(s, tpl, now);
-  return { templateId: tpl.id, rarity: tpl.rarity, horseId: h.id, duplicate: false, material: 0, guaranteed };
+  return { templateId: tpl.id, rarity: tpl.rarity, horseId: h.id, duplicate: false, material: 0, guaranteed, appearance: h.appearance ?? null };
 }
 
 /** The pull itself (no payment). 10-pull: slot 10 uses the guarantee table if slots 1-9 had no SR+. */

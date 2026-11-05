@@ -4,6 +4,7 @@ import type { HorseInstance, PlayerState } from './player.js';
 import type { GoingAptitude } from './schemas.js';
 import { randInt, randRange, type Rng } from './rng.js';
 import { jstDateKey } from './time.js';
+import { appearanceOf, deriveAppearance, inheritAppearance, templateAppearance } from './visuals.js';
 
 export function createHorseFromTemplate(s: PlayerState, t: HorseTemplate, now: number): HorseInstance {
   s.counters.horseSeq += 1;
@@ -13,6 +14,7 @@ export function createHorseFromTemplate(s: PlayerState, t: HorseTemplate, now: n
     bornAt: now, status: 'active', sireId: null, damId: null, sireName: t.sireName, damName: t.damName, named: false,
   };
   if (t.goingAptitude && t.goingAptitude !== 'any') h.goingAptitude = t.goingAptitude;
+  h.appearance = templateAppearance(t.id) ?? deriveAppearance(`${s.id}:${h.id}`); // REQ-ASSET-003
   s.horses.push(h);
   return h;
 }
@@ -229,6 +231,8 @@ export function breed(m: Master, s: PlayerState, sireId: string, damId: string, 
   };
   const apt = rollGoingAptitude(goingAptitudeOdds(sire, dam), rng);
   if (apt !== 'any') foal.goingAptitude = apt;
+  // REQ-ASSET-004: drawn after every other roll so stats/aptitude outcomes are unchanged
+  foal.appearance = inheritAppearance(appearanceOf(sire, s.id), appearanceOf(dam, s.id), rng);
   s.horses.push(foal);
   s.breeding.count += 1;
   assert(foal.distMinM <= foal.distMaxM, 'CONFIG_INVALID');

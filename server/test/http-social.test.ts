@@ -49,7 +49,7 @@ describe('HTTP API: profile, titles, stats', () => {
     expect((await call(c, 'PUT', '/v1/player/title', { user: 'u', body: { titleId: 'first_win' } })).body.error.code).toBe('NOT_ELIGIBLE');
     expect((await call(c, 'PUT', '/v1/player/title', { user: 'u', body: { titleId: null } })).body).toEqual({ titleId: null });
     expect((await call(c, 'GET', '/v1/stats', { user: 'u' })).body).toMatchObject({ races: 0, wins: 0 });
-    expect((await call(c, 'GET', '/v1/player', { user: 'u' })).body.profile).toEqual({ displayName: 'ゲートの鬼', titleId: null });
+    expect((await call(c, 'GET', '/v1/player', { user: 'u' })).body.profile).toMatchObject({ displayName: 'ゲートの鬼', titleId: null });
   });
 });
 

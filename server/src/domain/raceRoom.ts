@@ -1,4 +1,5 @@
 import type { Rng } from './rng.js';
+import type { StartVisuals } from './visuals.js';
 import type { ClientMessage, InputTriple, RaceStartConfig, ReplayLog, ServerMessage, VerifierOutput } from './schemas.js';
 
 /** Input bits (contracts/protocol.md §3). */
@@ -14,6 +15,8 @@ export interface RoomOptions {
    */
   resultWaitMs: number;
   rng: Rng;
+  /** REQ-ASSET-006: runner looks + track scene, sent in `start` (not hashed, not in the replay log). */
+  visuals?: StartVisuals;
 }
 export const DEFAULT_ROOM_OPTIONS = { verifySampleRate: 0.05, resultWaitMs: 5000 };
 
@@ -106,7 +109,7 @@ export class RaceRoomCore {
   hello(slot: number, lastTick: number, now: number): Outbound[] {
     const c = this.conns.get(slot);
     if (!c) return [{ to: slot, msg: { t: 'err', code: 'NOT_IN_RACE' } }];
-    const out: Outbound[] = [{ to: slot, msg: { t: 'start', you: slot, startAtMs: this.startAtMs, config: this.config } }];
+    const out: Outbound[] = [{ to: slot, msg: { t: 'start', you: slot, startAtMs: this.startAtMs, config: this.config, ...(this.opts.visuals ? { visuals: this.opts.visuals } : {}) } }];
     this.markAlive(c, slot, now);
     const from = Math.max(0, lastTick + 1);
     if (this.confirmedTick >= from) out.push({ to: slot, msg: this.bundle(from, this.confirmedTick) });
@@ -344,7 +347,7 @@ export class RaceRoomCore {
 
   toJSON(): RoomSnapshot {
     return {
-      config: this.config, startAtMs: this.startAtMs, opts: { verifySampleRate: this.opts.verifySampleRate, resultWaitMs: this.opts.resultWaitMs },
+      config: this.config, startAtMs: this.startAtMs, opts: { verifySampleRate: this.opts.verifySampleRate, resultWaitMs: this.opts.resultWaitMs, ...(this.opts.visuals ? { visuals: this.opts.visuals } : {}) },
       conns: [...this.conns.entries()].map(([k, v]) => [k, { ...v }]),
       pending: [...this.pending.entries()].map(([t, m]) => [t, [...m.entries()]]),
       log: this.log, confirmedTick: this.confirmedTick, lastBundledTick: this.lastBundledTick, phase: this._phase, stoppedAtMs: this.stoppedAtMs, majorityAtMs: this.majorityAtMs,

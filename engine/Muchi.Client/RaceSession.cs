@@ -75,6 +75,11 @@ namespace Muchi.Client
         public LockstepClient Client { get; }
         public RaceSessionState State { get; private set; } = RaceSessionState.Connecting;
         public RaceSim Sim => Client.Sim;
+        /// <summary>
+        /// Runner looks and the track scene (from `start`; derived defaults when the server sent none). Null before start.
+        /// </summary>
+        public RaceVisuals Visuals => _visuals ?? (Client.Config == null ? null : _visuals = RaceVisuals.Parse(Client.StartVisuals) ?? RaceVisuals.Fallback(Client.Config));
+        private RaceVisuals _visuals;
         public int Slot => Client.Slot;
         public FinalMessage Final => Client.Final;
         public int ReconnectCount { get; private set; }

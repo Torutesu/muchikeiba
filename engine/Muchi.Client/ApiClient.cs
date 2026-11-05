@@ -69,6 +69,14 @@ namespace Muchi.Client
         /// Active remote-config version (REQ-OPS-005). Cache master data (banners, odds…) per <see cref="ConfigInfo.Hash"/>
         /// and refetch it when the hash changes. Public, no auth.
         /// </summary>
+        /// <summary>Catalog of looks (palette, coats, silks patterns, venues, gate colours…). Cache by Version (ConfigInfo.VisualsVersion).</summary>
+        public Task<VisualsCatalog> GetVisualsAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/visuals", null, false, null, true, VisualsCatalog.Parse, ct);
+
+        /// <summary>Choose your silks. NOT_ELIGIBLE when the pattern's costume item is not owned; BAD_REQUEST for unknown/duplicate colours or reserved combinations.</summary>
+        public Task<Silks> SetSilksAsync(Silks silks, CancellationToken ct = default)
+            => Call("PUT", "/v1/player/silks", silks.ToJson(), true, null, true, o => Silks.Parse(J.Opt(o, "silks")), ct);
+
         public Task<ConfigInfo> GetConfigAsync(CancellationToken ct = default)
             => Call("GET", "/v1/config", null, false, null, true, ConfigInfo.Parse, ct);
 
@@ -327,10 +335,15 @@ namespace Muchi.Client
 
         /// <summary>Leader/officer: change the announcement and/or the join policy (null = unchanged).</summary>
         public Task<TeamInfo> UpdateTeamAsync(string announcement = null, TeamJoinPolicy? policy = null, CancellationToken ct = default)
+            => UpdateTeamAsync(announcement, policy, null, ct);
+
+        /// <summary>Leader/officer: change the announcement, join policy and/or emblem (null = unchanged).</summary>
+        public Task<TeamInfo> UpdateTeamAsync(string announcement, TeamJoinPolicy? policy, Emblem emblem, CancellationToken ct = default)
         {
             var b = JsonNode.Obj();
             if (announcement != null) b.Set("announcement", announcement);
             if (policy.HasValue) b.Set("joinPolicy", policy.Value == TeamJoinPolicy.Approval ? "approval" : "open");
+            if (emblem != null) b.Set("emblem", emblem.ToJson());
             return Call("PUT", "/v1/teams/me", b, true, null, true, TeamInfo.Parse, ct);
         }
 

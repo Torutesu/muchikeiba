@@ -40,6 +40,22 @@ Codex（見た目）側で実装するのは次の3つのアダプタだけ。�
 | `IAuthTokenProvider` | Firebase Auth SDK | `GetTokenAsync(forceRefresh)` → IDトークン（匿名ログイン可） |
 | `ITransportFactory` | 任意の WebSocket ライブラリ | `Open(url, onOpen, onMessage, onClosed)` → `IConnection`（`Send` / `Close`）。コールバックはどのスレッドから呼んでもよい |
 
+### 0. 見た目とアセット（`AssetKeys` / `RaceVisuals` / `TrackGeometry`、`contracts/assets.md`）
+
+- サーバーは絵を持たず、見た目の記述だけを送る：馬の `Horse.Appearance`、自分の `PlayerView.Silks`、ガチャ結果の `PullResult.Appearance`、
+  支部の `TeamInfo.Emblem`、称号の `TitleInfo.Icon`、イベントの `EventInfo.Banner`、レースの `RaceSession.Visuals`（全馬の見た目・枠番・コースのシーン）。
+- それを `AssetKeys` で Addressables のアドレスに変換する（例：`AssetKeys.HorseKeys(appearance)`、`AssetKeys.SilksPattern(silks.Pattern)`、
+  `AssetKeys.Gate(entrant.Bracket)`、実況は `AssetKeys.VoiceClip(line.ClipKeys[i], horseNameById)`）。
+- 読み込みは必ず `AssetKeys.Resolve(key, exists)` を通す（無ければ `<kind>/default`、それも無ければ null。**落とさない**）。
+- カタログ（パレットの色・選べる模様・枠の色・競馬場の回り）は `ApiClient.GetVisualsAsync()`（`ConfigInfo.VisualsVersion` が変わったら取り直す）。
+  勝負服の変更は `SetSilksAsync`、支部エンブレムは `UpdateTeamAsync(null, null, emblem)`。
+- 馬の3D位置は `TrackGeometry`（**表示専用・浮動小数点**。シミュレーションに戻さない）：
+  `var geo = TrackGeometry.For(session.Client.Config, session.Visuals.Track);`
+  `var pose = geo.Interpolated(sim.GetPreviousHorse(slot), sim.GetHorse(slot), session.Client.InterpolationAlphaPermille(now), config.Ruleset.LaneWidthMm);`
+  → `transform.SetPositionAndRotation(new Vector3(pose.X, pose.Y, pose.Z), Quaternion.Euler(0, pose.YawDegrees, 0))`。
+  ラチやレーン線のメッシュは `geo.Polyline(stepM, lateralM)`、ゴール板は `geo.FinishPose()`。
+- `contracts/assets.manifest.json` を `AssetKeys.ParseManifestKeys` で読み、エディタ拡張で全キーのアセットの有無をビルド前にチェックする。
+
 ### 1. API（`ApiClient`）
 ```csharp
 var api = new ApiClient(new UnityHttp(), new FirebaseTokens(), new ApiClientOptions { BaseUrl = "https://api.example.com" });

@@ -5,6 +5,7 @@ import type { KpiState } from './kpi.js';
 import type { TimeAttackState } from './timeAttack.js';
 import type { PlayerTeamState } from './teams.js';
 import type { PlayerEventState } from './events.js';
+import { appearanceOf, defaultSilks, type Appearance, type Silks } from './visuals.js';
 
 export type Currency = 'paid' | 'free';
 
@@ -24,6 +25,8 @@ export interface HorseInstance {
   sireId: string | null; damId: string | null; sireName: string | null; damName: string | null; named: boolean;
   /** Ground preference (REQ-RACE-035). Absent = any (horses created before it existed). */
   goingAptitude?: GoingAptitude;
+  /** Look (REQ-ASSET-003). Filled by migratePlayer for horses stored before it existed. */
+  appearance?: Appearance;
 }
 
 export interface PurchaseRecord {
@@ -96,7 +99,7 @@ export interface PlayerState {
   supportFlags?: string[];
   /** Store subscriptions (auto-renewing season pass), keyed by original transaction id. Optional for older states. */
   storeSubscriptions?: Record<string, { platform: PurchaseRecord['platform']; status: string; expiresAt: number | null; updatedAt: number }>;
-  profile: { displayName: string; titleId: string | null; lastSeenAt: number; lastPushedAt: number };
+  profile: { displayName: string; titleId: string | null; lastSeenAt: number; lastPushedAt: number; silks?: Silks };
   stats: PlayerStats;
   titles: string[];
   friends: FriendsState;
@@ -140,6 +143,9 @@ export function migratePlayer(s: PlayerState): PlayerState {
   x.friends ??= { ids: [], incoming: [], outgoing: [], invites: [] };
   x.seasonHistory ??= [];
   x.friendRewards ??= { date: '', count: 0 };
+  // REQ-ASSET-003/005: looks for horses and silks stored before the visual contract existed
+  for (const h of x.horses) h.appearance ??= appearanceOf(h, x.id);
+  x.profile.silks ??= defaultSilks(`p:${x.id}`);
   return x;
 }
 
@@ -156,7 +162,7 @@ export function newPlayer(id: string, now: number, seasonId: string): PlayerStat
     rating: { r: 1500, rd: 350, vol: 0.06, rankedRaces: 0 },
     season: { id: seasonId, classId: 'C', points: 0, races: 0 },
     counters: { horseSeq: 0, lotSeq: 0 },
-    profile: { displayName: defaultDisplayName(id), titleId: null, lastSeenAt: now, lastPushedAt: 0 },
+    profile: { displayName: defaultDisplayName(id), titleId: null, lastSeenAt: now, lastPushedAt: 0, silks: defaultSilks(`p:${id}`) },
     stats: newStats(),
     titles: [],
     friends: { ids: [], incoming: [], outgoing: [], invites: [] },
@@ -173,7 +179,7 @@ export function playerView(s: PlayerState) {
     items: s.items, materials: s.materials, pity: s.pity, horses: s.horses,
     ageRegistered: s.age !== null, flags: s.flags, seasonPass: s.seasonPass, loginBonus: s.loginBonus,
     rating: { r: Math.round(s.rating.r), rd: Math.round(s.rating.rd), rankedRaces: s.rating.rankedRaces }, season: s.season,
-    profile: { displayName: s.profile.displayName, titleId: s.profile.titleId }, titles: s.titles, stats: s.stats,
+    profile: { displayName: s.profile.displayName, titleId: s.profile.titleId, silks: s.profile.silks ?? defaultSilks(`p:${s.id}`) }, titles: s.titles, stats: s.stats,
     seasonHistory: s.seasonHistory,
   };
 }

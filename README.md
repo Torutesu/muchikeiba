@@ -12,6 +12,7 @@
 | [engine/](engine/README.md) | C#：レースエンジン（Unityにそのまま入れる）、ロックステップのクライアント、検証サーバー、結合テスト用ボット |
 | [server/](server/README.md) | TypeScript：Cloudflare Workers + Durable Objects（レース部屋・マッチング・財布・ガチャ・配合・購入・認証） |
 | [contracts/](contracts/protocol.md) | C#とTSの共有仕様、レース調整値、言語をまたぐゴールデンファイル |
+| [contracts/assets.md](contracts/assets.md) | Unityのアセットとの取り決め（キーの規則・見た目の記述・コースの3D変換・配信）と、全キー一覧 `assets.manifest.json` |
 | [scripts/integration.sh](scripts/integration.sh) | 結合テスト（C#ボット ⇄ TSサーバー ⇄ C#検証サーバー） |
 
 ## テストの実行

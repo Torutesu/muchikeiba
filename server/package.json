@@ -7,6 +7,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "gen:golden": "tsx scripts/gen-golden.ts",
+    "gen:assets": "tsx scripts/gen-assets.ts",
     "lint:deploy": "tsx scripts/lint-deploy.ts",
     "smoke": "tsx scripts/smoke.ts",
     "dev": "wrangler dev --var DEV_MODE:1 --var TICKET_SECRET:devsecret --var ADMIN_TOKEN:dev-admin",

@@ -24,6 +24,7 @@ function ctx(): AppContext {
     race: { websocket: async () => new Response(null), report: async () => ({}), replay: async () => ({}) },
     friends: makeFriendsService(() => invoker, new MemoryDirectory()),
     leaderboard: { board: async (season, board) => ({ season, board }), myRank: async (p, season) => ({ p, season }) },
+    timeAttack: {} as AppContext['timeAttack'],
     clock: () => Date.UTC(2026, 10, 5, 3),
     paidBalance: async () => ({}),
     adminToken: 'x',

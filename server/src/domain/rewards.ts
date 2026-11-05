@@ -94,7 +94,9 @@ export function friendRewardAllowed(m: Master, s: PlayerState, r: RaceResultForP
 export function applyRaceResult(m: Master, s: PlayerState, r: RaceResultForPlayer, now: number) {
   if (r.void) return { coins: 0, seasonPoints: 0, titles: [] as string[], rewarded: false };
   const rewarded = friendRewardAllowed(m, s, r, now);
-  const coins = rewarded ? m.progression.raceFreeCoinsByPlace[r.mode][r.place - 1] ?? 0 : 0;
+  // time attack runs never come through here (they are settled by src/race/timeAttack.ts)
+  const byPlace = (m.progression.raceFreeCoinsByPlace as Partial<Record<RaceMode, number[]>>)[r.mode];
+  const coins = rewarded ? byPlace?.[r.place - 1] ?? 0 : 0;
   if (coins > 0) grantFree(s, coins, now, `race ${r.mode} place ${r.place}`, r.raceId);
   let seasonPoints = 0;
   if (r.mode === 'ranked') {

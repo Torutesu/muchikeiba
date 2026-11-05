@@ -92,7 +92,12 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | GET | `/v1/titles` | 要 | | 称号一覧（解放済みか）と装備中 |
 | PUT | `/v1/player/title` | 要 | | `{titleId \| null}` 解放済みのみ |
 | GET | `/v1/stats` | 要 | | 戦績（脚質別・コース別ベスト・スタート・ムチ） |
-| GET | `/v1/leaderboards/:seasonId/:board` | なし | | `seasonId`=`YYYY-MM`\|`current`、`board`=`class-C`等\|`rating`\|`index`。R2の集計ファイル（5分ごと更新） |
+| GET | `/v1/leaderboards/:seasonId/:board` | なし | | `seasonId`=`YYYY-MM`\|`current`、`board`=`class-C`等\|`rating`\|`index`\|`ta-<trackId>`（タイムアタック）。R2の集計ファイル（5分ごと更新） |
+| POST | `/v1/time-attack/start` | 要 | | `{trackId, horseId}` → `{sessionId, token, config, expiresAt, attemptsLeft}`。1日の回数を消費（`TA_LIMIT_REACHED`） |
+| POST | `/v1/time-attack/submit` | 要 | | `{sessionId, token, inputs:[[tick,0,cmd]…], resultHash, config?}` → 検証サーバーで再計算して記録。`{finished, timeMs, seasonBest, allTimeBest, milestones, published…}`。`TA_RESULT_MISMATCH`(422) / `TA_SESSION_USED` / `TA_SESSION_EXPIRED` / `TA_CONFIG_MISMATCH`(400) / `VERIFIER_UNAVAILABLE`(503, 同じセッションで再提出可) |
+| GET | `/v1/time-attack/:trackId/me` | 要 | | シーズン／通算ベスト、今日の残り回数、節目報酬、順位（直近集計） |
+| GET | `/v1/time-attack/:trackId/ghosts` | 要 | | `?kind=top\|friends\|me&seasonId=` ゴースト候補（名前・タイム・ダウンロード `path`） |
+| GET | `/v1/time-attack/ghosts/:seasonId/:trackId/:playerId` | 要 | | ゴースト本体 `{meta, log}`（検証済みリプレイログ） |
 | GET | `/v1/leaderboards/me` | 要 | | 今シーズンの自分の順位（直近集計）と現在の成績 |
 | GET | `/v1/friends` | 要 | | フレンド・受信/送信中の申請・招待（公開プロフィール付き） |
 | GET | `/v1/friends/code` | 要 | | 自分のフレンドコード（9桁） |

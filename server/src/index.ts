@@ -18,6 +18,9 @@ import { shardedDirectory } from './do/directory.js';
 import { boardKey, indexKey, type RolloverState } from './domain/leaderboard.js';
 import { runScheduled } from './domain/scheduled.js';
 import { sweepReplays, type ReplayBucket } from './domain/retention.js';
+import { TimeAttackService } from './race/timeAttack.js';
+import { HttpVerifierClient } from './domain/verifier.js';
+import { taBoardName, type GhostFile, type TaBoardFile, type TaEntry } from './domain/timeAttack.js';
 
 const master = loadMaster();
 validateGacha(master); // fail fast on a broken gacha/master definition (REQ-GACHA-003/008)
@@ -70,6 +73,28 @@ export function makeContext(env: Env): AppContext {
       },
       myRank: async (playerId, seasonId) => call(lb(seasonId).rankOf!(playerId)),
     },
+    timeAttack: new TimeAttackService({
+      player,
+      verifier: new HttpVerifierClient(env.VERIFIER_URL),
+      ticketSecret: env.TICKET_SECRET,
+      clock: () => Date.now(),
+      board: {
+        upsert: async (e) => (await call(lb(e.seasonId).upsertTimeAttack!(e))) as boolean,
+        rankOf: async (seasonId, trackId, pid) => (await call(lb(seasonId).taRankOf!(trackId, pid))) as { rank: number; total: number; generatedAt: number | null } | null,
+        entries: async (seasonId, trackId, ids) => (await call(lb(seasonId).taEntriesFor!(seasonId, trackId, ids))) as TaEntry[],
+        snapshot: async (seasonId, trackId) => {
+          const obj = await env.SNAPSHOTS.get(boardKey(seasonId, taBoardName(trackId)));
+          return obj ? ((await obj.json()) as TaBoardFile) : null;
+        },
+      },
+      ghosts: {
+        put: async (key, file) => { await env.REPLAYS.put(key, JSON.stringify(file), { httpMetadata: { contentType: 'application/json' } }); },
+        get: async (key) => {
+          const obj = await env.REPLAYS.get(key);
+          return obj ? ((await obj.json()) as GhostFile) : null;
+        },
+      },
+    }),
     paidBalance: () => (stub(env.ACCOUNTING, 'global') as unknown as { summary(): Promise<unknown> }).summary(),
     adminToken: env.ADMIN_TOKEN,
     parseStoreNotification: (platform, req) => parseStoreNotification(platform, req, storeSettingsFromEnv(env, master), accountingStoreIndex(env)),

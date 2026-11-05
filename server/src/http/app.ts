@@ -8,6 +8,8 @@ import type { PurchaseRecord } from '../domain/player.js';
 import { appleAccountToken, googleAccountId } from '../stores/binding.js';
 import { FriendsService, type Directory, type FriendPlayers } from '../domain/friends.js';
 import { jstMonthKey } from '../domain/time.js';
+import type { TimeAttackService } from '../race/timeAttack.js';
+import { TA_BOARD_RE } from '../domain/timeAttack.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -16,7 +18,8 @@ export type PlayerMethod =
   | 'claimMission' | 'passView' | 'claimPass' | 'applyRace' | 'raceEntry'
   | 'storeRenewal' | 'subscriptionStatus'
   | 'setDisplayName' | 'equipTitle' | 'titles' | 'stats' | 'publicProfile' | 'closeSeason'
-  | 'friendSend' | 'friendReceive' | 'friendAccept' | 'friendAccepted' | 'friendDecline' | 'friendCancel' | 'friendRemove' | 'friendInvite' | 'friendsState';
+  | 'friendSend' | 'friendReceive' | 'friendAccept' | 'friendAccepted' | 'friendDecline' | 'friendCancel' | 'friendRemove' | 'friendInvite' | 'friendsState'
+  | 'taStart' | 'taPrepare' | 'taAbort' | 'taRecord' | 'taView';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -59,6 +62,7 @@ export interface AppContext {
   race: RaceApi;
   friends: FriendsService;
   leaderboard: LeaderboardApi;
+  timeAttack: TimeAttackService;
   clock?: () => number;
   paidBalance(): Promise<unknown>;
   adminToken: string | undefined;
@@ -215,7 +219,7 @@ export const routes: Route[] = [
   { method: 'GET', path: '/v1/leaderboards/me', auth: 'player', handler: async (_r, _p, c, u) => c.leaderboard.myRank(u, jstMonthKey((c.clock ?? Date.now)())) },
   { method: 'GET', path: '/v1/leaderboards/:seasonId/:board', auth: 'none', handler: async (_r, p, c) => {
     const season = p.seasonId === 'current' ? jstMonthKey((c.clock ?? Date.now)()) : p.seasonId!;
-    if (!/^\d{4}-\d{2}$/.test(season) || !/^(class-[A-Z]|rating|index)$/.test(p.board!)) throw new AppError('BAD_REQUEST', 'bad season or board');
+    if (!/^\d{4}-\d{2}$/.test(season) || !(/^(class-[A-Z]|rating|index)$/.test(p.board!) || TA_BOARD_RE.test(p.board!))) throw new AppError('BAD_REQUEST', 'bad season or board');
     return c.leaderboard.board(season, p.board!);
   } },
   // friends (REQ-SOCIAL-*)
@@ -233,6 +237,31 @@ export const routes: Route[] = [
     const b = await body(r, z.object({ friendId: id }));
     if (!(await c.match.friendMember(p.passphrase!, u))) throw new AppError('NOT_ELIGIBLE', 'not a member of this room');
     return c.friends.invite(u, b.friendId, p.passphrase!);
+  } },
+  // time attack & ghosts (REQ-TA-*)
+  { method: 'POST', path: '/v1/time-attack/start', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ trackId: id, horseId: id }));
+    return c.timeAttack.start(u, b.trackId, b.horseId);
+  } },
+  { method: 'POST', path: '/v1/time-attack/submit', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({
+      sessionId: id, token: z.string().min(1).max(2048), resultHash: z.string().regex(/^[0-9a-f]{64}$/),
+      inputs: z.array(z.unknown()).max(4000), config: z.unknown().optional(),
+    }));
+    return c.timeAttack.submit(u, b);
+  } },
+  { method: 'GET', path: '/v1/time-attack/:trackId/me', auth: 'player', handler: async (_r, p, c, u) => c.timeAttack.me(u, p.trackId!) },
+  { method: 'GET', path: '/v1/time-attack/:trackId/ghosts', auth: 'player', handler: async (r, p, c, u) => {
+    const q = new URL(r.url).searchParams;
+    const kind = q.get('kind') ?? 'top';
+    if (kind !== 'top' && kind !== 'friends' && kind !== 'me') throw new AppError('BAD_REQUEST', 'kind must be top|friends|me');
+    const season = q.get('seasonId') ?? undefined;
+    if (season !== undefined && !/^\d{4}-\d{2}$/.test(season)) throw new AppError('BAD_REQUEST', 'bad season');
+    return c.timeAttack.ghosts(u, p.trackId!, kind, season);
+  } },
+  { method: 'GET', path: '/v1/time-attack/ghosts/:seasonId/:trackId/:playerId', auth: 'player', handler: async (_r, p, c) => {
+    if (!/^\d{4}-\d{2}$/.test(p.seasonId!) || !/^[a-z0-9_]{1,48}$/.test(p.trackId!)) throw new AppError('BAD_REQUEST', 'bad season or track');
+    return c.timeAttack.ghost(p.seasonId!, p.trackId!, p.playerId!);
   } },
   // admin
   { method: 'GET', path: '/v1/admin/paid-balance', auth: 'admin', handler: async (_r, _p, c) => c.paidBalance() },

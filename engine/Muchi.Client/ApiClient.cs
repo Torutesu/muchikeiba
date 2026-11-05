@@ -299,6 +299,71 @@ namespace Muchi.Client
             return Call("POST", "/v1/friend-rooms/" + Seg(passphrase) + "/invite", b, true, null, true, o => J.Bool(o, "ok"), ct);
         }
 
+        // ------------------------------------------------------------------ time attack & ghosts (REQ-TA)
+
+        /// <summary>
+        /// Start a time attack: the server issues the config (seed, track, ruleset, normalised horse) and a
+        /// short-lived token. Consumes one of today's attempts, so it is NOT retried automatically.
+        /// </summary>
+        public Task<TimeAttackSession> StartTimeAttackAsync(string trackId, string horseId, CancellationToken ct = default)
+        {
+            var b = JsonNode.Obj();
+            b.Set("trackId", trackId);
+            b.Set("horseId", horseId);
+            return Call("POST", "/v1/time-attack/start", b, true, null, false, TimeAttackSession.Parse, ct);
+        }
+
+        /// <summary>
+        /// Submit a finished run: only the recorded inputs and the result hash are sent; the server re-simulates
+        /// the config it issued. Retried safely (the server returns the stored result for a repeated submit).
+        /// Throws ConflictException TA_RESULT_MISMATCH when the re-simulation differs (tampered/desynced client).
+        /// </summary>
+        public Task<TimeAttackResult> SubmitTimeAttackAsync(TimeAttackSession session, OfflineRace race, CancellationToken ct = default)
+        {
+            if (session == null) throw new ArgumentNullException(nameof(session));
+            if (race == null || !race.IsFinished) throw new InvalidOperationException("the race has not finished");
+            return SubmitTimeAttackAsync(session, race.RecordedInputs, race.ResultHash, ct);
+        }
+
+        public Task<TimeAttackResult> SubmitTimeAttackAsync(TimeAttackSession session, IReadOnlyList<Muchi.Engine.InputRecord> inputs, string resultHash, CancellationToken ct = default)
+        {
+            var b = JsonNode.Obj();
+            b.Set("sessionId", session.SessionId);
+            b.Set("token", session.Token);
+            b.Set("resultHash", resultHash);
+            var arr = JsonNode.Arr();
+            foreach (var r in inputs)
+            {
+                var t = JsonNode.Arr();
+                t.Add(JsonNode.Num(r.Tick));
+                t.Add(JsonNode.Num(r.Slot));
+                t.Add(JsonNode.Num(r.Cmd));
+                arr.Add(t);
+            }
+            b.Set("inputs", arr);
+            if (session.ConfigJson != null) b.Set("config", session.ConfigJson);
+            return Call("POST", "/v1/time-attack/submit", b, true, null, true, TimeAttackResult.Parse, ct);
+        }
+
+        /// <summary>Your season / all-time best, attempts left today, milestones and rank on a track.</summary>
+        public Task<TimeAttackMe> GetTimeAttackMeAsync(string trackId, CancellationToken ct = default)
+            => Call("GET", "/v1/time-attack/" + Seg(trackId) + "/me", null, true, null, true, TimeAttackMe.Parse, ct);
+
+        /// <summary>Ghost candidates for a track: top runs, friends' bests, or your own best (this season unless given).</summary>
+        public Task<GhostList> GetGhostsAsync(string trackId, GhostKind kind = GhostKind.Top, string seasonId = null, CancellationToken ct = default)
+        {
+            string k = kind == GhostKind.Friends ? "friends" : kind == GhostKind.Me ? "me" : "top";
+            string q = "?kind=" + k + (seasonId != null ? "&seasonId=" + Uri.EscapeDataString(seasonId) : "");
+            return Call("GET", "/v1/time-attack/" + Seg(trackId) + "/ghosts" + q, null, true, null, true, GhostList.Parse, ct);
+        }
+
+        /// <summary>Download one ghost (its verified replay log). <paramref name="entry"/> comes from <see cref="GetGhostsAsync"/>.</summary>
+        public Task<Ghost> GetGhostAsync(GhostEntry entry, CancellationToken ct = default)
+            => Call("GET", entry.Path, null, true, null, true, Ghost.Parse, ct);
+
+        public Task<Ghost> GetGhostAsync(string seasonId, string trackId, string playerId, CancellationToken ct = default)
+            => Call("GET", "/v1/time-attack/ghosts/" + Seg(seasonId) + "/" + Seg(trackId) + "/" + Seg(playerId), null, true, null, true, Ghost.Parse, ct);
+
         // ------------------------------------------------------------------ core
 
         private static string Seg(string s)

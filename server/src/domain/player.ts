@@ -1,4 +1,5 @@
 import type { Rarity, Sex, Stats, Style } from './master.js';
+import type { TimeAttackState } from './timeAttack.js';
 
 export type Currency = 'paid' | 'free';
 
@@ -89,6 +90,8 @@ export interface PlayerState {
   seasonHistory: SeasonRecord[];
   /** Friend-race rewards paid today (daily cap, REQ-REW-004). */
   friendRewards: { date: string; count: number };
+  /** Time attack sessions, bests and milestones (REQ-TA-*). Created lazily. */
+  timeAttack?: TimeAttackState;
 }
 
 export const newStats = (): PlayerStats => ({ races: 0, wins: 0, top3: 0, byStyle: {}, byTrack: {}, whipPerfectWins: 0, bestStartReactionTicks: null, perfectStarts: 0 });

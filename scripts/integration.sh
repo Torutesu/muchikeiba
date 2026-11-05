@@ -63,6 +63,9 @@ REPLAY_HASH=$(cd "$ROOT/engine" && dotnet Muchi.Verifier/bin/Release/net8.0/Much
 echo "bot=$LOCAL_HASH replay=$REPLAY_HASH"
 [[ "$LOCAL_HASH" == "$REPLAY_HASH" ]] || { echo "replay hash mismatch"; fail=1; }
 
+echo "== 5) time attack: device run → server re-simulation (C# verifier) → personal best, ghost replay; tampered run rejected"
+$BOT "$BASE" timeattack | tee "$LOG_DIR/timeattack.jsonl" || fail=1
+
 if [[ $fail -ne 0 ]]; then
   echo "== INTEGRATION FAILED"; echo "--- server log"; tail -50 "$LOG_DIR/server.log"; echo "--- verifier log"; tail -20 "$LOG_DIR/verifier.log"
   exit 1

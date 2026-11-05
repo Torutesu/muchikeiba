@@ -15,6 +15,7 @@ namespace Muchi.Client
         BreedingDailyLimit, AwakeningMax, AlreadyClaimed, NotEligible,
         AlreadyQueued, NotInQueue, RoomNotFound, RoomFull, NotHost, ConfigInvalid,
         FriendLimit, AlreadyInRace, RoomTooSmall,
+        TaLimitReached, TaSessionExpired, TaSessionUsed, TaConfigMismatch, TaResultMismatch, VerifierUnavailable,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -59,6 +60,12 @@ namespace Muchi.Client
             ["FRIEND_LIMIT"] = ApiErrorCode.FriendLimit,
             ["ALREADY_IN_RACE"] = ApiErrorCode.AlreadyInRace,
             ["ROOM_TOO_SMALL"] = ApiErrorCode.RoomTooSmall,
+            ["TA_LIMIT_REACHED"] = ApiErrorCode.TaLimitReached,
+            ["TA_SESSION_EXPIRED"] = ApiErrorCode.TaSessionExpired,
+            ["TA_SESSION_USED"] = ApiErrorCode.TaSessionUsed,
+            ["TA_CONFIG_MISMATCH"] = ApiErrorCode.TaConfigMismatch,
+            ["TA_RESULT_MISMATCH"] = ApiErrorCode.TaResultMismatch,
+            ["VERIFIER_UNAVAILABLE"] = ApiErrorCode.VerifierUnavailable,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };
 
@@ -78,6 +85,7 @@ namespace Muchi.Client
                 case ApiErrorCode.IdempotencyKeyRequired:
                 case ApiErrorCode.InvalidName:
                 case ApiErrorCode.NgName:
+                case ApiErrorCode.TaConfigMismatch:
                     return new ValidationException(code, wire, message, status);
                 case ApiErrorCode.NotFound:
                 case ApiErrorCode.HorseNotFound:
@@ -94,6 +102,7 @@ namespace Muchi.Client
                     return new InsufficientCoinsException(wire, message, status);
                 case ApiErrorCode.Internal:
                 case ApiErrorCode.ConfigInvalid:
+                case ApiErrorCode.VerifierUnavailable:
                     return new ServerException(code, wire, message, status);
                 default:
                     if (status >= 500) return new ServerException(code, wire, message, status);

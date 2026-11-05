@@ -99,9 +99,21 @@ namespace Muchi.Client
                 _queued.Clear();
                 if (AutoStart && (Sim.Tick == Sim.P.GateOpenTick || Sim.Tick == Sim.P.GateOpenTick + 1)) c |= Cmd.Start;
                 _cmds[PlayerSlot] = c;
+                if (c != 0) _recorded.Add(new InputRecord(Sim.Tick, PlayerSlot, c));
             }
             Sim.Step(_cmds);
         }
+
+        private readonly List<InputRecord> _recorded = new List<InputRecord>();
+
+        /// <summary>
+        /// Every non-zero command applied to the player's horse, in tick order (one per tick). Together with
+        /// <see cref="Config"/> this reproduces the run exactly: it is what a time attack submits (REQ-TA-003).
+        /// </summary>
+        public IReadOnlyList<InputRecord> RecordedInputs => _recorded;
+
+        /// <summary>Result hash of the finished run (null until finished).</summary>
+        public string ResultHash => Sim.IsFinished ? Sim.Result.Hash : null;
 
         /// <summary>Interpolation factor (‰) between GetPreviousHorse and GetHorse for rendering.</summary>
         public int InterpolationAlphaPermille(long nowMs)

@@ -1,0 +1,11 @@
+{
+  "name": "Muchi.Client",
+  "rootNamespace": "Muchi.Client",
+  "references": ["Muchi.Engine", "Muchi.Net"],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "autoReferenced": true,
+  "noEngineReferences": true
+}

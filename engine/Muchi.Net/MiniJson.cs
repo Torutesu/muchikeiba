@@ -86,6 +86,16 @@ namespace Muchi.Net
             return v;
         }
 
+        /// <summary>Raw text of a number exactly as written (e.g. "47.5"), for callers that need non-integers without floats.</summary>
+        public string NumberText
+        {
+            get
+            {
+                if (Kind != JsonKind.Number) throw new FormatException("expected number");
+                return _text;
+            }
+        }
+
         public int AsInt()
         {
             long v = AsLong();

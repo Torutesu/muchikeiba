@@ -17,7 +17,8 @@
 export PATH=/opt/dotnet:$PATH          # この環境の .NET 8 SDK
 dotnet test engine/Muchi.Engine.Tests
 dotnet run --project engine/Muchi.Verifier -- replay "$PWD/contracts/golden/race-turf1600-mixed.json"   # リプレイログ（ゴールデンファイルも可）
-dotnet run --project engine/Muchi.Verifier -- serve --urls http://0.0.0.0:8080                 # POST /verify, GET /healthz
+dotnet run --project engine/Muchi.Verifier -- serve --urls http://0.0.0.0:8080                 # POST /verify, GET /healthz（VERIFIER_AUTH_SECRET を設定すると Bearer 必須。$PORT にも対応）
+docker build -f engine/Muchi.Verifier/Dockerfile -t muchi-verifier engine                      # Cloud Run 用イメージ（VERIFIER_REQUIRE_AUTH=1：シークレットなしでは起動しない。docs/ops/deploy.md）
 dotnet run --project engine/Muchi.Verifier -- golden "$PWD/contracts/golden" "$PWD/contracts/ruleset-params.default.json"   # パスは絶対パスで（Web SDKは実行時の作業ディレクトリをプロジェクトに変えるため）
 dotnet run --project engine/Muchi.Verifier -- balance contracts/ruleset-params.default.json 1000 [key=value ...]
 ```

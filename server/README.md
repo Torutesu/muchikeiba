@@ -12,6 +12,9 @@
 | `npm run dev` | ローカル実行（`DEV_MODE=1`：偽ストア＋`x-dev-user`ヘッダー） |
 | `npm run smoke` | `npm run dev` 中に実行する通しテスト（購入→ガチャ→チュートリアルレース→WebSocket→ランク戦→検証） |
 | `npm run gen:golden` | `contracts/golden/ts-config-*.json` を再生成（ルールセット・マスター変更時に必須） |
+| `npm run lint:deploy -- --env <staging\|production>` | デプロイ前の設定チェック（`DEV_MODE`禁止・`REPLACE_ME`残り・バインディング漏れ・環境間のストレージ共有・シークレットの[vars]混入）。`--allow-placeholders` で構造だけ確認、`--secrets <wrangler secret list の出力>` で必須シークレットの有無も確認 |
+
+デプロイ（staging / production の環境、シークレット、CI、切り戻し）は [../docs/ops/deploy.md](../docs/ops/deploy.md)。
 
 ## 構成
 

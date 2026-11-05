@@ -1,31 +1,44 @@
+# Cloudflare Worker config. Three environments:
+#   (top level)          local development only (`npm run dev`, scripts/integration.sh). Never deployed.
+#   [env.staging]        `wrangler deploy --env staging`   (deploy-staging workflow)
+#   [env.production]     `wrangler deploy --env production` (deploy-production workflow, manual + approval)
+# Wrangler does NOT inherit vars / durable_objects / r2_buckets / analytics_engine_datasets / triggers into [env.*],
+# so every environment lists them in full. `npm run lint:deploy -- --env <name>` (scripts/lint-deploy.ts) checks
+# that each deployed env is complete, never sets DEV_MODE, keeps secrets out of [vars] and has no REPLACE_ME left.
+# Secrets are never written here: `wrangler secret put <NAME> --env <env>` (docs/ops/deploy.md).
 name = "muchi-server"
 main = "src/index.ts"
 compatibility_date = "2026-10-01"
 compatibility_flags = ["nodejs_compat"]
 
+# Durable Object migrations apply to every environment's script (each env is a separate Worker).
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RaceRoomDO", "PlayerDO", "MatchmakerDO", "AccountingDO"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["LeaderboardDO", "DirectoryDO"]
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["OpsDO", "IntegrityDO"]
+
+# ------------------------------------------------------------------------------------------------ local (dev)
 [vars]
+ENVIRONMENT = "local"
 # C# verifier service (engine/Muchi.Verifier), scale-to-zero (e.g. Cloud Run)
 VERIFIER_URL = "https://verifier.example.invalid"
 FIREBASE_PROJECT_ID = "muchi-issen-dev"
 VERIFY_SAMPLE_RATE = "0.05"
-# DEV_MODE = "1"   # local only: fake store + x-dev-user header. NEVER in production.
-# Secrets (wrangler secret put): TICKET_SECRET, ADMIN_TOKENS, GOOGLE_SERVICE_ACCOUNT_JSON
+# DEV_MODE = "1"   # local only (pass with --var DEV_MODE:1): fake store + x-dev-user header. Refused when ENVIRONMENT is staging/production.
+# Secrets (wrangler secret put): TICKET_SECRET, VERIFIER_TOKEN, ADMIN_TOKENS, GOOGLE_SERVICE_ACCOUNT_JSON, FCM_SERVICE_ACCOUNT_JSON, KPI_SALT
 # ADMIN_TOKENS = '[{"name":"alice","role":"admin","sha256":"<sha-256 hex of the token>"}]'   (roles: viewer|operator|admin)
 # ADMIN_TOKEN (legacy single token, role admin) still works; prefer ADMIN_TOKENS.
-# Optional Cloudflare Access for /v1/admin/*:
-# ACCESS_TEAM_DOMAIN = "<team>.cloudflareaccess.com"
-# ACCESS_AUD = "<application AUD tag>"
-# ACCESS_ROLES = '{"ops@example.com":"operator"}'
-# Stores (server/README.md「ストア連携」). Unset => that store rejects every receipt.
-# APPLE_BUNDLE_ID = "jp.example.muchi"
-# APPLE_ACCEPT_SANDBOX = "1"              # "0" rejects Sandbox (App Review uses Sandbox)
-# GOOGLE_PACKAGE_NAME = "jp.example.muchi"
-# GOOGLE_ACCEPT_TEST = "1"                # "0" rejects license-testing purchases
-# GOOGLE_PUBSUB_AUDIENCE = "https://api.example.com/v1/store/notifications/google"
-# GOOGLE_PUBSUB_SERVICE_ACCOUNT = "rtdn-push@<project>.iam.gserviceaccount.com"
-# Push notifications (server/README.md「プッシュ通知」). Unset => queued messages are dropped.
-# FCM_PROJECT_ID = "muchi-issen-prod"        # defaults to the service account's project_id
-# Secrets: FCM_SERVICE_ACCOUNT_JSON (falls back to GOOGLE_SERVICE_ACCOUNT_JSON), KPI_SALT (analytics id hashing)
+# Optional Cloudflare Access for /v1/admin/*: ACCESS_TEAM_DOMAIN, ACCESS_AUD, ACCESS_ROLES
+# Stores (server/README.md「ストア連携」). Unset => that store rejects every receipt:
+#   APPLE_BUNDLE_ID, APPLE_ACCEPT_SANDBOX, GOOGLE_PACKAGE_NAME, GOOGLE_ACCEPT_TEST, GOOGLE_PUBSUB_AUDIENCE, GOOGLE_PUBSUB_SERVICE_ACCOUNT
+# Push notifications: FCM_PROJECT_ID (+ secret FCM_SERVICE_ACCOUNT_JSON). KPI: secret KPI_SALT.
 
 [[durable_objects.bindings]]
 name = "RACE_ROOM"
@@ -59,18 +72,6 @@ class_name = "OpsDO"
 name = "INTEGRITY"
 class_name = "IntegrityDO"
 
-[[migrations]]
-tag = "v1"
-new_sqlite_classes = ["RaceRoomDO", "PlayerDO", "MatchmakerDO", "AccountingDO"]
-
-[[migrations]]
-tag = "v2"
-new_sqlite_classes = ["LeaderboardDO", "DirectoryDO"]
-
-[[migrations]]
-tag = "v3"
-new_sqlite_classes = ["OpsDO", "IntegrityDO"]
-
 [[r2_buckets]]
 binding = "REPLAYS"
 bucket_name = "muchi-replays"
@@ -87,4 +88,136 @@ dataset = "muchi_kpi"
 # Leaderboard snapshots + season rollover every 5 min; replay retention sweep daily 03:23 JST;
 # season reminder push daily 12:07 JST (src/domain/scheduled.ts)
 [triggers]
+crons = ["*/5 * * * *", "23 18 * * *", "7 3 * * *"]
+
+# ------------------------------------------------------------------------------------------------ staging
+[env.staging]
+name = "muchi-server-staging"
+workers_dev = false
+routes = [{ pattern = "api-staging.REPLACE_ME.example", custom_domain = true }]
+
+[env.staging.vars]
+ENVIRONMENT = "staging"
+VERIFIER_URL = "https://muchi-verifier-staging-REPLACE_ME.a.run.app"
+FIREBASE_PROJECT_ID = "REPLACE_ME-staging"
+VERIFY_SAMPLE_RATE = "0.2"
+APPLE_BUNDLE_ID = "REPLACE_ME.muchi.staging"
+APPLE_ACCEPT_SANDBOX = "1"
+GOOGLE_PACKAGE_NAME = "REPLACE_ME.muchi.staging"
+GOOGLE_ACCEPT_TEST = "1"
+GOOGLE_PUBSUB_AUDIENCE = "https://api-staging.REPLACE_ME.example/v1/store/notifications/google"
+GOOGLE_PUBSUB_SERVICE_ACCOUNT = "rtdn-push@REPLACE_ME-staging.iam.gserviceaccount.com"
+FCM_PROJECT_ID = "REPLACE_ME-staging"
+
+[[env.staging.durable_objects.bindings]]
+name = "RACE_ROOM"
+class_name = "RaceRoomDO"
+
+[[env.staging.durable_objects.bindings]]
+name = "PLAYER"
+class_name = "PlayerDO"
+
+[[env.staging.durable_objects.bindings]]
+name = "MATCHMAKER"
+class_name = "MatchmakerDO"
+
+[[env.staging.durable_objects.bindings]]
+name = "ACCOUNTING"
+class_name = "AccountingDO"
+
+[[env.staging.durable_objects.bindings]]
+name = "LEADERBOARD"
+class_name = "LeaderboardDO"
+
+[[env.staging.durable_objects.bindings]]
+name = "DIRECTORY"
+class_name = "DirectoryDO"
+
+[[env.staging.durable_objects.bindings]]
+name = "OPS"
+class_name = "OpsDO"
+
+[[env.staging.durable_objects.bindings]]
+name = "INTEGRITY"
+class_name = "IntegrityDO"
+
+[[env.staging.r2_buckets]]
+binding = "REPLAYS"
+bucket_name = "muchi-replays-staging"
+
+[[env.staging.r2_buckets]]
+binding = "SNAPSHOTS"
+bucket_name = "muchi-public-staging"
+
+[[env.staging.analytics_engine_datasets]]
+binding = "ANALYTICS"
+dataset = "muchi_kpi_staging"
+
+[env.staging.triggers]
+crons = ["*/5 * * * *", "23 18 * * *", "7 3 * * *"]
+
+# ------------------------------------------------------------------------------------------------ production
+[env.production]
+name = "muchi-server-production"
+workers_dev = false
+routes = [{ pattern = "api.REPLACE_ME.example", custom_domain = true }]
+
+[env.production.vars]
+ENVIRONMENT = "production"
+VERIFIER_URL = "https://muchi-verifier-production-REPLACE_ME.a.run.app"
+FIREBASE_PROJECT_ID = "REPLACE_ME-production"
+VERIFY_SAMPLE_RATE = "0.05"
+APPLE_BUNDLE_ID = "REPLACE_ME.muchi"
+APPLE_ACCEPT_SANDBOX = "1"
+GOOGLE_PACKAGE_NAME = "REPLACE_ME.muchi"
+GOOGLE_ACCEPT_TEST = "0"
+GOOGLE_PUBSUB_AUDIENCE = "https://api.REPLACE_ME.example/v1/store/notifications/google"
+GOOGLE_PUBSUB_SERVICE_ACCOUNT = "rtdn-push@REPLACE_ME-production.iam.gserviceaccount.com"
+FCM_PROJECT_ID = "REPLACE_ME-production"
+
+[[env.production.durable_objects.bindings]]
+name = "RACE_ROOM"
+class_name = "RaceRoomDO"
+
+[[env.production.durable_objects.bindings]]
+name = "PLAYER"
+class_name = "PlayerDO"
+
+[[env.production.durable_objects.bindings]]
+name = "MATCHMAKER"
+class_name = "MatchmakerDO"
+
+[[env.production.durable_objects.bindings]]
+name = "ACCOUNTING"
+class_name = "AccountingDO"
+
+[[env.production.durable_objects.bindings]]
+name = "LEADERBOARD"
+class_name = "LeaderboardDO"
+
+[[env.production.durable_objects.bindings]]
+name = "DIRECTORY"
+class_name = "DirectoryDO"
+
+[[env.production.durable_objects.bindings]]
+name = "OPS"
+class_name = "OpsDO"
+
+[[env.production.durable_objects.bindings]]
+name = "INTEGRITY"
+class_name = "IntegrityDO"
+
+[[env.production.r2_buckets]]
+binding = "REPLAYS"
+bucket_name = "muchi-replays-production"
+
+[[env.production.r2_buckets]]
+binding = "SNAPSHOTS"
+bucket_name = "muchi-public-production"
+
+[[env.production.analytics_engine_datasets]]
+binding = "ANALYTICS"
+dataset = "muchi_kpi_production"
+
+[env.production.triggers]
 crons = ["*/5 * * * *", "23 18 * * *", "7 3 * * *"]

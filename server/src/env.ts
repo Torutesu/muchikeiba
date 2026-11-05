@@ -22,6 +22,10 @@ export interface Env {
   /** Public, CDN-cacheable JSON (leaderboard snapshots). */
   SNAPSHOTS: R2Bucket;
   VERIFIER_URL: string;
+  /** Secret: shared bearer token for the C# verifier (= its VERIFIER_AUTH_SECRET). Unset only in local dev. */
+  VERIFIER_TOKEN?: string;
+  /** "local" | "staging" | "production" (wrangler.toml). DEV_MODE is refused unless this is "local". */
+  ENVIRONMENT?: string;
   FIREBASE_PROJECT_ID: string;
   TICKET_SECRET: string;
   ADMIN_TOKEN?: string;

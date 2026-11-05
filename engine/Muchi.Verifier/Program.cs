@@ -32,11 +32,19 @@ if (args.Length >= 2 && args[0] == "balance")
 }
 if (args.Length >= 1 && args[0] == "serve")
 {
-    var builder = WebApplication.CreateBuilder(args.Skip(1).ToArray());
+    string authSecret = VerifierAuth.FromEnvironment(Environment.GetEnvironmentVariable); // fails closed when required
+    var serveArgs = args.Skip(1).ToArray();
+    var builder = WebApplication.CreateBuilder(serveArgs);
+    // Cloud Run passes the port in $PORT; an explicit --urls wins.
+    string port = Environment.GetEnvironmentVariable("PORT");
+    if (!serveArgs.Contains("--urls") && !string.IsNullOrEmpty(port)) builder.WebHost.UseUrls("http://0.0.0.0:" + port);
     var app = builder.Build();
+    if (authSecret == null) app.Logger.LogWarning("verifier auth is OFF (no {Env}); only acceptable for local development", VerifierAuth.SecretEnv);
     app.MapGet("/healthz", () => Results.Text("ok"));
     app.MapPost("/verify", async (HttpRequest req) =>
     {
+        if (!VerifierAuth.IsAuthorized(req.Headers.Authorization.ToString(), authSecret))
+            return Results.Text("{\"error\":\"unauthorized\"}", "application/json", statusCode: 401);
         using var reader = new StreamReader(req.Body);
         string body = await reader.ReadToEndAsync();
         if (body.Length > VerifyService.MaxBodyBytes) return Results.Text("{\"error\":\"body too large\"}", "application/json", statusCode: 413);

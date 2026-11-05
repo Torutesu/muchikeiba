@@ -1,0 +1,7 @@
+**/bin/
+**/obj/
+**/TestResults/
+Muchi.Engine.Tests/
+Muchi.Bot/
+Muchi.Client/
+*.md

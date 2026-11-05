@@ -29,6 +29,7 @@ import { fcmFromEnv } from './push/fcm.js';
 import { TimeAttackService } from './race/timeAttack.js';
 import { HttpVerifierClient } from './domain/verifier.js';
 import { taBoardName, type GhostFile, type TaBoardFile, type TaEntry } from './domain/timeAttack.js';
+import { devModeRefused } from './http/devMode.js';
 
 /** REQ-PUSH-006: one FCM topic send reaches every opted-in device (no per-player fan-out). */
 async function broadcastSeasonReminder(env: Env, now: number): Promise<string | null> {
@@ -143,7 +144,7 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
     },
     timeAttack: new TimeAttackService({
       player,
-      verifier: new HttpVerifierClient(env.VERIFIER_URL),
+      verifier: new HttpVerifierClient(env.VERIFIER_URL, undefined, undefined, env.VERIFIER_TOKEN),
       ticketSecret: env.TICKET_SECRET,
       clock: () => Date.now(),
       board: {
@@ -172,15 +173,7 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
   };
 }
 
-const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
-
-/**
- * DEV_MODE (x-dev-user impersonation + fake store) only ever works on loopback. If it leaks into a
- * deployed environment, every request fails closed instead of letting anyone mint coins (bug review #12).
- */
-export function devModeRefused(req: Request, env: Pick<Env, 'DEV_MODE'>): boolean {
-  return env.DEV_MODE === '1' && !LOOPBACK.has(new URL(req.url).hostname);
-}
+export { devModeRefused } from './http/devMode.js';
 /** R2Bucket → the minimal interface the retention sweep uses. */
 const replayBucket = (b: R2Bucket): ReplayBucket => ({
   list: async (o) => {

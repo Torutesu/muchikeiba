@@ -1,0 +1,181 @@
+# Reusable deploy pipeline (called by deploy-staging.yml and deploy-production.yml). docs/ops/deploy.md
+#
+# GitHub environment "<staging|production>" must define:
+#   vars:    GCP_PROJECT, GCP_REGION, GCP_WIF_PROVIDER, GCP_DEPLOY_SA, VERIFIER_RUNTIME_SA, VERIFIER_MAX_INSTANCES,
+#            API_BASE_URL, FIREBASE_WEB_API_KEY, SMOKE_ENABLED ("true" to run the post-deploy bot smoke)
+#   secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
+# Worker secrets (TICKET_SECRET, VERIFIER_TOKEN, ...) are NOT set here: they are put once by an operator with
+# `wrangler secret put` and this pipeline only checks that they exist.
+name: deploy (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: staging | production
+        required: true
+        type: string
+      ref:
+        description: git ref to deploy
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: gate (tests, contract drift, config lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Install server deps
+        working-directory: server
+        run: npm ci
+      - name: Engine tests
+        working-directory: engine
+        run: dotnet test --nologo
+      - name: Server typecheck + tests
+        working-directory: server
+        run: npm run typecheck && npm test
+      - name: Golden/contract files are up to date (C# and TS agree)
+        run: |
+          (cd server && npm run gen:golden)
+          dotnet run --project engine/Muchi.Verifier -- golden "$PWD/contracts/golden" "$PWD/contracts/ruleset-params.default.json"
+          git status --porcelain contracts/golden
+          test -z "$(git status --porcelain contracts/golden)"
+      - name: Deploy config lint (no DEV_MODE, no placeholders, complete bindings)
+        working-directory: server
+        run: npm run lint:deploy -- --env "${{ inputs.environment }}"
+
+  verifier:
+    name: verifier → Cloud Run
+    needs: gate
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write # Workload Identity Federation (no long-lived GCP keys)
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+    env:
+      SERVICE: muchi-verifier-${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Build and push image
+        id: image
+        run: |
+          IMAGE_REPO="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT }}/muchi/verifier"
+          gcloud auth configure-docker "${{ vars.GCP_REGION }}-docker.pkg.dev" --quiet
+          docker build -f engine/Muchi.Verifier/Dockerfile -t "$IMAGE_REPO:${GITHUB_SHA}" engine
+          docker push "$IMAGE_REPO:${GITHUB_SHA}"
+          digest=$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE_REPO:${GITHUB_SHA}")
+          echo "ref=$digest" >> "$GITHUB_OUTPUT"
+      - name: Deploy Cloud Run service
+        id: deploy
+        env:
+          IMAGE: ${{ steps.image.outputs.ref }}
+          RUNTIME_SA: ${{ vars.VERIFIER_RUNTIME_SA }}
+          MAX_INSTANCES: ${{ vars.VERIFIER_MAX_INSTANCES }}
+        run: |
+          envsubst '${SERVICE} ${IMAGE} ${RUNTIME_SA} ${MAX_INSTANCES}' < deploy/verifier/service.yaml > service.rendered.yaml
+          gcloud run services replace service.rendered.yaml --region "${{ vars.GCP_REGION }}" --project "${{ vars.GCP_PROJECT }}"
+          # network-level public; the app enforces the bearer secret (VerifierAuth)
+          gcloud run services add-iam-policy-binding "$SERVICE" --region "${{ vars.GCP_REGION }}" --project "${{ vars.GCP_PROJECT }}" \
+            --member=allUsers --role=roles/run.invoker --quiet
+          url=$(gcloud run services describe "$SERVICE" --region "${{ vars.GCP_REGION }}" --project "${{ vars.GCP_PROJECT }}" --format='value(status.url)')
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+      - name: Verifier is up and refuses unauthenticated calls
+        run: |
+          curl -fsS "${{ steps.deploy.outputs.url }}/healthz"
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -d '{}' "${{ steps.deploy.outputs.url }}/verify")
+          test "$code" = "401" || { echo "verifier answered $code without auth"; exit 1; }
+
+  worker:
+    name: worker → Cloudflare
+    needs: verifier
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Install
+        working-directory: server
+        run: npm ci
+      - name: VERIFIER_URL in wrangler.toml matches the deployed service
+        working-directory: server
+        run: |
+          expected="${{ needs.verifier.outputs.url }}"
+          node --input-type=module -e "
+            import { parse } from 'smol-toml'; import { readFileSync } from 'node:fs';
+            const v = parse(readFileSync('wrangler.toml','utf8')).env['${{ inputs.environment }}'].vars.VERIFIER_URL;
+            if (v !== process.argv[1]) { console.error('wrangler.toml VERIFIER_URL=' + v + ' but Cloud Run URL is ' + process.argv[1]); process.exit(1); }
+          " "$expected"
+      - name: Required Worker secrets exist (values are never handled here)
+        working-directory: server
+        run: |
+          npx wrangler secret list --env "${{ inputs.environment }}" --format json > /tmp/secrets.json
+          npm run lint:deploy -- --env "${{ inputs.environment }}" --secrets /tmp/secrets.json
+      - name: Deploy Worker
+        working-directory: server
+        run: npx wrangler deploy --env "${{ inputs.environment }}"
+
+  smoke:
+    name: post-deploy smoke
+    needs: worker
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    # environment-scoped vars are not visible in a job-level `if`, so the bot steps check SMOKE_ENABLED themselves
+    steps:
+      - name: Health and config
+        run: |
+          curl -fsS "${{ vars.API_BASE_URL }}/v1/health"
+          curl -fsS "${{ vars.API_BASE_URL }}/v1/config"
+      - uses: actions/checkout@v4
+        if: vars.SMOKE_ENABLED == 'true'
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-dotnet@v4
+        if: vars.SMOKE_ENABLED == 'true'
+        with:
+          dotnet-version: "8.0.x"
+      - name: Build bot
+        if: vars.SMOKE_ENABLED == 'true'
+        run: dotnet build engine/Muchi.Bot -c Release --nologo
+      - name: Tutorial race + solo ranked race (settled by the verifier) as fresh anonymous Firebase users
+        if: vars.SMOKE_ENABLED == 'true'
+        run: |
+          token() {
+            curl -fsS -X POST -H 'content-type: application/json' -d '{"returnSecureToken":true}' \
+              "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${{ vars.FIREBASE_WEB_API_KEY }}" \
+              | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).idToken))'
+          }
+          BOT="dotnet engine/Muchi.Bot/bin/Release/net8.0/Muchi.Bot.dll"
+          MUCHI_ID_TOKEN="$(token)" $BOT "${{ vars.API_BASE_URL }}" tutorial
+          MUCHI_ID_TOKEN="$(token)" $BOT "${{ vars.API_BASE_URL }}" ranked 1

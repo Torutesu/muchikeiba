@@ -1,0 +1,28 @@
+# Staging deploys automatically after CI passes on main (and can be re-run by hand).
+name: deploy-staging
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    # Off until the accounts exist: set the repository variable DEPLOY_STAGING_ENABLED=true (docs/ops/deploy.md).
+    # Then: only when the CI run that triggered us succeeded on a push to main (not a PR), or by hand.
+    if: vars.DEPLOY_STAGING_ENABLED == 'true' && (github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'))
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: staging
+      ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+    secrets: inherit

@@ -74,7 +74,11 @@ sealed class Bot
     {
         _base = baseUrl;
         _http = new HttpClient { BaseAddress = new Uri(baseUrl), Timeout = TimeSpan.FromSeconds(30) };
-        _http.DefaultRequestHeaders.Add("x-dev-user", user);
+        // Deployed environments (staging smoke) have no DEV_MODE: authenticate with a real Firebase ID token
+        // (the deploy workflow signs up an anonymous Firebase user and passes MUCHI_ID_TOKEN). Locally: x-dev-user.
+        string idToken = Environment.GetEnvironmentVariable("MUCHI_ID_TOKEN");
+        if (!string.IsNullOrEmpty(idToken)) _http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", idToken);
+        else _http.DefaultRequestHeaders.Add("x-dev-user", user);
         Report.user = user;
     }
 

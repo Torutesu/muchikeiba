@@ -159,7 +159,7 @@ export class RaceRoomDO extends DurableObject<Env> {
       await this.ctx.storage.setAlarm(Date.now() + WATCHDOG_MS);
       const core = this.core;
       const r = await driveSettlement(core, this.meta, {
-        verify: (log) => new HttpVerifierClient(this.env.VERIFIER_URL).verify(log),
+        verify: (log) => new HttpVerifierClient(this.env.VERIFIER_URL, undefined, undefined, this.env.VERIFIER_TOKEN).verify(log),
         putReplay: (log, hold) => this.putReplay(log, hold),
         applyRace: async (pid, res) => {
           const stub = this.env.PLAYER.get(this.env.PLAYER.idFromName(pid)) as unknown as { invoke(m: string, a: unknown[]): Promise<Envelope<unknown>> };

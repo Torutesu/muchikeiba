@@ -57,7 +57,7 @@ C# では `AssetKeys.Resolve(key, exists)` が 1→2→null を返す。古い�
 | `fx/going` | `fx/going/sloppy` | 馬場状態（good 以外） | 濡れた馬場・水しぶき・土煙 |
 | `sfx/race` | `sfx/race/whip` | `sfx.race` | レース中の効果音 |
 | `sfx/ui` | `sfx/ui/gacha_ssr` | `sfx.ui` | UIの効果音 |
-| `voice/ja/phrase` | `voice/ja/phrase/gate_open_1_p0` | `engine/Muchi.Client/Data/commentary-ja.json` | 実況の定型フレーズの断片 |
+| `voice/ja/phrase` | `voice/ja/phrase/gate_open_1_p0` | `engine/Muchi.Client/Resources/Muchi/commentary-ja.json` | 実況の定型フレーズの断片 |
 | `voice/ja/num` | `voice/ja/num/3` | 1〜12 | 実況の数字（着順） |
 | `voice/ja/name` | `voice/ja/name/n4f2c…` | 馬名 | 実況の馬名（**動的**。下記） |
 

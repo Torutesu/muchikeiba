@@ -17,6 +17,23 @@ jobs:
         working-directory: engine
         run: dotnet test --nologo
 
+  unity:
+    # No Unity Editor in CI: compile the app's scripts as Unity would (asmdef boundaries, C# 9, netstandard2.1)
+    # against UnityEngine 2022.3.62 reference assemblies (third-party NuGet redist, compile-time only), and run
+    # the game layer's offline checks against the real engine packages.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Game layer (Assets/Muchi/Game, no UnityEngine allowed)
+        run: dotnet build "unity/Checks~/Muchi.Game" --nologo
+      - name: Unity scripts type-check (Integration asmdef + Assembly-CSharp)
+        run: dotnet build "unity/Checks~/UnityRuntime" --nologo
+      - name: Game layer checks (input, HUD, course placement, partner mapping, offline races, offline fallback)
+        run: dotnet run --project "unity/Checks~/GameChecks"
+
   server:
     runs-on: ubuntu-latest
     steps:

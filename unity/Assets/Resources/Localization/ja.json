@@ -1128,6 +1128,146 @@
     {
       "key": "HORSE COAT  /  RACING SILKS  /  SADDLE  /  BRIDLE  ·  COSMETIC ONLY",
       "value": "毛色 / 勝負服 / 鞍 / 頭絡 ・ 見た目のみ"
+    },
+    {
+      "key": "START",
+      "value": "スタート"
+    },
+    {
+      "key": "GO!",
+      "value": "出た！"
+    },
+    {
+      "key": "START!",
+      "value": "スタート！"
+    },
+    {
+      "key": "HOLD THE REIN",
+      "value": "手綱で抑えろ"
+    },
+    {
+      "key": "FINISH",
+      "value": "ゴール"
+    },
+    {
+      "key": "GET READY",
+      "value": "まもなく発走"
+    },
+    {
+      "key": "CONNECTING…",
+      "value": "接続中…"
+    },
+    {
+      "key": "RECONNECTING…",
+      "value": "再接続中…"
+    },
+    {
+      "key": "WAITING FOR THE RESULT…",
+      "value": "結果を待っています…"
+    },
+    {
+      "key": "VERIFYING THE RESULT…",
+      "value": "結果を検証中…"
+    },
+    {
+      "key": "CONNECTION LOST",
+      "value": "接続が切れました"
+    },
+    {
+      "key": "STAMINA  ·  KAKARI",
+      "value": "残り脚　・　かかっている"
+    },
+    {
+      "key": "STAMINA  ·  REIN",
+      "value": "残り脚　・　手綱"
+    },
+    {
+      "key": "OFFLINE  /  LOCAL DATA",
+      "value": "オフライン　/　端末のデータ"
+    },
+    {
+      "key": "RANKED  /  MATCHING",
+      "value": "ランク戦　/　マッチング"
+    },
+    {
+      "key": "FINDING RIDERS…",
+      "value": "対戦相手を探しています…"
+    },
+    {
+      "key": "Riders of similar rating are grouped.\nCPU riders fill the gates after about 15 seconds.",
+      "value": "近いレートの騎手と組みます。\n約15秒で空き枠はCPUが埋めます。"
+    },
+    {
+      "key": "CANCEL",
+      "value": "キャンセル"
+    },
+    {
+      "key": "MATCHING FAILED",
+      "value": "マッチングできませんでした"
+    },
+    {
+      "key": "NAME NOT ACCEPTED",
+      "value": "その名前は使えません"
+    },
+    {
+      "key": "SCOUT FAILED",
+      "value": "スカウトできませんでした"
+    },
+    {
+      "key": "PRACTICE RACE  /  OFFLINE",
+      "value": "練習レース　/　オフライン"
+    },
+    {
+      "key": "RANKED MATCH",
+      "value": "ランク戦"
+    },
+    {
+      "key": "RANKED  /  ONLINE MATCH",
+      "value": "ランク戦　/　オンライン対戦"
+    },
+    {
+      "key": "PRACTICE  /  OFFLINE",
+      "value": "練習　/　オフライン"
+    },
+    {
+      "key": "CONFIRMED BY THE SERVER",
+      "value": "サーバーで確定"
+    },
+    {
+      "key": "RACE VOID  /  NO REWARDS",
+      "value": "レース無効　/　報酬なし"
+    },
+    {
+      "key": "PRACTICE  /  NO RANK POINTS",
+      "value": "練習　/　ランクポイントなし"
+    },
+    {
+      "key": "RACE RESULT  /  RANKED",
+      "value": "レース結果　/　ランク戦"
+    },
+    {
+      "key": "SEASON PT",
+      "value": "シーズンpt"
+    },
+    {
+      "key": "MODE",
+      "value": "モード"
+    },
+    {
+      "key": "OFFLINE",
+      "value": "オフライン"
+    },
+    {
+      "key": "CHECKING WITH SERVER…",
+      "value": "サーバーに確認中…"
+    },
+    {
+      "key": "STABLE  /  YOUR PARTNER",
+      "value": "厩舎　/　あなたの相棒"
+    },
+    {
+      "key": "Sample balance (offline)",
+      "value": "サンプル残高（オフライン）"
     }
   ]
 }

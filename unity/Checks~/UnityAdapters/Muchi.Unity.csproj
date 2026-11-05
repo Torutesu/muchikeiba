@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Type-checks unity/Assets/Muchi/Integration (asmdef Muchi.Unity) outside the Unity Editor.
+    UnityEngine comes from RocketModFix.UnityEngine.Redist 2022.3.62.x — a third-party NuGet redistribution of
+    the Unity 2022.3.62 player assemblies, used ONLY as compile-time references here (nothing is shipped or
+    committed). This catches API/typing errors; it does not replace an Editor compile or a device build.
+  -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <AssemblyName>Muchi.Unity</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Assets/Muchi/Integration/**/*.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Muchi.Game/Muchi.Game.csproj" />
+    <PackageReference Include="RocketModFix.UnityEngine.Redist" Version="2022.3.62.3" />
+  </ItemGroup>
+</Project>

@@ -102,7 +102,7 @@ export const ASSET_KINDS: Record<string, { description: string; dynamic?: boolea
   'fx/going': { description: '馬場状態の見た目（濡れ・水しぶき・土煙）' },
   'sfx/race': { description: 'レース中の効果音' },
   'sfx/ui': { description: 'UIの効果音' },
-  [`voice/${VOICE_LANG}/phrase`]: { description: '実況の定型フレーズ（Data/commentary-ja.json の各断片）' },
+  [`voice/${VOICE_LANG}/phrase`]: { description: '実況の定型フレーズ（Resources/Muchi/commentary-ja.json の各断片）' },
   [`voice/${VOICE_LANG}/num`]: { description: '実況の数字（着順など）' },
   [`voice/${VOICE_LANG}/name`]: { description: '実況の馬名。命名時に生成するため動的（テンプレート馬の名前だけ列挙）', dynamic: true },
 };

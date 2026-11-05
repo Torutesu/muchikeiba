@@ -10,7 +10,7 @@ namespace Muchi.Engine.Tests
         private static readonly string ManifestPath = Path.Combine(TestUtil.RepoRoot, "contracts", "assets.manifest.json");
         private static readonly string VisualsPath = Path.Combine(TestUtil.RepoRoot, "server", "master", "visuals.json");
         private static readonly string HorsesPath = Path.Combine(TestUtil.RepoRoot, "server", "master", "horses.json");
-        private static readonly string CommentaryPath = Path.Combine(TestUtil.RepoRoot, "engine", "Muchi.Client", "Data", "commentary-ja.json");
+        private static readonly string CommentaryPath = Path.Combine(TestUtil.RepoRoot, "engine", "Muchi.Client", "Resources", "Muchi", "commentary-ja.json");
 
         private static HashSet<string> ManifestKeys() => new HashSet<string>(AssetKeys.ParseManifestKeys(File.ReadAllText(ManifestPath)));
 

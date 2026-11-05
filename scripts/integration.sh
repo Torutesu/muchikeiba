@@ -88,6 +88,9 @@ $BOT "$BASE" event 1 | tee "$LOG_DIR/event.jsonl" || fail=1
 echo "== 7) teams: create → open join → directory search → leave (cooldown) → lone leader leaves = disband"
 $BOT "$BASE" team | tee "$LOG_DIR/team.jsonl" || fail=1
 
+echo "== 8) Unity app game layer (unity/Assets/Muchi/Game): naming + first scout → shop/pass → ranked race confirmed with the app's own simulation"
+(cd "$ROOT/unity/Checks~/GameChecks" && dotnet build -c Release --nologo -v q >/dev/null && dotnet bin/Release/net8.0/GameChecks.dll online "$BASE") | tee "$LOG_DIR/unity-game.log" || fail=1
+
 if [[ $fail -ne 0 ]]; then
   echo "== INTEGRATION FAILED"; echo "--- server log"; tail -50 "$LOG_DIR/server.log"; echo "--- verifier log"; tail -20 "$LOG_DIR/verifier.log"
   exit 1

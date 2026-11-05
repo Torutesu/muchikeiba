@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { Env } from '../env.js';
-import { loadMaster } from '../domain/master.js';
-import { assertNotInLiveRace, FriendRooms, MatchmakerCore, type FriendRoom, type QueueEntry } from '../domain/matchmaker.js';
+import { activeConfig } from '../ops/activeConfig.js';
+import { assertMayRace, assertNotInLiveRace, FriendRooms, MatchmakerCore, type FriendRoom, type QueueEntry } from '../domain/matchmaker.js';
 import { cryptoRng } from '../domain/rng.js';
 import { AppError } from '../domain/errors.js';
 import type { RaceEntry } from '../http/app.js';
@@ -48,8 +48,9 @@ export class MatchmakerDO extends DurableObject<Env> {
   async enqueue(playerId: string, entry: RaceEntry): Promise<Envelope<unknown>> {
     return wrap(async () => {
       assertNotInLiveRace(this.assignments, playerId, Date.now()); // REQ-MM-005: no second race while one runs
+      assertMayRace(entry);
       this.assignments.delete(playerId);
-      this.core.enqueue({ playerId, rating: entry.rating.r, beginner: entry.beginner, enqueuedAt: Date.now(), payload: entry });
+      this.core.enqueue({ playerId, rating: entry.rating.r, beginner: entry.beginner, enqueuedAt: Date.now(), payload: entry, quarantined: entry.moderation === 'quarantined' });
       await this.persist();
       if ((await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(Date.now() + TICK_MS);
       return { state: 'queued' };
@@ -75,6 +76,7 @@ export class MatchmakerDO extends DurableObject<Env> {
 
   async friendCreate(playerId: string, entry: RaceEntry): Promise<Envelope<unknown>> {
     return wrap(async () => {
+      assertMayRace(entry);
       const r = this.friends.create(playerId, entry, Date.now(), cryptoRng);
       await this.persist();
       return { passphrase: r.passphrase, members: r.members.map((m) => m.playerId) };
@@ -83,6 +85,7 @@ export class MatchmakerDO extends DurableObject<Env> {
 
   async friendJoin(passphrase: string, playerId: string, entry: RaceEntry): Promise<Envelope<unknown>> {
     return wrap(async () => {
+      assertMayRace(entry);
       const r = this.friends.join(passphrase, playerId, entry, Date.now());
       await this.persist();
       return { passphrase: r.passphrase, members: r.members.map((m) => m.playerId) };
@@ -94,7 +97,8 @@ export class MatchmakerDO extends DurableObject<Env> {
       const now = Date.now();
       for (const m of this.friends.rooms.get(passphrase)?.members ?? []) assertNotInLiveRace(this.assignments, m.playerId, now);
       const r = this.friends.start(passphrase, playerId);
-      const created = await createRace(loadMaster(), { mode: 'friend', humans: r.members.map((m) => m.payload), cpuCount: 0, cpuLevel: 3, rng: cryptoRng, now, ticketSecret: this.env.TICKET_SECRET });
+      const cfg = await activeConfig(this.env);
+      const created = await createRace(cfg.master, { ruleset: cfg.ruleset, mode: 'friend', humans: r.members.map((m) => m.payload), cpuCount: 0, cpuLevel: 3, rng: cryptoRng, now, ticketSecret: this.env.TICKET_SECRET });
       await this.startRace(created, now);
       await this.persist();
       return created.assignments[playerId];
@@ -106,7 +110,8 @@ export class MatchmakerDO extends DurableObject<Env> {
       if (this.core.has(playerId)) throw new AppError('ALREADY_QUEUED');
       const now = Date.now();
       assertNotInLiveRace(this.assignments, playerId, now);
-      const created = await createRace(loadMaster(), { mode: 'tutorial', humans: [entry], cpuCount: 11, cpuLevel: 1, rng: cryptoRng, now, ticketSecret: this.env.TICKET_SECRET });
+      const cfg = await activeConfig(this.env);
+      const created = await createRace(cfg.master, { ruleset: cfg.ruleset, mode: 'tutorial', humans: [entry], cpuCount: 11, cpuLevel: 1, rng: cryptoRng, now, ticketSecret: this.env.TICKET_SECRET });
       await this.startRace(created, now);
       await this.persist();
       return created.assignments[playerId];
@@ -129,9 +134,10 @@ export class MatchmakerDO extends DurableObject<Env> {
 
   override async alarm() {
     const now = Date.now();
+    const cfg = await activeConfig(this.env);
     for (const m of this.core.tick(now)) {
       try {
-        const created = await createRace(loadMaster(), { mode: 'ranked', humans: m.players.map((p) => p.payload), cpuCount: m.cpuCount, cpuLevel: m.cpuLevel, rng: cryptoRng, now, ticketSecret: this.env.TICKET_SECRET });
+        const created = await createRace(cfg.master, { ruleset: cfg.ruleset, mode: 'ranked', humans: m.players.map((p) => p.payload), cpuCount: m.cpuCount, cpuLevel: m.cpuLevel, rng: cryptoRng, now, ticketSecret: this.env.TICKET_SECRET });
         await this.startRace(created, now);
       } catch (e) {
         // never drop dequeued players: put them back with their original wait time (next alarm retries)

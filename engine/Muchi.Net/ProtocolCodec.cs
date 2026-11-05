@@ -55,7 +55,7 @@ namespace Muchi.Net
             throw new FormatException("invalid surface: " + s);
         }
 
-        public static string ModeToString(RaceMode m) => m == RaceMode.Ranked ? "ranked" : m == RaceMode.Friend ? "friend" : "tutorial";
+        public static string ModeToString(RaceMode m) => m == RaceMode.Ranked ? "ranked" : m == RaceMode.Friend ? "friend" : m == RaceMode.TimeAttack ? "timeattack" : "tutorial";
 
         public static RaceMode ParseMode(string s)
         {
@@ -64,6 +64,7 @@ namespace Muchi.Net
                 case "ranked": return RaceMode.Ranked;
                 case "friend": return RaceMode.Friend;
                 case "tutorial": return RaceMode.Tutorial;
+                case "timeattack": return RaceMode.TimeAttack;
                 default: throw new FormatException("invalid mode: " + s);
             }
         }
@@ -290,6 +291,11 @@ namespace Muchi.Net
             var ft = JsonNode.Arr();
             foreach (var f in r.Result.FinishTicks) ft.Add(JsonNode.Num(f));
             o.Set("finishTicks", ft);
+            // finishFracs: Q16.16 fraction of the finish tick per place (-1 = did not finish); lets the server
+            // compute exact race times (time attack) without re-simulating.
+            var ff = JsonNode.Arr();
+            for (int i = 0; i < r.Result.FinishTicks.Length; i++) ff.Add(JsonNode.Num(r.Result.FinishTicks[i] >= 0 ? r.Result.FinishFracOrDistanceRaw[i] : -1));
+            o.Set("finishFracs", ff);
             var cs = JsonNode.Obj();
             foreach (var kv in r.Checksums) cs.Set(kv.Key.ToString(CultureInfo.InvariantCulture), kv.Value);
             o.Set("checksums", cs);

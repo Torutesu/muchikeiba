@@ -14,19 +14,90 @@ export { MatchmakerDO } from './do/matchmaker.js';
 export { AccountingDO } from './do/accounting.js';
 export { LeaderboardDO } from './do/leaderboard.js';
 export { DirectoryDO } from './do/directory.js';
+export { OpsDO } from './do/ops.js';
+export { IntegrityDO } from './do/integrity.js';
+import type { OpsApi } from './http/admin.js';
+import { authenticateAdmin, parseAdminTokens, type AdminAuthConfig, type AdminRole } from './ops/admin.js';
+import { activeConfig } from './ops/activeConfig.js';
+import type { ResolvedConfig } from './ops/config.js';
 import { shardedDirectory } from './do/directory.js';
 import { boardKey, indexKey, type RolloverState } from './domain/leaderboard.js';
 import { runScheduled } from './domain/scheduled.js';
 import { sweepReplays, type ReplayBucket } from './domain/retention.js';
+import { renderTemplate, seasonReminderFor } from './domain/push.js';
+import { fcmFromEnv } from './push/fcm.js';
+import { TimeAttackService } from './race/timeAttack.js';
+import { HttpVerifierClient } from './domain/verifier.js';
+import { taBoardName, type GhostFile, type TaBoardFile, type TaEntry } from './domain/timeAttack.js';
 
-const master = loadMaster();
-validateGacha(master); // fail fast on a broken gacha/master definition (REQ-GACHA-003/008)
+/** REQ-PUSH-006: one FCM topic send reaches every opted-in device (no per-player fan-out). */
+async function broadcastSeasonReminder(env: Env, now: number): Promise<string | null> {
+  const { master } = await activeConfig(env); // follow remote config (REQ-OPS-005)
+  const r = seasonReminderFor(master, now);
+  if (!r) return null;
+  const t = master.push.templates[r.templateId];
+  const topic = t && master.push.topics[t.category];
+  const sender = fcmFromEnv(env);
+  if (!t || !topic || !sender) return null;
+  const out = await sender.sendTopic(topic, renderTemplate(t, r.templateId, r.vars));
+  if (out.kind !== 'ok') console.error('season reminder failed', r.templateId, out);
+  return r.templateId;
+}
+
+const baseMaster = loadMaster();
+validateGacha(baseMaster); // fail fast on a broken gacha/master definition (REQ-GACHA-003/008)
 
 type Rpc = Record<string, (...a: unknown[]) => Promise<Envelope<unknown>>>;
 const stub = (ns: DurableObjectNamespace, name: string) => ns.get(ns.idFromName(name)) as unknown as Rpc;
 
-export function makeContext(env: Env): AppContext {
+/** Ops backend over the OpsDO / IntegrityDO singletons (REQ-OPS-*). */
+export function makeOpsApi(env: Env): OpsApi | undefined {
+  if (!env.OPS || !env.INTEGRITY) return undefined;
+  const ops = () => stub(env.OPS!, 'global');
+  const integ = () => stub(env.INTEGRITY!, 'global');
+  const call = async <T>(p: Promise<Envelope<unknown>>) => unwrap(await p) as T;
+  return {
+    admit: (id, kind, now) => call(ops().admit!(id, kind, now)),
+    audit: (e, now) => call(ops().audit!(e, now)),
+    auditQuery: (q) => call(ops().auditQuery!(q)),
+    config: {
+      active: (now, known) => call(ops().configActive!(now, known)),
+      validate: (b) => call(ops().configValidate!(b)),
+      stage: (b, by, note, now) => call(ops().configStage!(b, by, note, now)),
+      schedule: (v, at, by, reason, now) => call(ops().configSchedule!(v, at, by, reason, now)),
+      cancel: (id, now) => call(ops().configCancel!(id, now)),
+      rollback: (v, by, reason, now) => call(ops().configRollback!(v, by, reason, now)),
+      list: (now) => call(ops().configList!(now)),
+      get: (id) => call(ops().configGet!(id)),
+    },
+    integrity: {
+      recordRace: (r) => call(integ().recordRace!(r)),
+      report: (raceId, reporter, now) => call(integ().report!(raceId, reporter, now)),
+      reports: (st, limit) => call(integ().reports!(st, limit)),
+      resolveReport: (id, res, by, now) => call(integ().resolveReport!(id, res, by, now)),
+      view: (pid, now) => call(integ().view!(pid, now)),
+      list: (st, now, limit) => call(integ().list!(st, now, limit)),
+      ban: (pid, until, reason, by, now) => call(integ().ban!(pid, until, reason, by, now)),
+      unban: (pid, reason, by, now) => call(integ().unban!(pid, reason, by, now)),
+      release: (pid, reason, by, now) => call(integ().release!(pid, reason, by, now)),
+    },
+  };
+}
+
+export function adminAuthConfig(env: Env): AdminAuthConfig {
+  return {
+    tokens: parseAdminTokens(env.ADMIN_TOKENS),
+    legacyToken: env.ADMIN_TOKEN,
+    access: env.ACCESS_TEAM_DOMAIN && env.ACCESS_AUD
+      ? { teamDomain: env.ACCESS_TEAM_DOMAIN, audience: env.ACCESS_AUD, roles: JSON.parse(env.ACCESS_ROLES ?? '{}') as Record<string, AdminRole> }
+      : undefined,
+  };
+}
+
+export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
+  const master = cfg?.master ?? baseMaster;
   const dev = env.DEV_MODE === '1';
+  const ops = makeOpsApi(env);
   const mm = () => stub(env.MATCHMAKER, 'ranked-jp');
   const call = async (p: Promise<Envelope<unknown>>) => unwrap(await p);
   const lb = (seasonId: string) => stub(env.LEADERBOARD, `lb:${seasonId}`);
@@ -70,9 +141,34 @@ export function makeContext(env: Env): AppContext {
       },
       myRank: async (playerId, seasonId) => call(lb(seasonId).rankOf!(playerId)),
     },
+    timeAttack: new TimeAttackService({
+      player,
+      verifier: new HttpVerifierClient(env.VERIFIER_URL),
+      ticketSecret: env.TICKET_SECRET,
+      clock: () => Date.now(),
+      board: {
+        upsert: async (e) => (await call(lb(e.seasonId).upsertTimeAttack!(e))) as boolean,
+        rankOf: async (seasonId, trackId, pid) => (await call(lb(seasonId).taRankOf!(trackId, pid))) as { rank: number; total: number; generatedAt: number | null } | null,
+        entries: async (seasonId, trackId, ids) => (await call(lb(seasonId).taEntriesFor!(seasonId, trackId, ids))) as TaEntry[],
+        snapshot: async (seasonId, trackId) => {
+          const obj = await env.SNAPSHOTS.get(boardKey(seasonId, taBoardName(trackId)));
+          return obj ? ((await obj.json()) as TaBoardFile) : null;
+        },
+      },
+      ghosts: {
+        put: async (key, file) => { await env.REPLAYS.put(key, JSON.stringify(file), { httpMetadata: { contentType: 'application/json' } }); },
+        get: async (key) => {
+          const obj = await env.REPLAYS.get(key);
+          return obj ? ((await obj.json()) as GhostFile) : null;
+        },
+      },
+    }),
     paidBalance: () => (stub(env.ACCOUNTING, 'global') as unknown as { summary(): Promise<unknown> }).summary(),
     adminToken: env.ADMIN_TOKEN,
     parseStoreNotification: (platform, req) => parseStoreNotification(platform, req, storeSettingsFromEnv(env, master), accountingStoreIndex(env)),
+    ...(ops ? { ops } : {}),
+    authenticateAdmin: (req) => authenticateAdmin(req, adminAuthConfig(env)),
+    configInfo: async () => ({ versionId: cfg?.versionId ?? 'base', hash: cfg?.hash ?? 'base', rulesetVersion: cfg?.ruleset.rulesetVersion ?? '', activatedAt: cfg?.activatedAt ?? null }),
   };
 }
 
@@ -100,7 +196,7 @@ export default {
       console.error('DEV_MODE is set on a non-loopback host; refusing all requests');
       return Promise.resolve(Response.json({ error: 'DEV_MODE_REFUSED' }, { status: 500 }));
     }
-    return handle(req, {}, makeContext(env));
+    return activeConfig(env).then((cfg) => handle(req, {}, makeContext(env, cfg)));
   },
   /** Cron triggers (wrangler.toml [triggers]): leaderboards, season rollover, replay retention. */
   async scheduled(event: ScheduledController, env: Env) {
@@ -111,7 +207,8 @@ export default {
     const done = await runScheduled(event.cron, now, {
       snapshot: async (seasonId) => unwrap(await lb(seasonId).snapshot(seasonId, now)),
       rolloverStep: async (seasonId) => unwrap(await lb(seasonId).rolloverStep(seasonId, now)),
-      sweepReplays: (t) => sweepReplays(replayBucket(env.REPLAYS), t, Number(env.REPLAY_RETENTION_DAYS ?? master.progression.replayRetentionDays)),
+      sweepReplays: async (t) => sweepReplays(replayBucket(env.REPLAYS), t, Number(env.REPLAY_RETENTION_DAYS ?? (await activeConfig(env)).master.progression.replayRetentionDays)),
+      seasonReminder: (t) => broadcastSeasonReminder(env, t),
     });
     console.log('scheduled', event.cron, done.join(' '));
   },

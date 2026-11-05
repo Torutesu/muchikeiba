@@ -92,7 +92,12 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | GET | `/v1/titles` | 要 | | 称号一覧（解放済みか）と装備中 |
 | PUT | `/v1/player/title` | 要 | | `{titleId \| null}` 解放済みのみ |
 | GET | `/v1/stats` | 要 | | 戦績（脚質別・コース別ベスト・スタート・ムチ） |
-| GET | `/v1/leaderboards/:seasonId/:board` | なし | | `seasonId`=`YYYY-MM`\|`current`、`board`=`class-C`等\|`rating`\|`index`。R2の集計ファイル（5分ごと更新） |
+| GET | `/v1/leaderboards/:seasonId/:board` | なし | | `seasonId`=`YYYY-MM`\|`current`、`board`=`class-C`等\|`rating`\|`index`\|`ta-<trackId>`（タイムアタック）。R2の集計ファイル（5分ごと更新） |
+| POST | `/v1/time-attack/start` | 要 | | `{trackId, horseId}` → `{sessionId, token, config, expiresAt, attemptsLeft}`。1日の回数を消費（`TA_LIMIT_REACHED`） |
+| POST | `/v1/time-attack/submit` | 要 | | `{sessionId, token, inputs:[[tick,0,cmd]…], resultHash, config?}` → 検証サーバーで再計算して記録。`{finished, timeMs, seasonBest, allTimeBest, milestones, published…}`。`TA_RESULT_MISMATCH`(422) / `TA_SESSION_USED` / `TA_SESSION_EXPIRED` / `TA_CONFIG_MISMATCH`(400) / `VERIFIER_UNAVAILABLE`(503, 同じセッションで再提出可) |
+| GET | `/v1/time-attack/:trackId/me` | 要 | | シーズン／通算ベスト、今日の残り回数、節目報酬、順位（直近集計） |
+| GET | `/v1/time-attack/:trackId/ghosts` | 要 | | `?kind=top\|friends\|me&seasonId=` ゴースト候補（名前・タイム・ダウンロード `path`） |
+| GET | `/v1/time-attack/ghosts/:seasonId/:trackId/:playerId` | 要 | | ゴースト本体 `{meta, log}`（検証済みリプレイログ） |
 | GET | `/v1/leaderboards/me` | 要 | | 今シーズンの自分の順位（直近集計）と現在の成績 |
 | GET | `/v1/friends` | 要 | | フレンド・受信/送信中の申請・招待（公開プロフィール付き） |
 | GET | `/v1/friends/code` | 要 | | 自分のフレンドコード（9桁） |
@@ -102,10 +107,59 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | DELETE | `/v1/friends/requests/:toId` | 要 | | 自分の申請を取り消し |
 | DELETE | `/v1/friends/:friendId` | 要 | | フレンド解除（双方） |
 | POST | `/v1/friend-rooms/:passphrase/invite` | 要 | | `{friendId}` 部屋のメンバーがフレンドを招待 |
+| GET | `/v1/config` | なし | | 有効な設定の版 `{versionId, hash, rulesetVersion, activatedAt}`。アプリはhashごとにマスターデータをキャッシュ（REQ-OPS-007） |
+| PUT | `/v1/push/devices` | 要 | | `{token, platform: ios\|android}` FCMトークンを登録（1人最大5台。古い順に外れる） |
+| POST | `/v1/push/devices/unregister` | 要 | | `{token}` ログアウト・通知オフ時に外す |
+| GET | `/v1/push/preferences` | 要 | | 種類別の受信設定・静かな時間帯・1日の上限・登録台数・購読するFCMトピック |
+| PUT | `/v1/push/preferences` | 要 | | `{categories?: {season,friends,invites,events}, quietHours?: {startHour,endHour}\|null}` → 上と同じ形。返ってきた `topics.subscribe/unsubscribe` をアプリがFCMで購読・解除する |
+| POST | `/v1/analytics/events` | 要 | | `{platform, appVersion, events: [{name, at, props}]}`（最大50件）。クライアントでしか分からないイベントだけ受け付ける（`docs/ops/kpi-queries.md`）。1人あたり30回/分・2,000件/日まで（`RATE_LIMITED`=429） |
 | GET | `/v1/admin/paid-balance` | 管理 | | 有償コイン未使用残高の集計（資金決済法） |
 | GET | `/v1/admin/replays/:raceId` | 管理 | | リプレイログ |
 
-レース中のメッセージは `contracts/protocol.md` §4。
+レース中のメッセージは `contracts/protocol.md` §4。BAN中のプレイヤーはランク戦・フレンド部屋・購入前チェックで `403 BANNED`。
+
+## 管理API（`src/http/admin.ts`、REQ-OPS-*）
+
+認証は `Authorization: Bearer <管理トークン>`（`ADMIN_TOKENS` にはトークンのSHA-256だけを置く）か、Cloudflare Access の `Cf-Access-Jwt-Assertion`。
+権限は viewer ＜ operator ＜ admin。**書き込みは本文に `reason`（3〜500文字）が必須**。全ての呼び出し（閲覧・失敗・権限不足も）が監査ログに残る。操作者ごとのレート制限（閲覧／書き込み別、超過は `429 RATE_LIMITED`）。
+
+| メソッド | パス | 権限 | 本文 / 説明 |
+|---|---|---|---|
+| GET | `/v1/admin/whoami` | viewer | 自分のIDと権限 |
+| GET | `/v1/admin/paid-balance` | viewer | 有償コイン未使用残高の集計（資金決済法） |
+| GET | `/v1/admin/replays/:raceId` | viewer | リプレイログ |
+| GET | `/v1/admin/audit` | viewer | `?actor=&target=&action=&beforeSeq=&limit=` 監査ログ（新しい順） |
+| GET | `/v1/admin/config` | viewer | 有効な版・予約・全版（本体なし）・有効化履歴 |
+| GET | `/v1/admin/config/versions/:id` | viewer | 版の本体 |
+| POST | `/v1/admin/config/validate` | viewer | `{bundle}` 検証だけ（`{problems}`） |
+| POST | `/v1/admin/config/versions` | operator | `{bundle, note, reason}` 版を登録（同じ内容なら既存の版） |
+| POST | `/v1/admin/config/activations` | admin | `{versionId, at?, reason}` 今すぐ／予約で有効化 |
+| POST | `/v1/admin/config/activations/:id/cancel` | admin | `{reason}` 効果が出る前の予約を取り消し |
+| POST | `/v1/admin/config/rollback` | admin | `{versionId?, reason}` 1つ前／指定の版／`base` に即時に戻す |
+| GET | `/v1/admin/players/:playerId` | viewer | サポート用の詳細（財布・ロット・台帳・購入・年齢・印・不正対策の状態） |
+| POST | `/v1/admin/players/:playerId/grants` | operator | `{grant:{freeCoins?, items?}, opKey, reason}` お詫び配布（opKeyで冪等、権限ごとの上限） |
+| POST | `/v1/admin/grants/bulk` | operator | `{grant, opKey, reason, playerIds? \| segment?}` 一括配布（1回200人・合計100万コインまで。`segment`＝`{kind:'leaderboard', seasonId, board, offset, limit}`、続きは `nextOffset`） |
+| POST | `/v1/admin/players/:playerId/debt/settle` | operator | `{coins?, items?, opKey, reason}` 返金負債の免除 |
+| PUT | `/v1/admin/players/:playerId/age` | operator | `{birthYear, birthMonth, guardianConsent, reason}` 年齢の訂正 |
+| POST | `/v1/admin/players/:playerId/name-reset` | operator | `{target: display\|horse, horseId?, reason}` 名前を既定に戻す |
+| GET | `/v1/admin/integrity/players` | viewer | `?status=quarantined\|banned\|flagged&limit=` |
+| GET | `/v1/admin/integrity/players/:playerId` | viewer | 点数・記録・状態・メモ |
+| POST | `/v1/admin/integrity/players/:playerId/release` | operator | `{reason}` 隔離の解除 |
+| POST | `/v1/admin/integrity/players/:playerId/ban` | admin | `{until?: epochMs\|null, reason}` BAN（null＝無期限） |
+| POST | `/v1/admin/integrity/players/:playerId/unban` | admin | `{reason}` |
+| GET | `/v1/admin/reports` | viewer | `?status=open\|resolved` 通報の列 |
+| POST | `/v1/admin/reports/:reportId/resolve` | operator | `{resolution, reason}` |
+
+### 設定配信（リモートコンフィグ）
+- バンドルで変えられるもの：`ruleset`（一部でも全部でも可。キー集合は固定）、`gacha.banners`（一覧ごと置き換え。開催日程は `startAtMs`/`endAtMs`）、`gacha.pityGroups`、`tracks`、`progression`（浅いマージ）、`ng`。
+- 値を変えたら `ruleset.rulesetVersion` も変える。同じ `rulesetVersion` を別の値で使い回すことはできない（過去のレースの検証のため）。
+- 各Worker・Durable Objectは有効な設定を30秒（または次の予約時刻まで）キャッシュする。有効化から反映まで最大30秒。
+- 設定は `OpsDO`（`global`）に保存。配信元に障害があっても最後に知っている設定で動く。
+
+### 不正対策
+- レース確定後、結果が食い違った人（容疑者、1点）とチェックサムがズレた人（0.5点）を `IntegrityDO`（`global`）に送る。7日間で3点以上なら自動で14日間の隔離（ランク戦は隔離中の人同士かCPUとだけ）。
+- BANは管理者の判断のみ。状態はプレイヤー本人のオブジェクトに反映され、マッチングと購入前チェックで使われる。
+- 通報（`/v1/race/:raceId/report`）はレビュー用の列に入る。通報だけで隔離・BANにはならない。
 
 ## 設計メモ
 - お金・抽選・配合の乱数はすべてサーバー（`crypto.getRandomValues`）。端末の値は信用しない。
@@ -152,8 +206,29 @@ App Store Server API（`AppStoreServerApi`、ES256 JWT）はアプリが報告�
 |---|---|
 | `*/5 * * * *` | 今シーズンのランキング集計をR2（`SNAPSHOTS`）へ（変化があった時だけ）＋前シーズンの締めを1段階進める（完了後は何もしない） |
 | `23 18 * * *`（03:23 JST） | リプレイログの保存期限切れを削除（保留中は残す） |
+| `7 3 * * *`（12:07 JST） | シーズンのお知らせ（開幕・終了2日前・最終日）をFCMトピックへ1回だけ送る |
 
 ローカルでは `wrangler dev --test-scheduled` で `/__scheduled?cron=*/5+*+*+*+*` を叩いて確認できる。
+
+## プッシュ通知（`src/domain/push.ts`、`src/push/`）
+
+- **送り方**：FCM HTTP v1。サービスアカウントのJWTからOAuthトークンを取り（`google/serviceAuth.ts`、Google Playと共通）、キャッシュする。
+- **個別通知**（フレンド申請・フレンド成立・フレンド部屋への招待）はプレイヤーごとの送信待ち（outbox）に積み、**そのプレイヤーのDurable Objectのアラーム**で送る。リクエスト処理はFCMを待たない。
+  - Cloudflare Queues を使わない理由：送信待ちはプレイヤーの保存領域にあり、アラームは退避・デプロイをまたいで確実に動く。再試行は次のアラームで済み、追加の有料バインディングが要らない。
+  - 失敗時：`UNREGISTERED`・`INVALID_ARGUMENT`・`SENDER_ID_MISMATCH`（404/400/403）はその端末を削除。429/5xx/401 は `retry.backoffMs`（30秒→2分→10分→1時間、`Retry-After` が長ければそちら）で再送し、`maxAttempts` 回で諦める。TTLを過ぎたものは捨てる。
+- **受信設定**：種類（season / friends / invites / events）ごとのオン・オフ、静かな時間帯（JST、既定22〜8時）、1日の上限（既定5件）。
+  - 静かな時間帯：急ぎの通知（招待）は送らない。それ以外は静かな時間帯が明けるまで遅らせる。
+- **一斉通知**（シーズンのお知らせ）はFCMトピック（`season_ja` など）に1回送るだけ。プレイヤー全員に個別に送らないので、人数が増えても費用が増えない。購読・解除はアプリ側（設定画面の結果 `topics` に従う）。
+- 文言はすべて `master/push.json`（日本語テンプレート）。
+- 設定：`FCM_PROJECT_ID`（var、省略時はサービスアカウントの `project_id`）、`FCM_SERVICE_ACCOUNT_JSON`（secret、省略時は `GOOGLE_SERVICE_ACCOUNT_JSON`）。未設定なら通知は積まれても送られずに捨てられる。
+- 未対応：ランク戦の検証結果の通知（任意項目）。
+
+## KPI計測（`src/domain/kpi.ts`）
+
+- サーバーで分かるイベント（初回起動・購入・返金・ガチャ・レース結果・シーズン締め・フレンド・パスの更新）は、プレイヤーの処理が保存されたあとに Workers Analytics Engine（バインディング `ANALYTICS`、データセット `muchi_kpi`）へ書く。保存に失敗した処理のイベントは出ない。
+- クライアントでしか分からないイベント（セッション・チュートリアルの各ステップ・画面・購入画面の操作・通知の開封など）は `POST /v1/analytics/events` で受ける。種類ごとにスキーマで検証し、時刻が7日より古いか5分より未来のものは捨てる。
+- 個人情報は送らない。プレイヤーIDはソルト（secret `KPI_SALT`）付きSHA-256の先頭16桁に置き換える。`KPI_SALT` が無ければ何も書かない。
+- 列の並びとクエリ（継続率・チュートリアル・初回課金・ARPDAU・課金率・パス継続・課金者と無課金者の勝率差）は `docs/ops/kpi-queries.md`。
 
 ## 未実装・要対応
 - Apple / Google の実機・本番の認証情報での疎通確認（コードとテストは自前の証明書チェーン・偽APIで検証済み）

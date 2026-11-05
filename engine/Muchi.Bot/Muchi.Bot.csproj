@@ -10,5 +10,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Muchi.Engine\Muchi.Engine.csproj" />
     <ProjectReference Include="..\Muchi.Net\Muchi.Net.csproj" />
+    <ProjectReference Include="..\Muchi.Client\Muchi.Client.csproj" />
   </ItemGroup>
 </Project>

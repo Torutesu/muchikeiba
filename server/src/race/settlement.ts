@@ -3,6 +3,7 @@ import type { Rating } from '../domain/rating.js';
 import type { RaceResultForPlayer } from '../domain/rewards.js';
 import type { ReplayLog, VerifierOutput } from '../domain/schemas.js';
 import { settleRace } from './orchestrate.js';
+import type { RaceIntegrityReport } from '../ops/integrity.js';
 
 /**
  * Verification and settlement of a finished race, driven only from the room's alarm (REQ-NET-014).
@@ -36,6 +37,8 @@ export interface SettleDeps {
   applyRace(playerId: string, r: RaceResultForPlayer): Promise<void>;
   /** Frees the players' matchmaking assignment (best effort). */
   raceFinished(playerIds: string[]): Promise<void>;
+  /** REQ-OPS-030: flags suspects/desync for anti-cheat (best effort, idempotent per race on the receiver). */
+  integrity?(r: RaceIntegrityReport): Promise<void>;
   persist(): Promise<void>;
 }
 
@@ -98,6 +101,14 @@ export async function driveSettlement(core: RaceRoomCore, meta: SettleMeta, deps
     meta.settled = true;
     meta.retryAt = null;
     await deps.persist();
+    const flagged = integrityReport(core, now);
+    if (flagged && deps.integrity) {
+      try {
+        await deps.integrity(flagged);
+      } catch (e) {
+        console.error('integrity report failed', (e as Error).message);
+      }
+    }
     try {
       await deps.raceFinished(Object.keys(meta.results));
     } catch (e) {
@@ -105,4 +116,15 @@ export async function driveSettlement(core: RaceRoomCore, meta: SettleMeta, deps
     }
   }
   return { out, retryAt: null };
+}
+
+/** Players whose result disagreed with the final hash (suspects) or whose checksums diverged (desync). */
+export function integrityReport(core: Pick<RaceRoomCore, 'config' | 'final' | 'desyncSlots'>, now: number): RaceIntegrityReport | null {
+  const f = core.final;
+  if (!f) return null;
+  const playerOf = (slot: number) => core.config.entrants[slot]?.playerId ?? null;
+  const suspects = f.suspects.map(playerOf).filter((x): x is string => !!x);
+  const desync = core.desyncSlots.map(playerOf).filter((x): x is string => !!x);
+  if (suspects.length === 0 && desync.length === 0) return null;
+  return { raceId: core.config.raceId, mode: core.config.mode, at: now, suspects, desync };
 }

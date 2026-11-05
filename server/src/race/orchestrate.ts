@@ -1,4 +1,5 @@
 import type { Master } from '../domain/master.js';
+import type { Ruleset } from '../domain/ruleset.js';
 import { buildRaceConfig } from '../domain/raceConfig.js';
 import { randInt, randomId, type Rng } from '../domain/rng.js';
 import type { RaceMode, RaceStartConfig, ReplayLog } from '../domain/schemas.js';
@@ -16,13 +17,15 @@ export interface Assignment { raceId: string; slot: number; ticket: string; star
 
 export interface CreatedRace { config: RaceStartConfig; startAtMs: number; ratings: Record<string, Rating>; assignments: Record<string, Assignment> }
 
-export async function createRace(m: Master, o: { mode: RaceMode; humans: RaceEntry[]; cpuCount: number; cpuLevel: number; rng: Rng; now: number; ticketSecret: string; trackId?: string }): Promise<CreatedRace> {
+export async function createRace(m: Master, o: { mode: RaceMode; humans: RaceEntry[]; cpuCount: number; cpuLevel: number; rng: Rng; now: number; ticketSecret: string; trackId?: string; ruleset?: Ruleset }): Promise<CreatedRace> {
   const raceId = randomId('r', o.rng);
   const trackId = o.trackId ?? (o.mode === 'tutorial' ? 'aoba_turf_1600' : m.tracks[randInt(o.rng, m.tracks.length)]!.id);
   const statCap = o.mode === 'ranked' ? Math.min(...o.humans.map((h) => h.statCap)) : null;
   const config = buildRaceConfig(m, {
     raceId, mode: o.mode, trackId, statCap, cpuCount: o.cpuCount, cpuLevel: o.cpuLevel, rng: o.rng,
     humans: o.humans.map((h) => ({ playerId: h.playerId, horse: h.horse, cpuLevel: 3 })),
+    // REQ-OPS-006: the active ruleset is embedded in the config, so the replay log carries it to the verifier
+    ...(o.ruleset ? { rulesetOverrides: o.ruleset } : {}),
   });
   const startAtMs = o.now + START_DELAY_MS;
   const assignments: Record<string, Assignment> = {};

@@ -13,13 +13,20 @@ using System.Text.Json;
 using Muchi.Engine;
 using Muchi.Net;
 
-if (args.Length < 2) { Console.Error.WriteLine("usage: Muchi.Bot <baseUrl> tutorial | ranked <players>"); return 2; }
+if (args.Length < 2) { Console.Error.WriteLine("usage: Muchi.Bot <baseUrl> tutorial | ranked <players> | timeattack"); return 2; }
 string baseUrl = args[0].TrimEnd('/');
 string mode = args[1];
 int players = mode == "ranked" && args.Length >= 3 ? int.Parse(args[2]) : 1;
 
 var bots = Enumerable.Range(0, players).Select(i => new Bot(baseUrl, $"bot_{mode}_{DateTime.UtcNow.Ticks}_{i}")).ToArray();
 foreach (var b in bots) await b.SetupAsync();
+
+if (mode == "timeattack")
+{
+    var ta = await TimeAttackScenario.RunAsync(bots[0]);
+    Console.WriteLine(JsonSerializer.Serialize(ta));
+    return ta.ok ? 0 : 1;
+}
 
 if (mode == "tutorial")
 {
@@ -81,7 +88,16 @@ sealed class Bot
         return JsonDocument.Parse(text).RootElement.Clone();
     }
 
-    private async Task<JsonElement> GetAsync(string path)
+    /// <summary>Raw request: status + body text (no throw), for checks on error responses.</summary>
+    public async Task<(int status, string text)> SendRawAsync(HttpMethod method, string path, string jsonBody = null)
+    {
+        var req = new HttpRequestMessage(method, path);
+        if (jsonBody != null) req.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
+        var res = await _http.SendAsync(req);
+        return ((int)res.StatusCode, await res.Content.ReadAsStringAsync());
+    }
+
+    public async Task<JsonElement> GetAsync(string path)
     {
         var text = await _http.GetStringAsync(path);
         return JsonDocument.Parse(text).RootElement.Clone();

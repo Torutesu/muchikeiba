@@ -127,6 +127,20 @@ export function clawbackFree(s: PlayerState, amount: number, at: number, ref: st
   return { removed, debt: left };
 }
 
+/**
+ * Support write-off of refund debt (REQ-OPS-023): forgives up to `amount` of outstanding debt.
+ * No coins move; the ledger keeps a zero-delta `settle` row naming the operator and reason.
+ */
+export function writeOffDebt(s: PlayerState, amount: number, at: number, reason: string, ref: string): number {
+  checkInt(amount);
+  const forgiven = Math.min(s.wallet.debt, amount);
+  if (forgiven > 0) {
+    s.wallet.debt -= forgiven;
+    ledger(s, at, 'settle', 'paid', 0, `debt write-off ${forgiven}: ${reason}`, ref);
+  }
+  return forgiven;
+}
+
 /** Outstanding paid balance valued at purchase price, in yen (rounded down). */
 export function paidBalanceYen(s: PlayerState): number {
   let micro = 0;

@@ -8,6 +8,11 @@ import type { PurchaseRecord } from '../domain/player.js';
 import { appleAccountToken, googleAccountId } from '../stores/binding.js';
 import { FriendsService, type Directory, type FriendPlayers } from '../domain/friends.js';
 import { jstMonthKey } from '../domain/time.js';
+import { handleAdmin, type OpsApi } from './admin.js';
+import type { AdminPrincipal } from '../ops/admin.js';
+import { clientBatchSchema } from '../domain/kpi.js';
+import type { TimeAttackService } from '../race/timeAttack.js';
+import { TA_BOARD_RE } from '../domain/timeAttack.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -16,7 +21,10 @@ export type PlayerMethod =
   | 'claimMission' | 'passView' | 'claimPass' | 'applyRace' | 'raceEntry'
   | 'storeRenewal' | 'subscriptionStatus'
   | 'setDisplayName' | 'equipTitle' | 'titles' | 'stats' | 'publicProfile' | 'closeSeason'
-  | 'friendSend' | 'friendReceive' | 'friendAccept' | 'friendAccepted' | 'friendDecline' | 'friendCancel' | 'friendRemove' | 'friendInvite' | 'friendsState';
+  | 'friendSend' | 'friendReceive' | 'friendAccept' | 'friendAccepted' | 'friendDecline' | 'friendCancel' | 'friendRemove' | 'friendInvite' | 'friendsState'
+  | 'adminView' | 'adminGrant' | 'adminSettleDebt' | 'adminCorrectAge' | 'adminResetName' | 'setModeration'
+  | 'registerDevice' | 'unregisterDevice' | 'pushPreferences' | 'setPushPreferences' | 'kpiIngest'
+  | 'taStart' | 'taPrepare' | 'taAbort' | 'taRecord' | 'taView';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -59,11 +67,18 @@ export interface AppContext {
   race: RaceApi;
   friends: FriendsService;
   leaderboard: LeaderboardApi;
+  timeAttack: TimeAttackService;
   clock?: () => number;
   paidBalance(): Promise<unknown>;
   adminToken: string | undefined;
   parseStoreNotification(platform: string, req: Request): Promise<StoreNotification | null>;
+  /** Live-ops backend (REQ-OPS-*). When present, /v1/admin/* is served by http/admin.ts with roles and audit. */
+  ops?: OpsApi;
+  authenticateAdmin?(req: Request): Promise<AdminPrincipal>;
+  /** Active remote config summary for clients (REQ-OPS-007). */
+  configInfo?(): Promise<ClientConfigInfo>;
 }
+export interface ClientConfigInfo { versionId: string; hash: string; rulesetVersion: string; activatedAt: number | null }
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8' } });
 const errorResponse = (e: AppError) => json({ error: { code: e.code, message: e.message } }, e.status);
@@ -107,6 +122,8 @@ const ok = (x: unknown) => x;
 
 export const routes: Route[] = [
   { method: 'GET', path: '/v1/health', auth: 'none', handler: async () => ({ ok: true }) },
+  // REQ-OPS-007: clients cache master data per config version and refetch when it changes
+  { method: 'GET', path: '/v1/config', auth: 'none', handler: async (_r, _p, c) => (c.configInfo ? c.configInfo() : { versionId: 'base', hash: 'base', rulesetVersion: null, activatedAt: null }) },
   // player
   { method: 'POST', path: '/v1/player/bootstrap', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('bootstrap', u) },
   { method: 'GET', path: '/v1/player', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('view', u) },
@@ -199,7 +216,12 @@ export const routes: Route[] = [
     return c.match.tutorial(u, await c.player(u).invoke('raceEntry', u, b.horseId));
   } },
   { method: 'GET', path: '/v1/race/:raceId/ws', auth: 'ws', handler: async () => ok(null) },
-  { method: 'POST', path: '/v1/race/:raceId/report', auth: 'player', handler: async (_r, p, c, u) => c.race.report(p.raceId!, u) },
+  { method: 'POST', path: '/v1/race/:raceId/report', auth: 'player', handler: async (_r, p, c, u) => {
+    const r = (await c.race.report(p.raceId!, u)) as { ok?: boolean };
+    // REQ-OPS-034: reports of races the player was in go to the review queue
+    if (r?.ok && c.ops) await c.ops.integrity.report(p.raceId!, u, (c.clock ?? Date.now)());
+    return r;
+  } },
   // profile, titles, stats (REQ-STAT-*, REQ-TITLE-*, REQ-SOCIAL-006)
   { method: 'PUT', path: '/v1/player/profile', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ displayName: z.string().min(1).max(40) }));
@@ -215,7 +237,7 @@ export const routes: Route[] = [
   { method: 'GET', path: '/v1/leaderboards/me', auth: 'player', handler: async (_r, _p, c, u) => c.leaderboard.myRank(u, jstMonthKey((c.clock ?? Date.now)())) },
   { method: 'GET', path: '/v1/leaderboards/:seasonId/:board', auth: 'none', handler: async (_r, p, c) => {
     const season = p.seasonId === 'current' ? jstMonthKey((c.clock ?? Date.now)()) : p.seasonId!;
-    if (!/^\d{4}-\d{2}$/.test(season) || !/^(class-[A-Z]|rating|index)$/.test(p.board!)) throw new AppError('BAD_REQUEST', 'bad season or board');
+    if (!/^\d{4}-\d{2}$/.test(season) || !(/^(class-[A-Z]|rating|index)$/.test(p.board!) || TA_BOARD_RE.test(p.board!))) throw new AppError('BAD_REQUEST', 'bad season or board');
     return c.leaderboard.board(season, p.board!);
   } },
   // friends (REQ-SOCIAL-*)
@@ -233,6 +255,54 @@ export const routes: Route[] = [
     const b = await body(r, z.object({ friendId: id }));
     if (!(await c.match.friendMember(p.passphrase!, u))) throw new AppError('NOT_ELIGIBLE', 'not a member of this room');
     return c.friends.invite(u, b.friendId, p.passphrase!);
+  } },
+  // push notifications (REQ-PUSH-*)
+  { method: 'PUT', path: '/v1/push/devices', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ token: z.string().min(8).max(4096), platform: z.enum(['ios', 'android']) }));
+    return c.player(u).invoke('registerDevice', u, b.token, b.platform);
+  } },
+  { method: 'POST', path: '/v1/push/devices/unregister', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ token: z.string().min(1).max(4096) }));
+    return c.player(u).invoke('unregisterDevice', u, b.token);
+  } },
+  { method: 'GET', path: '/v1/push/preferences', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('pushPreferences', u) },
+  { method: 'PUT', path: '/v1/push/preferences', auth: 'player', handler: async (r, _p, c, u) => {
+    const hour = z.number().int().min(0).max(23);
+    const b = await body(r, z.object({
+      categories: z.object({ season: z.boolean(), friends: z.boolean(), invites: z.boolean(), events: z.boolean() }).partial().optional(),
+      quietHours: z.object({ startHour: hour, endHour: hour }).nullable().optional(),
+    }));
+    return c.player(u).invoke('setPushPreferences', u, {
+      ...(b.categories ? { categories: b.categories } : {}),
+      ...(b.quietHours !== undefined ? { quietHours: b.quietHours } : {}),
+    });
+  } },
+  // analytics (REQ-KPI-003)
+  { method: 'POST', path: '/v1/analytics/events', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('kpiIngest', u, await body(r, clientBatchSchema)) },
+  // time attack & ghosts (REQ-TA-*)
+  { method: 'POST', path: '/v1/time-attack/start', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ trackId: id, horseId: id }));
+    return c.timeAttack.start(u, b.trackId, b.horseId);
+  } },
+  { method: 'POST', path: '/v1/time-attack/submit', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({
+      sessionId: id, token: z.string().min(1).max(2048), resultHash: z.string().regex(/^[0-9a-f]{64}$/),
+      inputs: z.array(z.unknown()).max(4000), config: z.unknown().optional(),
+    }));
+    return c.timeAttack.submit(u, b);
+  } },
+  { method: 'GET', path: '/v1/time-attack/:trackId/me', auth: 'player', handler: async (_r, p, c, u) => c.timeAttack.me(u, p.trackId!) },
+  { method: 'GET', path: '/v1/time-attack/:trackId/ghosts', auth: 'player', handler: async (r, p, c, u) => {
+    const q = new URL(r.url).searchParams;
+    const kind = q.get('kind') ?? 'top';
+    if (kind !== 'top' && kind !== 'friends' && kind !== 'me') throw new AppError('BAD_REQUEST', 'kind must be top|friends|me');
+    const season = q.get('seasonId') ?? undefined;
+    if (season !== undefined && !/^\d{4}-\d{2}$/.test(season)) throw new AppError('BAD_REQUEST', 'bad season');
+    return c.timeAttack.ghosts(u, p.trackId!, kind, season);
+  } },
+  { method: 'GET', path: '/v1/time-attack/ghosts/:seasonId/:trackId/:playerId', auth: 'player', handler: async (_r, p, c) => {
+    if (!/^\d{4}-\d{2}$/.test(p.seasonId!) || !/^[a-z0-9_]{1,48}$/.test(p.trackId!)) throw new AppError('BAD_REQUEST', 'bad season or track');
+    return c.timeAttack.ghost(p.seasonId!, p.trackId!, p.playerId!);
   } },
   // admin
   { method: 'GET', path: '/v1/admin/paid-balance', auth: 'admin', handler: async (_r, _p, c) => c.paidBalance() },
@@ -255,6 +325,12 @@ function match(path: string, pattern: string): Record<string, string> | null {
 
 export const handle: Handler = async (req, _p, ctx) => {
   const url = new URL(req.url);
+  if (url.pathname.startsWith('/v1/admin/') && ctx.ops && ctx.authenticateAdmin) {
+    return handleAdmin(req, {
+      ops: ctx.ops, authenticateAdmin: (r) => ctx.authenticateAdmin!(r), player: ctx.player, leaderboard: ctx.leaderboard,
+      paidBalance: () => ctx.paidBalance(), replay: (id) => ctx.race.replay(id), ...(ctx.clock ? { clock: ctx.clock } : {}),
+    });
+  }
   try {
     let methodMismatch = false;
     for (const r of routes) {
@@ -282,13 +358,13 @@ export const handle: Handler = async (req, _p, ctx) => {
 export function makeFriendsService(player: (uid: string) => PlayerInvoker, dir: Directory): FriendsService {
   const ports: FriendPlayers = {
     send: (u, t) => player(u).invoke('friendSend', u, t),
-    receive: (u, f) => player(u).invoke('friendReceive', u, f),
+    receive: (u, f, name) => player(u).invoke('friendReceive', u, f, name),
     accept: (u, f) => player(u).invoke('friendAccept', u, f),
-    accepted: (u, b) => player(u).invoke('friendAccepted', u, b),
+    accepted: (u, b, name) => player(u).invoke('friendAccepted', u, b, name),
     decline: (u, f) => player(u).invoke('friendDecline', u, f),
     cancel: (u, t) => player(u).invoke('friendCancel', u, t),
     remove: (u, o) => player(u).invoke('friendRemove', u, o),
-    invite: (u, f, pass) => player(u).invoke('friendInvite', u, f, pass),
+    invite: (u, f, pass, name) => player(u).invoke('friendInvite', u, f, pass, name),
     friendsState: (u) => player(u).invoke('friendsState', u),
   };
   return new FriendsService(ports, dir);

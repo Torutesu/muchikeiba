@@ -85,8 +85,28 @@ race.Input(Cmd.Whip);
 race.Pause(NowMs()); race.Resume(NowMs());
 ```
 - **チュートリアル**（いきなり本番）：400mの直線だけ。スタートは自動、操作はムチだけ。残り200〜400mからムチを入れればほぼ必ず勝ち（60シード中58以上）、ムチ無し・残り60mからのムチではほぼ負ける（テストで固定）。
-- **タイムアタック**：`OfflinePresets.TimeAttack(track, horse, ruleset)`、`FinishTimeMs(slot)` でタイム。
+- **練習用タイムアタック**（記録なし）：`OfflinePresets.TimeAttack(track, horse, ruleset)`、`FinishTimeMs(slot)` でタイム。
 - `ruleset` はサーバーから受け取ったもの（オンラインと同じ値）を使う。
+- `OfflineRace.RecordedInputs` に、自分の馬に実際に適用した入力（tickごとに1つ）が残る。設定＋この入力でレースを完全に再現できる（タイムアタックの提出に使う）。
+
+### 3.1 タイムアタックとゴースト（記録あり、REQ-TA-*）
+```csharp
+var session = await api.StartTimeAttackAsync(trackId, horseId);   // サーバーが設定（シード・コース・正規化した馬）を発行。1日の回数を消費、自動再試行しない
+var run = new TimeAttackRun(session);                              // 自分の OfflineRace（slot 0）
+var list = await api.GetGhostsAsync(trackId, GhostKind.Top);       // Top / Friends / Me
+run.AddGhost(await api.GetGhostAsync(list.Ghosts[0]));             // 何体でも
+run.Race.Start(nowMs);
+// 毎フレーム: run.Race.Update(nowMs) — ゴーストは自動で同じtickまで進む。入力は run.Race.Input(Cmd.Whip) など
+// 描画: run.Race.Sim.GetHorse(0) と run.Ghosts[i].Horse / PreviousHorse（半透明で）
+// ゴール後:
+var result = await api.SubmitTimeAttackAsync(session, run.Race);   // 入力と結果ハッシュだけ送る。安全に再試行される
+// result.TimeMs, SeasonBest, AllTimeBest, Milestones（報酬）, Published（ランキングとゴーストに載った）
+```
+- **ゴーストは別のシミュレーション**：ゴーストごとに自分の設定（馬・シード）で `RaceSim` を作り、記録された入力で同じtick数だけ進める。プレイヤーの馬とは干渉しない（スリップストリーム・進路妨害なし）ので、プレイヤーの走りは「発行された設定＋自分の入力」だけで決まり、サーバーの再計算と必ず一致する。ゴーストも記録どおりのゴールtickで終わる（テストで確認）。
+- タイムは `run.Race.FinishTimeMs(0)` / `GhostPlayer.FinishTimeMs`。サーバーの式と同一（`contracts/protocol.md` §8.1）。
+- 改ざん（入力の書き換え、強い馬への差し替え）は再計算のハッシュが合わず `TA_RESULT_MISMATCH`（ConflictException）。検証サーバー停止中は `VERIFIER_UNAVAILABLE`（ServerException）で、セッションの期限内なら同じ `SubmitTimeAttackAsync` をもう一度呼べばよい。
+- ゴーストは `Ghost.Parse(JsonNode)` で読み込めるので、ダウンロードしたものを端末に保存しておける。
+- 計測（上限いっぱいの馬を上手く乗った場合、`TimeAttackTests.MeasureTypicalTimesPerTrack`）：1600m≈67.3秒、2000m≈85.6秒、2400m≈106.3秒。節目報酬の秒数（`server/master/progression.json` の `timeAttack.milestones`）はこれを基準にした暫定値。
 
 ### 4. 実況（`Commentator`）
 ```csharp
@@ -99,6 +119,37 @@ foreach (var line in commentator.Process(race.Sim)) PlayLine(line); // line.Text
 - 言い回しはレースのシードから決定的に選ぶ（同じリプレイは同じ実況）。
 - **音声は作り置き**：`templates.AllFixedClips()` が「固定フレーズID→文」を返すので一度だけ音声合成しておく。馬名は `name:<horseId>`（命名時に1回生成）、数字は `num:<n>`。`ClipKeys` を順に再生すれば `Text` と同じ文になる。
 - 文面は `Data/commentary-ja.json` を編集する（`{name}` `{name2}` `{name3}` `{place}` が使える）。
+
+### 5. プッシュ通知（`ApiClient` の push 系）
+```csharp
+// 起動時とFCMトークンが変わった時（Firebase Messaging の TokenReceived）
+await api.RegisterPushDeviceAsync(fcmToken, PushPlatform.Android);
+// 設定画面
+var prefs = await api.SetPushPreferencesAsync(new PushPreferencesPatch { Invites = false, QuietStartHour = 23, QuietEndHour = 7 });
+// 返ってきたトピックを必ず反映する（シーズンのお知らせなどの一斉通知はトピック宛て）
+foreach (var t in prefs.SubscribeTopics) FirebaseMessaging.SubscribeAsync(t);
+foreach (var t in prefs.UnsubscribeTopics) FirebaseMessaging.UnsubscribeAsync(t);
+// ログアウト時
+await api.UnregisterPushDeviceAsync(fcmToken);
+```
+- 個別通知（フレンド申請・フレンド成立・フレンド部屋への招待）はサーバーが送る。通知の `data` に `templateId` と `category` が入っているので、開いた時の遷移先を決めるのに使う（招待の合言葉は通知に載らない。`GetFriendsAsync()` の `Invites` から取る）。
+- 静かな時間帯（JST）・種類ごとのオン・オフ・1日の上限はサーバー側で判定する。
+
+### 6. 分析（`AnalyticsClient`）
+```csharp
+var analytics = new AnalyticsClient(api, new AnalyticsOptions { Platform = "android", AppVersion = Application.version }, new FileAnalyticsStore(path), NowMs());
+analytics.Track(AnalyticsEvent.SessionStart(NowMs()));
+analytics.Track(AnalyticsEvent.TutorialStep(NowMs(), "first_whip", 2));
+// 毎フレーム（数秒おきでも可）
+analytics.Update(NowMs());
+// バックグラウンドへ行く時
+analytics.Track(AnalyticsEvent.SessionEnd(NowMs(), sessionMs));
+_ = analytics.FlushAllAsync(NowMs());
+```
+- 送れるのは「クライアントでしか分からないイベント」だけ（セッション・チュートリアルの各ステップ・画面・購入画面の操作・通知の開封・通知の許可）。購入・ガチャ・レース結果などはサーバーが自分で記録するので送らない。
+- 50件ごと、または30秒ごとにまとめて送る。通信に失敗したら残して指数的に間隔をあけて再送（429なら1分以上待つ）。サーバーが400で拒否したまとまりは捨てる（同じ失敗を繰り返さないため）。
+- `IAnalyticsStore`（`Load()`/`Save(json)`）を渡すと、未送信分がアプリ再起動後も残る。7日より古いものは送らずに捨てる。
+- `NowMs()` は Unix 時間のミリ秒（`DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()`）。
 
 ### 対戦の流れ（LockstepClient を直接使う場合）
 ```csharp

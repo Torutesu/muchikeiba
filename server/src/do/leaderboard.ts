@@ -1,10 +1,13 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { Env } from '../env.js';
-import { loadMaster } from '../domain/master.js';
+import { activeConfig } from '../ops/activeConfig.js';
 import {
-  acceptEntry, buildSnapshot, newRolloverState, rolloverStep, seasonIsOver,
-  type RankInfo, type RolloverState, type SeasonEntry,
+  acceptEntry, boardKey, buildSnapshot, indexKey, newRolloverState, rolloverStep, seasonIsOver,
+  type BoardFile, type RankInfo, type RolloverState, type SeasonEntry, type SnapshotIndex,
 } from '../domain/leaderboard.js';
+import { betterTa, buildTaBoards, type TaEntry } from '../domain/timeAttack.js';
+
+type TaRowDb = { player_id: string; track_id: string; time_ms: number; finish_tick: number; finish_frac: number; display_name: string; title_id: string | null; horse_name: string; updated_at: number };
 import { unwrap, wrap, type Envelope } from './rpc.js';
 
 type EntryRow = { player_id: string; season_id: string; class_id: string; points: number; rating: number; races: number; display_name: string; title_id: string | null; updated_at: number };
@@ -24,6 +27,48 @@ export class LeaderboardDO extends DurableObject<Env> {
     this.sql.exec(`CREATE TABLE IF NOT EXISTS entries (player_id TEXT PRIMARY KEY, season_id TEXT NOT NULL, class_id TEXT NOT NULL, points INTEGER NOT NULL, rating INTEGER NOT NULL, races INTEGER NOT NULL, display_name TEXT NOT NULL, title_id TEXT, updated_at INTEGER NOT NULL)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS ranks (player_id TEXT PRIMARY KEY, class_id TEXT NOT NULL, class_rank INTEGER NOT NULL, class_total INTEGER NOT NULL, rating_rank INTEGER NOT NULL, rating_total INTEGER NOT NULL)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL)`);
+    // time attack (REQ-TA-006): best verified run per player and track this season
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS ta_entries (player_id TEXT NOT NULL, track_id TEXT NOT NULL, time_ms INTEGER NOT NULL, finish_tick INTEGER NOT NULL, finish_frac INTEGER NOT NULL, display_name TEXT NOT NULL, title_id TEXT, horse_name TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (player_id, track_id))`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS ta_ranks (player_id TEXT NOT NULL, track_id TEXT NOT NULL, rank INTEGER NOT NULL, total INTEGER NOT NULL, PRIMARY KEY (player_id, track_id))`);
+  }
+
+  private taEntries(seasonId: string, where = '', ...args: (string | number)[]): TaEntry[] {
+    return this.sql.exec<TaRowDb>(`SELECT * FROM ta_entries ${where}`, ...args).toArray().map((r) => ({
+      playerId: r.player_id, seasonId, trackId: r.track_id, timeMs: r.time_ms, finishTick: r.finish_tick, finishFrac: r.finish_frac,
+      displayName: r.display_name, titleId: r.title_id, horseName: r.horse_name, updatedAt: r.updated_at,
+    }));
+  }
+
+  /** REQ-TA-006: keep the faster run (a slower one never replaces a better entry). */
+  async upsertTimeAttack(e: TaEntry): Promise<Envelope<boolean>> {
+    return wrap(() => {
+      if (!acceptEntry(e.seasonId, this.rollover(e.seasonId).status, { seasonId: e.seasonId } as SeasonEntry)) return false;
+      const prev = this.taEntries(e.seasonId, 'WHERE player_id = ? AND track_id = ?', e.playerId, e.trackId)[0];
+      if (!betterTa(prev, e)) return false;
+      this.sql.exec(
+        `INSERT INTO ta_entries (player_id, track_id, time_ms, finish_tick, finish_frac, display_name, title_id, horse_name, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(player_id, track_id) DO UPDATE SET time_ms = excluded.time_ms, finish_tick = excluded.finish_tick, finish_frac = excluded.finish_frac,
+           display_name = excluded.display_name, title_id = excluded.title_id, horse_name = excluded.horse_name, updated_at = excluded.updated_at`,
+        e.playerId, e.trackId, e.timeMs, e.finishTick, e.finishFrac, e.displayName, e.titleId, e.horseName, e.updatedAt,
+      );
+      this.kvPut('dirty', true);
+      return true;
+    });
+  }
+
+  async taRankOf(trackId: string, playerId: string): Promise<Envelope<{ rank: number; total: number; generatedAt: number | null } | null>> {
+    return wrap(() => {
+      const r = this.sql.exec<{ rank: number; total: number }>('SELECT rank, total FROM ta_ranks WHERE player_id = ? AND track_id = ?', playerId, trackId).toArray()[0];
+      return r ? { rank: r.rank, total: r.total, generatedAt: this.kvGet<number>('generatedAt') } : null;
+    });
+  }
+
+  async taEntriesFor(seasonId: string, trackId: string, playerIds: string[]): Promise<Envelope<TaEntry[]>> {
+    return wrap(() => {
+      const ids = playerIds.slice(0, 200);
+      if (!ids.length) return [];
+      return this.taEntries(seasonId, `WHERE track_id = ? AND player_id IN (${ids.map(() => '?').join(',')})`, trackId, ...ids);
+    });
   }
 
   private kvGet<T>(k: string): T | null {
@@ -60,7 +105,17 @@ export class LeaderboardDO extends DurableObject<Env> {
   async snapshot(seasonId: string, now: number, force = false): Promise<Envelope<{ published: boolean; files: number }>> {
     return wrap(async () => {
       if (!force && !this.kvGet<boolean>('dirty')) return { published: false, files: 0 };
-      const snap = buildSnapshot(seasonId, this.entries(), now, loadMaster().progression.leaderboard.topN);
+      const m = (await activeConfig(this.env)).master; // follow remote config (REQ-OPS-005)
+      const snap = buildSnapshot(seasonId, this.entries(), now, m.progression.leaderboard.topN);
+      // time attack boards (REQ-TA-006) are published with the same snapshot and listed in the index
+      const ta = buildTaBoards(seasonId, this.taEntries(seasonId), now, m.progression.timeAttack.topN);
+      const idx = snap.files.find((f) => f.key === indexKey(seasonId))?.body as SnapshotIndex | undefined;
+      for (const f of ta.files) {
+        snap.files.unshift({ key: boardKey(seasonId, f.board), body: f.body as unknown as BoardFile });
+        idx?.boards.push({ board: f.board, total: f.body.total, key: boardKey(seasonId, f.board) });
+      }
+      this.sql.exec('DELETE FROM ta_ranks');
+      for (const r of ta.ranks) this.sql.exec('INSERT INTO ta_ranks (player_id, track_id, rank, total) VALUES (?, ?, ?, ?)', r.playerId, r.trackId, r.rank, r.total);
       for (const f of snap.files) {
         await this.env.SNAPSHOTS.put(f.key, JSON.stringify(f.body), { httpMetadata: { contentType: 'application/json', cacheControl: 'public, max-age=60' } });
       }
@@ -94,7 +149,7 @@ export class LeaderboardDO extends DurableObject<Env> {
         st = { ...st, status: 'closing' };
         this.kvPut('rollover', st);
       }
-      const batch = loadMaster().progression.leaderboard.rolloverBatch;
+      const batch = (await activeConfig(this.env)).master.progression.leaderboard.rolloverBatch;
       const participants = this.sql.exec<{ player_id: string; class_id: string }>('SELECT player_id, class_id FROM entries WHERE player_id > ? AND races > 0 ORDER BY player_id LIMIT ?', st.cursor, batch)
         .toArray().map((r) => ({ playerId: r.player_id, classId: r.class_id }));
       const ranks = new Map(this.sql.exec<RankRow>('SELECT * FROM ranks').toArray().map((r) => [r.player_id, { classId: r.class_id, classRank: r.class_rank, classTotal: r.class_total, ratingRank: r.rating_rank, ratingTotal: r.rating_total }]));

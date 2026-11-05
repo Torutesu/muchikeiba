@@ -14,7 +14,7 @@ C#（端末・検証サーバー）とTypeScript（Cloudflareサーバー）の�
 {
   "v": 1,
   "raceId": "r_01JC...",
-  "mode": "ranked",                 // "ranked" | "friend" | "tutorial"
+  "mode": "ranked",                 // "ranked" | "friend" | "tutorial" | "timeattack"
   "seed": "9876543210123456789",    // uint64（10進文字列）
   "track": {
     "id": "tokyo_like_turf_2000",
@@ -133,10 +133,17 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 - HTTP：`POST /verify`（本文＝リプレイログ）→ `200`
 
 ```json
-{ "resultHash": "<64hex>", "order": [3,0,…], "finishTicks": [1790,1795,…], "checksums": { "20": "…", "40": "…" } }
+{ "resultHash": "<64hex>", "order": [3,0,…], "finishTicks": [1790,1795,…], "finishFracs": [21000,4410,…], "checksums": { "20": "…", "40": "…" } }
 ```
 - `finishTicks` は `order` と同じ並び。未完走は -1。
+- `finishFracs`（追加・任意）：同じ並びで、ゴールしたtick内の割合（Q16.16の小数部 0〜65535）。未完走は -1。タイムアタックの正確なタイム計算に使う。古い検証サーバーは出さないので、受け手は無い場合を0として扱う。
 - 形式違反・ルールセットのキー不一致は `400 {"error":"…"}`。
+
+## 8.1 タイムアタック（REQ-TA-*）
+- 設定は §2 の RaceStartConfig そのもの。`mode`=`"timeattack"`、`entrants` は人間1頭（slot 0、CPUなし）。
+- 提出はHTTP（`POST /v1/time-attack/submit`）で、本文は `{ "sessionId", "token", "inputs": [[tick,0,cmd],…], "resultHash", "config"? }`。`inputs` は §7 と同じ三つ組で、スロット0・クライアントのビット（bit0〜5）のみ・tick は厳密に増加。サーバーは発行した設定と `inputs` からリプレイログ（§7、`endTick` = -1）を作って §8 で検証する。
+- タイム（ms）＝`(finishTick − gateOpenTick) × ⌊1000 / tickHz⌋ + ⌊finishFrac × ⌊1000 / tickHz⌋ / 65536⌋`。
+- ゴースト本体は `{ "meta": {…}, "log": リプレイログ }`。端末ではゴーストごとに別の RaceSim で再生し、プレイヤーの馬と干渉させない。
 
 ## 9. ゴールデンファイル（`contracts/golden/`）
 - `race-*.json`：`{ "log": リプレイログ, "expected": 検証APIの出力 }`。C#側が生成し、C#テストで再計算一致を、TSテストでスキーマ適合を確認する。

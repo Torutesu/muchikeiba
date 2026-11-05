@@ -9,7 +9,13 @@ VERIFIER_URL = "https://verifier.example.invalid"
 FIREBASE_PROJECT_ID = "muchi-issen-dev"
 VERIFY_SAMPLE_RATE = "0.05"
 # DEV_MODE = "1"   # local only: fake store + x-dev-user header. NEVER in production.
-# Secrets (wrangler secret put): TICKET_SECRET, ADMIN_TOKEN, GOOGLE_SERVICE_ACCOUNT_JSON
+# Secrets (wrangler secret put): TICKET_SECRET, ADMIN_TOKENS, GOOGLE_SERVICE_ACCOUNT_JSON
+# ADMIN_TOKENS = '[{"name":"alice","role":"admin","sha256":"<sha-256 hex of the token>"}]'   (roles: viewer|operator|admin)
+# ADMIN_TOKEN (legacy single token, role admin) still works; prefer ADMIN_TOKENS.
+# Optional Cloudflare Access for /v1/admin/*:
+# ACCESS_TEAM_DOMAIN = "<team>.cloudflareaccess.com"
+# ACCESS_AUD = "<application AUD tag>"
+# ACCESS_ROLES = '{"ops@example.com":"operator"}'
 # Stores (server/README.md「ストア連携」). Unset => that store rejects every receipt.
 # APPLE_BUNDLE_ID = "jp.example.muchi"
 # APPLE_ACCEPT_SANDBOX = "1"              # "0" rejects Sandbox (App Review uses Sandbox)
@@ -17,6 +23,9 @@ VERIFY_SAMPLE_RATE = "0.05"
 # GOOGLE_ACCEPT_TEST = "1"                # "0" rejects license-testing purchases
 # GOOGLE_PUBSUB_AUDIENCE = "https://api.example.com/v1/store/notifications/google"
 # GOOGLE_PUBSUB_SERVICE_ACCOUNT = "rtdn-push@<project>.iam.gserviceaccount.com"
+# Push notifications (server/README.md「プッシュ通知」). Unset => queued messages are dropped.
+# FCM_PROJECT_ID = "muchi-issen-prod"        # defaults to the service account's project_id
+# Secrets: FCM_SERVICE_ACCOUNT_JSON (falls back to GOOGLE_SERVICE_ACCOUNT_JSON), KPI_SALT (analytics id hashing)
 
 [[durable_objects.bindings]]
 name = "RACE_ROOM"
@@ -42,6 +51,14 @@ class_name = "LeaderboardDO"
 name = "DIRECTORY"
 class_name = "DirectoryDO"
 
+[[durable_objects.bindings]]
+name = "OPS"
+class_name = "OpsDO"
+
+[[durable_objects.bindings]]
+name = "INTEGRITY"
+class_name = "IntegrityDO"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["RaceRoomDO", "PlayerDO", "MatchmakerDO", "AccountingDO"]
@@ -49,6 +66,10 @@ new_sqlite_classes = ["RaceRoomDO", "PlayerDO", "MatchmakerDO", "AccountingDO"]
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["LeaderboardDO", "DirectoryDO"]
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["OpsDO", "IntegrityDO"]
 
 [[r2_buckets]]
 binding = "REPLAYS"
@@ -58,6 +79,12 @@ bucket_name = "muchi-replays"
 binding = "SNAPSHOTS"
 bucket_name = "muchi-public"
 
-# Leaderboard snapshots + season rollover every 5 min; replay retention sweep daily 03:23 JST (src/domain/scheduled.ts)
+# KPI analytics (REQ-KPI-*): rows are written only when KPI_SALT is also set. Queries: docs/ops/kpi-queries.md
+[[analytics_engine_datasets]]
+binding = "ANALYTICS"
+dataset = "muchi_kpi"
+
+# Leaderboard snapshots + season rollover every 5 min; replay retention sweep daily 03:23 JST;
+# season reminder push daily 12:07 JST (src/domain/scheduled.ts)
 [triggers]
-crons = ["*/5 * * * *", "23 18 * * *"]
+crons = ["*/5 * * * *", "23 18 * * *", "7 3 * * *"]

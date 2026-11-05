@@ -8,43 +8,23 @@
  *   OIDC token (issuer, audience, service-account email). Voided purchases → refund; subscription
  *   changes → renewal or status update.
  */
-import { createRemoteJWKSet, importPKCS8, jwtVerify, SignJWT, type JWTVerifyGetKey } from 'jose';
+import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from 'jose';
 import { AppError } from '../domain/errors.js';
 import type { StoreVerifier, VerifiedReceipt } from '../domain/purchase.js';
 import type { StoreEvent } from './apple.js';
 import type { SubscriptionStatus } from '../domain/purchase.js';
 import { googleAccountId } from './binding.js';
+import { GoogleOAuth, type ServiceAccount } from '../google/serviceAuth.js';
 
-export interface ServiceAccount { client_email: string; private_key: string; token_uri?: string }
+export type { ServiceAccount } from '../google/serviceAuth.js';
 
 type Fetch = typeof fetch;
 const defaultFetch: Fetch = (...a) => fetch(...a);
 
-/** OAuth2 access token from a service-account JWT (RFC 7523), cached until shortly before expiry. */
-export class GoogleServiceAuth {
-  private cached: { token: string; exp: number } | null = null;
-  private key: CryptoKey | null = null;
-  constructor(private readonly sa: ServiceAccount, private readonly f: Fetch = defaultFetch, private readonly now: () => number = Date.now) {}
-
-  async accessToken(): Promise<string> {
-    const t = this.now();
-    if (this.cached && this.cached.exp - 60_000 > t) return this.cached.token;
-    this.key ??= (await importPKCS8(this.sa.private_key, 'RS256')) as CryptoKey;
-    const aud = this.sa.token_uri ?? 'https://oauth2.googleapis.com/token';
-    const iat = Math.floor(t / 1000);
-    const assertion = await new SignJWT({ scope: 'https://www.googleapis.com/auth/androidpublisher' })
-      .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
-      .setIssuer(this.sa.client_email).setAudience(aud).setIssuedAt(iat).setExpirationTime(iat + 3600)
-      .sign(this.key);
-    const res = await this.f(aud, {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion }).toString(),
-    });
-    if (!res.ok) throw new AppError('RECEIPT_INVALID', `google: oauth ${res.status}`, 502);
-    const j = (await res.json()) as { access_token: string; expires_in: number };
-    this.cached = { token: j.access_token, exp: t + j.expires_in * 1000 };
-    return j.access_token;
+/** Play Developer API token (androidpublisher scope); see google/serviceAuth.ts. Failures surface as RECEIPT_INVALID (502). */
+export class GoogleServiceAuth extends GoogleOAuth {
+  constructor(sa: ServiceAccount, f: Fetch = defaultFetch, now: () => number = Date.now) {
+    super(sa, { scope: 'https://www.googleapis.com/auth/androidpublisher', errorCode: 'RECEIPT_INVALID', errorPrefix: 'google' }, f, now);
   }
 }
 

@@ -27,6 +27,11 @@ wait_for() { # url, name
   echo "timed out waiting for $2"; cat "$LOG_DIR"/*.log; exit 1
 }
 
+port_free() { ! (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
+for p in "$VERIFIER_PORT" "$SERVER_PORT"; do
+  port_free "$p" || { echo "port $p is already in use (a stale verifier/wrangler from an earlier run?). Stop it or set VERIFIER_PORT/SERVER_PORT."; exit 1; }
+done
+
 echo "== build"
 (cd "$ROOT/engine" && dotnet build Muchi.sln -c Release --nologo -v q)
 
@@ -62,6 +67,9 @@ curl -fsS -H 'authorization: Bearer dev-admin' "${BASE}/v1/admin/replays/${RACE_
 REPLAY_HASH=$(cd "$ROOT/engine" && dotnet Muchi.Verifier/bin/Release/net8.0/Muchi.Verifier.dll replay "$LOG_DIR/replay.json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).resultHash))')
 echo "bot=$LOCAL_HASH replay=$REPLAY_HASH"
 [[ "$LOCAL_HASH" == "$REPLAY_HASH" ]] || { echo "replay hash mismatch"; fail=1; }
+
+echo "== 5) time attack: device run → server re-simulation (C# verifier) → personal best, ghost replay; tampered run rejected"
+$BOT "$BASE" timeattack | tee "$LOG_DIR/timeattack.jsonl" || fail=1
 
 if [[ $fail -ne 0 ]]; then
   echo "== INTEGRATION FAILED"; echo "--- server log"; tail -50 "$LOG_DIR/server.log"; echo "--- verifier log"; tail -20 "$LOG_DIR/verifier.log"

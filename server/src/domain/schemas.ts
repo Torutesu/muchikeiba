@@ -1,0 +1,120 @@
+import { z } from 'zod';
+import { rulesetKeyProblems } from './ruleset.js';
+
+const U64_MAX = (1n << 64n) - 1n;
+export const u64Decimal = z.string().regex(/^(0|[1-9]\d{0,19})$/).refine((s) => BigInt(s) <= U64_MAX, 'exceeds uint64');
+const int = z.number().int();
+const i32 = int.min(-0x80000000).max(0x7fffffff);
+const stat = int.min(0).max(1000);
+
+export const styleSchema = z.enum(['nige', 'senko', 'sashi', 'oikomi']);
+export const surfaceSchema = z.enum(['turf', 'dirt']);
+export const aptSurfaceSchema = z.enum(['turf', 'dirt', 'both']);
+export const modeSchema = z.enum(['ranked', 'friend', 'tutorial']);
+
+export const segmentSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('straight'), lengthM: int.min(1) }).strict(),
+  z.object({ kind: z.literal('corner'), lengthM: int.min(1), radiusM: int.min(1) }).strict(),
+]);
+
+export const trackSchema = z
+  .object({ id: z.string().min(1), surface: surfaceSchema, distanceM: int.min(1).max(4000), segments: z.array(segmentSchema).min(1) })
+  .strict()
+  .refine((t) => t.segments.reduce((a, s) => a + s.lengthM, 0) === t.distanceM, 'segment lengths must sum to distanceM');
+
+export const raceHorseSchema = z
+  .object({
+    id: z.string().min(1), name: z.string().min(1),
+    speed: stat, stamina: stat, burst: stat, guts: stat, temper: stat,
+    style: styleSchema, distMinM: int.min(0), distMaxM: int.min(0), surface: aptSurfaceSchema,
+  })
+  .strict()
+  .refine((h) => h.distMinM <= h.distMaxM, 'distMinM > distMaxM');
+
+export const entrantSchema = z
+  .object({
+    slot: int.min(0).max(11),
+    kind: z.enum(['human', 'cpu']),
+    playerId: z.string().min(1).nullable(),
+    cpuLevel: int.min(1).max(5),
+    horse: raceHorseSchema,
+  })
+  .strict()
+  .refine((e) => (e.kind === 'cpu') === (e.playerId === null), 'cpu entrants have playerId null, humans non-null');
+
+export const netSchema = z
+  .object({
+    tickHz: int.min(1).max(120), inputDelayTicks: int.min(0).max(60), bundleIntervalTicks: int.min(1).max(60),
+    checksumIntervalTicks: int.min(1).max(1200), disconnectGraceMs: int.min(0).max(60000),
+  })
+  .strict();
+
+export const rulesetSchema = z
+  .record(z.string(), z.union([z.string(), i32]))
+  .superRefine((r, ctx) => {
+    for (const p of rulesetKeyProblems(r)) ctx.addIssue({ code: 'custom', message: p });
+  });
+
+export const raceStartConfigSchema = z
+  .object({
+    v: z.literal(1), raceId: z.string().min(1), mode: modeSchema, seed: u64Decimal,
+    track: trackSchema, net: netSchema, ruleset: rulesetSchema, entrants: z.array(entrantSchema).min(1).max(12),
+  })
+  .strict()
+  .superRefine((c, ctx) => {
+    c.entrants.forEach((e, i) => { if (e.slot !== i) ctx.addIssue({ code: 'custom', message: `entrant ${i} has slot ${e.slot}` }); });
+  });
+export type RaceStartConfig = z.infer<typeof raceStartConfigSchema>;
+export type Entrant = z.infer<typeof entrantSchema>;
+export type RaceHorse = z.infer<typeof raceHorseSchema>;
+export type Track = z.infer<typeof trackSchema>;
+export type NetParams = z.infer<typeof netSchema>;
+export type RaceMode = z.infer<typeof modeSchema>;
+
+const hex16 = z.string().regex(/^[0-9a-f]{16}$/);
+const hex64 = z.string().regex(/^[0-9a-f]{64}$/);
+const tickN = int.min(0).max(1_000_000);
+
+export const clientMessageSchema = z.discriminatedUnion('t', [
+  z.object({ t: z.literal('hello'), raceId: z.string().min(1), token: z.string().min(1), lastTick: int.min(-1) }).strict(),
+  z.object({ t: z.literal('in'), tick: tickN, cmd: int.min(0).max(255) }).strict(),
+  z.object({ t: z.literal('chk'), tick: tickN, h: hex16 }).strict(),
+  z.object({ t: z.literal('res'), h: hex64, order: z.array(int.min(0).max(11)).min(1).max(12) }).strict(),
+  z.object({ t: z.literal('ping'), c: z.number() }).strict(),
+]);
+export type ClientMessage = z.infer<typeof clientMessageSchema>;
+
+export const inputTripleSchema = z.tuple([tickN, int.min(0).max(11), int.min(1).max(255)]);
+export type InputTriple = z.infer<typeof inputTripleSchema>;
+
+export type ServerMessage =
+  | { t: 'start'; you: number; startAtMs: number; config: RaceStartConfig }
+  | { t: 'b'; from: number; to: number; in: InputTriple[] }
+  | { t: 'desync'; tick: number }
+  | { t: 'final'; status: 'confirmed' | 'verifying' | 'void'; order: number[]; h: string }
+  | { t: 'pong'; c: number; s: number }
+  | { t: 'err'; code: string };
+
+export const replayLogSchema = z
+  .object({ v: z.literal(1), config: raceStartConfigSchema, endTick: int.min(-1), inputs: z.array(inputTripleSchema) })
+  .strict()
+  .superRefine((log, ctx) => {
+    for (let i = 1; i < log.inputs.length; i++) {
+      const [pt, ps] = log.inputs[i - 1]!;
+      const [t, s] = log.inputs[i]!;
+      if (t < pt || (t === pt && s <= ps)) ctx.addIssue({ code: 'custom', message: `inputs not sorted/unique at ${i}` });
+    }
+    for (const [, s] of log.inputs) if (s >= log.config.entrants.length) ctx.addIssue({ code: 'custom', message: `slot ${s} out of range` });
+  });
+export type ReplayLog = z.infer<typeof replayLogSchema>;
+
+export const verifierOutputSchema = z
+  .object({
+    resultHash: hex64,
+    order: z.array(int.min(0).max(11)),
+    finishTicks: z.array(int.min(-1)),
+    checksums: z.record(z.string().regex(/^\d+$/), hex16),
+  })
+  .strict()
+  .refine((o) => o.order.length === o.finishTicks.length, 'order/finishTicks length mismatch');
+export type VerifierOutput = z.infer<typeof verifierOutputSchema>;

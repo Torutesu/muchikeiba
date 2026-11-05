@@ -591,6 +591,73 @@ namespace Muchi.Client
         };
     }
 
+    // ------------------------------------------------------------------ push (REQ-PUSH)
+
+    public sealed class PushPreferences
+    {
+        public bool Season, Friends, Invites, Events;
+        /// <summary>Quiet hours in JST (0-23); null = none. Urgent pushes (room invites) are not sent then; others are delayed.</summary>
+        public int? QuietStartHour, QuietEndHour;
+        public int DailyCap, Devices;
+        /// <summary>FCM topics the app must subscribe to / unsubscribe from (broadcasts such as season reminders).</summary>
+        public List<string> SubscribeTopics = new List<string>(), UnsubscribeTopics = new List<string>();
+
+        internal static PushPreferences Parse(JsonNode o)
+        {
+            var c = J.Opt(o, "categories");
+            var q = J.Opt(o, "quietHours");
+            var t = J.Opt(o, "topics");
+            return new PushPreferences
+            {
+                Season = J.Bool(c, "season"), Friends = J.Bool(c, "friends"), Invites = J.Bool(c, "invites"), Events = J.Bool(c, "events"),
+                QuietStartHour = q == null ? (int?)null : J.Int(q, "startHour"), QuietEndHour = q == null ? (int?)null : J.Int(q, "endHour"),
+                DailyCap = J.Int(o, "dailyCap"), Devices = J.Int(o, "devices"),
+                SubscribeTopics = J.List(t, "subscribe", x => x.AsString()), UnsubscribeTopics = J.List(t, "unsubscribe", x => x.AsString()),
+            };
+        }
+    }
+
+    /// <summary>Only the fields you set are sent. Set <see cref="ClearQuietHours"/> to turn quiet hours off.</summary>
+    public sealed class PushPreferencesPatch
+    {
+        public bool? Season, Friends, Invites, Events;
+        public int? QuietStartHour, QuietEndHour;
+        public bool ClearQuietHours;
+
+        internal JsonNode ToJson()
+        {
+            var b = JsonNode.Obj();
+            if (Season.HasValue || Friends.HasValue || Invites.HasValue || Events.HasValue)
+            {
+                var c = JsonNode.Obj();
+                if (Season.HasValue) c.Set("season", Season.Value);
+                if (Friends.HasValue) c.Set("friends", Friends.Value);
+                if (Invites.HasValue) c.Set("invites", Invites.Value);
+                if (Events.HasValue) c.Set("events", Events.Value);
+                b.Set("categories", c);
+            }
+            if (ClearQuietHours) b.Set("quietHours", JsonNode.Null());
+            else if (QuietStartHour.HasValue || QuietEndHour.HasValue)
+            {
+                if (!QuietStartHour.HasValue || !QuietEndHour.HasValue) throw new ArgumentException("set both QuietStartHour and QuietEndHour");
+                if (QuietStartHour < 0 || QuietStartHour > 23 || QuietEndHour < 0 || QuietEndHour > 23) throw new ArgumentOutOfRangeException(nameof(QuietStartHour), "hours are 0-23 (JST)");
+                var q = JsonNode.Obj();
+                q.Set("startHour", QuietStartHour.Value);
+                q.Set("endHour", QuietEndHour.Value);
+                b.Set("quietHours", q);
+            }
+            return b;
+        }
+    }
+
+    // ------------------------------------------------------------------ analytics (REQ-KPI)
+
+    public sealed class AnalyticsIngestResult
+    {
+        public int Accepted, Dropped;
+        internal static AnalyticsIngestResult Parse(JsonNode o) => new AnalyticsIngestResult { Accepted = J.Int(o, "accepted"), Dropped = J.Int(o, "dropped") };
+    }
+
     public sealed class FriendOpResult
     {
         /// <summary>"requested" or "friends".</summary>

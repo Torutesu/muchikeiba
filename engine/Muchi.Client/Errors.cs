@@ -14,7 +14,7 @@ namespace Muchi.Client
         HorseNotFound, HorseNotActive, HorseNotRetired, BreedingInvalidPair,
         BreedingDailyLimit, AwakeningMax, AlreadyClaimed, NotEligible,
         AlreadyQueued, NotInQueue, RoomNotFound, RoomFull, NotHost, ConfigInvalid,
-        FriendLimit, AlreadyInRace, RoomTooSmall,
+        FriendLimit, AlreadyInRace, RoomTooSmall, RateLimited,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -59,6 +59,7 @@ namespace Muchi.Client
             ["FRIEND_LIMIT"] = ApiErrorCode.FriendLimit,
             ["ALREADY_IN_RACE"] = ApiErrorCode.AlreadyInRace,
             ["ROOM_TOO_SMALL"] = ApiErrorCode.RoomTooSmall,
+            ["RATE_LIMITED"] = ApiErrorCode.RateLimited,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };
 
@@ -92,6 +93,8 @@ namespace Muchi.Client
                     return new PurchaseBlockedException(code, wire, message, status);
                 case ApiErrorCode.InsufficientCoins:
                     return new InsufficientCoinsException(wire, message, status);
+                case ApiErrorCode.RateLimited:
+                    return new RateLimitedException(wire, message, status);
                 case ApiErrorCode.Internal:
                 case ApiErrorCode.ConfigInvalid:
                     return new ServerException(code, wire, message, status);
@@ -150,6 +153,12 @@ namespace Muchi.Client
     public sealed class ConflictException : ApiException
     {
         public ConflictException(ApiErrorCode c, string wire, string message, int status) : base(c, wire, message, status) { }
+    }
+
+    /// <summary>429 RATE_LIMITED (e.g. analytics ingestion quota). Back off before sending again.</summary>
+    public sealed class RateLimitedException : ApiException
+    {
+        public RateLimitedException(string wire, string message, int status) : base(ApiErrorCode.RateLimited, wire, message, status) { }
     }
 
     public sealed class ServerException : ApiException

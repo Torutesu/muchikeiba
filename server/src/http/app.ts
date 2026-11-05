@@ -8,6 +8,7 @@ import type { PurchaseRecord } from '../domain/player.js';
 import { appleAccountToken, googleAccountId } from '../stores/binding.js';
 import { FriendsService, type Directory, type FriendPlayers } from '../domain/friends.js';
 import { jstMonthKey } from '../domain/time.js';
+import { clientBatchSchema } from '../domain/kpi.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -16,7 +17,8 @@ export type PlayerMethod =
   | 'claimMission' | 'passView' | 'claimPass' | 'applyRace' | 'raceEntry'
   | 'storeRenewal' | 'subscriptionStatus'
   | 'setDisplayName' | 'equipTitle' | 'titles' | 'stats' | 'publicProfile' | 'closeSeason'
-  | 'friendSend' | 'friendReceive' | 'friendAccept' | 'friendAccepted' | 'friendDecline' | 'friendCancel' | 'friendRemove' | 'friendInvite' | 'friendsState';
+  | 'friendSend' | 'friendReceive' | 'friendAccept' | 'friendAccepted' | 'friendDecline' | 'friendCancel' | 'friendRemove' | 'friendInvite' | 'friendsState'
+  | 'registerDevice' | 'unregisterDevice' | 'pushPreferences' | 'setPushPreferences' | 'kpiIngest';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -234,6 +236,29 @@ export const routes: Route[] = [
     if (!(await c.match.friendMember(p.passphrase!, u))) throw new AppError('NOT_ELIGIBLE', 'not a member of this room');
     return c.friends.invite(u, b.friendId, p.passphrase!);
   } },
+  // push notifications (REQ-PUSH-*)
+  { method: 'PUT', path: '/v1/push/devices', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ token: z.string().min(8).max(4096), platform: z.enum(['ios', 'android']) }));
+    return c.player(u).invoke('registerDevice', u, b.token, b.platform);
+  } },
+  { method: 'POST', path: '/v1/push/devices/unregister', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ token: z.string().min(1).max(4096) }));
+    return c.player(u).invoke('unregisterDevice', u, b.token);
+  } },
+  { method: 'GET', path: '/v1/push/preferences', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('pushPreferences', u) },
+  { method: 'PUT', path: '/v1/push/preferences', auth: 'player', handler: async (r, _p, c, u) => {
+    const hour = z.number().int().min(0).max(23);
+    const b = await body(r, z.object({
+      categories: z.object({ season: z.boolean(), friends: z.boolean(), invites: z.boolean(), events: z.boolean() }).partial().optional(),
+      quietHours: z.object({ startHour: hour, endHour: hour }).nullable().optional(),
+    }));
+    return c.player(u).invoke('setPushPreferences', u, {
+      ...(b.categories ? { categories: b.categories } : {}),
+      ...(b.quietHours !== undefined ? { quietHours: b.quietHours } : {}),
+    });
+  } },
+  // analytics (REQ-KPI-003)
+  { method: 'POST', path: '/v1/analytics/events', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('kpiIngest', u, await body(r, clientBatchSchema)) },
   // admin
   { method: 'GET', path: '/v1/admin/paid-balance', auth: 'admin', handler: async (_r, _p, c) => c.paidBalance() },
   { method: 'GET', path: '/v1/admin/replays/:raceId', auth: 'admin', handler: async (_r, p, c) => c.race.replay(p.raceId!) },
@@ -282,13 +307,13 @@ export const handle: Handler = async (req, _p, ctx) => {
 export function makeFriendsService(player: (uid: string) => PlayerInvoker, dir: Directory): FriendsService {
   const ports: FriendPlayers = {
     send: (u, t) => player(u).invoke('friendSend', u, t),
-    receive: (u, f) => player(u).invoke('friendReceive', u, f),
+    receive: (u, f, name) => player(u).invoke('friendReceive', u, f, name),
     accept: (u, f) => player(u).invoke('friendAccept', u, f),
-    accepted: (u, b) => player(u).invoke('friendAccepted', u, b),
+    accepted: (u, b, name) => player(u).invoke('friendAccepted', u, b, name),
     decline: (u, f) => player(u).invoke('friendDecline', u, f),
     cancel: (u, t) => player(u).invoke('friendCancel', u, t),
     remove: (u, o) => player(u).invoke('friendRemove', u, o),
-    invite: (u, f, pass) => player(u).invoke('friendInvite', u, f, pass),
+    invite: (u, f, pass, name) => player(u).invoke('friendInvite', u, f, pass, name),
     friendsState: (u) => player(u).invoke('friendsState', u),
   };
   return new FriendsService(ports, dir);

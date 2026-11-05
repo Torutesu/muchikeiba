@@ -18,6 +18,21 @@ import { shardedDirectory } from './do/directory.js';
 import { boardKey, indexKey, type RolloverState } from './domain/leaderboard.js';
 import { runScheduled } from './domain/scheduled.js';
 import { sweepReplays, type ReplayBucket } from './domain/retention.js';
+import { renderTemplate, seasonReminderFor } from './domain/push.js';
+import { fcmFromEnv } from './push/fcm.js';
+
+/** REQ-PUSH-006: one FCM topic send reaches every opted-in device (no per-player fan-out). */
+async function broadcastSeasonReminder(env: Env, now: number): Promise<string | null> {
+  const r = seasonReminderFor(master, now);
+  if (!r) return null;
+  const t = master.push.templates[r.templateId];
+  const topic = t && master.push.topics[t.category];
+  const sender = fcmFromEnv(env);
+  if (!t || !topic || !sender) return null;
+  const out = await sender.sendTopic(topic, renderTemplate(t, r.templateId, r.vars));
+  if (out.kind !== 'ok') console.error('season reminder failed', r.templateId, out);
+  return r.templateId;
+}
 
 const master = loadMaster();
 validateGacha(master); // fail fast on a broken gacha/master definition (REQ-GACHA-003/008)
@@ -112,6 +127,7 @@ export default {
       snapshot: async (seasonId) => unwrap(await lb(seasonId).snapshot(seasonId, now)),
       rolloverStep: async (seasonId) => unwrap(await lb(seasonId).rolloverStep(seasonId, now)),
       sweepReplays: (t) => sweepReplays(replayBucket(env.REPLAYS), t, Number(env.REPLAY_RETENTION_DAYS ?? master.progression.replayRetentionDays)),
+      seasonReminder: (t) => broadcastSeasonReminder(env, t),
     });
     console.log('scheduled', event.cron, done.join(' '));
   },

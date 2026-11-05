@@ -7,6 +7,7 @@ import ageJson from '../../master/age-limits.json';
 import productsJson from '../../master/products.json';
 import progressionJson from '../../master/progression.json';
 import titlesJson from '../../master/titles.json';
+import pushJson from '../../master/push.json';
 import { trackSchema, type Track } from './schemas.js';
 import { AppError } from './errors.js';
 
@@ -56,6 +57,19 @@ export type TitleCondition =
   | { kind: 'classReached'; classId: string }
   | { kind: 'rating'; value: number };
 export interface TitleDef { id: string; name: string; condition: TitleCondition }
+export type PushCategory = 'season' | 'friends' | 'invites' | 'events';
+export const PUSH_CATEGORIES: PushCategory[] = ['season', 'friends', 'invites', 'events'];
+export interface PushTemplate { category: PushCategory; title: string; body: string; ttlSec: number; timeSensitive: boolean }
+/** REQ-PUSH-*: defaults, limits and Japanese templates (master/push.json). */
+export interface PushMaster {
+  defaults: { categories: Record<PushCategory, boolean>; quietHours: { startHour: number; endHour: number } | null; dailyCap: number };
+  maxDevices: number; maxOutbox: number;
+  retry: { backoffMs: number[]; maxAttempts: number };
+  /** FCM topics for broadcast categories (one send reaches every subscribed device). */
+  topics: Partial<Record<PushCategory, string>>;
+  seasonReminders: { endDaysBefore: number[]; lastDay: boolean; start: boolean };
+  templates: Record<string, PushTemplate>;
+}
 export interface PoolEntry { templateId: string; ppm: number }
 export interface BannerDef {
   id: string; name: string; currency: 'any' | 'paidOnly'; priceSingle: number; priceTen: number;
@@ -70,6 +84,7 @@ export interface Master {
   gacha: GachaMaster; nicks: { bonus: number; pairs: [string, string][] }; ng: { exact: string[]; contains: string[] };
   ageLimits: AgeLimits; products: Product[]; firstPurchaseBonusAsPaid: boolean; progression: Progression;
   titles: TitleDef[];
+  push: PushMaster;
 }
 
 export const PPM_TOTAL = 1_000_000;
@@ -134,6 +149,7 @@ export function loadMaster(): Master {
     products: p.products, firstPurchaseBonusAsPaid: p.firstPurchaseBonusAsPaid,
     progression: progressionJson as unknown as Progression,
     titles: (titlesJson as unknown as { titles: TitleDef[] }).titles,
+    push: pushJson as unknown as PushMaster,
   };
   cached = m;
   return m;

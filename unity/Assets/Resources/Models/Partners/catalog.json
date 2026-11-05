@@ -1,0 +1,256 @@
+{
+  "coordinateSystem": "Unity: +Y up, +Z forward",
+  "source": "Original Blender-authored procedural meshes",
+  "partnerVariants": [
+    {
+      "id": "Partner_Bay_Crimson",
+      "horse": "Kohaku",
+      "coat": "Bay",
+      "silk": "Crimson",
+      "silkName": "Crimson Laurel",
+      "preview": "Art/3DPreviews/Partner_Bay_Crimson.png",
+      "model": "Models/Partners/Partner_Bay_Crimson",
+      "opponentLod": "Models/PartnerLODs/Partner_Bay_Crimson_LOD1"
+    },
+    {
+      "id": "Partner_Bay_Azure",
+      "horse": "Kohaku",
+      "coat": "Bay",
+      "silk": "Azure",
+      "silkName": "Azure Chevron",
+      "preview": null,
+      "model": "Models/Partners/Partner_Bay_Azure",
+      "opponentLod": "Models/PartnerLODs/Partner_Bay_Azure_LOD1"
+    },
+    {
+      "id": "Partner_Bay_Violet",
+      "horse": "Kohaku",
+      "coat": "Bay",
+      "silk": "Violet",
+      "silkName": "Violet Star",
+      "preview": null,
+      "model": "Models/Partners/Partner_Bay_Violet",
+      "opponentLod": "Models/PartnerLODs/Partner_Bay_Violet_LOD1"
+    },
+    {
+      "id": "Partner_Bay_Emerald",
+      "horse": "Kohaku",
+      "coat": "Bay",
+      "silk": "Emerald",
+      "silkName": "Emerald Check",
+      "preview": null,
+      "model": "Models/Partners/Partner_Bay_Emerald",
+      "opponentLod": "Models/PartnerLODs/Partner_Bay_Emerald_LOD1"
+    },
+    {
+      "id": "Partner_Bay_Gold",
+      "horse": "Kohaku",
+      "coat": "Bay",
+      "silk": "Gold",
+      "silkName": "Midnight Gold",
+      "preview": null,
+      "model": "Models/Partners/Partner_Bay_Gold",
+      "opponentLod": "Models/PartnerLODs/Partner_Bay_Gold_LOD1"
+    },
+    {
+      "id": "Partner_Chestnut_Crimson",
+      "horse": "Akane",
+      "coat": "Chestnut",
+      "silk": "Crimson",
+      "silkName": "Crimson Laurel",
+      "preview": null,
+      "model": "Models/Partners/Partner_Chestnut_Crimson",
+      "opponentLod": "Models/PartnerLODs/Partner_Chestnut_Crimson_LOD1"
+    },
+    {
+      "id": "Partner_Chestnut_Azure",
+      "horse": "Akane",
+      "coat": "Chestnut",
+      "silk": "Azure",
+      "silkName": "Azure Chevron",
+      "preview": "Art/3DPreviews/Partner_Chestnut_Azure.png",
+      "model": "Models/Partners/Partner_Chestnut_Azure",
+      "opponentLod": "Models/PartnerLODs/Partner_Chestnut_Azure_LOD1"
+    },
+    {
+      "id": "Partner_Chestnut_Violet",
+      "horse": "Akane",
+      "coat": "Chestnut",
+      "silk": "Violet",
+      "silkName": "Violet Star",
+      "preview": null,
+      "model": "Models/Partners/Partner_Chestnut_Violet",
+      "opponentLod": "Models/PartnerLODs/Partner_Chestnut_Violet_LOD1"
+    },
+    {
+      "id": "Partner_Chestnut_Emerald",
+      "horse": "Akane",
+      "coat": "Chestnut",
+      "silk": "Emerald",
+      "silkName": "Emerald Check",
+      "preview": null,
+      "model": "Models/Partners/Partner_Chestnut_Emerald",
+      "opponentLod": "Models/PartnerLODs/Partner_Chestnut_Emerald_LOD1"
+    },
+    {
+      "id": "Partner_Chestnut_Gold",
+      "horse": "Akane",
+      "coat": "Chestnut",
+      "silk": "Gold",
+      "silkName": "Midnight Gold",
+      "preview": null,
+      "model": "Models/Partners/Partner_Chestnut_Gold",
+      "opponentLod": "Models/PartnerLODs/Partner_Chestnut_Gold_LOD1"
+    },
+    {
+      "id": "Partner_DappleGrey_Crimson",
+      "horse": "Shiranami",
+      "coat": "DappleGrey",
+      "silk": "Crimson",
+      "silkName": "Crimson Laurel",
+      "preview": null,
+      "model": "Models/Partners/Partner_DappleGrey_Crimson",
+      "opponentLod": "Models/PartnerLODs/Partner_DappleGrey_Crimson_LOD1"
+    },
+    {
+      "id": "Partner_DappleGrey_Azure",
+      "horse": "Shiranami",
+      "coat": "DappleGrey",
+      "silk": "Azure",
+      "silkName": "Azure Chevron",
+      "preview": null,
+      "model": "Models/Partners/Partner_DappleGrey_Azure",
+      "opponentLod": "Models/PartnerLODs/Partner_DappleGrey_Azure_LOD1"
+    },
+    {
+      "id": "Partner_DappleGrey_Violet",
+      "horse": "Shiranami",
+      "coat": "DappleGrey",
+      "silk": "Violet",
+      "silkName": "Violet Star",
+      "preview": "Art/3DPreviews/Partner_DappleGrey_Violet.png",
+      "model": "Models/Partners/Partner_DappleGrey_Violet",
+      "opponentLod": "Models/PartnerLODs/Partner_DappleGrey_Violet_LOD1"
+    },
+    {
+      "id": "Partner_DappleGrey_Emerald",
+      "horse": "Shiranami",
+      "coat": "DappleGrey",
+      "silk": "Emerald",
+      "silkName": "Emerald Check",
+      "preview": null,
+      "model": "Models/Partners/Partner_DappleGrey_Emerald",
+      "opponentLod": "Models/PartnerLODs/Partner_DappleGrey_Emerald_LOD1"
+    },
+    {
+      "id": "Partner_DappleGrey_Gold",
+      "horse": "Shiranami",
+      "coat": "DappleGrey",
+      "silk": "Gold",
+      "silkName": "Midnight Gold",
+      "preview": null,
+      "model": "Models/Partners/Partner_DappleGrey_Gold",
+      "opponentLod": "Models/PartnerLODs/Partner_DappleGrey_Gold_LOD1"
+    },
+    {
+      "id": "Partner_Black_Crimson",
+      "horse": "Yoru",
+      "coat": "Black",
+      "silk": "Crimson",
+      "silkName": "Crimson Laurel",
+      "preview": null,
+      "model": "Models/Partners/Partner_Black_Crimson",
+      "opponentLod": "Models/PartnerLODs/Partner_Black_Crimson_LOD1"
+    },
+    {
+      "id": "Partner_Black_Azure",
+      "horse": "Yoru",
+      "coat": "Black",
+      "silk": "Azure",
+      "silkName": "Azure Chevron",
+      "preview": null,
+      "model": "Models/Partners/Partner_Black_Azure",
+      "opponentLod": "Models/PartnerLODs/Partner_Black_Azure_LOD1"
+    },
+    {
+      "id": "Partner_Black_Violet",
+      "horse": "Yoru",
+      "coat": "Black",
+      "silk": "Violet",
+      "silkName": "Violet Star",
+      "preview": null,
+      "model": "Models/Partners/Partner_Black_Violet",
+      "opponentLod": "Models/PartnerLODs/Partner_Black_Violet_LOD1"
+    },
+    {
+      "id": "Partner_Black_Emerald",
+      "horse": "Yoru",
+      "coat": "Black",
+      "silk": "Emerald",
+      "silkName": "Emerald Check",
+      "preview": "Art/3DPreviews/Partner_Black_Emerald.png",
+      "model": "Models/Partners/Partner_Black_Emerald",
+      "opponentLod": "Models/PartnerLODs/Partner_Black_Emerald_LOD1"
+    },
+    {
+      "id": "Partner_Black_Gold",
+      "horse": "Yoru",
+      "coat": "Black",
+      "silk": "Gold",
+      "silkName": "Midnight Gold",
+      "preview": null,
+      "model": "Models/Partners/Partner_Black_Gold",
+      "opponentLod": "Models/PartnerLODs/Partner_Black_Gold_LOD1"
+    },
+    {
+      "id": "Partner_Palomino_Crimson",
+      "horse": "Kinako",
+      "coat": "Palomino",
+      "silk": "Crimson",
+      "silkName": "Crimson Laurel",
+      "preview": null,
+      "model": "Models/Partners/Partner_Palomino_Crimson",
+      "opponentLod": "Models/PartnerLODs/Partner_Palomino_Crimson_LOD1"
+    },
+    {
+      "id": "Partner_Palomino_Azure",
+      "horse": "Kinako",
+      "coat": "Palomino",
+      "silk": "Azure",
+      "silkName": "Azure Chevron",
+      "preview": null,
+      "model": "Models/Partners/Partner_Palomino_Azure",
+      "opponentLod": "Models/PartnerLODs/Partner_Palomino_Azure_LOD1"
+    },
+    {
+      "id": "Partner_Palomino_Violet",
+      "horse": "Kinako",
+      "coat": "Palomino",
+      "silk": "Violet",
+      "silkName": "Violet Star",
+      "preview": null,
+      "model": "Models/Partners/Partner_Palomino_Violet",
+      "opponentLod": "Models/PartnerLODs/Partner_Palomino_Violet_LOD1"
+    },
+    {
+      "id": "Partner_Palomino_Emerald",
+      "horse": "Kinako",
+      "coat": "Palomino",
+      "silk": "Emerald",
+      "silkName": "Emerald Check",
+      "preview": null,
+      "model": "Models/Partners/Partner_Palomino_Emerald",
+      "opponentLod": "Models/PartnerLODs/Partner_Palomino_Emerald_LOD1"
+    },
+    {
+      "id": "Partner_Palomino_Gold",
+      "horse": "Kinako",
+      "coat": "Palomino",
+      "silk": "Gold",
+      "silkName": "Midnight Gold",
+      "preview": "Art/3DPreviews/Partner_Palomino_Gold.png",
+      "model": "Models/Partners/Partner_Palomino_Gold",
+      "opponentLod": "Models/PartnerLODs/Partner_Palomino_Gold_LOD1"
+    }
+  ]
+}

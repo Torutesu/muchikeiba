@@ -8,6 +8,8 @@ import type { PurchaseRecord } from '../domain/player.js';
 import { appleAccountToken, googleAccountId } from '../stores/binding.js';
 import { FriendsService, type Directory, type FriendPlayers } from '../domain/friends.js';
 import { jstMonthKey } from '../domain/time.js';
+import { handleAdmin, type OpsApi } from './admin.js';
+import type { AdminPrincipal } from '../ops/admin.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -16,7 +18,8 @@ export type PlayerMethod =
   | 'claimMission' | 'passView' | 'claimPass' | 'applyRace' | 'raceEntry'
   | 'storeRenewal' | 'subscriptionStatus'
   | 'setDisplayName' | 'equipTitle' | 'titles' | 'stats' | 'publicProfile' | 'closeSeason'
-  | 'friendSend' | 'friendReceive' | 'friendAccept' | 'friendAccepted' | 'friendDecline' | 'friendCancel' | 'friendRemove' | 'friendInvite' | 'friendsState';
+  | 'friendSend' | 'friendReceive' | 'friendAccept' | 'friendAccepted' | 'friendDecline' | 'friendCancel' | 'friendRemove' | 'friendInvite' | 'friendsState'
+  | 'adminView' | 'adminGrant' | 'adminSettleDebt' | 'adminCorrectAge' | 'adminResetName' | 'setModeration';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -63,7 +66,13 @@ export interface AppContext {
   paidBalance(): Promise<unknown>;
   adminToken: string | undefined;
   parseStoreNotification(platform: string, req: Request): Promise<StoreNotification | null>;
+  /** Live-ops backend (REQ-OPS-*). When present, /v1/admin/* is served by http/admin.ts with roles and audit. */
+  ops?: OpsApi;
+  authenticateAdmin?(req: Request): Promise<AdminPrincipal>;
+  /** Active remote config summary for clients (REQ-OPS-007). */
+  configInfo?(): Promise<ClientConfigInfo>;
 }
+export interface ClientConfigInfo { versionId: string; hash: string; rulesetVersion: string; activatedAt: number | null }
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8' } });
 const errorResponse = (e: AppError) => json({ error: { code: e.code, message: e.message } }, e.status);
@@ -107,6 +116,8 @@ const ok = (x: unknown) => x;
 
 export const routes: Route[] = [
   { method: 'GET', path: '/v1/health', auth: 'none', handler: async () => ({ ok: true }) },
+  // REQ-OPS-007: clients cache master data per config version and refetch when it changes
+  { method: 'GET', path: '/v1/config', auth: 'none', handler: async (_r, _p, c) => (c.configInfo ? c.configInfo() : { versionId: 'base', hash: 'base', rulesetVersion: null, activatedAt: null }) },
   // player
   { method: 'POST', path: '/v1/player/bootstrap', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('bootstrap', u) },
   { method: 'GET', path: '/v1/player', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('view', u) },
@@ -199,7 +210,12 @@ export const routes: Route[] = [
     return c.match.tutorial(u, await c.player(u).invoke('raceEntry', u, b.horseId));
   } },
   { method: 'GET', path: '/v1/race/:raceId/ws', auth: 'ws', handler: async () => ok(null) },
-  { method: 'POST', path: '/v1/race/:raceId/report', auth: 'player', handler: async (_r, p, c, u) => c.race.report(p.raceId!, u) },
+  { method: 'POST', path: '/v1/race/:raceId/report', auth: 'player', handler: async (_r, p, c, u) => {
+    const r = (await c.race.report(p.raceId!, u)) as { ok?: boolean };
+    // REQ-OPS-034: reports of races the player was in go to the review queue
+    if (r?.ok && c.ops) await c.ops.integrity.report(p.raceId!, u, (c.clock ?? Date.now)());
+    return r;
+  } },
   // profile, titles, stats (REQ-STAT-*, REQ-TITLE-*, REQ-SOCIAL-006)
   { method: 'PUT', path: '/v1/player/profile', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ displayName: z.string().min(1).max(40) }));
@@ -255,6 +271,12 @@ function match(path: string, pattern: string): Record<string, string> | null {
 
 export const handle: Handler = async (req, _p, ctx) => {
   const url = new URL(req.url);
+  if (url.pathname.startsWith('/v1/admin/') && ctx.ops && ctx.authenticateAdmin) {
+    return handleAdmin(req, {
+      ops: ctx.ops, authenticateAdmin: (r) => ctx.authenticateAdmin!(r), player: ctx.player, leaderboard: ctx.leaderboard,
+      paidBalance: () => ctx.paidBalance(), replay: (id) => ctx.race.replay(id), ...(ctx.clock ? { clock: ctx.clock } : {}),
+    });
+  }
   try {
     let methodMismatch = false;
     for (const r of routes) {

@@ -63,6 +63,13 @@ namespace Muchi.Client
         public Task<bool> HealthAsync(CancellationToken ct = default)
             => Call("GET", "/v1/health", null, false, null, true, o => J.Bool(o, "ok"), ct);
 
+        /// <summary>
+        /// Active remote-config version (REQ-OPS-005). Cache master data (banners, odds…) per <see cref="ConfigInfo.Hash"/>
+        /// and refetch it when the hash changes. Public, no auth.
+        /// </summary>
+        public Task<ConfigInfo> GetConfigAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/config", null, false, null, true, ConfigInfo.Parse, ct);
+
         /// <summary>Creates the player on first use and returns the state. Safe to call on every launch.</summary>
         public Task<PlayerView> BootstrapAsync(CancellationToken ct = default)
             => Call("POST", "/v1/player/bootstrap", JsonNode.Obj(), true, null, true, PlayerView.Parse, ct);

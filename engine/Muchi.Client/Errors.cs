@@ -15,6 +15,10 @@ namespace Muchi.Client
         BreedingDailyLimit, AwakeningMax, AlreadyClaimed, NotEligible,
         AlreadyQueued, NotInQueue, RoomNotFound, RoomFull, NotHost, ConfigInvalid,
         FriendLimit, AlreadyInRace, RoomTooSmall,
+        /// <summary>403: the account is banned (racing and purchases disabled).</summary>
+        Banned,
+        /// <summary>403 / 429: admin-only codes; never expected by the game client.</summary>
+        Forbidden, RateLimited,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -59,6 +63,9 @@ namespace Muchi.Client
             ["FRIEND_LIMIT"] = ApiErrorCode.FriendLimit,
             ["ALREADY_IN_RACE"] = ApiErrorCode.AlreadyInRace,
             ["ROOM_TOO_SMALL"] = ApiErrorCode.RoomTooSmall,
+            ["BANNED"] = ApiErrorCode.Banned,
+            ["FORBIDDEN"] = ApiErrorCode.Forbidden,
+            ["RATE_LIMITED"] = ApiErrorCode.RateLimited,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };
 

@@ -8,6 +8,16 @@ export interface Env {
   LEADERBOARD: DurableObjectNamespace;
   /** Friend codes + public profiles, sharded `dir:<n>` (REQ-SOCIAL-*). */
   DIRECTORY: DurableObjectNamespace;
+  /** Singleton `global`: remote config versions, admin audit log, admin rate limits (REQ-OPS-*). */
+  OPS?: DurableObjectNamespace;
+  /** Singleton `global`: anti-cheat flags, moderation (quarantine/ban), race reports queue (REQ-OPS-03x). */
+  INTEGRITY?: DurableObjectNamespace;
+  /** Secret: JSON `[{"name":"alice","role":"admin","sha256":"<hex sha-256 of the token>"}]` (REQ-OPS-010). */
+  ADMIN_TOKENS?: string;
+  /** Optional Cloudflare Access for the admin API: team domain (`<team>.cloudflareaccess.com`), app AUD tag, and `{"email":"role"}`. */
+  ACCESS_TEAM_DOMAIN?: string;
+  ACCESS_AUD?: string;
+  ACCESS_ROLES?: string;
   REPLAYS: R2Bucket;
   /** Public, CDN-cacheable JSON (leaderboard snapshots). */
   SNAPSHOTS: R2Bucket;

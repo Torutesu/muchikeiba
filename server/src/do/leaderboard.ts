@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { Env } from '../env.js';
-import { loadMaster } from '../domain/master.js';
+import { activeConfig } from '../ops/activeConfig.js';
 import {
   acceptEntry, buildSnapshot, newRolloverState, rolloverStep, seasonIsOver,
   type RankInfo, type RolloverState, type SeasonEntry,
@@ -60,7 +60,7 @@ export class LeaderboardDO extends DurableObject<Env> {
   async snapshot(seasonId: string, now: number, force = false): Promise<Envelope<{ published: boolean; files: number }>> {
     return wrap(async () => {
       if (!force && !this.kvGet<boolean>('dirty')) return { published: false, files: 0 };
-      const snap = buildSnapshot(seasonId, this.entries(), now, loadMaster().progression.leaderboard.topN);
+      const snap = buildSnapshot(seasonId, this.entries(), now, (await activeConfig(this.env)).master.progression.leaderboard.topN);
       for (const f of snap.files) {
         await this.env.SNAPSHOTS.put(f.key, JSON.stringify(f.body), { httpMetadata: { contentType: 'application/json', cacheControl: 'public, max-age=60' } });
       }
@@ -94,7 +94,7 @@ export class LeaderboardDO extends DurableObject<Env> {
         st = { ...st, status: 'closing' };
         this.kvPut('rollover', st);
       }
-      const batch = loadMaster().progression.leaderboard.rolloverBatch;
+      const batch = (await activeConfig(this.env)).master.progression.leaderboard.rolloverBatch;
       const participants = this.sql.exec<{ player_id: string; class_id: string }>('SELECT player_id, class_id FROM entries WHERE player_id > ? AND races > 0 ORDER BY player_id LIMIT ?', st.cursor, batch)
         .toArray().map((r) => ({ playerId: r.player_id, classId: r.class_id }));
       const ranks = new Map(this.sql.exec<RankRow>('SELECT * FROM ranks').toArray().map((r) => [r.player_id, { classId: r.class_id, classRank: r.class_rank, classTotal: r.class_total, ratingRank: r.rating_rank, ratingTotal: r.rating_total }]));

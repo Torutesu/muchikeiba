@@ -170,6 +170,11 @@ export class RaceRoomDO extends DurableObject<Env> {
           unwrap(await mm.raceFinished(core.config.raceId, pids));
         },
         persist: () => this.persist(),
+        integrity: async (r) => {
+          if (!this.env.INTEGRITY) return;
+          const integ = this.env.INTEGRITY.get(this.env.INTEGRITY.idFromName('global')) as unknown as { recordRace(x: typeof r): Promise<Envelope<unknown>> };
+          unwrap(await integ.recordRace(r));
+        },
       }, Date.now());
       this.send(r.out);
     } finally {

@@ -82,7 +82,7 @@ function split(ids: string[], total: number): PoolEntry[] {
   return ids.map((templateId) => ({ templateId, ppm: base + (rem-- > 0 ? 1 : 0) }));
 }
 
-interface RawBanner {
+export interface RawBanner {
   id: string; name: string; currency: 'any' | 'paidOnly'; priceSingle: number; priceTen: number; pityGroup: string;
   pityTargets: string[]; pool: 'auto' | PoolEntry[]; rates?: Partial<Record<Rarity, number>>;
   guaranteeRates?: Partial<Record<Rarity, number>>; guaranteePool?: PoolEntry[];

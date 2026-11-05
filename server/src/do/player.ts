@@ -9,6 +9,7 @@ import { makeVerifiers, storeSettingsFromEnv } from '../http/stores.js';
 import { accountingStoreIndex } from './storeIndex.js';
 import { SqlPlayerRepo } from './sqlRepo.js';
 import { wrap, type Envelope } from './rpc.js';
+import { activeConfig } from '../ops/activeConfig.js';
 import { shardedDirectory } from './directory.js';
 
 /** One player = one Durable Object (wallet, ledger, horses, gacha pity, purchases). */
@@ -37,6 +38,9 @@ export class PlayerDO extends DurableObject<Env> {
   }
 
   async invoke(method: PlayerMethod, args: unknown[]): Promise<Envelope<unknown>> {
-    return wrap(() => (this.svc[method] as (...a: unknown[]) => unknown)(...args));
+    return wrap(async () => {
+      this.svc.setMaster((await activeConfig(this.env)).master); // REQ-OPS-005: gacha schedule, rewards… follow remote config
+      return (this.svc[method] as (...a: unknown[]) => unknown)(...args);
+    });
   }
 }

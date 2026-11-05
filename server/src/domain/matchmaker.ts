@@ -1,8 +1,9 @@
 import { AppError } from './errors.js';
 import { randInt, type Rng } from './rng.js';
 
-export interface QueueEntry<P = unknown> { playerId: string; rating: number; beginner: boolean; enqueuedAt: number; payload: P }
-export interface Match<P = unknown> { players: QueueEntry<P>[]; cpuCount: number; cpuLevel: number; beginner: boolean }
+/** `quarantined` players (REQ-OPS-032) are matched only with each other, or filled with CPU. */
+export interface QueueEntry<P = unknown> { playerId: string; rating: number; beginner: boolean; enqueuedAt: number; payload: P; quarantined?: boolean }
+export interface Match<P = unknown> { players: QueueEntry<P>[]; cpuCount: number; cpuLevel: number; beginner: boolean; quarantined: boolean }
 
 export interface MatchmakerOptions { maxPlayers: number; cpuFillAfterMs: number; baseWindow: number; widenPerSec: number; maxWindow: number }
 export const DEFAULT_MM: MatchmakerOptions = { maxPlayers: 12, cpuFillAfterMs: 15_000, baseWindow: 100, widenPerSec: 25, maxWindow: 600 };
@@ -44,8 +45,8 @@ export class MatchmakerCore<P = unknown> {
 
   tick(now: number): Match<P>[] {
     const matches: Match<P>[] = [];
-    for (const beginner of [true, false]) {
-      const pool = this.queue.filter((e) => e.beginner === beginner).sort((a, b) => a.enqueuedAt - b.enqueuedAt);
+    for (const [beginner, quarantined] of [[true, false], [false, false], [true, true], [false, true]] as const) {
+      const pool = this.queue.filter((e) => e.beginner === beginner && (e.quarantined ?? false) === quarantined).sort((a, b) => a.enqueuedAt - b.enqueuedAt);
       const used = new Set<string>();
       for (const anchor of pool) {
         if (used.has(anchor.playerId)) continue;
@@ -58,7 +59,7 @@ export class MatchmakerCore<P = unknown> {
         if (full || now - anchor.enqueuedAt >= this.opts.cpuFillAfterMs) {
           for (const g of group) used.add(g.playerId);
           const avg = group.reduce((a, g) => a + g.rating, 0) / group.length;
-          matches.push({ players: group, cpuCount: this.opts.maxPlayers - group.length, cpuLevel: cpuLevelFor(avg, beginner), beginner });
+          matches.push({ players: group, cpuCount: this.opts.maxPlayers - group.length, cpuLevel: cpuLevelFor(avg, beginner), beginner, quarantined });
         }
       }
       this.queue = this.queue.filter((e) => !used.has(e.playerId));
@@ -134,4 +135,9 @@ export const LIVE_RACE_MS = 6 * 60_000;
 export function assertNotInLiveRace(assignments: Map<string, { at: number }>, playerId: string, now: number) {
   const a = assignments.get(playerId);
   if (a && now - a.at < LIVE_RACE_MS) throw new AppError('ALREADY_IN_RACE');
+}
+
+/** REQ-OPS-033: banned players cannot queue or join rooms. */
+export function assertMayRace(entry: { moderation?: 'ok' | 'quarantined' | 'banned' }) {
+  if (entry.moderation === 'banned') throw new AppError('BANNED', 'racing is disabled for this account');
 }

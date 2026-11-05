@@ -14,19 +14,71 @@ export { MatchmakerDO } from './do/matchmaker.js';
 export { AccountingDO } from './do/accounting.js';
 export { LeaderboardDO } from './do/leaderboard.js';
 export { DirectoryDO } from './do/directory.js';
+export { OpsDO } from './do/ops.js';
+export { IntegrityDO } from './do/integrity.js';
+import type { OpsApi } from './http/admin.js';
+import { authenticateAdmin, parseAdminTokens, type AdminAuthConfig, type AdminRole } from './ops/admin.js';
+import { activeConfig } from './ops/activeConfig.js';
+import type { ResolvedConfig } from './ops/config.js';
 import { shardedDirectory } from './do/directory.js';
 import { boardKey, indexKey, type RolloverState } from './domain/leaderboard.js';
 import { runScheduled } from './domain/scheduled.js';
 import { sweepReplays, type ReplayBucket } from './domain/retention.js';
 
-const master = loadMaster();
-validateGacha(master); // fail fast on a broken gacha/master definition (REQ-GACHA-003/008)
+const baseMaster = loadMaster();
+validateGacha(baseMaster); // fail fast on a broken gacha/master definition (REQ-GACHA-003/008)
 
 type Rpc = Record<string, (...a: unknown[]) => Promise<Envelope<unknown>>>;
 const stub = (ns: DurableObjectNamespace, name: string) => ns.get(ns.idFromName(name)) as unknown as Rpc;
 
-export function makeContext(env: Env): AppContext {
+/** Ops backend over the OpsDO / IntegrityDO singletons (REQ-OPS-*). */
+export function makeOpsApi(env: Env): OpsApi | undefined {
+  if (!env.OPS || !env.INTEGRITY) return undefined;
+  const ops = () => stub(env.OPS!, 'global');
+  const integ = () => stub(env.INTEGRITY!, 'global');
+  const call = async <T>(p: Promise<Envelope<unknown>>) => unwrap(await p) as T;
+  return {
+    admit: (id, kind, now) => call(ops().admit!(id, kind, now)),
+    audit: (e, now) => call(ops().audit!(e, now)),
+    auditQuery: (q) => call(ops().auditQuery!(q)),
+    config: {
+      active: (now, known) => call(ops().configActive!(now, known)),
+      validate: (b) => call(ops().configValidate!(b)),
+      stage: (b, by, note, now) => call(ops().configStage!(b, by, note, now)),
+      schedule: (v, at, by, reason, now) => call(ops().configSchedule!(v, at, by, reason, now)),
+      cancel: (id, now) => call(ops().configCancel!(id, now)),
+      rollback: (v, by, reason, now) => call(ops().configRollback!(v, by, reason, now)),
+      list: (now) => call(ops().configList!(now)),
+      get: (id) => call(ops().configGet!(id)),
+    },
+    integrity: {
+      recordRace: (r) => call(integ().recordRace!(r)),
+      report: (raceId, reporter, now) => call(integ().report!(raceId, reporter, now)),
+      reports: (st, limit) => call(integ().reports!(st, limit)),
+      resolveReport: (id, res, by, now) => call(integ().resolveReport!(id, res, by, now)),
+      view: (pid, now) => call(integ().view!(pid, now)),
+      list: (st, now, limit) => call(integ().list!(st, now, limit)),
+      ban: (pid, until, reason, by, now) => call(integ().ban!(pid, until, reason, by, now)),
+      unban: (pid, reason, by, now) => call(integ().unban!(pid, reason, by, now)),
+      release: (pid, reason, by, now) => call(integ().release!(pid, reason, by, now)),
+    },
+  };
+}
+
+export function adminAuthConfig(env: Env): AdminAuthConfig {
+  return {
+    tokens: parseAdminTokens(env.ADMIN_TOKENS),
+    legacyToken: env.ADMIN_TOKEN,
+    access: env.ACCESS_TEAM_DOMAIN && env.ACCESS_AUD
+      ? { teamDomain: env.ACCESS_TEAM_DOMAIN, audience: env.ACCESS_AUD, roles: JSON.parse(env.ACCESS_ROLES ?? '{}') as Record<string, AdminRole> }
+      : undefined,
+  };
+}
+
+export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
+  const master = cfg?.master ?? baseMaster;
   const dev = env.DEV_MODE === '1';
+  const ops = makeOpsApi(env);
   const mm = () => stub(env.MATCHMAKER, 'ranked-jp');
   const call = async (p: Promise<Envelope<unknown>>) => unwrap(await p);
   const lb = (seasonId: string) => stub(env.LEADERBOARD, `lb:${seasonId}`);
@@ -73,6 +125,9 @@ export function makeContext(env: Env): AppContext {
     paidBalance: () => (stub(env.ACCOUNTING, 'global') as unknown as { summary(): Promise<unknown> }).summary(),
     adminToken: env.ADMIN_TOKEN,
     parseStoreNotification: (platform, req) => parseStoreNotification(platform, req, storeSettingsFromEnv(env, master), accountingStoreIndex(env)),
+    ...(ops ? { ops } : {}),
+    authenticateAdmin: (req) => authenticateAdmin(req, adminAuthConfig(env)),
+    configInfo: async () => ({ versionId: cfg?.versionId ?? 'base', hash: cfg?.hash ?? 'base', rulesetVersion: cfg?.ruleset.rulesetVersion ?? '', activatedAt: cfg?.activatedAt ?? null }),
   };
 }
 
@@ -100,7 +155,7 @@ export default {
       console.error('DEV_MODE is set on a non-loopback host; refusing all requests');
       return Promise.resolve(Response.json({ error: 'DEV_MODE_REFUSED' }, { status: 500 }));
     }
-    return handle(req, {}, makeContext(env));
+    return activeConfig(env).then((cfg) => handle(req, {}, makeContext(env, cfg)));
   },
   /** Cron triggers (wrangler.toml [triggers]): leaderboards, season rollover, replay retention. */
   async scheduled(event: ScheduledController, env: Env) {
@@ -111,7 +166,7 @@ export default {
     const done = await runScheduled(event.cron, now, {
       snapshot: async (seasonId) => unwrap(await lb(seasonId).snapshot(seasonId, now)),
       rolloverStep: async (seasonId) => unwrap(await lb(seasonId).rolloverStep(seasonId, now)),
-      sweepReplays: (t) => sweepReplays(replayBucket(env.REPLAYS), t, Number(env.REPLAY_RETENTION_DAYS ?? master.progression.replayRetentionDays)),
+      sweepReplays: async (t) => sweepReplays(replayBucket(env.REPLAYS), t, Number(env.REPLAY_RETENTION_DAYS ?? (await activeConfig(env)).master.progression.replayRetentionDays)),
     });
     console.log('scheduled', event.cron, done.join(' '));
   },

@@ -201,6 +201,17 @@ namespace Muchi.Client
         internal static ProductList Parse(JsonNode o) => new ProductList { Products = J.List(o, "products", Product.Parse), Notice = J.Str(o, "notice") };
     }
 
+    public sealed class ConfigInfo
+    {
+        public string VersionId, Hash, RulesetVersion;
+        public long? ActivatedAt;
+        internal static ConfigInfo Parse(JsonNode o) => new ConfigInfo
+        {
+            VersionId = J.Str(o, "versionId"), Hash = J.Str(o, "hash"), RulesetVersion = J.Str(o, "rulesetVersion"),
+            ActivatedAt = J.Opt(o, "activatedAt") is JsonNode n && !n.IsNull ? n.AsLong() : (long?)null,
+        };
+    }
+
     public sealed class StoreAccount
     {
         public string AppleAppAccountToken, GoogleObfuscatedAccountId;

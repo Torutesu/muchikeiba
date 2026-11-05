@@ -9,7 +9,13 @@ VERIFIER_URL = "https://verifier.example.invalid"
 FIREBASE_PROJECT_ID = "muchi-issen-dev"
 VERIFY_SAMPLE_RATE = "0.05"
 # DEV_MODE = "1"   # local only: fake store + x-dev-user header. NEVER in production.
-# Secrets (wrangler secret put): TICKET_SECRET, ADMIN_TOKEN, GOOGLE_SERVICE_ACCOUNT_JSON
+# Secrets (wrangler secret put): TICKET_SECRET, ADMIN_TOKENS, GOOGLE_SERVICE_ACCOUNT_JSON
+# ADMIN_TOKENS = '[{"name":"alice","role":"admin","sha256":"<sha-256 hex of the token>"}]'   (roles: viewer|operator|admin)
+# ADMIN_TOKEN (legacy single token, role admin) still works; prefer ADMIN_TOKENS.
+# Optional Cloudflare Access for /v1/admin/*:
+# ACCESS_TEAM_DOMAIN = "<team>.cloudflareaccess.com"
+# ACCESS_AUD = "<application AUD tag>"
+# ACCESS_ROLES = '{"ops@example.com":"operator"}'
 # Stores (server/README.md「ストア連携」). Unset => that store rejects every receipt.
 # APPLE_BUNDLE_ID = "jp.example.muchi"
 # APPLE_ACCEPT_SANDBOX = "1"              # "0" rejects Sandbox (App Review uses Sandbox)
@@ -42,6 +48,14 @@ class_name = "LeaderboardDO"
 name = "DIRECTORY"
 class_name = "DirectoryDO"
 
+[[durable_objects.bindings]]
+name = "OPS"
+class_name = "OpsDO"
+
+[[durable_objects.bindings]]
+name = "INTEGRITY"
+class_name = "IntegrityDO"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["RaceRoomDO", "PlayerDO", "MatchmakerDO", "AccountingDO"]
@@ -49,6 +63,10 @@ new_sqlite_classes = ["RaceRoomDO", "PlayerDO", "MatchmakerDO", "AccountingDO"]
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["LeaderboardDO", "DirectoryDO"]
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["OpsDO", "IntegrityDO"]
 
 [[r2_buckets]]
 binding = "REPLAYS"

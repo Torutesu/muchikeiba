@@ -102,10 +102,52 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | DELETE | `/v1/friends/requests/:toId` | 要 | | 自分の申請を取り消し |
 | DELETE | `/v1/friends/:friendId` | 要 | | フレンド解除（双方） |
 | POST | `/v1/friend-rooms/:passphrase/invite` | 要 | | `{friendId}` 部屋のメンバーがフレンドを招待 |
-| GET | `/v1/admin/paid-balance` | 管理 | | 有償コイン未使用残高の集計（資金決済法） |
-| GET | `/v1/admin/replays/:raceId` | 管理 | | リプレイログ |
+| GET | `/v1/config` | なし | | 有効な設定の版 `{versionId, hash, rulesetVersion, activatedAt}`。アプリはhashごとにマスターデータをキャッシュ（REQ-OPS-007） |
 
-レース中のメッセージは `contracts/protocol.md` §4。
+レース中のメッセージは `contracts/protocol.md` §4。BAN中のプレイヤーはランク戦・フレンド部屋・購入前チェックで `403 BANNED`。
+
+## 管理API（`src/http/admin.ts`、REQ-OPS-*）
+
+認証は `Authorization: Bearer <管理トークン>`（`ADMIN_TOKENS` にはトークンのSHA-256だけを置く）か、Cloudflare Access の `Cf-Access-Jwt-Assertion`。
+権限は viewer ＜ operator ＜ admin。**書き込みは本文に `reason`（3〜500文字）が必須**。全ての呼び出し（閲覧・失敗・権限不足も）が監査ログに残る。操作者ごとのレート制限（閲覧／書き込み別、超過は `429 RATE_LIMITED`）。
+
+| メソッド | パス | 権限 | 本文 / 説明 |
+|---|---|---|---|
+| GET | `/v1/admin/whoami` | viewer | 自分のIDと権限 |
+| GET | `/v1/admin/paid-balance` | viewer | 有償コイン未使用残高の集計（資金決済法） |
+| GET | `/v1/admin/replays/:raceId` | viewer | リプレイログ |
+| GET | `/v1/admin/audit` | viewer | `?actor=&target=&action=&beforeSeq=&limit=` 監査ログ（新しい順） |
+| GET | `/v1/admin/config` | viewer | 有効な版・予約・全版（本体なし）・有効化履歴 |
+| GET | `/v1/admin/config/versions/:id` | viewer | 版の本体 |
+| POST | `/v1/admin/config/validate` | viewer | `{bundle}` 検証だけ（`{problems}`） |
+| POST | `/v1/admin/config/versions` | operator | `{bundle, note, reason}` 版を登録（同じ内容なら既存の版） |
+| POST | `/v1/admin/config/activations` | admin | `{versionId, at?, reason}` 今すぐ／予約で有効化 |
+| POST | `/v1/admin/config/activations/:id/cancel` | admin | `{reason}` 効果が出る前の予約を取り消し |
+| POST | `/v1/admin/config/rollback` | admin | `{versionId?, reason}` 1つ前／指定の版／`base` に即時に戻す |
+| GET | `/v1/admin/players/:playerId` | viewer | サポート用の詳細（財布・ロット・台帳・購入・年齢・印・不正対策の状態） |
+| POST | `/v1/admin/players/:playerId/grants` | operator | `{grant:{freeCoins?, items?}, opKey, reason}` お詫び配布（opKeyで冪等、権限ごとの上限） |
+| POST | `/v1/admin/grants/bulk` | operator | `{grant, opKey, reason, playerIds? \| segment?}` 一括配布（1回200人・合計100万コインまで。`segment`＝`{kind:'leaderboard', seasonId, board, offset, limit}`、続きは `nextOffset`） |
+| POST | `/v1/admin/players/:playerId/debt/settle` | operator | `{coins?, items?, opKey, reason}` 返金負債の免除 |
+| PUT | `/v1/admin/players/:playerId/age` | operator | `{birthYear, birthMonth, guardianConsent, reason}` 年齢の訂正 |
+| POST | `/v1/admin/players/:playerId/name-reset` | operator | `{target: display\|horse, horseId?, reason}` 名前を既定に戻す |
+| GET | `/v1/admin/integrity/players` | viewer | `?status=quarantined\|banned\|flagged&limit=` |
+| GET | `/v1/admin/integrity/players/:playerId` | viewer | 点数・記録・状態・メモ |
+| POST | `/v1/admin/integrity/players/:playerId/release` | operator | `{reason}` 隔離の解除 |
+| POST | `/v1/admin/integrity/players/:playerId/ban` | admin | `{until?: epochMs\|null, reason}` BAN（null＝無期限） |
+| POST | `/v1/admin/integrity/players/:playerId/unban` | admin | `{reason}` |
+| GET | `/v1/admin/reports` | viewer | `?status=open\|resolved` 通報の列 |
+| POST | `/v1/admin/reports/:reportId/resolve` | operator | `{resolution, reason}` |
+
+### 設定配信（リモートコンフィグ）
+- バンドルで変えられるもの：`ruleset`（一部でも全部でも可。キー集合は固定）、`gacha.banners`（一覧ごと置き換え。開催日程は `startAtMs`/`endAtMs`）、`gacha.pityGroups`、`tracks`、`progression`（浅いマージ）、`ng`。
+- 値を変えたら `ruleset.rulesetVersion` も変える。同じ `rulesetVersion` を別の値で使い回すことはできない（過去のレースの検証のため）。
+- 各Worker・Durable Objectは有効な設定を30秒（または次の予約時刻まで）キャッシュする。有効化から反映まで最大30秒。
+- 設定は `OpsDO`（`global`）に保存。配信元に障害があっても最後に知っている設定で動く。
+
+### 不正対策
+- レース確定後、結果が食い違った人（容疑者、1点）とチェックサムがズレた人（0.5点）を `IntegrityDO`（`global`）に送る。7日間で3点以上なら自動で14日間の隔離（ランク戦は隔離中の人同士かCPUとだけ）。
+- BANは管理者の判断のみ。状態はプレイヤー本人のオブジェクトに反映され、マッチングと購入前チェックで使われる。
+- 通報（`/v1/race/:raceId/report`）はレビュー用の列に入る。通報だけで隔離・BANにはならない。
 
 ## 設計メモ
 - お金・抽選・配合の乱数はすべてサーバー（`crypto.getRandomValues`）。端末の値は信用しない。

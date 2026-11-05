@@ -1,6 +1,7 @@
 import { AppError } from './errors.js';
 import type { Master } from './master.js';
-import { migratePlayer, newPlayer, playerView, type PlayerState, type PurchaseRecord } from './player.js';
+import { migratePlayer, moderationOf, newPlayer, playerView, type PlayerState, type PurchaseRecord } from './player.js';
+import { setModeration, supportCorrectAge, supportGrant, supportResetName, supportSettleDebt, supportView, type Grant } from '../ops/support.js';
 import { equipTitle, evaluateTitles, publicProfile, setDisplayName, type PublicProfile } from './stats.js';
 import { closeSeason } from './season.js';
 import { friendAccept, friendAccepted, friendCancel, friendDecline, friendReceive, friendRemove, friendSend, pruneInvites, receiveInvite } from './friends.js';
@@ -60,6 +61,9 @@ const IDEM_KEEP = 200;
  */
 export class PlayerService {
   constructor(private readonly repo: PlayerRepo, private readonly d: PlayerServiceDeps) {}
+
+  /** Swaps in the active remote config's master (REQ-OPS-005). */
+  setMaster(m: Master) { this.d.master = m; }
 
   private async load(id: string): Promise<PlayerState> {
     const s = await this.repo.get(id);
@@ -129,6 +133,7 @@ export class PlayerService {
 
   async purchaseIntent(id: string, productId: string) {
     const s = await this.load(id);
+    if (moderationOf(s, this.d.clock()) === 'banned') throw new AppError('BANNED', 'purchases are disabled for this account'); // REQ-OPS-033
     return checkPurchaseIntent(this.d.master, s, productId, this.d.clock());
   }
 
@@ -139,6 +144,8 @@ export class PlayerService {
     await this.claimStoreKeys(id, r);
     const out = await this.tx(id, `purchase:${r.transactionId}`, (s, now) => {
       const { record, duplicate } = applyVerifiedPurchase(this.d.master, s, platform, r, now);
+      // A completed store payment is always credited; a banned account gets a support flag (refund via support).
+      if (!duplicate && moderationOf(s, now) === 'banned') (s.supportFlags ??= []).push(`purchase_while_banned:${record.txId}`);
       return { record, duplicate, wallet: playerView(s).wallet };
     });
     if (v.finalize) {
@@ -229,6 +236,7 @@ export class PlayerService {
     if (h.status !== 'active') throw new AppError('HORSE_NOT_ACTIVE');
     const cls = classDef(this.d.master, s.season.classId);
     return {
+      moderation: moderationOf(s, this.d.clock()),
       playerId: id, horse: toRaceHorse(this.d.master, h),
       rating: { r: s.rating.r, rd: s.rating.rd, vol: s.rating.vol },
       classId: cls.id, statCap: cls.statCap, beginner: s.rating.rankedRaces < this.d.master.progression.beginnerRaces,
@@ -267,5 +275,23 @@ export class PlayerService {
     const s = await this.load(id);
     pruneInvites(this.d.master, s, this.d.clock());
     return { ids: s.friends.ids, incoming: s.friends.incoming, outgoing: s.friends.outgoing, invites: s.friends.invites };
+  }
+
+  // ---- support / anti-cheat (admin API only; REQ-OPS-020..025, REQ-OPS-032) ----
+  async adminView(id: string) { return supportView(this.d.master, await this.load(id), this.d.clock()); }
+  adminGrant(id: string, grant: Grant, reason: string, actor: string, opKey: string) {
+    return this.tx(id, `admin:grant:${opKey}`, (s, now) => supportGrant(s, grant, reason, actor, `admin:${opKey}`, now));
+  }
+  adminSettleDebt(id: string, coins: number, items: Record<string, number>, reason: string, actor: string, opKey: string) {
+    return this.tx(id, `admin:settle:${opKey}`, (s, now) => supportSettleDebt(s, coins, items, reason, actor, `admin:${opKey}`, now));
+  }
+  adminCorrectAge(id: string, birthYear: number, birthMonth: number, guardianConsent: boolean, actor: string) {
+    return this.tx(id, null, (s, now) => supportCorrectAge(this.d.master, s, birthYear, birthMonth, guardianConsent, actor, now));
+  }
+  adminResetName(id: string, target: 'display' | 'horse', horseId: string | null) {
+    return this.tx(id, null, (s) => supportResetName(this.d.master, s, target, horseId));
+  }
+  setModeration(id: string, status: 'ok' | 'quarantined' | 'banned', until: number | null, reason: string) {
+    return this.tx(id, null, (s, now) => setModeration(s, status, until, reason, now));
   }
 }

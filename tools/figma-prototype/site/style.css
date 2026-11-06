@@ -159,3 +159,37 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
 .pass-strip .cell.claimed::after { content: "受取済"; position: absolute; right: 6px; top: 4px; font-size: 12px; color: #9fd8ec; }
 .pass-strip .cell.claimable { box-shadow: inset 0 0 0 3px #ffd414; }
 .pass-strip .cell button { font: inherit; font-size: 15px; background: #ffd414; color: #061224; border: 0; padding: 6px 12px; cursor: pointer; }
+
+/* ---------------- round 10: 支部の応援スタンプ (team feed). 「ムチ一閃」 tone: sparse translucent navy, letter-spaced cyan
+   kickers, skewed cyan CTA with ». Own block; reuses .panel / .btn / .ghost from above. */
+.label.tf-kicker { letter-spacing: .28em; }
+.tf-feed { backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.tf-list { overflow-y: auto; overflow-x: hidden; padding: 0 30px 20px; scrollbar-width: thin; scrollbar-color: rgba(0,204,242,.5) transparent; }
+.tf-row { display: flex; flex-direction: column; gap: 8px; padding: 18px 0 16px; border-bottom: 1px solid rgba(143,216,255,.16); }
+.tf-row .tf-meta { font-size: 15px; color: #9fd8ec; letter-spacing: .06em; }
+.tf-row .tf-main { font-size: 26px; color: #fff; }
+.tf-row.race .tf-main { color: #ffd414; }
+.tf-row.mine .tf-meta { color: #8fe6ff; }
+.tf-badge { display: inline-flex; align-items: center; gap: 10px; padding: 8px 22px; background: rgba(0,204,242,.14); border-left: 4px solid #00ccf2; transform: skewX(-10deg); }
+.tf-race::before { content: "🏇 "; }
+.tf-foot { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.tf-react { font-size: 16px; padding: 4px 12px; background: rgba(255,255,255,.08); color: #dfeef5; }
+.tf-react.mine { background: rgba(0,204,242,.3); color: #fff; }
+.tf-cheer, .tf-link, .tf-stamp { font: inherit; cursor: pointer; border: 0; }
+.tf-cheer { font-size: 17px; padding: 8px 20px; background: #00ccf2; color: #061224; transform: skewX(-12deg); letter-spacing: .04em; }
+.tf-cheer.on { background: rgba(6,19,36,.9); color: #8fe6ff; box-shadow: inset 0 0 0 2px #00ccf2; }
+.tf-cheer:disabled { opacity: .45; cursor: default; }
+.tf-link { font-size: 15px; background: transparent; color: #8fb4cc; text-decoration: underline; text-underline-offset: 4px; padding: 4px 6px; margin-left: auto; }
+.tf-link + .tf-link { margin-left: 0; }
+.tf-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; align-content: start; overflow-y: auto; }
+.tf-stamp { height: 100px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; background: rgba(6,19,36,.72);
+  box-shadow: inset 0 0 0 1px rgba(143,216,255,.25); color: #fff; padding: 6px; }
+.tf-stamp b { font-size: 22px; letter-spacing: .04em; }
+.tf-stamp small { font-size: 12px; color: #9fd8ec; line-height: 1.25; text-align: center; }
+.tf-stamp.sel { box-shadow: inset 0 0 0 3px #00ccf2, 0 0 18px rgba(0,204,242,.35); }
+.tf-stamp.locked b { color: rgba(255,255,255,.45); }
+.tf-stamp.locked b::before { content: "🔒 "; font-size: 16px; }
+.btn.tf-cta .bg { transform: skewX(-14deg); box-shadow: 0 10px 28px rgba(0,204,242,.35); }
+.btn.tf-cta span { font-size: 28px !important; letter-spacing: .06em; }
+.btn.tf-cta span::after { content: "  »"; }
+.btn.tf-cta.disabled span::after { content: ""; }

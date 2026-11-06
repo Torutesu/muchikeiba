@@ -904,7 +904,7 @@ async function Store(tab = 'recommended') {
   currentScreen = () => Store(tab);
   if (tab === 'pass') return SeasonPass();
   await refresh();
-  const shop = L.shopProducts();
+  const shop = await L.myShopProducts(); // r10: owned / purchasedThisSeason per player
   const offers = await L.shopOffers();
   const blocked = !offers.ok && offers.code === 'DELETION_PENDING';
   Clear('shop-' + tab); SetArt('Art/home-paddock'); Veil(.45);
@@ -945,6 +945,9 @@ function productCard(p, x, y, w, h, opts = {}) {
   if (p.period?.kind === 'days') tags.push(`${p.period.days}日間・自動更新なし`);
   if (opts.bonus) tags.push(opts.bonus);
   Label(tags.join('　·　'), 20, h - 84, w - 240, 60, 14, CYAN, c);
+  // r10: the server says this player already has it (this season's pass, a once-only pack, a running daily pack)
+  if (p.owned && !opts.note) { opts.note = p.ownedReason === 'season_pass' ? '今シーズンのパスは購入済みです' : '購入済みです'; opts.noteColor = col(.5, .9, .6); }
+  if (p.owned && !opts.action) { opts.cta = '購入済み'; opts.disabled = true; }
   if (opts.note) Label(opts.note, 20, h - 46, w - 240, 40, 14, opts.noteColor ?? YELLOW, c);
   const b = Button(opts.cta ?? '購入を確認', w - 220, h - 92, 200, 76, opts.action ?? (() => PurchaseConfirm(p.id, currentScreen)), opts.ctaColor ?? CYAN, c);
   if (opts.disabled) disable(b);
@@ -960,7 +963,7 @@ function DrawRecommended(shop, offers, top, blocked) {
   // T3 pass (real season end, live countdown)
   const passOffer = list.find((o) => o.productId === 'season_pass');
   const pass = byId.get('season_pass');
-  const pc = productCard(pass, 800, top, 760, 250, { cta: 'パスを見る', action: () => SeasonPass(), ctaColor: GOLD, disabled: blocked });
+  const pc = productCard(pass, 800, top, 760, 250, { cta: 'パスを見る', action: () => SeasonPass(), ctaColor: GOLD, disabled: blocked, ...(pass.owned ? { note: '今シーズンのパスは購入済みです（進み具合はパスの画面で）', noteColor: col(.5, .9, .6) } : {}) });
   if (passOffer?.endsAt) { const cd = Label('', 20, 204, 540, 30, 15, YELLOW, pc); every(1000, () => { cd.textContent = `今シーズンの終わり（${seasonEnd(passOffer.endsAt)}）まで あと ${countdown(passOffer.endsAt - L.now())}`; }); cd.classList.add('countdown'); }
   else if (!unlock('season_pass').unlocked) Label('シーズンパスは' + unlockText('season_pass'), 20, 204, 540, 30, 15, YELLOW, pc);
   // daily pack (厩舎手当) and the promotion packs (T4: only once the class is reached)
@@ -1118,7 +1121,7 @@ async function SeasonPass() {
   currentScreen = SeasonPass;
   const pass = await L.passView();
   await refresh();
-  const shop = L.shopProducts();
+  const shop = await L.myShopProducts(); // r10: owned / purchasedThisSeason per player
   const products = shop.products.filter((p) => p.kind === 'season_pass');
   const rw = L.master.passRewards;
   Clear('pass'); SetArt('Art/home-paddock'); Veil(.5);
@@ -1133,13 +1136,14 @@ async function SeasonPass() {
   const bar = Panel('XP track', 240, 60, 160, 16, col(.2, .28, .34), lv); Panel('XP fill', 0, 0, 160 * ((pass.xp % pass.xpPerLevel) / pass.xpPerLevel), 16, CYAN, bar);
   // ③ purchase-time items + the two products (Pass / Pass+), all contents visible before buying
   products.forEach((p, i) => {
-    const owned = pass.owned.includes(p.id);
+    const owned = p.purchasedThisSeason ?? pass.owned.includes(p.id);
+    const closed = p.owned === true; // one pass per season: Pass+ is closed once Pass was bought (and the other way round)
     const c = Panel('Pass product ' + p.id, 480 + i * 540, 116, 520, 180, i === 0 ? col(.1, .08, .02, .92) : col(.08, .04, .12, .92));
     Label(p.name, 20, 12, 320, 40, 26, i === 0 ? GOLD : col(.8, .6, 1), c);
     Label(yen(p.priceYen), 340, 12, 160, 40, 28, GOLD, c).style.textAlign = 'right';
     Label(p.contents.map((x) => '・' + x.label).join('\n'), 20, 56, 480, 80, 14, WHITE, c);
-    const b = Button(owned ? '購入済み' : i === 0 ? '有料ラインを開ける' : 'パス＋にする', 300, 128, 200, 44, () => PurchaseConfirm(p.id, SeasonPass), i === 0 ? GOLD : col(.55, .35, .85), c);
-    b.classList.add('small'); if (owned || pass.purchasable.length === 0) disable(b);
+    const b = Button(owned ? '購入済み' : closed ? '今シーズンは購入済み' : i === 0 ? '有料ラインを開ける' : 'パス＋にする', 300, 128, 200, 44, () => PurchaseConfirm(p.id, SeasonPass), i === 0 ? GOLD : col(.55, .35, .85), c);
+    b.classList.add('small'); b.dataset.owned = String(closed); if (owned || closed || pass.purchasable.length === 0) disable(b);
   });
   // ② every tier of the free / paid / plus lines (horizontal scroll), claimable tiers highlighted
   const strip = el('pass-strip', 40, 312, 1520, 400);
@@ -1364,6 +1368,9 @@ async function Settings() {
   Label('相棒の見た目・お世話', 24, 16, 400, 30, 18, CYAN, more);
   Ghost('衣装', 24, 56, 160, 72, Wardrobe, more); Ghost('コースの見た目', 200, 56, 240, 72, CourseThemes, more); Ghost('レース条件', 456, 56, 260, 72, Conditions, more);
   Ghost('お世話', 24, 140, 160, 72, Care, more);
+  // round 10: 支部の応援スタンプ, and a demo purchase of this season's pass (no billing) to see the 購入済み state
+  Ghost('支部の応援', 200, 140, 240, 72, TeamFeed, more);
+  Ghost('パス購入済み（デモ）', 456, 140, 260, 72, async () => { const r = await L.demoPurchase('season_pass'); toast(r.ok ? '今シーズンのパスを購入済みにしました（決済なし）' : r.code === 'ALREADY_PURCHASED' ? '今シーズンのパスは購入済みです' : r.message); }, more).classList.add('small');
   // REQ-UXS-040 (UXP-007 preview): two-step deletion with a 14-day cancel window; purchases are blocked meanwhile
   const del = Panel('Delete', 820, 120, 740, 250, NAVY);
   Label('アカウント削除', 24, 16, 400, 30, 18, CYAN, del);
@@ -1602,6 +1609,121 @@ function Care() {
   Button('BACK', 72, 785, 180, Home, NAVY);
 }
 
+// ================================================================= round 10: 支部の応援スタンプ (REQ-TEAMFEED-*)
+// The team feed on the real server rules (TeamsService / TeamCore in the browser) — fixed stamps only, no text field.
+// Mirrors unity/Assets/Muchi/Game/TeamFeedModel.cs: palette with server-built unlock texts, 10 s post cooldown, cheering a
+// teammate's race result (one stamp each, tap again to take it back), mute (local at once) and report (hidden at once).
+// 「ムチ一閃」 tone: photoreal art, sparse translucent navy panels, small letter-spaced cyan labels, skewed cyan CTA ».
+let tfSelected = 'cheer';
+let tfLastPost = -1e15;
+const TF_INTERVAL = 10_000;
+const tfWhen = (at) => { const d = Math.max(0, L.now() - at); return d < 60e3 ? 'たった今' : d < 3600e3 ? `${Math.floor(d / 60e3)}分前` : d < 86400e3 ? `${Math.floor(d / 3600e3)}時間前` : jstDate(at).split(' ')[0]; };
+function tfLine(it, label) {
+  if (it.kind === 'race' && it.race) return `${it.displayName}さんが${it.race.mode === 'tournament' ? '大会' : 'ランク戦'}で${it.race.place === 1 ? '1着！' : it.race.place + '着'}`;
+  return label(it.stampId);
+}
+async function TeamFeed() {
+  currentScreen = TeamFeed;
+  const team = await L.teamDemo();
+  const [cat, res] = await Promise.all([L.stamps(), L.teamFeed()]);
+  await refresh();
+  const items = res.ok ? res.value.items : [];
+  const stampOf = (id) => cat.stamps.find((s) => s.id === id);
+  const label = (id) => stampOf(id)?.label ?? id;
+  if (!stampOf(tfSelected)?.unlocked) tfSelected = cat.stamps.find((s) => s.unlocked)?.id ?? 'cheer';
+  const deleting = player.deletion?.status === 'scheduled';
+  Clear('team-feed'); SetArt('Art/home-paddock'); Veil(.32);
+  // header block: team name as a small letter-spaced cyan kicker, the screen title below
+  const head = Panel('Team head', 30, 18, 640, 98, NAVY);
+  Label(`支部  /  ${team.name}`, 30, 14, 580, 26, 17, CYAN, head).classList.add('tf-kicker');
+  Label('応援スタンプ', 30, 42, 580, 50, 34, WHITE, head);
+  WalletChip();
+  // ① the feed (newest first)
+  const feed = Panel('Team feed', 30, 136, 900, 650, col(.02, .06, .11, .78));
+  feed.classList.add('tf-feed');
+  Label('フィード', 30, 18, 300, 26, 16, CYAN, feed).classList.add('tf-kicker');
+  Label('定型スタンプだけ（自由入力はありません）', 300, 20, 570, 24, 14, DIM, feed).style.textAlign = 'right';
+  const list = el('tf-list', 0, 56, 900, 594, feed);
+  list.dataset.count = items.length;
+  if (!items.length) Label('まだ何もありません。スタンプで声をかけてみよう', 30, 40, 820, 40, 20, MUTED, list);
+  for (const it of items) {
+    const row = document.createElement('div');
+    row.className = 'tf-row' + (it.kind === 'race' ? ' race' : '') + (it.mine ? ' mine' : '');
+    row.dataset.seq = it.seq; row.dataset.kind = it.kind; row.dataset.player = it.playerId;
+    const meta = document.createElement('div'); meta.className = 'tf-meta';
+    meta.textContent = `${it.mine ? 'あなた' : it.displayName}　·　${tfWhen(it.at)}`;
+    row.appendChild(meta);
+    const main = document.createElement('div'); main.className = 'tf-main';
+    if (it.kind === 'stamp') { const b = document.createElement('span'); b.className = 'tf-badge'; b.dataset.asset = it.stampAsset; b.textContent = label(it.stampId); main.appendChild(b); }
+    else { const t = document.createElement('span'); t.className = 'tf-race'; t.textContent = tfLine(it, label); main.appendChild(t); }
+    row.appendChild(main);
+    const foot = document.createElement('div'); foot.className = 'tf-foot';
+    for (const r of it.reactions) { const c = document.createElement('span'); c.className = 'tf-react' + (r.mine ? ' mine' : ''); c.textContent = `${label(r.stampId)} ${r.count}`; foot.appendChild(c); }
+    if (it.kind === 'race' && !it.mine) {
+      const cheer = document.createElement('button');
+      const on = it.myReaction === tfSelected;
+      cheer.className = 'tf-cheer' + (on ? ' on' : ''); cheer.textContent = on ? '応援を取り消す' : `「${label(tfSelected)}」で応援 »`;
+      cheer.disabled = deleting;
+      cheer.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const r = await L.reactToFeed(it.seq, on ? null : tfSelected);
+        if (!r.ok) { toast(r.code === 'RATE_LIMITED' ? '少し待ってから応援してください' : r.code === 'DELETION_PENDING' ? 'アカウント削除の手続き中は送れません' : r.message); return; }
+        TeamFeed();
+      });
+      foot.appendChild(cheer);
+    }
+    if (!it.mine) {
+      const mute = document.createElement('button'); mute.className = 'tf-link'; mute.textContent = '非表示';
+      mute.addEventListener('click', async (e) => { e.stopPropagation(); const r = await L.muteMember(it.playerId, true); toast(r.ok ? `${it.displayName}さんのスタンプを表示しません（その他から戻せます）` : r.message); TeamFeed(); });
+      const rep = document.createElement('button'); rep.className = 'tf-link'; rep.textContent = '報告';
+      rep.addEventListener('click', async (e) => { e.stopPropagation(); const r = await L.reportFeed(it.seq, 'spam'); toast(r.ok ? '報告しました。ご協力ありがとうございます' : r.message); TeamFeed(); });
+      foot.appendChild(mute); foot.appendChild(rep);
+    }
+    row.appendChild(foot);
+    list.appendChild(row);
+  }
+  // ② the stamp palette: every stamp; locked ones say how they unlock (play / pass / direct sale — never gacha)
+  const pal = Panel('Stamp palette', 960, 136, 610, 520, col(.02, .06, .11, .78));
+  Label('スタンプ', 30, 18, 300, 26, 16, CYAN, pal).classList.add('tf-kicker');
+  Label(`${cat.stamps.filter((s) => s.unlocked).length} / ${cat.stamps.length} 解放`, 300, 20, 280, 24, 14, DIM, pal).style.textAlign = 'right';
+  const grid = el('tf-grid', 24, 58, 562, 446, pal);
+  for (const s of cat.stamps) {
+    const t = document.createElement('button');
+    t.className = 'tf-stamp' + (s.unlocked ? '' : ' locked') + (s.id === tfSelected ? ' sel' : '');
+    t.dataset.stamp = s.id; t.dataset.asset = s.asset;
+    t.innerHTML = `<b></b><small></small>`;
+    t.querySelector('b').textContent = s.label;
+    t.querySelector('small').textContent = s.unlocked ? '' : s.unlockText;
+    t.addEventListener('click', () => {
+      if (!s.unlocked) { toast(s.unlockText); if (s.unlock.kind === 'cosmetic') Store('looks'); return; }
+      tfSelected = s.id; TeamFeed();
+    });
+    grid.appendChild(t);
+  }
+  // ③ the one filled CTA: skewed cyan with », the 10 s rule shown on it
+  const wait = Math.max(0, tfLastPost + TF_INTERVAL - L.now());
+  const send = Button(deleting ? 'アカウント削除の手続き中は送れません' : `「${label(tfSelected)}」を送る`, 960, 676, 610, 96, async () => {
+    const r = await L.postStamp(tfSelected);
+    tfLastPost = L.now();
+    if (!r.ok) { toast(r.code === 'RATE_LIMITED' ? 'スタンプは10秒に1回、1日50回までです' : r.code === 'STAMP_LOCKED' ? r.message : r.code === 'DELETION_PENDING' ? 'アカウント削除の手続き中は送れません' : r.message); return; }
+    TeamFeed();
+  }, CYAN);
+  send.classList.add('tf-cta');
+  if (deleting) disable(send);
+  if (wait > 0) {
+    disable(send);
+    const sp = send.querySelector('span');
+    every(250, () => {
+      const w = Math.max(0, tfLastPost + TF_INTERVAL - L.now());
+      if (w <= 0) { send.classList.remove('disabled'); sp.textContent = `「${label(tfSelected)}」を送る`; } else sp.textContent = `あと${Math.ceil(w / 1000)}秒で送れます`;
+    });
+  }
+  // demo: teammates act (a race result settled by the real reward rules → automatic feed item, and stamps)
+  TabBar(4);
+  const act = Ghost('支部員のデモ', 680, 30, 220, 72, async () => { L.setClockMs(L.now() + 11_000); await L.teamActivity(); TeamFeed(); });
+  act.classList.add('small');
+}
+
 
 // ================================================================= boot
 function fit() {
@@ -1631,7 +1753,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, TeamFeed, Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

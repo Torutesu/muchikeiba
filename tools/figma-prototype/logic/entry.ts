@@ -17,6 +17,9 @@ import { classDef } from '../../../server/src/domain/season.js';
 import { startTimeAttack } from '../../../server/src/domain/timeAttack.js';
 import { createHorseFromTemplate } from '../../../server/src/domain/horses.js';
 import tracksJson from '../../../server/master/tracks.json';
+import { FakeStoreVerifier } from '../../../server/src/domain/purchase.js';
+import { MemoryTeams, TeamsService, type TeamPlayers } from '../../../server/src/domain/teamService.js';
+import type { ReportReason } from '../../../server/src/domain/teamFeed.js';
 
 const trackNames = new Map((tracksJson as { tracks: { id: string; name?: string }[] }).tracks.map((t) => [t.id, t.name ?? t.id]));
 
@@ -42,7 +45,27 @@ const now = () => Date.now() + dayOffset * DAY_MS + clockShift;
 // a blank player state to build demo ghost riders' horses on (never stored)
 let blank: PlayerState | null = null;
 const svcStateTemplate = () => blank!;
-const svc = new PlayerService(new LocalRepo(), { master, rng: cryptoRng, clock: now, verifiers: {} });
+// round 10: a fake store so the demo can stand after a purchase (no billing: receipts are issued locally)
+const store = new FakeStoreVerifier();
+// round 10 (REQ-TEAMFEED-*): a demo 支部 on the real team objects (MemoryTeams = TeamCore, the TeamDO logic, in memory)
+const teams = new MemoryTeams(() => master, now);
+const svc = new PlayerService(new LocalRepo(), {
+  master, rng: cryptoRng, clock: now, verifiers: { fake: store },
+  onTeamPoints: async (p) => { await teams.reportPoints(p.teamId, p.playerId, p.seasonId, p.points, p.displayName).catch(() => undefined); },
+  onTeamFeed: async (p) => { await teams.feedRace(p.teamId, p.playerId, p.race); },
+});
+const teamPlayers: TeamPlayers = {
+  prepareJoin: (u, t) => svc.teamPrepareJoin(u, t), commitJoin: (u, t) => svc.teamCommitJoin(u, t), abortJoin: (u, t) => svc.teamAbortJoin(u, t),
+  addOutgoing: (u, t) => svc.teamAddOutgoing(u, t), removeOutgoing: (u, t) => svc.teamRemoveOutgoing(u, t), left: (u, t, c) => svc.teamLeft(u, t, c),
+  state: (u) => svc.teamState(u), push: (u, id, v) => svc.queuePush(u, id, v),
+  stampCatalog: (u) => svc.stampCatalog(u), stampCheck: (u, s) => svc.stampCheck(u, s), stampPosted: (u, s, k, t) => svc.stampPosted(u, s, k, t),
+  feedViewer: (u, f) => svc.feedViewer(u, f), feedMutes: (u) => svc.feedMutes(u), feedMute: (u, t, m) => svc.feedMute(u, t, m),
+  feedReported: (u, t, q, b, r) => svc.feedReported(u, t, q, b, r), cheerPush: (u, f, n) => svc.cheerPush(u, f, n),
+};
+const teamsSvc = new TeamsService(() => master, teams, teamPlayers, teams, teams, cryptoRng, now);
+const DEMO_MEMBERS = [['demo_tm_lead', 'ミドリカワ'], ['demo_tm_2', 'クロサキ'], ['demo_tm_3', 'ハヤテ']] as const;
+let demoRace = 0;
+let demoTeamId: string | null = null;
 let n = 0;
 const key = () => `c:/proto:${Date.now()}:${n++}`;
 
@@ -219,6 +242,64 @@ export const MuchiLogic = {
     return svc.view(ID);
   },
   playerView,
+
+  // ---------------------------------------------------------------- round 10
+  // r10 fix: the shop list with this player's ownership (GET /v1/shop/products?mine=1)
+  myShopProducts: () => svc.shopProducts(ID),
+  /** Demo only: a store purchase granted through a locally issued receipt (no billing), so the "already bought" state can be seen. */
+  async demoPurchase(productId: string) {
+    const v = await svc.view(ID);
+    if (!v.age) await wrap(() => svc.setAge(ID, 1990, 1, false));
+    const p = master.products.find((x) => x.id === productId)!;
+    return wrap(async () => {
+      await svc.purchaseIntent(ID, productId);
+      return svc.purchase(ID, 'fake', productId, store.issue({ transactionId: `proto_${Date.now().toString(36)}_${n++}`, productId, purchasedAt: now(), priceYen: p.priceYen }));
+    });
+  },
+  // 支部の応援スタンプ (REQ-TEAMFEED-*): a demo team led by demo members; every rule is the server's (TeamsService/TeamCore)
+  async teamDemo() {
+    const live = (t: string | null) => !!t && teams.cores.has(t) && !teams.cores.get(t)!.state?.disbanded;
+    const st = await svc.teamState(ID);
+    if (live(st.teamId)) return { teamId: st.teamId!, name: (await teams.view(st.teamId!, ID)).name };
+    if (st.teamId) await svc.teamLeft(ID, st.teamId, false); // the team lived in memory before a reload
+    let fresh = false;
+    if (!live(demoTeamId)) {
+      for (const [id, name] of DEMO_MEMBERS) {
+        await svc.bootstrap(id);
+        await wrap(() => svc.setDisplayName(id, name));
+        const t = (await svc.teamState(id)).teamId;
+        if (t && !live(t)) await svc.teamLeft(id, t, false);
+      }
+      const v = await teamsSvc.create(DEMO_MEMBERS[0][0], 'あおばRC', 'open', '毎晩21時に集合！');
+      for (const [id] of DEMO_MEMBERS.slice(1)) await teamsSvc.join(id, v.teamId);
+      demoTeamId = v.teamId;
+      fresh = true;
+    }
+    const s = await svc.state(ID);
+    if ((s.team?.cooldownUntil ?? 0) > now()) { s.team!.cooldownUntil = 0; new LocalRepo().put(s); } // demo: no rejoin wait
+    // a demo reset wiped the local player but the in-memory team still lists it: take that stale membership out first
+    if (teams.cores.get(demoTeamId!)!.isMember(ID)) await teams.leave(demoTeamId!, ID);
+    await teamsSvc.join(ID, demoTeamId!);
+    // some history: stamps and a teammate's race result (settled by the real reward rules → an automatic feed item)
+    if (fresh) await this.teamActivity();
+    return { teamId: demoTeamId!, name: (await teams.view(demoTeamId!, ID)).name };
+  },
+  /** Demo teammates act: a race result (1st–3rd in ranked or a tournament) and a stamp. */
+  async teamActivity() {
+    const [lead, m2, m3] = DEMO_MEMBERS.map((x) => x[0]);
+    const k = demoRace++;
+    await svc.applyRace(m2!, { raceId: `proto_tm_${Date.now().toString(36)}_${k}`, mode: k % 2 ? 'tournament' : 'ranked', place: 1 + (k % 3), fieldSize: 12, newRating: null, void: false, humans: 6 });
+    await wrap(() => teamsSvc.postStamp(lead!, ['cheer', 'lets_go', 'nice'][k % 3]!));
+    await wrap(() => teamsSvc.postStamp(m3!, ['clap', 'thanks', 'gg'][k % 3]!));
+  },
+  stamps: () => svc.stampCatalog(ID),
+  teamFeed: (before: number | null = null) => wrap(() => teamsSvc.feed(ID, before, 20)),
+  postStamp: (stampId: string) => wrap(() => teamsSvc.postStamp(ID, stampId)),
+  reactToFeed: (seq: number, stampId: string | null) => wrap(() => teamsSvc.react(ID, seq, stampId)),
+  reportFeed: (seq: number, reason: ReportReason) => wrap(() => teamsSvc.report(ID, seq, reason)),
+  muteMember: (playerId: string, muted: boolean) => wrap(() => teamsSvc.mute(ID, playerId, muted)),
+  /** Unlocks for the demo: lifetime races (play) — the pass and cosmetic stamps unlock by demoPurchase / the 見た目 shop. */
+  async demoRaces(count: number) { const s = await svc.state(ID); s.stats.races = Math.max(s.stats.races, count); new LocalRepo().put(s); },
 };
 
 (globalThis as unknown as { MuchiLogic: typeof MuchiLogic }).MuchiLogic = MuchiLogic;

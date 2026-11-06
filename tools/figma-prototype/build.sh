@@ -26,5 +26,6 @@ node "$HERE/test/logic.test.cjs"
 node "$HERE/test/engine.test.mjs"
 node "$HERE/test/round8.test.mjs"   # round 8: TutorialDirector, RaceFeel/RaceDebrief, skills, shop/pass/consent/deletion on the real rules
 node "$HERE/test/round9.test.mjs"   # round 9: replay share (ReplayClip/ShareCard), account-link prompt, time attack ghost picker (friends first)
+node "$HERE/test/round10.test.mjs"   # round 10: 支部 cheer stamps on TeamsService/TeamCore, the bought pass in the per-player shop list
 node "$HERE/test/round9-gacha.test.mjs"   # round 9: banner calendar, GachaRevealModel/BannerListModel in WASM, pity meter, step-up, the end boundary
 echo "built $SITE ($(du -sh "$SITE" | cut -f1))"

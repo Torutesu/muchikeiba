@@ -8,6 +8,8 @@
 //  3. Round 9 (06 §7 item 12 / §7.3): the replay share card from a result (re-simulated on the device, same hash), the
 //     account-link prompt (day 3 once; right after the first purchase; linking sends account_link), and the time attack
 //     ghost picker (opens on フレンド, falls back to 上位 without friend ghosts) with a run beside the friend's ghost.
+//  4. Round 10: the 支部 cheer-stamp feed (no text field; locked stamps say how they unlock; a stamp sent with the 10 s
+//     rule on the CTA; cheering a teammate's race result; mute and report) and this season's pass shown as 購入済み.
 // Screenshots: <out>/u-<nn>-<name>.png. Returns { shots, ftue }.
 const path = require('path');
 const fs = require('fs');
@@ -320,6 +322,42 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await shot('settings-linked', 400);
   await click('初回購入の直後'); await page.waitForTimeout(300);
   assert.equal(await screen(), 'settings', 'linked: the prompt never comes back');
+  // ------------------------------------------------------------------ 4. round 10
+  // 支部の応援スタンプ (REQ-TEAMFEED-*): the demo team's feed on the real TeamsService / TeamCore
+  await page.evaluate(() => globalThis.__muchi.show('TeamFeed')); await waitScreen('team-feed', 20000); await page.waitForTimeout(500);
+  assert.ok(await page.locator('.screen.in .tf-row[data-kind="race"]').count() >= 1, 'a teammate race result is in the feed');
+  assert.equal(await page.locator('.screen.in input, .screen.in textarea, .screen.in [contenteditable]').count(), 0, 'no free text anywhere in the feed');
+  assert.ok(await page.locator('.screen.in .tf-stamp.locked').count() >= 1, 'locked stamps are shown with their unlock text');
+  await shot('team-feed', 300);
+  await page.locator('.screen.in .tf-stamp.locked[data-stamp="whip"]').click(); await page.waitForTimeout(250);
+  assert.match(await page.locator('.toast').last().textContent(), /レースに10回出走で解放/);
+  await shot('team-feed-locked-toast', 100);
+  await page.locator('.screen.in .tf-stamp[data-stamp="nice"]').click(); await page.waitForTimeout(400);
+  await page.locator('.screen.in .btn.tf-cta').click(); await page.waitForTimeout(700);
+  const first = page.locator('.screen.in .tf-row').first();
+  assert.equal(await first.getAttribute('data-kind'), 'stamp'); assert.match(await first.getAttribute('class'), /mine/);
+  assert.match(await page.locator('.screen.in .btn.tf-cta').getAttribute('class'), /disabled/, '10 s cooldown on the CTA');
+  await shot('team-feed-sent', 300);
+  await click('支部員のデモ'); await page.waitForTimeout(700); // teammates act (the demo clock moves past the 10 s rule)
+  await page.locator('.screen.in .tf-row.race:not(.mine) .tf-cheer').first().click(); await page.waitForTimeout(700);
+  assert.ok(await page.locator('.screen.in .tf-cheer.on').count() >= 1, 'my cheer is on the teammate race result');
+  await shot('team-feed-cheered', 300);
+  const victim = await page.locator('.screen.in .tf-row.race:not(.mine)').first().getAttribute('data-player');
+  await page.locator(`.screen.in .tf-row[data-player="${victim}"] .tf-link`, { hasText: '非表示' }).first().click(); await page.waitForTimeout(700);
+  assert.equal(await page.locator(`.screen.in .tf-row[data-player="${victim}"]`).count(), 0, 'a muted member disappears from my feed');
+  const before = Number(await page.locator('.screen.in .tf-list').getAttribute('data-count'));
+  await page.locator('.screen.in .tf-row:not(.mine) .tf-link', { hasText: '報告' }).first().click(); await page.waitForTimeout(700);
+  assert.equal(Number(await page.locator('.screen.in .tf-list').getAttribute('data-count')), before - 1, 'a reported item is hidden for me');
+  await shot('team-feed-muted-reported', 300);
+  // r10 fix: this season's pass bought (demo receipt, no billing) → 購入済み in the shop and on the pass screen
+  assert.ok((await page.evaluate(() => globalThis.__muchi.logic.demoPurchase('season_pass'))).ok);
+  await page.evaluate(() => globalThis.__muchi.show('Store', 'recommended')); await waitScreen('shop-recommended'); await page.waitForTimeout(400);
+  assert.match(await page.locator('.screen.in [data-product="season_pass"]').innerText(), /購入済み/);
+  await shot('shop-pass-owned', 300);
+  await page.evaluate(() => globalThis.__muchi.show('SeasonPass')); await waitScreen('pass'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .btn[data-label="購入済み"].disabled').count(), 1, 'the bought pass is not buyable');
+  assert.equal(await page.locator('.screen.in .btn[data-label="今シーズンは購入済み"].disabled').count(), 1, 'Pass+ is closed too (one per season)');
+  await shot('season-pass-owned', 500);
   // the tutorial screens: the whip-only HUD, the whip cue, and the close-2nd retry when the player never whips
   await page.evaluate(() => globalThis.__muchi.demo('new')); await waitScreen('title', 20000);
   await click('同意してはじめる'); await waitScreen('race-tutorial');

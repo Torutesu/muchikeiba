@@ -13,7 +13,7 @@ import type { Rng } from './rng.js';
 import type { Clock } from './time.js';
 import { seasonIdFor, rollSeason, classDef } from './season.js';
 import { applyRefund, applySubscriptionStatus, applyVerifiedPurchase, checkPurchaseIntent, registerAge, type StoreVerifier, type SubscriptionStatus, type VerifiedReceipt } from './purchase.js';
-import { drawGacha, exchangePity, settlePityGroups } from './gacha.js';
+import { drawGacha, exchangePity, gachaStatus, settlePityGroups } from './gacha.js';
 import { awaken, breed, breedingPreviewWithAllowance, getHorse, nameHorse, pedigree, retire } from './horses.js';
 import { migrateSkills } from './skills.js';
 import { buyCosmetic, cosmeticsCatalog, setEquipment, useTicket, type EquipmentPatch } from './itemShop.js';
@@ -404,6 +404,9 @@ export class PlayerService {
       return r;
     });
   }
+
+  /** REQ-GACHA-012..014: pity meter, carry-over rule and step-up progress (read only; the period-end conversion is previewed). */
+  async gachaStatus(id: string) { return gachaStatus(this.d.master, await this.load(id), this.d.clock()); }
 
   async pityExchange(id: string, bannerId: string, templateId: string, idemKey: string | null) {
     return this.tx(id, this.requireKey(idemKey), (s, now) => exchangePity(this.d.master, s, bannerId, templateId, now));

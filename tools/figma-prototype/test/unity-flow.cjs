@@ -42,6 +42,61 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   const click = async (label) => { await btn(label).click(); await page.waitForTimeout(350); };
   const ready = () => page.waitForFunction(() => globalThis.__muchi?.ready === true, null, { timeout: 90000 });
 
+  // round 9 (06 §6.5 / §7 item 7): banner calendar with real end times, pity meter, step-up, reveal → summary, the end
+  // of a limited banner. The logic clock is set to 2026-11-06 12:00 JST so pickup_ginga (11/1–11/30) is open.
+  async function scoutLiveOps() {
+    const NOW = Date.UTC(2026, 10, 6, 3), END = Date.UTC(2026, 10, 30, 15);
+    // screens fade in (two frames) and re-render under the same name: wait for the element of the new one
+    const waitIn = (sel) => page.waitForSelector(`.screen.in ${sel}`, { timeout: 15000 });
+    const sel = (id) => waitIn(`.banner-row.sel[data-banner="${id}"]`);
+    const rowIds = () => page.locator('.screen.in .banner-row').evaluateAll((els) => els.map((e) => e.dataset.banner));
+    const text = (s) => page.locator(`.screen.in ${s}`).first().textContent();
+    await page.evaluate((t) => globalThis.__muchi.logic.setClockMs(t), NOW);
+    await page.evaluate(() => globalThis.__muchi.show('Scout', 'pickup_ginga')); await sel('pickup_ginga');
+    assert.deepEqual(await rowIds(), ['pickup_ginga', 'pickup_akatsuki', 'stepup_paid', 'standard'], 'calendar: limited first, standard last, winter not announced yet');
+    await page.waitForTimeout(1100); // the countdown ticks on the corrected clock
+    assert.match(await text('[data-countdown="pickup_ginga"]'), /^残り 2\d日 /);
+    assert.equal(await text('[data-countdown="standard"]'), '', 'no timer on a permanent banner');
+    assert.match(await text('[data-pity-line]'), /^交換pt \d+ \/ 100/);
+    assert.equal(await page.locator('.screen.in [data-carry-over]').count(), 1, 'the closing pity group shows its carry-over rule');
+    await shot('scout-calendar', 300);
+    await page.locator('.screen.in .banner-row[data-banner="stepup_paid"]').click(); await sel('stepup_paid');
+    assert.match(await text('[data-step-line]'), /^ステップ 1 \/ 5 ・ 10連 500コイン/);
+    await shot('scout-stepup', 400);
+    await click('提供割合'); await waitIn('[data-step]');
+    assert.equal(await page.locator('.screen.in [data-step]').count(), 5);
+    await shot('scout-rates-stepup', 400); await click('BACK'); await sel('stepup_paid');
+    await page.locator('.screen.in .banner-row[data-banner="pickup_ginga"]').click(); await sel('pickup_ginga');
+    await click('提供割合'); await waitIn('[data-pickup-rate]');
+    assert.equal(await page.locator('.screen.in [data-pickup-rate]').getAttribute('data-pickup-rate'), '1.5000%');
+    await shot('scout-rates-pickup', 400); await click('BACK'); await sel('pickup_ginga');
+    // a 10-pull: the card back glows first, one card per tap, then all-skip → the summary lists all ten
+    await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal');
+    await shot('scout-reveal-back', 120);
+    await shot('scout-reveal-face', 600);
+    await click('タップでめくる'); await shot('scout-reveal-2', 600);
+    await click('すべてめくる'); await waitIn('[data-summary]');
+    assert.equal(await page.locator('.screen.in .rcard').count(), 10, 'every result is on the summary after a skip');
+    const order = await page.evaluate(() => globalThis.__muchi.reveal.order.map((c) => c.tier));
+    assert.deepEqual(order, [...order].sort((a, b) => a - b), 'rarest card flips last');
+    assert.match(await page.locator('.screen.in [data-summary]').getAttribute('data-summary'), /^新規 \d+頭/);
+    await shot('scout-summary', 600);
+    // the last minute of the banner, then a pull after the real end: the server clock refuses it and the list reloads
+    await page.evaluate((t) => globalThis.__muchi.logic.setClockMs(t), END - 60_000);
+    await page.evaluate(() => globalThis.__muchi.show('Scout', 'pickup_ginga')); await sel('pickup_ginga');
+    await page.waitForTimeout(1100);
+    assert.match(await text('[data-countdown="pickup_ginga"]'), /^残り 00:0[01]:\d\d$/);
+    await shot('scout-last-minute', 300);
+    await page.evaluate((t) => globalThis.__muchi.logic.setClockMs(t), END + 1);
+    await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('info');
+    await shot('scout-banner-closed', 400);
+    await click('OK'); await waitIn('.banner-row.sel');
+    assert.ok(!(await rowIds()).includes('pickup_ginga'), 'the ended banner is gone from the list');
+    await shot('scout-after-end', 400);
+    await page.evaluate(() => globalThis.__muchi.logic.setClockMs(null));
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
+  }
+
   // a full race as a player rides it: START on the gate, two spaced whips in the final straight; HUD shots when asked
   async function rideRace(withShots, prefix = 'race-hud') {
     let started = false, w2 = 0, lastW = 0, wall = Date.now(), last = null;
@@ -209,6 +264,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await waitScreen('scout'); await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal'); await shot('scout-paid-reveal', 700);
   await click('すべてめくる'); await waitScreen('scout-list'); await shot('scout-paid-list', 500); await click('ホームへ');
   await waitScreen('home');
+  await scoutLiveOps();
   await click('厩舎'); await shot('stable', 400); await click('BACK');
   await waitScreen('home');
   await click('レースへ'); await waitScreen('lobby'); await shot('race-lobby', 400); await click('戻る');

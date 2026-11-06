@@ -78,7 +78,7 @@
    "fallback": "banner/gacha/default",
    "description": "ガチャのバナー",
    "dynamic": false,
-   "count": 5
+   "count": 6
   },
   "banner/event": {
    "fallback": "banner/event/default",
@@ -177,6 +177,7 @@
   "banner/event/sprint_cup_2026_11",
   "banner/gacha/default",
   "banner/gacha/pickup_akatsuki",
+  "banner/gacha/pickup_ginga",
   "banner/gacha/standard",
   "banner/gacha/stepup_paid",
   "banner/gacha/winter_2026",

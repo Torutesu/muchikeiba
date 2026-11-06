@@ -205,7 +205,7 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 - `StableSnapshot`（訪問者が見る写し。財布・所持品・購入は含まない）：`{ v:1, playerId, displayName, titleId, classId, silks, name, theme:{id,name,key}, slots:({itemId,name,key}|null)[]（テーマの枠数ぶん）, horses:[{horseId,name,rarity,style,appearance,bondLevel}], autoHorses, trophies:{titleIds[],races,wins,top3,tournamentWins,tournamentPodiums}, likes, updatedAt }`。`name` が null なら「<displayName>の厩舎」と表示する。`horses` は選んだ現役馬、選んでいなければ現役馬の上位（`autoHorses: true`）。
 - `StableSummary`：`{ playerId, displayName, titleId, name, themeKey, likes, decorCount, horseCount, updatedAt }`。
 - 保存の検証：テーマが存在し解放済み（`NOT_ELIGIBLE`）、`slots` はテーマの枠数以下（`BAD_REQUEST`）、各飾りは厩舎の飾り（`decor`）で所持済み・重複なし（REQ-ITEM-006 と同じ：所持なし `NOT_ELIGIBLE`、種類違い・重複 `BAD_REQUEST`、不明 `NOT_FOUND`）、`featuredHorseIds` は `featuredMax` 以下・重複なし・自分の現役馬（`HORSE_NOT_FOUND` / `HORSE_NOT_ACTIVE`）、表札は表示名と同じ規則（`INVALID_NAME` / `NG_NAME`、1〜`nameMaxChars` 字）。利用停止中は `403 BANNED`。
-- いいね：自分には押せない（`NOT_ELIGIBLE`）、同じ相手には1日 `likesPerTargetPerDay` 回（`409 ALREADY_LIKED`）、1日 `likesPerDay` 回まで（`409 LIKE_LIMIT`）。日付はゲーム日（`gameDayKey`、切り替えは `DAY_ROLLOVER_HOUR_JST`、§8.7・REQ-UXS-011）。押した側・押された側とも**コインは一切付かない**（累計いいねで解放されるのはテーマだけ）。同じ冪等キーの再送は1回分しか数えない。途中で失敗した場合も同じキーで再送すれば完了する。
+- いいね：自分には押せない（`NOT_ELIGIBLE`）、同じ相手には1日 `likesPerTargetPerDay` 回（`409 ALREADY_LIKED`）、1日 `likesPerDay` 回まで（`409 LIKE_LIMIT`）。日付はゲーム日（`gameDayKey`、切り替えは `progression.dayRollover`、§15・REQ-DAY-001）。押した側・押された側とも**コインは一切付かない**（累計いいねで解放されるのはテーマだけ）。同じ冪等キーの再送は1回分しか数えない。途中で失敗した場合も同じキーで再送すれば完了する。
 - C# の `ApiErrorCode`：`LikeLimit` / `AlreadyLiked`。
 - アカウント削除（§8.7）では公開の写し・レイアウト・いいねの状態を消す。削除済みのプレイヤーの厩舎は `404 NOT_FOUND`、その人が過去に押したいいねの数はそのまま残る（個人と結び付く情報は持たない）。
 
@@ -224,7 +224,7 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
   "flags": { "tutorialGachaUsed": false, "partnerHorseId": "h3" }
 }
 ```
-- `unlocks.features[].by`：開放した条件（`"always"` / `"races"` / `"days"` / `"rankedRaces"` / `"breedings"`）、未開放は null。条件は「どれか1つ」を満たせば開く（§4.3）。**表示だけの制御**で、未開放の機能のAPIもそのまま使える。`day` はインストール日を1とするゲーム日（日付の切り替えは `DAY_ROLLOVER_HOUR_JST`、REQ-UXS-011）。キーは `race, partner, scout, stable, missions, login_bonus, shop, season_pass, bond, season, breeding, friends, friend_rooms, teams, spectate, time_attack, events, tournaments, my_stable, stud`。
+- `unlocks.features[].by`：開放した条件（`"always"` / `"races"` / `"days"` / `"rankedRaces"` / `"breedings"`）、未開放は null。条件は「どれか1つ」を満たせば開く（§4.3）。**表示だけの制御**で、未開放の機能のAPIもそのまま使える。`day` はインストール日を1とするゲーム日（日付の切り替えは `progression.dayRollover`、§15）。キーは `race, partner, scout, stable, missions, login_bonus, shop, season_pass, bond, season, breeding, friends, friend_rooms, teams, spectate, time_attack, events, tournaments, my_stable, stud`。
 - `experiments.values` のキーは `tutorialDistanceM`（整数）、`firstRankedTrackId`（コースID or null、サーバーが初めてのランク戦で使う）、`pushPermissionTiming`（`race2_top3`|`day2_launch`）、`starterOfferTrigger`（`first_bottom_half`|`fifth_race`）、`homePrimaryButton`（`race`|`ranked_promotion`）、`firstWinBonus`（bool）だけ。価格・中身はA/Bにしない。
 
 | メソッド・パス | 本文 | 応答 | エラー |
@@ -274,7 +274,7 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 - **チュートリアル**（端末内、400mの直線で全部がスパート区間）は `staminaDistanceScalePermille` と `spurtDistanceScalePermille` を 0 にして走る（1.1.0 と同じ量・長さ）。
 
 ## 13. ショップ・課金体験の API（REQ-UXS-010/017〜022、docs/planning/06 §5・§6.8・§6.9）
-表示の文言・数量・期間は全てサーバーが作る。クライアントは組み立てない（「2倍」などの倍率表現は使わない。初回購入ボーナスは「無償コイン◯枚」）。時刻は ms（UTC エポック）、日付はゲーム日の `YYYY-MM-DD`（`gameDayKey`、切り替えは `DAY_ROLLOVER_HOUR_JST`、§8.7・REQ-UXS-011。既定 0:00 JST なので JST の日付と同じ）、残り日数（`remainingDays`）もゲーム日で数える。シーズンは JST の暦月 `YYYY-MM`（暦のまま）。**このセクションで新しいエラーコードは無い**（既存のコードの意味を下に追記。アカウント削除の予約中は §8.7 の `DELETION_PENDING`）。
+表示の文言・数量・期間は全てサーバーが作る。クライアントは組み立てない（「2倍」などの倍率表現は使わない。初回購入ボーナスは「無償コイン◯枚」）。時刻は ms（UTC エポック）、日付はゲーム日の `YYYY-MM-DD`（`gameDayKey`、切り替えは `progression.dayRollover`、§15。2026-12-01 04:00 JST から 4:00 JST、それまでは 0:00 JST）、残り日数（`remainingDays`）もゲーム日で数える。シーズンは JST の暦月 `YYYY-MM`（暦のまま）。**このセクションで新しいエラーコードは無い**（既存のコードの意味を下に追記。アカウント削除の予約中は §8.7 の `DELETION_PENDING`）。
 
 ### 13.1 `GET /v1/shop/products`（認証なし、REQ-UXS-022）
 従来のフィールド（`id, kind, priceYen, paidCoins, once?, items?`）はそのまま。追加は表示用：
@@ -436,3 +436,36 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 - 容量：空き容量（予備を残す）と `MaxCacheBytes` の範囲で、required → グループ順 → 小さい順に入るだけ取得し、残りは `SkippedQuota`（途中まで書かない）。足りなければ先に古い版を消す。書き込み失敗は `DiskFull`（再試行しない）。
 - 古い版の削除：新しいカタログを受け取ったら、参照されなくなった `sha256` のファイルを消す（`AssetDownloader.EvictStale`）。読み込む前に行う。
 - 表示：`AssetResolver.Resolve(key)` が「ダウンロード済み（優先）→ アプリ同梱 → `<kind>/default` → 何も出さない」を返す（`AssetKeys.Resolve` と同じ順）。
+
+## 17. ガチャの開催カレンダー・天井・ステップアップ（REQ-GACHA-011〜015、docs/planning/06 §6.5・§7 7位）
+時刻はすべてサーバーの時計で決まる。クライアントの残り時間は `serverNowMs` で端末の時計を補正して数える（C# `BannerListModel`）。
+
+**`GET /v1/gacha/banners`**（認証なし）：開催中と予告中のバナーだけ。並びは「終わりがあるもの（早く終わる順）→ 常設（マスターの順、恒常ガチャは最後）→ 予告（早く始まる順）」。
+```json
+{ "serverNowMs": 1793934000000,
+  "banners": [ { "id": "pickup_ginga", "name": "ピックアップ：ギンガノカナタ", "currency": "any", "priceSingle": 100, "priceTen": 1000,
+    "status": "active" | "upcoming", "startAtMs": 1793458800000, "endAtMs": 1796050800000, "announceAtMs": 1793199600000,
+    "lastDay": "2026-11-30", "daysLeft": 25, "pityGroup": "pickup_ginga", "pityLabel": "ピックアップ（ギンガノカナタ）", "pityCost": 100,
+    "pityTargets": ["t_ginga"], "pickup": { "templateId", "name", "rarity" } | null, "limited": false,
+    "stepUp": { "steps": 5, "afterLast": "loop" | "repeatLast", "prices": [500, 1000, 1000, 1000, 1000], "finalSlotSteps": [5] } | null } ] }
+```
+- `endAtMs` は終わりを含まない（その1 ms 前まで引ける）。常設は `startAtMs`/`endAtMs`/`daysLeft`/`lastDay` が null で、**残り時間を出さない**。`daysLeft` は今日を1と数えるゲーム日（`progression.dayRollover`、§15）。
+- 予告前（`announceAtMs` より前）のバナーは一覧に出ず、`GET /v1/gacha/:id/odds` も `NOT_FOUND`。予告中は提供割合を見られるが引けない。
+
+**`GET /v1/gacha/status`**（要認証）：
+```json
+{ "serverNowMs": 1793934000000,
+  "groups": [ { "group": "pickup_ginga", "label": "…", "points": 37, "cost": 100, "remaining": 63, "exchangeable": 0, "banners": ["pickup_ginga"],
+    "targets": [ { "templateId", "name", "owned" } ], "closesAtMs": 1796050800000 | null,
+    "carryOver": { "atMs", "toGroup": "standard", "toLabel": "恒常", "rate": "1:1", "expires": false, "toTargets": [ { "templateId", "name" } ], "notice": "…" } | null } ],
+  "banners": [ { "bannerId", "pityGroup", "points", "cost", "remaining", "coinsToExchange",
+    "stepUp": { "completed", "steps", "afterLast", "step", "round", "priceTen", "finalSlotMinRarity": "SSR" | null } | null } ] }
+```
+- 期間が終わったグループは、次の取引で行う変換（1:1・失効なし）を済ませた値で返す（表示が実際と食い違わない）。`exchangeable` はそのグループの開いているバナーで今交換できる回数。
+- `coinsToExchange`：交換まで最も安く引いた場合のコイン（10連優先、ステップアップはこの先のステップの価格の合計）。
+
+**ステップアップ**：10連のみ（1回は `BAD_REQUEST`）。価格は今のステップの `priceTen`。`finalSlotPool` を持つステップは10枠目を必ずその表で引く（SR以上だけ。`guaranteed: true`）。チケットは使えない（`NOT_ELIGIBLE`、設定の検証でも弾く）。`POST /v1/gacha/:id/draw` の応答に `"stepUp": { "drawnStep": 5, "next": { …上の stepUp… } }` が加わる。
+
+**`GET /v1/gacha/:id/odds` の追加**：`period.lastDay`、`pickup: { templateId, name, rarity, ppm, rate, guaranteePpm, guaranteeRate } | null`（抽選表の行そのもの）、`stepUp: { afterLast, notice, steps: [ { step, priceTen, finalSlot: { appliesTo, items | null, rarityTotals | null } } ] } | null`、`pity.label`・`pity.costCoins`（交換までの最大コイン、ステップアップは各ステップの価格から）・`pity.closesAtMs`・`pity.carryOver`（上と同じ形）。`estimatedMaxCostYen` は `costCoins` から計算する。
+
+**期間外の操作**：引く・チケット・天井交換は `BANNER_CLOSED`（409）。`message` は `banner <id> ended at 2026-12-01 00:00 JST` / `banner <id> opens at …` / `banner <id> is not open`（予告前）。判定はその取引でサーバーが読んだ時刻（Durable Object の中で1回）。

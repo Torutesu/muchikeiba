@@ -69,8 +69,9 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | GET | `/v1/shop/store-account` | 要 | | `{appleAppAccountToken, googleObfuscatedAccountId}` 購入時にストアへ渡す値（下記「ストア連携」） |
 | POST | `/v1/shop/purchase` | 要 | （取引IDで自動） | `{platform: apple\|google\|fake, productId, receipt}`。apple＝`Transaction.jwsRepresentation`、google＝`{"purchaseToken":"…"}` |
 | POST | `/v1/store/notifications/:platform` | 署名 | | `apple`：App Store Server Notifications V2、`google`：RTDN（Pub/Sub push、OIDC）、`fake`：開発用 |
-| GET | `/v1/gacha/banners` | なし | | |
-| GET | `/v1/gacha/:bannerId/odds` | なし | | 提供割合（抽選と同じ定義から生成）、保証枠、天井 |
+| GET | `/v1/gacha/banners` | なし | | 開催中・予告中のバナー（並び順、実際の終了時刻、`serverNowMs`）。REQ-GACHA-011 |
+| GET | `/v1/gacha/status` | 要 | | 天井の表示（グループごとの交換pt・残り・交換までのコイン・期間終了時の移り先）とステップアップの進み具合。REQ-GACHA-012〜014 |
+| GET | `/v1/gacha/:bannerId/odds` | なし | | 提供割合（抽選と同じ定義から生成）、保証枠、ピックアップの割合、ステップごとの表、天井と移り先。予告前は404 |
 | POST | `/v1/gacha/:bannerId/draw` | 要 | 必須 | `{count: 1\|10}` |
 | POST | `/v1/gacha/tutorial` | 要 | 必須 | 初回無料10連（1回限り） |
 | POST | `/v1/gacha/:bannerId/pity-exchange` | 要 | 必須 | `{templateId}` 天井100で交換 |
@@ -225,7 +226,7 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | POST | `/v1/admin/silks/banned/import` | admin | `{list, reason}` 一覧を丸ごと取り込み、設定の新しい版として登録（有効化は `/v1/admin/config/activations`） |
 
 ### 設定配信（リモートコンフィグ）
-- バンドルで変えられるもの：`ruleset`（一部でも全部でも可。キー集合は固定）、`gacha.banners`（一覧ごと置き換え。開催日程は `startAtMs`/`endAtMs`）、`gacha.pityGroups`、`tracks`、`progression`（浅いマージ）、`ng`。
+- バンドルで変えられるもの：`ruleset`（一部でも全部でも可。キー集合は固定）、`gacha.banners`（一覧ごと置き換え。開催日程は `startDay`/`endDay`（ゲーム日）か `startAtMs`/`endAtMs`、予告は `announceDays`/`announceAtMs`、ステップアップは `stepUp`）、`gacha.pityGroups`（`endDay`/`endAtMs`・`convertTo`・`label`）、`tracks`、`progression`（浅いマージ）、`ng`。
 - 値を変えたら `ruleset.rulesetVersion` も変える。同じ `rulesetVersion` を別の値で使い回すことはできない（過去のレースの検証のため）。
 - 各Worker・Durable Objectは有効な設定を30秒（または次の予約時刻まで）キャッシュする。有効化から反映まで最大30秒。
 - 設定は `OpsDO`（`global`）に保存。配信元に障害があっても最後に知っている設定で動く。

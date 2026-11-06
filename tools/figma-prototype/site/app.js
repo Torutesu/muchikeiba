@@ -575,44 +575,83 @@ function FreeScout() {
     const r = await L.tutorialDraw();
     if (!r.ok) { toast(r.code === 'TUTORIAL_GACHA_USED' ? '入厩祝いのスカウトは受け取り済みです' : r.message); return Home(); }
     firstScout = r.value; await refresh();
-    Reveal(r.value.results, true);
+    Reveal(r.value, true);
   });
 }
 const RARITY_SHAPE = { N: '●', R: '◆', SR: '★', SSR: '★★' };
-function rarityCard(p, big) {
+/** A result card. `c` is a GachaRevealModel card (shape + text + color + frame + badge, from the Unity game layer in WASM). */
+function rarityCard(c, big) {
   const d = document.createElement('div');
-  d.className = `rcard r-${p.rarity}${big ? ' big' : ''}`;
-  d.innerHTML = `<div class="shape">${RARITY_SHAPE[p.rarity] ?? '●'}</div><div class="rar">${p.rarity}</div><div class="nm"></div><div class="tag"></div>`;
-  d.querySelector('.nm').textContent = horseNameOf(p.horseId) ?? templateName(p.templateId);
-  d.querySelector('.tag').textContent = p.duplicate ? 'ダブり → 覚醒素材' : p.guaranteed ? '確定枠・新規' : '新規';
+  d.className = `rcard r-${c.rarity} f-${c.frame ?? 'plain'}${big ? ' big' : ''}`;
+  d.innerHTML = `<div class="shape"></div><div class="rar"></div><div class="nm"></div><div class="tag"></div>`;
+  d.querySelector('.shape').textContent = c.shape ?? RARITY_SHAPE[c.rarity] ?? '●';
+  d.querySelector('.rar').textContent = c.text ?? c.rarity;
+  d.querySelector('.nm').textContent = c.name ?? templateName(c.templateId);
+  const tag = d.querySelector('.tag');
+  tag.textContent = (c.guaranteed ? '確定枠　' : '') + (c.badge ?? '');
+  if (c.isNew) d.classList.add('new');
+  if (c.duplicate) d.classList.add('dup');
+  d.setAttribute('aria-label', c.caption ?? `${c.rarity} ${c.name}`);
+  d.dataset.rarity = c.rarity; d.dataset.slot = c.slot;
   return d;
 }
-function Reveal(pulls, first) {
+/** The card back before the flip: it already glows in the coming rarity's color and shows its shape (06 §6.5 光の色＋形). */
+function cardBack(c) {
+  const d = document.createElement('div');
+  d.className = `rcard back r-${c.rarity} f-${c.frame ?? 'plain'} big`;
+  d.innerHTML = '<div class="shape"></div><div class="rar"></div>';
+  d.querySelector('.shape').textContent = c.shape; d.querySelector('.rar').textContent = 'タップでめくる';
+  d.style.setProperty('--glow', c.color);
+  return d;
+}
+/** Template id → name for the reveal plan (the horse's own name when the stable already named it). */
+function revealNames(results) {
+  const names = {};
+  for (const p of results) names[p.templateId] = horseNameOf(p.horseId) ?? templateName(p.templateId);
+  return names;
+}
+/**
+ * Scout reveal (06 §6.5): one card per tap, rarest last (order from GachaRevealModel), 「すべてめくる」 skips to the summary in
+ * one tap; the summary always lists every result with NEW / ダブり→覚醒素材 +N, totals, coins, step-up and pity lines.
+ */
+function Reveal(draw, first, bannerId, pity) {
+  const plan = JSON.parse(engine.GachaReveal(JSON.stringify(draw), JSON.stringify(revealNames(draw.results))));
+  globalThis.__muchi && (globalThis.__muchi.reveal = plan);
   let i = 0;
   const step = () => {
     currentScreen = step; Clear('scout-reveal'); SetArt('Art/scout-reveal'); Veil(.45);
-    Label(`${i + 1} / ${pulls.length}`, 0, 40, 1600, 50, 28, MUTED, undefined, 'center');
-    const p = pulls[i];
+    Label(`${i + 1} / ${plan.order.length}`, 0, 40, 1600, 50, 28, MUTED, undefined, 'center');
+    const c = plan.order[i];
     const holder = el('cardholder', 560, 110, 480, 600);
-    const c = rarityCard(p, true); holder.appendChild(c); c.classList.add('flip');
-    const sk = L.horseSkill({ templateId: p.templateId });
-    const t = L.master.templates.find((x) => x.id === p.templateId);
+    // the back glows first (rarity light), then the face flips in
+    const back = cardBack(c); holder.appendChild(back);
+    const me = cur;
+    const face = () => { if (cur !== me || !holder.contains(back)) return; holder.innerHTML = ''; const f = rarityCard(c, true); f.classList.add('flip'); holder.appendChild(f); };
+    setTimeout(face, 380);
+    back.addEventListener('click', face);
+    const t = L.master.templates.find((x) => x.id === c.templateId);
+    const sk = L.horseSkill({ templateId: c.templateId });
     Label(t ? `${STYLE_JA[t.style]}　·　${t.surface === 'dirt' ? 'ダート' : '芝'} ${fmt(t.distMinM)}〜${fmt(t.distMaxM)}m${sk ? '　·　固有スキル「' + sk.name + '」' : ''}` : '', 0, 724, 1600, 40, 22, WHITE, undefined, 'center');
-    const next = Button(i + 1 < pulls.length ? 'タップでめくる' : '一覧を見る', 560, 776, 480, 100, () => { i++; if (i < pulls.length) step(); else List(); });
+    const next = Button(i + 1 < plan.order.length ? 'タップでめくる' : '一覧を見る', 560, 776, 480, 100, () => { i++; if (i < plan.order.length) step(); else List(); });
     next.classList.add('next');
     Ghost('すべてめくる', 1210, 776, 340, 100, List);
   };
   const List = () => {
     currentScreen = List; Clear('scout-list'); SetArt('Art/scout-reveal'); Veil(.55);
-    const dup = pulls.filter((p) => p.duplicate).length;
-    Label(first ? '入厩祝い　10頭スカウトの結果' : `スカウトの結果　${pulls.length}頭`, 60, 34, 1100, 50, 32, CYAN);
-    Label(`新規 ${pulls.length - dup}頭　·　ダブり ${dup}頭（覚醒素材）`, 60, 84, 1000, 34, 20, MUTED);
-    pulls.forEach((p, k) => {
-      const h = el('cardholder', 60 + (k % 5) * 300, 140 + Math.floor(k / 5) * 300, 280, 280);
-      const c = rarityCard(p, false); c.style.animationDelay = (k * .04) + 's'; c.classList.add('reveal-card'); h.appendChild(c);
+    Label(first ? '入厩祝い　10頭スカウトの結果' : `スカウトの結果　${plan.summary.length}頭`, 60, 24, 1100, 50, 32, CYAN);
+    const sub = Label(plan.summaryLine + (plan.spentLine ? '　·　' + plan.spentLine : ''), 60, 74, 1500, 34, 20, MUTED);
+    sub.dataset.summary = plan.summaryLine;
+    const big = plan.summary.length <= 5;
+    plan.summary.forEach((c, k) => {
+      const h = el('cardholder', 60 + (k % 5) * 300, 120 + Math.floor(k / 5) * 300, 280, big ? 420 : 280);
+      const card = rarityCard(c, false); card.style.animationDelay = (k * .04) + 's'; card.classList.add('reveal-card'); h.appendChild(card);
     });
+    const lines = [];
+    if (plan.stepUpLine) lines.push(plan.stepUpLine);
+    if (pity) lines.push(`交換pt ${pity.points} / ${pity.cost}` + (pity.remaining > 0 ? `（あと${pity.remaining}回）` : '（交換できます）'));
+    if (lines.length) Label(lines.join('　·　'), 60, 726, 980, 40, 20, GOLD).dataset.revealLines = '1';
     if (first) Button('つづける', 1060, 770, 500, 100, SecondRaceIntro);
-    else { Button('ホームへ', 1060, 770, 500, 100, Home); Ghost('もう一度スカウト', 700, 770, 340, 100, () => Scout()); }
+    else { Button('ホームへ', 1060, 770, 500, 100, Home); Ghost('もう一度スカウト', 700, 770, 340, 100, () => Scout(bannerId)); }
   };
   step();
 }
@@ -738,47 +777,121 @@ function RaceLobby() {
   Ghost('戻る', 980, 726, 200, 72, Home);
 }
 
-// ================================================================= scout (06 §6.5)
-async function Scout() {
-  currentScreen = Scout; await refresh();
-  Clear('scout'); SetArt('Art/scout-reveal'); Veil(.25);
-  Header('スカウト', '提供割合は抽選と同じ表から表示します');
+// ================================================================= scout (06 §6.5, §7 item 7; REQ-GACHA-011..015)
+// Banner calendar (GET /v1/gacha/banners via MuchiLogic.bannerList: active + announced, sorted, real end times), the
+// pity meter and carry-over rule (MuchiLogic.gachaStatus = GET /v1/gacha/status), rows/countdowns from the Unity game
+// layer's BannerListModel in WASM. Countdowns exist only for banners with a real end (06 §5.5: no fake urgency).
+let scoutSel = null;
+async function Scout(selectId) {
+  currentScreen = () => Scout(selectId ?? scoutSel); await refresh();
+  const list = L.bannerList();
+  const status = await L.gachaStatus();
+  const deviceNow = Date.now();
+  const view = JSON.parse(engine.GachaBanners(JSON.stringify(list), JSON.stringify(status), deviceNow));
+  if (selectId) scoutSel = selectId;
+  if (!list.banners.some((b) => b.id === scoutSel)) scoutSel = list.banners[0]?.id ?? 'standard';
+  const b = list.banners.find((x) => x.id === scoutSel);
+  const row = view.rows.find((r) => r.id === scoutSel);
+  const bs = status.banners.find((x) => x.bannerId === scoutSel);
+  const group = status.groups.find((g) => g.group === b.pityGroup);
+  Clear('scout'); SetArt('Art/scout-reveal'); Veil(.3);
+  Header('スカウト', '提供割合は抽選と同じ表から表示します　·　残り時間は実際の終了日時まで');
   WalletChip();
-  const b = L.master.banners.find((x) => x.id === 'standard') ?? L.master.banners[0];
-  const featured = (b.pityTargets ?? []).map((id) => L.master.templates.find((t) => t.id === id)).filter(Boolean).slice(0, 2);
-  featured.forEach((t, i) => {
-    const c = Panel('Featured ' + i, 40 + i * 420, 130, 400, 400, NAVY);
-    Label(t.rarity, 20, 16, 120, 40, 30, GOLD, c);
-    Label(t.name, 20, 64, 360, 60, 36, WHITE, c);
-    Label(`${STYLE_JA[t.style]}　·　${t.surface === 'dirt' ? 'ダート' : '芝'}　${fmt(t.distMinM)}〜${fmt(t.distMaxM)}m`, 20, 130, 360, 30, 18, MUTED, c);
-    const sk = L.horseSkill({ templateId: t.id });
-    if (sk) { Label(`固有スキル「${sk.name}」`, 20, 180, 360, 30, 20, CYAN, c); Label(`${sk.condition}\n${sk.effect}`, 20, 214, 360, 80, 17, WHITE, c); Label('条件を満たすと1レースに1回発動（確率では決まりません）', 20, 320, 360, 50, 14, DIM, c); }
+
+  // ① banner list (left)
+  const cdLabels = [];
+  view.rows.forEach((r, i) => {
+    const bn = list.banners[i];
+    const y = 114 + i * 136;
+    const card = Panel('Banner ' + r.id, 24, y, 540, 128, r.id === scoutSel ? col(.05, .2, .3, .97) : NAVY);
+    card.classList.add('banner-row'); card.dataset.banner = r.id; card.dataset.status = bn.status;
+    if (r.id === scoutSel) card.classList.add('sel');
+    card.setAttribute('role', 'button');
+    card.addEventListener('click', () => Scout(r.id));
+    const chips = [bn.upcoming || bn.status === 'upcoming' ? '予告' : null, bn.currency === 'paidOnly' ? '有償限定' : null, bn.limited ? '季節限定' : null, bn.stepUp ? 'ステップアップ' : null, bn.pickup ? 'ピックアップ' : null].filter(Boolean);
+    Label(r.title, 18, 10, 500, 34, 22, r.id === scoutSel ? GOLD : WHITE, card);
+    Label(chips.join('　'), 18, 44, 500, 24, 14, CYAN, card);
+    Label(r.periodLine, 18, 70, 250, 26, 16, MUTED, card);
+    const cd = Label(r.countdown ?? '', 260, 70, 262, 26, 16, YELLOW, card); cd.dataset.countdown = r.id; cd.style.textAlign = 'right';
+    cdLabels.push(cd);
+    if (!r.upcoming && r.pityLine) {
+      const bar = Panel('Pity bar ' + r.id, 18, 104, 504, 8, col(.15, .25, .32), card);
+      Panel('Pity fill ' + r.id, 0, 0, Math.round(504 * r.pityFill), 8, GOLD, bar).dataset.pityFill = String(r.pityFill);
+    }
   });
-  const pity = player.pity?.[b.pityGroup] ?? 0;
-  const info = Panel('Scout buy', 900, 130, 660, 650, NAVY);
-  Label(b.name, 30, 24, 600, 44, 30, CYAN, info);
-  Label(`交換pt ${pity} / ${L.master.pityCost(b.pityGroup)}（天井：${(b.pityTargets ?? []).map(templateName).join('・')}と交換）`, 30, 80, 600, 60, 18, GOLD, info);
-  Label(`1回 ${fmt(b.priceSingle)}コイン　·　10回 ${fmt(b.priceTen)}コイン（SR以上1頭確定）\n有償コインから先に使われます。`, 30, 150, 600, 80, 19, WHITE, info);
-  Ghost('提供割合', 30, 250, 260, 72, () => Odds(b.id), info);
-  Label('期間：常設', 320, 270, 300, 30, 18, MUTED, info);
-  Ghost(`1回（${fmt(b.priceSingle)}）`, 30, 500, 230, 110, () => PaidScout(b, 1), info);
-  Button(`10回引く（${fmt(b.priceTen)}）`, 276, 500, 360, 110, () => PaidScout(b, 10), CYAN, info);
+  // countdowns tick on the corrected clock; when a banner ends (or an announced one opens) the list reloads
+  every(1000, () => {
+    const c = JSON.parse(engine.GachaCountdowns(Date.now()));
+    c.texts.forEach((t, i) => { if (cdLabels[i]) cdLabels[i].textContent = t ?? ''; });
+    if (c.needsRefresh && cur?.dataset.screen === 'scout') { toast('開催期間が切り替わりました。一覧を更新します'); Scout(); }
+  });
+
+  // ② selected banner (right): the horse, price and balance, pity meter, odds link, real period
+  const info = Panel('Scout buy', 590, 114, 986, 676, NAVY);
+  info.dataset.banner = b.id;
+  Label(b.name, 30, 18, 920, 44, 30, CYAN, info);
+  const pk = b.pickup ? L.master.templates.find((t) => t.id === b.pickup.templateId) : null;
+  const featured = pk ? [pk] : (b.pityTargets ?? []).map((id) => L.master.templates.find((t) => t.id === id)).filter(Boolean).slice(0, 1);
+  featured.forEach((t) => {
+    Label(`${RARITY_SHAPE[t.rarity]} ${t.rarity}　${t.name}`, 30, 70, 600, 40, 26, t.rarity === 'SSR' ? GOLD : WHITE, info);
+    const sk = L.horseSkill({ templateId: t.id });
+    Label(`${STYLE_JA[t.style]}　·　${t.surface === 'dirt' ? 'ダート' : '芝'} ${fmt(t.distMinM)}〜${fmt(t.distMaxM)}m${sk ? `　·　固有スキル「${sk.name}」${sk.condition}／${sk.effect}` : ''}`, 30, 112, 920, 30, 16, MUTED, info);
+  });
+  Label(row.priceLine + '\n有償コインから先に使われます。', 30, 152, 920, 56, 18, WHITE, info);
+  if (row.stepLine) Label(row.stepLine, 30, 212, 920, 28, 18, GOLD, info).dataset.stepLine = '1';
+  // ③ pity meter (交換pt 37/100), what it can be exchanged for, and the carry-over rule of a closing group
+  if (bs && group) {
+    const meter = Panel('Pity meter', 30, 252, 926, 150, col(.03, .09, .15, .96), info);
+    meter.dataset.pity = `${bs.points}/${bs.cost}`;
+    Label(`天井（${group.label}）`, 18, 10, 400, 26, 16, CYAN, meter);
+    Label(row.pityLine, 18, 36, 880, 30, 20, WHITE, meter).dataset.pityLine = '1';
+    const bar = Panel('Pity bar', 18, 72, 890, 14, col(.15, .25, .32), meter);
+    Panel('Pity fill', 0, 0, Math.round(890 * Math.min(1, bs.points / bs.cost)), 14, GOLD, bar);
+    Label(`交換先：${group.targets.map((x) => x.name + (x.owned ? '（所持）' : '')).join('・')}（えらんで交換・抽選なし）`, 18, 94, 890, 24, 15, MUTED, meter);
+    if (row.carryOverNotice) Label(row.carryOverNotice, 18, 118, 890, 30, 13, YELLOW, meter).dataset.carryOver = '1';
+    if (group.exchangeable > 0 && b.status === 'active') {
+      const ex = Ghost('交換する', 750, 6, 160, 50, () => PityExchange(b, group), meter); ex.classList.add('small');
+    }
+  }
+  Ghost('提供割合', 30, 420, 240, 66, () => Odds(b.id), info);
+  Label(`期間：${row.periodLine}`, 300, 438, 400, 30, 18, MUTED, info);
+  if (b.status === 'upcoming') {
+    Label('開始前です。提供割合は開始前から確認できます。', 30, 520, 920, 40, 20, YELLOW, info);
+    disable(Button(`10回引く（開始前）`, 470, 560, 486, 100, () => {}, CYAN, info));
+  } else {
+    const ten = bs?.stepUp ? bs.stepUp.priceTen : b.priceTen;
+    if (!b.stepUp) Ghost(`1回（${fmt(b.priceSingle)}）`, 30, 560, 230, 100, () => PaidScout(b, 1), info);
+    Button(`10回引く（${fmt(ten)}）`, 470, 560, 486, 100, () => PaidScout(b, 10), CYAN, info);
+  }
   TabBar(2);
 }
 async function PaidScout(b, count) {
   const r = await L.draw(b.id, count);
   if (!r.ok) {
     if (r.code === 'INSUFFICIENT_COINS') {
-      // T6: the shortfall and the one smallest pack that covers it
-      const need = (count === 10 ? b.priceTen : b.priceSingle) - (player.wallet.paid + player.wallet.free);
+      // T6: the shortfall and the one smallest pack that covers it (paid-only banners count paid coins only)
+      const st = (await L.gachaStatus()).banners.find((x) => x.bannerId === b.id);
+      const price = count === 10 ? (st?.stepUp?.priceTen ?? b.priceTen) : b.priceSingle;
+      const need = price - (b.currency === 'paidOnly' ? player.wallet.paid : player.wallet.paid + player.wallet.free);
       const pack = L.shopProducts().products.filter((p) => p.kind === 'coins' && p.paidCoins >= need).sort((a, c) => a.priceYen - c.priceYen)[0];
-      return Info('コインが足りません', `あと${fmt(need)}コイン必要です。${pack ? `\n${pack.name}（${yen(pack.priceYen)}）で足ります。` : ''}`, () => (pack ? PurchaseConfirm(pack.id, Scout) : Scout()));
+      return Info('コインが足りません', `${b.currency === 'paidOnly' ? '有償コインが' : ''}あと${fmt(need)}コイン必要です。${pack ? `\n${pack.name}（${yen(pack.priceYen)}）で足ります。` : ''}`, () => (pack ? PurchaseConfirm(pack.id, () => Scout(b.id)) : Scout(b.id)));
     }
-    return Info('スカウトできませんでした', r.message, Scout);
+    // REQ-GACHA-011: the server decides by its clock; a pull after the end is refused with the end time and the list reloads
+    if (r.code === 'BANNER_CLOSED') return Info('このスカウトは終了しました', `${r.message}\n一覧を更新します。`, () => Scout());
+    return Info('スカウトできませんでした', r.message, () => Scout(b.id));
   }
   await refresh();
   lastPulls = r.value.results;
-  Reveal(lastPulls, false);
+  const pity = (await L.gachaStatus()).banners.find((x) => x.bannerId === b.id) ?? null;
+  Reveal(r.value, false, b.id, pity);
+}
+async function PityExchange(b, group) {
+  const target = group.targets.find((t) => !t.owned) ?? group.targets[0];
+  const r = await L.pityExchange(b.id, target.templateId);
+  if (!r.ok) return Info('交換できませんでした', r.message, () => Scout(b.id));
+  await refresh();
+  toast(`交換pt ${group.cost} で ${target.name} と交換しました`);
+  Scout(b.id);
 }
 function Info(title, body, next) {
   currentScreen = () => Info(title, body, next); Clear('info'); SetArt('Art/home-paddock'); Veil(.5); Panel('Information', 300, 170, 1000, 560, NAVY);
@@ -1325,28 +1438,54 @@ function Stable() {
 
 
 function Odds(bannerId) {
-  currentScreen = () => Odds(bannerId); Clear(); SetArt('Art/scout-reveal');
+  currentScreen = () => Odds(bannerId); Clear('odds'); SetArt('Art/scout-reveal');
   Panel('Odds veil', 0, 0, 1600, 900, col(.01, .035, .07, .55));
-  Panel('Odds frame', 36, 46, 1528, 772, NAVY);
+  Panel('Odds frame', 36, 30, 1528, 800, NAVY);
+  // REQ-GACHA-002/015: every number below is generated by the server from the very table used for drawing
   const o = L.odds(bannerId);
-  Label(T('SCOUT RATES') + '  /  ' + o.name, 70, 68, 1100, 40, 24, CYAN);
-  Label('Generated from the same table used for drawing (server master).', 70, 112, 1100, 30, 16, col(.8, .89, .95));
-  Label('RARITY TOTALS', 70, 160, 400, 30, 17, CYAN);
-  Object.entries(o.rarityTotals).forEach(([r, v], i) => { Label(r, 70, 200 + i * 40, 120, 34, 22, r === 'SSR' ? GOLD : WHITE); Label(v.rate, 200, 200 + i * 40, 200, 34, 22); });
-  Label('10TH PULL GUARANTEE (SR+)', 70, 340, 420, 30, 17, CYAN);
-  Object.entries(o.guarantee.rarityTotals).forEach(([r, v], i) => { Label(r, 70, 380 + i * 40, 120, 34, 22, r === 'SSR' ? GOLD : WHITE); Label(v.rate, 200, 380 + i * 40, 200, 34, 22); });
-  Label('PITY', 70, 490, 400, 30, 17, CYAN);
-  Label(`${o.pity.pullsRequired} ${T('pulls → exchange')}\n${o.pity.targets.map(templateName).join(' / ')}\n≈ ¥${fmt(o.pity.estimatedMaxCostYen)}`, 70, 528, 420, 120, 18);
-  Label('EACH HORSE', 520, 160, 900, 30, 17, CYAN);
+  Label(T('SCOUT RATES') + '  /  ' + o.name, 70, 46, 1100, 40, 24, CYAN);
+  Label('Generated from the same table used for drawing (server master).', 70, 88, 1100, 26, 16, col(.8, .89, .95));
+  Label('RARITY TOTALS', 70, 126, 400, 28, 17, CYAN);
+  Object.entries(o.rarityTotals).forEach(([r, v], i) => { Label(`${RARITY_SHAPE[r]} ${r}`, 70, 160 + i * 36, 120, 32, 20, r === 'SSR' ? GOLD : WHITE); Label(v.rate, 200, 160 + i * 36, 200, 32, 20); });
+  Label('10TH PULL GUARANTEE (SR+)', 70, 280, 420, 28, 17, CYAN);
+  Object.entries(o.guarantee.rarityTotals).forEach(([r, v], i) => { Label(`${RARITY_SHAPE[r]} ${r}`, 70, 314 + i * 36, 120, 32, 20, r === 'SSR' ? GOLD : WHITE); Label(v.rate, 200, 314 + i * 36, 200, 32, 20); });
+  Label('PITY', 70, 400, 400, 28, 17, CYAN);
+  const pity = Label(`${o.pity.pullsRequired} ${T('pulls → exchange')}（${o.pity.label}）\n${o.pity.targets.map(templateName).join(' / ')}\n最大 ${fmt(o.pity.costCoins)}コイン（≈ ${yen(o.pity.estimatedMaxCostYen)}）`, 70, 434, 420, 96, 17);
+  pity.dataset.pityCost = String(o.pity.costCoins);
+  if (o.pity.carryOver) Label(o.pity.carryOver.notice, 70, 534, 420, 120, 14, YELLOW).dataset.carryOver = '1';
+  else Label('この天井は期間で閉じません。', 70, 534, 420, 30, 14, MUTED);
+  if (o.limitedNotice) Label(o.limitedNotice, 70, 660, 420, 80, 13, MUTED);
+  Label('EACH HORSE', 520, 126, 660, 28, 17, CYAN);
   const rows = [...o.items].sort((a, b) => rarityRank(b.rarity) - rarityRank(a.rarity) || b.ppm - a.ppm);
   rows.forEach((r, i) => {
-    const colIdx = Math.floor(i / 12), row = i % 12;
-    const x = 520 + colIdx * 340, y = 200 + row * 40;
-    if (colIdx > 2) return;
-    Label(r.rarity, x, y, 60, 30, 16, r.rarity === 'SSR' ? GOLD : r.rarity === 'SR' ? CYAN : WHITE);
-    Label(r.name, x + 60, y, 190, 30, 16); Label(r.rate, x + 240, y, 90, 30, 16, col(.8, .89, .95));
+    const colIdx = Math.floor(i / 15), row = i % 15;
+    if (colIdx > 1) return;
+    const x = 520 + colIdx * 340, y = 160 + row * 38;
+    Label(`${RARITY_SHAPE[r.rarity]} ${r.rarity}`, x, y, 72, 30, 15, r.rarity === 'SSR' ? GOLD : r.rarity === 'SR' ? CYAN : WHITE);
+    const n = Label(r.name + (r.limited ? '（限定）' : '') + (o.pickup?.templateId === r.templateId ? '★PU' : ''), x + 72, y, 180, 30, 15); n.style.whiteSpace = 'nowrap';
+    Label(r.rate, x + 250, y, 90, 30, 15, col(.8, .89, .95));
   });
-  Button('BACK', 70, 775, 180, () => Scout(), NAVY);
+  // right column: the pickup's own rate, the step-up steps, legal pages (unchanged links)
+  let y = 126;
+  if (o.pickup) {
+    Label('PICKUP', 1220, y, 320, 28, 17, CYAN);
+    const p = Label(`${o.pickup.name}（${o.pickup.rarity}）\n1〜10枠目：${o.pickup.rate}\n10枠目の保証：${o.pickup.guaranteeRate}`, 1220, y + 32, 320, 96, 16);
+    p.dataset.pickupRate = o.pickup.rate;
+    y += 140;
+  }
+  if (o.stepUp) {
+    Label('STEP-UP', 1220, y, 320, 28, 17, CYAN);
+    o.stepUp.steps.forEach((s, i) => {
+      const totals = s.finalSlot.rarityTotals ? Object.entries(s.finalSlot.rarityTotals).map(([r, v]) => `${r} ${v.rate}`).join(' ') : 'SR以上の保証（上の表）';
+      Label(`ステップ${s.step}　10連 ${fmt(s.priceTen)}　10枠目：${totals}`, 1220, y + 32 + i * 30, 330, 28, 13, s.finalSlot.items ? GOLD : WHITE).dataset.step = String(s.step);
+    });
+    y += 32 + o.stepUp.steps.length * 30 + 6;
+    Label(o.stepUp.notice, 1220, y, 320, 100, 12, MUTED);
+    y += 104;
+  }
+  const legal = (L.legalLinks ?? []).filter((l) => l.key.startsWith('legal.'));
+  legal.forEach((l, i) => { const b = Ghost(l.title, 1220, 640 + i * 66, 320, 58, () => Legal(l.key === 'legal.tokushoho' ? 'tokushoho' : 'shikin', () => Odds(bannerId))); b.classList.add('link'); });
+  Button('BACK', 70, 760, 180, () => Scout(bannerId), NAVY);
 }
 
 
@@ -1492,7 +1631,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Odds: () => Odds('standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

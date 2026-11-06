@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { m } from './helpers.js';
 import { simulateAll, type EconomyResult } from '../src/sim/economy.js';
+import { oddsDisclosure } from '../src/domain/gacha.js';
 
 // docs/spec/balance-targets.md E-*: the economy, simulated with the real PlayerService and master data.
 describe('economy targets (90 days, 3 seeds)', () => {
@@ -63,6 +64,10 @@ describe('economy targets (90 days, 3 seeds)', () => {
       const pulls = m.gacha.pityGroups[b.pityGroup]!.cost;
       expect(pulls).toBeLessThanOrEqual(100);
       expect(pulls * b.priceSingle * worstYenPerCoin).toBeLessThanOrEqual(50_000);
+      // REQ-GACHA-014: on a step-up banner the coins to the exchange follow the step prices (never above 100 singles)
+      const coins = oddsDisclosure(m, b).pity.costCoins;
+      expect(coins).toBeLessThanOrEqual(100 * b.priceSingle);
+      expect(coins * worstYenPerCoin).toBeLessThanOrEqual(50_000);
     }
   });
 

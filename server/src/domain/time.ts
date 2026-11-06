@@ -128,6 +128,22 @@ export function dayRolloverChangeProblems(prev: DayRollover, next: DayRollover, 
   return [`progression.dayRollover: this activation would change the game day before ${new Date(until).toISOString()} (activation + ${DAY_ROLLOVER_MIN_LEAD_MS / 60_000} min) or rewrite the last ${DAY_ROLLOVER_KEEP_PAST_MS / 3_600_000} h; keep the current rule (previousHourJst = the hour in effect now) and schedule the change with an effectiveAtMs at least that far ahead`];
 }
 
+/**
+ * REQ-GACHA-011: the first instant (ms) of game day `dayKey` ("YYYY-MM-DD"), the inverse of gameDayKey under the same
+ * rule: banner and pity-group schedules written as game days open and close exactly at the rollover. Across the
+ * shipped 0 → 4 switch the game day 2026-12-01 starts at 12-01 00:00 JST and 2026-12-02 at 12-02 04:00 JST (28 h).
+ */
+export function gameDayStartMs(dayKey: string, rule: DayRule): number {
+  const [y, mo, d] = dayKey.split('-').map(Number) as [number, number, number];
+  const base = Date.UTC(y, mo - 1, d) - JST_OFFSET_MS;
+  if (typeof rule === 'number') return base + rule * HOUR_MS;
+  const before = base + rule.previousHourJst * HOUR_MS; // the start under the rule being replaced
+  if (before < rule.effectiveAtMs) return before;
+  const after = base + rule.hourJst * HOUR_MS;
+  // a later hour after the switch: the day starts at its rollover; an earlier one: the day starts at the switch itself
+  return Math.max(after, rule.effectiveAtMs);
+}
+
 /** JST month "YYYY-MM" (monthly spend limits). */
 export function jstMonthKey(ms: number): string {
   return new Date(ms + JST_OFFSET_MS).toISOString().slice(0, 7);

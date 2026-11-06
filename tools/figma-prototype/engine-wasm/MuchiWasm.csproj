@@ -30,5 +30,6 @@
     <Compile Include="../../../unity/Assets/Muchi/Game/GameSettings.cs" Link="Game/GameSettings.cs" />
     <Compile Include="../../../unity/Assets/Muchi/Game/ScreenModels.cs" Link="Game/ScreenModels.cs" />
     <Compile Include="../../../unity/Assets/Muchi/Game/WebSocketTransportFactory.cs" Link="Game/WebSocketTransportFactory.cs" />
+    <Compile Include="../../../unity/Assets/Muchi/Game/GachaModels.cs" Link="Game/GachaModels.cs" />
   </ItemGroup>
 </Project>

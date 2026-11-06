@@ -449,12 +449,29 @@ namespace Muchi.Client
     {
         public string Id, Name, Currency;
         public int PriceSingle, PriceTen;
-        public long? StartAtMs, EndAtMs;
+        /// <summary>Real schedule (null = permanent / no start). Count down only to <see cref="EndAtMs"/>.</summary>
+        public long? StartAtMs, EndAtMs, AnnounceAtMs;
         public bool PaidOnly => Currency == "paidOnly";
+        /// <summary>"active" or "upcoming" (REQ-GACHA-011); older servers send none → active.</summary>
+        public string Status = "active";
+        public bool Upcoming => Status == "upcoming";
+        /// <summary>The last game day it is open ("2026-11-30"), and game days left counting today (null: permanent or not open).</summary>
+        public string LastDay;
+        public int? DaysLeft;
+        public string PityGroup, PityLabel;
+        public int PityCost;
+        public string[] PityTargets = new string[0];
+        public BannerPickup Pickup;
+        /// <summary>Contains limited (季節限定) horses.</summary>
+        public bool Limited;
+        public BannerStepUp StepUp;
         internal static Banner Parse(JsonNode o) => new Banner
         {
             Id = J.Str(o, "id"), Name = J.Str(o, "name"), Currency = J.Str(o, "currency"),
             PriceSingle = J.Int(o, "priceSingle"), PriceTen = J.Int(o, "priceTen"), StartAtMs = J.LongN(o, "startAtMs"), EndAtMs = J.LongN(o, "endAtMs"),
+            AnnounceAtMs = J.LongN(o, "announceAtMs"), Status = J.Str(o, "status") ?? "active", LastDay = J.Str(o, "lastDay"), DaysLeft = J.IntN(o, "daysLeft"),
+            PityGroup = J.Str(o, "pityGroup"), PityLabel = J.Str(o, "pityLabel"), PityCost = J.Int(o, "pityCost"), PityTargets = J.Strs(o, "pityTargets"),
+            Pickup = BannerPickup.Parse(J.Opt(o, "pickup")), Limited = J.Bool(o, "limited"), StepUp = BannerStepUp.Parse(J.Opt(o, "stepUp")),
         };
     }
 
@@ -499,6 +516,18 @@ namespace Muchi.Client
         public long? StartAtMs, EndAtMs;
         /// <summary>Notice shown when the table contains limited horses (null otherwise). Display verbatim.</summary>
         public string LimitedNotice;
+        /// <summary>Last game day of the period ("2026-11-30"), null when permanent.</summary>
+        public string LastDay;
+        /// <summary>The featured horse's own rate (REQ-GACHA-015), null without a pickup.</summary>
+        public OddsPickup Pickup;
+        /// <summary>Step prices and per-step slot-10 tables (REQ-GACHA-014), null for a plain banner.</summary>
+        public OddsStepUp StepUp;
+        public string PityLabel;
+        /// <summary>Coins of the cheapest way to the exchange (step prices on a step-up).</summary>
+        public int PityCostCoins;
+        public long? PityClosesAtMs;
+        /// <summary>REQ-GACHA-013: where the points go when the group closes (null: it never closes).</summary>
+        public CarryOverRule PityCarryOver;
 
         internal static OddsDisclosure Parse(JsonNode o)
         {
@@ -517,6 +546,8 @@ namespace Muchi.Client
                 DuplicateMaterial = J.Map(o, "duplicates", v => v.AsInt()),
                 TicketsUsable = J.List(o, "tickets", x => J.Str(x, "itemId")),
                 StartAtMs = J.LongN(per, "startAtMs"), EndAtMs = J.LongN(per, "endAtMs"), LimitedNotice = J.Str(o, "limitedNotice"),
+                LastDay = J.Str(per, "lastDay"), Pickup = OddsPickup.Parse(J.Opt(o, "pickup")), StepUp = OddsStepUp.Parse(J.Opt(o, "stepUp")),
+                PityLabel = J.Str(p, "label"), PityCostCoins = J.Int(p, "costCoins"), PityClosesAtMs = J.LongN(p, "closesAtMs"), PityCarryOver = CarryOverRule.Parse(J.Opt(p, "carryOver")),
             };
         }
     }
@@ -545,6 +576,8 @@ namespace Muchi.Client
         public int SpentPaid, SpentFree, PityPoints;
         /// <summary>Wallet after the draw (null for the free tutorial draw).</summary>
         public Wallet Wallet;
+        /// <summary>Step-up banners: the step just drawn and the next one (REQ-GACHA-014); null otherwise.</summary>
+        public DrawStepUp StepUp;
         internal static DrawResult Parse(JsonNode o)
         {
             var sp = J.Opt(o, "spent");
@@ -552,8 +585,10 @@ namespace Muchi.Client
             {
                 BannerId = J.Str(o, "bannerId"), Results = J.List(o, "results", PullResult.Parse),
                 SpentPaid = J.Int(sp, "paid"), SpentFree = J.Int(sp, "free"), PityPoints = J.Int(o, "pityPoints"), Wallet = Wallet.Parse(J.Opt(o, "wallet")),
+                StepUp = DrawStepUp.Parse(J.Opt(o, "stepUp")),
             };
         }
+        public static DrawResult FromJson(string json) => Parse(JsonNode.Parse(json));
     }
 
     public sealed class PedigreeNode

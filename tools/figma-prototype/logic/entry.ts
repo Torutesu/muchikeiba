@@ -5,7 +5,7 @@
 import { loadMaster } from '../../../server/src/domain/master.js';
 import { PlayerService, type PlayerRepo } from '../../../server/src/domain/service.js';
 import { playerView, type PlayerState } from '../../../server/src/domain/player.js';
-import { oddsDisclosure, findBanner } from '../../../server/src/domain/gacha.js';
+import { oddsDisclosure, findBanner, bannerList, bannerStatus } from '../../../server/src/domain/gacha.js';
 import { cryptoRng } from '../../../server/src/domain/rng.js';
 import { AppError } from '../../../server/src/domain/errors.js';
 import type { Style } from '../../../server/src/domain/master.js';
@@ -36,7 +36,9 @@ const master = loadMaster();
 const DAY_KEY = 'muchi.proto.dayOffset';
 const DAY_MS = 86_400_000;
 let dayOffset = (() => { try { return Math.max(0, parseInt(localStorage.getItem(DAY_KEY) ?? '0', 10) || 0); } catch { return 0; } })();
-const now = () => Date.now() + dayOffset * DAY_MS;
+// round 9: an extra shift (ms) so the demo can stand just before a banner's real end (not persisted)
+let clockShift = 0;
+const now = () => Date.now() + dayOffset * DAY_MS + clockShift;
 // a blank player state to build demo ghost riders' horses on (never stored)
 let blank: PlayerState | null = null;
 const svcStateTemplate = () => blank!;
@@ -73,6 +75,15 @@ export const MuchiLogic = {
     beginnerRaces: master.progression.beginnerRaces,
   },
   odds: (bannerId: string) => oddsDisclosure(master, findBanner(master, bannerId)),
+  // ---------------------------------------------------------------- round 9 (06 §7 item 7, REQ-GACHA-011..015)
+  // the live-ops calendar and the player's pity meter, exactly what GET /v1/gacha/banners and GET /v1/gacha/status return
+  bannerList: () => bannerList(master, now()),
+  bannerStatus: (bannerId: string) => bannerStatus(findBanner(master, bannerId), now()),
+  gachaStatus: () => svc.gachaStatus(ID),
+  /** Demo clock in ms (the banner calendar demo moves the clock to a banner's last minutes). */
+  setClockMs(ms: number | null) { clockShift = ms === null ? 0 : ms - Date.now() - dayOffset * DAY_MS; },
+  clockShift: () => clockShift,
+  legalLinks: master.shopDisplay?.legalLinks ?? [],
   async bootstrap() {
     const r = await wrap(() => svc.bootstrap(ID));
     if (!blank) { const st = structuredClone(await svc.state(ID)); st.horses = []; blank = st; }

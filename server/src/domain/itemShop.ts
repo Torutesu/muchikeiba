@@ -1,7 +1,7 @@
 import { AppError } from './errors.js';
 import { expandPool, PPM_TOTAL, RARITY_ORDER, TACK_SLOTS, type CosmeticDef, type Master, type PoolEntry, type Rarity, type TackSlot } from './master.js';
 import type { Equipment, PlayerState } from './player.js';
-import { drawFromPool, findBanner, grantPull, rollPulls, type PullResult } from './gacha.js';
+import { assertBannerOpen, drawFromPool, findBanner, grantPull, rollPulls, type PullResult } from './gacha.js';
 import { addItems, consumeItem, logItem } from './items.js';
 import { spend } from './wallet.js';
 import { ASSET_KEY_RE, assetKeys, VISUALS, type VisualsMaster } from './visuals.js';
@@ -120,9 +120,10 @@ export function useGachaTicket(m: Master, s: PlayerState, itemId: string, banner
   if (!t || t.kind !== 'single') throw new AppError('NOT_FOUND', `ticket ${itemId}`);
   if (!t.banners.includes(bannerId)) throw new AppError('NOT_ELIGIBLE', `${itemId} cannot be used on ${bannerId}`);
   const b = findBanner(m, bannerId);
-  if ((b.startAtMs !== undefined && now < b.startAtMs) || (b.endAtMs !== undefined && now >= b.endAtMs)) throw new AppError('BANNER_CLOSED');
+  assertBannerOpen(b, now);
   // QA r6 #1: runtime backstop — free tickets never draw a paid-only banner, whatever the active config says
   if (b.currency === 'paidOnly') throw new AppError('NOT_ELIGIBLE', `${bannerId} is paid-only and cannot take tickets`);
+  if (b.stepUp) throw new AppError('NOT_ELIGIBLE', `${bannerId} is a step-up banner and cannot take tickets`);
   consumeItem(s, itemId, 1, now, `ticket draw ${bannerId}`, ref);
   const tplId = drawFromPool(b.pool, rng);
   const result = grantPull(m, s, m.templateById.get(tplId)!, now, false);
@@ -145,8 +146,9 @@ export function useTenTicket(m: Master, s: PlayerState, itemId: string, bannerId
   if (!t || t.kind !== 'ten') throw new AppError('NOT_FOUND', `ticket ${itemId}`);
   if (!t.banners.includes(bannerId)) throw new AppError('NOT_ELIGIBLE', `${itemId} cannot be used on ${bannerId}`);
   const b = findBanner(m, bannerId);
-  if ((b.startAtMs !== undefined && now < b.startAtMs) || (b.endAtMs !== undefined && now >= b.endAtMs)) throw new AppError('BANNER_CLOSED');
+  assertBannerOpen(b, now);
   if (b.currency === 'paidOnly') throw new AppError('NOT_ELIGIBLE', `${bannerId} is paid-only and cannot take tickets`);
+  if (b.stepUp) throw new AppError('NOT_ELIGIBLE', `${bannerId} is a step-up banner and cannot take tickets`);
   consumeItem(s, itemId, 1, now, `ten-pull ticket ${bannerId}`, ref);
   const results = rollPulls(m, b, 10, rng).map((r) => grantPull(m, s, m.templateById.get(r.templateId)!, now, r.guaranteed));
   s.pity[b.pityGroup] = (s.pity[b.pityGroup] ?? 0) + 10;

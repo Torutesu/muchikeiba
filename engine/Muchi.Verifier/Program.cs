@@ -23,19 +23,23 @@ if (args.Length >= 3 && args[0] == "golden")
 if (args.Length >= 2 && args[0] == "balance")
 {
     var rsNode = Muchi.Net.JsonNode.Parse(File.ReadAllText(args[1]));
-    // track options: surface=turf|dirt going=<name> apt=mix ; everything else overrides a ruleset key
-    string surface = "turf", goingName = null; bool aptMix = false;
+    // track options: surface=turf|dirt going=<name> apt=mix tracks=<tracks.json> track=<id> ; everything else overrides a ruleset key
+    string surface = "turf", goingName = null, tracksFile = null, trackId = null; bool aptMix = false;
     foreach (var kv in args.Skip(3))
     {
         var parts = kv.Split('=');
         if (parts[0] == "surface") surface = parts[1];
         else if (parts[0] == "going") goingName = parts[1];
         else if (parts[0] == "apt") aptMix = parts[1] == "mix";
+        else if (parts[0] == "tracks") tracksFile = parts[1];
+        else if (parts[0] == "track") trackId = parts[1];
         else rsNode.Set(parts[0], long.Parse(parts[1]));
     }
     var rs = Muchi.Net.ProtocolCodec.ParseRuleset(rsNode);
     int n = args.Length >= 3 ? int.Parse(args[2]) : 200;
-    var track = surface == "dirt" ? SampleRaces.Dirt1800() : SampleRaces.Turf2000();
+    var track = tracksFile != null && trackId != null
+        ? BalanceHarness.LoadServerTracks(tracksFile).Single(t => t.Id == trackId)
+        : surface == "dirt" ? SampleRaces.Dirt1800() : SampleRaces.Turf2000();
     if (goingName != null) track.Going = Muchi.Net.ProtocolCodec.ParseGoing(goingName, track.Surface);
     var rep = BalanceProbe.Run(rs, n, 1, 150, track, aptMix);
     Console.Write(rep.Describe(20, rs.GateOpenTick));
@@ -43,9 +47,17 @@ if (args.Length >= 2 && args[0] == "balance")
 }
 if (args.Length >= 3 && args[0] == "harness-tracks")
 {
-    // harness-tracks <ruleset.json> <server/master/tracks.json> [scale] → per-course targets T1/T2/T7 (docs/spec/balance-targets.md §2.1)
-    var rs = Muchi.Net.ProtocolCodec.ParseRuleset(Muchi.Net.JsonNode.Parse(File.ReadAllText(args[1])));
-    var rep = BalanceHarness.TrackRun(rs, BalanceHarness.LoadServerTracks(args[2]), args.Length >= 4 ? int.Parse(args[3]) : 1);
+    // harness-tracks <ruleset.json> <server/master/tracks.json> [scale] [key=value...] → per-course targets T1/T2/T7 (docs/spec/balance-targets.md §2.1)
+    var tNode = Muchi.Net.JsonNode.Parse(File.ReadAllText(args[1]));
+    int tScale = 1;
+    foreach (var kv in args.Skip(3))
+    {
+        if (!kv.Contains('=')) { tScale = int.Parse(kv); continue; }
+        var parts = kv.Split('=');
+        tNode.Set(parts[0], long.Parse(parts[1]));
+    }
+    var rs = Muchi.Net.ProtocolCodec.ParseRuleset(tNode);
+    var rep = BalanceHarness.TrackRun(rs, BalanceHarness.LoadServerTracks(args[2]), tScale);
     Console.WriteLine(rep.Markdown());
     return rep.AllPass ? 0 : 1;
 }
@@ -74,6 +86,47 @@ if (args.Length >= 3 && args[0] == "ta-thresholds")
     int cap = args.Length >= 4 ? int.Parse(args[3]) : 3200;
     foreach (var (track, gold, silver, bronze) in BalanceHarness.TimeAttackThresholds(rs, BalanceHarness.LoadServerTracks(args[2]), cap, 80))
         Console.WriteLine(track + " gold " + gold + " silver " + silver + " bronze " + bronze);
+    return 0;
+}
+if (args.Length >= 3 && args[0] == "style-dist")
+{
+    // style-dist <ruleset.json> <tracks.json> [races] [lv=0..5] [riders=1] [key=value...]
+    //   → per-runner win rate (%) by running style for every course × going (diagnosis for balance-targets.md §2.1 T2)
+    var node = Muchi.Net.JsonNode.Parse(File.ReadAllText(args[1]));
+    int races = 240, lvMode = 3; bool riders = false;
+    foreach (var kv in args.Skip(3))
+    {
+        if (!kv.Contains('=')) { races = int.Parse(kv); continue; }
+        var parts = kv.Split('=');
+        if (parts[0] == "lv") lvMode = int.Parse(parts[1]);
+        else if (parts[0] == "riders") riders = parts[1] == "1";
+        else node.Set(parts[0], long.Parse(parts[1]));
+    }
+    var rs = Muchi.Net.ProtocolCodec.ParseRuleset(node);
+    var combos = new List<(Muchi.Engine.TrackSpec t, string g)>();
+    foreach (var t in BalanceHarness.LoadServerTracks(args[2]))
+        foreach (var gi in new[] { Muchi.Engine.Going.FirmOrFast, Muchi.Engine.Going.Good, Muchi.Engine.Going.YieldingOrMuddy, Muchi.Engine.Going.SoftOrSloppy })
+            combos.Add((new Muchi.Engine.TrackSpec { Id = t.Id, Surface = t.Surface, DistanceM = t.DistanceM, Segments = t.Segments, Going = gi }, gi.ToString()));
+    var rows = new string[combos.Count];
+    double worst = 0;
+    Parallel.For(0, combos.Count, k =>
+    {
+        var (t, g) = combos[k];
+        var r = BalanceHarness.StyleRates(rs, t, races, 70807, lvMode);
+        string line = t.Id.PadRight(22) + g.PadRight(16) + string.Join(" ", r.Select(x => (x * 100).ToString("F1").PadLeft(5)));
+        double dev = r.Max(x => Math.Abs(x * 12 - 1));
+        if (riders)
+        {
+            var sk = BalanceHarness.RiderStyleRates(rs, t, () => new SkilledRider(), races, 90901);
+            var ca = BalanceHarness.RiderStyleRates(rs, t, () => new CasualRider(), races, 90901);
+            line += "  | skilled " + string.Join(" ", sk.Select(x => (x * 100).ToString("F0").PadLeft(3))) + " | casual " + string.Join(" ", ca.Select(x => (x * 100).ToString("F0").PadLeft(3)));
+        }
+        rows[k] = line + "  maxdev " + (dev * 100).ToString("F0") + "%";
+        lock (rows) worst = Math.Max(worst, dev);
+    });
+    Console.WriteLine("track".PadRight(22) + "going".PadRight(16) + " Nige Senko Sashi Oikomi (per-runner win %, uniform 8.33)");
+    foreach (var l in rows) Console.WriteLine(l);
+    Console.WriteLine("worst deviation from uniform: " + (worst * 100).ToString("F0") + "%");
     return 0;
 }
 if (args.Length >= 2 && args[0] == "rider-sweep")

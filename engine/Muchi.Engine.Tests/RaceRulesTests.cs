@@ -571,12 +571,12 @@ namespace Muchi.Engine.Tests
         [Fact]
         public void TimeAttackMedalsMatchTheHarnessForEveryCourse()
         {
-            // the medal times in server/master/progression.json are the ta-thresholds output rounded up to 0.1s
+            // the medal times in server/master/progression.json are the ta-thresholds output rounded up to 0.1s (all courses)
             var root = Muchi.Net.JsonNode.Parse(System.IO.File.ReadAllText(System.IO.Path.Combine(TestUtil.RepoRoot, "server", "master", "progression.json")));
             var milestones = root.Get("timeAttack").Get("milestones").Items.ToList();
             var tracks = BalanceHarness.LoadServerTracks(System.IO.Path.Combine(TestUtil.RepoRoot, "server", "master", "tracks.json"))
-                .Where(t => t.Id.StartsWith("nordhaven") || t.Id.StartsWith("santalucera") || t.Id.StartsWith("bellmoor")).ToList();
-            Assert.Equal(3, tracks.Count);
+                .ToList();
+            Assert.Equal(8, tracks.Count); // every course: ruleset 1.2 recomputed all medal times from the harness
             foreach (var (track, gold, silver, bronze) in BalanceHarness.TimeAttackThresholds(TestUtil.Ruleset(), tracks, 3200, 80))
             {
                 long Medal(string kind) => milestones.Single(x => !x.Get("trackId").IsNull && x.Get("trackId").AsString() == track && x.Get("id").AsString().EndsWith("_" + kind)).Get("maxTimeMs").AsLong();

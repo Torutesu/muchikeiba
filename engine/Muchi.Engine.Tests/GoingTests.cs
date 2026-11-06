@@ -84,6 +84,54 @@ namespace Muchi.Engine.Tests
         }
 
         [Fact]
+        public void Ruleset110WithoutDistanceKeysParsesAndRoundTrips()
+        {
+            var doc = JsonNode.Parse(File.ReadAllText(Golden(Path.Combine("legacy", "race-turf2000-cpu12.ruleset-1.1.0.json"))));
+            var cfgNode = doc.Get("log").Get("config");
+            var cfg = ProtocolCodec.ParseConfig(cfgNode);
+            Assert.True(cfg.Ruleset.HasBalanceKeys);
+            Assert.False(cfg.Ruleset.HasDistanceKeys);
+            Assert.Equal(1000, cfg.Ruleset.DistanceFactorPermille(1200, false, 1000));
+            Assert.Equal(cfgNode.ToString(), ProtocolCodec.ConfigToJson(cfg).ToString());
+        }
+
+        [Fact]
+        public void PartialDistanceKeySetIsRejected()
+        {
+            var node = JsonNode.Parse(File.ReadAllText(TestUtil.DefaultRulesetPath));
+            var trimmed = JsonNode.Obj();
+            foreach (var p in node.Props) if (p.Key != "distanceRefDirtM") trimmed.Set(p.Key, p.Value);
+            Assert.Throws<FormatException>(() => ProtocolCodec.ParseRuleset(trimmed));
+        }
+
+        [Fact]
+        public void StaminaAndSpurtZoneScaleWithDistanceFromRuleset12()
+        {
+            // ruleset 1.2: pool and spurt zone ∝ distance / reference (turf 2000m, dirt 1850m), so every course drains the
+            // same share of stamina per metre and closers/front-runners keep the same balance at 1200m and 2400m
+            var rs = TestUtil.Ruleset();
+            Assert.True(rs.HasDistanceKeys);
+            HorseState Start(Surface surface, int distanceM, out RaceSim sim)
+            {
+                var track = new TrackSpec { Id = "t", Surface = surface, DistanceM = distanceM, Segments = { new TrackSegment(SegmentKind.Straight, distanceM) } };
+                var h = SampleRaces.Horse("h", 500, RunningStyle.Nige);
+                h.Surface = Surface.Both; h.DistMinM = 1000; h.DistMaxM = 3000;
+                sim = new RaceSim(SampleRaces.Config("d", 1, track, rs, new List<HorseSpec> { h }));
+                return sim.GetHorse(0);
+            }
+            var at2000 = Start(Surface.Turf, 2000, out var s2000);
+            var at1200 = Start(Surface.Turf, 1200, out var s1200);
+            var at2400 = Start(Surface.Turf, 2400, out var s2400);
+            var dirt1850 = Start(Surface.Dirt, 1850, out _);
+            Assert.Equal(at2000.StaminaMax.Raw * 6 / 10, at1200.StaminaMax.Raw);
+            Assert.Equal(at2000.StaminaMax.Raw * 12 / 10, at2400.StaminaMax.Raw);
+            Assert.Equal(at2000.StaminaMax.Raw, dirt1850.StaminaMax.Raw);
+            Assert.Equal(rs.SpurtDistanceM, s2000.SpurtZoneM);
+            Assert.Equal(rs.SpurtDistanceM * 6 / 10, s1200.SpurtZoneM);
+            Assert.Equal(rs.SpurtDistanceM * 12 / 10, s2400.SpurtZoneM);
+        }
+
+        [Fact]
         public void LegacyRulesetRoundTripsWithoutGainingKeys()
         {
             var legacy = JsonNode.Parse(File.ReadAllText(Golden(Path.Combine("legacy", "race-turf2000-cpu12.ruleset-1.0.json"))));

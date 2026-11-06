@@ -95,6 +95,30 @@ namespace Muchi.Engine
         /// <summary>True when the balance keys were present (absent in rulesets before 1.1; then the values above apply).</summary>
         public bool HasBalanceKeys;
 
+        // ---- distance scaling (ruleset 1.2, docs/spec/balance-targets.md §2 "1.2.0 で変えたもの") ----
+        /// <summary>Turf reference distance for the scaling below (0 = off: stamina and spurt zone ignore the race distance).</summary>
+        public int DistanceRefM;
+        /// <summary>Dirt reference distance (dirt drains more, so the same balance sits at a shorter distance).</summary>
+        public int DistanceRefDirtM;
+        /// <summary>How much of the distance ratio the stamina pool follows (‰; 1000 = proportional to distance / ref).</summary>
+        public int StaminaDistanceScalePermille;
+        /// <summary>How much of the distance ratio the spurt zone length follows (‰; 1000 = proportional).</summary>
+        public int SpurtDistanceScalePermille;
+        /// <summary>True when the distance keys were present (absent before 1.2; then nothing scales with distance).</summary>
+        public bool HasDistanceKeys;
+
+        /// <summary>
+        /// Permille factor for a race of <paramref name="distanceM"/>: 1000 + scale × (distance − ref) / ref, clamped to 200..5000,
+        /// with the surface's reference distance. Exactly 1000 when the distance keys are absent or off.
+        /// </summary>
+        public int DistanceFactorPermille(int distanceM, bool dirt, int scalePermille)
+        {
+            int refM = dirt ? DistanceRefDirtM : DistanceRefM;
+            if (refM <= 0 || scalePermille == 0) return 1000;
+            long f = 1000 + (long)scalePermille * (distanceM - refM) / refM;
+            return (int)Math.Max(200, Math.Min(5000, f));
+        }
+
         /// <summary>Every integer key, in canonical order (rulesetVersion is the extra string key).</summary>
         public static readonly string[] IntKeys =
         {
@@ -150,6 +174,15 @@ namespace Muchi.Engine
         /// <summary>Neutral values for <see cref="BalanceIntKeys"/> (same order).</summary>
         public static readonly int[] BalanceNeutralValues = { 0, 1, 3, 0, 0, 0 };
 
+        /// <summary>
+        /// Third optional group (ruleset 1.2): stamina pool and spurt zone scale with the race distance, so a course's
+        /// running-style balance no longer depends on its length. All or none; absent = nothing scales (1.1 and older).
+        /// </summary>
+        public static readonly string[] DistanceIntKeys = { "distanceRefM", "distanceRefDirtM", "staminaDistanceScalePermille", "spurtDistanceScalePermille" };
+
+        /// <summary>Neutral values for <see cref="DistanceIntKeys"/> (same order).</summary>
+        public static readonly int[] DistanceNeutralValues = { 0, 0, 0, 0 };
+
         /// <summary>Builds params from a key/value map. Missing or unknown keys throw ArgumentException.</summary>
         public static RulesetParams FromValues(string rulesetVersion, IDictionary<string, long> values)
         {
@@ -157,6 +190,7 @@ namespace Muchi.Engine
             var known = new HashSet<string>(IntKeys);
             foreach (var k in OptionalIntKeys) known.Add(k);
             foreach (var k in BalanceIntKeys) known.Add(k);
+            foreach (var k in DistanceIntKeys) known.Add(k);
             foreach (var k in values.Keys)
                 if (!known.Contains(k)) throw new ArgumentException("unknown ruleset key: " + k);
             int optionalPresent = 0;
@@ -167,6 +201,10 @@ namespace Muchi.Engine
             foreach (var k in BalanceIntKeys) if (values.ContainsKey(k)) balancePresent++;
             if (balancePresent != 0 && balancePresent != BalanceIntKeys.Length)
                 throw new ArgumentException("balance ruleset keys must be all present or all absent");
+            int distancePresent = 0;
+            foreach (var k in DistanceIntKeys) if (values.ContainsKey(k)) distancePresent++;
+            if (distancePresent != 0 && distancePresent != DistanceIntKeys.Length)
+                throw new ArgumentException("distance ruleset keys must be all present or all absent");
             foreach (var k in IntKeys)
                 if (!values.ContainsKey(k)) throw new ArgumentException("missing ruleset key: " + k);
 
@@ -254,6 +292,14 @@ namespace Muchi.Engine
                 p.AutoRailHoldTicks = G("autoRailHoldTicks");
                 p.CpuSloppyMaxLevel = G("cpuSloppyMaxLevel");
             }
+            if (distancePresent > 0)
+            {
+                p.HasDistanceKeys = true;
+                p.DistanceRefM = G("distanceRefM");
+                p.DistanceRefDirtM = G("distanceRefDirtM");
+                p.StaminaDistanceScalePermille = G("staminaDistanceScalePermille");
+                p.SpurtDistanceScalePermille = G("spurtDistanceScalePermille");
+            }
             p.Validate();
             return p;
         }
@@ -297,6 +343,11 @@ namespace Muchi.Engine
                 int[] bal = { ConditionVariancePermille, CpuStaminaReinMinLevel, CpuRailMinLevel, AutoRailIntervalTicks, AutoRailHoldTicks, CpuSloppyMaxLevel };
                 for (int i = 0; i < BalanceIntKeys.Length; i++) v.Add(new KeyValuePair<string, long>(BalanceIntKeys[i], bal[i]));
             }
+            if (HasDistanceKeys)
+            {
+                int[] dist = { DistanceRefM, DistanceRefDirtM, StaminaDistanceScalePermille, SpurtDistanceScalePermille };
+                for (int i = 0; i < DistanceIntKeys.Length; i++) v.Add(new KeyValuePair<string, long>(DistanceIntKeys[i], dist[i]));
+            }
             return v;
         }
 
@@ -323,6 +374,9 @@ namespace Muchi.Engine
             if (CpuRailMinLevel < 1 || CpuRailMinLevel > 6) throw new ArgumentException("cpuRailMinLevel must be 1..6");
             if (AutoRailIntervalTicks < 0 || AutoRailHoldTicks < 0) throw new ArgumentException("autoRail values must be >= 0");
             if (CpuSloppyMaxLevel < 0 || CpuSloppyMaxLevel > 5) throw new ArgumentException("cpuSloppyMaxLevel must be 0..5");
+            if (DistanceRefM < 0 || DistanceRefM > 10000 || DistanceRefDirtM < 0 || DistanceRefDirtM > 10000) throw new ArgumentException("distanceRefM/distanceRefDirtM must be 0..10000");
+            if (StaminaDistanceScalePermille < 0 || StaminaDistanceScalePermille > 2000 || SpurtDistanceScalePermille < 0 || SpurtDistanceScalePermille > 2000)
+                throw new ArgumentException("distance scale values must be 0..2000");
         }
         private static bool Permille(int v) => v >= 500 && v <= 2000;
     }

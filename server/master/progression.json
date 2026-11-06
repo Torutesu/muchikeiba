@@ -380,7 +380,7 @@
   "replayHoldDays": { "verified": 90 },
   "friendRewardDailyCap": 5,
   "timeAttack": {
-    "_note": "REQ-TA-*。statCap はランク戦B級と同じ。メダル秒数は docs/spec/balance-targets.md の方法でシミュレーションから決める（ルールセット1.1.0・タイムアタックは調子の揺らぎなし、上限いっぱいの馬80本）: gold = 上手い人の上位10%、silver = 上手い人の中央値、bronze = 初心者の中央値。再計算: `dotnet run --project engine/Muchi.Verifier -- ta-thresholds <ruleset.json> <server/master/tracks.json> 3200`（絶対パス）。",
+    "_note": "REQ-TA-*。statCap はランク戦B級と同じ。メダル秒数は docs/spec/balance-targets.md の方法でシミュレーションから決める（ルールセット1.2.0・タイムアタックは調子の揺らぎなし、全コース、上限いっぱいの馬80本）: gold = 上手い人の上位10%、silver = 上手い人の中央値、bronze = 初心者の中央値。再計算: `dotnet run --project engine/Muchi.Verifier -- ta-thresholds <ruleset.json> <server/master/tracks.json> 3200`（絶対パス）。",
     "statCap": 3200,
     "maxAttemptsPerDay": 30,
     "sessionTtlMs": 600000,
@@ -399,7 +399,7 @@
       {
         "id": "ta_aoba_1600_bronze",
         "trackId": "aoba_turf_1600",
-        "maxTimeMs": 70100,
+        "maxTimeMs": 72300,
         "reward": {
           "freeCoins": 30
         }
@@ -407,7 +407,7 @@
       {
         "id": "ta_aoba_1600_silver",
         "trackId": "aoba_turf_1600",
-        "maxTimeMs": 69500,
+        "maxTimeMs": 70600,
         "reward": {
           "freeCoins": 60
         }
@@ -415,7 +415,7 @@
       {
         "id": "ta_aoba_1600_gold",
         "trackId": "aoba_turf_1600",
-        "maxTimeMs": 68200,
+        "maxTimeMs": 69300,
         "reward": {
           "freeCoins": 100
         }
@@ -447,7 +447,7 @@
       {
         "id": "ta_minato_2400_bronze",
         "trackId": "minato_turf_2400",
-        "maxTimeMs": 111600,
+        "maxTimeMs": 107000,
         "reward": {
           "freeCoins": 30
         }
@@ -455,7 +455,7 @@
       {
         "id": "ta_minato_2400_silver",
         "trackId": "minato_turf_2400",
-        "maxTimeMs": 106500,
+        "maxTimeMs": 105000,
         "reward": {
           "freeCoins": 60
         }
@@ -463,7 +463,7 @@
       {
         "id": "ta_minato_2400_gold",
         "trackId": "minato_turf_2400",
-        "maxTimeMs": 104000,
+        "maxTimeMs": 102900,
         "reward": {
           "freeCoins": 100
         }
@@ -471,7 +471,7 @@
       {
         "id": "ta_aoba_dirt_1400_bronze",
         "trackId": "aoba_dirt_1400",
-        "maxTimeMs": 63000,
+        "maxTimeMs": 65400,
         "reward": {
           "freeCoins": 30
         }
@@ -479,7 +479,7 @@
       {
         "id": "ta_aoba_dirt_1400_silver",
         "trackId": "aoba_dirt_1400",
-        "maxTimeMs": 62400,
+        "maxTimeMs": 63900,
         "reward": {
           "freeCoins": 60
         }
@@ -487,7 +487,7 @@
       {
         "id": "ta_aoba_dirt_1400_gold",
         "trackId": "aoba_dirt_1400",
-        "maxTimeMs": 61200,
+        "maxTimeMs": 62700,
         "reward": {
           "freeCoins": 100
         }
@@ -495,7 +495,7 @@
       {
         "id": "ta_minato_dirt_1800_bronze",
         "trackId": "minato_dirt_1800",
-        "maxTimeMs": 82900,
+        "maxTimeMs": 83300,
         "reward": {
           "freeCoins": 30
         }
@@ -503,7 +503,7 @@
       {
         "id": "ta_minato_dirt_1800_silver",
         "trackId": "minato_dirt_1800",
-        "maxTimeMs": 81400,
+        "maxTimeMs": 81600,
         "reward": {
           "freeCoins": 60
         }
@@ -511,7 +511,7 @@
       {
         "id": "ta_minato_dirt_1800_gold",
         "trackId": "minato_dirt_1800",
-        "maxTimeMs": 79900,
+        "maxTimeMs": 80000,
         "reward": {
           "freeCoins": 100
         }
@@ -519,7 +519,7 @@
       {
         "id": "ta_nordhaven_2400_bronze",
         "trackId": "nordhaven_turf_2400",
-        "maxTimeMs": 111600,
+        "maxTimeMs": 107000,
         "reward": {
           "freeCoins": 30
         }
@@ -527,7 +527,7 @@
       {
         "id": "ta_nordhaven_2400_silver",
         "trackId": "nordhaven_turf_2400",
-        "maxTimeMs": 106500,
+        "maxTimeMs": 105000,
         "reward": {
           "freeCoins": 60
         }
@@ -535,7 +535,7 @@
       {
         "id": "ta_nordhaven_2400_gold",
         "trackId": "nordhaven_turf_2400",
-        "maxTimeMs": 104000,
+        "maxTimeMs": 102900,
         "reward": {
           "freeCoins": 100
         }
@@ -543,7 +543,7 @@
       {
         "id": "ta_santalucera_dirt_1700_bronze",
         "trackId": "santalucera_dirt_1700",
-        "maxTimeMs": 77600,
+        "maxTimeMs": 78800,
         "reward": {
           "freeCoins": 30
         }
@@ -551,7 +551,7 @@
       {
         "id": "ta_santalucera_dirt_1700_silver",
         "trackId": "santalucera_dirt_1700",
-        "maxTimeMs": 76600,
+        "maxTimeMs": 77100,
         "reward": {
           "freeCoins": 60
         }
@@ -559,7 +559,7 @@
       {
         "id": "ta_santalucera_dirt_1700_gold",
         "trackId": "santalucera_dirt_1700",
-        "maxTimeMs": 75200,
+        "maxTimeMs": 75700,
         "reward": {
           "freeCoins": 100
         }
@@ -567,7 +567,7 @@
       {
         "id": "ta_bellmoor_1200_bronze",
         "trackId": "bellmoor_turf_1200",
-        "maxTimeMs": 51900,
+        "maxTimeMs": 55100,
         "reward": {
           "freeCoins": 30
         }
@@ -575,7 +575,7 @@
       {
         "id": "ta_bellmoor_1200_silver",
         "trackId": "bellmoor_turf_1200",
-        "maxTimeMs": 51200,
+        "maxTimeMs": 53500,
         "reward": {
           "freeCoins": 60
         }
@@ -583,7 +583,7 @@
       {
         "id": "ta_bellmoor_1200_gold",
         "trackId": "bellmoor_turf_1200",
-        "maxTimeMs": 50300,
+        "maxTimeMs": 52500,
         "reward": {
           "freeCoins": 100
         }

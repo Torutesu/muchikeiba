@@ -31,9 +31,19 @@ export const BALANCE_RULESET_KEYS: readonly string[] = [
   'conditionVariancePermille', 'cpuStaminaReinMinLevel', 'cpuRailMinLevel', 'autoRailIntervalTicks', 'autoRailHoldTicks', 'cpuSloppyMaxLevel',
 ];
 
+/**
+ * Third optional group, added by ruleset 1.2 (docs/spec/balance-targets.md §2): the stamina pool and spurt zone scale
+ * with the race distance, so a course's length no longer decides which running style wins. Absent in 1.1.x and older
+ * rulesets (nothing scales). All or none. Must equal RulesetParams.DistanceIntKeys (checked by a test).
+ */
+export const DISTANCE_RULESET_KEYS: readonly string[] = [
+  'distanceRefM', 'distanceRefDirtM', 'staminaDistanceScalePermille', 'spurtDistanceScalePermille',
+];
+
 const OPTIONAL_GROUPS: { keys: readonly string[]; label: string }[] = [
   { keys: OPTIONAL_RULESET_KEYS, label: 'ground-condition' },
   { keys: BALANCE_RULESET_KEYS, label: 'balance (1.1)' },
+  { keys: DISTANCE_RULESET_KEYS, label: 'distance (1.2)' },
 ];
 
 export function rulesetKeyProblems(candidate: Record<string, unknown>, reference: Record<string, unknown> = DEFAULT_RULESET): string[] {

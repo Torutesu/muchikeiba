@@ -35,18 +35,41 @@ namespace Muchi.Game
         public string RawNonce;
         /// <summary>Google: optional OAuth access token.</summary>
         public string AccessToken;
+        /// <summary>
+        /// An SDK credential to use as-is instead of building one from the tokens. Set when Firebase hands back a
+        /// replacement credential after a failed link: Apple credentials are single-use, so switching accounts must
+        /// sign in with the replacement (FirebaseAccountLinkException.UserInfo.UpdatedCredential), not the original.
+        /// </summary>
+        public object SdkCredential;
 
         public static FederatedCredential FromApple(string idToken, string rawNonce) => new FederatedCredential { Provider = Apple, IdToken = idToken, RawNonce = rawNonce };
         public static FederatedCredential FromGoogle(string idToken, string accessToken = null) => new FederatedCredential { Provider = Google, IdToken = idToken, AccessToken = accessToken };
+        /// <summary>Wraps a replacement credential returned by the SDK (see <see cref="SdkCredential"/>).</summary>
+        public static FederatedCredential FromSdk(string provider, object sdkCredential) => new FederatedCredential { Provider = provider, SdkCredential = sdkCredential };
+
+        internal bool Usable => SdkCredential != null || !string.IsNullOrEmpty(IdToken);
     }
 
     /// <summary>The Apple/Google identity already belongs to another Muchi account.</summary>
     public sealed class CredentialInUseException : Exception
     {
-        public CredentialInUseException(string message = "credential already in use") : base(message) { }
+        /// <summary>Credential to sign in with when switching to that account (null = the original can be reused, e.g. Google).</summary>
+        public FederatedCredential Replacement { get; }
+        public CredentialInUseException(string message = "credential already in use", FederatedCredential replacement = null) : base(message) { Replacement = replacement; }
     }
 
-    public enum LinkResult { Linked, CredentialInUse }
+    /// <summary>The current user already has an identity of this provider (a different Apple/Google account is linked).</summary>
+    public sealed class ProviderAlreadyLinkedException : Exception
+    {
+        public ProviderAlreadyLinkedException(string message = "provider already linked") : base(message) { }
+    }
+
+    /// <summary>
+    /// Linked: done. CredentialInUse: another Muchi account owns this identity (UI may offer
+    /// <see cref="FirebaseAuthTokenProvider.SwitchToExistingAccountAsync"/>). ProviderAlreadyLinked: this account already
+    /// has an Apple/Google identity — nothing to switch to; tell the player it is already linked.
+    /// </summary>
+    public enum LinkResult { Linked, CredentialInUse, ProviderAlreadyLinked }
 
     /// <summary>
     /// REQ-API-001 (client side): Firebase ID tokens for <see cref="ApiClient"/>.
@@ -71,10 +94,21 @@ namespace Muchi.Game
         /// <summary>Raised after the signed-in user changed (anonymous sign-in, switching accounts).</summary>
         public event Action<string> UserChanged;
 
+        /// <summary>
+        /// The ID token for <see cref="ApiClient"/>. Failures are reported as <see cref="ApiException"/> so every caller's
+        /// offline/error path works: SDK and network problems → <see cref="NetworkException"/> (retry later), a backend that
+        /// already classified its error (it throws ApiException) is passed through unchanged.
+        /// </summary>
         public async Task<string> GetTokenAsync(bool forceRefresh, CancellationToken cancellationToken)
         {
-            await EnsureSignedInAsync(cancellationToken);
-            return await _auth.GetIdTokenAsync(forceRefresh, cancellationToken);
+            try
+            {
+                await EnsureSignedInAsync(cancellationToken);
+                return await _auth.GetIdTokenAsync(forceRefresh, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            catch (ApiException) { throw; }
+            catch (Exception e) { throw new NetworkException("firebase: " + e.Message, e); }
         }
 
         public Task EnsureSignedInAsync(CancellationToken ct)
@@ -82,7 +116,9 @@ namespace Muchi.Game
             if (_auth.HasUser) return Task.CompletedTask;
             lock (_gate)
             {
-                if (_signIn == null || _signIn.IsFaulted || _signIn.IsCanceled) _signIn = SignInAnonymouslyOnce(ct);
+                // A finished sign-in with no user means Firebase signed the user out since (refresh token revoked, user
+                // deleted): sign in again instead of reusing the old, completed task. A running one is shared.
+                if (_signIn == null || _signIn.IsCompleted) _signIn = SignInAnonymouslyOnce(ct);
                 return _signIn;
             }
         }
@@ -99,25 +135,40 @@ namespace Muchi.Game
             if (credential == null || string.IsNullOrEmpty(credential.IdToken)) throw new ArgumentException("credential with an id token required");
             if (credential.Provider == FederatedCredential.Apple && string.IsNullOrEmpty(credential.RawNonce)) throw new ArgumentException("Sign in with Apple needs the raw nonce");
             await EnsureSignedInAsync(ct);
+            PendingSwitchCredential = null;
             try
             {
                 await _auth.LinkAsync(credential, ct);
                 return LinkResult.Linked;
             }
-            catch (CredentialInUseException)
+            catch (CredentialInUseException e)
             {
+                // Apple credentials are single-use: keep the SDK's replacement for the switch. Google can reuse the original.
+                PendingSwitchCredential = e.Replacement ?? credential;
                 return LinkResult.CredentialInUse;
             }
+            catch (ProviderAlreadyLinkedException)
+            {
+                return LinkResult.ProviderAlreadyLinked;
+            }
         }
+
+        /// <summary>After <see cref="LinkResult.CredentialInUse"/>: the credential to switch with (the SDK's replacement when it gave one).</summary>
+        public FederatedCredential PendingSwitchCredential { get; private set; }
 
         /// <summary>
         /// Recovery on a new device: sign in as the account that owns this identity. Progress of the current
         /// anonymous user on this device is left behind, so the UI must confirm with the player first.
+        /// Pass null (or the credential that was just refused) to use <see cref="PendingSwitchCredential"/> — for Apple
+        /// this is the single-use replacement Firebase returned, re-using the original would fail.
         /// </summary>
-        public async Task SwitchToExistingAccountAsync(FederatedCredential credential, CancellationToken ct = default)
+        public async Task SwitchToExistingAccountAsync(FederatedCredential credential = null, CancellationToken ct = default)
         {
-            if (credential == null || string.IsNullOrEmpty(credential.IdToken)) throw new ArgumentException("credential with an id token required");
-            await _auth.SignInWithAsync(credential, ct);
+            var pending = PendingSwitchCredential;
+            var use = pending != null && (credential == null || credential.Provider == pending.Provider) ? pending : credential;
+            if (use == null || !use.Usable) throw new ArgumentException("credential with an id token (or an SDK replacement credential) required");
+            await _auth.SignInWithAsync(use, ct);
+            PendingSwitchCredential = null;
             UserChanged?.Invoke(_auth.UserId);
         }
     }

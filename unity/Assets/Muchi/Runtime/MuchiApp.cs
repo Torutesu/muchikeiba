@@ -82,12 +82,18 @@ namespace Muchi.Client
             if(FindObjectOfType<EventSystem>()==null)new GameObject("EventSystem",typeof(EventSystem),typeof(StandaloneInputModule));
             safe=new GameObject("Safe area",typeof(RectTransform)).GetComponent<RectTransform>();safe.SetParent(canvas.transform,false);
             ApplySafeArea();
+#if MUCHI_FIREBASE
+            MuchiFirebase.Prepare(); // token provider before Create(): staging/production need it even if the first launch is offline
+#endif
             backend=MuchiServices.Create();
             Title();
             InitBackend();
         }
         async void InitBackend()
         {
+#if MUCHI_FIREBASE
+            try{await MuchiFirebase.InitializeAsync();}catch(Exception e){Debug.LogWarning("firebase init: "+e.Message);}
+#endif
             try{await backend.InitializeAsync();}
             catch(Exception e){Debug.LogWarning("backend init: "+e.Message);}
             MuchiServices.Track(Muchi.Client.AnalyticsEvent.SessionStart(MuchiServices.NowMs));
@@ -389,7 +395,7 @@ namespace Muchi.Client
         {
             if(currentScreen!=(Action)Conditions){screenNote=null;roomModel=new RoomConditionsModel(backend,prefs);currentScreen=Conditions;LoadScreenModel(()=>roomModel.LoadAsync(),Conditions);}
             currentScreen=Conditions;
-            int weather=roomModel.Weather,surface=roomModel.Ground,temperature=roomModel.Temperature,wind=roomModel.Wind;
+            int weather=roomModel.Weather,surface=roomModel.GroundAuto?-1:roomModel.Ground,temperature=roomModel.Temperature,wind=roomModel.Wind;
             Clear();SetArt(WeatherArt(weather));
             Panel("Conditions veil",0,0,1600,900,new Color(.015f,.045f,.08f,.55f));
             Panel("Conditions frame",30,45,1540,785,navy);
@@ -406,7 +412,7 @@ namespace Muchi.Client
                 if(i==weather)choose.interactable=false;
             }
             Panel("Detailed settings",50,535,1500,260,new Color(.035f,.095f,.16f,.97f));
-            Label("GROUND",72,546,170,32,16,cyan);
+            Label(surface<0?"GROUND  (AUTO)":"GROUND",72,546,170,32,16,cyan);
             string[] ground={"FIRM","GOOD","SOFT","HEAVY"};
             for(int i=0;i<4;i++){int choice=i;var b=Button(ground[i],250+i*180,530,165,58,()=>SetCondition("muchi.race.surface",choice),i==surface?cyan:navy);if(i==surface)b.interactable=false;}
             Label("TEMPERATURE",72,613,170,32,16,cyan);
@@ -422,7 +428,7 @@ namespace Muchi.Client
         void SetWeather(int choice){roomModel.Weather=choice;RunScreenAction(()=>roomModel.SaveAsync(),Conditions);}
         void SetCondition(string key,int value)
         {
-            if(key=="muchi.race.surface")roomModel.Ground=value;else if(key=="muchi.race.temperature")roomModel.Temperature=value;else roomModel.Wind=value;
+            if(key=="muchi.race.surface")roomModel.SelectGround(value);else if(key=="muchi.race.temperature")roomModel.Temperature=value;else roomModel.Wind=value;
             RunScreenAction(()=>roomModel.SaveAsync(),Conditions);
         }
         void Care()
@@ -640,7 +646,9 @@ namespace Muchi.Client
         {
             if(!backend.Online){StartDriver(backend.CreatePracticeRace((ulong)DateTime.UtcNow.Ticks),"offline",false);return;}
             cancelMatch=false;Matching();
-            var (d,message)=await backend.StartRankedAsync(()=>cancelMatch);
+            IRaceDriver d;string message;
+            try{(d,message)=await backend.StartRankedAsync(()=>cancelMatch);}
+            catch(Exception e){d=null;message="ERROR  /  "+e.Message;Debug.LogWarning("ranked entry: "+e);} // never strand the player on Matching
             if(d==null){if(message!="CANCELLED")Info("MATCHING FAILED",message,Entry);return;}
             StartDriver(d,"ranked",false);
         }

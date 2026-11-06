@@ -89,7 +89,14 @@ Updated: 2026-11-05（エンジン・サーバー接続を追加）
 1. サーバー：`cd server && npm ci && npm run dev`（`DEV_MODE=1`、`http://127.0.0.1:8787`）。ランク戦を1人で確定させるには検証サーバーも必要：`dotnet run --project engine/Muchi.Verifier -- serve --urls http://127.0.0.1:8090` を起動し、`npm run dev` に `--var VERIFIER_URL:http://127.0.0.1:8090` を足す（なければ1人ランク戦は「無効」で終わる）。
 2. Unity：`unity/` を開く → 初回はパッケージ（Muchi Engine / Net / Client SDK）の取り込みを待つ → **Muchi → Create Frontend Scene** → Play。
 3. 接続先は `unity/Assets/Resources/Muchi/server-config.json`（既定 `local` / `http://127.0.0.1:8787`、`x-dev-user` は端末ごとに自動生成）。実機から PC のサーバーへは PlayerPrefs `muchi.server.baseUrl` に PC のIPを入れる。サーバーなしで試すときは `muchi.server.offline` = `1`。
-4. staging / production は Firebase 認証が必要。Firebase Unity SDK（FirebaseAuth）を取り込み、Scripting Define Symbols に `MUCHI_FIREBASE` を追加して、起動時に `await MuchiFirebase.InitializeAsync()` を呼んでから `MuchiServices.Create()` を呼ぶ（`Assets/Muchi/Integration/FirebaseSdkAuth.cs`）。匿名ログイン→Apple/Googleの紐付け→別アカウント時の切り替えのロジックは `Assets/Muchi/Game/FirebaseAuth.cs` にあり、`unity/Checks~/GameChecks` でテスト済み。定義が無い間は従来どおり（ローカルは開発用認証、それ以外はオフライン）。
+4. staging / production は Firebase 認証が必要。Firebase Unity SDK（FirebaseAuth、11.x）を取り込み、`google-services.json` / `GoogleService-Info.plist` を置き、Scripting Define Symbols に `MUCHI_FIREBASE` を追加するだけでよい。**起動時の配線は `MuchiApp` 済み**：
+   - `Awake` で `MuchiFirebase.Prepare()` → `MuchiServices.FirebaseTokens` を設定してから `MuchiServices.Create()`（ApiClient が最初から Firebase のトークンを使う）。
+   - `InitBackend` で `await MuchiFirebase.InitializeAsync()`（依存関係の確認・修復）→ `backend.InitializeAsync()`（bootstrap）。依存関係が使えない端末では警告を出し、bootstrap が失敗してオフライン表示になる（例外で止まらない）。
+   - トークン取得の失敗（SDK 例外・未ログイン）は `NetworkException` として返る：画面側は通常のオフライン／エラー表示、ランク戦エントリーは「NETWORK / …」で終わり「マッチング中」のまま止まらない。
+   - Firebase がユーザーをサインアウトした（トークン失効・ユーザー削除）後の次のリクエストは、自動で匿名ログインし直す。
+   - アカウント連携（設定画面から）：`FirebaseAuthTokenProvider.LinkAsync(cred)` の結果は `Linked` / `CredentialInUse`（別アカウントが所有 → プレイヤーに確認して `SwitchToExistingAccountAsync()`。**Apple の資格情報は使い捨て**なので、引数なしで呼ぶと Firebase が返した差し替え資格情報 `FirebaseAccountLinkException.UserInfo.UpdatedCredential`＝`PendingSwitchCredential` で切り替える）/ `ProviderAlreadyLinked`（この端末のアカウントに既に別の Apple/Google が紐付いている → 切り替えではなく「連携済み」と表示）。
+   - ロジックは `Assets/Muchi/Game/FirebaseAuth.cs`（`unity/Checks~/GameChecks` でテスト）、SDK 呼び出しは `Assets/Muchi/Integration/FirebaseSdkAuth.cs`。`MUCHI_FIREBASE` 付きの型チェックは `dotnet build "unity/Checks~/UnityFirebase"`（SDK のスタブ `FirebaseStubs.cs` に対して。スタブは SDK 11 の公開 API の形を写したもので、本物の確認は SDK を取り込んだ Editor／実機ビルド）。
+   - 定義が無い間は従来どおり（ローカルは開発用認証、それ以外はオフライン）。
 
 ## Unity エディタでの確認が必要なこと（ここでは未確認）
 

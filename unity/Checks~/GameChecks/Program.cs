@@ -60,6 +60,7 @@ static class Program
         await CloseCodeChecks.Run(Check, Ruleset());
         Console.WriteLine("== race feel, tutorial win rule, camera and result debrief (06 §2.3 / §6.3 / §6.4)");
         RaceFeelChecks.Run(Check, Ruleset());
+        await Round8Checks.Run(Check, Ruleset());
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);
@@ -340,10 +341,14 @@ static class Program
 
         var bad = await b.NamePartnerAsync("abc");
         Check(!bad.Ok && !string.IsNullOrEmpty(bad.Message), "server rejects a non-katakana name and the message reaches the screen (" + bad.Message + ")");
-        Check(b.Player.TutorialGachaUsed && b.ScoutReveal().Count == 10, "naming drew the free tutorial 10-pull for the first partner");
+        Check(!b.Player.TutorialGachaUsed && b.Player.PartnerHorseId == null, "a refused name granted nothing and drew no gacha (REQ-UXS-002)");
         var ok = await b.NamePartnerAsync("ユニティタロウ");
-        Check(ok.Ok && b.Profile().PartnerName == "ユニティタロウ", "the partner is named on the server");
-        Check(b.Partner != null && b.Partner.Named, "partner = the named horse");
+        Check(ok.Ok && b.Profile().PartnerName == "ユニティタロウ" && b.Player.PartnerHorseId != null, "the ridden horse is granted and named on the server (POST /v1/player/partner)");
+        Check(b.Partner != null && b.Partner.Named && b.Partner.Id == b.Player.PartnerHorseId && b.Partner.TemplateId == "t_partner", "partner = the granted tutorial horse");
+        Check(!b.Player.TutorialGachaUsed && b.Profile().TutorialScoutAvailable, "the welcome 10-pull is still to come (its own screen after naming)");
+        var scout = await b.EnsureFirstScoutAsync();
+        Check(scout.Ok && b.Player.TutorialGachaUsed && b.ScoutReveal().Count == 10, "the welcome scout draws the free tutorial 10-pull");
+        b.FirstScoutShown();
 
         var products = await b.ProductsAsync();
         Check(products != null && products.Any(p => p.Kind == "coins"), "shop lists coin products from the server (" + (products?.Count ?? 0) + ")");

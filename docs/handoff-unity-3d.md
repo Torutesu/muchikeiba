@@ -54,6 +54,29 @@ Updated: 2026-11-05（エンジン・サーバー接続を追加）
 | `LeaderboardModel` | `LoadAsync(board?)` | – | `Mine`（Rank/Standing）、`Board` |
 | `TournamentsBackend`（大会・観戦、REQ-TOUR/SPEC） | `ListAsync()`、`DetailAsync(id)`、`LiveAsync()` | `RegisterAsync(id)`／`UnregisterAsync(id)`、`JoinHeatAsync(id)` → `IRaceDriver`、`WatchAsync(raceId)` → 観戦用 `IRaceDriver`（PlayerSlot = -1、入力は無視、`delayMs` 遅れで描画） | `Rows`（StatusLabel/CanRegister）、`Heats`（Title/Lines/Watchable）、`Standings`、`JoinNow`、観戦の `Rows`（Title/Subtitle/DelayMs） |
 
+#### Round 8（06 UX 仕様、REQ-UXU-001..017）のビューモデル
+
+`docs/handoff-codex-round8.md` で「model pending」だったものの確定名。文言はすべて日本語でモデルが作る（エラーは `UxText.For(e)`、画面に `CODE / message` を出さない）。
+冪等キーは端末に保存し、答えが返らなかった再試行・アプリ再起動後も同じキーで送る（二重付与なし）。チェックは `unity/Checks~/GameChecks/Round8Checks.cs`。
+
+| ビューモデル（ファイル） | 読み込み | 操作 | バインドする値 |
+|---|---|---|---|
+| `OnboardingFlow`（`OnboardingFlow.cs`） | `ResumeAsync()`（起動ごと。端末の段階とサーバーの事実を合わせ、オフライン中の同意・命名を送る） | `AcceptConsentAsync()`、`StartFirstRace()` → `IRaceDriver`、`FinishFirstRace(RaceResultModel)`、`SubmitNameAsync(name)`、`DrawFirstScoutAsync()`、`FinishFirstScout()`、`EnterHome()` | `Screen`（Consent/FirstRace/Naming/FirstScout/Home/Done）、`ConsentRequired`／`ConsentUpdated`、`ConsentVersions`、`Pulls`（引いた順）、`NameSuggestions`、`Message`、`Busy`。KPI の FTUE ステップは1回ずつ自動送信 |
+| `GameBackend.NamePartnerAsync` | – | 乗った馬を `GrantPartnerAsync` で付与・命名（ガチャは引かない）。10連は `EnsureFirstScoutAsync()` → 表示後 `FirstScoutShown()` | `Partner`（付与した相棒が優先）、`PendingPartnerName` |
+| `HomeModel`／`UnlockGate`（`HomeModels.cs`） | `LoadAsync()`（ログボ自動受け取り・ミッション・新しく開いた機能） | – | `PrimaryLabel`、`Tiles[]`（`Unlocked`／`LockLabel`「あと3戦で開放」）、`TodayLines`、`SeasonLine`、`Toast`、`NewlyUnlocked`（`UnlockGate.Guides` の1画面案内）、`DeletionBanner` |
+| `LoginBonusModel` | `AutoClaimAsync()` | – | `Toast`（「はじめての7日間 2日目：繁殖牝馬1頭」）、`ClaimedToday` |
+| `MissionBoardModel` | `LoadAsync()` | `ClaimAsync(id)`（デイリー・初心者・シーズン共通） | `Daily`／`Beginner`／`Season`（`MissionRow`：`Claimable`・`Locked`・`ProgressText`・`RewardText`）、`DailyLine`、`FirstWinLine`、`NextBeginner` |
+| `ShopModel`（`ShopModels.cs`） | `LoadAsync()`、`LoadOffersAsync()`（結果画面を閉じた後に呼ぶ＝スターターの判定） | `PopupFor(OfferContext)` → `MarkShownAsync(offer)`、`Click(offer)` | `Cards(tab)`（`ProductCard`：`Lines`・`BonusLabel`・`PeriodText`・`OneTimeText`・`Notices`・`Purchasable`／`DisabledReason`）、`PaidLine`／`FreeLine`／`DebtLine`、`FirstPurchaseNote`、`PaidFirstNote`、`LegalLinks`、`Countdown(offer)`、`DeletionBanner` |
+| `PurchaseConfirmModel` | `OpenAsync(productId)`、`ResumePendingAsync()`（起動時：未送信のレシート） | `SubmitBirthMonthAsync(y, m)`、`SubmitGuardianConsentAsync(bool)`、`BeginStore()`、`StoreFinishedAsync(outcome, platform, receipt)` | `Stage`（NeedsBirthMonth/NeedsGuardian/Ready/InStore/Pending/StoreFailed/Blocked/Completed…）、`Lines`、`Message` |
+| `AllowanceModel` | `LoadAsync()` | `ClaimAsync()` | `StatusLine`、`CanClaim`、`Stale`（日付が変わったら読み直す） |
+| `SeasonPassModel`（`PassAndAccountModels.cs`） | `LoadAsync()` | `ClaimAsync(track, level)`、`ClaimAllAsync()` | `Rows[30]`（`PassLevelRow`）、`XpLine`、`PeriodLine`、`PrimaryAction`、`PurchaseProductId`／`CanBuy`、`LastSeasonNote`、`Ended` |
+| `AccountDeletionModel` | （`Player.Deletion` から） | `RequestAsync()`、`ConfirmAsync()`、`CancelAsync()`、`Restart()` | `Stage`、`ForfeitLines`、`Notice`、`ScheduledLine`、`TokenValid`。削除予定中は `DeletionGuard.Pending(backend)` で購入系を全て止める |
+| `GameDay` | – | – | `DaysUntil`／`Key`／`UntilLabel`（「11月30日 23:59まで」）。サーバーの `time.ts` と同じ日付の切り替え |
+
+`MuchiApp` の配線（このラウンドで入れたもの）：レースごとに `RaceObserver` を作り `observer.Hud(now)` で HUD を更新、結果は `RaceResultModel.Build(driver, observer)`
+（チュートリアルの負けは「もう一度」で次の試行へ）、途中退出で KPI `race_quit`、FTUE の KPI を固定のステップ名に。未配線（画面の作り直しが要る）：
+カメラ（`RaceWorld` に `Frame` と `ApplyCamera` が要る）、`hud.Cues` の触覚・効果音、結果画面の1行・着順表、タイトルの同意と上の各画面（`MuchiApp.Title` の TODO）。
+
 カードの番号とサーバーIDの対応は `ScreenIds`（ケア・コースの見た目・天気・馬場・気温・風）。タイムアタックの `StartAsync` が返すドライバーは
 練習レースと同じ `OfflineRaceDriver`（`Run.Race` を直接走らせる）なので、レース画面はそのまま使える。
 

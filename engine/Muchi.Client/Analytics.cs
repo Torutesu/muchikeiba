@@ -51,6 +51,62 @@ namespace Muchi.Client
         public static AnalyticsEvent PushOpen(long atMs, string templateId) => new AnalyticsEvent("push_open", atMs, JsonNode.Obj().Set("templateId", Id(templateId, 32, "templateId")));
         public static AnalyticsEvent PushPermission(long atMs, bool granted) => new AnalyticsEvent("push_permission", atMs, JsonNode.Obj().Set("granted", granted));
 
+        // ---- REQ-UXS-030 (server/src/domain/kpi.ts clientEventSchema)
+
+        /// <summary>The fixed FTUE step list (protocol §8.7); the server checks that index = position + 1.</summary>
+        public static readonly IReadOnlyList<string> FtueSteps = new[] { "consent", "race1_start", "race1_whip", "race1_win", "named", "gacha_done", "race2_done", "home" };
+        /// <summary>§5.1 offer triggers.</summary>
+        public static readonly IReadOnlyList<string> OfferTriggers = new[] { "T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8" };
+        /// <summary>race_quit modes (a superset of race_start's).</summary>
+        public static readonly IReadOnlyList<string> QuitModes = new[] { "ranked", "friend", "tutorial", "offline", "time_attack", "event", "tournament" };
+
+        private static int IndexIn(IReadOnlyList<string> list, string v)
+        {
+            for (int i = 0; i < list.Count; i++) if (list[i] == v) return i;
+            return -1;
+        }
+
+        /// <summary>
+        /// REQ-UXS-030: one step of the fixed FTUE funnel (<see cref="FtueSteps"/>), with the index the server expects.
+        /// <paramref name="value"/> is optional (race1_win: retries before the win; 0..1,000,000).
+        /// </summary>
+        public static AnalyticsEvent FtueStep(long atMs, string step, int? value = null)
+        {
+            int i = IndexIn(FtueSteps, step);
+            if (i < 0) throw new ArgumentException("unknown FTUE step " + step);
+            var p = JsonNode.Obj().Set("step", step).Set("index", i + 1);
+            if (value.HasValue) p.Set("value", Math.Max(0, Math.Min(value.Value, 1_000_000)));
+            return new AnalyticsEvent("tutorial_step", atMs, p);
+        }
+
+        /// <summary>A home feature opened for the player (REQ-UXS-014 unlock key, e.g. "shop").</summary>
+        public static AnalyticsEvent FeatureUnlock(long atMs, string feature) => new AnalyticsEvent("feature_unlock", atMs, JsonNode.Obj().Set("feature", Id(feature, 32, "feature")));
+
+        /// <summary>A one-time offer sheet was shown (trigger T1..T8 = the §5.1 touchpoint).</summary>
+        public static AnalyticsEvent OfferView(long atMs, string offerId, string trigger) => Offer("offer_view", atMs, offerId, trigger);
+        /// <summary>The player tapped through an offer.</summary>
+        public static AnalyticsEvent OfferClick(long atMs, string offerId, string trigger) => Offer("offer_click", atMs, offerId, trigger);
+
+        private static AnalyticsEvent Offer(string name, long atMs, string offerId, string trigger)
+        {
+            if (IndexIn(OfferTriggers, trigger) < 0) throw new ArgumentException("unknown offer trigger " + trigger);
+            return new AnalyticsEvent(name, atMs, JsonNode.Obj().Set("offerId", Id(offerId, 64, "offerId")).Set("trigger", trigger));
+        }
+
+        /// <summary>The player left a race before the finish; remainingM is clamped to 0..10,000.</summary>
+        public static AnalyticsEvent RaceQuit(long atMs, string mode, int remainingM)
+        {
+            if (IndexIn(QuitModes, mode) < 0) throw new ArgumentException("unknown race mode " + mode);
+            return new AnalyticsEvent("race_quit", atMs, JsonNode.Obj().Set("mode", mode).Set("remainingM", Math.Max(0, Math.Min(remainingM, 10_000))));
+        }
+
+        /// <summary>The account was linked to a sign-in provider (apple | google).</summary>
+        public static AnalyticsEvent AccountLink(long atMs, string provider)
+        {
+            if (provider != "apple" && provider != "google") throw new ArgumentException("unknown provider " + provider);
+            return new AnalyticsEvent("account_link", atMs, JsonNode.Obj().Set("provider", provider));
+        }
+
         internal JsonNode ToJson()
         {
             var o = JsonNode.Obj();

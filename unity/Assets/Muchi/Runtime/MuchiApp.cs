@@ -17,6 +17,11 @@ namespace Muchi.Client
         // Server-backed state (offline fallback) and the authoritative race (engine via IRaceDriver).
         GameBackend backend;
         IRaceDriver driver;
+        // Round 8 (handoff §3): one RaceObserver per race — race-feel cues, the debrief line and the camera rig.
+        // TODO(Codex, REQ-UXU-008): apply observer.CameraShot(world.Frame, now) after world.Present once RaceWorld exposes
+        // its CourseFrame and an ApplyCamera(WorldCameraShot) (RaceWorld's chase camera is visual code, not touched here).
+        RaceObserver observer;
+        string raceMode;
         readonly RaceInput input = new RaceInput();
         CommentaryFeed commentary;
         Text subtitle, raceStatus, spurButtonText;
@@ -184,6 +189,13 @@ namespace Muchi.Client
             Panel("Title accent rule",82,335,65,4,gold);
             Label(LocaleService.IsJapanese?"最後の直線を、\n相棒と。":"Win together on the final straight.",78,370,720,180,54,Color.white);
             Label("A RACE IS WON IN THE LAST STRAIGHT.",84,560,720,42,21,new Color(.88f,.93f,.96f));
+            // TODO(Codex, REQ-UXU-001..005): drive the FTUE from Muchi.Game.OnboardingFlow — after InitBackend call
+            // flow.ResumeAsync() and open flow.Screen (Consent → this button becomes 「同意してはじめる」 with the terms /
+            // privacy links and calls flow.AcceptConsentAsync(); FirstRace → flow.StartFirstRace(); Naming →
+            // flow.SubmitNameAsync; FirstScout → flow.DrawFirstScoutAsync + flow.Pulls in draw order, then
+            // flow.FinishFirstScout(); Home → flow.EnterHome()). Home tiles / today's list / locks: Muchi.Game.HomeModel;
+            // shop / pass / settings: ShopModel, PurchaseConfirmModel, AllowanceModel, SeasonPassModel, AccountDeletionModel.
+            // Left as is here because each needs new screen layout.
             var start=Button("RACE  /  START",80,690,420,()=>BeginRace(true));
             start.GetComponent<Image>().color=cyan;
             Label("TAP TO RIDE",90,785,400,34,17,new Color(.89f,.96f,1f));
@@ -247,11 +259,12 @@ namespace Muchi.Client
         async void ConfirmName(string raw)
         {
             var value=(raw??"").Trim();if(value.Length<2){Info("NAME REQUIRED","Use 2 to 12 characters.",NamePartner);return;}
-            // Online: the server draws the free first scout if needed, names the partner and checks the NG list.
+            // Online: the server grants the horse ridden in the tutorial as the first partner and checks the name (round 8,
+            // REQ-UXS-002: no gacha here any more; the free 10-pull is the Scout screen that follows).
             var r=await backend.NamePartnerAsync(value);
             if(!r.Ok){pendingName=value;Info("NAME NOT ACCEPTED",r.Message,NamePartner);return;}
             horseName=value;pendingName=value;PlayerPrefs.SetString("muchi.partner",value);PlayerPrefs.Save();
-            MuchiServices.Track(Muchi.Client.AnalyticsEvent.TutorialStep(MuchiServices.NowMs,"naming",2));
+            MuchiServices.Track(Muchi.Client.AnalyticsEvent.FtueStep(MuchiServices.NowMs,"named")); // round 8: fixed FTUE step names (protocol §8.7)
             Scout();
         }
         void Stable()
@@ -298,7 +311,7 @@ namespace Muchi.Client
         {
             // Online: the one free tutorial 10-pull is drawn by the server (or was drawn when naming).
             if(backend.Online){var r=await backend.EnsureFirstScoutAsync();if(!r.Ok){Info("SCOUT FAILED",r.Message,Scout);return;}}
-            MuchiServices.Track(Muchi.Client.AnalyticsEvent.TutorialStep(MuchiServices.NowMs,"scout",3));
+            MuchiServices.Track(Muchi.Client.AnalyticsEvent.FtueStep(MuchiServices.NowMs,"gacha_done"));
             RevealScout();
         }
         void RevealScout()
@@ -318,7 +331,7 @@ namespace Muchi.Client
         }
         void RevealServerScout(List<Muchi.Client.PullResult> pulls)
         {
-            backend.FirstScoutRevealed=true;
+            backend.FirstScoutShown(); // round 8: also forgets the draw's idempotency key kept for a relaunch before the reveal
             currentScreen=RevealScout;Clear();SetArt("Art/scout-reveal");Panel("Scout result",40,70,560,760,navy);
             Label("NEW PARTNERS  /  "+pulls.Count,78,105,475,34,17,cyan);
             string Name(Muchi.Client.PullResult p)=>backend.HorseName(p.HorseId)??p.TemplateId;
@@ -670,7 +683,9 @@ namespace Muchi.Client
         void StartDriver(IRaceDriver next,string mode,bool firstRide)
         {
             tutorial=firstRide;
-            driver?.Dispose();driver=next;input.Reset();commentary=null;
+            observer?.Dispose();driver?.Dispose();driver=next;input.Reset();commentary=null;
+            observer=new RaceObserver(driver);raceMode=mode; // round 8: attaches to Sim/Config itself once the driver has them
+            if(firstRide)MuchiServices.Track(Muchi.Client.AnalyticsEvent.FtueStep(MuchiServices.NowMs,"race1_start"));
             resultSeasonPointsBefore=backend.Player!=null?backend.Player.SeasonPoints:-1;
             MuchiServices.Track(Muchi.Client.AnalyticsEvent.RaceStart(MuchiServices.NowMs,mode));
             BuildRaceScreen();
@@ -702,7 +717,16 @@ namespace Muchi.Client
             dots=new RectTransform[12];
             for(int i=0;i<12;i++)dots[i]=Panel("Runner "+i,1190,735+i*5,6,6,i==0?gold:Color.white).rectTransform;
         }
-        void ExitRace(){driver?.Dispose();driver=null;Home();}
+        void ExitRace()
+        {
+            // round 8: KPI race_quit when leaving before the finish (REQ-UXS-030), and drop the observer's tick subscription
+            if(driver!=null&&!driver.Done&&raceMode!=null&&observer!=null)
+            {
+                var h=observer.Hud(MuchiServices.NowMs);
+                MuchiServices.Track(Muchi.Client.AnalyticsEvent.RaceQuit(MuchiServices.NowMs,raceMode,h.HasRace?h.RemainingM:0));
+            }
+            observer?.Dispose();observer=null;driver?.Dispose();driver=null;Home();
+        }
         bool reinHeld;
         void SetRiderControls(bool on){foreach(var g in riderControls)if(g!=null&&g.activeSelf!=on)g.SetActive(on);}
         void Spur()
@@ -738,7 +762,9 @@ namespace Muchi.Client
                 worldPrepared=true;
             }
             if(worldPrepared)world.Present(driver,now);
-            var hud=HudModel.Build(driver,now);
+            // round 8: the observer records the race (debrief) and feeds the race-feel fields; same HudSnapshot as before.
+            // TODO(Codex, REQ-UXU-007): play haptics / sfx / one-liners from hud.Cues and hud.Hint (visual/audio work).
+            var hud=observer!=null?observer.Hud(now):HudModel.Build(driver,now);
             SetRiderControls(hud.RiderControls);
             UpdateHud(hud);
             subtitle.text=commentary!=null?commentary.Update(driver.Sim):"";
@@ -777,7 +803,12 @@ namespace Muchi.Client
             currentScreen=Result;
             bool first=tutorial;
             var hud=driver!=null?HudModel.Build(driver,MuchiServices.NowMs):new HudSnapshot();
-            int place=hud.FinishPlace>0?hud.FinishPlace:hud.Rank;long timeMs=hud.ElapsedMs;
+            // round 8 (REQ-UXU-009): place / time / the tutorial retry come from RaceResultModel (same order the server
+            // confirmed for online races). The layout below is unchanged.
+            // TODO(Codex, REQ-UXU-009): draw result.Headline, result.DebriefLine / DebriefTip, result.Rows and result.Status,
+            // and rebuild once driver.Phase turns Confirmed / Void (handoff §3); the rewards panel needs its own model.
+            var result=driver!=null?RaceResultModel.Build(driver,observer):new RaceResultModel();
+            int place=result.HasResult&&result.Place>0?result.Place:hud.FinishPlace>0?hud.FinishPlace:hud.Rank;long timeMs=result.HasResult?result.TimeMs:hud.ElapsedMs;
             bool online=driver!=null&&driver.Online;
             string verdict=!online?"PRACTICE  /  NO RANK POINTS":driver.Phase==RacePhase.Confirmed?"CONFIRMED BY THE SERVER":driver.Phase==RacePhase.Void?"RACE VOID  /  NO REWARDS":"CONNECTION FAILED  /  "+(driver.FailureReason??"");
             Clear();SetArt("Art/race-result");Panel("Result detail",42,55,620,780,navy);
@@ -791,9 +822,13 @@ namespace Muchi.Client
             var points=Label(online?(backend.Player!=null?backend.Player.SeasonPoints+" pt":"—"):"OFFLINE",340,520,230,45,31,gold);
             Label(verdict,80,600,520,38,16,new Color(.82f,.9f,.96f));
             if(online&&driver.Phase==RacePhase.Confirmed)RefreshPoints(points);
-            var next=Button(first?"MEET YOUR PARTNER":"CONTINUE  >>",80,675,500,first?(Action)NamePartner:Home);next.GetComponent<Image>().color=cyan;
+            // round 8 (REQ-UXS-004 / F1): a lost tutorial no longer goes on to naming — the main button is 「もう一度」 and starts the
+            // next (stored) attempt; the 3rd is assisted to a win. A win goes to naming as before.
+            bool retry=first&&result.TutorialRetry;
+            Action nextAction=retry?(Action)(()=>StartDriver(backend.CreateTutorialRace(),"tutorial",true)):first?(Action)NamePartner:Home;
+            var next=Button(retry?result.PrimaryAction:first?"MEET YOUR PARTNER":"CONTINUE  >>",80,675,500,nextAction);next.GetComponent<Image>().color=cyan;
             Label(ModeLabel,80,780,500,26,13,new Color(.72f,.83f,.91f));
-            if(first)MuchiServices.Track(Muchi.Client.AnalyticsEvent.TutorialStep(MuchiServices.NowMs,"first_ride",1));
+            if(first&&result.Won)MuchiServices.Track(Muchi.Client.AnalyticsEvent.FtueStep(MuchiServices.NowMs,"race1_win",Math.Max(0,backend.TutorialAttempts-1)));
         }
         async void RefreshPoints(Text label)
         {
@@ -805,6 +840,6 @@ namespace Muchi.Client
             }
         }
         void OnApplicationFocus(bool focused){if(!focused){reinHeld=false;input.SetRein(false);}}
-        void OnDestroy(){driver?.Dispose();if(world!=null)Destroy(world.gameObject);if(canvas!=null)Destroy(canvas.gameObject);}
+        void OnDestroy(){observer?.Dispose();driver?.Dispose();if(world!=null)Destroy(world.gameObject);if(canvas!=null)Destroy(canvas.gameObject);}
     }
 }

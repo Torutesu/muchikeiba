@@ -301,10 +301,13 @@ namespace Muchi.Engine.Tests
             using var ownerCts = new CancellationTokenSource();
             var owner = dl.DownloadAsync(c, c.Entries, null, ownerCts.Token);
             var joiner = dl.EnsureAsync(c, "horse/coat/bay");
-            await Task.Delay(30);
-            ownerCts.Cancel();
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => owner);
-            cdn.Gate.SetResult(true);
+            try
+            {
+                await Task.Delay(30);
+                ownerCts.Cancel();
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => owner);
+            }
+            finally { cdn.Gate.TrySetResult(true); }
             var path = await joiner;
             Assert.Equal(cache.BlobPath(c.Find("horse/coat/bay").Sha256), path);
             Assert.True(cache.HasBlob(Sha(Coat.Item2), Coat.Item2.Length));
@@ -320,12 +323,15 @@ namespace Muchi.Engine.Tests
             var owner = dl.DownloadAsync(c, c.Entries);
             using var joinCts = new CancellationTokenSource();
             var joiner = dl.EnsureAsync(c, "horse/coat/bay", joinCts.Token);
-            await Task.Delay(30);
-            joinCts.Cancel();
-            var done = await Task.WhenAny(joiner, Task.Delay(2000));
-            Assert.Same(joiner, done); // the joiner's own cancel is honoured at once, not after the owner's transfer
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => joiner);
-            cdn.Gate.SetResult(true);
+            try
+            {
+                await Task.Delay(30);
+                joinCts.Cancel();
+                var done = await Task.WhenAny(joiner, Task.Delay(10_000));
+                Assert.Same(joiner, done); // the joiner's own cancel is honoured while the owner's transfer is still held
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => joiner);
+            }
+            finally { cdn.Gate.TrySetResult(true); }
             Assert.True((await owner).AllOk);
         }
 

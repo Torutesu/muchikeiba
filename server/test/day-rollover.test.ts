@@ -7,7 +7,7 @@ import {
 } from '../src/domain/time.js';
 import type { Master } from '../src/domain/master.js';
 import { applyFirstWinBonus, claimLoginBonus, claimMission, missionsView, friendRewardAllowed } from '../src/domain/rewards.js';
-import { claimAllowance, grantAllowance } from '../src/domain/shop.js';
+import { allowanceView, claimAllowance, grantAllowance } from '../src/domain/shop.js';
 import { stableConfig, stableLikeGive } from '../src/domain/stable.js';
 import { enqueuePush, registerDevice, setPushPrefs } from '../src/domain/push.js';
 import { dailyGoing } from '../src/domain/ground.js';
@@ -199,6 +199,18 @@ describe('REQ-DAY-002 remote config: a rule change must be known before it chang
     store.schedule(version.id, jst(2027, 1, 20), 'ops', 'r', jst(2027, 1, 20));
     expect(() => store.rollback(null, 'ops', 'oops', later.effectiveAtMs - 30 * 60_000)).toThrow(/dayRollover/);
     expect(store.rollback(null, 'ops', 'early', jst(2027, 1, 25)).versionId).toBe('base');
+  });
+});
+
+describe('QA r9: the daily-pack view uses the claim rule', () => {
+  it('a day claimed under a later key (stale isolate) shows as claimed today, as the claim refuses it', () => {
+    const s = freshPlayer('p', jst(2026, 12, 1));
+    const allowance = m.products.find((p) => p.kind === 'allowance')!;
+    grantAllowance(m, s, allowance, 'tx1', jst(2026, 12, 1, 6));
+    s.shop!.allowances[0]!.claimed.push('2026-12-03'); // written at 01:00 on 12-03 by an isolate still on midnight
+    const at = jst(2026, 12, 3, 1, 30); // game day 12-02 under the 04:00 rule
+    expect(code(() => claimAllowance(m, s, at))).toBe('ALREADY_CLAIMED');
+    expect(allowanceView(m, s, at)).toMatchObject({ active: true, claimedToday: true });
   });
 });
 

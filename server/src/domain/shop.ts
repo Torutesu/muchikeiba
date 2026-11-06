@@ -180,7 +180,7 @@ export function allowanceView(m: DayMaster, s: PlayerState, now: number) {
   const day = Math.round((Date.parse(today) - Date.parse(a.startDate)) / 86_400_000) + 1;
   return {
     active: true as const, productId: a.productId, startDate: a.startDate, endDate: allowanceEnd(a), day, days: a.days,
-    daysLeft: a.days - day + 1, dailyFreeCoins: a.dailyFreeCoins, claimedToday: a.claimed.includes(today), claimedDays: a.claimed.length,
+    daysLeft: a.days - day + 1, dailyFreeCoins: a.dailyFreeCoins, claimedToday: a.claimed.some((d) => d >= today), // REQ-DAY-003: the same rule as claimAllowance claimedDays: a.claimed.length,
     queued: next ? { startDate: next.startDate, endDate: allowanceEnd(next) } : null,
   };
 }

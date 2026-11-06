@@ -687,6 +687,9 @@ async function Home() {
   if (player.loginBonus?.lastClaimDate !== today) { const r = await L.claimLogin(); if (r.ok) { bonus = r.value; await refresh(); } }
   const p = partner();
   if (p) horseName = p.name;
+  // REQ-CB-*: the comeback welcome replaces home once per window (decided before home is drawn)
+  const comeback = await cbView();
+  if (comeback.active && comeback.window.showWelcome) return ComebackWelcome(comeback);
   const [missions, fw, bond] = await Promise.all([L.missions(), L.firstWinBonus(), p ? L.bond(p.id) : null]);
   Clear('home'); SetArt('Art/home-paddock');
   Panel('Home veil', 0, 0, 1600, 800, col(.01, .03, .06, .18));
@@ -761,7 +764,7 @@ async function Home() {
   const go = Button('レースへ', 1180, 600, 390, 180, RaceLobby); go.classList.add('hero');
   if (bonus) toast(`ログインボーナス ${bonus.track === 'beginner' ? '初心者' : ''}${bonus.day}日目：${rewardText(bonus.reward)}`);
   TabBar(0);
-  if (await ComebackOnHome()) return; // REQ-CB-*: comeback welcome / chip and the one-time what's-new card
+  await ComebackOnHome(comeback); // REQ-CB-*: comeback chip and the one-time what's-new card
   MaybeLinkPrompt('Home', Home);
 }
 function RaceLobby() {
@@ -1435,10 +1438,8 @@ function CbRule(x, y, w = 90, parent) { Panel('Rule', x, y, w, 4, CYAN, parent);
 function CbCta(value, x, y, w, action, parent) { const b = Button(value, x, y, w, 80, action, CYAN, parent); b.classList.add('cb-cta'); return b; }
 async function cbView() { const r = await L.comeback(); return r.ok ? r.value : { active: false, window: null, push: { enabled: false } }; }
 
-/** Home hook: the welcome once per window, otherwise the comeback chip and the one-time what's-new card. True = navigated away. */
-async function ComebackOnHome() {
-  const v = await cbView();
-  if (v.active && v.window.showWelcome) { await ComebackWelcome(v); return true; }
+/** Home hook (after home is drawn): the comeback chip and the one-time what's-new card. The welcome is decided at the top of Home. */
+async function ComebackOnHome(v) {
   if (v.active) {
     const chip = Button(`復帰キャンペーン　${v.window.login.claimableToday ? '受け取れます' : '残り' + v.window.remainingDays + '日'}`, 610, 72, 500, 40, () => ComebackTrack(), CB_GLASS);
     chip.classList.add('cb-chip'); chip.dataset.comeback = v.window.tier;

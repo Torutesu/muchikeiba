@@ -58,6 +58,8 @@ static class Program
         await SkillChecks.Run(Check, Root);
         Console.WriteLine("== room close codes over a real WebSocket (replaced → no reconnect loop)");
         await CloseCodeChecks.Run(Check, Ruleset());
+        Console.WriteLine("== scout reveal, banner calendar and pity meter (06 §6.5 / §7 item 7, REQ-GACHA-011..015)");
+        GachaChecks.Run(Check);
         Console.WriteLine("== race feel, tutorial win rule, camera and result debrief (06 §2.3 / §6.3 / §6.4)");
         RaceFeelChecks.Run(Check, Ruleset());
         if (args.Length >= 2 && args[0] == "online")
@@ -366,6 +368,7 @@ static class Program
         var noTicket = await items.UseTicketAsync(ItemsBackend.GachaTicket, "standard");
         Check(!noTicket.Ok && noTicket.Message.StartsWith("INSUFFICIENT_ITEMS"), "using a ticket you do not have is refused with INSUFFICIENT_ITEMS (" + noTicket.Message + ")");
         await OnlineScreens(b);
+        await GachaChecks.Online(Check, b);
 
         int pointsBefore = b.Player.SeasonPoints;
         var sw = Stopwatch.StartNew();

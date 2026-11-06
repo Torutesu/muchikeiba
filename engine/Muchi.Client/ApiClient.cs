@@ -136,8 +136,17 @@ namespace Muchi.Client
 
         // ------------------------------------------------------------------ gacha
 
+        /// <summary>Active and announced banners in display order (REQ-GACHA-011). See <see cref="GetBannerScheduleAsync"/> for the server clock.</summary>
         public Task<List<Banner>> GetBannersAsync(CancellationToken ct = default)
             => Call("GET", "/v1/gacha/banners", null, false, null, true, o => J.List(o, "banners", Banner.Parse), ct);
+
+        /// <summary>The banner calendar with the server clock it was built at (count down against ServerNowMs). Public, no auth.</summary>
+        public Task<BannerSchedule> GetBannerScheduleAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/gacha/banners", null, false, null, true, BannerSchedule.Parse, ct);
+
+        /// <summary>The player's pity meter, carry-over rules and step-up progress (REQ-GACHA-012..014).</summary>
+        public Task<GachaStatus> GetGachaStatusAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/gacha/status", null, true, null, true, GachaStatus.Parse, ct);
 
         /// <summary>Unique skill catalog (REQ-UXS-050). Public, no auth; cache per ConfigInfo.Hash.</summary>
         public Task<SkillCatalog> GetSkillsAsync(CancellationToken ct = default)

@@ -3,6 +3,8 @@
 更新：2026-11-06　基準ブランチ：`feat/r10-team-stamps`（`claude/round9` から）　前提：`docs/handoff-codex-round9.md`（アセット配信の置き場とスキャナ）
 仕様：`contracts/protocol.md` §18、`contracts/assets.md`（kind `stamp`）、`docs/spec/requirements.md` §18
 
+> **Round 10 のまとめ（`claude/round10`）**：4つの機能を1本にした。仕様の節は §18 支部スタンプ（この文書）・§19 友達招待（`docs/handoff-codex-round10-invite.md`）・§20 復帰キャンペーン・お知らせ（引き継ぎ文書なし：`ComebackModel`/`WhatsNewModel` と `contracts/protocol.md` §20）・§21 リワード広告（`docs/handoff-codex-round9.md` §8）。経済の目標は E11 招待・E12 復帰・E13 広告（`docs/spec/balance-targets.md` 4.10）。プロトタイプ（`tools/figma-prototype`、ムチ一閃の見た目）では「その他」に 支部の応援・友達招待・クラブ版 UI、ホームはカードを1枚だけ（優先：復帰の歓迎（全画面・1回）＞お知らせ（What's new）＞復帰キャンペーン＞広告）。
+
 分担はこれまでと同じ：**Claude＝ロジック（サーバー・API・画面のビューモデル）／Codex＝見た目（スタンプの絵を作って置く・画面を描く）**。
 支部フィードには**自由入力の文字が一切無い**（スタンプと自動のレース結果だけ）。画面にテキスト入力欄を置かないこと。
 

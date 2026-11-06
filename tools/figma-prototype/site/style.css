@@ -159,3 +159,15 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
 .pass-strip .cell.claimed::after { content: "受取済"; position: absolute; right: 6px; top: 4px; font-size: 12px; color: #9fd8ec; }
 .pass-strip .cell.claimable { box-shadow: inset 0 0 0 3px #ffd414; }
 .pass-strip .cell button { font: inherit; font-size: 15px; background: #ffd414; color: #061224; border: 0; padding: 6px 12px; cursor: pointer; }
+/* ---------------- round 10: 友達招待 (REQ-INV-*) — ムチ一閃 tone: sparse translucent navy panels, small letter-spaced cyan
+   labels, skewed cyan CTA with », generous whitespace over the photoreal paddock */
+.panel.invite-panel { background: rgba(6,19,36,.72) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+.label.invite-kicker { letter-spacing: .16em; }
+.label.invite-code { letter-spacing: .14em; font-variant-numeric: tabular-nums; text-shadow: 0 4px 18px rgba(0,0,0,.55); }
+.btn.invite-cta .bg { transform: skewX(-14deg); box-shadow: 0 8px 24px rgba(0,0,0,.35); }
+.btn.invite-cta span { letter-spacing: .06em; color: #061224 !important; }
+.el.invite-row { border-bottom: 1px solid rgba(143,216,255,.22); }
+.panel.invite-field { box-shadow: inset 0 0 0 2px rgba(0,204,242,.7); }
+.field.invite-input { letter-spacing: .16em; text-transform: uppercase; }
+.field.invite-input::placeholder { color: rgba(207,227,238,.35); }
+.label.invite-chip { white-space: nowrap; }

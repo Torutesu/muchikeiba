@@ -1364,6 +1364,7 @@ async function Settings() {
   Label('相棒の見た目・お世話', 24, 16, 400, 30, 18, CYAN, more);
   Ghost('衣装', 24, 56, 160, 72, Wardrobe, more); Ghost('コースの見た目', 200, 56, 240, 72, CourseThemes, more); Ghost('レース条件', 456, 56, 260, 72, Conditions, more);
   Ghost('お世話', 24, 140, 160, 72, Care, more);
+  Ghost('友達招待', 200, 140, 240, 72, () => Invite(), more).dataset.action = 'invite'; // round 10 (REQ-INV-*)
   // REQ-UXS-040 (UXP-007 preview): two-step deletion with a 14-day cancel window; purchases are blocked meanwhile
   const del = Panel('Delete', 820, 120, 740, 250, NAVY);
   Label('アカウント削除', 24, 16, 400, 30, 18, CYAN, del);
@@ -1416,6 +1417,111 @@ async function Demo(kind) {
   await L.seedDemo(spec[0], spec[1]);
   await refresh();
   return Home();
+}
+
+// ================================================================= round 10: 友達招待 (REQ-INV-*, contracts/protocol.md §18)
+// The same screen as the Unity InviteModel: my code + share, the milestone table, my invitees, and the code entry only while
+// the server says it is open. All values come from L.invite (the real InviteService on the local PlayerService).
+const INVITE_LINK_KEY = 'muchi.invite.linkCode';
+const inviteMilestoneTitle = (m) => (m.kind === 'beginner_complete' ? '初心者ミッションをすべて達成' : m.kind === 'class' ? `${m.classId}級に昇級` : `ランク戦${m.target}戦`);
+const inviteItemName = (id) => (id === 'gacha_ticket' ? 'スカウト券' : id === 'gacha_ticket_10' ? '10連スカウト券' : L.master.itemLabels[id] ?? id);
+const inviteReward = (r) => [r.freeCoins ? `無償コイン${r.freeCoins}枚` : null, ...(r.items ?? []).map((it) => `${inviteItemName(it.itemId)}×${it.qty}`)].filter(Boolean).join('・');
+const INVITE_ERRORS = {
+  INVITE_CODE_INVALID: '招待コードが正しくありません。8文字を確かめてください。', NOT_FOUND: 'この招待コードは見つかりませんでした。',
+  INVITE_SELF: '自分の招待コードは入力できません。', INVITE_ALREADY_REDEEMED: '招待コードはすでに入力済みです。',
+  INVITE_WINDOW_CLOSED: '招待コードを入力できる期間は終わりました。', INVITE_REFUSED: 'この招待コードは使用できません。',
+  NOT_ELIGIBLE: 'チュートリアルを終えると入力できます。', RATE_LIMITED: '入力が続いたため、しばらくしてからお試しください。',
+};
+function InviteKicker(text, x, y, w, parent) { const k = Label(text, x, y, w, 26, 16, CYAN, parent); k.classList.add('invite-kicker'); return k; }
+function InviteCta(text, x, y, w, h, action, parent) { const b = Button(text, x, y, w, h, action, CYAN, parent); b.classList.add('invite-cta'); return b; }
+async function Invite(demoNote = '') {
+  currentScreen = () => Invite(demoNote);
+  const r = await L.invite.view();
+  await refresh();
+  Clear('invite'); SetArt('Art/home-paddock'); Veil(.32);
+  if (!r.ok) { Label(r.message, 80, 380, 1440, 60, 26, RED, null, 'center'); Ghost('戻る', 60, 790, 220, 70, Settings); return; }
+  const v = r.value;
+  // ---- my code + share
+  const me = Panel('Invite code', 60, 54, 700, 360, NAVY); me.classList.add('invite-panel'); me.dataset.invite = 'mine';
+  InviteKicker('FRIEND INVITE  /  友達招待', 36, 30, 620, me);
+  const code = Label(v.displayCode, 36, 74, 628, 100, 80, WHITE, me); code.classList.add('invite-code'); code.dataset.code = v.code;
+  Label('このコードで友達が始めると、友達に「はじめてのプレゼント」。\n友達がゲームを進めると、あなたにも招待ボーナスが届きます。', 36, 184, 628, 64, 17, MUTED, me);
+  InviteCta('招待コードを送る  »', 36, 266, 380, 70, async () => {
+    // OS share sheet in the app (IShareSheet); the browser uses navigator.share when it has one, else copies the text
+    let shared = false;
+    try { if (navigator.share) { await navigator.share({ text: v.share.text }); shared = true; } } catch { /* cancelled */ }
+    if (!shared) { try { await navigator.clipboard?.writeText(v.share.text); } catch { /* */ } }
+    toast(shared ? '共有しました（KPI invite_share）' : '共有の文をコピーしました（アプリでは共有シートを開きます）');
+    globalThis.__muchi && (globalThis.__muchi.lastKpi = 'invite_share');
+  }, me).dataset.action = 'share';
+  Ghost('コピー', 436, 266, 140, 70, async () => { try { await navigator.clipboard?.writeText(v.displayCode); } catch { /* */ } toast('コードをコピーしました'); }, me).classList.add('small');
+  const terms = Ghost('規約', 590, 266, 76, 70, () => Legal('terms', Invite), me); terms.classList.add('small', 'link'); terms.dataset.terms = v.termsKey;
+  // ---- milestone table (what the inviter gets per friend; cap)
+  const ms = Panel('Invite milestones', 60, 440, 700, 330, NAVY); ms.classList.add('invite-panel');
+  InviteKicker(`INVITE BONUS  /  ${v.cap}人まで`, 36, 28, 620, ms);
+  Label(`友達1人につき、友達が到達したときに届きます（インストールだけでは届きません）`, 36, 62, 628, 30, 16, MUTED, ms);
+  v.milestones.forEach((m, i) => {
+    const row = el('invite-row', 36, 108 + i * 70, 628, 60, ms); row.dataset.milestone = m.id;
+    Label(inviteMilestoneTitle(m), 0, 12, 380, 36, 22, WHITE, row);
+    Label(inviteReward(m.reward), 380, 14, 248, 36, 20, GOLD, row).style.textAlign = 'right';
+  });
+  const capLine = Label(`招待ボーナスの対象  ${Math.min(v.counted, v.cap)} / ${v.cap}人`, 36, 262, 628, 34, 20, CYAN, ms); capLine.dataset.cap = `${v.counted}/${v.cap}`;
+  // ---- my invitees
+  const list = Panel('Invitees', 820, 54, 720, 410, NAVY); list.classList.add('invite-panel');
+  InviteKicker('YOUR CREW  /  招待した仲間', 36, 30, 640, list);
+  if (!v.invitees.length) Label('まだいません。コードを送ってみましょう。', 36, 90, 640, 40, 20, DIM, list);
+  v.invitees.slice(0, 5).forEach((x, i) => {
+    const row = el('invite-row', 36, 78 + i * 62, 648, 54, list); row.dataset.invitee = x.playerId;
+    Label(x.deleted ? '退会したプレイヤー' : x.displayName ?? '騎手', 0, 10, 250, 36, 22, x.deleted ? DIM : WHITE, row);
+    v.milestones.forEach((m, k) => {
+      const hit = x.milestones.find((y) => y.id === m.id);
+      const chip = Label((hit ? (hit.rewarded ? '✓ ' : '・ ') : '— ') + inviteMilestoneTitle(m).replace('初心者ミッションをすべて達成', '初心者卒業'), 250 + k * 190, 12, 180, 32, 16, hit ? (hit.rewarded ? col(.5, .9, .6) : MUTED) : DIM, row);
+      chip.classList.add('invite-chip'); chip.dataset.reached = hit ? (hit.rewarded ? 'rewarded' : 'reached') : 'no';
+    });
+    if (!x.counted) Label('対象外', 590, 12, 58, 32, 14, YELLOW, row);
+  });
+  if (v.invitees.length > 5) Label(`ほか${v.invitees.length - 5}人`, 36, 388, 400, 20, 15, DIM, list);
+  // ---- code entry (only while the server allows it)
+  const entry = Panel('Invite entry', 820, 490, 720, 280, NAVY); entry.classList.add('invite-panel'); entry.dataset.eligible = String(v.redeem.eligible);
+  if (v.redeem.eligible) {
+    InviteKicker(`ENTER A CODE  /  あと${v.redeem.daysLeft}日`, 36, 28, 640, entry);
+    Label(`友達のコードを入力すると ${inviteReward(v.redeem.welcomeGift)} がもらえます`, 36, 62, 640, 30, 17, MUTED, entry);
+    const fieldBox = Panel('Invite field', 36, 108, 400, 76, col(.02, .06, .11, .92), entry); fieldBox.classList.add('invite-field');
+    const input = document.createElement('input');
+    input.className = 'field invite-input'; input.maxLength = 12; input.placeholder = 'XXXX-XXXX'; input.setAttribute('aria-label', '招待コード');
+    input.autocapitalize = 'characters'; input.spellcheck = false;
+    Object.assign(input.style, { left: '18px', top: '10px', width: '364px', height: '56px', fontSize: '36px' });
+    fieldBox.appendChild(input);
+    const err = Label('', 36, 196, 640, 30, 17, RED, entry);
+    const go = InviteCta('受け取る  »', 456, 108, 228, 76, async () => {
+      const res = await L.invite.redeem(input.value);
+      if (!res.ok) { err.textContent = INVITE_ERRORS[res.code] ?? res.message; return; }
+      prefs.set(INVITE_LINK_KEY, '');
+      toast(`${inviteReward(res.value.welcomeGift)}を受け取りました` + (res.value.friended ? `。${res.value.inviter.displayName ?? '招待してくれた人'}さんとフレンドになりました` : ''));
+      Invite();
+    }, entry);
+    go.dataset.action = 'redeem';
+    const sync = () => { const ok = !!L.invite.normalize(input.value); go.classList.toggle('disabled', !ok); err.textContent = !ok && input.value.replace(/[\s-]/g, '').length >= 8 ? INVITE_ERRORS.INVITE_CODE_INVALID : ''; };
+    input.addEventListener('input', sync);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !go.classList.contains('disabled')) go.click(); });
+    const linked = prefs.get(INVITE_LINK_KEY, '');
+    if (linked) input.value = L.invite.display(L.invite.normalize(linked) ?? linked);
+    sync();
+  } else {
+    InviteKicker('ENTER A CODE  /  招待コードの入力', 36, 28, 640, entry);
+    const ib = v.redeem.invitedBy;
+    const why = v.redeem.reason === 'already_redeemed' ? `${ib?.displayName ?? '友達'}さんの招待で参加しました` : v.redeem.reason === 'ftue' ? 'チュートリアルを終えると入力できます'
+      : v.redeem.reason === 'window_closed' ? `入力できるのは始めてから${v.redeem.windowDays}日間です` : '今は入力できません';
+    Label(why, 36, 80, 640, 40, 24, WHITE, entry).dataset.reason = v.redeem.reason ?? '';
+  }
+  // ---- review-only demo actions (same rules: other local players redeem my code / reach milestones)
+  const demo = el('invite-demo', 820, 790, 720, 70);
+  Ghost('デモ：友達が参加', 0, 0, 236, 60, async () => { const d = await L.invite.demoFriendJoins(); toast(d.ok ? (d.value.result.friended ? '友達があなたのコードで参加し、フレンドになりました' : '友達があなたのコードで参加しました') : (INVITE_ERRORS[d.code] ?? d.message)); Invite(); }, demo).classList.add('small');
+  Ghost('デモ：初心者卒業', 244, 0, 236, 60, async () => { const d = await L.invite.demoMilestone('im_graduate'); toast(d.ok ? `招待ボーナス：無償コイン+${d.value.freeCoinsGained}` : '対象の友達がいません'); Invite(); }, demo).classList.add('small');
+  Ghost('デモ：B級昇級', 488, 0, 232, 60, async () => { const d = await L.invite.demoMilestone('im_class_b'); toast(d.ok ? '招待ボーナス：スカウト券×1' : '対象の友達がいません'); Invite(); }, demo).classList.add('small');
+  if (v.redeem.eligible && !demoNote) L.invite.demoInviterCode().then((c) => { const n = Label(`デモ用の友達のコード：${c}`, 856, 742, 640, 24, 15, DIM); n.dataset.demoCode = c; });
+  Ghost('戻る', 60, 790, 220, 70, Settings);
+  WalletChip(330, 794);
 }
 
 // ================================================================= legacy screens (Codex's Unity UI, unchanged layouts)
@@ -1631,13 +1737,17 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Invite, Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),
     logic: L,
   };
+  // round 10: unity.html?invite=<code> stands in for muchi://invite/<code> (pre-fills the entry; kept through the FTUE)
+  const inviteLink = new URLSearchParams(location.search).get('invite');
+  if (inviteLink) prefs.set('muchi.invite.linkCode', inviteLink);
   if (demo) await Demo(demo);
+  else if (inviteLink && player.flags?.partnerHorseId) await Invite();
   else if (player.flags?.partnerHorseId || player.horses.some((h) => h.named)) await Home(); else Title();
   requestAnimationFrame(raceLoop);
   globalThis.__muchi.ready = true;

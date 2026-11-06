@@ -94,7 +94,7 @@ export function checkPurchaseIntent(m: Master, s: PlayerState, productId: string
   // REQ-UXS-020: one pass (Pass or Pass+) per season
   if (p.kind === 'season_pass' && p.storeType !== 'auto_renewing' && passPurchasesFor(s, jstMonthKey(now)).length > 0) throw new AppError('ALREADY_PURCHASED', `a season pass for ${jstMonthKey(now)} is already active`);
   // REQ-UXS-018: the daily pack cannot be bought while one is running
-  if (p.kind === 'allowance' && pendingAllowance(s, now)) throw new AppError('ALREADY_PURCHASED', 'a daily pack is still running');
+  if (p.kind === 'allowance' && pendingAllowance(m, s, now)) throw new AppError('ALREADY_PURCHASED', 'a daily pack is still running');
   const month = jstMonthKey(now);
   // A purchase that went over the limit this month (e.g. the app skipped this check) blocks further purchases.
   // the breach belongs to the month of purchase (as monthlySpendYen and the support flag), not of grant
@@ -160,7 +160,7 @@ export function applyVerifiedPurchase(m: Master, s: PlayerState, platform: Purch
   if (p.items) addItems(s, p.items);
   let passUntil: number | undefined;
   let passSeasonId: string | undefined;
-  if (p.kind === 'allowance' && p.allowance) grantAllowance(s, p, r.transactionId, now);
+  if (p.kind === 'allowance' && p.allowance) grantAllowance(m, s, p, r.transactionId, now);
   if (p.kind === 'season_pass' && r.expiresAt === undefined && p.storeType !== 'auto_renewing') {
     // REQ-UXS-020: per-season pass, no auto-renew; ends with the season current at the grant
     ({ passUntil, passSeasonId } = grantSeasonPass(m, s, p, r.transactionId, now));

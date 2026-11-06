@@ -7,7 +7,7 @@ import { grantReward } from './items.js';
 import { buildRaceConfig, toRaceHorse } from './raceConfig.js';
 import type { Rng } from './rng.js';
 import { inputTripleSchema, type InputTriple, type RaceStartConfig, type ReplayLog, type VerifierOutput } from './schemas.js';
-import { gameDayKey, jstMonthKey } from './time.js';
+import { dayRule, gameDayKey, jstMonthKey, sameGameDay, type DayRule } from './time.js';
 
 /**
  * Time attack (REQ-TA-*). The player races alone on the device (OfflineRace) against the clock and
@@ -103,8 +103,8 @@ export function startTimeAttack(m: Master, s: PlayerState, cfg: TimeAttackConfig
   const h = getHorse(s, horseId);
   if (h.status !== 'active') throw new AppError('HORSE_NOT_ACTIVE');
   const st = taState(s);
-  const today = gameDayKey(now);
-  if (st.daily.date !== today) st.daily = { date: today, count: 0 };
+  const today = gameDayKey(now, dayRule(m));
+  if (!sameGameDay(st.daily.date, today)) st.daily = { date: today, count: 0 };
   if (st.daily.count >= cfg.maxAttemptsPerDay) throw new AppError('TA_LIMIT_REACHED', `${cfg.maxAttemptsPerDay}/day`);
   st.daily.count++;
   const config = buildRaceConfig(m, {
@@ -236,15 +236,15 @@ export function recordResult(m: Master, s: PlayerState, cfg: TimeAttackConfig, s
 }
 
 /** REQ-TA-006: what the player sees for one track (bests, attempts left today, milestones). */
-export function timeAttackView(s: PlayerState, cfg: TimeAttackConfig, trackId: string, now: number) {
+export function timeAttackView(s: PlayerState, cfg: TimeAttackConfig, trackId: string, now: number, day: DayRule) {
   const st = taState(s);
   const seasonId = jstMonthKey(now);
-  const today = gameDayKey(now);
+  const today = gameDayKey(now, day);
   return {
     trackId, seasonId,
     seasonBest: st.seasonBest[bestKey(seasonId, trackId)] ?? null,
     allTimeBest: st.allTimeBest[trackId] ?? null,
-    attemptsLeft: cfg.maxAttemptsPerDay - (st.daily.date === today ? st.daily.count : 0),
+    attemptsLeft: cfg.maxAttemptsPerDay - (sameGameDay(st.daily.date, today) ? st.daily.count : 0),
     milestones: cfg.milestones.filter((ms) => ms.trackId === null || ms.trackId === trackId).map((ms) => ({ id: ms.id, maxTimeMs: ms.maxTimeMs, reward: ms.reward, reached: st.milestones.includes(ms.id) })),
   };
 }

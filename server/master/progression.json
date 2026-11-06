@@ -379,6 +379,12 @@
   "replayRetentionDays": 30,
   "replayHoldDays": { "verified": 90 },
   "friendRewardDailyCap": 5,
+  "dayRollover": {
+    "_note": "REQ-DAY-001..003（REQ-UXS-011）: ゲーム日の切り替え時刻（JST）。effectiveAtMs より前は previousHourJst、以後は hourJst。既定は 2026-12-01 04:00 JST に 0:00 → 4:00 へ切り替え（その日は 00:00〜翌04:00 の28時間、二重リセットも欠ける日も無い）。変更はリモート設定で、有効化から1時間以上先の effectiveAtMs にし、切り替え時刻は旧時刻ちょうど・新時刻ちょうど・その間の外のどれか（ops/config.ts が検証）。",
+    "hourJst": 4,
+    "previousHourJst": 0,
+    "effectiveAtMs": 1796065200000
+  },
   "firstWinBonus": {
     "_note": "REQ-UXS-010: その日（ゲーム日、REQ-UXS-011）の最初の勝利（1着）を3回まで、無償コインを上乗せ。ランク戦のみ（フレンド戦は対象外）。経済目標 E1〜E10 は docs/spec/balance-targets.md 4.2・4.3。",
     "modes": ["ranked"],

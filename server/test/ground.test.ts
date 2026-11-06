@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { dayRule } from '../src/domain/time.js';
 import { m, makeConfig } from './helpers.js';
 import { dailyGoing, groundFor, inNightWindow, jstHour, weatherProblems } from '../src/domain/ground.js';
 import { buildRaceConfig, toRaceHorse } from '../src/domain/raceConfig.js';
@@ -22,10 +23,10 @@ describe('daily going (REQ-RACE-037)', () => {
   const turf = m.tracks.find((t) => t.id === 'kirameki_turf_2000')!;
 
   it('is the same all day for a course and changes between days', () => {
-    const g = dailyGoing(w, turf, DAY);
-    for (let h = -6; h < 9; h++) expect(dailyGoing(w, turf, DAY + h * HOUR)).toBe(g); // 09:00..23:59 JST
+    const g = dailyGoing(w, turf, DAY, dayRule(m));
+    for (let h = -6; h < 9; h++) expect(dailyGoing(w, turf, DAY + h * HOUR, dayRule(m))).toBe(g); // 09:00..23:59 JST
     const seen = new Set<string>();
-    for (let d = 0; d < 60; d++) seen.add(dailyGoing(w, turf, DAY + d * 24 * HOUR));
+    for (let d = 0; d < 60; d++) seen.add(dailyGoing(w, turf, DAY + d * 24 * HOUR, dayRule(m)));
     expect(seen.size).toBeGreaterThan(2);
   });
 
@@ -33,9 +34,9 @@ describe('daily going (REQ-RACE-037)', () => {
     const count: Record<string, number> = {};
     const dirt = m.tracks.find((t) => t.surface === 'dirt')!;
     for (let d = 0; d < 4000; d++) {
-      const g = dailyGoing(w, turf, Date.UTC(2020, 0, 1, 6) + d * 24 * HOUR);
+      const g = dailyGoing(w, turf, Date.UTC(2020, 0, 1, 6) + d * 24 * HOUR, dayRule(m));
       count[g] = (count[g] ?? 0) + 1;
-      expect(['fast', 'good', 'muddy', 'sloppy']).toContain(dailyGoing(w, dirt, Date.UTC(2020, 0, 1, 6) + d * 24 * HOUR));
+      expect(['fast', 'good', 'muddy', 'sloppy']).toContain(dailyGoing(w, dirt, Date.UTC(2020, 0, 1, 6) + d * 24 * HOUR, dayRule(m)));
     }
     const total = Object.values(w.turf).reduce((a, b) => a + (b ?? 0), 0);
     for (const [name, wt] of Object.entries(w.turf)) expect(Math.abs((count[name] ?? 0) / 4000 - wt! / total)).toBeLessThan(0.04);
@@ -69,8 +70,8 @@ describe('daily going (REQ-RACE-037)', () => {
     ] } } };
     expect(groundFor(mm, 'kirameki_turf_2000', 'ranked', DAY)).toEqual({ going: 'soft', night: false });
     expect(groundFor(mm, 'minato_turf_2400', 'ranked', DAY)).toEqual({ going: 'firm', night: true });
-    expect(groundFor(mm, 'aoba_dirt_1400', 'ranked', DAY)!.going).toBe(dailyGoing(mm.progression.weather, m.tracks.find((t) => t.id === 'aoba_dirt_1400')!, DAY));
-    expect(groundFor(mm, 'kirameki_turf_2000', 'ranked', DAY + 2 * HOUR)!.going).toBe(dailyGoing(m.progression.weather, m.tracks.find((t) => t.id === 'kirameki_turf_2000')!, DAY + 2 * HOUR));
+    expect(groundFor(mm, 'aoba_dirt_1400', 'ranked', DAY)!.going).toBe(dailyGoing(mm.progression.weather, m.tracks.find((t) => t.id === 'aoba_dirt_1400')!, DAY, dayRule(m)));
+    expect(groundFor(mm, 'kirameki_turf_2000', 'ranked', DAY + 2 * HOUR)!.going).toBe(dailyGoing(m.progression.weather, m.tracks.find((t) => t.id === 'kirameki_turf_2000')!, DAY + 2 * HOUR, dayRule(m)));
   });
 
   it('validates weather config for remote config', () => {

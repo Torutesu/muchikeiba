@@ -11,7 +11,7 @@
 import { AppError } from './errors.js';
 import type { Master, Product, Reward, ShopOffersConfig } from './master.js';
 import type { PlayerState, PurchaseRecord } from './player.js';
-import { addJstDays, gameDayKey, gameDaysUntil, jstMonthKey } from './time.js';
+import { addJstDays, dayRule, gameDayKey, gameDaysUntil, jstMonthKey } from './time.js';
 import { clawbackFree, grantFree } from './wallet.js';
 import { levelOf, passPurchasesFor, seasonEndMs } from './pass.js';
 import { experimentsView } from './onboarding.js';
@@ -120,17 +120,19 @@ export function shopProducts(m: Master) {
 
 // ------------------------------------------------------------------------------- daily pack (厩舎手当)
 
+/** Only the game-day rule is read (REQ-DAY-001). */
+type DayMaster = Pick<Master, 'progression'>;
 const allowanceEnd = (a: AllowanceEntitlement) => addJstDays(a.startDate, a.days - 1);
 const live = (s: PlayerState) => (s.shop?.allowances ?? []).filter((a) => !a.refunded && a.forfeitedAt === undefined);
 
 /** The entitlement running today, if any. */
-export function activeAllowance(s: PlayerState, now: number): AllowanceEntitlement | null {
-  const today = gameDayKey(now);
+export function activeAllowance(m: DayMaster, s: PlayerState, now: number): AllowanceEntitlement | null {
+  const today = gameDayKey(now, dayRule(m));
   return live(s).find((a) => a.startDate <= today && today <= allowanceEnd(a)) ?? null;
 }
 /** Running or starting later (a second purchase that arrived while one was running). */
-export function pendingAllowance(s: PlayerState, now: number): AllowanceEntitlement | null {
-  const today = gameDayKey(now);
+export function pendingAllowance(m: DayMaster, s: PlayerState, now: number): AllowanceEntitlement | null {
+  const today = gameDayKey(now, dayRule(m));
   return live(s).find((a) => today <= allowanceEnd(a)) ?? null;
 }
 
@@ -138,17 +140,17 @@ export function pendingAllowance(s: PlayerState, now: number): AllowanceEntitlem
  * REQ-UXS-018: start the 30 days on the purchase's grant day. A purchase that arrives while another is still
  * running (the app skipped the intent check) is queued after it — paid days are never lost — and flagged.
  */
-export function grantAllowance(s: PlayerState, p: Product, txId: string, now: number) {
+export function grantAllowance(m: DayMaster, s: PlayerState, p: Product, txId: string, now: number) {
   const a = p.allowance!;
   const sh = ensureShop(s);
-  let start = gameDayKey(now);
+  let start = gameDayKey(now, dayRule(m));
   const running = live(s).map(allowanceEnd).filter((e) => e >= start).sort();
   if (running.length) {
     start = addJstDays(running[running.length - 1]!, 1);
     (s.supportFlags ??= []).push(`allowance_overlap:${txId}`);
   }
   sh.allowances.push({ txId, productId: p.id, startDate: start, days: a.days, dailyFreeCoins: a.dailyFreeCoins, claimed: [] });
-  const today = gameDayKey(now);
+  const today = gameDayKey(now, dayRule(m));
   // keep running/queued ones and the most recent ended ones
   const keep = sh.allowances.filter((x) => allowanceEnd(x) >= today);
   const ended = sh.allowances.filter((x) => allowanceEnd(x) < today).slice(-Math.max(0, ALLOWANCE_KEEP - keep.length));
@@ -156,21 +158,22 @@ export function grantAllowance(s: PlayerState, p: Product, txId: string, now: nu
 }
 
 /** REQ-UXS-018: claim today's coins (once per game day while the entitlement runs; missed days are not paid later). */
-export function claimAllowance(s: PlayerState, now: number) {
-  const a = activeAllowance(s, now);
+export function claimAllowance(m: DayMaster, s: PlayerState, now: number) {
+  const a = activeAllowance(m, s, now);
   if (!a) throw new AppError('NOT_ELIGIBLE', 'no daily pack is running today');
-  const today = gameDayKey(now);
-  if (a.claimed.includes(today)) throw new AppError('ALREADY_CLAIMED');
+  const today = gameDayKey(now, dayRule(m));
+  // REQ-DAY-003: a day claimed under a later key (stale rule) also counts as today's claim
+  if (a.claimed.some((d) => d >= today)) throw new AppError('ALREADY_CLAIMED');
   a.claimed.push(today);
   grantFree(s, a.dailyFreeCoins, now, `daily pack ${a.productId} ${today}`, `allowance:${a.txId}:${today}`);
   const rec = s.purchases.find((x) => x.txId === a.txId);
   if (rec) rec.linkedFree = (rec.linkedFree ?? 0) + a.dailyFreeCoins;
-  return { freeCoins: a.dailyFreeCoins, ...allowanceView(s, now) };
+  return { freeCoins: a.dailyFreeCoins, ...allowanceView(m, s, now) };
 }
 
-export function allowanceView(s: PlayerState, now: number) {
-  const today = gameDayKey(now);
-  const a = activeAllowance(s, now);
+export function allowanceView(m: DayMaster, s: PlayerState, now: number) {
+  const today = gameDayKey(now, dayRule(m));
+  const a = activeAllowance(m, s, now);
   const next = live(s).filter((x) => x.startDate > today).sort((x, y) => (x.startDate < y.startDate ? -1 : 1))[0] ?? null;
   if (!a) return { active: false as const, claimedToday: false, queued: next ? { startDate: next.startDate, endDate: allowanceEnd(next) } : null };
   const day = Math.round((Date.parse(today) - Date.parse(a.startDate)) / 86_400_000) + 1;
@@ -182,8 +185,8 @@ export function allowanceView(s: PlayerState, now: number) {
 }
 
 /** Unclaimed days of every running or queued daily pack from today on (what an account deletion gives up). */
-export function allowanceRemaining(s: PlayerState, now: number): { days: number; freeCoins: number; txIds: string[] } {
-  const today = gameDayKey(now);
+export function allowanceRemaining(m: DayMaster, s: PlayerState, now: number): { days: number; freeCoins: number; txIds: string[] } {
+  const today = gameDayKey(now, dayRule(m));
   let days = 0, freeCoins = 0;
   const txIds: string[] = [];
   for (const a of live(s)) {
@@ -197,8 +200,8 @@ export function allowanceRemaining(s: PlayerState, now: number): { days: number;
 }
 
 /** REQ-UXS-040: the account deletion gives up the running and queued daily packs (no more claims). */
-export function forfeitAllowances(s: PlayerState, now: number) {
-  const r = allowanceRemaining(s, now);
+export function forfeitAllowances(m: DayMaster, s: PlayerState, now: number) {
+  const r = allowanceRemaining(m, s, now);
   for (const a of s.shop?.allowances ?? []) if (r.txIds.includes(a.txId)) a.forfeitedAt = now;
   return { days: r.days, freeCoins: r.freeCoins };
 }
@@ -277,7 +280,7 @@ export function shopOffers(m: Master, s: PlayerState, now: number) {
     offers.push({
       id, productId: p.id, touchpoint, placement: popup ? 'popup' : 'recommended', reason: r?.reason ?? null, triggeredAt: r?.triggeredAt ?? null,
       viewedAt: r?.viewedAt ?? null, showPopup: popup && r?.triggeredAt !== undefined && r.viewedAt === undefined,
-      endsAt, remainingDays: endsAt === null ? null : gameDaysUntil(endsAt, now),
+      endsAt, remainingDays: endsAt === null ? null : gameDaysUntil(endsAt, now, dayRule(m)),
     });
   };
   // T2 starter pack: popup once after the trigger, then in the recommended tab until bought
@@ -304,14 +307,14 @@ export function shopOffers(m: Master, s: PlayerState, now: number) {
     add(p.id, p, 'T4', true, trigger(sh, p.id, `class_${p.classId}`, now));
   }
   // daily pack: shop placement only, while none is running or queued
-  if (!pendingAllowance(s, now)) for (const p of m.products.filter((x) => x.kind === 'allowance')) add(p.id, p, 'shop', false, null);
+  if (!pendingAllowance(m, s, now)) for (const p of m.products.filter((x) => x.kind === 'allowance')) add(p.id, p, 'shop', false, null);
   const coins = m.products.filter((p) => p.kind === 'coins');
   const remaining = coins.filter((p) => !s.firstPurchased.includes(p.id)).map((p) => p.id);
   return {
     offers,
     // T1: shown at the top of the shop while any coin pack still has its first-purchase bonus
     firstPurchase: { available: remaining.length > 0, productIds: remaining, noticeKey: 'shop.first_purchase_bonus' },
-    allowance: allowanceView(s, now),
+    allowance: allowanceView(m, s, now),
   };
 }
 

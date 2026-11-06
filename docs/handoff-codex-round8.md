@@ -286,3 +286,15 @@
 2. エディタ：タイトル→同意→初レース（ムチ0回で負け→もう一度×2→3回目で勝ち）→命名→10連のめくり→2戦目→結果→通知の前置き→ホーム を、サーバーなし／`npm run dev` ありの両方で通す。
 3. ショップの4状態（生年月未登録・登録済み・18歳未満・上限超え）と削除予定中を `npm run dev` で再現（`x-dev-user` を変えれば新規プレイヤー。年齢は購入確認の画面から登録）。
 4. 本番ビルドの文字列検査（G10）と、マニフェストのキー検査の結果を PR に貼る。
+
+## 6. 追記（Round 9）：ゲーム日の切り替え 4:00（REQ-DAY-001〜006）
+
+サーバーは 2026-12-01 04:00 JST から日次のリセットを **4:00 JST** に切り替える（`progression.dayRollover`、`contracts/protocol.md` §15）。切り替え時刻は定数ではなくリモート設定で変わり得るので、端末も定数を持たない。
+
+- `engine/Muchi.Client`：`GetConfigAsync()` の `ConfigInfo.DayRollover`（`DayRolloverInfo`：`HourJst`・`PreviousHourJst`・`EffectiveAtMs`、`Key(ms)`・`Index(ms)`・`DaysUntil(endMs, nowMs)`・`HourAt(ms)`）を追加済み。古いサーバー（フィールドなし）は `null`。
+- `unity/Assets/Muchi/Game/GameDay.cs`（`feat/r8-unity-game`、round8 未マージのためこのブランチでは触っていない）：マージ後に次の小さな変更をする。
+  1. `public const int RolloverHourJst = 0;` を、起動時の `GetConfigAsync()` で受け取った `DayRolloverInfo` を保持する静的な値に置き換える（`null` のときは `{ HourJst = 0, PreviousHourJst = 0, EffectiveAtMs = 0 }`）。
+  2. `Index`／`Key`／`DaysUntil` は `int rolloverHour` の代わりに `DayRolloverInfo.HourAt(ms)` を使う（`DayRolloverInfo` の同名メソッドに委ねてよい）。
+  3. `HomeModels.DailyLine` の「明日 {RolloverHourJst}:00 に更新」は `HourAt(now + 24h)` を使う（切り替えの日も正しい時刻を出す）。
+  4. `ShopModels.Stale`（日付が変わったら取り直す）・`ClaimedToday` は今のままでよい（`GameDay.Key` 経由）。
+  5. GameChecks に 03:59／04:00 JST と切り替えの日（12-01 00:30 と 12-02 00:30 が同じ `2026-12-01`）のケースを足す（`engine/Muchi.Engine.Tests/ApiClientDayRolloverTests.cs` と同じ値）。

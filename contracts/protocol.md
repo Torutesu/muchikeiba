@@ -367,3 +367,15 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 - イベント `Skill`（値12）：Slot = 発動した馬、Value = 発動した時の順位（前のtickの順位、0 = 先頭）。表示・実況用で、チェックサムと結果ハッシュには入らない（スキルの影響は速度・スタミナとしてチェックサムに現れる）。
 - **サーバーが送る値**：`server/master/skills.json` の値を、ステータスを正規化するレース（ランク戦・大会・クラス上限のあるイベント）では `rankedCaps` で頭打ちにして送る。タイムアタック・チュートリアル・能力固定のイベントでは送らない。CPU の馬はテンプレートのスキルを持つ（乱数なし）。
 - ゴールデン：`contracts/golden/race-turf2000-skills.json`（8種類の条件すべてが発動する）。1.2.0 のゴールデンは `contracts/golden/legacy/*.ruleset-1.2.0.json` に残し、今も同じ結果で検証できることをテストしている。
+
+## 15. ゲーム日（REQ-DAY-001〜006、`server/src/domain/time.ts`）
+- **ゲーム日**＝ JST の切り替え時刻からの24時間。キーは `YYYY-MM-DD`＝「JST の時刻から切り替え時刻を引いた日付」（例：4:00 切り替えなら 12月5日 03:59 JST は `2026-12-04`、04:00 は `2026-12-05`）。JST に夏時間は無い。
+- 規則はマスター／リモート設定の `progression.dayRollover`：`{ "hourJst": 4, "previousHourJst": 0, "effectiveAtMs": 1796065200000 }`。`effectiveAtMs`（2026-12-01 04:00 JST）より前は `previousHourJst`、以後は `hourJst`。`GET /v1/config` が同じ形で `dayRollover` を返す（認証なし）。端末は日付・残り日数の表示にこの規則を使い、サーバーが返す `remainingDays`・`endsAt`・`lastClaimDate` などを正とする。
+  ```json
+  { "versionId": "base", "hash": "base", "rulesetVersion": "1.3.0", "activatedAt": null, "visualsVersion": "…",
+    "dayRollover": { "hourJst": 4, "previousHourJst": 0, "effectiveAtMs": 1796065200000 } }
+  ```
+- 端末の計算（C# は TS と同じ式）：`hour = now < effectiveAtMs ? previousHourJst : hourJst`、`index = floor((now + 9h − hour·1h) / 24h)`、`key = UTC日付(now + 9h − hour·1h)`、残り日数 `= index(endsAt − 1) − index(now) + 1`（終わっていれば0）。
+- 切り替えの日：0→4 を 4:00 で切り替えると `2026-12-01` が 00:00〜翌 04:00 の28時間になる（二重リセットも欠ける日も無い）。規則の変更は効く時刻の1時間以上前に配信され、切り替えの瞬間に日の番号が戻らない時刻しか受け付けない（REQ-DAY-002）。
+- **ゲーム日で決まるもの**：ログインボーナス（`lastClaimDate`）・初心者ログボの日数・デイリーミッション（`missions.date`）・初勝利ボーナス（`dailyWins`）・フレンド戦報酬の上限・世話・配合（追加の配合を含む）・TA の回数・種牡馬の貸し借り・マイ厩舎のいいね（`likeId` の日付部分）・厩舎手当の受け取り日（`startDate`〜`endDate` もゲーム日）・通知の1日上限・その日の馬場・プレイヤーの「n日目」（機能の開放）・シーズンパスとオファーの `remainingDays`。
+- **暦（0:00 JST）で決まるもの**：シーズン（月）・ランキング・支部リーグ・シーズンパスの終了（`endsAt` = 翌月1日 00:00 JST）と購入できる月・オファーの `endsAt`・月額の課金上限・有償残高の基準日・KPI の日付・シーズンのお知らせ・ナイターの時間帯。月初の 0:00〜3:59 は新しいシーズンで、ゲーム日はまだ前月末。

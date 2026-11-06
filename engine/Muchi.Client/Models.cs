@@ -362,6 +362,34 @@ namespace Muchi.Client
             VersionId = J.Str(o, "versionId"), Hash = J.Str(o, "hash"), RulesetVersion = J.Str(o, "rulesetVersion"),
             ActivatedAt = J.Opt(o, "activatedAt") is JsonNode n && !n.IsNull ? n.AsLong() : (long?)null,
             VisualsVersion = J.Int(o, "visualsVersion"),
+            DayRollover = J.Opt(o, "dayRollover") is JsonNode d ? DayRolloverInfo.Parse(d) : null,
+        };
+        /// <summary>REQ-DAY-006: the game-day rule (null from an older server: assume midnight).</summary>
+        public DayRolloverInfo DayRollover;
+    }
+
+    /// <summary>
+    /// REQ-DAY-001: the game day rolls over at <see cref="HourJst"/> JST from <see cref="EffectiveAtMs"/> on, at
+    /// <see cref="PreviousHourJst"/> before it (contracts/protocol.md §15). Same formulas as server/src/domain/time.ts.
+    /// </summary>
+    public sealed class DayRolloverInfo
+    {
+        public int HourJst, PreviousHourJst;
+        public long EffectiveAtMs;
+        private const long JstOffsetMs = 9L * 3600 * 1000, HourMs = 3600L * 1000, DayMs = 24L * 3600 * 1000;
+
+        /// <summary>The rollover hour that applies to <paramref name="ms"/>.</summary>
+        public int HourAt(long ms) => ms < EffectiveAtMs ? PreviousHourJst : HourJst;
+        /// <summary>Whole game days since the epoch (server gameDayIndex).</summary>
+        public long Index(long ms) { long a = ms + JstOffsetMs - HourAt(ms) * HourMs; return a >= 0 ? a / DayMs : -((-a + DayMs - 1) / DayMs); }
+        /// <summary>The game day "YYYY-MM-DD" (server gameDayKey).</summary>
+        public string Key(long ms) => DateTimeOffset.FromUnixTimeMilliseconds(ms + JstOffsetMs - HourAt(ms) * HourMs).UtcDateTime.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        /// <summary>Game days left until <paramref name="endMs"/> (exclusive), counting today (server gameDaysUntil).</summary>
+        public int DaysUntil(long endMs, long nowMs) => endMs <= nowMs ? 0 : (int)(Index(endMs - 1) - Index(nowMs) + 1);
+
+        internal static DayRolloverInfo Parse(JsonNode o) => new DayRolloverInfo
+        {
+            HourJst = J.Int(o, "hourJst"), PreviousHourJst = J.Int(o, "previousHourJst"), EffectiveAtMs = J.Long(o, "effectiveAtMs"),
         };
     }
 

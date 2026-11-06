@@ -2,18 +2,21 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#102e25">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>ムチ一閃 — あなたと、まだ見ぬ直線へ。</title>
-<!-- Codex's stylesheets (frontend/src), copied by build.sh; mobile.css forces its narrow-screen rules on demand -->
-<link rel="stylesheet" href="club/codex/style.css">
-<link rel="stylesheet" href="club/codex/details.css">
-<link rel="stylesheet" href="club/codex/mobile.css">
-<link rel="stylesheet" href="club/club.css">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div id="app"></div>
+<div id="viewport">
+  <div id="stage" aria-live="polite">
+    <canvas id="race-canvas" width="1600" height="900" hidden></canvas>
+    <div id="screens"></div>
+    <div id="boot">LOADING…</div>
+  </div>
+</div>
+<script type="importmap">{ "imports": { "three": "./vendor/three/lib/three.module.min.js", "three/addons/": "./vendor/three/examples/jsm/" } }</script>
 <script src="js/logic.js"></script>
-<script type="module" src="club/main.js"></script>
+<script type="module" src="app.js"></script>
+<a href="club.html" style="position:fixed;right:6px;bottom:4px;z-index:50;font:10px sans-serif;color:#4d6273;text-decoration:none">クラブ版 UI ↗</a>
 </body>
 </html>

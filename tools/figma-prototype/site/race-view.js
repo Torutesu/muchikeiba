@@ -40,7 +40,7 @@ export class RaceView {
   }
 
   async load() {
-    const r = this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, powerPreference: 'high-performance' });
+    const r = this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
     // the stage is scaled to the window: render at the pixels it will actually cover (phones: ~1×, big monitors: up to 2×)
     r.setPixelRatio(Math.max(.75, Math.min(2, (globalThis.devicePixelRatio || 1) * Math.min(innerWidth / 1600, innerHeight / 900))));
     r.setSize(1600, 900, false);
@@ -52,12 +52,16 @@ export class RaceView {
       this.lite = /swiftshader|llvmpipe|software/i.test(dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : '');
     } catch { this.lite = false; }
     if (this.lite) { r.shadowMap.enabled = false; r.setPixelRatio(.5); }
+    // filmic tone mapping: the afternoon light of Codex's key art (first-ride / ranked race) instead of flat colours
+    // (software GL: skipped, like the shadows — every fragment counts there)
+    if (!this.lite) { r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.05; }
     const scene = this.scene = new THREE.Scene();
     // RenderSettings: ambient (.66,.76,.86), exp² fog (.68,.83,.95) density .0014; camera background (.39,.69,.94)
     this.ambient = new THREE.HemisphereLight(srgb(.74, .84, .94), srgb(.42, .46, .40), 2.3);
     scene.add(this.ambient);
     scene.fog = new THREE.FogExp2(srgb(.68, .83, .95), .0014);
-    scene.background = srgb(.39, .69, .94);
+    // the sky is a CSS gradient behind the transparent canvas (no GL fill cost, also on software GL)
+    scene.background = null; this.setSky(false);
     // "Afternoon sun": directional, intensity 1.25, Euler(38, -35, 0), soft shadows
     const sun = this.sun = new THREE.DirectionalLight(0xffffff, 1.25 * 2.4);
     const e = new THREE.Euler(38 * DEG, -35 * DEG, 0, 'YXZ');
@@ -66,7 +70,11 @@ export class RaceView {
     sun.castShadow = !this.lite; sun.shadow.mapSize.set(2048, 2048);
     const sc = sun.shadow.camera; sc.left = -40; sc.right = 40; sc.top = 40; sc.bottom = -40; sc.near = 1; sc.far = 260;
     sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03;
+    sun.color = srgb(1, .95, .86); // warm afternoon sun
     scene.add(sun); scene.add(sun.target);
+    // presentation only (no effect on the race): a ring of distant hills on the horizon and a mown-turf texture
+    this.hills = hillRing(); scene.add(this.hills);
+    this.turfTex = turfTexture(THREE, this.lite ? 1 : r.capabilities.getMaxAnisotropy());
     // "Chase camera": FOV 57, far clip 1200
     this.camera = new THREE.PerspectiveCamera(57, 16 / 9, 0.3, 1200);
     this.mats = new Map();
@@ -90,6 +98,20 @@ export class RaceView {
         this.models.set(p, obj);
       } catch (err) { console.warn('model', p, err?.message ?? err); }
     }));
+  }
+
+  /** Sky: a vertical gradient (deep blue → hazy horizon, matching the fog) on the canvas element itself. */
+  setSky(night) {
+    this.canvas.style.background = night
+      ? 'linear-gradient(180deg, #02040c 0%, #070b18 42%, #0d1220 56%, #0d1220 100%)'
+      : 'linear-gradient(180deg, #2f78cf 0%, #6ea9e2 26%, #a9cfee 47%, #b4d6f1 56%, #b4d6f1 100%)';
+  }
+
+  /** Turf with a mown-grass texture repeated every ~6 m over a ground box of w × d metres (presentation only). */
+  turf(r, g, b, w, d) {
+    if (this.lite) return this.mat(r, g, b); // software GL: plain colour (texture filtering is expensive there)
+    const map = this.turfTex.clone(); map.needsUpdate = true; map.repeat.set(w / 6, d / 6);
+    return new THREE.MeshLambertMaterial({ color: srgb(r * 1.6, g * 1.6, b * 1.6), map });
   }
 
   mat(r, g, b) {
@@ -117,7 +139,7 @@ export class RaceView {
   // Greenfield straight (RaceWorld.Initialize): turf, mown stripes, rails at x=±15 from z=-60 to 500
   buildStraight(g) {
     const rail = this.mat(.95, .96, .91);
-    this.box(g, [0, -.22, 220], [250, .4, 650], this.mat(.23, .48, .12));
+    this.box(g, [0, -.22, 220], [250, .4, 650], this.turf(.30, .56, .16, 250, 650));
     const stripes = [], posts = [], rails = [];
     for (let z = -60; z < 500; z += 10) {
       if (z % 20 === 0) stripes.push([[0, -.008, z], [28, .012, 10]]);
@@ -129,7 +151,7 @@ export class RaceView {
   // RaceWorld.BuildCourse: ground, running surface and rails from the engine's track geometry
   buildCourse(g, w, dirt) {
     const [minX, minZ, maxX, maxZ] = w.bounds;
-    this.box(g, [(minX + maxX) / 2, -.25, (minZ + maxZ) / 2], [maxX - minX + 160, .4, maxZ - minZ + 160], this.mat(.20, .42, .11));
+    this.box(g, [(minX + maxX) / 2, -.25, (minZ + maxZ) / 2], [maxX - minX + 160, .4, maxZ - minZ + 160], this.turf(.26, .50, .14, maxX - minX + 160, maxZ - minZ + 160));
     const surface = dirt ? this.mat(.55, .40, .26) : this.mat(.27, .53, .15);
     const rail = this.mat(.95, .96, .91);
     const width = w.outerRailM - w.innerRailM + 1;
@@ -163,8 +185,9 @@ export class RaceView {
     // SetNight
     const night = w.night;
     this.sun.intensity = (night ? .35 : 1.25) * 2.4;
-    this.scene.background = night ? srgb(.04, .06, .12) : srgb(.39, .69, .94);
+    this.setSky(night);
     this.scene.fog.color = night ? srgb(.05, .07, .12) : srgb(.68, .83, .95);
+    this.hills.material.color.copy(night ? srgb(.05, .07, .1) : srgb(.36, .5, .46));
     this.ambient.intensity = night ? .9 : 2.3;
     for (const h of this.horses) this.scene.remove(h.anchor);
     this.horses = [];
@@ -266,6 +289,7 @@ export class RaceView {
       this.sun.target.position.copy(me.position);
       this.sun.position.copy(me.position).addScaledVector(this.sunDir, -120);
     }
+    this.hills.position.set(this.camera.position.x, 0, this.camera.position.z);
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -289,6 +313,39 @@ function ribbon(line, width, height, y) {
     out.push([[(ax + cx) / 2, y, (az + cz) / 2], [width, height, len + .05], Math.atan2(dx, dz) / DEG]);
   }
   return out;
+}
+
+// ---- presentation helpers (no effect on the race): distant hills, mown turf
+function hillRing() {
+  // a closed ring of low hills on the horizon (height varies with a few sines), hazed blue-green like the key art
+  const seg = 160, r = 900, pos = [], idx = [];
+  for (let i = 0; i <= seg; i++) {
+    const a = (i / seg) * Math.PI * 2;
+    const h = 26 + 18 * Math.sin(a * 3 + 1) + 11 * Math.sin(a * 7 + 2) + 6 * Math.sin(a * 17);
+    pos.push(Math.cos(a) * r, -80, Math.sin(a) * r, Math.cos(a) * r, Math.max(8, h), Math.sin(a) * r);
+    if (i < seg) { const k = i * 2; idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx);
+  const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: srgb(.36, .5, .46), side: THREE.DoubleSide, fog: false }));
+  m.frustumCulled = false;
+  return m;
+}
+function turfTexture(T, aniso) {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const x = c.getContext('2d');
+  x.fillStyle = '#8c8c8c'; x.fillRect(0, 0, 128, 128);
+  // two mown bands (light / dark) and fine blade noise
+  x.fillStyle = 'rgba(255,255,255,.07)'; x.fillRect(0, 0, 128, 64);
+  let s = 7;
+  const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  for (let i = 0; i < 2600; i++) {
+    const v = 110 + Math.floor(rnd() * 70);
+    x.fillStyle = `rgba(${v},${v},${v},.35)`;
+    x.fillRect(Math.floor(rnd() * 128), Math.floor(rnd() * 128), 1, 2 + Math.floor(rnd() * 3));
+  }
+  const t = new T.CanvasTexture(c);
+  t.wrapS = t.wrapT = T.RepeatWrapping; t.colorSpace = T.SRGBColorSpace; t.anisotropy = Math.min(8, aniso || 1);
+  return t;
 }
 
 function disposeGroup(g) { g.traverse((o) => { if (o.isInstancedMesh) o.dispose(); }); }

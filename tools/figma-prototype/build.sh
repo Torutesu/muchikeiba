@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Builds the web prototype (tools/figma-prototype/site): Codex's club UI (frontend/, index.html) and Codex's Unity UI
-# reproduced in HTML (unity.html), both running on
+# Builds the web prototype (tools/figma-prototype/site): the ムチ一閃 UI (index.html, the site root; Codex's Figma screens'
+# tone & manner on the flow of Codex's Unity UI) and Codex's club UI (frontend/, club.html), both running on
 #   - the real server domain logic (server/src/domain → esbuild → site/js/logic.js)
 #   - the real C# race engine + Unity game layer compiled to WebAssembly (engine-wasm → site/engine/_framework)
 #   - Codex's art, localization and font (prepare_assets.py)
@@ -19,7 +19,17 @@ rm -rf "$SITE/engine"; mkdir -p "$SITE/engine/_framework"
 find "$OUT/wwwroot/_framework" -maxdepth 1 -type f \( -name '*.wasm' -o -name '*.js' -o -name '*.json' \) -exec cp {} "$SITE/engine/_framework/" \;
 rm -rf "$OUT"
 
-python3 "$HERE/prepare_assets.py" "$ROOT" "$SITE"
+# Noto Sans JP Regular / Medium (SIL OFL) for the light body text of the ムチ一閃 UI: the repo only has the CJK Bold.
+# Fetched once from npm (@expo-google-fonts/noto-sans-jp ships the full TTFs) into .cache/ (not committed).
+FONTS="$HERE/.cache/fonts"
+if [[ ! -f "$FONTS/NotoSansJP_500Medium.ttf" ]]; then
+  mkdir -p "$FONTS"; TMPF="$(mktemp -d)"
+  (cd "$TMPF" && npm pack --silent @expo-google-fonts/noto-sans-jp@0.4.1 >/dev/null && tar xzf ./*.tgz package/400Regular package/500Medium package/LICENSE_FONT) \
+    && cp "$TMPF"/package/400Regular/*.ttf "$TMPF"/package/500Medium/*.ttf "$FONTS/" && cp "$TMPF/package/LICENSE_FONT" "$FONTS/OFL.txt" \
+    || echo "warning: Noto Sans JP Regular/Medium unavailable; the UI falls back to the bold face"
+  rm -rf "$TMPF"
+fi
+MUCHI_FONTS="$FONTS" python3 "$HERE/prepare_assets.py" "$ROOT" "$SITE"
 node "$HERE/club-css.cjs" "$ROOT" "$SITE"   # Codex frontend stylesheets + forced mobile layout for the club UI
 
 node "$HERE/test/logic.test.cjs"

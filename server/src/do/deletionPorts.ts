@@ -29,6 +29,7 @@ export function deletionPortsFromEnv(env: Env, ctx: DurableObjectState, svc: Pla
   const invoker = (uid: string) => ({ invoke: ((m: PlayerMethod, ...args: unknown[]) => other(uid, m, ...args.slice(1))) as PlayerInvoker['invoke'] });
   const stables = makeStableService(invoker, shardedStableDirectory(env.DIRECTORY), loadMaster);
   return {
+    start: async (uid) => { await svc.deletionStart(uid); },
     snapshot: (uid) => svc.deletionSnapshot(uid),
     markStep: async (uid, step) => { await svc.deletionMarkStep(uid, step); },
     friends: {

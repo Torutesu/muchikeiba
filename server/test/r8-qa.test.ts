@@ -5,7 +5,10 @@ import { describe, expect, it } from 'vitest';
 import { MemoryPlayerRepo, PlayerService } from '../src/domain/service.js';
 import { FakeStoreVerifier } from '../src/domain/purchase.js';
 import { seededRng } from '../src/domain/rng.js';
-import { runAccountDeletion, type DeletionPorts, type RetainedRecord } from '../src/domain/accountDeletion.js';
+import { applyRetainedRefund, runAccountDeletion, type DeletionPorts, type RetainedRecord } from '../src/domain/accountDeletion.js';
+import { handle, type AppContext, type PlayerInvoker } from '../src/http/app.js';
+import { grantAllowance } from '../src/domain/shop.js';
+import { newPlayer } from '../src/domain/player.js';
 import type { PublicProfile } from '../src/domain/stats.js';
 import type { PaidBalanceSnapshot } from '../src/domain/accounting.js';
 import { m } from './helpers.js';
@@ -30,6 +33,7 @@ function setup() {
 
 function ports(svc: PlayerService, over: Partial<DeletionPorts> & { forgetDir?: (u: string) => void } = {}): DeletionPorts {
   return {
+    start: async (u) => { await svc.deletionStart(u); },
     snapshot: (u) => svc.deletionSnapshot(u),
     markStep: async (u, st) => { await svc.deletionMarkStep(u, st); },
     friends: { removeFriend: async () => undefined, dropOutgoing: async () => undefined, dropIncoming: async () => undefined },
@@ -178,5 +182,127 @@ describe('r8 QA: account deletion vs the player\'s own transactions', () => {
     expect(await svc.stableLikeReceive('p', 'x', 'x:2026-11-05:0')).toMatchObject({ counted: false });
     await svc.tournamentClose('p', 'tour1', 1, { freeCoins: 10 }, 'x');
     expect(repo.get('p')).toBeNull();
+  });
+});
+
+const invokerOf = (svc: PlayerService): PlayerInvoker => ({ invoke: (async (method: string, ...args: unknown[]) => (svc as unknown as Record<string, (...a: unknown[]) => unknown>)[method]!.apply(svc, args)) as PlayerInvoker['invoke'] });
+const codeOf = async (p: Promise<unknown>) => { try { await p; return 'ok'; } catch (e) { return (e as { code: string }).code; } };
+
+describe('r8 QA follow-up', () => {
+  it('a store refund for a deleted account is recorded on the retained record (not dropped), once', async () => {
+    const { svc, repo, store, advance, now } = setup();
+    await svc.bootstrap('p');
+    await svc.setAge('p', 1990, 1, false);
+    await svc.purchase('p', 'fake', 'coin_480', store.issue({ transactionId: 'TX1', productId: 'coin_480', purchasedAt: now(), priceYen: 480 }));
+    await scheduleDeletion(svc, advance);
+    const retained = new Map<string, RetainedRecord>();
+    await runAccountDeletion(ports(svc, { retain: async (_u, r) => { retained.set(r.anonId, structuredClone(r)); } }), 'p', now());
+    const anonId = [...retained.keys()][0]!;
+    // AccountingDO re-points the store transaction to the anonymous id, so the refund notification resolves to it
+    const c = {
+      master: m, authenticate: async () => 'u', player: () => invokerOf(svc), clock: now,
+      parseStoreNotification: async () => ({ kind: 'refund', playerId: anonId, transactionId: 'TX1' }),
+      retainedRefund: async (anon: string, txId: string) => {
+        const r = retained.get(anon);
+        if (!r) return null;
+        const out = applyRetainedRefund(r, txId, now());
+        retained.set(anon, out.record);
+        return out.result;
+      },
+    } as unknown as AppContext;
+    const post = () => handle(new Request('https://x/v1/store/notifications/apple', { method: 'POST', body: '{}' }), {}, c);
+    const res = await post();
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ retained: true, anonId, transactionId: 'TX1', alreadyRefunded: false, priceYen: 480, paidCoins: 310, bonusCoins: 310 });
+    const rec = retained.get(anonId)!;
+    expect(rec.purchases.find((x) => x.txId === 'TX1')!.refunded).toBe(true);
+    expect(rec.refundsAfterDeletion).toEqual([{ txId: 'TX1', at: now(), priceYen: 480, paidCoins: 310, bonusCoins: 310 }]);
+    const last = rec.ledger[rec.ledger.length - 1]!;
+    expect(last).toMatchObject({ kind: 'refund', delta: 0, balanceAfter: 0, ref: 'TX1', seq: rec.ledger[rec.ledger.length - 2]!.seq + 1 });
+    expect(rec.rev).toBeGreaterThan(0);
+    expect(await (await post()).json()).toMatchObject({ retained: true, alreadyRefunded: true });
+    expect(retained.get(anonId)!.refundsAfterDeletion).toHaveLength(1);
+    expect(repo.data.has(anonId)).toBe(false); // no player state is created for the anonymous id
+  });
+
+  it('once the deletion run has started: friends, race / time attack / event entries and likes are refused; the pending window stays usable', async () => {
+    const { svc, repo, advance } = setup();
+    for (const id of ['p', 'q']) await svc.bootstrap(id);
+    await svc.tutorialDraw('p', 'c:t1');
+    const horseId = (await svc.state('p')).horses[0]!.id;
+    const t = ((await svc.requestDeletion('p', null)) as { confirmToken: string }).confirmToken;
+    await svc.requestDeletion('p', t);
+    // pending (scheduled) window: still usable
+    expect(await codeOf(svc.raceEntry('p', horseId))).toBe('ok');
+    expect(await codeOf(svc.friendSend('p', 'q'))).toBe('ok');
+    advance(14 * DAY);
+    await svc.deletionMarkStep('p', 'friends');
+    const before = JSON.stringify((await svc.state('p') as unknown as { stable?: unknown }).stable ?? null);
+    expect(await codeOf(svc.friendSend('p', 'q'))).toBe('DELETION_PENDING');
+    expect(await codeOf(svc.friendReceive('p', 'q'))).toBe('DELETION_PENDING');
+    expect(await codeOf(svc.friendAccept('p', 'q'))).toBe('DELETION_PENDING');
+    expect(await codeOf(svc.friendAccepted('p', 'q'))).toBe('DELETION_PENDING');
+    expect(await codeOf(svc.friendInvite('p', 'q', 'abc'))).toBe('DELETION_PENDING');
+    expect(await codeOf(svc.raceEntry('p', horseId))).toBe('DELETION_PENDING');
+    expect(await codeOf(svc.tournamentEntry('p', horseId))).toBe('DELETION_PENDING');
+    expect(await codeOf(svc.taStart('p', 'kirameki_turf_2000', horseId))).toBe('DELETION_PENDING');
+    expect(await codeOf(svc.taPrepare('p', 'sess', [], 'h', {}))).toBe('DELETION_PENDING');
+    expect(await codeOf(svc.eventEnter('p', m.events[0]!.id, horseId, 'c:e1'))).toBe('DELETION_PENDING');
+    expect(await codeOf(svc.stableLikeGive('p', 'q', 'c:l1'))).toBe('DELETION_PENDING');
+    expect(JSON.stringify((JSON.parse(repo.data.get('p')!) as { stable?: unknown }).stable ?? null)).toBe(before); // liker's counter untouched
+  });
+
+  it('a cancel after the run has started is refused with DELETION_IN_PROGRESS; a cancel before the run starts stops it cleanly', async () => {
+    const { svc, repo, advance, now } = setup();
+    await svc.bootstrap('p');
+    await scheduleDeletion(svc, advance);
+    // the run marks itself started before touching anything else
+    let cancelled = 'not tried';
+    const p = ports(svc, { friends: { removeFriend: async () => undefined, dropOutgoing: async () => undefined, dropIncoming: async () => undefined } });
+    const origSnapshot = p.snapshot;
+    p.snapshot = async (u) => { cancelled = await codeOf(svc.cancelDeletion(u)); return origSnapshot(u); };
+    await runAccountDeletion(p, 'p', now());
+    expect(cancelled).toBe('DELETION_IN_PROGRESS');
+    expect(repo.data.has('p')).toBe(false);
+    // cancelled before the alarm runs: the run stops before its first step
+    await svc.bootstrap('r');
+    const t = ((await svc.requestDeletion('r', null)) as { confirmToken: string }).confirmToken;
+    await svc.requestDeletion('r', t);
+    advance(14 * DAY);
+    await svc.cancelDeletion('r');
+    const calls: string[] = [];
+    await expect(runAccountDeletion(ports(svc, { forgetDir: (u) => { calls.push(u); } }), 'r', now())).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(calls).toEqual([]);
+    expect(repo.data.has('r')).toBe(true);
+  });
+
+  it('daily pack refund after its entitlement was pruned still takes back the claimed coins (linkedFree)', async () => {
+    const { svc, repo, store, advance, now } = setup();
+    await svc.bootstrap('p');
+    await svc.setAge('p', 1990, 1, false);
+    await svc.purchase('p', 'fake', 'stable_allowance_30d', store.issue({ transactionId: 'TXA', productId: 'stable_allowance_30d', purchasedAt: now(), priceYen: 480 }));
+    await svc.claimAllowance('p', 'c:a1');
+    advance(DAY);
+    await svc.claimAllowance('p', 'c:a2');
+    const st = JSON.parse(repo.data.get('p')!); st.shop.allowances = []; repo.data.set('p', JSON.stringify(st)); // pruned long ago
+    const r = await svc.refund('p', 'TXA');
+    expect(r.linkedClawback.freeCoins).toBe(60);
+  });
+
+  it('grantAllowance keeps at most ALLOWANCE_KEEP entitlements even when 12 are running or queued', () => {
+    const s = newPlayer('p', T0, '2026-11');
+    const p = m.products.find((x) => x.kind === 'allowance')!;
+    s.shop = { offers: {}, allowances: [{ txId: 'old', productId: p.id, startDate: '2025-01-01', days: 30, dailyFreeCoins: 30, claimed: [] }] };
+    for (let i = 0; i < 12; i++) grantAllowance(s, p, `tx${i}`, T0);
+    expect(s.shop.allowances.map((a) => a.txId)).not.toContain('old');
+    expect(s.shop.allowances).toHaveLength(12);
+  });
+
+  it('a promotion pack credited without the class reached (intent skipped) is flagged for support', async () => {
+    const { svc, store, now } = setup();
+    await svc.bootstrap('p');
+    await svc.setAge('p', 1990, 1, false);
+    await svc.purchase('p', 'fake', 'promo_pack_S', store.issue({ transactionId: 'TXS', productId: 'promo_pack_S', purchasedAt: now(), priceYen: 1500 }));
+    expect((await svc.state('p')).supportFlags).toContain('promotion_not_reached:promo_pack_S:TXS');
   });
 });

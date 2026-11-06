@@ -263,7 +263,7 @@ namespace Muchi.Client
 
         /// <summary>
         /// REQ-UXS-040: cancel a scheduled deletion within the window. Not retried (a second cancel is NOT_FOUND);
-        /// ConflictException CONFLICT once the deletion has started.
+        /// ConflictException DELETION_IN_PROGRESS once the deletion run has started (irreversible).
         /// </summary>
         public Task<DeletionStatus> CancelAccountDeletionAsync(CancellationToken ct = default)
             => Call("POST", "/v1/player/deletion/cancel", JsonNode.Obj(), true, null, false, DeletionStatus.Parse, ct);

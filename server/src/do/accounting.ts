@@ -1,7 +1,8 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { Env } from '../env.js';
 import { aggregatePaidBalances, type PaidBalanceSnapshot } from '../domain/accounting.js';
-import type { RetainedRecord } from '../domain/accountDeletion.js';
+import { applyRetainedRefund, type RetainedRecord } from '../domain/accountDeletion.js';
+import { AppError } from '../domain/errors.js';
 
 /**
  * Latest unused paid-coin balance per player, for the Payment Services Act base-date check (REQ-WAL-005).
@@ -42,6 +43,25 @@ export class AccountingDO extends DurableObject<Env> {
     sql.exec('UPDATE store_tx SET player_id = ? WHERE player_id = ?', record.anonId, playerId);
     sql.exec('DELETE FROM paid WHERE player_id = ?', playerId);
     return { ok: true };
+  }
+
+  /**
+   * REQ-UXS-040 × REQ-PUR-006: a store refund that resolved to a deleted account's anonymous id. Recorded on the retained
+   * record (applyRetainedRefund). Null when `anonId` has no retained record (the caller treats it as unknown).
+   */
+  async retainedRefund(anonId: string, txId: string, nowMs: number) {
+    const sql = this.ctx.storage.sql;
+    sql.exec('CREATE TABLE IF NOT EXISTS retained (anon_id TEXT PRIMARY KEY, deleted_at INTEGER NOT NULL, retain_until INTEGER NOT NULL, record TEXT NOT NULL)');
+    const row = sql.exec<{ record: string }>('SELECT record FROM retained WHERE anon_id = ?', anonId).toArray()[0];
+    if (!row) return null;
+    try {
+      const { record, result } = applyRetainedRefund(JSON.parse(row.record) as RetainedRecord, txId, nowMs);
+      if (!result.alreadyRefunded) sql.exec('UPDATE retained SET record = ? WHERE anon_id = ?', JSON.stringify(record), anonId);
+      return result;
+    } catch (e) {
+      if (e instanceof AppError && e.code === 'NOT_FOUND') return null;
+      throw e;
+    }
   }
 
   /** Daily: drops retained records past their legal retention. */

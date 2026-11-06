@@ -48,7 +48,7 @@ import {
 import { armPromotionNudge, nextNudgeWake, nudgeTaBeaten, nudgeTournamentClosing, runDueNudges, type TournamentClosingInfo } from './nudges.js';
 import {
   cancelDeletion, deletionDue, deletionRetryLater, deletionScheduled, deletionSnapshot, deletionView, finalizeDeletion, markDeletionStep,
-  nextDeletionWake, requestDeletion, type DeletionStep,
+  nextDeletionWake, notWhileDeleting, requestDeletion, startDeletion, type DeletionStep,
 } from './accountDeletion.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
@@ -267,6 +267,7 @@ export class PlayerService {
   }
   async deletionDue(id: string) { return deletionDue(await this.load(id), this.d.clock()); }
   async deletionSnapshot(id: string) { return deletionSnapshot(await this.load(id)); }
+  deletionStart(id: string) { return this.tx(id, null, (s) => startDeletion(s)); }
   deletionMarkStep(id: string, step: DeletionStep) { return this.tx(id, null, (s) => { markDeletionStep(s, step); }); }
   deletionRetryLater(id: string) { return this.tx(id, null, (s, now) => deletionRetryLater(s, now)); }
   /** Forfeits balances and returns the anonymised record (emitted once as account_delete/deleted). */
@@ -591,6 +592,7 @@ export class PlayerService {
   /** Snapshot used by the matchmaker: horse for the race, rating, class cap, beginner flag. */
   async raceEntry(id: string, horseId: string) {
     const s = await this.load(id);
+    notWhileDeleting(s); // REQ-UXS-040: no new race once the deletion run has started
     const h = getHorse(s, horseId);
     if (h.status !== 'active') throw new AppError('HORSE_NOT_ACTIVE');
     const cls = classDef(this.d.master, s.season.classId);
@@ -658,6 +660,7 @@ export class PlayerService {
   // ---- friends: per-player steps, orchestrated by FriendsService (REQ-SOCIAL-*) ----
   friendSend(id: string, toId: string) {
     return this.tx(id, null, (s, now, emit) => {
+      notWhileDeleting(s);
       const out = friendSend(this.d.master, s, toId, now);
       if (out === 'sent' || out === 'mutual') emit({ name: 'friend_request', s1: out });
       return out;
@@ -666,6 +669,7 @@ export class PlayerService {
   /** REQ-PUSH-002: the receiver is notified (`fromName` comes from the public profile directory). */
   friendReceive(id: string, fromId: string, fromName?: string) {
     return this.tx(id, null, (s, now) => {
+      notWhileDeleting(s);
       const out = friendReceive(this.d.master, s, fromId, now);
       if (out === 'received') enqueuePush(this.d.master, s, 'friend_request', { name: fromName ?? 'フレンド' }, now);
       return out;
@@ -673,6 +677,7 @@ export class PlayerService {
   }
   friendAccept(id: string, fromId: string) {
     return this.tx(id, null, (s, _now, emit) => {
+      notWhileDeleting(s);
       const out = friendAccept(this.d.master, s, fromId);
       if (out === 'accepted') emit({ name: 'friend_accept' });
       return out;
@@ -680,6 +685,7 @@ export class PlayerService {
   }
   friendAccepted(id: string, byId: string, byName?: string) {
     return this.tx(id, null, (s, now) => {
+      notWhileDeleting(s);
       const was = s.friends.ids.includes(byId);
       const out = friendAccepted(s, byId);
       if (!was) enqueuePush(this.d.master, s, 'friend_accepted', { name: byName ?? 'フレンド' }, now);
@@ -691,6 +697,7 @@ export class PlayerService {
   friendRemove(id: string, otherId: string) { return this.tx(id, null, (s) => friendRemove(s, otherId)); }
   friendInvite(id: string, fromId: string, passphrase: string, fromName?: string) {
     return this.tx(id, null, (s, now) => {
+      notWhileDeleting(s);
       const out = receiveInvite(this.d.master, s, fromId, passphrase, now);
       // The passphrase stays out of the notification text; the app reads it from GET /v1/friends (invites).
       enqueuePush(this.d.master, s, 'room_invite', { name: fromName ?? 'フレンド' }, now);
@@ -748,7 +755,7 @@ export class PlayerService {
     return v;
   }
   stableLikeGive(id: string, target: string, idemKey: string | null) {
-    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => stableLikeGive(this.d.master, s, target, now, emit));
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => { notWhileDeleting(s); return stableLikeGive(this.d.master, s, target, now, emit); });
   }
   async stableLikeReceive(id: string, from: string, likeId: string) {
     // REQ-UXS-040: a like that arrives after the owner's account was wiped must not create a fresh player
@@ -792,12 +799,13 @@ export class PlayerService {
   /** `ruleset` is the active remote-config ruleset (REQ-TA-009); omitted = the built-in default. */
   taStart(id: string, trackId: string, horseId: string, ruleset?: Ruleset) {
     return this.tx(id, null, (s, now) => {
+      notWhileDeleting(s);
       const sessionId = [0, 0, 0].map(() => this.d.rng.nextU32().toString(36)).join('');
       return startTimeAttack(this.d.master, s, this.d.master.progression.timeAttack, trackId, horseId, sessionId, this.d.rng, now, ruleset);
     });
   }
   taPrepare(id: string, sessionId: string, inputs: unknown, resultHash: string, echoedConfig: unknown) {
-    return this.tx(id, null, (s, now) => prepareSubmit(s, this.d.master.progression.timeAttack, sessionId, inputs, resultHash, echoedConfig, now));
+    return this.tx(id, null, (s, now) => { notWhileDeleting(s); return prepareSubmit(s, this.d.master.progression.timeAttack, sessionId, inputs, resultHash, echoedConfig, now); });
   }
   taAbort(id: string, sessionId: string) { return this.tx(id, null, (s) => abortSubmit(s, sessionId)); }
   taRecord(id: string, sessionId: string, out: VerifierOutput, claimedHash: string) {
@@ -853,6 +861,7 @@ export class PlayerService {
     // settled without paying again (review r5 #1).
     this.requireKey(idemKey);
     return this.tx(id, null, (s, now, emit) => {
+      notWhileDeleting(s);
       const ev = findEvent(this.d.master, eventId);
       const entryId = [0, 0].map(() => this.d.rng.nextU32().toString(36)).join('');
       const r = enterEvent(ev, s, getHorse(s, horseId), entryId, now);

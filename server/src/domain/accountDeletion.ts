@@ -63,6 +63,12 @@ export interface RetainedRecord {
   ledger: LedgerEntry[];
   monthlySpendYen: Record<string, number>;
   /**
+   * Store refunds that arrived after the wipe (the store transaction points to `anonId`, AccountingDO applies them
+   * with applyRetainedRefund). The coins of the purchase were already given up, so nothing is left to take back:
+   * the refund is recorded here, the purchase is marked refunded and a `refund` ledger row (delta 0) is added.
+   */
+  refundsAfterDeletion?: { txId: string; at: number; priceYen: number; paidCoins: number; bonusCoins: number }[];
+  /**
    * Balances given up. `allowance`: unclaimed days (and their free coins) of running or queued 厩舎手当 packs.
    * `pass`: this season's pass (premium = bought and running) and the levels not paid out.
    */
@@ -118,7 +124,8 @@ export function requestDeletion(m: Master, s: PlayerState, confirmToken: string 
 export function cancelDeletion(s: PlayerState) {
   const d = s.deletion;
   if (!d || d.status === 'confirming') { delete s.deletion; throw new AppError('NOT_FOUND', 'no deletion is scheduled'); }
-  if (d.status === 'deleting') throw new AppError('CONFLICT', 'the deletion has already started');
+  // the run is irreversible once started (friends, boards and the directory are already being cleared)
+  if (d.status === 'deleting') throw new AppError('DELETION_IN_PROGRESS', 'the account deletion has already started and cannot be cancelled');
   delete s.deletion;
   return deletionView(s);
 }
@@ -157,6 +164,19 @@ export function deletionSnapshot(s: PlayerState): DeletionSnapshot {
     ghostKeys: Object.keys(s.timeAttack?.seasonBest ?? {}).map((k) => { const [season, track] = k.split(':'); return `ghosts/${season}/${track}/${s.id}.json`; }),
     steps: [...(s.deletion?.steps ?? [])],
   };
+}
+
+/** The run starts: from now on it cannot be cancelled. NOT_FOUND when the deletion was cancelled meanwhile. */
+export function startDeletion(s: PlayerState) {
+  const d = s.deletion;
+  if (!d || d.status === 'confirming') throw new AppError('NOT_FOUND', 'no deletion is scheduled');
+  d.status = 'deleting';
+  return { steps: [...d.steps] };
+}
+
+/** REQ-UXS-040: once the run has started, the player's own state-changing calls (friends, entries, likes) are refused. */
+export function notWhileDeleting(s: PlayerState) {
+  if (s.deletion?.status === 'deleting') throw new AppError('DELETION_PENDING', 'the account is being deleted');
 }
 
 export function markDeletionStep(s: PlayerState, step: DeletionStep) {
@@ -220,6 +240,28 @@ function mergeForfeited(a: RetainedRecord['forfeited'], b: RetainedRecord['forfe
   };
 }
 
+/**
+ * REQ-UXS-040 × REQ-PUR-006: a store refund for a purchase of a deleted account (AccountingDO, legal retention).
+ * Idempotent per transaction. Throws NOT_FOUND when the record holds no such purchase.
+ */
+export function applyRetainedRefund(r: RetainedRecord, txId: string, now: number) {
+  const i = r.purchases.findIndex((x) => x.txId === txId);
+  if (i < 0) throw new AppError('NOT_FOUND', `purchase ${txId} is not in retained record ${r.anonId}`);
+  const p = r.purchases[i]!;
+  const base = { retained: true as const, anonId: r.anonId, transactionId: txId, priceYen: p.priceYen, paidCoins: p.paidCoinsGranted, bonusCoins: p.bonusCoinsGranted };
+  if (p.refunded) return { record: r, result: { ...base, alreadyRefunded: true } };
+  const record: RetainedRecord = structuredClone(r);
+  record.purchases[i] = { ...p, refunded: true };
+  (record.refundsAfterDeletion ??= []).push({ txId, at: now, priceYen: p.priceYen, paidCoins: p.paidCoinsGranted, bonusCoins: p.bonusCoinsGranted });
+  const seq = record.ledger.reduce((a, e) => Math.max(a, e.seq), 0) + 1;
+  record.ledger.push({
+    seq, at: now, kind: 'refund', currency: 'paid', delta: 0, balanceAfter: 0,
+    reason: `store refund after account deletion (${p.paidCoinsGranted} paid + ${p.bonusCoinsGranted} bonus coins already forfeited)`, ref: txId,
+  });
+  record.rev = (record.rev ?? 0) + 1;
+  return { record, result: { ...base, alreadyRefunded: false } };
+}
+
 /** Team succession when the leader leaves: the earliest officer, else the earliest member. */
 export function pickSuccessor(members: { playerId: string; role: string; joinedAt: number }[], leaving: string): string | null {
   const others = members.filter((x) => x.playerId !== leaving).sort((a, b) => a.joinedAt - b.joinedAt);
@@ -228,6 +270,8 @@ export function pickSuccessor(members: { playerId: string; role: string; joinedA
 
 /** Everything outside the player's own object that the deletion touches (Durable Object RPC in production). */
 export interface DeletionPorts {
+  /** Marks the run started (no cancel from now on); fails with NOT_FOUND when it was cancelled. Called first. */
+  start?(uid: string): Promise<unknown>;
   snapshot(uid: string): Promise<DeletionSnapshot>;
   markStep(uid: string, step: DeletionStep): Promise<void>;
   /** Other players' sides of the friendship (the deleting player's own state is wiped at the end). */
@@ -259,6 +303,8 @@ export interface DeletionPorts {
 
 /** Runs (or resumes) a due deletion. Throws on the first failing step; the caller retries later. */
 export async function runAccountDeletion(p: DeletionPorts, uid: string, now: number): Promise<{ done: DeletionStep[] }> {
+  // first: no cancel can half-stop the run after this point, and a cancel that came earlier stops it here
+  if (p.start) await p.start(uid);
   const snap = await p.snapshot(uid);
   const done: DeletionStep[] = [];
   const step = async (name: DeletionStep, f: () => Promise<unknown>) => {

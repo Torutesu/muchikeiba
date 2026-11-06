@@ -41,6 +41,8 @@ namespace Muchi.Engine.Tests
                 for (; seen < sim.Events.Count; seen++)
                 {
                     var e = sim.Events[seen];
+                    // the kakari event carries the rank too (ranks before this tick), so the commentary never reads live state
+                    if (e.Type == RaceEventType.Kakari) Assert.Equal(sim.GetPreviousHorse(e.Slot).Rank, e.Value);
                     if (e.Type != RaceEventType.SpurtStart || ticks[e.Slot] >= 0) continue;
                     // the event carries the rank the horse held as it reached the mark (ranks before this tick)
                     ranks[e.Slot] = sim.GetPreviousHorse(e.Slot).Rank;
@@ -225,11 +227,61 @@ namespace Muchi.Engine.Tests
                     Assert.Equal(winA.VariantId, winB.VariantId);
                     foreach (var kind in new[] { "photo_finish", "result" })
                         Assert.Equal(perTick.Lines.Where(l => l.Kind == kind).Select(l => l.Text), c2.Lines.Where(l => l.Kind == kind).Select(l => l.Text));
+                    // every line said before the stall (kakari included) is exactly the per-tick line
+                    var before = c2.Lines.TakeWhile(l => l.Tick < joinAt - 1).ToList();
+                    Assert.Equal(perTick.Lines.Take(before.Count).Select(Describe), before.Select(Describe));
                     checkedRaces++;
                 }
             }
             Assert.Equal(900, checkedRaces);
             foreach (var k in new[] { "comeback_win", "wire_win", "finish_win" }) Assert.Contains(k, kinds);
+        }
+
+        private static string Who(CommentaryLine l) => "slot " + l.Slot + " " + l.VariantId + " " + l.Text;
+
+        private static string Describe(CommentaryLine l) =>l.Tick + "/" + l.DurationTicks + " [" + l.Kind + "/" + l.VariantId + " slot " + l.Slot + "] " + l.Text;
+
+        /// <summary>
+        /// QA r7 leftover: whether a 掛かり is worth a line (the focus horse, or one of the first three) must come from
+        /// the tick-stamped event, not the live sim at Process time, so a Process that catches up after a stall
+        /// (reconnect fast-forward, background resume, spectator joining) calls the same horses as per-tick Process.
+        /// The templates are changed so that every kakari candidate is said (top priority, never expires): the kakari
+        /// lines then show every decision, and must be identical line for line.
+        /// </summary>
+        [Fact]
+        public void CatchUpProcessCallsTheSameKakariAsPerTickProcess()
+        {
+            var t = CommentaryTests.Templates();
+            t.Phrases["kakari"].MustSay = true;
+            t.Phrases["kakari"].Priority = 1000;
+            t.MustSayExpiryTicks = int.MaxValue / 2;
+            var tracks = ServerTracks();
+            int kakariLines = 0, races = 0;
+            for (ulong seed = 1; seed <= 200; seed++)
+            {
+                var track = tracks[(int)(seed % (ulong)tracks.Count)];
+                var cfg = Cfg(seed, track);
+                var (_, perTick, _, _) = Run(seed, track, t: t);
+                // the catch-up batch speaks later than per-tick Process, so compare who was called and with which words
+                var expected = perTick.Lines.Where(l => l.Kind == "kakari").Select(Who).ToList();
+                foreach (var (from, len) in new[] { (150, 60), (300, 120), (500, 200) })
+                {
+                    var sim = new RaceSim(cfg);
+                    var c = new Commentator(t, cfg, 0);
+                    var empty = new byte[cfg.Entrants.Count];
+                    while (!sim.IsFinished)
+                    {
+                        sim.Step(empty);
+                        if (sim.Tick < from || sim.Tick >= from + len) c.Process(sim); // stalled in between, then one catch-up batch
+                    }
+                    var got = c.Lines.Where(l => l.Kind == "kakari").Select(Who).ToList();
+                    Assert.True(expected.SequenceEqual(got), "seed " + seed + " stall " + from + "+" + len + ":\n  per tick: " + string.Join(" | ", expected) + "\n  catch-up: " + string.Join(" | ", got));
+                    races++;
+                }
+                kakariLines += expected.Count;
+            }
+            Assert.Equal(600, races);
+            Assert.True(kakariLines > 20, "too few kakari lines to compare: " + kakariLines);
         }
 
         /// <summary>QA r7: 「先頭を譲らず」 only when the winner led at its spurt mark and no other horse took the lead afterwards.</summary>

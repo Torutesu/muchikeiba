@@ -12,7 +12,7 @@ namespace Muchi.Engine
         LateStart = 2,
         /// <summary>New leader. Slot = leader.</summary>
         LeaderChanged = 3,
-        /// <summary>Horse started pulling (かかった).</summary>
+        /// <summary>Horse started pulling (かかった). Value = its rank (0 = leader) at that moment (ranks after the previous tick).</summary>
         Kakari = 4,
         /// <summary>Whip used. Value = whips left after this one.</summary>
         Whip = 5,

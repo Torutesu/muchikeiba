@@ -15,11 +15,43 @@ namespace Muchi.Client
     /// Opens WebSockets (Codex implements with the Unity WebSocket library of choice).
     /// Callbacks may arrive on any thread: RaceSession queues them and handles them in <see cref="RaceSession.Update"/>.
     /// Call onOpen once the socket is open, onMessage for every text frame, onClosed exactly once when the
-    /// socket closes or fails to open.
+    /// socket closes or fails to open, with the close code of the room's close frame, or <see cref="CloseCodes.Abnormal"/>
+    /// (1006) when the socket dropped or failed without one. The code decides whether the session reconnects (<see cref="CloseCodes"/>).
     /// </summary>
     public interface ITransportFactory
     {
-        IConnection Open(string url, Action onOpen, Action<string> onMessage, Action onClosed);
+        IConnection Open(string url, Action onOpen, Action<string> onMessage, Action<int> onClosed);
+    }
+
+    /// <summary>
+    /// WebSocket close codes of the race room (server/src/do/raceRoom.ts, contracts/protocol.md §4.1) and how
+    /// <see cref="RaceSession"/> treats them. Any other code (1000, 1001, 1005, 1006, 1011, 1012, …) is a lost
+    /// connection: the session reconnects with backoff, bounded by <see cref="RaceSessionOptions.MaxReconnectAttempts"/>.
+    /// </summary>
+    public static class CloseCodes
+    {
+        /// <summary>The socket closed without a close frame (network drop, failed connect, abort). Reconnect.</summary>
+        public const int Abnormal = 1006;
+        /// <summary>The room has no race ("no race"; also the runtime's generic internal error). Reconnect: a missing room then fails the upgrade until the attempts run out.</summary>
+        public const int InternalError = 1011;
+        /// <summary>A newer socket of the same player took over the seat (or spectator seat). Fatal "REPLACED": reconnecting would replace the newer one in turn.</summary>
+        public const int Replaced = 4000;
+        /// <summary>The ticket was rejected (after err UNAUTHORIZED). Fatal "UNAUTHORIZED".</summary>
+        public const int Unauthorized = 4001;
+        /// <summary>The spectator seats are taken (after err SPECTATORS_FULL). Fatal "SPECTATORS_FULL".</summary>
+        public const int SpectatorsFull = 4003;
+
+        /// <summary>The <see cref="RaceSession.FailureReason"/> for a close code after which reconnecting cannot help; null = reconnect.</summary>
+        public static string FatalReason(int code)
+        {
+            switch (code)
+            {
+                case Replaced: return "REPLACED";
+                case Unauthorized: return "UNAUTHORIZED";
+                case SpectatorsFull: return "SPECTATORS_FULL";
+                default: return null;
+            }
+        }
     }
 
     public enum RaceSessionState
@@ -36,7 +68,7 @@ namespace Muchi.Client
         Verifying,
         Confirmed,
         Void,
-        /// <summary>Gave up (could not reconnect, or a fatal protocol error).</summary>
+        /// <summary>Gave up (could not reconnect, a fatal protocol error, or the room closed us for good, e.g. "REPLACED").</summary>
         Failed,
     }
 
@@ -199,7 +231,7 @@ namespace Muchi.Client
                 _conn = _factory.Open(_url,
                     () => Post(gen, OnOpen),
                     msg => Post(gen, () => OnMessage(msg)),
-                    () => Post(gen, OnClosed));
+                    code => Post(gen, () => OnClosed(code)));
             }
             catch (Exception e)
             {
@@ -259,11 +291,15 @@ namespace Muchi.Client
             return Client.ConfirmedTick >= 0 ? RaceSessionState.Racing : RaceSessionState.Waiting;
         }
 
-        private void OnClosed()
+        private void OnClosed(int code)
         {
             _open = false;
             _conn = null;
             if (IsTerminal) return;
+            // 4000: the same player opened this race (or this spectator seat) on another device. Reconnecting would
+            // replace that socket in turn, and the two devices would keep taking the seat from each other.
+            string fatal = CloseCodes.FatalReason(code);
+            if (fatal != null) { Fail(fatal); return; }
             ScheduleReconnect("connection closed");
         }
 

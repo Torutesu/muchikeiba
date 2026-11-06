@@ -15,7 +15,7 @@ namespace Muchi.Game
     /// </summary>
     public sealed class WebSocketTransportFactory : ITransportFactory
     {
-        public IConnection Open(string url, Action onOpen, Action<string> onMessage, Action onClosed)
+        public IConnection Open(string url, Action onOpen, Action<string> onMessage, Action<int> onClosed)
         {
             var c = new Connection(new Uri(url), onOpen, onMessage, onClosed);
             Task.Run(c.RunAsync);
@@ -27,14 +27,16 @@ namespace Muchi.Game
             private readonly Uri _uri;
             private readonly Action _onOpen;
             private readonly Action<string> _onMessage;
-            private readonly Action _onClosed;
+            private readonly Action<int> _onClosed;
             private readonly ClientWebSocket _ws = new ClientWebSocket();
             private readonly CancellationTokenSource _cts = new CancellationTokenSource();
             private readonly Queue<string> _outbox = new Queue<string>();
             private readonly SemaphoreSlim _signal = new SemaphoreSlim(0);
             private int _closed;
+            /// <summary>The room's close code; stays 1006 when the socket drops or fails without a close frame.</summary>
+            private int _closeCode = CloseCodes.Abnormal;
 
-            public Connection(Uri uri, Action onOpen, Action<string> onMessage, Action onClosed)
+            public Connection(Uri uri, Action onOpen, Action<string> onMessage, Action<int> onClosed)
             {
                 _uri = uri; _onOpen = onOpen; _onMessage = onMessage; _onClosed = onClosed;
             }
@@ -51,7 +53,13 @@ namespace Muchi.Game
                     while (_ws.State == WebSocketState.Open && !_cts.IsCancellationRequested)
                     {
                         var r = await _ws.ReceiveAsync(new ArraySegment<byte>(buf), _cts.Token);
-                        if (r.MessageType == WebSocketMessageType.Close) break;
+                        if (r.MessageType == WebSocketMessageType.Close)
+                        {
+                            // e.g. 4000 "replaced": RaceSession must not reconnect (see CloseCodes); 1005 = no status in the frame
+                            var status = r.CloseStatus ?? _ws.CloseStatus;
+                            _closeCode = status.HasValue ? (int)status.Value : 1005;
+                            break;
+                        }
                         sb.Append(Encoding.UTF8.GetString(buf, 0, r.Count));
                         if (!r.EndOfMessage) continue;
                         string msg = sb.ToString();
@@ -95,7 +103,7 @@ namespace Muchi.Game
             {
                 if (Interlocked.Exchange(ref _closed, 1) != 0) return;
                 try { _ws.Dispose(); } catch (Exception) { }
-                _onClosed?.Invoke();
+                _onClosed?.Invoke(_closeCode);
             }
         }
     }

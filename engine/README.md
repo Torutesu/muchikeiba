@@ -44,7 +44,7 @@ Codex（見た目）側で実装するのは次の3つのアダプタだけ。�
 |---|---|---|
 | `IHttp` | `UnityWebRequest` | `SendAsync(HttpRequest)` → `HttpResponse(status, body)`。応答が無い（DNS・タイムアウト・切断）ときは例外を投げる |
 | `IAuthTokenProvider` | Firebase Auth SDK | `GetTokenAsync(forceRefresh)` → IDトークン（匿名ログイン可） |
-| `ITransportFactory` | 任意の WebSocket ライブラリ | `Open(url, onOpen, onMessage, onClosed)` → `IConnection`（`Send` / `Close`）。コールバックはどのスレッドから呼んでもよい |
+| `ITransportFactory` | 任意の WebSocket ライブラリ | `Open(url, onOpen, onMessage, onClosed)` → `IConnection`（`Send` / `Close`）。コールバックはどのスレッドから呼んでもよい。`onClosed(code)` には部屋の close code を渡す（close フレーム無しの切断・接続失敗は 1006）。4000 / 4001 / 4003 では再接続しない（`CloseCodes`、`contracts/protocol.md` §4.1） |
 
 ### 0. 見た目とアセット（`AssetKeys` / `RaceVisuals` / `TrackGeometry`、`contracts/assets.md`）
 

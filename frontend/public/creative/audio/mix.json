@@ -1,0 +1,15 @@
+{
+  "defaultMuted": true,
+  "defaultVolume": 0.18,
+  "maxConcurrentVoices": 3,
+  "duckingMs": 60,
+  "cues": [
+    "audio-press",
+    "audio-back",
+    "audio-confirm",
+    "audio-error",
+    "audio-reward",
+    "audio-gate",
+    "audio-finish"
+  ]
+}

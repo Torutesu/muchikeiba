@@ -1,0 +1,10 @@
+/* Apply only to visual wrappers. Keep labels and focus positions stable. */
+@keyframes mi-panel-in{from{transform:translateY(8px);opacity:0;}to{transform:translateY(0);opacity:1}}.mi-motion-panel-in{animation:mi-panel-in 220ms cubic-bezier(.16,1,.3,1) both;}
+@keyframes mi-card-reveal{from{transform:translateY(12px) scale(.98);opacity:0;}to{transform:translateY(0) scale(1);opacity:1}}.mi-motion-card-reveal{animation:mi-card-reveal 260ms cubic-bezier(.16,1,.3,1) both;}
+@keyframes mi-button-press{from{transform:scale(1);}to{transform:scale(.98);opacity:1}}.mi-motion-button-press{animation:mi-button-press 90ms cubic-bezier(.16,1,.3,1) both;}
+@keyframes mi-selection{from{transform:scale(.985);opacity:0;}to{transform:scale(1);opacity:1}}.mi-motion-selection{animation:mi-selection 160ms cubic-bezier(.16,1,.3,1) both;}
+@keyframes mi-reward{from{transform:translateY(6px) scale(.92);opacity:0;}to{transform:translateY(0) scale(1);opacity:1}}.mi-motion-reward{animation:mi-reward 420ms cubic-bezier(.16,1,.3,1) both;}
+@keyframes mi-toast{from{transform:translateY(6px);opacity:0;}to{transform:translateY(0);opacity:1}}.mi-motion-toast{animation:mi-toast 180ms cubic-bezier(.16,1,.3,1) both;}
+@keyframes mi-victory{from{transform:scale(.92);opacity:0;}to{transform:scale(1);opacity:1}}.mi-motion-victory{animation:mi-victory 480ms cubic-bezier(.16,1,.3,1) both;}
+@keyframes mi-loading{from{transform:rotate(0deg);}to{transform:rotate(360deg);opacity:1}}.mi-motion-loading{animation:mi-loading 1100ms linear infinite;}
+@media(prefers-reduced-motion:reduce){[class*="mi-motion-"]{animation:none!important;transform:none!important;opacity:1!important;}}

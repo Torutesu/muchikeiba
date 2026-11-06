@@ -1,0 +1,413 @@
+{
+  "image": "ui-icons@2x.png",
+  "width": 1024,
+  "height": 640,
+  "coordinates": "bottom-left pixels",
+  "textureImporter": {
+    "type": "Sprite",
+    "spriteMode": "Multiple",
+    "alphaIsTransparency": true,
+    "sRGBTexture": true,
+    "mipmapEnabled": false,
+    "npotScale": "None",
+    "filterMode": "Bilinear"
+  },
+  "spriteRects": [
+    {
+      "id": "icon-home",
+      "x": 32,
+      "y": 544,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-stable",
+      "x": 160,
+      "y": 544,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-race",
+      "x": 288,
+      "y": 544,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-scout",
+      "x": 416,
+      "y": 544,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-shop",
+      "x": 544,
+      "y": 544,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-speed",
+      "x": 672,
+      "y": 544,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-stamina",
+      "x": 800,
+      "y": 544,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-focus",
+      "x": 928,
+      "y": 544,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-acceleration",
+      "x": 32,
+      "y": 416,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-turf",
+      "x": 160,
+      "y": 416,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-dirt",
+      "x": 288,
+      "y": 416,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-sun",
+      "x": 416,
+      "y": 416,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-cloud",
+      "x": 544,
+      "y": 416,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-rain",
+      "x": 672,
+      "y": 416,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-night",
+      "x": 800,
+      "y": 416,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-groom",
+      "x": 928,
+      "y": 416,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-water",
+      "x": 32,
+      "y": 288,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-feed",
+      "x": 160,
+      "y": 288,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-saddle",
+      "x": 288,
+      "y": 288,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-helmet",
+      "x": 416,
+      "y": 288,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-silks",
+      "x": 544,
+      "y": 288,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-bloodline",
+      "x": 672,
+      "y": 288,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-friend",
+      "x": 800,
+      "y": 288,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-mission",
+      "x": 928,
+      "y": 288,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-gift",
+      "x": 32,
+      "y": 160,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-coin",
+      "x": 160,
+      "y": 160,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-lock",
+      "x": 288,
+      "y": 160,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-search",
+      "x": 416,
+      "y": 160,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-offline",
+      "x": 544,
+      "y": 160,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-check",
+      "x": 672,
+      "y": 160,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-close",
+      "x": 800,
+      "y": 160,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-back",
+      "x": 928,
+      "y": 160,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-arrow",
+      "x": 32,
+      "y": 32,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-volume",
+      "x": 160,
+      "y": 32,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-settings",
+      "x": 288,
+      "y": 32,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "icon-mail",
+      "x": 416,
+      "y": 32,
+      "width": 64,
+      "height": 64,
+      "pivot": [
+        0.5,
+        0.5
+      ]
+    }
+  ]
+}

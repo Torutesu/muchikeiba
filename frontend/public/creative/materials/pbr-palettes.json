@@ -1,0 +1,175 @@
+{
+  "version": 1,
+  "materials": [
+    {
+      "id": "coat-bay",
+      "name": "鹿毛",
+      "baseColor": "#6c3826",
+      "colorSpace": "sRGB",
+      "roughness": 0.46,
+      "metallic": 0,
+      "coatWeight": 0.02,
+      "normalReferenceOnly": true
+    },
+    {
+      "id": "coat-chestnut",
+      "name": "栗毛",
+      "baseColor": "#99562f",
+      "colorSpace": "sRGB",
+      "roughness": 0.46,
+      "metallic": 0,
+      "coatWeight": 0.02,
+      "normalReferenceOnly": true
+    },
+    {
+      "id": "coat-grey",
+      "name": "芦毛",
+      "baseColor": "#bdc4bf",
+      "colorSpace": "sRGB",
+      "roughness": 0.5,
+      "metallic": 0,
+      "coatWeight": 0.02,
+      "normalReferenceOnly": true
+    },
+    {
+      "id": "coat-black",
+      "name": "青鹿毛",
+      "baseColor": "#272f2c",
+      "colorSpace": "sRGB",
+      "roughness": 0.44,
+      "metallic": 0,
+      "coatWeight": 0.02,
+      "normalReferenceOnly": true
+    },
+    {
+      "id": "coat-palomino",
+      "name": "河原毛",
+      "baseColor": "#b59c6b",
+      "colorSpace": "sRGB",
+      "roughness": 0.48,
+      "metallic": 0,
+      "coatWeight": 0.02,
+      "normalReferenceOnly": true
+    },
+    {
+      "id": "silk-crimson",
+      "name": "クリムゾンの勝負服",
+      "baseColor": "#8e3544",
+      "colorSpace": "sRGB",
+      "roughness": 0.34,
+      "metallic": 0.02,
+      "coatWeight": 0,
+      "normalReferenceOnly": true
+    },
+    {
+      "id": "silk-azure",
+      "name": "アズールの勝負服",
+      "baseColor": "#285e78",
+      "colorSpace": "sRGB",
+      "roughness": 0.34,
+      "metallic": 0.02,
+      "coatWeight": 0,
+      "normalReferenceOnly": true
+    },
+    {
+      "id": "silk-violet",
+      "name": "ヴァイオレットの勝負服",
+      "baseColor": "#66527c",
+      "colorSpace": "sRGB",
+      "roughness": 0.34,
+      "metallic": 0.02,
+      "coatWeight": 0,
+      "normalReferenceOnly": true
+    },
+    {
+      "id": "silk-emerald",
+      "name": "エメラルドの勝負服",
+      "baseColor": "#244f3a",
+      "colorSpace": "sRGB",
+      "roughness": 0.34,
+      "metallic": 0.02,
+      "coatWeight": 0,
+      "normalReferenceOnly": true
+    },
+    {
+      "id": "silk-gold",
+      "name": "ゴールドの勝負服",
+      "baseColor": "#aa8b4c",
+      "colorSpace": "sRGB",
+      "roughness": 0.36,
+      "metallic": 0.03,
+      "coatWeight": 0,
+      "normalReferenceOnly": true
+    },
+    {
+      "id": "tack-leather",
+      "name": "オイルドレザー",
+      "baseColor": "#493125",
+      "colorSpace": "sRGB",
+      "roughness": 0.38,
+      "metallic": 0.04,
+      "coatWeight": 0,
+      "normalReferenceOnly": true
+    },
+    {
+      "id": "tack-brass",
+      "name": "ブラッシュドブラス",
+      "baseColor": "#b39459",
+      "colorSpace": "sRGB",
+      "roughness": 0.27,
+      "metallic": 0.78,
+      "coatWeight": 0,
+      "normalReferenceOnly": true
+    },
+    {
+      "id": "cloth-ivory",
+      "name": "アイボリーの織物",
+      "baseColor": "#dfdbc4",
+      "colorSpace": "sRGB",
+      "roughness": 0.68,
+      "metallic": 0,
+      "coatWeight": 0,
+      "normalReferenceOnly": true
+    },
+    {
+      "id": "turf",
+      "name": "ターフ",
+      "baseColor": "#6b814d",
+      "colorSpace": "sRGB",
+      "roughness": 0.95,
+      "metallic": 0,
+      "coatWeight": 0,
+      "normalReferenceOnly": true
+    },
+    {
+      "id": "dirt",
+      "name": "ダート",
+      "baseColor": "#88735a",
+      "colorSpace": "sRGB",
+      "roughness": 0.96,
+      "metallic": 0,
+      "coatWeight": 0,
+      "normalReferenceOnly": true
+    },
+    {
+      "id": "paper",
+      "name": "クラブの紙",
+      "baseColor": "#f7f6f0",
+      "colorSpace": "sRGB",
+      "roughness": 0.88,
+      "metallic": 0,
+      "coatWeight": 0,
+      "normalReferenceOnly": true
+    },
+    {
+      "id": "enamel",
+      "name": "フォレストの琺瑯",
+      "baseColor": "#142f27",
+      "colorSpace": "sRGB",
+      "roughness": 0.23,
+      "metallic": 0.16,
+      "coatWeight": 0,
+      "normalReferenceOnly": true
+    }
+  ]
+}

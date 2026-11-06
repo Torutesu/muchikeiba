@@ -81,3 +81,11 @@ Unity の3Dアセットは `unity/`、別の全画面プロトタイプとギャ
 ### 配布用ビルドの確認
 
 `npm run build` 後、`npm run preview -- --port 4173` を起動し、別のターミナルで `node scripts/verify-build.cjs` を実行します。最初の画面で3Dコードを読み込まないこと、必要時の3Dチャンク・GLB・フォントの読み込み、ショールームとレース、リソース失敗と JavaScript エラーがないことを確認します。
+
+## Creative Atelier 01
+
+`/creative/index.html` または画面上部の「素材一覧」から、背景・ロゴ・操作アイコン・クラス章・アイテム・枠・状態表示・材質・動き・音・告知テンプレートの112点を確認できます。SVG93点のPNG書き出し、Figma用固定色アイコン、白アルファのUnity向けアトラス、17材質のBlenderライブラリを含みます。
+
+[制作・使用ガイド](design/creative/GUIDE.md) と `public/creative/manifest.json` が素材台帳です。原版と生成プロンプトを保管し、背景の推奨文字エリア・sRGB/PBR設定・枠の保護幅・音の音量・reduced-motionの扱いまで記録しています。
+
+`design/creative/muchi-creative-kit.zip` は素材一覧、原版PNG、SVG、派生PNG、編集用告知データ、音、Blender材質、フォント、制作スクリプトの配布セットです。再生成手順はガイドを参照してください。ホーム・スカウト・シーズンパスには新しい背景を適用しています。

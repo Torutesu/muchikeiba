@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "shareVictory": {
+    "place": 1,
+    "horseName": "アカツキ",
+    "raceName": "グリーンフィールド杯",
+    "time": "1:58.4",
+    "message": "相棒とつかんだ、最高の直線。",
+    "constraints": {
+      "horseName": {
+        "maxCharacters": 12,
+        "maxWidthPx": 610,
+        "maxFontSize": 56,
+        "minFontSize": 36,
+        "overflow": "shrink-font-without-ellipsis"
+      },
+      "time": {
+        "format": "m:ss.s",
+        "maxWidthPx": 280
+      }
+    }
+  },
+  "season": {
+    "seasonId": "01",
+    "collection": "NOVEMBER",
+    "title": [
+      "次の季節も、",
+      "相棒と。"
+    ]
+  },
+  "note": "作例の値。公開時は表示名・言語・確定した戦績・開催期間で差し替える。"
+}

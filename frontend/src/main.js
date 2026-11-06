@@ -107,7 +107,7 @@ function render() {
       .join(
         "",
       )}</div><p class="quiet store-balance">現在の残高 <b>有償 0</b><b>無償 ${coins.toLocaleString()}</b> · 購入前に年齢と月額上限を確認します。</p>${nav()}`;
-  app.innerHTML = `<div class="design-toolbar"><span>MUCHI ISSEN <b>DESIGN EDITION / 02</b></span><select id="screen-select" aria-label="画面を選択">${screens.map((s, i) => `<option value="${i}" ${current === i ? "selected" : ""}>${String(i + 1).padStart(2, "0")} / ${s}</option>`).join("")}</select><a href="/design/screens.svg" download>Figma SVG ${icon("arrow")}</a></div><div class="app-frame screen-${current}" data-screen="${current}">${shell(content)}</div><div class="prototype-note"><span class="status-dot"></span>INTERACTIVE DESIGN PREVIEW <span>対戦・抽選・購入はローカルのデモです。</span><button id="reset">はじめから ${icon("arrow")}</button></div>`;
+  app.innerHTML = `<div class="design-toolbar"><span>MUCHI ISSEN <b>DESIGN EDITION / 02</b></span><select id="screen-select" aria-label="画面を選択">${screens.map((s, i) => `<option value="${i}" ${current === i ? "selected" : ""}>${String(i + 1).padStart(2, "0")} / ${s}</option>`).join("")}</select><a class="creative-link" href="/creative/index.html" target="_blank" rel="noopener">素材一覧 ${icon("arrow")}</a><a href="/design/screens.svg" download>Figma SVG ${icon("arrow")}</a></div><div class="app-frame screen-${current}" data-screen="${current}">${shell(content)}</div><div class="prototype-note"><span class="status-dot"></span>INTERACTIVE DESIGN PREVIEW <span>対戦・抽選・購入はローカルのデモです。</span><button id="reset">はじめから ${icon("arrow")}</button></div>`;
   app.querySelectorAll("[data-go]").forEach(
     (b) =>
       (b.onclick = () => {

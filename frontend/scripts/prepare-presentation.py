@@ -16,6 +16,8 @@ for folder,filenames in [('Courses',['spring-course.png'])]:
 for src in (public/'art').glob('*.png'):
  im=Image.open(src);im.thumbnail((1600,1100),Image.Resampling.LANCZOS);im.save(src.with_suffix('.webp'),'WEBP',quality=88,method=6);src.unlink()
 text=''.join(p.read_text() for p in (front/'src').glob('*.js'))
+for extra in [front/'scripts/creative-catalog.html',front/'scripts/build-creative.py',front/'design/creative/GUIDE.md']:
+ if extra.exists():text+=extra.read_text()
 unicodes=set(range(0x20,0x100))|set(range(0x3000,0x3100))|{ord(c) for c in text}
 for source,name in [('NotoSansCJK-Regular.ttc','club-sans'),('NotoSansCJK-Bold.ttc','club-sans-bold'),('NotoSerifCJK-Regular.ttc','club-serif')]:
  font=TTFont('/usr/share/fonts/opentype/noto/'+source,fontNumber=0)

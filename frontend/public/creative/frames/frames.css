@@ -1,0 +1,25 @@
+/* Position on an absolute inner overlay so a 9-slice frame does not alter layout. */
+.mi-card-frame {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-sizing: border-box;
+  border: var(--mi-slice) solid transparent;
+  border-image-width: var(--mi-slice);
+  border-image-repeat: stretch;
+}
+.mi-frame-r {
+  --mi-slice: 32px;
+  border-image-source: url("card-r.svg");
+  border-image-slice: 32 fill;
+}
+.mi-frame-sr {
+  --mi-slice: 38px;
+  border-image-source: url("card-sr.svg");
+  border-image-slice: 38 fill;
+}
+.mi-frame-ssr {
+  --mi-slice: 44px;
+  border-image-source: url("card-ssr.svg");
+  border-image-slice: 44 fill;
+}

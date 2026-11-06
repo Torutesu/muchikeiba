@@ -1,0 +1,54 @@
+{
+  "creative.state.search-empty": {
+    "ja": "条件を変えてみましょう。",
+    "en": "Try another name or filter."
+  },
+  "creative.state.stable-empty": {
+    "ja": "新しい相棒を迎えましょう。",
+    "en": "Meet your next partner."
+  },
+  "creative.state.breeding-locked": {
+    "ja": "開放条件を確認しましょう。",
+    "en": "Check the unlock conditions."
+  },
+  "creative.state.offline": {
+    "ja": "接続後、もう一度お試しください。",
+    "en": "Reconnect and try again."
+  },
+  "creative.state.reward-claimed": {
+    "ja": "相棒との次の一戦へ。",
+    "en": "On to the next race together."
+  },
+  "creative.state.maintenance": {
+    "ja": "クラブの準備が整うまでお待ちください。",
+    "en": "The club will be ready soon."
+  },
+  "creative.state.action-failed": {
+    "ja": "内容を確認して、もう一度お試しください。",
+    "en": "Check the details and try again."
+  },
+  "creative.marketing.launch": {
+    "ja": [
+      "その一瞬に、",
+      "すべてを懸ける。"
+    ],
+    "en": [
+      "One moment.",
+      "Your story."
+    ]
+  },
+  "creative.marketing.season": {
+    "ja": [
+      "次の季節も、",
+      "相棒と。"
+    ],
+    "en": [
+      "A new season.",
+      "With your partner."
+    ]
+  },
+  "creative.marketing.victory": {
+    "ja": "相棒とつかんだ、最高の直線。",
+    "en": "Your partner. Your finest finish."
+  }
+}

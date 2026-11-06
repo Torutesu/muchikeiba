@@ -1,0 +1,860 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>ムチ一閃 / Creative Atelier</title>
+    <link rel="icon" type="image/svg+xml" href="brand/crest-forest.svg" />
+    <link rel="stylesheet" href="motion/motion.css" />
+    <style>
+      @font-face {
+        font-family: Club;
+        src: url("fonts/club-sans.woff2");
+      }
+      @font-face {
+        font-family: Club Serif;
+        src: url("fonts/club-serif.woff2");
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #f0f1e8;
+        color: #213a32;
+        font:
+          13px Club,
+          sans-serif;
+      }
+      button,
+      input,
+      a {
+        font: inherit;
+      }
+      button,
+      a {
+        touch-action: manipulation;
+      }
+      button:focus-visible,
+      a:focus-visible,
+      input:focus-visible {
+        outline: 3px solid #b39459;
+        outline-offset: 4px;
+      }
+      button {
+        cursor: pointer;
+      }
+      header {
+        position: relative;
+        overflow: hidden;
+        background: #142f27;
+        color: #f7f6f0;
+        padding: 48px 5vw 38px;
+        border-bottom: 1px solid #b39459;
+      }
+      header:before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(90deg, #142f27 10%, #142f27c9 52%, #142f2766),
+          url("keyart/greenfield-dawn.webp") right center/cover;
+        opacity: 0.7;
+        pointer-events: none;
+      }
+      header > * {
+        position: relative;
+      }
+      header small {
+        font-size: 9px;
+        letter-spacing: 3px;
+        color: #d0b77c;
+      }
+      header h1 {
+        font:
+          36px Club Serif,
+          serif;
+        letter-spacing: 2px;
+        line-height: 1.6;
+        font-weight: 400;
+        margin: 17px 0;
+      }
+      header p {
+        font-size: 12px;
+        line-height: 2;
+        color: #b7c7a9;
+        max-width: 630px;
+      }
+      header nav {
+        display: flex;
+        gap: 20px;
+        align-items: center;
+        margin-top: 27px;
+      }
+      header a {
+        font-size: 11px;
+        color: #d7c087;
+        text-decoration: none;
+        border-bottom: 1px solid #d7c08750;
+        padding-bottom: 6px;
+      }
+      header .total {
+        font: 26px Georgia;
+        color: #d7c087;
+        margin-left: auto;
+        letter-spacing: 2px;
+      }
+      header .total span {
+        display: block;
+        font:
+          7px Club,
+          sans-serif;
+        letter-spacing: 2px;
+        margin-top: 7px;
+        color: #8fa980;
+      }
+      .toolbar {
+        position: sticky;
+        top: 0;
+        z-index: 3;
+        background: #f0f1e8f2;
+        backdrop-filter: blur(10px);
+        padding: 23px 5vw 15px;
+        border-bottom: 1px solid #dce3d0;
+      }
+      .search-row {
+        display: flex;
+        gap: 18px;
+        align-items: center;
+      }
+      .search-row input {
+        padding: 13px 15px;
+        background: #fffef7;
+        border: 1px solid #cbd7bd;
+        border-radius: 5px;
+        color: #213a32;
+        width: 340px;
+        max-width: 100%;
+        font-size: 12px;
+      }
+      .search-row > span {
+        margin-left: auto;
+        font-size: 10px;
+        color: #637458;
+      }
+      .filters {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 16px;
+      }
+      .filters button {
+        min-height: 34px;
+        padding: 8px 11px;
+        border: 1px solid #cbd7bd;
+        background: transparent;
+        color: #627457;
+        border-radius: 4px;
+        font-size: 10px;
+      }
+      .filters button[aria-pressed="true"] {
+        background: #244b37;
+        border-color: #244b37;
+        color: #efe6c9;
+      }
+      .filters small {
+        font-size: 8px;
+        opacity: 0.7;
+        margin-left: 5px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 20px;
+        padding: 26px 5vw 45px;
+      }
+      article {
+        min-width: 0;
+        background: #fffef8;
+        border: 1px solid #d4deca;
+        border-radius: 7px;
+        overflow: hidden;
+        box-shadow: 0 3px 12px #142f2705;
+      }
+      article.wide {
+        grid-column: span 2;
+      }
+      article[hidden] {
+        display: none;
+      }
+      .preview {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 205px;
+        border-bottom: 1px solid #e4e9da;
+        overflow: hidden;
+        background: #f1f3e8;
+      }
+      .preview > img {
+        max-width: 90%;
+        max-height: 85%;
+        object-fit: contain;
+      }
+      .kind-keyart .preview,
+      .kind-templates .preview {
+        height: 260px;
+      }
+      .kind-keyart .preview > img,
+      .kind-templates .preview > img {
+        max-width: 100%;
+        max-height: 100%;
+        width: 100%;
+        height: 100%;
+      }
+      .kind-icons .preview > img {
+        width: 46px;
+        height: 46px;
+      }
+      .kind-items .preview > img,
+      .kind-emblems .preview > img,
+      .kind-currency .preview > img {
+        width: 128px;
+        height: 128px;
+      }
+      .kind-materials .preview > img {
+        width: 144px;
+        height: 144px;
+      }
+      .kind-states .preview > img {
+        width: 260px;
+        height: 190px;
+      }
+      .kind-patterns .preview {
+        background-size: 64px 64px;
+      }
+      .checker {
+        background-color: #e8eddf;
+        background-image:
+          linear-gradient(45deg, #d5dfca 25%, transparent 25%),
+          linear-gradient(-45deg, #d5dfca 25%, transparent 25%),
+          linear-gradient(45deg, transparent 75%, #d5dfca 75%),
+          linear-gradient(-45deg, transparent 75%, #d5dfca 75%);
+        background-size: 20px 20px;
+        background-position:
+          0 0,
+          0 10px,
+          10px -10px,
+          -10px 0;
+      }
+      .info {
+        padding: 17px;
+      }
+      .info > .eyebrow {
+        color: #a28d55;
+        letter-spacing: 1px;
+        font-size: 7px;
+        text-transform: uppercase;
+      }
+      .info h2 {
+        font:
+          17px Club Serif,
+          serif;
+        line-height: 1.7;
+        font-weight: 400;
+        margin: 7px 0;
+      }
+      .info p {
+        font-size: 11px;
+        line-height: 1.9;
+        color: #637458;
+        margin: 0;
+        min-height: 57px;
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 14px;
+        align-items: center;
+      }
+      .actions button,
+      .actions a {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 8px 11px;
+        min-height: 34px;
+        border: 1px solid #cad6bb;
+        border-radius: 4px;
+        background: transparent;
+        color: #71865f;
+        text-decoration: none;
+        font-size: 10px;
+      }
+      .actions button:first-child {
+        background: #193c2c;
+        color: #e6dfc4;
+        border-color: #193c2c;
+      }
+      .actions a {
+        margin-left: auto;
+      }
+      .meta {
+        font-size: 8px;
+        color: #637458;
+        margin-top: 12px;
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .audio-mark {
+        display: flex;
+        gap: 4px;
+        height: 50px;
+        align-items: center;
+      }
+      .audio-mark i {
+        width: 3px;
+        background: #b7a06a;
+        border-radius: 4px;
+        height: var(--h);
+      }
+      .audio-mark.playing i {
+        animation: wave 0.6s ease-in-out infinite alternate;
+      }
+      .audio-mark.playing i:nth-child(even) {
+        animation-delay: 0.2s;
+      }
+      @keyframes wave {
+        to {
+          height: 10px;
+        }
+      }
+      .motion-stage img {
+        width: 88px;
+      }
+      .empty {
+        grid-column: 1/-1;
+        text-align: center;
+        padding: 50px;
+      }
+      .empty img {
+        width: 260px;
+        max-width: 100%;
+      }
+      .empty h2 {
+        font:
+          24px Club Serif,
+          serif;
+        font-weight: 400;
+      }
+      .empty p {
+        color: #8a9c78;
+        font-size: 12px;
+      }
+      .empty button {
+        padding: 11px 18px;
+        border: 1px solid #bdcbab;
+        background: transparent;
+        border-radius: 4px;
+        color: #57734b;
+      }
+      dialog {
+        width: min(840px, 94vw);
+        max-height: 92vh;
+        overflow: auto;
+        border: 1px solid #cad6bb;
+        border-radius: 8px;
+        background: #f7f6f0;
+        padding: 30px;
+        color: #213a32;
+        box-shadow: 0 30px 80px #0d241f55;
+      }
+      dialog::backdrop {
+        background: #142f27cf;
+        backdrop-filter: blur(6px);
+      }
+      dialog h2 {
+        font:
+          26px Club Serif,
+          serif;
+        font-weight: 400;
+        margin: 0 40px 20px 0;
+      }
+      .dialog-preview {
+        position: relative;
+        width: 100%;
+        max-height: 460px;
+        overflow: hidden;
+        border-radius: 5px;
+        background: #e8eddf;
+        text-align: center;
+      }
+      .dialog-preview > img {
+        display: block;
+        width: 100%;
+        max-height: 460px;
+        object-fit: contain;
+      }
+      .dialog-preview > .safe {
+        position: absolute;
+        border: 1px dashed #e6cd82;
+        background: #142f2720;
+        pointer-events: none;
+      }
+      .safe span {
+        position: absolute;
+        top: 6px;
+        left: 7px;
+        background: #142f27d9;
+        color: #e9dbaf;
+        padding: 5px 7px;
+        font-size: 8px;
+        white-space: nowrap;
+      }
+      .dialog-body p {
+        font-size: 12px;
+        color: #637458;
+        line-height: 2;
+      }
+      .spec {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0 24px;
+        margin-top: 20px;
+      }
+      .spec > div {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        border-bottom: 1px solid #dce4ce;
+        padding: 12px 0;
+        font-size: 11px;
+      }
+      .spec dt {
+        color: #637458;
+      }
+      .spec dd {
+        margin: 0;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      .path {
+        display: flex;
+        gap: 8px;
+        margin-top: 20px;
+      }
+      .path input {
+        flex: 1;
+        min-width: 0;
+        background: #fffef9;
+        border: 1px solid #cad7ba;
+        border-radius: 4px;
+        padding: 12px;
+        font-size: 11px;
+        color: #536f45;
+      }
+      .path button,
+      .download {
+        border: 1px solid #b9c9a5;
+        background: #1b3f2d;
+        color: #ede6cb;
+        border-radius: 4px;
+        padding: 11px 16px;
+        font-size: 11px;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 42px;
+      }
+      .dialog-close {
+        position: absolute;
+        right: 16px;
+        top: 13px;
+        width: 30px;
+        height: 30px;
+        border: 1px solid #cad6bb;
+        border-radius: 50%;
+        background: #eef1e4;
+        color: #789268;
+        font-size: 21px;
+      }
+      .dialog-body .download {
+        margin-top: 18px;
+      }
+      .dialog-body audio {
+        width: 100%;
+        margin-top: 18px;
+      }
+      .dialog-body .quiet {
+        font-size: 10px;
+        color: #9aa78a;
+      }
+      footer {
+        border-top: 1px solid #d4deca;
+        padding: 25px 5vw 40px;
+        font-size: 10px;
+        line-height: 2;
+        color: #8a9b79;
+      }
+      .toast {
+        position: fixed;
+        bottom: 24px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 5;
+        background: #193d2d;
+        color: #efe4c4;
+        padding: 13px 20px;
+        border-radius: 4px;
+        font-size: 11px;
+      }
+      @media (max-width: 1100px) {
+        .grid {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+        .preview {
+          height: 190px;
+        }
+      }
+      @media (max-width: 800px) {
+        .grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 15px;
+        }
+        .toolbar {
+          position: relative;
+        }
+        .kind-keyart .preview,
+        .kind-templates .preview {
+          height: 230px;
+        }
+        header h1 {
+          font-size: 30px;
+        }
+        .search-row input {
+          width: 100%;
+        }
+        .search-row > span {
+          white-space: nowrap;
+        }
+        .spec {
+          grid-template-columns: 1fr;
+        }
+      }
+      @media (max-width: 480px) {
+        .grid {
+          grid-template-columns: 1fr;
+          padding: 20px 5vw;
+        }
+        .grid article.wide {
+          grid-column: auto;
+        }
+        .preview {
+          height: 210px;
+        }
+        .kind-keyart .preview,
+        .kind-templates .preview {
+          height: 210px;
+        }
+        .filters {
+          gap: 6px;
+        }
+        .filters button {
+          font-size: 9px;
+          padding: 8px 9px;
+        }
+        .search-row {
+          flex-wrap: wrap;
+          gap: 10px;
+        }
+        .search-row > span {
+          margin: 0;
+        }
+        header {
+          padding: 30px 5vw;
+        }
+        header h1 {
+          font-size: 27px;
+          letter-spacing: 1px;
+        }
+        header p {
+          font-size: 11px;
+        }
+        header .total {
+          font-size: 22px;
+        }
+        header nav {
+          gap: 13px;
+          flex-wrap: wrap;
+        }
+        header a {
+          font-size: 10px;
+        }
+        .info p {
+          min-height: 0;
+        }
+        .spec > div {
+          font-size: 10px;
+        }
+        .path {
+          flex-wrap: wrap;
+        }
+        .path input {
+          flex-basis: 100%;
+        }
+        dialog {
+          padding: 28px 20px;
+        }
+        dialog h2 {
+          font-size: 22px;
+        }
+        .safe span {
+          font-size: 6px;
+          padding: 4px;
+        }
+        .dialog-preview > img {
+          max-height: 350px;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation: none !important;
+          transition: none !important;
+          scroll-behavior: auto !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <small>MUCHI ISSEN / CREATIVE ATELIER 01</small>
+      <h1>ひとつの世界観を、細部まで。</h1>
+      <p>
+        背景、クラス章、アイテム、状態表示、音、動き。<br />用途とサイズを揃えた、ムチ一閃のクリエイティブ・ライブラリ。
+      </p>
+      <nav>
+        <a href="GUIDE.md">使い方と制作仕様 ↗</a
+        ><a href="manifest.json" download>素材台帳 JSON ↓</a
+        ><span class="total">__COUNT__<span>CREATIVE RESOURCES</span></span>
+      </nav>
+    </header>
+    <section class="toolbar">
+      <div class="search-row">
+        <input
+          id="search"
+          type="search"
+          aria-label="素材を検索"
+          placeholder="名前・用途・IDで検索"
+        /><span id="result-count" role="status"></span>
+      </div>
+      <div class="filters" aria-label="素材の種類"></div>
+    </section>
+    <main class="grid"></main>
+    <footer>
+      THE RACING CLUB / FOREST · IVORY · BRASS<br />AI生成の背景・透過オブジェクトと、SVG・音・動き・PBRの制作データを含みます。原版・プロンプト・編集用データ・フォントのライセンスは配布キットに同梱しています。<br />音は操作時のみ再生します。既存ゲームの効果・購入条件・戦績は素材に含めて確定しません。
+    </footer>
+    <dialog id="inspector" aria-labelledby="inspector-title">
+      <button class="dialog-close" aria-label="閉じる">×</button>
+      <div id="dialog-content"></div>
+    </dialog>
+    <script type="application/json" id="asset-data">
+      __MANIFEST__
+    </script>
+    <script>
+      const registry = JSON.parse(
+          document.querySelector("#asset-data").textContent,
+        ),
+        assets = registry.assets;
+      const labels = {
+        all: "すべて",
+        keyart: "背景・メインビジュアル",
+        brand: "ロゴ",
+        icons: "操作アイコン",
+        emblems: "クラス・記章",
+        items: "所持品",
+        frames: "カード枠",
+        states: "状態表示",
+        patterns: "パターン",
+        currency: "通貨",
+        materials: "材質",
+        motion: "動き",
+        audio: "音",
+        templates: "告知・シェア",
+      };
+      const esc = (s) =>
+        String(s).replace(
+          /[&<>"']/g,
+          (c) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            })[c],
+        );
+      let category = "all",
+        query = "",
+        playing = null;
+      const filters = document.querySelector(".filters"),
+        grid = document.querySelector(".grid"),
+        dialog = document.querySelector("#inspector");
+      filters.innerHTML = Object.entries(labels)
+        .map(
+          ([id, label]) =>
+            `<button data-filter="${id}" aria-pressed="${id === "all"}">${label}<small>${id === "all" ? assets.length : assets.filter((a) => a.category === id).length}</small></button>`,
+        )
+        .join("");
+      function preview(a) {
+        if (a.category === "audio")
+          return `<div class="audio-mark">${[16, 27, 39, 49, 35, 22, 44, 29, 18].map((h) => `<i style="--h:${h}px"></i>`).join("")}</div>`;
+        if (a.category === "motion")
+          return `<div class="motion-stage"><img src="brand/crest-forest.svg" alt="動きの見本"></div>`;
+        return `<img src="${esc(a.file)}" alt="${esc(a.title)}" loading="lazy" style="object-fit:${a.previewFit || "contain"}">`;
+      }
+      function paint() {
+        const term = query.normalize("NFKC").toLowerCase(),
+          shown = assets.filter(
+            (a) =>
+              (category === "all" || a.category === category) &&
+              [a.title, a.id, a.usage, labels[a.category]]
+                .join(" ")
+                .normalize("NFKC")
+                .toLowerCase()
+                .includes(term),
+          );
+        document.querySelector("#result-count").textContent =
+          `${shown.length} / ${assets.length} 点`;
+        grid.innerHTML =
+          shown
+            .map(
+              (a) =>
+                `<article class="kind-${a.category} ${["keyart", "templates"].includes(a.category) ? "wide" : ""}" data-id="${a.id}"><div class="preview ${a.transparent ? "checker" : ""}" style="${a.previewBackground ? "background:" + a.previewBackground : ""}${a.category === "patterns" ? ";background-image:url(" + a.file + ")" : ""}">${a.category === "patterns" ? "" : preview(a)}</div><div class="info"><span class="eyebrow">${labels[a.category]}</span><h2>${esc(a.title)}</h2><p>${esc(a.usage)}</p><div class="actions"><button data-inspect="${a.id}">仕様を見る</button>${a.category === "motion" ? `<button data-motion="${a.id}">再生</button>` : a.category === "audio" ? `<button data-audio="${a.id}">試聴</button>` : ""}<a href="${a.file}" download>取得 ↓</a></div><div class="meta"><span>${a.id}</span><span>${a.width ? a.width + " × " + a.height : a.durationMs + " ms"}</span></div></div></article>`,
+            )
+            .join("") ||
+          '<div class="empty"><img src="states/search-empty.svg" alt="検索結果なし"><h2>素材が見つかりません</h2><p>名前や種類を変えてみてください。</p><button id="clear-search">条件をクリア</button></div>';
+        const clear = document.querySelector("#clear-search");
+        if (clear)
+          clear.onclick = () => {
+            category = "all";
+            query = "";
+            document.querySelector("#search").value = "";
+            updateFilters();
+            paint();
+          };
+        grid
+          .querySelectorAll("[data-inspect]")
+          .forEach(
+            (b) =>
+              (b.onclick = () =>
+                inspect(assets.find((a) => a.id === b.dataset.inspect))),
+          );
+        grid.querySelectorAll("[data-audio]").forEach(
+          (b) =>
+            (b.onclick = () => {
+              if (playing) {
+                playing.pause();
+                playing = null;
+              }
+              grid
+                .querySelectorAll(".audio-mark")
+                .forEach((m) => m.classList.remove("playing"));
+              const a = assets.find((a) => a.id === b.dataset.audio),
+                audio = new Audio(a.file),
+                mark = b.closest("article").querySelector(".audio-mark");
+              audio.volume = a.defaultVolume;
+              audio.onended = () => mark.classList.remove("playing");
+              audio.onpause = () => mark.classList.remove("playing");
+              mark.classList.add("playing");
+              audio.play().catch(() => {
+                mark.classList.remove("playing");
+                toast("音の再生には、この画面での操作が必要です。");
+              });
+              playing = audio;
+            }),
+        );
+        grid.querySelectorAll("[data-motion]").forEach(
+          (b) =>
+            (b.onclick = () => {
+              const a = assets.find((a) => a.id === b.dataset.motion),
+                el = b.closest("article").querySelector(".motion-stage"),
+                cls = a.cssClass;
+              if (el.classList.contains(cls)) {
+                el.classList.remove(cls);
+                b.textContent = "再生";
+                return;
+              }
+              el.classList.add(cls);
+              b.textContent = a.loop ? "停止" : "再生";
+              if (!a.loop)
+                el.addEventListener(
+                  "animationend",
+                  () => el.classList.remove(cls),
+                  { once: true },
+                );
+            }),
+        );
+      }
+      function updateFilters() {
+        filters
+          .querySelectorAll("button")
+          .forEach((b) =>
+            b.setAttribute(
+              "aria-pressed",
+              String(b.dataset.filter === category),
+            ),
+          );
+      }
+      filters.querySelectorAll("button").forEach(
+        (b) =>
+          (b.onclick = () => {
+            category = b.dataset.filter;
+            updateFilters();
+            paint();
+          }),
+      );
+      document.querySelector("#search").oninput = (e) => {
+        query = e.target.value;
+        paint();
+      };
+      function inspect(a) {
+        const safe = a.safeArea
+          ? `<div class="safe" style="left:${a.safeArea[0] * 100}%;top:${a.safeArea[1] * 100}%;width:${(a.safeArea[2] - a.safeArea[0]) * 100}%;height:${(a.safeArea[3] - a.safeArea[1]) * 100}%"><span>文字・ボタンの推奨エリア</span></div>`
+          : "";
+        document.querySelector("#dialog-content").innerHTML =
+          `<h2 id="inspector-title">${esc(a.title)}</h2><div class="dialog-preview ${a.transparent ? "checker" : ""}" style="${a.previewBackground ? "background:" + a.previewBackground : ""}">${preview(a)}${safe}</div><div class="dialog-body"><p>${esc(a.usage)}</p><dl class="spec"><div><dt>カテゴリ</dt><dd>${labels[a.category]}</dd></div><div><dt>原寸</dt><dd>${a.width ? a.width + " × " + a.height + " px" : a.durationMs + " ms"}</dd></div><div><dt>容量</dt><dd>${Math.round((a.bytes / 1024) * 10) / 10} KB</dd></div><div><dt>識別子</dt><dd>${a.id}</dd></div>${a.minDisplayPx ? `<div><dt>最小表示の目安</dt><dd>${a.minDisplayPx} px</dd></div>` : ""}${a.pbr ? `<div><dt>Roughness / Metallic</dt><dd>${a.pbr.roughness} / ${a.pbr.metallic}</dd></div>` : ""}${a.safeInsetPx ? `<div><dt>枠の保護幅</dt><dd>${a.safeInsetPx} px</dd></div>` : ""}${a.cssClass ? `<div><dt>CSSクラス</dt><dd>${a.cssClass}</dd></div>` : ""}${a.measuredMinimumContrast ? `<div><dt>文字エリアの実測比</dt><dd>${a.measuredMinimumContrast}:1 / ivory</dd></div>` : ""}${a.classId ? `<div><dt>classId</dt><dd>${a.classId}</dd></div>` : ""}</dl><div class="path"><input aria-label="素材パス" readonly value="/creative/${esc(a.file)}"><button id="copy-path">パスをコピー</button></div><a class="download" href="${a.file}" download>素材を取得 ↓</a>${a.editableSource ? ` <a class="download" href="${a.editableSource}" download>文字の編集用 SVG ↓</a>` : ""}${a.figmaSource ? ` <a class="download" href="${a.figmaSource}" download>Figma SVG ↓</a>` : ""}${a.raster ? ` <a class="download" href="${a.raster.file}" download>PNG ${a.raster.width} × ${a.raster.height} ↓</a>` : ""}${a.category === "materials" ? ` <a class="download" href="materials/club-materials.blend" download>Blender材質 ↓</a>` : ""}${a.category === "audio" ? `<audio controls preload="none" src="${a.file}"></audio>` : ""}<p class="quiet">${a.master ? "PNG原版と生成プロンプトは配布キットに同梱。背景の文字は画面側で重ねてください。" : a.category === "materials" ? "模式プレビューです。PBR数値と materials/club-materials.blend を制作の基準にしてください。" : "文字・数値・取得条件はUI側で管理してください。"}</p></div>`;
+        dialog
+          .querySelectorAll("audio")
+          .forEach((audio) => (audio.volume = 0.18));
+        document.querySelector("#copy-path").onclick = async () => {
+          const input = dialog.querySelector("input");
+          try {
+            await navigator.clipboard.writeText(input.value);
+            toast("素材パスをコピーしました");
+          } catch {
+            input.select();
+            toast("パスを選択しました。コピーしてください。");
+          }
+        };
+        dialog.showModal();
+      }
+      function toast(text) {
+        document.querySelector(".toast")?.remove();
+        const el = document.createElement("div");
+        el.className = "toast";
+        el.setAttribute("role", "status");
+        el.textContent = text;
+        document.body.append(el);
+        setTimeout(() => el.remove(), 2400);
+      }
+      document.querySelector(".dialog-close").onclick = () => dialog.close();
+      dialog.addEventListener("close", () =>
+        dialog.querySelectorAll("audio").forEach((a) => a.pause()),
+      );
+      paint();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "targetEngine": "Three.js r182 / ACESFilmicToneMapping",
+  "note": "Blenderの光量へそのまま代入せず、カメラと露出を合わせて参照する。",
+  "presets": [
+    {
+      "id": "club-daylight",
+      "keyColor": "#ffebc0",
+      "keyIntensity": 2.2,
+      "fillIntensity": 1.3,
+      "rimColor": "#dbe9ff",
+      "rimIntensity": 0.8,
+      "exposure": 1.1
+    },
+    {
+      "id": "stable-dawn",
+      "keyColor": "#ffe0ae",
+      "keyIntensity": 2.0,
+      "fillIntensity": 1.0,
+      "rimColor": "#d9e4c8",
+      "rimIntensity": 0.65,
+      "exposure": 1.0
+    },
+    {
+      "id": "scout-reveal",
+      "keyColor": "#fff1cb",
+      "keyIntensity": 2.4,
+      "fillIntensity": 0.8,
+      "rimColor": "#e8d7a1",
+      "rimIntensity": 1.0,
+      "exposure": 1.1
+    }
+  ]
+}

@@ -1,0 +1,113 @@
+﻿id,title,category,file,width,height,raster,usage,source,sha256
+greenfield-dawn,夜明けのクラブ厩舎,keyart,keyart/greenfield-dawn.webp,1672,941,,ホーム・厩舎・ログイン背景,image_gen,1daf36250777dfdfdfb1bbaf6b087620a54f04cd3084f32f39b46ca2d30a1f71
+scout-gate,新しい出会いのゲート,keyart,keyart/scout-gate.webp,1672,941,,スカウト・新しい相棒の紹介,image_gen,956582c347b5da45b66369b71313420bec660a73fb2d43ee7b68c01ef2984420
+season-collection,シーズン・コレクション,keyart,keyart/season-collection.webp,1672,941,,シーズンパス・衣装告知,image_gen,c13c77033c8361c4134206af084926bf766d158eed1adaba87b36b122027b722
+victory-trophy,勝利のトロフィー,keyart,keyart/victory-trophy.png,1219,1290,,報酬・初勝利・シーズン表彰,image_gen,eab18202e262c822ad76f0177ecbfecc2eb88903f882363b952dfb32ce9eba02
+launch-landscape,ローンチ・横長キービジュアル,templates,templates/launch-landscape.svg,1920,1080,raster/launch-landscape.png,SVG原版は画像埋め込み・文字アウトライン。編集用SVGと差し替え用bindingsを同梱。,authored-layout,083cb45a7778634593b0eed59f3e01eba56ae658fcf3cdc375caf1800bd17f4d
+season-portrait,シーズン告知・縦長,templates,templates/season-portrait.svg,1080,1350,raster/season-portrait.png,SVG原版は画像埋め込み・文字アウトライン。編集用SVGと差し替え用bindingsを同梱。,authored-layout,27d9eae183ecb6f6ac83da1fdbfcb177b684fa42e937a580881553eae316dfb0
+share-victory,戦績シェア・横長,templates,templates/share-victory.svg,1200,630,raster/share-victory.png,SVG原版は画像埋め込み・文字アウトライン。編集用SVGと差し替え用bindingsを同梱。,authored-layout,84460675b0fc64a0fb9e6c6d47e7a1240c9f662752489698e0302ddd195ca158
+crest-forest,クラブ章 / forest,brand,brand/crest-forest.svg,128,128,raster/crest-forest@2x.png,アプリアイコン・ヘッダー・ギフト包装。周囲1/4幅を空ける。,authored-svg,bd7d1c660ed2662206664ad04cff38ccad5b6849320628504638768195f17f82
+crest-ivory,クラブ章 / ivory,brand,brand/crest-ivory.svg,128,128,raster/crest-ivory@2x.png,アプリアイコン・ヘッダー・ギフト包装。周囲1/4幅を空ける。,authored-svg,c7804a685dbdd39734976f85514ad93c720e7a6042e8181730f559b7c043fa41
+wordmark-dark,ロゴタイプ / dark,brand,brand/wordmark-dark.svg,600,130,raster/wordmark-dark.png,横組みロゴ。文字はアウトライン。変形・縁取り・影の追加をしない。,authored-svg,976843310c0d1735d11f972a0c9ee70818190d093115db35195898ae22fa5279
+wordmark-light,ロゴタイプ / light,brand,brand/wordmark-light.svg,600,130,raster/wordmark-light.png,横組みロゴ。文字はアウトライン。変形・縁取り・影の追加をしない。,authored-svg,8479ba2a9a52a172d44c25ad56526a19c37258caebec6bc4967ff5679032b997
+app-icon,アプリアイコン原版,brand,brand/app-icon.svg,1024,1024,raster/app-icon.png,不透明の正方形原版。OSのマスクを前提に外周の角は焼き込まない。,authored-svg,ba3f961d6d00f22278fb8ff43dbcfab27c32d8ddf42c4798191b82f7d88bd81a
+class-C,クラス C,emblems,emblems/class-c.svg,128,128,raster/class-C@2x.png,サーバー classId=C の紋章。表示名はUI側でローカライズ。,authored-svg,355836466eaeacc15c2190c3af4da9cb03b12d6317f50fb4bfffc170da87b50f
+class-B,クラス B,emblems,emblems/class-b.svg,128,128,raster/class-B@2x.png,サーバー classId=B の紋章。表示名はUI側でローカライズ。,authored-svg,514436e6590871a0ace4d5c4df9cae8d4f10e6fd4606099b8595b79d2438e6c3
+class-A,クラス A,emblems,emblems/class-a.svg,128,128,raster/class-A@2x.png,サーバー classId=A の紋章。表示名はUI側でローカライズ。,authored-svg,3a3cd669d76b561879a58db4683b3e572a9fe8ef871a23c0b367dfd5c970ab68
+class-S,クラス S,emblems,emblems/class-s.svg,128,128,raster/class-S@2x.png,サーバー classId=S の紋章。表示名はUI側でローカライズ。,authored-svg,f5028333a8668f7b80f79e19ebfb5f8aa2796829e9e185e2bf3a70db3d84c47d
+first-victory,初勝利の記章,emblems,emblems/first-victory.svg,128,128,raster/first-victory@2x.png,達成演出・戦績カード。称号の取得条件を画像へ焼き込まない。,authored-svg,32e172c96e798b4a85048294c3e295d23f9ed4249be9ba9069f4d566edd5cafa
+season-champion,シーズン表彰の記章,emblems,emblems/season-champion.svg,128,128,raster/season-champion@2x.png,達成演出・戦績カード。称号の取得条件を画像へ焼き込まない。,authored-svg,99e35f6b9bd8830af84aeb3be61a46859597137bb0aebd513537ff0bf527ad3f
+feed-oats,飼葉・オーツ,items,items/feed-oats.svg,128,128,raster/feed-oats@2x.png,所持品・ショップ・お世話の絵札。価格と数量はUI側に置く。,authored-svg,b7bf1dab5447ea460a65b2d3abe0b05bb8b8ce8c40724f5fc4286d75320eabd1
+water-bucket,給水バケツ,items,items/water-bucket.svg,128,128,raster/water-bucket@2x.png,所持品・ショップ・お世話の絵札。価格と数量はUI側に置く。,authored-svg,5a752c1eff12f1ad3d39b784908cabef4593d798e5d5212c573e3d1762bbb102
+groom-brush,お手入れブラシ,items,items/groom-brush.svg,128,128,raster/groom-brush@2x.png,所持品・ショップ・お世話の絵札。価格と数量はUI側に置く。,authored-svg,4725156eadc65cc635f9bc7ce14b610b72e47626d428dfa2a85b99d0eaa36a4e
+premium-feed,プレミアム飼料,items,items/premium-feed.svg,128,128,raster/premium-feed@2x.png,所持品・ショップ・お世話の絵札。価格と数量はUI側に置く。,authored-svg,9f1a221bff3a6999dfb653ea600cac6f3ddb3305e07ecf5b957b8d8bd1293462
+saddlecloth-ivory,アイボリーのゼッケン,items,items/saddlecloth-ivory.svg,128,128,raster/saddlecloth-ivory@2x.png,所持品・ショップ・お世話の絵札。価格と数量はUI側に置く。,authored-svg,bbb1041fbe6d7ab999612d3f55ef31cec3b655d32aa7edc0e067302702396823
+silks-crimson,勝負服 / クリムゾン,items,items/silks-crimson.svg,128,128,raster/silks-crimson@2x.png,所持品・ショップ・お世話の絵札。価格と数量はUI側に置く。,authored-svg,bd9061a3c9f9ac248784d91635c47bb00801a260c5143a35eb646faebb664a64
+silks-azure,勝負服 / アズール,items,items/silks-azure.svg,128,128,raster/silks-azure@2x.png,所持品・ショップ・お世話の絵札。価格と数量はUI側に置く。,authored-svg,7f4c1d4d092ce8fc33b7ba8ca58708d637d7672ab643dd77e74ec3290a044656
+silks-violet,勝負服 / ヴァイオレット,items,items/silks-violet.svg,128,128,raster/silks-violet@2x.png,所持品・ショップ・お世話の絵札。価格と数量はUI側に置く。,authored-svg,526b42c2ecf89a09119be687750fa7ff356c549ae96adf69a08872733d54f22c
+coin-free,無償コイン,currency,currency/coin-free.svg,128,128,raster/coin-free@2x.png,残高・価格・報酬。無償/有償は文字ラベルを必ず併記。,authored-svg,d709f400fb52a76069956482794f1e678ba9a3fe046a39b2123329e8821f7107
+coin-paid,有償コイン,currency,currency/coin-paid.svg,128,128,raster/coin-paid@2x.png,残高・価格・報酬。無償/有償は文字ラベルを必ず併記。,authored-svg,c5505da5bf9bb6e40add0ad689993ba31659bcfadbd28958055398d5778afba2
+coin-reward,コイン報酬,currency,currency/coin-reward.svg,128,128,raster/coin-reward@2x.png,残高・価格・報酬。無償/有償は文字ラベルを必ず併記。,authored-svg,2129e072824f370a4f6bab4bb252dd3e87a4edd6f148aa211402f2548da38896
+frame-R,カード枠 R,frames,frames/card-r.svg,320,420,raster/frame-R@2x.png,馬カードの最上面に重ねる透過枠。画像を潰して伸縮せず9-slice相当で扱う。,authored-svg,ace587e88485c67d6988ce84c404422d601152218cc376bd49cda777140a1f47
+frame-SR,カード枠 SR,frames,frames/card-sr.svg,320,420,raster/frame-SR@2x.png,馬カードの最上面に重ねる透過枠。画像を潰して伸縮せず9-slice相当で扱う。,authored-svg,fa5e0b41760f0aa811a6f94c199bff3eb1853f57c5bc3db174eab4f25298ef8b
+frame-SSR,カード枠 SSR,frames,frames/card-ssr.svg,320,420,raster/frame-SSR@2x.png,馬カードの最上面に重ねる透過枠。画像を潰して伸縮せず9-slice相当で扱う。,authored-svg,08fc1709cdec3a726cc1b1362129640bc8ea2015ed0087b828aa86d9ccee1f52
+overlay-selected,選択中オーバーレイ,frames,frames/overlay-selected.svg,320,420,raster/overlay-selected@2x.png,レアリティ枠とは別レイヤー。意味は必ずテキストでも示す。,authored-svg,3cb916576b6c0e4314b3859be293f9be5ed268803df7ab514009278577eb030f
+overlay-locked,未開放オーバーレイ,frames,frames/overlay-locked.svg,320,420,raster/overlay-locked@2x.png,レアリティ枠とは別レイヤー。意味は必ずテキストでも示す。,authored-svg,6fc7fe63672d8915508ac23a832d45e0ed1af7739e4afae007d86f9c6e89951a
+state-search-empty,検索結果なし,states,states/search-empty.svg,320,240,raster/state-search-empty@2x.png,条件を変えてみましょう。,authored-svg,2a2ff21d18f71d54f59dabe0d988a2925cd34b4f385fb608b32a6b24cec3c79f
+state-stable-empty,相棒がいない,states,states/stable-empty.svg,320,240,raster/state-stable-empty@2x.png,新しい相棒を迎えましょう。,authored-svg,f55a9d23e19360f94f027c8a8d34d8f060f34a2467ad281de1cc27ac616e7d8e
+state-breeding-locked,配合は未開放,states,states/breeding-locked.svg,320,240,raster/state-breeding-locked@2x.png,開放条件を確認しましょう。,authored-svg,ccb5aa6c3446de9de6c995c7b7d02b8ae2cac88c3a31a9471fcb0ba9695931af
+state-offline,接続を確認,states,states/offline.svg,320,240,raster/state-offline@2x.png,接続後、もう一度お試しください。,authored-svg,d6bb22c7367751bc46cdb8b9a496417a1ea36ca403b310a5198bd8439e61d0cb
+state-reward-claimed,受取完了,states,states/reward-claimed.svg,320,240,raster/state-reward-claimed@2x.png,相棒との次の一戦へ。,authored-svg,27f56a108fd13a6d131f16dd3775825b949b64d29215d1c3c43e38b60bae73a0
+state-maintenance,準備中,states,states/maintenance.svg,320,240,raster/state-maintenance@2x.png,クラブの準備が整うまでお待ちください。,authored-svg,fcd30d999f04ba3483f9c646b0367078bc906ffc85efdae3b5a27e84aa52edbb
+state-action-failed,操作を完了できない,states,states/action-failed.svg,320,240,raster/state-action-failed@2x.png,内容を確認して、もう一度お試しください。,authored-svg,25a5cbdea344e636197222702c4b9074d0e76158d9be8e0fba4033cfefb7200c
+club-pinstripe,クラブ・ピンストライプ,patterns,patterns/club-pinstripe.svg,64,64,raster/club-pinstripe@2x.png,64pxのリピートタイル。装飾面のみ、合成不透明度4〜8%を上限目安にする。,authored-svg,87b078845c615ae28f3fa09e918759aebdda96271f1dd5f005a45c7897530d36
+silk-chevron,勝負服のシェブロン,patterns,patterns/silk-chevron.svg,64,64,raster/silk-chevron@2x.png,64pxのリピートタイル。装飾面のみ、合成不透明度4〜8%を上限目安にする。,authored-svg,5c5ce6f16184d16507f927d49440960009de9276f8597e0123044b6cfbcafc0e
+laurel-weave,月桂樹の織り柄,patterns,patterns/laurel-weave.svg,64,64,raster/laurel-weave@2x.png,64pxのリピートタイル。装飾面のみ、合成不透明度4〜8%を上限目安にする。,authored-svg,ccdb0aef04618bcea392497be4a386dc3a6f09fa6050a928d12596133a70781e
+icon-home,ホーム,icons,icons/home.svg,24,24,raster/icon-home@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,86e7224e35d550ccf8fa0f0d941b7dd61e05b338005ad685625c95ac41ec4c5a
+icon-stable,厩舎,icons,icons/stable.svg,24,24,raster/icon-stable@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,1f68fcae35e80f3e4749045440237c9c9baddceb053d4de9143590529382ee1d
+icon-race,レース,icons,icons/race.svg,24,24,raster/icon-race@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,dad658acaace12ad23be8be4ed6926546702b1b24cba3c444c24dd172b613ff5
+icon-scout,スカウト,icons,icons/scout.svg,24,24,raster/icon-scout@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,66d1f62a337e0796cd51b7b65bdd7d2ec04fb35070f2688cf52f9da41535625c
+icon-shop,ショップ,icons,icons/shop.svg,24,24,raster/icon-shop@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,32a925ad94213c7631cbe8ba55dc3e5e0ff2508de760ec6c82116a48bc849744
+icon-speed,スピード,icons,icons/speed.svg,24,24,raster/icon-speed@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,d5fd44ecb8e97eebb330ac2b7a49d0d96dbb356995a1faf322d7e47ee74e2554
+icon-stamina,残り脚,icons,icons/stamina.svg,24,24,raster/icon-stamina@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,c196ce4c96d9de587efd95beb279b47cacb7343bad634e5692795c5e2a7511a7
+icon-focus,折り合い,icons,icons/focus.svg,24,24,raster/icon-focus@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,c0b737a7c5398839563194f87f0f8f62b11d30b1f00103b888e33a6beac3cd16
+icon-acceleration,加速,icons,icons/acceleration.svg,24,24,raster/icon-acceleration@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,0dd6e89be840af231803f9ede8bd3e92040540ba4a4764b8cceb756218fcafbc
+icon-turf,芝,icons,icons/turf.svg,24,24,raster/icon-turf@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,307af0d524df4cc25d60c61b1c2fa2174922eb000ac0849d5f5eff9dc42c57a5
+icon-dirt,ダート,icons,icons/dirt.svg,24,24,raster/icon-dirt@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,43627ca6ee089b390b38b2143618ee028d8e89c917c99626d8387787d8361e7f
+icon-sun,晴れ,icons,icons/sun.svg,24,24,raster/icon-sun@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,d66ce66c7ad61ed82dae0cfb9c15ac0c2da74d6c88ffef3efefb204e5620ecc4
+icon-cloud,曇り,icons,icons/cloud.svg,24,24,raster/icon-cloud@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,75c92591d5a95ab9c2a36679213472dd00a20018e72b7a4b64b4f138f65b4ea5
+icon-rain,雨,icons,icons/rain.svg,24,24,raster/icon-rain@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,0cc145657aefe4836914ae9ca3ca4efd22a48f71f117653f989c160df7ce1c79
+icon-night,ナイター,icons,icons/night.svg,24,24,raster/icon-night@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,2497d667097255a1bea9fdf70ecd539101c8ccb1db595fcbb9330c695bc65656
+icon-groom,ブラシ,icons,icons/groom.svg,24,24,raster/icon-groom@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,c5da435766c516c5f8b9c743d1e929b67137b7f60cbe872181541a946bbc0a4c
+icon-water,給水,icons,icons/water.svg,24,24,raster/icon-water@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,428eabae9c3c3bb458e5d769d5f09a1a7f83710bde9a9627bd49eca192a9cebf
+icon-feed,飼料,icons,icons/feed.svg,24,24,raster/icon-feed@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,cc8d6de52b45ea8b937a90ca0db516bd4499f1a2b5dd6e13dc92a440a4f8fc4d
+icon-saddle,鞍,icons,icons/saddle.svg,24,24,raster/icon-saddle@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,aa1c97c7947c886acaaabab4ef581e34bc27d67411d8181078df9b7e18c23c36
+icon-helmet,ヘルメット,icons,icons/helmet.svg,24,24,raster/icon-helmet@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,e0c6049f9c73185ad174f44a0f929e56188e465eef5f63797c26012b3e1cf627
+icon-silks,勝負服,icons,icons/silks.svg,24,24,raster/icon-silks@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,b0225af6854f4dbb8d6a1249d4a2b583e441aa312fd633a2b908da068c21a80c
+icon-bloodline,血統・配合,icons,icons/bloodline.svg,24,24,raster/icon-bloodline@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,4583943c48c9485d9c31562bd0bac86d256307045f47c10923f77cf8524b3375
+icon-friend,フレンド,icons,icons/friend.svg,24,24,raster/icon-friend@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,7f50298ba7816b3fdc9ea2226d958ede290896940f6fe02d9902808515bcde5b
+icon-mission,ミッション,icons,icons/mission.svg,24,24,raster/icon-mission@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,1cf7be4a950e16cb55790c9299b8dd8672c1d6fb5fecfbb60f58b9664c46d86a
+icon-gift,ギフト,icons,icons/gift.svg,24,24,raster/icon-gift@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,9931eb1105d865fd82736e867c645b7aa315bf9683b3c00eaa9463e7ed84db82
+icon-coin,コイン,icons,icons/coin.svg,24,24,raster/icon-coin@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,c1604bd540ee23a0b1ec36a99c6b25267af51c307065548313ae265a354d695a
+icon-lock,ロック,icons,icons/lock.svg,24,24,raster/icon-lock@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,481cf9501f8c82c7efb5366a10ec0f16c424afd764c8bbab0e7711085e482dab
+icon-search,検索,icons,icons/search.svg,24,24,raster/icon-search@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,2e01af3c0ee0b046295b69c063f27f4fed2793e8f835787e8c27e6054e0ae0ad
+icon-offline,オフライン,icons,icons/offline.svg,24,24,raster/icon-offline@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,c193898d1b6915947297f3c369a970423389d5dac064d0d8bcb913e812f1ef96
+icon-check,完了,icons,icons/check.svg,24,24,raster/icon-check@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,38b1bba0856157fc88679ff1bd1df30dee16828901abf0380b0e48eda4e78596
+icon-close,閉じる,icons,icons/close.svg,24,24,raster/icon-close@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,b182c15e3caa98d1af2cd80c785727bcda78e2fdb7332404e5a249a3f9360fe7
+icon-back,戻る,icons,icons/back.svg,24,24,raster/icon-back@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,26a69109ad6158376145a2ec483ff10f0622aa1cb15a1a28f3a8824a7f5edcb4
+icon-arrow,進む,icons,icons/arrow.svg,24,24,raster/icon-arrow@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,04421b59461d102f5c55e2025f0e361857528917e85357d331330150be8d5a61
+icon-volume,音量,icons,icons/volume.svg,24,24,raster/icon-volume@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,5a8262d6c878f474e90163e7ea3e53d7e40406e2f9214673d0bdf1fdf9d29843
+icon-settings,設定,icons,icons/settings.svg,24,24,raster/icon-settings@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,2817b7136a56dbb81f7efecdd94aa5ca6f3158c29a0fb4d861f625c5e9d6b7db
+icon-mail,お知らせ,icons,icons/mail.svg,24,24,raster/icon-mail@2x.png,24pxの操作・状態アイコン。インラインSVGで currentColor を指定。,authored-svg,9f5cf2c7c71a60dcf25009df845f037e0374b643c328489975c122b2b5bdfbbc
+material-coat-bay,鹿毛,materials,materials/coat-bay.svg,128,128,raster/material-coat-bay@2x.png,PBR材質の参照。球体のSVGは模式プレビュー、数値とBlenderライブラリを正とする。,authored-pbr,d5f911cdd8a48cd4504f3b5aa721ecf4276163a12025de1d9aa248f6b70c23d5
+material-coat-chestnut,栗毛,materials,materials/coat-chestnut.svg,128,128,raster/material-coat-chestnut@2x.png,PBR材質の参照。球体のSVGは模式プレビュー、数値とBlenderライブラリを正とする。,authored-pbr,aa2b940c86fe66a5f420b964ee1841d4519fb9f63e94d25c670351154f4bbe5b
+material-coat-grey,芦毛,materials,materials/coat-grey.svg,128,128,raster/material-coat-grey@2x.png,PBR材質の参照。球体のSVGは模式プレビュー、数値とBlenderライブラリを正とする。,authored-pbr,b55ac470b13d3010949433d0ceb51f6e237b55b95da424b70249c2fb60e2ccf9
+material-coat-black,青鹿毛,materials,materials/coat-black.svg,128,128,raster/material-coat-black@2x.png,PBR材質の参照。球体のSVGは模式プレビュー、数値とBlenderライブラリを正とする。,authored-pbr,2657fea824ec66a986763fb5e14c3079fa3104d0650754c6c87a0765601c560f
+material-coat-palomino,河原毛,materials,materials/coat-palomino.svg,128,128,raster/material-coat-palomino@2x.png,PBR材質の参照。球体のSVGは模式プレビュー、数値とBlenderライブラリを正とする。,authored-pbr,48d80eb3994aa4ab322fa1c2242984a9f383c3bdd20ab79fa8ee43d4c522a084
+material-silk-crimson,クリムゾンの勝負服,materials,materials/silk-crimson.svg,128,128,raster/material-silk-crimson@2x.png,PBR材質の参照。球体のSVGは模式プレビュー、数値とBlenderライブラリを正とする。,authored-pbr,d5fec35ddbfade4ab1a22377fe4756eb058810a7e0d698c3ef95d92f9c97d3f5
+material-silk-azure,アズールの勝負服,materials,materials/silk-azure.svg,128,128,raster/material-silk-azure@2x.png,PBR材質の参照。球体のSVGは模式プレビュー、数値とBlenderライブラリを正とする。,authored-pbr,0a45401b4b321049adcbdc80e22e2cfd04f44e4b2e891340ccfb9331326dbe93
+material-silk-violet,ヴァイオレットの勝負服,materials,materials/silk-violet.svg,128,128,raster/material-silk-violet@2x.png,PBR材質の参照。球体のSVGは模式プレビュー、数値とBlenderライブラリを正とする。,authored-pbr,eb396b2930e1a48ad8e4048947dbbf8b0cff310353d6016efaa317d7529dc0f9
+material-silk-emerald,エメラルドの勝負服,materials,materials/silk-emerald.svg,128,128,raster/material-silk-emerald@2x.png,PBR材質の参照。球体のSVGは模式プレビュー、数値とBlenderライブラリを正とする。,authored-pbr,e00521cb8fd09120d2dda0b3fd317dabf694cdde467ae679a83aad808bd403cd
+material-silk-gold,ゴールドの勝負服,materials,materials/silk-gold.svg,128,128,raster/material-silk-gold@2x.png,PBR材質の参照。球体のSVGは模式プレビュー、数値とBlenderライブラリを正とする。,authored-pbr,9925fa5dbd8c0c14fd7b565def9e9fb919a1432251a8deaa0ee8943b29433cc6
+material-tack-leather,オイルドレザー,materials,materials/tack-leather.svg,128,128,raster/material-tack-leather@2x.png,PBR材質の参照。球体のSVGは模式プレビュー、数値とBlenderライブラリを正とする。,authored-pbr,c01cb44fb8f60336e831c4a1f01292993e5de9f0e50fe58ce07e39004d54e089
+material-tack-brass,ブラッシュドブラス,materials,materials/tack-brass.svg,128,128,raster/material-tack-brass@2x.png,PBR材質の参照。球体のSVGは模式プレビュー、数値とBlenderライブラリを正とする。,authored-pbr,e2912cf6d429ea78f8c1123b22c55cf290a0ad93e6f707643ad7a0d53e496980
+material-cloth-ivory,アイボリーの織物,materials,materials/cloth-ivory.svg,128,128,raster/material-cloth-ivory@2x.png,PBR材質の参照。球体のSVGは模式プレビュー、数値とBlenderライブラリを正とする。,authored-pbr,cdd89d2e7b276b70711af140447dbfcb83935fd99183b88edbb91a9895c628ab
+material-turf,ターフ,materials,materials/turf.svg,128,128,raster/material-turf@2x.png,PBR材質の参照。球体のSVGは模式プレビュー、数値とBlenderライブラリを正とする。,authored-pbr,f5356031f0f820a35c1efe9e8078f12f8d9fcb84926f4ecb0a9475718f666b43
+material-dirt,ダート,materials,materials/dirt.svg,128,128,raster/material-dirt@2x.png,PBR材質の参照。球体のSVGは模式プレビュー、数値とBlenderライブラリを正とする。,authored-pbr,3cc5501b0912345bf055d472427a36a6977496ec7f68d80cce2d076d770afb31
+material-paper,クラブの紙,materials,materials/paper.svg,128,128,raster/material-paper@2x.png,PBR材質の参照。球体のSVGは模式プレビュー、数値とBlenderライブラリを正とする。,authored-pbr,35dd2fda2d0c5b10a4b528418db630b378cadfd99c86421742dc799f07c2e715
+material-enamel,フォレストの琺瑯,materials,materials/enamel.svg,128,128,raster/material-enamel@2x.png,PBR材質の参照。球体のSVGは模式プレビュー、数値とBlenderライブラリを正とする。,authored-pbr,bcdc30f2eca433e678dfc27c201a357e40e61728802f5fbc185ff131b8492d8e
+motion-panel-in,パネルの登場,motion,motion/motion.css,128,128,,動きのプリセット。設定に従って一回のみ適用。読込中以外はループしない。,authored-css,598b5ad6c98a25328a316edea7089a35883f7c52fb6a6bbe72fe014264c66edf
+motion-card-reveal,カードの開示,motion,motion/motion.css,128,128,,動きのプリセット。設定に従って一回のみ適用。読込中以外はループしない。,authored-css,598b5ad6c98a25328a316edea7089a35883f7c52fb6a6bbe72fe014264c66edf
+motion-button-press,ボタンの押下,motion,motion/motion.css,128,128,,動きのプリセット。設定に従って一回のみ適用。読込中以外はループしない。,authored-css,598b5ad6c98a25328a316edea7089a35883f7c52fb6a6bbe72fe014264c66edf
+motion-selection,選択の切替,motion,motion/motion.css,128,128,,動きのプリセット。設定に従って一回のみ適用。読込中以外はループしない。,authored-css,598b5ad6c98a25328a316edea7089a35883f7c52fb6a6bbe72fe014264c66edf
+motion-reward,報酬の受取,motion,motion/motion.css,128,128,,動きのプリセット。設定に従って一回のみ適用。読込中以外はループしない。,authored-css,598b5ad6c98a25328a316edea7089a35883f7c52fb6a6bbe72fe014264c66edf
+motion-toast,案内の表示,motion,motion/motion.css,128,128,,動きのプリセット。設定に従って一回のみ適用。読込中以外はループしない。,authored-css,598b5ad6c98a25328a316edea7089a35883f7c52fb6a6bbe72fe014264c66edf
+motion-victory,勝利の記章,motion,motion/motion.css,128,128,,動きのプリセット。設定に従って一回のみ適用。読込中以外はループしない。,authored-css,598b5ad6c98a25328a316edea7089a35883f7c52fb6a6bbe72fe014264c66edf
+motion-loading,読込中,motion,motion/motion.css,128,128,,動きのプリセット。設定に従って一回のみ適用。読込中以外はループしない。,authored-css,598b5ad6c98a25328a316edea7089a35883f7c52fb6a6bbe72fe014264c66edf
+audio-press,軽い押下,audio,audio/press.wav,0,0,,ユーザー操作時の短い効果音。初期ミュート、再生時の推奨音量0.18。,original-synthesis,1e89cfad2d6295d28e1a9fa4efccaad843a89ea0cb868a43ac2008f434e5295c
+audio-back,戻る,audio,audio/back.wav,0,0,,ユーザー操作時の短い効果音。初期ミュート、再生時の推奨音量0.18。,original-synthesis,de42571bc7a1146e13d34dd75ffb72b9311f87b8c2351a6984e4411ad49795ac
+audio-confirm,確定,audio,audio/confirm.wav,0,0,,ユーザー操作時の短い効果音。初期ミュート、再生時の推奨音量0.18。,original-synthesis,3682d5f46006a977397fece5a7feee7da65830f57df7cb9d5acb9fea8b6e0480
+audio-error,入力の確認,audio,audio/error.wav,0,0,,ユーザー操作時の短い効果音。初期ミュート、再生時の推奨音量0.18。,original-synthesis,7fc4d2ab5a754f1888557aa0cd57c70d8d3c37465e92b274f77c7d22bb953617
+audio-reward,報酬の受取,audio,audio/reward.wav,0,0,,ユーザー操作時の短い効果音。初期ミュート、再生時の推奨音量0.18。,original-synthesis,67664c499f8d3b283625cda936ecb5b924425c09ecd528167911e87b7a3afaff
+audio-gate,ゲートの開放,audio,audio/gate.wav,0,0,,ユーザー操作時の短い効果音。初期ミュート、再生時の推奨音量0.18。,original-synthesis,aee9d3cb526d49149a0ee19330ba16824f016d20103ef8ebba9a1e2d4d84c526
+audio-finish,ゴール,audio,audio/finish.wav,0,0,,ユーザー操作時の短い効果音。初期ミュート、再生時の推奨音量0.18。,original-synthesis,b67adede779e158215283029d4b44e9ac9192db918815bb5c9412a8b2ca35a22

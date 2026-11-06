@@ -677,7 +677,7 @@ footer i {
   z-index: -1;
   background:
     linear-gradient(90deg, #112b24 10%, #15372ae6 46%, #15372a55),
-    url("/art/spring-course.webp") right 45%/75% auto no-repeat;
+    url("/creative/keyart/greenfield-dawn.webp") right center/cover no-repeat;
   opacity: 0.8;
 }
 .hero-copy {
@@ -1107,8 +1107,8 @@ footer i {
   inset: 0;
   position: absolute;
   z-index: -1;
-  background: url("/art/scout-reveal.webp") center/cover;
-  opacity: 0.11;
+  background: url("/creative/keyart/scout-gate.webp") center/cover;
+  opacity: 0.27;
 }
 .scout-copy {
   padding: 36px 0 32px 36px;
@@ -3799,5 +3799,25 @@ dialog > .primary {
     box-shadow:
       inset 0 0 0 1px #d5bb7800,
       inset 0 0 0 #dfc58900;
+  }
+}
+/* Creative Library 01: shared scene plates keep room for live UI typography. */
+.store-banner {
+  background:
+    linear-gradient(90deg, #153528 10%, #173a2ce8 48%, #173a2c99),
+    url("/creative/keyart/season-collection.webp") right center/cover;
+}
+.store-banner > .secondary {
+  background: #142f27df;
+  backdrop-filter: blur(4px);
+}
+.design-toolbar .creative-link {
+  border-left: 1px solid #bcc8b7;
+  padding-left: 18px;
+}
+@media (max-width: 650px) {
+  .design-toolbar .creative-link {
+    border-left: 0;
+    padding-left: 0;
   }
 }

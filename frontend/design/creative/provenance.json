@@ -1,0 +1,37 @@
+{
+  "artDirection": "The Racing Club / Forest, Ivory & Brass",
+  "assets": [
+    {
+      "slug": "greenfield-dawn",
+      "source": "/workspace/generated_images/exec-ba37d567-29e3-4d4f-be73-845d570b57a7.png",
+      "prompt": "Art direction for MUCHI ISSEN, a premium Japanese jockey racing club game: sophisticated stylized 3D production art, physical materials, forest green #142F27, warm ivory #F7F6F0, restrained brushed brass #B39459, soft dawn lighting, elegant tactile surfaces, no casino imagery, no neon, no excessive sparkles, no text, no letters, no logos, no watermarks. Unified collectible sports-club aesthetic. Create a wide landscape environment background for the game's home and stable screens, panoramic 16:9 composition. An elegant Japanese equestrian club stable courtyard at dawn: dark evergreen timber, creamy stone arches, brass fittings, groomed grass and distant racecourse rails, subtle ivy, atmospheric golden morning haze. No people, no animals, no horses. The LEFT 45 percent must be a quiet dark forest green area with extremely low visual detail, reserved for white interface text; put the warm architectural focal point in the RIGHT third. Keep the lower edge calm for UI controls. The visual should feel like a beautifully art-directed, high-quality 3D game environment, with broad readable shapes and fine crafted material details, not a photograph.",
+      "transparent_background": false,
+      "origin": "image_gen",
+      "version": 1
+    },
+    {
+      "slug": "scout-gate",
+      "source": "/workspace/generated_images/exec-8be321da-aff3-4daa-9a10-ac4f1fdf9328.png",
+      "prompt": "Art direction for MUCHI ISSEN, a premium Japanese jockey racing club game: sophisticated stylized 3D production art, physical materials, forest green #142F27, warm ivory #F7F6F0, restrained brushed brass #B39459, soft dawn lighting, elegant tactile surfaces, no casino imagery, no neon, no excessive sparkles, no text, no letters, no logos, no watermarks. Unified collectible sports-club aesthetic. Create a wide landscape background, 16:9, for welcoming new horse partners: a beautiful open pair of equestrian stable gates, carved dark green wood with understated brass piping, warm ivory light spilling from the stable interior, a few tiny dust motes catching the light. It feels welcoming and anticipatory, refined rather than magical. No creatures, animals, horses, people, cards or UI. Reserve the LEFT 45 percent as quiet deep forest green negative space for headings and buttons. Put the opening gates and warm light in the RIGHT half, with the brightest area around x=75%, y=45%. Fine leather, timber grain, brushed brass, muted sage surroundings. Match a prestigious racing club's visual identity.",
+      "transparent_background": false,
+      "origin": "image_gen",
+      "version": 1
+    },
+    {
+      "slug": "season-collection",
+      "source": "/workspace/generated_images/exec-a0a0a8ac-6810-4021-8d2d-36225dc2eb59.png",
+      "prompt": "Art direction for MUCHI ISSEN, a premium Japanese jockey racing club game: sophisticated stylized 3D production art, physical materials, forest green #142F27, warm ivory #F7F6F0, restrained brushed brass #B39459, soft dawn lighting, elegant tactile surfaces, no casino imagery, no neon, no excessive sparkles, no text, no letters, no logos, no watermarks. Unified collectible sports-club aesthetic. Create a wide editorial 16:9 season-pass collection still life for a premium equestrian club game. On the RIGHT half, artfully arrange an elegant deep emerald jockey racing silk jacket with narrow cream chevron and brass-gold piping, a matching glossy dark green racing helmet, folded cream saddlecloth, and a small sculptural laurel cup on a dark green velvet plinth. A warm ivory curtain and subtle brass architectural detail, studio museum lighting. No people, no animals, no numbers or text, no labels, no UI. Leave the LEFT 45 percent as uncluttered deep forest green negative space so localized typography can be added later. High-end stylized 3D material rendering with fabric weave, polished leather, restrained metal reflections; cohesive and readable at banner scale.",
+      "transparent_background": false,
+      "origin": "image_gen",
+      "version": 1
+    },
+    {
+      "slug": "victory-trophy",
+      "source": "/workspace/generated_images/exec-4742f5d5-3cdc-41ea-b0c5-a1fbf0021f91.png",
+      "prompt": "Art direction for MUCHI ISSEN, a premium Japanese jockey racing club game: sophisticated stylized 3D production art, physical materials, forest green #142F27, warm ivory #F7F6F0, restrained brushed brass #B39459, soft dawn lighting, elegant tactile surfaces, no casino imagery, no neon, no excessive sparkles, no text, no letters, no logos, no watermarks. Unified collectible sports-club aesthetic. An isolated single game reward asset: a refined equestrian victory trophy with a graceful brushed-brass cup, two simple laurel-shaped handles, a small ivory ceramic inset bearing a subtle relief horseshoe, on a compact dark forest-green enamel pedestal with an EMPTY brass plaque. Entire trophy fully visible, centered with 12 percent clear padding around the silhouette, three-quarter front view, soft warm studio key and gentle rim lighting. No backdrop, no floor plane, no scene, no text or numbers, no extra objects. Transparent background. Premium stylized 3D collectible, crisp elegant contour, controlled reflections, fine engraving details, no gaudy diamonds or cartoon eyes.",
+      "transparent_background": true,
+      "origin": "image_gen",
+      "version": 1
+    }
+  ]
+}

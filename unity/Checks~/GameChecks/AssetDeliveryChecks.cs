@@ -183,6 +183,37 @@ static class AssetDeliveryChecks
             check(again.Resolver.Resolve("scene/venue/minato").Source == AssetSource.Downloaded, "offline relaunch: downloaded art is still used");
         }
 
+        // ---- QA r9: offline at launch, then the network comes back → catalog refetched, downloads start by themselves
+        {
+            var (json, cdn) = Serve(50_000_000, 3000, Entries);
+            long now = 0;
+            bool up = false;
+            var net = NetworkReach.None;
+            var api = new Api { Handler = _ => up ? new HttpResponse(200, json) : throw new IOException("offline") };
+            var m = Model(json, cdn, NewDir(), () => net, () => now, k => k.EndsWith("/default"), api);
+            await m.PrepareAsync();
+            check(m.Phase == PreloadPhase.Offline && cdn.Requested.IsEmpty, "offline launch: nothing downloaded yet");
+            net = NetworkReach.Cellular; // radio back but the server still unreachable: stays offline, no crash
+            m.OnNetworkChanged();
+            await m.ResumeTask;
+            check(m.Phase == PreloadPhase.Offline, "server still unreachable: stays offline (a later change retries)");
+            up = true; net = NetworkReach.Wifi;
+            m.OnNetworkChanged();
+            await m.ResumeTask; await m.BlockingTask; await m.BackgroundTask;
+            check(m.Phase == PreloadPhase.Ready && m.Catalog.CatalogVersion == 3 && m.Background == BackgroundState.Done && m.BackgroundReport != null && m.BackgroundReport.AllOk,
+                "network back after offline: catalog fetched and the background set downloaded (" + m.Phase + "/" + m.Background + ")");
+            check(m.Resolver.Resolve("scene/venue/minato").Source == AssetSource.Downloaded, "…and the resolver serves the downloaded art");
+        }
+
+        // ---- QA r9: the default clock is monotonic 64-bit (never negative elapsed time, no 24.9-day wrap)
+        {
+            var (json, cdn) = Serve(50_000_000, 3000, Entries);
+            var m = Model(json, cdn, NewDir(), () => NetworkReach.Wifi, null);
+            await m.PrepareAsync();
+            check(m.ElapsedMs >= 0 && m.ElapsedMs < 60_000, "default clock: elapsed time is small and non-negative (" + m.ElapsedMs + ")");
+            await m.BlockingTask; await m.BackgroundTask;
+        }
+
         check(AssetPreloadModel.FormatBytes(850_000) == "850KB" && AssetPreloadModel.FormatBytes(12_340_000) == "12.3MB" && AssetPreloadModel.FormatBytes(1_500_000_000) == "1.50GB", "size labels (KB / MB / GB)");
     }
 }

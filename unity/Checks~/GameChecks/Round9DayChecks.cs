@@ -46,6 +46,15 @@ static partial class Round8Checks
                 && GameDay.NextResetLabel(Jst(2026, 12, 5, 12), r) == "明日 4:00" && GameDay.NextResetLabel(Jst(2026, 12, 5, 2), r) == "今日 4:00",
                 "reset labels: 「明日 0:00」 before the switch, 「明日 4:00」 after, 「今日 4:00」 between midnight and 04:00");
 
+            // QA r9: a later rule moving the hour earlier (4 → 0, allowed at any instant) — the next reset is the server's
+            // gameDayStartMs of the next day: the switch instant itself, never a midnight that is still under the old hour
+            var early = new DayRolloverInfo { HourJst = 0, PreviousHourJst = 4, EffectiveAtMs = Jst(2027, 1, 10, 2) };
+            check(GameDay.NextRolloverMs(Jst(2027, 1, 9, 12), early) == Jst(2027, 1, 10, 2) && GameDay.NextRolloverMs(Jst(2027, 1, 10, 1), early) == Jst(2027, 1, 10, 2)
+                && GameDay.NextRolloverMs(Jst(2027, 1, 10, 3), early) == Jst(2027, 1, 11) && GameDay.NextRolloverMs(Jst(2027, 1, 8, 12), early) == Jst(2027, 1, 9, 4),
+                "4 → 0 switched at 02:00: the next reset after 01-09 12:00 is the switch instant 01-10 02:00 (not 01-10 00:00)");
+            var early4 = new DayRolloverInfo { HourJst = 0, PreviousHourJst = 4, EffectiveAtMs = Jst(2027, 1, 10, 4) };
+            check(GameDay.NextRolloverMs(Jst(2027, 1, 9, 12), early4) == Jst(2027, 1, 10, 4), "4 → 0 switched at 04:00: next reset 01-10 04:00");
+
             // countdowns: the season (calendar month) ends 2027-01-01 00:00 JST
             long end = Jst(2027, 1, 1);
             check(GameDay.DaysUntil(end, Jst(2026, 12, 31, 12), r) == 1 && GameDay.DaysUntil(end, Jst(2026, 12, 31, 2), r) == 2

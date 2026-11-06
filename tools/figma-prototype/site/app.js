@@ -1008,8 +1008,8 @@ async function Scout(selectId) {
     Txt('開始前です。提供割合は開始前から確認できます。', 32, 352, 440, 16, GOLD, info);
     disable(Cta('10回引く（開始前）', 470, 362, 438, () => {}, info));
   } else {
-    const ten = bs?.stepUp ? bs.stepUp.priceTen : b.priceTen;
-    if (!b.stepUp) Ghost(`1回（${fmt(b.priceSingle)}）`, 32, 368, 220, 60, () => PaidScout(b, 1), info);
+    const ten = b.stepUp ? (bs?.stepUp?.priceTen ?? b.stepUp.prices[0]) : b.priceTen;
+    if (!b.stepUp && b.singleAllowed !== false) Ghost(`1回（${fmt(b.priceSingle)}）`, 32, 368, 220, 60, () => PaidScout(b, 1), info);
     Cta(`10回引く（${fmt(ten)}）`, 470, 362, 438, () => PaidScout(b, 10), info);
   }
   NavBar(2);
@@ -1020,7 +1020,7 @@ async function PaidScout(b, count) {
     if (r.code === 'INSUFFICIENT_COINS') {
       // T6: the shortfall and the one smallest pack that covers it (paid-only banners count paid coins only)
       const st = (await L.gachaStatus()).banners.find((x) => x.bannerId === b.id);
-      const price = count === 10 ? (st?.stepUp?.priceTen ?? b.priceTen) : b.priceSingle;
+      const price = count === 10 ? (st?.stepUp?.priceTen ?? b.stepUp?.prices[0] ?? b.priceTen) : b.priceSingle;
       const need = price - (b.currency === 'paidOnly' ? player.wallet.paid : player.wallet.paid + player.wallet.free);
       const pack = L.shopProducts().products.filter((p) => p.kind === 'coins' && p.paidCoins >= need).sort((a, c) => a.priceYen - c.priceYen)[0];
       return Info('コインが足りません', `${b.currency === 'paidOnly' ? '有償コインが' : ''}あと${fmt(need)}コイン必要です。${pack ? `\n${pack.name}（${yen(pack.priceYen)}）で足ります。` : ''}`, () => (pack ? PurchaseConfirm(pack.id, () => Scout(b.id)) : Scout(b.id)));

@@ -7,7 +7,7 @@ import {
 } from '../src/domain/time.js';
 import type { Master } from '../src/domain/master.js';
 import { applyFirstWinBonus, claimLoginBonus, claimMission, missionsView, friendRewardAllowed } from '../src/domain/rewards.js';
-import { claimAllowance, grantAllowance } from '../src/domain/shop.js';
+import { allowanceView, claimAllowance, grantAllowance } from '../src/domain/shop.js';
 import { stableConfig, stableLikeGive } from '../src/domain/stable.js';
 import { enqueuePush, registerDevice, setPushPrefs } from '../src/domain/push.js';
 import { dailyGoing } from '../src/domain/ground.js';
@@ -199,6 +199,46 @@ describe('REQ-DAY-002 remote config: a rule change must be known before it chang
     store.schedule(version.id, jst(2027, 1, 20), 'ops', 'r', jst(2027, 1, 20));
     expect(() => store.rollback(null, 'ops', 'oops', later.effectiveAtMs - 30 * 60_000)).toThrow(/dayRollover/);
     expect(store.rollback(null, 'ops', 'early', jst(2027, 1, 25)).versionId).toBe('base');
+  });
+});
+
+describe('QA r9: the daily-pack view uses the claim rule', () => {
+  it('a day claimed under a later key (stale isolate) shows as claimed today, as the claim refuses it', () => {
+    const s = freshPlayer('p', jst(2026, 12, 1));
+    const allowance = m.products.find((p) => p.kind === 'allowance')!;
+    grantAllowance(m, s, allowance, 'tx1', jst(2026, 12, 1, 6));
+    s.shop!.allowances[0]!.claimed.push('2026-12-03'); // written at 01:00 on 12-03 by an isolate still on midnight
+    const at = jst(2026, 12, 3, 1, 30); // game day 12-02 under the 04:00 rule
+    expect(code(() => claimAllowance(m, s, at))).toBe('ALREADY_CLAIMED');
+    expect(allowanceView(m, s, at)).toMatchObject({ active: true, claimedToday: true });
+  });
+});
+
+describe('QA r9: a day-rule change keeps every pending activation valid against its new neighbour', () => {
+  const six: DayRollover = { hourJst: 6, previousHourJst: 4, effectiveAtMs: jst(2027, 1, 30, 6) };
+  const five: DayRollover = { hourJst: 5, previousHourJst: 4, effectiveAtMs: jst(2027, 2, 1, 5) };
+  it('inserting a version before a pending one is refused when the pending one would rewrite the inserted rule', async () => {
+    const store = new ConfigStore(new MemoryConfigRepo(), m);
+    const { version: v5 } = await store.stage({ progression: { dayRollover: five } }, 'ops', '05:00', jst(2027, 1, 20));
+    const { version: v6 } = await store.stage({ progression: { dayRollover: six } }, 'ops', '06:00', jst(2027, 1, 20));
+    store.schedule(v5.id, jst(2027, 1, 31, 5), 'ops', 'r', jst(2027, 1, 20)); // valid next to base
+    // valid against what is active at Jan 25 (base), but then v5 (Jan 31) would undo the 06:00 switch of Jan 30
+    expect(() => store.schedule(v6.id, jst(2027, 1, 25), 'ops', 'r', jst(2027, 1, 20))).toThrow(/dayRollover/);
+    expect(store.pending(jst(2027, 1, 20)).map((a) => a.versionId)).toEqual([v5.id]);
+  });
+
+  it('a rollback or a cancel that leaves a pending activation next to another rule is refused', async () => {
+    const store = new ConfigStore(new MemoryConfigRepo(), m);
+    const { version: v6 } = await store.stage({ progression: { dayRollover: six } }, 'ops', '06:00', jst(2027, 1, 20));
+    const { version: v6b } = await store.stage({ progression: { dayRollover: six }, ng: { exact: ['x'], contains: [] } }, 'ops', '06:00 + ng', jst(2027, 1, 20));
+    store.schedule(v6.id, jst(2027, 1, 25), 'ops', 'r', jst(2027, 1, 20));
+    const pend = store.schedule(v6b.id, jst(2027, 1, 31, 5), 'ops', 'r', jst(2027, 1, 20));
+    // rolling back to base now: base would sit between v6 and v6b, so v6b would bring the 06:00 rule back with a past switch
+    expect(() => store.rollback('base', 'ops', 'r', jst(2027, 1, 26))).toThrow(/dayRollover/);
+    // cancelling v6 (still pending at Jan 21) leaves v6b next to base: same problem
+    expect(() => store.cancel(store.pending(jst(2027, 1, 21))[0]!.id, jst(2027, 1, 21))).toThrow(/dayRollover/);
+    // cancelling the later one is fine
+    expect(store.cancel(pend.id, jst(2027, 1, 21)).cancelled).toBe(true);
   });
 });
 

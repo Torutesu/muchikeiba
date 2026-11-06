@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
@@ -61,8 +62,10 @@ namespace Muchi.Game
             _downloader = downloader ?? throw new ArgumentNullException(nameof(downloader));
             _network = network ?? (() => NetworkReach.Wifi);
             _bundled = bundled ?? (_ => false);
-            _clockMs = clockMs ?? (() => Environment.TickCount);
+            _clockMs = clockMs ?? (() => Monotonic.ElapsedMilliseconds); // QA r9: 64-bit monotonic (TickCount wraps after 24.9 days)
         }
+
+        private static readonly Stopwatch Monotonic = Stopwatch.StartNew();
 
         // ------------------------------------------------------------------ state for the screen
 
@@ -143,14 +146,7 @@ namespace Muchi.Game
             _shownAtMs = _clockMs();
             Phase = PreloadPhase.Checking;
             Catalog = await _catalogs.RefreshAsync(ct);
-            Resolver = new AssetResolver(Catalog, _downloader.Cache, _bundled);
-            if (_catalogs.Source == CatalogSource.Network) _downloader.EvictStale(Catalog); // a new version replaces old files
-
-            var blocking = Catalog.InGroups(BlockingGroups, true).Where(e => !_bundled(e.Key)).ToList();
-            var blockingShas = new HashSet<string>(blocking.Select(e => e.Sha256));
-            var background = Catalog.InGroups(BackgroundGroups).Where(e => !_bundled(e.Key) && !blockingShas.Contains(e.Sha256)).ToList();
-            BlockingBytes = _downloader.PendingBytes(blocking);
-            BackgroundBytes = _downloader.PendingBytes(background);
+            var (blocking, background) = Plan();
 
             bool offline = _catalogs.Offline || !Catalog.HasCdn || _network() == NetworkReach.None;
             if (offline && BlockingBytes + BackgroundBytes > 0 || _catalogs.Source == CatalogSource.Empty)
@@ -180,6 +176,46 @@ namespace Muchi.Game
         }
 
         private List<AssetEntry> _pendingBackground = new List<AssetEntry>();
+        private Task _resume;
+        private bool _acceptedCellular;
+
+        /// <summary>Completes when a resume after Offline (started by <see cref="OnNetworkChanged"/>) has started its downloads.</summary>
+        public Task ResumeTask => _resume ?? Task.CompletedTask;
+
+        private (List<AssetEntry> blocking, List<AssetEntry> background) Plan()
+        {
+            Resolver = new AssetResolver(Catalog, _downloader.Cache, _bundled);
+            if (_catalogs.Source == CatalogSource.Network) _downloader.EvictStale(Catalog); // a new version replaces old files
+            var blocking = Catalog.InGroups(BlockingGroups, true).Where(e => !_bundled(e.Key)).ToList();
+            var blockingShas = new HashSet<string>(blocking.Select(e => e.Sha256));
+            var background = Catalog.InGroups(BackgroundGroups).Where(e => !_bundled(e.Key) && !blockingShas.Contains(e.Sha256)).ToList();
+            BlockingBytes = _downloader.PendingBytes(blocking);
+            BackgroundBytes = _downloader.PendingBytes(background);
+            return (blocking, background);
+        }
+
+        /// <summary>
+        /// QA r9: the network came back after an offline start. Refetch the catalog and start what is missing (the tutorial
+        /// was never held, so <see cref="BlockingDone"/> stays true). Still unreachable: stay Offline; the next change retries.
+        /// </summary>
+        private async Task ResumeAfterOffline()
+        {
+            try
+            {
+                var cat = await _catalogs.RefreshAsync(_ct);
+                if (_catalogs.Offline || !cat.HasCdn || _network() == NetworkReach.None) return;
+                Catalog = cat;
+                var (blocking, background) = Plan();
+                _pendingBackground = background;
+                Background = BackgroundState.Idle;
+                if (BlockingBytes > 0) { Phase = PreloadPhase.Downloading; BlockingTask = RunBlocking(blocking, _ct); }
+                else Phase = PreloadPhase.Ready;
+                if (BackgroundBytes == 0) Background = BackgroundState.Done;
+                else if (ShowCellularWarning && !_acceptedCellular) { Background = BackgroundState.Deferred; _decided = false; }
+                else StartBackground();
+            }
+            catch (OperationCanceledException) { }
+        }
 
         private async Task RunBlocking(List<AssetEntry> blocking, CancellationToken ct)
         {
@@ -222,15 +258,22 @@ namespace Muchi.Game
         public void AcceptCellular()
         {
             _decided = true;
+            _acceptedCellular = true;
             if (Background == BackgroundState.Deferred && Phase != PreloadPhase.Offline) StartBackground();
         }
 
         /// <summary>"Later (on Wi-Fi)": keep the background set deferred; the tutorial goes on with placeholders.</summary>
         public void DeferToWifi() { _decided = true; }
 
-        /// <summary>Call when reachability changes: a deferred background download starts on Wi-Fi.</summary>
+        /// <summary>Call when reachability changes: a deferred background download starts on Wi-Fi; after an offline start the downloads resume.</summary>
         public void OnNetworkChanged()
         {
+            if (Phase == PreloadPhase.Offline)
+            {
+                // QA r9: back online after an offline start (or a blocking run that found no network) → resume
+                if (_network() != NetworkReach.None && (_resume == null || _resume.IsCompleted)) _resume = ResumeAfterOffline();
+                return;
+            }
             if (Background == BackgroundState.Deferred && Phase != PreloadPhase.Offline && _network() == NetworkReach.Wifi) StartBackground();
         }
 

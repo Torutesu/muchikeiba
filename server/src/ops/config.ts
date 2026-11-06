@@ -324,8 +324,8 @@ export class ConfigStore {
     const v = this.repo.version(versionId);
     if (!v) throw new AppError('NOT_FOUND', `config version ${versionId}`);
     resolveBundle(this.base, v.bundle); // a base-master change could have invalidated an old version
-    this.dayRuleChangeCheck(versionId, Math.max(at, now));
     const a: Activation = { id: `act_${this.repo.nextSeq('activation')}`, versionId, at: Math.max(at, now), createdAt: now, by, reason, kind, cancelled: false };
+    this.dayRuleChainCheck(now, a);
     this.repo.putActivation(a);
     return a;
   }
@@ -336,6 +336,7 @@ export class ConfigStore {
     if (!a) throw new AppError('NOT_FOUND', `activation ${activationId}`);
     if (a.cancelled) return a;
     if (a.at <= now) throw new AppError('CONFLICT', 'activation already in effect; use rollback');
+    this.dayRuleChainCheck(now, null, a.id); // the activation after it gets a new neighbour
     const c = { ...a, cancelled: true };
     this.repo.putActivation(c);
     return c;
@@ -352,8 +353,8 @@ export class ConfigStore {
       target = prev ? prev.versionId : BASE_VERSION_ID;
     }
     if (target === BASE_VERSION_ID) {
-      this.dayRuleChangeCheck(BASE_VERSION_ID, now);
       const a: Activation = { id: `act_${this.repo.nextSeq('activation')}`, versionId: BASE_VERSION_ID, at: now, createdAt: now, by, reason, kind: 'rollback', cancelled: false };
+      this.dayRuleChainCheck(now, a);
       this.repo.putActivation(a);
       return a;
     }
@@ -365,10 +366,27 @@ export class ConfigStore {
     return dayRule(resolveBundle(this.base, this.get(versionId).bundle).master);
   }
 
-  /** REQ-DAY-002: an activation may not change the game day rule retroactively or with less than the lead time. */
-  private dayRuleChangeCheck(versionId: string, at: number) {
-    const current = this.activeAt(at)?.versionId ?? BASE_VERSION_ID;
-    const problems = dayRolloverChangeProblems(this.dayRuleOf(current), this.dayRuleOf(versionId), at);
+  /**
+   * REQ-DAY-002: an activation may not change the game day rule retroactively or with less than the lead time. Checked
+   * over the whole timeline that the change would produce (QA r9): the new activation against the one before it, and
+   * every pending activation against its (possibly new) predecessor — inserting, rolling back or cancelling gives the
+   * next pending activation a new neighbour. Activations already in effect are history and are not re-checked.
+   */
+  private dayRuleChainCheck(now: number, added: Activation | null, removedId?: string) {
+    const all = this.repo.activations().filter((x) => !x.cancelled && x.id !== removedId);
+    if (added) all.push(added);
+    all.sort(byTime);
+    const rules = new Map<string, DayRollover>();
+    const ruleOf = (id: string) => { let r = rules.get(id); if (!r) { r = this.dayRuleOf(id); rules.set(id, r); } return r; };
+    let prev = BASE_VERSION_ID;
+    const problems: string[] = [];
+    for (const x of all) {
+      if (x === added || x.at > now) {
+        const p = dayRolloverChangeProblems(ruleOf(prev), ruleOf(x.versionId), x.at);
+        if (p.length) problems.push(...(x === added ? p : p.map((m) => `pending activation ${x.id} (${x.versionId}) would become invalid: ${m}`)));
+      }
+      prev = x.versionId;
+    }
     if (problems.length) throw new AppError('CONFIG_INVALID', problems.join('; '));
   }
 

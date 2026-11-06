@@ -339,3 +339,39 @@ describe('HTTP: banners, status and odds', () => {
     expect(await r.json()).toMatchObject({ error: { code: 'BANNER_CLOSED', message: 'banner pickup_ginga ended at 2026-12-01 00:00 JST' } });
   });
 });
+
+describe('QA r9: step-up prices on the list and the odds page', () => {
+  it('a step-up banner exposes no single-pull or flat 10-pull price (only the step prices) and says singles are not offered', () => {
+    const lb = bannerList(m, NOW).banners;
+    const sl = lb.find((b) => b.id === 'stepup_paid')!;
+    expect(sl).toMatchObject({ singleAllowed: false, priceSingle: null, priceTen: null, stepUp: { prices: [500, 1000, 1000, 1000, 1000] } });
+    expect(lb.find((b) => b.id === 'standard')).toMatchObject({ singleAllowed: true, priceSingle: 100, priceTen: 1000 });
+    const od = oddsDisclosure(m, step);
+    expect(od).toMatchObject({ singleAllowed: false, priceSingle: null, priceTen: null });
+    expect(oddsDisclosure(m, ginga)).toMatchObject({ singleAllowed: true, priceSingle: 100, priceTen: 1000 });
+  });
+
+  it('a step without its own slot-10 table says where slot 10 comes from in both cases', () => {
+    const steps = oddsDisclosure(m, step).stepUp!;
+    const s1 = steps.steps[0]!.finalSlot.appliesTo;
+    expect(s1).toMatch(/保証の表/);
+    expect(s1).toMatch(/それ以外は上の表/);
+    expect(steps.notice).not.toMatch(/10枠目は各ステップの表で抽選します/);
+    expect(steps.notice).toMatch(/10枠目/);
+  });
+});
+
+describe('QA r9: carry-over along a chain', () => {
+  it('a closed group converting into another closed group reaches the open end of the chain in one settlement', () => {
+    // the group listed first closes later than the one converting into it: one pass left points in a closed group,
+    // where the meter showed them as not exchangeable and a same-transaction exchange on standard came up short
+    const mm = { ...m, gacha: { ...m.gacha, pityGroups: {
+      standard: { cost: 100 }, second: { cost: 100, endAtMs: NOW - 2000, convertTo: 'standard' }, first: { cost: 100, endAtMs: NOW - 5000, convertTo: 'second' },
+    } } } as Master;
+    const s = freshPlayer();
+    s.pity = { first: 70, second: 40, standard: 10 };
+    expect(settlePityGroups(mm, s, NOW)).toBeGreaterThan(0);
+    expect(s.pity).toEqual({ first: 0, second: 0, standard: 120 });
+    expect(settlePityGroups(mm, s, NOW)).toBe(0);
+  });
+});

@@ -26,7 +26,8 @@ namespace Muchi.Engine.Tests
                 Task task;
                 try { task = body(); }
                 catch (Exception e) { error = e; return; }
-                task.ContinueWith(_ => ctx._q.CompleteAdding(), TaskScheduler.Default);
+                // ExecuteSynchronously: the pump must not wait for a thread-pool thread to learn that the body is done
+                task.ContinueWith(_ => ctx._q.CompleteAdding(), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
                 foreach (var (cb, st) in ctx._q.GetConsumingEnumerable()) cb(st);
                 try { task.GetAwaiter().GetResult(); } catch (Exception e) { error = e; }
             });
@@ -34,6 +35,28 @@ namespace Muchi.Engine.Tests
             if (!t.Join(TimeSpan.FromSeconds(30))) throw new TimeoutException("main thread did not finish");
             if (error != null) throw new Exception("body failed", error);
             return ctx.ThreadId;
+        }
+    }
+
+    /// <summary>
+    /// Completes a task on a fresh dedicated thread ("some other thread", like a socket or SDK callback) without using the
+    /// thread pool. The thread tests must not depend on the pool: the balance / skill harness tests saturate it with
+    /// Parallel.For for minutes (unbounded degree of parallelism, CPU-bound bodies), and the pool only injects a thread
+    /// every ~0.5 s, so a Task.Run / Task.Delay continuation here could wait longer than the 30 s deadline of
+    /// <see cref="MainThreadContext.Run"/> when those tests ran at the same time (the full-suite flake).
+    /// </summary>
+    internal static class OffThread
+    {
+        public static Task<T> Run<T>(Func<T> f, int sleepMs = 0)
+        {
+            var tcs = new TaskCompletionSource<T>();
+            var t = new Thread(() =>
+            {
+                try { if (sleepMs > 0) Thread.Sleep(sleepMs); tcs.SetResult(f()); }
+                catch (Exception e) { tcs.SetException(e); }
+            }) { IsBackground = true };
+            t.Start();
+            return tcs.Task;
         }
     }
 
@@ -289,7 +312,7 @@ namespace Muchi.Engine.Tests
             {
                 Threads.Enqueue(Environment.CurrentManagedThreadId);
                 int status = Statuses.Dequeue();
-                return Task.Run(() => new HttpResponse(status, status == 200 ? "{\"ok\":true}" : "{\"error\":{\"code\":\"INTERNAL\"}}")); // completes on the pool
+                return OffThread.Run(() => new HttpResponse(status, status == 200 ? "{\"ok\":true}" : "{\"error\":{\"code\":\"INTERNAL\"}}")); // completes on another thread
             }
         }
 
@@ -299,13 +322,13 @@ namespace Muchi.Engine.Tests
             public Task<string> GetTokenAsync(bool forceRefresh, CancellationToken ct)
             {
                 Threads.Enqueue(Environment.CurrentManagedThreadId);
-                return Task.Run(async () => { await Task.Delay(1); return "tok"; });
+                return OffThread.Run(() => "tok", 1);
             }
         }
 
         private sealed class TimerDelay : IDelay
         {
-            public Task Delay(int ms, CancellationToken ct) => Task.Delay(1, ct); // completes on a timer thread
+            public Task Delay(int ms, CancellationToken ct) => OffThread.Run(() => true, 1); // completes on another thread, like a timer
         }
 
         [Fact]
@@ -336,7 +359,7 @@ namespace Muchi.Engine.Tests
         public void AnalyticsPersistsOnTheCallersThread()
         {
             var store = new ThreadRecordingStore();
-            AnalyticsSend send = (p, v, events, ct) => Task.Run(() => new AnalyticsIngestResult { Accepted = events.Count });
+            AnalyticsSend send = (p, v, events, ct) => OffThread.Run(() => new AnalyticsIngestResult { Accepted = events.Count });
             var client = new AnalyticsClient(send, new AnalyticsOptions(), store, 0);
             int main = MainThreadContext.Run(async () =>
             {

@@ -3,6 +3,8 @@ import type { Env } from '../env.js';
 import { DIRECTORY_SHARDS, friendCode, shardOf, shardOfCode, type Directory } from '../domain/friends.js';
 import type { PublicProfile } from '../domain/stats.js';
 import { unwrap, wrap, type Envelope } from './rpc.js';
+import type { StudEntry } from '../domain/stud.js';
+import { sortListings, type StudDirectory } from '../domain/studService.js';
 
 /**
  * Friend codes and public profiles (REQ-SOCIAL-001/004), sharded by player id into DIRECTORY_SHARDS
@@ -16,6 +18,29 @@ export class DirectoryDO extends DurableObject<Env> {
     this.sql = ctx.storage.sql;
     this.sql.exec(`CREATE TABLE IF NOT EXISTS players (player_id TEXT PRIMARY KEY, code TEXT UNIQUE, profile TEXT)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS seq (id INTEGER PRIMARY KEY CHECK (id = 0), n INTEGER NOT NULL)`);
+    // REQ-BREED-011: browsable copy of stud listings (the owner's PlayerDO is the source of truth)
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS studs (owner_id TEXT NOT NULL, horse_id TEXT NOT NULL, visibility TEXT NOT NULL, listed_at INTEGER NOT NULL, entry TEXT NOT NULL, PRIMARY KEY (owner_id, horse_id))`);
+    this.sql.exec(`CREATE INDEX IF NOT EXISTS studs_public ON studs (visibility, listed_at)`);
+  }
+
+  async studPut(e: StudEntry): Promise<Envelope<boolean>> {
+    return wrap(() => {
+      this.sql.exec('INSERT INTO studs (owner_id, horse_id, visibility, listed_at, entry) VALUES (?, ?, ?, ?, ?) ON CONFLICT(owner_id, horse_id) DO UPDATE SET visibility = excluded.visibility, listed_at = excluded.listed_at, entry = excluded.entry',
+        e.ownerId, e.horseId, e.visibility, e.listedAt, JSON.stringify(e));
+      return true;
+    });
+  }
+
+  async studRemove(ownerId: string, horseId: string): Promise<Envelope<boolean>> {
+    return wrap(() => { this.sql.exec('DELETE FROM studs WHERE owner_id = ? AND horse_id = ?', ownerId, horseId); return true; });
+  }
+
+  async studOf(ownerIds: string[]): Promise<Envelope<StudEntry[]>> {
+    return wrap(() => ownerIds.slice(0, 200).flatMap((id) => this.sql.exec<{ entry: string }>('SELECT entry FROM studs WHERE owner_id = ?', id).toArray().map((r) => JSON.parse(r.entry) as StudEntry)));
+  }
+
+  async studPublic(limit: number): Promise<Envelope<StudEntry[]>> {
+    return wrap(() => this.sql.exec<{ entry: string }>("SELECT entry FROM studs WHERE visibility = 'public' ORDER BY listed_at DESC LIMIT ?", Math.min(200, Math.max(1, limit))).toArray().map((r) => JSON.parse(r.entry) as StudEntry));
   }
 
   async codeOf(playerId: string, shard: number): Promise<Envelope<string>> {
@@ -58,7 +83,29 @@ type DirStub = {
   lookup(c: string): Promise<Envelope<string | null>>;
   putProfile(p: PublicProfile): Promise<Envelope<boolean>>;
   profiles(ids: string[]): Promise<Envelope<PublicProfile[]>>;
+  studPut(e: StudEntry): Promise<Envelope<boolean>>;
+  studRemove(o: string, h: string): Promise<Envelope<boolean>>;
+  studOf(ids: string[]): Promise<Envelope<StudEntry[]>>;
+  studPublic(limit: number): Promise<Envelope<StudEntry[]>>;
 };
+
+/** Stud listings, sharded by owner like profiles; public browsing fans out to every shard. */
+export function shardedStudDirectory(ns: DurableObjectNamespace): StudDirectory {
+  const shard = (n: number) => ns.get(ns.idFromName(`dir:${n}`)) as unknown as DirStub;
+  return {
+    async put(e) { unwrap(await shard(shardOf(e.ownerId)).studPut(e)); },
+    async remove(o, h) { unwrap(await shard(shardOf(o)).studRemove(o, h)); },
+    async ofOwners(ids) {
+      const groups = new Map<number, string[]>();
+      for (const id of ids) groups.set(shardOf(id), [...(groups.get(shardOf(id)) ?? []), id]);
+      return (await Promise.all([...groups].map(async ([s, g]) => unwrap(await shard(s).studOf(g))))).flat();
+    },
+    async publicList(limit) {
+      const parts = await Promise.all(Array.from({ length: DIRECTORY_SHARDS }, async (_, i) => unwrap(await shard(i).studPublic(limit))));
+      return sortListings(parts.flat()).slice(0, limit);
+    },
+  };
+}
 
 /** Routes Directory calls to the right shard. */
 export function shardedDirectory(ns: DurableObjectNamespace): Directory {

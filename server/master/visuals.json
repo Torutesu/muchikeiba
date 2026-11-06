@@ -450,6 +450,30 @@
     ],
     "mane": "normal",
     "build": "rangy"
+   },
+   "t_seiya": {
+    "coat": "gray",
+    "face": "star",
+    "legs": [
+     "sock",
+     "none",
+     "none",
+     "sock"
+    ],
+    "mane": "normal",
+    "build": "rangy"
+   },
+   "t_hatsuyuki": {
+    "coat": "white",
+    "face": "none",
+    "legs": [
+     "none",
+     "none",
+     "none",
+     "none"
+    ],
+    "mane": "flaxen",
+    "build": "compact"
    }
   },
   "inheritance": {

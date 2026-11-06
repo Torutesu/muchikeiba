@@ -20,6 +20,7 @@ import { EventsService, type EventPlayers } from '../domain/eventService.js';
 import { TEAM_ID_RE } from '../domain/teams.js';
 import { EVENT_ID_RE } from '../domain/events.js';
 import { goingSchema } from '../domain/schemas.js';
+import { StudService, type StudDirectory, type StudPlayers } from '../domain/studService.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -35,7 +36,8 @@ export type PlayerMethod =
   | 'taStart' | 'taPrepare' | 'taAbort' | 'taRecord' | 'taView'
   | 'teamPrepareJoin' | 'teamCommitJoin' | 'teamAbortJoin' | 'teamAddOutgoing' | 'teamRemoveOutgoing' | 'teamLeft' | 'teamState' | 'teamSeasonReward' | 'queuePush'
   | 'eventsView' | 'eventEnter' | 'eventCancel' | 'eventClose'
-  | 'bond' | 'bondLevels' | 'care' | 'presets' | 'setCourseLook' | 'setRoomConditions';
+  | 'bond' | 'bondLevels' | 'care' | 'presets' | 'setCourseLook' | 'setRoomConditions'
+  | 'studView' | 'studList' | 'studUnlist' | 'studPeek' | 'studReserve' | 'studSettle' | 'studPreview' | 'studApply' | 'studAcked' | 'studDue' | 'studRetryLater';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -83,6 +85,8 @@ export interface AppContext {
   teams?: TeamsService;
   /** REQ-EVENT-*: event races. */
   events?: EventsService;
+  /** REQ-BREED-010..016: stud lending. */
+  stud?: StudService;
   clock?: () => number;
   paidBalance(): Promise<unknown>;
   adminToken: string | undefined;
@@ -128,6 +132,10 @@ const teams = (c: AppContext) => {
 const events = (c: AppContext) => {
   if (!c.events) throw new AppError('NOT_FOUND', 'events are not available');
   return c.events;
+};
+const stud = (c: AppContext) => {
+  if (!c.stud || !c.master.progression.stud) throw new AppError('NOT_FOUND', 'stud lending is not available');
+  return c.stud;
 };
 const teamIdParam = (s: string) => {
   if (!TEAM_ID_RE.test(s)) throw new AppError('BAD_REQUEST', 'bad team id');
@@ -244,6 +252,26 @@ export const routes: Route[] = [
   { method: 'POST', path: '/v1/breeding', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ sireId: id, damId: id, useMaterial: z.boolean().optional() }));
     return c.player(u).invoke('breed', u, b.sireId, b.damId, idem(r), b.useMaterial ?? false);
+  } },
+  // stud lending (REQ-BREED-010..016): fees in free coins only
+  { method: 'GET', path: '/v1/stud/mine', auth: 'player', handler: async (_r, _p, c, u) => stud(c).mine(u) },
+  { method: 'PUT', path: '/v1/stud/listings/:horseId', auth: 'player', handler: async (r, p, c, u) => {
+    const b = await body(r, z.object({ visibility: z.enum(['friends', 'public']), fee: z.number().int().min(0), dailyLimit: z.number().int().min(1) }));
+    return stud(c).list(u, p.horseId!, b.visibility, b.fee, b.dailyLimit);
+  } },
+  { method: 'DELETE', path: '/v1/stud/listings/:horseId', auth: 'player', handler: async (_r, p, c, u) => stud(c).unlist(u, p.horseId!) },
+  { method: 'GET', path: '/v1/stud/browse', auth: 'player', handler: async (r, _p, c, u) => {
+    const scope = new URL(r.url).searchParams.get('scope') ?? 'friends';
+    if (scope !== 'friends' && scope !== 'public') throw new AppError('BAD_REQUEST', 'scope must be friends|public');
+    return stud(c).browse(u, scope);
+  } },
+  { method: 'POST', path: '/v1/stud/preview', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ ownerId: id, horseId: id, damId: id }));
+    return stud(c).preview(u, b.ownerId, b.horseId, b.damId);
+  } },
+  { method: 'POST', path: '/v1/stud/breed', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ ownerId: id, horseId: id, damId: id, useMaterial: z.boolean().optional() }));
+    return stud(c).breed(u, b.ownerId, b.horseId, b.damId, idem(r), b.useMaterial ?? false);
   } },
   // items & cosmetics (REQ-ITEM-*)
   { method: 'GET', path: '/v1/items/tickets', auth: 'none', handler: async (_r, _p, c) => ({ tickets: Object.keys(c.master.items.tickets).map((t) => ticketDisclosure(c.master, t)) }) },
@@ -507,4 +535,24 @@ export function eventPlayersFrom(player: (uid: string) => PlayerInvoker): EventP
     cancel: (u, e, entryId) => player(u).invoke('eventCancel', u, e, entryId),
     view: (u) => player(u).invoke('eventsView', u),
   };
+}
+
+/** Adapts per-player invocations to the stud lending orchestration (REQ-BREED-010..016). */
+export function studPlayersFrom(player: (uid: string) => PlayerInvoker): StudPlayers {
+  return {
+    view: (u) => player(u).invoke('studView', u),
+    list: (u, h, v, f, l) => player(u).invoke('studList', u, h, v, f, l),
+    unlist: (u, h) => player(u).invoke('studUnlist', u, h),
+    peek: (o, b, h) => player(o).invoke('studPeek', o, b, h),
+    reserve: (o, op, b, h) => player(o).invoke('studReserve', o, op, b, h),
+    preview: (b, snap, d) => player(b).invoke('studPreview', b, snap, d),
+    apply: (b, op, snap, d, um) => player(b).invoke('studApply', b, op, snap, d, um),
+    settle: (o, op, ok, info) => player(o).invoke('studSettle', o, op, ok, info),
+    acked: (b, op) => player(b).invoke('studAcked', b, op),
+    friendIds: async (u) => (await player(u).invoke('friendsState', u)).ids,
+  };
+}
+
+export function makeStudService(player: (uid: string) => PlayerInvoker, dir: StudDirectory, master: () => Master): StudService {
+  return new StudService(studPlayersFrom(player), dir, () => master().progression.stud?.browseLimit ?? 50);
 }

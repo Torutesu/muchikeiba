@@ -44,6 +44,7 @@
 | `pass_renew` | サーバー（ストア通知） | 商品ID | ストア | | `double1` 円 |
 | `pass_status` | サーバー（ストア通知） | 状態（`expired`/`grace`/`canceled` など） | ストア | | |
 | `gacha_draw` | サーバー | バナーID | | | `double5` 回数、`double2`/`double3` 消費、`double9` SSR数 |
+| `stud_breed` | サーバー | 種牡馬の持ち主ID | 種牡馬ID | | `double5` 回数、`double3` 種付け料（無償コイン）、`double9` 隔世遺伝が出たら1 |
 | `tutorial_gacha` | サーバー | | | | |
 | `race_finish` | サーバー（レース確定時） | モード | 脚質 | コースID | `double4` 着順、`double5` 頭数、`double9` 人間の数、`double6` ゴールタイム |
 | `season_close` | サーバー | シーズン | 前のクラス | 次のクラス | `double4` 順位 |

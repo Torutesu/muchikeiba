@@ -1,7 +1,8 @@
 {
   "_note": "提供割合(ppm)は暫定値。合計は 1,000,000。表示データはこの定義から自動生成される（手書き禁止）。",
   "duplicateMaterial": { "R": 1, "SR": 5, "SSR": 20 },
-  "pityGroups": { "standard": { "cost": 100 }, "pickup": { "cost": 100 } },
+  "pityGroups": { "standard": { "cost": 100 }, "pickup": { "cost": 100 },
+    "winter_2026": { "cost": 100, "endAtMs": 1799593200000, "convertTo": "standard" } },
   "banners": [
     { "id": "standard", "name": "恒常ガチャ", "currency": "any", "priceSingle": 100, "priceTen": 1000, "pityGroup": "standard",
       "pityTargets": ["t_akatsuki", "t_ginga", "t_kohaku", "t_tsukikage"],
@@ -10,6 +11,10 @@
       "pityTargets": ["t_akatsuki"], "pickup": { "templateId": "t_akatsuki", "ppm": 15000 },
       "pool": "auto", "rates": { "SSR": 30000, "SR": 180000, "R": 790000 }, "guaranteeRates": { "SSR": 30000, "SR": 970000 } },
     { "id": "stepup_paid", "name": "有償限定ステップアップ", "currency": "paidOnly", "priceSingle": 100, "priceTen": 1000, "pityGroup": "pickup",
-      "pityTargets": ["t_akatsuki"], "pool": "auto", "rates": { "SSR": 60000, "SR": 200000, "R": 740000 }, "guaranteeRates": { "SSR": 60000, "SR": 940000 } }
+      "pityTargets": ["t_akatsuki"], "pool": "auto", "rates": { "SSR": 60000, "SR": 200000, "R": 740000 }, "guaranteeRates": { "SSR": 60000, "SR": 940000 } },
+    { "id": "winter_2026", "name": "季節限定：聖夜のセイヤノカネ", "currency": "any", "priceSingle": 100, "priceTen": 1000, "pityGroup": "winter_2026",
+      "pityTargets": ["t_seiya"], "seasonal": ["t_seiya", "t_hatsuyuki"], "pickup": { "templateId": "t_seiya", "ppm": 15000 },
+      "pool": "auto", "rates": { "SSR": 30000, "SR": 180000, "R": 790000 }, "guaranteeRates": { "SSR": 30000, "SR": 970000 },
+      "startAtMs": 1796914800000, "endAtMs": 1799593200000 }
   ]
 }

@@ -1,5 +1,5 @@
 import type { Env } from './env.js';
-import { eventPlayersFrom, handle, makeFriendsService, teamPlayersFrom, type AppContext, type PlayerInvoker, type RaceEntry } from './http/app.js';
+import { eventPlayersFrom, handle, makeFriendsService, makeStudService, teamPlayersFrom, type AppContext, type PlayerInvoker, type RaceEntry } from './http/app.js';
 import { bearer, verifyFirebaseIdToken } from './http/auth.js';
 import { parseStoreNotification, storeSettingsFromEnv } from './http/stores.js';
 import { accountingStoreIndex } from './do/storeIndex.js';
@@ -30,7 +30,7 @@ import { authenticateAdmin, parseAdminTokens, type AdminAuthConfig, type AdminRo
 import { DeadLetterService, type DeadLetterOwner, type DeadLetterRegistry, type DeadLetterSource } from './ops/deadLetter.js';
 import { activeConfig } from './ops/activeConfig.js';
 import type { ResolvedConfig } from './ops/config.js';
-import { shardedDirectory } from './do/directory.js';
+import { shardedDirectory, shardedStudDirectory } from './do/directory.js';
 import { boardKey, indexKey, type RolloverState } from './domain/leaderboard.js';
 import { runScheduled } from './domain/scheduled.js';
 import { DEFAULT_HOLD_POLICY, sweepReplays, SWEEP_CURSOR_KEY, type ReplayBucket, type SweepCursorStore } from './domain/retention.js';
@@ -249,6 +249,7 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
       },
     },
     friends: makeFriendsService((uid) => player(uid), shardedDirectory(env.DIRECTORY)),
+    stud: makeStudService(player, shardedStudDirectory(env.DIRECTORY), () => master),
     teams: makeTeamsService(env, () => master, player),
     events: new EventsService(() => master, eventPlayersFrom(player), {
       enqueue: (eventId, p, e) => call(mm().eventEnqueue!(eventId, p, e)),

@@ -5,6 +5,7 @@ import { bondProblems } from '../domain/bond.js';
 import { itemsProblems } from '../domain/itemShop.js';
 import { holdPolicyProblems } from '../domain/retention.js';
 import { roomsProblems } from '../domain/presets.js';
+import { studConfigProblems } from '../domain/stud.js';
 import { z } from 'zod';
 import { AppError } from '../domain/errors.js';
 import { buildBanner, splitMasterTrack, type Master, type Progression, type RawBanner } from '../domain/master.js';
@@ -30,6 +31,8 @@ const rawBannerSchema = z.object({
   guaranteePool: z.array(z.object({ templateId: z.string(), ppm: int.min(0) })).optional(),
   pickup: z.object({ templateId: z.string(), ppm: int.min(0) }).optional(),
   startAtMs: int.optional(), endAtMs: int.optional(),
+  // REQ-BREED-020: seasonal templates offered by this banner (validated against their windows)
+  seasonal: z.array(z.string().min(1).max(64)).max(20).optional(),
 }).strict();
 
 export const configBundleSchema = z.object({
@@ -118,6 +121,7 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
   }
   if (b.progression && 'rooms' in b.progression) problems.push(...roomsProblems(progression.rooms));
   if (b.progression && 'replayHoldDays' in b.progression) problems.push(...holdPolicyProblems(progression.replayHoldDays));
+  if (b.progression && ('stud' in b.progression || 'atavismPermille' in b.progression)) problems.push(...studConfigProblems(progression));
 
   const events = (b.events as EventDef[] | undefined) ?? base.events;
   if (b.events) {

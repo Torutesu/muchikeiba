@@ -237,6 +237,56 @@ namespace Muchi.Client
             return Call("POST", "/v1/breeding", b, true, idempotencyKey ?? NewIdempotencyKey(), true, BreedResult.Parse, ct);
         }
 
+        // ------------------------------------------------------------------ stud lending (REQ-BREED-010..016)
+
+        /// <summary>My listed stallions, today's lend/borrow counters, limits and history.</summary>
+        public Task<StudMine> GetMyStudAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/stud/mine", null, true, null, true, StudMine.Parse, ct);
+
+        /// <summary>
+        /// List (or update) a retired stallion. <paramref name="visibility"/> "friends" | "public"; the fee is in FREE coins
+        /// (0..FeeMax) and <paramref name="dailyLimit"/> lends per day (1..DailyLimitMax). The horse stays yours.
+        /// </summary>
+        public Task<StudListing> ListStudAsync(string horseId, string visibility, int fee, int dailyLimit, CancellationToken ct = default)
+        {
+            var b = JsonNode.Obj();
+            b.Set("visibility", visibility);
+            b.Set("fee", fee);
+            b.Set("dailyLimit", dailyLimit);
+            return Call("PUT", "/v1/stud/listings/" + Seg(horseId), b, true, null, true, StudListing.Parse, ct);
+        }
+
+        public Task UnlistStudAsync(string horseId, CancellationToken ct = default)
+            => Call("DELETE", "/v1/stud/listings/" + Seg(horseId), null, true, null, true, o => o, ct);
+
+        /// <summary>Friends' stallions ("friends") or everyone's public ones ("public"), newest first.</summary>
+        public Task<StudBrowse> BrowseStudAsync(string scope = "friends", CancellationToken ct = default)
+            => Call("GET", "/v1/stud/browse?scope=" + Uri.EscapeDataString(scope ?? "friends"), null, true, null, true, StudBrowse.Parse, ct);
+
+        /// <summary>Preview a stud breeding with one of my retired mares (same functions as the real breeding).</summary>
+        public Task<StudPreview> StudPreviewAsync(string ownerId, string horseId, string damId, CancellationToken ct = default)
+            => Call("POST", "/v1/stud/preview", StudBody(ownerId, horseId, damId), true, null, true, StudPreview.Parse, ct);
+
+        /// <summary>
+        /// Breed my mare with another player's stallion. The fee is charged in free coins and paid to the owner; a retry with
+        /// the same key never charges twice. Counts toward today's breeding allowance (material extra allowed).
+        /// </summary>
+        public Task<StudBreedResult> StudBreedAsync(string ownerId, string horseId, string damId, string idempotencyKey = null, CancellationToken ct = default, bool useMaterial = false)
+        {
+            var b = StudBody(ownerId, horseId, damId);
+            if (useMaterial) b.Set("useMaterial", true);
+            return Call("POST", "/v1/stud/breed", b, true, idempotencyKey ?? NewIdempotencyKey(), true, StudBreedResult.Parse, ct);
+        }
+
+        private static JsonNode StudBody(string ownerId, string horseId, string damId)
+        {
+            var b = JsonNode.Obj();
+            b.Set("ownerId", ownerId);
+            b.Set("horseId", horseId);
+            b.Set("damId", damId);
+            return b;
+        }
+
         // ------------------------------------------------------------------ items & cosmetics (REQ-ITEM-*)
 
         /// <summary>Every ticket with its disclosure (gacha tickets name their banners; SR+ tickets list their own table).</summary>

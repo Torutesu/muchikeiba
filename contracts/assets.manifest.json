@@ -72,7 +72,7 @@
    "fallback": "banner/gacha/default",
    "description": "ガチャのバナー",
    "dynamic": false,
-   "count": 4
+   "count": 5
   },
   "banner/event": {
    "fallback": "banner/event/default",
@@ -162,7 +162,7 @@
    "fallback": "voice/ja/name/default",
    "description": "実況の馬名。命名時に生成するため動的（テンプレート馬の名前だけ列挙）",
    "dynamic": true,
-   "count": 24
+   "count": 26
   }
  },
  "keys": [
@@ -173,6 +173,7 @@
   "banner/gacha/pickup_akatsuki",
   "banner/gacha/standard",
   "banner/gacha/stepup_paid",
+  "banner/gacha/winter_2026",
   "decor/default",
   "decor/flower_box",
   "decor/golden_horseshoe",
@@ -353,6 +354,7 @@
   "voice/ja/name/n0c06775c745252a3",
   "voice/ja/name/n17a4dbfff7a26076",
   "voice/ja/name/n1c6eb5433126945c",
+  "voice/ja/name/n2c35fb4af926271f",
   "voice/ja/name/n2e9954d13002bace",
   "voice/ja/name/n475bb6019218bc56",
   "voice/ja/name/n52faa2441aa58bdf",
@@ -367,6 +369,7 @@
   "voice/ja/name/n9aec3d85e614d2f4",
   "voice/ja/name/nbb69cd5675cb83f2",
   "voice/ja/name/nd737b07f5801df81",
+  "voice/ja/name/ne2ea58631787dce5",
   "voice/ja/name/neceb60ddfb26d543",
   "voice/ja/name/nf1f7f52e257bd760",
   "voice/ja/name/nf75c16a1f4e4bfd6",

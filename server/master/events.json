@@ -38,7 +38,8 @@
       },
       "points": { "byPlace": [120, 85, 65, 52, 44, 37, 31, 26, 22, 19, 16, 14], "participation": 10 },
       "milestones": [
-        { "points": 500, "reward": { "freeCoins": 100 } }
+        { "points": 500, "reward": { "freeCoins": 100 } },
+        { "points": 1500, "reward": { "horse": "t_hatsuyuki" } }
       ],
       "rankRewards": [
         { "maxRank": 1, "reward": { "freeCoins": 1500 } },

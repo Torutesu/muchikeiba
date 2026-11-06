@@ -244,6 +244,19 @@
   ],
   "awakeningStatPermillePerLevel": 40,
   "breedingPerDay": 1,
+  "atavismPermille": 40,
+  "stud": {
+    "_comment": "REQ-BREED-010..016 種牡馬の貸し借り。料金は無償コインのみ（有償コインの移転経路は作らない）。上限はすべて暫定値。",
+    "feeMax": 100,
+    "dailyLimitMax": 3,
+    "dailyEarnCap": 300,
+    "borrowPerDay": 2,
+    "maxListings": 3,
+    "reserveTtlMs": 600000,
+    "retryMs": 60000,
+    "historyKeep": 50,
+    "browseLimit": 50
+  },
   "beginnerRaces": 5,
   "seasonRewards": {
     "C": [

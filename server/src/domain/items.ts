@@ -1,4 +1,5 @@
-import type { ItemQty, Reward } from './master.js';
+import type { ItemQty, Master, Reward } from './master.js';
+import { createHorseFromTemplate } from './horses.js';
 import { ITEM_LOG_KEEP, type PlayerState } from './player.js';
 import { AppError } from './errors.js';
 import { grantFree } from './wallet.js';
@@ -38,9 +39,15 @@ export function clawbackItems(s: PlayerState, items: ItemQty[]): Record<string, 
 
 export const hasItemDebt = (s: PlayerState) => Object.values(s.itemDebt ?? {}).some((n) => n > 0);
 
-export function grantReward(s: PlayerState, r: Reward, at: number, reason: string, ref: string) {
+export function grantReward(s: PlayerState, r: Reward, at: number, reason: string, ref: string, m?: Pick<Master, 'templateById'>) {
   if (r.freeCoins) grantFree(s, r.freeCoins, at, reason, ref);
   if (r.items) addItems(s, r.items);
+  if (r.horse) {
+    // REQ-BREED-022: horse rewards (event milestones / rank rewards) need the template table
+    const t = m?.templateById.get(r.horse);
+    if (!t) throw new AppError('CONFIG_INVALID', `reward horse ${r.horse} cannot be granted here`);
+    createHorseFromTemplate(s, t, at);
+  }
 }
 
 /** REQ-ITEM-008: item movements initiated by the player are logged (item ledger, capped). */

@@ -202,6 +202,34 @@ describe('REQ-DAY-002 remote config: a rule change must be known before it chang
   });
 });
 
+describe('QA r9: a day-rule change keeps every pending activation valid against its new neighbour', () => {
+  const six: DayRollover = { hourJst: 6, previousHourJst: 4, effectiveAtMs: jst(2027, 1, 30, 6) };
+  const five: DayRollover = { hourJst: 5, previousHourJst: 4, effectiveAtMs: jst(2027, 2, 1, 5) };
+  it('inserting a version before a pending one is refused when the pending one would rewrite the inserted rule', async () => {
+    const store = new ConfigStore(new MemoryConfigRepo(), m);
+    const { version: v5 } = await store.stage({ progression: { dayRollover: five } }, 'ops', '05:00', jst(2027, 1, 20));
+    const { version: v6 } = await store.stage({ progression: { dayRollover: six } }, 'ops', '06:00', jst(2027, 1, 20));
+    store.schedule(v5.id, jst(2027, 1, 31, 5), 'ops', 'r', jst(2027, 1, 20)); // valid next to base
+    // valid against what is active at Jan 25 (base), but then v5 (Jan 31) would undo the 06:00 switch of Jan 30
+    expect(() => store.schedule(v6.id, jst(2027, 1, 25), 'ops', 'r', jst(2027, 1, 20))).toThrow(/dayRollover/);
+    expect(store.pending(jst(2027, 1, 20)).map((a) => a.versionId)).toEqual([v5.id]);
+  });
+
+  it('a rollback or a cancel that leaves a pending activation next to another rule is refused', async () => {
+    const store = new ConfigStore(new MemoryConfigRepo(), m);
+    const { version: v6 } = await store.stage({ progression: { dayRollover: six } }, 'ops', '06:00', jst(2027, 1, 20));
+    const { version: v6b } = await store.stage({ progression: { dayRollover: six }, ng: { exact: ['x'], contains: [] } }, 'ops', '06:00 + ng', jst(2027, 1, 20));
+    store.schedule(v6.id, jst(2027, 1, 25), 'ops', 'r', jst(2027, 1, 20));
+    const pend = store.schedule(v6b.id, jst(2027, 1, 31, 5), 'ops', 'r', jst(2027, 1, 20));
+    // rolling back to base now: base would sit between v6 and v6b, so v6b would bring the 06:00 rule back with a past switch
+    expect(() => store.rollback('base', 'ops', 'r', jst(2027, 1, 26))).toThrow(/dayRollover/);
+    // cancelling v6 (still pending at Jan 21) leaves v6b next to base: same problem
+    expect(() => store.cancel(store.pending(jst(2027, 1, 21))[0]!.id, jst(2027, 1, 21))).toThrow(/dayRollover/);
+    // cancelling the later one is fine
+    expect(store.cancel(pend.id, jst(2027, 1, 21)).cancelled).toBe(true);
+  });
+});
+
 describe('REQ-DAY-005 push and the day\'s going follow the game day', () => {
   it('the push daily cap resets at 04:00 JST', () => {
     const s = freshPlayer('p', jst(2026, 12, 1));

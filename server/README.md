@@ -76,7 +76,13 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | POST | `/v1/horses/:horseId/retire` | 要 | | |
 | GET | `/v1/horses/:horseId/pedigree` | 要 | | 5代血統表 |
 | POST | `/v1/breeding/preview` | 要 | | `{sireId, damId}` 能力の範囲・脚質・距離・ニックス・近親 |
-| POST | `/v1/breeding` | 要 | 必須 | `{sireId, damId}` 1日1回 |
+| POST | `/v1/breeding` | 要 | 必須 | `{sireId, damId, useMaterial?}` 1日1回。`useMaterial: true` なら通常分を使い切った後、配合素材で1日1回まで追加（REQ-ITEM-003）。予想（preview）は `today` に残り回数を返す |
+| GET | `/v1/items/tickets` | なし | | 券の一覧と提供割合（REQ-ITEM-001/002） |
+| GET | `/v1/items/tickets/:itemId/odds` | なし | | 券1種の提供割合（SR以上確定券は券専用の表） |
+| POST | `/v1/items/tickets/:itemId/use` | 要 | 必須 | `{bannerId?}` ガチャ券は `bannerId` 必須（対象ガチャのみ、天井+1）。SR以上確定券は不要 |
+| GET | `/v1/shop/cosmetics` | 要 | | 見た目アイテム（勝負服の模様・馬具・厩舎の飾り）の一覧、価格、所持・装備中、アセットキー |
+| POST | `/v1/shop/cosmetics/:itemId/buy` | 要 | 必須 | コインで購入（各1回。有償限定はペイドのみ） |
+| PUT | `/v1/player/equipment` | 要 | | `{tack?: {bridle?, saddlecloth?}, decor?: [itemId\|null…]}` 装備（`null` で外す） |
 | POST | `/v1/rewards/login-bonus` | 要 | 必須 | |
 | GET | `/v1/missions` | 要 | | |
 | POST | `/v1/missions/:missionId/claim` | 要 | 必須 | |

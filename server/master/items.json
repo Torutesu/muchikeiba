@@ -1,0 +1,32 @@
+{
+  "_note": "REQ-ITEM-*: 券・素材の使い道と、見た目アイテムの直販（すべて架空。価格は暫定）。見た目アイテムはランク戦の能力に影響しない。",
+  "tickets": {
+    "gacha_ticket": {
+      "kind": "single",
+      "name": "スカウト券",
+      "banners": ["standard", "pickup_akatsuki"]
+    },
+    "ticket_sr_plus": {
+      "kind": "srPlus",
+      "name": "SR以上確定スカウト券",
+      "rates": { "SSR": 60000, "SR": 940000 }
+    }
+  },
+  "breedingMaterial": {
+    "itemId": "breeding_material",
+    "cost": 1,
+    "extraPerDay": 1
+  },
+  "decorSlots": 3,
+  "cosmetics": [
+    { "id": "costume_silks_laurel", "name": "勝負服「月桂冠」", "kind": "silks", "pattern": "laurel", "price": 600, "currency": "any" },
+    { "id": "tack_bridle_classic", "name": "クラシック頭絡", "kind": "tack", "slot": "bridle", "asset": "tack/bridle_classic", "price": 300, "currency": "any" },
+    { "id": "tack_bridle_gold", "name": "金飾りの頭絡", "kind": "tack", "slot": "bridle", "asset": "tack/bridle_gold", "price": 800, "currency": "paidOnly" },
+    { "id": "tack_saddlecloth_navy", "name": "紺のゼッケン布", "kind": "tack", "slot": "saddlecloth", "asset": "tack/saddlecloth_navy", "price": 300, "currency": "any" },
+    { "id": "tack_saddlecloth_crimson", "name": "紅のゼッケン布", "kind": "tack", "slot": "saddlecloth", "asset": "tack/saddlecloth_crimson", "price": 300, "currency": "any" },
+    { "id": "decor_stable_plaque", "name": "厩舎の表札", "kind": "decor", "asset": "decor/stable_plaque", "price": 200, "currency": "any" },
+    { "id": "decor_flower_box", "name": "花のプランター", "kind": "decor", "asset": "decor/flower_box", "price": 200, "currency": "any" },
+    { "id": "decor_trophy_shelf", "name": "トロフィー棚", "kind": "decor", "asset": "decor/trophy_shelf", "price": 500, "currency": "any" },
+    { "id": "decor_golden_horseshoe", "name": "金の蹄鉄", "kind": "decor", "asset": "decor/golden_horseshoe", "price": 1000, "currency": "paidOnly" }
+  ]
+}

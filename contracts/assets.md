@@ -45,6 +45,8 @@ C# では `AssetKeys.Resolve(key, exists)` が 1→2→null を返す。古い�
 | `silks/pattern` | `silks/pattern/hoops` | `silks.patterns` | 勝負服の模様。色はパレットで着色（下記） |
 | `silks/cap` | `silks/cap/star` | `silks.caps` | 帽子の模様。色は勝負服の1色目・2色目 |
 | `ui/gate` | `ui/gate/5` | `gateBrackets` | 枠番（1〜8）のゼッケン・UI |
+| `tack` | `tack/bridle_classic` | items.json の馬具（`asset`） | 馬具（頭絡・ゼッケン布）。馬のモデルに重ねる（REQ-ITEM-006） |
+| `decor` | `decor/stable_plaque` | items.json の厩舎の飾り（`asset`） | 厩舎の飾り（REQ-ITEM-006） |
 | `item` | `item/ticket_sr_plus` | 商品・報酬・イベント参加費・勝負服の解放アイテム | アイテムのアイコン |
 | `banner/gacha` | `banner/gacha/pickup_akatsuki` | gacha.json | ガチャのバナー |
 | `banner/event` | `banner/event/sprint_cup_2026_11` | events.json | イベントのバナー |

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { visualsCatalog, VISUALS } from '../domain/visuals.js';
 import { AppError } from '../domain/errors.js';
 import { findBanner, oddsDisclosure } from '../domain/gacha.js';
+import { ticketDisclosure } from '../domain/itemShop.js';
 import type { Master } from '../domain/master.js';
 import type { PlayerService } from '../domain/service.js';
 import type { SubscriptionStatus, VerifiedReceipt } from '../domain/purchase.js';
@@ -26,6 +27,7 @@ export type PlayerMethod =
   | 'claimMission' | 'passView' | 'claimPass' | 'applyRace' | 'raceEntry'
   | 'storeRenewal' | 'subscriptionStatus'
   | 'setDisplayName' | 'equipTitle' | 'titles' | 'stats' | 'publicProfile' | 'closeSeason' | 'setSilks'
+  | 'useTicket' | 'cosmetics' | 'buyCosmetic' | 'setEquipment'
   | 'friendSend' | 'friendReceive' | 'friendAccept' | 'friendAccepted' | 'friendDecline' | 'friendCancel' | 'friendRemove' | 'friendInvite' | 'friendsState'
   | 'adminView' | 'adminGrant' | 'adminSettleDebt' | 'adminCorrectAge' | 'adminResetName' | 'setModeration'
   | 'registerDevice' | 'unregisterDevice' | 'pushPreferences' | 'setPushPreferences' | 'kpiIngest'
@@ -217,8 +219,25 @@ export const routes: Route[] = [
     return c.player(u).invoke('breedingPreview', u, b.sireId, b.damId);
   } },
   { method: 'POST', path: '/v1/breeding', auth: 'player', handler: async (r, _p, c, u) => {
-    const b = await body(r, z.object({ sireId: id, damId: id }));
-    return c.player(u).invoke('breed', u, b.sireId, b.damId, idem(r));
+    const b = await body(r, z.object({ sireId: id, damId: id, useMaterial: z.boolean().optional() }));
+    return c.player(u).invoke('breed', u, b.sireId, b.damId, idem(r), b.useMaterial ?? false);
+  } },
+  // items & cosmetics (REQ-ITEM-*)
+  { method: 'GET', path: '/v1/items/tickets', auth: 'none', handler: async (_r, _p, c) => ({ tickets: Object.keys(c.master.items.tickets).map((t) => ticketDisclosure(c.master, t)) }) },
+  { method: 'GET', path: '/v1/items/tickets/:itemId/odds', auth: 'none', handler: async (_r, p, c) => ticketDisclosure(c.master, p.itemId!) },
+  { method: 'POST', path: '/v1/items/tickets/:itemId/use', auth: 'player', handler: async (r, p, c, u) => {
+    const b = await body(r, z.object({ bannerId: id.optional() }));
+    return c.player(u).invoke('useTicket', u, p.itemId!, b.bannerId ?? null, idem(r));
+  } },
+  { method: 'GET', path: '/v1/shop/cosmetics', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('cosmetics', u) },
+  { method: 'POST', path: '/v1/shop/cosmetics/:itemId/buy', auth: 'player', handler: async (r, p, c, u) => c.player(u).invoke('buyCosmetic', u, p.itemId!, idem(r)) },
+  { method: 'PUT', path: '/v1/player/equipment', auth: 'player', handler: async (r, _p, c, u) => {
+    const slotId = id.nullable().optional();
+    const b = await body(r, z.object({ tack: z.object({ bridle: slotId, saddlecloth: slotId }).strict().optional(), decor: z.array(id.nullable()).max(10).optional() }).strict());
+    const patch: { tack?: Record<string, string | null>; decor?: (string | null)[] } = {};
+    if (b.tack) patch.tack = Object.fromEntries(Object.entries(b.tack).filter(([, v]) => v !== undefined)) as Record<string, string | null>;
+    if (b.decor) patch.decor = b.decor;
+    return c.player(u).invoke('setEquipment', u, patch);
   } },
   // rewards
   { method: 'POST', path: '/v1/rewards/login-bonus', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('claimLogin', u, idem(r)) },

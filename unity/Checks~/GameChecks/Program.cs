@@ -37,7 +37,9 @@ static class Program
         TutorialRaceThroughTheGlue();
         PracticeRaceAndCourseFrame();
         PartnerCatalogCoverage();
+        CosmeticArtCoverage();
         SettingsAndOfflineBackend();
+        await ItemsOffline();
         await OfflineFallbackWhenServerUnreachable();
         Console.WriteLine("== Firebase auth token provider");
         await AuthChecks.Run(Check);
@@ -207,6 +209,35 @@ static class Program
         Check(b.StartRankedAsync(null).GetAwaiter().GetResult().message == "OFFLINE", "offline ranked entry refuses (screen falls back to practice)");
     }
 
+    // ---------------------------------------------------------------- items & cosmetics (REQ-ITEM-*)
+    static void CosmeticArtCoverage()
+    {
+        string unityRes = Path.Combine(Root, "unity", "Assets", "Resources");
+        using var manifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(Root, "contracts", "assets.manifest.json")));
+        var keys = manifest.RootElement.GetProperty("keys").EnumerateArray().Select(k => k.GetString()).ToList();
+        bool Exists(string art) => File.Exists(Path.Combine(unityRes, art + ".png")) || File.Exists(Path.Combine(unityRes, art + ".jpg"));
+        var problems = CosmeticArt.CoverageProblems(keys, Exists);
+        foreach (var p in problems) Console.WriteLine("        " + p);
+        int n = keys.Count(k => k.StartsWith("tack/") || k.StartsWith("decor/"));
+        Check(n > 0 && problems.Count == 0, "every tack/* and decor/* manifest key resolves to Codex's cosmetics art (" + n + " keys)");
+        Check(CosmeticArt.ArtFor("silks/pattern/laurel") == "Art/Cosmetics/silk-jacket" && Exists(CosmeticArt.ArtFor("silks/pattern/laurel")), "a silks unlock shows the silk-jacket art");
+        using var items = JsonDocument.Parse(File.ReadAllText(Path.Combine(Root, "server", "master", "items.json")));
+        var masterIds = items.RootElement.GetProperty("cosmetics").EnumerateArray().Select(c => c.GetProperty("id").GetString()).ToHashSet();
+        Check(ItemsBackend.OfflinePreview.All(i => masterIds.Contains(i.Id)), "the offline preview only shows items that exist in server/master/items.json");
+    }
+
+    static async Task ItemsOffline()
+    {
+        var b = new GameBackend(new GameSettings { OfflineOnly = true }, null, null, new MemoryKeyValueStore(), Ruleset());
+        await b.InitializeAsync();
+        var items = new ItemsBackend(b);
+        var w = await items.WardrobeAsync();
+        Check(w.LocalOnly && w.Items.Count == ItemsBackend.OfflinePreview.Length && w.Items.All(i => !i.Owned && i.ArtPath != null), "offline wardrobe = LOCAL ONLY preview with art for every item");
+        Check(!(await items.BuyAsync("tack_bridle_classic")).Ok, "offline purchase explains it needs the server");
+        Check(!(await items.EquipTackAsync("bridle", "tack_bridle_classic")).Ok, "offline equip explains it needs the server");
+        Check(!(await items.UseTicketAsync(ItemsBackend.GachaTicket, "standard")).Ok, "offline ticket use explains it needs the server");
+    }
+
     sealed class DeadHttp : IHttp
     {
         public Task<HttpResponse> SendAsync(HttpRequest request, CancellationToken ct) => throw new IOException("connection refused");
@@ -258,6 +289,21 @@ static class Program
         var check = await b.PurchaseCheckAsync("coin_160");
         Check(!string.IsNullOrEmpty(check.Message), "purchase check answers (" + check.Message + ")");
         Check(await b.SeasonPassAsync() != null, "season pass view loads");
+
+        // REQ-ITEM-*: wardrobe / cosmetics store / stable decor through the server
+        var items = new ItemsBackend(b);
+        var w = await items.WardrobeAsync();
+        Check(!w.LocalOnly && w.Items.Count > 0 && w.DecorSlots > 0, "wardrobe loads the server's cosmetics (" + w.Items.Count + " items, " + w.DecorSlots + " decor slots)");
+        var cheapest = w.Items.Where(i => !i.PaidOnly).OrderBy(i => i.Price).First();
+        var buy = await items.BuyAsync(cheapest.Id);
+        Check(!string.IsNullOrEmpty(buy.Message), "buying a cosmetic answers (" + buy.Message + ")");
+        if (buy.Ok && cheapest.Kind == "decor")
+        {
+            var eq = await items.SetDecorAsync(new List<string> { cheapest.Id });
+            Check(eq.Ok && b.Player.Equipment.Decor.Contains(cheapest.Id), "bought decor is placed in the stable");
+        }
+        var noTicket = await items.UseTicketAsync(ItemsBackend.GachaTicket, "standard");
+        Check(!noTicket.Ok && noTicket.Message.StartsWith("INSUFFICIENT_ITEMS"), "using a ticket you do not have is refused with INSUFFICIENT_ITEMS (" + noTicket.Message + ")");
 
         int pointsBefore = b.Player.SeasonPoints;
         var sw = Stopwatch.StartNew();

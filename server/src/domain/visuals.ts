@@ -61,6 +61,9 @@ export const assetKeys = {
   build: (id: string) => `horse/build/${id}`,
   silksPattern: (id: string) => `silks/pattern/${id}`,
   silksCap: (id: string) => `silks/cap/${id}`,
+  /** REQ-ITEM-006: tack and stable decor keys come from master/items.json (`asset`). */
+  tack: (name: string) => `tack/${name}`,
+  decor: (name: string) => `decor/${name}`,
   gate: (bracket: number) => `ui/gate/${bracket}`,
   item: (id: string) => `item/${id}`,
   gachaBanner: (id: string) => `banner/gacha/${id}`,
@@ -91,6 +94,8 @@ export const ASSET_KINDS: Record<string, { description: string; dynamic?: boolea
   'silks/pattern': { description: '勝負服の模様（色はパレットで着色）' },
   'silks/cap': { description: '帽子の模様（色は勝負服の1色目・2色目）' },
   'ui/gate': { description: '枠番（1〜8）のゼッケン・UI色' },
+  tack: { description: '馬具（頭絡・ゼッケン布）。馬のモデルに重ねる見た目（REQ-ITEM-006）' },
+  decor: { description: '厩舎の飾り（REQ-ITEM-006）' },
   item: { description: 'アイテムのアイコン' },
   'banner/gacha': { description: 'ガチャのバナー' },
   'banner/event': { description: 'イベントのバナー' },
@@ -326,6 +331,7 @@ export function visualsCatalog(m: Master, v: VisualsMaster = VISUALS) {
     banners: Object.fromEntries(m.gacha.banners.map((b) => [b.id, assetKeys.gachaBanner(b.id)])),
     events: Object.fromEntries(m.events.map((e) => [e.id, assetKeys.eventBanner(e.id)])),
     titles: Object.fromEntries(m.titles.map((t) => [t.id, assetKeys.title(t.id)])),
+    cosmetics: Object.fromEntries((m.items?.cosmetics ?? []).map((c) => [c.id, { kind: c.kind, icon: assetKeys.item(c.id), asset: c.kind === 'silks' ? assetKeys.silksPattern(c.pattern) : c.asset }])),
   };
 }
 
@@ -342,6 +348,12 @@ export function collectItemIds(m: Master, v: VisualsMaster = VISUALS): string[] 
     }
   };
   walk(m.products); walk(m.progression); walk(m.events); walk(v.silks.patterns);
+  // REQ-ITEM-*: tickets, the breeding material and every cosmetic sold in the shop
+  if (m.items) {
+    Object.keys(m.items.tickets).forEach((id) => ids.add(id));
+    ids.add(m.items.breedingMaterial.itemId);
+    m.items.cosmetics.forEach((c) => ids.add(c.id));
+  }
   return [...ids].sort();
 }
 

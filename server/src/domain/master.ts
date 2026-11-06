@@ -11,6 +11,7 @@ import progressionJson from '../../master/progression.json';
 import titlesJson from '../../master/titles.json';
 import pushJson from '../../master/push.json';
 import eventsJson from '../../master/events.json';
+import itemsJson from '../../master/items.json';
 import { trackSchema, type GoingAptitude, type Going, type Track } from './schemas.js';
 import { AppError } from './errors.js';
 
@@ -32,6 +33,23 @@ export interface Reward { freeCoins?: number; items?: ItemQty[] }
 export interface Product {
   id: string; kind: 'coins' | 'starter' | 'season_pass'; priceYen: number; paidCoins: number;
   once?: boolean; items?: ItemQty[]; durationDays?: number;
+}
+/** REQ-ITEM-001..003: what tickets and materials do. */
+export type TicketDef =
+  | { kind: 'single'; name: string; banners: string[] }
+  | { kind: 'srPlus'; name: string; rates: Partial<Record<Rarity, number>> };
+/** REQ-ITEM-004..007: cosmetics sold for coins (no stat effect). */
+export type CosmeticDef =
+  | { id: string; name: string; kind: 'silks'; pattern: string; price: number; currency: 'any' | 'paidOnly' }
+  | { id: string; name: string; kind: 'tack'; slot: TackSlot; asset: string; price: number; currency: 'any' | 'paidOnly' }
+  | { id: string; name: string; kind: 'decor'; asset: string; price: number; currency: 'any' | 'paidOnly' };
+export type TackSlot = 'bridle' | 'saddlecloth';
+export const TACK_SLOTS: TackSlot[] = ['bridle', 'saddlecloth'];
+export interface ItemsMaster {
+  tickets: Record<string, TicketDef>;
+  breedingMaterial: { itemId: string; cost: number; extraPerDay: number };
+  decorSlots: number;
+  cosmetics: CosmeticDef[];
 }
 export interface AgeBand { id: string; minAge: number; maxAge: number; monthlyLimitYen: number | null }
 export interface AgeLimits { status: string; guardianConsentUnderAge: number; bands: AgeBand[] }
@@ -144,6 +162,8 @@ export interface Master {
   events: EventDef[];
   /** REQ-ASSET-010: real registered silks players may not reproduce (master/banned-silks.json or a remote-config import). */
   bannedSilks?: BannedSilksList;
+  /** REQ-ITEM-*: tickets, materials and cosmetics. */
+  items: ItemsMaster;
 }
 
 export const PPM_TOTAL = 1_000_000;
@@ -210,6 +230,7 @@ export function loadMaster(): Master {
     push: pushJson as unknown as PushMaster,
     events: (eventsJson as unknown as { events: EventDef[] }).events,
     bannedSilks: BASE_BANNED_SILKS,
+    items: itemsJson as unknown as ItemsMaster,
   };
   cached = m;
   return m;

@@ -184,8 +184,45 @@ namespace Muchi.Client
         public Task<BreedingPreview> BreedingPreviewAsync(string sireId, string damId, CancellationToken ct = default)
             => Call("POST", "/v1/breeding/preview", Pair(sireId, damId), true, null, true, BreedingPreview.Parse, ct);
 
-        public Task<BreedResult> BreedAsync(string sireId, string damId, string idempotencyKey = null, CancellationToken ct = default)
-            => Call("POST", "/v1/breeding", Pair(sireId, damId), true, idempotencyKey ?? NewIdempotencyKey(), true, BreedResult.Parse, ct);
+        /// <summary>
+        /// Breed a retired stallion and mare. With <paramref name="useMaterial"/>, once today's normal breedings are used up
+        /// one extra breeding costs breeding material (REQ-ITEM-003; see BreedingPreview.Today).
+        /// </summary>
+        public Task<BreedResult> BreedAsync(string sireId, string damId, string idempotencyKey = null, CancellationToken ct = default, bool useMaterial = false)
+        {
+            var b = Pair(sireId, damId);
+            if (useMaterial) b.Set("useMaterial", true);
+            return Call("POST", "/v1/breeding", b, true, idempotencyKey ?? NewIdempotencyKey(), true, BreedResult.Parse, ct);
+        }
+
+        // ------------------------------------------------------------------ items & cosmetics (REQ-ITEM-*)
+
+        /// <summary>Every ticket with its disclosure (gacha tickets name their banners; SR+ tickets list their own table).</summary>
+        public Task<List<TicketInfo>> GetTicketsAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/items/tickets", null, false, null, true, o => J.List(o, "tickets", TicketInfo.Parse), ct);
+
+        public Task<TicketInfo> GetTicketOddsAsync(string itemId, CancellationToken ct = default)
+            => Call("GET", "/v1/items/tickets/" + Seg(itemId) + "/odds", null, false, null, true, TicketInfo.Parse, ct);
+
+        /// <summary>Use one ticket: a gacha ticket needs <paramref name="bannerId"/>; an SR+ ticket takes none. Keyed, so retries never spend twice.</summary>
+        public Task<TicketResult> UseTicketAsync(string itemId, string bannerId = null, string idempotencyKey = null, CancellationToken ct = default)
+        {
+            var b = JsonNode.Obj();
+            if (bannerId != null) b.Set("bannerId", bannerId);
+            return Call("POST", "/v1/items/tickets/" + Seg(itemId) + "/use", b, true, idempotencyKey ?? NewIdempotencyKey(), true, TicketResult.Parse, ct);
+        }
+
+        /// <summary>The cosmetics shop: silks patterns, tack and stable decor with ownership/equipped flags.</summary>
+        public Task<CosmeticsCatalog> GetCosmeticsAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/shop/cosmetics", null, true, null, true, CosmeticsCatalog.Parse, ct);
+
+        /// <summary>Buy a cosmetic for coins (each once: ConflictException ALREADY_PURCHASED; paid-only items need paid coins).</summary>
+        public Task<CosmeticPurchase> BuyCosmeticAsync(string itemId, string idempotencyKey = null, CancellationToken ct = default)
+            => Call("POST", "/v1/shop/cosmetics/" + Seg(itemId) + "/buy", JsonNode.Obj(), true, idempotencyKey ?? NewIdempotencyKey(), true, CosmeticPurchase.Parse, ct);
+
+        /// <summary>Equip/unequip tack and set decor slots. Idempotent (same body → same state), so it is retried.</summary>
+        public Task<Equipment> SetEquipmentAsync(EquipmentPatch patch, CancellationToken ct = default)
+            => Call("PUT", "/v1/player/equipment", patch.ToJson(), true, null, true, o => Equipment.Parse(J.Opt(o, "equipment")), ct);
 
         // ------------------------------------------------------------------ rewards
 

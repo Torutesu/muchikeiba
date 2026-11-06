@@ -23,6 +23,10 @@ namespace Muchi.Client
         public static string SilksCap(string id) => "silks/cap/" + id;
         public static string Gate(int bracket) => "ui/gate/" + bracket.ToString(CultureInfo.InvariantCulture);
         public static string Item(string id) => "item/" + id;
+        /// <summary>Tack (bridle / saddle cloth) layered on the horse model; name comes from the cosmetic's asset (REQ-ITEM-006).</summary>
+        public static string Tack(string name) => "tack/" + name;
+        /// <summary>Stable decor (REQ-ITEM-006).</summary>
+        public static string Decor(string name) => "decor/" + name;
         public static string GachaBanner(string id) => "banner/gacha/" + id;
         public static string EventBanner(string id) => "banner/event/" + id;
         public static string Title(string id) => "title/" + id;

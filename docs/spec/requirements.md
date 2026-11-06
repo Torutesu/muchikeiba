@@ -309,6 +309,16 @@
 - REQ-ASSET-010 実在の登録服色の勝負服は禁止（REQ-OPS-040）。
 - REQ-ASSET-009 実況の音声キーは定型フレーズの断片・数字・馬名（馬IDではなく馬名のFNV-1a 64bit）から作る。馬名の音声は命名時に生成するため動的。
 
+### 9.16 アイテム・見た目の直販（TS＋C#、`server/master/items.json`）
+- REQ-ITEM-001 ガチャ券（`gacha_ticket`）：対象ガチャ（`tickets.gacha_ticket.banners`、有償限定ガチャは不可＝読み込み時に検証）を1回引ける。抽選はそのガチャの提供割合と同じ表で行い、天井ポイントを1加算する。ガチャの提供割合表示に「この券で引ける」ことを出す。
+- REQ-ITEM-002 SR以上確定券（`ticket_sr_plus`）：券専用の表（SR以上のみ、合計1,000,000ppm）で1頭引く。表示（`GET /v1/items/tickets/:itemId/odds`）は抽選と同じ定義から作る。天井ポイントは加算しない。
+- REQ-ITEM-003 配合素材（`breeding_material`）：その日の通常の配合を使い切った後、素材`cost`個で1日`extraPerDay`回まで追加で配合できる。仔の能力の抽選は通常と同じ（ランク戦の公平性に影響しない）。配合の予想に今日の残り回数を出す。
+- REQ-ITEM-004 見た目アイテムの一覧（`GET /v1/shop/cosmetics`）：勝負服の模様の解放・馬具（頭絡・ゼッケン布）・厩舎の飾り。価格・通貨・所持・装備中・アセットキーを返す。能力には影響しない。
+- REQ-ITEM-005 見た目アイテムはコインで直接買う（確率なし）。各1回まで（`ALREADY_PURCHASED`）。有償から先に消費し、「有償限定」の品は有償コインのみ。
+- REQ-ITEM-006 装備（`PUT /v1/player/equipment`）：馬具は枠（`bridle`/`saddlecloth`）ごとに1つ、飾りは`decorSlots`枠まで（重複不可）。所持していない物・枠違いは拒否。`null`で外す。装備した馬具は公開プロフィールに載る。アセットキーの種類 `tack/*`・`decor/*` を追加（`contracts/assets.md`）。
+- REQ-ITEM-007 勝負服の模様の解放アイテムを直販し、買うと`PUT /v1/player/silks`でその模様を選べる。
+- REQ-ITEM-008 券・素材の消費と見た目アイテムの購入は、アイテムの台帳（`itemLog`、直近200件）に残す。券の使用・購入は冪等キー必須、返金による負債（コイン・アイテム）があるあいだは使えない。
+
 ## 10. 認証・API（TS）
 - REQ-API-005 Unityアプリの認証：初回起動で匿名ログイン（登録画面なしで遊べる）。Apple／Googleのアカウントを匿名ユーザーに紐付けて引き継ぎに使う。すでに別のアカウントに紐付いている場合は、プレイヤーに確認してからそのアカウントに切り替える（この端末の匿名の進行は残らない）。実装は`unity/Assets/Muchi/Game/FirebaseAuth.cs`（ロジック、テストあり）と`unity/Assets/Muchi/Integration/FirebaseSdkAuth.cs`（Firebase SDK、`MUCHI_FIREBASE`定義時だけコンパイル）。
 - REQ-API-001 認証はFirebase AuthのIDトークン（匿名ログインを基本、引き継ぎにApple/Google）。WorkersでJWT署名を検証する（Googleの公開鍵、`aud`=プロジェクトID、`iss`、有効期限）。

@@ -80,6 +80,7 @@ catch (PurchaseBlockedException e) { /* e.Code: AgeRequired / GuardianConsentReq
 - **プロフィール・称号・戦績**：`SetDisplayNameAsync`（NGリスト判定）、`GetTitlesAsync` / `EquipTitleAsync(null で外す)`、`GetStatsAsync`（コース別ベストは `BestFinishTick × 50ms`）。
 - **ランキング**：`GetMyRankAsync`（スナップショット前は `Rank=null`）、`GetLeaderboardAsync("current" または "yyyy-mm", "class-A" / "rating" / "index")`。ランキングは認証不要の公開スナップショット（数分おきに更新）。
 - **フレンド**：`GetFriendCodeAsync`、`SendFriendRequestAsync(9桁コード)`（相手からも申請済みなら即フレンド）、`AcceptFriendRequestAsync` / `DeclineFriendRequestAsync` / `CancelFriendRequestAsync` / `RemoveFriendAsync`、`GetFriendsAsync`（フレンド・受信・送信中・部屋への招待）、`InviteToFriendRoomAsync`。サーバー側で重複操作は無害なので、すべて再送対象。
+- **アイテム（REQ-ITEM-*）**：`GetTicketsAsync` / `GetTicketOddsAsync`（券の提供割合。スカウト券はバナーと同じ表）、`UseTicketAsync(itemId, bannerId)`（キー付き）、`GetCosmeticsAsync` / `BuyCosmeticAsync`（キー付き、`PaidOnly` は有償コインのみ）、`SetEquipmentAsync(EquipmentPatch)`（馬具・厩舎の飾り）、`BreedAsync(..., useMaterial: true)`（配合素材で追加の配合。`BreedingPreview.Today` が残り回数）。エラー `INSUFFICIENT_ITEMS` / `ALREADY_PURCHASED`。
 - **新しいエラー**：`FRIEND_LIMIT`、`ALREADY_IN_RACE`（ランク戦は同時に1レースまで）、`ROOM_TOO_SMALL`（フレンド部屋は2人から）はいずれも `ConflictException`。
 
 ### 2. オンラインレース（`RaceSession`）

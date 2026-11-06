@@ -11,7 +11,8 @@ import type { Clock } from './time.js';
 import { seasonIdFor, rollSeason, classDef } from './season.js';
 import { applyRefund, applySubscriptionStatus, applyVerifiedPurchase, checkPurchaseIntent, registerAge, type StoreVerifier, type SubscriptionStatus, type VerifiedReceipt } from './purchase.js';
 import { drawGacha, exchangePity, settlePityGroups } from './gacha.js';
-import { awaken, breed, breedingPreview, getHorse, nameHorse, pedigree, retire } from './horses.js';
+import { awaken, breed, breedingPreviewWithAllowance, getHorse, nameHorse, pedigree, retire } from './horses.js';
+import { buyCosmetic, cosmeticsCatalog, setEquipment, useTicket, type EquipmentPatch } from './itemShop.js';
 import { applyRaceResult, claimLoginBonus, claimMission, claimPass, missionsView, passLevel, type RaceResultForPlayer } from './rewards.js';
 import { toRaceHorse } from './raceConfig.js';
 import { paidBalanceYen, invariantsHold } from './wallet.js';
@@ -261,10 +262,30 @@ export class PlayerService {
   retire(id: string, horseId: string) { return this.tx(id, null, (s) => retire(s, horseId)); }
 
   async breedingPreview(id: string, sireId: string, damId: string) {
-    return breedingPreview(this.d.master, await this.load(id), sireId, damId);
+    return breedingPreviewWithAllowance(this.d.master, await this.load(id), sireId, damId, this.d.clock());
   }
-  async breed(id: string, sireId: string, damId: string, idemKey: string | null) {
-    return this.tx(id, this.requireKey(idemKey), (s, now) => breed(this.d.master, s, sireId, damId, this.d.rng, now));
+  async breed(id: string, sireId: string, damId: string, idemKey: string | null, useMaterial = false) {
+    const key = this.requireKey(idemKey);
+    return this.tx(id, key, (s, now) => breed(this.d.master, s, sireId, damId, this.d.rng, now, { useMaterial, ref: key }));
+  }
+
+  // ---- items & cosmetics (REQ-ITEM-*) ----
+  /** Use a gacha ticket (bannerId required) or an SR+ ticket. Idempotent per client key. */
+  async useTicket(id: string, itemId: string, bannerId: string | null, idemKey: string | null) {
+    const key = this.requireKey(idemKey);
+    return this.tx(id, key, (s, now, emit) => {
+      const r = useTicket(this.d.master, s, itemId, bannerId, this.d.rng, now, key);
+      emit({ name: 'gacha_draw', s1: bannerId ?? itemId, s2: 'ticket', count: 1, paidCoins: 0, freeCoins: 0, value: r.result.rarity === 'SSR' ? 1 : 0 });
+      return r;
+    });
+  }
+  async cosmetics(id: string) { return cosmeticsCatalog(this.d.master, await this.load(id)); }
+  async buyCosmetic(id: string, itemId: string, idemKey: string | null) {
+    const key = this.requireKey(idemKey);
+    return this.tx(id, key, (s, now) => ({ ...buyCosmetic(this.d.master, s, itemId, now, key), wallet: playerView(s).wallet }));
+  }
+  setEquipment(id: string, patch: EquipmentPatch) {
+    return this.tx(id, null, (s) => ({ equipment: setEquipment(this.d.master, s, patch) }));
   }
   async pedigree(id: string, horseId: string) { return pedigree(await this.load(id), horseId); }
 

@@ -5,6 +5,7 @@ import { parseStoreNotification, storeSettingsFromEnv } from './http/stores.js';
 import { accountingStoreIndex } from './do/storeIndex.js';
 import { loadMaster } from './domain/master.js';
 import { validateGacha } from './domain/gacha.js';
+import { validateItems } from './domain/itemShop.js';
 import { unwrap, type Envelope } from './do/rpc.js';
 import { AppError } from './domain/errors.js';
 
@@ -56,6 +57,7 @@ async function broadcastSeasonReminder(env: Env, now: number): Promise<string | 
 
 const baseMaster = loadMaster();
 validateGacha(baseMaster); // fail fast on a broken gacha/master definition (REQ-GACHA-003/008)
+validateItems(baseMaster); // REQ-ITEM-*: tickets may not reach paid-only banners, cosmetics reference real assets/patterns
 validateEvents(baseMaster, baseMaster.events); // REQ-EVENT-001
 
 /** REQ-TEAM-*: team orchestration over TeamDOs, the team directory and the season board in LeaderboardDO. */

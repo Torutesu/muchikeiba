@@ -104,6 +104,8 @@ export function oddsDisclosure(m: Master, b: BannerDef, yenPerCoin = 1.6) {
     guarantee: { appliesTo: '10連の10枠目（1〜9枠目にSR以上が出なかった場合のみ、この表で抽選）', items: rows(b.guaranteePool), rarityTotals: totals(b.guaranteePool) },
     pity: { group: b.pityGroup, pullsRequired: pityCost, targets: b.pityTargets, estimatedMaxCostYen: Math.ceil(pityCost * b.priceSingle * yenPerCoin) },
     duplicates: m.gacha.duplicateMaterial,
+    // REQ-ITEM-001: tickets usable on this banner draw from this very table (one definition, REQ-GACHA-002)
+    tickets: Object.entries(m.items?.tickets ?? {}).filter(([, t]) => t.kind === 'single' && t.banners.includes(b.id)).map(([id, t]) => ({ itemId: id, name: t.name, notice: '券1枚で1回。この提供割合と同じ表で抽選し、天井ポイントも1回分加算' })),
   };
 }
 
@@ -125,7 +127,7 @@ export function findBanner(m: Master, id: string): BannerDef {
   return b;
 }
 
-function grantPull(m: Master, s: PlayerState, tpl: HorseTemplate, now: number, guaranteed: boolean): PullResult {
+export function grantPull(m: Master, s: PlayerState, tpl: HorseTemplate, now: number, guaranteed: boolean): PullResult {
   const owned = s.horses.some((h) => h.templateId === tpl.id);
   if (owned) {
     const material = m.gacha.duplicateMaterial[tpl.rarity];

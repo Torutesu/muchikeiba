@@ -159,6 +159,8 @@ namespace Muchi.Client
         public string DisplayName, TitleId;
         /// <summary>Your silks (contracts/assets.md §3). Change with ApiClient.SetSilksAsync.</summary>
         public Silks Silks = new Silks();
+        /// <summary>Equipped tack and stable decor (REQ-ITEM-006). Change with ApiClient.SetEquipmentAsync.</summary>
+        public Equipment Equipment = new Equipment();
 
         internal static PlayerView Parse(JsonNode o)
         {
@@ -177,6 +179,7 @@ namespace Muchi.Client
                 Rating = J.Int(r, "r"), RatingDeviation = J.Int(r, "rd"), RankedRaces = J.Int(r, "rankedRaces"),
                 SeasonId = J.Str(s, "id"), ClassId = J.Str(s, "classId"), SeasonPoints = J.Int(s, "points"),
                 DisplayName = J.Str(pr, "displayName"), TitleId = J.Str(pr, "titleId"), Silks = Silks.Parse(J.Opt(pr, "silks")) ?? new Silks(),
+                Equipment = Equipment.Parse(J.Opt(o, "equipment")),
             };
         }
     }
@@ -314,6 +317,8 @@ namespace Muchi.Client
         public int PityPullsRequired, PityEstimatedMaxCostYen;
         public string[] PityTargets = new string[0];
         public Dictionary<string, int> DuplicateMaterial = new Dictionary<string, int>();
+        /// <summary>Ticket item ids that draw on this banner from this very table (REQ-ITEM-001).</summary>
+        public List<string> TicketsUsable = new List<string>();
 
         internal static OddsDisclosure Parse(JsonNode o)
         {
@@ -329,6 +334,7 @@ namespace Muchi.Client
                 PityGroup = J.Str(p, "group"), PityPullsRequired = J.Int(p, "pullsRequired"), PityTargets = J.Strs(p, "targets"),
                 PityEstimatedMaxCostYen = J.Int(p, "estimatedMaxCostYen"),
                 DuplicateMaterial = J.Map(o, "duplicates", v => v.AsInt()),
+                TicketsUsable = J.List(o, "tickets", x => J.Str(x, "itemId")),
             };
         }
     }
@@ -399,6 +405,8 @@ namespace Muchi.Client
         public string Surface;
         /// <summary>Foal ground preference odds in permille ("any" / "fast" / "heavy"), same function as the real breeding.</summary>
         public Dictionary<string, int> GoingAptitudePermille = new Dictionary<string, int>();
+        /// <summary>Today's breeding allowance incl. extra breedings with breeding material (REQ-ITEM-003). Null on older servers.</summary>
+        public BreedingAllowance Today;
         internal static BreedingPreview Parse(JsonNode o)
         {
             var d = J.Opt(o, "distance");
@@ -407,6 +415,7 @@ namespace Muchi.Client
                 Stats = J.Map(o, "stats", StatRange.Parse), Nick = J.Bool(o, "nick"), InbreedingCount = J.Int(o, "inbreedingCount"),
                 StyleMilliPercent = J.Map(o, "styles", J.Milli), DistanceMinM = J.Int(d, "minM"), DistanceMaxM = J.Int(d, "maxM"), Surface = J.Str(o, "surface"),
                 GoingAptitudePermille = J.Opt(o, "goingAptitude") == null ? new Dictionary<string, int>() : J.Map(o, "goingAptitude", n => n.AsInt()),
+                Today = BreedingAllowance.Parse(J.Opt(o, "today")),
             };
         }
     }
@@ -416,7 +425,9 @@ namespace Muchi.Client
         public Horse Foal;
         public bool Nick;
         public int InbreedingCount;
-        internal static BreedResult Parse(JsonNode o) => new BreedResult { Foal = Horse.Parse(J.Opt(o, "foal")), Nick = J.Bool(o, "nick"), InbreedingCount = J.Int(o, "inbreedingCount") };
+        /// <summary>True when this was an extra breeding paid with breeding material (REQ-ITEM-003).</summary>
+        public bool UsedMaterial;
+        internal static BreedResult Parse(JsonNode o) => new BreedResult { Foal = Horse.Parse(J.Opt(o, "foal")), Nick = J.Bool(o, "nick"), InbreedingCount = J.Int(o, "inbreedingCount"), UsedMaterial = J.Bool(o, "usedMaterial") };
     }
 
     public sealed class LoginBonusResult

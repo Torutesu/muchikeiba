@@ -170,6 +170,8 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | DELETE | `/v1/friends/requests/:toId` | 要 | | 自分の申請を取り消し |
 | DELETE | `/v1/friends/:friendId` | 要 | | フレンド解除（双方） |
 | POST | `/v1/friend-rooms/:passphrase/invite` | 要 | | `{friendId}` 部屋のメンバーがフレンドを招待 |
+| GET | `/v1/invite` | 要 | | 友達招待：自分の招待コード（8文字）・共有リンク・入力できるか・招待した仲間・到達報酬の表。任意ヘッダー `x-install-id`（REQ-INV-*、protocol.md §18） |
+| POST | `/v1/invite/redeem` | 要 | | `{code, installId}` 招待コードを1回だけ入力（チュートリアル後・7ゲーム日以内）。ウェルカムギフトとフレンド |
 | GET | `/v1/config` | なし | | 有効な設定の版 `{versionId, hash, rulesetVersion, activatedAt, visualsVersion}`。アプリはhashごとにマスターデータ、visualsVersion ごとに `/v1/visuals` をキャッシュ（REQ-OPS-007） |
 | PUT | `/v1/push/devices` | 要 | | `{token, platform: ios\|android}` FCMトークンを登録（1人最大5台。古い順に外れる） |
 | POST | `/v1/push/devices/unregister` | 要 | | `{token}` ログアウト・通知オフ時に外す |

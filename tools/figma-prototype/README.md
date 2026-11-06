@@ -93,6 +93,9 @@ tools/figma-prototype/build.sh
 3. 素材をコピー（画像の縮小、相棒の切り抜き、FBX モデル、フォントの絞り込み）
 4. ロジックとエンジンのテスト（`test/round8.test.mjs`：チュートリアルの勝ち条件、デブリーフ、固有スキル、ショップ・パス・同意・削除）
 5. Round 9 のスカウトのテスト（`test/round9-gacha.test.mjs`：開催カレンダー・天井の表示と持ち越し・ステップアップ・終了の境目。めくりの順・一覧・残り時間は Unity のゲーム層の `GachaRevealModel` / `BannerListModel` を WebAssembly で動かしたもの）
+6. Round 10 の友達招待のテスト（`test/round10-invite.test.mjs`：自分のコード・デモの友達の引き換え・到達報酬・コードの入力・最初から）
+
+**友達招待（Round 10、REQ-INV-*）**：「その他」→「友達招待」。自分のコードと共有（ブラウザでは `navigator.share` かコピー）、招待ボーナスの表、招待した仲間、入力欄（チュートリアル後・始めてから7日以内だけ）。中身はサーバーの本物の `InviteService`（ディレクトリの検索・端末の確保・招待した人と招待された人の手順・到達報酬の送信箱）を端末の `PlayerService` の上で動かしたもの。レビュー用のボタン「デモ：友達が参加／初心者卒業／B級昇級」は別のローカルプレイヤーで同じ処理を通します。`unity.html?invite=<コード>` は `muchi://invite/<コード>` の代わり（入力欄に入るだけで、自動では引き換えません）。
 
 生成物（`site/js/logic.js`、`site/engine/`、`site/art/`、`site/data/`、`site/fonts/`、`site/models/`）は git には入れません。three.js（MIT）は `site/vendor/three/` にそのまま入れてあります。
 

@@ -37,6 +37,15 @@ namespace Muchi.Client
 
         public event Action<OfflineRace, int> TicksAdvanced;
         public event Action<OfflineRace, RaceResult> Finished;
+        /// <summary>Raised after every single simulated tick (exact per-tick observers: RaceFeelTracker, RaceDebriefRecorder).</summary>
+        public event Action<OfflineRace> Stepped;
+
+        /// <summary>
+        /// Optional offline-only script that rides the non-CPU slots other than the player and may restrict the
+        /// player's command bits (the tutorial's rival, REQ-UXS-004). Must be deterministic: it only reads the
+        /// race state and the player's command of the tick. Its commands are kept in <see cref="DirectorInputs"/>.
+        /// </summary>
+        public IOfflineRaceDirector Director { get; set; }
 
         public OfflineRace(RaceConfig config, int playerSlot)
         {
@@ -46,6 +55,8 @@ namespace Muchi.Client
             Sim = new RaceSim(config);
             _cmds = new byte[config.Entrants.Count];
             _msPerTick = 1000 / config.Net.TickHz;
+            // the tutorial preset's rival needs its director (attempt 1); OfflinePresets.TutorialRace sets the attempt
+            if (TutorialDirector.Fits(config, playerSlot)) Director = new TutorialDirector(1, playerSlot, OfflinePresets.TutorialRivalSlot);
         }
 
         public void Start(long nowMs)
@@ -106,14 +117,44 @@ namespace Muchi.Client
                 _queued.Clear();
                 if (AutoStart && (Sim.Tick == Sim.P.GateOpenTick || Sim.Tick == Sim.P.GateOpenTick + 1)) c |= Cmd.Start;
                 c = EffectiveCommand(Sim, PlayerSlot, c);
+                if (Director != null) c = (byte)(c & Director.AllowedPlayerBits);
                 if (c != 0 && _recorded.Count >= MaxRecordedInputs) { c = 0; InputCapReached = true; }
                 _cmds[PlayerSlot] = c;
                 if (c != 0) _recorded.Add(new InputRecord(Sim.Tick, PlayerSlot, c));
             }
+            if (Director != null)
+            {
+                Director.Drive(Sim, PlayerSlot, PlayerSlot >= 0 ? _cmds[PlayerSlot] : (byte)0, _cmds);
+                for (int i = 0; i < _cmds.Length; i++)
+                {
+                    if (i == PlayerSlot) continue;
+                    byte d = EffectiveCommand(Sim, i, _cmds[i]);
+                    _cmds[i] = d;
+                    if (d != 0) _directorRecorded.Add(new InputRecord(Sim.Tick, i, d));
+                }
+            }
             Sim.Step(_cmds);
+            Stepped?.Invoke(this);
         }
 
         private readonly List<InputRecord> _recorded = new List<InputRecord>();
+        private readonly List<InputRecord> _directorRecorded = new List<InputRecord>();
+
+        /// <summary>Commands the <see cref="Director"/> gave to its slots (tick order).</summary>
+        public IReadOnlyList<InputRecord> DirectorInputs => _directorRecorded;
+
+        /// <summary>
+        /// Every input of the race (player + director), tick then slot order: <c>RaceReplay.Run(Config, AllInputs)</c>
+        /// reproduces the run exactly. Without a director this equals <see cref="RecordedInputs"/>.
+        /// </summary>
+        public List<InputRecord> AllInputs()
+        {
+            var all = new List<InputRecord>(_recorded.Count + _directorRecorded.Count);
+            all.AddRange(_recorded);
+            all.AddRange(_directorRecorded);
+            all.Sort((a, b) => a.Tick != b.Tick ? a.Tick.CompareTo(b.Tick) : a.Slot.CompareTo(b.Slot));
+            return all;
+        }
 
         /// <summary>
         /// The command with every bit removed that provably does nothing in <see cref="RaceSim"/> this tick (it
@@ -185,9 +226,11 @@ namespace Muchi.Client
         public const int TutorialPlayerSlot = 0;
 
         /// <summary>
-        /// Tutorial "いきなり本番" (docs/planning/04): a short straight where the whole race is the final
-        /// stretch. The player's horse starts automatically (set OfflineRace.AutoStart) so only the whip
-        /// matters: a reasonably timed whip wins, no whip loses. The field is fixed and fictional.
+        /// Tutorial "いきなり本番" (docs/planning/04, 06 §2.3): a 400 m straight where the whole race is the final
+        /// stretch. Slot 0 is the player (auto start: only the whip matters), slot 1 is the rival ridden by
+        /// <see cref="TutorialDirector"/> (a Human-kind slot so the director can ride it), slots 2..7 are weaker
+        /// CPUs. Use <see cref="TutorialRace"/> to get the race with its director: the outcome rule
+        /// (REQ-UXS-004) only holds with the director attached. Offline only — never sent to the server.
         /// </summary>
         public static RaceConfig Tutorial(RulesetParams baseRuleset, ulong seed = 20261105)
             => Tutorial(baseRuleset, seed, TutorialPlayerStat, TutorialCpuStat, TutorialCpuWhipStartM);
@@ -200,6 +243,9 @@ namespace Muchi.Client
             if (rs.HasBalanceKeys) rs = Override(rs, ("conditionVariancePermille", 0), ("cpuSloppyMaxLevel", 0));
             // a 400m sprint that is all final stretch: keep the full stamina pool and spurt zone (no distance scaling, ruleset 1.2)
             if (rs.HasDistanceKeys) rs = Override(rs, ("staminaDistanceScalePermille", 0), ("spurtDistanceScalePermille", 0));
+            // only the director's rival reins here (the player has the whip only; CPUs never rein in the spurt zone,
+            // which is the whole race): a firmer rein lets the rival give way quickly once the player has earned it
+            rs = Override(rs, ("reinSpeedPermille", TutorialReinSpeedPermille));
             var cfg = new RaceConfig
             {
                 RaceId = "offline_tutorial",
@@ -216,7 +262,8 @@ namespace Muchi.Client
             };
             cfg.Entrants.Add(new Entrant { Slot = 0, Kind = EntrantKind.Human, PlayerId = "local", CpuLevel = 1, Horse = TutorialHorse("tut_player", "アイボウ", playerStat, RunningStyle.Sashi) });
             string[] names = { "ハヤテノツバサ", "ユウヤケボシ", "アオゾラマーチ", "シラカバノオカ", "ナミノリタロウ", "ツキミダンゴ", "ホシクズノミチ" };
-            for (int i = 0; i < names.Length; i++)
+            cfg.Entrants.Add(new Entrant { Slot = TutorialRivalSlot, Kind = EntrantKind.Human, PlayerId = TutorialRivalId, CpuLevel = 1, Horse = TutorialHorse("tut_cpu1", names[0], TutorialRivalStat, RunningStyle.Senko) });
+            for (int i = 1; i < names.Length; i++)
             {
                 var style = i % 2 == 0 ? RunningStyle.Senko : RunningStyle.Nige;
                 cfg.Entrants.Add(new Entrant { Slot = i + 1, Kind = EntrantKind.Cpu, CpuLevel = 1, Horse = TutorialHorse("tut_cpu" + (i + 1), names[i], cpuStat, style) });
@@ -225,10 +272,28 @@ namespace Muchi.Client
             return cfg;
         }
 
+        /// <summary>
+        /// The tutorial race ready to drive: auto start, and the <see cref="TutorialDirector"/> that guarantees
+        /// REQ-UXS-004 — 2+ whips in the last 300 m win, 0–1 whips finish a close 2nd, and from
+        /// <paramref name="attempt"/> 3 on (1-based count of tutorial races this player has run) the player wins.
+        /// </summary>
+        public static OfflineRace TutorialRace(RulesetParams baseRuleset, int attempt = 1, ulong seed = 20261105)
+        {
+            var race = new OfflineRace(Tutorial(baseRuleset, seed), TutorialPlayerSlot) { AutoStart = true };
+            race.Director = new TutorialDirector(attempt, TutorialPlayerSlot, TutorialRivalSlot);
+            return race;
+        }
+
         public const int TutorialDistanceM = 400;
         public const int TutorialPlayerStat = 560;
-        public const int TutorialCpuStat = 540;
+        /// <summary>The rival is slightly stronger than the player so it can always hold a close lead when asked to.</summary>
+        public const int TutorialRivalStat = 600;
+        /// <summary>The rest of the field is clearly weaker: they make up the pack but never beat the player.</summary>
+        public const int TutorialCpuStat = 380;
         public const int TutorialCpuWhipStartM = 150;
+        public const int TutorialRivalSlot = 1;
+        public const int TutorialReinSpeedPermille = 900;
+        public const string TutorialRivalId = "tutorial_rival";
 
         /// <summary>Solo time attack on any track (no CPUs).</summary>
         public static RaceConfig TimeAttack(TrackSpec track, HorseSpec horse, RulesetParams ruleset, ulong seed = 1)

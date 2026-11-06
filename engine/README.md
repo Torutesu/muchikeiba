@@ -102,16 +102,22 @@ int alpha = race.InterpolationAlphaPermille(NowMs());      // GetPreviousHorse�
 
 ### 3. オフラインレース（`OfflineRace` / `OfflinePresets`）
 ```csharp
-var race = new OfflineRace(OfflinePresets.Tutorial(ruleset), OfflinePresets.TutorialPlayerSlot) { AutoStart = true };
+var race = OfflinePresets.TutorialRace(ruleset, attempt);   // attempt = 何回目の挑戦か（1始まり）
 race.Start(NowMs());
 race.Update(NowMs());     // 毎フレーム。固定ステップ（50ms）、1フレームの追いつきは最大10tick
 race.Input(Cmd.Whip);
 race.Pause(NowMs()); race.Resume(NowMs());
 ```
-- **チュートリアル**（いきなり本番）：400mの直線だけ。スタートは自動、操作はムチだけ。残り200〜400mからムチを入れればほぼ必ず勝ち（60シード中58以上）、ムチ無し・残り60mからのムチではほぼ負ける（テストで固定）。
+- **チュートリアル**（いきなり本番、REQ-UXS-004）：400mの直線だけ。スタートは自動、操作はムチだけ（他のビットは捨てる）。勝ち負けは `TutorialDirector` が決める（端末内だけ。オンライン・ランク戦には関係しない）：
+  - 残り300m〜50mの間にムチ2回以上 → 1着。0〜1回 → ライバル（2番の馬）に約半馬身差の2着。残り50mを切ってからのムチは数えない（ライバルが同じtickでムチを返す）。
+  - 3回目以降（`attempt >= 3`）は入力に関係なく1着。
+  - しくみ：ライバルは外のレーンで、数えないムチには同じtickでムチを返し、手綱で差を保つ（規則を満たしたら後ろへ下がる）。他の6頭は弱いCPU。すべて整数演算なので、同じ入力なら同じレース。`AllInputs()`（自分＋ライバル）で `RaceReplay` が同じハッシュになる。
+  - `new OfflineRace(OfflinePresets.Tutorial(ruleset), 0)` でも director は自動で付く（attempt 1）。
 - **練習用タイムアタック**（記録なし）：`OfflinePresets.TimeAttack(track, horse, ruleset)`、`FinishTimeMs(slot)` でタイム。
 - `ruleset` はサーバーから受け取ったもの（オンラインと同じ値）を使う。
-- `OfflineRace.RecordedInputs` に、自分の馬に実際に適用した入力（tickごとに1つ）が残る。設定＋この入力でレースを完全に再現できる（タイムアタックの提出に使う）。
+- `OfflineRace.RecordedInputs` に、自分の馬に実際に適用した入力（tickごとに1つ）が残る。設定＋この入力でレースを完全に再現できる（タイムアタックの提出に使う）。director がいるレースは `AllInputs()` を使う。
+- **レースの手応え（06 §6.3）**：`RaceFeelTracker`（毎フレーム `Update(sim)`）がスタミナ30%/10%/0%、「今だ、ムチ！」（ムチの窓の中で1回だけ）、スリップストリーム、掛かり・飛ばしすぎ、連打の注意を `RaceFeelSnapshot` とキュー（`RaceFeelCue`）で返す。カメラは `RaceCameraRig`（後ろ6.5m・上3m、直線の残り400mで低く、ゴールで横から）。
+- **勝因・敗因（REQ-UXS-005）**：`RaceDebriefRecorder` を毎tick（`OfflineRace.Stepped`）か毎フレーム `Observe(sim)` し、終わったら `RaceDebrief.Build(sim, recorder)` → `Line`（1行）・`Reason`/`Code`・`Tip`。入力ログからは `RaceDebrief.FromInputs(config, inputs, slot)`。
 
 ### 3.1 タイムアタックとゴースト（記録あり、REQ-TA-*）
 ```csharp

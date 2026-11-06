@@ -55,6 +55,8 @@ namespace Muchi.Game
     {
         public const string KeyPartnerName = "muchi.partner";
         public const string KeyScoutUsed = "muchi.tutorial.scout.used";
+        /// <summary>How many tutorial races this device has started (REQ-UXS-004: the 3rd is assisted to a win).</summary>
+        public const string KeyTutorialAttempts = "muchi.tutorial.attempts";
 
         private readonly GameSettings _settings;
         private readonly ApiClient _api;
@@ -229,8 +231,20 @@ namespace Muchi.Game
             catch (ApiException) { return null; }
         }
 
-        /// <summary>Offline first ride (tutorial preset; auto start).</summary>
-        public IRaceDriver CreateTutorialRace() => new OfflineRaceDriver(RaceFactory.Tutorial(_ruleset), OfflinePresets.TutorialPlayerSlot, autoStart: true);
+        /// <summary>Tutorial races started on this device so far.</summary>
+        public int TutorialAttempts => int.TryParse(_kv.Get(KeyTutorialAttempts), out var n) && n > 0 ? n : 0;
+
+        /// <summary>
+        /// Offline first ride (tutorial preset; auto start; the whip is the only control). <paramref name="attempt"/>
+        /// is the 1-based try number; omitted, the device's count + 1 is used and stored. From the 3rd try the
+        /// tutorial is assisted to a win (REQ-UXS-004). Offline only: never reaches ranked results.
+        /// </summary>
+        public IRaceDriver CreateTutorialRace(int? attempt = null)
+        {
+            int n = attempt ?? TutorialAttempts + 1;
+            if (attempt == null) _kv.Set(KeyTutorialAttempts, n.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            return new OfflineRaceDriver(OfflinePresets.TutorialRace(_ruleset, n));
+        }
 
         /// <summary>Offline practice race with the partner (server horse when known).</summary>
         public IRaceDriver CreatePracticeRace(ulong seed)

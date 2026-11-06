@@ -10,7 +10,7 @@ namespace Muchi.Engine.Tests
         /// <summary>Plays the tutorial; whipFrom = remaining meters at which whipping starts (-1 = never).</summary>
         internal static OfflineRace PlayTutorial(int whipFromM, int whipInterval = 24, int maxWhips = 6, ulong seed = 20261105)
         {
-            var race = new OfflineRace(OfflinePresets.Tutorial(TestUtil.Ruleset(), seed), OfflinePresets.TutorialPlayerSlot) { AutoStart = true };
+            var race = OfflinePresets.TutorialRace(TestUtil.Ruleset(), 1, seed);
             int whips = 0, last = -1000;
             while (!race.IsFinished)
             {
@@ -36,8 +36,10 @@ namespace Muchi.Engine.Tests
         }
 
         [Theory]
-        [InlineData(400)]
+        // REQ-UXS-004: it is the 2+ whips inside the last 300 m that win (whipping from 400 m every 24 ticks spends
+        // most whips before the window, so it is no longer a guaranteed win — see TutorialOutcomeTests)
         [InlineData(300)]
+        [InlineData(250)]
         [InlineData(200)]
         public void TutorialIsWonWithSensibleWhipTiming(int whipFromM)
         {

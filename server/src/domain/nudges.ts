@@ -11,7 +11,7 @@ import { enqueuePush, type EnqueueResult } from './push.js';
 import type { Master } from './master.js';
 import type { PlayerState } from './player.js';
 import { classDef } from './season.js';
-import { gameDayKey } from './time.js';
+import { dayRule, gameDayKey, sameGameDay } from './time.js';
 
 export interface NudgeConfig {
   promotionNearPoints: number;
@@ -67,8 +67,8 @@ export function runDueNudges(m: Master, s: PlayerState, now: number): EnqueueRes
 /** A friend beat this player's time attack record (`byName`, course name). At most once per game day. */
 export function nudgeTaBeaten(m: Master, s: PlayerState, byName: string, course: string, now: number): EnqueueResult | { status: 'skipped'; reason: 'already_today' } {
   const n = ensure(s);
-  const day = gameDayKey(now);
-  if (n.taBeatenDay === day) return { status: 'skipped', reason: 'already_today' };
+  const day = gameDayKey(now, dayRule(m));
+  if (sameGameDay(n.taBeatenDay, day)) return { status: 'skipped', reason: 'already_today' };
   const r = enqueuePush(m, s, 'ta_beaten', { name: byName, course }, now);
   if (r.status === 'queued') n.taBeatenDay = day;
   return r;

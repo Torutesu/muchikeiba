@@ -115,6 +115,8 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('offer_click'), at: z.number().int(), props: offerProps }),
   z.object({ name: z.literal('race_quit'), at: z.number().int(), props: z.object({ mode: z.enum(['ranked', 'friend', 'tutorial', 'offline', 'time_attack', 'event', 'tournament']), remainingM: z.number().int().min(0).max(10_000) }).strict() }),
   z.object({ name: z.literal('account_link'), at: z.number().int(), props: z.object({ provider: z.enum(['apple', 'google']) }).strict() }),
+  // REQ-UXS-072: a replay handed to the OS share sheet (the player shared; cancelled shares are not sent)
+  z.object({ name: z.literal('share'), at: z.number().int(), props: z.object({ kind: z.enum(['replay_video', 'replay_image']) }).strict() }),
 ]);
 export type ClientEvent = z.infer<typeof clientEventSchema>;
 
@@ -140,6 +142,7 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'offer_view': case 'offer_click': return { name: e.name, s1: e.props.offerId, s2: e.props.trigger };
     case 'race_quit': return { name: e.name, s1: e.props.mode, value: e.props.remainingM };
     case 'account_link': return { name: e.name, s1: e.props.provider };
+    case 'share': return { name: e.name, s1: e.props.kind };
   }
 }
 

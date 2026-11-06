@@ -1,0 +1,20 @@
+{
+ "_note": "生成ファイル（npm run scan:assets）。unity/AssetDelivery~/ のファイルから作る。手で編集しない。規則は contracts/assets.md §6.1・contracts/protocol.md §16。",
+ "catalogVersion": 1,
+ "manifestVersion": 2,
+ "urlTemplate": "{base}/{platform}/{sha256}/{file}",
+ "policy": {
+  "ftueBlockingMaxBytes": 3000000,
+  "cellularWarnBytes": 50000000,
+  "tutorialMaxWaitMs": 3000,
+  "maxParallel": 4
+ },
+ "platforms": {
+  "ios": {
+   "entries": []
+  },
+  "android": {
+   "entries": []
+  }
+ }
+}

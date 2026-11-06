@@ -5,6 +5,7 @@ import { resolveBundle } from '../src/ops/config.js';
 import { validateLeagueAndWeather } from '../src/domain/league.js';
 import { buildAssetManifest } from '../src/domain/assetManifest.js';
 import commentary from '../../engine/Muchi.Client/Resources/Muchi/commentary-ja.json';
+import { dayRule } from '../src/domain/time.js';
 import { m } from './helpers.js';
 
 const NEW = ['nordhaven_turf_2400', 'santalucera_dirt_1700', 'bellmoor_turf_1200'] as const;
@@ -35,7 +36,7 @@ describe('overseas-style venues (REQ-TRACK-001..004)', () => {
     const count = (trackId: string) => {
       const t = m.tracks.find((x) => x.id === trackId)!;
       const c: Record<string, number> = {};
-      for (let d = 0; d < 2000; d++) { const g = dailyGoing(w, t, Date.UTC(2026, 0, 1, 3) + d * DAY); c[g] = (c[g] ?? 0) + 1; }
+      for (let d = 0; d < 2000; d++) { const g = dailyGoing(w, t, Date.UTC(2026, 0, 1, 3) + d * DAY, dayRule(m)); c[g] = (c[g] ?? 0) + 1; }
       return c;
     };
     const nord = count('nordhaven_turf_2400');

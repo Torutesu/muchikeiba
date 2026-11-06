@@ -1,6 +1,6 @@
 import type { Master, WeatherConfig } from './master.js';
 import { goingsFor, type Going, type RaceMode, type Track } from './schemas.js';
-import { gameDayKey } from './time.js';
+import { dayRule, gameDayKey, type DayRule } from './time.js';
 
 /** Ground and lighting for one race (REQ-RACE-034/036/037). */
 export interface Ground { going: Going; night: boolean }
@@ -28,17 +28,17 @@ export function inNightWindow(hour: number, from: number, to: number): boolean {
 }
 
 /**
- * The day's going for a course: the same for everyone on a given JST date (a "daily weather seed"), so
+ * The day's going for a course: the same for everyone on a given game day (REQ-DAY-001, a "daily weather seed"), so
  * players can plan around it. Weighted pick from the master weights; unknown names are ignored.
  */
-export function dailyGoing(w: WeatherConfig, track: Pick<Track, 'id' | 'surface'>, nowMs: number): Going {
+export function dailyGoing(w: WeatherConfig, track: Pick<Track, 'id' | 'surface'>, nowMs: number, day: DayRule): Going {
   const names = goingsFor(track.surface);
   const own = w.byTrack?.[track.id];
   const weights = (own && typeof own === 'object' ? own : track.surface === 'dirt' ? w.dirt : w.turf) as Partial<Record<Going, number>>;
   const entries = names.map((n) => [n, Math.max(0, Math.floor(weights[n] ?? 0))] as const).filter(([, wt]) => wt > 0);
   const total = entries.reduce((a, [, wt]) => a + wt, 0);
   if (total === 0) return 'good';
-  let roll = fnv1a32(`${w.salt}|${gameDayKey(nowMs)}|${track.id}`) % total;
+  let roll = fnv1a32(`${w.salt}|${gameDayKey(nowMs, day)}|${track.id}`) % total;
   for (const [n, wt] of entries) {
     if (roll < wt) return n;
     roll -= wt;
@@ -60,7 +60,7 @@ export function groundFor(m: Master, trackId: string, mode: RaceMode, nowMs: num
   const active = w.overrides.filter((o) => nowMs >= o.fromMs && nowMs < o.toMs && (o.trackId === undefined || o.trackId === trackId));
   const ov = active.find((o) => o.trackId === trackId) ?? active.find((o) => o.trackId === undefined);
   const valid = (g: Going) => (goingsFor(track.surface) as readonly string[]).includes(g);
-  const going = ov && valid(ov.going) ? ov.going : dailyGoing(w, track, nowMs);
+  const going = ov && valid(ov.going) ? ov.going : dailyGoing(w, track, nowMs, dayRule(m));
   const lit = m.litTracks.has(trackId);
   const night = lit && (ov?.night ?? inNightWindow(jstHour(nowMs), w.nightFromHourJst, w.nightToHourJst));
   return { going, night };

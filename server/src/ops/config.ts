@@ -11,7 +11,7 @@ import { stableConfigProblems, stableConfigSchema, type StableConfig } from '../
 import { uxProblems } from '../domain/onboarding.js';
 import { z } from 'zod';
 import { AppError } from '../domain/errors.js';
-import { buildBanner, splitMasterTrack, type Master, type Progression, type RawBanner } from '../domain/master.js';
+import { buildBanner, buildPityGroups, gameDaySchedules, rescheduleGacha, splitMasterTrack, type Master, type Progression, type RawBanner } from '../domain/master.js';
 import { validateGacha } from '../domain/gacha.js';
 import { skillProblems } from '../domain/skills.js';
 import { buildRuleset, DEFAULT_RULESET, type Ruleset } from '../domain/ruleset.js';
@@ -19,6 +19,8 @@ import { trackSchema } from '../domain/schemas.js';
 import { eventProblems } from '../domain/events.js';
 import type { EventDef } from '../domain/master.js';
 import { canonicalJson, hashOf } from './hash.js';
+import { dayRolloverChangeProblems, dayRolloverProblems, dayRule, type DayRollover } from '../domain/time.js';
+import { assetCatalogProblems, assetCatalogSchema, EMPTY_ASSET_CATALOG, sameCatalogContent, type AssetCatalog } from '../domain/assetCatalog.js';
 
 /**
  * Remote config (REQ-OPS-002..007). A bundle changes the parts of the game that may change without an
@@ -27,6 +29,7 @@ import { canonicalJson, hashOf } from './hash.js';
  * the same validators the server runs at boot, then activated at a scheduled time and can be rolled back.
  */
 const int = z.number().int();
+const dayKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const rawBannerSchema = z.object({
   id: z.string().min(1).max(64), name: z.string().min(1).max(80), currency: z.enum(['any', 'paidOnly']),
   priceSingle: int.min(1), priceTen: int.min(1), pityGroup: z.string().min(1), pityTargets: z.array(z.string()),
@@ -35,6 +38,13 @@ const rawBannerSchema = z.object({
   guaranteePool: z.array(z.object({ templateId: z.string(), ppm: int.min(0) })).optional(),
   pickup: z.object({ templateId: z.string(), ppm: int.min(0) }).optional(),
   startAtMs: int.optional(), endAtMs: int.optional(),
+  // REQ-GACHA-011: game-day schedule (startDay … endDay = last day) and the announcement window
+  startDay: dayKey.optional(), endDay: dayKey.optional(), announceAtMs: int.optional(), announceDays: int.min(0).max(30).optional(),
+  // REQ-GACHA-014: step-up steps (10-pulls only)
+  stepUp: z.object({
+    afterLast: z.enum(['loop', 'repeatLast']),
+    steps: z.array(z.object({ priceTen: int.min(1), finalSlotRates: z.record(z.string(), int.min(0)).optional() }).strict()).min(1).max(10),
+  }).strict().optional(),
   // REQ-BREED-020: seasonal templates offered by this banner (validated against their windows)
   seasonal: z.array(z.string().min(1).max(64)).max(20).optional(),
 }).strict();
@@ -43,7 +53,7 @@ export const configBundleSchema = z.object({
   /** Partial or full ruleset; the merged result must keep the exact key set (contracts/ruleset-params.default.json). */
   ruleset: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
   gacha: z.object({
-    pityGroups: z.record(z.string(), z.object({ cost: int.min(1), endAtMs: int.optional(), convertTo: z.string().optional() }).strict()).optional(),
+    pityGroups: z.record(z.string(), z.object({ cost: int.min(1), endAtMs: int.optional(), endDay: dayKey.optional(), convertTo: z.string().optional(), label: z.string().min(1).max(40).optional() }).strict()).optional(),
     /** Replaces the whole banner list (schedule = startAtMs/endAtMs per banner). */
     banners: z.array(rawBannerSchema).optional(),
   }).strict().optional(),
@@ -58,6 +68,8 @@ export const configBundleSchema = z.object({
   events: z.array(z.record(z.string(), z.unknown())).optional(),
   /** REQ-STABLE-008: replaces the マイ厩舎 section (like caps within STABLE_HARD_LIMITS, themes). */
   stable: stableConfigSchema.optional(),
+  /** REQ-DLV-005: replaces the asset delivery catalog. Content changes must bump catalogVersion (clients refetch on it). */
+  assets: assetCatalogSchema.optional(),
 }).strict();
 export type ConfigBundle = z.infer<typeof configBundleSchema>;
 
@@ -101,13 +113,21 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
     if (new Set(tracks.map((t) => t.id)).size !== tracks.length) problems.push('tracks: duplicate id');
   }
 
-  const pityGroups = b.gacha?.pityGroups ?? base.gacha.pityGroups;
-  let banners = base.gacha.banners;
+  const progression = b.progression ? ({ ...base.progression, ...b.progression } as Progression) : base.progression;
+  for (const k of Object.keys(b.progression ?? {})) if (!(k in base.progression)) problems.push(`progression: unknown key ${k}`);
+  // REQ-GACHA-011 / REQ-DAY-001: game-day schedules (startDay/endDay) resolve with this version's day rule
+  const rule = dayRule({ progression });
+  const baseGacha = canonicalJson(rule) !== canonicalJson(dayRule(base)) ? rescheduleGacha(base.gacha, base.templates, rule) : base.gacha;
+  let pityGroups = baseGacha.pityGroups;
+  if (b.gacha?.pityGroups) {
+    try { pityGroups = buildPityGroups(b.gacha.pityGroups, rule); } catch (e) { problems.push((e as Error).message); }
+  }
+  let banners = baseGacha.banners;
   if (b.gacha?.banners) {
     banners = [];
     for (const raw of b.gacha.banners) {
       try {
-        banners.push(buildBanner(raw as RawBanner, base.templates));
+        banners.push(buildBanner(raw as RawBanner, base.templates, rule));
       } catch (e) {
         problems.push(`banner ${raw.id}: ${(e as Error).message}`);
       }
@@ -115,8 +135,6 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
     if (new Set(banners.map((x) => x.id)).size !== banners.length) problems.push('gacha: duplicate banner id');
   }
 
-  const progression = b.progression ? ({ ...base.progression, ...b.progression } as Progression) : base.progression;
-  for (const k of Object.keys(b.progression ?? {})) if (!(k in base.progression)) problems.push(`progression: unknown key ${k}`);
   for (const [k, v] of Object.entries(b.progression ?? {})) {
     if (k in base.progression) problems.push(...shapeProblems(`progression.${k}`, (base.progression as unknown as Record<string, unknown>)[k], v));
   }
@@ -128,6 +146,7 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
   if (b.progression && 'rooms' in b.progression) problems.push(...roomsProblems(progression.rooms));
   if (b.progression && 'league' in b.progression) problems.push(...leagueProblems(progression.league, new Set(collectItemIds(base))));
   if (b.progression && 'teams' in b.progression) problems.push(...teamRewardProblems(progression.teams?.seasonRewards, new Set(collectItemIds(base))));
+  if (b.progression && 'dayRollover' in b.progression) problems.push(...dayRolloverProblems(progression.dayRollover)); // REQ-DAY-001
   if (b.progression && 'replayHoldDays' in b.progression) problems.push(...holdPolicyProblems(progression.replayHoldDays));
   if (b.progression && ('stud' in b.progression || 'atavismPermille' in b.progression)) problems.push(...studConfigProblems(progression));
 
@@ -147,7 +166,9 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
   if (b.bannedSilks) problems.push(...bannedSilksProblems(bannedSilks, VISUALS).map((x) => `bannedSilks: ${x}`));
   const stable = (b.stable as StableConfig | undefined) ?? base.stable;
   if (b.stable) problems.push(...stableConfigProblems(b.stable as StableConfig, base));
-  const master: Master = { ...base, tracks, litTracks, gacha: { ...base.gacha, pityGroups, banners }, progression, ng: b.ng ?? base.ng, events, bannedSilks, ...(stable ? { stable } : {}) };
+  const assetCatalog = (b.assets as AssetCatalog | undefined) ?? base.assetCatalog;
+  if (b.assets) problems.push(...assetCatalogVersionProblems(b.assets as AssetCatalog, base.assetCatalog ?? EMPTY_ASSET_CATALOG));
+  const master: Master = { ...base, tracks, litTracks, gacha: { ...base.gacha, pityGroups, banners, daySchedules: { banners: b.gacha?.banners ? gameDaySchedules(b.gacha.banners as RawBanner[], {}).banners : baseGacha.daySchedules?.banners ?? {}, pityEndDays: b.gacha?.pityGroups ? gameDaySchedules([], b.gacha.pityGroups).pityEndDays : baseGacha.daySchedules?.pityEndDays ?? {} } }, progression, ng: b.ng ?? base.ng, events, bannedSilks, ...(stable ? { stable } : {}), ...(assetCatalog ? { assetCatalog } : {}) };
   problems.push(...eventProblems(master, events, ruleset));
   // QA r6 #1: tickets must never reach a paid-only banner, including after a remote-config banner change
   if (master.items) problems.push(...itemsProblems(master));
@@ -162,6 +183,17 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
   }
   if (problems.length) throw new AppError('CONFIG_INVALID', problems.join('; '));
   return { master, ruleset };
+}
+
+/**
+ * REQ-DLV-005: a remote catalog is checked like the shipped one, and a catalogVersion names one content: changing the
+ * entries, template or policy without raising catalogVersion above the base would leave clients on their cached copy.
+ */
+export function assetCatalogVersionProblems(next: AssetCatalog, base: AssetCatalog): string[] {
+  const out = assetCatalogProblems(next).map((x) => `assets: ${x}`);
+  if (next.catalogVersion < base.catalogVersion) out.push(`assets: catalogVersion ${next.catalogVersion} is older than the shipped ${base.catalogVersion}`);
+  else if (next.catalogVersion === base.catalogVersion && !sameCatalogContent(next, base)) out.push(`assets: content differs from the shipped catalog but catalogVersion was not bumped (> ${base.catalogVersion})`);
+  return out;
 }
 
 /**
@@ -242,8 +274,8 @@ export class ConfigStore {
   /** Validates without storing. Returns the problems (empty = valid). */
   validate(bundle: unknown): string[] {
     try {
-      const { ruleset } = resolveBundle(this.base, bundle as ConfigBundle);
-      return this.rulesetVersionProblems(ruleset);
+      const { ruleset, master } = resolveBundle(this.base, bundle as ConfigBundle);
+      return [...this.rulesetVersionProblems(ruleset), ...this.catalogVersionProblems(master.assetCatalog)];
     } catch (e) {
       return (e as Error).message.split('; ');
     }
@@ -256,6 +288,16 @@ export class ConfigStore {
       if (v.rulesetVersion !== ruleset.rulesetVersion) continue;
       const other = canonicalJson(resolveBundle(this.base, v.bundle).ruleset);
       if (other !== content) return [`rulesetVersion ${ruleset.rulesetVersion} is already used by ${v.id} with different values`];
+    }
+    return [];
+  }
+
+  /** REQ-DLV-005: like rulesetVersion, an asset catalogVersion names exactly one content across stored versions. */
+  private catalogVersionProblems(cat: AssetCatalog | undefined): string[] {
+    if (!cat) return [];
+    for (const v of this.repo.versions()) {
+      const other = v.bundle.assets as AssetCatalog | undefined;
+      if (other && other.catalogVersion === cat.catalogVersion && !sameCatalogContent(other, cat)) return [`assets: catalogVersion ${cat.catalogVersion} is already used by ${v.id} with different content`];
     }
     return [];
   }
@@ -283,6 +325,7 @@ export class ConfigStore {
     if (!v) throw new AppError('NOT_FOUND', `config version ${versionId}`);
     resolveBundle(this.base, v.bundle); // a base-master change could have invalidated an old version
     const a: Activation = { id: `act_${this.repo.nextSeq('activation')}`, versionId, at: Math.max(at, now), createdAt: now, by, reason, kind, cancelled: false };
+    this.dayRuleChainCheck(now, a);
     this.repo.putActivation(a);
     return a;
   }
@@ -293,6 +336,7 @@ export class ConfigStore {
     if (!a) throw new AppError('NOT_FOUND', `activation ${activationId}`);
     if (a.cancelled) return a;
     if (a.at <= now) throw new AppError('CONFLICT', 'activation already in effect; use rollback');
+    this.dayRuleChainCheck(now, null, a.id); // the activation after it gets a new neighbour
     const c = { ...a, cancelled: true };
     this.repo.putActivation(c);
     return c;
@@ -310,10 +354,40 @@ export class ConfigStore {
     }
     if (target === BASE_VERSION_ID) {
       const a: Activation = { id: `act_${this.repo.nextSeq('activation')}`, versionId: BASE_VERSION_ID, at: now, createdAt: now, by, reason, kind: 'rollback', cancelled: false };
+      this.dayRuleChainCheck(now, a);
       this.repo.putActivation(a);
       return a;
     }
     return this.schedule(target, now, by, reason, now, 'rollback');
+  }
+
+  private dayRuleOf(versionId: string): DayRollover {
+    if (versionId === BASE_VERSION_ID) return dayRule(this.base);
+    return dayRule(resolveBundle(this.base, this.get(versionId).bundle).master);
+  }
+
+  /**
+   * REQ-DAY-002: an activation may not change the game day rule retroactively or with less than the lead time. Checked
+   * over the whole timeline that the change would produce (QA r9): the new activation against the one before it, and
+   * every pending activation against its (possibly new) predecessor — inserting, rolling back or cancelling gives the
+   * next pending activation a new neighbour. Activations already in effect are history and are not re-checked.
+   */
+  private dayRuleChainCheck(now: number, added: Activation | null, removedId?: string) {
+    const all = this.repo.activations().filter((x) => !x.cancelled && x.id !== removedId);
+    if (added) all.push(added);
+    all.sort(byTime);
+    const rules = new Map<string, DayRollover>();
+    const ruleOf = (id: string) => { let r = rules.get(id); if (!r) { r = this.dayRuleOf(id); rules.set(id, r); } return r; };
+    let prev = BASE_VERSION_ID;
+    const problems: string[] = [];
+    for (const x of all) {
+      if (x === added || x.at > now) {
+        const p = dayRolloverChangeProblems(ruleOf(prev), ruleOf(x.versionId), x.at);
+        if (p.length) problems.push(...(x === added ? p : p.map((m) => `pending activation ${x.id} (${x.versionId}) would become invalid: ${m}`)));
+      }
+      prev = x.versionId;
+    }
+    if (problems.length) throw new AppError('CONFIG_INVALID', problems.join('; '));
   }
 
   private effectiveHistory(now: number) {

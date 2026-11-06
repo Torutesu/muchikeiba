@@ -92,6 +92,7 @@ tools/figma-prototype/build.sh
 2. エンジンを WebAssembly に変換
 3. 素材をコピー（画像の縮小、相棒の切り抜き、FBX モデル、フォントの絞り込み）
 4. ロジックとエンジンのテスト（`test/round8.test.mjs`：チュートリアルの勝ち条件、デブリーフ、固有スキル、ショップ・パス・同意・削除）
+5. Round 9 のスカウトのテスト（`test/round9-gacha.test.mjs`：開催カレンダー・天井の表示と持ち越し・ステップアップ・終了の境目。めくりの順・一覧・残り時間は Unity のゲーム層の `GachaRevealModel` / `BannerListModel` を WebAssembly で動かしたもの）
 
 生成物（`site/js/logic.js`、`site/engine/`、`site/art/`、`site/data/`、`site/fonts/`、`site/models/`）は git には入れません。three.js（MIT）は `site/vendor/three/` にそのまま入れてあります。
 

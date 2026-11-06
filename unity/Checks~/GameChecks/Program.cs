@@ -58,9 +58,16 @@ static class Program
         await SkillChecks.Run(Check, Root);
         Console.WriteLine("== room close codes over a real WebSocket (replaced → no reconnect loop)");
         await CloseCodeChecks.Run(Check, Ruleset());
+        Console.WriteLine("== scout reveal, banner calendar and pity meter (06 §6.5 / §7 item 7, REQ-GACHA-011..015)");
+        GachaChecks.Run(Check);
         Console.WriteLine("== race feel, tutorial win rule, camera and result debrief (06 §2.3 / §6.3 / §6.4)");
         RaceFeelChecks.Run(Check, Ruleset());
         await Round8Checks.Run(Check, Ruleset());
+        await Round8Checks.DayRollover(Check, Ruleset());
+        Console.WriteLine("== round 9: replay share, account-link prompt, friend ghosts (06 §7 / §7.3)");
+        await Round9Checks.Run(Check, Ruleset());
+        Console.WriteLine("== asset delivery: boot/FTUE download screen (sizes, Wi-Fi warning, never blocks the tutorial, offline)");
+        await AssetDeliveryChecks.Run(Check);
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);
@@ -371,6 +378,7 @@ static class Program
         var noTicket = await items.UseTicketAsync(ItemsBackend.GachaTicket, "standard");
         Check(!noTicket.Ok && noTicket.Message.StartsWith("INSUFFICIENT_ITEMS"), "using a ticket you do not have is refused with INSUFFICIENT_ITEMS (" + noTicket.Message + ")");
         await OnlineScreens(b);
+        await GachaChecks.Online(Check, b);
 
         int pointsBefore = b.Player.SeasonPoints;
         var sw = Stopwatch.StartNew();

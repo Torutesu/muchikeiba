@@ -101,15 +101,17 @@ namespace Muchi.Engine.Tests
         }
 
         [Fact]
-        public async Task Round8EventsMatchTheServerSchemas()
+        public async Task Round8And9ClientEventsMatchTheServerSchema()
         {
-            // server/src/domain/kpi.ts clientEventSchema (REQ-UXS-030): strict props, enum values, the FTUE index = position + 1
+            // server/src/domain/kpi.ts clientEventSchema (REQ-UXS-030 + share, REQ-UXS-072): strict props, enum values,
+            // the FTUE index = position + 1, Firebase provider ids mapped to apple/google
             var ev = new[]
             {
                 AnalyticsEvent.FeatureUnlock(1, "shop"), AnalyticsEvent.OfferView(2, "starter_pack", "T2"), AnalyticsEvent.OfferClick(3, "starter_pack", "T2"),
                 AnalyticsEvent.RaceQuit(4, "event", -5), AnalyticsEvent.AccountLink(5, "google"), AnalyticsEvent.FtueStep(6, "home"), AnalyticsEvent.FtueStep(7, "race1_win", 2),
+                AnalyticsEvent.RaceQuit(8, "ranked", 420), AnalyticsEvent.AccountLink(9, "apple.com"), AnalyticsEvent.Share(10, "replay_video"),
             };
-            _http.Reply(200, "{\"accepted\":7,\"dropped\":0}");
+            _http.Reply(200, "{\"accepted\":10,\"dropped\":0}");
             await _api.SendAnalyticsAsync("ios", "1", ev);
             Assert.Equal(Canon("{\"platform\":\"ios\",\"appVersion\":\"1\",\"events\":["
                 + "{\"name\":\"feature_unlock\",\"at\":1,\"props\":{\"feature\":\"shop\"}},"
@@ -118,11 +120,16 @@ namespace Muchi.Engine.Tests
                 + "{\"name\":\"race_quit\",\"at\":4,\"props\":{\"mode\":\"event\",\"remainingM\":0}},"
                 + "{\"name\":\"account_link\",\"at\":5,\"props\":{\"provider\":\"google\"}},"
                 + "{\"name\":\"tutorial_step\",\"at\":6,\"props\":{\"step\":\"home\",\"index\":8}},"
-                + "{\"name\":\"tutorial_step\",\"at\":7,\"props\":{\"step\":\"race1_win\",\"index\":4,\"value\":2}}]}"), Canon(_http.Requests[0].Body));
+                + "{\"name\":\"tutorial_step\",\"at\":7,\"props\":{\"step\":\"race1_win\",\"index\":4,\"value\":2}},"
+                + "{\"name\":\"race_quit\",\"at\":8,\"props\":{\"mode\":\"ranked\",\"remainingM\":420}},"
+                + "{\"name\":\"account_link\",\"at\":9,\"props\":{\"provider\":\"apple\"}},"
+                + "{\"name\":\"share\",\"at\":10,\"props\":{\"kind\":\"replay_video\"}}]}"), Canon(_http.Requests[0].Body));
             Assert.Throws<ArgumentException>(() => AnalyticsEvent.OfferView(0, "starter_pack", "shop"));
+            Assert.Throws<ArgumentException>(() => AnalyticsEvent.OfferView(0, "starter_pack", "T9"));
             Assert.Throws<ArgumentException>(() => AnalyticsEvent.RaceQuit(0, "derby", 1));
             Assert.Throws<ArgumentException>(() => AnalyticsEvent.AccountLink(0, "line"));
             Assert.Throws<ArgumentException>(() => AnalyticsEvent.FtueStep(0, "first_ride"));
+            Assert.Throws<ArgumentException>(() => AnalyticsEvent.Share(0, "replay_gif"));
         }
 
         [Fact]

@@ -49,7 +49,7 @@ describe('seasonal (季節限定) horses (REQ-BREED-020..023)', () => {
     expect(winter.pool.some((e) => e.templateId === 't_hatsuyuki')).toBe(true);
     expect(winter.pool.reduce((a, e) => a + e.ppm, 0)).toBe(1_000_000);
     const d = oddsDisclosure(m, winter);
-    expect(d.period).toEqual({ startAtMs: winter.startAtMs, endAtMs: winter.endAtMs });
+    expect(d.period).toEqual({ startAtMs: winter.startAtMs, endAtMs: winter.endAtMs, lastDay: '2027-01-10' });
     expect(d.limitedNotice).toContain('入手済みの馬はそのまま');
     const row = d.items.find((r) => r.templateId === 't_seiya')!;
     expect(row).toMatchObject({ ppm: 15000, rate: '1.5000%', limited: { seasonId: 'winter_2026', label: '冬季限定', endAtMs: se.endAtMs } });
@@ -71,7 +71,7 @@ describe('seasonal (季節限定) horses (REQ-BREED-020..023)', () => {
   it('closed before and after the window; owned horses stay after it, and pity converts to the permanent pool', () => {
     const s = freshPlayer();
     grantFree(s, 5000, NOW, 'test', 't');
-    expect(() => drawGacha(m, s, 'winter_2026', 10, seededRng(1), NOW)).toThrow(/BANNER_CLOSED/);
+    expect(() => drawGacha(m, s, 'winter_2026', 10, seededRng(1), NOW)).toThrow(expect.objectContaining({ code: 'BANNER_CLOSED' }));
     const during = winter.startAtMs! + 1000;
     let got: HorseInstance | undefined;
     for (let seed = 1; seed < 400 && !got; seed++) {
@@ -82,7 +82,7 @@ describe('seasonal (季節限定) horses (REQ-BREED-020..023)', () => {
     expect(got).toBeDefined();
     expect(s.pity.winter_2026).toBeGreaterThan(0);
     const after = winter.endAtMs! + 1;
-    expect(() => drawGacha(m, s, 'winter_2026', 1, seededRng(2), after)).toThrow(/BANNER_CLOSED/);
+    expect(() => drawGacha(m, s, 'winter_2026', 1, seededRng(2), after)).toThrow(expect.objectContaining({ code: 'BANNER_CLOSED' }));
     const points = s.pity.winter_2026!;
     const before = s.pity.standard ?? 0;
     settlePityGroups(m, s, after);

@@ -107,6 +107,8 @@ export interface PlayerState {
   items: Record<string, number>;
   materials: { awakening: number };
   pity: Record<string, number>;
+  /** REQ-GACHA-014: step-up 10-pulls done per banner id (absent until the first one). */
+  stepUp?: Record<string, number>;
   purchases: PurchaseRecord[];
   firstPurchased: string[];
   monthlySpendYen: Record<string, number>;
@@ -271,7 +273,7 @@ export function playerView<E extends object = object>(s: PlayerState, banned?: B
     ...(extra ?? ({} as E)),
     id: s.id,
     wallet: { paid: s.wallet.paid, free: s.wallet.free, total: s.wallet.paid + s.wallet.free, debt: s.wallet.debt },
-    items: s.items, materials: s.materials, pity: s.pity, horses: s.horses,
+    items: s.items, materials: s.materials, pity: s.pity, stepUp: s.stepUp ?? {}, horses: s.horses,
     ageRegistered: s.age !== null, flags: s.flags, seasonPass: s.seasonPass, loginBonus: s.loginBonus,
     rating: { r: Math.round(s.rating.r), rd: Math.round(s.rating.rd), rankedRaces: s.rating.rankedRaces }, season: s.season,
     profile: { displayName: s.profile.displayName, titleId: s.profile.titleId, silks: effectiveSilks(s.profile.silks, `p:${s.id}`, banned) }, titles: s.titles, stats: s.stats,

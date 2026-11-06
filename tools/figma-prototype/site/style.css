@@ -124,6 +124,18 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
 .rcard.r-SSR { border-color: #ffd414; box-shadow: 0 0 50px rgba(255,212,20,.8), inset 0 0 60px rgba(255,212,20,.3); background: linear-gradient(160deg, #3a2c05, #120c00); }
 .rcard.r-SSR .shape, .rcard.r-SSR .rar { color: #ffd414; }
 .rcard.flip { animation: flip .6s cubic-bezier(.2,.8,.3,1.2) both; }
+/* round 9 (06 §6.5 / §9.3): frame pattern per tier so rarity reads without color too; card back glows before the flip */
+.rcard.f-double { outline: 3px solid currentColor; outline-offset: -14px; }
+.rcard.f-burst { outline: 4px dashed #ffd414; outline-offset: -16px; }
+.rcard.back { cursor: pointer; background: radial-gradient(circle at 50% 45%, var(--glow, #8fb4cc) 0%, rgba(7,19,31,.95) 62%); animation: glow .38s ease-in both; }
+.rcard.back .rar { font-size: 26px; letter-spacing: 0; color: #fff; }
+@keyframes glow { from { filter: brightness(.4); } to { filter: brightness(1.15); } }
+.rcard.new .tag { color: #ffd414; font-weight: 700; }
+.rcard.dup .tag { color: #9fd8ec; }
+.panel.banner-row { cursor: pointer; border-left: 5px solid transparent; }
+.panel.banner-row.sel { border-left-color: #00ccf2; }
+.panel.banner-row[data-status="upcoming"] { opacity: .85; border-left-style: dashed; }
+.label[data-countdown] { font-variant-numeric: tabular-nums; }
 @keyframes flip { from { transform: perspective(900px) rotateY(90deg) scale(.9); opacity: .2; } to { transform: none; opacity: 1; } }
 .img.walkin { animation: walkin 2.4s ease-out both; }
 @keyframes walkin { from { transform: translateX(-520px); opacity: 0; } 60% { opacity: 1; } to { transform: none; } }

@@ -205,7 +205,7 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 - `StableSnapshot`（訪問者が見る写し。財布・所持品・購入は含まない）：`{ v:1, playerId, displayName, titleId, classId, silks, name, theme:{id,name,key}, slots:({itemId,name,key}|null)[]（テーマの枠数ぶん）, horses:[{horseId,name,rarity,style,appearance,bondLevel}], autoHorses, trophies:{titleIds[],races,wins,top3,tournamentWins,tournamentPodiums}, likes, updatedAt }`。`name` が null なら「<displayName>の厩舎」と表示する。`horses` は選んだ現役馬、選んでいなければ現役馬の上位（`autoHorses: true`）。
 - `StableSummary`：`{ playerId, displayName, titleId, name, themeKey, likes, decorCount, horseCount, updatedAt }`。
 - 保存の検証：テーマが存在し解放済み（`NOT_ELIGIBLE`）、`slots` はテーマの枠数以下（`BAD_REQUEST`）、各飾りは厩舎の飾り（`decor`）で所持済み・重複なし（REQ-ITEM-006 と同じ：所持なし `NOT_ELIGIBLE`、種類違い・重複 `BAD_REQUEST`、不明 `NOT_FOUND`）、`featuredHorseIds` は `featuredMax` 以下・重複なし・自分の現役馬（`HORSE_NOT_FOUND` / `HORSE_NOT_ACTIVE`）、表札は表示名と同じ規則（`INVALID_NAME` / `NG_NAME`、1〜`nameMaxChars` 字）。利用停止中は `403 BANNED`。
-- いいね：自分には押せない（`NOT_ELIGIBLE`）、同じ相手には1日 `likesPerTargetPerDay` 回（`409 ALREADY_LIKED`）、1日 `likesPerDay` 回まで（`409 LIKE_LIMIT`）。日付はゲーム日（`gameDayKey`、切り替えは `DAY_ROLLOVER_HOUR_JST`、§8.7・REQ-UXS-011）。押した側・押された側とも**コインは一切付かない**（累計いいねで解放されるのはテーマだけ）。同じ冪等キーの再送は1回分しか数えない。途中で失敗した場合も同じキーで再送すれば完了する。
+- いいね：自分には押せない（`NOT_ELIGIBLE`）、同じ相手には1日 `likesPerTargetPerDay` 回（`409 ALREADY_LIKED`）、1日 `likesPerDay` 回まで（`409 LIKE_LIMIT`）。日付はゲーム日（`gameDayKey`、切り替えは `progression.dayRollover`、§15・REQ-DAY-001）。押した側・押された側とも**コインは一切付かない**（累計いいねで解放されるのはテーマだけ）。同じ冪等キーの再送は1回分しか数えない。途中で失敗した場合も同じキーで再送すれば完了する。
 - C# の `ApiErrorCode`：`LikeLimit` / `AlreadyLiked`。
 - アカウント削除（§8.7）では公開の写し・レイアウト・いいねの状態を消す。削除済みのプレイヤーの厩舎は `404 NOT_FOUND`、その人が過去に押したいいねの数はそのまま残る（個人と結び付く情報は持たない）。
 
@@ -224,7 +224,7 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
   "flags": { "tutorialGachaUsed": false, "partnerHorseId": "h3" }
 }
 ```
-- `unlocks.features[].by`：開放した条件（`"always"` / `"races"` / `"days"` / `"rankedRaces"` / `"breedings"`）、未開放は null。条件は「どれか1つ」を満たせば開く（§4.3）。**表示だけの制御**で、未開放の機能のAPIもそのまま使える。`day` はインストール日を1とするゲーム日（日付の切り替えは `DAY_ROLLOVER_HOUR_JST`、REQ-UXS-011）。キーは `race, partner, scout, stable, missions, login_bonus, shop, season_pass, bond, season, breeding, friends, friend_rooms, teams, spectate, time_attack, events, tournaments, my_stable, stud`。
+- `unlocks.features[].by`：開放した条件（`"always"` / `"races"` / `"days"` / `"rankedRaces"` / `"breedings"`）、未開放は null。条件は「どれか1つ」を満たせば開く（§4.3）。**表示だけの制御**で、未開放の機能のAPIもそのまま使える。`day` はインストール日を1とするゲーム日（日付の切り替えは `progression.dayRollover`、§15）。キーは `race, partner, scout, stable, missions, login_bonus, shop, season_pass, bond, season, breeding, friends, friend_rooms, teams, spectate, time_attack, events, tournaments, my_stable, stud`。
 - `experiments.values` のキーは `tutorialDistanceM`（整数）、`firstRankedTrackId`（コースID or null、サーバーが初めてのランク戦で使う）、`pushPermissionTiming`（`race2_top3`|`day2_launch`）、`starterOfferTrigger`（`first_bottom_half`|`fifth_race`）、`homePrimaryButton`（`race`|`ranked_promotion`）、`firstWinBonus`（bool）だけ。価格・中身はA/Bにしない。
 
 | メソッド・パス | 本文 | 応答 | エラー |
@@ -244,7 +244,7 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 - 削除の処理が始まった後（予定時刻にアラームが最初に「開始」を記録してから。14日の予約期間中ではない）は取り消せず（`DELETION_IN_PROGRESS`）、そのプレイヤーからのフレンド申請・承認・招待、ランク戦・大会・タイムアタック（開始・提出）・イベントへの参加、マイ厩舎のいいね（自分の回数も増えない）は `DELETION_PENDING` で断る。予約期間中は購入前チェック・オファー・厩舎手当（上の表）以外はそのまま使える。開始の前に取り消された削除は、処理が何もせずに止まる。
 - 削除後に届いたストアの返金：取引の索引は匿名IDに付け替わっているので、返金は AccountingDO の保存記録に付ける（その購入を返金済みにし、`refundsAfterDeletion` に追記、台帳に `refund` 行（コインは放棄済みなので delta 0）を足して `rev` を上げる。同じ返金は1回だけ）。応答は `{ "retained": true, "anonId", "transactionId", "alreadyRefunded", "priceYen", "paidCoins", "bonusCoins" }`。
 - 削除の流れ：予定時刻にプレイヤーのDurable Objectのアラームが、フレンド（相手側の一覧・申請）→ 支部（リーダーなら幹部→古参の順に譲ってから脱退、申請の取り消し）→ ディレクトリ（フレンドコード・公開プロフィール・種牡馬の登録）→ マイ厩舎の公開の写し（あれば）→ ランキング（今シーズンは削除、過去シーズンは名前を「退会したプレイヤー」に）とゴースト → イベントの順位表 → 大会（受付中は登録取り消し、以降は名前だけ匿名化）→ 残高の放棄（有償・無償コインに加え、厩舎手当の残りと予約分、シーズンパスの状態）と匿名の記録の作成 → 記録の保存（AccountingDO、ランダムID、法定の保存期間）→ プレイヤーの全データ削除、の順に進める。失敗したら続きから再試行（1分・10分・1時間・以後6時間ごと）。
-- クライアントイベント（`POST /v1/analytics/events`）：`tutorial_step` の `step` は `consent, race1_start, race1_whip, race1_win, named, gacha_done, race2_done, home` だけ。`index` は省略可（送るならこの順の番号）、任意の `value`（整数、`race1_win` ではやり直し回数）。追加：`feature_unlock {feature}`、`offer_view` / `offer_click {offerId, trigger: T1..T8}`、`race_quit {mode, remainingM}`、`account_link {provider: apple|google}`。
+- クライアントイベント（`POST /v1/analytics/events`）：`tutorial_step` の `step` は `consent, race1_start, race1_whip, race1_win, named, gacha_done, race2_done, home` だけ。`index` は省略可（送るならこの順の番号）、任意の `value`（整数、`race1_win` ではやり直し回数）。追加：`feature_unlock {feature}`、`offer_view` / `offer_click {offerId, trigger: T1..T8}`、`race_quit {mode, remainingM}`、`account_link {provider: apple|google}`、`share {kind: replay_video|replay_image}`（REQ-UXS-072）。
 
 ## 9. ゴールデンファイル（`contracts/golden/`）
 - `race-*.json`：`{ "log": リプレイログ, "expected": 検証APIの出力 }`。C#側が生成し、C#テストで再計算一致を、TSテストでスキーマ適合を確認する。
@@ -274,7 +274,7 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 - **チュートリアル**（端末内、400mの直線で全部がスパート区間）は `staminaDistanceScalePermille` と `spurtDistanceScalePermille` を 0 にして走る（1.1.0 と同じ量・長さ）。
 
 ## 13. ショップ・課金体験の API（REQ-UXS-010/017〜022、docs/planning/06 §5・§6.8・§6.9）
-表示の文言・数量・期間は全てサーバーが作る。クライアントは組み立てない（「2倍」などの倍率表現は使わない。初回購入ボーナスは「無償コイン◯枚」）。時刻は ms（UTC エポック）、日付はゲーム日の `YYYY-MM-DD`（`gameDayKey`、切り替えは `DAY_ROLLOVER_HOUR_JST`、§8.7・REQ-UXS-011。既定 0:00 JST なので JST の日付と同じ）、残り日数（`remainingDays`）もゲーム日で数える。シーズンは JST の暦月 `YYYY-MM`（暦のまま）。**このセクションで新しいエラーコードは無い**（既存のコードの意味を下に追記。アカウント削除の予約中は §8.7 の `DELETION_PENDING`）。
+表示の文言・数量・期間は全てサーバーが作る。クライアントは組み立てない（「2倍」などの倍率表現は使わない。初回購入ボーナスは「無償コイン◯枚」）。時刻は ms（UTC エポック）、日付はゲーム日の `YYYY-MM-DD`（`gameDayKey`、切り替えは `progression.dayRollover`、§15。2026-12-01 04:00 JST から 4:00 JST、それまでは 0:00 JST）、残り日数（`remainingDays`）もゲーム日で数える。シーズンは JST の暦月 `YYYY-MM`（暦のまま）。**このセクションで新しいエラーコードは無い**（既存のコードの意味を下に追記。アカウント削除の予約中は §8.7 の `DELETION_PENDING`）。
 
 ### 13.1 `GET /v1/shop/products`（認証なし、REQ-UXS-022）
 従来のフィールド（`id, kind, priceYen, paidCoins, once?, items?`）はそのまま。追加は表示用：
@@ -371,3 +371,101 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 - イベント `Skill`（値12）：Slot = 発動した馬、Value = 発動した時の順位（前のtickの順位、0 = 先頭）。表示・実況用で、チェックサムと結果ハッシュには入らない（スキルの影響は速度・スタミナとしてチェックサムに現れる）。
 - **サーバーが送る値**：`server/master/skills.json` の値を、ステータスを正規化するレース（ランク戦・大会・クラス上限のあるイベント）では `rankedCaps` で頭打ちにして送る。タイムアタック・チュートリアル・能力固定のイベントでは送らない。CPU の馬はテンプレートのスキルを持つ（乱数なし）。
 - ゴールデン：`contracts/golden/race-turf2000-skills.json`（8種類の条件すべてが発動する）。1.2.0 のゴールデンは `contracts/golden/legacy/*.ruleset-1.2.0.json` に残し、今も同じ結果で検証できることをテストしている。
+
+## 15. ゲーム日（REQ-DAY-001〜006、`server/src/domain/time.ts`）
+- **ゲーム日**＝ JST の切り替え時刻からの24時間。キーは `YYYY-MM-DD`＝「JST の時刻から切り替え時刻を引いた日付」（例：4:00 切り替えなら 12月5日 03:59 JST は `2026-12-04`、04:00 は `2026-12-05`）。JST に夏時間は無い。
+- 規則はマスター／リモート設定の `progression.dayRollover`：`{ "hourJst": 4, "previousHourJst": 0, "effectiveAtMs": 1796065200000 }`。`effectiveAtMs`（2026-12-01 04:00 JST）より前は `previousHourJst`、以後は `hourJst`。`GET /v1/config` が同じ形で `dayRollover` を返す（認証なし）。端末は日付・残り日数の表示にこの規則を使い、サーバーが返す `remainingDays`・`endsAt`・`lastClaimDate` などを正とする。
+  ```json
+  { "versionId": "base", "hash": "base", "rulesetVersion": "1.3.0", "activatedAt": null, "visualsVersion": "…",
+    "dayRollover": { "hourJst": 4, "previousHourJst": 0, "effectiveAtMs": 1796065200000 } }
+  ```
+- 端末の計算（C# は TS と同じ式）：`hour = now < effectiveAtMs ? previousHourJst : hourJst`、`index = floor((now + 9h − hour·1h) / 24h)`、`key = UTC日付(now + 9h − hour·1h)`、残り日数 `= index(endsAt − 1) − index(now) + 1`（終わっていれば0）。
+- 切り替えの日：0→4 を 4:00 で切り替えると `2026-12-01` が 00:00〜翌 04:00 の28時間になる（二重リセットも欠ける日も無い）。規則の変更は効く時刻の1時間以上前に配信され、切り替えの瞬間に日の番号が戻らない時刻しか受け付けない（REQ-DAY-002）。
+- **ゲーム日で決まるもの**：ログインボーナス（`lastClaimDate`）・初心者ログボの日数・デイリーミッション（`missions.date`）・初勝利ボーナス（`dailyWins`）・フレンド戦報酬の上限・世話・配合（追加の配合を含む）・TA の回数・種牡馬の貸し借り・マイ厩舎のいいね（`likeId` の日付部分）・厩舎手当の受け取り日（`startDate`〜`endDate` もゲーム日）・通知の1日上限・その日の馬場・プレイヤーの「n日目」（機能の開放）・シーズンパスとオファーの `remainingDays`。
+- **暦（0:00 JST）で決まるもの**：シーズン（月）・ランキング・支部リーグ・シーズンパスの終了（`endsAt` = 翌月1日 00:00 JST）と購入できる月・オファーの `endsAt`・月額の課金上限・有償残高の基準日・KPI の日付・シーズンのお知らせ・ナイターの時間帯。月初の 0:00〜3:59 は新しいシーズンで、ゲーム日はまだ前月末。
+
+## 16. アセット配信（REQ-DLV-001〜010、`server/src/domain/assetCatalog.ts`、C# `AssetCatalog.cs`・`AssetDownloader.cs`）
+
+キー（`contracts/assets.md`）ごとに「CDN のどのファイルか」を返すカタログ。サーバーは絵や音を持たず、ファイルは CDN（R2）に置く。
+
+### 16.1 `GET /v1/assets/catalog?platform=ios|android`（認証なし）
+
+```json
+{
+  "catalogVersion": 2, "manifestVersion": 2, "platform": "ios",
+  "hash": "<sha256 hex>", "baseUrl": "https://assets.example.com",
+  "urlTemplate": "{base}/{platform}/{sha256}/{file}",
+  "policy": { "ftueBlockingMaxBytes": 3000000, "cellularWarnBytes": 50000000, "tutorialMaxWaitMs": 3000, "maxParallel": 4 },
+  "groups": ["boot", "ftue", "home", "race", "shop", "ondemand"],
+  "entries": [
+    { "key": "horse/coat/bay", "file": "horse/coat/bay.bundle", "sha256": "<64 hex>", "size": 183422, "group": "race", "required": false }
+  ]
+}
+```
+
+- `platform` が無い・不正 → 400 `BAD_REQUEST`。`entries` はキー順。複数のキーが同じ `file` を指してよい（1つの AssetBundle に複数キー）。
+- **ETag** = `"<hash>"`（`hash` は `hash` 以外の全フィールドの正規化 JSON の SHA-256。CDN の基点も含む）。`If-None-Match` が一致すれば **304**（本文なし）。`Cache-Control: public, max-age=60, must-revalidate`。
+- URL = `urlTemplate` の `{base}`・`{platform}`・`{sha256}`・`{file}` を置き換えたもの（TS `assetUrl`、C# `AssetCatalog.UrlFor`）。既定はハッシュ入りのパスなので **CDN 上のファイルは不変**（長期キャッシュ可、作り直しは別パス）。
+- `baseUrl` は wrangler の変数 `ASSET_CDN_BASE`（秘密ではない）。**カタログやリモート設定には CDN のホスト・トークン・署名を書けない**（`urlTemplate` は `{base}/` で始まり、`?`・`#` を含まない）。未設定なら `""` で、クライアントは何も取得せずアプリ同梱のアセットと `<kind>/default` で動く。
+- `GET /v1/config` に `assetCatalogVersion` が付く。クライアントは手元のカタログの `catalogVersion` と違えば取り直す（`AssetCatalogStore.IsStale`）。
+- 古いサーバー（この経路が無い＝404）・通信できない場合、クライアントは保存済みのカタログ、それも無ければ空のカタログで続行する（落とさない）。
+
+### 16.2 グループと required（REQ-DLV-003）
+
+| group | いつ取得するか |
+|---|---|
+| `boot` | 起動時。全 kind の `<kind>/default` は必ずここで `required: true`（REQ-ASSET-002） |
+| `ftue` | チュートリアル前。`required` のものだけ待つ（合計は `policy.ftueBlockingMaxBytes` 以下、上限 5MB） |
+| `home` / `race` / `shop` | チュートリアルの裏・後で先読み（待たない） |
+| `ondemand` | 画面が必要になった時（`AssetDownloader.EnsureAsync`）。馬名の音声など |
+
+- `required: true` は `boot`・`ftue` のみ。それ以外は**どの画面も待たない**（無ければフォールバック）。
+- **チュートリアルは最大 `policy.tutorialMaxWaitMs`（上限 5000ms、クライアントでも頭打ち）しか待たない**。超えたら仮の表示で始める（docs/planning/06 §2：初レース開始5秒以内・aha① 30秒以内）。
+- モバイル通信で裏の取得が `policy.cellularWarnBytes` を超えるときは、サイズを出して確認する（Wi-Fi 推奨）。待たせるのは裏の取得だけ。
+
+### 16.3 カタログの元と検証（REQ-DLV-004/005/008）
+
+- 元：`server/master/assets-catalog.json`（`npm run scan:assets` が `unity/AssetDelivery~/` から生成。手で編集しない）。リモート設定のバンドルに `assets`（同じ形）を入れると置き換わる。
+- 検証（起動時・スキャナ・リモート設定の各版）：キーの形式と kind、`file` は小文字の相対パスで `..` なし、`sha256` は64桁、`size` ≥ 1、同じ `file`・同じ `sha256` は同じ内容、`<kind>/default` は boot かつ required、required は boot/ftue のみ、required の合計 ≤ `ftueBlockingMaxBytes`、`policy` の上限、`urlTemplate` の規則。
+- **内容を変えたら `catalogVersion` を上げる**：基準（同梱のカタログ）と同じ番号で内容が違う、基準より古い番号、他の保存済みの版と同じ番号で内容が違う、はすべて `CONFIG_INVALID`。
+
+### 16.4 クライアントの保存とダウンロード（REQ-DLV-006/007）
+
+- 保存先（Unity は `Application.persistentDataPath/muchi-assets`）：`blobs/<sha[0..2]>/<sha256>`（検証済み・完全なファイルだけ。原子的な rename でのみ作る）、`partial/<sha256>.part`（途中）、`catalog-<platform>.json`（最後に取得できたカタログ。`.tmp` に書いてから置き換え）。
+- 取得：同時数は `maxParallel`。途中で切れたら `Range: bytes=<n>-` で再開（206 なら追記、200 なら最初から、416 なら捨てて最初から）。ネットワーク・5xx・429・途中切れはバックオフで再試行、404/403/410 は再試行しない。完了後に SHA-256 を照合し、違えば捨てて取り直す（規定回数で `Corrupt`）。同じファイルへの同時の要求は1回の転送にまとめる。
+- 容量：空き容量（予備を残す）と `MaxCacheBytes` の範囲で、required → グループ順 → 小さい順に入るだけ取得し、残りは `SkippedQuota`（途中まで書かない）。足りなければ先に古い版を消す。書き込み失敗は `DiskFull`（再試行しない）。
+- 古い版の削除：新しいカタログを受け取ったら、参照されなくなった `sha256` のファイルを消す（`AssetDownloader.EvictStale`）。読み込む前に行う。
+- 表示：`AssetResolver.Resolve(key)` が「ダウンロード済み（優先）→ アプリ同梱 → `<kind>/default` → 何も出さない」を返す（`AssetKeys.Resolve` と同じ順）。
+
+## 17. ガチャの開催カレンダー・天井・ステップアップ（REQ-GACHA-011〜015、docs/planning/06 §6.5・§7 7位）
+時刻はすべてサーバーの時計で決まる。クライアントの残り時間は `serverNowMs` で端末の時計を補正して数える（C# `BannerListModel`）。
+
+**`GET /v1/gacha/banners`**（認証なし）：開催中と予告中のバナーだけ。並びは「終わりがあるもの（早く終わる順）→ 常設（マスターの順、恒常ガチャは最後）→ 予告（早く始まる順）」。
+```json
+{ "serverNowMs": 1793934000000,
+  "banners": [ { "id": "pickup_ginga", "name": "ピックアップ：ギンガノカナタ", "currency": "any", "singleAllowed": true, "priceSingle": 100 | null, "priceTen": 1000 | null,
+    "status": "active" | "upcoming", "startAtMs": 1793458800000, "endAtMs": 1796050800000, "announceAtMs": 1793199600000,
+    "lastDay": "2026-11-30", "daysLeft": 25, "pityGroup": "pickup_ginga", "pityLabel": "ピックアップ（ギンガノカナタ）", "pityCost": 100,
+    "pityTargets": ["t_ginga"], "pickup": { "templateId", "name", "rarity" } | null, "limited": false,
+    "stepUp": { "steps": 5, "afterLast": "loop" | "repeatLast", "prices": [500, 1000, 1000, 1000, 1000], "finalSlotSteps": [5] } | null } ] }
+```
+- `endAtMs` は終わりを含まない（その1 ms 前まで引ける）。常設は `startAtMs`/`endAtMs`/`daysLeft`/`lastDay` が null で、**残り時間を出さない**。`daysLeft` は今日を1と数えるゲーム日（`progression.dayRollover`、§15）。
+- 予告前（`announceAtMs` より前）のバナーは一覧に出ず、`GET /v1/gacha/:id/odds` も `NOT_FOUND`。予告中は提供割合を見られるが引けない。
+
+**`GET /v1/gacha/status`**（要認証）：
+```json
+{ "serverNowMs": 1793934000000,
+  "groups": [ { "group": "pickup_ginga", "label": "…", "points": 37, "cost": 100, "remaining": 63, "exchangeable": 0, "banners": ["pickup_ginga"],
+    "targets": [ { "templateId", "name", "owned" } ], "closesAtMs": 1796050800000 | null,
+    "carryOver": { "atMs", "toGroup": "standard", "toLabel": "恒常", "rate": "1:1", "expires": false, "toTargets": [ { "templateId", "name" } ], "notice": "…" } | null } ],
+  "banners": [ { "bannerId", "pityGroup", "points", "cost", "remaining", "coinsToExchange",
+    "stepUp": { "completed", "steps", "afterLast", "step", "round", "priceTen", "finalSlotMinRarity": "SSR" | null } | null } ] }
+```
+- 期間が終わったグループは、次の取引で行う変換（1:1・失効なし）を済ませた値で返す（表示が実際と食い違わない）。`exchangeable` はそのグループの開いているバナーで今交換できる回数。
+- `coinsToExchange`：交換まで最も安く引いた場合のコイン（10連優先、ステップアップはこの先のステップの価格の合計）。
+
+**ステップアップ**：10連のみ（1回は `BAD_REQUEST`）。一覧と提供割合では `singleAllowed: false`・`priceSingle: null`・`priceTen: null`（使える価格はステップの価格だけ。古いサーバーは `singleAllowed` を送らない＝true）。ステップの表を持たないステップの10枠目は「1〜9枠目にSR以上が出なかった場合は保証の表、それ以外は上の表」と書く。価格は今のステップの `priceTen`。`finalSlotPool` を持つステップは10枠目を必ずその表で引く（SR以上だけ。`guaranteed: true`）。チケットは使えない（`NOT_ELIGIBLE`、設定の検証でも弾く）。`POST /v1/gacha/:id/draw` の応答に `"stepUp": { "drawnStep": 5, "next": { …上の stepUp… } }` が加わる。
+
+**`GET /v1/gacha/:id/odds` の追加**：`period.lastDay`、`pickup: { templateId, name, rarity, ppm, rate, guaranteePpm, guaranteeRate } | null`（抽選表の行そのもの）、`stepUp: { afterLast, notice, steps: [ { step, priceTen, finalSlot: { appliesTo, items | null, rarityTotals | null } } ] } | null`、`pity.label`・`pity.costCoins`（交換までの最大コイン、ステップアップは各ステップの価格から）・`pity.closesAtMs`・`pity.carryOver`（上と同じ形）。`estimatedMaxCostYen` は `costCoins` から計算する。
+
+**期間外の操作**：引く・チケット・天井交換は `BANNER_CLOSED`（409）。`message` は `banner <id> ended at 2026-12-01 00:00 JST` / `banner <id> opens at …` / `banner <id> is not open`（予告前）。判定はその取引でサーバーが読んだ時刻（Durable Object の中で1回）。

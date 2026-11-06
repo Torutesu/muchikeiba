@@ -5,7 +5,7 @@
 import { loadMaster } from '../../../server/src/domain/master.js';
 import { PlayerService, type PlayerRepo } from '../../../server/src/domain/service.js';
 import { playerView, type PlayerState } from '../../../server/src/domain/player.js';
-import { oddsDisclosure, findBanner } from '../../../server/src/domain/gacha.js';
+import { oddsDisclosure, findBanner, bannerList, bannerStatus } from '../../../server/src/domain/gacha.js';
 import { cryptoRng } from '../../../server/src/domain/rng.js';
 import { AppError } from '../../../server/src/domain/errors.js';
 import type { Style } from '../../../server/src/domain/master.js';
@@ -14,6 +14,8 @@ import { buildRaceConfig, toRaceHorse } from '../../../server/src/domain/raceCon
 import { groundFor } from '../../../server/src/domain/ground.js';
 import { skillCatalog, horseSkill, skillView } from '../../../server/src/domain/skills.js';
 import { classDef } from '../../../server/src/domain/season.js';
+import { startTimeAttack } from '../../../server/src/domain/timeAttack.js';
+import { createHorseFromTemplate } from '../../../server/src/domain/horses.js';
 import tracksJson from '../../../server/master/tracks.json';
 
 const trackNames = new Map((tracksJson as { tracks: { id: string; name?: string }[] }).tracks.map((t) => [t.id, t.name ?? t.id]));
@@ -34,7 +36,12 @@ const master = loadMaster();
 const DAY_KEY = 'muchi.proto.dayOffset';
 const DAY_MS = 86_400_000;
 let dayOffset = (() => { try { return Math.max(0, parseInt(localStorage.getItem(DAY_KEY) ?? '0', 10) || 0); } catch { return 0; } })();
-const now = () => Date.now() + dayOffset * DAY_MS;
+// round 9: an extra shift (ms) so the demo can stand just before a banner's real end (not persisted)
+let clockShift = 0;
+const now = () => Date.now() + dayOffset * DAY_MS + clockShift;
+// a blank player state to build demo ghost riders' horses on (never stored)
+let blank: PlayerState | null = null;
+const svcStateTemplate = () => blank!;
 const svc = new PlayerService(new LocalRepo(), { master, rng: cryptoRng, clock: now, verifiers: {} });
 let n = 0;
 const key = () => `c:/proto:${Date.now()}:${n++}`;
@@ -68,8 +75,18 @@ export const MuchiLogic = {
     beginnerRaces: master.progression.beginnerRaces,
   },
   odds: (bannerId: string) => oddsDisclosure(master, findBanner(master, bannerId)),
+  // ---------------------------------------------------------------- round 9 (06 §7 item 7, REQ-GACHA-011..015)
+  // the live-ops calendar and the player's pity meter, exactly what GET /v1/gacha/banners and GET /v1/gacha/status return
+  bannerList: () => bannerList(master, now()),
+  bannerStatus: (bannerId: string) => bannerStatus(findBanner(master, bannerId), now()),
+  gachaStatus: () => svc.gachaStatus(ID),
+  /** Demo clock in ms (the banner calendar demo moves the clock to a banner's last minutes). */
+  setClockMs(ms: number | null) { clockShift = ms === null ? 0 : ms - Date.now() - dayOffset * DAY_MS; },
+  clockShift: () => clockShift,
+  legalLinks: master.shopDisplay?.legalLinks ?? [],
   async bootstrap() {
     const r = await wrap(() => svc.bootstrap(ID));
+    if (!blank) { const st = structuredClone(await svc.state(ID)); st.horses = []; blank = st; }
     // Prototype starting balance (the Unity offline build shows the same sample wallet): free coins only.
     // adminGrant is idempotent per opKey (persistent admin op set), so this grants exactly once per device.
     await wrap(() => svc.adminGrant(ID, { freeCoins: 1200 }, 'web prototype starting balance', 'prototype', 'proto-start'));
@@ -145,6 +162,39 @@ export const MuchiLogic = {
       ...(beginner && bm ? { cpuStatPermille: bm.cpuStatPermille } : {}),
     });
     return { config, beginner, trackName: trackNames.get(tId) ?? tId };
+  },
+  /**
+   * Time attack (REQ-TA-001/002/009): the session config exactly as the server issues it (startTimeAttack: the partner at
+   * timeAttack.statCap, no CPUs, the ruleset with the day's form off). Run on a copy of the state so the prototype does not
+   * use up the day's attempts.
+   */
+  async taConfig(horseId: string, trackId: string) {
+    const s = structuredClone(await svc.state(ID));
+    const r = startTimeAttack(master, s, master.progression.timeAttack, trackId, horseId, 'proto_' + Date.now().toString(36), cryptoRng, now());
+    return { config: r.config, trackName: trackNames.get(trackId) ?? trackId, attemptsLeft: r.attemptsLeft };
+  },
+  /**
+   * Ghost runs for the picker demo (REQ-TA-008 lists 上位 / フレンド / 自分). The configs are built by the server's own
+   * startTimeAttack for master horses ridden by demo players; the WASM engine then rides and times them (MuchiRace.TaGhosts),
+   * so every time on the picker is a real simulated run. `friends: false` = a player with no friend ghosts yet (fallback).
+   */
+  taGhostSeeds(trackId: string, friends = true) {
+    const pick = (rarity: string, k: number) => master.templates.filter((t) => t.rarity === rarity && !t.giftOnly && !t.seasonal)[k]!;
+    const people: { id: string; name: string; kind: 'friends' | 'top'; t: ReturnType<typeof pick>; whips: number[] }[] = [
+      { id: 'demo_friend_1', name: 'フレンドA（デモ）', kind: 'friends', t: pick('SR', 0), whips: [380, 300, 220] },
+      { id: 'demo_friend_2', name: 'フレンドB（デモ）', kind: 'friends', t: pick('R', 1), whips: [600, 500, 400] },
+      { id: 'demo_friend_3', name: 'フレンドC（デモ）', kind: 'friends', t: pick('SSR', 0), whips: [] },
+      { id: 'demo_top_1', name: '上位1（デモ）', kind: 'top', t: pick('SSR', 1), whips: [400, 320, 240] },
+      { id: 'demo_top_2', name: '上位2（デモ）', kind: 'top', t: pick('SSR', 2), whips: [360, 280, 200] },
+      { id: 'demo_top_3', name: '上位3（デモ）', kind: 'top', t: pick('SR', 2), whips: [420, 340, 260] },
+    ];
+    return people.filter((p) => friends || p.kind !== 'friends').map((p) => {
+      const s = structuredClone(svcStateTemplate());
+      s.id = p.id;
+      const h = createHorseFromTemplate(s, p.t, now());
+      const r = startTimeAttack(master, s, master.progression.timeAttack, trackId, h.id, 'ghost_' + p.id, cryptoRng, now());
+      return { id: p.id, name: p.name, horse: h.name, kind: p.kind, config: r.config, whips: p.whips };
+    });
   },
   /**
    * Demo states for the home screen (REQ-UXP-002): plays `days` game days on the real rules — each day the login bonus is

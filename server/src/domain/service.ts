@@ -13,7 +13,7 @@ import type { Rng } from './rng.js';
 import type { Clock } from './time.js';
 import { seasonIdFor, rollSeason, classDef } from './season.js';
 import { applyRefund, applySubscriptionStatus, applyVerifiedPurchase, checkPurchaseIntent, registerAge, type StoreVerifier, type SubscriptionStatus, type VerifiedReceipt } from './purchase.js';
-import { drawGacha, exchangePity, settlePityGroups } from './gacha.js';
+import { drawGacha, exchangePity, gachaStatus, settlePityGroups } from './gacha.js';
 import { awaken, breed, breedingPreviewWithAllowance, getHorse, nameHorse, pedigree, retire } from './horses.js';
 import { migrateSkills } from './skills.js';
 import { buyCosmetic, cosmeticsCatalog, setEquipment, useTicket, type EquipmentPatch } from './itemShop.js';
@@ -23,7 +23,7 @@ import { passScreen } from './pass.js';
 import { toRaceHorse } from './raceConfig.js';
 import { paidBalanceYen, invariantsHold } from './wallet.js';
 import type { PaidBalanceSnapshot } from './accounting.js';
-import { jstDateKey } from './time.js';
+import { dayRule, jstDateKey } from './time.js';
 import { enqueuePush, ensurePush, nextPushWake, pushPrefsView, registerDevice, setPushPrefs, settlePushes, takeDuePushes, unregisterDevice, type DeliveryOutcome, type DevicePlatform, type PrefsPatch } from './push.js';
 import { admitClientBatch, clientToKpi, ensureKpi, isPayer, kpiRecord, type ClientBatch, type KpiEvent, type KpiRecord } from './kpi.js';
 
@@ -405,6 +405,9 @@ export class PlayerService {
     });
   }
 
+  /** REQ-GACHA-012..014: pity meter, carry-over rule and step-up progress (read only; the period-end conversion is previewed). */
+  async gachaStatus(id: string) { return gachaStatus(this.d.master, await this.load(id), this.d.clock()); }
+
   async pityExchange(id: string, bannerId: string, templateId: string, idemKey: string | null) {
     return this.tx(id, this.requireKey(idemKey), (s, now) => exchangePity(this.d.master, s, bannerId, templateId, now));
   }
@@ -524,9 +527,9 @@ export class PlayerService {
   // REQ-UXS-040: while a deletion is scheduled no offer is shown and no daily pack is paid (like purchase-intent)
   shopOffers(id: string) { return this.tx(id, null, (s, now) => { notDeleting(s); return shopOffers(this.d.master, s, now); }); }
   markOfferViewed(id: string, offerId: string) { return this.tx(id, null, (s, now) => { notDeleting(s); return markOfferViewed(this.d.master, s, offerId, now); }); }
-  async allowance(id: string) { return allowanceView(await this.load(id), this.d.clock()); }
+  async allowance(id: string) { return allowanceView(this.d.master, await this.load(id), this.d.clock()); }
   async claimAllowance(id: string, idemKey: string | null) {
-    return this.tx(id, this.requireKey(idemKey), (s, now) => { notDeleting(s); return { ...claimAllowance(s, now), wallet: playerView(s).wallet }; });
+    return this.tx(id, this.requireKey(idemKey), (s, now) => { notDeleting(s); return { ...claimAllowance(this.d.master, s, now), wallet: playerView(s).wallet }; });
   }
   async claimPass(id: string, track: 'free' | 'premium', level: number, idemKey: string | null) {
     return this.tx(id, this.requireKey(idemKey), (s, now) => claimPass(this.d.master, s, track, level, now));
@@ -818,7 +821,7 @@ export class PlayerService {
   }
   async taView(id: string, trackId: string) {
     trackById(this.d.master, trackId);
-    return timeAttackView(await this.load(id), this.d.master.progression.timeAttack, trackId, this.d.clock());
+    return timeAttackView(await this.load(id), this.d.master.progression.timeAttack, trackId, this.d.clock(), dayRule(this.d.master));
   }
 
   // ---- teams: per-player steps, orchestrated by TeamsService (REQ-TEAM-*) ----

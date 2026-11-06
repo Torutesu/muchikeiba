@@ -85,8 +85,12 @@ function place(rng: Rng, bias: number): number {
   return Math.max(1, Math.min(12, p));
 }
 
-export async function simulate(master: Master, persona: Persona, days = 90, seed = 1): Promise<EconomyResult> {
-  const start = Date.UTC(2026, 11, 1, 3); // 12:00 JST on the 1st, a fresh season
+/**
+ * `sessionStartJstMin`: when the daily session starts, in minutes after 00:00 JST (default 12:00). 03:30 makes
+ * every session straddle the 04:00 game-day rollover (REQ-DAY-001), and the first one also the 2026-12-01 switch.
+ */
+export async function simulate(master: Master, persona: Persona, days = 90, seed = 1, sessionStartJstMin = 12 * 60): Promise<EconomyResult> {
+  const start = Date.UTC(2026, 11, 1, -9, sessionStartJstMin); // on the 1st, a fresh season
   let now = start;
   const repo = new MemoryPlayerRepo();
   const store = new FakeStoreVerifier();
@@ -229,10 +233,10 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
   return r;
 }
 
-export async function simulateAll(master: Master, days = 90, seeds = [1, 2, 3]) {
+export async function simulateAll(master: Master, days = 90, seeds = [1, 2, 3], sessionStartJstMin = 12 * 60) {
   const out: Record<string, EconomyResult> = {};
   for (const p of PERSONAS) {
-    const runs = await Promise.all(seeds.map((s) => simulate(master, p, days, s)));
+    const runs = await Promise.all(seeds.map((s) => simulate(master, p, days, s, sessionStartJstMin)));
     const avg = (f: (x: EconomyResult) => number) => runs.reduce((a, x) => a + f(x), 0) / runs.length;
     const firsts = runs.map((x) => x.firstPityDay).filter((x): x is number => x !== null);
     out[p.id] = {

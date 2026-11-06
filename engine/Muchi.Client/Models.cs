@@ -15,6 +15,7 @@ namespace Muchi.Client
         public static long Long(JsonNode o, string k, long def = 0) { var v = Opt(o, k); return v == null ? def : v.AsLong(); }
         public static long? LongN(JsonNode o, string k) { var v = Opt(o, k); return v == null ? (long?)null : v.AsLong(); }
         public static bool Bool(JsonNode o, string k) { var v = Opt(o, k); return v != null && v.AsBool(); }
+        public static bool Bool(JsonNode o, string k, bool def) { var v = Opt(o, k); return v == null ? def : v.AsBool(); }
 
         public static List<T> List<T>(JsonNode o, string k, Func<JsonNode, T> f)
         {
@@ -362,6 +363,34 @@ namespace Muchi.Client
             VersionId = J.Str(o, "versionId"), Hash = J.Str(o, "hash"), RulesetVersion = J.Str(o, "rulesetVersion"),
             ActivatedAt = J.Opt(o, "activatedAt") is JsonNode n && !n.IsNull ? n.AsLong() : (long?)null,
             VisualsVersion = J.Int(o, "visualsVersion"),
+            DayRollover = J.Opt(o, "dayRollover") is JsonNode d ? DayRolloverInfo.Parse(d) : null,
+        };
+        /// <summary>REQ-DAY-006: the game-day rule (null from an older server: assume midnight).</summary>
+        public DayRolloverInfo DayRollover;
+    }
+
+    /// <summary>
+    /// REQ-DAY-001: the game day rolls over at <see cref="HourJst"/> JST from <see cref="EffectiveAtMs"/> on, at
+    /// <see cref="PreviousHourJst"/> before it (contracts/protocol.md §15). Same formulas as server/src/domain/time.ts.
+    /// </summary>
+    public sealed class DayRolloverInfo
+    {
+        public int HourJst, PreviousHourJst;
+        public long EffectiveAtMs;
+        private const long JstOffsetMs = 9L * 3600 * 1000, HourMs = 3600L * 1000, DayMs = 24L * 3600 * 1000;
+
+        /// <summary>The rollover hour that applies to <paramref name="ms"/>.</summary>
+        public int HourAt(long ms) => ms < EffectiveAtMs ? PreviousHourJst : HourJst;
+        /// <summary>Whole game days since the epoch (server gameDayIndex).</summary>
+        public long Index(long ms) { long a = ms + JstOffsetMs - HourAt(ms) * HourMs; return a >= 0 ? a / DayMs : -((-a + DayMs - 1) / DayMs); }
+        /// <summary>The game day "YYYY-MM-DD" (server gameDayKey).</summary>
+        public string Key(long ms) => DateTimeOffset.FromUnixTimeMilliseconds(ms + JstOffsetMs - HourAt(ms) * HourMs).UtcDateTime.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        /// <summary>Game days left until <paramref name="endMs"/> (exclusive), counting today (server gameDaysUntil).</summary>
+        public int DaysUntil(long endMs, long nowMs) => endMs <= nowMs ? 0 : (int)(Index(endMs - 1) - Index(nowMs) + 1);
+
+        internal static DayRolloverInfo Parse(JsonNode o) => new DayRolloverInfo
+        {
+            HourJst = J.Int(o, "hourJst"), PreviousHourJst = J.Int(o, "previousHourJst"), EffectiveAtMs = J.Long(o, "effectiveAtMs"),
         };
     }
 
@@ -420,13 +449,33 @@ namespace Muchi.Client
     public sealed class Banner
     {
         public string Id, Name, Currency;
+        /// <summary>0 when not sold that way: a step-up banner has no single pull and no flat 10-pull price (see <see cref="SingleAllowed"/>, StepUp.Prices).</summary>
         public int PriceSingle, PriceTen;
-        public long? StartAtMs, EndAtMs;
+        /// <summary>Single pulls are offered (false on step-up banners; older servers send none → true).</summary>
+        public bool SingleAllowed = true;
+        /// <summary>Real schedule (null = permanent / no start). Count down only to <see cref="EndAtMs"/>.</summary>
+        public long? StartAtMs, EndAtMs, AnnounceAtMs;
         public bool PaidOnly => Currency == "paidOnly";
+        /// <summary>"active" or "upcoming" (REQ-GACHA-011); older servers send none → active.</summary>
+        public string Status = "active";
+        public bool Upcoming => Status == "upcoming";
+        /// <summary>The last game day it is open ("2026-11-30"), and game days left counting today (null: permanent or not open).</summary>
+        public string LastDay;
+        public int? DaysLeft;
+        public string PityGroup, PityLabel;
+        public int PityCost;
+        public string[] PityTargets = new string[0];
+        public BannerPickup Pickup;
+        /// <summary>Contains limited (季節限定) horses.</summary>
+        public bool Limited;
+        public BannerStepUp StepUp;
         internal static Banner Parse(JsonNode o) => new Banner
         {
             Id = J.Str(o, "id"), Name = J.Str(o, "name"), Currency = J.Str(o, "currency"),
-            PriceSingle = J.Int(o, "priceSingle"), PriceTen = J.Int(o, "priceTen"), StartAtMs = J.LongN(o, "startAtMs"), EndAtMs = J.LongN(o, "endAtMs"),
+            PriceSingle = J.Int(o, "priceSingle"), PriceTen = J.Int(o, "priceTen"), SingleAllowed = J.Bool(o, "singleAllowed", true), StartAtMs = J.LongN(o, "startAtMs"), EndAtMs = J.LongN(o, "endAtMs"),
+            AnnounceAtMs = J.LongN(o, "announceAtMs"), Status = J.Str(o, "status") ?? "active", LastDay = J.Str(o, "lastDay"), DaysLeft = J.IntN(o, "daysLeft"),
+            PityGroup = J.Str(o, "pityGroup"), PityLabel = J.Str(o, "pityLabel"), PityCost = J.Int(o, "pityCost"), PityTargets = J.Strs(o, "pityTargets"),
+            Pickup = BannerPickup.Parse(J.Opt(o, "pickup")), Limited = J.Bool(o, "limited"), StepUp = BannerStepUp.Parse(J.Opt(o, "stepUp")),
         };
     }
 
@@ -455,7 +504,9 @@ namespace Muchi.Client
     public sealed class OddsDisclosure
     {
         public string BannerId, Name, Currency;
+        /// <summary>0 when not sold that way (step-up: step prices only, <see cref="SingleAllowed"/> false).</summary>
         public int PriceSingle, PriceTen;
+        public bool SingleAllowed = true;
         public List<OddsRow> Items = new List<OddsRow>();
         public Dictionary<string, RarityTotal> RarityTotals = new Dictionary<string, RarityTotal>();
         public string GuaranteeAppliesTo;
@@ -471,6 +522,18 @@ namespace Muchi.Client
         public long? StartAtMs, EndAtMs;
         /// <summary>Notice shown when the table contains limited horses (null otherwise). Display verbatim.</summary>
         public string LimitedNotice;
+        /// <summary>Last game day of the period ("2026-11-30"), null when permanent.</summary>
+        public string LastDay;
+        /// <summary>The featured horse's own rate (REQ-GACHA-015), null without a pickup.</summary>
+        public OddsPickup Pickup;
+        /// <summary>Step prices and per-step slot-10 tables (REQ-GACHA-014), null for a plain banner.</summary>
+        public OddsStepUp StepUp;
+        public string PityLabel;
+        /// <summary>Coins of the cheapest way to the exchange (step prices on a step-up).</summary>
+        public int PityCostCoins;
+        public long? PityClosesAtMs;
+        /// <summary>REQ-GACHA-013: where the points go when the group closes (null: it never closes).</summary>
+        public CarryOverRule PityCarryOver;
 
         internal static OddsDisclosure Parse(JsonNode o)
         {
@@ -480,7 +543,7 @@ namespace Muchi.Client
             return new OddsDisclosure
             {
                 BannerId = J.Str(o, "bannerId"), Name = J.Str(o, "name"), Currency = J.Str(o, "currency"),
-                PriceSingle = J.Int(o, "priceSingle"), PriceTen = J.Int(o, "priceTen"),
+                PriceSingle = J.Int(o, "priceSingle"), PriceTen = J.Int(o, "priceTen"), SingleAllowed = J.Bool(o, "singleAllowed", true),
                 Items = J.List(o, "items", OddsRow.Parse), RarityTotals = J.Map(o, "rarityTotals", RarityTotal.Parse),
                 GuaranteeAppliesTo = J.Str(g, "appliesTo"), GuaranteeItems = J.List(g, "items", OddsRow.Parse),
                 GuaranteeRarityTotals = J.Map(g, "rarityTotals", RarityTotal.Parse),
@@ -489,8 +552,11 @@ namespace Muchi.Client
                 DuplicateMaterial = J.Map(o, "duplicates", v => v.AsInt()),
                 TicketsUsable = J.List(o, "tickets", x => J.Str(x, "itemId")),
                 StartAtMs = J.LongN(per, "startAtMs"), EndAtMs = J.LongN(per, "endAtMs"), LimitedNotice = J.Str(o, "limitedNotice"),
+                LastDay = J.Str(per, "lastDay"), Pickup = OddsPickup.Parse(J.Opt(o, "pickup")), StepUp = OddsStepUp.Parse(J.Opt(o, "stepUp")),
+                PityLabel = J.Str(p, "label"), PityCostCoins = J.Int(p, "costCoins"), PityClosesAtMs = J.LongN(p, "closesAtMs"), PityCarryOver = CarryOverRule.Parse(J.Opt(p, "carryOver")),
             };
         }
+        public static OddsDisclosure FromJson(string json) => Parse(JsonNode.Parse(json));
     }
 
     public sealed class PullResult
@@ -517,6 +583,8 @@ namespace Muchi.Client
         public int SpentPaid, SpentFree, PityPoints;
         /// <summary>Wallet after the draw (null for the free tutorial draw).</summary>
         public Wallet Wallet;
+        /// <summary>Step-up banners: the step just drawn and the next one (REQ-GACHA-014); null otherwise.</summary>
+        public DrawStepUp StepUp;
         internal static DrawResult Parse(JsonNode o)
         {
             var sp = J.Opt(o, "spent");
@@ -524,8 +592,10 @@ namespace Muchi.Client
             {
                 BannerId = J.Str(o, "bannerId"), Results = J.List(o, "results", PullResult.Parse),
                 SpentPaid = J.Int(sp, "paid"), SpentFree = J.Int(sp, "free"), PityPoints = J.Int(o, "pityPoints"), Wallet = Wallet.Parse(J.Opt(o, "wallet")),
+                StepUp = DrawStepUp.Parse(J.Opt(o, "stepUp")),
             };
         }
+        public static DrawResult FromJson(string json) => Parse(JsonNode.Parse(json));
     }
 
     public sealed class PedigreeNode

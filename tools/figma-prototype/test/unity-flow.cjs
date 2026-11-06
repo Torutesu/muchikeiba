@@ -5,6 +5,9 @@
 //  2. Every new screen and state: home on day 1 / 3 / 7, shop tabs, the purchase confirmation in its four states
 //     (unregistered, registered, under 18, over the monthly limit), the starter offer, the deletion-pending block,
 //     the season pass (free / paid / plus lines), settings and the legacy screens.
+//  3. Round 9 (06 §7 item 12 / §7.3): the replay share card from a result (re-simulated on the device, same hash), the
+//     account-link prompt (day 3 once; right after the first purchase; linking sends account_link), and the time attack
+//     ghost picker (opens on フレンド, falls back to 上位 without friend ghosts) with a run beside the friend's ghost.
 // Screenshots: <out>/u-<nn>-<name>.png. Returns { shots, ftue }.
 const path = require('path');
 const fs = require('fs');
@@ -39,8 +42,63 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   const click = async (label) => { await btn(label).click(); await page.waitForTimeout(350); };
   const ready = () => page.waitForFunction(() => globalThis.__muchi?.ready === true, null, { timeout: 90000 });
 
+  // round 9 (06 §6.5 / §7 item 7): banner calendar with real end times, pity meter, step-up, reveal → summary, the end
+  // of a limited banner. The logic clock is set to 2026-11-06 12:00 JST so pickup_ginga (11/1–11/30) is open.
+  async function scoutLiveOps() {
+    const NOW = Date.UTC(2026, 10, 6, 3), END = Date.UTC(2026, 10, 30, 15);
+    // screens fade in (two frames) and re-render under the same name: wait for the element of the new one
+    const waitIn = (sel) => page.waitForSelector(`.screen.in ${sel}`, { timeout: 15000 });
+    const sel = (id) => waitIn(`.banner-row.sel[data-banner="${id}"]`);
+    const rowIds = () => page.locator('.screen.in .banner-row').evaluateAll((els) => els.map((e) => e.dataset.banner));
+    const text = (s) => page.locator(`.screen.in ${s}`).first().textContent();
+    await page.evaluate((t) => globalThis.__muchi.logic.setClockMs(t), NOW);
+    await page.evaluate(() => globalThis.__muchi.show('Scout', 'pickup_ginga')); await sel('pickup_ginga');
+    assert.deepEqual(await rowIds(), ['pickup_ginga', 'pickup_akatsuki', 'stepup_paid', 'standard'], 'calendar: limited first, standard last, winter not announced yet');
+    await page.waitForTimeout(1100); // the countdown ticks on the corrected clock
+    assert.match(await text('[data-countdown="pickup_ginga"]'), /^残り 2\d日 /);
+    assert.equal(await text('[data-countdown="standard"]'), '', 'no timer on a permanent banner');
+    assert.match(await text('[data-pity-line]'), /^交換pt \d+ \/ 100/);
+    assert.equal(await page.locator('.screen.in [data-carry-over]').count(), 1, 'the closing pity group shows its carry-over rule');
+    await shot('scout-calendar', 300);
+    await page.locator('.screen.in .banner-row[data-banner="stepup_paid"]').click(); await sel('stepup_paid');
+    assert.match(await text('[data-step-line]'), /^ステップ 1 \/ 5 ・ 10連 500コイン/);
+    await shot('scout-stepup', 400);
+    await click('提供割合'); await waitIn('[data-step]');
+    assert.equal(await page.locator('.screen.in [data-step]').count(), 5);
+    await shot('scout-rates-stepup', 400); await click('BACK'); await sel('stepup_paid');
+    await page.locator('.screen.in .banner-row[data-banner="pickup_ginga"]').click(); await sel('pickup_ginga');
+    await click('提供割合'); await waitIn('[data-pickup-rate]');
+    assert.equal(await page.locator('.screen.in [data-pickup-rate]').getAttribute('data-pickup-rate'), '1.5000%');
+    await shot('scout-rates-pickup', 400); await click('BACK'); await sel('pickup_ginga');
+    // a 10-pull: the card back glows first, one card per tap, then all-skip → the summary lists all ten
+    await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal');
+    await shot('scout-reveal-back', 120);
+    await shot('scout-reveal-face', 600);
+    await click('タップでめくる'); await shot('scout-reveal-2', 600);
+    await click('すべてめくる'); await waitIn('[data-summary]');
+    assert.equal(await page.locator('.screen.in .rcard').count(), 10, 'every result is on the summary after a skip');
+    const order = await page.evaluate(() => globalThis.__muchi.reveal.order.map((c) => c.tier));
+    assert.deepEqual(order, [...order].sort((a, b) => a - b), 'rarest card flips last');
+    assert.match(await page.locator('.screen.in [data-summary]').getAttribute('data-summary'), /^新規 \d+頭/);
+    await shot('scout-summary', 600);
+    // the last minute of the banner, then a pull after the real end: the server clock refuses it and the list reloads
+    await page.evaluate((t) => globalThis.__muchi.logic.setClockMs(t), END - 60_000);
+    await page.evaluate(() => globalThis.__muchi.show('Scout', 'pickup_ginga')); await sel('pickup_ginga');
+    await page.waitForTimeout(1100);
+    assert.match(await text('[data-countdown="pickup_ginga"]'), /^残り 00:0[01]:\d\d$/);
+    await shot('scout-last-minute', 300);
+    await page.evaluate((t) => globalThis.__muchi.logic.setClockMs(t), END + 1);
+    await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('info');
+    await shot('scout-banner-closed', 400);
+    await click('OK'); await waitIn('.banner-row.sel');
+    assert.ok(!(await rowIds()).includes('pickup_ginga'), 'the ended banner is gone from the list');
+    await shot('scout-after-end', 400);
+    await page.evaluate(() => globalThis.__muchi.logic.setClockMs(null));
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
+  }
+
   // a full race as a player rides it: START on the gate, two spaced whips in the final straight; HUD shots when asked
-  async function rideRace(withShots) {
+  async function rideRace(withShots, prefix = 'race-hud') {
     let started = false, w2 = 0, lastW = 0, wall = Date.now(), last = null;
     const raceShots = new Set();
     for (let i = 0; i < 4000; i++) {
@@ -49,12 +107,12 @@ module.exports = async function unityFlow(browser, base, out, errors) {
       last = s.f;
       if (s.f.done || (await screen()) !== 'race') break;
       if (!started && s.f.gateOpen && !s.f.departed) { await tapWhip(); started = true; }
-      if (withShots && !raceShots.has('gate')) { raceShots.add('gate'); await shot('race-hud-gate', 0, true); }
-      if (withShots && !raceShots.has('mid') && s.f.remainingM < s.f.distanceM * .55) { raceShots.add('mid'); await shot('race-hud-mid', 0, true); }
-      if (withShots && !raceShots.has('cutin') && await page.locator('.screen.in .cutin').count() > 0) { raceShots.add('cutin'); await shot('race-hud-skill-cutin', 0, true); }
+      if (withShots && !raceShots.has('gate')) { raceShots.add('gate'); await shot(prefix + '-gate', 0, true); }
+      if (withShots && !raceShots.has('mid') && s.f.remainingM < s.f.distanceM * .55) { raceShots.add('mid'); await shot(prefix + '-mid', 0, true); }
+      if (withShots && !raceShots.has('cutin') && await page.locator('.screen.in .cutin').count() > 0) { raceShots.add('cutin'); await shot(prefix + '-skill-cutin', 0, true); }
       if (s.f.departed && w2 < 2 && s.f.remainingM <= (w2 === 0 ? 380 : 220) && s.f.whips > 0 && Date.now() - lastW > 1500) {
         await tapWhip(); w2++; lastW = Date.now();
-        if (withShots && w2 === 1) await shot('race-hud-straight-whip', 120, true);
+        if (withShots && w2 === 1) await shot(prefix + '-straight-whip', 120, true);
       }
       await page.waitForTimeout(40);
     }
@@ -135,7 +193,17 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await btn('ショップ　🔒').click(); await shot('home-day1-locked-toast', 250);
 
   // ------------------------------------------------------------------ 2. other screens and states
-  const demo = async (k) => { await page.evaluate((x) => globalThis.__muchi.demo(x), k); await waitScreen('home', 20000); await page.waitForTimeout(500); };
+  // the account-link prompt (REQ-UXS-073) comes up once on the first home of day 3+ after the FTUE: shot once, then 「あとで」
+  let linkShots = 0;
+  const demo = async (k) => {
+    await page.evaluate((x) => globalThis.__muchi.demo(x), k); await waitScreen(['home', 'link-prompt'], 20000); await page.waitForTimeout(500);
+    if (await screen() === 'link-prompt') {
+      assert.notEqual(k, 'day1', 'no account-link prompt on day 1');
+      assert.equal(await page.locator('.screen.in [data-trigger]').getAttribute('data-trigger'), 'Day3');
+      if (!linkShots++) await shot('link-prompt-day3', 300);
+      await click('あとで'); await waitScreen('home', 10000); await page.waitForTimeout(300);
+    }
+  };
   await demo('day3');
   await shot('home-day3', 600);
   assert.equal(await page.locator('.screen.in .btn.tab.locked').count(), 0, 'shop open on day 3');
@@ -196,6 +264,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await waitScreen('scout'); await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal'); await shot('scout-paid-reveal', 700);
   await click('すべてめくる'); await waitScreen('scout-list'); await shot('scout-paid-list', 500); await click('ホームへ');
   await waitScreen('home');
+  await scoutLiveOps();
   await click('厩舎'); await shot('stable', 400); await click('BACK');
   await waitScreen('home');
   await click('レースへ'); await waitScreen('lobby'); await shot('race-lobby', 400); await click('戻る');
@@ -208,6 +277,49 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await click('レースへ'); await waitScreen('lobby'); await click('ランク戦に出る'); await waitScreen('race', 20000);
   await rideRace(true);
   await waitScreen(['result'], 30000); await shot('race-result-day7', 900);
+
+  // ------------------------------------------------------------------ 3. round 9
+  // replay share card: the last 200 m re-simulated by ReplayClip (same hash as the live race), looping on the 3D view
+  await click('リプレイを共有'); await waitScreen('share'); await page.waitForTimeout(1600);
+  assert.equal(await page.locator('.screen.in [data-hash]').getAttribute('data-hash'), 'match', 'the re-simulated clip reproduces the race');
+  assert.ok((await page.locator('.screen.in [data-share="horse"]').textContent()).length > 0);
+  assert.ok(!(await page.locator('.screen.in [data-card]').innerText()).includes('local'), 'no player id on the card');
+  await shot('share-card', 200);
+  await click('戻る'); await waitScreen('result');
+  // time attack ghost picker: friends first, the top list without friend ghosts, a run beside the friend's ghost
+  await page.evaluate(() => globalThis.__muchi.show('TimeAttack')); await waitScreen('time-attack', 30000); await page.waitForTimeout(400);
+  const picker = page.locator('.screen.in [data-name="Ghost picker"]');
+  assert.equal(await picker.getAttribute('data-tab'), 'friends', 'the picker opens on フレンド');
+  await shot('ta-picker-friends', 300);
+  await page.locator('.screen.in .ghosttab[data-kind="top"]').click(); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in [data-name="Ghost picker"]').getAttribute('data-tab'), 'top');
+  await shot('ta-picker-top', 300);
+  await page.locator('.screen.in .ta-friends-toggle').click(); await page.waitForTimeout(500);
+  assert.equal(await page.locator('.screen.in [data-name="Ghost picker"]').getAttribute('data-fellback'), 'true', 'no friend ghosts → falls back to 上位');
+  assert.equal(await page.locator('.screen.in [data-note]').getAttribute('data-note'), 'fallback');
+  await shot('ta-picker-no-friends', 300);
+  await page.locator('.screen.in .ta-friends-toggle').click(); await page.waitForTimeout(500);
+  assert.equal(await page.locator('.screen.in [data-name="Ghost picker"]').getAttribute('data-tab'), 'friends');
+  await page.locator('.screen.in .ta-start').click(); await waitScreen('race', 20000);
+  await rideRace(true, 'ta-hud');
+  await waitScreen('ta-result', 30000); await shot('ta-result', 700);
+  assert.equal(await page.locator('.screen.in [data-vs-ghost]').count(), 1, 'the result compares with the friend ghost');
+  await click('リプレイを共有'); await waitScreen('share'); await page.waitForTimeout(1600);
+  assert.equal(await page.locator('.screen.in [data-hash]').getAttribute('data-hash'), 'match');
+  assert.equal(await page.locator('.screen.in [data-share="place"]').textContent(), '完走');
+  await shot('share-card-time-attack', 200);
+  await click('戻る'); await waitScreen('ta-result');
+  // account-link prompt right after the first purchase (day 1 after the FTUE), then linking (account_link KPI)
+  await demo('day1');
+  await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings');
+  await click('初回購入の直後'); await waitScreen('link-prompt');
+  assert.equal(await page.locator('.screen.in [data-trigger]').getAttribute('data-trigger'), 'FirstPurchase');
+  await shot('link-prompt-first-purchase', 300);
+  await click('Appleで引き継ぎ登録'); await waitScreen('settings');
+  assert.equal(await page.evaluate(() => globalThis.__muchi.lastKpi), 'account_link');
+  await shot('settings-linked', 400);
+  await click('初回購入の直後'); await page.waitForTimeout(300);
+  assert.equal(await screen(), 'settings', 'linked: the prompt never comes back');
   // the tutorial screens: the whip-only HUD, the whip cue, and the close-2nd retry when the player never whips
   await page.evaluate(() => globalThis.__muchi.demo('new')); await waitScreen('title', 20000);
   await click('同意してはじめる'); await waitScreen('race-tutorial');
@@ -224,7 +336,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await shot('tutorial-retry', 600);
 
   // a reload on a named player goes straight home
-  await page.evaluate(() => globalThis.__muchi.demo('day3')); await waitScreen('home', 20000);
+  await demo('day3');
   await page.goto(url); await ready(); await waitScreen('home'); await shot('home-reload', 500);
   await ctx.close();
   // the §2.3 targets (checked last so every screenshot is written even when a target is missed)

@@ -293,7 +293,7 @@ namespace Muchi.Game
             if (DeletionPending) return ActionResult.Error(Message = DeletionGuard.Banner(B));
             if (Stale) await LoadAsync(ct);
             if (!View.Active) return ActionResult.Error(Message = "受け取れる厩舎手当がありません");
-            if (View.ClaimedToday) return ActionResult.Error(Message = "今日の分は受取済みです。明日 " + GameDay.RolloverHourJst + ":00 に更新");
+            if (View.ClaimedToday) return ActionResult.Error(Message = "今日の分は受取済みです。" + GameDay.NextResetLabel(_now()) + " に更新");
             string day = GameDay.Key(_now());
             var stored = (Kv.Get(KeyPending) ?? "").Split('|');
             string key = stored.Length == 2 && stored[0] == day ? stored[1] : null;

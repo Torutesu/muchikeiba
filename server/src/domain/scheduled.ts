@@ -1,6 +1,10 @@
 import { jstMonthKey } from './time.js';
 
-/** Cron expressions configured in wrangler.toml (UTC). */
+/**
+ * Cron expressions configured in wrangler.toml (UTC). None of them resets anything per game day: daily resets
+ * are lazy (keyed by gameDayKey on the next request, REQ-DAY-001), so the 04:00 JST rollover needs no cron.
+ * Seasons roll over on the calendar month (REQ-DAY-004); the 03:23 JST sweep is maintenance only.
+ */
 export const CRONS = {
   /** Leaderboard snapshots + season rollover progress, every 5 minutes. */
   frequent: '*/5 * * * *',

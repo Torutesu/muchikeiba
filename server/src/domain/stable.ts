@@ -21,7 +21,7 @@ import { moderationOf, type HorseInstance, type PlayerState } from './player.js'
 import { foldForCompare } from './horses.js';
 import { horseBondLevel } from './bond.js';
 import { appearanceOf, assetKeys, effectiveSilks, type Appearance, type Silks } from './visuals.js';
-import { gameDayKey } from './time.js';
+import { dayRule, gameDayKey, sameGameDay } from './time.js';
 import type { KpiEvent } from './kpi.js';
 import stableJson from '../../master/stable.json';
 
@@ -298,7 +298,7 @@ export const summaryOf = (x: StableSnapshot): StableSummary => ({
 
 // ------------------------------------------------------------------------------------------- views
 
-const rolledGiven = (st: StableState | undefined, day: string) => (st && st.given.day === day ? st.given : { day, count: 0, to: {} as Record<string, number> });
+const rolledGiven = (st: StableState | undefined, day: string) => (st && sameGameDay(st.given.day, day) ? st.given : { day, count: 0, to: {} as Record<string, number> });
 
 /** GET /v1/stable: my layout (or the default one built from the equipped decor), themes, decor and likes. */
 export function stableView(m: Master, s: PlayerState, now: number) {
@@ -309,7 +309,7 @@ export function stableView(m: Master, s: PlayerState, now: number) {
     theme: def.id, name: null, featuredHorseIds: [], updatedAt: null,
     slots: (s.equipment?.decor ?? []).filter((id): id is string => !!id && !!decorDef(m, id) && ownsItem(s, id)).slice(0, def.slots),
   };
-  const given = rolledGiven(st, gameDayKey(now));
+  const given = rolledGiven(st, gameDayKey(now, dayRule(m)));
   return {
     saved: !!st?.layout,
     layout,
@@ -331,7 +331,7 @@ export interface ViewerStatus { relation: StableRelation; likedToday: number; li
 export function viewerStatus(m: Master, s: PlayerState, target: string, now: number): ViewerStatus {
   const c = stableConfig(m);
   const relation: StableRelation = target === s.id ? 'self' : s.friends.ids.includes(target) ? 'friend' : 'other';
-  const g = rolledGiven(peek(s), gameDayKey(now));
+  const g = rolledGiven(peek(s), gameDayKey(now, dayRule(m)));
   const likedToday = g.to[target] ?? 0;
   const left = Math.max(0, c.likesPerDay - g.count);
   return { relation, likedToday, likesLeftToday: left, canLike: relation !== 'self' && left > 0 && likedToday < c.likesPerTargetPerDay && moderationOf(s, now) !== 'banned' };
@@ -347,7 +347,7 @@ export function stableLikeGive(m: Master, s: PlayerState, target: string, now: n
   if (moderationOf(s, now) === 'banned') throw new AppError('BANNED', 'likes are disabled for this account');
   const c = stableConfig(m);
   const st = ensureStable(s);
-  const day = gameDayKey(now);
+  const day = gameDayKey(now, dayRule(m));
   st.given = rolledGiven(st, day);
   if ((st.given.to[target] ?? 0) >= c.likesPerTargetPerDay) throw new AppError('ALREADY_LIKED', 'you already liked this stable today');
   if (st.given.count >= c.likesPerDay) throw new AppError('LIKE_LIMIT', `${c.likesPerDay} likes per day`);
@@ -365,8 +365,8 @@ export function stableLikeReceive(m: Master, s: PlayerState, from: string, likeI
   if (deleting(s)) return { counted: false, likes: peek(s)?.likes ?? 0 }; // REQ-UXS-040: the account is going away
   const st = ensureStable(s);
   if (from === s.id || st.recv.ids.includes(likeId)) return { counted: false, likes: st.likes };
-  const day = likeId.split(':').slice(-2, -1)[0] ?? gameDayKey(now);
-  if (st.recv.day !== day) st.recv = { day, from: {}, ids: st.recv.ids };
+  const day = likeId.split(':').slice(-2, -1)[0] ?? gameDayKey(now, dayRule(m));
+  if (!sameGameDay(st.recv.day, day)) st.recv = { day, from: {}, ids: st.recv.ids };
   st.recv.ids.push(likeId);
   if (st.recv.ids.length > LIKE_IDS_KEEP) st.recv.ids.splice(0, st.recv.ids.length - LIKE_IDS_KEEP);
   if ((st.recv.from[from] ?? 0) >= c.likesPerTargetPerDay) return { counted: false, likes: st.likes };

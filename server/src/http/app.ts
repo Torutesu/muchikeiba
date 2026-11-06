@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { visualsCatalog, VISUALS } from '../domain/visuals.js';
 import { AppError } from '../domain/errors.js';
-import { findBanner, oddsDisclosure } from '../domain/gacha.js';
+import { ASSET_PLATFORMS, catalogEtag, EMPTY_ASSET_CATALOG, etagMatches, platformCatalog, type AssetPlatform } from '../domain/assetCatalog.js';
+import { bannerList, findVisibleBanner, oddsDisclosure } from '../domain/gacha.js';
 import { shopProducts } from '../domain/shop.js';
 import { skillCatalog } from '../domain/skills.js';
 import { ticketDisclosure } from '../domain/itemShop.js';
@@ -11,7 +12,7 @@ import type { SubscriptionStatus, VerifiedReceipt } from '../domain/purchase.js'
 import type { PurchaseRecord } from '../domain/player.js';
 import { appleAccountToken, googleAccountId } from '../stores/binding.js';
 import { FriendsService, type Directory, type FriendPlayers } from '../domain/friends.js';
-import { jstMonthKey } from '../domain/time.js';
+import { dayRule, jstMonthKey } from '../domain/time.js';
 import { handleAdmin, type OpsApi } from './admin.js';
 import type { AdminPrincipal } from '../ops/admin.js';
 import { clientBatchSchema } from '../domain/kpi.js';
@@ -30,7 +31,7 @@ import type { StableService } from '../domain/stable.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
-  | 'bootstrap' | 'view' | 'setAge' | 'purchaseIntent' | 'purchase' | 'refund' | 'draw' | 'tutorialDraw' | 'pityExchange'
+  | 'bootstrap' | 'view' | 'setAge' | 'purchaseIntent' | 'purchase' | 'refund' | 'draw' | 'tutorialDraw' | 'pityExchange' | 'gachaStatus'
   | 'nameHorse' | 'awaken' | 'retire' | 'breedingPreview' | 'breed' | 'pedigree' | 'claimLogin' | 'missions'
   | 'claimMission' | 'passView' | 'claimPass' | 'applyRace' | 'raceEntry'
   | 'shopOffers' | 'markOfferViewed' | 'allowance' | 'claimAllowance' | 'firstWinBonus'
@@ -117,6 +118,8 @@ export interface AppContext {
   authenticateAdmin?(req: Request): Promise<AdminPrincipal>;
   /** Active remote config summary for clients (REQ-OPS-007). */
   configInfo?(): Promise<ClientConfigInfo>;
+  /** REQ-DLV-002: CDN base URL for asset downloads (wrangler var ASSET_CDN_BASE). Unset → catalog baseUrl "" (bundled assets only). */
+  assetCdnBase?: string;
 }
 export interface ClientConfigInfo { versionId: string; hash: string; rulesetVersion: string; activatedAt: number | null }
 
@@ -204,7 +207,17 @@ const ok = (x: unknown) => x;
 export const routes: Route[] = [
   { method: 'GET', path: '/v1/health', auth: 'none', handler: async () => ({ ok: true }) },
   // REQ-OPS-007: clients cache master data per config version and refetch when it changes
-  { method: 'GET', path: '/v1/config', auth: 'none', handler: async (_r, _p, c) => ({ ...(c.configInfo ? await c.configInfo() : { versionId: 'base', hash: 'base', rulesetVersion: null, activatedAt: null }), visualsVersion: VISUALS.version }) },
+  { method: 'GET', path: '/v1/config', auth: 'none', handler: async (_r, _p, c) => ({ ...(c.configInfo ? await c.configInfo() : { versionId: 'base', hash: 'base', rulesetVersion: null, activatedAt: null }), visualsVersion: VISUALS.version, assetCatalogVersion: (c.master.assetCatalog ?? EMPTY_ASSET_CATALOG).catalogVersion, dayRollover: dayRule(c.master) }) }, // REQ-DAY-006, REQ-DLV-*
+  // REQ-DLV-001..004: asset delivery catalog per platform (contracts/protocol.md §16). Public; ETag = view hash, 304 on match.
+  { method: 'GET', path: '/v1/assets/catalog', auth: 'none', handler: async (r, _p, c) => {
+    const platform = new URL(r.url).searchParams.get('platform');
+    if (!platform || !(ASSET_PLATFORMS as readonly string[]).includes(platform)) throw new AppError('BAD_REQUEST', `platform must be one of ${ASSET_PLATFORMS.join('|')}`);
+    const view = await platformCatalog(c.master.assetCatalog ?? EMPTY_ASSET_CATALOG, platform as AssetPlatform, c.assetCdnBase);
+    const etag = catalogEtag(view);
+    const headers = { etag, 'cache-control': 'public, max-age=60, must-revalidate', vary: 'accept-encoding' };
+    if (etagMatches(r.headers.get('if-none-match'), etag)) return new Response(null, { status: 304, headers });
+    return new Response(JSON.stringify(view), { status: 200, headers: { ...headers, 'content-type': 'application/json; charset=utf-8' } });
+  } },
   // visual contract (REQ-ASSET-*, contracts/assets.md): catalog the client caches by `version`
   { method: 'GET', path: '/v1/visuals', auth: 'none', handler: async (_r, _p, c) => visualsCatalog(c.master) },
   { method: 'PUT', path: '/v1/player/silks', auth: 'player', handler: async (r, _p, c, u) => {
@@ -285,8 +298,11 @@ export const routes: Route[] = [
   // gacha
   // REQ-UXS-050: unique skill catalog (condition/effect text generated from the engine values; no odds: no random draw)
   { method: 'GET', path: '/v1/skills', auth: 'none', handler: async (_r, _p, c) => skillCatalog(c.master) },
-  { method: 'GET', path: '/v1/gacha/banners', auth: 'none', handler: async (_r, _p, c) => ({ banners: c.master.gacha.banners.map((b) => ({ id: b.id, name: b.name, currency: b.currency, priceSingle: b.priceSingle, priceTen: b.priceTen, startAtMs: b.startAtMs ?? null, endAtMs: b.endAtMs ?? null })) }) },
-  { method: 'GET', path: '/v1/gacha/:bannerId/odds', auth: 'none', handler: async (_r, p, c) => oddsDisclosure(c.master, findBanner(c.master, p.bannerId!)) },
+  // REQ-GACHA-011: active + announced banners only, sorted, with the real end times and the server clock
+  { method: 'GET', path: '/v1/gacha/banners', auth: 'none', handler: async (_r, _p, c) => bannerList(c.master, (c.clock ?? Date.now)()) },
+  // REQ-GACHA-012..014: the player's pity meter, carry-over rule and step-up progress
+  { method: 'GET', path: '/v1/gacha/status', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('gachaStatus', u) },
+  { method: 'GET', path: '/v1/gacha/:bannerId/odds', auth: 'none', handler: async (_r, p, c) => oddsDisclosure(c.master, findVisibleBanner(c.master, p.bannerId!, (c.clock ?? Date.now)())) },
   { method: 'POST', path: '/v1/gacha/:bannerId/draw', auth: 'player', handler: async (r, p, c, u) => {
     const b = await body(r, z.object({ count: z.union([z.literal(1), z.literal(10)]) }));
     return c.player(u).invoke('draw', u, p.bannerId!, b.count, idem(r));
@@ -594,7 +610,8 @@ export const handle: Handler = async (req, _p, ctx) => {
       let uid = '';
       if (r.auth === 'player') uid = await ctx.authenticate(req);
       if (r.auth === 'admin' && (!ctx.adminToken || !timingSafeEqual(req.headers.get('authorization') ?? '', `Bearer ${ctx.adminToken}`))) throw new AppError('UNAUTHORIZED');
-      return json(await r.handler(req, params, ctx, uid));
+      const out = await r.handler(req, params, ctx, uid);
+      return out instanceof Response ? out : json(out);
     }
     return methodMismatch ? json({ error: { code: 'BAD_REQUEST', message: 'method not allowed' } }, 405) : errorResponse(new AppError('NOT_FOUND'));
   } catch (e) {

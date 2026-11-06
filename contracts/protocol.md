@@ -367,3 +367,56 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 - イベント `Skill`（値12）：Slot = 発動した馬、Value = 発動した時の順位（前のtickの順位、0 = 先頭）。表示・実況用で、チェックサムと結果ハッシュには入らない（スキルの影響は速度・スタミナとしてチェックサムに現れる）。
 - **サーバーが送る値**：`server/master/skills.json` の値を、ステータスを正規化するレース（ランク戦・大会・クラス上限のあるイベント）では `rankedCaps` で頭打ちにして送る。タイムアタック・チュートリアル・能力固定のイベントでは送らない。CPU の馬はテンプレートのスキルを持つ（乱数なし）。
 - ゴールデン：`contracts/golden/race-turf2000-skills.json`（8種類の条件すべてが発動する）。1.2.0 のゴールデンは `contracts/golden/legacy/*.ruleset-1.2.0.json` に残し、今も同じ結果で検証できることをテストしている。
+
+## 15. アセット配信（REQ-DLV-001〜010、`server/src/domain/assetCatalog.ts`、C# `AssetCatalog.cs`・`AssetDownloader.cs`）
+
+キー（`contracts/assets.md`）ごとに「CDN のどのファイルか」を返すカタログ。サーバーは絵や音を持たず、ファイルは CDN（R2）に置く。
+
+### 15.1 `GET /v1/assets/catalog?platform=ios|android`（認証なし）
+
+```json
+{
+  "catalogVersion": 2, "manifestVersion": 2, "platform": "ios",
+  "hash": "<sha256 hex>", "baseUrl": "https://assets.example.com",
+  "urlTemplate": "{base}/{platform}/{sha256}/{file}",
+  "policy": { "ftueBlockingMaxBytes": 3000000, "cellularWarnBytes": 50000000, "tutorialMaxWaitMs": 3000, "maxParallel": 4 },
+  "groups": ["boot", "ftue", "home", "race", "shop", "ondemand"],
+  "entries": [
+    { "key": "horse/coat/bay", "file": "horse/coat/bay.bundle", "sha256": "<64 hex>", "size": 183422, "group": "race", "required": false }
+  ]
+}
+```
+
+- `platform` が無い・不正 → 400 `BAD_REQUEST`。`entries` はキー順。複数のキーが同じ `file` を指してよい（1つの AssetBundle に複数キー）。
+- **ETag** = `"<hash>"`（`hash` は `hash` 以外の全フィールドの正規化 JSON の SHA-256。CDN の基点も含む）。`If-None-Match` が一致すれば **304**（本文なし）。`Cache-Control: public, max-age=60, must-revalidate`。
+- URL = `urlTemplate` の `{base}`・`{platform}`・`{sha256}`・`{file}` を置き換えたもの（TS `assetUrl`、C# `AssetCatalog.UrlFor`）。既定はハッシュ入りのパスなので **CDN 上のファイルは不変**（長期キャッシュ可、作り直しは別パス）。
+- `baseUrl` は wrangler の変数 `ASSET_CDN_BASE`（秘密ではない）。**カタログやリモート設定には CDN のホスト・トークン・署名を書けない**（`urlTemplate` は `{base}/` で始まり、`?`・`#` を含まない）。未設定なら `""` で、クライアントは何も取得せずアプリ同梱のアセットと `<kind>/default` で動く。
+- `GET /v1/config` に `assetCatalogVersion` が付く。クライアントは手元のカタログの `catalogVersion` と違えば取り直す（`AssetCatalogStore.IsStale`）。
+- 古いサーバー（この経路が無い＝404）・通信できない場合、クライアントは保存済みのカタログ、それも無ければ空のカタログで続行する（落とさない）。
+
+### 15.2 グループと required（REQ-DLV-003）
+
+| group | いつ取得するか |
+|---|---|
+| `boot` | 起動時。全 kind の `<kind>/default` は必ずここで `required: true`（REQ-ASSET-002） |
+| `ftue` | チュートリアル前。`required` のものだけ待つ（合計は `policy.ftueBlockingMaxBytes` 以下、上限 5MB） |
+| `home` / `race` / `shop` | チュートリアルの裏・後で先読み（待たない） |
+| `ondemand` | 画面が必要になった時（`AssetDownloader.EnsureAsync`）。馬名の音声など |
+
+- `required: true` は `boot`・`ftue` のみ。それ以外は**どの画面も待たない**（無ければフォールバック）。
+- **チュートリアルは最大 `policy.tutorialMaxWaitMs`（上限 5000ms、クライアントでも頭打ち）しか待たない**。超えたら仮の表示で始める（docs/planning/06 §2：初レース開始5秒以内・aha① 30秒以内）。
+- モバイル通信で裏の取得が `policy.cellularWarnBytes` を超えるときは、サイズを出して確認する（Wi-Fi 推奨）。待たせるのは裏の取得だけ。
+
+### 15.3 カタログの元と検証（REQ-DLV-004/005/008）
+
+- 元：`server/master/assets-catalog.json`（`npm run scan:assets` が `unity/AssetDelivery~/` から生成。手で編集しない）。リモート設定のバンドルに `assets`（同じ形）を入れると置き換わる。
+- 検証（起動時・スキャナ・リモート設定の各版）：キーの形式と kind、`file` は小文字の相対パスで `..` なし、`sha256` は64桁、`size` ≥ 1、同じ `file`・同じ `sha256` は同じ内容、`<kind>/default` は boot かつ required、required は boot/ftue のみ、required の合計 ≤ `ftueBlockingMaxBytes`、`policy` の上限、`urlTemplate` の規則。
+- **内容を変えたら `catalogVersion` を上げる**：基準（同梱のカタログ）と同じ番号で内容が違う、基準より古い番号、他の保存済みの版と同じ番号で内容が違う、はすべて `CONFIG_INVALID`。
+
+### 15.4 クライアントの保存とダウンロード（REQ-DLV-006/007）
+
+- 保存先（Unity は `Application.persistentDataPath/muchi-assets`）：`blobs/<sha[0..2]>/<sha256>`（検証済み・完全なファイルだけ。原子的な rename でのみ作る）、`partial/<sha256>.part`（途中）、`catalog-<platform>.json`（最後に取得できたカタログ。`.tmp` に書いてから置き換え）。
+- 取得：同時数は `maxParallel`。途中で切れたら `Range: bytes=<n>-` で再開（206 なら追記、200 なら最初から、416 なら捨てて最初から）。ネットワーク・5xx・429・途中切れはバックオフで再試行、404/403/410 は再試行しない。完了後に SHA-256 を照合し、違えば捨てて取り直す（規定回数で `Corrupt`）。同じファイルへの同時の要求は1回の転送にまとめる。
+- 容量：空き容量（予備を残す）と `MaxCacheBytes` の範囲で、required → グループ順 → 小さい順に入るだけ取得し、残りは `SkippedQuota`（途中まで書かない）。足りなければ先に古い版を消す。書き込み失敗は `DiskFull`（再試行しない）。
+- 古い版の削除：新しいカタログを受け取ったら、参照されなくなった `sha256` のファイルを消す（`AssetDownloader.EvictStale`）。読み込む前に行う。
+- 表示：`AssetResolver.Resolve(key)` が「ダウンロード済み（優先）→ アプリ同梱 → `<kind>/default` → 何も出さない」を返す（`AssetKeys.Resolve` と同じ順）。

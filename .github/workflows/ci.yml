@@ -54,6 +54,11 @@ jobs:
       - name: Test
         working-directory: server
         run: npm test
+      # REQ-DLV-008: which manifest keys have files in unity/AssetDelivery~ (and which files have no key). Report only.
+      - name: Asset delivery coverage (report, never fails)
+        working-directory: server
+        continue-on-error: true
+        run: npm run scan:assets -- --check --json asset-coverage.json
 
   integration:
     needs: [engine, server]

@@ -2,12 +2,12 @@
 
 ロジック側（サーバー・`engine/`）とUnity側（Codexが作る見た目・アセット）の間の**唯一の正**です。
 サーバーは絵や音を持ちません。送るのは「どの見た目か」を表す小さな記述（毛色・模様・勝負服など）だけです。
-Unity側はこの文書の規則でそれを**アセットキー**に変換し、Addressables のアドレスとして読み込みます。
+Unity側はこの文書の規則でそれを**アセットキー**に変換し、配信カタログ（§6.1）から読み込みます。
 
 - データの正：`server/master/visuals.json`（見た目のカタログ）と、各マスター（馬・アイテム・称号・ガチャ・イベント・コース）
 - 一覧の正：`contracts/assets.manifest.json`（`cd server && npm run gen:assets` で生成。手で編集しない）
 - 実装：サーバー `server/src/domain/visuals.ts`、Unity側 `engine/Muchi.Client/AssetKeys.cs`（同じ規則。両方のテストが一覧と突き合わせる）
-- 要件ID：REQ-ASSET-001〜009（`docs/spec/requirements.md`）
+- 要件ID：REQ-ASSET-001〜010、配信は REQ-DLV-001〜010（`docs/spec/requirements.md`）
 
 ---
 
@@ -194,6 +194,19 @@ C# では `AssetKeys.Resolve(key, exists)` が 1→2→null を返す。古い�
 - キーを作り直したら `@vN` を付けた新しいキーで配信し、古いキーはしばらく残す（古いアプリが参照するため）。
 - `contracts/assets.manifest.json` を Unity のエディタ拡張で読み、**全キーにアセットがあるか**をビルド前にチェックする
   （`AssetKeys.ParseManifestKeys`）。足りないキーはフォールバックで動くが、リリース前にゼロにする。
+
+### 6.1 配信カタログ（REQ-DLV-001〜010、`contracts/protocol.md` §15）
+
+Addressables の代わりに、ロジック側の配信の仕組みを使う（Unity は `Muchi.Client` の `AssetCatalogStore`・`AssetDownloader`・`AssetResolver`、
+画面は `Muchi.Game.AssetPreloadModel`）。
+
+- 置き場所：`unity/AssetDelivery~/common/<key>.<ext>`（全プラットフォーム共通：png・ogg など）、`unity/AssetDelivery~/<ios|android>/<key>.<ext>`
+  （AssetBundle などプラットフォーム別。同じキーなら common より優先）。拡張子を除いたパスがキー（`horse/coat/bay.bundle` → `horse/coat/bay`、`@v2` も可）。
+  1つのファイルに複数のキーを入れるときは `<platform>/bundles.json` に `{"bundles": {"scene/minato.bundle": ["scene/venue/minato", "scene/night/minato"]}}`。
+- `cd server && npm run scan:assets` が `server/master/assets-catalog.json` を作り直す（中身が変われば `catalogVersion` +1）。`-- --check` は報告だけ（CI）、`-- --list` で足りないキーを全部表示。
+- グループ（boot/ftue/home/race/shop/ondemand）と required は `contracts/assets.groups.json` の規則で決まる。required は boot・ftue だけで、合計は `policy.ftueBlockingMaxBytes`（3MB）以下。
+- CDN 上の置き場所は `<platform>/<sha256>/<file>`（`--json` のレポートの `uploads[].to`）。中身が変わればパスも変わるので、上書きは起きない。
+- 端末では `AssetResolver.Resolve(key)` が「ダウンロード済み → アプリ同梱（`Resources`／`StreamingAssets`）→ `<kind>/default` → 何も出さない」を返す。
 
 ## 7. 変更するとき
 

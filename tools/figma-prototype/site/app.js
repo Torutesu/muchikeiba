@@ -183,7 +183,7 @@ function Home() {
   const p = profile(); if (p.partnerId) horseName = p.partnerName;
   Panel('Player identity', 38, 34, 440, 104, NAVY);
   Label(`CLASS ${p.classId}  /  ${p.seasonPoints} PT`, 60, 47, 390, 36, 20, CYAN);
-  Label('JOCKEY  ' + p.displayName, 60, 90, 390, 30, 17);
+  Label('JOCKEY  ' + (p.displayName && !/^騎手[A-Z0-9]{0,4}$/.test(p.displayName) ? p.displayName : 'あなた'), 60, 90, 390, 30, 17);
   Panel('Wallet', 1210, 35, 350, 86, NAVY);
   Label((isJa() ? '無償 ◎ ' : 'FREE  ◎  ') + fmt(p.free), 1230, 46, 155, 29, 17, WHITE).style.whiteSpace = 'nowrap';
   Label((isJa() ? '有償 ◈ ' : 'PAID  ◈  ') + fmt(p.paid), 1390, 46, 155, 29, 17, GOLD).style.whiteSpace = 'nowrap';

@@ -109,4 +109,21 @@ describe('r8 QA: account deletion vs the player\'s own transactions', () => {
     await runAccountDeletion(ports(svc), 'p', now());
     expect(paid.slice(before)).toEqual([]);
   });
+
+  it('deliveries from other objects after the wipe (season / tournament / event / team rewards, stud fees, pushes) do not recreate the player', async () => {
+    const { svc, repo, advance, now } = setup();
+    await svc.bootstrap('p');
+    await scheduleDeletion(svc, advance);
+    await runAccountDeletion(ports(svc), 'p', now());
+    expect(repo.data.has('p')).toBe(false);
+    // boards and brackets keep a renamed row of a deleted player until their close; their payouts still arrive
+    await svc.closeSeason('p', '2026-11', 3);
+    await svc.tournamentClose('p', 'tour1', 1, { freeCoins: 500 }, '大会');
+    await svc.eventClose('p', m.events[0]!.id, 1);
+    await svc.teamSeasonReward('p', '2026-11', 'tm1', 1, 10);
+    await svc.studSettle('p', 'stud:b:c:1', true, { borrowerId: 'b', horseId: 'h1', fee: 100, foalId: 'h9' });
+    await svc.queuePush('p', 'friend_request', { name: 'x' });
+    await svc.nudgeTaBeaten('p', 'x', 'kirameki_turf_2000');
+    expect(repo.data.has('p')).toBe(false);
+  });
 });

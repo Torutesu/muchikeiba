@@ -284,14 +284,28 @@ export class PlayerService {
     const all = [nextNudgeWake(s), nextDeletionWake(s)].filter((x): x is number => x !== null);
     return all.length ? Math.min(...all) : null;
   }
+  /**
+   * REQ-UXS-040: a player with no stored state at all. For the deliveries other objects send (season / tournament /
+   * event / team rewards, stud fees, pushes, nudges) this can only be an account that was deleted and wiped: boards
+   * and brackets keep a renamed row until they close, and running the delivery would create a fresh state under the
+   * deleted id (with the reward in it). Those calls are answered as no-ops instead.
+   */
+  private async wiped(id: string) { return !(await this.repo.get(id)); }
+
   /** Tests / memory repos: drop the stored state (the Durable Object deletes its whole storage instead). */
   async wipe(id: string) { if (this.repo.delete) await this.repo.delete(id); }
 
   // ---- personal nudges (REQ-UXS-012) ----
   /** Alarm: due nudges (promotion). */
   runNudges(id: string) { return this.tx(id, null, (s, now) => runDueNudges(this.d.master, s, now)); }
-  nudgeTaBeaten(id: string, byName: string, course: string) { return this.tx(id, null, (s, now) => nudgeTaBeaten(this.d.master, s, byName, course, now)); }
-  nudgeTournamentClosing(id: string, info: TournamentClosingInfo) { return this.tx(id, null, (s, now) => nudgeTournamentClosing(this.d.master, s, info, now)); }
+  async nudgeTaBeaten(id: string, byName: string, course: string) {
+    if (await this.wiped(id)) return { status: 'skipped' as const, reason: 'deleted' as const };
+    return this.tx(id, null, (s, now) => nudgeTaBeaten(this.d.master, s, byName, course, now));
+  }
+  async nudgeTournamentClosing(id: string, info: TournamentClosingInfo) {
+    if (await this.wiped(id)) return { status: 'skipped' as const, reason: 'deleted' as const };
+    return this.tx(id, null, (s, now) => nudgeTournamentClosing(this.d.master, s, info, now));
+  }
 
   setAge(id: string, birthYear: number, birthMonth: number, guardianConsent: boolean) {
     return this.tx(id, null, (s, now) => {
@@ -424,7 +438,9 @@ export class PlayerService {
   studReserve(id: string, opId: string, borrowerId: string, horseId: string, expectedFee?: number) {
     return this.tx(id, null, (s, now) => studReserve(this.d.master, s, opId, borrowerId, horseId, now, expectedFee));
   }
-  studSettle(id: string, opId: string, ok: boolean, info: { borrowerId: string; horseId: string; fee: number; foalId: string | null }) {
+  async studSettle(id: string, opId: string, ok: boolean, info: { borrowerId: string; horseId: string; fee: number; foalId: string | null }) {
+    // the owner's account was deleted: nothing to pay into (the borrower acknowledges and stops retrying)
+    if (await this.wiped(id)) return { opId, status: 'already' as const, paid: 0 };
     return this.tx(id, null, (s, now) => studSettle(this.d.master, s, opId, ok, info, now));
   }
   async studPreview(id: string, snap: StudSnapshot & { remainingToday?: number }, damId: string) {
@@ -629,7 +645,8 @@ export class PlayerService {
   async publicProfile(id: string) { return publicProfile(await this.load(id), this.d.master.bannedSilks); }
 
   /** REQ-SEASON-002: rollover job → reward the closed season once (idempotent via the season record). */
-  closeSeason(id: string, seasonId: string, rank: number | null) {
+  async closeSeason(id: string, seasonId: string, rank: number | null) {
+    if (await this.wiped(id)) return { status: 'no-record' as const, reward: null, pass: null, titles: [] as string[] };
     return this.tx(id, null, (s, now, emit) => {
       const r = closeSeason(this.d.master, s, seasonId, rank, now);
       if (r.status === 'rewarded') emit({ name: 'season_close', s1: seasonId, s2: r.classId ?? '', s3: r.nextClassId ?? '', ...(rank !== null ? { place: rank } : {}) });
@@ -754,7 +771,8 @@ export class PlayerService {
     return this.tx(id, null, (s, now) => ({ ...settlePushes(this.d.master, s, outcomes, now), nextAt: nextPushWake(s) }));
   }
   /** Ops/test hook: queue a templated push for this player (same rules as event-driven pushes). */
-  queuePush(id: string, templateId: string, vars: Record<string, string>) {
+  async queuePush(id: string, templateId: string, vars: Record<string, string>) {
+    if (await this.wiped(id)) return { status: 'skipped' as const, reason: 'deleted' };
     return this.tx(id, null, (s, now) => { ensurePush(this.d.master, s); return enqueuePush(this.d.master, s, templateId, vars, now); });
   }
 
@@ -821,7 +839,8 @@ export class PlayerService {
     return { teamId: t.teamId, joinedAt: t.joinedAt, cooldownUntil: t.cooldownUntil, outgoing: t.outgoing.map((o) => o.teamId), snapshot: snapshotOf(s) };
   }
   /** REQ-TEAM-008: team season reward (rollover job; idempotent per season). */
-  teamSeasonReward(id: string, seasonId: string, teamId: string, rank: number | null, total: number, league: LeaguePlace | null = null) {
+  async teamSeasonReward(id: string, seasonId: string, teamId: string, rank: number | null, total: number, league: LeaguePlace | null = null) {
+    if (await this.wiped(id)) return null;
     return this.tx(id, null, (s, now) => playerTeamReward(s, this.d.master.progression.teams, seasonId, teamId, rank, total, now, { cfg: this.d.master.progression.league, place: league }));
   }
 
@@ -853,7 +872,8 @@ export class PlayerService {
     return { entry, displayName: s.profile.displayName, info: { classId: entry.classId, rankedRaces: s.rating.rankedRaces, style: h.style as string, horseActive: h.status === 'active', moderation: entry.moderation } };
   }
   /** REQ-TOUR-007: final rank + prize, once per tournament (resumable payout; a retry is a no-op). */
-  tournamentClose(id: string, tournamentId: string, rank: number, reward: Reward | null, name: string) {
+  async tournamentClose(id: string, tournamentId: string, rank: number, reward: Reward | null, name: string) {
+    if (await this.wiped(id)) return { status: 'already' as const, reward: null };
     return this.tx(id, null, (s, now) => {
       const done = (s.tournaments ??= {});
       if (done[tournamentId]) return { status: 'already' as const, reward: done[tournamentId]!.reward };
@@ -870,7 +890,8 @@ export class PlayerService {
     return { history: Object.entries(s.tournaments ?? {}).map(([tournamentId, r]) => ({ tournamentId, ...r })).sort((a, b) => b.at - a.at) };
   }
   /** REQ-EVENT-008: final rank reward (event end job; idempotent). An event removed from config pays nothing. */
-  eventClose(id: string, eventId: string, rank: number | null) {
+  async eventClose(id: string, eventId: string, rank: number | null) {
+    if (await this.wiped(id)) return { status: 'unknown_event' as const, reward: null };
     return this.tx(id, null, (s, now) => {
       const ev = this.d.master.events.find((e) => e.id === eventId);
       if (!ev) {

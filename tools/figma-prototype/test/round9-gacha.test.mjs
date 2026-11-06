@@ -79,6 +79,11 @@ assert.strictEqual(st.banners.find((x) => x.bannerId === 'pickup_ginga').coinsTo
 const odds = L.odds('stepup_paid');
 assert.deepStrictEqual(odds.stepUp.steps.map((s) => s.priceTen), gacha.banners.find((b) => b.id === 'stepup_paid').stepUp.steps.map((s) => s.priceTen));
 assert.strictEqual(L.odds('pickup_ginga').pickup.rate, '1.5000%');
+// QA r9: the step-up banner shows no single / flat 10-pull price (step prices only); the screen falls back to step 1
+const sb = L.bannerList().banners.find((b) => b.id === 'stepup_paid');
+assert.deepStrictEqual([sb.singleAllowed, sb.priceSingle, sb.priceTen], [false, null, null]);
+assert.deepStrictEqual([odds.singleAllowed, odds.priceSingle, odds.priceTen], [false, null, null]);
+assert.match(odds.stepUp.steps[0].finalSlot.appliesTo, /それ以外は上の表/);
 const texts = JSON.stringify([list, st, odds, L.odds('pickup_ginga'), view, plan]);
 assert.ok(!/倍|通常価格|今だけ|残りわずか/.test(texts), 'no misleading wording');
 // the step-up needs paid coins: the free-coin player is refused with INSUFFICIENT_COINS, single pulls with BAD_REQUEST

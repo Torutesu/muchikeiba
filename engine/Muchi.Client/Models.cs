@@ -15,6 +15,7 @@ namespace Muchi.Client
         public static long Long(JsonNode o, string k, long def = 0) { var v = Opt(o, k); return v == null ? def : v.AsLong(); }
         public static long? LongN(JsonNode o, string k) { var v = Opt(o, k); return v == null ? (long?)null : v.AsLong(); }
         public static bool Bool(JsonNode o, string k) { var v = Opt(o, k); return v != null && v.AsBool(); }
+        public static bool Bool(JsonNode o, string k, bool def) { var v = Opt(o, k); return v == null ? def : v.AsBool(); }
 
         public static List<T> List<T>(JsonNode o, string k, Func<JsonNode, T> f)
         {
@@ -448,7 +449,10 @@ namespace Muchi.Client
     public sealed class Banner
     {
         public string Id, Name, Currency;
+        /// <summary>0 when not sold that way: a step-up banner has no single pull and no flat 10-pull price (see <see cref="SingleAllowed"/>, StepUp.Prices).</summary>
         public int PriceSingle, PriceTen;
+        /// <summary>Single pulls are offered (false on step-up banners; older servers send none → true).</summary>
+        public bool SingleAllowed = true;
         /// <summary>Real schedule (null = permanent / no start). Count down only to <see cref="EndAtMs"/>.</summary>
         public long? StartAtMs, EndAtMs, AnnounceAtMs;
         public bool PaidOnly => Currency == "paidOnly";
@@ -468,7 +472,7 @@ namespace Muchi.Client
         internal static Banner Parse(JsonNode o) => new Banner
         {
             Id = J.Str(o, "id"), Name = J.Str(o, "name"), Currency = J.Str(o, "currency"),
-            PriceSingle = J.Int(o, "priceSingle"), PriceTen = J.Int(o, "priceTen"), StartAtMs = J.LongN(o, "startAtMs"), EndAtMs = J.LongN(o, "endAtMs"),
+            PriceSingle = J.Int(o, "priceSingle"), PriceTen = J.Int(o, "priceTen"), SingleAllowed = J.Bool(o, "singleAllowed", true), StartAtMs = J.LongN(o, "startAtMs"), EndAtMs = J.LongN(o, "endAtMs"),
             AnnounceAtMs = J.LongN(o, "announceAtMs"), Status = J.Str(o, "status") ?? "active", LastDay = J.Str(o, "lastDay"), DaysLeft = J.IntN(o, "daysLeft"),
             PityGroup = J.Str(o, "pityGroup"), PityLabel = J.Str(o, "pityLabel"), PityCost = J.Int(o, "pityCost"), PityTargets = J.Strs(o, "pityTargets"),
             Pickup = BannerPickup.Parse(J.Opt(o, "pickup")), Limited = J.Bool(o, "limited"), StepUp = BannerStepUp.Parse(J.Opt(o, "stepUp")),
@@ -500,7 +504,9 @@ namespace Muchi.Client
     public sealed class OddsDisclosure
     {
         public string BannerId, Name, Currency;
+        /// <summary>0 when not sold that way (step-up: step prices only, <see cref="SingleAllowed"/> false).</summary>
         public int PriceSingle, PriceTen;
+        public bool SingleAllowed = true;
         public List<OddsRow> Items = new List<OddsRow>();
         public Dictionary<string, RarityTotal> RarityTotals = new Dictionary<string, RarityTotal>();
         public string GuaranteeAppliesTo;
@@ -537,7 +543,7 @@ namespace Muchi.Client
             return new OddsDisclosure
             {
                 BannerId = J.Str(o, "bannerId"), Name = J.Str(o, "name"), Currency = J.Str(o, "currency"),
-                PriceSingle = J.Int(o, "priceSingle"), PriceTen = J.Int(o, "priceTen"),
+                PriceSingle = J.Int(o, "priceSingle"), PriceTen = J.Int(o, "priceTen"), SingleAllowed = J.Bool(o, "singleAllowed", true),
                 Items = J.List(o, "items", OddsRow.Parse), RarityTotals = J.Map(o, "rarityTotals", RarityTotal.Parse),
                 GuaranteeAppliesTo = J.Str(g, "appliesTo"), GuaranteeItems = J.List(g, "items", OddsRow.Parse),
                 GuaranteeRarityTotals = J.Map(g, "rarityTotals", RarityTotal.Parse),
@@ -550,6 +556,7 @@ namespace Muchi.Client
                 PityLabel = J.Str(p, "label"), PityCostCoins = J.Int(p, "costCoins"), PityClosesAtMs = J.LongN(p, "closesAtMs"), PityCarryOver = CarryOverRule.Parse(J.Opt(p, "carryOver")),
             };
         }
+        public static OddsDisclosure FromJson(string json) => Parse(JsonNode.Parse(json));
     }
 
     public sealed class PullResult

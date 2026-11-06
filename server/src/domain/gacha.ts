@@ -141,6 +141,14 @@ export function compGachaProblems(missions: CollectionMissionDef[], banners: Ban
   return problems;
 }
 
+/**
+ * QA r9 (景表法・ガチャ表示): what a banner may be bought for. A step-up banner sells only step 10-pulls at the step
+ * prices (stepUp.prices / steps[].priceTen), so its flat priceSingle / priceTen are not shown as usable prices.
+ */
+const shownPrices = (b: BannerDef) => b.stepUp
+  ? { singleAllowed: false as const, priceSingle: null, priceTen: null }
+  : { singleAllowed: true as const, priceSingle: b.priceSingle, priceTen: b.priceTen };
+
 const pct = (ppm: number) => `${(ppm / 10_000).toFixed(4)}%`;
 
 /** REQ-GACHA-002: disclosure generated from the very same definition used for drawing. */
@@ -172,7 +180,7 @@ export function oddsDisclosure(m: Master, b: BannerDef, yenPerCoin = 1.6) {
   // REQ-GACHA-014: the price of every 10-pull on the way to the pity, from the step definitions
   const pityCostCoins = b.stepUp ? stepUpCoins(b, 0, Math.ceil(pityCost / 10)) : tenAndSingles(b, pityCost);
   return {
-    bannerId: b.id, name: b.name, currency: b.currency, priceSingle: b.priceSingle, priceTen: b.priceTen,
+    bannerId: b.id, name: b.name, currency: b.currency, ...shownPrices(b),
     period: { startAtMs: b.startAtMs ?? null, endAtMs: b.endAtMs ?? null, lastDay: b.endAtMs !== undefined ? gameDayKey(b.endAtMs - 1, dayRule(m)) : null },
     // REQ-BREED-021: limited horses are marked per row; owned ones stay owned after the period
     limitedNotice: isLimited(m, b) ? `季節限定の馬は期間終了後この表から外れます。入手済みの馬はそのまま所持・出走・種付けできます。${carry ? `天井の交換ptは期間終了時に「${carry.toLabel}」の交換ptへ1:1で移ります（失効しません）。` : ''}` : null,
@@ -182,12 +190,12 @@ export function oddsDisclosure(m: Master, b: BannerDef, yenPerCoin = 1.6) {
     guarantee: { appliesTo: '10連の10枠目（1〜9枠目にSR以上が出なかった場合のみ、この表で抽選）', items: rows(b.guaranteePool), rarityTotals: totals(b.guaranteePool) },
     stepUp: b.stepUp ? {
       afterLast: b.stepUp.afterLast,
-      notice: `10連のみ。1回引くごとに次のステップへ進みます。${b.stepUp.afterLast === 'loop' ? `ステップ${b.stepUp.steps.length}の次はステップ1に戻ります。` : `ステップ${b.stepUp.steps.length}の後はステップ${b.stepUp.steps.length}を繰り返します。`}1〜9枠目は上の表、10枠目は各ステップの表で抽選します。`,
+      notice: `10連のみ。1回引くごとに次のステップへ進みます。${b.stepUp.afterLast === 'loop' ? `ステップ${b.stepUp.steps.length}の次はステップ1に戻ります。` : `ステップ${b.stepUp.steps.length}の後はステップ${b.stepUp.steps.length}を繰り返します。`}1〜9枠目は上の表で抽選します。10枠目の抽選の仕方はステップごとに下に書いています。`,
       steps: b.stepUp.steps.map((st, i) => ({
         step: i + 1, priceTen: st.priceTen,
         finalSlot: st.finalSlotPool
           ? { appliesTo: `ステップ${i + 1}の10枠目（必ずこの表で抽選）`, items: rows(st.finalSlotPool), rarityTotals: totals(st.finalSlotPool) }
-          : { appliesTo: `ステップ${i + 1}の10枠目（上の保証の表。1〜9枠目にSR以上が出なかった場合のみ）`, items: null, rarityTotals: null },
+          : { appliesTo: `ステップ${i + 1}の10枠目（1〜9枠目にSR以上が出なかった場合は上の保証の表、それ以外は上の表で抽選）`, items: null, rarityTotals: null },
       })),
     } : null,
     pity: {
@@ -344,7 +352,7 @@ export function bannerList(m: Master, now: number) {
     banners: visible.map(({ b, st }) => {
       const pk = b.pickupTemplateId ? m.templateById.get(b.pickupTemplateId) : undefined;
       return {
-        id: b.id, name: b.name, currency: b.currency, priceSingle: b.priceSingle, priceTen: b.priceTen,
+        id: b.id, name: b.name, currency: b.currency, ...shownPrices(b),
         status: st as 'active' | 'upcoming',
         startAtMs: b.startAtMs ?? null, endAtMs: b.endAtMs ?? null, announceAtMs: b.announceAtMs ?? null,
         /** The last game day the banner is open ("2026-11-30"), null when permanent. */

@@ -272,6 +272,8 @@ namespace Muchi.Game
                 var price = step?.PriceTen ?? (b.StepUp.Prices.Length > 0 ? b.StepUp.Prices[0] : b.PriceTen);
                 return paid + "10回 " + price.ToString("N0", CultureInfo.InvariantCulture) + "（10連のみ・SR以上1頭確定）";
             }
+            // QA r9: no 「1回」 price for a banner that does not sell single pulls
+            if (!b.SingleAllowed) return paid + "10回 " + b.PriceTen.ToString("N0", CultureInfo.InvariantCulture) + "（10連のみ・SR以上1頭確定）";
             return paid + "1回 " + b.PriceSingle.ToString("N0", CultureInfo.InvariantCulture) + " ・ 10回 " + b.PriceTen.ToString("N0", CultureInfo.InvariantCulture) + "（SR以上1頭確定）";
         }
 

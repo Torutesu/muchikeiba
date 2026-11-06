@@ -22,7 +22,7 @@ static class GachaChecks
     const long Now = 1793934000000L; // 2026-11-06 12:00 JST
     const string Banners = "{\"serverNowMs\":1793934000000,\"banners\":["
         + "{\"id\":\"pickup_ginga\",\"name\":\"ピックアップ：ギンガノカナタ\",\"currency\":\"any\",\"priceSingle\":100,\"priceTen\":1000,\"status\":\"active\",\"startAtMs\":1793458800000,\"endAtMs\":1796050800000,\"announceAtMs\":1793199600000,\"lastDay\":\"2026-11-30\",\"daysLeft\":25,\"pityGroup\":\"pickup_ginga\",\"pityLabel\":\"ピックアップ（ギンガノカナタ）\",\"pityCost\":100,\"pityTargets\":[\"t_ginga\"],\"pickup\":{\"templateId\":\"t_ginga\",\"name\":\"ギンガノカナタ\",\"rarity\":\"SSR\"},\"limited\":false,\"stepUp\":null},"
-        + "{\"id\":\"stepup_paid\",\"name\":\"有償限定ステップアップ\",\"currency\":\"paidOnly\",\"priceSingle\":100,\"priceTen\":1000,\"status\":\"active\",\"startAtMs\":null,\"endAtMs\":null,\"announceAtMs\":null,\"lastDay\":null,\"daysLeft\":null,\"pityGroup\":\"pickup\",\"pityLabel\":\"ピックアップ\",\"pityCost\":100,\"pityTargets\":[\"t_akatsuki\"],\"pickup\":null,\"limited\":false,\"stepUp\":{\"steps\":5,\"afterLast\":\"loop\",\"prices\":[500,1000,1000,1000,1000],\"finalSlotSteps\":[5]}},"
+        + "{\"id\":\"stepup_paid\",\"name\":\"有償限定ステップアップ\",\"currency\":\"paidOnly\",\"singleAllowed\":false,\"priceSingle\":null,\"priceTen\":null,\"status\":\"active\",\"startAtMs\":null,\"endAtMs\":null,\"announceAtMs\":null,\"lastDay\":null,\"daysLeft\":null,\"pityGroup\":\"pickup\",\"pityLabel\":\"ピックアップ\",\"pityCost\":100,\"pityTargets\":[\"t_akatsuki\"],\"pickup\":null,\"limited\":false,\"stepUp\":{\"steps\":5,\"afterLast\":\"loop\",\"prices\":[500,1000,1000,1000,1000],\"finalSlotSteps\":[5]}},"
         + "{\"id\":\"standard\",\"name\":\"恒常ガチャ\",\"currency\":\"any\",\"priceSingle\":100,\"priceTen\":1000,\"status\":\"active\",\"startAtMs\":null,\"endAtMs\":null,\"announceAtMs\":null,\"lastDay\":null,\"daysLeft\":null,\"pityGroup\":\"standard\",\"pityLabel\":\"恒常\",\"pityCost\":100,\"pityTargets\":[\"t_akatsuki\",\"t_ginga\",\"t_kohaku\",\"t_tsukikage\"],\"pickup\":null,\"limited\":false,\"stepUp\":null},"
         + "{\"id\":\"winter_2026\",\"name\":\"季節限定：聖夜のセイヤノカネ\",\"currency\":\"any\",\"priceSingle\":100,\"priceTen\":1000,\"status\":\"upcoming\",\"startAtMs\":1796914800000,\"endAtMs\":1799593200000,\"announceAtMs\":1796310000000,\"lastDay\":\"2027-01-10\",\"daysLeft\":null,\"pityGroup\":\"winter_2026\",\"pityLabel\":\"季節限定（聖夜）\",\"pityCost\":100,\"pityTargets\":[\"t_seiya\"],\"pickup\":{\"templateId\":\"t_seiya\",\"name\":\"セイヤノカネ\",\"rarity\":\"SSR\"},\"limited\":true,\"stepUp\":null}]}";
     const string Status = "{\"serverNowMs\":1793934000000,\"groups\":["
@@ -86,6 +86,9 @@ static class GachaChecks
         check(list.Rows.All(r => !(r.PriceLine + r.PeriodLine).Contains("倍")), "banners: no 「倍」 wording");
         var step = list.Rows.First(r => r.Banner.Id == "stepup_paid");
         check(step.PriceLine == "有償コインのみ ・ 10回 500（10連のみ・SR以上1頭確定）", "banners: step-up price line before the status (" + step.PriceLine + ")");
+        // QA r9: a banner that sells no single pull never shows a 「1回」 price (server singleAllowed=false, priceSingle null)
+        var tenOnly = new Banner { Id = "x", Name = "x", Currency = "any", SingleAllowed = false, PriceTen = 900 };
+        check(BannerListModel.PriceText(tenOnly, null) == "10回 900（10連のみ・SR以上1頭確定）", "banners: no single price when singles are not offered (" + BannerListModel.PriceText(tenOnly, null) + ")");
 
         // ---- pity meter
         list.ApplyStatus(GachaStatus.FromJson(Status));

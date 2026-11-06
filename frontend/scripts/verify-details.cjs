@@ -40,6 +40,7 @@ const assert = require("node:assert/strict");
     assert(await page.locator(".empty-state").isVisible());
     await page.locator("#clear-filter").click();
     await page.locator('[data-detail="1"]').click();
+    assert.equal(await page.locator(".partner-kit .creative-art").count(), 2);
     await page.locator('[data-tab="skill"]').click();
     assert(await page.locator(".skill-note").isVisible());
     await page.locator("#detail-select").click();
@@ -82,6 +83,19 @@ const assert = require("node:assert/strict");
     assert(await page.locator("#claim-daily").isDisabled());
     assert.equal(await page.locator(".wallet b").first().innerText(), "2,300");
     await screen(9);
+    await page.locator("#collection-preview").click();
+    await page.locator('[data-silks="2"]').click();
+    assert.equal(await page.locator('[data-silks="2"]').getAttribute("aria-pressed"), "true");
+    assert.equal(await page.locator('[data-silks="0"]').getAttribute("aria-pressed"), "false");
+    assert.match(await page.locator(".collection-selection").innerText(), /ヴァイオレット/);
+    for (const width of [390, 844, 1440]) {
+      await page.setViewportSize({ width, height: 1100 });
+      assert(await page.locator("dialog").evaluate(el => el.scrollWidth <= el.clientWidth + 1));
+      assert(await page.locator(".collection-items img").evaluateAll(imgs => imgs.every(i => i.complete && i.naturalWidth > 0)));
+    }
+    await page.locator("dialog .close").click();
+    await page.locator("dialog").waitFor({ state: "detached" });
+
     await page.locator(".coin-card").first().click();
     assert(await page.locator("#purchase-review").isDisabled());
     await page.locator("#birth-detail").fill("2999-01");

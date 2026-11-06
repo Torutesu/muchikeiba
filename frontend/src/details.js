@@ -53,6 +53,9 @@ const skills = [
 ];
 const meter = (label, value) =>
   `<div class="stat-line"><span>${label}</span><div class="meter"><i style="width:${value}%"></i></div><b>${value}</b></div>`;
+const creative = (file, cls = "", alt = "") =>
+  `<img class="creative-art ${cls}" src="/creative/${file}" alt="${alt}" width="128" height="128" draggable="false">`;
+const silks = ["crimson", "azure", "violet"];
 const badge = (text) => `<span class="status-pill">${text}</span>`;
 const bind = (root, selector, fn) =>
   root.querySelectorAll(selector).forEach((el) => (el.onclick = () => fn(el)));
@@ -189,10 +192,10 @@ export function enhance(ctx) {
         list
           .map(
             ({ h, i }) =>
-              `<article class="horse-card ${i === selected ? "chosen" : ""}"><div class="card-top"><span>${h[1]}</span><small>${i === selected ? "● 出走馬に選択中" : "PARTNER / 0" + (i + 1)}</small></div>${horseArt("variant-" + i)}<h2>${safe(names[i])}</h2><p>${h[2]}<span>${h[3]}</span></p>${meter("スピード", stats[i][0])}${meter("スタミナ", stats[i][2])}<div class="rating">TOTAL RATING <b>${h[4]}</b></div><div class="card-actions"><button class="small-button" data-detail="${i}">能力・スキル</button><button class="small-button filled" data-pick="${i}" ${selected === i ? "disabled" : ""}>${selected === i ? "選択中" : "出走馬にする"}</button></div></article>`,
+              `<article class="horse-card rarity-${h[1].toLowerCase()} ${i === selected ? "chosen" : ""}"><div class="card-top"><span>${h[1]}</span><small>${i === selected ? "● 出走馬に選択中" : "PARTNER / 0" + (i + 1)}</small></div>${horseArt("variant-" + i)}<h2>${safe(names[i])}</h2><p>${h[2]}<span>${h[3]}</span></p>${meter("スピード", stats[i][0])}${meter("スタミナ", stats[i][2])}<div class="rating">TOTAL RATING <b>${h[4]}</b></div><div class="card-actions"><button class="small-button" data-detail="${i}">能力・スキル</button><button class="small-button filled" data-pick="${i}" ${selected === i ? "disabled" : ""}>${selected === i ? "選択中" : "出走馬にする"}</button></div></article>`,
           )
           .join("") ||
-        `<div class="empty-state"><span>${icon("search")}</span><h2>相棒が見つかりません</h2><p>名前や絞り込み条件を変えてみてください。</p><button class="small-button" id="clear-filter">条件をクリア</button></div>`;
+        `<div class="empty-state">${creative("states/search-empty.svg", "state-art")}<h2>相棒が見つかりません</h2><p>名前や絞り込み条件を変えてみてください。</p><button class="small-button" id="clear-filter">条件をクリア</button></div>`;
       bind(grid, "[data-pick]", (el) => selectHorse(Number(el.dataset.pick)));
       bind(grid, "[data-detail]", (el) =>
         horseDetail(Number(el.dataset.detail)),
@@ -224,13 +227,13 @@ export function enhance(ctx) {
     app.querySelector("#breed-tab").onclick = () =>
       dialog(
         "次の世代へ、物語をつなぐ。",
-        '<div class="locked-feature"><span>◇</span><h3>配合は、クラブ2日目に開放</h3><p>引退した父馬と母馬から、適性や個性を引き継ぎます。</p></div><ol class="guide-list"><li>父馬と母馬を選ぶ</li><li>血統と相性を確認する</li><li>新しい相棒を迎える</li></ol><p class="quiet">現在は画面プレビューです。配合処理は行いません。</p>',
+        '<div class="locked-feature"><img class="state-art" src="/creative/states/breeding-locked.svg" alt="" width="180" height="140"><h3>配合は、クラブ2日目に開放</h3><p>引退した父馬と母馬から、適性や個性を引き継ぎます。</p></div><ol class="guide-list"><li>父馬と母馬を選ぶ</li><li>血統と相性を確認する</li><li>新しい相棒を迎える</li></ol><p class="quiet">現在は画面プレビューです。配合処理は行いません。</p>',
       );
   }
   function horseDetail(i) {
     const d = dialog(
       safe(names[i]),
-      `<div class="detail-summary">${horseArt("variant-" + i)}<div>${badge(horses[i][1] + " / " + horses[i][2])}<p>${horses[i][3]} · 総合評価 ${horses[i][4]}</p><div class="detail-tabs"><button data-tab="stats" aria-pressed="true">能力</button><button data-tab="skill" aria-pressed="false">スキル・適性</button></div><div id="detail-body"></div></div></div><button class="primary" id="detail-select" ${i === selected ? "disabled" : ""}>${i === selected ? "出走馬に選択中" : "この相棒で出走する"}<span>↗</span></button>`,
+      `<div class="detail-summary">${horseArt("variant-" + i)}<div>${badge(horses[i][1] + " / " + horses[i][2])}<p>${horses[i][3]} · 総合評価 ${horses[i][4]}</p><div class="detail-tabs"><button data-tab="stats" aria-pressed="true">能力</button><button data-tab="skill" aria-pressed="false">スキル・適性</button></div><div id="detail-body"></div></div></div><section class="partner-kit" aria-label="相棒の装い"><div>${creative("items/silks-" + silks[i] + ".svg")}<span>RACING SILKS<b>${["クリムゾン", "アズール", "ヴァイオレット"][i]}</b><small>モデルに合わせた勝負服</small></span></div><div>${creative("items/saddlecloth-ivory.svg")}<span>SADDLECLOTH<b>アイボリー</b><small>クラブ共通のゼッケン</small></span></div></section><button class="primary" id="detail-select" ${i === selected ? "disabled" : ""}>${i === selected ? "出走馬に選択中" : "この相棒で出走する"}<span>↗</span></button>`,
     );
     const paint = (t) => {
       d.querySelector("#detail-body").innerHTML =
@@ -373,7 +376,7 @@ export function enhance(ctx) {
         )
         .join(
           "",
-        )}</tbody></table><p class="quiet">上位4頭のデモ結果です。</p></div><div class="panel"><div class="section-caption"><h2>今回の報酬</h2>${badge("1ST PLACE")}</div><dl class="spec-list"><div><dt>出走報酬</dt><dd>無償コイン 300</dd></div><div><dt>1着ボーナス</dt><dd>無償コイン 500</dd></div><div><dt>ランクポイント</dt><dd>＋120 pt（表示デモ）</dd></div></dl><button class="primary" id="claim-race" ${raceReward ? "disabled" : ""}>${raceReward ? "報酬受取済み" : "800コインを受け取る"}<span>✓</span></button><button class="text-button" id="race-again">もう一度出走する ↗</button></div></section>`,
+        )}</tbody></table><p class="quiet">上位4頭のデモ結果です。</p></div><div class="panel"><div class="section-caption"><h2>今回の報酬</h2>${badge("1ST PLACE")}</div><div class="reward-showcase">${creative("keyart/victory-trophy.png", "reward-trophy")}<div><small>RACE REWARD</small><strong>800 <span>無償コイン</span></strong><p>出走報酬と1着ボーナス</p></div></div><dl class="spec-list"><div><dt>出走報酬</dt><dd>無償コイン 300</dd></div><div><dt>1着ボーナス</dt><dd>無償コイン 500</dd></div><div><dt>ランクポイント</dt><dd>＋120 pt（表示デモ）</dd></div></dl><button class="primary" id="claim-race" ${raceReward ? "disabled" : ""}>${raceReward ? "報酬受取済み" : "800コインを受け取る"}<span>✓</span></button><button class="text-button" id="race-again">もう一度出走する ↗</button></div></section>`,
     );
     app.querySelector("#claim-race").onclick = () => {
       if (raceReward) return;
@@ -443,6 +446,21 @@ export function enhance(ctx) {
         "afterend",
         '<div class="notice store-notice"><b>購入前にご確認ください</b><p>コインの内訳・価格・年齢に応じた購入条件を、確認画面でご案内します。現在のプロトタイプでは決済されません。</p></div>',
       );
+    const preview = document.createElement("button");
+    preview.className = "text-button collection-preview";
+    preview.id = "collection-preview";
+    preview.innerHTML = `コレクションを見る ${icon("arrow")}`;
+    app.querySelector(".pass-copy").append(preview);
+    preview.onclick = () => {
+      const d = dialog("クラブの色を、まとう。", `<div class="collection-cover"><img src="/creative/keyart/season-collection.webp" alt="深緑とアイボリーのシーズン勝負服"></div><div class="collection-heading"><span>THE NOVEMBER COLLECTION</span><h3>走る日にも、あなたらしさを。</h3><p>シーズン衣装のアートプレビューです。</p></div><div class="collection-items">${silks.map((color, i) => `<button class="silks-option" data-silks="${i}" aria-pressed="${i === 0}">${creative("items/silks-" + color + ".svg")}<b>${["クリムゾン", "アズール", "ヴァイオレット"][i]}</b><span>${i === 0 ? "表示中" : "プレビュー"}</span></button>`).join("")}</div><p class="collection-selection" role="status">クリムゾン · 勝負服の配色サンプル</p><p class="quiet">色違いは制作見本です。販売内容・装備・所持状態を変更するものではありません。</p>`);
+      bind(d, "[data-silks]", (el) => {
+        d.querySelectorAll("[data-silks]").forEach((b) => {
+          b.setAttribute("aria-pressed", String(b === el));
+          b.querySelector("span").textContent = b === el ? "表示中" : "プレビュー";
+        });
+        d.querySelector(".collection-selection").textContent = ["クリムゾン", "アズール", "ヴァイオレット"][Number(el.dataset.silks)] + " · 勝負服の配色サンプル";
+      });
+    };
     bind(app, ".purchase", (el) => {
       const price = Number(el.dataset.price),
         pack = el.querySelector("h2")?.textContent || "シーズンパス";

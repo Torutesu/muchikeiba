@@ -338,6 +338,10 @@ const fs = require("node:fs");
     await page.setViewportSize({ width: 1440, height: 1400 });
     await screen(3);
     await capture("29-scout-received", "スカウト・初回受取済み");
+    await screen(9);
+    await page.locator("#collection-preview").click();
+    await capture("30-season-collection", "シーズン衣装・コレクション", "dialog");
+    await close();
     let y = 80;
     const groups = [];
     for (let i = 0; i < outputs.length; i += 2) {

@@ -1,5 +1,6 @@
 import "./style.css";
 import "./details.css";
+import "./atelier.css";
 import { enhance } from "./details.js";
 import { icon } from "./icons.js";
 import { mountPresentation, disposePresentation } from "./presentation.js";
@@ -102,7 +103,7 @@ function render() {
     ]
       .map(
         ([p, c], i) =>
-          `<button class="coin-card purchase ${i === 2 ? "recommended" : ""}" data-price="${p}">${i === 2 ? '<div class="recommend-badge">CLUB SELECTION</div>' : ""}<span>COIN COLLECTION / 0${i + 1}</span><div class="coin-emblem">${icon("coin")}${i > 0 ? icon("coin") : ""}${i > 1 ? icon("coin") : ""}</div><h2>${c.toLocaleString()} <small>有償コイン</small></h2><p>新しい出会いを、クラブから。</p><b>¥${p.toLocaleString()} <span>税込 ${icon("arrow")}</span></b></button>`,
+          `<button class="coin-card purchase ${i === 2 ? "recommended" : ""}" data-price="${p}">${i === 2 ? '<div class="recommend-badge">CLUB SELECTION</div>' : ""}<span>COIN COLLECTION / 0${i + 1}</span><div class="coin-emblem"><img src="/creative/currency/${i > 1 ? "coin-reward" : "coin-paid"}.svg" alt="" width="128" height="128"></div><h2>${c.toLocaleString()} <small>有償コイン</small></h2><p>新しい出会いを、クラブから。</p><b>¥${p.toLocaleString()} <span>税込 ${icon("arrow")}</span></b></button>`,
       )
       .join(
         "",

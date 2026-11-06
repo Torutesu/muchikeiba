@@ -51,37 +51,37 @@
     "name": "09",
     "title": "リザルト",
     "width": 1440,
-    "height": 1232
+    "height": 1335
   },
   {
     "name": "10",
     "title": "ショップ",
     "width": 1440,
-    "height": 1107
+    "height": 1120
   },
   {
     "name": "11-horse-stats",
     "title": "馬詳細・能力",
     "width": 810,
-    "height": 564
+    "height": 674
   },
   {
     "name": "12-horse-skill",
     "title": "馬詳細・スキルと適性",
     "width": 810,
-    "height": 642
+    "height": 752
   },
   {
     "name": "13-stable-empty",
     "title": "厩舎・検索結果なし",
     "width": 1440,
-    "height": 900
+    "height": 954
   },
   {
     "name": "14-breeding",
     "title": "配合・開放条件",
     "width": 810,
-    "height": 493
+    "height": 589
   },
   {
     "name": "15-race-ready",
@@ -165,12 +165,18 @@
     "name": "28-mobile-partner",
     "title": "馬詳細・モバイル",
     "width": 367,
-    "height": 863
+    "height": 900
   },
   {
     "name": "29-scout-received",
     "title": "スカウト・初回受取済み",
     "width": 1440,
     "height": 963
+  },
+  {
+    "name": "30-season-collection",
+    "title": "シーズン衣装・コレクション",
+    "width": 810,
+    "height": 764
   }
 ]

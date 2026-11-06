@@ -51,10 +51,10 @@ readme = '''# ムチ一閃・詳細 UI / Figma 取り込み
 
 review.html で全画面を比較できます。
 
-screens.svg を Figma のキャンバスにドラッグすると29種類を取り込めます。
+screens.svg を Figma のキャンバスにドラッグすると30種類を取り込めます。
 個別画面は screens/ 内の SVG、ブラウザの見た目の参照は同名 PNG です。
 
-名前付きフレームで取り込む場合は Figma デスクトップの Plugins → Development → Import plugin from manifest で figma-plugin/manifest.json を選択して実行してください。ネットワークアクセスなしで29フレームを作成します。Figma 実機でのプラグイン動作は未検証です。
+名前付きフレームで取り込む場合は Figma デスクトップの Plugins → Development → Import plugin from manifest で figma-plugin/manifest.json を選択して実行してください。ネットワークアクセスなしで30フレームを作成します。Figma 実機でのプラグイン動作は未検証です。
 
 fonts/ の OTF をインストールすると、Club Sans / Club Serif の書体を揃えられます。画像と3DプレビューはSVG内へ埋め込んでいます。
 

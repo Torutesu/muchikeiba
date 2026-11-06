@@ -29,9 +29,16 @@ export interface HorseTemplate {
   surface: 'turf' | 'dirt' | 'both'; line: string; sireName: string; damName: string; stats: Stats;
   /** Ground preference (REQ-RACE-035). Absent = any. */
   goingAptitude?: GoingAptitude;
+  /**
+   * REQ-BREED-020: a limited-time (季節限定) horse. Obtainable only from banners that list it in `seasonal`
+   * and events that reward it, inside this window; horses already owned stay owned after it ends.
+   */
+  seasonal?: SeasonalInfo;
 }
+export interface SeasonalInfo { seasonId: string; label: string; startAtMs: number; endAtMs: number }
 export interface ItemQty { itemId: string; qty: number }
-export interface Reward { freeCoins?: number; items?: ItemQty[] }
+/** `horse`: a template id granted as a horse (event rewards only; REQ-BREED-022). */
+export interface Reward { freeCoins?: number; items?: ItemQty[]; horse?: string }
 export interface Product {
   id: string; kind: 'coins' | 'starter' | 'season_pass'; priceYen: number; paidCoins: number;
   once?: boolean; items?: ItemQty[]; durationDays?: number;
@@ -84,6 +91,27 @@ export interface Progression {
   bond: BondConfig;
   /** REQ-ROOM-*: private-room condition choices. */
   rooms: RoomsConfig;
+  /** REQ-BREED-010..016: stud lending between players (free coins only, capped). Absent = disabled. */
+  stud?: StudConfig;
+  /** REQ-BREED-017: atavism (隔世遺伝) chance per breeding, in permille. Absent = 0. */
+  atavismPermille?: number;
+}
+export interface StudConfig {
+  /** Highest fee an owner may ask, in free coins. */
+  feeMax: number;
+  /** Highest daily lend limit an owner may set per listed stallion. */
+  dailyLimitMax: number;
+  /** Free coins an owner can earn from lending per JST day; fees above it are not paid out (sink). */
+  dailyEarnCap: number;
+  /** Stud breedings a borrower may make per JST day (on top of the normal breeding allowance rules). */
+  borrowPerDay: number;
+  maxListings: number;
+  /** A reservation not settled within this time is released (the borrower was never charged). */
+  reserveTtlMs: number;
+  /** Delay before the borrower's object retries an unsettled fee payment. */
+  retryMs: number;
+  historyKeep: number;
+  browseLimit: number;
 }
 export interface WeatherOverride { trackId?: string; fromMs: number; toMs: number; going: Going; night?: boolean }
 export interface WeatherConfig {
@@ -188,14 +216,20 @@ export interface RawBanner {
   pityTargets: string[]; pool: 'auto' | PoolEntry[]; rates?: Partial<Record<Rarity, number>>;
   guaranteeRates?: Partial<Record<Rarity, number>>; guaranteePool?: PoolEntry[];
   pickup?: { templateId: string; ppm: number }; startAtMs?: number; endAtMs?: number;
+  /** REQ-BREED-020: seasonal templates added to this banner's auto pools (by rarity, like any other). */
+  seasonal?: string[];
 }
 
-export function expandPool(templates: HorseTemplate[], rates: Partial<Record<Rarity, number>>, pickup?: { templateId: string; ppm: number }): PoolEntry[] {
+/**
+ * Auto pool by rarity. Seasonal templates (REQ-BREED-020) are left out unless listed in `seasonal`, so a
+ * permanent banner or a ticket table never offers a limited horse.
+ */
+export function expandPool(templates: HorseTemplate[], rates: Partial<Record<Rarity, number>>, pickup?: { templateId: string; ppm: number }, seasonal: string[] = []): PoolEntry[] {
   const out: PoolEntry[] = [];
   for (const r of RARITY_ORDER) {
     const total = rates[r] ?? 0;
     if (total === 0) continue;
-    const ids = templates.filter((t) => t.rarity === r).map((t) => t.id);
+    const ids = templates.filter((t) => t.rarity === r && (!t.seasonal || seasonal.includes(t.id))).map((t) => t.id);
     if (ids.length === 0) throw new AppError('CONFIG_INVALID', `no templates of rarity ${r}`);
     if (pickup && ids.includes(pickup.templateId)) {
       out.push({ templateId: pickup.templateId, ppm: pickup.ppm });
@@ -206,8 +240,8 @@ export function expandPool(templates: HorseTemplate[], rates: Partial<Record<Rar
 }
 
 export function buildBanner(raw: RawBanner, templates: HorseTemplate[]): BannerDef {
-  const pool = raw.pool === 'auto' ? expandPool(templates, raw.rates ?? {}, raw.pickup) : raw.pool;
-  const guaranteePool = raw.guaranteePool ?? expandPool(templates, raw.guaranteeRates ?? {}, raw.pickup && { templateId: raw.pickup.templateId, ppm: Math.round((raw.pickup.ppm * (raw.guaranteeRates?.SSR ?? 0)) / Math.max(1, raw.rates?.SSR ?? 1)) });
+  const pool = raw.pool === 'auto' ? expandPool(templates, raw.rates ?? {}, raw.pickup, raw.seasonal) : raw.pool;
+  const guaranteePool = raw.guaranteePool ?? expandPool(templates, raw.guaranteeRates ?? {}, raw.pickup && { templateId: raw.pickup.templateId, ppm: Math.round((raw.pickup.ppm * (raw.guaranteeRates?.SSR ?? 0)) / Math.max(1, raw.rates?.SSR ?? 1)) }, raw.seasonal);
   const b: BannerDef = { id: raw.id, name: raw.name, currency: raw.currency, priceSingle: raw.priceSingle, priceTen: raw.priceTen, pityGroup: raw.pityGroup, pityTargets: raw.pityTargets, pool, guaranteePool };
   if (raw.startAtMs !== undefined) b.startAtMs = raw.startAtMs;
   if (raw.endAtMs !== undefined) b.endAtMs = raw.endAtMs;

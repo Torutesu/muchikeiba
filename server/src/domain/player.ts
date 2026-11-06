@@ -30,6 +30,10 @@ export interface HorseInstance {
   goingAptitude?: GoingAptitude;
   /** Look (REQ-ASSET-003). Filled by migratePlayer for horses stored before it existed. */
   appearance?: Appearance;
+  /** REQ-BREED-014: the sire was another player's stallion (lineage records both sides). */
+  studSire?: { ownerId: string; horseId: string; sireName: string | null; damName: string | null };
+  /** REQ-BREED-017: a trait inherited from a grandparent (隔世遺伝). */
+  atavism?: { trait: 'style' | 'goingAptitude'; value: string; from: string };
 }
 
 export interface PurchaseRecord {
@@ -141,6 +145,31 @@ export interface PlayerState {
   itemLog?: ItemLogEntry[];
   /** REQ-ITEM-003: extra breedings bought with material today (JST date). */
   breedingExtra?: { date: string; count: number };
+  /** REQ-BREED-010..016: stud lending, both as owner and as borrower (created on first use; see stud.ts). */
+  stud?: StudState;
+}
+
+export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }
+export interface StudHistoryEntry {
+  opId: string; role: 'lent' | 'borrowed'; at: number; ownerId: string; borrowerId: string; horseId: string; horseName: string;
+  /** Fee charged to the borrower / paid out to the owner (owner side may be less: daily earn cap). */
+  fee: number; paid: number; foalId: string | null;
+}
+export interface StudState {
+  listings: StudListing[];
+  /** Owner: reservations in flight by opId (released when settled or after reserveTtlMs). */
+  reservations: Record<string, { horseId: string; borrowerId: string; fee: number; at: number; date: string }>;
+  /** Owner: settled opIds → settled-at, so a retried settlement never pays twice (pruned by age). */
+  settled: Record<string, number>;
+  /** Owner: today's lends per horse and coins earned (JST date). */
+  lends: { date: string; byHorse: Record<string, number>; earned: number };
+  /** Borrower: stud breedings applied, by opId → result (never applied twice). */
+  applied: Record<string, { at: number; result: unknown }>;
+  /** Borrower: fee payments the owner has not acknowledged yet (retried from the object's alarm). */
+  outbox: { opId: string; ownerId: string; horseId: string; fee: number; foalId: string; at: number; nextAt: number; attempts: number }[];
+  /** Borrower: stud breedings today (JST date). */
+  borrows: { date: string; count: number };
+  history: StudHistoryEntry[];
 }
 
 export interface Equipment { tack: Partial<Record<'bridle' | 'saddlecloth', string>>; decor: (string | null)[] }

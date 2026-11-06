@@ -84,6 +84,12 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | DELETE | `/v1/presets/room` | 要 | | 条件を消す（自動に戻す） |
 | POST | `/v1/breeding/preview` | 要 | | `{sireId, damId}` 能力の範囲・脚質・距離・ニックス・近親 |
 | POST | `/v1/breeding` | 要 | 必須 | `{sireId, damId, useMaterial?}` 1日1回。`useMaterial: true` なら通常分を使い切った後、配合素材で1日1回まで追加（REQ-ITEM-003）。予想（preview）は `today` に残り回数を返す |
+| GET | `/v1/stud/mine` | 要 | | 自分の登録種牡馬（今日の貸出数）・今日の受取額と上限・借りた回数・履歴（貸し/借り） |
+| PUT | `/v1/stud/listings/:horseId` | 要 | | `{visibility: friends\|public, fee, dailyLimit}` 引退牡馬を登録・更新。料金は無償コイン（REQ-BREED-010） |
+| DELETE | `/v1/stud/listings/:horseId` | 要 | | 登録を取り下げる |
+| GET | `/v1/stud/browse?scope=friends\|public` | 要 | | フレンドの登録馬／全体公開の登録馬 |
+| POST | `/v1/stud/preview` | 要 | | `{ownerId, horseId, damId}` 通常の予想＋`stud`（料金・残り枠・支払えるか） |
+| POST | `/v1/stud/breed` | 要 | 必須 | `{ownerId, horseId, damId, useMaterial?}` 借りた種牡馬で配合。`feeStatus: paid\|pending`（pending＝持ち主への支払いを再送中。二重請求なし） |
 | GET | `/v1/items/tickets` | なし | | 券の一覧と提供割合（REQ-ITEM-001/002） |
 | GET | `/v1/items/tickets/:itemId/odds` | なし | | 券1種の提供割合（SR以上確定券は券専用の表） |
 | POST | `/v1/items/tickets/:itemId/use` | 要 | 必須 | `{bannerId?}` ガチャ券は `bannerId` 必須（対象ガチャのみ、天井+1）。SR以上確定券は不要 |
@@ -284,6 +290,12 @@ App Store Server API（`AppStoreServerApi`、ES256 JWT）はアプリが報告�
 - クライアントでしか分からないイベント（セッション・チュートリアルの各ステップ・画面・購入画面の操作・通知の開封など）は `POST /v1/analytics/events` で受ける。種類ごとにスキーマで検証し、時刻が7日より古いか5分より未来のものは捨てる。
 - 個人情報は送らない。プレイヤーIDはソルト（secret `KPI_SALT`）付きSHA-256の先頭16桁に置き換える。`KPI_SALT` が無ければ何も書かない。
 - 列の並びとクエリ（継続率・チュートリアル・初回課金・ARPDAU・課金率・パス継続・課金者と無課金者の勝率差）は `docs/ops/kpi-queries.md`。
+
+## 配合の拡張（`src/domain/stud.ts`・`studService.ts`・`horses.ts`、REQ-BREED-*）
+- **種牡馬の貸し借り**：2人のPlayerDOにまたがる取引を、同じ操作IDで ①持ち主が確保 → ②借り手が支払い＋配合＋未送金記録（1トランザクション）→ ③持ち主が受取 → ④借り手が未送金を消す、の順に進める。どの段階も繰り返して安全。②失敗で①を戻し、③④が届かなければ借り手のアラームが再送（`retryMs` から倍々、最大1時間）。確保だけ残った枠は `reserveTtlMs` で失効。検索用の写しは DirectoryDO の `studs` 表（持ち主のシャード、公開一覧は全シャードから集める）。
+- **料金は無償コインのみ**・1回 `feeMax`・持ち主の1日受取 `dailyEarnCap`・1頭1日 `dailyLimitMax`・借り手1日 `borrowPerDay`（`master/progression.json` の `stud`。リモート設定でも `STUD_HARD_LIMITS` は超えない）。理由は `docs/planning/03-legal-risk.md`。
+- **隔世遺伝**：祖父母の脚質・馬場適性を `atavismPermille` で1つ継ぐ（能力値は変えない）。候補なしなら乱数の使い方は従来と同じ。予想の `atavism` は同じ関数から。
+- **季節限定の馬**：`horses.json` の `seasonal`（期間）、バナーの `seasonal`（その馬を入れる）、閉じる天井グループ（期間後は恒常へ）。イベント報酬の `horse`。恒常バナー・券・CPUには出ない。期間後も所持は続く。
 
 ## 未実装・要対応
 - Apple / Google の実機・本番の認証情報での疎通確認（コードとテストは自前の証明書チェーン・偽APIで検証済み）

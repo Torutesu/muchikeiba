@@ -92,6 +92,14 @@ export function eventProblems(m: Pick<Master, 'tracks' | 'progression'>, events:
     if (ms.some((x, i) => !Number.isInteger(x) || x <= 0 || (i > 0 && x <= ms[i - 1]!))) p.push(`${at}: milestones must be ascending positive points`);
     const rr = ev.rankRewards ?? [];
     if (rr.some((b, i) => i < rr.length - 1 && (b.maxRank === null || (rr[i + 1]!.maxRank !== null && rr[i + 1]!.maxRank! <= b.maxRank)))) p.push(`${at}: rankRewards must be ascending maxRank with null last`);
+    // REQ-BREED-022: a horse reward names a known template; a seasonal one only inside its window
+    const byId = (m as Partial<Pick<Master, 'templateById'>>).templateById;
+    for (const r of [...(ev.milestones ?? []), ...rr].map((x) => x.reward)) {
+      if (!r?.horse) continue;
+      const t = byId?.get(r.horse);
+      if (byId && !t) p.push(`${at}: reward horse ${r.horse} unknown`);
+      if (t?.seasonal && (ev.startAtMs < t.seasonal.startAtMs || ev.endAtMs > t.seasonal.endAtMs)) p.push(`${at}: seasonal reward horse ${r.horse} outside its window`);
+    }
   }
   return p;
 }
@@ -180,7 +188,7 @@ export const pointsFor = (ev: EventDef, place: number) => (ev.points.byPlace[pla
  * REQ-EVENT-005: applies one event race (the caller makes this idempotent per race id). A void race
  * refunds the held fee and scores nothing. Milestone rewards are paid once each.
  */
-export function applyEventResult(ev: EventDef, s: PlayerState, r: { raceId: string; place: number; void: boolean }, now: number) {
+export function applyEventResult(ev: EventDef, s: PlayerState, r: { raceId: string; place: number; void: boolean }, now: number, m?: Pick<Master, 'templateById'>) {
   const st = ensureEvent(s, ev.id);
   if (r.void) {
     const c = cancelEntry(s, ev.id, null, now);
@@ -195,7 +203,7 @@ export function applyEventResult(ev: EventDef, s: PlayerState, r: { raceId: stri
   for (const ms of ev.milestones) {
     if (st.points >= ms.points && !st.milestones.includes(ms.points)) {
       st.milestones.push(ms.points);
-      grantReward(s, ms.reward, now, `event ${ev.id} ${ms.points}pt`, `event:${ev.id}:ms:${ms.points}`);
+      grantReward(s, ms.reward, now, `event ${ev.id} ${ms.points}pt`, `event:${ev.id}:ms:${ms.points}`, m);
       paid.push(ms.reward);
     }
   }
@@ -208,7 +216,7 @@ export function eventRankReward(ev: EventDef, rank: number | null): Reward | nul
 }
 
 /** REQ-EVENT-008: final rank reward, once; players who never raced get nothing. */
-export function closeEventForPlayer(ev: EventDef, s: PlayerState, rank: number | null, now: number) {
+export function closeEventForPlayer(ev: EventDef, s: PlayerState, rank: number | null, now: number, m?: Pick<Master, 'templateById'>) {
   const st = ensureEvent(s, ev.id);
   if (st.closed) return { status: 'already' as const, reward: null };
   st.closed = true;
@@ -216,7 +224,7 @@ export function closeEventForPlayer(ev: EventDef, s: PlayerState, rank: number |
   // a fee still held when the event is over can never be used: give it back
   if (st.pending) cancelEntry(s, ev.id, null, now);
   const reward = st.races > 0 ? eventRankReward(ev, rank) : null;
-  if (reward) grantReward(s, reward, now, `event ${ev.id} rank ${rank ?? '-'}`, `event:${ev.id}:rank`);
+  if (reward) grantReward(s, reward, now, `event ${ev.id} rank ${rank ?? '-'}`, `event:${ev.id}:rank`, m);
   return { status: 'rewarded' as const, reward };
 }
 

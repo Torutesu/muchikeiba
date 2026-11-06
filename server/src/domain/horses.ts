@@ -89,6 +89,9 @@ export function nameHorse(m: Master, s: PlayerState, horseId: string, raw: strin
 // ---------- Pedigree (REQ-HORSE-007) ----------
 export interface PedigreeNode { key: string; name: string; horseId: string | null; sire: PedigreeNode | null; dam: PedigreeNode | null }
 
+/** Pedigree key of another player's stallion (the same in every stable, so inbreeding checks see it). */
+export const studKey = (ownerId: string, horseId: string) => `stud:${ownerId}:${horseId}`;
+
 function nodeFor(s: PlayerState, h: HorseInstance, depth: number): PedigreeNode {
   const node: PedigreeNode = { key: h.id, name: h.name, horseId: h.id, sire: null, dam: null };
   if (depth <= 0) return node;
@@ -99,7 +102,13 @@ function nodeFor(s: PlayerState, h: HorseInstance, depth: number): PedigreeNode 
     }
     return name ? { key: `name:${name}`, name, horseId: null, sire: null, dam: null } : null;
   };
-  node.sire = parent(h.sireId, h.sireName);
+  // REQ-BREED-014: a borrowed stallion is shown with its own parents (by name) and a cross-stable key
+  const st = h.studSire;
+  node.sire = !h.sireId && st
+    ? { key: studKey(st.ownerId, st.horseId), name: h.sireName ?? '', horseId: null,
+        sire: st.sireName ? { key: `name:${st.sireName}`, name: st.sireName, horseId: null, sire: null, dam: null } : null,
+        dam: st.damName ? { key: `name:${st.damName}`, name: st.damName, horseId: null, sire: null, dam: null } : null }
+    : parent(h.sireId, h.sireName);
   node.dam = parent(h.damId, h.damName);
   return node;
 }
@@ -141,6 +150,51 @@ function checkPair(s: PlayerState, sireId: string, damId: string) {
   if (sire.status !== 'retired' || dam.status !== 'retired') throw new AppError('HORSE_NOT_RETIRED');
   if (sire.sex !== 'male' || dam.sex !== 'female' || sire.id === dam.id) throw new AppError('BREEDING_INVALID_PAIR');
   return { sire, dam };
+}
+
+/** A dam of this stable for a stud breeding (REQ-BREED-013). */
+export function checkDam(s: PlayerState, damId: string) {
+  const dam = getHorse(s, damId);
+  if (dam.status !== 'retired') throw new AppError('HORSE_NOT_RETIRED');
+  if (dam.sex !== 'female') throw new AppError('BREEDING_INVALID_PAIR');
+  return dam;
+}
+
+// ---------- Atavism / 隔世遺伝 (REQ-BREED-017..019) ----------
+export interface GrandTrait { trait: 'style' | 'goingAptitude'; value: string; from: string }
+
+/** Traits of a horse's own parents that a foal could inherit from it as grandparents. Parents not in the stable count as unknown. */
+export function parentTraits(s: PlayerState, h: HorseInstance): GrandTrait[] {
+  const out: GrandTrait[] = [];
+  for (const pid of [h.sireId, h.damId]) {
+    const p = pid ? s.horses.find((x) => x.id === pid) : undefined;
+    if (!p) continue;
+    out.push({ trait: 'style', value: p.style, from: p.name });
+    if (p.goingAptitude && p.goingAptitude !== 'any') out.push({ trait: 'goingAptitude', value: p.goingAptitude, from: p.name });
+  }
+  return out;
+}
+
+/**
+ * Grandparent traits that would change something (neither parent already has them), deduplicated, in a
+ * stable order. Shared by breed() and the preview so the shown odds are the real ones. A trait changes
+ * running style or ground preference only, never stats, so it can't break the stat balance.
+ */
+export function atavismOptions(sire: HorseInstance, dam: HorseInstance, grand: GrandTrait[]): GrandTrait[] {
+  const out: GrandTrait[] = [];
+  for (const g of grand) {
+    if (g.trait === 'style' && (g.value === sire.style || g.value === dam.style)) continue;
+    if (g.trait === 'goingAptitude' && (g.value === (sire.goingAptitude ?? 'any') || g.value === (dam.goingAptitude ?? 'any'))) continue;
+    if (out.some((x) => x.trait === g.trait && x.value === g.value)) continue;
+    out.push(g);
+  }
+  return out;
+}
+
+/** Atavism odds as shown in the preview: the whole chance, split evenly over the candidates. */
+export function atavismOdds(m: Master, options: GrandTrait[]) {
+  const chancePermille = options.length > 0 ? Math.max(0, Math.min(1000, m.progression.atavismPermille ?? 0)) : 0;
+  return { chancePermille, candidates: options.map((o) => ({ ...o, permille: chancePermille / options.length })) };
 }
 
 /** Deterministic base (before random variation). Shared by the real computation and the preview. */
@@ -189,6 +243,11 @@ function rollGoingAptitude(odds: Record<GoingAptitude, number>, rng: Rng): Going
 /** Breeding preview from the same baseline function (REQ-HORSE-008). */
 export function breedingPreview(m: Master, s: PlayerState, sireId: string, damId: string) {
   const { sire, dam } = checkPair(s, sireId, damId);
+  return previewFor(m, s, sire, dam, [...parentTraits(s, sire), ...parentTraits(s, dam)]);
+}
+
+/** Preview for any sire (own or a borrowed stallion's snapshot) and a dam of this stable. */
+export function previewFor(m: Master, s: PlayerState, sire: HorseInstance, dam: HorseInstance, grand: GrandTrait[]) {
   const b = baseline(m, s, sire, dam);
   const range = {} as Record<keyof Stats, { min: number; max: number }>;
   for (const k of STAT_KEYS) range[k] = { min: clampStat(b.stats[k] - BREED.variation), max: clampStat(b.stats[k] + BREED.variation) };
@@ -203,6 +262,7 @@ export function breedingPreview(m: Master, s: PlayerState, sireId: string, damId
     distance: { minM: Math.max(1000, b.distMin - jitter), maxM: b.distMax + jitter },
     surface: sire.surface === dam.surface ? sire.surface : 'both or a parent\'s',
     goingAptitude: goingAptitudeOdds(sire, dam),
+    atavism: atavismOdds(m, atavismOptions(sire, dam, grand)),
   };
 }
 
@@ -231,6 +291,15 @@ export function breedingAllowance(m: Master, s: PlayerState, now: number) {
  */
 export function breed(m: Master, s: PlayerState, sireId: string, damId: string, rng: Rng, now: number, opts: { useMaterial?: boolean; ref?: string } = {}) {
   const { sire, dam } = checkPair(s, sireId, damId);
+  return breedWith(m, s, sire, dam, [...parentTraits(s, sire), ...parentTraits(s, dam)], rng, now, { ...opts, ref: opts.ref ?? `breed:${sireId}x${damId}` });
+}
+
+/**
+ * Breeding core for any sire view (own horse, or a borrowed stallion's snapshot — REQ-BREED-013) and a dam
+ * of this stable. `grand` = the grandparents' traits for atavism.
+ */
+export function breedWith(m: Master, s: PlayerState, sire: HorseInstance, dam: HorseInstance, grand: GrandTrait[], rng: Rng, now: number,
+  opts: { useMaterial?: boolean; ref: string; stud?: { ownerId: string; horseId: string; sireName: string | null; damName: string | null } }) {
   const today = jstDateKey(now);
   if (s.breeding.date !== today) s.breeding = { date: today, count: 0 };
   let usedMaterial = false;
@@ -239,7 +308,7 @@ export function breed(m: Master, s: PlayerState, sireId: string, damId: string, 
     if (!opts.useMaterial || !bm) throw new AppError('BREEDING_DAILY_LIMIT');
     if (s.breedingExtra?.date !== today) s.breedingExtra = { date: today, count: 0 };
     if (s.breedingExtra.count >= bm.extraPerDay) throw new AppError('BREEDING_DAILY_LIMIT', 'extra breedings for today are used up');
-    consumeItem(s, bm.itemId, bm.cost, now, 'extra breeding', opts.ref ?? `breed:${sireId}x${damId}`);
+    consumeItem(s, bm.itemId, bm.cost, now, 'extra breeding', opts.ref);
     s.breedingExtra.count += 1;
     usedMaterial = true;
   }
@@ -259,14 +328,26 @@ export function breed(m: Master, s: PlayerState, sireId: string, damId: string, 
   const foal: HorseInstance = {
     id: `h${s.counters.horseSeq}`, templateId: null, name: 'ミメイ', rarity: rarityForTotal(total), sex, style,
     distMinM, distMaxM, surface, line: sire.line, base: stats, awakening: 0, bornAt: now, status: 'active',
-    sireId: sire.id, damId: dam.id, sireName: sire.name, damName: dam.name, named: false,
+    sireId: opts.stud ? null : sire.id, damId: dam.id, sireName: sire.name, damName: dam.name, named: false,
   };
+  if (opts.stud) foal.studSire = { ...opts.stud };
   const apt = rollGoingAptitude(goingAptitudeOdds(sire, dam), rng);
   if (apt !== 'any') foal.goingAptitude = apt;
   // REQ-ASSET-004: drawn after every other roll so stats/aptitude outcomes are unchanged
   foal.appearance = inheritAppearance(appearanceOf(sire, s.id), appearanceOf(dam, s.id), rng);
+  // REQ-BREED-017: atavism is drawn after everything else, and only when a grandparent has something to
+  // pass on, so breedings without candidates use the RNG exactly as before
+  const options = atavismOptions(sire, dam, grand);
+  const { chancePermille } = atavismOdds(m, options);
+  if (options.length > 0 && randInt(rng, 1000) < chancePermille) {
+    const g = options[randInt(rng, options.length)]!;
+    if (g.trait === 'style') foal.style = g.value as Style;
+    else if (g.value === 'any') delete foal.goingAptitude;
+    else foal.goingAptitude = g.value as GoingAptitude;
+    foal.atavism = { ...g };
+  }
   s.horses.push(foal);
   if (!usedMaterial) s.breeding.count += 1;
   assert(foal.distMinM <= foal.distMaxM, 'CONFIG_INVALID');
-  return { foal, nick: b.nick, inbreedingCount: b.inbreed, usedMaterial };
+  return { foal, nick: b.nick, inbreedingCount: b.inbreed, usedMaterial, atavism: foal.atavism ?? null };
 }

@@ -8,7 +8,8 @@ import type { PlayerMethod } from '../http/app.js';
 import { makeVerifiers, storeSettingsFromEnv } from '../http/stores.js';
 import { accountingStoreIndex } from './storeIndex.js';
 import { SqlPlayerRepo } from './sqlRepo.js';
-import { wrap, type Envelope } from './rpc.js';
+import { unwrap, wrap, type Envelope } from './rpc.js';
+import { retryStudOutbox } from '../domain/studService.js';
 import { activeConfig } from '../ops/activeConfig.js';
 import { shardedDirectory } from './directory.js';
 import { fcmFromEnv, type PushSender } from '../push/fcm.js';
@@ -73,14 +74,25 @@ export class PlayerDO extends DurableObject<Env> {
     });
   }
 
-  /** Push outbox delivery (and retries with backoff). The player id was stored by the first invoke(). */
+  /** Push outbox delivery and stud fee retries (with backoff). The player id was stored by the first invoke(). */
   override async alarm() {
     const id = await this.ctx.storage.get<string>('playerId');
     if (!id) return;
     // templates may exist only in remote config (REQ-OPS-005); a fresh object starts with the base master
     this.svc.setMaster((await activeConfig(this.env)).master);
     const r = await deliverDuePushes({ take: (p) => this.svc.pushTake(p), settle: (p, o) => this.svc.pushSettle(p, o) }, id, this.sender);
-    if (r.nextAt !== null) await this.ctx.storage.setAlarm(Math.max(r.nextAt, Date.now() + 1000));
     if (r.attempted > 0 || r.expired > 0) console.log('push', id, JSON.stringify(r));
+    // REQ-BREED-012: stud fees this player paid that the owner has not acknowledged yet
+    const owner = (uid: string) => this.env.PLAYER.get(this.env.PLAYER.idFromName(uid)) as unknown as { invoke(m: PlayerMethod, a: unknown[]): Promise<Envelope<unknown>> };
+    const sr = await retryStudOutbox({
+      due: (u) => this.svc.studDue(u),
+      later: (u, op) => this.svc.studRetryLater(u, op),
+      settle: async (o, op, ok, info) => unwrap(await owner(o).invoke('studSettle', [o, op, ok, info])) as { status: string; paid: number },
+      acked: (u, op) => this.svc.studAcked(u, op),
+    }, id).catch((e) => { console.error('stud outbox retry failed', id, e); return null; });
+    if (sr && sr.attempted > 0) console.log('stud', id, JSON.stringify(sr));
+    const studNext = (await this.svc.studDue(id)).nextAt;
+    const next = r.nextAt === null ? studNext : studNext === null ? r.nextAt : Math.min(r.nextAt, studNext);
+    if (next !== null) await this.ctx.storage.setAlarm(Math.max(next, Date.now() + 1000));
   }
 }

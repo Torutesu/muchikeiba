@@ -51,7 +51,7 @@ export function buildRaceConfig(m: Master, input: BuildRaceInput): RaceStartConf
   const seed = randU64Decimal(input.rng);
   const raw: Omit<Entrant, 'slot'>[] = input.humans.map((h) => ({ kind: 'human' as const, playerId: h.playerId, cpuLevel: h.cpuLevel ?? 3, horse: h.horse }));
   const used = new Set(input.humans.map((h) => h.horse.name));
-  const candidates = m.templates.filter((t) => !used.has(t.name));
+  const candidates = m.templates.filter((t) => !t.seasonal && !used.has(t.name)); // limited horses never appear as CPU (REQ-BREED-020)
   for (let i = 0; i < input.cpuCount; i++) {
     const t = candidates.splice(randInt(input.rng, candidates.length), 1)[0]!;
     raw.push({ kind: 'cpu', playerId: null, cpuLevel: input.cpuLevel, horse: { id: `cpu_${t.id}`, name: t.name, ...t.stats, style: t.style, distMinM: t.distMinM, distMaxM: t.distMaxM, surface: t.surface, ...aptField(t.goingAptitude) } });

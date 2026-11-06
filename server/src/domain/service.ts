@@ -31,6 +31,7 @@ import { appearanceOf, assetKeys, defaultSilks, validateSilks, type EntrantVisua
 import { ensureTeam, playerAbortJoin, playerAddOutgoing, playerCommitJoin, playerLeft, playerPrepareJoin, playerRemoveOutgoing, playerTeamReward, snapshotOf } from './teams.js';
 import { applyEventResult, cancelEntry, closeEventForPlayer, ensureEvent, enterEvent, eventsForPlayer, findEvent, type EventEntry } from './events.js';
 import { bondLevels, bondView, careHorse, horseBondLevel } from './bond.js';
+import { dueStudOutbox, ensureStud, nextStudWake, studAcked, studApply, studList, studPeek, studPreview, studReserve, studRetryLater, studSettle, studUnlist, studView, type StudSnapshot, type StudVisibility } from './stud.js';
 import { clearRoomConditions, presetsView, setCourseLook, setRoomConditions, type RoomConditions } from './presets.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
@@ -76,6 +77,12 @@ const standingKey = (s: PlayerState) => JSON.stringify([s.season.id, s.season.cl
 const profileKey = (s: PlayerState) => JSON.stringify([s.profile.displayName, s.profile.titleId, s.season.classId, Math.round(s.rating.r), s.stats.races, s.stats.wins, s.stats.top3]);
 
 const IDEM_KEEP = 200;
+/** The object's alarm serves the push outbox and the stud fee outbox (REQ-PUSH-005, REQ-BREED-012). */
+const nextWake = (s: PlayerState) => {
+  const a = nextPushWake(s);
+  const b = nextStudWake(s);
+  return a === null ? b : b === null ? a : Math.min(a, b);
+};
 /** How long applied race ids are remembered (well beyond any settlement/dead-letter retry window). */
 const APPLIED_RACE_KEEP_MS = 180 * 24 * 3600 * 1000;
 
@@ -110,7 +117,7 @@ export class PlayerService {
     const paidBefore = draft.wallet.paid;
     const standingBefore = standingKey(draft);
     const profileBefore = profileKey(draft);
-    const wakeBefore = nextPushWake(draft);
+    const wakeBefore = nextWake(draft);
     const kpi: KpiRecord[] = [];
     const emit: Emit = (e) => { kpi.push(kpiRecord(draft, now, e)); };
     const result = fn(draft, now, emit);
@@ -123,7 +130,7 @@ export class PlayerService {
     const pushProfile = this.d.onProfile && (profileKey(draft) !== profileBefore || now - draft.profile.lastPushedAt >= this.d.master.progression.social.profilePushIntervalMs);
     if (pushProfile) draft.profile.lastPushedAt = now;
     await this.repo.put(draft);
-    const wake = nextPushWake(draft);
+    const wake = nextWake(draft);
     if (wake !== null && wake !== wakeBefore && this.d.onPushWake) await this.d.onPushWake(wake);
     if (kpi.length > 0 && this.d.onKpi) await this.d.onKpi(id, kpi);
     if (pushProfile) await this.d.onProfile!(publicProfile(draft, this.d.master.bannedSilks));
@@ -273,6 +280,44 @@ export class PlayerService {
     return this.tx(id, key, (s, now) => breed(this.d.master, s, sireId, damId, this.d.rng, now, { useMaterial, ref: key }));
   }
 
+  // ---- stud lending (REQ-BREED-010..016; orchestrated across players by studService.ts) ----
+  studView(id: string) { return this.tx(id, null, (s, now) => studView(this.d.master, s, now)); }
+  studList(id: string, horseId: string, visibility: StudVisibility, fee: number, dailyLimit: number) {
+    return this.tx(id, null, (s, now) => studList(this.d.master, s, horseId, visibility, fee, dailyLimit, now));
+  }
+  studUnlist(id: string, horseId: string) { return this.tx(id, null, (s) => studUnlist(s, horseId)); }
+  /** Owner: snapshot for a preview (reserves nothing). */
+  async studPeek(id: string, borrowerId: string, horseId: string) {
+    const s = await this.load(id);
+    return studPeek(this.d.master, s, borrowerId, horseId, this.d.clock());
+  }
+  studReserve(id: string, opId: string, borrowerId: string, horseId: string) {
+    return this.tx(id, null, (s, now) => studReserve(this.d.master, s, opId, borrowerId, horseId, now));
+  }
+  studSettle(id: string, opId: string, ok: boolean, info: { borrowerId: string; horseId: string; fee: number; foalId: string | null }) {
+    return this.tx(id, null, (s, now) => studSettle(this.d.master, s, opId, ok, info, now));
+  }
+  async studPreview(id: string, snap: StudSnapshot & { remainingToday?: number }, damId: string) {
+    const s = await this.load(id);
+    return studPreview(this.d.master, s, snap, damId, this.d.clock());
+  }
+  studApply(id: string, opId: string, snap: StudSnapshot, damId: string, useMaterial: boolean) {
+    return this.tx(id, null, (s, now, emit) => {
+      const before = s.stud?.applied[opId];
+      const r = studApply(this.d.master, s, opId, snap, damId, this.d.rng, now, useMaterial);
+      if (!before) emit({ name: 'stud_breed', s1: snap.ownerId, s2: snap.horseId, count: 1, paidCoins: 0, freeCoins: r.fee, value: r.atavism ? 1 : 0 });
+      return r;
+    });
+  }
+  studAcked(id: string, opId: string) { return this.tx(id, null, (s) => studAcked(s, opId)); }
+  /** Alarm: fee payments not yet acknowledged by their owners. */
+  async studDue(id: string) {
+    const s = await this.load(id);
+    ensureStud(s);
+    return dueStudOutbox(s, this.d.clock());
+  }
+  studRetryLater(id: string, opId: string) { return this.tx(id, null, (s, now) => studRetryLater(this.d.master, s, opId, now)); }
+
   // ---- items & cosmetics (REQ-ITEM-*) ----
   /** Use a gacha ticket (bannerId required) or an SR+ ticket. Idempotent per client key. */
   async useTicket(id: string, itemId: string, bannerId: string | null, idemKey: string | null) {
@@ -329,7 +374,7 @@ export class PlayerService {
       // REQ-EVENT-005: event points, milestones and the held entry fee
       const ev = r.mode === 'event' && r.eventId ? this.d.master.events.find((e) => e.id === r.eventId) : undefined;
       if (!ev) return { ...base, event: null };
-      const e = applyEventResult(ev, s, r, now);
+      const e = applyEventResult(ev, s, r, now, this.d.master);
       const st = s.events![ev.id]!;
       return {
         ...base,
@@ -607,7 +652,7 @@ export class PlayerService {
         st.closed = true;
         return { status: 'unknown_event' as const, reward: null };
       }
-      return closeEventForPlayer(ev, s, rank, now);
+      return closeEventForPlayer(ev, s, rank, now, this.d.master);
     });
   }
 }

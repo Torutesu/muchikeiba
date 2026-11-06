@@ -47,7 +47,7 @@ export type PlayerMethod =
   | 'studView' | 'studList' | 'studUnlist' | 'studPeek' | 'studReserve' | 'studSettle' | 'studPreview' | 'studApply' | 'studAcked' | 'studDue' | 'studRetryLater'
   | 'stableMine' | 'stableSave' | 'stableVisit' | 'stableLikeGive' | 'stableLikeReceive' | 'stableClear' | 'stableForget'
   | 'recordConsent' | 'grantPartner' | 'missionsAll' | 'requestDeletion' | 'cancelDeletion' | 'deletionDue' | 'deletionSnapshot' | 'deletionMarkStep'
-  | 'deletionRetryLater' | 'deletionFinalize' | 'runNudges' | 'nudgeTaBeaten' | 'nudgeTournamentClosing';
+  | 'deletionRetryLater' | 'deletionFinalize' | 'deletionStart' | 'runNudges' | 'nudgeTaBeaten' | 'nudgeTournamentClosing';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -105,6 +105,11 @@ export interface AppContext {
   stable?: StableService;
   clock?: () => number;
   paidBalance(): Promise<unknown>;
+  /**
+   * REQ-UXS-040: a store refund whose transaction belongs to a deleted account (AccountingDO.retainedRefund, keyed by the
+   * anonymous id the store index points to). Null = no retained record under that id.
+   */
+  retainedRefund?(anonId: string, transactionId: string): Promise<unknown | null>;
   adminToken: string | undefined;
   parseStoreNotification(platform: string, req: Request): Promise<StoreNotification | null>;
   /** Live-ops backend (REQ-OPS-*). When present, /v1/admin/* is served by http/admin.ts with roles and audit. */
@@ -266,7 +271,14 @@ export const routes: Route[] = [
       if (n.kind === 'renewal') return await pl.invoke('storeRenewal', n.playerId, n.platform, n.receipt);
       return await pl.invoke('subscriptionStatus', n.playerId, n.platform, n.key, n.status, n.expiresAt);
     } catch (e) {
-      if (e instanceof AppError && e.code === 'NOT_FOUND') return { ok: true, ignored: 'purchase not found for player' };
+      if (e instanceof AppError && e.code === 'NOT_FOUND') {
+        // a deleted account: the store index points to its anonymous retained record (7-year legal retention)
+        if (n.kind === 'refund' && c.retainedRefund) {
+          const r = await c.retainedRefund(n.playerId, n.transactionId);
+          if (r) return r;
+        }
+        return { ok: true, ignored: 'purchase not found for player' };
+      }
       throw e;
     }
   } },

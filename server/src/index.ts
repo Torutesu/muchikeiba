@@ -400,6 +400,7 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
       },
     }),
     paidBalance: () => (stub(env.ACCOUNTING, 'global') as unknown as { summary(): Promise<unknown> }).summary(),
+    retainedRefund: (anonId, txId) => (stub(env.ACCOUNTING, 'global') as unknown as { retainedRefund(a: string, t: string, n: number): Promise<unknown | null> }).retainedRefund(anonId, txId, Date.now()),
     adminToken: env.ADMIN_TOKEN,
     parseStoreNotification: (platform, req) => parseStoreNotification(platform, req, storeSettingsFromEnv(env, master), accountingStoreIndex(env)),
     ...(ops ? { ops } : {}),

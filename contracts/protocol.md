@@ -233,7 +233,7 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 | `POST /v1/player/partner`（`Idempotency-Key` 必須） | `{ "name": "アイボウ" }` | `{ "horse": Horse }`（`templateId: "t_partner"`、`named: true`） | `PARTNER_ALREADY_GRANTED`（2回目。同じキーの再送は同じ応答）、`INVALID_NAME`、`NG_NAME`、`IDEMPOTENCY_KEY_REQUIRED` |
 | `DELETE /v1/player`（1回目：本文なし or `{}`） | — | `{ "status": "confirm_required", "confirmToken": "del_…", "expiresAt", "cancelWindowDays": 14, "forfeit": { "paidCoins", "freeCoins", "horses", "items", "allowanceDays", "seasonPass" }, "notice": "…" }` | — |
 | `DELETE /v1/player`（2回目） | `{ "confirmToken": "del_…" }`（または `?confirmToken=`） | `{ "status": "scheduled", "requestedAt", "deleteAt" }`（予定済みなら何度でも同じ） | `DELETION_CONFIRM_INVALID`（違う・期限切れ（10分）：1回目からやり直す）、`BAD_REQUEST` |
-| `POST /v1/player/deletion/cancel` | — | `{ "status": "none", "requestedAt": null, "deleteAt": null }` | `NOT_FOUND`（予定がない）、`CONFLICT`（削除が始まっている） |
+| `POST /v1/player/deletion/cancel` | — | `{ "status": "none", "requestedAt": null, "deleteAt": null }` | `NOT_FOUND`（予定がない）、`DELETION_IN_PROGRESS`（削除の処理が始まっている。始まった削除は取り消せない） |
 | `GET /v1/missions` | — | `{ "missions": [デイリー（従来）], "beginner": { "completed", "steps": [ { "id", "step", "kind", "target", "progress", "reward", "claimed", "locked", "claimable" } ] }, "season": { "seasonId", "missions": [ { "id", "kind", "target" (null＝S級で対象なし), "progress", "reward": { "passXp" }, "claimed", "available", "claimable" } ] }, "firstWinBonus": { "modes", "byWin", "winsToday", "remaining", "next" } }`（`firstWinBonus` は §13・REQ-UXS-010） | — |
 | `POST /v1/missions/:id/claim` | — | 報酬（`Reward`）。デイリー・初心者・シーズンのIDは一意 | 初心者ミッションは前の段階が未受け取りなら `NOT_ELIGIBLE`。他は従来どおり |
 | `POST /v1/rewards/login-bonus` | — | `{ "day", "track": "beginner" | "normal", "reward", "beginnerDaysLeft" }` | 従来どおり |
@@ -241,6 +241,8 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 | `POST /v1/shop/purchase-intent` | 従来どおり | 従来どおり | 削除予定中は `DELETION_PENDING`（§13 の全商品：コイン・スターター・シーズンパス／パス＋・厩舎手当・昇級記念パック。取り消せば買える。ストアで支払い済みのレシートは付与し、サポート用の印を付ける） |
 | `GET /v1/shop/offers`・`POST /v1/shop/offers/:offerId/view`・`POST /v1/shop/allowance/claim`（§13） | 従来どおり | 従来どおり | 削除予定中は `DELETION_PENDING`（オファーを出さない・手当を受け取らない。取り消せば戻る） |
 
+- 削除の処理が始まった後（予定時刻にアラームが最初に「開始」を記録してから。14日の予約期間中ではない）は取り消せず（`DELETION_IN_PROGRESS`）、そのプレイヤーからのフレンド申請・承認・招待、ランク戦・大会・タイムアタック（開始・提出）・イベントへの参加、マイ厩舎のいいね（自分の回数も増えない）は `DELETION_PENDING` で断る。予約期間中は購入前チェック・オファー・厩舎手当（上の表）以外はそのまま使える。開始の前に取り消された削除は、処理が何もせずに止まる。
+- 削除後に届いたストアの返金：取引の索引は匿名IDに付け替わっているので、返金は AccountingDO の保存記録に付ける（その購入を返金済みにし、`refundsAfterDeletion` に追記、台帳に `refund` 行（コインは放棄済みなので delta 0）を足して `rev` を上げる。同じ返金は1回だけ）。応答は `{ "retained": true, "anonId", "transactionId", "alreadyRefunded", "priceYen", "paidCoins", "bonusCoins" }`。
 - 削除の流れ：予定時刻にプレイヤーのDurable Objectのアラームが、フレンド（相手側の一覧・申請）→ 支部（リーダーなら幹部→古参の順に譲ってから脱退、申請の取り消し）→ ディレクトリ（フレンドコード・公開プロフィール・種牡馬の登録）→ マイ厩舎の公開の写し（あれば）→ ランキング（今シーズンは削除、過去シーズンは名前を「退会したプレイヤー」に）とゴースト → イベントの順位表 → 大会（受付中は登録取り消し、以降は名前だけ匿名化）→ 残高の放棄（有償・無償コインに加え、厩舎手当の残りと予約分、シーズンパスの状態）と匿名の記録の作成 → 記録の保存（AccountingDO、ランダムID、法定の保存期間）→ プレイヤーの全データ削除、の順に進める。失敗したら続きから再試行（1分・10分・1時間・以後6時間ごと）。
 - クライアントイベント（`POST /v1/analytics/events`）：`tutorial_step` の `step` は `consent, race1_start, race1_whip, race1_win, named, gacha_done, race2_done, home` だけ。`index` は省略可（送るならこの順の番号）、任意の `value`（整数、`race1_win` ではやり直し回数）。追加：`feature_unlock {feature}`、`offer_view` / `offer_click {offerId, trigger: T1..T8}`、`race_quit {mode, remainingM}`、`account_link {provider: apple|google}`。
 
@@ -309,6 +311,8 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 ```
 - `firstPurchaseBonus` はこのプレイヤーにまだ残っている時だけ（コインのパック）。`pass` はシーズンパス／パス＋、`allowance` は厩舎手当の時だけ。`lastWeek`（残り7日以内）の時は購入確認に「このパスは◯日（`remainingDays`）で終わります」を出す。
 - 既存コードの追加の意味：`ALREADY_PURCHASED` ＝ このシーズンのパス（パス・パス＋のどちらか）を持っている／厩舎手当の期間中（予約分を含む）／1回限りの商品を購入済み。`NOT_ELIGIBLE` ＝ 昇級記念パックのクラスに未到達。
+
+- 旧来の自動更新の購読（`storeType: "auto_renewing"`）の経路はテスト用に残っているだけで、リリース前なので購読は一度も販売していない（`season_pass` はシーズンごとの消費型）。旧購読の更新通知を扱う必要はない。
 
 ### 13.3 `GET /v1/shop/offers`（要認証、REQ-UXS-017）
 ```json

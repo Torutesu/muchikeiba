@@ -48,6 +48,13 @@ export interface DeletionState {
 /** What is kept after deletion: no name, no device, no friend, no horse — only what the law requires. */
 export interface RetainedRecord {
   anonId: string;
+  /**
+   * Revision: 0 when built, +1 each time it is rebuilt because something was credited after the balances were given
+   * up (a store purchase is always granted, even while the deletion runs). AccountingDO keeps the latest one.
+   */
+  rev: number;
+  /** The player's ledger sequence the record covers (rebuilt when the state moved past it). */
+  ledgerSeq: number;
   deletedAt: number;
   retainUntil: number;
   /** Install month only (no exact date). */
@@ -55,6 +62,12 @@ export interface RetainedRecord {
   purchases: Pick<PurchaseRecord, 'txId' | 'platform' | 'productId' | 'priceYen' | 'at' | 'paidCoinsGranted' | 'bonusCoinsGranted' | 'refunded' | 'sandbox'>[];
   ledger: LedgerEntry[];
   monthlySpendYen: Record<string, number>;
+  /**
+   * Store refunds that arrived after the wipe (the store transaction points to `anonId`, AccountingDO applies them
+   * with applyRetainedRefund). The coins of the purchase were already given up, so nothing is left to take back:
+   * the refund is recorded here, the purchase is marked refunded and a `refund` ledger row (delta 0) is added.
+   */
+  refundsAfterDeletion?: { txId: string; at: number; priceYen: number; paidCoins: number; bonusCoins: number }[];
   /**
    * Balances given up. `allowance`: unclaimed days (and their free coins) of running or queued 厩舎手当 packs.
    * `pass`: this season's pass (premium = bought and running) and the levels not paid out.
@@ -111,7 +124,8 @@ export function requestDeletion(m: Master, s: PlayerState, confirmToken: string 
 export function cancelDeletion(s: PlayerState) {
   const d = s.deletion;
   if (!d || d.status === 'confirming') { delete s.deletion; throw new AppError('NOT_FOUND', 'no deletion is scheduled'); }
-  if (d.status === 'deleting') throw new AppError('CONFLICT', 'the deletion has already started');
+  // the run is irreversible once started (friends, boards and the directory are already being cleared)
+  if (d.status === 'deleting') throw new AppError('DELETION_IN_PROGRESS', 'the account deletion has already started and cannot be cancelled');
   delete s.deletion;
   return deletionView(s);
 }
@@ -152,6 +166,19 @@ export function deletionSnapshot(s: PlayerState): DeletionSnapshot {
   };
 }
 
+/** The run starts: from now on it cannot be cancelled. NOT_FOUND when the deletion was cancelled meanwhile. */
+export function startDeletion(s: PlayerState) {
+  const d = s.deletion;
+  if (!d || d.status === 'confirming') throw new AppError('NOT_FOUND', 'no deletion is scheduled');
+  d.status = 'deleting';
+  return { steps: [...d.steps] };
+}
+
+/** REQ-UXS-040: once the run has started, the player's own state-changing calls (friends, entries, likes) are refused. */
+export function notWhileDeleting(s: PlayerState) {
+  if (s.deletion?.status === 'deleting') throw new AppError('DELETION_PENDING', 'the account is being deleted');
+}
+
 export function markDeletionStep(s: PlayerState, step: DeletionStep) {
   const d = s.deletion;
   if (!d) throw new AppError('NOT_FOUND', 'no deletion is scheduled');
@@ -175,11 +202,17 @@ export function deletionRetryLater(s: PlayerState, now: number) {
 export function finalizeDeletion(m: Master, s: PlayerState, rng: Rng, now: number): RetainedRecord {
   const d = s.deletion;
   if (!d || (d.status !== 'scheduled' && d.status !== 'deleting')) throw new AppError('NOT_FOUND', 'no deletion is scheduled');
-  if (d.record) return d.record;
-  const anonId = randomId('anon', rng);
-  const forfeited = { ...forfeitAll(s, now, `delete:${anonId}`), allowance: forfeitAllowances(s, now), pass: forfeitPass(m, s, now) };
+  const prev = d.record;
+  // The account keeps working until the wipe and a completed store payment is always credited: anything that
+  // reached the state after the record was built (a purchase, a refund, a reward) is given up too and the record is
+  // rebuilt under the same anonymous id, so the retained purchases and ledger are complete (資金決済法・帳簿).
+  if (prev && !recordStale(s, prev)) return prev;
+  const anonId = prev?.anonId ?? randomId('anon', rng);
+  const add = { ...forfeitAll(s, now, `delete:${anonId}`), allowance: forfeitAllowances(s, now), pass: forfeitPass(m, s, now) };
+  const forfeited = prev ? mergeForfeited(prev.forfeited, add) : add;
   const record: RetainedRecord = {
-    anonId, deletedAt: now, retainUntil: now + deletionConfig(m).ledgerRetentionDays * DAY_MS,
+    anonId, rev: prev ? prev.rev + 1 : 0, ledgerSeq: s.ledgerSeq,
+    deletedAt: prev?.deletedAt ?? now, retainUntil: prev?.retainUntil ?? now + deletionConfig(m).ledgerRetentionDays * DAY_MS,
     cohortMonth: jstMonthKey(s.createdAt),
     purchases: s.purchases.map((p) => ({ txId: p.txId, platform: p.platform, productId: p.productId, priceYen: p.priceYen, at: p.at, paidCoinsGranted: p.paidCoinsGranted, bonusCoinsGranted: p.bonusCoinsGranted, refunded: p.refunded, ...(p.sandbox ? { sandbox: true } : {}) })),
     ledger: s.ledger.map((e) => ({ ...e })),
@@ -190,6 +223,45 @@ export function finalizeDeletion(m: Master, s: PlayerState, rng: Rng, now: numbe
   return record;
 }
 
+/** Something was credited, refunded or bought after the record was built. */
+function recordStale(s: PlayerState, r: RetainedRecord): boolean {
+  if (s.ledgerSeq !== (r.ledgerSeq ?? s.ledgerSeq)) return true;
+  if (s.purchases.length !== r.purchases.length) return true;
+  if (s.purchases.some((p, i) => p.refunded !== r.purchases[i]?.refunded)) return true;
+  if (s.wallet.paid > 0 || s.wallet.free > 0) return true;
+  return false;
+}
+
+function mergeForfeited(a: RetainedRecord['forfeited'], b: RetainedRecord['forfeited']): RetainedRecord['forfeited'] {
+  return {
+    paidCoins: a.paidCoins + b.paidCoins, freeCoins: a.freeCoins + b.freeCoins, paidYen: a.paidYen + b.paidYen,
+    allowance: { days: a.allowance.days + b.allowance.days, freeCoins: a.allowance.freeCoins + b.allowance.freeCoins },
+    pass: { ...a.pass, premium: a.pass.premium || b.pass.premium },
+  };
+}
+
+/**
+ * REQ-UXS-040 × REQ-PUR-006: a store refund for a purchase of a deleted account (AccountingDO, legal retention).
+ * Idempotent per transaction. Throws NOT_FOUND when the record holds no such purchase.
+ */
+export function applyRetainedRefund(r: RetainedRecord, txId: string, now: number) {
+  const i = r.purchases.findIndex((x) => x.txId === txId);
+  if (i < 0) throw new AppError('NOT_FOUND', `purchase ${txId} is not in retained record ${r.anonId}`);
+  const p = r.purchases[i]!;
+  const base = { retained: true as const, anonId: r.anonId, transactionId: txId, priceYen: p.priceYen, paidCoins: p.paidCoinsGranted, bonusCoins: p.bonusCoinsGranted };
+  if (p.refunded) return { record: r, result: { ...base, alreadyRefunded: true } };
+  const record: RetainedRecord = structuredClone(r);
+  record.purchases[i] = { ...p, refunded: true };
+  (record.refundsAfterDeletion ??= []).push({ txId, at: now, priceYen: p.priceYen, paidCoins: p.paidCoinsGranted, bonusCoins: p.bonusCoinsGranted });
+  const seq = record.ledger.reduce((a, e) => Math.max(a, e.seq), 0) + 1;
+  record.ledger.push({
+    seq, at: now, kind: 'refund', currency: 'paid', delta: 0, balanceAfter: 0,
+    reason: `store refund after account deletion (${p.paidCoinsGranted} paid + ${p.bonusCoinsGranted} bonus coins already forfeited)`, ref: txId,
+  });
+  record.rev = (record.rev ?? 0) + 1;
+  return { record, result: { ...base, alreadyRefunded: false } };
+}
+
 /** Team succession when the leader leaves: the earliest officer, else the earliest member. */
 export function pickSuccessor(members: { playerId: string; role: string; joinedAt: number }[], leaving: string): string | null {
   const others = members.filter((x) => x.playerId !== leaving).sort((a, b) => a.joinedAt - b.joinedAt);
@@ -198,6 +270,8 @@ export function pickSuccessor(members: { playerId: string; role: string; joinedA
 
 /** Everything outside the player's own object that the deletion touches (Durable Object RPC in production). */
 export interface DeletionPorts {
+  /** Marks the run started (no cancel from now on); fails with NOT_FOUND when it was cancelled. Called first. */
+  start?(uid: string): Promise<unknown>;
   snapshot(uid: string): Promise<DeletionSnapshot>;
   markStep(uid: string, step: DeletionStep): Promise<void>;
   /** Other players' sides of the friendship (the deleting player's own state is wiped at the end). */
@@ -229,6 +303,8 @@ export interface DeletionPorts {
 
 /** Runs (or resumes) a due deletion. Throws on the first failing step; the caller retries later. */
 export async function runAccountDeletion(p: DeletionPorts, uid: string, now: number): Promise<{ done: DeletionStep[] }> {
+  // first: no cancel can half-stop the run after this point, and a cancel that came earlier stops it here
+  if (p.start) await p.start(uid);
   const snap = await p.snapshot(uid);
   const done: DeletionStep[] = [];
   const step = async (name: DeletionStep, f: () => Promise<unknown>) => {
@@ -272,10 +348,22 @@ export async function runAccountDeletion(p: DeletionPorts, uid: string, now: num
   });
   await step('events', async () => { for (const e of snap.eventIds) await p.events?.forget(e, uid); });
   await step('tournaments', async () => { await p.tournaments?.forget(uid, now); });
-  let record: RetainedRecord | null = null;
-  await step('finalize', async () => { record = await p.finalize(uid); });
-  await step('retain', async () => { await p.retain(uid, record ?? (await p.finalize(uid))); });
-  await step('wipe', () => p.wipe(uid));
+  await step('finalize', () => p.finalize(uid));
+  // finalize again right before storing: a purchase granted since then is given up and included (same anonId)
+  let retainedRev: number | null = null;
+  await step('retain', async () => { const r = await p.finalize(uid); await p.retain(uid, r); retainedRev = r.rev; });
+  await step('wipe', async () => {
+    // the record may have changed while it travelled to the store (or the retain step ran in an earlier attempt):
+    // store the latest one, and wipe only once nothing changed since it was stored
+    for (let i = 0; ; i++) {
+      const r = await p.finalize(uid);
+      if (r.rev === retainedRev) break;
+      if (i >= 5) throw new AppError('CONFLICT', 'the account keeps changing while it is deleted; retry later');
+      await p.retain(uid, r);
+      retainedRev = r.rev;
+    }
+    await p.wipe(uid);
+  });
   return { done };
 }
 

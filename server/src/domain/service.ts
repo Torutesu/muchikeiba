@@ -48,7 +48,7 @@ import {
 import { armPromotionNudge, nextNudgeWake, nudgeTaBeaten, nudgeTournamentClosing, runDueNudges, type TournamentClosingInfo } from './nudges.js';
 import {
   cancelDeletion, deletionDue, deletionRetryLater, deletionScheduled, deletionSnapshot, deletionView, finalizeDeletion, markDeletionStep,
-  nextDeletionWake, requestDeletion, type DeletionStep,
+  nextDeletionWake, notWhileDeleting, requestDeletion, startDeletion, type DeletionStep,
 } from './accountDeletion.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
@@ -167,7 +167,11 @@ export class PlayerService {
       if (draft.idem.length > IDEM_KEEP) draft.idem.splice(0, draft.idem.length - IDEM_KEEP);
     }
     draft.profile.lastSeenAt = now;
-    const pushProfile = this.d.onProfile && (profileKey(draft) !== profileBefore || now - draft.profile.lastPushedAt >= this.d.master.progression.social.profilePushIntervalMs);
+    // REQ-UXS-040: once the deletion has started, nothing public is written for the player again (the run removes the
+    // directory profile and board rows step by step; a later transaction of the same run or a retry must not put them
+    // back), and after the balances were forfeited the paid balance is not reported (retainDeleted removes that row).
+    const deleting = draft.deletion?.status === 'deleting';
+    const pushProfile = !deleting && this.d.onProfile && (profileKey(draft) !== profileBefore || now - draft.profile.lastPushedAt >= this.d.master.progression.social.profilePushIntervalMs);
     if (pushProfile) draft.profile.lastPushedAt = now;
     await this.repo.put(draft);
     const wake = nextWake(draft);
@@ -175,17 +179,17 @@ export class PlayerService {
     if (kpi.length > 0 && this.d.onKpi) await this.d.onKpi(id, kpi);
     if (pushProfile) await this.d.onProfile!(publicProfile(draft, this.d.master.bannedSilks));
     if (this.d.onStable && stableSnapshotKey(this.d.master, draft, now) !== stableBefore) await this.d.onStable(id, stableSnapshot(this.d.master, draft, now));
-    if (this.d.onSeasonEntry && draft.season.races > 0 && standingKey(draft) !== standingBefore) {
+    if (!deleting && this.d.onSeasonEntry && draft.season.races > 0 && standingKey(draft) !== standingBefore) {
       await this.d.onSeasonEntry({
         playerId: id, seasonId: draft.season.id, classId: draft.season.classId, points: draft.season.points, rating: Math.round(draft.rating.r),
         races: draft.season.races, displayName: draft.profile.displayName, titleId: draft.profile.titleId, updatedAt: now,
       });
     }
     const teamId = draft.team?.teamId ?? null;
-    if (this.d.onTeamPoints && teamId && (standingKey(draft) !== standingBefore || teamId !== (current.team?.teamId ?? null))) {
+    if (!deleting && this.d.onTeamPoints && teamId && (standingKey(draft) !== standingBefore || teamId !== (current.team?.teamId ?? null))) {
       await this.d.onTeamPoints({ teamId, playerId: id, seasonId: draft.season.id, points: draft.season.points, displayName: draft.profile.displayName });
     }
-    if (draft.wallet.paid !== paidBefore && this.d.onPaidBalance) {
+    if (draft.wallet.paid !== paidBefore && this.d.onPaidBalance && !draft.deletion?.record) {
       await this.d.onPaidBalance({ playerId: id, date: jstDateKey(now), paidCoins: draft.wallet.paid, paidYen: paidBalanceYen(draft), seq: draft.ledgerSeq });
     }
     return result;
@@ -263,6 +267,7 @@ export class PlayerService {
   }
   async deletionDue(id: string) { return deletionDue(await this.load(id), this.d.clock()); }
   async deletionSnapshot(id: string) { return deletionSnapshot(await this.load(id)); }
+  deletionStart(id: string) { return this.tx(id, null, (s) => startDeletion(s)); }
   deletionMarkStep(id: string, step: DeletionStep) { return this.tx(id, null, (s) => { markDeletionStep(s, step); }); }
   deletionRetryLater(id: string) { return this.tx(id, null, (s, now) => deletionRetryLater(s, now)); }
   /** Forfeits balances and returns the anonymised record (emitted once as account_delete/deleted). */
@@ -280,14 +285,28 @@ export class PlayerService {
     const all = [nextNudgeWake(s), nextDeletionWake(s)].filter((x): x is number => x !== null);
     return all.length ? Math.min(...all) : null;
   }
+  /**
+   * REQ-UXS-040: a player with no stored state at all. For the deliveries other objects send (season / tournament /
+   * event / team rewards, stud fees, pushes, nudges) this can only be an account that was deleted and wiped: boards
+   * and brackets keep a renamed row until they close, and running the delivery would create a fresh state under the
+   * deleted id (with the reward in it). Those calls are answered as no-ops instead.
+   */
+  private async wiped(id: string) { return !(await this.repo.get(id)); }
+
   /** Tests / memory repos: drop the stored state (the Durable Object deletes its whole storage instead). */
   async wipe(id: string) { if (this.repo.delete) await this.repo.delete(id); }
 
   // ---- personal nudges (REQ-UXS-012) ----
   /** Alarm: due nudges (promotion). */
   runNudges(id: string) { return this.tx(id, null, (s, now) => runDueNudges(this.d.master, s, now)); }
-  nudgeTaBeaten(id: string, byName: string, course: string) { return this.tx(id, null, (s, now) => nudgeTaBeaten(this.d.master, s, byName, course, now)); }
-  nudgeTournamentClosing(id: string, info: TournamentClosingInfo) { return this.tx(id, null, (s, now) => nudgeTournamentClosing(this.d.master, s, info, now)); }
+  async nudgeTaBeaten(id: string, byName: string, course: string) {
+    if (await this.wiped(id)) return { status: 'skipped' as const, reason: 'deleted' as const };
+    return this.tx(id, null, (s, now) => nudgeTaBeaten(this.d.master, s, byName, course, now));
+  }
+  async nudgeTournamentClosing(id: string, info: TournamentClosingInfo) {
+    if (await this.wiped(id)) return { status: 'skipped' as const, reason: 'deleted' as const };
+    return this.tx(id, null, (s, now) => nudgeTournamentClosing(this.d.master, s, info, now));
+  }
 
   setAge(id: string, birthYear: number, birthMonth: number, guardianConsent: boolean) {
     return this.tx(id, null, (s, now) => {
@@ -420,7 +439,9 @@ export class PlayerService {
   studReserve(id: string, opId: string, borrowerId: string, horseId: string, expectedFee?: number) {
     return this.tx(id, null, (s, now) => studReserve(this.d.master, s, opId, borrowerId, horseId, now, expectedFee));
   }
-  studSettle(id: string, opId: string, ok: boolean, info: { borrowerId: string; horseId: string; fee: number; foalId: string | null }) {
+  async studSettle(id: string, opId: string, ok: boolean, info: { borrowerId: string; horseId: string; fee: number; foalId: string | null }) {
+    // the owner's account was deleted: nothing to pay into (the borrower acknowledges and stops retrying)
+    if (await this.wiped(id)) return { opId, status: 'already' as const, paid: 0 };
     return this.tx(id, null, (s, now) => studSettle(this.d.master, s, opId, ok, info, now));
   }
   async studPreview(id: string, snap: StudSnapshot & { remainingToday?: number }, damId: string) {
@@ -571,6 +592,7 @@ export class PlayerService {
   /** Snapshot used by the matchmaker: horse for the race, rating, class cap, beginner flag. */
   async raceEntry(id: string, horseId: string) {
     const s = await this.load(id);
+    notWhileDeleting(s); // REQ-UXS-040: no new race once the deletion run has started
     const h = getHorse(s, horseId);
     if (h.status !== 'active') throw new AppError('HORSE_NOT_ACTIVE');
     const cls = classDef(this.d.master, s.season.classId);
@@ -625,7 +647,8 @@ export class PlayerService {
   async publicProfile(id: string) { return publicProfile(await this.load(id), this.d.master.bannedSilks); }
 
   /** REQ-SEASON-002: rollover job → reward the closed season once (idempotent via the season record). */
-  closeSeason(id: string, seasonId: string, rank: number | null) {
+  async closeSeason(id: string, seasonId: string, rank: number | null) {
+    if (await this.wiped(id)) return { status: 'no-record' as const, reward: null, pass: null, titles: [] as string[] };
     return this.tx(id, null, (s, now, emit) => {
       const r = closeSeason(this.d.master, s, seasonId, rank, now);
       if (r.status === 'rewarded') emit({ name: 'season_close', s1: seasonId, s2: r.classId ?? '', s3: r.nextClassId ?? '', ...(rank !== null ? { place: rank } : {}) });
@@ -637,6 +660,7 @@ export class PlayerService {
   // ---- friends: per-player steps, orchestrated by FriendsService (REQ-SOCIAL-*) ----
   friendSend(id: string, toId: string) {
     return this.tx(id, null, (s, now, emit) => {
+      notWhileDeleting(s);
       const out = friendSend(this.d.master, s, toId, now);
       if (out === 'sent' || out === 'mutual') emit({ name: 'friend_request', s1: out });
       return out;
@@ -645,6 +669,7 @@ export class PlayerService {
   /** REQ-PUSH-002: the receiver is notified (`fromName` comes from the public profile directory). */
   friendReceive(id: string, fromId: string, fromName?: string) {
     return this.tx(id, null, (s, now) => {
+      notWhileDeleting(s);
       const out = friendReceive(this.d.master, s, fromId, now);
       if (out === 'received') enqueuePush(this.d.master, s, 'friend_request', { name: fromName ?? 'フレンド' }, now);
       return out;
@@ -652,6 +677,7 @@ export class PlayerService {
   }
   friendAccept(id: string, fromId: string) {
     return this.tx(id, null, (s, _now, emit) => {
+      notWhileDeleting(s);
       const out = friendAccept(this.d.master, s, fromId);
       if (out === 'accepted') emit({ name: 'friend_accept' });
       return out;
@@ -659,6 +685,7 @@ export class PlayerService {
   }
   friendAccepted(id: string, byId: string, byName?: string) {
     return this.tx(id, null, (s, now) => {
+      notWhileDeleting(s);
       const was = s.friends.ids.includes(byId);
       const out = friendAccepted(s, byId);
       if (!was) enqueuePush(this.d.master, s, 'friend_accepted', { name: byName ?? 'フレンド' }, now);
@@ -670,6 +697,7 @@ export class PlayerService {
   friendRemove(id: string, otherId: string) { return this.tx(id, null, (s) => friendRemove(s, otherId)); }
   friendInvite(id: string, fromId: string, passphrase: string, fromName?: string) {
     return this.tx(id, null, (s, now) => {
+      notWhileDeleting(s);
       const out = receiveInvite(this.d.master, s, fromId, passphrase, now);
       // The passphrase stays out of the notification text; the app reads it from GET /v1/friends (invites).
       enqueuePush(this.d.master, s, 'room_invite', { name: fromName ?? 'フレンド' }, now);
@@ -727,7 +755,7 @@ export class PlayerService {
     return v;
   }
   stableLikeGive(id: string, target: string, idemKey: string | null) {
-    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => stableLikeGive(this.d.master, s, target, now, emit));
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => { notWhileDeleting(s); return stableLikeGive(this.d.master, s, target, now, emit); });
   }
   async stableLikeReceive(id: string, from: string, likeId: string) {
     // REQ-UXS-040: a like that arrives after the owner's account was wiped must not create a fresh player
@@ -750,7 +778,8 @@ export class PlayerService {
     return this.tx(id, null, (s, now) => ({ ...settlePushes(this.d.master, s, outcomes, now), nextAt: nextPushWake(s) }));
   }
   /** Ops/test hook: queue a templated push for this player (same rules as event-driven pushes). */
-  queuePush(id: string, templateId: string, vars: Record<string, string>) {
+  async queuePush(id: string, templateId: string, vars: Record<string, string>) {
+    if (await this.wiped(id)) return { status: 'skipped' as const, reason: 'deleted' };
     return this.tx(id, null, (s, now) => { ensurePush(this.d.master, s); return enqueuePush(this.d.master, s, templateId, vars, now); });
   }
 
@@ -770,12 +799,13 @@ export class PlayerService {
   /** `ruleset` is the active remote-config ruleset (REQ-TA-009); omitted = the built-in default. */
   taStart(id: string, trackId: string, horseId: string, ruleset?: Ruleset) {
     return this.tx(id, null, (s, now) => {
+      notWhileDeleting(s);
       const sessionId = [0, 0, 0].map(() => this.d.rng.nextU32().toString(36)).join('');
       return startTimeAttack(this.d.master, s, this.d.master.progression.timeAttack, trackId, horseId, sessionId, this.d.rng, now, ruleset);
     });
   }
   taPrepare(id: string, sessionId: string, inputs: unknown, resultHash: string, echoedConfig: unknown) {
-    return this.tx(id, null, (s, now) => prepareSubmit(s, this.d.master.progression.timeAttack, sessionId, inputs, resultHash, echoedConfig, now));
+    return this.tx(id, null, (s, now) => { notWhileDeleting(s); return prepareSubmit(s, this.d.master.progression.timeAttack, sessionId, inputs, resultHash, echoedConfig, now); });
   }
   taAbort(id: string, sessionId: string) { return this.tx(id, null, (s) => abortSubmit(s, sessionId)); }
   taRecord(id: string, sessionId: string, out: VerifierOutput, claimedHash: string) {
@@ -817,7 +847,8 @@ export class PlayerService {
     return { teamId: t.teamId, joinedAt: t.joinedAt, cooldownUntil: t.cooldownUntil, outgoing: t.outgoing.map((o) => o.teamId), snapshot: snapshotOf(s) };
   }
   /** REQ-TEAM-008: team season reward (rollover job; idempotent per season). */
-  teamSeasonReward(id: string, seasonId: string, teamId: string, rank: number | null, total: number, league: LeaguePlace | null = null) {
+  async teamSeasonReward(id: string, seasonId: string, teamId: string, rank: number | null, total: number, league: LeaguePlace | null = null) {
+    if (await this.wiped(id)) return null;
     return this.tx(id, null, (s, now) => playerTeamReward(s, this.d.master.progression.teams, seasonId, teamId, rank, total, now, { cfg: this.d.master.progression.league, place: league }));
   }
 
@@ -830,6 +861,7 @@ export class PlayerService {
     // settled without paying again (review r5 #1).
     this.requireKey(idemKey);
     return this.tx(id, null, (s, now, emit) => {
+      notWhileDeleting(s);
       const ev = findEvent(this.d.master, eventId);
       const entryId = [0, 0].map(() => this.d.rng.nextU32().toString(36)).join('');
       const r = enterEvent(ev, s, getHorse(s, horseId), entryId, now);
@@ -849,7 +881,8 @@ export class PlayerService {
     return { entry, displayName: s.profile.displayName, info: { classId: entry.classId, rankedRaces: s.rating.rankedRaces, style: h.style as string, horseActive: h.status === 'active', moderation: entry.moderation } };
   }
   /** REQ-TOUR-007: final rank + prize, once per tournament (resumable payout; a retry is a no-op). */
-  tournamentClose(id: string, tournamentId: string, rank: number, reward: Reward | null, name: string) {
+  async tournamentClose(id: string, tournamentId: string, rank: number, reward: Reward | null, name: string) {
+    if (await this.wiped(id)) return { status: 'already' as const, reward: null };
     return this.tx(id, null, (s, now) => {
       const done = (s.tournaments ??= {});
       if (done[tournamentId]) return { status: 'already' as const, reward: done[tournamentId]!.reward };
@@ -866,7 +899,8 @@ export class PlayerService {
     return { history: Object.entries(s.tournaments ?? {}).map(([tournamentId, r]) => ({ tournamentId, ...r })).sort((a, b) => b.at - a.at) };
   }
   /** REQ-EVENT-008: final rank reward (event end job; idempotent). An event removed from config pays nothing. */
-  eventClose(id: string, eventId: string, rank: number | null) {
+  async eventClose(id: string, eventId: string, rank: number | null) {
+    if (await this.wiped(id)) return { status: 'unknown_event' as const, reward: null };
     return this.tx(id, null, (s, now) => {
       const ev = this.d.master.events.find((e) => e.id === eventId);
       if (!ev) {

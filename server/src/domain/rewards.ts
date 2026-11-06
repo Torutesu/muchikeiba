@@ -90,6 +90,7 @@ export const passActive = (s: PlayerState, now: number) => s.seasonPass.expiresA
 /** REQ-REW-003 */
 export function claimPass(m: Master, s: PlayerState, track: 'free' | 'premium', level: number, now: number) {
   if (!Number.isInteger(level) || level < 1 || level > passLevel(m, s)) throw new AppError('NOT_ELIGIBLE');
+  if (s.seasonPass.forfeitedAt !== undefined) throw new AppError('NOT_ELIGIBLE', 'the season pass was given up (account deletion)');
   if (track === 'premium' && !passActive(s, now)) throw new AppError('NOT_ELIGIBLE', 'season pass not active');
   const def = m.progression.passRewards[track];
   if (level % def.every !== 0) throw new AppError('NOT_ELIGIBLE');

@@ -38,6 +38,8 @@ namespace Muchi.Client
         DeletionConfirmInvalid,
         /// <summary>409: the account is scheduled for deletion; purchases are disabled until it is cancelled (REQ-UXS-040).</summary>
         DeletionPending,
+        /// <summary>409: the deletion run has already started and cannot be cancelled any more (REQ-UXS-040).</summary>
+        DeletionInProgress,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -106,6 +108,7 @@ namespace Muchi.Client
             ["PARTNER_ALREADY_GRANTED"] = ApiErrorCode.PartnerAlreadyGranted,
             ["DELETION_CONFIRM_INVALID"] = ApiErrorCode.DeletionConfirmInvalid,
             ["DELETION_PENDING"] = ApiErrorCode.DeletionPending,
+            ["DELETION_IN_PROGRESS"] = ApiErrorCode.DeletionInProgress,
             ["VERIFIER_UNAVAILABLE"] = ApiErrorCode.VerifierUnavailable,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };

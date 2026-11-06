@@ -151,7 +151,8 @@ export function grantAllowance(s: PlayerState, p: Product, txId: string, now: nu
   const today = gameDayKey(now);
   // keep running/queued ones and the most recent ended ones
   const keep = sh.allowances.filter((x) => allowanceEnd(x) >= today);
-  const ended = sh.allowances.filter((x) => allowanceEnd(x) < today).slice(-Math.max(0, ALLOWANCE_KEEP - keep.length));
+  const room = Math.max(0, ALLOWANCE_KEEP - keep.length); // slice(-0) would keep every ended one
+  const ended = room > 0 ? sh.allowances.filter((x) => allowanceEnd(x) < today).slice(-room) : [];
   sh.allowances = [...ended, ...keep];
 }
 
@@ -206,7 +207,13 @@ export function forfeitAllowances(s: PlayerState, now: number) {
 /** REQ-PUR-006: refund of a daily pack. The paid coins go with the purchase; claimed daily coins are taken back; no more claims. */
 export function refundAllowance(s: PlayerState, rec: PurchaseRecord, now: number) {
   const a = (s.shop?.allowances ?? []).find((x) => x.txId === rec.txId);
-  if (!a || a.refunded) return { freeCoins: 0 };
+  if (!a) {
+    // the entitlement was pruned (ALLOWANCE_KEEP): the purchase record still knows the daily coins it paid out
+    const total = rec.linkedFree ?? 0;
+    if (total > 0) clawbackFree(s, total, now, rec.txId);
+    return { freeCoins: total };
+  }
+  if (a.refunded) return { freeCoins: 0 };
   a.refunded = true;
   const total = a.claimed.length * a.dailyFreeCoins;
   if (total > 0) clawbackFree(s, total, now, rec.txId);

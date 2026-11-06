@@ -10,6 +10,7 @@ import { stableDeletionPort } from '../domain/stable.js';
 import { makeStableService } from '../http/stablePorts.js';
 import { loadMaster } from '../domain/master.js';
 import { unwrap, type Envelope } from './rpc.js';
+import { wipePlayerStorage } from './sqlRepo.js';
 
 type Rpc = Record<string, (...a: unknown[]) => Promise<Envelope<unknown>>>;
 const stub = (ns: DurableObjectNamespace, name: string) => ns.get(ns.idFromName(name)) as unknown as Rpc;
@@ -28,6 +29,7 @@ export function deletionPortsFromEnv(env: Env, ctx: DurableObjectState, svc: Pla
   const invoker = (uid: string) => ({ invoke: ((m: PlayerMethod, ...args: unknown[]) => other(uid, m, ...args.slice(1))) as PlayerInvoker['invoke'] });
   const stables = makeStableService(invoker, shardedStableDirectory(env.DIRECTORY), loadMaster);
   return {
+    start: async (uid) => { await svc.deletionStart(uid); },
     snapshot: (uid) => svc.deletionSnapshot(uid),
     markStep: async (uid, step) => { await svc.deletionMarkStep(uid, step); },
     friends: {
@@ -73,6 +75,6 @@ export function deletionPortsFromEnv(env: Env, ctx: DurableObjectState, svc: Pla
       const acc = env.ACCOUNTING.get(env.ACCOUNTING.idFromName('global')) as unknown as { retainDeleted(p: string, r: RetainedRecord): Promise<unknown> };
       await acc.retainDeleted(uid, record);
     },
-    wipe: async () => { await ctx.storage.deleteAll(); },
+    wipe: async () => { await wipePlayerStorage(ctx.storage); },
   };
 }

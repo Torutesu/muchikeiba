@@ -142,6 +142,12 @@ namespace Muchi.Engine.Tests
             _http.Fail(new IOException("reset"));
             await Assert.ThrowsAsync<NetworkException>(() => _api.CancelAccountDeletionAsync());
             Assert.Equal(2, _http.Requests.Count);
+
+            // the run has started: irreversible, a distinct code (QA r8)
+            _http.Requests.Clear();
+            _http.Reply(409, E("DELETION_IN_PROGRESS"));
+            var started = await Assert.ThrowsAsync<ConflictException>(() => _api.CancelAccountDeletionAsync());
+            Assert.Equal(ApiErrorCode.DeletionInProgress, started.Code);
         }
 
         [Fact]

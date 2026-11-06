@@ -6,6 +6,8 @@ import { newRolloverState, rolloverStep, type RolloverState } from '../domain/le
 import type { EventDef } from '../domain/master.js';
 import { unwrap, wrap, type Envelope } from './rpc.js';
 import { DirtyTracker } from '../domain/dirty.js';
+import { dismissRolloverItem, retryRolloverItem, rolloverDeadLetters, type DeadLetterItem, type RetryOutcome, type RolloverWithLog } from '../ops/deadLetter.js';
+import { newlyDead, reportDeadLetters } from './deadLetters.js';
 
 type Row = { player_id: string; points: number; races: number; wins: number; display_name: string; updated_at: number };
 
@@ -97,6 +99,7 @@ export class EventDO extends DurableObject<Env> {
       const ev = await this.event(eventId);
       let st = this.kvGet<RolloverState>('close') ?? newRolloverState(eventId);
       if (!ev || st.status === 'closed' || now < ev.endAtMs + EVENT_SETTLE_GRACE_MS) return st;
+      const deadBefore = rolloverDeadLetters(st);
       if (st.status === 'open') {
         st = { ...st, status: 'closing' };
         this.kvPut('close', st); // no more entries
@@ -115,7 +118,32 @@ export class EventDO extends DurableObject<Env> {
         this.kvPut('close', { ...st, cursor: pid });
       }, batch);
       this.kvPut('close', st);
+      await reportDeadLetters(this.env, 'event', eventId, newlyDead(deadBefore, rolloverDeadLetters(st)), now);
       return st;
+    });
+  }
+
+  // ---- dead letters (REQ-OPS-041): players whose rank reward failed past the retry budget ----
+  async dlList(): Promise<Envelope<DeadLetterItem[]>> { return wrap(() => rolloverDeadLetters(this.kvGet<RolloverState>('close'))); }
+  async dlRetry(eventId: string, playerId: string): Promise<Envelope<RetryOutcome>> {
+    return wrap(async () => {
+      const st = this.kvGet<RolloverWithLog>('close');
+      if (!st) return { ok: false, error: 'no close state' };
+      const out = await retryRolloverItem(st, playerId, async () => {
+        const r = this.sql.exec<{ rank: number }>('SELECT rank FROM ranks WHERE player_id = ?', playerId).toArray()[0];
+        const p = this.env.PLAYER.get(this.env.PLAYER.idFromName(playerId)) as unknown as { invoke(m: string, a: unknown[]): Promise<Envelope<unknown>> };
+        unwrap(await p.invoke('eventClose', [playerId, eventId, r ? r.rank : null]));
+      }, () => this.kvGet<RolloverWithLog>('close'));
+      this.kvPut('close', out.st);
+      return out.outcome;
+    });
+  }
+  async dlDismiss(playerId: string, by: string, note: string, now: number): Promise<Envelope<boolean>> {
+    return wrap(() => {
+      const st = this.kvGet<RolloverWithLog>('close');
+      if (!st) return false;
+      this.kvPut('close', dismissRolloverItem(st, playerId, by, note, now));
+      return true;
     });
   }
 }

@@ -75,8 +75,21 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | POST | `/v1/horses/:horseId/awaken` | 要 | 必須 | |
 | POST | `/v1/horses/:horseId/retire` | 要 | | |
 | GET | `/v1/horses/:horseId/pedigree` | 要 | | 5代血統表 |
+| GET | `/v1/horses/:horseId/bond` | 要 | | 絆（レベル・ポイント・ケアごとの残りクールダウン）。REQ-BOND-* |
+| POST | `/v1/horses/:horseId/care` | 要 | 必須 | `{action}` ケア。クールダウン中・1日上限は `409 COOLDOWN`。レベル報酬・称号を返す |
+| GET | `/v1/bond` | 要 | | `{levels: {horseId: level}}` |
+| GET | `/v1/presets` | 要 | | コースの見た目・フレンドルームの条件。REQ-ROOM-* |
+| PUT | `/v1/presets/course-look` | 要 | | `{lookId \| null}` 持っている見た目だけ |
+| PUT | `/v1/presets/room` | 要 | | `{trackId?, going?, night?, weather, temperatureC, windKmh}` 自分がホストのフレンドルームに使う |
+| DELETE | `/v1/presets/room` | 要 | | 条件を消す（自動に戻す） |
 | POST | `/v1/breeding/preview` | 要 | | `{sireId, damId}` 能力の範囲・脚質・距離・ニックス・近親 |
-| POST | `/v1/breeding` | 要 | 必須 | `{sireId, damId}` 1日1回 |
+| POST | `/v1/breeding` | 要 | 必須 | `{sireId, damId, useMaterial?}` 1日1回。`useMaterial: true` なら通常分を使い切った後、配合素材で1日1回まで追加（REQ-ITEM-003）。予想（preview）は `today` に残り回数を返す |
+| GET | `/v1/items/tickets` | なし | | 券の一覧と提供割合（REQ-ITEM-001/002） |
+| GET | `/v1/items/tickets/:itemId/odds` | なし | | 券1種の提供割合（SR以上確定券は券専用の表） |
+| POST | `/v1/items/tickets/:itemId/use` | 要 | 必須 | `{bannerId?}` ガチャ券は `bannerId` 必須（対象ガチャのみ、天井+1）。SR以上確定券は不要 |
+| GET | `/v1/shop/cosmetics` | 要 | | 見た目アイテム（勝負服の模様・馬具・厩舎の飾り）の一覧、価格、所持・装備中、アセットキー |
+| POST | `/v1/shop/cosmetics/:itemId/buy` | 要 | 必須 | コインで購入（各1回。有償限定はペイドのみ） |
+| PUT | `/v1/player/equipment` | 要 | | `{tack?: {bridle?, saddlecloth?}, decor?: [itemId\|null…]}` 装備（`null` で外す） |
 | POST | `/v1/rewards/login-bonus` | 要 | 必須 | |
 | GET | `/v1/missions` | 要 | | |
 | POST | `/v1/missions/:missionId/claim` | 要 | 必須 | |
@@ -176,6 +189,13 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | POST | `/v1/admin/integrity/players/:playerId/unban` | admin | `{reason}` |
 | GET | `/v1/admin/reports` | viewer | `?status=open\|resolved` 通報の列 |
 | POST | `/v1/admin/reports/:reportId/resolve` | operator | `{resolution, reason}` |
+| GET | `/v1/admin/dead-letters` | viewer | `?status=open\|resolved\|dismissed\|all&source=&limit=` 失敗リストの索引（REQ-OPS-041） |
+| GET | `/v1/admin/dead-letters/:source/:scope` | viewer | 持ち主の現在の失敗リスト（索引も更新）。`source`＝`season`（scope＝シーズン）／`team`（シーズン）／`event`（イベントID）／`settlement`（レースID）／`moderation`（`global`） |
+| POST | `/v1/admin/dead-letters/:source/:scope/:itemId/retry` | operator | `{reason}` 再試行（冪等。成功で `resolved`、失敗ならエラーと回数を更新） |
+| POST | `/v1/admin/dead-letters/:source/:scope/:itemId/dismiss` | admin | `{note, reason}` 手作業で対応済みとして取り下げ |
+| GET | `/v1/admin/silks/banned` | viewer | 有効な禁止勝負服の一覧（REQ-OPS-040） |
+| POST | `/v1/admin/silks/banned/check` | viewer | `{silks:{pattern, colors, cap}}` 当たるか確認 |
+| POST | `/v1/admin/silks/banned/import` | admin | `{list, reason}` 一覧を丸ごと取り込み、設定の新しい版として登録（有効化は `/v1/admin/config/activations`） |
 
 ### 設定配信（リモートコンフィグ）
 - バンドルで変えられるもの：`ruleset`（一部でも全部でも可。キー集合は固定）、`gacha.banners`（一覧ごと置き換え。開催日程は `startAtMs`/`endAtMs`）、`gacha.pityGroups`、`tracks`、`progression`（浅いマージ）、`ng`。

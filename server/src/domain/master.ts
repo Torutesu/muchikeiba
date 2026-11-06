@@ -1,4 +1,7 @@
 import tracksJson from '../../master/tracks.json';
+import { BASE_BANNED_SILKS, type BannedSilksList } from './bannedSilks.js';
+import type { BondConfig } from './bond.js';
+import type { RoomsConfig } from './presets.js';
 import horsesJson from '../../master/horses.json';
 import gachaJson from '../../master/gacha.json';
 import nicksJson from '../../master/nicks.json';
@@ -10,6 +13,7 @@ import progressionJson from '../../master/progression.json';
 import titlesJson from '../../master/titles.json';
 import pushJson from '../../master/push.json';
 import eventsJson from '../../master/events.json';
+import itemsJson from '../../master/items.json';
 import { trackSchema, type GoingAptitude, type Going, type Track } from './schemas.js';
 import { AppError } from './errors.js';
 
@@ -32,6 +36,23 @@ export interface Product {
   id: string; kind: 'coins' | 'starter' | 'season_pass'; priceYen: number; paidCoins: number;
   once?: boolean; items?: ItemQty[]; durationDays?: number;
 }
+/** REQ-ITEM-001..003: what tickets and materials do. */
+export type TicketDef =
+  | { kind: 'single'; name: string; banners: string[] }
+  | { kind: 'srPlus'; name: string; rates: Partial<Record<Rarity, number>> };
+/** REQ-ITEM-004..007: cosmetics sold for coins (no stat effect). */
+export type CosmeticDef =
+  | { id: string; name: string; kind: 'silks'; pattern: string; price: number; currency: 'any' | 'paidOnly' }
+  | { id: string; name: string; kind: 'tack'; slot: TackSlot; asset: string; price: number; currency: 'any' | 'paidOnly' }
+  | { id: string; name: string; kind: 'decor'; asset: string; price: number; currency: 'any' | 'paidOnly' };
+export type TackSlot = 'bridle' | 'saddlecloth';
+export const TACK_SLOTS: TackSlot[] = ['bridle', 'saddlecloth'];
+export interface ItemsMaster {
+  tickets: Record<string, TicketDef>;
+  breedingMaterial: { itemId: string; cost: number; extraPerDay: number };
+  decorSlots: number;
+  cosmetics: CosmeticDef[];
+}
 export interface AgeBand { id: string; minAge: number; maxAge: number; monthlyLimitYen: number | null }
 export interface AgeLimits { status: string; guardianConsentUnderAge: number; bands: AgeBand[] }
 export interface ClassDef { id: string; statCap: number; promotePoints: number | null; demoteBelowPoints: number | null }
@@ -49,6 +70,8 @@ export interface Progression {
   social: { maxFriends: number; maxIncoming: number; maxOutgoing: number; maxInvites: number; inviteTtlMs: number; profilePushIntervalMs: number };
   leaderboard: { topN: number; rolloverBatch: number };
   replayRetentionDays: number;
+  /** REQ-OPS-001a: days a held replay is kept per hold reason (absent/null = until ops act). */
+  replayHoldDays?: Record<string, number | null>;
   /** REQ-REW-004: friend races that pay rewards per JST day (anti-farming). */
   friendRewardDailyCap: number;
   /** REQ-TA-*: time attack rules. */
@@ -57,6 +80,10 @@ export interface Progression {
   weather: WeatherConfig;
   /** REQ-TEAM-*: 支部 (teams). */
   teams: TeamsConfig;
+  /** REQ-BOND-*: stable care / bond (never affects ranked/event/time attack stats). */
+  bond: BondConfig;
+  /** REQ-ROOM-*: private-room condition choices. */
+  rooms: RoomsConfig;
 }
 export interface WeatherOverride { trackId?: string; fromMs: number; toMs: number; going: Going; night?: boolean }
 export interface WeatherConfig {
@@ -105,7 +132,8 @@ export type TitleCondition =
   | { kind: 'trackWins'; trackId: string; value: number }
   | { kind: 'bestTime'; trackId: string; value: number }
   | { kind: 'classReached'; classId: string }
-  | { kind: 'rating'; value: number };
+  | { kind: 'rating'; value: number }
+  | { kind: 'bondLevel'; value: number };
 export interface TitleDef { id: string; name: string; condition: TitleCondition }
 export type PushCategory = 'season' | 'friends' | 'invites' | 'events';
 export const PUSH_CATEGORIES: PushCategory[] = ['season', 'friends', 'invites', 'events'];
@@ -139,6 +167,10 @@ export interface Master {
   push: PushMaster;
   /** REQ-EVENT-*: event race definitions. */
   events: EventDef[];
+  /** REQ-ASSET-010: real registered silks players may not reproduce (master/banned-silks.json or a remote-config import). */
+  bannedSilks?: BannedSilksList;
+  /** REQ-ITEM-*: tickets, materials and cosmetics. */
+  items: ItemsMaster;
 }
 
 export const PPM_TOTAL = 1_000_000;
@@ -204,6 +236,8 @@ export function loadMaster(): Master {
     titles: (titlesJson as unknown as { titles: TitleDef[] }).titles,
     push: pushJson as unknown as PushMaster,
     events: (eventsJson as unknown as { events: EventDef[] }).events,
+    bannedSilks: BASE_BANNED_SILKS,
+    items: itemsJson as unknown as ItemsMaster,
   };
   cached = m;
   return m;

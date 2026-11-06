@@ -1,0 +1,60 @@
+{
+  "_note": "REQ-ASSET-010 / REQ-OPS-040: 実在の馬主の登録服色と同じ（または紛らわしい）勝負服の組み合わせ。プレイヤーの勝負服・初期値・リモート設定のすべてでこの一覧に当たる組み合わせは使えない。出典：公開されている登録服色（JRA・地方競馬の服色登録）。馬主名など個人を特定できる情報はここに書かない（source には出典の種別と確認日だけを書く）。リリース前に照合して entries を埋めること。現在は空。",
+  "format": 1,
+  "_formatNote": "entries[] = { id, source, description?, pattern, colors[], cap? }。pattern は visuals.json の模様ID か patternAliases のキー（例: 襷）。colors は順番どおり（胴→模様→袖）に palette ID か colorAliases のキー（例: 青）。cap 省略時は帽子を問わない。照合は colorFamilies で正規化した色（紺≒青 など紛らわしい色はまとめて扱う）で行う。",
+  "patternAliases": {
+    "無地": "plain",
+    "輪": "hoops",
+    "一本輪": "hoops",
+    "縦縞": "stripes",
+    "縦じま": "stripes",
+    "襷": "sash",
+    "たすき": "sash"
+  },
+  "colorAliases": {
+    "白": "white",
+    "黒": "black",
+    "赤": "red",
+    "青": "blue",
+    "黄": "yellow",
+    "緑": "green",
+    "橙": "orange",
+    "桃": "pink",
+    "紫": "purple",
+    "薄紫": "purple",
+    "水色": "sky",
+    "紺": "navy",
+    "海老": "maroon",
+    "金": "gold",
+    "灰": "silver",
+    "銀": "silver",
+    "茶": "brown",
+    "萌黄": "lime"
+  },
+  "colorFamilies": {
+    "blue": [
+      "blue",
+      "navy"
+    ],
+    "red": [
+      "red",
+      "maroon"
+    ],
+    "yellow": [
+      "yellow",
+      "gold"
+    ],
+    "green": [
+      "green",
+      "lime"
+    ]
+  },
+  "_symmetricNote": "色を入れ替えても見た目が同じ2色の模様。ここに挙げた模様は、登録の色順と逆の順でも一致とみなす。",
+  "symmetricPatterns": [
+    "quartered",
+    "halves",
+    "hoops",
+    "stripes"
+  ],
+  "entries": []
+}

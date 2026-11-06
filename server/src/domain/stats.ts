@@ -1,5 +1,7 @@
 import { AppError } from './errors.js';
-import { defaultSilks, type Silks } from './visuals.js';
+import { maxBondLevel } from './bond.js';
+import { effectiveSilks, type Silks } from './visuals.js';
+import type { BannedSilksList } from './bannedSilks.js';
 import { foldForCompare } from './horses.js';
 import type { Master, Style, TitleCondition } from './master.js';
 import type { PlayerState } from './player.js';
@@ -90,6 +92,7 @@ export function conditionMet(m: Master, s: PlayerState, c: TitleCondition): bool
       return reached.some((id) => classIndex(m, id) >= target);
     }
     case 'rating': return s.rating.rankedRaces > 0 && s.rating.r >= c.value;
+    case 'bondLevel': return maxBondLevel(m, s) >= c.value;
   }
 }
 
@@ -140,11 +143,14 @@ export interface PublicProfile {
   stats: { races: number; wins: number; top3: number }; lastSeenAt: number;
   /** REQ-ASSET-005 (absent in profiles pushed by older builds). */
   silks?: Silks;
+  /** REQ-ITEM-006: equipped tack, so other players can render it (absent = default tack). */
+  tack?: Partial<Record<'bridle' | 'saddlecloth', string>>;
 }
 
-export function publicProfile(s: PlayerState): PublicProfile {
+export function publicProfile(s: PlayerState, banned?: BannedSilksList): PublicProfile {
   return {
-    playerId: s.id, displayName: s.profile.displayName, titleId: s.profile.titleId, silks: s.profile.silks ?? defaultSilks(`p:${s.id}`), classId: s.season.classId,
+    playerId: s.id, displayName: s.profile.displayName, titleId: s.profile.titleId, silks: effectiveSilks(s.profile.silks, `p:${s.id}`, banned), classId: s.season.classId,
     rating: Math.round(s.rating.r), stats: { races: s.stats.races, wins: s.stats.wins, top3: s.stats.top3 }, lastSeenAt: s.profile.lastSeenAt,
+    ...(s.equipment && Object.keys(s.equipment.tack).length > 0 ? { tack: { ...s.equipment.tack } } : {}),
   };
 }

@@ -1,4 +1,10 @@
 import { weatherProblems } from '../domain/ground.js';
+import { BASE_BANNED_SILKS, bannedSilksListSchema, bannedSilksProblems, type BannedSilksList } from '../domain/bannedSilks.js';
+import { VISUALS, collectItemIds } from '../domain/visuals.js';
+import { bondProblems } from '../domain/bond.js';
+import { itemsProblems } from '../domain/itemShop.js';
+import { holdPolicyProblems } from '../domain/retention.js';
+import { roomsProblems } from '../domain/presets.js';
 import { z } from 'zod';
 import { AppError } from '../domain/errors.js';
 import { buildBanner, splitMasterTrack, type Master, type Progression, type RawBanner } from '../domain/master.js';
@@ -39,6 +45,8 @@ export const configBundleSchema = z.object({
   /** Shallow override of master progression values (reward tables, caps, retention…). */
   progression: z.record(z.string(), z.unknown()).optional(),
   ng: z.object({ exact: z.array(z.string()), contains: z.array(z.string()) }).strict().optional(),
+  /** REQ-OPS-040: replaces the banned real-silks list (admin import stages a version carrying it). */
+  bannedSilks: bannedSilksListSchema.optional(),
   /** REQ-EVENT-001: replaces the event list; each event is validated like at boot (tracks, ruleset override keys, fees). */
   events: z.array(z.record(z.string(), z.unknown())).optional(),
 }).strict();
@@ -104,6 +112,12 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
     if (k in base.progression) problems.push(...shapeProblems(`progression.${k}`, (base.progression as unknown as Record<string, unknown>)[k], v));
   }
   if (b.progression && 'weather' in b.progression) problems.push(...weatherProblems(progression.weather));
+  if (b.progression && 'bond' in b.progression) {
+    const paidOnly = new Set((base.items?.cosmetics ?? []).filter((c) => c.currency === 'paidOnly').map((c) => c.id));
+    problems.push(...bondProblems(progression.bond, new Set(collectItemIds(base)), paidOnly));
+  }
+  if (b.progression && 'rooms' in b.progression) problems.push(...roomsProblems(progression.rooms));
+  if (b.progression && 'replayHoldDays' in b.progression) problems.push(...holdPolicyProblems(progression.replayHoldDays));
 
   const events = (b.events as EventDef[] | undefined) ?? base.events;
   if (b.events) {
@@ -114,8 +128,12 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
       problems.push(...shapeProblems(`event ${ev.id}.rankRewards`, tpl?.rankRewards, ev.rankRewards));
     }
   }
-  const master: Master = { ...base, tracks, litTracks, gacha: { ...base.gacha, pityGroups, banners }, progression, ng: b.ng ?? base.ng, events };
+  const bannedSilks = (b.bannedSilks as BannedSilksList | undefined) ?? base.bannedSilks ?? BASE_BANNED_SILKS;
+  if (b.bannedSilks) problems.push(...bannedSilksProblems(bannedSilks, VISUALS).map((x) => `bannedSilks: ${x}`));
+  const master: Master = { ...base, tracks, litTracks, gacha: { ...base.gacha, pityGroups, banners }, progression, ng: b.ng ?? base.ng, events, bannedSilks };
   problems.push(...eventProblems(master, events, ruleset));
+  // QA r6 #1: tickets must never reach a paid-only banner, including after a remote-config banner change
+  if (master.items) problems.push(...itemsProblems(master));
   if (problems.length === 0) {
     try {
       validateGacha(master); // ppm sums, pools, pity groups, comp-gacha lint (REQ-GACHA-003/008)

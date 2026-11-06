@@ -328,3 +328,35 @@ describe('time attack: HTTP routes', () => {
     expect(bad.status).toBe(400);
   });
 });
+
+describe('time attack follows the active remote-config ruleset (REQ-TA-009)', () => {
+  it('sessions embed the active ruleset (+ta, no form); a mid-session change never affects that run', async () => {
+    const { buildRuleset, DEFAULT_RULESET } = await import('../src/domain/ruleset.js');
+    const { svc, invoker, now } = setup();
+    const h = await horseOf(svc, 'r1');
+    let active = buildRuleset({ ...DEFAULT_RULESET, rulesetVersion: '9.0.0', maxWhips: 4 });
+    const verifier = new FakeVerifier(finishAt(1700, 100));
+    const ta = new TimeAttackService({ player: () => invoker, verifier, board: new MemBoard(), ghosts: new MemGhosts(), ticketSecret: 'test-secret', clock: now, activeRuleset: async () => active });
+    const s = await ta.start('r1', TRACK, h);
+    expect(s.config.ruleset.maxWhips).toBe(4);
+    expect(String(s.config.ruleset.rulesetVersion)).toMatch(/^9\.0\.0(\+ta)?$/);
+    if ('conditionVariancePermille' in s.config.ruleset) expect(Number(s.config.ruleset.conditionVariancePermille)).toBe(0);
+    // ops activates another ruleset while the player is racing
+    active = buildRuleset({ ...DEFAULT_RULESET, rulesetVersion: '9.1.0', maxWhips: 2 });
+    await ta.submit('r1', { sessionId: s.sessionId, token: s.token, inputs: [[61, 0, 1]], resultHash: HASH_A });
+    expect(verifier.calls).toHaveLength(1);
+    expect(verifier.calls[0]!.config.ruleset.maxWhips).toBe(4); // the verifier gets the ruleset the run was issued with
+    // the next session picks up the new active ruleset
+    const s2 = await ta.start('r1', TRACK, h);
+    expect(s2.config.ruleset.maxWhips).toBe(2);
+  });
+
+  it('without a remote-config hook the built-in default is used (unchanged behaviour)', async () => {
+    const { DEFAULT_RULESET } = await import('../src/domain/ruleset.js');
+    const { svc, invoker, now } = setup();
+    const h = await horseOf(svc, 'r2');
+    const { ta } = service(invoker, new FakeVerifier(finishAt(1700, 100)), now);
+    const s = await ta.start('r2', TRACK, h);
+    expect(s.config.ruleset.maxWhips).toBe(DEFAULT_RULESET.maxWhips);
+  });
+});

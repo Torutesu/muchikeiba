@@ -23,6 +23,10 @@ namespace Muchi.Client
         public static string SilksCap(string id) => "silks/cap/" + id;
         public static string Gate(int bracket) => "ui/gate/" + bracket.ToString(CultureInfo.InvariantCulture);
         public static string Item(string id) => "item/" + id;
+        /// <summary>Tack (bridle / saddle cloth) layered on the horse model; name comes from the cosmetic's asset (REQ-ITEM-006).</summary>
+        public static string Tack(string name) => "tack/" + name;
+        /// <summary>Stable decor (REQ-ITEM-006).</summary>
+        public static string Decor(string name) => "decor/" + name;
         public static string GachaBanner(string id) => "banner/gacha/" + id;
         public static string EventBanner(string id) => "banner/event/" + id;
         public static string Title(string id) => "title/" + id;
@@ -32,6 +36,10 @@ namespace Muchi.Client
         public static string SurfaceScene(string venue, string surface) => "scene/surface/" + venue + "_" + surface;
         public static string Night(string venue) => "scene/night/" + venue;
         public static string Going(string going) => "fx/going/" + going;
+        /// <summary>REQ-ROOM-001: racecourse look theme (cosmetic, own screen only).</summary>
+        public static string CourseLook(string id) => "scene/look/" + id;
+        /// <summary>REQ-ROOM-004: friend-room weather effect (scene only).</summary>
+        public static string Weather(string id) => "fx/weather/" + id;
         public static string RaceSfx(string id) => "sfx/race/" + id;
         public static string UiSfx(string id) => "sfx/ui/" + id;
         public static string VoicePhrase(string clipId) => "voice/" + VoiceLang + "/phrase/" + clipId.Replace("#", "_p");

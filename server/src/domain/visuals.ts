@@ -7,6 +7,7 @@
  * Nothing here takes part in the race simulation or the result hash.
  */
 import visualsJson from '../../master/visuals.json';
+import { BASE_BANNED_SILKS, bannedMatch, combinedBanned, type BannedSilksList } from './bannedSilks.js';
 import { AppError } from './errors.js';
 import type { Master } from './master.js';
 import { randInt, type Rng } from './rng.js';
@@ -35,6 +36,10 @@ export interface VisualsMaster {
   tracks: Record<string, { venue: string }>;
   emblem: { shapes: string[]; symbols: string[] };
   sfx: { race: string[]; ui: string[] };
+  /** REQ-ROOM-001: cosmetic racecourse themes (one is the default; others need their unlock item). */
+  courseLooks: { id: string; key: string; default?: boolean; unlockItem?: string }[];
+  /** REQ-ROOM-002: scene-only weather for private rooms. */
+  weather: string[];
 }
 
 export const VISUALS = visualsJson as unknown as VisualsMaster;
@@ -60,6 +65,9 @@ export const assetKeys = {
   build: (id: string) => `horse/build/${id}`,
   silksPattern: (id: string) => `silks/pattern/${id}`,
   silksCap: (id: string) => `silks/cap/${id}`,
+  /** REQ-ITEM-006: tack and stable decor keys come from master/items.json (`asset`). */
+  tack: (name: string) => `tack/${name}`,
+  decor: (name: string) => `decor/${name}`,
   gate: (bracket: number) => `ui/gate/${bracket}`,
   item: (id: string) => `item/${id}`,
   gachaBanner: (id: string) => `banner/gacha/${id}`,
@@ -71,6 +79,8 @@ export const assetKeys = {
   surface: (venue: string, surface: string) => `scene/surface/${venue}_${surface}`,
   night: (venue: string) => `scene/night/${venue}`,
   going: (going: string) => `fx/going/${going}`,
+  courseLook: (id: string) => `scene/look/${id}`,
+  weather: (id: string) => `fx/weather/${id}`,
   sfxRace: (id: string) => `sfx/race/${id}`,
   sfxUi: (id: string) => `sfx/ui/${id}`,
   /** Commentary clip id "gate_open_1#0" → voice/ja/phrase/gate_open_1_p0 */
@@ -90,6 +100,8 @@ export const ASSET_KINDS: Record<string, { description: string; dynamic?: boolea
   'silks/pattern': { description: '勝負服の模様（色はパレットで着色）' },
   'silks/cap': { description: '帽子の模様（色は勝負服の1色目・2色目）' },
   'ui/gate': { description: '枠番（1〜8）のゼッケン・UI色' },
+  tack: { description: '馬具（頭絡・ゼッケン布）。馬のモデルに重ねる見た目（REQ-ITEM-006）' },
+  decor: { description: '厩舎の飾り（REQ-ITEM-006）' },
   item: { description: 'アイテムのアイコン' },
   'banner/gacha': { description: 'ガチャのバナー' },
   'banner/event': { description: 'イベントのバナー' },
@@ -100,6 +112,8 @@ export const ASSET_KINDS: Record<string, { description: string; dynamic?: boolea
   'scene/surface': { description: '競馬場ごとの馬場面（芝・ダート）' },
   'scene/night': { description: 'ナイター照明のバリエーション' },
   'fx/going': { description: '馬場状態の見た目（濡れ・水しぶき・土煙）' },
+  'scene/look': { description: 'コースの見た目テーマ（自分の画面だけに適用する装飾）' },
+  'fx/weather': { description: 'フレンド部屋の天気演出（晴れ・曇り・雨・霧。シミュレーションには影響しない）' },
   'sfx/race': { description: 'レース中の効果音' },
   'sfx/ui': { description: 'UIの効果音' },
   [`voice/${VOICE_LANG}/phrase`]: { description: '実況の定型フレーズ（Resources/Muchi/commentary-ja.json の各断片）' },
@@ -190,7 +204,7 @@ const twoColorsFrom = (seed: string, v: VisualsMaster): [string, string] => {
 };
 
 /** Default silks for players who never chose (and for CPU riders): free patterns only, never banned. */
-export function defaultSilks(seed: string, v: VisualsMaster = VISUALS): Silks {
+export function defaultSilks(seed: string, v: VisualsMaster = VISUALS, list: BannedSilksList = BASE_BANNED_SILKS): Silks {
   const free = v.silks.patterns.filter((p) => !p.unlockItem);
   for (let attempt = 0; attempt < 16; attempt++) {
     const s = `${seed}|${attempt}`;
@@ -199,13 +213,28 @@ export function defaultSilks(seed: string, v: VisualsMaster = VISUALS): Silks {
     const ids = paletteIds(v);
     const colors = p.colors === 3 ? [c0, c1, ids.find((x) => x !== c0 && x !== c1)!] : [c0, c1];
     const silks: Silks = { pattern: p.id, colors, cap: v.silks.caps[h32(`${s}|cap`) % v.silks.caps.length]!.id };
-    if (!isBannedSilks(silks, v)) return silks;
+    if (!isBannedSilks(silks, v, list)) return silks;
   }
   return { pattern: 'plain', colors: ['white', 'navy'], cap: 'plain' };
 }
 
-export function isBannedSilks(s: Silks, v: VisualsMaster = VISUALS): boolean {
-  return v.silks.banned.some((b) => b.pattern === s.pattern && b.colors.length === s.colors.length && b.colors.every((c, i) => c === s.colors[i]) && (b.cap === undefined || b.cap === s.cap));
+/**
+ * QA r6 #5: the silks to show for a player under the ACTIVE banned list (base + remote-config import).
+ * Stored silks (chosen, or a default generated before an import) that are now reserved are replaced by a
+ * fresh default that respects the list, so a real registered design is never shown after it is banned.
+ */
+export function effectiveSilks(stored: Silks | undefined | null, seed: string, list: BannedSilksList = BASE_BANNED_SILKS, v: VisualsMaster = VISUALS): Silks {
+  if (stored && !isBannedSilks(stored, v, list)) return stored;
+  return defaultSilks(seed, v, list);
+}
+
+/**
+ * REQ-ASSET-010: real registered silks are reserved. `list` is the active banned list (master/banned-silks.json
+ * or a remote-config import); visuals.json's own silks.banned is always included. Matching is on the
+ * normalised colour-family signature (see bannedSilks.ts), so near-identical shades are caught too.
+ */
+export function isBannedSilks(s: Silks, v: VisualsMaster = VISUALS, list: BannedSilksList = BASE_BANNED_SILKS): boolean {
+  return bannedMatch(combinedBanned(list, v), s) !== null;
 }
 
 /**
@@ -213,7 +242,7 @@ export function isBannedSilks(s: Silks, v: VisualsMaster = VISUALS): boolean {
  * colours must be palette ids in the pattern's count with at least two different colours, cap must exist,
  * and the combination must not be on the banned (real registered silks) list.
  */
-export function validateSilks(input: Silks, ownedItems: Record<string, number>, v: VisualsMaster = VISUALS): Silks {
+export function validateSilks(input: Silks, ownedItems: Record<string, number>, v: VisualsMaster = VISUALS, banned: BannedSilksList = BASE_BANNED_SILKS): Silks {
   const p = v.silks.patterns.find((x) => x.id === input.pattern);
   if (!p) throw new AppError('BAD_REQUEST', `unknown silks pattern ${input.pattern}`);
   if (p.unlockItem && !((ownedItems[p.unlockItem] ?? 0) > 0)) throw new AppError('NOT_ELIGIBLE', `pattern ${p.id} needs item ${p.unlockItem}`);
@@ -223,7 +252,7 @@ export function validateSilks(input: Silks, ownedItems: Record<string, number>, 
   if (new Set(input.colors).size < 2) throw new AppError('BAD_REQUEST', 'use at least two different colours');
   if (!v.silks.caps.some((c) => c.id === input.cap)) throw new AppError('BAD_REQUEST', `unknown cap ${input.cap}`);
   const s: Silks = { pattern: p.id, colors: [...input.colors], cap: input.cap };
-  if (isBannedSilks(s, v)) throw new AppError('BAD_REQUEST', 'this combination is reserved');
+  if (isBannedSilks(s, v, banned)) throw new AppError('BAD_REQUEST', 'this combination is reserved');
   return s;
 }
 
@@ -271,11 +300,13 @@ export function trackVisual(track: { id: string; surface: string; going?: string
 }
 
 /** Per-player look sent with race entries (not part of the hashed race config). */
-export interface EntrantVisual { appearance: Appearance; silks: Silks; displayName: string | null; titleId: string | null }
+export interface EntrantVisual { appearance: Appearance; silks: Silks; displayName: string | null; titleId: string | null; bondLevel?: number }
 
 export interface StartVisuals {
   v: 1;
   track: TrackVisual;
+  /** REQ-ROOM-004: friend room scene conditions chosen by the host (absent = server default scene). */
+  scene?: { weather: string; temperatureC: number; windKmh: number; keys: { weather: string } };
   entrants: ({ slot: number; gate: number; bracket: number; voiceName: string } & EntrantVisual)[];
 }
 
@@ -283,7 +314,7 @@ export interface StartVisuals {
  * REQ-ASSET-006: everything a client needs to draw the other runners, sent next to the config in the
  * `start` message. CPU horses use their template's look; CPU riders get silks derived from the race id.
  */
-export function startVisuals(config: RaceStartConfig, humans: Record<string, EntrantVisual | undefined>, v: VisualsMaster = VISUALS): StartVisuals {
+export function startVisuals(config: RaceStartConfig, humans: Record<string, EntrantVisual | undefined>, v: VisualsMaster = VISUALS, list: BannedSilksList = BASE_BANNED_SILKS): StartVisuals {
   const n = config.entrants.length;
   return {
     v: 1,
@@ -292,10 +323,11 @@ export function startVisuals(config: RaceStartConfig, humans: Record<string, Ent
       const hv = e.playerId ? humans[e.playerId] : undefined;
       const tplId = e.horse.id.startsWith('cpu_') ? e.horse.id.slice(4) : null;
       const appearance = hv?.appearance ?? (tplId ? templateAppearance(tplId, v) : null) ?? deriveAppearance(`${config.raceId}:${e.slot}`, v);
-      const silks = hv?.silks ?? defaultSilks(e.playerId ? `p:${e.playerId}` : `${config.raceId}:cpu:${e.slot}`, v);
+      const silks = effectiveSilks(hv?.silks, e.playerId ? `p:${e.playerId}` : `${config.raceId}:cpu:${e.slot}`, list, v);
       return {
         slot: e.slot, gate: e.slot + 1, bracket: bracketOf(e.slot + 1, n), voiceName: assetKeys.voiceName(e.horse.name),
         appearance, silks, displayName: hv?.displayName ?? null, titleId: hv?.titleId ?? null,
+        ...(hv?.bondLevel !== undefined ? { bondLevel: hv.bondLevel } : {}),
       };
     }),
   };
@@ -320,6 +352,7 @@ export function visualsCatalog(m: Master, v: VisualsMaster = VISUALS) {
     banners: Object.fromEntries(m.gacha.banners.map((b) => [b.id, assetKeys.gachaBanner(b.id)])),
     events: Object.fromEntries(m.events.map((e) => [e.id, assetKeys.eventBanner(e.id)])),
     titles: Object.fromEntries(m.titles.map((t) => [t.id, assetKeys.title(t.id)])),
+    cosmetics: Object.fromEntries((m.items?.cosmetics ?? []).map((c) => [c.id, { kind: c.kind, icon: assetKeys.item(c.id), asset: c.kind === 'silks' ? assetKeys.silksPattern(c.pattern) : c.asset }])),
   };
 }
 
@@ -335,7 +368,13 @@ export function collectItemIds(m: Master, v: VisualsMaster = VISUALS): string[] 
       }
     }
   };
-  walk(m.products); walk(m.progression); walk(m.events); walk(v.silks.patterns);
+  walk(m.products); walk(m.progression); walk(m.events); walk(v.silks.patterns); walk(v.courseLooks ?? []);
+  // REQ-ITEM-*: tickets, the breeding material and every cosmetic sold in the shop
+  if (m.items) {
+    Object.keys(m.items.tickets).forEach((id) => ids.add(id));
+    ids.add(m.items.breedingMaterial.itemId);
+    m.items.cosmetics.forEach((c) => ids.add(c.id));
+  }
   return [...ids].sort();
 }
 

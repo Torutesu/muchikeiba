@@ -1,11 +1,14 @@
 import type { GoingAptitude } from './schemas.js';
+import type { BondState } from './bond.js';
+import type { PresetsState } from './presets.js';
 import type { Rarity, Sex, Stats, Style } from './master.js';
 import type { PushState } from './push.js';
 import type { KpiState } from './kpi.js';
 import type { TimeAttackState } from './timeAttack.js';
 import type { PlayerTeamState } from './teams.js';
 import type { PlayerEventState } from './events.js';
-import { appearanceOf, defaultSilks, type Appearance, type Silks } from './visuals.js';
+import { appearanceOf, defaultSilks, effectiveSilks, type Appearance, type Silks } from './visuals.js';
+import type { BannedSilksList } from './bannedSilks.js';
 
 export type Currency = 'paid' | 'free';
 
@@ -77,6 +80,14 @@ export interface PlayerState {
   ledger: LedgerEntry[];
   ledgerSeq: number;
   idem: { key: string; result: unknown }[];
+  /**
+   * QA r6 #3: race results already applied to this player, by raceId → applied-at (ms). Separate from the
+   * client idempotency ring (which holds only IDEM_KEEP keys shared with client calls), so a settlement or
+   * dead-letter retry long after the fact can never apply the same race twice. Pruned by age.
+   */
+  appliedRaces?: Record<string, number>;
+  /** Event board updates that could not be delivered after a race was applied; re-sent on the next race. */
+  pendingEventPushes?: Record<string, unknown>;
   horses: HorseInstance[];
   items: Record<string, number>;
   materials: { awakening: number };
@@ -118,9 +129,23 @@ export interface PlayerState {
   events?: Record<string, PlayerEventState>;
   /** Anti-cheat status pushed by the integrity service (REQ-OPS-035). Absent = ok. */
   moderation?: { status: 'ok' | 'quarantined' | 'banned'; until: number | null; reason: string; at: number };
+  /** REQ-BOND-*: care points per horse and account-wide level rewards already paid (created on first care). */
+  bond?: BondState;
+  /** REQ-ROOM-*: course look and private-room conditions (created on first change). */
+  presets?: PresetsState;
   /** Results of admin money operations by op key; never evicted, so an opKey can never pay twice (review r5 #4). */
   adminOps?: Record<string, unknown>;
+  /** REQ-ITEM-006: equipped cosmetics (tack per slot, stable decor slots). Optional for older states. */
+  equipment?: Equipment;
+  /** REQ-ITEM-008: append-only log of item spends and cosmetic purchases (last ITEM_LOG_KEEP kept). */
+  itemLog?: ItemLogEntry[];
+  /** REQ-ITEM-003: extra breedings bought with material today (JST date). */
+  breedingExtra?: { date: string; count: number };
 }
+
+export interface Equipment { tack: Partial<Record<'bridle' | 'saddlecloth', string>>; decor: (string | null)[] }
+export interface ItemLogEntry { seq: number; at: number; itemId: string; delta: number; reason: string; ref: string }
+export const ITEM_LOG_KEEP = 200;
 
 /** Effective moderation status at `now` (expired quarantines/bans read as ok). */
 export function moderationOf(s: PlayerState, now: number): 'ok' | 'quarantined' | 'banned' {
@@ -172,14 +197,15 @@ export function newPlayer(id: string, now: number, seasonId: string): PlayerStat
 }
 
 /** Public view returned by the API (no ledger dump). */
-export function playerView(s: PlayerState) {
+export function playerView(s: PlayerState, banned?: BannedSilksList) {
   return {
     id: s.id,
     wallet: { paid: s.wallet.paid, free: s.wallet.free, total: s.wallet.paid + s.wallet.free, debt: s.wallet.debt },
     items: s.items, materials: s.materials, pity: s.pity, horses: s.horses,
     ageRegistered: s.age !== null, flags: s.flags, seasonPass: s.seasonPass, loginBonus: s.loginBonus,
     rating: { r: Math.round(s.rating.r), rd: Math.round(s.rating.rd), rankedRaces: s.rating.rankedRaces }, season: s.season,
-    profile: { displayName: s.profile.displayName, titleId: s.profile.titleId, silks: s.profile.silks ?? defaultSilks(`p:${s.id}`) }, titles: s.titles, stats: s.stats,
+    profile: { displayName: s.profile.displayName, titleId: s.profile.titleId, silks: effectiveSilks(s.profile.silks, `p:${s.id}`, banned) }, titles: s.titles, stats: s.stats,
+    equipment: s.equipment ?? { tack: {}, decor: [] },
     seasonHistory: s.seasonHistory,
   };
 }

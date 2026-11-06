@@ -81,6 +81,7 @@
         { "id": "finish_win_3", "text": "{name}、先頭でゴール！" }
       ]
     },
+    "bond_call": { "priority": 50, "variants": [ { "id": "bond_call_1", "text": "{name}、厩舎で育んだ絆の走り！" }, { "id": "bond_call_2", "text": "人馬一体、{name}が伸びてくる！" } ] },
     "focus_finish": {
       "priority": 70,
       "variants": [

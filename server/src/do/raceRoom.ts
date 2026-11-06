@@ -8,7 +8,9 @@ import { HttpVerifierClient } from '../domain/verifier.js';
 import type { Rating } from '../domain/rating.js';
 import { verifyTicket } from '../http/ticket.js';
 import { driveSettlement, newSettleMeta, upgradeSettleMeta, type SettleMeta } from '../race/settlement.js';
-import { unwrap, type Envelope } from './rpc.js';
+import { dismissSettlementItem, retrySettlementItem, settlementDeadLetters, type DeadLetterItem, type RetryOutcome } from '../ops/deadLetter.js';
+import { newlyDead, reportDeadLetters } from './deadLetters.js';
+import { unwrap, wrap, type Envelope } from './rpc.js';
 import type { PlayerDO } from './player.js';
 
 interface Attachment { slot: number | null }
@@ -159,6 +161,7 @@ export class RaceRoomDO extends DurableObject<Env> {
       // watchdog: if we die mid-call, the alarm fires again and resumes from the persisted step
       await this.ctx.storage.setAlarm(Date.now() + WATCHDOG_MS);
       const core = this.core;
+      const deadBefore = settlementDeadLetters(this.meta);
       const r = await driveSettlement(core, this.meta, {
         verify: (log) => new HttpVerifierClient(this.env.VERIFIER_URL, undefined, undefined, this.env.VERIFIER_TOKEN).verify(log),
         putReplay: (log, hold) => this.putReplay(log, hold),
@@ -178,9 +181,32 @@ export class RaceRoomDO extends DurableObject<Env> {
         },
       }, Date.now());
       this.send(r.out);
+      await reportDeadLetters(this.env, 'settlement', core.config.raceId, newlyDead(deadBefore, settlementDeadLetters(this.meta)), Date.now());
     } finally {
       this.driving = false;
     }
+  }
+
+  // ---- dead letters (REQ-OPS-041): players whose result could not be applied past the retry budget ----
+  async dlList(): Promise<Envelope<DeadLetterItem[]>> { return wrap(() => settlementDeadLetters(this.meta)); }
+  async dlRetry(playerId: string): Promise<Envelope<RetryOutcome>> {
+    return wrap(async () => {
+      if (!this.meta) return { ok: false, error: 'race not found' };
+      const out = await retrySettlementItem(this.meta, playerId, async (pid, res) => {
+        const stub = this.env.PLAYER.get(this.env.PLAYER.idFromName(pid)) as unknown as { invoke(m: string, a: unknown[]): Promise<Envelope<unknown>> };
+        unwrap(await stub.invoke('applyRace', [pid, res]));
+      });
+      await this.persist();
+      return out;
+    });
+  }
+  async dlDismiss(playerId: string, by: string, note: string, now: number): Promise<Envelope<boolean>> {
+    return wrap(async () => {
+      if (!this.meta) return false;
+      dismissSettlementItem(this.meta, playerId, by, note, now);
+      await this.persist();
+      return true;
+    });
   }
 
   private async putReplay(log: ReplayLog, hold: string | null) {

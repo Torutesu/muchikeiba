@@ -92,7 +92,7 @@ export function setModeration(s: PlayerState, status: 'ok' | 'quarantined' | 'ba
 
 /** What support sees about a player (more than the player API; never the idempotency cache). */
 export function supportView(m: Master, s: PlayerState, now: number) {
-  const v = playerView(s);
+  const v = playerView(s, m.bannedSilks);
   return {
     ...v,
     createdAt: s.createdAt,

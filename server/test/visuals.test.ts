@@ -165,7 +165,12 @@ describe('silks and emblems', () => {
     const v = structuredClone(VISUALS) as VisualsMaster;
     v.silks.banned.push({ pattern: 'hoops', colors: ['red', 'white'] });
     expect(() => validateSilks({ pattern: 'hoops', colors: ['red', 'white'], cap: 'star' }, {}, v)).toThrow(/reserved/);
-    expect(validateSilks({ pattern: 'hoops', colors: ['white', 'red'], cap: 'star' }, {}, v).colors).toEqual(['white', 'red']);
+    // hoops are equal alternating bands: the swapped order looks the same, so it is reserved too (QA r6 #7)
+    expect(() => validateSilks({ pattern: 'hoops', colors: ['white', 'red'], cap: 'star' }, {}, v)).toThrow(/reserved/);
+    // a body-and-motif pattern is order-sensitive: red sash on white differs from white sash on red
+    v.silks.banned.push({ pattern: 'sash', colors: ['red', 'white'] });
+    expect(() => validateSilks({ pattern: 'sash', colors: ['red', 'white'], cap: 'star' }, {}, v)).toThrow(/reserved/);
+    expect(validateSilks({ pattern: 'sash', colors: ['white', 'red'], cap: 'star' }, {}, v).colors).toEqual(['white', 'red']);
   });
 
   it('default silks are free, valid and never banned', () => {

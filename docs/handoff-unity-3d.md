@@ -32,7 +32,29 @@ Updated: 2026-11-05（エンジン・サーバー接続を追加）
 | レースエントリー | オンライン：ランク戦に登録→マッチ（約15秒でCPU補完）→ WebSocketでロックステップ。オフライン：12頭の練習レース（2000m） | 練習レース |
 | レース中 | 位置・向きはエンジン状態の補間（`TryGetRender` → `CourseFrame`）。HUD：順位・残り距離・残り脚‰・ムチ残り・かかり・手綱・ゲートまでの時間。実況字幕 | 同じ |
 | 結果 | 着順・タイム（エンジン）、オンラインは「サーバー確定／無効」と更新後のシーズンpt | 練習（ポイントなし） |
-| 衣装・コース見た目・コンディション・飼い葉 | **サーバー未対応のためローカルのみ**（画面に LOCAL ONLY と表示） | 同じ |
+| 飼い葉（ケア） | `CareModel`：`GET /v1/horses/:id/bond`・`POST …/care`（クールダウン・1日上限・絆レベル・報酬） | PlayerPrefs（`muchi.care.feed`） |
+| コースの見た目 | `CourseLooksModel`：`GET /v1/presets`・`PUT /v1/presets/course-look`（持っている見た目だけ） | 標準のみ・PlayerPrefs |
+| コンディション | `RoomConditionsModel`：`PUT /v1/presets/room`。自分がホストのフレンドルームがこの条件で走る | PlayerPrefs（`muchi.race.*`） |
+| 衣装（3Dモデル） | **ローカルのみ**（LOCAL ONLY 表示のまま。装備のサーバー化はアイテム経済側） | 同じ |
+
+### Codex が次に作る画面向けのビューモデル（`Assets/Muchi/Game/ScreenModels.cs`）
+
+すべて `GameBackend` を受け取り、オンラインならサーバー、オフラインなら端末のデータか「OFFLINE / …」の `Message` を返す。
+操作は `Task<ActionResult>`（`Ok` と画面に出す `Message`。サーバーのエラーは `CODE  /  メッセージ`）。UnityEngine には依存しない。
+
+| ビューモデル | 読み込み | 操作 | バインドする値 |
+|---|---|---|---|
+| `CareModel` | `LoadAsync(horseId?)` | `CareAsync(cardIndex)` | `Bond`（Level/Points/NextLevelAt/TodayActions/DailyActions）、`Card(i).Ready`、`SelectedCard` |
+| `CourseLooksModel` | `LoadAsync()` | `EquipAsync(index)` | `Owned(i)`、`EquippedIndex`、`EquippedKey`（`scene/look/*`） |
+| `RoomConditionsModel` | `LoadAsync()` | `SaveAsync()`、`ResetAsync()` | `Weather`/`Ground`/`Temperature`/`Wind`（画面のボタン番号）、`TrackId`、`Night` |
+| `FriendsModel` | `LoadAsync()` | `SendAsync(code)`、`AcceptAsync`/`DeclineAsync`/`CancelAsync`/`RemoveAsync(id)` | `MyCode`、`List.Friends`/`Incoming`/`Outgoing` |
+| `TeamsModel`（支部） | `LoadAsync()` | `SearchAsync(q)`、`CreateAsync`、`JoinAsync`、`LeaveAsync`、`ApproveAsync`/`DeclineAsync`/`KickAsync`/`TransferAsync` | `Mine`（Team/Rank/CooldownUntil）、`InTeam`、`Search` |
+| `EventsModel` | `LoadAsync()` | `EnterAsync(eventId)`、`LeaveQueueAsync`、`StandingsAsync(eventId)` | `Events`（Eligible/Fee/Me）、`Board` |
+| `TimeAttackModel` | `LoadAsync(trackId)` | `StartAsync(trackId, ghosts)` → `IRaceDriver`、`SubmitAsync()` | `Me`（自己ベスト・残り回数・メダル）、`Ghosts`、`Result` |
+| `LeaderboardModel` | `LoadAsync(board?)` | – | `Mine`（Rank/Standing）、`Board` |
+
+カードの番号とサーバーIDの対応は `ScreenIds`（ケア・コースの見た目・天気・馬場・気温・風）。タイムアタックの `StartAsync` が返すドライバーは
+練習レースと同じ `OfflineRaceDriver`（`Run.Race` を直接走らせる）なので、レース画面はそのまま使える。
 
 ### 操作の対応（`RaceInput`）
 
@@ -52,6 +74,12 @@ Updated: 2026-11-05（エンジン・サーバー接続を追加）
 - 自分の馬はワードローブで選んだモデル（ローカル）、他の馬は `start.visuals` から上の対応で選ぶ
 - `unity/Checks~/GameChecks` が、マニフェストの horse/* silks/* キーとパレット全色が「モデルに対応」か「表現しない種類として明記」のどちらかであること、25モデルとLODのFBXが存在することを確認する
 
+### 着せ替え・馬具・厩舎の飾り（`CosmeticArt` / `ItemsBackend`、REQ-ITEM-004..007）
+
+- `tack/bridle*` → `Art/Cosmetics/bridle`、`tack/saddlecloth*` → `saddlecloth`、`silks/pattern/*` → `silk-jacket`、`decor/*` → `stable-plaque`（試作アートは種類ごとに1枚。専用アートができたら `CosmeticArt` の対応表に足す）
+- `ItemsBackend` がワードローブ・コスメ直販・厩舎の飾り枠・券の使用をサーバーへ送る。オフラインは同梱のプレビュー（LOCAL ONLY）だけで、購入・装備・券は使えない
+- `GameChecks` が、マニフェストの tack/* decor/* キーが全部アートに解決できること、オフラインのプレビューが `server/master/items.json` にある品だけであることを確認する
+
 ### コースの置き方（`CourseFrame`）
 
 エンジンのコース（内ラチ沿いの距離＋外向きの横位置）を `TrackGeometry` で3Dにし、**ゴールが (0, 0, 420) で +Z 向き**（スタンドとゴール板の位置）になるよう回転・平行移動する。直線だけのコース（初レース）はCodexの Greenfield 直線（ラチ x=±15）をそのまま使い、馬群をラチの間に寄せる。コーナーのあるコースはラチ・走路をコース形状から生成し、スタンドを外側に置く。ナイターは照明を暗くする。
@@ -61,7 +89,14 @@ Updated: 2026-11-05（エンジン・サーバー接続を追加）
 1. サーバー：`cd server && npm ci && npm run dev`（`DEV_MODE=1`、`http://127.0.0.1:8787`）。ランク戦を1人で確定させるには検証サーバーも必要：`dotnet run --project engine/Muchi.Verifier -- serve --urls http://127.0.0.1:8090` を起動し、`npm run dev` に `--var VERIFIER_URL:http://127.0.0.1:8090` を足す（なければ1人ランク戦は「無効」で終わる）。
 2. Unity：`unity/` を開く → 初回はパッケージ（Muchi Engine / Net / Client SDK）の取り込みを待つ → **Muchi → Create Frontend Scene** → Play。
 3. 接続先は `unity/Assets/Resources/Muchi/server-config.json`（既定 `local` / `http://127.0.0.1:8787`、`x-dev-user` は端末ごとに自動生成）。実機から PC のサーバーへは PlayerPrefs `muchi.server.baseUrl` に PC のIPを入れる。サーバーなしで試すときは `muchi.server.offline` = `1`。
-4. staging / production は Firebase 認証が必要。Firebase SDK を入れたら `MuchiServices.FirebaseTokens` に `IAuthTokenProvider` を設定する（未設定ならオフラインで起動する）。
+4. staging / production は Firebase 認証が必要。Firebase Unity SDK（FirebaseAuth、11.x）を取り込み、`google-services.json` / `GoogleService-Info.plist` を置き、Scripting Define Symbols に `MUCHI_FIREBASE` を追加するだけでよい。**起動時の配線は `MuchiApp` 済み**：
+   - `Awake` で `MuchiFirebase.Prepare()` → `MuchiServices.FirebaseTokens` を設定してから `MuchiServices.Create()`（ApiClient が最初から Firebase のトークンを使う）。
+   - `InitBackend` で `await MuchiFirebase.InitializeAsync()`（依存関係の確認・修復）→ `backend.InitializeAsync()`（bootstrap）。依存関係が使えない端末では警告を出し、bootstrap が失敗してオフライン表示になる（例外で止まらない）。
+   - トークン取得の失敗（SDK 例外・未ログイン）は `NetworkException` として返る：画面側は通常のオフライン／エラー表示、ランク戦エントリーは「NETWORK / …」で終わり「マッチング中」のまま止まらない。
+   - Firebase がユーザーをサインアウトした（トークン失効・ユーザー削除）後の次のリクエストは、自動で匿名ログインし直す。
+   - アカウント連携（設定画面から）：`FirebaseAuthTokenProvider.LinkAsync(cred)` の結果は `Linked` / `CredentialInUse`（別アカウントが所有 → プレイヤーに確認して `SwitchToExistingAccountAsync()`。**Apple の資格情報は使い捨て**なので、引数なしで呼ぶと Firebase が返した差し替え資格情報 `FirebaseAccountLinkException.UserInfo.UpdatedCredential`＝`PendingSwitchCredential` で切り替える）/ `ProviderAlreadyLinked`（この端末のアカウントに既に別の Apple/Google が紐付いている → 切り替えではなく「連携済み」と表示）。
+   - ロジックは `Assets/Muchi/Game/FirebaseAuth.cs`（`unity/Checks~/GameChecks` でテスト）、SDK 呼び出しは `Assets/Muchi/Integration/FirebaseSdkAuth.cs`。`MUCHI_FIREBASE` 付きの型チェックは `dotnet build "unity/Checks~/UnityFirebase"`（SDK のスタブ `FirebaseStubs.cs` に対して。スタブは SDK 11 の公開 API の形を写したもので、本物の確認は SDK を取り込んだ Editor／実機ビルド）。
+   - 定義が無い間は従来どおり（ローカルは開発用認証、それ以外はオフライン）。
 
 ## Unity エディタでの確認が必要なこと（ここでは未確認）
 

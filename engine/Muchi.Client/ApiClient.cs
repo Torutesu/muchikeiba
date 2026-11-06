@@ -181,11 +181,90 @@ namespace Muchi.Client
         public Task<PedigreeNode> GetPedigreeAsync(string horseId, CancellationToken ct = default)
             => Call("GET", "/v1/horses/" + Seg(horseId) + "/pedigree", null, true, null, true, PedigreeNode.Parse, ct);
 
+        // ------------------------------------------------------------------ stable care / bond (REQ-BOND-*)
+
+        /// <summary>Bond level of every horse (horse id → level) for the stable list.</summary>
+        public Task<Dictionary<string, int>> GetBondLevelsAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/bond", null, true, null, true, o => J.Map(o, "levels", v => v.AsInt()), ct);
+
+        public Task<BondView> GetBondAsync(string horseId, CancellationToken ct = default)
+            => Call("GET", "/v1/horses/" + Seg(horseId) + "/bond", null, true, null, true, BondView.Parse, ct);
+
+        /// <summary>
+        /// One care action (e.g. "grain_apple"). Keyed, so a retried request never cares twice. Throws
+        /// <see cref="ConflictException"/> with <see cref="ApiErrorCode.Cooldown"/> while the action is cooling down.
+        /// Bond never changes ranked, event or time attack stats.
+        /// </summary>
+        public Task<CareResult> CareAsync(string horseId, string action, string idempotencyKey = null, CancellationToken ct = default)
+        {
+            var b = JsonNode.Obj();
+            b.Set("action", action);
+            return Call("POST", "/v1/horses/" + Seg(horseId) + "/care", b, true, idempotencyKey ?? NewIdempotencyKey(), true, CareResult.Parse, ct);
+        }
+
+        // ------------------------------------------------------------------ presets (REQ-ROOM-*)
+
+        public Task<Presets> GetPresetsAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/presets", null, true, null, true, Presets.Parse, ct);
+
+        /// <summary>Equip a racecourse look (null = default). Looks other than the default need their unlock item.</summary>
+        public Task<Presets> SetCourseLookAsync(string lookId, CancellationToken ct = default)
+        {
+            var b = JsonNode.Obj();
+            b.Set("lookId", lookId == null ? JsonNode.Null() : JsonNode.Str(lookId));
+            return Call("PUT", "/v1/presets/course-look", b, true, null, true, Presets.Parse, ct);
+        }
+
+        /// <summary>Store the private-room conditions used when this player hosts a friend room.</summary>
+        public Task<Presets> SetRoomConditionsAsync(RoomConditions conditions, CancellationToken ct = default)
+            => Call("PUT", "/v1/presets/room", conditions.ToJson(), true, null, true, Presets.Parse, ct);
+
+        /// <summary>Back to automatic conditions (random course, the day's ground).</summary>
+        public Task<Presets> ClearRoomConditionsAsync(CancellationToken ct = default)
+            => Call("DELETE", "/v1/presets/room", null, true, null, true, Presets.Parse, ct);
+
         public Task<BreedingPreview> BreedingPreviewAsync(string sireId, string damId, CancellationToken ct = default)
             => Call("POST", "/v1/breeding/preview", Pair(sireId, damId), true, null, true, BreedingPreview.Parse, ct);
 
-        public Task<BreedResult> BreedAsync(string sireId, string damId, string idempotencyKey = null, CancellationToken ct = default)
-            => Call("POST", "/v1/breeding", Pair(sireId, damId), true, idempotencyKey ?? NewIdempotencyKey(), true, BreedResult.Parse, ct);
+        /// <summary>
+        /// Breed a retired stallion and mare. With <paramref name="useMaterial"/>, once today's normal breedings are used up
+        /// one extra breeding costs breeding material (REQ-ITEM-003; see BreedingPreview.Today).
+        /// </summary>
+        public Task<BreedResult> BreedAsync(string sireId, string damId, string idempotencyKey = null, CancellationToken ct = default, bool useMaterial = false)
+        {
+            var b = Pair(sireId, damId);
+            if (useMaterial) b.Set("useMaterial", true);
+            return Call("POST", "/v1/breeding", b, true, idempotencyKey ?? NewIdempotencyKey(), true, BreedResult.Parse, ct);
+        }
+
+        // ------------------------------------------------------------------ items & cosmetics (REQ-ITEM-*)
+
+        /// <summary>Every ticket with its disclosure (gacha tickets name their banners; SR+ tickets list their own table).</summary>
+        public Task<List<TicketInfo>> GetTicketsAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/items/tickets", null, false, null, true, o => J.List(o, "tickets", TicketInfo.Parse), ct);
+
+        public Task<TicketInfo> GetTicketOddsAsync(string itemId, CancellationToken ct = default)
+            => Call("GET", "/v1/items/tickets/" + Seg(itemId) + "/odds", null, false, null, true, TicketInfo.Parse, ct);
+
+        /// <summary>Use one ticket: a gacha ticket needs <paramref name="bannerId"/>; an SR+ ticket takes none. Keyed, so retries never spend twice.</summary>
+        public Task<TicketResult> UseTicketAsync(string itemId, string bannerId = null, string idempotencyKey = null, CancellationToken ct = default)
+        {
+            var b = JsonNode.Obj();
+            if (bannerId != null) b.Set("bannerId", bannerId);
+            return Call("POST", "/v1/items/tickets/" + Seg(itemId) + "/use", b, true, idempotencyKey ?? NewIdempotencyKey(), true, TicketResult.Parse, ct);
+        }
+
+        /// <summary>The cosmetics shop: silks patterns, tack and stable decor with ownership/equipped flags.</summary>
+        public Task<CosmeticsCatalog> GetCosmeticsAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/shop/cosmetics", null, true, null, true, CosmeticsCatalog.Parse, ct);
+
+        /// <summary>Buy a cosmetic for coins (each once: ConflictException ALREADY_PURCHASED; paid-only items need paid coins).</summary>
+        public Task<CosmeticPurchase> BuyCosmeticAsync(string itemId, string idempotencyKey = null, CancellationToken ct = default)
+            => Call("POST", "/v1/shop/cosmetics/" + Seg(itemId) + "/buy", JsonNode.Obj(), true, idempotencyKey ?? NewIdempotencyKey(), true, CosmeticPurchase.Parse, ct);
+
+        /// <summary>Equip/unequip tack and set decor slots. Idempotent (same body → same state), so it is retried.</summary>
+        public Task<Equipment> SetEquipmentAsync(EquipmentPatch patch, CancellationToken ct = default)
+            => Call("PUT", "/v1/player/equipment", patch.ToJson(), true, null, true, o => Equipment.Parse(J.Opt(o, "equipment")), ct);
 
         // ------------------------------------------------------------------ rewards
 
@@ -561,6 +640,32 @@ namespace Muchi.Client
             return b;
         }
 
+        /// <summary>
+        /// Token from the provider. Callers (screen models, ranked entry) only handle <see cref="ApiException"/>, so a
+        /// provider that fails with anything else (Firebase SDK errors, "not signed in", no network during a token
+        /// refresh) surfaces as <see cref="NetworkException"/> — the same "try again / offline" path as a dropped request.
+        /// </summary>
+        private async Task<string> TokenAsync(bool forceRefresh, string method, string path, CancellationToken ct)
+        {
+            if (_auth == null) throw new AuthException("UNAUTHORIZED", method + " " + path + ": no auth token provider", 0);
+            try
+            {
+                return await _auth.GetTokenAsync(forceRefresh, ct);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (ApiException)
+            {
+                throw;
+            }
+            catch (Exception e)
+            {
+                throw new NetworkException(method + " " + path + ": sign-in token unavailable: " + e.Message, e);
+            }
+        }
+
         private async Task<T> Call<T>(string method, string path, JsonNode body, bool auth, string idemKey, bool safe, Func<JsonNode, T> parse, CancellationToken ct)
         {
             bool retryable = safe || method == "GET" || idemKey != null;
@@ -576,7 +681,7 @@ namespace Muchi.Client
                 if (auth)
                 {
                     if (!string.IsNullOrEmpty(_opt.DevUserId)) req.Headers["x-dev-user"] = _opt.DevUserId;
-                    else req.Headers["authorization"] = "Bearer " + await _auth.GetTokenAsync(refreshedToken, ct);
+                    else req.Headers["authorization"] = "Bearer " + await TokenAsync(refreshedToken, method, path, ct);
                 }
 
                 HttpResponse res;

@@ -26,6 +26,27 @@ namespace Muchi.Client
         Muchi.Client.SeasonPassView passView;
         string pendingProductId, purchaseCheckMessage;
         int resultSeasonPointsBefore=-1;
+        // Round 6: server-backed care / course looks / room conditions (offline: PlayerPrefs via PrefsStore).
+        CareModel careModel;
+        CourseLooksModel looksModel;
+        RoomConditionsModel roomModel;
+        string screenNote;
+        sealed class PrefsStore : IKeyValueStore
+        {
+            public string Get(string key)=>PlayerPrefs.HasKey(key)?PlayerPrefs.GetInt(key,0).ToString(System.Globalization.CultureInfo.InvariantCulture):null;
+            public void Set(string key,string value){int.TryParse(value,out var v);PlayerPrefs.SetInt(key,v);PlayerPrefs.Save();}
+        }
+        readonly PrefsStore prefs=new PrefsStore();
+        async void LoadScreenModel(Func<System.Threading.Tasks.Task> load,Action screen)
+        {
+            try{await load();}catch(Exception e){Debug.LogWarning("screen load: "+e.Message);}
+            if(!inRace&&currentScreen==(Action)screen)screen();
+        }
+        async void RunScreenAction(Func<System.Threading.Tasks.Task<ActionResult>> act,Action screen)
+        {
+            try{var r=await act();screenNote=r.Message;}catch(Exception e){screenNote=e.Message;}
+            if(!inRace&&currentScreen==(Action)screen)screen();
+        }
         Canvas canvas;
         RectTransform safe;
         Font font;
@@ -61,12 +82,18 @@ namespace Muchi.Client
             if(FindObjectOfType<EventSystem>()==null)new GameObject("EventSystem",typeof(EventSystem),typeof(StandaloneInputModule));
             safe=new GameObject("Safe area",typeof(RectTransform)).GetComponent<RectTransform>();safe.SetParent(canvas.transform,false);
             ApplySafeArea();
+#if MUCHI_FIREBASE
+            MuchiFirebase.Prepare(); // token provider before Create(): staging/production need it even if the first launch is offline
+#endif
             backend=MuchiServices.Create();
             Title();
             InitBackend();
         }
         async void InitBackend()
         {
+#if MUCHI_FIREBASE
+            try{await MuchiFirebase.InitializeAsync();}catch(Exception e){Debug.LogWarning("firebase init: "+e.Message);}
+#endif
             try{await backend.InitializeAsync();}
             catch(Exception e){Debug.LogWarning("backend init: "+e.Message);}
             MuchiServices.Track(Muchi.Client.AnalyticsEvent.SessionStart(MuchiServices.NowMs));
@@ -108,7 +135,7 @@ namespace Muchi.Client
         string PartnerPreview(int index)=>"Art/3DPreviews/Partner_"+new[]{"Bay_Crimson","Chestnut_Azure","DappleGrey_Violet","Black_Emerald","Palomino_Gold"}[Mathf.Clamp(index,0,4)];
         int EquippedPartner=>Mathf.Clamp(PlayerPrefs.GetInt("muchi.partner.model",0),0,4);
         int EquippedSilk=>Mathf.Clamp(PlayerPrefs.GetInt("muchi.cosmetic.silk",0),0,2);
-        int EquippedCourse=>Mathf.Clamp(PlayerPrefs.GetInt("muchi.cosmetic.course",0),0,2);
+        int EquippedCourse=>looksModel!=null&&looksModel.Online?looksModel.EquippedIndex:Mathf.Clamp(PlayerPrefs.GetInt("muchi.cosmetic.course",0),0,2);
         Button languageButton;
         Button Button(string value,float x,float y,float w,Action action,Color? color=null)
         {return Button(value,x,y,w,72,action,color);}
@@ -335,6 +362,7 @@ namespace Muchi.Client
         }
         void CourseThemes()
         {
+            if(currentScreen!=(Action)CourseThemes){screenNote=null;looksModel=new CourseLooksModel(backend,prefs);LoadScreenModel(()=>looksModel.LoadAsync(),CourseThemes);}
             currentScreen=CourseThemes;int activePreview=previewCourse>=0?previewCourse:EquippedCourse;
             Clear();SetArt(CourseArt(activePreview));
             Panel("Course screen veil",0,0,1600,900,new Color(.01f,.04f,.08f,.45f));
@@ -342,7 +370,7 @@ namespace Muchi.Client
             Label("RACECOURSE LOOKS  /  COSMETIC",70,72,860,42,24,cyan);
             Label("Course skins change the scene only. Ranked rules stay the same for everyone.",70,115,1050,34,18);
             string[] names={"GREENFIELD TURF","SPRING MEADOW","AUTUMN GOLD"};
-            string[] rarities={"N  ·  OWNED","SR  ·  PREVIEW","SSR  ·  PREVIEW"};
+            string[] rarities={"N  ·  OWNED",looksModel!=null&&looksModel.Owned(1)?"SR  ·  OWNED":"SR  ·  PREVIEW",looksModel!=null&&looksModel.Owned(2)?"SSR  ·  OWNED":"SSR  ·  PREVIEW"};
             for(int i=0;i<3;i++)
             {
                 int theme=i;float x=57+i*500;
@@ -352,22 +380,22 @@ namespace Muchi.Client
                 Label(rarities[i],x+22,521,430,28,15,i==0?cyan:gold);
                 Label(i==0?"Standard course environment.":"Visual environment preview. No gameplay advantage.",x+22,553,430,50,15,new Color(.8f,.88f,.94f));
                 Button(theme==0?"EQUIP STANDARD":"PREVIEW",x+18,620,210,()=>SelectCoursePreview(theme),navy);
-                Button(i==0?(EquippedCourse==0?"EQUIPPED":"USE LOOK"):"VIEW IN SHOP",x+245,620,210,i==0?(Action)EquipStandardCourse:(Action)OpenCourseShop,i==0?cyan:gold);
+                bool owned=looksModel!=null&&looksModel.Owned(i);
+                Button(owned?(EquippedCourse==i?"EQUIPPED":"USE LOOK"):"VIEW IN SHOP",x+245,620,210,owned?(Action)(()=>EquipCourse(theme)):(Action)OpenCourseShop,owned?cyan:gold);
             }
-            Label("Preview changes are temporary until a theme is owned and equipped.  LOCAL ONLY (not on the server yet).",70,744,1100,32,16,new Color(.8f,.9f,.95f));
+            Label(screenNote??(looksModel!=null&&looksModel.Online?"Preview changes are temporary until a theme is owned and equipped.  Saved to your account.":"Preview changes are temporary until a theme is owned and equipped.  Offline: saved on this device."),70,744,1100,32,16,new Color(.8f,.9f,.95f));
             Button("BACK",70,785,180,Home,navy);
             Button("COURSE THEME SHOP",1150,785,360,()=>{storeTab=2;Store();},cyan);
         }
         void SelectCoursePreview(int index){previewCourse=index;CourseThemes();}
-        void EquipStandardCourse(){PlayerPrefs.SetInt("muchi.cosmetic.course",0);PlayerPrefs.Save();previewCourse=-1;CourseThemes();}
+        void EquipStandardCourse()=>EquipCourse(0);
+        void EquipCourse(int index){previewCourse=-1;RunScreenAction(()=>looksModel.EquipAsync(index),CourseThemes);}
         void OpenCourseShop(){storeTab=2;Store();}
         void Conditions()
         {
+            if(currentScreen!=(Action)Conditions){screenNote=null;roomModel=new RoomConditionsModel(backend,prefs);currentScreen=Conditions;LoadScreenModel(()=>roomModel.LoadAsync(),Conditions);}
             currentScreen=Conditions;
-            int weather=Mathf.Clamp(PlayerPrefs.GetInt("muchi.race.weather",0),0,3);
-            int surface=Mathf.Clamp(PlayerPrefs.GetInt("muchi.race.surface",1),0,3);
-            int temperature=Mathf.Clamp(PlayerPrefs.GetInt("muchi.race.temperature",1),0,3);
-            int wind=Mathf.Clamp(PlayerPrefs.GetInt("muchi.race.wind",0),0,3);
+            int weather=roomModel.Weather,surface=roomModel.GroundAuto?-1:roomModel.Ground,temperature=roomModel.Temperature,wind=roomModel.Wind;
             Clear();SetArt(WeatherArt(weather));
             Panel("Conditions veil",0,0,1600,900,new Color(.015f,.045f,.08f,.55f));
             Panel("Conditions frame",30,45,1540,785,navy);
@@ -384,7 +412,7 @@ namespace Muchi.Client
                 if(i==weather)choose.interactable=false;
             }
             Panel("Detailed settings",50,535,1500,260,new Color(.035f,.095f,.16f,.97f));
-            Label("GROUND",72,546,170,32,16,cyan);
+            Label(surface<0?"GROUND  (AUTO)":"GROUND",72,546,170,32,16,cyan);
             string[] ground={"FIRM","GOOD","SOFT","HEAVY"};
             for(int i=0;i<4;i++){int choice=i;var b=Button(ground[i],250+i*180,530,165,58,()=>SetCondition("muchi.race.surface",choice),i==surface?cyan:navy);if(i==surface)b.interactable=false;}
             Label("TEMPERATURE",72,613,170,32,16,cyan);
@@ -393,19 +421,24 @@ namespace Muchi.Client
             Label("WIND",72,680,170,32,16,cyan);
             int[] winds={0,5,10,15};
             for(int i=0;i<4;i++){int choice=i;var b=Button(winds[i]+" km/h",250+i*180,667,165,58,()=>SetCondition("muchi.race.wind",choice),i==wind?cyan:navy);if(i==wind)b.interactable=false;}
-            Label("Saved on this device only (LOCAL ONLY). Online races use the server's ground and weather. No paid advantage.",72,742,1360,27,15,new Color(.8f,.89f,.95f));
+            Label(screenNote??(roomModel.Online?"Saved to your account: friend rooms you host race on this ground. Ranked uses official conditions. No paid advantage.":"Offline: saved on this device. Online races use the server's ground and weather. No paid advantage."),72,742,1360,27,15,new Color(.8f,.89f,.95f));
             Button("BACK",60,785,180,Home,navy);
             Button("WEATHER EFFECTS",1160,785,350,()=>PurchaseReview("Course atmosphere effects","¥240 (proposed)","COSMETIC"),gold);
         }
-        void SetWeather(int choice){PlayerPrefs.SetInt("muchi.race.weather",choice);PlayerPrefs.Save();Conditions();}
-        void SetCondition(string key,int value){PlayerPrefs.SetInt(key,value);PlayerPrefs.Save();Conditions();}
+        void SetWeather(int choice){roomModel.Weather=choice;RunScreenAction(()=>roomModel.SaveAsync(),Conditions);}
+        void SetCondition(string key,int value)
+        {
+            if(key=="muchi.race.surface")roomModel.SelectGround(value);else if(key=="muchi.race.temperature")roomModel.Temperature=value;else roomModel.Wind=value;
+            RunScreenAction(()=>roomModel.SaveAsync(),Conditions);
+        }
         void Care()
         {
-            currentScreen=Care;int feed=Mathf.Clamp(PlayerPrefs.GetInt("muchi.care.feed",0),0,2);
+            if(currentScreen!=(Action)Care){screenNote=null;careModel=new CareModel(backend,prefs);currentScreen=Care;LoadScreenModel(()=>careModel.LoadAsync(),Care);}
+            currentScreen=Care;int feed=careModel.SelectedCard;
             Clear();SetArt("Art/home-paddock");
             Panel("Care frame",38,55,1524,770,navy);
             Label("STABLE CARE  /  DAILY ROUTINE",76,76,760,42,24,cyan);
-            Label("Choose a care focus freely. LOCAL ONLY (not on the server). Ranked stats are normalized.",76,118,1000,32,17);
+            Label(screenNote??(careModel.Online&&careModel.Bond!=null?"BOND LV "+careModel.Level+"  ·  "+careModel.Bond.Points+(careModel.Bond.NextLevelAt.HasValue?" / "+careModel.Bond.NextLevelAt:"")+"  ·  TODAY "+careModel.Bond.TodayActions+"/"+careModel.Bond.DailyActions+"   Ranked stats are normalized.":"Choose a care focus freely. Offline: saved on this device. Ranked stats are normalized."),76,118,1000,32,17);
             string[] feedNames={"GRAIN & APPLE","HAY & CARROT","FRESH WATER"};
             string[] rarity={"N  ·  COMMON","R  ·  SELECT","SR  ·  REFINED"};
             string[] focus={"Balanced condition","Endurance routine","Calm handling"};
@@ -417,8 +450,10 @@ namespace Muchi.Client
                 Label(feedNames[i],x+26,490,410,35,20);
                 Label(rarity[i],x+26,532,410,28,16,i==feed?gold:cyan);
                 Label(focus[i],x+26,565,410,32,17);
-                var b=Button(i==feed?"TODAY'S CARE SET":"CHOOSE CARE",x+22,610,420,()=>SelectFeed(choice),i==feed?cyan:navy);
-                if(i==feed)b.interactable=false;
+                var card=careModel.Card(i);
+                bool ready=card==null||card.Ready;
+                var b=Button(card!=null?(ready?"GIVE CARE  +"+card.Points:"RESTING"):(i==feed?"TODAY'S CARE SET":"CHOOSE CARE"),x+22,610,420,()=>SelectFeed(choice),i==feed?cyan:navy);
+                if(card!=null?!ready:i==feed)b.interactable=false;
             }
             Panel("Premium decor",72,710,950,72,new Color(.035f,.095f,.16f,.97f));
             ArtImage("Art/Food/premium-bowl",80,702,80,80);
@@ -426,7 +461,7 @@ namespace Muchi.Client
             Button("VIEW DECOR",1170,710,300,()=>{storeTab=1;Store();},gold);
             Button("BACK",72,785,180,Home,navy);
         }
-        void SelectFeed(int choice){PlayerPrefs.SetInt("muchi.care.feed",choice);PlayerPrefs.Save();Care();}
+        void SelectFeed(int choice)=>RunScreenAction(()=>careModel.CareAsync(choice),Care);
         void Store()
         {
             currentScreen=Store;Clear();SetArt("Art/home-paddock");
@@ -611,7 +646,9 @@ namespace Muchi.Client
         {
             if(!backend.Online){StartDriver(backend.CreatePracticeRace((ulong)DateTime.UtcNow.Ticks),"offline",false);return;}
             cancelMatch=false;Matching();
-            var (d,message)=await backend.StartRankedAsync(()=>cancelMatch);
+            IRaceDriver d;string message;
+            try{(d,message)=await backend.StartRankedAsync(()=>cancelMatch);}
+            catch(Exception e){d=null;message="ERROR  /  "+e.Message;Debug.LogWarning("ranked entry: "+e);} // never strand the player on Matching
             if(d==null){if(message!="CANCELLED")Info("MATCHING FAILED",message,Entry);return;}
             StartDriver(d,"ranked",false);
         }

@@ -45,6 +45,8 @@ C# では `AssetKeys.Resolve(key, exists)` が 1→2→null を返す。古い�
 | `silks/pattern` | `silks/pattern/hoops` | `silks.patterns` | 勝負服の模様。色はパレットで着色（下記） |
 | `silks/cap` | `silks/cap/star` | `silks.caps` | 帽子の模様。色は勝負服の1色目・2色目 |
 | `ui/gate` | `ui/gate/5` | `gateBrackets` | 枠番（1〜8）のゼッケン・UI |
+| `tack` | `tack/bridle_classic` | items.json の馬具（`asset`） | 馬具（頭絡・ゼッケン布）。馬のモデルに重ねる（REQ-ITEM-006） |
+| `decor` | `decor/stable_plaque` | items.json の厩舎の飾り（`asset`） | 厩舎の飾り（REQ-ITEM-006） |
 | `item` | `item/ticket_sr_plus` | 商品・報酬・イベント参加費・勝負服の解放アイテム | アイテムのアイコン |
 | `banner/gacha` | `banner/gacha/pickup_akatsuki` | gacha.json | ガチャのバナー |
 | `banner/event` | `banner/event/sprint_cup_2026_11` | events.json | イベントのバナー |
@@ -55,6 +57,8 @@ C# では `AssetKeys.Resolve(key, exists)` が 1→2→null を返す。古い�
 | `scene/surface` | `scene/surface/minato_dirt` | コースの馬場 | 競馬場ごとの馬場面（芝・ダート） |
 | `scene/night` | `scene/night/minato` | ナイター開催できる競馬場 | ナイター照明 |
 | `fx/going` | `fx/going/sloppy` | 馬場状態（good 以外） | 濡れた馬場・水しぶき・土煙 |
+| `scene/look` | `scene/look/autumn_gold` | `visuals.json courseLooks` | コースの見た目テーマ（自分の画面だけ、REQ-ROOM-001） |
+| `fx/weather` | `fx/weather/rain` | `visuals.json weather` | フレンドルームの天気演出（REQ-ROOM-004） |
 | `sfx/race` | `sfx/race/whip` | `sfx.race` | レース中の効果音 |
 | `sfx/ui` | `sfx/ui/gacha_ssr` | `sfx.ui` | UIの効果音 |
 | `voice/ja/phrase` | `voice/ja/phrase/gate_open_1_p0` | `engine/Muchi.Client/Resources/Muchi/commentary-ja.json` | 実況の定型フレーズの断片 |
@@ -104,6 +108,9 @@ C# では `AssetKeys.Resolve(key, exists)` が 1→2→null を返す。古い�
 - 競馬場（venue）とコースの対応、回り（左回り `left`／右回り `right`）は `visuals.json venues / tracks`。
 - 読み込み：`scene/venue/<venue>` をベースに、`scene/surface/<venue>_<surface>` を重ね、夜なら `scene/night/<venue>`、
   馬場が良でなければ `fx/going/<going>` を重ねる。
+- フレンドルームでホストが条件を決めていれば `visuals.scene = { weather, temperatureC, windKmh, keys{ weather } }` が付き、
+  `fx/weather/<weather>` を重ねる（演出のみ）。自分のコースの見た目は `GET /v1/presets` の `courseLookKey`（`scene/look/<id>`）。
+- `entrants[].bondLevel`（任意）は騎手とその馬の絆レベル。`RaceVisuals.BondCalloutSlots(5)` を `Commentator.SetBondCallouts` に渡すと実況が一度だけ触れる。
 
 ### 3.6 実況の音声（REQ-ASSET-009）
 - `Commentary` が出す `ClipKeys` を `AssetKeys.VoiceClip(clipKey, horseNameById)` で変換する。

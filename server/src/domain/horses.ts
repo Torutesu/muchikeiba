@@ -4,6 +4,7 @@ import type { HorseInstance, PlayerState } from './player.js';
 import type { GoingAptitude } from './schemas.js';
 import { randInt, randRange, type Rng } from './rng.js';
 import { jstDateKey } from './time.js';
+import { consumeItem } from './items.js';
 import { appearanceOf, deriveAppearance, inheritAppearance, templateAppearance } from './visuals.js';
 
 export function createHorseFromTemplate(s: PlayerState, t: HorseTemplate, now: number): HorseInstance {
@@ -205,12 +206,43 @@ export function breedingPreview(m: Master, s: PlayerState, sireId: string, damId
   };
 }
 
-/** Real breeding (server RNG). Daily limit by JST date. */
-export function breed(m: Master, s: PlayerState, sireId: string, damId: string, rng: Rng, now: number) {
+/** Preview plus today's allowance (normal + material-backed extra breedings). */
+export function breedingPreviewWithAllowance(m: Master, s: PlayerState, sireId: string, damId: string, now: number) {
+  return { ...breedingPreview(m, s, sireId, damId), today: breedingAllowance(m, s, now) };
+}
+
+/** REQ-ITEM-003: today's breeding allowance, including extra breedings bought with breeding material. */
+export function breedingAllowance(m: Master, s: PlayerState, now: number) {
+  const today = jstDateKey(now);
+  const used = s.breeding.date === today ? s.breeding.count : 0;
+  const bm = m.items?.breedingMaterial;
+  const extraUsed = s.breedingExtra?.date === today ? s.breedingExtra.count : 0;
+  return {
+    perDay: m.progression.breedingPerDay, used,
+    extraPerDay: bm?.extraPerDay ?? 0, extraUsed,
+    materialItemId: bm?.itemId ?? null, materialCost: bm?.cost ?? 0, materialOwned: bm ? s.items[bm.itemId] ?? 0 : 0,
+  };
+}
+
+/**
+ * Real breeding (server RNG). Daily limit by JST date. With `useMaterial`, once today's normal breedings
+ * are used up, one extra breeding costs breeding material (REQ-ITEM-003, at most `extraPerDay`); it changes
+ * how often you may breed, never the foal's odds, so ranked normalization is unaffected.
+ */
+export function breed(m: Master, s: PlayerState, sireId: string, damId: string, rng: Rng, now: number, opts: { useMaterial?: boolean; ref?: string } = {}) {
   const { sire, dam } = checkPair(s, sireId, damId);
   const today = jstDateKey(now);
   if (s.breeding.date !== today) s.breeding = { date: today, count: 0 };
-  if (s.breeding.count >= m.progression.breedingPerDay) throw new AppError('BREEDING_DAILY_LIMIT');
+  let usedMaterial = false;
+  if (s.breeding.count >= m.progression.breedingPerDay) {
+    const bm = m.items?.breedingMaterial;
+    if (!opts.useMaterial || !bm) throw new AppError('BREEDING_DAILY_LIMIT');
+    if (s.breedingExtra?.date !== today) s.breedingExtra = { date: today, count: 0 };
+    if (s.breedingExtra.count >= bm.extraPerDay) throw new AppError('BREEDING_DAILY_LIMIT', 'extra breedings for today are used up');
+    consumeItem(s, bm.itemId, bm.cost, now, 'extra breeding', opts.ref ?? `breed:${sireId}x${damId}`);
+    s.breedingExtra.count += 1;
+    usedMaterial = true;
+  }
   const b = baseline(m, s, sire, dam);
   const stats = {} as Stats;
   for (const k of STAT_KEYS) stats[k] = clampStat(b.stats[k] + randRange(rng, -BREED.variation, BREED.variation));
@@ -234,7 +266,7 @@ export function breed(m: Master, s: PlayerState, sireId: string, damId: string, 
   // REQ-ASSET-004: drawn after every other roll so stats/aptitude outcomes are unchanged
   foal.appearance = inheritAppearance(appearanceOf(sire, s.id), appearanceOf(dam, s.id), rng);
   s.horses.push(foal);
-  s.breeding.count += 1;
+  if (!usedMaterial) s.breeding.count += 1;
   assert(foal.distMinM <= foal.distMaxM, 'CONFIG_INVALID');
-  return { foal, nick: b.nick, inbreedingCount: b.inbreed };
+  return { foal, nick: b.nick, inbreedingCount: b.inbreed, usedMaterial };
 }

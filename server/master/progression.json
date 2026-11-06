@@ -364,6 +364,7 @@
     "rolloverBatch": 50
   },
   "replayRetentionDays": 30,
+  "replayHoldDays": { "verified": 90 },
   "friendRewardDailyCap": 5,
   "timeAttack": {
     "_note": "REQ-TA-*。statCap はランク戦B級と同じ。メダル秒数は docs/spec/balance-targets.md の方法でシミュレーションから決める（ルールセット1.1.0・タイムアタックは調子の揺らぎなし、上限いっぱいの馬80本）: gold = 上手い人の上位10%、silver = 上手い人の中央値、bronze = 初心者の中央値。再計算: `dotnet run --project engine/Muchi.Verifier -- ta-thresholds <ruleset.json> <server/master/tracks.json> 3200`（絶対パス）。",
@@ -526,5 +527,97 @@
       "friend"
     ],
     "overrides": []
+  },
+  "bond": {
+    "_note": "絆（REQ-BOND-*）。ランク戦・イベント・タイムアタックの能力には一切影響しない。levelRewards はプレイヤー単位で各レベル1回だけ（馬の数で増えない）。friendRoomEffect は既定で無効。",
+    "actions": {
+      "grain_apple": {
+        "focus": "balanced",
+        "points": 10,
+        "cooldownMs": 21600000
+      },
+      "hay_carrot": {
+        "focus": "endurance",
+        "points": 10,
+        "cooldownMs": 21600000
+      },
+      "fresh_water": {
+        "focus": "calm",
+        "points": 6,
+        "cooldownMs": 10800000
+      }
+    },
+    "dailyActionsPerHorse": 4,
+    "levels": [
+      0,
+      30,
+      80,
+      150,
+      250,
+      380,
+      550,
+      760,
+      1000,
+      1300
+    ],
+    "levelRewards": [
+      {
+        "level": 2,
+        "reward": {
+          "freeCoins": 30
+        }
+      },
+      {
+        "level": 4,
+        "reward": {
+          "freeCoins": 50
+        }
+      },
+      {
+        "level": 6,
+        "reward": {
+          "freeCoins": 80
+        }
+      },
+      {
+        "level": 8,
+        "reward": {
+          "freeCoins": 100
+        }
+      },
+      {
+        "level": 10,
+        "reward": {
+          "freeCoins": 150
+        }
+      }
+    ],
+    "commentaryLevel": 5,
+    "friendRoomEffect": {
+      "enabled": false,
+      "permillePerLevel": 1,
+      "maxPermille": 5
+    }
+  },
+  "rooms": {
+    "_note": "フレンド部屋の条件（REQ-ROOM-*）。天気・気温・風は演出のみ。",
+    "weather": [
+      "sunny",
+      "cloudy",
+      "rain",
+      "fog"
+    ],
+    "temperaturesC": [
+      14,
+      18,
+      22,
+      26
+    ],
+    "windsKmh": [
+      0,
+      5,
+      10,
+      15
+    ]
   }
 }

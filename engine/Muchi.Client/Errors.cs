@@ -22,6 +22,8 @@ namespace Muchi.Client
         TaLimitReached, TaSessionExpired, TaSessionUsed, TaConfigMismatch, TaResultMismatch, VerifierUnavailable,
         AlreadyInTeam, NotInTeam, TeamFull, TeamCooldown, TeamLimit, TeamLeaderMustTransfer,
         EventClosed, InsufficientItems,
+        /// <summary>409: a care action is still cooling down or today's care limit is reached (REQ-BOND-002).</summary>
+        Cooldown,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -82,6 +84,7 @@ namespace Muchi.Client
             ["TEAM_LEADER_MUST_TRANSFER"] = ApiErrorCode.TeamLeaderMustTransfer,
             ["EVENT_CLOSED"] = ApiErrorCode.EventClosed,
             ["INSUFFICIENT_ITEMS"] = ApiErrorCode.InsufficientItems,
+            ["COOLDOWN"] = ApiErrorCode.Cooldown,
             ["VERIFIER_UNAVAILABLE"] = ApiErrorCode.VerifierUnavailable,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };

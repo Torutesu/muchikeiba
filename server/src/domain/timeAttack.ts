@@ -1,4 +1,4 @@
-import { timeAttackRuleset } from './ruleset.js';
+import { timeAttackRuleset, type Ruleset } from './ruleset.js';
 import { AppError } from './errors.js';
 import { trackById, type Master, type Reward } from './master.js';
 import type { PlayerState } from './player.js';
@@ -98,7 +98,7 @@ const faster = (a: { finishTick: number; finishFrac: number }, b: { finishTick: 
   a.finishTick < b.finishTick || (a.finishTick === b.finishTick && a.finishFrac < b.finishFrac);
 
 /** REQ-TA-001/002/004: issue a session (config is fixed by the server: seed, track, ruleset, normalised horse). */
-export function startTimeAttack(m: Master, s: PlayerState, cfg: TimeAttackConfig, trackId: string, horseId: string, sessionId: string, rng: Rng, now: number) {
+export function startTimeAttack(m: Master, s: PlayerState, cfg: TimeAttackConfig, trackId: string, horseId: string, sessionId: string, rng: Rng, now: number, baseRuleset?: Ruleset) {
   trackById(m, trackId); // NOT_FOUND for unknown tracks
   const h = getHorse(s, horseId);
   if (h.status !== 'active') throw new AppError('HORSE_NOT_ACTIVE');
@@ -109,7 +109,9 @@ export function startTimeAttack(m: Master, s: PlayerState, cfg: TimeAttackConfig
   st.daily.count++;
   const config = buildRaceConfig(m, {
     raceId: `ta_${sessionId}`, mode: 'timeattack', trackId, cpuCount: 0, cpuLevel: 3, statCap: cfg.statCap, rng,
-    rulesetOverrides: timeAttackRuleset(), // no day-to-day form in time attack (ruleset 1.1)
+    // REQ-TA-009: the ACTIVE remote-config ruleset (not the built-in default), with the day's form switched off
+    // (`+ta`). It is embedded in the session's config, so a ruleset change mid-session never affects this run.
+    rulesetOverrides: timeAttackRuleset(baseRuleset),
     humans: [{ playerId: s.id, horse: toRaceHorse(m, h) }],
   });
   const session: TaSession = { id: sessionId, trackId, horseId, seasonId: jstMonthKey(now), config, issuedAt: now, expiresAt: now + cfg.sessionTtlMs, status: 'issued', result: null };

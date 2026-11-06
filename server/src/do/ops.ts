@@ -1,9 +1,12 @@
 import { DurableObject } from 'cloudflare:workers';
+import { mergeDeadLetter, normalizeDlScope } from '../ops/deadLetter.js';
 import type { Env } from '../env.js';
 import { loadMaster } from '../domain/master.js';
 import { ConfigStore, type Activation, type ConfigRepo, type ConfigVersion } from '../ops/config.js';
 import { auditValue, RateLimiter, type AuditEntry, type AuditInput, type AuditQuery, type AuditRepo } from '../ops/admin.js';
 import { wrap, type Envelope } from './rpc.js';
+import { SqlDeadLetterRegistry } from './deadLetters.js';
+import type { DeadLetterRecord, DeadLetterSource, DeadLetterStatus } from '../ops/deadLetter.js';
 
 /** ConfigRepo on SQLite (versions are immutable rows; activations are append-only except `cancelled`). */
 export class SqlConfigRepo implements ConfigRepo {
@@ -57,12 +60,30 @@ export class OpsDO extends DurableObject<Env> {
   private readonly config: ConfigStore;
   private readonly audits: SqlAuditRepo;
   private readonly limiter = new RateLimiter();
+  private readonly deadLetters: SqlDeadLetterRegistry;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.config = new ConfigStore(new SqlConfigRepo(ctx.storage.sql), loadMaster());
     this.audits = new SqlAuditRepo(ctx.storage.sql);
+    this.deadLetters = new SqlDeadLetterRegistry(ctx.storage.sql);
   }
+
+  // ---- dead-letter index (REQ-OPS-041) ----
+  /** Producers register newly dead-lettered items; an item ops already resolved/dismissed is not reopened by a stale report. */
+  dlRegister(rs: DeadLetterRecord[]) {
+    return wrap(async () => {
+      for (const r of rs) {
+        const prev = await this.deadLetters.get(r.source, normalizeDlScope(r.source, r.scope), r.itemId);
+        const next = mergeDeadLetter(prev, r);
+        if (next) await this.deadLetters.upsert(next);
+      }
+      return rs.length;
+    });
+  }
+  dlUpsert(r: DeadLetterRecord) { return wrap(() => this.deadLetters.upsert({ ...r, scope: normalizeDlScope(r.source, r.scope) })); }
+  dlGet(source: DeadLetterSource, scope: string, itemId: string) { return wrap(() => this.deadLetters.get(source, normalizeDlScope(source, scope), itemId)); }
+  dlList(q: { status?: DeadLetterStatus; source?: DeadLetterSource; limit: number }) { return wrap(() => this.deadLetters.list(q)); }
 
   configActive(now: number, knownHash: string | null) { return wrap(() => this.config.activeFor(now, knownHash)); }
   configValidate(bundle: unknown) { return wrap(() => ({ problems: this.config.validate(bundle) })); }

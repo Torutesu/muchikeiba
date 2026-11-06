@@ -11,7 +11,8 @@ import type { Clock } from './time.js';
 import { seasonIdFor, rollSeason, classDef } from './season.js';
 import { applyRefund, applySubscriptionStatus, applyVerifiedPurchase, checkPurchaseIntent, registerAge, type StoreVerifier, type SubscriptionStatus, type VerifiedReceipt } from './purchase.js';
 import { drawGacha, exchangePity, settlePityGroups } from './gacha.js';
-import { awaken, breed, breedingPreview, getHorse, nameHorse, pedigree, retire } from './horses.js';
+import { awaken, breed, breedingPreviewWithAllowance, getHorse, nameHorse, pedigree, retire } from './horses.js';
+import { buyCosmetic, cosmeticsCatalog, setEquipment, useTicket, type EquipmentPatch } from './itemShop.js';
 import { applyRaceResult, claimLoginBonus, claimMission, claimPass, missionsView, passLevel, type RaceResultForPlayer } from './rewards.js';
 import { toRaceHorse } from './raceConfig.js';
 import { paidBalanceYen, invariantsHold } from './wallet.js';
@@ -22,12 +23,15 @@ import { admitClientBatch, clientToKpi, ensureKpi, isPayer, kpiRecord, type Clie
 
 /** Collects analytics events inside a transaction; they are emitted only if the transaction is saved. */
 export type Emit = (e: KpiEvent) => void;
+import type { Ruleset } from './ruleset.js';
 import { abortSubmit, prepareSubmit, recordResult, startTimeAttack, timeAttackView } from './timeAttack.js';
 import type { VerifierOutput } from './schemas.js';
 import { trackById } from './master.js';
-import { appearanceOf, assetKeys, defaultSilks, validateSilks, type EntrantVisual, type Silks } from './visuals.js';
+import { appearanceOf, assetKeys, defaultSilks, validateSilks, type EntrantVisual, type Silks, effectiveSilks } from './visuals.js';
 import { ensureTeam, playerAbortJoin, playerAddOutgoing, playerCommitJoin, playerLeft, playerPrepareJoin, playerRemoveOutgoing, playerTeamReward, snapshotOf } from './teams.js';
 import { applyEventResult, cancelEntry, closeEventForPlayer, ensureEvent, enterEvent, eventsForPlayer, findEvent, type EventEntry } from './events.js';
+import { bondLevels, bondView, careHorse, horseBondLevel } from './bond.js';
+import { clearRoomConditions, presetsView, setCourseLook, setRoomConditions, type RoomConditions } from './presets.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
 export interface PlayerRepo {
@@ -72,6 +76,8 @@ const standingKey = (s: PlayerState) => JSON.stringify([s.season.id, s.season.cl
 const profileKey = (s: PlayerState) => JSON.stringify([s.profile.displayName, s.profile.titleId, s.season.classId, Math.round(s.rating.r), s.stats.races, s.stats.wins, s.stats.top3]);
 
 const IDEM_KEEP = 200;
+/** How long applied race ids are remembered (well beyond any settlement/dead-letter retry window). */
+const APPLIED_RACE_KEEP_MS = 180 * 24 * 3600 * 1000;
 
 /**
  * Application service for one player's data. Every mutation runs on a cloned draft and is saved only
@@ -120,7 +126,7 @@ export class PlayerService {
     const wake = nextPushWake(draft);
     if (wake !== null && wake !== wakeBefore && this.d.onPushWake) await this.d.onPushWake(wake);
     if (kpi.length > 0 && this.d.onKpi) await this.d.onKpi(id, kpi);
-    if (pushProfile) await this.d.onProfile!(publicProfile(draft));
+    if (pushProfile) await this.d.onProfile!(publicProfile(draft, this.d.master.bannedSilks));
     if (this.d.onSeasonEntry && draft.season.races > 0 && standingKey(draft) !== standingBefore) {
       await this.d.onSeasonEntry({
         playerId: id, seasonId: draft.season.id, classId: draft.season.classId, points: draft.season.points, rating: Math.round(draft.rating.r),
@@ -146,7 +152,7 @@ export class PlayerService {
 
   async view(id: string) {
     const s = await this.load(id);
-    return playerView(s);
+    return playerView(s, this.d.master.bannedSilks);
   }
 
   async state(id: string) { return this.load(id); }
@@ -155,7 +161,7 @@ export class PlayerService {
     return this.tx(id, null, (s, _now, emit) => {
       const k = ensureKpi(s);
       if (!k.firstOpenSent) { k.firstOpenSent = true; emit({ name: 'first_open' }); }
-      return playerView(s);
+      return playerView(s, this.d.master.bannedSilks);
     });
   }
 
@@ -260,10 +266,30 @@ export class PlayerService {
   retire(id: string, horseId: string) { return this.tx(id, null, (s) => retire(s, horseId)); }
 
   async breedingPreview(id: string, sireId: string, damId: string) {
-    return breedingPreview(this.d.master, await this.load(id), sireId, damId);
+    return breedingPreviewWithAllowance(this.d.master, await this.load(id), sireId, damId, this.d.clock());
   }
-  async breed(id: string, sireId: string, damId: string, idemKey: string | null) {
-    return this.tx(id, this.requireKey(idemKey), (s, now) => breed(this.d.master, s, sireId, damId, this.d.rng, now));
+  async breed(id: string, sireId: string, damId: string, idemKey: string | null, useMaterial = false) {
+    const key = this.requireKey(idemKey);
+    return this.tx(id, key, (s, now) => breed(this.d.master, s, sireId, damId, this.d.rng, now, { useMaterial, ref: key }));
+  }
+
+  // ---- items & cosmetics (REQ-ITEM-*) ----
+  /** Use a gacha ticket (bannerId required) or an SR+ ticket. Idempotent per client key. */
+  async useTicket(id: string, itemId: string, bannerId: string | null, idemKey: string | null) {
+    const key = this.requireKey(idemKey);
+    return this.tx(id, key, (s, now, emit) => {
+      const r = useTicket(this.d.master, s, itemId, bannerId, this.d.rng, now, key);
+      emit({ name: 'gacha_draw', s1: bannerId ?? itemId, s2: 'ticket', count: 1, paidCoins: 0, freeCoins: 0, value: r.result.rarity === 'SSR' ? 1 : 0 });
+      return r;
+    });
+  }
+  async cosmetics(id: string) { return cosmeticsCatalog(this.d.master, await this.load(id)); }
+  async buyCosmetic(id: string, itemId: string, idemKey: string | null) {
+    const key = this.requireKey(idemKey);
+    return this.tx(id, key, (s, now) => ({ ...buyCosmetic(this.d.master, s, itemId, now, key), wallet: playerView(s).wallet }));
+  }
+  setEquipment(id: string, patch: EquipmentPatch) {
+    return this.tx(id, null, (s) => ({ equipment: setEquipment(this.d.master, s, patch) }));
   }
   async pedigree(id: string, horseId: string) { return pedigree(await this.load(id), horseId); }
 
@@ -287,6 +313,11 @@ export class PlayerService {
   /** Called by the race room after a race is final (idempotent per race). */
   async applyRace(id: string, r: RaceResultForPlayer) {
     const out = await this.tx(id, `race:${r.raceId}`, (s, now, emit) => {
+      // QA r6 #3: durable per-race guard, independent of the evictable idempotency ring
+      const applied = (s.appliedRaces ??= {});
+      for (const [k, at] of Object.entries(applied)) if (now - at > APPLIED_RACE_KEEP_MS) delete applied[k];
+      if (applied[r.raceId] !== undefined) return { duplicate: true as const, event: null };
+      applied[r.raceId] = now;
       const base = applyRaceResult(this.d.master, s, r, now);
       if (!r.void) {
         emit({
@@ -306,8 +337,32 @@ export class PlayerService {
           entry: { playerId: id, eventId: ev.id, points: st.points, races: st.races, wins: st.wins, displayName: s.profile.displayName, updatedAt: now } as EventEntry },
       };
     });
-    if (out.event && out.event.entry.races > 0 && this.d.onEventEntry) await this.d.onEventEntry(out.event.entry);
+    await this.flushEventPushes(id);
+    if (out.event && out.event.entry.races > 0 && this.d.onEventEntry) {
+      // QA r6 #3: the result is already committed — an EventDO outage must not fail (and later dead-letter) it.
+      // Keep the board update and re-send it with the player's next race.
+      try {
+        await this.d.onEventEntry(out.event.entry);
+      } catch (e) {
+        console.error('event board update failed; kept for retry', id, out.event.eventId, (e as Error).message);
+        const entry = out.event.entry;
+        await this.tx(id, null, (s) => { (s.pendingEventPushes ??= {})[entry.eventId] = entry; });
+      }
+    }
     return out;
+  }
+
+  /** Re-sends event board updates that failed earlier (latest entry per event; boards accept newer totals). */
+  private async flushEventPushes(id: string) {
+    if (!this.d.onEventEntry) return;
+    const s = await this.load(id);
+    const pending = Object.entries(s.pendingEventPushes ?? {});
+    if (pending.length === 0) return;
+    const sent: string[] = [];
+    for (const [eventId, entry] of pending) {
+      try { await this.d.onEventEntry(entry as EventEntry); sent.push(eventId); } catch { /* keep for next time */ }
+    }
+    if (sent.length) await this.tx(id, null, (st) => { for (const k of sent) delete st.pendingEventPushes?.[k]; });
   }
 
   /** Snapshot used by the matchmaker: horse for the race, rating, class cap, beginner flag. */
@@ -320,10 +375,26 @@ export class PlayerService {
       moderation: moderationOf(s, this.d.clock()),
       playerId: id, horse: toRaceHorse(this.d.master, h),
       // REQ-ASSET-006: look of this runner for the other clients (never part of the hashed config)
-      ...({ visual: { appearance: appearanceOf(h, id), silks: s.profile.silks ?? defaultSilks(`p:${id}`), displayName: s.profile.displayName, titleId: s.profile.titleId } } as { visual?: EntrantVisual }),
+      ...({ visual: { appearance: appearanceOf(h, id), silks: effectiveSilks(s.profile.silks, `p:${id}`, this.d.master.bannedSilks), displayName: s.profile.displayName, titleId: s.profile.titleId, bondLevel: horseBondLevel(this.d.master, s, h.id) } } as { visual?: EntrantVisual }),
+      // REQ-ROOM-003: the host's private-room conditions (used only when this entry hosts a friend room)
+      ...({ roomPreset: s.presets?.room ?? null } as { roomPreset?: RoomConditions | null }),
       rating: { r: s.rating.r, rd: s.rating.rd, vol: s.rating.vol },
       classId: cls.id, statCap: cls.statCap, beginner: s.rating.rankedRaces < this.d.master.progression.beginnerRaces,
     };
+  }
+
+  // ---- bond / stable care (REQ-BOND-*) ----
+  async bond(id: string, horseId: string) { return bondView(this.d.master, await this.load(id), horseId, this.d.clock()); }
+  async bondLevels(id: string) { return { levels: bondLevels(this.d.master, await this.load(id)) }; }
+  async care(id: string, horseId: string, action: string, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now) => careHorse(this.d.master, s, horseId, action, now));
+  }
+
+  // ---- presets: course look and private-room conditions (REQ-ROOM-*) ----
+  async presets(id: string) { return presetsView(await this.load(id)); }
+  setCourseLook(id: string, lookId: string | null) { return this.tx(id, null, (s) => setCourseLook(s, lookId)); }
+  setRoomConditions(id: string, c: RoomConditions | null) {
+    return this.tx(id, null, (s) => (c === null ? clearRoomConditions(s) : setRoomConditions(this.d.master, s, c)));
   }
 
   // ---- profile, titles, stats (REQ-STAT-*, REQ-TITLE-*, REQ-SOCIAL-006) ----
@@ -331,14 +402,14 @@ export class PlayerService {
   equipTitle(id: string, titleId: string | null) { return this.tx(id, null, (s) => equipTitle(this.d.master, s, titleId)); }
   /** REQ-ASSET-005: choose silks (unlockable patterns need their costume item). */
   setSilks(id: string, silks: Silks) {
-    return this.tx(id, null, (s) => { s.profile.silks = validateSilks(silks, s.items); return { silks: s.profile.silks }; });
+    return this.tx(id, null, (s) => { s.profile.silks = validateSilks(silks, s.items, undefined, this.d.master.bannedSilks); return { silks: s.profile.silks }; });
   }
   async titles(id: string) {
     const s = await this.load(id);
     return { equipped: s.profile.titleId, titles: this.d.master.titles.map((t) => ({ id: t.id, name: t.name, icon: assetKeys.title(t.id), unlocked: s.titles.includes(t.id) })) };
   }
   async stats(id: string) { return (await this.load(id)).stats; }
-  async publicProfile(id: string) { return publicProfile(await this.load(id)); }
+  async publicProfile(id: string) { return publicProfile(await this.load(id), this.d.master.bannedSilks); }
 
   /** REQ-SEASON-002: rollover job → reward the closed season once (idempotent via the season record). */
   closeSeason(id: string, seasonId: string, rank: number | null) {
@@ -458,10 +529,11 @@ export class PlayerService {
 
   // ---- time attack (REQ-TA-*) ----
   /** Issue a session. The id is random (crypto in production) and doubles as the race id suffix. */
-  taStart(id: string, trackId: string, horseId: string) {
+  /** `ruleset` is the active remote-config ruleset (REQ-TA-009); omitted = the built-in default. */
+  taStart(id: string, trackId: string, horseId: string, ruleset?: Ruleset) {
     return this.tx(id, null, (s, now) => {
       const sessionId = [0, 0, 0].map(() => this.d.rng.nextU32().toString(36)).join('');
-      return startTimeAttack(this.d.master, s, this.d.master.progression.timeAttack, trackId, horseId, sessionId, this.d.rng, now);
+      return startTimeAttack(this.d.master, s, this.d.master.progression.timeAttack, trackId, horseId, sessionId, this.d.rng, now, ruleset);
     });
   }
   taPrepare(id: string, sessionId: string, inputs: unknown, resultHash: string, echoedConfig: unknown) {

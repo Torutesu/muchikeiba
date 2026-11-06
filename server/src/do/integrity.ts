@@ -2,7 +2,9 @@ import { DurableObject } from 'cloudflare:workers';
 import type { Env } from '../env.js';
 import { IntegrityCore, statusOf, type IntegrityRepo, type ModerationChange, type ModerationStatus, type PlayerIntegrity, type RaceIntegrityReport, type RaceReport } from '../ops/integrity.js';
 import { unwrap, wrap, type Envelope } from './rpc.js';
-import { enqueueModeration, flushModeration, type ModerationOutboxStore, type OutboxItem } from '../ops/moderationOutbox.js';
+import { dropModeration, enqueueModeration, flushModeration, retryModerationNow, stuckModeration, type ModerationOutboxStore, type OutboxItem } from '../ops/moderationOutbox.js';
+import { MODERATION_DEAD_AFTER, type DeadLetterItem, type RetryOutcome } from '../ops/deadLetter.js';
+import { newlyDead, reportDeadLetters } from './deadLetters.js';
 
 /** SQLite-backed moderation outbox (one row per player; see ops/moderationOutbox.ts). */
 export class SqlModerationOutbox implements ModerationOutboxStore {
@@ -90,12 +92,30 @@ export class IntegrityDO extends DurableObject<Env> {
   }
 
   override async alarm() {
-    const r = await flushModeration(this.outbox, (c) => this.pushOne(c), Date.now());
+    const now = Date.now();
+    const toItems = (xs: OutboxItem[]): DeadLetterItem[] => xs.map((i) => ({ itemId: i.change.playerId, error: i.lastError ?? 'push failed', attempts: i.attempts }));
+    const before = toItems(stuckModeration(this.outbox, MODERATION_DEAD_AFTER));
+    const r = await flushModeration(this.outbox, (c) => this.pushOne(c), now);
+    // QA r6 #6: decisions that just crossed MODERATION_DEAD_AFTER failed pushes go to the ops dead-letter index
+    await reportDeadLetters(this.env, 'moderation', 'global', newlyDead(before, toItems(stuckModeration(this.outbox, MODERATION_DEAD_AFTER))), now);
     if (r.nextAt !== null) await this.ctx.storage.setAlarm(Math.max(r.nextAt, Date.now() + 1000));
   }
 
   /** Ops view of decisions still waiting to reach players' objects. */
   pendingModeration() { return wrap(() => this.outbox.due(Number.MAX_SAFE_INTEGER, 500)); }
+
+  // ---- dead letters (REQ-OPS-041): decisions that failed to reach the player MODERATION_DEAD_AFTER+ times ----
+  dlList(): Promise<Envelope<DeadLetterItem[]>> {
+    return wrap(() => stuckModeration(this.outbox, MODERATION_DEAD_AFTER).map((i) => ({ itemId: i.change.playerId, error: i.lastError ?? 'push failed', attempts: i.attempts })));
+  }
+  dlRetry(playerId: string): Promise<Envelope<RetryOutcome>> {
+    return wrap(async () => {
+      const r = await retryModerationNow(this.outbox, playerId, (c) => this.pushOne(c), Date.now());
+      await this.armAlarm(this.outbox.nextAt());
+      return r;
+    });
+  }
+  dlDismiss(playerId: string): Promise<Envelope<boolean>> { return wrap(() => dropModeration(this.outbox, playerId)); }
 
   recordRace(r: RaceIntegrityReport) {
     return wrap(async () => {

@@ -108,12 +108,15 @@ namespace Muchi.Client
         public string DisplayName, TitleId;
         /// <summary>Voice clip key of the horse's name (voice/ja/name/n&lt;fnv64&gt;).</summary>
         public string VoiceName;
+        /// <summary>REQ-BOND-004: the rider's bond level with this horse (flavour only; 0 = unknown / CPU).</summary>
+        public int BondLevel;
 
         internal static EntrantVisual Parse(JsonNode o) => new EntrantVisual
         {
             Slot = J.Int(o, "slot"), Gate = J.Int(o, "gate"), Bracket = J.Int(o, "bracket"),
             Appearance = Appearance.Parse(J.Opt(o, "appearance")) ?? new Appearance(), Silks = Silks.Parse(J.Opt(o, "silks")) ?? new Silks(),
             DisplayName = J.Str(o, "displayName"), TitleId = J.Str(o, "titleId"), VoiceName = J.Str(o, "voiceName"),
+            BondLevel = J.IntN(o, "bondLevel") ?? 0,
         };
     }
 
@@ -121,10 +124,37 @@ namespace Muchi.Client
     /// Visuals of a race (contracts/protocol.md `start.visuals`). Absent on servers older than the visual
     /// contract: use <see cref="Fallback"/>, which derives everything from the config alone.
     /// </summary>
+    /// <summary>REQ-ROOM-004: scene-only conditions of a friend room (weather / temperature / wind).</summary>
+    public sealed class SceneConditions
+    {
+        public string Weather, WeatherKey;
+        public int TemperatureC, WindKmh;
+
+        internal static SceneConditions Parse(JsonNode o)
+        {
+            if (o == null || o.Kind != JsonKind.Object) return null;
+            return new SceneConditions
+            {
+                Weather = J.Str(o, "weather"), TemperatureC = J.Int(o, "temperatureC"), WindKmh = J.Int(o, "windKmh"),
+                WeatherKey = J.Str(J.Opt(o, "keys"), "weather"),
+            };
+        }
+    }
+
     public sealed class RaceVisuals
     {
         public TrackVisual Track;
         public List<EntrantVisual> Entrants = new List<EntrantVisual>();
+        /// <summary>Friend-room scene conditions chosen by the host; null otherwise.</summary>
+        public SceneConditions Scene;
+
+        /// <summary>Slots whose rider has reached <paramref name="minLevel"/> bond (commentary call-out, REQ-BOND-004).</summary>
+        public List<int> BondCalloutSlots(int minLevel)
+        {
+            var l = new List<int>();
+            foreach (var e in Entrants) if (e.BondLevel >= minLevel) l.Add(e.Slot);
+            return l;
+        }
 
         public EntrantVisual ForSlot(int slot)
         {
@@ -135,7 +165,7 @@ namespace Muchi.Client
         public static RaceVisuals Parse(JsonNode o)
         {
             if (o == null || o.Kind != JsonKind.Object) return null;
-            return new RaceVisuals { Track = TrackVisual.Parse(J.Opt(o, "track")), Entrants = J.List(o, "entrants", EntrantVisual.Parse) };
+            return new RaceVisuals { Track = TrackVisual.Parse(J.Opt(o, "track")), Entrants = J.List(o, "entrants", EntrantVisual.Parse), Scene = SceneConditions.Parse(J.Opt(o, "scene")) };
         }
 
         /// <summary>Default looks when the server sent none (offline races, old servers).</summary>

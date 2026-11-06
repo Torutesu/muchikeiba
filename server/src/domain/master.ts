@@ -1,5 +1,7 @@
 import tracksJson from '../../master/tracks.json';
 import { BASE_BANNED_SILKS, type BannedSilksList } from './bannedSilks.js';
+import type { BondConfig } from './bond.js';
+import type { RoomsConfig } from './presets.js';
 import horsesJson from '../../master/horses.json';
 import gachaJson from '../../master/gacha.json';
 import nicksJson from '../../master/nicks.json';
@@ -78,6 +80,10 @@ export interface Progression {
   weather: WeatherConfig;
   /** REQ-TEAM-*: 支部 (teams). */
   teams: TeamsConfig;
+  /** REQ-BOND-*: stable care / bond (never affects ranked/event/time attack stats). */
+  bond: BondConfig;
+  /** REQ-ROOM-*: private-room condition choices. */
+  rooms: RoomsConfig;
 }
 export interface WeatherOverride { trackId?: string; fromMs: number; toMs: number; going: Going; night?: boolean }
 export interface WeatherConfig {
@@ -126,7 +132,8 @@ export type TitleCondition =
   | { kind: 'trackWins'; trackId: string; value: number }
   | { kind: 'bestTime'; trackId: string; value: number }
   | { kind: 'classReached'; classId: string }
-  | { kind: 'rating'; value: number };
+  | { kind: 'rating'; value: number }
+  | { kind: 'bondLevel'; value: number };
 export interface TitleDef { id: string; name: string; condition: TitleCondition }
 export type PushCategory = 'season' | 'friends' | 'invites' | 'events';
 export const PUSH_CATEGORIES: PushCategory[] = ['season', 'friends', 'invites', 'events'];

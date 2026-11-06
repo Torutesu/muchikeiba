@@ -1,4 +1,5 @@
 import { AppError } from './errors.js';
+import { maxBondLevel } from './bond.js';
 import { defaultSilks, type Silks } from './visuals.js';
 import { foldForCompare } from './horses.js';
 import type { Master, Style, TitleCondition } from './master.js';
@@ -90,6 +91,7 @@ export function conditionMet(m: Master, s: PlayerState, c: TitleCondition): bool
       return reached.some((id) => classIndex(m, id) >= target);
     }
     case 'rating': return s.rating.rankedRaces > 0 && s.rating.r >= c.value;
+    case 'bondLevel': return maxBondLevel(m, s) >= c.value;
   }
 }
 

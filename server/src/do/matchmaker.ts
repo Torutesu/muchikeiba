@@ -1,4 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
+import type { RoomConditions } from '../domain/presets.js';
 import type { Env } from '../env.js';
 import { activeConfig } from '../ops/activeConfig.js';
 import {
@@ -228,7 +229,8 @@ export class MatchmakerDO extends DurableObject<Env> {
       this.reserve(members, now);
       try {
         const cfg = await activeConfig(this.env);
-        const created = await createRace(cfg.master, { ruleset: cfg.ruleset, mode: 'friend', humans: r.members.map((m) => m.payload), cpuCount: 0, cpuLevel: 3, rng: cryptoRng, now, ticketSecret: this.env.TICKET_SECRET });
+        const host = r.members.find((m) => m.playerId === r.hostId)?.payload as { roomPreset?: RoomConditions | null } | undefined;
+        const created = await createRace(cfg.master, { ruleset: cfg.ruleset, mode: 'friend', humans: r.members.map((m) => m.payload), cpuCount: 0, cpuLevel: 3, rng: cryptoRng, now, ticketSecret: this.env.TICKET_SECRET, roomPreset: host?.roomPreset ?? null });
         await this.startRace(created, now);
         await this.persist();
         return created.assignments[playerId];

@@ -1,4 +1,6 @@
 import type { GoingAptitude } from './schemas.js';
+import type { BondState } from './bond.js';
+import type { PresetsState } from './presets.js';
 import type { Rarity, Sex, Stats, Style } from './master.js';
 import type { PushState } from './push.js';
 import type { KpiState } from './kpi.js';
@@ -118,6 +120,10 @@ export interface PlayerState {
   events?: Record<string, PlayerEventState>;
   /** Anti-cheat status pushed by the integrity service (REQ-OPS-035). Absent = ok. */
   moderation?: { status: 'ok' | 'quarantined' | 'banned'; until: number | null; reason: string; at: number };
+  /** REQ-BOND-*: care points per horse and account-wide level rewards already paid (created on first care). */
+  bond?: BondState;
+  /** REQ-ROOM-*: course look and private-room conditions (created on first change). */
+  presets?: PresetsState;
   /** Results of admin money operations by op key; never evicted, so an opKey can never pay twice (review r5 #4). */
   adminOps?: Record<string, unknown>;
   /** REQ-ITEM-006: equipped cosmetics (tack per slot, stable decor slots). Optional for older states. */

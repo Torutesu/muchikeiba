@@ -66,7 +66,7 @@
    "fallback": "item/default",
    "description": "アイテムのアイコン",
    "dynamic": false,
-   "count": 17
+   "count": 19
   },
   "banner/gacha": {
    "fallback": "banner/gacha/default",
@@ -84,7 +84,7 @@
    "fallback": "title/default",
    "description": "称号のアイコン",
    "dynamic": false,
-   "count": 18
+   "count": 20
   },
   "emblem/shape": {
    "fallback": "emblem/shape/default",
@@ -122,6 +122,18 @@
    "dynamic": false,
    "count": 7
   },
+  "scene/look": {
+   "fallback": "scene/look/default",
+   "description": "コースの見た目テーマ（自分の画面だけに適用する装飾）",
+   "dynamic": false,
+   "count": 4
+  },
+  "fx/weather": {
+   "fallback": "fx/weather/default",
+   "description": "フレンド部屋の天気演出（晴れ・曇り・雨・霧。シミュレーションには影響しない）",
+   "dynamic": false,
+   "count": 5
+  },
   "sfx/race": {
    "fallback": "sfx/race/default",
    "description": "レース中の効果音",
@@ -138,7 +150,7 @@
    "fallback": "voice/ja/phrase/default",
    "description": "実況の定型フレーズ（Resources/Muchi/commentary-ja.json の各断片）",
    "dynamic": false,
-   "count": 74
+   "count": 77
   },
   "voice/ja/num": {
    "fallback": "voice/ja/num/default",
@@ -188,6 +200,11 @@
   "fx/going/sloppy",
   "fx/going/soft",
   "fx/going/yielding",
+  "fx/weather/cloudy",
+  "fx/weather/default",
+  "fx/weather/fog",
+  "fx/weather/rain",
+  "fx/weather/sunny",
   "horse/build/compact",
   "horse/build/default",
   "horse/build/powerful",
@@ -222,6 +239,8 @@
   "item/costume_season_limited",
   "item/costume_silks_laurel",
   "item/costume_starter",
+  "item/course_autumn_gold",
+  "item/course_spring_meadow",
   "item/decor_flower_box",
   "item/decor_golden_horseshoe",
   "item/decor_stable_plaque",
@@ -234,6 +253,10 @@
   "item/tack_saddlecloth_crimson",
   "item/tack_saddlecloth_navy",
   "item/ticket_sr_plus",
+  "scene/look/autumn_gold",
+  "scene/look/default",
+  "scene/look/greenfield",
+  "scene/look/spring_meadow",
   "scene/night/default",
   "scene/night/minato",
   "scene/surface/aoba_dirt",
@@ -296,6 +319,8 @@
   "tack/default",
   "tack/saddlecloth_crimson",
   "tack/saddlecloth_navy",
+  "title/bond_first",
+  "title/bond_master",
   "title/class_a",
   "title/class_s",
   "title/debut",
@@ -360,6 +385,9 @@
   "voice/ja/num/8",
   "voice/ja/num/9",
   "voice/ja/num/default",
+  "voice/ja/phrase/bond_call_1_p0",
+  "voice/ja/phrase/bond_call_2_p0",
+  "voice/ja/phrase/bond_call_2_p1",
   "voice/ja/phrase/cpu_takeover_1_p0",
   "voice/ja/phrase/default",
   "voice/ja/phrase/finish_win_1_p0",

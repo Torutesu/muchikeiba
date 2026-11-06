@@ -57,6 +57,8 @@ C# では `AssetKeys.Resolve(key, exists)` が 1→2→null を返す。古い�
 | `scene/surface` | `scene/surface/minato_dirt` | コースの馬場 | 競馬場ごとの馬場面（芝・ダート） |
 | `scene/night` | `scene/night/minato` | ナイター開催できる競馬場 | ナイター照明 |
 | `fx/going` | `fx/going/sloppy` | 馬場状態（good 以外） | 濡れた馬場・水しぶき・土煙 |
+| `scene/look` | `scene/look/autumn_gold` | `visuals.json courseLooks` | コースの見た目テーマ（自分の画面だけ、REQ-ROOM-001） |
+| `fx/weather` | `fx/weather/rain` | `visuals.json weather` | フレンドルームの天気演出（REQ-ROOM-004） |
 | `sfx/race` | `sfx/race/whip` | `sfx.race` | レース中の効果音 |
 | `sfx/ui` | `sfx/ui/gacha_ssr` | `sfx.ui` | UIの効果音 |
 | `voice/ja/phrase` | `voice/ja/phrase/gate_open_1_p0` | `engine/Muchi.Client/Resources/Muchi/commentary-ja.json` | 実況の定型フレーズの断片 |
@@ -106,6 +108,9 @@ C# では `AssetKeys.Resolve(key, exists)` が 1→2→null を返す。古い�
 - 競馬場（venue）とコースの対応、回り（左回り `left`／右回り `right`）は `visuals.json venues / tracks`。
 - 読み込み：`scene/venue/<venue>` をベースに、`scene/surface/<venue>_<surface>` を重ね、夜なら `scene/night/<venue>`、
   馬場が良でなければ `fx/going/<going>` を重ねる。
+- フレンドルームでホストが条件を決めていれば `visuals.scene = { weather, temperatureC, windKmh, keys{ weather } }` が付き、
+  `fx/weather/<weather>` を重ねる（演出のみ）。自分のコースの見た目は `GET /v1/presets` の `courseLookKey`（`scene/look/<id>`）。
+- `entrants[].bondLevel`（任意）は騎手とその馬の絆レベル。`RaceVisuals.BondCalloutSlots(5)` を `Commentator.SetBondCallouts` に渡すと実況が一度だけ触れる。
 
 ### 3.6 実況の音声（REQ-ASSET-009）
 - `Commentary` が出す `ClipKeys` を `AssetKeys.VoiceClip(clipKey, horseNameById)` で変換する。

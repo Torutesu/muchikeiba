@@ -319,6 +319,20 @@
 - REQ-ITEM-007 勝負服の模様の解放アイテムを直販し、買うと`PUT /v1/player/silks`でその模様を選べる。
 - REQ-ITEM-008 券・素材の消費と見た目アイテムの購入は、アイテムの台帳（`itemLog`、直近200件）に残す。券の使用・購入は冪等キー必須、返金による負債（コイン・アイテム）があるあいだは使えない。
 
+### 9.17 厩舎ケア・絆（TS＋C#、`src/domain/bond.ts`）
+- REQ-BOND-001 馬ごとに絆（ポイントとレベル1〜10）を持つ。レベルの閾値・ケアの種類・1日の上限・レベル報酬・実況の閾値は `progression.json bond`（リモートコンフィグで差し替え可、読み込み時に検証）。
+- REQ-BOND-002 ケア（飼い葉・水など）は種類ごとのクールダウンと馬ごとの1日の回数上限を持つ。クールダウン中・上限到達は `409 COOLDOWN`。冪等キー必須で、同じキーの再送は1回分しか数えない。日付（JST）が変わると回数はリセット。
+- REQ-BOND-003 レベル到達報酬（無償コインなど）はプレイヤー全体で各レベル1回だけ（2頭目で同じレベルに達しても再度は出ない）。称号 `bond_first`（Lv3）・`bond_master`（Lv10）。
+- REQ-BOND-004 絆は見た目と実況だけに使う：`start.visuals.entrants[].bondLevel`、閾値（既定 Lv5）以上なら最後の直線で一度だけ「絆」の実況（`bond_call`）。
+- REQ-BOND-005 絆はランク戦・イベント・チュートリアル・タイムアタックの能力（`RaceStartConfig`）を一切変えない。同じ馬で絆の有無を比べても設定・ハッシュは同一（`test/bond-rooms.test.ts`）。
+- REQ-BOND-006 フレンドルームだけの小さな補正（`friendRoomEffect`：レベルあたり‰、上限あり）を用意するが、既定は**無効**。有効にしても能力の上限1000を超えない。
+
+### 9.18 コースの見た目・プライベートルームの条件（TS＋C#、`src/domain/presets.ts`）
+- REQ-ROOM-001 コースの見た目（`visuals.json courseLooks`、アセット `scene/look/<id>`）はプレイヤーごとにサーバーへ保存。既定（greenfield）以外は解放アイテムを持っている時だけ選べる。自分の画面の演出のみ。
+- REQ-ROOM-002 フレンドルームの条件（コース・馬場状態・昼夜・天気・気温・風）をプレイヤーごとにサーバーへ保存。馬場状態はコースの馬場に合うものだけ（芝：firm/good/yielding/soft、ダート：fast/good/muddy/sloppy）、ナイター設備のないコースで夜は不可、天気・気温・風は `progression.json rooms` の選択肢のみ（違反は `400`）。
+- REQ-ROOM-003 ホストが条件を保存していれば、そのホストのフレンドルームはその条件（コース・馬場・夜）で `RaceStartConfig` を作る。芝とダートで逆の馬場状態は濡れ具合の段で読み替える。条件がなければ従来通り（設定・ハッシュは変わらない、ゴールデンも不変）。ランク戦・イベントには使わない。
+- REQ-ROOM-004 天気・気温・風は演出のみ：`start.visuals.scene`（`fx/weather/<id>`）。設定・ハッシュ・リプレイには入らない。
+
 ## 10. 認証・API（TS）
 - REQ-API-005 Unityアプリの認証：初回起動で匿名ログイン（登録画面なしで遊べる）。Apple／Googleのアカウントを匿名ユーザーに紐付けて引き継ぎに使う。すでに別のアカウントに紐付いている場合は、プレイヤーに確認してからそのアカウントに切り替える（この端末の匿名の進行は残らない）。実装は`unity/Assets/Muchi/Game/FirebaseAuth.cs`（ロジック、テストあり）と`unity/Assets/Muchi/Integration/FirebaseSdkAuth.cs`（Firebase SDK、`MUCHI_FIREBASE`定義時だけコンパイル）。
 - REQ-API-001 認証はFirebase AuthのIDトークン（匿名ログインを基本、引き継ぎにApple/Google）。WorkersでJWT署名を検証する（Googleの公開鍵、`aud`=プロジェクトID、`iss`、有効期限）。

@@ -36,6 +36,10 @@ export interface VisualsMaster {
   tracks: Record<string, { venue: string }>;
   emblem: { shapes: string[]; symbols: string[] };
   sfx: { race: string[]; ui: string[] };
+  /** REQ-ROOM-001: cosmetic racecourse themes (one is the default; others need their unlock item). */
+  courseLooks: { id: string; key: string; default?: boolean; unlockItem?: string }[];
+  /** REQ-ROOM-002: scene-only weather for private rooms. */
+  weather: string[];
 }
 
 export const VISUALS = visualsJson as unknown as VisualsMaster;
@@ -75,6 +79,8 @@ export const assetKeys = {
   surface: (venue: string, surface: string) => `scene/surface/${venue}_${surface}`,
   night: (venue: string) => `scene/night/${venue}`,
   going: (going: string) => `fx/going/${going}`,
+  courseLook: (id: string) => `scene/look/${id}`,
+  weather: (id: string) => `fx/weather/${id}`,
   sfxRace: (id: string) => `sfx/race/${id}`,
   sfxUi: (id: string) => `sfx/ui/${id}`,
   /** Commentary clip id "gate_open_1#0" → voice/ja/phrase/gate_open_1_p0 */
@@ -106,6 +112,8 @@ export const ASSET_KINDS: Record<string, { description: string; dynamic?: boolea
   'scene/surface': { description: '競馬場ごとの馬場面（芝・ダート）' },
   'scene/night': { description: 'ナイター照明のバリエーション' },
   'fx/going': { description: '馬場状態の見た目（濡れ・水しぶき・土煙）' },
+  'scene/look': { description: 'コースの見た目テーマ（自分の画面だけに適用する装飾）' },
+  'fx/weather': { description: 'フレンド部屋の天気演出（晴れ・曇り・雨・霧。シミュレーションには影響しない）' },
   'sfx/race': { description: 'レース中の効果音' },
   'sfx/ui': { description: 'UIの効果音' },
   [`voice/${VOICE_LANG}/phrase`]: { description: '実況の定型フレーズ（Resources/Muchi/commentary-ja.json の各断片）' },
@@ -282,11 +290,13 @@ export function trackVisual(track: { id: string; surface: string; going?: string
 }
 
 /** Per-player look sent with race entries (not part of the hashed race config). */
-export interface EntrantVisual { appearance: Appearance; silks: Silks; displayName: string | null; titleId: string | null }
+export interface EntrantVisual { appearance: Appearance; silks: Silks; displayName: string | null; titleId: string | null; bondLevel?: number }
 
 export interface StartVisuals {
   v: 1;
   track: TrackVisual;
+  /** REQ-ROOM-004: friend room scene conditions chosen by the host (absent = server default scene). */
+  scene?: { weather: string; temperatureC: number; windKmh: number; keys: { weather: string } };
   entrants: ({ slot: number; gate: number; bracket: number; voiceName: string } & EntrantVisual)[];
 }
 
@@ -307,6 +317,7 @@ export function startVisuals(config: RaceStartConfig, humans: Record<string, Ent
       return {
         slot: e.slot, gate: e.slot + 1, bracket: bracketOf(e.slot + 1, n), voiceName: assetKeys.voiceName(e.horse.name),
         appearance, silks, displayName: hv?.displayName ?? null, titleId: hv?.titleId ?? null,
+        ...(hv?.bondLevel !== undefined ? { bondLevel: hv.bondLevel } : {}),
       };
     }),
   };
@@ -347,7 +358,7 @@ export function collectItemIds(m: Master, v: VisualsMaster = VISUALS): string[] 
       }
     }
   };
-  walk(m.products); walk(m.progression); walk(m.events); walk(v.silks.patterns);
+  walk(m.products); walk(m.progression); walk(m.events); walk(v.silks.patterns); walk(v.courseLooks ?? []);
   // REQ-ITEM-*: tickets, the breeding material and every cosmetic sold in the shop
   if (m.items) {
     Object.keys(m.items.tickets).forEach((id) => ids.add(id));

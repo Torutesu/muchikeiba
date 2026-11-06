@@ -1,6 +1,8 @@
 import { weatherProblems } from '../domain/ground.js';
 import { BASE_BANNED_SILKS, bannedSilksListSchema, bannedSilksProblems, type BannedSilksList } from '../domain/bannedSilks.js';
 import { VISUALS } from '../domain/visuals.js';
+import { bondProblems } from '../domain/bond.js';
+import { roomsProblems } from '../domain/presets.js';
 import { z } from 'zod';
 import { AppError } from '../domain/errors.js';
 import { buildBanner, splitMasterTrack, type Master, type Progression, type RawBanner } from '../domain/master.js';
@@ -108,6 +110,8 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
     if (k in base.progression) problems.push(...shapeProblems(`progression.${k}`, (base.progression as unknown as Record<string, unknown>)[k], v));
   }
   if (b.progression && 'weather' in b.progression) problems.push(...weatherProblems(progression.weather));
+  if (b.progression && 'bond' in b.progression) problems.push(...bondProblems(progression.bond));
+  if (b.progression && 'rooms' in b.progression) problems.push(...roomsProblems(progression.rooms));
 
   const events = (b.events as EventDef[] | undefined) ?? base.events;
   if (b.events) {

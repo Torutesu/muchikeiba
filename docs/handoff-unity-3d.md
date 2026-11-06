@@ -32,7 +32,29 @@ Updated: 2026-11-05（エンジン・サーバー接続を追加）
 | レースエントリー | オンライン：ランク戦に登録→マッチ（約15秒でCPU補完）→ WebSocketでロックステップ。オフライン：12頭の練習レース（2000m） | 練習レース |
 | レース中 | 位置・向きはエンジン状態の補間（`TryGetRender` → `CourseFrame`）。HUD：順位・残り距離・残り脚‰・ムチ残り・かかり・手綱・ゲートまでの時間。実況字幕 | 同じ |
 | 結果 | 着順・タイム（エンジン）、オンラインは「サーバー確定／無効」と更新後のシーズンpt | 練習（ポイントなし） |
-| 衣装・コース見た目・コンディション・飼い葉 | **サーバー未対応のためローカルのみ**（画面に LOCAL ONLY と表示） | 同じ |
+| 飼い葉（ケア） | `CareModel`：`GET /v1/horses/:id/bond`・`POST …/care`（クールダウン・1日上限・絆レベル・報酬） | PlayerPrefs（`muchi.care.feed`） |
+| コースの見た目 | `CourseLooksModel`：`GET /v1/presets`・`PUT /v1/presets/course-look`（持っている見た目だけ） | 標準のみ・PlayerPrefs |
+| コンディション | `RoomConditionsModel`：`PUT /v1/presets/room`。自分がホストのフレンドルームがこの条件で走る | PlayerPrefs（`muchi.race.*`） |
+| 衣装（3Dモデル） | **ローカルのみ**（LOCAL ONLY 表示のまま。装備のサーバー化はアイテム経済側） | 同じ |
+
+### Codex が次に作る画面向けのビューモデル（`Assets/Muchi/Game/ScreenModels.cs`）
+
+すべて `GameBackend` を受け取り、オンラインならサーバー、オフラインなら端末のデータか「OFFLINE / …」の `Message` を返す。
+操作は `Task<ActionResult>`（`Ok` と画面に出す `Message`。サーバーのエラーは `CODE  /  メッセージ`）。UnityEngine には依存しない。
+
+| ビューモデル | 読み込み | 操作 | バインドする値 |
+|---|---|---|---|
+| `CareModel` | `LoadAsync(horseId?)` | `CareAsync(cardIndex)` | `Bond`（Level/Points/NextLevelAt/TodayActions/DailyActions）、`Card(i).Ready`、`SelectedCard` |
+| `CourseLooksModel` | `LoadAsync()` | `EquipAsync(index)` | `Owned(i)`、`EquippedIndex`、`EquippedKey`（`scene/look/*`） |
+| `RoomConditionsModel` | `LoadAsync()` | `SaveAsync()`、`ResetAsync()` | `Weather`/`Ground`/`Temperature`/`Wind`（画面のボタン番号）、`TrackId`、`Night` |
+| `FriendsModel` | `LoadAsync()` | `SendAsync(code)`、`AcceptAsync`/`DeclineAsync`/`CancelAsync`/`RemoveAsync(id)` | `MyCode`、`List.Friends`/`Incoming`/`Outgoing` |
+| `TeamsModel`（支部） | `LoadAsync()` | `SearchAsync(q)`、`CreateAsync`、`JoinAsync`、`LeaveAsync`、`ApproveAsync`/`DeclineAsync`/`KickAsync`/`TransferAsync` | `Mine`（Team/Rank/CooldownUntil）、`InTeam`、`Search` |
+| `EventsModel` | `LoadAsync()` | `EnterAsync(eventId)`、`LeaveQueueAsync`、`StandingsAsync(eventId)` | `Events`（Eligible/Fee/Me）、`Board` |
+| `TimeAttackModel` | `LoadAsync(trackId)` | `StartAsync(trackId, ghosts)` → `IRaceDriver`、`SubmitAsync()` | `Me`（自己ベスト・残り回数・メダル）、`Ghosts`、`Result` |
+| `LeaderboardModel` | `LoadAsync(board?)` | – | `Mine`（Rank/Standing）、`Board` |
+
+カードの番号とサーバーIDの対応は `ScreenIds`（ケア・コースの見た目・天気・馬場・気温・風）。タイムアタックの `StartAsync` が返すドライバーは
+練習レースと同じ `OfflineRaceDriver`（`Run.Race` を直接走らせる）なので、レース画面はそのまま使える。
 
 ### 操作の対応（`RaceInput`）
 

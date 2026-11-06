@@ -166,6 +166,20 @@ namespace Muchi.Client
 
         public IReadOnlyList<CommentaryLine> Lines => _lines;
 
+        private readonly HashSet<int> _bondSlots = new HashSet<int>();
+        private bool _bondSaid;
+
+        /// <summary>
+        /// REQ-BOND-004: slots whose rider has a strong bond with the horse (from start.visuals, see
+        /// RaceVisuals.BondCalloutSlots). The commentary may call the focus horse out once at the final straight.
+        /// Flavour only; has no effect on the race.
+        /// </summary>
+        public void SetBondCallouts(IEnumerable<int> slots)
+        {
+            _bondSlots.Clear();
+            if (slots != null) foreach (var x in slots) _bondSlots.Add(x);
+        }
+
         /// <param name="focusSlot">The player's horse (its whips, start and place get lines). -1 for spectators.</param>
         public Commentator(CommentaryTemplates templates, RaceConfig config, int focusSlot = -1)
         {
@@ -269,6 +283,12 @@ namespace Muchi.Client
                     break;
                 case RaceEventType.SpurtStart:
                     if (!_spurtSaid) { _spurtSaid = true; Add("spurt", e.Tick, e.Slot); }
+                    // REQ-BOND-004: flavour line for a horse its rider has bonded with (focus horse first)
+                    if (_bondSlots.Contains(e.Slot) && !_bondSaid && _t.Phrases.ContainsKey("bond_call") && (e.Slot == _focus || _focus < 0))
+                    {
+                        _bondSaid = true;
+                        Add("bond_call", e.Tick, e.Slot);
+                    }
                     break;
                 case RaceEventType.CpuTakeover:
                     if (e.Slot == _focus) Add("cpu_takeover", e.Tick, e.Slot);

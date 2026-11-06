@@ -11,7 +11,10 @@ import type { FinalOutcome } from '../domain/raceRoom.js';
 import type { RaceResultForPlayer } from '../domain/rewards.js';
 import type { RaceEntry } from '../http/app.js';
 import { signTicket } from '../http/ticket.js';
-import { startVisuals, type StartVisuals } from '../domain/visuals.js';
+import { assetKeys, startVisuals, type StartVisuals } from '../domain/visuals.js';
+import { roomGround, roomScene, type RoomConditions } from '../domain/presets.js';
+import { friendRoomBondPermille } from '../domain/bond.js';
+import { STAT_KEYS } from '../domain/master.js';
 
 export const START_DELAY_MS = 6000; // time for clients to connect + countdown before tick 0
 export const TICKET_TTL_MS = 10 * 60_000;
@@ -29,19 +32,25 @@ export interface CreateRaceOptions {
   trackId?: string; ruleset?: Ruleset;
   /** REQ-EVENT-003: event races choose among the event's tracks and apply its entrant rules. */
   event?: EventDef;
+  /** REQ-ROOM-003: friend rooms race on the host's chosen conditions (null/absent = as before). */
+  roomPreset?: RoomConditions | null;
 }
 
 export async function createRace(m: Master, o: CreateRaceOptions): Promise<CreatedRace> {
   const raceId = randomId('r', o.rng);
   const ev = o.event;
+  const room = o.mode === 'friend' ? o.roomPreset ?? null : null;
   const trackId = o.trackId
+    ?? (room?.trackId && m.tracks.some((t) => t.id === room.trackId) ? room.trackId : undefined)
     ?? (ev ? ev.trackIds[randInt(o.rng, ev.trackIds.length)]! : o.mode === 'tutorial' ? 'aoba_turf_1600' : m.tracks[randInt(o.rng, m.tracks.length)]!.id);
   const statCap = ev ? ev.rules.statCap : o.mode === 'ranked' ? Math.min(...o.humans.map((h) => h.statCap)) : null;
   const ruleset = ev ? eventRuleset(o.ruleset ?? DEFAULT_RULESET, ev) : o.ruleset;
   const config = buildRaceConfig(m, {
     raceId, mode: o.mode, trackId, statCap, cpuCount: o.cpuCount, cpuLevel: o.cpuLevel, rng: o.rng,
-    ground: groundFor(m, trackId, o.mode, o.now), // REQ-RACE-037: the day's going for this course; night at lit venues in the evening
-    humans: o.humans.map((h) => ({ playerId: h.playerId, horse: h.horse, cpuLevel: 3 })),
+    // REQ-RACE-037: the day's going for this course; night at lit venues in the evening. REQ-ROOM-003: a friend
+    // room with host conditions uses those instead (rooms without conditions are unchanged).
+    ground: room ? roomGround(m, room, trackId, o.now) : groundFor(m, trackId, o.mode, o.now),
+    humans: o.humans.map((h) => ({ playerId: h.playerId, horse: o.mode === 'friend' ? friendBond(m, h) : h.horse, cpuLevel: 3 })),
     // REQ-OPS-006: the active ruleset is embedded in the config, so the replay log carries it to the verifier
     ...(ruleset ? { rulesetOverrides: ruleset } : {}),
     ...(ev?.rules.fixedStats ? { fixedStats: ev.rules.fixedStats } : {}),
@@ -57,7 +66,21 @@ export async function createRace(m: Master, o: CreateRaceOptions): Promise<Creat
   for (const h of o.humans) ratings[h.playerId] = h.rating;
   // entries queued by older builds have no `visual`; startVisuals falls back to derived looks
   const visuals = startVisuals(config, Object.fromEntries(o.humans.map((h) => [h.playerId, (h as { visual?: RaceEntry['visual'] }).visual])));
+  if (room) visuals.scene = { ...roomScene(room), keys: { weather: assetKeys.weather(room.weather) } };
   return { config, startAtMs, ratings, assignments, visuals };
+}
+
+/**
+ * REQ-BOND-006: friend rooms only, and only when the operator enables it (off by default): a tiny stat bump
+ * from the horse's bond level. Ranked, event, tutorial and time attack never call this.
+ */
+function friendBond(m: Master, h: RaceEntry): RaceEntry['horse'] {
+  const level = (h as { visual?: { bondLevel?: number } }).visual?.bondLevel ?? 1;
+  const pm = friendRoomBondPermille(m.progression.bond, level);
+  if (pm === 0) return h.horse;
+  const out = { ...h.horse };
+  for (const k of STAT_KEYS) out[k] = Math.min(1000, Math.floor((out[k] * (1000 + pm)) / 1000));
+  return out;
 }
 
 /**

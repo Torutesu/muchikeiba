@@ -27,8 +27,9 @@ describe('ruleset (contracts/ruleset-params.default.json)', () => {
 });
 
 describe('master data', () => {
-  it('tracks have 3 turf courses whose segments sum to the distance', () => {
-    expect(m.tracks.filter((t) => t.surface === 'turf')).toHaveLength(3);
+  it('tracks: 5 turf and 3 dirt courses (3 overseas-style venues, REQ-TRACK-001) whose segments sum to the distance', () => {
+    expect(m.tracks.filter((t) => t.surface === 'turf')).toHaveLength(5);
+    expect(m.tracks.filter((t) => t.surface === 'dirt')).toHaveLength(3);
     for (const t of m.tracks) expect(t.segments.reduce((a, s) => a + s.lengthM, 0)).toBe(t.distanceM);
   });
 });

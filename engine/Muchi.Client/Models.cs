@@ -834,6 +834,129 @@ namespace Muchi.Client
         };
     }
 
+    // ------------------------------------------------------------------ 支部対抗シーズン (REQ-LEAGUE)
+
+    /// <summary>One team's line in a division table.</summary>
+    public sealed class LeagueRow
+    {
+        public string TeamId, Name, DivisionId;
+        public int Place, Played, Won, Drawn, Lost, Byes, LeaguePoints, ScoreFor, ScoreAgainst;
+        public int ScoreDiff => ScoreFor - ScoreAgainst;
+        internal static LeagueRow Parse(JsonNode o) => o == null ? null : new LeagueRow
+        {
+            TeamId = J.Str(o, "teamId"), Name = J.Str(o, "name"), DivisionId = J.Str(o, "divisionId"), Place = J.Int(o, "place"),
+            Played = J.Int(o, "played"), Won = J.Int(o, "won"), Drawn = J.Int(o, "drawn"), Lost = J.Int(o, "lost"), Byes = J.Int(o, "byes"),
+            LeaguePoints = J.Int(o, "leaguePoints"), ScoreFor = J.Int(o, "scoreFor"), ScoreAgainst = J.Int(o, "scoreAgainst"),
+        };
+    }
+
+    /// <summary>
+    /// My team's matchup in one week. Status: "pending" (not started), "open" (this week), "scored", "skipped" (the week was
+    /// missed). Scores are season-point growth inside the week (null until scored).
+    /// </summary>
+    public sealed class LeagueMatchup
+    {
+        public int Index;
+        public long StartMs, EndMs;
+        public string Status, Opponent, OpponentName;
+        public int? MyScore, OpponentScore;
+        public bool Bye;
+        /// <summary>"win", "draw", "loss", "bye" once scored, else null.</summary>
+        public string Outcome => Status != "scored" ? null : Bye ? "bye" : MyScore > OpponentScore ? "win" : MyScore < OpponentScore ? "loss" : "draw";
+        internal static LeagueMatchup Parse(JsonNode o) => new LeagueMatchup
+        {
+            Index = J.Int(o, "index"), StartMs = J.Long(o, "startMs"), EndMs = J.Long(o, "endMs"), Status = J.Str(o, "status"),
+            Opponent = J.Str(o, "opponent"), OpponentName = J.Str(o, "opponentName"), MyScore = J.IntN(o, "myScore"), OpponentScore = J.IntN(o, "opponentScore"), Bye = J.Bool(o, "bye"),
+        };
+    }
+
+    /// <summary>Final place after the season, its reward (paid with the team season reward) and next season's division.</summary>
+    public sealed class LeagueFinalPlace
+    {
+        public string DivisionId, NextDivisionId;
+        public int Place, Size;
+        public Reward Reward;
+        /// <summary>Up / down / same division next season.</summary>
+        public int Movement(IList<LeagueDivisionInfo> divisions)
+        {
+            int Idx(string id) { for (int i = 0; i < divisions.Count; i++) if (divisions[i].Id == id) return i; return -1; }
+            int a = Idx(DivisionId), b = Idx(NextDivisionId);
+            return a < 0 || b < 0 ? 0 : a - b; // divisions are listed top first: +1 = promoted
+        }
+        internal static LeagueFinalPlace Parse(JsonNode o) => o == null ? null : new LeagueFinalPlace
+        {
+            DivisionId = J.Str(o, "divisionId"), NextDivisionId = J.Str(o, "nextDivisionId"), Place = J.Int(o, "place"), Size = J.Int(o, "size"),
+            Reward = J.Opt(o, "reward") == null ? null : Reward.Parse(J.Opt(o, "reward")),
+        };
+    }
+
+    public sealed class LeagueDivisionInfo
+    {
+        public string Id, Name;
+        internal static LeagueDivisionInfo Parse(JsonNode o) => new LeagueDivisionInfo { Id = J.Str(o, "id"), Name = J.Str(o, "name") };
+    }
+
+    /// <summary>GET /v1/league/me: my team's league this season. TeamId null = not in a team; DivisionId null = not in the league yet.</summary>
+    public sealed class MyLeague
+    {
+        public string TeamId, Season, DivisionId, DivisionName;
+        public List<LeagueDivisionInfo> Divisions = new List<LeagueDivisionInfo>();
+        public LeagueRow Row;
+        public int? Place, CurrentWeek;
+        public List<LeagueRow> Table = new List<LeagueRow>();
+        public List<LeagueMatchup> Matches = new List<LeagueMatchup>();
+        public LeagueFinalPlace Final;
+        public LeagueMatchup ThisWeek => CurrentWeek is int w && w >= 0 && w < Matches.Count ? Matches[w] : null;
+        internal static MyLeague Parse(JsonNode o) => new MyLeague
+        {
+            TeamId = J.Str(o, "teamId"), Season = J.Str(o, "season"), DivisionId = J.Str(o, "divisionId"), DivisionName = J.Str(o, "divisionName"),
+            Divisions = J.List(o, "divisions", LeagueDivisionInfo.Parse), Row = LeagueRow.Parse(J.Opt(o, "row")), Place = J.IntN(o, "place"),
+            CurrentWeek = J.IntN(o, "currentWeek"), Table = J.List(o, "table", LeagueRow.Parse), Matches = J.List(o, "matches", LeagueMatchup.Parse),
+            Final = LeagueFinalPlace.Parse(J.Opt(o, "final")),
+        };
+    }
+
+    public sealed class LeagueBoardMatch
+    {
+        public string A, B;
+        public int AStart, BStart;
+        public int? AScore, BScore;
+        internal static LeagueBoardMatch Parse(JsonNode o) => new LeagueBoardMatch
+        {
+            A = J.Str(o, "a"), B = J.Str(o, "b"), AStart = J.Int(o, "aStart"), BStart = J.Int(o, "bStart"), AScore = J.IntN(o, "aScore"), BScore = J.IntN(o, "bScore"),
+        };
+    }
+
+    public sealed class LeagueBoardWeek
+    {
+        public int Index;
+        public long StartMs, EndMs;
+        public string Status;
+        public List<LeagueBoardMatch> Matches = new List<LeagueBoardMatch>();
+        internal static LeagueBoardWeek Parse(JsonNode o) => new LeagueBoardWeek
+        {
+            Index = J.Int(o, "index"), StartMs = J.Long(o, "startMs"), EndMs = J.Long(o, "endMs"), Status = J.Str(o, "status"), Matches = J.List(o, "matches", LeagueBoardMatch.Parse),
+        };
+    }
+
+    /// <summary>A division's published table and weekly matchups (leaderboard board "league-&lt;divisionId&gt;").</summary>
+    public sealed class LeagueBoard
+    {
+        public string SeasonId, Board, DivisionId, DivisionName;
+        public long? GeneratedAt;
+        public int Total;
+        public int? CurrentWeek;
+        public bool Final;
+        public List<LeagueRow> Entries = new List<LeagueRow>();
+        public List<LeagueBoardWeek> Weeks = new List<LeagueBoardWeek>();
+        internal static LeagueBoard Parse(JsonNode o) => new LeagueBoard
+        {
+            SeasonId = J.Str(o, "seasonId"), Board = J.Str(o, "board"), DivisionId = J.Str(o, "divisionId"), DivisionName = J.Str(o, "divisionName"),
+            GeneratedAt = J.LongN(o, "generatedAt"), Total = J.Int(o, "total"), CurrentWeek = J.IntN(o, "currentWeek"), Final = J.Bool(o, "final"),
+            Entries = J.List(o, "entries", LeagueRow.Parse), Weeks = J.List(o, "weeks", LeagueBoardWeek.Parse),
+        };
+    }
+
     // ------------------------------------------------------------------ event races (REQ-EVENT)
 
     public sealed class EventFee

@@ -407,7 +407,7 @@ namespace Muchi.Engine.Tests
             var cfg = Cfg(8, 0, 12, SampleRaces.WithGoing(SampleRaces.Turf2000(), Going.Good, night: false));
             var lines = Commentary(cfg, processFromTick: 700);
             Assert.DoesNotContain(lines, l => l.Kind == "gate_open" || l.Kind.StartsWith("ground_", StringComparison.Ordinal));
-            Assert.Contains(lines, l => l.Kind == "finish_win");
+            Assert.Contains(lines, l => Commentator.IsWinKind(l.Kind));
             Assert.Contains(lines, l => l.Kind == "result");
         }
 

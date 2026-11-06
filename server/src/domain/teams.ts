@@ -2,6 +2,7 @@ import { AppError } from './errors.js';
 import { defaultEmblem, validateEmblem, type Emblem } from './visuals.js';
 import { grantReward } from './items.js';
 import type { Master, Reward, TeamsConfig } from './master.js';
+import { leagueRewardFor, type LeagueConfig, type LeaguePlace } from './league.js';
 import type { PlayerState } from './player.js';
 import { foldForCompare } from './horses.js';
 import { DAY_MS } from './time.js';
@@ -30,7 +31,11 @@ export interface TeamMember {
 }
 export interface TeamFormer { playerId: string; joinedAt: number; leftAt: number }
 export interface TeamRequest { playerId: string; displayName: string; at: number }
-export interface TeamSeasonClose { rank: number | null; total: number; eligible: string[]; cursor: number; done: boolean }
+export interface TeamSeasonClose {
+  rank: number | null; total: number; eligible: string[]; cursor: number; done: boolean;
+  /** REQ-LEAGUE-004: the team's final league place this season (fixed with the eligible list). */
+  league?: LeaguePlace | null;
+}
 
 export interface TeamState {
   v: 1; id: string; name: string; createdAt: number; joinPolicy: JoinPolicy; announcement: string;
@@ -309,17 +314,21 @@ export function teamRewardFor(cfg: TeamsConfig, rank: number | null, points: num
  */
 export async function closeSeasonStep(
   t: TeamState, cfg: TeamsConfig, seasonId: string, rank: number | null, total: number,
-  pay: (playerId: string) => Promise<void>, batch: number, persist: () => Promise<void>,
+  pay: (playerId: string, close: TeamSeasonClose) => Promise<void>, batch: number, persist: () => Promise<void>,
+  league: { cfg: LeagueConfig; place: LeaguePlace | null } | null = null,
 ): Promise<TeamSeasonClose> {
   let c = t.closes[seasonId];
   if (!c) {
-    c = { rank, total, eligible: teamRewardFor(cfg, rank, total) ? eligibleMembers(t, cfg, seasonId) : [], cursor: 0, done: false };
+    // members are paid when there is a team reward or a league reward (REQ-LEAGUE-004); the same tenure rule applies
+    const place = league?.place ?? null;
+    const any = teamRewardFor(cfg, rank, total) !== null || (league !== null && leagueRewardFor(league.cfg, place) !== null);
+    c = { rank, total, eligible: any ? eligibleMembers(t, cfg, seasonId) : [], cursor: 0, done: false, league: place };
     t.closes[seasonId] = c;
     await persist();
   }
   const end = Math.min(c.eligible.length, c.cursor + batch);
   while (c.cursor < end) {
-    await pay(c.eligible[c.cursor]!);
+    await pay(c.eligible[c.cursor]!, c);
     c.cursor++;
     await persist();
   }
@@ -448,13 +457,23 @@ export function playerLeft(s: PlayerState, cfg: TeamsConfig, teamId: string, now
   return { changed: true, cooldownUntil: p.cooldownUntil };
 }
 
-/** REQ-TEAM-008: pays the team season reward once per season. */
-export function playerTeamReward(s: PlayerState, cfg: TeamsConfig, seasonId: string, teamId: string, rank: number | null, total: number, now: number) {
+/**
+ * REQ-TEAM-008 / REQ-LEAGUE-004: pays the team season reward and the league reward once per season
+ * (both are marked by the same per-season entry, so a retried payout never pays either twice).
+ */
+export function playerTeamReward(
+  s: PlayerState, cfg: TeamsConfig, seasonId: string, teamId: string, rank: number | null, total: number, now: number,
+  league: { cfg: LeagueConfig; place: LeaguePlace | null } | null = null,
+) {
   const p = ensureTeam(s);
-  if (p.rewarded.includes(seasonId)) return { status: 'already' as const, reward: null };
+  if (p.rewarded.includes(seasonId)) return { status: 'already' as const, reward: null, leagueReward: null };
   const reward = teamRewardFor(cfg, rank, total);
+  const leagueReward = league ? leagueRewardFor(league.cfg, league.place) : null;
   p.rewarded.push(seasonId);
   if (p.rewarded.length > 24) p.rewarded.splice(0, p.rewarded.length - 24);
   if (reward) grantReward(s, reward, now, `team ${teamId} season ${seasonId} rank ${rank ?? '-'}`, `team:${seasonId}`);
-  return { status: 'rewarded' as const, reward };
+  if (leagueReward && league?.place) {
+    grantReward(s, leagueReward, now, `league ${seasonId} ${league.place.divisionId} place ${league.place.place} team ${teamId}`, `league:${seasonId}`);
+  }
+  return { status: 'rewarded' as const, reward, leagueReward };
 }

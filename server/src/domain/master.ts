@@ -31,6 +31,7 @@ export interface HorseTemplate {
   goingAptitude?: GoingAptitude;
 }
 export interface ItemQty { itemId: string; qty: number }
+import type { LeagueConfig } from './league.js';
 export interface Reward { freeCoins?: number; items?: ItemQty[] }
 export interface Product {
   id: string; kind: 'coins' | 'starter' | 'season_pass'; priceYen: number; paidCoins: number;
@@ -84,6 +85,8 @@ export interface Progression {
   bond: BondConfig;
   /** REQ-ROOM-*: private-room condition choices. */
   rooms: RoomsConfig;
+  /** REQ-LEAGUE-*: 支部対抗シーズン (team-vs-team monthly league). */
+  league: LeagueConfig;
 }
 export interface WeatherOverride { trackId?: string; fromMs: number; toMs: number; going: Going; night?: boolean }
 export interface WeatherConfig {
@@ -91,6 +94,8 @@ export interface WeatherConfig {
   /** Relative weights per going name. */
   turf: Partial<Record<'firm' | 'good' | 'yielding' | 'soft', number>>;
   dirt: Partial<Record<'fast' | 'good' | 'muddy' | 'sloppy', number>>;
+  /** REQ-TRACK-003: per-course climate (weights for that course's surface only); courses not listed use turf / dirt. */
+  byTrack?: Record<string, Partial<Record<Going, number>> | string>;
   /** Races at lit venues between these JST hours (from inclusive, to exclusive; may wrap midnight) run at night. */
   nightFromHourJst: number; nightToHourJst: number;
   /** Modes that get weather; others (tutorial, time attack) race on good ground by day with no fields sent. */

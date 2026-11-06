@@ -461,6 +461,14 @@ namespace Muchi.Client
         public Task<TeamBoard> GetTeamLeaderboardAsync(string seasonId = "current", CancellationToken ct = default)
             => Call("GET", "/v1/teams/leaderboard/" + Seg(seasonId), null, false, null, true, TeamBoard.Parse, ct);
 
+        /// <summary>REQ-LEAGUE-005: my team's league this season (division table, weekly matchups, final place and reward).</summary>
+        public Task<MyLeague> GetMyLeagueAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/league/me", null, true, null, true, MyLeague.Parse, ct);
+
+        /// <summary>A division's table and matchups ("current" season). Public snapshot (the "league-&lt;divisionId&gt;" leaderboard), no auth.</summary>
+        public Task<LeagueBoard> GetLeagueBoardAsync(string divisionId, string seasonId = "current", CancellationToken ct = default)
+            => Call("GET", "/v1/leaderboards/" + Seg(seasonId) + "/league-" + Seg(divisionId), null, false, null, true, LeagueBoard.Parse, ct);
+
         public Task<TeamInfo> GetTeamAsync(string teamId, CancellationToken ct = default)
             => Call("GET", "/v1/teams/" + Seg(teamId), null, true, null, true, TeamInfo.Parse, ct);
 

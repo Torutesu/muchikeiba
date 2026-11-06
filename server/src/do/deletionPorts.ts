@@ -83,6 +83,6 @@ export function deletionPortsFromEnv(env: Env, ctx: DurableObjectState, svc: Pla
       const acc = env.ACCOUNTING.get(env.ACCOUNTING.idFromName('global')) as unknown as { retainDeleted(p: string, r: RetainedRecord): Promise<unknown> };
       await acc.retainDeleted(uid, record);
     },
-    wipe: async () => { await wipePlayerStorage(ctx.storage); },
+    wipe: async (uid) => { await wipePlayerStorage(ctx.storage, uid); },
   };
 }

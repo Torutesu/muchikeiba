@@ -518,6 +518,7 @@ FeedPage = { "teamId": "tabc123456", "latestSeq": 130, "nextBefore": 111 | null,
 ### 18.1 関連する小さな修正（ラウンド10）
 - **`GET /v1/shop/products?mine=1`**（要認証、§13.1）：同じ一覧に、そのプレイヤーの所持を加える。各商品に `owned`（今は買えない：1回限りの商品を購入済み／今シーズンのパス（パス・パス＋のどちらか）を購入済み／厩舎手当の受け取り中か予約中。`purchase-intent` が `ALREADY_PURCHASED` を返す条件と全く同じ）、`ownedReason`（`"once"` | `"season_pass"` | `"allowance"` | null）、`purchasedThisSeason`（シーズンパスだけ：その商品を今シーズン買ったか。他は null）。最上位に `"personalized": true, "seasonId": "2026-11"`。`mine` なしは従来どおり（`"personalized": false`、所持の項目は無い）。C# `ApiClient.GetMyProductsAsync`、`ShopModel` はこちらを使い、買ったパスのカードを「購入済み」にする。
 - **削除の処理中のレース結果**（§8.7）：アカウント削除の処理が始まった（`deleting`）プレイヤーへのレース結果は、何も変えずに成功で返す（`{ "skipped": "deletion_pending" }`）。部屋はそのプレイヤーを済みとして他の人を通常どおり精算し、再試行もデッドレターもしない。
+- **削除が済んだ後のレース結果**（ラウンド10の統合で追加）：削除の最後の段（`wipe`）はプレイヤーのストレージを消した後に墓標（`deleted` 表：プレイヤーIDと時刻だけ）を残す。状態が無く墓標があるプレイヤーへのレース結果は、プレイヤーを作り直さずに成功で返す（`{ "skipped": "deleted" }`）。状態がまだ無いだけの新しいプレイヤー（墓標なし）は従来どおり反映する。
 
 ## 19. 友達招待（招待コード、REQ-INV-001〜012、`server/src/domain/invite.ts`、C# `Invite.cs`・`InviteModel`）
 

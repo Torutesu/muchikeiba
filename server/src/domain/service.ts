@@ -68,6 +68,8 @@ export interface PlayerRepo {
   put(state: PlayerState): void | Promise<void>;
   /** REQ-UXS-040: removes the player's state (memory repos; the Durable Object deletes its whole storage). */
   delete?(id: string): void | Promise<void>;
+  /** r10: the account deletion wiped this id (a tombstone was kept). Absent = no tombstones (treated as never deleted). */
+  tombstoned?(id: string): boolean | Promise<boolean>;
 }
 
 /** REQ-UXS-040: purchases, offers and the daily pack are disabled while the account is scheduled for deletion. */
@@ -83,6 +85,8 @@ function countBreeding(s: PlayerState) {
 
 export class MemoryPlayerRepo implements PlayerRepo {
   readonly data = new Map<string, string>();
+  /** r10: ids whose account deletion wiped the state (delete() keeps a tombstone, like the Durable Object). */
+  readonly tombstones = new Set<string>();
   get(id: string) {
     const j = this.data.get(id);
     return j ? (JSON.parse(j) as PlayerState) : null;
@@ -90,7 +94,8 @@ export class MemoryPlayerRepo implements PlayerRepo {
   put(s: PlayerState) {
     this.data.set(s.id, JSON.stringify(s));
   }
-  delete(id: string) { this.data.delete(id); }
+  delete(id: string) { this.data.delete(id); this.tombstones.add(id); }
+  tombstoned(id: string) { return this.tombstones.has(id); }
 }
 
 export interface PlayerServiceDeps {
@@ -595,6 +600,9 @@ export class PlayerService {
     // team or wallet again — but the call resolves, so the room ACKs it (no retry, no dead letter) and settles the others
     const cur = await this.repo.get(id);
     if (cur?.deletion?.status === 'deleting') return { skipped: 'deletion_pending' as const, raceId: r.raceId, event: null };
+    // r10: the account was already wiped (no state, but a deletion tombstone): a result settled after the wipe must not
+    // create a fresh player under the deleted id. ACK it as a no-op. A player that merely has no state yet still applies.
+    if (!cur && (await this.repo.tombstoned?.(id))) return { skipped: 'deleted' as const, raceId: r.raceId, event: null };
     let feed: { teamId: string; playerId: string; displayName: string; race: FeedRace } | null = null;
     const out = await this.tx(id, `race:${r.raceId}`, (s, now, emit) => {
       // QA r6 #3: durable per-race guard, independent of the evictable idempotency ring

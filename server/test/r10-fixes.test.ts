@@ -121,6 +121,47 @@ describe('r10 fix: race results for a player whose account deletion is running a
     expect((w.repo.get('sched') as PlayerState).appliedRaces?.r2).toBeDefined();
   });
 
+  it('after the wipe a late race result is an ACKed no-op: it never recreates the deleted player (tombstone)', async () => {
+    const w = world();
+    await deleting(w, 'wiped');
+    await w.svc.wipe('wiped'); // the deletion run's last step
+    expect(w.repo.get('wiped')).toBeNull();
+    expect(w.repo.tombstoned('wiped')).toBe(true);
+    const race = { raceId: 'late1', mode: 'ranked' as const, place: 1, fieldSize: 12, newRating: null, void: false, humans: 2 };
+    expect(await w.svc.applyRace('wiped', race)).toMatchObject({ skipped: 'deleted', raceId: 'late1' });
+    expect(w.repo.get('wiped')).toBeNull();
+    // the room retries: still a no-op ACK, still no state
+    expect(await w.svc.applyRace('wiped', race)).toMatchObject({ skipped: 'deleted' });
+    expect(w.repo.get('wiped')).toBeNull();
+    // a player that simply has no state yet (no tombstone) still gets the race applied, as before
+    const r = await w.svc.applyRace('fresh', { ...race, raceId: 'f1' });
+    expect(r).not.toHaveProperty('skipped');
+    expect((w.repo.get('fresh') as PlayerState).appliedRaces?.f1).toBeDefined();
+  });
+
+  it('the Durable Object storage wipe leaves only a tombstone row behind (SqlPlayerRepo)', async () => {
+    const { DatabaseSync } = await import('node:sqlite');
+    const { SqlPlayerRepo, wipePlayerStorage } = await import('../src/do/sqlRepo.js');
+    const db = new DatabaseSync(':memory:');
+    const sql = {
+      exec: (q: string, ...args: unknown[]) => {
+        const st = db.prepare(q);
+        const rows = /^\s*select/i.test(q) ? (st.all(...(args as never[])) as unknown[]) : (st.run(...(args as never[])), []);
+        return { toArray: () => rows };
+      },
+    } as unknown as SqlStorage;
+    const storage = { sql, deleteAll: async () => { for (const t of ['state', 'ledger', 'deleted']) db.exec(`DROP TABLE IF EXISTS ${t}`); } } as unknown as DurableObjectStorage;
+    const repo = new SqlPlayerRepo(sql);
+    const w = world();
+    await w.svc.bootstrap('dob');
+    repo.put(w.repo.get('dob') as PlayerState);
+    expect(repo.tombstoned('dob')).toBe(false);
+    await wipePlayerStorage(storage, 'dob');
+    expect(repo.get('dob')).toBeNull();
+    expect(repo.tombstoned('dob')).toBe(true);
+    expect(repo.tombstoned('other')).toBe(false);
+  });
+
   it('the room settles everyone else normally and neither retries nor dead-letters the deleting player', async () => {
     const w = world();
     const H = (ch: string) => ch.repeat(64);

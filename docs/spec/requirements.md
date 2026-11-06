@@ -520,6 +520,7 @@
 - REQ-TEAMFEED-009 KPI（サーバーが書く）：`stamp_post`（スタンプID、`post`/`reaction`、支部ID）、`team_feed_view`（フィードの1ページ目を開いた）。
 - REQ-TEAMFEED-010 ショップの所持（ラウンド10の修正）：`GET /v1/shop/products?mine=1`（要認証）は各商品に `owned` / `ownedReason` / `purchasedThisSeason` を付ける（`purchase-intent` の `ALREADY_PURCHASED` と同じ条件）。今シーズンのパスを買った後、パスのカードは購入できる表示にならない（Unity `ShopModel`・プロトタイプ）。
 - REQ-TEAMFEED-011 削除の処理中のレース結果（ラウンド10の修正）：アカウント削除の処理が始まった（`deleting`）プレイヤーへのレース結果は、状態を変えずに成功で返す。部屋は他のプレイヤーを通常どおり精算し、そのプレイヤーを再試行もデッドレターにもしない。
+- REQ-TEAMFEED-012 削除が済んだ後のレース結果（ラウンド10の統合で追加）：`wipe` の後に残る墓標（`deleted` 表・`MemoryPlayerRepo.tombstones`）があり状態が無いプレイヤーへの `applyRace` は、状態を作らずに成功で返す（`skipped: "deleted"`）。test/r10-fixes.test.ts。
 
 ## 19. 友達招待（TS＋C#、`src/domain/invite.ts`、`contracts/protocol.md` §19、docs/planning/03-legal-risk.md「友達招待」）
 - REQ-INV-001 招待コード（P1）：プレイヤーごとに1つ、変わらない8文字のコード（母音・見間違う文字なしの27文字、1文字目＝ディレクトリのシャード、最後＝検査文字、禁止の並びは作らない）。DirectoryDO で一意（重複は作り直す）。`GET /v1/invite` で表示用の `XXXX-XXXX`・共有リンクと一緒に返す。

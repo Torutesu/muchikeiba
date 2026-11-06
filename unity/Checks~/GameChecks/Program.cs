@@ -66,6 +66,8 @@ static class Program
         await Round8Checks.DayRollover(Check, Ruleset());
         Console.WriteLine("== round 9: replay share, account-link prompt, friend ghosts (06 §7 / §7.3)");
         await Round9Checks.Run(Check, Ruleset());
+        Console.WriteLine("== round 10: 支部 cheer stamps (TeamFeedModel) and the bought pass in the shop");
+        await Round10Checks.Run(Check, Ruleset());
         Console.WriteLine("== asset delivery: boot/FTUE download screen (sizes, Wi-Fi warning, never blocks the tutorial, offline)");
         await AssetDeliveryChecks.Run(Check);
         if (args.Length >= 2 && args[0] == "online")

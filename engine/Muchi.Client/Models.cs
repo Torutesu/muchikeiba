@@ -323,8 +323,20 @@ namespace Muchi.Client
         public int PassLevels;
         /// <summary>厩舎手当: days and daily free coins; null for other products.</summary>
         public AllowanceTerms Allowance;
+        /// <summary>
+        /// Per player (only from <see cref="ApiClient.GetMyProductsAsync"/>): the player cannot buy it now — a once-only pack
+        /// already bought, this season's pass (Pass or Pass+) already bought, or a daily pack running. Null = not known
+        /// (anonymous list or an older server).
+        /// </summary>
+        public bool? Owned;
+        /// <summary>"once" | "season_pass" | "allowance" | null.</summary>
+        public string OwnedReason;
+        /// <summary>Season passes, per player: this exact product was bought for the current season. Null for other products / anonymous.</summary>
+        public bool? PurchasedThisSeason;
         internal static Product Parse(JsonNode o) => new Product
         {
+            Owned = J.Opt(o, "owned") is JsonNode ow ? ow.AsBool() : (bool?)null, OwnedReason = J.Str(o, "ownedReason"),
+            PurchasedThisSeason = J.Opt(o, "purchasedThisSeason") is JsonNode pt ? pt.AsBool() : (bool?)null,
             Id = J.Str(o, "id"), Kind = J.Str(o, "kind"), PriceYen = J.Int(o, "priceYen"), PaidCoins = J.Int(o, "paidCoins"),
             Once = J.Bool(o, "once"), DurationDays = J.IntN(o, "durationDays"), Items = J.List(o, "items", ItemQty.Parse),
             Name = J.Str(o, "name"), Tab = J.Str(o, "tab"), StoreType = J.Str(o, "storeType"), ClassId = J.Str(o, "classId"), AutoRenew = J.Bool(o, "autoRenew"),
@@ -344,8 +356,12 @@ namespace Muchi.Client
         public Dictionary<string, string> Notices = new Dictionary<string, string>();
         /// <summary>特商法 / 資金決済法 / 有償コインの使用順 links (key + title).</summary>
         public List<LegalLink> LegalLinks = new List<LegalLink>();
+        /// <summary>The list carries this player's ownership (<see cref="Product.Owned"/>); SeasonId = the season it was computed for.</summary>
+        public bool Personalized;
+        public string SeasonId;
         internal static ProductList Parse(JsonNode o) => new ProductList
         {
+            Personalized = J.Bool(o, "personalized"), SeasonId = J.Str(o, "seasonId"),
             Products = J.List(o, "products", Product.Parse), Notice = J.Str(o, "notice"),
             Notices = J.Map(o, "notices", v => v.AsString()), LegalLinks = J.List(o, "legalLinks", LegalLink.Parse),
         };

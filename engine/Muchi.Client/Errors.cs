@@ -40,6 +40,8 @@ namespace Muchi.Client
         DeletionPending,
         /// <summary>409: the deletion run has already started and cannot be cancelled any more (REQ-UXS-040).</summary>
         DeletionInProgress,
+        /// <summary>409: this team-feed stamp is not unlocked yet; show Stamp.UnlockText (REQ-TEAMFEED-002).</summary>
+        StampLocked,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -109,6 +111,7 @@ namespace Muchi.Client
             ["DELETION_CONFIRM_INVALID"] = ApiErrorCode.DeletionConfirmInvalid,
             ["DELETION_PENDING"] = ApiErrorCode.DeletionPending,
             ["DELETION_IN_PROGRESS"] = ApiErrorCode.DeletionInProgress,
+            ["STAMP_LOCKED"] = ApiErrorCode.StampLocked,
             ["VERIFIER_UNAVAILABLE"] = ApiErrorCode.VerifierUnavailable,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };

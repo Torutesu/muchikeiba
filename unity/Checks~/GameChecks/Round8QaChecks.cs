@@ -153,7 +153,7 @@ static partial class Round8Checks
     {
         var player = Shopper();
         var (s, b, kv) = Setup(player, rs);
-        s.Routes["GET /v1/shop/products"] = _ => Ok(Products.Replace("{\"products\":[", "{\"products\":[" + StarterProduct + ","));
+        s.Routes["GET /v1/shop/products?mine=1"] = _ => Ok(Products.Replace("{\"products\":[", "{\"products\":[" + StarterProduct + ","));
         s.Routes["GET /v1/shop/offers"] = _ => Ok(Offers);
         var shop = new ShopModel(b, null, () => now);
         await shop.LoadAsync();

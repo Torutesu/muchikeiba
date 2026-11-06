@@ -56,6 +56,8 @@
 | `stable_save` | サーバー（マイ厩舎の保存、REQ-STABLE-010） | テーマID | | | `double5` 飾りの数、`double9` 選んだ馬の数 |
 | `stable_visit` | サーバー（他人の厩舎を見た。書き込みなし） | `friend`/`other` | | | |
 | `stable_like` | サーバー（いいね。コインは付かない） | `friend`/`other` | | | `double9` 今日の残り回数 |
+| `stamp_post` | サーバー（支部フィードにスタンプを投稿・応援した、REQ-TEAMFEED-009） | スタンプID | `post`/`reaction` | 支部ID | |
+| `team_feed_view` | サーバー（支部フィードの1ページ目を開いた） | 支部ID | | | `double5` ミュートしている人数 |
 | `session_start` / `session_end` | クライアント | | | | `double6` セッションの長さ |
 | `tutorial_step` | クライアント | ステップ名（固定の8つ：`consent` 1, `race1_start` 2, `race1_whip` 3, `race1_win` 4, `named` 5, `gacha_done` 6, `race2_done` 7, `home` 8） | | | `double9` ステップ番号、`double5` 任意の数値（`race1_win` はやり直し回数）。REQ-UXS-030 |
 | `feature_unlock` | クライアント | 機能キー（`unlocks` のキー） | | | |

@@ -61,6 +61,7 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | GET | `/v1/player` | 要 | | 財布・所持馬・アイテム・天井・パス・レート |
 | PUT | `/v1/player/age` | 要 | | `{birthYear, birthMonth, guardianConsent}` → 年齢帯と月額上限 |
 | GET | `/v1/shop/products` | なし | | 商品一覧と表示データ（中身・数量・初回の無償上乗せ・1回限り・期間・説明キー。`contracts/protocol.md` §13.1） |
+| GET | `/v1/shop/products?mine=1` | 要 | | 同じ一覧＋そのプレイヤーの所持（`owned`・`ownedReason`・`purchasedThisSeason`。今シーズンのパス購入済みなど、§18.1） |
 | GET | `/v1/shop/offers` | 要 | | オファーの状態（スターター・パス・昇級記念・手当、初回購入ボーナスの残り。§13.3） |
 | POST | `/v1/shop/offers/:offerId/view` | 要 | | 1回だけの案内を表示した記録（§13.4） |
 | GET | `/v1/shop/allowance` | 要 | | 厩舎手当（30日）の状態（§13.5） |
@@ -143,6 +144,12 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | POST | `/v1/teams/me/transfer` | 要 | | `{playerId}` リーダー譲渡（元リーダーは幹部に） |
 | POST | `/v1/teams/me/requests/:playerId/approve` | 要 | | 加入申請の承認（リーダー/幹部）。申請者が他所に入っていれば申請は消える |
 | POST | `/v1/teams/me/requests/:playerId/decline` | 要 | | 加入申請の却下 |
+| GET | `/v1/stamps` | 要 | | 応援スタンプの一覧と解放状況（REQ-TEAMFEED-001/002、`contracts/protocol.md` §18） |
+| GET | `/v1/teams/me/feed` | 要 | | 支部フィード（最新100件のリングバッファ、新しい順、`?before=&limit=`）。ミュートした人は除く |
+| POST | `/v1/teams/me/feed/stamps` | 要 | | `{stampId}` スタンプを投稿（10秒に1回・1日50回、未解放は `STAMP_LOCKED`、削除予定中は `DELETION_PENDING`） |
+| PUT | `/v1/teams/me/feed/:seq/reaction` | 要 | | `{stampId\|null}` 項目への応援（1人1つ、null で取り消し） |
+| POST | `/v1/teams/me/feed/:seq/report` | 要 | | `{reason: spam\|harassment\|other}` 報告（自分の画面から消え、投稿者にサポート用フラグ） |
+| GET / PUT | `/v1/teams/me/feed/mutes` | 要 | | ミュート（ブロック）の一覧 / `{playerId, muted}` |
 | GET | `/v1/league/me` | 要 | | 支部対抗シーズン（REQ-LEAGUE-*）：自分の支部の部・順位表・週ごとの対戦（相手・得点＝その週のシーズンポイントの伸び・勝敗）・シーズン後の最終順位と報酬と次の部。支部に入っていなければ `teamId: null` と部の一覧 |
 | GET | `/v1/teams/search` | 要 | | `?q=` 支部名の部分一致（または支部ID）。空なら今シーズン活発な支部 |
 | GET | `/v1/teams/leaderboard/:seasonId` | なし | | 支部ランキングのスナップショット（R2、`current` 可） |

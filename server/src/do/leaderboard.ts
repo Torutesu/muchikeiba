@@ -53,11 +53,17 @@ export class LeaderboardDO extends DurableObject<Env> {
     // teams (REQ-TEAM-009): one summary per team for this season, pushed by the TeamDOs
     this.sql.exec(`CREATE TABLE IF NOT EXISTS team_entries (team_id TEXT PRIMARY KEY, name TEXT NOT NULL, join_policy TEXT NOT NULL, members INTEGER NOT NULL, points INTEGER NOT NULL, updated_at INTEGER NOT NULL)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS team_ranks (team_id TEXT PRIMARY KEY, rank INTEGER NOT NULL, total INTEGER NOT NULL, points INTEGER NOT NULL)`);
+    // REQ-LEAGUE-003: per-stint contributions (JSON) for the league's window scores; added after the table shipped
+    const cols = this.sql.exec<{ name: string }>('PRAGMA table_info(team_entries)').toArray().map((c) => c.name);
+    if (!cols.includes('stints')) this.sql.exec('ALTER TABLE team_entries ADD COLUMN stints TEXT');
   }
 
   private teamSummaries(seasonId: string): TeamSummary[] {
-    return this.sql.exec<{ team_id: string; name: string; join_policy: string; members: number; points: number; updated_at: number }>('SELECT * FROM team_entries').toArray()
-      .map((r) => ({ teamId: r.team_id, name: r.name, joinPolicy: r.join_policy as TeamSummary['joinPolicy'], members: r.members, points: r.points, season: seasonId, updatedAt: r.updated_at }));
+    return this.sql.exec<{ team_id: string; name: string; join_policy: string; members: number; points: number; updated_at: number; stints: string | null }>('SELECT * FROM team_entries').toArray()
+      .map((r) => ({
+        teamId: r.team_id, name: r.name, joinPolicy: r.join_policy as TeamSummary['joinPolicy'], members: r.members, points: r.points, season: seasonId, updatedAt: r.updated_at,
+        ...(r.stints ? { stints: JSON.parse(r.stints) as Record<string, number> } : {}),
+      }));
   }
 
   /** REQ-TEAM-009: latest summary of a team for this season (frozen once the season's rollover started). */
@@ -66,10 +72,10 @@ export class LeaderboardDO extends DurableObject<Env> {
       const st = this.kvGet<RolloverState>('teamRollover');
       if (st && st.status !== 'open') return false;
       this.sql.exec(
-        `INSERT INTO team_entries (team_id, name, join_policy, members, points, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+        `INSERT INTO team_entries (team_id, name, join_policy, members, points, updated_at, stints) VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(team_id) DO UPDATE SET name = excluded.name, join_policy = excluded.join_policy, members = excluded.members, points = excluded.points,
-           updated_at = excluded.updated_at WHERE excluded.updated_at >= team_entries.updated_at`,
-        s.teamId, s.name, s.joinPolicy, s.members, s.points, s.updatedAt,
+           updated_at = excluded.updated_at, stints = excluded.stints WHERE excluded.updated_at >= team_entries.updated_at`,
+        s.teamId, s.name, s.joinPolicy, s.members, s.points, s.updatedAt, s.stints ? JSON.stringify(s.stints) : null,
       );
       this.markDirty();
       return true;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  advanceCount, cancelTournament, computeStandings, heatResults, newTournament, planHeats, playerView, publicView, register, stepTournament,
+  advanceCount, cancelTournament, computeStandings, heatResults, newTournament, planHeats, playerView, playerViewWithTicket, publicView, register, stepTournament,
   tournamentDeadLetters, tournamentDefSchema, retryPayout, unregister, HEAT_CREATE_LEAD_MS, PAYOUT_MAX_ATTEMPTS,
   type HeatOutcome, type Registrant, type TournamentDefInput, type TournamentPorts, type TournamentState,
 } from '../src/domain/tournaments.js';
@@ -36,11 +36,13 @@ class FakeHeats implements TournamentPorts<{ playerId: string }> {
   pushes: { pid: string; templateId: string; vars: Record<string, string> }[] = [];
   awards: { pid: string; rank: number; reward: unknown }[] = [];
   failAward = new Set<string>();
+  specs: Parameters<TournamentPorts<unknown>['createHeat']>[0][] = [];
   async refreshEntry() { return null; }
   async createHeat(spec: Parameters<TournamentPorts<unknown>['createHeat']>[0]) {
     const raceId = `r_${++this.n}`;
-    this.created.push({ raceId, players: spec.heat.playerIds, startAtMs: spec.heat.startAtMs, cpuCount: spec.cpuCount, statCap: spec.statCap });
-    return { raceId, assignments: Object.fromEntries(spec.heat.playerIds.map((p, i) => [p, { raceId, slot: i, ticket: `t_${raceId}_${p}`, startAtMs: spec.heat.startAtMs, wsPath: `/v1/race/${raceId}/ws` }])) };
+    this.specs.push(spec);
+    this.created.push({ raceId, players: spec.playerIds, startAtMs: spec.startAtMs, cpuCount: spec.cpuCount, statCap: spec.statCap });
+    return { raceId, startAtMs: spec.startAtMs, slots: Object.fromEntries(spec.playerIds.map((p, i) => [p, i])) };
   }
   async heatResult(raceId: string) { return this.outcomes.get(raceId) ?? { phase: 'running', final: null, slots: [], noShows: [] }; }
   async notify(pid: string, templateId: string, vars: Record<string, string>) { this.pushes.push({ pid, templateId, vars }); }
@@ -131,7 +133,9 @@ describe('tournament run (REQ-TOUR-005..008)', () => {
     expect(r.wakeAt).toBe(START - HEAT_CREATE_LEAD_MS);
     await run(t, START - HEAT_CREATE_LEAD_MS, f);
     expect(f.created.map((c) => [c.players, c.cpuCount, c.statCap])).toEqual([[['a', 'd'], 2, 2800], [['b', 'c'], 2, 2800]]);
-    expect(playerView(t, 'a', START).heat).toMatchObject({ round: 0, raceId: 'r_1', assignment: { ticket: 't_r_1_a', slot: 0 } });
+    expect(playerView(t, 'a', START).heat).toMatchObject({ round: 0, raceId: 'r_1', assignment: { slot: 0, wsPath: '/v1/race/r_1/ws' } });
+    expect((await playerViewWithTicket(t, 'a', START, async (seat, p) => `t_${seat.raceId}_${p}`)).heat).toMatchObject({ assignment: { ticket: 't_r_1_a', slot: 0 } });
+    expect(JSON.stringify(t)).not.toContain('t_r_1_a'); // tickets are never stored
     const pub = JSON.stringify(publicView(t, START));
     expect(pub).not.toContain('t_r_1_a'); // tickets never in the public view
     // heat 1: d beats a; heat 2: c wins but b... b wins, c never connected

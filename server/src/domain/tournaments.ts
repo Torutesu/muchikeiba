@@ -25,6 +25,29 @@ export const PAYOUT_RETRY_MS = 30_000;
 /** Finished tournaments stay listed this long. */
 export const TOURNAMENT_LIST_KEEP_MS = 14 * 86_400_000;
 
+/**
+ * REQ-TOUR-011 (QA r7 #4): size limits. The field is capped, and so is the total of heat seats over all rounds
+ * with a full field (advancing 11 of 12 would take ~50 rounds and ~12 seats per entrant). Together they keep
+ * the worst-case state (bracket + standings + payouts, without the registration rows) under 1 MB
+ * (test/tournaments.test.ts measures it).
+ */
+export const MAX_ENTRANTS = 1024;
+export const MAX_BRACKET_SEATS_PER_ENTRANT = 3;
+
+/** Heat seats over all rounds when every entrant shows up and the quota advances in every heat. */
+export function bracketSeats(entrants: number, heatSize: number, advance: (heatPlayers: number) => number): number {
+  let n = entrants, seats = 0;
+  for (let guard = 0; n >= 2 && guard < 10_000; guard++) {
+    const k = Math.ceil(n / heatSize);
+    seats += n;
+    if (k === 1) break; // the final
+    // snake seeding spreads n players over k heats as evenly as possible
+    const base = Math.floor(n / k), extra = n % k;
+    n = extra * advance(base + 1) + (k - extra) * advance(base);
+  }
+  return seats;
+}
+
 const rewardSchema = z.object({
   freeCoins: z.number().int().min(0).max(100_000).optional(),
   items: z.array(z.object({ itemId: z.string().min(1).max(64), qty: z.number().int().min(1).max(1000) })).max(8).optional(),
@@ -43,8 +66,9 @@ export const tournamentDefSchema = z.object({
   /** Runners per heat, CPU fill included. */
   fieldSize: z.number().int().min(2).max(12),
   advancePerHeat: z.number().int().min(1).max(11),
-  maxEntrants: z.number().int().min(2).max(4096),
-  minEntrants: z.number().int().min(2).max(4096).default(2),
+  /** REQ-TOUR-011: bounded so the whole bracket state stays well under 1 MB (see MAX_BRACKET_SEATS_PER_ENTRANT). */
+  maxEntrants: z.number().int().min(2).max(MAX_ENTRANTS),
+  minEntrants: z.number().int().min(2).max(MAX_ENTRANTS).default(2),
   entry: z.object({
     classIds: z.array(z.string().min(1)).nullable().default(null),
     minRankedRaces: z.number().int().min(0).max(10_000).default(0),
@@ -66,6 +90,10 @@ export const tournamentDefSchema = z.object({
   if (d.fieldSize < d.heatSize) issue('fieldSize must be >= heatSize');
   if (d.advancePerHeat >= d.heatSize) issue('advancePerHeat must be < heatSize');
   if (d.minEntrants > d.maxEntrants) issue('minEntrants must be <= maxEntrants');
+  else if (d.advancePerHeat < d.heatSize) {
+    const seats = bracketSeats(d.maxEntrants, d.heatSize, (n) => advanceCount(d as TournamentDef, n));
+    if (seats > MAX_BRACKET_SEATS_PER_ENTRANT * d.maxEntrants) issue(`a full field would race ${seats} heat seats over all rounds (at most ${MAX_BRACKET_SEATS_PER_ENTRANT} × maxEntrants): advance fewer per heat`);
+  }
 });
 export type TournamentDef = z.infer<typeof tournamentDefSchema>;
 export type TournamentDefInput = z.input<typeof tournamentDefSchema>;
@@ -90,15 +118,27 @@ export interface Heat {
   id: string; round: number; index: number; playerIds: string[];
   raceId: string | null; startAtMs: number; trackId: string;
   status: 'planned' | 'created' | 'finished' | 'void';
+  /** Room creations started; the room of attempt n is always `heatRaceId(tid, heat.id, n)`. */
   createAttempts: number;
+  /**
+   * True (and persisted) while a room creation is in flight. After a restart the same attempt — so the same
+   * raceId, and the already-created room if there is one — is resumed instead of creating a second room.
+   */
+  creating?: boolean;
+  /** REQ-TOUR-003: players who lost eligibility before the heat (BAN/quarantine, horse retired or gone) — no-shows. */
+  excluded?: string[];
+  /** Room slot per player. Tickets are minted on demand for that player only (never stored: state size). */
+  slots?: Record<string, number>;
   results: HeatPlayerResult[] | null;
-  /** Race tickets per player (only ever shown to that player; never in the public view). */
-  assignments?: Record<string, HeatAssignment>;
 }
-export interface HeatAssignment { raceId: string; slot: number; ticket: string; startAtMs: number; wsPath: string }
+/** A player's seat in a heat; the ticket is added by the caller that can sign it (playerViewWithTicket). */
+export interface HeatSeat { raceId: string; slot: number; startAtMs: number; wsPath: string }
+export interface HeatAssignment extends HeatSeat { ticket: string }
 export interface Round { index: number; final: boolean; startAtMs: number; notified: boolean; heats: Heat[]; done: boolean }
-export interface Standing { playerId: string; displayName: string; rank: number; reachedRound: number; final: boolean; place: number | null; noShow: boolean }
-export interface Payout { playerId: string; rank: number; reward: Reward | null; done: boolean; attempts: number; error: string | null; retryAt: number; dead: boolean; dismissed?: { by: string; note: string; at: number } }
+/** Stored per player; the views add the display name from the registration (kept out of storage: size). */
+export interface Standing { playerId: string; rank: number; reachedRound: number; final: boolean; place: number | null; noShow: boolean }
+/** The prize itself is prizeFor(def, rank) (the definition never changes), so it is not stored per player. */
+export interface Payout { playerId: string; rank: number; done: boolean; attempts: number; error: string | null; retryAt: number; dead: boolean; dismissed?: { by: string; note: string; at: number } }
 
 export interface TournamentState<E = unknown> {
   def: TournamentDef;
@@ -209,6 +249,7 @@ export interface HeatOutcome {
  */
 export function heatResults(t: TournamentState<unknown>, heat: Heat, o: HeatOutcome | null): HeatPlayerResult[] {
   const noShow = new Set(o ? o.slots.filter((s) => o.noShows.includes(s.slot)).map((s) => s.playerId) : []);
+  for (const p of heat.excluded ?? []) noShow.add(p);
   const quota = advanceCount(t.def, heat.playerIds.length);
   const confirmed = o?.final?.status === 'confirmed';
   let ordered: { playerId: string; place: number | null }[];
@@ -250,7 +291,7 @@ export function computeStandings(t: TournamentState<unknown>): Standing[] {
         // (round reached desc, no-show last, place in heat) and share ranks on equal keys
         const final = r.final || (res.advanced && last);
         rows.push({
-          playerId: res.playerId, displayName: t.registrants[res.playerId]?.displayName ?? '', rank: 0, reachedRound: ri, final, place: res.place, noShow: res.noShow,
+          playerId: res.playerId, rank: 0, reachedRound: ri, final, place: res.place, noShow: res.noShow,
           key: [-(ri * 2 + (final ? 1 : 0)), res.noShow ? 1 : 0, final ? (res.place ?? 99) * 100 + (h.results?.findIndex((x) => x.playerId === res.playerId) ?? 0) : res.place ?? 99],
         });
       }
@@ -278,32 +319,81 @@ export function prizeFor(d: TournamentDef, rank: number): Reward | null {
 
 // --------------------------------------------------------------------------------------------- the driver
 
-export interface HeatSpec { tournamentId: string; tournamentName: string; heat: Heat; final: boolean; entries: unknown[]; cpuCount: number; cpuLevel: number; statCap: number | null }
+export interface HeatSpec {
+  tournamentId: string; tournamentName: string; heat: Heat; final: boolean;
+  /** Deterministic per heat and attempt (heatRaceId): a resumed creation reaches the same room. */
+  raceId: string;
+  /** Requested start (the room may move it a little later; the returned startAtMs is the real one). */
+  startAtMs: number;
+  /** The humans racing (heat players minus the excluded) and their entries, in the same order. */
+  playerIds: string[]; entries: unknown[];
+  cpuCount: number; cpuLevel: number; statCap: number | null;
+}
+
+/** REQ-TOUR-005: the race id of a heat's room for one creation attempt. */
+export const heatRaceId = (tournamentId: string, heatId: string, attempt: number) => `t-${tournamentId}-${heatId}-${attempt}`;
+
+/** Fresh data of a registrant at heat creation. */
+export interface FreshEntry<E> { entry: E; info: EligibilityInfo }
+/** Errors from refreshEntry that mean "this player may not race any more" (the horse is retired or gone). */
+const INELIGIBLE_CODES = new Set(['HORSE_NOT_ACTIVE', 'HORSE_NOT_FOUND', 'BANNED']);
 
 export interface TournamentPorts<E> {
-  /** Fresh race entry (current horse stats, look, rating); null = keep the registration snapshot. */
-  refreshEntry(r: Registrant<E>): Promise<E | null>;
-  /** Creates the race room for a heat (and registers it as live + assigns its players). */
-  createHeat(spec: HeatSpec): Promise<{ raceId: string; assignments: Record<string, HeatAssignment> }>;
+  /**
+   * Fresh race entry (current horse stats, look, rating) and eligibility; null = keep the registration
+   * snapshot. Throwing an AppError HORSE_NOT_ACTIVE / HORSE_NOT_FOUND / BANNED makes the player a no-show;
+   * any other failure keeps the snapshot (an outage never eliminates anyone).
+   */
+  refreshEntry(r: Registrant<E>): Promise<FreshEntry<E> | null>;
+  /** Creates the race room for a heat (idempotent per raceId) and registers it as live + assigns its players. */
+  createHeat(spec: HeatSpec): Promise<{ raceId: string; startAtMs: number; slots: Record<string, number> }>;
   heatResult(raceId: string): Promise<HeatOutcome | null>;
   notify(playerId: string, templateId: string, vars: Record<string, string>): Promise<void>;
   /** Records the result on the player (once per tournament) and grants the prize. */
   award(playerId: string, tournamentId: string, rank: number, reward: Reward | null, name: string): Promise<void>;
 }
 
+/**
+ * What changed since the last persist, beyond the small core state (status, round headers): the Durable
+ * Object stores heats, payouts and standings as their own rows, so a persist only writes what changed.
+ */
+export interface PersistHint { heats?: Heat[]; payouts?: Payout[]; standings?: boolean }
+
 export interface StepResult { changed: boolean; wakeAt: number | null; newlyDead: DeadLetterItem[]; log: string[] }
 
-/** One idempotent pass: advance as far as `now` allows. Resumable at every await (the caller persists after). */
-export async function stepTournament<E>(t: TournamentState<E>, now: number, ports: TournamentPorts<E>, persist: () => Promise<void>): Promise<StepResult> {
+/** Thrown inside a step when an admin cancel landed during one of its awaits. */
+class CancelledDuringStep extends Error {}
+
+/**
+ * One idempotent pass: advance as far as `now` allows. Resumable at every await (the caller persists after).
+ * REQ-TOUR-010: an admin cancel may land during any await; the step re-checks after each one and stops
+ * without touching the state again (it never overwrites 'cancelled' and pays nothing after a cancel).
+ */
+export async function stepTournament<E>(t: TournamentState<E>, now: number, ports: TournamentPorts<E>, persist: (hint?: PersistHint) => Promise<void>): Promise<StepResult> {
   const log: string[] = [];
   const dead: DeadLetterItem[] = [];
-  let changed = false;
-  const mark = async () => { changed = true; t.updatedAt = now; await persist(); };
-  const wake: number[] = [];
+  const st = { changed: false };
+  try {
+    return await stepInner(t, now, ports, persist, log, dead, st);
+  } catch (e) {
+    if (!(e instanceof CancelledDuringStep)) throw e;
+    log.push('cancelledDuringStep');
+    return { changed: st.changed, wakeAt: null, newlyDead: dead, log };
+  }
+}
 
-  if (t.status === 'cancelled' || t.status === 'finished') return { changed, wakeAt: null, newlyDead: dead, log };
+async function stepInner<E>(
+  t: TournamentState<E>, now: number, ports: TournamentPorts<E>, persist: (hint?: PersistHint) => Promise<void>,
+  log: string[], dead: DeadLetterItem[], st: { changed: boolean },
+): Promise<StepResult> {
+  const guard = () => { if ((t.status as TournamentStatus) === 'cancelled') throw new CancelledDuringStep(); };
+  const mark = async (hint?: PersistHint) => { guard(); st.changed = true; t.updatedAt = now; await persist(hint); guard(); };
+  const wake: number[] = [];
+  const out = (wakeAt: number | null): StepResult => ({ changed: st.changed, wakeAt, newlyDead: dead, log });
+
+  if (t.status === 'cancelled' || t.status === 'finished') return out(null);
   if (t.status === 'scheduled') {
-    if (now < t.def.registrationOpensAtMs) return { changed, wakeAt: t.def.registrationOpensAtMs, newlyDead: dead, log };
+    if (now < t.def.registrationOpensAtMs) return out(t.def.registrationOpensAtMs);
     t.status = 'registration';
     await mark();
   }
@@ -311,18 +401,20 @@ export async function stepTournament<E>(t: TournamentState<E>, now: number, port
   if (t.status === 'registration') {
     const ids = Object.keys(t.registrants);
     // REQ-TOUR-008: first-round reminder goes to everyone registered (the heats are planned at the close)
-    if (now < t.def.registrationClosesAtMs) return { changed, wakeAt: t.def.registrationClosesAtMs, newlyDead: dead, log };
+    if (now < t.def.registrationClosesAtMs) return out(t.def.registrationClosesAtMs);
     if (ids.length < t.def.minEntrants) {
       t.status = 'cancelled';
       t.cancelReason = 'not_enough_entrants';
       t.finishedAt = now;
-      await mark();
+      st.changed = true;
+      t.updatedAt = now;
+      await persist();
       log.push('cancelled:not_enough_entrants');
-      return { changed, wakeAt: null, newlyDead: dead, log };
+      return out(null);
     }
     planRound(t, ids, t.def.startsAtMs);
     t.status = 'running';
-    await mark();
+    await mark({ heats: t.rounds[0]!.heats });
     log.push(`planned:0:${t.rounds[0]!.heats.length}`);
   }
 
@@ -336,7 +428,10 @@ export async function stepTournament<E>(t: TournamentState<E>, now: number, port
         if (now >= at) {
           const minutes = String(Math.max(1, Math.round((r.startAtMs - now) / 60_000)));
           for (const h of r.heats) for (const p of h.playerIds) {
-            try { await ports.notify(p, 'tournament_heat_soon', { tournament: t.def.name, minutes, round: r.final ? '決勝' : `${r.index + 1}回戦` }); } catch (e) { log.push(`notifyFailed:${p}`); console.error('tournament notify failed', t.def.id, p, (e as Error).message); }
+            let failed: unknown = null;
+            try { await ports.notify(p, 'tournament_heat_soon', { tournament: t.def.name, minutes, round: r.final ? '決勝' : `${r.index + 1}回戦` }); } catch (e) { failed = e ?? new Error('notify failed'); }
+            guard();
+            if (failed) { log.push(`notifyFailed:${p}`); console.error('tournament notify failed', t.def.id, p, (failed as Error).message); }
           }
           r.notified = true;
           await mark();
@@ -347,37 +442,69 @@ export async function stepTournament<E>(t: TournamentState<E>, now: number, port
       if (now < r.startAtMs - HEAT_CREATE_LEAD_MS) { wake.push(r.startAtMs - HEAT_CREATE_LEAD_MS); break; }
       for (const h of r.heats) {
         if (h.status !== 'planned') continue;
-        if (now >= h.startAtMs + HEAT_TIMEOUT_MS / 4) {
+        // the deadline counts from the round's scheduled start, which failed attempts never move (QA r7 #3)
+        if (now >= r.startAtMs + HEAT_TIMEOUT_MS / 4) {
           // could not create the room in time: the heat is void (players advance by seed)
           h.status = 'void';
+          h.creating = false;
           h.results = heatResults(t, h, null);
-          await mark();
+          await mark({ heats: [h] });
           log.push(`heatVoid:${h.id}:create`);
           continue;
         }
-        try {
-          const entries: unknown[] = [];
-          for (const p of h.playerIds) {
-            const reg = t.registrants[p]!;
-            let e: E | null = null;
-            try { e = await ports.refreshEntry(reg); } catch { e = null; }
-            entries.push(e ?? reg.entry);
+        // a creation cut off by a restart resumes the same attempt (same raceId → the same room, never a second one)
+        const resume = h.creating === true;
+        const excluded = new Set(resume ? h.excluded ?? [] : []);
+        const humans: string[] = [];
+        const entries: unknown[] = [];
+        for (const p of h.playerIds) {
+          if (excluded.has(p)) continue;
+          const reg = t.registrants[p]!;
+          let fresh: FreshEntry<E> | null = null;
+          let err: unknown = null;
+          try { fresh = await ports.refreshEntry(reg); } catch (e) { err = e; }
+          guard();
+          // REQ-TOUR-003: eligibility again at the heat — BAN/quarantine since registering, horse retired or gone
+          const ineligible = (fresh !== null && (fresh.info.moderation !== 'ok' || !fresh.info.horseActive)) || (err instanceof AppError && INELIGIBLE_CODES.has(err.code));
+          if (ineligible && !resume) { excluded.add(p); continue; }
+          humans.push(p);
+          entries.push(fresh?.entry ?? reg.entry);
+        }
+        if (!resume) {
+          if (excluded.size) { h.excluded = [...excluded]; log.push(`heatExcluded:${h.id}:${h.excluded.length}`); }
+          if (humans.length === 0) {
+            h.status = 'void';
+            h.results = heatResults(t, h, null);
+            await mark({ heats: [h] });
+            log.push(`heatVoid:${h.id}:nobody_eligible`);
+            continue;
           }
           h.createAttempts++;
-          h.startAtMs = Math.max(h.startAtMs, now + 6_000);
-          const created = await ports.createHeat({
-            tournamentId: t.def.id, tournamentName: t.def.name, heat: h, final: r.final, entries,
-            cpuCount: Math.max(0, t.def.fieldSize - h.playerIds.length), cpuLevel: t.def.cpuLevel, statCap: t.def.statCap,
+          h.creating = true;
+          await mark({ heats: [h] }); // the attempt (→ raceId) is durable before the room can exist (QA r7 #5)
+        }
+        const raceId = heatRaceId(t.def.id, h.id, h.createAttempts);
+        let created: Awaited<ReturnType<TournamentPorts<E>['createHeat']>> | null = null;
+        let failure: unknown = null;
+        try {
+          created = await ports.createHeat({
+            tournamentId: t.def.id, tournamentName: t.def.name, heat: h, final: r.final, raceId, startAtMs: Math.max(h.startAtMs, now + 6_000),
+            playerIds: humans, entries, cpuCount: Math.max(0, t.def.fieldSize - humans.length), cpuLevel: t.def.cpuLevel, statCap: t.def.statCap,
           });
+        } catch (e) { failure = e; }
+        guard();
+        h.creating = false;
+        if (created) {
           h.raceId = created.raceId;
-          h.assignments = created.assignments;
+          h.startAtMs = created.startAtMs; // only a created room moves the heat's start
+          h.slots = created.slots;
           h.status = 'created';
-          await mark();
+          await mark({ heats: [h] });
           log.push(`heatCreated:${h.id}:${h.raceId}`);
-        } catch (e) {
-          await mark();
+        } else {
+          await mark({ heats: [h] });
           log.push(`heatCreateFailed:${h.id}`);
-          console.error('tournament heat creation failed', t.def.id, h.id, (e as Error).message);
+          console.error('tournament heat creation failed', t.def.id, h.id, (failure as Error | null)?.message);
           wake.push(now + HEAT_POLL_MS);
         }
       }
@@ -387,50 +514,56 @@ export async function stepTournament<E>(t: TournamentState<E>, now: number, port
         if (now < h.startAtMs) { wake.push(h.startAtMs + HEAT_POLL_MS); continue; }
         let o: HeatOutcome | null = null;
         try { o = await ports.heatResult(h.raceId!); } catch { o = null; }
+        guard();
         const definitive = o?.final && (o.final.status === 'confirmed' || o.final.status === 'void') && o.phase === 'final';
         if (definitive || now >= h.startAtMs + HEAT_TIMEOUT_MS) {
           h.results = heatResults(t, h, definitive ? o : o ? { ...o, final: null } : null);
           h.status = definitive && o!.final!.status === 'confirmed' ? 'finished' : 'void';
-          await mark();
+          delete h.slots; // seats matter only while the heat runs (state size)
+          await mark({ heats: [h] });
           log.push(`heat${h.status === 'finished' ? 'Finished' : 'Void'}:${h.id}`);
         } else wake.push(now + HEAT_POLL_MS);
       }
       if (!r.heats.every((h) => h.status === 'finished' || h.status === 'void')) break;
       r.done = true;
       const advancing = r.final ? [] : r.heats.flatMap((h) => (h.results ?? []).filter((x) => x.advanced).map((x) => x.playerId));
+      let next: Round | null = null;
       if (!r.final && advancing.length >= 2) {
         planRound(t, advancing, now + t.def.roundGapMs);
-        log.push(`planned:${r.index + 1}:${t.rounds[t.rounds.length - 1]!.heats.length}`);
+        next = t.rounds[t.rounds.length - 1]!;
+        log.push(`planned:${r.index + 1}:${next.heats.length}`);
       }
       // fewer than two survivors: the tournament is decided without a final (a lone survivor wins)
-      await mark();
+      await mark(next ? { heats: next.heats } : undefined);
       if (r.final || advancing.length < 2) {
         t.standings = computeStandings(t);
-        for (const s of t.standings) t.payouts[s.playerId] = { playerId: s.playerId, rank: s.rank, reward: prizeFor(t.def, s.rank), done: false, attempts: 0, error: null, retryAt: 0, dead: false };
+        for (const s of t.standings) t.payouts[s.playerId] = { playerId: s.playerId, rank: s.rank, done: false, attempts: 0, error: null, retryAt: 0, dead: false };
         t.status = 'paying';
-        await mark();
+        await mark({ standings: true, payouts: Object.values(t.payouts) });
         log.push('standings');
         break;
       }
     }
   }
 
+  // (no cancel can land from here on: cancelTournament refuses once the status is 'paying')
   if (t.status === 'paying') {
     for (const p of Object.values(t.payouts)) {
       if (p.done || p.dead) continue;
       if (now < p.retryAt) { wake.push(p.retryAt); continue; }
-      try {
-        await ports.award(p.playerId, t.def.id, p.rank, p.reward, t.def.name);
+      let failure: unknown = null;
+      try { await ports.award(p.playerId, t.def.id, p.rank, prizeFor(t.def, p.rank), t.def.name); } catch (e) { failure = e ?? new Error('award failed'); }
+      if (!failure) {
         p.done = true;
         p.error = null;
-      } catch (e) {
+      } else {
         p.attempts++;
-        p.error = (e as Error).message || 'award failed';
+        p.error = (failure as Error).message || 'award failed';
         p.retryAt = now + PAYOUT_RETRY_MS * p.attempts;
         if (p.attempts >= PAYOUT_MAX_ATTEMPTS) { p.dead = true; dead.push({ itemId: p.playerId, error: p.error, attempts: p.attempts }); }
         else wake.push(p.retryAt);
       }
-      await mark();
+      await mark({ payouts: [p] });
     }
     if (Object.values(t.payouts).every((p) => p.done || p.dead)) {
       t.status = 'finished';
@@ -439,9 +572,8 @@ export async function stepTournament<E>(t: TournamentState<E>, now: number, port
       log.push('finished');
     }
   }
-  const st = t.status as TournamentStatus;
-  const wakeAt = st === 'finished' || st === 'cancelled' || wake.length === 0 ? null : Math.max(now + 1_000, Math.min(...wake));
-  return { changed, wakeAt, newlyDead: dead, log };
+  const s = t.status as TournamentStatus;
+  return out(s === 'finished' || s === 'cancelled' || wake.length === 0 ? null : Math.max(now + 1_000, Math.min(...wake)));
 }
 
 /** REQ-TOUR-010: admin cancel before the end (no prizes; heats already running finish without effect). */
@@ -464,7 +596,7 @@ export async function retryPayout<E>(t: TournamentState<E>, playerId: string, aw
   if (!p) return { ok: false, error: 'no such payout' };
   if (p.done) return { ok: true };
   try {
-    await award(p.playerId, t.def.id, p.rank, p.reward, t.def.name);
+    await award(p.playerId, t.def.id, p.rank, prizeFor(t.def, p.rank), t.def.name);
     p.done = true; p.dead = false; p.error = null;
     if (t.status === 'paying' && Object.values(t.payouts).every((x) => x.done || x.dead)) { t.status = 'finished'; t.finishedAt = now; }
     return { ok: true };
@@ -514,14 +646,14 @@ export function publicView(t: TournamentState<unknown>, now: number) {
         results: h.results?.map((x) => ({ ...x, displayName: name(x.playerId) })) ?? null,
       })),
     })),
-    standings: t.standings,
+    standings: t.standings?.map((s) => ({ ...s, displayName: name(s.playerId) })) ?? null,
   };
 }
 
 /** REQ-TOUR-009: the player's own view: registration, current heat (with its live race), result. */
 export function playerView(t: TournamentState<unknown>, playerId: string, now: number) {
   const reg = t.registrants[playerId] ?? null;
-  let heat: { round: number; final: boolean; heatId: string; raceId: string | null; startAtMs: number; status: Heat['status']; trackId: string; assignment: HeatAssignment | null; place: number | null; advanced: boolean | null } | null = null;
+  let heat: { round: number; final: boolean; heatId: string; raceId: string | null; startAtMs: number; status: Heat['status']; trackId: string; assignment: HeatSeat | null; place: number | null; advanced: boolean | null } | null = null;
   let eliminated = false;
   for (const r of t.rounds) {
     const h = r.heats.find((x) => x.playerIds.includes(playerId));
@@ -529,8 +661,10 @@ export function playerView(t: TournamentState<unknown>, playerId: string, now: n
     const res = h.results?.find((x) => x.playerId === playerId);
     heat = {
       round: r.index, final: r.final, heatId: h.id, raceId: h.raceId, startAtMs: h.startAtMs, status: h.status, trackId: h.trackId,
-      // the ticket only while the heat is running (REQ-TOUR-009)
-      assignment: h.status === 'created' ? h.assignments?.[playerId] ?? null : null,
+      // the seat only while the heat is running (REQ-TOUR-009); playerViewWithTicket adds the ticket
+      assignment: h.status === 'created' && h.raceId && h.slots?.[playerId] !== undefined
+        ? { raceId: h.raceId, slot: h.slots[playerId]!, startAtMs: h.startAtMs, wsPath: `/v1/race/${h.raceId}/ws` }
+        : null,
       place: res?.place ?? null, advanced: res ? res.advanced : null,
     };
     eliminated = !!res && !res.advanced && !r.final;
@@ -539,6 +673,59 @@ export function playerView(t: TournamentState<unknown>, playerId: string, now: n
   const payout = t.payouts[playerId];
   return {
     tournamentId: t.def.id, status: effectiveStatus(t, now), registered: !!reg, horseId: reg?.horseId ?? null,
-    heat, eliminated, standing, prize: payout?.reward ?? null, prizePaid: payout?.done ?? false,
+    heat, eliminated, standing: standing ? { ...standing, displayName: reg?.displayName ?? '' } : null,
+    prize: payout ? prizeFor(t.def, payout.rank) : null, prizePaid: payout?.done ?? false,
   };
+}
+
+/**
+ * REQ-TOUR-009: the player's view with the race ticket minted for this player only. Tickets are a pure
+ * function of (raceId, slot, player, start), so they are never stored in the tournament state.
+ */
+type PlayerView = ReturnType<typeof playerView>;
+export type PlayerViewWithTicket = Omit<PlayerView, 'heat'> & { heat: (Omit<NonNullable<PlayerView['heat']>, 'assignment'> & { assignment: HeatAssignment | null }) | null };
+export async function playerViewWithTicket(t: TournamentState<unknown>, playerId: string, now: number, mint: (seat: HeatSeat, playerId: string) => Promise<string>): Promise<PlayerViewWithTicket> {
+  const v = playerView(t, playerId, now);
+  if (!v.heat?.assignment) return { ...v, heat: v.heat ? { ...v.heat, assignment: null } : null };
+  const assignment: HeatAssignment = { ...v.heat.assignment, ticket: await mint(v.heat.assignment, playerId) };
+  return { ...v, heat: { ...v.heat, assignment } };
+}
+
+// ---------------------------------------------------------------------------------------------- storage
+
+/**
+ * The stored core of a tournament: everything except registrants, heats, payouts and standings, which the
+ * Durable Object keeps as their own rows (one per player / heat) so that no single value grows with the
+ * whole bracket and a persist only rewrites what changed (QA r7 #4, REQ-TOUR-011).
+ */
+export type TournamentCore = Omit<TournamentState<unknown>, 'registrants' | 'rounds' | 'payouts' | 'standings'> & { rounds: Omit<Round, 'heats'>[] };
+
+export function tournamentCore(t: TournamentState<unknown>): TournamentCore {
+  const { registrants: _r, rounds, payouts: _p, standings: _s, ...rest } = t;
+  return { ...rest, rounds: rounds.map(({ heats: _h, ...r }) => r) };
+}
+
+/** A stored core as read back: older ones carried heats, payouts and standings inline. */
+export type StoredCore = Omit<TournamentCore, 'rounds'> & { rounds: (Omit<Round, 'heats'> & { heats?: Heat[] })[]; payouts?: Record<string, Payout>; standings?: Standing[] | null };
+
+/** Rebuilds the state from its rows. `legacyInline` = the core still had inline parts (rewrite every row once). */
+export function assembleTournament<E>(
+  core: StoredCore,
+  rows: { registrants: Record<string, Registrant<E>>; heats: Heat[]; payouts: Payout[]; standings: Standing[] | null },
+): { state: TournamentState<E>; legacyInline: boolean } {
+  const byRound = new Map<number, Heat[]>();
+  for (const h of rows.heats) {
+    const xs = byRound.get(h.round) ?? [];
+    xs.push(h);
+    byRound.set(h.round, xs);
+  }
+  const { payouts: legacyPayouts, standings: legacyStandings, rounds: storedRounds, ...rest } = core;
+  let legacyInline = !!legacyStandings || Object.keys(legacyPayouts ?? {}).length > 0;
+  const rounds: Round[] = storedRounds.map((r) => {
+    if (r.heats) { legacyInline = true; return r as Round; }
+    return { ...r, heats: (byRound.get(r.index) ?? []).sort((a, b) => a.index - b.index) };
+  });
+  const payouts: Record<string, Payout> = { ...(legacyPayouts ?? {}) };
+  for (const p of rows.payouts) payouts[p.playerId] = p;
+  return { state: { ...rest, rounds, registrants: rows.registrants, payouts, standings: rows.standings ?? legacyStandings ?? null }, legacyInline };
 }

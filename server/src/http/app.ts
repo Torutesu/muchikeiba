@@ -285,8 +285,8 @@ export const routes: Route[] = [
     return stud(c).preview(u, b.ownerId, b.horseId, b.damId);
   } },
   { method: 'POST', path: '/v1/stud/breed', auth: 'player', handler: async (r, _p, c, u) => {
-    const b = await body(r, z.object({ ownerId: id, horseId: id, damId: id, useMaterial: z.boolean().optional() }));
-    return stud(c).breed(u, b.ownerId, b.horseId, b.damId, idem(r), b.useMaterial ?? false);
+    const b = await body(r, z.object({ ownerId: id, horseId: id, damId: id, useMaterial: z.boolean().optional(), expectedFee: z.number().int().min(0).optional() }));
+    return stud(c).breed(u, b.ownerId, b.horseId, b.damId, idem(r), b.useMaterial ?? false, b.expectedFee);
   } },
   // items & cosmetics (REQ-ITEM-*)
   { method: 'GET', path: '/v1/items/tickets', auth: 'none', handler: async (_r, _p, c) => ({ tickets: Object.keys(c.master.items.tickets).map((t) => ticketDisclosure(c.master, t)) }) },
@@ -586,7 +586,7 @@ export function studPlayersFrom(player: (uid: string) => PlayerInvoker): StudPla
     list: (u, h, v, f, l) => player(u).invoke('studList', u, h, v, f, l),
     unlist: (u, h) => player(u).invoke('studUnlist', u, h),
     peek: (o, b, h) => player(o).invoke('studPeek', o, b, h),
-    reserve: (o, op, b, h) => player(o).invoke('studReserve', o, op, b, h),
+    reserve: (o, op, b, h, fee) => player(o).invoke('studReserve', o, op, b, h, fee),
     preview: (b, snap, d) => player(b).invoke('studPreview', b, snap, d),
     apply: (b, op, snap, d, um) => player(b).invoke('studApply', b, op, snap, d, um),
     settle: (o, op, ok, info) => player(o).invoke('studSettle', o, op, ok, info),

@@ -295,8 +295,8 @@ export class PlayerService {
     const s = await this.load(id);
     return studPeek(this.d.master, s, borrowerId, horseId, this.d.clock());
   }
-  studReserve(id: string, opId: string, borrowerId: string, horseId: string) {
-    return this.tx(id, null, (s, now) => studReserve(this.d.master, s, opId, borrowerId, horseId, now));
+  studReserve(id: string, opId: string, borrowerId: string, horseId: string, expectedFee?: number) {
+    return this.tx(id, null, (s, now) => studReserve(this.d.master, s, opId, borrowerId, horseId, now, expectedFee));
   }
   studSettle(id: string, opId: string, ok: boolean, info: { borrowerId: string; horseId: string; fee: number; foalId: string | null }) {
     return this.tx(id, null, (s, now) => studSettle(this.d.master, s, opId, ok, info, now));

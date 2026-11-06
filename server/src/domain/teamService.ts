@@ -370,7 +370,7 @@ export class MemoryTeams implements TeamPort, TeamDirectoryPort, TeamBoardPort {
 
   async search(q: string, limit: number) {
     const f = q.toLowerCase();
-    return [...this.summaries.values()].filter((s) => !f || s.name.toLowerCase().includes(f) || s.teamId === f).sort((a, b) => b.points - a.points).slice(0, limit);
+    return [...this.summaries.values()].filter((s) => !f || s.name.toLowerCase().includes(f) || s.teamId === f).sort((a, b) => b.points - a.points).slice(0, limit).map(({ stints: _s, ...x }) => x); // like the directory: no per-member data
   }
   async board(seasonId: string) {
     const list = [...this.summaries.values()].filter((s) => s.season === seasonId && s.points > 0).sort((a, b) => b.points - a.points);

@@ -161,8 +161,11 @@ export interface StudState {
   listings: StudListing[];
   /** Owner: reservations in flight by opId (released when settled or after reserveTtlMs). */
   reservations: Record<string, { horseId: string; borrowerId: string; fee: number; at: number; date: string }>;
-  /** Owner: settled opIds → settled-at, so a retried settlement never pays twice (pruned by age). */
-  settled: Record<string, number>;
+  /**
+   * Owner: settled opIds, so a retried settlement never pays twice and a retried reserve resumes the same
+   * horse (pruned by age). Older records are a bare settled-at number.
+   */
+  settled: Record<string, number | { at: number; horseId: string; borrowerId: string; fee: number }>;
   /** Owner: today's lends per horse and coins earned (JST date). */
   lends: { date: string; byHorse: Record<string, number>; earned: number };
   /** Borrower: stud breedings applied, by opId → result (never applied twice). */

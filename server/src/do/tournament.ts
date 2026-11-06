@@ -5,14 +5,17 @@ import { AppError } from '../domain/errors.js';
 import { cryptoRng } from '../domain/rng.js';
 import { liveRaceOf } from '../domain/spectate.js';
 import {
-  cancelTournament, dismissPayout, newTournament, playerView, publicView, register, retryPayout, stepTournament, summaryOf,
-  tournamentDeadLetters, unregister, TOURNAMENT_LIST_KEEP_MS,
-  type HeatOutcome, type Registrant, type TournamentDef, type TournamentPorts, type TournamentState, type TournamentSummary,
+  assembleTournament, cancelTournament, dismissPayout, newTournament, playerView, playerViewWithTicket, publicView, register, retryPayout,
+  stepTournament, summaryOf, tournamentCore, tournamentDeadLetters, unregister, TOURNAMENT_LIST_KEEP_MS,
+  type Heat, type HeatOutcome, type Payout, type PersistHint, type Registrant, type Standing, type StoredCore, type TournamentDef,
+  type TournamentPorts, type TournamentState, type TournamentSummary,
 } from '../domain/tournaments.js';
 import type { TournamentEntryInfo } from '../domain/tournamentService.js';
 import type { DeadLetterItem, RetryOutcome } from '../ops/deadLetter.js';
 import type { RaceEntry } from '../http/app.js';
-import { createRace } from '../race/orchestrate.js';
+import { assignmentsFor, createRace, TICKET_TTL_MS } from '../race/orchestrate.js';
+import { signTicket } from '../http/ticket.js';
+import type { RaceStartConfig } from '../domain/schemas.js';
 import { reportDeadLetters } from './deadLetters.js';
 import { unwrap, wrap, type Envelope } from './rpc.js';
 
@@ -27,8 +30,10 @@ export const tournamentSnapshotKey = (id: string) => `tournaments/${id}.json`;
  * Alarms drive the schedule (registration close → heats → rounds → prizes) through the pure
  * stepTournament(); the cron also wakes active tournaments as a fallback (REQ-TOUR-005).
  *
- * Storage: registrations are one SQLite row per player (a 4096-player field would not fit one value);
- * the rest of the state (bracket, standings, payouts) is one JSON value.
+ * Storage (QA r7 #4, REQ-TOUR-011): registrations, heats and payouts are one SQLite row each and the
+ * standings one value, so nothing grows past the 2 MB value limit with the field and a step only rewrites
+ * the rows it changed. The small core (status, round headers) is one JSON value. Race tickets are never
+ * stored: /me mints the player's ticket on demand.
  */
 export class TournamentDO extends DurableObject<Env> {
   private readonly sql: SqlStorage;
@@ -40,12 +45,19 @@ export class TournamentDO extends DurableObject<Env> {
     this.sql = ctx.storage.sql;
     this.sql.exec('CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS registrants (player_id TEXT PRIMARY KEY, v TEXT NOT NULL)');
+    this.sql.exec('CREATE TABLE IF NOT EXISTS heats (id TEXT PRIMARY KEY, v TEXT NOT NULL)');
+    this.sql.exec('CREATE TABLE IF NOT EXISTS payouts (player_id TEXT PRIMARY KEY, v TEXT NOT NULL)');
     ctx.blockConcurrencyWhile(async () => {
-      const raw = this.kvGet<Omit<State, 'registrants'>>('state');
-      if (!raw) return;
+      const core = this.kvGet<StoredCore>('state');
+      if (!core) return;
+      const rows = <T>(q: string) => this.sql.exec<{ v: string }>(q).toArray().map((r) => JSON.parse(r.v) as T);
       const registrants: State['registrants'] = {};
-      for (const r of this.sql.exec<{ player_id: string; v: string }>('SELECT player_id, v FROM registrants').toArray()) registrants[r.player_id] = JSON.parse(r.v) as Registrant<RaceEntry>;
-      this.state = { ...raw, registrants };
+      for (const r of rows<Registrant<RaceEntry>>('SELECT v FROM registrants')) registrants[r.playerId] = r;
+      const { state, legacyInline } = assembleTournament<RaceEntry>(core, {
+        registrants, heats: rows<Heat>('SELECT v FROM heats'), payouts: rows<Payout>('SELECT v FROM payouts'), standings: this.kvGet<Standing[]>('standings'),
+      });
+      this.state = state;
+      if (legacyInline) this.persistState({ heats: state.rounds.flatMap((r) => r.heats), payouts: Object.values(state.payouts), standings: true });
     });
   }
 
@@ -57,32 +69,44 @@ export class TournamentDO extends DurableObject<Env> {
     this.sql.exec('INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v', k, JSON.stringify(v));
   }
 
-  private persistState() {
+  /** Writes the core and the rows named in `hint` (see PersistHint). */
+  private persistState(hint?: PersistHint) {
     if (!this.state) return;
-    const { registrants: _r, ...rest } = this.state;
-    this.kvPut('state', rest);
+    this.kvPut('state', tournamentCore(this.state));
+    for (const h of hint?.heats ?? []) this.sql.exec('INSERT INTO heats (id, v) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET v = excluded.v', h.id, JSON.stringify(h));
+    for (const p of hint?.payouts ?? []) this.sql.exec('INSERT INTO payouts (player_id, v) VALUES (?, ?) ON CONFLICT(player_id) DO UPDATE SET v = excluded.v', p.playerId, JSON.stringify(p));
+    if (hint?.standings) this.kvPut('standings', this.state.standings);
   }
+
+  /** REQ-TOUR-009: the player's own race ticket, minted from the heat's raceId/slot/start (same as at creation). */
+  private mint = (seat: { raceId: string; slot: number; startAtMs: number }, playerId: string) =>
+    signTicket({ raceId: seat.raceId, slot: seat.slot, playerId, exp: seat.startAtMs + TICKET_TTL_MS }, this.env.TICKET_SECRET);
 
   private stub(ns: DurableObjectNamespace, name: string) { return ns.get(ns.idFromName(name)) as unknown as Rpc; }
   private player(pid: string) { return this.stub(this.env.PLAYER, pid) as unknown as { invoke(m: string, a: unknown[]): Promise<Envelope<unknown>> }; }
 
   private ports(): TournamentPorts<RaceEntry> {
     return {
-      refreshEntry: async (r) => ((unwrap(await this.player(r.playerId).invoke('tournamentEntry', [r.playerId, r.horseId])) as TournamentEntryInfo).entry as unknown as RaceEntry),
+      refreshEntry: async (r) => {
+        const e = unwrap(await this.player(r.playerId).invoke('tournamentEntry', [r.playerId, r.horseId])) as TournamentEntryInfo;
+        return { entry: e.entry as unknown as RaceEntry, info: e.info };
+      },
       createHeat: async (spec) => {
         const cfg = await activeConfig(this.env);
         const now = Date.now();
         const created = await createRace(cfg.master, {
           ruleset: cfg.ruleset, mode: 'tournament', humans: spec.entries as RaceEntry[], cpuCount: spec.cpuCount, cpuLevel: spec.cpuLevel,
-          rng: cryptoRng, now, ticketSecret: this.env.TICKET_SECRET, trackId: spec.heat.trackId, startAtMs: spec.heat.startAtMs, statCap: spec.statCap,
+          rng: cryptoRng, now, ticketSecret: this.env.TICKET_SECRET, trackId: spec.heat.trackId, startAtMs: spec.startAtMs, statCap: spec.statCap,
+          raceId: spec.raceId, // deterministic per heat attempt (QA r7 #5)
         });
-        const room = this.stub(this.env.RACE_ROOM, created.config.raceId) as unknown as { init(o: unknown): Promise<unknown> };
-        await room.init({ config: created.config, startAtMs: created.startAtMs, ratings: created.ratings, visuals: created.visuals });
+        const room = this.stub(this.env.RACE_ROOM, spec.raceId) as unknown as { init(o: unknown): Promise<{ config: RaceStartConfig; startAtMs: number; existed: boolean }> };
+        // init is idempotent: when a resumed attempt finds the room already made, that room's config and start win
+        const actual = await room.init({ config: created.config, startAtMs: created.startAtMs, ratings: created.ratings, visuals: created.visuals });
+        const race = actual.existed ? { ...created, config: actual.config, startAtMs: actual.startAtMs, assignments: await assignmentsFor(actual.config, actual.startAtMs, this.env.TICKET_SECRET) } : created;
         const title = `${spec.tournamentName} ${spec.final ? '決勝' : `${spec.heat.round + 1}回戦 第${spec.heat.index + 1}組`}`;
-        const live = liveRaceOf(created, { title, tournamentId: spec.tournamentId })!;
-        unwrap((await this.stub(this.env.MATCHMAKER, 'ranked-jp').registerLiveRace!(live, created.assignments)) as Envelope<unknown>);
-        spec.heat.startAtMs = created.startAtMs;
-        return { raceId: created.config.raceId, assignments: created.assignments };
+        const live = liveRaceOf(race, { title, tournamentId: spec.tournamentId })!;
+        unwrap((await this.stub(this.env.MATCHMAKER, 'ranked-jp').registerLiveRace!(live, race.assignments)) as Envelope<unknown>);
+        return { raceId: spec.raceId, startAtMs: race.startAtMs, slots: Object.fromEntries(Object.entries(race.assignments).map(([p, a]) => [p, a.slot])) };
       },
       heatResult: async (raceId) => (await (this.stub(this.env.RACE_ROOM, raceId) as unknown as { heatResult(): Promise<HeatOutcome | null> }).heatResult()),
       notify: async (pid, templateId, vars) => { unwrap(await this.player(pid).invoke('queuePush', [pid, templateId, vars])); },
@@ -106,7 +130,7 @@ export class TournamentDO extends DurableObject<Env> {
     if (!t || this.stepping) return;
     this.stepping = true;
     try {
-      const r = await stepTournament(t, now, this.ports(), async () => { this.persistState(); });
+      const r = await stepTournament(t, now, this.ports(), async (hint) => { this.persistState(hint); });
       if (r.log.length) console.log('tournament', t.def.id, r.log.join(' '));
       if (r.changed) await this.publish(now);
       if (r.newlyDead.length) await reportDeadLetters(this.env, 'tournament', t.def.id, r.newlyDead, now);
@@ -138,7 +162,7 @@ export class TournamentDO extends DurableObject<Env> {
   }
 
   async view(now: number): Promise<Envelope<unknown>> { return wrap(() => (this.state ? publicView(this.state, now) : null)); }
-  async me(playerId: string, now: number): Promise<Envelope<unknown>> { return wrap(() => playerView(this.need(), playerId, now)); }
+  async me(playerId: string, now: number): Promise<Envelope<unknown>> { return wrap(() => playerViewWithTicket(this.need(), playerId, now, this.mint)); }
 
   async register(playerId: string, horseId: string, e: TournamentEntryInfo, now: number): Promise<Envelope<unknown>> {
     return wrap(async () => {
@@ -193,15 +217,18 @@ export class TournamentDO extends DurableObject<Env> {
     return wrap(async () => {
       const t = this.need();
       const out = await retryPayout(t, playerId, this.ports().award, Date.now());
-      this.persistState();
+      const p = t.payouts[playerId];
+      this.persistState(p ? { payouts: [p] } : undefined);
       if (out.ok) await this.publish(Date.now());
       return out;
     });
   }
   async dlDismiss(playerId: string, by: string, note: string, now: number): Promise<Envelope<boolean>> {
     return wrap(() => {
-      const ok = dismissPayout(this.need(), playerId, by, note, now);
-      this.persistState();
+      const t = this.need();
+      const ok = dismissPayout(t, playerId, by, note, now);
+      const p = t.payouts[playerId];
+      this.persistState(p ? { payouts: [p] } : undefined);
       return ok;
     });
   }

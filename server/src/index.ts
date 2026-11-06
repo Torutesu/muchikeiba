@@ -21,7 +21,7 @@ export { TeamDO, TeamDirectoryDO } from './do/team.js';
 export { EventDO } from './do/event.js';
 export { TournamentDO } from './do/tournament.js';
 import { tournamentSnapshotKey } from './do/tournament.js';
-import { SpectateService } from './domain/spectate.js';
+import { SpectateService, SPECTATE_RATE } from './domain/spectate.js';
 import { TournamentsService, type TournamentBackend } from './domain/tournamentService.js';
 import type { TournamentSummary } from './domain/tournaments.js';
 import { signTicket } from './http/ticket.js';
@@ -32,7 +32,7 @@ import { eventBoardKey, eventCronPlan, validateEvents } from './domain/events.js
 import { cryptoRng } from './domain/rng.js';
 import type { Master } from './domain/master.js';
 import type { OpsApi } from './http/admin.js';
-import { authenticateAdmin, parseAdminTokens, type AdminAuthConfig, type AdminRole } from './ops/admin.js';
+import { authenticateAdmin, parseAdminTokens, RateLimiter, type AdminAuthConfig, type AdminRole } from './ops/admin.js';
 import { DeadLetterService, type DeadLetterOwner, type DeadLetterRegistry, type DeadLetterSource } from './ops/deadLetter.js';
 import { activeConfig } from './ops/activeConfig.js';
 import type { ResolvedConfig } from './ops/config.js';
@@ -263,6 +263,9 @@ export function adminAuthConfig(env: Env): AdminAuthConfig {
   };
 }
 
+/** QA r7 #8: spectator ticket rate per viewer (per isolate; the room itself allows one socket per player). */
+const spectateLimiter = new RateLimiter({ read: SPECTATE_RATE, write: SPECTATE_RATE }, 'spectate');
+
 export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
   const master = cfg?.master ?? baseMaster;
   const dev = env.DEV_MODE === '1';
@@ -319,6 +322,7 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
       liveRace: async (raceId) => (await call(mm().liveRace!(raceId))) as never,
       friendIds: friendIdsFrom(player),
       signTicket: (t) => signTicket(t, env.TICKET_SECRET),
+      admit: (uid, now) => spectateLimiter.take(uid, 'read', now),
     }),
     ...(env.TOURNAMENTS ? { tournaments: new TournamentsService(() => master, tournamentBackend(env), tournamentPlayersFrom(player)) } : {}),
     leaderboard: {

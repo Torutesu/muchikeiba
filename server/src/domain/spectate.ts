@@ -55,7 +55,23 @@ export interface SpectatePorts {
   /** The viewer's friend ids. */
   friendIds(uid: string): Promise<string[]>;
   signTicket(t: { raceId: string; slot: number; playerId: string; exp: number }): Promise<string>;
+  /** QA r7 #8: throws RATE_LIMITED when this viewer asks for tickets too often (absent = no limit). */
+  admit?(uid: string, now: number): void;
 }
+
+/**
+ * REQ-SPEC-005 (QA r7 #8): a room admits one spectator socket per player. A player's new socket replaces
+ * their older ones (`replace`: close them), and the cap counts the other players only, so one user with
+ * many sockets can never fill it. Sockets without a known player (older attachments) count one each.
+ */
+export function admitSpectator<W>(others: { ws: W; playerId: string | null }[], playerId: string, limit: number): { admit: boolean; replace: W[] } {
+  const replace = others.filter((o) => o.playerId === playerId).map((o) => o.ws);
+  const admit = others.length - replace.length < limit;
+  return { admit, replace: admit ? replace : [] };
+}
+
+/** QA r7 #8: spectator tickets per viewer — a burst of 10, then one every 6 s (per isolate). */
+export const SPECTATE_RATE = { capacity: 10, refillPerSec: 1 / 6 };
 
 export interface LiveRaceView extends Omit<LiveRace, 'playerIds'> {
   players: number;
@@ -96,6 +112,7 @@ export class SpectateService {
 
   /** REQ-SPEC-002: a read-only ticket (slot -1) for the race's WebSocket. */
   async spectate(uid: string, raceId: string) {
+    this.p.admit?.(uid, this.clock());
     const l = await this.p.liveRace(raceId);
     const now = this.clock();
     if (!l || now - l.startAtMs >= LIVE_RACE_TTL_MS) throw new AppError('NOT_FOUND', 'race is not live');

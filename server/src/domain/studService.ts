@@ -11,7 +11,7 @@ export interface StudPlayers {
   list(u: string, horseId: string, visibility: StudVisibility, fee: number, dailyLimit: number): Promise<StudEntry>;
   unlist(u: string, horseId: string): Promise<unknown>;
   peek(owner: string, borrower: string, horseId: string): Promise<StudSnapshot & { remainingToday: number }>;
-  reserve(owner: string, opId: string, borrower: string, horseId: string): Promise<StudSnapshot>;
+  reserve(owner: string, opId: string, borrower: string, horseId: string, expectedFee?: number): Promise<StudSnapshot>;
   preview(borrower: string, snap: StudSnapshot & { remainingToday?: number }, damId: string): Promise<unknown>;
   apply(borrower: string, opId: string, snap: StudSnapshot, damId: string, useMaterial: boolean): Promise<StudApplyResult>;
   settle(owner: string, opId: string, ok: boolean, info: { borrowerId: string; horseId: string; fee: number; foalId: string | null }): Promise<{ status: string; paid: number }>;
@@ -73,10 +73,11 @@ export class StudService {
    * REQ-BREED-012/013: one stud breeding. `clientKey` is the request's idempotency key, so a retried request
    * resumes the same op (reserve and apply return their first results; settle pays at most once).
    */
-  async breed(u: string, ownerId: string, horseId: string, damId: string, clientKey: string, useMaterial: boolean): Promise<StudApplyResult & { feeStatus: StudFeeStatus }> {
+  async breed(u: string, ownerId: string, horseId: string, damId: string, clientKey: string, useMaterial: boolean, expectedFee?: number): Promise<StudApplyResult & { feeStatus: StudFeeStatus }> {
     if (ownerId === u) throw new AppError('NOT_ELIGIBLE', 'breed your own stallion from the normal breeding screen');
     const opId = `stud:${u}:${clientKey}`;
-    const snap = await this.p.reserve(ownerId, opId, u, horseId);
+    // QA r7 #9: `expectedFee` (the fee the borrower saw) → FEE_CHANGED when the owner changed it meanwhile
+    const snap = await this.p.reserve(ownerId, opId, u, horseId, expectedFee);
     let r: StudApplyResult;
     try {
       r = await this.p.apply(u, opId, snap, damId, useMaterial);

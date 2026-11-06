@@ -5,6 +5,7 @@
  */
 import type { Master } from './master.js';
 import { DIRT_GOINGS, TURF_GOINGS } from './schemas.js';
+import { stableConfig } from './stable.js';
 import { ASSET_KEY_RE, ASSET_KINDS, assetKeys, collectItemIds, fallbackKey, kindOf, VISUALS, type VisualsMaster } from './visuals.js';
 
 /** engine/Muchi.Client/Resources/Muchi/commentary-ja.json (only the parts the manifest needs). */
@@ -50,6 +51,7 @@ export function buildAssetManifest(m: Master, commentary: CommentaryJson, v: Vis
   v.gateBrackets.forEach((g) => add(assetKeys.gate(g.bracket)));
   collectItemIds(m, v).forEach((id) => add(assetKeys.item(id)));
   for (const c of m.items?.cosmetics ?? []) if (c.kind !== 'silks') add(c.asset); // tack/*, decor/* (REQ-ITEM-006)
+  stableConfig(m).themes.forEach((t) => add(assetKeys.stableTheme(t.id))); // REQ-STABLE-001
   m.gacha.banners.forEach((b) => add(assetKeys.gachaBanner(b.id)));
   m.events.forEach((e) => add(assetKeys.eventBanner(e.id)));
   m.titles.forEach((t) => add(assetKeys.title(t.id)));
@@ -70,6 +72,7 @@ export function buildAssetManifest(m: Master, commentary: CommentaryJson, v: Vis
   for (const p of Object.values(commentary.phrases)) for (const vr of p.variants) phraseClipIds(vr.id, vr.text).forEach((c) => add(assetKeys.voicePhrase(c)));
   for (let n = 1; n <= MAX_SPOKEN_NUMBER; n++) add(assetKeys.voiceNum(n));
   m.templates.forEach((t) => add(assetKeys.voiceName(t.name)));
+  m.skills?.skills.forEach((s) => add(assetKeys.voiceName(s.name))); // REQ-UXS-050: skill names are voiced like horse names
   for (const kind of Object.keys(ASSET_KINDS)) add(fallbackKey(kind));
 
   const sorted = [...keys].sort();

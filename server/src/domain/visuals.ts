@@ -68,6 +68,8 @@ export const assetKeys = {
   /** REQ-ITEM-006: tack and stable decor keys come from master/items.json (`asset`). */
   tack: (name: string) => `tack/${name}`,
   decor: (name: string) => `decor/${name}`,
+  /** REQ-STABLE-*: マイ厩舎 room theme (walls/floor), master/stable.json `themes[].id`. */
+  stableTheme: (id: string) => `stable/theme/${id}`,
   gate: (bracket: number) => `ui/gate/${bracket}`,
   item: (id: string) => `item/${id}`,
   gachaBanner: (id: string) => `banner/gacha/${id}`,
@@ -102,6 +104,7 @@ export const ASSET_KINDS: Record<string, { description: string; dynamic?: boolea
   'ui/gate': { description: '枠番（1〜8）のゼッケン・UI色' },
   tack: { description: '馬具（頭絡・ゼッケン布）。馬のモデルに重ねる見た目（REQ-ITEM-006）' },
   decor: { description: '厩舎の飾り（REQ-ITEM-006）' },
+  'stable/theme': { description: 'マイ厩舎の部屋のテーマ（壁・床。REQ-STABLE-001）' },
   item: { description: 'アイテムのアイコン' },
   'banner/gacha': { description: 'ガチャのバナー' },
   'banner/event': { description: 'イベントのバナー' },
@@ -118,7 +121,7 @@ export const ASSET_KINDS: Record<string, { description: string; dynamic?: boolea
   'sfx/ui': { description: 'UIの効果音' },
   [`voice/${VOICE_LANG}/phrase`]: { description: '実況の定型フレーズ（Resources/Muchi/commentary-ja.json の各断片）' },
   [`voice/${VOICE_LANG}/num`]: { description: '実況の数字（着順など）' },
-  [`voice/${VOICE_LANG}/name`]: { description: '実況の馬名。命名時に生成するため動的（テンプレート馬の名前だけ列挙）', dynamic: true },
+  [`voice/${VOICE_LANG}/name`]: { description: '実況の馬名。命名時に生成するため動的（テンプレート馬の名前と固有スキル名だけ列挙）', dynamic: true },
 };
 export const fallbackKey = (kind: string) => `${kind}/default`;
 /** The kind of a key: everything before the last segment (variant suffix ignored). */

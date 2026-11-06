@@ -24,6 +24,10 @@ public static partial class MuchiRace
     private static double _xShift;
     private static readonly RaceInput _input = new RaceInput();
     private static string _subtitle = "";
+    private static RaceObserver _obs;
+    private static TutorialDirector _director;
+    private static int _eventIdx;
+    private static string _mode = "";
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
     [JSExport]
@@ -53,16 +57,57 @@ public static partial class MuchiRace
             }
             cfg = RaceFactory.Practice(_ruleset, p, (ulong)seed);
         }
-        _driver = new OfflineRaceDriver(cfg, 0, true);
-        _commentary = new CommentaryFeed(_templates, cfg, 0);
+        return Begin(mode, new OfflineRaceDriver(cfg, 0, true));
+    }
+
+    /// <summary>
+    /// The tutorial with its TutorialDirector (REQ-UXS-004): rival on slot 1, whip-only controls; 2+ counted whips in the
+    /// last 300 m win, 0-1 give a close 2nd, attempt 3+ is assisted. <paramref name="attempt"/> is 1-based.
+    /// </summary>
+    [JSExport]
+    public static string StartTutorial(int attempt)
+    {
+        var race = OfflinePresets.TutorialRace(_ruleset, Math.Max(1, attempt));
+        return Begin("tutorial", new OfflineRaceDriver(race));
+    }
+
+    /// <summary>A race from a server-built RaceStartConfig (server/src/domain/raceConfig.ts buildRaceConfig), ridden by <paramref name="playerId"/>.</summary>
+    [JSExport]
+    public static string StartConfig(string configJson, string playerId)
+    {
+        var cfg = Muchi.Net.ProtocolCodec.ParseConfig(configJson);
+        int slot = 0;
+        foreach (var e in cfg.Entrants) if (e.Kind == EntrantKind.Human && e.PlayerId == playerId) { slot = e.Slot; break; }
+        return Begin("config", new OfflineRaceDriver(cfg, slot, false)); // the player presses START (late = 出遅れ)
+    }
+
+    private static string Begin(string mode, OfflineRaceDriver driver)
+    {
+        _obs?.Dispose();
+        _driver = driver;
+        _mode = mode;
+        var cfg = driver.Config;
+        _director = driver.Race.Director as TutorialDirector;
+        _obs = new RaceObserver(_driver);
+        _eventIdx = 0;
+        _commentary = new CommentaryFeed(_templates, cfg, driver.PlayerSlot);
         _geo = TrackGeometry.For(cfg);
         _input.Reset();
         _subtitle = "";
         var sb = new StringBuilder();
         sb.Append("{\"mode\":\"").Append(mode).Append("\",\"distanceM\":").Append(cfg.Track.DistanceM)
+          .Append(",\"trackId\":\"").Append(Esc(cfg.Track.Id)).Append("\",\"playerSlot\":").Append(driver.PlayerSlot)
+          .Append(",\"tutorialAttempt\":").Append(_director?.Attempt ?? 0).Append(",\"rivalSlot\":").Append(_director?.RivalSlot ?? -1)
           .Append(",\"surface\":\"").Append(cfg.Track.Surface == Surface.Dirt ? "dirt" : "turf").Append("\",\"laneCount\":").Append(cfg.Ruleset.LaneCount)
           .Append(",\"laneWidthM\":").Append(F(cfg.Ruleset.LaneWidthMm / 1000.0)).Append(",\"names\":[");
         for (int i = 0; i < cfg.Entrants.Count; i++) { if (i > 0) sb.Append(','); sb.Append('"').Append(Esc(cfg.Entrants[i].Horse.Name)).Append('"'); }
+        sb.Append("],\"skills\":[");
+        for (int i = 0; i < cfg.Entrants.Count; i++)
+        {
+            if (i > 0) sb.Append(',');
+            var k = driver.Sim.SkillOf(i);
+            if (k == null) sb.Append("null"); else sb.Append("{\"id\":\"").Append(Esc(k.Id)).Append("\",\"name\":\"").Append(Esc(k.Name)).Append("\"}");
+        }
         // RaceWorld.StartRace: CourseFrame (finish at z=420 facing +Z), straight courses reuse the Greenfield straight
         // with the field centred between its rails (xShift); bends get the generated course (BuildCourse).
         var visuals = _driver.Visuals;
@@ -104,19 +149,22 @@ public static partial class MuchiRace
         long now = (long)nowMs;
         if (_driver.Sim != null) _driver.Input(_input.Collect(_driver.Sim.GetHorse(_driver.PlayerSlot)));
         _driver.Update(now);
-        var hud = HudModel.Build(_driver, now);
+        var hud = _obs.Hud(now);
         if (_driver.Sim != null) { var s = _commentary.Update(_driver.Sim); if (s != null) _subtitle = s; }
         var sb = new StringBuilder(2048);
-        sb.Append("{\"rank\":").Append(hud.Rank).Append(",\"runners\":").Append(hud.Runners)
+        sb.Append("{\"tick\":").Append(_driver.Sim.Tick).Append(",\"rank\":").Append(hud.Rank).Append(",\"runners\":").Append(hud.Runners)
           .Append(",\"remainingM\":").Append(hud.RemainingM).Append(",\"distanceM\":").Append(hud.DistanceM)
           .Append(",\"stamina\":").Append(hud.StaminaPermille).Append(",\"whips\":").Append(hud.WhipsLeft).Append(",\"maxWhips\":").Append(hud.MaxWhips)
           .Append(",\"kakari\":").Append(B(hud.Kakari)).Append(",\"reining\":").Append(B(hud.Reining)).Append(",\"spurt\":").Append(B(hud.Spurt))
           .Append(",\"departed\":").Append(B(hud.Departed)).Append(",\"finished\":").Append(B(hud.Finished)).Append(",\"gateOpen\":").Append(B(hud.GateOpen))
           .Append(",\"gateTicks\":").Append(hud.GateCountdownTicks).Append(",\"elapsedMs\":").Append(hud.ElapsedMs)
           .Append(",\"finishPlace\":").Append(hud.FinishPlace).Append(",\"done\":").Append(B(_driver.Done))
+          .Append(",\"playerSlot\":").Append(_driver.PlayerSlot).Append(",\"rankKnown\":").Append(B(hud.RankKnown))
           .Append(",\"time\":\"").Append(HudModel.FormatTime(hud.ElapsedMs)).Append("\",\"subtitle\":\"").Append(Esc(_subtitle)).Append("\",\"progress\":[");
         for (int i = 0; i < hud.Progress.Length; i++) { if (i > 0) sb.Append(','); sb.Append(F(hud.Progress[i])); }
-        sb.Append("],\"horses\":[");
+        sb.Append(']');
+        AppendFeel(sb, hud, now);
+        sb.Append(",\"horses\":[");
         int n = _driver.Config.Entrants.Count, laneW = _driver.Config.Ruleset.LaneWidthMm;
         for (int i = 0; i < n; i++)
         {
@@ -139,9 +187,89 @@ public static partial class MuchiRace
             sb.Append(",\"tickHz\":").Append(_driver.Config.Net.TickHz).Append(",\"finishTicks\":[").Append(string.Join(",", res.FinishTicks)).Append("],\"margins\":[");
             for (int i = 0; i < res.Margins.Length; i++) { if (i > 0) sb.Append(','); sb.Append(F(res.Margins[i].Raw / (double)Fx.OneRaw)); }
             sb.Append(']');
+            AppendResult(sb);
         }
         sb.Append('}');
         return sb.ToString();
+    }
+
+    /// <summary>Race feel (RaceFeelTracker via RaceObserver/HudModel), skill activations (engine Skill events), tutorial director state and the camera rig shot.</summary>
+    private static void AppendFeel(StringBuilder sb, HudSnapshot hud, long now)
+    {
+        sb.Append(",\"feel\":{\"level\":\"").Append(hud.Stamina.ToString()).Append("\",\"blink\":").Append(B(hud.StaminaBlink))
+          .Append(",\"whipChance\":").Append(B(hud.WhipChance)).Append(",\"slipstream\":").Append(B(hud.Slipstream))
+          .Append(",\"kakariWarning\":").Append(B(hud.KakariWarning)).Append(",\"runaway\":").Append(B(hud.RunawayWarning))
+          .Append(",\"mashed\":").Append(B(hud.WhipMashed)).Append(",\"whipActive\":").Append(B(hud.WhipActive)).Append(",\"blocked\":").Append(B(hud.Blocked))
+          .Append(",\"gapAhead\":\"").Append(hud.GapAheadMm < 0 ? "" : Esc(RaceFeel.MarginText(hud.GapAheadMm)))
+          .Append("\",\"gapAheadMm\":").Append(hud.GapAheadMm).Append(",\"gapBehindMm\":").Append(hud.GapBehindMm)
+          .Append(",\"hint\":\"").Append(Esc(hud.Hint)).Append("\",\"cues\":[");
+        for (int i = 0; i < hud.Cues.Length; i++)
+        {
+            if (i > 0) sb.Append(',');
+            sb.Append("{\"kind\":\"").Append(hud.Cues[i].Kind.ToString()).Append("\",\"text\":\"").Append(Esc(hud.Cues[i].Text)).Append("\"}");
+        }
+        sb.Append("]}");
+        var sim = _driver.Sim;
+        int ps = _driver.PlayerSlot;
+        var mySkill = sim.SkillOf(ps);
+        var me = sim.GetHorse(ps);
+        sb.Append(",\"skill\":{\"name\":\"").Append(Esc(mySkill?.Name)).Append("\",\"used\":").Append(B(me.SkillUsed)).Append(",\"active\":").Append(B(me.IsSkillActive))
+          .Append(",\"ticksLeft\":").Append(me.SkillTicksLeft).Append("},\"skillEvents\":[");
+        var evs = sim.Events;
+        bool first = true;
+        for (; _eventIdx < evs.Count; _eventIdx++)
+        {
+            var e = evs[_eventIdx];
+            if (e.Type != RaceEventType.Skill) continue;
+            var k = sim.SkillOf(e.Slot);
+            if (!first) sb.Append(',');
+            first = false;
+            sb.Append("{\"slot\":").Append(e.Slot).Append(",\"tick\":").Append(e.Tick).Append(",\"rank\":").Append(e.Value + 1)
+              .Append(",\"name\":\"").Append(Esc(k?.Name)).Append("\",\"horse\":\"").Append(Esc(_driver.Config.Entrants[e.Slot].Horse.Name)).Append("\"}");
+        }
+        sb.Append(']');
+        if (_director != null)
+            sb.Append(",\"tutorial\":{\"attempt\":").Append(_director.Attempt).Append(",\"countedWhips\":").Append(_director.CountedWhips)
+              .Append(",\"qualified\":").Append(B(_director.Qualified)).Append(",\"assisted\":").Append(B(_director.Assisted))
+              .Append(",\"outcome\":\"").Append(_director.Outcome.ToString()).Append("\",\"windowM\":").Append(TutorialDirector.WhipWindowM).Append('}');
+        var shot = _obs.CameraShot(_frame, now);
+        if (shot.HasValue)
+        {
+            var c = shot.Value;
+            sb.Append(",\"cam\":[").Append(F(c.Position.X + _xShift)).Append(',').Append(F(c.Height)).Append(',').Append(F(c.Position.Z)).Append(',')
+              .Append(F(c.LookAt.X + _xShift)).Append(',').Append(F(c.LookAtHeight)).Append(',').Append(F(c.LookAt.Z)).Append(',').Append(F(c.FieldOfViewDegrees))
+              .Append(",\"").Append(c.Mode.ToString()).Append("\"]");
+        }
+    }
+
+    /// <summary>RaceResultModel (06 §6.4): headline, the debrief line and tip (RaceDebrief, REQ-UXS-005), result rows with margins, tutorial retry.</summary>
+    private static void AppendResult(StringBuilder sb)
+    {
+        var m = RaceResultModel.Build(_driver, _obs);
+        var d = _obs.Debrief();
+        sb.Append(",\"result\":{\"place\":").Append(m.Place).Append(",\"runners\":").Append(m.Runners).Append(",\"won\":").Append(B(m.Won))
+          .Append(",\"time\":\"").Append(Esc(m.TimeText)).Append("\",\"headline\":\"").Append(Esc(m.Headline))
+          .Append("\",\"line\":\"").Append(Esc(m.DebriefLine)).Append("\",\"tip\":\"").Append(Esc(m.DebriefTip))
+          .Append("\",\"code\":\"").Append(Esc(m.DebriefCode)).Append("\",\"reason\":\"").Append(m.Reason?.ToString() ?? "")
+          .Append("\",\"marginMm\":").Append(d?.MarginMm ?? 0).Append(",\"margin\":\"").Append(d == null ? "" : Esc(RaceFeel.MarginText(d.MarginMm)))
+          .Append("\",\"primary\":\"").Append(Esc(m.PrimaryAction)).Append("\",\"secondary\":\"").Append(Esc(m.SecondaryAction))
+          .Append("\",\"tutorialRetry\":").Append(B(m.TutorialRetry)).Append(",\"nextAttempt\":").Append(m.NextTutorialAttempt);
+        if (d != null)
+        {
+            var f = d.Facts;
+            sb.Append(",\"facts\":{\"whips\":").Append(f.WhipCount).Append(",\"earlyWhips\":").Append(f.EarlyWhips).Append(",\"mashed\":").Append(f.MashedWhips)
+              .Append(",\"passes\":").Append(f.PassesMade).Append(",\"kakari\":").Append(f.KakariCount).Append(",\"lateStart\":").Append(B(f.LateStart))
+              .Append(",\"slipstreamTicks\":").Append(f.SlipstreamTicks).Append(",\"staminaEmptyM\":").Append(f.StaminaEmptyRemainingMm < 0 ? -1 : f.StaminaEmptyRemainingMm / 1000).Append('}');
+        }
+        sb.Append(",\"rows\":[");
+        for (int i = 0; i < m.Rows.Count; i++)
+        {
+            var r = m.Rows[i];
+            if (i > 0) sb.Append(',');
+            sb.Append("{\"place\":").Append(r.Place).Append(",\"slot\":").Append(r.Slot).Append(",\"name\":\"").Append(Esc(r.Name))
+              .Append("\",\"margin\":\"").Append(Esc(r.Margin)).Append("\",\"player\":").Append(B(r.IsPlayer)).Append('}');
+        }
+        sb.Append("]}");
     }
 
     /// <summary>Re-run a golden race file ({log, expected}) in WebAssembly and return the result hash (must equal expected.resultHash).</summary>

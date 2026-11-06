@@ -1,6 +1,6 @@
 import type { Master, WeatherConfig } from './master.js';
 import { goingsFor, type Going, type RaceMode, type Track } from './schemas.js';
-import { jstDateKey } from './time.js';
+import { gameDayKey } from './time.js';
 
 /** Ground and lighting for one race (REQ-RACE-034/036/037). */
 export interface Ground { going: Going; night: boolean }
@@ -38,7 +38,7 @@ export function dailyGoing(w: WeatherConfig, track: Pick<Track, 'id' | 'surface'
   const entries = names.map((n) => [n, Math.max(0, Math.floor(weights[n] ?? 0))] as const).filter(([, wt]) => wt > 0);
   const total = entries.reduce((a, [, wt]) => a + wt, 0);
   if (total === 0) return 'good';
-  let roll = fnv1a32(`${w.salt}|${jstDateKey(nowMs)}|${track.id}`) % total;
+  let roll = fnv1a32(`${w.salt}|${gameDayKey(nowMs)}|${track.id}`) % total;
   for (const [n, wt] of entries) {
     if (roll < wt) return n;
     roll -= wt;

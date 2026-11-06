@@ -26,6 +26,20 @@ namespace Muchi.Client
         Cooldown,
         /// <summary>409: the stud fee changed since the borrower's preview; nothing was charged (REQ-BREED-012).</summary>
         FeeChanged,
+        /// <summary>409: today's stable likes are used up (REQ-STABLE-005; likes never give coins).</summary>
+        LikeLimit,
+        /// <summary>409: this stable was already liked today.</summary>
+        AlreadyLiked,
+        /// <summary>409: the consent was for an old terms/privacy version; refetch /v1/player consent.current (REQ-UXS-001).</summary>
+        ConsentVersionMismatch,
+        /// <summary>409: the first partner horse was already granted (REQ-UXS-002).</summary>
+        PartnerAlreadyGranted,
+        /// <summary>409: the account deletion token is wrong or expired; request a new one (REQ-UXS-040).</summary>
+        DeletionConfirmInvalid,
+        /// <summary>409: the account is scheduled for deletion; purchases are disabled until it is cancelled (REQ-UXS-040).</summary>
+        DeletionPending,
+        /// <summary>409: the deletion run has already started and cannot be cancelled any more (REQ-UXS-040).</summary>
+        DeletionInProgress,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -88,6 +102,13 @@ namespace Muchi.Client
             ["INSUFFICIENT_ITEMS"] = ApiErrorCode.InsufficientItems,
             ["COOLDOWN"] = ApiErrorCode.Cooldown,
             ["FEE_CHANGED"] = ApiErrorCode.FeeChanged,
+            ["LIKE_LIMIT"] = ApiErrorCode.LikeLimit,
+            ["ALREADY_LIKED"] = ApiErrorCode.AlreadyLiked,
+            ["CONSENT_VERSION_MISMATCH"] = ApiErrorCode.ConsentVersionMismatch,
+            ["PARTNER_ALREADY_GRANTED"] = ApiErrorCode.PartnerAlreadyGranted,
+            ["DELETION_CONFIRM_INVALID"] = ApiErrorCode.DeletionConfirmInvalid,
+            ["DELETION_PENDING"] = ApiErrorCode.DeletionPending,
+            ["DELETION_IN_PROGRESS"] = ApiErrorCode.DeletionInProgress,
             ["VERIFIER_UNAVAILABLE"] = ApiErrorCode.VerifierUnavailable,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };
@@ -121,6 +142,7 @@ namespace Muchi.Client
                 case ApiErrorCode.AgeLimitExceeded:
                 case ApiErrorCode.AlreadyPurchased:
                 case ApiErrorCode.UnsettledDebt:
+                case ApiErrorCode.DeletionPending:
                     return new PurchaseBlockedException(code, wire, message, status);
                 case ApiErrorCode.InsufficientCoins:
                     return new InsufficientCoinsException(wire, message, status);

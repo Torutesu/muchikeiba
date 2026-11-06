@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { m } from './helpers.js';
 import { newPlayer } from '../src/domain/player.js';
-import { admitClientBatch, BLOB, clientBatchSchema, DOUBLE, hashPlayerId, kpiRecord, toDataPoint, type KpiRecord } from '../src/domain/kpi.js';
+import { admitClientBatch, BLOB, clientBatchSchema, DOUBLE, hashPlayerId, kpiRecord, toDataPoint, TUTORIAL_STEPS, type KpiRecord } from '../src/domain/kpi.js';
 import { MemoryPlayerRepo, PlayerService } from '../src/domain/service.js';
 import { FakeStoreVerifier } from '../src/domain/purchase.js';
 import { seededRng } from '../src/domain/rng.js';
@@ -110,7 +110,7 @@ describe('record shape and privacy (REQ-KPI-001/005)', () => {
 });
 
 describe('client ingestion (REQ-KPI-003/004)', () => {
-  const batch = (n: number, at = NOON) => ({ platform: 'ios' as const, appVersion: '1.0.0', events: Array.from({ length: n }, (_, i) => ({ name: 'tutorial_step' as const, at, props: { step: `s${i}`, index: i } })) });
+  const batch = (n: number, at = NOON) => ({ platform: 'ios' as const, appVersion: '1.0.0', events: Array.from({ length: n }, (_, i) => ({ name: 'tutorial_step' as const, at, props: { step: TUTORIAL_STEPS[i % TUTORIAL_STEPS.length]!, index: (i % TUTORIAL_STEPS.length) + 1 } })) });
 
   it('accepts only client-observable events with valid props', () => {
     expect(clientBatchSchema.safeParse(batch(3)).success).toBe(true);

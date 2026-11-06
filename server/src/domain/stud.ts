@@ -21,7 +21,7 @@ import { breedingAllowance, breedWith, checkDam, effectiveStats, getHorse, paren
 import type { Rng } from './rng.js';
 import { appearanceOf, type Appearance } from './visuals.js';
 import { grantFree, spendFree } from './wallet.js';
-import { jstDateKey } from './time.js';
+import { gameDayKey } from './time.js';
 
 export type StudVisibility = 'friends' | 'public';
 
@@ -75,7 +75,7 @@ const APPLIED_KEEP_MS = 30 * 86_400_000;
 /** Drops expired reservations and old idempotency records; rolls the daily counters. */
 export function pruneStud(m: Master, st: StudState, now: number) {
   const c = studConfig(m);
-  const today = jstDateKey(now);
+  const today = gameDayKey(now);
   if (st.lends.date !== today) st.lends = { date: today, byHorse: {}, earned: 0 };
   if (st.borrows.date !== today) st.borrows = { date: today, count: 0 };
   for (const [k, r] of Object.entries(st.reservations)) if (now - r.at > c.reserveTtlMs) delete st.reservations[k];
@@ -141,7 +141,7 @@ export function studPeek(m: Master, s: PlayerState, borrowerId: string, horseId:
   const st = ensureStud(s);
   pruneStud(m, st, now);
   const l = offered(st, s, borrowerId, horseId);
-  return { ...snapshotOf(s, getHorse(s, horseId), l.fee), remainingToday: Math.max(0, l.dailyLimit - lendsToday(st, horseId, jstDateKey(now))) };
+  return { ...snapshotOf(s, getHorse(s, horseId), l.fee), remainingToday: Math.max(0, l.dailyLimit - lendsToday(st, horseId, gameDayKey(now))) };
 }
 
 /**
@@ -176,7 +176,7 @@ export function studReserve(m: Master, s: PlayerState, opId: string, borrowerId:
   }
   const l = offered(st, s, borrowerId, horseId);
   feeCheck(l.fee);
-  const today = jstDateKey(now);
+  const today = gameDayKey(now);
   if (lendsToday(st, horseId, today) >= l.dailyLimit) throw new AppError('BREEDING_DAILY_LIMIT', 'this stallion is fully booked today');
   st.reservations[opId] = { horseId, borrowerId, fee: l.fee, at: now, date: today };
   return snapshotOf(s, getHorse(s, horseId), l.fee);
@@ -249,7 +249,7 @@ export function studView(m: Master, s: PlayerState, now: number) {
   const c = studConfig(m);
   const st = ensureStud(s);
   pruneStud(m, st, now);
-  const today = jstDateKey(now);
+  const today = gameDayKey(now);
   return {
     listings: st.listings.filter((l) => s.horses.some((h) => h.id === l.horseId)).map((l): StudEntry & { lentToday: number } => ({ ...studEntry(m, s, l), lentToday: lendsToday(st, l.horseId, today) })),
     today: { earned: st.lends.earned, earnCap: c.dailyEarnCap, borrowed: st.borrows.count, borrowPerDay: c.borrowPerDay },
@@ -301,6 +301,7 @@ export function studHeldFree(s: PlayerState, now: number): number {
     if (p.refunded || p.at < since) continue;
     if (!p.bonusLotId) held += p.bonusCoinsGranted; // a bonus granted as paid coins can never pay a stud fee anyway
     held += p.sandboxFreeGranted ?? 0;
+    held += p.linkedFree ?? 0; // REQ-UXS-018/021: daily-pack coins and pass rewards a refund would take back
   }
   return held;
 }

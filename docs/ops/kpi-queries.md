@@ -49,8 +49,19 @@
 | `race_finish` | サーバー（レース確定時） | モード | 脚質 | コースID | `double4` 着順、`double5` 頭数、`double9` 人間の数、`double6` ゴールタイム |
 | `season_close` | サーバー | シーズン | 前のクラス | 次のクラス | `double4` 順位 |
 | `friend_request` / `friend_accept` | サーバー | | | | |
+| `stable_save` | サーバー（マイ厩舎の保存、REQ-STABLE-010） | テーマID | | | `double5` 飾りの数、`double9` 選んだ馬の数 |
+| `stable_visit` | サーバー（他人の厩舎を見た。書き込みなし） | `friend`/`other` | | | |
+| `stable_like` | サーバー（いいね。コインは付かない） | `friend`/`other` | | | `double9` 今日の残り回数 |
 | `session_start` / `session_end` | クライアント | | | | `double6` セッションの長さ |
-| `tutorial_step` | クライアント | ステップ名 | | | `double9` ステップ番号 |
+| `tutorial_step` | クライアント | ステップ名（固定の8つ：`consent` 1, `race1_start` 2, `race1_whip` 3, `race1_win` 4, `named` 5, `gacha_done` 6, `race2_done` 7, `home` 8） | | | `double9` ステップ番号、`double5` 任意の数値（`race1_win` はやり直し回数）。REQ-UXS-030 |
+| `feature_unlock` | クライアント | 機能キー（`unlocks` のキー） | | | |
+| `offer_view` / `offer_click` | クライアント | オファーID | きっかけ `T1`〜`T8`（docs/planning/06 §5.1） | | |
+| `race_quit` | クライアント | モード | | | `double9` 残り距離(m) |
+| `account_link` | クライアント | `apple`/`google` | | | |
+| `consent` | サーバー | 規約の版 | プライバシーポリシーの版 | | |
+| `partner_granted` | サーバー | テンプレートID（`t_partner`） | | | |
+| `ab_assign` | サーバー（初回の bootstrap、実験ごとに1回） | 実験ID | バケットID | | |
+| `account_delete` | サーバー | `requested`/`cancelled`/`deleted` | | | `deleted` は `double2`/`double3` 放棄したコイン |
 | `screen_view` | クライアント | 画面名 | | | |
 | `client_race_start` | クライアント | モード | | | |
 | `purchase_flow` | クライアント | `open`/`cancel`/`fail`/`store_success` | 商品ID | | |
@@ -100,6 +111,109 @@ ORDER BY idx
 SELECT count(DISTINCT blob2) AS installs FROM muchi_kpi
 WHERE blob1 = 'first_open' AND timestamp > NOW() - INTERVAL '14' DAY
 ```
+
+## FTUE の段階別通過率（REQ-UXS-031、docs/planning/06 §8.1 (a)）
+
+段階2（同意）〜10（ホーム）。各段の人数を前の段で割ると段ごとの通過率（目標：各段95%以上、全体85%以上）。
+2戦目は `race_finish`（ranked）でも数えられるので、`race2_done` と並べて確認できます。
+
+```sql
+SELECT
+  blob5 AS cohort,
+  count(DISTINCT if(blob1 = 'first_open', blob2, NULL)) AS installs,
+  count(DISTINCT if(blob1 = 'tutorial_step' AND blob8 = 'consent', blob2, NULL)) AS s2_consent,
+  count(DISTINCT if(blob1 = 'tutorial_step' AND blob8 = 'race1_start', blob2, NULL)) AS s3_race1_start,
+  count(DISTINCT if(blob1 = 'tutorial_step' AND blob8 = 'race1_whip', blob2, NULL)) AS s4_race1_whip,
+  count(DISTINCT if(blob1 = 'tutorial_step' AND blob8 = 'race1_win', blob2, NULL)) AS s5_race1_win,
+  count(DISTINCT if(blob1 = 'tutorial_step' AND blob8 = 'named', blob2, NULL)) AS s6_named,
+  count(DISTINCT if(blob1 = 'tutorial_step' AND blob8 = 'gacha_done', blob2, NULL)) AS s7_gacha_done,
+  count(DISTINCT if(blob1 = 'tutorial_step' AND blob8 = 'race2_done', blob2, NULL)) AS s8_race2_done,
+  count(DISTINCT if(blob1 = 'push_permission', blob2, NULL)) AS s9_push_asked,
+  count(DISTINCT if(blob1 = 'tutorial_step' AND blob8 = 'home', blob2, NULL)) AS s10_home
+FROM muchi_kpi
+WHERE timestamp > NOW() - INTERVAL '14' DAY AND double7 = 0
+GROUP BY cohort
+ORDER BY cohort DESC
+```
+
+## オファー別の表示→購入（REQ-UXS-031 (b)）
+
+表示・押した人数はクライアントイベント、購入はサーバーの `purchase`（同じ期間）。オファーIDが商品IDと同じものは購入率まで並びます。
+
+```sql
+SELECT
+  blob8 AS offer, blob9 AS trigger,
+  sumIf(_sample_interval, blob1 = 'offer_view') AS views,
+  sumIf(_sample_interval, blob1 = 'offer_click') AS clicks,
+  round(sumIf(_sample_interval, blob1 = 'offer_click') / sumIf(_sample_interval, blob1 = 'offer_view'), 3) AS ctr
+FROM muchi_kpi
+WHERE blob1 IN ('offer_view', 'offer_click') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY offer, trigger
+ORDER BY views DESC
+```
+
+```sql
+SELECT blob8 AS product, sum(_sample_interval) AS purchases, sumIf(_sample_interval, double8 = 1) AS first_purchases
+FROM muchi_kpi
+WHERE blob1 = 'purchase' AND blob10 = 'real' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY product
+ORDER BY purchases DESC
+```
+
+## 初レースのやり直し回数の分布（REQ-UXS-031 (c)）
+
+```sql
+SELECT double5 AS retries, count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'tutorial_step' AND blob8 = 'race1_win' AND timestamp > NOW() - INTERVAL '14' DAY
+GROUP BY retries
+ORDER BY retries
+```
+
+## 2戦目の着順分布（REQ-UXS-031 (d)、目標：3着以内70%以上 = balance-targets R10）
+
+インストール当日の最初のランク戦を見るため、ランク戦の着順を人ごとに最小の時刻で取ります。
+
+```sql
+SELECT place, count() AS players, round(count() / sum(count()) OVER (), 3) AS share
+FROM (
+  SELECT blob2 AS player, argMin(double4, timestamp) AS place
+  FROM muchi_kpi
+  WHERE blob1 = 'race_finish' AND blob8 = 'ranked' AND double7 <= 1 AND timestamp > NOW() - INTERVAL '14' DAY
+  GROUP BY player
+)
+GROUP BY place
+ORDER BY place
+```
+
+`argMin` や窓関数が使えない場合は、`tutorial_step`/`race2_done` の直前の `race_finish` を見る代わりに `countIf(double4 <= 3) / count()` を `double7 = 0` の ranked で出します（初日のランク戦はほぼ初心者マッチ）。
+
+```sql
+SELECT round(countIf(double4 <= 3) / count(), 3) AS top3_rate, count() AS races
+FROM muchi_kpi
+WHERE blob1 = 'race_finish' AND blob8 = 'ranked' AND double7 = 0 AND timestamp > NOW() - INTERVAL '14' DAY
+```
+
+## A/B のバケット別（REQ-UXS-032）
+
+`ab_assign` は実験ごとに1人1行。JOIN が使えないので、内側で人ごとに「どのバケットか」と「指標」を同時に集め、外側でバケット別に数えます（例：実験 `ab_home_button` のD1継続）。
+
+```sql
+SELECT bucket_b, count() AS players, countIf(came_d1) AS d1, round(countIf(came_d1) / count(), 3) AS d1_rate
+FROM (
+  SELECT blob2 AS player,
+    countIf(blob1 = 'ab_assign' AND blob8 = 'ab_home_button' AND blob9 = 'b') > 0 AS bucket_b,
+    countIf(blob1 = 'ab_assign' AND blob8 = 'ab_home_button') > 0 AS assigned,
+    countIf(double7 = 1) > 0 AS came_d1
+  FROM muchi_kpi
+  WHERE timestamp > NOW() - INTERVAL '30' DAY
+  GROUP BY player
+)
+WHERE assigned
+GROUP BY bucket_b
+```
+
+価格・中身はA/Bにしない（設定の検証で拒否される）ので、売上の差はきっかけ・順番・文言の差です。
 
 ## 初回課金の転換率と、課金までの日数
 

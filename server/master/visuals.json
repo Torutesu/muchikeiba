@@ -474,6 +474,30 @@
     ],
     "mane": "flaxen",
     "build": "compact"
+   },
+   "t_partner": {
+    "coat": "chestnut",
+    "face": "blaze",
+    "legs": [
+     "none",
+     "none",
+     "sock",
+     "none"
+    ],
+    "mane": "normal",
+    "build": "standard"
+   },
+   "t_broodmare": {
+    "coat": "bay",
+    "face": "star",
+    "legs": [
+     "none",
+     "none",
+     "none",
+     "none"
+    ],
+    "mane": "normal",
+    "build": "standard"
    }
   },
   "inheritance": {
@@ -546,7 +570,10 @@
     "colors": 3,
     "unlockItem": "costume_login"
    },
-      { "id": "laurel", "colors": 3, "unlockItem": "costume_silks_laurel" }
+      { "id": "laurel", "colors": 3, "unlockItem": "costume_silks_laurel" },
+      { "id": "promo_b", "colors": 3, "unlockItem": "costume_promo_b" },
+      { "id": "promo_a", "colors": 3, "unlockItem": "costume_promo_a" },
+      { "id": "promo_s", "colors": 3, "unlockItem": "costume_promo_s" }
   ],
   "caps": [
    {

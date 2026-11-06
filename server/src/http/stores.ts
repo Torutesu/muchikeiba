@@ -36,7 +36,10 @@ export interface StoreSettings {
 }
 
 export function storeSettingsFromEnv(env: Env, master: Master): StoreSettings {
-  const subscriptionProductIds = new Set(master.products.filter((p) => p.kind === 'season_pass').map((p) => p.id));
+  // REQ-UXS-018..020: every product is a one-time store product except those registered as auto-renewing
+  // subscriptions (none since the per-season pass). Once-only bundles are non-consumable (acknowledged on Google).
+  const subscriptionProductIds = new Set(master.products.filter((p) => p.storeType === 'auto_renewing').map((p) => p.id));
+  const nonConsumableProductIds = new Set(master.products.filter((p) => p.storeType === 'non_consumable').map((p) => p.id));
   const priceYen = (id: string) => master.products.find((p) => p.id === id)?.priceYen ?? 0;
   const apple: AppleConfig | null = env.APPLE_BUNDLE_ID
     // Sandbox is opt-in (review r5 #7). Accepted sandbox purchases only ever credit free coins.
@@ -52,7 +55,7 @@ export function storeSettingsFromEnv(env: Env, master: Master): StoreSettings {
     }
     const api = new GooglePlayApi(env.GOOGLE_PACKAGE_NAME, new GoogleServiceAuth(sa));
     google = {
-      packageName: env.GOOGLE_PACKAGE_NAME, api, subscriptionProductIds, priceYen,
+      packageName: env.GOOGLE_PACKAGE_NAME, api, subscriptionProductIds, nonConsumableProductIds, priceYen,
       acceptTest: env.GOOGLE_ACCEPT_TEST !== '0',
       rtdn: env.GOOGLE_PUBSUB_AUDIENCE && env.GOOGLE_PUBSUB_SERVICE_ACCOUNT ? { audience: env.GOOGLE_PUBSUB_AUDIENCE, serviceAccountEmail: env.GOOGLE_PUBSUB_SERVICE_ACCOUNT } : null,
     };

@@ -111,14 +111,24 @@ namespace Muchi.Client
     {
         public string ItemId, BannerId;
         public PullResult Result;
+        /// <summary>
+        /// Every pull: 10 for a 10-pull ticket (<c>gacha_ticket_10</c>, REQ-UXS-015; <see cref="Result"/> is then the
+        /// first one), one for the other tickets.
+        /// </summary>
+        public List<PullResult> Results = new List<PullResult>();
         /// <summary>Pity after a gacha-ticket draw; null for SR+ tickets (they add no pity).</summary>
         public int? PityPoints;
         public int Remaining;
-        internal static TicketResult Parse(JsonNode o) => new TicketResult
+        internal static TicketResult Parse(JsonNode o)
         {
-            ItemId = J.Str(o, "itemId"), BannerId = J.Str(o, "bannerId"), Result = PullResult.Parse(J.Opt(o, "result")),
-            PityPoints = J.IntN(o, "pityPoints"), Remaining = J.Int(o, "remaining"),
-        };
+            var r = new TicketResult
+            {
+                ItemId = J.Str(o, "itemId"), BannerId = J.Str(o, "bannerId"), Result = PullResult.Parse(J.Opt(o, "result")),
+                PityPoints = J.IntN(o, "pityPoints"), Remaining = J.Int(o, "remaining"), Results = J.List(o, "results", PullResult.Parse),
+            };
+            if (r.Results.Count == 0) r.Results.Add(r.Result);
+            return r;
+        }
     }
 
     /// <summary>Today's breeding allowance (normal + extra breedings bought with breeding material).</summary>

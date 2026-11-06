@@ -9,6 +9,11 @@ import { oddsDisclosure, findBanner } from '../../../server/src/domain/gacha.js'
 import { cryptoRng } from '../../../server/src/domain/rng.js';
 import { AppError } from '../../../server/src/domain/errors.js';
 import type { Style } from '../../../server/src/domain/master.js';
+import { shopProducts } from '../../../server/src/domain/shop.js';
+import { buildRaceConfig, toRaceHorse } from '../../../server/src/domain/raceConfig.js';
+import { groundFor } from '../../../server/src/domain/ground.js';
+import { skillCatalog, horseSkill, skillView } from '../../../server/src/domain/skills.js';
+import { classDef } from '../../../server/src/domain/season.js';
 import tracksJson from '../../../server/master/tracks.json';
 
 const trackNames = new Map((tracksJson as { tracks: { id: string; name?: string }[] }).tracks.map((t) => [t.id, t.name ?? t.id]));
@@ -24,7 +29,13 @@ class LocalRepo implements PlayerRepo {
 }
 
 const master = loadMaster();
-const svc = new PlayerService(new LocalRepo(), { master, rng: cryptoRng, clock: () => Date.now(), verifiers: {} });
+// Demo clock (REQ-UXP-002 home states 初日 / 3日目 / 7日目): the real rules run on Date.now() + whole days, so
+// unlocks by day, the beginner login bonus and the season end all come from the server code, not from the UI.
+const DAY_KEY = 'muchi.proto.dayOffset';
+const DAY_MS = 86_400_000;
+let dayOffset = (() => { try { return Math.max(0, parseInt(localStorage.getItem(DAY_KEY) ?? '0', 10) || 0); } catch { return 0; } })();
+const now = () => Date.now() + dayOffset * DAY_MS;
+const svc = new PlayerService(new LocalRepo(), { master, rng: cryptoRng, clock: now, verifiers: {} });
 let n = 0;
 const key = () => `c:/proto:${Date.now()}:${n++}`;
 
@@ -50,6 +61,11 @@ export const MuchiLogic = {
     rooms: master.progression.rooms,
     tracks: master.tracks.map((t) => ({ id: t.id, name: trackNames.get(t.id) ?? t.id, surface: t.surface, distanceM: t.distanceM, lit: master.litTracks.has(t.id) })),
     ageLimits: master.ageLimits,
+    itemLabels: (master.shopDisplay?.itemLabels ?? {}) as Record<string, string>,
+    passRewards: master.progression.passRewards,
+    unlocks: master.progression.unlocks,
+    beginnerLoginBonus: master.progression.beginnerLoginBonus,
+    beginnerRaces: master.progression.beginnerRaces,
   },
   odds: (bannerId: string) => oddsDisclosure(master, findBanner(master, bannerId)),
   async bootstrap() {
@@ -82,7 +98,76 @@ export const MuchiLogic = {
   applyRace: (raceId: string, place: number, fieldSize: number, details: { trackId: string; style: Style; finishTick: number | null; whips: number }) =>
     wrap(() => svc.applyRace(ID, { raceId, mode: 'ranked', place, fieldSize, newRating: null, void: false, humans: 1,
       details: { ...details, startReactionTicks: null, whipMashed: false, cpuAssisted: false } })),
-  reset() { try { localStorage.removeItem(KEY + ':' + ID); } catch { /* ignore */ } },
+  reset() { try { localStorage.removeItem(KEY + ':' + ID); localStorage.removeItem(DAY_KEY); } catch { /* ignore */ } dayOffset = 0; },
+
+  // ---------------------------------------------------------------- round 8 (docs/planning/06, REQ-UXS-*), used by unity.html
+  now,
+  dayOffset: () => dayOffset,
+  setDayOffset(days: number) { dayOffset = Math.max(0, Math.floor(days)); try { localStorage.setItem(DAY_KEY, String(dayOffset)); } catch { /* ignore */ } },
+  consentVersions: master.progression.consent,
+  // REQ-UXS-001: the terms/privacy versions agreed to and when
+  recordConsent: () => wrap(() => svc.recordConsent(ID, master.progression.consent!.termsVersion, master.progression.consent!.privacyVersion)),
+  // REQ-UXS-002: the horse ridden in the tutorial (t_partner) is granted and named in one step, apart from the free 10-pull
+  grantPartner: (name: string) => wrap(() => svc.grantPartner(ID, name, key())),
+  partnerTemplate: (() => { const t = master.templateById.get(master.progression.partner?.templateId ?? ''); return t ? { id: t.id, name: t.name, rarity: t.rarity, style: t.style, stats: t.stats, skillId: t.skillId ?? null } : null; })(),
+  // REQ-UXS-022 shop display data and REQ-UXS-017 offers (server-built labels; no 「倍」 wording is made on the client)
+  shopProducts: () => shopProducts(master),
+  shopOffers: () => wrap(() => svc.shopOffers(ID)),
+  markOfferViewed: (offerId: string) => wrap(() => svc.markOfferViewed(ID, offerId)),
+  allowance: () => svc.allowance(ID),
+  claimAllowance: () => wrap(() => svc.claimAllowance(ID, key())),
+  claimPass: (track: 'free' | 'premium', level: number) => wrap(() => svc.claimPass(ID, track, level, key())),
+  firstWinBonus: () => svc.firstWinBonus(ID),
+  cosmetics: () => svc.cosmetics(ID),
+  bond: (horseId: string) => wrap(() => svc.bond(ID, horseId)),
+  // REQ-UXS-040: account deletion (two steps, 14-day cancel window); purchases and offers are blocked meanwhile
+  requestDeletion: (token: string | null) => wrap(() => svc.requestDeletion(ID, token)),
+  cancelDeletion: () => wrap(() => svc.cancelDeletion(ID)),
+  // REQ-UXS-050: unique skills, texts generated from the values the engine uses
+  skills: () => skillCatalog(master),
+  horseSkill: (h: { skillId?: string; templateId?: string }) => { const d = horseSkill(master, h as never); return d ? skillView(master, d) : null; },
+  /**
+   * A beginner / ranked race built by the server's own buildRaceConfig (REQ-MM-005, REQ-UXS-003): the partner at the
+   * class stat cap, CPU horses from the master with their skills (ruleset 1.3.0, capped like ranked), the day's going.
+   * The WASM engine runs it offline (MuchiRace.StartConfig).
+   */
+  async raceConfig(horseId: string, trackId: string | null) {
+    const s = await svc.state(ID);
+    const h = s.horses.find((x) => x.id === horseId);
+    if (!h) throw new Error('horse ' + horseId);
+    const beginner = s.rating.rankedRaces < master.progression.beginnerRaces;
+    const bm = master.progression.beginnerMatch;
+    const tId = trackId ?? master.tracks[Math.floor(Math.random() * master.tracks.length)]!.id;
+    const config = buildRaceConfig(master, {
+      raceId: 'proto_' + Date.now().toString(36), mode: 'ranked', trackId: tId, statCap: classDef(master, s.season.classId).statCap,
+      humans: [{ playerId: ID, horse: toRaceHorse(master, h), cpuLevel: 3 }], cpuCount: 11, cpuLevel: beginner && bm ? bm.cpuLevel : 3,
+      rng: cryptoRng, ground: groundFor(master, tId, 'ranked', now()),
+      ...(beginner && bm ? { cpuStatPermille: bm.cpuStatPermille } : {}),
+    });
+    return { config, beginner, trackName: trackNames.get(tId) ?? tId };
+  },
+  /**
+   * Demo states for the home screen (REQ-UXP-002): plays `days` game days on the real rules — each day the login bonus is
+   * claimed and `racesPerDay` races are settled through applyRace — then leaves the clock on the last day.
+   */
+  async seedDemo(days: number, racesPerDay: number[], partnerName = 'アカツキ') {
+    await this.bootstrap();
+    await this.recordConsent();
+    let v = await svc.view(ID);
+    if (!v.flags.partnerHorseId) await this.grantPartner(partnerName);
+    v = await svc.view(ID);
+    if (!v.flags.tutorialGachaUsed) await this.tutorialDraw();
+    const places = [2, 1, 4, 3, 1, 5, 2, 6, 1, 3, 2, 7];
+    let k = 0;
+    for (let d = 0; d < days; d++) {
+      this.setDayOffset(d);
+      await this.claimLogin();
+      for (let i = 0; i < (racesPerDay[d] ?? 0); i++, k++) {
+        await this.applyRace(`demo_${d}_${i}`, places[k % places.length]!, 12, { trackId: 'aoba_turf_1600', style: 'sashi', finishTick: 1900, whips: 3 });
+      }
+    }
+    return svc.view(ID);
+  },
   playerView,
 };
 

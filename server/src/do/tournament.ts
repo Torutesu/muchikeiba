@@ -6,7 +6,7 @@ import { cryptoRng } from '../domain/rng.js';
 import { liveRaceOf } from '../domain/spectate.js';
 import {
   assembleTournament, cancelTournament, dismissPayout, newTournament, playerView, playerViewWithTicket, publicView, register, retryPayout,
-  stepTournament, summaryOf, tournamentCore, tournamentDeadLetters, unregister, TOURNAMENT_LIST_KEEP_MS,
+  stepTournament, summaryOf, tournamentCore, tournamentDeadLetters, unregister, TOURNAMENT_LIST_KEEP_MS, forgetRegistrant, closingSoon,
   type Heat, type HeatOutcome, type Payout, type PersistHint, type Registrant, type Standing, type StoredCore, type TournamentDef,
   type TournamentPorts, type TournamentState, type TournamentSummary,
 } from '../domain/tournaments.js';
@@ -17,6 +17,7 @@ import { assignmentsFor, createRace, TICKET_TTL_MS } from '../race/orchestrate.j
 import { signTicket } from '../http/ticket.js';
 import type { RaceStartConfig } from '../domain/schemas.js';
 import { reportDeadLetters } from './deadLetters.js';
+import { DELETED_PLAYER_NAME } from '../domain/accountDeletion.js';
 import { unwrap, wrap, type Envelope } from './rpc.js';
 
 type Rpc = Record<string, (...a: unknown[]) => Promise<unknown>>;
@@ -186,6 +187,35 @@ export class TournamentDO extends DurableObject<Env> {
         await this.publish(now);
       }
       return { removed, ...playerView(t, playerId, now) };
+    });
+  }
+
+  /** REQ-UXS-040: account deletion (see forgetRegistrant). */
+  async forgetPlayer(playerId: string, now: number): Promise<Envelope<string>> {
+    return wrap(async () => {
+      if (!this.state) return 'none';
+      const t = this.state;
+      const r = forgetRegistrant(t, playerId, now, DELETED_PLAYER_NAME);
+      if (r === 'removed') this.sql.exec('DELETE FROM registrants WHERE player_id = ?', playerId);
+      if (r === 'anonymized') this.sql.exec('UPDATE registrants SET v = ? WHERE player_id = ?', JSON.stringify(t.registrants[playerId]), playerId);
+      if (r !== 'none') { this.persistState(); await this.publish(now); }
+      return r;
+    });
+  }
+
+  /**
+   * REQ-UXS-012: once per tournament, when registration closes within `leadMs`: the entry conditions and the
+   * registered players (the cron nudges eligible players who have not registered). Null when not due / already done.
+   */
+  async closingNudge(now: number, leadMs: number): Promise<Envelope<{ tournamentId: string; name: string; classIds: string[] | null; minRankedRaces: number; minutes: number; registered: string[] } | null>> {
+    return wrap(() => {
+      const t = this.state;
+      if (!t || !closingSoon(t, now, leadMs) || this.kvGet<boolean>('closingNudged')) return null;
+      this.kvPut('closingNudged', true);
+      return {
+        tournamentId: t.def.id, name: t.def.name, classIds: t.def.entry.classIds, minRankedRaces: t.def.entry.minRankedRaces,
+        minutes: Math.max(1, Math.round((t.def.registrationClosesAtMs - now) / 60_000)), registered: Object.keys(t.registrants),
+      };
     });
   }
 

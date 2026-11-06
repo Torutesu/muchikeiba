@@ -41,10 +41,17 @@ namespace Muchi.Engine
         public Fx LastAdvance;
         /// <summary>0-based current position in the race.</summary>
         public int Rank;
+        /// <summary>The unique skill has fired (at most once per race).</summary>
+        public bool SkillUsed;
+        /// <summary>Ticks the fired skill's effect still lasts.</summary>
+        public int SkillTicksLeft;
+        /// <summary>Consecutive ticks spent in another horse's slipstream (skill condition).</summary>
+        public int SlipTicks;
 
         public bool Finished => FinishTick >= 0;
         public bool IsKakari => KakariTicksLeft > 0;
         public bool IsWhipActive => WhipTicksLeft > 0;
+        public bool IsSkillActive => SkillTicksLeft > 0;
         public bool IsChangingLane => Lane != Fx.FromInt(LaneTarget);
 
         /// <summary>Remaining stamina as permille of the maximum (for HUD gauges).</summary>

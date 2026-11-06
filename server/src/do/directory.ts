@@ -5,6 +5,7 @@ import type { PublicProfile } from '../domain/stats.js';
 import { unwrap, wrap, type Envelope } from './rpc.js';
 import type { StudEntry } from '../domain/stud.js';
 import { sortListings, type StudDirectory } from '../domain/studService.js';
+import { sortStables, type StableDirectory, type StableSnapshot } from '../domain/stable.js';
 
 /**
  * Friend codes and public profiles (REQ-SOCIAL-001/004), sharded by player id into DIRECTORY_SHARDS
@@ -21,6 +22,29 @@ export class DirectoryDO extends DurableObject<Env> {
     // REQ-BREED-011: browsable copy of stud listings (the owner's PlayerDO is the source of truth)
     this.sql.exec(`CREATE TABLE IF NOT EXISTS studs (owner_id TEXT NOT NULL, horse_id TEXT NOT NULL, visibility TEXT NOT NULL, listed_at INTEGER NOT NULL, entry TEXT NOT NULL, PRIMARY KEY (owner_id, horse_id))`);
     this.sql.exec(`CREATE INDEX IF NOT EXISTS studs_public ON studs (visibility, listed_at)`);
+    // REQ-STABLE-003: public copy of each stable (the owner's PlayerDO is the source of truth)
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS stables (player_id TEXT PRIMARY KEY, likes INTEGER NOT NULL, updated_at INTEGER NOT NULL, snapshot TEXT NOT NULL)`);
+    this.sql.exec(`CREATE INDEX IF NOT EXISTS stables_top ON stables (likes, updated_at)`);
+  }
+
+  async stablePut(x: StableSnapshot): Promise<Envelope<boolean>> {
+    return wrap(() => {
+      this.sql.exec('INSERT INTO stables (player_id, likes, updated_at, snapshot) VALUES (?, ?, ?, ?) ON CONFLICT(player_id) DO UPDATE SET likes = excluded.likes, updated_at = excluded.updated_at, snapshot = excluded.snapshot',
+        x.playerId, x.likes, x.updatedAt, JSON.stringify(x));
+      return true;
+    });
+  }
+
+  async stableRemove(playerId: string): Promise<Envelope<boolean>> {
+    return wrap(() => { this.sql.exec('DELETE FROM stables WHERE player_id = ?', playerId); return true; });
+  }
+
+  async stablesOf(ids: string[]): Promise<Envelope<StableSnapshot[]>> {
+    return wrap(() => ids.slice(0, 200).flatMap((id) => this.sql.exec<{ snapshot: string }>('SELECT snapshot FROM stables WHERE player_id = ?', id).toArray().map((r) => JSON.parse(r.snapshot) as StableSnapshot)));
+  }
+
+  async stablesTop(limit: number): Promise<Envelope<StableSnapshot[]>> {
+    return wrap(() => this.sql.exec<{ snapshot: string }>('SELECT snapshot FROM stables ORDER BY likes DESC, updated_at DESC LIMIT ?', Math.min(200, Math.max(1, limit))).toArray().map((r) => JSON.parse(r.snapshot) as StableSnapshot));
   }
 
   async studPut(e: StudEntry): Promise<Envelope<boolean>> {
@@ -41,6 +65,16 @@ export class DirectoryDO extends DurableObject<Env> {
 
   async studPublic(limit: number): Promise<Envelope<StudEntry[]>> {
     return wrap(() => this.sql.exec<{ entry: string }>("SELECT entry FROM studs WHERE visibility = 'public' ORDER BY listed_at DESC LIMIT ?", Math.min(200, Math.max(1, limit))).toArray().map((r) => JSON.parse(r.entry) as StudEntry));
+  }
+
+  /** REQ-UXS-040: account deletion — friend code, public profile, every stud listing and the public stable copy of the player. */
+  async forget(playerId: string): Promise<Envelope<boolean>> {
+    return wrap(() => {
+      this.sql.exec('DELETE FROM players WHERE player_id = ?', playerId);
+      this.sql.exec('DELETE FROM studs WHERE owner_id = ?', playerId);
+      this.sql.exec('DELETE FROM stables WHERE player_id = ?', playerId);
+      return true;
+    });
   }
 
   async codeOf(playerId: string, shard: number): Promise<Envelope<string>> {
@@ -87,7 +121,46 @@ type DirStub = {
   studRemove(o: string, h: string): Promise<Envelope<boolean>>;
   studOf(ids: string[]): Promise<Envelope<StudEntry[]>>;
   studPublic(limit: number): Promise<Envelope<StudEntry[]>>;
+  stablePut(x: StableSnapshot): Promise<Envelope<boolean>>;
+  stableRemove(id: string): Promise<Envelope<boolean>>;
+  stablesOf(ids: string[]): Promise<Envelope<StableSnapshot[]>>;
+  stablesTop(limit: number): Promise<Envelope<StableSnapshot[]>>;
+  forget(p: string): Promise<Envelope<boolean>>;
 };
+
+/** Recommended stables change slowly; one fan-out per isolate per minute keeps visits cheap. */
+const STABLE_TOP_TTL_MS = 60_000;
+let stableTopCache: { at: number; limit: number; rows: StableSnapshot[] } | null = null;
+
+/** REQ-STABLE-003: public stable copies, sharded by owner like profiles; "recommended" fans out to every shard. */
+export function shardedStableDirectory(ns: DurableObjectNamespace, clock: () => number = Date.now): StableDirectory {
+  const shard = (n: number) => ns.get(ns.idFromName(`dir:${n}`)) as unknown as DirStub;
+  return {
+    async put(x) { unwrap(await shard(shardOf(x.playerId)).stablePut(x)); },
+    async remove(id) { unwrap(await shard(shardOf(id)).stableRemove(id)); stableTopCache = null; },
+    async get(id) { return unwrap(await shard(shardOf(id)).stablesOf([id]))[0] ?? null; },
+    async ofPlayers(ids) {
+      const groups = new Map<number, string[]>();
+      for (const id of ids) groups.set(shardOf(id), [...(groups.get(shardOf(id)) ?? []), id]);
+      return (await Promise.all([...groups].map(async ([s, g]) => unwrap(await shard(s).stablesOf(g))))).flat();
+    },
+    async top(limit) {
+      const now = clock();
+      if (stableTopCache && stableTopCache.limit >= limit && now - stableTopCache.at < STABLE_TOP_TTL_MS) return stableTopCache.rows.slice(0, limit);
+      const parts = await Promise.all(Array.from({ length: DIRECTORY_SHARDS }, async (_, i) => unwrap(await shard(i).stablesTop(limit))));
+      const rows = sortStables(parts.flat()).slice(0, limit);
+      stableTopCache = { at: now, limit, rows };
+      return rows;
+    },
+  };
+}
+
+/** REQ-UXS-040: removes a deleted player's directory rows (their shard). */
+export async function forgetInDirectory(ns: DurableObjectNamespace, playerId: string) {
+  const s = ns.get(ns.idFromName(`dir:${shardOf(playerId)}`)) as unknown as DirStub;
+  unwrap(await s.forget(playerId));
+  stableTopCache = null;
+}
 
 /** Stud listings, sharded by owner like profiles; public browsing fans out to every shard. */
 export function shardedStudDirectory(ns: DurableObjectNamespace): StudDirectory {

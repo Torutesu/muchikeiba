@@ -22,7 +22,7 @@ static class TournamentChecks
     {
         public int Opened;
         public string LastUrl;
-        public IConnection Open(string url, Action onOpen, Action<string> onMessage, Action onClosed) { Opened++; LastUrl = url; return new Conn(); }
+        public IConnection Open(string url, Action onOpen, Action<string> onMessage, Action<int> onClosed) { Opened++; LastUrl = url; return new Conn(); }
         sealed class Conn : IConnection { public void Send(string m) { } public void Close() { } }
     }
 

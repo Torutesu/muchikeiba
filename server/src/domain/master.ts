@@ -2,6 +2,7 @@ import tracksJson from '../../master/tracks.json';
 import { BASE_BANNED_SILKS, type BannedSilksList } from './bannedSilks.js';
 import type { BondConfig } from './bond.js';
 import type { RoomsConfig } from './presets.js';
+import type { StableConfig } from './stable.js';
 import horsesJson from '../../master/horses.json';
 import gachaJson from '../../master/gacha.json';
 import nicksJson from '../../master/nicks.json';
@@ -16,6 +17,7 @@ import eventsJson from '../../master/events.json';
 import itemsJson from '../../master/items.json';
 import { trackSchema, type GoingAptitude, type Going, type Track } from './schemas.js';
 import { AppError } from './errors.js';
+import { loadSkills, type SkillsMaster } from './skills.js';
 
 export type Rarity = 'R' | 'SR' | 'SSR';
 export const RARITY_ORDER: Rarity[] = ['R', 'SR', 'SSR'];
@@ -34,25 +36,72 @@ export interface HorseTemplate {
    * and events that reward it, inside this window; horses already owned stay owned after it ends.
    */
   seasonal?: SeasonalInfo;
+  /**
+   * REQ-UXS-002/013: a horse handed out by the game itself (the first partner, the beginner broodmare). Never in a
+   * gacha pool, a ticket table or a CPU field (validated), so it cannot be bought or drawn.
+   */
+  giftOnly?: boolean;
+  /** 固有スキル (master/skills.json; REQ-UXS-050). Same rarity as the horse and fits its running style. */
+  skillId?: string;
 }
 export interface SeasonalInfo { seasonId: string; label: string; startAtMs: number; endAtMs: number }
 export interface ItemQty { itemId: string; qty: number }
 import type { LeagueConfig } from './league.js';
 /** `horse`: a template id granted as a horse (event rewards only; REQ-BREED-022). */
-export interface Reward { freeCoins?: number; items?: ItemQty[]; horse?: string }
+export interface Reward {
+  freeCoins?: number; items?: ItemQty[]; horse?: string;
+  /** REQ-UXS-013: a female template granted as a broodmare (retired, ready to breed). */
+  broodmare?: string;
+  /** REQ-UXS-016: season pass experience (season missions only). */
+  passXp?: number;
+}
+/**
+ * Store product (master/products.json). REQ-PUR-*, REQ-UXS-017..022.
+ * - `storeType`: how the product is registered in the stores. `consumable` (coins, the daily pack, the
+ *   per-season pass: Google consumes it so it can be bought again), `non_consumable` (once-only bundles:
+ *   Google acknowledges it), `auto_renewing` (store subscription; none are sold since REQ-UXS-020, the
+ *   subscription paths stay for old purchases and tests).
+ * - `once`: one purchase per account (`classId` set: one per class). Refunds keep it used.
+ */
+export type ProductKind = 'coins' | 'starter' | 'season_pass' | 'allowance' | 'promotion';
+export type StoreType = 'consumable' | 'non_consumable' | 'auto_renewing';
 export interface Product {
-  id: string; kind: 'coins' | 'starter' | 'season_pass'; priceYen: number; paidCoins: number;
-  once?: boolean; items?: ItemQty[]; durationDays?: number;
+  id: string; kind: ProductKind; priceYen: number; paidCoins: number;
+  once?: boolean; items?: ItemQty[];
+  /** Legacy auto-renewing pass only (store period is authoritative). Per-season passes ignore it. */
+  durationDays?: number;
+  /** Display name (REQ-UXS-022). */
+  name?: string;
+  storeType?: StoreType;
+  /** Shop tab (REQ-UXS-022 / spec 06 §6.8). */
+  tab?: 'recommended' | 'coins' | 'pass';
+  /** REQ-UXS-018: daily free coins for `days` game days from the purchase day (claimed daily). */
+  allowance?: { days: number; dailyFreeCoins: number };
+  /** REQ-UXS-019: season pass extras (Pass+: levels added at purchase). */
+  pass?: { levels: number };
+  /** REQ-UXS-019: promotion pack of this class (offered and sellable once the class is reached). */
+  classId?: string;
+}
+/** REQ-UXS-017: when offers are shown (spec 06 §5.1). */
+export interface ShopOffersConfig { starterPlaceAtOrWorse: number; starterAfterRankedRaces: number; passAfterRankedRaces: number }
+/** Shop display texts and labels (master/products.json `display`, REQ-UXS-022). */
+export interface ShopDisplay {
+  itemLabels: Record<string, string>;
+  notices: Record<string, string>;
+  legalLinks: { key: string; title: string }[];
 }
 /** REQ-ITEM-001..003: what tickets and materials do. */
 export type TicketDef =
   | { kind: 'single'; name: string; banners: string[] }
-  | { kind: 'srPlus'; name: string; rates: Partial<Record<Rarity, number>> };
+  | { kind: 'srPlus'; name: string; rates: Partial<Record<Rarity, number>> }
+  /** REQ-UXS-015: one 10-pull (with the slot-10 SR+ guarantee) on an eligible banner, from that banner's own tables. */
+  | { kind: 'ten'; name: string; banners: string[] };
 /** REQ-ITEM-004..007: cosmetics sold for coins (no stat effect). */
+/** `notForSale`: comes only with a product or reward (price 0; REQ-UXS-019 Pass+ tack). */
 export type CosmeticDef =
-  | { id: string; name: string; kind: 'silks'; pattern: string; price: number; currency: 'any' | 'paidOnly' }
-  | { id: string; name: string; kind: 'tack'; slot: TackSlot; asset: string; price: number; currency: 'any' | 'paidOnly' }
-  | { id: string; name: string; kind: 'decor'; asset: string; price: number; currency: 'any' | 'paidOnly' };
+  | { id: string; name: string; kind: 'silks'; pattern: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean }
+  | { id: string; name: string; kind: 'tack'; slot: TackSlot; asset: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean }
+  | { id: string; name: string; kind: 'decor'; asset: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean };
 export type TackSlot = 'bridle' | 'saddlecloth';
 export const TACK_SLOTS: TackSlot[] = ['bridle', 'saddlecloth'];
 export interface ItemsMaster {
@@ -98,6 +147,19 @@ export interface Progression {
   stud?: StudConfig;
   /** REQ-BREED-017: atavism (隔世遺伝) chance per breeding, in permille. Absent = 0. */
   atavismPermille?: number;
+  /** REQ-UXS-010: free coins for the 1st, 2nd, 3rd win (1st place) of the game day in these modes. Absent = none. */
+  firstWinBonus?: { modes: string[]; freeCoinsByWin: number[] };
+  /** REQ-UXS-*: onboarding, consent, unlocks, beginner/season missions, experiments, account deletion (onboarding.ts). */
+  consent?: import('./onboarding.js').ConsentConfig;
+  partner?: import('./onboarding.js').PartnerConfig;
+  beginnerMatch?: import('./onboarding.js').BeginnerMatchConfig;
+  beginnerLoginBonus?: ({ day: number } & Reward)[];
+  unlocks?: import('./onboarding.js').UnlockDef[];
+  beginnerMissions?: import('./onboarding.js').BeginnerMissionDef[];
+  seasonMissions?: import('./onboarding.js').SeasonMissionDef[];
+  experiments?: import('./onboarding.js').ExperimentDef[];
+  accountDeletion?: import('./accountDeletion.js').AccountDeletionConfig;
+  nudges?: import('./nudges.js').NudgeConfig;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */
@@ -196,6 +258,10 @@ export interface Master {
   litTracks: Set<string>;
   gacha: GachaMaster; nicks: { bonus: number; pairs: [string, string][] }; ng: { exact: string[]; contains: string[] };
   ageLimits: AgeLimits; products: Product[]; firstPurchaseBonusAsPaid: boolean; progression: Progression;
+  /** REQ-UXS-022: shop display texts (absent in hand-built test masters → built-in fallbacks). */
+  shopDisplay?: ShopDisplay;
+  /** REQ-UXS-017: offer triggers (absent → defaults in shop.ts). */
+  shopOffers?: ShopOffersConfig;
   titles: TitleDef[];
   push: PushMaster;
   /** REQ-EVENT-*: event race definitions. */
@@ -204,6 +270,10 @@ export interface Master {
   bannedSilks?: BannedSilksList;
   /** REQ-ITEM-*: tickets, materials and cosmetics. */
   items: ItemsMaster;
+  /** REQ-STABLE-*: マイ厩舎 (master/stable.json is used when absent; remote config may replace it). */
+  stable?: StableConfig;
+  /** REQ-UXS-050: unique skills (master/skills.json). */
+  skills: SkillsMaster;
 }
 
 export const PPM_TOTAL = 1_000_000;
@@ -234,7 +304,7 @@ export function expandPool(templates: HorseTemplate[], rates: Partial<Record<Rar
   for (const r of RARITY_ORDER) {
     const total = rates[r] ?? 0;
     if (total === 0) continue;
-    const ids = templates.filter((t) => t.rarity === r && (!t.seasonal || seasonal.includes(t.id))).map((t) => t.id);
+    const ids = templates.filter((t) => t.rarity === r && !t.giftOnly && (!t.seasonal || seasonal.includes(t.id))).map((t) => t.id);
     if (ids.length === 0) throw new AppError('CONFIG_INVALID', `no templates of rarity ${r}`);
     if (pickup && ids.includes(pickup.templateId)) {
       out.push({ templateId: pickup.templateId, ppm: pickup.ppm });
@@ -263,20 +333,21 @@ export function loadMaster(): Master {
   const tracks = split.map((x) => trackSchema.parse(x.track));
   const litTracks = new Set(split.filter((x) => x.lights).map((x) => tracks[split.indexOf(x)]!.id));
   const g = gachaJson as unknown as { duplicateMaterial: Record<Rarity, number>; pityGroups: Record<string, { cost: number }>; banners: RawBanner[] };
-  const p = productsJson as unknown as { firstPurchaseBonusAsPaid: boolean; products: Product[] };
+  const p = productsJson as unknown as { firstPurchaseBonusAsPaid: boolean; products: Product[]; display: ShopDisplay; offers: ShopOffersConfig };
   const m: Master = {
     tracks, templates, templateById, litTracks,
     gacha: { duplicateMaterial: g.duplicateMaterial, pityGroups: g.pityGroups, banners: g.banners.map((b) => buildBanner(b, templates)) },
     nicks: nicksJson as unknown as Master['nicks'],
     ng: ngJson as unknown as Master['ng'],
     ageLimits: ageJson as unknown as AgeLimits,
-    products: p.products, firstPurchaseBonusAsPaid: p.firstPurchaseBonusAsPaid,
+    products: p.products, firstPurchaseBonusAsPaid: p.firstPurchaseBonusAsPaid, shopDisplay: p.display, shopOffers: p.offers,
     progression: progressionJson as unknown as Progression,
     titles: (titlesJson as unknown as { titles: TitleDef[] }).titles,
     push: pushJson as unknown as PushMaster,
     events: (eventsJson as unknown as { events: EventDef[] }).events,
     bannedSilks: BASE_BANNED_SILKS,
     items: itemsJson as unknown as ItemsMaster,
+    skills: loadSkills(),
   };
   cached = m;
   return m;

@@ -45,6 +45,10 @@ namespace Muchi.Engine
         private readonly Fx _blockRange, _slipRange, _clearance, _spurtDist, _halfLane, _minGap;
         private readonly int _tickHz;
         private readonly int _goingDrainPermille; // race-wide stamina drain factor from the ground (1000 = neutral)
+        // unique skills (ruleset 1.3): per slot, effects clamped to the ruleset caps; null spec = no skill (or no skill keys)
+        private readonly SkillSpec[] _skill;
+        private readonly int[] _skSpeed, _skAccel, _skDrain, _skRecover, _skTicks;
+        private readonly Fx _finalStraight; // length of the final straight counted for FinalStraight (0 = course ends in a corner)
 
         public RaceSim(RaceConfig config)
         {
@@ -62,6 +66,8 @@ namespace Muchi.Engine
             _brains = new CpuBrain[_n];
             _resolved = new byte[_n];
             _rankOrder = new int[_n];
+            _skill = new SkillSpec[_n];
+            _skSpeed = new int[_n]; _skAccel = new int[_n]; _skDrain = new int[_n]; _skRecover = new int[_n]; _skTicks = new int[_n];
 
             _dtAccelUp = Fx.FromMilli(P.AccelMmPerSec2) / _tickHz;
             _dtDecel = Fx.FromMilli(P.DecelMmPerSec2) / _tickHz;
@@ -76,6 +82,8 @@ namespace Muchi.Engine
             int staminaDistPermille = P.DistanceFactorPermille(config.Track.DistanceM, dirtTrack, P.StaminaDistanceScalePermille);
             _halfLane = Fx.FromRatio(1, 2);
             _minGap = Fx.FromMilli(P.MinGapMm);
+            var lastSeg = config.Track.Segments[config.Track.Segments.Count - 1];
+            _finalStraight = lastSeg.Kind == SegmentKind.Straight ? Fx.Min(Fx.FromInt(lastSeg.LengthM), _spurtDist) : Fx.Zero;
 
             // ground condition (REQ-RACE-034): absent going = Good, which is neutral (1000‰) on turf,
             // so configs without the new fields reproduce exactly the same results as before.
@@ -131,6 +139,17 @@ namespace Muchi.Engine
                 };
                 _cur[i] = s;
                 _prev[i] = s;
+                if (P.HasSkillKeys && h.Skill != null)
+                {
+                    // ruleset 1.3: a skill without the keys is ignored, so 1.2 replays reproduce exactly
+                    var sk = h.Skill;
+                    _skill[i] = sk;
+                    _skSpeed[i] = Math.Min(sk.SpeedPermille, P.SkillMaxSpeedPermille);
+                    _skAccel[i] = Math.Min(sk.AccelPermille, P.SkillMaxAccelPermille);
+                    _skDrain[i] = Math.Min(sk.DrainSavePermille, P.SkillMaxDrainSavePermille);
+                    _skRecover[i] = Math.Min(sk.RecoverPermille, P.SkillMaxRecoverPermille);
+                    _skTicks[i] = Math.Min(sk.DurationTicks, P.SkillMaxDurationTicks);
+                }
                 _rankOrder[i] = i;
             }
         }
@@ -171,6 +190,10 @@ namespace Muchi.Engine
         /// <summary>Slot currently in position <paramref name="rank"/> (0 = leader).</summary>
         public int SlotAtRank(int rank) => _rankOrder[rank];
         public bool GateOpened => Tick > P.GateOpenTick;
+        /// <summary>The skill this horse races with (null = none, or the ruleset has no skill keys).</summary>
+        public SkillSpec SkillOf(int slot) => _skill[slot];
+        /// <summary>Effect this horse's skill applies in this race after the ruleset caps: (speed‰, accel‰, drain save‰, recover‰, ticks).</summary>
+        public (int speed, int accel, int drainSave, int recover, int ticks) SkillEffect(int slot) => (_skSpeed[slot], _skAccel[slot], _skDrain[slot], _skRecover[slot], _skTicks[slot]);
         public string LastChecksum => _lastChecksum;
         public int LastChecksumTick => _lastChecksumTick;
         internal Fx BlockRange => _blockRange;
@@ -377,6 +400,16 @@ namespace Muchi.Engine
                 _events.Add(new RaceEvent(t, RaceEventType.SpurtStart, i, h.Rank));
             }
 
+            if (_skill[i] != null && !h.SkillUsed && SkillCondition(i, _skill[i], remaining, spurt))
+            {
+                h.SkillUsed = true;
+                h.SkillTicksLeft = _skTicks[i];
+                if (_skRecover[i] > 0) h.Stamina = Fx.Min(h.StaminaMax, h.Stamina + Fx.FromRaw(h.StaminaMax.Raw * _skRecover[i] / 1000));
+                // Value = rank (0 = leader) as it fired (ranks of the previous tick); presentation only
+                _events.Add(new RaceEvent(t, RaceEventType.Skill, i, _prev[i].Rank));
+            }
+            bool skillOn = h.SkillTicksLeft > 0;
+
             Fx top = _topSpeed[i];
             int staminaPermille = h.StaminaPermille;
 
@@ -396,6 +429,7 @@ namespace Muchi.Engine
                 target = top.MulPermille(P.CruiseSpeedPermille);
             }
             if (h.Reining) target = target.MulPermille(P.ReinSpeedPermille);
+            if (skillOn && _skSpeed[i] > 0) target = target.MulPermille(1000 + _skSpeed[i]);
 
             // exhaustion (REQ-RACE-041)
             if (h.Stamina.Raw <= 0) target = Fx.Min(target, top.MulPermille(_gutsFloorPermille[i]));
@@ -407,6 +441,7 @@ namespace Muchi.Engine
                 accel = accel + Fx.FromMilli((long)P.WhipAccelBonusMmPerSec2 * h.WhipEffectPermille / 1000) / _tickHz;
             }
             if (h.StartBoostTicksLeft > 0) accel = accel.MulPermille(1000 + P.StartBoostPermille);
+            if (skillOn && _skAccel[i] > 0) accel = accel.MulPermille(1000 + _skAccel[i]);
 
             // blocking (REQ-RACE-044) and slipstream detection (REQ-RACE-042)
             h.Blocked = false;
@@ -447,6 +482,7 @@ namespace Muchi.Engine
             if (h.Reining) drainRaw = drainRaw * P.ReinDrainPermille / 1000;
             if (h.Composure < P.BadComposureThreshold) drainRaw = drainRaw * (1000 + P.BadComposureExtraDrainPermille) / 1000;
             if (_goingDrainPermille != 1000) drainRaw = drainRaw * _goingDrainPermille / 1000;
+            if (skillOn && _skDrain[i] > 0) drainRaw = drainRaw * (1000 - _skDrain[i]) / 1000;
             h.Stamina = Fx.FromRaw(Math.Max(0, h.Stamina.Raw - drainRaw));
 
             // movement with corner geometry (REQ-RACE-043)
@@ -493,7 +529,9 @@ namespace Muchi.Engine
                 if (chance > 0 && _kakariRng[i].Chance(chance, 100000))
                 {
                     h.KakariTicksLeft = P.KakariDurationTicks;
-                    _events.Add(new RaceEvent(t, RaceEventType.Kakari, i, 0));
+                    // Value = the horse's rank (0 = leader) as it started pulling (ranks of the previous tick, as for
+                    // SpurtStart); presentation only, not part of the checksum or result hash
+                    _events.Add(new RaceEvent(t, RaceEventType.Kakari, i, h.Rank));
                 }
             }
             if (h.KakariTicksLeft > 0)
@@ -511,6 +549,29 @@ namespace Muchi.Engine
 
             if (h.WhipTicksLeft > 0) h.WhipTicksLeft--;
             if (h.StartBoostTicksLeft > 0) h.StartBoostTicksLeft--;
+            if (h.SkillTicksLeft > 0) h.SkillTicksLeft--;
+            h.SlipTicks = slip ? h.SlipTicks + 1 : 0;
+        }
+
+        /// <summary>
+        /// Skill condition (ruleset 1.3): read from the start-of-tick state (the previous tick's distance, lane, rank,
+        /// stamina), so the slot order never matters. No random draw.
+        /// </summary>
+        private bool SkillCondition(int i, SkillSpec sk, Fx remaining, bool spurt)
+        {
+            var p = _prev[i];
+            switch (sk.Trigger)
+            {
+                case SkillTrigger.FinalStraight: return _finalStraight.Raw > 0 && remaining <= _finalStraight && p.Rank <= sk.Value;
+                case SkillTrigger.CornerRail: return Track.Segment(Track.SegmentIndexAt(p.Distance)).Kind == SegmentKind.Corner && p.Lane <= Fx.FromInt(sk.Value);
+                case SkillTrigger.LowStamina: return p.StaminaPermille <= sk.Value;
+                case SkillTrigger.SpurtBehind: return spurt && p.Rank >= sk.Value;
+                case SkillTrigger.Remaining: return remaining <= Fx.FromInt(sk.Value);
+                case SkillTrigger.Leading: return remaining <= Fx.FromInt(sk.Value) && p.Rank == 0;
+                case SkillTrigger.Slipstream: return p.SlipTicks >= sk.Value;
+                case SkillTrigger.GoodStart: return p.Departed ? false : _cur[i].DepartTick - P.GateOpenTick <= sk.Value;
+                default: return false;
+            }
         }
 
         private void MoveLane(ref HorseState h)

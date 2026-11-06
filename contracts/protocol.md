@@ -50,7 +50,11 @@ C#（端末・検証サーバー）とTypeScript（Cloudflareサーバー）の�
         "style": "sashi",           // "nige" | "senko" | "sashi" | "oikomi"
         "distMinM": 1600, "distMaxM": 2400,
         "surface": "turf",          // "turf" | "dirt" | "both"
-        "goingAptitude": "heavy"    // 省略可。"any"|"fast"|"heavy"（得意な馬場）。省略 = any
+        "goingAptitude": "heavy",   // 省略可。"any"|"fast"|"heavy"（得意な馬場）。省略 = any
+        "skill": {                  // 省略可（ルールセット 1.3、§14）。固有スキル。省略 = なし
+          "id": "sk_nukedashi", "name": "先行抜け出し", "trigger": "finalStraight", "value": 2,
+          "speedPermille": 18, "accelPermille": 0, "drainSavePermille": 0, "recoverPermille": 0, "durationTicks": 80
+        }
       }
     }
   ]
@@ -63,7 +67,7 @@ C#（端末・検証サーバー）とTypeScript（Cloudflareサーバー）の�
 - `ruleset` のキーは `contracts/ruleset-params.default.json` と同じ集合でなければならない（多い・少ないはエラー）。値は全て整数。サーバー（TS）が必ず読むキーは `rulesetVersion`（文字列）と `maxTicks` のみ。それ以外はTSにとって不透明な値として素通しする。
   - **例外（後から追加したキー）**：馬場状態のキー（`going*`、`dirtSpeedPermille`、`goingSpecialistPermille` の18個。一覧は `RulesetParams.OptionalIntKeys` と `server/src/domain/ruleset.ts` の `OPTIONAL_RULESET_KEYS`、両者の一致はテストで保証）は**全部あるか、全部ないか**のどちらか。全部ない＝追加前のリプレイで、中立値（1000‰、専門0）として計算し、当時と同じ結果になる。一部だけはエラー。
 - `track.going` は `track.surface` に合った名前でなければエラー（芝に "sloppy" など）。
-- `track.going` / `track.night` / `horse.goingAptitude` は**値があるときだけ書く**（省略と既定値は同じ計算結果。省略した設定を読み書きしても1バイトも変わらない）。
+- `track.going` / `track.night` / `horse.goingAptitude` / `horse.skill` は**値があるときだけ書く**（省略と既定値は同じ計算結果。省略した設定を読み書きしても1バイトも変わらない）。
 
 ## 3. 入力（1バイトのビットフラグ）
 
@@ -108,6 +112,17 @@ C#（端末・検証サーバー）とTypeScript（Cloudflareサーバー）の�
 - 宛先tickが「最新の確定tick + `inputDelayTicks` × 4」より先の入力は拒否（`err` `TOO_EARLY`）。
 - `b` は `bundleIntervalTicks` ごとに送る。再接続時は `lastTick+1` から現在までを1つの `b` で送る。
 - 全頭ゴール、または `maxTicks` に達したら部屋はtickを進めるのをやめ、結果を待つ。
+
+### 4.1 close code（部屋 → 端末）
+部屋がソケットを閉じるときの WebSocket close code と、クライアント（`RaceSession` / `CloseCodes`）の扱い。
+
+| code | reason | いつ | クライアント |
+|---|---|---|---|
+| 4000 | `replaced` | 同じ選手の席（または同じプレイヤーの観戦接続）に新しい接続が `hello` した。古い方を閉じる | 再接続しない。`Failed`、`FailureReason` = `REPLACED`（再接続すると新しい方を閉じ返し、2台の端末が席を奪い合い続ける） |
+| 4001 | `unauthorized` | チケットが無効・期限切れ（直前に `err` `UNAUTHORIZED`） | 再接続しない。`UNAUTHORIZED` |
+| 4003 | `spectators full` | 観戦者が上限（直前に `err` `SPECTATORS_FULL`） | 再接続しない。`SPECTATORS_FULL` |
+| 1011 | `no race` | 部屋にレースが無い（ランタイム自身の内部エラーも同じ code） | 切断扱いで再接続（回数上限あり。レースが無ければ接続が 404 で失敗し続けて `Failed`） |
+| その他 | — | close フレーム無しの切断・接続失敗（1006）、1000 / 1001 / 1005 / 1012 など | 切断扱いで再接続（指数バックオフ、回数上限あり） |
 
 ## 5. チェックサム（REQ-RACE-070）
 - FNV-1a 64bit（offset basis `0xcbf29ce484222325`、prime `0x100000001b3`）。
@@ -168,7 +183,7 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 - その後は選手と同じ `b`（確定入力）と、最後の tick まで受け取った後に確定した `final`（`confirmed` / `void` のみ。`verifying` は送らない）が届く。観戦者は端末でシミュレーションするので、最終ハッシュは選手と同じになる。
 - 遅延：フレンドルームは 0（ライブ）、ranked・イベント・大会は 10 秒（ゴースティング対策）。観戦者に届くのは選手に送信済み（＝保存済み）の tick だけで、遅延分は部屋の時計で刻まれる（選手のレースが終わっても通常速度で最後まで流れる）。
 - 観戦者は `in` / `chk` / `res` を送らない（送ると `err` `SPECTATOR_READ_ONLY`）。`ping` には `pong` を返す。
-- 1部屋の観戦者数の上限は既定 200（`SPECTATOR_LIMIT`）。超えると `err` `SPECTATORS_FULL` で閉じる（close code 4003）。観戦の接続はプレイヤーごとに1本：同じプレイヤーの新しい観戦接続が来ると古い接続は close code 4000（`replaced`）で閉じる（選手の席と同じ）。観戦チケットの発行は1人あたり連続10回・その後6秒に1回まで（超過は `429 RATE_LIMITED`）。
+- 1部屋の観戦者数の上限は既定 200（`SPECTATOR_LIMIT`）。超えると `err` `SPECTATORS_FULL` で閉じる（close code 4003）。観戦の接続はプレイヤーごとに1本：同じプレイヤーの新しい観戦接続が来ると古い接続は close code 4000（`replaced`）で閉じる（選手の席と同じ。閉じられた側は再接続しない、§4.1）。観戦チケットの発行は1人あたり連続10回・その後6秒に1回まで（超過は `429 RATE_LIMITED`）。
 - 描画：観戦クライアントは `delayMs` だけ遅れて描く（`LockstepClient.RenderTickPermille` が自動で引く）。
 
 ## 8.5 種牡馬の貸し借り（REQ-BREED-012）
@@ -176,6 +191,60 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 - `expectedFee`（任意・0以上の整数）：借り手がプレビューで見た料金。持ち主の今の料金と違えば `409 {"error":{"code":"FEE_CHANGED"}}` で、何も確保・請求しない。クライアントはプレビューを取り直して確認し直す。省略した古いクライアントは確認なし。
 - 同じ `Idempotency-Key` を別の種牡馬・別の持ち主の馬で使うと `409 CONFLICT`（最初の操作の馬のまま）。
 - 購入で付いた無償コイン（初回購入ボーナス）は購入から90日は料金に使えない。足りなければ `409 INSUFFICIENT_COINS`。プレビューの `stud.heldFree` がその額、`stud.canPay` はそれを除いて判定する。
+
+## 8.6 マイ厩舎（REQ-STABLE-*、`server/src/domain/stable.ts`）
+すべて要認証（`Authorization: Bearer`）。エラーは共通の `{"error":{"code","message"}}`。
+| メソッド | パス | 冪等キー | 本文 → 応答 |
+|---|---|---|---|
+| GET | `/v1/stable` | | → `{ saved, layout:{theme,name,slots[],featuredHorseIds[],updatedAt}, themes:[{id,name,key,slots,unlocked,unlockLikes,unlockItem}], decor:[{itemId,name,key,owned,price,currency}], featuredMax, nameMaxChars, likes:{received,givenToday,perDay,perTargetPerDay}, preview: StableSnapshot\|null, notice }`。未保存なら `layout` は既定テーマ＋装備中の飾り（`PUT /v1/player/equipment` の `decor`）から作る |
+| PUT | `/v1/stable` | | `{ theme, name: string\|null, slots: (itemId\|null)[], featuredHorseIds: string[] }`（余分なキーは 400）→ `{ layout, snapshot }` |
+| GET | `/v1/stable/visits` | | → `{ friends: StableSummary[], recommended: StableSummary[] }` |
+| GET | `/v1/stable/:playerId` | | → `{ stable: StableSnapshot, viewer:{ relation: self\|friend\|other, likedToday, likesLeftToday, canLike } }`。未公開・利用停止中は `404 NOT_FOUND` |
+| POST | `/v1/stable/:playerId/like` | 必須 | → `{ playerId, likes, remainingToday }` |
+
+- `StableSnapshot`（訪問者が見る写し。財布・所持品・購入は含まない）：`{ v:1, playerId, displayName, titleId, classId, silks, name, theme:{id,name,key}, slots:({itemId,name,key}|null)[]（テーマの枠数ぶん）, horses:[{horseId,name,rarity,style,appearance,bondLevel}], autoHorses, trophies:{titleIds[],races,wins,top3,tournamentWins,tournamentPodiums}, likes, updatedAt }`。`name` が null なら「<displayName>の厩舎」と表示する。`horses` は選んだ現役馬、選んでいなければ現役馬の上位（`autoHorses: true`）。
+- `StableSummary`：`{ playerId, displayName, titleId, name, themeKey, likes, decorCount, horseCount, updatedAt }`。
+- 保存の検証：テーマが存在し解放済み（`NOT_ELIGIBLE`）、`slots` はテーマの枠数以下（`BAD_REQUEST`）、各飾りは厩舎の飾り（`decor`）で所持済み・重複なし（REQ-ITEM-006 と同じ：所持なし `NOT_ELIGIBLE`、種類違い・重複 `BAD_REQUEST`、不明 `NOT_FOUND`）、`featuredHorseIds` は `featuredMax` 以下・重複なし・自分の現役馬（`HORSE_NOT_FOUND` / `HORSE_NOT_ACTIVE`）、表札は表示名と同じ規則（`INVALID_NAME` / `NG_NAME`、1〜`nameMaxChars` 字）。利用停止中は `403 BANNED`。
+- いいね：自分には押せない（`NOT_ELIGIBLE`）、同じ相手には1日 `likesPerTargetPerDay` 回（`409 ALREADY_LIKED`）、1日 `likesPerDay` 回まで（`409 LIKE_LIMIT`）。日付はゲーム日（`gameDayKey`、切り替えは `DAY_ROLLOVER_HOUR_JST`、§8.7・REQ-UXS-011）。押した側・押された側とも**コインは一切付かない**（累計いいねで解放されるのはテーマだけ）。同じ冪等キーの再送は1回分しか数えない。途中で失敗した場合も同じキーで再送すれば完了する。
+- C# の `ApiErrorCode`：`LikeLimit` / `AlreadyLiked`。
+- アカウント削除（§8.7）では公開の写し・レイアウト・いいねの状態を消す。削除済みのプレイヤーの厩舎は `404 NOT_FOUND`、その人が過去に押したいいねの数はそのまま残る（個人と結び付く情報は持たない）。
+
+## 8.7 オンボーディング・アカウント削除（REQ-UXS-*、docs/planning/06）
+エラーは全て `{"error":{"code","message"}}`。下の新しいコードは全て HTTP 409。
+
+**`GET /v1/player` と `POST /v1/player/bootstrap`** に次の項目が加わる（既存の項目は変わらない）：
+```json
+{
+  "consent": { "termsVersion": "2026-11-01" | null, "privacyVersion": "2026-11-01" | null, "consentedAt": 1762398000000 | null,
+               "current": { "termsVersion": "2026-11-01", "privacyVersion": "2026-11-01" }, "required": true },
+  "unlocks": { "day": 1, "races": 0, "rankedRaces": 0, "breedings": 0,
+               "features": [ { "key": "missions", "unlocked": false, "by": null, "races": 2, "days": null, "rankedRaces": null, "breedings": null } ] },
+  "experiments": { "assignments": { "ab_home_button": "b" }, "values": { "homePrimaryButton": "ranked_promotion" } },
+  "deletion": { "status": "none" | "scheduled", "requestedAt": null, "deleteAt": null },
+  "flags": { "tutorialGachaUsed": false, "partnerHorseId": "h3" }
+}
+```
+- `unlocks.features[].by`：開放した条件（`"always"` / `"races"` / `"days"` / `"rankedRaces"` / `"breedings"`）、未開放は null。条件は「どれか1つ」を満たせば開く（§4.3）。**表示だけの制御**で、未開放の機能のAPIもそのまま使える。`day` はインストール日を1とするゲーム日（日付の切り替えは `DAY_ROLLOVER_HOUR_JST`、REQ-UXS-011）。キーは `race, partner, scout, stable, missions, login_bonus, shop, season_pass, bond, season, breeding, friends, friend_rooms, teams, spectate, time_attack, events, tournaments, my_stable, stud`。
+- `experiments.values` のキーは `tutorialDistanceM`（整数）、`firstRankedTrackId`（コースID or null、サーバーが初めてのランク戦で使う）、`pushPermissionTiming`（`race2_top3`|`day2_launch`）、`starterOfferTrigger`（`first_bottom_half`|`fifth_race`）、`homePrimaryButton`（`race`|`ranked_promotion`）、`firstWinBonus`（bool）だけ。価格・中身はA/Bにしない。
+
+| メソッド・パス | 本文 | 応答 | エラー |
+|---|---|---|---|
+| `POST /v1/player/consent` | `{ "termsVersion", "privacyVersion" }`（1〜32文字） | 上の `consent` と同じ形（`required: false`） | `CONSENT_VERSION_MISMATCH`（今の版でない：`GET /v1/player` の `consent.current` を取り直す）、`BAD_REQUEST` |
+| `POST /v1/player/partner`（`Idempotency-Key` 必須） | `{ "name": "アイボウ" }` | `{ "horse": Horse }`（`templateId: "t_partner"`、`named: true`） | `PARTNER_ALREADY_GRANTED`（2回目。同じキーの再送は同じ応答）、`INVALID_NAME`、`NG_NAME`、`IDEMPOTENCY_KEY_REQUIRED` |
+| `DELETE /v1/player`（1回目：本文なし or `{}`） | — | `{ "status": "confirm_required", "confirmToken": "del_…", "expiresAt", "cancelWindowDays": 14, "forfeit": { "paidCoins", "freeCoins", "horses", "items", "allowanceDays", "seasonPass" }, "notice": "…" }` | — |
+| `DELETE /v1/player`（2回目） | `{ "confirmToken": "del_…" }`（または `?confirmToken=`） | `{ "status": "scheduled", "requestedAt", "deleteAt" }`（予定済みなら何度でも同じ） | `DELETION_CONFIRM_INVALID`（違う・期限切れ（10分）：1回目からやり直す）、`BAD_REQUEST` |
+| `POST /v1/player/deletion/cancel` | — | `{ "status": "none", "requestedAt": null, "deleteAt": null }` | `NOT_FOUND`（予定がない）、`DELETION_IN_PROGRESS`（削除の処理が始まっている。始まった削除は取り消せない） |
+| `GET /v1/missions` | — | `{ "missions": [デイリー（従来）], "beginner": { "completed", "steps": [ { "id", "step", "kind", "target", "progress", "reward", "claimed", "locked", "claimable" } ] }, "season": { "seasonId", "missions": [ { "id", "kind", "target" (null＝S級で対象なし), "progress", "reward": { "passXp" }, "claimed", "available", "claimable" } ] }, "firstWinBonus": { "modes", "byWin", "winsToday", "remaining", "next" } }`（`firstWinBonus` は §13・REQ-UXS-010） | — |
+| `POST /v1/missions/:id/claim` | — | 報酬（`Reward`）。デイリー・初心者・シーズンのIDは一意 | 初心者ミッションは前の段階が未受け取りなら `NOT_ELIGIBLE`。他は従来どおり |
+| `POST /v1/rewards/login-bonus` | — | `{ "day", "track": "beginner" | "normal", "reward", "beginnerDaysLeft" }` | 従来どおり |
+| `POST /v1/items/tickets/gacha_ticket_10/use` | `{ "bannerId" }` | 従来の形＋ `"results": [10件]`（`result` は1件目） | 従来どおり |
+| `POST /v1/shop/purchase-intent` | 従来どおり | 従来どおり | 削除予定中は `DELETION_PENDING`（§13 の全商品：コイン・スターター・シーズンパス／パス＋・厩舎手当・昇級記念パック。取り消せば買える。ストアで支払い済みのレシートは付与し、サポート用の印を付ける） |
+| `GET /v1/shop/offers`・`POST /v1/shop/offers/:offerId/view`・`POST /v1/shop/allowance/claim`（§13） | 従来どおり | 従来どおり | 削除予定中は `DELETION_PENDING`（オファーを出さない・手当を受け取らない。取り消せば戻る） |
+
+- 削除の処理が始まった後（予定時刻にアラームが最初に「開始」を記録してから。14日の予約期間中ではない）は取り消せず（`DELETION_IN_PROGRESS`）、そのプレイヤーからのフレンド申請・承認・招待、ランク戦・大会・タイムアタック（開始・提出）・イベントへの参加、マイ厩舎のいいね（自分の回数も増えない）は `DELETION_PENDING` で断る。予約期間中は購入前チェック・オファー・厩舎手当（上の表）以外はそのまま使える。開始の前に取り消された削除は、処理が何もせずに止まる。
+- 削除後に届いたストアの返金：取引の索引は匿名IDに付け替わっているので、返金は AccountingDO の保存記録に付ける（その購入を返金済みにし、`refundsAfterDeletion` に追記、台帳に `refund` 行（コインは放棄済みなので delta 0）を足して `rev` を上げる。同じ返金は1回だけ）。応答は `{ "retained": true, "anonId", "transactionId", "alreadyRefunded", "priceYen", "paidCoins", "bonusCoins" }`。
+- 削除の流れ：予定時刻にプレイヤーのDurable Objectのアラームが、フレンド（相手側の一覧・申請）→ 支部（リーダーなら幹部→古参の順に譲ってから脱退、申請の取り消し）→ ディレクトリ（フレンドコード・公開プロフィール・種牡馬の登録）→ マイ厩舎の公開の写し（あれば）→ ランキング（今シーズンは削除、過去シーズンは名前を「退会したプレイヤー」に）とゴースト → イベントの順位表 → 大会（受付中は登録取り消し、以降は名前だけ匿名化）→ 残高の放棄（有償・無償コインに加え、厩舎手当の残りと予約分、シーズンパスの状態）と匿名の記録の作成 → 記録の保存（AccountingDO、ランダムID、法定の保存期間）→ プレイヤーの全データ削除、の順に進める。失敗したら続きから再試行（1分・10分・1時間・以後6時間ごと）。
+- クライアントイベント（`POST /v1/analytics/events`）：`tutorial_step` の `step` は `consent, race1_start, race1_whip, race1_win, named, gacha_done, race2_done, home` だけ。`index` は省略可（送るならこの順の番号）、任意の `value`（整数、`race1_win` ではやり直し回数）。追加：`feature_unlock {feature}`、`offer_view` / `offer_click {offerId, trigger: T1..T8}`、`race_quit {mode, remainingM}`、`account_link {provider: apple|google}`。
 
 ## 9. ゴールデンファイル（`contracts/golden/`）
 - `race-*.json`：`{ "log": リプレイログ, "expected": 検証APIの出力 }`。C#側が生成し、C#テストで再計算一致を、TSテストでスキーマ適合を確認する。
@@ -203,3 +272,102 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 - **スパート区間**：長さ = `spurtDistanceM × 係数(spurtDistanceScalePermille) / 1000` m（整数の切り捨て）。スパートの判定・ムチの早打ち判定・自動の内寄せの停止はこの長さを使う。
 - 既定値（1.2.0）：芝 2000m・ダート 1850m を基準に、どちらも 1000‰（距離に比例）。2000mの芝・1850mのダートは 1.1.0 と同じ量・同じ長さ。
 - **チュートリアル**（端末内、400mの直線で全部がスパート区間）は `staminaDistanceScalePermille` と `spurtDistanceScalePermille` を 0 にして走る（1.1.0 と同じ量・長さ）。
+
+## 13. ショップ・課金体験の API（REQ-UXS-010/017〜022、docs/planning/06 §5・§6.8・§6.9）
+表示の文言・数量・期間は全てサーバーが作る。クライアントは組み立てない（「2倍」などの倍率表現は使わない。初回購入ボーナスは「無償コイン◯枚」）。時刻は ms（UTC エポック）、日付はゲーム日の `YYYY-MM-DD`（`gameDayKey`、切り替えは `DAY_ROLLOVER_HOUR_JST`、§8.7・REQ-UXS-011。既定 0:00 JST なので JST の日付と同じ）、残り日数（`remainingDays`）もゲーム日で数える。シーズンは JST の暦月 `YYYY-MM`（暦のまま）。**このセクションで新しいエラーコードは無い**（既存のコードの意味を下に追記。アカウント削除の予約中は §8.7 の `DELETION_PENDING`）。
+
+### 13.1 `GET /v1/shop/products`（認証なし、REQ-UXS-022）
+従来のフィールド（`id, kind, priceYen, paidCoins, once?, items?`）はそのまま。追加は表示用：
+```json
+{ "products": [
+  { "id": "coin_480", "kind": "coins", "name": "コイン310", "tab": "coins", "storeType": "consumable", "priceYen": 480, "paidCoins": 310,
+    "autoRenew": false, "contents": [{ "type": "paid_coins", "qty": 310, "label": "有償コイン310枚" }],
+    "firstPurchaseBonus": { "coins": 310, "currency": "free", "label": "はじめての購入時のみ：無償コイン310枚をプレゼント" },
+    "oneTime": false, "oneTimeScope": null, "period": null,
+    "noticeKeys": ["shop.paid_first", "shop.first_purchase_bonus", "legal.tokushoho", "legal.shikin_kessai"] },
+  { "id": "season_pass_plus", "kind": "season_pass", "name": "シーズンパス＋", "tab": "pass", "storeType": "consumable", "priceYen": 2400, "paidCoins": 0, "pass": { "levels": 10 },
+    "contents": [
+      { "type": "pass_premium", "levels": 30, "reward": { "freeCoins": 50, "items": [{ "itemId": "breeding_material", "qty": 1 }] }, "label": "シーズンパス有料ライン 全30段（各段：無償コイン50枚＋配合素材×1）" },
+      { "type": "pass_levels", "qty": 10, "label": "パスのレベル＋10（購入時）" },
+      { "type": "item", "itemId": "tack_bridle_pass_plus", "qty": 1, "label": "限定馬具「シーズンパス＋の頭絡」×1" } ],
+    "firstPurchaseBonus": null, "oneTime": false, "oneTimeScope": null, "period": { "kind": "season" }, "autoRenew": false,
+    "noticeKeys": ["shop.paid_first", "shop.no_auto_renew", "shop.pass_season_only", "shop.pass_auto_grant", "legal.tokushoho", "legal.shikin_kessai"] },
+  { "id": "stable_allowance_30d", "kind": "allowance", "allowance": { "days": 30, "dailyFreeCoins": 30 }, "period": { "kind": "days", "days": 30 },
+    "contents": [{ "type": "paid_coins", "qty": 100, "label": "有償コイン100枚" }, { "type": "daily_free_coins", "qty": 30, "days": 30, "total": 900, "label": "30日間、毎日 無償コイン30枚（1日1回受け取り）" }], "…": "…" } ],
+  "notices": { "shop.paid_first": "有償コインから先に使われます", "legal.tokushoho": "特定商取引法に基づく表記", "…": "…" },
+  "legalLinks": [{ "key": "legal.tokushoho", "title": "特定商取引法に基づく表記" }, { "key": "legal.shikin_kessai", "title": "資金決済法に基づく表示" }, { "key": "shop.paid_first", "title": "有償コインの使用順" }],
+  "notice": "有償コインから先に使われます" }
+```
+- `contents[].type`：`paid_coins` / `daily_free_coins`（`qty`・`days`・`total`）/ `pass_premium`（`levels`・`reward`）/ `pass_levels` / `item`（`itemId`・`qty`）。表示順のまま並べる。
+- `tab`：`recommended` / `coins` / `pass`。`oneTimeScope`：`account`（スターター）/ `class`（昇級記念、各クラス1回）/ null。`storeType`：`consumable`（コイン・パス・手当。Google は consume）/ `non_consumable`（1回限りの商品。Google は acknowledge）。自動更新の商品は無い。
+- `noticeKeys` の文言は `notices`。`legal.*` は法定ページへのリンクのキー。
+
+### 13.2 `POST /v1/shop/purchase-intent`（追加フィールド）
+```json
+{ "product": { … }, "monthSpentYen": 0, "monthlyLimitYen": null, "remainingYen": null,
+  "firstPurchaseBonus": { "coins": 310, "currency": "free", "label": "はじめての購入時のみ：無償コイン310枚をプレゼント" },
+  "pass": { "seasonId": "2026-11", "endsAt": 1796050800000, "remainingDays": 6, "lastWeek": true, "autoRenew": false, "levels": 0 },
+  "allowance": { "days": 30, "dailyFreeCoins": 30, "autoRenew": false } }
+```
+- `firstPurchaseBonus` はこのプレイヤーにまだ残っている時だけ（コインのパック）。`pass` はシーズンパス／パス＋、`allowance` は厩舎手当の時だけ。`lastWeek`（残り7日以内）の時は購入確認に「このパスは◯日（`remainingDays`）で終わります」を出す。
+- 既存コードの追加の意味：`ALREADY_PURCHASED` ＝ このシーズンのパス（パス・パス＋のどちらか）を持っている／厩舎手当の期間中（予約分を含む）／1回限りの商品を購入済み。`NOT_ELIGIBLE` ＝ 昇級記念パックのクラスに未到達。
+
+- 旧来の自動更新の購読（`storeType: "auto_renewing"`）の経路はテスト用に残っているだけで、リリース前なので購読は一度も販売していない（`season_pass` はシーズンごとの消費型）。旧購読の更新通知を扱う必要はない。
+
+### 13.3 `GET /v1/shop/offers`（要認証、REQ-UXS-017）
+```json
+{ "offers": [
+    { "id": "starter_pack", "productId": "starter_pack", "touchpoint": "T2", "placement": "popup", "reason": "first_4th_or_worse", "triggeredAt": 1795568400000, "viewedAt": null, "showPopup": true, "endsAt": null, "remainingDays": null },
+    { "id": "season_pass_2026_11", "productId": "season_pass", "touchpoint": "T3", "placement": "popup", "reason": "pass_unlock", "triggeredAt": 1795568400000, "viewedAt": null, "showPopup": true, "endsAt": 1796050800000, "remainingDays": 6 },
+    { "id": "season_pass_2026_11_plus", "productId": "season_pass_plus", "touchpoint": "T3", "placement": "recommended", "showPopup": false, "…": "…" },
+    { "id": "promo_pack_B", "productId": "promo_pack_B", "touchpoint": "T4", "placement": "popup", "reason": "class_B", "…": "…" },
+    { "id": "stable_allowance_30d", "productId": "stable_allowance_30d", "touchpoint": "shop", "placement": "recommended", "reason": null, "triggeredAt": null, "viewedAt": null, "showPopup": false, "endsAt": null, "remainingDays": null } ],
+  "firstPurchase": { "available": true, "productIds": ["coin_160", "…"], "noticeKey": "shop.first_purchase_bonus" },
+  "allowance": { "active": false, "claimedToday": false, "queued": null } }
+```
+- `showPopup` が true のオファーだけ、決まった場面（06 §5.1：T2＝結果画面を閉じた後、T3＝パス画面・開幕の初回起動、T4＝昇級演出の後）で1枚だけ出す。出したら 13.4 で記録する。その後もショップの「おすすめ」には `placement` に関係なく並べてよい。
+- `reason`：T2 は `first_4th_or_worse`（ランク戦で初めて4着以下）か `race5`（ランク戦5戦目の後）、T3 は `pass_unlock` / `pass_level_up` / `season_start`、T4 は `class_<クラス>`。
+- 買った商品は返らない（1回限りの商品は返金後も）。`endsAt` は実在の期間（シーズンの終わり）だけ。
+
+### 13.4 `POST /v1/shop/offers/:offerId/view`（要認証）
+本文なし。`{ "offerId": "starter_pack", "viewedAt": 1795568400000 }`。何度送っても最初の時刻のまま。今返っていないオファーは `404 NOT_FOUND`、`offerId` が `[A-Za-z0-9_]{1,64}` でなければ `400 BAD_REQUEST`。パス＋の id（`…_plus`）を送るとそのシーズンのパスの案内として記録する。
+
+### 13.5 厩舎手当（REQ-UXS-018）
+- `GET /v1/shop/allowance`（要認証）：期間中は `{ "active": true, "productId": "stable_allowance_30d", "startDate": "2026-11-25", "endDate": "2026-12-24", "day": 1, "days": 30, "daysLeft": 30, "dailyFreeCoins": 30, "claimedToday": false, "claimedDays": 0, "queued": null }`、期間外は `{ "active": false, "claimedToday": false, "queued": { "startDate", "endDate" } | null }`。
+- `POST /v1/shop/allowance/claim`（要認証・`Idempotency-Key` 必須）：上の形に `freeCoins`（今回付与した無償コイン）と `wallet` を足したもの。今日は受け取り済み → `409 ALREADY_CLAIMED`、期間外 → `409 NOT_ELIGIBLE`。受け取らなかった日の分は後から受け取れない。
+
+### 13.6 `GET /v1/season-pass`（要認証、REQ-UXS-020/021。従来のフィールドは残る）
+```json
+{ "seasonId": "2026-11", "level": 0, "xp": 80, "xpPerLevel": 100, "maxLevel": 30, "xpToNextLevel": 20, "racesToNextLevel": 1,
+  "active": true, "expiresAt": 1796050800000, "seasonEndsAt": 1796050800000, "remainingDays": 6, "lastWeek": true, "autoRenew": false,
+  "boostLevels": 0, "owned": ["season_pass"], "purchasable": [], "claimed": { "free": [], "premium": [] },
+  "rewards": { "free": { "every": 1, "reward": { "freeCoins": 10 } }, "premium": { "every": 1, "reward": { "freeCoins": 50, "items": [{ "itemId": "breeding_material", "qty": 1 }] } } },
+  "autoGrantAtSeasonEnd": true,
+  "lastSeason": { "seasonId": "2026-10", "xp": 3000, "level": 30, "premium": true, "boostXp": 0, "granted": { "free": [1, "…"], "premium": [1, "…"] }, "autoGranted": { "free": [29, 30], "premium": [29, 30] }, "autoFreeCoins": 120, "at": 1793467800000 } }
+```
+- `active` は有料ラインを受け取れるか（＝このシーズンのパスを持っている）。`lastSeason` は前のシーズンの締めで自動付与した分（無ければ null）。締めの処理（`closeSeason`）の結果にも同じ形の `pass` が入る。
+
+### 13.7 `GET /v1/missions`（追加フィールド、REQ-UXS-010）
+`{ "missions": [ … ], "firstWinBonus": { "modes": ["ranked"], "byWin": [30, 20, 10], "winsToday": 1, "remaining": 2, "next": 20 } }`。レース結果（`applyRace` の戻り値）には `firstWinBonus`（そのレースで付いた無償コイン、0 なら無し）が入る。
+
+### 13.8 返金（REQ-PUR-006 の拡張）
+ストアの返金通知の結果に `linkedClawback: { "freeCoins": n, "items": { "<itemId>": n } }` が加わる：購入の後にその購入のおかげで付与した分（厩舎手当の受け取り済みの無償コイン、パスの有料ラインの報酬、パス＋の10段でだけ届いた無料ラインの報酬）。足りない分は従来どおり未精算（`debt` / `itemDebt`）になり、精算までガチャと購入が止まる。
+
+## 14. ルールセット 1.3 の固有スキル（REQ-UXS-050/051、docs/planning/06-ux-experience-spec.md §7.1）
+- 追加キー：`skillMaxSpeedPermille`、`skillMaxAccelPermille`、`skillMaxDrainSavePermille`、`skillMaxRecoverPermille`、`skillMaxDurationTicks`。**全部あるか全部ないか**（他のキー群とは独立）。**ない場合は `horse.skill` を無視**し、1.2.x 以前と同じ結果になる。C# `RulesetParams.SkillIntKeys` と TS `SKILL_RULESET_KEYS` は一致させる（テストで確認）。既定値（1.3.0）は 30 / 400 / 400 / 80 / 160。キーがあってもスキルを持つ馬がいなければ 1.2.0 と同じ計算（結果ハッシュはバージョン文字列の分だけ変わる）。
+- `horse.skill`：`id`・`name`（表示用。計算には使わない）・`trigger`・`value`・効果5つ（全て整数）。1頭1スキル。
+- **発動は条件だけ**（乱数を使わない）。1レースに1回まで。条件は**そのtickの開始時の状態**（前のtickの結果：距離・レーン・順位・スタミナ）で判定するので、スロットの順番に依存しない。出走していない（ゲート前）・ゴール後の馬は判定しない。
+  | trigger | value | 条件 |
+  |---|---|---|
+  | `finalStraight` | 0..11 | 最後の区間が直線で、残り ≤ min(最後の直線の長さ, スパート区間) かつ 前の馬が value 頭以下（順位 ≤ value、0 = 先頭） |
+  | `cornerRail` | 0..11 | 今いる区間がコーナーで、レーン ≤ value（0 = 内ラチ沿い） |
+  | `lowStamina` | 0..1000 | 残りスタミナ ≤ value ‰ |
+  | `spurtBehind` | 0..11 | スパート区間の中で、順位 ≥ value |
+  | `remaining` | 0..4000 | 残り ≤ value m |
+  | `leading` | 0..4000 | 残り ≤ value m かつ 先頭 |
+  | `slipstream` | 1..1200 | 前のtickまでに value tick 続けて風よけ（スリップストリーム）の中 |
+  | `goodStart` | 0..60 | ゲートが開いて value tick 以内にスタートした（スタートしたtickに発動） |
+- **効果**（各値はまずルールセットの上限 `skillMax*` で頭打ち）：発動したtickから `durationTicks` の間、目標速度 ×(1000 + `speedPermille`)/1000（手綱の後、スタミナ切れの頭打ちの前）、加速 ×(1000 + `accelPermille`)/1000（スタートダッシュの後）、脚の消費 ×(1000 − `drainSavePermille`)/1000（馬場の係数の後）。`recoverPermille` は発動の瞬間に スタミナ += 最大値 × recover / 1000（最大値まで）。
+- イベント `Skill`（値12）：Slot = 発動した馬、Value = 発動した時の順位（前のtickの順位、0 = 先頭）。表示・実況用で、チェックサムと結果ハッシュには入らない（スキルの影響は速度・スタミナとしてチェックサムに現れる）。
+- **サーバーが送る値**：`server/master/skills.json` の値を、ステータスを正規化するレース（ランク戦・大会・クラス上限のあるイベント）では `rankedCaps` で頭打ちにして送る。タイムアタック・チュートリアル・能力固定のイベントでは送らない。CPU の馬はテンプレートのスキルを持つ（乱数なし）。
+- ゴールデン：`contracts/golden/race-turf2000-skills.json`（8種類の条件すべてが発動する）。1.2.0 のゴールデンは `contracts/golden/legacy/*.ruleset-1.2.0.json` に残し、今も同じ結果で検証できることをテストしている。

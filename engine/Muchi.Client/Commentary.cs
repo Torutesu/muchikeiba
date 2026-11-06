@@ -12,7 +12,7 @@ namespace Muchi.Client
         /// <summary>Clip id for fixed text ("variantId#n"), null for a placeholder.</summary>
         public string ClipId;
         public string Text;
-        /// <summary>name, name2, name3 or place; null for fixed text.</summary>
+        /// <summary>name, name2, name3, place or skill (the subject horse's skill name); null for fixed text.</summary>
         public string Placeholder;
     }
 
@@ -52,6 +52,8 @@ namespace Muchi.Client
         public int DuelWindowTicks = 150;
         /// <summary>A winner this far back when the final straight started (0 = leader) wins "from the back".</summary>
         public int ComebackFromRank = 5;
+        /// <summary>Skill lines for horses other than the player's (leaders only, rank &lt; 3), at most this many per race.</summary>
+        public int MaxOtherSkillLines = 2;
         public readonly Dictionary<string, PhraseDef> Phrases = new Dictionary<string, PhraseDef>();
 
         /// <summary>
@@ -82,6 +84,7 @@ namespace Muchi.Client
                 PhotoFinishTicks = J.Int(o, "photoFinishTicks", 2),
                 DuelWindowTicks = J.Int(o, "duelWindowTicks", 150),
                 ComebackFromRank = J.Int(o, "comebackFromRank", 5),
+                MaxOtherSkillLines = J.Int(o, "maxOtherSkillLines", 2),
             };
             foreach (var kv in o.Get("phrases").Props)
             {
@@ -120,7 +123,7 @@ namespace Muchi.Client
                 int close = text.IndexOf('}', open);
                 if (close < 0) throw new FormatException("unclosed placeholder in " + id);
                 string ph = text.Substring(open + 1, close - open - 1);
-                if (ph != "name" && ph != "name2" && ph != "name3" && ph != "place") throw new FormatException("unknown placeholder {" + ph + "} in " + id);
+                if (ph != "name" && ph != "name2" && ph != "name3" && ph != "place" && ph != "skill") throw new FormatException("unknown placeholder {" + ph + "} in " + id);
                 parts.Add(new TemplatePart { Placeholder = ph });
                 i = close + 1;
             }
@@ -198,6 +201,7 @@ namespace Muchi.Client
         private readonly List<RaceEvent> _leaderChanges = new List<RaceEvent>();
         private int _prevLeader = -1, _prevLeaderChange = -1;
         private bool _duelSaid, _photoSaid, _goingCallDone;
+        private int _otherSkillLines;
         private int _winnerTick = -1;
 
         public IReadOnlyList<CommentaryLine> Lines => _lines;
@@ -373,7 +377,8 @@ namespace Muchi.Client
                     _leaderSince = e.Tick;
                     break;
                 case RaceEventType.Kakari:
-                    if (e.Slot == _focus || sim.GetHorse(e.Slot).Rank < 3) Add("kakari", e.Tick, e.Slot);
+                    // the engine stamps the rank into the event: never read live state here (catch-up Process)
+                    if (e.Slot == _focus || e.Value < 3) Add("kakari", e.Tick, e.Slot);
                     break;
                 case RaceEventType.Whip:
                     if (e.Slot == _focus && !_focusWhipSaid) { _focusWhipSaid = true; Add("focus_whip", e.Tick, e.Slot); }
@@ -403,6 +408,15 @@ namespace Muchi.Client
                         Add("bond_call", e.Tick, e.Slot);
                     }
                     break;
+                case RaceEventType.Skill:
+                    // unique skill (ruleset 1.3): the player's horse always; others only near the front, a few per race. The
+                    // rank is stamped into the event (never read live state: catch-up Process tells the same story)
+                    if (!_anyFinished && _t.Phrases.ContainsKey("skill") && SkillName(e.Slot) != null)
+                    {
+                        if (e.Slot == _focus) Add("skill", e.Tick, e.Slot);
+                        else if (e.Value < 3 && _otherSkillLines < _t.MaxOtherSkillLines) { _otherSkillLines++; Add("skill", e.Tick, e.Slot); }
+                    }
+                    break;
                 case RaceEventType.CpuTakeover:
                     if (e.Slot == _focus) Add("cpu_takeover", e.Tick, e.Slot);
                     break;
@@ -411,7 +425,7 @@ namespace Muchi.Client
                     {
                         _anyFinished = true;
                         _winnerTick = e.Tick;
-                        _pending.RemoveAll(c => c.Kind == "leader" || c.Kind == "position_call" || c.Kind == "kakari" || c.Kind == "duel" || c.Kind.StartsWith("going_call_", StringComparison.Ordinal));
+                        _pending.RemoveAll(c => c.Kind == "leader" || c.Kind == "position_call" || c.Kind == "kakari" || c.Kind == "duel" || c.Kind == "skill" || c.Kind.StartsWith("going_call_", StringComparison.Ordinal));
                         Add(WinKind(e.Slot, sim.EntrantCount), e.Tick, e.Slot);
                     }
                     else
@@ -468,6 +482,8 @@ namespace Muchi.Client
             return true;
         }
 
+        private string SkillName(int slot) => slot >= 0 && slot < _cfg.Entrants.Count ? _cfg.Entrants[slot].Horse.Skill?.Name : null;
+
         private Cand Add(string kind, int tick, int slot)
         {
             string key = PhraseKeyFor(kind);
@@ -505,6 +521,14 @@ namespace Muchi.Client
             {
                 if (p.ClipId != null) { text.Append(p.Text); clips.Add(p.ClipId); continue; }
                 if (p.Placeholder == "place") { text.Append(c.Place); clips.Add("num:" + c.Place); continue; }
+                if (p.Placeholder == "skill")
+                {
+                    // skill names are pre-generated per skill like horse names ("skill:<skillId>")
+                    var sk = c.Slot >= 0 && c.Slot < _cfg.Entrants.Count ? _cfg.Entrants[c.Slot].Horse.Skill : null;
+                    text.Append(sk?.Name ?? "");
+                    clips.Add("skill:" + (sk?.Id ?? "?"));
+                    continue;
+                }
                 int slot = p.Placeholder == "name" ? c.Slot : p.Placeholder == "name2" ? c.Slot2 : c.Slot3;
                 var horse = slot >= 0 && slot < _cfg.Entrants.Count ? _cfg.Entrants[slot].Horse : null;
                 text.Append(horse?.Name ?? "");

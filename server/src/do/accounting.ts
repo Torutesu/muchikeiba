@@ -1,6 +1,8 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { Env } from '../env.js';
 import { aggregatePaidBalances, type PaidBalanceSnapshot } from '../domain/accounting.js';
+import { applyRetainedRefund, type RetainedRecord } from '../domain/accountDeletion.js';
+import { AppError } from '../domain/errors.js';
 
 /**
  * Latest unused paid-coin balance per player, for the Payment Services Act base-date check (REQ-WAL-005).
@@ -27,6 +29,48 @@ export class AccountingDO extends DurableObject<Env> {
   async lookupStoreKey(key: string): Promise<string | null> {
     const rows = this.ctx.storage.sql.exec<{ player_id: string }>('SELECT player_id FROM store_tx WHERE key = ?', key).toArray();
     return rows[0]?.player_id ?? null;
+  }
+
+  /**
+   * REQ-UXS-040: keeps a deleted account's legally required records under a random id (no link to the account):
+   * the store transactions point to that id from now on, and the player's paid balance row goes (forfeited).
+   * Idempotent per anonId; a rebuilt record (higher `rev`: something was credited during the deletion) replaces it.
+   */
+  async retainDeleted(playerId: string, record: RetainedRecord) {
+    const sql = this.ctx.storage.sql;
+    sql.exec('CREATE TABLE IF NOT EXISTS retained (anon_id TEXT PRIMARY KEY, deleted_at INTEGER NOT NULL, retain_until INTEGER NOT NULL, record TEXT NOT NULL)');
+    sql.exec('INSERT INTO retained (anon_id, deleted_at, retain_until, record) VALUES (?, ?, ?, ?) ON CONFLICT(anon_id) DO UPDATE SET record = excluded.record WHERE json_extract(excluded.record, \'$.rev\') >= coalesce(json_extract(retained.record, \'$.rev\'), 0)', record.anonId, record.deletedAt, record.retainUntil, JSON.stringify(record));
+    sql.exec('UPDATE store_tx SET player_id = ? WHERE player_id = ?', record.anonId, playerId);
+    sql.exec('DELETE FROM paid WHERE player_id = ?', playerId);
+    return { ok: true };
+  }
+
+  /**
+   * REQ-UXS-040 × REQ-PUR-006: a store refund that resolved to a deleted account's anonymous id. Recorded on the retained
+   * record (applyRetainedRefund). Null when `anonId` has no retained record (the caller treats it as unknown).
+   */
+  async retainedRefund(anonId: string, txId: string, nowMs: number) {
+    const sql = this.ctx.storage.sql;
+    sql.exec('CREATE TABLE IF NOT EXISTS retained (anon_id TEXT PRIMARY KEY, deleted_at INTEGER NOT NULL, retain_until INTEGER NOT NULL, record TEXT NOT NULL)');
+    const row = sql.exec<{ record: string }>('SELECT record FROM retained WHERE anon_id = ?', anonId).toArray()[0];
+    if (!row) return null;
+    try {
+      const { record, result } = applyRetainedRefund(JSON.parse(row.record) as RetainedRecord, txId, nowMs);
+      if (!result.alreadyRefunded) sql.exec('UPDATE retained SET record = ? WHERE anon_id = ?', JSON.stringify(record), anonId);
+      return result;
+    } catch (e) {
+      if (e instanceof AppError && e.code === 'NOT_FOUND') return null;
+      throw e;
+    }
+  }
+
+  /** Daily: drops retained records past their legal retention. */
+  async purgeRetained(nowMs: number) {
+    const sql = this.ctx.storage.sql;
+    sql.exec('CREATE TABLE IF NOT EXISTS retained (anon_id TEXT PRIMARY KEY, deleted_at INTEGER NOT NULL, retain_until INTEGER NOT NULL, record TEXT NOT NULL)');
+    const n = sql.exec<{ n: number }>('SELECT COUNT(*) AS n FROM retained WHERE retain_until <= ?', nowMs).one().n;
+    sql.exec('DELETE FROM retained WHERE retain_until <= ?', nowMs);
+    return { purged: n };
   }
 
   async record(s: PaidBalanceSnapshot) {

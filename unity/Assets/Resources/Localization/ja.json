@@ -674,8 +674,8 @@
       "value": "このビルドではストア決済に接続していません。購入は完了しません。"
     },
     {
-      "key": "FIRST TOP-UP  /  2× BONUS",
-      "value": "各パック初回購入で2倍"
+      "key": "FIRST BUY  /  SAME AMOUNT FREE",
+      "value": "初回のみ 同じ枚数の無償コイン"
     },
     {
       "key": "VIEW",
@@ -719,7 +719,7 @@
     },
     {
       "key": "Paid and free coins are shown separately. Bonus is limited to one first purchase per pack.",
-      "value": "有償・無償コインは分けて表示します。初回2倍ボーナスは各パック1回です。"
+      "value": "有償・無償コインは分けて表示します。はじめての購入時に同じ枚数の無償コインをプレゼント（各パック1回）。"
     },
     {
       "key": "No random draw. The item and rarity are visible before purchase.",

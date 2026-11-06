@@ -7,7 +7,7 @@ import { grantReward } from './items.js';
 import { buildRaceConfig, toRaceHorse } from './raceConfig.js';
 import type { Rng } from './rng.js';
 import { inputTripleSchema, type InputTriple, type RaceStartConfig, type ReplayLog, type VerifierOutput } from './schemas.js';
-import { jstDateKey, jstMonthKey } from './time.js';
+import { gameDayKey, jstMonthKey } from './time.js';
 
 /**
  * Time attack (REQ-TA-*). The player races alone on the device (OfflineRace) against the clock and
@@ -103,7 +103,7 @@ export function startTimeAttack(m: Master, s: PlayerState, cfg: TimeAttackConfig
   const h = getHorse(s, horseId);
   if (h.status !== 'active') throw new AppError('HORSE_NOT_ACTIVE');
   const st = taState(s);
-  const today = jstDateKey(now);
+  const today = gameDayKey(now);
   if (st.daily.date !== today) st.daily = { date: today, count: 0 };
   if (st.daily.count >= cfg.maxAttemptsPerDay) throw new AppError('TA_LIMIT_REACHED', `${cfg.maxAttemptsPerDay}/day`);
   st.daily.count++;
@@ -239,7 +239,7 @@ export function recordResult(m: Master, s: PlayerState, cfg: TimeAttackConfig, s
 export function timeAttackView(s: PlayerState, cfg: TimeAttackConfig, trackId: string, now: number) {
   const st = taState(s);
   const seasonId = jstMonthKey(now);
-  const today = jstDateKey(now);
+  const today = gameDayKey(now);
   return {
     trackId, seasonId,
     seasonBest: st.seasonBest[bestKey(seasonId, trackId)] ?? null,

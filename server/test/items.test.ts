@@ -82,7 +82,7 @@ describe('gacha ticket (REQ-ITEM-001)', () => {
   });
   it('the banner odds disclosure names the tickets that draw from it (same table)', () => {
     const d = oddsDisclosure(m, findBanner(m, 'standard'));
-    expect(d.tickets.map((t) => t.itemId)).toEqual(['gacha_ticket']);
+    expect(d.tickets.map((t) => t.itemId)).toEqual(['gacha_ticket', 'gacha_ticket_10']);
     expect(oddsDisclosure(m, findBanner(m, 'stepup_paid')).tickets).toEqual([]);
   });
 });
@@ -239,7 +239,7 @@ describe('HTTP routes (REQ-ITEM-*)', () => {
   };
   it('lists ticket disclosures, uses tickets, sells and equips cosmetics', async () => {
     const t = await call('GET', '/v1/items/tickets');
-    expect((t.json.tickets as { itemId: string }[]).map((x) => x.itemId).sort()).toEqual(['gacha_ticket', 'ticket_sr_plus']);
+    expect((t.json.tickets as { itemId: string }[]).map((x) => x.itemId).sort()).toEqual(['gacha_ticket', 'gacha_ticket_10', 'ticket_sr_plus']);
     expect((await call('GET', '/v1/items/tickets/ticket_sr_plus/odds')).status).toBe(200);
     expect((await call('GET', '/v1/items/tickets/nope/odds')).status).toBe(404);
     await p.adminGrant('u1', { freeCoins: 1000, items: [{ itemId: 'ticket_sr_plus', qty: 1 }] }, 'test', 'ops', 'op1');

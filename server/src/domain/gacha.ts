@@ -6,6 +6,7 @@ import { randInt, type Rng } from './rng.js';
 import { spend } from './wallet.js';
 import { createHorseFromTemplate } from './horses.js';
 import { hasItemDebt } from './items.js';
+import { skillSummary, templateSkill } from './skills.js';
 
 const rank = (r: Rarity) => RARITY_ORDER.indexOf(r);
 
@@ -20,6 +21,8 @@ export function bannerProblems(b: BannerDef, m: Pick<Master, 'templateById'>, gm
     for (const e of pool) {
       if (!Number.isInteger(e.ppm) || e.ppm <= 0) p.push(`${b.id}: ${name} ${e.templateId} ppm must be a positive integer`);
       if (!m.templateById.has(e.templateId)) p.push(`${b.id}: ${name} unknown template ${e.templateId}`);
+      // REQ-UXS-002: the first partner / gift horses are never drawable (remote config can list explicit pools)
+      if (m.templateById.get(e.templateId)?.giftOnly) p.push(`${b.id}: ${name} contains gift-only ${e.templateId}`);
       if (seen.has(e.templateId)) p.push(`${b.id}: ${name} duplicate ${e.templateId}`);
       seen.add(e.templateId);
     }
@@ -68,7 +71,9 @@ export function validateGacha(m: Master): void {
   const problems = m.gacha.banners.flatMap((b) => bannerProblems(b, m, m.gacha));
   problems.push(...pityGroupProblems(m.gacha));
   // every banner can be paid with paid coins, so nothing in a pool counts as freely obtainable
-  problems.push(...compGachaProblems(m.progression.collectionMissions, m.gacha.banners, new Set()));
+  const collects = [...(m.progression.beginnerMissions ?? []), ...(m.progression.seasonMissions ?? [])]
+    .filter((d) => d.kind === 'collect').map((d) => ({ id: d.id, kind: 'collect' as const, templateIds: d.templateIds ?? [], reward: d.reward }));
+  problems.push(...compGachaProblems([...m.progression.collectionMissions, ...collects], m.gacha.banners, new Set()));
   if (problems.length) throw new AppError('CONFIG_INVALID', problems.join('; '));
 }
 
@@ -94,8 +99,11 @@ export function oddsDisclosure(m: Master, b: BannerDef, yenPerCoin = 1.6) {
   const rows = (pool: PoolEntry[]) =>
     pool.map((e) => {
       const t = m.templateById.get(e.templateId)!;
-      const row: { templateId: string; name: string; rarity: Rarity; ppm: number; rate: string; limited?: { seasonId: string; label: string; endAtMs: number } } = { templateId: t.id, name: t.name, rarity: t.rarity, ppm: e.ppm, rate: pct(e.ppm) };
+      const row: { templateId: string; name: string; rarity: Rarity; ppm: number; rate: string; limited?: { seasonId: string; label: string; endAtMs: number }; skill?: ReturnType<typeof skillSummary> } = { templateId: t.id, name: t.name, rarity: t.rarity, ppm: e.ppm, rate: pct(e.ppm) };
       if (t.seasonal) row.limited = { seasonId: t.seasonal.seasonId, label: t.seasonal.label, endAtMs: t.seasonal.endAtMs };
+      // REQ-UXS-050: the horse's unique skill, display only (the ppm above come from the drawing table alone)
+      const sk = skillSummary(m, templateSkill(m, t));
+      if (sk) row.skill = sk;
       return row;
     });
   const totals = (pool: PoolEntry[]) => {
@@ -117,7 +125,10 @@ export function oddsDisclosure(m: Master, b: BannerDef, yenPerCoin = 1.6) {
     pity: { group: b.pityGroup, pullsRequired: pityCost, targets: b.pityTargets, estimatedMaxCostYen: Math.ceil(pityCost * b.priceSingle * yenPerCoin) },
     duplicates: m.gacha.duplicateMaterial,
     // REQ-ITEM-001: tickets usable on this banner draw from this very table (one definition, REQ-GACHA-002)
-    tickets: Object.entries(m.items?.tickets ?? {}).filter(([, t]) => t.kind === 'single' && t.banners.includes(b.id)).map(([id, t]) => ({ itemId: id, name: t.name, notice: '券1枚で1回。この提供割合と同じ表で抽選し、天井ポイントも1回分加算' })),
+    tickets: Object.entries(m.items?.tickets ?? {}).filter(([, t]) => (t.kind === 'single' || t.kind === 'ten') && t.banners.includes(b.id)).map(([id, t]) => ({
+      itemId: id, name: t.name,
+      notice: t.kind === 'ten' ? '券1枚で10連1回（10枠目は上の保証の表）。この提供割合と同じ表で抽選し、天井ポイントも10回分加算' : '券1枚で1回。この提供割合と同じ表で抽選し、天井ポイントも1回分加算',
+    })),
   };
 }
 

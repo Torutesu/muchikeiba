@@ -9,12 +9,17 @@ import type { PlayerTeamState } from './teams.js';
 import type { PlayerEventState } from './events.js';
 import { appearanceOf, defaultSilks, effectiveSilks, type Appearance, type Silks } from './visuals.js';
 import type { BannedSilksList } from './bannedSilks.js';
+import type { PassSeasonRecord, ShopState } from './shop.js';
+import type { ConsentState, OnboardingState, SeasonMissionState } from './onboarding.js';
+import type { NudgeState } from './nudges.js';
+import type { DeletionState } from './accountDeletion.js';
 
 export type Currency = 'paid' | 'free';
 
 /** Append-only ledger row (REQ-WAL-001). */
 export interface LedgerEntry {
-  seq: number; at: number; kind: 'grant' | 'spend' | 'purchase' | 'bonus' | 'refund' | 'debt' | 'settle';
+  /** `forfeit`: balances given up when the account is deleted (REQ-UXS-040). */
+  seq: number; at: number; kind: 'grant' | 'spend' | 'purchase' | 'bonus' | 'refund' | 'debt' | 'settle' | 'forfeit';
   currency: Currency; delta: number; balanceAfter: number; reason: string; ref: string;
 }
 
@@ -34,6 +39,8 @@ export interface HorseInstance {
   studSire?: { ownerId: string; horseId: string; sireName: string | null; damName: string | null };
   /** REQ-BREED-017: a trait inherited from a grandparent (隔世遺伝). */
   atavism?: { trait: 'style' | 'goingAptitude'; value: string; from: string };
+  /** 固有スキル id (REQ-UXS-050): from the template, or inherited by a foal. Absent on a foal = none (see skills.ts horseSkillId). */
+  skillId?: string;
 }
 
 export interface PurchaseRecord {
@@ -51,6 +58,10 @@ export interface PurchaseRecord {
   sandboxFreeGranted?: number;
   /** Season pass: end of the period this purchase paid for (review r5 #6). */
   passUntil?: number;
+  /** REQ-UXS-020: the season (JST month) a per-season pass purchase covers. */
+  passSeasonId?: string;
+  /** REQ-UXS-018/021: free coins granted later because of this purchase (daily pack, pass rewards); held from stud fees like the bonus. */
+  linkedFree?: number;
 }
 
 /** REQ-STAT-001: per-player race statistics (ranked + friend races; tutorial excluded). */
@@ -100,9 +111,17 @@ export interface PlayerState {
   firstPurchased: string[];
   monthlySpendYen: Record<string, number>;
   age: { birthYear: number; birthMonth: number; guardianConsent: boolean; setAt: number } | null;
-  flags: { tutorialGachaUsed: boolean };
-  seasonPass: { expiresAt: number; xp: number; claimed: { free: number[]; premium: number[] }; seasonId: string };
-  loginBonus: { streakDay: number; lastClaimDate: string | null };
+  /** partnerHorseId: the first partner granted by POST /v1/player/partner (REQ-UXS-002). */
+  flags: { tutorialGachaUsed: boolean; partnerHorseId?: string };
+  /** `boostXp`: XP added by a Pass+ purchase this season (REQ-UXS-019; removed again if it is refunded). */
+  seasonPass: { expiresAt: number; xp: number; claimed: { free: number[]; premium: number[] }; seasonId: string; boostXp?: number;
+    /** REQ-UXS-040: given up by an account deletion (no automatic grant at the season close). */
+    forfeitedAt?: number };
+  /**
+   * streakDay: normal 7-day cycle days claimed. beginnerDay (REQ-UXS-013): beginner-table days claimed; absent on
+   * states stored before it existed (players who never claimed start the beginner table, the others skip it).
+   */
+  loginBonus: { streakDay: number; lastClaimDate: string | null; beginnerDay?: number };
   missions: { date: string; progress: Record<string, number>; claimed: string[] };
   breeding: { date: string | null; count: number };
   rating: { r: number; rd: number; vol: number; rankedRaces: number };
@@ -149,6 +168,22 @@ export interface PlayerState {
   breedingExtra?: { date: string; count: number };
   /** REQ-BREED-010..016: stud lending, both as owner and as borrower (created on first use; see stud.ts). */
   stud?: StudState;
+  /** REQ-UXS-017/018: offer triggers and views, daily-pack entitlements (created on first use; see shop.ts). */
+  shop?: ShopState;
+  /** REQ-UXS-021: closed seasons' pass results incl. rewards granted automatically at the close (newest last). */
+  passHistory?: PassSeasonRecord[];
+  /** REQ-UXS-010: wins counted for today's first-win bonus (game day). */
+  dailyWins?: { date: string; count: number };
+  /** REQ-UXS-001: terms / privacy versions consented to. */
+  consent?: ConsentState;
+  /** REQ-UXS-014/015: unlock counters and beginner mission progress (see onboarding.ts). */
+  onboarding?: OnboardingState;
+  /** REQ-UXS-016: this season's mission progress. */
+  seasonMissions?: SeasonMissionState;
+  /** REQ-UXS-012: personal push nudges already scheduled / sent. */
+  nudges?: NudgeState;
+  /** REQ-UXS-040: account deletion request (confirmation token, then the scheduled deletion). */
+  deletion?: DeletionState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }
@@ -230,9 +265,10 @@ export function newPlayer(id: string, now: number, seasonId: string): PlayerStat
   };
 }
 
-/** Public view returned by the API (no ledger dump). */
-export function playerView(s: PlayerState, banned?: BannedSilksList) {
+/** Public view returned by the API (no ledger dump). `extra`: computed sections (consent, unlocks, …; service.ts). */
+export function playerView<E extends object = object>(s: PlayerState, banned?: BannedSilksList, extra?: E) {
   return {
+    ...(extra ?? ({} as E)),
     id: s.id,
     wallet: { paid: s.wallet.paid, free: s.wallet.free, total: s.wallet.paid + s.wallet.free, debt: s.wallet.debt },
     items: s.items, materials: s.materials, pity: s.pity, horses: s.horses,

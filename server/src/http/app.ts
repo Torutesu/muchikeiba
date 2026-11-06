@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { visualsCatalog, VISUALS } from '../domain/visuals.js';
 import { AppError } from '../domain/errors.js';
 import { findBanner, oddsDisclosure } from '../domain/gacha.js';
+import { shopProducts } from '../domain/shop.js';
+import { skillCatalog } from '../domain/skills.js';
 import { ticketDisclosure } from '../domain/itemShop.js';
 import type { Master } from '../domain/master.js';
 import type { PlayerService } from '../domain/service.js';
@@ -24,12 +26,14 @@ import { goingSchema } from '../domain/schemas.js';
 import { StudService, type StudDirectory, type StudPlayers } from '../domain/studService.js';
 import type { SpectateService } from '../domain/spectate.js';
 import type { TournamentEntryInfo, TournamentPlayers, TournamentsService } from '../domain/tournamentService.js';
+import type { StableService } from '../domain/stable.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
   | 'bootstrap' | 'view' | 'setAge' | 'purchaseIntent' | 'purchase' | 'refund' | 'draw' | 'tutorialDraw' | 'pityExchange'
   | 'nameHorse' | 'awaken' | 'retire' | 'breedingPreview' | 'breed' | 'pedigree' | 'claimLogin' | 'missions'
   | 'claimMission' | 'passView' | 'claimPass' | 'applyRace' | 'raceEntry'
+  | 'shopOffers' | 'markOfferViewed' | 'allowance' | 'claimAllowance' | 'firstWinBonus'
   | 'storeRenewal' | 'subscriptionStatus'
   | 'setDisplayName' | 'equipTitle' | 'titles' | 'stats' | 'publicProfile' | 'closeSeason' | 'setSilks'
   | 'useTicket' | 'cosmetics' | 'buyCosmetic' | 'setEquipment'
@@ -40,7 +44,10 @@ export type PlayerMethod =
   | 'teamPrepareJoin' | 'teamCommitJoin' | 'teamAbortJoin' | 'teamAddOutgoing' | 'teamRemoveOutgoing' | 'teamLeft' | 'teamState' | 'teamSeasonReward' | 'queuePush'
   | 'eventsView' | 'eventEnter' | 'eventCancel' | 'eventClose' | 'tournamentEntry' | 'tournamentClose' | 'tournamentHistory'
   | 'bond' | 'bondLevels' | 'care' | 'presets' | 'setCourseLook' | 'setRoomConditions'
-  | 'studView' | 'studList' | 'studUnlist' | 'studPeek' | 'studReserve' | 'studSettle' | 'studPreview' | 'studApply' | 'studAcked' | 'studDue' | 'studRetryLater';
+  | 'studView' | 'studList' | 'studUnlist' | 'studPeek' | 'studReserve' | 'studSettle' | 'studPreview' | 'studApply' | 'studAcked' | 'studDue' | 'studRetryLater'
+  | 'stableMine' | 'stableSave' | 'stableVisit' | 'stableLikeGive' | 'stableLikeReceive' | 'stableClear' | 'stableForget'
+  | 'recordConsent' | 'grantPartner' | 'missionsAll' | 'requestDeletion' | 'cancelDeletion' | 'deletionDue' | 'deletionSnapshot' | 'deletionMarkStep'
+  | 'deletionRetryLater' | 'deletionFinalize' | 'deletionStart' | 'runNudges' | 'nudgeTaBeaten' | 'nudgeTournamentClosing';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -94,8 +101,15 @@ export interface AppContext {
   spectate?: SpectateService;
   /** REQ-TOUR-*: tournaments. */
   tournaments?: TournamentsService;
+  /** REQ-STABLE-*: マイ厩舎 (http/stablePorts.ts makeStableService). */
+  stable?: StableService;
   clock?: () => number;
   paidBalance(): Promise<unknown>;
+  /**
+   * REQ-UXS-040: a store refund whose transaction belongs to a deleted account (AccountingDO.retainedRefund, keyed by the
+   * anonymous id the store index points to). Null = no retained record under that id.
+   */
+  retainedRefund?(anonId: string, transactionId: string): Promise<unknown | null>;
   adminToken: string | undefined;
   parseStoreNotification(platform: string, req: Request): Promise<StoreNotification | null>;
   /** Live-ops backend (REQ-OPS-*). When present, /v1/admin/* is served by http/admin.ts with roles and audit. */
@@ -152,8 +166,20 @@ const tournaments = (c: AppContext) => {
   if (!c.tournaments) throw new AppError('NOT_FOUND', 'tournaments are not available');
   return c.tournaments;
 };
+const stable = (c: AppContext) => {
+  if (!c.stable) throw new AppError('NOT_FOUND', 'stables are not available');
+  return c.stable;
+};
+const playerIdParam = (s: string) => {
+  if (s.length < 1 || s.length > 128 || /[\s/]/.test(s)) throw new AppError('BAD_REQUEST', 'bad player id');
+  return s;
+};
 const teamIdParam = (s: string) => {
   if (!TEAM_ID_RE.test(s)) throw new AppError('BAD_REQUEST', 'bad team id');
+  return s;
+};
+const offerIdParam = (s: string) => {
+  if (!/^[a-z0-9_]{1,64}$/i.test(s)) throw new AppError('BAD_REQUEST', 'bad offer id');
   return s;
 };
 const eventIdParam = (s: string) => {
@@ -188,12 +214,43 @@ export const routes: Route[] = [
   // player
   { method: 'POST', path: '/v1/player/bootstrap', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('bootstrap', u) },
   { method: 'GET', path: '/v1/player', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('view', u) },
+  // REQ-UXS-001: terms / privacy consent (the versions the app showed; must be the current ones)
+  { method: 'POST', path: '/v1/player/consent', auth: 'player', handler: async (r, _p, c, u) => {
+    const v = z.string().min(1).max(32);
+    const b = await body(r, z.object({ termsVersion: v, privacyVersion: v }).strict());
+    return c.player(u).invoke('recordConsent', u, b.termsVersion, b.privacyVersion);
+  } },
+  // REQ-UXS-002: the tutorial horse, granted once and named (separate from POST /v1/gacha/tutorial)
+  { method: 'POST', path: '/v1/player/partner', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ name: z.string().min(1).max(40) }).strict());
+    return c.player(u).invoke('grantPartner', u, b.name, idem(r));
+  } },
+  // REQ-UXS-040: account deletion (1: no token → confirmation token; 2: token → scheduled after the cancel window)
+  { method: 'DELETE', path: '/v1/player', auth: 'player', handler: async (r, _p, c, u) => {
+    const q = new URL(r.url).searchParams.get('confirmToken');
+    const text = await r.text();
+    let raw: unknown = {};
+    if (text.trim()) {
+      try { raw = JSON.parse(text); } catch { throw new AppError('BAD_REQUEST', 'invalid JSON'); }
+    }
+    const b = z.object({ confirmToken: z.string().min(1).max(64).optional() }).strict().safeParse(raw);
+    if (!b.success) throw new AppError('BAD_REQUEST', b.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '));
+    return c.player(u).invoke('requestDeletion', u, b.data.confirmToken ?? q ?? null);
+  } },
+  { method: 'POST', path: '/v1/player/deletion/cancel', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('cancelDeletion', u) },
   { method: 'PUT', path: '/v1/player/age', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ birthYear: z.number().int(), birthMonth: z.number().int().min(1).max(12), guardianConsent: z.boolean() }));
     return c.player(u).invoke('setAge', u, b.birthYear, b.birthMonth, b.guardianConsent);
   } },
   // shop
-  { method: 'GET', path: '/v1/shop/products', auth: 'none', handler: async (_r, _p, c) => ({ products: c.master.products, notice: '有償コインから先に使われます' }) },
+  // REQ-UXS-022: display data built on the server (contents, quantities, free-coin first-purchase bonus, legal notice keys)
+  { method: 'GET', path: '/v1/shop/products', auth: 'none', handler: async (_r, _p, c) => shopProducts(c.master) },
+  // REQ-UXS-017: offers to show (triggers, shown-once records); bought offers are never returned
+  { method: 'GET', path: '/v1/shop/offers', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('shopOffers', u) },
+  { method: 'POST', path: '/v1/shop/offers/:offerId/view', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('markOfferViewed', u, offerIdParam(p.offerId!)) },
+  // REQ-UXS-018: 厩舎手当 (30-day daily-coin pack)
+  { method: 'GET', path: '/v1/shop/allowance', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('allowance', u) },
+  { method: 'POST', path: '/v1/shop/allowance/claim', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('claimAllowance', u, idem(r)) },
   { method: 'POST', path: '/v1/shop/purchase-intent', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ productId: id }));
     return c.player(u).invoke('purchaseIntent', u, b.productId);
@@ -214,11 +271,20 @@ export const routes: Route[] = [
       if (n.kind === 'renewal') return await pl.invoke('storeRenewal', n.playerId, n.platform, n.receipt);
       return await pl.invoke('subscriptionStatus', n.playerId, n.platform, n.key, n.status, n.expiresAt);
     } catch (e) {
-      if (e instanceof AppError && e.code === 'NOT_FOUND') return { ok: true, ignored: 'purchase not found for player' };
+      if (e instanceof AppError && e.code === 'NOT_FOUND') {
+        // a deleted account: the store index points to its anonymous retained record (7-year legal retention)
+        if (n.kind === 'refund' && c.retainedRefund) {
+          const r = await c.retainedRefund(n.playerId, n.transactionId);
+          if (r) return r;
+        }
+        return { ok: true, ignored: 'purchase not found for player' };
+      }
       throw e;
     }
   } },
   // gacha
+  // REQ-UXS-050: unique skill catalog (condition/effect text generated from the engine values; no odds: no random draw)
+  { method: 'GET', path: '/v1/skills', auth: 'none', handler: async (_r, _p, c) => skillCatalog(c.master) },
   { method: 'GET', path: '/v1/gacha/banners', auth: 'none', handler: async (_r, _p, c) => ({ banners: c.master.gacha.banners.map((b) => ({ id: b.id, name: b.name, currency: b.currency, priceSingle: b.priceSingle, priceTen: b.priceTen, startAtMs: b.startAtMs ?? null, endAtMs: b.endAtMs ?? null })) }) },
   { method: 'GET', path: '/v1/gacha/:bannerId/odds', auth: 'none', handler: async (_r, p, c) => oddsDisclosure(c.master, findBanner(c.master, p.bannerId!)) },
   { method: 'POST', path: '/v1/gacha/:bannerId/draw', auth: 'player', handler: async (r, p, c, u) => {
@@ -305,9 +371,19 @@ export const routes: Route[] = [
     if (b.decor) patch.decor = b.decor;
     return c.player(u).invoke('setEquipment', u, patch);
   } },
+  // マイ厩舎 (REQ-STABLE-*): /visits before /:playerId
+  { method: 'GET', path: '/v1/stable', auth: 'player', handler: async (_r, _p, c, u) => stable(c).mine(u) },
+  { method: 'PUT', path: '/v1/stable', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ theme: z.string().min(1).max(40), name: z.string().min(1).max(40).nullable(), slots: z.array(id.nullable()).max(10), featuredHorseIds: z.array(id).max(10) }).strict());
+    return stable(c).save(u, b);
+  } },
+  { method: 'GET', path: '/v1/stable/visits', auth: 'player', handler: async (_r, _p, c, u) => stable(c).visits(u) },
+  { method: 'GET', path: '/v1/stable/:playerId', auth: 'player', handler: async (_r, p, c, u) => stable(c).visit(u, playerIdParam(p.playerId!)) },
+  { method: 'POST', path: '/v1/stable/:playerId/like', auth: 'player', handler: async (r, p, c, u) => stable(c).like(u, playerIdParam(p.playerId!), idem(r)) },
   // rewards
   { method: 'POST', path: '/v1/rewards/login-bonus', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('claimLogin', u, idem(r)) },
-  { method: 'GET', path: '/v1/missions', auth: 'player', handler: async (_r, _p, c, u) => ({ missions: await c.player(u).invoke('missions', u) }) },
+  // daily (REQ-REW-002), beginner (REQ-UXS-015) and season missions (REQ-UXS-016); first-win bonus (REQ-UXS-010); one claim endpoint for all
+  { method: 'GET', path: '/v1/missions', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('missionsAll', u) },
   { method: 'POST', path: '/v1/missions/:missionId/claim', auth: 'player', handler: async (r, p, c, u) => c.player(u).invoke('claimMission', u, p.missionId!, idem(r)) },
   { method: 'GET', path: '/v1/season-pass', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('passView', u) },
   { method: 'POST', path: '/v1/season-pass/claim', auth: 'player', handler: async (r, _p, c, u) => {

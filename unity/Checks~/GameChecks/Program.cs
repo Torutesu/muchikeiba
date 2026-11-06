@@ -48,10 +48,19 @@ static class Program
         await QaRound6Checks.Run(Check, Ruleset(), Root);
         Console.WriteLine("== breeding screen (own / borrowed stallion, atavism, stud fee)");
         await BreedingChecks.Run(Check, Ruleset());
+        Console.WriteLine("== マイ厩舎 (layout, visits, likes)");
+        await StableChecks.Run(Check, Ruleset());
         Console.WriteLine("== tournaments and spectating");
         await TournamentChecks.Run(Check, Ruleset());
         Console.WriteLine("== QA round 7 client regressions");
         await QaRound7Checks.Run(Check, Ruleset());
+        Console.WriteLine("== unique skills (horse detail, gacha, breeding, HUD cut-in, commentary)");
+        await SkillChecks.Run(Check, Root);
+        Console.WriteLine("== room close codes over a real WebSocket (replaced → no reconnect loop)");
+        await CloseCodeChecks.Run(Check, Ruleset());
+        Console.WriteLine("== race feel, tutorial win rule, camera and result debrief (06 §2.3 / §6.3 / §6.4)");
+        RaceFeelChecks.Run(Check, Ruleset());
+        await Round8Checks.Run(Check, Ruleset());
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);
@@ -133,7 +142,7 @@ static class Program
         Check(final.WhipsLeft < d.Config.Ruleset.MaxWhips, "SPUR presses reached the engine as whips (" + final.WhipsLeft + " left)");
         Check(sawSubtitle, "commentary produced subtitles (" + subtitles.Count + " lines, first: " + (subtitles.FirstOrDefault() ?? "-") + ")");
         // The recorded inputs replay to the identical result: the app's race is the engine's race.
-        var replay = RaceReplay.Run(d.Config, d.Race.RecordedInputs.ToList());
+        var replay = RaceReplay.Run(d.Config, d.Race.AllInputs()); // player + the tutorial rival's director
         Check(replay.Result.Hash == d.Sim.Result.Hash, "offline race replays to the same result hash from its recorded inputs");
         Check(HudModel.FormatTime(83_456) == "1:23.4", "race clock format m:ss.f");
     }
@@ -332,10 +341,14 @@ static class Program
 
         var bad = await b.NamePartnerAsync("abc");
         Check(!bad.Ok && !string.IsNullOrEmpty(bad.Message), "server rejects a non-katakana name and the message reaches the screen (" + bad.Message + ")");
-        Check(b.Player.TutorialGachaUsed && b.ScoutReveal().Count == 10, "naming drew the free tutorial 10-pull for the first partner");
+        Check(!b.Player.TutorialGachaUsed && b.Player.PartnerHorseId == null, "a refused name granted nothing and drew no gacha (REQ-UXS-002)");
         var ok = await b.NamePartnerAsync("ユニティタロウ");
-        Check(ok.Ok && b.Profile().PartnerName == "ユニティタロウ", "the partner is named on the server");
-        Check(b.Partner != null && b.Partner.Named, "partner = the named horse");
+        Check(ok.Ok && b.Profile().PartnerName == "ユニティタロウ" && b.Player.PartnerHorseId != null, "the ridden horse is granted and named on the server (POST /v1/player/partner)");
+        Check(b.Partner != null && b.Partner.Named && b.Partner.Id == b.Player.PartnerHorseId && b.Partner.TemplateId == "t_partner", "partner = the granted tutorial horse");
+        Check(!b.Player.TutorialGachaUsed && b.Profile().TutorialScoutAvailable, "the welcome 10-pull is still to come (its own screen after naming)");
+        var scout = await b.EnsureFirstScoutAsync();
+        Check(scout.Ok && b.Player.TutorialGachaUsed && b.ScoutReveal().Count == 10, "the welcome scout draws the free tutorial 10-pull");
+        b.FirstScoutShown();
 
         var products = await b.ProductsAsync();
         Check(products != null && products.Any(p => p.Kind == "coins"), "shop lists coin products from the server (" + (products?.Count ?? 0) + ")");

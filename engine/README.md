@@ -44,7 +44,7 @@ Codex（見た目）側で実装するのは次の3つのアダプタだけ。�
 |---|---|---|
 | `IHttp` | `UnityWebRequest` | `SendAsync(HttpRequest)` → `HttpResponse(status, body)`。応答が無い（DNS・タイムアウト・切断）ときは例外を投げる |
 | `IAuthTokenProvider` | Firebase Auth SDK | `GetTokenAsync(forceRefresh)` → IDトークン（匿名ログイン可） |
-| `ITransportFactory` | 任意の WebSocket ライブラリ | `Open(url, onOpen, onMessage, onClosed)` → `IConnection`（`Send` / `Close`）。コールバックはどのスレッドから呼んでもよい |
+| `ITransportFactory` | 任意の WebSocket ライブラリ | `Open(url, onOpen, onMessage, onClosed)` → `IConnection`（`Send` / `Close`）。コールバックはどのスレッドから呼んでもよい。`onClosed(code)` には部屋の close code を渡す（close フレーム無しの切断・接続失敗は 1006）。4000 / 4001 / 4003 では再接続しない（`CloseCodes`、`contracts/protocol.md` §4.1） |
 
 ### 0. 見た目とアセット（`AssetKeys` / `RaceVisuals` / `TrackGeometry`、`contracts/assets.md`）
 
@@ -102,16 +102,22 @@ int alpha = race.InterpolationAlphaPermille(NowMs());      // GetPreviousHorse�
 
 ### 3. オフラインレース（`OfflineRace` / `OfflinePresets`）
 ```csharp
-var race = new OfflineRace(OfflinePresets.Tutorial(ruleset), OfflinePresets.TutorialPlayerSlot) { AutoStart = true };
+var race = OfflinePresets.TutorialRace(ruleset, attempt);   // attempt = 何回目の挑戦か（1始まり）
 race.Start(NowMs());
 race.Update(NowMs());     // 毎フレーム。固定ステップ（50ms）、1フレームの追いつきは最大10tick
 race.Input(Cmd.Whip);
 race.Pause(NowMs()); race.Resume(NowMs());
 ```
-- **チュートリアル**（いきなり本番）：400mの直線だけ。スタートは自動、操作はムチだけ。残り200〜400mからムチを入れればほぼ必ず勝ち（60シード中58以上）、ムチ無し・残り60mからのムチではほぼ負ける（テストで固定）。
+- **チュートリアル**（いきなり本番、REQ-UXS-004）：400mの直線だけ。スタートは自動、操作はムチだけ（他のビットは捨てる）。勝ち負けは `TutorialDirector` が決める（端末内だけ。オンライン・ランク戦には関係しない）：
+  - 残り300m〜50mの間にムチ2回以上 → 1着。0〜1回 → ライバル（2番の馬）に約半馬身差の2着。残り50mを切ってからのムチは数えない（ライバルが同じtickでムチを返す）。
+  - 3回目以降（`attempt >= 3`）は入力に関係なく1着。
+  - しくみ：ライバルは外のレーンで、数えないムチには同じtickでムチを返し、手綱で差を保つ（規則を満たしたら後ろへ下がる）。他の6頭は弱いCPU。すべて整数演算なので、同じ入力なら同じレース。`AllInputs()`（自分＋ライバル）で `RaceReplay` が同じハッシュになる。
+  - `new OfflineRace(OfflinePresets.Tutorial(ruleset), 0)` でも director は自動で付く（attempt 1）。
 - **練習用タイムアタック**（記録なし）：`OfflinePresets.TimeAttack(track, horse, ruleset)`、`FinishTimeMs(slot)` でタイム。
 - `ruleset` はサーバーから受け取ったもの（オンラインと同じ値）を使う。
-- `OfflineRace.RecordedInputs` に、自分の馬に実際に適用した入力（tickごとに1つ）が残る。設定＋この入力でレースを完全に再現できる（タイムアタックの提出に使う）。
+- `OfflineRace.RecordedInputs` に、自分の馬に実際に適用した入力（tickごとに1つ）が残る。設定＋この入力でレースを完全に再現できる（タイムアタックの提出に使う）。director がいるレースは `AllInputs()` を使う。
+- **レースの手応え（06 §6.3）**：`RaceFeelTracker`（毎フレーム `Update(sim)`）がスタミナ30%/10%/0%、「今だ、ムチ！」（ムチの窓の中で1回だけ）、スリップストリーム、掛かり・飛ばしすぎ、連打の注意を `RaceFeelSnapshot` とキュー（`RaceFeelCue`）で返す。カメラは `RaceCameraRig`（後ろ6.5m・上3m、直線の残り400mで低く、ゴールで横から）。
+- **勝因・敗因（REQ-UXS-005）**：`RaceDebriefRecorder` を毎tick（`OfflineRace.Stepped`）か毎フレーム `Observe(sim)` し、終わったら `RaceDebrief.Build(sim, recorder)` → `Line`（1行）・`Reason`/`Code`・`Tip`。入力ログからは `RaceDebrief.FromInputs(config, inputs, slot)`。
 
 ### 3.1 タイムアタックとゴースト（記録あり、REQ-TA-*）
 ```csharp
@@ -142,7 +148,8 @@ foreach (var line in commentator.Process(race.Sim)) PlayLine(line); // line.Text
 - 行は重ならない（`DurationTicks` の間は次を出さない）。重要な場面（ゲート、先頭交代、最後の直線、1着、着順）は捨てずに遅らせて必ず言う。
 - 言い回しはレースのシードから決定的に選ぶ（同じリプレイは同じ実況）。
 - **音声は作り置き**：`templates.AllFixedClips()` が「固定フレーズID→文」を返すので一度だけ音声合成しておく。馬名は `name:<horseId>`（命名時に1回生成）、数字は `num:<n>`。`ClipKeys` を順に再生すれば `Text` と同じ文になる。
-- 文面は `Resources/Muchi/commentary-ja.json` を編集する（`{name}` `{name2}` `{name3}` `{place}` が使える）。
+- 文面は `Resources/Muchi/commentary-ja.json` を編集する（`{name}` `{name2}` `{name3}` `{place}` `{skill}` が使える）。
+- 固有スキル（ルールセット1.3）：`skill` の行は自分の馬のスキルは必ず、他の馬は前3頭以内で発動した時だけ（1レース `maxOtherSkillLines` 回まで）。`{skill}` はその馬のスキル名で、音声は `skill:<skillId>` → `AssetKeys.VoiceClip(key, horseNameById, skillNameById)`（馬名と同じく名前の文字列で決まる音声）。
 
 ### 5. プッシュ通知（`ApiClient` の push 系）
 ```csharp
@@ -233,7 +240,7 @@ client.SendPing(localNowMs);
 
 | キー | 既定 | 意味 |
 |---|---|---|
-| rulesetVersion | 1.2.0 | 結果ハッシュに含まれるバージョン文字列 |
+| rulesetVersion | 1.3.0 | 結果ハッシュに含まれるバージョン文字列 |
 | maxTicks | 4800 | これに達したらレース終了（240秒） |
 | gateOpenTick | 60 | ゲートが開くtick（3秒のカウントダウン） |
 | startReactionWindowTicks | 4 | 開いてからこのtick数以内のSTARTで好スタート |
@@ -313,9 +320,21 @@ client.SendPing(localNowMs);
 
 チュートリアル（`OfflineRace.Tutorial`、400mの直線）は両方の scale を 0 にして走る。
 
-## 計測したバランス（ルールセット1.2.0）
+固有スキルのキー（ルールセット1.3で追加、`RulesetParams.SkillIntKeys`。全部あるか全部ないか。ない＝1.2.x 以前のリプレイで、`horse.skill` は無視される。条件と効果の式は contracts/protocol.md §14）：
 
-目標・計測方法・変更前後の全表は [docs/spec/balance-targets.md](../docs/spec/balance-targets.md)。`harness` が全項目を測り、`BalanceTests.DefaultRulesetMeetsEveryHarnessTarget` が毎回チェックする（約10秒）。
+| キー | 既定（中立値） | 意味 |
+|---|---|---|
+| skillMaxSpeedPermille | 30（0） | スキルの目標速度ボーナスの上限（‰） |
+| skillMaxAccelPermille | 400（0） | 加速ボーナスの上限（‰） |
+| skillMaxDrainSavePermille | 400（0） | 脚の消費を減らす割合の上限（‰） |
+| skillMaxRecoverPermille | 80（0） | 発動時に回復する脚の上限（最大値の‰） |
+| skillMaxDurationTicks | 160（0） | 効果が続く長さの上限（tick） |
+
+スキル（`HorseSpec.Skill`、`SkillSpec`）は条件だけで発動し（乱数なし）、1レース1回。発動するとイベント `RaceEventType.Skill`（Value = その時の順位）が出る。描画側は `HorseState.SkillUsed` / `IsSkillActive` / `SkillTicksLeft` と `RaceSim.SkillOf(slot)`・`SkillEffect(slot)`（上限をかけた後の効果）を読む。
+
+## 計測したバランス（ルールセット1.3.0）
+
+目標・計測方法・変更前後の全表は [docs/spec/balance-targets.md](../docs/spec/balance-targets.md)。`harness` が全項目を測り、`BalanceTests.DefaultRulesetMeetsEveryHarnessTarget` が毎回チェックする（約10秒）。1.3.0 はスキルを足しただけで、スキルの無い馬のレースは 1.2.0 と同じ（下の表の値は 1.2.0 と同じ）。スキルの目標 R9（スキル持ちの勝率 ÷ 同じ馬のスキルなし ≤ 1.15、全スキル）と S2（全員がスキルを持っても全コース×全馬場で脚質別勝率が一様の±25%）は `harness-skills` で測り、`SkillTests.EverySkillMeetsR9AndStyleParityHoldsWithSkills` がチェックする。
 
 | 指標 | 1.0.0 | 1.1.0 | 1.2.0 |
 |---|---|---|---|

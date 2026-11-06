@@ -16,13 +16,13 @@ namespace Muchi.Engine.Tests
 
         public RelayTransportFactory(FakeNet net, InMemoryRelay relay, int slot) { _net = net; _relay = relay; _slot = slot; }
 
-        public IConnection Open(string url, Action onOpen, Action<string> onMessage, Action onClosed)
+        public IConnection Open(string url, Action onOpen, Action<string> onMessage, Action<int> onClosed)
         {
             Opens++;
             var c = new RelayConnection(_net, _relay, _slot, onClosed);
             if (!Accept())
             {
-                _net.Schedule(_net.Now + 30, onClosed); // connection refused
+                _net.Schedule(_net.Now + 30, () => onClosed(CloseCodes.Abnormal)); // connection refused
                 return c;
             }
             Current = c;
@@ -36,11 +36,11 @@ namespace Muchi.Engine.Tests
     {
         private readonly InMemoryRelay _relay;
         private readonly int _slot;
-        private readonly Action _onClosed;
+        private readonly Action<int> _onClosed;
         public readonly Pipe Up, Down;
         private bool _closed;
 
-        public RelayConnection(FakeNet net, InMemoryRelay relay, int slot, Action onClosed)
+        public RelayConnection(FakeNet net, InMemoryRelay relay, int slot, Action<int> onClosed)
         {
             _relay = relay; _slot = slot; _onClosed = onClosed;
             Up = new Pipe(net, () => 40);
@@ -51,14 +51,14 @@ namespace Muchi.Engine.Tests
 
         public void Close() => Kill(notify: false);
 
-        /// <summary>Network drop: both directions stop and the client is told the socket closed.</summary>
-        public void Kill(bool notify = true)
+        /// <summary>Network drop (or the room closing the socket with <paramref name="code"/>): both directions stop and the client is told the socket closed.</summary>
+        public void Kill(bool notify = true, int code = CloseCodes.Abnormal)
         {
             if (_closed) return;
             _closed = true;
             Up.Open = false;
             _relay.Disconnect(_slot);
-            if (notify) _onClosed();
+            if (notify) _onClosed(code);
         }
     }
 

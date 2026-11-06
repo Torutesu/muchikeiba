@@ -27,7 +27,7 @@ static class QaRound7Checks
         private readonly string _start;
         public readonly List<string> Sent = new List<string>();
         public SpectatorRoom(string start) { _start = start; }
-        public IConnection Open(string url, Action onOpen, Action<string> onMessage, Action onClosed)
+        public IConnection Open(string url, Action onOpen, Action<string> onMessage, Action<int> onClosed)
         {
             var c = new Conn(this, onMessage);
             onOpen();

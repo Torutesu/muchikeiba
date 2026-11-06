@@ -1,0 +1,13 @@
+{
+  "_note": "REQ-STABLE-*: マイ厩舎（飾る・訪問・いいね）。いいねは1日の上限と相手ごとの上限があり、押した側・押された側ともコインは付かない（解放されるのはテーマ＝見た目だけ）。テーマの asset は stable/theme/<id>。",
+  "likesPerDay": 5,
+  "likesPerTargetPerDay": 1,
+  "featuredMax": 3,
+  "nameMaxChars": 12,
+  "recommendedLimit": 10,
+  "themes": [
+    { "id": "standard", "name": "いつもの厩舎", "slots": 3, "default": true },
+    { "id": "cedar", "name": "杉板の厩舎", "slots": 4, "unlockLikes": 10 },
+    { "id": "sakura", "name": "桜の厩舎", "slots": 5, "unlockLikes": 50 }
+  ]
+}

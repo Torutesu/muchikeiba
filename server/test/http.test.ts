@@ -56,7 +56,7 @@ describe('HTTP API', () => {
     expect(unauth.status).toBe(401);
     expect(await unauth.json()).toMatchObject({ error: { code: 'UNAUTHORIZED' } });
     expect((await handle(req('GET', '/v1/nope'), {}, c)).status).toBe(404);
-    expect((await handle(req('DELETE', '/v1/player'), {}, c)).status).toBe(405);
+    expect((await handle(req('DELETE', '/v1/missions'), {}, c)).status).toBe(405);
   });
   it('validates bodies and requires idempotency keys', async () => {
     const { c } = ctx();

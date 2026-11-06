@@ -4,7 +4,11 @@ import type { EventDef } from './master.js';
 import { eventStatus } from './events.js';
 
 /** `quarantined` players (REQ-OPS-032) are matched only with each other, or filled with CPU. */
-export interface QueueEntry<P = unknown> { playerId: string; rating: number; beginner: boolean; enqueuedAt: number; payload: P; quarantined?: boolean }
+export interface QueueEntry<P = unknown> {
+  playerId: string; rating: number; beginner: boolean; enqueuedAt: number; payload: P; quarantined?: boolean;
+  /** REQ-UXS-003: this entry's own CPU fill wait (a player's first ranked race waits less). Absent = the queue default. */
+  cpuFillAfterMs?: number;
+}
 export interface Match<P = unknown> { players: QueueEntry<P>[]; cpuCount: number; cpuLevel: number; beginner: boolean; quarantined: boolean }
 
 export interface MatchmakerOptions { maxPlayers: number; cpuFillAfterMs: number; baseWindow: number; widenPerSec: number; maxWindow: number }
@@ -58,7 +62,7 @@ export class MatchmakerCore<P = unknown> {
           .sort((a, b) => Math.abs(a.rating - anchor.rating) - Math.abs(b.rating - anchor.rating) || a.enqueuedAt - b.enqueuedAt)
           .slice(0, this.opts.maxPlayers - 1)];
         const full = group.length >= this.opts.maxPlayers;
-        if (full || now - anchor.enqueuedAt >= this.opts.cpuFillAfterMs) {
+        if (full || now - anchor.enqueuedAt >= (anchor.cpuFillAfterMs ?? this.opts.cpuFillAfterMs)) {
           for (const g of group) used.add(g.playerId);
           const avg = group.reduce((a, g) => a + g.rating, 0) / group.length;
           matches.push({ players: group, cpuCount: this.opts.maxPlayers - group.length, cpuLevel: cpuLevelFor(avg, beginner), beginner, quarantined });

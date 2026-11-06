@@ -11,10 +11,12 @@ import { SqlPlayerRepo } from './sqlRepo.js';
 import { unwrap, wrap, type Envelope } from './rpc.js';
 import { retryStudOutbox } from '../domain/studService.js';
 import { activeConfig } from '../ops/activeConfig.js';
-import { shardedDirectory } from './directory.js';
+import { shardedDirectory, shardedStableDirectory } from './directory.js';
 import { fcmFromEnv, type PushSender } from '../push/fcm.js';
 import { deliverDuePushes } from '../push/dispatch.js';
 import { makeKpiWriter } from '../push/analytics.js';
+import { runAccountDeletion } from '../domain/accountDeletion.js';
+import { deletionPortsFromEnv } from './deletionPorts.js';
 
 /** One player = one Durable Object (wallet, ledger, horses, gacha pity, purchases, push outbox). */
 export class PlayerDO extends DurableObject<Env> {
@@ -40,6 +42,11 @@ export class PlayerDO extends DurableObject<Env> {
       },
       onProfile: (p) => {
         ctx.waitUntil(shardedDirectory(env.DIRECTORY).putProfile(p));
+      },
+      // REQ-STABLE-003: keep the visitors' copy of the stable in step with this object (null = hidden/cleared)
+      onStable: (id, snap) => {
+        const dir = shardedStableDirectory(env.DIRECTORY);
+        ctx.waitUntil((snap ? dir.put(snap) : dir.remove(id)).catch((e) => console.error('stable copy failed', id, e)));
       },
       // REQ-TEAM-005: the team recomputes its points from members' reported standings
       onTeamPoints: (p) => {
@@ -80,6 +87,23 @@ export class PlayerDO extends DurableObject<Env> {
     if (!id) return;
     // templates may exist only in remote config (REQ-OPS-005); a fresh object starts with the base master
     this.svc.setMaster((await activeConfig(this.env)).master);
+    // REQ-UXS-040: a scheduled account deletion that is due runs first; after the wipe nothing else may touch the
+    // player (any call would recreate a fresh state), so the alarm ends there
+    if (await this.svc.deletionDue(id)) {
+      try {
+        await runAccountDeletion(deletionPortsFromEnv(this.env, this.ctx, this.svc), id, Date.now());
+        this.idKnown = false;
+        console.log('account deleted');
+        return;
+      } catch (e) {
+        console.error('account deletion failed; retrying later', id, (e as Error).message);
+        const at = await this.svc.deletionRetryLater(id);
+        if (at !== null) await this.ctx.storage.setAlarm(at);
+        return;
+      }
+    }
+    // REQ-UXS-012: personal nudges (promotion) that are due
+    await this.svc.runNudges(id).catch((e) => console.error('nudges failed', id, e));
     const r = await deliverDuePushes({ take: (p) => this.svc.pushTake(p), settle: (p, o) => this.svc.pushSettle(p, o) }, id, this.sender);
     if (r.attempted > 0 || r.expired > 0) console.log('push', id, JSON.stringify(r));
     // REQ-BREED-012: stud fees this player paid that the owner has not acknowledged yet
@@ -92,7 +116,8 @@ export class PlayerDO extends DurableObject<Env> {
     }, id).catch((e) => { console.error('stud outbox retry failed', id, e); return null; });
     if (sr && sr.attempted > 0) console.log('stud', id, JSON.stringify(sr));
     const studNext = (await this.svc.studDue(id)).nextAt;
-    const next = r.nextAt === null ? studNext : studNext === null ? r.nextAt : Math.min(r.nextAt, studNext);
+    const own = await this.svc.nextWakeOf(id); // nudges, a scheduled deletion
+    const next = [r.nextAt, studNext, own].filter((x): x is number => x !== null).reduce<number | null>((a, x) => (a === null ? x : Math.min(a, x)), null);
     if (next !== null) await this.ctx.storage.setAlarm(Math.max(next, Date.now() + 1000));
   }
 }

@@ -5,6 +5,8 @@ import { parseStoreNotification, storeSettingsFromEnv } from './http/stores.js';
 import { accountingStoreIndex } from './do/storeIndex.js';
 import { loadMaster } from './domain/master.js';
 import { validateGacha } from './domain/gacha.js';
+import { validateSkills } from './domain/skills.js';
+import { DEFAULT_RULESET } from './domain/ruleset.js';
 import { validateItems } from './domain/itemShop.js';
 import { unwrap, type Envelope } from './do/rpc.js';
 import { AppError } from './domain/errors.js';
@@ -36,7 +38,8 @@ import { authenticateAdmin, parseAdminTokens, RateLimiter, type AdminAuthConfig,
 import { DeadLetterService, type DeadLetterOwner, type DeadLetterRegistry, type DeadLetterSource } from './ops/deadLetter.js';
 import { activeConfig } from './ops/activeConfig.js';
 import type { ResolvedConfig } from './ops/config.js';
-import { shardedDirectory, shardedStudDirectory } from './do/directory.js';
+import { shardedDirectory, shardedStableDirectory, shardedStudDirectory } from './do/directory.js';
+import { makeStableService } from './http/stablePorts.js';
 import { boardKey, indexKey, type RolloverState } from './domain/leaderboard.js';
 import { validateLeagueAndWeather } from './domain/league.js';
 import { runScheduled } from './domain/scheduled.js';
@@ -47,6 +50,10 @@ import { TimeAttackService } from './race/timeAttack.js';
 import { HttpVerifierClient } from './domain/verifier.js';
 import { taBoardName, type GhostFile, type TaBoardFile, type TaEntry } from './domain/timeAttack.js';
 import { devModeRefused } from './http/devMode.js';
+import { validateUx } from './domain/onboarding.js';
+import type { TournamentClosingInfo } from './domain/nudges.js';
+import { jstMonthKey } from './domain/time.js';
+import { collectItemIds } from './domain/visuals.js';
 
 /** REQ-PUSH-006: one FCM topic send reaches every opted-in device (no per-player fan-out). */
 async function broadcastSeasonReminder(env: Env, now: number): Promise<string | null> {
@@ -67,6 +74,8 @@ validateGacha(baseMaster); // fail fast on a broken gacha/master definition (REQ
 validateItems(baseMaster); // REQ-ITEM-*: tickets may not reach paid-only banners, cosmetics reference real assets/patterns
 validateEvents(baseMaster, baseMaster.events); // REQ-EVENT-001
 validateLeagueAndWeather(baseMaster); // REQ-LEAGUE-* and per-course climate (REQ-TRACK-003)
+validateUx(baseMaster, new Set(collectItemIds(baseMaster))); // REQ-UXS-*: onboarding, missions, experiments, deletion
+validateSkills(baseMaster, DEFAULT_RULESET); // REQ-UXS-050: unknown skills, effects above the ruleset caps, rarity/style fit
 
 /** REQ-TEAM-*: team orchestration over TeamDOs, the team directory and the season board in LeaderboardDO. */
 function makeTeamsService(env: Env, master: () => Master, player: (uid: string) => PlayerInvoker): TeamsService {
@@ -145,6 +154,39 @@ async function tournamentsStep(env: Env, now: number): Promise<string[]> {
     } catch (e) {
       log.push(`tournamentError:${t.id}`);
       console.error('tournament wake failed', t.id, (e as Error).message);
+    }
+  }
+  return log;
+}
+
+/**
+ * REQ-UXS-012: when a tournament's registration closes within the lead time, nudge (once) the players who raced
+ * ranked this season in an eligible class and have not registered; each player's object checks the rest
+ * (ranked races, preferences, quiet hours, daily cap). Bounded by nudges.tournamentClosingMaxTargets.
+ */
+async function tournamentClosingStep(env: Env, now: number): Promise<string[]> {
+  if (!env.TOURNAMENTS) return [];
+  const { master } = await activeConfig(env);
+  const cfg = master.progression.nudges;
+  if (!cfg || cfg.tournamentClosingMaxTargets === 0) return [];
+  const list = unwrap(await stub(env.TOURNAMENTS, 'index').indexList!()) as TournamentSummary[];
+  const log: string[] = [];
+  for (const t of list) {
+    if (t.status === 'finished' || t.status === 'cancelled' || t.registrationClosesAtMs <= now || t.registrationClosesAtMs - now > cfg.tournamentClosingLeadMs) continue;
+    try {
+      const info = unwrap(await stub(env.TOURNAMENTS, `tour:${t.id}`).closingNudge!(now, cfg.tournamentClosingLeadMs)) as (TournamentClosingInfo & { registered: string[] }) | null;
+      if (!info) continue;
+      const registered = new Set(info.registered);
+      const ids = (unwrap(await stub(env.LEADERBOARD, `lb:${jstMonthKey(now)}`).activePlayers!(info.classIds, cfg.tournamentClosingMaxTargets + registered.size)) as string[]).filter((p) => !registered.has(p)).slice(0, cfg.tournamentClosingMaxTargets);
+      const { registered: _r, ...nudge } = info;
+      let sent = 0;
+      for (const p of ids) {
+        try { await stub(env.PLAYER, p).invoke!('nudgeTournamentClosing', [p, nudge]); sent++; } catch (e) { console.error('tournament closing nudge failed', p, (e as Error).message); }
+      }
+      log.push(`tournamentClosing:${t.id}:${sent}`);
+    } catch (e) {
+      log.push(`tournamentClosingError:${t.id}`);
+      console.error('tournament closing step failed', t.id, (e as Error).message);
     }
   }
   return log;
@@ -306,6 +348,7 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
     },
     friends: makeFriendsService((uid) => player(uid), shardedDirectory(env.DIRECTORY)),
     stud: makeStudService(player, shardedStudDirectory(env.DIRECTORY), () => master),
+    stable: makeStableService(player, shardedStableDirectory(env.DIRECTORY), () => master),
     teams: makeTeamsService(env, () => master, player),
     events: new EventsService(() => master, eventPlayersFrom(player), {
       enqueue: (eventId, p, e) => call(mm().eventEnqueue!(eventId, p, e)),
@@ -357,6 +400,7 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
       },
     }),
     paidBalance: () => (stub(env.ACCOUNTING, 'global') as unknown as { summary(): Promise<unknown> }).summary(),
+    retainedRefund: (anonId, txId) => (stub(env.ACCOUNTING, 'global') as unknown as { retainedRefund(a: string, t: string, n: number): Promise<unknown | null> }).retainedRefund(anonId, txId, Date.now()),
     adminToken: env.ADMIN_TOKEN,
     parseStoreNotification: (platform, req) => parseStoreNotification(platform, req, storeSettingsFromEnv(env, master), accountingStoreIndex(env)),
     ...(ops ? { ops } : {}),
@@ -404,6 +448,8 @@ export default {
       eventsStep: (t) => eventsStep(env, t),
       leagueStep: async (seasonId) => unwrap(await (stub(env.LEADERBOARD, `lb:${seasonId}`).leagueStep!(seasonId, now))) as { status: string },
       tournamentsStep: (t) => tournamentsStep(env, t),
+      tournamentClosingStep: (t) => tournamentClosingStep(env, t),
+      purgeRetained: async (t) => (env.ACCOUNTING.get(env.ACCOUNTING.idFromName('global')) as unknown as { purgeRetained(n: number): Promise<{ purged: number }> }).purgeRetained(t),
     });
     console.log('scheduled', event.cron, done.join(' '));
   },

@@ -40,10 +40,20 @@ export const DISTANCE_RULESET_KEYS: readonly string[] = [
   'distanceRefM', 'distanceRefDirtM', 'staminaDistanceScalePermille', 'spurtDistanceScalePermille',
 ];
 
+/**
+ * Fourth optional group, added by ruleset 1.3 (固有スキル, docs/planning/06-ux-experience-spec.md §7.1): ceilings for every
+ * skill effect. Absent in 1.2.x and older rulesets, where a horse's skill is ignored by the engine (old replays verify).
+ * All or none. Must equal RulesetParams.SkillIntKeys (checked by a test).
+ */
+export const SKILL_RULESET_KEYS: readonly string[] = [
+  'skillMaxSpeedPermille', 'skillMaxAccelPermille', 'skillMaxDrainSavePermille', 'skillMaxRecoverPermille', 'skillMaxDurationTicks',
+];
+
 const OPTIONAL_GROUPS: { keys: readonly string[]; label: string }[] = [
   { keys: OPTIONAL_RULESET_KEYS, label: 'ground-condition' },
   { keys: BALANCE_RULESET_KEYS, label: 'balance (1.1)' },
   { keys: DISTANCE_RULESET_KEYS, label: 'distance (1.2)' },
+  { keys: SKILL_RULESET_KEYS, label: 'skill (1.3)' },
 ];
 
 export function rulesetKeyProblems(candidate: Record<string, unknown>, reference: Record<string, unknown> = DEFAULT_RULESET): string[] {

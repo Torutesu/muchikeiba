@@ -55,6 +55,8 @@ namespace Muchi.Game
     {
         public const string KeyPartnerName = "muchi.partner";
         public const string KeyScoutUsed = "muchi.tutorial.scout.used";
+        /// <summary>How many tutorial races this device has started (REQ-UXS-004: the 3rd is assisted to a win).</summary>
+        public const string KeyTutorialAttempts = "muchi.tutorial.attempts";
 
         private readonly GameSettings _settings;
         private readonly ApiClient _api;
@@ -105,7 +107,7 @@ namespace Muchi.Game
             catch (NetworkException) { /* keep the last view */ }
         }
 
-        /// <summary>The partner used for races: the first named active horse, else the best active horse.</summary>
+        /// <summary>The partner used for races: the granted first partner (REQ-UXS-002), else the first named active horse, else the best active horse.</summary>
         public Horse Partner
         {
             get
@@ -113,6 +115,9 @@ namespace Muchi.Game
                 if (Player == null || Player.Horses.Count == 0) return null;
                 var active = Player.Horses.Where(h => h.IsActive || h.Status == null).ToList();
                 if (active.Count == 0) return null;
+                // REQ-UXS-002: the horse ridden in the tutorial and granted by POST /v1/player/partner comes first
+                var granted = Player.PartnerHorseId == null ? null : active.FirstOrDefault(h => h.Id == Player.PartnerHorseId);
+                if (granted != null) return granted;
                 return active.Where(h => h.Named).OrderByDescending(h => RarityRank(h.Rarity)).FirstOrDefault()
                     ?? active.OrderByDescending(h => RarityRank(h.Rarity)).ThenBy(h => h.Id, StringComparer.Ordinal).First();
             }
@@ -149,46 +154,112 @@ namespace Muchi.Game
             return p;
         }
 
-        /// <summary>Runs the one free tutorial 10-pull (server) so the player has a first partner. Idempotent.</summary>
+        /// <summary>Idempotency key of the tutorial 10-pull, kept until the reveal so a retry (or a relaunch) gets the same pulls.</summary>
+        public const string KeyFirstScoutIdem = "muchi.ftue.scout.key";
+        /// <summary>Idempotency key of the partner grant, kept until the server answered definitely.</summary>
+        public const string KeyPartnerIdem = "muchi.ftue.partner.key";
+        /// <summary>A name chosen offline, granted with the partner once the server is reachable.</summary>
+        public const string KeyPendingPartnerName = "muchi.ftue.partner.pending";
+
+        /// <summary>
+        /// Runs the one free tutorial 10-pull (server, REQ-GACHA-010). Its own step after naming (06 §2.3, REQ-UXU-003):
+        /// it never names anything. Keyed: the key is kept on the device until the pulls were shown
+        /// (<see cref="FirstScoutShown"/>), so a timeout or an app kill between the draw and the reveal gets the very same
+        /// pulls back from the server's idempotency cache instead of losing them.
+        /// </summary>
         public async Task<ActionResult> EnsureFirstScoutAsync(CancellationToken ct = default)
         {
             if (!Online) return ActionResult.Success();
-            if (Player != null && Player.TutorialGachaUsed) return ActionResult.Success();
+            if (FirstScout != null) return ActionResult.Success();
+            string key = _kv.Get(KeyFirstScoutIdem);
+            if (Player != null && Player.TutorialGachaUsed && string.IsNullOrEmpty(key)) return ActionResult.Success();
+            if (string.IsNullOrEmpty(key)) { key = _api.NewIdempotencyKey(); _kv.Set(KeyFirstScoutIdem, key); }
             try
             {
-                FirstScout = await _api.TutorialDrawAsync(null, ct);
+                FirstScout = await _api.TutorialDrawAsync(key, ct);
                 FirstScoutRevealed = false;
                 await RefreshAsync(ct);
                 return ActionResult.Success();
             }
-            catch (ApiException e) { return ActionResult.Error(e.Message); }
+            catch (ConflictException e) when (e.Code == ApiErrorCode.TutorialGachaUsed)
+            {
+                // drawn earlier and the stored answer is gone: the horses are in the stable, there is nothing to reveal
+                _kv.Set(KeyFirstScoutIdem, "");
+                await RefreshAsync(ct);
+                return ActionResult.Success();
+            }
+            catch (ApiException e)
+            {
+                if (!IsTransient(e)) _kv.Set(KeyFirstScoutIdem, "");
+                return ActionResult.Error(UxText.For(e));
+            }
         }
 
+        /// <summary>The reveal was shown: the draw's key is no longer needed.</summary>
+        public void FirstScoutShown() { FirstScoutRevealed = true; _kv.Set(KeyFirstScoutIdem, ""); }
+
+        /// <summary>No definite answer (timeout, dropped connection, 5xx): a retry must reuse the same idempotency key.</summary>
+        public static bool IsTransient(ApiException e) => e is NetworkException || e is ServerException || e is RateLimitedException;
+
         /// <summary>
-        /// Names the first partner. Online: draws the tutorial scout first if needed, then names the best horse
-        /// (server validates katakana 2–9 and the NG list; its message is returned on failure). Offline: local only.
+        /// REQ-UXS-002 / REQ-UXU-003: names the horse ridden in the tutorial and grants it as the first partner
+        /// (<c>t_partner</c>, once). It does not draw the free 10-pull any more: that is <see cref="EnsureFirstScoutAsync"/>,
+        /// a separate screen after naming. Keyed with a key kept on the device until the server answered definitely, so a
+        /// retry after a timeout or a relaunch never grants twice. INVALID_NAME / NG_NAME: the sentence is returned and
+        /// nothing was granted. PARTNER_ALREADY_GRANTED (e.g. granted on another device): the partner exists → ok.
+        /// Partner already granted: renames it. Offline: the name is kept and granted by <see cref="SyncPendingPartnerAsync"/>.
         /// </summary>
         public async Task<ActionResult> NamePartnerAsync(string name, CancellationToken ct = default)
         {
             name = (name ?? "").Trim();
-            if (name.Length == 0) return ActionResult.Error("NAME REQUIRED");
+            if (name.Length == 0) return ActionResult.Error("名前を入力してください");
             if (!Online)
             {
                 _kv.Set(KeyPartnerName, name);
+                _kv.Set(KeyPendingPartnerName, name);
                 return ActionResult.Success();
             }
-            var scout = await EnsureFirstScoutAsync(ct);
-            if (!scout.Ok) return scout;
-            var partner = Partner;
-            if (partner == null) return ActionResult.Error("No horse to name yet.");
-            try
+            if (Player != null && Player.PartnerHorseId != null)
             {
-                await _api.NameHorseAsync(partner.Id, name, ct);
-                _kv.Set(KeyPartnerName, name);
+                try { await _api.NameHorseAsync(Player.PartnerHorseId, name, ct); }
+                catch (ApiException e) { return ActionResult.Error(UxText.For(e)); }
+                _kv.Set(KeyPartnerName, name); _kv.Set(KeyPendingPartnerName, "");
                 await RefreshAsync(ct);
                 return ActionResult.Success();
             }
-            catch (ApiException e) { return ActionResult.Error(e.Message); }
+            string key = _kv.Get(KeyPartnerIdem);
+            if (string.IsNullOrEmpty(key)) { key = _api.NewIdempotencyKey(); _kv.Set(KeyPartnerIdem, key); }
+            try
+            {
+                var h = await _api.GrantPartnerAsync(name, key, ct);
+                _kv.Set(KeyPartnerIdem, ""); _kv.Set(KeyPendingPartnerName, "");
+                _kv.Set(KeyPartnerName, h?.Name ?? name);
+                await RefreshAsync(ct);
+                return ActionResult.Success();
+            }
+            catch (ConflictException e) when (e.Code == ApiErrorCode.PartnerAlreadyGranted)
+            {
+                _kv.Set(KeyPartnerIdem, ""); _kv.Set(KeyPendingPartnerName, "");
+                await RefreshAsync(ct);
+                return ActionResult.Success();
+            }
+            catch (ApiException e)
+            {
+                // a definite refusal (bad name …) granted nothing, so the next attempt gets a new key; a timeout / 5xx keeps it
+                if (!IsTransient(e)) _kv.Set(KeyPartnerIdem, "");
+                return ActionResult.Error(UxText.For(e));
+            }
+        }
+
+        /// <summary>A name chosen offline still waits for the partner grant.</summary>
+        public string PendingPartnerName => string.IsNullOrEmpty(_kv.Get(KeyPendingPartnerName)) ? null : _kv.Get(KeyPendingPartnerName);
+
+        /// <summary>Grant the partner named offline (no-op when nothing is pending or still offline).</summary>
+        public async Task<ActionResult> SyncPendingPartnerAsync(CancellationToken ct = default)
+        {
+            var pending = PendingPartnerName;
+            if (!Online || pending == null) return ActionResult.Success();
+            return await NamePartnerAsync(pending, ct);
         }
 
         /// <summary>The scout reveal: online the real tutorial pulls (best first), offline nothing (fixed art preview).</summary>
@@ -229,8 +300,20 @@ namespace Muchi.Game
             catch (ApiException) { return null; }
         }
 
-        /// <summary>Offline first ride (tutorial preset; auto start).</summary>
-        public IRaceDriver CreateTutorialRace() => new OfflineRaceDriver(RaceFactory.Tutorial(_ruleset), OfflinePresets.TutorialPlayerSlot, autoStart: true);
+        /// <summary>Tutorial races started on this device so far.</summary>
+        public int TutorialAttempts => int.TryParse(_kv.Get(KeyTutorialAttempts), out var n) && n > 0 ? n : 0;
+
+        /// <summary>
+        /// Offline first ride (tutorial preset; auto start; the whip is the only control). <paramref name="attempt"/>
+        /// is the 1-based try number; omitted, the device's count + 1 is used and stored. From the 3rd try the
+        /// tutorial is assisted to a win (REQ-UXS-004). Offline only: never reaches ranked results.
+        /// </summary>
+        public IRaceDriver CreateTutorialRace(int? attempt = null)
+        {
+            int n = attempt ?? TutorialAttempts + 1;
+            if (attempt == null) _kv.Set(KeyTutorialAttempts, n.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            return new OfflineRaceDriver(OfflinePresets.TutorialRace(_ruleset, n));
+        }
 
         /// <summary>Offline practice race with the partner (server horse when known).</summary>
         public IRaceDriver CreatePracticeRace(ulong seed)

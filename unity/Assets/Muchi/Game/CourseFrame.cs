@@ -12,6 +12,19 @@ namespace Muchi.Game
         public override string ToString() => "(" + X.ToString("0.###") + ", " + Z.ToString("0.###") + ") yaw " + YawDegrees.ToString("0.###");
     }
 
+    /// <summary>A camera placement in the race world (RaceCameraRig's shot after CourseFrame.ToWorld).</summary>
+    public struct WorldCameraShot
+    {
+        public RaceCameraMode Mode;
+        public WorldPose Position;
+        /// <summary>Camera height (world Y), metres.</summary>
+        public double Height;
+        public WorldPose LookAt;
+        public double LookAtHeight;
+        public double FieldOfViewDegrees;
+        public int StraightBlendPermille;
+    }
+
     /// <summary>
     /// Places the engine's course (TrackGeometry: distance along the inside rail + lateral offset) in the
     /// Unity race world so the finish line sits at (0, 0, FinishZ) facing +Z — where the race world's
@@ -63,6 +76,18 @@ namespace Muchi.Game
         }
 
         public WorldPose At(double distanceM, double lateralM) => ToWorld(Geometry.PoseAt(distanceM, lateralM));
+
+        /// <summary>Camera shot (course space) → world: same transform as the horses, heights unchanged.</summary>
+        public WorldCameraShot ToWorld(RaceCameraShot shot) => new WorldCameraShot
+        {
+            Mode = shot.Mode,
+            Position = ToWorld(shot.Position),
+            Height = shot.Height,
+            LookAt = ToWorld(shot.LookAt),
+            LookAtHeight = shot.LookAtHeight,
+            FieldOfViewDegrees = shot.FieldOfViewDegrees,
+            StraightBlendPermille = shot.StraightBlendPermille,
+        };
 
         /// <summary>Interpolated world pose of a horse between two engine states.</summary>
         public WorldPose Horse(HorseState from, HorseState to, int alphaPermille)

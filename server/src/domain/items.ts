@@ -48,6 +48,14 @@ export function grantReward(s: PlayerState, r: Reward, at: number, reason: strin
     if (!t) throw new AppError('CONFIG_INVALID', `reward horse ${r.horse} cannot be granted here`);
     createHorseFromTemplate(s, t, at);
   }
+  if (r.broodmare) {
+    // REQ-UXS-013: a broodmare (retired female) so breeding can be tried without retiring a racer
+    const t = m?.templateById.get(r.broodmare);
+    if (!t || t.sex !== 'female') throw new AppError('CONFIG_INVALID', `reward broodmare ${r.broodmare} cannot be granted here`);
+    createHorseFromTemplate(s, t, at).status = 'retired';
+  }
+  // REQ-UXS-016: season pass experience (the pass level follows from it, capped at passMaxLevel)
+  if (r.passXp) s.seasonPass.xp += r.passXp;
 }
 
 /** REQ-ITEM-008: item movements initiated by the player are logged (item ledger, capped). */

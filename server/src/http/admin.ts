@@ -192,7 +192,7 @@ export const adminRoutes: AdminRoute[] = [
   } },
   { method: 'POST', path: '/v1/admin/players/:playerId/name-reset', role: 'operator', write: true, action: 'player.name.reset', handler: async (r) => {
     const id = parse(pid, r.params.playerId);
-    const b = parse(z.object({ target: z.enum(['display', 'horse']), horseId: z.string().min(1).nullable().default(null), reason: z.string() }), r.body);
+    const b = parse(z.object({ target: z.enum(['display', 'horse', 'stable']), horseId: z.string().min(1).nullable().default(null), reason: z.string() }), r.body);
     const out = await r.ctx.player(id).invoke('adminResetName', id, b.target, b.horseId);
     return { result: out, target: `player:${id}`, before: out.before, after: out.after };
   } },

@@ -11,12 +11,13 @@ import { loadMaster } from '../domain/master.js';
 import { cryptoRng } from '../domain/rng.js';
 import { AppError } from '../domain/errors.js';
 import type { RaceEntry } from '../http/app.js';
-import { createRace, type Assignment, type CreatedRace } from '../race/orchestrate.js';
+import { createRace, rankedMatchRules, type Assignment, type CreatedRace } from '../race/orchestrate.js';
 import { liveRaceOf, LIVE_RACE_TTL_MS, type LiveRace } from '../domain/spectate.js';
 import { wrap, type Envelope } from './rpc.js';
 import type { RaceRoomDO } from './raceRoom.js';
 
 const ASSIGNMENT_TTL_MS = 10 * 60_000;
+
 const TICK_MS = 1000;
 const RANKED_POOL = 'ranked';
 
@@ -221,7 +222,12 @@ export class MatchmakerDO extends DurableObject<Env> {
       assertMayRace(entry);
       if (this.events.has(playerId)) throw new AppError('ALREADY_QUEUED', 'queued for an event race');
       this.assignments.delete(playerId);
-      this.core.enqueue({ playerId, rating: entry.rating.r, beginner: entry.beginner, enqueuedAt: Date.now(), payload: entry, quarantined: entry.moderation === 'quarantined' });
+      // REQ-UXS-003: a player's first ranked race waits less before CPUs fill the field
+      const first = entry.firstRace ?? null;
+      this.core.enqueue({
+        playerId, rating: entry.rating.r, beginner: entry.beginner, enqueuedAt: Date.now(), payload: entry, quarantined: entry.moderation === 'quarantined',
+        ...(first ? { cpuFillAfterMs: first.cpuFillAfterMs } : {}),
+      });
       await this.persist();
       await this.wakeAt(Date.now() + TICK_MS);
       return { state: 'queued' };
@@ -334,7 +340,7 @@ export class MatchmakerDO extends DurableObject<Env> {
     for (const { match } of evMatches) this.reserve(match.players.map((p) => p.playerId), now);
     for (const m of ranked) {
       try {
-        const created = await createRace(cfg.master, { ruleset: cfg.ruleset, mode: 'ranked', humans: m.players.map((p) => p.payload), cpuCount: m.cpuCount, cpuLevel: m.cpuLevel, rng: cryptoRng, now, ticketSecret: this.env.TICKET_SECRET });
+        const created = await createRace(cfg.master, { ruleset: cfg.ruleset, mode: 'ranked', humans: m.players.map((p) => p.payload), rng: cryptoRng, now, ticketSecret: this.env.TICKET_SECRET, ...rankedMatchRules(cfg.master, m) });
         await this.startRace(created, now);
       } catch (e) {
         // never drop dequeued players: put them back with their original wait time (next alarm retries)

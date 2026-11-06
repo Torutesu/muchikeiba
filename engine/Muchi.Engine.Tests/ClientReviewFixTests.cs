@@ -26,7 +26,8 @@ namespace Muchi.Engine.Tests
                 Task task;
                 try { task = body(); }
                 catch (Exception e) { error = e; return; }
-                task.ContinueWith(_ => ctx._q.CompleteAdding(), TaskScheduler.Default);
+                // ExecuteSynchronously: the pump must not wait for a thread-pool thread to learn that the body is done
+                task.ContinueWith(_ => ctx._q.CompleteAdding(), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
                 foreach (var (cb, st) in ctx._q.GetConsumingEnumerable()) cb(st);
                 try { task.GetAwaiter().GetResult(); } catch (Exception e) { error = e; }
             });
@@ -34,6 +35,28 @@ namespace Muchi.Engine.Tests
             if (!t.Join(TimeSpan.FromSeconds(30))) throw new TimeoutException("main thread did not finish");
             if (error != null) throw new Exception("body failed", error);
             return ctx.ThreadId;
+        }
+    }
+
+    /// <summary>
+    /// Completes a task on a fresh dedicated thread ("some other thread", like a socket or SDK callback) without using the
+    /// thread pool. The thread tests must not depend on the pool: the balance / skill harness tests saturate it with
+    /// Parallel.For for minutes (unbounded degree of parallelism, CPU-bound bodies), and the pool only injects a thread
+    /// every ~0.5 s, so a Task.Run / Task.Delay continuation here could wait longer than the 30 s deadline of
+    /// <see cref="MainThreadContext.Run"/> when those tests ran at the same time (the full-suite flake).
+    /// </summary>
+    internal static class OffThread
+    {
+        public static Task<T> Run<T>(Func<T> f, int sleepMs = 0)
+        {
+            var tcs = new TaskCompletionSource<T>();
+            var t = new Thread(() =>
+            {
+                try { if (sleepMs > 0) Thread.Sleep(sleepMs); tcs.SetResult(f()); }
+                catch (Exception e) { tcs.SetException(e); }
+            }) { IsBackground = true };
+            t.Start();
+            return tcs.Task;
         }
     }
 
@@ -69,10 +92,10 @@ namespace Muchi.Engine.Tests
             public Func<int, string, string[]> OnHello; // (open#, hello) → frames to send back
             public Func<int, bool> CloseAfterHello = _ => false;
             private Action<string> _onMessage;
-            private Action _onClosed;
+            private Action<int> _onClosed;
             public bool IsOpen;
 
-            public IConnection Open(string url, Action onOpen, Action<string> onMessage, Action onClosed)
+            public IConnection Open(string url, Action onOpen, Action<string> onMessage, Action<int> onClosed)
             {
                 Opens++;
                 _onMessage = onMessage;
@@ -85,7 +108,8 @@ namespace Muchi.Engine.Tests
             }
 
             public void Push(string frame) => _onMessage(frame);
-            public void Drop() { if (!IsOpen) return; IsOpen = false; _onClosed(); }
+            /// <summary>The socket closes: a network drop (1006) or the room's close frame with that code.</summary>
+            public void Drop(int code = CloseCodes.Abnormal) { if (!IsOpen) return; IsOpen = false; _onClosed(code); }
 
             private sealed class Conn : IConnection
             {
@@ -148,6 +172,88 @@ namespace Muchi.Engine.Tests
             Assert.Contains(code, RaceSession.FatalRoomErrors);
         }
 
+        /// <summary>
+        /// QA r7 leftover: the room closes an older socket of the same player with 4000 ("replaced") when a newer one
+        /// says hello (the same spectator on a second device, or the rider's seat). Reconnecting would replace the
+        /// newer socket in turn and the two devices would keep taking the seat from each other: stop instead.
+        /// </summary>
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void ReplacedSocketStopsInsteadOfTakingTheSeatBack(bool spectator)
+        {
+            var cfg = Cfg(4, 1);
+            string start = StartMsg(cfg, spectator ? -1 : 0);
+            var f = new ScriptedFactory { OnHello = (n, _) => new[] { start, Bundle(0, 10) } };
+            var s = spectator
+                ? new SpectatorSession(f, "wss://x", new SpectatorTicket { RaceId = cfg.RaceId, Ticket = "spec" }).Session
+                : new RaceSession(f, "wss://x", cfg.RaceId, "tok");
+            var states = new List<RaceSessionState>();
+            s.StateChanged += (_, now) => states.Add(now);
+            s.Start(0);
+            Pump(s, 0, 200);
+            Assert.Equal(RaceSessionState.Racing, s.State);
+            Assert.Equal(spectator, s.Client.IsSpectator);
+
+            f.Drop(CloseCodes.Replaced); // the same player said hello from another device
+            Pump(s, 200, 600_000);
+            Assert.Equal(RaceSessionState.Failed, s.State);
+            Assert.Equal("REPLACED", s.FailureReason);
+            Assert.Equal(1, f.Opens);
+            Assert.Equal(0, s.ReconnectCount);
+            Assert.DoesNotContain(RaceSessionState.Reconnecting, states);
+        }
+
+        /// <summary>Every close code the room sends (server/src/do/raceRoom.ts) is mapped on purpose.</summary>
+        [Theory]
+        [InlineData(4000, "REPLACED")]
+        [InlineData(4001, "UNAUTHORIZED")]
+        [InlineData(4003, "SPECTATORS_FULL")]
+        [InlineData(1011, null)] // "no race" / the runtime's internal error: reconnect (bounded)
+        [InlineData(1006, null)] // no close frame: network drop
+        [InlineData(1000, null)]
+        [InlineData(1001, null)]
+        [InlineData(1005, null)]
+        [InlineData(1012, null)] // service restart
+        public void CloseCodesAreMappedDeliberately(int code, string fatal)
+        {
+            Assert.Equal(fatal, CloseCodes.FatalReason(code));
+            var cfg = Cfg(4, 1);
+            var f = new ScriptedFactory { OnHello = (n, _) => n == 1 ? new[] { StartMsg(cfg), Bundle(0, 10) } : new[] { Bundle(0, 20) } };
+            var s = new RaceSession(f, "wss://x", cfg.RaceId, "tok");
+            s.Start(0);
+            Pump(s, 0, 200);
+            f.Drop(code);
+            Pump(s, 200, 30_000);
+            if (fatal != null)
+            {
+                Assert.Equal(RaceSessionState.Failed, s.State);
+                Assert.Equal(fatal, s.FailureReason);
+                Assert.Equal(1, f.Opens);
+            }
+            else
+            {
+                Assert.Equal(RaceSessionState.Racing, s.State); // reconnected and caught up
+                Assert.Equal(2, f.Opens);
+                Assert.Equal(20, s.Client.ConfirmedTick);
+            }
+        }
+
+        /// <summary>An err frame and its close (4003 after SPECTATORS_FULL) give one failure with the room's code.</summary>
+        [Fact]
+        public void SpectatorsFullCloseWithoutTheErrFrameIsStillFatal()
+        {
+            var f = new ScriptedFactory { OnHello = (n, _) => Array.Empty<string>() };
+            var s = new RaceSession(f, "wss://x", "rv_spec", "tok");
+            s.Start(0);
+            Pump(s, 0, 100);
+            f.Drop(CloseCodes.SpectatorsFull);
+            Pump(s, 100, 600_000);
+            Assert.Equal(RaceSessionState.Failed, s.State);
+            Assert.Equal("SPECTATORS_FULL", s.FailureReason);
+            Assert.Equal(1, f.Opens);
+        }
+
         [Fact]
         public void ErrorFramesDoNotResetTheReconnectBudget()
         {
@@ -206,7 +312,7 @@ namespace Muchi.Engine.Tests
             {
                 Threads.Enqueue(Environment.CurrentManagedThreadId);
                 int status = Statuses.Dequeue();
-                return Task.Run(() => new HttpResponse(status, status == 200 ? "{\"ok\":true}" : "{\"error\":{\"code\":\"INTERNAL\"}}")); // completes on the pool
+                return OffThread.Run(() => new HttpResponse(status, status == 200 ? "{\"ok\":true}" : "{\"error\":{\"code\":\"INTERNAL\"}}")); // completes on another thread
             }
         }
 
@@ -216,13 +322,13 @@ namespace Muchi.Engine.Tests
             public Task<string> GetTokenAsync(bool forceRefresh, CancellationToken ct)
             {
                 Threads.Enqueue(Environment.CurrentManagedThreadId);
-                return Task.Run(async () => { await Task.Delay(1); return "tok"; });
+                return OffThread.Run(() => "tok", 1);
             }
         }
 
         private sealed class TimerDelay : IDelay
         {
-            public Task Delay(int ms, CancellationToken ct) => Task.Delay(1, ct); // completes on a timer thread
+            public Task Delay(int ms, CancellationToken ct) => OffThread.Run(() => true, 1); // completes on another thread, like a timer
         }
 
         [Fact]
@@ -253,7 +359,7 @@ namespace Muchi.Engine.Tests
         public void AnalyticsPersistsOnTheCallersThread()
         {
             var store = new ThreadRecordingStore();
-            AnalyticsSend send = (p, v, events, ct) => Task.Run(() => new AnalyticsIngestResult { Accepted = events.Count });
+            AnalyticsSend send = (p, v, events, ct) => OffThread.Run(() => new AnalyticsIngestResult { Accepted = events.Count });
             var client = new AnalyticsClient(send, new AnalyticsOptions(), store, 0);
             int main = MainThreadContext.Run(async () =>
             {

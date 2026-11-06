@@ -101,6 +101,31 @@ namespace Muchi.Engine.Tests
         }
 
         [Fact]
+        public async Task Round8EventsMatchTheServerSchemas()
+        {
+            // server/src/domain/kpi.ts clientEventSchema (REQ-UXS-030): strict props, enum values, the FTUE index = position + 1
+            var ev = new[]
+            {
+                AnalyticsEvent.FeatureUnlock(1, "shop"), AnalyticsEvent.OfferView(2, "starter_pack", "T2"), AnalyticsEvent.OfferClick(3, "starter_pack", "T2"),
+                AnalyticsEvent.RaceQuit(4, "event", -5), AnalyticsEvent.AccountLink(5, "google"), AnalyticsEvent.FtueStep(6, "home"), AnalyticsEvent.FtueStep(7, "race1_win", 2),
+            };
+            _http.Reply(200, "{\"accepted\":7,\"dropped\":0}");
+            await _api.SendAnalyticsAsync("ios", "1", ev);
+            Assert.Equal(Canon("{\"platform\":\"ios\",\"appVersion\":\"1\",\"events\":["
+                + "{\"name\":\"feature_unlock\",\"at\":1,\"props\":{\"feature\":\"shop\"}},"
+                + "{\"name\":\"offer_view\",\"at\":2,\"props\":{\"offerId\":\"starter_pack\",\"trigger\":\"T2\"}},"
+                + "{\"name\":\"offer_click\",\"at\":3,\"props\":{\"offerId\":\"starter_pack\",\"trigger\":\"T2\"}},"
+                + "{\"name\":\"race_quit\",\"at\":4,\"props\":{\"mode\":\"event\",\"remainingM\":0}},"
+                + "{\"name\":\"account_link\",\"at\":5,\"props\":{\"provider\":\"google\"}},"
+                + "{\"name\":\"tutorial_step\",\"at\":6,\"props\":{\"step\":\"home\",\"index\":8}},"
+                + "{\"name\":\"tutorial_step\",\"at\":7,\"props\":{\"step\":\"race1_win\",\"index\":4,\"value\":2}}]}"), Canon(_http.Requests[0].Body));
+            Assert.Throws<ArgumentException>(() => AnalyticsEvent.OfferView(0, "starter_pack", "shop"));
+            Assert.Throws<ArgumentException>(() => AnalyticsEvent.RaceQuit(0, "derby", 1));
+            Assert.Throws<ArgumentException>(() => AnalyticsEvent.AccountLink(0, "line"));
+            Assert.Throws<ArgumentException>(() => AnalyticsEvent.FtueStep(0, "first_ride"));
+        }
+
+        [Fact]
         public void EventFactoriesRejectBadValues()
         {
             Assert.Throws<ArgumentException>(() => AnalyticsEvent.ScreenView(0, "ホーム"));

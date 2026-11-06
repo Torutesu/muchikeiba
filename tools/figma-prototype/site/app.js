@@ -409,6 +409,8 @@ function Whip() {
   // presentation first (06 §6.3: the button and the horse react within a frame; the engine takes the input next tick)
   flash(hud.feedback, lastFrame.departed ? '伸びる！' : 'スタート！');
   hud.whip.classList.remove('hit'); void hud.whip.offsetWidth; hud.whip.classList.add('hit');
+  // the spurt: an FOV kick on the 3D view and speed lines on the edges (presentation only)
+  if (lastFrame.departed) { view.kick(); const s = document.createElement('div'); s.className = 'speedlines'; cur.insertBefore(s, cur.firstChild); setTimeout(() => s.remove(), 1300); }
   try { navigator.vibrate?.(lastFrame.departed ? 40 : [12, 40, 12]); } catch { /* not supported */ }
 }
 function flash(node, text, ms = 1100) {
@@ -467,7 +469,7 @@ function paintHud(f) {
   const p = view.project(raceInfo.playerSlot, 3.1);
   if (p && f.horses[raceInfo.playerSlot]?.[6]) {
     hud.marker.style.display = '';
-    hud.marker.style.transform = `translate(${Math.round(p.x - 110)}px, ${Math.round(p.y - 120)}px)`;
+    hud.marker.style.transform = `translate(${Math.round(p.x - 110)}px, ${Math.round(Math.max(250, p.y) - 120)}px)`;
     hud.marker.querySelector('.mini i').style.width = (f.stamina / 10) + '%';
     hud.marker.dataset.level = feel.level ?? 'Ok';
     hud.marker.classList.toggle('kakari', !!f.kakari);
@@ -1570,6 +1572,8 @@ async function Settings() {
   });
   Kicker('法定表示・規約', 36, 360, m, { rule: false, size: 15 });
   [['利用規約', 'terms'], ['プライバシーポリシー', 'privacy'], ['特定商取引法に基づく表記', 'tokushoho'], ['資金決済法に基づく表示', 'shikin']].forEach(([n, k], i) => TextLink(n, 36, 396 + i * 48, 400, () => Legal(k, Settings), m));
+  // the other front end (Codex's club UI, same logic and engine)
+  TextLink('クラブ版 UI', 36, 602, 400, () => { location.href = 'club.html'; }, m, 'クラブ版 UI を開く ↗');
   // ③ demo states for review (REQ-UXP-002): the same rules on a moved clock
   const demo = Glass('Demo', 1056, 134, 508, 676, undefined, .78);
   Kicker('デモ（レビュー用）', 36, 30, demo, { color: SOFT });
@@ -1823,7 +1827,7 @@ async function boot() {
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),
-    logic: L,
+    logic: L, view: () => view,
   };
   if (demo) await Demo(demo);
   else if (player.flags?.partnerHorseId || player.horses.some((h) => h.named)) await Home(); else Title();

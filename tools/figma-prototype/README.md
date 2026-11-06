@@ -80,7 +80,7 @@ Figma にはコードレイヤーとして読み込みます。
 | 部分 | 中身 |
 |---|---|
 | レース | **本物のエンジン**です。`engine/` の C# と、Unity のゲーム層（`Assets/Muchi/Game`：RaceFactory・RaceInput・RaceDrivers・HudModel・CommentaryFeed・CourseFrame）を .NET 8 で WebAssembly にしたものを動かしています（`engine-wasm/`）。ゴールデンレース 4 本の結果ハッシュが C# 版と一致することを `build.sh` で毎回確認します。 |
-| レースの 3D 表示 | `RaceWorld.cs` を three.js に移したものです。<br>・コースは本物のコース形状（TrackGeometry → CourseFrame、ゴール z=420）<br>・スタンド・ゴール板・空・霧・日差しも RaceWorld と同じ値<br>・Codex の FBX 相棒モデルに PartnerGallop と同じ脚の動き<br>・追いかけカメラも RaceWorld.Present と同じ（FOV 57、後ろ 6.5m・上 3m、前方 9m を注視） |
+| レースの 3D 表示 | `RaceWorld.cs` を three.js に移し、Codex のキーアート（02 / 09）に寄せたものです。表示だけで、レースの結果には影響しません。<br>・コースは本物のコース形状（TrackGeometry → CourseFrame、ゴール z=420）。芝は刈り目の縞、ダートは砂の小さなキャンバステクスチャ（GPU の無い端末でも使います）。白い内ラチと緑の支柱、残り 400〜100m の標識、ゴール板<br>・背景は Codex の写真（`Art/Courses/spring-course`・`Art/Weather/sunny`、ナイターは `autumn-course` を暗く）を、カメラと一緒に動く円筒に貼り、写真の地平線を目の高さに合わせます。空はその写真の色の続き<br>・相棒は Codex の FBX（フル）、相手は LOD1 を勝負服・毛色ごとに塗り分け、足元に影<br>・カメラはエンジンの RaceCameraRig のモード（追走／最後の直線／ゴール横）と FOV に従い、追走と直線は相棒のすぐ後ろの低い位置（キーアートの構図）、ゴール横は Rig のとおり。ムチで FOV が一瞬広がり、画面の端にスピード線 |
 | HUD・実況・結果 | Unity の HudModel（RaceFeel）・CommentaryFeed・RaceResultModel（RaceDebrief）・RaceCameraRig の出力をそのまま表示します。 |
 | 操作 | ←/→ で進路、E で仕掛け（ムチ）、Space 長押しで手綱。画面のボタンでも操作できます。 |
 | スカウト・命名・ショップ・パス | **本物のサーバードメイン**です。`server/src/domain` を esbuild でブラウザ用にまとめています（`logic/entry.ts` → `site/js/logic.js`）。<br>・ガチャの ppm 表、10 連の保証、天井<br>・提供割合（抽選と同じデータから表示）<br>・名前はカタカナ 2〜9 文字で、ひらがなはカタカナに変換、NG ワードは弾く<br>・同意の記録、相棒の付与、機能の開放、ログボ・ミッション・初勝利ボーナス<br>・商品の表示データとオファー、年齢確認（購入意思の確認）、シーズンパスの受け取り、アカウント削除 |
@@ -134,7 +134,7 @@ python3 -m http.server -d tools/figma-prototype/site 8080
 
 ## Figma への読み込み
 
-`build.sh` のあとの `site/` 一式（約 32MB、圧縮後は 40MB 未満）を Figma のコードレイヤーとして読み込みます。入口は `index.html`（ムチ一閃 UI）で、右下の小さなリンクからクラブ版 `club.html` に移れます。
+`build.sh` のあとの `site/` 一式（約 32MB、圧縮後は 40MB 未満）を Figma のコードレイヤーとして読み込みます。入口は `index.html`（ムチ一閃 UI）で、「その他」の「クラブ版 UI を開く」からクラブ版 `club.html` に移れます。
 フレームは 16:9（例：1600×900 または 1280×720）にしてください。中の画面は自動で拡大縮小します。
 1 つの HTML ファイルにまとめたものはありません（WebAssembly のエンジン・FBX・フォントを含むため、`site/` フォルダーをそのまま読み込みます）。
 
@@ -143,6 +143,6 @@ python3 -m http.server -d tools/figma-prototype/site 8080
 デザイン画は完成イメージの一枚絵で、値は仮のものです。このプロトタイプは同じ構図に本物の値を入れているので、次の点が違います。
 
 - 文言は本物の規則に合わせています（「初回購入 2倍」は使わず無償コインの数で表示、通貨 HUD は無償・有償を分けて表示、順位は「3位 / 12頭」）。
-- レースは写真の背景ではなく、エンジンが動かす RaceWorld の 3D 表示です（空のグラデーション、遠くの山並み、刈り目のある芝、フィルミックなトーンマッピングを足しています）。
+- レースは写真の一枚絵ではなく、エンジンが動かす 3D 表示です（背景に Codex の写真、刈り目のある芝、相棒のすぐ後ろのカメラ）。
 - 結果画面の着順の一覧・報酬の内訳や、ホームの「今日やること」は右から出るシートに入れています。
 - 購入確認の年齢区分は、Codex の 3 つのボタンではなく生年月の選択です（サーバーの年齢確認と同じ入力）。

@@ -30,7 +30,8 @@ for d, _, files in os.walk(art_src):
         im = Image.open(src)
         alpha = im.mode in ('RGBA', 'LA') and im.getextrema()[-1][0] < 255
         top_level = os.sep not in rel
-        maxw = 1600 if top_level else (900 if '3DPreviews' in rel else 640)
+        # key art and full-scene plates (Courses, Weather: also the race backdrop) stay 1600 px; cut-outs 640 px
+        maxw = 1600 if top_level or rel.split(os.sep)[0] in ('Courses', 'Weather') else (900 if '3DPreviews' in rel else 640)
         if im.width > maxw:
             im = im.resize((maxw, round(im.height * maxw / im.width)), Image.LANCZOS)
         out = os.path.join(art_dst, os.path.splitext(rel)[0] + ('.png' if alpha else '.jpg'))

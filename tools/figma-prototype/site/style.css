@@ -278,6 +278,11 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
 @keyframes needrein { from { box-shadow: inset 0 0 0 2px rgba(255, 90, 80, .5); } to { box-shadow: inset 0 0 0 5px rgba(255, 90, 80, 1), 0 0 26px rgba(255, 90, 80, .8); } }
 .btn.quit { font-size: 15px; letter-spacing: .14em; font-weight: 500; }
 .btn.quit .bg { background: rgba(var(--navy-rgb), .6); }
+/* the spurt: speed lines on the edges of the race view (CSS only, no GL cost) */
+.speedlines { position: absolute; inset: 0; pointer-events: none; animation: speed 1.25s ease-out both;
+  background: repeating-conic-gradient(from 0deg at 50% 46%, rgba(255, 255, 255, 0) 0deg 2.2deg, rgba(255, 255, 255, .55) 2.4deg 2.7deg, rgba(255, 255, 255, 0) 2.9deg 5.5deg);
+  -webkit-mask: radial-gradient(ellipse 62% 58% at 50% 46%, transparent 55%, #000 100%); mask: radial-gradient(ellipse 62% 58% at 50% 46%, transparent 55%, #000 100%); }
+@keyframes speed { 0% { opacity: 0; transform: scale(1.08); } 15% { opacity: 1; } 100% { opacity: 0; transform: scale(1); } }
 /* course mini-map: the field on an oval (09) */
 .minimap { background: rgba(var(--navy-rgb), .83); border-radius: 20px; pointer-events: none; }
 .minimap svg { position: absolute; inset: 0; }

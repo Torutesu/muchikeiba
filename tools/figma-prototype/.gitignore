@@ -11,3 +11,6 @@ site/club/codex/
 .compare/
 *.tar.gz
 *.zip
+.screens-before/
+.cache/
+.compare-before/

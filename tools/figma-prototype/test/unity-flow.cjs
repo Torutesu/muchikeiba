@@ -1,4 +1,4 @@
-// Unity UI walkthrough (site/unity.html) for the round 8 experience (docs/planning/06, REQ-UXP-001..005).
+// ムチ一閃 UI walkthrough (site/index.html) for the round 8 experience (docs/planning/06, REQ-UXP-001..005).
 //  1. FTUE as a new player on a landscape phone (844×390), driven like a person would: one tap per step, the whip only
 //     when the button lights up. Measures the time and the taps to each milestone and checks the §2.3 targets:
 //     aha (the tutorial win) ≤ 30 s, first gacha reveal ≤ 1:40, home ≤ 4:00 and ≤ 15 taps (text entry excluded).
@@ -20,7 +20,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push('unity pageerror: ' + e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push('unity console: ' + m.text()); });
-  const url = base + 'unity.html';
+  const url = base + 'index.html';
   const shots = [];
   for (const f of fs.readdirSync(out)) if (/^u-\d+-.*\.png$/.test(f)) fs.unlinkSync(path.join(out, f));
   let n = 0;

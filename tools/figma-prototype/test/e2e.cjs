@@ -1,9 +1,10 @@
 // End-to-end walkthrough of the web prototype in the preinstalled Chromium.
-//   1. club UI (index.html): Codex's 25 detailed screens on the real logic and engine, desktop and mobile
+//   1. club UI (club.html): Codex's 25 detailed screens on the real logic and engine, desktop and mobile
 //      (club-flow.cjs; club-<screen>.png, named after frontend/design/screens)
-//   2. Unity UI (unity.html): the round 8 FTUE measured with a simulated new player (unity-flow.cjs, ftue.json) and
+//   2. ムチ一閃 UI (index.html, the site root): the round 8 FTUE measured with a simulated new player (unity-flow.cjs, ftue.json) and
 //      every screen and state on a landscape phone (844×390 @2x, u-<nn>-<name>.png)
-// Fails on any console error / page error. Screenshots go to <outDir> (default: tools/figma-prototype/.screens).
+// Fails on any console error / page error. Screenshots go to <outDir> (default: tools/figma-prototype/.screens), plus
+// contact-sheet.png of every ムチ一閃 screen (contact-sheet.py).
 // usage: node tools/figma-prototype/test/e2e.cjs [outDir]
 const http = require('http');
 const fs = require('fs');
@@ -33,7 +34,7 @@ function serve() {
   fs.mkdirSync(OUT, { recursive: true });
   const server = await serve();
   const base = `http://127.0.0.1:${server.address().port}/`;
-  const url = base + 'unity.html';
+  const url = base + 'index.html';
   const browser = await chromium.launch();
   const errors = [];
   const clubShots = process.env.E2E_ONLY === 'unity' ? [] : await clubFlow(browser, base, OUT, errors);
@@ -48,5 +49,7 @@ function serve() {
   const n = shots.length;
   await browser.close(); server.close();
   if (errors.length) { console.error('ERRORS:\n' + errors.join('\n')); process.exit(1); }
-  console.log(`E2E OK — club ${clubShots.length} + Unity ${n} screenshots in ${OUT}`);
+  const cs = require('child_process').spawnSync('python3', [path.join(__dirname, 'contact-sheet.py'), OUT], { encoding: 'utf8' });
+  if (cs.status === 0) process.stdout.write(cs.stdout);
+  console.log(`E2E OK — club ${clubShots.length} + ムチ一閃 ${n} screenshots in ${OUT}`);
 })().catch((e) => { console.error(e); process.exit(1); });

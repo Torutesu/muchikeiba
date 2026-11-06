@@ -1,0 +1,12 @@
+# build.sh が生成するもの（コミットしない）
+site/js/logic.js
+site/engine/
+site/art/
+site/data/
+site/fonts/
+site/models/
+# 検証の出力
+.screens/
+.compare/
+*.tar.gz
+*.zip

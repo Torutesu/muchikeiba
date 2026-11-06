@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+  <!-- The real engine + Unity game layer (Assets/Muchi/Game, no UnityEngine) compiled to WebAssembly for the web prototype. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+    <OutputType>Exe</OutputType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <WasmEnableWebcil>true</WasmEnableWebcil>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../engine/Muchi.Engine/Muchi.Engine.csproj" />
+    <ProjectReference Include="../../../engine/Muchi.Net/Muchi.Net.csproj" />
+    <ProjectReference Include="../../../engine/Muchi.Client/Muchi.Client.csproj" />
+    <Compile Include="../../../unity/Assets/Muchi/Game/RaceFactory.cs" Link="Game/RaceFactory.cs" />
+    <Compile Include="../../../unity/Assets/Muchi/Game/RaceInput.cs" Link="Game/RaceInput.cs" />
+    <Compile Include="../../../unity/Assets/Muchi/Game/RaceDrivers.cs" Link="Game/RaceDrivers.cs" />
+    <Compile Include="../../../unity/Assets/Muchi/Game/HudModel.cs" Link="Game/HudModel.cs" />
+    <Compile Include="../../../unity/Assets/Muchi/Game/CommentaryFeed.cs" Link="Game/CommentaryFeed.cs" />
+    <Compile Include="../../../unity/Assets/Muchi/Game/CourseFrame.cs" Link="Game/CourseFrame.cs" />
+  </ItemGroup>
+</Project>

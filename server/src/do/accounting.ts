@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { Env } from '../env.js';
 import { aggregatePaidBalances, type PaidBalanceSnapshot } from '../domain/accounting.js';
+import type { RetainedRecord } from '../domain/accountDeletion.js';
 
 /**
  * Latest unused paid-coin balance per player, for the Payment Services Act base-date check (REQ-WAL-005).
@@ -27,6 +28,29 @@ export class AccountingDO extends DurableObject<Env> {
   async lookupStoreKey(key: string): Promise<string | null> {
     const rows = this.ctx.storage.sql.exec<{ player_id: string }>('SELECT player_id FROM store_tx WHERE key = ?', key).toArray();
     return rows[0]?.player_id ?? null;
+  }
+
+  /**
+   * REQ-UXS-040: keeps a deleted account's legally required records under a random id (no link to the account):
+   * the store transactions point to that id from now on, and the player's paid balance row goes (forfeited).
+   * Idempotent per anonId.
+   */
+  async retainDeleted(playerId: string, record: RetainedRecord) {
+    const sql = this.ctx.storage.sql;
+    sql.exec('CREATE TABLE IF NOT EXISTS retained (anon_id TEXT PRIMARY KEY, deleted_at INTEGER NOT NULL, retain_until INTEGER NOT NULL, record TEXT NOT NULL)');
+    sql.exec('INSERT INTO retained (anon_id, deleted_at, retain_until, record) VALUES (?, ?, ?, ?) ON CONFLICT(anon_id) DO NOTHING', record.anonId, record.deletedAt, record.retainUntil, JSON.stringify(record));
+    sql.exec('UPDATE store_tx SET player_id = ? WHERE player_id = ?', record.anonId, playerId);
+    sql.exec('DELETE FROM paid WHERE player_id = ?', playerId);
+    return { ok: true };
+  }
+
+  /** Daily: drops retained records past their legal retention. */
+  async purgeRetained(nowMs: number) {
+    const sql = this.ctx.storage.sql;
+    sql.exec('CREATE TABLE IF NOT EXISTS retained (anon_id TEXT PRIMARY KEY, deleted_at INTEGER NOT NULL, retain_until INTEGER NOT NULL, record TEXT NOT NULL)');
+    const n = sql.exec<{ n: number }>('SELECT COUNT(*) AS n FROM retained WHERE retain_until <= ?', nowMs).one().n;
+    sql.exec('DELETE FROM retained WHERE retain_until <= ?', nowMs);
+    return { purged: n };
   }
 
   async record(s: PaidBalanceSnapshot) {

@@ -8,6 +8,7 @@ import { holdPolicyProblems } from '../domain/retention.js';
 import { roomsProblems } from '../domain/presets.js';
 import { studConfigProblems } from '../domain/stud.js';
 import { stableConfigProblems, stableConfigSchema, type StableConfig } from '../domain/stable.js';
+import { uxProblems } from '../domain/onboarding.js';
 import { z } from 'zod';
 import { AppError } from '../domain/errors.js';
 import { buildBanner, splitMasterTrack, type Master, type Progression, type RawBanner } from '../domain/master.js';
@@ -129,6 +130,9 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
   if (b.progression && 'replayHoldDays' in b.progression) problems.push(...holdPolicyProblems(progression.replayHoldDays));
   if (b.progression && ('stud' in b.progression || 'atavismPermille' in b.progression)) problems.push(...studConfigProblems(progression));
 
+  // REQ-UXS-*: consent, partner, beginner match, beginner login bonus, unlocks, beginner/season missions (unique ids),
+  // experiments (A/B keys only, never prices), nudges and account deletion — checked on every version (tracks may change too)
+  problems.push(...uxProblems({ ...base, progression, tracks }, new Set(collectItemIds(base))));
   const events = (b.events as EventDef[] | undefined) ?? base.events;
   if (b.events) {
     const tpl = base.events[0];

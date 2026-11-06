@@ -15,6 +15,7 @@ import { assetKeys, startVisuals, type StartVisuals } from '../domain/visuals.js
 import { roomGround, roomScene, type RoomConditions } from '../domain/presets.js';
 import { friendRoomBondPermille } from '../domain/bond.js';
 import { STAT_KEYS } from '../domain/master.js';
+import type { Match } from '../domain/matchmaker.js';
 
 export const START_DELAY_MS = 6000; // time for clients to connect + countdown before tick 0
 export const TICKET_TTL_MS = 10 * 60_000;
@@ -40,6 +41,8 @@ export interface CreateRaceOptions {
   statCap?: number | null;
   /** REQ-TOUR-005: a deterministic race id (tournament heats: a resumed creation reaches the same room). Default: random. */
   raceId?: string;
+  /** REQ-UXS-003: beginner matches race against weaker CPU horses (permille of their normalized stats). */
+  cpuStatPermille?: number;
 }
 
 /** Tickets for every human slot of a race (HMAC of raceId/slot/player/expiry: the same inputs give the same ticket). */
@@ -71,6 +74,7 @@ export async function createRace(m: Master, o: CreateRaceOptions): Promise<Creat
     // REQ-OPS-006: the active ruleset is embedded in the config, so the replay log carries it to the verifier
     ...(ruleset ? { rulesetOverrides: ruleset } : {}),
     ...(ev?.rules.fixedStats ? { fixedStats: ev.rules.fixedStats } : {}),
+    ...(o.cpuStatPermille !== undefined && !ev ? { cpuStatPermille: o.cpuStatPermille } : {}),
   });
   const startAtMs = Math.max(o.startAtMs ?? 0, o.now + START_DELAY_MS);
   const assignments = await assignmentsFor(config, startAtMs, o.ticketSecret);
@@ -126,4 +130,20 @@ export function settleRace(config: RaceStartConfig, final: FinalOutcome, ratings
     };
   }
   return out;
+}
+
+/**
+ * REQ-UXS-003 / REQ-MM-003: beginner matches race weaker CPUs (level and stats from progression.beginnerMatch,
+ * balance target R10); a match of players who are all on their first ranked race may use a fixed course.
+ */
+export function rankedMatchRules(m: Master, match: Match<RaceEntry>) {
+  const bm = match.beginner && !match.quarantined ? m.progression.beginnerMatch : undefined;
+  const firsts = match.players.map((p) => p.payload.firstRace?.trackId ?? null);
+  const trackId = firsts.length > 0 && firsts.every((t) => t !== null && t === firsts[0]) ? firsts[0]! : null;
+  return {
+    cpuCount: match.cpuCount,
+    cpuLevel: bm ? bm.cpuLevel : match.cpuLevel,
+    ...(bm ? { cpuStatPermille: bm.cpuStatPermille } : {}),
+    ...(trackId ? { trackId } : {}),
+  };
 }

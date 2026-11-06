@@ -17,7 +17,7 @@ import type { PlayerState, PurchaseRecord } from './player.js';
 import type { PassSeasonRecord } from './shop.js';
 import { grantReward, clawbackItems } from './items.js';
 import { clawbackFree } from './wallet.js';
-import { DAY_MS, jstMonthEndMs, jstMonthKey } from './time.js';
+import { gameDaysUntil, jstMonthEndMs, jstMonthKey } from './time.js';
 
 export const PASS_HISTORY_KEEP = 12;
 export type PassTrack = 'free' | 'premium';
@@ -37,7 +37,7 @@ export function passPurchasesFor(s: PlayerState, seasonId: string): PurchaseReco
 export function passPurchaseInfo(m: Master, p: Product, now: number) {
   const seasonId = jstMonthKey(now);
   const endsAt = seasonEndMs(seasonId);
-  const remainingDays = Math.max(0, Math.ceil((endsAt - now) / DAY_MS));
+  const remainingDays = gameDaysUntil(endsAt, now);
   return { seasonId, endsAt, remainingDays, lastWeek: remainingDays <= 7, autoRenew: false as const, levels: p.pass?.levels ?? 0 };
 }
 
@@ -165,7 +165,7 @@ export function passScreen(m: Master, s: PlayerState, now: number) {
   const sp = s.seasonPass;
   const level = levelOf(m, sp.xp);
   const endsAt = seasonEndMs(sp.seasonId);
-  const remainingDays = Math.max(0, Math.ceil((endsAt - now) / DAY_MS));
+  const remainingDays = gameDaysUntil(endsAt, now);
   const per = m.progression.passXpPerLevel;
   const max = m.progression.passMaxLevel;
   const owned = passPurchasesFor(s, sp.seasonId);
@@ -185,4 +185,27 @@ export function passScreen(m: Master, s: PlayerState, now: number) {
     autoGrantAtSeasonEnd: true,
     lastSeason: last && last.seasonId !== sp.seasonId ? last : null,
   };
+}
+
+/** What the season pass still holds for the player: this season's purchase and the levels not yet paid out. */
+export function passRemaining(m: Master, s: PlayerState, now: number) {
+  const sp = s.seasonPass;
+  const level = levelOf(m, sp.xp);
+  const premium = sp.expiresAt > now;
+  const unclaimed = (track: 'free' | 'premium') => (track === 'premium' && !premium ? 0 : Array.from({ length: level }, (_, i) => i + 1).filter((l) => !sp.claimed[track].includes(l)).length);
+  return { seasonId: sp.seasonId, premium, level, unclaimedFree: unclaimed('free'), unclaimedPremium: unclaimed('premium') };
+}
+
+/**
+ * REQ-UXS-040: the account deletion gives up the season pass: the premium line ends now and nothing more is
+ * granted (no automatic grant at the season close). Returns what was given up for the retained record.
+ */
+export function forfeitPass(m: Master, s: PlayerState, now: number) {
+  const r = passRemaining(m, s, now);
+  const sp = s.seasonPass;
+  sp.expiresAt = Math.min(sp.expiresAt, now);
+  // every level counts as paid out so a season close cannot auto-grant to a deleted account
+  const all = Array.from({ length: m.progression.passMaxLevel }, (_, i) => i + 1);
+  sp.claimed = { free: all, premium: all };
+  return r;
 }

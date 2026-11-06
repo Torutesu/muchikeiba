@@ -67,6 +67,16 @@ export class DirectoryDO extends DurableObject<Env> {
     return wrap(() => this.sql.exec<{ entry: string }>("SELECT entry FROM studs WHERE visibility = 'public' ORDER BY listed_at DESC LIMIT ?", Math.min(200, Math.max(1, limit))).toArray().map((r) => JSON.parse(r.entry) as StudEntry));
   }
 
+  /** REQ-UXS-040: account deletion — friend code, public profile, every stud listing and the public stable copy of the player. */
+  async forget(playerId: string): Promise<Envelope<boolean>> {
+    return wrap(() => {
+      this.sql.exec('DELETE FROM players WHERE player_id = ?', playerId);
+      this.sql.exec('DELETE FROM studs WHERE owner_id = ?', playerId);
+      this.sql.exec('DELETE FROM stables WHERE player_id = ?', playerId);
+      return true;
+    });
+  }
+
   async codeOf(playerId: string, shard: number): Promise<Envelope<string>> {
     return wrap(() => {
       const row = this.sql.exec<{ code: string | null }>('SELECT code FROM players WHERE player_id = ?', playerId).toArray()[0];
@@ -115,6 +125,7 @@ type DirStub = {
   stableRemove(id: string): Promise<Envelope<boolean>>;
   stablesOf(ids: string[]): Promise<Envelope<StableSnapshot[]>>;
   stablesTop(limit: number): Promise<Envelope<StableSnapshot[]>>;
+  forget(p: string): Promise<Envelope<boolean>>;
 };
 
 /** Recommended stables change slowly; one fan-out per isolate per minute keeps visits cheap. */
@@ -142,6 +153,13 @@ export function shardedStableDirectory(ns: DurableObjectNamespace, clock: () => 
       return rows;
     },
   };
+}
+
+/** REQ-UXS-040: removes a deleted player's directory rows (their shard). */
+export async function forgetInDirectory(ns: DurableObjectNamespace, playerId: string) {
+  const s = ns.get(ns.idFromName(`dir:${shardOf(playerId)}`)) as unknown as DirStub;
+  unwrap(await s.forget(playerId));
+  stableTopCache = null;
 }
 
 /** Stud listings, sharded by owner like profiles; public browsing fans out to every shard. */

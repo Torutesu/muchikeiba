@@ -474,6 +474,30 @@
     ],
     "mane": "flaxen",
     "build": "compact"
+   },
+   "t_partner": {
+    "coat": "chestnut",
+    "face": "blaze",
+    "legs": [
+     "none",
+     "none",
+     "sock",
+     "none"
+    ],
+    "mane": "normal",
+    "build": "standard"
+   },
+   "t_broodmare": {
+    "coat": "bay",
+    "face": "star",
+    "legs": [
+     "none",
+     "none",
+     "none",
+     "none"
+    ],
+    "mane": "normal",
+    "build": "standard"
    }
   },
   "inheritance": {

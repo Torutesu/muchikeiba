@@ -44,7 +44,9 @@ export type PlayerMethod =
   | 'eventsView' | 'eventEnter' | 'eventCancel' | 'eventClose' | 'tournamentEntry' | 'tournamentClose' | 'tournamentHistory'
   | 'bond' | 'bondLevels' | 'care' | 'presets' | 'setCourseLook' | 'setRoomConditions'
   | 'studView' | 'studList' | 'studUnlist' | 'studPeek' | 'studReserve' | 'studSettle' | 'studPreview' | 'studApply' | 'studAcked' | 'studDue' | 'studRetryLater'
-  | 'stableMine' | 'stableSave' | 'stableVisit' | 'stableLikeGive' | 'stableLikeReceive' | 'stableClear';
+  | 'stableMine' | 'stableSave' | 'stableVisit' | 'stableLikeGive' | 'stableLikeReceive' | 'stableClear' | 'stableForget'
+  | 'recordConsent' | 'grantPartner' | 'missionsAll' | 'requestDeletion' | 'cancelDeletion' | 'deletionDue' | 'deletionSnapshot' | 'deletionMarkStep'
+  | 'deletionRetryLater' | 'deletionFinalize' | 'runNudges' | 'nudgeTaBeaten' | 'nudgeTournamentClosing';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -206,6 +208,30 @@ export const routes: Route[] = [
   // player
   { method: 'POST', path: '/v1/player/bootstrap', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('bootstrap', u) },
   { method: 'GET', path: '/v1/player', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('view', u) },
+  // REQ-UXS-001: terms / privacy consent (the versions the app showed; must be the current ones)
+  { method: 'POST', path: '/v1/player/consent', auth: 'player', handler: async (r, _p, c, u) => {
+    const v = z.string().min(1).max(32);
+    const b = await body(r, z.object({ termsVersion: v, privacyVersion: v }).strict());
+    return c.player(u).invoke('recordConsent', u, b.termsVersion, b.privacyVersion);
+  } },
+  // REQ-UXS-002: the tutorial horse, granted once and named (separate from POST /v1/gacha/tutorial)
+  { method: 'POST', path: '/v1/player/partner', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ name: z.string().min(1).max(40) }).strict());
+    return c.player(u).invoke('grantPartner', u, b.name, idem(r));
+  } },
+  // REQ-UXS-040: account deletion (1: no token → confirmation token; 2: token → scheduled after the cancel window)
+  { method: 'DELETE', path: '/v1/player', auth: 'player', handler: async (r, _p, c, u) => {
+    const q = new URL(r.url).searchParams.get('confirmToken');
+    const text = await r.text();
+    let raw: unknown = {};
+    if (text.trim()) {
+      try { raw = JSON.parse(text); } catch { throw new AppError('BAD_REQUEST', 'invalid JSON'); }
+    }
+    const b = z.object({ confirmToken: z.string().min(1).max(64).optional() }).strict().safeParse(raw);
+    if (!b.success) throw new AppError('BAD_REQUEST', b.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '));
+    return c.player(u).invoke('requestDeletion', u, b.data.confirmToken ?? q ?? null);
+  } },
+  { method: 'POST', path: '/v1/player/deletion/cancel', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('cancelDeletion', u) },
   { method: 'PUT', path: '/v1/player/age', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ birthYear: z.number().int(), birthMonth: z.number().int().min(1).max(12), guardianConsent: z.boolean() }));
     return c.player(u).invoke('setAge', u, b.birthYear, b.birthMonth, b.guardianConsent);
@@ -341,7 +367,8 @@ export const routes: Route[] = [
   { method: 'POST', path: '/v1/stable/:playerId/like', auth: 'player', handler: async (r, p, c, u) => stable(c).like(u, playerIdParam(p.playerId!), idem(r)) },
   // rewards
   { method: 'POST', path: '/v1/rewards/login-bonus', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('claimLogin', u, idem(r)) },
-  { method: 'GET', path: '/v1/missions', auth: 'player', handler: async (_r, _p, c, u) => ({ missions: await c.player(u).invoke('missions', u), firstWinBonus: await c.player(u).invoke('firstWinBonus', u) }) },
+  // daily (REQ-REW-002), beginner (REQ-UXS-015) and season missions (REQ-UXS-016); first-win bonus (REQ-UXS-010); one claim endpoint for all
+  { method: 'GET', path: '/v1/missions', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('missionsAll', u) },
   { method: 'POST', path: '/v1/missions/:missionId/claim', auth: 'player', handler: async (r, p, c, u) => c.player(u).invoke('claimMission', u, p.missionId!, idem(r)) },
   { method: 'GET', path: '/v1/season-pass', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('passView', u) },
   { method: 'POST', path: '/v1/season-pass/claim', auth: 'player', handler: async (r, _p, c, u) => {

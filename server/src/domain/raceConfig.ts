@@ -42,6 +42,11 @@ export interface BuildRaceInput {
   ground?: Ground | null;
   /** REQ-EVENT-003: every entrant (players and CPU) races with exactly these stats. */
   fixedStats?: Stats | null;
+  /**
+   * REQ-UXS-003: beginner matches scale CPU stats by this permille (after the class normalization), so a new
+   * player on the partner horse finishes top 3 about 70% of the time (balance target R10). Absent/1000 = unchanged.
+   */
+  cpuStatPermille?: number;
 }
 
 /** REQ-MM-005: builds a validated RaceStartConfig. Seed comes from `rng` (crypto in production). */
@@ -51,7 +56,8 @@ export function buildRaceConfig(m: Master, input: BuildRaceInput): RaceStartConf
   const seed = randU64Decimal(input.rng);
   const raw: Omit<Entrant, 'slot'>[] = input.humans.map((h) => ({ kind: 'human' as const, playerId: h.playerId, cpuLevel: h.cpuLevel ?? 3, horse: h.horse }));
   const used = new Set(input.humans.map((h) => h.horse.name));
-  const candidates = m.templates.filter((t) => !t.seasonal && !used.has(t.name)); // limited horses never appear as CPU (REQ-BREED-020)
+  // limited horses (REQ-BREED-020) and gift-only horses (REQ-UXS-002) never appear as CPU
+  const candidates = m.templates.filter((t) => !t.seasonal && !t.giftOnly && !used.has(t.name));
   for (let i = 0; i < input.cpuCount; i++) {
     const t = candidates.splice(randInt(input.rng, candidates.length), 1)[0]!;
     raw.push({ kind: 'cpu', playerId: null, cpuLevel: input.cpuLevel, horse: { id: `cpu_${t.id}`, name: t.name, ...t.stats, style: t.style, distMinM: t.distMinM, distMaxM: t.distMaxM, surface: t.surface, ...aptField(t.goingAptitude) } });
@@ -62,10 +68,16 @@ export function buildRaceConfig(m: Master, input: BuildRaceInput): RaceStartConf
     [raw[i], raw[j]] = [raw[j]!, raw[i]!];
   }
   const fixed = input.fixedStats ?? null;
-  const entrants: Entrant[] = raw.map((e, slot) => ({
-    slot, ...e,
-    horse: fixed ? withStats(e.horse, fixed) : input.statCap === null ? e.horse : withStats(e.horse, normalizeStats(e.horse, input.statCap)),
-  }));
+  const cpuPm = input.cpuStatPermille ?? 1000;
+  const scale = (h: RaceHorse): RaceHorse => {
+    const out = { ...h };
+    for (const k of STAT_KEYS) out[k] = Math.floor((h[k] * cpuPm) / 1000);
+    return out;
+  };
+  const entrants: Entrant[] = raw.map((e, slot) => {
+    const horse = fixed ? withStats(e.horse, fixed) : input.statCap === null ? e.horse : withStats(e.horse, normalizeStats(e.horse, input.statCap));
+    return { slot, ...e, horse: e.kind === 'cpu' && cpuPm !== 1000 && !fixed ? scale(horse) : horse };
+  });
   const config: RaceStartConfig = {
     v: 1, raceId: input.raceId, mode: input.mode, seed,
     track: input.ground ? { ...trackById(m, input.trackId), going: input.ground.going, night: input.ground.night } : trackById(m, input.trackId),

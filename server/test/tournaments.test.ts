@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  advanceCount, cancelTournament, computeStandings, heatResults, newTournament, planHeats, playerView, playerViewWithTicket, publicView, register, stepTournament,
+  advanceCount, cancelTournament, closingSoon, computeStandings, forgetRegistrant, heatResults, newTournament, planHeats, playerView, playerViewWithTicket, publicView, register, stepTournament,
   tournamentDeadLetters, tournamentDefSchema, retryPayout, unregister, HEAT_CREATE_LEAD_MS, PAYOUT_MAX_ATTEMPTS,
   type HeatOutcome, type Registrant, type TournamentDefInput, type TournamentPorts, type TournamentState,
 } from '../src/domain/tournaments.js';
@@ -314,5 +314,25 @@ describe('tournaments over HTTP (REQ-TOUR-001/002/009)', () => {
     await tournaments.adminCreate(defInput({ entry: { classIds: null, minRankedRaces: 3, styles: null } }), 'ops');
     const horseId = await withHorse(svc, repo, 'rookie');
     await expect(tournaments.register('rookie', 'cup_test', horseId)).rejects.toThrow(/ranked_races/);
+  });
+});
+
+describe('REQ-UXS-040 / REQ-UXS-012: deleted players and the closing nudge', () => {
+  it('a deleted player leaves an open registration, and is renamed once the bracket exists', () => {
+    const t = newTournament(def(), 'ops', NOW);
+    register(t, reg('a', 1500), okInfo, NOW);
+    register(t, reg('b', 1400), okInfo, NOW);
+    expect(forgetRegistrant(t, 'a', NOW, '退会したプレイヤー')).toBe('removed');
+    expect(t.registrants.a).toBeUndefined();
+    expect(forgetRegistrant(t, 'zz', NOW, 'x')).toBe('none');
+    expect(forgetRegistrant(t, 'b', CLOSE + 1, '退会したプレイヤー')).toBe('anonymized');
+    expect(t.registrants.b!.displayName).toBe('退会したプレイヤー');
+  });
+
+  it('closingSoon is true only inside the lead time before registration closes', () => {
+    const t = newTournament(def(), 'ops', NOW);
+    expect(closingSoon(t, NOW, 5 * 60_000)).toBe(false);
+    expect(closingSoon(t, NOW, 60 * 60_000)).toBe(true);
+    expect(closingSoon(t, CLOSE, 60 * 60_000)).toBe(false);
   });
 });

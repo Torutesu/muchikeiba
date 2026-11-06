@@ -26,6 +26,10 @@ export interface ScheduledDeps {
   leagueStep?(seasonId: string): Promise<{ status: string }>;
   /** REQ-TOUR-005: wake active tournaments (fallback for their own alarms); returns a short log. */
   tournamentsStep?(now: number): Promise<string[]>;
+  /** REQ-UXS-012: "registration closes soon" nudges for tournaments closing within the lead time. */
+  tournamentClosingStep?(now: number): Promise<string[]>;
+  /** REQ-UXS-040: drop anonymised records of deleted accounts past their legal retention. */
+  purgeRetained?(now: number): Promise<{ purged: number }>;
 }
 
 /** How many past seasons the cron keeps stepping until they report closed (a stalled one is not abandoned). */
@@ -74,10 +78,14 @@ export async function runScheduled(cron: string, now: number, deps: ScheduledDep
     if (events) await step('events', () => events(now));
     const tours = deps.tournamentsStep;
     if (tours) await step('tournaments', () => tours(now));
+    const closing = deps.tournamentClosingStep;
+    if (closing) await step('tournamentClosing', () => closing(now));
   } else if (cron === CRONS.noon) {
     await step('reminder', async () => `reminder:${(deps.seasonReminder ? await deps.seasonReminder(now) : null) ?? 'none'}`);
   } else if (cron === CRONS.daily) {
     await step('sweep', async () => `sweep:${(await deps.sweepReplays(now)).deleted}`);
+    const purge = deps.purgeRetained;
+    if (purge) await step('purgeRetained', async () => `purgeRetained:${(await purge(now)).purged}`);
   } else {
     done.push(`unknown:${cron}`);
   }

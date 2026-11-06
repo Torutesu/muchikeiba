@@ -11,13 +11,16 @@
 import { AppError } from './errors.js';
 import type { Master, Product, Reward, ShopOffersConfig } from './master.js';
 import type { PlayerState, PurchaseRecord } from './player.js';
-import { addJstDays, jstDateKey, jstMonthKey } from './time.js';
+import { addJstDays, gameDayKey, gameDaysUntil, jstMonthKey } from './time.js';
 import { clawbackFree, grantFree } from './wallet.js';
 import { levelOf, passPurchasesFor, seasonEndMs } from './pass.js';
+import { experimentsView } from './onboarding.js';
 
 export interface OfferRecord { triggeredAt?: number; reason?: string; viewedAt?: number }
-/** REQ-UXS-018: one 厩舎手当 purchase. Day 1 = `startDate` (JST); the last day is startDate + days − 1. */
-export interface AllowanceEntitlement { txId: string; productId: string; startDate: string; days: number; dailyFreeCoins: number; claimed: string[]; refunded?: boolean }
+/** REQ-UXS-018: one 厩舎手当 purchase. Day 1 = `startDate` (game day, gameDayKey); the last day is startDate + days − 1. */
+export interface AllowanceEntitlement { txId: string; productId: string; startDate: string; days: number; dailyFreeCoins: number; claimed: string[]; refunded?: boolean;
+  /** REQ-UXS-040: given up by an account deletion (the unclaimed days are never paid). */
+  forfeitedAt?: number }
 export interface ShopState { offers: Record<string, OfferRecord>; allowances: AllowanceEntitlement[] }
 /** REQ-UXS-021: a closed season's pass. `granted` = every level paid out (claimed or automatic). */
 export interface PassSeasonRecord {
@@ -118,16 +121,16 @@ export function shopProducts(m: Master) {
 // ------------------------------------------------------------------------------- daily pack (厩舎手当)
 
 const allowanceEnd = (a: AllowanceEntitlement) => addJstDays(a.startDate, a.days - 1);
-const live = (s: PlayerState) => (s.shop?.allowances ?? []).filter((a) => !a.refunded);
+const live = (s: PlayerState) => (s.shop?.allowances ?? []).filter((a) => !a.refunded && a.forfeitedAt === undefined);
 
 /** The entitlement running today, if any. */
 export function activeAllowance(s: PlayerState, now: number): AllowanceEntitlement | null {
-  const today = jstDateKey(now);
+  const today = gameDayKey(now);
   return live(s).find((a) => a.startDate <= today && today <= allowanceEnd(a)) ?? null;
 }
 /** Running or starting later (a second purchase that arrived while one was running). */
 export function pendingAllowance(s: PlayerState, now: number): AllowanceEntitlement | null {
-  const today = jstDateKey(now);
+  const today = gameDayKey(now);
   return live(s).find((a) => today <= allowanceEnd(a)) ?? null;
 }
 
@@ -138,25 +141,25 @@ export function pendingAllowance(s: PlayerState, now: number): AllowanceEntitlem
 export function grantAllowance(s: PlayerState, p: Product, txId: string, now: number) {
   const a = p.allowance!;
   const sh = ensureShop(s);
-  let start = jstDateKey(now);
+  let start = gameDayKey(now);
   const running = live(s).map(allowanceEnd).filter((e) => e >= start).sort();
   if (running.length) {
     start = addJstDays(running[running.length - 1]!, 1);
     (s.supportFlags ??= []).push(`allowance_overlap:${txId}`);
   }
   sh.allowances.push({ txId, productId: p.id, startDate: start, days: a.days, dailyFreeCoins: a.dailyFreeCoins, claimed: [] });
-  const today = jstDateKey(now);
+  const today = gameDayKey(now);
   // keep running/queued ones and the most recent ended ones
   const keep = sh.allowances.filter((x) => allowanceEnd(x) >= today);
   const ended = sh.allowances.filter((x) => allowanceEnd(x) < today).slice(-Math.max(0, ALLOWANCE_KEEP - keep.length));
   sh.allowances = [...ended, ...keep];
 }
 
-/** REQ-UXS-018: claim today's coins (once per JST day while the entitlement runs; missed days are not paid later). */
+/** REQ-UXS-018: claim today's coins (once per game day while the entitlement runs; missed days are not paid later). */
 export function claimAllowance(s: PlayerState, now: number) {
   const a = activeAllowance(s, now);
   if (!a) throw new AppError('NOT_ELIGIBLE', 'no daily pack is running today');
-  const today = jstDateKey(now);
+  const today = gameDayKey(now);
   if (a.claimed.includes(today)) throw new AppError('ALREADY_CLAIMED');
   a.claimed.push(today);
   grantFree(s, a.dailyFreeCoins, now, `daily pack ${a.productId} ${today}`, `allowance:${a.txId}:${today}`);
@@ -166,7 +169,7 @@ export function claimAllowance(s: PlayerState, now: number) {
 }
 
 export function allowanceView(s: PlayerState, now: number) {
-  const today = jstDateKey(now);
+  const today = gameDayKey(now);
   const a = activeAllowance(s, now);
   const next = live(s).filter((x) => x.startDate > today).sort((x, y) => (x.startDate < y.startDate ? -1 : 1))[0] ?? null;
   if (!a) return { active: false as const, claimedToday: false, queued: next ? { startDate: next.startDate, endDate: allowanceEnd(next) } : null };
@@ -176,6 +179,28 @@ export function allowanceView(s: PlayerState, now: number) {
     daysLeft: a.days - day + 1, dailyFreeCoins: a.dailyFreeCoins, claimedToday: a.claimed.includes(today), claimedDays: a.claimed.length,
     queued: next ? { startDate: next.startDate, endDate: allowanceEnd(next) } : null,
   };
+}
+
+/** Unclaimed days of every running or queued daily pack from today on (what an account deletion gives up). */
+export function allowanceRemaining(s: PlayerState, now: number): { days: number; freeCoins: number; txIds: string[] } {
+  const today = gameDayKey(now);
+  let days = 0, freeCoins = 0;
+  const txIds: string[] = [];
+  for (const a of live(s)) {
+    const end = allowanceEnd(a);
+    if (end < today) continue;
+    let n = 0;
+    for (let d = a.startDate > today ? a.startDate : today; d <= end; d = addJstDays(d, 1)) if (!a.claimed.includes(d)) n++;
+    days += n; freeCoins += n * a.dailyFreeCoins; txIds.push(a.txId);
+  }
+  return { days, freeCoins, txIds };
+}
+
+/** REQ-UXS-040: the account deletion gives up the running and queued daily packs (no more claims). */
+export function forfeitAllowances(s: PlayerState, now: number) {
+  const r = allowanceRemaining(s, now);
+  for (const a of s.shop?.allowances ?? []) if (r.txIds.includes(a.txId)) a.forfeitedAt = now;
+  return { days: r.days, freeCoins: r.freeCoins };
 }
 
 /** REQ-PUR-006: refund of a daily pack. The paid coins go with the purchase; claimed daily coins are taken back; no more claims. */
@@ -217,8 +242,18 @@ export function noteRaceForOffers(m: Master, s: PlayerState, place: number, now:
   if (!starter || everBought(s, starter.id)) return;
   const c = offersConfig(m);
   const sh = ensureShop(s);
-  if (place >= c.starterPlaceAtOrWorse) trigger(sh, starter.id, 'first_4th_or_worse', now);
-  else if (s.rating.rankedRaces >= c.starterAfterRankedRaces) trigger(sh, starter.id, `race${c.starterAfterRankedRaces}`, now);
+  const t = starterTriggers(m, s);
+  if (t.bottomHalf && place >= c.starterPlaceAtOrWorse) trigger(sh, starter.id, 'first_4th_or_worse', now);
+  else if (t.fifthRace && s.rating.rankedRaces >= c.starterAfterRankedRaces) trigger(sh, starter.id, `race${c.starterAfterRankedRaces}`, now);
+}
+
+/**
+ * Which T2 triggers apply: both (the earlier wins) unless the A/B key `starterOfferTrigger` (REQ-UXS-032,
+ * onboarding.ts) picks one for this player. Only the moment changes, never the price or the contents.
+ */
+export function starterTriggers(m: Master, s: PlayerState): { bottomHalf: boolean; fifthRace: boolean } {
+  const v = experimentsView(m, s.id).values.starterOfferTrigger;
+  return { bottomHalf: v !== 'fifth_race', fifthRace: v !== 'first_bottom_half' };
 }
 
 export interface OfferView {
@@ -242,12 +277,12 @@ export function shopOffers(m: Master, s: PlayerState, now: number) {
     offers.push({
       id, productId: p.id, touchpoint, placement: popup ? 'popup' : 'recommended', reason: r?.reason ?? null, triggeredAt: r?.triggeredAt ?? null,
       viewedAt: r?.viewedAt ?? null, showPopup: popup && r?.triggeredAt !== undefined && r.viewedAt === undefined,
-      endsAt, remainingDays: endsAt === null ? null : Math.max(0, Math.ceil((endsAt - now) / 86_400_000)),
+      endsAt, remainingDays: endsAt === null ? null : gameDaysUntil(endsAt, now),
     });
   };
   // T2 starter pack: popup once after the trigger, then in the recommended tab until bought
   for (const p of m.products.filter((x) => x.kind === 'starter' && !everBought(s, x.id))) {
-    if (!sh.offers[p.id]?.triggeredAt && s.rating.rankedRaces >= c.starterAfterRankedRaces) trigger(sh, p.id, `race${c.starterAfterRankedRaces}`, now);
+    if (!sh.offers[p.id]?.triggeredAt && starterTriggers(m, s).fifthRace && s.rating.rankedRaces >= c.starterAfterRankedRaces) trigger(sh, p.id, `race${c.starterAfterRankedRaces}`, now);
     const r = sh.offers[p.id];
     if (r?.triggeredAt !== undefined) add(p.id, p, 'T2', true, r);
   }

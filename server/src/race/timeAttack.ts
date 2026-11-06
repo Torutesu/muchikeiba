@@ -85,10 +85,18 @@ export class TimeAttackService {
         meta: { playerId: uid, displayName: prof.displayName, horseName, seasonId: rec.seasonId, trackId: rec.trackId, timeMs: rec.timeMs!, finishTick: rec.finishTick!, finishFrac: rec.finishFrac! },
         log,
       });
+      // REQ-UXS-012: friends whose time this run passed (they were ahead of my previous best, or I had none)
+      const friends = await this.p.player(uid).invoke('friendsState', uid).then((f) => f.ids).catch(() => [] as string[]);
+      const before = friends.length ? await this.p.board.entries(rec.seasonId, rec.trackId, [uid, ...friends]).catch(() => [] as TaEntry[]) : [];
+      const mineBefore = before.find((e) => e.playerId === uid);
       await this.p.board.upsert({
         playerId: uid, seasonId: rec.seasonId, trackId: rec.trackId, timeMs: rec.timeMs!, finishTick: rec.finishTick!, finishFrac: rec.finishFrac!,
         displayName: prof.displayName, titleId: prof.titleId, horseName, updatedAt: this.p.clock(),
       });
+      const mine = { finishTick: rec.finishTick!, finishFrac: rec.finishFrac! };
+      for (const f of beatenFriends(before.filter((e) => e.playerId !== uid), mineBefore ?? null, mine)) {
+        await this.p.player(f).invoke('nudgeTaBeaten', f, prof.displayName, rec.trackId).catch((e) => console.error('ta beaten nudge failed', f, e));
+      }
       return true;
     } catch (e) {
       console.error('time attack publish failed', uid, rec.sessionId, e);
@@ -123,4 +131,11 @@ export class TimeAttackService {
     if (!g) throw new AppError('NOT_FOUND', 'ghost');
     return g;
   }
+}
+
+const fasterThan = (a: { finishTick: number; finishFrac: number }, b: { finishTick: number; finishFrac: number }) => a.finishTick < b.finishTick || (a.finishTick === b.finishTick && a.finishFrac < b.finishFrac);
+
+/** REQ-UXS-012: friends this run overtook: faster than my old best (or I had none) and slower than my new one. */
+export function beatenFriends(friends: TaEntry[], oldMine: { finishTick: number; finishFrac: number } | null, newMine: { finishTick: number; finishFrac: number }): string[] {
+  return friends.filter((f) => fasterThan(newMine, f) && (!oldMine || fasterThan(f, oldMine))).map((f) => f.playerId);
 }

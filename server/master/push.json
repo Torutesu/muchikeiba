@@ -1,9 +1,9 @@
 {
-  "_comment": "プッシュ通知（REQ-PUSH-*）。文言はすべて日本語。{name} などはサーバーが差し込む。timeSensitive=true は静かな時間帯なら送らない（遅れて届くと意味がない）。それ以外は静かな時間帯の終わりまで遅らせる。",
+  "_comment": "プッシュ通知（REQ-PUSH-*）。1日の上限は既定2（REQ-UXS-012）。promotion_near・tournament_closing・ta_beaten は個人あての呼びかけ（docs/planning/06 §3.5）。文言はすべて日本語。{name} などはサーバーが差し込む。timeSensitive=true は静かな時間帯なら送らない（遅れて届くと意味がない）。それ以外は静かな時間帯の終わりまで遅らせる。",
   "defaults": {
     "categories": { "season": true, "friends": true, "invites": true, "events": true },
     "quietHours": { "startHour": 22, "endHour": 8 },
-    "dailyCap": 5
+    "dailyCap": 2
   },
   "maxDevices": 5,
   "maxOutbox": 20,
@@ -20,6 +20,9 @@
     "team_request": { "category": "friends", "title": "支部への加入申請", "body": "{name}さんが支部への加入を希望しています", "ttlSec": 86400, "timeSensitive": false },
     "team_approved": { "category": "friends", "title": "支部に加入しました", "body": "「{team}」への加入が承認されました", "ttlSec": 86400, "timeSensitive": false },
     "event_start": { "category": "events", "title": "イベント開催中", "body": "「{event}」が始まりました。上位を目指そう！", "ttlSec": 43200, "timeSensitive": false },
-    "tournament_heat_soon": { "category": "events", "title": "まもなく{round}", "body": "「{tournament}」の{round}が{minutes}分後に始まります", "ttlSec": 600, "timeSensitive": true }
+    "tournament_heat_soon": { "category": "events", "title": "まもなく{round}", "body": "「{tournament}」の{round}が{minutes}分後に始まります", "ttlSec": 600, "timeSensitive": true },
+    "promotion_near": { "category": "season", "title": "昇級まであと1勝", "body": "昇級ラインまであと{points}pt。1着ひとつで届きます", "ttlSec": 43200, "timeSensitive": false },
+    "tournament_closing": { "category": "events", "title": "大会の受付は残り{minutes}分", "body": "「{tournament}」のエントリー受付がまもなく締め切られます", "ttlSec": 3600, "timeSensitive": true },
+    "ta_beaten": { "category": "friends", "title": "記録を抜かれました", "body": "{name}さんがタイムアタックであなたの記録を抜きました。取り返しに行こう", "ttlSec": 86400, "timeSensitive": false }
   }
 }

@@ -3,7 +3,7 @@ import { STAT_KEYS, type HorseTemplate, type Master, type Rarity, type Sex, type
 import type { HorseInstance, PlayerState } from './player.js';
 import type { GoingAptitude } from './schemas.js';
 import { randInt, randRange, type Rng } from './rng.js';
-import { jstDateKey } from './time.js';
+import { gameDayKey } from './time.js';
 import { consumeItem } from './items.js';
 import { appearanceOf, deriveAppearance, inheritAppearance, templateAppearance } from './visuals.js';
 
@@ -273,7 +273,7 @@ export function breedingPreviewWithAllowance(m: Master, s: PlayerState, sireId: 
 
 /** REQ-ITEM-003: today's breeding allowance, including extra breedings bought with breeding material. */
 export function breedingAllowance(m: Master, s: PlayerState, now: number) {
-  const today = jstDateKey(now);
+  const today = gameDayKey(now);
   const used = s.breeding.date === today ? s.breeding.count : 0;
   const bm = m.items?.breedingMaterial;
   const extraUsed = s.breedingExtra?.date === today ? s.breedingExtra.count : 0;
@@ -300,7 +300,7 @@ export function breed(m: Master, s: PlayerState, sireId: string, damId: string, 
  */
 export function breedWith(m: Master, s: PlayerState, sire: HorseInstance, dam: HorseInstance, grand: GrandTrait[], rng: Rng, now: number,
   opts: { useMaterial?: boolean; ref: string; stud?: { ownerId: string; horseId: string; sireName: string | null; damName: string | null } }) {
-  const today = jstDateKey(now);
+  const today = gameDayKey(now);
   if (s.breeding.date !== today) s.breeding = { date: today, count: 0 };
   let usedMaterial = false;
   if (s.breeding.count >= m.progression.breedingPerDay) {

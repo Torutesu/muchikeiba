@@ -85,16 +85,36 @@ export async function hashPlayerId(salt: string, playerId: string): Promise<stri
 // ---------------------------------------------------------------- client events (REQ-KPI-003)
 
 const str = (max: number) => z.string().min(1).max(max).regex(/^[\w\-.:]+$/);
+
+/**
+ * REQ-UXS-030: the fixed FTUE step list (docs/planning/06 §8.1). The index is the step's funnel position; a
+ * client may send it, but it must match. `value` is an optional number (race1_win: retries before the win).
+ */
+export const TUTORIAL_STEPS = ['consent', 'race1_start', 'race1_whip', 'race1_win', 'named', 'gacha_done', 'race2_done', 'home'] as const;
+export type TutorialStep = typeof TUTORIAL_STEPS[number];
+export const tutorialStepIndex = (step: TutorialStep) => TUTORIAL_STEPS.indexOf(step) + 1;
+const tutorialStepProps = z.object({
+  step: z.enum(TUTORIAL_STEPS), index: z.number().int().min(0).max(100).optional(), value: z.number().int().min(0).max(1_000_000).optional(),
+}).strict().refine((p) => p.index === undefined || p.index === tutorialStepIndex(p.step), { message: 'index does not match the step', path: ['index'] });
+/** §5.1 offer triggers T1..T8. */
+export const OFFER_TRIGGERS = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8'] as const;
+const offerProps = z.object({ offerId: str(64), trigger: z.enum(OFFER_TRIGGERS) }).strict();
 /** Events only the client can observe. Server-known events (purchase, gacha, race results…) are not accepted from clients. */
 export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('session_start'), at: z.number().int(), props: z.object({}).strict().optional() }),
   z.object({ name: z.literal('session_end'), at: z.number().int(), props: z.object({ durationMs: z.number().int().min(0).max(86_400_000) }) }),
-  z.object({ name: z.literal('tutorial_step'), at: z.number().int(), props: z.object({ step: str(32), index: z.number().int().min(0).max(100) }) }),
+  z.object({ name: z.literal('tutorial_step'), at: z.number().int(), props: tutorialStepProps }),
   z.object({ name: z.literal('screen_view'), at: z.number().int(), props: z.object({ screen: str(32) }) }),
   z.object({ name: z.literal('race_start'), at: z.number().int(), props: z.object({ mode: z.enum(['ranked', 'friend', 'tutorial', 'offline', 'time_attack']) }) }),
   z.object({ name: z.literal('purchase_flow'), at: z.number().int(), props: z.object({ stage: z.enum(['open', 'cancel', 'fail', 'store_success']), productId: str(64) }) }),
   z.object({ name: z.literal('push_open'), at: z.number().int(), props: z.object({ templateId: str(32) }) }),
   z.object({ name: z.literal('push_permission'), at: z.number().int(), props: z.object({ granted: z.boolean() }) }),
+  // REQ-UXS-030
+  z.object({ name: z.literal('feature_unlock'), at: z.number().int(), props: z.object({ feature: str(32) }).strict() }),
+  z.object({ name: z.literal('offer_view'), at: z.number().int(), props: offerProps }),
+  z.object({ name: z.literal('offer_click'), at: z.number().int(), props: offerProps }),
+  z.object({ name: z.literal('race_quit'), at: z.number().int(), props: z.object({ mode: z.enum(['ranked', 'friend', 'tutorial', 'offline', 'time_attack', 'event', 'tournament']), remainingM: z.number().int().min(0).max(10_000) }).strict() }),
+  z.object({ name: z.literal('account_link'), at: z.number().int(), props: z.object({ provider: z.enum(['apple', 'google']) }).strict() }),
 ]);
 export type ClientEvent = z.infer<typeof clientEventSchema>;
 
@@ -109,19 +129,25 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
   switch (e.name) {
     case 'session_start': return { name: e.name };
     case 'session_end': return { name: e.name, durationMs: e.props.durationMs };
-    case 'tutorial_step': return { name: e.name, s1: e.props.step, value: e.props.index };
+    // index stays in double9 (the column layout never changes); the optional value goes to double5 (count)
+    case 'tutorial_step': return { name: e.name, s1: e.props.step, value: tutorialStepIndex(e.props.step), ...(e.props.value !== undefined ? { count: e.props.value } : {}) };
     case 'screen_view': return { name: e.name, s1: e.props.screen };
     case 'race_start': return { name: 'client_race_start', s1: e.props.mode };
     case 'purchase_flow': return { name: e.name, s1: e.props.stage, s2: e.props.productId };
     case 'push_open': return { name: e.name, s1: e.props.templateId };
     case 'push_permission': return { name: e.name, value: e.props.granted ? 1 : 0 };
+    case 'feature_unlock': return { name: e.name, s1: e.props.feature };
+    case 'offer_view': case 'offer_click': return { name: e.name, s1: e.props.offerId, s2: e.props.trigger };
+    case 'race_quit': return { name: e.name, s1: e.props.mode, value: e.props.remainingM };
+    case 'account_link': return { name: e.name, s1: e.props.provider };
   }
 }
 
 export interface KpiLimits { batchesPerMinute: number; eventsPerDay: number; maxPastMs: number; maxFutureMs: number }
 export const DEFAULT_KPI_LIMITS: KpiLimits = { batchesPerMinute: 30, eventsPerDay: 2000, maxPastMs: 7 * DAY, maxFutureMs: 5 * 60_000 };
 
-export interface KpiState { firstOpenSent: boolean; minute: number; batches: number; day: string; events: number }
+/** abSent: experiments whose ab_assign row was emitted (REQ-UXS-032). */
+export interface KpiState { firstOpenSent: boolean; minute: number; batches: number; day: string; events: number; abSent?: string[] }
 export function ensureKpi(s: PlayerState): KpiState {
   const x = s as PlayerState & { kpi?: KpiState };
   x.kpi ??= { firstOpenSent: false, minute: 0, batches: 0, day: '', events: 0 };

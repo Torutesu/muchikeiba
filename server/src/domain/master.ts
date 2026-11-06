@@ -35,12 +35,23 @@ export interface HorseTemplate {
    * and events that reward it, inside this window; horses already owned stay owned after it ends.
    */
   seasonal?: SeasonalInfo;
+  /**
+   * REQ-UXS-002/013: a horse handed out by the game itself (the first partner, the beginner broodmare). Never in a
+   * gacha pool, a ticket table or a CPU field (validated), so it cannot be bought or drawn.
+   */
+  giftOnly?: boolean;
 }
 export interface SeasonalInfo { seasonId: string; label: string; startAtMs: number; endAtMs: number }
 export interface ItemQty { itemId: string; qty: number }
 import type { LeagueConfig } from './league.js';
 /** `horse`: a template id granted as a horse (event rewards only; REQ-BREED-022). */
-export interface Reward { freeCoins?: number; items?: ItemQty[]; horse?: string }
+export interface Reward {
+  freeCoins?: number; items?: ItemQty[]; horse?: string;
+  /** REQ-UXS-013: a female template granted as a broodmare (retired, ready to breed). */
+  broodmare?: string;
+  /** REQ-UXS-016: season pass experience (season missions only). */
+  passXp?: number;
+}
 /**
  * Store product (master/products.json). REQ-PUR-*, REQ-UXS-017..022.
  * - `storeType`: how the product is registered in the stores. `consumable` (coins, the daily pack, the
@@ -61,7 +72,7 @@ export interface Product {
   storeType?: StoreType;
   /** Shop tab (REQ-UXS-022 / spec 06 §6.8). */
   tab?: 'recommended' | 'coins' | 'pass';
-  /** REQ-UXS-018: daily free coins for `days` JST days from the purchase day (claimed daily). */
+  /** REQ-UXS-018: daily free coins for `days` game days from the purchase day (claimed daily). */
   allowance?: { days: number; dailyFreeCoins: number };
   /** REQ-UXS-019: season pass extras (Pass+: levels added at purchase). */
   pass?: { levels: number };
@@ -79,7 +90,9 @@ export interface ShopDisplay {
 /** REQ-ITEM-001..003: what tickets and materials do. */
 export type TicketDef =
   | { kind: 'single'; name: string; banners: string[] }
-  | { kind: 'srPlus'; name: string; rates: Partial<Record<Rarity, number>> };
+  | { kind: 'srPlus'; name: string; rates: Partial<Record<Rarity, number>> }
+  /** REQ-UXS-015: one 10-pull (with the slot-10 SR+ guarantee) on an eligible banner, from that banner's own tables. */
+  | { kind: 'ten'; name: string; banners: string[] };
 /** REQ-ITEM-004..007: cosmetics sold for coins (no stat effect). */
 /** `notForSale`: comes only with a product or reward (price 0; REQ-UXS-019 Pass+ tack). */
 export type CosmeticDef =
@@ -131,8 +144,19 @@ export interface Progression {
   stud?: StudConfig;
   /** REQ-BREED-017: atavism (隔世遺伝) chance per breeding, in permille. Absent = 0. */
   atavismPermille?: number;
-  /** REQ-UXS-010: free coins for the 1st, 2nd, 3rd win (1st place) of the JST day in these modes. Absent = none. */
+  /** REQ-UXS-010: free coins for the 1st, 2nd, 3rd win (1st place) of the game day in these modes. Absent = none. */
   firstWinBonus?: { modes: string[]; freeCoinsByWin: number[] };
+  /** REQ-UXS-*: onboarding, consent, unlocks, beginner/season missions, experiments, account deletion (onboarding.ts). */
+  consent?: import('./onboarding.js').ConsentConfig;
+  partner?: import('./onboarding.js').PartnerConfig;
+  beginnerMatch?: import('./onboarding.js').BeginnerMatchConfig;
+  beginnerLoginBonus?: ({ day: number } & Reward)[];
+  unlocks?: import('./onboarding.js').UnlockDef[];
+  beginnerMissions?: import('./onboarding.js').BeginnerMissionDef[];
+  seasonMissions?: import('./onboarding.js').SeasonMissionDef[];
+  experiments?: import('./onboarding.js').ExperimentDef[];
+  accountDeletion?: import('./accountDeletion.js').AccountDeletionConfig;
+  nudges?: import('./nudges.js').NudgeConfig;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */
@@ -275,7 +299,7 @@ export function expandPool(templates: HorseTemplate[], rates: Partial<Record<Rar
   for (const r of RARITY_ORDER) {
     const total = rates[r] ?? 0;
     if (total === 0) continue;
-    const ids = templates.filter((t) => t.rarity === r && (!t.seasonal || seasonal.includes(t.id))).map((t) => t.id);
+    const ids = templates.filter((t) => t.rarity === r && !t.giftOnly && (!t.seasonal || seasonal.includes(t.id))).map((t) => t.id);
     if (ids.length === 0) throw new AppError('CONFIG_INVALID', `no templates of rarity ${r}`);
     if (pickup && ids.includes(pickup.templateId)) {
       out.push({ templateId: pickup.templateId, ppm: pickup.ppm });

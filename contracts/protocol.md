@@ -201,8 +201,44 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 - `StableSnapshot`（訪問者が見る写し。財布・所持品・購入は含まない）：`{ v:1, playerId, displayName, titleId, classId, silks, name, theme:{id,name,key}, slots:({itemId,name,key}|null)[]（テーマの枠数ぶん）, horses:[{horseId,name,rarity,style,appearance,bondLevel}], autoHorses, trophies:{titleIds[],races,wins,top3,tournamentWins,tournamentPodiums}, likes, updatedAt }`。`name` が null なら「<displayName>の厩舎」と表示する。`horses` は選んだ現役馬、選んでいなければ現役馬の上位（`autoHorses: true`）。
 - `StableSummary`：`{ playerId, displayName, titleId, name, themeKey, likes, decorCount, horseCount, updatedAt }`。
 - 保存の検証：テーマが存在し解放済み（`NOT_ELIGIBLE`）、`slots` はテーマの枠数以下（`BAD_REQUEST`）、各飾りは厩舎の飾り（`decor`）で所持済み・重複なし（REQ-ITEM-006 と同じ：所持なし `NOT_ELIGIBLE`、種類違い・重複 `BAD_REQUEST`、不明 `NOT_FOUND`）、`featuredHorseIds` は `featuredMax` 以下・重複なし・自分の現役馬（`HORSE_NOT_FOUND` / `HORSE_NOT_ACTIVE`）、表札は表示名と同じ規則（`INVALID_NAME` / `NG_NAME`、1〜`nameMaxChars` 字）。利用停止中は `403 BANNED`。
-- いいね：自分には押せない（`NOT_ELIGIBLE`）、同じ相手には1日 `likesPerTargetPerDay` 回（`409 ALREADY_LIKED`）、1日 `likesPerDay` 回まで（`409 LIKE_LIMIT`）。日付は JST。押した側・押された側とも**コインは一切付かない**（累計いいねで解放されるのはテーマだけ）。同じ冪等キーの再送は1回分しか数えない。途中で失敗した場合も同じキーで再送すれば完了する。
+- いいね：自分には押せない（`NOT_ELIGIBLE`）、同じ相手には1日 `likesPerTargetPerDay` 回（`409 ALREADY_LIKED`）、1日 `likesPerDay` 回まで（`409 LIKE_LIMIT`）。日付はゲーム日（`gameDayKey`、切り替えは `DAY_ROLLOVER_HOUR_JST`、§8.7・REQ-UXS-011）。押した側・押された側とも**コインは一切付かない**（累計いいねで解放されるのはテーマだけ）。同じ冪等キーの再送は1回分しか数えない。途中で失敗した場合も同じキーで再送すれば完了する。
 - C# の `ApiErrorCode`：`LikeLimit` / `AlreadyLiked`。
+- アカウント削除（§8.7）では公開の写し・レイアウト・いいねの状態を消す。削除済みのプレイヤーの厩舎は `404 NOT_FOUND`、その人が過去に押したいいねの数はそのまま残る（個人と結び付く情報は持たない）。
+
+## 8.7 オンボーディング・アカウント削除（REQ-UXS-*、docs/planning/06）
+エラーは全て `{"error":{"code","message"}}`。下の新しいコードは全て HTTP 409。
+
+**`GET /v1/player` と `POST /v1/player/bootstrap`** に次の項目が加わる（既存の項目は変わらない）：
+```json
+{
+  "consent": { "termsVersion": "2026-11-01" | null, "privacyVersion": "2026-11-01" | null, "consentedAt": 1762398000000 | null,
+               "current": { "termsVersion": "2026-11-01", "privacyVersion": "2026-11-01" }, "required": true },
+  "unlocks": { "day": 1, "races": 0, "rankedRaces": 0, "breedings": 0,
+               "features": [ { "key": "missions", "unlocked": false, "by": null, "races": 2, "days": null, "rankedRaces": null, "breedings": null } ] },
+  "experiments": { "assignments": { "ab_home_button": "b" }, "values": { "homePrimaryButton": "ranked_promotion" } },
+  "deletion": { "status": "none" | "scheduled", "requestedAt": null, "deleteAt": null },
+  "flags": { "tutorialGachaUsed": false, "partnerHorseId": "h3" }
+}
+```
+- `unlocks.features[].by`：開放した条件（`"always"` / `"races"` / `"days"` / `"rankedRaces"` / `"breedings"`）、未開放は null。条件は「どれか1つ」を満たせば開く（§4.3）。**表示だけの制御**で、未開放の機能のAPIもそのまま使える。`day` はインストール日を1とするゲーム日（日付の切り替えは `DAY_ROLLOVER_HOUR_JST`、REQ-UXS-011）。キーは `race, partner, scout, stable, missions, login_bonus, shop, season_pass, bond, season, breeding, friends, friend_rooms, teams, spectate, time_attack, events, tournaments, my_stable, stud`。
+- `experiments.values` のキーは `tutorialDistanceM`（整数）、`firstRankedTrackId`（コースID or null、サーバーが初めてのランク戦で使う）、`pushPermissionTiming`（`race2_top3`|`day2_launch`）、`starterOfferTrigger`（`first_bottom_half`|`fifth_race`）、`homePrimaryButton`（`race`|`ranked_promotion`）、`firstWinBonus`（bool）だけ。価格・中身はA/Bにしない。
+
+| メソッド・パス | 本文 | 応答 | エラー |
+|---|---|---|---|
+| `POST /v1/player/consent` | `{ "termsVersion", "privacyVersion" }`（1〜32文字） | 上の `consent` と同じ形（`required: false`） | `CONSENT_VERSION_MISMATCH`（今の版でない：`GET /v1/player` の `consent.current` を取り直す）、`BAD_REQUEST` |
+| `POST /v1/player/partner`（`Idempotency-Key` 必須） | `{ "name": "アイボウ" }` | `{ "horse": Horse }`（`templateId: "t_partner"`、`named: true`） | `PARTNER_ALREADY_GRANTED`（2回目。同じキーの再送は同じ応答）、`INVALID_NAME`、`NG_NAME`、`IDEMPOTENCY_KEY_REQUIRED` |
+| `DELETE /v1/player`（1回目：本文なし or `{}`） | — | `{ "status": "confirm_required", "confirmToken": "del_…", "expiresAt", "cancelWindowDays": 14, "forfeit": { "paidCoins", "freeCoins", "horses", "items", "allowanceDays", "seasonPass" }, "notice": "…" }` | — |
+| `DELETE /v1/player`（2回目） | `{ "confirmToken": "del_…" }`（または `?confirmToken=`） | `{ "status": "scheduled", "requestedAt", "deleteAt" }`（予定済みなら何度でも同じ） | `DELETION_CONFIRM_INVALID`（違う・期限切れ（10分）：1回目からやり直す）、`BAD_REQUEST` |
+| `POST /v1/player/deletion/cancel` | — | `{ "status": "none", "requestedAt": null, "deleteAt": null }` | `NOT_FOUND`（予定がない）、`CONFLICT`（削除が始まっている） |
+| `GET /v1/missions` | — | `{ "missions": [デイリー（従来）], "beginner": { "completed", "steps": [ { "id", "step", "kind", "target", "progress", "reward", "claimed", "locked", "claimable" } ] }, "season": { "seasonId", "missions": [ { "id", "kind", "target" (null＝S級で対象なし), "progress", "reward": { "passXp" }, "claimed", "available", "claimable" } ] }, "firstWinBonus": { "modes", "byWin", "winsToday", "remaining", "next" } }`（`firstWinBonus` は §13・REQ-UXS-010） | — |
+| `POST /v1/missions/:id/claim` | — | 報酬（`Reward`）。デイリー・初心者・シーズンのIDは一意 | 初心者ミッションは前の段階が未受け取りなら `NOT_ELIGIBLE`。他は従来どおり |
+| `POST /v1/rewards/login-bonus` | — | `{ "day", "track": "beginner" | "normal", "reward", "beginnerDaysLeft" }` | 従来どおり |
+| `POST /v1/items/tickets/gacha_ticket_10/use` | `{ "bannerId" }` | 従来の形＋ `"results": [10件]`（`result` は1件目） | 従来どおり |
+| `POST /v1/shop/purchase-intent` | 従来どおり | 従来どおり | 削除予定中は `DELETION_PENDING`（§13 の全商品：コイン・スターター・シーズンパス／パス＋・厩舎手当・昇級記念パック。取り消せば買える。ストアで支払い済みのレシートは付与し、サポート用の印を付ける） |
+| `GET /v1/shop/offers`・`POST /v1/shop/offers/:offerId/view`・`POST /v1/shop/allowance/claim`（§13） | 従来どおり | 従来どおり | 削除予定中は `DELETION_PENDING`（オファーを出さない・手当を受け取らない。取り消せば戻る） |
+
+- 削除の流れ：予定時刻にプレイヤーのDurable Objectのアラームが、フレンド（相手側の一覧・申請）→ 支部（リーダーなら幹部→古参の順に譲ってから脱退、申請の取り消し）→ ディレクトリ（フレンドコード・公開プロフィール・種牡馬の登録）→ マイ厩舎の公開の写し（あれば）→ ランキング（今シーズンは削除、過去シーズンは名前を「退会したプレイヤー」に）とゴースト → イベントの順位表 → 大会（受付中は登録取り消し、以降は名前だけ匿名化）→ 残高の放棄（有償・無償コインに加え、厩舎手当の残りと予約分、シーズンパスの状態）と匿名の記録の作成 → 記録の保存（AccountingDO、ランダムID、法定の保存期間）→ プレイヤーの全データ削除、の順に進める。失敗したら続きから再試行（1分・10分・1時間・以後6時間ごと）。
+- クライアントイベント（`POST /v1/analytics/events`）：`tutorial_step` の `step` は `consent, race1_start, race1_whip, race1_win, named, gacha_done, race2_done, home` だけ。`index` は省略可（送るならこの順の番号）、任意の `value`（整数、`race1_win` ではやり直し回数）。追加：`feature_unlock {feature}`、`offer_view` / `offer_click {offerId, trigger: T1..T8}`、`race_quit {mode, remainingM}`、`account_link {provider: apple|google}`。
 
 ## 9. ゴールデンファイル（`contracts/golden/`）
 - `race-*.json`：`{ "log": リプレイログ, "expected": 検証APIの出力 }`。C#側が生成し、C#テストで再計算一致を、TSテストでスキーマ適合を確認する。
@@ -232,7 +268,7 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 - **チュートリアル**（端末内、400mの直線で全部がスパート区間）は `staminaDistanceScalePermille` と `spurtDistanceScalePermille` を 0 にして走る（1.1.0 と同じ量・長さ）。
 
 ## 13. ショップ・課金体験の API（REQ-UXS-010/017〜022、docs/planning/06 §5・§6.8・§6.9）
-表示の文言・数量・期間は全てサーバーが作る。クライアントは組み立てない（「2倍」などの倍率表現は使わない。初回購入ボーナスは「無償コイン◯枚」）。時刻は ms（UTC エポック）、日付は JST の `YYYY-MM-DD`、シーズンは JST の暦月 `YYYY-MM`。**新しいエラーコードは無い**（既存のコードの意味を下に追記）。
+表示の文言・数量・期間は全てサーバーが作る。クライアントは組み立てない（「2倍」などの倍率表現は使わない。初回購入ボーナスは「無償コイン◯枚」）。時刻は ms（UTC エポック）、日付はゲーム日の `YYYY-MM-DD`（`gameDayKey`、切り替えは `DAY_ROLLOVER_HOUR_JST`、§8.7・REQ-UXS-011。既定 0:00 JST なので JST の日付と同じ）、残り日数（`remainingDays`）もゲーム日で数える。シーズンは JST の暦月 `YYYY-MM`（暦のまま）。**このセクションで新しいエラーコードは無い**（既存のコードの意味を下に追記。アカウント削除の予約中は §8.7 の `DELETION_PENDING`）。
 
 ### 13.1 `GET /v1/shop/products`（認証なし、REQ-UXS-022）
 従来のフィールド（`id, kind, priceYen, paidCoins, once?, items?`）はそのまま。追加は表示用：

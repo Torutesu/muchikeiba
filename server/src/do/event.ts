@@ -6,6 +6,7 @@ import { newRolloverState, rolloverStep, type RolloverState } from '../domain/le
 import type { EventDef } from '../domain/master.js';
 import { unwrap, wrap, type Envelope } from './rpc.js';
 import { DirtyTracker } from '../domain/dirty.js';
+import { DELETED_PLAYER_NAME } from '../domain/accountDeletion.js';
 import { dismissRolloverItem, retryRolloverItem, rolloverDeadLetters, type DeadLetterItem, type RetryOutcome, type RolloverWithLog } from '../ops/deadLetter.js';
 import { newlyDead, reportDeadLetters } from './deadLetters.js';
 
@@ -56,6 +57,17 @@ export class EventDO extends DurableObject<Env> {
            display_name = excluded.display_name, updated_at = excluded.updated_at WHERE excluded.updated_at >= entries.updated_at`,
         e.playerId, e.points, e.races, e.wins, e.displayName, e.updatedAt,
       );
+      this.dirty.mark();
+      return true;
+    });
+  }
+
+  /** REQ-UXS-040: account deletion — the player's board row is removed once rewards are not in progress, else renamed. */
+  async forget(playerId: string): Promise<Envelope<boolean>> {
+    return wrap(() => {
+      const st = this.kvGet<RolloverState>('close');
+      if (st && st.status !== 'open') this.sql.exec('UPDATE entries SET display_name = ? WHERE player_id = ?', DELETED_PLAYER_NAME, playerId);
+      else { this.sql.exec('DELETE FROM entries WHERE player_id = ?', playerId); this.sql.exec('DELETE FROM ranks WHERE player_id = ?', playerId); }
       this.dirty.mark();
       return true;
     });

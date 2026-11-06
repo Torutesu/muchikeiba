@@ -7,7 +7,7 @@
  *   DirectoryDO (like public profiles, REQ-SOCIAL-004, and stud listings). Visiting never touches the
  *   owner's object. The snapshot is re-derived after every transaction of the owner (PlayerService.tx →
  *   onStable), so renames, support name resets, bans, retired horses and banned silks reach it.
- * - Likes are capped per JST day (likesPerDay) and per target per day (likesPerTargetPerDay), cannot be
+ * - Likes are capped per game day (likesPerDay) and per target per day (likesPerTargetPerDay), cannot be
  *   given to yourself, and NEVER pay coins to either side (docs/planning/06 §5: RMT / coin funnelling is
  *   ruled out). Cumulative likes only unlock looks (themes). Remote config cannot exceed STABLE_HARD_LIMITS.
  * - A like spans two objects: the liker's step (cap check + idempotency key) produces a deterministic
@@ -21,7 +21,7 @@ import { moderationOf, type HorseInstance, type PlayerState } from './player.js'
 import { foldForCompare } from './horses.js';
 import { horseBondLevel } from './bond.js';
 import { appearanceOf, assetKeys, effectiveSilks, type Appearance, type Silks } from './visuals.js';
-import { jstDateKey } from './time.js';
+import { gameDayKey } from './time.js';
 import type { KpiEvent } from './kpi.js';
 import stableJson from '../../master/stable.json';
 
@@ -192,6 +192,20 @@ export function resetStableName(s: PlayerState) {
   return { before, after: null };
 }
 
+/**
+ * REQ-UXS-040: account deletion. Drops the layout and every like record of the deleting player (the likes it
+ * received, today's per-liker counters and the likeIds that name other players). The likes it gave stay in the
+ * other stables' totals as plain counts. While a deletion runs the stable is never published again
+ * (stableSnapshot is null) and arriving likes are not counted.
+ */
+export function forgetStable(s: PlayerState) {
+  const x = s as PlayerState & { stable?: StableState };
+  const had = !!x.stable?.layout;
+  delete x.stable;
+  return { removed: had };
+}
+const deleting = (s: PlayerState) => s.deletion?.status === 'deleting';
+
 /** Removes the layout (the public copy follows through onStable). Likes counters stay with the account. */
 export function clearStable(s: PlayerState) {
   const st = ensureStable(s);
@@ -239,7 +253,7 @@ function effectiveTheme(c: StableConfig, s: PlayerState, id: string): StableThem
 export function stableSnapshot(m: Master, s: PlayerState, now: number): StableSnapshot | null {
   const st = peek(s);
   if (!st?.layout) return null;
-  if (moderationOf(s, now) === 'banned') return null;
+  if (moderationOf(s, now) === 'banned' || deleting(s)) return null;
   const c = stableConfig(m);
   const L = st.layout;
   const theme = effectiveTheme(c, s, L.theme);
@@ -295,7 +309,7 @@ export function stableView(m: Master, s: PlayerState, now: number) {
     theme: def.id, name: null, featuredHorseIds: [], updatedAt: null,
     slots: (s.equipment?.decor ?? []).filter((id): id is string => !!id && !!decorDef(m, id) && ownsItem(s, id)).slice(0, def.slots),
   };
-  const given = rolledGiven(st, jstDateKey(now));
+  const given = rolledGiven(st, gameDayKey(now));
   return {
     saved: !!st?.layout,
     layout,
@@ -317,7 +331,7 @@ export interface ViewerStatus { relation: StableRelation; likedToday: number; li
 export function viewerStatus(m: Master, s: PlayerState, target: string, now: number): ViewerStatus {
   const c = stableConfig(m);
   const relation: StableRelation = target === s.id ? 'self' : s.friends.ids.includes(target) ? 'friend' : 'other';
-  const g = rolledGiven(peek(s), jstDateKey(now));
+  const g = rolledGiven(peek(s), gameDayKey(now));
   const likedToday = g.to[target] ?? 0;
   const left = Math.max(0, c.likesPerDay - g.count);
   return { relation, likedToday, likesLeftToday: left, canLike: relation !== 'self' && left > 0 && likedToday < c.likesPerTargetPerDay && moderationOf(s, now) !== 'banned' };
@@ -333,7 +347,7 @@ export function stableLikeGive(m: Master, s: PlayerState, target: string, now: n
   if (moderationOf(s, now) === 'banned') throw new AppError('BANNED', 'likes are disabled for this account');
   const c = stableConfig(m);
   const st = ensureStable(s);
-  const day = jstDateKey(now);
+  const day = gameDayKey(now);
   st.given = rolledGiven(st, day);
   if ((st.given.to[target] ?? 0) >= c.likesPerTargetPerDay) throw new AppError('ALREADY_LIKED', 'you already liked this stable today');
   if (st.given.count >= c.likesPerDay) throw new AppError('LIKE_LIMIT', `${c.likesPerDay} likes per day`);
@@ -348,9 +362,10 @@ export function stableLikeGive(m: Master, s: PlayerState, target: string, now: n
 /** REQ-STABLE-005 target step: counts each likeId once and at most likesPerTargetPerDay per liker per day. */
 export function stableLikeReceive(m: Master, s: PlayerState, from: string, likeId: string, now: number) {
   const c = stableConfig(m);
+  if (deleting(s)) return { counted: false, likes: peek(s)?.likes ?? 0 }; // REQ-UXS-040: the account is going away
   const st = ensureStable(s);
   if (from === s.id || st.recv.ids.includes(likeId)) return { counted: false, likes: st.likes };
-  const day = likeId.split(':').slice(-2, -1)[0] ?? jstDateKey(now);
+  const day = likeId.split(':').slice(-2, -1)[0] ?? gameDayKey(now);
   if (st.recv.day !== day) st.recv = { day, from: {}, ids: st.recv.ids };
   st.recv.ids.push(likeId);
   if (st.recv.ids.length > LIKE_IDS_KEEP) st.recv.ids.splice(0, st.recv.ids.length - LIKE_IDS_KEEP);
@@ -444,4 +459,18 @@ export class StableService {
     await this.dir.remove(playerId);
     return { removed: true };
   }
+}
+
+/**
+ * REQ-UXS-040: the account deletion's `stable` port. `forget` clears the layout and like records in the
+ * deleting player's own object (PlayerService.stableForget), then StableService.removeStable drops the
+ * visitors' copy. Both are idempotent, so a resumed deletion can run it again.
+ */
+export function stableDeletionPort(forget: (uid: string) => Promise<unknown>, service: Pick<StableService, 'removeStable'>) {
+  return {
+    async removeStable(uid: string) {
+      await forget(uid);
+      await service.removeStable(uid);
+    },
+  };
 }

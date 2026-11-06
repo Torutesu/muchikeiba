@@ -1,5 +1,5 @@
 {
-  "_note": "全て架空の馬名。リリース前に実在の登録馬名との重複チェックを行うこと。sireName/damName は血統表用の架空の親名。",
+  "_note": "全て架空の馬名。giftOnly の馬（t_partner＝チュートリアルで乗った最初の相棒、t_broodmare＝初心者ログボ2日目の繁殖牝馬）はガチャ・券・CPUに出ない（REQ-UXS-002/013）。リリース前に実在の登録馬名との重複チェックを行うこと。sireName/damName は血統表用の架空の親名。",
   "templates": [
     { "id": "t_akatsuki", "name": "シンセイアカツキ", "rarity": "SSR", "sex": "male", "style": "sashi", "distMinM": 1600, "distMaxM": 2400, "surface": "turf", "line": "akatsuki", "sireName": "アカツキオー", "damName": "ハツユキヒメ", "stats": { "speed": 820, "stamina": 700, "burst": 900, "guts": 650, "temper": 520 } },
     { "id": "t_ginga", "name": "ギンガノカナタ", "rarity": "SSR", "sex": "male", "style": "senko", "distMinM": 1800, "distMaxM": 2600, "surface": "turf", "goingAptitude": "heavy", "line": "hoshi", "sireName": "ホシノオウ", "damName": "ソラノシズク", "stats": { "speed": 800, "stamina": 820, "burst": 760, "guts": 720, "temper": 600 } },
@@ -27,6 +27,8 @@
     { "id": "t_seiya", "name": "セイヤノカネ", "rarity": "SSR", "sex": "male", "style": "senko", "distMinM": 1800, "distMaxM": 2500, "surface": "turf", "line": "hoshi", "sireName": "ギンガノホシ", "damName": "ホーリーベル", "stats": { "speed": 800, "stamina": 760, "burst": 820, "guts": 700, "temper": 540 },
       "seasonal": { "seasonId": "winter_2026", "label": "冬季限定", "startAtMs": 1796050800000, "endAtMs": 1800025200000 } },
     { "id": "t_hatsuyuki", "name": "ハツユキソウ", "rarity": "SR", "sex": "female", "style": "nige", "distMinM": 1200, "distMaxM": 1800, "surface": "both", "goingAptitude": "heavy", "line": "minamo", "sireName": "ミナモノカゼ", "damName": "シロタエ", "stats": { "speed": 720, "stamina": 600, "burst": 640, "guts": 620, "temper": 560 },
-      "seasonal": { "seasonId": "winter_2026", "label": "冬季限定", "startAtMs": 1796050800000, "endAtMs": 1800025200000 } }
+      "seasonal": { "seasonId": "winter_2026", "label": "冬季限定", "startAtMs": 1796050800000, "endAtMs": 1800025200000 } },
+    { "id": "t_partner", "name": "アイボウ", "rarity": "SR", "sex": "male", "style": "sashi", "distMinM": 1600, "distMaxM": 2400, "surface": "turf", "line": "akatsuki", "sireName": "ハジマリノカゼ", "damName": "アサツユヒメ", "stats": { "speed": 700, "stamina": 680, "burst": 720, "guts": 620, "temper": 600 }, "giftOnly": true },
+    { "id": "t_broodmare", "name": "ハジメノハナ", "rarity": "R", "sex": "female", "style": "senko", "distMinM": 1400, "distMaxM": 2200, "surface": "turf", "line": "minamo", "sireName": "ミナモノオウジ", "damName": "ハナノミチ", "stats": { "speed": 600, "stamina": 600, "burst": 580, "guts": 570, "temper": 540 }, "giftOnly": true }
   ]
 }

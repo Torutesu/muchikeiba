@@ -110,11 +110,13 @@ namespace Muchi.Client
         public int Fee, Borrowed, BorrowPerDay;
         public int? RemainingToday;
         public bool CanPay;
+        /// <summary>Free coins from a purchase bonus that cannot pay stud fees yet (90 days); CanPay already leaves them out. 0 on older servers.</summary>
+        public int HeldFree;
         internal static StudOffer Parse(JsonNode o) => o == null ? null : new StudOffer
         {
             OwnerId = J.Str(o, "ownerId"), HorseId = J.Str(o, "horseId"), Name = J.Str(o, "name"), FeeCurrency = J.Str(o, "feeCurrency"),
             Fee = J.Int(o, "fee"), Borrowed = J.Int(o, "borrowed"), BorrowPerDay = J.Int(o, "borrowPerDay"), RemainingToday = J.IntN(o, "remainingToday"),
-            CanPay = J.Bool(o, "canPay"),
+            CanPay = J.Bool(o, "canPay"), HeldFree = J.Int(o, "heldFree"),
         };
     }
 

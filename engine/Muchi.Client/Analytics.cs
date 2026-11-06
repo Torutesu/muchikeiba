@@ -118,6 +118,13 @@ namespace Muchi.Client
             return new AnalyticsEvent("share", atMs, JsonNode.Obj().Set("kind", kind));
         }
 
+        /// <summary>The invite code was handed to the OS share sheet or copied (REQ-INV-011). channel: os_share | copy_code | copy_link.</summary>
+        public static AnalyticsEvent InviteShare(long atMs, string channel)
+        {
+            if (channel != "os_share" && channel != "copy_code" && channel != "copy_link") throw new ArgumentException("unknown invite share channel " + channel);
+            return new AnalyticsEvent("invite_share", atMs, JsonNode.Obj().Set("channel", channel));
+        }
+
         internal JsonNode ToJson()
         {
             var o = JsonNode.Obj();

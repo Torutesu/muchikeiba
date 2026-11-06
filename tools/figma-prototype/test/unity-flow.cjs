@@ -358,6 +358,49 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.equal(await page.locator('.screen.in .btn[data-label="購入済み"].disabled').count(), 1, 'the bought pass is not buyable');
   assert.equal(await page.locator('.screen.in .btn[data-label="今シーズンは購入済み"].disabled').count(), 1, 'Pass+ is closed too (one per season)');
   await shot('season-pass-owned', 500);
+  // ------------------------------------------------------------------ 4. round 10: 友達招待 (REQ-INV-*)
+  // my code + share, demo friends redeeming it (real InviteService), milestone rewards via the outbox, entering a code
+  await demo('day1');
+  await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings');
+  await page.locator('.screen.in [data-action="invite"]').click(); await waitScreen('invite'); await page.waitForTimeout(400);
+  const myCode = await page.locator('.screen.in [data-code]').getAttribute('data-code');
+  assert.match(myCode, /^[23456789BCDFGHJKMNPQRSTVWXZ]{8}$/, 'my invite code');
+  assert.equal(await page.locator('.screen.in [data-cap]').getAttribute('data-cap'), '0/10');
+  assert.equal(await page.locator('.screen.in [data-milestone]').count(), 2, 'milestone table');
+  assert.equal(await page.locator('.screen.in [data-eligible]').getAttribute('data-eligible'), 'true', 'day 1 after the FTUE: entry open');
+  assert.equal(await page.locator('.screen.in [data-action="redeem"]').evaluate((e) => e.classList.contains('disabled')), true, 'empty input: redeem disabled');
+  await page.waitForSelector('.screen.in [data-demo-code]');
+  await shot('invite-mine', 300);
+  await click('デモ：友達が参加'); await waitScreen('invite'); await page.waitForTimeout(300);
+  await click('デモ：友達が参加'); await waitScreen('invite'); await page.waitForTimeout(300);
+  await click('デモ：初心者卒業'); await waitScreen('invite'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in [data-invitee]').count(), 2, 'two friends joined with my code');
+  assert.equal(await page.locator('.screen.in [data-cap]').getAttribute('data-cap'), '2/10');
+  assert.equal(await page.locator('.screen.in [data-reached="rewarded"]').count(), 1, 'one milestone paid');
+  await page.waitForSelector('.screen.in [data-demo-code]');
+  await shot('invite-crew', 300);
+  // enter the demo friend's code: a typo keeps the button disabled, the real code redeems (welcome gift + friend)
+  const demoCode = await page.locator('.screen.in [data-demo-code]').getAttribute('data-demo-code');
+  const field = page.locator('.screen.in .invite-input');
+  await field.fill(demoCode.slice(0, -1) + (demoCode.endsWith('B') ? 'C' : 'B'));
+  assert.equal(await page.locator('.screen.in [data-action="redeem"]').evaluate((e) => e.classList.contains('disabled')), true, 'typo: redeem disabled');
+  await shot('invite-typo', 200);
+  await field.fill(demoCode.toLowerCase());
+  assert.equal(await page.locator('.screen.in [data-action="redeem"]').evaluate((e) => e.classList.contains('disabled')), false);
+  await page.locator('.screen.in [data-action="redeem"]').click(); await page.waitForTimeout(600); await waitScreen('invite');
+  assert.equal(await page.locator('.screen.in [data-eligible]').getAttribute('data-eligible'), 'false');
+  assert.equal(await page.locator('.screen.in [data-reason]').getAttribute('data-reason'), 'already_redeemed');
+  await shot('invite-redeemed', 300);
+  // a deep link (unity.html?invite=<code> stands in for muchi://invite/<code>) pre-fills the entry of a fresh player
+  await demo('day1');
+  const linkCode = await page.evaluate(() => globalThis.__muchi.logic.invite.demoInviterCode());
+  await page.goto(url + '?invite=' + encodeURIComponent(linkCode.replace('-', ''))); await ready(); await waitScreen('invite'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .invite-input').inputValue(), linkCode, 'deep link pre-fills the code');
+  assert.equal(await page.locator('.screen.in [data-action="redeem"]').evaluate((e) => e.classList.contains('disabled')), false, '…ready to redeem (never automatic)');
+  await shot('invite-deeplink', 300);
+  await page.evaluate(() => localStorage.removeItem('muchi.invite.linkCode'));
+  await page.goto(url); await ready();
+
   // the tutorial screens: the whip-only HUD, the whip cue, and the close-2nd retry when the player never whips
   await page.evaluate(() => globalThis.__muchi.demo('new')); await waitScreen('title', 20000);
   await click('同意してはじめる'); await waitScreen('race-tutorial');

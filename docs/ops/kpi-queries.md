@@ -74,6 +74,9 @@
 | `purchase_flow` | クライアント | `open`/`cancel`/`fail`/`store_success` | 商品ID | | |
 | `push_open` | クライアント | テンプレートID | | | |
 | `push_permission` | クライアント | | | | `double9` 1 = 許可 |
+| `invite_share` | クライアント（招待コードを共有シートに渡した／コピーした。キャンセルは送らない、REQ-INV-011） | `os_share`/`copy_code`/`copy_link` | | | |
+| `invite_redeem` | サーバー（招待コードの引き換え。1回で2行） | | `inviter`/`invitee` | | 招待した人の行：`double9` 1 = 報酬の対象（上限内）。招待された人の行：`double3` ギフトの無償コイン、`double5` ギフトの券の枚数 |
+| `invite_milestone` | サーバー（招待された人の到達。双方に1行） | マイルストーンID | `invitee`/`inviter` | | 招待した人の行：`double3` 無償コイン、`double5` 券の枚数（上限外は行が出ない） |
 
 ## 継続率（D1 / D7 / D30）
 
@@ -338,6 +341,60 @@ ORDER BY cohort DESC
 ```
 
 あわせて見る指標：`session_end` の `double6`（セッションの長さ）の中央値の推移、`push_permission` で拒否した割合、`purchase_flow` の `cancel`/`fail` の割合。
+
+## 友達招待：バイラル係数（REQ-INV-011、contracts/protocol.md §18）
+
+`invite_redeem` は1回の引き換えで2行出ます（`blob9` = `inviter`：招待した人の行、`invitee`：招待された人の行）。招待した人の行には **招待した人のコホート** が入るので、JOIN なしで「コホートの1人が何人を呼んだか」を数えられます。
+
+**バイラル係数 K**（コホートごと、インストールから30日以内に呼んだ人数 ÷ コホートの人数）。招待した人の行の `double9` は報酬の対象（上限10人以内）なら1。
+
+```sql
+SELECT
+  cohort,
+  countIf(ev = 'first_open') AS installs,
+  countIf(ev = 'invite_redeem' AND role = 'inviter' AND d <= 30) AS invited_30d,
+  round(countIf(ev = 'invite_redeem' AND role = 'inviter' AND d <= 30) / countIf(ev = 'first_open'), 3) AS k_30d,
+  countIf(ev = 'invite_share' AND d <= 30) AS shares_30d,
+  round(countIf(ev = 'invite_redeem' AND role = 'inviter' AND d <= 30) / countIf(ev = 'invite_share' AND d <= 30), 3) AS redeem_per_share
+FROM (
+  SELECT blob5 AS cohort, blob1 AS ev, blob9 AS role, double7 AS d, _sample_interval AS w
+  FROM muchi_kpi
+  WHERE timestamp > NOW() - INTERVAL '75' DAY
+    AND blob1 IN ('first_open', 'invite_redeem', 'invite_share')
+)
+GROUP BY cohort
+ORDER BY cohort DESC
+```
+
+- サンプリングが起きている期間は `countIf(…)` を `sumIf(w, …)` にします。
+- K < 1 が普通です（招待だけでは増え続けない）。インストールのうち招待経由の割合は `invite_redeem` の `invitee` の行 ÷ `first_open`（同じコホート、`double7 <= 7`）。
+- 招待経由の人の継続率は、`invite_redeem`（`invitee`）を出したプレイヤーだけで「継続率」のクエリを回します（内側のサブクエリで `blob2 IN (SELECT …)` は使えないので、先にプレイヤーの一覧を取り出して `blob2 IN ('…', …)` で絞る）。
+
+**到達率**（招待された人が本当に遊んだか。報酬はこの行でだけ出る）：
+
+```sql
+SELECT
+  blob8 AS milestone,
+  countIf(blob9 = 'invitee') AS reached,
+  countIf(blob9 = 'inviter' AND double3 + double5 > 0) AS rewarded
+FROM muchi_kpi
+WHERE blob1 = 'invite_milestone' AND timestamp > NOW() - INTERVAL '60' DAY
+GROUP BY milestone
+```
+
+`reached` と `rewarded` の差は、上限を超えた招待（報酬なし）・削除された招待した人・配達待ち。
+
+**不正の監視**：サーバーのサポート用フラグ（`supportFlags`：`invite_burst:<日>`、`invite_install_reuse:…`、`invite_same_device:…`、`invite_loop:…`、`invite_rate_limited:<日>`）は管理画面のプレイヤー表示に出ます。KPI では「1人の招待した人の1日の引き換え数」の上位を見ます：
+
+```sql
+SELECT blob2 AS inviter, blob6 AS day, count() AS redeems
+FROM muchi_kpi
+WHERE blob1 = 'invite_redeem' AND blob9 = 'inviter' AND timestamp > NOW() - INTERVAL '14' DAY
+GROUP BY inviter, day
+HAVING redeems >= 5
+ORDER BY redeems DESC
+LIMIT 50
+```
 
 ## 注意
 

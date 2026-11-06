@@ -518,3 +518,46 @@ FeedPage = { "teamId": "tabc123456", "latestSeq": 130, "nextBefore": 111 | null,
 ### 18.1 関連する小さな修正（ラウンド10）
 - **`GET /v1/shop/products?mine=1`**（要認証、§13.1）：同じ一覧に、そのプレイヤーの所持を加える。各商品に `owned`（今は買えない：1回限りの商品を購入済み／今シーズンのパス（パス・パス＋のどちらか）を購入済み／厩舎手当の受け取り中か予約中。`purchase-intent` が `ALREADY_PURCHASED` を返す条件と全く同じ）、`ownedReason`（`"once"` | `"season_pass"` | `"allowance"` | null）、`purchasedThisSeason`（シーズンパスだけ：その商品を今シーズン買ったか。他は null）。最上位に `"personalized": true, "seasonId": "2026-11"`。`mine` なしは従来どおり（`"personalized": false`、所持の項目は無い）。C# `ApiClient.GetMyProductsAsync`、`ShopModel` はこちらを使い、買ったパスのカードを「購入済み」にする。
 - **削除の処理中のレース結果**（§8.7）：アカウント削除の処理が始まった（`deleting`）プレイヤーへのレース結果は、何も変えずに成功で返す（`{ "skipped": "deletion_pending" }`）。部屋はそのプレイヤーを済みとして他の人を通常どおり精算し、再試行もデッドレターもしない。
+
+## 19. 友達招待（招待コード、REQ-INV-001〜012、`server/src/domain/invite.ts`、C# `Invite.cs`・`InviteModel`）
+
+**招待コード**：プレイヤーごとに1つ、変わらない8文字。文字は `23456789BCDFGHJKMNPQRSTVWXZ`（母音なし＝単語にならない、0/O・1/I/L などの見間違いなし）。1文字目はディレクトリのシャード（0〜15）、2〜7文字目は乱数、8文字目は検査文字（各文字の (位置+1)×(位置+2) の重み付き和を27で割った余り。C# `InviteCodes.Check` と同じ）。表示は `92W6-5BGF`。入力は大文字小文字・空白・ハイフンを無視する。禁止の並び（`INVITE_BLOCKLIST`）を含むコードは作らない。重複は DirectoryDO が作り直す。アカウント削除でコードは**引退**（行を残し二度と配らない）。
+
+**`GET /v1/invite`**（要認証。任意ヘッダー `x-install-id`：アプリのインストールごとの乱数 ID。サーバーはハッシュ（SHA-256 の先頭16バイト）だけを保存し、このプレイヤーのコードを同じ端末から使うことを断るのに使う）
+```json
+{ "code": "92W65BGF", "displayCode": "92W6-5BGF",
+  "share": { "deepLink": "muchi://invite/92W65BGF", "url": "https://invite.muchi-issen.example/i/92W65BGF", "text": "…さんから「ムチ一閃」への招待です。招待コード 92W6-5BGF を入力すると、はじめてのプレゼントがもらえます。\nhttps://…" },
+  "redeem": { "eligible": true, "reason": null | "ftue" | "window_closed" | "already_redeemed" | "deletion", "windowDays": 7, "daysLeft": 7,
+    "invitedBy": { "playerId": "alice" | null, "displayName": "…" | null, "at": 1793934000000, "milestones": ["im_graduate"] } | null,
+    "welcomeGift": { "items": [ { "itemId": "gacha_ticket", "qty": 1 } ] } },
+  "invitees": [ { "playerId": "bob" | "deleted:2", "displayName": "ボブ" | null, "at": 1793934000000, "counted": true, "deleted": true?,
+    "milestones": [ { "id": "im_graduate", "at": 1793937600000, "rewarded": true } ] } ],
+  "counted": 2, "cap": 10,
+  "milestones": [ { "id": "im_graduate", "kind": "beginner_complete" | "class" | "ranked_races", "classId": "B" | null, "target": null, "reward": { "freeCoins": 100 }, "rewardYen": 160 } ],
+  "termsKey": "terms.invite" }
+```
+- `share.text` はそのまま OS の共有シートに渡す（報酬の額は入れない。03-legal-risk.md「友達招待」）。`share.url` の https は仮のドメイン（本番のドメインが決まったら `progression.invite.shareBaseUrl` を変える）。
+- `redeem.daysLeft` は今日を1と数えるゲーム日（§15）。`eligible` が false のときは入力欄を出さない。
+- `counted: false` の招待（上限を超えた分）は参加・フレンドにはなるが、到達しても招待した人に報酬は出ない（`rewarded: false`）。
+- `rewardYen` は景品表示法のチェックに使う円換算（最小パックの単価）。画面には出さなくてよい（規約・ヘルプ用）。
+
+**`POST /v1/invite/redeem`**（要認証）`{ "code": "92w6-5bgf", "installId": "i-…" }` → `{ "status": "redeemed" | "already", "inviter": { "playerId", "displayName" | null }, "welcomeGift": {…}, "friended": true }`
+- 1アカウント1回。条件：チュートリアルの相棒を迎えた後（`NOT_ELIGIBLE`）・始めてから `redeemWindowDays`（7）ゲーム日以内（`INVITE_WINDOW_CLOSED`）・アカウント削除の予定がない（`DELETION_PENDING`）・まだ入力していない（`INVITE_ALREADY_REDEEMED`）。
+- 誤り：形が違う・検査文字が合わない `INVITE_CODE_INVALID`（400）／存在しない・引退したコード `NOT_FOUND`／自分のコード `INVITE_SELF`／不正対策で断る `INVITE_REFUSED`（同じ端末・同じインストールで2回目・招待の輪・招待した人が削除予定や停止中。**理由は画面に出さない**）／入力しすぎ `RATE_LIMITED`（429。1時間5回・1日10回、失敗も数える）。
+- 成功すると、招待された人にウェルカムギフト（無償のみ）、両者がフレンドになる（どちらかのフレンドが上限なら `friended: false`、招待は有効）。招待した人には**この時点では何も付与しない**（インストールだけでは報酬なし）。プッシュ `invite_joined`。
+- 手順（`InviteService.redeem`）：試行の記録 → コードの検証と検索 → インストールの確保（DirectoryDO、1インストール1回） → 招待した人の記録（冪等） → 招待された人の記録とギフト。後半が失敗したら招待した人の記録とインストールの確保を戻す。自動で再送しない（再送しても `already` になるだけだが、試行回数に数える）。
+
+**到達報酬（マイルストーン）**：招待された人の取引の終わりで到達を調べ（`noteInviteMilestones`）、届け先を本人の送信箱に入れる。Durable Object のアラームが招待した人へ届ける（失敗したら 2分・4分…最大6時間の間隔で再送。受け取り側は「招待された人＋マイルストーン」で冪等）。対象は引き換えから `milestoneWindowDays`（90）日以内。既定：
+| id | 条件 | 招待した人への報酬 | 円換算 |
+|---|---|---|---|
+| im_graduate | 初心者ミッションをすべて受け取った | 無償コイン100 | ¥160 |
+| im_class_b | B級に昇級（シーズン履歴の昇級も含む） | スカウト券1枚 | ¥160 |
+- 上限：招待した人1人につき `maxCountedInvitees`（10）人まで。到達時にプッシュ `invite_milestone`。KPI は双方に `invite_milestone`。
+
+**アカウント削除（REQ-UXS-040 の手順 `invites`）**：本人の送信箱（届いていない到達報酬）は放棄、コードは引退、インストールの確保はハッシュだけ残す（同じ端末で作り直して再び使うことはできない）。招待した人の側の記録は `deleted:<n>` に匿名化（上限の枠は空かない）、招待された人の側は `invitedBy.playerId` を null にして、その人宛ての送信箱を捨てる。
+
+**設定**（`progression.invite`、リモート設定でも同じ検証）：報酬は無償コインとスカウト券（1回・10連）だけ、1回の付与は ¥200 以下（`INVITE_HARD_LIMITS.maxRewardYen`、最小パックの単価で換算）。上限は人数20・入力期間14日・マイルストーン5個まで。マイルストーンの種類は `beginner_complete` / `class` / `ranked_races` のみ（購入を条件にする種類はない）。設定が無ければ招待のルートは `NOT_FOUND`。
+
+**深いリンク**：`muchi://invite/<code>`（アプリが入っているとき）と `https://<招待ドメイン>/i/<code>`（入っていないときはストアへ。Universal Links / App Links にすればアプリが開く）。アプリはコードを入力欄に入れるだけで、自動では引き換えない。チュートリアル前に開いた場合はコードを端末に覚えておき、入力できるようになったら入れる（C# `InviteCodes.FromLink`・`InviteModel.HandleLink`）。iOS / Android の設定は `docs/handoff-codex-round10-invite.md`。
+
+**KPI**：クライアント `invite_share`（`props.channel`: `os_share` | `copy_code` | `copy_link`、共有シートで実際に共有したときだけ）。サーバー `invite_redeem`（s2 = `inviter` / `invitee`）・`invite_milestone`（s1 = マイルストーン id、s2 = `invitee` / `inviter`）。クエリは docs/ops/kpi-queries.md。

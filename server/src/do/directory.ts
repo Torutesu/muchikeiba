@@ -6,6 +6,7 @@ import { unwrap, wrap, type Envelope } from './rpc.js';
 import type { StudEntry } from '../domain/stud.js';
 import { sortListings, type StudDirectory } from '../domain/studService.js';
 import { sortStables, type StableDirectory, type StableSnapshot } from '../domain/stable.js';
+import { inviteShardOf, makeInviteCode, type InviteDirectory } from '../domain/invite.js';
 
 /**
  * Friend codes and public profiles (REQ-SOCIAL-001/004), sharded by player id into DIRECTORY_SHARDS
@@ -25,6 +26,49 @@ export class DirectoryDO extends DurableObject<Env> {
     // REQ-STABLE-003: public copy of each stable (the owner's PlayerDO is the source of truth)
     this.sql.exec(`CREATE TABLE IF NOT EXISTS stables (player_id TEXT PRIMARY KEY, likes INTEGER NOT NULL, updated_at INTEGER NOT NULL, snapshot TEXT NOT NULL)`);
     this.sql.exec(`CREATE INDEX IF NOT EXISTS stables_top ON stables (likes, updated_at)`);
+    // REQ-INV-001: invite codes (shard = the player's shard, first character of the code). A retired code keeps its
+    // row with no player, so it is never handed out again.
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS invite_codes (code TEXT PRIMARY KEY, player_id TEXT UNIQUE, created_at INTEGER NOT NULL, retired_at INTEGER)`);
+    // REQ-INV-005: one invite redemption per install, ever (sharded by the install hash; player_id NULL after a deletion)
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS invite_installs (install_hash TEXT PRIMARY KEY, player_id TEXT, at INTEGER NOT NULL)`);
+  }
+
+  async inviteCodeOf(playerId: string, shard: number): Promise<Envelope<string>> {
+    return wrap(() => {
+      const row = this.sql.exec<{ code: string }>('SELECT code FROM invite_codes WHERE player_id = ?', playerId).toArray()[0];
+      if (row) return row.code;
+      for (let i = 0; i < 50; i++) {
+        const code = makeInviteCode(shard);
+        if (!code) continue; // blocked letter run
+        if (this.sql.exec('SELECT 1 FROM invite_codes WHERE code = ?', code).toArray().length) continue; // collision
+        this.sql.exec('INSERT INTO invite_codes (code, player_id, created_at) VALUES (?, ?, ?)', code, playerId, Date.now());
+        return code;
+      }
+      throw new Error('invite code space exhausted');
+    });
+  }
+
+  async inviteLookup(code: string): Promise<Envelope<string | null>> {
+    return wrap(() => this.sql.exec<{ player_id: string | null }>('SELECT player_id FROM invite_codes WHERE code = ? AND retired_at IS NULL', code).toArray()[0]?.player_id ?? null);
+  }
+
+  async inviteRetire(playerId: string): Promise<Envelope<boolean>> {
+    return wrap(() => { this.sql.exec('UPDATE invite_codes SET player_id = NULL, retired_at = ? WHERE player_id = ?', Date.now(), playerId); return true; });
+  }
+
+  async installClaim(hash: string, playerId: string): Promise<Envelope<string>> {
+    return wrap(() => {
+      this.sql.exec('INSERT INTO invite_installs (install_hash, player_id, at) VALUES (?, ?, ?) ON CONFLICT(install_hash) DO NOTHING', hash, playerId, Date.now());
+      return this.sql.exec<{ player_id: string | null }>('SELECT player_id FROM invite_installs WHERE install_hash = ?', hash).toArray()[0]?.player_id ?? '__deleted__';
+    });
+  }
+
+  async installRelease(hash: string, playerId: string): Promise<Envelope<boolean>> {
+    return wrap(() => { this.sql.exec('DELETE FROM invite_installs WHERE install_hash = ? AND player_id = ?', hash, playerId); return true; });
+  }
+
+  async installAnonymize(hash: string): Promise<Envelope<boolean>> {
+    return wrap(() => { this.sql.exec('UPDATE invite_installs SET player_id = NULL WHERE install_hash = ?', hash); return true; });
   }
 
   async stablePut(x: StableSnapshot): Promise<Envelope<boolean>> {
@@ -73,6 +117,7 @@ export class DirectoryDO extends DurableObject<Env> {
       this.sql.exec('DELETE FROM players WHERE player_id = ?', playerId);
       this.sql.exec('DELETE FROM studs WHERE owner_id = ?', playerId);
       this.sql.exec('DELETE FROM stables WHERE player_id = ?', playerId);
+      this.sql.exec('UPDATE invite_codes SET player_id = NULL, retired_at = ? WHERE player_id = ?', Date.now(), playerId); // REQ-INV-010
       return true;
     });
   }
@@ -126,7 +171,29 @@ type DirStub = {
   stablesOf(ids: string[]): Promise<Envelope<StableSnapshot[]>>;
   stablesTop(limit: number): Promise<Envelope<StableSnapshot[]>>;
   forget(p: string): Promise<Envelope<boolean>>;
+  inviteCodeOf(p: string, s: number): Promise<Envelope<string>>;
+  inviteLookup(c: string): Promise<Envelope<string | null>>;
+  inviteRetire(p: string): Promise<Envelope<boolean>>;
+  installClaim(h: string, p: string): Promise<Envelope<string>>;
+  installRelease(h: string, p: string): Promise<Envelope<boolean>>;
+  installAnonymize(h: string): Promise<Envelope<boolean>>;
 };
+
+/** Install hashes are hex: their first byte picks the shard. */
+const installShard = (hash: string) => parseInt(hash.slice(0, 2), 16) % DIRECTORY_SHARDS;
+
+/** REQ-INV-001/005/010: invite codes by player shard, install claims by hash shard. */
+export function shardedInviteDirectory(ns: DurableObjectNamespace): InviteDirectory {
+  const shard = (n: number) => ns.get(ns.idFromName(`dir:${n}`)) as unknown as DirStub;
+  return {
+    async codeOf(playerId) { const s = shardOf(playerId); return unwrap(await shard(s).inviteCodeOf(playerId, s)); },
+    async lookup(code) { return unwrap(await shard(inviteShardOf(code)).inviteLookup(code)); },
+    async claimInstall(h, p) { return unwrap(await shard(installShard(h)).installClaim(h, p)); },
+    async releaseInstall(h, p) { unwrap(await shard(installShard(h)).installRelease(h, p)); },
+    async retire(p) { unwrap(await shard(shardOf(p)).inviteRetire(p)); },
+    async anonymizeInstall(h) { unwrap(await shard(installShard(h)).installAnonymize(h)); },
+  };
+}
 
 /** Recommended stables change slowly; one fan-out per isolate per minute keeps visits cheap. */
 const STABLE_TOP_TTL_MS = 60_000;

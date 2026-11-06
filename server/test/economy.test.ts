@@ -17,13 +17,13 @@ describe('economy targets (90 days, 3 seeds)', () => {
     expect(r.firstPityDay).not.toBeNull();
     expect(r.firstPityDay!).toBeGreaterThanOrEqual(40);
     expect(r.firstPityDay!).toBeLessThanOrEqual(75);
-  }, 180_000);
+  }, 600_000);
 
   it('E4 a casual free player still pulls every couple of weeks', async () => {
     const r = (await run()).f2p_casual!;
     expect(r.pullsPerMonth).toBeGreaterThanOrEqual(15);
     expect(r.pullsPerMonth).toBeLessThanOrEqual(40);
-  }, 180_000);
+  }, 600_000);
 
   it('E5-E6 paying helps, but a free player is never far behind', async () => {
     const all = await run();
@@ -32,7 +32,7 @@ describe('economy targets (90 days, 3 seeds)', () => {
     expect(all.light!.pullsPerMonth / f).toBeLessThanOrEqual(1.6);
     expect(all.medium!.pullsPerMonth / f).toBeGreaterThanOrEqual(1.8);
     expect(all.medium!.pullsPerMonth / f).toBeLessThanOrEqual(3.0);
-  }, 180_000);
+  }, 600_000);
 
   it('E10 the daily pack (厩舎手当 ¥480) helps a little, less than the season pass (REQ-UXS-018)', async () => {
     const all = await run();
@@ -42,14 +42,32 @@ describe('economy targets (90 days, 3 seeds)', () => {
     expect(ratio).toBeLessThan(all.light!.pullsPerMonth / all.f2p!.pullsPerMonth);
     // claimed every active day: 30 free coins a day while it runs
     expect(all.allowance!.allowanceCoins / all.allowance!.activeDays).toBeCloseTo(30, 0);
-  }, 180_000);
+  }, 600_000);
 
   it('E1 note: the daily first-win bonus pays on ranked wins only and is part of the free income (REQ-UXS-010)', async () => {
     const r = (await run()).f2p!;
     expect(r.firstWinCoins).toBeGreaterThan(0);
     // at most 30+20+10 a day
     expect(r.firstWinCoins / r.activeDays).toBeLessThanOrEqual(60);
-  }, 180_000);
+  }, 600_000);
+
+  it('E11 the invite program (REQ-INV-*): an invited free player stays inside E1/E2, an inviter at the cap gains less than the season pass', async () => {
+    const all = await run();
+    const invited = all.f2p_invited!;
+    expect(invited.pullsPerMonth).toBeGreaterThanOrEqual(40);
+    expect(invited.pullsPerMonth).toBeLessThanOrEqual(65);
+    expect(invited.ssrPerMonth).toBeLessThanOrEqual(2.8);
+    expect(invited.inviteTickets).toBe(1);
+    const inviter = all.f2p_inviter!;
+    const c = m.progression.invite!;
+    // the counted cap bounds the inviter's lifetime income from invites: 10 × (100 coins + 1 ticket)
+    expect(inviter.inviteCoins).toBe(c.maxCountedInvitees * 100);
+    expect(inviter.inviteTickets).toBe(c.maxCountedInvitees);
+    const ratio = inviter.pullsPerMonth / all.f2p!.pullsPerMonth;
+    expect(ratio).toBeGreaterThanOrEqual(1.0);
+    expect(ratio).toBeLessThanOrEqual(1.15);
+    expect(ratio).toBeLessThan(all.light!.pullsPerMonth / all.f2p!.pullsPerMonth);
+  }, 600_000);
 
   it('E7 the season pass is worth clearly more than its price in coins', () => {
     const pass = m.products.find((p) => p.id === 'season_pass')!;
@@ -75,5 +93,5 @@ describe('economy targets (90 days, 3 seeds)', () => {
     const r = (await run()).f2p!;
     const maxFriendPerDay = m.progression.friendRewardDailyCap * Math.max(...m.progression.raceFreeCoinsByPlace.friend!);
     expect(maxFriendPerDay).toBeLessThanOrEqual(0.3 * r.freeCoinsPerActiveDay);
-  }, 180_000);
+  }, 600_000);
 });

@@ -19,6 +19,7 @@ import { DAY_MS, jstMonthKey } from './time.js';
 import { forfeitAll } from './wallet.js';
 import { allowanceRemaining, forfeitAllowances } from './shop.js';
 import { forfeitPass, passRemaining } from './pass.js';
+import { inviteDeletionSnapshot } from './invite.js';
 
 export interface AccountDeletionConfig {
   /** Days between the confirmed request and the deletion (the request can be cancelled meanwhile). */
@@ -79,7 +80,7 @@ export interface RetainedRecord {
   };
 }
 
-export const DELETION_STEPS = ['friends', 'team', 'stud', 'stable', 'leaderboards', 'events', 'tournaments', 'finalize', 'retain', 'wipe'] as const;
+export const DELETION_STEPS = ['friends', 'invites', 'team', 'stud', 'stable', 'leaderboards', 'events', 'tournaments', 'finalize', 'retain', 'wipe'] as const;
 export type DeletionStep = typeof DELETION_STEPS[number];
 export const DELETED_PLAYER_NAME = '退会したプレイヤー';
 const RETRY_MS = [60_000, 600_000, 3_600_000, 6 * 3_600_000];
@@ -154,6 +155,8 @@ export interface DeletionSnapshot {
   eventIds: string[];
   /** R2 keys of this player's ghosts. */
   ghostKeys: string[];
+  /** REQ-INV-010: who invited the player, whom they invited, and the install claim of their redemption. Absent on older snapshots. */
+  invite?: { inviterId: string | null; invitees: string[]; installHash: string | null };
   steps: string[];
 }
 
@@ -166,6 +169,7 @@ export function deletionSnapshot(s: PlayerState): DeletionSnapshot {
     eventIds: Object.keys(s.events ?? {}),
     ghostKeys: Object.keys(s.timeAttack?.seasonBest ?? {}).map((k) => { const [season, track] = k.split(':'); return `ghosts/${season}/${track}/${s.id}.json`; }),
     steps: [...(s.deletion?.steps ?? [])],
+    invite: inviteDeletionSnapshot(s),
   };
 }
 
@@ -285,6 +289,17 @@ export interface DeletionPorts {
     /** uid had sent `to` a request: drop it from to's incoming list. */
     dropIncoming(to: string, uid: string): Promise<unknown>;
   };
+  /**
+   * REQ-INV-010: the invite code is retired, the install claim keeps only its hash, both sides' records are anonymised
+   * and the player's undelivered milestone rewards are forfeited.
+   */
+  invites?: {
+    forfeitOwn(uid: string): Promise<unknown>;
+    retireCode(uid: string): Promise<void>;
+    anonymizeInstall(installHash: string): Promise<void>;
+    forgetInvitee(inviterId: string, uid: string): Promise<unknown>;
+    forgetInviter(inviteeId: string, uid: string): Promise<unknown>;
+  };
   team?: {
     members(teamId: string, uid: string): Promise<{ playerId: string; role: string; joinedAt: number }[]>;
     leave(teamId: string, uid: string): Promise<unknown>;
@@ -326,6 +341,17 @@ export async function runAccountDeletion(p: DeletionPorts, uid: string, now: num
     for (const o of snap.friends) await tolerant(() => p.friends.removeFriend(o, uid));
     for (const f of snap.incoming) await tolerant(() => p.friends.dropOutgoing(f, uid));
     for (const t of snap.outgoing) await tolerant(() => p.friends.dropIncoming(t, uid));
+  });
+  await step('invites', async () => {
+    const iv = p.invites;
+    if (!iv) return;
+    await iv.forfeitOwn(uid);
+    await iv.retireCode(uid);
+    const x = snap.invite;
+    if (!x) return;
+    if (x.installHash) await iv.anonymizeInstall(x.installHash);
+    if (x.inviterId) await tolerant(() => iv.forgetInvitee(x.inviterId!, uid));
+    for (const o of x.invitees) await tolerant(() => iv.forgetInviter(o, uid));
   });
   await step('team', async () => {
     const t = p.team;

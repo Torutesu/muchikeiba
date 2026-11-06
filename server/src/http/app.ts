@@ -29,6 +29,7 @@ import { StudService, type StudDirectory, type StudPlayers } from '../domain/stu
 import type { SpectateService } from '../domain/spectate.js';
 import type { TournamentEntryInfo, TournamentPlayers, TournamentsService } from '../domain/tournamentService.js';
 import type { StableService } from '../domain/stable.js';
+import { InviteService, type InviteDirectory, type InvitePlayers } from '../domain/invite.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -50,7 +51,9 @@ export type PlayerMethod =
   | 'stableMine' | 'stableSave' | 'stableVisit' | 'stableLikeGive' | 'stableLikeReceive' | 'stableClear' | 'stableForget'
   | 'recordConsent' | 'grantPartner' | 'missionsAll' | 'requestDeletion' | 'cancelDeletion' | 'deletionDue' | 'deletionSnapshot' | 'deletionMarkStep'
   | 'deletionRetryLater' | 'deletionFinalize' | 'deletionStart' | 'runNudges' | 'nudgeTaBeaten' | 'nudgeTournamentClosing'
-  | 'stampCatalog' | 'stampCheck' | 'stampPosted' | 'feedViewer' | 'feedMutes' | 'feedMute' | 'feedReported' | 'cheerPush';
+  | 'stampCatalog' | 'stampCheck' | 'stampPosted' | 'feedViewer' | 'feedMutes' | 'feedMute' | 'feedReported' | 'cheerPush'
+  | 'inviteView' | 'inviteAttempt' | 'inviteAccept' | 'inviteRevert' | 'inviteCommit' | 'inviteFlag' | 'inviteMilestone' | 'inviteDue' | 'inviteAcked'
+  | 'inviteRetryLater' | 'inviteForgetInvitee' | 'inviteForgetInviter' | 'inviteForfeit';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -106,6 +109,8 @@ export interface AppContext {
   tournaments?: TournamentsService;
   /** REQ-STABLE-*: マイ厩舎 (http/stablePorts.ts makeStableService). */
   stable?: StableService;
+  /** REQ-INV-*: friend invite codes (makeInviteService). Absent → the routes answer NOT_FOUND. */
+  invite?: InviteService;
   clock?: () => number;
   paidBalance(): Promise<unknown>;
   /**
@@ -175,6 +180,12 @@ const stable = (c: AppContext) => {
   if (!c.stable) throw new AppError('NOT_FOUND', 'stables are not available');
   return c.stable;
 };
+const invite = (c: AppContext) => {
+  if (!c.invite || !c.master.progression.invite) throw new AppError('NOT_FOUND', 'invites are not available');
+  return c.invite;
+};
+/** REQ-INV-005: the app's install id (random per install, kept in the keychain / keystore). Only a hash is stored. */
+const installIdSchema = z.string().min(8).max(128).regex(/^[\w\-.:]+$/);
 const playerIdParam = (s: string) => {
   if (s.length < 1 || s.length > 128 || /[\s/]/.test(s)) throw new AppError('BAD_REQUEST', 'bad player id');
   return s;
@@ -553,6 +564,17 @@ export const routes: Route[] = [
     if (!(await c.match.friendMember(p.passphrase!, u))) throw new AppError('NOT_ELIGIBLE', 'not a member of this room');
     return c.friends.invite(u, b.friendId, p.passphrase!);
   } },
+  // friend invite codes (REQ-INV-*, contracts/protocol.md §18)
+  { method: 'GET', path: '/v1/invite', auth: 'player', handler: async (r, _p, c, u) => {
+    const raw = r.headers.get('x-install-id');
+    const inst = raw === null ? null : installIdSchema.safeParse(raw);
+    if (inst && !inst.success) throw new AppError('BAD_REQUEST', 'bad x-install-id');
+    return invite(c).view(u, inst?.data ?? null);
+  } },
+  { method: 'POST', path: '/v1/invite/redeem', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ code: z.string().min(1).max(32), installId: installIdSchema }).strict());
+    return invite(c).redeem(u, b.code, b.installId);
+  } },
   // push notifications (REQ-PUSH-*)
   { method: 'PUT', path: '/v1/push/devices', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ token: z.string().min(8).max(4096), platform: z.enum(['ios', 'android']) }));
@@ -669,6 +691,21 @@ export function makeFriendsService(player: (uid: string) => PlayerInvoker, dir: 
   return new FriendsService(ports, dir);
 }
 
+/** Adapts per-player invocations to the invite orchestration (REQ-INV-*). */
+export function invitePlayersFrom(player: (uid: string) => PlayerInvoker): InvitePlayers {
+  return {
+    attempt: (u, h) => player(u).invoke('inviteAttempt', u, h),
+    view: (u, h) => player(u).invoke('inviteView', u, h),
+    accept: (o, i, h, name) => player(o).invoke('inviteAccept', o, i, h, name),
+    revert: (o, i, unfriend) => player(o).invoke('inviteRevert', o, i, unfriend),
+    commit: (u, o, code, h, f) => player(u).invoke('inviteCommit', u, o, code, h, f),
+    flag: (u, f) => player(u).invoke('inviteFlag', u, f),
+    unfriend: (u, o) => player(u).invoke('friendRemove', u, o),
+  };
+}
+export function makeInviteService(player: (uid: string) => PlayerInvoker, codes: InviteDirectory, dir: Directory, master: () => Master): InviteService {
+  return new InviteService(invitePlayersFrom(player), codes, dir, master);
+}
 /** Adapts per-player invocations to the team orchestration (REQ-TEAM-*). */
 export function teamPlayersFrom(player: (uid: string) => PlayerInvoker): TeamPlayers {
   return {

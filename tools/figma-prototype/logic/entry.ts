@@ -20,6 +20,8 @@ import tracksJson from '../../../server/master/tracks.json';
 import { FakeStoreVerifier } from '../../../server/src/domain/purchase.js';
 import { MemoryTeams, TeamsService, type TeamPlayers } from '../../../server/src/domain/teamService.js';
 import type { ReportReason } from '../../../server/src/domain/teamFeed.js';
+import { InviteService, MemoryInviteDirectory, deliverInviteOutbox, displayInviteCode, inviteRewardYen, normalizeInviteCode } from '../../../server/src/domain/invite.js';
+import type { Directory } from '../../../server/src/domain/friends.js';
 
 const trackNames = new Map((tracksJson as { tracks: { id: string; name?: string }[] }).tracks.map((t) => [t.id, t.name ?? t.id]));
 
@@ -138,7 +140,15 @@ export const MuchiLogic = {
   applyRace: (raceId: string, place: number, fieldSize: number, details: { trackId: string; style: Style; finishTick: number | null; whips: number }) =>
     wrap(() => svc.applyRace(ID, { raceId, mode: 'ranked', place, fieldSize, newRating: null, void: false, humans: 1,
       details: { ...details, startReactionTicks: null, whipMashed: false, cpuAssisted: false } })),
-  reset() { try { localStorage.removeItem(KEY + ':' + ID); localStorage.removeItem(DAY_KEY); } catch { /* ignore */ } dayOffset = 0; },
+  reset() {
+    try {
+      localStorage.removeItem(KEY + ':' + ID); localStorage.removeItem(DAY_KEY);
+      // round 10: demo players of the invite screen and the invite directory start over too
+      for (const k of Object.keys(localStorage)) if (k.startsWith(KEY + ':demo_')) localStorage.removeItem(k);
+    } catch { /* ignore */ }
+    inviteCodes.clear();
+    dayOffset = 0;
+  },
 
   // ---------------------------------------------------------------- round 8 (docs/planning/06, REQ-UXS-*), used by unity.html
   now,
@@ -300,6 +310,105 @@ export const MuchiLogic = {
   muteMember: (playerId: string, muted: boolean) => wrap(() => teamsSvc.mute(ID, playerId, muted)),
   /** Unlocks for the demo: lifetime races (play) — the pass and cosmetic stamps unlock by demoPurchase / the 見た目 shop. */
   async demoRaces(count: number) { const s = await svc.state(ID); s.stats.races = Math.max(s.stats.races, count); new LocalRepo().put(s); },
+  // ---------------------------------------------------------------- round 10: 友達招待 (REQ-INV-*, contracts/protocol.md §19)
+  // The real InviteService / per-player steps / milestone outbox on the local PlayerService. Demo friends are extra players
+  // in the same local repo (ids demo_inv_*), so "a friend joins with my code" and "the friend reaches a milestone" run the
+  // exact server code paths (directory lookup, device claim, inviter + invitee steps, outbox delivery).
+  invite: {
+    view: () => wrap(() => inviteSvc.view(ID, installId())),
+    redeem: (code: string) => wrap(() => inviteSvc.redeem(ID, code, installId())),
+    normalize: (raw: string) => normalizeInviteCode(raw),
+    display: (code: string) => displayInviteCode(code),
+    rewardYen: (r: Parameters<typeof inviteRewardYen>[1]) => inviteRewardYen(master, r),
+    config: master.progression.invite ?? null,
+    /** A demo friend enters MY code (bootstrap → partner → redeem from their own device). */
+    async demoFriendJoins() {
+      const n = (await svc.state(ID)).referral?.invitees.length ?? 0;
+      const id = `demo_inv_${n + 1}`;
+      return wrap(async () => {
+        await svc.bootstrap(id);
+        await svc.setDisplayName(id, DEMO_NAMES[n % DEMO_NAMES.length]!);
+        await svc.grantPartner(id, 'デモノアイボウ', key());
+        const code = (await inviteSvc.view(ID, installId())).code;
+        return { id, result: await inviteSvc.redeem(id, code, `demo-install-${id}`) };
+      });
+    },
+    /** The newest demo friend without this milestone reaches it (their own transaction notices it; the outbox delivers it). */
+    async demoMilestone(milestoneId: string) {
+      return wrap(async () => {
+        const me = await svc.state(ID);
+        const target = me.referral?.invitees.find((x) => !x.deleted && x.playerId.startsWith('demo_inv_') && !x.milestones.some((m) => m.id === milestoneId));
+        if (!target) throw new AppError('NOT_FOUND', 'no demo friend left for this milestone');
+        const repo = localRepo;
+        const s = (await svc.state(target.playerId));
+        if (milestoneId === 'im_graduate') s.onboarding = { races: 15, breedings: 1, counts: {}, ...(s.onboarding ?? {}), claimed: (master.progression.beginnerMissions ?? []).map((d) => d.id) };
+        else s.season.classId = master.progression.invite!.milestones.find((m) => m.id === milestoneId)?.classId ?? 'B';
+        repo.put(s);
+        await svc.missionsAll(target.playerId);
+        const before = (await svc.view(ID)).wallet.free;
+        const out = await deliverInviteOutbox({
+          due: (u) => svc.inviteDue(u), deliver: (o, i, ms, nm) => svc.inviteMilestone(o, i, ms, nm),
+          acked: (u, x) => svc.inviteAcked(u, x), later: (u, x) => svc.inviteRetryLater(u, x),
+        }, target.playerId);
+        return { friend: target.playerId, delivered: out.delivered, freeCoinsGained: (await svc.view(ID)).wallet.free - before };
+      });
+    },
+    /** A demo player's code for trying the entry (only redeemable while the local player is in the window, after the FTUE). */
+    async demoInviterCode() {
+      await svc.bootstrap('demo_inviter');
+      await svc.setDisplayName('demo_inviter', 'ミナトの騎手').catch(() => undefined);
+      return displayInviteCode(await inviteCodes.codeOf('demo_inviter'));
+    },
+  },
 };
+
+const DEMO_NAMES = ['ハヤテ', 'サクラ', 'コウガ', 'ミズキ', 'レン', 'ツバサ', 'ヒナタ', 'カイ', 'ユズ', 'アオイ', 'ソラ', 'リク'];
+/** Random per install, like the app's keychain value (only its hash reaches the invite code). */
+function installId() {
+  try {
+    let v = localStorage.getItem('muchi.installId');
+    if (!v) { v = 'i-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10); localStorage.setItem('muchi.installId', v); }
+    return v;
+  } catch { return 'i-private-mode'; }
+}
+/** The invite directory in localStorage (codes and install claims survive a reload, like DirectoryDO). */
+class LocalInviteDirectory extends MemoryInviteDirectory {
+  private static K = 'muchi.proto.inviteDir';
+  constructor() {
+    super(cryptoRng);
+    try {
+      const j = JSON.parse(localStorage.getItem(LocalInviteDirectory.K) ?? 'null') as { codes: [string, { playerId: string | null; retired: boolean }][]; installs: [string, string | null][] } | null;
+      if (j) {
+        for (const [c, v] of j.codes) { this.codes.set(c, v); if (v.playerId) (this as unknown as { byPlayer: Map<string, string> }).byPlayer.set(v.playerId, c); }
+        for (const [h, p] of j.installs) this.installs.set(h, p);
+      }
+    } catch { /* fresh */ }
+  }
+  clear() {
+    this.codes.clear(); this.installs.clear(); (this as unknown as { byPlayer: Map<string, string> }).byPlayer.clear();
+    try { localStorage.removeItem(LocalInviteDirectory.K); } catch { /* */ }
+  }
+  private save() { try { localStorage.setItem(LocalInviteDirectory.K, JSON.stringify({ codes: [...this.codes], installs: [...this.installs] })); } catch { /* */ } }
+  override async codeOf(p: string) { const c = await super.codeOf(p); this.save(); return c; }
+  override async claimInstall(h: string, p: string) { const r = await super.claimInstall(h, p); this.save(); return r; }
+  override async releaseInstall(h: string, p: string) { await super.releaseInstall(h, p); this.save(); }
+}
+const localRepo = new LocalRepo();
+const inviteCodes = new LocalInviteDirectory();
+/** Display names straight from the local players' states (the server reads them from DirectoryDO profiles). */
+const profileDir: Directory = {
+  codeOf: async () => '', lookup: async () => null, putProfile: async () => undefined,
+  profiles: async (ids) => ids.map((id) => localRepo.get(id)).filter((s): s is PlayerState => !!s).map((s) => ({ playerId: s.id, displayName: s.profile.displayName } as never)),
+};
+// the same per-player ports as server/src/http/app.ts invitePlayersFrom, on the local PlayerService
+const inviteSvc = new InviteService({
+  attempt: (u, h) => svc.inviteAttempt(u, h),
+  view: (u, h) => svc.inviteView(u, h),
+  accept: (o, i, h, nm) => svc.inviteAccept(o, i, h, nm),
+  revert: (o, i, unfriend) => svc.inviteRevert(o, i, unfriend),
+  commit: (u, o, c, h, f) => svc.inviteCommit(u, o, c, h, f),
+  flag: (u, f) => svc.inviteFlag(u, f),
+  unfriend: (u, o) => svc.friendRemove(u, o),
+}, inviteCodes, profileDir, () => master);
 
 (globalThis as unknown as { MuchiLogic: typeof MuchiLogic }).MuchiLogic = MuchiLogic;

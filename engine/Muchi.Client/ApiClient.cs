@@ -785,7 +785,7 @@ namespace Muchi.Client
             }
         }
 
-        private async Task<T> Call<T>(string method, string path, JsonNode body, bool auth, string idemKey, bool safe, Func<JsonNode, T> parse, CancellationToken ct)
+        private async Task<T> Call<T>(string method, string path, JsonNode body, bool auth, string idemKey, bool safe, Func<JsonNode, T> parse, CancellationToken ct, IDictionary<string, string> extraHeaders = null)
         {
             bool retryable = safe || method == "GET" || idemKey != null;
             bool refreshedToken = false;
@@ -797,6 +797,7 @@ namespace Muchi.Client
                 req.Headers["accept"] = "application/json";
                 if (body != null) req.Headers["content-type"] = "application/json";
                 if (idemKey != null) req.Headers["idempotency-key"] = idemKey;
+                if (extraHeaders != null) foreach (var kv in extraHeaders) req.Headers[kv.Key] = kv.Value;
                 if (auth)
                 {
                     if (!string.IsNullOrEmpty(_opt.DevUserId)) req.Headers["x-dev-user"] = _opt.DevUserId;

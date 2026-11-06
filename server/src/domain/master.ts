@@ -37,6 +37,7 @@ export interface HorseTemplate {
 }
 export interface SeasonalInfo { seasonId: string; label: string; startAtMs: number; endAtMs: number }
 export interface ItemQty { itemId: string; qty: number }
+import type { LeagueConfig } from './league.js';
 /** `horse`: a template id granted as a horse (event rewards only; REQ-BREED-022). */
 export interface Reward { freeCoins?: number; items?: ItemQty[]; horse?: string }
 export interface Product {
@@ -91,6 +92,8 @@ export interface Progression {
   bond: BondConfig;
   /** REQ-ROOM-*: private-room condition choices. */
   rooms: RoomsConfig;
+  /** REQ-LEAGUE-*: 支部対抗シーズン (team-vs-team monthly league). */
+  league: LeagueConfig;
   /** REQ-BREED-010..016: stud lending between players (free coins only, capped). Absent = disabled. */
   stud?: StudConfig;
   /** REQ-BREED-017: atavism (隔世遺伝) chance per breeding, in permille. Absent = 0. */
@@ -119,6 +122,8 @@ export interface WeatherConfig {
   /** Relative weights per going name. */
   turf: Partial<Record<'firm' | 'good' | 'yielding' | 'soft', number>>;
   dirt: Partial<Record<'fast' | 'good' | 'muddy' | 'sloppy', number>>;
+  /** REQ-TRACK-003: per-course climate (weights for that course's surface only); courses not listed use turf / dirt. */
+  byTrack?: Record<string, Partial<Record<Going, number>> | string>;
   /** Races at lit venues between these JST hours (from inclusive, to exclusive; may wrap midnight) run at night. */
   nightFromHourJst: number; nightToHourJst: number;
   /** Modes that get weather; others (tutorial, time attack) race on good ground by day with no fields sent. */

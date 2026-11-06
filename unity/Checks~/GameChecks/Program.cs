@@ -292,8 +292,10 @@ static class Program
         var events = new EventsModel(b); await events.LoadAsync();
         var ta = new TimeAttackModel(b); await ta.LoadAsync("aoba_turf_1600");
         var lb = new LeaderboardModel(b); await lb.LoadAsync();
-        Check(new ScreenModel[] { friends, teams, events, ta, lb }.All(m => !m.Online && m.Message != null && m.Message.StartsWith("OFFLINE")),
-            "friends / teams / events / time attack / leaderboards explain they need the server offline");
+        var league = new LeagueModel(b); await league.LoadAsync();
+        Check(new ScreenModel[] { friends, teams, events, ta, lb, league }.All(m => !m.Online && m.Message != null && m.Message.StartsWith("OFFLINE")),
+            "friends / teams / events / time attack / leaderboards / team league explain they need the server offline");
+        Check(!(await league.DivisionAsync("s1")).Ok && league.Headline.StartsWith("OFFLINE"), "offline team league: no division table, the headline says why");
         Check(!(await friends.SendAsync("ABCD")).Ok && !(await teams.JoinAsync("t_x")).Ok && !(await events.EnterAsync("e_x")).Ok, "offline social actions refuse with a message instead of throwing");
         var (taDriver, taMsg) = await ta.StartAsync("aoba_turf_1600");
         Check(taDriver == null && taMsg != null, "offline time attack does not start a session");
@@ -422,6 +424,11 @@ static class Program
         var teams = new TeamsModel(b); await teams.LoadAsync();
         Check(teams.Online && !teams.InTeam, "teams screen: not in a team yet");
         Check((await teams.SearchAsync("")).Ok, "team search answers (" + teams.Search.Count + " teams)");
+
+        var league = new LeagueModel(b); await league.LoadAsync();
+        Check(league.Online && !league.InTeam && league.Mine.Divisions.Count >= 2 && league.Headline.Contains("支部に入ると"), "team league screen: divisions listed, not in a team yet (" + league.Mine.Divisions.Count + " divisions)");
+        var div = await league.DivisionAsync(league.Mine.Divisions[0].Id);
+        Check(div.Ok || (div.Message ?? "").StartsWith("NO SNAPSHOT"), "team league: the top division's board answers (" + (div.Message ?? "ok") + ")");
 
         var events = new EventsModel(b); await events.LoadAsync();
         Check(events.Online && events.Events != null, "events screen lists events (" + events.Events.Count + ")");

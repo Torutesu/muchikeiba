@@ -330,6 +330,84 @@ namespace Muchi.Game
         public Task<ActionResult> TransferAsync(string playerId, CancellationToken ct = default) => Do(() => B.Api.TransferTeamLeadershipAsync(playerId, ct), "LEADER CHANGED", ct);
     }
 
+    // ------------------------------------------------------------------------------------- 支部対抗シーズン
+
+    /// <summary>
+    /// Team league screen (REQ-LEAGUE-005): my division table, this week's matchup and the weekly record; after the
+    /// season, the final place, its reward and the division for next season. Other divisions come from the public board.
+    /// </summary>
+    public sealed class LeagueModel : ScreenModel
+    {
+        public MyLeague Mine;
+        public LeagueBoard Board;
+
+        public LeagueModel(GameBackend backend) : base(backend, null) { }
+
+        public bool InTeam => Mine?.TeamId != null;
+        /// <summary>In a team that has taken part this season (a team joins its division with its first week).</summary>
+        public bool InLeague => Mine?.DivisionId != null;
+
+        /// <summary>Header: "二部  2位 / 6" — or why there is no table yet.</summary>
+        public string Headline
+        {
+            get
+            {
+                if (Mine == null) return Message ?? "";
+                if (!InTeam) return "支部に入ると支部対抗シーズンに参加できます";
+                if (!InLeague) return "今週の対戦の組み合わせを待っています";
+                return Mine.DivisionName + "  " + (Mine.Place?.ToString(CultureInfo.InvariantCulture) ?? "-") + "位 / " + Mine.Table.Count;
+            }
+        }
+
+        /// <summary>This week's card: "vs みなと会  120 - 80" (live scores are season-point growth so far; shown after the week).</summary>
+        public string ThisWeekLine
+        {
+            get
+            {
+                var w = Mine?.ThisWeek;
+                if (w == null) return null;
+                if (w.Bye) return "今週は不戦（対戦相手なし）";
+                return "vs " + (w.OpponentName ?? w.Opponent ?? "?");
+            }
+        }
+
+        /// <summary>Weekly record "○ ● △ − ·" (win, loss, draw, bye, not played yet).</summary>
+        public string RecordLine => Mine == null ? "" : string.Join(" ", Mine.Matches.Select(m =>
+            m.Outcome == "win" ? "○" : m.Outcome == "loss" ? "●" : m.Outcome == "draw" ? "△" : m.Outcome == "bye" ? "−" : "·"));
+
+        /// <summary>After the season: "二部 1位 → 一部に昇格  /  600 コイン".</summary>
+        public string FinalLine
+        {
+            get
+            {
+                var f = Mine?.Final;
+                if (f == null) return null;
+                string Name(string id) => Mine.Divisions.FirstOrDefault(d => d.Id == id)?.Name ?? id;
+                int mv = f.Movement(Mine.Divisions);
+                string move = mv > 0 ? Name(f.NextDivisionId) + "に昇格" : mv < 0 ? Name(f.NextDivisionId) + "に降格" : Name(f.NextDivisionId) + "に残留";
+                string reward = f.Reward != null && f.Reward.FreeCoins > 0 ? "  /  " + f.Reward.FreeCoins.ToString(CultureInfo.InvariantCulture) + " コイン" : "";
+                return Name(f.DivisionId) + " " + f.Place.ToString(CultureInfo.InvariantCulture) + "位 → " + move + reward;
+            }
+        }
+
+        public async Task LoadAsync(CancellationToken ct = default)
+        {
+            Online = false; Message = null;
+            if (!ServerAvailable) { Message = "OFFLINE  /  the team league needs the server"; return; }
+            try { Mine = await B.Api.GetMyLeagueAsync(ct); Online = true; }
+            catch (ApiException e) { Fail(e); }
+        }
+
+        /// <summary>Another division's table (tabs at the top of the screen).</summary>
+        public async Task<ActionResult> DivisionAsync(string divisionId, CancellationToken ct = default)
+        {
+            if (!ServerAvailable) return Offline("the team league needs the server");
+            try { Board = await B.Api.GetLeagueBoardAsync(divisionId, "current", ct); return ActionResult.Success(); }
+            catch (NotFoundException) { Board = null; return ActionResult.Error("NO SNAPSHOT YET  /  tables are published every few minutes"); }
+            catch (ApiException e) { return Fail(e); }
+        }
+    }
+
     // ------------------------------------------------------------------------------------- events
 
     public sealed class EventsModel : ScreenModel

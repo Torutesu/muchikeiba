@@ -116,7 +116,7 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | PUT | `/v1/player/silks` | 要 | | `{pattern, colors[2〜3], cap}` 勝負服。解放アイテムが無い模様は `NOT_ELIGIBLE`、不明な色・同色のみ・禁止の組み合わせは `BAD_REQUEST`（`contracts/assets.md` §3.2） |
 | GET | `/v1/visuals` | なし | | 見た目のカタログ（パレット・毛色・模様・帽子・枠色・競馬場と回り・テンプレート馬の見た目・各アイコンのキー）。`version` ごとにキャッシュ（`contracts/assets.md`） |
 | GET | `/v1/stats` | 要 | | 戦績（脚質別・コース別ベスト・スタート・ムチ） |
-| GET | `/v1/leaderboards/:seasonId/:board` | なし | | `seasonId`=`YYYY-MM`\|`current`、`board`=`class-C`等\|`rating`\|`index`\|`ta-<trackId>`（タイムアタック）。R2の集計ファイル（5分ごと更新） |
+| GET | `/v1/leaderboards/:seasonId/:board` | なし | | `seasonId`=`YYYY-MM`\|`current`、`board`=`class-C`等\|`rating`\|`index`\|`ta-<trackId>`（タイムアタック）\|`league-<divisionId>`（支部対抗シーズンの部の順位表と週ごとの対戦）。R2の集計ファイル（5分ごと更新） |
 | POST | `/v1/time-attack/start` | 要 | | `{trackId, horseId}` → `{sessionId, token, config, expiresAt, attemptsLeft}`。1日の回数を消費（`TA_LIMIT_REACHED`） |
 | POST | `/v1/time-attack/submit` | 要 | | `{sessionId, token, inputs:[[tick,0,cmd]…], resultHash, config?}` → 検証サーバーで再計算して記録。`{finished, timeMs, seasonBest, allTimeBest, milestones, published…}`。`TA_RESULT_MISMATCH`(422) / `TA_SESSION_USED` / `TA_SESSION_EXPIRED` / `TA_CONFIG_MISMATCH`(400) / `VERIFIER_UNAVAILABLE`(503, 同じセッションで再提出可) |
 | GET | `/v1/time-attack/:trackId/me` | 要 | | シーズン／通算ベスト、今日の残り回数、節目報酬、順位（直近集計） |
@@ -133,6 +133,7 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | POST | `/v1/teams/me/transfer` | 要 | | `{playerId}` リーダー譲渡（元リーダーは幹部に） |
 | POST | `/v1/teams/me/requests/:playerId/approve` | 要 | | 加入申請の承認（リーダー/幹部）。申請者が他所に入っていれば申請は消える |
 | POST | `/v1/teams/me/requests/:playerId/decline` | 要 | | 加入申請の却下 |
+| GET | `/v1/league/me` | 要 | | 支部対抗シーズン（REQ-LEAGUE-*）：自分の支部の部・順位表・週ごとの対戦（相手・得点＝その週のシーズンポイントの伸び・勝敗）・シーズン後の最終順位と報酬と次の部。支部に入っていなければ `teamId: null` と部の一覧 |
 | GET | `/v1/teams/search` | 要 | | `?q=` 支部名の部分一致（または支部ID）。空なら今シーズン活発な支部 |
 | GET | `/v1/teams/leaderboard/:seasonId` | なし | | 支部ランキングのスナップショット（R2、`current` 可） |
 | GET | `/v1/teams/:teamId` | 要 | | 支部の公開情報 |
@@ -223,11 +224,18 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 - ランキングは1シーズン＝1オブジェクト（`LeaderboardDO`、`lb:YYYY-MM`）。フレンドコードと公開プロフィールは16シャード（`DirectoryDO`、`dir:n`）。
 - ゴールデン `contracts/golden/ts-config-*.json` はルールセットのファイルを埋め込むので、ルールセットを変えたら `npm run gen:golden`。
 
+## 支部対抗シーズン（`src/domain/league.ts`、REQ-LEAGUE-*）
+- シーズン（JSTの月）ごとに1つ。状態はそのシーズンの `LeaderboardDO`（`lb:<seasonId>`）の kv `league`。設定は `master/progression.json league`（部・週の数・参加の最低人数・遅れて参加できる時間・勝ち点・昇格/降格の数・報酬）。
+- 定期実行（`leagueStep`）：最初の実行で前シーズンの結果（`leagueCarry`、前シーズンの締めが先に確定させる。確定していなければ最大1日待つ）から部を決めて作る。週の始まりに組み合わせ、`lateEntryHours` 以内に条件を満たした支部を追加、終わった週を集計。対戦の得点は支部のシーズンポイント（REQ-TEAM-005 の上限・加入時点の差し引き込み）の週のあいだの伸び。
+- 締め：支部の締め（`teamRolloverStep`）が `closing` に入った時に最終順位・昇格・降格を確定し、各支部の `closeSeasonStep` に順位を渡す。リーグ報酬は支部のシーズン報酬と同じ支払い（在籍日数ルール・プレイヤー側の「シーズンごとに1回」の記録・失敗リスト `dlRetry`）。
+- 公開：部ごとに `leaderboards/<season>/league-<divisionId>.json`（スナップショットと一緒に書き、index にも載る）。
+
 ## 馬場状態・ダート・ナイター（`src/domain/ground.ts`、REQ-RACE-034〜038）
 - ランク戦・フレンド戦の設定には `track.going`（その日の馬場）と `track.night` が入る。チュートリアルとタイムアタックには入らない（良・昼）。
 - その日の馬場：`fnv1a32(salt|JSTの日付|コースID)` で `master/progression.json` の `weather.turf` / `weather.dirt` の重みから選ぶ。同じ日・同じコースは誰が走っても同じ。
 - 運営の上書き：`weather.overrides` に `{trackId?, fromMs, toMs, going, night?}`。コース指定が全体指定より優先。リモート設定（`progression.weather`）でも変えられ、登録時に `weatherProblems` で検証する。
-- ナイター：`master/tracks.json` で `lights: true` の競馬場（今はみなと競馬場）で、JST の `nightFromHourJst`〜`nightToHourJst`（既定 18〜4時）のレース。`lights` はマスター専用でレース設定には入らない。
+- コースごとの気候：`weather.byTrack.<trackId>` があるコースはその重み（そのコースの馬場面の名前だけ）。海外風の3場（ノルトハーフェン＝渋りやすい、サンタルチェラ＝軽い、ベルムーア＝やや渋る）に設定。起動時・リモート設定の登録時に検証。
+- ナイター：`master/tracks.json` で `lights: true` の競馬場（みなと競馬場・サンタルチェラ競馬場）で、JST の `nightFromHourJst`〜`nightToHourJst`（既定 18〜4時）のレース。`lights` はマスター専用でレース設定には入らない。
 - 馬の `goingAptitude`（any / fast / heavy）はテンプレートから引き継ぎ、配合では `goingAptitudeOdds` の確率で受け継ぐ（配合予想も同じ関数）。any の馬はレース設定に項目を書かない。
 - ルールセットの馬場キー18個は「全部あるか全部ないか」。全部ない古いリプレイも検証できる（`OPTIONAL_RULESET_KEYS`）。
 
@@ -265,7 +273,7 @@ App Store Server API（`AppStoreServerApi`、ES256 JWT）はアプリが報告�
 ## 定期実行（wrangler.toml `[triggers]`）
 | cron (UTC) | 内容 |
 |---|---|
-| `*/5 * * * *` | 今シーズンのランキング集計（個人・タイムアタック・支部）をR2（`SNAPSHOTS`）へ（変化があった時だけ）＋前シーズンの締め（個人・支部報酬）を1段階ずつ進める＋イベント（開催中は集計、開始時に1回だけ通知、終了後は順位報酬を1段階ずつ配布） |
+| `*/5 * * * *` | 今シーズンのランキング集計（個人・タイムアタック・支部）をR2（`SNAPSHOTS`）へ（変化があった時だけ）＋前シーズンの締め（個人・支部報酬・支部対抗シーズンの最終順位と報酬）を1段階ずつ進める＋今シーズンの支部対抗シーズン（週の組み合わせ・遅れて来た支部の参加・終わった週の集計）＋イベント（開催中は集計、開始時に1回だけ通知、終了後は順位報酬を1段階ずつ配布） |
 | `23 18 * * *`（03:23 JST） | リプレイログの保存期限切れを削除（保留中は残す） |
 | `7 3 * * *`（12:07 JST） | シーズンのお知らせ（開幕・終了2日前・最終日）をFCMトピックへ1回だけ送る |
 

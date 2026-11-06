@@ -19,7 +19,7 @@ export { OpsDO } from './do/ops.js';
 export { IntegrityDO } from './do/integrity.js';
 export { TeamDO, TeamDirectoryDO } from './do/team.js';
 export { EventDO } from './do/event.js';
-import { TeamsService, type TeamPort, type TeamView } from './domain/teamService.js';
+import { TeamsService, type TeamLeagueView, type TeamPort, type TeamView } from './domain/teamService.js';
 import type { TeamSummary } from './domain/teams.js';
 import { EventsService } from './domain/eventService.js';
 import { eventBoardKey, eventCronPlan, validateEvents } from './domain/events.js';
@@ -32,6 +32,7 @@ import { activeConfig } from './ops/activeConfig.js';
 import type { ResolvedConfig } from './ops/config.js';
 import { shardedDirectory, shardedStudDirectory } from './do/directory.js';
 import { boardKey, indexKey, type RolloverState } from './domain/leaderboard.js';
+import { validateLeagueAndWeather } from './domain/league.js';
 import { runScheduled } from './domain/scheduled.js';
 import { DEFAULT_HOLD_POLICY, sweepReplays, SWEEP_CURSOR_KEY, type ReplayBucket, type SweepCursorStore } from './domain/retention.js';
 import { renderTemplate, seasonReminderFor } from './domain/push.js';
@@ -59,6 +60,7 @@ const baseMaster = loadMaster();
 validateGacha(baseMaster); // fail fast on a broken gacha/master definition (REQ-GACHA-003/008)
 validateItems(baseMaster); // REQ-ITEM-*: tickets may not reach paid-only banners, cosmetics reference real assets/patterns
 validateEvents(baseMaster, baseMaster.events); // REQ-EVENT-001
+validateLeagueAndWeather(baseMaster); // REQ-LEAGUE-* and per-course climate (REQ-TRACK-003)
 
 /** REQ-TEAM-*: team orchestration over TeamDOs, the team directory and the season board in LeaderboardDO. */
 function makeTeamsService(env: Env, master: () => Master, player: (uid: string) => PlayerInvoker): TeamsService {
@@ -92,6 +94,7 @@ function makeTeamsService(env: Env, master: () => Master, player: (uid: string) 
       return obj ? obj.json() : { seasonId, board: 'teams', generatedAt: null, total: 0, entries: [] };
     },
     rankOf: async (seasonId, teamId) => (await call(stub(env.LEADERBOARD, `lb:${seasonId}`).teamRankOf!(teamId))) as { rank: number; total: number; generatedAt: number | null } | null,
+    leagueOf: async (seasonId, teamId) => (await call(stub(env.LEADERBOARD, `lb:${seasonId}`).leagueOf!(teamId, Date.now()))) as TeamLeagueView,
   }, cryptoRng);
 }
 
@@ -338,6 +341,7 @@ export default {
       seasonReminder: (t) => broadcastSeasonReminder(env, t),
       teamRolloverStep: async (seasonId) => unwrap(await (stub(env.LEADERBOARD, `lb:${seasonId}`).teamRolloverStep!(seasonId, now))) as RolloverState,
       eventsStep: (t) => eventsStep(env, t),
+      leagueStep: async (seasonId) => unwrap(await (stub(env.LEADERBOARD, `lb:${seasonId}`).leagueStep!(seasonId, now))) as { status: string },
     });
     console.log('scheduled', event.cron, done.join(' '));
   },

@@ -33,7 +33,8 @@ export function inNightWindow(hour: number, from: number, to: number): boolean {
  */
 export function dailyGoing(w: WeatherConfig, track: Pick<Track, 'id' | 'surface'>, nowMs: number): Going {
   const names = goingsFor(track.surface);
-  const weights = (track.surface === 'dirt' ? w.dirt : w.turf) as Partial<Record<Going, number>>;
+  const own = w.byTrack?.[track.id];
+  const weights = (own && typeof own === 'object' ? own : track.surface === 'dirt' ? w.dirt : w.turf) as Partial<Record<Going, number>>;
   const entries = names.map((n) => [n, Math.max(0, Math.floor(weights[n] ?? 0))] as const).filter(([, wt]) => wt > 0);
   const total = entries.reduce((a, [, wt]) => a + wt, 0);
   if (total === 0) return 'good';
@@ -65,8 +66,8 @@ export function groundFor(m: Master, trackId: string, mode: RaceMode, nowMs: num
   return { going, night };
 }
 
-/** Problems in a weather config (remote config validation, REQ-OPS-003). */
-export function weatherProblems(w: unknown): string[] {
+/** Problems in a weather config (remote config validation, REQ-OPS-003). `tracks` checks per-course tables. */
+export function weatherProblems(w: unknown, tracks?: readonly Pick<Track, 'id' | 'surface'>[]): string[] {
   const p: string[] = [];
   const x = w as Partial<WeatherConfig> | undefined;
   if (!x || typeof x !== 'object') return ['weather: missing'];
@@ -81,6 +82,24 @@ export function weatherProblems(w: unknown): string[] {
       else total += v;
     }
     if (total === 0) p.push(`weather.${surface}: weights must not all be zero`);
+  }
+  const byTrack = (x as Record<string, unknown>).byTrack;
+  if (byTrack !== undefined) {
+    if (!byTrack || typeof byTrack !== 'object' || Array.isArray(byTrack)) p.push('weather.byTrack must be an object');
+    else for (const [tid, ws] of Object.entries(byTrack as Record<string, unknown>)) {
+      if (tid.startsWith('_')) continue; // notes
+      const track = tracks?.find((t) => t.id === tid);
+      if (tracks && !track) { p.push(`weather.byTrack: unknown track ${tid}`); continue; }
+      if (!ws || typeof ws !== 'object') { p.push(`weather.byTrack.${tid} must be an object`); continue; }
+      const names = (track ? goingsFor(track.surface) : [...goingsFor('turf'), ...goingsFor('dirt')]) as readonly string[];
+      let total = 0;
+      for (const [k, v] of Object.entries(ws as Record<string, unknown>)) {
+        if (!names.includes(k)) p.push(`weather.byTrack.${tid}: unknown going ${k}`);
+        else if (typeof v !== 'number' || !Number.isInteger(v) || v < 0) p.push(`weather.byTrack.${tid}.${k} must be a non-negative integer`);
+        else total += v;
+      }
+      if (total === 0) p.push(`weather.byTrack.${tid}: weights must not all be zero`);
+    }
   }
   for (const k of ['nightFromHourJst', 'nightToHourJst'] as const) {
     const v = x[k];

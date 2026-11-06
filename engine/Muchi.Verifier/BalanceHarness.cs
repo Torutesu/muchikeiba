@@ -540,6 +540,39 @@ namespace Muchi.Verifier
             return rep;
         }
 
+        /// <summary>
+        /// Per-course targets (REQ-TRACK-002, docs/spec/balance-targets.md §2.1) for every course in server/master/tracks.json
+        /// on good ground: T1 no runner fails to finish and the winning time stays a fair pace for the distance; T2 no running
+        /// style dominates the course (≤ 2× uniform; the weakest style is reported); T7 small gate bias (same band as R7). Fixed seeds.
+        /// </summary>
+        public static HarnessReport TrackRun(RulesetParams rs, IEnumerable<TrackSpec> tracks, int scale = 1)
+        {
+            var rep = new HarnessReport();
+            int n = 240 * scale;
+            ulong s = 70707;
+            foreach (var t in tracks)
+            {
+                var b = BalanceProbe.Run(rs, n, s + 100, 150, t);
+                double secs = b.AvgWinnerSeconds(TickHz, rs.GateOpenTick);
+                rep.Add("T1." + t.Id, t.Id + " 完走しない馬(レース数)", b.Dnf, 0, 0);
+                rep.Add("T1." + t.Id + ".pace", t.Id + " 勝ち時計の1000mあたり(秒)", secs * 1000.0 / t.DistanceM, 40, 48, "s");
+                double lo = 1, hi = 0;
+                foreach (RunningStyle st in Enum.GetValues(typeof(RunningStyle)))
+                {
+                    lo = Math.Min(lo, b.StyleWinRate(st));
+                    hi = Math.Max(hi, b.StyleWinRate(st));
+                    rep.Add("T2." + t.Id + "." + st, t.Id + " " + st + "の勝率(%)", b.StyleWinRate(st) * 100, 0, 100, "%");
+                }
+                // course character is allowed (逃げ有利の短距離・差し追込有利の長距離), but no style may dominate a course:
+                // at most twice the uniform rate. The minimum is reported (known issue at 2400m, balance-targets.md §5).
+                rep.Add("T2." + t.Id, t.Id + " 脚質別勝率の最小(%) ※参考", lo * 100, 0, 100, "%");
+                rep.Add("T2." + t.Id + "+", t.Id + " 脚質別勝率の最大(%)", hi * 100, 0, 2 * 100.0 / 12, "%");
+                var gates = GateGroupWinRates(rs, 360 * scale, s + 800, t);
+                rep.Add("T7." + t.Id, t.Id + " 内枠と外枠の1頭あたり勝率の差(pt)", Math.Abs(gates[0] - gates[2]) * 100, 0, 4, "pt");
+            }
+            return rep;
+        }
+
         /// <summary>Statistical slack (percentage points) for per-runner rates measured over n races.</summary>
         public static double Tolerance(int n) => n >= 600 ? 0.5 : 1.0;
 

@@ -622,6 +622,18 @@
   "minato": {
    "name": "みなと競馬場",
    "direction": "left"
+  },
+  "nordhaven": {
+   "name": "ノルトハーフェン競馬場",
+   "direction": "left"
+  },
+  "santalucera": {
+   "name": "サンタルチェラ競馬場",
+   "direction": "right"
+  },
+  "bellmoor": {
+   "name": "ベルムーア競馬場",
+   "direction": "right"
   }
  },
  "tracks": {
@@ -639,6 +651,15 @@
   },
   "minato_dirt_1800": {
    "venue": "minato"
+  },
+  "nordhaven_turf_2400": {
+   "venue": "nordhaven"
+  },
+  "santalucera_dirt_1700": {
+   "venue": "santalucera"
+  },
+  "bellmoor_turf_1200": {
+   "venue": "bellmoor"
   }
  },
  "emblem": {

@@ -46,7 +46,20 @@ namespace Muchi.Client
         /// reconnect fast-forward or catch-up). Finish and result lines are never dropped.
         /// </summary>
         public int MustSayExpiryTicks = 200;
+        /// <summary>Runner-up this close to the winner (ticks) gets the photo-finish line.</summary>
+        public int PhotoFinishTicks = 2;
+        /// <summary>Two horses swapping the lead within this many ticks in the final straight get the duel line.</summary>
+        public int DuelWindowTicks = 150;
+        /// <summary>A winner this far back when the final straight started (0 = leader) wins "from the back".</summary>
+        public int ComebackFromRank = 5;
         public readonly Dictionary<string, PhraseDef> Phrases = new Dictionary<string, PhraseDef>();
+
+        /// <summary>
+        /// Optional kinds the shipped templates carry (REQ-COMM-*; old templates without them speak exactly as before):
+        /// race-story lines and the mid-race ground call. Variants of any kind may also be specialised per race mode
+        /// ("kind@tutorial", "kind@ranked", …: tone) and per venue ("kind@nordhaven": the venue's own lines).
+        /// </summary>
+        public static readonly string[] StoryKinds = { "duel", "photo_finish", "comeback_win", "wire_win" };
 
         public static readonly string[] RequiredKinds =
         {
@@ -66,6 +79,9 @@ namespace Muchi.Client
                 PositionCallIntervalTicks = J.Int(o, "positionCallIntervalTicks", 240),
                 PendingExpiryTicks = J.Int(o, "pendingExpiryTicks", 60),
                 MustSayExpiryTicks = J.Int(o, "mustSayExpiryTicks", 200),
+                PhotoFinishTicks = J.Int(o, "photoFinishTicks", 2),
+                DuelWindowTicks = J.Int(o, "duelWindowTicks", 150),
+                ComebackFromRank = J.Int(o, "comebackFromRank", 5),
             };
             foreach (var kv in o.Get("phrases").Props)
             {
@@ -80,6 +96,15 @@ namespace Muchi.Client
                 t.Phrases[kv.Key] = def;
             }
             foreach (var k in RequiredKinds) if (!t.Phrases.ContainsKey(k)) throw new FormatException("missing phrase kind: " + k);
+            foreach (var kv in t.Phrases)
+            {
+                // a specialised phrase ("spurt@nordhaven") must specialise a known kind and keep its key-moment rule
+                int at = kv.Key.IndexOf('@');
+                if (at < 0) continue;
+                string baseKind = kv.Key.Substring(0, at);
+                if (!t.Phrases.TryGetValue(baseKind, out var b)) throw new FormatException("specialised phrase without base kind: " + kv.Key);
+                if (b.MustSay != kv.Value.MustSay) throw new FormatException("specialised phrase must keep mustSay of " + baseKind + ": " + kv.Key);
+            }
             return t;
         }
 
@@ -119,6 +144,8 @@ namespace Muchi.Client
         /// <summary>Simulation tick at which the line starts (may be after the race end for the closing lines).</summary>
         public int Tick;
         public string Kind;
+        /// <summary>The template phrase used: the kind itself, or its mode/venue specialisation ("spurt@bellmoor").</summary>
+        public string PhraseKey;
         public string VariantId;
         /// <summary>Main subject slot, -1 if none.</summary>
         public int Slot;
@@ -148,6 +175,7 @@ namespace Muchi.Client
             public string Kind;
             public int Slot = -1, Slot2 = -1, Slot3 = -1, Place;
             public int CreatedTick;
+            public string Key;
             public PhraseDef Def;
         }
 
@@ -163,6 +191,12 @@ namespace Muchi.Client
         private bool _spurtSaid, _focusWhipSaid, _anyFinished, _flushed, _introDone;
         private int _lastPositionCall = -1;
         private CommentaryLine _current;
+        private readonly string _mode, _venue;
+        // race story (REQ-COMM-003): ranks when the final straight started, recent lead changes, winner's finish tick
+        private int[] _rankAtSpurt;
+        private int _prevLeader = -1, _prevLeaderChange = -1;
+        private bool _duelSaid, _photoSaid, _goingCallDone;
+        private int _winnerTick = -1;
 
         public IReadOnlyList<CommentaryLine> Lines => _lines;
 
@@ -186,6 +220,46 @@ namespace Muchi.Client
             _t = templates ?? throw new ArgumentNullException(nameof(templates));
             _cfg = config ?? throw new ArgumentNullException(nameof(config));
             _focus = focusSlot;
+            _mode = ModeName(config.Mode);
+            _venue = VenueOf(config.Track);
+        }
+
+        /// <summary>Lower-case mode name used in specialised phrase keys ("kind@tutorial").</summary>
+        public static string ModeName(RaceMode m)
+        {
+            switch (m)
+            {
+                case RaceMode.Ranked: return "ranked";
+                case RaceMode.Friend: return "friend";
+                case RaceMode.Tutorial: return "tutorial";
+                case RaceMode.TimeAttack: return "timeattack";
+                case RaceMode.Event: return "event";
+                default: return "other";
+            }
+        }
+
+        /// <summary>Venue of a course: the course id up to the first '_' ("nordhaven_turf_2400" → "nordhaven"; server/master/visuals.json tracks).</summary>
+        public static string VenueOf(TrackSpec track)
+        {
+            if (track?.Id == null) return null;
+            int i = track.Id.IndexOf('_');
+            return i > 0 ? track.Id.Substring(0, i) : track.Id;
+        }
+
+        /// <summary>Template key for a kind in this race: mode tone first, then the venue's own lines, then the plain kind.</summary>
+        public string PhraseKeyFor(string kind)
+        {
+            string k = kind + "@" + _mode;
+            if (_t.Phrases.ContainsKey(k)) return k;
+            if (_venue != null && _t.Phrases.ContainsKey(k = kind + "@" + _venue)) return k;
+            return kind;
+        }
+
+        /// <summary>Mid-race ground call for off-good going ("going_call_turf_soft"), null on good ground or old configs.</summary>
+        public static string GoingCallKind(TrackSpec track)
+        {
+            if (track?.Going == null || track.EffectiveGoing == Going.Good) return null;
+            return "going_call_" + (track.Surface == Surface.Dirt ? "dirt" : "turf") + "_" + ProtocolCodec.GoingToString(track.EffectiveGoing, track.Surface);
         }
 
         /// <summary>Reads new events, returns the lines that start now (often empty).</summary>
@@ -213,9 +287,15 @@ namespace Muchi.Client
             if (!_anyFinished && sim.GateOpened && !_spurtSaid && now >= _busyUntil && _pending.Count == 0
                 && _lastPositionCall >= 0 && now - _lastPositionCall >= _t.PositionCallIntervalTicks && sim.EntrantCount >= 3)
             {
-                var c = Add("position_call", now, sim.SlotAtRank(0));
-                c.Slot2 = sim.SlotAtRank(1);
-                c.Slot3 = sim.SlotAtRank(2);
+                string going = _goingCallDone ? null : GoingCallKind(_cfg.Track);
+                _goingCallDone = true;
+                if (going != null && _t.Phrases.ContainsKey(going)) Add(going, now, sim.SlotAtRank(0)); // once, instead of the first position call
+                else
+                {
+                    var c = Add("position_call", now, sim.SlotAtRank(0));
+                    c.Slot2 = sim.SlotAtRank(1);
+                    c.Slot3 = sim.SlotAtRank(2);
+                }
                 _lastPositionCall = now;
             }
 
@@ -247,8 +327,12 @@ namespace Muchi.Client
             return track.Night == true ? kind + "_night" : kind;
         }
 
+        /// <summary>The winner's line: plain, from the back, or wire to wire.</summary>
+        public static bool IsWinKind(string kind) => kind == "finish_win" || kind == "comeback_win" || kind == "wire_win";
+
         private static bool IsIntro(string kind) => kind.StartsWith("ground_", StringComparison.Ordinal);
-        private static bool NeverExpires(string kind) => kind == "finish_win" || kind == "focus_finish" || kind.StartsWith("result", StringComparison.Ordinal);
+        private static bool NeverExpires(string kind) => kind == "finish_win" || kind == "comeback_win" || kind == "wire_win" || kind == "photo_finish"
+            || kind == "focus_finish" || kind.StartsWith("result", StringComparison.Ordinal);
 
         private void OnEvent(RaceSim sim, RaceEvent e)
         {
@@ -272,6 +356,15 @@ namespace Muchi.Client
                     if (e.Slot == _focus || !_pending.Exists(c => c.Kind == "late_start")) Add("late_start", e.Tick, e.Slot);
                     break;
                 case RaceEventType.LeaderChanged:
+                    // duel (REQ-COMM-003): in the final straight the lead goes back to the horse that just lost it
+                    if (_spurtSaid && !_duelSaid && !_anyFinished && _prevLeader == e.Slot && _leader >= 0 && _leader != e.Slot
+                        && e.Tick - _prevLeaderChange <= _t.DuelWindowTicks && _t.Phrases.ContainsKey("duel"))
+                    {
+                        _duelSaid = true;
+                        Add("duel", e.Tick, e.Slot).Slot2 = _leader;
+                    }
+                    _prevLeader = _leader;
+                    _prevLeaderChange = e.Tick;
                     _leader = e.Slot;
                     _leaderSince = e.Tick;
                     break;
@@ -282,7 +375,14 @@ namespace Muchi.Client
                     if (e.Slot == _focus && !_focusWhipSaid) { _focusWhipSaid = true; Add("focus_whip", e.Tick, e.Slot); }
                     break;
                 case RaceEventType.SpurtStart:
-                    if (!_spurtSaid) { _spurtSaid = true; Add("spurt", e.Tick, e.Slot); }
+                    if (!_spurtSaid)
+                    {
+                        _spurtSaid = true;
+                        Add("spurt", e.Tick, e.Slot);
+                        // ranks as the final straight starts (when Process runs every tick; a batched catch-up reads them later)
+                        _rankAtSpurt = new int[sim.EntrantCount];
+                        for (int i = 0; i < _rankAtSpurt.Length; i++) _rankAtSpurt[i] = sim.GetHorse(i).Rank;
+                    }
                     // REQ-BOND-004: flavour line for a horse its rider has bonded with (focus horse first)
                     if (_bondSlots.Contains(e.Slot) && !_bondSaid && _t.Phrases.ContainsKey("bond_call") && (e.Slot == _focus || _focus < 0))
                     {
@@ -297,12 +397,19 @@ namespace Muchi.Client
                     if (e.Value == 1)
                     {
                         _anyFinished = true;
-                        _pending.RemoveAll(c => c.Kind == "leader" || c.Kind == "position_call" || c.Kind == "kakari");
-                        Add("finish_win", e.Tick, e.Slot);
+                        _winnerTick = e.Tick;
+                        _pending.RemoveAll(c => c.Kind == "leader" || c.Kind == "position_call" || c.Kind == "kakari" || c.Kind == "duel" || c.Kind.StartsWith("going_call_", StringComparison.Ordinal));
+                        Add(WinKind(e.Slot, sim.EntrantCount), e.Tick, e.Slot);
                     }
-                    else if (e.Slot == _focus)
+                    else
                     {
-                        Add("focus_finish", e.Tick, e.Slot).Place = e.Value;
+                        // photo finish (REQ-COMM-003): the runner-up is within a whisker of the winner
+                        if (e.Value == 2 && !_photoSaid && _winnerTick >= 0 && e.Tick - _winnerTick <= _t.PhotoFinishTicks && _t.Phrases.ContainsKey("photo_finish"))
+                        {
+                            _photoSaid = true;
+                            Add("photo_finish", e.Tick, e.Slot);
+                        }
+                        if (e.Slot == _focus) Add("focus_finish", e.Tick, e.Slot).Place = e.Value;
                     }
                     break;
                 case RaceEventType.RaceEnd:
@@ -325,9 +432,23 @@ namespace Muchi.Client
             }
         }
 
+        /// <summary>
+        /// The winner's line: "from the back" when it was ComebackFromRank or further back as the final straight started
+        /// (fields of 8+), "wire to wire" when it already led then, the plain finish line otherwise (or with old templates).
+        /// </summary>
+        private string WinKind(int slot, int field)
+        {
+            if (_rankAtSpurt == null || slot < 0 || slot >= _rankAtSpurt.Length) return "finish_win";
+            int r = _rankAtSpurt[slot];
+            if (field >= 8 && r >= _t.ComebackFromRank && _t.Phrases.ContainsKey("comeback_win")) return "comeback_win";
+            if (field >= 2 && r == 0 && _t.Phrases.ContainsKey("wire_win")) return "wire_win";
+            return "finish_win";
+        }
+
         private Cand Add(string kind, int tick, int slot)
         {
-            var c = new Cand { Kind = kind, Slot = slot, CreatedTick = tick, Def = _t.Phrases[kind] };
+            string key = PhraseKeyFor(kind);
+            var c = new Cand { Kind = kind, Key = key, Slot = slot, CreatedTick = tick, Def = _t.Phrases[key] };
             _pending.Add(c);
             return c;
         }
@@ -347,10 +468,11 @@ namespace Muchi.Client
 
         private CommentaryLine Speak(Cand c, int tick)
         {
-            _kindCount.TryGetValue(c.Kind, out int n);
-            _kindCount[c.Kind] = n + 1;
+            // variants are chosen from the race seed and the phrase key (a plain kind hashes exactly as before)
+            _kindCount.TryGetValue(c.Key, out int n);
+            _kindCount[c.Key] = n + 1;
             ulong salt = 0xcbf29ce484222325UL;
-            foreach (char ch in c.Kind) { salt ^= ch; salt *= 0x100000001b3UL; }
+            foreach (char ch in c.Key) { salt ^= ch; salt *= 0x100000001b3UL; }
             var variants = c.Def.Variants;
             var v = variants[(int)(SeedMix.Derive(_cfg.Seed, salt, (ulong)n) % (ulong)variants.Count)];
 
@@ -369,7 +491,7 @@ namespace Muchi.Client
             int dur = Math.Max(_t.MinLineTicks, s.Length * _t.TicksPerChar) + _t.GapTicks;
             var line = new CommentaryLine
             {
-                Tick = tick, Kind = c.Kind, VariantId = v.Id, Slot = c.Slot, Priority = c.Def.Priority,
+                Tick = tick, Kind = c.Kind, PhraseKey = c.Key, VariantId = v.Id, Slot = c.Slot, Priority = c.Def.Priority,
                 DurationTicks = dur, Text = s, ClipKeys = clips.ToArray(),
             };
             _busyUntil = tick + dur;

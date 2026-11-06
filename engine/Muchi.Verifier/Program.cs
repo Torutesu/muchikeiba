@@ -41,6 +41,14 @@ if (args.Length >= 2 && args[0] == "balance")
     Console.Write(rep.Describe(20, rs.GateOpenTick));
     return 0;
 }
+if (args.Length >= 3 && args[0] == "harness-tracks")
+{
+    // harness-tracks <ruleset.json> <server/master/tracks.json> [scale] → per-course targets T1/T2/T7 (docs/spec/balance-targets.md §2.1)
+    var rs = Muchi.Net.ProtocolCodec.ParseRuleset(Muchi.Net.JsonNode.Parse(File.ReadAllText(args[1])));
+    var rep = BalanceHarness.TrackRun(rs, BalanceHarness.LoadServerTracks(args[2]), args.Length >= 4 ? int.Parse(args[3]) : 1);
+    Console.WriteLine(rep.Markdown());
+    return rep.AllPass ? 0 : 1;
+}
 if (args.Length >= 2 && args[0] == "harness")
 {
     // harness <ruleset.json> [scale] → every race-side balance target (docs/spec/balance-targets.md)

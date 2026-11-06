@@ -4,6 +4,7 @@ import { activeConfig } from '../ops/activeConfig.js';
 import type { Master } from '../domain/master.js';
 import { loadMaster } from '../domain/master.js';
 import { TeamCore } from '../domain/teamService.js';
+import type { LeaguePlace } from '../domain/league.js';
 import { closeSeasonStep, type JoinPolicy, type MemberSnapshot, type TeamState, type TeamSummary } from '../domain/teams.js';
 import { jstMonthKey } from '../domain/time.js';
 import { unwrap, wrap, type Envelope } from './rpc.js';
@@ -90,15 +91,16 @@ export class TeamDO extends DurableObject<Env> {
   }
 
   /** REQ-TEAM-008: pay a closed season's team reward to eligible members (resumable; called by the season board). */
-  async closeSeasonStep(seasonId: string, rank: number | null, total: number): Promise<Envelope<{ done: boolean; paid: number; eligible: number }>> {
+  async closeSeasonStep(seasonId: string, rank: number | null, total: number, league: LeaguePlace | null = null): Promise<Envelope<{ done: boolean; paid: number; eligible: number }>> {
     return wrap(async () => {
       const t = this.core.state;
       if (!t) return { done: true, paid: 0, eligible: 0 };
-      const cfg = (await activeConfig(this.env)).master.progression.teams;
-      const c = await closeSeasonStep(t, cfg, seasonId, rank, total, async (pid) => {
+      const prog = (await activeConfig(this.env)).master.progression;
+      const cfg = prog.teams;
+      const c = await closeSeasonStep(t, cfg, seasonId, rank, total, async (pid, close) => {
         const p = this.env.PLAYER.get(this.env.PLAYER.idFromName(pid)) as unknown as { invoke(m: string, a: unknown[]): Promise<Envelope<unknown>> };
-        unwrap(await p.invoke('teamSeasonReward', [pid, seasonId, t.id, rank, total]));
-      }, cfg.rolloverBatch, () => this.save());
+        unwrap(await p.invoke('teamSeasonReward', [pid, seasonId, t.id, close.rank, close.total, close.league ?? null]));
+      }, cfg.rolloverBatch, () => this.save(), { cfg: prog.league, place: league });
       return { done: c.done, paid: c.cursor, eligible: c.eligible.length };
     });
   }

@@ -556,6 +556,37 @@ namespace Muchi.Engine.Tests
         }
 
         [Fact]
+        public void EveryServerCourseMeetsPerCourseTargets()
+        {
+            // REQ-TRACK-002, docs/spec/balance-targets.md §2.1: every course in server/master/tracks.json (incl. the 3 overseas-style venues)
+            var tracks = BalanceHarness.LoadServerTracks(System.IO.Path.Combine(TestUtil.RepoRoot, "server", "master", "tracks.json"));
+            Assert.Contains(tracks, t => t.Id == "bellmoor_turf_1200" && t.Segments.Count == 1); // straight course
+            Assert.Contains(tracks, t => t.Id == "nordhaven_turf_2400");
+            Assert.Contains(tracks, t => t.Id == "santalucera_dirt_1700");
+            var rep = BalanceHarness.TrackRun(TestUtil.Ruleset(), tracks);
+            _out.WriteLine(rep.Markdown());
+            Assert.True(rep.AllPass, "per-course targets missed:\n" + string.Join("\n", rep.Metrics.Where(m => !m.Pass)));
+        }
+
+        [Fact]
+        public void TimeAttackMedalsMatchTheHarnessForEveryCourse()
+        {
+            // the medal times in server/master/progression.json are the ta-thresholds output rounded up to 0.1s
+            var root = Muchi.Net.JsonNode.Parse(System.IO.File.ReadAllText(System.IO.Path.Combine(TestUtil.RepoRoot, "server", "master", "progression.json")));
+            var milestones = root.Get("timeAttack").Get("milestones").Items.ToList();
+            var tracks = BalanceHarness.LoadServerTracks(System.IO.Path.Combine(TestUtil.RepoRoot, "server", "master", "tracks.json"))
+                .Where(t => t.Id.StartsWith("nordhaven") || t.Id.StartsWith("santalucera") || t.Id.StartsWith("bellmoor")).ToList();
+            Assert.Equal(3, tracks.Count);
+            foreach (var (track, gold, silver, bronze) in BalanceHarness.TimeAttackThresholds(TestUtil.Ruleset(), tracks, 3200, 80))
+            {
+                long Medal(string kind) => milestones.Single(x => !x.Get("trackId").IsNull && x.Get("trackId").AsString() == track && x.Get("id").AsString().EndsWith("_" + kind)).Get("maxTimeMs").AsLong();
+                Assert.Equal((gold + 99) / 100 * 100, Medal("gold"));
+                Assert.Equal((silver + 99) / 100 * 100, Medal("silver"));
+                Assert.Equal((bronze + 99) / 100 * 100, Medal("bronze"));
+            }
+        }
+
+        [Fact]
         public void DefaultRulesetMeetsBalanceTargets()
         {
             var rs = TestUtil.Ruleset();

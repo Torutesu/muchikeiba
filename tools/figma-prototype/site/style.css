@@ -159,3 +159,11 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
 .pass-strip .cell.claimed::after { content: "受取済"; position: absolute; right: 6px; top: 4px; font-size: 12px; color: #9fd8ec; }
 .pass-strip .cell.claimable { box-shadow: inset 0 0 0 3px #ffd414; }
 .pass-strip .cell button { font: inherit; font-size: 15px; background: #ffd414; color: #061224; border: 0; padding: 6px 12px; cursor: pointer; }
+/* ---- rewarded ads (REQ-AD-*): opt-in offer card / simulated ad / watched state — ムチ一閃 tone: translucent navy, letter-spaced cyan kicker, skewed CTA */
+.panel.ad-card { border-left: 3px solid rgba(0,204,242,.85); backdrop-filter: blur(6px); }
+.panel.ad-card[data-state="done"] { border-left-color: rgba(159,216,236,.35); }
+.panel.ad-player { box-shadow: inset 0 0 0 1px rgba(0,204,242,.35); }
+.label.ad-kicker { letter-spacing: .28em; font-weight: 700; }
+.label.ad-reward { letter-spacing: .04em; font-weight: 700; }
+.btn.ad-cta .bg { transform: skewX(-14deg); box-shadow: 0 8px 24px rgba(0,204,242,.35); }
+.btn.ad-cta span { color: #061224 !important; letter-spacing: .12em; font-weight: 700; }

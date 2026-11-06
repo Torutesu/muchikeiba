@@ -4,6 +4,7 @@
  * season missions (REQ-UXS-016) and A/B bucket assignment (REQ-UXS-032). Pure per-player logic; the master
  * values live in `progression` (remote config can change them; onboardingProblems validates every change).
  */
+import { adsProblems } from './ads.js';
 import { z } from 'zod';
 import { AppError } from './errors.js';
 import { createHorseFromTemplate, validateName } from './horses.js';
@@ -423,7 +424,7 @@ export function firstRaceOf(m: Master, s: PlayerState): { cpuFillAfterMs: number
 
 /** Every onboarding-related check on a master (boot: index.ts; remote config: ops/config.ts). */
 export function uxProblems(m: Master, knownItems: Set<string>): string[] {
-  return [...onboardingProblems(m.progression, m, knownItems), ...nudgeProblems(m.progression.nudges), ...accountDeletionProblems(m.progression.accountDeletion), ...dayRolloverProblems(m.progression.dayRollover)];
+  return [...onboardingProblems(m.progression, m, knownItems), ...nudgeProblems(m.progression.nudges), ...accountDeletionProblems(m.progression.accountDeletion), ...dayRolloverProblems(m.progression.dayRollover), ...adsProblems(m.progression.ads)]; // REQ-AD-002
 }
 
 export function validateUx(m: Master, knownItems: Set<string>): void {

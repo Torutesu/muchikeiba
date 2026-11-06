@@ -191,6 +191,8 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.equal(v.day, 1); assert.equal(v.races, 1);
   assert.ok(await page.locator('.screen.in .btn.tab.locked').count() >= 1, 'shop tab is locked on day 1');
   await btn('ショップ　🔒').click(); await shot('home-day1-locked-toast', 250);
+  await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .ad-card').count(), 0, 'no rewarded-ad card in the first session (REQ-AD-001)');
 
   // ------------------------------------------------------------------ 2. other screens and states
   // the account-link prompt (REQ-UXS-073) comes up once on the first home of day 3+ after the FTUE: shot once, then 「あとで」
@@ -206,6 +208,23 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   };
   await demo('day3');
   await shot('home-day3', 600);
+  // rewarded ads (REQ-AD-*): the opt-in card on home from day 2 → the simulated ad → the server's verdict from the
+  // signed SSV callback → the watched state → the card says today's view is done
+  await page.waitForSelector('.screen.in .ad-card[data-placement="daily_coins"][data-state="offer"]', { timeout: 10000 });
+  assert.ok(!/倍/.test(await page.locator('.screen.in .ad-card').innerText()), 'ad card: fixed amounts, no 「倍」');
+  await shot('ad-offer-home', 200);
+  const free0 = await page.evaluate(() => globalThis.__muchi.state().player.wallet.free);
+  const paid0 = await page.evaluate(() => globalThis.__muchi.state().player.wallet.paid);
+  await click('動画を見る  »'); await waitScreen('ad-player'); await shot('ad-player-simulated', 300);
+  await waitScreen('ad-watched', 30000);
+  assert.equal(await page.evaluate(() => globalThis.__muchi.lastAd), 'rewarded');
+  await shot('ad-watched', 300);
+  const w1 = await page.evaluate(() => globalThis.__muchi.state().player.wallet);
+  assert.equal(w1.free - free0, 10, 'the SSV callback granted 10 free coins');
+  assert.equal(w1.paid, paid0, 'never paid coins');
+  await click('つづける  »'); await waitScreen('home');
+  await page.waitForSelector('.screen.in .ad-card[data-state="done"]', { timeout: 10000 });
+  await shot('ad-offer-done', 200);
   assert.equal(await page.locator('.screen.in .btn.tab.locked').count(), 0, 'shop open on day 3');
   await click('ショップ'); await waitScreen('shop-recommended'); await shot('shop-recommended', 600);
   assert.ok(await page.locator('.screen.in .countdown').count() === 1, 'pass offer shows the real season-end countdown');

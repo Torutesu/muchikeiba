@@ -469,3 +469,65 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 **`GET /v1/gacha/:id/odds` の追加**：`period.lastDay`、`pickup: { templateId, name, rarity, ppm, rate, guaranteePpm, guaranteeRate } | null`（抽選表の行そのもの）、`stepUp: { afterLast, notice, steps: [ { step, priceTen, finalSlot: { appliesTo, items | null, rarityTotals | null } } ] } | null`、`pity.label`・`pity.costCoins`（交換までの最大コイン、ステップアップは各ステップの価格から）・`pity.closesAtMs`・`pity.carryOver`（上と同じ形）。`estimatedMaxCostYen` は `costCoins` から計算する。
 
 **期間外の操作**：引く・チケット・天井交換は `BANNER_CLOSED`（409）。`message` は `banner <id> ended at 2026-12-01 00:00 JST` / `banner <id> opens at …` / `banner <id> is not open`（予告前）。判定はその取引でサーバーが読んだ時刻（Durable Object の中で1回）。
+
+## 18. リワード広告（任意の動画広告、REQ-AD-001〜012、`server/src/domain/ads.ts`・`server/src/ads/ssv.ts`、C# `Ads.cs`・`Muchi.Game.RewardedAdModel`）
+無課金の人が、自分で選んだ時だけ動画を見て少しの報酬を受け取る。**全画面の強制広告（インタースティシャル）は無い**。報酬は**無償コイン**（有償コインには絶対にならない＝資金決済法の有償残高に入らない）か**タイムアタック1回**だけ。文言はサーバーが作る固定額（「無償コイン10枚」）で、「倍」「お得」「今だけ」は使わない（設定の検証で弾く）。報酬は**広告ネットワークのサーバー検証（SSV）コールバックでだけ**付与し、クライアントの報告では付与しない。
+
+### 18.1 設定（`progression.ads`、リモート設定で変更可・`adsProblems` で検証）
+| キー | 既定 | 意味 |
+|---|---|---|
+| `enabled` / `network` | true / `admob` | |
+| `globalDailyCap` | 3 | 1ゲーム日（§15）に受け取れる回数（全部の枠で） |
+| `startsPerDay` / `maxOpenSessions` | 12 / 3 | 1日に開ける視聴セッション数・同時に開いておける数（乱用の制限） |
+| `sessionTtlMs` / `maxClockSkewMs` | 1時間 / 10分 | セッションの有効期限・コールバックの時刻のずれの許容 |
+| `minRankedRaces` / `minGameDay` | 3 / 2 | FTUE（ランク戦3戦まで）とインストール当日（最初のセッション）は出さない |
+| `payerQuietDays` | 30 | 直近30日に実際の支払いがある人には、自分でオンにしない限り出さない |
+| `minAge` | 13 | 登録済みの年齢が13歳未満なら出さない |
+| `anomalyFlagAt` | 5 | 1日に弾いたコールバックがこの数に届くとサポート用の印 `ads_anomaly:<日>` |
+| `placements[]` | 下表 | `id`・`surface`（home/result/time_attack/shop）・`title`・`dailyCap`・`reward`（`freeCoins` か `taAttempts` のどちらか1つ）・`adUnitKey`（広告ユニットIDの**キー名**。IDそのものは env） |
+
+| 枠 | 画面 | 報酬 | 1日 |
+|---|---|---|---|
+| `daily_coins` | ホーム | 無償コイン10枚 | 1回 |
+| `result_coins` | ランク戦の結果（**3着以内の時だけ**。4着以下の結果画面には出さない） | 無償コイン10枚 | 1回 |
+| `ta_attempt` | タイムアタック | その日の挑戦 +1回 | 1回 |
+
+コード側の上限（`ADS_HARD_LIMITS`、リモート設定でも超えられない）：全体6回/日、枠ごと3回/日、1回の無償コイン20枚、**1日の広告の無償コイン40枚**（上限の組み合わせで計算）、タイムアタック+1回、`minGameDay ≥ 2`、`minRankedRaces ≥ 1`、`minAge ≥ 13`、`payerQuietDays ≤ 90`。
+
+### 18.2 `GET /v1/ads`（要認証）
+```json
+{ "enabled": true, "eligible": true, "reason": null, "pref": "auto", "payerQuietUntil": null, "day": "2026-12-11",
+  "globalCap": 3, "globalUsed": 0, "globalLeft": 3, "startsLeft": 12, "network": "admob",
+  "placements": [ { "id": "daily_coins", "surface": "home", "title": "動画を見て、無償コインを受け取る", "rewardLabel": "無償コイン10枚",
+    "reward": { "freeCoins": 10 }, "dailyCap": 1, "used": 0, "left": 1, "adUnitKey": "REWARDED_HOME", "available": true } ],
+  "adRequest": { "nonPersonalized": true, "underAgeOfConsent": false, "ageKnown": false },
+  "open": [ { "sessionId", "placementId", "expiresAt" } ] }
+```
+- `reason`（出さない理由）：`disabled` / `opted_out`（設定でオフ）/ `deleting`（削除の予約中）/ `moderation`（BAN）/ `ftue` / `first_day` / `age` / `payer_quiet`（`payerQuietUntil` まで）。
+- `adRequest`：登録済みの成人でなければ**パーソナライズしない**広告を要求（年齢未登録も含む）。16歳未満は「同意年齢未満」の印を付けて要求する。
+- 何も書き込まない（日の切り替えは表示用に計算するだけ）。
+
+### 18.3 `PUT /v1/ads/preferences`・`POST /v1/ads/:placementId/start`・`GET /v1/ads/sessions/:sessionId`（要認証）
+- `PUT /v1/ads/preferences` `{ "mode": "auto" | "on" | "off" }` → §18.2 の形。`auto`（既定：支払いから30日は出さない）、`on`（支払った人も見る）、`off`（誰でも出さない）。
+- `POST /v1/ads/:placementId/start`（`Idempotency-Key` 必須。再送は同じセッション）→
+  `{ "sessionId": "ad_<16桁hex>", "placementId", "network": "admob", "adUnitKey", "customData": "<sessionId>", "userId": "<プレイヤーID>", "expiresAt", "rewardLabel", "adRequest" }`。
+  **ここでは何も付与しない**。SDK のサーバー検証オプションに `customData`（セッションID）と `userId`（プレイヤーID）を渡して広告を出す。エラー：`NOT_ELIGIBLE`（§18.2 の理由）、`DELETION_PENDING`、`AD_LIMIT_REACHED`（409、今日の分を使い切った）、`RATE_LIMITED`（開始回数・同時セッション）、`NOT_FOUND`（枠が無い）。
+- `GET /v1/ads/sessions/:sessionId` → `{ "sessionId", "placementId", "status": "open" | "rewarded" | "rejected" | "expired", "expiresAt", "reward" | null, "rewardLabel" | null, "reason" | null, "wallet" }`。広告を閉じた後、`status` が `open` でなくなるまで1秒ごとに数回確かめる（`RewardedAdModel`：8回）。間に合わなければ「確認に時間がかかっています。届きしだい反映されます」。
+
+### 18.4 SSV コールバック `GET /v1/ads/ssv/admob`（認証なし、署名で認証）
+AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&reward_item=…&timestamp=<ms>&transaction_id=…&user_id=…&signature=…&key_id=…`。
+1. **署名**（`ssv.ts` `verifyAdMobCallback`）：`&signature=` より前のクエリ文字列（受け取ったまま）を、`key_id` の公開鍵（ECDSA P-256 / SHA-256、署名は DER の base64url）で検証。鍵の組は差し替え可能（`SsvKeySource`）：env `ADS_SSV_KEYS_URL`（ネットワークが公開する鍵の JSON。1日キャッシュ、知らない `key_id` の時だけ最短1分おきに取り直す）か `ADS_SSV_KEYS`（固定の鍵、開発・結合テスト用）。署名より後ろに付け足された値は読まない。署名が無い・違う・知らない鍵・必須の値が無い → **401**（ネットワーク側で失敗として見える）。鍵の組が設定されていなければ **404**（どの報酬も付与されない）。
+2. **広告ユニット**：env `ADS_AD_UNITS`（`{"REWARDED_HOME":"<ID>",…}`）があれば、知らないユニット・枠と違うユニットは弾く。
+3. **プレイヤーのオブジェクト**（`user_id` の Durable Object、`ads.ts` `applyAdCallback`）で判定：
+   - 同じ `transaction_id` は `duplicate`（冪等。直近200件を覚え、さらに取引の冪等キー `ad:admob:<tx>` で同じ結果を返す）。署名が `user_id` を含むので、別のプレイヤーへの再送は起こらない（全体の索引は不要）。
+   - 弾く理由：`user_mismatch`・`unknown_session`（`custom_data` がこのプレイヤーのセッションでない）・`session_used`（同じセッションに別の取引）・`expired`・`clock_skew`（サーバーの時刻と `maxClockSkewMs` 以上ずれる、またはセッションより前）・`ad_unit_mismatch`・`cap`（1日の上限）・`deleting`。弾いた時も **200** `{ "ok": true, "status": "rejected" }` を返す（ネットワークが再送しない）。KPI `ad_reject` と、多い日はサポート用の印。
+   - 付与：無償コイン（台帳の参照 `ad:admob:<tx>`）か、タイムアタックのその日の挑戦回数 +1。回数を数え、セッションを `rewarded` にし、KPI `ad_reward`。応答 `{ "ok": true, "status": "rewarded" }`。
+4. **乱用の制限**：送り元IPとプレイヤーごとにトークンバケット（Worker のインスタンスごと、30回・毎秒1回）。プレイヤーのオブジェクトでも開始回数・同時セッション・1日の上限で止まる。
+
+### 18.5 クライアント（`RewardedAdModel`、`IAdProvider` はネイティブ側）
+- カードを出すのは：サーバーが `eligible` で、その画面の枠に今日の残りがあり、SDK が広告を用意できている時だけ。**チュートリアル・マッチング・レース中・4着以下の結果画面・オフラインには出さない**。再生はカードのボタンからだけ（自動で始めない）。1回に1つ。
+- KPI（クライアント）：`ad_offer_view {placementId, surface}`（画面に出した時、画面ごとに1回）、`ad_start {placementId, surface, outcome: shown|no_fill|failed|closed_early}`。報酬（`ad_reward`）はサーバーのイベントだけで、クライアントからは送れない。
+- 同意：iOS の ATT は 06 §2.3 のとおり（2日目以降の2回目の起動で1回だけ、FTUE では聞かない）。許可が無ければパーソナライズしない広告。GDPR/UMP は日本だけの配信では不要だが、`IAdConsent` の差し込み口を残す。
+
+### 18.6 広告なしパス（`ad_free_pass`）は作らない
+強制広告が無く、広告は自分で選んだ時だけ再生されるので、「広告を消す」商品には消すものが無い（払っても何も変わらない商品は誤認のおそれ）。代わりに、支払った人には既定で広告を出さない（`payerQuietDays` 30日、`pref: on` で自分から見ることはできる）。経済の目標 E11（balance-targets 4.7）も、広告の価値を一番安い有料商品より小さく保つ。

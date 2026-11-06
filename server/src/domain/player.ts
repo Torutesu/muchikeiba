@@ -87,6 +87,8 @@ export interface FriendsState {
   invites: { from: string; passphrase: string; at: number }[];
 }
 
+import type { AdsState } from './ads.js';
+
 export interface PlayerState {
   v: 1;
   id: string;
@@ -186,6 +188,8 @@ export interface PlayerState {
   nudges?: NudgeState;
   /** REQ-UXS-040: account deletion request (confirmation token, then the scheduled deletion). */
   deletion?: DeletionState;
+  /** REQ-AD-*: rewarded ads — preference, today's counts, sessions, seen transaction ids (created on first use; ads.ts ensureAds). */
+  ads?: AdsState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

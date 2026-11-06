@@ -155,3 +155,62 @@ switch (loc.Source)
 2. `npm run scan:assets` でカタログを書き、`npm test`（カタログの検証を含む）が通ること。
 3. `dotnet run --project "unity/Checks~/GameChecks"`（`== asset delivery` の項目）、`dotnet build "unity/Checks~/UnityAdapters"`（`UnityAssetHttp`）。
 4. 実機：機内モードで初回起動 → すぐ初レース（仮の表示）。Wi-Fi で起動 → 3秒以内に初レース、ホームまでに裏の取得が進む。モバイル通信で 50MB 超 → 確認ダイアログ。
+
+---
+
+## 8. リワード広告（Round 10、REQ-AD-001〜012、`contracts/protocol.md` §18）
+
+基準ブランチ：`feat/r10-rewarded-ads`（`claude/round9` から）。分担は同じ：**Claude＝サーバー・SSV 検証・`ApiClient`・`RewardedAdModel`（どこに出すか・1回の流れ）／Codex＝ネイティブ SDK（`IAdProvider`）・同意ダイアログ・カードと完了の見た目**。
+
+### 8.1 いまの状態
+| 項目 | 状態 |
+|---|---|
+| サーバー | ✅ `GET /v1/ads`、`PUT /v1/ads/preferences`、`POST /v1/ads/:placementId/start`、`GET /v1/ads/sessions/:id`、SSV `GET /v1/ads/ssv/admob`（ECDSA 署名・冪等・回数制限） |
+| C# | ✅ `ApiClient.GetAdsAsync / SetAdPreferenceAsync / StartAdAsync / GetAdSessionAsync`、`AnalyticsEvent.AdOfferView / AdStart` |
+| 画面のモデル | ✅ `Muchi.Game.RewardedAdModel`（`unity/Assets/Muchi/Game/RewardedAdModel.cs`）、`GameChecks` の `== rewarded ads` |
+| ネイティブ | **Codex**：`IAdProvider` の実装（Google Mobile Ads Unity プラグイン）、`IAdConsent`（ATT） |
+| 画面 | **Codex**：オファーカード・再生後の「受け取りました」。見本は `tools/figma-prototype/site/unity.html` のホーム（右の「次のレース」の下）→「動画を見る »」→ シミュレーションの広告 → 完了 |
+
+### 8.2 ネイティブ SDK のつなぎ方（`Assets/Muchi/Integration/` に置く。Game 層は UnityEngine を使わない）
+```csharp
+public sealed class AdMobRewardedProvider : IAdProvider
+{
+    // adUnitKey（"REWARDED_HOME" / "REWARDED_RESULT" / "REWARDED_TA"）→ 実際の広告ユニットID。IDはビルド設定（ScriptableObject・CI のシークレット）から。
+    //   リポジトリにはテスト用ID（Google の公開テストユニット）かプレースホルダだけを置く。
+    public bool IsReady(string adUnitKey) { /* 読み込み済みの RewardedAd があり CanShowAd() */ }
+    public void Preload(string adUnitKey, bool npa, bool tfua) { /* AdRequest：npa なら extras "npa"="1"、tfua なら RequestConfiguration.TagForUnderAgeOfConsent */ }
+    public Task<AdShowOutcome> ShowAsync(AdShowRequest r, CancellationToken ct)
+    {
+        // ad.SetServerSideVerificationOptions(new ServerSideVerificationOptions.Builder().SetUserId(r.UserId).SetCustomData(r.CustomData).Build());
+        // ad.Show(reward => earned = true); OnAdFullScreenContentClosed → earned ? Shown : ClosedEarly
+        // 読み込み失敗 → NoFill、表示失敗 → Failed。メインスレッドで呼ぶ。閉じた後に次の広告を Preload。
+    }
+}
+```
+- **SSV の設定**：AdMob の管理画面で各リワード広告ユニットの「サーバーサイド認証」をオンにし、コールバック URL を `https://<api>/v1/ads/ssv/admob` にする。サーバーの env：`ADS_SSV_KEYS_URL`（AdMob が公開している検証鍵の JSON の URL）、`ADS_AD_UNITS`（`{"REWARDED_HOME":"ca-app-pub-…/…",…}`）。どちらも秘密ではないが**本番の値はリポジトリに書かない**（`wrangler.toml` はコメントだけ）。
+- **報酬はサーバーが決める**：SDK の `reward.Amount` は使わない。`RewardedAdModel.WatchAsync` がセッションを確かめ、`AdWatchResult.Message`（「受け取りました：無償コイン10枚」など）をそのまま出す。
+- 再生中はゲームの音を止め、閉じたら戻す（SDK の全画面イベント）。
+
+### 8.3 画面での使い方
+```csharp
+var ads = new RewardedAdModel(api, provider, analytics, consent);
+await ads.RefreshAsync();                       // ホーム・結果・タイムアタックに入った時
+ads.OnScreenEntered();
+var card = ads.OfferFor(AdContext.Home, backend.Online);           // 結果画面は OfferFor(AdContext.Result, online, place)
+if (card != null) { /* カードを描く：card.Title, card.RewardLabel, card.LeftLabel, card.ButtonLabel, card.Footnote */ ads.NoteOfferShown(card); }
+// ボタン → var r = await ads.WatchAsync(card, AdContext.Home); → r.Status / r.Message / r.Wallet を表示し、ウォレット表示を更新
+```
+- **出してはいけない場所**：チュートリアル・マッチング・レース中・観戦・**4着以下の結果画面**（`OfferFor` が null を返す）。カードは他のボタンより目立たせない（主ボタンは1画面1つ、06 §6）。自動で再生しない。
+- `null` の時はカードの場所を空けない（何も出さない）。今日の分を使い切ったら「今日の分は受け取りました」の1行にしてよい（`View.Placement(id).Left == 0`）。
+- 設定（その他）に「動画広告：自動／表示する／表示しない」（`SetPreferenceAsync`、表示は `RewardedAdModel.PreferenceLabel`）。
+
+### 8.4 同意（ATT・UMP）
+- iOS の ATT：06 §2.3 のとおり「2日目以降の2回目の起動で1回だけ」、FTUE では聞かない。`IAdConsent.PersonalizedAllowedAsync` は、許可済みなら true、拒否・未確認なら false を返す（**ここでダイアログを出さない**。ダイアログは決まったタイミングで1回だけ）。false でも広告は出る（パーソナライズしない）。
+- サーバーが `adRequest.nonPersonalized = true`（年齢未登録・未成年）を返したら、ATT の結果に関係なくパーソナライズしない。
+- GDPR/UMP：日本だけの配信では使わない。海外配信の時は `IAdConsent` の実装に UMP を入れる（差し込み口だけ用意）。
+- プライバシーポリシーの外部送信の表に、広告SDK（送信先・目的・プレイヤーID）を足す（運営・弁護士レビュー）。
+
+### 8.5 確認の手順
+1. `dotnet run --project "unity/Checks~/GameChecks"`（`== rewarded ads`）。
+2. 実機：Google のテスト用広告ユニットで、ホームのカード → 最後まで見る → 数秒で「受け取りました：無償コイン10枚」、ウォレットの無償だけが +10。途中で閉じる → 「最後まで見ると受け取れます」。機内モード → カードが出ない。
+3. 1日目（インストール当日）・チュートリアル中・4着以下の結果画面ではカードが出ないこと。

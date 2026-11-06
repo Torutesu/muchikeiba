@@ -10,6 +10,7 @@ import ngJson from '../../master/ng-names.json';
 import ageJson from '../../master/age-limits.json';
 import productsJson from '../../master/products.json';
 import type { TimeAttackConfig } from './timeAttack.js';
+import type { AdsConfig } from './ads.js';
 import progressionJson from '../../master/progression.json';
 import titlesJson from '../../master/titles.json';
 import pushJson from '../../master/push.json';
@@ -136,6 +137,8 @@ export interface Progression {
   friendRewardDailyCap: number;
   /** REQ-TA-*: time attack rules. */
   timeAttack: TimeAttackConfig;
+  /** REQ-AD-*: opt-in rewarded video ads (validated by ads.ts adsProblems). Absent = no ads. */
+  ads?: AdsConfig;
   /** REQ-RACE-037: daily ground per course and night racing at lit venues. */
   weather: WeatherConfig;
   /** REQ-TEAM-*: 支部 (teams). */

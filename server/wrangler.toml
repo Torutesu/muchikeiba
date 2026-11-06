@@ -46,6 +46,9 @@ ASSET_CDN_BASE = "https://assets.example.invalid"
 # Secrets (wrangler secret put): TICKET_SECRET, VERIFIER_TOKEN, ADMIN_TOKENS, GOOGLE_SERVICE_ACCOUNT_JSON, FCM_SERVICE_ACCOUNT_JSON, KPI_SALT
 # ADMIN_TOKENS = '[{"name":"alice","role":"admin","sha256":"<sha-256 hex of the token>"}]'   (roles: viewer|operator|admin)
 # ADMIN_TOKEN (legacy single token, role admin) still works; prefer ADMIN_TOKENS.
+# Rewarded ads (REQ-AD-006, contracts/protocol.md §18). Unset => GET /v1/ads/ssv/admob is 404 and no ad reward is ever granted.
+# ADS_SSV_KEYS_URL = "<the ad network's published SSV verifier-keys JSON URL>"   (not a secret; set per env when ads go live)
+# ADS_AD_UNITS = '{"REWARDED_HOME":"<ad unit id>","REWARDED_RESULT":"<ad unit id>","REWARDED_TA":"<ad unit id>"}'
 # Optional Cloudflare Access for /v1/admin/*: ACCESS_TEAM_DOMAIN, ACCESS_AUD, ACCESS_ROLES
 # Stores (server/README.md「ストア連携」). Unset => that store rejects every receipt:
 #   APPLE_BUNDLE_ID, APPLE_ACCEPT_SANDBOX, GOOGLE_PACKAGE_NAME, GOOGLE_ACCEPT_TEST, GOOGLE_PUBSUB_AUDIENCE, GOOGLE_PUBSUB_SERVICE_ACCOUNT

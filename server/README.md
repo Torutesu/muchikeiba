@@ -65,6 +65,11 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | POST | `/v1/shop/offers/:offerId/view` | 要 | | 1回だけの案内を表示した記録（§13.4） |
 | GET | `/v1/shop/allowance` | 要 | | 厩舎手当（30日）の状態（§13.5） |
 | POST | `/v1/shop/allowance/claim` | 要 | 必須 | 今日の厩舎手当を受け取る（`ALREADY_CLAIMED` / `NOT_ELIGIBLE`） |
+| GET | `/v1/ads` | 要 | | リワード広告のカード・今日の残り・出さない理由（protocol §18） |
+| PUT | `/v1/ads/preferences` | 要 | | `{mode: auto|on|off}` 動画広告の設定 |
+| POST | `/v1/ads/:placementId/start` | 要 | 必須 | 視聴セッションを開く（付与しない。`AD_LIMIT_REACHED` / `NOT_ELIGIBLE` / `RATE_LIMITED`） |
+| GET | `/v1/ads/sessions/:sessionId` | 要 | | セッションの状態（`open`/`rewarded`/`rejected`/`expired`）とウォレット |
+| GET | `/v1/ads/ssv/admob` | 署名 | | 広告ネットワークのサーバー検証コールバック（ECDSA 署名、env `ADS_SSV_KEYS_URL`/`ADS_SSV_KEYS`/`ADS_AD_UNITS`。未設定なら 404） |
 | POST | `/v1/shop/purchase-intent` | 要 | | `{productId}` ストア購入を始めてよいか（`AGE_REQUIRED` / `GUARDIAN_CONSENT_REQUIRED` / `AGE_LIMIT_EXCEEDED` / `ALREADY_PURCHASED` / `UNSETTLED_DEBT` / `NOT_ELIGIBLE`）。パスは残り日数、コインは初回の無償上乗せも返す（§13.2） |
 | GET | `/v1/shop/store-account` | 要 | | `{appleAppAccountToken, googleObfuscatedAccountId}` 購入時にストアへ渡す値（下記「ストア連携」） |
 | POST | `/v1/shop/purchase` | 要 | （取引IDで自動） | `{platform: apple\|google\|fake, productId, receipt}`。apple＝`Transaction.jwsRepresentation`、google＝`{"purchaseToken":"…"}` |
@@ -320,6 +325,12 @@ App Store Server API（`AppStoreServerApi`、ES256 JWT）はアプリが報告�
 - クライアントでしか分からないイベント（セッション・チュートリアルの各ステップ・画面・購入画面の操作・通知の開封など）は `POST /v1/analytics/events` で受ける。種類ごとにスキーマで検証し、時刻が7日より古いか5分より未来のものは捨てる。
 - 個人情報は送らない。プレイヤーIDはソルト（secret `KPI_SALT`）付きSHA-256の先頭16桁に置き換える。`KPI_SALT` が無ければ何も書かない。
 - 列の並びとクエリ（継続率・チュートリアル・初回課金・ARPDAU・課金率・パス継続・課金者と無課金者の勝率差）は `docs/ops/kpi-queries.md`。
+
+## リワード広告（`src/domain/ads.ts`・`src/ads/ssv.ts`、REQ-AD-*）
+
+- 任意の動画広告だけ（強制広告なし）。報酬は無償コインかタイムアタック+1回で、付与は広告ネットワークの SSV コールバック（ECDSA P-256 署名）からだけ。冪等（取引ID）・セッション・時刻のずれ・1日の上限（ゲーム日）で検証し、弾いたものは KPI `ad_reject` とサポート用の印。
+- 鍵の組：`ADS_SSV_KEYS_URL`（ネットワークの公開鍵 JSON。isolate ごとに1日キャッシュ）か `ADS_SSV_KEYS`（固定、開発・結合テスト）。広告ユニットID は `ADS_AD_UNITS`。どれもリポジトリに本番の値を書かない。
+- 設定は `master/progression.json` の `ads`（リモート設定で変更可、`adsProblems` で検証、上限は `ADS_HARD_LIMITS`）。経済の目標 E11 は docs/spec/balance-targets.md 4.7。
 
 ## 配合の拡張（`src/domain/stud.ts`・`studService.ts`・`horses.ts`、REQ-BREED-*）
 - **種牡馬の貸し借り**：2人のPlayerDOにまたがる取引を、同じ操作IDで ①持ち主が確保 → ②借り手が支払い＋配合＋未送金記録（1トランザクション）→ ③持ち主が受取 → ④借り手が未送金を消す、の順に進める。どの段階も繰り返して安全。②失敗で①を戻し、③④が届かなければ借り手のアラームが再送（`retryMs` から倍々、最大1時間）。確保だけ残った枠は `reserveTtlMs` で失効。検索用の写しは DirectoryDO の `studs` 表（持ち主のシャード、公開一覧は全シャードから集める）。

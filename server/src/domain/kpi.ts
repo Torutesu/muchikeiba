@@ -99,6 +99,9 @@ const tutorialStepProps = z.object({
 /** §5.1 offer triggers T1..T8. */
 export const OFFER_TRIGGERS = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8'] as const;
 const offerProps = z.object({ offerId: str(64), trigger: z.enum(OFFER_TRIGGERS) }).strict();
+/** REQ-AD-010: where an ad offer card was shown (domain/ads.ts AdSurface). */
+export const AD_SURFACE_NAMES = ['home', 'result', 'time_attack', 'shop'] as const;
+const adProps = z.object({ placementId: str(32), surface: z.enum(AD_SURFACE_NAMES) }).strict();
 /** Events only the client can observe. Server-known events (purchase, gacha, race results…) are not accepted from clients. */
 export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('session_start'), at: z.number().int(), props: z.object({}).strict().optional() }),
@@ -117,6 +120,9 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('account_link'), at: z.number().int(), props: z.object({ provider: z.enum(['apple', 'google']) }).strict() }),
   // REQ-UXS-072: a replay handed to the OS share sheet (the player shared; cancelled shares are not sent)
   z.object({ name: z.literal('share'), at: z.number().int(), props: z.object({ kind: z.enum(['replay_video', 'replay_image']) }).strict() }),
+  // REQ-AD-010: rewarded ads. The reward itself is the server event ad_reward (from the SSV callback, never the client).
+  z.object({ name: z.literal('ad_offer_view'), at: z.number().int(), props: adProps }),
+  z.object({ name: z.literal('ad_start'), at: z.number().int(), props: z.object({ placementId: str(32), surface: z.enum(AD_SURFACE_NAMES), outcome: z.enum(['shown', 'no_fill', 'failed', 'closed_early']) }).strict() }),
 ]);
 export type ClientEvent = z.infer<typeof clientEventSchema>;
 
@@ -143,6 +149,8 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'race_quit': return { name: e.name, s1: e.props.mode, value: e.props.remainingM };
     case 'account_link': return { name: e.name, s1: e.props.provider };
     case 'share': return { name: e.name, s1: e.props.kind };
+    case 'ad_offer_view': return { name: e.name, s1: e.props.placementId, s2: e.props.surface };
+    case 'ad_start': return { name: e.name, s1: e.props.placementId, s2: e.props.surface, s3: e.props.outcome };
   }
 }
 

@@ -827,5 +827,25 @@
     ] }
   ],
   "accountDeletion": { "cancelWindowDays": 14, "confirmTtlMs": 600000, "ledgerRetentionDays": 2557 },
-  "nudges": { "promotionNearPoints": 30, "promotionIdleMs": 86400000, "tournamentClosingLeadMs": 3600000, "tournamentClosingMaxTargets": 1000 }
+  "nudges": { "promotionNearPoints": 30, "promotionIdleMs": 86400000, "tournamentClosingLeadMs": 3600000, "tournamentClosingMaxTargets": 1000 },
+  "ads": {
+    "_note": "REQ-AD-*（contracts/protocol.md §18、docs/spec/balance-targets.md 4.7）。任意の動画広告（自分で押した時だけ・全画面の強制広告なし）。報酬は無償コインかタイムアタック1回だけで、文言は「無償コイン◯枚」の固定額（「倍」は使わない、検証あり）。報酬は広告ネットワークのサーバー検証（SSV）でだけ付与。上限はゲーム日（progression.dayRollover）で数える。コード側の上限は ADS_HARD_LIMITS（1日の無償コイン40枚まで）。",
+    "enabled": true,
+    "network": "admob",
+    "globalDailyCap": 3,
+    "startsPerDay": 12,
+    "maxOpenSessions": 3,
+    "sessionTtlMs": 3600000,
+    "maxClockSkewMs": 600000,
+    "minRankedRaces": 3,
+    "minGameDay": 2,
+    "payerQuietDays": 30,
+    "minAge": 13,
+    "anomalyFlagAt": 5,
+    "placements": [
+      { "id": "daily_coins", "surface": "home", "title": "動画を見て、無償コインを受け取る", "dailyCap": 1, "reward": { "freeCoins": 10 }, "adUnitKey": "REWARDED_HOME" },
+      { "id": "result_coins", "surface": "result", "title": "動画を見て、もう少しコインを", "dailyCap": 1, "reward": { "freeCoins": 10 }, "adUnitKey": "REWARDED_RESULT" },
+      { "id": "ta_attempt", "surface": "time_attack", "title": "動画を見て、タイムアタックをもう1回", "dailyCap": 1, "reward": { "taAttempts": 1 }, "adUnitKey": "REWARDED_TA" }
+    ]
+  }
 }

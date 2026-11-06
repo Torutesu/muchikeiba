@@ -28,6 +28,7 @@ import { StudService, type StudDirectory, type StudPlayers } from '../domain/stu
 import type { SpectateService } from '../domain/spectate.js';
 import type { TournamentEntryInfo, TournamentPlayers, TournamentsService } from '../domain/tournamentService.js';
 import type { StableService } from '../domain/stable.js';
+import { SsvError, verifyAdMobCallback, type SsvKeySource } from '../ads/ssv.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -48,7 +49,8 @@ export type PlayerMethod =
   | 'studView' | 'studList' | 'studUnlist' | 'studPeek' | 'studReserve' | 'studSettle' | 'studPreview' | 'studApply' | 'studAcked' | 'studDue' | 'studRetryLater'
   | 'stableMine' | 'stableSave' | 'stableVisit' | 'stableLikeGive' | 'stableLikeReceive' | 'stableClear' | 'stableForget'
   | 'recordConsent' | 'grantPartner' | 'missionsAll' | 'requestDeletion' | 'cancelDeletion' | 'deletionDue' | 'deletionSnapshot' | 'deletionMarkStep'
-  | 'deletionRetryLater' | 'deletionFinalize' | 'deletionStart' | 'runNudges' | 'nudgeTaBeaten' | 'nudgeTournamentClosing';
+  | 'deletionRetryLater' | 'deletionFinalize' | 'deletionStart' | 'runNudges' | 'nudgeTaBeaten' | 'nudgeTournamentClosing'
+  | 'ads' | 'setAdPref' | 'adStart' | 'adSession' | 'adReward';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -118,6 +120,11 @@ export interface AppContext {
   authenticateAdmin?(req: Request): Promise<AdminPrincipal>;
   /** Active remote config summary for clients (REQ-OPS-007). */
   configInfo?(): Promise<ClientConfigInfo>;
+  /**
+   * REQ-AD-006: rewarded-ad server-side verification (the network's key set and the ad unit map from env). Absent =
+   * the SSV callback answers NOT_FOUND (no reward can ever be granted; offers still list but cannot pay out).
+   */
+  ads?: { keys: SsvKeySource; adUnits?: Record<string, string>; admit?(key: string, now: number): void };
   /** REQ-DLV-002: CDN base URL for asset downloads (wrangler var ASSET_CDN_BASE). Unset → catalog baseUrl "" (bundled assets only). */
   assetCdnBase?: string;
 }
@@ -568,6 +575,37 @@ export const routes: Route[] = [
   { method: 'GET', path: '/v1/time-attack/ghosts/:seasonId/:trackId/:playerId', auth: 'player', handler: async (_r, p, c) => {
     if (!/^\d{4}-\d{2}$/.test(p.seasonId!) || !/^[a-z0-9_]{1,48}$/.test(p.trackId!)) throw new AppError('BAD_REQUEST', 'bad season or track');
     return c.timeAttack.ghost(p.seasonId!, p.trackId!, p.playerId!);
+  } },
+  // rewarded ads (REQ-AD-*, contracts/protocol.md §18)
+  { method: 'GET', path: '/v1/ads', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('ads', u) },
+  { method: 'PUT', path: '/v1/ads/preferences', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ mode: z.enum(['auto', 'on', 'off']) }).strict());
+    return c.player(u).invoke('setAdPref', u, b.mode);
+  } },
+  { method: 'GET', path: '/v1/ads/sessions/:sessionId', auth: 'player', handler: async (_r, p, c, u) => {
+    if (!/^ad_[0-9a-f]{16}$/.test(p.sessionId!)) throw new AppError('BAD_REQUEST', 'bad session id');
+    return c.player(u).invoke('adSession', u, p.sessionId!);
+  } },
+  // the ad network's server-side verification callback (no player auth: the signature is the authentication)
+  { method: 'GET', path: '/v1/ads/ssv/admob', auth: 'none', handler: async (r, _p, c) => {
+    if (!c.ads) throw new AppError('NOT_FOUND', 'rewarded ads are not configured');
+    const now = (c.clock ?? Date.now)();
+    c.ads.admit?.('ip:' + (r.headers.get('cf-connecting-ip') ?? '?'), now);
+    let cb;
+    try {
+      cb = await verifyAdMobCallback(new URL(r.url).search, c.ads.keys, c.ads.adUnits);
+    } catch (e) {
+      if (e instanceof SsvError) throw new AppError('UNAUTHORIZED', e.message);
+      throw e;
+    }
+    playerIdParam(cb.userId);
+    c.ads.admit?.('u:' + cb.userId, now);
+    const out = await c.player(cb.userId).invoke('adReward', cb.userId, cb);
+    return { ok: true, status: out.status };
+  } },
+  { method: 'POST', path: '/v1/ads/:placementId/start', auth: 'player', handler: async (r, p, c, u) => {
+    if (!/^[a-z0-9_]{1,32}$/.test(p.placementId!)) throw new AppError('BAD_REQUEST', 'bad placement id');
+    return c.player(u).invoke('adStart', u, p.placementId!, idem(r));
   } },
   // admin
   { method: 'GET', path: '/v1/admin/paid-balance', auth: 'admin', handler: async (_r, _p, c) => c.paidBalance() },

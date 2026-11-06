@@ -381,7 +381,7 @@ namespace Muchi.Engine.Tests
             Assert.True(routes.Count >= 30);
             foreach (var (method, path) in routes)
             {
-                if (path.StartsWith("/v1/admin/") || path.StartsWith("/v1/store/notifications") || path.EndsWith("/ws")) continue; // server-to-server / admin / websocket
+                if (path.StartsWith("/v1/admin/") || path.StartsWith("/v1/store/notifications") || path.StartsWith("/v1/ads/ssv/") || path.EndsWith("/ws")) continue; // server-to-server (store / ad network SSV) / admin / websocket
                 // "/v1/gacha/:bannerId/draw" → the literal pieces must appear in the client
                 var pieces = path.Split('/').Where(p => p.Length > 0 && !p.StartsWith(":")).ToList();
                 string last = pieces.Last();

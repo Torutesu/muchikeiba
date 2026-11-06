@@ -70,4 +70,11 @@ export interface Env {
   ANALYTICS?: AnalyticsEngineDataset;
   /** Secret: salt for hashing player ids before they reach analytics (no PII). */
   KPI_SALT?: string;
+  // ---- rewarded ads (REQ-AD-*, contracts/protocol.md §18). Unset => the SSV callback is NOT_FOUND and no ad reward is ever granted.
+  /** URL of the ad network's public SSV key set (AdMob: its published verifier-keys JSON). Not a secret. */
+  ADS_SSV_KEYS_URL?: string;
+  /** Pinned key set instead of the URL: JSON `[{"keyId":"123","pem":"-----BEGIN PUBLIC KEY-----…"}]` (local dev / integration). */
+  ADS_SSV_KEYS?: string;
+  /** JSON `{"REWARDED_HOME":"<ad unit id>",…}`: callbacks from other ad units are rejected. Unset => the unit is not checked. */
+  ADS_AD_UNITS?: string;
 }

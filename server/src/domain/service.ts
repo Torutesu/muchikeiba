@@ -20,6 +20,7 @@ import { buyCosmetic, cosmeticsCatalog, setEquipment, useTicket, type EquipmentP
 import { applyRaceResult, claimLoginBonus, claimMission, claimPass, firstWinBonusView, missionsView, type RaceResultForPlayer } from './rewards.js';
 import { allowanceView, claimAllowance, markOfferViewed, noteRaceForOffers, shopOffers } from './shop.js';
 import { passScreen } from './pass.js';
+import { adSessionView, adsView, applyAdCallback, setAdPref, startAd, type AdCallback, type AdPref } from './ads.js';
 import { toRaceHorse } from './raceConfig.js';
 import { paidBalanceYen, invariantsHold } from './wallet.js';
 import type { PaidBalanceSnapshot } from './accounting.js';
@@ -531,6 +532,23 @@ export class PlayerService {
   async claimAllowance(id: string, idemKey: string | null) {
     return this.tx(id, this.requireKey(idemKey), (s, now) => { notDeleting(s); return { ...claimAllowance(this.d.master, s, now), wallet: playerView(s).wallet }; });
   }
+  // ---------------------------------------------------------------- rewarded ads (REQ-AD-*, ads.ts)
+  /** GET /v1/ads: offer cards, today's counts, why ads are hidden. */
+  async ads(id: string) { return adsView(this.d.master, await this.load(id), this.d.clock()); }
+  /** PUT /v1/ads/preferences: 'auto' (default: hidden for 30 days after a payment), 'on' (opt in), 'off' (never). */
+  async setAdPref(id: string, pref: AdPref) {
+    return this.tx(id, null, (s, now) => { setAdPref(s, pref); return adsView(this.d.master, s, now); });
+  }
+  /** POST /v1/ads/:placementId/start (keyed): opens a session; the reward comes only from the SSV callback. */
+  async adStart(id: string, placementId: string, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now) => startAd(this.d.master, s, placementId, this.d.rng, now));
+  }
+  async adSession(id: string, sessionId: string) { return adSessionView(this.d.master, await this.load(id), sessionId, this.d.clock()); }
+  /** A verified SSV callback (signature checked by src/ads/ssv.ts). Idempotent by the network transaction id. */
+  async adReward(id: string, cb: AdCallback) {
+    return this.tx(id, `ad:${cb.network}:${cb.transactionId}`, (s, now, emit) => applyAdCallback(this.d.master, s, cb, now, emit));
+  }
+
   async claimPass(id: string, track: 'free' | 'premium', level: number, idemKey: string | null) {
     return this.tx(id, this.requireKey(idemKey), (s, now) => claimPass(this.d.master, s, track, level, now));
   }

@@ -40,6 +40,8 @@ namespace Muchi.Client
         DeletionPending,
         /// <summary>409: the deletion run has already started and cannot be cancelled any more (REQ-UXS-040).</summary>
         DeletionInProgress,
+        /// <summary>409: today's rewarded-ad views for that placement (or overall) are used up (REQ-AD-008).</summary>
+        AdLimitReached,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -109,6 +111,7 @@ namespace Muchi.Client
             ["DELETION_CONFIRM_INVALID"] = ApiErrorCode.DeletionConfirmInvalid,
             ["DELETION_PENDING"] = ApiErrorCode.DeletionPending,
             ["DELETION_IN_PROGRESS"] = ApiErrorCode.DeletionInProgress,
+            ["AD_LIMIT_REACHED"] = ApiErrorCode.AdLimitReached,
             ["VERIFIER_UNAVAILABLE"] = ApiErrorCode.VerifierUnavailable,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };

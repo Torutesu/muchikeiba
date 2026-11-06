@@ -68,6 +68,8 @@ static class Program
         await Round9Checks.Run(Check, Ruleset());
         Console.WriteLine("== asset delivery: boot/FTUE download screen (sizes, Wi-Fi warning, never blocks the tutorial, offline)");
         await AssetDeliveryChecks.Run(Check);
+        Console.WriteLine("== rewarded ads: where cards may appear, one view at a time, reward only from the server (SSV), KPI");
+        await RewardedAdChecks.Run(Check);
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

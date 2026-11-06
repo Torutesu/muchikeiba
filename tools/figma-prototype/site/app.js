@@ -758,6 +758,7 @@ async function Home() {
   Label('次のレース', 1234, 140, 320, 30, 18, CYAN);
   Label(player.rating.rankedRaces < L.master.beginnerRaces ? `初心者マッチ\nあと${L.master.beginnerRaces - player.rating.rankedRaces}戦` : 'ランク戦', 1234, 178, 320, 100, 30);
   Label('12頭　·　1レース約90秒', 1234, 290, 320, 30, 17, MUTED);
+  AdOfferSlot('home', 1222, 330, 336, 230, Home, cur); // rewarded ads (REQ-AD-*): opt-in card, only when the server offers one
   const go = Button('レースへ', 1180, 600, 390, 180, RaceLobby); go.classList.add('hero');
   if (bonus) toast(`ログインボーナス ${bonus.track === 'beginner' ? '初心者' : ''}${bonus.day}日目：${rewardText(bonus.reward)}`);
   TabBar(0);
@@ -1262,6 +1263,72 @@ function Link(provider, next) {
   toast(`${provider === 'apple' ? 'Apple' : 'Google'}で引き継ぎ登録しました` + (r.event ? `（KPI ${r.event.name}）` : ''));
   globalThis.__muchi && (globalThis.__muchi.lastKpi = r.event?.name ?? null);
   (next ?? Home)();
+}
+
+// ---- rewarded ads (REQ-AD-*, contracts/protocol.md §18): the opt-in offer card, the simulated ad, the watched state.
+// Server rules from the real domain (eligibility, game-day caps, sessions); the reward comes only from the simulated
+// network's signed SSV callback (verified by the real verifyAdMobCallback). Never in the tutorial, a race or a result
+// after 4th or worse; never interstitial — a view only starts from the card's button (RewardedAdModel's rules).
+const AD_SECONDS = () => Math.max(1, Math.round(5 / (Number(new URLSearchParams(location.search).get('speed')) || 1)));
+/** Draws the offer card for `surface` into `parent` (or nothing when the server offers none). Returns the card element. */
+async function AdOfferSlot(surface, x, y, w, h, back, parent) {
+  const v = await L.ads();
+  const p = v.eligible ? v.placements.find((q) => q.surface === surface) : null;
+  if (!p) return null;
+  const card = Panel('Ad offer', x, y, w, h, 'rgba(4,14,26,.72)', parent);
+  card.classList.add('ad-card');
+  card.dataset.placement = p.id;
+  card.dataset.state = p.left > 0 ? 'offer' : 'done';
+  Label('REWARDED  ·  動画で受け取る', 22, 16, w - 44, 22, 13, CYAN, card).classList.add('ad-kicker');
+  Label(p.left > 0 ? p.rewardLabel : '今日の分は受け取りました', 22, 44, w - 44, 44, 30, p.left > 0 ? WHITE : MUTED, card).classList.add('ad-reward');
+  Label(p.left > 0 ? `今日あと${p.left}回　·　自分で選んだ時だけ再生` : 'また明日どうぞ（4:00 にリセット）', 22, 92, w - 44, 26, 15, MUTED, card);
+  if (p.left > 0) {
+    const b = Button('動画を見る  »', 22, h - 76, Math.min(260, w - 44), 58, () => AdPlayer(p, back), CYAN, card);
+    b.classList.add('ad-cta');
+    if (w >= 520) Label('自分で選んだ時だけ再生します', 300, h - 62, 220, 40, 12, DIM, card);
+  }
+  globalThis.__muchi && (globalThis.__muchi.lastKpi = p.left > 0 ? 'ad_offer_view' : globalThis.__muchi.lastKpi);
+  return card;
+}
+/** The simulated rewarded ad (stands in for the native AdMob full-screen ad), then the server's verdict. */
+async function AdPlayer(p, back = Home) {
+  const st = await L.adStart(p.id);
+  if (!st.ok) { toast(st.code === 'AD_LIMIT_REACHED' ? '今日の分は受け取りました。また明日どうぞ。' : '今は動画を用意できません。時間をおいてお試しください。'); back(); return; }
+  const s = st.value;
+  currentScreen = back; Clear('ad-player'); SetArt('Art/home-paddock'); Veil(.86);
+  const box = Panel('Ad player', 360, 150, 880, 520, 'rgba(2,8,16,.88)');
+  box.classList.add('ad-player');
+  Label('SPONSORED  ·  広告（プロトタイプのシミュレーション）', 40, 30, 800, 24, 14, CYAN, box).classList.add('ad-kicker');
+  Label('ここに広告の動画が流れます', 40, 150, 800, 60, 34, WHITE, box, 'center');
+  const left = Label('', 40, 230, 800, 40, 22, MUTED, box, 'center');
+  left.dataset.adCountdown = '1';
+  Label(`最後まで見ると「${s.rewardLabel}」を受け取れます`, 40, 300, 800, 30, 18, MUTED, box, 'center');
+  const close = Ghost('閉じる', 660, 420, 180, 64, () => { done = true; AdWatched(p, { status: 'not_completed' }, back); }, box);
+  close.classList.add('ad-close');
+  let n = AD_SECONDS(), done = false;
+  every(1000, async () => {
+    if (done) return;
+    left.textContent = n > 0 ? `残り ${n} 秒` : '確認しています…';
+    if (n-- > 0) return;
+    done = true;
+    // the network's SSV callback → the server's verdict; the client only polls the session
+    const cb = await L.simulateAdCallback(s);
+    const sess = await L.adSession(s.sessionId);
+    AdWatched(p, sess.ok ? sess.value : { status: 'pending' }, back, cb.ok ? cb.value : null);
+  });
+}
+/** The watched state: what the server granted (or why nothing). */
+async function AdWatched(p, sess, back = Home) {
+  await refresh();
+  Clear('ad-watched'); SetArt('Art/home-paddock'); Veil(.6);
+  const box = Panel('Ad watched', 420, 190, 760, 440, 'rgba(4,14,26,.78)');
+  box.classList.add('ad-card'); box.dataset.state = sess.status;
+  const ok = sess.status === 'rewarded';
+  Label(ok ? 'REWARD  ·  受け取りました' : 'REWARD  ·  受け取れませんでした', 40, 34, 680, 24, 14, CYAN, box).classList.add('ad-kicker');
+  Label(ok ? sess.rewardLabel : sess.status === 'not_completed' ? '最後まで見ると受け取れます' : '今回は受け取れませんでした', 40, 80, 680, 70, ok ? 52 : 34, ok ? GOLD : WHITE, box).classList.add('ad-reward');
+  Label(ok ? `無償コインの所持：${fmt(sess.wallet.free)}枚（有償コインとは別に管理しています）` : '動画は自分で選んだ時だけ再生します。', 40, 170, 680, 60, 18, MUTED, box);
+  Button('つづける  »', 40, 330, 300, 72, back, CYAN, box).classList.add('ad-cta');
+  globalThis.__muchi && (globalThis.__muchi.lastAd = sess.status);
 }
 
 // ---- time attack with ghosts (REQ-TA-*, friend ghosts first: REQ-UXS-074)

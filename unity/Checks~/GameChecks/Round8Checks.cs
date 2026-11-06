@@ -7,7 +7,7 @@ using Muchi.Client;
 using Muchi.Engine;
 using Muchi.Game;
 
-static class Round8Checks
+static partial class Round8Checks
 {
     sealed class FakeServer : IHttp
     {
@@ -156,6 +156,8 @@ static class Round8Checks
         Console.WriteLine("== round 8: season pass and account deletion");
         await Pass(check, rs);
         await Deletion(check, rs);
+        Console.WriteLine("== round 8 client QA regressions (purchase receipts, FTUE resume, consent sync, deletion guard, KPI once)");
+        await QaRun(check, rs);
     }
 
     // ------------------------------------------------------------------ KPI

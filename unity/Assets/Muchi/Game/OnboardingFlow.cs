@@ -91,6 +91,11 @@ namespace Muchi.Game
         private void Advance(FtueStep to)
         {
             if (to <= Step) return;
+            SetStep(to);
+        }
+
+        private void SetStep(FtueStep to)
+        {
             Step = to;
             _kv.Set(KeyStep, ((int)to).ToString(CultureInfo.InvariantCulture));
         }
@@ -110,6 +115,9 @@ namespace Muchi.Game
                 if (p.PartnerHorseId != null) Advance(FtueStep.FirstScout);
                 // the welcome pulls were drawn and shown (or drawn by the pre-round-8 naming flow): nothing left but home
                 if (p.TutorialGachaUsed && !scoutPending) Advance(p.PartnerHorseId != null || p.Horses.Count > 0 ? FtueStep.Home : Step);
+                // the welcome scout was only previewed offline (nothing drawn) and the FTUE went on: the free 10-pull is still
+                // owed (REQ-GACHA-010), so the scout screen comes back once the server is reachable
+                else if (p.PartnerHorseId != null && !p.TutorialGachaUsed && Step > FtueStep.FirstScout) SetStep(FtueStep.FirstScout);
             }
             if (Step == FtueStep.Consent && !ConsentRequired) Advance(FtueStep.FirstRace);
             return Screen;
@@ -119,10 +127,21 @@ namespace Muchi.Game
         public async Task SyncAsync(CancellationToken ct = default)
         {
             if (!_b.Online || _b.Api == null) return;
-            if (HasPendingConsent && _b.Player?.Consent?.Current != null)
+            var cur = _b.Player?.Consent?.Current;
+            if (HasPendingConsent && cur != null)
             {
-                var r = await SendConsentAsync(ct);
-                if (r.Ok) _kv.Set(KeyPendingConsent, "");
+                // REQ-UXS-001: only the versions the player saw may be recorded. Consent given offline to versions known from
+                // an earlier fetch is sent only while those are still current; after a bump it is dropped and the consent
+                // screen asks again (never a silent consent to terms not shown). "local" = no versions were known (bundled text).
+                string seen = _kv.Get(KeyConsentedVersions);
+                if (!string.IsNullOrEmpty(seen) && seen != "local" && seen != cur.TermsVersion + "|" + cur.PrivacyVersion)
+                    _kv.Set(KeyPendingConsent, "");
+                else
+                {
+                    var r = await SendConsentAsync(ct, retryOnMismatch: false);
+                    if (r.Ok) _kv.Set(KeyPendingConsent, "");
+                    else if (r.Message == UxText.Errors["CONSENT_VERSION_MISMATCH"]) _kv.Set(KeyPendingConsent, "");
+                }
             }
             if (_b.PendingPartnerName != null && Step >= FtueStep.Naming)
             {
@@ -176,9 +195,11 @@ namespace Muchi.Game
             else if (string.IsNullOrEmpty(_kv.Get(KeyConsentedVersions))) _kv.Set(KeyConsentedVersions, "local");
         }
 
-        private async Task<ActionResult> SendConsentAsync(CancellationToken ct)
+        /// <param name="retryOnMismatch">On the title screen (the links show the current pages) a version bump is refetched and
+        /// sent once more; a consent kept from offline is not (it was given to the older text).</param>
+        private async Task<ActionResult> SendConsentAsync(CancellationToken ct, bool retryOnMismatch = true)
         {
-            for (int attempt = 0; attempt < 2; attempt++)
+            for (int attempt = 0; attempt < (retryOnMismatch ? 2 : 1); attempt++)
             {
                 var cur = _b.Player?.Consent?.Current;
                 if (cur == null) return ActionResult.Error(UxText.Offline);
@@ -301,12 +322,25 @@ namespace Muchi.Game
 
         // ------------------------------------------------------------------ KPI
 
-        private void Track(string step, int? value = null)
+        /// <summary>The second race (the first beginner match) finished: KPI race2_done with the place (once; 06 §8.1 row 8).</summary>
+        public void SecondRaceDone(int place) => Track("race2_done", Math.Max(0, place));
+
+        private void Track(string step, int? value = null) => TrackOnce(_kv, _track, _now(), step, value);
+
+        /// <summary>
+        /// Sends one FTUE funnel step at most once per install (the device remembers what was sent), so a retry, a
+        /// relaunch or a screen rebuilt by a language switch never counts a step twice. For screens that are not driven by
+        /// <see cref="OnboardingFlow"/> yet (MuchiApp). Returns whether the event was sent now.
+        /// </summary>
+        public static bool TrackOnce(IKeyValueStore kv, Action<AnalyticsEvent> track, long nowMs, string step, int? value = null)
         {
-            var sent = (_kv.Get(KeyKpiSent) ?? "").Split(',');
-            if (sent.Contains(step)) return;
-            _kv.Set(KeyKpiSent, string.Join(",", sent.Where(s => s.Length > 0).Concat(new[] { step })));
-            _track?.Invoke(AnalyticsEvent.FtueStep(_now(), step, value));
+            if (kv == null) return false;
+            var sent = (kv.Get(KeyKpiSent) ?? "").Split(',');
+            if (sent.Contains(step)) return false;
+            var ev = AnalyticsEvent.FtueStep(nowMs, step, value); // throws for a step outside the fixed list, before anything is stored
+            kv.Set(KeyKpiSent, string.Join(",", sent.Where(s => s.Length > 0).Concat(new[] { step })));
+            track?.Invoke(ev);
+            return true;
         }
     }
 }

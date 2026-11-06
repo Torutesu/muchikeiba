@@ -264,7 +264,7 @@ namespace Muchi.Client
             var r=await backend.NamePartnerAsync(value);
             if(!r.Ok){pendingName=value;Info("NAME NOT ACCEPTED",r.Message,NamePartner);return;}
             horseName=value;pendingName=value;PlayerPrefs.SetString("muchi.partner",value);PlayerPrefs.Save();
-            MuchiServices.Track(Muchi.Client.AnalyticsEvent.FtueStep(MuchiServices.NowMs,"named")); // round 8: fixed FTUE step names (protocol §8.7)
+            Ftue("named"); // round 8: fixed FTUE step names (protocol §8.7), each sent once
             Scout();
         }
         void Stable()
@@ -311,7 +311,7 @@ namespace Muchi.Client
         {
             // Online: the one free tutorial 10-pull is drawn by the server (or was drawn when naming).
             if(backend.Online){var r=await backend.EnsureFirstScoutAsync();if(!r.Ok){Info("SCOUT FAILED",r.Message,Scout);return;}}
-            MuchiServices.Track(Muchi.Client.AnalyticsEvent.FtueStep(MuchiServices.NowMs,"gacha_done"));
+            Ftue("gacha_done");
             RevealScout();
         }
         void RevealScout()
@@ -516,7 +516,7 @@ namespace Muchi.Client
                 Panel("Coin pack "+i,x,y,705,116,new Color(.045f,.12f,.19f,.97f));
                 Label(prices[i],x+22,y+13,170,38,23,gold);
                 Label(amounts[i].ToString("N0")+" PAID COINS",x+22,y+54,360,34,21);
-                Label("FIRST TOP-UP  /  2× BONUS",x+390,y+18,265,26,14,cyan);
+                Label("FIRST BUY  /  SAME AMOUNT FREE",x+390,y+18,265,26,14,cyan);
                 var select=Button("VIEW",x+488,y+48,194,()=>PurchaseReview(amounts[package].ToString("N0")+" PAID COINS",prices[package],"COIN PACK",ids[package]),navy);
                 select.GetComponent<Image>().color=cyan;
             }
@@ -685,7 +685,7 @@ namespace Muchi.Client
             tutorial=firstRide;
             observer?.Dispose();driver?.Dispose();driver=next;input.Reset();commentary=null;
             observer=new RaceObserver(driver);raceMode=mode; // round 8: attaches to Sim/Config itself once the driver has them
-            if(firstRide)MuchiServices.Track(Muchi.Client.AnalyticsEvent.FtueStep(MuchiServices.NowMs,"race1_start"));
+            if(firstRide)Ftue("race1_start");
             resultSeasonPointsBefore=backend.Player!=null?backend.Player.SeasonPoints:-1;
             MuchiServices.Track(Muchi.Client.AnalyticsEvent.RaceStart(MuchiServices.NowMs,mode));
             BuildRaceScreen();
@@ -734,6 +734,7 @@ namespace Muchi.Client
             if(driver?.Sim==null||driver.PlayerSlot<0)return; // spectating: no horse to spur
             var me=driver.Sim.GetHorse(driver.PlayerSlot);
             if(me.Departed&&me.WhipsLeft<=0)return;
+            if(tutorial&&me.Departed)Ftue("race1_whip"); // the first whip of the first ride (KPI funnel step 3)
             input.Spur();
             feedback.text=LocaleService.Text(me.Departed?"SPUR!":"GO!");messageUntil=Time.time+1.2f;
         }
@@ -828,7 +829,15 @@ namespace Muchi.Client
             Action nextAction=retry?(Action)(()=>StartDriver(backend.CreateTutorialRace(),"tutorial",true)):first?(Action)NamePartner:Home;
             var next=Button(retry?result.PrimaryAction:first?"MEET YOUR PARTNER":"CONTINUE  >>",80,675,500,nextAction);next.GetComponent<Image>().color=cyan;
             Label(ModeLabel,80,780,500,26,13,new Color(.72f,.83f,.91f));
-            if(first&&result.Won)MuchiServices.Track(Muchi.Client.AnalyticsEvent.FtueStep(MuchiServices.NowMs,"race1_win",Math.Max(0,backend.TutorialAttempts-1)));
+            if(first&&result.Won)Ftue("race1_win",Math.Max(0,backend.TutorialAttempts-1));
+            if(!first&&online&&raceMode=="ranked"&&driver.Phase==RacePhase.Confirmed&&result.HasResult)Ftue("race2_done",result.Place); // 06 §8.1 row 8
+        }
+        // FTUE funnel steps go through OnboardingFlow.TrackOnce: a retry, the title's tutorial ride or a screen rebuilt by the
+        // language switch never sends a step twice (the server counts the funnel by step).
+        void Ftue(string step,int? value=null)
+        {
+            try{OnboardingFlow.TrackOnce(backend.Store,MuchiServices.Track,MuchiServices.NowMs,step,value);}
+            catch(Exception e){Debug.LogWarning("ftue kpi: "+e.Message);}
         }
         async void RefreshPoints(Text label)
         {

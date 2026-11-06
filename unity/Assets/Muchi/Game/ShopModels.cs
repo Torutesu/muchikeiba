@@ -59,8 +59,12 @@ namespace Muchi.Game
         public ProductList Products { get; private set; }
         public ShopOffers Offers { get; private set; }
         public bool Loading { get; private set; }
-        /// <summary>The account is scheduled for deletion (from the player or a DELETION_PENDING answer).</summary>
-        public bool DeletionPending { get; private set; }
+        /// <summary>
+        /// The account is scheduled for deletion (a DELETION_PENDING answer, or the player view — read live, so a deletion
+        /// scheduled after this screen loaded disables the buy buttons and the offers at once).
+        /// </summary>
+        public bool DeletionPending => _deletionRefused || DeletionGuard.Pending(B);
+        private bool _deletionRefused;
         public string DeletionBanner => DeletionPending ? DeletionGuard.Banner(B.Player?.Deletion?.DeleteAt) : null;
         public bool Debt => (B.Player?.Wallet?.Debt ?? 0) > 0;
         /// <summary>Buy buttons are enabled at all.</summary>
@@ -87,7 +91,7 @@ namespace Muchi.Game
         public async Task LoadAsync(CancellationToken ct = default)
         {
             Message = null; Online = false;
-            DeletionPending = DeletionGuard.Pending(B);
+            _deletionRefused = false;
             if (!ServerAvailable) { Offline("購入にはサーバーが必要です"); Message = UxText.Offline; return; }
             Loading = true;
             try
@@ -106,7 +110,7 @@ namespace Muchi.Game
         {
             if (!ServerAvailable) return;
             try { Offers = await B.Api.GetShopOffersAsync(ct); }
-            catch (PurchaseBlockedException e) when (e.Code == ApiErrorCode.DeletionPending) { DeletionPending = true; Offers = null; }
+            catch (PurchaseBlockedException e) when (e.Code == ApiErrorCode.DeletionPending) { _deletionRefused = true; Offers = null; }
             catch (ApiException e) { Message = UxText.For(e); }
         }
 
@@ -124,14 +128,18 @@ namespace Muchi.Game
             return fp.Available && fp.ProductIds.Contains(p.Id);
         }
 
-        /// <summary>Products of a tab ("cosmetics" is ItemsBackend's). Promotion packs are on おすすめ only while their T4 offer is live.</summary>
+        /// <summary>
+        /// Products of a tab ("cosmetics" is ItemsBackend's). Once-only packs (starter T2, promotion T4) are on おすすめ only
+        /// while their offer is live: the product list is the same for everyone and the offers leave out what this player
+        /// already bought (server shop.ts), so a bought once-only pack is never shown as buyable.
+        /// </summary>
         public List<ProductCard> Cards(string tab)
         {
             if (Products == null || tab == "cosmetics") return new List<ProductCard>();
             var live = new HashSet<string>(LiveOffers.Select(o => o.ProductId));
             return Products.Products
                 .Where(p => p.Tab == tab)
-                .Where(p => p.ClassId == null || live.Contains(p.Id))
+                .Where(p => (p.ClassId == null && !p.OneTime && !p.Once) || live.Contains(p.Id))
                 .Select(Card).ToList();
         }
 
@@ -148,7 +156,9 @@ namespace Muchi.Game
             foreach (var k in p.NoticeKeys)
                 if (!k.StartsWith("legal.", StringComparison.Ordinal) && k != "shop.paid_first" && Products.Notices.TryGetValue(k, out var t)) c.Notices.Add(t);
             c.DisabledReason = !ServerAvailable ? UxText.Offline : DeletionPending ? DeletionBanner : Debt ? UxText.Errors["UNSETTLED_DEBT"]
-                : p.Allowance != null && Offers?.Allowance != null && Offers.Allowance.Queued != null ? "次の厩舎手当が予約済みです" : null;
+                : p.Allowance != null && Offers?.Allowance != null && Offers.Allowance.Queued != null ? "次の厩舎手当が予約済みです"
+                // the server refuses a second pack while one runs (purchase.ts: ALREADY_PURCHASED "a daily pack is still running")
+                : p.Allowance != null && Offers?.Allowance != null && Offers.Allowance.Active ? "厩舎手当の受け取り期間中です（終わると購入できます）" : null;
             c.Purchasable = c.DisabledReason == null && Products != null;
             return c;
         }
@@ -440,7 +450,8 @@ namespace Muchi.Game
         /// </summary>
         public async Task<PurchaseStage> StoreFinishedAsync(StoreOutcome outcome, StorePlatform platform = StorePlatform.Fake, string receipt = null, CancellationToken ct = default)
         {
-            if (Stage != PurchaseStage.InStore && Stage != PurchaseStage.StoreFailed) return Stage;
+            // Pending: a deferred purchase (Ask to Buy / pending payment) completes later through the same callback
+            if (Stage != PurchaseStage.InStore && Stage != PurchaseStage.StoreFailed && Stage != PurchaseStage.Pending) return Stage;
             switch (outcome)
             {
                 case StoreOutcome.Cancelled: Track("cancel"); Message = null; return Stage = PurchaseStage.Ready;
@@ -448,20 +459,75 @@ namespace Muchi.Game
                 case StoreOutcome.Deferred: Message = UxText.PurchasePending; return Stage = PurchaseStage.Pending;
             }
             Track("store_success");
-            Kv.Set(KeyPendingReceipt, ((int)platform).ToString(CultureInfo.InvariantCulture) + "|" + ProductId + "|" + receipt);
-            return await GrantAsync(platform, ProductId, receipt, ct);
+            return await DeliverAsync(platform, ProductId, receipt, ct);
         }
 
-        /// <summary>A receipt kept from an earlier session (crash before the grant): send it again (the server answers Duplicate when done).</summary>
+        /// <summary>
+        /// A paid transaction the store delivered outside the sheet (a deferred purchase approved later, or an unfinished
+        /// transaction replayed at launch): kept on the device, then granted, whatever this screen is doing.
+        /// </summary>
+        public Task<PurchaseStage> StoreDeliveredAsync(StorePlatform platform, string productId, string receipt, CancellationToken ct = default)
+        {
+            ProductId = productId;
+            return DeliverAsync(platform, productId, receipt, ct);
+        }
+
+        private async Task<PurchaseStage> DeliverAsync(StorePlatform platform, string productId, string receipt, CancellationToken ct)
+        {
+            if (string.IsNullOrEmpty(productId) || string.IsNullOrEmpty(receipt)) { Message = UxText.NotPurchased; return Stage = PurchaseStage.Error; }
+            AddPending(new PendingReceipt { Platform = platform, ProductId = productId, Receipt = receipt });
+            if (!ServerAvailable) { Message = UxText.PurchasePending; return Stage = PurchaseStage.Pending; }
+            return await GrantAsync(platform, productId, receipt, ct);
+        }
+
+        /// <summary>
+        /// Receipts kept from an earlier session (crash or no answer before the grant): send each again (the server answers
+        /// Duplicate when it was already granted). Returns the stage of the last one sent.
+        /// </summary>
         public async Task<PurchaseStage> ResumePendingAsync(CancellationToken ct = default)
         {
-            var parts = (Kv.Get(KeyPendingReceipt) ?? "").Split(new[] { '|' }, 3);
-            if (parts.Length != 3 || !ServerAvailable) return Stage;
-            ProductId = parts[1];
-            return await GrantAsync((StorePlatform)int.Parse(parts[0], CultureInfo.InvariantCulture), parts[1], parts[2], ct);
+            if (!ServerAvailable) return Stage;
+            foreach (var p in PendingReceipts())
+            {
+                ProductId = p.ProductId;
+                await GrantAsync(p.Platform, p.ProductId, p.Receipt, ct);
+            }
+            return Stage;
         }
 
-        public bool HasPendingReceipt => !string.IsNullOrEmpty(Kv.Get(KeyPendingReceipt));
+        public bool HasPendingReceipt => PendingReceipts().Count > 0;
+
+        // ---- unsent receipts: several can wait at once (one per store transaction), never overwritten by a later purchase
+
+        private const char RecordSep = '\u001e';
+        private sealed class PendingReceipt { public StorePlatform Platform; public string ProductId, Receipt; }
+
+        private List<PendingReceipt> PendingReceipts()
+        {
+            var list = new List<PendingReceipt>();
+            foreach (var rec in (Kv.Get(KeyPendingReceipt) ?? "").Split(RecordSep))
+            {
+                var parts = rec.Split(new[] { '|' }, 3);
+                if (parts.Length != 3 || parts[2].Length == 0 || !int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var pl)) continue;
+                list.Add(new PendingReceipt { Platform = (StorePlatform)pl, ProductId = parts[1], Receipt = parts[2] });
+            }
+            return list;
+        }
+
+        private void SavePending(List<PendingReceipt> list)
+            => Kv.Set(KeyPendingReceipt, string.Join(RecordSep.ToString(), list.Select(p => ((int)p.Platform).ToString(CultureInfo.InvariantCulture) + "|" + p.ProductId + "|" + p.Receipt)));
+
+        private void AddPending(PendingReceipt r)
+        {
+            var list = PendingReceipts();
+            if (!list.Any(p => p.Receipt == r.Receipt)) { list.Add(r); SavePending(list); }
+        }
+
+        private void RemovePending(string receipt) => SavePending(PendingReceipts().Where(p => p.Receipt != receipt).ToList());
+
+        /// <summary>The server looked at this receipt and refused it for good: nothing more to grant (other errors keep it).</summary>
+        private static bool ReceiptRefused(ApiException e)
+            => e.Code == ApiErrorCode.ReceiptInvalid || e.Code == ApiErrorCode.UnknownProduct || e.Code == ApiErrorCode.BadRequest;
 
         private async Task<PurchaseStage> GrantAsync(StorePlatform platform, string productId, string receipt, CancellationToken ct)
         {
@@ -469,22 +535,25 @@ namespace Muchi.Game
             try
             {
                 Granted = await B.Api.PurchaseAsync(platform, productId, receipt, ct);
-                Kv.Set(KeyPendingReceipt, "");
-                await B.RefreshAsync(ct);
-                Message = "購入が完了しました";
-                return Stage = PurchaseStage.Completed;
+                RemovePending(receipt);
             }
-            catch (ApiException e) when (GameBackend.IsTransient(e))
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (ApiException e) when (ReceiptRefused(e))
             {
-                Message = UxText.PurchasePending; // the receipt is kept: sent again on the next launch / retry
-                return Stage = PurchaseStage.Pending;
-            }
-            catch (ApiException e)
-            {
-                Kv.Set(KeyPendingReceipt, "");
+                RemovePending(receipt);
                 Message = UxText.For(e);
                 return Stage = PurchaseStage.Error;
             }
+            catch (ApiException e)
+            {
+                // no answer, 5xx, an expired sign-in (401) …: the store was paid, so the receipt is kept and sent again
+                Message = GameBackend.IsTransient(e) ? UxText.PurchasePending : UxText.For(e) + "（購入は確認中です。次回の起動時にもう一度送ります）";
+                return Stage = PurchaseStage.Pending;
+            }
+            // outside the grant's try: a failed refresh never turns a completed grant into "確認中"
+            try { await B.RefreshAsync(ct); } catch (ApiException) { /* the wallet shows on the next refresh */ }
+            Message = "購入が完了しました";
+            return Stage = PurchaseStage.Completed;
         }
 
         private void Track(string stage)

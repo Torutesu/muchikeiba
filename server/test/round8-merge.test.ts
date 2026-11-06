@@ -10,6 +10,7 @@ import { MemoryStableDirectory, StableService, stableConfig, stableDeletionPort,
 import { stablePlayersFrom } from '../src/http/stablePorts.js';
 import { handle, type AppContext, type PlayerInvoker } from '../src/http/app.js';
 import { gameDaysUntil, gameDayKey } from '../src/domain/time.js';
+import { buildRaceConfig, toRaceHorse } from '../src/domain/raceConfig.js';
 import { m } from './helpers.js';
 
 const T0 = Date.UTC(2026, 10, 5, 3); // 12:00 JST
@@ -214,5 +215,42 @@ describe('game days in monetization (REQ-UXS-011 × REQ-UXS-010/018/020)', () =>
     w.clock.now += DAY;
     expect((await w.svc.claimAllowance('p', 'c:a3')).day).toBe(2);
     expect((await w.svc.missionsAll('p')).firstWinBonus.winsToday).toBe(0);
+  });
+});
+
+describe('onboarding gift horses × unique skills (REQ-UXS-002/013 × REQ-UXS-050)', () => {
+  it('the partner (SR sashi) and the broodmare (R senko) carry a skill that fits their rarity and style', () => {
+    for (const [tid, sk] of [['t_partner', 'sk_sueashi'], ['t_broodmare', 'sk_kouinonebari']] as const) {
+      const t = m.templateById.get(tid)!;
+      const d = m.skills.byId.get(t.skillId!)!;
+      expect(t.skillId).toBe(sk);
+      expect(d.rarity).toBe(t.rarity);
+      expect(d.styles).toContain(t.style);
+    }
+  });
+
+  it('the granted partner races with its skill (capped in ranked, also in the beginner match), never in the tutorial', async () => {
+    const w = world();
+    const { horse } = await w.svc.grantPartner('p', 'アイボウ', 'c:/v1/player/partner:k');
+    expect(horse.skillId).toBe('sk_sueashi');
+    const rh = toRaceHorse(m, horse);
+    expect(rh.skill).toMatchObject({ id: 'sk_sueashi', trigger: 'spurtBehind' });
+    const build = (mode: 'ranked' | 'tutorial' | 'friend', extra: Record<string, unknown> = {}) => buildRaceConfig(m, {
+      raceId: `r_${mode}`, mode, trackId: 'aoba_turf_1600', humans: [{ playerId: 'p', horse: rh }], cpuCount: mode === 'tutorial' ? 0 : 11, cpuLevel: 1,
+      statCap: mode === 'ranked' ? 2800 : null, rng: seededRng(4), ...extra,
+    });
+    const mine = (c: ReturnType<typeof build>) => c.entrants.find((e) => e.playerId === 'p')!.horse;
+    const caps = m.skills.rankedCaps;
+    const ranked = mine(build('ranked', { cpuStatPermille: 780 }));
+    expect(ranked.skill!.id).toBe('sk_sueashi');
+    expect(ranked.skill!.speedPermille).toBeLessThanOrEqual(caps.speedPermille);
+    expect(ranked.skill!.durationTicks).toBeLessThanOrEqual(caps.durationTicks);
+    expect(mine(build('friend')).skill).toEqual(rh.skill);
+    expect(mine(build('tutorial')).skill).toBeUndefined();
+    // beginner-match CPUs are weaker but keep their template skills
+    for (const e of build('ranked', { cpuStatPermille: 780 }).entrants.filter((x) => x.kind === 'cpu')) {
+      const t = m.templates.find((x) => `cpu_${x.id}` === e.horse.id)!;
+      expect(e.horse.skill?.id ?? null).toBe(t.skillId ?? null);
+    }
   });
 });

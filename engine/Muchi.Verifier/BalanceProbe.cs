@@ -53,7 +53,8 @@ namespace Muchi.Verifier
     public static class BalanceProbe
     {
         /// <param name="aptMix">Give slots goingAptitude any/fast/heavy round-robin and report win rates per aptitude.</param>
-        public static BalanceReport Run(RulesetParams ruleset, int races, ulong seedBase = 1, int spread = 150, TrackSpec track = null, bool aptMix = false)
+        /// <param name="decorate">Optional (race, slot, horse) hook run on every generated horse, e.g. to give it a skill.</param>
+        public static BalanceReport Run(RulesetParams ruleset, int races, ulong seedBase = 1, int spread = 150, TrackSpec track = null, bool aptMix = false, Action<int, int, HorseSpec> decorate = null)
         {
             var rep = new BalanceReport();
             for (int r = 0; r < races; r++)
@@ -66,6 +67,7 @@ namespace Muchi.Verifier
                 {
                     horses[i].Surface = surface; // measure the ground, not surface aptitude
                     if (aptMix) horses[i].GoingAptitude = (GoingAptitude)(i % 3);
+                    decorate?.Invoke(r, i, horses[i]);
                 }
                 var cfg = SampleRaces.Config("balance_" + r, SeedMix.Mix(seedBase + (ulong)r), track ?? SampleRaces.Turf2000(), ruleset, horses, 0, 3);
                 var sim = new RaceSim(cfg);

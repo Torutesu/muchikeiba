@@ -39,6 +39,8 @@ export interface HorseInstance {
   studSire?: { ownerId: string; horseId: string; sireName: string | null; damName: string | null };
   /** REQ-BREED-017: a trait inherited from a grandparent (隔世遺伝). */
   atavism?: { trait: 'style' | 'goingAptitude'; value: string; from: string };
+  /** 固有スキル id (REQ-UXS-050): from the template, or inherited by a foal. Absent on a foal = none (see skills.ts horseSkillId). */
+  skillId?: string;
 }
 
 export interface PurchaseRecord {

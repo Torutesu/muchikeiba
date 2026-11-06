@@ -85,6 +85,7 @@
       ]
     },
     "bond_call": { "priority": 50, "variants": [ { "id": "bond_call_1", "text": "{name}、厩舎で育んだ絆の走り！" }, { "id": "bond_call_2", "text": "人馬一体、{name}が伸びてくる！" } ] },
+    "skill": { "priority": 58, "variants": [ { "id": "skill_1", "text": "{name}、{skill}が発動！" }, { "id": "skill_2", "text": "出た！{name}の{skill}！" }, { "id": "skill_3", "text": "{skill}！{name}の勢いが変わった！" } ] },
     "focus_finish": {
       "priority": 70,
       "variants": [

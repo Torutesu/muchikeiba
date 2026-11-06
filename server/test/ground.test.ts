@@ -148,7 +148,7 @@ describe('ruleset ground keys', () => {
     const block = cs.slice(cs.indexOf('DistanceIntKeys ='), cs.indexOf('DistanceNeutralValues'));
     const engineKeys = [...block.matchAll(/"([a-z][A-Za-z]+)"/g)].map((x) => x[1]);
     expect(engineKeys).toEqual([...DISTANCE_RULESET_KEYS]);
-    expect(DEFAULT_RULESET.rulesetVersion).toBe('1.2.0');
+    expect(DEFAULT_RULESET.rulesetVersion).toBe('1.3.0');
     for (const k of DISTANCE_RULESET_KEYS) expect(DEFAULT_RULESET).toHaveProperty(k);
     const v110: Record<string, unknown> = { ...DEFAULT_RULESET };
     for (const k of DISTANCE_RULESET_KEYS) delete v110[k];
@@ -156,7 +156,7 @@ describe('ruleset ground keys', () => {
     expect(rulesetKeyProblems({ ...v110, distanceRefM: 2000 }).join()).toMatch(/distance \(1\.2\) keys must be all present or all absent/);
   });
 
-  it('every archived golden (ruleset 1.0, 1.0.0 and 1.1.0) still validates', () => {
+  it('every archived golden (ruleset 1.0, 1.0.0, 1.1.0 and 1.2.0) still validates', () => {
     const dir = repo('contracts/golden/legacy');
     for (const f of readdirSync(dir)) {
       const doc = JSON.parse(readFileSync(`${dir}/${f}`, 'utf8'));

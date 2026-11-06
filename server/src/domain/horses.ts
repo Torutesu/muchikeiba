@@ -6,6 +6,7 @@ import { randInt, randRange, type Rng } from './rng.js';
 import { gameDayKey } from './time.js';
 import { consumeItem } from './items.js';
 import { appearanceOf, deriveAppearance, inheritAppearance, templateAppearance } from './visuals.js';
+import { horseSkillId, rollInheritedSkill, skillInheritOdds, skillSummary } from './skills.js';
 
 export function createHorseFromTemplate(s: PlayerState, t: HorseTemplate, now: number): HorseInstance {
   s.counters.horseSeq += 1;
@@ -15,6 +16,7 @@ export function createHorseFromTemplate(s: PlayerState, t: HorseTemplate, now: n
     bornAt: now, status: 'active', sireId: null, damId: null, sireName: t.sireName, damName: t.damName, named: false,
   };
   if (t.goingAptitude && t.goingAptitude !== 'any') h.goingAptitude = t.goingAptitude;
+  if (t.skillId) h.skillId = t.skillId; // REQ-UXS-050: the template's unique skill
   h.appearance = templateAppearance(t.id) ?? deriveAppearance(`${s.id}:${h.id}`); // REQ-ASSET-003
   s.horses.push(h);
   return h;
@@ -263,7 +265,14 @@ export function previewFor(m: Master, s: PlayerState, sire: HorseInstance, dam: 
     surface: sire.surface === dam.surface ? sire.surface : 'both or a parent\'s',
     goingAptitude: goingAptitudeOdds(sire, dam),
     atavism: atavismOdds(m, atavismOptions(sire, dam, grand)),
+    skill: skillPreview(m, sire, dam),
   };
+}
+
+/** REQ-UXS-050: the foal's skill odds, from the same function breed() draws with (skillInheritOdds). */
+function skillPreview(m: Master, sire: HorseInstance, dam: HorseInstance) {
+  const odds = skillInheritOdds(m, horseSkillId(m, sire), horseSkillId(m, dam));
+  return { nonePermille: odds.none, candidates: odds.skills.map((x) => ({ ...skillSummary(m, m.skills.byId.get(x.skillId)!)!, permille: x.permille, from: x.from })) };
 }
 
 /** Preview plus today's allowance (normal + material-backed extra breedings). */
@@ -346,8 +355,15 @@ export function breedWith(m: Master, s: PlayerState, sire: HorseInstance, dam: H
     else foal.goingAptitude = g.value as GoingAptitude;
     foal.atavism = { ...g };
   }
+  // REQ-UXS-050: a parent's unique skill may pass on. Drawn last, and only when a parent has one, so breedings of
+  // skill-less parents use the RNG exactly as before
+  const skillOdds = skillInheritOdds(m, horseSkillId(m, sire), horseSkillId(m, dam));
+  if (skillOdds.skills.length > 0) {
+    const sk = rollInheritedSkill(skillOdds, rng);
+    if (sk) foal.skillId = sk;
+  }
   s.horses.push(foal);
   if (!usedMaterial) s.breeding.count += 1;
   assert(foal.distMinM <= foal.distMaxM, 'CONFIG_INVALID');
-  return { foal, nick: b.nick, inbreedingCount: b.inbreed, usedMaterial, atavism: foal.atavism ?? null };
+  return { foal, nick: b.nick, inbreedingCount: b.inbreed, usedMaterial, atavism: foal.atavism ?? null, skillId: foal.skillId ?? null };
 }

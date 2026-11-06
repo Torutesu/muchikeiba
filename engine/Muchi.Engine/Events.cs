@@ -26,6 +26,11 @@ namespace Muchi.Engine
         RaceEnd = 10,
         /// <summary>Lane change started. Value = target lane.</summary>
         LaneChange = 11,
+        /// <summary>
+        /// Unique skill fired (ruleset 1.3, HUD cut-in and commentary). Value = the horse's rank (0 = leader) at that moment
+        /// (ranks after the previous tick). Presentation only, not part of the checksum or result hash.
+        /// </summary>
+        Skill = 12,
     }
 
     public struct RaceEvent

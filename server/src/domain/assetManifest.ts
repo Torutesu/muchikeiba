@@ -72,6 +72,7 @@ export function buildAssetManifest(m: Master, commentary: CommentaryJson, v: Vis
   for (const p of Object.values(commentary.phrases)) for (const vr of p.variants) phraseClipIds(vr.id, vr.text).forEach((c) => add(assetKeys.voicePhrase(c)));
   for (let n = 1; n <= MAX_SPOKEN_NUMBER; n++) add(assetKeys.voiceNum(n));
   m.templates.forEach((t) => add(assetKeys.voiceName(t.name)));
+  m.skills?.skills.forEach((s) => add(assetKeys.voiceName(s.name))); // REQ-UXS-050: skill names are voiced like horse names
   for (const kind of Object.keys(ASSET_KINDS)) add(fallbackKey(kind));
 
   const sorted = [...keys].sort();

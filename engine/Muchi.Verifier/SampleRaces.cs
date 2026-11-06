@@ -114,6 +114,19 @@ namespace Muchi.Verifier
             return c;
         }
 
+        /// <summary>One skill per trigger kind (golden files and tests; the game's skills live in server/master/skills.json).</summary>
+        public static List<SkillSpec> SampleSkills() => new List<SkillSpec>
+        {
+            new SkillSpec { Id = "sk_t_start", Name = "テストスタート", Trigger = SkillTrigger.GoodStart, Value = 1, AccelPermille = 200, DurationTicks = 40 },
+            new SkillSpec { Id = "sk_t_lead", Name = "テストセンドウ", Trigger = SkillTrigger.Leading, Value = 600, SpeedPermille = 20, DurationTicks = 80 },
+            new SkillSpec { Id = "sk_t_straight", Name = "テストチョクセン", Trigger = SkillTrigger.FinalStraight, Value = 3, SpeedPermille = 20, DurationTicks = 80 },
+            new SkillSpec { Id = "sk_t_slip", Name = "テストカゼヨミ", Trigger = SkillTrigger.Slipstream, Value = 60, DrainSavePermille = 250, DurationTicks = 100 },
+            new SkillSpec { Id = "sk_t_behind", Name = "テストスエアシ", Trigger = SkillTrigger.SpurtBehind, Value = 4, SpeedPermille = 20, DurationTicks = 100 },
+            new SkillSpec { Id = "sk_t_low", Name = "テストコンジョウ", Trigger = SkillTrigger.LowStamina, Value = 200, RecoverPermille = 30 },
+            new SkillSpec { Id = "sk_t_rail", Name = "テストウチラチ", Trigger = SkillTrigger.CornerRail, Value = 1, DrainSavePermille = 250, DurationTicks = 100 },
+            new SkillSpec { Id = "sk_t_last", Name = "テストラスト", Trigger = SkillTrigger.Remaining, Value = 150, SpeedPermille = 15, DurationTicks = 60 },
+        };
+
         public static RulesetParams LoadRuleset(string path) => ProtocolCodec.ParseRuleset(File.ReadAllText(path));
     }
 
@@ -190,6 +203,51 @@ namespace Muchi.Verifier
             }
             var cfg4 = SampleRaces.Config("golden_dirt1800_sloppy", 424242424242UL, SampleRaces.Dirt1800(Going.SoftOrSloppy), ruleset, horses4, 0, 4);
             yield return ("race-dirt1800-sloppy.json", new ReplayLog { Config = cfg4, Inputs = new List<InputRecord>() });
+
+            // 5) unique skills (ruleset 1.3, REQ-UXS-051): every trigger kind, two humans (one with a good start), yielding turf
+            if (ruleset.HasSkillKeys)
+            {
+                var rng5 = new Pcg32(130, 17);
+                var horses5 = new List<HorseSpec>();
+                var sk = SampleRaces.SampleSkills();
+                SkillSpec With(SkillSpec s, int value) => new SkillSpec { Id = s.Id + "_" + value, Name = s.Name, Trigger = s.Trigger, Value = value, SpeedPermille = s.SpeedPermille, AccelPermille = s.AccelPermille, DrainSavePermille = s.DrainSavePermille, RecoverPermille = s.RecoverPermille, DurationTicks = s.DurationTicks };
+                // slot → skill: conditions chosen so that every trigger kind fires in this race (slot 11 has none)
+                var plan = new[]
+                {
+                    sk[0],              // 0 human, perfect start → goodStart
+                    sk[7],              // 1 human → remaining 150
+                    With(sk[1], 1999),  // 2 front-runner → leading
+                    With(sk[3], 20),    // 3 → slipstream (1 s)
+                    With(sk[4], 2),     // 4 closer → spurtBehind
+                    With(sk[5], 600),   // 5 → lowStamina
+                    With(sk[6], 3),     // 6 → cornerRail
+                    With(sk[2], 11),    // 7 → finalStraight (any place)
+                    With(sk[4], 6),     // 8 closer → spurtBehind
+                    With(sk[1], 1999),  // 9 front-runner → leading
+                    sk[3],              // 10 → slipstream (3 s)
+                    null,
+                };
+                for (int i = 0; i < 12; i++)
+                {
+                    var h = SampleRaces.RandomHorse(ref rng5, "g5_" + i);
+                    h.Skill = plan[i];
+                    if (i == 2 || i == 9) h.Style = RunningStyle.Nige;
+                    if (i == 4 || i == 8) h.Style = RunningStyle.Oikomi;
+                    horses5.Add(h);
+                }
+                var cfg5 = SampleRaces.Config("golden_turf2000_skills", 1300000000000000013UL,
+                    SampleRaces.WithGoing(SampleRaces.Turf2000(), Going.YieldingOrMuddy), ruleset, horses5, 2, 3);
+                var inputs5 = new List<InputRecord>
+                {
+                    new InputRecord(gate, 0, Cmd.Start),
+                    new InputRecord(gate + 6, 1, Cmd.Start),
+                    new InputRecord(gate + 400, 1, Cmd.ReinPress),
+                    new InputRecord(gate + 800, 1, Cmd.ReinRelease),
+                };
+                for (int k = 0; k < 6; k++) inputs5.Add(new InputRecord(gate + 1380 + k * 24, 0, Cmd.Whip));
+                inputs5.Sort((a, b) => a.Tick != b.Tick ? a.Tick.CompareTo(b.Tick) : a.Slot.CompareTo(b.Slot));
+                yield return ("race-turf2000-skills.json", new ReplayLog { Config = cfg5, Inputs = inputs5 });
+            }
         }
 
         public static List<string> WriteAll(string outDir, string rulesetJson)

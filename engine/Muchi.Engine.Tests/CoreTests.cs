@@ -140,8 +140,8 @@ namespace Muchi.Engine.Tests
             var cfg = TestUtil.Cfg(SampleRaces.Turf1600(), rs, Enumerable.Range(0, 5).Select(i => TestUtil.H("r" + i, 400 + i * 50)).ToList(), 0);
             var outp = RaceReplay.Run(cfg, new List<InputRecord>());
             var r = outp.Result;
-            Assert.StartsWith("v1|t_99|1.2.0|", r.CanonicalString);
-            Assert.Matches(@"^v1\|t_99\|1\.2\.0\|(\d+:\d+:\d+)(;\d+:\d+:\d+){4}$", r.CanonicalString);
+            Assert.StartsWith("v1|t_99|1.3.0|", r.CanonicalString);
+            Assert.Matches(@"^v1\|t_99\|1\.3\.0\|(\d+:\d+:\d+)(;\d+:\d+:\d+){4}$", r.CanonicalString);
             string expected = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(r.CanonicalString))).ToLowerInvariant();
             Assert.Equal(expected, r.Hash);
             // entries are in finishing order and consistent with Order
@@ -178,7 +178,9 @@ namespace Muchi.Engine.Tests
             var node = JsonNode.Parse(File.ReadAllText(TestUtil.DefaultRulesetPath));
             var keys = node.Props.Select(p => p.Key).Where(k => k != RulesetParams.VersionKey).ToHashSet();
             // the default file always carries every key, including the later-added optional (ground) ones
-            Assert.True(keys.SetEquals(RulesetParams.IntKeys.Concat(RulesetParams.OptionalIntKeys).Concat(RulesetParams.BalanceIntKeys).Concat(RulesetParams.DistanceIntKeys)), "file and RulesetParams keys differ");
+            Assert.True(keys.SetEquals(RulesetParams.IntKeys.Concat(RulesetParams.OptionalIntKeys).Concat(RulesetParams.BalanceIntKeys).Concat(RulesetParams.DistanceIntKeys).Concat(RulesetParams.SkillIntKeys)), "file and RulesetParams keys differ");
+            Assert.Empty(RulesetParams.IntKeys.Intersect(RulesetParams.SkillIntKeys));
+            Assert.Equal(RulesetParams.SkillIntKeys.Length, RulesetParams.SkillNeutralValues.Length);
             Assert.Empty(RulesetParams.IntKeys.Intersect(RulesetParams.DistanceIntKeys));
             Assert.Equal(RulesetParams.DistanceIntKeys.Length, RulesetParams.DistanceNeutralValues.Length);
             Assert.Empty(RulesetParams.IntKeys.Intersect(RulesetParams.BalanceIntKeys));

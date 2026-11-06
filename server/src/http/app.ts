@@ -3,6 +3,7 @@ import { visualsCatalog, VISUALS } from '../domain/visuals.js';
 import { AppError } from '../domain/errors.js';
 import { findBanner, oddsDisclosure } from '../domain/gacha.js';
 import { shopProducts } from '../domain/shop.js';
+import { skillCatalog } from '../domain/skills.js';
 import { ticketDisclosure } from '../domain/itemShop.js';
 import type { Master } from '../domain/master.js';
 import type { PlayerService } from '../domain/service.js';
@@ -270,6 +271,8 @@ export const routes: Route[] = [
     }
   } },
   // gacha
+  // REQ-UXS-050: unique skill catalog (condition/effect text generated from the engine values; no odds: no random draw)
+  { method: 'GET', path: '/v1/skills', auth: 'none', handler: async (_r, _p, c) => skillCatalog(c.master) },
   { method: 'GET', path: '/v1/gacha/banners', auth: 'none', handler: async (_r, _p, c) => ({ banners: c.master.gacha.banners.map((b) => ({ id: b.id, name: b.name, currency: b.currency, priceSingle: b.priceSingle, priceTen: b.priceTen, startAtMs: b.startAtMs ?? null, endAtMs: b.endAtMs ?? null })) }) },
   { method: 'GET', path: '/v1/gacha/:bannerId/odds', auth: 'none', handler: async (_r, p, c) => oddsDisclosure(c.master, findBanner(c.master, p.bannerId!)) },
   { method: 'POST', path: '/v1/gacha/:bannerId/draw', auth: 'player', handler: async (r, p, c, u) => {

@@ -134,6 +134,7 @@ C# では `AssetKeys.Resolve(key, exists)` が 1→2→null を返す。古い�
   - 定型の断片 `gate_open_1#0` → `voice/ja/phrase/gate_open_1_p0`（全部 `AllFixedClips()` で列挙でき、マニフェストにも載る）
   - 数字 `num:3` → `voice/ja/num/3`
   - 馬名 `name:<horseId>` → `voice/ja/name/n<馬名のFNV-1a 64bit>`（**馬IDではなく名前**で決まる。同じ名前は同じ音声）
+  - 固有スキル名 `skill:<skillId>` → `voice/ja/name/n<スキル名のFNV-1a 64bit>`（馬名と同じ規則。`VoiceClip(clipKey, horseNameById, skillNameById)` にスキル名を渡す。スキル名は `server/master/skills.json` から全てマニフェストに載る。REQ-UXS-050）
 - 馬名の音声は**命名時に生成してCDNに置く**ため、マニフェストにはテンプレート馬の名前だけが載る（kind が `dynamic: true`）。
   見つからなければ `voice/ja/name/default`（例：「この馬」）を使う。
 - Round 7 の実況の多様化（REQ-COMM-002〜004）で増えた定型フレーズも同じ規則でマニフェストに載る（`npm run gen:assets`）。

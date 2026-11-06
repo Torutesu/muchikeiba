@@ -79,6 +79,25 @@ if (args.Length >= 2 && args[0] == "harness")
     Console.WriteLine("elapsed " + sw.ElapsedMilliseconds + "ms, all pass: " + rep.AllPass);
     return rep.AllPass ? 0 : 1;
 }
+if (args.Length >= 4 && args[0] == "harness-skills")
+{
+    // harness-skills <ruleset.json> <server/master/skills.json> <server/master/tracks.json> [scale] [key=value...]
+    //   → R9 per skill (win-rate ratio with/without, ranked caps and uncapped) and style parity with skills on every course × going
+    var sNode = Muchi.Net.JsonNode.Parse(File.ReadAllText(args[1]));
+    int sScale = 1;
+    foreach (var kv in args.Skip(4))
+    {
+        if (!kv.Contains('=')) { sScale = int.Parse(kv); continue; }
+        var parts = kv.Split('=');
+        sNode.Set(parts[0], long.Parse(parts[1]));
+    }
+    var rs = Muchi.Net.ProtocolCodec.ParseRuleset(sNode);
+    var sw = System.Diagnostics.Stopwatch.StartNew();
+    var rep = SkillBalance.Run(rs, SkillMaster.Load(args[2]), BalanceHarness.LoadServerTracks(args[3]), sScale);
+    Console.Write(rep.Markdown());
+    Console.WriteLine("elapsed " + sw.ElapsedMilliseconds + "ms, all pass: " + rep.AllPass);
+    return rep.AllPass ? 0 : 1;
+}
 if (args.Length >= 3 && args[0] == "ta-thresholds")
 {
     // ta-thresholds <ruleset.json> <server/master/tracks.json> [statCap] → gold/silver/bronze per track (ms)

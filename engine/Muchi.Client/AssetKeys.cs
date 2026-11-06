@@ -58,10 +58,16 @@ namespace Muchi.Client
 
         /// <summary>
         /// Commentary clip key → voice asset key: fixed clips ("gate_open_1#0"), "num:&lt;n&gt;" and
-        /// "name:&lt;horseId&gt;" (needs the horse's name; returns null when it is unknown).
+        /// "name:&lt;horseId&gt;" (needs the horse's name; returns null when it is unknown) and "skill:&lt;skillId&gt;" (a unique
+        /// skill's name, voiced like a horse name by its text; needs the skill's name, e.g. from the race config's horse.skill).
         /// </summary>
-        public static string VoiceClip(string clipKey, Func<string, string> horseNameById)
+        public static string VoiceClip(string clipKey, Func<string, string> horseNameById, Func<string, string> skillNameById = null)
         {
+            if (clipKey != null && clipKey.StartsWith("skill:", StringComparison.Ordinal))
+            {
+                string skill = skillNameById?.Invoke(clipKey.Substring(6));
+                return skill == null ? null : VoiceName(skill);
+            }
             if (clipKey == null) return null;
             if (clipKey.StartsWith("num:", StringComparison.Ordinal)) return VoiceNum(int.Parse(clipKey.Substring(4), CultureInfo.InvariantCulture));
             if (clipKey.StartsWith("name:", StringComparison.Ordinal))

@@ -36,12 +36,35 @@ export const trackSchema = z
   .refine((t) => t.segments.reduce((a, s) => a + s.lengthM, 0) === t.distanceM, 'segment lengths must sum to distanceM')
   .refine((t) => t.going === undefined || (goingsFor(t.surface) as readonly string[]).includes(t.going), 'going does not match the surface');
 
+/** 固有スキルの発動条件 (ruleset 1.3, contracts/protocol.md §14). Conditions only: the engine never draws a random number for them. */
+export const SKILL_TRIGGERS = ['finalStraight', 'cornerRail', 'lowStamina', 'spurtBehind', 'remaining', 'leading', 'slipstream', 'goodStart'] as const;
+export const skillTriggerSchema = z.enum(SKILL_TRIGGERS);
+export type SkillTrigger = z.infer<typeof skillTriggerSchema>;
+/** Largest `value` per trigger (same as SkillSpec.MaxValue in engine/Muchi.Engine/Model.cs). */
+export const SKILL_VALUE_MAX: Record<SkillTrigger, number> = {
+  finalStraight: 11, cornerRail: 11, lowStamina: 1000, spurtBehind: 11, remaining: 4000, leading: 4000, slipstream: 1200, goodStart: 60,
+};
+const permille = int.min(0).max(1000);
+/** The skill as a race config carries it: everything the engine needs, already capped for the mode (raceConfig.ts). */
+export const raceSkillSchema = z
+  .object({
+    id: z.string().min(1), name: z.string().min(1), trigger: skillTriggerSchema, value: int.min(0),
+    speedPermille: permille, accelPermille: permille, drainSavePermille: permille, recoverPermille: permille,
+    durationTicks: int.min(0).max(1200),
+  })
+  .strict()
+  .refine((k) => k.value <= SKILL_VALUE_MAX[k.trigger], 'skill value out of range for its trigger')
+  .refine((k) => k.trigger !== 'slipstream' || k.value >= 1, 'slipstream skill value must be >= 1');
+export type RaceSkill = z.infer<typeof raceSkillSchema>;
+
 export const raceHorseSchema = z
   .object({
     id: z.string().min(1), name: z.string().min(1),
     speed: stat, stamina: stat, burst: stat, guts: stat, temper: stat,
     style: styleSchema, distMinM: int.min(0), distMaxM: int.min(0), surface: aptSurfaceSchema,
     goingAptitude: goingAptitudeSchema.optional(),
+    // ruleset 1.3 unique skill; absent = none (and every config built before skills existed)
+    skill: raceSkillSchema.optional(),
   })
   .strict()
   .refine((h) => h.distMinM <= h.distMaxM, 'distMinM > distMaxM');

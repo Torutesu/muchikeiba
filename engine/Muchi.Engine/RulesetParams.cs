@@ -107,6 +107,20 @@ namespace Muchi.Engine
         /// <summary>True when the distance keys were present (absent before 1.2; then nothing scales with distance).</summary>
         public bool HasDistanceKeys;
 
+        // ---- unique skills (ruleset 1.3, docs/planning/06-ux-experience-spec.md §7.1, REQ-UXS-051) ----
+        /// <summary>Ceiling for a skill's target-speed bonus (‰). Every skill effect is clamped to these caps.</summary>
+        public int SkillMaxSpeedPermille;
+        /// <summary>Ceiling for a skill's acceleration bonus (‰).</summary>
+        public int SkillMaxAccelPermille;
+        /// <summary>Ceiling for a skill's stamina-drain saving (‰).</summary>
+        public int SkillMaxDrainSavePermille;
+        /// <summary>Ceiling for a skill's one-time stamina recovery (‰ of the maximum).</summary>
+        public int SkillMaxRecoverPermille;
+        /// <summary>Ceiling for how long a skill's effect lasts (ticks).</summary>
+        public int SkillMaxDurationTicks;
+        /// <summary>True when the skill keys were present (absent before 1.3; then horse skills are ignored entirely).</summary>
+        public bool HasSkillKeys;
+
         /// <summary>
         /// Permille factor for a race of <paramref name="distanceM"/>: 1000 + scale × (distance − ref) / ref, clamped to 200..5000,
         /// with the surface's reference distance. Exactly 1000 when the distance keys are absent or off.
@@ -183,6 +197,15 @@ namespace Muchi.Engine
         /// <summary>Neutral values for <see cref="DistanceIntKeys"/> (same order).</summary>
         public static readonly int[] DistanceNeutralValues = { 0, 0, 0, 0 };
 
+        /// <summary>
+        /// Fourth optional group (ruleset 1.3): caps for unique skills (固有スキル). All or none; absent = skills sent with a
+        /// horse are ignored, so 1.2 and older replays reproduce exactly.
+        /// </summary>
+        public static readonly string[] SkillIntKeys = { "skillMaxSpeedPermille", "skillMaxAccelPermille", "skillMaxDrainSavePermille", "skillMaxRecoverPermille", "skillMaxDurationTicks" };
+
+        /// <summary>Neutral values for <see cref="SkillIntKeys"/> (same order).</summary>
+        public static readonly int[] SkillNeutralValues = { 0, 0, 0, 0, 0 };
+
         /// <summary>Builds params from a key/value map. Missing or unknown keys throw ArgumentException.</summary>
         public static RulesetParams FromValues(string rulesetVersion, IDictionary<string, long> values)
         {
@@ -191,6 +214,7 @@ namespace Muchi.Engine
             foreach (var k in OptionalIntKeys) known.Add(k);
             foreach (var k in BalanceIntKeys) known.Add(k);
             foreach (var k in DistanceIntKeys) known.Add(k);
+            foreach (var k in SkillIntKeys) known.Add(k);
             foreach (var k in values.Keys)
                 if (!known.Contains(k)) throw new ArgumentException("unknown ruleset key: " + k);
             int optionalPresent = 0;
@@ -205,6 +229,10 @@ namespace Muchi.Engine
             foreach (var k in DistanceIntKeys) if (values.ContainsKey(k)) distancePresent++;
             if (distancePresent != 0 && distancePresent != DistanceIntKeys.Length)
                 throw new ArgumentException("distance ruleset keys must be all present or all absent");
+            int skillPresent = 0;
+            foreach (var k in SkillIntKeys) if (values.ContainsKey(k)) skillPresent++;
+            if (skillPresent != 0 && skillPresent != SkillIntKeys.Length)
+                throw new ArgumentException("skill ruleset keys must be all present or all absent");
             foreach (var k in IntKeys)
                 if (!values.ContainsKey(k)) throw new ArgumentException("missing ruleset key: " + k);
 
@@ -300,6 +328,15 @@ namespace Muchi.Engine
                 p.StaminaDistanceScalePermille = G("staminaDistanceScalePermille");
                 p.SpurtDistanceScalePermille = G("spurtDistanceScalePermille");
             }
+            if (skillPresent > 0)
+            {
+                p.HasSkillKeys = true;
+                p.SkillMaxSpeedPermille = G("skillMaxSpeedPermille");
+                p.SkillMaxAccelPermille = G("skillMaxAccelPermille");
+                p.SkillMaxDrainSavePermille = G("skillMaxDrainSavePermille");
+                p.SkillMaxRecoverPermille = G("skillMaxRecoverPermille");
+                p.SkillMaxDurationTicks = G("skillMaxDurationTicks");
+            }
             p.Validate();
             return p;
         }
@@ -348,6 +385,11 @@ namespace Muchi.Engine
                 int[] dist = { DistanceRefM, DistanceRefDirtM, StaminaDistanceScalePermille, SpurtDistanceScalePermille };
                 for (int i = 0; i < DistanceIntKeys.Length; i++) v.Add(new KeyValuePair<string, long>(DistanceIntKeys[i], dist[i]));
             }
+            if (HasSkillKeys)
+            {
+                int[] sk = { SkillMaxSpeedPermille, SkillMaxAccelPermille, SkillMaxDrainSavePermille, SkillMaxRecoverPermille, SkillMaxDurationTicks };
+                for (int i = 0; i < SkillIntKeys.Length; i++) v.Add(new KeyValuePair<string, long>(SkillIntKeys[i], sk[i]));
+            }
             return v;
         }
 
@@ -377,6 +419,10 @@ namespace Muchi.Engine
             if (DistanceRefM < 0 || DistanceRefM > 10000 || DistanceRefDirtM < 0 || DistanceRefDirtM > 10000) throw new ArgumentException("distanceRefM/distanceRefDirtM must be 0..10000");
             if (StaminaDistanceScalePermille < 0 || StaminaDistanceScalePermille > 2000 || SpurtDistanceScalePermille < 0 || SpurtDistanceScalePermille > 2000)
                 throw new ArgumentException("distance scale values must be 0..2000");
+            if (SkillMaxSpeedPermille < 0 || SkillMaxSpeedPermille > 200 || SkillMaxAccelPermille < 0 || SkillMaxAccelPermille > 1000
+                || SkillMaxDrainSavePermille < 0 || SkillMaxDrainSavePermille > 1000 || SkillMaxRecoverPermille < 0 || SkillMaxRecoverPermille > 500)
+                throw new ArgumentException("skill caps out of range (speed 0..200, accel 0..1000, drain 0..1000, recover 0..500)");
+            if (SkillMaxDurationTicks < 0 || SkillMaxDurationTicks > 1200) throw new ArgumentException("skillMaxDurationTicks must be 0..1200");
         }
         private static bool Permille(int v) => v >= 500 && v <= 2000;
     }

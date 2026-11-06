@@ -72,6 +72,8 @@ static class Program
         await AssetDeliveryChecks.Run(Check);
         Console.WriteLine("== round 10: 友達招待 (my code + share, code entry, milestones, deep links; REQ-INV-*)");
         await InviteChecks.Run(Check);
+        Console.WriteLine("== returning players: comeback welcome, login track, missions, catch-up, what's new (REQ-CB-001..012)");
+        await ComebackChecks.Run(Check, Ruleset());
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

@@ -110,6 +110,12 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | POST | `/v1/rewards/login-bonus` | 要 | 必須 | |
 | GET | `/v1/missions` | 要 | | デイリーミッションと今日の初勝利ボーナスの残り（`firstWinBonus`） |
 | POST | `/v1/missions/:missionId/claim` | 要 | 必須 | |
+| GET | `/v1/comeback` | 要 | | 復帰キャンペーンの期間（REQ-CB-*、contracts/protocol.md「復帰キャンペーン・お知らせ」）。活動日として数える |
+| POST | `/v1/comeback/login` | 要 | 必須 | 復帰ログインボーナス（1ゲーム日1回） |
+| POST | `/v1/comeback/missions/:missionId/claim` | 要 | 必須 | 復帰ミッション |
+| POST | `/v1/comeback/welcome` | 要 | | 歓迎画面を出した（1回） |
+| GET | `/v1/whats-new` | 要 | | 前回見た後に始まったもの（ホームのカード） |
+| POST | `/v1/whats-new/seen` | 要 | | 本文 `{ upTo }`。見た位置を進める |
 | GET | `/v1/season-pass` | 要 | | シーズン（暦月）限りのパス：レベル・30段の報酬・期間・残り日数・前シーズンの自動付与（§13.6） |
 | POST | `/v1/season-pass/claim` | 要 | 必須 | `{track: free\|premium, level}` |
 | POST | `/v1/match/enqueue` | 要 | | `{horseId}` ランク戦の待ち行列へ |

@@ -922,6 +922,8 @@ namespace Muchi.Client
     public sealed class PushPreferences
     {
         public bool Season, Friends, Invites, Events;
+        /// <summary>REQ-CB-007: lapse reminders (opt-in, off by default). Ask once before turning it on (06 §3.5).</summary>
+        public bool Comeback;
         /// <summary>Quiet hours in JST (0-23); null = none. Urgent pushes (room invites) are not sent then; others are delayed.</summary>
         public int? QuietStartHour, QuietEndHour;
         public int DailyCap, Devices;
@@ -935,7 +937,7 @@ namespace Muchi.Client
             var t = J.Opt(o, "topics");
             return new PushPreferences
             {
-                Season = J.Bool(c, "season"), Friends = J.Bool(c, "friends"), Invites = J.Bool(c, "invites"), Events = J.Bool(c, "events"),
+                Season = J.Bool(c, "season"), Friends = J.Bool(c, "friends"), Invites = J.Bool(c, "invites"), Events = J.Bool(c, "events"), Comeback = J.Bool(c, "comeback"),
                 QuietStartHour = q == null ? (int?)null : J.Int(q, "startHour"), QuietEndHour = q == null ? (int?)null : J.Int(q, "endHour"),
                 DailyCap = J.Int(o, "dailyCap"), Devices = J.Int(o, "devices"),
                 SubscribeTopics = J.List(t, "subscribe", x => x.AsString()), UnsubscribeTopics = J.List(t, "unsubscribe", x => x.AsString()),
@@ -946,20 +948,21 @@ namespace Muchi.Client
     /// <summary>Only the fields you set are sent. Set <see cref="ClearQuietHours"/> to turn quiet hours off.</summary>
     public sealed class PushPreferencesPatch
     {
-        public bool? Season, Friends, Invites, Events;
+        public bool? Season, Friends, Invites, Events, Comeback;
         public int? QuietStartHour, QuietEndHour;
         public bool ClearQuietHours;
 
         internal JsonNode ToJson()
         {
             var b = JsonNode.Obj();
-            if (Season.HasValue || Friends.HasValue || Invites.HasValue || Events.HasValue)
+            if (Season.HasValue || Friends.HasValue || Invites.HasValue || Events.HasValue || Comeback.HasValue)
             {
                 var c = JsonNode.Obj();
                 if (Season.HasValue) c.Set("season", Season.Value);
                 if (Friends.HasValue) c.Set("friends", Friends.Value);
                 if (Invites.HasValue) c.Set("invites", Invites.Value);
                 if (Events.HasValue) c.Set("events", Events.Value);
+                if (Comeback.HasValue) c.Set("comeback", Comeback.Value);
                 b.Set("categories", c);
             }
             if (ClearQuietHours) b.Set("quietHours", JsonNode.Null());

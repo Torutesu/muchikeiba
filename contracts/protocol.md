@@ -561,3 +561,47 @@ FeedPage = { "teamId": "tabc123456", "latestSeq": 130, "nextBefore": 111 | null,
 **深いリンク**：`muchi://invite/<code>`（アプリが入っているとき）と `https://<招待ドメイン>/i/<code>`（入っていないときはストアへ。Universal Links / App Links にすればアプリが開く）。アプリはコードを入力欄に入れるだけで、自動では引き換えない。チュートリアル前に開いた場合はコードを端末に覚えておき、入力できるようになったら入れる（C# `InviteCodes.FromLink`・`InviteModel.HandleLink`）。iOS / Android の設定は `docs/handoff-codex-round10-invite.md`。
 
 **KPI**：クライアント `invite_share`（`props.channel`: `os_share` | `copy_code` | `copy_link`、共有シートで実際に共有したときだけ）。サーバー `invite_redeem`（s2 = `inviter` / `invitee`）・`invite_milestone`（s1 = マイルストーン id、s2 = `invitee` / `inviter`）。クエリは docs/ops/kpi-queries.md。
+
+## 20. 復帰キャンペーン・お知らせ（What's new）（REQ-CB-001〜012、`server/src/domain/comeback.ts`、C# `Comeback.cs`・`Muchi.Game` `ComebackModel`/`WhatsNewModel`、docs/planning/06 §4.5）
+
+**活動日と休眠**：サーバーは「最後に遊んだゲーム日」（`lastActiveDay`、§15 の切り替え時刻で数える）を持つ。更新するのはプレイヤーからの呼び出しだけ（`POST /v1/player/bootstrap`・`POST /v1/rewards/login-bonus`・`GET /v1/missions`・`GET /v1/comeback`）。通知の配信・フレンド申請・種付け料などサーバー側の処理では更新しない。その日に初めて遊んだ時、前の活動日から `progression.comeback.tiers[].minLapseDays`（既定 7 / 14 / 30）以上あいていれば、期間を1回だけ始める（条件は REQ-CB-002）。
+
+**`GET /v1/comeback`**（要認証。活動日として数える＝ここで期間が始まることもある）：
+```json
+{ "active": true,
+  "push": { "category": "comeback", "enabled": false },
+  "window": { "id": "cb1_20261117", "tier": "short" | "mid" | "long", "lapseDays": 7,
+    "startDay": "2026-11-17", "endDay": "2026-11-30", "endsAt": 1796050800000, "remainingDays": 14, "day": 1, "days": 14,
+    "showWelcome": true, "completed": false, "blocked": false,
+    "login": { "claimed": 0, "total": 7, "claimableToday": true, "days": [ { "day": 1, "reward": { "freeCoins": 100 }, "claimed": false } ] },
+    "missions": [ { "id": "cb_race", "kind": "races", "feature": "skills", "title": "まずは1レース", "guide": "…", "target": 1, "progress": 0,
+      "reward": { "freeCoins": 50 }, "claimed": false, "claimable": false } ],
+    "catchUp": { "seasonId": "2026-11", "targetXp": 1020, "capXp": 700, "grantedXp": 0, "remainingXp": 700, "bonusPerRace": 20, "active": true } } }
+```
+- 期間が無い時は `{ "active": false, "window": null, "push": … }`。`endsAt` は期間の最後のゲーム日の次の切り替え時刻（含まない）。画面は**日付**で「11月30日まで」と出し、カウントダウンは出さない（06 §5.5）。`remainingDays` は今日を1と数えるゲーム日。
+- `blocked: true`：アカウント削除の予約中（REQ-UXS-040）。受け取りは全て `DELETION_PENDING`（取り消せば戻る）。`claimable`・`claimableToday` も false で返る。
+- `missions[].progress` は期間の開始時からの増分（`kind`：`races`・`ranked_races`・`wins`・`gacha`（券を含むスカウト）・`care`・`stable`（マイ厩舎の保存）・`breed`・`silks`）。`feature` はミッションが案内する画面のキー（`skills`・`scout`・`bond`・`my_stable`・`race` など、クライアントの対応表）。
+- `catchUp`：期間中、報酬の出るレースごとにパスXPを `bonusPerRace`（＝`passXpPerRace` × `bonusPermille`）上乗せする。上限は `capXp`（開始時に `min(maxBonusXp, lapseDays × perLapseDayXp, targetXp − その時のXP)`）と、シーズンの中央値の目安 `targetXp`（`medianXpPerSeasonDay` × シーズンの何日目か、暦の月）。シーズンが変わったら止まる。レース結果の `comebackXp` に上乗せ分が入る。
+
+**`POST /v1/comeback/login`**（要認証・冪等キー必須）：今日の分を受け取る。`{ "day": 2, "reward": {…}, "window": {…上と同じ…} }`。1ゲーム日に1回、とぎれても日数は進む（失わない）。期間外は `NOT_ELIGIBLE`、受け取り済み／7日分済みは `ALREADY_CLAIMED`、削除予約中は `DELETION_PENDING`。通常のログインボーナス（REQ-REW-002）とは別に受け取れる。
+
+**`POST /v1/comeback/missions/:missionId/claim`**（要認証・冪等キー必須、`missionId` は `[a-z0-9_]{1,40}`）：`{ "missionId", "reward", "window" }`。未達は `NOT_ELIGIBLE`、存在しない ID は `NOT_FOUND`。
+
+**`POST /v1/comeback/welcome`**（要認証）：歓迎画面を出した。`{ "windowId", "welcomedAt" }`（最初の時刻のまま）。以後 `showWelcome` は false。
+
+**報酬**：無償コイン・スカウト券・10連券・SR以上確定券・配合素材だけ（設定の検証で、有償コイン・見た目のアイテム・馬・パスXP の報酬、`collect` のミッション、上限を超える価値を拒否。REQ-CB-009/010）。
+
+**`GET /v1/whats-new`**（要認証）：前回見た位置より後に始まったもの（新しい順、最大10件、残りは `more`）。
+```json
+{ "since": 1793199600000, "upTo": 1795316400000, "showCard": true, "more": 0,
+  "items": [ { "id": "banner_pickup_ginga", "kind": "feature" | "banner" | "event" | "balance", "title": "…", "body": "…", "at": 1793458800000,
+    "feature": "scout" | null, "bannerId": "pickup_ginga" | null, "eventId": null, "endsAt": 1796050800000 | null } ] }
+```
+- 元は `server/master/changelog.json`（機能・調整。`day` はゲーム日の切り替え時刻から、または `atMs`。リモート設定の `changelog` で丸ごと差し替え）と、その間に開いて今も開いているバナー、始まって今も開催中のイベント。`endsAt` は実在の終わり（バナー・イベント）だけ。
+- 新規プレイヤーは登録時点から数える（過去の一覧は出ない）。
+
+**`POST /v1/whats-new/seen`**（要認証）：本文 `{ "upTo": <GET の upTo> }`。`{ "seenUpTo" }`。戻らない・今より先へは進まない。カードは1回だけ出す。
+
+**通知**：プッシュの種類 `comeback`（既定で受け取らない。`PUT /v1/push/preferences` の `categories.comeback`、06 §3.5 の「新しい種類と同意」）。最後の活動日から `pushes[].afterDays`（3日目・7日目）の `pushHourJst`（19時 JST）に、1日の上限・静かな時間帯（push.json）の中で1回ずつ。7日目の文面（「おかえりボーナスを用意しています」）は、戻れば期間が始まる人にだけ送る。削除予約中・停止中は送らない。
+
+**ショップ**（`GET /v1/shop/offers`、§13.3 の追加）：期間中で今シーズンのパス未購入なら、`touchpoint: "comeback"`・`id: "comeback_<windowId>"`・`productId: "season_pass"` のオファーを1件（ポップアップは1回、§13.4 で記録）。価格・中身は通常のパスと同じ、`endsAt` はパスの実在の販売終了（シーズン末）。その間 T3 のパスのポップアップは出さない（ショップの「おすすめ」には並ぶ）。新しい商品・割引は作らない（REQ-CB-011）。

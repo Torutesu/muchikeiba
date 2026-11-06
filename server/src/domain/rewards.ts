@@ -35,6 +35,7 @@ export function firstWinBonusView(m: Master, s: PlayerState, now: number) {
   return { modes: fw.modes, byWin: fw.freeCoinsByWin, winsToday: Math.min(winsToday, fw.freeCoinsByWin.length), remaining, next: remaining > 0 ? fw.freeCoinsByWin[winsToday]! : null };
 }
 import { onRaceApplied } from './onboarding.js';
+import { comebackRaceXp } from './comeback.js';
 
 /**
  * REQ-REW-002: 7-day login bonus, once per game day, cumulative (missing days does not reset).
@@ -136,7 +137,7 @@ export function friendRewardAllowed(m: Master, s: PlayerState, r: RaceResultForP
 
 /** REQ-REW-001: apply a confirmed race outcome to one player. Idempotency is handled by the caller (key = race id). */
 export function applyRaceResult(m: Master, s: PlayerState, r: RaceResultForPlayer, now: number) {
-  if (r.void) return { coins: 0, seasonPoints: 0, titles: [] as string[], rewarded: false, firstWinBonus: 0 };
+  if (r.void) return { coins: 0, seasonPoints: 0, titles: [] as string[], rewarded: false, firstWinBonus: 0, comebackXp: 0 };
   const rewarded = friendRewardAllowed(m, s, r, now);
   const firstWinBonus = rewarded ? applyFirstWinBonus(m, s, r, now) : 0;
   // time attack runs never come through here (they are settled by src/race/timeAttack.ts)
@@ -144,6 +145,7 @@ export function applyRaceResult(m: Master, s: PlayerState, r: RaceResultForPlaye
   const coins = rewarded ? byPlace?.[r.place - 1] ?? 0 : 0;
   if (coins > 0) grantFree(s, coins, now, `race ${r.mode} place ${r.place}`, r.raceId);
   let seasonPoints = 0;
+  let comebackXp = 0;
   if (r.mode === 'ranked') {
     seasonPoints = seasonPointsFor(m, r.place);
     s.season.points += seasonPoints;
@@ -154,6 +156,7 @@ export function applyRaceResult(m: Master, s: PlayerState, r: RaceResultForPlaye
   if (r.mode !== 'tutorial') {
     if (rewarded) {
       s.seasonPass.xp += m.progression.passXpPerRace;
+      comebackXp = comebackRaceXp(m, s, now); // REQ-CB-006: catch-up while a comeback window runs
       ensureMissionDay(m, s, now);
       const inc = (k: string) => (s.missions.progress[k] = (s.missions.progress[k] ?? 0) + 1);
       for (const d of m.progression.dailyMissions) {
@@ -167,7 +170,7 @@ export function applyRaceResult(m: Master, s: PlayerState, r: RaceResultForPlaye
   }
   onRaceApplied(m, s, r.mode, r.place, rewarded); // REQ-UXS-014/015/016 counters
   const titles = evaluateTitles(m, s);
-  return { coins, seasonPoints, titles, rewarded, firstWinBonus };
+  return { coins, seasonPoints, titles, rewarded, firstWinBonus, comebackXp };
 }
 
 export { DAY_MS };

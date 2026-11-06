@@ -16,6 +16,7 @@ import pushJson from '../../master/push.json';
 import eventsJson from '../../master/events.json';
 import itemsJson from '../../master/items.json';
 import assetsCatalogJson from '../../master/assets-catalog.json';
+import changelogJson from '../../master/changelog.json';
 import { parseAssetCatalog, type AssetCatalog } from './assetCatalog.js';
 import type { StampsMaster } from './teamFeed.js';
 import stampsJson from '../../master/stamps.json';
@@ -171,6 +172,8 @@ export interface Progression {
   dayRollover?: import('./time.js').DayRollover;
   /** REQ-INV-*: friend invite codes (invite.ts). Absent = invites disabled. */
   invite?: import('./invite.js').InviteConfig;
+  /** REQ-CB-*: returning-player campaign (comeback.ts). Absent = disabled. */
+  comeback?: import('./comeback.js').ComebackConfig;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */
@@ -241,8 +244,9 @@ export type TitleCondition =
   | { kind: 'rating'; value: number }
   | { kind: 'bondLevel'; value: number };
 export interface TitleDef { id: string; name: string; condition: TitleCondition }
-export type PushCategory = 'season' | 'friends' | 'invites' | 'events';
-export const PUSH_CATEGORIES: PushCategory[] = ['season', 'friends', 'invites', 'events'];
+/** `comeback` (REQ-CB-007): lapse reminders, opt-in (06 §3.5: a re-engagement push needs its own category and consent). */
+export type PushCategory = 'season' | 'friends' | 'invites' | 'events' | 'comeback';
+export const PUSH_CATEGORIES: PushCategory[] = ['season', 'friends', 'invites', 'events', 'comeback'];
 export interface PushTemplate { category: PushCategory; title: string; body: string; ttlSec: number; timeSensitive: boolean }
 /** REQ-PUSH-*: defaults, limits and Japanese templates (master/push.json). */
 export interface PushMaster {
@@ -321,6 +325,8 @@ export interface Master {
   assetCatalog?: AssetCatalog;
   /** REQ-TEAMFEED-*: team cheer stamps (master/stamps.json; teamFeed.ts stampsOf falls back to it when absent). */
   stamps?: StampsMaster;
+  /** REQ-CB-008: what's new entries (master/changelog.json; remote config `changelog` may replace it). */
+  changelog?: import('./comeback.js').ChangelogEntry[];
 }
 
 export const PPM_TOTAL = 1_000_000;
@@ -470,6 +476,7 @@ export function loadMaster(): Master {
     skills: loadSkills(),
     assetCatalog: parseAssetCatalog(assetsCatalogJson),
     stamps: stampsJson as unknown as StampsMaster,
+    changelog: (changelogJson as unknown as { entries: import('./comeback.js').ChangelogEntry[] }).entries,
   };
   cached = m;
   return m;

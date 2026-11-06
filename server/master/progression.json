@@ -838,5 +838,28 @@
       { "id": "im_class_b", "kind": "class", "classId": "B", "reward": { "items": [{ "itemId": "gacha_ticket", "qty": 1 }] } }
     ],
     "shareBaseUrl": "https://invite.muchi-issen.example/i/", "deepLinkScheme": "muchi", "termsKey": "terms.invite"
+    },
+  "comeback": {
+    "_note": "REQ-CB-001..012 復帰キャンペーン（docs/planning/06 §4.5、contracts/protocol.md「復帰キャンペーン・お知らせ」）。最後に遊んだゲーム日から minLapseDays 以上あいた人が戻った日に、windowDays ゲーム日の期間が1回だけ始まる。期間中は復帰ログボ7日・復帰ミッション・パスXPの追いつき。次の期間は前回の開始から cooldownDays 後まで始まらない（放置で稼げない）。報酬は無償コインと有償でない券・素材だけ。1段階のログボ＋ミッションの価値は minLapseDays × valueCapPerLapseDay 以下（毎日遊ぶ無課金は約179/日、balance-targets.md §4.7）。",
+    "tiers": [
+      {"id": "short", "minLapseDays": 7, "loginTrack": [{"freeCoins": 100}, {"items": [{"itemId": "gacha_ticket", "qty": 1}]}, {"freeCoins": 100}, {"items": [{"itemId": "breeding_material", "qty": 2}]}, {"freeCoins": 100}, {"items": [{"itemId": "gacha_ticket", "qty": 1}]}, {"freeCoins": 150}]},
+      {"id": "mid", "minLapseDays": 14, "loginTrack": [{"freeCoins": 100}, {"items": [{"itemId": "gacha_ticket", "qty": 1}]}, {"freeCoins": 100}, {"items": [{"itemId": "breeding_material", "qty": 3}]}, {"freeCoins": 150}, {"items": [{"itemId": "gacha_ticket", "qty": 1}]}, {"items": [{"itemId": "gacha_ticket_10", "qty": 1}]}]},
+      {"id": "long", "minLapseDays": 30, "loginTrack": [{"freeCoins": 150}, {"items": [{"itemId": "gacha_ticket", "qty": 1}]}, {"items": [{"itemId": "ticket_sr_plus", "qty": 1}]}, {"items": [{"itemId": "breeding_material", "qty": 3}]}, {"freeCoins": 150}, {"items": [{"itemId": "gacha_ticket", "qty": 1}]}, {"items": [{"itemId": "gacha_ticket_10", "qty": 1}]}]}
+    ],
+    "windowDays": 14,
+    "cooldownDays": 60,
+    "minRacesBefore": 5,
+    "valueCapPerLapseDay": 150,
+    "missions": [
+      {"id": "cb_race", "kind": "races", "target": 1, "feature": "skills", "title": "まずは1レース", "guide": "馬ごとの固有スキルが加わりました。発動の瞬間を見てみよう", "reward": {"freeCoins": 50}},
+      {"id": "cb_scout", "kind": "gacha", "target": 1, "feature": "scout", "title": "スカウトを1回", "guide": "開催カレンダーで今のスカウトと終了日を確認できます（復帰ログボのスカウト券でもOK）", "reward": {"freeCoins": 50}},
+      {"id": "cb_care", "kind": "care", "target": 1, "feature": "bond", "title": "相棒のお世話", "guide": "飼い葉で絆が深まります（能力は変わりません）", "reward": {"items": [{"itemId": "breeding_material", "qty": 2}]}},
+      {"id": "cb_stable", "kind": "stable", "target": 1, "feature": "my_stable", "title": "マイ厩舎を飾る", "guide": "厩舎を飾ってフレンドに見せられるようになりました", "reward": {"freeCoins": 50}},
+      {"id": "cb_ranked3", "kind": "ranked_races", "target": 3, "feature": "race", "title": "ランク戦を3回", "guide": "今のシーズンに戻ろう。期間中はパスXPが上乗せされます", "reward": {"items": [{"itemId": "gacha_ticket", "qty": 1}]}}
+    ],
+    "catchUp": {"medianXpPerSeasonDay": 60, "bonusPermille": 1000, "maxBonusXp": 1500, "perLapseDayXp": 100},
+    "pushes": [{"afterDays": 3, "templateId": "lapse_3d"}, {"afterDays": 7, "templateId": "lapse_7d", "requireEligible": true}],
+    "pushHourJst": 19,
+    "offer": {"enabled": true}
   }
 }

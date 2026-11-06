@@ -51,7 +51,8 @@ const svcStateTemplate = () => blank!;
 const store = new FakeStoreVerifier();
 // round 10 (REQ-TEAMFEED-*): a demo 支部 on the real team objects (MemoryTeams = TeamCore, the TeamDO logic, in memory)
 const teams = new MemoryTeams(() => master, now);
-const svc = new PlayerService(new LocalRepo(), {
+const repo = new LocalRepo();
+const svc = new PlayerService(repo, {
   master, rng: cryptoRng, clock: now, verifiers: { fake: store },
   onTeamPoints: async (p) => { await teams.reportPoints(p.teamId, p.playerId, p.seasonId, p.points, p.displayName).catch(() => undefined); },
   onTeamFeed: async (p) => { await teams.feedRace(p.teamId, p.playerId, p.race); },
@@ -93,7 +94,8 @@ export const MuchiLogic = {
     rooms: master.progression.rooms,
     tracks: master.tracks.map((t) => ({ id: t.id, name: trackNames.get(t.id) ?? t.id, surface: t.surface, distanceM: t.distanceM, lit: master.litTracks.has(t.id) })),
     ageLimits: master.ageLimits,
-    itemLabels: (master.shopDisplay?.itemLabels ?? {}) as Record<string, string>,
+    // ticket names for rewards that are not shop items (comeback track: 10連スカウト券, SR以上確定スカウト券)
+    itemLabels: { ...Object.fromEntries(Object.entries(master.items.tickets).map(([k, t]) => [k, t.name])), ...(master.shopDisplay?.itemLabels ?? {}) } as Record<string, string>,
     passRewards: master.progression.passRewards,
     unlocks: master.progression.unlocks,
     beginnerLoginBonus: master.progression.beginnerLoginBonus,
@@ -249,6 +251,30 @@ export const MuchiLogic = {
         await this.applyRace(`demo_${d}_${i}`, places[k % places.length]!, 12, { trackId: 'aoba_turf_1600', style: 'sashi', finishTick: 1900, whips: 3 });
       }
     }
+    return svc.view(ID);
+  },
+  // ---------------------------------------------------------------- returning players (REQ-CB-001..012, contracts/protocol.md §20), index.html
+  // GET /v1/comeback, the claims and the what's-new card, on the real comeback rules (server/src/domain/comeback.ts)
+  comeback: () => wrap(() => svc.comeback(ID)),
+  comebackClaimLogin: () => wrap(() => svc.comebackClaimLogin(ID, key())),
+  comebackClaimMission: (missionId: string) => wrap(() => svc.comebackClaimMission(ID, missionId, key())),
+  comebackWelcomed: () => wrap(() => svc.comebackWelcomed(ID)),
+  whatsNew: () => wrap(() => svc.whatsNew(ID)),
+  whatsNewSeen: (upTo: number) => wrap(() => svc.whatsNewSeen(ID, upTo)),
+  pushPreferences: () => svc.pushPreferences(ID),
+  setComebackPush: (on: boolean) => wrap(() => svc.setPushPreferences(ID, { categories: { comeback: on } })),
+  comebackConfig: master.progression.comeback ?? null,
+  /**
+   * Demo state 「復帰」: 3 game days of play (6 races, past minRacesBefore), then 14 days away. The return goes through
+   * bootstrap like the app, so the window (mid tier), the login track and the catch-up come from the server rules. The
+   * what's-new position is put back to before the dated changelog entries so the card has something to show.
+   */
+  async seedComeback(awayDays = 14) {
+    await this.seedDemo(3, [2, 2, 2]);
+    const st = await svc.state(ID);
+    if (st.comeback) { st.comeback.seenUpTo = Date.UTC(2026, 9, 25); repo.put(st); }
+    this.setDayOffset(2 + awayDays);
+    await this.bootstrap();
     return svc.view(ID);
   },
   playerView,

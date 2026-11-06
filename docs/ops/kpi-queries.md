@@ -69,6 +69,9 @@
 | `partner_granted` | サーバー | テンプレートID（`t_partner`） | | | |
 | `ab_assign` | サーバー（初回の bootstrap、実験ごとに1回） | 実験ID | バケットID | | |
 | `account_delete` | サーバー | `requested`/`cancelled`/`deleted` | | | `deleted` は `double2`/`double3` 放棄したコイン |
+| `comeback_start` | サーバー（休眠からの復帰で期間が始まった、REQ-CB-002） | 段階 `short`/`mid`/`long` | | | `double9` 休眠したゲーム日数、`double5` そのプレイヤーの何回目の期間か |
+| `comeback_day` | サーバー（復帰ログボの受け取り、REQ-CB-004） | 段階 | | | `double9` 何日目（1〜7） |
+| `comeback_complete` | サーバー（復帰ログボ7日とミッションを全部受け取った、REQ-CB-005） | 段階 | | | `double9` 期間の何日目に完了したか |
 | `screen_view` | クライアント | 画面名 | | | |
 | `client_race_start` | クライアント | モード | | | |
 | `purchase_flow` | クライアント | `open`/`cancel`/`fail`/`store_success` | 商品ID | | |
@@ -323,6 +326,53 @@ WHERE blob1 = 'race_finish' AND blob8 = 'ranked' AND timestamp > NOW() - INTERVA
 GROUP BY style
 ORDER BY win_rate DESC
 ```
+
+## 復帰者のコホート（REQ-CB-012）
+
+`comeback_start` の日を「復帰日」として、復帰者ごとに復帰日からの経過日数で継続を数えます。JOIN もウィンドウ関数も無いので2段階にします。
+
+1. 復帰者と復帰日（段階・休眠日数つき）を出す：
+
+```sql
+SELECT blob2 AS player, blob8 AS tier, min(timestamp) AS returned_at, max(double9) AS lapse_days
+FROM muchi_kpi
+WHERE blob1 = 'comeback_start' AND timestamp > NOW() - INTERVAL '75' DAY
+GROUP BY player, tier
+```
+
+2. 同じ復帰日の人をまとめて（例：段階 `mid`、復帰日 `2026-11-17`）、その人たちの活動日を数える。`blob2 IN (…)` に 1 の結果の `player` を入れる（多い時は分割）。R1 / R7 / R14 / R30 は復帰日の翌日・7日後・期間の終わり（14日後）・30日後に何かのイベントがあった割合：
+
+```sql
+SELECT
+  count() AS returners,
+  round(countIf(d1)  / count(), 3) AS r1_rate,
+  round(countIf(d7)  / count(), 3) AS r7_rate,
+  round(countIf(d14) / count(), 3) AS r14_rate,
+  round(countIf(d30) / count(), 3) AS r30_rate,
+  round(countIf(done) / count(), 3) AS complete_rate
+FROM (
+  SELECT blob2 AS player,
+    max(blob6 = '2026-11-18') AS d1, max(blob6 = '2026-11-24') AS d7, max(blob6 = '2026-12-01') AS d14, max(blob6 = '2026-12-17') AS d30,
+    max(blob1 = 'comeback_complete') AS done
+  FROM muchi_kpi
+  WHERE timestamp >= toDateTime('2026-11-17 00:00:00') AND blob2 IN ('<player>', '<player>')
+  GROUP BY player
+)
+```
+
+比較の対照には、同じ日に休眠明けで来たが期間が始まらなかった人（`comeback_start` が無い人：クールダウン中・休眠前のレース不足）を同じ式で数えます。
+
+復帰ログボの何日目まで受け取ったかの分布（期間中の離脱の場所）：
+
+```sql
+SELECT blob8 AS tier, double9 AS day, count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'comeback_day' AND timestamp > NOW() - INTERVAL '45' DAY
+GROUP BY tier, day
+ORDER BY tier, day
+```
+
+あわせて見る指標：`push_open` の `blob8 = 'lapse_3d'` / `'lapse_7d'`（呼び戻しの通知からの起動。種類 `comeback` はオプトイン）、復帰者の `purchase`（`comeback_<期間ID>` のオファーは通常のパスの案内なので売上の上乗せではなく、復帰後の課金率として見る）。
 
 ## 離脱の兆候
 

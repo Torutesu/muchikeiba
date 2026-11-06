@@ -14,6 +14,7 @@ import type { ConsentState, OnboardingState, SeasonMissionState } from './onboar
 import type { NudgeState } from './nudges.js';
 import type { DeletionState } from './accountDeletion.js';
 import type { ReferralState } from './invite.js';
+import type { ComebackState } from './comeback.js';
 
 export type Currency = 'paid' | 'free';
 
@@ -189,6 +190,8 @@ export interface PlayerState {
   deletion?: DeletionState;
   /** REQ-INV-*: invite code redemption, invitees, milestone outbox (created on first use; see invite.ts). */
   referral?: ReferralState;
+  /** REQ-CB-*: last active game day, the comeback window, lapse reminders and what's-new position (comeback.ts). */
+  comeback?: ComebackState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

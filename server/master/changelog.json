@@ -1,0 +1,10 @@
+{
+  "_comment": "REQ-CB-008: 「お知らせ（What's new）」の元データ。前回見た時点より後に始まったものを、ホームに1回だけカードで出す（comeback.ts whatsNew）。開いたガチャ・始まったイベントは gacha.json / events.json から自動で加わるので、ここには機能・調整だけを書く。day はゲーム日（切り替え時刻から）、または atMs（Unix ms）のどちらか一方。feature はカードから開く画面（クライアントの対応表）。リモート設定の changelog で丸ごと差し替えられる。",
+  "entries": [
+    { "id": "skills_v1", "kind": "feature", "day": "2026-11-01", "title": "固有スキル", "body": "馬ごとに1つ、レース中に発動するスキルが付きました。馬の詳細で発動条件を確認できます。", "feature": "skills" },
+    { "id": "my_stable_v1", "kind": "feature", "day": "2026-11-01", "title": "マイ厩舎", "body": "厩舎を飾って、フレンドに見せられるようになりました。いいねで称号と飾りが解放されます。", "feature": "my_stable" },
+    { "id": "gacha_calendar_v1", "kind": "feature", "day": "2026-11-06", "title": "スカウトの開催カレンダー", "body": "これから始まるスカウトと終了日が一覧で見られます。天井ptは期間後も恒常へ1:1で移ります。", "feature": "scout" },
+    { "id": "replay_share_v1", "kind": "feature", "day": "2026-11-06", "title": "リプレイ共有・フレンドのゴースト", "body": "名場面のリプレイを共有し、フレンドのタイムアタック記録と並んで走れます。", "feature": "time_attack" },
+    { "id": "day_rollover_4am", "kind": "balance", "day": "2026-12-01", "title": "日付の切り替えが4:00に", "body": "ログインボーナス・デイリーミッションなどの切り替えが朝4:00（日本時間）になりました。", "feature": "missions" }
+  ]
+}

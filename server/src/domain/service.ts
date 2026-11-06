@@ -57,6 +57,9 @@ import {
   dueInviteOutbox, forfeitInviteOutbox, forgetInvitee, forgetInviter, inviteAcked, inviteeCommit, inviteRetryLater, inviterAccept, inviterMilestone,
   inviterRevert, inviteStateView, nextInviteWake, noteInstall, noteInviteMilestones, recordRedeemAttempt,
 } from './invite.js';
+import {
+  claimComebackLogin, claimComebackMission, comebackView, markComebackWelcomed, markWhatsNewSeen, nextComebackWake, noteActivity, runDueComebackPush, whatsNew,
+} from './comeback.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
 export interface PlayerRepo {
@@ -121,10 +124,11 @@ const profileKey = (s: PlayerState) => JSON.stringify([s.profile.displayName, s.
 const IDEM_KEEP = 200;
 /**
  * The object's alarm serves the push outbox, the stud fee outbox (REQ-PUSH-005, REQ-BREED-012), personal
- * nudges (REQ-UXS-012), a scheduled account deletion (REQ-UXS-040) and invite milestone deliveries (REQ-INV-007).
+ * nudges (REQ-UXS-012), a scheduled account deletion (REQ-UXS-040), invite milestone deliveries (REQ-INV-007)
+ * and comeback lapse reminders (REQ-CB-007).
  */
 const nextWake = (s: PlayerState) => {
-  const all = [nextPushWake(s), nextStudWake(s), nextNudgeWake(s), nextDeletionWake(s), nextInviteWake(s)].filter((x): x is number => x !== null);
+  const all = [nextPushWake(s), nextStudWake(s), nextNudgeWake(s), nextDeletionWake(s), nextInviteWake(s), nextComebackWake(s)].filter((x): x is number => x !== null);
   return all.length ? Math.min(...all) : null;
 };
 /** How long applied race ids are remembered (well beyond any settlement/dead-letter retry window). */
@@ -238,6 +242,7 @@ export class PlayerService {
         emit({ name: 'ab_assign', s1: exp, s2: bucket });
       }
       if (sent.length > 50) sent.splice(0, sent.length - 50);
+      noteActivity(this.d.master, s, now, emit); // REQ-CB-001: app start = an active day (may start a comeback window)
       return playerView(s, this.d.master.bannedSilks, extra);
     });
   }
@@ -292,7 +297,7 @@ export class PlayerService {
   /** Next nudge / deletion time (the object's alarm keeps them armed; push and stud have their own). */
   async nextWakeOf(id: string) {
     const s = await this.load(id);
-    const all = [nextNudgeWake(s), nextDeletionWake(s), nextInviteWake(s)].filter((x): x is number => x !== null);
+    const all = [nextNudgeWake(s), nextDeletionWake(s), nextInviteWake(s), nextComebackWake(s)].filter((x): x is number => x !== null);
     return all.length ? Math.min(...all) : null;
   }
   /**
@@ -308,7 +313,12 @@ export class PlayerService {
 
   // ---- personal nudges (REQ-UXS-012) ----
   /** Alarm: due nudges (promotion). */
-  runNudges(id: string) { return this.tx(id, null, (s, now) => runDueNudges(this.d.master, s, now)); }
+  runNudges(id: string) {
+    return this.tx(id, null, (s, now) => {
+      runDueComebackPush(this.d.master, s, now); // REQ-CB-007: lapse reminders share the alarm
+      return runDueNudges(this.d.master, s, now);
+    });
+  }
   async nudgeTaBeaten(id: string, byName: string, course: string) {
     if (await this.wiped(id)) return { status: 'skipped' as const, reason: 'deleted' as const };
     return this.tx(id, null, (s, now) => nudgeTaBeaten(this.d.master, s, byName, course, now));
@@ -503,6 +513,7 @@ export class PlayerService {
 
   async claimLogin(id: string, idemKey: string | null) {
     return this.tx(id, this.requireKey(idemKey), (s, now, emit) => {
+      noteActivity(this.d.master, s, now, emit);
       const r = claimLoginBonus(this.d.master, s, now);
       emit({ name: 'login_bonus', value: r.day });
       return r;
@@ -514,7 +525,7 @@ export class PlayerService {
    * today's first-win bonus (REQ-UXS-010, home screen "today" list).
    */
   async missionsAll(id: string) {
-    return this.tx(id, null, (s, now) => ({
+    return this.tx(id, null, (s, now, emit) => (noteActivity(this.d.master, s, now, emit), {
       missions: missionsView(this.d.master, s, now), beginner: beginnerMissionsView(this.d.master, s), season: seasonMissionsView(this.d.master, s),
       firstWinBonus: firstWinBonusView(this.d.master, s, now),
     }));
@@ -527,6 +538,19 @@ export class PlayerService {
       return claimMission(this.d.master, s, missionId, now);
     });
   }
+  // ---- returning players and what's new (REQ-CB-*, comeback.ts) ----
+  /** GET /v1/comeback: an active day too (a window may start here when the app skipped bootstrap). */
+  comeback(id: string) { return this.tx(id, null, (s, now, emit) => { noteActivity(this.d.master, s, now, emit); return comebackView(this.d.master, s, now); }); }
+  async comebackClaimLogin(id: string, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => claimComebackLogin(this.d.master, s, now, emit));
+  }
+  async comebackClaimMission(id: string, missionId: string, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => claimComebackMission(this.d.master, s, missionId, now, emit));
+  }
+  comebackWelcomed(id: string) { return this.tx(id, null, (s, now) => markComebackWelcomed(this.d.master, s, now)); }
+  whatsNew(id: string) { return this.tx(id, null, (s, now) => whatsNew(this.d.master, s, now)); }
+  whatsNewSeen(id: string, upTo: number) { return this.tx(id, null, (s, now) => markWhatsNewSeen(this.d.master, s, upTo, now)); }
+
   /** REQ-UXS-020/021: runs in a transaction so a new month first closes the old pass (auto-grant) and resets it. */
   async passView(id: string) { return this.tx(id, null, (s, now) => passScreen(this.d.master, s, now)); }
   /** REQ-UXS-010: today's first-win bonus state (home screen "today" list). */
@@ -814,7 +838,11 @@ export class PlayerService {
   // ---- マイ厩舎 (REQ-STABLE-*, stable.ts) ----
   async stableMine(id: string) { return stableView(this.d.master, await this.load(id), this.d.clock()); }
   stableSave(id: string, input: StableInput) {
-    return this.tx(id, null, (s, now, emit) => ({ layout: setStable(this.d.master, s, input, now, emit), snapshot: stableSnapshot(this.d.master, s, now) }));
+    return this.tx(id, null, (s, now, emit) => {
+      const layout = setStable(this.d.master, s, input, now, emit);
+      countOnboarding(s, 'stable'); // REQ-CB-005: comeback mission "decorate マイ厩舎"
+      return { layout, snapshot: stableSnapshot(this.d.master, s, now) };
+    });
   }
   /** A visit is a read: the visitor's like status, plus the stable_visit KPI event (no state is written). */
   async stableVisit(id: string, target: string) {

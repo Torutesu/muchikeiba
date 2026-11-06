@@ -48,6 +48,8 @@ export function ensurePush(m: Master, s: PlayerState): PushState {
     devices: [], outbox: [], sent: { date: '', count: 0 }, seq: 0,
     prefs: { categories: { ...m.push.defaults.categories }, quietHours: m.push.defaults.quietHours ? { ...m.push.defaults.quietHours } : null },
   };
+  // categories added after the state was stored (REQ-CB-007 `comeback`) take the master default (opt-in = off)
+  for (const c of PUSH_CATEGORIES) x.push.prefs.categories[c] ??= m.push.defaults.categories[c] ?? false;
   return x.push;
 }
 

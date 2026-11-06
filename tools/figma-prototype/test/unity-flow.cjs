@@ -10,6 +10,8 @@
 //     ghost picker (opens on フレンド, falls back to 上位 without friend ghosts) with a run beside the friend's ghost.
 //  4. Round 10: the 支部 cheer-stamp feed (no text field; locked stamps say how they unlock; a stamp sent with the 10 s
 //     rule on the CTA; cheering a teammate's race result; mute and report) and this season's pass shown as 購入済み.
+//  5. Returning players (REQ-CB-*, 06 §4.5): the comeback welcome (once), the 7-day comeback login track and missions, the
+//     lapse-reminder opt-in (asked once), the home chip and the one-time what's-new card.
 // Screenshots: <out>/u-<nn>-<name>.png. Returns { shots, ftue }.
 const path = require('path');
 const fs = require('fs');
@@ -197,8 +199,14 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   // ------------------------------------------------------------------ 2. other screens and states
   // the account-link prompt (REQ-UXS-073) comes up once on the first home of day 3+ after the FTUE: shot once, then 「あとで」
   let linkShots = 0;
+  // REQ-CB-008: a demo day can cross a dated what's-new entry; the one-time card is closed like a player would
+  const closeWhatsNew = async () => {
+    const c = page.locator('.screen.in [data-whatsnew-close]');
+    if (await c.count()) { await c.first().click(); await page.waitForTimeout(250); }
+  };
   const demo = async (k) => {
     await page.evaluate((x) => globalThis.__muchi.demo(x), k); await waitScreen(['home', 'link-prompt'], 20000); await page.waitForTimeout(500);
+    await closeWhatsNew();
     if (await screen() === 'link-prompt') {
       assert.notEqual(k, 'day1', 'no account-link prompt on day 1');
       assert.equal(await page.locator('.screen.in [data-trigger]').getAttribute('data-trigger'), 'Day3');
@@ -415,6 +423,43 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await waitScreen(['tutorial-retry', 'victory'], 20000);
   assert.equal(await screen(), 'tutorial-retry', 'no whip → close 2nd and a retry');
   await shot('tutorial-retry', 600);
+
+  // ------------------------------------------------------------------ 4. returning players (REQ-CB-001..012)
+  // 3 days of play, 14 days away, back: the server rules start a mid-tier window; the welcome is shown once
+  await page.evaluate(() => globalThis.__muchi.demo('comeback')); await waitScreen('comeback-welcome', 30000); await page.waitForTimeout(300);
+  const welcome = await page.locator('.screen.in').innerText();
+  assert.match(welcome, /14日ぶりのご来場です/);
+  assert.match(welcome, /\d+月\d+日まで、復帰キャンペーン/, 'the real window end as a date');
+  assert.ok(!/倍/.test(welcome), 'no 「倍」 wording');
+  await shot('comeback-welcome', 500);
+  await click('受け取りにいく'); await waitScreen('comeback'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in .cb-cell').count(), 7, '7-day comeback login track');
+  assert.equal(await page.locator('.screen.in .cb-cell.today').count(), 1);
+  assert.match(await page.locator('.screen.in [data-cb-end]').textContent(), /^\d+月\d+日まで　·　残り14日$/, 'end date + game days left, no timer');
+  assert.equal(await page.locator('.screen.in [data-mission]').count(), 5);
+  assert.equal(await page.locator('.screen.in [data-optin]').count(), 1, 'the lapse-reminder opt-in is offered');
+  await shot('comeback-track', 500);
+  await click('今日の分を受け取る'); await page.waitForTimeout(700); await waitScreen('comeback');
+  await page.waitForSelector('.screen.in .cb-cell.claimed', { timeout: 10000 });
+  assert.equal(await page.locator('.screen.in .cb-cell.claimed').count(), 1);
+  assert.equal(await page.locator('.screen.in .btn[data-label="今日の分を受け取る"]').count(), 0, 'one comeback login day per game day');
+  await shot('comeback-claimed-toast', 250);
+  await click('いいえ'); await page.waitForTimeout(500);
+  assert.equal(await page.locator('.screen.in [data-optin]').count(), 0, 'the opt-in is asked once');
+  await click('ホームへ'); await waitScreen(['home', 'link-prompt'], 10000); await page.waitForTimeout(500);
+  if (await screen() === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); await page.waitForTimeout(500); }
+  await page.waitForSelector('.screen.in [data-whatsnew]', { timeout: 10000 });
+  const items = await page.locator('.screen.in [data-item]').evaluateAll((els) => els.map((e) => e.dataset.item));
+  assert.ok(items.includes('skills_v1') || items.length >= 1, 'what\'s new lists what went live while away');
+  await shot('home-whats-new', 400);
+  await page.locator('.screen.in [data-whatsnew-close]').click(); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in [data-whatsnew]').count(), 0);
+  assert.equal(await page.locator('.screen.in [data-comeback="mid"]').count(), 1, 'the home chip leads back to the campaign');
+  await shot('home-comeback-chip', 300);
+  await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen(['home', 'link-prompt'], 10000); await page.waitForTimeout(500);
+  if (await screen() === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); await page.waitForTimeout(500); }
+  assert.equal(await screen(), 'home', 'the welcome is not shown again');
+  assert.equal(await page.locator('.screen.in [data-whatsnew]').count(), 0, 'the what\'s-new card is shown once');
 
   // a reload on a named player goes straight home
   await demo('day3');

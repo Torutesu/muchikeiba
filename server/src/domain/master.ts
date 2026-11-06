@@ -18,6 +18,7 @@ import itemsJson from '../../master/items.json';
 import { trackSchema, type GoingAptitude, type Going, type Track } from './schemas.js';
 import { AppError } from './errors.js';
 import { loadSkills, type SkillsMaster } from './skills.js';
+import { DAY_MS, gameDayStartMs } from './time.js';
 
 export type Rarity = 'R' | 'SR' | 'SSR';
 export const RARITY_ORDER: Rarity[] = ['R', 'SR', 'SSR'];
@@ -244,13 +245,29 @@ export interface PushMaster {
   templates: Record<string, PushTemplate>;
 }
 export interface PoolEntry { templateId: string; ppm: number }
+/**
+ * REQ-GACHA-014: one step of a step-up banner (10-pulls only). `finalSlotPool` (optional) is the table slot 10 is ALWAYS
+ * drawn from on this step (e.g. SSR only), disclosed per step from the same data.
+ */
+export interface StepDef { priceTen: number; finalSlotPool?: PoolEntry[] }
+/** After the last step: start again at step 1 (`loop`) or stay on the last step (`repeatLast`). */
+export interface StepUpDef { steps: StepDef[]; afterLast: 'loop' | 'repeatLast' }
 export interface BannerDef {
   id: string; name: string; currency: 'any' | 'paidOnly'; priceSingle: number; priceTen: number;
   pityGroup: string; pityTargets: string[]; pool: PoolEntry[]; guaranteePool: PoolEntry[];
-  startAtMs?: number; endAtMs?: number;
+  /** REQ-GACHA-011: open from startAtMs (inclusive) to endAtMs (exclusive); listed as upcoming from announceAtMs. */
+  startAtMs?: number; endAtMs?: number; announceAtMs?: number;
+  /** The featured horse (its own ppm is in `pool`; shown on the banner and the odds page). */
+  pickupTemplateId?: string;
+  stepUp?: StepUpDef;
 }
-/** A limited pity group may close at `endAtMs`; leftover points then move to `convertTo` (REQ-GACHA-005). */
-export interface PityGroupDef { cost: number; endAtMs?: number; convertTo?: string }
+/**
+ * A limited pity group may close at `endAtMs`; leftover points then move 1:1 to `convertTo` (default `standard`) and
+ * never expire (REQ-GACHA-005 / REQ-GACHA-013). `label` names the group on the pity meter ("恒常" …).
+ */
+export interface PityGroupDef { cost: number; endAtMs?: number; convertTo?: string; label?: string }
+/** Upcoming banners are listed this many days before they open unless the banner says otherwise (REQ-GACHA-011). */
+export const DEFAULT_ANNOUNCE_DAYS = 3;
 export interface GachaMaster { duplicateMaterial: Record<Rarity, number>; pityGroups: Record<string, PityGroupDef>; banners: BannerDef[] }
 export interface Master {
   tracks: Track[]; templates: HorseTemplate[]; templateById: Map<string, HorseTemplate>;
@@ -293,6 +310,34 @@ export interface RawBanner {
   pickup?: { templateId: string; ppm: number }; startAtMs?: number; endAtMs?: number;
   /** REQ-BREED-020: seasonal templates added to this banner's auto pools (by rarity, like any other). */
   seasonal?: string[];
+  /**
+   * REQ-GACHA-011: schedule as game days (opens at the rollover of startDay, closes at the rollover after endDay, which
+   * is the last day). Use either these or startAtMs/endAtMs, not both.
+   */
+  startDay?: string; endDay?: string;
+  /** Listed as upcoming from this instant (or `announceDays` game days before the start; default DEFAULT_ANNOUNCE_DAYS). */
+  announceAtMs?: number; announceDays?: number;
+  /** REQ-GACHA-014: step-up steps; `finalSlotRates` builds the slot-10 table of that step like guaranteeRates. */
+  stepUp?: { steps: { priceTen: number; finalSlotRates?: Partial<Record<Rarity, number>> }[]; afterLast: 'loop' | 'repeatLast' };
+}
+export interface RawPityGroup { cost: number; endAtMs?: number; endDay?: string; convertTo?: string; label?: string }
+
+/** The exclusive end (ms) of a schedule whose last game day is `endDay`. */
+export const endOfGameDay = (endDay: string) => gameDayStartMs(endDay) + DAY_MS;
+
+/** Resolves `endDay` of pity groups (REQ-GACHA-011) into endAtMs. */
+export function buildPityGroups(raw: Record<string, RawPityGroup>): Record<string, PityGroupDef> {
+  const out: Record<string, PityGroupDef> = {};
+  for (const [id, g] of Object.entries(raw)) {
+    if (g.endDay !== undefined && g.endAtMs !== undefined) throw new AppError('CONFIG_INVALID', `pity group ${id}: use endDay or endAtMs, not both`);
+    const d: PityGroupDef = { cost: g.cost };
+    const end = g.endDay !== undefined ? endOfGameDay(g.endDay) : g.endAtMs;
+    if (end !== undefined) d.endAtMs = end;
+    if (g.convertTo !== undefined) d.convertTo = g.convertTo;
+    if (g.label !== undefined) d.label = g.label;
+    out[id] = d;
+  }
+  return out;
 }
 
 /**
@@ -318,8 +363,31 @@ export function buildBanner(raw: RawBanner, templates: HorseTemplate[]): BannerD
   const pool = raw.pool === 'auto' ? expandPool(templates, raw.rates ?? {}, raw.pickup, raw.seasonal) : raw.pool;
   const guaranteePool = raw.guaranteePool ?? expandPool(templates, raw.guaranteeRates ?? {}, raw.pickup && { templateId: raw.pickup.templateId, ppm: Math.round((raw.pickup.ppm * (raw.guaranteeRates?.SSR ?? 0)) / Math.max(1, raw.rates?.SSR ?? 1)) }, raw.seasonal);
   const b: BannerDef = { id: raw.id, name: raw.name, currency: raw.currency, priceSingle: raw.priceSingle, priceTen: raw.priceTen, pityGroup: raw.pityGroup, pityTargets: raw.pityTargets, pool, guaranteePool };
-  if (raw.startAtMs !== undefined) b.startAtMs = raw.startAtMs;
-  if (raw.endAtMs !== undefined) b.endAtMs = raw.endAtMs;
+  if (raw.startDay !== undefined && raw.startAtMs !== undefined) throw new AppError('CONFIG_INVALID', 'use startDay or startAtMs, not both');
+  if (raw.endDay !== undefined && raw.endAtMs !== undefined) throw new AppError('CONFIG_INVALID', 'use endDay or endAtMs, not both');
+  if (raw.announceDays !== undefined && raw.announceAtMs !== undefined) throw new AppError('CONFIG_INVALID', 'use announceDays or announceAtMs, not both');
+  const start = raw.startDay !== undefined ? gameDayStartMs(raw.startDay) : raw.startAtMs;
+  const end = raw.endDay !== undefined ? endOfGameDay(raw.endDay) : raw.endAtMs;
+  if (start !== undefined) {
+    b.startAtMs = start;
+    b.announceAtMs = raw.announceAtMs ?? start - (raw.announceDays ?? DEFAULT_ANNOUNCE_DAYS) * DAY_MS;
+  } else if (raw.announceAtMs !== undefined || raw.announceDays !== undefined) throw new AppError('CONFIG_INVALID', 'an announcement needs a start');
+  if (end !== undefined) b.endAtMs = end;
+  if (raw.pickup) b.pickupTemplateId = raw.pickup.templateId;
+  if (raw.stepUp) {
+    b.stepUp = {
+      afterLast: raw.stepUp.afterLast,
+      steps: raw.stepUp.steps.map((st) => {
+        const d: StepDef = { priceTen: st.priceTen };
+        if (st.finalSlotRates) {
+          const ssr = raw.rates?.SSR ?? 0;
+          const pk = raw.pickup && ssr > 0 ? { templateId: raw.pickup.templateId, ppm: Math.round((raw.pickup.ppm * (st.finalSlotRates.SSR ?? 0)) / ssr) } : undefined;
+          d.finalSlotPool = expandPool(templates, st.finalSlotRates, pk, raw.seasonal);
+        }
+        return d;
+      }),
+    };
+  }
   return b;
 }
 
@@ -332,11 +400,11 @@ export function loadMaster(): Master {
   const split = (tracksJson as { tracks: Record<string, unknown>[] }).tracks.map(splitMasterTrack);
   const tracks = split.map((x) => trackSchema.parse(x.track));
   const litTracks = new Set(split.filter((x) => x.lights).map((x) => tracks[split.indexOf(x)]!.id));
-  const g = gachaJson as unknown as { duplicateMaterial: Record<Rarity, number>; pityGroups: Record<string, { cost: number }>; banners: RawBanner[] };
+  const g = gachaJson as unknown as { duplicateMaterial: Record<Rarity, number>; pityGroups: Record<string, RawPityGroup>; banners: RawBanner[] };
   const p = productsJson as unknown as { firstPurchaseBonusAsPaid: boolean; products: Product[]; display: ShopDisplay; offers: ShopOffersConfig };
   const m: Master = {
     tracks, templates, templateById, litTracks,
-    gacha: { duplicateMaterial: g.duplicateMaterial, pityGroups: g.pityGroups, banners: g.banners.map((b) => buildBanner(b, templates)) },
+    gacha: { duplicateMaterial: g.duplicateMaterial, pityGroups: buildPityGroups(g.pityGroups), banners: g.banners.map((b) => buildBanner(b, templates)) },
     nicks: nicksJson as unknown as Master['nicks'],
     ng: ngJson as unknown as Master['ng'],
     ageLimits: ageJson as unknown as AgeLimits,

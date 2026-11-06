@@ -95,7 +95,8 @@ describe('drawing', () => {
     grantFree(s, 5000, NOW, 'gift', 'g');
     expect(code(() => drawGacha(m, s, 'stepup_paid', 10, seededRng(1), NOW))).toBe('INSUFFICIENT_COINS');
     grantPaid(s, 1020, 1500, NOW, 'buy', 'tx');
-    expect(drawGacha(m, s, 'stepup_paid', 10, seededRng(1), NOW).spent).toEqual({ paid: 1000, free: 0 });
+    // step 1 of the step-up is 500 coins (REQ-GACHA-014), paid coins only
+    expect(drawGacha(m, s, 'stepup_paid', 10, seededRng(1), NOW).spent).toEqual({ paid: 500, free: 0 });
   });
   it('tutorial free 10-pull works exactly once (REQ-GACHA-010)', () => {
     const s = freshPlayer();

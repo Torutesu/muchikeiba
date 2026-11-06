@@ -41,6 +41,15 @@ export function gameDaysUntil(endMs: number, now: number, rolloverHour: number =
   return gameDayIndex(endMs - 1, rolloverHour) - gameDayIndex(now, rolloverHour) + 1;
 }
 
+/**
+ * REQ-GACHA-011: the first instant (ms) of game day `dayKey` ("YYYY-MM-DD"), the inverse of gameDayKey: banner
+ * schedules written as game days open and close exactly at the rollover.
+ */
+export function gameDayStartMs(dayKey: string, rolloverHour: number = DAY_ROLLOVER_HOUR_JST): number {
+  const [y, mo, d] = dayKey.split('-').map(Number) as [number, number, number];
+  return Date.UTC(y, mo - 1, d) - JST_OFFSET_MS + rolloverHour * HOUR_MS;
+}
+
 /** JST month "YYYY-MM" (monthly spend limits). */
 export function jstMonthKey(ms: number): string {
   return new Date(ms + JST_OFFSET_MS).toISOString().slice(0, 7);

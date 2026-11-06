@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { visualsCatalog, VISUALS } from '../domain/visuals.js';
 import { AppError } from '../domain/errors.js';
-import { findBanner, oddsDisclosure } from '../domain/gacha.js';
+import { bannerList, findVisibleBanner, oddsDisclosure } from '../domain/gacha.js';
 import { shopProducts } from '../domain/shop.js';
 import { skillCatalog } from '../domain/skills.js';
 import { ticketDisclosure } from '../domain/itemShop.js';
@@ -30,7 +30,7 @@ import type { StableService } from '../domain/stable.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
-  | 'bootstrap' | 'view' | 'setAge' | 'purchaseIntent' | 'purchase' | 'refund' | 'draw' | 'tutorialDraw' | 'pityExchange'
+  | 'bootstrap' | 'view' | 'setAge' | 'purchaseIntent' | 'purchase' | 'refund' | 'draw' | 'tutorialDraw' | 'pityExchange' | 'gachaStatus'
   | 'nameHorse' | 'awaken' | 'retire' | 'breedingPreview' | 'breed' | 'pedigree' | 'claimLogin' | 'missions'
   | 'claimMission' | 'passView' | 'claimPass' | 'applyRace' | 'raceEntry'
   | 'shopOffers' | 'markOfferViewed' | 'allowance' | 'claimAllowance' | 'firstWinBonus'
@@ -273,8 +273,11 @@ export const routes: Route[] = [
   // gacha
   // REQ-UXS-050: unique skill catalog (condition/effect text generated from the engine values; no odds: no random draw)
   { method: 'GET', path: '/v1/skills', auth: 'none', handler: async (_r, _p, c) => skillCatalog(c.master) },
-  { method: 'GET', path: '/v1/gacha/banners', auth: 'none', handler: async (_r, _p, c) => ({ banners: c.master.gacha.banners.map((b) => ({ id: b.id, name: b.name, currency: b.currency, priceSingle: b.priceSingle, priceTen: b.priceTen, startAtMs: b.startAtMs ?? null, endAtMs: b.endAtMs ?? null })) }) },
-  { method: 'GET', path: '/v1/gacha/:bannerId/odds', auth: 'none', handler: async (_r, p, c) => oddsDisclosure(c.master, findBanner(c.master, p.bannerId!)) },
+  // REQ-GACHA-011: active + announced banners only, sorted, with the real end times and the server clock
+  { method: 'GET', path: '/v1/gacha/banners', auth: 'none', handler: async (_r, _p, c) => bannerList(c.master, (c.clock ?? Date.now)()) },
+  // REQ-GACHA-012..014: the player's pity meter, carry-over rule and step-up progress
+  { method: 'GET', path: '/v1/gacha/status', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('gachaStatus', u) },
+  { method: 'GET', path: '/v1/gacha/:bannerId/odds', auth: 'none', handler: async (_r, p, c) => oddsDisclosure(c.master, findVisibleBanner(c.master, p.bannerId!, (c.clock ?? Date.now)())) },
   { method: 'POST', path: '/v1/gacha/:bannerId/draw', auth: 'player', handler: async (r, p, c, u) => {
     const b = await body(r, z.object({ count: z.union([z.literal(1), z.literal(10)]) }));
     return c.player(u).invoke('draw', u, p.bannerId!, b.count, idem(r));

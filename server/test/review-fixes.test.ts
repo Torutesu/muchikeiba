@@ -16,7 +16,7 @@ describe('bug review fixes', () => {
     const s = newPlayer('p', end - 1000, '2026-11');
     s.pity.pickup = 120;
     expect(settlePityGroups(master, s, end - 1)).toBe(0);
-    expect(() => exchangePity(master, s, 'pickup_akatsuki', 't_akatsuki', end)).toThrow(/BANNER_CLOSED/);
+    expect(() => exchangePity(master, s, 'pickup_akatsuki', 't_akatsuki', end)).toThrow(expect.objectContaining({ code: 'BANNER_CLOSED' }));
     expect(settlePityGroups(master, s, end)).toBe(120);
     expect(s.pity.pickup).toBe(0);
     expect(s.pity.standard).toBe(120);

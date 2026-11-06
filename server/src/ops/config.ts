@@ -11,7 +11,7 @@ import { stableConfigProblems, stableConfigSchema, type StableConfig } from '../
 import { uxProblems } from '../domain/onboarding.js';
 import { z } from 'zod';
 import { AppError } from '../domain/errors.js';
-import { buildBanner, splitMasterTrack, type Master, type Progression, type RawBanner } from '../domain/master.js';
+import { buildBanner, buildPityGroups, splitMasterTrack, type Master, type Progression, type RawBanner } from '../domain/master.js';
 import { validateGacha } from '../domain/gacha.js';
 import { skillProblems } from '../domain/skills.js';
 import { buildRuleset, DEFAULT_RULESET, type Ruleset } from '../domain/ruleset.js';
@@ -27,6 +27,7 @@ import { canonicalJson, hashOf } from './hash.js';
  * the same validators the server runs at boot, then activated at a scheduled time and can be rolled back.
  */
 const int = z.number().int();
+const dayKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const rawBannerSchema = z.object({
   id: z.string().min(1).max(64), name: z.string().min(1).max(80), currency: z.enum(['any', 'paidOnly']),
   priceSingle: int.min(1), priceTen: int.min(1), pityGroup: z.string().min(1), pityTargets: z.array(z.string()),
@@ -35,6 +36,13 @@ const rawBannerSchema = z.object({
   guaranteePool: z.array(z.object({ templateId: z.string(), ppm: int.min(0) })).optional(),
   pickup: z.object({ templateId: z.string(), ppm: int.min(0) }).optional(),
   startAtMs: int.optional(), endAtMs: int.optional(),
+  // REQ-GACHA-011: game-day schedule (startDay … endDay = last day) and the announcement window
+  startDay: dayKey.optional(), endDay: dayKey.optional(), announceAtMs: int.optional(), announceDays: int.min(0).max(30).optional(),
+  // REQ-GACHA-014: step-up steps (10-pulls only)
+  stepUp: z.object({
+    afterLast: z.enum(['loop', 'repeatLast']),
+    steps: z.array(z.object({ priceTen: int.min(1), finalSlotRates: z.record(z.string(), int.min(0)).optional() }).strict()).min(1).max(10),
+  }).strict().optional(),
   // REQ-BREED-020: seasonal templates offered by this banner (validated against their windows)
   seasonal: z.array(z.string().min(1).max(64)).max(20).optional(),
 }).strict();
@@ -43,7 +51,7 @@ export const configBundleSchema = z.object({
   /** Partial or full ruleset; the merged result must keep the exact key set (contracts/ruleset-params.default.json). */
   ruleset: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
   gacha: z.object({
-    pityGroups: z.record(z.string(), z.object({ cost: int.min(1), endAtMs: int.optional(), convertTo: z.string().optional() }).strict()).optional(),
+    pityGroups: z.record(z.string(), z.object({ cost: int.min(1), endAtMs: int.optional(), endDay: dayKey.optional(), convertTo: z.string().optional(), label: z.string().min(1).max(40).optional() }).strict()).optional(),
     /** Replaces the whole banner list (schedule = startAtMs/endAtMs per banner). */
     banners: z.array(rawBannerSchema).optional(),
   }).strict().optional(),
@@ -101,7 +109,10 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
     if (new Set(tracks.map((t) => t.id)).size !== tracks.length) problems.push('tracks: duplicate id');
   }
 
-  const pityGroups = b.gacha?.pityGroups ?? base.gacha.pityGroups;
+  let pityGroups = base.gacha.pityGroups;
+  if (b.gacha?.pityGroups) {
+    try { pityGroups = buildPityGroups(b.gacha.pityGroups); } catch (e) { problems.push((e as Error).message); }
+  }
   let banners = base.gacha.banners;
   if (b.gacha?.banners) {
     banners = [];

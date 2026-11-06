@@ -69,10 +69,10 @@ namespace Muchi.Engine.Tests
             public Func<int, string, string[]> OnHello; // (open#, hello) → frames to send back
             public Func<int, bool> CloseAfterHello = _ => false;
             private Action<string> _onMessage;
-            private Action _onClosed;
+            private Action<int> _onClosed;
             public bool IsOpen;
 
-            public IConnection Open(string url, Action onOpen, Action<string> onMessage, Action onClosed)
+            public IConnection Open(string url, Action onOpen, Action<string> onMessage, Action<int> onClosed)
             {
                 Opens++;
                 _onMessage = onMessage;
@@ -85,7 +85,8 @@ namespace Muchi.Engine.Tests
             }
 
             public void Push(string frame) => _onMessage(frame);
-            public void Drop() { if (!IsOpen) return; IsOpen = false; _onClosed(); }
+            /// <summary>The socket closes: a network drop (1006) or the room's close frame with that code.</summary>
+            public void Drop(int code = CloseCodes.Abnormal) { if (!IsOpen) return; IsOpen = false; _onClosed(code); }
 
             private sealed class Conn : IConnection
             {
@@ -146,6 +147,88 @@ namespace Muchi.Engine.Tests
             Assert.Equal(code, s.FailureReason);
             Assert.Equal(1, f.Opens);
             Assert.Contains(code, RaceSession.FatalRoomErrors);
+        }
+
+        /// <summary>
+        /// QA r7 leftover: the room closes an older socket of the same player with 4000 ("replaced") when a newer one
+        /// says hello (the same spectator on a second device, or the rider's seat). Reconnecting would replace the
+        /// newer socket in turn and the two devices would keep taking the seat from each other: stop instead.
+        /// </summary>
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void ReplacedSocketStopsInsteadOfTakingTheSeatBack(bool spectator)
+        {
+            var cfg = Cfg(4, 1);
+            string start = StartMsg(cfg, spectator ? -1 : 0);
+            var f = new ScriptedFactory { OnHello = (n, _) => new[] { start, Bundle(0, 10) } };
+            var s = spectator
+                ? new SpectatorSession(f, "wss://x", new SpectatorTicket { RaceId = cfg.RaceId, Ticket = "spec" }).Session
+                : new RaceSession(f, "wss://x", cfg.RaceId, "tok");
+            var states = new List<RaceSessionState>();
+            s.StateChanged += (_, now) => states.Add(now);
+            s.Start(0);
+            Pump(s, 0, 200);
+            Assert.Equal(RaceSessionState.Racing, s.State);
+            Assert.Equal(spectator, s.Client.IsSpectator);
+
+            f.Drop(CloseCodes.Replaced); // the same player said hello from another device
+            Pump(s, 200, 600_000);
+            Assert.Equal(RaceSessionState.Failed, s.State);
+            Assert.Equal("REPLACED", s.FailureReason);
+            Assert.Equal(1, f.Opens);
+            Assert.Equal(0, s.ReconnectCount);
+            Assert.DoesNotContain(RaceSessionState.Reconnecting, states);
+        }
+
+        /// <summary>Every close code the room sends (server/src/do/raceRoom.ts) is mapped on purpose.</summary>
+        [Theory]
+        [InlineData(4000, "REPLACED")]
+        [InlineData(4001, "UNAUTHORIZED")]
+        [InlineData(4003, "SPECTATORS_FULL")]
+        [InlineData(1011, null)] // "no race" / the runtime's internal error: reconnect (bounded)
+        [InlineData(1006, null)] // no close frame: network drop
+        [InlineData(1000, null)]
+        [InlineData(1001, null)]
+        [InlineData(1005, null)]
+        [InlineData(1012, null)] // service restart
+        public void CloseCodesAreMappedDeliberately(int code, string fatal)
+        {
+            Assert.Equal(fatal, CloseCodes.FatalReason(code));
+            var cfg = Cfg(4, 1);
+            var f = new ScriptedFactory { OnHello = (n, _) => n == 1 ? new[] { StartMsg(cfg), Bundle(0, 10) } : new[] { Bundle(0, 20) } };
+            var s = new RaceSession(f, "wss://x", cfg.RaceId, "tok");
+            s.Start(0);
+            Pump(s, 0, 200);
+            f.Drop(code);
+            Pump(s, 200, 30_000);
+            if (fatal != null)
+            {
+                Assert.Equal(RaceSessionState.Failed, s.State);
+                Assert.Equal(fatal, s.FailureReason);
+                Assert.Equal(1, f.Opens);
+            }
+            else
+            {
+                Assert.Equal(RaceSessionState.Racing, s.State); // reconnected and caught up
+                Assert.Equal(2, f.Opens);
+                Assert.Equal(20, s.Client.ConfirmedTick);
+            }
+        }
+
+        /// <summary>An err frame and its close (4003 after SPECTATORS_FULL) give one failure with the room's code.</summary>
+        [Fact]
+        public void SpectatorsFullCloseWithoutTheErrFrameIsStillFatal()
+        {
+            var f = new ScriptedFactory { OnHello = (n, _) => Array.Empty<string>() };
+            var s = new RaceSession(f, "wss://x", "rv_spec", "tok");
+            s.Start(0);
+            Pump(s, 0, 100);
+            f.Drop(CloseCodes.SpectatorsFull);
+            Pump(s, 100, 600_000);
+            Assert.Equal(RaceSessionState.Failed, s.State);
+            Assert.Equal("SPECTATORS_FULL", s.FailureReason);
+            Assert.Equal(1, f.Opens);
         }
 
         [Fact]

@@ -487,7 +487,9 @@ namespace Muchi.Engine
                 if (chance > 0 && _kakariRng[i].Chance(chance, 100000))
                 {
                     h.KakariTicksLeft = P.KakariDurationTicks;
-                    _events.Add(new RaceEvent(t, RaceEventType.Kakari, i, 0));
+                    // Value = the horse's rank (0 = leader) as it started pulling (ranks of the previous tick, as for
+                    // SpurtStart); presentation only, not part of the checksum or result hash
+                    _events.Add(new RaceEvent(t, RaceEventType.Kakari, i, h.Rank));
                 }
             }
             if (h.KakariTicksLeft > 0)

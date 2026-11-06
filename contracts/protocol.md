@@ -109,6 +109,17 @@ C#（端末・検証サーバー）とTypeScript（Cloudflareサーバー）の�
 - `b` は `bundleIntervalTicks` ごとに送る。再接続時は `lastTick+1` から現在までを1つの `b` で送る。
 - 全頭ゴール、または `maxTicks` に達したら部屋はtickを進めるのをやめ、結果を待つ。
 
+### 4.1 close code（部屋 → 端末）
+部屋がソケットを閉じるときの WebSocket close code と、クライアント（`RaceSession` / `CloseCodes`）の扱い。
+
+| code | reason | いつ | クライアント |
+|---|---|---|---|
+| 4000 | `replaced` | 同じ選手の席（または同じプレイヤーの観戦接続）に新しい接続が `hello` した。古い方を閉じる | 再接続しない。`Failed`、`FailureReason` = `REPLACED`（再接続すると新しい方を閉じ返し、2台の端末が席を奪い合い続ける） |
+| 4001 | `unauthorized` | チケットが無効・期限切れ（直前に `err` `UNAUTHORIZED`） | 再接続しない。`UNAUTHORIZED` |
+| 4003 | `spectators full` | 観戦者が上限（直前に `err` `SPECTATORS_FULL`） | 再接続しない。`SPECTATORS_FULL` |
+| 1011 | `no race` | 部屋にレースが無い（ランタイム自身の内部エラーも同じ code） | 切断扱いで再接続（回数上限あり。レースが無ければ接続が 404 で失敗し続けて `Failed`） |
+| その他 | — | close フレーム無しの切断・接続失敗（1006）、1000 / 1001 / 1005 / 1012 など | 切断扱いで再接続（指数バックオフ、回数上限あり） |
+
 ## 5. チェックサム（REQ-RACE-070）
 - FNV-1a 64bit（offset basis `0xcbf29ce484222325`、prime `0x100000001b3`）。
 - 入力バイト列：スロット昇順に、各馬について以下を **int64 リトルエンディアン8バイト** で連結：
@@ -168,7 +179,7 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 - その後は選手と同じ `b`（確定入力）と、最後の tick まで受け取った後に確定した `final`（`confirmed` / `void` のみ。`verifying` は送らない）が届く。観戦者は端末でシミュレーションするので、最終ハッシュは選手と同じになる。
 - 遅延：フレンドルームは 0（ライブ）、ranked・イベント・大会は 10 秒（ゴースティング対策）。観戦者に届くのは選手に送信済み（＝保存済み）の tick だけで、遅延分は部屋の時計で刻まれる（選手のレースが終わっても通常速度で最後まで流れる）。
 - 観戦者は `in` / `chk` / `res` を送らない（送ると `err` `SPECTATOR_READ_ONLY`）。`ping` には `pong` を返す。
-- 1部屋の観戦者数の上限は既定 200（`SPECTATOR_LIMIT`）。超えると `err` `SPECTATORS_FULL` で閉じる（close code 4003）。観戦の接続はプレイヤーごとに1本：同じプレイヤーの新しい観戦接続が来ると古い接続は close code 4000（`replaced`）で閉じる（選手の席と同じ）。観戦チケットの発行は1人あたり連続10回・その後6秒に1回まで（超過は `429 RATE_LIMITED`）。
+- 1部屋の観戦者数の上限は既定 200（`SPECTATOR_LIMIT`）。超えると `err` `SPECTATORS_FULL` で閉じる（close code 4003）。観戦の接続はプレイヤーごとに1本：同じプレイヤーの新しい観戦接続が来ると古い接続は close code 4000（`replaced`）で閉じる（選手の席と同じ。閉じられた側は再接続しない、§4.1）。観戦チケットの発行は1人あたり連続10回・その後6秒に1回まで（超過は `429 RATE_LIMITED`）。
 - 描画：観戦クライアントは `delayMs` だけ遅れて描く（`LockstepClient.RenderTickPermille` が自動で引く）。
 
 ## 8.5 種牡馬の貸し借り（REQ-BREED-012）

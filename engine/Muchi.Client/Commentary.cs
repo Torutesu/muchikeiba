@@ -373,7 +373,8 @@ namespace Muchi.Client
                     _leaderSince = e.Tick;
                     break;
                 case RaceEventType.Kakari:
-                    if (e.Slot == _focus || sim.GetHorse(e.Slot).Rank < 3) Add("kakari", e.Tick, e.Slot);
+                    // the engine stamps the rank into the event: never read live state here (catch-up Process)
+                    if (e.Slot == _focus || e.Value < 3) Add("kakari", e.Tick, e.Slot);
                     break;
                 case RaceEventType.Whip:
                     if (e.Slot == _focus && !_focusWhipSaid) { _focusWhipSaid = true; Add("focus_whip", e.Tick, e.Slot); }

@@ -546,7 +546,10 @@
     "colors": 3,
     "unlockItem": "costume_login"
    },
-      { "id": "laurel", "colors": 3, "unlockItem": "costume_silks_laurel" }
+      { "id": "laurel", "colors": 3, "unlockItem": "costume_silks_laurel" },
+      { "id": "promo_b", "colors": 3, "unlockItem": "costume_promo_b" },
+      { "id": "promo_a", "colors": 3, "unlockItem": "costume_promo_a" },
+      { "id": "promo_s", "colors": 3, "unlockItem": "costume_promo_s" }
   ],
   "caps": [
    {

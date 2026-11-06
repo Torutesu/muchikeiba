@@ -301,6 +301,7 @@ export function studHeldFree(s: PlayerState, now: number): number {
     if (p.refunded || p.at < since) continue;
     if (!p.bonusLotId) held += p.bonusCoinsGranted; // a bonus granted as paid coins can never pay a stud fee anyway
     held += p.sandboxFreeGranted ?? 0;
+    held += p.linkedFree ?? 0; // REQ-UXS-018/021: daily-pack coins and pass rewards a refund would take back
   }
   return held;
 }

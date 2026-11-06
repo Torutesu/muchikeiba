@@ -60,8 +60,12 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | POST | `/v1/player/bootstrap` | 要 | | 初回作成＋状態 |
 | GET | `/v1/player` | 要 | | 財布・所持馬・アイテム・天井・パス・レート |
 | PUT | `/v1/player/age` | 要 | | `{birthYear, birthMonth, guardianConsent}` → 年齢帯と月額上限 |
-| GET | `/v1/shop/products` | なし | | 商品一覧 |
-| POST | `/v1/shop/purchase-intent` | 要 | | `{productId}` ストア購入を始めてよいか（`AGE_REQUIRED` / `GUARDIAN_CONSENT_REQUIRED` / `AGE_LIMIT_EXCEEDED` / `ALREADY_PURCHASED` / `UNSETTLED_DEBT`） |
+| GET | `/v1/shop/products` | なし | | 商品一覧と表示データ（中身・数量・初回の無償上乗せ・1回限り・期間・説明キー。`contracts/protocol.md` §13.1） |
+| GET | `/v1/shop/offers` | 要 | | オファーの状態（スターター・パス・昇級記念・手当、初回購入ボーナスの残り。§13.3） |
+| POST | `/v1/shop/offers/:offerId/view` | 要 | | 1回だけの案内を表示した記録（§13.4） |
+| GET | `/v1/shop/allowance` | 要 | | 厩舎手当（30日）の状態（§13.5） |
+| POST | `/v1/shop/allowance/claim` | 要 | 必須 | 今日の厩舎手当を受け取る（`ALREADY_CLAIMED` / `NOT_ELIGIBLE`） |
+| POST | `/v1/shop/purchase-intent` | 要 | | `{productId}` ストア購入を始めてよいか（`AGE_REQUIRED` / `GUARDIAN_CONSENT_REQUIRED` / `AGE_LIMIT_EXCEEDED` / `ALREADY_PURCHASED` / `UNSETTLED_DEBT` / `NOT_ELIGIBLE`）。パスは残り日数、コインは初回の無償上乗せも返す（§13.2） |
 | GET | `/v1/shop/store-account` | 要 | | `{appleAppAccountToken, googleObfuscatedAccountId}` 購入時にストアへ渡す値（下記「ストア連携」） |
 | POST | `/v1/shop/purchase` | 要 | （取引IDで自動） | `{platform: apple\|google\|fake, productId, receipt}`。apple＝`Transaction.jwsRepresentation`、google＝`{"purchaseToken":"…"}` |
 | POST | `/v1/store/notifications/:platform` | 署名 | | `apple`：App Store Server Notifications V2、`google`：RTDN（Pub/Sub push、OIDC）、`fake`：開発用 |
@@ -102,9 +106,9 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | POST | `/v1/shop/cosmetics/:itemId/buy` | 要 | 必須 | コインで購入（各1回。有償限定はペイドのみ） |
 | PUT | `/v1/player/equipment` | 要 | | `{tack?: {bridle?, saddlecloth?}, decor?: [itemId\|null…]}` 装備（`null` で外す） |
 | POST | `/v1/rewards/login-bonus` | 要 | 必須 | |
-| GET | `/v1/missions` | 要 | | |
+| GET | `/v1/missions` | 要 | | デイリーミッションと今日の初勝利ボーナスの残り（`firstWinBonus`） |
 | POST | `/v1/missions/:missionId/claim` | 要 | 必須 | |
-| GET | `/v1/season-pass` | 要 | | |
+| GET | `/v1/season-pass` | 要 | | シーズン（暦月）限りのパス：レベル・30段の報酬・期間・残り日数・前シーズンの自動付与（§13.6） |
 | POST | `/v1/season-pass/claim` | 要 | 必須 | `{track: free\|premium, level}` |
 | POST | `/v1/match/enqueue` | 要 | | `{horseId}` ランク戦の待ち行列へ |
 | POST | `/v1/match/cancel` | 要 | | |
@@ -262,13 +266,14 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | アプリが送る `receipt` | `Transaction.jwsRepresentation` | `{"purchaseToken":"…"}` |
 | 検証 | x5c 証明書チェーンを Apple Root CA - G3 まで検証（Apple独自のOID・有効期限・ECDSA署名）、ES256署名、bundleId・環境・商品ID・取り消し | Play Developer API（サービスアカウントJWT→OAuth、トークンはキャッシュ）の purchases.products / subscriptionsv2 で状態・商品・アカウントを確認 |
 | 本人との紐付け | 購入時に `appAccountToken` = `/v1/shop/store-account` の `appleAppAccountToken` | `setObfuscatedAccountId` = `googleObfuscatedAccountId` |
-| 付与後 | — | コインは consume、パスは acknowledge（3日以内に必要。失敗してもアプリが再送すれば再試行） |
+| 商品の種類（`products.json` の `storeType`） | コイン・厩舎手当＝消耗型、シーズンパス／パス＋＝**自動更新しない**期間商品（非更新サブスクリプション、または消耗型）、スターター・昇級記念＝非消耗型 | コイン・厩舎手当・シーズンパス／パス＋＝消費型のアプリ内アイテム、スターター・昇級記念＝消費しないアプリ内アイテム。自動更新の定期購入は登録しない（REQ-UXS-020） |
+| 付与後 | — | 消費型は consume、1回限りの商品（`non_consumable`）と旧来の定期購入は acknowledge（3日以内に必要。失敗してもアプリが再送すれば再試行） |
 | サーバー通知 | V2 の `signedPayload` を同じ方法で検証。REFUND/REVOKE→返金、SUBSCRIBED/DID_RENEW→期間延長、EXPIRED/GRACE_PERIOD_EXPIRED→終了、DID_FAIL_TO_RENEW→猶予/再試行、CONSUMPTION_REQUEST・TEST→受領のみ | Pub/Sub の OIDC トークン（発行者・audience・サービスアカウントのメール）を検証。voided→返金、RENEWED等→期間延長、EXPIRED/REVOKED/ON_HOLD/PAUSED→終了、IN_GRACE_PERIOD→猶予 |
 | テスト購入 | Sandbox/Xcode は `APPLE_ACCEPT_SANDBOX=1` のときだけ受け付け（未設定は拒否）。金額0円で記録し、コインは**無償コイン**として付与（有償ロット・負債精算・初回ボーナスなし） | ライセンステストは既定で受け付け、0円。`GOOGLE_ACCEPT_TEST=0` で拒否 |
 
 - 取引IDは `apple:<transactionId>` / `google:<orderId>` で保存し、プラットフォーム間で衝突しない。
 - **1つのレシートは1人にしか付与されない**：全体の取引インデックス（AccountingDO の `store_tx`）に「取引ID・サブスクIDの持ち主」を先着で記録。サーバー通知もここで持ち主を探す。見つからない通知は 200 で受領して無視（アプリ側の購入処理が後で付与する）。
-- 返金では、付与した有償コイン・初回ボーナス（無償／有償）・同梱アイテムをすべて回収。使ってしまった分はコインの負債（`debt`）／アイテムの負債（`itemDebt`）になり、精算までガチャと購入が止まる。1回限りの商品は返金後も「購入済み」。
+- 返金では、付与した有償コイン・初回ボーナス（無償／有償）・同梱アイテム、さらに購入の後にその購入で付与した分（厩舎手当の受け取り済みコイン、パスの有料ラインの報酬、パス＋の10段で届いた報酬）をすべて回収。使ってしまった分はコインの負債（`debt`）／アイテムの負債（`itemDebt`）になり、精算までガチャと購入が止まる。1回限りの商品は返金後も「購入済み」。
 - 年齢は一度登録したら「若くなる方向」にしか変えられない（保護者同意の追加は可）。月額上限を超えた購入が記録された月は、以降の購入前チェックが `AGE_LIMIT_EXCEEDED` になり、`supportFlags` にサポート用の印が付く。
 
 ### 本番で必要な設定（`wrangler.toml` の vars / `wrangler secret put`）

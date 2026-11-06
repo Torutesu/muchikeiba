@@ -1,16 +1,59 @@
 {
-  "_note": "コインのパックは docs/planning/04 の暫定値。初回は有償コインと同数を無償コインでボーナス付与（2倍）。",
+  "_note": "価格の段は docs/planning/06 §5.2（JPY・税込）。初回購入ボーナスはコインのパックだけで、有償コインと同じ枚数を「無償コイン」として付与する（「2倍」とは表示しない、REQ-UXS-022）。シーズンパスは暦月のシーズン限り・自動更新なし（REQ-UXS-020）。厩舎手当は購入日から30日間、毎日受け取り（REQ-UXS-018）。年齢帯ごとの月額上限は age-limits.json（金額は未確定）。",
   "firstPurchaseBonusAsPaid": false,
+  "offers": {
+    "_note": "REQ-UXS-017: 表示のきっかけ（06 §5.1）。T2 スターター＝ランク戦で初めて starterPlaceAtOrWorse 着以下、または starterAfterRankedRaces 戦目の後の早い方。T3 パス＝ランク戦 passAfterRankedRaces 戦（ショップ・パスの開放）以降、1シーズン1回。",
+    "starterPlaceAtOrWorse": 4,
+    "starterAfterRankedRaces": 5,
+    "passAfterRankedRaces": 3
+  },
   "products": [
-    { "id": "coin_160", "kind": "coins", "priceYen": 160, "paidCoins": 100 },
-    { "id": "coin_480", "kind": "coins", "priceYen": 480, "paidCoins": 310 },
-    { "id": "coin_800", "kind": "coins", "priceYen": 800, "paidCoins": 530 },
-    { "id": "coin_1500", "kind": "coins", "priceYen": 1500, "paidCoins": 1020 },
-    { "id": "coin_2400", "kind": "coins", "priceYen": 2400, "paidCoins": 1660 },
-    { "id": "coin_3800", "kind": "coins", "priceYen": 3800, "paidCoins": 2680 },
-    { "id": "coin_5000", "kind": "coins", "priceYen": 5000, "paidCoins": 3600 },
-    { "id": "coin_10000", "kind": "coins", "priceYen": 10000, "paidCoins": 7400 },
-    { "id": "starter_pack", "kind": "starter", "priceYen": 480, "paidCoins": 300, "once": true, "items": [ { "itemId": "ticket_sr_plus", "qty": 1 }, { "itemId": "costume_starter", "qty": 1 } ] },
-    { "id": "season_pass", "kind": "season_pass", "priceYen": 1000, "paidCoins": 0, "durationDays": 30, "items": [ { "itemId": "costume_season_limited", "qty": 1 } ] }
-  ]
+    { "id": "coin_160", "kind": "coins", "name": "コイン100", "tab": "coins", "storeType": "consumable", "priceYen": 160, "paidCoins": 100 },
+    { "id": "coin_480", "kind": "coins", "name": "コイン310", "tab": "coins", "storeType": "consumable", "priceYen": 480, "paidCoins": 310 },
+    { "id": "coin_800", "kind": "coins", "name": "コイン530", "tab": "coins", "storeType": "consumable", "priceYen": 800, "paidCoins": 530 },
+    { "id": "coin_1500", "kind": "coins", "name": "コイン1,020", "tab": "coins", "storeType": "consumable", "priceYen": 1500, "paidCoins": 1020 },
+    { "id": "coin_2400", "kind": "coins", "name": "コイン1,660", "tab": "coins", "storeType": "consumable", "priceYen": 2400, "paidCoins": 1660 },
+    { "id": "coin_3800", "kind": "coins", "name": "コイン2,680", "tab": "coins", "storeType": "consumable", "priceYen": 3800, "paidCoins": 2680 },
+    { "id": "coin_5000", "kind": "coins", "name": "コイン3,600", "tab": "coins", "storeType": "consumable", "priceYen": 5000, "paidCoins": 3600 },
+    { "id": "coin_10000", "kind": "coins", "name": "コイン7,400", "tab": "coins", "storeType": "consumable", "priceYen": 10000, "paidCoins": 7400 },
+    { "id": "starter_pack", "kind": "starter", "name": "スターターパック", "tab": "recommended", "storeType": "non_consumable", "priceYen": 480, "paidCoins": 300, "once": true, "items": [ { "itemId": "ticket_sr_plus", "qty": 1 }, { "itemId": "costume_starter", "qty": 1 } ] },
+    { "id": "stable_allowance_30d", "kind": "allowance", "name": "厩舎手当（30日）", "tab": "recommended", "storeType": "consumable", "priceYen": 480, "paidCoins": 100, "allowance": { "days": 30, "dailyFreeCoins": 30 } },
+    { "id": "season_pass", "kind": "season_pass", "name": "シーズンパス", "tab": "pass", "storeType": "consumable", "priceYen": 1000, "paidCoins": 0, "items": [ { "itemId": "costume_season_limited", "qty": 1 } ] },
+    { "id": "season_pass_plus", "kind": "season_pass", "name": "シーズンパス＋", "tab": "pass", "storeType": "consumable", "priceYen": 2400, "paidCoins": 0, "pass": { "levels": 10 }, "items": [ { "itemId": "costume_season_limited", "qty": 1 }, { "itemId": "tack_bridle_pass_plus", "qty": 1 } ] },
+    { "id": "promo_pack_B", "kind": "promotion", "name": "昇級記念パック（B級）", "tab": "recommended", "storeType": "non_consumable", "priceYen": 1500, "paidCoins": 1020, "once": true, "classId": "B", "items": [ { "itemId": "costume_promo_b", "qty": 1 } ] },
+    { "id": "promo_pack_A", "kind": "promotion", "name": "昇級記念パック（A級）", "tab": "recommended", "storeType": "non_consumable", "priceYen": 1500, "paidCoins": 1020, "once": true, "classId": "A", "items": [ { "itemId": "costume_promo_a", "qty": 1 } ] },
+    { "id": "promo_pack_S", "kind": "promotion", "name": "昇級記念パック（S級）", "tab": "recommended", "storeType": "non_consumable", "priceYen": 1500, "paidCoins": 1020, "once": true, "classId": "S", "items": [ { "itemId": "costume_promo_s", "qty": 1 } ] }
+  ],
+  "display": {
+    "_note": "REQ-UXS-022: 商品の表示はサーバーが作る。クライアントは文言を組み立てない（「2倍」などの倍率表現は使わない）。noticeKeys はクライアントの法定ページ・説明文のキー。",
+    "itemLabels": {
+      "ticket_sr_plus": "SR以上確定スカウト券",
+      "gacha_ticket": "スカウト券",
+      "breeding_material": "配合素材",
+      "costume_starter": "限定勝負服の柄「稲妻」",
+      "costume_season_limited": "シーズン限定勝負服の柄「炎」",
+      "tack_bridle_pass_plus": "限定馬具「シーズンパス＋の頭絡」",
+      "costume_promo_b": "B級昇級記念の勝負服の柄",
+      "costume_promo_a": "A級昇級記念の勝負服の柄",
+      "costume_promo_s": "S級昇級記念の勝負服の柄"
+    },
+    "notices": {
+      "shop.paid_first": "有償コインから先に使われます",
+      "shop.first_purchase_bonus": "コインのパックは、はじめて購入したときだけ、同じ枚数の無償コインをプレゼントします（パックごとに1回）",
+      "shop.one_time": "この商品の購入は1回限りです",
+      "shop.one_time_per_class": "各クラスで1回限りです",
+      "shop.no_auto_renew": "自動更新はありません。期間が終わっても料金は発生しません",
+      "shop.pass_season_only": "購入したシーズン（暦月）の終わりまで有効です",
+      "shop.pass_auto_grant": "シーズン終了時に受け取っていない報酬は自動で付与されます",
+      "shop.allowance_daily_claim": "購入日から30日間、1日1回受け取れます。受け取らなかった日の分は後から受け取れません",
+      "shop.allowance_no_stack": "期間中は追加で購入できません",
+      "legal.tokushoho": "特定商取引法に基づく表記",
+      "legal.shikin_kessai": "資金決済法に基づく表示"
+    },
+    "legalLinks": [
+      { "key": "legal.tokushoho", "title": "特定商取引法に基づく表記" },
+      { "key": "legal.shikin_kessai", "title": "資金決済法に基づく表示" },
+      { "key": "shop.paid_first", "title": "有償コインの使用順" }
+    ]
+  }
 }

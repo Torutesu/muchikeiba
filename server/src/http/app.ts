@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { visualsCatalog, VISUALS } from '../domain/visuals.js';
 import { AppError } from '../domain/errors.js';
 import { findBanner, oddsDisclosure } from '../domain/gacha.js';
+import { shopProducts } from '../domain/shop.js';
 import { ticketDisclosure } from '../domain/itemShop.js';
 import type { Master } from '../domain/master.js';
 import type { PlayerService } from '../domain/service.js';
@@ -31,6 +32,7 @@ export type PlayerMethod =
   | 'bootstrap' | 'view' | 'setAge' | 'purchaseIntent' | 'purchase' | 'refund' | 'draw' | 'tutorialDraw' | 'pityExchange'
   | 'nameHorse' | 'awaken' | 'retire' | 'breedingPreview' | 'breed' | 'pedigree' | 'claimLogin' | 'missions'
   | 'claimMission' | 'passView' | 'claimPass' | 'applyRace' | 'raceEntry'
+  | 'shopOffers' | 'markOfferViewed' | 'allowance' | 'claimAllowance' | 'firstWinBonus'
   | 'storeRenewal' | 'subscriptionStatus'
   | 'setDisplayName' | 'equipTitle' | 'titles' | 'stats' | 'publicProfile' | 'closeSeason' | 'setSilks'
   | 'useTicket' | 'cosmetics' | 'buyCosmetic' | 'setEquipment'
@@ -168,6 +170,10 @@ const teamIdParam = (s: string) => {
   if (!TEAM_ID_RE.test(s)) throw new AppError('BAD_REQUEST', 'bad team id');
   return s;
 };
+const offerIdParam = (s: string) => {
+  if (!/^[a-z0-9_]{1,64}$/i.test(s)) throw new AppError('BAD_REQUEST', 'bad offer id');
+  return s;
+};
 const eventIdParam = (s: string) => {
   if (!EVENT_ID_RE.test(s)) throw new AppError('BAD_REQUEST', 'bad event id');
   return s;
@@ -205,7 +211,14 @@ export const routes: Route[] = [
     return c.player(u).invoke('setAge', u, b.birthYear, b.birthMonth, b.guardianConsent);
   } },
   // shop
-  { method: 'GET', path: '/v1/shop/products', auth: 'none', handler: async (_r, _p, c) => ({ products: c.master.products, notice: '有償コインから先に使われます' }) },
+  // REQ-UXS-022: display data built on the server (contents, quantities, free-coin first-purchase bonus, legal notice keys)
+  { method: 'GET', path: '/v1/shop/products', auth: 'none', handler: async (_r, _p, c) => shopProducts(c.master) },
+  // REQ-UXS-017: offers to show (triggers, shown-once records); bought offers are never returned
+  { method: 'GET', path: '/v1/shop/offers', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('shopOffers', u) },
+  { method: 'POST', path: '/v1/shop/offers/:offerId/view', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('markOfferViewed', u, offerIdParam(p.offerId!)) },
+  // REQ-UXS-018: 厩舎手当 (30-day daily-coin pack)
+  { method: 'GET', path: '/v1/shop/allowance', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('allowance', u) },
+  { method: 'POST', path: '/v1/shop/allowance/claim', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('claimAllowance', u, idem(r)) },
   { method: 'POST', path: '/v1/shop/purchase-intent', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ productId: id }));
     return c.player(u).invoke('purchaseIntent', u, b.productId);
@@ -328,7 +341,7 @@ export const routes: Route[] = [
   { method: 'POST', path: '/v1/stable/:playerId/like', auth: 'player', handler: async (r, p, c, u) => stable(c).like(u, playerIdParam(p.playerId!), idem(r)) },
   // rewards
   { method: 'POST', path: '/v1/rewards/login-bonus', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('claimLogin', u, idem(r)) },
-  { method: 'GET', path: '/v1/missions', auth: 'player', handler: async (_r, _p, c, u) => ({ missions: await c.player(u).invoke('missions', u) }) },
+  { method: 'GET', path: '/v1/missions', auth: 'player', handler: async (_r, _p, c, u) => ({ missions: await c.player(u).invoke('missions', u), firstWinBonus: await c.player(u).invoke('firstWinBonus', u) }) },
   { method: 'POST', path: '/v1/missions/:missionId/claim', auth: 'player', handler: async (r, p, c, u) => c.player(u).invoke('claimMission', u, p.missionId!, idem(r)) },
   { method: 'GET', path: '/v1/season-pass', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('passView', u) },
   { method: 'POST', path: '/v1/season-pass/claim', auth: 'player', handler: async (r, _p, c, u) => {

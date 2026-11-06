@@ -87,18 +87,22 @@ describe('purchase flow (REQ-PUR-*)', () => {
     applyVerifiedPurchase(m, s, 'fake', receipt('coin_480', 480, 't2'), NOW);
     expect(s.wallet).toMatchObject({ paid: 620, free: 310 });
   });
-  it('starter pack is once only; season pass extends expiry; refund revokes', () => {
+  it('starter pack is once only; season pass covers the season; refund revokes', () => {
     const s = adult();
     applyVerifiedPurchase(m, s, 'fake', receipt('starter_pack', 480), NOW);
     expect(s.items).toMatchObject({ ticket_sr_plus: 1, costume_starter: 1 });
     expect(code(() => checkPurchaseIntent(m, s, 'starter_pack', NOW))).toBe('ALREADY_PURCHASED');
+    // REQ-UXS-020: the pass is per season (JST month) and ends with it; a second one for the same season adds nothing
+    const seasonEnd = Date.UTC(2026, 11, 1) - 9 * 3600_000; // 2026-12-01 00:00 JST
     applyVerifiedPurchase(m, s, 'fake', receipt('season_pass', 1000, 'sp1'), NOW);
-    expect(s.seasonPass.expiresAt).toBe(NOW + 30 * 86400000);
+    expect(s.seasonPass.expiresAt).toBe(seasonEnd);
+    expect(code(() => checkPurchaseIntent(m, s, 'season_pass', NOW))).toBe('ALREADY_PURCHASED');
     applyVerifiedPurchase(m, s, 'fake', receipt('season_pass', 1000, 'sp2'), NOW);
-    expect(s.seasonPass.expiresAt).toBe(NOW + 60 * 86400000);
+    expect(s.seasonPass.expiresAt).toBe(seasonEnd);
+    expect(s.supportFlags).toContain('pass_duplicate:2026-11:sp2');
     applyRefund(m, s, 'sp2', NOW + 1);
-    // the refunded period goes; the first, still-paid 30 days stay (review r5 #6)
-    expect(s.seasonPass.expiresAt).toBe(NOW + 30 * 86400000);
+    // the refunded duplicate goes; the first, still-paid season stays (review r5 #6)
+    expect(s.seasonPass.expiresAt).toBe(seasonEnd);
     applyRefund(m, s, 'sp1', NOW + 1);
     expect(s.seasonPass.expiresAt).toBe(0);
     expect(applyRefund(m, s, 'sp2', NOW + 2).alreadyRefunded).toBe(true);

@@ -198,6 +198,8 @@ namespace Muchi.Client
             var rs = Override(baseRuleset, ("gateOpenTick", 20), ("maxTicks", 1200), ("kakariChancePer100000PerTickAtTemper0", 0), ("cpuWhipStartDistanceM", cpuWhipStartM));
             // the tutorial teaches one thing (the whip): no day-to-day form and no casual-style CPUs, when the ruleset has them
             if (rs.HasBalanceKeys) rs = Override(rs, ("conditionVariancePermille", 0), ("cpuSloppyMaxLevel", 0));
+            // a 400m sprint that is all final stretch: keep the full stamina pool and spurt zone (no distance scaling, ruleset 1.2)
+            if (rs.HasDistanceKeys) rs = Override(rs, ("staminaDistanceScalePermille", 0), ("spurtDistanceScalePermille", 0));
             var cfg = new RaceConfig
             {
                 RaceId = "offline_tutorial",

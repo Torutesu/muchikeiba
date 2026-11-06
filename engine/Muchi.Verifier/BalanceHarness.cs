@@ -96,7 +96,7 @@ namespace Muchi.Verifier
 
             byte c = 0;
             long rem = RiderUtil.RemainingM(sim, me);
-            bool spurt = rem <= p.SpurtDistanceM;
+            bool spurt = rem <= sim.SpurtZoneM;
             long speedMm = Math.Max(1, RiderUtil.SpeedMm(me.Speed));
             int spacing = WhipSpacing > 0 ? WhipSpacing : Math.Max(p.WhipEffectTicks, p.WhipDiminishWindowTicks);
 
@@ -114,7 +114,7 @@ namespace Muchi.Verifier
                             go = WhipFromM > 0 ? rem <= WhipFromM : spurt && rem <= needM + 15;
                             break;
                         }
-                    case WhipPlan.Early: go = rem <= 1300 && rem > p.SpurtDistanceM + 50; break;
+                    case WhipPlan.Early: go = rem <= 1300 && rem > sim.SpurtZoneM + 50; break;
                     case WhipPlan.Mash: go = rem <= 400; break;
                 }
                 if (Whips == WhipPlan.Mash && rem <= 400) go = true; // mashing ignores spacing below
@@ -191,7 +191,7 @@ namespace Muchi.Verifier
             if (!me.Departed) return t >= p.GateOpenTick + (PerfectStart ? 0 : _startDelay) ? Cmd.Start : (byte)0;
             byte c = 0;
             long rem = RiderUtil.RemainingM(sim, me);
-            if (DriftToRail && rem > p.SpurtDistanceM && !me.IsChangingLane && me.LaneTarget > 0 && t % 4 == 0 && RiderUtil.LaneLooksClear(sim, slot, me.LaneTarget - 1)) c |= Cmd.LaneIn;
+            if (DriftToRail && rem > sim.SpurtZoneM && !me.IsChangingLane && me.LaneTarget > 0 && t % 4 == 0 && RiderUtil.LaneLooksClear(sim, slot, me.LaneTarget - 1)) c |= Cmd.LaneIn;
             if (GoodWhips)
             {
                 if (me.WhipsLeft > 0 && rem <= 150 && t - _nextWhip >= 20) { c |= Cmd.Whip; _nextWhip = t; }
@@ -542,35 +542,110 @@ namespace Muchi.Verifier
 
         /// <summary>
         /// Per-course targets (REQ-TRACK-002, docs/spec/balance-targets.md §2.1) for every course in server/master/tracks.json
-        /// on good ground: T1 no runner fails to finish and the winning time stays a fair pace for the distance; T2 no running
-        /// style dominates the course (≤ 2× uniform; the weakest style is reported); T7 small gate bias (same band as R7). Fixed seeds.
+        /// on every going: T1 no runner fails to finish and the winning time stays a fair pace for the distance (good ground);
+        /// T2 every running style within ±25% of uniform (6.25..10.42%, same band and slack as R2) on every going — since
+        /// ruleset 1.2 the stamina pool and spurt zone scale with distance, so a course's length no longer picks a style;
+        /// T7 small gate bias (same band as R7). Fixed seeds; courses run in parallel (results do not depend on it).
         /// </summary>
         public static HarnessReport TrackRun(RulesetParams rs, IEnumerable<TrackSpec> tracks, int scale = 1)
         {
             var rep = new HarnessReport();
             int n = 240 * scale;
             ulong s = 70707;
-            foreach (var t in tracks)
+            var list = tracks.ToList();
+            var goings = new[] { Going.FirmOrFast, Going.Good, Going.YieldingOrMuddy, Going.SoftOrSloppy };
+            var probes = new BalanceReport[list.Count, goings.Length];
+            var gateRates = new double[list.Count][];
+            System.Threading.Tasks.Parallel.For(0, list.Count * (goings.Length + 1), k =>
             {
-                var b = BalanceProbe.Run(rs, n, s + 100, 150, t);
+                int ti = k / (goings.Length + 1), gi = k % (goings.Length + 1);
+                var t = list[ti];
+                if (gi == goings.Length) { gateRates[ti] = GateGroupWinRates(rs, 360 * scale, s + 800, t); return; }
+                // good ground keeps the course as sent (going absent), exactly as before
+                var tg = goings[gi] == Going.Good ? t : new TrackSpec { Id = t.Id, Surface = t.Surface, DistanceM = t.DistanceM, Segments = t.Segments, Going = goings[gi], Night = t.Night };
+                probes[ti, gi] = BalanceProbe.Run(rs, n, s + 100, 150, tg);
+            });
+            for (int ti = 0; ti < list.Count; ti++)
+            {
+                var t = list[ti];
+                var b = probes[ti, 1];
                 double secs = b.AvgWinnerSeconds(TickHz, rs.GateOpenTick);
                 rep.Add("T1." + t.Id, t.Id + " 完走しない馬(レース数)", b.Dnf, 0, 0);
                 rep.Add("T1." + t.Id + ".pace", t.Id + " 勝ち時計の1000mあたり(秒)", secs * 1000.0 / t.DistanceM, 40, 48, "s");
-                double lo = 1, hi = 0;
-                foreach (RunningStyle st in Enum.GetValues(typeof(RunningStyle)))
+                for (int gi = 0; gi < goings.Length; gi++)
                 {
-                    lo = Math.Min(lo, b.StyleWinRate(st));
-                    hi = Math.Max(hi, b.StyleWinRate(st));
-                    rep.Add("T2." + t.Id + "." + st, t.Id + " " + st + "の勝率(%)", b.StyleWinRate(st) * 100, 0, 100, "%");
+                    var bg = probes[ti, gi];
+                    string gname = ProtocolGoingName(goings[gi], t.Surface);
+                    string id = "T2." + t.Id + (gi == 1 ? "" : "." + gname);
+                    double lo = 1, hi = 0;
+                    foreach (RunningStyle st in Enum.GetValues(typeof(RunningStyle)))
+                    {
+                        lo = Math.Min(lo, bg.StyleWinRate(st));
+                        hi = Math.Max(hi, bg.StyleWinRate(st));
+                        if (gi == 1) rep.Add("T2." + t.Id + "." + st, t.Id + " " + st + "の勝率(%)", bg.StyleWinRate(st) * 100, 6.25 - Tolerance(n), 10.42 + Tolerance(n), "%");
+                    }
+                    if (gi != 1) rep.Add(id + ".dnf", t.Id + " " + gname + " 完走しない馬(レース数)", bg.Dnf, 0, 0);
+                    rep.Add(id, t.Id + " " + gname + " 脚質別勝率の最小(%)", lo * 100, 6.25 - Tolerance(n), 100, "%");
+                    rep.Add(id + "+", t.Id + " " + gname + " 脚質別勝率の最大(%)", hi * 100, 0, 10.42 + Tolerance(n), "%");
                 }
-                // course character is allowed (逃げ有利の短距離・差し追込有利の長距離), but no style may dominate a course:
-                // at most twice the uniform rate. The minimum is reported (known issue at 2400m, balance-targets.md §5).
-                rep.Add("T2." + t.Id, t.Id + " 脚質別勝率の最小(%) ※参考", lo * 100, 0, 100, "%");
-                rep.Add("T2." + t.Id + "+", t.Id + " 脚質別勝率の最大(%)", hi * 100, 0, 2 * 100.0 / 12, "%");
-                var gates = GateGroupWinRates(rs, 360 * scale, s + 800, t);
+                var gates = gateRates[ti];
                 rep.Add("T7." + t.Id, t.Id + " 内枠と外枠の1頭あたり勝率の差(pt)", Math.Abs(gates[0] - gates[2]) * 100, 0, 4, "pt");
             }
             return rep;
+        }
+
+        private static string ProtocolGoingName(Going g, Surface s)
+        {
+            bool dirt = s == Surface.Dirt;
+            switch (g)
+            {
+                case Going.FirmOrFast: return dirt ? "fast" : "firm";
+                case Going.YieldingOrMuddy: return dirt ? "muddy" : "yielding";
+                case Going.SoftOrSloppy: return dirt ? "sloppy" : "soft";
+                default: return "good";
+            }
+        }
+
+        /// <summary>
+        /// Per-runner win rate by running style on one course (CPU field). <paramref name="levelMode"/>: 1..5 = every CPU at
+        /// that level, 0 = levels 1..5 mixed by slot.
+        /// </summary>
+        public static double[] StyleRates(RulesetParams rs, TrackSpec track, int races, ulong seedBase, int levelMode = 3)
+        {
+            var wins = new int[4]; var runners = new int[4];
+            for (int r = 0; r < races; r++)
+            {
+                var rng = new Pcg32(seedBase + (ulong)r * 7919UL, 3);
+                var horses = Field(ref rng, "b", 500, 150, track.Surface);
+                int rr = r;
+                var cfg = Config("sd_" + r, SeedMix.Mix(seedBase + (ulong)r), track, rs, horses, new HashSet<int>(), i => levelMode == 0 ? 1 + (i + rr) % 5 : levelMode);
+                var sim = Run(cfg, new Dictionary<int, IRider>(), 0);
+                foreach (var h in horses) runners[(int)h.Style]++;
+                wins[(int)horses[sim.Result.Order[0]].Style]++;
+            }
+            var o = new double[4];
+            for (int s = 0; s < 4; s++) o[s] = runners[s] == 0 ? 0 : (double)wins[s] / runners[s];
+            return o;
+        }
+
+        /// <summary>Win rate of a rider-driven slot grouped by the style of the horse it rides (rest of the field CPU level 3).</summary>
+        public static double[] RiderStyleRates(RulesetParams rs, TrackSpec track, Func<IRider> rider, int races, ulong seedBase)
+        {
+            var wins = new int[4]; var runs = new int[4];
+            for (int r = 0; r < races; r++)
+            {
+                var rng = new Pcg32(seedBase + (ulong)r * 7919UL, 5);
+                var horses = Field(ref rng, "f", 500, 150, track.Surface);
+                int slot = r % 12;
+                horses[slot].Style = (RunningStyle)((r / 12) % 4);
+                var cfg = Config("rs_" + r, SeedMix.Mix(seedBase + (ulong)r), track, rs, horses, new HashSet<int> { slot }, _ => 3);
+                var sim = Run(cfg, new Dictionary<int, IRider> { [slot] = rider() }, seedBase + (ulong)r);
+                runs[(int)horses[slot].Style]++;
+                if (sim.Result.Order[0] == slot) wins[(int)horses[slot].Style]++;
+            }
+            var o = new double[4];
+            for (int s = 0; s < 4; s++) o[s] = runs[s] == 0 ? 0 : (double)wins[s] / runs[s];
+            return o;
         }
 
         /// <summary>Statistical slack (percentage points) for per-runner rates measured over n races.</summary>

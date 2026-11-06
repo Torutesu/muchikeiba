@@ -70,7 +70,10 @@ namespace Muchi.Engine
             _blockRange = Fx.FromMilli(P.BlockRangeMm);
             _slipRange = Fx.FromMilli(P.SlipstreamRangeMm);
             _clearance = Fx.FromMilli(P.LaneChangeClearanceMm);
-            _spurtDist = Fx.FromInt(P.SpurtDistanceM);
+            // ruleset 1.2: the spurt zone may scale with the race distance (factor 1000 when the keys are absent)
+            bool dirtTrack = config.Track.Surface == Surface.Dirt;
+            _spurtDist = Fx.FromInt((int)((long)P.SpurtDistanceM * P.DistanceFactorPermille(config.Track.DistanceM, dirtTrack, P.SpurtDistanceScalePermille) / 1000));
+            int staminaDistPermille = P.DistanceFactorPermille(config.Track.DistanceM, dirtTrack, P.StaminaDistanceScalePermille);
             _halfLane = Fx.FromRatio(1, 2);
             _minGap = Fx.FromMilli(P.MinGapMm);
 
@@ -104,6 +107,7 @@ namespace Muchi.Engine
                 _topSpeed[i] = Fx.FromMilli(topMm);
                 long stamina = P.StaminaBase + (long)h.Stamina * P.StaminaPerStatPoint;
                 stamina = stamina * (1000 - penalty) / 1000;
+                if (staminaDistPermille != 1000) stamina = stamina * staminaDistPermille / 1000;
                 _gutsFloorPermille[i] = P.GutsFloorMinPermille + (P.GutsFloorMaxPermille - P.GutsFloorMinPermille) * h.Guts / 1000;
                 _kakariRng[i] = new Pcg32(SeedMix.Derive(config.Seed, SaltKakari, (ulong)i), (ulong)i);
                 _brains[i] = new CpuBrain(this, i, e.CpuLevel, new Pcg32(SeedMix.Derive(config.Seed, SaltCpu, (ulong)i), (ulong)i + 100));
@@ -172,6 +176,8 @@ namespace Muchi.Engine
         internal Fx BlockRange => _blockRange;
         internal Fx Clearance => _clearance;
         internal Fx SpurtDistance => _spurtDist;
+        /// <summary>Length of the spurt zone in this race (m); scales with distance from ruleset 1.2.</summary>
+        public int SpurtZoneM => (int)(_spurtDist.Raw >> 16);
         internal int[] RankOrderInternal => _rankOrder;
 
         // ------------------------------------------------------------------ stepping

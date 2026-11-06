@@ -40,7 +40,7 @@
     "disconnectGraceMs": 3000
   },
   "ruleset": {
-    "rulesetVersion": "1.1.0+ta",
+    "rulesetVersion": "1.2.0+ta",
     "maxTicks": 4800,
     "gateOpenTick": 60,
     "startReactionWindowTicks": 4,
@@ -117,7 +117,11 @@
     "cpuRailMinLevel": 3,
     "autoRailIntervalTicks": 10,
     "autoRailHoldTicks": 60,
-    "cpuSloppyMaxLevel": 3
+    "cpuSloppyMaxLevel": 3,
+    "distanceRefM": 2000,
+    "distanceRefDirtM": 1850,
+    "staminaDistanceScalePermille": 1000,
+    "spurtDistanceScalePermille": 1000
   },
   "entrants": [
     {

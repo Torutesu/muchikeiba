@@ -54,6 +54,8 @@ static class Program
         await QaRound7Checks.Run(Check, Ruleset());
         Console.WriteLine("== room close codes over a real WebSocket (replaced → no reconnect loop)");
         await CloseCodeChecks.Run(Check, Ruleset());
+        Console.WriteLine("== race feel, tutorial win rule, camera and result debrief (06 §2.3 / §6.3 / §6.4)");
+        RaceFeelChecks.Run(Check, Ruleset());
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);
@@ -135,7 +137,7 @@ static class Program
         Check(final.WhipsLeft < d.Config.Ruleset.MaxWhips, "SPUR presses reached the engine as whips (" + final.WhipsLeft + " left)");
         Check(sawSubtitle, "commentary produced subtitles (" + subtitles.Count + " lines, first: " + (subtitles.FirstOrDefault() ?? "-") + ")");
         // The recorded inputs replay to the identical result: the app's race is the engine's race.
-        var replay = RaceReplay.Run(d.Config, d.Race.RecordedInputs.ToList());
+        var replay = RaceReplay.Run(d.Config, d.Race.AllInputs()); // player + the tutorial rival's director
         Check(replay.Result.Hash == d.Sim.Result.Hash, "offline race replays to the same result hash from its recorded inputs");
         Check(HudModel.FormatTime(83_456) == "1:23.4", "race clock format m:ss.f");
     }

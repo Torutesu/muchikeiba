@@ -129,7 +129,16 @@ namespace Muchi.Client
     {
         public int FreeCoins;
         public List<ItemQty> Items = new List<ItemQty>();
-        internal static Reward Parse(JsonNode o) => o == null ? new Reward() : new Reward { FreeCoins = J.Int(o, "freeCoins"), Items = J.List(o, "items", ItemQty.Parse) };
+        /// <summary>Template id granted as a horse (event rewards), or null.</summary>
+        public string Horse;
+        /// <summary>REQ-UXS-013: template id granted as a retired broodmare (beginner login bonus day 2), or null.</summary>
+        public string Broodmare;
+        /// <summary>REQ-UXS-016: season pass experience (season missions).</summary>
+        public int PassXp;
+        internal static Reward Parse(JsonNode o) => o == null ? new Reward() : new Reward
+        {
+            FreeCoins = J.Int(o, "freeCoins"), Items = J.List(o, "items", ItemQty.Parse), Horse = J.Str(o, "horse"), Broodmare = J.Str(o, "broodmare"), PassXp = J.Int(o, "passXp"),
+        };
     }
 
     public sealed class SeasonPassState
@@ -138,10 +147,12 @@ namespace Muchi.Client
         public int Xp;
         public int[] ClaimedFree = new int[0], ClaimedPremium = new int[0];
         public string SeasonId;
+        /// <summary>REQ-UXS-019: XP added by a Pass+ purchase this season.</summary>
+        public int BoostXp;
         internal static SeasonPassState Parse(JsonNode o)
         {
             var c = J.Opt(o, "claimed");
-            return new SeasonPassState { ExpiresAt = J.Long(o, "expiresAt"), Xp = J.Int(o, "xp"), ClaimedFree = J.Ints(c, "free"), ClaimedPremium = J.Ints(c, "premium"), SeasonId = J.Str(o, "seasonId") };
+            return new SeasonPassState { ExpiresAt = J.Long(o, "expiresAt"), Xp = J.Int(o, "xp"), ClaimedFree = J.Ints(c, "free"), ClaimedPremium = J.Ints(c, "premium"), SeasonId = J.Str(o, "seasonId"), BoostXp = J.Int(o, "boostXp") };
         }
     }
 
@@ -158,6 +169,18 @@ namespace Muchi.Client
         public SeasonPassState SeasonPass;
         public int LoginStreakDay;
         public string LoginLastClaimDate;
+        /// <summary>REQ-UXS-013: beginner login bonus days claimed (null on states from before the beginner table).</summary>
+        public int? LoginBeginnerDay;
+        /// <summary>REQ-UXS-002: the first partner horse (null until POST /v1/player/partner).</summary>
+        public string PartnerHorseId;
+        /// <summary>REQ-UXS-001: terms / privacy consent; show the consent screen while <see cref="ConsentView.Required"/>.</summary>
+        public ConsentView Consent;
+        /// <summary>REQ-UXS-014: which features the home screen shows (display only; the APIs work anyway).</summary>
+        public UnlocksView Unlocks;
+        /// <summary>REQ-UXS-032: A/B assignments and the values to use.</summary>
+        public ExperimentsView Experiments;
+        /// <summary>REQ-UXS-040: account deletion status.</summary>
+        public DeletionStatus Deletion;
         public int Rating, RatingDeviation, RankedRaces;
         public string SeasonId, ClassId;
         public int SeasonPoints;
@@ -180,7 +203,10 @@ namespace Muchi.Client
                 Pity = J.Map(o, "pity", v => v.AsInt()), Horses = J.List(o, "horses", Horse.Parse),
                 AgeRegistered = J.Bool(o, "ageRegistered"), TutorialGachaUsed = J.Bool(J.Opt(o, "flags"), "tutorialGachaUsed"),
                 SeasonPass = SeasonPassState.Parse(J.Opt(o, "seasonPass")),
-                LoginStreakDay = J.Int(lb, "streakDay"), LoginLastClaimDate = J.Str(lb, "lastClaimDate"),
+                LoginStreakDay = J.Int(lb, "streakDay"), LoginLastClaimDate = J.Str(lb, "lastClaimDate"), LoginBeginnerDay = J.IntN(lb, "beginnerDay"),
+                PartnerHorseId = J.Str(J.Opt(o, "flags"), "partnerHorseId"),
+                Consent = ConsentView.Parse(J.Opt(o, "consent")), Unlocks = UnlocksView.Parse(J.Opt(o, "unlocks")),
+                Experiments = ExperimentsView.Parse(J.Opt(o, "experiments")), Deletion = DeletionStatus.Parse(J.Opt(o, "deletion")),
                 Rating = J.Int(r, "r"), RatingDeviation = J.Int(r, "rd"), RankedRaces = J.Int(r, "rankedRaces"),
                 SeasonId = J.Str(s, "id"), ClassId = J.Str(s, "classId"), SeasonPoints = J.Int(s, "points"),
                 DisplayName = J.Str(pr, "displayName"), TitleId = J.Str(pr, "titleId"), Silks = Silks.Parse(J.Opt(pr, "silks")) ?? new Silks(),
@@ -198,6 +224,10 @@ namespace Muchi.Client
         internal static AgeResult Parse(JsonNode o) => new AgeResult { Age = J.Int(o, "age"), Band = J.Str(o, "band"), MonthlyLimitYen = J.IntN(o, "monthlyLimitYen") };
     }
 
+    /// <summary>
+    /// A store product. The display fields (REQ-UXS-022, protocol §13.1) are built on the server: show
+    /// <see cref="Contents"/> labels, <see cref="FirstPurchaseBonus"/> and the notices as they are, never build bonus wording.
+    /// </summary>
     public sealed class Product
     {
         public string Id, Kind;
@@ -205,10 +235,32 @@ namespace Muchi.Client
         public bool Once;
         public int? DurationDays;
         public List<ItemQty> Items = new List<ItemQty>();
+        /// <summary>Display name, tab ("recommended" | "coins" | "pass") and store type ("consumable" | "non_consumable").</summary>
+        public string Name, Tab, StoreType;
+        /// <summary>Promotion packs: the class the pack belongs to (B/A/S), else null.</summary>
+        public string ClassId;
+        public bool AutoRenew;
+        public List<ProductContent> Contents = new List<ProductContent>();
+        public FirstPurchaseBonus FirstPurchaseBonus;
+        public bool OneTime;
+        /// <summary>"account" | "class" | null.</summary>
+        public string OneTimeScope;
+        /// <summary>Period it is sold for: { kind: "season" } or { kind: "days", days }; null for coin packs.</summary>
+        public ProductPeriod Period;
+        public List<string> NoticeKeys = new List<string>();
+        /// <summary>Season pass / Pass+: levels added at purchase (0 for the plain pass).</summary>
+        public int PassLevels;
+        /// <summary>厩舎手当: days and daily free coins; null for other products.</summary>
+        public AllowanceTerms Allowance;
         internal static Product Parse(JsonNode o) => new Product
         {
             Id = J.Str(o, "id"), Kind = J.Str(o, "kind"), PriceYen = J.Int(o, "priceYen"), PaidCoins = J.Int(o, "paidCoins"),
             Once = J.Bool(o, "once"), DurationDays = J.IntN(o, "durationDays"), Items = J.List(o, "items", ItemQty.Parse),
+            Name = J.Str(o, "name"), Tab = J.Str(o, "tab"), StoreType = J.Str(o, "storeType"), ClassId = J.Str(o, "classId"), AutoRenew = J.Bool(o, "autoRenew"),
+            Contents = J.List(o, "contents", ProductContent.Parse), FirstPurchaseBonus = FirstPurchaseBonus.Parse(J.Opt(o, "firstPurchaseBonus")),
+            OneTime = J.Bool(o, "oneTime"), OneTimeScope = J.Str(o, "oneTimeScope"), Period = ProductPeriod.Parse(J.Opt(o, "period")),
+            NoticeKeys = J.List(o, "noticeKeys", x => x.AsString()), PassLevels = J.Int(J.Opt(o, "pass"), "levels"),
+            Allowance = AllowanceTerms.Parse(J.Opt(o, "allowance")),
         };
     }
 
@@ -217,7 +269,15 @@ namespace Muchi.Client
         public List<Product> Products = new List<Product>();
         /// <summary>Shop notice to display (e.g. 有償コインから先に使われます).</summary>
         public string Notice;
-        internal static ProductList Parse(JsonNode o) => new ProductList { Products = J.List(o, "products", Product.Parse), Notice = J.Str(o, "notice") };
+        /// <summary>REQ-UXS-022: notice texts by key (<see cref="Product.NoticeKeys"/>).</summary>
+        public Dictionary<string, string> Notices = new Dictionary<string, string>();
+        /// <summary>特商法 / 資金決済法 / 有償コインの使用順 links (key + title).</summary>
+        public List<LegalLink> LegalLinks = new List<LegalLink>();
+        internal static ProductList Parse(JsonNode o) => new ProductList
+        {
+            Products = J.List(o, "products", Product.Parse), Notice = J.Str(o, "notice"),
+            Notices = J.Map(o, "notices", v => v.AsString()), LegalLinks = J.List(o, "legalLinks", LegalLink.Parse),
+        };
     }
 
     public sealed class ConfigInfo
@@ -248,10 +308,18 @@ namespace Muchi.Client
         public Product Product;
         public int MonthSpentYen;
         public int? MonthlyLimitYen, RemainingYen;
+        /// <summary>REQ-UXS-022: only while this coin pack still has its first-purchase bonus for the player.</summary>
+        public FirstPurchaseBonus FirstPurchaseBonus;
+        /// <summary>REQ-UXS-020: season pass / Pass+ only (show "このパスは◯日で終わります" when LastWeek).</summary>
+        public PassPurchaseInfo Pass;
+        /// <summary>REQ-UXS-018: 厩舎手当 only.</summary>
+        public AllowanceTerms Allowance;
         internal static PurchaseIntent Parse(JsonNode o) => new PurchaseIntent
         {
             Product = Product.Parse(J.Opt(o, "product")), MonthSpentYen = J.Int(o, "monthSpentYen"),
             MonthlyLimitYen = J.IntN(o, "monthlyLimitYen"), RemainingYen = J.IntN(o, "remainingYen"),
+            FirstPurchaseBonus = FirstPurchaseBonus.Parse(J.Opt(o, "firstPurchaseBonus")), Pass = PassPurchaseInfo.Parse(J.Opt(o, "pass")),
+            Allowance = AllowanceTerms.Parse(J.Opt(o, "allowance")),
         };
     }
 
@@ -451,7 +519,15 @@ namespace Muchi.Client
     {
         public int Day;
         public Reward Reward;
-        internal static LoginBonusResult Parse(JsonNode o) => new LoginBonusResult { Day = J.Int(o, "day"), Reward = Reward.Parse(J.Opt(o, "reward")) };
+        /// <summary>REQ-UXS-013: "beginner" (the first-week table, once) or "normal" (the 7-day cycle).</summary>
+        public string Track = "normal";
+        /// <summary>Beginner days still to come (0 on the normal track).</summary>
+        public int BeginnerDaysLeft;
+        public bool IsBeginner => Track == "beginner";
+        internal static LoginBonusResult Parse(JsonNode o) => new LoginBonusResult
+        {
+            Day = J.Int(o, "day"), Reward = Reward.Parse(J.Opt(o, "reward")), Track = J.Str(o, "track") ?? "normal", BeginnerDaysLeft = J.Int(o, "beginnerDaysLeft"),
+        };
     }
 
     public sealed class Mission
@@ -468,16 +544,40 @@ namespace Muchi.Client
         };
     }
 
+    /// <summary>GET /v1/season-pass (REQ-UXS-020/021, protocol §13.6): everything the pass screen needs, from the server.</summary>
     public sealed class SeasonPassView
     {
         public int Level, Xp;
+        /// <summary>True while this season's pass is owned (the premium line can be claimed).</summary>
         public bool Active;
         public long ExpiresAt;
         public int[] ClaimedFree = new int[0], ClaimedPremium = new int[0];
+        public string SeasonId;
+        public int XpPerLevel, MaxLevel, XpToNextLevel, RacesToNextLevel;
+        public long SeasonEndsAt;
+        public int RemainingDays;
+        public bool LastWeek, AutoRenew, AutoGrantAtSeasonEnd;
+        /// <summary>Levels added by a Pass+ purchase this season.</summary>
+        public int BoostLevels;
+        /// <summary>Product ids owned for this season / still purchasable (empty once one is owned).</summary>
+        public List<string> Owned = new List<string>(), Purchasable = new List<string>();
+        public PassLine FreeLine, PremiumLine;
+        /// <summary>The previous season's close (auto-granted levels), or null.</summary>
+        public PassSeasonRecord LastSeason;
         internal static SeasonPassView Parse(JsonNode o)
         {
             var c = J.Opt(o, "claimed");
-            return new SeasonPassView { Level = J.Int(o, "level"), Xp = J.Int(o, "xp"), Active = J.Bool(o, "active"), ExpiresAt = J.Long(o, "expiresAt"), ClaimedFree = J.Ints(c, "free"), ClaimedPremium = J.Ints(c, "premium") };
+            var rw = J.Opt(o, "rewards");
+            return new SeasonPassView
+            {
+                Level = J.Int(o, "level"), Xp = J.Int(o, "xp"), Active = J.Bool(o, "active"), ExpiresAt = J.Long(o, "expiresAt"), ClaimedFree = J.Ints(c, "free"), ClaimedPremium = J.Ints(c, "premium"),
+                SeasonId = J.Str(o, "seasonId"), XpPerLevel = J.Int(o, "xpPerLevel"), MaxLevel = J.Int(o, "maxLevel"), XpToNextLevel = J.Int(o, "xpToNextLevel"), RacesToNextLevel = J.Int(o, "racesToNextLevel"),
+                SeasonEndsAt = J.Long(o, "seasonEndsAt"), RemainingDays = J.Int(o, "remainingDays"), LastWeek = J.Bool(o, "lastWeek"), AutoRenew = J.Bool(o, "autoRenew"),
+                AutoGrantAtSeasonEnd = J.Bool(o, "autoGrantAtSeasonEnd"), BoostLevels = J.Int(o, "boostLevels"),
+                Owned = J.List(o, "owned", x => x.AsString()), Purchasable = J.List(o, "purchasable", x => x.AsString()),
+                FreeLine = PassLine.Parse(J.Opt(rw, "free")), PremiumLine = PassLine.Parse(J.Opt(rw, "premium")),
+                LastSeason = PassSeasonRecord.Parse(J.Opt(o, "lastSeason")),
+            };
         }
     }
 

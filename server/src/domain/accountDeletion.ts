@@ -5,7 +5,7 @@
  *   2. DELETE /v1/player + token    → deletion scheduled `cancelWindowDays` (14) later; the account keeps working
  *   3. POST /v1/player/deletion/cancel within the window → nothing happens
  *   4. at the scheduled time the player's object alarm runs runAccountDeletion(): the player is taken out of
- *      friends, teams, stud listings, leaderboards, event boards and tournaments; the purchase records and coin
+ *      friends, teams (and their team feeds), stud listings, leaderboards, event boards and tournaments; the purchase records and coin
  *      ledger required by law (資金決済法・特商法・帳簿) are anonymised and kept `ledgerRetentionDays` under a
  *      random id that is not linked to the account; then every piece of the player's own data is deleted.
  *
@@ -148,6 +148,8 @@ export const deletionDue = (s: PlayerState, now: number) => {
 export interface DeletionSnapshot {
   friends: string[]; incoming: string[]; outgoing: string[];
   teamId: string | null; teamRequests: string[];
+  /** REQ-TEAMFEED-008: teams whose feed holds this player's stamps, race items or reactions (current team included). */
+  feedTeams?: string[];
   studHorseIds: string[];
   eventIds: string[];
   /** R2 keys of this player's ghosts. */
@@ -159,6 +161,7 @@ export function deletionSnapshot(s: PlayerState): DeletionSnapshot {
   return {
     friends: [...s.friends.ids], incoming: s.friends.incoming.map((x) => x.from), outgoing: s.friends.outgoing.map((x) => x.to),
     teamId: s.team?.teamId ?? null, teamRequests: (s.team?.outgoing ?? []).map((o) => o.teamId),
+    feedTeams: [...new Set([...((s as PlayerState & { teamFeed?: { postedIn: string[] } }).teamFeed?.postedIn ?? []), ...(s.team?.teamId ? [s.team.teamId] : [])])],
     studHorseIds: (s.stud?.listings ?? []).map((l) => l.horseId),
     eventIds: Object.keys(s.events ?? {}),
     ghostKeys: Object.keys(s.timeAttack?.seasonBest ?? {}).map((k) => { const [season, track] = k.split(':'); return `ghosts/${season}/${track}/${s.id}.json`; }),
@@ -287,6 +290,8 @@ export interface DeletionPorts {
     leave(teamId: string, uid: string): Promise<unknown>;
     transfer(teamId: string, uid: string, to: string): Promise<unknown>;
     dropRequest(teamId: string, uid: string): Promise<unknown>;
+    /** REQ-TEAMFEED-008: remove the player's feed items and reactions from a team's feed. */
+    forgetFeed?(teamId: string, uid: string): Promise<unknown>;
   };
   /** Friend code, public profile and stud listings in the directory. */
   directory: { forget(uid: string): Promise<void> };
@@ -326,6 +331,8 @@ export async function runAccountDeletion(p: DeletionPorts, uid: string, now: num
     const t = p.team;
     if (!t) return;
     for (const tid of snap.teamRequests) await tolerant(() => t.dropRequest(tid, uid));
+    // REQ-TEAMFEED-008: the player's stamps, race items and reactions leave every feed they were posted to
+    if (t.forgetFeed) for (const tid of snap.feedTeams ?? []) await tolerant(() => t.forgetFeed!(tid, uid));
     const teamId = snap.teamId;
     if (!teamId) return;
     try {

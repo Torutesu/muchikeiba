@@ -6,6 +6,7 @@
 import type { Master } from './master.js';
 import { DIRT_GOINGS, TURF_GOINGS } from './schemas.js';
 import { stableConfig } from './stable.js';
+import { stampAsset, stampsOf } from './teamFeed.js';
 import { ASSET_KEY_RE, ASSET_KINDS, assetKeys, collectItemIds, fallbackKey, kindOf, VISUALS, type VisualsMaster } from './visuals.js';
 
 /** engine/Muchi.Client/Resources/Muchi/commentary-ja.json (only the parts the manifest needs). */
@@ -50,7 +51,8 @@ export function buildAssetManifest(m: Master, commentary: CommentaryJson, v: Vis
   v.silks.caps.forEach((c) => add(assetKeys.silksCap(c.id)));
   v.gateBrackets.forEach((g) => add(assetKeys.gate(g.bracket)));
   collectItemIds(m, v).forEach((id) => add(assetKeys.item(id)));
-  for (const c of m.items?.cosmetics ?? []) if (c.kind !== 'silks') add(c.asset); // tack/*, decor/* (REQ-ITEM-006)
+  for (const c of m.items?.cosmetics ?? []) if (c.kind !== 'silks') add(c.asset); // tack/*, decor/* (REQ-ITEM-006), stamp/*
+  stampsOf(m).stamps.forEach((s) => add(stampAsset(s.id))); // REQ-TEAMFEED-001: every team-feed stamp
   stableConfig(m).themes.forEach((t) => add(assetKeys.stableTheme(t.id))); // REQ-STABLE-001
   m.gacha.banners.forEach((b) => add(assetKeys.gachaBanner(b.id)));
   m.events.forEach((e) => add(assetKeys.eventBanner(e.id)));

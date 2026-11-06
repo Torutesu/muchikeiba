@@ -69,6 +69,8 @@ export function itemsProblems(m: Master, v: VisualsMaster = VISUALS): string[] {
       if (!ASSET_KEY_RE.test(c.asset) || !c.asset.startsWith('tack/')) p.push(`${c.id}: asset must be a tack/<name> key`);
     } else if (c.kind === 'decor') {
       if (!ASSET_KEY_RE.test(c.asset) || !c.asset.startsWith('decor/')) p.push(`${c.id}: asset must be a decor/<name> key`);
+    } else if (c.kind === 'stamp') {
+      if (!ASSET_KEY_RE.test(c.asset) || !c.asset.startsWith('stamp/')) p.push(`${c.id}: asset must be a stamp/<id> key`);
     } else p.push(`${(c as CosmeticDef).id}: unknown cosmetic kind`);
   }
   return p;
@@ -191,7 +193,7 @@ export function cosmeticsCatalog(m: Master, s: PlayerState) {
       ...(c.kind === 'tack' ? { slot: c.slot } : {}),
       ...(c.kind === 'silks' ? { pattern: c.pattern } : {}),
       owned: ownsItem(s, c.id),
-      equipped: c.kind === 'tack' ? eq.tack[c.slot] === c.id : c.kind === 'decor' ? eq.decor.includes(c.id) : s.profile.silks?.pattern === c.pattern,
+      equipped: c.kind === 'tack' ? eq.tack[c.slot] === c.id : c.kind === 'decor' ? eq.decor.includes(c.id) : c.kind === 'silks' ? s.profile.silks?.pattern === c.pattern : false, // stamps are used in the team feed, never equipped
     })),
   };
 }

@@ -17,6 +17,8 @@ import eventsJson from '../../master/events.json';
 import itemsJson from '../../master/items.json';
 import assetsCatalogJson from '../../master/assets-catalog.json';
 import { parseAssetCatalog, type AssetCatalog } from './assetCatalog.js';
+import type { StampsMaster } from './teamFeed.js';
+import stampsJson from '../../master/stamps.json';
 import { trackSchema, type GoingAptitude, type Going, type Track } from './schemas.js';
 import { AppError } from './errors.js';
 import { loadSkills, type SkillsMaster } from './skills.js';
@@ -104,7 +106,9 @@ export type TicketDef =
 export type CosmeticDef =
   | { id: string; name: string; kind: 'silks'; pattern: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean }
   | { id: string; name: string; kind: 'tack'; slot: TackSlot; asset: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean }
-  | { id: string; name: string; kind: 'decor'; asset: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean };
+  | { id: string; name: string; kind: 'decor'; asset: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean }
+  /** REQ-TEAMFEED-002: a team-feed stamp sold directly for coins (asset stamp/<id>; master/stamps.json says which stamp it unlocks). */
+  | { id: string; name: string; kind: 'stamp'; asset: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean };
 export type TackSlot = 'bridle' | 'saddlecloth';
 export const TACK_SLOTS: TackSlot[] = ['bridle', 'saddlecloth'];
 export interface ItemsMaster {
@@ -313,6 +317,8 @@ export interface Master {
   skills: SkillsMaster;
   /** REQ-DLV-*: asset delivery catalog (master/assets-catalog.json; remote config `assets` may replace it). Absent → EMPTY_ASSET_CATALOG. */
   assetCatalog?: AssetCatalog;
+  /** REQ-TEAMFEED-*: team cheer stamps (master/stamps.json; teamFeed.ts stampsOf falls back to it when absent). */
+  stamps?: StampsMaster;
 }
 
 export const PPM_TOTAL = 1_000_000;
@@ -461,6 +467,7 @@ export function loadMaster(): Master {
     items: itemsJson as unknown as ItemsMaster,
     skills: loadSkills(),
     assetCatalog: parseAssetCatalog(assetsCatalogJson),
+    stamps: stampsJson as unknown as StampsMaster,
   };
   cached = m;
   return m;

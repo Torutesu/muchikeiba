@@ -17,6 +17,7 @@
     "season_start": { "category": "season", "title": "新シーズン開幕", "body": "{season}シーズンが始まりました。昇級を目指そう！", "ttlSec": 86400, "timeSensitive": false },
     "season_end": { "category": "season", "title": "シーズン終了まであと{days}日", "body": "今のクラスを守りきるなら今のうち", "ttlSec": 43200, "timeSensitive": false },
     "season_last_day": { "category": "season", "title": "本日シーズン最終日", "body": "昇級をかけた最後の勝負に出よう", "ttlSec": 36000, "timeSensitive": false },
+    "team_cheer": { "category": "friends", "title": "支部の応援", "body": "{name}さんがあなたのレースに応援スタンプを送りました", "ttlSec": 86400, "timeSensitive": false },
     "team_request": { "category": "friends", "title": "支部への加入申請", "body": "{name}さんが支部への加入を希望しています", "ttlSec": 86400, "timeSensitive": false },
     "team_approved": { "category": "friends", "title": "支部に加入しました", "body": "「{team}」への加入が承認されました", "ttlSec": 86400, "timeSensitive": false },
     "event_start": { "category": "events", "title": "イベント開催中", "body": "「{event}」が始まりました。上位を目指そう！", "ttlSec": 43200, "timeSensitive": false },

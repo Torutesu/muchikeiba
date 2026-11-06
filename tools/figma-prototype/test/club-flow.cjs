@@ -1,4 +1,4 @@
-// Club UI walkthrough (site/index.html, Codex's 25 detailed screens wired to the real logic and engine).
+// Club UI walkthrough (site/club.html, Codex's 25 detailed screens wired to the real logic and engine).
 // Captures every screen with the same element and state as Codex's frontend/scripts/export-design.cjs, so the
 // shots line up 1:1 with frontend/design/screens/<name>.png for compare.py. Used by e2e.cjs.
 const path = require('path');
@@ -46,7 +46,7 @@ module.exports = async function clubFlow(browser, base, out, errors) {
     await page.waitForFunction((n) => globalThis.__club.state().current === n, leaveScreen, { timeout: 120000 });
   }
 
-  await page.goto(base + 'index.html?speed=4'); await page.evaluate(() => localStorage.clear()); await page.goto(base + 'index.html?speed=4'); await ready();
+  await page.goto(base + 'club.html?speed=4'); await page.evaluate(() => localStorage.clear()); await page.goto(base + 'club.html?speed=4'); await ready();
   // 01 はじめに → 02 初めての直線 (tutorial race, real engine) → 03 相棒の命名
   await capture('01');
   assert(await page.locator('[data-go="1"]').isDisabled(), 'start needs consent');
@@ -158,7 +158,7 @@ module.exports = async function clubFlow(browser, base, out, errors) {
   }
   // 13 empty stable when nobody is in the stable yet (fresh player)
   await page.evaluate(() => localStorage.clear()); await page.setViewportSize({ width: 1440, height: 1400 });
-  await page.goto(base + 'index.html#5'); await ready(); await capture('13b-stable-empty-new-player');
+  await page.goto(base + 'club.html#5'); await ready(); await capture('13b-stable-empty-new-player');
   await page.close();
   return shots;
 };

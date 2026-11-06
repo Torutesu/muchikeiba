@@ -1,7 +1,8 @@
 """Copies Codex's Unity art/localization into the web prototype and subsets the bundled Noto Sans CJK JP font.
 
 usage: python3 prepare_assets.py <repo-root> <site-dir>
-- Art: unity/Assets/Resources/Art → site/art (backgrounds 1600 px JPEG; transparent cut-outs stay PNG, max 640 px)
+- Art: unity/Assets/Resources/Art → site/art (backgrounds 1600 px JPEG; transparent cut-outs stay PNG, max 640 px),
+  taken from unity/design/figma-optimized-art when Codex has an optimised copy of the same picture
 - Data: Localization/ja.json, Models/Partners/catalog.json, ruleset (contracts) and commentary templates (engine)
 - Font: unity/Assets/Resources/Fonts/NotoSansCJKjp-Bold.ttf subset to the characters the prototype can show → woff2
 """
@@ -20,10 +21,17 @@ for d, _, files in os.walk(art_src):
             continue
         src = os.path.join(d, f)
         rel = os.path.relpath(src, art_src)
+        # Codex's Figma-optimised copies of the photoreal key art (unity/design/figma-optimized-art, 1600×900 JPEG and
+        # 450 px cut-outs) are the same pictures the ムチ一閃 screens use: prefer them when present
+        opt = os.path.join(root, 'unity/design/figma-optimized-art', rel)
+        for cand in (opt, os.path.splitext(opt)[0] + '.jpg'):
+            if os.path.exists(cand):
+                src = cand; break
         im = Image.open(src)
         alpha = im.mode in ('RGBA', 'LA') and im.getextrema()[-1][0] < 255
         top_level = os.sep not in rel
-        maxw = 1600 if top_level else (900 if '3DPreviews' in rel else 640)
+        # key art and full-scene plates (Courses, Weather: also the race backdrop) stay 1600 px; cut-outs 640 px
+        maxw = 1600 if top_level or rel.split(os.sep)[0] in ('Courses', 'Weather') else (900 if '3DPreviews' in rel else 640)
         if im.width > maxw:
             im = im.resize((maxw, round(im.height * maxw / im.width)), Image.LANCZOS)
         out = os.path.join(art_dst, os.path.splitext(rel)[0] + ('.png' if alpha else '.jpg'))
@@ -112,7 +120,7 @@ def add(text):
     chars.update(text)
     # esbuild writes non-ASCII as \uXXXX (logic.js holds the server's own labels: shop contents, skill texts, notices)
     chars.update(chr(int(h, 16)) for h in re.findall(r'\\u([0-9a-fA-F]{4})', text) if not 0xd800 <= int(h, 16) <= 0xdfff)
-for p in [os.path.join(site, 'app.js'), os.path.join(site, 'unity.html'), os.path.join(site, 'js', 'logic.js'), os.path.join(data, 'ja.json'), os.path.join(data, 'commentary-ja.json')]:
+for p in [os.path.join(site, 'app.js'), os.path.join(site, 'index.html'), os.path.join(site, 'js', 'logic.js'), os.path.join(data, 'ja.json'), os.path.join(data, 'commentary-ja.json')]:
     add(open(p, encoding='utf-8').read())
 for p in ['server/master/horses.json', 'server/master/gacha.json', 'server/master/products.json', 'server/master/ng-names.json', 'server/master/progression.json', 'server/master/skills.json', 'server/master/items.json', 'server/master/tracks.json']:
     full = os.path.join(root, p)
@@ -130,5 +138,16 @@ from fontTools import subset
 subset.main([os.path.join(root, 'unity/Assets/Resources/Fonts/NotoSansCJKjp-Bold.ttf'), f'--text-file={text_file}',
              '--flavor=woff2', f'--output-file={os.path.join(font_dst, "NotoSansCJKjp-Bold-subset.woff2")}', '--layout-features=*'])
 shutil.copy(os.path.join(root, 'unity/Assets/Resources/Fonts/Noto-CJK-copyright.txt'), os.path.join(font_dst, 'Noto-CJK-copyright.txt'))
+# Regular / Medium weights (Noto Sans JP: the same glyph design as Noto Sans CJK JP) for the light body text of the
+# ムチ一閃 UI, when build.sh could fetch them (otherwise the page falls back to the bold face)
+extra = os.environ.get('MUCHI_FONTS', '')
+for w in ['400Regular', '500Medium']:
+    src = os.path.join(extra, f'NotoSansJP_{w}.ttf')
+    if extra and os.path.exists(src):
+        out = os.path.join(font_dst, f'NotoSansJP-{w}-subset.woff2')
+        subset.main([src, f'--text-file={text_file}', '--flavor=woff2', f'--output-file={out}', '--layout-features=*'])
+        print('font', w, os.path.getsize(out))
+if extra and os.path.exists(os.path.join(extra, 'OFL.txt')):
+    shutil.copy(os.path.join(extra, 'OFL.txt'), os.path.join(font_dst, 'NotoSansJP-OFL.txt'))
 os.remove(text_file)
 print('font glyph chars', len(chars), 'woff2', os.path.getsize(os.path.join(font_dst, 'NotoSansCJKjp-Bold-subset.woff2')))

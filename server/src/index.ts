@@ -1,5 +1,5 @@
 import type { Env } from './env.js';
-import { eventPlayersFrom, handle, makeFriendsService, teamPlayersFrom, type AppContext, type PlayerInvoker, type RaceEntry } from './http/app.js';
+import { eventPlayersFrom, friendIdsFrom, handle, makeFriendsService, makeStudService, teamPlayersFrom, tournamentPlayersFrom, type AppContext, type PlayerInvoker, type RaceEntry } from './http/app.js';
 import { bearer, verifyFirebaseIdToken } from './http/auth.js';
 import { parseStoreNotification, storeSettingsFromEnv } from './http/stores.js';
 import { accountingStoreIndex } from './do/storeIndex.js';
@@ -19,19 +19,26 @@ export { OpsDO } from './do/ops.js';
 export { IntegrityDO } from './do/integrity.js';
 export { TeamDO, TeamDirectoryDO } from './do/team.js';
 export { EventDO } from './do/event.js';
-import { TeamsService, type TeamPort, type TeamView } from './domain/teamService.js';
+export { TournamentDO } from './do/tournament.js';
+import { tournamentSnapshotKey } from './do/tournament.js';
+import { SpectateService, SPECTATE_RATE } from './domain/spectate.js';
+import { TournamentsService, type TournamentBackend } from './domain/tournamentService.js';
+import type { TournamentSummary } from './domain/tournaments.js';
+import { signTicket } from './http/ticket.js';
+import { TeamsService, type TeamLeagueView, type TeamPort, type TeamView } from './domain/teamService.js';
 import type { TeamSummary } from './domain/teams.js';
 import { EventsService } from './domain/eventService.js';
 import { eventBoardKey, eventCronPlan, validateEvents } from './domain/events.js';
 import { cryptoRng } from './domain/rng.js';
 import type { Master } from './domain/master.js';
 import type { OpsApi } from './http/admin.js';
-import { authenticateAdmin, parseAdminTokens, type AdminAuthConfig, type AdminRole } from './ops/admin.js';
+import { authenticateAdmin, parseAdminTokens, RateLimiter, type AdminAuthConfig, type AdminRole } from './ops/admin.js';
 import { DeadLetterService, type DeadLetterOwner, type DeadLetterRegistry, type DeadLetterSource } from './ops/deadLetter.js';
 import { activeConfig } from './ops/activeConfig.js';
 import type { ResolvedConfig } from './ops/config.js';
-import { shardedDirectory } from './do/directory.js';
+import { shardedDirectory, shardedStudDirectory } from './do/directory.js';
 import { boardKey, indexKey, type RolloverState } from './domain/leaderboard.js';
+import { validateLeagueAndWeather } from './domain/league.js';
 import { runScheduled } from './domain/scheduled.js';
 import { DEFAULT_HOLD_POLICY, sweepReplays, SWEEP_CURSOR_KEY, type ReplayBucket, type SweepCursorStore } from './domain/retention.js';
 import { renderTemplate, seasonReminderFor } from './domain/push.js';
@@ -59,6 +66,7 @@ const baseMaster = loadMaster();
 validateGacha(baseMaster); // fail fast on a broken gacha/master definition (REQ-GACHA-003/008)
 validateItems(baseMaster); // REQ-ITEM-*: tickets may not reach paid-only banners, cosmetics reference real assets/patterns
 validateEvents(baseMaster, baseMaster.events); // REQ-EVENT-001
+validateLeagueAndWeather(baseMaster); // REQ-LEAGUE-* and per-course climate (REQ-TRACK-003)
 
 /** REQ-TEAM-*: team orchestration over TeamDOs, the team directory and the season board in LeaderboardDO. */
 function makeTeamsService(env: Env, master: () => Master, player: (uid: string) => PlayerInvoker): TeamsService {
@@ -92,6 +100,7 @@ function makeTeamsService(env: Env, master: () => Master, player: (uid: string) 
       return obj ? obj.json() : { seasonId, board: 'teams', generatedAt: null, total: 0, entries: [] };
     },
     rankOf: async (seasonId, teamId) => (await call(stub(env.LEADERBOARD, `lb:${seasonId}`).teamRankOf!(teamId))) as { rank: number; total: number; generatedAt: number | null } | null,
+    leagueOf: async (seasonId, teamId) => (await call(stub(env.LEADERBOARD, `lb:${seasonId}`).leagueOf!(teamId, Date.now()))) as TeamLeagueView,
   }, cryptoRng);
 }
 
@@ -121,6 +130,43 @@ async function eventsStep(env: Env, now: number): Promise<string[]> {
     }
   }
   return log;
+}
+
+/** REQ-TOUR-005: cron fallback — wake every active tournament (its own alarms do the work). */
+async function tournamentsStep(env: Env, now: number): Promise<string[]> {
+  if (!env.TOURNAMENTS) return [];
+  const list = unwrap(await stub(env.TOURNAMENTS, 'index').indexList!()) as TournamentSummary[];
+  const log: string[] = [];
+  for (const t of list) {
+    if (t.status === 'finished' || t.status === 'cancelled') continue;
+    try {
+      const r = unwrap(await stub(env.TOURNAMENTS, `tour:${t.id}`).wake!(now)) as { status: string };
+      log.push(`tournament:${t.id}:${r.status}`);
+    } catch (e) {
+      log.push(`tournamentError:${t.id}`);
+      console.error('tournament wake failed', t.id, (e as Error).message);
+    }
+  }
+  return log;
+}
+
+/** REQ-TOUR-*: TournamentBackend over TournamentDO instances (`tour:<id>`, index `index`). */
+function tournamentBackend(env: Env): TournamentBackend {
+  const call = async (p: Promise<Envelope<unknown>>) => unwrap(await p);
+  const tour = (id: string) => stub(env.TOURNAMENTS!, `tour:${id}`);
+  return {
+    list: async () => (await call(stub(env.TOURNAMENTS!, 'index').indexList!())) as TournamentSummary[],
+    view: (id, now) => call(tour(id).view!(now)),
+    published: async (id) => {
+      const obj = await env.SNAPSHOTS.get(tournamentSnapshotKey(id));
+      return obj ? obj.json() : null;
+    },
+    me: (id, p, now) => call(tour(id).me!(p, now)),
+    register: (id, p, h, e, now) => call(tour(id).register!(p, h, e, now)),
+    unregister: (id, p, now) => call(tour(id).unregister!(p, now)),
+    create: (def, by, now) => call(tour(def.id).create!(def, by, now)),
+    cancel: (id, reason, _by, now) => call(tour(id).cancel!(reason, now)),
+  };
 }
 
 type Rpc = Record<string, (...a: unknown[]) => Promise<Envelope<unknown>>>;
@@ -184,6 +230,13 @@ function makeDeadLetters(env: Env): DeadLetterService {
       retry: (scope, id) => call(stub(env.EVENTS, `ev:${scope}`).dlRetry!(scope, id)),
       dismiss: async (scope, id, by, note, now) => { await call(stub(env.EVENTS, `ev:${scope}`).dlDismiss!(id, by, note, now)); },
     },
+    ...(env.TOURNAMENTS ? {
+      tournament: {
+        list: (scope: string) => call(stub(env.TOURNAMENTS!, `tour:${scope}`).dlList!()),
+        retry: (scope: string, id: string) => call(stub(env.TOURNAMENTS!, `tour:${scope}`).dlRetry!(id)),
+        dismiss: async (scope: string, id: string, by: string, note: string, now: number) => { await call(stub(env.TOURNAMENTS!, `tour:${scope}`).dlDismiss!(id, by, note, now)); },
+      } satisfies DeadLetterOwner,
+    } : {}),
     settlement: {
       list: (scope) => call(stub(env.RACE_ROOM, scope).dlList!()),
       retry: (scope, id) => call(stub(env.RACE_ROOM, scope).dlRetry!(id)),
@@ -209,6 +262,9 @@ export function adminAuthConfig(env: Env): AdminAuthConfig {
       : undefined,
   };
 }
+
+/** QA r7 #8: spectator ticket rate per viewer (per isolate; the room itself allows one socket per player). */
+const spectateLimiter = new RateLimiter({ read: SPECTATE_RATE, write: SPECTATE_RATE }, 'spectate');
 
 export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
   const master = cfg?.master ?? baseMaster;
@@ -249,6 +305,7 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
       },
     },
     friends: makeFriendsService((uid) => player(uid), shardedDirectory(env.DIRECTORY)),
+    stud: makeStudService(player, shardedStudDirectory(env.DIRECTORY), () => master),
     teams: makeTeamsService(env, () => master, player),
     events: new EventsService(() => master, eventPlayersFrom(player), {
       enqueue: (eventId, p, e) => call(mm().eventEnqueue!(eventId, p, e)),
@@ -260,6 +317,14 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
       },
       rankOf: async (eventId, p) => (await call(stub(env.EVENTS, `ev:${eventId}`).rankOf!(p))) as { rank: number; total: number; generatedAt: number | null } | null,
     }),
+    spectate: new SpectateService({
+      liveRaces: async () => (await call(mm().liveRaces!())) as never,
+      liveRace: async (raceId) => (await call(mm().liveRace!(raceId))) as never,
+      friendIds: friendIdsFrom(player),
+      signTicket: (t) => signTicket(t, env.TICKET_SECRET),
+      admit: (uid, now) => spectateLimiter.take(uid, 'read', now),
+    }),
+    ...(env.TOURNAMENTS ? { tournaments: new TournamentsService(() => master, tournamentBackend(env), tournamentPlayersFrom(player)) } : {}),
     leaderboard: {
       board: async (seasonId, board) => {
         const obj = await env.SNAPSHOTS.get(board === 'index' ? indexKey(seasonId) : boardKey(seasonId, board));
@@ -337,6 +402,8 @@ export default {
       seasonReminder: (t) => broadcastSeasonReminder(env, t),
       teamRolloverStep: async (seasonId) => unwrap(await (stub(env.LEADERBOARD, `lb:${seasonId}`).teamRolloverStep!(seasonId, now))) as RolloverState,
       eventsStep: (t) => eventsStep(env, t),
+      leagueStep: async (seasonId) => unwrap(await (stub(env.LEADERBOARD, `lb:${seasonId}`).leagueStep!(seasonId, now))) as { status: string },
+      tournamentsStep: (t) => tournamentsStep(env, t),
     });
     console.log('scheduled', event.cron, done.join(' '));
   },

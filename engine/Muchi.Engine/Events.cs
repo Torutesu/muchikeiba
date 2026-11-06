@@ -16,7 +16,7 @@ namespace Muchi.Engine
         Kakari = 4,
         /// <summary>Whip used. Value = whips left after this one.</summary>
         Whip = 5,
-        /// <summary>Horse entered the spurt zone.</summary>
+        /// <summary>Horse entered the spurt zone. Value = its rank (0 = leader) at that moment (ranks after the previous tick).</summary>
         SpurtStart = 6,
         /// <summary>Horse crossed the line. Value = 1-based finishing place.</summary>
         Finish = 7,

@@ -8,6 +8,9 @@
   "positionCallIntervalTicks": 240,
   "pendingExpiryTicks": 60,
   "mustSayExpiryTicks": 200,
+  "photoFinishTicks": 2,
+  "duelWindowTicks": 150,
+  "comebackFromRank": 5,
   "phrases": {
     "gate_open": {
       "priority": 100, "mustSay": true,
@@ -104,6 +107,165 @@
       "priority": 105, "mustSay": true,
       "variants": [
         { "id": "result_solo_1", "text": "{name}、見事に走り切りました！" }
+      ]
+    },
+    "spurt@aoba": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "spurt_aoba_1", "text": "さあ青葉の最後の直線！" },
+        { "id": "spurt_aoba_2", "text": "青葉の坂を上って、最後の直線！" }
+      ]
+    },
+    "spurt@kirameki": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "spurt_kirameki_1", "text": "きらめきの直線コースに向いた！" },
+        { "id": "spurt_kirameki_2", "text": "右回りの最終コーナーを回って、さあ直線！" }
+      ]
+    },
+    "spurt@minato": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "spurt_minato_1", "text": "みなとの長い直線、勝負はここから！" },
+        { "id": "spurt_minato_2", "text": "海風を受けて、みなとの最後の直線！" }
+      ]
+    },
+    "spurt@nordhaven": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "spurt_nordhaven_1", "text": "ノルトハーフェンの長い長い直線、残り700m！" },
+        { "id": "spurt_nordhaven_2", "text": "北の港の大きなコーナーを回って、さあ直線勝負！" }
+      ]
+    },
+    "spurt@santalucera": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "spurt_santalucera_1", "text": "サンタルチェラの小回りを抜けて、短い直線！" },
+        { "id": "spurt_santalucera_2", "text": "乾いた砂を蹴って、サンタルチェラの最後の直線！" }
+      ]
+    },
+    "spurt@bellmoor": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "spurt_bellmoor_1", "text": "ベルムーアの一直線、残り400m！" },
+        { "id": "spurt_bellmoor_2", "text": "曲がり角のない直線コース、ここから追い比べ！" }
+      ]
+    },
+    "gate_open@tutorial": {
+      "priority": 100, "mustSay": true,
+      "variants": [
+        { "id": "gate_open_tutorial_1", "text": "ゲートが開きました！まずは落ち着いて、いい位置を取りましょう。" },
+        { "id": "gate_open_tutorial_2", "text": "スタートです！ムチは最後の直線までとっておきましょう。" }
+      ]
+    },
+    "gate_open@ranked": {
+      "priority": 100, "mustSay": true,
+      "variants": [
+        { "id": "gate_open_ranked_1", "text": "ランク戦、ゲートオープン！" },
+        { "id": "gate_open_ranked_2", "text": "負けられない一戦、いっせいにスタート！" }
+      ]
+    },
+    "gate_open@event": {
+      "priority": 100, "mustSay": true,
+      "variants": [
+        { "id": "gate_open_event_1", "text": "イベントレース、ゲートが開いた！" },
+        { "id": "gate_open_event_2", "text": "特別な一戦、各馬いっせいにスタート！" }
+      ]
+    },
+    "late_start@tutorial": {
+      "priority": 60,
+      "variants": [
+        { "id": "late_start_tutorial_1", "text": "{name}は少し出遅れ。大丈夫、まだ取り返せます！" }
+      ]
+    },
+    "focus_whip@tutorial": {
+      "priority": 45,
+      "variants": [
+        { "id": "focus_whip_tutorial_1", "text": "いいタイミング！{name}にムチが入りました！" },
+        { "id": "focus_whip_tutorial_2", "text": "{name}、ムチに応えて加速！この調子です！" }
+      ]
+    },
+    "focus_finish@tutorial": {
+      "priority": 70,
+      "variants": [
+        { "id": "focus_finish_tutorial_1", "text": "{name}は{place}着。よく頑張りました！" }
+      ]
+    },
+    "focus_finish@ranked": {
+      "priority": 70,
+      "variants": [
+        { "id": "focus_finish_ranked_1", "text": "{name}は{place}着でゴール。" },
+        { "id": "focus_finish_ranked_2", "text": "{name}、{place}着に入りました。" }
+      ]
+    },
+    "duel": {
+      "priority": 85,
+      "variants": [
+        { "id": "duel_1", "text": "{name}と{name2}、激しい叩き合い！" },
+        { "id": "duel_2", "text": "{name}が抜き返した！{name2}との一騎打ち！" }
+      ]
+    },
+    "photo_finish": {
+      "priority": 108, "mustSay": true,
+      "variants": [
+        { "id": "photo_finish_1", "text": "際どい！二着の{name}とほとんど並んでゴール！" },
+        { "id": "photo_finish_2", "text": "写真判定にもつれ込みそうな大接戦！" }
+      ]
+    },
+    "comeback_win": {
+      "priority": 110, "mustSay": true,
+      "variants": [
+        { "id": "comeback_win_1", "text": "後方から一気！{name}が差し切った！" },
+        { "id": "comeback_win_2", "text": "大外から{name}、豪快に突き抜けてゴール！" }
+      ]
+    },
+    "wire_win": {
+      "priority": 110, "mustSay": true,
+      "variants": [
+        { "id": "wire_win_1", "text": "{name}、逃げ切った！先頭を譲らずゴールイン！" },
+        { "id": "wire_win_2", "text": "{name}、そのまま押し切ってゴール！" }
+      ]
+    },
+    "going_call_turf_firm": {
+      "priority": 20,
+      "variants": [
+        { "id": "going_call_turf_firm_1", "text": "速い時計の流れ、先頭は{name}。" },
+        { "id": "going_call_turf_firm_2", "text": "パンパンの芝で、ペースは速くなっています。" }
+      ]
+    },
+    "going_call_turf_yielding": {
+      "priority": 20,
+      "variants": [
+        { "id": "going_call_turf_yielding_1", "text": "少し渋った芝、先頭は{name}。" },
+        { "id": "going_call_turf_yielding_2", "text": "稍重の芝、各馬じっと脚をためています。" }
+      ]
+    },
+    "going_call_turf_soft": {
+      "priority": 20,
+      "variants": [
+        { "id": "going_call_turf_soft_1", "text": "重い芝に各馬苦しそう、先頭は{name}。" },
+        { "id": "going_call_turf_soft_2", "text": "道悪の芝、ここはスタミナが問われます。" }
+      ]
+    },
+    "going_call_dirt_fast": {
+      "priority": 20,
+      "variants": [
+        { "id": "going_call_dirt_fast_1", "text": "乾いた砂で時計がかかる流れ、先頭は{name}。" },
+        { "id": "going_call_dirt_fast_2", "text": "力の要るダート、各馬懸命に追走します。" }
+      ]
+    },
+    "going_call_dirt_muddy": {
+      "priority": 20,
+      "variants": [
+        { "id": "going_call_dirt_muddy_1", "text": "脚抜きのいい砂、先頭は{name}。" },
+        { "id": "going_call_dirt_muddy_2", "text": "湿ったダートで、流れは速めです。" }
+      ]
+    },
+    "going_call_dirt_sloppy": {
+      "priority": 20,
+      "variants": [
+        { "id": "going_call_dirt_sloppy_1", "text": "水の浮いたダート、先頭は{name}が逃げる。" },
+        { "id": "going_call_dirt_sloppy_2", "text": "不良馬場、前の馬が止まりません。" }
       ]
     },
     "ground_turf_firm": {

@@ -1,0 +1,15 @@
+/* Additions to Codex's stylesheets for the parts that are wired to real logic (kept in Codex's vocabulary). */
+.boot-note{max-width:1380px;margin:120px auto;text-align:center;color:#798471;font-size:13px;letter-spacing:.05em}
+.design-toolbar a{text-decoration:none;font-size:11px}
+#layout-select{margin-left:0}
+.room-conditions{margin:6px 0 18px;border-top:1px solid #e0e5d7;padding-top:12px}
+.room-conditions summary{cursor:pointer;font-size:12px;color:#526a44;margin-bottom:6px}
+.room-conditions select.name-input{width:100%;margin-bottom:10px}
+.room-row{display:flex;gap:8px}.room-row select.name-input{flex:1;min-width:0}
+.odds-table{margin-top:14px;font-size:11px}.odds-table summary{cursor:pointer;color:#526a44}
+.odds-table table{width:100%;margin-top:8px}.odds-table td{padding:4px 6px;border-top:1px solid #e0e5d7}
+.detail-dialog select.name-input{width:100%;margin-bottom:12px}
+#detail-retire{display:block;margin:14px auto 0}
+/* portrait / mobile layout (toolbar toggle, or automatic for portrait windows): Codex's 390px phone frame */
+html.layout-mobile .design-toolbar,html.layout-mobile .app-frame,html.layout-mobile .prototype-note{max-width:390px}
+html.layout-mobile .app-frame{border-radius:0}

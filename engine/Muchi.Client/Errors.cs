@@ -24,6 +24,8 @@ namespace Muchi.Client
         EventClosed, InsufficientItems,
         /// <summary>409: a care action is still cooling down or today's care limit is reached (REQ-BOND-002).</summary>
         Cooldown,
+        /// <summary>409: the stud fee changed since the borrower's preview; nothing was charged (REQ-BREED-012).</summary>
+        FeeChanged,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -85,6 +87,7 @@ namespace Muchi.Client
             ["EVENT_CLOSED"] = ApiErrorCode.EventClosed,
             ["INSUFFICIENT_ITEMS"] = ApiErrorCode.InsufficientItems,
             ["COOLDOWN"] = ApiErrorCode.Cooldown,
+            ["FEE_CHANGED"] = ApiErrorCode.FeeChanged,
             ["VERIFIER_UNAVAILABLE"] = ApiErrorCode.VerifierUnavailable,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };

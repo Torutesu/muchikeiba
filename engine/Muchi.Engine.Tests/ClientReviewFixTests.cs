@@ -128,6 +128,26 @@ namespace Muchi.Engine.Tests
             Assert.True(f.Opens <= 3, "opens: " + f.Opens);
         }
 
+        /// <summary>QA r7: a full spectator room (or a read-only refusal) fails at once with the code instead of ~45 s of retries.</summary>
+        [Theory]
+        [InlineData("SPECTATORS_FULL")]
+        [InlineData("SPECTATOR_READ_ONLY")]
+        public void SpectatorRefusalsAreFatal(string code)
+        {
+            var f = new ScriptedFactory
+            {
+                OnHello = (n, _) => new[] { "{\"t\":\"err\",\"code\":\"" + code + "\"}" },
+                CloseAfterHello = _ => true,
+            };
+            var s = new RaceSession(f, "wss://x", "rv_spec", "tok");
+            s.Start(0);
+            Pump(s, 0, 600_000);
+            Assert.Equal(RaceSessionState.Failed, s.State);
+            Assert.Equal(code, s.FailureReason);
+            Assert.Equal(1, f.Opens);
+            Assert.Contains(code, RaceSession.FatalRoomErrors);
+        }
+
         [Fact]
         public void ErrorFramesDoNotResetTheReconnectBudget()
         {
@@ -407,7 +427,7 @@ namespace Muchi.Engine.Tests
             var cfg = Cfg(8, 0, 12, SampleRaces.WithGoing(SampleRaces.Turf2000(), Going.Good, night: false));
             var lines = Commentary(cfg, processFromTick: 700);
             Assert.DoesNotContain(lines, l => l.Kind == "gate_open" || l.Kind.StartsWith("ground_", StringComparison.Ordinal));
-            Assert.Contains(lines, l => l.Kind == "finish_win");
+            Assert.Contains(lines, l => Commentator.IsWinKind(l.Kind));
             Assert.Contains(lines, l => l.Kind == "result");
         }
 

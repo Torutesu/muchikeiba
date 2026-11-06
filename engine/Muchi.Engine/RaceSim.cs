@@ -366,7 +366,9 @@ namespace Muchi.Engine
             if (spurt && !h.InSpurt)
             {
                 h.InSpurt = true;
-                _events.Add(new RaceEvent(t, RaceEventType.SpurtStart, i, 0));
+                // Value = the horse's rank (0 = leader) as it reached the spurt mark (ranks of the previous tick);
+                // presentation only, not part of the checksum or result hash
+                _events.Add(new RaceEvent(t, RaceEventType.SpurtStart, i, h.Rank));
             }
 
             Fx top = _topSpeed[i];

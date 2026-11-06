@@ -12,6 +12,7 @@ import { cryptoRng } from '../domain/rng.js';
 import { AppError } from '../domain/errors.js';
 import type { RaceEntry } from '../http/app.js';
 import { createRace, type Assignment, type CreatedRace } from '../race/orchestrate.js';
+import { liveRaceOf, LIVE_RACE_TTL_MS, type LiveRace } from '../domain/spectate.js';
 import { wrap, type Envelope } from './rpc.js';
 import type { RaceRoomDO } from './raceRoom.js';
 
@@ -43,6 +44,8 @@ export class MatchmakerDO extends DurableObject<Env> {
   private assignments = new Map<string, StoredAssignment>();
   /** REQ-EVENT-006: one pool per event. */
   private events = new EventPools<RaceEntry>();
+  /** REQ-SPEC-001: races that can be watched right now (friend rooms, ranked, events, tournament heats). */
+  private live = new Map<string, LiveRace>();
   /** Rows as last written, so persist() writes only what changed. */
   private persisted: RowMap = new Map();
 
@@ -83,6 +86,8 @@ export class MatchmakerDO extends DurableObject<Env> {
         this.assignments.set(rest.join('|'), JSON.parse(v) as StoredAssignment);
       } else if (kind === 'r') {
         rooms.push(JSON.parse(v) as FriendRoom<RaceEntry>);
+      } else if (kind === 'l') {
+        this.live.set(rest.join('|'), JSON.parse(v) as LiveRace);
       }
     }
     for (const list of queues.values()) list.sort((a, b) => a.enqueuedAt - b.enqueuedAt);
@@ -99,6 +104,7 @@ export class MatchmakerDO extends DurableObject<Env> {
     for (const [eventId, list] of Object.entries(this.events.toJSON())) for (const e of list) m.set(`q|${eventId}|${e.playerId}`, JSON.stringify(e));
     for (const [pid, a] of this.assignments) if (!isPendingAssignment(a)) m.set(`a|${pid}`, JSON.stringify(a));
     for (const r of this.friends.toJSON()) m.set(`r|${r.passphrase}`, JSON.stringify(r));
+    for (const [raceId, l] of this.live) m.set(`l|${raceId}`, JSON.stringify(l));
     return m;
   }
 
@@ -135,6 +141,48 @@ export class MatchmakerDO extends DurableObject<Env> {
     const room = this.env.RACE_ROOM.get(this.env.RACE_ROOM.idFromName(created.config.raceId)) as unknown as DurableObjectStub<RaceRoomDO>;
     await room.init({ config: created.config, startAtMs: created.startAtMs, ratings: created.ratings, eventId, visuals: created.visuals });
     for (const [pid, a] of Object.entries(created.assignments)) this.assignments.set(pid, { ...a, at: now });
+    const l = liveRaceOf(created, null);
+    if (l) await this.addLive(l, now);
+  }
+
+  private async addLive(l: LiveRace, now: number) {
+    this.live.set(l.raceId, l);
+    await this.wakeAt(now + LIVE_RACE_TTL_MS); // prune
+  }
+
+  /** Alarm no later than `at` (a far prune alarm must never delay a queue tick). */
+  private async wakeAt(at: number) {
+    const cur = await this.ctx.storage.getAlarm();
+    if (cur === null || cur > at) await this.ctx.storage.setAlarm(at);
+  }
+
+  /** REQ-SPEC-001: list of watchable races (the HTTP layer filters friend rooms by friendship). */
+  async liveRaces(): Promise<Envelope<LiveRace[]>> {
+    return wrap(() => {
+      const now = Date.now();
+      return [...this.live.values()].filter((l) => now - l.startAtMs < LIVE_RACE_TTL_MS);
+    });
+  }
+
+  async liveRace(raceId: string): Promise<Envelope<LiveRace | null>> {
+    return wrap(() => this.live.get(raceId) ?? null);
+  }
+
+  /**
+   * REQ-TOUR-005: a tournament heat was created by its TournamentDO. Its players are assigned to it (so
+   * `/v1/match/status` shows the heat and no other race can start for them) and taken out of the ranked queue.
+   */
+  async registerLiveRace(l: LiveRace, assignments: Record<string, Assignment>): Promise<Envelope<unknown>> {
+    return wrap(async () => {
+      const now = Date.now();
+      for (const [pid, a] of Object.entries(assignments)) {
+        if (this.core.has(pid)) this.core.cancel(pid);
+        this.assignments.set(pid, { ...a, at: now });
+      }
+      await this.addLive(l, now);
+      await this.persist();
+      return { ok: true };
+    });
   }
 
   /** REQ-EVENT-006: queue for an event race (the fee was taken by the player's object). */
@@ -150,7 +198,7 @@ export class MatchmakerDO extends DurableObject<Env> {
       this.assignments.delete(playerId);
       const r = this.events.enqueue(ev, { playerId, rating: entry.rating.r, beginner: false, enqueuedAt: now, payload: entry, quarantined: entry.moderation === 'quarantined' }, now);
       if (r === 'queued') await this.persist();
-      if ((await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(now + TICK_MS);
+      await this.wakeAt(now + TICK_MS);
       return { state: 'queued', eventId };
     });
   }
@@ -175,7 +223,7 @@ export class MatchmakerDO extends DurableObject<Env> {
       this.assignments.delete(playerId);
       this.core.enqueue({ playerId, rating: entry.rating.r, beginner: entry.beginner, enqueuedAt: Date.now(), payload: entry, quarantined: entry.moderation === 'quarantined' });
       await this.persist();
-      if ((await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(Date.now() + TICK_MS);
+      await this.wakeAt(Date.now() + TICK_MS);
       return { state: 'queued' };
     });
   }
@@ -270,6 +318,7 @@ export class MatchmakerDO extends DurableObject<Env> {
   async raceFinished(raceId: string, playerIds: string[]): Promise<Envelope<unknown>> {
     return wrap(async () => {
       for (const p of playerIds) if (this.assignments.get(p)?.raceId === raceId) this.assignments.delete(p);
+      this.live.delete(raceId);
       await this.persist();
       return { ok: true };
     });
@@ -310,8 +359,10 @@ export class MatchmakerDO extends DurableObject<Env> {
     }
     for (const [k, a] of this.assignments) if (!isPendingAssignment(a) && now - a.at > ASSIGNMENT_TTL_MS) this.assignments.delete(k);
     this.friends.prune(now);
+    for (const [k, l] of this.live) if (now - l.startAtMs >= LIVE_RACE_TTL_MS) this.live.delete(k);
     await this.persist();
     if (this.core.size > 0 || this.events.size > 0) await this.ctx.storage.setAlarm(now + TICK_MS);
     else if (this.friends.rooms.size > 0) await this.ctx.storage.setAlarm(now + 10 * 60_000); // prune idle rooms
+    else if (this.live.size > 0) await this.ctx.storage.setAlarm(now + LIVE_RACE_TTL_MS); // prune finished races
   }
 }

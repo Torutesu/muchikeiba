@@ -1,7 +1,7 @@
 import type { GoingAptitude } from './schemas.js';
 import type { BondState } from './bond.js';
 import type { PresetsState } from './presets.js';
-import type { Rarity, Sex, Stats, Style } from './master.js';
+import type { Rarity, Reward, Sex, Stats, Style } from './master.js';
 import type { PushState } from './push.js';
 import type { KpiState } from './kpi.js';
 import type { TimeAttackState } from './timeAttack.js';
@@ -30,6 +30,10 @@ export interface HorseInstance {
   goingAptitude?: GoingAptitude;
   /** Look (REQ-ASSET-003). Filled by migratePlayer for horses stored before it existed. */
   appearance?: Appearance;
+  /** REQ-BREED-014: the sire was another player's stallion (lineage records both sides). */
+  studSire?: { ownerId: string; horseId: string; sireName: string | null; damName: string | null };
+  /** REQ-BREED-017: a trait inherited from a grandparent (隔世遺伝). */
+  atavism?: { trait: 'style' | 'goingAptitude'; value: string; from: string };
 }
 
 export interface PurchaseRecord {
@@ -127,6 +131,8 @@ export interface PlayerState {
   team?: PlayerTeamState;
   /** REQ-EVENT-*: per-event progress, pending entry fee and paid rewards (see events.ts). */
   events?: Record<string, PlayerEventState>;
+  /** REQ-TOUR-007: tournament results (paid once per tournament; newest kept). */
+  tournaments?: Record<string, { name: string; rank: number; at: number; reward: Reward | null }>;
   /** Anti-cheat status pushed by the integrity service (REQ-OPS-035). Absent = ok. */
   moderation?: { status: 'ok' | 'quarantined' | 'banned'; until: number | null; reason: string; at: number };
   /** REQ-BOND-*: care points per horse and account-wide level rewards already paid (created on first care). */
@@ -141,6 +147,34 @@ export interface PlayerState {
   itemLog?: ItemLogEntry[];
   /** REQ-ITEM-003: extra breedings bought with material today (JST date). */
   breedingExtra?: { date: string; count: number };
+  /** REQ-BREED-010..016: stud lending, both as owner and as borrower (created on first use; see stud.ts). */
+  stud?: StudState;
+}
+
+export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }
+export interface StudHistoryEntry {
+  opId: string; role: 'lent' | 'borrowed'; at: number; ownerId: string; borrowerId: string; horseId: string; horseName: string;
+  /** Fee charged to the borrower / paid out to the owner (owner side may be less: daily earn cap). */
+  fee: number; paid: number; foalId: string | null;
+}
+export interface StudState {
+  listings: StudListing[];
+  /** Owner: reservations in flight by opId (released when settled or after reserveTtlMs). */
+  reservations: Record<string, { horseId: string; borrowerId: string; fee: number; at: number; date: string }>;
+  /**
+   * Owner: settled opIds, so a retried settlement never pays twice and a retried reserve resumes the same
+   * horse (pruned by age). Older records are a bare settled-at number.
+   */
+  settled: Record<string, number | { at: number; horseId: string; borrowerId: string; fee: number }>;
+  /** Owner: today's lends per horse and coins earned (JST date). */
+  lends: { date: string; byHorse: Record<string, number>; earned: number };
+  /** Borrower: stud breedings applied, by opId → result (never applied twice). */
+  applied: Record<string, { at: number; result: unknown }>;
+  /** Borrower: fee payments the owner has not acknowledged yet (retried from the object's alarm). */
+  outbox: { opId: string; ownerId: string; horseId: string; fee: number; foalId: string; at: number; nextAt: number; attempts: number }[];
+  /** Borrower: stud breedings today (JST date). */
+  borrows: { date: string; count: number };
+  history: StudHistoryEntry[];
 }
 
 export interface Equipment { tack: Partial<Record<'bridle' | 'saddlecloth', string>>; decor: (string | null)[] }

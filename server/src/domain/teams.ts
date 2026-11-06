@@ -2,9 +2,10 @@ import { AppError } from './errors.js';
 import { defaultEmblem, validateEmblem, type Emblem } from './visuals.js';
 import { grantReward } from './items.js';
 import type { Master, Reward, TeamsConfig } from './master.js';
+import { leagueRewardFor, type LeagueConfig, type LeaguePlace } from './league.js';
 import type { PlayerState } from './player.js';
 import { foldForCompare } from './horses.js';
-import { DAY_MS } from './time.js';
+import { DAY_MS, jstMonthKey } from './time.js';
 
 /**
  * 支部（チーム戦） REQ-TEAM-*. Pure logic shared by the TeamDO (one Durable Object per team, so teams
@@ -30,7 +31,11 @@ export interface TeamMember {
 }
 export interface TeamFormer { playerId: string; joinedAt: number; leftAt: number }
 export interface TeamRequest { playerId: string; displayName: string; at: number }
-export interface TeamSeasonClose { rank: number | null; total: number; eligible: string[]; cursor: number; done: boolean }
+export interface TeamSeasonClose {
+  rank: number | null; total: number; eligible: string[]; cursor: number; done: boolean;
+  /** REQ-LEAGUE-004: the team's final league place this season (fixed with the eligible list). */
+  league?: LeaguePlace | null;
+}
 
 export interface TeamState {
   v: 1; id: string; name: string; createdAt: number; joinPolicy: JoinPolicy; announcement: string;
@@ -42,6 +47,12 @@ export interface TeamState {
   disbanded: boolean;
   /** REQ-TEAM-008: per closed season, reward distribution progress (resumable). */
   closes: Record<string, TeamSeasonClose>;
+  /**
+   * REQ-LEAGUE-003: contributions of members who left during `season`, frozen at the moment they left (by
+   * stint key, see stintKey). League windows score per-stint growth, so a departure keeps what the member
+   * earned for the team inside the window instead of taking it away.
+   */
+  leftStints?: { season: string; byKey: Record<string, number> };
 }
 
 export interface MemberSnapshot { playerId: string; displayName: string; season: string; points: number }
@@ -182,6 +193,9 @@ function pruneFormer(t: TeamState, cfg: TeamsConfig, now: number) {
 export function removeMember(t: TeamState, cfg: TeamsConfig, playerId: string, now: number): TeamMember {
   const m = memberOf(t, playerId);
   if (!m) throw new AppError('NOT_IN_TEAM');
+  const season = jstMonthKey(now);
+  if (t.leftStints?.season !== season) t.leftStints = { season, byKey: {} };
+  t.leftStints.byKey[stintKey(m)] = contribution(m, season, cfg.memberPointsCap);
   t.members = t.members.filter((x) => x.playerId !== playerId);
   t.former.push({ playerId, joinedAt: m.joinedAt, leftAt: now });
   pruneFormer(t, cfg, now);
@@ -275,6 +289,16 @@ export function contribution(m: TeamMember, season: string, cap: number): number
 
 export const teamPoints = (t: TeamState, season: string, cap: number) => t.members.reduce((a, m) => a + contribution(m, season, cap), 0);
 
+/** One membership period of a player (a leave and rejoin starts a new stint with a new baseline). */
+export const stintKey = (m: Pick<TeamMember, 'playerId' | 'joinedAt'>) => `${m.playerId}@${m.joinedAt}`;
+
+/** REQ-LEAGUE-003: contribution per stint this season — current members live, departed ones frozen at leave. */
+export function teamStints(t: TeamState, season: string, cap: number): Record<string, number> {
+  const out: Record<string, number> = t.leftStints?.season === season ? { ...t.leftStints.byKey } : {};
+  for (const m of t.members) out[stintKey(m)] = contribution(m, season, cap);
+  return out;
+}
+
 // ------------------------------------------------------------------------------------- season close
 
 /** JST month "YYYY-MM" → the instant it ends (start of the next JST month). */
@@ -309,17 +333,21 @@ export function teamRewardFor(cfg: TeamsConfig, rank: number | null, points: num
  */
 export async function closeSeasonStep(
   t: TeamState, cfg: TeamsConfig, seasonId: string, rank: number | null, total: number,
-  pay: (playerId: string) => Promise<void>, batch: number, persist: () => Promise<void>,
+  pay: (playerId: string, close: TeamSeasonClose) => Promise<void>, batch: number, persist: () => Promise<void>,
+  league: { cfg: LeagueConfig; place: LeaguePlace | null } | null = null,
 ): Promise<TeamSeasonClose> {
   let c = t.closes[seasonId];
   if (!c) {
-    c = { rank, total, eligible: teamRewardFor(cfg, rank, total) ? eligibleMembers(t, cfg, seasonId) : [], cursor: 0, done: false };
+    // members are paid when there is a team reward or a league reward (REQ-LEAGUE-004); the same tenure rule applies
+    const place = league?.place ?? null;
+    const any = teamRewardFor(cfg, rank, total) !== null || (league !== null && leagueRewardFor(league.cfg, place) !== null);
+    c = { rank, total, eligible: any ? eligibleMembers(t, cfg, seasonId) : [], cursor: 0, done: false, league: place };
     t.closes[seasonId] = c;
     await persist();
   }
   const end = Math.min(c.eligible.length, c.cursor + batch);
   while (c.cursor < end) {
-    await pay(c.eligible[c.cursor]!);
+    await pay(c.eligible[c.cursor]!, c);
     c.cursor++;
     await persist();
   }
@@ -354,10 +382,14 @@ export function buildTeamBoard(seasonId: string, teams: TeamSummary[], now: numb
 
 // ------------------------------------------------------------------------------------- views
 
-export interface TeamSummary { teamId: string; name: string; joinPolicy: JoinPolicy; members: number; points: number; season: string; updatedAt: number; emblem?: Emblem }
+export interface TeamSummary {
+  teamId: string; name: string; joinPolicy: JoinPolicy; members: number; points: number; season: string; updatedAt: number; emblem?: Emblem;
+  /** REQ-LEAGUE-003: contribution per stint (teamStints); absent in summaries stored by older builds. */
+  stints?: Record<string, number>;
+}
 
 export function teamSummary(t: TeamState, season: string, cap: number, now: number): TeamSummary {
-  return { teamId: t.id, name: t.name, joinPolicy: t.joinPolicy, members: t.members.length, points: teamPoints(t, season, cap), season, updatedAt: now, emblem: t.emblem ?? defaultEmblem(t.id) };
+  return { teamId: t.id, name: t.name, joinPolicy: t.joinPolicy, members: t.members.length, points: teamPoints(t, season, cap), season, updatedAt: now, emblem: t.emblem ?? defaultEmblem(t.id), stints: teamStints(t, season, cap) };
 }
 
 /** Public view; requests are shown only to the leader and officers. */
@@ -448,13 +480,23 @@ export function playerLeft(s: PlayerState, cfg: TeamsConfig, teamId: string, now
   return { changed: true, cooldownUntil: p.cooldownUntil };
 }
 
-/** REQ-TEAM-008: pays the team season reward once per season. */
-export function playerTeamReward(s: PlayerState, cfg: TeamsConfig, seasonId: string, teamId: string, rank: number | null, total: number, now: number) {
+/**
+ * REQ-TEAM-008 / REQ-LEAGUE-004: pays the team season reward and the league reward once per season
+ * (both are marked by the same per-season entry, so a retried payout never pays either twice).
+ */
+export function playerTeamReward(
+  s: PlayerState, cfg: TeamsConfig, seasonId: string, teamId: string, rank: number | null, total: number, now: number,
+  league: { cfg: LeagueConfig; place: LeaguePlace | null } | null = null,
+) {
   const p = ensureTeam(s);
-  if (p.rewarded.includes(seasonId)) return { status: 'already' as const, reward: null };
+  if (p.rewarded.includes(seasonId)) return { status: 'already' as const, reward: null, leagueReward: null };
   const reward = teamRewardFor(cfg, rank, total);
+  const leagueReward = league ? leagueRewardFor(league.cfg, league.place) : null;
   p.rewarded.push(seasonId);
   if (p.rewarded.length > 24) p.rewarded.splice(0, p.rewarded.length - 24);
   if (reward) grantReward(s, reward, now, `team ${teamId} season ${seasonId} rank ${rank ?? '-'}`, `team:${seasonId}`);
-  return { status: 'rewarded' as const, reward };
+  if (leagueReward && league?.place) {
+    grantReward(s, leagueReward, now, `league ${seasonId} ${league.place.divisionId} place ${league.place.place} team ${teamId}`, `league:${seasonId}`);
+  }
+  return { status: 'rewarded' as const, reward, leagueReward };
 }

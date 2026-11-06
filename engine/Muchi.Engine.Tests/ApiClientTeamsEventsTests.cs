@@ -33,6 +33,51 @@ namespace Muchi.Engine.Tests
             + "\"members\":[{\"playerId\":\"lead\",\"displayName\":\"L\",\"role\":\"leader\",\"joinedAt\":1,\"contribution\":100},{\"playerId\":\"a\",\"displayName\":\"A\",\"role\":\"officer\",\"joinedAt\":2,\"contribution\":20}],"
             + "\"myRole\":\"leader\",\"requests\":[{\"playerId\":\"b\",\"displayName\":\"B\",\"at\":3}]}";
 
+        // shape of GET /v1/league/me (server/src/domain/league.ts teamLeagueView + TeamsService.league)
+        private const string League = "{\"teamId\":\"tabc123def\",\"season\":\"2026-11\",\"divisions\":[{\"id\":\"s1\",\"name\":\"一部\"},{\"id\":\"s2\",\"name\":\"二部\"},{\"id\":\"s3\",\"name\":\"三部\"}],"
+            + "\"seasonId\":\"2026-11\",\"divisionId\":\"s2\",\"divisionName\":\"二部\",\"place\":1,\"currentWeek\":1,"
+            + "\"row\":{\"teamId\":\"tabc123def\",\"name\":\"あおばRC\",\"divisionId\":\"s2\",\"played\":1,\"won\":1,\"drawn\":0,\"lost\":0,\"byes\":0,\"leaguePoints\":3,\"scoreFor\":120,\"scoreAgainst\":80,\"place\":1},"
+            + "\"table\":[{\"teamId\":\"tabc123def\",\"name\":\"あおばRC\",\"divisionId\":\"s2\",\"played\":1,\"won\":1,\"drawn\":0,\"lost\":0,\"byes\":0,\"leaguePoints\":3,\"scoreFor\":120,\"scoreAgainst\":80,\"place\":1},"
+            + "{\"teamId\":\"tother0001\",\"name\":\"みなと会\",\"divisionId\":\"s2\",\"played\":1,\"won\":0,\"drawn\":0,\"lost\":1,\"byes\":0,\"leaguePoints\":0,\"scoreFor\":80,\"scoreAgainst\":120,\"place\":2}],"
+            + "\"matches\":[{\"index\":0,\"startMs\":1,\"endMs\":2,\"status\":\"scored\",\"opponent\":\"tother0001\",\"opponentName\":\"みなと会\",\"myScore\":120,\"opponentScore\":80,\"bye\":false},"
+            + "{\"index\":1,\"startMs\":2,\"endMs\":3,\"status\":\"open\",\"opponent\":null,\"opponentName\":null,\"myScore\":null,\"opponentScore\":null,\"bye\":true},"
+            + "{\"index\":2,\"startMs\":3,\"endMs\":4,\"status\":\"pending\",\"opponent\":null,\"opponentName\":null,\"myScore\":null,\"opponentScore\":null,\"bye\":false}],"
+            + "\"final\":{\"divisionId\":\"s2\",\"place\":1,\"size\":6,\"reward\":{\"freeCoins\":600},\"nextDivisionId\":\"s1\"}}";
+
+        [Fact]
+        public async Task MyLeagueAndDivisionBoards()
+        {
+            _http.Reply(200, League);
+            var l = await _api.GetMyLeagueAsync();
+            Last("GET", "/v1/league/me");
+            Assert.Equal("s2", l.DivisionId);
+            Assert.Equal(3, l.Divisions.Count);
+            Assert.Equal(3, l.Row.LeaguePoints);
+            Assert.Equal(40, l.Row.ScoreDiff);
+            Assert.Equal("win", l.Matches[0].Outcome);
+            Assert.Null(l.Matches[1].Outcome); // open week
+            Assert.True(l.ThisWeek.Bye);
+            Assert.Equal(600, l.Final.Reward.FreeCoins);
+            Assert.Equal(1, l.Final.Movement(l.Divisions)); // promoted
+
+            _http.Reply(200, "{\"teamId\":null,\"season\":\"2026-11\",\"divisions\":[{\"id\":\"s1\",\"name\":\"一部\"}],\"seasonId\":null,\"divisionId\":null,\"divisionName\":null,\"row\":null,\"place\":null,\"table\":[],\"matches\":[],\"currentWeek\":null,\"final\":null}");
+            var none = await _api.GetMyLeagueAsync();
+            Assert.Null(none.TeamId);
+            Assert.Null(none.Row);
+            Assert.Null(none.ThisWeek);
+            Assert.Null(none.Final);
+
+            _http.Reply(200, "{\"seasonId\":\"2026-11\",\"board\":\"league-s1\",\"generatedAt\":9,\"divisionId\":\"s1\",\"divisionName\":\"一部\",\"total\":2,\"currentWeek\":0,\"final\":false,"
+                + "\"entries\":[{\"teamId\":\"ta\",\"name\":\"A\",\"divisionId\":\"s1\",\"played\":0,\"won\":0,\"drawn\":0,\"lost\":0,\"byes\":0,\"leaguePoints\":0,\"scoreFor\":0,\"scoreAgainst\":0,\"place\":1}],"
+                + "\"weeks\":[{\"index\":0,\"startMs\":1,\"endMs\":2,\"status\":\"open\",\"matches\":[{\"a\":\"ta\",\"b\":\"tb\",\"aStart\":10,\"bStart\":5,\"aScore\":null,\"bScore\":null}]}]}");
+            var b = await _api.GetLeagueBoardAsync("s1");
+            var r = Last("GET", "/v1/leaderboards/current/league-s1");
+            Assert.False(r.Headers.ContainsKey("authorization")); // public snapshot
+            Assert.Equal("一部", b.DivisionName);
+            Assert.Equal("tb", b.Weeks[0].Matches[0].B);
+            Assert.Null(b.Weeks[0].Matches[0].AScore);
+        }
+
         [Fact]
         public async Task CreateAndReadTeam()
         {

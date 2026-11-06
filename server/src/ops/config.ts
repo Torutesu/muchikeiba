@@ -1,10 +1,12 @@
 import { weatherProblems } from '../domain/ground.js';
+import { leagueProblems, teamRewardProblems } from '../domain/league.js';
 import { BASE_BANNED_SILKS, bannedSilksListSchema, bannedSilksProblems, type BannedSilksList } from '../domain/bannedSilks.js';
 import { VISUALS, collectItemIds } from '../domain/visuals.js';
 import { bondProblems } from '../domain/bond.js';
 import { itemsProblems } from '../domain/itemShop.js';
 import { holdPolicyProblems } from '../domain/retention.js';
 import { roomsProblems } from '../domain/presets.js';
+import { studConfigProblems } from '../domain/stud.js';
 import { z } from 'zod';
 import { AppError } from '../domain/errors.js';
 import { buildBanner, splitMasterTrack, type Master, type Progression, type RawBanner } from '../domain/master.js';
@@ -30,6 +32,8 @@ const rawBannerSchema = z.object({
   guaranteePool: z.array(z.object({ templateId: z.string(), ppm: int.min(0) })).optional(),
   pickup: z.object({ templateId: z.string(), ppm: int.min(0) }).optional(),
   startAtMs: int.optional(), endAtMs: int.optional(),
+  // REQ-BREED-020: seasonal templates offered by this banner (validated against their windows)
+  seasonal: z.array(z.string().min(1).max(64)).max(20).optional(),
 }).strict();
 
 export const configBundleSchema = z.object({
@@ -111,13 +115,16 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
   for (const [k, v] of Object.entries(b.progression ?? {})) {
     if (k in base.progression) problems.push(...shapeProblems(`progression.${k}`, (base.progression as unknown as Record<string, unknown>)[k], v));
   }
-  if (b.progression && 'weather' in b.progression) problems.push(...weatherProblems(progression.weather));
+  if (b.progression && 'weather' in b.progression) problems.push(...weatherProblems(progression.weather, base.tracks));
   if (b.progression && 'bond' in b.progression) {
     const paidOnly = new Set((base.items?.cosmetics ?? []).filter((c) => c.currency === 'paidOnly').map((c) => c.id));
     problems.push(...bondProblems(progression.bond, new Set(collectItemIds(base)), paidOnly));
   }
   if (b.progression && 'rooms' in b.progression) problems.push(...roomsProblems(progression.rooms));
+  if (b.progression && 'league' in b.progression) problems.push(...leagueProblems(progression.league, new Set(collectItemIds(base))));
+  if (b.progression && 'teams' in b.progression) problems.push(...teamRewardProblems(progression.teams?.seasonRewards, new Set(collectItemIds(base))));
   if (b.progression && 'replayHoldDays' in b.progression) problems.push(...holdPolicyProblems(progression.replayHoldDays));
+  if (b.progression && ('stud' in b.progression || 'atavismPermille' in b.progression)) problems.push(...studConfigProblems(progression));
 
   const events = (b.events as EventDef[] | undefined) ?? base.events;
   if (b.events) {

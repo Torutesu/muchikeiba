@@ -112,6 +112,22 @@ C# では `AssetKeys.Resolve(key, exists)` が 1→2→null を返す。古い�
   `fx/weather/<weather>` を重ねる（演出のみ）。自分のコースの見た目は `GET /v1/presets` の `courseLookKey`（`scene/look/<id>`）。
 - `entrants[].bondLevel`（任意）は騎手とその馬の絆レベル。`RaceVisuals.BondCalloutSlots(5)` を `Commentator.SetBondCallouts` に渡すと実況が一度だけ触れる。
 
+#### 競馬場の一覧（Round 7 で海外風の3場を追加、REQ-TRACK-004）
+
+すべて架空。シーンは競馬場ごとに1つ（`scene/venue/<venue>`）、馬場面はその競馬場にあるコースの面だけ、ナイターは照明のある競馬場だけ。
+
+| venue | 名前 | 回り | コース | `scene/surface/…` | `scene/night/…` | 雰囲気の目安（制作メモ） |
+|---|---|---|---|---|---|---|
+| `aoba` | 青葉競馬場 | 左 | 芝1600・ダート1400 | `aoba_turf`・`aoba_dirt` | なし | 地方の緑の多い競馬場 |
+| `kirameki` | きらめき競馬場 | 右 | 芝2000 | `kirameki_turf` | なし | 都市近郊の大きなスタンド |
+| `minato` | みなと競馬場 | 左 | 芝2400・ダート1800 | `minato_turf`・`minato_dirt` | `minato` | 港町、海風 |
+| `nordhaven` | ノルトハーフェン競馬場 | 左 | 芝2400（大きなコーナー、直線700m） | `nordhaven_turf` | なし | 北の港町。低い空・石造りのスタンド・重くなりやすい芝（`weather.byTrack`） |
+| `santalucera` | サンタルチェラ競馬場 | 右 | ダート1700（小回り） | `santalucera_dirt` | `santalucera` | 乾いた南の町。白い壁・ヤシ・夜の照明。軽い馬場が多い |
+| `bellmoor` | ベルムーア競馬場 | 右 | 芝1200（コーナーのない直線コース） | `bellmoor_turf` | なし | 丘陵のヒース。直線だけなのでカメラは横からの並走が基本 |
+
+- 回り `direction` はコーナーの向き。直線だけのベルムーアでも値は持つ（スタンドの位置＝コースの右側）。
+- 馬場状態の重ね（`fx/going/<going>`）は全競馬場で共通。
+
 ### 3.6 実況の音声（REQ-ASSET-009）
 - `Commentary` が出す `ClipKeys` を `AssetKeys.VoiceClip(clipKey, horseNameById)` で変換する。
   - 定型の断片 `gate_open_1#0` → `voice/ja/phrase/gate_open_1_p0`（全部 `AllFixedClips()` で列挙でき、マニフェストにも載る）
@@ -119,6 +135,10 @@ C# では `AssetKeys.Resolve(key, exists)` が 1→2→null を返す。古い�
   - 馬名 `name:<horseId>` → `voice/ja/name/n<馬名のFNV-1a 64bit>`（**馬IDではなく名前**で決まる。同じ名前は同じ音声）
 - 馬名の音声は**命名時に生成してCDNに置く**ため、マニフェストにはテンプレート馬の名前だけが載る（kind が `dynamic: true`）。
   見つからなければ `voice/ja/name/default`（例：「この馬」）を使う。
+- Round 7 の実況の多様化（REQ-COMM-002〜004）で増えた定型フレーズも同じ規則でマニフェストに載る（`npm run gen:assets`）。
+  競馬場ごとの直線の一言 `spurt_<venue>_<n>`、口調 `gate_open_tutorial_<n>` など、流れの実況 `duel_<n>`・`photo_finish_<n>`・
+  `comeback_win_<n>`・`wire_win_<n>`、馬場の一言 `going_call_<surface>_<going>_<n>`。収録の口調は、`*_tutorial_*` は
+  やさしく教える調子、`*_ranked_*` は少し緊張感のある調子で。
 
 ---
 

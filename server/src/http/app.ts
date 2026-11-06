@@ -15,11 +15,15 @@ import type { AdminPrincipal } from '../ops/admin.js';
 import { clientBatchSchema } from '../domain/kpi.js';
 import type { TimeAttackService } from '../race/timeAttack.js';
 import { TA_BOARD_RE } from '../domain/timeAttack.js';
+import { LEAGUE_BOARD_RE } from '../domain/league.js';
 import { TeamsService, type TeamPlayers } from '../domain/teamService.js';
 import { EventsService, type EventPlayers } from '../domain/eventService.js';
 import { TEAM_ID_RE } from '../domain/teams.js';
 import { EVENT_ID_RE } from '../domain/events.js';
 import { goingSchema } from '../domain/schemas.js';
+import { StudService, type StudDirectory, type StudPlayers } from '../domain/studService.js';
+import type { SpectateService } from '../domain/spectate.js';
+import type { TournamentEntryInfo, TournamentPlayers, TournamentsService } from '../domain/tournamentService.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -34,8 +38,9 @@ export type PlayerMethod =
   | 'registerDevice' | 'unregisterDevice' | 'pushPreferences' | 'setPushPreferences' | 'kpiIngest'
   | 'taStart' | 'taPrepare' | 'taAbort' | 'taRecord' | 'taView'
   | 'teamPrepareJoin' | 'teamCommitJoin' | 'teamAbortJoin' | 'teamAddOutgoing' | 'teamRemoveOutgoing' | 'teamLeft' | 'teamState' | 'teamSeasonReward' | 'queuePush'
-  | 'eventsView' | 'eventEnter' | 'eventCancel' | 'eventClose'
-  | 'bond' | 'bondLevels' | 'care' | 'presets' | 'setCourseLook' | 'setRoomConditions';
+  | 'eventsView' | 'eventEnter' | 'eventCancel' | 'eventClose' | 'tournamentEntry' | 'tournamentClose' | 'tournamentHistory'
+  | 'bond' | 'bondLevels' | 'care' | 'presets' | 'setCourseLook' | 'setRoomConditions'
+  | 'studView' | 'studList' | 'studUnlist' | 'studPeek' | 'studReserve' | 'studSettle' | 'studPreview' | 'studApply' | 'studAcked' | 'studDue' | 'studRetryLater';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -83,6 +88,12 @@ export interface AppContext {
   teams?: TeamsService;
   /** REQ-EVENT-*: event races. */
   events?: EventsService;
+  /** REQ-BREED-010..016: stud lending. */
+  stud?: StudService;
+  /** REQ-SPEC-*: live race list + spectator tickets. */
+  spectate?: SpectateService;
+  /** REQ-TOUR-*: tournaments. */
+  tournaments?: TournamentsService;
   clock?: () => number;
   paidBalance(): Promise<unknown>;
   adminToken: string | undefined;
@@ -128,6 +139,18 @@ const teams = (c: AppContext) => {
 const events = (c: AppContext) => {
   if (!c.events) throw new AppError('NOT_FOUND', 'events are not available');
   return c.events;
+};
+const stud = (c: AppContext) => {
+  if (!c.stud || !c.master.progression.stud) throw new AppError('NOT_FOUND', 'stud lending is not available');
+  return c.stud;
+};
+const spectate = (c: AppContext) => {
+  if (!c.spectate) throw new AppError('NOT_FOUND', 'spectating is not available');
+  return c.spectate;
+};
+const tournaments = (c: AppContext) => {
+  if (!c.tournaments) throw new AppError('NOT_FOUND', 'tournaments are not available');
+  return c.tournaments;
 };
 const teamIdParam = (s: string) => {
   if (!TEAM_ID_RE.test(s)) throw new AppError('BAD_REQUEST', 'bad team id');
@@ -245,6 +268,26 @@ export const routes: Route[] = [
     const b = await body(r, z.object({ sireId: id, damId: id, useMaterial: z.boolean().optional() }));
     return c.player(u).invoke('breed', u, b.sireId, b.damId, idem(r), b.useMaterial ?? false);
   } },
+  // stud lending (REQ-BREED-010..016): fees in free coins only
+  { method: 'GET', path: '/v1/stud/mine', auth: 'player', handler: async (_r, _p, c, u) => stud(c).mine(u) },
+  { method: 'PUT', path: '/v1/stud/listings/:horseId', auth: 'player', handler: async (r, p, c, u) => {
+    const b = await body(r, z.object({ visibility: z.enum(['friends', 'public']), fee: z.number().int().min(0), dailyLimit: z.number().int().min(1) }));
+    return stud(c).list(u, p.horseId!, b.visibility, b.fee, b.dailyLimit);
+  } },
+  { method: 'DELETE', path: '/v1/stud/listings/:horseId', auth: 'player', handler: async (_r, p, c, u) => stud(c).unlist(u, p.horseId!) },
+  { method: 'GET', path: '/v1/stud/browse', auth: 'player', handler: async (r, _p, c, u) => {
+    const scope = new URL(r.url).searchParams.get('scope') ?? 'friends';
+    if (scope !== 'friends' && scope !== 'public') throw new AppError('BAD_REQUEST', 'scope must be friends|public');
+    return stud(c).browse(u, scope);
+  } },
+  { method: 'POST', path: '/v1/stud/preview', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ ownerId: id, horseId: id, damId: id }));
+    return stud(c).preview(u, b.ownerId, b.horseId, b.damId);
+  } },
+  { method: 'POST', path: '/v1/stud/breed', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ ownerId: id, horseId: id, damId: id, useMaterial: z.boolean().optional(), expectedFee: z.number().int().min(0).optional() }));
+    return stud(c).breed(u, b.ownerId, b.horseId, b.damId, idem(r), b.useMaterial ?? false, b.expectedFee);
+  } },
   // items & cosmetics (REQ-ITEM-*)
   { method: 'GET', path: '/v1/items/tickets', auth: 'none', handler: async (_r, _p, c) => ({ tickets: Object.keys(c.master.items.tickets).map((t) => ticketDisclosure(c.master, t)) }) },
   { method: 'GET', path: '/v1/items/tickets/:itemId/odds', auth: 'none', handler: async (_r, p, c) => ticketDisclosure(c.master, p.itemId!) },
@@ -298,6 +341,19 @@ export const routes: Route[] = [
     if (r?.ok && c.ops) await c.ops.integrity.report(p.raceId!, u, (c.clock ?? Date.now)());
     return r;
   } },
+  // spectating (REQ-SPEC-*)
+  { method: 'GET', path: '/v1/races/live', auth: 'player', handler: async (_r, _p, c, u) => spectate(c).list(u) },
+  { method: 'POST', path: '/v1/race/:raceId/spectate', auth: 'player', handler: async (_r, p, c, u) => spectate(c).spectate(u, p.raceId!) },
+  // tournaments (REQ-TOUR-*)
+  { method: 'GET', path: '/v1/tournaments', auth: 'none', handler: async (_r, _p, c) => tournaments(c).list() },
+  { method: 'GET', path: '/v1/tournaments/history/me', auth: 'player', handler: async (_r, _p, c, u) => tournaments(c).history(u) },
+  { method: 'GET', path: '/v1/tournaments/:tournamentId', auth: 'none', handler: async (_r, p, c) => tournaments(c).detail(p.tournamentId!) },
+  { method: 'GET', path: '/v1/tournaments/:tournamentId/me', auth: 'player', handler: async (_r, p, c, u) => tournaments(c).me(u, p.tournamentId!) },
+  { method: 'POST', path: '/v1/tournaments/:tournamentId/register', auth: 'player', handler: async (r, p, c, u) => {
+    const b = await body(r, z.object({ horseId: id }));
+    return tournaments(c).register(u, p.tournamentId!, b.horseId);
+  } },
+  { method: 'POST', path: '/v1/tournaments/:tournamentId/unregister', auth: 'player', handler: async (_r, p, c, u) => tournaments(c).unregister(u, p.tournamentId!) },
   // profile, titles, stats (REQ-STAT-*, REQ-TITLE-*, REQ-SOCIAL-006)
   { method: 'PUT', path: '/v1/player/profile', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ displayName: z.string().min(1).max(40) }));
@@ -313,7 +369,7 @@ export const routes: Route[] = [
   { method: 'GET', path: '/v1/leaderboards/me', auth: 'player', handler: async (_r, _p, c, u) => c.leaderboard.myRank(u, jstMonthKey((c.clock ?? Date.now)())) },
   { method: 'GET', path: '/v1/leaderboards/:seasonId/:board', auth: 'none', handler: async (_r, p, c) => {
     const season = p.seasonId === 'current' ? jstMonthKey((c.clock ?? Date.now)()) : p.seasonId!;
-    if (!/^\d{4}-\d{2}$/.test(season) || !(/^(class-[A-Z]|rating|index)$/.test(p.board!) || TA_BOARD_RE.test(p.board!))) throw new AppError('BAD_REQUEST', 'bad season or board');
+    if (!/^\d{4}-\d{2}$/.test(season) || !(/^(class-[A-Z]|rating|index)$/.test(p.board!) || TA_BOARD_RE.test(p.board!) || LEAGUE_BOARD_RE.test(p.board!))) throw new AppError('BAD_REQUEST', 'bad season or board');
     return c.leaderboard.board(season, p.board!);
   } },
   // teams / 支部 (REQ-TEAM-*) — /me routes before /:teamId
@@ -337,6 +393,8 @@ export const routes: Route[] = [
   { method: 'POST', path: '/v1/teams/me/transfer', auth: 'player', handler: async (r, _p, c, u) => teams(c).transfer(u, (await body(r, z.object({ playerId: id }))).playerId) },
   { method: 'POST', path: '/v1/teams/me/requests/:playerId/approve', auth: 'player', handler: async (_r, p, c, u) => teams(c).approve(u, p.playerId!) },
   { method: 'POST', path: '/v1/teams/me/requests/:playerId/decline', auth: 'player', handler: async (_r, p, c, u) => teams(c).decline(u, p.playerId!) },
+  // 支部対抗シーズン (REQ-LEAGUE-005): my team's league; division tables are leaderboard boards `league-<divisionId>`
+  { method: 'GET', path: '/v1/league/me', auth: 'player', handler: async (_r, _p, c, u) => teams(c).league(u) },
   { method: 'GET', path: '/v1/teams/search', auth: 'player', handler: async (r, _p, c) => teams(c).search(new URL(r.url).searchParams.get('q') ?? '') },
   { method: 'GET', path: '/v1/teams/leaderboard/:seasonId', auth: 'none', handler: async (_r, p, c) => {
     const season = p.seasonId === 'current' ? jstMonthKey((c.clock ?? Date.now)()) : p.seasonId!;
@@ -444,6 +502,7 @@ export const handle: Handler = async (req, _p, ctx) => {
     return handleAdmin(req, {
       ops: ctx.ops, authenticateAdmin: (r) => ctx.authenticateAdmin!(r), player: ctx.player, leaderboard: ctx.leaderboard,
       paidBalance: () => ctx.paidBalance(), replay: (id) => ctx.race.replay(id), ...(ctx.clock ? { clock: ctx.clock } : {}),
+      ...(ctx.tournaments ? { tournaments: ctx.tournaments } : {}),
     });
   }
   try {
@@ -499,6 +558,17 @@ export function teamPlayersFrom(player: (uid: string) => PlayerInvoker): TeamPla
   };
 }
 
+/** Adapts per-player invocations to the tournament orchestration (REQ-TOUR-*). */
+export function tournamentPlayersFrom(player: (uid: string) => PlayerInvoker): TournamentPlayers {
+  return {
+    tournamentEntry: async (u, h) => (await player(u).invoke('tournamentEntry', u, h)) as unknown as TournamentEntryInfo,
+    history: (u) => player(u).invoke('tournamentHistory', u),
+  };
+}
+
+/** REQ-SPEC-001: the viewer's friend ids (for friend-room visibility). */
+export const friendIdsFrom = (player: (uid: string) => PlayerInvoker) => async (u: string) => (await player(u).invoke('friendsState', u)).ids;
+
 /** Adapts per-player invocations to the event orchestration (REQ-EVENT-*). */
 export function eventPlayersFrom(player: (uid: string) => PlayerInvoker): EventPlayers {
   return {
@@ -507,4 +577,24 @@ export function eventPlayersFrom(player: (uid: string) => PlayerInvoker): EventP
     cancel: (u, e, entryId) => player(u).invoke('eventCancel', u, e, entryId),
     view: (u) => player(u).invoke('eventsView', u),
   };
+}
+
+/** Adapts per-player invocations to the stud lending orchestration (REQ-BREED-010..016). */
+export function studPlayersFrom(player: (uid: string) => PlayerInvoker): StudPlayers {
+  return {
+    view: (u) => player(u).invoke('studView', u),
+    list: (u, h, v, f, l) => player(u).invoke('studList', u, h, v, f, l),
+    unlist: (u, h) => player(u).invoke('studUnlist', u, h),
+    peek: (o, b, h) => player(o).invoke('studPeek', o, b, h),
+    reserve: (o, op, b, h, fee) => player(o).invoke('studReserve', o, op, b, h, fee),
+    preview: (b, snap, d) => player(b).invoke('studPreview', b, snap, d),
+    apply: (b, op, snap, d, um) => player(b).invoke('studApply', b, op, snap, d, um),
+    settle: (o, op, ok, info) => player(o).invoke('studSettle', o, op, ok, info),
+    acked: (b, op) => player(b).invoke('studAcked', b, op),
+    friendIds: async (u) => (await player(u).invoke('friendsState', u)).ids,
+  };
+}
+
+export function makeStudService(player: (uid: string) => PlayerInvoker, dir: StudDirectory, master: () => Master): StudService {
+  return new StudService(studPlayersFrom(player), dir, () => master().progression.stud?.browseLimit ?? 50);
 }

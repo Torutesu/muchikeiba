@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Builds the web prototype (tools/figma-prototype/site): Codex's Unity UI reproduced in HTML, running on
+# Builds the web prototype (tools/figma-prototype/site): Codex's club UI (frontend/, index.html) and Codex's Unity UI
+# reproduced in HTML (unity.html), both running on
 #   - the real server domain logic (server/src/domain → esbuild → site/js/logic.js)
 #   - the real C# race engine + Unity game layer compiled to WebAssembly (engine-wasm → site/engine/_framework)
 #   - Codex's art, localization and font (prepare_assets.py)
@@ -19,6 +20,7 @@ find "$OUT/wwwroot/_framework" -maxdepth 1 -type f \( -name '*.wasm' -o -name '*
 rm -rf "$OUT"
 
 python3 "$HERE/prepare_assets.py" "$ROOT" "$SITE"
+node "$HERE/club-css.cjs" "$ROOT" "$SITE"   # Codex frontend stylesheets + forced mobile layout for the club UI
 
 node "$HERE/test/logic.test.cjs"
 node "$HERE/test/engine.test.mjs"

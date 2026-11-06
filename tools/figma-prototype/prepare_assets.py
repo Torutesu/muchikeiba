@@ -110,7 +110,7 @@ shutil.copy(os.path.join(root, 'engine/Muchi.Client/Resources/Muchi/commentary-j
 chars = set()
 def add(text):
     chars.update(text)
-for p in [os.path.join(site, 'app.js'), os.path.join(site, 'index.html'), os.path.join(data, 'ja.json'), os.path.join(data, 'commentary-ja.json')]:
+for p in [os.path.join(site, 'app.js'), os.path.join(site, 'unity.html'), os.path.join(data, 'ja.json'), os.path.join(data, 'commentary-ja.json')]:
     add(open(p, encoding='utf-8').read())
 for p in ['server/master/horses.json', 'server/master/gacha.json', 'server/master/products.json', 'server/master/ng-names.json', 'server/master/progression.json']:
     full = os.path.join(root, p)

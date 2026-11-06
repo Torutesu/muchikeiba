@@ -132,7 +132,14 @@ public static partial class MuchiRace
         }
         sb.Append(']');
         if (_driver.Done && _driver.Sim?.Result != null)
-            sb.Append(",\"order\":[").Append(string.Join(",", _driver.Sim.Result.Order)).Append("],\"hash\":\"").Append(_driver.Sim.Result.Hash).Append('"');
+        {
+            var res = _driver.Sim.Result;
+            sb.Append(",\"order\":[").Append(string.Join(",", res.Order)).Append("],\"hash\":\"").Append(res.Hash).Append('"');
+            // per place: finish tick (-1 = did not finish) and margin to the previous place in meters (web result table)
+            sb.Append(",\"tickHz\":").Append(_driver.Config.Net.TickHz).Append(",\"finishTicks\":[").Append(string.Join(",", res.FinishTicks)).Append("],\"margins\":[");
+            for (int i = 0; i < res.Margins.Length; i++) { if (i > 0) sb.Append(','); sb.Append(F(res.Margins[i].Raw / (double)Fx.OneRaw)); }
+            sb.Append(']');
+        }
         sb.Append('}');
         return sb.ToString();
     }

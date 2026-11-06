@@ -86,17 +86,18 @@ export const ADMIN_RATE: Record<'read' | 'write', RateLimitPolicy> = {
 /** Token bucket per (principal, kind). In-memory: one ops object serializes all admin traffic. */
 export class RateLimiter {
   private buckets = new Map<string, { tokens: number; at: number }>();
-  constructor(private readonly policy: Record<'read' | 'write', RateLimitPolicy> = ADMIN_RATE) {}
+  constructor(private readonly policy: Record<'read' | 'write', RateLimitPolicy> = ADMIN_RATE, private readonly label = 'admin') {}
 
   take(principalId: string, kind: 'read' | 'write', now: number) {
     const p = this.policy[kind];
     const key = `${principalId}|${kind}`;
+    if (this.buckets.size > 50_000) this.buckets.clear(); // bounded memory (per-viewer limits in a long-lived isolate)
     const b = this.buckets.get(key) ?? { tokens: p.capacity, at: now };
     b.tokens = Math.min(p.capacity, b.tokens + ((now - b.at) / 1000) * p.refillPerSec);
     b.at = now;
     if (b.tokens < 1) {
       this.buckets.set(key, b);
-      throw new AppError('RATE_LIMITED', `admin ${kind} rate limit`);
+      throw new AppError('RATE_LIMITED', `${this.label} ${kind} rate limit`);
     }
     b.tokens -= 1;
     this.buckets.set(key, b);

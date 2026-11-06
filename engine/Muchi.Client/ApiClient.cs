@@ -58,6 +58,9 @@ namespace Muchi.Client
             return b + a.WsPath;
         }
 
+        /// <summary>WebSocket URL for a spectator ticket (REQ-SPEC-002).</summary>
+        public string SpectatorWebSocketUrl(SpectatorTicket t) => RaceWebSocketUrl(new RaceAssignment { WsPath = t.WsPath });
+
         public string NewIdempotencyKey() => _ids.NewId();
 
         // ------------------------------------------------------------------ player
@@ -235,6 +238,59 @@ namespace Muchi.Client
             var b = Pair(sireId, damId);
             if (useMaterial) b.Set("useMaterial", true);
             return Call("POST", "/v1/breeding", b, true, idempotencyKey ?? NewIdempotencyKey(), true, BreedResult.Parse, ct);
+        }
+
+        // ------------------------------------------------------------------ stud lending (REQ-BREED-010..016)
+
+        /// <summary>My listed stallions, today's lend/borrow counters, limits and history.</summary>
+        public Task<StudMine> GetMyStudAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/stud/mine", null, true, null, true, StudMine.Parse, ct);
+
+        /// <summary>
+        /// List (or update) a retired stallion. <paramref name="visibility"/> "friends" | "public"; the fee is in FREE coins
+        /// (0..FeeMax) and <paramref name="dailyLimit"/> lends per day (1..DailyLimitMax). The horse stays yours.
+        /// </summary>
+        public Task<StudListing> ListStudAsync(string horseId, string visibility, int fee, int dailyLimit, CancellationToken ct = default)
+        {
+            var b = JsonNode.Obj();
+            b.Set("visibility", visibility);
+            b.Set("fee", fee);
+            b.Set("dailyLimit", dailyLimit);
+            return Call("PUT", "/v1/stud/listings/" + Seg(horseId), b, true, null, true, StudListing.Parse, ct);
+        }
+
+        public Task UnlistStudAsync(string horseId, CancellationToken ct = default)
+            => Call("DELETE", "/v1/stud/listings/" + Seg(horseId), null, true, null, true, o => o, ct);
+
+        /// <summary>Friends' stallions ("friends") or everyone's public ones ("public"), newest first.</summary>
+        public Task<StudBrowse> BrowseStudAsync(string scope = "friends", CancellationToken ct = default)
+            => Call("GET", "/v1/stud/browse?scope=" + Uri.EscapeDataString(scope ?? "friends"), null, true, null, true, StudBrowse.Parse, ct);
+
+        /// <summary>Preview a stud breeding with one of my retired mares (same functions as the real breeding).</summary>
+        public Task<StudPreview> StudPreviewAsync(string ownerId, string horseId, string damId, CancellationToken ct = default)
+            => Call("POST", "/v1/stud/preview", StudBody(ownerId, horseId, damId), true, null, true, StudPreview.Parse, ct);
+
+        /// <summary>
+        /// Breed my mare with another player's stallion. The fee is charged in free coins and paid to the owner; a retry with
+        /// the same key never charges twice. Counts toward today's breeding allowance (material extra allowed).
+        /// <paramref name="expectedFee"/>: the fee the player saw in the preview; a server that knows the field refuses with
+        /// FEE_CHANGED when the owner changed it meanwhile (sent only when given; older servers ignore unknown keys).
+        /// </summary>
+        public Task<StudBreedResult> StudBreedAsync(string ownerId, string horseId, string damId, string idempotencyKey = null, CancellationToken ct = default, bool useMaterial = false, int? expectedFee = null)
+        {
+            var b = StudBody(ownerId, horseId, damId);
+            if (useMaterial) b.Set("useMaterial", true);
+            if (expectedFee.HasValue) b.Set("expectedFee", expectedFee.Value);
+            return Call("POST", "/v1/stud/breed", b, true, idempotencyKey ?? NewIdempotencyKey(), true, StudBreedResult.Parse, ct);
+        }
+
+        private static JsonNode StudBody(string ownerId, string horseId, string damId)
+        {
+            var b = JsonNode.Obj();
+            b.Set("ownerId", ownerId);
+            b.Set("horseId", horseId);
+            b.Set("damId", damId);
+            return b;
         }
 
         // ------------------------------------------------------------------ items & cosmetics (REQ-ITEM-*)
@@ -461,6 +517,14 @@ namespace Muchi.Client
         public Task<TeamBoard> GetTeamLeaderboardAsync(string seasonId = "current", CancellationToken ct = default)
             => Call("GET", "/v1/teams/leaderboard/" + Seg(seasonId), null, false, null, true, TeamBoard.Parse, ct);
 
+        /// <summary>REQ-LEAGUE-005: my team's league this season (division table, weekly matchups, final place and reward).</summary>
+        public Task<MyLeague> GetMyLeagueAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/league/me", null, true, null, true, MyLeague.Parse, ct);
+
+        /// <summary>A division's table and matchups ("current" season). Public snapshot (the "league-&lt;divisionId&gt;" leaderboard), no auth.</summary>
+        public Task<LeagueBoard> GetLeagueBoardAsync(string divisionId, string seasonId = "current", CancellationToken ct = default)
+            => Call("GET", "/v1/leaderboards/" + Seg(seasonId) + "/league-" + Seg(divisionId), null, false, null, true, LeagueBoard.Parse, ct);
+
         public Task<TeamInfo> GetTeamAsync(string teamId, CancellationToken ct = default)
             => Call("GET", "/v1/teams/" + Seg(teamId), null, true, null, true, TeamInfo.Parse, ct);
 
@@ -495,6 +559,41 @@ namespace Muchi.Client
 
         public Task<MyEvent> GetMyEventAsync(string eventId, CancellationToken ct = default)
             => Call("GET", "/v1/events/" + Seg(eventId) + "/me", null, true, null, true, MyEvent.Parse, ct);
+
+        // ------------------------------------------------------------------ spectating (REQ-SPEC)
+
+        /// <summary>Races you can watch now: yours and your friends' (friend rooms included), then featured public races.</summary>
+        public Task<LiveRaces> GetLiveRacesAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/races/live", null, true, null, true, LiveRaces.Parse, ct);
+
+        /// <summary>A read-only ticket for a live race; open it with <see cref="SpectatorSession"/>. Safe to retry (no state).</summary>
+        public Task<SpectatorTicket> SpectateAsync(string raceId, CancellationToken ct = default)
+            => Call("POST", "/v1/race/" + Seg(raceId) + "/spectate", JsonNode.Obj(), true, null, true, SpectatorTicket.Parse, ct);
+
+        // ------------------------------------------------------------------ tournaments (REQ-TOUR)
+
+        /// <summary>Upcoming, open and running tournaments (by start), then recent results. Public, no auth.</summary>
+        public Task<List<TournamentSummary>> GetTournamentsAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/tournaments", null, false, null, true, TournamentSummary.ParseList, ct);
+
+        /// <summary>Rules, bracket (rounds → heats → results) and final standings. Public, no auth.</summary>
+        public Task<TournamentDetail> GetTournamentAsync(string tournamentId, CancellationToken ct = default)
+            => Call("GET", "/v1/tournaments/" + Seg(tournamentId), null, false, null, true, TournamentDetail.Parse, ct);
+
+        /// <summary>Your registration, current heat (with its race ticket while it runs) and result.</summary>
+        public Task<MyTournament> GetMyTournamentAsync(string tournamentId, CancellationToken ct = default)
+            => Call("GET", "/v1/tournaments/" + Seg(tournamentId) + "/me", null, true, null, true, MyTournament.Parse, ct);
+
+        /// <summary>Register (or change your horse) during the registration window. Idempotent.</summary>
+        public Task<MyTournament> RegisterTournamentAsync(string tournamentId, string horseId, CancellationToken ct = default)
+            => Call("POST", "/v1/tournaments/" + Seg(tournamentId) + "/register", HorseBody(horseId), true, null, true, MyTournament.Parse, ct);
+
+        public Task<bool> UnregisterTournamentAsync(string tournamentId, CancellationToken ct = default)
+            => Call("POST", "/v1/tournaments/" + Seg(tournamentId) + "/unregister", JsonNode.Obj(), true, null, true, o => J.Bool(o, "removed"), ct);
+
+        /// <summary>Your past tournament results (newest first).</summary>
+        public Task<List<TournamentHistoryEntry>> GetTournamentHistoryAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/tournaments/history/me", null, true, null, true, TournamentHistoryEntry.ParseList, ct);
 
         private static JsonNode PlayerBody(string playerId)
         {

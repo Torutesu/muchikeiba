@@ -34,16 +34,33 @@ export interface CreateRaceOptions {
   event?: EventDef;
   /** REQ-ROOM-003: friend rooms race on the host's chosen conditions (null/absent = as before). */
   roomPreset?: RoomConditions | null;
+  /** REQ-TOUR-005: tournament heats start at their scheduled time (default now + START_DELAY_MS). */
+  startAtMs?: number;
+  /** REQ-TOUR-003: the tournament's stat cap (null = none); overrides the mode's own rule. */
+  statCap?: number | null;
+  /** REQ-TOUR-005: a deterministic race id (tournament heats: a resumed creation reaches the same room). Default: random. */
+  raceId?: string;
+}
+
+/** Tickets for every human slot of a race (HMAC of raceId/slot/player/expiry: the same inputs give the same ticket). */
+export async function assignmentsFor(config: RaceStartConfig, startAtMs: number, ticketSecret: string): Promise<Record<string, Assignment>> {
+  const out: Record<string, Assignment> = {};
+  for (const e of config.entrants) {
+    if (e.kind !== 'human') continue;
+    const ticket = await signTicket({ raceId: config.raceId, slot: e.slot, playerId: e.playerId!, exp: startAtMs + TICKET_TTL_MS }, ticketSecret);
+    out[e.playerId!] = { raceId: config.raceId, slot: e.slot, ticket, startAtMs, wsPath: `/v1/race/${config.raceId}/ws` };
+  }
+  return out;
 }
 
 export async function createRace(m: Master, o: CreateRaceOptions): Promise<CreatedRace> {
-  const raceId = randomId('r', o.rng);
+  const raceId = o.raceId ?? randomId('r', o.rng);
   const ev = o.event;
   const room = o.mode === 'friend' ? o.roomPreset ?? null : null;
   const trackId = o.trackId
     ?? (room?.trackId && m.tracks.some((t) => t.id === room.trackId) ? room.trackId : undefined)
     ?? (ev ? ev.trackIds[randInt(o.rng, ev.trackIds.length)]! : o.mode === 'tutorial' ? 'aoba_turf_1600' : m.tracks[randInt(o.rng, m.tracks.length)]!.id);
-  const statCap = ev ? ev.rules.statCap : o.mode === 'ranked' ? Math.min(...o.humans.map((h) => h.statCap)) : null;
+  const statCap = o.statCap !== undefined ? o.statCap : ev ? ev.rules.statCap : o.mode === 'ranked' ? Math.min(...o.humans.map((h) => h.statCap)) : null;
   const ruleset = ev ? eventRuleset(o.ruleset ?? DEFAULT_RULESET, ev) : o.ruleset;
   const config = buildRaceConfig(m, {
     raceId, mode: o.mode, trackId, statCap, cpuCount: o.cpuCount, cpuLevel: o.cpuLevel, rng: o.rng,
@@ -55,13 +72,8 @@ export async function createRace(m: Master, o: CreateRaceOptions): Promise<Creat
     ...(ruleset ? { rulesetOverrides: ruleset } : {}),
     ...(ev?.rules.fixedStats ? { fixedStats: ev.rules.fixedStats } : {}),
   });
-  const startAtMs = o.now + START_DELAY_MS;
-  const assignments: Record<string, Assignment> = {};
-  for (const e of config.entrants) {
-    if (e.kind !== 'human') continue;
-    const ticket = await signTicket({ raceId, slot: e.slot, playerId: e.playerId!, exp: o.now + TICKET_TTL_MS }, o.ticketSecret);
-    assignments[e.playerId!] = { raceId, slot: e.slot, ticket, startAtMs, wsPath: `/v1/race/${raceId}/ws` };
-  }
+  const startAtMs = Math.max(o.startAtMs ?? 0, o.now + START_DELAY_MS);
+  const assignments = await assignmentsFor(config, startAtMs, o.ticketSecret);
   const ratings: Record<string, Rating> = {};
   for (const h of o.humans) ratings[h.playerId] = h.rating;
   // entries queued by older builds have no `visual`; startVisuals falls back to derived looks

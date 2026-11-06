@@ -8,6 +8,8 @@ import {
   type JoinPolicy, type MemberSnapshot, type TeamState, type TeamSummary,
 } from './teams.js';
 import { jstMonthKey } from './time.js';
+import { leagueTick, newLeague, teamLeagueView, type LeagueState } from './league.js';
+export type TeamLeagueView = ReturnType<typeof teamLeagueView>;
 
 /**
  * REQ-TEAM-*: orchestration of a player-facing team action across the team object and the player
@@ -62,6 +64,8 @@ export interface TeamBoardPort {
   /** Public snapshot (R2) of a season's team ranking. */
   board(seasonId: string): Promise<unknown>;
   rankOf(seasonId: string, teamId: string): Promise<{ rank: number; total: number; generatedAt: number | null } | null>;
+  /** REQ-LEAGUE-005: a team's live league view this season (the season's board object). */
+  leagueOf(seasonId: string, teamId: string): Promise<TeamLeagueView>;
 }
 
 export function newTeamId(rng: Rng): string {
@@ -243,6 +247,16 @@ export class TeamsService {
   view(teamId: string, viewer: string | null) { return this.teams.view(teamId, viewer); }
   search(query: string) { return this.directory.search(query.normalize('NFKC').trim().slice(0, 24), 30); }
   leaderboard(seasonId: string) { return this.board.board(seasonId); }
+
+  /** REQ-LEAGUE-005: my team's league this season — division table, weekly matchups and (after the season) its place. */
+  async league(uid: string) {
+    const st = await this.players.state(uid);
+    const season = jstMonthKey(this.clock());
+    const cfg = this.master().progression.league;
+    const divisions = cfg.divisions.map((d) => ({ id: d.id, name: d.name }));
+    if (!st.teamId) return { teamId: null, season, divisions, ...teamLeagueView(null, cfg, '', this.clock()) };
+    return { teamId: st.teamId, season, divisions, ...(await this.board.leagueOf(season, st.teamId)) };
+  }
 }
 
 // ------------------------------------------------------------------------------------- team object core
@@ -356,7 +370,7 @@ export class MemoryTeams implements TeamPort, TeamDirectoryPort, TeamBoardPort {
 
   async search(q: string, limit: number) {
     const f = q.toLowerCase();
-    return [...this.summaries.values()].filter((s) => !f || s.name.toLowerCase().includes(f) || s.teamId === f).sort((a, b) => b.points - a.points).slice(0, limit);
+    return [...this.summaries.values()].filter((s) => !f || s.name.toLowerCase().includes(f) || s.teamId === f).sort((a, b) => b.points - a.points).slice(0, limit).map(({ stints: _s, ...x }) => x); // like the directory: no per-member data
   }
   async board(seasonId: string) {
     const list = [...this.summaries.values()].filter((s) => s.season === seasonId && s.points > 0).sort((a, b) => b.points - a.points);
@@ -366,5 +380,18 @@ export class MemoryTeams implements TeamPort, TeamDirectoryPort, TeamBoardPort {
     const b = await this.board(seasonId);
     const e = b.entries.find((x) => x.teamId === teamId);
     return e ? { rank: e.rank, total: b.total, generatedAt: null } : null;
+  }
+
+  /** League per season, ticked by `leagueStep` (the LeaderboardDO's cron step, in memory). */
+  readonly leagues = new Map<string, LeagueState>();
+  leagueStep(seasonId: string, now: number, carry: Record<string, string> = {}) {
+    const cfg = this.master().progression.league;
+    const st = this.leagues.get(seasonId) ?? newLeague(seasonId, cfg, carry);
+    this.leagues.set(seasonId, st);
+    leagueTick(st, cfg, [...this.summaries.values()].filter((s) => s.season === seasonId), now);
+    return st;
+  }
+  async leagueOf(seasonId: string, teamId: string) {
+    return teamLeagueView(this.leagues.get(seasonId) ?? null, this.master().progression.league, teamId, this.clock());
   }
 }

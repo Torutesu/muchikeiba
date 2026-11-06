@@ -59,7 +59,7 @@ namespace Muchi.Engine.Tests
             var t = Templates();
             Assert.Single(lines, l => l.Kind == "gate_open");
             Assert.Single(lines, l => l.Kind == "spurt");
-            var win = Assert.Single(lines, l => l.Kind == "finish_win");
+            var win = Assert.Single(lines, l => Commentator.IsWinKind(l.Kind));
             Assert.Equal(sim.Result.Order[0], win.Slot);
             var result = Assert.Single(lines, l => l.Kind == "result");
             var names = sim.Result.Order.Take(3).Select(s => sim.Config.Entrants[s].Horse.Name).ToList();
@@ -67,7 +67,7 @@ namespace Muchi.Engine.Tests
             int Pos(string n) { var m = System.Text.RegularExpressions.Regex.Match(result.Text, System.Text.RegularExpressions.Regex.Escape(n) + "(?![0-9A-Za-z])"); return m.Success ? m.Index : -1; }
             int p0 = Pos(names[0]), p1 = Pos(names[1]), p2 = Pos(names[2]);
             Assert.True(p0 >= 0 && p1 > p0 && p2 > p1, "result line lists the top 3 in order: " + result.Text);
-            Assert.True(lines.Last().Kind == "result" || lines.Last().Kind == "finish_win" || lines.Last().Kind == "focus_finish");
+            Assert.True(lines.Last().Kind == "result" || Commentator.IsWinKind(lines.Last().Kind) || lines.Last().Kind == "focus_finish");
 
             // every leader who held the lead long enough (and differs from the last one announced) is announced, in order
             int firstFinish = sim.Events.First(e => e.Type == RaceEventType.Finish).Tick;

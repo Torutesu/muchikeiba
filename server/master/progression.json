@@ -244,6 +244,19 @@
   ],
   "awakeningStatPermillePerLevel": 40,
   "breedingPerDay": 1,
+  "atavismPermille": 40,
+  "stud": {
+    "_comment": "REQ-BREED-010..016 種牡馬の貸し借り。料金は無償コインのみ（有償コインの移転経路は作らない）。上限はすべて暫定値。",
+    "feeMax": 100,
+    "dailyLimitMax": 3,
+    "dailyEarnCap": 300,
+    "borrowPerDay": 2,
+    "maxListings": 3,
+    "reserveTtlMs": 600000,
+    "retryMs": 60000,
+    "historyKeep": 50,
+    "browseLimit": 50
+  },
   "beginnerRaces": 5,
   "seasonRewards": {
     "C": [
@@ -502,6 +515,78 @@
         "reward": {
           "freeCoins": 100
         }
+      },
+      {
+        "id": "ta_nordhaven_2400_bronze",
+        "trackId": "nordhaven_turf_2400",
+        "maxTimeMs": 111600,
+        "reward": {
+          "freeCoins": 30
+        }
+      },
+      {
+        "id": "ta_nordhaven_2400_silver",
+        "trackId": "nordhaven_turf_2400",
+        "maxTimeMs": 106500,
+        "reward": {
+          "freeCoins": 60
+        }
+      },
+      {
+        "id": "ta_nordhaven_2400_gold",
+        "trackId": "nordhaven_turf_2400",
+        "maxTimeMs": 104000,
+        "reward": {
+          "freeCoins": 100
+        }
+      },
+      {
+        "id": "ta_santalucera_dirt_1700_bronze",
+        "trackId": "santalucera_dirt_1700",
+        "maxTimeMs": 77600,
+        "reward": {
+          "freeCoins": 30
+        }
+      },
+      {
+        "id": "ta_santalucera_dirt_1700_silver",
+        "trackId": "santalucera_dirt_1700",
+        "maxTimeMs": 76600,
+        "reward": {
+          "freeCoins": 60
+        }
+      },
+      {
+        "id": "ta_santalucera_dirt_1700_gold",
+        "trackId": "santalucera_dirt_1700",
+        "maxTimeMs": 75200,
+        "reward": {
+          "freeCoins": 100
+        }
+      },
+      {
+        "id": "ta_bellmoor_1200_bronze",
+        "trackId": "bellmoor_turf_1200",
+        "maxTimeMs": 51900,
+        "reward": {
+          "freeCoins": 30
+        }
+      },
+      {
+        "id": "ta_bellmoor_1200_silver",
+        "trackId": "bellmoor_turf_1200",
+        "maxTimeMs": 51200,
+        "reward": {
+          "freeCoins": 60
+        }
+      },
+      {
+        "id": "ta_bellmoor_1200_gold",
+        "trackId": "bellmoor_turf_1200",
+        "maxTimeMs": 50300,
+        "reward": {
+          "freeCoins": 100
+        }
       }
     ]
   },
@@ -519,6 +604,12 @@
       "good": 45,
       "muddy": 22,
       "sloppy": 13
+    },
+    "byTrack": {
+      "_note": "競馬場ごとの気候（重みはそのコースの馬場面の名前だけ）。ないコースは turf / dirt の共通の重み。北の海沿いのノルトハーフェンは渋りやすく、乾いたサンタルチェラは軽い馬場が多く、丘陵のベルムーアはやや渋りやすい。",
+      "nordhaven_turf_2400": { "firm": 5, "good": 35, "yielding": 32, "soft": 28 },
+      "santalucera_dirt_1700": { "fast": 45, "good": 40, "muddy": 10, "sloppy": 5 },
+      "bellmoor_turf_1200": { "firm": 10, "good": 45, "yielding": 28, "soft": 17 }
     },
     "nightFromHourJst": 18,
     "nightToHourJst": 4,
@@ -598,6 +689,31 @@
       "permillePerLevel": 1,
       "maxPermille": 5
     }
+  },
+  "league": {
+    "_comment": "支部対抗シーズン（REQ-LEAGUE-*）。月（シーズン）を週ごとの対戦に区切り、各週のチームのシーズンポイントの伸びで勝敗を決める。報酬はチームのシーズン報酬と一緒に配る（在籍日数ルール共通）。報酬は暫定値。",
+    "divisions": [ { "id": "s1", "name": "一部" }, { "id": "s2", "name": "二部" }, { "id": "s3", "name": "三部" } ],
+    "weeks": 4,
+    "minMembers": 3,
+    "lateEntryHours": 48,
+    "winPoints": 3,
+    "drawPoints": 1,
+    "lossPoints": 0,
+    "byePoints": 1,
+    "promote": 2,
+    "relegate": 2,
+    "topN": 100,
+    "rewards": [
+      { "divisionId": "s1", "maxPlace": 1, "reward": { "freeCoins": 1200 } },
+      { "divisionId": "s1", "maxPlace": 3, "reward": { "freeCoins": 800 } },
+      { "divisionId": "s1", "maxPlace": null, "reward": { "freeCoins": 400 } },
+      { "divisionId": "s2", "maxPlace": 1, "reward": { "freeCoins": 600 } },
+      { "divisionId": "s2", "maxPlace": 3, "reward": { "freeCoins": 400 } },
+      { "divisionId": "s2", "maxPlace": null, "reward": { "freeCoins": 200 } },
+      { "divisionId": "s3", "maxPlace": 1, "reward": { "freeCoins": 300 } },
+      { "divisionId": "s3", "maxPlace": 3, "reward": { "freeCoins": 200 } },
+      { "divisionId": "s3", "maxPlace": null, "reward": { "freeCoins": 100 } }
+    ]
   },
   "rooms": {
     "_note": "フレンド部屋の条件（REQ-ROOM-*）。天気・気温・風は演出のみ。",

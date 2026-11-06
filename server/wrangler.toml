@@ -28,6 +28,10 @@ new_sqlite_classes = ["OpsDO", "IntegrityDO"]
 tag = "v4"
 new_sqlite_classes = ["TeamDO", "TeamDirectoryDO", "EventDO"]
 
+[[migrations]]
+tag = "v5"
+new_sqlite_classes = ["TournamentDO"]
+
 # ------------------------------------------------------------------------------------------------ local (dev)
 [vars]
 ENVIRONMENT = "local"
@@ -89,6 +93,10 @@ class_name = "TeamDirectoryDO"
 [[durable_objects.bindings]]
 name = "EVENTS"
 class_name = "EventDO"
+
+[[durable_objects.bindings]]
+name = "TOURNAMENTS"
+class_name = "TournamentDO"
 
 [[r2_buckets]]
 binding = "REPLAYS"
@@ -171,6 +179,10 @@ class_name = "TeamDirectoryDO"
 name = "EVENTS"
 class_name = "EventDO"
 
+[[env.staging.durable_objects.bindings]]
+name = "TOURNAMENTS"
+class_name = "TournamentDO"
+
 [[env.staging.r2_buckets]]
 binding = "REPLAYS"
 bucket_name = "muchi-replays-staging"
@@ -250,6 +262,10 @@ class_name = "TeamDirectoryDO"
 [[env.production.durable_objects.bindings]]
 name = "EVENTS"
 class_name = "EventDO"
+
+[[env.production.durable_objects.bindings]]
+name = "TOURNAMENTS"
+class_name = "TournamentDO"
 
 [[env.production.r2_buckets]]
 binding = "REPLAYS"

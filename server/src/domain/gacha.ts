@@ -38,6 +38,13 @@ export function bannerProblems(b: BannerDef, m: Pick<Master, 'templateById'>, gm
   // disclosing a pity that settlePityGroups makes unreachable (review r5 #8).
   if (g?.endAtMs !== undefined && (b.endAtMs === undefined || b.endAtMs > g.endAtMs)) p.push(`${b.id}: banner outlives its pity group`);
   for (const t of b.pityTargets) if (!b.pool.some((e) => e.templateId === t)) p.push(`${b.id}: pity target ${t} not in pool`);
+  // REQ-BREED-020: a seasonal horse is offered only by a banner that runs inside its window, on a closing pity group
+  for (const e of [...b.pool, ...b.guaranteePool]) {
+    const se = m.templateById.get(e.templateId)?.seasonal;
+    if (!se) continue;
+    if (b.startAtMs === undefined || b.endAtMs === undefined || b.startAtMs < se.startAtMs || b.endAtMs > se.endAtMs) p.push(`${b.id}: seasonal ${e.templateId} offered outside its window`);
+    if (g && g.endAtMs === undefined) p.push(`${b.id}: seasonal banner needs a closing pity group`);
+  }
   return p;
 }
 
@@ -87,7 +94,9 @@ export function oddsDisclosure(m: Master, b: BannerDef, yenPerCoin = 1.6) {
   const rows = (pool: PoolEntry[]) =>
     pool.map((e) => {
       const t = m.templateById.get(e.templateId)!;
-      return { templateId: t.id, name: t.name, rarity: t.rarity, ppm: e.ppm, rate: pct(e.ppm) };
+      const row: { templateId: string; name: string; rarity: Rarity; ppm: number; rate: string; limited?: { seasonId: string; label: string; endAtMs: number } } = { templateId: t.id, name: t.name, rarity: t.rarity, ppm: e.ppm, rate: pct(e.ppm) };
+      if (t.seasonal) row.limited = { seasonId: t.seasonal.seasonId, label: t.seasonal.label, endAtMs: t.seasonal.endAtMs };
+      return row;
     });
   const totals = (pool: PoolEntry[]) => {
     const out: Record<string, { ppm: number; rate: string }> = {};
@@ -100,6 +109,9 @@ export function oddsDisclosure(m: Master, b: BannerDef, yenPerCoin = 1.6) {
   const pityCost = m.gacha.pityGroups[b.pityGroup]!.cost;
   return {
     bannerId: b.id, name: b.name, currency: b.currency, priceSingle: b.priceSingle, priceTen: b.priceTen,
+    period: { startAtMs: b.startAtMs ?? null, endAtMs: b.endAtMs ?? null },
+    // REQ-BREED-021: limited horses are marked per row; owned ones stay owned after the period
+    limitedNotice: b.pool.some((e) => m.templateById.get(e.templateId)!.seasonal) ? '季節限定の馬は期間終了後この表から外れます。入手済みの馬はそのまま所持・出走・種付けできます。天井ポイントは期間終了時に恒常の天井へ移ります。' : null,
     items: rows(b.pool), rarityTotals: totals(b.pool),
     guarantee: { appliesTo: '10連の10枠目（1〜9枠目にSR以上が出なかった場合のみ、この表で抽選）', items: rows(b.guaranteePool), rarityTotals: totals(b.guaranteePool) },
     pity: { group: b.pityGroup, pullsRequired: pityCost, targets: b.pityTargets, estimatedMaxCostYen: Math.ceil(pityCost * b.priceSingle * yenPerCoin) },

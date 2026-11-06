@@ -7,6 +7,13 @@ import {
 } from '../domain/leaderboard.js';
 import { betterTa, buildTaBoards, type TaEntry } from '../domain/timeAttack.js';
 import { buildTeamBoard, type TeamSummary } from '../domain/teams.js';
+import {
+  buildLeagueBoards, finalizeLeague, leagueTick, newLeague, seasonStartMs, teamLeagueView, type LeaguePlace, type LeagueState,
+} from '../domain/league.js';
+
+/** How long a new season's league waits for the previous season's promotion/relegation before starting without it. */
+const LEAGUE_CARRY_WAIT_MS = 86_400_000;
+type TeamCloseRpc = { closeSeasonStep(s: string, r: number | null, p: number, league: LeaguePlace | null): Promise<Envelope<{ done: boolean }>> };
 
 type TaRowDb = { player_id: string; track_id: string; time_ms: number; finish_tick: number; finish_frac: number; display_name: string; title_id: string | null; horse_name: string; updated_at: number };
 import { unwrap, wrap, type Envelope } from './rpc.js';
@@ -16,6 +23,12 @@ import { newlyDead, reportDeadLetters } from './deadLetters.js';
 
 /** Wall-clock budget of one cron rollover call (the cron runs every 5 minutes). */
 const ROLLOVER_BUDGET_MS = 20_000;
+
+/** "YYYY-MM" → the month before. */
+function previousSeasonOf(seasonId: string): string {
+  const [y, m] = seasonId.split('-').map(Number) as [number, number];
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+}
 
 type EntryRow = { player_id: string; season_id: string; class_id: string; points: number; rating: number; races: number; display_name: string; title_id: string | null; updated_at: number };
 type RankRow = { player_id: string; class_id: string; class_rank: number; class_total: number; rating_rank: number; rating_total: number };
@@ -40,11 +53,17 @@ export class LeaderboardDO extends DurableObject<Env> {
     // teams (REQ-TEAM-009): one summary per team for this season, pushed by the TeamDOs
     this.sql.exec(`CREATE TABLE IF NOT EXISTS team_entries (team_id TEXT PRIMARY KEY, name TEXT NOT NULL, join_policy TEXT NOT NULL, members INTEGER NOT NULL, points INTEGER NOT NULL, updated_at INTEGER NOT NULL)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS team_ranks (team_id TEXT PRIMARY KEY, rank INTEGER NOT NULL, total INTEGER NOT NULL, points INTEGER NOT NULL)`);
+    // REQ-LEAGUE-003: per-stint contributions (JSON) for the league's window scores; added after the table shipped
+    const cols = this.sql.exec<{ name: string }>('PRAGMA table_info(team_entries)').toArray().map((c) => c.name);
+    if (!cols.includes('stints')) this.sql.exec('ALTER TABLE team_entries ADD COLUMN stints TEXT');
   }
 
   private teamSummaries(seasonId: string): TeamSummary[] {
-    return this.sql.exec<{ team_id: string; name: string; join_policy: string; members: number; points: number; updated_at: number }>('SELECT * FROM team_entries').toArray()
-      .map((r) => ({ teamId: r.team_id, name: r.name, joinPolicy: r.join_policy as TeamSummary['joinPolicy'], members: r.members, points: r.points, season: seasonId, updatedAt: r.updated_at }));
+    return this.sql.exec<{ team_id: string; name: string; join_policy: string; members: number; points: number; updated_at: number; stints: string | null }>('SELECT * FROM team_entries').toArray()
+      .map((r) => ({
+        teamId: r.team_id, name: r.name, joinPolicy: r.join_policy as TeamSummary['joinPolicy'], members: r.members, points: r.points, season: seasonId, updatedAt: r.updated_at,
+        ...(r.stints ? { stints: JSON.parse(r.stints) as Record<string, number> } : {}),
+      }));
   }
 
   /** REQ-TEAM-009: latest summary of a team for this season (frozen once the season's rollover started). */
@@ -53,10 +72,10 @@ export class LeaderboardDO extends DurableObject<Env> {
       const st = this.kvGet<RolloverState>('teamRollover');
       if (st && st.status !== 'open') return false;
       this.sql.exec(
-        `INSERT INTO team_entries (team_id, name, join_policy, members, points, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+        `INSERT INTO team_entries (team_id, name, join_policy, members, points, updated_at, stints) VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(team_id) DO UPDATE SET name = excluded.name, join_policy = excluded.join_policy, members = excluded.members, points = excluded.points,
-           updated_at = excluded.updated_at WHERE excluded.updated_at >= team_entries.updated_at`,
-        s.teamId, s.name, s.joinPolicy, s.members, s.points, s.updatedAt,
+           updated_at = excluded.updated_at, stints = excluded.stints WHERE excluded.updated_at >= team_entries.updated_at`,
+        s.teamId, s.name, s.joinPolicy, s.members, s.points, s.updatedAt, s.stints ? JSON.stringify(s.stints) : null,
       );
       this.markDirty();
       return true;
@@ -92,7 +111,10 @@ export class LeaderboardDO extends DurableObject<Env> {
       if (st.status === 'open') {
         st = { ...st, status: 'closing' };
         this.kvPut('teamRollover', st); // freezes team_entries first
-        unwrap(await this.snapshot(seasonId, now, true)); // final team ranks
+        await this.finalizeLeagueNow(seasonId, now); // REQ-LEAGUE-004: final places before anyone is paid
+        unwrap(await this.snapshot(seasonId, now, true)); // final team ranks (and final league tables)
+      } else if (this.kvGet<LeagueState>('league') && !this.kvGet<LeagueState>('league')!.final) {
+        await this.finalizeLeagueNow(seasonId, now); // a run that stopped between freezing and finalizing
       }
       const batch = (await activeConfig(this.env)).master.progression.teams.rolloverBatch;
       const deadline = Date.now() + ROLLOVER_BUDGET_MS;
@@ -100,11 +122,11 @@ export class LeaderboardDO extends DurableObject<Env> {
       while (st.status !== 'closed' && Date.now() < deadline) {
         const todo = this.sql.exec<{ team_id: string; rank: number; points: number }>('SELECT team_id, rank, points FROM team_ranks WHERE team_id > ? ORDER BY team_id LIMIT ?', st.cursor, batch).toArray();
         for (const t of todo) {
-          const team = this.env.TEAMS.get(this.env.TEAMS.idFromName(t.team_id)) as unknown as { closeSeasonStep(s: string, r: number, p: number): Promise<Envelope<{ done: boolean }>> };
+          const team = this.env.TEAMS.get(this.env.TEAMS.idFromName(t.team_id)) as unknown as TeamCloseRpc;
           let done = false;
           let error: string | null = null;
           try {
-            done = unwrap(await team.closeSeasonStep(seasonId, t.rank, t.points)).done;
+            done = unwrap(await team.closeSeasonStep(seasonId, t.rank, t.points, this.leaguePlace(t.team_id))).done;
           } catch (e) {
             error = (e as Error).message;
           }
@@ -131,6 +153,68 @@ export class LeaderboardDO extends DurableObject<Env> {
       }
       return st;
     }
+  }
+
+  // ---- 支部対抗シーズン (REQ-LEAGUE-*) ----
+  private leaguePlace(teamId: string): LeaguePlace | null {
+    return this.kvGet<LeagueState>('league')?.final?.places[teamId] ?? null;
+  }
+
+  private async finalizeLeagueNow(seasonId: string, now: number) {
+    const st = this.kvGet<LeagueState>('league');
+    if (!st || st.final) return;
+    const cfg = (await activeConfig(this.env)).master.progression.league;
+    finalizeLeague(st, cfg, this.teamSummaries(seasonId), now);
+    this.kvPut('league', st);
+    this.markDirty();
+  }
+
+  /** Next season's divisions decided by this season's final tables; null while this season's league is not final yet. */
+  async leagueCarry(): Promise<Envelope<{ ready: boolean; next: Record<string, string> }>> {
+    return wrap(() => {
+      const st = this.kvGet<LeagueState>('league');
+      if (!st) return { ready: true, next: {} };
+      return st.final ? { ready: true, next: st.final.next } : { ready: false, next: st.divisionOf };
+    });
+  }
+
+  /**
+   * REQ-LEAGUE-001..003: one cron tick of this season's league — created on first use from the previous
+   * season's promotion/relegation, then windows opened, late teams admitted, ended windows scored.
+   * Once the season's team rollover started the league is final and this is a no-op.
+   */
+  async leagueStep(seasonId: string, now: number): Promise<Envelope<{ status: string }>> {
+    return wrap(async () => {
+      const tr = this.kvGet<RolloverState>('teamRollover');
+      if ((tr && tr.status !== 'open') || seasonIsOver(seasonId, now)) return { status: 'final' };
+      const cfg = (await activeConfig(this.env)).master.progression.league;
+      let st = this.kvGet<LeagueState>('league');
+      let changed = false;
+      if (!st) {
+        const prevId = previousSeasonOf(seasonId);
+        const prev = this.env.LEADERBOARD.get(this.env.LEADERBOARD.idFromName(`lb:${prevId}`)) as unknown as { leagueCarry(): Promise<Envelope<{ ready: boolean; next: Record<string, string> }>> };
+        const carry = unwrap(await prev.leagueCarry());
+        // wait (a few cron runs) for last season's tables to be final; never block the new league for long
+        if (!carry.ready && now < seasonStartMs(seasonId) + LEAGUE_CARRY_WAIT_MS) return { status: 'waiting' };
+        st = newLeague(seasonId, cfg, carry.next);
+        changed = true;
+      }
+      if (leagueTick(st, cfg, this.teamSummaries(seasonId), now)) changed = true;
+      if (changed) {
+        this.kvPut('league', st);
+        this.markDirty();
+      }
+      const open = st.weeks.find((w) => w.status === 'open');
+      return { status: open ? `week${open.index + 1}` : 'idle' };
+    });
+  }
+
+  /** REQ-LEAGUE-005: a team's live league view (its division table, matchups, final place). */
+  async leagueOf(teamId: string, now: number): Promise<Envelope<ReturnType<typeof teamLeagueView>>> {
+    return wrap(async () => {
+      const cfg = (await activeConfig(this.env)).master.progression.league;
+      return teamLeagueView(this.kvGet<LeagueState>('league'), cfg, teamId, now);
+    });
   }
 
   private taEntries(seasonId: string, where = '', ...args: (string | number)[]): TaEntry[] {
@@ -224,6 +308,14 @@ export class LeaderboardDO extends DurableObject<Env> {
       const tb = buildTeamBoard(seasonId, this.teamSummaries(seasonId), now, m.progression.teams.topN);
       snap.files.unshift({ key: boardKey(seasonId, 'teams'), body: tb.file as unknown as BoardFile });
       idx?.boards.push({ board: 'teams', total: tb.file.total, key: boardKey(seasonId, 'teams') });
+      // league tables (REQ-LEAGUE-005), one file per division, listed in the same index
+      const league = this.kvGet<LeagueState>('league');
+      if (league) {
+        for (const f of buildLeagueBoards(league, m.progression.league, now)) {
+          snap.files.unshift({ key: boardKey(seasonId, f.board), body: f as unknown as BoardFile });
+          idx?.boards.push({ board: f.board, total: f.total, key: boardKey(seasonId, f.board) });
+        }
+      }
       this.sql.exec('DELETE FROM team_ranks');
       for (const [tid, r] of tb.ranks) this.sql.exec('INSERT INTO team_ranks (team_id, rank, total, points) VALUES (?, ?, ?, ?)', tid, r.rank, r.total, r.points);
       this.sql.exec('DELETE FROM ta_ranks');
@@ -313,9 +405,9 @@ export class LeaderboardDO extends DurableObject<Env> {
         }
         : async () => {
           const t = this.sql.exec<{ rank: number; points: number }>('SELECT rank, points FROM team_ranks WHERE team_id = ?', itemId).toArray()[0];
-          const team = this.env.TEAMS.get(this.env.TEAMS.idFromName(itemId)) as unknown as { closeSeasonStep(s: string, r: number | null, p: number): Promise<Envelope<{ done: boolean }>> };
+          const team = this.env.TEAMS.get(this.env.TEAMS.idFromName(itemId)) as unknown as TeamCloseRpc;
           // a team pays its members in bounded steps; keep stepping (each step is idempotent) until done
-          for (let i = 0; i < 50; i++) if (unwrap(await team.closeSeasonStep(seasonId, t ? t.rank : null, t ? t.points : 0)).done) return;
+          for (let i = 0; i < 50; i++) if (unwrap(await team.closeSeasonStep(seasonId, t ? t.rank : null, t ? t.points : 0, this.leaguePlace(itemId))).done) return;
           throw new Error('team payout did not finish in 50 steps');
         };
       const out = await retryRolloverItem(st, itemId, run, () => this.kvGet<RolloverWithLog>(this.dlKey(kind)));

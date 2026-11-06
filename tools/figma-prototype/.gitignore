@@ -13,3 +13,4 @@ site/club/codex/
 *.zip
 .screens-before/
 .cache/
+.compare-before/

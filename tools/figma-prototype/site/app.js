@@ -534,7 +534,7 @@ function ResultPanel(kicker) {
 }
 function ResultScreen(f, rewards, passXp, pass, missions) {
   const r = f.result, first = raceCtx.ftue;
-  Clear('result'); SetArt('Art/race-result');
+  Clear('result'); SetArt(r.place >= 1 && r.place <= 3 ? 'Art/race-result' : 'Art/first-ride'); // the celebration art only for a top 3
   const p = ResultPanel(`レース結果　/　${raceCtx.trackName}`);
   // ① place (big)
   Txt(r.place > 0 ? `${r.place}着` : '—', 40, 118, 540, 100, r.place === 1 ? GOLD : WHITE, p, { weight: 700, ls: '.04em', lh: 1.2, cls: 'num' });

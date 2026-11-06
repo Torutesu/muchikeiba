@@ -22,5 +22,6 @@
     <Compile Include="../../../unity/Assets/Muchi/Game/CommentaryFeed.cs" Link="Game/CommentaryFeed.cs" />
     <Compile Include="../../../unity/Assets/Muchi/Game/CourseFrame.cs" Link="Game/CourseFrame.cs" />
     <Compile Include="../../../unity/Assets/Muchi/Game/RaceResultModel.cs" Link="Game/RaceResultModel.cs" />
+    <Compile Include="../../../unity/Assets/Muchi/Game/GachaModels.cs" Link="Game/GachaModels.cs" />
   </ItemGroup>
 </Project>

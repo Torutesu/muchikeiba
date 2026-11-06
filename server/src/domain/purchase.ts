@@ -123,6 +123,8 @@ export function applyVerifiedPurchase(m: Master, s: PlayerState, platform: Purch
   // A completed store payment is always credited, even for a once-only product bought again (the app
   // skipped the intent check, or the store re-offered it); support refunds it.
   if (p.once && s.purchases.some((x) => x.productId === p.id)) (s.supportFlags ??= []).push(`once_duplicate:${p.id}:${r.transactionId}`);
+  // REQ-UXS-019: a promotion pack is sold once its class is reached; one credited without that (intent skipped) is flagged too
+  if (p.kind === 'promotion' && p.classId && !classReached(m, s, p.classId)) (s.supportFlags ??= []).push(`promotion_not_reached:${p.id}:${r.transactionId}`);
   const month = jstMonthKey(r.purchasedAt);
   const ab = ageBand(m, s, now);
   const limit = ab?.band.monthlyLimitYen ?? null;

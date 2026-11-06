@@ -126,4 +126,27 @@ describe('r8 QA: account deletion vs the player\'s own transactions', () => {
     await svc.nudgeTaBeaten('p', 'x', 'kirameki_turf_2000');
     expect(repo.data.has('p')).toBe(false);
   });
+
+  it('a pass refund that arrives after the balances were forfeited takes back only what the pass really gave', async () => {
+    const { svc, repo, store, advance, now } = setup();
+    await svc.bootstrap('p');
+    await svc.setAge('p', 1990, 1, false);
+    await svc.purchase('p', 'fake', 'season_pass', store.issue({ transactionId: 'TXP', productId: 'season_pass', purchasedAt: now(), priceYen: 1000 }));
+    const st = JSON.parse(repo.data.get('p')!); st.seasonPass.xp = 250; repo.data.set('p', JSON.stringify(st)); // level 2
+    await svc.claimPass('p', 'premium', 1, 'c:k1');
+    await svc.claimPass('p', 'free', 1, 'c:k2');
+    const t = ((await svc.requestDeletion('p', null)) as { confirmToken: string }).confirmToken;
+    await svc.requestDeletion('p', t);
+    advance(DAY); // still inside the season
+    await svc.deletionMarkStep('p', 'friends');
+    await svc.deletionFinalize('p');
+    const r = await svc.refund('p', 'TXP');
+    // premium level 1 was granted (50 free coins + 1 breeding material); levels never reached or paid are not "taken back"
+    expect(r.linkedClawback).toEqual({ freeCoins: 50, items: { breeding_material: 1 } });
+    // nothing is paid out automatically at the season close either
+    advance(30 * DAY);
+    await svc.deletionMarkStep('p', 'stud');
+    const after = await svc.state('p');
+    expect(after.ledger.filter((e) => e.reason.includes('auto, season'))).toEqual([]);
+  });
 });

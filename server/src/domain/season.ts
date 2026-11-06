@@ -48,7 +48,8 @@ export function rollSeason(m: Master, s: PlayerState, now: number): { closed: bo
   s.season = { id, classId: classes[next]!.id, points: 0, races: 0 };
   // REQ-UXS-021: unclaimed pass rewards of the closing season are granted in this same transaction as the reset
   closePassSeason(m, s, now);
-  s.seasonPass = { expiresAt: s.seasonPass.expiresAt, xp: 0, claimed: { free: [], premium: [] }, seasonId: id };
+  const forfeitedAt = s.seasonPass.forfeitedAt; // REQ-UXS-040: stays given up until the wipe
+  s.seasonPass = { expiresAt: s.seasonPass.expiresAt, xp: 0, claimed: { free: [], premium: [] }, seasonId: id, ...(forfeitedAt !== undefined ? { forfeitedAt } : {}) };
   return { closed: true, from, to: classes[next]!.id };
 }
 

@@ -114,7 +114,9 @@ export interface PlayerState {
   /** partnerHorseId: the first partner granted by POST /v1/player/partner (REQ-UXS-002). */
   flags: { tutorialGachaUsed: boolean; partnerHorseId?: string };
   /** `boostXp`: XP added by a Pass+ purchase this season (REQ-UXS-019; removed again if it is refunded). */
-  seasonPass: { expiresAt: number; xp: number; claimed: { free: number[]; premium: number[] }; seasonId: string; boostXp?: number };
+  seasonPass: { expiresAt: number; xp: number; claimed: { free: number[]; premium: number[] }; seasonId: string; boostXp?: number;
+    /** REQ-UXS-040: given up by an account deletion (no automatic grant at the season close). */
+    forfeitedAt?: number };
   /**
    * streakDay: normal 7-day cycle days claimed. beginnerDay (REQ-UXS-013): beginner-table days claimed; absent on
    * states stored before it existed (players who never claimed start the beginner table, the others skip it).

@@ -83,6 +83,7 @@ export function notePassClaim(m: Master, s: PlayerState, track: PassTrack, level
 export function closePassSeason(m: Master, s: PlayerState, now: number): PassSeasonRecord | null {
   const sp = s.seasonPass;
   const seasonId = sp.seasonId ?? s.season.id;
+  if (sp.forfeitedAt !== undefined) return null; // REQ-UXS-040: given up by an account deletion
   if ((s.passHistory ?? []).some((h) => h.seasonId === seasonId)) return null;
   const level = levelOf(m, sp.xp);
   const premium = sp.expiresAt >= seasonEndMs(seasonId);
@@ -204,8 +205,8 @@ export function forfeitPass(m: Master, s: PlayerState, now: number) {
   const r = passRemaining(m, s, now);
   const sp = s.seasonPass;
   sp.expiresAt = Math.min(sp.expiresAt, now);
-  // every level counts as paid out so a season close cannot auto-grant to a deleted account
-  const all = Array.from({ length: m.progression.passMaxLevel }, (_, i) => i + 1);
-  sp.claimed = { free: all, premium: all };
+  // the season close grants nothing to a deleted account. `claimed` keeps what was really paid out: a refund that
+  // arrives before the wipe takes back exactly that (marking every level claimed made it claw back 30 levels).
+  sp.forfeitedAt = now;
   return r;
 }

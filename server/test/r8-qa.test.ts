@@ -293,7 +293,7 @@ describe('r8 QA follow-up', () => {
     const s = newPlayer('p', T0, '2026-11');
     const p = m.products.find((x) => x.kind === 'allowance')!;
     s.shop = { offers: {}, allowances: [{ txId: 'old', productId: p.id, startDate: '2025-01-01', days: 30, dailyFreeCoins: 30, claimed: [] }] };
-    for (let i = 0; i < 12; i++) grantAllowance(s, p, `tx${i}`, T0);
+    for (let i = 0; i < 12; i++) grantAllowance(m, s, p, `tx${i}`, T0);
     expect(s.shop.allowances.map((a) => a.txId)).not.toContain('old');
     expect(s.shop.allowances).toHaveLength(12);
   });

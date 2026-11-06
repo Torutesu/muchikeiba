@@ -160,6 +160,8 @@ export interface Progression {
   experiments?: import('./onboarding.js').ExperimentDef[];
   accountDeletion?: import('./accountDeletion.js').AccountDeletionConfig;
   nudges?: import('./nudges.js').NudgeConfig;
+  /** REQ-DAY-001: the game-day rollover hour (JST) with its switch-over instant. Absent = DEFAULT_DAY_ROLLOVER. */
+  dayRollover?: import('./time.js').DayRollover;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */

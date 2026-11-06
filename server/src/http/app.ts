@@ -11,7 +11,7 @@ import type { SubscriptionStatus, VerifiedReceipt } from '../domain/purchase.js'
 import type { PurchaseRecord } from '../domain/player.js';
 import { appleAccountToken, googleAccountId } from '../stores/binding.js';
 import { FriendsService, type Directory, type FriendPlayers } from '../domain/friends.js';
-import { jstMonthKey } from '../domain/time.js';
+import { dayRule, jstMonthKey } from '../domain/time.js';
 import { handleAdmin, type OpsApi } from './admin.js';
 import type { AdminPrincipal } from '../ops/admin.js';
 import { clientBatchSchema } from '../domain/kpi.js';
@@ -204,7 +204,7 @@ const ok = (x: unknown) => x;
 export const routes: Route[] = [
   { method: 'GET', path: '/v1/health', auth: 'none', handler: async () => ({ ok: true }) },
   // REQ-OPS-007: clients cache master data per config version and refetch when it changes
-  { method: 'GET', path: '/v1/config', auth: 'none', handler: async (_r, _p, c) => ({ ...(c.configInfo ? await c.configInfo() : { versionId: 'base', hash: 'base', rulesetVersion: null, activatedAt: null }), visualsVersion: VISUALS.version }) },
+  { method: 'GET', path: '/v1/config', auth: 'none', handler: async (_r, _p, c) => ({ ...(c.configInfo ? await c.configInfo() : { versionId: 'base', hash: 'base', rulesetVersion: null, activatedAt: null }), visualsVersion: VISUALS.version, dayRollover: dayRule(c.master) }) }, // REQ-DAY-006
   // visual contract (REQ-ASSET-*, contracts/assets.md): catalog the client caches by `version`
   { method: 'GET', path: '/v1/visuals', auth: 'none', handler: async (_r, _p, c) => visualsCatalog(c.master) },
   { method: 'PUT', path: '/v1/player/silks', auth: 'player', handler: async (r, _p, c, u) => {

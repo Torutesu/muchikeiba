@@ -286,3 +286,15 @@
 2. エディタ：タイトル→同意→初レース（ムチ0回で負け→もう一度×2→3回目で勝ち）→命名→10連のめくり→2戦目→結果→通知の前置き→ホーム を、サーバーなし／`npm run dev` ありの両方で通す。
 3. ショップの4状態（生年月未登録・登録済み・18歳未満・上限超え）と削除予定中を `npm run dev` で再現（`x-dev-user` を変えれば新規プレイヤー。年齢は購入確認の画面から登録）。
 4. 本番ビルドの文字列検査（G10）と、マニフェストのキー検査の結果を PR に貼る。
+
+## 6. 追記（Round 9）：ゲーム日の切り替え 4:00（REQ-DAY-001〜006）
+
+サーバーは 2026-12-01 04:00 JST から日次のリセットを **4:00 JST** に切り替える（`progression.dayRollover`、`contracts/protocol.md` §15）。切り替え時刻は定数ではなくリモート設定で変わり得るので、端末も定数を持たない。
+
+- `engine/Muchi.Client`：`GetConfigAsync()` の `ConfigInfo.DayRollover`（`DayRolloverInfo`：`HourJst`・`PreviousHourJst`・`EffectiveAtMs`、`Key(ms)`・`Index(ms)`・`DaysUntil(endMs, nowMs)`・`HourAt(ms)`）を追加済み。古いサーバー（フィールドなし）は `null`。
+- `unity/Assets/Muchi/Game/GameDay.cs`：✅ 済（`claude/round9`）。次の5点を入れた。画面側は `GameDay` と各ビューモデルの文言をそのまま使う。
+  1. 定数 `RolloverHourJst` は削除。`GameBackend.InitializeAsync` が起動時に `GetConfigAsync()` を呼び、`ConfigInfo.DayRollover` を `GameDay.Use(...)` で入れる（`GameBackend.Config` にも保持）。`null`（古いサーバー）は 0:00・切り替えなし、取得失敗は直前の規則のまま。
+  2. `GameDay.Index`／`Key`／`DaysUntil`／`HourAt` は `DayRolloverInfo` の同名メソッドに委ねる（引数で規則を渡すこともできる）。
+  3. 「明日 4:00 に更新」は `GameDay.NextResetLabel(now)`（次のゲーム日の最初の時刻。切り替えの日は 12-02 04:00、0:00〜3:59 は「今日 4:00」）。`MissionBoardModel.DailyLine` と `AllowanceModel` の受取済みの文言がこれを使う。
+  4. `AllowanceModel.Stale`・`ClaimedToday` は `GameDay.Key` 経由のまま（4:00 で取り直し）。
+  5. GameChecks `unity/Checks~/GameChecks/Round9DayChecks.cs`：03:59／04:00 JST、切り替えの日（12-01 00:30 と 12-02 00:30 が同じ `2026-12-01`）、次の更新時刻、残り日数、/v1/config からの読み込み（フィールドなし・取得失敗を含む）。

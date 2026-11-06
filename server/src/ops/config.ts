@@ -19,6 +19,7 @@ import { trackSchema } from '../domain/schemas.js';
 import { eventProblems } from '../domain/events.js';
 import type { EventDef } from '../domain/master.js';
 import { canonicalJson, hashOf } from './hash.js';
+import { dayRolloverChangeProblems, dayRolloverProblems, dayRule, type DayRollover } from '../domain/time.js';
 
 /**
  * Remote config (REQ-OPS-002..007). A bundle changes the parts of the game that may change without an
@@ -128,6 +129,7 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
   if (b.progression && 'rooms' in b.progression) problems.push(...roomsProblems(progression.rooms));
   if (b.progression && 'league' in b.progression) problems.push(...leagueProblems(progression.league, new Set(collectItemIds(base))));
   if (b.progression && 'teams' in b.progression) problems.push(...teamRewardProblems(progression.teams?.seasonRewards, new Set(collectItemIds(base))));
+  if (b.progression && 'dayRollover' in b.progression) problems.push(...dayRolloverProblems(progression.dayRollover)); // REQ-DAY-001
   if (b.progression && 'replayHoldDays' in b.progression) problems.push(...holdPolicyProblems(progression.replayHoldDays));
   if (b.progression && ('stud' in b.progression || 'atavismPermille' in b.progression)) problems.push(...studConfigProblems(progression));
 
@@ -282,6 +284,7 @@ export class ConfigStore {
     const v = this.repo.version(versionId);
     if (!v) throw new AppError('NOT_FOUND', `config version ${versionId}`);
     resolveBundle(this.base, v.bundle); // a base-master change could have invalidated an old version
+    this.dayRuleChangeCheck(versionId, Math.max(at, now));
     const a: Activation = { id: `act_${this.repo.nextSeq('activation')}`, versionId, at: Math.max(at, now), createdAt: now, by, reason, kind, cancelled: false };
     this.repo.putActivation(a);
     return a;
@@ -309,11 +312,24 @@ export class ConfigStore {
       target = prev ? prev.versionId : BASE_VERSION_ID;
     }
     if (target === BASE_VERSION_ID) {
+      this.dayRuleChangeCheck(BASE_VERSION_ID, now);
       const a: Activation = { id: `act_${this.repo.nextSeq('activation')}`, versionId: BASE_VERSION_ID, at: now, createdAt: now, by, reason, kind: 'rollback', cancelled: false };
       this.repo.putActivation(a);
       return a;
     }
     return this.schedule(target, now, by, reason, now, 'rollback');
+  }
+
+  private dayRuleOf(versionId: string): DayRollover {
+    if (versionId === BASE_VERSION_ID) return dayRule(this.base);
+    return dayRule(resolveBundle(this.base, this.get(versionId).bundle).master);
+  }
+
+  /** REQ-DAY-002: an activation may not change the game day rule retroactively or with less than the lead time. */
+  private dayRuleChangeCheck(versionId: string, at: number) {
+    const current = this.activeAt(at)?.versionId ?? BASE_VERSION_ID;
+    const problems = dayRolloverChangeProblems(this.dayRuleOf(current), this.dayRuleOf(versionId), at);
+    if (problems.length) throw new AppError('CONFIG_INVALID', problems.join('; '));
   }
 
   private effectiveHistory(now: number) {

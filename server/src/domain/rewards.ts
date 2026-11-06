@@ -4,7 +4,7 @@ import type { Master } from './master.js';
 import type { PlayerState } from './player.js';
 import type { RaceMode } from './schemas.js';
 import { seasonPointsFor } from './season.js';
-import { DAY_MS, gameDayKey } from './time.js';
+import { DAY_MS, dayRule, gameDayKey, sameGameDay } from './time.js';
 import { grantFree } from './wallet.js';
 import type { Rating } from './rating.js';
 import { applyStats, evaluateTitles, type RaceDetails } from './stats.js';
@@ -17,8 +17,8 @@ import { levelOf, notePassClaim } from './pass.js';
 export function applyFirstWinBonus(m: Master, s: PlayerState, r: { mode: RaceMode; place: number; raceId: string }, now: number): number {
   const fw = m.progression.firstWinBonus;
   if (!fw || r.place !== 1 || !fw.modes.includes(r.mode)) return 0;
-  const today = gameDayKey(now);
-  if (s.dailyWins?.date !== today) s.dailyWins = { date: today, count: 0 };
+  const today = gameDayKey(now, dayRule(m));
+  if (!s.dailyWins || !sameGameDay(s.dailyWins.date, today)) s.dailyWins = { date: today, count: 0 };
   const n = s.dailyWins.count;
   if (n >= fw.freeCoinsByWin.length) return 0;
   s.dailyWins.count = n + 1;
@@ -30,7 +30,7 @@ export function applyFirstWinBonus(m: Master, s: PlayerState, r: { mode: RaceMod
 export function firstWinBonusView(m: Master, s: PlayerState, now: number) {
   const fw = m.progression.firstWinBonus;
   if (!fw) return { modes: [] as string[], byWin: [] as number[], winsToday: 0, remaining: 0, next: null };
-  const winsToday = s.dailyWins?.date === gameDayKey(now) ? s.dailyWins.count : 0;
+  const winsToday = s.dailyWins && sameGameDay(s.dailyWins.date, gameDayKey(now, dayRule(m))) ? s.dailyWins.count : 0;
   const remaining = Math.max(0, fw.freeCoinsByWin.length - winsToday);
   return { modes: fw.modes, byWin: fw.freeCoinsByWin, winsToday: Math.min(winsToday, fw.freeCoinsByWin.length), remaining, next: remaining > 0 ? fw.freeCoinsByWin[winsToday]! : null };
 }
@@ -41,8 +41,8 @@ import { onRaceApplied } from './onboarding.js';
  * REQ-UXS-013: a new player first gets the beginner table once (day 2 = a broodmare), then the normal 7-day cycle.
  */
 export function claimLoginBonus(m: Master, s: PlayerState, now: number) {
-  const today = gameDayKey(now);
-  if (s.loginBonus.lastClaimDate === today) throw new AppError('ALREADY_CLAIMED');
+  const today = gameDayKey(now, dayRule(m));
+  if (sameGameDay(s.loginBonus.lastClaimDate, today)) throw new AppError('ALREADY_CLAIMED');
   const beginner = m.progression.beginnerLoginBonus ?? [];
   // states stored before the beginner table existed: a player who already claimed is past the beginner week
   const bDay = s.loginBonus.beginnerDay ?? (s.loginBonus.lastClaimDate === null ? 0 : beginner.length);
@@ -60,18 +60,18 @@ export function claimLoginBonus(m: Master, s: PlayerState, now: number) {
   return { day, track: 'normal' as const, reward: def, beginnerDaysLeft: 0 };
 }
 
-function ensureMissionDay(s: PlayerState, now: number) {
-  const today = gameDayKey(now);
-  if (s.missions.date !== today) s.missions = { date: today, progress: {}, claimed: [] };
+function ensureMissionDay(m: Master, s: PlayerState, now: number) {
+  const today = gameDayKey(now, dayRule(m));
+  if (!sameGameDay(s.missions.date, today)) s.missions = { date: today, progress: {}, claimed: [] };
 }
 
 export function missionsView(m: Master, s: PlayerState, now: number) {
-  ensureMissionDay(s, now);
+  ensureMissionDay(m, s, now);
   return m.progression.dailyMissions.map((d) => ({ ...d, progress: Math.min(d.target, s.missions.progress[d.id] ?? 0), claimed: s.missions.claimed.includes(d.id) }));
 }
 
 export function claimMission(m: Master, s: PlayerState, id: string, now: number) {
-  ensureMissionDay(s, now);
+  ensureMissionDay(m, s, now);
   const d = m.progression.dailyMissions.find((x) => x.id === id);
   if (!d) throw new AppError('NOT_FOUND', `mission ${id}`);
   if (s.missions.claimed.includes(id)) throw new AppError('ALREADY_CLAIMED');
@@ -123,12 +123,12 @@ export function applyRatingChange(s: PlayerState, oldR: Rating | null | undefine
   s.rating = { r: cur.r + (newR.r - oldR.r), rd: Math.max(30, Math.min(cur.rd, newR.rd)), vol: newR.vol, rankedRaces: cur.rankedRaces };
 }
 
-/** REQ-REW-004: friend races pay only with ≥2 humans and at most friendRewardDailyCap times per JST day. */
+/** REQ-REW-004: friend races pay only with ≥2 humans and at most friendRewardDailyCap times per game day. */
 export function friendRewardAllowed(m: Master, s: PlayerState, r: RaceResultForPlayer, now: number): boolean {
   if (r.mode !== 'friend') return true;
   if ((r.humans ?? 0) < 2) return false;
-  const today = gameDayKey(now);
-  if (s.friendRewards.date !== today) s.friendRewards = { date: today, count: 0 };
+  const today = gameDayKey(now, dayRule(m));
+  if (!sameGameDay(s.friendRewards.date, today)) s.friendRewards = { date: today, count: 0 };
   if (s.friendRewards.count >= m.progression.friendRewardDailyCap) return false;
   s.friendRewards.count++;
   return true;
@@ -154,7 +154,7 @@ export function applyRaceResult(m: Master, s: PlayerState, r: RaceResultForPlaye
   if (r.mode !== 'tutorial') {
     if (rewarded) {
       s.seasonPass.xp += m.progression.passXpPerRace;
-      ensureMissionDay(s, now);
+      ensureMissionDay(m, s, now);
       const inc = (k: string) => (s.missions.progress[k] = (s.missions.progress[k] ?? 0) + 1);
       for (const d of m.progression.dailyMissions) {
         if (d.kind === 'races') inc(d.id);

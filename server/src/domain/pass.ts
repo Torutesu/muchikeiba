@@ -17,7 +17,7 @@ import type { PlayerState, PurchaseRecord } from './player.js';
 import type { PassSeasonRecord } from './shop.js';
 import { grantReward, clawbackItems } from './items.js';
 import { clawbackFree } from './wallet.js';
-import { gameDaysUntil, jstMonthEndMs, jstMonthKey } from './time.js';
+import { dayRule, gameDaysUntil, jstMonthEndMs, jstMonthKey } from './time.js';
 
 export const PASS_HISTORY_KEEP = 12;
 export type PassTrack = 'free' | 'premium';
@@ -37,7 +37,7 @@ export function passPurchasesFor(s: PlayerState, seasonId: string): PurchaseReco
 export function passPurchaseInfo(m: Master, p: Product, now: number) {
   const seasonId = jstMonthKey(now);
   const endsAt = seasonEndMs(seasonId);
-  const remainingDays = gameDaysUntil(endsAt, now);
+  const remainingDays = gameDaysUntil(endsAt, now, dayRule(m));
   return { seasonId, endsAt, remainingDays, lastWeek: remainingDays <= 7, autoRenew: false as const, levels: p.pass?.levels ?? 0 };
 }
 
@@ -166,7 +166,7 @@ export function passScreen(m: Master, s: PlayerState, now: number) {
   const sp = s.seasonPass;
   const level = levelOf(m, sp.xp);
   const endsAt = seasonEndMs(sp.seasonId);
-  const remainingDays = gameDaysUntil(endsAt, now);
+  const remainingDays = gameDaysUntil(endsAt, now, dayRule(m));
   const per = m.progression.passXpPerLevel;
   const max = m.progression.passMaxLevel;
   const owned = passPurchasesFor(s, sp.seasonId);

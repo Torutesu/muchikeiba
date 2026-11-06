@@ -19,7 +19,7 @@ import { resolveBundle } from '../src/ops/config.js';
 import { clientBatchSchema, clientToKpi, type KpiRecord } from '../src/domain/kpi.js';
 import { enqueuePush, registerDevice } from '../src/domain/push.js';
 import { beatenFriends } from '../src/race/timeAttack.js';
-import { DAY_ROLLOVER_HOUR_JST, gameDayIndex, gameDayKey, jstDateKey } from '../src/domain/time.js';
+import { dayRule, gameDayIndex, gameDayKey, jstDateKey } from '../src/domain/time.js';
 import { runAccountDeletion, type DeletionPorts } from '../src/domain/accountDeletion.js';
 import { handle, makeFriendsService, type AppContext, type PlayerInvoker } from '../src/http/app.js';
 import { MemoryDirectory } from '../src/domain/friends.js';
@@ -334,10 +334,11 @@ describe('remote config validation of the onboarding sections', () => {
 });
 
 describe('REQ-UXS-011 game day rollover', () => {
-  it('one constant (midnight today); with 4 every game day moves to 04:00 JST', () => {
-    expect(DAY_ROLLOVER_HOUR_JST).toBe(0);
-    const at0330 = Date.UTC(2026, 10, 5, 18, 30); // 03:30 JST on the 6th
-    expect(gameDayKey(at0330)).toBe('2026-11-06');
+  it('a master value (REQ-DAY-001): midnight before the 2026-12-01 switch, 04:00 JST after it', () => {
+    expect(dayRule(m).hourJst).toBe(4);
+    const at0330 = Date.UTC(2026, 10, 5, 18, 30); // 03:30 JST on the 6th (before the switch)
+    expect(gameDayKey(at0330, dayRule(m))).toBe('2026-11-06');
+    expect(gameDayKey(at0330 + 30 * 86_400_000, dayRule(m))).toBe('2026-12-05'); // 03:30 JST on Dec 6, after the switch
     expect(gameDayKey(at0330, 4)).toBe('2026-11-05');
     expect(gameDayKey(at0330 + 3_600_000, 4)).toBe('2026-11-06');
     expect(gameDayIndex(at0330, 4) - gameDayIndex(at0330 - 1_800_000, 4)).toBe(0);
@@ -356,7 +357,7 @@ describe('REQ-UXS-011 game day rollover', () => {
       if (!calendarOk.has(rel)) expect(src.includes('jstDateKey('), rel).toBe(false);
     }
     // push.ts: the daily cap is a game day, season reminders are calendar dates
-    expect(readFileSync(join(dir, 'domain/push.ts'), 'utf8')).toMatch(/const day = gameDayKey\(notBefore\)/);
+    expect(readFileSync(join(dir, 'domain/push.ts'), 'utf8')).toMatch(/const day = gameDayKey\(notBefore, dayRule\(m\)\)/);
   });
 });
 

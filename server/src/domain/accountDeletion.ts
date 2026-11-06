@@ -111,7 +111,7 @@ export function requestDeletion(m: Master, s: PlayerState, confirmToken: string 
       forfeit: {
         paidCoins: s.wallet.paid, freeCoins: s.wallet.free, horses: s.horses.length, items: Object.values(s.items).reduce((a, n) => a + n, 0),
         // REQ-UXS-018/020: unclaimed 厩舎手当 days and the season pass go too
-        allowanceDays: allowanceRemaining(s, now).days, seasonPass: passRemaining(m, s, now).premium,
+        allowanceDays: allowanceRemaining(m, s, now).days, seasonPass: passRemaining(m, s, now).premium,
       },
       notice: `削除を確定すると${cfg.cancelWindowDays}日後にアカウントと全てのデータが削除されます。期間内は取り消せます。有償コイン・無償コイン・馬・アイテム・厩舎手当の残りの日数・シーズンパスは全て失われ、払い戻しはありません。購入の記録は法令に基づき、個人を特定できない形で保存します。`,
     };
@@ -208,7 +208,7 @@ export function finalizeDeletion(m: Master, s: PlayerState, rng: Rng, now: numbe
   // rebuilt under the same anonymous id, so the retained purchases and ledger are complete (資金決済法・帳簿).
   if (prev && !recordStale(s, prev)) return prev;
   const anonId = prev?.anonId ?? randomId('anon', rng);
-  const add = { ...forfeitAll(s, now, `delete:${anonId}`), allowance: forfeitAllowances(s, now), pass: forfeitPass(m, s, now) };
+  const add = { ...forfeitAll(s, now, `delete:${anonId}`), allowance: forfeitAllowances(m, s, now), pass: forfeitPass(m, s, now) };
   const forfeited = prev ? mergeForfeited(prev.forfeited, add) : add;
   const record: RetainedRecord = {
     anonId, rev: prev ? prev.rev + 1 : 0, ledgerSeq: s.ledgerSeq,

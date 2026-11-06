@@ -3,7 +3,7 @@ import { STAT_KEYS, type HorseTemplate, type Master, type Rarity, type Sex, type
 import type { HorseInstance, PlayerState } from './player.js';
 import type { GoingAptitude } from './schemas.js';
 import { randInt, randRange, type Rng } from './rng.js';
-import { gameDayKey } from './time.js';
+import { dayRule, gameDayKey, sameGameDay } from './time.js';
 import { consumeItem } from './items.js';
 import { appearanceOf, deriveAppearance, inheritAppearance, templateAppearance } from './visuals.js';
 import { horseSkillId, rollInheritedSkill, skillInheritOdds, skillSummary } from './skills.js';
@@ -282,10 +282,10 @@ export function breedingPreviewWithAllowance(m: Master, s: PlayerState, sireId: 
 
 /** REQ-ITEM-003: today's breeding allowance, including extra breedings bought with breeding material. */
 export function breedingAllowance(m: Master, s: PlayerState, now: number) {
-  const today = gameDayKey(now);
-  const used = s.breeding.date === today ? s.breeding.count : 0;
+  const today = gameDayKey(now, dayRule(m));
+  const used = sameGameDay(s.breeding.date, today) ? s.breeding.count : 0;
   const bm = m.items?.breedingMaterial;
-  const extraUsed = s.breedingExtra?.date === today ? s.breedingExtra.count : 0;
+  const extraUsed = sameGameDay(s.breedingExtra?.date, today) ? s.breedingExtra!.count : 0;
   return {
     perDay: m.progression.breedingPerDay, used,
     extraPerDay: bm?.extraPerDay ?? 0, extraUsed,
@@ -309,13 +309,13 @@ export function breed(m: Master, s: PlayerState, sireId: string, damId: string, 
  */
 export function breedWith(m: Master, s: PlayerState, sire: HorseInstance, dam: HorseInstance, grand: GrandTrait[], rng: Rng, now: number,
   opts: { useMaterial?: boolean; ref: string; stud?: { ownerId: string; horseId: string; sireName: string | null; damName: string | null } }) {
-  const today = gameDayKey(now);
-  if (s.breeding.date !== today) s.breeding = { date: today, count: 0 };
+  const today = gameDayKey(now, dayRule(m));
+  if (!sameGameDay(s.breeding.date, today)) s.breeding = { date: today, count: 0 };
   let usedMaterial = false;
   if (s.breeding.count >= m.progression.breedingPerDay) {
     const bm = m.items?.breedingMaterial;
     if (!opts.useMaterial || !bm) throw new AppError('BREEDING_DAILY_LIMIT');
-    if (s.breedingExtra?.date !== today) s.breedingExtra = { date: today, count: 0 };
+    if (!s.breedingExtra || !sameGameDay(s.breedingExtra.date, today)) s.breedingExtra = { date: today, count: 0 };
     if (s.breedingExtra.count >= bm.extraPerDay) throw new AppError('BREEDING_DAILY_LIMIT', 'extra breedings for today are used up');
     consumeItem(s, bm.itemId, bm.cost, now, 'extra breeding', opts.ref);
     s.breedingExtra.count += 1;

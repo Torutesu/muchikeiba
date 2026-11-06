@@ -9,7 +9,7 @@ import { runAccountDeletion, type DeletionPorts, type RetainedRecord } from '../
 import { MemoryStableDirectory, StableService, stableConfig, stableDeletionPort, type StableSnapshot } from '../src/domain/stable.js';
 import { stablePlayersFrom } from '../src/http/stablePorts.js';
 import { handle, type AppContext, type PlayerInvoker } from '../src/http/app.js';
-import { gameDaysUntil, gameDayKey } from '../src/domain/time.js';
+import { dayRule, gameDaysUntil, gameDayKey } from '../src/domain/time.js';
 import { buildRaceConfig, toRaceHorse } from '../src/domain/raceConfig.js';
 import { m } from './helpers.js';
 
@@ -72,7 +72,7 @@ describe('account deletion × マイ厩舎 (REQ-UXS-040 × REQ-STABLE-*)', () =>
     await w.svc.deletionMarkStep('p', 'friends');
     expect(await w.dir.get('p')).toBeNull();
     const st = await w.svc.state('p');
-    expect((await w.svc.stableLikeReceive('p', 'q', `q:${gameDayKey(w.clock.now)}:9`))).toMatchObject({ counted: false, snapshot: null });
+    expect((await w.svc.stableLikeReceive('p', 'q', `q:${gameDayKey(w.clock.now, dayRule(m))}:9`))).toMatchObject({ counted: false, snapshot: null });
     expect(((await w.svc.state('p')) as typeof st & { stable?: { likes: number } }).stable?.likes).toBe(1);
 
     const r = await runAccountDeletion(w.ports, 'p', w.clock.now);
@@ -82,7 +82,7 @@ describe('account deletion × マイ厩舎 (REQ-UXS-040 × REQ-STABLE-*)', () =>
     expect(await code(w.stable.visit('q', 'p'))).toBe('NOT_FOUND');
     expect(await code(w.stable.like('q', 'p', 'c:l3'))).toBe('NOT_FOUND');
     // a like that passed the directory check just before the wipe does not create a fresh player object
-    expect(await w.svc.stableLikeReceive('p', 'q', `q:${gameDayKey(w.clock.now)}:5`)).toEqual({ counted: false, likes: 0, snapshot: null });
+    expect(await w.svc.stableLikeReceive('p', 'q', `q:${gameDayKey(w.clock.now, dayRule(m))}:5`)).toEqual({ counted: false, likes: 0, snapshot: null });
     expect(w.repo.data.has('p')).toBe(false);
     // the like p gave stays in q's total as a plain count; q's stable still works
     expect((await w.stable.visit('q', 'q')).stable.likes).toBe(1);
@@ -197,8 +197,8 @@ describe('GET /v1/missions (onboarding × monetization)', () => {
 describe('game days in monetization (REQ-UXS-011 × REQ-UXS-010/018/020)', () => {
   it('gameDaysUntil counts game days, equal to ceil(days) with the midnight rollover', () => {
     const end = Date.UTC(2026, 10, 30, 15); // 2026-12-01 00:00 JST
-    for (const now of [end - 1, end - 3_600_000, end - DAY, end - DAY - 1, end - 6.5 * DAY]) expect(gameDaysUntil(end, now)).toBe(Math.ceil((end - now) / DAY));
-    expect(gameDaysUntil(end, end)).toBe(0);
+    for (const now of [end - 1, end - 3_600_000, end - DAY, end - DAY - 1, end - 6.5 * DAY]) expect(gameDaysUntil(end, now, 0)).toBe(Math.ceil((end - now) / DAY));
+    expect(gameDaysUntil(end, end, 0)).toBe(0);
     // with a 04:00 rollover, 02:00 JST on the 1st is still the last game day of November
     expect(gameDaysUntil(end, end - 3_600_000, 4)).toBe(1);
     expect(gameDaysUntil(end + 2 * 3_600_000, end + 3_600_000, 4)).toBe(1);
@@ -211,7 +211,7 @@ describe('game days in monetization (REQ-UXS-011 × REQ-UXS-010/018/020)', () =>
     await w.svc.claimAllowance('p', 'c:a1');
     expect(await code(w.svc.claimAllowance('p', 'c:a2'))).toBe('ALREADY_CLAIMED');
     await w.svc.applyRace('p', { raceId: 'w1', mode: 'ranked', place: 1, fieldSize: 12, newRating: null, void: false, humans: 1 });
-    expect((await w.svc.state('p')).dailyWins).toEqual({ date: gameDayKey(w.clock.now), count: 1 });
+    expect((await w.svc.state('p')).dailyWins).toEqual({ date: gameDayKey(w.clock.now, dayRule(m)), count: 1 });
     w.clock.now += DAY;
     expect((await w.svc.claimAllowance('p', 'c:a3')).day).toBe(2);
     expect((await w.svc.missionsAll('p')).firstWinBonus.winsToday).toBe(0);

@@ -94,8 +94,27 @@ namespace Muchi.Game
                 Online = true;
                 OfflineReason = null;
             }
-            catch (ApiException e) { GoOffline(e.Message); }
-            catch (Exception e) when (!(e is OperationCanceledException)) { GoOffline(e.Message); }
+            catch (ApiException e) { GoOffline(e.Message); return; }
+            catch (Exception e) when (!(e is OperationCanceledException)) { GoOffline(e.Message); return; }
+            await LoadConfigAsync(ct);
+        }
+
+        /// <summary>The active remote config (null until loaded or from a server that did not answer).</summary>
+        public ConfigInfo Config { get; private set; }
+
+        /// <summary>
+        /// REQ-DAY-006: GET /v1/config and install its game-day rule in <see cref="GameDay"/> (no constant on the device).
+        /// Best effort: without an answer the last rule stays (midnight before the first one).
+        /// </summary>
+        public async Task LoadConfigAsync(CancellationToken ct = default)
+        {
+            if (_api == null) return;
+            try
+            {
+                Config = await _api.GetConfigAsync(ct);
+                GameDay.Use(Config.DayRollover);
+            }
+            catch (Exception e) when (!(e is OperationCanceledException)) { /* keep the last rule */ }
         }
 
         private void GoOffline(string reason) { Online = false; OfflineReason = reason; Player = null; }

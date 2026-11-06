@@ -245,7 +245,7 @@ namespace Muchi.Game
         public int DailyDone => Board?.Missions.Count(m => m.Claimed || m.Progress >= m.Target) ?? 0;
         public int DailyTotal => Board?.Missions.Count ?? 0;
         /// <summary>"ミッション 2/3" or, when all are done, the reset note.</summary>
-        public string DailyLine => Board == null ? null : DailyDone >= DailyTotal && DailyTotal > 0 ? "今日の分は完了。明日 " + GameDay.RolloverHourJst + ":00 に更新" : "ミッション " + DailyDone + "/" + DailyTotal;
+        public string DailyLine => Board == null ? null : DailyDone >= DailyTotal && DailyTotal > 0 ? "今日の分は完了。" + GameDay.NextResetLabel(_now()) + " に更新" : "ミッション " + DailyDone + "/" + DailyTotal;
         /// <summary>"初勝利ボーナス 残り2回（次は20コイン）" / "初勝利ボーナスは今日の分を受け取りました" / null when hidden by the A/B value.</summary>
         public string FirstWinLine
         {

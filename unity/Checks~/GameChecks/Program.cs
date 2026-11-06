@@ -61,6 +61,7 @@ static class Program
         Console.WriteLine("== race feel, tutorial win rule, camera and result debrief (06 §2.3 / §6.3 / §6.4)");
         RaceFeelChecks.Run(Check, Ruleset());
         await Round8Checks.Run(Check, Ruleset());
+        await Round8Checks.DayRollover(Check, Ruleset());
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

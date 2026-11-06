@@ -21,7 +21,7 @@ import { breedingAllowance, breedWith, checkDam, effectiveStats, getHorse, paren
 import type { Rng } from './rng.js';
 import { appearanceOf, type Appearance } from './visuals.js';
 import { grantFree, spendFree } from './wallet.js';
-import { gameDayKey } from './time.js';
+import { dayRule, gameDayKey, sameGameDay } from './time.js';
 
 export type StudVisibility = 'friends' | 'public';
 
@@ -75,17 +75,17 @@ const APPLIED_KEEP_MS = 30 * 86_400_000;
 /** Drops expired reservations and old idempotency records; rolls the daily counters. */
 export function pruneStud(m: Master, st: StudState, now: number) {
   const c = studConfig(m);
-  const today = gameDayKey(now);
-  if (st.lends.date !== today) st.lends = { date: today, byHorse: {}, earned: 0 };
-  if (st.borrows.date !== today) st.borrows = { date: today, count: 0 };
+  const today = gameDayKey(now, dayRule(m));
+  if (!sameGameDay(st.lends.date, today)) st.lends = { date: today, byHorse: {}, earned: 0 };
+  if (!sameGameDay(st.borrows.date, today)) st.borrows = { date: today, count: 0 };
   for (const [k, r] of Object.entries(st.reservations)) if (now - r.at > c.reserveTtlMs) delete st.reservations[k];
   for (const [k, v] of Object.entries(st.settled)) if (now - settledAt(v) > SETTLED_KEEP_MS) delete st.settled[k];
   for (const [k, a] of Object.entries(st.applied)) if (now - a.at > APPLIED_KEEP_MS) delete st.applied[k];
 }
 
 function lendsToday(st: StudState, horseId: string, today: string) {
-  const settled = st.lends.date === today ? st.lends.byHorse[horseId] ?? 0 : 0;
-  const pending = Object.values(st.reservations).filter((r) => r.horseId === horseId && r.date === today).length;
+  const settled = sameGameDay(st.lends.date, today) ? st.lends.byHorse[horseId] ?? 0 : 0;
+  const pending = Object.values(st.reservations).filter((r) => r.horseId === horseId && sameGameDay(r.date, today)).length;
   return settled + pending;
 }
 
@@ -141,7 +141,7 @@ export function studPeek(m: Master, s: PlayerState, borrowerId: string, horseId:
   const st = ensureStud(s);
   pruneStud(m, st, now);
   const l = offered(st, s, borrowerId, horseId);
-  return { ...snapshotOf(s, getHorse(s, horseId), l.fee), remainingToday: Math.max(0, l.dailyLimit - lendsToday(st, horseId, gameDayKey(now))) };
+  return { ...snapshotOf(s, getHorse(s, horseId), l.fee), remainingToday: Math.max(0, l.dailyLimit - lendsToday(st, horseId, gameDayKey(now, dayRule(m)))) };
 }
 
 /**
@@ -176,7 +176,7 @@ export function studReserve(m: Master, s: PlayerState, opId: string, borrowerId:
   }
   const l = offered(st, s, borrowerId, horseId);
   feeCheck(l.fee);
-  const today = gameDayKey(now);
+  const today = gameDayKey(now, dayRule(m));
   if (lendsToday(st, horseId, today) >= l.dailyLimit) throw new AppError('BREEDING_DAILY_LIMIT', 'this stallion is fully booked today');
   st.reservations[opId] = { horseId, borrowerId, fee: l.fee, at: now, date: today };
   return snapshotOf(s, getHorse(s, horseId), l.fee);
@@ -249,7 +249,7 @@ export function studView(m: Master, s: PlayerState, now: number) {
   const c = studConfig(m);
   const st = ensureStud(s);
   pruneStud(m, st, now);
-  const today = gameDayKey(now);
+  const today = gameDayKey(now, dayRule(m));
   return {
     listings: st.listings.filter((l) => s.horses.some((h) => h.id === l.horseId)).map((l): StudEntry & { lentToday: number } => ({ ...studEntry(m, s, l), lentToday: lendsToday(st, l.horseId, today) })),
     today: { earned: st.lends.earned, earnCap: c.dailyEarnCap, borrowed: st.borrows.count, borrowPerDay: c.borrowPerDay },

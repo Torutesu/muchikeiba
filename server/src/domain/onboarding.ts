@@ -10,7 +10,7 @@ import { createHorseFromTemplate, validateName } from './horses.js';
 import { grantReward } from './items.js';
 import type { Master, Progression, Reward } from './master.js';
 import type { PlayerState } from './player.js';
-import { gameDayIndex } from './time.js';
+import { dayRolloverProblems, dayRule, gameDayIndex, type DayRule } from './time.js';
 import { fnv1a32 } from './ground.js';
 import { classDef } from './season.js';
 import { nudgeProblems } from './nudges.js';
@@ -273,11 +273,11 @@ export function grantPartner(m: Master, s: PlayerState, rawName: string, now: nu
 // ------------------------------------------------------------------------------------------------ unlocks (REQ-UXS-014)
 
 /** 1 on the install day (game day, REQ-UXS-011), 2 the next game day, … */
-export const playerDay = (s: PlayerState, now: number) => Math.max(1, gameDayIndex(now) - gameDayIndex(s.createdAt) + 1);
+export const playerDay = (s: PlayerState, now: number, day: DayRule) => Math.max(1, gameDayIndex(now, day) - gameDayIndex(s.createdAt, day) + 1);
 
 export function unlocksView(m: Master, s: PlayerState, now: number) {
   const o = s.onboarding ?? { races: s.stats?.races ?? 0, breedings: 0 };
-  const progress = { day: playerDay(s, now), races: o.races, rankedRaces: s.rating.rankedRaces, breedings: o.breedings };
+  const progress = { day: playerDay(s, now, dayRule(m)), races: o.races, rankedRaces: s.rating.rankedRaces, breedings: o.breedings };
   const features = (m.progression.unlocks ?? []).map((u) => {
     const tests: [string, number | null | undefined, number][] = [['races', u.races, progress.races], ['days', u.days, progress.day], ['rankedRaces', u.rankedRaces, progress.rankedRaces], ['breedings', u.breedings, progress.breedings]];
     const given = tests.filter(([, need]) => need !== null && need !== undefined);
@@ -423,7 +423,7 @@ export function firstRaceOf(m: Master, s: PlayerState): { cpuFillAfterMs: number
 
 /** Every onboarding-related check on a master (boot: index.ts; remote config: ops/config.ts). */
 export function uxProblems(m: Master, knownItems: Set<string>): string[] {
-  return [...onboardingProblems(m.progression, m, knownItems), ...nudgeProblems(m.progression.nudges), ...accountDeletionProblems(m.progression.accountDeletion)];
+  return [...onboardingProblems(m.progression, m, knownItems), ...nudgeProblems(m.progression.nudges), ...accountDeletionProblems(m.progression.accountDeletion), ...dayRolloverProblems(m.progression.dayRollover)];
 }
 
 export function validateUx(m: Master, knownItems: Set<string>): void {

@@ -24,4 +24,5 @@ node "$HERE/club-css.cjs" "$ROOT" "$SITE"   # Codex frontend stylesheets + force
 
 node "$HERE/test/logic.test.cjs"
 node "$HERE/test/engine.test.mjs"
+node "$HERE/test/round8.test.mjs"   # round 8: TutorialDirector, RaceFeel/RaceDebrief, skills, shop/pass/consent/deletion on the real rules
 echo "built $SITE ($(du -sh "$SITE" | cut -f1))"

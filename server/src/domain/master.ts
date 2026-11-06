@@ -2,6 +2,7 @@ import tracksJson from '../../master/tracks.json';
 import { BASE_BANNED_SILKS, type BannedSilksList } from './bannedSilks.js';
 import type { BondConfig } from './bond.js';
 import type { RoomsConfig } from './presets.js';
+import type { StableConfig } from './stable.js';
 import horsesJson from '../../master/horses.json';
 import gachaJson from '../../master/gacha.json';
 import nicksJson from '../../master/nicks.json';
@@ -204,6 +205,8 @@ export interface Master {
   bannedSilks?: BannedSilksList;
   /** REQ-ITEM-*: tickets, materials and cosmetics. */
   items: ItemsMaster;
+  /** REQ-STABLE-*: マイ厩舎 (master/stable.json is used when absent; remote config may replace it). */
+  stable?: StableConfig;
 }
 
 export const PPM_TOTAL = 1_000_000;

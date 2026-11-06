@@ -24,6 +24,7 @@ import { goingSchema } from '../domain/schemas.js';
 import { StudService, type StudDirectory, type StudPlayers } from '../domain/studService.js';
 import type { SpectateService } from '../domain/spectate.js';
 import type { TournamentEntryInfo, TournamentPlayers, TournamentsService } from '../domain/tournamentService.js';
+import type { StableService } from '../domain/stable.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -40,7 +41,8 @@ export type PlayerMethod =
   | 'teamPrepareJoin' | 'teamCommitJoin' | 'teamAbortJoin' | 'teamAddOutgoing' | 'teamRemoveOutgoing' | 'teamLeft' | 'teamState' | 'teamSeasonReward' | 'queuePush'
   | 'eventsView' | 'eventEnter' | 'eventCancel' | 'eventClose' | 'tournamentEntry' | 'tournamentClose' | 'tournamentHistory'
   | 'bond' | 'bondLevels' | 'care' | 'presets' | 'setCourseLook' | 'setRoomConditions'
-  | 'studView' | 'studList' | 'studUnlist' | 'studPeek' | 'studReserve' | 'studSettle' | 'studPreview' | 'studApply' | 'studAcked' | 'studDue' | 'studRetryLater';
+  | 'studView' | 'studList' | 'studUnlist' | 'studPeek' | 'studReserve' | 'studSettle' | 'studPreview' | 'studApply' | 'studAcked' | 'studDue' | 'studRetryLater'
+  | 'stableMine' | 'stableSave' | 'stableVisit' | 'stableLikeGive' | 'stableLikeReceive' | 'stableClear';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -94,6 +96,8 @@ export interface AppContext {
   spectate?: SpectateService;
   /** REQ-TOUR-*: tournaments. */
   tournaments?: TournamentsService;
+  /** REQ-STABLE-*: マイ厩舎 (http/stablePorts.ts makeStableService). */
+  stable?: StableService;
   clock?: () => number;
   paidBalance(): Promise<unknown>;
   adminToken: string | undefined;
@@ -151,6 +155,14 @@ const spectate = (c: AppContext) => {
 const tournaments = (c: AppContext) => {
   if (!c.tournaments) throw new AppError('NOT_FOUND', 'tournaments are not available');
   return c.tournaments;
+};
+const stable = (c: AppContext) => {
+  if (!c.stable) throw new AppError('NOT_FOUND', 'stables are not available');
+  return c.stable;
+};
+const playerIdParam = (s: string) => {
+  if (s.length < 1 || s.length > 128 || /[\s/]/.test(s)) throw new AppError('BAD_REQUEST', 'bad player id');
+  return s;
 };
 const teamIdParam = (s: string) => {
   if (!TEAM_ID_RE.test(s)) throw new AppError('BAD_REQUEST', 'bad team id');
@@ -305,6 +317,15 @@ export const routes: Route[] = [
     if (b.decor) patch.decor = b.decor;
     return c.player(u).invoke('setEquipment', u, patch);
   } },
+  // マイ厩舎 (REQ-STABLE-*): /visits before /:playerId
+  { method: 'GET', path: '/v1/stable', auth: 'player', handler: async (_r, _p, c, u) => stable(c).mine(u) },
+  { method: 'PUT', path: '/v1/stable', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ theme: z.string().min(1).max(40), name: z.string().min(1).max(40).nullable(), slots: z.array(id.nullable()).max(10), featuredHorseIds: z.array(id).max(10) }).strict());
+    return stable(c).save(u, b);
+  } },
+  { method: 'GET', path: '/v1/stable/visits', auth: 'player', handler: async (_r, _p, c, u) => stable(c).visits(u) },
+  { method: 'GET', path: '/v1/stable/:playerId', auth: 'player', handler: async (_r, p, c, u) => stable(c).visit(u, playerIdParam(p.playerId!)) },
+  { method: 'POST', path: '/v1/stable/:playerId/like', auth: 'player', handler: async (r, p, c, u) => stable(c).like(u, playerIdParam(p.playerId!), idem(r)) },
   // rewards
   { method: 'POST', path: '/v1/rewards/login-bonus', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('claimLogin', u, idem(r)) },
   { method: 'GET', path: '/v1/missions', auth: 'player', handler: async (_r, _p, c, u) => ({ missions: await c.player(u).invoke('missions', u) }) },

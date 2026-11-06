@@ -29,7 +29,7 @@ namespace Muchi.Client
     /// - A 401 refreshes the Firebase token once and resends.
     /// - Failures throw <see cref="ApiException"/> subclasses (see Errors.cs).
     /// </summary>
-    public sealed class ApiClient
+    public sealed partial class ApiClient
     {
         private readonly IHttp _http;
         private readonly IAuthTokenProvider _auth;

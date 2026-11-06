@@ -48,6 +48,8 @@ static class Program
         await QaRound6Checks.Run(Check, Ruleset(), Root);
         Console.WriteLine("== breeding screen (own / borrowed stallion, atavism, stud fee)");
         await BreedingChecks.Run(Check, Ruleset());
+        Console.WriteLine("== マイ厩舎 (layout, visits, likes)");
+        await StableChecks.Run(Check, Ruleset());
         Console.WriteLine("== tournaments and spectating");
         await TournamentChecks.Run(Check, Ruleset());
         Console.WriteLine("== QA round 7 client regressions");

@@ -27,6 +27,8 @@ namespace Muchi.Client
         public static string Tack(string name) => "tack/" + name;
         /// <summary>Stable decor (REQ-ITEM-006).</summary>
         public static string Decor(string name) => "decor/" + name;
+        /// <summary>マイ厩舎 room theme (REQ-STABLE-001); the server sends it as theme.key.</summary>
+        public static string StableTheme(string id) => "stable/theme/" + id;
         public static string GachaBanner(string id) => "banner/gacha/" + id;
         public static string EventBanner(string id) => "banner/event/" + id;
         public static string Title(string id) => "title/" + id;

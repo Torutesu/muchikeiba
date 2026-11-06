@@ -36,7 +36,8 @@ import { authenticateAdmin, parseAdminTokens, RateLimiter, type AdminAuthConfig,
 import { DeadLetterService, type DeadLetterOwner, type DeadLetterRegistry, type DeadLetterSource } from './ops/deadLetter.js';
 import { activeConfig } from './ops/activeConfig.js';
 import type { ResolvedConfig } from './ops/config.js';
-import { shardedDirectory, shardedStudDirectory } from './do/directory.js';
+import { shardedDirectory, shardedStableDirectory, shardedStudDirectory } from './do/directory.js';
+import { makeStableService } from './http/stablePorts.js';
 import { boardKey, indexKey, type RolloverState } from './domain/leaderboard.js';
 import { validateLeagueAndWeather } from './domain/league.js';
 import { runScheduled } from './domain/scheduled.js';
@@ -306,6 +307,7 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
     },
     friends: makeFriendsService((uid) => player(uid), shardedDirectory(env.DIRECTORY)),
     stud: makeStudService(player, shardedStudDirectory(env.DIRECTORY), () => master),
+    stable: makeStableService(player, shardedStableDirectory(env.DIRECTORY), () => master),
     teams: makeTeamsService(env, () => master, player),
     events: new EventsService(() => master, eventPlayersFrom(player), {
       enqueue: (eventId, p, e) => call(mm().eventEnqueue!(eventId, p, e)),

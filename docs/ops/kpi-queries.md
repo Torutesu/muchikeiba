@@ -49,6 +49,9 @@
 | `race_finish` | サーバー（レース確定時） | モード | 脚質 | コースID | `double4` 着順、`double5` 頭数、`double9` 人間の数、`double6` ゴールタイム |
 | `season_close` | サーバー | シーズン | 前のクラス | 次のクラス | `double4` 順位 |
 | `friend_request` / `friend_accept` | サーバー | | | | |
+| `stable_save` | サーバー（マイ厩舎の保存、REQ-STABLE-010） | テーマID | | | `double5` 飾りの数、`double9` 選んだ馬の数 |
+| `stable_visit` | サーバー（他人の厩舎を見た。書き込みなし） | `friend`/`other` | | | |
+| `stable_like` | サーバー（いいね。コインは付かない） | `friend`/`other` | | | `double9` 今日の残り回数 |
 | `session_start` / `session_end` | クライアント | | | | `double6` セッションの長さ |
 | `tutorial_step` | クライアント | ステップ名 | | | `double9` ステップ番号 |
 | `screen_view` | クライアント | 画面名 | | | |

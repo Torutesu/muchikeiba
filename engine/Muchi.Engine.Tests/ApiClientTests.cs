@@ -374,7 +374,9 @@ namespace Muchi.Engine.Tests
         {
             // keeps the client in step with server/src/http/app.ts
             string app = File.ReadAllText(Path.Combine(TestUtil.RepoRoot, "server", "src", "http", "app.ts"));
-            string client = File.ReadAllText(Path.Combine(TestUtil.RepoRoot, "engine", "Muchi.Client", "ApiClient.cs"));
+            // ApiClient is partial: feature files (e.g. Stable.cs) add their methods next to their models
+            string client = string.Concat(Directory.GetFiles(Path.Combine(TestUtil.RepoRoot, "engine", "Muchi.Client"), "*.cs")
+                .Select(File.ReadAllText).Where(t => t.Contains("partial class ApiClient")));
             var routes = Regex.Matches(app, @"method: '(\w+)', path: '([^']+)'").Select(m => (m.Groups[1].Value, m.Groups[2].Value)).ToList();
             Assert.True(routes.Count >= 30);
             foreach (var (method, path) in routes)

@@ -26,6 +26,10 @@ namespace Muchi.Client
         Cooldown,
         /// <summary>409: the stud fee changed since the borrower's preview; nothing was charged (REQ-BREED-012).</summary>
         FeeChanged,
+        /// <summary>409: today's stable likes are used up (REQ-STABLE-005; likes never give coins).</summary>
+        LikeLimit,
+        /// <summary>409: this stable was already liked today.</summary>
+        AlreadyLiked,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -88,6 +92,8 @@ namespace Muchi.Client
             ["INSUFFICIENT_ITEMS"] = ApiErrorCode.InsufficientItems,
             ["COOLDOWN"] = ApiErrorCode.Cooldown,
             ["FEE_CHANGED"] = ApiErrorCode.FeeChanged,
+            ["LIKE_LIMIT"] = ApiErrorCode.LikeLimit,
+            ["ALREADY_LIKED"] = ApiErrorCode.AlreadyLiked,
             ["VERIFIER_UNAVAILABLE"] = ApiErrorCode.VerifierUnavailable,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };

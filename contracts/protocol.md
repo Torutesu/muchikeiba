@@ -188,6 +188,22 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 - 同じ `Idempotency-Key` を別の種牡馬・別の持ち主の馬で使うと `409 CONFLICT`（最初の操作の馬のまま）。
 - 購入で付いた無償コイン（初回購入ボーナス）は購入から90日は料金に使えない。足りなければ `409 INSUFFICIENT_COINS`。プレビューの `stud.heldFree` がその額、`stud.canPay` はそれを除いて判定する。
 
+## 8.6 マイ厩舎（REQ-STABLE-*、`server/src/domain/stable.ts`）
+すべて要認証（`Authorization: Bearer`）。エラーは共通の `{"error":{"code","message"}}`。
+| メソッド | パス | 冪等キー | 本文 → 応答 |
+|---|---|---|---|
+| GET | `/v1/stable` | | → `{ saved, layout:{theme,name,slots[],featuredHorseIds[],updatedAt}, themes:[{id,name,key,slots,unlocked,unlockLikes,unlockItem}], decor:[{itemId,name,key,owned,price,currency}], featuredMax, nameMaxChars, likes:{received,givenToday,perDay,perTargetPerDay}, preview: StableSnapshot\|null, notice }`。未保存なら `layout` は既定テーマ＋装備中の飾り（`PUT /v1/player/equipment` の `decor`）から作る |
+| PUT | `/v1/stable` | | `{ theme, name: string\|null, slots: (itemId\|null)[], featuredHorseIds: string[] }`（余分なキーは 400）→ `{ layout, snapshot }` |
+| GET | `/v1/stable/visits` | | → `{ friends: StableSummary[], recommended: StableSummary[] }` |
+| GET | `/v1/stable/:playerId` | | → `{ stable: StableSnapshot, viewer:{ relation: self\|friend\|other, likedToday, likesLeftToday, canLike } }`。未公開・利用停止中は `404 NOT_FOUND` |
+| POST | `/v1/stable/:playerId/like` | 必須 | → `{ playerId, likes, remainingToday }` |
+
+- `StableSnapshot`（訪問者が見る写し。財布・所持品・購入は含まない）：`{ v:1, playerId, displayName, titleId, classId, silks, name, theme:{id,name,key}, slots:({itemId,name,key}|null)[]（テーマの枠数ぶん）, horses:[{horseId,name,rarity,style,appearance,bondLevel}], autoHorses, trophies:{titleIds[],races,wins,top3,tournamentWins,tournamentPodiums}, likes, updatedAt }`。`name` が null なら「<displayName>の厩舎」と表示する。`horses` は選んだ現役馬、選んでいなければ現役馬の上位（`autoHorses: true`）。
+- `StableSummary`：`{ playerId, displayName, titleId, name, themeKey, likes, decorCount, horseCount, updatedAt }`。
+- 保存の検証：テーマが存在し解放済み（`NOT_ELIGIBLE`）、`slots` はテーマの枠数以下（`BAD_REQUEST`）、各飾りは厩舎の飾り（`decor`）で所持済み・重複なし（REQ-ITEM-006 と同じ：所持なし `NOT_ELIGIBLE`、種類違い・重複 `BAD_REQUEST`、不明 `NOT_FOUND`）、`featuredHorseIds` は `featuredMax` 以下・重複なし・自分の現役馬（`HORSE_NOT_FOUND` / `HORSE_NOT_ACTIVE`）、表札は表示名と同じ規則（`INVALID_NAME` / `NG_NAME`、1〜`nameMaxChars` 字）。利用停止中は `403 BANNED`。
+- いいね：自分には押せない（`NOT_ELIGIBLE`）、同じ相手には1日 `likesPerTargetPerDay` 回（`409 ALREADY_LIKED`）、1日 `likesPerDay` 回まで（`409 LIKE_LIMIT`）。日付は JST。押した側・押された側とも**コインは一切付かない**（累計いいねで解放されるのはテーマだけ）。同じ冪等キーの再送は1回分しか数えない。途中で失敗した場合も同じキーで再送すれば完了する。
+- C# の `ApiErrorCode`：`LikeLimit` / `AlreadyLiked`。
+
 ## 9. ゴールデンファイル（`contracts/golden/`）
 - `race-*.json`：`{ "log": リプレイログ, "expected": 検証APIの出力 }`。C#側が生成し、C#テストで再計算一致を、TSテストでスキーマ適合を確認する。
 - `ts-config-*.json`：TSのレース設定ビルダーが生成した設定。C#テストで読み込み・完走できることを確認する。

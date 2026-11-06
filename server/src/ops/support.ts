@@ -6,6 +6,7 @@ import { addItems } from '../domain/items.js';
 import { grantFree, paidBalanceYen, writeOffDebt } from '../domain/wallet.js';
 import { registerAge, ageBand } from '../domain/purchase.js';
 import { getHorse } from '../domain/horses.js';
+import { resetStableName } from '../domain/stable.js';
 import type { AdminRole } from './admin.js';
 
 /**
@@ -69,7 +70,8 @@ export function supportCorrectAge(m: Master, s: PlayerState, birthYear: number, 
 }
 
 /** Resets an offensive display name or horse name to a neutral default. */
-export function supportResetName(m: Master, s: PlayerState, target: 'display' | 'horse', horseId: string | null) {
+export function supportResetName(m: Master, s: PlayerState, target: 'display' | 'horse' | 'stable', horseId: string | null) {
+  if (target === 'stable') return resetStableName(s); // REQ-STABLE-007: offensive 表札
   if (target === 'display') {
     const before = s.profile.displayName;
     s.profile.displayName = defaultDisplayName(s.id);

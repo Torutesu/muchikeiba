@@ -36,6 +36,7 @@ import { ensureTeam, playerAbortJoin, playerAddOutgoing, playerCommitJoin, playe
 import { applyEventResult, cancelEntry, closeEventForPlayer, ensureEvent, enterEvent, eventsForPlayer, findEvent, type EventEntry } from './events.js';
 import { bondLevels, bondView, careHorse, horseBondLevel } from './bond.js';
 import { dueStudOutbox, ensureStud, nextStudWake, studAcked, studApply, studList, studPeek, studPreview, studReserve, studRetryLater, studSettle, studUnlist, studView, type StudSnapshot, type StudVisibility } from './stud.js';
+import { clearStable, setStable, stableLikeGive, stableLikeReceive, stableSnapshot, stableSnapshotKey, stableView, viewerStatus, type StableInput, type StableSnapshot } from './stable.js';
 import { clearRoomConditions, presetsView, setCourseLook, setRoomConditions, type RoomConditions } from './presets.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
@@ -75,6 +76,8 @@ export interface PlayerServiceDeps {
   onTeamPoints?: (p: { teamId: string; playerId: string; seasonId: string; points: number; displayName: string }) => void | Promise<void>;
   /** REQ-EVENT-007: event standing after an event race (the Durable Object tells the event board). */
   onEventEntry?: (e: EventEntry) => void | Promise<void>;
+  /** REQ-STABLE-003: the public stable copy changed (null = remove it: cleared or banned). The Durable Object writes the directory. */
+  onStable?: (playerId: string, snap: StableSnapshot | null) => void | Promise<void>;
 }
 
 const standingKey = (s: PlayerState) => JSON.stringify([s.season.id, s.season.classId, s.season.points, s.season.races, Math.round(s.rating.r), s.profile.displayName, s.profile.titleId]);
@@ -122,6 +125,7 @@ export class PlayerService {
     const standingBefore = standingKey(draft);
     const profileBefore = profileKey(draft);
     const wakeBefore = nextWake(draft);
+    const stableBefore = this.d.onStable ? stableSnapshotKey(this.d.master, draft, now) : '';
     const kpi: KpiRecord[] = [];
     const emit: Emit = (e) => { kpi.push(kpiRecord(draft, now, e)); };
     const result = fn(draft, now, emit);
@@ -138,6 +142,7 @@ export class PlayerService {
     if (wake !== null && wake !== wakeBefore && this.d.onPushWake) await this.d.onPushWake(wake);
     if (kpi.length > 0 && this.d.onKpi) await this.d.onKpi(id, kpi);
     if (pushProfile) await this.d.onProfile!(publicProfile(draft, this.d.master.bannedSilks));
+    if (this.d.onStable && stableSnapshotKey(this.d.master, draft, now) !== stableBefore) await this.d.onStable(id, stableSnapshot(this.d.master, draft, now));
     if (this.d.onSeasonEntry && draft.season.races > 0 && standingKey(draft) !== standingBefore) {
       await this.d.onSeasonEntry({
         playerId: id, seasonId: draft.season.id, classId: draft.season.classId, points: draft.season.points, rating: Math.round(draft.rating.r),
@@ -542,12 +547,33 @@ export class PlayerService {
   adminCorrectAge(id: string, birthYear: number, birthMonth: number, guardianConsent: boolean, actor: string) {
     return this.tx(id, null, (s, now) => supportCorrectAge(this.d.master, s, birthYear, birthMonth, guardianConsent, actor, now));
   }
-  adminResetName(id: string, target: 'display' | 'horse', horseId: string | null) {
+  adminResetName(id: string, target: 'display' | 'horse' | 'stable', horseId: string | null) {
     return this.tx(id, null, (s) => supportResetName(this.d.master, s, target, horseId));
   }
   setModeration(id: string, status: 'ok' | 'quarantined' | 'banned', until: number | null, reason: string) {
     return this.tx(id, null, (s, now) => setModeration(s, status, until, reason, now));
   }
+
+  // ---- マイ厩舎 (REQ-STABLE-*, stable.ts) ----
+  async stableMine(id: string) { return stableView(this.d.master, await this.load(id), this.d.clock()); }
+  stableSave(id: string, input: StableInput) {
+    return this.tx(id, null, (s, now, emit) => ({ layout: setStable(this.d.master, s, input, now, emit), snapshot: stableSnapshot(this.d.master, s, now) }));
+  }
+  /** A visit is a read: the visitor's like status, plus the stable_visit KPI event (no state is written). */
+  async stableVisit(id: string, target: string) {
+    const s = await this.load(id);
+    const now = this.d.clock();
+    const v = viewerStatus(this.d.master, s, target, now);
+    if (this.d.onKpi && v.relation !== 'self') await this.d.onKpi(id, [kpiRecord(s, now, { name: 'stable_visit', s1: v.relation })]);
+    return v;
+  }
+  stableLikeGive(id: string, target: string, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => stableLikeGive(this.d.master, s, target, now, emit));
+  }
+  stableLikeReceive(id: string, from: string, likeId: string) {
+    return this.tx(id, null, (s, now) => ({ ...stableLikeReceive(this.d.master, s, from, likeId, now), snapshot: stableSnapshot(this.d.master, s, now) }));
+  }
+  stableClear(id: string) { return this.tx(id, null, (s) => clearStable(s)); }
 
   // ---- push notifications (REQ-PUSH-*) ----
   registerDevice(id: string, token: string, platform: DevicePlatform) { return this.tx(id, null, (s, now) => registerDevice(this.d.master, s, token, platform, now)); }

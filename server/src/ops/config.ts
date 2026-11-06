@@ -7,6 +7,7 @@ import { itemsProblems } from '../domain/itemShop.js';
 import { holdPolicyProblems } from '../domain/retention.js';
 import { roomsProblems } from '../domain/presets.js';
 import { studConfigProblems } from '../domain/stud.js';
+import { stableConfigProblems, stableConfigSchema, type StableConfig } from '../domain/stable.js';
 import { z } from 'zod';
 import { AppError } from '../domain/errors.js';
 import { buildBanner, splitMasterTrack, type Master, type Progression, type RawBanner } from '../domain/master.js';
@@ -53,6 +54,8 @@ export const configBundleSchema = z.object({
   bannedSilks: bannedSilksListSchema.optional(),
   /** REQ-EVENT-001: replaces the event list; each event is validated like at boot (tracks, ruleset override keys, fees). */
   events: z.array(z.record(z.string(), z.unknown())).optional(),
+  /** REQ-STABLE-008: replaces the マイ厩舎 section (like caps within STABLE_HARD_LIMITS, themes). */
+  stable: stableConfigSchema.optional(),
 }).strict();
 export type ConfigBundle = z.infer<typeof configBundleSchema>;
 
@@ -137,7 +140,9 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
   }
   const bannedSilks = (b.bannedSilks as BannedSilksList | undefined) ?? base.bannedSilks ?? BASE_BANNED_SILKS;
   if (b.bannedSilks) problems.push(...bannedSilksProblems(bannedSilks, VISUALS).map((x) => `bannedSilks: ${x}`));
-  const master: Master = { ...base, tracks, litTracks, gacha: { ...base.gacha, pityGroups, banners }, progression, ng: b.ng ?? base.ng, events, bannedSilks };
+  const stable = (b.stable as StableConfig | undefined) ?? base.stable;
+  if (b.stable) problems.push(...stableConfigProblems(b.stable as StableConfig, base));
+  const master: Master = { ...base, tracks, litTracks, gacha: { ...base.gacha, pityGroups, banners }, progression, ng: b.ng ?? base.ng, events, bannedSilks, ...(stable ? { stable } : {}) };
   problems.push(...eventProblems(master, events, ruleset));
   // QA r6 #1: tickets must never reach a paid-only banner, including after a remote-config banner change
   if (master.items) problems.push(...itemsProblems(master));

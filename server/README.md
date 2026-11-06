@@ -84,6 +84,11 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | DELETE | `/v1/presets/room` | 要 | | 条件を消す（自動に戻す） |
 | POST | `/v1/breeding/preview` | 要 | | `{sireId, damId}` 能力の範囲・脚質・距離・ニックス・近親 |
 | POST | `/v1/breeding` | 要 | 必須 | `{sireId, damId, useMaterial?}` 1日1回。`useMaterial: true` なら通常分を使い切った後、配合素材で1日1回まで追加（REQ-ITEM-003）。予想（preview）は `today` に残り回数を返す |
+| GET | `/v1/stable` | 要 | | マイ厩舎：自分の配置（未保存なら装備中の飾りから）・テーマ（解放状態）・飾り（所持）・いいね数・訪問者に見える写し（REQ-STABLE-*） |
+| PUT | `/v1/stable` | 要 | | `{theme, name\|null, slots[], featuredHorseIds[]}` 持っている飾り・自分の現役馬だけ。公開用の写しを DirectoryDO に書く |
+| GET | `/v1/stable/visits` | 要 | | フレンドの厩舎とおすすめ（いいねの多い順） |
+| GET | `/v1/stable/:playerId` | 要 | | 公開用の写し＋自分のいいね状況（持ち主のDOは読まない） |
+| POST | `/v1/stable/:playerId/like` | 要 | 必須 | いいね（1日5回・同じ相手は1日1回・自分は不可）。**コインは付かない** |
 | GET | `/v1/stud/mine` | 要 | | 自分の登録種牡馬（今日の貸出数）・今日の受取額と上限・借りた回数・履歴（貸し/借り） |
 | PUT | `/v1/stud/listings/:horseId` | 要 | | `{visibility: friends\|public, fee, dailyLimit}` 引退牡馬を登録・更新。料金は無償コイン（REQ-BREED-010） |
 | DELETE | `/v1/stud/listings/:horseId` | 要 | | 登録を取り下げる |

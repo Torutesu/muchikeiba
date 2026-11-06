@@ -1,6 +1,6 @@
 # ムチ一閃 / Frontend prototype
 
-横画面の競馬ジョッキーゲーム UI。グリーン・アイボリー・ゴールド、明朝見出し、SVG イラストを使ったブラウザプロトタイプです。小画面ではレイアウトを積み替えます。
+横画面の競馬ジョッキーゲーム UI。グリーン・アイボリー・ゴールド、日本語の明朝・ゴシックと、3D相棒モデルを使ったブラウザプロトタイプです。小画面ではレイアウトを積み替えます。
 
 ## 起動とビルド
 
@@ -31,15 +31,17 @@ npm run build
 
 命名、選択馬、デモ残高、受取状態は localStorage に保存します。デイリーは日本時間の日付で切り替わります。レース報酬は再読込後も重複受取を防ぎ、新しいデモレースの開始時に受取状態をリセットします。
 
-`src/main.js` が基本画面、`src/details.js` が詳細操作と状態、`src/details.css` が追加レイアウトを担当します。
+`src/main.js` が画面、`src/details.js` が詳細操作と状態、`src/style.css` と `src/details.css` が共通の見た目、`src/presentation.js` / `src/showroom-renderer.js` が3Dを担当します。デザイン基準と画面別の変更は [design/DESIGN.md](design/DESIGN.md) を参照してください。
 
 ## デザイン書き出しと Figma
 
-`design/screens.svg` を Figma にドラッグすると、基本10画面と詳細・状態違い・モバイルを含む25種類を取り込めます。個別 SVG と参照 PNG は `design/screens/`、画面名・サイズは `manifest.json` にあります。
+[全画面レビュー](design/review.html) で29種類を比較できます。
+
+`design/screens.svg` を Figma にドラッグすると、基本10画面と詳細・状態違い・モバイルを含む29種類を取り込めます。個別 SVG と参照 PNG は `design/screens/`、画面名・サイズは `manifest.json` にあります。
 
 `design/muchikeiba-figma-detailed.zip` は SVG・PNG・取り込み手順・名前付きフレームを作るプラグインのセットです。Figma デスクトップの Plugins → Development → Import plugin from manifest で同梱の manifest.json を選択して実行します。プラグインの Figma 実機動作は未検証です。
 
-SVG は DOM の近似変換で、折り返し位置を保持した文字・図形です。影・CSS グラデーション・フィルター等は完全には再現しないため、見た目は同名 PNG を参照してください。Figma への直接投稿、Auto Layout、再利用コンポーネント、プロトタイプ接続は含みません。
+SVG は DOM の近似変換で、折り返し位置を保持した文字・図形と、埋め込み画像です。影・CSS グラデーション・フィルター等は完全には再現しないため、見た目は同名 PNG を参照してください。Figma への直接投稿、Auto Layout、再利用コンポーネント、プロトタイプ接続は含みません。
 
 ## 検証・再生成
 
@@ -47,6 +49,8 @@ SVG は DOM の近似変換で、折り返し位置を保持した文字・図�
 
 ```sh
 node scripts/verify-details.cjs
+node scripts/verify-presentation.cjs
+node scripts/verify-fallback.cjs
 node scripts/export-design.cjs
 python3 scripts/package-design.py
 npm run build
@@ -54,8 +58,26 @@ npm run build
 
 操作検証は初回導線、入力、スカウト、検索、馬選択、出走確認・キャンセル、フレンドコード、レーン操作、残り脚、報酬と再読込、購入確認を対象とします。1440 / 844 / 390px の全10画面で横はみ出しを確認し、ブラウザエラーと保存した馬名の HTML 混入も検出します。
 
+## アート・3Dの再生成
+
+通常の起動は同梱済みの WebP・GLB・フォントを使います。再生成する場合のみ Blender 4.3、Python の Pillow / fontTools / brotli、システムの Noto CJK が必要です。
+
+```sh
+# リポジトリのルートから実行
+blender -b --factory-startup -t 8 --python-exit-code 1 --python frontend/scripts/build-showroom.py
+python3 frontend/scripts/prepare-presentation.py
+```
+
+3種類のモデルは同じ解剖形状と馬具の規則から作り、毛色を頂点カラーで描きます。GLB には骨格と走行アニメーションを含みます。ショールームはドラッグ・ピンチ、レースはアニメーションと芝・レール・影の表示に対応します。WebGL 非対応時は静止画へ切り替えます。
+
+3D は遅延読込で、静止画は WebP、フォントは必要字形のみです。書き出しの元になる PNG はビルド中間生成物で、配布版には WebP を使います。Figma 用 ZIP には OTF とフォントのライセンスも含みます。Three.js は MIT ライセンスです。
+
 ## 接続範囲
 
 API・Unity・決済・オンライン対戦には接続していません。能力値、着順、報酬、シーズン記録は画面確認用です。スカウトの10頭は固定結果表示のみで、所属馬への追加は未接続です。購入確認で生年月を保存・送信せず、決済も実行しません。実際の提供割合・年齢別購入条件・命名NGリスト等は本接続時に実装します。
 
 Unity の3Dアセットは `unity/`、別の全画面プロトタイプとギャラリーは `tools/figma-prototype/` と `tools/figma-gallery/` を参照してください。
+
+### 配布用ビルドの確認
+
+`npm run build` 後、`npm run preview -- --port 4173` を起動し、別のターミナルで `node scripts/verify-build.cjs` を実行します。最初の画面で3Dコードを読み込まないこと、必要時の3Dチャンク・GLB・フォントの読み込み、ショールームとレース、リソース失敗と JavaScript エラーがないことを確認します。

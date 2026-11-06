@@ -2,151 +2,175 @@
   {
     "name": "01",
     "title": "はじめに",
-    "width": 1380,
-    "height": 770
+    "width": 1440,
+    "height": 900
   },
   {
     "name": "02",
     "title": "初めての直線",
-    "width": 1380,
-    "height": 787
+    "width": 1440,
+    "height": 900
   },
   {
     "name": "03",
     "title": "相棒の命名",
-    "width": 1380,
-    "height": 770
+    "width": 1440,
+    "height": 900
   },
   {
     "name": "04",
     "title": "無料スカウト",
-    "width": 1380,
-    "height": 852
+    "width": 1440,
+    "height": 929
   },
   {
     "name": "05",
     "title": "ホーム",
-    "width": 1380,
-    "height": 1047
+    "width": 1440,
+    "height": 1082
   },
   {
     "name": "06",
     "title": "厩舎",
-    "width": 1380,
-    "height": 1080
+    "width": 1440,
+    "height": 1142
   },
   {
     "name": "07",
     "title": "出走登録",
-    "width": 1380,
-    "height": 907
+    "width": 1440,
+    "height": 982
   },
   {
     "name": "08",
     "title": "レース",
-    "width": 1380,
-    "height": 787
+    "width": 1440,
+    "height": 900
   },
   {
     "name": "09",
     "title": "リザルト",
-    "width": 1380,
-    "height": 1102
+    "width": 1440,
+    "height": 1232
   },
   {
     "name": "10",
     "title": "ショップ",
-    "width": 1380,
-    "height": 1092
+    "width": 1440,
+    "height": 1107
   },
   {
     "name": "11-horse-stats",
     "title": "馬詳細・能力",
-    "width": 800,
-    "height": 517
+    "width": 810,
+    "height": 564
   },
   {
     "name": "12-horse-skill",
     "title": "馬詳細・スキルと適性",
-    "width": 800,
-    "height": 621
+    "width": 810,
+    "height": 642
   },
   {
     "name": "13-stable-empty",
     "title": "厩舎・検索結果なし",
-    "width": 1380,
-    "height": 862
+    "width": 1440,
+    "height": 900
   },
   {
     "name": "14-breeding",
     "title": "配合・開放条件",
-    "width": 800,
-    "height": 522
+    "width": 810,
+    "height": 493
   },
   {
     "name": "15-race-ready",
     "title": "出走確認",
-    "width": 800,
-    "height": 575
+    "width": 810,
+    "height": 605
   },
   {
     "name": "16-friend-room",
     "title": "フレンドルーム",
-    "width": 800,
-    "height": 370
+    "width": 810,
+    "height": 358
   },
   {
     "name": "17-scout-results",
     "title": "スカウト10頭結果",
-    "width": 800,
-    "height": 636
+    "width": 810,
+    "height": 695
   },
   {
     "name": "18-scout-info",
     "title": "提供内容",
-    "width": 800,
-    "height": 394
+    "width": 810,
+    "height": 418
   },
   {
     "name": "19-purchase-review",
     "title": "商品・年齢確認",
-    "width": 800,
-    "height": 585
+    "width": 810,
+    "height": 568
   },
   {
     "name": "20-purchase-complete",
     "title": "購入確認完了",
-    "width": 800,
-    "height": 349
+    "width": 560,
+    "height": 361
   },
   {
     "name": "21-home-claimed",
     "title": "ホーム・報酬受取済み",
-    "width": 1380,
-    "height": 1047
+    "width": 1440,
+    "height": 1082
   },
   {
     "name": "22-name-error",
     "title": "命名・入力エラー",
-    "width": 1380,
-    "height": 770
+    "width": 1440,
+    "height": 900
   },
   {
     "name": "23-mobile-home",
     "title": "ホーム・モバイル",
     "width": 390,
-    "height": 1550
+    "height": 1616
   },
   {
     "name": "24-mobile-stable",
     "title": "厩舎・モバイル",
     "width": 390,
-    "height": 2298
+    "height": 2582
   },
   {
     "name": "25-mobile-race",
     "title": "レース・モバイル",
     "width": 390,
-    "height": 770
+    "height": 1000
+  },
+  {
+    "name": "26-3d-showroom",
+    "title": "相棒・3Dショールーム",
+    "width": 810,
+    "height": 680
+  },
+  {
+    "name": "27-club-guide",
+    "title": "クラブガイド",
+    "width": 810,
+    "height": 224
+  },
+  {
+    "name": "28-mobile-partner",
+    "title": "馬詳細・モバイル",
+    "width": 367,
+    "height": 863
+  },
+  {
+    "name": "29-scout-received",
+    "title": "スカウト・初回受取済み",
+    "width": 1440,
+    "height": 963
   }
 ]

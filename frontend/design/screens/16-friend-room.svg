@@ -1,13 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="800" height="370" viewBox="0 0 800 370"><title>フレンドルーム</title><rect x="0" y="0" width="800" height="370" rx="7" fill="rgb(246, 244, 236)" stroke="rgb(197, 207, 184)" stroke-width="1" opacity="1"/>
-<text x="754" y="32.64" fill="rgb(122, 136, 113)" font-family="&quot;Hiragino Kaku Gothic ProN&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="24px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">×</text>
-<rect x="37" y="43" width="20" height="1" rx="0" fill="rgb(162, 138, 82)" stroke="none" stroke-width="0" opacity="1"/>
-<text x="66" y="44.74" fill="rgb(162, 138, 82)" font-family="&quot;Hiragino Kaku Gothic ProN&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="9px" font-weight="400" font-style="normal" letter-spacing="2px" opacity="1">MUCHI ISSEN / CLUB GUIDE</text>
-<text x="37" y="88.64" fill="rgb(24, 59, 48)" font-family="&quot;Yu Mincho&quot;, &quot;Noto Serif JP&quot;, serif" font-size="24px" font-weight="600" font-style="normal" letter-spacing="0" opacity="1">フレンドと、同じゲートへ。</text>
-<text x="37" y="133.32" fill="rgb(24, 59, 48)" font-family="&quot;Hiragino Kaku Gothic ProN&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="12px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">ルームコード </text>
-<text x="727.4375" y="131.6" fill="rgb(138, 150, 123)" font-family="&quot;Hiragino Kaku Gothic ProN&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="10px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">数字6桁</text>
-<rect x="37" y="152" width="726" height="60" rx="3" fill="rgb(255, 253, 245)" stroke="rgb(186, 198, 171)" stroke-width="1" opacity="1"/>
-<text x="57" y="188.3" fill="rgb(24, 59, 48)" font-size="18px" font-family="sans-serif">例：123456</text>
-<text x="37" y="237.6" fill="rgb(100, 115, 92)" font-family="&quot;Hiragino Kaku Gothic ProN&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="10px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">招待されたルームコードを入力してください。</text>
-<rect x="37" y="271" width="726" height="62" rx="3" fill="rgb(24, 59, 48)" stroke="none" stroke-width="0" opacity="0.48"/>
-<text x="60" y="303.68" fill="rgb(255, 253, 240)" font-family="&quot;Hiragino Kaku Gothic ProN&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="13px" font-weight="400" font-style="normal" letter-spacing="1px" opacity="0.48">ルームを確認する </text>
-<text x="721" y="304.48" fill="rgb(219, 199, 138)" font-family="&quot;Hiragino Kaku Gothic ProN&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="18px" font-weight="400" font-style="normal" letter-spacing="1px" opacity="1">↗</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="810" height="358" viewBox="0 0 810 358"><title>フレンドルーム</title><rect x="0" y="0" width="810" height="357.1875" rx="10" fill="rgb(247, 246, 240)" stroke="rgb(200, 206, 186)" stroke-width="1" opacity="1"/>
+<rect x="761" y="13" width="32" height="32" rx="16" fill="rgb(239, 241, 231)" stroke="rgb(215, 222, 204)" stroke-width="1" opacity="1"/>
+<svg x="769" y="21" width="16" height="16" viewBox="0 0 24 24" color="rgb(114, 131, 107)" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m5 5 14 14M5 19 19 5"></path></svg>
+<rect x="37" y="47" width="23" height="1" rx="0" fill="rgb(179, 148, 89)" stroke="none" stroke-width="0" opacity="1"/>
+<text x="70" y="48.88" fill="rgb(179, 148, 89)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="8px" font-weight="500" font-style="normal" letter-spacing="1.5px" opacity="1">MUCHI ISSEN / CLUB GUIDE</text>
+<text x="37" y="90.22" fill="rgb(33, 58, 50)" font-family="&quot;Club Serif&quot;, &quot;Noto Serif JP&quot;, serif" font-size="27px" font-weight="600" font-style="normal" letter-spacing="0.5px" opacity="1">フレンドと、同じゲートへ。</text>
+<text x="37" y="138.5075" fill="rgb(33, 58, 50)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="12px" font-weight="500" font-style="normal" letter-spacing="0" opacity="1">ルームコード </text>
+<text x="737.4375" y="136.7875" fill="rgb(138, 147, 124)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="10px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">数字6桁</text>
+<defs><clipPath id="16-friend-room-clip-2"><rect x="37" y="155.1875" width="736" height="55" rx="5"/></clipPath></defs><g clip-path="url(#16-friend-room-clip-2)">
+<rect x="37" y="155.1875" width="736" height="55" rx="5" fill="rgb(255, 254, 249)" stroke="rgb(189, 203, 177)" stroke-width="1" opacity="1"/>
+<text x="57" y="188.6375" fill="rgb(33, 58, 50)" font-size="17px" font-family="sans-serif">例：123456</text>
+</g>
+<text x="37" y="235.7875" fill="rgb(133, 144, 119)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="10px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">招待されたルームコードを入力してください。</text>
+<rect x="37" y="268.1875" width="736" height="52" rx="5" fill="rgb(20, 47, 39)" stroke="rgb(20, 47, 39)" stroke-width="1" opacity="0.46"/>
+<text x="59" y="296.0075" fill="rgb(255, 248, 223)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="12px" font-weight="500" font-style="normal" letter-spacing="0.42px" opacity="0.46">ルームを確認する </text>
+<text x="738.578125" y="296.0075" fill="rgb(255, 248, 223)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="12px" font-weight="500" font-style="normal" letter-spacing="0.42px" opacity="1">↗</text></svg>

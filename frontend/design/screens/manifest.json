@@ -1,0 +1,152 @@
+[
+  {
+    "name": "01",
+    "title": "はじめに",
+    "width": 1380,
+    "height": 770
+  },
+  {
+    "name": "02",
+    "title": "初めての直線",
+    "width": 1380,
+    "height": 787
+  },
+  {
+    "name": "03",
+    "title": "相棒の命名",
+    "width": 1380,
+    "height": 770
+  },
+  {
+    "name": "04",
+    "title": "無料スカウト",
+    "width": 1380,
+    "height": 852
+  },
+  {
+    "name": "05",
+    "title": "ホーム",
+    "width": 1380,
+    "height": 1047
+  },
+  {
+    "name": "06",
+    "title": "厩舎",
+    "width": 1380,
+    "height": 1080
+  },
+  {
+    "name": "07",
+    "title": "出走登録",
+    "width": 1380,
+    "height": 907
+  },
+  {
+    "name": "08",
+    "title": "レース",
+    "width": 1380,
+    "height": 787
+  },
+  {
+    "name": "09",
+    "title": "リザルト",
+    "width": 1380,
+    "height": 1102
+  },
+  {
+    "name": "10",
+    "title": "ショップ",
+    "width": 1380,
+    "height": 1092
+  },
+  {
+    "name": "11-horse-stats",
+    "title": "馬詳細・能力",
+    "width": 800,
+    "height": 517
+  },
+  {
+    "name": "12-horse-skill",
+    "title": "馬詳細・スキルと適性",
+    "width": 800,
+    "height": 621
+  },
+  {
+    "name": "13-stable-empty",
+    "title": "厩舎・検索結果なし",
+    "width": 1380,
+    "height": 862
+  },
+  {
+    "name": "14-breeding",
+    "title": "配合・開放条件",
+    "width": 800,
+    "height": 522
+  },
+  {
+    "name": "15-race-ready",
+    "title": "出走確認",
+    "width": 800,
+    "height": 575
+  },
+  {
+    "name": "16-friend-room",
+    "title": "フレンドルーム",
+    "width": 800,
+    "height": 370
+  },
+  {
+    "name": "17-scout-results",
+    "title": "スカウト10頭結果",
+    "width": 800,
+    "height": 636
+  },
+  {
+    "name": "18-scout-info",
+    "title": "提供内容",
+    "width": 800,
+    "height": 394
+  },
+  {
+    "name": "19-purchase-review",
+    "title": "商品・年齢確認",
+    "width": 800,
+    "height": 585
+  },
+  {
+    "name": "20-purchase-complete",
+    "title": "購入確認完了",
+    "width": 800,
+    "height": 349
+  },
+  {
+    "name": "21-home-claimed",
+    "title": "ホーム・報酬受取済み",
+    "width": 1380,
+    "height": 1047
+  },
+  {
+    "name": "22-name-error",
+    "title": "命名・入力エラー",
+    "width": 1380,
+    "height": 770
+  },
+  {
+    "name": "23-mobile-home",
+    "title": "ホーム・モバイル",
+    "width": 390,
+    "height": 1550
+  },
+  {
+    "name": "24-mobile-stable",
+    "title": "厩舎・モバイル",
+    "width": 390,
+    "height": 2298
+  },
+  {
+    "name": "25-mobile-race",
+    "title": "レース・モバイル",
+    "width": 390,
+    "height": 770
+  }
+]

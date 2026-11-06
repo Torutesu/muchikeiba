@@ -1,7 +1,7 @@
 import type { GoingAptitude } from './schemas.js';
 import type { BondState } from './bond.js';
 import type { PresetsState } from './presets.js';
-import type { Rarity, Sex, Stats, Style } from './master.js';
+import type { Rarity, Reward, Sex, Stats, Style } from './master.js';
 import type { PushState } from './push.js';
 import type { KpiState } from './kpi.js';
 import type { TimeAttackState } from './timeAttack.js';
@@ -131,6 +131,8 @@ export interface PlayerState {
   team?: PlayerTeamState;
   /** REQ-EVENT-*: per-event progress, pending entry fee and paid rewards (see events.ts). */
   events?: Record<string, PlayerEventState>;
+  /** REQ-TOUR-007: tournament results (paid once per tournament; newest kept). */
+  tournaments?: Record<string, { name: string; rank: number; at: number; reward: Reward | null }>;
   /** Anti-cheat status pushed by the integrity service (REQ-OPS-035). Absent = ok. */
   moderation?: { status: 'ok' | 'quarantined' | 'banned'; until: number | null; reason: string; at: number };
   /** REQ-BOND-*: care points per horse and account-wide level rewards already paid (created on first care). */
@@ -159,8 +161,11 @@ export interface StudState {
   listings: StudListing[];
   /** Owner: reservations in flight by opId (released when settled or after reserveTtlMs). */
   reservations: Record<string, { horseId: string; borrowerId: string; fee: number; at: number; date: string }>;
-  /** Owner: settled opIds → settled-at, so a retried settlement never pays twice (pruned by age). */
-  settled: Record<string, number>;
+  /**
+   * Owner: settled opIds, so a retried settlement never pays twice and a retried reserve resumes the same
+   * horse (pruned by age). Older records are a bare settled-at number.
+   */
+  settled: Record<string, number | { at: number; horseId: string; borrowerId: string; fee: number }>;
   /** Owner: today's lends per horse and coins earned (JST date). */
   lends: { date: string; byHorse: Record<string, number>; earned: number };
   /** Borrower: stud breedings applied, by opId → result (never applied twice). */

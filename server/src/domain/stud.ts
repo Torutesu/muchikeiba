@@ -68,6 +68,8 @@ export function ensureStud(s: PlayerState): StudState {
 }
 
 const SETTLED_KEEP_MS = 30 * 86_400_000;
+/** Older stored settlements were a bare settled-at number (no horse/borrower recorded). */
+const settledAt = (v: StudState['settled'][string]) => (typeof v === 'number' ? v : v.at);
 const APPLIED_KEEP_MS = 30 * 86_400_000;
 
 /** Drops expired reservations and old idempotency records; rolls the daily counters. */
@@ -77,7 +79,7 @@ export function pruneStud(m: Master, st: StudState, now: number) {
   if (st.lends.date !== today) st.lends = { date: today, byHorse: {}, earned: 0 };
   if (st.borrows.date !== today) st.borrows = { date: today, count: 0 };
   for (const [k, r] of Object.entries(st.reservations)) if (now - r.at > c.reserveTtlMs) delete st.reservations[k];
-  for (const [k, at] of Object.entries(st.settled)) if (now - at > SETTLED_KEEP_MS) delete st.settled[k];
+  for (const [k, v] of Object.entries(st.settled)) if (now - settledAt(v) > SETTLED_KEEP_MS) delete st.settled[k];
   for (const [k, a] of Object.entries(st.applied)) if (now - a.at > APPLIED_KEEP_MS) delete st.applied[k];
 }
 
@@ -146,19 +148,38 @@ export function studPeek(m: Master, s: PlayerState, borrowerId: string, horseId:
  * Step 1 (owner): reserve one lend. Idempotent per opId: a repeated reserve (held or already paid) returns
  * the snapshot again without taking another slot.
  */
-export function studReserve(m: Master, s: PlayerState, opId: string, borrowerId: string, horseId: string, now: number): StudSnapshot {
+export function studReserve(m: Master, s: PlayerState, opId: string, borrowerId: string, horseId: string, now: number, expectedFee?: number): StudSnapshot {
+  // QA r7 #9: the borrower confirmed a fee on screen; refuse if the owner changed it since (clear code, nothing reserved)
+  const feeCheck = (fee: number) => {
+    if (expectedFee !== undefined && expectedFee !== fee) throw new AppError('FEE_CHANGED', `the stud fee is now ${fee} free coins`);
+  };
   const st = ensureStud(s);
   pruneStud(m, st, now);
-  // a retried op resumes: held or already paid → same snapshot, even if the listing changed since
-  // (the borrower's apply returns its first result for a finished op)
+  // a retried op resumes: held or already paid → the snapshot of the horse the op was reserved for, even if
+  // the listing changed since (the borrower's apply returns its first result for a finished op). The same key
+  // can never switch stallion or borrower: that would breed with an unlisted/hidden horse at another's fee (QA r7 #1).
   const held = st.reservations[opId];
-  if (held || st.settled[opId] !== undefined) return snapshotOf(s, getHorse(s, horseId), held?.fee ?? 0);
+  if (held) {
+    if (held.horseId !== horseId || held.borrowerId !== borrowerId) throw new AppError('CONFLICT', 'this idempotency key was used for another stud breeding');
+    feeCheck(held.fee);
+    return snapshotOf(s, getHorse(s, held.horseId), held.fee);
+  }
+  const done = st.settled[opId];
+  if (done !== undefined) {
+    if (typeof done !== 'number') {
+      if (done.horseId !== horseId || done.borrowerId !== borrowerId) throw new AppError('CONFLICT', 'this idempotency key was used for another stud breeding');
+      return snapshotOf(s, getHorse(s, done.horseId), done.fee);
+    }
+    // legacy record without the horse: only answer for a stallion this borrower may see right now
+    const l = offered(st, s, borrowerId, horseId);
+    return snapshotOf(s, getHorse(s, horseId), l.fee);
+  }
   const l = offered(st, s, borrowerId, horseId);
-  const snapshot = (fee: number) => snapshotOf(s, getHorse(s, horseId), fee);
+  feeCheck(l.fee);
   const today = jstDateKey(now);
   if (lendsToday(st, horseId, today) >= l.dailyLimit) throw new AppError('BREEDING_DAILY_LIMIT', 'this stallion is fully booked today');
   st.reservations[opId] = { horseId, borrowerId, fee: l.fee, at: now, date: today };
-  return snapshot(l.fee);
+  return snapshotOf(s, getHorse(s, horseId), l.fee);
 }
 
 /**
@@ -182,9 +203,10 @@ export function studSettle(m: Master, s: PlayerState, opId: string, ok: boolean,
   if (paid > 0) grantFree(s, paid, now, 'stud fee', opId);
   st.lends.earned += paid;
   st.lends.byHorse[info.horseId] = (st.lends.byHorse[info.horseId] ?? 0) + 1;
-  st.settled[opId] = now;
+  const borrowerId = held?.borrowerId ?? info.borrowerId;
+  st.settled[opId] = { at: now, horseId: info.horseId, borrowerId, fee };
   const h = s.horses.find((x) => x.id === info.horseId);
-  pushHistory(m, st, { opId, role: 'lent', at: now, ownerId: s.id, borrowerId: held?.borrowerId ?? info.borrowerId, horseId: info.horseId, horseName: h?.name ?? '', fee, paid, foalId: info.foalId });
+  pushHistory(m, st, { opId, role: 'lent', at: now, ownerId: s.id, borrowerId, horseId: info.horseId, horseName: h?.name ?? '', fee, paid, foalId: info.foalId });
   return { opId, status: 'paid' as const, paid };
 }
 
@@ -257,9 +279,30 @@ export function studPreview(m: Master, s: PlayerState, snap: StudSnapshot & { re
     stud: {
       ownerId: snap.ownerId, horseId: snap.horseId, name: snap.horse.name, fee: snap.fee, feeCurrency: 'free' as const,
       remainingToday: snap.remainingToday ?? null, borrowed: st.borrows.count, borrowPerDay: c.borrowPerDay,
-      canPay: s.wallet.free >= snap.fee && s.wallet.debt === 0,
+      canPay: s.wallet.free - studHeldFree(s, now) >= snap.fee && s.wallet.debt === 0,
+      heldFree: studHeldFree(s, now),
     },
   };
+}
+
+/** QA r7 #10: how long free coins credited by a purchase stay out of stud fees (store refunds/chargebacks claw them back). */
+export const STUD_PURCHASE_HOLD_DAYS = 90;
+
+/**
+ * QA r7 #10: free coins that a store purchase credited (the first-purchase bonus, sandbox credits) and that a
+ * refund within the hold period would claw back. They may not leave the account as a stud fee — the
+ * borrower must keep at least this much free after paying — so a refund can never have moved them to
+ * another player first. Other uses (gacha, shop) stay allowed (a refund then becomes debt as before).
+ */
+export function studHeldFree(s: PlayerState, now: number): number {
+  const since = now - STUD_PURCHASE_HOLD_DAYS * 86_400_000;
+  let held = 0;
+  for (const p of s.purchases) {
+    if (p.refunded || p.at < since) continue;
+    if (!p.bonusLotId) held += p.bonusCoinsGranted; // a bonus granted as paid coins can never pay a stud fee anyway
+    held += p.sandboxFreeGranted ?? 0;
+  }
+  return held;
 }
 
 export interface StudApplyResult {
@@ -284,6 +327,8 @@ export function studApply(m: Master, s: PlayerState, opId: string, snap: StudSna
   const fee = Math.max(0, Math.min(snap.fee, c.feeMax));
   if (fee > 0) {
     if (s.wallet.free < fee) throw new AppError('INSUFFICIENT_COINS', `stud fee is ${fee} free coins (paid coins cannot be used)`);
+    const held = studHeldFree(s, now);
+    if (s.wallet.free - fee < held) throw new AppError('INSUFFICIENT_COINS', `${held} free coins from a recent purchase (first-purchase bonus) cannot pay stud fees for ${STUD_PURCHASE_HOLD_DAYS} days`);
     spendFree(s, fee, now, 'stud fee', opId);
   }
   const r = breedWith(m, s, sire, dam, [...snap.grand, ...parentTraits(s, dam)], rng, now, {

@@ -52,6 +52,7 @@ Updated: 2026-11-05（エンジン・サーバー接続を追加）
 | `EventsModel` | `LoadAsync()` | `EnterAsync(eventId)`、`LeaveQueueAsync`、`StandingsAsync(eventId)` | `Events`（Eligible/Fee/Me）、`Board` |
 | `TimeAttackModel` | `LoadAsync(trackId)` | `StartAsync(trackId, ghosts)` → `IRaceDriver`、`SubmitAsync()` | `Me`（自己ベスト・残り回数・メダル）、`Ghosts`、`Result` |
 | `LeaderboardModel` | `LoadAsync(board?)` | – | `Mine`（Rank/Standing）、`Board` |
+| `TournamentsBackend`（大会・観戦、REQ-TOUR/SPEC） | `ListAsync()`、`DetailAsync(id)`、`LiveAsync()` | `RegisterAsync(id)`／`UnregisterAsync(id)`、`JoinHeatAsync(id)` → `IRaceDriver`、`WatchAsync(raceId)` → 観戦用 `IRaceDriver`（PlayerSlot = -1、入力は無視、`delayMs` 遅れで描画） | `Rows`（StatusLabel/CanRegister）、`Heats`（Title/Lines/Watchable）、`Standings`、`JoinNow`、観戦の `Rows`（Title/Subtitle/DelayMs） |
 
 カードの番号とサーバーIDの対応は `ScreenIds`（ケア・コースの見た目・天気・馬場・気温・風）。タイムアタックの `StartAsync` が返すドライバーは
 練習レースと同じ `OfflineRaceDriver`（`Run.Race` を直接走らせる）なので、レース画面はそのまま使える。

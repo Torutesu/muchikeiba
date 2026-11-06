@@ -97,6 +97,24 @@ namespace Muchi.Engine.Tests
             Last("POST", "/v1/stud/breed", "{\"ownerId\":\"o\",\"horseId\":\"h2\",\"damId\":\"h1\",\"useMaterial\":true}", keyed: true);
         }
 
+        /// <summary>\"A r7 / protocol 8.5: the previewed fee goes along as expectedFee; heldFree is read from the offer.</summary>
+        [Fact]
+        public async Task StudBreedSendsTheExpectedFeeAndPreviewShowsHeldCoins()
+        {
+            _http.Reply(200, "{\"stats\":{},\"nick\":false,\"inbreedingCount\":0,\"styles\":{},\"distance\":{\"minM\":1400,\"maxM\":2500},\"surface\":\"turf\",\"goingAptitude\":{},"
+                + "\"atavism\":{\"chancePermille\":0,\"candidates\":[]},\"today\":{\"perDay\":1,\"used\":0},"
+                + "\"stud\":{\"ownerId\":\"o\",\"horseId\":\"h2\",\"name\":\"G\",\"fee\":50,\"feeCurrency\":\"free\",\"remainingToday\":2,\"borrowed\":0,\"borrowPerDay\":2,\"canPay\":false,\"heldFree\":120}}");
+            var p = await _api.StudPreviewAsync("o", "h2", "h1");
+            Assert.Equal(120, p.Stud.HeldFree);
+            Assert.False(p.Stud.CanPay);
+
+            _http.Reply(409, "{\"error\":{\"code\":\"FEE_CHANGED\",\"message\":\"fee changed\"}}");
+            var e = await Assert.ThrowsAnyAsync<ApiException>(() => _api.StudBreedAsync("o", "h2", "h1", "key1", expectedFee: 50));
+            Assert.Equal("FEE_CHANGED", e.WireCode);
+            Assert.Equal(409, e.Status);
+            Last("POST", "/v1/stud/breed", "{\"ownerId\":\"o\",\"horseId\":\"h2\",\"damId\":\"h1\",\"expectedFee\":50}", keyed: true);
+        }
+
         [Fact]
         public async Task OddsMarkLimitedHorsesAndPeriod()
         {

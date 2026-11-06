@@ -1,5 +1,5 @@
 import { weatherProblems } from '../domain/ground.js';
-import { leagueProblems } from '../domain/league.js';
+import { leagueProblems, teamRewardProblems } from '../domain/league.js';
 import { BASE_BANNED_SILKS, bannedSilksListSchema, bannedSilksProblems, type BannedSilksList } from '../domain/bannedSilks.js';
 import { VISUALS, collectItemIds } from '../domain/visuals.js';
 import { bondProblems } from '../domain/bond.js';
@@ -122,6 +122,7 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
   }
   if (b.progression && 'rooms' in b.progression) problems.push(...roomsProblems(progression.rooms));
   if (b.progression && 'league' in b.progression) problems.push(...leagueProblems(progression.league, new Set(collectItemIds(base))));
+  if (b.progression && 'teams' in b.progression) problems.push(...teamRewardProblems(progression.teams?.seasonRewards, new Set(collectItemIds(base))));
   if (b.progression && 'replayHoldDays' in b.progression) problems.push(...holdPolicyProblems(progression.replayHoldDays));
   if (b.progression && ('stud' in b.progression || 'atavismPermille' in b.progression)) problems.push(...studConfigProblems(progression));
 

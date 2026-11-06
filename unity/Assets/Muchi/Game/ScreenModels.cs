@@ -352,7 +352,8 @@ namespace Muchi.Game
         {
             get
             {
-                if (Mine == null) return Message ?? "";
+                // an error or offline notice wins over any table (Mine is cleared on load, but be explicit)
+                if (Mine == null || (!Online && Message != null)) return Message ?? "";
                 if (!InTeam) return "支部に入ると支部対抗シーズンに参加できます";
                 if (!InLeague) return "今週の対戦の組み合わせを待っています";
                 return Mine.DivisionName + "  " + (Mine.Place?.ToString(CultureInfo.InvariantCulture) ?? "-") + "位 / " + Mine.Table.Count;
@@ -392,10 +393,11 @@ namespace Muchi.Game
 
         public async Task LoadAsync(CancellationToken ct = default)
         {
-            Online = false; Message = null;
+            // never show the previous team's table or another division's board after a failed reload
+            Online = false; Message = null; Mine = null; Board = null;
             if (!ServerAvailable) { Message = "OFFLINE  /  the team league needs the server"; return; }
             try { Mine = await B.Api.GetMyLeagueAsync(ct); Online = true; }
-            catch (ApiException e) { Fail(e); }
+            catch (ApiException e) { Mine = null; Board = null; Fail(e); }
         }
 
         /// <summary>Another division's table (tabs at the top of the screen).</summary>
@@ -404,7 +406,7 @@ namespace Muchi.Game
             if (!ServerAvailable) return Offline("the team league needs the server");
             try { Board = await B.Api.GetLeagueBoardAsync(divisionId, "current", ct); return ActionResult.Success(); }
             catch (NotFoundException) { Board = null; return ActionResult.Error("NO SNAPSHOT YET  /  tables are published every few minutes"); }
-            catch (ApiException e) { return Fail(e); }
+            catch (ApiException e) { Board = null; return Fail(e); }
         }
     }
 

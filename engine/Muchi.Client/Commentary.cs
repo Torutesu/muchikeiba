@@ -192,8 +192,10 @@ namespace Muchi.Client
         private int _lastPositionCall = -1;
         private CommentaryLine _current;
         private readonly string _mode, _venue;
-        // race story (REQ-COMM-003): ranks when the final straight started, recent lead changes, winner's finish tick
-        private int[] _rankAtSpurt;
+        // race story (REQ-COMM-003): each horse's rank and tick as it reached the spurt mark (from the tick-stamped
+        // SpurtStart events, so a batched catch-up Process tells the same story), lead changes, winner's finish tick
+        private int[] _spurtRank, _spurtTick;
+        private readonly List<RaceEvent> _leaderChanges = new List<RaceEvent>();
         private int _prevLeader = -1, _prevLeaderChange = -1;
         private bool _duelSaid, _photoSaid, _goingCallDone;
         private int _winnerTick = -1;
@@ -234,6 +236,7 @@ namespace Muchi.Client
                 case RaceMode.Tutorial: return "tutorial";
                 case RaceMode.TimeAttack: return "timeattack";
                 case RaceMode.Event: return "event";
+                case RaceMode.Tournament: return "tournament";
                 default: return "other";
             }
         }
@@ -363,6 +366,7 @@ namespace Muchi.Client
                         _duelSaid = true;
                         Add("duel", e.Tick, e.Slot).Slot2 = _leader;
                     }
+                    _leaderChanges.Add(e);
                     _prevLeader = _leader;
                     _prevLeaderChange = e.Tick;
                     _leader = e.Slot;
@@ -375,13 +379,22 @@ namespace Muchi.Client
                     if (e.Slot == _focus && !_focusWhipSaid) { _focusWhipSaid = true; Add("focus_whip", e.Tick, e.Slot); }
                     break;
                 case RaceEventType.SpurtStart:
+                    if (_spurtRank == null)
+                    {
+                        _spurtRank = new int[sim.EntrantCount];
+                        _spurtTick = new int[sim.EntrantCount];
+                        for (int i = 0; i < _spurtRank.Length; i++) _spurtRank[i] = _spurtTick[i] = -1;
+                    }
+                    if (e.Slot >= 0 && e.Slot < _spurtRank.Length && _spurtTick[e.Slot] < 0)
+                    {
+                        // the engine stamps the rank into the event: never read live state here (catch-up Process)
+                        _spurtRank[e.Slot] = e.Value;
+                        _spurtTick[e.Slot] = e.Tick;
+                    }
                     if (!_spurtSaid)
                     {
                         _spurtSaid = true;
                         Add("spurt", e.Tick, e.Slot);
-                        // ranks as the final straight starts (when Process runs every tick; a batched catch-up reads them later)
-                        _rankAtSpurt = new int[sim.EntrantCount];
-                        for (int i = 0; i < _rankAtSpurt.Length; i++) _rankAtSpurt[i] = sim.GetHorse(i).Rank;
                     }
                     // REQ-BOND-004: flavour line for a horse its rider has bonded with (focus horse first)
                     if (_bondSlots.Contains(e.Slot) && !_bondSaid && _t.Phrases.ContainsKey("bond_call") && (e.Slot == _focus || _focus < 0))
@@ -433,16 +446,26 @@ namespace Muchi.Client
         }
 
         /// <summary>
-        /// The winner's line: "from the back" when it was ComebackFromRank or further back as the final straight started
-        /// (fields of 8+), "wire to wire" when it already led then, the plain finish line otherwise (or with old templates).
+        /// The winner's line: "from the back" when it was ComebackFromRank or further back as it reached the spurt mark
+        /// (fields of 8+), "never gave up the lead" when it led then and no other horse took the lead afterwards, the
+        /// plain finish line otherwise (or with old templates). Uses only tick-stamped events, so the line is the same
+        /// whether Process ran every tick or once in a catch-up batch.
         /// </summary>
         private string WinKind(int slot, int field)
         {
-            if (_rankAtSpurt == null || slot < 0 || slot >= _rankAtSpurt.Length) return "finish_win";
-            int r = _rankAtSpurt[slot];
+            if (_spurtRank == null || slot < 0 || slot >= _spurtRank.Length || _spurtRank[slot] < 0) return "finish_win";
+            int r = _spurtRank[slot];
             if (field >= 8 && r >= _t.ComebackFromRank && _t.Phrases.ContainsKey("comeback_win")) return "comeback_win";
-            if (field >= 2 && r == 0 && _t.Phrases.ContainsKey("wire_win")) return "wire_win";
+            if (field >= 2 && r == 0 && LedFrom(slot, _spurtTick[slot]) && _t.Phrases.ContainsKey("wire_win")) return "wire_win";
             return "finish_win";
+        }
+
+        /// <summary>No lead change to another horse from <paramref name="tick"/> on.</summary>
+        private bool LedFrom(int slot, int tick)
+        {
+            foreach (var e in _leaderChanges)
+                if (e.Tick >= tick && e.Slot != slot) return false;
+            return true;
         }
 
         private Cand Add(string kind, int tick, int slot)

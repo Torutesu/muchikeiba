@@ -8,8 +8,9 @@
  *    teams by standing (league points, then score difference, then the team's current season points —
  *    the "points band"), avoiding last week's opponent where possible; an odd team out gets a bye;
  *  - a matchup is scored from the members' ranked results inside the window: each side's score is how
- *    much its team season points grew between the window's start and end (team points are already the
- *    capped, tenure-aware sum of REQ-TEAM-005, so one strong member cannot carry a team);
+ *    much its members' contributions (REQ-TEAM-005: capped, tenure-aware) grew between the window's start
+ *    and end, per membership stint — a member who leaves keeps the growth they made inside the window
+ *    (frozen at the leave), so a departure never wipes the team's week (QA r7 #6);
  *  - at the season's end the final tables decide places, promotion and relegation, and the league reward
  *    (paid with the team season reward through the team rollover, so the same idempotency, tenure rule
  *    and dead-letter handling apply).
@@ -65,6 +66,8 @@ export interface LeagueWeek {
   matches: Record<string, LeagueMatch[]>;
   /** Every known team's season points when the window opened (late entries start from these, or 0). */
   starts?: Record<string, number>;
+  /** Per team, each stint's contribution when the window opened (TeamSummary.stints; a stint not listed started at 0). */
+  stintStarts?: Record<string, Record<string, number>>;
 }
 export interface LeaguePlace { divisionId: string; place: number; size: number }
 export interface LeagueFinal { places: Record<string, LeaguePlace>; next: Record<string, string>; at: number }
@@ -177,6 +180,7 @@ export function openWeek(st: LeagueState, cfg: LeagueConfig, i: number, teams: T
   }
   w.matches = {};
   w.starts = Object.fromEntries(teams.filter((t) => t.season === st.seasonId).map((t) => [t.teamId, t.points]));
+  w.stintStarts = Object.fromEntries(teams.filter((t) => t.season === st.seasonId && t.stints).map((t) => [t.teamId, { ...t.stints! }]));
   for (const div of cfg.divisions) {
     const inDiv = active.filter((t) => st.divisionOf[t.teamId] === div.id);
     if (inDiv.length > 0) w.matches[div.id] = pairDivision(st, div.id, inDiv, i);
@@ -211,21 +215,38 @@ export function admitLate(st: LeagueState, cfg: LeagueConfig, i: number, teams: 
   return true;
 }
 
-/** REQ-LEAGUE-003: scores window `i` from the teams' season points now (growth inside the window). */
-export function scoreWeek(st: LeagueState, cfg: LeagueConfig, i: number, pointsNow: Map<string, number>): void {
+/**
+ * REQ-LEAGUE-003: one side's score for window `w`: the growth of every stint's contribution since the window
+ * opened (departed members' stints stay in the summary, frozen at the leave). Summaries from older builds
+ * (no stints) fall back to the team's points now minus at the start.
+ */
+export function windowScore(w: LeagueWeek, teamId: string, start: number, now: TeamSummary | undefined): number {
+  if (!now) return 0;
+  const base = w.stintStarts?.[teamId];
+  // stints are comparable when they were snapshotted at the open, or the team was not on the board then (all from 0)
+  if (now.stints && (base || !(teamId in (w.starts ?? {})))) {
+    let sum = 0;
+    for (const [k, v] of Object.entries(now.stints)) sum += Math.max(0, v - (base?.[k] ?? 0));
+    return sum;
+  }
+  return Math.max(0, now.points - start);
+}
+
+/** REQ-LEAGUE-003: scores window `i` from the teams' summaries now (growth inside the window). */
+export function scoreWeek(st: LeagueState, cfg: LeagueConfig, i: number, teamsNow: Map<string, TeamSummary>): void {
   const w = st.weeks[i]!;
   if (w.status !== 'open') return;
   for (const ms of Object.values(w.matches)) {
     for (const m of ms) {
       const a = st.table[m.a]!;
-      m.aScore = Math.max(0, (pointsNow.get(m.a) ?? m.aStart) - m.aStart);
+      m.aScore = windowScore(w, m.a, m.aStart, teamsNow.get(m.a));
       if (m.b === null) {
         a.byes++;
         a.leaguePoints += cfg.byePoints;
         continue;
       }
       const b = st.table[m.b]!;
-      m.bScore = Math.max(0, (pointsNow.get(m.b) ?? m.bStart) - m.bStart);
+      m.bScore = windowScore(w, m.b, m.bStart, teamsNow.get(m.b));
       a.played++; b.played++;
       a.scoreFor += m.aScore; a.scoreAgainst += m.bScore;
       b.scoreFor += m.bScore; b.scoreAgainst += m.aScore;
@@ -245,7 +266,7 @@ export function scoreWeek(st: LeagueState, cfg: LeagueConfig, i: number, pointsN
 export function leagueTick(st: LeagueState, cfg: LeagueConfig, teams: TeamSummary[], now: number): boolean {
   if (st.final) return false;
   let changed = false;
-  const pts = new Map(teams.map((t) => [t.teamId, t.points]));
+  const pts = new Map(teams.map((t) => [t.teamId, t]));
   for (const w of st.weeks) {
     if (w.status === 'open' && now < w.endMs && now < w.startMs + cfg.lateEntryHours * 3_600_000 && admitLate(st, cfg, w.index, teams)) changed = true;
     if (w.status === 'open' && now >= w.endMs) { scoreWeek(st, cfg, w.index, pts); changed = true; }
@@ -268,7 +289,7 @@ export function divisionTable(st: LeagueState, divisionId: string): LeagueRow[] 
  */
 export function finalizeLeague(st: LeagueState, cfg: LeagueConfig, teams: TeamSummary[], now: number): LeagueFinal {
   if (st.final) return st.final;
-  const pts = new Map(teams.map((t) => [t.teamId, t.points]));
+  const pts = new Map(teams.map((t) => [t.teamId, t]));
   for (const w of st.weeks) {
     if (w.status === 'open') scoreWeek(st, cfg, w.index, pts);
     else if (w.status === 'pending') w.status = 'skipped';
@@ -384,19 +405,44 @@ export function leagueProblems(cfg: unknown, knownItems?: Set<string>): string[]
   else c.rewards.forEach((b, i) => {
     if (!ids.has(b?.divisionId)) p.push(`league.rewards[${i}]: unknown division ${b?.divisionId}`);
     if (b?.maxPlace !== null && (typeof b?.maxPlace !== 'number' || !Number.isInteger(b.maxPlace) || b.maxPlace < 1)) p.push(`league.rewards[${i}].maxPlace must be null or >= 1`);
-    const r = b?.reward;
-    if (!r || typeof r !== 'object') { p.push(`league.rewards[${i}].reward required`); return; }
-    if (r.freeCoins !== undefined && (!Number.isInteger(r.freeCoins) || r.freeCoins < 0 || r.freeCoins > 100_000)) p.push(`league.rewards[${i}].reward.freeCoins must be 0..100000`);
-    for (const it of r.items ?? []) {
-      if (!Number.isInteger(it.qty) || it.qty < 1 || it.qty > 100) p.push(`league.rewards[${i}]: item qty must be 1..100`);
-      if (knownItems && !knownItems.has(it.itemId)) p.push(`league.rewards[${i}]: unknown item ${it.itemId}`);
-    }
+    p.push(...coinItemRewardProblems(`league.rewards[${i}].reward`, b?.reward, knownItems));
   });
   return p;
 }
 
+/**
+ * QA r7 #7: rewards paid through the team rollover (team season reward, league reward) may hold free coins
+ * and items only — strictly, like the tournament prize schema. The rollover pays without the template
+ * table, so a `horse` (or any unknown key) would only fail at payout time; it is refused up front.
+ */
+export function coinItemRewardProblems(path: string, r: unknown, knownItems?: Set<string>): string[] {
+  const p: string[] = [];
+  if (!r || typeof r !== 'object' || Array.isArray(r)) return [`${path} required`];
+  const o = r as Record<string, unknown>;
+  for (const k of Object.keys(o)) if (k !== 'freeCoins' && k !== 'items') p.push(`${path}: ${k} is not allowed here (free coins and items only)`);
+  if (o.freeCoins !== undefined && (!Number.isInteger(o.freeCoins) || (o.freeCoins as number) < 0 || (o.freeCoins as number) > 100_000)) p.push(`${path}.freeCoins must be 0..100000`);
+  if (o.items !== undefined) {
+    if (!Array.isArray(o.items) || o.items.length > 8) p.push(`${path}.items must be an array of at most 8`);
+    else o.items.forEach((it: unknown, j) => {
+      const x = it as Record<string, unknown> | null;
+      if (!x || typeof x !== 'object') { p.push(`${path}.items[${j}] must be an object`); return; }
+      for (const k of Object.keys(x)) if (k !== 'itemId' && k !== 'qty') p.push(`${path}.items[${j}]: unknown key ${k}`);
+      if (typeof x.itemId !== 'string' || x.itemId.length === 0) p.push(`${path}.items[${j}].itemId required`);
+      else if (knownItems && !knownItems.has(x.itemId)) p.push(`${path}: unknown item ${x.itemId}`);
+      if (!Number.isInteger(x.qty) || (x.qty as number) < 1 || (x.qty as number) > 100) p.push(`${path}.items[${j}].qty must be 1..100`);
+    });
+  }
+  return p;
+}
+
+/** QA r7 #7: the team season reward bands (paid by the team rollover, like the league reward). */
+export function teamRewardProblems(bands: unknown, knownItems?: Set<string>): string[] {
+  if (!Array.isArray(bands)) return ['teams.seasonRewards must be an array'];
+  return bands.flatMap((b: { reward?: unknown } | null, i) => coinItemRewardProblems(`teams.seasonRewards[${i}].reward`, b?.reward, knownItems));
+}
+
 /** Boot check of the shipped master (index.ts), like validateGacha / validateItems: league and per-course climate. */
 export function validateLeagueAndWeather(m: Pick<Master, 'progression' | 'tracks'>): void {
-  const p = [...leagueProblems(m.progression.league), ...weatherProblems(m.progression.weather, m.tracks)];
+  const p = [...leagueProblems(m.progression.league), ...teamRewardProblems(m.progression.teams.seasonRewards), ...weatherProblems(m.progression.weather, m.tracks)];
   if (p.length) throw new AppError('CONFIG_INVALID', p.join('; '));
 }

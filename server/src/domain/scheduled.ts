@@ -24,6 +24,8 @@ export interface ScheduledDeps {
   eventsStep?(now: number): Promise<string[]>;
   /** REQ-LEAGUE-001..003: the current season's team league (after the past seasons' rollovers, which finalize last month's league). */
   leagueStep?(seasonId: string): Promise<{ status: string }>;
+  /** REQ-TOUR-005: wake active tournaments (fallback for their own alarms); returns a short log. */
+  tournamentsStep?(now: number): Promise<string[]>;
 }
 
 /** How many past seasons the cron keeps stepping until they report closed (a stalled one is not abandoned). */
@@ -70,6 +72,8 @@ export async function runScheduled(cron: string, now: number, deps: ScheduledDep
     if (league) await step('league', async () => `league:${(await league(jstMonthKey(now))).status}`);
     const events = deps.eventsStep;
     if (events) await step('events', () => events(now));
+    const tours = deps.tournamentsStep;
+    if (tours) await step('tournaments', () => tours(now));
   } else if (cron === CRONS.noon) {
     await step('reminder', async () => `reminder:${(deps.seasonReminder ? await deps.seasonReminder(now) : null) ?? 'none'}`);
   } else if (cron === CRONS.daily) {

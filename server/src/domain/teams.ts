@@ -5,7 +5,7 @@ import type { Master, Reward, TeamsConfig } from './master.js';
 import { leagueRewardFor, type LeagueConfig, type LeaguePlace } from './league.js';
 import type { PlayerState } from './player.js';
 import { foldForCompare } from './horses.js';
-import { DAY_MS } from './time.js';
+import { DAY_MS, jstMonthKey } from './time.js';
 
 /**
  * 支部（チーム戦） REQ-TEAM-*. Pure logic shared by the TeamDO (one Durable Object per team, so teams
@@ -47,6 +47,12 @@ export interface TeamState {
   disbanded: boolean;
   /** REQ-TEAM-008: per closed season, reward distribution progress (resumable). */
   closes: Record<string, TeamSeasonClose>;
+  /**
+   * REQ-LEAGUE-003: contributions of members who left during `season`, frozen at the moment they left (by
+   * stint key, see stintKey). League windows score per-stint growth, so a departure keeps what the member
+   * earned for the team inside the window instead of taking it away.
+   */
+  leftStints?: { season: string; byKey: Record<string, number> };
 }
 
 export interface MemberSnapshot { playerId: string; displayName: string; season: string; points: number }
@@ -187,6 +193,9 @@ function pruneFormer(t: TeamState, cfg: TeamsConfig, now: number) {
 export function removeMember(t: TeamState, cfg: TeamsConfig, playerId: string, now: number): TeamMember {
   const m = memberOf(t, playerId);
   if (!m) throw new AppError('NOT_IN_TEAM');
+  const season = jstMonthKey(now);
+  if (t.leftStints?.season !== season) t.leftStints = { season, byKey: {} };
+  t.leftStints.byKey[stintKey(m)] = contribution(m, season, cfg.memberPointsCap);
   t.members = t.members.filter((x) => x.playerId !== playerId);
   t.former.push({ playerId, joinedAt: m.joinedAt, leftAt: now });
   pruneFormer(t, cfg, now);
@@ -280,6 +289,16 @@ export function contribution(m: TeamMember, season: string, cap: number): number
 
 export const teamPoints = (t: TeamState, season: string, cap: number) => t.members.reduce((a, m) => a + contribution(m, season, cap), 0);
 
+/** One membership period of a player (a leave and rejoin starts a new stint with a new baseline). */
+export const stintKey = (m: Pick<TeamMember, 'playerId' | 'joinedAt'>) => `${m.playerId}@${m.joinedAt}`;
+
+/** REQ-LEAGUE-003: contribution per stint this season — current members live, departed ones frozen at leave. */
+export function teamStints(t: TeamState, season: string, cap: number): Record<string, number> {
+  const out: Record<string, number> = t.leftStints?.season === season ? { ...t.leftStints.byKey } : {};
+  for (const m of t.members) out[stintKey(m)] = contribution(m, season, cap);
+  return out;
+}
+
 // ------------------------------------------------------------------------------------- season close
 
 /** JST month "YYYY-MM" → the instant it ends (start of the next JST month). */
@@ -363,10 +382,14 @@ export function buildTeamBoard(seasonId: string, teams: TeamSummary[], now: numb
 
 // ------------------------------------------------------------------------------------- views
 
-export interface TeamSummary { teamId: string; name: string; joinPolicy: JoinPolicy; members: number; points: number; season: string; updatedAt: number; emblem?: Emblem }
+export interface TeamSummary {
+  teamId: string; name: string; joinPolicy: JoinPolicy; members: number; points: number; season: string; updatedAt: number; emblem?: Emblem;
+  /** REQ-LEAGUE-003: contribution per stint (teamStints); absent in summaries stored by older builds. */
+  stints?: Record<string, number>;
+}
 
 export function teamSummary(t: TeamState, season: string, cap: number, now: number): TeamSummary {
-  return { teamId: t.id, name: t.name, joinPolicy: t.joinPolicy, members: t.members.length, points: teamPoints(t, season, cap), season, updatedAt: now, emblem: t.emblem ?? defaultEmblem(t.id) };
+  return { teamId: t.id, name: t.name, joinPolicy: t.joinPolicy, members: t.members.length, points: teamPoints(t, season, cap), season, updatedAt: now, emblem: t.emblem ?? defaultEmblem(t.id), stints: teamStints(t, season, cap) };
 }
 
 /** Public view; requests are shown only to the leader and officers. */

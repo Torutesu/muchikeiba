@@ -17,7 +17,16 @@ export interface RoomOptions {
   rng: Rng;
   /** REQ-ASSET-006: runner looks + track scene, sent in `start` (not hashed, not in the replay log). */
   visuals?: StartVisuals;
+  /**
+   * REQ-SPEC-003: how far behind real time spectators see the race (anti-ghosting for races with something
+   * at stake). Absent = spectateDelayMsFor(mode).
+   */
+  spectateDelayMs?: number;
 }
+
+/** REQ-SPEC-003: friend rooms stream live; ranked / event / tournament races are delayed for spectators. */
+export const SPECTATE_DELAY_MS = 10_000;
+export const spectateDelayMsFor = (mode: string) => (mode === 'friend' ? 0 : SPECTATE_DELAY_MS);
 export const DEFAULT_ROOM_OPTIONS = { verifySampleRate: 0.05, resultWaitMs: 5000 };
 
 export type Outbound = { to: number | 'all'; msg: ServerMessage };
@@ -90,6 +99,48 @@ export class RaceRoomCore {
     const e = this.config.entrants.find((x) => x.playerId === playerId);
     return e ? e.slot : null;
   }
+
+  /** REQ-SPEC-003: delay applied to the spectator stream. */
+  get spectateDelayMs() { return this.opts.spectateDelayMs ?? spectateDelayMsFor(this.config.mode); }
+
+  /**
+   * REQ-SPEC-003: last tick spectators may see now: ticks already sent to the players (so already durable,
+   * REQ-NET-014), held back by the delay and paced by the race clock — a delayed viewer keeps watching at
+   * normal speed after the players' race has stopped.
+   */
+  spectatorFrontier(now: number): number {
+    const delayed = this.spectateDelayMs > 0 ? this.dueTick(now - this.spectateDelayMs) : this.lastBundledTick;
+    return Math.min(this.lastBundledTick, delayed);
+  }
+
+  /** REQ-SPEC-004: the definitive verdict (confirmed / void) for spectators who have seen every tick. */
+  spectatorFinal(sentTick: number): ServerMessage | null {
+    return this._final && this._phase !== 'running' && this._phase !== 'awaitingResults' && sentTick >= this.lastBundledTick ? this.finalMsg() : null;
+  }
+
+  /** REQ-TOUR-006: everything a tournament needs from a finished heat. */
+  heatSummary() {
+    return {
+      phase: this._phase,
+      final: this._final ? { status: this._final.status, order: this._final.order, hash: this._final.hash } : null,
+      slots: this.config.entrants.filter((e) => e.kind === 'human').map((e) => ({ slot: e.slot, playerId: e.playerId! })),
+      noShows: this.noShowSlots(),
+    };
+  }
+
+  /** REQ-SPEC-003: the last tick spectators will ever get (the players' last bundled tick once the race stopped). */
+  get lastSpectatorTick() { return this._phase === 'running' ? Number.MAX_SAFE_INTEGER : this.lastBundledTick; }
+
+  /** REQ-SPEC-002: the read-only `start` for a spectator (no slot, never inputs). */
+  spectatorStart(): ServerMessage {
+    return { t: 'start', you: -1, startAtMs: this.startAtMs, config: this.config, ...(this.opts.visuals ? { visuals: this.opts.visuals } : {}), spectator: { delayMs: this.spectateDelayMs } };
+  }
+
+  /** Confirmed inputs for ticks [from, to] (spectator catch-up). */
+  bundleRange(from: number, to: number): ServerMessage { return this.bundle(from, to); }
+
+  /** REQ-TOUR-006: human slots that never connected (their horse ran under CPU control the whole race). */
+  noShowSlots(): number[] { return this.humanSlots.filter((s) => !this.conns.get(s)!.everConnected); }
 
   /** Tick n is confirmed once now >= startAt + (n+1) * 1000 / tickHz. */
   private dueTick(now: number): number {
@@ -304,7 +355,7 @@ export class RaceRoomCore {
       else counts.set(r.h, { n: 1, order: r.order });
     }
     const best = [...counts.entries()].sort((a, b) => b[1].n - a[1].n)[0];
-    const ranked = this.config.mode === 'ranked' || this.config.mode === 'event'; // modes with rewards at stake (REQ-EVENT-006)
+    const ranked = this.config.mode === 'ranked' || this.config.mode === 'event' || this.config.mode === 'tournament'; // modes with rewards at stake (REQ-EVENT-006, REQ-TOUR-006)
     const humans = this.humanSlots.length;
     let verify = false;
     if (this.reported) verify = true;
@@ -347,7 +398,7 @@ export class RaceRoomCore {
 
   toJSON(): RoomSnapshot {
     return {
-      config: this.config, startAtMs: this.startAtMs, opts: { verifySampleRate: this.opts.verifySampleRate, resultWaitMs: this.opts.resultWaitMs, ...(this.opts.visuals ? { visuals: this.opts.visuals } : {}) },
+      config: this.config, startAtMs: this.startAtMs, opts: { verifySampleRate: this.opts.verifySampleRate, resultWaitMs: this.opts.resultWaitMs, ...(this.opts.visuals ? { visuals: this.opts.visuals } : {}), ...(this.opts.spectateDelayMs !== undefined ? { spectateDelayMs: this.opts.spectateDelayMs } : {}) },
       conns: [...this.conns.entries()].map(([k, v]) => [k, { ...v }]),
       pending: [...this.pending.entries()].map(([t, m]) => [t, [...m.entries()]]),
       log: this.log, confirmedTick: this.confirmedTick, lastBundledTick: this.lastBundledTick, phase: this._phase, stoppedAtMs: this.stoppedAtMs, majorityAtMs: this.majorityAtMs,

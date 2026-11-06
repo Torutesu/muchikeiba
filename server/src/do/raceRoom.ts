@@ -7,13 +7,21 @@ import { cryptoRng } from '../domain/rng.js';
 import { HttpVerifierClient } from '../domain/verifier.js';
 import type { Rating } from '../domain/rating.js';
 import { verifyTicket } from '../http/ticket.js';
+import { admitSpectator } from '../domain/spectate.js';
 import { driveSettlement, newSettleMeta, upgradeSettleMeta, type SettleMeta } from '../race/settlement.js';
 import { dismissSettlementItem, retrySettlementItem, settlementDeadLetters, type DeadLetterItem, type RetryOutcome } from '../ops/deadLetter.js';
 import { newlyDead, reportDeadLetters } from './deadLetters.js';
 import { unwrap, wrap, type Envelope } from './rpc.js';
 import type { PlayerDO } from './player.js';
 
-interface Attachment { slot: number | null }
+/**
+ * Per-socket state, kept by the runtime across hibernation. Spectators (REQ-SPEC-*) have slot null and
+ * `spec` set: `sent` = last tick sent to them, `fin` = whether they already got the definitive final.
+ */
+interface Attachment { slot: number | null; spec?: { sent: number; fin: boolean; playerId?: string } }
+
+/** REQ-SPEC-005: default spectator cap per room (env SPECTATOR_LIMIT overrides). */
+export const DEFAULT_SPECTATOR_LIMIT = 200;
 
 const WATCHDOG_MS = 30_000;
 
@@ -46,12 +54,20 @@ export class RaceRoomDO extends DurableObject<Env> {
     return Number.isFinite(v) ? v : DEFAULT_ROOM_OPTIONS.verifySampleRate;
   }
 
-  async init(o: { config: RaceStartConfig; startAtMs: number; ratings: Record<string, Rating>; eventId?: string | null; visuals?: StartVisuals }) {
-    if (this.core) return; // idempotent
-    this.core = new RaceRoomCore(o.config, o.startAtMs, { verifySampleRate: this.sampleRate(), resultWaitMs: DEFAULT_ROOM_OPTIONS.resultWaitMs, rng: cryptoRng, ...(o.visuals ? { visuals: o.visuals } : {}) });
+  private spectatorLimit() {
+    const v = Number(this.env.SPECTATOR_LIMIT ?? DEFAULT_SPECTATOR_LIMIT);
+    return Number.isFinite(v) && v >= 0 ? Math.floor(v) : DEFAULT_SPECTATOR_LIMIT;
+  }
+
+  async init(o: { config: RaceStartConfig; startAtMs: number; ratings: Record<string, Rating>; eventId?: string | null; visuals?: StartVisuals; spectateDelayMs?: number }) {
+    // idempotent: a repeated init (same raceId) keeps the room as it is and returns what it really runs, so a
+    // resumed creation (tournament heats, QA r7 #5) hands out tickets for this room's slots and start
+    if (this.core) return { config: this.core.config, startAtMs: this.core.startAtMs, existed: true };
+    this.core = new RaceRoomCore(o.config, o.startAtMs, { verifySampleRate: this.sampleRate(), resultWaitMs: DEFAULT_ROOM_OPTIONS.resultWaitMs, rng: cryptoRng, ...(o.visuals ? { visuals: o.visuals } : {}), ...(o.spectateDelayMs !== undefined ? { spectateDelayMs: o.spectateDelayMs } : {}) });
     this.meta = newSettleMeta(o.ratings, o.eventId ?? null);
     await this.persist();
     await this.ctx.storage.setAlarm(o.startAtMs);
+    return { config: o.config, startAtMs: o.startAtMs, existed: false };
   }
 
   private async persist() {
@@ -86,6 +102,71 @@ export class RaceRoomDO extends DurableObject<Env> {
     }
   }
 
+  private spectators(): [WebSocket, Attachment & { spec: { sent: number; fin: boolean } }][] {
+    const out: [WebSocket, Attachment & { spec: { sent: number; fin: boolean } }][] = [];
+    for (const ws of this.ctx.getWebSockets()) {
+      const a = ws.deserializeAttachment() as Attachment | null;
+      if (a?.spec) out.push([ws, a as Attachment & { spec: { sent: number; fin: boolean } }]);
+    }
+    return out;
+  }
+
+  /**
+   * REQ-SPEC-003/005: delayed, batched fan-out to spectators. Spectators who are at the same tick share one
+   * serialized bundle; a socket is written at most once per bundle interval (or when the race ends).
+   */
+  private flushSpectators(now: number, force = false) {
+    const core = this.core;
+    if (!core) return;
+    const frontier = core.spectatorFrontier(now);
+    const interval = core.config.net.bundleIntervalTicks;
+    const cache = new Map<number, string>();
+    for (const [ws, a] of this.spectators()) {
+      let changed = false;
+      const behind = frontier - a.spec.sent;
+      if (behind > 0 && (force || behind >= interval || frontier >= core.lastSpectatorTick)) {
+        let data = cache.get(a.spec.sent);
+        if (data === undefined) cache.set(a.spec.sent, (data = JSON.stringify(core.bundleRange(a.spec.sent + 1, frontier))));
+        try { ws.send(data); } catch { /* closed */ }
+        a.spec.sent = frontier;
+        changed = true;
+      }
+      if (!a.spec.fin) {
+        const fin = core.spectatorFinal(a.spec.sent);
+        if (fin) {
+          try { ws.send(JSON.stringify(fin)); } catch { /* closed */ }
+          a.spec.fin = true;
+          changed = true;
+        }
+      }
+      if (changed) ws.serializeAttachment(a);
+    }
+  }
+
+  /** True while some spectator still has ticks or the final to receive (keeps the alarm going). */
+  private spectatorsPending(): boolean {
+    const core = this.core;
+    if (!core) return false;
+    return this.spectators().some(([, a]) => a.spec.sent < core.lastSpectatorTick || (!a.spec.fin && core.phase === 'final'));
+  }
+
+  private async helloSpectator(ws: WebSocket, playerId: string, lastTick: number, now: number) {
+    const core = this.core!;
+    // QA r7 #8: one spectator socket per player (a newer one replaces the older), so one user cannot fill the cap
+    const others = this.spectators().filter(([w]) => w !== ws).map(([w, a]) => ({ ws: w, playerId: a.spec.playerId ?? null }));
+    const d = admitSpectator(others, playerId, this.spectatorLimit());
+    if (!d.admit) {
+      ws.send(JSON.stringify({ t: 'err', code: 'SPECTATORS_FULL' }));
+      ws.close(4003, 'spectators full');
+      return;
+    }
+    for (const old of d.replace) { old.serializeAttachment({ slot: null } satisfies Attachment); old.close(4000, 'replaced'); }
+    ws.send(JSON.stringify(core.spectatorStart()));
+    ws.serializeAttachment({ slot: null, spec: { sent: Math.max(-1, Math.min(lastTick, core.spectatorFrontier(now))), fin: false, playerId } } satisfies Attachment);
+    this.flushSpectators(now, true);
+    await this.scheduleAlarm();
+  }
+
   /** Outbound that changes what clients have seen (ticks, verdicts) must be durable before it is sent. */
   private static mustPersist(out: Outbound[], phaseBefore: RoomPhase, phaseAfter: RoomPhase) {
     return phaseBefore !== phaseAfter || out.some((o) => o.msg.t === 'b' || o.msg.t === 'final' || o.msg.t === 'desync');
@@ -108,6 +189,7 @@ export class RaceRoomDO extends DurableObject<Env> {
     if (msg.t === 'hello') {
       try {
         const t = await verifyTicket(msg.token, this.env.TICKET_SECRET, core.config.raceId, now);
+        if (t.slot < 0) return await this.helloSpectator(ws, t.playerId, msg.lastTick, now); // REQ-SPEC-002
         // one socket per slot: close older ones
         for (const other of this.ctx.getWebSockets()) {
           const oa = other.deserializeAttachment() as Attachment | null;
@@ -122,6 +204,11 @@ export class RaceRoomDO extends DurableObject<Env> {
         ws.close(4001, 'unauthorized');
       }
       return;
+    }
+    if (att.spec) {
+      // REQ-SPEC-002: read-only — spectators never send inputs, checksums or results
+      if (msg.t === 'ping') return ws.send(JSON.stringify({ t: 'pong', c: msg.c, s: now }));
+      return ws.send(JSON.stringify({ t: 'err', code: 'SPECTATOR_READ_ONLY' }));
     }
     if (att.slot === null) return ws.send(JSON.stringify({ t: 'err', code: 'NOT_IN_RACE' }));
     const out = core.message(att.slot, msg, now);
@@ -149,7 +236,9 @@ export class RaceRoomDO extends DurableObject<Env> {
     const out = core.advance(Date.now());
     if (RaceRoomDO.mustPersist(out, phaseBefore, core.phase)) await this.persist();
     this.send(out);
+    this.flushSpectators(Date.now());
     if (core.phase === 'verifying' || (core.phase === 'final' && this.meta && !this.meta.settled)) await this.drive();
+    this.flushSpectators(Date.now());
     await this.scheduleAlarm();
   }
 
@@ -223,6 +312,12 @@ export class RaceRoomDO extends DurableObject<Env> {
     } else if (core.phase === 'verifying' || (core.phase === 'final' && this.meta && !this.meta.settled)) {
       next = this.meta?.retryAt ?? Date.now();
     }
+    if (this.spectatorsPending()) {
+      // REQ-SPEC-003: keep pacing the delayed stream after the players' race has stopped
+      const interval = (1000 / core.config.net.tickHz) * core.config.net.bundleIntervalTicks;
+      const t = Math.max(Date.now() + interval, core.startAtMs);
+      next = next === null ? t : Math.min(next, t);
+    }
     if (next === null) return;
     const cur = await this.ctx.storage.getAlarm();
     if (cur === null || cur > next) await this.ctx.storage.setAlarm(next);
@@ -235,6 +330,16 @@ export class RaceRoomDO extends DurableObject<Env> {
     // after the result: keep the replay out of the retention sweep (REQ-OPS-001)
     if (this.meta?.replayStored) await this.putReplay(this.core.replayLog(), this.core.retentionHold());
     return { ok: true };
+  }
+
+  /** REQ-TOUR-006: phase, verdict, slot → player and no-shows of this race (tournament heats poll this). */
+  async heatResult() {
+    return this.core?.heatSummary() ?? null;
+  }
+
+  /** REQ-SPEC-005: live spectator count (for the live-race list). */
+  async spectatorCount() {
+    return this.spectators().length;
   }
 
   async replay() {

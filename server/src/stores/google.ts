@@ -86,6 +86,8 @@ export interface GoogleConfig {
   /** Accept license-testing purchases (granted with priceYen 0). */
   acceptTest: boolean;
   subscriptionProductIds: ReadonlySet<string>;
+  /** Once-only products: acknowledged instead of consumed, so Play does not offer them again (REQ-UXS-019). */
+  nonConsumableProductIds?: ReadonlySet<string>;
   priceYen(productId: string): number;
   now?: () => number;
 }
@@ -154,7 +156,9 @@ export class GoogleStoreVerifier implements StoreVerifier {
       purchasedAt: p.purchaseTimeMillis ? Number(p.purchaseTimeMillis) : now,
       priceYen: sandbox ? 0 : this.cfg.priceYen(expectedProductId),
       sandbox,
-      storeRef: { token, kind: 'product', needsAck: p.consumptionState !== 1 },
+      storeRef: this.cfg.nonConsumableProductIds?.has(expectedProductId)
+        ? { token, kind: 'product', needsAck: p.acknowledgementState !== 1, consume: false }
+        : { token, kind: 'product', needsAck: p.consumptionState !== 1 },
     };
   }
 
@@ -163,6 +167,7 @@ export class GoogleStoreVerifier implements StoreVerifier {
     const ref = r.storeRef;
     if (!ref || !ref.needsAck) return;
     if (ref.kind === 'subscription') await this.cfg.api.acknowledgeSubscription(r.productId, ref.token);
+    else if (ref.consume === false) await this.cfg.api.acknowledgeProduct(r.productId, ref.token);
     else await this.cfg.api.consumeProduct(r.productId, ref.token);
   }
 }
@@ -178,6 +183,8 @@ export interface RtdnConfig {
   jwks?: JWTVerifyGetKey;
   api: GooglePlayApi;
   subscriptionProductIds: ReadonlySet<string>;
+  /** Once-only products: acknowledged instead of consumed, so Play does not offer them again (REQ-UXS-019). */
+  nonConsumableProductIds?: ReadonlySet<string>;
   priceYen(productId: string): number;
   acceptTest: boolean;
   now?: () => number;

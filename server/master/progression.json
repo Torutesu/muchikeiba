@@ -137,7 +137,7 @@
     "free": {
       "every": 1,
       "reward": {
-        "freeCoins": 20
+        "freeCoins": 10
       }
     },
     "premium": {
@@ -217,7 +217,7 @@
       "kind": "wins",
       "target": 1,
       "reward": {
-        "freeCoins": 50
+        "freeCoins": 30
       }
     },
     {
@@ -379,6 +379,11 @@
   "replayRetentionDays": 30,
   "replayHoldDays": { "verified": 90 },
   "friendRewardDailyCap": 5,
+  "firstWinBonus": {
+    "_note": "REQ-UXS-010: その日（JST）の最初の勝利（1着）を3回まで、無償コインを上乗せ。ランク戦のみ（フレンド戦は対象外）。経済目標 E1〜E9 は docs/spec/balance-targets.md 4.2。",
+    "modes": ["ranked"],
+    "freeCoinsByWin": [30, 20, 10]
+  },
   "timeAttack": {
     "_note": "REQ-TA-*。statCap はランク戦B級と同じ。メダル秒数は docs/spec/balance-targets.md の方法でシミュレーションから決める（ルールセット1.2.0・タイムアタックは調子の揺らぎなし、全コース、上限いっぱいの馬80本）: gold = 上手い人の上位10%、silver = 上手い人の中央値、bronze = 初心者の中央値。再計算: `dotnet run --project engine/Muchi.Verifier -- ta-thresholds <ruleset.json> <server/master/tracks.json> 3200`（絶対パス）。",
     "statCap": 3200,

@@ -56,7 +56,9 @@ export function itemsProblems(m: Master, v: VisualsMaster = VISUALS): string[] {
     if (ids.has(c.id)) p.push(`${c.id}: duplicate cosmetic`);
     ids.add(c.id);
     if (it.tickets[c.id] || c.id === bm.itemId) p.push(`${c.id}: cosmetic id collides with a ticket/material`);
-    if (!Number.isInteger(c.price) || c.price <= 0) p.push(`${c.id}: price must be a positive integer`);
+    // REQ-UXS-019: a not-for-sale cosmetic (e.g. the Pass+ tack) only comes with a product or reward
+    if (c.notForSale) { if (c.price !== 0) p.push(`${c.id}: a not-for-sale cosmetic has price 0`); }
+    else if (!Number.isInteger(c.price) || c.price <= 0) p.push(`${c.id}: price must be a positive integer`);
     if (c.currency !== 'any' && c.currency !== 'paidOnly') p.push(`${c.id}: bad currency`);
     if (c.kind === 'silks') {
       const pat = v.silks.patterns.find((x) => x.id === c.pattern);
@@ -160,7 +162,7 @@ export function cosmeticsCatalog(m: Master, s: PlayerState) {
     equipment: eq,
     silksPattern: s.profile.silks?.pattern ?? null,
     items: m.items.cosmetics.map((c) => ({
-      id: c.id, name: c.name, kind: c.kind, price: c.price, currency: c.currency, icon: assetKeys.item(c.id),
+      id: c.id, name: c.name, kind: c.kind, price: c.price, currency: c.currency, forSale: !c.notForSale, icon: assetKeys.item(c.id),
       asset: c.kind === 'silks' ? assetKeys.silksPattern(c.pattern) : c.asset,
       ...(c.kind === 'tack' ? { slot: c.slot } : {}),
       ...(c.kind === 'silks' ? { pattern: c.pattern } : {}),
@@ -173,6 +175,7 @@ export function cosmeticsCatalog(m: Master, s: PlayerState) {
 /** REQ-ITEM-005: buy a cosmetic for coins (each is owned once; paid-only items use paid coins only). */
 export function buyCosmetic(m: Master, s: PlayerState, itemId: string, now: number, ref: string) {
   const c = findCosmetic(m, itemId);
+  if (c.notForSale) throw new AppError('NOT_ELIGIBLE', `${c.id} is not sold for coins`);
   if (ownsItem(s, c.id)) throw new AppError('ALREADY_PURCHASED', `${c.id} is already owned`);
   const spent = spend(s, c.price, { paidOnly: c.currency === 'paidOnly' }, now, `cosmetic ${c.id}`, ref);
   addItems(s, [{ itemId: c.id, qty: 1 }]);

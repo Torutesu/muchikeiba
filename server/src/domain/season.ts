@@ -3,6 +3,7 @@ import { STAT_KEYS, type ClassDef, type Master, type Reward, type Stats } from '
 import { grantReward } from './items.js';
 import type { PlayerState } from './player.js';
 import { jstMonthKey } from './time.js';
+import { closePassSeason } from './pass.js';
 
 export const seasonIdFor = (now: number) => jstMonthKey(now);
 
@@ -45,6 +46,8 @@ export function rollSeason(m: Master, s: PlayerState, now: number): { closed: bo
     if (s.seasonHistory.length > SEASON_HISTORY_KEEP) s.seasonHistory.splice(0, s.seasonHistory.length - SEASON_HISTORY_KEEP);
   }
   s.season = { id, classId: classes[next]!.id, points: 0, races: 0 };
+  // REQ-UXS-021: unclaimed pass rewards of the closing season are granted in this same transaction as the reset
+  closePassSeason(m, s, now);
   s.seasonPass = { expiresAt: s.seasonPass.expiresAt, xp: 0, claimed: { free: [], premium: [] }, seasonId: id };
   return { closed: true, from, to: classes[next]!.id };
 }
@@ -65,11 +68,13 @@ export function seasonRewardFor(m: Master, classId: string, rank: number | null)
  */
 export function closeSeason(m: Master, s: PlayerState, seasonId: string, rank: number | null, now: number) {
   const h = s.seasonHistory.find((x) => x.seasonId === seasonId);
-  if (!h) return { status: 'no-record' as const, reward: null };
-  if (h.rewarded) return { status: 'already' as const, reward: null, classId: h.classId, nextClassId: h.nextClassId };
+  // REQ-UXS-021: the pass close already ran in rollSeason (this transaction's first step); report it
+  const pass = (s.passHistory ?? []).find((x) => x.seasonId === seasonId) ?? null;
+  if (!h) return { status: 'no-record' as const, reward: null, pass };
+  if (h.rewarded) return { status: 'already' as const, reward: null, classId: h.classId, nextClassId: h.nextClassId, pass };
   h.rank = rank;
   h.rewarded = true;
   const reward = h.races > 0 ? seasonRewardFor(m, h.classId, rank) : null;
   if (reward) grantReward(s, reward, now, 'season ' + seasonId + ' ' + h.classId + ' rank ' + (rank ?? '-'), 'season:' + seasonId);
-  return { status: 'rewarded' as const, reward, classId: h.classId, nextClassId: h.nextClassId };
+  return { status: 'rewarded' as const, reward, classId: h.classId, nextClassId: h.nextClassId, pass };
 }

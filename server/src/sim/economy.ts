@@ -8,6 +8,7 @@ import { FakeStoreVerifier } from '../domain/purchase.js';
 import { seededRng, type Rng } from '../domain/rng.js';
 import type { Master } from '../domain/master.js';
 import { AppError } from '../domain/errors.js';
+import { jstMonthKey } from '../domain/time.js';
 
 export interface Persona {
   id: string;
@@ -16,7 +17,11 @@ export interface Persona {
   racesPerDay: number;
   /** Chance (‰) the player shows up on a given day. */
   activePermille: number;
-  /** Bought every 30 days on day 1, 31, 61… (product ids from master/products.json). */
+  /**
+   * Product ids from master/products.json. Season passes and coin packs are bought on the first day of every
+   * season (JST month; the pass is per season, REQ-UXS-020); the daily pack 厩舎手当 whenever none is running
+   * (REQ-UXS-018), and its coins are claimed on every active day.
+   */
   monthlyPurchases: string[];
   /** Average finishing place is uniform over 1..12 ("average rider"); a skilled rider shifts it. */
   placeBias: number;
@@ -27,6 +32,7 @@ export const PERSONAS: Persona[] = [
   { id: 'f2p_casual', label: '無課金（週4日）', racesPerDay: 4, activePermille: 570, monthlyPurchases: [], placeBias: 0 },
   { id: 'light', label: '微課金（パス¥1,000/月）', racesPerDay: 6, activePermille: 1000, monthlyPurchases: ['season_pass'], placeBias: 0 },
   { id: 'medium', label: '中課金（パス＋¥5,000/月）', racesPerDay: 6, activePermille: 1000, monthlyPurchases: ['season_pass', 'coin_5000'], placeBias: 0 },
+  { id: 'allowance', label: '微課金（厩舎手当¥480/30日）', racesPerDay: 6, activePermille: 1000, monthlyPurchases: ['stable_allowance_30d'], placeBias: 0 },
 ];
 
 export interface EconomyResult {
@@ -45,6 +51,10 @@ export interface EconomyResult {
   gachaTickets: number;
   /** Pulls paid with tickets instead of coins (REQ-ITEM-001/002). */
   ticketPulls: number;
+  /** REQ-UXS-010: free coins from the daily first-win bonus. */
+  firstWinCoins: number;
+  /** REQ-UXS-018: free coins claimed from the daily pack (counted as bought, not earned by playing). */
+  allowanceCoins: number;
   /** Derived. */
   freeCoinsPerActiveDay: number;
   pullsPerMonth: number;
@@ -73,7 +83,7 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
   const k = () => `c:sim:${key++}`;
   const r: EconomyResult = {
     persona: persona.id, days, activeDays: 0, freeCoinsEarned: 0, paidCoinsBought: 0, yenSpent: 0, pulls: 0, ssr: 0, sr: 0,
-    pityExchanges: 0, firstPityDay: null, breedingMaterial: 0, gachaTickets: 0, ticketPulls: 0, freeCoinsPerActiveDay: 0, pullsPerMonth: 0, ssrPerMonth: 0,
+    pityExchanges: 0, firstPityDay: null, breedingMaterial: 0, gachaTickets: 0, ticketPulls: 0, firstWinCoins: 0, allowanceCoins: 0, freeCoinsPerActiveDay: 0, pullsPerMonth: 0, ssrPerMonth: 0,
   };
   await svc.bootstrap(id);
   await svc.setAge(id, 1990, 1, false);
@@ -86,26 +96,38 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
   const freeAtStart = (await wallet()).free;
   let tx = 0;
 
+  let season = '';
   for (let d = 0; d < days; d++) {
     now = start + d * DAY;
-    if (d % 30 === 0) {
-      for (const pid of persona.monthlyPurchases) {
-        const p = master.products.find((x) => x.id === pid)!;
-        const tok = store.issue({ transactionId: `T${tx++}`, productId: pid, purchasedAt: now, priceYen: p.priceYen });
+    const newSeason = jstMonthKey(now) !== season;
+    season = jstMonthKey(now);
+    for (const pid of persona.monthlyPurchases) {
+      const p = master.products.find((x) => x.id === pid)!;
+      if (p.kind !== 'allowance' && !newSeason) continue;
+      try {
         await svc.purchaseIntent(id, pid);
-        const before = (await wallet()).free;
-        await svc.purchase(id, 'fake', pid, tok);
-        freeFromPurchases += (await wallet()).free - before;
-        r.yenSpent += p.priceYen;
-        r.paidCoinsBought += p.paidCoins;
+      } catch (e) {
+        if (e instanceof AppError && e.code === 'ALREADY_PURCHASED' && p.kind === 'allowance') continue; // still running
+        throw e;
       }
+      const tok = store.issue({ transactionId: `T${tx++}`, productId: pid, purchasedAt: now, priceYen: p.priceYen });
+      const before = (await wallet()).free;
+      await svc.purchase(id, 'fake', pid, tok);
+      freeFromPurchases += (await wallet()).free - before;
+      r.yenSpent += p.priceYen;
+      r.paidCoinsBought += p.paidCoins;
     }
     if (unit(rng) * 1000 >= persona.activePermille) continue;
     r.activeDays++;
     await svc.claimLogin(id, k()).catch(() => undefined);
+    if ((await svc.allowance(id)).active) {
+      const a = await svc.claimAllowance(id, k()).catch((e: unknown) => { if (e instanceof AppError) return null; throw e; });
+      if (a) { r.allowanceCoins += a.freeCoins; freeFromPurchases += a.freeCoins; }
+    }
     for (let i = 0; i < persona.racesPerDay; i++) {
       now += 10 * 60_000;
-      await svc.applyRace(id, { raceId: `sim_${persona.id}_${d}_${i}`, mode: 'ranked', place: place(rng, persona.placeBias), fieldSize: 12, newRating: null, void: false, humans: 4 });
+      const ar = await svc.applyRace(id, { raceId: `sim_${persona.id}_${d}_${i}`, mode: 'ranked', place: place(rng, persona.placeBias), fieldSize: 12, newRating: null, void: false, humans: 4 });
+      if ('firstWinBonus' in ar && typeof ar.firstWinBonus === 'number') r.firstWinCoins += ar.firstWinBonus;
     }
     for (const m of master.progression.dailyMissions) await svc.claimMission(id, m.id, k()).catch(() => undefined);
     const pv = await svc.passView(id);
@@ -169,6 +191,7 @@ export async function simulateAll(master: Master, days = 90, seeds = [1, 2, 3]) 
       yenSpent: avg((x) => x.yenSpent), pulls: avg((x) => x.pulls), ssr: avg((x) => x.ssr), sr: avg((x) => x.sr), pityExchanges: avg((x) => x.pityExchanges),
       firstPityDay: firsts.length ? firsts.reduce((a, b) => a + b, 0) / firsts.length : null,
       breedingMaterial: avg((x) => x.breedingMaterial), gachaTickets: avg((x) => x.gachaTickets), ticketPulls: avg((x) => x.ticketPulls),
+      firstWinCoins: avg((x) => x.firstWinCoins), allowanceCoins: avg((x) => x.allowanceCoins),
       freeCoinsPerActiveDay: avg((x) => x.freeCoinsPerActiveDay), pullsPerMonth: avg((x) => x.pullsPerMonth), ssrPerMonth: avg((x) => x.ssrPerMonth),
     };
   }

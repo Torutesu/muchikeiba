@@ -36,7 +36,7 @@
    "fallback": "silks/pattern/default",
    "description": "勝負服の模様（色はパレットで着色）",
    "dynamic": false,
-   "count": 17
+   "count": 20
   },
   "silks/cap": {
    "fallback": "silks/cap/default",
@@ -54,7 +54,7 @@
    "fallback": "tack/default",
    "description": "馬具（頭絡・ゼッケン布）。馬のモデルに重ねる見た目（REQ-ITEM-006）",
    "dynamic": false,
-   "count": 5
+   "count": 6
   },
   "decor": {
    "fallback": "decor/default",
@@ -66,7 +66,7 @@
    "fallback": "item/default",
    "description": "アイテムのアイコン",
    "dynamic": false,
-   "count": 19
+   "count": 23
   },
   "banner/gacha": {
    "fallback": "banner/gacha/default",
@@ -237,6 +237,9 @@
   "horse/mane/normal",
   "item/breeding_material",
   "item/costume_login",
+  "item/costume_promo_a",
+  "item/costume_promo_b",
+  "item/costume_promo_s",
   "item/costume_season_limited",
   "item/costume_silks_laurel",
   "item/costume_starter",
@@ -251,6 +254,7 @@
   "item/gacha_ticket",
   "item/tack_bridle_classic",
   "item/tack_bridle_gold",
+  "item/tack_bridle_pass_plus",
   "item/tack_saddlecloth_crimson",
   "item/tack_saddlecloth_navy",
   "item/ticket_sr_plus",
@@ -316,6 +320,9 @@
   "silks/pattern/laurel",
   "silks/pattern/lightning",
   "silks/pattern/plain",
+  "silks/pattern/promo_a",
+  "silks/pattern/promo_b",
+  "silks/pattern/promo_s",
   "silks/pattern/quartered",
   "silks/pattern/sash",
   "silks/pattern/spots",
@@ -324,6 +331,7 @@
   "silks/pattern/wings",
   "tack/bridle_classic",
   "tack/bridle_gold",
+  "tack/bridle_pass_plus",
   "tack/default",
   "tack/saddlecloth_crimson",
   "tack/saddlecloth_navy",

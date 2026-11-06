@@ -40,19 +40,51 @@ export interface ItemQty { itemId: string; qty: number }
 import type { LeagueConfig } from './league.js';
 /** `horse`: a template id granted as a horse (event rewards only; REQ-BREED-022). */
 export interface Reward { freeCoins?: number; items?: ItemQty[]; horse?: string }
+/**
+ * Store product (master/products.json). REQ-PUR-*, REQ-UXS-017..022.
+ * - `storeType`: how the product is registered in the stores. `consumable` (coins, the daily pack, the
+ *   per-season pass: Google consumes it so it can be bought again), `non_consumable` (once-only bundles:
+ *   Google acknowledges it), `auto_renewing` (store subscription; none are sold since REQ-UXS-020, the
+ *   subscription paths stay for old purchases and tests).
+ * - `once`: one purchase per account (`classId` set: one per class). Refunds keep it used.
+ */
+export type ProductKind = 'coins' | 'starter' | 'season_pass' | 'allowance' | 'promotion';
+export type StoreType = 'consumable' | 'non_consumable' | 'auto_renewing';
 export interface Product {
-  id: string; kind: 'coins' | 'starter' | 'season_pass'; priceYen: number; paidCoins: number;
-  once?: boolean; items?: ItemQty[]; durationDays?: number;
+  id: string; kind: ProductKind; priceYen: number; paidCoins: number;
+  once?: boolean; items?: ItemQty[];
+  /** Legacy auto-renewing pass only (store period is authoritative). Per-season passes ignore it. */
+  durationDays?: number;
+  /** Display name (REQ-UXS-022). */
+  name?: string;
+  storeType?: StoreType;
+  /** Shop tab (REQ-UXS-022 / spec 06 §6.8). */
+  tab?: 'recommended' | 'coins' | 'pass';
+  /** REQ-UXS-018: daily free coins for `days` JST days from the purchase day (claimed daily). */
+  allowance?: { days: number; dailyFreeCoins: number };
+  /** REQ-UXS-019: season pass extras (Pass+: levels added at purchase). */
+  pass?: { levels: number };
+  /** REQ-UXS-019: promotion pack of this class (offered and sellable once the class is reached). */
+  classId?: string;
+}
+/** REQ-UXS-017: when offers are shown (spec 06 §5.1). */
+export interface ShopOffersConfig { starterPlaceAtOrWorse: number; starterAfterRankedRaces: number; passAfterRankedRaces: number }
+/** Shop display texts and labels (master/products.json `display`, REQ-UXS-022). */
+export interface ShopDisplay {
+  itemLabels: Record<string, string>;
+  notices: Record<string, string>;
+  legalLinks: { key: string; title: string }[];
 }
 /** REQ-ITEM-001..003: what tickets and materials do. */
 export type TicketDef =
   | { kind: 'single'; name: string; banners: string[] }
   | { kind: 'srPlus'; name: string; rates: Partial<Record<Rarity, number>> };
 /** REQ-ITEM-004..007: cosmetics sold for coins (no stat effect). */
+/** `notForSale`: comes only with a product or reward (price 0; REQ-UXS-019 Pass+ tack). */
 export type CosmeticDef =
-  | { id: string; name: string; kind: 'silks'; pattern: string; price: number; currency: 'any' | 'paidOnly' }
-  | { id: string; name: string; kind: 'tack'; slot: TackSlot; asset: string; price: number; currency: 'any' | 'paidOnly' }
-  | { id: string; name: string; kind: 'decor'; asset: string; price: number; currency: 'any' | 'paidOnly' };
+  | { id: string; name: string; kind: 'silks'; pattern: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean }
+  | { id: string; name: string; kind: 'tack'; slot: TackSlot; asset: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean }
+  | { id: string; name: string; kind: 'decor'; asset: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean };
 export type TackSlot = 'bridle' | 'saddlecloth';
 export const TACK_SLOTS: TackSlot[] = ['bridle', 'saddlecloth'];
 export interface ItemsMaster {
@@ -98,6 +130,8 @@ export interface Progression {
   stud?: StudConfig;
   /** REQ-BREED-017: atavism (隔世遺伝) chance per breeding, in permille. Absent = 0. */
   atavismPermille?: number;
+  /** REQ-UXS-010: free coins for the 1st, 2nd, 3rd win (1st place) of the JST day in these modes. Absent = none. */
+  firstWinBonus?: { modes: string[]; freeCoinsByWin: number[] };
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */
@@ -196,6 +230,10 @@ export interface Master {
   litTracks: Set<string>;
   gacha: GachaMaster; nicks: { bonus: number; pairs: [string, string][] }; ng: { exact: string[]; contains: string[] };
   ageLimits: AgeLimits; products: Product[]; firstPurchaseBonusAsPaid: boolean; progression: Progression;
+  /** REQ-UXS-022: shop display texts (absent in hand-built test masters → built-in fallbacks). */
+  shopDisplay?: ShopDisplay;
+  /** REQ-UXS-017: offer triggers (absent → defaults in shop.ts). */
+  shopOffers?: ShopOffersConfig;
   titles: TitleDef[];
   push: PushMaster;
   /** REQ-EVENT-*: event race definitions. */
@@ -263,14 +301,14 @@ export function loadMaster(): Master {
   const tracks = split.map((x) => trackSchema.parse(x.track));
   const litTracks = new Set(split.filter((x) => x.lights).map((x) => tracks[split.indexOf(x)]!.id));
   const g = gachaJson as unknown as { duplicateMaterial: Record<Rarity, number>; pityGroups: Record<string, { cost: number }>; banners: RawBanner[] };
-  const p = productsJson as unknown as { firstPurchaseBonusAsPaid: boolean; products: Product[] };
+  const p = productsJson as unknown as { firstPurchaseBonusAsPaid: boolean; products: Product[]; display: ShopDisplay; offers: ShopOffersConfig };
   const m: Master = {
     tracks, templates, templateById, litTracks,
     gacha: { duplicateMaterial: g.duplicateMaterial, pityGroups: g.pityGroups, banners: g.banners.map((b) => buildBanner(b, templates)) },
     nicks: nicksJson as unknown as Master['nicks'],
     ng: ngJson as unknown as Master['ng'],
     ageLimits: ageJson as unknown as AgeLimits,
-    products: p.products, firstPurchaseBonusAsPaid: p.firstPurchaseBonusAsPaid,
+    products: p.products, firstPurchaseBonusAsPaid: p.firstPurchaseBonusAsPaid, shopDisplay: p.display, shopOffers: p.offers,
     progression: progressionJson as unknown as Progression,
     titles: (titlesJson as unknown as { titles: TitleDef[] }).titles,
     push: pushJson as unknown as PushMaster,

@@ -9,6 +9,7 @@ import type { PlayerTeamState } from './teams.js';
 import type { PlayerEventState } from './events.js';
 import { appearanceOf, defaultSilks, effectiveSilks, type Appearance, type Silks } from './visuals.js';
 import type { BannedSilksList } from './bannedSilks.js';
+import type { PassSeasonRecord, ShopState } from './shop.js';
 
 export type Currency = 'paid' | 'free';
 
@@ -51,6 +52,10 @@ export interface PurchaseRecord {
   sandboxFreeGranted?: number;
   /** Season pass: end of the period this purchase paid for (review r5 #6). */
   passUntil?: number;
+  /** REQ-UXS-020: the season (JST month) a per-season pass purchase covers. */
+  passSeasonId?: string;
+  /** REQ-UXS-018/021: free coins granted later because of this purchase (daily pack, pass rewards); held from stud fees like the bonus. */
+  linkedFree?: number;
 }
 
 /** REQ-STAT-001: per-player race statistics (ranked + friend races; tutorial excluded). */
@@ -101,7 +106,8 @@ export interface PlayerState {
   monthlySpendYen: Record<string, number>;
   age: { birthYear: number; birthMonth: number; guardianConsent: boolean; setAt: number } | null;
   flags: { tutorialGachaUsed: boolean };
-  seasonPass: { expiresAt: number; xp: number; claimed: { free: number[]; premium: number[] }; seasonId: string };
+  /** `boostXp`: XP added by a Pass+ purchase this season (REQ-UXS-019; removed again if it is refunded). */
+  seasonPass: { expiresAt: number; xp: number; claimed: { free: number[]; premium: number[] }; seasonId: string; boostXp?: number };
   loginBonus: { streakDay: number; lastClaimDate: string | null };
   missions: { date: string; progress: Record<string, number>; claimed: string[] };
   breeding: { date: string | null; count: number };
@@ -149,6 +155,12 @@ export interface PlayerState {
   breedingExtra?: { date: string; count: number };
   /** REQ-BREED-010..016: stud lending, both as owner and as borrower (created on first use; see stud.ts). */
   stud?: StudState;
+  /** REQ-UXS-017/018: offer triggers and views, daily-pack entitlements (created on first use; see shop.ts). */
+  shop?: ShopState;
+  /** REQ-UXS-021: closed seasons' pass results incl. rewards granted automatically at the close (newest last). */
+  passHistory?: PassSeasonRecord[];
+  /** REQ-UXS-010: wins counted for today's first-win bonus (JST date). */
+  dailyWins?: { date: string; count: number };
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

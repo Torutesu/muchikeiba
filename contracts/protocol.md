@@ -214,3 +214,81 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 - **スパート区間**：長さ = `spurtDistanceM × 係数(spurtDistanceScalePermille) / 1000` m（整数の切り捨て）。スパートの判定・ムチの早打ち判定・自動の内寄せの停止はこの長さを使う。
 - 既定値（1.2.0）：芝 2000m・ダート 1850m を基準に、どちらも 1000‰（距離に比例）。2000mの芝・1850mのダートは 1.1.0 と同じ量・同じ長さ。
 - **チュートリアル**（端末内、400mの直線で全部がスパート区間）は `staminaDistanceScalePermille` と `spurtDistanceScalePermille` を 0 にして走る（1.1.0 と同じ量・長さ）。
+
+## 13. ショップ・課金体験の API（REQ-UXS-010/017〜022、docs/planning/06 §5・§6.8・§6.9）
+表示の文言・数量・期間は全てサーバーが作る。クライアントは組み立てない（「2倍」などの倍率表現は使わない。初回購入ボーナスは「無償コイン◯枚」）。時刻は ms（UTC エポック）、日付は JST の `YYYY-MM-DD`、シーズンは JST の暦月 `YYYY-MM`。**新しいエラーコードは無い**（既存のコードの意味を下に追記）。
+
+### 13.1 `GET /v1/shop/products`（認証なし、REQ-UXS-022）
+従来のフィールド（`id, kind, priceYen, paidCoins, once?, items?`）はそのまま。追加は表示用：
+```json
+{ "products": [
+  { "id": "coin_480", "kind": "coins", "name": "コイン310", "tab": "coins", "storeType": "consumable", "priceYen": 480, "paidCoins": 310,
+    "autoRenew": false, "contents": [{ "type": "paid_coins", "qty": 310, "label": "有償コイン310枚" }],
+    "firstPurchaseBonus": { "coins": 310, "currency": "free", "label": "はじめての購入時のみ：無償コイン310枚をプレゼント" },
+    "oneTime": false, "oneTimeScope": null, "period": null,
+    "noticeKeys": ["shop.paid_first", "shop.first_purchase_bonus", "legal.tokushoho", "legal.shikin_kessai"] },
+  { "id": "season_pass_plus", "kind": "season_pass", "name": "シーズンパス＋", "tab": "pass", "storeType": "consumable", "priceYen": 2400, "paidCoins": 0, "pass": { "levels": 10 },
+    "contents": [
+      { "type": "pass_premium", "levels": 30, "reward": { "freeCoins": 50, "items": [{ "itemId": "breeding_material", "qty": 1 }] }, "label": "シーズンパス有料ライン 全30段（各段：無償コイン50枚＋配合素材×1）" },
+      { "type": "pass_levels", "qty": 10, "label": "パスのレベル＋10（購入時）" },
+      { "type": "item", "itemId": "tack_bridle_pass_plus", "qty": 1, "label": "限定馬具「シーズンパス＋の頭絡」×1" } ],
+    "firstPurchaseBonus": null, "oneTime": false, "oneTimeScope": null, "period": { "kind": "season" }, "autoRenew": false,
+    "noticeKeys": ["shop.paid_first", "shop.no_auto_renew", "shop.pass_season_only", "shop.pass_auto_grant", "legal.tokushoho", "legal.shikin_kessai"] },
+  { "id": "stable_allowance_30d", "kind": "allowance", "allowance": { "days": 30, "dailyFreeCoins": 30 }, "period": { "kind": "days", "days": 30 },
+    "contents": [{ "type": "paid_coins", "qty": 100, "label": "有償コイン100枚" }, { "type": "daily_free_coins", "qty": 30, "days": 30, "total": 900, "label": "30日間、毎日 無償コイン30枚（1日1回受け取り）" }], "…": "…" } ],
+  "notices": { "shop.paid_first": "有償コインから先に使われます", "legal.tokushoho": "特定商取引法に基づく表記", "…": "…" },
+  "legalLinks": [{ "key": "legal.tokushoho", "title": "特定商取引法に基づく表記" }, { "key": "legal.shikin_kessai", "title": "資金決済法に基づく表示" }, { "key": "shop.paid_first", "title": "有償コインの使用順" }],
+  "notice": "有償コインから先に使われます" }
+```
+- `contents[].type`：`paid_coins` / `daily_free_coins`（`qty`・`days`・`total`）/ `pass_premium`（`levels`・`reward`）/ `pass_levels` / `item`（`itemId`・`qty`）。表示順のまま並べる。
+- `tab`：`recommended` / `coins` / `pass`。`oneTimeScope`：`account`（スターター）/ `class`（昇級記念、各クラス1回）/ null。`storeType`：`consumable`（コイン・パス・手当。Google は consume）/ `non_consumable`（1回限りの商品。Google は acknowledge）。自動更新の商品は無い。
+- `noticeKeys` の文言は `notices`。`legal.*` は法定ページへのリンクのキー。
+
+### 13.2 `POST /v1/shop/purchase-intent`（追加フィールド）
+```json
+{ "product": { … }, "monthSpentYen": 0, "monthlyLimitYen": null, "remainingYen": null,
+  "firstPurchaseBonus": { "coins": 310, "currency": "free", "label": "はじめての購入時のみ：無償コイン310枚をプレゼント" },
+  "pass": { "seasonId": "2026-11", "endsAt": 1796050800000, "remainingDays": 6, "lastWeek": true, "autoRenew": false, "levels": 0 },
+  "allowance": { "days": 30, "dailyFreeCoins": 30, "autoRenew": false } }
+```
+- `firstPurchaseBonus` はこのプレイヤーにまだ残っている時だけ（コインのパック）。`pass` はシーズンパス／パス＋、`allowance` は厩舎手当の時だけ。`lastWeek`（残り7日以内）の時は購入確認に「このパスは◯日（`remainingDays`）で終わります」を出す。
+- 既存コードの追加の意味：`ALREADY_PURCHASED` ＝ このシーズンのパス（パス・パス＋のどちらか）を持っている／厩舎手当の期間中（予約分を含む）／1回限りの商品を購入済み。`NOT_ELIGIBLE` ＝ 昇級記念パックのクラスに未到達。
+
+### 13.3 `GET /v1/shop/offers`（要認証、REQ-UXS-017）
+```json
+{ "offers": [
+    { "id": "starter_pack", "productId": "starter_pack", "touchpoint": "T2", "placement": "popup", "reason": "first_4th_or_worse", "triggeredAt": 1795568400000, "viewedAt": null, "showPopup": true, "endsAt": null, "remainingDays": null },
+    { "id": "season_pass_2026_11", "productId": "season_pass", "touchpoint": "T3", "placement": "popup", "reason": "pass_unlock", "triggeredAt": 1795568400000, "viewedAt": null, "showPopup": true, "endsAt": 1796050800000, "remainingDays": 6 },
+    { "id": "season_pass_2026_11_plus", "productId": "season_pass_plus", "touchpoint": "T3", "placement": "recommended", "showPopup": false, "…": "…" },
+    { "id": "promo_pack_B", "productId": "promo_pack_B", "touchpoint": "T4", "placement": "popup", "reason": "class_B", "…": "…" },
+    { "id": "stable_allowance_30d", "productId": "stable_allowance_30d", "touchpoint": "shop", "placement": "recommended", "reason": null, "triggeredAt": null, "viewedAt": null, "showPopup": false, "endsAt": null, "remainingDays": null } ],
+  "firstPurchase": { "available": true, "productIds": ["coin_160", "…"], "noticeKey": "shop.first_purchase_bonus" },
+  "allowance": { "active": false, "claimedToday": false, "queued": null } }
+```
+- `showPopup` が true のオファーだけ、決まった場面（06 §5.1：T2＝結果画面を閉じた後、T3＝パス画面・開幕の初回起動、T4＝昇級演出の後）で1枚だけ出す。出したら 13.4 で記録する。その後もショップの「おすすめ」には `placement` に関係なく並べてよい。
+- `reason`：T2 は `first_4th_or_worse`（ランク戦で初めて4着以下）か `race5`（ランク戦5戦目の後）、T3 は `pass_unlock` / `pass_level_up` / `season_start`、T4 は `class_<クラス>`。
+- 買った商品は返らない（1回限りの商品は返金後も）。`endsAt` は実在の期間（シーズンの終わり）だけ。
+
+### 13.4 `POST /v1/shop/offers/:offerId/view`（要認証）
+本文なし。`{ "offerId": "starter_pack", "viewedAt": 1795568400000 }`。何度送っても最初の時刻のまま。今返っていないオファーは `404 NOT_FOUND`、`offerId` が `[A-Za-z0-9_]{1,64}` でなければ `400 BAD_REQUEST`。パス＋の id（`…_plus`）を送るとそのシーズンのパスの案内として記録する。
+
+### 13.5 厩舎手当（REQ-UXS-018）
+- `GET /v1/shop/allowance`（要認証）：期間中は `{ "active": true, "productId": "stable_allowance_30d", "startDate": "2026-11-25", "endDate": "2026-12-24", "day": 1, "days": 30, "daysLeft": 30, "dailyFreeCoins": 30, "claimedToday": false, "claimedDays": 0, "queued": null }`、期間外は `{ "active": false, "claimedToday": false, "queued": { "startDate", "endDate" } | null }`。
+- `POST /v1/shop/allowance/claim`（要認証・`Idempotency-Key` 必須）：上の形に `freeCoins`（今回付与した無償コイン）と `wallet` を足したもの。今日は受け取り済み → `409 ALREADY_CLAIMED`、期間外 → `409 NOT_ELIGIBLE`。受け取らなかった日の分は後から受け取れない。
+
+### 13.6 `GET /v1/season-pass`（要認証、REQ-UXS-020/021。従来のフィールドは残る）
+```json
+{ "seasonId": "2026-11", "level": 0, "xp": 80, "xpPerLevel": 100, "maxLevel": 30, "xpToNextLevel": 20, "racesToNextLevel": 1,
+  "active": true, "expiresAt": 1796050800000, "seasonEndsAt": 1796050800000, "remainingDays": 6, "lastWeek": true, "autoRenew": false,
+  "boostLevels": 0, "owned": ["season_pass"], "purchasable": [], "claimed": { "free": [], "premium": [] },
+  "rewards": { "free": { "every": 1, "reward": { "freeCoins": 10 } }, "premium": { "every": 1, "reward": { "freeCoins": 50, "items": [{ "itemId": "breeding_material", "qty": 1 }] } } },
+  "autoGrantAtSeasonEnd": true,
+  "lastSeason": { "seasonId": "2026-10", "xp": 3000, "level": 30, "premium": true, "boostXp": 0, "granted": { "free": [1, "…"], "premium": [1, "…"] }, "autoGranted": { "free": [29, 30], "premium": [29, 30] }, "autoFreeCoins": 120, "at": 1793467800000 } }
+```
+- `active` は有料ラインを受け取れるか（＝このシーズンのパスを持っている）。`lastSeason` は前のシーズンの締めで自動付与した分（無ければ null）。締めの処理（`closeSeason`）の結果にも同じ形の `pass` が入る。
+
+### 13.7 `GET /v1/missions`（追加フィールド、REQ-UXS-010）
+`{ "missions": [ … ], "firstWinBonus": { "modes": ["ranked"], "byWin": [30, 20, 10], "winsToday": 1, "remaining": 2, "next": 20 } }`。レース結果（`applyRace` の戻り値）には `firstWinBonus`（そのレースで付いた無償コイン、0 なら無し）が入る。
+
+### 13.8 返金（REQ-PUR-006 の拡張）
+ストアの返金通知の結果に `linkedClawback: { "freeCoins": n, "items": { "<itemId>": n } }` が加わる：購入の後にその購入のおかげで付与した分（厩舎手当の受け取り済みの無償コイン、パスの有料ラインの報酬、パス＋の10段でだけ届いた無料ラインの報酬）。足りない分は従来どおり未精算（`debt` / `itemDebt`）になり、精算までガチャと購入が止まる。

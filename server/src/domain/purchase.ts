@@ -4,6 +4,8 @@ import type { PlayerState, PurchaseRecord } from './player.js';
 import { ageAt, DAY_MS, jstMonthKey } from './time.js';
 import { clawbackFree, grantFree, grantPaid, refundPaid } from './wallet.js';
 import { addItems, clawbackItems, hasItemDebt } from './items.js';
+import { grantSeasonPass, passPurchaseInfo, passPurchasesFor, refundSeasonPass } from './pass.js';
+import { classReached, firstPurchaseBonusOf, grantAllowance, pendingAllowance, refundAllowance } from './shop.js';
 
 /** Store receipt verification result (Apple App Store Server API / Google Play Developer API behind an adapter). */
 export interface VerifiedReceipt {
@@ -19,7 +21,7 @@ export interface VerifiedReceipt {
   /** Subscriptions: end of the paid period, from the store. */
   expiresAt?: number;
   /** Store follow-up needed after the grant is saved (Google consume/acknowledge). */
-  storeRef?: { token: string; kind: 'product' | 'subscription'; needsAck: boolean };
+  storeRef?: { token: string; kind: 'product' | 'subscription'; needsAck: boolean; consume?: boolean };
 }
 export interface StoreVerifier {
   readonly platform: 'apple' | 'google' | 'fake';
@@ -87,6 +89,12 @@ export function checkPurchaseIntent(m: Master, s: PlayerState, productId: string
   if (ab.age < m.ageLimits.guardianConsentUnderAge && !s.age.guardianConsent) throw new AppError('GUARDIAN_CONSENT_REQUIRED');
   // once-only products stay used even if refunded (otherwise buy → refund → buy farms the bundle).
   if (p.once && s.purchases.some((x) => x.productId === p.id)) throw new AppError('ALREADY_PURCHASED');
+  // REQ-UXS-019: a promotion pack is sold once its class has been reached
+  if (p.kind === 'promotion' && p.classId && !classReached(m, s, p.classId)) throw new AppError('NOT_ELIGIBLE', `class ${p.classId} not reached yet`);
+  // REQ-UXS-020: one pass (Pass or Pass+) per season
+  if (p.kind === 'season_pass' && p.storeType !== 'auto_renewing' && passPurchasesFor(s, jstMonthKey(now)).length > 0) throw new AppError('ALREADY_PURCHASED', `a season pass for ${jstMonthKey(now)} is already active`);
+  // REQ-UXS-018: the daily pack cannot be bought while one is running
+  if (p.kind === 'allowance' && pendingAllowance(s, now)) throw new AppError('ALREADY_PURCHASED', 'a daily pack is still running');
   const month = jstMonthKey(now);
   // A purchase that went over the limit this month (e.g. the app skipped this check) blocks further purchases.
   // the breach belongs to the month of purchase (as monthlySpendYen and the support flag), not of grant
@@ -94,7 +102,14 @@ export function checkPurchaseIntent(m: Master, s: PlayerState, productId: string
   const spent = s.monthlySpendYen[month] ?? 0;
   const limit = ab.band.monthlyLimitYen;
   if (limit !== null && spent + p.priceYen > limit) throw new AppError('AGE_LIMIT_EXCEEDED', `monthly ${spent}+${p.priceYen} > ${limit}`);
-  return { product: p, monthSpentYen: spent, monthlyLimitYen: limit, remainingYen: limit === null ? null : limit - spent };
+  // REQ-UXS-020/022: what the confirmation sheet shows besides the price (server-built, per player)
+  const bonus = p.kind === 'coins' && !s.firstPurchased.includes(p.id) ? firstPurchaseBonusOf(m, p) : null;
+  return {
+    product: p, monthSpentYen: spent, monthlyLimitYen: limit, remainingYen: limit === null ? null : limit - spent,
+    firstPurchaseBonus: bonus,
+    ...(p.kind === 'season_pass' && p.storeType !== 'auto_renewing' ? { pass: passPurchaseInfo(m, p, now) } : {}),
+    ...(p.allowance ? { allowance: { days: p.allowance.days, dailyFreeCoins: p.allowance.dailyFreeCoins, autoRenew: false } } : {}),
+  };
 }
 
 /**
@@ -105,6 +120,9 @@ export function applyVerifiedPurchase(m: Master, s: PlayerState, platform: Purch
   const existing = s.purchases.find((x) => x.txId === r.transactionId);
   if (existing) return { record: existing, duplicate: true };
   const p = findProduct(m, r.productId);
+  // A completed store payment is always credited, even for a once-only product bought again (the app
+  // skipped the intent check, or the store re-offered it); support refunds it.
+  if (p.once && s.purchases.some((x) => x.productId === p.id)) (s.supportFlags ??= []).push(`once_duplicate:${p.id}:${r.transactionId}`);
   const month = jstMonthKey(r.purchasedAt);
   const ab = ageBand(m, s, now);
   const limit = ab?.band.monthlyLimitYen ?? null;
@@ -141,7 +159,12 @@ export function applyVerifiedPurchase(m: Master, s: PlayerState, platform: Purch
   }
   if (p.items) addItems(s, p.items);
   let passUntil: number | undefined;
-  if (p.kind === 'season_pass') {
+  let passSeasonId: string | undefined;
+  if (p.kind === 'allowance' && p.allowance) grantAllowance(s, p, r.transactionId, now);
+  if (p.kind === 'season_pass' && r.expiresAt === undefined && p.storeType !== 'auto_renewing') {
+    // REQ-UXS-020: per-season pass, no auto-renew; ends with the season current at the grant
+    ({ passUntil, passSeasonId } = grantSeasonPass(m, s, p, r.transactionId, now));
+  } else if (p.kind === 'season_pass') {
     if (r.expiresAt !== undefined) {
       // Store subscription: the store's period end is authoritative (renewals arrive as new transactions).
       passUntil = r.expiresAt;
@@ -156,7 +179,7 @@ export function applyVerifiedPurchase(m: Master, s: PlayerState, platform: Purch
     txId: r.transactionId, platform, productId: p.id, priceYen: r.priceYen, at: now, paidCoinsGranted: r.sandbox ? 0 : p.paidCoins, bonusCoinsGranted: bonus, lotId, refunded: false, limitBreach,
     ...(sandboxFree > 0 ? { sandboxFreeGranted: sandboxFree } : {}), month,
     ...(r.sandbox ? { sandbox: true } : {}), ...(r.originalTransactionId ? { originalTxId: r.originalTransactionId } : {}),
-    ...(bonusLotId ? { bonusLotId } : {}), ...(passUntil !== undefined ? { passUntil } : {}),
+    ...(bonusLotId ? { bonusLotId } : {}), ...(passUntil !== undefined ? { passUntil } : {}), ...(passSeasonId ? { passSeasonId } : {}),
   };
   s.purchases.push(record);
   return { record, duplicate: false };
@@ -171,7 +194,7 @@ export function applyVerifiedPurchase(m: Master, s: PlayerState, platform: Purch
 export function applyRefund(m: Master, s: PlayerState, transactionId: string, now: number) {
   const rec = s.purchases.find((x) => x.txId === transactionId);
   if (!rec) throw new AppError('NOT_FOUND', `purchase ${transactionId}`);
-  if (rec.refunded) return { removed: 0, debt: s.wallet.debt, alreadyRefunded: true, itemsOwed: {} };
+  if (rec.refunded) return { removed: 0, debt: s.wallet.debt, alreadyRefunded: true, itemsOwed: {} as Record<string, number>, linkedClawback: { freeCoins: 0, items: {} as Record<string, number> } };
   rec.refunded = true;
   const p = findProduct(m, rec.productId);
   const res = refundPaid(s, rec.lotId, rec.paidCoinsGranted, now, transactionId);
@@ -183,9 +206,18 @@ export function applyRefund(m: Master, s: PlayerState, transactionId: string, no
       : clawbackFree(s, rec.bonusCoinsGranted, now, transactionId);
     removed += b.removed;
   }
-  const itemsOwed = p.items ? clawbackItems(s, p.items) : {};
-  if (p.kind === 'season_pass') recomputePass(m, s, now);
-  return { removed, debt: s.wallet.debt, alreadyRefunded: false, itemsOwed };
+  const itemsOwed: Record<string, number> = p.items ? clawbackItems(s, p.items) : {};
+  // REQ-UXS-018/019/021: value granted after the purchase because of it (daily coins, pass rewards)
+  const linked = { freeCoins: 0, items: {} as Record<string, number> };
+  if (p.kind === 'allowance') linked.freeCoins += refundAllowance(s, rec, now).freeCoins;
+  if (p.kind === 'season_pass') {
+    const c = refundSeasonPass(m, s, rec, now);
+    linked.freeCoins += c.freeCoins;
+    linked.items = c.items;
+    for (const [k, v] of Object.entries(c.owedItems)) itemsOwed[k] = (itemsOwed[k] ?? 0) + v;
+    recomputePass(m, s, now);
+  }
+  return { removed, debt: s.wallet.debt, alreadyRefunded: false, itemsOwed, linkedClawback: linked };
 }
 
 /**

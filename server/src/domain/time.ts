@@ -28,3 +28,15 @@ export function ageAt(birthYear: number, birthMonth: number, nowMs: number): num
 }
 
 export const DAY_MS = 24 * 3600 * 1000;
+
+/** First instant (ms) of the JST month after `monthKey` ("YYYY-MM") = the end of that month / season. */
+export function jstMonthEndMs(monthKey: string): number {
+  const [y, mo] = monthKey.split('-').map(Number) as [number, number];
+  return Date.UTC(y, mo, 1) - JST_OFFSET_MS;
+}
+
+/** JST date key `n` days after `dateKey` ("YYYY-MM-DD"). */
+export function addJstDays(dateKey: string, n: number): string {
+  const [y, mo, d] = dateKey.split('-').map(Number) as [number, number, number];
+  return new Date(Date.UTC(y, mo - 1, d + n)).toISOString().slice(0, 10);
+}

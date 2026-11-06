@@ -16,7 +16,9 @@ import { applyRefund, applySubscriptionStatus, applyVerifiedPurchase, checkPurch
 import { drawGacha, exchangePity, settlePityGroups } from './gacha.js';
 import { awaken, breed, breedingPreviewWithAllowance, getHorse, nameHorse, pedigree, retire } from './horses.js';
 import { buyCosmetic, cosmeticsCatalog, setEquipment, useTicket, type EquipmentPatch } from './itemShop.js';
-import { applyRaceResult, claimLoginBonus, claimMission, claimPass, missionsView, passLevel, type RaceResultForPlayer } from './rewards.js';
+import { applyRaceResult, claimLoginBonus, claimMission, claimPass, firstWinBonusView, missionsView, type RaceResultForPlayer } from './rewards.js';
+import { allowanceView, claimAllowance, markOfferViewed, noteRaceForOffers, shopOffers } from './shop.js';
+import { passScreen } from './pass.js';
 import { toRaceHorse } from './raceConfig.js';
 import { paidBalanceYen, invariantsHold } from './wallet.js';
 import type { PaidBalanceSnapshot } from './accounting.js';
@@ -351,9 +353,18 @@ export class PlayerService {
   }
   async missions(id: string) { return this.tx(id, null, (s, now) => missionsView(this.d.master, s, now)); }
   async claimMission(id: string, missionId: string, idemKey: string | null) { return this.tx(id, this.requireKey(idemKey), (s, now) => claimMission(this.d.master, s, missionId, now)); }
-  async passView(id: string) {
-    const s = await this.load(id);
-    return { level: passLevel(this.d.master, s), xp: s.seasonPass.xp, active: s.seasonPass.expiresAt > this.d.clock(), expiresAt: s.seasonPass.expiresAt, claimed: s.seasonPass.claimed };
+  /** REQ-UXS-020/021: runs in a transaction so a new month first closes the old pass (auto-grant) and resets it. */
+  async passView(id: string) { return this.tx(id, null, (s, now) => passScreen(this.d.master, s, now)); }
+  /** REQ-UXS-010: today's first-win bonus state (home screen "today" list). */
+  async firstWinBonus(id: string) { return firstWinBonusView(this.d.master, await this.load(id), this.d.clock()); }
+
+  // ---- shop offers and the daily pack (REQ-UXS-017/018) ----
+  /** Lazy triggers (race count, season start, promotion) are recorded, so this runs in a transaction. */
+  shopOffers(id: string) { return this.tx(id, null, (s, now) => shopOffers(this.d.master, s, now)); }
+  markOfferViewed(id: string, offerId: string) { return this.tx(id, null, (s, now) => markOfferViewed(this.d.master, s, offerId, now)); }
+  async allowance(id: string) { return allowanceView(await this.load(id), this.d.clock()); }
+  async claimAllowance(id: string, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now) => ({ ...claimAllowance(s, now), wallet: playerView(s).wallet }));
   }
   async claimPass(id: string, track: 'free' | 'premium', level: number, idemKey: string | null) {
     return this.tx(id, this.requireKey(idemKey), (s, now) => claimPass(this.d.master, s, track, level, now));
@@ -368,6 +379,7 @@ export class PlayerService {
       if (applied[r.raceId] !== undefined) return { duplicate: true as const, event: null };
       applied[r.raceId] = now;
       const base = applyRaceResult(this.d.master, s, r, now);
+      if (!r.void && r.mode === 'ranked') noteRaceForOffers(this.d.master, s, r.place, now); // REQ-UXS-017 T2
       if (!r.void) {
         emit({
           name: 'race_finish', s1: r.mode, s2: r.details?.style ?? '', s3: r.details?.trackId ?? '',

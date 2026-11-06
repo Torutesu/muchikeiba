@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { AppError } from '../domain/errors.js';
 import { buildBanner, splitMasterTrack, type Master, type Progression, type RawBanner } from '../domain/master.js';
 import { validateGacha } from '../domain/gacha.js';
+import { skillProblems } from '../domain/skills.js';
 import { buildRuleset, DEFAULT_RULESET, type Ruleset } from '../domain/ruleset.js';
 import { trackSchema } from '../domain/schemas.js';
 import { eventProblems } from '../domain/events.js';
@@ -141,6 +142,8 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
   problems.push(...eventProblems(master, events, ruleset));
   // QA r6 #1: tickets must never reach a paid-only banner, including after a remote-config banner change
   if (master.items) problems.push(...itemsProblems(master));
+  // REQ-UXS-050: a ruleset override may not lower a skill cap below what the skill master uses
+  if (master.skills) problems.push(...skillProblems(master, ruleset));
   if (problems.length === 0) {
     try {
       validateGacha(master); // ppm sums, pools, pity groups, comp-gacha lint (REQ-GACHA-003/008)

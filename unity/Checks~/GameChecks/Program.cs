@@ -52,6 +52,8 @@ static class Program
         await TournamentChecks.Run(Check, Ruleset());
         Console.WriteLine("== QA round 7 client regressions");
         await QaRound7Checks.Run(Check, Ruleset());
+        Console.WriteLine("== unique skills (horse detail, gacha, breeding, HUD cut-in, commentary)");
+        await SkillChecks.Run(Check, Root);
         Console.WriteLine("== room close codes over a real WebSocket (replaced → no reconnect loop)");
         await CloseCodeChecks.Run(Check, Ruleset());
         if (args.Length >= 2 && args[0] == "online")

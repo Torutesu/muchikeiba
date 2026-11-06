@@ -1,0 +1,23 @@
+{
+  "_note": "固有スキル（docs/planning/06-ux-experience-spec.md §7.1、REQ-UXS-050/051）。全て架空の名前。発動は条件だけで決まり乱数を使わない（1レース1回）。効果は全て整数‰、durationTicks は 20tick=1秒。効果量はルールセットの skillMax* を超えてはならない（設定の検証）。rankedCaps：ステータスを正規化するレース（ランク戦・大会・クラス上限のあるイベント）では効果をこの値で頭打ちにして出走設定に入れる。R/SR/SSR の差は主に発動条件の広さ（SSR ほど発動しやすい）。inheritance：配合で親のスキルを継承する確率（‰、表示と抽選は同じ関数 skillInheritOdds）。バランスは docs/spec/balance-targets.md の R9。",
+  "rankedCaps": { "speedPermille": 18, "accelPermille": 300, "drainSavePermille": 250, "recoverPermille": 30, "durationTicks": 100 },
+  "inheritance": { "singleParentPermille": 300, "eachOfTwoParentsPermille": 200 },
+  "skills": [
+    { "id": "sk_ichibanyari", "name": "一番槍", "rarity": "R", "styles": [ "nige" ], "trigger": "goodStart", "value": 1, "speedPermille": 0, "accelPermille": 200, "drainSavePermille": 0, "recoverPermille": 0, "durationTicks": 40 },
+    { "id": "sk_kagefumase", "name": "影踏ませず", "rarity": "SR", "styles": [ "nige" ], "trigger": "leading", "value": 400, "speedPermille": 18, "accelPermille": 0, "drainSavePermille": 0, "recoverPermille": 0, "durationTicks": 80 },
+    { "id": "sk_shippu", "name": "疾風の先駆け", "rarity": "SSR", "styles": [ "nige" ], "trigger": "leading", "value": 600, "speedPermille": 20, "accelPermille": 0, "drainSavePermille": 0, "recoverPermille": 0, "durationTicks": 80 },
+    { "id": "sk_kouinonebari", "name": "好位の粘り", "rarity": "R", "styles": [ "senko" ], "trigger": "finalStraight", "value": 1, "speedPermille": 15, "accelPermille": 0, "drainSavePermille": 0, "recoverPermille": 0, "durationTicks": 80 },
+    { "id": "sk_nukedashi", "name": "先行抜け出し", "rarity": "SR", "styles": [ "senko" ], "trigger": "finalStraight", "value": 2, "speedPermille": 18, "accelPermille": 0, "drainSavePermille": 0, "recoverPermille": 0, "durationTicks": 80 },
+    { "id": "sk_oudou", "name": "王道の構え", "rarity": "SSR", "styles": [ "senko" ], "trigger": "finalStraight", "value": 4, "speedPermille": 20, "accelPermille": 0, "drainSavePermille": 0, "recoverPermille": 0, "durationTicks": 80 },
+    { "id": "sk_kazeyomi", "name": "風読み", "rarity": "R", "styles": [ "sashi" ], "trigger": "slipstream", "value": 60, "speedPermille": 0, "accelPermille": 0, "drainSavePermille": 250, "recoverPermille": 0, "durationTicks": 100 },
+    { "id": "sk_sueashi", "name": "末脚一閃", "rarity": "SR", "styles": [ "sashi" ], "trigger": "spurtBehind", "value": 5, "speedPermille": 18, "accelPermille": 0, "drainSavePermille": 0, "recoverPermille": 0, "durationTicks": 100 },
+    { "id": "sk_kireaji", "name": "切れ味鋭く", "rarity": "SSR", "styles": [ "sashi" ], "trigger": "spurtBehind", "value": 3, "speedPermille": 20, "accelPermille": 0, "drainSavePermille": 0, "recoverPermille": 0, "durationTicks": 100 },
+    { "id": "sk_ooso", "name": "大外一気", "rarity": "R", "styles": [ "oikomi" ], "trigger": "spurtBehind", "value": 9, "speedPermille": 15, "accelPermille": 0, "drainSavePermille": 0, "recoverPermille": 0, "durationTicks": 100 },
+    { "id": "sk_jinrai", "name": "迅雷", "rarity": "SR", "styles": [ "oikomi" ], "trigger": "spurtBehind", "value": 7, "speedPermille": 18, "accelPermille": 0, "drainSavePermille": 0, "recoverPermille": 0, "durationTicks": 100 },
+    { "id": "sk_goukyaku", "name": "豪脚", "rarity": "SSR", "styles": [ "oikomi" ], "trigger": "spurtBehind", "value": 5, "speedPermille": 20, "accelPermille": 0, "drainSavePermille": 0, "recoverPermille": 0, "durationTicks": 100 },
+    { "id": "sk_hitoiki", "name": "ひと息入れて", "rarity": "R", "styles": [ "nige", "senko", "sashi", "oikomi" ], "trigger": "lowStamina", "value": 250, "speedPermille": 0, "accelPermille": 0, "drainSavePermille": 0, "recoverPermille": 25, "durationTicks": 0 },
+    { "id": "sk_hitonobi", "name": "ラストひと伸び", "rarity": "R", "styles": [ "nige", "senko", "sashi", "oikomi" ], "trigger": "remaining", "value": 150, "speedPermille": 15, "accelPermille": 0, "drainSavePermille": 0, "recoverPermille": 0, "durationTicks": 60 },
+    { "id": "sk_uchirachi", "name": "内ラチの申し子", "rarity": "SR", "styles": [ "nige", "senko", "sashi", "oikomi" ], "trigger": "cornerRail", "value": 0, "speedPermille": 0, "accelPermille": 0, "drainSavePermille": 250, "recoverPermille": 0, "durationTicks": 100 },
+    { "id": "sk_ninoashi", "name": "根性の二の脚", "rarity": "SR", "styles": [ "nige", "senko", "sashi", "oikomi" ], "trigger": "lowStamina", "value": 120, "speedPermille": 0, "accelPermille": 0, "drainSavePermille": 0, "recoverPermille": 30, "durationTicks": 0 }
+  ]
+}

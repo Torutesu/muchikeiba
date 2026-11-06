@@ -50,7 +50,11 @@ C#（端末・検証サーバー）とTypeScript（Cloudflareサーバー）の�
         "style": "sashi",           // "nige" | "senko" | "sashi" | "oikomi"
         "distMinM": 1600, "distMaxM": 2400,
         "surface": "turf",          // "turf" | "dirt" | "both"
-        "goingAptitude": "heavy"    // 省略可。"any"|"fast"|"heavy"（得意な馬場）。省略 = any
+        "goingAptitude": "heavy",   // 省略可。"any"|"fast"|"heavy"（得意な馬場）。省略 = any
+        "skill": {                  // 省略可（ルールセット 1.3、§13）。固有スキル。省略 = なし
+          "id": "sk_nukedashi", "name": "先行抜け出し", "trigger": "finalStraight", "value": 2,
+          "speedPermille": 18, "accelPermille": 0, "drainSavePermille": 0, "recoverPermille": 0, "durationTicks": 80
+        }
       }
     }
   ]
@@ -63,7 +67,7 @@ C#（端末・検証サーバー）とTypeScript（Cloudflareサーバー）の�
 - `ruleset` のキーは `contracts/ruleset-params.default.json` と同じ集合でなければならない（多い・少ないはエラー）。値は全て整数。サーバー（TS）が必ず読むキーは `rulesetVersion`（文字列）と `maxTicks` のみ。それ以外はTSにとって不透明な値として素通しする。
   - **例外（後から追加したキー）**：馬場状態のキー（`going*`、`dirtSpeedPermille`、`goingSpecialistPermille` の18個。一覧は `RulesetParams.OptionalIntKeys` と `server/src/domain/ruleset.ts` の `OPTIONAL_RULESET_KEYS`、両者の一致はテストで保証）は**全部あるか、全部ないか**のどちらか。全部ない＝追加前のリプレイで、中立値（1000‰、専門0）として計算し、当時と同じ結果になる。一部だけはエラー。
 - `track.going` は `track.surface` に合った名前でなければエラー（芝に "sloppy" など）。
-- `track.going` / `track.night` / `horse.goingAptitude` は**値があるときだけ書く**（省略と既定値は同じ計算結果。省略した設定を読み書きしても1バイトも変わらない）。
+- `track.going` / `track.night` / `horse.goingAptitude` / `horse.skill` は**値があるときだけ書く**（省略と既定値は同じ計算結果。省略した設定を読み書きしても1バイトも変わらない）。
 
 ## 3. 入力（1バイトのビットフラグ）
 
@@ -214,3 +218,22 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 - **スパート区間**：長さ = `spurtDistanceM × 係数(spurtDistanceScalePermille) / 1000` m（整数の切り捨て）。スパートの判定・ムチの早打ち判定・自動の内寄せの停止はこの長さを使う。
 - 既定値（1.2.0）：芝 2000m・ダート 1850m を基準に、どちらも 1000‰（距離に比例）。2000mの芝・1850mのダートは 1.1.0 と同じ量・同じ長さ。
 - **チュートリアル**（端末内、400mの直線で全部がスパート区間）は `staminaDistanceScalePermille` と `spurtDistanceScalePermille` を 0 にして走る（1.1.0 と同じ量・長さ）。
+
+## 13. ルールセット 1.3 の固有スキル（REQ-UXS-050/051、docs/planning/06-ux-experience-spec.md §7.1）
+- 追加キー：`skillMaxSpeedPermille`、`skillMaxAccelPermille`、`skillMaxDrainSavePermille`、`skillMaxRecoverPermille`、`skillMaxDurationTicks`。**全部あるか全部ないか**（他のキー群とは独立）。**ない場合は `horse.skill` を無視**し、1.2.x 以前と同じ結果になる。C# `RulesetParams.SkillIntKeys` と TS `SKILL_RULESET_KEYS` は一致させる（テストで確認）。既定値（1.3.0）は 30 / 400 / 400 / 80 / 160。キーがあってもスキルを持つ馬がいなければ 1.2.0 と同じ計算（結果ハッシュはバージョン文字列の分だけ変わる）。
+- `horse.skill`：`id`・`name`（表示用。計算には使わない）・`trigger`・`value`・効果5つ（全て整数）。1頭1スキル。
+- **発動は条件だけ**（乱数を使わない）。1レースに1回まで。条件は**そのtickの開始時の状態**（前のtickの結果：距離・レーン・順位・スタミナ）で判定するので、スロットの順番に依存しない。出走していない（ゲート前）・ゴール後の馬は判定しない。
+  | trigger | value | 条件 |
+  |---|---|---|
+  | `finalStraight` | 0..11 | 最後の区間が直線で、残り ≤ min(最後の直線の長さ, スパート区間) かつ 前の馬が value 頭以下（順位 ≤ value、0 = 先頭） |
+  | `cornerRail` | 0..11 | 今いる区間がコーナーで、レーン ≤ value（0 = 内ラチ沿い） |
+  | `lowStamina` | 0..1000 | 残りスタミナ ≤ value ‰ |
+  | `spurtBehind` | 0..11 | スパート区間の中で、順位 ≥ value |
+  | `remaining` | 0..4000 | 残り ≤ value m |
+  | `leading` | 0..4000 | 残り ≤ value m かつ 先頭 |
+  | `slipstream` | 1..1200 | 前のtickまでに value tick 続けて風よけ（スリップストリーム）の中 |
+  | `goodStart` | 0..60 | ゲートが開いて value tick 以内にスタートした（スタートしたtickに発動） |
+- **効果**（各値はまずルールセットの上限 `skillMax*` で頭打ち）：発動したtickから `durationTicks` の間、目標速度 ×(1000 + `speedPermille`)/1000（手綱の後、スタミナ切れの頭打ちの前）、加速 ×(1000 + `accelPermille`)/1000（スタートダッシュの後）、脚の消費 ×(1000 − `drainSavePermille`)/1000（馬場の係数の後）。`recoverPermille` は発動の瞬間に スタミナ += 最大値 × recover / 1000（最大値まで）。
+- イベント `Skill`（値12）：Slot = 発動した馬、Value = 発動した時の順位（前のtickの順位、0 = 先頭）。表示・実況用で、チェックサムと結果ハッシュには入らない（スキルの影響は速度・スタミナとしてチェックサムに現れる）。
+- **サーバーが送る値**：`server/master/skills.json` の値を、ステータスを正規化するレース（ランク戦・大会・クラス上限のあるイベント）では `rankedCaps` で頭打ちにして送る。タイムアタック・チュートリアル・能力固定のイベントでは送らない。CPU の馬はテンプレートのスキルを持つ（乱数なし）。
+- ゴールデン：`contracts/golden/race-turf2000-skills.json`（8種類の条件すべてが発動する）。1.2.0 のゴールデンは `contracts/golden/legacy/*.ruleset-1.2.0.json` に残し、今も同じ結果で検証できることをテストしている。

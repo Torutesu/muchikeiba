@@ -15,6 +15,7 @@ import { seasonIdFor, rollSeason, classDef } from './season.js';
 import { applyRefund, applySubscriptionStatus, applyVerifiedPurchase, checkPurchaseIntent, registerAge, type StoreVerifier, type SubscriptionStatus, type VerifiedReceipt } from './purchase.js';
 import { drawGacha, exchangePity, settlePityGroups } from './gacha.js';
 import { awaken, breed, breedingPreviewWithAllowance, getHorse, nameHorse, pedigree, retire } from './horses.js';
+import { migrateSkills } from './skills.js';
 import { buyCosmetic, cosmeticsCatalog, setEquipment, useTicket, type EquipmentPatch } from './itemShop.js';
 import { applyRaceResult, claimLoginBonus, claimMission, claimPass, missionsView, passLevel, type RaceResultForPlayer } from './rewards.js';
 import { toRaceHorse } from './raceConfig.js';
@@ -103,7 +104,11 @@ export class PlayerService {
 
   private async load(id: string): Promise<PlayerState> {
     const s = await this.repo.get(id);
-    if (s) return migratePlayer(s);
+    if (s) {
+      migratePlayer(s);
+      migrateSkills(this.d.master, s.horses); // REQ-UXS-050: template horses stored before skills existed
+      return s;
+    }
     const now = this.d.clock();
     return newPlayer(id, now, seasonIdFor(now));
   }

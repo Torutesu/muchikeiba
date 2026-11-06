@@ -40,7 +40,7 @@
     "disconnectGraceMs": 3000
   },
   "ruleset": {
-    "rulesetVersion": "1.2.0+ev.no_whip_cup_2026_12",
+    "rulesetVersion": "1.3.0+ev.no_whip_cup_2026_12",
     "maxTicks": 4800,
     "gateOpenTick": 60,
     "startReactionWindowTicks": 4,
@@ -121,7 +121,12 @@
     "distanceRefM": 2000,
     "distanceRefDirtM": 1850,
     "staminaDistanceScalePermille": 1000,
-    "spurtDistanceScalePermille": 1000
+    "spurtDistanceScalePermille": 1000,
+    "skillMaxSpeedPermille": 30,
+    "skillMaxAccelPermille": 400,
+    "skillMaxDrainSavePermille": 400,
+    "skillMaxRecoverPermille": 80,
+    "skillMaxDurationTicks": 160
   },
   "entrants": [
     {

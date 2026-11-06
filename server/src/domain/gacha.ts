@@ -6,6 +6,7 @@ import { randInt, type Rng } from './rng.js';
 import { spend } from './wallet.js';
 import { createHorseFromTemplate } from './horses.js';
 import { hasItemDebt } from './items.js';
+import { skillSummary, templateSkill } from './skills.js';
 
 const rank = (r: Rarity) => RARITY_ORDER.indexOf(r);
 
@@ -94,8 +95,11 @@ export function oddsDisclosure(m: Master, b: BannerDef, yenPerCoin = 1.6) {
   const rows = (pool: PoolEntry[]) =>
     pool.map((e) => {
       const t = m.templateById.get(e.templateId)!;
-      const row: { templateId: string; name: string; rarity: Rarity; ppm: number; rate: string; limited?: { seasonId: string; label: string; endAtMs: number } } = { templateId: t.id, name: t.name, rarity: t.rarity, ppm: e.ppm, rate: pct(e.ppm) };
+      const row: { templateId: string; name: string; rarity: Rarity; ppm: number; rate: string; limited?: { seasonId: string; label: string; endAtMs: number }; skill?: ReturnType<typeof skillSummary> } = { templateId: t.id, name: t.name, rarity: t.rarity, ppm: e.ppm, rate: pct(e.ppm) };
       if (t.seasonal) row.limited = { seasonId: t.seasonal.seasonId, label: t.seasonal.label, endAtMs: t.seasonal.endAtMs };
+      // REQ-UXS-050: the horse's unique skill, display only (the ppm above come from the drawing table alone)
+      const sk = skillSummary(m, templateSkill(m, t));
+      if (sk) row.skill = sk;
       return row;
     });
   const totals = (pool: PoolEntry[]) => {

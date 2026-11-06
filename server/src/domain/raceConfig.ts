@@ -6,11 +6,17 @@ import { buildRuleset } from './ruleset.js';
 import { randInt, randU64Decimal, type Rng } from './rng.js';
 import { raceStartConfigSchema, type Entrant, type GoingAptitude, type NetParams, type RaceHorse, type RaceMode, type RaceStartConfig } from './schemas.js';
 import type { Ground } from './ground.js';
+import { capSkill, horseSkill, rulesetSkillCaps, templateSkill, toRaceSkill, type SkillDef } from './skills.js';
 
 export const DEFAULT_NET: NetParams = { tickHz: 20, inputDelayTicks: 3, bundleIntervalTicks: 2, checksumIntervalTicks: 20, disconnectGraceMs: 3000 };
 
 export function toRaceHorse(m: Master, h: HorseInstance): RaceHorse {
-  return { id: h.id, name: h.name, ...effectiveStats(m, h), style: h.style, distMinM: h.distMinM, distMaxM: h.distMaxM, surface: h.surface, ...aptField(h.goingAptitude) };
+  return { id: h.id, name: h.name, ...effectiveStats(m, h), style: h.style, distMinM: h.distMinM, distMaxM: h.distMaxM, surface: h.surface, ...aptField(h.goingAptitude), ...skillField(horseSkill(m, h)) };
+}
+
+/** REQ-UXS-050: the horse's unique skill as the master defines it (buildRaceConfig caps it for the race). Absent = none. */
+function skillField(d: SkillDef | null): { skill?: RaceHorse['skill'] } {
+  return d ? { skill: toRaceSkill(d) } : {};
 }
 
 /** goingAptitude is only sent when it is not "any" (absent = any; keeps configs of plain horses unchanged). */
@@ -44,6 +50,24 @@ export interface BuildRaceInput {
   fixedStats?: Stats | null;
 }
 
+/**
+ * REQ-UXS-050 (docs/planning/06 §7.1): which skill an entrant races with. None in time attack (a pure riding test whose medals
+ * come from skill-less runs), the tutorial, events with fixed stats (every runner identical) or a ruleset without the skill
+ * keys (the engine would ignore it). Races that normalise stats (ranked, tournaments, capped events) cap every effect at
+ * `rankedCaps`, like the stat normalisation; every race caps at the ruleset's `skillMax*`.
+ */
+function raceSkill(m: Master, input: BuildRaceInput, ruleset: Record<string, unknown>, s: RaceHorse['skill']): RaceHorse['skill'] | undefined {
+  const caps = rulesetSkillCaps(ruleset);
+  if (!s || !caps || input.mode === 'timeattack' || input.mode === 'tutorial' || input.fixedStats) return undefined;
+  const capped = capSkill(s, caps);
+  return input.statCap === null ? capped : capSkill(capped, m.skills.rankedCaps);
+}
+
+function withSkill(h: RaceHorse, s: RaceHorse['skill'] | undefined): RaceHorse {
+  const { skill: _drop, ...rest } = h;
+  return s ? { ...rest, skill: s } : rest;
+}
+
 /** REQ-MM-005: builds a validated RaceStartConfig. Seed comes from `rng` (crypto in production). */
 export function buildRaceConfig(m: Master, input: BuildRaceInput): RaceStartConfig {
   const total = input.humans.length + input.cpuCount;
@@ -54,7 +78,8 @@ export function buildRaceConfig(m: Master, input: BuildRaceInput): RaceStartConf
   const candidates = m.templates.filter((t) => !t.seasonal && !used.has(t.name)); // limited horses never appear as CPU (REQ-BREED-020)
   for (let i = 0; i < input.cpuCount; i++) {
     const t = candidates.splice(randInt(input.rng, candidates.length), 1)[0]!;
-    raw.push({ kind: 'cpu', playerId: null, cpuLevel: input.cpuLevel, horse: { id: `cpu_${t.id}`, name: t.name, ...t.stats, style: t.style, distMinM: t.distMinM, distMaxM: t.distMaxM, surface: t.surface, ...aptField(t.goingAptitude) } });
+    // CPU horses race with their template's skill: deterministic, no draw (REQ-UXS-050)
+    raw.push({ kind: 'cpu', playerId: null, cpuLevel: input.cpuLevel, horse: { id: `cpu_${t.id}`, name: t.name, ...t.stats, style: t.style, distMinM: t.distMinM, distMaxM: t.distMaxM, surface: t.surface, ...aptField(t.goingAptitude), ...skillField(templateSkill(m, t)) } });
   }
   // random gate draw (Fisher-Yates)
   for (let i = raw.length - 1; i > 0; i--) {
@@ -62,15 +87,16 @@ export function buildRaceConfig(m: Master, input: BuildRaceInput): RaceStartConf
     [raw[i], raw[j]] = [raw[j]!, raw[i]!];
   }
   const fixed = input.fixedStats ?? null;
-  const entrants: Entrant[] = raw.map((e, slot) => ({
-    slot, ...e,
-    horse: fixed ? withStats(e.horse, fixed) : input.statCap === null ? e.horse : withStats(e.horse, normalizeStats(e.horse, input.statCap)),
-  }));
+  const ruleset = buildRuleset(input.rulesetOverrides);
+  const entrants: Entrant[] = raw.map((e, slot) => {
+    const horse = fixed ? withStats(e.horse, fixed) : input.statCap === null ? e.horse : withStats(e.horse, normalizeStats(e.horse, input.statCap));
+    return { slot, ...e, horse: withSkill(horse, raceSkill(m, input, ruleset, e.horse.skill)) };
+  });
   const config: RaceStartConfig = {
     v: 1, raceId: input.raceId, mode: input.mode, seed,
     track: input.ground ? { ...trackById(m, input.trackId), going: input.ground.going, night: input.ground.night } : trackById(m, input.trackId),
     net: { ...DEFAULT_NET, ...input.net },
-    ruleset: buildRuleset(input.rulesetOverrides),
+    ruleset,
     entrants,
   };
   return raceStartConfigSchema.parse(config);

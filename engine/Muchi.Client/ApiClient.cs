@@ -139,6 +139,10 @@ namespace Muchi.Client
         public Task<List<Banner>> GetBannersAsync(CancellationToken ct = default)
             => Call("GET", "/v1/gacha/banners", null, false, null, true, o => J.List(o, "banners", Banner.Parse), ct);
 
+        /// <summary>Unique skill catalog (REQ-UXS-050). Public, no auth; cache per ConfigInfo.Hash.</summary>
+        public Task<SkillCatalog> GetSkillsAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/skills", null, false, null, true, SkillCatalog.Parse, ct);
+
         public Task<OddsDisclosure> GetOddsAsync(string bannerId, CancellationToken ct = default)
             => Call("GET", "/v1/gacha/" + Seg(bannerId) + "/odds", null, false, null, true, OddsDisclosure.Parse, ct);
 

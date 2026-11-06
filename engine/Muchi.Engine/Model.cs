@@ -61,6 +61,69 @@ namespace Muchi.Engine
         public Going EffectiveGoing => Going ?? Muchi.Engine.Going.Good;
     }
 
+    /// <summary>
+    /// When a unique skill (固有スキル, ruleset 1.3) fires. Conditions only — no random draw (docs/planning/06 §7.1).
+    /// Every condition is read from the horse's state at the start of the tick (the previous tick's result).
+    /// </summary>
+    public enum SkillTrigger
+    {
+        /// <summary>In the final straight (last segment, within the spurt zone) with at most Value horses ahead.</summary>
+        FinalStraight = 0,
+        /// <summary>In a corner at lane ≤ Value (0 = on the rail).</summary>
+        CornerRail = 1,
+        /// <summary>Remaining stamina ≤ Value ‰ of the maximum.</summary>
+        LowStamina = 2,
+        /// <summary>In the spurt zone with at least Value horses ahead.</summary>
+        SpurtBehind = 3,
+        /// <summary>At most Value metres to go.</summary>
+        Remaining = 4,
+        /// <summary>Leading with at most Value metres to go.</summary>
+        Leading = 5,
+        /// <summary>Drafting (in the slipstream) for at least Value consecutive ticks.</summary>
+        Slipstream = 6,
+        /// <summary>Left the gate at most Value ticks after it opened (fires on the departure tick).</summary>
+        GoodStart = 7,
+    }
+
+    /// <summary>
+    /// A horse's unique skill (固有スキル, REQ-UXS-050/051). Fires at most once per race when its condition holds; the
+    /// effect lasts DurationTicks. All effects are integer permille and are clamped to the ruleset's skill caps.
+    /// </summary>
+    public sealed class SkillSpec
+    {
+        public string Id;
+        /// <summary>Display name (HUD cut-in, commentary). Not used by the simulation.</summary>
+        public string Name;
+        public SkillTrigger Trigger;
+        public int Value;
+        /// <summary>Target speed +‰ while active.</summary>
+        public int SpeedPermille;
+        /// <summary>Acceleration +‰ while active.</summary>
+        public int AccelPermille;
+        /// <summary>Stamina drain −‰ while active.</summary>
+        public int DrainSavePermille;
+        /// <summary>One-time stamina recovery, ‰ of the maximum, when it fires.</summary>
+        public int RecoverPermille;
+        public int DurationTicks;
+
+        /// <summary>Largest Value accepted for each trigger (index = SkillTrigger).</summary>
+        public static readonly int[] MaxValue = { 11, 11, 1000, 11, 4000, 4000, 1200, 60 };
+
+        public void Validate()
+        {
+            if (string.IsNullOrEmpty(Id)) throw new ArgumentException("skill.id required");
+            int t = (int)Trigger;
+            if (t < 0 || t >= MaxValue.Length) throw new ArgumentException("skill.trigger invalid");
+            if (Value < 0 || Value > MaxValue[t]) throw new ArgumentException("skill.value out of range for " + Trigger);
+            if (Trigger == SkillTrigger.Slipstream && Value < 1) throw new ArgumentException("skill.value must be >= 1 for slipstream");
+            if (!P1000(SpeedPermille) || !P1000(AccelPermille) || !P1000(DrainSavePermille) || !P1000(RecoverPermille))
+                throw new ArgumentException("skill effects must be 0..1000");
+            if (DurationTicks < 0 || DurationTicks > 1200) throw new ArgumentException("skill.durationTicks must be 0..1200");
+        }
+
+        private static bool P1000(int v) => v >= 0 && v <= 1000;
+    }
+
     public sealed class HorseSpec
     {
         public string Id;
@@ -71,6 +134,8 @@ namespace Muchi.Engine
         public Surface Surface;
         /// <summary>Ground preference; null = not sent (Any).</summary>
         public GoingAptitude? GoingAptitude;
+        /// <summary>Unique skill (ruleset 1.3); null = none. Ignored when the ruleset has no skill keys.</summary>
+        public SkillSpec Skill;
     }
 
     public sealed class Entrant
@@ -137,6 +202,7 @@ namespace Muchi.Engine
                 if (!InStat(h.Speed) || !InStat(h.Stamina) || !InStat(h.Burst) || !InStat(h.Guts) || !InStat(h.Temper))
                     throw new ArgumentException("horse stats must be 0..1000");
                 if (h.DistMinM <= 0 || h.DistMaxM < h.DistMinM) throw new ArgumentException("horse distance aptitude invalid");
+                h.Skill?.Validate();
             }
         }
 

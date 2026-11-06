@@ -118,7 +118,7 @@ export const ASSET_KINDS: Record<string, { description: string; dynamic?: boolea
   'sfx/ui': { description: 'UIの効果音' },
   [`voice/${VOICE_LANG}/phrase`]: { description: '実況の定型フレーズ（Resources/Muchi/commentary-ja.json の各断片）' },
   [`voice/${VOICE_LANG}/num`]: { description: '実況の数字（着順など）' },
-  [`voice/${VOICE_LANG}/name`]: { description: '実況の馬名。命名時に生成するため動的（テンプレート馬の名前だけ列挙）', dynamic: true },
+  [`voice/${VOICE_LANG}/name`]: { description: '実況の馬名。命名時に生成するため動的（テンプレート馬の名前と固有スキル名だけ列挙）', dynamic: true },
 };
 export const fallbackKey = (kind: string) => `${kind}/default`;
 /** The kind of a key: everything before the last segment (variant suffix ignored). */

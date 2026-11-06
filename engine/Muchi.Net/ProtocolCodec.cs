@@ -66,6 +66,45 @@ namespace Muchi.Net
             throw new FormatException("invalid goingAptitude: " + s);
         }
 
+        // unique skills (ruleset 1.3, REQ-UXS-051): trigger names in the order of SkillTrigger
+        private static readonly string[] SkillTriggerNames = { "finalStraight", "cornerRail", "lowStamina", "spurtBehind", "remaining", "leading", "slipstream", "goodStart" };
+
+        public static string SkillTriggerToString(SkillTrigger t) => SkillTriggerNames[(int)t];
+
+        public static SkillTrigger ParseSkillTrigger(string s)
+        {
+            for (int i = 0; i < SkillTriggerNames.Length; i++) if (SkillTriggerNames[i] == s) return (SkillTrigger)i;
+            throw new FormatException("invalid skill trigger: " + s);
+        }
+
+        public static SkillSpec ParseSkill(JsonNode k) => new SkillSpec
+        {
+            Id = k.Get("id").AsString(),
+            Name = k.Get("name").AsString(),
+            Trigger = ParseSkillTrigger(k.Get("trigger").AsString()),
+            Value = k.Get("value").AsInt(),
+            SpeedPermille = k.Get("speedPermille").AsInt(),
+            AccelPermille = k.Get("accelPermille").AsInt(),
+            DrainSavePermille = k.Get("drainSavePermille").AsInt(),
+            RecoverPermille = k.Get("recoverPermille").AsInt(),
+            DurationTicks = k.Get("durationTicks").AsInt(),
+        };
+
+        public static JsonNode SkillToJson(SkillSpec k)
+        {
+            var o = JsonNode.Obj();
+            o.Set("id", k.Id);
+            o.Set("name", k.Name);
+            o.Set("trigger", SkillTriggerToString(k.Trigger));
+            o.Set("value", k.Value);
+            o.Set("speedPermille", k.SpeedPermille);
+            o.Set("accelPermille", k.AccelPermille);
+            o.Set("drainSavePermille", k.DrainSavePermille);
+            o.Set("recoverPermille", k.RecoverPermille);
+            o.Set("durationTicks", k.DurationTicks);
+            return o;
+        }
+
         public static string SurfaceToString(Surface s) => s == Surface.Turf ? "turf" : s == Surface.Dirt ? "dirt" : "both";
 
         public static Surface ParseSurface(string s, bool allowBoth)
@@ -193,6 +232,7 @@ namespace Muchi.Net
                     Surface = ParseSurface(h.Get("surface").AsString(), true),
                 };
                 if (h.TryGet("goingAptitude", out var ga) && !ga.IsNull) ent.Horse.GoingAptitude = ParseGoingAptitude(ga.AsString());
+                if (h.TryGet("skill", out var sk) && !sk.IsNull) ent.Horse.Skill = ParseSkill(sk);
                 c.Entrants.Add(ent);
             }
             try { c.Validate(); }
@@ -255,6 +295,7 @@ namespace Muchi.Net
                 ho.Set("distMaxM", h.DistMaxM);
                 ho.Set("surface", SurfaceToString(h.Surface));
                 if (h.GoingAptitude.HasValue) ho.Set("goingAptitude", GoingAptitudeToString(h.GoingAptitude.Value));
+                if (h.Skill != null) ho.Set("skill", SkillToJson(h.Skill));
                 eo.Set("horse", ho);
                 es.Add(eo);
             }

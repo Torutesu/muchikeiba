@@ -16,6 +16,7 @@ import eventsJson from '../../master/events.json';
 import itemsJson from '../../master/items.json';
 import { trackSchema, type GoingAptitude, type Going, type Track } from './schemas.js';
 import { AppError } from './errors.js';
+import { loadSkills, type SkillsMaster } from './skills.js';
 
 export type Rarity = 'R' | 'SR' | 'SSR';
 export const RARITY_ORDER: Rarity[] = ['R', 'SR', 'SSR'];
@@ -34,6 +35,8 @@ export interface HorseTemplate {
    * and events that reward it, inside this window; horses already owned stay owned after it ends.
    */
   seasonal?: SeasonalInfo;
+  /** 固有スキル (master/skills.json; REQ-UXS-050). Same rarity as the horse and fits its running style. */
+  skillId?: string;
 }
 export interface SeasonalInfo { seasonId: string; label: string; startAtMs: number; endAtMs: number }
 export interface ItemQty { itemId: string; qty: number }
@@ -204,6 +207,8 @@ export interface Master {
   bannedSilks?: BannedSilksList;
   /** REQ-ITEM-*: tickets, materials and cosmetics. */
   items: ItemsMaster;
+  /** REQ-UXS-050: unique skills (master/skills.json). */
+  skills: SkillsMaster;
 }
 
 export const PPM_TOTAL = 1_000_000;
@@ -277,6 +282,7 @@ export function loadMaster(): Master {
     events: (eventsJson as unknown as { events: EventDef[] }).events,
     bannedSilks: BASE_BANNED_SILKS,
     items: itemsJson as unknown as ItemsMaster,
+    skills: loadSkills(),
   };
   cached = m;
   return m;

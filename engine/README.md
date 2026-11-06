@@ -142,7 +142,8 @@ foreach (var line in commentator.Process(race.Sim)) PlayLine(line); // line.Text
 - 行は重ならない（`DurationTicks` の間は次を出さない）。重要な場面（ゲート、先頭交代、最後の直線、1着、着順）は捨てずに遅らせて必ず言う。
 - 言い回しはレースのシードから決定的に選ぶ（同じリプレイは同じ実況）。
 - **音声は作り置き**：`templates.AllFixedClips()` が「固定フレーズID→文」を返すので一度だけ音声合成しておく。馬名は `name:<horseId>`（命名時に1回生成）、数字は `num:<n>`。`ClipKeys` を順に再生すれば `Text` と同じ文になる。
-- 文面は `Resources/Muchi/commentary-ja.json` を編集する（`{name}` `{name2}` `{name3}` `{place}` が使える）。
+- 文面は `Resources/Muchi/commentary-ja.json` を編集する（`{name}` `{name2}` `{name3}` `{place}` `{skill}` が使える）。
+- 固有スキル（ルールセット1.3）：`skill` の行は自分の馬のスキルは必ず、他の馬は前3頭以内で発動した時だけ（1レース `maxOtherSkillLines` 回まで）。`{skill}` はその馬のスキル名で、音声は `skill:<skillId>` → `AssetKeys.VoiceClip(key, horseNameById, skillNameById)`（馬名と同じく名前の文字列で決まる音声）。
 
 ### 5. プッシュ通知（`ApiClient` の push 系）
 ```csharp
@@ -233,7 +234,7 @@ client.SendPing(localNowMs);
 
 | キー | 既定 | 意味 |
 |---|---|---|
-| rulesetVersion | 1.2.0 | 結果ハッシュに含まれるバージョン文字列 |
+| rulesetVersion | 1.3.0 | 結果ハッシュに含まれるバージョン文字列 |
 | maxTicks | 4800 | これに達したらレース終了（240秒） |
 | gateOpenTick | 60 | ゲートが開くtick（3秒のカウントダウン） |
 | startReactionWindowTicks | 4 | 開いてからこのtick数以内のSTARTで好スタート |
@@ -313,9 +314,21 @@ client.SendPing(localNowMs);
 
 チュートリアル（`OfflineRace.Tutorial`、400mの直線）は両方の scale を 0 にして走る。
 
-## 計測したバランス（ルールセット1.2.0）
+固有スキルのキー（ルールセット1.3で追加、`RulesetParams.SkillIntKeys`。全部あるか全部ないか。ない＝1.2.x 以前のリプレイで、`horse.skill` は無視される。条件と効果の式は contracts/protocol.md §13）：
 
-目標・計測方法・変更前後の全表は [docs/spec/balance-targets.md](../docs/spec/balance-targets.md)。`harness` が全項目を測り、`BalanceTests.DefaultRulesetMeetsEveryHarnessTarget` が毎回チェックする（約10秒）。
+| キー | 既定（中立値） | 意味 |
+|---|---|---|
+| skillMaxSpeedPermille | 30（0） | スキルの目標速度ボーナスの上限（‰） |
+| skillMaxAccelPermille | 400（0） | 加速ボーナスの上限（‰） |
+| skillMaxDrainSavePermille | 400（0） | 脚の消費を減らす割合の上限（‰） |
+| skillMaxRecoverPermille | 80（0） | 発動時に回復する脚の上限（最大値の‰） |
+| skillMaxDurationTicks | 160（0） | 効果が続く長さの上限（tick） |
+
+スキル（`HorseSpec.Skill`、`SkillSpec`）は条件だけで発動し（乱数なし）、1レース1回。発動するとイベント `RaceEventType.Skill`（Value = その時の順位）が出る。描画側は `HorseState.SkillUsed` / `IsSkillActive` / `SkillTicksLeft` と `RaceSim.SkillOf(slot)`・`SkillEffect(slot)`（上限をかけた後の効果）を読む。
+
+## 計測したバランス（ルールセット1.3.0）
+
+目標・計測方法・変更前後の全表は [docs/spec/balance-targets.md](../docs/spec/balance-targets.md)。`harness` が全項目を測り、`BalanceTests.DefaultRulesetMeetsEveryHarnessTarget` が毎回チェックする（約10秒）。1.3.0 はスキルを足しただけで、スキルの無い馬のレースは 1.2.0 と同じ（下の表の値は 1.2.0 と同じ）。スキルの目標 R9（スキル持ちの勝率 ÷ 同じ馬のスキルなし ≤ 1.15、全スキル）と S2（全員がスキルを持っても全コース×全馬場で脚質別勝率が一様の±25%）は `harness-skills` で測り、`SkillTests.EverySkillMeetsR9AndStyleParityHoldsWithSkills` がチェックする。
 
 | 指標 | 1.0.0 | 1.1.0 | 1.2.0 |
 |---|---|---|---|

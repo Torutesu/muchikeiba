@@ -39,6 +39,9 @@ ENVIRONMENT = "local"
 VERIFIER_URL = "https://verifier.example.invalid"
 FIREBASE_PROJECT_ID = "muchi-issen-dev"
 VERIFY_SAMPLE_RATE = "0.05"
+# Asset CDN (REQ-DLV-002): public base of the R2 bucket's custom domain; files at <base>/<platform>/<sha256>/<file>.
+# Placeholder locally: clients then fall back to bundled assets / <kind>/default. Not a secret.
+ASSET_CDN_BASE = "https://assets.example.invalid"
 # DEV_MODE = "1"   # local only (pass with --var DEV_MODE:1): fake store + x-dev-user header. Refused when ENVIRONMENT is staging/production.
 # Secrets (wrangler secret put): TICKET_SECRET, VERIFIER_TOKEN, ADMIN_TOKENS, GOOGLE_SERVICE_ACCOUNT_JSON, FCM_SERVICE_ACCOUNT_JSON, KPI_SALT
 # ADMIN_TOKENS = '[{"name":"alice","role":"admin","sha256":"<sha-256 hex of the token>"}]'   (roles: viewer|operator|admin)
@@ -127,6 +130,7 @@ ENVIRONMENT = "staging"
 VERIFIER_URL = "https://muchi-verifier-staging-REPLACE_ME.a.run.app"
 FIREBASE_PROJECT_ID = "REPLACE_ME-staging"
 VERIFY_SAMPLE_RATE = "0.2"
+ASSET_CDN_BASE = "https://assets-staging.REPLACE_ME.example"
 APPLE_BUNDLE_ID = "REPLACE_ME.muchi.staging"
 APPLE_ACCEPT_SANDBOX = "1"
 GOOGLE_PACKAGE_NAME = "REPLACE_ME.muchi.staging"
@@ -209,6 +213,7 @@ ENVIRONMENT = "production"
 VERIFIER_URL = "https://muchi-verifier-production-REPLACE_ME.a.run.app"
 FIREBASE_PROJECT_ID = "REPLACE_ME-production"
 VERIFY_SAMPLE_RATE = "0.05"
+ASSET_CDN_BASE = "https://assets.REPLACE_ME.example"
 APPLE_BUNDLE_ID = "REPLACE_ME.muchi"
 # "1" only while App Review needs sandbox IAP against production (sandbox receipts credit FREE coins only;
 # TestFlight builds should point at staging). Set "0" once the app is approved. Opt-in: unset = rejected.

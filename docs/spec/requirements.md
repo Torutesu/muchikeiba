@@ -325,6 +325,18 @@
 - REQ-ASSET-010 実在の登録服色の勝負服は禁止（REQ-OPS-040）。
 - REQ-ASSET-009 実況の音声キーは定型フレーズの断片・数字・馬名（馬IDではなく馬名のFNV-1a 64bit）から作る。馬名の音声は命名時に生成するため動的。
 
+### 9.15.1 アセット配信（TS＋C#、`src/domain/assetCatalog.ts`・`scripts/assetScan.ts`・`Muchi.Client` `AssetCatalog`/`AssetCache`/`AssetDownloader`・`Muchi.Game` `AssetPreloadModel`、`contracts/protocol.md` §16）
+- REQ-DLV-001 `GET /v1/assets/catalog?platform=ios|android`（認証なし）はキーごとに CDN のファイル名・SHA-256・サイズ・先読みグループ・required を返す。ETag はカタログの内容のハッシュで、一致すれば304。
+- REQ-DLV-002 CDN の基点は環境変数 `ASSET_CDN_BASE`（https、末尾の`/`なし、デプロイの検査で必須）。カタログとリモート設定には CDN のホスト・トークン・署名を入れない（URLテンプレートは `{base}/` で始まり、クエリなし）。未設定なら取得せず同梱アセットとフォールバックで動く。
+- REQ-DLV-003 グループは boot・ftue・home・race・shop・ondemand。全 kind の `<kind>/default` は boot の required。required は boot・ftue のみで、それ以外の画面はアセットを待たない。グループの割り当ては `contracts/assets.groups.json`。
+- REQ-DLV-004 カタログは起動時・スキャナ・リモート設定の各版で検証する（キー・kind・安全な相対パス・ハッシュとサイズの一貫性・required の合計 ≤ `policy.ftueBlockingMaxBytes`（上限5MB）・`tutorialMaxWaitMs` ≤ 5000）。
+- REQ-DLV-005 リモート設定の `assets` でカタログを置き換えられる。内容を変えるときは `catalogVersion` を上げる（同じ番号で別の内容は拒否）。`GET /v1/config` の `assetCatalogVersion` が変わったらクライアントは取り直す。
+- REQ-DLV-006 クライアントは同時数を制限して取得し、途中で切れたら Range で再開、ネットワーク・5xx は指数バックオフで再試行、SHA-256 を照合してから原子的に保存する。空き容量の範囲で required から取得し、入らないものは取得しない。新しいカタログで参照されなくなった古い版は消す。進み具合はグループごとに出す。
+- REQ-DLV-007 最後に取得できたカタログを端末に保存し、オフライン・サーバー障害・古いサーバーではそれを使う（無ければ空のカタログ）。キーの解決は「ダウンロード済み → 同梱 → `<kind>/default` → 表示しない」で、アセットが無くても落ちない（REQ-ASSET-002）。
+- REQ-DLV-008 `npm run scan:assets` はアセットの出力フォルダ（`unity/AssetDelivery~/<common|ios|android>/<key>.<ext>`、複数キーのファイルは `bundles.json`）とマニフェストからカタログを作り、内容が変われば `catalogVersion` を上げる。ファイルの無いキーと、キーにならないファイルを報告する。CI では失敗にしない報告として実行する。
+- REQ-DLV-009 起動・チュートリアル前のダウンロード画面は、待つ量（required）と裏で取る量のサイズを示し、モバイル通信で裏の取得が `cellularWarnBytes` を超えるときは確認する（待たせるのは裏の取得だけ）。最初のチュートリアルのレースは任意のアセットを待たず、required も最大 `tutorialMaxWaitMs`（クライアントでも5秒で頭打ち）しか待たない（06 §2：初レース5秒以内・aha① 30秒以内）。オフラインならすぐ仮の表示で始める。
+- REQ-DLV-010 アセットは内容のハッシュ入りのパスに置く（CDN 上で不変）。キーを作り直すときは新しいファイル（必要なら `@vN`）を置き、古いアプリのために古いファイルはしばらく残す。
+
 ### 9.16 アイテム・見た目の直販（TS＋C#、`server/master/items.json`）
 - REQ-ITEM-001 ガチャ券（`gacha_ticket`）：対象ガチャ（`tickets.gacha_ticket.banners`、有償限定ガチャは不可＝読み込み時に検証）を1回引ける。抽選はそのガチャの提供割合と同じ表で行い、天井ポイントを1加算する。ガチャの提供割合表示に「この券で引ける」ことを出す。
 - REQ-ITEM-002 SR以上確定券（`ticket_sr_plus`）：券専用の表（SR以上のみ、合計1,000,000ppm）で1頭引く。表示（`GET /v1/items/tickets/:itemId/odds`）は抽選と同じ定義から作る。天井ポイントは加算しない。

@@ -330,3 +330,9 @@
 ## R9-4 プロトタイプ・確認
 - `tools/figma-prototype/site/unity.html`：結果画面と TA 結果の「リプレイを共有」→ 共有カード（3Dでクリップを再生、カードは実データ）、3日目のホームと「その他 → デモ → 初回購入の直後」で引き継ぎの案内、ホームのキー「タイムアタック」でゴースト選択（フレンドのタブ・フォールバック）とゴースト並走。`node tools/figma-prototype/test/round9.test.mjs`、`node tools/figma-prototype/test/e2e.cjs`（u-*-share-card・ta-picker-*・link-prompt-* の画面写真）。
 - `dotnet run --project "unity/Checks~/GameChecks"` の「round 9」節、`engine` の `ReplayClipTests`。
+
+---
+
+## 7. 次：Round 9 アセット配信
+
+§4.3 のキーを実際に配信する手順（置き場所 `unity/AssetDelivery~/`・名前の規則・`npm run scan:assets`・ダウンロード画面 `AssetPreloadModel`）は `docs/handoff-codex-round9.md`。

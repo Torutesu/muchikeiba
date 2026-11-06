@@ -64,6 +64,8 @@ static class Program
         await Round8Checks.DayRollover(Check, Ruleset());
         Console.WriteLine("== round 9: replay share, account-link prompt, friend ghosts (06 §7 / §7.3)");
         await Round9Checks.Run(Check, Ruleset());
+        Console.WriteLine("== asset delivery: boot/FTUE download screen (sizes, Wi-Fi warning, never blocks the tutorial, offline)");
+        await AssetDeliveryChecks.Run(Check);
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

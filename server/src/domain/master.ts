@@ -15,6 +15,8 @@ import titlesJson from '../../master/titles.json';
 import pushJson from '../../master/push.json';
 import eventsJson from '../../master/events.json';
 import itemsJson from '../../master/items.json';
+import assetsCatalogJson from '../../master/assets-catalog.json';
+import { parseAssetCatalog, type AssetCatalog } from './assetCatalog.js';
 import { trackSchema, type GoingAptitude, type Going, type Track } from './schemas.js';
 import { AppError } from './errors.js';
 import { loadSkills, type SkillsMaster } from './skills.js';
@@ -276,6 +278,8 @@ export interface Master {
   stable?: StableConfig;
   /** REQ-UXS-050: unique skills (master/skills.json). */
   skills: SkillsMaster;
+  /** REQ-DLV-*: asset delivery catalog (master/assets-catalog.json; remote config `assets` may replace it). Absent → EMPTY_ASSET_CATALOG. */
+  assetCatalog?: AssetCatalog;
 }
 
 export const PPM_TOTAL = 1_000_000;
@@ -350,6 +354,7 @@ export function loadMaster(): Master {
     bannedSilks: BASE_BANNED_SILKS,
     items: itemsJson as unknown as ItemsMaster,
     skills: loadSkills(),
+    assetCatalog: parseAssetCatalog(assetsCatalogJson),
   };
   cached = m;
   return m;

@@ -13,7 +13,7 @@ import type { PlayerState } from './player.js';
 import { getHorse } from './horses.js';
 import { grantReward } from './items.js';
 import { evaluateTitles } from './stats.js';
-import { jstDateKey } from './time.js';
+import { gameDayKey } from './time.js';
 
 export interface BondAction { focus: string; points: number; cooldownMs: number }
 export interface BondConfig {
@@ -63,7 +63,7 @@ export function bondView(m: Master, s: PlayerState, horseId: string, now: number
   const b = s.bond?.horses[horseId];
   const points = b?.points ?? 0;
   const level = bondLevelOf(cfg, points);
-  const today = jstDateKey(now);
+  const today = gameDayKey(now);
   const used = b && b.day === today ? b.dayCount : 0;
   return {
     horseId, level, points,
@@ -90,7 +90,7 @@ export function careHorse(m: Master, s: PlayerState, horseId: string, actionId: 
   if (!a) throw new AppError('NOT_FOUND', `care action ${actionId}`);
   const st = ensureBond(s);
   const b = (st.horses[horseId] ??= { points: 0, lastCare: {}, day: '', dayCount: 0, focus: null });
-  const today = jstDateKey(now);
+  const today = gameDayKey(now);
   if (b.day !== today) { b.day = today; b.dayCount = 0; }
   if (b.dayCount >= cfg.dailyActionsPerHorse) throw new AppError('COOLDOWN', 'daily care limit for this horse');
   const last = b.lastCare[actionId];

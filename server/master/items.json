@@ -6,6 +6,11 @@
       "name": "スカウト券",
       "banners": ["standard", "pickup_akatsuki"]
     },
+    "gacha_ticket_10": {
+      "kind": "ten",
+      "name": "10連スカウト券",
+      "banners": ["standard", "pickup_akatsuki"]
+    },
     "ticket_sr_plus": {
       "kind": "srPlus",
       "name": "SR以上確定スカウト券",

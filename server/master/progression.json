@@ -735,5 +735,86 @@
       10,
       15
     ]
-  }
+  },
+  "consent": { "termsVersion": "2026-11-01", "privacyVersion": "2026-11-01" },
+  "partner": { "templateId": "t_partner" },
+  "beginnerMatch": { "firstRaceCpuFillAfterMs": 5000, "cpuLevel": 1, "cpuStatPermille": 780, "firstRaceTrackId": null },
+  "beginnerLoginBonus": [
+    { "day": 1, "freeCoins": 50 },
+    { "day": 2, "broodmare": "t_broodmare" },
+    { "day": 3, "items": [{ "itemId": "costume_login", "qty": 1 }] },
+    { "day": 4, "freeCoins": 100 },
+    { "day": 5, "items": [{ "itemId": "gacha_ticket", "qty": 1 }] },
+    { "day": 6, "freeCoins": 100 },
+    { "day": 7, "items": [{ "itemId": "ticket_sr_plus", "qty": 1 }] }
+  ],
+  "unlocks": [
+    { "key": "race" },
+    { "key": "partner" },
+    { "key": "scout" },
+    { "key": "stable" },
+    { "key": "missions", "races": 2 },
+    { "key": "login_bonus", "races": 2 },
+    { "key": "shop", "races": 3 },
+    { "key": "season_pass", "races": 3 },
+    { "key": "bond", "races": 3 },
+    { "key": "season", "rankedRaces": 5 },
+    { "key": "breeding", "days": 2, "races": 8 },
+    { "key": "friends", "days": 2, "races": 10 },
+    { "key": "friend_rooms", "days": 2, "races": 10 },
+    { "key": "teams", "days": 3, "races": 15 },
+    { "key": "spectate", "days": 3, "races": 15 },
+    { "key": "time_attack", "days": 4, "races": 20 },
+    { "key": "events", "days": 5, "races": 25 },
+    { "key": "tournaments", "days": 5, "races": 25 },
+    { "key": "my_stable", "days": 6 },
+    { "key": "stud", "breedings": 3 }
+  ],
+  "beginnerMissions": [
+    { "id": "bm_scout", "kind": "gacha", "target": 1, "reward": { "freeCoins": 50 } },
+    { "id": "bm_silks", "kind": "silks", "target": 1, "reward": { "freeCoins": 50 } },
+    { "id": "bm_care", "kind": "care", "target": 1, "reward": { "freeCoins": 50 } },
+    { "id": "bm_ranked_top3", "kind": "ranked_top3", "target": 1, "reward": { "items": [{ "itemId": "gacha_ticket", "qty": 1 }] } },
+    { "id": "bm_breed", "kind": "breed", "target": 1, "reward": { "freeCoins": 100 } },
+    { "id": "bm_friend", "kind": "friends", "target": 1, "reward": { "freeCoins": 100 } },
+    { "id": "bm_team", "kind": "team", "target": 1, "reward": { "freeCoins": 100 } },
+    { "id": "bm_time_attack", "kind": "ta_finish", "target": 1, "reward": { "freeCoins": 100 } },
+    { "id": "bm_ranked5", "kind": "ranked_races", "target": 5, "reward": { "items": [{ "itemId": "breeding_material", "qty": 2 }] } },
+    { "id": "bm_graduate", "kind": "races", "target": 15, "reward": { "items": [{ "itemId": "gacha_ticket_10", "qty": 1 }] } }
+  ],
+  "seasonMissions": [
+    { "id": "sm_races10", "kind": "ranked_races", "target": 10, "reward": { "passXp": 100 } },
+    { "id": "sm_races30", "kind": "ranked_races", "target": 30, "reward": { "passXp": 200 } },
+    { "id": "sm_wins5", "kind": "wins", "target": 5, "reward": { "passXp": 150 } },
+    { "id": "sm_top3_15", "kind": "top3", "target": 15, "reward": { "passXp": 150 } },
+    { "id": "sm_promotion", "kind": "promotion_line", "target": 0, "reward": { "passXp": 300 } }
+  ],
+  "experiments": [
+    { "id": "ab_first_race_len", "active": false, "buckets": [
+      { "id": "a", "weight": 1, "values": { "tutorialDistanceM": 400 } },
+      { "id": "b", "weight": 1, "values": { "tutorialDistanceM": 600 } }
+    ] },
+    { "id": "ab_second_race_dist", "active": false, "buckets": [
+      { "id": "a", "weight": 1, "values": { "firstRankedTrackId": "aoba_turf_1600" } },
+      { "id": "b", "weight": 1, "values": { "firstRankedTrackId": "bellmoor_turf_1200" } }
+    ] },
+    { "id": "ab_push_permission", "active": false, "buckets": [
+      { "id": "a", "weight": 1, "values": { "pushPermissionTiming": "race2_top3" } },
+      { "id": "b", "weight": 1, "values": { "pushPermissionTiming": "day2_launch" } }
+    ] },
+    { "id": "ab_starter_trigger", "active": false, "buckets": [
+      { "id": "a", "weight": 1, "values": { "starterOfferTrigger": "first_bottom_half" } },
+      { "id": "b", "weight": 1, "values": { "starterOfferTrigger": "fifth_race" } }
+    ] },
+    { "id": "ab_home_button", "active": false, "buckets": [
+      { "id": "a", "weight": 1, "values": { "homePrimaryButton": "race" } },
+      { "id": "b", "weight": 1, "values": { "homePrimaryButton": "ranked_promotion" } }
+    ] },
+    { "id": "ab_first_win_bonus", "active": false, "buckets": [
+      { "id": "a", "weight": 1, "values": { "firstWinBonus": false } },
+      { "id": "b", "weight": 1, "values": { "firstWinBonus": true } }
+    ] }
+  ],
+  "accountDeletion": { "cancelWindowDays": 14, "confirmTtlMs": 600000, "ledgerRetentionDays": 2557 },
+  "nudges": { "promotionNearPoints": 30, "promotionIdleMs": 86400000, "tournamentClosingLeadMs": 3600000, "tournamentClosingMaxTargets": 1000 }
 }

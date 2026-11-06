@@ -4,24 +4,38 @@ import type { Master } from './master.js';
 import type { PlayerState } from './player.js';
 import type { RaceMode } from './schemas.js';
 import { seasonPointsFor } from './season.js';
-import { DAY_MS, jstDateKey } from './time.js';
+import { DAY_MS, gameDayKey } from './time.js';
 import { grantFree } from './wallet.js';
 import type { Rating } from './rating.js';
 import { applyStats, evaluateTitles, type RaceDetails } from './stats.js';
+import { onRaceApplied } from './onboarding.js';
 
-/** REQ-REW-002: 7-day login bonus, once per JST day, cumulative (missing days does not reset). */
+/**
+ * REQ-REW-002: 7-day login bonus, once per game day, cumulative (missing days does not reset).
+ * REQ-UXS-013: a new player first gets the beginner table once (day 2 = a broodmare), then the normal 7-day cycle.
+ */
 export function claimLoginBonus(m: Master, s: PlayerState, now: number) {
-  const today = jstDateKey(now);
+  const today = gameDayKey(now);
   if (s.loginBonus.lastClaimDate === today) throw new AppError('ALREADY_CLAIMED');
+  const beginner = m.progression.beginnerLoginBonus ?? [];
+  // states stored before the beginner table existed: a player who already claimed is past the beginner week
+  const bDay = s.loginBonus.beginnerDay ?? (s.loginBonus.lastClaimDate === null ? 0 : beginner.length);
+  if (bDay < beginner.length) {
+    const day = bDay + 1;
+    const def = beginner.find((d) => d.day === day)!;
+    grantReward(s, def, now, `beginner login bonus day ${day}`, `b:${today}`, m);
+    s.loginBonus = { streakDay: s.loginBonus.streakDay, lastClaimDate: today, beginnerDay: day };
+    return { day, track: 'beginner' as const, reward: def, beginnerDaysLeft: beginner.length - day };
+  }
   const day = (s.loginBonus.streakDay % m.progression.loginBonus.length) + 1;
   const def = m.progression.loginBonus.find((d) => d.day === day)!;
-  grantReward(s, def, now, `login bonus day ${day}`, today);
-  s.loginBonus = { streakDay: day, lastClaimDate: today };
-  return { day, reward: def };
+  grantReward(s, def, now, `login bonus day ${day}`, today, m);
+  s.loginBonus = { streakDay: day, lastClaimDate: today, beginnerDay: bDay };
+  return { day, track: 'normal' as const, reward: def, beginnerDaysLeft: 0 };
 }
 
 function ensureMissionDay(s: PlayerState, now: number) {
-  const today = jstDateKey(now);
+  const today = gameDayKey(now);
   if (s.missions.date !== today) s.missions = { date: today, progress: {}, claimed: [] };
 }
 
@@ -85,7 +99,7 @@ export function applyRatingChange(s: PlayerState, oldR: Rating | null | undefine
 export function friendRewardAllowed(m: Master, s: PlayerState, r: RaceResultForPlayer, now: number): boolean {
   if (r.mode !== 'friend') return true;
   if ((r.humans ?? 0) < 2) return false;
-  const today = jstDateKey(now);
+  const today = gameDayKey(now);
   if (s.friendRewards.date !== today) s.friendRewards = { date: today, count: 0 };
   if (s.friendRewards.count >= m.progression.friendRewardDailyCap) return false;
   s.friendRewards.count++;
@@ -122,6 +136,7 @@ export function applyRaceResult(m: Master, s: PlayerState, r: RaceResultForPlaye
     // statistics are records, not rewards: friend races with ≥2 humans count even over the daily cap
     if (r.details && (r.mode === 'ranked' || (r.humans ?? 0) >= 2)) applyStats(s, r.place, r.details);
   }
+  onRaceApplied(m, s, r.mode, r.place, rewarded); // REQ-UXS-014/015/016 counters
   const titles = evaluateTitles(m, s);
   return { coins, seasonPoints, titles, rewarded };
 }

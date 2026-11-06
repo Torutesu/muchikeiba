@@ -18,6 +18,7 @@ type TeamCloseRpc = { closeSeasonStep(s: string, r: number | null, p: number, le
 type TaRowDb = { player_id: string; track_id: string; time_ms: number; finish_tick: number; finish_frac: number; display_name: string; title_id: string | null; horse_name: string; updated_at: number };
 import { unwrap, wrap, type Envelope } from './rpc.js';
 import { DirtyTracker } from '../domain/dirty.js';
+import { DELETED_PLAYER_NAME } from '../domain/accountDeletion.js';
 import { dismissRolloverItem, retryRolloverItem, rolloverDeadLetters, type DeadLetterItem, type RetryOutcome, type RolloverWithLog } from '../ops/deadLetter.js';
 import { newlyDead, reportDeadLetters } from './deadLetters.js';
 
@@ -285,6 +286,32 @@ export class LeaderboardDO extends DurableObject<Env> {
       );
       this.markDirty();
       return true;
+    });
+  }
+
+  /**
+   * REQ-UXS-040: account deletion. `remove` (the current season): the player's rows go; a closed season keeps its
+   * rows for the rollover's ranks but loses the name, title and horse name. Republished right away.
+   */
+  async forgetPlayer(seasonId: string, playerId: string, remove: boolean, now: number): Promise<Envelope<boolean>> {
+    return wrap(async () => {
+      if (remove) {
+        for (const t of ['entries', 'ranks', 'ta_entries', 'ta_ranks']) this.sql.exec(`DELETE FROM ${t} WHERE player_id = ?`, playerId);
+      } else {
+        this.sql.exec('UPDATE entries SET display_name = ?, title_id = NULL WHERE player_id = ?', DELETED_PLAYER_NAME, playerId);
+        this.sql.exec('UPDATE ta_entries SET display_name = ?, title_id = NULL, horse_name = ? WHERE player_id = ?', DELETED_PLAYER_NAME, '', playerId);
+      }
+      this.markDirty();
+      unwrap(await this.snapshot(seasonId, now, true));
+      return true;
+    });
+  }
+
+  /** REQ-UXS-012: players who raced ranked this season (optionally in these classes), for the tournament closing nudge. */
+  async activePlayers(classIds: string[] | null, limit: number): Promise<Envelope<string[]>> {
+    return wrap(() => {
+      const rows = this.sql.exec<{ player_id: string; class_id: string }>('SELECT player_id, class_id FROM entries WHERE races > 0 ORDER BY updated_at DESC').toArray();
+      return rows.filter((r) => !classIds || classIds.includes(r.class_id)).slice(0, Math.max(0, limit)).map((r) => r.player_id);
     });
   }
 

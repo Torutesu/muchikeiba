@@ -5,6 +5,7 @@
 
 | 対象 | 計測する仕組み | 自動テスト |
 |---|---|---|
+| 初心者マッチ（R10） | 相棒＋初心者＋弱いCPUの場（§2.2、BalanceHarness の部品で計測） | 未（§2.2 の注を参照） |
 | レース（R1〜R8） | `engine/Muchi.Verifier/BalanceHarness.cs`（固定シードで約10秒） | `BalanceTests.DefaultRulesetMeetsEveryHarnessTarget` |
 | 経済（E1〜E9） | `server/src/sim/economy.ts`（本物の `PlayerService` とマスターデータで90日分） | `server/test/economy.test.ts` |
 | コース別（T1・T2・T7、全コース×全馬場） | `BalanceHarness.TrackRun`（`server/master/tracks.json` の全コース、固定シード） | `BalanceTests.EveryServerCourseMeetsPerCourseTargets` |
@@ -176,6 +177,22 @@ R1〜R8 は2000m（芝）と1800m（ダート）の基準コースで測る。�
 脚質の有利不利は距離でほぼ決まり、コースの形（コーナーの半径・直線の長さ・直線だけのコース）はほとんど効かない（2200m・2300m・直線1400m・ダート1800mの形も試して同じ傾向）。→ 1.2.0 で解消。
 
 </details>
+
+### 2.2 初心者マッチ（R10、REQ-UXS-003、docs/planning/06 §2.3）
+
+2戦目（最初のランク戦）で新人を「接戦で勝たせる」ための目標。初心者マッチ（ランク戦 `beginnerRaces` 戦未満の人同士、REQ-MM-003）の CPU を弱くする。値は `server/master/progression.json` の `beginnerMatch`（リモート設定で変更可）。
+
+| id | 指標 | 変更前（CPUレベル1・能力そのまま） | 変更後（`cpuLevel` 1・`cpuStatPermille` 780） | 目標 |
+|---|---|---|---|---|
+| R10 | 初心者（`CasualRider`）が相棒（`t_partner`、C級の上限2800に正規化）で初心者マッチに1人で出た時の3着以内率（全コース、960レース） | 22.6% | **73.4%** | ≥70% |
+| R10b | 同じ条件の勝率（大差で勝ちすぎない＝接戦） | 5.8% | **45.8%** | ≤60% |
+| R10c | 初心者2人＋CPU10頭の時の3着以内率（参考） | — | 70.9% | — |
+
+- 場は12頭（人間＋CPU）。CPUはランク戦と同じく恒常の馬（季節限定・`giftOnly` を除く）から選び、クラスの上限で正規化した**後**に能力を `cpuStatPermille`‰ にする（プレイヤーの馬はそのまま）。コースはランク戦と同じく無作為（`firstRaceTrackId` は既定 null）。
+- 青葉芝1600m だけに固定すると 3着以内 89%・勝率 67% で「大差」になるので、固定しない（A/Bの `firstRankedTrackId` で試す場合はこの値を見直す）。
+- 他の候補：850‰で57%、800‰で68%、750‰で78%（勝率48%）。8頭立てにする案（850‰で76%）はロックステップの頭数が変わるので採らなかった。
+- 最初のランク戦だけ CPU 補完までの待ちを5秒（`firstRaceCpuFillAfterMs`、通常15秒）にする。
+- 再計測：`engine/` の `BalanceHarness`（`Config`・`Run`・`CasualRider`）で、上の場を組んで数える小さなプログラム（コマンドラインのサブコマンドはまだ無い。固定シード、`server/master/horses.json` と `tracks.json` を読む）。ルールセットを変えたら測り直す。エンジン側で常時チェックするテスト（`BalanceTests` への追加）は次の作業（engine/ はこの変更の範囲外）。
 
 ## 3. タイムアタックのメダル
 

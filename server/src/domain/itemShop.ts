@@ -1,7 +1,7 @@
 import { AppError } from './errors.js';
 import { expandPool, PPM_TOTAL, RARITY_ORDER, TACK_SLOTS, type CosmeticDef, type Master, type PoolEntry, type Rarity, type TackSlot } from './master.js';
 import type { Equipment, PlayerState } from './player.js';
-import { drawFromPool, findBanner, grantPull, type PullResult } from './gacha.js';
+import { drawFromPool, findBanner, grantPull, rollPulls, type PullResult } from './gacha.js';
 import { addItems, consumeItem, logItem } from './items.js';
 import { spend } from './wallet.js';
 import { ASSET_KEY_RE, assetKeys, VISUALS, type VisualsMaster } from './visuals.js';
@@ -32,7 +32,7 @@ export function itemsProblems(m: Master, v: VisualsMaster = VISUALS): string[] {
   const p: string[] = [];
   const it = m.items;
   for (const [id, t] of Object.entries(it.tickets)) {
-    if (t.kind === 'single') {
+    if (t.kind === 'single' || t.kind === 'ten') {
       if (t.banners.length === 0) p.push(`${id}: no banners`);
       for (const bid of t.banners) {
         const b = m.gacha.banners.find((x) => x.id === bid);
@@ -88,6 +88,13 @@ export function ticketDisclosure(m: Master, itemId: string) {
       notice: '1枚で対象ガチャを1回引けます。抽選は各ガチャの提供割合（GET /v1/gacha/:bannerId/odds）と同じ表で行い、天井ポイントも1回分加算されます。',
     };
   }
+  if (t.kind === 'ten') {
+    return {
+      itemId, name: t.name, kind: t.kind, icon: assetKeys.item(itemId),
+      banners: t.banners,
+      notice: '1枚で対象ガチャの10連を1回引けます（10枠目はSR以上確定の保証つき）。抽選は各ガチャの提供割合（GET /v1/gacha/:bannerId/odds）と同じ表で行い、天井ポイントも10回分加算されます。',
+    };
+  }
   const pool = srPlusPool(m, itemId);
   const rarityTotals: Record<string, { ppm: number; rate: string }> = {};
   for (const r of RARITY_ORDER) {
@@ -102,7 +109,8 @@ export function ticketDisclosure(m: Master, itemId: string) {
   };
 }
 
-export interface TicketResult { itemId: string; bannerId: string | null; result: PullResult; pityPoints: number | null; remaining: number }
+/** `results`: every pull of a 10-pull ticket (`result` is then the first one). */
+export interface TicketResult { itemId: string; bannerId: string | null; result: PullResult; results?: PullResult[]; pityPoints: number | null; remaining: number }
 
 /** REQ-ITEM-001: one draw on an eligible banner, paid with a ticket instead of coins. Counts toward that banner's pity. */
 export function useGachaTicket(m: Master, s: PlayerState, itemId: string, bannerId: string, rng: Rng, now: number, ref: string): TicketResult {
@@ -129,12 +137,26 @@ export function useSrPlusTicket(m: Master, s: PlayerState, itemId: string, rng: 
   return { itemId, bannerId: null, result: grantPull(m, s, tpl, now, true), pityPoints: null, remaining: s.items[itemId] ?? 0 };
 }
 
+/** REQ-UXS-015: a 10-pull ticket (beginner missions' last reward): the banner's own pool and slot-10 guarantee. */
+export function useTenTicket(m: Master, s: PlayerState, itemId: string, bannerId: string, rng: Rng, now: number, ref: string): TicketResult {
+  const t = m.items.tickets[itemId];
+  if (!t || t.kind !== 'ten') throw new AppError('NOT_FOUND', `ticket ${itemId}`);
+  if (!t.banners.includes(bannerId)) throw new AppError('NOT_ELIGIBLE', `${itemId} cannot be used on ${bannerId}`);
+  const b = findBanner(m, bannerId);
+  if ((b.startAtMs !== undefined && now < b.startAtMs) || (b.endAtMs !== undefined && now >= b.endAtMs)) throw new AppError('BANNER_CLOSED');
+  if (b.currency === 'paidOnly') throw new AppError('NOT_ELIGIBLE', `${bannerId} is paid-only and cannot take tickets`);
+  consumeItem(s, itemId, 1, now, `ten-pull ticket ${bannerId}`, ref);
+  const results = rollPulls(m, b, 10, rng).map((r) => grantPull(m, s, m.templateById.get(r.templateId)!, now, r.guaranteed));
+  s.pity[b.pityGroup] = (s.pity[b.pityGroup] ?? 0) + 10;
+  return { itemId, bannerId, result: results[0]!, results, pityPoints: s.pity[b.pityGroup]!, remaining: s.items[itemId] ?? 0 };
+}
+
 export function useTicket(m: Master, s: PlayerState, itemId: string, bannerId: string | null, rng: Rng, now: number, ref: string): TicketResult {
   const t = m.items.tickets[itemId];
   if (!t) throw new AppError('NOT_FOUND', `ticket ${itemId}`);
-  if (t.kind === 'single') {
+  if (t.kind === 'single' || t.kind === 'ten') {
     if (!bannerId) throw new AppError('BAD_REQUEST', 'bannerId is required for this ticket');
-    return useGachaTicket(m, s, itemId, bannerId, rng, now, ref);
+    return t.kind === 'ten' ? useTenTicket(m, s, itemId, bannerId, rng, now, ref) : useGachaTicket(m, s, itemId, bannerId, rng, now, ref);
   }
   return useSrPlusTicket(m, s, itemId, rng, now, ref);
 }

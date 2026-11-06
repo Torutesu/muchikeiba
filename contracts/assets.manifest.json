@@ -66,7 +66,7 @@
    "fallback": "item/default",
    "description": "アイテムのアイコン",
    "dynamic": false,
-   "count": 19
+   "count": 20
   },
   "banner/gacha": {
    "fallback": "banner/gacha/default",
@@ -162,7 +162,7 @@
    "fallback": "voice/ja/name/default",
    "description": "実況の馬名。命名時に生成するため動的（テンプレート馬の名前だけ列挙）",
    "dynamic": true,
-   "count": 26
+   "count": 28
   }
  },
  "keys": [
@@ -249,6 +249,7 @@
   "item/default",
   "item/event_ticket",
   "item/gacha_ticket",
+  "item/gacha_ticket_10",
   "item/tack_bridle_classic",
   "item/tack_bridle_gold",
   "item/tack_saddlecloth_crimson",
@@ -364,6 +365,7 @@
   "voice/ja/name/n2c35fb4af926271f",
   "voice/ja/name/n2e9954d13002bace",
   "voice/ja/name/n475bb6019218bc56",
+  "voice/ja/name/n47ab6ba076960abe",
   "voice/ja/name/n52faa2441aa58bdf",
   "voice/ja/name/n589fee4e81e1fb80",
   "voice/ja/name/n59087fe3220af997",
@@ -373,6 +375,7 @@
   "voice/ja/name/n6f246d2eb516a0d3",
   "voice/ja/name/n81bf206c5786da3a",
   "voice/ja/name/n8921d61e411ac60d",
+  "voice/ja/name/n95fa5e537fd1ac15",
   "voice/ja/name/n9aec3d85e614d2f4",
   "voice/ja/name/nbb69cd5675cb83f2",
   "voice/ja/name/nd737b07f5801df81",

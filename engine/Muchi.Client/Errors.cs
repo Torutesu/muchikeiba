@@ -26,6 +26,14 @@ namespace Muchi.Client
         Cooldown,
         /// <summary>409: the stud fee changed since the borrower's preview; nothing was charged (REQ-BREED-012).</summary>
         FeeChanged,
+        /// <summary>409: the consent was for an old terms/privacy version; refetch /v1/player consent.current (REQ-UXS-001).</summary>
+        ConsentVersionMismatch,
+        /// <summary>409: the first partner horse was already granted (REQ-UXS-002).</summary>
+        PartnerAlreadyGranted,
+        /// <summary>409: the account deletion token is wrong or expired; request a new one (REQ-UXS-040).</summary>
+        DeletionConfirmInvalid,
+        /// <summary>409: the account is scheduled for deletion; purchases are disabled until it is cancelled (REQ-UXS-040).</summary>
+        DeletionPending,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -88,6 +96,10 @@ namespace Muchi.Client
             ["INSUFFICIENT_ITEMS"] = ApiErrorCode.InsufficientItems,
             ["COOLDOWN"] = ApiErrorCode.Cooldown,
             ["FEE_CHANGED"] = ApiErrorCode.FeeChanged,
+            ["CONSENT_VERSION_MISMATCH"] = ApiErrorCode.ConsentVersionMismatch,
+            ["PARTNER_ALREADY_GRANTED"] = ApiErrorCode.PartnerAlreadyGranted,
+            ["DELETION_CONFIRM_INVALID"] = ApiErrorCode.DeletionConfirmInvalid,
+            ["DELETION_PENDING"] = ApiErrorCode.DeletionPending,
             ["VERIFIER_UNAVAILABLE"] = ApiErrorCode.VerifierUnavailable,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };
@@ -121,6 +133,7 @@ namespace Muchi.Client
                 case ApiErrorCode.AgeLimitExceeded:
                 case ApiErrorCode.AlreadyPurchased:
                 case ApiErrorCode.UnsettledDebt:
+                case ApiErrorCode.DeletionPending:
                     return new PurchaseBlockedException(code, wire, message, status);
                 case ApiErrorCode.InsufficientCoins:
                     return new InsufficientCoinsException(wire, message, status);

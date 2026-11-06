@@ -43,6 +43,15 @@ export class DirectoryDO extends DurableObject<Env> {
     return wrap(() => this.sql.exec<{ entry: string }>("SELECT entry FROM studs WHERE visibility = 'public' ORDER BY listed_at DESC LIMIT ?", Math.min(200, Math.max(1, limit))).toArray().map((r) => JSON.parse(r.entry) as StudEntry));
   }
 
+  /** REQ-UXS-040: account deletion — friend code, public profile and every stud listing of the player. */
+  async forget(playerId: string): Promise<Envelope<boolean>> {
+    return wrap(() => {
+      this.sql.exec('DELETE FROM players WHERE player_id = ?', playerId);
+      this.sql.exec('DELETE FROM studs WHERE owner_id = ?', playerId);
+      return true;
+    });
+  }
+
   async codeOf(playerId: string, shard: number): Promise<Envelope<string>> {
     return wrap(() => {
       const row = this.sql.exec<{ code: string | null }>('SELECT code FROM players WHERE player_id = ?', playerId).toArray()[0];
@@ -87,7 +96,14 @@ type DirStub = {
   studRemove(o: string, h: string): Promise<Envelope<boolean>>;
   studOf(ids: string[]): Promise<Envelope<StudEntry[]>>;
   studPublic(limit: number): Promise<Envelope<StudEntry[]>>;
+  forget(p: string): Promise<Envelope<boolean>>;
 };
+
+/** REQ-UXS-040: removes a deleted player's directory rows (their shard). */
+export async function forgetInDirectory(ns: DurableObjectNamespace, playerId: string) {
+  const s = ns.get(ns.idFromName(`dir:${shardOf(playerId)}`)) as unknown as DirStub;
+  unwrap(await s.forget(playerId));
+}
 
 /** Stud listings, sharded by owner like profiles; public browsing fans out to every shard. */
 export function shardedStudDirectory(ns: DurableObjectNamespace): StudDirectory {

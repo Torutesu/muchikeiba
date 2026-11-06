@@ -10,7 +10,7 @@ import type { Currency, PlayerState } from './player.js';
 function ledger(s: PlayerState, at: number, kind: Parameters<typeof push>[2], currency: Currency, delta: number, reason: string, ref: string) {
   push(s, at, kind, currency, delta, reason, ref);
 }
-function push(s: PlayerState, at: number, kind: 'grant' | 'spend' | 'purchase' | 'bonus' | 'refund' | 'debt' | 'settle', currency: Currency, delta: number, reason: string, ref: string) {
+function push(s: PlayerState, at: number, kind: 'grant' | 'spend' | 'purchase' | 'bonus' | 'refund' | 'debt' | 'settle' | 'forfeit', currency: Currency, delta: number, reason: string, ref: string) {
   s.ledgerSeq += 1;
   s.ledger.push({ seq: s.ledgerSeq, at, kind, currency, delta, balanceAfter: currency === 'paid' ? s.wallet.paid : s.wallet.free, reason, ref });
 }
@@ -159,6 +159,25 @@ export function paidBalanceYen(s: PlayerState): number {
   let micro = 0;
   for (const l of s.wallet.lots) micro += l.remaining * l.unitPriceMicroYen;
   return Math.floor(micro / 1_000_000);
+}
+
+/**
+ * REQ-UXS-040: account deletion gives up every remaining balance (explained before the request is confirmed).
+ * Each currency gets a `forfeit` ledger row; the paid lots go too, so the unused paid balance (REQ-WAL-005) drops to 0.
+ */
+export function forfeitAll(s: PlayerState, at: number, ref: string): { paidCoins: number; freeCoins: number; paidYen: number } {
+  const paidYen = paidBalanceYen(s);
+  const paidCoins = s.wallet.paid;
+  const freeCoins = s.wallet.free;
+  if (paidCoins > 0) {
+    consumePaid(s, paidCoins);
+    ledger(s, at, 'forfeit', 'paid', -paidCoins, 'account deleted', ref);
+  }
+  if (freeCoins > 0) {
+    s.wallet.free = 0;
+    ledger(s, at, 'forfeit', 'free', -freeCoins, 'account deleted', ref);
+  }
+  return { paidCoins, freeCoins, paidYen };
 }
 
 export function invariantsHold(s: PlayerState): boolean {

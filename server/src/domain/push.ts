@@ -11,7 +11,7 @@
 import { AppError } from './errors.js';
 import { PUSH_CATEGORIES, type Master, type PushCategory, type PushTemplate } from './master.js';
 import type { PlayerState } from './player.js';
-import { jstDateKey } from './time.js';
+import { gameDayKey, jstDateKey } from './time.js';
 
 export type DevicePlatform = 'ios' | 'android';
 export interface PushDevice { token: string; platform: DevicePlatform; addedAt: number; lastSeenAt: number }
@@ -152,7 +152,7 @@ export function enqueuePush(m: Master, s: PlayerState, templateId: string, vars:
     if (t.timeSensitive) return { status: 'skipped', reason: 'quiet_hours' };
     notBefore = quietHoursEnd(p.prefs.quietHours!, now);
   }
-  const day = jstDateKey(notBefore);
+  const day = gameDayKey(notBefore);
   if (p.sent.date !== day) p.sent = { date: day, count: 0 };
   if (p.sent.count >= m.push.defaults.dailyCap) return { status: 'skipped', reason: 'daily_cap' };
   p.sent.count += 1;

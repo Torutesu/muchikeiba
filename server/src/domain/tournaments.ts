@@ -198,6 +198,28 @@ export function unregister(t: TournamentState<unknown>, playerId: string, now: n
   return true;
 }
 
+/**
+ * REQ-UXS-040: a deleted account leaves the tournament. While registration is open the registration is removed;
+ * afterwards the bracket keeps its seat (heats and standings stay consistent) under an anonymous name.
+ */
+export function forgetRegistrant(t: TournamentState<unknown>, playerId: string, now: number, anonName: string): 'removed' | 'anonymized' | 'none' {
+  const r = t.registrants[playerId];
+  if (!r) return 'none';
+  if (effectiveStatus(t, now) === 'registration' && now < t.def.registrationClosesAtMs) {
+    delete t.registrants[playerId];
+    t.updatedAt = now;
+    return 'removed';
+  }
+  r.displayName = anonName;
+  t.updatedAt = now;
+  return 'anonymized';
+}
+
+/** REQ-UXS-012: registration closes within `leadMs` (and is still open): time for the closing nudge. */
+export function closingSoon(t: TournamentState<unknown>, now: number, leadMs: number): boolean {
+  return effectiveStatus(t, now) === 'registration' && now < t.def.registrationClosesAtMs && t.def.registrationClosesAtMs - now <= leadMs;
+}
+
 // ---------------------------------------------------------------------------------------------- brackets
 
 /** Seed order: rating desc, then earlier registration, then id (deterministic). */

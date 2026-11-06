@@ -37,11 +37,28 @@ import { applyEventResult, cancelEntry, closeEventForPlayer, ensureEvent, enterE
 import { bondLevels, bondView, careHorse, horseBondLevel } from './bond.js';
 import { dueStudOutbox, ensureStud, nextStudWake, studAcked, studApply, studList, studPeek, studPreview, studReserve, studRetryLater, studSettle, studUnlist, studView, type StudSnapshot, type StudVisibility } from './stud.js';
 import { clearRoomConditions, presetsView, setCourseLook, setRoomConditions, type RoomConditions } from './presets.js';
+import {
+  beginnerMissionsView, claimBeginnerMission, claimSeasonMission, consentView, countOnboarding, ensureOnboarding, experimentsView, firstRaceOf,
+  grantPartner, missionTable, recordConsent, seasonMissionsView, unlocksView,
+} from './onboarding.js';
+import { armPromotionNudge, nextNudgeWake, nudgeTaBeaten, nudgeTournamentClosing, runDueNudges, type TournamentClosingInfo } from './nudges.js';
+import {
+  cancelDeletion, deletionDue, deletionRetryLater, deletionScheduled, deletionSnapshot, deletionView, finalizeDeletion, markDeletionStep,
+  nextDeletionWake, requestDeletion, type DeletionStep,
+} from './accountDeletion.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
 export interface PlayerRepo {
   get(id: string): PlayerState | null | Promise<PlayerState | null>;
   put(state: PlayerState): void | Promise<void>;
+  /** REQ-UXS-040: removes the player's state (memory repos; the Durable Object deletes its whole storage). */
+  delete?(id: string): void | Promise<void>;
+}
+
+/** REQ-UXS-014/015: a breeding (own pair or a borrowed stallion) counts toward unlocks and beginner missions. */
+function countBreeding(s: PlayerState) {
+  ensureOnboarding(s).breedings += 1;
+  countOnboarding(s, 'breed');
 }
 
 export class MemoryPlayerRepo implements PlayerRepo {
@@ -53,6 +70,7 @@ export class MemoryPlayerRepo implements PlayerRepo {
   put(s: PlayerState) {
     this.data.set(s.id, JSON.stringify(s));
   }
+  delete(id: string) { this.data.delete(id); }
 }
 
 export interface PlayerServiceDeps {
@@ -81,11 +99,13 @@ const standingKey = (s: PlayerState) => JSON.stringify([s.season.id, s.season.cl
 const profileKey = (s: PlayerState) => JSON.stringify([s.profile.displayName, s.profile.titleId, s.season.classId, Math.round(s.rating.r), s.stats.races, s.stats.wins, s.stats.top3]);
 
 const IDEM_KEEP = 200;
-/** The object's alarm serves the push outbox and the stud fee outbox (REQ-PUSH-005, REQ-BREED-012). */
+/**
+ * The object's alarm serves the push outbox, the stud fee outbox (REQ-PUSH-005, REQ-BREED-012), personal
+ * nudges (REQ-UXS-012) and a scheduled account deletion (REQ-UXS-040).
+ */
 const nextWake = (s: PlayerState) => {
-  const a = nextPushWake(s);
-  const b = nextStudWake(s);
-  return a === null ? b : b === null ? a : Math.min(a, b);
+  const all = [nextPushWake(s), nextStudWake(s), nextNudgeWake(s), nextDeletionWake(s)].filter((x): x is number => x !== null);
+  return all.length ? Math.min(...all) : null;
 };
 /** How long applied race ids are remembered (well beyond any settlement/dead-letter retry window). */
 const APPLIED_RACE_KEEP_MS = 180 * 24 * 3600 * 1000;
@@ -161,20 +181,96 @@ export class PlayerService {
     return k;
   }
 
+  /** REQ-UXS-001/014/032/040: computed sections of GET /v1/player and bootstrap. */
+  private extras(s: PlayerState, now: number) {
+    const m = this.d.master;
+    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s) };
+  }
+
   async view(id: string) {
     const s = await this.load(id);
-    return playerView(s, this.d.master.bannedSilks);
+    return playerView(s, this.d.master.bannedSilks, this.extras(s, this.d.clock()));
   }
 
   async state(id: string) { return this.load(id); }
 
   bootstrap(id: string) {
-    return this.tx(id, null, (s, _now, emit) => {
+    return this.tx(id, null, (s, now, emit) => {
       const k = ensureKpi(s);
       if (!k.firstOpenSent) { k.firstOpenSent = true; emit({ name: 'first_open' }); }
-      return playerView(s, this.d.master.bannedSilks);
+      const extra = this.extras(s, now);
+      // REQ-UXS-032: one ab_assign row per experiment and player, so KPI queries can split any funnel by bucket
+      const sent = (k.abSent ??= []);
+      for (const [exp, bucket] of Object.entries(extra.experiments.assignments)) {
+        if (sent.includes(exp)) continue;
+        sent.push(exp);
+        emit({ name: 'ab_assign', s1: exp, s2: bucket });
+      }
+      if (sent.length > 50) sent.splice(0, sent.length - 50);
+      return playerView(s, this.d.master.bannedSilks, extra);
     });
   }
+
+  // ---- onboarding (REQ-UXS-001/002) ----
+  recordConsent(id: string, termsVersion: string, privacyVersion: string) {
+    return this.tx(id, null, (s, now, emit) => {
+      const before = s.consent ? `${s.consent.termsVersion}|${s.consent.privacyVersion}` : null;
+      const r = recordConsent(this.d.master, s, termsVersion, privacyVersion, now);
+      if (before !== `${termsVersion}|${privacyVersion}`) emit({ name: 'consent', s1: termsVersion, s2: privacyVersion });
+      return r;
+    });
+  }
+  async grantPartner(id: string, name: string, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => {
+      const r = grantPartner(this.d.master, s, name, now);
+      emit({ name: 'partner_granted', s1: r.horse.templateId ?? '' });
+      return r;
+    });
+  }
+
+  // ---- account deletion (REQ-UXS-040) ----
+  requestDeletion(id: string, confirmToken: string | null) {
+    return this.tx(id, null, (s, now, emit) => {
+      const was = deletionScheduled(s);
+      const r = requestDeletion(this.d.master, s, confirmToken, this.d.rng, now);
+      if (!was && deletionScheduled(s)) emit({ name: 'account_delete', s1: 'requested' });
+      return r;
+    });
+  }
+  cancelDeletion(id: string) {
+    return this.tx(id, null, (s, _now, emit) => {
+      const r = cancelDeletion(s);
+      emit({ name: 'account_delete', s1: 'cancelled' });
+      return r;
+    });
+  }
+  async deletionDue(id: string) { return deletionDue(await this.load(id), this.d.clock()); }
+  async deletionSnapshot(id: string) { return deletionSnapshot(await this.load(id)); }
+  deletionMarkStep(id: string, step: DeletionStep) { return this.tx(id, null, (s) => { markDeletionStep(s, step); }); }
+  deletionRetryLater(id: string) { return this.tx(id, null, (s, now) => deletionRetryLater(s, now)); }
+  /** Forfeits balances and returns the anonymised record (emitted once as account_delete/deleted). */
+  deletionFinalize(id: string) {
+    return this.tx(id, null, (s, now, emit) => {
+      const had = !!s.deletion?.record;
+      const r = finalizeDeletion(this.d.master, s, this.d.rng, now);
+      if (!had) emit({ name: 'account_delete', s1: 'deleted', paidCoins: r.forfeited.paidCoins, freeCoins: r.forfeited.freeCoins });
+      return r;
+    });
+  }
+  /** Next nudge / deletion time (the object's alarm keeps them armed; push and stud have their own). */
+  async nextWakeOf(id: string) {
+    const s = await this.load(id);
+    const all = [nextNudgeWake(s), nextDeletionWake(s)].filter((x): x is number => x !== null);
+    return all.length ? Math.min(...all) : null;
+  }
+  /** Tests / memory repos: drop the stored state (the Durable Object deletes its whole storage instead). */
+  async wipe(id: string) { if (this.repo.delete) await this.repo.delete(id); }
+
+  // ---- personal nudges (REQ-UXS-012) ----
+  /** Alarm: due nudges (promotion). */
+  runNudges(id: string) { return this.tx(id, null, (s, now) => runDueNudges(this.d.master, s, now)); }
+  nudgeTaBeaten(id: string, byName: string, course: string) { return this.tx(id, null, (s, now) => nudgeTaBeaten(this.d.master, s, byName, course, now)); }
+  nudgeTournamentClosing(id: string, info: TournamentClosingInfo) { return this.tx(id, null, (s, now) => nudgeTournamentClosing(this.d.master, s, info, now)); }
 
   setAge(id: string, birthYear: number, birthMonth: number, guardianConsent: boolean) {
     return this.tx(id, null, (s, now) => {
@@ -186,6 +282,8 @@ export class PlayerService {
   async purchaseIntent(id: string, productId: string) {
     const s = await this.load(id);
     if (moderationOf(s, this.d.clock()) === 'banned') throw new AppError('BANNED', 'purchases are disabled for this account'); // REQ-OPS-033
+    // REQ-UXS-040: no new purchases while the account is scheduled for deletion (cancel the deletion to buy)
+    if (deletionScheduled(s)) throw new AppError('DELETION_PENDING', 'the account is scheduled for deletion');
     return checkPurchaseIntent(this.d.master, s, productId, this.d.clock());
   }
 
@@ -199,6 +297,7 @@ export class PlayerService {
       const { record, duplicate } = applyVerifiedPurchase(this.d.master, s, platform, r, now);
       // A completed store payment is always credited; a banned account gets a support flag (refund via support).
       if (!duplicate && moderationOf(s, now) === 'banned') (s.supportFlags ??= []).push(`purchase_while_banned:${record.txId}`);
+      if (!duplicate && deletionScheduled(s)) (s.supportFlags ??= []).push(`purchase_while_deletion_pending:${record.txId}`);
       if (!duplicate) emit({ name: 'purchase', s1: record.productId, s2: platform, s3: record.sandbox ? 'sandbox' : 'real', amountYen: record.priceYen, paidCoins: record.paidCoinsGranted, freeCoins: record.bonusCoinsGranted, isFirst: first && record.priceYen > 0 && !record.sandbox });
       return { record, duplicate, wallet: playerView(s).wallet };
     });
@@ -255,6 +354,7 @@ export class PlayerService {
   async draw(id: string, bannerId: string, count: 1 | 10, idemKey: string | null) {
     return this.tx(id, this.requireKey(idemKey), (s, now, emit) => {
       const r = drawGacha(this.d.master, s, bannerId, count, this.d.rng, now);
+      countOnboarding(s, 'gacha');
       emit({ name: 'gacha_draw', s1: bannerId, count, paidCoins: r.spent.paid, freeCoins: r.spent.free, value: r.results.filter((x) => x.rarity === 'SSR').length });
       return { ...r, wallet: playerView(s).wallet };
     });
@@ -263,6 +363,7 @@ export class PlayerService {
   async tutorialDraw(id: string, idemKey: string | null) {
     return this.tx(id, this.requireKey(idemKey), (s, now, emit) => {
       const r = drawGacha(this.d.master, s, 'standard', 10, this.d.rng, now, { tutorialFree: true });
+      countOnboarding(s, 'gacha');
       emit({ name: 'tutorial_gacha', count: 10 });
       return r;
     });
@@ -281,7 +382,11 @@ export class PlayerService {
   }
   async breed(id: string, sireId: string, damId: string, idemKey: string | null, useMaterial = false) {
     const key = this.requireKey(idemKey);
-    return this.tx(id, key, (s, now) => breed(this.d.master, s, sireId, damId, this.d.rng, now, { useMaterial, ref: key }));
+    return this.tx(id, key, (s, now) => {
+      const r = breed(this.d.master, s, sireId, damId, this.d.rng, now, { useMaterial, ref: key });
+      countBreeding(s);
+      return r;
+    });
   }
 
   // ---- stud lending (REQ-BREED-010..016; orchestrated across players by studService.ts) ----
@@ -309,6 +414,7 @@ export class PlayerService {
     return this.tx(id, null, (s, now, emit) => {
       const before = s.stud?.applied[opId];
       const r = studApply(this.d.master, s, opId, snap, damId, this.d.rng, now, useMaterial);
+      if (!before) countBreeding(s);
       if (!before) emit({ name: 'stud_breed', s1: snap.ownerId, s2: snap.horseId, count: 1, paidCoins: 0, freeCoins: r.fee, value: r.atavism ? 1 : 0 });
       return r;
     });
@@ -328,7 +434,9 @@ export class PlayerService {
     const key = this.requireKey(idemKey);
     return this.tx(id, key, (s, now, emit) => {
       const r = useTicket(this.d.master, s, itemId, bannerId, this.d.rng, now, key);
-      emit({ name: 'gacha_draw', s1: bannerId ?? itemId, s2: 'ticket', count: 1, paidCoins: 0, freeCoins: 0, value: r.result.rarity === 'SSR' ? 1 : 0 });
+      countOnboarding(s, 'gacha');
+      const pulls = r.results ?? [r.result];
+      emit({ name: 'gacha_draw', s1: bannerId ?? itemId, s2: 'ticket', count: pulls.length, paidCoins: 0, freeCoins: 0, value: pulls.filter((x) => x.rarity === 'SSR').length });
       return r;
     });
   }
@@ -350,7 +458,18 @@ export class PlayerService {
     });
   }
   async missions(id: string) { return this.tx(id, null, (s, now) => missionsView(this.d.master, s, now)); }
-  async claimMission(id: string, missionId: string, idemKey: string | null) { return this.tx(id, this.requireKey(idemKey), (s, now) => claimMission(this.d.master, s, missionId, now)); }
+  /** GET /v1/missions: daily (REQ-REW-002), beginner (REQ-UXS-015) and season missions (REQ-UXS-016). */
+  async missionsAll(id: string) {
+    return this.tx(id, null, (s, now) => ({ missions: missionsView(this.d.master, s, now), beginner: beginnerMissionsView(this.d.master, s), season: seasonMissionsView(this.d.master, s) }));
+  }
+  async claimMission(id: string, missionId: string, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now) => {
+      const table = missionTable(this.d.master, missionId);
+      if (table === 'beginner') return claimBeginnerMission(this.d.master, s, missionId, now);
+      if (table === 'season') return claimSeasonMission(this.d.master, s, missionId, now);
+      return claimMission(this.d.master, s, missionId, now);
+    });
+  }
   async passView(id: string) {
     const s = await this.load(id);
     return { level: passLevel(this.d.master, s), xp: s.seasonPass.xp, active: s.seasonPass.expiresAt > this.d.clock(), expiresAt: s.seasonPass.expiresAt, claimed: s.seasonPass.claimed };
@@ -368,6 +487,7 @@ export class PlayerService {
       if (applied[r.raceId] !== undefined) return { duplicate: true as const, event: null };
       applied[r.raceId] = now;
       const base = applyRaceResult(this.d.master, s, r, now);
+      if (r.mode === 'ranked' && !r.void) armPromotionNudge(this.d.master, s, now); // REQ-UXS-012
       if (!r.void) {
         emit({
           name: 'race_finish', s1: r.mode, s2: r.details?.style ?? '', s3: r.details?.trackId ?? '',
@@ -429,6 +549,8 @@ export class PlayerService {
       ...({ roomPreset: s.presets?.room ?? null } as { roomPreset?: RoomConditions | null }),
       rating: { r: s.rating.r, rd: s.rating.rd, vol: s.rating.vol },
       classId: cls.id, statCap: cls.statCap, beginner: s.rating.rankedRaces < this.d.master.progression.beginnerRaces,
+      // REQ-UXS-003: the player's first ranked race (shorter CPU fill, optional fixed course); null afterwards
+      ...({ firstRace: firstRaceOf(this.d.master, s) } as { firstRace?: { cpuFillAfterMs: number; trackId: string | null } | null }),
     };
   }
 
@@ -436,7 +558,11 @@ export class PlayerService {
   async bond(id: string, horseId: string) { return bondView(this.d.master, await this.load(id), horseId, this.d.clock()); }
   async bondLevels(id: string) { return { levels: bondLevels(this.d.master, await this.load(id)) }; }
   async care(id: string, horseId: string, action: string, idemKey: string | null) {
-    return this.tx(id, this.requireKey(idemKey), (s, now) => careHorse(this.d.master, s, horseId, action, now));
+    return this.tx(id, this.requireKey(idemKey), (s, now) => {
+      const r = careHorse(this.d.master, s, horseId, action, now);
+      countOnboarding(s, 'care');
+      return r;
+    });
   }
 
   // ---- presets: course look and private-room conditions (REQ-ROOM-*) ----
@@ -451,7 +577,11 @@ export class PlayerService {
   equipTitle(id: string, titleId: string | null) { return this.tx(id, null, (s) => equipTitle(this.d.master, s, titleId)); }
   /** REQ-ASSET-005: choose silks (unlockable patterns need their costume item). */
   setSilks(id: string, silks: Silks) {
-    return this.tx(id, null, (s) => { s.profile.silks = validateSilks(silks, s.items, undefined, this.d.master.bannedSilks); return { silks: s.profile.silks }; });
+    return this.tx(id, null, (s) => {
+      s.profile.silks = validateSilks(silks, s.items, undefined, this.d.master.bannedSilks);
+      countOnboarding(s, 'silks');
+      return { silks: s.profile.silks };
+    });
   }
   async titles(id: string) {
     const s = await this.load(id);
@@ -590,7 +720,12 @@ export class PlayerService {
   }
   taAbort(id: string, sessionId: string) { return this.tx(id, null, (s) => abortSubmit(s, sessionId)); }
   taRecord(id: string, sessionId: string, out: VerifierOutput, claimedHash: string) {
-    return this.tx(id, null, (s, now) => recordResult(this.d.master, s, this.d.master.progression.timeAttack, sessionId, out, claimedHash, now));
+    return this.tx(id, null, (s, now) => {
+      const counted = s.timeAttack?.sessions.find((x) => x.id === sessionId)?.result ?? null;
+      const r = recordResult(this.d.master, s, this.d.master.progression.timeAttack, sessionId, out, claimedHash, now);
+      if (!counted && 'finished' in r && r.finished) countOnboarding(s, 'ta_finish');
+      return r;
+    });
   }
   async taView(id: string, trackId: string) {
     trackById(this.d.master, trackId);
@@ -603,7 +738,7 @@ export class PlayerService {
     return this.tx(id, null, (s, now, emit) => {
       const was = s.team?.teamId ?? null;
       const r = playerCommitJoin(s, teamId, now);
-      if (was !== teamId) emit({ name: 'team_join', s1: teamId });
+      if (was !== teamId) { emit({ name: 'team_join', s1: teamId }); countOnboarding(s, 'team'); }
       return r;
     });
   }

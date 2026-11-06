@@ -151,6 +151,9 @@ namespace Muchi.Client
             public readonly TaskCompletionSource<FileOutcome> Done = new TaskCompletionSource<FileOutcome>(TaskCreationOptions.RunContinuationsAsynchronously);
             public long Bytes;
             public readonly List<Action<long>> Listeners = new List<Action<long>>();
+            /// <summary>Cancelled only when every caller waiting for this file has cancelled (QA r9).</summary>
+            public readonly CancellationTokenSource Cts = new CancellationTokenSource();
+            public int Waiters;
         }
 
         private struct FileOutcome
@@ -246,7 +249,9 @@ namespace Muchi.Client
             // 3. transfers (shared with concurrent callers), limited by the semaphore inside FetchShared
             var tasks = start.Select(async b =>
             {
-                var o = await FetchShared(catalog, b, d => { tracker.Add(b.Sha, d); tracker.Flush(); }, ct);
+                FileOutcome o;
+                try { o = await FetchShared(catalog, b, d => { tracker.Add(b.Sha, d); tracker.Flush(); }, ct); }
+                catch (OperationCanceledException) { o = new FileOutcome { State = AssetFileState.Cancelled }; }
                 lock (report) { Mark(report, b, o.State); report.BytesDownloaded += o.Downloaded; }
                 tracker.Finish(b.Sha, o.State == AssetFileState.Downloaded || o.State == AssetFileState.Cached);
                 tracker.Flush();
@@ -292,23 +297,43 @@ namespace Muchi.Client
         }
 
         /// <summary>One transfer per content hash: a second caller (another group, an EnsureAsync) joins the running one.
-        /// The transfer runs with the token of the caller that started it.</summary>
-        private Task<FileOutcome> FetchShared(AssetCatalog catalog, Blob b, Action<long> onDelta, CancellationToken ct)
+        /// Each caller's token only ends its own wait; the transfer itself is cancelled once no caller wants the file any
+        /// more (one screen leaving must not fail the same file for another screen, QA r9).</summary>
+        private async Task<FileOutcome> FetchShared(AssetCatalog catalog, Blob b, Action<long> onDelta, CancellationToken ct)
         {
-            Inflight f;
-            bool owner = false;
-            lock (_gate)
+            while (true)
             {
-                if (!_inflight.TryGetValue(b.Sha, out f))
+                ct.ThrowIfCancellationRequested();
+                Inflight f;
+                bool owner = false;
+                lock (_gate)
                 {
-                    f = new Inflight();
-                    _inflight[b.Sha] = f;
-                    owner = true;
+                    if (!_inflight.TryGetValue(b.Sha, out f))
+                    {
+                        f = new Inflight();
+                        _inflight[b.Sha] = f;
+                        owner = true;
+                    }
+                    f.Listeners.Add(onDelta);
+                    f.Waiters++;
                 }
-                f.Listeners.Add(onDelta);
+                if (owner) _ = Run(catalog, b, f, f.Cts.Token);
+
+                var left = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                Task won;
+                using (ct.Register(() => left.TrySetResult(true))) won = await Task.WhenAny(f.Done.Task, left.Task).ConfigureAwait(false);
+                bool last;
+                lock (_gate) { f.Listeners.Remove(onDelta); last = --f.Waiters == 0; }
+                if (won == f.Done.Task)
+                {
+                    var o = f.Done.Task.Result;
+                    // joined a transfer the other callers had just abandoned: start (or join) a fresh one
+                    if (o.State == AssetFileState.Cancelled && !ct.IsCancellationRequested) continue;
+                    return o;
+                }
+                if (last && !f.Done.Task.IsCompleted) f.Cts.Cancel();
+                throw new OperationCanceledException(ct);
             }
-            if (owner) _ = Run(catalog, b, f, ct);
-            return f.Done.Task;
         }
 
         private async Task Run(AssetCatalog catalog, Blob b, Inflight f, CancellationToken ct)

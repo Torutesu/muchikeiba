@@ -95,8 +95,14 @@ namespace Muchi.Client
         {
             string dest = BlobPath(sha256);
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(dest));
-            if (File.Exists(dest)) { File.Delete(PartPath(sha256)); return; }
-            File.Move(PartPath(sha256), dest);
+            string part = PartPath(sha256);
+            if (File.Exists(dest))
+            {
+                // same length: the same verified content (blobs are only ever created verified). Another length: the
+                // blob was truncated or damaged outside the app; replace it with the verified download (QA r9).
+                if (new FileInfo(dest).Length == new FileInfo(part).Length || !TryDelete(dest)) { File.Delete(part); return; }
+            }
+            File.Move(part, dest);
         }
 
         public void DeletePart(string sha256) { TryDelete(PartPath(sha256)); }

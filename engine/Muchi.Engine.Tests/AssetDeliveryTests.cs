@@ -42,7 +42,7 @@ namespace Muchi.Engine.Tests
                 lock (this) MaxActive = Math.Max(MaxActive, now);
                 try
                 {
-                    if (Gate != null) await Gate.Task;
+                    if (Gate != null) await Gate.Task.WaitAsync(ct); // a real transport aborts on cancel
                     else await Task.Yield();
                     if (Offline) throw new IOException("no route to host");
                     string step = Script.TryGetValue(r.Url, out var q) && q.TryDequeue(out var s) ? s : "ok";
@@ -287,6 +287,63 @@ namespace Muchi.Engine.Tests
             Assert.Equal(6, cdn.Requests.Count); // one GET per file in total
             Assert.Equal(cache.BlobPath(c.Find("item/i3").Sha256), path);
             Assert.Null(await dl.EnsureAsync(c, "item/not_in_catalog"));
+        }
+
+        [Fact]
+        public async Task OwnerCancelDoesNotCancelAJoinedCallerOfTheSameFile()
+        {
+            // QA r9: the shared transfer ran on the token of the caller that started it, so a screen leaving (cancel)
+            // failed the same file for another screen that still wanted it.
+            var (cdn, cache, dl, _) = Setup(parallel: 1);
+            var c = Catalog(1, Coat);
+            Publish(cdn, c, Coat);
+            cdn.Gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var ownerCts = new CancellationTokenSource();
+            var owner = dl.DownloadAsync(c, c.Entries, null, ownerCts.Token);
+            var joiner = dl.EnsureAsync(c, "horse/coat/bay");
+            await Task.Delay(30);
+            ownerCts.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => owner);
+            cdn.Gate.SetResult(true);
+            var path = await joiner;
+            Assert.Equal(cache.BlobPath(c.Find("horse/coat/bay").Sha256), path);
+            Assert.True(cache.HasBlob(Sha(Coat.Item2), Coat.Item2.Length));
+        }
+
+        [Fact]
+        public async Task JoinedCallerCanCancelItsWaitWithoutStoppingTheOwner()
+        {
+            var (cdn, cache, dl, _) = Setup(parallel: 1);
+            var c = Catalog(1, Coat);
+            Publish(cdn, c, Coat);
+            cdn.Gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var owner = dl.DownloadAsync(c, c.Entries);
+            using var joinCts = new CancellationTokenSource();
+            var joiner = dl.EnsureAsync(c, "horse/coat/bay", joinCts.Token);
+            await Task.Delay(30);
+            joinCts.Cancel();
+            var done = await Task.WhenAny(joiner, Task.Delay(2000));
+            Assert.Same(joiner, done); // the joiner's own cancel is honoured at once, not after the owner's transfer
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => joiner);
+            cdn.Gate.SetResult(true);
+            Assert.True((await owner).AllOk);
+        }
+
+        [Fact]
+        public async Task ABlobOfTheWrongSizeIsReplacedOnCommit()
+        {
+            // QA r9: CommitPart kept an existing (truncated) blob and threw the verified download away, so the key was
+            // reported Downloaded but never resolved and was fetched again on every run.
+            var (cdn, cache, dl, _) = Setup();
+            var c = Catalog(1, Coat);
+            Publish(cdn, c, Coat);
+            string sha = Sha(Coat.Item2);
+            Directory.CreateDirectory(Path.GetDirectoryName(cache.BlobPath(sha))!);
+            File.WriteAllBytes(cache.BlobPath(sha), Coat.Item2.Take(10).ToArray());
+            var r = await dl.DownloadAsync(c, c.Entries);
+            Assert.True(r.AllOk);
+            Assert.True(cache.HasBlob(sha, Coat.Item2.Length));
+            Assert.Equal(sha, Sha(File.ReadAllBytes(cache.BlobPath(sha))));
         }
 
         [Fact]

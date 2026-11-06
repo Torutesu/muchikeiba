@@ -264,17 +264,31 @@ export interface BannerDef {
   /** The featured horse (its own ppm is in `pool`; shown on the banner and the odds page). */
   pickupTemplateId?: string;
   stepUp?: StepUpDef;
-  /** The raw definition when the schedule is written as game days: re-resolved when a config version changes the day rule. */
-  daySchedule?: RawBanner;
 }
 /**
  * A limited pity group may close at `endAtMs`; leftover points then move 1:1 to `convertTo` (default `standard`) and
  * never expire (REQ-GACHA-005 / REQ-GACHA-013). `label` names the group on the pity meter ("恒常" …).
  */
-export interface PityGroupDef { cost: number; endAtMs?: number; convertTo?: string; label?: string; /** set when `endDay` (a game day) was given */ endDay?: string }
+export interface PityGroupDef { cost: number; endAtMs?: number; convertTo?: string; label?: string }
 /** Upcoming banners are listed this many days before they open unless the banner says otherwise (REQ-GACHA-011). */
 export const DEFAULT_ANNOUNCE_DAYS = 3;
-export interface GachaMaster { duplicateMaterial: Record<Rarity, number>; pityGroups: Record<string, PityGroupDef>; banners: BannerDef[] }
+export interface GachaMaster {
+  duplicateMaterial: Record<Rarity, number>; pityGroups: Record<string, PityGroupDef>; banners: BannerDef[];
+  /**
+   * REQ-DAY-001: the definitions written as game days (banner startDay/endDay, pity group endDay), kept so a config
+   * version that changes progression.dayRollover re-resolves them (rescheduleGacha). Absent in hand-built test masters.
+   */
+  daySchedules?: GameDaySchedules;
+}
+export interface GameDaySchedules { banners: Record<string, RawBanner>; pityEndDays: Record<string, string> }
+
+/** The game-day written parts of raw banners / pity groups (see GachaMaster.daySchedules). */
+export function gameDaySchedules(banners: RawBanner[], pityGroups: Record<string, RawPityGroup>): GameDaySchedules {
+  const out: GameDaySchedules = { banners: {}, pityEndDays: {} };
+  for (const b of banners) if (b.startDay !== undefined || b.endDay !== undefined) out.banners[b.id] = b;
+  for (const [id, g] of Object.entries(pityGroups)) if (g.endDay !== undefined) out.pityEndDays[id] = g.endDay;
+  return out;
+}
 export interface Master {
   tracks: Track[]; templates: HorseTemplate[]; templateById: Map<string, HorseTemplate>;
   /** Track ids of venues with floodlights (night racing possible). Master-only; never sent in a race config. */
@@ -344,7 +358,6 @@ export function buildPityGroups(raw: Record<string, RawPityGroup>, rule: DayRule
     const d: PityGroupDef = { cost: g.cost };
     const end = g.endDay !== undefined ? endOfGameDay(g.endDay, rule) : g.endAtMs;
     if (end !== undefined) d.endAtMs = end;
-    if (g.endDay !== undefined) d.endDay = g.endDay;
     if (g.convertTo !== undefined) d.convertTo = g.convertTo;
     if (g.label !== undefined) d.label = g.label;
     out[id] = d;
@@ -376,11 +389,14 @@ export function expandPool(templates: HorseTemplate[], rates: Partial<Record<Rar
  * that changes progression.dayRollover but not the gacha keeps every game-day schedule on the rollover).
  */
 export function rescheduleGacha(g: GachaMaster, templates: HorseTemplate[], rule: DayRule): GachaMaster {
+  const sch = g.daySchedules;
+  if (!sch) return g;
   const pityGroups: Record<string, PityGroupDef> = {};
   for (const [id, d] of Object.entries(g.pityGroups)) {
-    pityGroups[id] = d.endDay === undefined ? d : { ...d, endAtMs: endOfGameDay(d.endDay, rule) };
+    const day = sch.pityEndDays[id];
+    pityGroups[id] = day === undefined ? d : { ...d, endAtMs: endOfGameDay(day, rule) };
   }
-  return { ...g, pityGroups, banners: g.banners.map((b) => (b.daySchedule ? buildBanner(b.daySchedule, templates, rule) : b)) };
+  return { ...g, pityGroups, banners: g.banners.map((b) => (sch.banners[b.id] ? buildBanner(sch.banners[b.id]!, templates, rule) : b)) };
 }
 
 /** `rule` = the master's game-day rule (progression.dayRollover): startDay/endDay/announceDays are game days. */
@@ -401,7 +417,6 @@ export function buildBanner(raw: RawBanner, templates: HorseTemplate[], rule: Da
   } else if (raw.announceAtMs !== undefined || raw.announceDays !== undefined) throw new AppError('CONFIG_INVALID', 'an announcement needs a start');
   if (end !== undefined) b.endAtMs = end;
   if (raw.pickup) b.pickupTemplateId = raw.pickup.templateId;
-  if (raw.startDay !== undefined || raw.endDay !== undefined) b.daySchedule = raw;
   if (raw.stepUp) {
     b.stepUp = {
       afterLast: raw.stepUp.afterLast,
@@ -433,7 +448,7 @@ export function loadMaster(): Master {
   const rule = dayRule({ progression: progressionJson as unknown as Progression }); // REQ-DAY-001: banner game days
   const m: Master = {
     tracks, templates, templateById, litTracks,
-    gacha: { duplicateMaterial: g.duplicateMaterial, pityGroups: buildPityGroups(g.pityGroups, rule), banners: g.banners.map((b) => buildBanner(b, templates, rule)) },
+    gacha: { duplicateMaterial: g.duplicateMaterial, pityGroups: buildPityGroups(g.pityGroups, rule), banners: g.banners.map((b) => buildBanner(b, templates, rule)), daySchedules: gameDaySchedules(g.banners, g.pityGroups) },
     nicks: nicksJson as unknown as Master['nicks'],
     ng: ngJson as unknown as Master['ng'],
     ageLimits: ageJson as unknown as AgeLimits,

@@ -41,9 +41,17 @@ export class RaceView {
 
   async load() {
     const r = this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, powerPreference: 'high-performance' });
-    r.setPixelRatio(Math.min(2, globalThis.devicePixelRatio || 1));
+    // the stage is scaled to the window: render at the pixels it will actually cover (phones: ~1×, big monitors: up to 2×)
+    r.setPixelRatio(Math.max(.75, Math.min(2, (globalThis.devicePixelRatio || 1) * Math.min(innerWidth / 1600, innerHeight / 900))));
     r.setSize(1600, 900, false);
     r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
+    // software GL (CI, Figma previews without a GPU, very low-end devices): no shadows and fewer pixels, so the race
+    // still renders every engine frame (06 §9.1: never below 30 fps on low-end devices)
+    try {
+      const gl = r.getContext(), dbg = gl.getExtension('WEBGL_debug_renderer_info');
+      this.lite = /swiftshader|llvmpipe|software/i.test(dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : '');
+    } catch { this.lite = false; }
+    if (this.lite) { r.shadowMap.enabled = false; r.setPixelRatio(.5); }
     const scene = this.scene = new THREE.Scene();
     // RenderSettings: ambient (.66,.76,.86), exp² fog (.68,.83,.95) density .0014; camera background (.39,.69,.94)
     this.ambient = new THREE.HemisphereLight(srgb(.74, .84, .94), srgb(.42, .46, .40), 2.3);
@@ -55,7 +63,7 @@ export class RaceView {
     const e = new THREE.Euler(38 * DEG, -35 * DEG, 0, 'YXZ');
     const fwd = new THREE.Vector3(0, 0, 1).applyEuler(e); // Unity light forward (left-handed numbers)
     this.sunDir = new THREE.Vector3(fwd.x, fwd.y, -fwd.z).normalize();
-    sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+    sun.castShadow = !this.lite; sun.shadow.mapSize.set(2048, 2048);
     const sc = sun.shadow.camera; sc.left = -40; sc.right = 40; sc.top = 40; sc.bottom = -40; sc.near = 1; sc.far = 260;
     sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03;
     scene.add(sun); scene.add(sun.target);
@@ -161,9 +169,10 @@ export class RaceView {
     for (const h of this.horses) this.scene.remove(h.anchor);
     this.horses = [];
     const n = info.names.length;
+    const ps = this.playerSlot = info.playerSlot ?? 0;
     for (let i = 0; i < n; i++) {
       let path;
-      if (i === 0) path = 'Models/Partners/' + FEATURED[Math.max(0, Math.min(4, playerPartner))];
+      if (i === ps) path = 'Models/Partners/' + FEATURED[Math.max(0, Math.min(4, playerPartner))];
       else { const v = resolveVariant(this.catalog, w.entrants?.[i]); path = v?.opponentLod ?? v?.model; }
       const src = this.models.get(path) ?? this.models.get('Models/PartnerLODs/Partner_Bay_Azure_LOD1') ?? this.models.get('Models/Partners/' + FEATURED[0]);
       this.horses.push(this.anchor(i, src));
@@ -213,8 +222,16 @@ export class RaceView {
       if (h.bones[8]) h.bones[8].quaternion.copy(h.rest[8]).multiply(q.setFromAxisAngle(X, 2.2 * Math.sin(cycle * 2) * DEG));
       if (h.bones[9]) h.bones[9].quaternion.copy(h.rest[9]).multiply(q.setFromAxisAngle(X, 1.4 * Math.sin(cycle) * DEG));
     }
-    const me = this.horses[0]?.anchor;
-    if (me) {
+    const me = this.horses[this.playerSlot ?? 0]?.anchor;
+    if (me && f.cam && this.useRig) {
+      // RaceCameraRig (engine/Muchi.Client/RaceCamera.cs) through CourseFrame.ToWorld: follow, low in the last 400 m, side at the finish
+      const [px, ph, pz, lx, lh, lz, fov] = f.cam;
+      this.camera.position.lerp(U(px, ph, pz), 1 - Math.exp(-dt * 6));
+      if (Math.abs(this.camera.fov - fov) > .01) { this.camera.fov += (fov - this.camera.fov) * (1 - Math.exp(-dt * 4)); this.camera.updateProjectionMatrix(); }
+      this.camera.lookAt(U(lx, lh, lz));
+      this.sun.target.position.copy(me.position);
+      this.sun.position.copy(me.position).addScaledVector(this.sunDir, -120);
+    } else if (me) {
       const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(me.quaternion);
       const target = me.position.clone().addScaledVector(fwd, -6.5).add(new THREE.Vector3(0, 3, 0));
       this.camera.position.lerp(target, 1 - Math.exp(-dt * 6));
@@ -224,6 +241,15 @@ export class RaceView {
       this.sun.position.copy(me.position).addScaledVector(this.sunDir, -120);
     }
     this.renderer.render(this.scene, this.camera);
+  }
+
+  /** Screen position (1600×900 stage pixels) of a point `up` metres above a horse, or null when behind the camera. */
+  project(slot, up = 2.7) {
+    const h = this.horses[slot];
+    if (!h) return null;
+    const v = h.anchor.position.clone().add(new THREE.Vector3(0, up, 0)).project(this.camera);
+    if (v.z > 1 || v.z < -1) return null;
+    return { x: (v.x + 1) * 800, y: (1 - v.y) * 450 };
   }
 }
 

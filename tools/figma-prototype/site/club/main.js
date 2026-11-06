@@ -427,7 +427,7 @@ async function claimRace(r) {
   const res = await L.applyRace(r.raceId, r.place, r.fieldSize, r.details);
   r.claiming = false;
   if (!res.ok) { r.claimError = errorText(res); write(KEYS.race, r); if (current === 8 && lastRace === r) render(); return toast(r.claimError); }
-  r.claimed = true; r.claimError = null; if (!res.value.duplicate) { r.coins = res.value.coins; r.seasonPoints = res.value.seasonPoints; }
+  r.claimed = true; r.claimError = null; if (!res.value.duplicate) { r.coins = res.value.coins + (res.value.firstWinBonus ?? 0); /* REQ-UXS-010: the day's first-win bonus is paid with it */ r.seasonPoints = res.value.seasonPoints; }
   write(KEYS.race, r); await refresh();
   if (current === 8 && lastRace === r) { render(); toast(`着順報酬 ${fmt(r.coins)} コインとシーズンポイントを受け取りました`); }
 }

@@ -53,10 +53,13 @@ namespace Muchi.Game
         public static long NextRolloverMs(long nowMs, DayRolloverInfo rule = null)
         {
             var r = rule ?? _rule;
+            // server gameDayStartMs of the next game day
             long next = r.Index(nowMs) + 1;
-            long atOld = next * DayMs - JstOffsetMs + r.PreviousHourJst * HourMs; // the start under the hour before the switch
-            if (atOld < r.EffectiveAtMs && atOld > nowMs) return atOld;
-            return next * DayMs - JstOffsetMs + r.HourJst * HourMs;
+            long baseMs = next * DayMs - JstOffsetMs;
+            long atOld = baseMs + r.PreviousHourJst * HourMs; // the start under the hour before the switch
+            if (atOld < r.EffectiveAtMs) return atOld;
+            // a later hour after the switch: that hour; an earlier one (4 → 0): the switch instant itself (QA r9)
+            return Math.Max(baseMs + r.HourJst * HourMs, r.EffectiveAtMs);
         }
 
         /// <summary>"明日 4:00" — or "今日 4:00" between midnight and the rollover: when the daily counters reset next.</summary>

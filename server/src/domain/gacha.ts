@@ -496,8 +496,19 @@ export function exchangePity(m: Master, s: PlayerState, bannerId: string, templa
 /** Apply period-end conversion for every closed pity group (idempotent; run on every player transaction). */
 export function settlePityGroups(m: Master, s: PlayerState, now: number): number {
   let moved = 0;
+  // follow the chain to the first group still open at `now` (QA r9: one pass in master order could leave points in a
+  // closed group that converts later in the iteration order)
+  const target = (id: string): string => {
+    let cur = id;
+    for (let i = 0; i < 16; i++) {
+      const g = m.gacha.pityGroups[cur];
+      if (!g || g.endAtMs === undefined || now < g.endAtMs) return cur;
+      cur = g.convertTo ?? 'standard';
+    }
+    return cur;
+  };
   for (const [id, g] of Object.entries(m.gacha.pityGroups)) {
-    if (g.endAtMs !== undefined && now >= g.endAtMs) moved += convertPityGroup(s, id, g.convertTo ?? 'standard');
+    if (g.endAtMs !== undefined && now >= g.endAtMs) moved += convertPityGroup(s, id, target(id));
   }
   return moved;
 }

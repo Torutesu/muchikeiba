@@ -339,3 +339,18 @@ describe('HTTP: banners, status and odds', () => {
     expect(await r.json()).toMatchObject({ error: { code: 'BANNER_CLOSED', message: 'banner pickup_ginga ended at 2026-12-01 00:00 JST' } });
   });
 });
+
+describe('QA r9: carry-over along a chain', () => {
+  it('a closed group converting into another closed group reaches the open end of the chain in one settlement', () => {
+    // the group listed first closes later than the one converting into it: one pass left points in a closed group,
+    // where the meter showed them as not exchangeable and a same-transaction exchange on standard came up short
+    const mm = { ...m, gacha: { ...m.gacha, pityGroups: {
+      standard: { cost: 100 }, second: { cost: 100, endAtMs: NOW - 2000, convertTo: 'standard' }, first: { cost: 100, endAtMs: NOW - 5000, convertTo: 'second' },
+    } } } as Master;
+    const s = freshPlayer();
+    s.pity = { first: 70, second: 40, standard: 10 };
+    expect(settlePityGroups(mm, s, NOW)).toBeGreaterThan(0);
+    expect(s.pity).toEqual({ first: 0, second: 0, standard: 120 });
+    expect(settlePityGroups(mm, s, NOW)).toBe(0);
+  });
+});

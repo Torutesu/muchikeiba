@@ -133,7 +133,7 @@ export class EventDO extends DurableObject<Env> {
         const r = this.sql.exec<{ rank: number }>('SELECT rank FROM ranks WHERE player_id = ?', playerId).toArray()[0];
         const p = this.env.PLAYER.get(this.env.PLAYER.idFromName(playerId)) as unknown as { invoke(m: string, a: unknown[]): Promise<Envelope<unknown>> };
         unwrap(await p.invoke('eventClose', [playerId, eventId, r ? r.rank : null]));
-      });
+      }, () => this.kvGet<RolloverWithLog>('close'));
       this.kvPut('close', out.st);
       return out.outcome;
     });

@@ -32,10 +32,29 @@
     "萌黄": "lime"
   },
   "colorFamilies": {
-    "blue": ["blue", "navy"],
-    "red": ["red", "maroon"],
-    "yellow": ["yellow", "gold"],
-    "green": ["green", "lime"]
+    "blue": [
+      "blue",
+      "navy"
+    ],
+    "red": [
+      "red",
+      "maroon"
+    ],
+    "yellow": [
+      "yellow",
+      "gold"
+    ],
+    "green": [
+      "green",
+      "lime"
+    ]
   },
+  "_symmetricNote": "色を入れ替えても見た目が同じ2色の模様。ここに挙げた模様は、登録の色順と逆の順でも一致とみなす。",
+  "symmetricPatterns": [
+    "quartered",
+    "halves",
+    "hoops",
+    "stripes"
+  ],
   "entries": []
 }

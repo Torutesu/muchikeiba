@@ -65,7 +65,7 @@ export async function createRace(m: Master, o: CreateRaceOptions): Promise<Creat
   const ratings: Record<string, Rating> = {};
   for (const h of o.humans) ratings[h.playerId] = h.rating;
   // entries queued by older builds have no `visual`; startVisuals falls back to derived looks
-  const visuals = startVisuals(config, Object.fromEntries(o.humans.map((h) => [h.playerId, (h as { visual?: RaceEntry['visual'] }).visual])));
+  const visuals = startVisuals(config, Object.fromEntries(o.humans.map((h) => [h.playerId, (h as { visual?: RaceEntry['visual'] }).visual])), undefined, m.bannedSilks);
   if (room) visuals.scene = { ...roomScene(room), keys: { weather: assetKeys.weather(room.weather) } };
   return { config, startAtMs, ratings, assignments, visuals };
 }

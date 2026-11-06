@@ -122,6 +122,8 @@ export function roomsProblems(cfg: unknown): string[] {
   if (!c || typeof c !== 'object') return ['rooms: missing'];
   const p: string[] = [];
   if (!Array.isArray(c.weather) || c.weather.length === 0 || c.weather.some((w) => typeof w !== 'string')) p.push('rooms.weather must be a non-empty string list');
+  // QA r6 #8: every weather must have its effect asset (fx/weather/<id>) in the visuals catalogue
+  else for (const w of c.weather) if (!(VISUALS.weather ?? []).includes(w)) p.push(`rooms.weather: unknown weather ${w}`);
   for (const k of ['temperaturesC', 'windsKmh'] as const) {
     const a = c[k];
     if (!Array.isArray(a) || a.length === 0 || a.some((n) => typeof n !== 'number' || !Number.isInteger(n))) p.push(`rooms.${k} must be a non-empty integer list`);

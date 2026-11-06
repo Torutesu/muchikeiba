@@ -128,7 +128,12 @@ export function friendRoomBondPermille(cfg: BondConfig, level: number): number {
 }
 
 /** Config problems (remote config validation, REQ-OPS-003). */
-export function bondProblems(cfg: unknown): string[] {
+/**
+ * `knownItems`: item ids the game can grant (from the shipped master); `paidOnlyItems`: cosmetics sold for
+ * paid coins only, which must never be handed out for free (QA r6 #8). Both optional for callers that only
+ * check the structure.
+ */
+export function bondProblems(cfg: unknown, knownItems?: ReadonlySet<string>, paidOnlyItems?: ReadonlySet<string>): string[] {
   const p: string[] = [];
   const c = cfg as Partial<BondConfig> | undefined;
   if (!c || typeof c !== 'object') return ['bond: missing'];
@@ -142,7 +147,17 @@ export function bondProblems(cfg: unknown): string[] {
   const lv = c.levels ?? [];
   if (lv.length < 2 || lv[0] !== 0) p.push('bond.levels must start at 0 and have at least 2 entries');
   for (let i = 1; i < lv.length; i++) if (!isInt(lv[i], 1) || lv[i]! <= lv[i - 1]!) p.push('bond.levels must be strictly increasing integers');
-  for (const r of c.levelRewards ?? []) if (!isInt(r.level, 2) || r.level > lv.length) p.push(`bond.levelRewards: level ${r.level} out of range`);
+  for (const r of c.levelRewards ?? []) {
+    if (!isInt(r.level, 2) || r.level > lv.length) p.push(`bond.levelRewards: level ${r.level} out of range`);
+    const rw = r.reward as Reward | undefined;
+    if (!rw || typeof rw !== 'object') { p.push(`bond.levelRewards[${r.level}]: reward missing`); continue; }
+    if (rw.freeCoins !== undefined && !isInt(rw.freeCoins, 0)) p.push(`bond.levelRewards[${r.level}]: freeCoins must be a non-negative integer`);
+    for (const it of rw.items ?? []) {
+      if (!isInt(it.qty, 1)) p.push(`bond.levelRewards[${r.level}]: ${it.itemId} qty must be ≥ 1`);
+      if (knownItems && !knownItems.has(it.itemId)) p.push(`bond.levelRewards[${r.level}]: unknown item ${it.itemId}`);
+      if (paidOnlyItems?.has(it.itemId)) p.push(`bond.levelRewards[${r.level}]: ${it.itemId} is paid-only and cannot be a free reward`);
+    }
+  }
   if (!isInt(c.commentaryLevel, 1)) p.push('bond.commentaryLevel must be >= 1');
   const e = c.friendRoomEffect;
   if (!e || typeof e.enabled !== 'boolean' || !isInt(e.permillePerLevel, 0) || !isInt(e.maxPermille, 0) || e.maxPermille > 50) p.push('bond.friendRoomEffect invalid (maxPermille ≤ 50)');

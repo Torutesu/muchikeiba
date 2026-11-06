@@ -26,6 +26,25 @@ export interface DeadLetterRecord extends DeadLetterItem {
   source: DeadLetterSource; scope: string; status: DeadLetterStatus;
   firstSeenAt: number; updatedAt: number; resolvedBy?: string; note?: string;
 }
+/** Moderation items are keyed by player only: one registry row per player whatever scope string a caller used (QA r6 #6). */
+export const normalizeDlScope = (source: DeadLetterSource, scope: string) => (source === 'moderation' ? 'global' : scope);
+
+/**
+ * How a producer's report changes the registry row (QA r6 #6): new → insert; open → refresh (keep firstSeenAt);
+ * resolved/dismissed → reopen only when the report is newer than the resolution (a later, real failure),
+ * never for a stale re-report of the same failure. Returns null when the row should stay as it is.
+ */
+export function mergeDeadLetter(prev: DeadLetterRecord | null, r: DeadLetterRecord): DeadLetterRecord | null {
+  const rec = { ...r, scope: normalizeDlScope(r.source, r.scope) };
+  if (!prev) return rec;
+  if (prev.status === 'open') return { ...rec, firstSeenAt: prev.firstSeenAt };
+  if (rec.updatedAt > prev.updatedAt) {
+    const { resolvedBy: _rb, note: _n, ...rest } = rec;
+    return { ...rest, status: 'open' };
+  }
+  return null;
+}
+
 export interface Dismissed { id: string; error: string; by: string; note: string; at: number }
 export interface RetryOutcome { ok: boolean; error?: string }
 
@@ -113,16 +132,26 @@ export const rolloverDeadLetters = (st: RolloverState | null): DeadLetterItem[] 
   (st?.deadLetter ?? []).map((d) => ({ itemId: d.id, error: d.error, attempts: d.attempts }));
 
 /** Runs `run` for a dead-lettered rollover item; success removes it, failure records the error. */
-export async function retryRolloverItem(st: RolloverWithLog, itemId: string, run: () => Promise<void>): Promise<{ st: RolloverWithLog; outcome: RetryOutcome }> {
+/**
+ * Retries one dead-lettered item. `reload` re-reads the owner's state AFTER the awaited call: a Durable
+ * Object keeps serving requests while it awaits an outgoing call, so the rollover cron may have moved the
+ * cursor or dead-lettered other items meanwhile (QA r6 #4). Only this one item is changed on the fresh state.
+ */
+export async function retryRolloverItem(st: RolloverWithLog, itemId: string, run: () => Promise<void>, reload?: () => RolloverWithLog | null): Promise<{ st: RolloverWithLog; outcome: RetryOutcome }> {
   const d = (st.deadLetter ?? []).find((x) => x.id === itemId);
   if (!d) throw new AppError('NOT_FOUND', `dead letter ${itemId}`);
+  let outcome: RetryOutcome;
   try {
     await run();
-    return { st: { ...st, deadLetter: (st.deadLetter ?? []).filter((x) => x.id !== itemId) }, outcome: { ok: true } };
+    outcome = { ok: true };
   } catch (e) {
-    const error = (e as Error).message;
-    return { st: { ...st, deadLetter: (st.deadLetter ?? []).map((x) => (x.id === itemId ? { ...x, error, attempts: x.attempts + 1 } : x)) }, outcome: { ok: false, error } };
+    outcome = { ok: false, error: (e as Error).message };
   }
+  const cur = (reload ? reload() : null) ?? st;
+  const next: RolloverWithLog = outcome.ok
+    ? { ...cur, deadLetter: (cur.deadLetter ?? []).filter((x) => x.id !== itemId) }
+    : { ...cur, deadLetter: (cur.deadLetter ?? []).map((x) => (x.id === itemId ? { ...x, error: outcome.error ?? 'failed', attempts: x.attempts + 1 } : x)) };
+  return { st: next, outcome };
 }
 
 export function dismissRolloverItem(st: RolloverWithLog, itemId: string, by: string, note: string, now: number): RolloverWithLog {

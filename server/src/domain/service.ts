@@ -27,7 +27,7 @@ import type { Ruleset } from './ruleset.js';
 import { abortSubmit, prepareSubmit, recordResult, startTimeAttack, timeAttackView } from './timeAttack.js';
 import type { VerifierOutput } from './schemas.js';
 import { trackById } from './master.js';
-import { appearanceOf, assetKeys, defaultSilks, validateSilks, type EntrantVisual, type Silks } from './visuals.js';
+import { appearanceOf, assetKeys, defaultSilks, validateSilks, type EntrantVisual, type Silks, effectiveSilks } from './visuals.js';
 import { ensureTeam, playerAbortJoin, playerAddOutgoing, playerCommitJoin, playerLeft, playerPrepareJoin, playerRemoveOutgoing, playerTeamReward, snapshotOf } from './teams.js';
 import { applyEventResult, cancelEntry, closeEventForPlayer, ensureEvent, enterEvent, eventsForPlayer, findEvent, type EventEntry } from './events.js';
 import { bondLevels, bondView, careHorse, horseBondLevel } from './bond.js';
@@ -76,6 +76,8 @@ const standingKey = (s: PlayerState) => JSON.stringify([s.season.id, s.season.cl
 const profileKey = (s: PlayerState) => JSON.stringify([s.profile.displayName, s.profile.titleId, s.season.classId, Math.round(s.rating.r), s.stats.races, s.stats.wins, s.stats.top3]);
 
 const IDEM_KEEP = 200;
+/** How long applied race ids are remembered (well beyond any settlement/dead-letter retry window). */
+const APPLIED_RACE_KEEP_MS = 180 * 24 * 3600 * 1000;
 
 /**
  * Application service for one player's data. Every mutation runs on a cloned draft and is saved only
@@ -124,7 +126,7 @@ export class PlayerService {
     const wake = nextPushWake(draft);
     if (wake !== null && wake !== wakeBefore && this.d.onPushWake) await this.d.onPushWake(wake);
     if (kpi.length > 0 && this.d.onKpi) await this.d.onKpi(id, kpi);
-    if (pushProfile) await this.d.onProfile!(publicProfile(draft));
+    if (pushProfile) await this.d.onProfile!(publicProfile(draft, this.d.master.bannedSilks));
     if (this.d.onSeasonEntry && draft.season.races > 0 && standingKey(draft) !== standingBefore) {
       await this.d.onSeasonEntry({
         playerId: id, seasonId: draft.season.id, classId: draft.season.classId, points: draft.season.points, rating: Math.round(draft.rating.r),
@@ -150,7 +152,7 @@ export class PlayerService {
 
   async view(id: string) {
     const s = await this.load(id);
-    return playerView(s);
+    return playerView(s, this.d.master.bannedSilks);
   }
 
   async state(id: string) { return this.load(id); }
@@ -159,7 +161,7 @@ export class PlayerService {
     return this.tx(id, null, (s, _now, emit) => {
       const k = ensureKpi(s);
       if (!k.firstOpenSent) { k.firstOpenSent = true; emit({ name: 'first_open' }); }
-      return playerView(s);
+      return playerView(s, this.d.master.bannedSilks);
     });
   }
 
@@ -311,6 +313,11 @@ export class PlayerService {
   /** Called by the race room after a race is final (idempotent per race). */
   async applyRace(id: string, r: RaceResultForPlayer) {
     const out = await this.tx(id, `race:${r.raceId}`, (s, now, emit) => {
+      // QA r6 #3: durable per-race guard, independent of the evictable idempotency ring
+      const applied = (s.appliedRaces ??= {});
+      for (const [k, at] of Object.entries(applied)) if (now - at > APPLIED_RACE_KEEP_MS) delete applied[k];
+      if (applied[r.raceId] !== undefined) return { duplicate: true as const, event: null };
+      applied[r.raceId] = now;
       const base = applyRaceResult(this.d.master, s, r, now);
       if (!r.void) {
         emit({
@@ -330,8 +337,32 @@ export class PlayerService {
           entry: { playerId: id, eventId: ev.id, points: st.points, races: st.races, wins: st.wins, displayName: s.profile.displayName, updatedAt: now } as EventEntry },
       };
     });
-    if (out.event && out.event.entry.races > 0 && this.d.onEventEntry) await this.d.onEventEntry(out.event.entry);
+    await this.flushEventPushes(id);
+    if (out.event && out.event.entry.races > 0 && this.d.onEventEntry) {
+      // QA r6 #3: the result is already committed — an EventDO outage must not fail (and later dead-letter) it.
+      // Keep the board update and re-send it with the player's next race.
+      try {
+        await this.d.onEventEntry(out.event.entry);
+      } catch (e) {
+        console.error('event board update failed; kept for retry', id, out.event.eventId, (e as Error).message);
+        const entry = out.event.entry;
+        await this.tx(id, null, (s) => { (s.pendingEventPushes ??= {})[entry.eventId] = entry; });
+      }
+    }
     return out;
+  }
+
+  /** Re-sends event board updates that failed earlier (latest entry per event; boards accept newer totals). */
+  private async flushEventPushes(id: string) {
+    if (!this.d.onEventEntry) return;
+    const s = await this.load(id);
+    const pending = Object.entries(s.pendingEventPushes ?? {});
+    if (pending.length === 0) return;
+    const sent: string[] = [];
+    for (const [eventId, entry] of pending) {
+      try { await this.d.onEventEntry(entry as EventEntry); sent.push(eventId); } catch { /* keep for next time */ }
+    }
+    if (sent.length) await this.tx(id, null, (st) => { for (const k of sent) delete st.pendingEventPushes?.[k]; });
   }
 
   /** Snapshot used by the matchmaker: horse for the race, rating, class cap, beginner flag. */
@@ -344,7 +375,7 @@ export class PlayerService {
       moderation: moderationOf(s, this.d.clock()),
       playerId: id, horse: toRaceHorse(this.d.master, h),
       // REQ-ASSET-006: look of this runner for the other clients (never part of the hashed config)
-      ...({ visual: { appearance: appearanceOf(h, id), silks: s.profile.silks ?? defaultSilks(`p:${id}`), displayName: s.profile.displayName, titleId: s.profile.titleId, bondLevel: horseBondLevel(this.d.master, s, h.id) } } as { visual?: EntrantVisual }),
+      ...({ visual: { appearance: appearanceOf(h, id), silks: effectiveSilks(s.profile.silks, `p:${id}`, this.d.master.bannedSilks), displayName: s.profile.displayName, titleId: s.profile.titleId, bondLevel: horseBondLevel(this.d.master, s, h.id) } } as { visual?: EntrantVisual }),
       // REQ-ROOM-003: the host's private-room conditions (used only when this entry hosts a friend room)
       ...({ roomPreset: s.presets?.room ?? null } as { roomPreset?: RoomConditions | null }),
       rating: { r: s.rating.r, rd: s.rating.rd, vol: s.rating.vol },
@@ -378,7 +409,7 @@ export class PlayerService {
     return { equipped: s.profile.titleId, titles: this.d.master.titles.map((t) => ({ id: t.id, name: t.name, icon: assetKeys.title(t.id), unlocked: s.titles.includes(t.id) })) };
   }
   async stats(id: string) { return (await this.load(id)).stats; }
-  async publicProfile(id: string) { return publicProfile(await this.load(id)); }
+  async publicProfile(id: string) { return publicProfile(await this.load(id), this.d.master.bannedSilks); }
 
   /** REQ-SEASON-002: rollover job → reward the closed season once (idempotent via the season record). */
   closeSeason(id: string, seasonId: string, rank: number | null) {

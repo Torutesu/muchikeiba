@@ -18,13 +18,34 @@ export interface ReplayObjectInfo { key: string; uploaded: number; hold: string 
 export type HoldPolicy = Partial<Record<string, number | null>>;
 export const DEFAULT_HOLD_POLICY: HoldPolicy = { verified: 90 };
 
+/** Hold reasons that need a human decision: never expire automatically, whatever a config says (QA r6 #2). */
+export const MANUAL_HOLDS = ['reported', 'disputed', 'desync', 'void'] as const;
+/** Hold reasons that may carry a number of days. */
+export const EXPIRING_HOLDS = ['verified', 'verifying'] as const;
+
+/** Validation for `progression.replayHoldDays` (boot and remote config): manual holds must stay null, expiring ones ≥ 1 day. */
+export function holdPolicyProblems(holds: unknown): string[] {
+  if (holds === undefined) return [];
+  if (holds === null || typeof holds !== 'object' || Array.isArray(holds)) return ['replayHoldDays: must be an object'];
+  const p: string[] = [];
+  for (const [k, v] of Object.entries(holds as Record<string, unknown>)) {
+    if ((MANUAL_HOLDS as readonly string[]).includes(k)) { if (v !== null) p.push(`replayHoldDays.${k}: must be null (kept until ops act)`); continue; }
+    if (!(EXPIRING_HOLDS as readonly string[]).includes(k)) { p.push(`replayHoldDays.${k}: unknown hold reason`); continue; }
+    if (v !== null && (typeof v !== 'number' || !Number.isInteger(v) || v < 1)) p.push(`replayHoldDays.${k}: must be an integer ≥ 1 or null`);
+  }
+  return p;
+}
+
 export function replaysToDelete(objects: ReplayObjectInfo[], now: number, retentionDays: number, holds: HoldPolicy = DEFAULT_HOLD_POLICY): string[] {
   const cutoff = now - retentionDays * DAY_MS;
   return objects.filter((o) => {
     if (!o.key.startsWith(REPLAY_PREFIX)) return false;
     if (o.hold === null) return o.uploaded < cutoff;
+    if ((MANUAL_HOLDS as readonly string[]).includes(o.hold)) return false; // defence in depth: never auto-delete
     const days = holds[o.hold];
-    return typeof days === 'number' && o.uploaded < now - days * DAY_MS;
+    if (typeof days !== 'number' || days < 1) return false;
+    // a held replay is never deleted earlier than an unheld one would be
+    return o.uploaded < now - Math.max(days, retentionDays) * DAY_MS;
   }).map((o) => o.key);
 }
 

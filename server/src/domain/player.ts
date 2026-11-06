@@ -7,7 +7,8 @@ import type { KpiState } from './kpi.js';
 import type { TimeAttackState } from './timeAttack.js';
 import type { PlayerTeamState } from './teams.js';
 import type { PlayerEventState } from './events.js';
-import { appearanceOf, defaultSilks, type Appearance, type Silks } from './visuals.js';
+import { appearanceOf, defaultSilks, effectiveSilks, type Appearance, type Silks } from './visuals.js';
+import type { BannedSilksList } from './bannedSilks.js';
 
 export type Currency = 'paid' | 'free';
 
@@ -79,6 +80,14 @@ export interface PlayerState {
   ledger: LedgerEntry[];
   ledgerSeq: number;
   idem: { key: string; result: unknown }[];
+  /**
+   * QA r6 #3: race results already applied to this player, by raceId → applied-at (ms). Separate from the
+   * client idempotency ring (which holds only IDEM_KEEP keys shared with client calls), so a settlement or
+   * dead-letter retry long after the fact can never apply the same race twice. Pruned by age.
+   */
+  appliedRaces?: Record<string, number>;
+  /** Event board updates that could not be delivered after a race was applied; re-sent on the next race. */
+  pendingEventPushes?: Record<string, unknown>;
   horses: HorseInstance[];
   items: Record<string, number>;
   materials: { awakening: number };
@@ -188,14 +197,14 @@ export function newPlayer(id: string, now: number, seasonId: string): PlayerStat
 }
 
 /** Public view returned by the API (no ledger dump). */
-export function playerView(s: PlayerState) {
+export function playerView(s: PlayerState, banned?: BannedSilksList) {
   return {
     id: s.id,
     wallet: { paid: s.wallet.paid, free: s.wallet.free, total: s.wallet.paid + s.wallet.free, debt: s.wallet.debt },
     items: s.items, materials: s.materials, pity: s.pity, horses: s.horses,
     ageRegistered: s.age !== null, flags: s.flags, seasonPass: s.seasonPass, loginBonus: s.loginBonus,
     rating: { r: Math.round(s.rating.r), rd: Math.round(s.rating.rd), rankedRaces: s.rating.rankedRaces }, season: s.season,
-    profile: { displayName: s.profile.displayName, titleId: s.profile.titleId, silks: s.profile.silks ?? defaultSilks(`p:${s.id}`) }, titles: s.titles, stats: s.stats,
+    profile: { displayName: s.profile.displayName, titleId: s.profile.titleId, silks: effectiveSilks(s.profile.silks, `p:${s.id}`, banned) }, titles: s.titles, stats: s.stats,
     equipment: s.equipment ?? { tack: {}, decor: [] },
     seasonHistory: s.seasonHistory,
   };

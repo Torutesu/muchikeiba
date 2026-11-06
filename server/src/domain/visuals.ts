@@ -204,7 +204,7 @@ const twoColorsFrom = (seed: string, v: VisualsMaster): [string, string] => {
 };
 
 /** Default silks for players who never chose (and for CPU riders): free patterns only, never banned. */
-export function defaultSilks(seed: string, v: VisualsMaster = VISUALS): Silks {
+export function defaultSilks(seed: string, v: VisualsMaster = VISUALS, list: BannedSilksList = BASE_BANNED_SILKS): Silks {
   const free = v.silks.patterns.filter((p) => !p.unlockItem);
   for (let attempt = 0; attempt < 16; attempt++) {
     const s = `${seed}|${attempt}`;
@@ -213,9 +213,19 @@ export function defaultSilks(seed: string, v: VisualsMaster = VISUALS): Silks {
     const ids = paletteIds(v);
     const colors = p.colors === 3 ? [c0, c1, ids.find((x) => x !== c0 && x !== c1)!] : [c0, c1];
     const silks: Silks = { pattern: p.id, colors, cap: v.silks.caps[h32(`${s}|cap`) % v.silks.caps.length]!.id };
-    if (!isBannedSilks(silks, v)) return silks;
+    if (!isBannedSilks(silks, v, list)) return silks;
   }
   return { pattern: 'plain', colors: ['white', 'navy'], cap: 'plain' };
+}
+
+/**
+ * QA r6 #5: the silks to show for a player under the ACTIVE banned list (base + remote-config import).
+ * Stored silks (chosen, or a default generated before an import) that are now reserved are replaced by a
+ * fresh default that respects the list, so a real registered design is never shown after it is banned.
+ */
+export function effectiveSilks(stored: Silks | undefined | null, seed: string, list: BannedSilksList = BASE_BANNED_SILKS, v: VisualsMaster = VISUALS): Silks {
+  if (stored && !isBannedSilks(stored, v, list)) return stored;
+  return defaultSilks(seed, v, list);
 }
 
 /**
@@ -304,7 +314,7 @@ export interface StartVisuals {
  * REQ-ASSET-006: everything a client needs to draw the other runners, sent next to the config in the
  * `start` message. CPU horses use their template's look; CPU riders get silks derived from the race id.
  */
-export function startVisuals(config: RaceStartConfig, humans: Record<string, EntrantVisual | undefined>, v: VisualsMaster = VISUALS): StartVisuals {
+export function startVisuals(config: RaceStartConfig, humans: Record<string, EntrantVisual | undefined>, v: VisualsMaster = VISUALS, list: BannedSilksList = BASE_BANNED_SILKS): StartVisuals {
   const n = config.entrants.length;
   return {
     v: 1,
@@ -313,7 +323,7 @@ export function startVisuals(config: RaceStartConfig, humans: Record<string, Ent
       const hv = e.playerId ? humans[e.playerId] : undefined;
       const tplId = e.horse.id.startsWith('cpu_') ? e.horse.id.slice(4) : null;
       const appearance = hv?.appearance ?? (tplId ? templateAppearance(tplId, v) : null) ?? deriveAppearance(`${config.raceId}:${e.slot}`, v);
-      const silks = hv?.silks ?? defaultSilks(e.playerId ? `p:${e.playerId}` : `${config.raceId}:cpu:${e.slot}`, v);
+      const silks = effectiveSilks(hv?.silks, e.playerId ? `p:${e.playerId}` : `${config.raceId}:cpu:${e.slot}`, list, v);
       return {
         slot: e.slot, gate: e.slot + 1, bracket: bracketOf(e.slot + 1, n), voiceName: assetKeys.voiceName(e.horse.name),
         appearance, silks, displayName: hv?.displayName ?? null, titleId: hv?.titleId ?? null,

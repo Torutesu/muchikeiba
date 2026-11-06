@@ -16,8 +16,16 @@ export interface BannedSilksList {
   patternAliases: Record<string, string>;
   colorAliases: Record<string, string>;
   colorFamilies: Record<string, string[]>;
+  /**
+   * QA r6 #7: two-colour patterns that look the same with the colours swapped (e.g. quartered blue/white vs
+   * white/blue). For these, a banned entry also matches the reversed colour order.
+   */
+  symmetricPatterns?: string[];
   entries: BannedSilksEntry[];
 }
+
+/** Default when a list does not declare its own. */
+export const DEFAULT_SYMMETRIC_PATTERNS = ['quartered', 'halves', 'hoops', 'stripes'];
 
 export const bannedSilksEntrySchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9_.:-]{1,64}$/),
@@ -32,12 +40,13 @@ export const bannedSilksListSchema = z.object({
   patternAliases: z.record(z.string(), z.string()).default({}),
   colorAliases: z.record(z.string(), z.string()).default({}),
   colorFamilies: z.record(z.string(), z.array(z.string())).default({}),
+  symmetricPatterns: z.array(z.string()).optional(),
   entries: z.array(bannedSilksEntrySchema).max(5000),
 });
 
 const raw = bannedJson as unknown as Record<string, unknown>;
 export const BASE_BANNED_SILKS: BannedSilksList = bannedSilksListSchema.parse({
-  format: raw.format, patternAliases: raw.patternAliases, colorAliases: raw.colorAliases, colorFamilies: raw.colorFamilies, entries: raw.entries,
+  format: raw.format, patternAliases: raw.patternAliases, colorAliases: raw.colorAliases, colorFamilies: raw.colorFamilies, symmetricPatterns: raw.symmetricPatterns, entries: raw.entries,
 }) as BannedSilksList;
 
 const familyIndex = (l: BannedSilksList) => {
@@ -57,8 +66,11 @@ export function silksSignature(l: BannedSilksList, pattern: string, colors: stri
 /** Entry that `s` collides with, or null. */
 export function bannedMatch(l: BannedSilksList, s: Silks): BannedSilksEntry | null {
   const sig = silksSignature(l, s.pattern, s.colors);
+  const symmetric = new Set((l.symmetricPatterns ?? DEFAULT_SYMMETRIC_PATTERNS).map((p) => normPattern(l, p)));
   for (const e of l.entries) {
-    if (silksSignature(l, e.pattern, e.colors) !== sig) continue;
+    const sigs = [silksSignature(l, e.pattern, e.colors)];
+    if (e.colors.length === 2 && symmetric.has(normPattern(l, e.pattern))) sigs.push(silksSignature(l, e.pattern, [e.colors[1]!, e.colors[0]!]));
+    if (!sigs.includes(sig)) continue;
     if (e.cap !== undefined && e.cap !== s.cap) continue;
     return e;
   }
@@ -73,6 +85,7 @@ export function bannedSilksProblems(l: BannedSilksList, v: VisualsMaster): strin
   const caps = new Set(v.silks.caps.map((x) => x.id));
   for (const [k, to] of Object.entries(l.patternAliases)) if (!patterns.has(to)) p.push(`patternAliases.${k}: unknown pattern ${to}`);
   for (const [k, to] of Object.entries(l.colorAliases)) if (!palette.has(to)) p.push(`colorAliases.${k}: unknown colour ${to}`);
+  for (const sp of l.symmetricPatterns ?? []) if (!patterns.has(normPattern(l, sp))) p.push(`symmetricPatterns: unknown pattern ${sp}`);
   const seenInFamily = new Set<string>();
   for (const [fam, ids] of Object.entries(l.colorFamilies)) for (const id of ids) {
     if (!palette.has(id)) p.push(`colorFamilies.${fam}: unknown colour ${id}`);

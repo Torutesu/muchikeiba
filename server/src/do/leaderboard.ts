@@ -318,7 +318,7 @@ export class LeaderboardDO extends DurableObject<Env> {
           for (let i = 0; i < 50; i++) if (unwrap(await team.closeSeasonStep(seasonId, t ? t.rank : null, t ? t.points : 0)).done) return;
           throw new Error('team payout did not finish in 50 steps');
         };
-      const out = await retryRolloverItem(st, itemId, run);
+      const out = await retryRolloverItem(st, itemId, run, () => this.kvGet<RolloverWithLog>(this.dlKey(kind)));
       this.kvPut(this.dlKey(kind), out.st);
       return out.outcome;
     });

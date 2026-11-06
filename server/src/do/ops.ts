@@ -1,4 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
+import { mergeDeadLetter, normalizeDlScope } from '../ops/deadLetter.js';
 import type { Env } from '../env.js';
 import { loadMaster } from '../domain/master.js';
 import { ConfigStore, type Activation, type ConfigRepo, type ConfigVersion } from '../ops/config.js';
@@ -73,15 +74,15 @@ export class OpsDO extends DurableObject<Env> {
   dlRegister(rs: DeadLetterRecord[]) {
     return wrap(async () => {
       for (const r of rs) {
-        const prev = await this.deadLetters.get(r.source, r.scope, r.itemId);
-        if (prev && prev.status === 'open') await this.deadLetters.upsert({ ...r, firstSeenAt: prev.firstSeenAt });
-        else if (!prev) await this.deadLetters.upsert(r);
+        const prev = await this.deadLetters.get(r.source, normalizeDlScope(r.source, r.scope), r.itemId);
+        const next = mergeDeadLetter(prev, r);
+        if (next) await this.deadLetters.upsert(next);
       }
       return rs.length;
     });
   }
-  dlUpsert(r: DeadLetterRecord) { return wrap(() => this.deadLetters.upsert(r)); }
-  dlGet(source: DeadLetterSource, scope: string, itemId: string) { return wrap(() => this.deadLetters.get(source, scope, itemId)); }
+  dlUpsert(r: DeadLetterRecord) { return wrap(() => this.deadLetters.upsert({ ...r, scope: normalizeDlScope(r.source, r.scope) })); }
+  dlGet(source: DeadLetterSource, scope: string, itemId: string) { return wrap(() => this.deadLetters.get(source, normalizeDlScope(source, scope), itemId)); }
   dlList(q: { status?: DeadLetterStatus; source?: DeadLetterSource; limit: number }) { return wrap(() => this.deadLetters.list(q)); }
 
   configActive(now: number, knownHash: string | null) { return wrap(() => this.config.activeFor(now, knownHash)); }

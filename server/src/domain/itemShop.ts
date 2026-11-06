@@ -111,6 +111,8 @@ export function useGachaTicket(m: Master, s: PlayerState, itemId: string, banner
   if (!t.banners.includes(bannerId)) throw new AppError('NOT_ELIGIBLE', `${itemId} cannot be used on ${bannerId}`);
   const b = findBanner(m, bannerId);
   if ((b.startAtMs !== undefined && now < b.startAtMs) || (b.endAtMs !== undefined && now >= b.endAtMs)) throw new AppError('BANNER_CLOSED');
+  // QA r6 #1: runtime backstop — free tickets never draw a paid-only banner, whatever the active config says
+  if (b.currency === 'paidOnly') throw new AppError('NOT_ELIGIBLE', `${bannerId} is paid-only and cannot take tickets`);
   consumeItem(s, itemId, 1, now, `ticket draw ${bannerId}`, ref);
   const tplId = drawFromPool(b.pool, rng);
   const result = grantPull(m, s, m.templateById.get(tplId)!, now, false);

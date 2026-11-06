@@ -425,6 +425,9 @@ function raceLoop() {
   paintHud(f);
   if (f.done) { raceActive = false; setTimeout(() => RaceResult(f), 1100); }
 }
+/** Writes only what changed: the HUD repaints every frame, and identical text still costs a layout. */
+const setText = (n, v) => { v = v ?? ''; if (n.textContent !== v) n.textContent = v; };
+const setProp = (n, k, v) => { if (n[k] !== v) n[k] = v; };
 function paintHud(f) {
   const tut = raceCtx.tutorial, feel = f.feel ?? {};
   const pos = f.rankKnown ? `${f.rank}|${f.runners}` : '—';
@@ -432,11 +435,11 @@ function paintHud(f) {
     hud.lastPos = pos;
     hud.position.innerHTML = f.rankKnown ? `<span>${f.rank}位</span><small>/</small><span class="of">${f.runners}頭</span>` : '—';
   }
-  hud.distance.textContent = `残り ${fmt(f.remainingM)} m`;
-  hud.clock.textContent = f.time;
+  setText(hud.distance, `残り ${fmt(f.remainingM)} m`);
+  setText(hud.clock, f.time);
   // whip button: START before the gate (normal races), glowing only inside the whip window (F5)
-  if (!tut) hud.whipText.textContent = f.departed ? '仕掛ける' : 'スタート';
-  else hud.whipText.textContent = f.departed ? '仕掛ける' : 'まもなく';
+  if (!tut) setText(hud.whipText, f.departed ? '仕掛ける' : 'スタート');
+  else setText(hud.whipText, f.departed ? '仕掛ける' : 'まもなく');
   hud.whip.classList.toggle('chance', !!feel.whipChance);
   hud.whip.classList.toggle('disabled', tut ? !f.departed || f.whips <= 0 : f.departed && f.whips <= 0);
   if (hud.lastWhips !== f.whips) {
@@ -451,15 +454,15 @@ function paintHud(f) {
   if (tut && f.departed && !hint && f.remainingM <= 300) hint = '仕掛けのタイミング';
   if (tut && feel.whipChance) hint = '今だ、仕掛ける！';
   if (feel.mashed) hint = '連打は効きが落ちる：間をあけて';
-  hud.hint.textContent = hint;
-  hud.hintBox.className = 'el hintbox' + (hint ? '' : ' empty') + (feel.kakariWarning || feel.level === 'Critical' || feel.level === 'Empty' ? ' warn' : '');
+  setText(hud.hint, hint);
+  setProp(hud.hintBox, "className", 'el hintbox' + (hint ? '' : ' empty') + (feel.kakariWarning || feel.level === 'Critical' || feel.level === 'Empty' ? ' warn' : ''));
   for (const c of feel.cues ?? []) {
     if (c.kind === 'Overtake') { flash(hud.feedback, '抜いた！', 900); try { navigator.vibrate?.(15); } catch { /* */ } }
     if (c.kind === 'StaminaCritical') { try { navigator.vibrate?.([30, 30, 30]); } catch { /* */ } }
   }
-  if (performance.now() > hud.msgUntil) hud.feedback.textContent = '';
-  hud.subtitle.textContent = f.subtitle;
-  if (hud.ghost && f.ghostPoses?.[0]) { const gap = f.ghostPoses[0][4]; hud.ghost.textContent = `ゴースト ${raceCtx.ghost.name}：${gap >= 0 ? '前' : '後ろ'} ${Math.abs(gap).toFixed(1)}m`; }
+  if (performance.now() > hud.msgUntil) setText(hud.feedback, '');
+  setText(hud.subtitle, f.subtitle);
+  if (hud.ghost && f.ghostPoses?.[0]) { const gap = f.ghostPoses[0][4]; setText(hud.ghost, `ゴースト ${raceCtx.ghost.name}：${gap >= 0 ? '前' : '後ろ'} ${Math.abs(gap).toFixed(1)}m`); }
   // overhead marker on the partner
   const p = view.project(raceInfo.playerSlot, 3.1);
   if (p && f.horses[raceInfo.playerSlot]?.[6]) {
@@ -468,16 +471,16 @@ function paintHud(f) {
     hud.marker.querySelector('.mini i').style.width = (f.stamina / 10) + '%';
     hud.marker.dataset.level = feel.level ?? 'Ok';
     hud.marker.classList.toggle('kakari', !!f.kakari);
-    hud.marker.querySelector('.gap').textContent = !tut && f.departed && feel.gapAhead ? '前と' + feel.gapAhead : '';
+    setText(hud.marker.querySelector('.gap'), !tut && f.departed && feel.gapAhead ? '前と' + feel.gapAhead : '');
     hud.marker.classList.toggle('slip', !!feel.slipstream);
-    hud.marker.querySelector('.wind').textContent = feel.slipstream ? '脚をためている' : '';
+    setText(hud.marker.querySelector('.wind'), feel.slipstream ? '脚をためている' : '');
   } else hud.marker.style.display = 'none';
   hud.staminaFill.style.width = (100 * f.stamina / 1000) + '%';
   hud.stamina.dataset.level = feel.level ?? 'Ok';
   hud.stamina.classList.toggle('blink', !!feel.blink);
-  hud.staminaText.textContent = feel.level === 'Empty' ? '脚が上がった' : f.kakari ? (f.reining ? '手綱で抑えている' : '掛かっている') : f.reining ? '手綱：抑えて脚をためる' : feel.level === 'Low' ? '脚が残り少ない' : feel.level === 'Critical' ? '脚がもうない！' : '';
+  setText(hud.staminaText, feel.level === 'Empty' ? '脚が上がった' : f.kakari ? (f.reining ? '手綱で抑えている' : '掛かっている') : f.reining ? '手綱：抑えて脚をためる' : feel.level === 'Low' ? '脚が残り少ない' : feel.level === 'Critical' ? '脚がもうない！' : '');
   if (tut) return;
-  hud.banner.textContent = `${raceCtx.ta ? 'タイムアタック' : raceCtx.trackName}　/　${!f.departed ? '発走前' : f.remainingM <= 400 ? '最後の直線' : f.remainingM >= f.distanceM - 200 ? 'スタート' : 'レース中'}`;
+  setText(hud.banner, `${raceCtx.ta ? 'タイムアタック' : raceCtx.trackName}　/　${!f.departed ? '発走前' : f.remainingM <= 400 ? '最後の直線' : f.remainingM >= f.distanceM - 200 ? 'スタート' : 'レース中'}`);
   hud.rein.classList.toggle('need', !!feel.kakariWarning);
   // ⑤ the field on the course oval: each runner at its share of the distance (the partner gold, on top)
   f.progress.forEach((pr, i) => {
@@ -486,7 +489,7 @@ function paintHud(f) {
     d.setAttribute('cx', (91 + 64 * Math.cos(a)).toFixed(1)); d.setAttribute('cy', (44 + 24 * Math.sin(a)).toFixed(1));
   });
   const ds = f.progress.map((pr) => pr * f.distanceM), lead = Math.max(...ds), spread = Math.max(0, lead - Math.min(...ds));
-  hud.spread.textContent = `先頭から最後方 ${Math.round(spread)}m`;
+  setText(hud.spread, `先頭から最後方 ${Math.round(spread)}m`);
   // skill cut-ins: about 2 s each, the partner's own in gold
   for (const e of f.skillEvents ?? []) {
     const mine = e.slot === raceInfo.playerSlot;

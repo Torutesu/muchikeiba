@@ -40,6 +40,16 @@ namespace Muchi.Client
         DeletionPending,
         /// <summary>409: the deletion run has already started and cannot be cancelled any more (REQ-UXS-040).</summary>
         DeletionInProgress,
+        /// <summary>400: not an invite code (typo; the check symbol did not match). REQ-INV-003.</summary>
+        InviteCodeInvalid,
+        /// <summary>409: the player entered their own invite code.</summary>
+        InviteSelf,
+        /// <summary>409: this account already entered an invite code (one per account).</summary>
+        InviteAlreadyRedeemed,
+        /// <summary>409: the days for entering an invite code are over (redeemWindowDays after install).</summary>
+        InviteWindowClosed,
+        /// <summary>409: the code cannot be used from this account or device (anti-abuse; show a neutral message).</summary>
+        InviteRefused,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -109,6 +119,11 @@ namespace Muchi.Client
             ["DELETION_CONFIRM_INVALID"] = ApiErrorCode.DeletionConfirmInvalid,
             ["DELETION_PENDING"] = ApiErrorCode.DeletionPending,
             ["DELETION_IN_PROGRESS"] = ApiErrorCode.DeletionInProgress,
+            ["INVITE_CODE_INVALID"] = ApiErrorCode.InviteCodeInvalid,
+            ["INVITE_SELF"] = ApiErrorCode.InviteSelf,
+            ["INVITE_ALREADY_REDEEMED"] = ApiErrorCode.InviteAlreadyRedeemed,
+            ["INVITE_WINDOW_CLOSED"] = ApiErrorCode.InviteWindowClosed,
+            ["INVITE_REFUSED"] = ApiErrorCode.InviteRefused,
             ["VERIFIER_UNAVAILABLE"] = ApiErrorCode.VerifierUnavailable,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };
@@ -130,6 +145,7 @@ namespace Muchi.Client
                 case ApiErrorCode.InvalidName:
                 case ApiErrorCode.NgName:
                 case ApiErrorCode.TaConfigMismatch:
+                case ApiErrorCode.InviteCodeInvalid:
                     return new ValidationException(code, wire, message, status);
                 case ApiErrorCode.NotFound:
                 case ApiErrorCode.HorseNotFound:

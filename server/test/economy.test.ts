@@ -51,6 +51,24 @@ describe('economy targets (90 days, 3 seeds)', () => {
     expect(r.firstWinCoins / r.activeDays).toBeLessThanOrEqual(60);
   }, 180_000);
 
+  it('E11 the invite program (REQ-INV-*): an invited free player stays inside E1/E2, an inviter at the cap gains less than the season pass', async () => {
+    const all = await run();
+    const invited = all.f2p_invited!;
+    expect(invited.pullsPerMonth).toBeGreaterThanOrEqual(40);
+    expect(invited.pullsPerMonth).toBeLessThanOrEqual(65);
+    expect(invited.ssrPerMonth).toBeLessThanOrEqual(2.8);
+    expect(invited.inviteTickets).toBe(1);
+    const inviter = all.f2p_inviter!;
+    const c = m.progression.invite!;
+    // the counted cap bounds the inviter's lifetime income from invites: 10 × (100 coins + 1 ticket)
+    expect(inviter.inviteCoins).toBe(c.maxCountedInvitees * 100);
+    expect(inviter.inviteTickets).toBe(c.maxCountedInvitees);
+    const ratio = inviter.pullsPerMonth / all.f2p!.pullsPerMonth;
+    expect(ratio).toBeGreaterThanOrEqual(1.0);
+    expect(ratio).toBeLessThanOrEqual(1.15);
+    expect(ratio).toBeLessThan(all.light!.pullsPerMonth / all.f2p!.pullsPerMonth);
+  }, 240_000);
+
   it('E7 the season pass is worth clearly more than its price in coins', () => {
     const pass = m.products.find((p) => p.id === 'season_pass')!;
     const bestYenPerCoin = Math.min(...m.products.filter((p) => p.kind === 'coins').map((p) => p.priceYen / p.paidCoins));

@@ -1,5 +1,5 @@
 import type { Env } from './env.js';
-import { eventPlayersFrom, friendIdsFrom, handle, makeFriendsService, makeStudService, teamPlayersFrom, tournamentPlayersFrom, type AppContext, type PlayerInvoker, type RaceEntry } from './http/app.js';
+import { eventPlayersFrom, friendIdsFrom, handle, makeFriendsService, makeInviteService, makeStudService, teamPlayersFrom, tournamentPlayersFrom, type AppContext, type PlayerInvoker, type RaceEntry } from './http/app.js';
 import { bearer, verifyFirebaseIdToken } from './http/auth.js';
 import { parseStoreNotification, storeSettingsFromEnv } from './http/stores.js';
 import { accountingStoreIndex } from './do/storeIndex.js';
@@ -38,7 +38,7 @@ import { authenticateAdmin, parseAdminTokens, RateLimiter, type AdminAuthConfig,
 import { DeadLetterService, type DeadLetterOwner, type DeadLetterRegistry, type DeadLetterSource } from './ops/deadLetter.js';
 import { activeConfig } from './ops/activeConfig.js';
 import type { ResolvedConfig } from './ops/config.js';
-import { shardedDirectory, shardedStableDirectory, shardedStudDirectory } from './do/directory.js';
+import { shardedDirectory, shardedInviteDirectory, shardedStableDirectory, shardedStudDirectory } from './do/directory.js';
 import { makeStableService } from './http/stablePorts.js';
 import { boardKey, indexKey, type RolloverState } from './domain/leaderboard.js';
 import { validateLeagueAndWeather } from './domain/league.js';
@@ -349,6 +349,7 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
     friends: makeFriendsService((uid) => player(uid), shardedDirectory(env.DIRECTORY)),
     stud: makeStudService(player, shardedStudDirectory(env.DIRECTORY), () => master),
     stable: makeStableService(player, shardedStableDirectory(env.DIRECTORY), () => master),
+    invite: makeInviteService(player, shardedInviteDirectory(env.DIRECTORY), shardedDirectory(env.DIRECTORY), () => master), // REQ-INV-*
     teams: makeTeamsService(env, () => master, player),
     events: new EventsService(() => master, eventPlayersFrom(player), {
       enqueue: (eventId, p, e) => call(mm().eventEnqueue!(eventId, p, e)),

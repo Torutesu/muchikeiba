@@ -17,6 +17,7 @@ import { deliverDuePushes } from '../push/dispatch.js';
 import { makeKpiWriter } from '../push/analytics.js';
 import { runAccountDeletion } from '../domain/accountDeletion.js';
 import { deletionPortsFromEnv } from './deletionPorts.js';
+import { deliverInviteOutbox, type MilestoneDelivery } from '../domain/invite.js';
 
 /** One player = one Durable Object (wallet, ledger, horses, gacha pity, purchases, push outbox). */
 export class PlayerDO extends DurableObject<Env> {
@@ -115,6 +116,14 @@ export class PlayerDO extends DurableObject<Env> {
       acked: (u, op) => this.svc.studAcked(u, op),
     }, id).catch((e) => { console.error('stud outbox retry failed', id, e); return null; });
     if (sr && sr.attempted > 0) console.log('stud', id, JSON.stringify(sr));
+    // REQ-INV-007: invite milestones this player reached that the inviter has not received yet
+    const ir = await deliverInviteOutbox({
+      due: (u) => this.svc.inviteDue(u),
+      deliver: async (o, i, ms, name) => unwrap(await owner(o).invoke('inviteMilestone', [o, i, ms, name])) as MilestoneDelivery,
+      acked: (u, x) => this.svc.inviteAcked(u, x),
+      later: (u, x) => this.svc.inviteRetryLater(u, x),
+    }, id).catch((e) => { console.error('invite outbox failed', id, e); return null; });
+    if (ir && ir.attempted > 0) console.log('invite', id, JSON.stringify(ir));
     const studNext = (await this.svc.studDue(id)).nextAt;
     const own = await this.svc.nextWakeOf(id); // nudges, a scheduled deletion
     const next = [r.nextAt, studNext, own].filter((x): x is number => x !== null).reduce<number | null>((a, x) => (a === null ? x : Math.min(a, x)), null);

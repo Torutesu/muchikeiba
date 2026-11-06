@@ -15,6 +15,7 @@ import { fnv1a32 } from './ground.js';
 import { classDef } from './season.js';
 import { nudgeProblems } from './nudges.js';
 import { accountDeletionProblems } from './accountDeletion.js';
+import { inviteProblems } from './invite.js';
 
 // ------------------------------------------------------------------------------------------------ config types
 
@@ -423,7 +424,7 @@ export function firstRaceOf(m: Master, s: PlayerState): { cpuFillAfterMs: number
 
 /** Every onboarding-related check on a master (boot: index.ts; remote config: ops/config.ts). */
 export function uxProblems(m: Master, knownItems: Set<string>): string[] {
-  return [...onboardingProblems(m.progression, m, knownItems), ...nudgeProblems(m.progression.nudges), ...accountDeletionProblems(m.progression.accountDeletion), ...dayRolloverProblems(m.progression.dayRollover)];
+  return [...onboardingProblems(m.progression, m, knownItems), ...nudgeProblems(m.progression.nudges), ...accountDeletionProblems(m.progression.accountDeletion), ...dayRolloverProblems(m.progression.dayRollover), ...inviteProblems(m)];
 }
 
 export function validateUx(m: Master, knownItems: Set<string>): void {

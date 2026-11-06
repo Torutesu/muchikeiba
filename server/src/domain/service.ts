@@ -50,6 +50,10 @@ import {
   cancelDeletion, deletionDue, deletionRetryLater, deletionScheduled, deletionSnapshot, deletionView, finalizeDeletion, markDeletionStep,
   nextDeletionWake, notWhileDeleting, requestDeletion, startDeletion, type DeletionStep,
 } from './accountDeletion.js';
+import {
+  dueInviteOutbox, forfeitInviteOutbox, forgetInvitee, forgetInviter, inviteAcked, inviteeCommit, inviteRetryLater, inviterAccept, inviterMilestone,
+  inviterRevert, inviteStateView, nextInviteWake, noteInstall, noteInviteMilestones, recordRedeemAttempt,
+} from './invite.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
 export interface PlayerRepo {
@@ -112,10 +116,10 @@ const profileKey = (s: PlayerState) => JSON.stringify([s.profile.displayName, s.
 const IDEM_KEEP = 200;
 /**
  * The object's alarm serves the push outbox, the stud fee outbox (REQ-PUSH-005, REQ-BREED-012), personal
- * nudges (REQ-UXS-012) and a scheduled account deletion (REQ-UXS-040).
+ * nudges (REQ-UXS-012), a scheduled account deletion (REQ-UXS-040) and invite milestone deliveries (REQ-INV-007).
  */
 const nextWake = (s: PlayerState) => {
-  const all = [nextPushWake(s), nextStudWake(s), nextNudgeWake(s), nextDeletionWake(s)].filter((x): x is number => x !== null);
+  const all = [nextPushWake(s), nextStudWake(s), nextNudgeWake(s), nextDeletionWake(s), nextInviteWake(s)].filter((x): x is number => x !== null);
   return all.length ? Math.min(...all) : null;
 };
 /** How long applied race ids are remembered (well beyond any settlement/dead-letter retry window). */
@@ -161,6 +165,7 @@ export class PlayerService {
     const kpi: KpiRecord[] = [];
     const emit: Emit = (e) => { kpi.push(kpiRecord(draft, now, e)); };
     const result = fn(draft, now, emit);
+    noteInviteMilestones(this.d.master, draft, now, emit); // REQ-INV-007: the invitee's milestones, once each
     if (!invariantsHold(draft)) throw new Error('wallet invariant violated');
     if (idemKey) {
       draft.idem.push({ key: idemKey, result: JSON.parse(JSON.stringify(result ?? null)) });
@@ -282,7 +287,7 @@ export class PlayerService {
   /** Next nudge / deletion time (the object's alarm keeps them armed; push and stud have their own). */
   async nextWakeOf(id: string) {
     const s = await this.load(id);
-    const all = [nextNudgeWake(s), nextDeletionWake(s)].filter((x): x is number => x !== null);
+    const all = [nextNudgeWake(s), nextDeletionWake(s), nextInviteWake(s)].filter((x): x is number => x !== null);
     return all.length ? Math.min(...all) : null;
   }
   /**
@@ -712,6 +717,47 @@ export class PlayerService {
     pruneInvites(this.d.master, s, this.d.clock());
     return { ids: s.friends.ids, incoming: s.friends.incoming, outgoing: s.friends.outgoing, invites: s.friends.invites };
   }
+
+  // ---- friend invite codes: per-player steps, orchestrated by InviteService (REQ-INV-*) ----
+  inviteView(id: string, installHash: string | null) {
+    return this.tx(id, null, (s, now) => {
+      noteInstall(s, installHash);
+      return { ...inviteStateView(this.d.master, s, now), displayName: s.profile.displayName };
+    });
+  }
+  inviteAttempt(id: string, installHash: string) { return this.tx(id, null, (s, now) => recordRedeemAttempt(this.d.master, s, installHash, now)); }
+  async inviteAccept(id: string, inviteeId: string, installHash: string, inviteeName: string) {
+    if (await this.wiped(id)) return { status: 'refused' as const, reason: 'unavailable' as const };
+    return this.tx(id, null, (s, now, emit) => inviterAccept(this.d.master, s, inviteeId, installHash, inviteeName, now, emit));
+  }
+  inviteRevert(id: string, inviteeId: string, unfriend: boolean) { return this.tx(id, null, (s) => inviterRevert(s, inviteeId, unfriend)); }
+  inviteCommit(id: string, inviterId: string, code: string, installHash: string, inviterFriended: boolean) {
+    return this.tx(id, null, (s, now, emit) => {
+      notWhileDeleting(s);
+      return inviteeCommit(this.d.master, s, inviterId, code, installHash, inviterFriended, now, emit);
+    });
+  }
+  inviteFlag(id: string, flag: string) {
+    return this.tx(id, null, (s) => { const l = (s.supportFlags ??= []); if (!l.includes(flag)) l.push(flag); return { ok: true }; });
+  }
+  /** Inviter side of a milestone (delivered from the invitee's outbox). A wiped inviter acknowledges as gone. */
+  async inviteMilestone(id: string, inviteeId: string, milestoneId: string, inviteeName: string) {
+    if (await this.wiped(id)) return { status: 'gone' as const };
+    return this.tx(id, null, (s, now, emit) => inviterMilestone(this.d.master, s, inviteeId, milestoneId, inviteeName, now, emit));
+  }
+  async inviteDue(id: string) { return dueInviteOutbox(await this.load(id), this.d.clock()); }
+  inviteAcked(id: string, outboxId: string) { return this.tx(id, null, (s) => inviteAcked(s, outboxId)); }
+  inviteRetryLater(id: string, outboxId: string) { return this.tx(id, null, (s, now) => inviteRetryLater(s, outboxId, now)); }
+  async inviteForgetInvitee(id: string, inviteeId: string) {
+    if (await this.wiped(id)) return { ok: true };
+    return this.tx(id, null, (s) => forgetInvitee(s, inviteeId));
+  }
+  async inviteForgetInviter(id: string, inviterId: string) {
+    if (await this.wiped(id)) return { ok: true };
+    return this.tx(id, null, (s) => forgetInviter(s, inviterId));
+  }
+  /** REQ-UXS-040: the deleting player's undelivered milestone rewards are given up. */
+  inviteForfeit(id: string) { return this.tx(id, null, (s) => forfeitInviteOutbox(s)); }
 
   // ---- support / anti-cheat (admin API only; REQ-OPS-020..025, REQ-OPS-032) ----
   async adminView(id: string) { return supportView(this.d.master, await this.load(id), this.d.clock()); }

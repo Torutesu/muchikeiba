@@ -13,6 +13,8 @@
   "templates": {
     "friend_request": { "category": "friends", "title": "フレンド申請", "body": "{name}さんからフレンド申請が届きました", "ttlSec": 86400, "timeSensitive": false },
     "friend_accepted": { "category": "friends", "title": "フレンド成立", "body": "{name}さんとフレンドになりました", "ttlSec": 86400, "timeSensitive": false },
+    "invite_joined": { "category": "friends", "title": "招待コードが使われました", "body": "{name}さんがあなたの招待コードで参加しました", "ttlSec": 86400, "timeSensitive": false },
+    "invite_milestone": { "category": "friends", "title": "招待ボーナス", "body": "{name}さんが目標に到達しました。招待ボーナスが届いています", "ttlSec": 86400, "timeSensitive": false },
     "room_invite": { "category": "invites", "title": "レースのお誘い", "body": "{name}さんがフレンド部屋に招待しています", "ttlSec": 600, "timeSensitive": true },
     "season_start": { "category": "season", "title": "新シーズン開幕", "body": "{season}シーズンが始まりました。昇級を目指そう！", "ttlSec": 86400, "timeSensitive": false },
     "season_end": { "category": "season", "title": "シーズン終了まであと{days}日", "body": "今のクラスを守りきるなら今のうち", "ttlSec": 43200, "timeSensitive": false },

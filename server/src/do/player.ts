@@ -53,6 +53,11 @@ export class PlayerDO extends DurableObject<Env> {
         const team = env.TEAMS.get(env.TEAMS.idFromName(p.teamId)) as unknown as { reportPoints(a: string, b: string, c: number, d: string): Promise<unknown> };
         ctx.waitUntil(team.reportPoints(p.playerId, p.seasonId, p.points, p.displayName).catch((e) => console.error('team points report failed', p.teamId, e)));
       },
+      // REQ-TEAMFEED-004: a win / place in ranked or a tournament → the team feed (best effort)
+      onTeamFeed: (p) => {
+        const team = env.TEAMS.get(env.TEAMS.idFromName(p.teamId)) as unknown as { feedRace(a: string, r: typeof p.race): Promise<unknown> };
+        ctx.waitUntil(team.feedRace(p.playerId, p.race).catch((e) => console.error('team feed race item failed', p.teamId, e)));
+      },
       // REQ-EVENT-007: event standing → the event's board
       onEventEntry: (e) => {
         const ev = env.EVENTS.get(env.EVENTS.idFromName(`ev:${e.eventId}`)) as unknown as { upsert(x: typeof e): Promise<unknown> };

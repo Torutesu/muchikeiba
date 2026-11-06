@@ -106,6 +106,13 @@ namespace Muchi.Client
             => Call("GET", "/v1/shop/products", null, false, null, true, ProductList.Parse, ct);
 
         /// <summary>
+        /// The same list with this player's ownership: <see cref="Product.Owned"/> / <see cref="Product.PurchasedThisSeason"/>
+        /// (exactly the purchase-intent ALREADY_PURCHASED rules), so a bought season pass is never drawn as buyable.
+        /// </summary>
+        public Task<ProductList> GetMyProductsAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/shop/products?mine=1", null, true, null, true, ProductList.Parse, ct);
+
+        /// <summary>
         /// Per-player tokens to attach to the store purchase so receipts and store notifications map back to this player:
         /// pass AppleAppAccountToken as StoreKit 2 <c>appAccountToken</c>, GoogleObfuscatedAccountId as Play Billing
         /// <c>setObfuscatedAccountId</c>. Fetch once per session before the first purchase.

@@ -22,6 +22,7 @@ import { LEAGUE_BOARD_RE } from '../domain/league.js';
 import { TeamsService, type TeamPlayers } from '../domain/teamService.js';
 import { EventsService, type EventPlayers } from '../domain/eventService.js';
 import { TEAM_ID_RE } from '../domain/teams.js';
+import { REPORT_REASONS, STAMP_ID_RE } from '../domain/teamFeed.js';
 import { EVENT_ID_RE } from '../domain/events.js';
 import { goingSchema } from '../domain/schemas.js';
 import { StudService, type StudDirectory, type StudPlayers } from '../domain/studService.js';
@@ -34,7 +35,7 @@ export type PlayerMethod =
   | 'bootstrap' | 'view' | 'setAge' | 'purchaseIntent' | 'purchase' | 'refund' | 'draw' | 'tutorialDraw' | 'pityExchange' | 'gachaStatus'
   | 'nameHorse' | 'awaken' | 'retire' | 'breedingPreview' | 'breed' | 'pedigree' | 'claimLogin' | 'missions'
   | 'claimMission' | 'passView' | 'claimPass' | 'applyRace' | 'raceEntry'
-  | 'shopOffers' | 'markOfferViewed' | 'allowance' | 'claimAllowance' | 'firstWinBonus'
+  | 'shopProducts' | 'shopOffers' | 'markOfferViewed' | 'allowance' | 'claimAllowance' | 'firstWinBonus'
   | 'storeRenewal' | 'subscriptionStatus'
   | 'setDisplayName' | 'equipTitle' | 'titles' | 'stats' | 'publicProfile' | 'closeSeason' | 'setSilks'
   | 'useTicket' | 'cosmetics' | 'buyCosmetic' | 'setEquipment'
@@ -48,7 +49,8 @@ export type PlayerMethod =
   | 'studView' | 'studList' | 'studUnlist' | 'studPeek' | 'studReserve' | 'studSettle' | 'studPreview' | 'studApply' | 'studAcked' | 'studDue' | 'studRetryLater'
   | 'stableMine' | 'stableSave' | 'stableVisit' | 'stableLikeGive' | 'stableLikeReceive' | 'stableClear' | 'stableForget'
   | 'recordConsent' | 'grantPartner' | 'missionsAll' | 'requestDeletion' | 'cancelDeletion' | 'deletionDue' | 'deletionSnapshot' | 'deletionMarkStep'
-  | 'deletionRetryLater' | 'deletionFinalize' | 'deletionStart' | 'runNudges' | 'nudgeTaBeaten' | 'nudgeTournamentClosing';
+  | 'deletionRetryLater' | 'deletionFinalize' | 'deletionStart' | 'runNudges' | 'nudgeTaBeaten' | 'nudgeTournamentClosing'
+  | 'stampCatalog' | 'stampCheck' | 'stampPosted' | 'feedViewer' | 'feedMutes' | 'feedMute' | 'feedReported' | 'cheerPush';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -181,6 +183,11 @@ const teamIdParam = (s: string) => {
   if (!TEAM_ID_RE.test(s)) throw new AppError('BAD_REQUEST', 'bad team id');
   return s;
 };
+const seqParam = (s: string) => {
+  if (!/^\d{1,9}$/.test(s) || Number(s) < 1) throw new AppError('BAD_REQUEST', 'bad feed item');
+  return Number(s);
+};
+const stampId = z.string().regex(STAMP_ID_RE);
 const offerIdParam = (s: string) => {
   if (!/^[a-z0-9_]{1,64}$/i.test(s)) throw new AppError('BAD_REQUEST', 'bad offer id');
   return s;
@@ -257,7 +264,12 @@ export const routes: Route[] = [
   } },
   // shop
   // REQ-UXS-022: display data built on the server (contents, quantities, free-coin first-purchase bonus, legal notice keys)
-  { method: 'GET', path: '/v1/shop/products', auth: 'none', handler: async (_r, _p, c) => shopProducts(c.master) },
+  // r10: `?mine=1` (authenticated) adds the player's ownership (owned / ownedReason / purchasedThisSeason)
+  { method: 'GET', path: '/v1/shop/products', auth: 'none', handler: async (r, _p, c) => {
+    if (new URL(r.url).searchParams.get('mine') !== '1') return shopProducts(c.master);
+    const u = await c.authenticate(r);
+    return c.player(u).invoke('shopProducts', u);
+  } },
   // REQ-UXS-017: offers to show (triggers, shown-once records); bought offers are never returned
   { method: 'GET', path: '/v1/shop/offers', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('shopOffers', u) },
   { method: 'POST', path: '/v1/shop/offers/:offerId/view', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('markOfferViewed', u, offerIdParam(p.offerId!)) },
@@ -487,6 +499,26 @@ export const routes: Route[] = [
   { method: 'POST', path: '/v1/teams/me/requests/:playerId/decline', auth: 'player', handler: async (_r, p, c, u) => teams(c).decline(u, p.playerId!) },
   // 支部対抗シーズン (REQ-LEAGUE-005): my team's league; division tables are leaderboard boards `league-<divisionId>`
   { method: 'GET', path: '/v1/league/me', auth: 'player', handler: async (_r, _p, c, u) => teams(c).league(u) },
+  // REQ-TEAMFEED-*: cheer stamps and the team feed (fixed stamps only, no free text)
+  { method: 'GET', path: '/v1/stamps', auth: 'player', handler: async (_r, _p, c, u) => teams(c).stamps(u) },
+  { method: 'GET', path: '/v1/teams/me/feed', auth: 'player', handler: async (r, _p, c, u) => {
+    const q = new URL(r.url).searchParams;
+    const num = (k: string, max: number) => {
+      const v = q.get(k);
+      if (v === null || v === '') return null;
+      if (!/^\d{1,9}$/.test(v) || Number(v) < 1 || Number(v) > max) throw new AppError('BAD_REQUEST', `bad ${k}`);
+      return Number(v);
+    };
+    return teams(c).feed(u, num('before', 999_999_999), num('limit', 500));
+  } },
+  { method: 'POST', path: '/v1/teams/me/feed/stamps', auth: 'player', handler: async (r, _p, c, u) => teams(c).postStamp(u, (await body(r, z.object({ stampId: stampId }).strict())).stampId) },
+  { method: 'PUT', path: '/v1/teams/me/feed/:seq/reaction', auth: 'player', handler: async (r, p, c, u) => teams(c).react(u, seqParam(p.seq!), (await body(r, z.object({ stampId: stampId.nullable() }).strict())).stampId) },
+  { method: 'POST', path: '/v1/teams/me/feed/:seq/report', auth: 'player', handler: async (r, p, c, u) => teams(c).report(u, seqParam(p.seq!), (await body(r, z.object({ reason: z.enum(REPORT_REASONS) }).strict())).reason) },
+  { method: 'GET', path: '/v1/teams/me/feed/mutes', auth: 'player', handler: async (_r, _p, c, u) => teams(c).mutes(u) },
+  { method: 'PUT', path: '/v1/teams/me/feed/mutes', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ playerId: id, muted: z.boolean() }).strict());
+    return teams(c).mute(u, playerIdParam(b.playerId), b.muted);
+  } },
   { method: 'GET', path: '/v1/teams/search', auth: 'player', handler: async (r, _p, c) => teams(c).search(new URL(r.url).searchParams.get('q') ?? '') },
   { method: 'GET', path: '/v1/teams/leaderboard/:seasonId', auth: 'none', handler: async (_r, p, c) => {
     const season = p.seasonId === 'current' ? jstMonthKey((c.clock ?? Date.now)()) : p.seasonId!;
@@ -648,6 +680,14 @@ export function teamPlayersFrom(player: (uid: string) => PlayerInvoker): TeamPla
     left: (u, t, byChoice) => player(u).invoke('teamLeft', u, t, byChoice),
     state: (u) => player(u).invoke('teamState', u),
     push: (u, templateId, vars) => player(u).invoke('queuePush', u, templateId, vars),
+    stampCatalog: (u) => player(u).invoke('stampCatalog', u),
+    stampCheck: (u, s) => player(u).invoke('stampCheck', u, s),
+    stampPosted: (u, s, k, t) => player(u).invoke('stampPosted', u, s, k, t),
+    feedViewer: (u, first) => player(u).invoke('feedViewer', u, first),
+    feedMutes: (u) => player(u).invoke('feedMutes', u),
+    feedMute: (u, t, muted) => player(u).invoke('feedMute', u, t, muted),
+    feedReported: (u, t, seq, by, reason) => player(u).invoke('feedReported', u, t, seq, by, reason),
+    cheerPush: (u, from, name) => player(u).invoke('cheerPush', u, from, name),
   };
 }
 

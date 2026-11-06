@@ -54,6 +54,7 @@ C# では `AssetKeys.Resolve(key, exists)` が 1→2→null を返す。古い�
 | `title` | `title/first_win` | titles.json | 称号のアイコン |
 | `emblem/shape` | `emblem/shape/shield` | `emblem.shapes` | 支部エンブレムの形 |
 | `emblem/symbol` | `emblem/symbol/crown` | `emblem.symbols` | 支部エンブレムの図柄 |
+| `stamp` | `stamp/cheer` | `server/master/stamps.json stamps[].id`（直販の品は items.json `kind: "stamp"` の `asset`） | 支部の応援スタンプ（REQ-TEAMFEED-001）。定型の絵とラベルだけ。未着は `stamp/default`。先読みグループは `home` |
 | `scene/venue` | `scene/venue/minato` | `venues` / `tracks` | 競馬場のシーン（地形・スタンド・カメラ） |
 | `scene/surface` | `scene/surface/minato_dirt` | コースの馬場 | 競馬場ごとの馬場面（芝・ダート） |
 | `scene/night` | `scene/night/minato` | ナイター開催できる競馬場 | ナイター照明 |

@@ -1057,7 +1057,7 @@ async function Store(tab = 'recommended') {
   currentScreen = () => Store(tab);
   if (tab === 'pass') return SeasonPass();
   await refresh();
-  const shop = L.shopProducts();
+  const shop = await L.myShopProducts(); // r10: owned / purchasedThisSeason per player
   const offers = await L.shopOffers();
   const blocked = !offers.ok && offers.code === 'DELETION_PENDING';
   Clear('shop-' + tab); SetArt('Art/home-paddock', false);
@@ -1109,6 +1109,9 @@ function productCard(parent, p, x, y, w, h, opts = {}) {
   Txt(yen(p.priceYen), w - 210, 24, 186, 25, GOLD, c, { weight: 700, align: 'right', cls: 'num' });
   Txt(contentsText(p), 24 + ax, 66, w - 48 - ax, 15, WHITE, c, { weight: 500, lh: 1.55 });
   Txt(productTags(p, opts.bonus), 24 + ax, h - 86, w - 290 - ax, 13, CYAN, c, { weight: 500, lh: 1.5 });
+  // r10: the server says this player already has it (this season's pass, a once-only pack, a running daily pack)
+  if (p.owned && !opts.note) { opts.note = p.ownedReason === 'season_pass' ? '今シーズンのパスは購入済みです' : '購入済みです'; opts.noteColor = OK; }
+  if (p.owned && !opts.action) { opts.cta = '購入済み'; opts.disabled = true; }
   if (opts.note) Txt(opts.note, 24 + ax, h - 46, w - 290 - ax, 13, opts.noteColor ?? GOLD, c, { weight: 500, lh: 1.45 });
   const b = Cta(opts.cta ?? '購入を確認', w - 250, h - 78, 226, opts.action ?? (() => PurchaseConfirm(p.id, currentScreen)), c, 'small' + (opts.ctaGold ? ' gold' : ''));
   if (opts.disabled) disable(b);
@@ -1125,7 +1128,7 @@ function DrawRecommended(parent, shop, offers, top, blocked) {
   // T3 pass (real season end, live countdown)
   const passOffer = list.find((o) => o.productId === 'season_pass');
   const pass = byId.get('season_pass');
-  const pc = productCard(parent, pass, 772, top, 724, H, { art: 'Art/Cosmetics/jockey-violet', accent: GOLD, cta: 'パスを見る', action: () => SeasonPass(), ctaGold: true, disabled: blocked });
+  const pc = productCard(parent, pass, 772, top, 724, H, { art: 'Art/Cosmetics/jockey-violet', accent: GOLD, cta: 'パスを見る', action: () => SeasonPass(), ctaGold: true, disabled: blocked, ...(pass.owned ? { note: '今シーズンのパスは購入済みです（進み具合はパスの画面で）', noteColor: OK } : {}) });
   if (passOffer?.endsAt) { const cd = Txt('', 194, H - 46, 300, 13, GOLD, pc, { weight: 700, lh: 1.45 }); every(1000, () => { cd.textContent = `今シーズンの終わり（${seasonEnd(passOffer.endsAt)}）まで\nあと ${countdown(passOffer.endsAt - L.now())}`; }); cd.classList.add('countdown'); }
   else if (!unlock('season_pass').unlocked) Txt('シーズンパスは' + unlockText('season_pass'), 194, H - 46, 300, 13, GOLD, pc, { weight: 500 });
   // daily pack (厩舎手当) and the promotion packs (T4: only once the class is reached)
@@ -1292,7 +1295,7 @@ async function SeasonPass() {
   currentScreen = SeasonPass;
   const pass = await L.passView();
   await refresh();
-  const shop = L.shopProducts();
+  const shop = await L.myShopProducts(); // r10: owned / purchasedThisSeason per player
   const products = shop.products.filter((p) => p.kind === 'season_pass');
   const plusLv = products.find((p) => p.pass?.levels)?.pass.levels ?? 10;
   const rw = L.master.passRewards;
@@ -1348,10 +1351,12 @@ async function SeasonPass() {
   const pb = Glass('Pass price', 448, 494, 1048, 64, p, .94); pb.classList.add('flat');
   Txt(products.map((x) => `${x.name} ${yen(x.priceYen)}`).join('　·　') + '　/　今シーズン限り・自動更新なし', 24, 18, 1000, 19, GOLD, pb, { weight: 700, nowrap: true });
   products.forEach((x, i) => {
-    const owned = pass.owned.includes(x.id);
-    const label = owned ? '購入済み' : i === 0 ? '有料ラインを開ける' : 'パス＋にする';
+    const owned = x.purchasedThisSeason ?? pass.owned.includes(x.id);
+    const closed = x.owned === true; // r10: one pass per season — Pass+ is closed once Pass was bought (and the other way round)
+    const label = owned ? '購入済み' : closed ? '今シーズンは購入済み' : i === 0 ? '有料ラインを開ける' : 'パス＋にする';
     const b = i === 0 ? Cta(label, 448, 578, 440, () => PurchaseConfirm(x.id, SeasonPass), p) : Ghost(label, 908, 584, 240, 60, () => PurchaseConfirm(x.id, SeasonPass), p);
-    if (owned || pass.purchasable.length === 0) disable(b);
+    b.dataset.owned = String(closed);
+    if (owned || closed || pass.purchasable.length === 0) disable(b);
   });
   Txt(shop.notices['shop.pass_auto_grant'] + '\n' + shop.notices['shop.no_auto_renew'], 1168, 578, 330, 12, SOFT, p, { lh: 1.55 });
   NavBar(3);
@@ -1565,15 +1570,17 @@ async function Settings() {
   }
   // ② looks / care and the legal pages: thin-divider lists
   const m = Glass('More', 556, 134, 480, 676, undefined, .9);
-  Kicker('見た目・お世話', 36, 30, m);
-  [['衣装', Wardrobe], ['コースの見た目', CourseThemes], ['レース条件', Conditions], ['お世話', Care]].forEach(([n, go], i) => {
-    const b = Btn(n, 36, 104 + i * 60, 408, 60, go, 'row' + (i === 3 ? ' last' : ''), m); b.style.fontSize = '20px';
+  Kicker('見た目・お世話・仲間', 36, 30, m);
+  // round 10: 支部の応援 (team cheer stamps) next to the looks / care entries
+  const moreRows = [['衣装', Wardrobe], ['コースの見た目', CourseThemes], ['レース条件', Conditions], ['お世話', Care], ['支部の応援', TeamFeed]];
+  moreRows.forEach(([n, go], i) => {
+    const b = Btn(n, 36, 96 + i * 50, 408, 50, go, 'row' + (i === moreRows.length - 1 ? ' last' : ''), m); b.style.fontSize = '19px';
     const em = document.createElement('em'); em.textContent = '›'; b.appendChild(em);
   });
-  Kicker('法定表示・規約', 36, 360, m, { rule: false, size: 15 });
-  [['利用規約', 'terms'], ['プライバシーポリシー', 'privacy'], ['特定商取引法に基づく表記', 'tokushoho'], ['資金決済法に基づく表示', 'shikin']].forEach(([n, k], i) => TextLink(n, 36, 396 + i * 48, 400, () => Legal(k, Settings), m));
+  Kicker('法定表示・規約', 36, 416, m, { rule: false, size: 15 });
+  [['利用規約', 'terms'], ['プライバシーポリシー', 'privacy'], ['特定商取引法に基づく表記', 'tokushoho'], ['資金決済法に基づく表示', 'shikin']].forEach(([n, k], i) => TextLink(n, 36, 448 + i * 42, 400, () => Legal(k, Settings), m));
   // the other front end (Codex's club UI, same logic and engine)
-  TextLink('クラブ版 UI', 36, 602, 400, () => { location.href = 'club.html'; }, m, 'クラブ版 UI を開く ↗');
+  TextLink('クラブ版 UI', 36, 624, 400, () => { location.href = 'club.html'; }, m, 'クラブ版 UI を開く ↗');
   // ③ demo states for review (REQ-UXP-002): the same rules on a moved clock
   const demo = Glass('Demo', 1056, 134, 508, 676, undefined, .78);
   Kicker('デモ（レビュー用）', 36, 30, demo, { color: SOFT });
@@ -1581,7 +1588,9 @@ async function Settings() {
   [['初日', 'day1'], ['3日目', 'day3'], ['7日目', 'day7'], ['最初から', 'new']].forEach(([n, k], i) => { const b = Btn(n, 36 + i * 110, 142, 102, 52, () => Demo(k), 'choice', demo); b.style.fontSize = '16px'; b.style.whiteSpace = 'nowrap'; b.style.padding = '0'; });
   Ghost('初回購入の直後', 36, 222, 436, 56, () => { linkOp('purchase'); if (!MaybeLinkPrompt('PurchaseComplete', Settings)) toast('引き継ぎの案内は出ません（表示済み・登録済み・FTUE中）'); }, demo, 'quiet small');
   Ghost('タイムアタック', 36, 292, 436, 56, () => TimeAttack(), demo, 'quiet small');
-  Txt('サーバーと同じ規則のまま、日付だけ進めてログボとレースを消化します。', 36, 372, 436, 14, SOFT, demo, { lh: 1.6 });
+  // round 10: a demo purchase of this season's pass (no billing) to see the 購入済み state
+  Ghost('パス購入済み（デモ）', 36, 362, 436, 56, async () => { const r = await L.demoPurchase('season_pass'); toast(r.ok ? '今シーズンのパスを購入済みにしました（決済なし）' : r.code === 'ALREADY_PURCHASED' ? '今シーズンのパスは購入済みです' : r.message); }, demo, 'quiet small');
+  Txt('サーバーと同じ規則のまま、日付だけ進めてログボとレースを消化します。', 36, 600, 436, 14, SOFT, demo, { lh: 1.6 });
   NavBar(4);
 }
 function ConfirmDeletion(v) {
@@ -1795,6 +1804,108 @@ function Care() {
   Back(Home, 'BACK', 40, 834);
 }
 
+// ================================================================= round 10: 支部の応援スタンプ (REQ-TEAMFEED-*)
+// The team feed on the real server rules (TeamsService / TeamCore in the browser) — fixed stamps only, no text field.
+// Mirrors unity/Assets/Muchi/Game/TeamFeedModel.cs: palette with server-built unlock texts, 10 s post cooldown, cheering a
+// teammate's race result (one stamp each, tap again to take it back), mute (local at once) and report (hidden at once).
+// ムチ一閃 tone: photoreal paddock art, two translucent navy panels, letter-spaced cyan kickers, one skewed cyan CTA ».
+let tfSelected = 'cheer';
+let tfLastPost = -1e15;
+const TF_INTERVAL = 10_000;
+const tfWhen = (at) => { const d = Math.max(0, L.now() - at); return d < 60e3 ? 'たった今' : d < 3600e3 ? `${Math.floor(d / 60e3)}分前` : d < 86400e3 ? `${Math.floor(d / 3600e3)}時間前` : jstDate(at).split(' ')[0]; };
+function tfLine(it, label) {
+  if (it.kind === 'race' && it.race) return `${it.displayName}さんが${it.race.mode === 'tournament' ? '大会' : 'ランク戦'}で${it.race.place === 1 ? '1着！' : it.race.place + '着'}`;
+  return label(it.stampId);
+}
+const tfNode = (tag, cls, text) => { const n = document.createElement(tag); n.className = cls; if (text != null) n.textContent = text; return n; };
+async function TeamFeed() {
+  currentScreen = TeamFeed;
+  const team = await L.teamDemo();
+  const [cat, res] = await Promise.all([L.stamps(), L.teamFeed()]);
+  await refresh();
+  const items = res.ok ? res.value.items : [];
+  const stampOf = (id) => cat.stamps.find((s) => s.id === id);
+  const label = (id) => stampOf(id)?.label ?? id;
+  if (!stampOf(tfSelected)?.unlocked) tfSelected = cat.stamps.find((s) => s.unlocked)?.id ?? 'cheer';
+  const deleting = player.deletion?.status === 'scheduled';
+  Clear('team-feed'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar(`支部　/　${team.name}`, '応援スタンプ　·　定型スタンプだけ（自由入力はありません）');
+  // ① the feed (newest first)
+  const feed = Glass('Team feed', 36, 134, 940, 676, undefined, .86);
+  feed.classList.add('tf-feed');
+  Kicker('フィード', 36, 30, feed);
+  Ghost('支部員のデモ', 700, 34, 204, 50, async () => { L.setClockMs(L.now() + 11_000); await L.teamActivity(); TeamFeed(); }, feed, 'quiet small');
+  const list = el('tf-list', 0, 112, 940, 556, feed);
+  list.dataset.count = items.length;
+  if (!items.length) Txt('まだ何もありません。スタンプで声をかけてみよう', 36, 24, 860, 19, MUTED, list);
+  for (const it of items) {
+    const row = tfNode('div', 'tf-row' + (it.kind === 'race' ? ' race' : '') + (it.mine ? ' mine' : ''));
+    row.dataset.seq = it.seq; row.dataset.kind = it.kind; row.dataset.player = it.playerId;
+    row.appendChild(tfNode('div', 'tf-meta', `${it.mine ? 'あなた' : it.displayName}　·　${tfWhen(it.at)}`));
+    const main = tfNode('div', 'tf-main');
+    if (it.kind === 'stamp') { const b = tfNode('span', 'tf-badge', label(it.stampId)); b.dataset.asset = it.stampAsset; main.appendChild(b); }
+    else main.appendChild(tfNode('span', 'tf-race', tfLine(it, label)));
+    row.appendChild(main);
+    const foot = tfNode('div', 'tf-foot');
+    for (const r of it.reactions) foot.appendChild(tfNode('span', 'tf-react' + (r.mine ? ' mine' : ''), `${label(r.stampId)} ${r.count}`));
+    if (it.kind === 'race' && !it.mine) {
+      const on = it.myReaction === tfSelected;
+      const cheer = tfNode('button', 'tf-cheer' + (on ? ' on' : ''), on ? '応援を取り消す' : `「${label(tfSelected)}」で応援 »`);
+      cheer.disabled = deleting;
+      cheer.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const r = await L.reactToFeed(it.seq, on ? null : tfSelected);
+        if (!r.ok) { toast(r.code === 'RATE_LIMITED' ? '少し待ってから応援してください' : r.code === 'DELETION_PENDING' ? 'アカウント削除の手続き中は送れません' : r.message); return; }
+        TeamFeed();
+      });
+      foot.appendChild(cheer);
+    }
+    if (!it.mine) {
+      const mute = tfNode('button', 'tf-link', '非表示');
+      mute.addEventListener('click', async (e) => { e.stopPropagation(); const r = await L.muteMember(it.playerId, true); toast(r.ok ? `${it.displayName}さんのスタンプを表示しません（その他から戻せます）` : r.message); TeamFeed(); });
+      const rep = tfNode('button', 'tf-link', '報告');
+      rep.addEventListener('click', async (e) => { e.stopPropagation(); const r = await L.reportFeed(it.seq, 'spam'); toast(r.ok ? '報告しました。ご協力ありがとうございます' : r.message); TeamFeed(); });
+      foot.appendChild(mute); foot.appendChild(rep);
+    }
+    row.appendChild(foot);
+    list.appendChild(row);
+  }
+  // ② the stamp palette: every stamp; locked ones say how they unlock (play / pass / direct sale — never gacha)
+  const pal = Glass('Stamp palette', 996, 134, 568, 560, undefined, .86);
+  Kicker('スタンプ', 36, 30, pal);
+  Txt(`${cat.stamps.filter((s) => s.unlocked).length} / ${cat.stamps.length} 解放`, 300, 72, 232, 14, SOFT, pal, { align: 'right', ls: '.12em' });
+  const grid = el('tf-grid', 36, 112, 496, 420, pal);
+  for (const s of cat.stamps) {
+    const t = tfNode('button', 'tf-stamp' + (s.unlocked ? '' : ' locked') + (s.id === tfSelected ? ' sel' : ''));
+    t.dataset.stamp = s.id; t.dataset.asset = s.asset;
+    t.appendChild(tfNode('b', '', s.label));
+    t.appendChild(tfNode('small', '', s.unlocked ? '' : s.unlockText));
+    t.addEventListener('click', () => {
+      if (!s.unlocked) { toast(s.unlockText); if (s.unlock.kind === 'cosmetic') Store('looks'); return; }
+      tfSelected = s.id; TeamFeed();
+    });
+    grid.appendChild(t);
+  }
+  // ③ the one filled CTA: skewed cyan with », the 10 s rule shown on it
+  const wait = Math.max(0, tfLastPost + TF_INTERVAL - L.now());
+  const send = Cta(deleting ? 'アカウント削除の手続き中は送れません' : `「${label(tfSelected)}」を送る`, 996, 716, 568, async () => {
+    const r = await L.postStamp(tfSelected);
+    tfLastPost = L.now();
+    if (!r.ok) { toast(r.code === 'RATE_LIMITED' ? 'スタンプは10秒に1回、1日50回までです' : r.code === 'STAMP_LOCKED' ? r.message : r.code === 'DELETION_PENDING' ? 'アカウント削除の手続き中は送れません' : r.message); return; }
+    TeamFeed();
+  }, undefined, 'tf-cta');
+  if (deleting) disable(send);
+  if (wait > 0) {
+    disable(send);
+    const sp = send.querySelector('span');
+    every(250, () => {
+      const w = Math.max(0, tfLastPost + TF_INTERVAL - L.now());
+      if (w <= 0) { send.classList.remove('disabled'); sp.textContent = `「${label(tfSelected)}」を送る`; } else sp.textContent = `あと${Math.ceil(w / 1000)}秒で送れます`;
+    });
+  }
+  NavBar(4);
+}
+
 // ================================================================= boot
 function fit() {
   const s = Math.min(window.innerWidth / 1600, window.innerHeight / 900);
@@ -1823,7 +1934,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ TeamFeed, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

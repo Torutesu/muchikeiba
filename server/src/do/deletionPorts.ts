@@ -42,6 +42,7 @@ export function deletionPortsFromEnv(env: Env, ctx: DurableObjectState, svc: Pla
       leave: (teamId, uid) => call(stub(env.TEAMS, teamId).leave!(uid)),
       transfer: (teamId, uid, to) => call(stub(env.TEAMS, teamId).transfer!(uid, to)),
       dropRequest: (teamId, uid) => call(stub(env.TEAMS, teamId).dropRequest!(uid)),
+      forgetFeed: (teamId, uid) => call(stub(env.TEAMS, teamId).feedForget!(uid)),
     },
     directory: { forget: (uid) => forgetInDirectory(env.DIRECTORY, uid) },
     // layout and like records in this object first, then the visitors' copy (REQ-UXS-040 × REQ-STABLE-003)

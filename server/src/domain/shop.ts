@@ -95,10 +95,39 @@ function noticeKeys(p: Product): string[] {
 
 const tabOf = (p: Product) => p.tab ?? (p.kind === 'coins' ? 'coins' : p.kind === 'season_pass' ? 'pass' : 'recommended');
 
-/** REQ-UXS-022: GET /v1/shop/products. Legacy fields stay; display fields are additive. */
-export function shopProducts(m: Master) {
+export type OwnedReason = 'once' | 'season_pass' | 'allowance';
+
+/**
+ * r10: why this player can no longer buy a product right now — exactly the ALREADY_PURCHASED rules of
+ * checkPurchaseIntent (purchase.ts): a once-only pack ever bought, a pass (Pass or Pass+) for the current season, a
+ * daily pack running or queued. Consumable coin packs are never owned.
+ */
+export function ownedReason(m: Master, s: PlayerState, p: Product, now: number): OwnedReason | null {
+  if (p.once && s.purchases.some((x) => x.productId === p.id)) return 'once';
+  if (p.kind === 'season_pass' && p.storeType !== 'auto_renewing' && passPurchasesFor(s, jstMonthKey(now)).length > 0) return 'season_pass';
+  if (p.kind === 'allowance' && pendingAllowance(m, s, now)) return 'allowance';
+  return null;
+}
+
+/**
+ * REQ-UXS-022: GET /v1/shop/products. Legacy fields stay; display fields are additive.
+ * r10: with the player (`?mine=1`, authenticated) every product also carries `owned` / `ownedReason` and season passes
+ * `purchasedThisSeason` (this exact product bought for the current season), so a bought pass is not drawn as buyable.
+ */
+export function shopProducts(m: Master, mine?: { s: PlayerState; now: number }) {
   const d = m.shopDisplay;
+  const seasonId = mine ? jstMonthKey(mine.now) : null;
+  const personal = (p: Product) => {
+    if (!mine) return {};
+    const reason = ownedReason(m, mine.s, p, mine.now);
+    return {
+      owned: reason !== null, ownedReason: reason,
+      purchasedThisSeason: p.kind === 'season_pass' ? passPurchasesFor(mine.s, seasonId!).some((x) => x.productId === p.id) : null,
+    };
+  };
   return {
+    personalized: mine !== undefined,
+    ...(mine ? { seasonId } : {}),
     products: m.products.filter((p) => p.storeType !== 'auto_renewing').map((p) => ({
       ...p,
       name: p.name ?? p.id,
@@ -111,6 +140,7 @@ export function shopProducts(m: Master) {
       oneTimeScope: p.once ? (p.classId ? 'class' as const : 'account' as const) : null,
       period: p.kind === 'season_pass' ? { kind: 'season' as const } : p.allowance ? { kind: 'days' as const, days: p.allowance.days } : null,
       noticeKeys: noticeKeys(p),
+      ...personal(p),
     })),
     notices: d?.notices ?? {},
     legalLinks: d?.legalLinks ?? [],

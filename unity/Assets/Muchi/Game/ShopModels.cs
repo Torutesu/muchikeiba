@@ -24,6 +24,8 @@ namespace Muchi.Game
         /// <summary>Notice texts for this product (NoticeKeys resolved; legal links are listed separately at the bottom).</summary>
         public List<string> Notices = new List<string>();
         public bool Purchasable;
+        /// <summary>The server says this player already has it (this season's pass, a once-only pack, a running daily pack): show 「購入済み」.</summary>
+        public bool Owned;
         /// <summary>Why the buy button is disabled (deletion pending, unsettled refund, offline, allowance already running).</summary>
         public string DisabledReason;
     }
@@ -96,7 +98,8 @@ namespace Muchi.Game
             Loading = true;
             try
             {
-                Products = await B.Api.GetProductsAsync(ct);
+                // r10: the per-player list says whether this season's pass (or a once-only pack) is already bought
+                Products = await B.Api.GetMyProductsAsync(ct);
                 Online = true;
                 if (!DeletionPending) await LoadOffersAsync(ct);
             }
@@ -155,10 +158,15 @@ namespace Muchi.Game
             };
             foreach (var k in p.NoticeKeys)
                 if (!k.StartsWith("legal.", StringComparison.Ordinal) && k != "shop.paid_first" && Products.Notices.TryGetValue(k, out var t)) c.Notices.Add(t);
+            c.Owned = p.Owned == true;
             c.DisabledReason = !ServerAvailable ? UxText.Offline : DeletionPending ? DeletionBanner : Debt ? UxText.Errors["UNSETTLED_DEBT"]
+                // r10: owned per the server's purchase-intent rules (shop.ts ownedReason); purchase-intent would refuse it anyway
+                : p.Owned == true && p.OwnedReason == "season_pass" ? (p.PurchasedThisSeason == true ? "今シーズンのパスは購入済みです" : "今シーズンはパスを購入済みです（パス・パス＋はどちらか1つ）")
+                : p.Owned == true && p.OwnedReason == "once" ? UxText.Errors["ALREADY_PURCHASED"]
                 : p.Allowance != null && Offers?.Allowance != null && Offers.Allowance.Queued != null ? "次の厩舎手当が予約済みです"
                 // the server refuses a second pack while one runs (purchase.ts: ALREADY_PURCHASED "a daily pack is still running")
-                : p.Allowance != null && Offers?.Allowance != null && Offers.Allowance.Active ? "厩舎手当の受け取り期間中です（終わると購入できます）" : null;
+                : p.Allowance != null && Offers?.Allowance != null && Offers.Allowance.Active ? "厩舎手当の受け取り期間中です（終わると購入できます）"
+                : p.Owned == true ? "厩舎手当の受け取り期間中です（終わると購入できます）" : null;
             c.Purchasable = c.DisabledReason == null && Products != null;
             return c;
         }

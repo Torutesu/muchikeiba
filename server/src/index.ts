@@ -27,7 +27,8 @@ import { SpectateService, SPECTATE_RATE } from './domain/spectate.js';
 import { TournamentsService, type TournamentBackend } from './domain/tournamentService.js';
 import type { TournamentSummary } from './domain/tournaments.js';
 import { signTicket } from './http/ticket.js';
-import { TeamsService, type TeamLeagueView, type TeamPort, type TeamView } from './domain/teamService.js';
+import { TeamsService, type TeamFeedPage, type TeamLeagueView, type TeamPort, type TeamView } from './domain/teamService.js';
+import { stampsProblems, type FeedItem } from './domain/teamFeed.js';
 import type { TeamSummary } from './domain/teams.js';
 import { EventsService } from './domain/eventService.js';
 import { eventBoardKey, eventCronPlan, validateEvents } from './domain/events.js';
@@ -72,6 +73,7 @@ async function broadcastSeasonReminder(env: Env, now: number): Promise<string | 
 const baseMaster = loadMaster();
 validateGacha(baseMaster); // fail fast on a broken gacha/master definition (REQ-GACHA-003/008)
 validateItems(baseMaster); // REQ-ITEM-*: tickets may not reach paid-only banners, cosmetics reference real assets/patterns
+{ const sp = stampsProblems(baseMaster); if (sp.length) throw new Error('master/stamps.json: ' + sp.join('; ')); } // REQ-TEAMFEED-002
 validateEvents(baseMaster, baseMaster.events); // REQ-EVENT-001
 validateLeagueAndWeather(baseMaster); // REQ-LEAGUE-* and per-course climate (REQ-TRACK-003)
 validateUx(baseMaster, new Set(collectItemIds(baseMaster))); // REQ-UXS-*: onboarding, missions, experiments, deletion
@@ -99,6 +101,13 @@ function makeTeamsService(env: Env, master: () => Master, player: (uid: string) 
     disband: async (id, a) => { await call(team(id).disband!(a)); },
     managers: async (id) => (await call(team(id).managers!())) as string[],
     reportPoints: async (id, p, s, pts, n) => { await call(team(id).reportPoints!(p, s, pts, n)); },
+    // REQ-TEAMFEED-*
+    feedPost: async (id, p, s) => (await call(team(id).feedPost!(p, s))) as FeedItem,
+    feedRace: async (id, p, r) => (await call(team(id).feedRace!(p, r))) as FeedItem | null,
+    feedReact: async (id, p, seq, s) => (await call(team(id).feedReact!(p, seq, s))) as { ownerId: string; isNew: boolean; kind: 'stamp' | 'race' },
+    feedReport: async (id, p, seq) => (await call(team(id).feedReport!(p, seq))) as { ownerId: string; first: boolean },
+    feedPage: async (id, v, muted, before, limit) => (await call(team(id).feedPage!(v, muted, before, limit))) as TeamFeedPage,
+    feedForget: async (id, p) => (await call(team(id).feedForget!(p))) as { removed: number },
   };
   const dir = () => stub(env.TEAM_DIRECTORY, 'global');
   return new TeamsService(master, port, teamPlayersFrom(player), {

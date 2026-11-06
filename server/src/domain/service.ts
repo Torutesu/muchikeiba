@@ -18,7 +18,7 @@ import { awaken, breed, breedingPreviewWithAllowance, getHorse, nameHorse, pedig
 import { migrateSkills } from './skills.js';
 import { buyCosmetic, cosmeticsCatalog, setEquipment, useTicket, type EquipmentPatch } from './itemShop.js';
 import { applyRaceResult, claimLoginBonus, claimMission, claimPass, firstWinBonusView, missionsView, type RaceResultForPlayer } from './rewards.js';
-import { allowanceView, claimAllowance, markOfferViewed, noteRaceForOffers, shopOffers } from './shop.js';
+import { allowanceView, claimAllowance, markOfferViewed, noteRaceForOffers, shopOffers, shopProducts } from './shop.js';
 import { passScreen } from './pass.js';
 import { toRaceHorse } from './raceConfig.js';
 import { paidBalanceYen, invariantsHold } from './wallet.js';
@@ -50,6 +50,9 @@ import {
   cancelDeletion, deletionDue, deletionRetryLater, deletionScheduled, deletionSnapshot, deletionView, finalizeDeletion, markDeletionStep,
   nextDeletionWake, notWhileDeleting, requestDeletion, startDeletion, type DeletionStep,
 } from './accountDeletion.js';
+import {
+  ensureFeed, FEED_RACE_MODES, playerMute, playerReported, playerStampCheck, stampCatalog, stampsOf, type FeedRace, type ReportReason,
+} from './teamFeed.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
 export interface PlayerRepo {
@@ -104,6 +107,8 @@ export interface PlayerServiceDeps {
   onEventEntry?: (e: EventEntry) => void | Promise<void>;
   /** REQ-STABLE-003: the public stable copy changed (null = remove it: cleared or banned). The Durable Object writes the directory. */
   onStable?: (playerId: string, snap: StableSnapshot | null) => void | Promise<void>;
+  /** REQ-TEAMFEED-004: a member won or placed in a ranked / tournament race (the Durable Object tells the team feed). */
+  onTeamFeed?: (p: { teamId: string; playerId: string; displayName: string; race: FeedRace }) => void | Promise<void>;
 }
 
 const standingKey = (s: PlayerState) => JSON.stringify([s.season.id, s.season.classId, s.season.points, s.season.races, Math.round(s.rating.r), s.profile.displayName, s.profile.titleId]);
@@ -525,6 +530,8 @@ export class PlayerService {
   // ---- shop offers and the daily pack (REQ-UXS-017/018) ----
   /** Lazy triggers (race count, season start, promotion) are recorded, so this runs in a transaction. */
   // REQ-UXS-040: while a deletion is scheduled no offer is shown and no daily pack is paid (like purchase-intent)
+  /** r10: the product list with this player's ownership (GET /v1/shop/products?mine=1). Read-only. */
+  async shopProducts(id: string) { return shopProducts(this.d.master, { s: await this.load(id), now: this.d.clock() }); }
   shopOffers(id: string) { return this.tx(id, null, (s, now) => { notDeleting(s); return shopOffers(this.d.master, s, now); }); }
   markOfferViewed(id: string, offerId: string) { return this.tx(id, null, (s, now) => { notDeleting(s); return markOfferViewed(this.d.master, s, offerId, now); }); }
   async allowance(id: string) { return allowanceView(this.d.master, await this.load(id), this.d.clock()); }
@@ -537,6 +544,11 @@ export class PlayerService {
 
   /** Called by the race room after a race is final (idempotent per race). */
   async applyRace(id: string, r: RaceResultForPlayer) {
+    // r10: once the account deletion run has started the result is dropped — nothing may reach the player's boards,
+    // team or wallet again — but the call resolves, so the room ACKs it (no retry, no dead letter) and settles the others
+    const cur = await this.repo.get(id);
+    if (cur?.deletion?.status === 'deleting') return { skipped: 'deletion_pending' as const, raceId: r.raceId, event: null };
+    let feed: { teamId: string; playerId: string; displayName: string; race: FeedRace } | null = null;
     const out = await this.tx(id, `race:${r.raceId}`, (s, now, emit) => {
       // QA r6 #3: durable per-race guard, independent of the evictable idempotency ring
       const applied = (s.appliedRaces ??= {});
@@ -544,6 +556,11 @@ export class PlayerService {
       if (applied[r.raceId] !== undefined) return { duplicate: true as const, event: null };
       applied[r.raceId] = now;
       const base = applyRaceResult(this.d.master, s, r, now);
+      // REQ-TEAMFEED-004: a win or a place in a ranked race or a tournament shows in the team feed
+      const teamId = s.team?.teamId ?? null;
+      if (!r.void && teamId && (FEED_RACE_MODES as readonly string[]).includes(r.mode) && r.place >= 1 && r.place <= stampsOf(this.d.master).config.racePlaceMax) {
+        feed = { teamId, playerId: id, displayName: s.profile.displayName, race: { raceId: r.raceId, mode: r.mode as FeedRace['mode'], place: r.place, fieldSize: r.fieldSize, trackId: r.details?.trackId ?? null } };
+      }
       if (!r.void && r.mode === 'ranked') noteRaceForOffers(this.d.master, s, r.place, now); // REQ-UXS-017 T2
       if (r.mode === 'ranked' && !r.void) armPromotionNudge(this.d.master, s, now); // REQ-UXS-012
       if (!r.void) {
@@ -565,6 +582,10 @@ export class PlayerService {
       };
     });
     await this.flushEventPushes(id);
+    if (feed && this.d.onTeamFeed) {
+      // best effort: the result is committed; a TeamDO outage only loses the feed item
+      try { await this.d.onTeamFeed(feed); } catch (e) { console.error('team feed race item failed', id, (e as Error).message); }
+    }
     if (out.event && out.event.entry.races > 0 && this.d.onEventEntry) {
       // QA r6 #3: the result is already committed — an EventDO outage must not fail (and later dead-letter) it.
       // Keep the board update and re-send it with the player's next race.
@@ -853,6 +874,39 @@ export class PlayerService {
   async teamSeasonReward(id: string, seasonId: string, teamId: string, rank: number | null, total: number, league: LeaguePlace | null = null) {
     if (await this.wiped(id)) return null;
     return this.tx(id, null, (s, now) => playerTeamReward(s, this.d.master.progression.teams, seasonId, teamId, rank, total, now, { cfg: this.d.master.progression.league, place: league }));
+  }
+
+  // ---- team cheer stamps (REQ-TEAMFEED-*) ----
+  async stampCatalog(id: string) { return stampCatalog(this.d.master, await this.load(id)); }
+  /** Before a post / reaction: deletion, membership and unlock checks; returns the team and the display name. */
+  stampCheck(id: string, stampId: string) { return this.tx(id, null, (s) => playerStampCheck(this.d.master, s, stampId)); }
+  /** After the team stored it: the KPI row (REQ-TEAMFEED-009). */
+  stampPosted(id: string, stampId: string, kind: 'post' | 'reaction', teamId: string) {
+    return this.tx(id, null, (_s, _now, emit) => { emit({ name: 'stamp_post', s1: stampId, s2: kind, s3: teamId }); return { ok: true }; });
+  }
+  /** The feed's viewer side: team and mute list; the first page of a visit is the team_feed_view KPI row. */
+  feedViewer(id: string, firstPage: boolean) {
+    return this.tx(id, null, (s, _now, emit) => {
+      const teamId = s.team?.teamId ?? null;
+      if (firstPage && teamId) emit({ name: 'team_feed_view', s1: teamId, count: ensureFeed(s).muted.length });
+      return { teamId, muted: [...ensureFeed(s).muted] };
+    });
+  }
+  async feedMutes(id: string) { return { muted: [...ensureFeed(await this.load(id)).muted] }; }
+  feedMute(id: string, target: string, muted: boolean) { return this.tx(id, null, (s) => playerMute(this.d.master, s, target, muted)); }
+  /** REQ-TEAMFEED-007: support flag on the reported player (no-op for a deleted account). */
+  async feedReported(id: string, teamId: string, seq: number, reporter: string, reason: ReportReason) {
+    if (await this.wiped(id)) return { flagged: false };
+    return this.tx(id, null, (s) => playerReported(s, teamId, seq, reporter, reason));
+  }
+  /** Optional push to the owner of a race item a teammate cheered (not from muted members, not while deleting). */
+  async cheerPush(id: string, fromId: string, fromName: string) {
+    if (await this.wiped(id)) return { queued: false };
+    return this.tx(id, null, (s, now) => {
+      if (deletionScheduled(s) || ensureFeed(s).muted.includes(fromId)) return { queued: false };
+      ensurePush(this.d.master, s);
+      return { queued: enqueuePush(this.d.master, s, 'team_cheer', { name: fromName }, now).status === 'queued' };
+    });
   }
 
   // ---- event races (REQ-EVENT-*) ----

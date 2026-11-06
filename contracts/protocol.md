@@ -277,6 +277,7 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 表示の文言・数量・期間は全てサーバーが作る。クライアントは組み立てない（「2倍」などの倍率表現は使わない。初回購入ボーナスは「無償コイン◯枚」）。時刻は ms（UTC エポック）、日付はゲーム日の `YYYY-MM-DD`（`gameDayKey`、切り替えは `progression.dayRollover`、§15。2026-12-01 04:00 JST から 4:00 JST、それまでは 0:00 JST）、残り日数（`remainingDays`）もゲーム日で数える。シーズンは JST の暦月 `YYYY-MM`（暦のまま）。**このセクションで新しいエラーコードは無い**（既存のコードの意味を下に追記。アカウント削除の予約中は §8.7 の `DELETION_PENDING`）。
 
 ### 13.1 `GET /v1/shop/products`（認証なし、REQ-UXS-022）
+`?mine=1`（要認証）を付けると、プレイヤーごとの所持（`owned` / `ownedReason` / `purchasedThisSeason`）が加わる（§18.1）。
 従来のフィールド（`id, kind, priceYen, paidCoins, once?, items?`）はそのまま。追加は表示用：
 ```json
 { "products": [
@@ -469,3 +470,51 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 **`GET /v1/gacha/:id/odds` の追加**：`period.lastDay`、`pickup: { templateId, name, rarity, ppm, rate, guaranteePpm, guaranteeRate } | null`（抽選表の行そのもの）、`stepUp: { afterLast, notice, steps: [ { step, priceTen, finalSlot: { appliesTo, items | null, rarityTotals | null } } ] } | null`、`pity.label`・`pity.costCoins`（交換までの最大コイン、ステップアップは各ステップの価格から）・`pity.closesAtMs`・`pity.carryOver`（上と同じ形）。`estimatedMaxCostYen` は `costCoins` から計算する。
 
 **期間外の操作**：引く・チケット・天井交換は `BANNER_CLOSED`（409）。`message` は `banner <id> ended at 2026-12-01 00:00 JST` / `banner <id> opens at …` / `banner <id> is not open`（予告前）。判定はその取引でサーバーが読んだ時刻（Durable Object の中で1回）。
+
+
+## 18. 支部の応援スタンプ・支部フィード（REQ-TEAMFEED-001〜009、`server/src/domain/teamFeed.ts`、C# `TeamFeed.cs`・`Muchi.Game` `TeamFeedModel`）
+支部の中だけで使う、**定型スタンプだけ**のやりとり。自由入力の文字はどこにも無い（本文に `text` などを付けると `BAD_REQUEST`）。そのため利用者の文章を審査する仕組みは要らない（docs/planning/03）。スタンプの絵はアセットキー `stamp/<id>`（`contracts/assets.md`、`npm run gen:assets` でマニフェストに載る。絵が届くまでは `stamp/default`）。
+
+**マスターデータ** `server/master/stamps.json`：
+```json
+{ "version": 1,
+  "config": { "postIntervalMs": 10000, "postsPerDay": 50, "feedSize": 100, "pageDefault": 20, "pageMax": 50, "reportsPerDay": 10, "muteMax": 100, "racePlaceMax": 3 },
+  "stamps": [ { "id": "cheer", "label": "がんばれ！", "unlock": { "kind": "default" } },
+              { "id": "whip", "label": "ムチ一閃！", "unlock": { "kind": "races", "count": 10 } },
+              { "id": "pass_crown", "label": "王者の風格", "unlock": { "kind": "pass" } },
+              { "id": "carrot", "label": "にんじん！", "unlock": { "kind": "cosmetic", "itemId": "stamp_carrot" } } ] }
+```
+- 解放の条件（REQ-TEAMFEED-002）：`default` 最初から／`races` 通算出走回数（`stats.races`、遊んで解放）／`pass` シーズンパス（パス・パス＋）を一度でも購入（返金済みは除く。一度買えばずっと使える）／`cosmetic` 見た目ショップでコインで直接買う（`items.json` の `kind: "stamp"`・`asset: "stamp/<id>"`。決まった価格、ガチャ・ランダムからは出ない）。スタンプの見た目以外の効果は無い。
+- 起動時とリモートコンフィグで `stampsProblems` が検証する（無料のスタンプが1つ以上、`cosmetic` は直販の `kind: "stamp"` の品と1対1、ラベル1〜12文字、上限値の範囲）。
+
+**エンドポイント**（全て要認証。支部に入っていないと `NOT_IN_TEAM`（404））：
+
+| メソッド・パス | 本文 | 応答 | エラー |
+|---|---|---|---|
+| `GET /v1/stamps` | — | `{ "version", "limits": { "postIntervalMs", "postsPerDay", "feedSize", "pageMax" }, "stamps": [ { "id", "label", "asset": "stamp/<id>", "unlock": { "kind", "count"?, "itemId"? }, "unlockText": "レースに10回出走で解放", "unlocked": true } ] }` | — |
+| `GET /v1/teams/me/feed?before=<seq>&limit=<n>` | — | 下の `FeedPage`（新しい順） | `before`/`limit` が数字でない・0 は `BAD_REQUEST` |
+| `POST /v1/teams/me/feed/stamps` | `{ "stampId": "cheer" }` | `{ "teamId", "seq", "at", "stampId" }` | `STAMP_LOCKED`（409、未解放。`message` は解放条件）、`RATE_LIMITED`（429、10秒に1回・ゲーム日ごとに50回）、`DELETION_PENDING`（削除予定中）、`NOT_FOUND`（無いスタンプ） |
+| `PUT /v1/teams/me/feed/:seq/reaction` | `{ "stampId": "nice" \| null }` | `{ "teamId", "seq", "myReaction" }` | 1つの項目に1人1つ（新しいスタンプで置き換え、null で取り消し）。同じ人の操作は2秒あける（`RATE_LIMITED`）。項目が古くて消えていれば `NOT_FOUND` |
+| `POST /v1/teams/me/feed/:seq/report` | `{ "reason": "spam" \| "harassment" \| "other" }` | `{ "reported": true, "seq" }` | 自分の項目は `BAD_REQUEST`、1日10件まで（`RATE_LIMITED`）。同じ項目の2回目は何もしない |
+| `GET /v1/teams/me/feed/mutes` | — | `{ "muted": ["<playerId>"] }` | — |
+| `PUT /v1/teams/me/feed/mutes` | `{ "playerId", "muted": true \| false }` | `{ "muted": [...] }` | 自分は `BAD_REQUEST`、100人まで（`TEAM_LIMIT`） |
+
+```json
+FeedPage = { "teamId": "tabc123456", "latestSeq": 130, "nextBefore": 111 | null, "muted": ["p9"],
+  "items": [ { "seq": 130, "at": 1795575600000, "kind": "stamp" | "race", "playerId": "p1", "displayName": "ミドリカワ", "mine": false,
+               "stampId": "cheer" | null, "stampAsset": "stamp/cheer" | null,
+               "race": { "raceId": "r_…", "mode": "ranked" | "tournament", "place": 1, "fieldSize": 12, "trackId": "kirameki_turf_2000" | null } | null,
+               "reactions": [ { "stampId": "nice", "count": 2, "mine": true } ], "myReaction": "nice" | null } ] }
+```
+- **リングバッファ**（REQ-TEAMFEED-004）：支部ごとに最新 `feedSize`（100）件だけを TeamDO が持つ（キー `feed`、支部の状態とは別）。`seq` は支部の中で増え続ける番号。ページは `nextBefore` を次の `before` に渡す。古い項目は消えるので、その `seq` への応援・報告は `NOT_FOUND`。
+- **レース結果の自動項目**（REQ-TEAMFEED-004）：支部員がランク戦か大会で `racePlaceMax`（3）着以内に入ると、レースの精算（プレイヤーのDurable Object）の後に支部へ1件届く（同じレース・同じ人は1件。無効レース・フレンド戦・4着以下は出ない）。届かなくても精算は失敗にしない（ベストエフォート）。
+- **名前**：支部員の項目は今の支部の名前（メンバー一覧の `displayName`）で表示。抜けた人の項目は投稿時の名前のまま。
+- **ミュート（ブロック）**（REQ-TEAMFEED-006）：見る人ごと。ミュートした人の項目とリアクションは自分のページから消え、その人の応援の通知も来ない。端末はすぐに自分の一覧に反映し（`TeamFeedModel`）、サーバーの一覧へ送る（失敗したら次に開いたときに送り直す）。
+- **報告**（REQ-TEAMFEED-007）：報告した人のページからはその項目が消え、投稿者のプレイヤー状態にサポート用のフラグ `team_feed_report:<teamId>:<seq>:<reporter>:<reason>` が付く（運営の `GET /v1/admin/players/:id` の `supportFlags` で見える）。
+- **通知**（任意）：自分のレース結果に支部員が新しく応援スタンプを付けると、push テンプレート `team_cheer`（カテゴリ `friends`、1日の上限・静かな時間帯は通常どおり）。ミュートした相手からは来ない。支部全体への呼びかけ（メンション）は無い。
+- **アカウント削除**（REQ-TEAMFEED-008）：削除予定中（`scheduled`）は投稿・応援が `DELETION_PENDING`（見ることはできる）。削除の処理の「支部」の段で、その人が投稿・応援した全ての支部（今の支部と、最近抜けた支部。プレイヤー状態の `teamFeed.postedIn`、最大10）から、その人の項目・リアクション・報告・投稿の回数を消す。
+- **KPI**（REQ-TEAMFEED-009、サーバーが書く。クライアントイベントは無い）：`stamp_post`（`s1` スタンプID、`s2` `post` | `reaction`、`s3` 支部ID）、`team_feed_view`（フィードの1ページ目を開いたとき。`s1` 支部ID、`count` ミュート人数）。docs/ops/kpi-queries.md。
+
+### 18.1 関連する小さな修正（ラウンド10）
+- **`GET /v1/shop/products?mine=1`**（要認証、§13.1）：同じ一覧に、そのプレイヤーの所持を加える。各商品に `owned`（今は買えない：1回限りの商品を購入済み／今シーズンのパス（パス・パス＋のどちらか）を購入済み／厩舎手当の受け取り中か予約中。`purchase-intent` が `ALREADY_PURCHASED` を返す条件と全く同じ）、`ownedReason`（`"once"` | `"season_pass"` | `"allowance"` | null）、`purchasedThisSeason`（シーズンパスだけ：その商品を今シーズン買ったか。他は null）。最上位に `"personalized": true, "seasonId": "2026-11"`。`mine` なしは従来どおり（`"personalized": false`、所持の項目は無い）。C# `ApiClient.GetMyProductsAsync`、`ShopModel` はこちらを使い、買ったパスのカードを「購入済み」にする。
+- **削除の処理中のレース結果**（§8.7）：アカウント削除の処理が始まった（`deleting`）プレイヤーへのレース結果は、何も変えずに成功で返す（`{ "skipped": "deletion_pending" }`）。部屋はそのプレイヤーを済みとして他の人を通常どおり精算し、再試行もデッドレターもしない。

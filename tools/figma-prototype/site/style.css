@@ -383,3 +383,33 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
 .clipframe { border-radius: var(--radius); box-shadow: inset 0 0 0 2px rgba(var(--cyan-rgb), .5); }
 .lockmark { display: inline-block; width: 11px; height: 9px; border-radius: 2px; background: currentColor; position: relative; margin-right: 6px; vertical-align: 1px; }
 .lockmark::before { content: ""; position: absolute; left: 2px; top: -6px; width: 5px; height: 6px; border: 1.5px solid currentColor; border-bottom: 0; border-radius: 4px 4px 0 0; }
+
+/* ---------------------------------------------------------------- round 10: 支部の応援スタンプ (team feed)
+   Same tokens as the rest: translucent navy rows on a thin rule, letter-spaced cyan meta, skewed cyan reaction chip. */
+.tf-list { overflow-y: auto; overflow-x: hidden; padding: 0 36px 20px; scrollbar-width: thin; scrollbar-color: rgba(var(--cyan-rgb), .5) transparent; }
+.tf-row { display: flex; flex-direction: column; gap: 8px; padding: 16px 0 14px; border-bottom: 1px solid rgba(150, 173, 187, .28); }
+.tf-row .tf-meta { font-size: 14px; font-weight: 500; color: var(--text-3); letter-spacing: .14em; }
+.tf-row.mine .tf-meta { color: var(--cyan); }
+.tf-row .tf-main { font-size: 23px; font-weight: 700; color: var(--white); letter-spacing: .04em; }
+.tf-row.race .tf-main { color: var(--gold); }
+.tf-badge { display: inline-flex; align-items: center; padding: 6px 22px; background: rgba(var(--cyan-rgb), .14); box-shadow: inset 3px 0 0 var(--cyan); transform: skewX(-10deg); }
+.tf-foot { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.tf-react { font-size: 15px; font-weight: 500; padding: 4px 12px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(150, 173, 187, .45); color: var(--text-2); }
+.tf-react.mine { box-shadow: inset 0 0 0 1px var(--cyan); color: var(--white); }
+.tf-cheer, .tf-link, .tf-stamp { font: inherit; cursor: pointer; border: 0; }
+.tf-cheer { font-size: 15px; font-weight: 700; padding: 7px 22px; background: var(--cyan); color: var(--navy); letter-spacing: .06em;
+  clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
+.tf-cheer.on { background: rgba(var(--cyan-rgb), .18); color: var(--cyan); }
+.tf-cheer:disabled { opacity: .45; cursor: default; }
+.tf-link { font-size: 14px; font-weight: 500; background: transparent; color: var(--text-3); text-decoration: underline; text-decoration-color: rgba(213, 225, 233, .4);
+  text-underline-offset: 4px; padding: 4px 6px; margin-left: auto; letter-spacing: .06em; }
+.tf-link + .tf-link { margin-left: 0; }
+.tf-link:hover { color: var(--white); }
+.tf-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; align-content: start; overflow-y: auto; }
+.tf-stamp { height: 96px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; background: rgba(var(--navy-rgb), .7);
+  border-radius: var(--radius); box-shadow: inset 0 0 0 1px rgba(150, 173, 187, .35); color: var(--white); padding: 6px; }
+.tf-stamp b { font-size: 20px; font-weight: 700; letter-spacing: .06em; }
+.tf-stamp small { font-size: 12px; color: var(--text-3); line-height: 1.3; text-align: center; }
+.tf-stamp.sel { box-shadow: inset 0 0 0 2px var(--cyan); background: rgba(var(--cyan-rgb), .12); }
+.tf-stamp.locked b { color: var(--text-4); }
+.tf-stamp:hover { filter: brightness(1.12); }

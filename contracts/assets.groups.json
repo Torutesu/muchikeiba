@@ -23,6 +23,7 @@
   { "match": "decor/*", "group": "home", "required": false },
   { "match": "title/*", "group": "home", "required": false },
   { "match": "emblem/**", "group": "home", "required": false },
+  { "match": "stamp/*", "group": "home", "required": false },
   { "match": "horse/**", "group": "race", "required": false },
   { "match": "silks/**", "group": "race", "required": false },
   { "match": "scene/**", "group": "race", "required": false },

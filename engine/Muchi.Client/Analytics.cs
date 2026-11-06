@@ -100,11 +100,22 @@ namespace Muchi.Client
             return new AnalyticsEvent("race_quit", atMs, JsonNode.Obj().Set("mode", mode).Set("remainingM", Math.Max(0, Math.Min(remainingM, 10_000))));
         }
 
-        /// <summary>The account was linked to a sign-in provider (apple | google).</summary>
+        /// <summary>
+        /// The anonymous account was linked to Apple/Google (REQ-API-005; send only on LinkResult.Linked). provider: apple | google,
+        /// or the Firebase provider ids apple.com / google.com.
+        /// </summary>
         public static AnalyticsEvent AccountLink(long atMs, string provider)
         {
-            if (provider != "apple" && provider != "google") throw new ArgumentException("unknown provider " + provider);
-            return new AnalyticsEvent("account_link", atMs, JsonNode.Obj().Set("provider", provider));
+            string p = provider == "apple.com" ? "apple" : provider == "google.com" ? "google" : provider;
+            if (p != "apple" && p != "google") throw new ArgumentException("unknown provider " + provider);
+            return new AnalyticsEvent("account_link", atMs, JsonNode.Obj().Set("provider", p));
+        }
+
+        /// <summary>A replay was handed to the OS share sheet (REQ-UXS-072). kind: replay_video | replay_image.</summary>
+        public static AnalyticsEvent Share(long atMs, string kind)
+        {
+            if (kind != "replay_video" && kind != "replay_image") throw new ArgumentException("unknown share kind " + kind);
+            return new AnalyticsEvent("share", atMs, JsonNode.Obj().Set("kind", kind));
         }
 
         internal JsonNode ToJson()

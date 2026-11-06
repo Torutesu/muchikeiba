@@ -4,6 +4,8 @@
 //     shop display data and offers, purchase-intent age checks, season pass, rewards, account deletion)
 //   - MuchiRace:  the real C# race engine + Unity game layer in WebAssembly (TutorialDirector, RaceFeel, RaceDebrief,
 //     RaceResultModel, RaceCameraRig, unique skills of ruleset 1.3.0)
+// Round 9 (06 §7 item 12 / §7.3): the replay share card (ReplayClip / ShareCard / ReplayShareModel), the account-link
+// prompt (AccountLinkPrompt) and the time attack ghost picker with the friend tab (GhostPicker, GhostPlayer).
 // Nothing on these screens is a made-up number: every value comes from one of the two.
 import { RaceView } from './race-view.js';
 
@@ -361,6 +363,7 @@ function paintHud(f) {
   }
   if (performance.now() > hud.msgUntil) hud.feedback.textContent = '';
   hud.subtitle.textContent = f.subtitle;
+  if (hud.ghost && f.ghostPoses?.[0]) { const gap = f.ghostPoses[0][4]; hud.ghost.textContent = `ゴースト ${raceCtx.ghost.name}：${gap >= 0 ? '前' : '後ろ'} ${Math.abs(gap).toFixed(1)}m`; }
   // overhead marker on the partner
   const p = view.project(raceInfo.playerSlot, 3.1);
   if (p && f.horses[raceInfo.playerSlot]?.[6]) {
@@ -408,6 +411,7 @@ window.addEventListener('blur', () => { reinHeld = false; keyRein = false; });
 // ---- results (REQ-UXP-005 debrief line, 06 §6.4)
 async function RaceResult(f) {
   if (raceCtx.tutorial) return TutorialResult(f);
+  if (raceCtx.ta) return show(TaResult, f);
   const r = f.result;
   const finishTick = r.place > 0 ? f.finishTicks[r.place - 1] : -1;
   const passBefore = await L.passView();
@@ -455,6 +459,8 @@ function ResultScreen(f, rewards, passXp, pass, missions) {
     Button('もう一度', 76, 690, 400, 100, () => OfferThen(() => StartRace()));
     Ghost('ホーム', 492, 690, 212, 100, () => OfferThen(Home));
   }
+  // replay share (REQ-UXS-070): the last 200 m re-simulated on the device
+  if (!first) Ghost('リプレイを共有', 1250, 806, 310, 76, () => ShareCard(currentScreen)).classList.add('share');
   // ④ result table, the player's row highlighted
   const rows = r.rows.slice(0, 12);
   const t = Panel('Order panel', 780, 40, 780, 74 + rows.length * 56, NAVY);
@@ -702,7 +708,7 @@ async function Home() {
   } else row(194, 'デイリーミッション', '', unlockText('missions') + '　「毎日3本。終わればコイン」', false, true);
   row(322, '初勝利ボーナス', fw.remaining > 0 ? `残り${fw.remaining}回` : '本日終了', fw.next ? `今日の次の1着で 無償コイン+${fw.next}（ランク戦）` : '明日また受け取れます', fw.remaining === 0, false);
   // feature keys (unlocked by races or days, from the server)
-  const keys = [['season_pass', 'パス', () => SeasonPass()], ['breeding', '配合'], ['friends', 'フレンド'], ['teams', '支部'], ['time_attack', 'タイムアタック'], ['events', 'イベント'], ['my_stable', 'マイ厩舎']];
+  const keys = [['season_pass', 'パス', () => SeasonPass()], ['breeding', '配合'], ['friends', 'フレンド'], ['teams', '支部'], ['time_attack', 'タイムアタック', () => TimeAttack()], ['events', 'イベント'], ['my_stable', 'マイ厩舎']];
   keys.forEach(([k, name, go], i) => {
     const f = unlock(k);
     const x = 30 + i * 166, b = Button(f.unlocked ? name : name + ' 🔒', x, 590, 156, 90, f.unlocked ? (go ?? (() => toast(`${name}：開放済み（画面はクラブ版で確認できます）`))) : () => toast(`${name}は${unlockText(k)}`), f.unlocked ? NAVY : col(.03, .07, .11, .85));
@@ -716,6 +722,7 @@ async function Home() {
   const go = Button('レースへ', 1180, 600, 390, 180, RaceLobby); go.classList.add('hero');
   if (bonus) toast(`ログインボーナス ${bonus.track === 'beginner' ? '初心者' : ''}${bonus.day}日目：${rewardText(bonus.reward)}`);
   TabBar(0);
+  MaybeLinkPrompt('Home', Home);
 }
 function RaceLobby() {
   currentScreen = RaceLobby; Clear('lobby'); SetArt(equippedCourse() === 0 ? 'Art/first-ride' : courseArt(equippedCourse()));
@@ -1062,6 +1069,172 @@ async function SeasonPass() {
   TabBar(3);
 }
 
+// ================================================================= round 9 (06 §7 item 12 / §7.3, REQ-UXS-070..074)
+// ---- replay share: the race just run, re-simulated by ReplayClip in the WASM engine and posed by ReplayShareModel
+async function ShareCard(back) {
+  const info = JSON.parse(engine.ShareClip(raceCtx?.trackName ?? ''));
+  if (!info.ok) { toast(info.message); return; }
+  currentScreen = () => ShareCard(back);
+  Clear('share'); cur.classList.add('race'); $canvas.hidden = false;
+  const { card, clip } = info;
+  // the clip loops on the 3D view (RaceCameraRig keyframes: follow → low on the straight → side-on at the line)
+  const frame = Panel('Clip frame', 30, 30, 1000, 566, 'transparent'); frame.classList.add('clipframe');
+  const wm = Label(card.watermark, 54, 46, 400, 60, 40, WHITE); wm.classList.add('shadow', 'watermark');
+  const rem = Label('', 54, 520, 400, 50, 30, WHITE); rem.classList.add('shadow');
+  const mode = Label('', 640, 520, 370, 50, 20, MUTED); mode.classList.add('shadow'); mode.style.textAlign = 'right';
+  const t0 = performance.now(), loop = clip.durationMs + 1200;
+  every(33, () => {
+    const t = Math.min(clip.durationMs, (performance.now() - t0) % loop);
+    const f = JSON.parse(engine.ClipFrame(t));
+    view.draw(f);
+    rem.textContent = f.remainingM > 0 ? `残り ${Math.ceil(f.remainingM)} m` : 'ゴール';
+    mode.textContent = `カメラ：${{ Follow: '追走', FinalStraight: '直線', Finish: 'ゴール横' }[f.cam[7]] ?? f.cam[7]}`;
+    globalThis.__muchi && (globalThis.__muchi.clipT = t);
+  });
+  // the card (REQ-UXS-071): place, time, horse, course, skills, watermark — no player name or id
+  const c = Panel('Share card', 1060, 30, 510, 840, NAVY); c.dataset.card = 'share';
+  Label(card.watermark, 28, 22, 454, 40, 26, CYAN, c);
+  Label(card.mode || '', 28, 66, 454, 30, 18, MUTED, c);
+  Label(card.placeText, 28, 100, 454, 90, card.place === 1 ? 64 : 52, card.place === 1 ? GOLD : WHITE, c).dataset.share = 'place';
+  Label(card.time, 28, 196, 454, 60, 44, WHITE, c).dataset.share = 'time';
+  Label(card.horse, 28, 266, 454, 56, 38, GOLD, c).dataset.share = 'horse';
+  Label(card.course, 28, 326, 454, 36, 22, WHITE, c);
+  Label(card.skills.length ? card.skills.join('\n') : '固有スキルの発動なし', 28, 374, 454, 80, 18, card.skills.length ? YELLOW : DIM, c);
+  Label('共有の文：' + card.shareText, 28, 466, 454, 90, 15, MUTED, c);
+  const same = clip.hash === clip.liveHash;
+  Label(`最後の${Math.round(clip.startRemainingM)}m・${(clip.durationMs / 1000).toFixed(1)}秒・${clip.fps}fps（${clip.frames}フレーム）\n端末で再計算：${same ? '結果が一致 ✓' : '不一致'}　カメラ ${clip.modes.map((m) => ({ Follow: '追走', FinalStraight: '直線', Finish: 'ゴール横' }[m] ?? m)).join('→')}`, 28, 566, 454, 80, 15, same ? col(.5, .9, .6) : RED, c).dataset.hash = same ? 'match' : 'mismatch';
+  Button('動画で共有', 28, 660, 454, 84, () => toast('書き出しと共有はアプリ（IClipRecorder）で行います'), GOLD, c);
+  Ghost('戻る', 28, 756, 454, 66, back ?? Home, c);
+  Label('動画には名前・IDを入れません（選んだ馬の名前だけ）', 30, 612, 1000, 30, 16, MUTED);
+}
+
+// ---- account-link prompt (REQ-UXS-073): AccountLinkPrompt on the PlayerPrefs keys muchi.link.*
+const LINK_KEYS = ['muchi.link.prompt', 'muchi.link.firstPurchase'];
+function linkOp(op, args = {}) {
+  const store = {};
+  for (const k of LINK_KEYS) { const v = prefs.get(k, null); if (v != null) store[k] = v; }
+  const r = JSON.parse(engine.LinkPrompt(op, JSON.stringify(store), JSON.stringify(args)));
+  for (const k of LINK_KEYS) if (r.store[k] != null) prefs.set(k, r.store[k]);
+  return r;
+}
+const linkedProvider = () => prefs.get('muchi.link.provider', '');
+function linkArgs(context) {
+  return {
+    context, anonymous: !linkedProvider(), day: player.unlocks.day, online: true, deletion: player.deletion?.status === 'scheduled',
+    partner: !!player.flags?.partnerHorseId, gacha: !!player.flags?.tutorialGachaUsed, rankedRaces: player.rating.rankedRaces,
+  };
+}
+/** Home / after a result / after a purchase: shows the prompt when the rules say so; returns true when it did. */
+function MaybeLinkPrompt(context, next) {
+  const r = linkOp('eval', linkArgs(context));
+  if (!r.show) return false;
+  LinkPrompt(r.trigger, next);
+  return true;
+}
+function LinkPrompt(trigger, next = Home) {
+  const v = linkOp('show', { trigger, ios: true }).view; // counts as shown now (once only)
+  currentScreen = next; Clear('link-prompt'); SetArt('Art/home-paddock'); Veil(.7);
+  const box = Panel('Link prompt', 300, 110, 1000, 680, NAVY); box.dataset.trigger = trigger;
+  ArtImage(partnerSprite(equippedPartner()), 640, -40, 380, 380, box);
+  Label(trigger === 'FirstPurchase' ? 'はじめての購入の後に' : '3日目のお知らせ', 40, 30, 600, 30, 18, CYAN, box);
+  Label(v.title, 40, 70, 600, 120, 38, WHITE, box);
+  Label(v.body, 40, 210, 900, 120, 22, MUTED, box);
+  v.providers.forEach((p, i) => Button(p === 'apple' ? v.apple : v.google, 40 + i * 470, 380, 440, 100, () => Link(p, next), i === 0 ? GOLD : CYAN, box).classList.add('provider-' + p));
+  Ghost(v.later, 40, 520, 300, 84, () => { linkOp('dismiss'); next(); }, box);
+  Label(v.footnote + '（プロトタイプ：サインインの画面は省略します）', 360, 532, 600, 60, 15, DIM, box);
+}
+function Link(provider, next) {
+  const r = linkOp('linked', { provider, at: L.now() });
+  prefs.set('muchi.link.provider', provider);
+  toast(`${provider === 'apple' ? 'Apple' : 'Google'}で引き継ぎ登録しました` + (r.event ? `（KPI ${r.event.name}）` : ''));
+  globalThis.__muchi && (globalThis.__muchi.lastKpi = r.event?.name ?? null);
+  (next ?? Home)();
+}
+
+// ---- time attack with ghosts (REQ-TA-*, friend ghosts first: REQ-UXS-074)
+let taCache = null;
+const taBestKey = (trackId) => 'muchi.proto.ta.' + trackId;
+function taBest(trackId) { try { return JSON.parse(prefs.get(taBestKey(trackId), 'null')); } catch { return null; } }
+async function TimeAttack(trackId = 'aoba_turf_1600', tab = '', selected = '') {
+  await viewReady;
+  const p = partner();
+  const friends = prefs.get('muchi.proto.taFriends', '1') === '1';
+  const key = trackId + ':' + friends + ':' + (taBest(trackId)?.timeMs ?? 0);
+  if (taCache?.key !== key) {
+    const { config, trackName, attemptsLeft } = await L.taConfig(p.id, trackId);
+    const seeds = L.taGhostSeeds(trackId, friends);
+    const best = taBest(trackId);
+    const entries = seeds.map((s) => ({ id: s.id, name: s.name, horse: s.horse, kind: s.kind, config: s.config, whips: s.whips }));
+    if (best) entries.push({ id: 'local', name: '自分のベスト', horse: p.name, kind: 'me', log: best.log });
+    const times = JSON.parse(engine.TaGhosts(JSON.stringify(entries)));
+    const list = entries.map((e) => ({ id: e.id, name: e.name, horse: e.horse, kind: e.kind, timeMs: times.find((t) => t.id === e.id).timeMs }));
+    taCache = { key, config, trackName, attemptsLeft, list };
+  }
+  const best = taBest(trackId);
+  const pk = JSON.parse(engine.PickGhosts(JSON.stringify(taCache.list), 'local', best?.timeMs ?? 0, tab, selected));
+  currentScreen = () => TimeAttack(trackId, pk.tab, pk.selected);
+  Clear('time-attack'); SetArt('Art/home-paddock'); Veil(.6);
+  Header('タイムアタック', `${taCache.trackName}　·　ゴーストと並走（相手には影響しません）`);
+  const me = Panel('My best', 40, 120, 520, 250, NAVY);
+  Label('自己ベスト（今シーズン）', 24, 18, 460, 30, 18, CYAN, me);
+  Label(best ? fmtMs(best.timeMs) : '— 記録なし', 24, 58, 460, 80, 60, best ? GOLD : DIM, me);
+  Label(`相棒 ${p.name}　·　能力はTAの上限にそろえます`, 24, 150, 470, 30, 17, MUTED, me);
+  Label(`今日の残り ${taCache.attemptsLeft}回（サーバーと同じ発行）`, 24, 190, 470, 30, 17, MUTED, me);
+  const dm = Panel('Demo', 40, 390, 520, 200, col(.03, .06, .1, .92));
+  Label('デモ（レビュー用）', 24, 16, 460, 30, 18, CYAN, dm);
+  Ghost(friends ? 'フレンドのゴースト：あり' : 'フレンドのゴースト：なし', 24, 60, 470, 72, () => { prefs.set('muchi.proto.taFriends', friends ? '0' : '1'); TimeAttack(trackId); }, dm).classList.add('ta-friends-toggle');
+  Label('相手の走りは全て端末のエンジンで計算した実際のタイムです。', 24, 144, 470, 50, 14, DIM, dm);
+  // picker: tabs フレンド / 上位 / 自分 (opens on フレンド; falls back to 上位 when no friend has run this course)
+  const pp = Panel('Ghost picker', 590, 120, 970, 660, NAVY); pp.dataset.tab = pk.tab; pp.dataset.fellback = String(pk.fellBack);
+  pk.tabs.forEach((t, i) => {
+    const b = Button(`${t.label}（${t.count}）`, 24 + i * 240, 18, 228, 72, () => TimeAttack(trackId, t.kind, ''), t.kind === pk.tab ? col(0, .8, .95, .25) : 'transparent', pp);
+    b.classList.add('stab', 'ghosttab'); b.dataset.kind = t.kind; if (t.kind === pk.tab) b.classList.add('on');
+  });
+  if (pk.note) Label(pk.note, 24, 104, 920, 34, 19, YELLOW, pp).dataset.note = pk.fellBack ? 'fallback' : 'empty';
+  pk.list.slice(0, 5).forEach((g, i) => {
+    const y = 148 + i * 88;
+    const row = Button('', 24, y, 920, 80, () => TimeAttack(trackId, pk.tab, g.id), g.selected ? col(1, .83, .08, .2) : CARD, pp);
+    row.classList.add('ghostrow'); row.dataset.ghost = g.id; if (g.selected) row.classList.add('on');
+    Label((g.selected ? '▶ ' : '') + g.name, 20, 10, 420, 34, 24, g.selected ? GOLD : WHITE, row).style.textAlign = 'left';
+    Label(g.horse, 20, 44, 420, 28, 16, MUTED, row).style.textAlign = 'left';
+    Label(g.line, 440, 18, 460, 44, 26, WHITE, row).style.textAlign = 'right';
+  });
+  if (!pk.list.length && pk.tab === 'friends') Label('フレンドを追加すると、ここにフレンドのベストが並びます。', 24, 160, 900, 40, 20, DIM, pp);
+  const sel = taCache.list.find((x) => x.id === pk.selected);
+  Button(sel ? `${sel.name}と走る` : 'ひとりで走る', 590, 790, 620, 92, () => StartTimeAttack(trackId, sel?.id ?? ''), GOLD).classList.add('ta-start');
+  Ghost('ホーム', 1230, 790, 330, 92, Home);
+}
+const fmtMs = (ms) => { const t = Math.floor(ms / 100); return `${Math.floor(t / 600)}:${String(Math.floor(t / 10) % 60).padStart(2, '0')}.${t % 10}`; };
+async function StartTimeAttack(trackId, ghostId) {
+  await viewReady;
+  raceInfo = JSON.parse(engine.StartTimeAttack(JSON.stringify(taCache.config), ghostId));
+  raceCtx = { tutorial: false, ta: true, trackId, trackName: taCache.trackName, config: taCache.config, ghost: raceInfo.ghosts[0] ?? null };
+  view.useRig = true; view.start(raceInfo, equippedPartner()); view.setGhosts(raceInfo.ghosts.length, equippedPartner());
+  BuildRaceScreen();
+  if (raceCtx.ghost) { hud.ghost = Label('', 380, 120, 840, 34, 22, col(.75, .9, 1), undefined, 'center'); hud.ghost.classList.add('shadow'); }
+}
+function TaResult(f) {
+  const r = f.result, ta = f.ta, best = taBest(raceCtx.trackId);
+  const newBest = ta.timeMs >= 0 && (!best || ta.timeMs < best.timeMs);
+  if (newBest) { prefs.set(taBestKey(raceCtx.trackId), JSON.stringify({ timeMs: ta.timeMs, log: ta.log })); taCache = null; }
+  const ghost = raceCtx.ghost, gt = ta.ghostTimes[0];
+  currentScreen = () => TaResult(f);
+  Clear('ta-result'); SetArt('Art/race-result'); Veil(.4);
+  const box = Panel('TA result', 40, 40, 900, 820, NAVY);
+  Label(`${raceCtx.trackName}　·　タイムアタック`, 36, 26, 820, 32, 18, CYAN, box);
+  Label(r.time, 36, 70, 820, 140, 110, newBest ? GOLD : WHITE, box).dataset.taTime = String(ta.timeMs);
+  Label(newBest ? '自己ベスト更新！' : best ? `自己ベスト ${fmtMs(best.timeMs)}` : '', 36, 220, 820, 50, 32, newBest ? GOLD : MUTED, box);
+  if (ghost && gt >= 0) {
+    const d = (gt - ta.timeMs) / 1000;
+    Label(`${ghost.name}（${fmtMs(gt)}）に ${Math.abs(d).toFixed(1)}秒差で${d > 0 ? '勝ち' : d < 0 ? '負け' : '同着'}`, 36, 290, 820, 50, 28, d > 0 ? col(.5, .9, .6) : WHITE, box).dataset.vsGhost = d > 0 ? 'win' : 'lose';
+  }
+  Label(r.line ? '一言：' + r.line : '', 36, 360, 820, 40, 22, MUTED, box);
+  Label('記録はサーバーが同じエンジンで再計算して確定します（このプロトタイプでは端末に保存）。', 36, 410, 820, 60, 16, DIM, box);
+  Button('もう一度', 36, 640, 400, 100, () => TimeAttack(raceCtx.trackId), CYAN, box);
+  Ghost('リプレイを共有', 456, 640, 260, 100, () => ShareCard(currentScreen), box);
+  Ghost('ホーム', 736, 640, 140, 100, Home, box);
+}
+
 // ================================================================= その他 / settings (language, legal, account deletion, demo states)
 async function Settings() {
   currentScreen = Settings; await refresh();
@@ -1079,26 +1252,34 @@ async function Settings() {
   Ghost('衣装', 24, 56, 160, 72, Wardrobe, more); Ghost('コースの見た目', 200, 56, 240, 72, CourseThemes, more); Ghost('レース条件', 456, 56, 260, 72, Conditions, more);
   Ghost('お世話', 24, 140, 160, 72, Care, more);
   // REQ-UXS-040 (UXP-007 preview): two-step deletion with a 14-day cancel window; purchases are blocked meanwhile
-  const del = Panel('Delete', 820, 120, 740, 360, NAVY);
+  const del = Panel('Delete', 820, 120, 740, 250, NAVY);
   Label('アカウント削除', 24, 16, 400, 30, 18, CYAN, del);
   const d = player.deletion;
   if (d?.status === 'scheduled') {
-    Label(`削除予定：${jstDate(d.deleteAt)}\nそれまでは取り消せます。手続き中は購入できません。`, 24, 60, 690, 100, 22, YELLOW, del);
-    Button('アカウント削除の取り消し', 24, 260, 460, 80, async () => { const r = await L.cancelDeletion(); toast(r.ok ? '削除を取り消しました' : r.message); Settings(); }, CYAN, del);
+    Label(`削除予定：${jstDate(d.deleteAt)}\nそれまでは取り消せます。手続き中は購入できません。`, 24, 56, 690, 90, 20, YELLOW, del);
+    Button('アカウント削除の取り消し', 24, 160, 460, 72, async () => { const r = await L.cancelDeletion(); toast(r.ok ? '削除を取り消しました' : r.message); Settings(); }, CYAN, del);
   } else {
     Label('削除すると14日後に全てのデータが消えます。期間内は取り消せます。', 24, 60, 690, 60, 18, MUTED, del);
-    Ghost('アカウントを削除する', 24, 260, 460, 80, async () => {
+    Ghost('アカウントを削除する', 24, 150, 460, 80, async () => {
       const r = await L.requestDeletion(null);
       if (!r.ok) { toast(r.message); return; }
       ConfirmDeletion(r.value);
     }, del).classList.add('danger');
   }
+  // 引き継ぎ (REQ-API-005): the same buttons as the prompt; the prompt itself shows once (REQ-UXS-073)
+  const link = Panel('Link', 820, 386, 740, 100, NAVY);
+  Label('引き継ぎ（Apple・Google）', 24, 12, 400, 30, 18, CYAN, link);
+  const lp = linkedProvider();
+  Label(lp ? `${lp === 'apple' ? 'Apple' : 'Google'}で登録済み` : '未登録（機種変更の前に登録してください）', 24, 50, 420, 34, 18, lp ? col(.5, .9, .6) : WHITE, link);
+  if (!lp) { Button('Apple', 450, 18, 130, 64, () => Link('apple', Settings), GOLD, link); Button('Google', 590, 18, 130, 64, () => Link('google', Settings), CYAN, link); }
   // demo states for review (REQ-UXP-002): the same rules on a moved clock
   const demo = Panel('Demo', 820, 500, 740, 280, col(.03, .06, .1, .92));
   Label('デモ状態（レビュー用）', 24, 16, 600, 30, 18, CYAN, demo);
   Label(`いま：${player.unlocks.day}日目・${player.unlocks.races}戦`, 24, 52, 600, 30, 18, MUTED, demo);
-  [['初日', 'day1'], ['3日目', 'day3'], ['7日目', 'day7'], ['最初から', 'new']].forEach(([n, k], i) => Ghost(n, 24 + i * 176, 100, 164, 72, () => Demo(k), demo));
-  Label('サーバーと同じ規則のまま、日付だけ進めてログボとレースを消化します。', 24, 196, 690, 60, 15, DIM, demo);
+  [['初日', 'day1'], ['3日目', 'day3'], ['7日目', 'day7'], ['最初から', 'new']].forEach(([n, k], i) => Ghost(n, 24 + i * 176, 92, 164, 66, () => Demo(k), demo));
+  Ghost('初回購入の直後', 24, 170, 340, 60, () => { linkOp('purchase'); if (!MaybeLinkPrompt('PurchaseComplete', Settings)) toast('引き継ぎの案内は出ません（表示済み・登録済み・FTUE中）'); }, demo).classList.add('small');
+  Ghost('タイムアタック', 376, 170, 340, 60, () => TimeAttack(), demo).classList.add('small');
+  Label('サーバーと同じ規則のまま、日付だけ進めてログボとレースを消化します。', 24, 238, 690, 30, 15, DIM, demo);
   TabBar(4);
 }
 function ConfirmDeletion(v) {
@@ -1114,7 +1295,9 @@ function ConfirmDeletion(v) {
 async function Demo(kind) {
   L.reset();
   document.querySelectorAll('.toast').forEach((t) => t.remove());
-  for (const k of ['muchi.partner', 'muchi.notify.primer']) { try { localStorage.removeItem(k); } catch { /* */ } }
+  for (const k of ['muchi.partner', 'muchi.notify.primer', 'muchi.link.prompt', 'muchi.link.firstPurchase', 'muchi.link.provider', 'muchi.proto.taFriends']) { try { localStorage.removeItem(k); } catch { /* */ } }
+  try { for (const k of Object.keys(localStorage)) if (k.startsWith('muchi.proto.ta.')) localStorage.removeItem(k); } catch { /* */ }
+  taCache = null;
   if (kind === 'new') { await L.bootstrap(); await refresh(); return Title(); }
   const spec = { day1: [1, [1]], day3: [3, [2, 2, 2]], day7: [7, [3, 3, 3, 3, 3, 3, 3]] }[kind];
   await L.seedDemo(spec[0], spec[1]);
@@ -1309,7 +1492,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, Odds: () => Odds('standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Odds: () => Odds('standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

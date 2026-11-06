@@ -168,6 +168,7 @@ export class RaceView {
     this.ambient.intensity = night ? .9 : 2.3;
     for (const h of this.horses) this.scene.remove(h.anchor);
     this.horses = [];
+    this.setGhosts(0);
     const n = info.names.length;
     const ps = this.playerSlot = info.playerSlot ?? 0;
     for (let i = 0; i < n; i++) {
@@ -180,6 +181,23 @@ export class RaceView {
     // the chase camera starts where RaceWorld.Lobby left it and swoops in behind the player
     this.camera.position.copy(U(4, 2.8, 31)); this.camera.lookAt(U(0, 1.65, 25));
     this.clock = performance.now(); this.t0 = this.clock;
+  }
+
+  /** Time attack ghosts (GhostPlayer, their own simulation): the partner model, translucent, never interacting. */
+  setGhosts(n, playerPartner = 0) {
+    for (const g of this.ghosts ?? []) this.scene.remove(g.anchor);
+    this.ghosts = [];
+    const src = this.models.get('Models/Partners/' + FEATURED[Math.max(0, Math.min(4, playerPartner))]);
+    for (let i = 0; i < n; i++) {
+      const a = this.anchor(-1 - i, src);
+      a.model.traverse((o) => {
+        if (!o.isMesh) return;
+        const ms = (Array.isArray(o.material) ? o.material : [o.material]).map((m) => { const c = m.clone(); c.transparent = true; c.opacity = 0.38; c.depthWrite = false; return c; });
+        o.material = Array.isArray(o.material) ? ms : ms[0];
+        o.castShadow = false;
+      });
+      this.ghosts.push(a);
+    }
   }
 
   // RaceWorld.Anchor + PartnerGallop.Bind
@@ -222,6 +240,14 @@ export class RaceView {
       if (h.bones[8]) h.bones[8].quaternion.copy(h.rest[8]).multiply(q.setFromAxisAngle(X, 2.2 * Math.sin(cycle * 2) * DEG));
       if (h.bones[9]) h.bones[9].quaternion.copy(h.rest[9]).multiply(q.setFromAxisAngle(X, 1.4 * Math.sin(cycle) * DEG));
     }
+    (this.ghosts ?? []).forEach((g, i) => {
+      const p = f.ghostPoses?.[i];
+      g.anchor.visible = !!p;
+      if (!p) return;
+      g.anchor.position.copy(U(p[0], .06 * Math.sin(time * 13 + 7), p[1]));
+      g.anchor.rotation.y = -p[2] * DEG;
+      if (p[3]) g.model.position.y = g.modelY + .018 + .028 * Math.abs(Math.sin(cycle * 2 + 1));
+    });
     const me = this.horses[this.playerSlot ?? 0]?.anchor;
     if (me && f.cam && this.useRig) {
       // RaceCameraRig (engine/Muchi.Client/RaceCamera.cs) through CourseFrame.ToWorld: follow, low in the last 400 m, side at the finish

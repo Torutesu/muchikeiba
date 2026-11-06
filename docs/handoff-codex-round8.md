@@ -151,7 +151,7 @@
 |---|---|
 | 駆動 | `PlayerView.Experiments.PushPermissionTiming`（`race2_top3`＝2戦目の3着以内の直後／`day2_launch`）、`RaceResultModel.Place`、OS の許可→`RegisterPushDeviceAsync(token, platform)`、KPI `AnalyticsEvent.PushPermission(granted)`。引き継ぎの案内：`UnlocksView.Day>=3` または初回購入後、未連携のとき1回。表示済みの記録（端末）と判定は **model pending** |
 | 状態 | 通知：前置き1画面「シーズン開幕や大会の呼び出しを知らせます」→「許可する」でOSダイアログ／「あとで」。3着以内でなければ次の3着以内まで待つ。引き継ぎ：1画面「機種変更でも相棒を引き継げます」→ 設定の引き継ぎへ |
-| 受け入れ | チュートリアル中・負けた直後に出ない。各1回だけ。KPI `push_permission`、`account_link`（**client event 未追加**：`AnalyticsEvent` に `feature_unlock`・`offer_view`・`offer_click`・`race_quit`・`account_link` のファクトリーはまだ無い。こちらで追加する） |
+| 受け入れ | チュートリアル中・負けた直後に出ない。各1回だけ。KPI `push_permission`、`account_link`（✅ Round 9 で `AnalyticsEvent.FeatureUnlock`・`OfferView`・`OfferClick`・`RaceQuit`・`AccountLink`・`Share` を追加。引き継ぎの案内の判定と表示済みの記録は `AccountLinkPrompt`、末尾の R9-2） |
 
 ### REQ-UXU-016 共通の読み込み・エラー表示
 | 項目 | 内容 |
@@ -298,3 +298,35 @@
   3. 「明日 4:00 に更新」は `GameDay.NextResetLabel(now)`（次のゲーム日の最初の時刻。切り替えの日は 12-02 04:00、0:00〜3:59 は「今日 4:00」）。`MissionBoardModel.DailyLine` と `AllowanceModel` の受取済みの文言がこれを使う。
   4. `AllowanceModel.Stale`・`ClaimedToday` は `GameDay.Key` 経由のまま（4:00 で取り直し）。
   5. GameChecks `unity/Checks~/GameChecks/Round9DayChecks.cs`：03:59／04:00 JST、切り替えの日（12-01 00:30 と 12-02 00:30 が同じ `2026-12-01`）、次の更新時刻、残り日数、/v1/config からの読み込み（フィールドなし・取得失敗を含む）。
+
+---
+
+# Round 9 追記：リプレイ共有・引き継ぎの案内・フレンドのゴースト（REQ-UXS-070〜074）
+
+更新：2026-11-06　ブランチ：`feat/r9-share-link-ghost`（`claude/round8` から）　仕様：`docs/planning/06-ux-experience-spec.md` §7 の12・§7.3、要件 `docs/spec/requirements.md` §17。
+ロジック・ビューモデル・テストはこちらで済み（✅）。**TODO（Codex）** の行が画面・録画・ネイティブ連携の作業。
+
+## R9-1 リプレイ共有（REQ-UXS-070〜072、REQ-UXU-030、P2）
+| 項目 | 内容 |
+|---|---|
+| 駆動 | ✅ `ReplayShareModel.From(driver, courseName)`（結果画面の時点の `IRaceDriver` から。null＝共有できない：観戦・無効・未完了・再計算のハッシュ不一致）→ `Clip`（`ReplayClip`：最後の200m・最大10秒・30fps、`Frames()`／`FrameAt(ms)`、`CameraKeys`、`Events`、`FocusSkills`）と `Card`（`ShareCard`：`PlaceText`・`TimeText`・`HorseName`・`CourseName`・`ModeLabel`・`SkillLines`・`Watermark`＝「ムチ一閃」・`ShareText`）。`Pose(frame)` → `PosedClipFrame`（全馬の `WorldPose`、`WhipActive`／`SkillActive`、`WorldCameraShot`。ライブと同じ `CourseFrame` 変換） |
+| 流れ | ✅ `RecordAndShareAsync(recorder, sheet, applyPose, analytics)`：動画対応なら `Begin` → 各フレームで `applyPose`（シーンを置く）→ `CaptureFrameAsync` → `FinishAsync`（mp4のパス）、非対応なら勝負所（ゴールの瞬間）の `CaptureStillAsync`（png）→ `IShareSheet.ShareAsync(path, Card.ShareText)`。共有した時だけ KPI `share`。失敗・キャンセルで `Cancel()` |
+| **TODO（Codex）** | ① `IClipRecorder` の実装（`unity/Assets/Muchi/Game/ReplayShare.cs` のインターフェース）：専用カメラ＋RenderTexture（縦1080×1920 推奨・横も可）、`AsyncGPUReadback` で取り込み、H.264 の mp4 に（iOS：AVAssetWriter、Android：MediaCodec のネイティブプラグイン。エディタは png 連番で可）、`Application.temporaryCachePath` に保存。`SupportsVideo=false` の端末は静止画だけ ② 透かし・終わりのカード：`Card.Watermark` を左上に常時、最後の1.5秒に `PlaceText`／`TimeText`／`HorseName`／`CourseName`／`SkillLines` を重ねる（文言は画面で作らない）③ `applyPose`：`RaceWorld` にリプレイ用の配置メソッドを足し、`PosedClipFrame.Horses[slot]` と `Camera` をそのまま当てる（走りのアニメは `WhipActive`／`SkillActive`）。録画中はライブのHUD・実況を出さない ④ `IShareSheet`：ネイティブの共有シート。true＝共有した ⑤ 結果画面の「リプレイを共有」ボタン（主ボタン「もう一度」の邪魔をしない。`ReplayShareModel.CanShare(driver)` の時だけ）、録画中の進捗（`Frame.Index / Clip.FrameCount`）と中止 |
+| 受け入れ | 10秒以内・ゴールが入る・相棒が全フレームで画面内（`RaceCameraRig.InFrame` で検査済み）。プレイヤー名・ID・他の人の名前が映らない。下位機で録画が30秒以内に終わる（終わらなければ解像度を下げる） |
+
+## R9-2 引き継ぎ（アカウント連携）の案内（REQ-UXS-073、REQ-UXU-015 の後半、P0）
+| 項目 | 内容 |
+|---|---|
+| 駆動 | ✅ `AccountLinkPrompt(backend.Store)`。判定 `ShouldShow(context, backend, auth.IsAnonymous, purchased)`（`LinkPromptContext.Home`／`ResultClosed`／`PurchaseComplete` の時だけ真になりうる）。表示 `Show(trigger, ios)` → `AccountLinkPromptView`（`Title`「機種変更でも相棒を引き継げます」・`Body`・`Providers`（iOSはApple先）・`AppleLabel`／`GoogleLabel`・`LaterLabel`「あとで」・`Footnote`）。「あとで」→ `Dismiss()`。連携 → `LinkAsync(auth, credential, analytics)`（`FirebaseAuthTokenProvider.LinkAsync` が `Linked` の時だけ KPI `account_link` を1回）。購入が付与されたら `NotePurchase()` |
+| 規則 | 3日目（`UnlocksView.Day>=3`）か初回購入の直後の早い方で1回だけ。FTUE中（`FtueDone`＝命名済み・入厩祝いスカウト済み・ランク戦1戦以上）・レース・マッチング・結果画面・オフライン・削除予約中は出さない。画面に出した時点で表示済み。スヌーズなし（設定の「引き継ぎ」は常に置く） |
+| **TODO（Codex）** | ① 1画面（相棒の絵＋見出し＋本文＋2つのボタン＋「あとで」）② 呼ぶ場所：ホームを開いた時（ログボ・オファー・通知の前置きの後。1回に出す案内は1つ）、結果画面を閉じた後、購入完了の後 ③ Sign in with Apple／Google から `FederatedCredential` を作って `LinkAsync`。`CredentialInUse` は既存の切り替え確認（`docs/handoff-unity-3d.md`）④ 設定の「引き継ぎ」で連携した時も `OnLinkResult` を呼ぶ（以後は案内を出さない） |
+
+## R9-3 TA のフレンドのゴースト（REQ-UXS-074、P1）
+| 項目 | 内容 |
+|---|---|
+| 駆動 | ✅ `TimeAttackModel.LoadAsync(trackId)` がフレンド・上位・自分の3つを取り `Picker`（`GhostPicker`）を作る。`Picker.Tab`（既定 Friends、無ければ Top、次に Me）、`FellBack`／`Note`（「フレンドのゴーストがまだありません。上位の記録と走ります」）、`Current`（タブの一覧、速い順）、`Selected`（自己ベストより速い中で一番近い人）、`TimeLine(entry)`（「1:36.5（あと0.5秒）」）、`SelectTab(kind)`／`Select(entry)`、`GhostPicker.TabLabel`。`StartAsync(trackId, ghostCount)` は選んだゴーストを先頭に並走。サーバーは変更なし（`kind=friends` は既存） |
+| **TODO（Codex）** | TA画面にタブ3つ（フレンド／上位／自分、件数つき）、一覧、選択、`Note` の1行。ゴーストは半透明の馬（相手には影響しない）。フレンドが0人ならフレンドのタブに「フレンドを追加すると…」とフレンド画面への導線 |
+
+## R9-4 プロトタイプ・確認
+- `tools/figma-prototype/site/unity.html`：結果画面と TA 結果の「リプレイを共有」→ 共有カード（3Dでクリップを再生、カードは実データ）、3日目のホームと「その他 → デモ → 初回購入の直後」で引き継ぎの案内、ホームのキー「タイムアタック」でゴースト選択（フレンドのタブ・フォールバック）とゴースト並走。`node tools/figma-prototype/test/round9.test.mjs`、`node tools/figma-prototype/test/e2e.cjs`（u-*-share-card・ta-picker-*・link-prompt-* の画面写真）。
+- `dotnet run --project "unity/Checks~/GameChecks"` の「round 9」節、`engine` の `ReplayClipTests`。

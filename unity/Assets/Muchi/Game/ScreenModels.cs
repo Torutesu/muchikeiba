@@ -484,13 +484,93 @@ namespace Muchi.Game
     // ------------------------------------------------------------------------------------- time attack
 
     /// <summary>
+    /// Time attack ghost picker (06 §7.3 フレンドのゴースト, REQ-UXS-074): tabs フレンド / 上位 / 自分, opening on フレンド.
+    /// When no friend has a ghost on this track (no friends yet, or none ran it this season) it opens on 上位 instead
+    /// (<see cref="FellBack"/>, <see cref="Note"/>), then 自分. Your own run is only in 自分 (the server's friends list
+    /// never contains you; the top list may). The default pick is the nearest ghost faster than your season best —
+    /// the next one to beat — or the fastest one when you have no time or are already faster than all of them.
+    /// </summary>
+    public sealed class GhostPicker
+    {
+        public const string NoteFallback = "フレンドのゴーストがまだありません。上位の記録と走ります";
+        public const string NoteEmpty = "このコースのゴーストはまだありません。ひとりで走ります";
+
+        public static readonly GhostKind[] TabOrder = { GhostKind.Friends, GhostKind.Top, GhostKind.Me };
+
+        public List<GhostEntry> Friends { get; } = new List<GhostEntry>();
+        public List<GhostEntry> Top { get; } = new List<GhostEntry>();
+        public List<GhostEntry> Mine { get; } = new List<GhostEntry>();
+        public GhostKind Tab { get; private set; } = GhostKind.Friends;
+        /// <summary>The picker opened on another tab because no friend ghost exists.</summary>
+        public bool FellBack { get; private set; }
+        public string Note { get; private set; }
+        public GhostEntry Selected { get; private set; }
+        /// <summary>Season best in ms used to choose the default (null = no time yet).</summary>
+        public long? MyBestMs { get; private set; }
+
+        public static string TabLabel(GhostKind k) => k == GhostKind.Friends ? "フレンド" : k == GhostKind.Top ? "上位" : "自分";
+
+        public List<GhostEntry> List(GhostKind k) => k == GhostKind.Friends ? Friends : k == GhostKind.Top ? Top : Mine;
+        public List<GhostEntry> Current => List(Tab);
+
+        public static GhostPicker Build(GhostList friends, GhostList top, GhostList me, string myPlayerId, long? myBestMs = null)
+        {
+            var p = new GhostPicker { MyBestMs = myBestMs };
+            p.Friends.AddRange(Sorted(friends).Where(g => g.PlayerId != myPlayerId));
+            p.Top.AddRange(Sorted(top).Where(g => g.PlayerId != myPlayerId));
+            p.Mine.AddRange(Sorted(me).Where(g => myPlayerId == null || g.PlayerId == myPlayerId));
+            bool any = TabOrder.Any(k => p.List(k).Count > 0);
+            p.Tab = any ? TabOrder.First(k => p.List(k).Count > 0) : GhostKind.Friends;
+            p.FellBack = p.Friends.Count == 0 && any;
+            p.Note = !any ? NoteEmpty : p.FellBack ? NoteFallback : null;
+            p.Selected = p.DefaultPick(p.Tab);
+            return p;
+        }
+
+        private static IEnumerable<GhostEntry> Sorted(GhostList l) => (l?.Ghosts ?? new List<GhostEntry>()).OrderBy(g => g.TimeMs).ThenBy(g => g.PlayerId, StringComparer.Ordinal);
+
+        /// <summary>The nearest ghost faster than my best, else the fastest (自分: my own best).</summary>
+        public GhostEntry DefaultPick(GhostKind k)
+        {
+            var l = List(k);
+            if (l.Count == 0) return null;
+            if (k == GhostKind.Me || MyBestMs == null) return l[0];
+            var faster = l.Where(g => g.TimeMs < MyBestMs.Value).ToList();
+            return faster.Count > 0 ? faster[faster.Count - 1] : l[0];
+        }
+
+        /// <summary>Switch tab (the selection moves to that tab's default).</summary>
+        public void SelectTab(GhostKind k) { Tab = k; Selected = DefaultPick(k); }
+
+        public bool Select(GhostEntry e)
+        {
+            foreach (var k in TabOrder)
+                if (List(k).Contains(e)) { Tab = k; Selected = e; return true; }
+            return false;
+        }
+
+        /// <summary>「1:38.2（あと0.6秒）」: the ghost's time and the gap to my best.</summary>
+        public string TimeLine(GhostEntry g)
+        {
+            if (g == null) return "";
+            string t = HudModel.FormatTime(g.TimeMs);
+            if (MyBestMs == null) return t;
+            long d = MyBestMs.Value - g.TimeMs;
+            return d > 0 ? t + "（あと" + (d / 100 / 10.0).ToString("0.0", CultureInfo.InvariantCulture) + "秒）" : t + "（自己ベストより遅い）";
+        }
+    }
+
+    /// <summary>
     /// Time attack (REQ-TA-*): start a server session, race it locally with ghosts (TimeAttackRun), submit the
     /// inputs; the server re-simulates and records the time. Offline there is no session (practice instead).
+    /// Ghosts default to friends (<see cref="GhostPicker"/>), falling back to the top list.
     /// </summary>
     public sealed class TimeAttackModel : ScreenModel
     {
         public TimeAttackMe Me;
+        /// <summary>The list of the picker's open tab (kept for screens that only show one list).</summary>
         public GhostList Ghosts;
+        public GhostPicker Picker;
         public TimeAttackRun Run;
         public TimeAttackResult Result;
 
@@ -503,7 +583,11 @@ namespace Muchi.Game
             try
             {
                 Me = await B.Api.GetTimeAttackMeAsync(trackId, ct);
-                Ghosts = await B.Api.GetGhostsAsync(trackId, GhostKind.Top, null, ct);
+                var friends = await B.Api.GetGhostsAsync(trackId, GhostKind.Friends, null, ct);
+                var top = await B.Api.GetGhostsAsync(trackId, GhostKind.Top, null, ct);
+                var mine = await B.Api.GetGhostsAsync(trackId, GhostKind.Me, null, ct);
+                Picker = GhostPicker.Build(friends, top, mine, B.Player?.Id, Me?.SeasonBest?.TimeMs);
+                Ghosts = Picker.Tab == GhostKind.Friends ? friends : Picker.Tab == GhostKind.Top ? top : mine;
                 Online = true;
             }
             catch (ApiException e) { Fail(e); }
@@ -520,7 +604,11 @@ namespace Muchi.Game
                 var session = await B.Api.StartTimeAttackAsync(trackId, partner.Id, ct);
                 Run = new TimeAttackRun(session);
                 Result = null;
-                foreach (var g in (Ghosts?.Ghosts ?? new List<GhostEntry>()).Take(Math.Max(0, ghostCount)))
+                // the picked ghost first, then the rest of its tab
+                var order = new List<GhostEntry>();
+                if (Picker?.Selected != null) order.Add(Picker.Selected);
+                order.AddRange((Picker?.Current ?? Ghosts?.Ghosts ?? new List<GhostEntry>()).Where(g => !order.Contains(g)));
+                foreach (var g in order.Take(Math.Max(0, ghostCount)))
                 {
                     try { Run.AddGhost(await B.Api.GetGhostAsync(g, ct)); }
                     catch (ApiException) { /* a missing ghost never blocks the run */ }

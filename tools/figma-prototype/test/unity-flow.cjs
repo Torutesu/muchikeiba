@@ -5,6 +5,9 @@
 //  2. Every new screen and state: home on day 1 / 3 / 7, shop tabs, the purchase confirmation in its four states
 //     (unregistered, registered, under 18, over the monthly limit), the starter offer, the deletion-pending block,
 //     the season pass (free / paid / plus lines), settings and the legacy screens.
+//  3. Round 9 (06 §7 item 12 / §7.3): the replay share card from a result (re-simulated on the device, same hash), the
+//     account-link prompt (day 3 once; right after the first purchase; linking sends account_link), and the time attack
+//     ghost picker (opens on フレンド, falls back to 上位 without friend ghosts) with a run beside the friend's ghost.
 // Screenshots: <out>/u-<nn>-<name>.png. Returns { shots, ftue }.
 const path = require('path');
 const fs = require('fs');
@@ -40,7 +43,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   const ready = () => page.waitForFunction(() => globalThis.__muchi?.ready === true, null, { timeout: 90000 });
 
   // a full race as a player rides it: START on the gate, two spaced whips in the final straight; HUD shots when asked
-  async function rideRace(withShots) {
+  async function rideRace(withShots, prefix = 'race-hud') {
     let started = false, w2 = 0, lastW = 0, wall = Date.now(), last = null;
     const raceShots = new Set();
     for (let i = 0; i < 4000; i++) {
@@ -49,12 +52,12 @@ module.exports = async function unityFlow(browser, base, out, errors) {
       last = s.f;
       if (s.f.done || (await screen()) !== 'race') break;
       if (!started && s.f.gateOpen && !s.f.departed) { await tapWhip(); started = true; }
-      if (withShots && !raceShots.has('gate')) { raceShots.add('gate'); await shot('race-hud-gate', 0, true); }
-      if (withShots && !raceShots.has('mid') && s.f.remainingM < s.f.distanceM * .55) { raceShots.add('mid'); await shot('race-hud-mid', 0, true); }
-      if (withShots && !raceShots.has('cutin') && await page.locator('.screen.in .cutin').count() > 0) { raceShots.add('cutin'); await shot('race-hud-skill-cutin', 0, true); }
+      if (withShots && !raceShots.has('gate')) { raceShots.add('gate'); await shot(prefix + '-gate', 0, true); }
+      if (withShots && !raceShots.has('mid') && s.f.remainingM < s.f.distanceM * .55) { raceShots.add('mid'); await shot(prefix + '-mid', 0, true); }
+      if (withShots && !raceShots.has('cutin') && await page.locator('.screen.in .cutin').count() > 0) { raceShots.add('cutin'); await shot(prefix + '-skill-cutin', 0, true); }
       if (s.f.departed && w2 < 2 && s.f.remainingM <= (w2 === 0 ? 380 : 220) && s.f.whips > 0 && Date.now() - lastW > 1500) {
         await tapWhip(); w2++; lastW = Date.now();
-        if (withShots && w2 === 1) await shot('race-hud-straight-whip', 120, true);
+        if (withShots && w2 === 1) await shot(prefix + '-straight-whip', 120, true);
       }
       await page.waitForTimeout(40);
     }
@@ -135,7 +138,17 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await btn('ショップ　🔒').click(); await shot('home-day1-locked-toast', 250);
 
   // ------------------------------------------------------------------ 2. other screens and states
-  const demo = async (k) => { await page.evaluate((x) => globalThis.__muchi.demo(x), k); await waitScreen('home', 20000); await page.waitForTimeout(500); };
+  // the account-link prompt (REQ-UXS-073) comes up once on the first home of day 3+ after the FTUE: shot once, then 「あとで」
+  let linkShots = 0;
+  const demo = async (k) => {
+    await page.evaluate((x) => globalThis.__muchi.demo(x), k); await waitScreen(['home', 'link-prompt'], 20000); await page.waitForTimeout(500);
+    if (await screen() === 'link-prompt') {
+      assert.notEqual(k, 'day1', 'no account-link prompt on day 1');
+      assert.equal(await page.locator('.screen.in [data-trigger]').getAttribute('data-trigger'), 'Day3');
+      if (!linkShots++) await shot('link-prompt-day3', 300);
+      await click('あとで'); await waitScreen('home', 10000); await page.waitForTimeout(300);
+    }
+  };
   await demo('day3');
   await shot('home-day3', 600);
   assert.equal(await page.locator('.screen.in .btn.tab.locked').count(), 0, 'shop open on day 3');
@@ -208,6 +221,49 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await click('レースへ'); await waitScreen('lobby'); await click('ランク戦に出る'); await waitScreen('race', 20000);
   await rideRace(true);
   await waitScreen(['result'], 30000); await shot('race-result-day7', 900);
+
+  // ------------------------------------------------------------------ 3. round 9
+  // replay share card: the last 200 m re-simulated by ReplayClip (same hash as the live race), looping on the 3D view
+  await click('リプレイを共有'); await waitScreen('share'); await page.waitForTimeout(1600);
+  assert.equal(await page.locator('.screen.in [data-hash]').getAttribute('data-hash'), 'match', 'the re-simulated clip reproduces the race');
+  assert.ok((await page.locator('.screen.in [data-share="horse"]').textContent()).length > 0);
+  assert.ok(!(await page.locator('.screen.in [data-card]').innerText()).includes('local'), 'no player id on the card');
+  await shot('share-card', 200);
+  await click('戻る'); await waitScreen('result');
+  // time attack ghost picker: friends first, the top list without friend ghosts, a run beside the friend's ghost
+  await page.evaluate(() => globalThis.__muchi.show('TimeAttack')); await waitScreen('time-attack', 30000); await page.waitForTimeout(400);
+  const picker = page.locator('.screen.in [data-name="Ghost picker"]');
+  assert.equal(await picker.getAttribute('data-tab'), 'friends', 'the picker opens on フレンド');
+  await shot('ta-picker-friends', 300);
+  await page.locator('.screen.in .ghosttab[data-kind="top"]').click(); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in [data-name="Ghost picker"]').getAttribute('data-tab'), 'top');
+  await shot('ta-picker-top', 300);
+  await page.locator('.screen.in .ta-friends-toggle').click(); await page.waitForTimeout(500);
+  assert.equal(await page.locator('.screen.in [data-name="Ghost picker"]').getAttribute('data-fellback'), 'true', 'no friend ghosts → falls back to 上位');
+  assert.equal(await page.locator('.screen.in [data-note]').getAttribute('data-note'), 'fallback');
+  await shot('ta-picker-no-friends', 300);
+  await page.locator('.screen.in .ta-friends-toggle').click(); await page.waitForTimeout(500);
+  assert.equal(await page.locator('.screen.in [data-name="Ghost picker"]').getAttribute('data-tab'), 'friends');
+  await page.locator('.screen.in .ta-start').click(); await waitScreen('race', 20000);
+  await rideRace(true, 'ta-hud');
+  await waitScreen('ta-result', 30000); await shot('ta-result', 700);
+  assert.equal(await page.locator('.screen.in [data-vs-ghost]').count(), 1, 'the result compares with the friend ghost');
+  await click('リプレイを共有'); await waitScreen('share'); await page.waitForTimeout(1600);
+  assert.equal(await page.locator('.screen.in [data-hash]').getAttribute('data-hash'), 'match');
+  assert.equal(await page.locator('.screen.in [data-share="place"]').textContent(), '完走');
+  await shot('share-card-time-attack', 200);
+  await click('戻る'); await waitScreen('ta-result');
+  // account-link prompt right after the first purchase (day 1 after the FTUE), then linking (account_link KPI)
+  await demo('day1');
+  await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings');
+  await click('初回購入の直後'); await waitScreen('link-prompt');
+  assert.equal(await page.locator('.screen.in [data-trigger]').getAttribute('data-trigger'), 'FirstPurchase');
+  await shot('link-prompt-first-purchase', 300);
+  await click('Appleで引き継ぎ登録'); await waitScreen('settings');
+  assert.equal(await page.evaluate(() => globalThis.__muchi.lastKpi), 'account_link');
+  await shot('settings-linked', 400);
+  await click('初回購入の直後'); await page.waitForTimeout(300);
+  assert.equal(await screen(), 'settings', 'linked: the prompt never comes back');
   // the tutorial screens: the whip-only HUD, the whip cue, and the close-2nd retry when the player never whips
   await page.evaluate(() => globalThis.__muchi.demo('new')); await waitScreen('title', 20000);
   await click('同意してはじめる'); await waitScreen('race-tutorial');
@@ -224,7 +280,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await shot('tutorial-retry', 600);
 
   // a reload on a named player goes straight home
-  await page.evaluate(() => globalThis.__muchi.demo('day3')); await waitScreen('home', 20000);
+  await demo('day3');
   await page.goto(url); await ready(); await waitScreen('home'); await shot('home-reload', 500);
   await ctx.close();
   // the §2.3 targets (checked last so every screenshot is written even when a target is missed)

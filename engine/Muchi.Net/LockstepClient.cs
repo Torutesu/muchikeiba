@@ -34,6 +34,13 @@ namespace Muchi.Net
         private readonly Dictionary<int, byte[]> _inputs = new Dictionary<int, byte[]>();
         private byte[] _scratch;
         private bool _resultSent;
+        private readonly List<InputRecord> _confirmedLog = new List<InputRecord>();
+
+        /// <summary>
+        /// Every non-zero confirmed input this client simulated, in tick then slot order (REQ-RACE-073):
+        /// <c>RaceReplay.Run(Config, ConfirmedInputs)</c> reproduces the race (replay share, REQ-UXS-070).
+        /// </summary>
+        public IReadOnlyList<InputRecord> ConfirmedInputs => _confirmedLog;
 
         public LockstepClient(ITransport transport, string raceId, string token)
         {
@@ -188,6 +195,7 @@ namespace Muchi.Net
                 byte[] cmds;
                 if (_inputs.TryGetValue(tick, out var arr)) { cmds = arr; _inputs.Remove(tick); }
                 else { Array.Clear(_scratch, 0, _scratch.Length); cmds = _scratch; }
+                for (int slot = 0; slot < cmds.Length; slot++) if (cmds[slot] != 0) _confirmedLog.Add(new InputRecord(tick, slot, cmds[slot]));
                 Sim.Step(cmds);
                 Record();
                 if (Sim.ChecksumDueForLastTick && !IsSpectator)

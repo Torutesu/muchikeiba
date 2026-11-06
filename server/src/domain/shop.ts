@@ -15,6 +15,7 @@ import { addJstDays, dayRule, gameDayKey, gameDaysUntil, jstMonthKey } from './t
 import { clawbackFree, grantFree } from './wallet.js';
 import { levelOf, passPurchasesFor, seasonEndMs } from './pass.js';
 import { experimentsView } from './onboarding.js';
+import { windowActive } from './comeback.js';
 
 export interface OfferRecord { triggeredAt?: number; reason?: string; viewedAt?: number }
 /** REQ-UXS-018: one 厩舎手当 purchase. Day 1 = `startDate` (game day, gameDayKey); the last day is startDate + days − 1. */
@@ -267,7 +268,7 @@ export function starterTriggers(m: Master, s: PlayerState): { bottomHalf: boolea
 }
 
 export interface OfferView {
-  id: string; productId: string; touchpoint: 'T2' | 'T3' | 'T4' | 'shop';
+  id: string; productId: string; touchpoint: 'T2' | 'T3' | 'T4' | 'shop' | 'comeback';
   placement: 'popup' | 'recommended'; reason: string | null; triggeredAt: number | null; viewedAt: number | null;
   /** Show the one-time sheet now (triggered and not marked viewed). Afterwards the offer only sits in the shop. */
   showPopup: boolean;
@@ -296,16 +297,25 @@ export function shopOffers(m: Master, s: PlayerState, now: number) {
     const r = sh.offers[p.id];
     if (r?.triggeredAt !== undefined) add(p.id, p, 'T2', true, r);
   }
-  // T3 season pass: once per season after the shop/pass unlock
   const seasonId = jstMonthKey(now);
-  if (passPurchasesFor(s, seasonId).length === 0 && s.rating.rankedRaces >= c.passAfterRankedRaces) {
+  // REQ-CB-011: during a comeback window, recommend this season's pass once (it pairs with the pass-XP catch-up).
+  // The product, its price and its sale period are the normal ones: endsAt is the real season end, never the window.
+  const cbw = s.comeback?.window;
+  const passBought = passPurchasesFor(s, seasonId).length > 0;
+  const comebackOffer = m.progression.comeback?.offer?.enabled === true && windowActive(m, cbw, now) && !passBought;
+  if (comebackOffer) {
+    const p = m.products.find((x) => x.kind === 'season_pass' && x.storeType !== 'auto_renewing' && !(x.pass?.levels));
+    if (p) add(`comeback_${cbw!.id}`, p, 'comeback', true, trigger(sh, `comeback_${cbw!.id}`, `comeback_${cbw!.tier}`, now), seasonEndMs(seasonId));
+  }
+  // T3 season pass: once per season after the shop/pass unlock (no second popup while the comeback offer is shown)
+  if (!passBought && s.rating.rankedRaces >= c.passAfterRankedRaces) {
     const id = passOfferId(seasonId);
     const reason = levelOf(m, s.seasonPass.seasonId === seasonId ? s.seasonPass.xp : 0) >= 1 ? 'pass_level_up' : s.seasonHistory.length > 0 ? 'season_start' : 'pass_unlock';
     const r = trigger(sh, id, reason, now);
     const end = seasonEndMs(seasonId);
     for (const p of m.products.filter((x) => x.kind === 'season_pass' && x.storeType !== 'auto_renewing')) {
       const plus = (p.pass?.levels ?? 0) > 0;
-      add(plus ? `${id}_plus` : id, p, 'T3', !plus, r, end);
+      add(plus ? `${id}_plus` : id, p, 'T3', !plus && !comebackOffer, r, end);
     }
   }
   // T4 promotion pack: once per class reached by promotion

@@ -71,6 +71,23 @@ describe('economy targets (90 days, 3 seeds)', () => {
     }
   });
 
+  it('E11 a returner (14 days off) gets back less than a daily free player earned in those days (REQ-CB-010)', async () => {
+    const all = await run();
+    const r = all.lapsed!;
+    const daily = all.f2p!;
+    const missed = 14;
+    expect(r.comebackWindows).toBe(1);
+    expect(r.comebackValue).toBeGreaterThan(0);
+    expect(r.comebackValue).toBeLessThanOrEqual(daily.freeCoinsPerActiveDay * missed);
+    const dailyXpPerDay = (daily.seasonMissionXp + daily.activeDays * 6 * m.progression.passXpPerRace) / daily.activeDays;
+    expect(r.comebackXp).toBeGreaterThan(0);
+    expect(r.comebackXp).toBeLessThanOrEqual(dailyXpPerDay * missed);
+    // the returner still ends behind the daily player over the 90 days
+    expect(r.pullsPerMonth).toBeLessThanOrEqual(daily.pullsPerMonth);
+    // players who never lapse never get a window: their numbers (E1–E3, E5–E10) are unchanged
+    for (const id of ['f2p', 'light', 'medium', 'allowance']) expect(all[id]!.comebackWindows).toBe(0);
+  }, 180_000);
+
   it('E9 friend races cannot replace ranked play as an income (daily cap ≤ 30% of a free player day)', async () => {
     const r = (await run()).f2p!;
     const maxFriendPerDay = m.progression.friendRewardDailyCap * Math.max(...m.progression.raceFreeCoinsByPlace.friend!);

@@ -68,6 +68,8 @@ static class Program
         await Round9Checks.Run(Check, Ruleset());
         Console.WriteLine("== asset delivery: boot/FTUE download screen (sizes, Wi-Fi warning, never blocks the tutorial, offline)");
         await AssetDeliveryChecks.Run(Check);
+        Console.WriteLine("== returning players: comeback welcome, login track, missions, catch-up, what's new (REQ-CB-001..012)");
+        await ComebackChecks.Run(Check, Ruleset());
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

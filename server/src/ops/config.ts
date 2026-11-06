@@ -9,6 +9,7 @@ import { roomsProblems } from '../domain/presets.js';
 import { studConfigProblems } from '../domain/stud.js';
 import { stableConfigProblems, stableConfigSchema, type StableConfig } from '../domain/stable.js';
 import { uxProblems } from '../domain/onboarding.js';
+import type { ChangelogEntry } from '../domain/comeback.js';
 import { z } from 'zod';
 import { AppError } from '../domain/errors.js';
 import { buildBanner, buildPityGroups, gameDaySchedules, rescheduleGacha, splitMasterTrack, type Master, type Progression, type RawBanner } from '../domain/master.js';
@@ -70,6 +71,8 @@ export const configBundleSchema = z.object({
   stable: stableConfigSchema.optional(),
   /** REQ-DLV-005: replaces the asset delivery catalog. Content changes must bump catalogVersion (clients refetch on it). */
   assets: assetCatalogSchema.optional(),
+  /** REQ-CB-008: replaces the what's-new entries (master/changelog.json). */
+  changelog: z.array(z.record(z.string(), z.unknown())).max(200).optional(),
 }).strict();
 export type ConfigBundle = z.infer<typeof configBundleSchema>;
 
@@ -152,7 +155,7 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
 
   // REQ-UXS-*: consent, partner, beginner match, beginner login bonus, unlocks, beginner/season missions (unique ids),
   // experiments (A/B keys only, never prices), nudges and account deletion — checked on every version (tracks may change too)
-  problems.push(...uxProblems({ ...base, progression, tracks }, new Set(collectItemIds(base))));
+  problems.push(...uxProblems({ ...base, progression, tracks, ...(b.changelog ? { changelog: b.changelog as unknown as ChangelogEntry[] } : {}) }, new Set(collectItemIds(base))));
   const events = (b.events as EventDef[] | undefined) ?? base.events;
   if (b.events) {
     const tpl = base.events[0];
@@ -168,7 +171,7 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
   if (b.stable) problems.push(...stableConfigProblems(b.stable as StableConfig, base));
   const assetCatalog = (b.assets as AssetCatalog | undefined) ?? base.assetCatalog;
   if (b.assets) problems.push(...assetCatalogVersionProblems(b.assets as AssetCatalog, base.assetCatalog ?? EMPTY_ASSET_CATALOG));
-  const master: Master = { ...base, tracks, litTracks, gacha: { ...base.gacha, pityGroups, banners, daySchedules: { banners: b.gacha?.banners ? gameDaySchedules(b.gacha.banners as RawBanner[], {}).banners : baseGacha.daySchedules?.banners ?? {}, pityEndDays: b.gacha?.pityGroups ? gameDaySchedules([], b.gacha.pityGroups).pityEndDays : baseGacha.daySchedules?.pityEndDays ?? {} } }, progression, ng: b.ng ?? base.ng, events, bannedSilks, ...(stable ? { stable } : {}), ...(assetCatalog ? { assetCatalog } : {}) };
+  const master: Master = { ...base, tracks, litTracks, gacha: { ...base.gacha, pityGroups, banners, daySchedules: { banners: b.gacha?.banners ? gameDaySchedules(b.gacha.banners as RawBanner[], {}).banners : baseGacha.daySchedules?.banners ?? {}, pityEndDays: b.gacha?.pityGroups ? gameDaySchedules([], b.gacha.pityGroups).pityEndDays : baseGacha.daySchedules?.pityEndDays ?? {} } }, progression, ng: b.ng ?? base.ng, events, bannedSilks, ...(stable ? { stable } : {}), ...(assetCatalog ? { assetCatalog } : {}), ...(b.changelog ? { changelog: b.changelog as unknown as ChangelogEntry[] } : {}) };
   problems.push(...eventProblems(master, events, ruleset));
   // QA r6 #1: tickets must never reach a paid-only banner, including after a remote-config banner change
   if (master.items) problems.push(...itemsProblems(master));

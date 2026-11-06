@@ -10,6 +10,7 @@ import type { Master } from '../domain/master.js';
 import { AppError } from '../domain/errors.js';
 import { jstMonthKey } from '../domain/time.js';
 import { countOnboarding, ensureOnboarding } from '../domain/onboarding.js';
+import { rewardValue } from '../domain/comeback.js';
 
 export interface Persona {
   id: string;
@@ -26,6 +27,8 @@ export interface Persona {
   monthlyPurchases: string[];
   /** Average finishing place is uniform over 1..12 ("average rider"); a skilled rider shifts it. */
   placeBias: number;
+  /** REQ-CB-010: a lapsed player — no play from `fromDay` (0-based) for `days` days, then daily again. */
+  lapse?: { fromDay: number; days: number };
 }
 
 /**
@@ -42,6 +45,8 @@ export const PERSONAS: Persona[] = [
   { id: 'light', label: '微課金（パス¥1,000/月）', racesPerDay: 6, activePermille: 1000, monthlyPurchases: ['season_pass'], placeBias: 0 },
   { id: 'medium', label: '中課金（パス＋¥5,000/月）', racesPerDay: 6, activePermille: 1000, monthlyPurchases: ['season_pass', 'coin_5000'], placeBias: 0 },
   { id: 'allowance', label: '微課金（厩舎手当¥480/30日）', racesPerDay: 6, activePermille: 1000, monthlyPurchases: ['stable_allowance_30d'], placeBias: 0 },
+  // REQ-CB-010: plays daily for 3 weeks, stops for 14 days (mid tier), comes back and plays daily again
+  { id: 'lapsed', label: '復帰（無課金、14日休んで復帰）', racesPerDay: 6, activePermille: 1000, monthlyPurchases: [], placeBias: 0, lapse: { fromDay: 21, days: 14 } },
 ];
 
 export interface EconomyResult {
@@ -69,6 +74,10 @@ export interface EconomyResult {
   beginnerSteps: number;
   /** REQ-UXS-016: pass XP from season missions. */
   seasonMissionXp: number;
+  /** REQ-CB-*: comeback windows started, coin value of the comeback login track + missions, pass XP from the catch-up. */
+  comebackWindows: number;
+  comebackValue: number;
+  comebackXp: number;
   /** Derived. */
   freeCoinsPerActiveDay: number;
   pullsPerMonth: number;
@@ -101,7 +110,7 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
   const k = () => `c:sim:${key++}`;
   const r: EconomyResult = {
     persona: persona.id, days, activeDays: 0, freeCoinsEarned: 0, paidCoinsBought: 0, yenSpent: 0, pulls: 0, ssr: 0, sr: 0,
-    pityExchanges: 0, firstPityDay: null, breedingMaterial: 0, gachaTickets: 0, ticketPulls: 0, firstWinCoins: 0, allowanceCoins: 0, beginnerCoins: 0, beginnerSteps: 0, seasonMissionXp: 0, freeCoinsPerActiveDay: 0, pullsPerMonth: 0, ssrPerMonth: 0,
+    pityExchanges: 0, firstPityDay: null, breedingMaterial: 0, gachaTickets: 0, ticketPulls: 0, firstWinCoins: 0, allowanceCoins: 0, beginnerCoins: 0, beginnerSteps: 0, seasonMissionXp: 0, comebackWindows: 0, comebackValue: 0, comebackXp: 0, freeCoinsPerActiveDay: 0, pullsPerMonth: 0, ssrPerMonth: 0,
   };
   await svc.bootstrap(id);
   await svc.setAge(id, 1990, 1, false);
@@ -145,6 +154,7 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
       r.yenSpent += p.priceYen;
       r.paidCoinsBought += p.paidCoins;
     }
+    if (persona.lapse && d >= persona.lapse.fromDay && d < persona.lapse.fromDay + persona.lapse.days) continue;
     if (unit(rng) * 1000 >= persona.activePermille) continue;
     r.activeDays++;
     await svc.claimLogin(id, k()).catch(() => undefined);
@@ -165,6 +175,14 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
       now += 10 * 60_000;
       const ar = await svc.applyRace(id, { raceId: `sim_${persona.id}_${d}_${i}`, mode: 'ranked', place: place(rng, persona.placeBias), fieldSize: 12, newRating: null, void: false, humans: 4 });
       if ('firstWinBonus' in ar && typeof ar.firstWinBonus === 'number') r.firstWinCoins += ar.firstWinBonus;
+      if ('comebackXp' in ar && typeof ar.comebackXp === 'number') r.comebackXp += ar.comebackXp;
+    }
+    // REQ-CB-004/005: a returner claims the comeback login day and every comeback mission it can
+    const cb = await svc.comeback(id);
+    if (cb.window) {
+      if (cb.window.day === 1 && cb.window.login.claimed === 0) r.comebackWindows++;
+      if (cb.window.login.claimableToday) r.comebackValue += rewardValue((await svc.comebackClaimLogin(id, k())).reward);
+      for (const cm of cb.window.missions.filter((x) => x.claimable)) r.comebackValue += rewardValue((await svc.comebackClaimMission(id, cm.id, k())).reward);
     }
     // daily, beginner (one step at a time, REQ-UXS-015) and season missions (pass XP, REQ-UXS-016): all claimable
     for (;;) {
@@ -247,6 +265,7 @@ export async function simulateAll(master: Master, days = 90, seeds = [1, 2, 3], 
       breedingMaterial: avg((x) => x.breedingMaterial), gachaTickets: avg((x) => x.gachaTickets), ticketPulls: avg((x) => x.ticketPulls),
       firstWinCoins: avg((x) => x.firstWinCoins), allowanceCoins: avg((x) => x.allowanceCoins),
       beginnerCoins: avg((x) => x.beginnerCoins), beginnerSteps: avg((x) => x.beginnerSteps), seasonMissionXp: avg((x) => x.seasonMissionXp),
+      comebackWindows: avg((x) => x.comebackWindows), comebackValue: avg((x) => x.comebackValue), comebackXp: avg((x) => x.comebackXp),
       freeCoinsPerActiveDay: avg((x) => x.freeCoinsPerActiveDay), pullsPerMonth: avg((x) => x.pullsPerMonth), ssrPerMonth: avg((x) => x.ssrPerMonth),
     };
   }

@@ -16,6 +16,7 @@ import pushJson from '../../master/push.json';
 import eventsJson from '../../master/events.json';
 import itemsJson from '../../master/items.json';
 import assetsCatalogJson from '../../master/assets-catalog.json';
+import changelogJson from '../../master/changelog.json';
 import { parseAssetCatalog, type AssetCatalog } from './assetCatalog.js';
 import { trackSchema, type GoingAptitude, type Going, type Track } from './schemas.js';
 import { AppError } from './errors.js';
@@ -165,6 +166,8 @@ export interface Progression {
   nudges?: import('./nudges.js').NudgeConfig;
   /** REQ-DAY-001: the game-day rollover hour (JST) with its switch-over instant. Absent = DEFAULT_DAY_ROLLOVER. */
   dayRollover?: import('./time.js').DayRollover;
+  /** REQ-CB-*: returning-player campaign (comeback.ts). Absent = disabled. */
+  comeback?: import('./comeback.js').ComebackConfig;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */
@@ -235,8 +238,9 @@ export type TitleCondition =
   | { kind: 'rating'; value: number }
   | { kind: 'bondLevel'; value: number };
 export interface TitleDef { id: string; name: string; condition: TitleCondition }
-export type PushCategory = 'season' | 'friends' | 'invites' | 'events';
-export const PUSH_CATEGORIES: PushCategory[] = ['season', 'friends', 'invites', 'events'];
+/** `comeback` (REQ-CB-007): lapse reminders, opt-in (06 §3.5: a re-engagement push needs its own category and consent). */
+export type PushCategory = 'season' | 'friends' | 'invites' | 'events' | 'comeback';
+export const PUSH_CATEGORIES: PushCategory[] = ['season', 'friends', 'invites', 'events', 'comeback'];
 export interface PushTemplate { category: PushCategory; title: string; body: string; ttlSec: number; timeSensitive: boolean }
 /** REQ-PUSH-*: defaults, limits and Japanese templates (master/push.json). */
 export interface PushMaster {
@@ -313,6 +317,8 @@ export interface Master {
   skills: SkillsMaster;
   /** REQ-DLV-*: asset delivery catalog (master/assets-catalog.json; remote config `assets` may replace it). Absent → EMPTY_ASSET_CATALOG. */
   assetCatalog?: AssetCatalog;
+  /** REQ-CB-008: what's new entries (master/changelog.json; remote config `changelog` may replace it). */
+  changelog?: import('./comeback.js').ChangelogEntry[];
 }
 
 export const PPM_TOTAL = 1_000_000;
@@ -461,6 +467,7 @@ export function loadMaster(): Master {
     items: itemsJson as unknown as ItemsMaster,
     skills: loadSkills(),
     assetCatalog: parseAssetCatalog(assetsCatalogJson),
+    changelog: (changelogJson as unknown as { entries: import('./comeback.js').ChangelogEntry[] }).entries,
   };
   cached = m;
   return m;

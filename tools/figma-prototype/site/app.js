@@ -761,6 +761,7 @@ async function Home() {
   const go = Button('レースへ', 1180, 600, 390, 180, RaceLobby); go.classList.add('hero');
   if (bonus) toast(`ログインボーナス ${bonus.track === 'beginner' ? '初心者' : ''}${bonus.day}日目：${rewardText(bonus.reward)}`);
   TabBar(0);
+  if (await ComebackOnHome()) return; // REQ-CB-*: comeback welcome / chip and the one-time what's-new card
   MaybeLinkPrompt('Home', Home);
 }
 function RaceLobby() {
@@ -1411,11 +1412,149 @@ async function Demo(kind) {
   for (const k of ['muchi.partner', 'muchi.notify.primer', 'muchi.link.prompt', 'muchi.link.firstPurchase', 'muchi.link.provider', 'muchi.proto.taFriends']) { try { localStorage.removeItem(k); } catch { /* */ } }
   try { for (const k of Object.keys(localStorage)) if (k.startsWith('muchi.proto.ta.')) localStorage.removeItem(k); } catch { /* */ }
   taCache = null;
+  globalThis.__cbWhatsNewClosed = false;
+  try { localStorage.removeItem('muchi.comeback.pushAsked'); } catch { /* */ }
   if (kind === 'new') { await L.bootstrap(); await refresh(); return Title(); }
+  if (kind === 'comeback') { await L.seedComeback(14); await refresh(); return Home(); }
   const spec = { day1: [1, [1]], day3: [3, [2, 2, 2]], day7: [7, [3, 3, 3, 3, 3, 3, 3]] }[kind];
   await L.seedDemo(spec[0], spec[1]);
   await refresh();
   return Home();
+}
+
+// ================================================================= returning players (REQ-CB-001..012, 06 §4.5)
+// 「ムチ一閃」 tone: photoreal art, sparse translucent navy panels, letter-spaced small cyan kicker labels, a skewed cyan CTA
+// with », generous whitespace. Everything shown comes from the real comeback rules (MuchiLogic.comeback = GET /v1/comeback):
+// the real window end as a date (no countdown timer), rewards as they are (free coins / tickets / material, no 「倍」), the
+// lapse-reminder opt-in (push category `comeback`, off by default) asked once and never pre-ticked.
+const CB_GLASS = col(.02, .07, .13, .74);
+const cbDay = (ms) => { const d = new Date(ms - 1 + 9 * 3600e3); return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日`; };
+function CbKicker(text, x, y, w, parent) { const l = Label(text, x, y, w, 26, 17, CYAN, parent); l.classList.add('cb-kicker'); return l; }
+function CbRule(x, y, w = 90, parent) { Panel('Rule', x, y, w, 4, CYAN, parent); }
+/** The skewed cyan call to action with » (06-home 「ランク戦へ出走」). */
+function CbCta(value, x, y, w, action, parent) { const b = Button(value, x, y, w, 80, action, CYAN, parent); b.classList.add('cb-cta'); return b; }
+async function cbView() { const r = await L.comeback(); return r.ok ? r.value : { active: false, window: null, push: { enabled: false } }; }
+
+/** Home hook: the welcome once per window, otherwise the comeback chip and the one-time what's-new card. True = navigated away. */
+async function ComebackOnHome() {
+  const v = await cbView();
+  if (v.active && v.window.showWelcome) { await ComebackWelcome(v); return true; }
+  if (v.active) {
+    const chip = Button(`復帰キャンペーン　${v.window.login.claimableToday ? '受け取れます' : '残り' + v.window.remainingDays + '日'}`, 610, 72, 500, 40, () => ComebackTrack(), CB_GLASS);
+    chip.classList.add('cb-chip'); chip.dataset.comeback = v.window.tier;
+  }
+  const wn = await L.whatsNew();
+  if (wn.ok && wn.value.showCard && !globalThis.__cbWhatsNewClosed) WhatsNewCard(wn.value);
+  return false;
+}
+
+async function ComebackWelcome(v) {
+  currentScreen = () => ComebackWelcome();
+  v ??= await cbView();
+  if (!v.active) return Home();
+  const w = v.window;
+  Clear('comeback-welcome'); SetArt('Art/first-ride');
+  Panel('Welcome shade', 0, 0, 1600, 900, 'transparent').classList.add('cb-shade');
+  CbRule(82, 128);
+  CbKicker('WELCOME BACK  /  復帰キャンペーン', 82, 150, 700);
+  Label('おかえりなさい！', 78, 196, 900, 110, 84, WHITE).classList.add('cb-title');
+  Label(`${w.lapseDays}日ぶりのご来場です。\n${cbDay(w.endsAt)}まで、復帰キャンペーンを用意しました。`, 82, 330, 820, 100, 28, WHITE).classList.add('shadow');
+  Panel('Accent', 82, 452, 65, 4, GOLD);
+  const lines = [
+    ['復帰ログインボーナス', `${w.login.total}日分　·　1日1回、とぎれても進みます`],
+    ['復帰ミッション', `${w.missions.length}本　·　新しくなった機能を順に案内します`],
+    ['パスXPの上乗せ', w.catchUp.capXp > 0 ? `1レースごとに +${w.catchUp.bonusPerRace}　·　最大 ${fmt(w.catchUp.capXp)}` : 'このシーズンは上乗せなし'],
+  ];
+  const box = Panel('Welcome list', 82, 486, 820, 210, CB_GLASS);
+  lines.forEach(([t, d], i) => { Label(t, 30, 22 + i * 62, 300, 34, 24, WHITE, box); Label(d, 330, 26 + i * 62, 470, 30, 18, MUTED, box); });
+  CbCta('受け取りにいく', 82, 740, 520, () => ComebackTrack());
+  Ghost('あとで', 640, 744, 200, 72, Home).classList.add('cb-ghost');
+  Label(`期間：${w.startDay.replace(/-/g, '/')} 〜 ${w.endDay.replace(/-/g, '/')}（ゲーム日）`, 1080, 852, 480, 28, 15, WHITE).classList.add('cb-kicker', 'shadow');
+  await L.comebackWelcomed(); // shown once (POST /v1/comeback/welcome)
+}
+
+async function ComebackTrack() {
+  currentScreen = ComebackTrack;
+  await refresh();
+  const v = await cbView();
+  if (!v.active) { toast('復帰キャンペーンは終了しました'); return Home(); }
+  const w = v.window;
+  Clear('comeback'); SetArt('Art/home-paddock');
+  Panel('Track shade', 0, 0, 1600, 900, 'transparent').classList.add('cb-shade');
+  // left: title, real end date, catch-up meter
+  const head = Panel('Comeback head', 40, 36, 700, 250, CB_GLASS);
+  CbRule(36, 34, 90, head);
+  CbKicker(`COMEBACK  /  ${w.day}日目 OF ${w.days}`, 36, 52, 600, head);
+  Label('復帰キャンペーン', 34, 88, 640, 64, 46, WHITE, head);
+  Label(`${cbDay(w.endsAt)}まで　·　残り${w.remainingDays}日`, 36, 158, 640, 34, 22, GOLD, head).dataset.cbEnd = String(w.endsAt);
+  const cu = w.catchUp;
+  Label(cu.active ? `パスXP上乗せ中　1レースごとに +${cu.bonusPerRace}（残り ${fmt(cu.remainingXp)}）` : cu.capXp > 0 ? 'パスXPの上乗せは受け取り済み' : 'このシーズンのパスXPは追いついています', 36, 200, 640, 28, 17, MUTED, head);
+  const meter = Panel('Catch-up meter', 36, 232, 620, 6, col(.12, .22, .3), head);
+  Panel('Catch-up fill', 0, 0, cu.capXp > 0 ? Math.round(620 * Math.min(1, cu.grantedXp / cu.capXp)) : 0, 6, CYAN, meter);
+  if (w.blocked) { const b = Label('アカウント削除の予定があります。取り消すと受け取れます', 40, 300, 700, 40, 20, RED); b.classList.add('shadow'); b.dataset.cbBlocked = '1'; }
+  // login track: 7 cells
+  CbKicker(`LOGIN  /  復帰ログインボーナス ${w.login.claimed}/${w.login.total}`, 44, 352, 700).classList.add('shadow');
+  const strip = el('cb-strip', 40, 386, 1100, 190);
+  w.login.days.forEach((d) => {
+    const c = document.createElement('div');
+    const today = !d.claimed && d.day === w.login.claimed + 1 && w.login.claimableToday && !w.blocked;
+    c.className = 'cb-cell' + (d.claimed ? ' claimed' : '') + (today ? ' today' : '');
+    c.dataset.day = String(d.day);
+    c.innerHTML = `<small>${d.day}日目</small><b></b><em>${d.claimed ? '受取済' : today ? '今日' : ''}</em>`;
+    c.querySelector('b').textContent = rewardText(d.reward);
+    strip.appendChild(c);
+  });
+  if (w.login.claimableToday && !w.blocked) {
+    CbCta('今日の分を受け取る', 40, 600, 520, async () => {
+      const r = await L.comebackClaimLogin();
+      toast(r.ok ? `復帰ログインボーナス ${r.value.day}日目：${rewardText(r.value.reward)}` : r.message);
+      ComebackTrack();
+    });
+  } else Label(w.login.claimed >= w.login.total ? 'ログインボーナスはすべて受け取りました' : '明日また受け取れます（とぎれても進みます）', 44, 620, 700, 34, 20, WHITE).classList.add('shadow');
+  // right: missions that re-teach what changed
+  const mp = Panel('Comeback missions', 1180, 36, 390, 740, CB_GLASS);
+  CbRule(28, 34, 90, mp);
+  CbKicker('MISSIONS  /  新しくなったこと', 28, 52, 340, mp);
+  const go = { skills: Stable, scout: () => Scout(), bond: Care, my_stable: Stable, race: RaceLobby };
+  w.missions.forEach((m, i) => {
+    const row = Panel('Mission', 16, 96 + i * 126, 358, 116, m.claimed ? col(.03, .08, .12, .6) : col(.04, .11, .18, .82), mp);
+    row.dataset.mission = m.id;
+    Label((m.claimed ? '✓ ' : '') + m.title, 16, 10, 240, 30, 21, m.claimed ? DIM : WHITE, row);
+    Label(`${Math.min(m.progress, m.target)}/${m.target}`, 262, 10, 80, 30, 20, GOLD, row).style.textAlign = 'right';
+    Label(m.guide, 16, 42, 326, 44, 13, MUTED, row);
+    Label(rewardText(m.reward), 16, 88, 200, 22, 14, CYAN, row);
+    if (m.claimable) {
+      Button('受け取る', 216, 80, 130, 30, async () => { const r = await L.comebackClaimMission(m.id); toast(r.ok ? `${m.title}：${rewardText(r.value.reward)}` : r.message); ComebackTrack(); }, CYAN, row).classList.add('small');
+    } else if (!m.claimed && go[m.feature]) Ghost('行ってみる', 216, 80, 130, 30, go[m.feature], row).classList.add('small');
+  });
+  // the lapse-reminder opt-in: once, never pre-ticked (06 §3.5: a re-engagement push has its own category and consent)
+  if (!v.push.enabled && prefs.get('muchi.comeback.pushAsked', '') !== '1') {
+    const op = Panel('Push opt-in', 40, 700, 1100, 76, CB_GLASS); op.dataset.optin = '1';
+    Label('また間があいたとき、お知らせを受け取りますか？（3日目・7日目の夜に1回ずつ。設定で変えられます）', 24, 12, 700, 52, 17, WHITE, op);
+    Button('お知らせを受け取る', 744, 14, 200, 48, async () => { prefs.set('muchi.comeback.pushAsked', '1'); await L.setComebackPush(true); toast('お知らせを受け取ります'); ComebackTrack(); }, CYAN, op).classList.add('small');
+    Ghost('いいえ', 956, 14, 124, 48, () => { prefs.set('muchi.comeback.pushAsked', '1'); ComebackTrack(); }, op).classList.add('small');
+  }
+  Ghost('ホームへ', 40, 800, 220, 72, Home).classList.add('cb-ghost');
+}
+
+/** REQ-CB-008: the one-time card on home: what went live since the player last looked. Closing marks it seen. */
+function WhatsNewCard(data) {
+  const KIND = { feature: '新機能', banner: 'スカウト', event: 'イベント', balance: '調整' };
+  const veil = Panel('What\'s new veil', 0, 0, 1600, 900, col(.01, .035, .07, .55)); veil.classList.add('cb-veil');
+  const card = Panel('What\'s new', 360, 90, 880, 680, col(.02, .07, .13, .93), veil);
+  card.dataset.whatsnew = String(data.items.length);
+  CbRule(40, 40, 90, card);
+  CbKicker('WHAT\'S NEW  /  前回からのお知らせ', 40, 58, 700, card);
+  data.items.slice(0, 5).forEach((it, i) => {
+    const row = Panel('Item', 40, 110 + i * 100, 800, 88, col(.04, .11, .18, .8), card); row.dataset.item = it.id;
+    Label(KIND[it.kind] ?? 'お知らせ', 18, 12, 110, 26, 15, CYAN, row).classList.add('cb-kicker');
+    Label(it.title, 130, 8, 500, 34, 24, WHITE, row);
+    if (it.endsAt) Label(`${cbDay(it.endsAt)}まで`, 640, 12, 140, 26, 16, GOLD, row).style.textAlign = 'right';
+    Label(it.body, 130, 46, 650, 36, 15, MUTED, row);
+  });
+  const more = Math.max(0, data.items.length - 5) + (data.more ?? 0);
+  if (more > 0) Label(`ほか${more}件`, 40, 612, 300, 30, 18, MUTED, card);
+  Button('閉じる', 600, 596, 240, 64, async () => { globalThis.__cbWhatsNewClosed = true; veil.remove(); await L.whatsNewSeen(data.upTo); }, CYAN, card).dataset.whatsnewClose = '1';
 }
 
 // ================================================================= legacy screens (Codex's Unity UI, unchanged layouts)
@@ -1631,7 +1770,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, ComebackWelcome, ComebackTrack, Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

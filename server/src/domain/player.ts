@@ -13,6 +13,7 @@ import type { PassSeasonRecord, ShopState } from './shop.js';
 import type { ConsentState, OnboardingState, SeasonMissionState } from './onboarding.js';
 import type { NudgeState } from './nudges.js';
 import type { DeletionState } from './accountDeletion.js';
+import type { ComebackState } from './comeback.js';
 
 export type Currency = 'paid' | 'free';
 
@@ -186,6 +187,8 @@ export interface PlayerState {
   nudges?: NudgeState;
   /** REQ-UXS-040: account deletion request (confirmation token, then the scheduled deletion). */
   deletion?: DeletionState;
+  /** REQ-CB-*: last active game day, the comeback window, lapse reminders and what's-new position (comeback.ts). */
+  comeback?: ComebackState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

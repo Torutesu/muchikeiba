@@ -9,6 +9,7 @@ import { runAccountDeletion, type DeletionPorts, type RetainedRecord } from '../
 import type { PublicProfile } from '../src/domain/stats.js';
 import type { PaidBalanceSnapshot } from '../src/domain/accounting.js';
 import { m } from './helpers.js';
+import { SqlPlayerRepo, wipePlayerStorage } from '../src/do/sqlRepo.js';
 
 const T0 = Date.UTC(2026, 10, 5, 3); // 12:00 JST
 const DAY = 86_400_000;
@@ -148,5 +149,34 @@ describe('r8 QA: account deletion vs the player\'s own transactions', () => {
     await svc.deletionMarkStep('p', 'stud');
     const after = await svc.state('p');
     expect(after.ledger.filter((e) => e.reason.includes('auto, season'))).toEqual([]);
+  });
+
+  it('Durable Object storage: after the wipe the player object answers "no player" instead of failing on missing tables', async () => {
+    // node:sqlite stands in for the object's SQLite; deleteAll() drops every table, as Durable Object storage does
+    const { DatabaseSync } = await import('node:sqlite');
+    const db = new DatabaseSync(':memory:');
+    const sql = {
+      exec: (q: string, ...b: unknown[]) => {
+        const st = db.prepare(q);
+        const rows = /^\s*(select|with)/i.test(q) ? (st.all(...(b as never[])) as unknown[]) : (st.run(...(b as never[])), []);
+        return { toArray: () => rows, one: () => rows[0] };
+      },
+    } as unknown as SqlStorage;
+    const storage = {
+      sql,
+      deleteAll: async () => {
+        for (const r of db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]) db.exec(`DROP TABLE "${r.name}"`);
+      },
+    } as unknown as DurableObjectStorage;
+    const repo = new SqlPlayerRepo(sql);
+    const svc = new PlayerService(repo, { master: m, rng: seededRng(1), clock: () => T0, verifiers: {} });
+    await svc.bootstrap('p');
+    expect(repo.get('p')).not.toBeNull();
+    await wipePlayerStorage(storage);
+    expect(repo.get('p')).toBeNull();
+    // a like that arrives in the same instance after the wipe is not counted and creates nothing
+    expect(await svc.stableLikeReceive('p', 'x', 'x:2026-11-05:0')).toMatchObject({ counted: false });
+    await svc.tournamentClose('p', 'tour1', 1, { freeCoins: 10 }, 'x');
+    expect(repo.get('p')).toBeNull();
   });
 });

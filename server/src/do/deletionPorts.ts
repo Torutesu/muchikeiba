@@ -10,6 +10,7 @@ import { stableDeletionPort } from '../domain/stable.js';
 import { makeStableService } from '../http/stablePorts.js';
 import { loadMaster } from '../domain/master.js';
 import { unwrap, type Envelope } from './rpc.js';
+import { wipePlayerStorage } from './sqlRepo.js';
 
 type Rpc = Record<string, (...a: unknown[]) => Promise<Envelope<unknown>>>;
 const stub = (ns: DurableObjectNamespace, name: string) => ns.get(ns.idFromName(name)) as unknown as Rpc;
@@ -73,6 +74,6 @@ export function deletionPortsFromEnv(env: Env, ctx: DurableObjectState, svc: Pla
       const acc = env.ACCOUNTING.get(env.ACCOUNTING.idFromName('global')) as unknown as { retainDeleted(p: string, r: RetainedRecord): Promise<unknown> };
       await acc.retainDeleted(uid, record);
     },
-    wipe: async () => { await ctx.storage.deleteAll(); },
+    wipe: async () => { await wipePlayerStorage(ctx.storage); },
   };
 }

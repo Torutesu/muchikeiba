@@ -3,6 +3,21 @@ import type { PlayerRepo } from '../domain/service.js';
 
 const LEDGER_KEEP_IN_STATE = 100;
 
+function ensurePlayerSchema(sql: SqlStorage) {
+  sql.exec(`CREATE TABLE IF NOT EXISTS state (id TEXT PRIMARY KEY, json TEXT NOT NULL)`);
+  sql.exec(`CREATE TABLE IF NOT EXISTS ledger (seq INTEGER PRIMARY KEY, at INTEGER NOT NULL, kind TEXT NOT NULL, currency TEXT NOT NULL, delta INTEGER NOT NULL, balance_after INTEGER NOT NULL, reason TEXT NOT NULL, ref TEXT NOT NULL)`);
+}
+
+/**
+ * REQ-UXS-040: the account deletion's last step. deleteAll() also drops the SQL tables, while this object (and its
+ * repo) can keep serving calls until it is evicted: the empty tables are created again, so those calls see "no
+ * player" (PlayerService answers deliveries to a wiped player as no-ops) instead of failing on a missing table.
+ */
+export async function wipePlayerStorage(storage: DurableObjectStorage) {
+  await storage.deleteAll();
+  ensurePlayerSchema(storage.sql);
+}
+
 /**
  * PlayerRepo on Durable Object SQLite storage. The state is one JSON row; the full ledger is also
  * appended to a `ledger` table (audit trail) and only the recent tail is kept inside the JSON.
@@ -10,8 +25,7 @@ const LEDGER_KEEP_IN_STATE = 100;
  */
 export class SqlPlayerRepo implements PlayerRepo {
   constructor(private readonly sql: SqlStorage) {
-    sql.exec(`CREATE TABLE IF NOT EXISTS state (id TEXT PRIMARY KEY, json TEXT NOT NULL)`);
-    sql.exec(`CREATE TABLE IF NOT EXISTS ledger (seq INTEGER PRIMARY KEY, at INTEGER NOT NULL, kind TEXT NOT NULL, currency TEXT NOT NULL, delta INTEGER NOT NULL, balance_after INTEGER NOT NULL, reason TEXT NOT NULL, ref TEXT NOT NULL)`);
+    ensurePlayerSchema(sql);
   }
 
   get(id: string): PlayerState | null {

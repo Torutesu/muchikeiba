@@ -125,6 +125,25 @@ namespace Muchi.Client
             return new AnalyticsEvent("invite_share", atMs, JsonNode.Obj().Set("channel", channel));
         }
 
+        // ---- REQ-AD-010 rewarded ads (the reward itself is the server event ad_reward; never sent from here)
+        private static readonly string[] AdSurfaces = { "home", "result", "time_attack", "shop" };
+        private static readonly string[] AdOutcomes = { "shown", "no_fill", "failed", "closed_early" };
+
+        /// <summary>An ad offer card was put on screen (once per card per screen visit).</summary>
+        public static AnalyticsEvent AdOfferView(long atMs, string placementId, string surface)
+        {
+            if (IndexIn(AdSurfaces, surface) < 0) throw new ArgumentException("unknown ad surface " + surface);
+            return new AnalyticsEvent("ad_offer_view", atMs, JsonNode.Obj().Set("placementId", Id(placementId, 32, "placementId")).Set("surface", surface));
+        }
+
+        /// <summary>The player tapped the card and the SDK answered: shown | no_fill | failed | closed_early.</summary>
+        public static AnalyticsEvent AdStart(long atMs, string placementId, string surface, string outcome)
+        {
+            if (IndexIn(AdSurfaces, surface) < 0) throw new ArgumentException("unknown ad surface " + surface);
+            if (IndexIn(AdOutcomes, outcome) < 0) throw new ArgumentException("unknown ad outcome " + outcome);
+            return new AnalyticsEvent("ad_start", atMs, JsonNode.Obj().Set("placementId", Id(placementId, 32, "placementId")).Set("surface", surface).Set("outcome", outcome));
+        }
+
         internal JsonNode ToJson()
         {
             var o = JsonNode.Obj();

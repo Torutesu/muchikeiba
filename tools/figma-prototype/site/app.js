@@ -1453,6 +1453,67 @@ function Link(provider, next) {
   (next ?? Home)();
 }
 
+// ---- rewarded ads (REQ-AD-*, contracts/protocol.md §21): the opt-in offer card, the simulated ad, the watched state.
+// Server rules from the real domain (eligibility, game-day caps, sessions); the reward comes only from the simulated
+// network's signed SSV callback (verified by the real verifyAdMobCallback). Never in the tutorial, a race or a result
+// after 4th or worse; never interstitial — a view only starts from the card's button (RewardedAdModel's rules).
+// On home the card lives in the single home card slot (HomeCard: what's new > comeback campaign > ad offer).
+const AD_SECONDS = () => Math.max(1, Math.round(5 / (Number(new URLSearchParams(location.search).get('speed')) || 1)));
+/** Draws the offer card for `surface` into `parent` (or nothing when the server offers none). Returns the card element. */
+async function AdOfferSlot(surface, x, y, w, h, back, parent) {
+  const v = await L.ads();
+  const p = v.eligible ? v.placements.find((q) => q.surface === surface) : null;
+  if (!p || (surface === 'home' && cur?.dataset.screen !== 'home')) return null;
+  const card = Glass('Ad offer', x, y, w, h, parent, .84);
+  card.classList.add('ad-card');
+  card.dataset.homeCard = 'ad'; card.dataset.placement = p.id; card.dataset.state = p.left > 0 ? 'offer' : 'done';
+  Kicker('動画で受け取る', 28, 24, card, { size: 16, color: p.left > 0 ? CYAN : SOFT });
+  Txt(p.left > 0 ? p.rewardLabel : '今日の分は受け取りました', 28, 84, w - 56, p.left > 0 ? 24 : 19, p.left > 0 ? WHITE : MUTED, card, { weight: 700, nowrap: true });
+  Txt(p.left > 0 ? `今日あと${p.left}回　·　自分で選んだ時だけ再生します` : 'また明日どうぞ（4:00 にリセット）', 28, 120, w - 56, 14, MUTED, card);
+  if (p.left > 0) Cta('動画を見る', 28, h - 72, Math.min(260, w - 56), () => AdPlayer(p, back), card, 'small ad-cta');
+  globalThis.__muchi && (globalThis.__muchi.lastKpi = p.left > 0 ? 'ad_offer_view' : globalThis.__muchi.lastKpi);
+  return card;
+}
+/** The simulated rewarded ad (stands in for the native AdMob full-screen ad), then the server's verdict. */
+async function AdPlayer(p, back = Home) {
+  const st = await L.adStart(p.id);
+  if (!st.ok) { toast(st.code === 'AD_LIMIT_REACHED' ? '今日の分は受け取りました。また明日どうぞ。' : '今は動画を用意できません。時間をおいてお試しください。'); back(); return; }
+  const s = st.value;
+  currentScreen = back; Clear('ad-player'); SetArt('Art/home-paddock', false); Shade('dim heavy');
+  const box = Dialog('Ad player', 880, 520);
+  box.classList.add('ad-player');
+  Kicker('広告　/　プロトタイプのシミュレーション', 52, 44, box, { size: 15, color: SOFT });
+  Txt('ここに広告の動画が流れます', 52, 170, 776, 32, WHITE, box, { align: 'center' });
+  const left = Txt('', 52, 236, 776, 22, CYAN, box, { weight: 700, align: 'center', cls: 'num' });
+  left.dataset.adCountdown = '1';
+  Txt(`最後まで見ると「${s.rewardLabel}」を受け取れます`, 52, 290, 776, 16, MUTED, box, { align: 'center' });
+  let n = AD_SECONDS(), done = false;
+  Ghost('閉じる', 648, 428, 180, 56, () => { done = true; AdWatched(p, { status: 'not_completed' }, back); }, box, 'quiet small').classList.add('ad-close');
+  every(1000, async () => {
+    if (done) return;
+    left.textContent = n > 0 ? `残り ${n} 秒` : '確認しています…';
+    if (n-- > 0) return;
+    done = true;
+    // the network's SSV callback → the server's verdict; the client only polls the session
+    const cb = await L.simulateAdCallback(s);
+    const sess = await L.adSession(s.sessionId);
+    AdWatched(p, sess.ok ? sess.value : { status: 'pending' }, back, cb.ok ? cb.value : null);
+  });
+}
+/** The watched state: what the server granted (or why nothing). */
+async function AdWatched(p, sess, back = Home) {
+  await refresh();
+  Clear('ad-watched'); SetArt('Art/home-paddock', false); Shade('dim');
+  const ok = sess.status === 'rewarded';
+  const box = Dialog('Ad watched', 760, 440);
+  box.classList.add('ad-card'); box.dataset.state = sess.status;
+  Kicker(ok ? '受け取りました' : '受け取れませんでした', 52, 44, box, { size: 16, color: ok ? CYAN : SOFT });
+  Txt(ok ? sess.rewardLabel : sess.status === 'not_completed' ? '最後まで見ると受け取れます' : '今回は受け取れませんでした', 52, 116, 656, ok ? 46 : 30, ok ? GOLD : WHITE, box, { weight: 700 });
+  Txt(ok ? `無償コインの所持：${fmt(sess.wallet.free)}枚（有償コインとは別に管理しています）` : '動画は自分で選んだ時だけ再生します。', 52, 200, 656, 16, MUTED, box, { lh: 1.6 });
+  Cta('つづける', 52, 318, 320, back, box, 'ad-cta');
+  globalThis.__muchi && (globalThis.__muchi.lastAd = sess.status);
+}
+
 // ---- time attack with ghosts (REQ-TA-*, friend ghosts first: REQ-UXS-074)
 let taCache = null;
 const taBestKey = (trackId) => 'muchi.proto.ta.' + trackId;

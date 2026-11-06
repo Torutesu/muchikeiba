@@ -44,6 +44,21 @@ describe('economy targets (90 days, 3 seeds)', () => {
     expect(all.allowance!.allowanceCoins / all.allowance!.activeDays).toBeCloseTo(30, 0);
   }, 600_000);
 
+  it('E13 rewarded ads help a free player a little — less than the cheapest paid product (REQ-AD-011)', async () => {
+    const all = await run();
+    const f = all.f2p!.pullsPerMonth;
+    const ratio = all.ads!.pullsPerMonth / f;
+    expect(ratio).toBeGreaterThanOrEqual(1.03);
+    expect(ratio).toBeLessThanOrEqual(1.15);
+    // never worth more than paying: below the daily pack (E10) and the season pass (E5)
+    expect(ratio).toBeLessThan(all.allowance!.pullsPerMonth / f);
+    expect(ratio).toBeLessThan(all.light!.pullsPerMonth / f);
+    // free coins only, within the code ceiling, and no ads on the install day
+    expect(all.ads!.adCoins / all.ads!.activeDays).toBeLessThanOrEqual(40);
+    expect(all.ads!.adViews).toBeLessThan(all.ads!.activeDays * 3);
+    expect(all.ads!.paidCoinsBought).toBe(0);
+  }, 600_000);
+
   it('E1 note: the daily first-win bonus pays on ranked wins only and is part of the free income (REQ-UXS-010)', async () => {
     const r = (await run()).f2p!;
     expect(r.firstWinCoins).toBeGreaterThan(0);
@@ -104,7 +119,7 @@ describe('economy targets (90 days, 3 seeds)', () => {
     expect(r.pullsPerMonth).toBeLessThanOrEqual(daily.pullsPerMonth);
     // players who never lapse never get a window: their numbers (E1–E3, E5–E10) are unchanged
     for (const id of ['f2p', 'light', 'medium', 'allowance']) expect(all[id]!.comebackWindows).toBe(0);
-  }, 180_000);
+  }, 600_000);
 
   it('E9 friend races cannot replace ranked play as an income (daily cap ≤ 30% of a free player day)', async () => {
     const r = (await run()).f2p!;

@@ -1,5 +1,5 @@
 /**
- * 友達招待 — friend invite codes (REQ-INV-001..012, contracts/protocol.md §18).
+ * 友達招待 — friend invite codes (REQ-INV-001..012, contracts/protocol.md §19).
  *
  * Every player has one stable, short invite code (8 characters, no vowels and no look-alike characters, the last one a
  * check character). A new player may enter one code within their first `redeemWindowDays` game days, after the FTUE

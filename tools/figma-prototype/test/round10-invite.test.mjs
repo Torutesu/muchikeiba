@@ -1,4 +1,4 @@
-// Node check of the round 10 invite paths used by unity.html (REQ-INV-*, contracts/protocol.md §18), on the real server
+// Node check of the round 10 invite paths used by index.html (REQ-INV-*, contracts/protocol.md §19), on the real server
 // code bundled into site/js/logic.js: my code and share links, demo friends redeeming it (directory lookup, device claim,
 // inviter + invitee steps), milestone rewards through the invitee's outbox, entering another player's code, reset.
 // usage: node tools/figma-prototype/test/round10-invite.test.mjs

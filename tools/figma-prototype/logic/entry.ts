@@ -22,6 +22,7 @@ import { MemoryTeams, TeamsService, type TeamPlayers } from '../../../server/src
 import type { ReportReason } from '../../../server/src/domain/teamFeed.js';
 import { InviteService, MemoryInviteDirectory, deliverInviteOutbox, displayInviteCode, inviteRewardYen, normalizeInviteCode } from '../../../server/src/domain/invite.js';
 import type { Directory } from '../../../server/src/domain/friends.js';
+import { signAdMobQuery, StaticKeySource, verifyAdMobCallback } from '../../../server/src/ads/ssv.js';
 
 const trackNames = new Map((tracksJson as { tracks: { id: string; name?: string }[] }).tracks.map((t) => [t.id, t.name ?? t.id]));
 
@@ -386,7 +387,23 @@ export const MuchiLogic = {
       return displayInviteCode(await inviteCodes.codeOf('demo_inviter'));
     },
   },
+  // ---------------------------------------------------------------- rewarded ads (REQ-AD-*, contracts/protocol.md §21)
+  // The real server rules: eligibility (FTUE, install day, 30 days after a payment, age), caps by game day, sessions. The
+  // ad network is simulated in the browser: it signs an AdMob-style SSV callback with a local ECDSA P-256 key, and the
+  // real verifyAdMobCallback checks that signature before the real applyAdCallback grants free coins. No ad SDK, no network.
+  ads: () => svc.ads(ID),
+  setAdPref: (mode: 'auto' | 'on' | 'off') => wrap(() => svc.setAdPref(ID, mode)),
+  adStart: (placementId: string) => wrap(() => svc.adStart(ID, placementId, key())),
+  adSession: (sessionId: string) => wrap(() => svc.adSession(ID, sessionId)),
+  /** The simulated network's SSV callback for a watched ad (what AdMob would GET on the server). */
+  simulateAdCallback: (start: { customData: string; userId: string; adUnitKey: string }) => wrap(async () => {
+    adKeys ??= (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign', 'verify'])) as CryptoKeyPair;
+    const q = await signAdMobQuery({ adUnit: 'proto/' + start.adUnitKey, customData: start.customData, timestamp: now(), transactionId: `proto_${Date.now().toString(36)}_${n++}`, userId: start.userId, keyId: 'proto' }, adKeys.privateKey);
+    const cb = await verifyAdMobCallback(q, StaticKeySource.fromCryptoKeys({ proto: adKeys.publicKey }));
+    return svc.adReward(cb.userId, cb);
+  }),
 };
+let adKeys: CryptoKeyPair | null = null;
 
 const DEMO_NAMES = ['ハヤテ', 'サクラ', 'コウガ', 'ミズキ', 'レン', 'ツバサ', 'ヒナタ', 'カイ', 'ユズ', 'アオイ', 'ソラ', 'リク'];
 /** Random per install, like the app's keychain value (only its hash reaches the invite code). */

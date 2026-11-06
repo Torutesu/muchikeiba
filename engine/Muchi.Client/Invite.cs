@@ -7,7 +7,7 @@ using Muchi.Net;
 
 namespace Muchi.Client
 {
-    // 友達招待 on the wire (contracts/protocol.md §18, server/src/domain/invite.ts, REQ-INV-001..012).
+    // 友達招待 on the wire (contracts/protocol.md §19, server/src/domain/invite.ts, REQ-INV-001..012).
     // Every amount and text comes from the server (rewards, share text, terms key): display verbatim.
 
     /// <summary>Invite code rules shared with the server (alphabet, check symbol, display form, deep link).</summary>

@@ -55,6 +55,22 @@ import { validateUx } from './domain/onboarding.js';
 import type { TournamentClosingInfo } from './domain/nudges.js';
 import { jstMonthKey } from './domain/time.js';
 import { collectItemIds } from './domain/visuals.js';
+import { parseAdUnits, RemoteKeySource, StaticKeySource, type PemKey, type SsvKeySource } from './ads/ssv.js';
+
+/** REQ-AD-006: SSV key sources are cached per isolate (the remote set is fetched at most once a day / per unknown key id). */
+const ssvSources = new Map<string, SsvKeySource>();
+function ssvKeys(env: Env): SsvKeySource | null {
+  const k = env.ADS_SSV_KEYS ? 'static:' + env.ADS_SSV_KEYS : env.ADS_SSV_KEYS_URL ? 'url:' + env.ADS_SSV_KEYS_URL : null;
+  if (!k) return null;
+  let src = ssvSources.get(k);
+  if (!src) {
+    src = env.ADS_SSV_KEYS ? new StaticKeySource(JSON.parse(env.ADS_SSV_KEYS) as PemKey[]) : new RemoteKeySource({ url: env.ADS_SSV_KEYS_URL! });
+    ssvSources.set(k, src);
+  }
+  return src;
+}
+/** REQ-AD-006: SSV callbacks per source IP and per player (per isolate; the player object also caps sessions per day). */
+const ssvLimiter = new RateLimiter({ read: { capacity: 30, refillPerSec: 1 }, write: { capacity: 30, refillPerSec: 1 } }, 'ssv');
 
 /** REQ-PUSH-006: one FCM topic send reaches every opted-in device (no per-player fan-out). */
 async function broadcastSeasonReminder(env: Env, now: number): Promise<string | null> {
@@ -324,6 +340,8 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
   const mm = () => stub(env.MATCHMAKER, 'ranked-jp');
   const call = async (p: Promise<Envelope<unknown>>) => unwrap(await p);
   const lb = (seasonId: string) => stub(env.LEADERBOARD, `lb:${seasonId}`);
+  const adKeys = ssvKeys(env);
+  const adUnits = parseAdUnits(env.ADS_AD_UNITS);
   const player = (uid: string): PlayerInvoker => {
     const s = stub(env.PLAYER, uid);
     return { invoke: (async (m: string, ...args: unknown[]) => call(s.invoke!(m, args))) as PlayerInvoker['invoke'] };
@@ -416,6 +434,7 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
     ...(ops ? { ops } : {}),
     authenticateAdmin: (req) => authenticateAdmin(req, adminAuthConfig(env)),
     ...(env.ASSET_CDN_BASE ? { assetCdnBase: env.ASSET_CDN_BASE } : {}),
+    ...(adKeys ? { ads: { keys: adKeys, ...(adUnits ? { adUnits } : {}), admit: (key: string, now: number) => ssvLimiter.take(key, 'write', now) } } : {}),
     configInfo: async () => ({ versionId: cfg?.versionId ?? 'base', hash: cfg?.hash ?? 'base', rulesetVersion: cfg?.ruleset.rulesetVersion ?? '', activatedAt: cfg?.activatedAt ?? null }),
   };
 }

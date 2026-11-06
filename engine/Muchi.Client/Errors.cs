@@ -52,6 +52,8 @@ namespace Muchi.Client
         InviteWindowClosed,
         /// <summary>409: the code cannot be used from this account or device (anti-abuse; show a neutral message).</summary>
         InviteRefused,
+        /// <summary>409: today's rewarded-ad views for that placement (or overall) are used up (REQ-AD-008).</summary>
+        AdLimitReached,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -127,6 +129,7 @@ namespace Muchi.Client
             ["INVITE_ALREADY_REDEEMED"] = ApiErrorCode.InviteAlreadyRedeemed,
             ["INVITE_WINDOW_CLOSED"] = ApiErrorCode.InviteWindowClosed,
             ["INVITE_REFUSED"] = ApiErrorCode.InviteRefused,
+            ["AD_LIMIT_REACHED"] = ApiErrorCode.AdLimitReached,
             ["VERIFIER_UNAVAILABLE"] = ApiErrorCode.VerifierUnavailable,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };

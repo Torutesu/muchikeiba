@@ -65,6 +65,10 @@
 | `race_quit` | クライアント | モード | | | `double9` 残り距離(m) |
 | `account_link` | クライアント | `apple`/`google` | | | |
 | `share` | クライアント（リプレイをOSの共有に渡した。キャンセルは送らない、REQ-UXS-072） | `replay_video`/`replay_image` | | | |
+| `ad_offer_view` | クライアント（リワード広告のカードを出した。画面ごとに1回、REQ-AD-010） | 枠ID | 画面 `home`/`result`/`time_attack`/`shop` | | |
+| `ad_start` | クライアント（カードを押した後の SDK の結果） | 枠ID | 画面 | `shown`/`no_fill`/`failed`/`closed_early` | |
+| `ad_reward` | サーバー（SSV コールバックで付与した。クライアントからは送れない） | 枠ID | ネットワーク（`admob`） | 画面 | `double3` 無償コイン、`double9` タイムアタックの回数、`double5` その日の回数 |
+| `ad_reject` | サーバー（コールバックを弾いた） | 理由（`user_mismatch`/`unknown_session`/`session_used`/`expired`/`clock_skew`/`ad_unit_mismatch`/`cap`/`deleting`） | 枠ID | ネットワーク | `double5` その日の弾いた数 |
 | `consent` | サーバー | 規約の版 | プライバシーポリシーの版 | | |
 | `partner_granted` | サーバー | テンプレートID（`t_partner`） | | | |
 | `ab_assign` | サーバー（初回の bootstrap、実験ごとに1回） | 実験ID | バケットID | | |
@@ -80,6 +84,49 @@
 | `invite_share` | クライアント（招待コードを共有シートに渡した／コピーした。キャンセルは送らない、REQ-INV-011） | `os_share`/`copy_code`/`copy_link` | | | |
 | `invite_redeem` | サーバー（招待コードの引き換え。1回で2行） | | `inviter`/`invitee` | | 招待した人の行：`double9` 1 = 報酬の対象（上限内）。招待された人の行：`double3` ギフトの無償コイン、`double5` ギフトの券の枚数 |
 | `invite_milestone` | サーバー（招待された人の到達。双方に1行） | マイルストーンID | `invitee`/`inviter` | | 招待した人の行：`double3` 無償コイン、`double5` 券の枚数（上限外は行が出ない） |
+
+## リワード広告（REQ-AD-010、contracts/protocol.md §21）
+
+カードの表示 → 再生 → 付与の流れを枠ごとに見ます（7日間）。`ad_start` の `shown` に対して `ad_reward` が少ないときは、SSV コールバックが届いていない（設定・鍵・ネットワーク側の遅れ）か、弾かれています（下の `ad_reject`）。
+
+```sql
+SELECT blob8 AS placement,
+  sumIf(_sample_interval, blob1 = 'ad_offer_view') AS offer_views,
+  sumIf(_sample_interval, blob1 = 'ad_start') AS starts,
+  sumIf(_sample_interval, blob1 = 'ad_start' AND blob10 = 'shown') AS shown,
+  sumIf(_sample_interval, blob1 = 'ad_start' AND blob10 = 'no_fill') AS no_fill,
+  sumIf(_sample_interval, blob1 = 'ad_reward') AS rewarded,
+  round(sumIf(_sample_interval, blob1 = 'ad_reward') / sumIf(_sample_interval, blob1 = 'ad_start' AND blob10 = 'shown'), 3) AS reward_per_shown,
+  round(sumIf(_sample_interval, blob1 = 'ad_start') / sumIf(_sample_interval, blob1 = 'ad_offer_view'), 3) AS start_rate
+FROM muchi_kpi
+WHERE blob1 IN ('ad_offer_view', 'ad_start', 'ad_reward') AND timestamp > NOW() - INTERVAL '7' DAY
+GROUP BY placement
+ORDER BY placement
+```
+
+弾いた理由の内訳（不正の兆候：`user_mismatch`・`session_used`・`clock_skew` が急に増えたら調べる。1日に5件を超えたプレイヤーにはサポート用の印 `ads_anomaly:<ゲーム日>` が付きます）：
+
+```sql
+SELECT blob8 AS reason, sum(_sample_interval) AS n, count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'ad_reject' AND timestamp > NOW() - INTERVAL '7' DAY
+GROUP BY reason
+ORDER BY n DESC
+```
+
+広告を見る人の割合と1人あたりの無償コイン（課金者は既定で30日間広告が出ないので、`blob7` で分けて確かめる。課金者の行が多いなら設定でオンにした人です）：
+
+```sql
+SELECT blob6 AS day, blob7 AS payer,
+  count(DISTINCT blob2) AS watchers,
+  sum(_sample_interval * double3) / count(DISTINCT blob2) AS free_coins_per_watcher
+FROM muchi_kpi
+WHERE blob1 = 'ad_reward' AND timestamp > NOW() - INTERVAL '14' DAY
+GROUP BY day, payer
+ORDER BY day DESC, payer
+```
+
+ゲーム日で数えたいとき（1日の上限はゲーム日）は「前提」の `formatDateTime(timestamp + INTERVAL '5' HOUR, '%Y-%m-%d')` を使います。
 
 ## 継続率（D1 / D7 / D30）
 
@@ -392,7 +439,7 @@ ORDER BY cohort DESC
 
 あわせて見る指標：`session_end` の `double6`（セッションの長さ）の中央値の推移、`push_permission` で拒否した割合、`purchase_flow` の `cancel`/`fail` の割合。
 
-## 友達招待：バイラル係数（REQ-INV-011、contracts/protocol.md §18）
+## 友達招待：バイラル係数（REQ-INV-011、contracts/protocol.md §19）
 
 `invite_redeem` は1回の引き換えで2行出ます（`blob9` = `inviter`：招待した人の行、`invitee`：招待された人の行）。招待した人の行には **招待した人のコホート** が入るので、JOIN なしで「コホートの1人が何人を呼んだか」を数えられます。
 

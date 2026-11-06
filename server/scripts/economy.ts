@@ -6,16 +6,16 @@ import { PERSONAS, simulateAll } from '../src/sim/economy.js';
 const days = Number(process.argv[2] ?? 90);
 const [hh, mm] = (process.argv[3] ?? '12:00').split(':').map(Number) as [number, number];
 const res = await simulateAll(loadMaster(), days, [1, 2, 3], hh * 60 + (mm ?? 0));
-console.log('| persona | 稼働日 | 円 | 遊びで得た無償コイン/日 | 引いた回数/月 | SSR/月 | 天井到達(日目) | 天井交換 | 配合素材 | ガチャ券 | 初勝利ボーナス/日 | 厩舎手当/日 | 初心者ミッション（段・コイン） | シーズンミッションXP | 招待（コイン・券） | 復帰期間 |');
-console.log('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|');
+console.log('| persona | 稼働日 | 円 | 遊びで得た無償コイン/日 | 引いた回数/月 | SSR/月 | 天井到達(日目) | 天井交換 | 配合素材 | ガチャ券 | 初勝利ボーナス/日 | 厩舎手当/日 | 初心者ミッション（段・コイン） | シーズンミッションXP | 招待（コイン・券） | 復帰期間 | 広告（回/日・無償コイン/日） |');
+console.log('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|');
 for (const p of PERSONAS) {
   const r = res[p.id]!;
-  console.log(`| ${p.label} | ${r.activeDays.toFixed(0)} | ${r.yenSpent.toFixed(0)} | ${r.freeCoinsPerActiveDay.toFixed(0)} | ${r.pullsPerMonth.toFixed(1)} | ${r.ssrPerMonth.toFixed(2)} | ${r.firstPityDay?.toFixed(0) ?? '-'} | ${r.pityExchanges.toFixed(1)} | ${r.breedingMaterial.toFixed(0)} | ${r.gachaTickets.toFixed(0)} | ${(r.firstWinCoins / Math.max(1, r.activeDays)).toFixed(1)} | ${(r.allowanceCoins / Math.max(1, r.activeDays)).toFixed(1)} | ${r.beginnerSteps.toFixed(1)}・${r.beginnerCoins.toFixed(0)} | ${r.seasonMissionXp.toFixed(0)} | ${r.inviteCoins.toFixed(0)}・${r.inviteTickets.toFixed(0)} | ${r.comebackWindows.toFixed(1)} |`);
+  console.log(`| ${p.label} | ${r.activeDays.toFixed(0)} | ${r.yenSpent.toFixed(0)} | ${r.freeCoinsPerActiveDay.toFixed(0)} | ${r.pullsPerMonth.toFixed(1)} | ${r.ssrPerMonth.toFixed(2)} | ${r.firstPityDay?.toFixed(0) ?? '-'} | ${r.pityExchanges.toFixed(1)} | ${r.breedingMaterial.toFixed(0)} | ${r.gachaTickets.toFixed(0)} | ${(r.firstWinCoins / Math.max(1, r.activeDays)).toFixed(1)} | ${(r.allowanceCoins / Math.max(1, r.activeDays)).toFixed(1)} | ${r.beginnerSteps.toFixed(1)}・${r.beginnerCoins.toFixed(0)} | ${r.seasonMissionXp.toFixed(0)} | ${r.inviteCoins.toFixed(0)}・${r.inviteTickets.toFixed(0)} | ${r.comebackWindows.toFixed(1)} | ${(r.adViews / Math.max(1, r.activeDays)).toFixed(2)}・${(r.adCoins / Math.max(1, r.activeDays)).toFixed(1)} |`);
 }
 
-// REQ-INV-*: E11 (inviter at the counted cap ÷ free daily player) and E1 for an invited player
+// ratios against the free daily player: E5 (pass), E10 (daily pack), E11 (inviter at the counted cap), E13 (all rewarded ads)
 const f = res.f2p!.pullsPerMonth;
-console.log(`\nE5 ${(res.light!.pullsPerMonth / f).toFixed(2)}  E10 ${(res.allowance!.pullsPerMonth / f).toFixed(2)}  E11 招待上限 ÷ 無課金 ${(res.f2p_inviter!.pullsPerMonth / f).toFixed(2)}  E1(招待された) ${res.f2p_invited!.pullsPerMonth.toFixed(1)}`);
+console.log(`\nE5 ${(res.light!.pullsPerMonth / f).toFixed(2)}  E10 ${(res.allowance!.pullsPerMonth / f).toFixed(2)}  E11 招待上限 ÷ 無課金 ${(res.f2p_inviter!.pullsPerMonth / f).toFixed(2)}（SSR/月 ${res.f2p_inviter!.ssrPerMonth.toFixed(2)}）  E13 広告 ÷ 無課金 ${(res.ads!.pullsPerMonth / f).toFixed(2)}  E1(招待された) ${res.f2p_invited!.pullsPerMonth.toFixed(1)}`);
 
 // REQ-CB-010 (E12): a returner's catch-up never exceeds what a daily free player earned in the days the returner missed
 const lapsed = PERSONAS.find((p) => p.lapse)!;

@@ -74,6 +74,8 @@ static class Program
         await InviteChecks.Run(Check);
         Console.WriteLine("== returning players: comeback welcome, login track, missions, catch-up, what's new (REQ-CB-001..012)");
         await ComebackChecks.Run(Check, Ruleset());
+        Console.WriteLine("== rewarded ads: where cards may appear, one view at a time, reward only from the server (SSV), KPI");
+        await RewardedAdChecks.Run(Check);
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

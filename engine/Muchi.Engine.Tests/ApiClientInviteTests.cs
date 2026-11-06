@@ -10,7 +10,7 @@ using Xunit;
 namespace Muchi.Engine.Tests
 {
     /// <summary>
-    /// 友達招待 on the wire (contracts/protocol.md §18). The bodies were produced by the real server code (invite.ts with the
+    /// 友達招待 on the wire (contracts/protocol.md §19). The bodies were produced by the real server code (invite.ts with the
     /// shipped master data: alice invited bob and carol, bob finished the beginner missions), so their shapes match the server.
     /// </summary>
     public class ApiClientInviteTests

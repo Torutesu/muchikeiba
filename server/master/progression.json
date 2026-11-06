@@ -838,7 +838,7 @@
       { "id": "im_class_b", "kind": "class", "classId": "B", "reward": { "items": [{ "itemId": "gacha_ticket", "qty": 1 }] } }
     ],
     "shareBaseUrl": "https://invite.muchi-issen.example/i/", "deepLinkScheme": "muchi", "termsKey": "terms.invite"
-    },
+  },
   "comeback": {
     "_note": "REQ-CB-001..012 復帰キャンペーン（docs/planning/06 §4.5、contracts/protocol.md「復帰キャンペーン・お知らせ」）。最後に遊んだゲーム日から minLapseDays 以上あいた人が戻った日に、windowDays ゲーム日の期間が1回だけ始まる。期間中は復帰ログボ7日・復帰ミッション・パスXPの追いつき。次の期間は前回の開始から cooldownDays 後まで始まらない（放置で稼げない）。報酬は無償コインと有償でない券・素材だけ。1段階のログボ＋ミッションの価値は minLapseDays × valueCapPerLapseDay 以下（毎日遊ぶ無課金は約179/日、balance-targets.md §4.7）。",
     "tiers": [
@@ -861,5 +861,25 @@
     "pushes": [{"afterDays": 3, "templateId": "lapse_3d"}, {"afterDays": 7, "templateId": "lapse_7d", "requireEligible": true}],
     "pushHourJst": 19,
     "offer": {"enabled": true}
+  },
+  "ads": {
+    "_note": "REQ-AD-*（contracts/protocol.md §21、docs/spec/balance-targets.md 4.9）。任意の動画広告（自分で押した時だけ・全画面の強制広告なし）。報酬は無償コインかタイムアタック1回だけで、文言は「無償コイン◯枚」の固定額（「倍」は使わない、検証あり）。報酬は広告ネットワークのサーバー検証（SSV）でだけ付与。上限はゲーム日（progression.dayRollover）で数える。コード側の上限は ADS_HARD_LIMITS（1日の無償コイン40枚まで）。",
+    "enabled": true,
+    "network": "admob",
+    "globalDailyCap": 3,
+    "startsPerDay": 12,
+    "maxOpenSessions": 3,
+    "sessionTtlMs": 3600000,
+    "maxClockSkewMs": 600000,
+    "minRankedRaces": 3,
+    "minGameDay": 2,
+    "payerQuietDays": 30,
+    "minAge": 13,
+    "anomalyFlagAt": 5,
+    "placements": [
+      { "id": "daily_coins", "surface": "home", "title": "動画を見て、無償コインを受け取る", "dailyCap": 1, "reward": { "freeCoins": 10 }, "adUnitKey": "REWARDED_HOME" },
+      { "id": "result_coins", "surface": "result", "title": "動画を見て、もう少しコインを", "dailyCap": 1, "reward": { "freeCoins": 10 }, "adUnitKey": "REWARDED_RESULT" },
+      { "id": "ta_attempt", "surface": "time_attack", "title": "動画を見て、タイムアタックをもう1回", "dailyCap": 1, "reward": { "taAttempts": 1 }, "adUnitKey": "REWARDED_TA" }
+    ]
   }
 }

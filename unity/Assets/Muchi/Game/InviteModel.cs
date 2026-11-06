@@ -41,7 +41,7 @@ namespace Muchi.Game
     }
 
     /// <summary>
-    /// 友達招待 screen (REQ-INV-001..012, contracts/protocol.md §18): my code with the share button, the code entry (only while
+    /// 友達招待 screen (REQ-INV-001..012, contracts/protocol.md §19): my code with the share button, the code entry (only while
     /// the server says it is open: after the tutorial, within the first days), the milestone table and my invitees.
     /// Pure C#: the share sheet is <see cref="IShareSheet"/> (the same one the replay share uses), the install id lives in
     /// <see cref="IKeyValueStore"/> (random, created once per install; only its hash reaches the server).

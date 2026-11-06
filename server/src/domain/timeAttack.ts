@@ -55,7 +55,8 @@ export interface TaBest {
 
 export interface TimeAttackState {
   sessions: TaSession[];
-  daily: { date: string; count: number };
+  /** `bonus`: extra attempts today from a rewarded ad (REQ-AD-008). */
+  daily: { date: string; count: number; bonus?: number };
   /** Best per `${seasonId}:${trackId}` (REQ-TA-005) and all time per trackId. */
   seasonBest: Record<string, TaBest>;
   allTimeBest: Record<string, TaBest>;
@@ -105,7 +106,8 @@ export function startTimeAttack(m: Master, s: PlayerState, cfg: TimeAttackConfig
   const st = taState(s);
   const today = gameDayKey(now, dayRule(m));
   if (!sameGameDay(st.daily.date, today)) st.daily = { date: today, count: 0 };
-  if (st.daily.count >= cfg.maxAttemptsPerDay) throw new AppError('TA_LIMIT_REACHED', `${cfg.maxAttemptsPerDay}/day`);
+  const limit = cfg.maxAttemptsPerDay + (st.daily.bonus ?? 0); // REQ-AD-008: + today's attempts from a rewarded ad
+  if (st.daily.count >= limit) throw new AppError('TA_LIMIT_REACHED', `${limit}/day`);
   st.daily.count++;
   const config = buildRaceConfig(m, {
     raceId: `ta_${sessionId}`, mode: 'timeattack', trackId, cpuCount: 0, cpuLevel: 3, statCap: cfg.statCap, rng,
@@ -117,7 +119,7 @@ export function startTimeAttack(m: Master, s: PlayerState, cfg: TimeAttackConfig
   const session: TaSession = { id: sessionId, trackId, horseId, seasonId: jstMonthKey(now), config, issuedAt: now, expiresAt: now + cfg.sessionTtlMs, status: 'issued', result: null };
   st.sessions.push(session);
   if (st.sessions.length > cfg.keepSessions) st.sessions.splice(0, st.sessions.length - cfg.keepSessions);
-  return { sessionId, config, expiresAt: session.expiresAt, attemptsLeft: cfg.maxAttemptsPerDay - st.daily.count };
+  return { sessionId, config, expiresAt: session.expiresAt, attemptsLeft: limit - st.daily.count };
 }
 
 function findSession(s: PlayerState, sessionId: string): TaSession {
@@ -244,7 +246,7 @@ export function timeAttackView(s: PlayerState, cfg: TimeAttackConfig, trackId: s
     trackId, seasonId,
     seasonBest: st.seasonBest[bestKey(seasonId, trackId)] ?? null,
     allTimeBest: st.allTimeBest[trackId] ?? null,
-    attemptsLeft: cfg.maxAttemptsPerDay - (sameGameDay(st.daily.date, today) ? st.daily.count : 0),
+    attemptsLeft: cfg.maxAttemptsPerDay - (sameGameDay(st.daily.date, today) ? st.daily.count - (st.daily.bonus ?? 0) : 0),
     milestones: cfg.milestones.filter((ms) => ms.trackId === null || ms.trackId === trackId).map((ms) => ({ id: ms.id, maxTimeMs: ms.maxTimeMs, reward: ms.reward, reached: st.milestones.includes(ms.id) })),
   };
 }

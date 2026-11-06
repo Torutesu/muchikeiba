@@ -1,7 +1,7 @@
 # Round 10 Codex 向け引き継ぎ：友達招待と深いリンク（REQ-INV-001〜012）
 
 更新：2026-11-06　基準ブランチ：`feat/r10-invite`（`claude/round9` から）
-仕様：`contracts/protocol.md` §18、`docs/spec/requirements.md` 18章、法務：`docs/planning/03-legal-risk.md`「友達招待」、経済：`docs/spec/balance-targets.md` 4.7
+仕様：`contracts/protocol.md` §19、`docs/spec/requirements.md` 19章、法務：`docs/planning/03-legal-risk.md`「友達招待」、経済：`docs/spec/balance-targets.md` 4.7（E11）
 
 分担はこれまでと同じ：**Claude＝ロジック（サーバー・API クライアント・画面のビューモデル）／Codex＝見た目と OS の設定（深いリンク・共有シート・画面）**。
 

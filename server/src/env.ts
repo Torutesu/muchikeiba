@@ -38,6 +38,10 @@ export interface Env {
   /** "1" enables the fake store and the x-dev-user header. Never set in production. */
   DEV_MODE?: string;
   VERIFY_SAMPLE_RATE?: string;
+  /** REQ-SPEC-005: max spectators per race room (default 200). */
+  SPECTATOR_LIMIT?: string;
+  /** One per tournament `tour:<id>` plus the index `index` (REQ-TOUR-*). */
+  TOURNAMENTS?: DurableObjectNamespace;
   // ---- stores (server/README.md「ストア連携」). Unset => that store rejects every receipt.
   /** iOS bundle id. Enables Apple verification + App Store Server Notifications V2. */
   APPLE_BUNDLE_ID?: string;

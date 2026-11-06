@@ -1,5 +1,5 @@
 import type { Env } from './env.js';
-import { eventPlayersFrom, handle, makeFriendsService, makeStudService, teamPlayersFrom, type AppContext, type PlayerInvoker, type RaceEntry } from './http/app.js';
+import { eventPlayersFrom, friendIdsFrom, handle, makeFriendsService, makeStudService, teamPlayersFrom, tournamentPlayersFrom, type AppContext, type PlayerInvoker, type RaceEntry } from './http/app.js';
 import { bearer, verifyFirebaseIdToken } from './http/auth.js';
 import { parseStoreNotification, storeSettingsFromEnv } from './http/stores.js';
 import { accountingStoreIndex } from './do/storeIndex.js';
@@ -19,6 +19,12 @@ export { OpsDO } from './do/ops.js';
 export { IntegrityDO } from './do/integrity.js';
 export { TeamDO, TeamDirectoryDO } from './do/team.js';
 export { EventDO } from './do/event.js';
+export { TournamentDO } from './do/tournament.js';
+import { tournamentSnapshotKey } from './do/tournament.js';
+import { SpectateService } from './domain/spectate.js';
+import { TournamentsService, type TournamentBackend } from './domain/tournamentService.js';
+import type { TournamentSummary } from './domain/tournaments.js';
+import { signTicket } from './http/ticket.js';
 import { TeamsService, type TeamLeagueView, type TeamPort, type TeamView } from './domain/teamService.js';
 import type { TeamSummary } from './domain/teams.js';
 import { EventsService } from './domain/eventService.js';
@@ -126,6 +132,43 @@ async function eventsStep(env: Env, now: number): Promise<string[]> {
   return log;
 }
 
+/** REQ-TOUR-005: cron fallback — wake every active tournament (its own alarms do the work). */
+async function tournamentsStep(env: Env, now: number): Promise<string[]> {
+  if (!env.TOURNAMENTS) return [];
+  const list = unwrap(await stub(env.TOURNAMENTS, 'index').indexList!()) as TournamentSummary[];
+  const log: string[] = [];
+  for (const t of list) {
+    if (t.status === 'finished' || t.status === 'cancelled') continue;
+    try {
+      const r = unwrap(await stub(env.TOURNAMENTS, `tour:${t.id}`).wake!(now)) as { status: string };
+      log.push(`tournament:${t.id}:${r.status}`);
+    } catch (e) {
+      log.push(`tournamentError:${t.id}`);
+      console.error('tournament wake failed', t.id, (e as Error).message);
+    }
+  }
+  return log;
+}
+
+/** REQ-TOUR-*: TournamentBackend over TournamentDO instances (`tour:<id>`, index `index`). */
+function tournamentBackend(env: Env): TournamentBackend {
+  const call = async (p: Promise<Envelope<unknown>>) => unwrap(await p);
+  const tour = (id: string) => stub(env.TOURNAMENTS!, `tour:${id}`);
+  return {
+    list: async () => (await call(stub(env.TOURNAMENTS!, 'index').indexList!())) as TournamentSummary[],
+    view: (id, now) => call(tour(id).view!(now)),
+    published: async (id) => {
+      const obj = await env.SNAPSHOTS.get(tournamentSnapshotKey(id));
+      return obj ? obj.json() : null;
+    },
+    me: (id, p, now) => call(tour(id).me!(p, now)),
+    register: (id, p, h, e, now) => call(tour(id).register!(p, h, e, now)),
+    unregister: (id, p, now) => call(tour(id).unregister!(p, now)),
+    create: (def, by, now) => call(tour(def.id).create!(def, by, now)),
+    cancel: (id, reason, _by, now) => call(tour(id).cancel!(reason, now)),
+  };
+}
+
 type Rpc = Record<string, (...a: unknown[]) => Promise<Envelope<unknown>>>;
 const stub = (ns: DurableObjectNamespace, name: string) => ns.get(ns.idFromName(name)) as unknown as Rpc;
 
@@ -187,6 +230,13 @@ function makeDeadLetters(env: Env): DeadLetterService {
       retry: (scope, id) => call(stub(env.EVENTS, `ev:${scope}`).dlRetry!(scope, id)),
       dismiss: async (scope, id, by, note, now) => { await call(stub(env.EVENTS, `ev:${scope}`).dlDismiss!(id, by, note, now)); },
     },
+    ...(env.TOURNAMENTS ? {
+      tournament: {
+        list: (scope: string) => call(stub(env.TOURNAMENTS!, `tour:${scope}`).dlList!()),
+        retry: (scope: string, id: string) => call(stub(env.TOURNAMENTS!, `tour:${scope}`).dlRetry!(id)),
+        dismiss: async (scope: string, id: string, by: string, note: string, now: number) => { await call(stub(env.TOURNAMENTS!, `tour:${scope}`).dlDismiss!(id, by, note, now)); },
+      } satisfies DeadLetterOwner,
+    } : {}),
     settlement: {
       list: (scope) => call(stub(env.RACE_ROOM, scope).dlList!()),
       retry: (scope, id) => call(stub(env.RACE_ROOM, scope).dlRetry!(id)),
@@ -264,6 +314,13 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
       },
       rankOf: async (eventId, p) => (await call(stub(env.EVENTS, `ev:${eventId}`).rankOf!(p))) as { rank: number; total: number; generatedAt: number | null } | null,
     }),
+    spectate: new SpectateService({
+      liveRaces: async () => (await call(mm().liveRaces!())) as never,
+      liveRace: async (raceId) => (await call(mm().liveRace!(raceId))) as never,
+      friendIds: friendIdsFrom(player),
+      signTicket: (t) => signTicket(t, env.TICKET_SECRET),
+    }),
+    ...(env.TOURNAMENTS ? { tournaments: new TournamentsService(() => master, tournamentBackend(env), tournamentPlayersFrom(player)) } : {}),
     leaderboard: {
       board: async (seasonId, board) => {
         const obj = await env.SNAPSHOTS.get(board === 'index' ? indexKey(seasonId) : boardKey(seasonId, board));
@@ -342,6 +399,7 @@ export default {
       teamRolloverStep: async (seasonId) => unwrap(await (stub(env.LEADERBOARD, `lb:${seasonId}`).teamRolloverStep!(seasonId, now))) as RolloverState,
       eventsStep: (t) => eventsStep(env, t),
       leagueStep: async (seasonId) => unwrap(await (stub(env.LEADERBOARD, `lb:${seasonId}`).leagueStep!(seasonId, now))) as { status: string },
+      tournamentsStep: (t) => tournamentsStep(env, t),
     });
     console.log('scheduled', event.cron, done.join(' '));
   },

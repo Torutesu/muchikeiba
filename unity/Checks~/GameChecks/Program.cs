@@ -48,6 +48,8 @@ static class Program
         await QaRound6Checks.Run(Check, Ruleset(), Root);
         Console.WriteLine("== breeding screen (own / borrowed stallion, atavism, stud fee)");
         await BreedingChecks.Run(Check, Ruleset());
+        Console.WriteLine("== tournaments and spectating");
+        await TournamentChecks.Run(Check, Ruleset());
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

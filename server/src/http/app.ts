@@ -22,6 +22,8 @@ import { TEAM_ID_RE } from '../domain/teams.js';
 import { EVENT_ID_RE } from '../domain/events.js';
 import { goingSchema } from '../domain/schemas.js';
 import { StudService, type StudDirectory, type StudPlayers } from '../domain/studService.js';
+import type { SpectateService } from '../domain/spectate.js';
+import type { TournamentEntryInfo, TournamentPlayers, TournamentsService } from '../domain/tournamentService.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -36,7 +38,7 @@ export type PlayerMethod =
   | 'registerDevice' | 'unregisterDevice' | 'pushPreferences' | 'setPushPreferences' | 'kpiIngest'
   | 'taStart' | 'taPrepare' | 'taAbort' | 'taRecord' | 'taView'
   | 'teamPrepareJoin' | 'teamCommitJoin' | 'teamAbortJoin' | 'teamAddOutgoing' | 'teamRemoveOutgoing' | 'teamLeft' | 'teamState' | 'teamSeasonReward' | 'queuePush'
-  | 'eventsView' | 'eventEnter' | 'eventCancel' | 'eventClose'
+  | 'eventsView' | 'eventEnter' | 'eventCancel' | 'eventClose' | 'tournamentEntry' | 'tournamentClose' | 'tournamentHistory'
   | 'bond' | 'bondLevels' | 'care' | 'presets' | 'setCourseLook' | 'setRoomConditions'
   | 'studView' | 'studList' | 'studUnlist' | 'studPeek' | 'studReserve' | 'studSettle' | 'studPreview' | 'studApply' | 'studAcked' | 'studDue' | 'studRetryLater';
 
@@ -88,6 +90,10 @@ export interface AppContext {
   events?: EventsService;
   /** REQ-BREED-010..016: stud lending. */
   stud?: StudService;
+  /** REQ-SPEC-*: live race list + spectator tickets. */
+  spectate?: SpectateService;
+  /** REQ-TOUR-*: tournaments. */
+  tournaments?: TournamentsService;
   clock?: () => number;
   paidBalance(): Promise<unknown>;
   adminToken: string | undefined;
@@ -137,6 +143,14 @@ const events = (c: AppContext) => {
 const stud = (c: AppContext) => {
   if (!c.stud || !c.master.progression.stud) throw new AppError('NOT_FOUND', 'stud lending is not available');
   return c.stud;
+};
+const spectate = (c: AppContext) => {
+  if (!c.spectate) throw new AppError('NOT_FOUND', 'spectating is not available');
+  return c.spectate;
+};
+const tournaments = (c: AppContext) => {
+  if (!c.tournaments) throw new AppError('NOT_FOUND', 'tournaments are not available');
+  return c.tournaments;
 };
 const teamIdParam = (s: string) => {
   if (!TEAM_ID_RE.test(s)) throw new AppError('BAD_REQUEST', 'bad team id');
@@ -327,6 +341,19 @@ export const routes: Route[] = [
     if (r?.ok && c.ops) await c.ops.integrity.report(p.raceId!, u, (c.clock ?? Date.now)());
     return r;
   } },
+  // spectating (REQ-SPEC-*)
+  { method: 'GET', path: '/v1/races/live', auth: 'player', handler: async (_r, _p, c, u) => spectate(c).list(u) },
+  { method: 'POST', path: '/v1/race/:raceId/spectate', auth: 'player', handler: async (_r, p, c, u) => spectate(c).spectate(u, p.raceId!) },
+  // tournaments (REQ-TOUR-*)
+  { method: 'GET', path: '/v1/tournaments', auth: 'none', handler: async (_r, _p, c) => tournaments(c).list() },
+  { method: 'GET', path: '/v1/tournaments/history/me', auth: 'player', handler: async (_r, _p, c, u) => tournaments(c).history(u) },
+  { method: 'GET', path: '/v1/tournaments/:tournamentId', auth: 'none', handler: async (_r, p, c) => tournaments(c).detail(p.tournamentId!) },
+  { method: 'GET', path: '/v1/tournaments/:tournamentId/me', auth: 'player', handler: async (_r, p, c, u) => tournaments(c).me(u, p.tournamentId!) },
+  { method: 'POST', path: '/v1/tournaments/:tournamentId/register', auth: 'player', handler: async (r, p, c, u) => {
+    const b = await body(r, z.object({ horseId: id }));
+    return tournaments(c).register(u, p.tournamentId!, b.horseId);
+  } },
+  { method: 'POST', path: '/v1/tournaments/:tournamentId/unregister', auth: 'player', handler: async (_r, p, c, u) => tournaments(c).unregister(u, p.tournamentId!) },
   // profile, titles, stats (REQ-STAT-*, REQ-TITLE-*, REQ-SOCIAL-006)
   { method: 'PUT', path: '/v1/player/profile', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ displayName: z.string().min(1).max(40) }));
@@ -475,6 +502,7 @@ export const handle: Handler = async (req, _p, ctx) => {
     return handleAdmin(req, {
       ops: ctx.ops, authenticateAdmin: (r) => ctx.authenticateAdmin!(r), player: ctx.player, leaderboard: ctx.leaderboard,
       paidBalance: () => ctx.paidBalance(), replay: (id) => ctx.race.replay(id), ...(ctx.clock ? { clock: ctx.clock } : {}),
+      ...(ctx.tournaments ? { tournaments: ctx.tournaments } : {}),
     });
   }
   try {
@@ -529,6 +557,17 @@ export function teamPlayersFrom(player: (uid: string) => PlayerInvoker): TeamPla
     push: (u, templateId, vars) => player(u).invoke('queuePush', u, templateId, vars),
   };
 }
+
+/** Adapts per-player invocations to the tournament orchestration (REQ-TOUR-*). */
+export function tournamentPlayersFrom(player: (uid: string) => PlayerInvoker): TournamentPlayers {
+  return {
+    tournamentEntry: async (u, h) => (await player(u).invoke('tournamentEntry', u, h)) as unknown as TournamentEntryInfo,
+    history: (u) => player(u).invoke('tournamentHistory', u),
+  };
+}
+
+/** REQ-SPEC-001: the viewer's friend ids (for friend-room visibility). */
+export const friendIdsFrom = (player: (uid: string) => PlayerInvoker) => async (u: string) => (await player(u).invoke('friendsState', u)).ids;
 
 /** Adapts per-player invocations to the event orchestration (REQ-EVENT-*). */
 export function eventPlayersFrom(player: (uid: string) => PlayerInvoker): EventPlayers {

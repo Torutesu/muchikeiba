@@ -11,13 +11,14 @@ import type { SettleMeta } from '../race/settlement.js';
  *  - event    : a player's event rank reward (EventDO `ev:<eventId>`)
  *  - settlement: a player's race result   (RaceRoomDO `<raceId>`, settle meta)
  *  - moderation: a quarantine/ban push to a player (IntegrityDO outbox, still retried automatically)
+ *  - tournament: a player's tournament prize (TournamentDO `tour:<id>`, payouts)
  *
  * The owning object stays the source of truth; a registry in OpsDO indexes them so ops can list everything in
  * one place. Ops can retry an item (the underlying operation is idempotent: closeSeason / eventClose /
  * teamSeasonReward are marked per season or event on the player, applyRace is keyed by the race id) or dismiss
  * it with a note (handled by hand, e.g. with a compensation grant).
  */
-export const DEAD_LETTER_SOURCES = ['season', 'team', 'event', 'settlement', 'moderation'] as const;
+export const DEAD_LETTER_SOURCES = ['season', 'team', 'event', 'settlement', 'moderation', 'tournament'] as const;
 export type DeadLetterSource = (typeof DEAD_LETTER_SOURCES)[number];
 export type DeadLetterStatus = 'open' | 'resolved' | 'dismissed';
 

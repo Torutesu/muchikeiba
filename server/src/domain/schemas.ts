@@ -11,7 +11,7 @@ const stat = int.min(0).max(1000);
 export const styleSchema = z.enum(['nige', 'senko', 'sashi', 'oikomi']);
 export const surfaceSchema = z.enum(['turf', 'dirt']);
 export const aptSurfaceSchema = z.enum(['turf', 'dirt', 'both']);
-export const modeSchema = z.enum(['ranked', 'friend', 'tutorial', 'timeattack', 'event']);
+export const modeSchema = z.enum(['ranked', 'friend', 'tutorial', 'timeattack', 'event', 'tournament']);
 /** Ground condition names per surface (REQ-RACE-034). Absent = good. */
 export const TURF_GOINGS = ['firm', 'good', 'yielding', 'soft'] as const;
 export const DIRT_GOINGS = ['fast', 'good', 'muddy', 'sloppy'] as const;
@@ -104,7 +104,8 @@ export const inputTripleSchema = z.tuple([tickN, int.min(0).max(11), int.min(1).
 export type InputTriple = z.infer<typeof inputTripleSchema>;
 
 export type ServerMessage =
-  | { t: 'start'; you: number; startAtMs: number; config: RaceStartConfig; visuals?: StartVisuals }
+  /** `you` = -1 and `spectator` set for a read-only spectator (REQ-SPEC-002). */
+  | { t: 'start'; you: number; startAtMs: number; config: RaceStartConfig; visuals?: StartVisuals; spectator?: { delayMs: number } }
   | { t: 'b'; from: number; to: number; in: InputTriple[] }
   | { t: 'desync'; tick: number }
   | { t: 'final'; status: 'confirmed' | 'verifying' | 'void'; order: number[]; h: string }

@@ -7,6 +7,7 @@ import type { ModerationChange, ModerationStatus, RaceIntegrityReport, RaceRepor
 import type { LeaderboardApi, PlayerInvoker } from './app.js';
 import { BASE_BANNED_SILKS, bannedMatch, bannedSilksListSchema, bannedSilksProblems, combinedBanned, type BannedSilksList } from '../domain/bannedSilks.js';
 import { VISUALS } from '../domain/visuals.js';
+import type { TournamentsService } from '../domain/tournamentService.js';
 import { DEAD_LETTER_SOURCES, type DeadLetterApi, type DeadLetterSource, type DeadLetterStatus } from '../ops/deadLetter.js';
 
 const dl = (ctx: AdminContext): DeadLetterApi => {
@@ -57,7 +58,13 @@ export interface AdminContext {
   paidBalance(): Promise<unknown>;
   replay(raceId: string): Promise<unknown>;
   clock?: () => number;
+  /** REQ-TOUR-001/010 (absent = tournament routes answer NOT_FOUND). */
+  tournaments?: TournamentsService;
 }
+const tours = (ctx: AdminContext) => {
+  if (!ctx.tournaments) throw new AppError('NOT_FOUND', 'tournaments are not available');
+  return ctx.tournaments;
+};
 
 interface Outcome { result: unknown; target?: string | null; before?: unknown; after?: unknown }
 interface AdminRoute {
@@ -215,6 +222,15 @@ export const adminRoutes: AdminRoute[] = [
     return { result: c, target: `player:${id}`, before: { status: 'banned' }, after: { status: c.status } };
   } },
   // ---- dead letters (REQ-OPS-041) ----
+  // ---- tournaments (REQ-TOUR-001/010) ----
+  { method: 'POST', path: '/v1/admin/tournaments', role: 'operator', write: true, action: 'tournament.create', handler: async (r) => {
+    const out = (await tours(r.ctx).adminCreate(r.body.tournament, r.principal.id)) as { id: string };
+    return { result: out, target: `tournament:${out.id}`, after: r.body.tournament };
+  } },
+  { method: 'GET', path: '/v1/admin/tournaments/:id', role: 'viewer', write: false, action: 'tournament.view', handler: async (r) => ({ result: await tours(r.ctx).detail(r.params.id!), target: `tournament:${r.params.id}` }) },
+  { method: 'POST', path: '/v1/admin/tournaments/:id/cancel', role: 'operator', write: true, action: 'tournament.cancel', handler: async (r) => ({
+    result: await tours(r.ctx).adminCancel(r.params.id!, r.reason!, r.principal.id), target: `tournament:${r.params.id}`,
+  }) },
   { method: 'GET', path: '/v1/admin/dead-letters', role: 'viewer', write: false, action: 'deadletter.list', handler: async (r) => {
     const st = r.query.get('status') ?? 'open';
     if (!['open', 'resolved', 'dismissed', 'all'].includes(st)) throw new AppError('BAD_REQUEST', 'status must be open|resolved|dismissed|all');

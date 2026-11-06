@@ -34,6 +34,10 @@ export interface CreateRaceOptions {
   event?: EventDef;
   /** REQ-ROOM-003: friend rooms race on the host's chosen conditions (null/absent = as before). */
   roomPreset?: RoomConditions | null;
+  /** REQ-TOUR-005: tournament heats start at their scheduled time (default now + START_DELAY_MS). */
+  startAtMs?: number;
+  /** REQ-TOUR-003: the tournament's stat cap (null = none); overrides the mode's own rule. */
+  statCap?: number | null;
 }
 
 export async function createRace(m: Master, o: CreateRaceOptions): Promise<CreatedRace> {
@@ -43,7 +47,7 @@ export async function createRace(m: Master, o: CreateRaceOptions): Promise<Creat
   const trackId = o.trackId
     ?? (room?.trackId && m.tracks.some((t) => t.id === room.trackId) ? room.trackId : undefined)
     ?? (ev ? ev.trackIds[randInt(o.rng, ev.trackIds.length)]! : o.mode === 'tutorial' ? 'aoba_turf_1600' : m.tracks[randInt(o.rng, m.tracks.length)]!.id);
-  const statCap = ev ? ev.rules.statCap : o.mode === 'ranked' ? Math.min(...o.humans.map((h) => h.statCap)) : null;
+  const statCap = o.statCap !== undefined ? o.statCap : ev ? ev.rules.statCap : o.mode === 'ranked' ? Math.min(...o.humans.map((h) => h.statCap)) : null;
   const ruleset = ev ? eventRuleset(o.ruleset ?? DEFAULT_RULESET, ev) : o.ruleset;
   const config = buildRaceConfig(m, {
     raceId, mode: o.mode, trackId, statCap, cpuCount: o.cpuCount, cpuLevel: o.cpuLevel, rng: o.rng,
@@ -55,11 +59,11 @@ export async function createRace(m: Master, o: CreateRaceOptions): Promise<Creat
     ...(ruleset ? { rulesetOverrides: ruleset } : {}),
     ...(ev?.rules.fixedStats ? { fixedStats: ev.rules.fixedStats } : {}),
   });
-  const startAtMs = o.now + START_DELAY_MS;
+  const startAtMs = Math.max(o.startAtMs ?? 0, o.now + START_DELAY_MS);
   const assignments: Record<string, Assignment> = {};
   for (const e of config.entrants) {
     if (e.kind !== 'human') continue;
-    const ticket = await signTicket({ raceId, slot: e.slot, playerId: e.playerId!, exp: o.now + TICKET_TTL_MS }, o.ticketSecret);
+    const ticket = await signTicket({ raceId, slot: e.slot, playerId: e.playerId!, exp: startAtMs + TICKET_TTL_MS }, o.ticketSecret);
     assignments[e.playerId!] = { raceId, slot: e.slot, ticket, startAtMs, wsPath: `/v1/race/${raceId}/ws` };
   }
   const ratings: Record<string, Rating> = {};

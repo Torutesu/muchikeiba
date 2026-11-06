@@ -46,6 +46,8 @@ static class Program
         await OfflineScreenModels();
         Console.WriteLine("== QA round 6 client regressions");
         await QaRound6Checks.Run(Check, Ruleset(), Root);
+        Console.WriteLine("== tournaments and spectating");
+        await TournamentChecks.Run(Check, Ruleset());
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

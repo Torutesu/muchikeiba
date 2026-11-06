@@ -1,5 +1,8 @@
 import { AppError } from './errors.js';
-import type { Master } from './master.js';
+import type { Master, Reward } from './master.js';
+import { grantReward } from './items.js';
+
+const TOURNAMENT_HISTORY_KEEP = 50;
 import { migratePlayer, moderationOf, newPlayer, playerView, type PlayerState, type PurchaseRecord } from './player.js';
 import { setModeration, supportCorrectAge, supportGrant, supportResetName, supportSettleDebt, supportView, type Grant } from '../ops/support.js';
 import { equipTitle, evaluateTitles, publicProfile, setDisplayName, type PublicProfile } from './stats.js';
@@ -597,6 +600,30 @@ export class PlayerService {
   /** Refunds a held entry fee (queue cancelled / refused). `entryId` null = whatever is held. */
   eventCancel(id: string, eventId: string, entryId: string | null) {
     return this.tx(id, null, (s, now) => cancelEntry(s, eventId, entryId, now));
+  }
+  /** REQ-TOUR-002/003: race entry + what tournament eligibility looks at. */
+  async tournamentEntry(id: string, horseId: string) {
+    const entry = await this.raceEntry(id, horseId);
+    const s = await this.load(id);
+    const h = getHorse(s, horseId);
+    return { entry, displayName: s.profile.displayName, info: { classId: entry.classId, rankedRaces: s.rating.rankedRaces, style: h.style as string, horseActive: h.status === 'active', moderation: entry.moderation } };
+  }
+  /** REQ-TOUR-007: final rank + prize, once per tournament (resumable payout; a retry is a no-op). */
+  tournamentClose(id: string, tournamentId: string, rank: number, reward: Reward | null, name: string) {
+    return this.tx(id, null, (s, now) => {
+      const done = (s.tournaments ??= {});
+      if (done[tournamentId]) return { status: 'already' as const, reward: done[tournamentId]!.reward };
+      if (reward) grantReward(s, reward, now, `tournament ${tournamentId} rank ${rank}`, `tournament:${tournamentId}:rank`);
+      done[tournamentId] = { name, rank, at: now, reward };
+      const keys = Object.entries(done).sort((a, b) => b[1].at - a[1].at).map(([k]) => k);
+      for (const k of keys.slice(TOURNAMENT_HISTORY_KEEP)) delete done[k];
+      return { status: 'rewarded' as const, reward };
+    });
+  }
+  /** REQ-TOUR-009: the player's tournament history (newest first). */
+  async tournamentHistory(id: string) {
+    const s = await this.load(id);
+    return { history: Object.entries(s.tournaments ?? {}).map(([tournamentId, r]) => ({ tournamentId, ...r })).sort((a, b) => b.at - a.at) };
   }
   /** REQ-EVENT-008: final rank reward (event end job; idempotent). An event removed from config pays nothing. */
   eventClose(id: string, eventId: string, rank: number | null) {

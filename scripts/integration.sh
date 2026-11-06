@@ -2,8 +2,8 @@
 # Cross-language end-to-end test:
 #   C# verifier (Muchi.Verifier serve)  <-- HTTP --  TS server (wrangler dev)  <-- WebSocket --  C# bots (Muchi.Bot)
 # Checks that real races confirm, that the server's final hash equals each bot's own simulation,
-# that a solo ranked race is settled by the real C# verifier, and that the stored replay log
-# reproduces the same hash offline.
+# that a solo ranked race is settled by the real C# verifier, that the stored replay log
+# reproduces the same hash offline, and that a tournament (heats → final) and a spectator run end to end.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VERIFIER_PORT="${VERIFIER_PORT:-8090}"
@@ -90,6 +90,9 @@ $BOT "$BASE" team | tee "$LOG_DIR/team.jsonl" || fail=1
 
 echo "== 8) Unity app game layer (unity/Assets/Muchi/Game): naming + first scout → shop/pass → ranked race confirmed with the app's own simulation"
 (cd "$ROOT/unity/Checks~/GameChecks" && dotnet build -c Release --nologo -v q >/dev/null && dotnet bin/Release/net8.0/GameChecks.dll online "$BASE") | tee "$LOG_DIR/unity-game.log" || fail=1
+
+echo "== 9) tournament: admin creates a mini tournament → 4 bots register → 2 heats + final over real race rooms (TournamentDO alarms) → standings + prize; a spectator watches a heat (delayed, read-only) and gets the players' final hash"
+$BOT "$BASE" tournament | tee "$LOG_DIR/tournament.jsonl" || fail=1
 
 if [[ $fail -ne 0 ]]; then
   echo "== INTEGRATION FAILED"; echo "--- server log"; tail -50 "$LOG_DIR/server.log"; echo "--- verifier log"; tail -20 "$LOG_DIR/verifier.log"

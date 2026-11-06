@@ -1,7 +1,7 @@
 import type { GoingAptitude } from './schemas.js';
 import type { BondState } from './bond.js';
 import type { PresetsState } from './presets.js';
-import type { Rarity, Sex, Stats, Style } from './master.js';
+import type { Rarity, Reward, Sex, Stats, Style } from './master.js';
 import type { PushState } from './push.js';
 import type { KpiState } from './kpi.js';
 import type { TimeAttackState } from './timeAttack.js';
@@ -127,6 +127,8 @@ export interface PlayerState {
   team?: PlayerTeamState;
   /** REQ-EVENT-*: per-event progress, pending entry fee and paid rewards (see events.ts). */
   events?: Record<string, PlayerEventState>;
+  /** REQ-TOUR-007: tournament results (paid once per tournament; newest kept). */
+  tournaments?: Record<string, { name: string; rank: number; at: number; reward: Reward | null }>;
   /** Anti-cheat status pushed by the integrity service (REQ-OPS-035). Absent = ok. */
   moderation?: { status: 'ok' | 'quarantined' | 'banned'; until: number | null; reason: string; at: number };
   /** REQ-BOND-*: care points per horse and account-wide level rewards already paid (created on first care). */

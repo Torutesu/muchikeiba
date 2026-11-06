@@ -48,6 +48,13 @@ namespace Muchi.Net
         public JsonNode StartVisuals { get; private set; }
         /// <summary>Our slot, -1 until the room sends "start".</summary>
         public int Slot { get; private set; } = -1;
+        /// <summary>
+        /// True once the room accepted us as a read-only spectator (start.you = -1, REQ-SPEC-002): we never send
+        /// inputs, checksums or results, and render <see cref="SpectatorDelayMs"/> behind the room's clock.
+        /// </summary>
+        public bool IsSpectator { get; private set; }
+        /// <summary>How far behind real time the room streams to spectators (start.spectator.delayMs; 0 = live).</summary>
+        public int SpectatorDelayMs { get; private set; }
         /// <summary>Server epoch ms of tick 0.</summary>
         public long StartAtMs { get; private set; }
         /// <summary>Last tick confirmed by the room (-1 = none).</summary>
@@ -77,13 +84,13 @@ namespace Muchi.Net
             _transport.Send(o.ToString());
             // The socket may have dropped right after our result went out: send it again so the room does not
             // wait until maxTicks. The room ignores a second "res" from the same slot.
-            if (_resultSent && Sim != null && Sim.IsFinished && Final == null) SendResult();
+            if (_resultSent && !IsSpectator && Sim != null && Sim.IsFinished && Final == null) SendResult();
         }
 
         /// <summary>Queue a player input for tick ConfirmedTick + inputDelayTicks (REQ-NET-002).</summary>
         public void QueueInput(byte cmd)
         {
-            if (Sim == null || Sim.IsFinished) return;
+            if (Sim == null || Sim.IsFinished || IsSpectator) return;
             cmd = (byte)(cmd & Cmd.ClientMask);
             if (cmd == 0) return;
             int target = ConfirmedTick + Config.Net.InputDelayTicks;
@@ -140,6 +147,8 @@ namespace Muchi.Net
             Config = ProtocolCodec.ParseConfig(m.Get("config"));
             StartVisuals = m.TryGet("visuals", out var vis) && vis.Kind == JsonKind.Object ? vis : null;
             Slot = m.Get("you").AsInt();
+            IsSpectator = Slot < 0;
+            SpectatorDelayMs = IsSpectator && m.TryGet("spectator", out var sp) && sp.Kind == JsonKind.Object && sp.TryGet("delayMs", out var d) ? Math.Max(0, d.AsInt()) : 0;
             StartAtMs = m.Get("startAtMs").AsLong();
             Sim = new RaceSim(Config);
             _scratch = new byte[Config.Entrants.Count];
@@ -181,7 +190,7 @@ namespace Muchi.Net
                 else { Array.Clear(_scratch, 0, _scratch.Length); cmds = _scratch; }
                 Sim.Step(cmds);
                 Record();
-                if (Sim.ChecksumDueForLastTick)
+                if (Sim.ChecksumDueForLastTick && !IsSpectator)
                 {
                     SentChecksums[Sim.LastChecksumTick] = Sim.LastChecksum;
                     var o = JsonNode.Obj();
@@ -192,7 +201,7 @@ namespace Muchi.Net
                 }
             }
             if (Sim.Tick != before) TicksAdvanced?.Invoke(this, Sim.Tick - 1);
-            if (Sim.IsFinished && !_resultSent)
+            if (Sim.IsFinished && !_resultSent && !IsSpectator)
             {
                 _resultSent = true;
                 SendResult();
@@ -289,7 +298,7 @@ namespace Muchi.Net
             if (Sim == null || Config == null || _historyCount == 0) return -1;
             long msPerTick = Math.Max(1, 1000 / Config.Net.TickHz);
             long serverNow = localNowMs + ServerClockOffsetMs;
-            long delayMs = (long)Config.Net.BundleIntervalTicks * msPerTick + RenderExtraDelayMs;
+            long delayMs = (long)Config.Net.BundleIntervalTicks * msPerTick + RenderExtraDelayMs + SpectatorDelayMs;
             long f = (serverNow - StartAtMs - delayMs) * 1000 / msPerTick;
             long newest = (long)(_historyCount - 1) * 1000;
             long oldest = (long)Math.Max(0, _historyCount - _history.Length) * 1000;

@@ -14,7 +14,7 @@ C#（端末・検証サーバー）とTypeScript（Cloudflareサーバー）の�
 {
   "v": 1,
   "raceId": "r_01JC...",
-  "mode": "ranked",                 // "ranked" | "friend" | "tutorial" | "timeattack" | "event"
+  "mode": "ranked",                 // "ranked" | "friend" | "tutorial" | "timeattack" | "event" | "tournament"
   "seed": "9876543210123456789",    // uint64（10進文字列）
   "track": {
     "id": "tokyo_like_turf_2000",
@@ -156,6 +156,19 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 - イベントのルール変更は `ruleset` の値として設定に入る（キー集合は変わらない）。変更があるときは `rulesetVersion` が `"<元の版>+ev.<eventId>"` になる（例：`"1.0.0+ev.no_whip_cup_2026_12"`、`maxWhips` = 0）。検証サーバーは設定に書かれた値で再計算するだけでよい。
 - 能力固定のイベントでは、全出走馬（CPUを含む）の5能力が同じ値で設定に入る。
 - ゴールデン：`contracts/golden/ts-config-event.json`。
+
+## 8.3 大会（REQ-TOUR-*）
+- 各ヒート（予選・決勝）は §2 の RaceStartConfig そのもの。`mode`=`"tournament"`（C# の `RaceMode.Tournament` = 5）。ロックステップ・結果の合意・検証は ranked と同じ規則（人間1人なら必ず検証、レートは変わらない）。
+- 大会の能力上限は `statCap` として設定に入る（上限なしなら null）。検証サーバーは設定の値で再計算するだけでよい。
+
+## 8.4 観戦（REQ-SPEC-*、§4 の後方互換な拡張）
+- 観戦者は `POST /v1/race/:raceId/spectate` で **slot = -1** のチケットを受け取り、選手と同じ `wsPath` に `hello` を送る（形は §4 と同じ）。
+- 部屋は `start` を `"you":-1` と `"spectator":{"delayMs":10000}` 付きで返す。`spectator` を知らない古いクライアントは無視してよい（選手には付かない）。
+- その後は選手と同じ `b`（確定入力）と、最後の tick まで受け取った後に確定した `final`（`confirmed` / `void` のみ。`verifying` は送らない）が届く。観戦者は端末でシミュレーションするので、最終ハッシュは選手と同じになる。
+- 遅延：フレンドルームは 0（ライブ）、ranked・イベント・大会は 10 秒（ゴースティング対策）。観戦者に届くのは選手に送信済み（＝保存済み）の tick だけで、遅延分は部屋の時計で刻まれる（選手のレースが終わっても通常速度で最後まで流れる）。
+- 観戦者は `in` / `chk` / `res` を送らない（送ると `err` `SPECTATOR_READ_ONLY`）。`ping` には `pong` を返す。
+- 1部屋の観戦者数の上限は既定 200（`SPECTATOR_LIMIT`）。超えると `err` `SPECTATORS_FULL` で閉じる（close code 4003）。
+- 描画：観戦クライアントは `delayMs` だけ遅れて描く（`LockstepClient.RenderTickPermille` が自動で引く）。
 
 ## 9. ゴールデンファイル（`contracts/golden/`）
 - `race-*.json`：`{ "log": リプレイログ, "expected": 検証APIの出力 }`。C#側が生成し、C#テストで再計算一致を、TSテストでスキーマ適合を確認する。

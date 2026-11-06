@@ -41,7 +41,7 @@ src/domain/     純粋ロジック（I/Oなし・時刻と乱数は注入）
   scheduled.ts    cronの振り分け
 src/race/       レース作成（チケット発行）、精算（着順→報酬・レート・戦績）、settlement.ts（検証と精算をアラームから再試行つきで実行）
 src/http/       ルーター、Firebase IDトークン検証、レース入場チケット、ストアアダプタ
-src/do/         Durable Objects（PlayerDO / RaceRoomDO / MatchmakerDO / AccountingDO / LeaderboardDO / DirectoryDO）
+src/do/         Durable Objects（PlayerDO / RaceRoomDO / MatchmakerDO / AccountingDO / LeaderboardDO / DirectoryDO / … / TournamentDO）
 master/         マスターデータ（全て架空。金額・確率は暫定）
 ```
 
@@ -137,6 +137,14 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | POST | `/v1/events/:eventId/cancel` | 要 | | 待ち行列から抜けて参加費を返す（レース中は `ALREADY_IN_RACE`） |
 | GET | `/v1/events/:eventId/leaderboard` | なし | | イベントランキングのスナップショット（R2） |
 | GET | `/v1/events/:eventId/me` | 要 | | 自分のイベント成績と順位（直近集計） |
+| GET | `/v1/races/live` | 要 | | 観戦できるレース（REQ-SPEC-001）：`friends`＝自分・フレンドが走っている（フレンド部屋を含む）、`featured`＝公開レース（大会のヒート→レート順、最大20件） |
+| POST | `/v1/race/:raceId/spectate` | 要 | | 観戦チケット（slot = -1、`{raceId, ticket, wsPath, startAtMs, delayMs, …}`）。フレンド部屋は出走者かそのフレンドだけ（`FORBIDDEN`）。WebSocket の流れは `contracts/protocol.md` §8.4 |
+| GET | `/v1/tournaments` | なし | | 大会一覧（受付前・受付中・開催中→最近の結果） |
+| GET | `/v1/tournaments/:tournamentId` | なし | | ルール・組み合わせ（ラウンド→ヒート→結果）・最終順位。終わった大会は R2 `tournaments/<id>.json` にも公開 |
+| GET | `/v1/tournaments/:tournamentId/me` | 要 | | 自分のエントリー・今のヒート（走行中はチケット付き。`/v1/match/status` にも出る）・敗退・順位・賞品 |
+| POST | `/v1/tournaments/:tournamentId/register` | 要 | | `{horseId}` エントリー（受付期間中は何度でも、馬の変更も）。`EVENT_CLOSED` / `NOT_ELIGIBLE`（理由：`class`,`ranked_races`,`style`,`moderation`,`horse_not_active`）/ `ROOM_FULL` |
+| POST | `/v1/tournaments/:tournamentId/unregister` | 要 | | エントリー取り消し（受付期間中のみ） |
+| GET | `/v1/tournaments/history/me` | 要 | | 自分の大会成績（新しい順、最大50件） |
 | GET | `/v1/friends` | 要 | | フレンド・受信/送信中の申請・招待（公開プロフィール付き） |
 | GET | `/v1/friends/code` | 要 | | 自分のフレンドコード（9桁） |
 | POST | `/v1/friends/requests` | 要 | | `{code}` 申請（相互申請なら即フレンド） |
@@ -189,8 +197,11 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | POST | `/v1/admin/integrity/players/:playerId/unban` | admin | `{reason}` |
 | GET | `/v1/admin/reports` | viewer | `?status=open\|resolved` 通報の列 |
 | POST | `/v1/admin/reports/:reportId/resolve` | operator | `{resolution, reason}` |
+| POST | `/v1/admin/tournaments` | operator | `{tournament:{id, name, trackIds, registrationOpensAtMs, registrationClosesAtMs, startsAtMs, heatSize, fieldSize, advancePerHeat, maxEntrants, minEntrants?, entry?, statCap?, cpuLevel?, roundGapMs?, notifyBeforeMs?, prizes?}, reason}` 大会を作る（REQ-TOUR-001。同じ内容の再送は既存を返す） |
+| GET | `/v1/admin/tournaments/:id` | viewer | 大会の詳細（組み合わせ・順位） |
+| POST | `/v1/admin/tournaments/:id/cancel` | operator | `{reason}` 中止（表彰前のみ。賞品なし） |
 | GET | `/v1/admin/dead-letters` | viewer | `?status=open\|resolved\|dismissed\|all&source=&limit=` 失敗リストの索引（REQ-OPS-041） |
-| GET | `/v1/admin/dead-letters/:source/:scope` | viewer | 持ち主の現在の失敗リスト（索引も更新）。`source`＝`season`（scope＝シーズン）／`team`（シーズン）／`event`（イベントID）／`settlement`（レースID）／`moderation`（`global`） |
+| GET | `/v1/admin/dead-letters/:source/:scope` | viewer | 持ち主の現在の失敗リスト（索引も更新）。`source`＝`season`（scope＝シーズン）／`team`（シーズン）／`event`（イベントID）／`settlement`（レースID）／`moderation`（`global`）／`tournament`（大会ID：賞品の付与） |
 | POST | `/v1/admin/dead-letters/:source/:scope/:itemId/retry` | operator | `{reason}` 再試行（冪等。成功で `resolved`、失敗ならエラーと回数を更新） |
 | POST | `/v1/admin/dead-letters/:source/:scope/:itemId/dismiss` | admin | `{note, reason}` 手作業で対応済みとして取り下げ |
 | GET | `/v1/admin/silks/banned` | viewer | 有効な禁止勝負服の一覧（REQ-OPS-040） |
@@ -284,6 +295,13 @@ App Store Server API（`AppStoreServerApi`、ES256 JWT）はアプリが報告�
 - クライアントでしか分からないイベント（セッション・チュートリアルの各ステップ・画面・購入画面の操作・通知の開封など）は `POST /v1/analytics/events` で受ける。種類ごとにスキーマで検証し、時刻が7日より古いか5分より未来のものは捨てる。
 - 個人情報は送らない。プレイヤーIDはソルト（secret `KPI_SALT`）付きSHA-256の先頭16桁に置き換える。`KPI_SALT` が無ければ何も書かない。
 - 列の並びとクエリ（継続率・チュートリアル・初回課金・ARPDAU・課金率・パス継続・課金者と無課金者の勝率差）は `docs/ops/kpi-queries.md`。
+
+## 大会と観戦（`src/domain/tournaments.ts`・`spectate.ts`、`src/do/tournament.ts`、REQ-TOUR-* / REQ-SPEC-*）
+
+- **大会**：1大会＝1つの TournamentDO（`tour:<id>`、一覧は `index`）。アラームで「受付締切→1回戦の組み分け（レート順のスネーク）→開始5分前の通知（`tournament_heat_soon`）→開始30秒前にヒートのレース部屋を作成→結果をポーリング→勝ち上がり→…→決勝→順位→賞品」を進める。cron（5分ごと）は開催中の大会を起こすだけの保険。
+- ヒートは `mode: "tournament"`（ranked と同じ合意・検証、レートは動かない、能力上限は大会の `statCap`）。来なかった選手（一度も接続しない）はCPUが走り、勝ち上がれない。無効・消えたヒートは来た選手をシード順で勝ち上げる。同じラウンド・同じ着順で敗退した選手は同順位。
+- 賞品は選手ごとに1回だけ（`tournamentClose`、プレイヤー側で大会IDごとに記録）。5回失敗したら失敗リスト（`tournament`）へ。
+- **観戦**：レースを作ると MatchmakerDO の「ライブ一覧」（`l|<raceId>` 行、15分で消える）に載る。観戦者は slot -1 のチケットで同じ部屋の WebSocket に入り、選手に送信済みの確定入力だけを受け取る（ranked・イベント・大会は10秒遅れ、フレンド部屋はライブ）。部屋は観戦者を休止状態のまま保持し、アラームのたびに同じtick位置の観戦者へ同じ文字列を一括送信する。1部屋200人まで（`SPECTATOR_LIMIT`）。
 
 ## 未実装・要対応
 - Apple / Google の実機・本番の認証情報での疎通確認（コードとテストは自前の証明書チェーン・偽APIで検証済み）

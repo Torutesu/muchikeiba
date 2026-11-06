@@ -13,14 +13,20 @@ using System.Text.Json;
 using Muchi.Engine;
 using Muchi.Net;
 
-if (args.Length < 2) { Console.Error.WriteLine("usage: Muchi.Bot <baseUrl> tutorial | ranked <players> | event <players> | timeattack"); return 2; }
+if (args.Length < 2) { Console.Error.WriteLine("usage: Muchi.Bot <baseUrl> tutorial | ranked <players> | event <players> | timeattack | team | tournament"); return 2; }
 string baseUrl = args[0].TrimEnd('/');
 string mode = args[1];
 int players = (mode == "ranked" || mode == "event") && args.Length >= 3 ? int.Parse(args[2]) : 1;
 
-var bots = Enumerable.Range(0, players).Select(i => new Bot(baseUrl, $"bot_{mode}_{DateTime.UtcNow.Ticks}_{i}")).ToArray();
+var bots = mode == "tournament" ? Array.Empty<Bot>() : Enumerable.Range(0, players).Select(i => new Bot(baseUrl, $"bot_{mode}_{DateTime.UtcNow.Ticks}_{i}")).ToArray();
 foreach (var b in bots) await b.SetupAsync();
 
+if (mode == "tournament")
+{
+    var tr = await TournamentScenario.RunAsync(baseUrl);
+    Console.WriteLine(JsonSerializer.Serialize(tr));
+    return tr.ok ? 0 : 1;
+}
 if (mode == "timeattack")
 {
     var ta = await TimeAttackScenario.RunAsync(bots[0]);
@@ -113,6 +119,7 @@ sealed class Bot
     private int _idem;
     public string HorseId;
     public readonly Report Report = new();
+    public string BaseUrl => _base;
 
     public Bot(string baseUrl, string user)
     {

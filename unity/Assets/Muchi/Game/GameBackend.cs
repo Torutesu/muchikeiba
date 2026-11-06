@@ -276,5 +276,15 @@ namespace Muchi.Game
             var session = new RaceSession(_sockets ?? new WebSocketTransportFactory(), _settings.WebSocketUrl(a.WsPath), a.RaceId, a.Ticket);
             return new OnlineRaceDriver(session);
         }
+
+        /// <summary>
+        /// REQ-SPEC-002: watch a live race with a spectator ticket. The driver renders like a player's race (same
+        /// simulation, delayed stream); PlayerSlot is -1 and inputs are ignored.
+        /// </summary>
+        public IRaceDriver ConnectSpectator(SpectatorTicket t)
+        {
+            var spectator = new SpectatorSession(_sockets ?? new WebSocketTransportFactory(), _settings.WebSocketUrl(t.WsPath), t);
+            return new OnlineRaceDriver(spectator.Session);
+        }
     }
 }

@@ -19,6 +19,7 @@ import { trackSchema } from '../domain/schemas.js';
 import { eventProblems } from '../domain/events.js';
 import type { EventDef } from '../domain/master.js';
 import { canonicalJson, hashOf } from './hash.js';
+import { assetCatalogProblems, assetCatalogSchema, EMPTY_ASSET_CATALOG, sameCatalogContent, type AssetCatalog } from '../domain/assetCatalog.js';
 
 /**
  * Remote config (REQ-OPS-002..007). A bundle changes the parts of the game that may change without an
@@ -58,6 +59,8 @@ export const configBundleSchema = z.object({
   events: z.array(z.record(z.string(), z.unknown())).optional(),
   /** REQ-STABLE-008: replaces the マイ厩舎 section (like caps within STABLE_HARD_LIMITS, themes). */
   stable: stableConfigSchema.optional(),
+  /** REQ-DLV-005: replaces the asset delivery catalog. Content changes must bump catalogVersion (clients refetch on it). */
+  assets: assetCatalogSchema.optional(),
 }).strict();
 export type ConfigBundle = z.infer<typeof configBundleSchema>;
 
@@ -147,7 +150,9 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
   if (b.bannedSilks) problems.push(...bannedSilksProblems(bannedSilks, VISUALS).map((x) => `bannedSilks: ${x}`));
   const stable = (b.stable as StableConfig | undefined) ?? base.stable;
   if (b.stable) problems.push(...stableConfigProblems(b.stable as StableConfig, base));
-  const master: Master = { ...base, tracks, litTracks, gacha: { ...base.gacha, pityGroups, banners }, progression, ng: b.ng ?? base.ng, events, bannedSilks, ...(stable ? { stable } : {}) };
+  const assetCatalog = (b.assets as AssetCatalog | undefined) ?? base.assetCatalog;
+  if (b.assets) problems.push(...assetCatalogVersionProblems(b.assets as AssetCatalog, base.assetCatalog ?? EMPTY_ASSET_CATALOG));
+  const master: Master = { ...base, tracks, litTracks, gacha: { ...base.gacha, pityGroups, banners }, progression, ng: b.ng ?? base.ng, events, bannedSilks, ...(stable ? { stable } : {}), ...(assetCatalog ? { assetCatalog } : {}) };
   problems.push(...eventProblems(master, events, ruleset));
   // QA r6 #1: tickets must never reach a paid-only banner, including after a remote-config banner change
   if (master.items) problems.push(...itemsProblems(master));
@@ -162,6 +167,17 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
   }
   if (problems.length) throw new AppError('CONFIG_INVALID', problems.join('; '));
   return { master, ruleset };
+}
+
+/**
+ * REQ-DLV-005: a remote catalog is checked like the shipped one, and a catalogVersion names one content: changing the
+ * entries, template or policy without raising catalogVersion above the base would leave clients on their cached copy.
+ */
+export function assetCatalogVersionProblems(next: AssetCatalog, base: AssetCatalog): string[] {
+  const out = assetCatalogProblems(next).map((x) => `assets: ${x}`);
+  if (next.catalogVersion < base.catalogVersion) out.push(`assets: catalogVersion ${next.catalogVersion} is older than the shipped ${base.catalogVersion}`);
+  else if (next.catalogVersion === base.catalogVersion && !sameCatalogContent(next, base)) out.push(`assets: content differs from the shipped catalog but catalogVersion was not bumped (> ${base.catalogVersion})`);
+  return out;
 }
 
 /**
@@ -242,8 +258,8 @@ export class ConfigStore {
   /** Validates without storing. Returns the problems (empty = valid). */
   validate(bundle: unknown): string[] {
     try {
-      const { ruleset } = resolveBundle(this.base, bundle as ConfigBundle);
-      return this.rulesetVersionProblems(ruleset);
+      const { ruleset, master } = resolveBundle(this.base, bundle as ConfigBundle);
+      return [...this.rulesetVersionProblems(ruleset), ...this.catalogVersionProblems(master.assetCatalog)];
     } catch (e) {
       return (e as Error).message.split('; ');
     }
@@ -256,6 +272,16 @@ export class ConfigStore {
       if (v.rulesetVersion !== ruleset.rulesetVersion) continue;
       const other = canonicalJson(resolveBundle(this.base, v.bundle).ruleset);
       if (other !== content) return [`rulesetVersion ${ruleset.rulesetVersion} is already used by ${v.id} with different values`];
+    }
+    return [];
+  }
+
+  /** REQ-DLV-005: like rulesetVersion, an asset catalogVersion names exactly one content across stored versions. */
+  private catalogVersionProblems(cat: AssetCatalog | undefined): string[] {
+    if (!cat) return [];
+    for (const v of this.repo.versions()) {
+      const other = v.bundle.assets as AssetCatalog | undefined;
+      if (other && other.catalogVersion === cat.catalogVersion && !sameCatalogContent(other, cat)) return [`assets: catalogVersion ${cat.catalogVersion} is already used by ${v.id} with different content`];
     }
     return [];
   }

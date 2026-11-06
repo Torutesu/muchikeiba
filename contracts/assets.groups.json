@@ -1,0 +1,33 @@
+{
+ "_note": "アセット配信の先読みグループの規則（REQ-DLV-003）。npm run scan:assets が上から順に照合し、最初に当たった規則を使う。match は * が1段、** が何段でも。required はそのグループの画面が待つもの（boot・ftue のみ。合計は policy.ftueBlockingMaxBytes 以下）。それ以外は待たずに <kind>/default で表示を続ける。",
+ "rules": [
+  { "match": "**/default", "group": "boot", "required": true },
+  { "match": "scene/venue/aoba", "group": "ftue", "required": false },
+  { "match": "scene/surface/aoba_turf", "group": "ftue", "required": false },
+  { "match": "sfx/race/whip", "group": "ftue", "required": true },
+  { "match": "sfx/race/gate_open", "group": "ftue", "required": true },
+  { "match": "sfx/race/*", "group": "ftue", "required": false },
+  { "match": "sfx/ui/*", "group": "ftue", "required": false },
+  { "match": "ui/gate/*", "group": "ftue", "required": false },
+  { "match": "voice/ja/phrase/*tutorial*", "group": "ftue", "required": false },
+  { "match": "horse/coat/chestnut", "group": "ftue", "required": false },
+  { "match": "horse/face/blaze", "group": "ftue", "required": false },
+  { "match": "horse/leg/sock", "group": "ftue", "required": false },
+  { "match": "horse/mane/normal", "group": "ftue", "required": false },
+  { "match": "horse/build/standard", "group": "ftue", "required": false },
+  { "match": "voice/ja/name/*", "group": "ondemand", "required": false },
+  { "match": "banner/**", "group": "shop", "required": false },
+  { "match": "item/*", "group": "shop", "required": false },
+  { "match": "tack/*", "group": "shop", "required": false },
+  { "match": "stable/theme/*", "group": "home", "required": false },
+  { "match": "decor/*", "group": "home", "required": false },
+  { "match": "title/*", "group": "home", "required": false },
+  { "match": "emblem/**", "group": "home", "required": false },
+  { "match": "horse/**", "group": "race", "required": false },
+  { "match": "silks/**", "group": "race", "required": false },
+  { "match": "scene/**", "group": "race", "required": false },
+  { "match": "fx/**", "group": "race", "required": false },
+  { "match": "voice/**", "group": "race", "required": false },
+  { "match": "**", "group": "ondemand", "required": false }
+ ]
+}

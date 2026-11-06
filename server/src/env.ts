@@ -38,6 +38,8 @@ export interface Env {
   /** "1" enables the fake store and the x-dev-user header. Never set in production. */
   DEV_MODE?: string;
   VERIFY_SAMPLE_RATE?: string;
+  /** REQ-DLV-002: public CDN base for asset files (R2 custom domain), no trailing slash. Not a secret; never stored in remote config. */
+  ASSET_CDN_BASE?: string;
   /** REQ-SPEC-005: max spectators per race room (default 200). */
   SPECTATOR_LIMIT?: string;
   /** One per tournament `tour:<id>` plus the index `index` (REQ-TOUR-*). */

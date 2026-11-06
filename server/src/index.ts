@@ -404,6 +404,7 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
     parseStoreNotification: (platform, req) => parseStoreNotification(platform, req, storeSettingsFromEnv(env, master), accountingStoreIndex(env)),
     ...(ops ? { ops } : {}),
     authenticateAdmin: (req) => authenticateAdmin(req, adminAuthConfig(env)),
+    ...(env.ASSET_CDN_BASE ? { assetCdnBase: env.ASSET_CDN_BASE } : {}),
     configInfo: async () => ({ versionId: cfg?.versionId ?? 'base', hash: cfg?.hash ?? 'base', rulesetVersion: cfg?.ruleset.rulesetVersion ?? '', activatedAt: cfg?.activatedAt ?? null }),
   };
 }

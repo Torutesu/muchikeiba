@@ -23,7 +23,7 @@ export const OPTIONAL_SECRETS = ['FCM_SERVICE_ACCOUNT_JSON', 'ADMIN_TOKEN'] as c
 const SECRET_NAMES = new Set<string>([...REQUIRED_SECRETS, ...OPTIONAL_SECRETS]);
 
 export const REQUIRED_VARS = [
-  'ENVIRONMENT', 'VERIFIER_URL', 'FIREBASE_PROJECT_ID', 'VERIFY_SAMPLE_RATE',
+  'ENVIRONMENT', 'VERIFIER_URL', 'FIREBASE_PROJECT_ID', 'VERIFY_SAMPLE_RATE', 'ASSET_CDN_BASE',
   'APPLE_BUNDLE_ID', 'GOOGLE_PACKAGE_NAME', 'GOOGLE_PUBSUB_AUDIENCE', 'GOOGLE_PUBSUB_SERVICE_ACCOUNT', 'FCM_PROJECT_ID',
 ] as const;
 
@@ -83,6 +83,9 @@ export function lintDeployConfig(tomlText: string, envName: string, opts: LintOp
   }
   if (vars.ENVIRONMENT !== undefined && vars.ENVIRONMENT !== envName) err(`[env.${envName}.vars] ENVIRONMENT must be "${envName}" (got "${String(vars.ENVIRONMENT)}")`);
   if (typeof vars.VERIFIER_URL === 'string' && !vars.VERIFIER_URL.startsWith('https://')) err('VERIFIER_URL must be https://');
+  if (typeof vars.ASSET_CDN_BASE === 'string' && (!vars.ASSET_CDN_BASE.startsWith('https://') || vars.ASSET_CDN_BASE.endsWith('/') || /[?#]/.test(vars.ASSET_CDN_BASE))) {
+    err('ASSET_CDN_BASE must be https://… without a trailing slash, query or fragment (REQ-DLV-002)');
+  }
   if (typeof vars.VERIFY_SAMPLE_RATE === 'string') {
     const r = Number(vars.VERIFY_SAMPLE_RATE);
     if (!(r >= 0 && r <= 1)) err(`VERIFY_SAMPLE_RATE must be between 0 and 1 (got "${vars.VERIFY_SAMPLE_RATE}")`);

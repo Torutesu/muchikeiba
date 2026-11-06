@@ -35,9 +35,9 @@ npm run build
 
 ## デザイン書き出しと Figma
 
-[全画面レビュー](design/review.html) で30種類を比較できます。
+[全画面レビュー](design/review.html) で40種類を比較できます。
 
-`design/screens.svg` を Figma にドラッグすると、基本10画面と詳細・状態違い・モバイルを含む30種類を取り込めます。個別 SVG と参照 PNG は `design/screens/`、画面名・サイズは `manifest.json` にあります。
+`design/screens.svg` を Figma にドラッグすると、基本10画面と詳細・状態違い・モバイルを含む40種類を取り込めます。個別 SVG と参照 PNG は `design/screens/`、画面名・サイズは `manifest.json` にあります。
 
 `design/muchikeiba-figma-detailed.zip` は SVG・PNG・取り込み手順・名前付きフレームを作るプラグインのセットです。Figma デスクトップの Plugins → Development → Import plugin from manifest で同梱の manifest.json を選択して実行します。プラグインの Figma 実機動作は未検証です。
 
@@ -89,3 +89,9 @@ Unity の3Dアセットは `unity/`、別の全画面プロトタイプとギャ
 [制作・使用ガイド](design/creative/GUIDE.md) と `public/creative/manifest.json` が素材台帳です。原版と生成プロンプトを保管し、背景の推奨文字エリア・sRGB/PBR設定・枠の保護幅・音の音量・reduced-motionの扱いまで記録しています。
 
 `design/creative/muchi-creative-kit.zip` は素材一覧、原版PNG、SVG、派生PNG、編集用告知データ、音、Blender材質、フォント、制作スクリプトの配布セットです。再生成手順はガイドを参照してください。ホーム・スカウト・シーズンパスには新しい背景を適用しています。厩舎の状態表示、馬詳細の装い、報酬トロフィー、通貨にも素材を組み込み、ショップから3色の勝負服プレビューを開けます。
+
+## 初回体験・キャンペーン
+
+初回4章の進捗、1操作ずつの直線ガイド、初勝利の記録とコレクション導線、累積7回の無料ギフト、期間で表示を切り替えるイベント、30日パスの比較、スターターの商品詳細を実装しています。商品・報酬・イベント内容はサーバーマスターを参照します。
+
+[3案の比較・3回の改善記録・計測案](design/campaign/STRATEGY.md) と [画面レビュー](design/campaign/index.html) を参照してください。`node scripts/verify-journey.cjs` で日付境界・受取・商品確認・レスポンシブ表示を検証できます。ログインアイテムはブラウザ内の受取記録のみで、サーバーへ付与しません。購入は確認デモまでです。

@@ -1,4 +1,6 @@
 import { icon } from "./icons.js";
+import { openCheckout } from "./commerce.js";
+import { mountJourney, track } from "./journey.js";
 // Detailed UI interactions are local previews; no server, payment or random draw is invoked.
 const safe = (value) =>
   String(value).replace(
@@ -462,29 +464,9 @@ export function enhance(ctx) {
       });
     };
     bind(app, ".purchase", (el) => {
-      const price = Number(el.dataset.price),
-        pack = el.querySelector("h2")?.textContent || "シーズンパス";
-      const maxMonth = today.slice(0, 7);
-      const d = dialog(
-        "購入内容の確認",
-        `<dl class="spec-list"><div><dt>商品</dt><dd>${safe(pack)}</dd></div><div><dt>お支払い金額</dt><dd>¥${price.toLocaleString()}（税込）</dd></div><div><dt>現在の無償残高</dt><dd>${coins.toLocaleString()}</dd></div></dl><label class="field-label" for="birth-detail">生年月 <span>年齢確認</span></label><input class="name-input" id="birth-detail" type="month" max="${maxMonth}" aria-describedby="purchase-help"><p id="purchase-help" class="quiet" role="status">生年月を入力して内容を確認してください。入力内容は保存・送信されません。</p><label class="purchase-consent"><input id="purchase-consent" type="checkbox"> 商品・価格と、デモであることを確認しました</label><button class="primary" id="purchase-review" disabled>確認を完了する <span>✓</span></button>`,
-      );
-      const birth = d.querySelector("#birth-detail"),
-        check = d.querySelector("#purchase-consent"),
-        btn = d.querySelector("#purchase-review"),
-        valid = () =>
-          (btn.disabled = !(
-            birth.value &&
-            birth.checkValidity() &&
-            check.checked
-          ));
-      birth.oninput = valid;
-      check.onchange = valid;
-      btn.onclick = () =>
-        dialog(
-          "購入内容を確認しました",
-          '<div class="confirmation-mark">✓</div><h3>画面デモはここまでです。</h3><p>決済・コインの追加・生年月の保存は行っていません。</p>',
-        );
+      const id = el.dataset.product || (el.closest(".store-banner") ? "season_pass" : "coin_" + el.dataset.price);
+      openCheckout(id, { dialog, coins, track });
     });
   }
+  mountJourney({ ...ctx, dialog, profile });
 }

@@ -3,31 +3,31 @@
     "name": "01",
     "title": "はじめに",
     "width": 1440,
-    "height": 900
+    "height": 976
   },
   {
     "name": "02",
     "title": "初めての直線",
     "width": 1440,
-    "height": 900
+    "height": 1028
   },
   {
     "name": "03",
     "title": "相棒の命名",
     "width": 1440,
-    "height": 900
+    "height": 946
   },
   {
     "name": "04",
     "title": "無料スカウト",
     "width": 1440,
-    "height": 929
+    "height": 1035
   },
   {
     "name": "05",
     "title": "ホーム",
     "width": 1440,
-    "height": 1082
+    "height": 1545
   },
   {
     "name": "06",
@@ -51,13 +51,13 @@
     "name": "09",
     "title": "リザルト",
     "width": 1440,
-    "height": 1335
+    "height": 1491
   },
   {
     "name": "10",
     "title": "ショップ",
     "width": 1440,
-    "height": 1120
+    "height": 1648
   },
   {
     "name": "11-horse-stats",
@@ -111,7 +111,7 @@
     "name": "19-purchase-review",
     "title": "商品・年齢確認",
     "width": 810,
-    "height": 568
+    "height": 830
   },
   {
     "name": "20-purchase-complete",
@@ -123,19 +123,19 @@
     "name": "21-home-claimed",
     "title": "ホーム・報酬受取済み",
     "width": 1440,
-    "height": 1082
+    "height": 1545
   },
   {
     "name": "22-name-error",
     "title": "命名・入力エラー",
     "width": 1440,
-    "height": 900
+    "height": 946
   },
   {
     "name": "23-mobile-home",
     "title": "ホーム・モバイル",
     "width": 390,
-    "height": 1616
+    "height": 2390
   },
   {
     "name": "24-mobile-stable",
@@ -171,12 +171,72 @@
     "name": "29-scout-received",
     "title": "スカウト・初回受取済み",
     "width": 1440,
-    "height": 963
+    "height": 1069
   },
   {
     "name": "30-season-collection",
     "title": "シーズン衣装・コレクション",
     "width": 810,
     "height": 764
+  },
+  {
+    "name": "31-journey-complete",
+    "title": "初回4章完了・ホーム",
+    "width": 1440,
+    "height": 1545
+  },
+  {
+    "name": "32-welcome-gifts",
+    "title": "7日間の無料ギフト",
+    "width": 950,
+    "height": 835
+  },
+  {
+    "name": "33-welcome-claimed",
+    "title": "無料ギフト・本日受取済み",
+    "width": 950,
+    "height": 837
+  },
+  {
+    "name": "34-event-campaign",
+    "title": "イベント・条件と目標",
+    "width": 950,
+    "height": 914
+  },
+  {
+    "name": "35-club-pass",
+    "title": "30日クラブパス・比較",
+    "width": 950,
+    "height": 1093
+  },
+  {
+    "name": "36-starter-product",
+    "title": "スターター・商品詳細",
+    "width": 810,
+    "height": 933
+  },
+  {
+    "name": "37-starter-checkout",
+    "title": "スターター・価格確認",
+    "width": 810,
+    "height": 877
+  },
+  {
+    "name": "38-mobile-welcome",
+    "title": "無料ギフト・モバイル",
+    "width": 367,
+    "height": 990
+  },
+  {
+    "name": "39-mobile-pass",
+    "title": "クラブパス・モバイル",
+    "width": 367,
+    "height": 990
+  },
+  {
+    "name": "40-mobile-starter",
+    "title": "スターター・モバイル",
+    "width": 367,
+    "height": 982
   }
 ]

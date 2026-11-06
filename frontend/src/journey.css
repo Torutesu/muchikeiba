@@ -1,0 +1,297 @@
+/* Chapter → attachment → collection. Shared forest, ivory, brass; text remains live. */
+.journey-kicker { display: block; font-size: 8px; letter-spacing: 2px; line-height: 1.6; color: #94763d; }
+.campaign-menu { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #d9ddcd; border-radius: 20px; padding: 8px 11px; background: transparent; color: #526b45; font-size: 10px; white-space: nowrap; }
+.campaign-menu .icon { width: 15px; height: 15px; }
+.onboarding-path { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 16px 0 22px; border-bottom: 1px solid var(--line); margin-bottom: 24px; }
+.onboarding-path > div { flex-shrink: 0; }
+.onboarding-path small { font-size: 7px; letter-spacing: 2px; color: #94763d; }
+.onboarding-path > div > span { display: block; font-size: 11px; margin-top: 7px; }
+.onboarding-path ol { list-style: none; display: flex; gap: 24px; margin: 0; padding: 0; }
+.onboarding-path li { display: flex; align-items: center; gap: 8px; color: #7d8575; font-size: 10px; }
+.onboarding-path li b { display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid #d9ddcd; border-radius: 50%; font-size: 9px; font-weight: 400; }
+.onboarding-path .current { color: #213a32; }
+.onboarding-path .current b, .onboarding-path .complete b { background: #213a32; color: #f7f6f0; border-color: #213a32; }
+.onboarding-path .icon { width: 14px; height: 14px; }
+.first-ride-coach { padding: 14px 18px; display: flex; gap: 22px; background: #eee9d8; color: #544a2d; border-left: 3px solid #b39459; font-size: 11px; line-height: 1.8; }
+.first-ride-coach b { white-space: nowrap; font-weight: 500; }
+.journey-home { border: 1px solid var(--line); background: var(--panel); border-radius: 7px; padding: 25px; margin: 24px 0 18px; }
+.journey-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.journey-heading h2 { font: 23px "Club Serif",serif; margin-top: 8px; }
+.journey-count { font: 30px "Club Serif",serif; color: #8c7549; white-space: nowrap; }
+.journey-count small { font: 8px "Club Sans",sans-serif; letter-spacing: 1px; }
+.journey-steps { list-style: none; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); padding: 0; margin: 26px 0 20px; gap: 14px; }
+.journey-steps li { display: flex; gap: 12px; align-items: flex-start; min-width: 0; }
+.journey-steps li > span { display: grid; place-items: center; width: 30px; height: 30px; flex-shrink: 0; border: 1px solid #dce0d1; border-radius: 50%; color: #79866d; font-size: 9px; }
+.journey-steps .complete > span { background: #ebefdf; color: #486542; border-color: #b9c6a7; }
+.journey-steps .current > span { background: #213a32; color: #fffefa; border-color: #213a32; }
+.journey-steps .icon { width: 15px; height: 15px; }
+.journey-steps b { font-size: 11px; font-weight: 500; display: block; margin: 3px 0 8px; }
+.journey-steps small { font-size: 9px; color: #76816b; line-height: 1.8; display: block; }
+.journey-next { border-top: 1px solid var(--line); padding-top: 15px; display: flex; align-items: center; justify-content: space-between; gap: 15px; }
+.journey-next p { font-size: 10px; color: #68765f; }
+.journey-next button { display: inline-flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.journey-next .icon { width: 15px; height: 15px; }
+.campaign-discovery { display: grid; grid-template-columns: 1.35fr 1fr; gap: 18px; margin-bottom: 24px; }
+.campaign-discovery > button { border: 1px solid #d7ddca; border-radius: 6px; padding: 26px; text-align: left; color: #213a32; overflow: hidden; }
+.welcome-discovery { background: linear-gradient(125deg,#eeefdf,#e4ead7); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.welcome-discovery > div { position: relative; z-index: 1; }
+.welcome-discovery img { width: 105px; height: 105px; flex-shrink: 0; }
+.campaign-discovery h2 { font: 20px "Club Serif",serif; line-height: 1.7; margin: 10px 0 8px; }
+.campaign-discovery p { font-size: 10px; color: #65765c; line-height: 1.9; }
+.discovery-link { display: inline-flex; gap: 12px; align-items: center; font-size: 10px; margin-top: 18px; }
+.discovery-link .icon { width: 15px; height: 15px; }
+.season-discovery { background: linear-gradient(90deg,#142f27ed,#142f27a8),url('/art/spring-course.webp') center/cover; }
+.campaign-discovery .season-discovery { color: #f7f6f0; border-color: #142f27; }
+.season-discovery .journey-kicker { color: #d2ba80; }
+.season-discovery p { color: #d8e0cd; }
+.partner-offer { display: grid; grid-template-columns: 1.15fr 1fr; border: 1px solid #d8d8c6; border-radius: 7px; overflow: hidden; background: #eeeddf; margin: 18px 0 24px; }
+.offer-copy { padding: 36px 40px; position: relative; z-index: 1; }
+.offer-copy h2 { font: 34px/1.6 "Club Serif",serif; letter-spacing: 1.5px; margin: 15px 0; }
+.offer-copy p { font-size: 11px; line-height: 2; color: #68745d; }
+.offer-copy ul { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 12px; margin: 22px 0; }
+.offer-copy li { display: flex; gap: 5px; align-items: center; font-size: 10px; }
+.offer-copy li .icon { width: 13px; height: 13px; color: #7a825d; }
+.offer-purchase { display: flex; align-items: flex-start; flex-direction: column; gap: 10px; }
+.offer-purchase .primary { width: 290px; max-width: 100%; background: #213a32; color: #f7f6f0; }
+.offer-purchase .primary > span { font: 22px "Club Serif",serif; }
+.offer-purchase > small { font-size: 9px; color: #6d775e; }
+.offer-still { position: relative; display: flex; justify-content: center; align-items: center; min-height: 330px; background: radial-gradient(ellipse at 55% 45%,#f9f5e5,#dedfc9); overflow: hidden; }
+.offer-still::before { content: ''; width: 300px; height: 300px; border-radius: 50%; border: 1px solid #b3945940; position: absolute; }
+.offer-silks { position: absolute; width: 260px; height: 260px; left: 8%; bottom: 14%; transform: rotate(-8deg); filter: drop-shadow(0 22px 16px #263a2522); }
+.offer-ticket { position: absolute; width: 190px; height: 154px; right: 3%; bottom: 9%; transform: rotate(9deg); filter: drop-shadow(0 12px 8px #263a2512); }
+.offer-medallion { position: absolute; right: 10%; top: 12%; font-size: 8px; text-align: center; line-height: 1.6; letter-spacing: 2px; color: #8b7348; }
+.offer-medallion b { display: block; font: 18px "Club Serif",serif; letter-spacing: 3px; }
+.offer-medallion span { display: block; font-size: 6px; margin-top: 8px; }
+.offer-still > span { position: absolute; bottom: 16px; right: 20px; letter-spacing: 2px; font-size: 7px; color: #748066; }
+.store-choice-guide { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px; padding: 18px 0; border-top: 1px solid var(--line); }
+.store-choice-guide > span { font-size: 8px; color: #94763d; letter-spacing: 1px; }
+.store-choice-guide p { font-size: 11px; line-height: 1.9; flex: 1 1 300px; }
+.store-choice-guide button { margin: 0; font-size: 10px; }
+.pass-copy #pass-benefits { font-size: 10px; margin-top: 12px; color: #f3e6bd; }
+.first-win-note { display: flex; gap: 24px; align-items: center; border: 1px solid var(--line); background: #efeddf; padding: 22px 28px; margin-top: 20px; border-radius: 7px; }
+.first-win-note > img { width: 90px; height: 90px; flex-shrink: 0; }
+.first-win-note h2 { font: 23px "Club Serif",serif; margin: 10px 0; }
+.first-win-note p { font-size: 11px; color: #65765c; line-height: 1.8; }
+.first-win-note .secondary { margin-left: auto; white-space: nowrap; }
+.starter-detail-art { display: flex; align-items: center; justify-content: center; gap: 20px; background: radial-gradient(ellipse,#f9f6e9,#e8e8d8); border: 1px solid #e0dfce; border-radius: 5px; margin: 24px 0; padding: 20px; }
+.starter-detail-art > img { width: 150px; height: 150px; object-fit: contain; }
+.product-story p { font: 19px/1.9 "Club Serif",serif; margin: 12px 0 18px; }
+.product-note, .checkout-terms { font-size: 11px; line-height: 1.9; color: #68745d; padding: 14px 0; }
+.product-price { display: flex; justify-content: space-between; align-items: center; gap: 22px; padding: 20px 0; border-top: 1px solid var(--line); }
+.product-price > span { display: flex; flex-direction: column; gap: 7px; flex-shrink: 0; }
+.product-price b { font: 34px "Club Serif",serif; }
+.product-price small { font-size: 9px; color: #68745d; }
+.product-price .primary { min-width: 220px; }
+.checkout-product { padding: 22px 0 18px; border-bottom: 1px solid var(--line); }
+.checkout-product > span { font-size: 8px; letter-spacing: 2px; color: #94763d; }
+.checkout-product h3 { font: 24px "Club Serif",serif; margin: 12px 0; }
+.checkout-product strong { font: 32px "Club Serif",serif; }
+.checkout-product small { margin-left: 14px; font: 10px "Club Sans",sans-serif; color: #68745d; }
+.checkout-actions { display: grid; grid-template-columns: .6fr 1.4fr; gap: 12px; margin-top: 20px; }
+.checkout-caption { text-align: center; margin-top: 12px; }
+.campaign-dialog { max-width: 950px; }
+.campaign-tabs { display: flex; border-bottom: 1px solid var(--line); gap: 24px; margin-top: 26px; }
+.campaign-tabs > button { padding: 0 0 14px; background: none; border: 0; border-bottom: 2px solid transparent; color: #717f64; font-size: 12px; }
+.campaign-tabs > button[aria-pressed='true'] { border-bottom-color: #213a32; color: #213a32; }
+.welcome-header { display: flex; justify-content: space-between; gap: 20px; align-items: center; padding: 24px 0; }
+.welcome-header h3, .event-feature h3, .pass-detail-hero h3 { font: 32px/1.6 "Club Serif",serif; margin: 12px 0; }
+.welcome-header p { font-size: 11px; color: #65765c; }
+.welcome-header > img { width: 150px; height: 150px; transform: rotate(7deg); filter: drop-shadow(0 9px 9px #17372a1a); }
+.welcome-progress { display: flex; gap: 16px; align-items: center; font-size: 10px; margin-bottom: 20px; color: #68745d; }
+.welcome-progress > div { height: 4px; background: #dfe4d3; border-radius: 3px; flex: 1; overflow: hidden; }
+.welcome-progress i { display: block; height: 100%; background: #657e51; }
+.welcome-progress small { font-size: 9px; }
+.welcome-days { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); list-style: none; gap: 8px; padding: 0; margin: 0; }
+.welcome-days li { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; padding: 14px 6px; border: 1px solid #dbe0d1; border-radius: 5px; background: #f2f2e7; }
+.welcome-days li.next { border-color: #a58a50; box-shadow: inset 0 0 0 1px #a58a50; background: #f4efd9; }
+.welcome-days li.claimed { background: #e9eedf; }
+.welcome-days li > span { color: #7e714d; font-size: 8px; letter-spacing: 1px; }
+.welcome-days li > span .icon { width: 12px; height: 12px; }
+.welcome-days li > img { width: 70px; max-width: 100%; height: 75px; object-fit: contain; margin: 12px 0; }
+.welcome-days b { font-size: 9px; line-height: 1.7; font-weight: 500; min-height: 32px; }
+.welcome-days small { font-size: 8px; color: #6d775e; margin-top: 8px; }
+.welcome-claim { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin: 22px 0; padding-top: 22px; border-top: 1px solid var(--line); }
+.welcome-claim b { font-size: 12px; font-weight: 500; }
+.welcome-claim p { font-size: 10px; color: #65765c; margin-top: 10px; line-height: 1.8; }
+.welcome-claim .primary { min-width: 230px; }
+.campaign-conditions { border-top: 1px solid var(--line); padding-top: 16px; margin-top: 18px; font-size: 11px; line-height: 1.9; }
+.campaign-conditions summary { cursor: pointer; min-height: 32px; }
+.campaign-conditions p, .campaign-conditions ul { color: #65765c; margin: 12px 0; }
+.campaign-conditions ul { padding-left: 20px; }
+.event-feature { position: relative; background: linear-gradient(90deg,#142f27f0,#142f2770),url('/art/spring-course.webp') center/cover; color: #fffefa; border-radius: 5px; padding: 30px; margin-top: 24px; }
+.event-feature .journey-kicker { color: #e2c88e; }
+.event-feature > p { font-size: 12px; margin-bottom: 20px; }
+.event-feature > span:last-child { font-size: 10px; color: #dce4d2; }
+.event-status { position: absolute; right: 20px; top: 20px; font-size: 10px; border: 1px solid #e2c88e70; border-radius: 3px; padding: 5px 10px; color: #e2c88e; }
+.event-facts { display: grid; grid-template-columns: repeat(3,1fr); border-bottom: 1px solid var(--line); padding: 20px 0; gap: 12px; }
+.event-facts span { font-size: 9px; color: #6d775e; }
+.event-facts b { display: block; font-size: 12px; font-weight: 500; color: #213a32; margin-top: 10px; }
+.campaign-subhead { font: 21px "Club Serif",serif; margin: 26px 0 18px; }
+.event-milestones { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; padding: 0; margin: 0; list-style: none; }
+.event-milestones li { padding: 18px; background: #efefdf; border: 1px solid var(--line); border-radius: 5px; }
+.event-milestones b { display: block; font: 27px "Club Serif",serif; color: #8c7549; margin-bottom: 14px; }
+.event-milestones small { font-size: 12px; }
+.event-milestones span { font-size: 11px; }
+.campaign-copy { font-size: 11px; line-height: 1.9; color: #68745d; margin: 18px 0; }
+.event-action { display: flex; gap: 20px; align-items: center; justify-content: space-between; margin-top: 22px; }
+.event-action > span { font-size: 10px; line-height: 1.8; color: #68745d; }
+.pass-detail-hero { background: #e9ecdc; border-radius: 5px; padding: 25px; display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 24px; }
+.pass-detail-hero > img { width: 170px; height: 170px; flex-shrink: 0; transform: rotate(7deg); }
+.pass-detail-hero p { font-size: 11px; color: #68745d; line-height: 1.8; }
+.pass-detail-hero strong { display: block; font: 28px "Club Serif",serif; margin-top: 18px; }
+.pass-detail-hero small { display: block; font: 9px "Club Sans",sans-serif; margin-top: 9px; }
+.pass-how { display: flex; justify-content: space-between; gap: 15px; margin: 22px 0; }
+.pass-how span { font-size: 10px; }
+.pass-how b { font-size: 9px; color: #94763d; margin-right: 6px; }
+.pass-comparison { border-collapse: collapse; width: 100%; font-size: 11px; text-align: left; }
+.pass-comparison caption { text-align: left; font: 20px "Club Serif",serif; margin: 12px 0 18px; }
+.pass-comparison th, .pass-comparison td { border-bottom: 1px solid var(--line); padding: 16px 12px; font-weight: 400; line-height: 1.8; }
+.pass-comparison thead th { color: #68745d; font-size: 10px; }
+.pass-comparison td:last-child, .pass-comparison th:last-child { background: #e9ecdc; }
+@media(max-width:1100px) {
+  .onboarding-path { flex-direction: column; align-items: flex-start; gap: 15px; }
+  .campaign-discovery { grid-template-columns: 1fr; }
+  .offer-copy { padding: 28px; }
+  .offer-copy h2 { font-size: 28px; }
+  .offer-silks { width: 210px; height: 210px; left: 0; }
+  .offer-ticket { width: 150px; }
+  .first-win-note { flex-wrap: wrap; }
+  .journey-steps { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 22px; }
+  .wallet .campaign-menu span { display: none; }
+}
+@media(max-width:600px) {
+  .campaign-menu { width: 30px; height: 30px; padding: 6px; justify-content: center; }
+  .onboarding-path { margin-bottom: 18px; padding-top: 6px; }
+  .onboarding-path > div > span { font-size: 10px; }
+  .onboarding-path ol { width: 100%; gap: 8px; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); }
+  .onboarding-path li { flex-direction: column; align-items: flex-start; font-size: 8px; gap: 7px; }
+  .onboarding-path li b { width: 24px; height: 24px; }
+  .first-ride-coach { flex-direction: column; gap: 5px; padding: 12px; font-size: 10px; }
+  .first-ride-coach b { white-space: normal; }
+  .journey-home { padding: 20px 16px; }
+  .journey-heading h2 { font-size: 20px; }
+  .journey-count { font-size: 24px; }
+  .journey-count small { display: block; font-size: 6px; margin-top: 5px; }
+  .journey-steps { gap: 20px 10px; }
+  .journey-steps li { gap: 8px; }
+  .journey-steps b { font-size: 10px; }
+  .journey-steps small { font-size: 8px; }
+  .journey-steps li > span { width: 25px; height: 25px; font-size: 8px; }
+  .journey-next { flex-direction: column; align-items: stretch; }
+  .journey-next p { line-height: 1.8; }
+  .journey-next button { justify-content: space-between; }
+  .campaign-discovery > button { padding: 22px 18px; }
+  .campaign-discovery h2 { font-size: 20px; }
+  .welcome-discovery { position: relative; min-height: 220px; align-items: flex-start; }
+  .welcome-discovery > div { padding-right: 60px; }
+  .welcome-discovery img { position: absolute; right: 0; top: 26px; width: 88px; height: 88px; }
+  .partner-offer { display: flex; flex-direction: column-reverse; }
+  .offer-still { min-height: 220px; }
+  .offer-still::before { width: 190px; height: 190px; }
+  .offer-silks { width: 190px; height: 190px; left: 7%; bottom: 4%; }
+  .offer-ticket { width: 145px; height: 120px; right: 6%; bottom: 0; }
+  .offer-medallion { top: 12%; right: 10%; }
+  .offer-medallion b { font-size: 14px; }
+  .offer-copy { padding: 26px 22px; }
+  .offer-copy h2 { font-size: 29px; }
+  .offer-copy ul { flex-direction: column; gap: 12px; }
+  .offer-purchase .primary { width: 100%; }
+  .offer-purchase { align-items: stretch; }
+  .first-win-note { gap: 16px; padding: 22px 18px; }
+  .first-win-note > img { width: 65px; height: 65px; }
+  .first-win-note > div { flex: 1; min-width: 150px; }
+  .first-win-note h2 { font-size: 20px; }
+  .first-win-note .secondary { width: 100%; margin: 0; }
+  .starter-detail-art { gap: 6px; padding: 12px 4px; }
+  .starter-detail-art > img { width: 30%; height: 110px; }
+  .product-story p { font-size: 17px; }
+  .product-price { flex-wrap: wrap; gap: 18px; }
+  .product-price .primary { width: 100%; }
+  .checkout-actions { grid-template-columns: 1fr; }
+  .checkout-actions .secondary { order: 2; }
+  .checkout-product h3 { font-size: 21px; line-height: 1.7; }
+  .checkout-product small { display: block; margin: 9px 0 0; }
+  .campaign-tabs { gap: 12px; }
+  .campaign-tabs > button { font-size: 9px; min-height: 44px; padding: 0 0 12px; }
+  .welcome-header { position: relative; min-height: 200px; gap: 5px; }
+  .welcome-header > div { position: relative; z-index: 1; }
+  .welcome-header .journey-kicker { font-size: 6px; letter-spacing: 1.2px; }
+  .welcome-header h3, .event-feature h3, .pass-detail-hero h3 { font-size: 26px; }
+  .welcome-header p { font-size: 10px; max-width: 180px; line-height: 1.8; }
+  .welcome-header > img { position: absolute; right: -8px; top: 40px; width: 105px; height: 105px; }
+  .welcome-progress { flex-wrap: wrap; gap: 9px; }
+  .welcome-progress > div { min-width: 60px; }
+  .welcome-progress small { font-size: 8px; }
+  .welcome-days { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 7px; }
+  .welcome-days li { padding: 12px 5px; }
+  .welcome-days li:last-child { grid-column: 1/-1; display: grid; grid-template-columns: .7fr 1fr 1.5fr; gap: 10px; padding: 12px; text-align: left; }
+  .welcome-days li:last-child img { grid-row: 1/3; grid-column: 2; margin: 0; height: 65px; }
+  .welcome-days li:last-child b { grid-column: 3; grid-row: 1/3; align-self: center; min-height: auto; }
+  .welcome-days li:last-child small { margin: 0; }
+  .welcome-days li > img { height: 55px; margin: 9px 0; }
+  .welcome-days b { font-size: 9px; }
+  .welcome-claim { flex-direction: column; align-items: stretch; gap: 16px; }
+  .welcome-claim .primary { min-width: 0; width: 100%; }
+  .event-feature { padding: 22px 18px; }
+  .event-status { position: static; display: inline-block; margin-top: 12px; font-size: 9px; }
+  .event-feature > span:last-child { font-size: 8px; line-height: 1.8; }
+  .event-facts { grid-template-columns: 1fr; gap: 16px; }
+  .event-facts span { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .event-facts b { margin: 0; font-size: 11px; }
+  .campaign-subhead { font-size: 18px; }
+  .event-milestones { grid-template-columns: 1fr; gap: 8px; }
+  .event-milestones li { display: flex; align-items: center; justify-content: space-between; padding: 16px; }
+  .event-milestones b { font-size: 24px; margin: 0; }
+  .event-action { flex-direction: column; align-items: stretch; }
+  .pass-detail-hero { padding: 20px 16px; position: relative; overflow: hidden; }
+  .pass-detail-hero > div { z-index: 1; }
+  .pass-detail-hero > img { width: 90px; height: 90px; position: absolute; right: -10px; top: 40px; }
+  .pass-detail-hero p { max-width: 190px; font-size: 10px; }
+  .pass-detail-hero h3 { font-size: 25px; }
+  .pass-how { gap: 10px; flex-direction: column; }
+  .pass-comparison caption { font-size: 18px; }
+  .pass-comparison { font-size: 10px; }
+  .pass-comparison th, .pass-comparison td { padding: 12px 6px; }
+}
+@media(prefers-reduced-motion:no-preference) {
+  .offer-still img { animation: collection-reveal .6s cubic-bezier(.2,.7,.2,1) both; }
+  @keyframes collection-reveal { from { opacity: 0; translate: 0 12px; } to { opacity: 1; translate: 0 0; } }
+}
+/* Second visual pass: tangible collection artwork, with live price and exact contents. */
+.partner-offer { background: #142f27; border-color: #142f27; }
+.offer-copy { color: #f7f6f0; }
+.offer-copy .journey-kicker { color: #d6bd81; }
+.offer-copy p, .offer-purchase > small { color: #d0d9c6; }
+.offer-copy li .icon { color: #d6bd81; }
+.offer-purchase .primary { background: #dcc58b; color: #213a32; }
+.offer-still { background: #142f27; }
+.offer-still::before { display: none; }
+.offer-editorial { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 75% center; }
+.offer-still::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg,#142f27,transparent 28%,transparent 75%,#142f2710); pointer-events: none; }
+.offer-still > span { z-index: 1; color: #f7f6f0; background: #142f27ba; padding: 5px 8px; }
+.starter-editorial { display: block; width: 100%; height: 250px; object-fit: cover; object-position: right 42%; border-radius: 5px; margin: 24px 0; }
+.pass-copy .collection-preview { display: inline-flex; margin-right: 20px; }
+@media(max-width:600px) {
+  .offer-editorial { object-position: center 40%; }
+  .offer-still::after { background: linear-gradient(0deg,#142f27,transparent 35%); }
+  .offer-still { min-height: 240px; }
+  .starter-editorial { height: 190px; object-position: 75% center; }
+}
+/* Third pass: retain the exit while reading longer mobile benefits. */
+
+@media(max-width:600px) {
+  .pass-detail-hero h3 { max-width: calc(100% - 70px); font-size: 24px; }
+
+  .starter-dialog .product-price { position: sticky; bottom: -25px; z-index: 3; background: #f7f6f0; margin: 0 -1px; padding: 16px 1px; }
+}
+
+.campaign-top { position: sticky; top: 0; z-index: 5; background: #f7f6f0; margin: -6px -6px 0; padding: 6px 6px 12px; }
+.campaign-top .close { position: absolute; width: 44px; height: 44px; top: 0; right: -12px; background: #f7f6f0; }
+.campaign-top .eyebrow { font-size: 8px; margin: 5px 0 16px; }
+.campaign-top h2 { font: 27px/1.6 "Club Serif",serif; margin: 0; padding-right: 20px; }
+@media(max-width:600px) {
+ .campaign-top { top: 0; padding-top: 12px; }
+ .campaign-top .eyebrow { font-size: 6px; letter-spacing: 1px; }
+ .campaign-top h2 { font-size: 23px; }
+ .campaign-top .close { top: 3px; right: -6px; }
+}

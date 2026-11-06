@@ -35,8 +35,11 @@
 <text x="376.171875" y="48.24" fill="rgb(141, 149, 127)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="9px" font-weight="400" font-style="normal" letter-spacing="1px" opacity="1">CLUB</text>
 <text x="414.921875" y="49.96" fill="rgb(180, 186, 167)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="11px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">/</text>
 <text x="431.234375" y="49.96" fill="rgb(86, 107, 89)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="11px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">厩舎</text>
-<svg x="1135.40625" y="39.5" width="18" height="18" viewBox="0 0 24 24" color="rgb(168, 139, 78)" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 5 3 4-3 4-3-4Z"></path></svg>
-<text x="1160.40625" y="50.32" fill="rgb(168, 139, 78)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="12px" font-weight="600" font-style="normal" letter-spacing="0" opacity="1">1,200</text>
+<rect x="1020.40625" y="28.5" width="95" height="40" rx="20" fill="none" stroke="rgb(217, 221, 205)" stroke-width="1" opacity="1"/>
+<svg x="1032.40625" y="41" width="15" height="15" viewBox="0 0 24 24" color="rgb(82, 107, 69)" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z"></path></svg>
+<text x="1053.40625" y="49.6" fill="rgb(82, 107, 69)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="10px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">クラブ特典</text>
+<svg x="1135.40625" y="39.5" width="18" height="18" viewBox="0 0 24 24" color="rgb(33, 58, 50)" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 5 3 4-3 4-3-4Z"></path></svg>
+<text x="1160.40625" y="50.32" fill="rgb(33, 58, 50)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="12px" font-weight="600" font-style="normal" letter-spacing="0" opacity="1">1,200</text>
 <text x="1197.390625" y="49.74" fill="rgb(124, 137, 114)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="9px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">無償</text>
 <text x="1235.40625" y="49.96" fill="rgb(122, 130, 117)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="11px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">◎ </text>
 <text x="1253.40625" y="49.96" fill="rgb(122, 130, 117)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="11px" font-weight="600" font-style="normal" letter-spacing="0" opacity="1">24,800</text>
@@ -60,10 +63,10 @@
 <text x="1364.265625" y="289.1475" fill="rgb(106, 126, 96)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="11px" font-weight="700" font-style="normal" letter-spacing="1px" opacity="1">3 / 20</text>
 <rect x="215" y="334.1875" width="254" height="46" rx="5" fill="rgb(255, 254, 248)" stroke="rgb(208, 217, 195)" stroke-width="1" opacity="1"/>
 <svg x="229" y="349.1875" width="16" height="16" viewBox="0 0 24 24" color="rgb(33, 58, 50)" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10.5 3a7.5 7.5 0 1 0 0 15 7.5 7.5 0 0 0 0-15Zm5.5 13 5 5"></path></svg>
-<defs><clipPath id="13-stable-empty-clip-18"><rect x="255" y="335.1875" width="200" height="44" rx="0"/></clipPath></defs><g clip-path="url(#13-stable-empty-clip-18)">
+<defs><clipPath id="13-stable-empty-clip-19"><rect x="255" y="335.1875" width="200" height="44" rx="0"/></clipPath></defs><g clip-path="url(#13-stable-empty-clip-19)">
 <text x="259" y="361.0375" fill="rgb(80, 107, 68)" font-size="11px" font-family="sans-serif">該当なし</text>
 </g>
-<defs><clipPath id="13-stable-empty-clip-19"><rect x="483" y="334.1875" width="157.34375" height="46" rx="5"/></clipPath></defs><g clip-path="url(#13-stable-empty-clip-19)">
+<defs><clipPath id="13-stable-empty-clip-20"><rect x="483" y="334.1875" width="157.34375" height="46" rx="5"/></clipPath></defs><g clip-path="url(#13-stable-empty-clip-20)">
 <rect x="483" y="334.1875" width="157.34375" height="46" rx="5" fill="rgb(244, 246, 237)" stroke="rgb(208, 217, 195)" stroke-width="1" opacity="1"/>
 <rect x="484" y="335.1875" width="60.90625" height="44" rx="0" fill="rgb(33, 63, 48)" stroke="none" stroke-width="0" opacity="1"/>
 <text x="500" y="358.2875" fill="rgb(244, 237, 210)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="10px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">すべて</text>
@@ -71,7 +74,7 @@
 <text x="611.03125" y="358.2875" fill="rgb(140, 154, 121)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="10px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">SR</text>
 </g>
 <text x="1265.984375" y="358.4275" fill="rgb(154, 161, 133)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="9px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">並び順 </text>
-<defs><clipPath id="13-stable-empty-clip-20"><rect x="1303" y="335.1875" width="96" height="44" rx="5"/></clipPath></defs><g clip-path="url(#13-stable-empty-clip-20)">
+<defs><clipPath id="13-stable-empty-clip-21"><rect x="1303" y="335.1875" width="96" height="44" rx="5"/></clipPath></defs><g clip-path="url(#13-stable-empty-clip-21)">
 <rect x="1303" y="335.1875" width="96" height="44" rx="5" fill="none" stroke="rgb(208, 217, 195)" stroke-width="1" opacity="1"/>
 <text x="1319" y="360.6875" fill="rgb(96, 118, 82)" font-size="10px" font-family="sans-serif">総合評価順</text>
 </g>

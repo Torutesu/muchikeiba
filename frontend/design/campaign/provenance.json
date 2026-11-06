@@ -1,0 +1,11 @@
+{
+  "id": "first-partner",
+  "origin": "image_gen",
+  "master": "masters/first-partner.png",
+  "sha256": "b5e141c5a53d0b22a52ea50ab84250b6259265bc05fad05db089a79b732239d3",
+  "artDirection": "Premium Japanese racing club, forest green / ivory / brass. Lightning jockey silks, star ticket, stable dawn, no people, no text. Left negative space.",
+  "usage": "商品イメージ。商品内容はUIの3点のみ。背景の帽子・ゼッケンはセット対象外。",
+  "generationReference": "exec-b4acba49-016d-461c-8a2b-571bd3c733cd",
+  "transparentBackground": false,
+  "prompt": "Create a sophisticated premium Japanese equestrian racing club product campaign still life, cinematic editorial craft, landscape 3:2 composition. Forest green #142F27, warm ivory #F7F6F0, aged brass #B39459. Hero object on RIGHT HALF: beautifully tailored deep forest green jockey racing silk jersey on invisible mannequin with a single clean broad golden lightning bolt motif running diagonally over chest, ivory cuff accents, fine woven fabric, exquisite stitching and mother-of-pearl buttons, matching dark green helmet with brass hardware, one small ivory saddlecloth neatly folded. Foreground right: one elegant forest-green embossed paper admission ticket with a gold four-point star emblem and a few antique brass tokens, no letters or numbers. Warm morning sunlight from upper right, inside a refined old stable with timber and muted creamy stone, subtle volumetric light. LEFT THIRD is naturally dark forest negative space for live UI copy, not a flat colored box. Focus on tangible desire for the outfit and sentimental companionship, no horses no people no money symbols no logos no text no typography no readable writing. Objects visually large, restrained authentic materials and luxury product photography mixed with painterly 3D art, not cartoon. No red urgency elements. Carefully framed entire jersey with sleeves visible, generous crop room, layered foreground. Full bleed landscape artwork."
+}

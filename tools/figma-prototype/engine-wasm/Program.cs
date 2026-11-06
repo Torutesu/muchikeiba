@@ -3,6 +3,7 @@
 using System;
 using System.Globalization;
 using System.Runtime.InteropServices.JavaScript;
+using System.Collections.Generic;
 using System.Text;
 using Muchi.Client;
 using Muchi.Engine;
@@ -28,6 +29,9 @@ public static partial class MuchiRace
     private static TutorialDirector _director;
     private static int _eventIdx;
     private static string _mode = "";
+    private static TimeAttackRun _taRun;
+    private static ReplayShareModel _share;
+    private static readonly Dictionary<string, Ghost> _ghosts = new Dictionary<string, Ghost>();
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
     [JSExport]
@@ -42,6 +46,7 @@ public static partial class MuchiRace
     [JSExport]
     public static string Start(string mode, string partnerName, string partnerJson, double seed)
     {
+        _taRun = null;
         RaceConfig cfg;
         if (mode == "tutorial") cfg = RaceFactory.Tutorial(_ruleset);
         else
@@ -67,6 +72,7 @@ public static partial class MuchiRace
     [JSExport]
     public static string StartTutorial(int attempt)
     {
+        _taRun = null;
         var race = OfflinePresets.TutorialRace(_ruleset, Math.Max(1, attempt));
         return Begin("tutorial", new OfflineRaceDriver(race));
     }
@@ -75,6 +81,7 @@ public static partial class MuchiRace
     [JSExport]
     public static string StartConfig(string configJson, string playerId)
     {
+        _taRun = null;
         var cfg = Muchi.Net.ProtocolCodec.ParseConfig(configJson);
         int slot = 0;
         foreach (var e in cfg.Entrants) if (e.Kind == EntrantKind.Human && e.PlayerId == playerId) { slot = e.Slot; break; }
@@ -84,6 +91,7 @@ public static partial class MuchiRace
     private static string Begin(string mode, OfflineRaceDriver driver)
     {
         _obs?.Dispose();
+        _share = null;
         _driver = driver;
         _mode = mode;
         var cfg = driver.Config;
@@ -133,7 +141,16 @@ public static partial class MuchiRace
             sb.Append("]}");
         }
         sb.Append("]}");
-        sb.Append("}");
+        // time attack ghosts beside the player (names for the HUD; poses come with every frame)
+        sb.Append(",\"ghosts\":[");
+        if (_taRun != null)
+            for (int i = 0; i < _taRun.Ghosts.Count; i++)
+            {
+                var m = _taRun.Ghosts[i].Meta;
+                if (i > 0) sb.Append(',');
+                sb.Append("{\"name\":\"").Append(Esc(m?.DisplayName)).Append("\",\"horse\":\"").Append(Esc(m?.HorseName)).Append("\",\"timeMs\":").Append(m?.TimeMs ?? -1).Append('}');
+            }
+        sb.Append("]}");
         return sb.ToString();
     }
 
@@ -179,6 +196,7 @@ public static partial class MuchiRace
             sb.Append('[').Append(F(x)).Append(',').Append(F(z)).Append(',').Append(F(yaw)).Append(',').Append(_driver.Sim.GetHorse(i).Rank).Append(',').Append(B(whip)).Append(',').Append(B(run)).Append(',').Append(B(ok)).Append(']');
         }
         sb.Append(']');
+        AppendGhosts(sb, now);
         if (_driver.Done && _driver.Sim?.Result != null)
         {
             var res = _driver.Sim.Result;
@@ -188,9 +206,243 @@ public static partial class MuchiRace
             for (int i = 0; i < res.Margins.Length; i++) { if (i > 0) sb.Append(','); sb.Append(F(res.Margins[i].Raw / (double)Fx.OneRaw)); }
             sb.Append(']');
             AppendResult(sb);
+            if (_taRun != null)
+            {
+                // the run's replay log (config + the player's inputs): what the device submits, and what becomes a ghost
+                var log = new Muchi.Net.ReplayLog { Config = _taRun.Race.Config, EndTick = -1, Inputs = new List<InputRecord>(_taRun.Race.RecordedInputs) };
+                sb.Append(",\"ta\":{\"timeMs\":").Append(_taRun.FinishTimeMs).Append(",\"log\":").Append(Muchi.Net.ProtocolCodec.ReplayLogToJson(log).ToString()).Append(",\"ghostTimes\":[");
+                for (int i = 0; i < _taRun.Ghosts.Count; i++) { if (i > 0) sb.Append(','); _taRun.Ghosts[i].RunToEnd(); sb.Append(_taRun.Ghosts[i].FinishTimeMs); }
+                sb.Append("]}");
+            }
         }
         sb.Append('}');
         return sb.ToString();
+    }
+
+    /// <summary>Time attack ghosts (GhostPlayer: their own RaceSim, stepped with the player's race), drawn translucent.</summary>
+    private static void AppendGhosts(StringBuilder sb, long now)
+    {
+        if (_taRun == null || _taRun.Ghosts.Count == 0) return;
+        int alpha = _driver.Race.InterpolationAlphaPermille(now);
+        var me = _driver.Sim.GetHorse(_driver.PlayerSlot);
+        sb.Append(",\"ghostPoses\":[");
+        for (int i = 0; i < _taRun.Ghosts.Count; i++)
+        {
+            var g = _taRun.Ghosts[i];
+            var p = _frame.Horse(g.PreviousHorse, g.Horse, alpha);
+            if (i > 0) sb.Append(',');
+            sb.Append('[').Append(F(p.X + _xShift)).Append(',').Append(F(p.Z)).Append(',').Append(F(p.YawDegrees)).Append(',')
+              .Append(B(g.Horse.Departed && !g.Finished)).Append(',').Append(F((g.Horse.Distance - me.Distance).Raw / (double)Fx.OneRaw)).Append(']');
+        }
+        sb.Append(']');
+    }
+
+    // ================================================================= round 9 (06 §7 item 12 / §7.3)
+
+    /// <summary>
+    /// Ghost runs for the time attack picker: each entry {id, name, horse, kind, config, whips[]} is ridden by a scripted
+    /// rider (START on the gate, rein 1200→700 m, whips at the given metres left) in its own OfflineRace; its replay log is
+    /// kept as a Ghost (timed by replaying it with GhostPlayer). An entry with "log" (the player's own best) is replayed as is.
+    /// Returns [{id, kind, timeMs}].
+    /// </summary>
+    [JSExport]
+    public static string TaGhosts(string entriesJson)
+    {
+        var arr = Muchi.Net.JsonNode.Parse(entriesJson);
+        var sb = new StringBuilder("[");
+        bool first = true;
+        foreach (var e in arr.Items)
+        {
+            string id = e.Get("id").AsString();
+            Muchi.Net.ReplayLog log;
+            if (e.TryGet("log", out var lg) && !lg.IsNull) log = Muchi.Net.ProtocolCodec.ParseReplayLog(lg);
+            else
+            {
+                var cfg = Muchi.Net.ProtocolCodec.ParseConfig(e.Get("config"));
+                var race = new OfflineRace(cfg, 0);
+                var whips = new List<int>();
+                if (e.TryGet("whips", out var w)) foreach (var x in w.Items) whips.Add(x.AsInt());
+                int k = 0; bool rein = false, released = false;
+                while (!race.IsFinished)
+                {
+                    var me = race.Sim.GetHorse(0);
+                    var left = race.Sim.Track.Distance - me.Distance;
+                    if (race.Sim.Tick == race.Sim.P.GateOpenTick) race.Input(Cmd.Start);
+                    if (!rein && left < Fx.FromInt(1200) && left > Fx.FromInt(700)) { rein = true; race.Input(Cmd.ReinPress); }
+                    if (rein && !released && left <= Fx.FromInt(700)) { released = true; race.Input(Cmd.ReinRelease); }
+                    if (me.Departed && k < whips.Count && left <= Fx.FromInt(whips[k])) { k++; race.Input(Cmd.Whip); }
+                    race.StepOnce();
+                }
+                log = new Muchi.Net.ReplayLog { Config = cfg, EndTick = -1, Inputs = new List<InputRecord>(race.RecordedInputs) };
+            }
+            var gp = new GhostPlayer(log);
+            gp.RunToEnd();
+            var meta = new GhostMeta
+            {
+                PlayerId = id, DisplayName = e.Get("name").AsString(), HorseName = e.TryGet("horse", out var hn) ? hn.AsString() : "",
+                TrackId = log.Config.Track.Id, TimeMs = gp.FinishTimeMs, FinishTick = gp.Horse.FinishTick, FinishFrac = gp.Horse.FinishFracRaw,
+            };
+            _ghosts[id] = new Ghost { Meta = meta, Log = log };
+            if (!first) sb.Append(',');
+            first = false;
+            sb.Append("{\"id\":\"").Append(Esc(id)).Append("\",\"kind\":\"").Append(Esc(e.Get("kind").AsString())).Append("\",\"timeMs\":").Append(gp.FinishTimeMs).Append('}');
+        }
+        return sb.Append(']').ToString();
+    }
+
+    private static string K(GhostKind k) => k == GhostKind.Friends ? "friends" : k == GhostKind.Top ? "top" : "me";
+
+    /// <summary>
+    /// GhostPicker (REQ-UXS-074): entries [{id, name, horse, kind: friends|top|me, timeMs}] → the picker state (opens on フレンド,
+    /// falls back to 上位, default pick = the nearest ghost faster than my best). tab / selectedId apply the player's choice.
+    /// </summary>
+    [JSExport]
+    public static string PickGhosts(string entriesJson, string myId, double myBestMs, string tab, string selectedId)
+    {
+        var lists = new Dictionary<string, GhostList> { ["friends"] = new GhostList { Kind = "friends" }, ["top"] = new GhostList { Kind = "top" }, ["me"] = new GhostList { Kind = "me" } };
+        foreach (var e in Muchi.Net.JsonNode.Parse(entriesJson).Items)
+            lists[e.Get("kind").AsString()].Ghosts.Add(new GhostEntry { PlayerId = e.Get("id").AsString(), DisplayName = e.Get("name").AsString(), HorseName = e.Get("horse").AsString(), TimeMs = e.Get("timeMs").AsLong() });
+        var p = GhostPicker.Build(lists["friends"], lists["top"], lists["me"], myId, myBestMs > 0 ? (long?)myBestMs : null);
+        if (!string.IsNullOrEmpty(tab)) p.SelectTab(tab == "friends" ? GhostKind.Friends : tab == "top" ? GhostKind.Top : GhostKind.Me);
+        if (!string.IsNullOrEmpty(selectedId)) { var sel = p.Current.Find(g => g.PlayerId == selectedId); if (sel != null) p.Select(sel); }
+        var sb = new StringBuilder();
+        sb.Append("{\"tab\":\"").Append(K(p.Tab)).Append("\",\"fellBack\":").Append(B(p.FellBack)).Append(",\"note\":\"").Append(Esc(p.Note))
+          .Append("\",\"selected\":\"").Append(Esc(p.Selected?.PlayerId)).Append("\",\"tabs\":[");
+        for (int i = 0; i < GhostPicker.TabOrder.Length; i++)
+        {
+            var k = GhostPicker.TabOrder[i];
+            if (i > 0) sb.Append(',');
+            sb.Append("{\"kind\":\"").Append(K(k)).Append("\",\"label\":\"").Append(GhostPicker.TabLabel(k)).Append("\",\"count\":").Append(p.List(k).Count).Append('}');
+        }
+        sb.Append("],\"list\":[");
+        for (int i = 0; i < p.Current.Count; i++)
+        {
+            var g = p.Current[i];
+            if (i > 0) sb.Append(',');
+            sb.Append("{\"id\":\"").Append(Esc(g.PlayerId)).Append("\",\"name\":\"").Append(Esc(g.DisplayName)).Append("\",\"horse\":\"").Append(Esc(g.HorseName))
+              .Append("\",\"time\":\"").Append(HudModel.FormatTime(g.TimeMs)).Append("\",\"line\":\"").Append(Esc(p.TimeLine(g))).Append("\",\"selected\":").Append(B(g == p.Selected)).Append('}');
+        }
+        return sb.Append("]}").ToString();
+    }
+
+    /// <summary>A time attack run (TimeAttackRun on the server-issued config) with the chosen ghost (from TaGhosts) beside the player.</summary>
+    [JSExport]
+    public static string StartTimeAttack(string configJson, string ghostId)
+    {
+        var cfgNode = Muchi.Net.JsonNode.Parse(configJson);
+        var session = new TimeAttackSession { SessionId = "proto", Token = "", ConfigJson = cfgNode, Config = Muchi.Net.ProtocolCodec.ParseConfig(cfgNode), AttemptsLeft = 0 };
+        var run = new TimeAttackRun(session);
+        if (!string.IsNullOrEmpty(ghostId) && _ghosts.TryGetValue(ghostId, out var g)) run.AddGhost(g);
+        _taRun = run;
+        return Begin("timeattack", new OfflineRaceDriver(run.Race));
+    }
+
+    /// <summary>
+    /// Replay share (REQ-UXS-070, 071) for the race that just finished: ReplayShareModel.From re-simulates it from the
+    /// config + inputs (must reproduce the live hash), cuts the last 200 m (≤ 10 s) and builds the share card.
+    /// </summary>
+    [JSExport]
+    public static string ShareClip(string courseName)
+    {
+        _share = ReplayShareModel.From(_driver, string.IsNullOrEmpty(courseName) ? null : courseName);
+        if (_share == null) return "{\"ok\":false,\"message\":\"" + ReplayShareModel.TextUnavailable + "\"}";
+        var c = _share.Card; var clip = _share.Clip;
+        var st = clip.StatesAt(clip.StartTick)[clip.FocusSlot];
+        double startRem = clip.Config.Track.DistanceM - TrackGeometry.DistanceM(st.Distance);
+        var sb = new StringBuilder();
+        sb.Append("{\"ok\":true,\"card\":{\"watermark\":\"").Append(Esc(c.Watermark)).Append("\",\"place\":").Append(c.Place).Append(",\"runners\":").Append(c.Runners)
+          .Append(",\"placeText\":\"").Append(Esc(c.PlaceText)).Append("\",\"time\":\"").Append(Esc(c.TimeText)).Append("\",\"horse\":\"").Append(Esc(c.HorseName))
+          .Append("\",\"course\":\"").Append(Esc(c.CourseName)).Append("\",\"mode\":\"").Append(Esc(c.ModeLabel)).Append("\",\"shareText\":\"").Append(Esc(c.ShareText)).Append("\",\"skills\":[");
+        for (int i = 0; i < c.SkillLines.Count; i++) { if (i > 0) sb.Append(','); sb.Append('"').Append(Esc(c.SkillLines[i])).Append('"'); }
+        sb.Append("]},\"clip\":{\"durationMs\":").Append(clip.DurationMs).Append(",\"frames\":").Append(clip.FrameCount).Append(",\"fps\":").Append(clip.Options.FramesPerSecond)
+          .Append(",\"finishAtMs\":").Append(clip.FinishAtMs).Append(",\"startRemainingM\":").Append(F(startRem)).Append(",\"hash\":\"").Append(clip.ResultHash)
+          .Append("\",\"liveHash\":\"").Append(_driver.Sim.Result.Hash).Append("\",\"cameraKeys\":").Append(clip.CameraKeys.Count).Append(",\"modes\":[");
+        string last = null; bool firstMode = true;
+        foreach (var k in clip.CameraKeys) { var m = k.Shot.Mode.ToString(); if (m == last) continue; last = m; if (!firstMode) sb.Append(','); firstMode = false; sb.Append('"').Append(m).Append('"'); }
+        sb.Append("],\"events\":[");
+        for (int i = 0; i < clip.Events.Count; i++)
+        {
+            var e = clip.Events[i];
+            if (i > 0) sb.Append(',');
+            sb.Append("{\"t\":").Append(e.TimeMs).Append(",\"type\":\"").Append(e.Type.ToString()).Append("\",\"slot\":").Append(e.Slot).Append(",\"value\":").Append(e.Value).Append('}');
+        }
+        return sb.Append("]}}").ToString();
+    }
+
+    /// <summary>One clip frame posed in world space (ReplayShareModel.Pose: the same CourseFrame transform as the live race).</summary>
+    [JSExport]
+    public static string ClipFrame(double timeMs)
+    {
+        if (_share == null) return "{}";
+        var f = _share.Clip.FrameAt((int)timeMs);
+        var p = _share.Pose(f);
+        var sb = new StringBuilder(1024);
+        sb.Append("{\"t\":").Append(f.TimeMs).Append(",\"remainingM\":").Append(F(f.FocusRemainingM)).Append(",\"horses\":[");
+        for (int i = 0; i < p.Horses.Length; i++)
+        {
+            if (i > 0) sb.Append(',');
+            var h = p.Horses[i];
+            sb.Append('[').Append(F(h.X + _xShift)).Append(',').Append(F(h.Z)).Append(',').Append(F(h.YawDegrees)).Append(',').Append(f.To[i].Rank).Append(',').Append(B(p.WhipActive[i])).Append(",true,true]");
+        }
+        var c = p.Camera;
+        sb.Append("],\"cam\":[").Append(F(c.Position.X + _xShift)).Append(',').Append(F(c.Height)).Append(',').Append(F(c.Position.Z)).Append(',')
+          .Append(F(c.LookAt.X + _xShift)).Append(',').Append(F(c.LookAtHeight)).Append(',').Append(F(c.LookAt.Z)).Append(',').Append(F(c.FieldOfViewDegrees)).Append(",\"").Append(c.Mode.ToString()).Append("\"]}");
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// AccountLinkPrompt (REQ-UXS-073) on a store mirrored from localStorage (the PlayerPrefs keys muchi.link.*).
+    /// op: eval {context, anonymous, day, ftueDone, online, deletion} | show {trigger, ios} | dismiss | purchase | linked {provider, at}.
+    /// Returns {show?, trigger?, view?, event?, store}.
+    /// </summary>
+    [JSExport]
+    public static string LinkPrompt(string op, string storeJson, string argsJson)
+    {
+        var kv = new MemoryKeyValueStore();
+        var store = Muchi.Net.JsonNode.Parse(string.IsNullOrEmpty(storeJson) ? "{}" : storeJson);
+        var keys = new[] { AccountLinkPrompt.KeyState, AccountLinkPrompt.KeyFirstPurchase };
+        foreach (var key in keys)
+            if (store.TryGet(key, out var v) && !v.IsNull) kv.Set(key, v.AsString());
+        var a = Muchi.Net.JsonNode.Parse(string.IsNullOrEmpty(argsJson) ? "{}" : argsJson);
+        var lp = new AccountLinkPrompt(kv);
+        var sb = new StringBuilder("{");
+        bool Bool(string k) => a.TryGet(k, out var x) && x.AsBool();
+        if (op == "eval")
+        {
+            var ctx = (LinkPromptContext)Enum.Parse(typeof(LinkPromptContext), a.Get("context").AsString());
+            int day = a.Get("day").AsInt();
+            // FTUE over (AccountLinkPrompt.FtueDone): partner named, welcome scout done, first ranked race run
+            bool ftue = a.TryGet("rankedRaces", out var rr)
+                ? AccountLinkPrompt.FtueDone(new PlayerView { PartnerHorseId = Bool("partner") ? "partner" : null, TutorialGachaUsed = Bool("gacha"), RankedRaces = rr.AsInt() })
+                : Bool("ftueDone");
+            bool show = lp.ShouldShow(ctx, Bool("anonymous"), day, ftue, Bool("online"), Bool("deletion"));
+            sb.Append("\"ftueDone\":").Append(B(ftue)).Append(",\"show\":").Append(B(show)).Append(",\"trigger\":\"").Append(lp.TriggerFor(day, false).ToString()).Append("\",");
+        }
+        else if (op == "show")
+        {
+            var v = lp.Show((LinkPromptTrigger)Enum.Parse(typeof(LinkPromptTrigger), a.Get("trigger").AsString()), Bool("ios"));
+            sb.Append("\"view\":{\"title\":\"").Append(Esc(v.Title)).Append("\",\"body\":\"").Append(Esc(v.Body)).Append("\",\"providers\":[\"").Append(string.Join("\",\"", v.Providers))
+              .Append("\"],\"apple\":\"").Append(Esc(v.AppleLabel)).Append("\",\"google\":\"").Append(Esc(v.GoogleLabel)).Append("\",\"later\":\"").Append(Esc(v.LaterLabel))
+              .Append("\",\"footnote\":\"").Append(Esc(v.Footnote)).Append("\"},");
+        }
+        else if (op == "dismiss") lp.Dismiss();
+        else if (op == "purchase") lp.NotePurchase();
+        else if (op == "linked")
+        {
+            var e = lp.OnLinkResult(LinkResult.Linked, a.Get("provider").AsString(), a.Get("at").AsLong());
+            if (e != null) sb.Append("\"event\":{\"name\":\"").Append(e.Name).Append("\",\"at\":").Append(e.AtMs).Append("},");
+        }
+        sb.Append("\"store\":{");
+        bool firstKey = true;
+        foreach (var key in keys)
+        {
+            var v = kv.Get(key);
+            if (v == null) continue;
+            if (!firstKey) sb.Append(',');
+            firstKey = false;
+            sb.Append('"').Append(key).Append("\":\"").Append(Esc(v)).Append('"');
+        }
+        return sb.Append("}}").ToString();
     }
 
     /// <summary>Race feel (RaceFeelTracker via RaceObserver/HudModel), skill activations (engine Skill events), tutorial director state and the camera rig shot.</summary>

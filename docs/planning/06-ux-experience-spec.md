@@ -611,6 +611,9 @@ ID の付け方：`REQ-UXS-`（ロジック・サーバー、こちら側）、`
 | REQ-UXS-050 | P1 | 固有スキル（§7.1）：マスター、検証、出走設定、配合の継承、ガチャ表示 | `skills.json`・`raceConfig.ts`・`horses.ts`・`gacha.ts` |
 | REQ-UXS-051 | P1 | 固有スキルのエンジン実装（任意キー群、決定論テスト、ゴールデン更新、R9 のバランス目標） | `engine/Muchi.Engine`・`contracts/` |
 | REQ-UXS-060 | P1 | マイ厩舎（§7.2）：配置の保存、公開の写し、訪問、いいね（上限・コインなし）、KPI | `player.ts`・新規 `stable.ts`・`app.ts` |
+| REQ-UXS-073 | P0 | 引き継ぎの案内：3日目か初回購入の直後の早い方で1回だけ（FTUE・レース中は出さない、「あとで」で終わり）。連携で `account_link` | `unity/Assets/Muchi/Game/AccountLinkPrompt.cs` |
+| REQ-UXS-074 | P1 | TAのゴースト一覧の既定をフレンドに（無ければ上位） | `ScreenModels.cs`（`GhostPicker`） |
+| REQ-UXS-070〜072 | P2 | 直線のリプレイ共有：端末で再計算した最後の200m（10秒）、カメラのキーフレーム、共有カード（透かし）、録画のインターフェース `IClipRecorder`、KPI `share` | `engine/Muchi.Client/ReplayClip.cs`・`Game/ReplayShare.cs`・`kpi.ts` |
 | REQ-UXS-019 | P2 | 昇級記念パック・シーズンパス＋ | `products.json` |
 | REQ-UXS-011 | P2 | 日付の切り替えを 4:00 JST に（全ての日次処理） | `time.ts` ほか |
 

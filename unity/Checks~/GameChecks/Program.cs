@@ -60,6 +60,8 @@ static class Program
         await CloseCodeChecks.Run(Check, Ruleset());
         Console.WriteLine("== race feel, tutorial win rule, camera and result debrief (06 §2.3 / §6.3 / §6.4)");
         RaceFeelChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 9: replay share, account-link prompt, friend ghosts (06 §7 / §7.3)");
+        await Round9Checks.Run(Check, Ruleset());
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

@@ -51,6 +51,41 @@ namespace Muchi.Client
         public static AnalyticsEvent PushOpen(long atMs, string templateId) => new AnalyticsEvent("push_open", atMs, JsonNode.Obj().Set("templateId", Id(templateId, 32, "templateId")));
         public static AnalyticsEvent PushPermission(long atMs, bool granted) => new AnalyticsEvent("push_permission", atMs, JsonNode.Obj().Set("granted", granted));
 
+        // REQ-UXS-030 (server/src/domain/kpi.ts clientEventSchema)
+        /// <summary>A feature of the unlock table opened (REQ-UXS-014 key).</summary>
+        public static AnalyticsEvent FeatureUnlock(long atMs, string feature) => new AnalyticsEvent("feature_unlock", atMs, JsonNode.Obj().Set("feature", Id(feature, 32, "feature")));
+        /// <summary>An offer was shown. trigger: T1..T8 (06 §5.1).</summary>
+        public static AnalyticsEvent OfferView(long atMs, string offerId, string trigger) => new AnalyticsEvent("offer_view", atMs, OfferProps(offerId, trigger));
+        public static AnalyticsEvent OfferClick(long atMs, string offerId, string trigger) => new AnalyticsEvent("offer_click", atMs, OfferProps(offerId, trigger));
+        private static JsonNode OfferProps(string offerId, string trigger)
+        {
+            if (trigger == null || trigger.Length != 2 || trigger[0] != 'T' || trigger[1] < '1' || trigger[1] > '8') throw new ArgumentException("trigger must be T1..T8");
+            return JsonNode.Obj().Set("offerId", Id(offerId, 64, "offerId")).Set("trigger", trigger);
+        }
+        /// <summary>The player left a race before the finish. mode: ranked | friend | tutorial | offline | time_attack | event | tournament.</summary>
+        public static AnalyticsEvent RaceQuit(long atMs, string mode, int remainingM)
+        {
+            if (Array.IndexOf(QuitModes, mode) < 0) throw new ArgumentException("unknown race mode " + mode);
+            return new AnalyticsEvent("race_quit", atMs, JsonNode.Obj().Set("mode", mode).Set("remainingM", Math.Max(0, Math.Min(remainingM, 10_000))));
+        }
+        private static readonly string[] QuitModes = { "ranked", "friend", "tutorial", "offline", "time_attack", "event", "tournament" };
+        /// <summary>
+        /// The anonymous account was linked to Apple/Google (REQ-API-005; send only on LinkResult.Linked). provider: apple | google,
+        /// or the Firebase provider ids apple.com / google.com.
+        /// </summary>
+        public static AnalyticsEvent AccountLink(long atMs, string provider)
+        {
+            string p = provider == "apple.com" ? "apple" : provider == "google.com" ? "google" : provider;
+            if (p != "apple" && p != "google") throw new ArgumentException("provider must be apple or google");
+            return new AnalyticsEvent("account_link", atMs, JsonNode.Obj().Set("provider", p));
+        }
+        /// <summary>A replay was handed to the OS share sheet (REQ-UXS-072). kind: replay_video | replay_image.</summary>
+        public static AnalyticsEvent Share(long atMs, string kind)
+        {
+            if (kind != "replay_video" && kind != "replay_image") throw new ArgumentException("kind must be replay_video or replay_image");
+            return new AnalyticsEvent("share", atMs, JsonNode.Obj().Set("kind", kind));
+        }
+
         internal JsonNode ToJson()
         {
             var o = JsonNode.Obj();

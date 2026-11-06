@@ -101,6 +101,32 @@ namespace Muchi.Engine.Tests
         }
 
         [Fact]
+        public async Task Round8And9ClientEventsMatchTheServerSchema()
+        {
+            // server/src/domain/kpi.ts clientEventSchema: REQ-UXS-030 + share (REQ-UXS-072)
+            var ev = new[]
+            {
+                AnalyticsEvent.FeatureUnlock(1, "breeding"), AnalyticsEvent.OfferView(2, "starter", "T2"), AnalyticsEvent.OfferClick(3, "starter", "T2"),
+                AnalyticsEvent.RaceQuit(4, "ranked", 420), AnalyticsEvent.AccountLink(5, "apple.com"), AnalyticsEvent.AccountLink(6, "google"),
+                AnalyticsEvent.Share(7, "replay_video"),
+            };
+            _http.Reply(200, "{\"accepted\":7,\"dropped\":0}");
+            await _api.SendAnalyticsAsync("ios", "1", ev);
+            Assert.Equal(Canon("{\"platform\":\"ios\",\"appVersion\":\"1\",\"events\":["
+                + "{\"name\":\"feature_unlock\",\"at\":1,\"props\":{\"feature\":\"breeding\"}},"
+                + "{\"name\":\"offer_view\",\"at\":2,\"props\":{\"offerId\":\"starter\",\"trigger\":\"T2\"}},"
+                + "{\"name\":\"offer_click\",\"at\":3,\"props\":{\"offerId\":\"starter\",\"trigger\":\"T2\"}},"
+                + "{\"name\":\"race_quit\",\"at\":4,\"props\":{\"mode\":\"ranked\",\"remainingM\":420}},"
+                + "{\"name\":\"account_link\",\"at\":5,\"props\":{\"provider\":\"apple\"}},"
+                + "{\"name\":\"account_link\",\"at\":6,\"props\":{\"provider\":\"google\"}},"
+                + "{\"name\":\"share\",\"at\":7,\"props\":{\"kind\":\"replay_video\"}}]}"), Canon(_http.Requests[0].Body));
+            Assert.Throws<ArgumentException>(() => AnalyticsEvent.AccountLink(0, "line"));
+            Assert.Throws<ArgumentException>(() => AnalyticsEvent.OfferView(0, "starter", "T9"));
+            Assert.Throws<ArgumentException>(() => AnalyticsEvent.RaceQuit(0, "practice", 1));
+            Assert.Throws<ArgumentException>(() => AnalyticsEvent.Share(0, "replay_gif"));
+        }
+
+        [Fact]
         public void EventFactoriesRejectBadValues()
         {
             Assert.Throws<ArgumentException>(() => AnalyticsEvent.ScreenView(0, "ホーム"));

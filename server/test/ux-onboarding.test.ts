@@ -275,6 +275,7 @@ describe('REQ-UXS-030 KPI client events', () => {
       { name: 'offer_click', at: T0, props: { offerId: 'starter', trigger: 'T2' } },
       { name: 'race_quit', at: T0, props: { mode: 'ranked', remainingM: 420 } },
       { name: 'account_link', at: T0, props: { provider: 'apple' } },
+      { name: 'share', at: T0, props: { kind: 'replay_video' } },
     ]));
     expect(ok.success).toBe(true);
     const ev = ok.success ? ok.data.events.map(clientToKpi) : [];
@@ -282,11 +283,14 @@ describe('REQ-UXS-030 KPI client events', () => {
     expect(ev[1]).toEqual({ name: 'tutorial_step', s1: 'home', value: 8 });
     expect(ev[3]).toEqual({ name: 'offer_view', s1: 'starter', s2: 'T2' });
     expect(ev[5]).toEqual({ name: 'race_quit', s1: 'ranked', value: 420 });
+    expect(ev[7]).toEqual({ name: 'share', s1: 'replay_video' });
     for (const bad of [
       { name: 'tutorial_step', at: T0, props: { step: 'whip', index: 1 } },
       { name: 'tutorial_step', at: T0, props: { step: 'named', index: 2 } },
       { name: 'offer_view', at: T0, props: { offerId: 'starter', trigger: 'T9' } },
       { name: 'account_link', at: T0, props: { provider: 'line' } },
+      { name: 'share', at: T0, props: { kind: 'replay_gif' } },
+      { name: 'share', at: T0, props: { kind: 'replay_video', playerName: 'x' } },
     ]) expect(clientBatchSchema.safeParse(batch([bad])).success).toBe(false);
   });
 });

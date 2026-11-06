@@ -58,6 +58,7 @@
 | `offer_view` / `offer_click` | クライアント | オファーID | きっかけ `T1`〜`T8`（docs/planning/06 §5.1） | | |
 | `race_quit` | クライアント | モード | | | `double9` 残り距離(m) |
 | `account_link` | クライアント | `apple`/`google` | | | |
+| `share` | クライアント（リプレイをOSの共有に渡した。キャンセルは送らない、REQ-UXS-072） | `replay_video`/`replay_image` | | | |
 | `consent` | サーバー | 規約の版 | プライバシーポリシーの版 | | |
 | `partner_granted` | サーバー | テンプレートID（`t_partner`） | | | |
 | `ab_assign` | サーバー（初回の bootstrap、実験ごとに1回） | 実験ID | バケットID | | |

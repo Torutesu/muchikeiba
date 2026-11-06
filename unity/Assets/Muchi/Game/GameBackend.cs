@@ -71,6 +71,8 @@ namespace Muchi.Game
         public GameSettings Settings => _settings;
         public ApiClient Api => _api;
         public RulesetParams Ruleset => _ruleset;
+        /// <summary>The device key/value store (PlayerPrefs in Unity) for small client state such as pending idempotency keys.</summary>
+        public IKeyValueStore Store => _kv;
 
         public GameBackend(GameSettings settings, ApiClient api, ITransportFactory sockets, IKeyValueStore store, RulesetParams ruleset)
         {
@@ -260,11 +262,13 @@ namespace Muchi.Game
                 return (Connect(st.Assignment), null);
             }
             catch (ApiException e) { return (null, e.WireCode + "  /  " + e.Message); }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { await SafeCancelMatch(); return (null, "CANCELLED"); }
+            catch (Exception e) { await SafeCancelMatch(); return (null, "ERROR  /  " + e.Message); } // e.g. a token provider error; never leave the caller hanging
         }
 
         private async Task SafeCancelMatch()
         {
-            try { await _api.CancelMatchAsync(); } catch (ApiException) { }
+            try { await _api.CancelMatchAsync(); } catch (Exception) { /* best effort */ }
         }
 
         public IRaceDriver Connect(RaceAssignment a)

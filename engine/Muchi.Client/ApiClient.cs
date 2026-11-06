@@ -640,6 +640,32 @@ namespace Muchi.Client
             return b;
         }
 
+        /// <summary>
+        /// Token from the provider. Callers (screen models, ranked entry) only handle <see cref="ApiException"/>, so a
+        /// provider that fails with anything else (Firebase SDK errors, "not signed in", no network during a token
+        /// refresh) surfaces as <see cref="NetworkException"/> — the same "try again / offline" path as a dropped request.
+        /// </summary>
+        private async Task<string> TokenAsync(bool forceRefresh, string method, string path, CancellationToken ct)
+        {
+            if (_auth == null) throw new AuthException("UNAUTHORIZED", method + " " + path + ": no auth token provider", 0);
+            try
+            {
+                return await _auth.GetTokenAsync(forceRefresh, ct);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (ApiException)
+            {
+                throw;
+            }
+            catch (Exception e)
+            {
+                throw new NetworkException(method + " " + path + ": sign-in token unavailable: " + e.Message, e);
+            }
+        }
+
         private async Task<T> Call<T>(string method, string path, JsonNode body, bool auth, string idemKey, bool safe, Func<JsonNode, T> parse, CancellationToken ct)
         {
             bool retryable = safe || method == "GET" || idemKey != null;
@@ -655,7 +681,7 @@ namespace Muchi.Client
                 if (auth)
                 {
                     if (!string.IsNullOrEmpty(_opt.DevUserId)) req.Headers["x-dev-user"] = _opt.DevUserId;
-                    else req.Headers["authorization"] = "Bearer " + await _auth.GetTokenAsync(refreshedToken, ct);
+                    else req.Headers["authorization"] = "Bearer " + await TokenAsync(refreshedToken, method, path, ct);
                 }
 
                 HttpResponse res;

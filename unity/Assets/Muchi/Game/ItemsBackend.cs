@@ -110,11 +110,12 @@ namespace Muchi.Game
                     var c = await _b.Api.GetCosmeticsAsync(ct);
                     var m = new WardrobeModel { Notice = c.Notice, DecorSlots = c.DecorSlots, Equipment = c.Equipment, Items = c.Items.Select(FromServer).ToList() };
                     Fill(m);
-                    return m;
+                    return Current = m;
                 }
-                catch (NetworkException) { /* fall through to the preview */ }
+                // Any API failure (network, 5xx, auth, an unknown wire code) shows the preview instead of an empty screen.
+                catch (ApiException) { /* fall through to the preview */ }
             }
-            return new WardrobeModel
+            return Current = new WardrobeModel
             {
                 LocalOnly = true, DecorSlots = 3, Notice = "OFFLINE  /  preview only",
                 Items = OfflinePreview.Select(i => new WardrobeItem { Id = i.Id, Name = i.Name, Kind = i.Kind, Slot = i.Slot, Pattern = i.Pattern, Asset = i.Asset, Price = i.Price, ArtPath = CosmeticArt.ArtFor(i.Asset) }).ToList(),
@@ -133,16 +134,60 @@ namespace Muchi.Game
 
         private static int Count(PlayerView p, string id) => p.Items != null && p.Items.TryGetValue(id, out var n) ? n : 0;
 
+        /// <summary>The wardrobe last loaded by <see cref="WardrobeAsync"/>; purchases and equips update it in place.</summary>
+        public WardrobeModel Current { get; private set; }
+
+        /// <summary>KV key of the pending ticket-use idempotency key for (item, banner).</summary>
+        public static string TicketKeyFor(string itemId, string bannerId) => "muchi.items.ticket.idem." + itemId + "|" + (bannerId ?? "");
+
         public async Task<ActionResult> BuyAsync(string itemId, CancellationToken ct = default)
         {
             if (!_b.Online) return ActionResult.Error("OFFLINE  /  purchases need the server");
             try
             {
                 var r = await _b.Api.BuyCosmeticAsync(itemId, null, ct);
-                await _b.RefreshAsync(ct);
+                ApplyPurchase(r);
+                await RefreshQuietlyAsync(ct);
                 return ActionResult.Success("PURCHASED  /  paid " + r.SpentPaid + "  free " + r.SpentFree);
             }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (ApiException e) { return ActionResult.Error(e.WireCode + "  /  " + e.Message); }
+        }
+
+        /// <summary>The purchase response is authoritative: wallet and ownership show at once, even if the refresh fails.</summary>
+        private void ApplyPurchase(CosmeticPurchase r)
+        {
+            if (r == null) return;
+            var p = _b.Player;
+            if (p != null && r.Wallet != null) p.Wallet = r.Wallet;
+            var m = Current;
+            if (m == null || m.LocalOnly) return;
+            if (r.Wallet != null) { m.FreeCoins = r.Wallet.Free; m.PaidCoins = r.Wallet.Paid; }
+            foreach (var i in m.Items) if (i.Id == r.ItemId) i.Owned = true;
+        }
+
+        private void ApplyEquipment(Equipment e)
+        {
+            if (e == null) return;
+            if (_b.Player != null) _b.Player.Equipment = e;
+            var m = Current;
+            if (m == null || m.LocalOnly) return;
+            m.Equipment = e;
+            var tack = new HashSet<string>(e.Tack.Values.Where(v => v != null));
+            var decor = new HashSet<string>(e.Decor.Where(v => v != null));
+            foreach (var i in m.Items)
+            {
+                if (i.Kind == "tack") i.Equipped = tack.Contains(i.Id);
+                else if (i.Kind == "decor") i.Equipped = decor.Contains(i.Id);
+            }
+        }
+
+        /// <summary>The write already succeeded; a failed follow-up refresh must not turn it into an error.</summary>
+        private async Task RefreshQuietlyAsync(CancellationToken ct)
+        {
+            try { await _b.RefreshAsync(ct); }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (ApiException) { /* keep the applied response */ }
         }
 
         /// <summary>Equip tack into a slot ("bridle" / "saddlecloth"); itemId null unequips.</summary>
@@ -163,25 +208,43 @@ namespace Muchi.Game
             if (!_b.Online) return ActionResult.Error("OFFLINE  /  equipment is saved on the server");
             try
             {
-                await _b.Api.SetEquipmentAsync(patch, ct);
-                await _b.RefreshAsync(ct);
+                ApplyEquipment(await _b.Api.SetEquipmentAsync(patch, ct));
+                await RefreshQuietlyAsync(ct);
                 return ActionResult.Success();
             }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (ApiException e) { return ActionResult.Error(e.WireCode + "  /  " + e.Message); }
         }
 
-        /// <summary>Use a ticket (gacha ticket needs bannerId). The pulled horse is in <see cref="LastTicket"/>.</summary>
+        /// <summary>
+        /// Use a ticket (gacha ticket needs bannerId). The pulled horse is in <see cref="LastTicket"/>.
+        /// The idempotency key is kept per (item, banner) in the device store until the server answers definitely
+        /// (success or a 4xx rejection), so a retry after a timeout, crash or app restart never consumes a second ticket.
+        /// </summary>
         public async Task<ActionResult> UseTicketAsync(string itemId, string bannerId = null, CancellationToken ct = default)
         {
             if (!_b.Online) return ActionResult.Error("OFFLINE  /  tickets are used on the server");
+            var kv = _b.Store;
+            string slot = TicketKeyFor(itemId, bannerId);
+            string key = kv.Get(slot);
+            if (string.IsNullOrEmpty(key)) { key = _b.Api.NewIdempotencyKey(); kv.Set(slot, key); }
             try
             {
-                LastTicket = await _b.Api.UseTicketAsync(itemId, bannerId, null, ct);
-                await _b.RefreshAsync(ct);
+                LastTicket = await _b.Api.UseTicketAsync(itemId, bannerId, key, ct);
+                kv.Set(slot, null);
+                await RefreshQuietlyAsync(ct);
                 return ActionResult.Success(LastTicket.Result.Rarity + "  /  " + (_b.HorseName(LastTicket.Result.HorseId) ?? LastTicket.Result.TemplateId));
             }
-            catch (ApiException e) { return ActionResult.Error(e.WireCode + "  /  " + e.Message); }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (ApiException e)
+            {
+                if (IsDefiniteRejection(e)) kv.Set(slot, null);
+                return ActionResult.Error(e.WireCode + "  /  " + e.Message);
+            }
         }
+
+        /// <summary>The server refused the request itself (4xx other than timeout / rate limit / auth): the key was not used.</summary>
+        public static bool IsDefiniteRejection(ApiException e) => e.Status >= 400 && e.Status < 500 && e.Status != 401 && e.Status != 408 && e.Status != 429;
 
         public TicketResult LastTicket { get; private set; }
     }

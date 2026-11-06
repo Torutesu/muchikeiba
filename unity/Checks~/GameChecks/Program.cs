@@ -44,6 +44,8 @@ static class Program
         Console.WriteLine("== Firebase auth token provider");
         await AuthChecks.Run(Check);
         await OfflineScreenModels();
+        Console.WriteLine("== QA round 6 client regressions");
+        await QaRound6Checks.Run(Check, Ruleset(), Root);
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);
@@ -275,7 +277,7 @@ static class Program
         var room = new RoomConditionsModel(b, kv);
         await room.LoadAsync();
         Check(room.Ground == 1 && room.Temperature == 1 && room.Weather == 0, "room conditions default to GOOD / 18 °C / SUNNY");
-        room.Weather = 3; room.Ground = 2; room.Wind = 2;
+        room.Weather = 3; room.SelectGround(2); room.Wind = 2;
         Check((await room.SaveAsync()).Ok, "offline room conditions save locally");
         var c = room.ToConditions();
         Check(c.Weather == "fog" && c.Going == "yielding" && c.TemperatureC == 18 && c.WindKmh == 10, "screen indices map to server ids (fog / yielding / 18 / 10)");
@@ -402,7 +404,7 @@ static class Program
 
         var room = new RoomConditionsModel(b, kv);
         await room.LoadAsync();
-        room.Weather = 2; room.Ground = 3; room.Temperature = 0; room.Wind = 3;
+        room.Weather = 2; room.SelectGround(3); room.Temperature = 0; room.Wind = 3;
         var saved = await room.SaveAsync();
         Check(saved.Ok, "room conditions saved to the server (" + saved.Message + ")");
         var room2 = new RoomConditionsModel(b, new MemoryKeyValueStore());

@@ -31,6 +31,8 @@ jobs:
         run: dotnet build "unity/Checks~/Muchi.Game" --nologo
       - name: Unity scripts type-check (Integration asmdef + Assembly-CSharp)
         run: dotnet build "unity/Checks~/UnityRuntime" --nologo
+      - name: Unity scripts type-check with MUCHI_FIREBASE (against Firebase SDK stubs)
+        run: dotnet build "unity/Checks~/UnityFirebase" --nologo
       - name: Game layer checks (input, HUD, course placement, partner mapping, offline races, offline fallback)
         run: dotnet run --project "unity/Checks~/GameChecks"
 

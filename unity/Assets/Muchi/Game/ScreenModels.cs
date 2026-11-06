@@ -26,6 +26,8 @@ namespace Muchi.Game
         public static readonly string[] Weather = { "sunny", "cloudy", "rain", "fog" };
         /// <summary>Ground buttons FIRM, GOOD, SOFT, HEAVY → turf going names (the server maps them to dirt steps).</summary>
         public static readonly string[] Ground = { "firm", "good", "yielding", "soft" };
+        /// <summary>The same four buttons on a dirt course (REQ-RACE-034 dirt going names).</summary>
+        public static readonly string[] DirtGround = { "fast", "good", "muddy", "sloppy" };
         public static readonly int[] TemperaturesC = { 14, 18, 22, 26 };
         public static readonly int[] WindsKmh = { 0, 5, 10, 15 };
 
@@ -162,23 +164,40 @@ namespace Muchi.Game
     public sealed class RoomConditionsModel : ScreenModel
     {
         public const string KeyWeather = "muchi.race.weather", KeyGround = "muchi.race.surface", KeyTemperature = "muchi.race.temperature", KeyWind = "muchi.race.wind";
+        /// <summary>"1" = the player has not picked a ground (the room uses the day's ground).</summary>
+        public const string KeyGroundAuto = "muchi.race.surface.auto";
         public int Weather, Ground = 1, Temperature = 1, Wind;
+        /// <summary>
+        /// True until the player picks a ground: the room keeps the day's ground (going null on the server). Weather,
+        /// temperature or wind changes never pin the ground.
+        /// </summary>
+        public bool GroundAuto = true;
         /// <summary>Course for the room (null = random). Night: null = automatic.</summary>
         public string TrackId;
         public bool? Night;
 
         public RoomConditionsModel(GameBackend backend, IKeyValueStore store) : base(backend, store) { }
 
+        /// <summary>The player tapped a ground button (FIRM, GOOD, SOFT, HEAVY).</summary>
+        public void SelectGround(int index) { Ground = Math.Max(0, Math.Min(3, index)); GroundAuto = false; }
+
         private int LocalInt(string k, int def) => int.TryParse(Kv.Get(k), NumberStyles.Integer, CultureInfo.InvariantCulture, out var v) ? Math.Max(0, Math.Min(3, v)) : def;
         private void SaveLocal()
         {
             Kv.Set(KeyWeather, Weather.ToString(CultureInfo.InvariantCulture)); Kv.Set(KeyGround, Ground.ToString(CultureInfo.InvariantCulture));
             Kv.Set(KeyTemperature, Temperature.ToString(CultureInfo.InvariantCulture)); Kv.Set(KeyWind, Wind.ToString(CultureInfo.InvariantCulture));
+            Kv.Set(KeyGroundAuto, GroundAuto ? "1" : "0");
         }
+
+        /// <summary>Dirt courses ("…_dirt_…", server/master/tracks.json) take dirt going names.</summary>
+        public static bool IsDirtTrack(string trackId) => trackId != null && trackId.IndexOf("_dirt", StringComparison.Ordinal) >= 0;
+
+        /// <summary>Going name for a ground button on this course (dirt courses: fast / good / muddy / sloppy).</summary>
+        public static string GoingFor(int groundIndex, string trackId) => IsDirtTrack(trackId) ? ScreenIds.DirtGround[groundIndex] : ScreenIds.Ground[groundIndex];
 
         public RoomConditions ToConditions() => new RoomConditions
         {
-            TrackId = TrackId, Going = ScreenIds.Ground[Ground], Night = Night, Weather = ScreenIds.Weather[Weather],
+            TrackId = TrackId, Going = GroundAuto ? null : GoingFor(Ground, TrackId), Night = Night, Weather = ScreenIds.Weather[Weather],
             TemperatureC = ScreenIds.TemperaturesC[Temperature], WindKmh = ScreenIds.WindsKmh[Wind],
         };
 
@@ -186,13 +205,14 @@ namespace Muchi.Game
         {
             if (c == null) return;
             Weather = ScreenIds.IndexOf(ScreenIds.Weather, c.Weather);
+            GroundAuto = c.Going == null;
             Ground = c.Going == null ? 1 : ScreenIds.IndexOf(ScreenIds.Ground, TurfStep(c.Going), 1);
             Temperature = Math.Max(0, Array.IndexOf(ScreenIds.TemperaturesC, c.TemperatureC));
             Wind = Math.Max(0, Array.IndexOf(ScreenIds.WindsKmh, c.WindKmh));
             TrackId = c.TrackId; Night = c.Night;
         }
 
-        /// <summary>Dirt going names to the matching turf step for the four ground buttons.</summary>
+        /// <summary>Dirt going names to the matching turf step for the four ground buttons (display only; saving maps back via <see cref="GoingFor"/>).</summary>
         public static string TurfStep(string going)
         {
             switch (going) { case "fast": return "firm"; case "muddy": return "yielding"; case "sloppy": return "soft"; default: return going; }
@@ -201,6 +221,7 @@ namespace Muchi.Game
         public async Task LoadAsync(CancellationToken ct = default)
         {
             Weather = LocalInt(KeyWeather, 0); Ground = LocalInt(KeyGround, 1); Temperature = LocalInt(KeyTemperature, 1); Wind = LocalInt(KeyWind, 0);
+            GroundAuto = Kv.Get(KeyGroundAuto) != "0";
             Online = false; Message = null;
             if (!ServerAvailable) { Message = "OFFLINE  /  saved on this device only"; return; }
             try { From((await B.Api.GetPresetsAsync(ct)).Room); Online = true; }
@@ -223,7 +244,7 @@ namespace Muchi.Game
 
         public async Task<ActionResult> ResetAsync(CancellationToken ct = default)
         {
-            Weather = 0; Ground = 1; Temperature = 1; Wind = 0; TrackId = null; Night = null;
+            Weather = 0; Ground = 1; GroundAuto = true; Temperature = 1; Wind = 0; TrackId = null; Night = null;
             SaveLocal();
             if (!ServerAvailable) return ActionResult.Success();
             try { await B.Api.ClearRoomConditionsAsync(ct); Online = true; return ActionResult.Success("AUTOMATIC CONDITIONS"); }
@@ -368,7 +389,9 @@ namespace Muchi.Game
             try
             {
                 Mine = await B.Api.GetMyRankAsync(ct);
-                string season = B.Player?.SeasonId ?? "current";
+                // Always the server's current season: the cached player view can still name last month's season after
+                // the JST month boundary, while /v1/leaderboards/me already uses the new one.
+                const string season = "current";
                 string b = board ?? "class-" + (Mine?.Standing?.ClassId ?? B.Player?.ClassId ?? "C");
                 try { Board = await B.Api.GetLeaderboardAsync(season, b, ct); }
                 catch (NotFoundException) { Board = null; Message = "NO SNAPSHOT YET  /  rankings are published every few minutes"; }

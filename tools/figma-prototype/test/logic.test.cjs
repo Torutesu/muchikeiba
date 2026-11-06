@@ -44,5 +44,28 @@ const L = globalThis.MuchiLogic;
 
   await L.bootstrap();
   assert.strictEqual((await L.view()).wallet.free, 200, 'starting grant is idempotent');
+
+  // club UI additions: race settlement, missions, login bonus, room conditions, breeding
+  const raced = await L.applyRace('web:test:1', 1, 12, { trackId: 'kirameki_turf_2000', style: 'sashi', finishTick: 1800, whips: 3 });
+  assert.ok(raced.ok && raced.value.coins === L.master.raceFreeCoinsByPlace.ranked[0], 'race reward from the real table');
+  const coinsAfter = (await L.view()).wallet.free;
+  await L.applyRace('web:test:1', 1, 12, { trackId: 'kirameki_turf_2000', style: 'sashi', finishTick: 1800, whips: 3 });
+  assert.strictEqual((await L.view()).wallet.free, coinsAfter, 'a race settles once');
+  const ms = (await L.missions()).value;
+  assert.strictEqual(ms.find((m) => m.id === 'win1').progress, 1, 'win counted for the mission');
+  assert.ok((await L.claimMission('win1')).ok); assert.strictEqual((await L.claimMission('win1')).code, 'ALREADY_CLAIMED');
+  assert.strictEqual((await L.claimMission('race3')).code, 'NOT_ELIGIBLE');
+  assert.ok((await L.claimLogin()).ok); assert.strictEqual((await L.claimLogin()).code, 'ALREADY_CLAIMED');
+  const room = { trackId: 'aoba_dirt_1400', going: 'soft', night: null, weather: 'rain', temperatureC: 18, windKmh: 5 };
+  assert.strictEqual((await L.setRoomConditions(room)).code, 'BAD_REQUEST', 'turf going on a dirt course is rejected');
+  assert.ok((await L.setRoomConditions({ ...room, going: 'muddy' })).ok);
+  const act = (await L.view()).horses.filter((x) => x.status === 'active');
+  const sire = act.find((x) => x.sex === 'male'), dam = act.find((x) => x.sex === 'female');
+  assert.strictEqual((await L.breedingPreview(sire.id, dam.id)).code, 'HORSE_NOT_RETIRED');
+  assert.ok((await L.retire(sire.id)).ok && (await L.retire(dam.id)).ok);
+  const pv = await L.breedingPreview(sire.id, dam.id);
+  assert.ok(pv.ok && pv.value.stats.speed.max >= pv.value.stats.speed.min, 'breeding preview');
+  const foal = await L.breed(sire.id, dam.id);
+  assert.ok(foal.ok && foal.value.foal.sireId === sire.id, 'breeding makes a foal');
   console.log('LOGIC OK');
 })().catch((e) => { console.error(e); process.exit(1); });

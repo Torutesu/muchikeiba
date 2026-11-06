@@ -1,11 +1,14 @@
 // End-to-end walkthrough of the web prototype in the preinstalled Chromium.
-// Clicks through the whole app flow, fails on any console error / page error, and saves a 1280×720 screenshot of
-// every screen to <outDir> (default: tools/figma-prototype/.screens).
+//   1. club UI (index.html): Codex's 25 detailed screens on the real logic and engine, desktop and mobile
+//      (club-flow.cjs; club-<screen>.png, named after frontend/design/screens)
+//   2. Unity UI (unity.html): the whole app flow, a 1280×720 screenshot of every screen
+// Fails on any console error / page error. Screenshots go to <outDir> (default: tools/figma-prototype/.screens).
 // usage: node tools/figma-prototype/test/e2e.cjs [outDir]
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright');
+const clubFlow = require('./club-flow.cjs');
 
 const SITE = path.join(__dirname, '..', 'site');
 const OUT = path.resolve(process.argv[2] || path.join(__dirname, '..', '.screens'));
@@ -27,10 +30,14 @@ function serve() {
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
   const server = await serve();
-  const url = `http://127.0.0.1:${server.address().port}/`;
+  const base = `http://127.0.0.1:${server.address().port}/`;
+  const url = base + 'unity.html';
   const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   const errors = [];
+  const clubShots = await clubFlow(browser, base, OUT, errors);
+  console.log(`club UI: ${clubShots.length} screenshots`);
+  if (process.env.E2E_ONLY === 'club') { await browser.close(); server.close(); if (errors.length) { console.error('ERRORS:\n' + errors.join('\n')); process.exit(1); } return; }
+  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
   let n = 0;
@@ -93,5 +100,5 @@ function serve() {
 
   await browser.close(); server.close();
   if (errors.length) { console.error('ERRORS:\n' + errors.join('\n')); process.exit(1); }
-  console.log(`E2E OK — ${n} screenshots in ${OUT}`);
+  console.log(`E2E OK — club ${clubShots.length} + Unity ${n} screenshots in ${OUT}`);
 })().catch((e) => { console.error(e); process.exit(1); });

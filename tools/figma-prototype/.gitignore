@@ -5,6 +5,7 @@ site/art/
 site/data/
 site/fonts/
 site/models/
+site/club/codex/
 # 検証の出力
 .screens/
 .compare/

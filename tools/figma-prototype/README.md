@@ -1,5 +1,37 @@
 # ムチ一閃 — 全画面アプリプロトタイプ（Figma コードレイヤー用）
 
+
+入口は 2 つです。どちらも同じ本物のロジック（サーバーのドメイン）と本物のレースエンジン（WebAssembly）で動きます。
+
+| 入口 | 中身 |
+|---|---|
+| `index.html`（クラブ版 UI） | Codex の `frontend/`（緑・アイボリー・金のデザイン）。`frontend/design/screens` の詳細画面 25 枚すべてが、本番の流れの中の画面として動きます。 |
+| `unity.html`（Unity 版 UI） | Codex の Unity フロント（`MuchiApp.cs`）を HTML に移したもの。以下の節で説明します。 |
+
+## クラブ版 UI（index.html）
+
+Codex の `frontend/src/main.js`・`details.js` のマークアップとクラス名をそのまま使い、固定のデモデータを本物に差し替えています（`site/club/main.js`）。
+スタイルは Codex の `frontend/src/style.css`・`details.css` を `build.sh` が `site/club/codex/` にコピーします（Codex が直すとそのまま反映されます）。
+
+| 画面 | つながっている本物の処理 |
+|---|---|
+| 01 はじめに → 02 初めての直線 | 同意しないと始められない。レースは WASM エンジンのチュートリアル（400m）。順位・残り距離・スタミナ・ムチ・実況・内外の進路をエンジンの HUD から表示 |
+| 03 命名 / 22 名前エラー | サーバーと同じ命名規則（カタカナ 2〜9 文字、ひらがなは変換、NG 語は `ng-names.json` で弾く） |
+| 04 無料スカウト / 17 結果 / 18 提供内容 | 初回無料 10 連（`tutorialDraw`、ppm 表・SR 以上保証）。提供割合は抽選と同じ表から表示（レアリティ合計・10 枠目・天井・個別） |
+| 05 ホーム / 21 受取後 | ログインボーナス（7 日周期）とデイリーミッション 3 本（出走・勝利・3 着以内）の受取、シーズンのクラスとポイント |
+| 06 厩舎 / 11 能力 / 12 スキル・適性 / 13 該当なし | 所属馬（能力値・脚質・距離・馬場適性・血統）。検索・レアリティ絞り込み・並び替え・出走馬の選択。所属馬 0 頭のときの空表示 |
+| 14 配合 | 引退した牡馬と牝馬がそろうまでは開放条件を表示。そろうと `breedingPreview`（能力の幅・ニックス・インブリード・今日の残り回数）と `breed`。馬の詳細から引退できます |
+| 07 出走登録 / 15 出走確認 / 08 レース / 09 リザルト | 2000m・12 頭のレースを WASM エンジンで走り、確定した着順・タイム・着差を表示。報酬はサーバーと同じ表（着順別コイン・シーズンポイント・パス・ミッション進行）で精算（同じレースは一度だけ） |
+| 16 フレンドルーム | ルームコードの入力に加え、部屋の条件（コース・馬場・ナイター・天気など）をサーバーと同じ検証で保存。オンライン接続はしません |
+| 10 ショップ / 19 購入確認 / 20 確認完了 | 商品はマスターデータから。生年月で年齢区分・保護者同意・月額上限を確認（`setAge`・`purchaseIntent`）。**決済はしません** |
+| 23〜25 モバイル | 上部の「レイアウト」で 自動 / PC / モバイル を切り替えます。自動は縦長の窓でモバイル表示。Codex の CSS の狭い画面用ルールを `html.layout-mobile` 付きで生成（`club-css.cjs`）するので、PC の窓でもモバイル表示を確認できます |
+
+テスト用に `index.html?speed=4` でレースの時計を速められます。
+
+---
+
+## Unity 版 UI（unity.html）
+
 Codex が作った Unity フロント（`unity/Assets/Muchi/Runtime/MuchiApp.cs`）を、ブラウザでそのまま触れる形にしたものです。
 画面ごとの見本を並べたギャラリーではありません。本番と同じ流れで画面が切り替わり、どのボタンも押せます。
 Figma にはコードレイヤーとして読み込みます。
@@ -73,8 +105,8 @@ node tools/figma-prototype/test/render-design.cjs unity/design/figma-screens too
 python3 tools/figma-prototype/test/compare.py . tools/figma-prototype/.screens tools/figma-prototype/.compare
 ```
 
-- 1 本目は Chromium で全画面を通しでクリックします。コンソールエラーが 0 件であることを確認し、1280×720 の画面写真を `.screens/` に保存します。
-- 2 本目と 3 本目は、Codex の `unity/design/figma-screens` と並べた比較画像を `.compare/cmp-*.jpg` に作ります。
+- 1 本目は Chromium でクラブ版（25 画面＋モバイル、`club-*.png`）と Unity 版の全画面を通しでクリックします。コンソールエラーが 0 件であることを確認し、1280×720 の画面写真を `.screens/` に保存します。
+- 2 本目と 3 本目は、Codex の `frontend/design/screens`（クラブ版）と `unity/design/figma-screens`（Unity 版）と並べた比較画像を `.compare/cmp-*.jpg` に作り、画素の差を数値でも出します。
 
 手元で動かすときは、`site/` を静的サーバーで配信します（WebAssembly を使うので `file://` では動きません）。
 
@@ -84,7 +116,7 @@ python3 -m http.server -d tools/figma-prototype/site 8080
 
 ## Figma への読み込み
 
-`build.sh` のあとの `site/` 一式（約 33MB、圧縮後は 40MB 未満）を Figma のコードレイヤーとして読み込みます。入口は `index.html` です。
+`build.sh` のあとの `site/` 一式（約 33MB、圧縮後は 40MB 未満）を Figma のコードレイヤーとして読み込みます。入口は `index.html`（クラブ版）で、ツールバーから `unity.html` に移れます。
 フレームは 16:9（例：1600×900 または 1280×720）にしてください。中の画面は自動で拡大縮小します。
 
 ## Codex のデザイン画（figma-screens）との違い

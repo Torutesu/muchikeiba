@@ -273,11 +273,14 @@ namespace Muchi.Client
         /// <summary>
         /// Breed my mare with another player's stallion. The fee is charged in free coins and paid to the owner; a retry with
         /// the same key never charges twice. Counts toward today's breeding allowance (material extra allowed).
+        /// <paramref name="expectedFee"/>: the fee the player saw in the preview; a server that knows the field refuses with
+        /// FEE_CHANGED when the owner changed it meanwhile (sent only when given; older servers ignore unknown keys).
         /// </summary>
-        public Task<StudBreedResult> StudBreedAsync(string ownerId, string horseId, string damId, string idempotencyKey = null, CancellationToken ct = default, bool useMaterial = false)
+        public Task<StudBreedResult> StudBreedAsync(string ownerId, string horseId, string damId, string idempotencyKey = null, CancellationToken ct = default, bool useMaterial = false, int? expectedFee = null)
         {
             var b = StudBody(ownerId, horseId, damId);
             if (useMaterial) b.Set("useMaterial", true);
+            if (expectedFee.HasValue) b.Set("expectedFee", expectedFee.Value);
             return Call("POST", "/v1/stud/breed", b, true, idempotencyKey ?? NewIdempotencyKey(), true, StudBreedResult.Parse, ct);
         }
 

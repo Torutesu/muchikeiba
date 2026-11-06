@@ -144,7 +144,13 @@ namespace Muchi.Game
         public async Task<ActionResult> UnregisterAsync(string tournamentId, CancellationToken ct = default)
         {
             if (!_b.Online) return ActionResult.Error("OFFLINE");
-            try { return await _b.Api.UnregisterTournamentAsync(tournamentId, ct) ? ActionResult.Success("エントリーを取り消しました") : ActionResult.Error("not registered"); }
+            try
+            {
+                // removed:false = not registered (any more): a retry after a lost reply already withdrew, so it is the
+                // outcome the player asked for; the screen reloads DetailAsync after either result
+                bool removed = await _b.Api.UnregisterTournamentAsync(tournamentId, ct);
+                return ActionResult.Success(removed ? "エントリーを取り消しました" : "エントリーは取り消し済みです");
+            }
             catch (ApiException e) { return ActionResult.Error(e.WireCode + "  /  " + e.Message); }
         }
 

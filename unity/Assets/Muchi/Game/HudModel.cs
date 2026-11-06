@@ -23,6 +23,11 @@ namespace Muchi.Game
         public double[] Progress = Array.Empty<double>();
         /// <summary>The player's finishing place (1-based) once the race result exists, else 0.</summary>
         public int FinishPlace;
+        /// <summary>
+        /// Show SPUR / REIN / lane controls: only when riding a horse (PlayerSlot &gt;= 0). Spectators (and a session that
+        /// has not been given its slot yet) get no rider controls.
+        /// </summary>
+        public bool RiderControls => PlayerSlot >= 0;
     }
 
     public static class HudModel

@@ -215,8 +215,11 @@ namespace Muchi.Client
             Client.Connect(); // hello with lastTick → the room re-sends everything we missed
         }
 
-        /// <summary>Room error codes after which reconnecting cannot help (expired/invalid ticket, not a member).</summary>
-        public static readonly string[] FatalRoomErrors = { "UNAUTHORIZED", "NOT_IN_RACE" };
+        /// <summary>
+        /// Room error codes after which reconnecting cannot help (expired/invalid ticket, not a member, the spectator
+        /// seats are taken, a spectator socket sent a player message). The code becomes <see cref="FailureReason"/>.
+        /// </summary>
+        public static readonly string[] FatalRoomErrors = { "UNAUTHORIZED", "NOT_IN_RACE", "SPECTATORS_FULL", "SPECTATOR_READ_ONLY" };
 
         private void OnMessage(string msg)
         {

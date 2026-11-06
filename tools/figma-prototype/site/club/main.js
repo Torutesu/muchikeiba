@@ -86,7 +86,9 @@ const classOf = () => {
 
 // ---------------------------------------------------------------- Codex's building blocks
 const horseArt = (cls = '') => `<div class="horse-art ${cls}"><div class="sun"></div><svg viewBox="0 0 640 440" aria-label="駆ける競走馬" role="img"><defs><linearGradient id="coat" x2="1" y2="1"><stop stop-color="#bb7955"/><stop offset="1" stop-color="#55362e"/></linearGradient></defs><path d="M68 362Q310 310 593 356" fill="none" stroke="#c5d1b4" stroke-width="2"/><path d="M153 208Q91 205 75 255Q100 242 157 243L215 279L274 282L337 250L403 235L449 176L485 163L499 132L476 110L465 76L451 106L430 87L431 129L400 161L355 174L284 164L216 173Z" fill="url(#coat)"/><path d="M187 239L211 280L171 329L113 347L108 358L183 350L247 281M270 257L285 292L239 345L243 356L269 343L318 291L311 247M346 232L392 282L459 309L471 305L432 277L399 222M390 207L449 228L491 270L505 270L472 217L419 181" fill="none" stroke="#694432" stroke-width="19" stroke-linejoin="round"/><path d="M156 211Q102 177 69 198Q93 208 106 236" fill="#2b2925"/><path d="M430 130L405 163L385 174" fill="none" stroke="#2b2925" stroke-width="14"/><path d="M265 170L330 177L321 224L263 216Z" fill="#e7dfc4"/><text x="284" y="206" fill="#17382c" font-size="28" font-family="serif">7</text><path d="M294 172L320 136L350 144L365 171" fill="none" stroke="#f2e9cf" stroke-width="16"/><path d="M313 142L303 116L327 99L348 124L367 145L410 151" fill="none" stroke="#315d47" stroke-width="19"/><circle cx="332" cy="88" r="15" fill="#d4ad86"/><path d="M316 85Q315 63 336 67L350 83Z" fill="#e4bb62"/><path d="M360 146L454 150" stroke="#d2bb84" fill="none" stroke-width="2"/><circle cx="475" cy="133" r="3" fill="#161e19"/></svg><span class="art-caption">THE NEXT CHAPTER IS YOURS.</span></div>`;
-function go(n) { clearTimeout(timer); if (n !== 1 && n !== 7) raceActive = false; current = n; location.hash = n; render(); }
+// Leaving a race screen (or switching to the other one) drops that race: coming back via Back / the hash starts a new one
+// instead of showing a frozen track (render restarts whenever raceMode was cleared).
+function go(n) { clearTimeout(timer); if (n !== current || (n !== 1 && n !== 7)) { raceActive = false; raceMode = null; } current = n; location.hash = n; render(); }
 const button = (label, n, kind = 'primary') => `<button class="${kind}" data-go="${n}">${label}<span>↗</span></button>`;
 const eyebrow = (t) => `<div class="eyebrow"><span></span>${t}</div>`;
 const head = (en, ja, sub) => `<div class="page-head"><div>${eyebrow(en)}<h1>${ja}</h1><p>${sub}</p></div><span class="edition">MUCHI ISSEN<br>RACING CLUB / 01</span></div>`;
@@ -168,7 +170,7 @@ function enhance() {
       btn.disabled = true;
       const value = toKatakana(input.value.trim());
       const s = await ensureFirstScout(); // as GameBackend.NamePartnerAsync: the free first scout brings the partner
-      if (!s.ok) { help.textContent = errorText(s); help.classList.add('field-error'); return; }
+      if (!s.ok) { help.textContent = errorText(s); help.classList.add('field-error'); btn.disabled = false; return; }
       const target = partner();
       const r = await L.nameHorse(target.id, value);
       if (!r.ok) { help.textContent = errorText(r); help.classList.add('field-error'); input.setAttribute('aria-invalid', 'true'); btn.disabled = false; return; }
@@ -236,14 +238,9 @@ function enhance() {
     const r = lastRace;
     if (!r) { content.insertAdjacentHTML('beforeend', '<section class="result-details"><div class="panel"><p class="quiet">まだレース結果がありません。出走登録からレースに出走してください。</p></div></section>'); return; }
     const rows = r.standings.map((s) => `<tr class="${s.you ? 'you-row' : ''}"><td>${s.place}</td><td>${safe(s.name)} ${s.you ? '<small>YOU</small>' : ''}</td><td>${s.time}</td><td>${s.margin}</td></tr>`).join('');
-    content.insertAdjacentHTML('beforeend', `<section class="result-details"><div class="panel"><div class="section-caption"><h2>着順・タイム</h2>${badge('グリーンフィールド杯')}</div><table class="standings"><thead><tr><th>着順</th><th>馬名</th><th>タイム</th><th>着差</th></tr></thead><tbody>${rows}</tbody></table><p class="quiet">レースエンジンの確定結果（上位4頭${r.place > 4 ? '・あなた' : ''}）。</p></div><div class="panel"><div class="section-caption"><h2>今回の報酬</h2>${badge(r.place + (['ST', 'ND', 'RD'][r.place - 1] ?? 'TH') + ' PLACE')}</div><dl class="spec-list"><div><dt>着順報酬</dt><dd>無償コイン ${fmt(r.coins)}</dd></div><div><dt>シーズンポイント</dt><dd>＋${r.seasonPoints} pt</dd></div><div><dt>デイリーミッション</dt><dd>出走${r.place === 1 ? '・勝利' : ''}${r.place <= 3 ? '・3着以内' : ''}を記録</dd></div></dl><button class="primary" id="claim-race" ${r.claimed ? 'disabled' : ''}>${r.claimed ? '報酬受取済み' : `${fmt(r.coins)}コインを受け取る`}<span>✓</span></button><button class="text-button" id="race-again">もう一度出走する ↗</button></div></section>`);
-    on('claim-race', async () => {
-      if (r.claimed) return;
-      const res = await L.applyRace(r.raceId, r.place, r.fieldSize, r.details);
-      if (!res.ok) return toast(errorText(res));
-      r.claimed = true; if (!res.value.duplicate) { r.coins = res.value.coins; r.seasonPoints = res.value.seasonPoints; }
-      write(KEYS.race, r); await refresh(); render(); toast(`着順報酬 ${fmt(r.coins)} コインとシーズンポイントを受け取りました`);
-    });
+    content.insertAdjacentHTML('beforeend', `<section class="result-details"><div class="panel"><div class="section-caption"><h2>着順・タイム</h2>${badge('グリーンフィールド杯')}</div><table class="standings"><thead><tr><th>着順</th><th>馬名</th><th>タイム</th><th>着差</th></tr></thead><tbody>${rows}</tbody></table><p class="quiet">レースエンジンの確定結果（上位4頭${r.place > 4 ? '・あなた' : ''}）。</p></div><div class="panel"><div class="section-caption"><h2>今回の報酬</h2>${badge(r.place + (['ST', 'ND', 'RD'][r.place - 1] ?? 'TH') + ' PLACE')}</div><dl class="spec-list"><div><dt>着順報酬</dt><dd>無償コイン ${fmt(r.coins)}</dd></div><div><dt>シーズンポイント</dt><dd>＋${r.seasonPoints} pt</dd></div><div><dt>デイリーミッション</dt><dd>出走${r.place === 1 ? '・勝利' : ''}${r.place <= 3 ? '・3着以内' : ''}を記録</dd></div></dl><button class="primary" id="claim-race" ${r.claimed || !r.claimError ? 'disabled' : ''}>${r.claimed ? '報酬受取済み' : r.claimError ? '報酬の反映を再試行' : '報酬を反映しています…'}<span>✓</span></button><button class="text-button" id="race-again">もう一度出走する ↗</button></div></section>`);
+    // rewards are applied when the race settles (as the server does); the button only shows the state, or retries a failure
+    on('claim-race', () => claimRace(r));
     on('race-again', () => go(6));
   }
   if (current === 3) {
@@ -400,10 +397,9 @@ function raceLoop(now) {
   frame = JSON.parse(engine.Frame(clock));
   paintRace();
   if (frame.done) {
-    raceActive = false;
+    raceActive = false; // raceMode stays until the screen is left (go), so a render meanwhile does not restart the race
     const f = frame, tut = raceMode === 'tutorial';
     if (!tut) lastRace = settle(f);
-    raceMode = null;
     timer = setTimeout(() => go(tut ? 2 : 8), 900);
   }
 }
@@ -421,7 +417,19 @@ function settle(f) {
     details: { trackId: 'kirameki_turf_2000', style: p?.style ?? 'sashi', finishTick: youTick >= 0 ? youTick : null, whips: whipsUsed },
   };
   write(KEYS.race, r);
+  claimRace(r); // apply the rewards now: a later race must not replace an unclaimed one
   return r;
+}
+// L.applyRace is idempotent by raceId, so a retry (or a stored race from before this change) never pays twice.
+async function claimRace(r) {
+  if (!r || r.claimed || r.claiming) return;
+  r.claiming = true;
+  const res = await L.applyRace(r.raceId, r.place, r.fieldSize, r.details);
+  r.claiming = false;
+  if (!res.ok) { r.claimError = errorText(res); write(KEYS.race, r); if (current === 8 && lastRace === r) render(); return toast(r.claimError); }
+  r.claimed = true; r.claimError = null; if (!res.value.duplicate) { r.coins = res.value.coins; r.seasonPoints = res.value.seasonPoints; }
+  write(KEYS.race, r); await refresh();
+  if (current === 8 && lastRace === r) { render(); toast(`着順報酬 ${fmt(r.coins)} コインとシーズンポイントを受け取りました`); }
 }
 function fmtTime(ms) { const t = Math.max(0, Math.round(ms / 100)); return `${Math.floor(t / 600)}:${String(Math.floor(t / 10) % 60).padStart(2, '0')}.${t % 10}`; }
 function lengths(m) { // 1 馬身 ≈ 2.4 m, Japanese margin notation
@@ -451,6 +459,7 @@ async function boot() {
   engine = (await runtime.getAssemblyExports(runtime.getConfig().mainAssemblyName)).MuchiRace;
   engine.Init(ruleset, commentary);
   if (firstScout && !player.flags?.tutorialGachaUsed) firstScout = null;
+  if (lastRace && !lastRace.claimed) await claimRace(lastRace); // a race stored unclaimed by an older build
   render();
   requestAnimationFrame(raceLoop);
   globalThis.__club = { ready: true, go, state: () => ({ current, frame, raceActive, raceInfo, lastRace, player, lane }) };

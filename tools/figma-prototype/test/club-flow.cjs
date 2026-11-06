@@ -23,6 +23,16 @@ module.exports = async function clubFlow(browser, base, out, errors) {
   const screen = async (n) => { await page.selectOption('#screen-select', String(n)); await settle(); };
   const close = async () => { await page.locator('dialog .close').click(); await page.locator('dialog').waitFor({ state: 'detached' }); };
   const state = () => page.evaluate(() => { const s = globalThis.__club.state(); return { current: s.current, active: s.raceActive, f: s.frame && { departed: s.frame.departed, remainingM: s.frame.remainingM, whips: s.frame.whips, done: s.frame.done, rank: s.frame.rank } }; });
+  const frameJson = () => page.evaluate(() => JSON.stringify(globalThis.__club.state().frame));
+  // QA r7: coming back to a race screen via the hash (Back) must start a live race, not show a frozen one
+  async function reenterRace(n, away) {
+    await page.evaluate((x) => { location.hash = String(x); }, n);
+    await page.waitForFunction((x) => { const s = globalThis.__club.state(); return s.current === x && s.raceActive && s.frame && !s.frame.done; }, n, { timeout: 30000 });
+    const a = await frameJson(); await page.waitForTimeout(1200);
+    assert.notEqual(await frameJson(), a, `race screen ${n} re-entered via the hash is running`);
+    await page.evaluate((x) => { location.hash = String(x); }, away);
+    await page.waitForFunction((x) => globalThis.__club.state().current === x && !globalThis.__club.state().raceActive, away);
+  }
   async function ride(name, leaveScreen) { // real engine race: start, spur in the straight, wait for the result screen
     let mid = false;
     for (let i = 0; i < 600; i++) {
@@ -43,9 +53,16 @@ module.exports = async function clubFlow(browser, base, out, errors) {
   await page.locator('#consent').check(); await page.locator('[data-go="1"]').click();
   await page.waitForFunction(() => globalThis.__club.state().frame?.departed === false || globalThis.__club.state().frame?.departed === true);
   await ride('02', 2);
+  await reenterRace(1, 2); // Back from naming into the tutorial
   // 22 name error (format, real rule) → NG word (server NG list) → valid name
   await page.locator('#horse-name').fill('a'); await capture('22-name-error');
   assert(await page.locator('#save-name').isDisabled());
+  // QA r7: a failed first scout (which brings the partner) leaves the naming button usable for a retry
+  await page.evaluate(() => { const L = globalThis.MuchiLogic; L.__draw = L.tutorialDraw; L.tutorialDraw = async () => ({ ok: false, code: 'INTERNAL', message: 'scout failed (test)' }); });
+  await page.locator('#horse-name').fill('ハルカゼ'); await page.locator('#save-name').click();
+  await page.waitForFunction(() => document.querySelector('#name-help')?.textContent.includes('scout failed (test)'));
+  assert(await page.locator('#save-name').isEnabled(), 'naming button re-enabled after a first-scout failure');
+  await page.evaluate(() => { const L = globalThis.MuchiLogic; L.tutorialDraw = L.__draw; delete L.__draw; });
   await page.locator('#horse-name').fill('だーびーおう'); await page.locator('#save-name').click(); // hiragana → katakana, then the NG list
   await page.waitForFunction(() => document.querySelector('#name-help').textContent.includes('使用できません'));
   await capture('22b-name-ng');
@@ -83,16 +100,29 @@ module.exports = async function clubFlow(browser, base, out, errors) {
   await page.waitForFunction(() => document.querySelector('#room-error').textContent.includes('保存しました'));
   await capture('16b-friend-room-conditions', 'dialog'); await close();
   // 08 レース (2000m, 12 runners, real engine) → 09 リザルト → reward settled by the real tables
+  const wallet = () => page.evaluate(() => { const p = globalThis.__club.state().player; return { free: p.wallet.free, points: p.season?.points ?? 0 }; });
+  const coinsBefore = await wallet();
   await page.locator('.rank-card [data-go="7"]').click(); await page.locator('#match-start').click();
   await page.waitForFunction(() => globalThis.__club.state().current === 7);
   await page.locator('#lane-out').click();
   await ride('08', 8);
+  // QA r7: the reward is applied when the race settles, without pressing anything; the button only shows it
+  await page.waitForFunction(() => globalThis.__club.state().lastRace?.claimed === true && document.querySelector('#claim-race')?.disabled === true);
   await capture('09');
-  const coinsBefore = await page.locator('.wallet b').first().innerText();
-  await page.locator('#claim-race').click(); await page.waitForFunction(() => document.querySelector('#claim-race')?.disabled === true);
-  const place = await page.evaluate(() => globalThis.__club.state().lastRace.place);
-  if (place <= 12) assert.notEqual(await page.locator('.wallet b').first().innerText(), coinsBefore, 'race reward adds free coins');
+  const first = await page.evaluate(() => globalThis.__club.state().lastRace);
+  const afterFirst = await wallet();
+  assert.equal(afterFirst.free - coinsBefore.free, first.coins, 'race reward (free coins) applied at settle');
+  assert.equal(afterFirst.points - coinsBefore.points, first.seasonPoints, 'season points applied at settle');
+  await page.locator('#claim-race').click({ force: true }).catch(() => {}); await page.waitForTimeout(300);
+  assert.equal((await wallet()).free, afterFirst.free, 'the result button never pays twice');
   await capture('09b-result-claimed');
+  // a race left mid-way and re-entered via the hash restarts live; the next finished race pays on top of the first
+  await reenterRace(7, 4);
+  await page.evaluate(() => { location.hash = '7'; });
+  await ride(null, 8);
+  await page.waitForFunction((id) => { const r = globalThis.__club.state().lastRace; return r && r.raceId !== id && r.claimed === true; }, first.raceId);
+  const second = await page.evaluate(() => globalThis.__club.state().lastRace);
+  assert.equal((await wallet()).free - afterFirst.free, second.coins, 'a second race adds its own reward (the first is not lost)');
   // 10 ショップ → 19 購入確認 → 20 確認完了 (age rules; no billing)
   await screen(9); await capture('10');
   await page.locator('.coin-card').first().click(); await capture('19-purchase-review', 'dialog');

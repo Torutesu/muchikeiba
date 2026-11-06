@@ -54,6 +54,10 @@ namespace Muchi.Game
         /// <summary>"種付け料 ◎50（無償コインのみ）" for a stud, null for my own stallion.</summary>
         public string FeeLine => Offer == null ? null : Offer.Fee == 0 ? "種付け料 無料" : "種付け料 ◎" + Offer.Fee + "（無償コインのみ）" + (Offer.CanPay ? "" : "  /  無償コインが足りません");
 
+        /// <summary>Shown under the fee when purchase-bonus free coins are held back from stud fees (stud.heldFree &gt; 0), else null.</summary>
+        public string HeldFreeNote => Offer == null || Offer.HeldFree <= 0 ? null
+            : "購入特典の無償コインは90日間 種付け料に使えません（◎" + Offer.HeldFree.ToString(CultureInfo.InvariantCulture) + "）";
+
         /// <summary>One line per atavism candidate: "隔世遺伝 1.333%  逃げ ← ハツユキソウ". Same odds as the real breeding.</summary>
         public List<string> AtavismLines()
         {
@@ -131,7 +135,8 @@ namespace Muchi.Game
             {
                 if (Sire.IsStud)
                 {
-                    var r = await B.Api.StudBreedAsync(Sire.Stud.OwnerId, Sire.HorseId, Dam.Id, key, ct, useMaterial);
+                    // the fee the player agreed to in the preview: the server refuses (FEE_CHANGED) if the owner changed it since
+                    var r = await B.Api.StudBreedAsync(Sire.Stud.OwnerId, Sire.HorseId, Dam.Id, key, ct, useMaterial, Offer?.Fee);
                     Foal = r.Foal; LastAtavism = r.Atavism; LastFeeStatus = r.FeeStatus;
                 }
                 else
@@ -149,9 +154,21 @@ namespace Muchi.Game
             catch (ApiException e)
             {
                 if (ItemsBackend.IsDefiniteRejection(e)) Kv.Set(slot, null);
+                if (e.WireCode == FeeChanged)
+                {
+                    // nothing was charged: drop the key and the stale offer so the player previews the new fee first
+                    Kv.Set(slot, null);
+                    Preview = null; Offer = null;
+                    Message = FeeChangedMessage;
+                    return ActionResult.Error(Message);
+                }
                 return Fail(e);
             }
         }
+
+        /// <summary>Server code when the stud fee differs from the previewed one (the owner changed it meanwhile).</summary>
+        public const string FeeChanged = "FEE_CHANGED";
+        public const string FeeChangedMessage = "種付け料が変更されました。もう一度確認してください";
 
         /// <summary>Offer one of my retired stallions (fee in free coins, 0..FeeMax).</summary>
         public async Task<ActionResult> ListMyStallionAsync(string horseId, bool publicListing, int fee, int dailyLimit, CancellationToken ct = default)
@@ -173,6 +190,17 @@ namespace Muchi.Game
             {
                 await B.Api.UnlistStudAsync(horseId, ct);
                 Mine = await B.Api.GetMyStudAsync(ct);
+                return ActionResult.Success(Message = "登録を取り下げました");
+            }
+            catch (NotFoundException)
+            {
+                // a retry after a lost reply: the listing is already gone, which is what the player asked for
+                try
+                {
+                    Mine = await B.Api.GetMyStudAsync(ct);
+                    if (Mine.Listings.Any(l => l.HorseId == horseId)) return ActionResult.Error(Message = "登録を取り下げられませんでした");
+                }
+                catch (ApiException e) { return Fail(e); }
                 return ActionResult.Success(Message = "登録を取り下げました");
             }
             catch (ApiException e) { return Fail(e); }

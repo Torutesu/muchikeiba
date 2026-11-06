@@ -20,6 +20,8 @@ namespace Muchi.Client
         readonly RaceInput input = new RaceInput();
         CommentaryFeed commentary;
         Text subtitle, raceStatus, spurButtonText;
+        // SPUR, REIN, lane buttons and the whip count: hidden while spectating (HudSnapshot.RiderControls)
+        readonly List<GameObject> riderControls=new List<GameObject>();
         bool worldPrepared, cancelMatch;
         List<Muchi.Client.Product> products;
         bool loadingProducts;
@@ -686,13 +688,15 @@ namespace Muchi.Client
             feedback=Label(tutorial?"TIME YOUR SPUR":"FINAL STRAIGHT",510,220,700,80,40,gold);
             subtitle=Label("",300,610,1000,60,26,Color.white);subtitle.alignment=TextAnchor.MiddleCenter;
             spurs=Label("SPURS  6 / 6",1100,530,460,50,26,gold);
-            Button("<",35,530,110,()=>input.Lane(-1),navy);Button(">",165,530,110,()=>input.Lane(1),navy);
-            var spurButton=Button("SPUR",1250,600,290,Spur,gold);spurButtonText=spurButton.GetComponentInChildren<Text>();
-            Label("Hold SPACE to rein / Arrow keys to steer / E to spur",35,820,1050,35,20);
+            riderControls.Clear();riderControls.Add(spurs.gameObject);
+            riderControls.Add(Button("<",35,530,110,()=>input.Lane(-1),navy).gameObject);riderControls.Add(Button(">",165,530,110,()=>input.Lane(1),navy).gameObject);
+            var spurButton=Button("SPUR",1250,600,290,Spur,gold);spurButtonText=spurButton.GetComponentInChildren<Text>();riderControls.Add(spurButton.gameObject);
+            riderControls.Add(Label("Hold SPACE to rein / Arrow keys to steer / E to spur",35,820,1050,35,20).gameObject);
             Button("REIN",325,530,210,()=>{},navy);
             // Pointer hold for touch controls. Keyboard space uses the same state.
-            var reinButton=safe.Find("REIN").gameObject;
+            var reinButton=safe.Find("REIN").gameObject;riderControls.Add(reinButton);
             var hold=reinButton.AddComponent<HoldControl>();hold.Changed=v=>reinHeld=v;
+            SetRiderControls(false); // shown once the driver knows our slot (never for spectators)
             Button("EXIT",1400,815,165,ExitRace,navy);
             Panel("Minimap",1180,725,200,85,navy);
             dots=new RectTransform[12];
@@ -700,9 +704,10 @@ namespace Muchi.Client
         }
         void ExitRace(){driver?.Dispose();driver=null;Home();}
         bool reinHeld;
+        void SetRiderControls(bool on){foreach(var g in riderControls)if(g!=null&&g.activeSelf!=on)g.SetActive(on);}
         void Spur()
         {
-            if(driver?.Sim==null)return;
+            if(driver?.Sim==null||driver.PlayerSlot<0)return; // spectating: no horse to spur
             var me=driver.Sim.GetHorse(driver.PlayerSlot);
             if(me.Departed&&me.WhipsLeft<=0)return;
             input.Spur();
@@ -734,6 +739,7 @@ namespace Muchi.Client
             }
             if(worldPrepared)world.Present(driver,now);
             var hud=HudModel.Build(driver,now);
+            SetRiderControls(hud.RiderControls);
             UpdateHud(hud);
             subtitle.text=commentary!=null?commentary.Update(driver.Sim):"";
             if(driver.Done)Result();

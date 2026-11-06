@@ -50,6 +50,8 @@ static class Program
         await BreedingChecks.Run(Check, Ruleset());
         Console.WriteLine("== tournaments and spectating");
         await TournamentChecks.Run(Check, Ruleset());
+        Console.WriteLine("== QA round 7 client regressions");
+        await QaRound7Checks.Run(Check, Ruleset());
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

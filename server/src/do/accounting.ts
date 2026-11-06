@@ -33,12 +33,12 @@ export class AccountingDO extends DurableObject<Env> {
   /**
    * REQ-UXS-040: keeps a deleted account's legally required records under a random id (no link to the account):
    * the store transactions point to that id from now on, and the player's paid balance row goes (forfeited).
-   * Idempotent per anonId.
+   * Idempotent per anonId; a rebuilt record (higher `rev`: something was credited during the deletion) replaces it.
    */
   async retainDeleted(playerId: string, record: RetainedRecord) {
     const sql = this.ctx.storage.sql;
     sql.exec('CREATE TABLE IF NOT EXISTS retained (anon_id TEXT PRIMARY KEY, deleted_at INTEGER NOT NULL, retain_until INTEGER NOT NULL, record TEXT NOT NULL)');
-    sql.exec('INSERT INTO retained (anon_id, deleted_at, retain_until, record) VALUES (?, ?, ?, ?) ON CONFLICT(anon_id) DO NOTHING', record.anonId, record.deletedAt, record.retainUntil, JSON.stringify(record));
+    sql.exec('INSERT INTO retained (anon_id, deleted_at, retain_until, record) VALUES (?, ?, ?, ?) ON CONFLICT(anon_id) DO UPDATE SET record = excluded.record WHERE json_extract(excluded.record, \'$.rev\') >= coalesce(json_extract(retained.record, \'$.rev\'), 0)', record.anonId, record.deletedAt, record.retainUntil, JSON.stringify(record));
     sql.exec('UPDATE store_tx SET player_id = ? WHERE player_id = ?', record.anonId, playerId);
     sql.exec('DELETE FROM paid WHERE player_id = ?', playerId);
     return { ok: true };

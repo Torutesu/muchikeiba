@@ -48,6 +48,13 @@ export interface DeletionState {
 /** What is kept after deletion: no name, no device, no friend, no horse — only what the law requires. */
 export interface RetainedRecord {
   anonId: string;
+  /**
+   * Revision: 0 when built, +1 each time it is rebuilt because something was credited after the balances were given
+   * up (a store purchase is always granted, even while the deletion runs). AccountingDO keeps the latest one.
+   */
+  rev: number;
+  /** The player's ledger sequence the record covers (rebuilt when the state moved past it). */
+  ledgerSeq: number;
   deletedAt: number;
   retainUntil: number;
   /** Install month only (no exact date). */
@@ -175,11 +182,17 @@ export function deletionRetryLater(s: PlayerState, now: number) {
 export function finalizeDeletion(m: Master, s: PlayerState, rng: Rng, now: number): RetainedRecord {
   const d = s.deletion;
   if (!d || (d.status !== 'scheduled' && d.status !== 'deleting')) throw new AppError('NOT_FOUND', 'no deletion is scheduled');
-  if (d.record) return d.record;
-  const anonId = randomId('anon', rng);
-  const forfeited = { ...forfeitAll(s, now, `delete:${anonId}`), allowance: forfeitAllowances(s, now), pass: forfeitPass(m, s, now) };
+  const prev = d.record;
+  // The account keeps working until the wipe and a completed store payment is always credited: anything that
+  // reached the state after the record was built (a purchase, a refund, a reward) is given up too and the record is
+  // rebuilt under the same anonymous id, so the retained purchases and ledger are complete (資金決済法・帳簿).
+  if (prev && !recordStale(s, prev)) return prev;
+  const anonId = prev?.anonId ?? randomId('anon', rng);
+  const add = { ...forfeitAll(s, now, `delete:${anonId}`), allowance: forfeitAllowances(s, now), pass: forfeitPass(m, s, now) };
+  const forfeited = prev ? mergeForfeited(prev.forfeited, add) : add;
   const record: RetainedRecord = {
-    anonId, deletedAt: now, retainUntil: now + deletionConfig(m).ledgerRetentionDays * DAY_MS,
+    anonId, rev: prev ? prev.rev + 1 : 0, ledgerSeq: s.ledgerSeq,
+    deletedAt: prev?.deletedAt ?? now, retainUntil: prev?.retainUntil ?? now + deletionConfig(m).ledgerRetentionDays * DAY_MS,
     cohortMonth: jstMonthKey(s.createdAt),
     purchases: s.purchases.map((p) => ({ txId: p.txId, platform: p.platform, productId: p.productId, priceYen: p.priceYen, at: p.at, paidCoinsGranted: p.paidCoinsGranted, bonusCoinsGranted: p.bonusCoinsGranted, refunded: p.refunded, ...(p.sandbox ? { sandbox: true } : {}) })),
     ledger: s.ledger.map((e) => ({ ...e })),
@@ -188,6 +201,23 @@ export function finalizeDeletion(m: Master, s: PlayerState, rng: Rng, now: numbe
   };
   d.record = record;
   return record;
+}
+
+/** Something was credited, refunded or bought after the record was built. */
+function recordStale(s: PlayerState, r: RetainedRecord): boolean {
+  if (s.ledgerSeq !== (r.ledgerSeq ?? s.ledgerSeq)) return true;
+  if (s.purchases.length !== r.purchases.length) return true;
+  if (s.purchases.some((p, i) => p.refunded !== r.purchases[i]?.refunded)) return true;
+  if (s.wallet.paid > 0 || s.wallet.free > 0) return true;
+  return false;
+}
+
+function mergeForfeited(a: RetainedRecord['forfeited'], b: RetainedRecord['forfeited']): RetainedRecord['forfeited'] {
+  return {
+    paidCoins: a.paidCoins + b.paidCoins, freeCoins: a.freeCoins + b.freeCoins, paidYen: a.paidYen + b.paidYen,
+    allowance: { days: a.allowance.days + b.allowance.days, freeCoins: a.allowance.freeCoins + b.allowance.freeCoins },
+    pass: { ...a.pass, premium: a.pass.premium || b.pass.premium },
+  };
 }
 
 /** Team succession when the leader leaves: the earliest officer, else the earliest member. */
@@ -272,10 +302,22 @@ export async function runAccountDeletion(p: DeletionPorts, uid: string, now: num
   });
   await step('events', async () => { for (const e of snap.eventIds) await p.events?.forget(e, uid); });
   await step('tournaments', async () => { await p.tournaments?.forget(uid, now); });
-  let record: RetainedRecord | null = null;
-  await step('finalize', async () => { record = await p.finalize(uid); });
-  await step('retain', async () => { await p.retain(uid, record ?? (await p.finalize(uid))); });
-  await step('wipe', () => p.wipe(uid));
+  await step('finalize', () => p.finalize(uid));
+  // finalize again right before storing: a purchase granted since then is given up and included (same anonId)
+  let retainedRev: number | null = null;
+  await step('retain', async () => { const r = await p.finalize(uid); await p.retain(uid, r); retainedRev = r.rev; });
+  await step('wipe', async () => {
+    // the record may have changed while it travelled to the store (or the retain step ran in an earlier attempt):
+    // store the latest one, and wipe only once nothing changed since it was stored
+    for (let i = 0; ; i++) {
+      const r = await p.finalize(uid);
+      if (r.rev === retainedRev) break;
+      if (i >= 5) throw new AppError('CONFLICT', 'the account keeps changing while it is deleted; retry later');
+      await p.retain(uid, r);
+      retainedRev = r.rev;
+    }
+    await p.wipe(uid);
+  });
   return { done };
 }
 

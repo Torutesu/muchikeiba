@@ -167,7 +167,11 @@ export class PlayerService {
       if (draft.idem.length > IDEM_KEEP) draft.idem.splice(0, draft.idem.length - IDEM_KEEP);
     }
     draft.profile.lastSeenAt = now;
-    const pushProfile = this.d.onProfile && (profileKey(draft) !== profileBefore || now - draft.profile.lastPushedAt >= this.d.master.progression.social.profilePushIntervalMs);
+    // REQ-UXS-040: once the deletion has started, nothing public is written for the player again (the run removes the
+    // directory profile and board rows step by step; a later transaction of the same run or a retry must not put them
+    // back), and after the balances were forfeited the paid balance is not reported (retainDeleted removes that row).
+    const deleting = draft.deletion?.status === 'deleting';
+    const pushProfile = !deleting && this.d.onProfile && (profileKey(draft) !== profileBefore || now - draft.profile.lastPushedAt >= this.d.master.progression.social.profilePushIntervalMs);
     if (pushProfile) draft.profile.lastPushedAt = now;
     await this.repo.put(draft);
     const wake = nextWake(draft);
@@ -175,17 +179,17 @@ export class PlayerService {
     if (kpi.length > 0 && this.d.onKpi) await this.d.onKpi(id, kpi);
     if (pushProfile) await this.d.onProfile!(publicProfile(draft, this.d.master.bannedSilks));
     if (this.d.onStable && stableSnapshotKey(this.d.master, draft, now) !== stableBefore) await this.d.onStable(id, stableSnapshot(this.d.master, draft, now));
-    if (this.d.onSeasonEntry && draft.season.races > 0 && standingKey(draft) !== standingBefore) {
+    if (!deleting && this.d.onSeasonEntry && draft.season.races > 0 && standingKey(draft) !== standingBefore) {
       await this.d.onSeasonEntry({
         playerId: id, seasonId: draft.season.id, classId: draft.season.classId, points: draft.season.points, rating: Math.round(draft.rating.r),
         races: draft.season.races, displayName: draft.profile.displayName, titleId: draft.profile.titleId, updatedAt: now,
       });
     }
     const teamId = draft.team?.teamId ?? null;
-    if (this.d.onTeamPoints && teamId && (standingKey(draft) !== standingBefore || teamId !== (current.team?.teamId ?? null))) {
+    if (!deleting && this.d.onTeamPoints && teamId && (standingKey(draft) !== standingBefore || teamId !== (current.team?.teamId ?? null))) {
       await this.d.onTeamPoints({ teamId, playerId: id, seasonId: draft.season.id, points: draft.season.points, displayName: draft.profile.displayName });
     }
-    if (draft.wallet.paid !== paidBefore && this.d.onPaidBalance) {
+    if (draft.wallet.paid !== paidBefore && this.d.onPaidBalance && !draft.deletion?.record) {
       await this.d.onPaidBalance({ playerId: id, date: jstDateKey(now), paidCoins: draft.wallet.paid, paidYen: paidBalanceYen(draft), seq: draft.ledgerSeq });
     }
     return result;

@@ -32,7 +32,7 @@ assert.strictEqual(v.value.displayCode, I.display(code));
 assert.strictEqual(v.value.share.deepLink, `muchi://invite/${code}`);
 assert.ok(v.value.share.text.includes(v.value.displayCode) && !/コイン|円/.test(v.value.share.text), 'share text: code, link, no amounts');
 assert.strictEqual((await I.view()).value.code, code, 'the code is stable');
-assert.deepStrictEqual(v.value.milestones.map((m) => [m.id, m.rewardYen]), [['im_graduate', 160], ['im_class_b', 160]]);
+assert.deepStrictEqual(v.value.milestones.map((m) => [m.id, m.rewardYen]), [['im_graduate', 32], ['im_class_a', 64], ['im_class_s', 160]]);
 assert.ok(v.value.milestones.every((m) => m.rewardYen <= 200), '景品表示法: each grant ≤ ¥200');
 assert.strictEqual(v.value.cap, 10);
 assert.strictEqual(I.normalize(v.value.displayCode.toLowerCase()), code);
@@ -51,13 +51,15 @@ assert.strictEqual((await L.view()).wallet.free, before, 'no reward for installs
 
 // milestones: paid once each through the outbox
 const g = await I.demoMilestone('im_graduate');
-assert.ok(g.ok && g.value.delivered === 1 && g.value.freeCoinsGained === 100, 'beginner missions done → +100 free coins');
+assert.ok(g.ok && g.value.delivered === 1 && g.value.freeCoinsGained === 20, 'beginner missions done → +20 free coins');
 const tickets = (await L.view()).items.gacha_ticket ?? 0;
-const b = await I.demoMilestone('im_class_b');
-assert.ok(b.ok && b.value.delivered === 1, 'class B → delivered');
+const a = await I.demoMilestone('im_class_a');
+assert.ok(a.ok && a.value.delivered === 1 && a.value.freeCoinsGained === 40, 'class A → +40 free coins');
+const b = await I.demoMilestone('im_class_s');
+assert.ok(b.ok && b.value.delivered === 1, 'class S → delivered');
 assert.strictEqual((await L.view()).items.gacha_ticket, tickets + 1, '…a scout ticket');
 v = await I.view();
-assert.deepStrictEqual(v.value.invitees[0].milestones.map((m) => [m.id, m.rewarded]), [['im_graduate', true], ['im_class_b', true]]);
+assert.deepStrictEqual(v.value.invitees[0].milestones.map((m) => [m.id, m.rewarded]), [['im_graduate', true], ['im_class_a', true], ['im_class_s', true]]);
 assert.strictEqual((await L.view()).wallet.paid, 0, 'never paid coins');
 
 // entering another player's code (the local player is on day 1, after the FTUE)

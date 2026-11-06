@@ -393,7 +393,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   const myCode = await page.locator('.screen.in [data-code]').getAttribute('data-code');
   assert.match(myCode, /^[23456789BCDFGHJKMNPQRSTVWXZ]{8}$/, 'my invite code');
   assert.equal(await page.locator('.screen.in [data-cap]').getAttribute('data-cap'), '0/10');
-  assert.equal(await page.locator('.screen.in [data-milestone]').count(), 2, 'milestone table');
+  assert.equal(await page.locator('.screen.in [data-milestone]').count(), 3, 'milestone table');
   assert.equal(await page.locator('.screen.in [data-eligible]').getAttribute('data-eligible'), 'true', 'day 1 after the FTUE: entry open');
   assert.equal(await page.locator('.screen.in [data-action="redeem"]').evaluate((e) => e.classList.contains('disabled')), true, 'empty input: redeem disabled');
   await page.waitForSelector('.screen.in [data-demo-code]');

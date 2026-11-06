@@ -1730,24 +1730,23 @@ async function Invite(demoNote = '') {
   Kicker(`招待ボーナス　/　${v.cap}人まで`, 44, 420, me, { rule: false, size: 16 });
   Txt('友達1人につき、友達が到達したときに届きます（インストールだけでは届きません）', 44, 452, 652, 14, SOFT, me);
   v.milestones.forEach((m, i) => {
-    const row = el('invite-row', 44, 486 + i * 58, 652, 58, me); row.dataset.milestone = m.id;
-    Txt(inviteMilestoneTitle(m), 0, 16, 400, 19, WHITE, row, { weight: 500, nowrap: true });
-    Txt(inviteReward(m.reward), 400, 16, 252, 18, GOLD, row, { weight: 700, align: 'right', nowrap: true });
+    const row = el('invite-row', 44, 480 + i * 46, 652, 46, me); row.dataset.milestone = m.id;
+    Txt(inviteMilestoneTitle(m), 0, 12, 400, 18, WHITE, row, { weight: 500, nowrap: true });
+    Txt(inviteReward(m.reward), 400, 12, 252, 17, GOLD, row, { weight: 700, align: 'right', nowrap: true });
   });
-  const capLine = Txt(`招待ボーナスの対象　${Math.min(v.counted, v.cap)} / ${v.cap}人`, 44, 618, 652, 16, CYAN, me, { weight: 700, ls: '.1em' }); capLine.dataset.cap = `${v.counted}/${v.cap}`;
+  const capLine = Txt(`招待ボーナスの対象　${Math.min(v.counted, v.cap)} / ${v.cap}人`, 44, 632, 652, 16, CYAN, me, { weight: 700, ls: '.1em' }); capLine.dataset.cap = `${v.counted}/${v.cap}`;
   // ② my invitees (crew) with each milestone reached / rewarded
   const list = Glass('Invitees', 796, 134, 768, 400, undefined, .86);
   Kicker('招待した仲間', 44, 32, list);
   if (!v.invitees.length) Txt('まだいません。コードを送ってみましょう。', 44, 116, 680, 18, SOFT, list);
   v.invitees.slice(0, 5).forEach((x, i) => {
     const row = el('invite-row', 44, 100 + i * 52, 680, 52, list); row.dataset.invitee = x.playerId;
-    Txt(x.deleted ? '退会したプレイヤー' : x.displayName ?? '騎手', 0, 14, 230, 19, x.deleted ? DIM : WHITE, row, { weight: 700, nowrap: true });
+    Txt((x.deleted ? '退会したプレイヤー' : x.displayName ?? '騎手') + (x.counted ? '' : '（対象外）'), 0, 14, 230, 18, x.deleted ? DIM : WHITE, row, { weight: 700, nowrap: true });
     v.milestones.forEach((m, k) => {
       const hit = x.milestones.find((y) => y.id === m.id);
-      const chip = Txt((hit ? (hit.rewarded ? '✓ ' : '・ ') : '— ') + inviteMilestoneTitle(m).replace('初心者ミッションをすべて達成', '初心者卒業'), 240 + k * 180, 16, 170, 15, hit ? (hit.rewarded ? OK : MUTED) : DIM, row, { weight: 500, nowrap: true });
+      const chip = Txt((hit ? (hit.rewarded ? '✓ ' : '・ ') : '— ') + inviteMilestoneTitle(m).replace('初心者ミッションをすべて達成', '初心者卒業').replace('に昇級', ''), 240 + k * 148, 16, 140, 15, hit ? (hit.rewarded ? OK : MUTED) : DIM, row, { weight: 500, nowrap: true });
       chip.classList.add('invite-chip'); chip.dataset.reached = hit ? (hit.rewarded ? 'rewarded' : 'reached') : 'no';
     });
-    if (!x.counted) Txt('対象外', 610, 16, 70, 14, WARN, row, { weight: 700, align: 'right' });
   });
   if (v.invitees.length > 5) Txt(`ほか${v.invitees.length - 5}人`, 44, 366, 400, 14, SOFT, list);
   // ③ code entry (only while the server allows it)
@@ -1788,7 +1787,7 @@ async function Invite(demoNote = '') {
   const demo = el('invite-demo', 796, 800, 768, 48);
   Ghost('デモ：友達が参加', 0, 0, 250, 48, async () => { const d = await L.invite.demoFriendJoins(); toast(d.ok ? (d.value.result.friended ? '友達があなたのコードで参加し、フレンドになりました' : '友達があなたのコードで参加しました') : (INVITE_ERRORS[d.code] ?? d.message)); Invite(); }, demo, 'quiet small');
   Ghost('デモ：初心者卒業', 259, 0, 250, 48, async () => { const d = await L.invite.demoMilestone('im_graduate'); toast(d.ok ? `招待ボーナス：無償コイン+${d.value.freeCoinsGained}` : '対象の友達がいません'); Invite(); }, demo, 'quiet small');
-  Ghost('デモ：B級昇級', 518, 0, 250, 48, async () => { const d = await L.invite.demoMilestone('im_class_b'); toast(d.ok ? '招待ボーナス：スカウト券×1' : '対象の友達がいません'); Invite(); }, demo, 'quiet small');
+  Ghost('デモ：A級昇級', 518, 0, 250, 48, async () => { const d = await L.invite.demoMilestone('im_class_a'); toast(d.ok ? `招待ボーナス：無償コイン+${d.value.freeCoinsGained}` : '対象の友達がいません'); Invite(); }, demo, 'quiet small');
 }
 
 // ================================================================= returning players (REQ-CB-001..012, 06 §4.5, contracts/protocol.md §20)

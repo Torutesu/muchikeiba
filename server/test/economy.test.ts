@@ -75,9 +75,16 @@ describe('economy targets (90 days, 3 seeds)', () => {
     expect(invited.inviteTickets).toBe(1);
     const inviter = all.f2p_inviter!;
     const c = m.progression.invite!;
-    // the counted cap bounds the inviter's lifetime income from invites: 10 × (100 coins + 1 ticket)
-    expect(inviter.inviteCoins).toBe(c.maxCountedInvitees * 100);
-    expect(inviter.inviteTickets).toBe(c.maxCountedInvitees);
+    // the counted cap bounds the inviter's lifetime income from invites: 10 × (20 + 40 coins + 1 ticket). Inside the
+    // 90 days every graduation and most class-A promotions arrive; class S (≥ 3 seasons) lies beyond the window.
+    const lifetimeCoins = c.milestones.reduce((a, d) => a + (d.reward.freeCoins ?? 0), 0) * c.maxCountedInvitees;
+    expect(inviter.inviteCoins).toBeGreaterThan(0);
+    expect(inviter.inviteCoins).toBeLessThanOrEqual(lifetimeCoins);
+    expect(inviter.inviteTickets).toBeLessThanOrEqual(c.maxCountedInvitees);
+    // E2 holds for the capped inviter too (r10 merge: the earlier 100 coins + ticket at class B gave 3.00 SSR/month),
+    // and the invite income never buys an extra pity exchange over the daily free player
+    expect(inviter.ssrPerMonth).toBeLessThanOrEqual(2.8);
+    expect(inviter.pityExchanges).toBeLessThanOrEqual(all.f2p!.pityExchanges);
     const ratio = inviter.pullsPerMonth / all.f2p!.pullsPerMonth;
     expect(ratio).toBeGreaterThanOrEqual(1.0);
     expect(ratio).toBeLessThanOrEqual(1.15);

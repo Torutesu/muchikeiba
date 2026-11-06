@@ -66,8 +66,10 @@ export const DEFAULT_INVITE_CONFIG: InviteConfig = {
   redeemWindowDays: 7, maxCountedInvitees: 10, milestoneWindowDays: 90, redeemAttemptsPerHour: 5, redeemAttemptsPerDay: 10, burstPerDay: 5,
   welcomeGift: { items: [{ itemId: 'gacha_ticket', qty: 1 }] },
   milestones: [
-    { id: 'im_graduate', kind: 'beginner_complete', reward: { freeCoins: 100 } },
-    { id: 'im_class_b', kind: 'class', classId: 'B', reward: { items: [{ itemId: 'gacha_ticket', qty: 1 }] } },
+    // r10 merge (E2/E11): small and spread — the larger reward waits for the invitee's deeper play (class S ≥ 3 seasons)
+    { id: 'im_graduate', kind: 'beginner_complete', reward: { freeCoins: 20 } },
+    { id: 'im_class_a', kind: 'class', classId: 'A', reward: { freeCoins: 40 } },
+    { id: 'im_class_s', kind: 'class', classId: 'S', reward: { items: [{ itemId: 'gacha_ticket', qty: 1 }] } },
   ],
   shareBaseUrl: 'https://invite.muchi-issen.example/i/', deepLinkScheme: 'muchi', termsKey: 'terms.invite',
 };

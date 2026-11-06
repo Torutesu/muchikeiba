@@ -123,7 +123,7 @@ describe('legal ceiling of invite rewards (景品表示法 総付景品, REQ-INV
     }
     // the inviter's lifetime maximum (documented in docs/planning/03-legal-risk.md)
     const perInvitee = c.milestones.reduce((a, d) => a + inviteRewardYen(m, d.reward)!, 0);
-    expect(perInvitee * c.maxCountedInvitees).toBe(3200);
+    expect(perInvitee * c.maxCountedInvitees).toBe(2560);
   });
 
   it('remote config cannot raise a reward above the ceiling, give horses or SR+ tickets, or lift the cap past the hard limit', () => {
@@ -152,7 +152,7 @@ describe('redeeming a code (REQ-INV-002..006)', () => {
     expect(mine.share.text).toContain(mine.displayCode);
     expect(mine.share.text).not.toMatch(/コイン|無料|¥|円/); // no reward amounts in the share text
     expect(mine).toMatchObject({ counted: 0, cap: 10, termsKey: 'terms.invite', invitees: [] });
-    expect(mine.milestones.map((x: { id: string }) => x.id)).toEqual(['im_graduate', 'im_class_b']);
+    expect(mine.milestones.map((x: { id: string }) => x.id)).toEqual(['im_graduate', 'im_class_a', 'im_class_s']);
 
     await w.newbie('bob');
     const tickets = w.state('bob').items.gacha_ticket ?? 0;
@@ -279,7 +279,7 @@ describe('milestones (REQ-INV-007/008)', () => {
     w.put(s);
   };
 
-  it('the inviter is paid when the invitee really plays (beginner missions, class B), once each, never for the install', async () => {
+  it('the inviter is paid when the invitee really plays (beginner missions, class A, class S), once each, never for the install', async () => {
     const w = world();
     await w.newbie('alice');
     await invited(w, 'alice', 'bob');
@@ -292,22 +292,30 @@ describe('milestones (REQ-INV-007/008)', () => {
     expect(w.state('bob').referral!.outbox.map((o) => o.milestoneId)).toEqual(['im_graduate']);
     expect(await w.svc.inviteDue('bob')).toMatchObject({ nextAt: w.now() });
     expect(await w.deliver('bob')).toEqual({ attempted: 1, delivered: 1, failed: 0 });
-    expect(w.state('alice').wallet.free).toBe(coins0 + 100);
-    expect(w.state('alice').ledger.at(-1)).toMatchObject({ kind: 'grant', currency: 'free', delta: 100, ref: 'invite:bob:im_graduate' });
+    expect(w.state('alice').wallet.free).toBe(coins0 + 20);
+    expect(w.state('alice').ledger.at(-1)).toMatchObject({ kind: 'grant', currency: 'free', delta: 20, ref: 'invite:bob:im_graduate' });
     // a retried delivery does not pay twice
     expect(await w.svc.inviteMilestone('alice', 'bob', 'im_graduate', 'b')).toEqual({ status: 'already' });
     await w.svc.missionsAll('bob');
     expect(w.state('bob').referral!.outbox).toEqual([]);
-    // class B (promotion at the season change, or already in the season history)
+    // class B is no milestone any more (r10 merge: E2); class A pays coins, class S a ticket (promotion at the season
+    // change, or already in the season history)
     const s = w.state('bob'); s.season.classId = 'B'; w.put(s);
+    await w.svc.missionsAll('bob');
+    expect(w.state('bob').referral!.outbox).toEqual([]);
+    const s2 = w.state('bob'); s2.season.classId = 'A'; w.put(s2);
+    await w.svc.missionsAll('bob');
+    await w.deliver('bob');
+    expect(w.state('alice').wallet.free).toBe(coins0 + 20 + 40);
+    const s3 = w.state('bob'); s3.season.classId = 'S'; w.put(s3);
     await w.svc.missionsAll('bob');
     await w.deliver('bob');
     expect(w.state('alice').items.gacha_ticket).toBe(tickets0 + 1);
     expect(w.state('alice').wallet.paid).toBe(0);
     const view = await w.invite.view('alice', null);
-    expect(view.invitees[0]!.milestones.map((x) => [x.id, x.rewarded])).toEqual([['im_graduate', true], ['im_class_b', true]]);
+    expect(view.invitees[0]!.milestones.map((x) => [x.id, x.rewarded])).toEqual([['im_graduate', true], ['im_class_a', true], ['im_class_s', true]]);
     const rows = w.kpi.filter((x) => x.r.name === 'invite_milestone').map((x) => [x.id, x.r.s1, x.r.s2]);
-    expect(rows).toEqual([['bob', 'im_graduate', 'invitee'], ['alice', 'im_graduate', 'inviter'], ['bob', 'im_class_b', 'invitee'], ['alice', 'im_class_b', 'inviter']]);
+    expect(rows).toEqual([['bob', 'im_graduate', 'invitee'], ['alice', 'im_graduate', 'inviter'], ['bob', 'im_class_a', 'invitee'], ['alice', 'im_class_a', 'inviter'], ['bob', 'im_class_s', 'invitee'], ['alice', 'im_class_s', 'inviter']]);
   });
 
   it('only the first 10 invitees pay; milestones after the window do not count; failed deliveries back off', async () => {
@@ -403,7 +411,7 @@ describe('account deletion (REQ-INV-010 × REQ-UXS-040)', () => {
     const s = w.state('bob'); s.season.classId = 'B'; w.put(s);
     await w.svc.missionsAll('bob');
     expect(w.state('bob').referral!.outbox).toEqual([]);
-    expect(await w.svc.inviteMilestone('alice', 'bob', 'im_class_b', 'b')).toEqual({ status: 'gone' }); // a late delivery never recreates alice
+    expect(await w.svc.inviteMilestone('alice', 'bob', 'im_class_s', 'b')).toEqual({ status: 'gone' }); // a late delivery never recreates alice
     expect(w.repo.data.has('alice')).toBe(false);
     await w.newbie('carol');
     await expect(w.invite.redeem('carol', code, 'inst-carol-01')).rejects.toMatchObject({ code: 'NOT_FOUND' });

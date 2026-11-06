@@ -42,6 +42,7 @@ export interface Persona {
 const INVITER_FIRST_DAY = 3;
 const INVITER_EVERY_DAYS = 3;
 const INVITEE_GRADUATE_DAYS = 3;
+const INVITEE_RACES_PER_DAY = 6;
 
 /**
  * REQ-UXS-015: the day (0-based, counted from install) on which an engaged new player does each beginner step
@@ -162,11 +163,19 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
     for (const [i, jd] of joinDays.entries()) {
       const inviteeId = `sim_invitee_${persona.id}_${i}`;
       if (d === jd) await svc.inviteAccept(id, inviteeId, `sim_install_${i}`, 'sim');
-      if (d === jd + INVITEE_GRADUATE_DAYS) await pay(inviteeId, 'im_graduate');
-      // class B at the first season change after graduating
-      const grad = start + (jd + INVITEE_GRADUATE_DAYS) * DAY;
-      if (d > jd + INVITEE_GRADUATE_DAYS && jstMonthKey(start + d * DAY) !== jstMonthKey(grad) && jstMonthKey(start + (d - 1) * DAY) === jstMonthKey(grad)) {
-        for (const ms of inv.milestones.filter((x) => x.kind === 'class')) await pay(inviteeId, ms.id);
+      // beginner missions done INVITEE_GRADUATE_DAYS after joining; ranked races at the invitee's 6 a day
+      for (const ms of inv.milestones) {
+        if (ms.kind === 'beginner_complete' && d === jd + INVITEE_GRADUATE_DAYS) await pay(inviteeId, ms.id);
+        if (ms.kind === 'ranked_races' && d === jd + Math.ceil((ms.target ?? 0) / INVITEE_RACES_PER_DAY)) await pay(inviteeId, ms.id);
+      }
+      // one class up per season (the fastest a promotion can go): class B at the first season change after graduating,
+      // class A at the second, …
+      if (d > jd + INVITEE_GRADUATE_DAYS && jstMonthKey(start + d * DAY) !== jstMonthKey(start + (d - 1) * DAY)) {
+        let changes = 0;
+        for (let x = jd + INVITEE_GRADUATE_DAYS + 1; x <= d; x++) if (jstMonthKey(start + x * DAY) !== jstMonthKey(start + (x - 1) * DAY)) changes++;
+        for (const ms of inv.milestones.filter((x) => x.kind === 'class')) {
+          if (master.progression.classes.findIndex((c) => c.id === ms.classId) === changes) await pay(inviteeId, ms.id);
+        }
       }
     }
   };

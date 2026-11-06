@@ -68,6 +68,8 @@ static class Program
         await Round9Checks.Run(Check, Ruleset());
         Console.WriteLine("== asset delivery: boot/FTUE download screen (sizes, Wi-Fi warning, never blocks the tutorial, offline)");
         await AssetDeliveryChecks.Run(Check);
+        Console.WriteLine("== round 10: 友達招待 (my code + share, code entry, milestones, deep links; REQ-INV-*)");
+        await InviteChecks.Run(Check);
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);
@@ -379,6 +381,7 @@ static class Program
         Check(!noTicket.Ok && noTicket.Message.StartsWith("INSUFFICIENT_ITEMS"), "using a ticket you do not have is refused with INSUFFICIENT_ITEMS (" + noTicket.Message + ")");
         await OnlineScreens(b);
         await GachaChecks.Online(Check, b);
+        await OnlineInvite(b, baseUrl);
 
         int pointsBefore = b.Player.SeasonPoints;
         var sw = Stopwatch.StartNew();
@@ -413,6 +416,25 @@ static class Program
     }
 
     // round 6: care / course looks / room conditions / friends / teams / events / time attack / leaderboards
+    /// <summary>REQ-INV-*: this player's code is entered by a second, new player through the invite screen model.</summary>
+    static async Task OnlineInvite(GameBackend b, string baseUrl)
+    {
+        var mine = new InviteModel(new ApiInviteApi(b.Api), new MemoryKeyValueStore());
+        var loaded = await mine.LoadAsync();
+        Check(loaded.Ok && mine.CodeText.Length == 9 && mine.View.Share.DeepLink == "muchi://invite/" + mine.View.Code, "invite screen loads my code and the deep link (" + (loaded.Message ?? mine.CodeText) + ")");
+        var friendApi = new ApiClient(new NetHttp(baseUrl), null, new ApiClientOptions { BaseUrl = baseUrl, DevUserId = "unity_invitee_" + DateTime.UtcNow.Ticks });
+        await friendApi.BootstrapAsync();
+        await friendApi.GrantPartnerAsync("ショウタイ");
+        var theirs = new InviteModel(new ApiInviteApi(friendApi), new MemoryKeyValueStore());
+        await theirs.LoadAsync();
+        Check(theirs.EntryVisible, "a new player after the tutorial can enter a code");
+        theirs.HandleLink(mine.View.Share.Url);
+        var r = await theirs.RedeemAsync();
+        Check(r.Ok && !theirs.EntryVisible, "the friend redeems my code from the https link (" + r.Message + ")");
+        await mine.LoadAsync();
+        Check(mine.Rows.Count == 1 && mine.Rows[0].Counted && mine.Rows[0].Milestones.All(x => !x.reached), "…and appears in my invitees, nothing paid yet (milestones only)");
+    }
+
     static async Task OnlineScreens(GameBackend b)
     {
         var kv = new MemoryKeyValueStore();

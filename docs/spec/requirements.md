@@ -609,3 +609,20 @@
 - REQ-ACH-009 マイ厩舎のトロフィー棚に実績のバッジ（実績ごとの最も高い段、高い順に6つ）を出す（公開コピー `trophies.badges`）。
 - REQ-ACH-010 経済（balance-targets 4.11、E14）：毎日遊ぶ無課金の90日の実績の受け取りは、同じ「出走」に払っていたデイリー「3戦する」の減額（20→18コイン、90日で180）以下。課金する想定・招待・広告の想定は同じレースで同じ額を受け取る（支払いで実績は進まない）。E1〜E13 は Round 10 と同じ範囲。
 - REQ-ACH-011 クライアント：`Muchi.Client` `ApiClient.GetCollectionAsync`・`GetAchievementsAsync`・`ClaimAchievementAsync`・`ClaimAllAchievementsAsync`、`TitleInfo.Source/AchievementId/Tier`、`StableTrophies.Badges`、`AssetKeys.CollectionPortrait/CollectionSilhouette/Badge`、`LockstepClient` の `res.skills`。Unity のゲーム層 `CollectionModel`（タブ、未発見は「？？？」とシルエット、達成率は表示だけ）・`AchievementModel`（受け取りの冪等キーは答えが来るまで保持、まとめて受け取る、削除予約中はボタンなし）・`TitleShowcaseModel`（一本化した称号一覧と装備）。
+
+## 25. 調教（TS＋C#、`src/domain/training.ts`、`contracts/protocol.md` §25、docs/planning/06 §1.1 柱②・§1.3）
+拘束条件：ランク戦は課金で決まらない（06 §1.3、REQ-RATE-003）。調教は毎日の短いループで、相棒への愛着（柱②「この馬は俺が育てた」）を深めるためのもの。
+- REQ-TRAIN-001 回数：1ゲーム日（REQ-DAY-001）にアカウントで `slotsPerDay`（3）回、1頭 `perHorsePerDay`（2）回まで。馬の数・課金で回数は増えない。回数を増やす商品は作らない。
+- REQ-TRAIN-002 セッション：`POST /v1/training/start` で回数を1つ使い、サーバーの乱数（本番は暗号用乱数）の seed からミニゲームのビートを決めて返す。`POST /v1/training/:sessionId/finish` で仕上げる。期限（`sessionTtlMs`）を過ぎたもの・新しく始めた時に開いたままのものは、ミニゲームなし（点数0）で記録する。どちらも冪等キー必須。
+- REQ-TRAIN-003 公平性：伸びは馬の `trained` に残り、`toRaceHorse`（基礎＋覚醒＋伸び）でレースに入る。ランク戦・大会・タイムアタックはこれまでどおりクラスの上限に正規化する（上限に届いた馬は伸びても変わらない）。固定能力のイベントは伸びを使わない。伸びは配合で受け継がれない（`effectiveStats` だけを使う）。ルールセットとエンジンは変えない（保存済みのリプレイ・ゴースト・ゴールデンレースは変わらない）。
+- REQ-TRAIN-004 伸びの計算：決定論。開始時の疲れ・絆・これまでの伸びとメニュー・ミニゲームの点数だけで決まる（protocol §25.1 の式）。千分の1点で計算し端数は馬ごとに持ち越す。素質 `potentialByRarity`（R ≥ SR ≥ SSR を検証で強制）と1能力の上限（`perStatCapPermille`）、各能力 1000 を超えない。プレビュー（ミニゲームなし／満点）は同じ関数で出す。
+- REQ-TRAIN-005 ビート：`beatSchedule(timing, seed)`（区間ごとに1つ、`leadMs`/`tailMs` の余白）。サーバーが返し、クライアントはそれに合わせて表示する。
+- REQ-TRAIN-006 採点：送られたタップ（ミニゲーム開始からの ms）をサーバーが同じ手順で採点し直す（`scoreTiming`、C# `TrainingScorer` と同じ。共有の検算例あり）。上乗せは点数 × `permillePerPoint`（既定 最大 +10%、コード上の上限 150‰）。
+- REQ-TRAIN-007 不正対策：タップの数・範囲・間隔の検証、サーバーの時計で経った時間より後のタップは拒否、最後のビートより前に終えた送信は拒否（422 `TRAINING_INPUT_INVALID`）。機械で満点を出しても上乗せは最大 +10%。
+- REQ-TRAIN-008 アイテム：`training_apple`（疲れ −30）。`POST /v1/training/items/:itemId/use`。疲れていなければ使えない。
+- REQ-TRAIN-009 疲れ：調教の効率だけに効き（1点 5‰、下限 50%）、ゲーム日ごとに `recoveryPerDay` 回復、`restAt` 以上では疲れを足すメニューを選べない（プールか休養）。どのレースの設定にも入らない。故障・痛がる表現は作らない（03「動物福祉」）。
+- REQ-TRAIN-010 アイテムの入手経路：伸びに効くアイテム（`affectsGrowth`）は商品・コインショップ・パス（無料ラインを含む：パス＋がレベルを売るため）・イベント報酬・ガチャに入れられない（`trainingProblems`、起動時とリモート設定で検証）。入手はデイリーミッション `train1`（調教を1回）だけ。伸びに効かないアイテムは直販してよい。
+- REQ-TRAIN-011 ミッション：デイリーミッションの種類 `training`（`train1`：1回 → `training_apple` ×1、コインは付けない）。
+- REQ-TRAIN-012 設定 `progression.training`（リモート設定で変更可）：形・重複・コード側の上限 `TRAINING_HARD_LIMITS`（1日5回・1頭3回・`baseGain ≤ 15`・素質 ≤ 400・絆 ≤ 120‰・回復 ≤ 50・ミニゲーム ≤ 150‰）・ミニゲームの形（`perfectMs < goodMs`、ビートの間隔 ≥ 2 × `goodMs`）・素質の順・アイテムの入手経路を検証。
+- REQ-TRAIN-013 経済：調教はコインを出さない（E1〜E14 は変わらない）。全ての想定が毎日の回数を使う経済シミュレーションで、課金者の伸び/稼働日が無課金の 1.05 倍以下、ランク戦の正規化後の能力合計の差（中課金 − 無課金）が全クラスで調教によって広がらないことを確かめる（E15、balance-targets §4.12、`server/test/economy.test.ts`）。
+- REQ-TRAIN-014 KPI とクライアント：サーバーのイベント `training_start`（メニュー・レア度・疲れ・今日の回数）・`training_done`（メニュー・評価・記録の理由・伸び・点数・初回）。クエリは `docs/ops/kpi-queries.md`。`Muchi.Client` `ApiClient.GetTrainingAsync`・`StartTrainingAsync`・`FinishTrainingAsync`・`UseTrainingItemAsync`、`Horse.Trained`、`TrainingScorer`。Unity のゲーム層 `TrainingModel`（メニューのカードと選べない理由、受け付けられるタップだけ記録、start/finish の冪等キーは答えが来るまで保持、開いたままのセッションはミニゲームなしで仕上げ、公平性の文言、ショップへの導線なし）。

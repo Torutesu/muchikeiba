@@ -1,7 +1,7 @@
 // Round 11 (REQ-L10N-013): a short pass of the ムチ一閃 UI in English on the landscape phone (844×390 @2x).
 // EN on from the start, the day-7 demo player: home, shop (recommended / coins / looks), the legal page (Japanese text
 // with the English courtesy note), purchase confirmation, season pass, scout calendar and odds, the stable, settings,
-// a ranked race (HUD) and its result, then the 図鑑 (every tab, details), 実績 (claim one / all) and the title chooser.
+// a ranked race (HUD) and its result, 調教 (cards, mini-game, result, skip), then the 図鑑 (every tab, details), 実績 (claim one / all) and the title chooser.
 // On every screen:
 //   - no Japanese is left on the stage (outside the .keep-ja legal text and the 日本語 language button);
 //   - no text overflows: nothing is still too wide / too tall for its box after fitText, nothing leaves the stage.
@@ -121,6 +121,25 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await waitScreen(['result'], 40000); await shot('result', 1200);
   const commentary = await page.evaluate(() => globalThis.__muchi.state().lastFrame?.subtitle ?? '');
   assert.ok(!/[぀-ヿ一-鿿]/.test(commentary), 'the race commentary is in English: ' + commentary);
+
+  // round 11: 調教 in English (REQ-TRAIN-*): the menu cards, the timing mini-game, the result, the skipped result, the apple
+  const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+  await show('Training'); await waitScreen('training'); await waitIn('.tr-menu[data-menu="hill"]');
+  await shot('training', 500);
+  assert.match(await page.locator('.screen.in').innerText(), /Fatigue never affects any race/, 'training: the fairness rules in English');
+  await page.locator('.screen.in .tr-menu[data-menu="hill"]').click(); await waitIn('.tr-menu.sel[data-menu="hill"]');
+  await click('坂路で調教'); await waitScreen('training-play');
+  await page.waitForFunction(() => typeof globalThis.__muchi.trainingStartedAt === 'number' && globalThis.__muchi.screen === 'training-play', null, { timeout: 10000 });
+  await page.evaluate(() => { const m = globalThis.__muchi; for (const b of m.trainingBeats) setTimeout(() => m.trainingTap(), Math.max(0, b - m.trainingElapsed())); });
+  await page.waitForTimeout(2600); await shot('training-play', 0);
+  await waitScreen('training-result', 20000); await shot('training-result', 500);
+  const mission = page.locator('.screen.in [data-label="ミッション報酬を受け取る"]');
+  if (await mission.count()) { await mission.first().click(); await waitScreen('training-result'); await shot('training-mission', 300); }
+  await click('つづける'); await waitScreen('training'); await waitIn('.tr-menu[data-menu="pool"]');
+  await page.locator('.screen.in .tr-menu[data-menu="pool"]').click(); await waitIn('.tr-menu.sel[data-menu="pool"]');
+  await click('プールで調教'); await waitScreen('training-play'); await page.waitForTimeout(300);
+  await click('スキップ'); await waitScreen('training-result', 20000); await shot('training-result-skipped', 400);
+  await click('つづける'); await waitScreen('training'); await page.waitForTimeout(400); await shot('training-after', 400);
 
   // round 11: 図鑑・実績・称号 in English (REQ-COL-*, REQ-ACH-*): a week of play on the real rules, every tab, a detail,
   // the achievement list (claim one, claim all), the title chooser

@@ -34,13 +34,13 @@ namespace Muchi.Game
             ["race"] = "レース", ["partner"] = "相棒", ["scout"] = "スカウト", ["stable"] = "厩舎", ["missions"] = "ミッション", ["login_bonus"] = "ログインボーナス",
             ["shop"] = "ショップ", ["season_pass"] = "シーズンパス", ["bond"] = "絆・飼い葉", ["season"] = "シーズン・ランキング", ["breeding"] = "配合",
             ["friends"] = "フレンド", ["friend_rooms"] = "フレンド部屋", ["teams"] = "支部", ["spectate"] = "観戦", ["time_attack"] = "タイムアタック",
-            ["events"] = "イベント", ["tournaments"] = "大会", ["my_stable"] = "マイ厩舎", ["stud"] = "種牡馬の貸し借り",
+            ["events"] = "イベント", ["tournaments"] = "大会", ["my_stable"] = "マイ厩舎", ["stud"] = "種牡馬の貸し借り", ["training"] = "調教",
         };
 
         /// <summary>The one-screen guide when a feature opens (06 §4.3 third column); null = no guide.</summary>
         public static readonly IReadOnlyDictionary<string, string> Guides = new Dictionary<string, string>
         {
-            ["missions"] = "毎日3本。終わればコイン",
+            ["missions"] = "毎日の目標。終わればコインや素材",
             ["shop"] = "はじめての購入は、同じ枚数の無償コインをプレゼント",
             ["bond"] = "乗るほど、世話するほど絆が深まる（能力は変わらない）",
             ["season"] = "C級から。月末に昇級",
@@ -48,6 +48,7 @@ namespace Muchi.Game
             ["teams"] = "おすすめの支部を3つ選びました",
             ["events"] = "開催中のイベントにエントリーできます",
             ["my_stable"] = "飾りを1つプレゼント。厩舎を飾ってみよう",
+            ["training"] = "1日3回、相棒を鍛えよう。タイミングよく押すと少しだけ伸びが良くなる",
         };
 
         private readonly GameBackend _b;
@@ -212,7 +213,7 @@ namespace Muchi.Game
         {
             ["races"] = "レースに出る", ["wins"] = "1着になる", ["top3"] = "3着以内に入る", ["gacha"] = "スカウトを1回", ["silks"] = "勝負服を変える",
             ["care"] = "飼い葉をあげる", ["ranked_top3"] = "ランク戦で3着以内", ["breed"] = "配合を1回", ["friends"] = "フレンドを追加", ["team"] = "支部に入る",
-            ["ta_finish"] = "タイムアタックを完走", ["ranked_races"] = "ランク戦に出る", ["points"] = "シーズンptを集める", ["promotion_line"] = "昇級ラインに届く", ["collect"] = "図鑑の馬を迎える",
+            ["ta_finish"] = "タイムアタックを完走", ["ranked_races"] = "ランク戦に出る", ["points"] = "シーズンptを集める", ["promotion_line"] = "昇級ラインに届く", ["collect"] = "図鑑の馬を迎える", ["training"] = "調教を1回",
         };
 
         private readonly NowMs _now;
@@ -319,7 +320,7 @@ namespace Muchi.Game
     public sealed class HomeModel
     {
         /// <summary>Tabs / tiles in display order (06 §6.1 ⑤ and the unlock table).</summary>
-        public static readonly string[] TileKeys = { "stable", "scout", "shop", "season_pass", "missions", "bond", "season", "breeding", "friends", "teams", "time_attack", "events", "my_stable" };
+        public static readonly string[] TileKeys = { "stable", "scout", "shop", "season_pass", "missions", "bond", "training", "season", "breeding", "friends", "teams", "time_attack", "events", "my_stable" };
 
         private readonly GameBackend _b;
         public UnlockGate Unlocks { get; }

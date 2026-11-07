@@ -815,3 +815,92 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 | `collection/portrait` | `collection/portrait/<templateId>`（入手・出会った馬の絵） | `collection/portrait/default` |
 | `collection/silhouette` | `collection/silhouette/<templateId>`（未発見のシルエット） | `collection/silhouette/default` |
 | `badge` | `badge/<achievementId>_<tier>` | `badge/default` |
+
+## 25. 調教（REQ-TRAIN-001〜014、`server/src/domain/training.ts`、C# `Training.cs`・`Muchi.Game.TrainingModel`）
+自分の馬を毎日少しずつ鍛える短いループ。1ゲーム日（§15）に **アカウントで `slotsPerDay` 回**（馬の数では増えない）、1頭は `perHorsePerDay` 回まで。メニュー（坂路・ウッド・プール・併せ馬）を選び、任意のタイミングのミニゲーム（ムチと同じ「押す瞬間」）で結果が**少しだけ**良くなる。結果はすべて決定論：開始時の馬の状態（疲れ・絆・これまでの伸び）・メニュー・ミニゲームの点数だけで決まり、点数はサーバーが**送られたタップの時刻を自分で採点し直して**出す。サーバーの乱数はビートの並び（とステータスの分け方の同点の順）にしか使わない。
+
+**ランク戦の公平性（決定事項）**
+| 項目 | 決めたこと |
+|---|---|
+| 伸び | 馬に残る小さな能力の上乗せ `HorseInstance.trained`（5能力）。馬ごとの素質 `potentialByRarity`（R 300 ≥ SR 240 ≥ SSR 180、検証で R ≥ SR ≥ SSR を強制）まで、1能力は素質の `perStatCapPermille`（40%）まで、各能力 1000 まで。伸びるほど遅くなる（残りの素質の割合、下限 `softFloorPermille`）。 |
+| レースへの入り方 | `toRaceHorse` = 基礎 + 覚醒 + 伸び（`raceStats`）。ランク戦・大会・タイムアタックは**これまでどおりクラスの上限に正規化**（`normalizeStats`）するので、上限に届いている馬は伸びてもランク戦では変わらない。伸びは「上限までの距離」を縮めるだけ＝はじめの馬（無課金の馬）ほど効き、課金と無課金の差は**縮むことはあっても広がらない**（経済 E15、balance-targets 4.12）。固定能力のイベントは伸びを使わない。フレンド部屋（上限なし）はそのまま。 |
+| 疲れ・調子 | **調教の効率にだけ効く**（`penaltyPermillePerPoint` 5‰/点、下限 50%）。どのレース（ランク戦・フレンド・イベント・大会・タイムアタック）の設定にも入らない。 |
+| 課金 | 調教の回数・伸び・素質を増やす商品は無い。伸びに効くアイテム（`affectsGrowth: true`）は**商品・コインショップ・パス（無料ラインも：パス＋がレベルを売るため）・イベント報酬・ガチャ**に入れられない（`trainingProblems` が起動時・リモート設定で拒否）。入手はデイリーミッション「調教を1回」（`train1`）だけ。伸びに効かないアイテムなら直販してよい。 |
+| 遺伝 | 伸びは仔に受け継がれない（配合は基礎＋覚醒の `effectiveStats` だけを使う）。 |
+| リプレイ・ゴールデン | 能力は RaceStartConfig の入力。ルールセットとエンジンは変わらないので、保存済みのリプレイ・ゴースト・ゴールデンレースはそのまま。 |
+
+### 25.1 設定（`progression.training`、リモート設定で変更可・`trainingProblems` で検証）
+| キー | 既定 | 意味 |
+|---|---|---|
+| `enabled` | true | false で画面ごと隠す（`GET` は `{ "enabled": false }`） |
+| `slotsPerDay` / `perHorsePerDay` | 3 / 2 | 1ゲーム日の回数（アカウント）／1頭の回数 |
+| `sessionTtlMs` | 10分 | 始めたセッションを仕上げられる時間。過ぎたらミニゲームなし（点数0）で記録 |
+| `potentialByRarity` | R 300 / SR 240 / SSR 180 | 素質（伸びの合計の上限） |
+| `perStatCapPermille` / `softFloorPermille` | 400 / 150 | 1能力の上限（素質の割合）／伸びの遅くなり方の下限 |
+| `fatigue` | max 100・1日 40 回復・80 で休養・1点 5‰・効率の下限 500‰ | 疲れ（ゲーム日ごとに自動で回復） |
+| `bond` | 1レベル 10‰・上限 90‰ | 絆の上乗せ（`bondMultiplier` のメニューは倍） |
+| `menus[]` | 下表 | `id`・`name`・`baseGain`（1回の伸び、整数）・`fatigue`（負は回復）・`weights`（能力の配分）・`bondMultiplier` |
+| `timing` | 下記 | ミニゲーム |
+| `items[]` | `training_apple`（疲れ −30、`affectsGrowth: true`） | 調教のアイテム |
+| `logKeep` | 10 | 馬ごとの調教日誌の件数 |
+
+| メニュー | 伸び | 疲れ | 伸びる能力（重み） |
+|---|---|---|---|
+| `hill` 坂路 | 6 | +30 | 瞬発2・根性1・スタミナ1 |
+| `wood` ウッド | 6 | +25 | スピード2・スタミナ1・気性1 |
+| `pool` プール | 3 | −20（回復） | スタミナ2・気性1 |
+| `awase` 併せ馬 | 7 | +35 | 根性2・スピード1・瞬発1（絆 ×2） |
+
+コード側の上限（`TRAINING_HARD_LIMITS`）：1日5回・1頭3回、`baseGain ≤ 15`、素質 ≤ 400、絆 ≤ 120‰、アイテムの疲れの回復 ≤ 50、**ミニゲームの上乗せ ≤ 150‰**（既定は 100‰ = +10%）。
+
+**1回の伸び**（千分の1点で計算、端数は馬ごとに持ち越す `carry`）：
+`milli = baseGain × (効率 + 絆 + ミニゲーム) × 伸びしろ / 1000`。効率 = max(下限, 1000 − 疲れ × 5)、絆 = min(上限×倍率, (絆Lv−1) × 10 × 倍率)、ミニゲーム = 点数 × `permillePerPoint`、伸びしろ = max(下限, 1000 × 残りの素質 / 素質)。整数部分（`carry` と合わせて）を `weights` で最大剰余法により分け（同点はセッションの seed の順）、上限に届いた能力の分は同じメニューの別の能力へ回し、それも無ければ与えない。
+
+### 25.2 ミニゲーム（`timing`）と採点（サーバー `scoreTiming`・C# `TrainingScorer`）
+既定：`beats` 5・`durationMs` 6000・`leadMs` 800・`tailMs` 200・`perfectMs` 60・`goodMs` 150・`perfectPoints` 2・`goodPoints` 1・`strayPenalty` 1・`permillePerPoint` 10・`maxTaps` 10・`minTapGapMs` 80。
+- **ビート**：`beatSchedule(timing, seed)`。`leadMs`〜`durationMs − tailMs` を `beats` 等分し、各区間の先頭から区間の半分までのどこか（seed の乱数）に1つ。サーバーが開始時に返す。
+- **タップ**：ミニゲームが始まってからの ms（整数、増えていく）。
+- **採点**（同じ手順をクライアントも持つ。共有の検算例：ビート `[1000,2000,3000,4000,5000]`、タップ `[1010,2100,3200,4950,5000]` → ◎2 ○1 ×2・空振り2・点数3・上乗せ30‰）：ビートを順に、まだ使っていないタップのうち `goodMs` 以内で一番近いもの（同じ距離なら先のタップ）を割り当てる。`perfectMs` 以内は◎（2点）、それ以外は○（1点）。どのビートにも当たらないタップは1つにつき −1点。0〜`beats × perfectPoints` に収める。
+- **評価**：点数が満点の 90% 以上 `great`（◎ 会心の追い切り）、50% 以上 `good`、それ未満とスキップ `normal`。
+- **不正の防止**（`validateTaps`、違反は 422 `TRAINING_INPUT_INVALID`）：タップは `maxTaps` まで・0〜`durationMs` の整数・`minTapGapMs` 以上の間隔で増える。**サーバーの時計で開始から経った時間より後のタップは受けない**（一瞬で満点を送れない）。タップがあるのに最後のビートより前に終えた送信も受けない。上乗せは最大 +10% なので、機械で完璧に押しても伸びは1割しか増えない。
+
+### 25.3 `GET /v1/training`（要認証）
+```json
+{ "enabled": true, "slotsPerDay": 3, "usedToday": 1, "slotsLeft": 2, "perHorsePerDay": 2,
+  "menus": [ { "id": "hill", "name": "坂路", "baseGain": 6, "fatigue": 30, "weights": { "burst": 2, "guts": 1, "stamina": 1 }, "bondMultiplier": 1 } ],
+  "timing": { "beats": 5, "durationMs": 6000, "…": "…", "maxScore": 10 },
+  "fatigue": { "max": 100, "restAt": 80, "recoveryPerDay": 40 },
+  "items": [ { "itemId": "training_apple", "name": "りんごのおやつ", "fatigueRelief": 30, "owned": 0 } ],
+  "horses": [ { "horseId": "h1", "name": "アイボウ", "rarity": "SR", "trained": { "speed": 0, "stamina": 2, "burst": 3, "guts": 1, "temper": 0 },
+    "trainedTotal": 6, "potential": 240, "perStatCap": 96, "fatigue": 30, "condition": "fresh", "bondLevel": 1, "todayCount": 1, "sessions": 1,
+    "log": [ { "at": 1796871607000, "menuId": "hill", "grade": "great", "gain": 6, "score": 10 } ],
+    "blocked": null, "menus": [ { "id": "hill", "blocked": null } ] } ],
+  "open": null,
+  "rules": { "rankedNormalized": true, "fatigueAffectsRaces": false, "inherited": false, "paidBoosts": false } }
+```
+- `horses` は現役の馬だけ。`blocked`（馬）・`menus[].blocked`（メニュー）：`null` / `no_slots` / `horse_daily_limit` / `potential_full` / `tired`（疲れを足すメニューだけ）/ `retired`。`condition`：`fresh`（疲れ < 40）/ `normal` / `tired`（≥ `restAt`）。
+- `open`：仕上げていないセッション（`sessionId`・`horseId`・`menuId`・`startedAt`・`expiresAt`・`beats`・`durationMs`）。期限を過ぎたものはこの GET で**ミニゲームなしとして記録**される（その時だけ取引で書き込む。普段は読み取りだけ）。
+- `rules` は画面に「ランク戦はクラスの上限にそろえる」「疲れはレースに影響しない」と書くための値（いつも上の値）。
+- プレイヤー（`GET /v1/player` などの `horses[]`）にも `trained` が載る（無ければ伸びなし）。
+
+### 25.4 `POST /v1/training/start`・`POST /v1/training/:sessionId/finish`・`POST /v1/training/items/:itemId/use`（要認証・`Idempotency-Key` 必須）
+- 3つとも応答の `training` は**差分**（`partial: true`）：`enabled`・`slotsPerDay`・`usedToday`・`slotsLeft`・`perHorsePerDay`・`items`・`open` と、対象の馬1頭だけの `horses`（`log` は含まない）。`menus`・`timing`・`fatigue`・`rules` は含まない。クライアントは手元の §25.3 に重ねる（C# `TrainingView.MergeInto`：その馬を差し替え、回数が0なら他の馬も `no_slots`）。応答はプレイヤーの状態に冪等の記録として残るので小さくしている。
+- **start** `{ "horseId", "menuId" }`（他のキーは 400）→ `{ "session": { … §25.3 の open の形 }, "preview": { "min", "max", "minMilli", "maxMilli" }, "slotsLeft", "training": 差分 }`。ここで**回数を1つ使い、メニューの疲れを足す**（伸びは finish で、開始時の状態から決める）。`preview` はミニゲームなし／満点の時の伸び（整数部分と千分の1点）。開いたままの前のセッションがあれば、先にミニゲームなしで記録する（アプリが落ちても止まらない）。エラー：`TRAINING_LIMIT`（`no_slots` / `horse_daily_limit`）、`TRAINING_TIRED`、`TRAINING_POTENTIAL_FULL`、`HORSE_NOT_ACTIVE`、`NOT_FOUND`（メニュー・馬・調教が無効）、`DELETION_PENDING`（削除の実行中）。
+- **finish** `{ "taps": [int…], "skipped"?: true }`（`skipped` なら `taps` は無視して点数0）→
+  `{ "sessionId", "horseId", "menuId", "grade", "timing": { "perfect", "good", "miss", "stray", "score", "bonusPermille" }, "gain": {5能力}, "total", "capped",
+     "breakdown": { "efficiencyPermille", "bondPermille", "timingPermille", "softPermille" }, "trained", "trainedTotal", "potential", "fatigue", "settled": "done" | "skipped" | "expired", "void": false, "training": 差分 }`。
+  エラー：422 `TRAINING_INPUT_INVALID`（§25.2）、`TRAINING_SESSION_EXPIRED`（期限切れ。次の調教の呼び出しでミニゲームなしとして記録）、`TRAINING_SESSION_USED`（その id の開いたセッションが無い）。再送は同じキーで同じ結果。
+- **items/:itemId/use** `{ "horseId" }` → `{ "itemId", "horseId", "fatigueBefore", "fatigue", "remaining", "training": 差分 }`。疲れが0なら `NOT_ELIGIBLE`、持っていなければ `INSUFFICIENT_ITEMS`。
+- デイリーミッションの種類 `training`（`train1`：調教を1回 → `training_apple` ×1）は finish（期限切れの記録も含む）で進む。
+
+### 25.5 KPI（サーバーのイベント）
+| イベント | s1 | s2 | s3 | 数値 |
+|---|---|---|---|---|
+| `training_start` | メニュー | 馬のレア度 | — | `value` 開始時の疲れ、`count` 今日の回数 |
+| `training_done` | メニュー | 評価 `great`/`good`/`normal` | `done`/`skipped`/`expired` | `value` 伸びの合計、`count` 点数、`isFirst` そのアカウントの初回 |
+クエリは `docs/ops/kpi-queries.md`「調教」。
+
+### 25.6 クライアント（`TrainingModel`）
+- タップは `BeginMiniGame(now)` からの ms で、サーバーが受け付ける形（間隔・回数・範囲）のものだけを記録する。画面の◎○×は `TrainingScorer.Judge`、合計は `TrainingScorer.Score`（サーバーと同じ）。
+- start / finish は応答が来るまで同じ冪等キーを使う（タイムアウト後の再送で回数を2回使わない）。読み込んだ時に開いたセッションがあれば、ミニゲームなしで仕上げる（時間が経っているため）。
+- 画面に `TrainingModel.RulesText`（ランク戦は上限にそろえる・疲れはレースに影響しない・伸びは受け継がれない）を出す。調教の画面からショップへの導線は作らない。

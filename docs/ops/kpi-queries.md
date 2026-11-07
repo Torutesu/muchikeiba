@@ -69,6 +69,8 @@
 | `ad_start` | クライアント（カードを押した後の SDK の結果） | 枠ID | 画面 | `shown`/`no_fill`/`failed`/`closed_early` | |
 | `ad_reward` | サーバー（SSV コールバックで付与した。クライアントからは送れない） | 枠ID | ネットワーク（`admob`） | 画面 | `double3` 無償コイン、`double9` タイムアタックの回数、`double5` その日の回数 |
 | `ad_reject` | サーバー（コールバックを弾いた） | 理由（`user_mismatch`/`unknown_session`/`session_used`/`expired`/`clock_skew`/`ad_unit_mismatch`/`cap`/`deleting`） | 枠ID | ネットワーク | `double5` その日の弾いた数 |
+| `training_start` | サーバー（調教を始めた、REQ-TRAIN-014） | メニュー（`hill`/`wood`/`pool`/`awase`） | 馬のレア度 | | `double9` 開始時の疲れ、`double5` 今日の回数 |
+| `training_done` | サーバー（調教を記録した） | メニュー | 評価 `great`/`good`/`normal` | `done`/`skipped`/`expired` | `double9` 伸びの合計、`double5` ミニゲームの点数、`double8` そのアカウントの初回 |
 | `consent` | サーバー | 規約の版 | プライバシーポリシーの版 | | |
 | `partner_granted` | サーバー | テンプレートID（`t_partner`） | | | |
 | `ab_assign` | サーバー（初回の bootstrap、実験ごとに1回） | 実験ID | バケットID | | |
@@ -492,6 +494,38 @@ WHERE blob1 = 'invite_redeem' AND blob9 = 'inviter' AND timestamp > NOW() - INTE
 GROUP BY inviter, day
 HAVING redeems >= 5
 ORDER BY redeems DESC
+LIMIT 50
+```
+
+## 調教：毎日のループと公平性（REQ-TRAIN-014、contracts/protocol.md §25）
+
+**1日の調教の回数とミニゲームの遊ばれ方**（日ごと、課金者／無課金で分ける）。`blob7` は課金者の印。スキップ率が高いならミニゲームが面倒に感じられている、`expired` が多いならアプリが途中で閉じられている。
+
+```sql
+SELECT
+  blob6 AS day, blob7 AS payer,
+  sumIf(_sample_interval, blob1 = 'training_start') AS starts,
+  sumIf(_sample_interval, blob1 = 'training_done') AS done,
+  round(sumIf(_sample_interval, blob1 = 'training_done' AND blob10 = 'skipped') / sumIf(_sample_interval, blob1 = 'training_done'), 3) AS skip_rate,
+  round(sumIf(_sample_interval, blob1 = 'training_done' AND blob10 = 'expired') / sumIf(_sample_interval, blob1 = 'training_done'), 3) AS expired_rate,
+  round(sumIf(_sample_interval * double9, blob1 = 'training_done') / sumIf(_sample_interval, blob1 = 'training_done'), 2) AS avg_gain,
+  round(sumIf(_sample_interval * double5, blob1 = 'training_done' AND blob10 = 'done') / sumIf(_sample_interval, blob1 = 'training_done' AND blob10 = 'done'), 2) AS avg_score
+FROM muchi_kpi
+WHERE blob1 IN ('training_start', 'training_done') AND timestamp > NOW() - INTERVAL '14' DAY
+GROUP BY day, payer
+ORDER BY day DESC, payer
+```
+
+- **公平性の監視**：`avg_gain` が課金者で無課金より大きいなら、課金者の馬に伸びしろが多い（素質の順 R ≥ SR ≥ SSR が崩れている）か、回数の上限が破られている。どちらも設定の検証で起きない前提なので、差が出たら調べる。ランク戦の勝率の差（「無課金と課金者のランク戦勝率の差」のクエリ）が調教の開始後に広がっていないかも合わせて見る（E15 の実測）。
+- **満点の多さ**（機械の疑い）：`double5` が満点（10）の割合がプレイヤーごとに極端に高い（例：50回以上で95%超）なら、自動化の可能性。上乗せは最大 +10% なので急ぎではないが、`blob2` で上位を出してサポートに回す。
+
+```sql
+SELECT blob2 AS player, count() AS runs, round(countIf(double5 >= 10) / count(), 3) AS perfect_rate
+FROM muchi_kpi
+WHERE blob1 = 'training_done' AND blob10 = 'done' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY player
+HAVING runs >= 50 AND perfect_rate > 0.95
+ORDER BY runs DESC
 LIMIT 50
 ```
 

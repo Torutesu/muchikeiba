@@ -80,6 +80,8 @@ static class Program
         await L10nChecks.Run(Check, Root, Ruleset());
         Console.WriteLine("== round 11: 図鑑, 実績 and titles (CollectionModel / AchievementModel / TitleShowcaseModel; REQ-COL-*, REQ-ACH-*)");
         await CollectionChecks.Run(Check, Ruleset());
+        Console.WriteLine("== 調教 (training: menus, timing mini-game, keyed start/finish, fairness wording)");
+        await TrainingChecks.Run(Check, Ruleset());
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

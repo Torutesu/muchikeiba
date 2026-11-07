@@ -27,3 +27,16 @@ console.log('');
 console.log(`| 復帰（${missed}日休み） | 期間 | 復帰ログボ＋ミッション（コイン換算） | 毎日遊ぶ無課金が${missed}日で得た無償コイン | 追いつきパスXP | 毎日遊ぶ無課金が${missed}日で得たパスXP |`);
 console.log('|---|---|---|---|---|---|');
 console.log(`| ${lapsed.label} | ${cb.comebackWindows.toFixed(1)} | ${cb.comebackValue.toFixed(0)} | ${(daily.freeCoinsPerActiveDay * missed).toFixed(0)} | ${cb.comebackXp.toFixed(0)} | ${(dailyXpPerDay * missed).toFixed(0)} |`);
+
+// REQ-TRAIN-* (E15): training growth is time-gated and the same for everyone; in ranked it can only narrow the paid/free gap
+const classes = loadMaster().progression.classes;
+console.log('');
+console.log(`| persona | 調教（回/稼働日） | 伸び（合計/稼働日） | ${classes.map((c) => `${c.id}級（上限${c.statCap}）調教なし→あり`).join(' | ')} |`);
+console.log(`|---|---|---|${classes.map(() => '---').join('|')}|`);
+for (const p of PERSONAS) {
+  const r = res[p.id]!;
+  console.log(`| ${p.label} | ${(r.trainingSessions / Math.max(1, r.activeDays)).toFixed(2)} | ${(r.trainedPoints / Math.max(1, r.activeDays)).toFixed(2)} | ${classes.map((c) => `${r.rankedTotalByClass[c.id]!.untrained.toFixed(0)}→${r.rankedTotalByClass[c.id]!.trained.toFixed(0)}`).join(' | ')} |`);
+}
+const gap = (a: string, b: string, cls: string, key: 'trained' | 'untrained') => res[a]!.rankedTotalByClass[cls]![key] - res[b]!.rankedTotalByClass[cls]![key];
+const perDay = (id: string) => res[id]!.trainedPoints / Math.max(1, res[id]!.activeDays);
+console.log(`\nE15 中課金−無課金のランク戦能力差（正規化後、調教なし→あり）: ${classes.map((c) => `${c.id} ${gap('medium', 'f2p', c.id, 'untrained').toFixed(0)}→${gap('medium', 'f2p', c.id, 'trained').toFixed(0)}`).join('  ')}  伸び/稼働日 中課金÷無課金 ${(perDay('medium') / perDay('f2p')).toFixed(2)}`);

@@ -48,6 +48,49 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   const click = async (label) => { await btn(label).click(); await page.waitForTimeout(350); };
   const ready = () => page.waitForFunction(() => globalThis.__muchi?.ready === true, null, { timeout: 90000 });
 
+  // round 11 (REQ-TRAIN-*): 調教 from the home row → the menu cards (fairness wording, no shop link) → 坂路 with the timing
+  // mini-game (taps scheduled on the server's beats, re-scored by the real server rules) → the result and the mission's apple
+  // → プール skipped (no mini-game line) → the apple on the horse → the horse's daily limit on every card
+  async function trainingFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await click('調教'); await waitScreen('training'); await waitIn('.tr-menu[data-menu="hill"]');
+    const text = await page.locator('.screen.in').innerText();
+    assert.ok(text.includes('クラスの上限') && text.includes('疲れはどのレースにも影響しません'), 'training: the fairness rules are on the screen');
+    assert.ok(!/ショップ|倍/.test(text.replace(/ホーム ・ 厩舎 ・ スカウト ・ ショップ ・ その他/, '')), 'training: no shop link, no 「倍」');
+    assert.equal(await page.locator('.screen.in .tr-menu').count(), 4);
+    await shot('training', 400);
+    await page.locator('.screen.in .tr-menu[data-menu="hill"]').click(); await waitIn('.tr-menu.sel[data-menu="hill"]');
+    await click('坂路で調教'); await waitScreen('training-play');
+    await page.waitForFunction(() => typeof globalThis.__muchi.trainingStartedAt === 'number' && globalThis.__muchi.screen === 'training-play', null, { timeout: 10000 });
+    // tap on every beat (scheduled against the mini-game's own clock, like a precise player)
+    await page.evaluate(() => {
+      const m = globalThis.__muchi;
+      for (const b of m.trainingBeats) setTimeout(() => m.trainingTap(), Math.max(0, b - m.trainingElapsed()));
+    });
+    await page.waitForTimeout(2600); await shot('training-play', 0);
+    await waitScreen('training-result', 20000);
+    const r = await page.evaluate(() => globalThis.__muchi.lastTraining);
+    assert.equal(r.settled, 'done');
+    assert.ok(r.timing.perfect + r.timing.good === 5 && r.grade !== 'normal', `every beat hit (${JSON.stringify(r.timing)})`);
+    assert.ok(r.total > 0 && r.trainedTotal >= r.total, 'growth applied');
+    await shot('training-result', 400);
+    await click('ミッション報酬を受け取る'); await waitScreen('training-result');
+    await page.waitForTimeout(400);
+    assert.equal(await page.evaluate(() => globalThis.__muchi.state().player.items.training_apple), 1, 'the daily mission gave the apple');
+    await click('つづける'); await waitScreen('training'); await waitIn('.tr-menu[data-menu="pool"]');
+    await page.locator('.screen.in .tr-menu[data-menu="pool"]').click(); await waitIn('.tr-menu.sel[data-menu="pool"]');
+    await click('プールで調教'); await waitScreen('training-play'); await page.waitForTimeout(300);
+    await click('スキップ'); await waitScreen('training-result', 20000);
+    assert.equal((await page.evaluate(() => globalThis.__muchi.lastTraining)).settled, 'skipped');
+    await shot('training-result-skipped', 300);
+    await click('つづける'); await waitScreen('training'); await waitIn('.tr-item');
+    await page.locator('.screen.in .tr-item').click(); await waitScreen('training'); await page.waitForTimeout(500);
+    assert.equal(await page.evaluate(() => globalThis.__muchi.state().player.items.training_apple ?? 0), 0, 'the apple was given');
+    assert.equal(await page.locator('.screen.in .tr-menu[data-state="blocked"]').count(), 4, 'the horse is done for today: every card says why');
+    await shot('training-horse-done', 300);
+    await click('BACK'); await waitScreen('home');
+  }
+
   // round 9 (06 §6.5 / §7 item 7): banner calendar with real end times, pity meter, step-up, reveal → summary, the end
   // of a limited banner. The logic clock is set to 2026-11-06 12:00 JST so pickup_ginga (11/1–11/30) is open.
   async function scoutLiveOps() {
@@ -290,6 +333,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await click('アカウント削除の取り消し'); await waitScreen('settings');
   // day 7 home; scout (paid) and its reveal; legacy screens
   await demo('day7'); await shot('home-day7', 600);
+  await trainingFlow();
   await page.evaluate(() => globalThis.__muchi.show('Scout')); await waitScreen('scout'); await shot('scout', 500);
   await click('提供割合'); await shot('scout-rates', 400); await click('BACK');
   await waitScreen('scout'); await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal'); await shot('scout-paid-reveal', 700);

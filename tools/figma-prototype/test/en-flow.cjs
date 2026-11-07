@@ -1,7 +1,7 @@
 // Round 11 (REQ-L10N-013): a short pass of the ムチ一閃 UI in English on the landscape phone (844×390 @2x).
 // EN on from the start, the day-7 demo player: home, shop (recommended / coins / looks), the legal page (Japanese text
 // with the English courtesy note), purchase confirmation, season pass, scout calendar and odds, the stable, settings,
-// a ranked race (HUD) and its result, 調教 (cards, mini-game, result, skip), then the 図鑑 (every tab, details), 実績 (claim one / all) and the title chooser.
+// the coin shortfall sheet (round 12), a ranked race (HUD) and its result, 調教 (cards, mini-game, result, skip), then the 図鑑 (every tab, details), 実績 (claim one / all) and the title chooser.
 // On every screen:
 //   - no Japanese is left on the stage (outside the .keep-ja legal text and the 日本語 language button);
 //   - no text overflows: nothing is still too wide / too tall for its box after fitText, nothing leaves the stage.
@@ -99,6 +99,11 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await show('SeasonPass'); await waitScreen('pass'); await shot('season-pass', 600);
   await show('Scout'); await waitScreen('scout'); await shot('scout', 900);
   await show('Odds', 'standard'); await shot('odds', 500);
+  // round 12: the coin shortfall sheet (T6) — server texts translated at the response boundary, the pack card, the buttons
+  await show('Shortfall', 'paid'); await waitScreen('shortfall'); await shot('shortfall-paid', 500);
+  assert.match(await page.locator('.screen.in').innerText(), /You need 500 more paid coins/, 'the shortfall headline in English');
+  await show('Shortfall', 'any'); await waitScreen('shortfall'); await shot('shortfall-any', 500);
+  await show('Shortfall', 'free'); await waitScreen('shortfall'); await shot('shortfall-free', 400);
   await show('Stable'); await shot('stable', 600);
   await show('Settings'); await waitScreen('settings'); await shot('settings', 400);
   assert.equal(await page.locator('.screen.in [data-label="English"].on').count(), 1, 'settings: English is selected');

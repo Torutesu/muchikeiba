@@ -236,6 +236,10 @@ describe('GET /v1/shop/shortfall (REQ-SHORT-005)', () => {
     for (const q of ['', 'for=x', 'for=coins&coins=0', 'for=coins&coins=abc', 'for=coins&coins=5&kind=free', 'for=gacha&bannerId=standard&count=5', 'for=gacha&bannerId=standard&extra=1'])
       expect((await w.call('GET', `/v1/shop/shortfall?${q}`, 'p')).status, q).toBe(400);
     expect((await w.call('GET', '/v1/shop/shortfall?for=gacha&bannerId=nope', 'p')).status).toBe(404);
+    // a banner that is not open answers as its pull would (BANNER_CLOSED), not with a price
+    w.at(m.gacha.banners.find((b) => b.id === 'winter_2026')!.endAtMs! + 1);
+    expect((await w.call('GET', '/v1/shop/shortfall?for=gacha&bannerId=winter_2026', 'p')).body.error.code).toBe('BANNER_CLOSED');
+    w.at(NOW);
     expect((await w.call('GET', '/v1/shop/shortfall?for=cosmetic&itemId=tack_bridle_pass_plus', 'p')).body.error.code).toBe('NOT_ELIGIBLE');
     await w.svc.adminGrant('p', { freeCoins: 300 }, 'test', 'op', 'g1');
     await w.svc.buyCosmetic('p', 'tack_bridle_classic', 'c:b1');

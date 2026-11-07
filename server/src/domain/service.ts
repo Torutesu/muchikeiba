@@ -14,7 +14,7 @@ import type { Rng } from './rng.js';
 import type { Clock } from './time.js';
 import { seasonIdFor, rollSeason, classDef } from './season.js';
 import { applyRefund, applySubscriptionStatus, applyVerifiedPurchase, checkPurchaseIntent, registerAge, type StoreVerifier, type SubscriptionStatus, type VerifiedReceipt } from './purchase.js';
-import { drawGacha, exchangePity, findBanner, gachaPrice, gachaStatus, settlePityGroups } from './gacha.js';
+import { assertBannerOpen, drawGacha, exchangePity, findBanner, gachaPrice, gachaStatus, settlePityGroups } from './gacha.js';
 import { attachShortfall, coinShortfall } from './shortfall.js';
 import { awaken, breed, breedingPreviewWithAllowance, getHorse, nameHorse, pedigree, retire } from './horses.js';
 import { migrateSkills } from './skills.js';
@@ -598,6 +598,7 @@ export class PlayerService {
     rollSeason(m, s, now); // the copy only: a season close is not saved by a read
     if (q.for === 'gacha') {
       const b = findBanner(m, q.bannerId);
+      assertBannerOpen(b, now); // the pull would be refused for this first (BANNER_CLOSED), so is its preview
       return coinShortfall(m, s, { coinKind: b.currency === 'paidOnly' ? 'paid' : 'any', need: gachaPrice(b, s, b.stepUp ? 10 : q.count) }, now);
     }
     if (q.for === 'cosmetic') {

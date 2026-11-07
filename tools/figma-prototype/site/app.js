@@ -1098,17 +1098,15 @@ async function Scout(selectId) {
   NavBar(2);
 }
 async function PaidScout(b, count) {
+  // T6 (REQ-SHORT-005): ask first — when the coins are short the sheet replaces the pull (nothing is tried)
+  const pre = await L.coinShortfall({ for: 'gacha', bannerId: b.id, count });
+  if (pre.ok && pre.value.short) return Shortfall(pre.value, 'scout', () => PaidScout(b, count), () => Scout(b.id));
   const r = await L.draw(b.id, count);
   if (!r.ok) {
-    if (r.code === 'INSUFFICIENT_COINS') {
-      // T6: the shortfall and the one smallest pack that covers it (paid-only banners count paid coins only)
-      const st = (await L.gachaStatus()).banners.find((x) => x.bannerId === b.id);
-      const price = count === 10 ? (st?.stepUp?.priceTen ?? b.stepUp?.prices[0] ?? b.priceTen) : b.priceSingle;
-      const need = price - (b.currency === 'paidOnly' ? player.wallet.paid : player.wallet.paid + player.wallet.free);
-      const pack = L.shopProducts().products.filter((p) => p.kind === 'coins' && p.paidCoins >= need).sort((a, c) => a.priceYen - c.priceYen)[0];
-      return Info('コインが足りません', `${b.currency === 'paidOnly' ? '有償コインが' : ''}あと${fmt(need)}コイン必要です。${pack ? `\n${pack.name}（${yen(pack.priceYen)}）で足ります。` : ''}`, () => (pack ? PurchaseConfirm(pack.id, () => Scout(b.id)) : Scout(b.id)));
-    }
-    // REQ-GACHA-011: the server decides by its clock; a pull after the end is refused with the end time and the list reloads
+    // REQ-SHORT-004: a refused pull carries the same shortfall (paid-only banners count paid coins only)
+    if (r.code === 'INSUFFICIENT_COINS' && r.details?.shortfall) return Shortfall(r.details.shortfall, 'scout', () => PaidScout(b, count), () => Scout(b.id));
+    if (r.code === 'INSUFFICIENT_COINS') return Info('コインが足りません', r.message, () => Scout(b.id));
+  // REQ-GACHA-011: the server decides by its clock; a pull after the end is refused with the end time and the list reloads
     if (r.code === 'BANNER_CLOSED') return Info('このスカウトは終了しました', `${r.message}\n一覧を更新します。`, () => Scout());
     return Info('スカウトできませんでした', r.message, () => Scout(b.id));
   }
@@ -1132,6 +1130,59 @@ function Info(title, body, next) {
   Txt(title, 52, 112, 700, 34, WHITE, d);
   Txt(body, 52, 180, 700, 20, MUTED, d, { lh: 1.7 });
   Cta('OK', 52, 320, 360, next, d);
+}
+
+// ================================================================= round 12: コイン不足の案内 (T6, REQ-SHORT-*, protocol §29)
+// One sheet: the server's 「コインが◯枚足りません」, the ONE pack that covers it (or the largest one, said plainly), and 閉じる as
+// the most prominent button (06 §5.1). Reached only from the scout confirmation and the cosmetics shop — never in a race, while
+// matching, in the tutorial or right after a loss (SHORTFALL_CONTEXTS). KPI offer_view / offer_click (offerId shortfall, T6) once
+// per sheet. The pack opens the normal purchase confirmation; once bought, the original pull / purchase runs again.
+const SHORTFALL_CONTEXTS = new Set(['scout', 'looks', 'shop']);
+let shortfallShown = null; // the sheet object last counted for offer_view (a redraw — EN toggle, resize — is not a new view)
+async function Shortfall(sf, ctx, retry, back) {
+  if (!SHORTFALL_CONTEXTS.has(ctx) || !sf?.short || ftue) return back();
+  currentScreen = () => Shortfall(sf, ctx, retry, back);
+  Clear('shortfall'); SetArt(ctx === 'looks' ? 'Art/home-paddock' : 'Art/scout-reveal', false); Shade('dim');
+  const d = Dialog('Coin shortfall', 1080, 660);
+  Object.assign(d.dataset, { shortfall: String(sf.shortfall), coinKind: sf.coinKind, status: sf.status, offer: sf.offer?.productId ?? '' });
+  Kicker(sf.coinKind === 'paid' ? '有償コイン　/　足りない枚数' : sf.coinKind === 'free' ? '無償コイン　/　足りない枚数' : 'コイン　/　足りない枚数', 52, 44, d);
+  Txt(sf.headline, 52, 104, 976, 40, WHITE, d, { weight: 700, nowrap: true }).dataset.headline = '1';
+  Txt(`必要 ${fmt(sf.need)}　·　使えるコイン ${fmt(sf.have)}`, 52, 162, 976, 16, MUTED, d, { weight: 500, nowrap: true });
+  if (sf.notes.length) Txt(sf.notes.join('\n'), 52, 190, 976, 14, SOFT, d, { lh: 1.55 });
+  const o = sf.offer;
+  if (o) {
+    // the one pack card (the shop's card, smaller): name, price, contents, the shop's own first-purchase line
+    const c = Card('Shortfall pack ' + o.productId, 52, 242, 976, 232, d, o.covers ? CYAN : GOLD);
+    c.dataset.product = o.productId;
+    ArtImage('Art/Cosmetics/stable-plaque', 10, 14, 150, 204, c);
+    Txt(o.name, 194, 26, 520, 26, WHITE, c, { weight: 700, nowrap: true });
+    Txt(yen(o.priceYen), 740, 24, 212, 28, GOLD, c, { weight: 700, align: 'right', cls: 'num' });
+    Txt(o.contents.map((x) => x.label).join('　·　'), 194, 70, 758, 17, WHITE, c, { weight: 500 });
+    if (o.firstPurchaseBonus) Txt(o.firstPurchaseBonus.label, 194, 104, 758, 15, CYAN, c, { weight: 500 }).dataset.bonus = '1';
+    Txt(sf.line, 194, 140, 520, 15, o.covers ? OK : GOLD, c, { weight: 700, lh: 1.5 }).dataset.line = '1';
+    Cta('購入を確認', 726, 150, 226, () => {
+      L.kpi([{ name: 'offer_click', at: L.now(), props: { offerId: 'shortfall', trigger: 'T6' } }]);
+      PurchaseConfirm(o.productId, back, retry);
+    }, c, 'small');
+  } else {
+    // free-only payments, the monthly limit, an unsettled refund…: the shortfall is said, nothing is sold
+    const c = Card('Shortfall none', 52, 242, 976, 160, d, 'var(--text-3)');
+    Txt(sf.line, 30, 34, 916, 19, WHITE, c, { weight: 500, lh: 1.6 }).dataset.line = '1';
+  }
+  Txt('購入するとこの画面の前の操作に戻ります　·　有償コインから先に使われます', 52, 494, 976, 13, SOFT, d, { nowrap: true });
+  Cta('閉じる', 52, 548, 380, back, d);
+  if (shortfallShown !== sf) {
+    shortfallShown = sf;
+    L.kpi([{ name: 'offer_view', at: L.now(), props: { offerId: 'shortfall', trigger: 'T6' } }]);
+  }
+}
+/** Demo states for the e2e / design review: 'paid' (the paid step-up with no paid coins), 'any' (a big amount), 'free' (free-only). */
+async function DemoShortfall(kind = 'paid') {
+  await refresh();
+  const q = kind === 'paid' ? { for: 'gacha', bannerId: 'stepup_paid', count: 10 } : kind === 'free' ? null : { for: 'coins', coins: (player.wallet.paid + player.wallet.free) + 1200, kind: 'any' };
+  if (!q) return Shortfall({ short: true, coinKind: 'free', need: 300, have: 0, shortfall: 300, headline: '無償コインが300枚足りません', status: 'free_only', blockedCode: null, ageCheck: false, line: '無償コインだけで支払う項目です（購入したコインでは支払えません）', notes: [], offer: null }, 'shop', Home, Home);
+  const r = await L.coinShortfall(q);
+  return Shortfall(r.value, kind === 'paid' ? 'scout' : 'shop', kind === 'paid' ? () => Scout('stepup_paid') : Home, kind === 'paid' ? () => Scout('stepup_paid') : Home);
 }
 
 // ================================================================= shop (REQ-UXP-003, 06 §6.8, doc 03 legal guards) — 15 / 16
@@ -1207,7 +1258,7 @@ function DrawRecommended(parent, shop, offers, top, blocked) {
   const starterOffer = list.find((o) => o.productId === 'starter_pack');
   const H = blocked ? 236 : 290;
   // T2 starter: in the recommended tab after its trigger, until bought (no fake timer: it has no end date)
-  if (starter) productCard(parent, starter, 32, top, 724, H, { art: 'Art/Cosmetics/jockey-crimson', note: starterOffer ? 'おすすめ：期限はありません（購入するまでここに置いておきます）' : 'ランク戦で初めて4着以下になるか、5戦目の後に案内します', disabled: blocked });
+  if (starter) productCard(parent, starter, 32, top, 724, H, { art: 'Art/Cosmetics/jockey-crimson', note: starter.owned ? '購入済みです（1回限り）' : starterOffer ? 'おすすめ：期限はありません（購入するまでここに置いておきます）' : 'ランク戦で初めて4着以下になるか、5戦目の後に案内します', disabled: blocked });
   // T3 pass (real season end, live countdown)
   const passOffer = list.find((o) => o.productId === 'season_pass');
   const pass = byId.get('season_pass');
@@ -1228,7 +1279,9 @@ function DrawRecommended(parent, shop, offers, top, blocked) {
     const ok = promoOffer.some((o) => o.productId === p.id);
     const x = 24 + i * 228, yy = H2 - 74;
     const t = el('promo', x, yy, 216, 56, pr); t.dataset.product = p.id;
-    if (ok) Cta(`${p.classId}級　${yen(p.priceYen)}`, 0, 0, 216, () => PurchaseConfirm(p.id, currentScreen), t, 'small');
+    // r12 (R8 gap): a bought pack is drawn as bought, never as 「昇級すると購入できます」 or a buy button
+    if (p.owned) { t.dataset.owned = 'true'; Txt(`${p.classId}級　購入済み`, 0, 0, 216, 17, OK, t, { weight: 700 }); Txt('各クラス1回限り', 0, 28, 216, 12, SOFT, t); }
+    else if (ok) Cta(`${p.classId}級　${yen(p.priceYen)}`, 0, 0, 216, () => PurchaseConfirm(p.id, currentScreen), t, 'small');
     else { Txt(`${p.classId}級　${yen(p.priceYen)}`, 0, 0, 216, 17, DIM, t, { weight: 700 }); Txt(`${p.classId}級に昇級すると購入できます`, 0, 28, 216, 12, DIM, t); }
   });
 }
@@ -1258,7 +1311,13 @@ async function DrawLooks(parent, top, blocked) {
     Txt(it.name, 138, 26, 204, 17, WHITE, c, { weight: 700, lh: 1.4 });
     Txt(`${{ silks: '勝負服の柄', tack: '馬具', decor: '厩舎の飾り' }[it.kind] ?? '見た目'}　/　見た目のみ`, 138, 80, 204, 13, GOLD, c, { weight: 500 });
     Txt(`${fmt(it.price)}コイン${it.currency === 'paidOnly' ? '（有償限定）' : ''}`, 138, 108, 204, 15, CYAN, c, { weight: 700 });
-    const b = Cta(it.owned ? '所持' : '試着して買う', 138, ch - 70, 200, () => toast('試着してから買えます（確率なしの直販）'), c, 'small');
+    const b = Cta(it.owned ? '所持' : '試着して買う', 138, ch - 70, 200, async () => {
+      // T6 (REQ-SHORT-005): short of coins → the shortfall sheet before the try-on (paid-only items count paid coins only)
+      const sf = await L.coinShortfall({ for: 'cosmetic', itemId: it.id });
+      if (sf.ok && sf.value.short) return Shortfall(sf.value, 'looks', () => Store('looks'), () => Store('looks'));
+      toast('試着してから買えます（確率なしの直販）');
+    }, c, 'small');
+    c.dataset.item = it.id;
     if (it.owned || blocked) disable(b);
   });
   Txt(cat.notice, 32, 576, 1464, 14, MUTED, parent);
@@ -1266,8 +1325,9 @@ async function DrawLooks(parent, top, blocked) {
 
 // ---- purchase confirmation: unregistered / registered / under 18 / over the limit (REQ-PUR-001/002, 06 §6.8) — 18
 let ageForm = null; // { year, month, guardian }
-async function PurchaseConfirm(productId, back) {
-  if (back) purchaseReturn = back;
+let purchaseAfter = null; // round 12: what to run once a demo purchase completes (the pull the shortfall sheet came from)
+async function PurchaseConfirm(productId, back, after) {
+  if (back) { purchaseReturn = back; purchaseAfter = after ?? null; }
   currentScreen = () => PurchaseConfirm(productId);
   const shop = L.shopProducts();
   const p = shop.products.find((x) => x.id === productId);
@@ -1286,7 +1346,7 @@ async function PurchaseConfirm(productId, back) {
   Hair(48, 330, 1004, box);
   const state = el('pstate', 48, 352, 1004, 270, box);
   const S = (t, y, size, c, o = {}) => Txt(t, 0, y, 1004, size, c, state, o);
-  const close = () => { ageForm = null; (purchaseReturn ?? Home)(); };
+  const close = () => { ageForm = null; purchaseAfter = null; (purchaseReturn ?? Home)(); };
   if (r.ok) {
     // registered: what is bought, the free coins on top (first time only), this month's remaining limit
     const v = r.value;
@@ -1298,6 +1358,15 @@ async function PurchaseConfirm(productId, back) {
     if (v.allowance) S(`${v.allowance.days}日間、毎日 無償コイン${v.allowance.dailyFreeCoins}枚（自動更新なし）`, 110, 16, GOLD);
     const buy = disable(Cta('購入する（プロトタイプでは決済しません）', 492, 652, 560, () => {}, box, 'gold'));
     TextLink('年齢を訂正する', 0, 160, 200, () => { buy.remove(); ageForm = { year: '', month: '', guardian: false, correcting: true }; AgeForm(productId, box, state); }, state);
+    // round 12: from the shortfall sheet, a demo purchase (a locally issued receipt, no billing) then back to the original action
+    if (purchaseAfter) Ghost('デモ：決済なしで購入する', 640, 150, 364, 56, async () => {
+      const after = purchaseAfter;
+      const g = await L.demoPurchase(productId);
+      if (!g.ok) { toast(g.message); return; }
+      purchaseAfter = null; await refresh();
+      toast('購入しました（デモ・決済なし）。元の操作に戻ります');
+      after();
+    }, state, 'quiet small').dataset.demoBuy = '1';
   } else if (r.code === 'AGE_REQUIRED' || r.code === 'GUARDIAN_CONSENT_REQUIRED') {
     state.dataset.state = r.code === 'AGE_REQUIRED' ? 'unregistered' : 'guardian';
     if (r.code === 'GUARDIAN_CONSENT_REQUIRED') ageForm = { ...(ageForm ?? { year: '', month: '' }), guardian: false, needGuardian: true };
@@ -1754,6 +1823,7 @@ function ConfirmDeletion(v) {
 }
 async function Demo(kind) {
   L.reset();
+  ftue = false; // every demo state is a player past the first run
   document.querySelectorAll('.toast').forEach((t) => t.remove());
   for (const k of ['muchi.partner', 'muchi.notify.primer', 'muchi.link.prompt', 'muchi.link.firstPurchase', 'muchi.link.provider', 'muchi.proto.taFriends']) { try { localStorage.removeItem(k); } catch { /* */ } }
   try { for (const k of Object.keys(localStorage)) if (k.startsWith('muchi.proto.ta.')) localStorage.removeItem(k); } catch { /* */ }
@@ -2670,7 +2740,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Collection, Achievements, Training, TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Collection, Achievements, Training, TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

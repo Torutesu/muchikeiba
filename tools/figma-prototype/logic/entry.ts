@@ -3,7 +3,8 @@
 // wallet paid/free ordering, purchase-intent age checks, season pass), odds disclosure from the same tables.
 // State lives in localStorage (one player, "local"). No server, no billing.
 import { loadMaster } from '../../../server/src/domain/master.js';
-import { PlayerService, type PlayerRepo } from '../../../server/src/domain/service.js';
+import { PlayerService, type PlayerRepo, type ShortfallQuery } from '../../../server/src/domain/service.js';
+import type { ClientBatch } from '../../../server/src/domain/kpi.js';
 import { playerView, type PlayerState } from '../../../server/src/domain/player.js';
 import { oddsDisclosure, findBanner, bannerList, bannerStatus } from '../../../server/src/domain/gacha.js';
 import { cryptoRng } from '../../../server/src/domain/rng.js';
@@ -79,12 +80,14 @@ const DEMO_MEMBERS = [['demo_tm_lead', 'ミドリカワ'], ['demo_tm_2', 'クロ
 let demoRace = 0;
 let demoTeamId: string | null = null;
 let n = 0;
+const kpiLog: ClientBatch['events'] = [];
 const key = () => `c:/proto:${Date.now()}:${n++}`;
 
-async function wrap<T>(f: () => Promise<T> | T): Promise<{ ok: true; value: T } | { ok: false; code: string; message: string }> {
+async function wrap<T>(f: () => Promise<T> | T): Promise<{ ok: true; value: T } | { ok: false; code: string; message: string; details?: Record<string, unknown> }> {
   try { return { ok: true, value: await f() }; }
   catch (e) {
-    if (e instanceof AppError) return { ok: false, code: e.code, message: e.message };
+    // REQ-SHORT-004: `details` as the HTTP error body carries it (INSUFFICIENT_COINS → details.shortfall)
+    if (e instanceof AppError) return { ok: false, code: e.code, message: e.message, ...(e.details ? { details: JSON.parse(JSON.stringify(e.details)) } : {}) };
     return { ok: false, code: 'INTERNAL', message: String((e as Error)?.message ?? e) };
   }
 }
@@ -344,6 +347,16 @@ export const MuchiLogic = {
   // ---------------------------------------------------------------- round 10
   // r10 fix: the shop list with this player's ownership (GET /v1/shop/products?mine=1)
   myShopProducts: () => svc.shopProducts(ID),
+  // ---------------------------------------------------------------- round 12
+  // T6 コイン不足の案内 (REQ-SHORT-*, protocol §29): GET /v1/shop/shortfall on the real rules
+  coinShortfall: (q: ShortfallQuery) => wrap(() => svc.coinShortfall(ID, q)),
+  /** Client KPI (offer_view / offer_click …) through the server's own batch check (kpi.ts clientEventSchema); kept for the tests. */
+  async kpi(events: ClientBatch['events']) {
+    const r = await wrap(() => svc.kpiIngest(ID, { platform: 'editor', appVersion: 'proto', events }));
+    if (r.ok) kpiLog.push(...events);
+    return r;
+  },
+  kpiLog: () => kpiLog.slice(),
   /** Demo only: a store purchase granted through a locally issued receipt (no billing), so the "already bought" state can be seen. */
   async demoPurchase(productId: string) {
     const v = await svc.view(ID);

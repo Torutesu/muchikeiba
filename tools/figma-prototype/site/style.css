@@ -437,3 +437,23 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
 .el.cb-mission:last-of-type, .el.cb-item:last-of-type { border-bottom-color: transparent; }
 .btn.ghost.gold .bg { box-shadow: inset 0 0 0 2px var(--gold); }
 .btn.ghost.gold { color: var(--gold); }
+
+/* ---------------------------------------------------------------- English (REQ-L10N-013)
+   The Noto Sans JP faces carry full Latin glyphs (the subset includes ASCII, Latin-1 and typographic punctuation:
+   prepare_assets.py), so English never falls back to another font. The wide tracking that suits kana and kanji is
+   tightened for Latin, lines break at spaces (keep-all is for Japanese), kerning and proportional figures are on,
+   and the stage shrinks a text that would not fit its box (app.js fitText). Japanese is unchanged. */
+html[lang="en"] body { letter-spacing: 0; font-kerning: normal; font-feature-settings: "kern" 1, "palt" 0; }
+html[lang="en"] .label { word-break: normal; overflow-wrap: break-word; hyphens: manual; }
+html[lang="en"] .kicker { letter-spacing: .06em; }
+html[lang="en"] .caption { letter-spacing: .08em; }
+html[lang="en"] .btn.cta { letter-spacing: .02em; }
+html[lang="en"] .btn.ghost, html[lang="en"] .btn.back, html[lang="en"] .btn.lang { letter-spacing: .03em; }
+html[lang="en"] .btn.tab { letter-spacing: .06em; }
+html[lang="en"] .btn.row { letter-spacing: .03em; }
+html[lang="en"] .btn.tabtext, html[lang="en"] .pill, html[lang="en"] .tag, html[lang="en"] .toast { letter-spacing: .02em; }
+html[lang="en"] .label.num, html[lang="en"] [data-countdown] { font-variant-numeric: tabular-nums; }
+html[lang="en"] .keep-ja { word-break: keep-all; letter-spacing: .02em; }
+html[lang="en"] .pass-strip .cell { padding-top: 38px; font-size: 13px; line-height: 1.25; gap: 4px; }
+html[lang="en"] .pass-strip .cell .plusnote { font-size: 11px; }
+html[lang="en"] .pass-strip .cell small { font-size: 12px; }

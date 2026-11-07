@@ -42,6 +42,19 @@ public static partial class MuchiRace
         return _ruleset.RulesetVersion;
     }
 
+    /// <summary>
+    /// REQ-L10N-012: the commentary language from the next race (commentary-ja.json / commentary-en.json); the English
+    /// tables (server-en.json + ui-en.json) give the English horse and skill names. Returns the language.
+    /// </summary>
+    [JSExport]
+    public static string SetLanguage(string lang, string commentaryJson, string serverEnJson, string uiEnJson)
+    {
+        if (!string.IsNullOrEmpty(serverEnJson) && Loc.English.Count == 0) { Loc.LoadEnglish(serverEnJson); Loc.LoadEnglish(uiEnJson); }
+        Loc.SetLocale(lang);
+        _templates = CommentaryTemplates.Parse(commentaryJson);
+        return _templates.Language;
+    }
+
     /// <summary>mode "tutorial" = OfflinePresets tutorial (starts near the finish); otherwise the 12-runner 2000 m practice race.</summary>
     [JSExport]
     public static string Start(string mode, string partnerName, string partnerJson, double seed)

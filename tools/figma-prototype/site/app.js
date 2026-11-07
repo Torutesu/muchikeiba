@@ -830,6 +830,9 @@ async function Home() {
   if (player.loginBonus?.lastClaimDate !== today) { const r = await L.claimLogin(); if (r.ok) { bonus = r.value; await refresh(); } }
   const p = partner();
   if (p) horseName = p.name;
+  // REQ-CB-*: the comeback welcome replaces home once per window (decided before home is drawn)
+  const comeback = await cbView();
+  if (comeback.active && comeback.window.showWelcome) return ComebackWelcome(comeback);
   const [missions, fw, bond] = await Promise.all([L.missions(), L.firstWinBonus(), p ? L.bond(p.id) : null]);
   Clear('home'); SetArt('Art/home-paddock');
   const u = player.unlocks;
@@ -878,6 +881,7 @@ async function Home() {
   Cta('レースへ', 1110, 636, 416, RaceLobby, undefined, 'hero');
   if (bonus) toast(`ログインボーナス ${bonus.track === 'beginner' ? '初心者' : ''}${bonus.day}日目：${rewardText(bonus.reward)}`);
   NavBar(0);
+  await HomeCard(comeback); // round 10: one card at a time (what's new > comeback campaign > ad offer)
   MaybeLinkPrompt('Home', Home);
 }
 /** ③ today's to-do (login bonus, daily missions, first-win bonus) in a drawer. */
@@ -1057,7 +1061,7 @@ async function Store(tab = 'recommended') {
   currentScreen = () => Store(tab);
   if (tab === 'pass') return SeasonPass();
   await refresh();
-  const shop = L.shopProducts();
+  const shop = await L.myShopProducts(); // r10: owned / purchasedThisSeason per player
   const offers = await L.shopOffers();
   const blocked = !offers.ok && offers.code === 'DELETION_PENDING';
   Clear('shop-' + tab); SetArt('Art/home-paddock', false);
@@ -1109,6 +1113,9 @@ function productCard(parent, p, x, y, w, h, opts = {}) {
   Txt(yen(p.priceYen), w - 210, 24, 186, 25, GOLD, c, { weight: 700, align: 'right', cls: 'num' });
   Txt(contentsText(p), 24 + ax, 66, w - 48 - ax, 15, WHITE, c, { weight: 500, lh: 1.55 });
   Txt(productTags(p, opts.bonus), 24 + ax, h - 86, w - 290 - ax, 13, CYAN, c, { weight: 500, lh: 1.5 });
+  // r10: the server says this player already has it (this season's pass, a once-only pack, a running daily pack)
+  if (p.owned && !opts.note) { opts.note = p.ownedReason === 'season_pass' ? '今シーズンのパスは購入済みです' : '購入済みです'; opts.noteColor = OK; }
+  if (p.owned && !opts.action) { opts.cta = '購入済み'; opts.disabled = true; }
   if (opts.note) Txt(opts.note, 24 + ax, h - 46, w - 290 - ax, 13, opts.noteColor ?? GOLD, c, { weight: 500, lh: 1.45 });
   const b = Cta(opts.cta ?? '購入を確認', w - 250, h - 78, 226, opts.action ?? (() => PurchaseConfirm(p.id, currentScreen)), c, 'small' + (opts.ctaGold ? ' gold' : ''));
   if (opts.disabled) disable(b);
@@ -1125,7 +1132,7 @@ function DrawRecommended(parent, shop, offers, top, blocked) {
   // T3 pass (real season end, live countdown)
   const passOffer = list.find((o) => o.productId === 'season_pass');
   const pass = byId.get('season_pass');
-  const pc = productCard(parent, pass, 772, top, 724, H, { art: 'Art/Cosmetics/jockey-violet', accent: GOLD, cta: 'パスを見る', action: () => SeasonPass(), ctaGold: true, disabled: blocked });
+  const pc = productCard(parent, pass, 772, top, 724, H, { art: 'Art/Cosmetics/jockey-violet', accent: GOLD, cta: 'パスを見る', action: () => SeasonPass(), ctaGold: true, disabled: blocked, ...(pass.owned ? { note: '今シーズンのパスは購入済みです（進み具合はパスの画面で）', noteColor: OK } : {}) });
   if (passOffer?.endsAt) { const cd = Txt('', 194, H - 46, 300, 13, GOLD, pc, { weight: 700, lh: 1.45 }); every(1000, () => { cd.textContent = `今シーズンの終わり（${seasonEnd(passOffer.endsAt)}）まで\nあと ${countdown(passOffer.endsAt - L.now())}`; }); cd.classList.add('countdown'); }
   else if (!unlock('season_pass').unlocked) Txt('シーズンパスは' + unlockText('season_pass'), 194, H - 46, 300, 13, GOLD, pc, { weight: 500 });
   // daily pack (厩舎手当) and the promotion packs (T4: only once the class is reached)
@@ -1292,7 +1299,7 @@ async function SeasonPass() {
   currentScreen = SeasonPass;
   const pass = await L.passView();
   await refresh();
-  const shop = L.shopProducts();
+  const shop = await L.myShopProducts(); // r10: owned / purchasedThisSeason per player
   const products = shop.products.filter((p) => p.kind === 'season_pass');
   const plusLv = products.find((p) => p.pass?.levels)?.pass.levels ?? 10;
   const rw = L.master.passRewards;
@@ -1348,10 +1355,12 @@ async function SeasonPass() {
   const pb = Glass('Pass price', 448, 494, 1048, 64, p, .94); pb.classList.add('flat');
   Txt(products.map((x) => `${x.name} ${yen(x.priceYen)}`).join('　·　') + '　/　今シーズン限り・自動更新なし', 24, 18, 1000, 19, GOLD, pb, { weight: 700, nowrap: true });
   products.forEach((x, i) => {
-    const owned = pass.owned.includes(x.id);
-    const label = owned ? '購入済み' : i === 0 ? '有料ラインを開ける' : 'パス＋にする';
+    const owned = x.purchasedThisSeason ?? pass.owned.includes(x.id);
+    const closed = x.owned === true; // r10: one pass per season — Pass+ is closed once Pass was bought (and the other way round)
+    const label = owned ? '購入済み' : closed ? '今シーズンは購入済み' : i === 0 ? '有料ラインを開ける' : 'パス＋にする';
     const b = i === 0 ? Cta(label, 448, 578, 440, () => PurchaseConfirm(x.id, SeasonPass), p) : Ghost(label, 908, 584, 240, 60, () => PurchaseConfirm(x.id, SeasonPass), p);
-    if (owned || pass.purchasable.length === 0) disable(b);
+    b.dataset.owned = String(closed);
+    if (owned || closed || pass.purchasable.length === 0) disable(b);
   });
   Txt(shop.notices['shop.pass_auto_grant'] + '\n' + shop.notices['shop.no_auto_renew'], 1168, 578, 330, 12, SOFT, p, { lh: 1.55 });
   NavBar(3);
@@ -1442,6 +1451,67 @@ function Link(provider, next) {
   toast(`${provider === 'apple' ? 'Apple' : 'Google'}で引き継ぎ登録しました` + (r.event ? `（KPI ${r.event.name}）` : ''));
   globalThis.__muchi && (globalThis.__muchi.lastKpi = r.event?.name ?? null);
   (next ?? Home)();
+}
+
+// ---- rewarded ads (REQ-AD-*, contracts/protocol.md §21): the opt-in offer card, the simulated ad, the watched state.
+// Server rules from the real domain (eligibility, game-day caps, sessions); the reward comes only from the simulated
+// network's signed SSV callback (verified by the real verifyAdMobCallback). Never in the tutorial, a race or a result
+// after 4th or worse; never interstitial — a view only starts from the card's button (RewardedAdModel's rules).
+// On home the card lives in the single home card slot (HomeCard: what's new > comeback campaign > ad offer).
+const AD_SECONDS = () => Math.max(1, Math.round(5 / (Number(new URLSearchParams(location.search).get('speed')) || 1)));
+/** Draws the offer card for `surface` into `parent` (or nothing when the server offers none). Returns the card element. */
+async function AdOfferSlot(surface, x, y, w, h, back, parent) {
+  const v = await L.ads();
+  const p = v.eligible ? v.placements.find((q) => q.surface === surface) : null;
+  if (!p || (surface === 'home' && cur?.dataset.screen !== 'home')) return null;
+  const card = Glass('Ad offer', x, y, w, h, parent, .84);
+  card.classList.add('ad-card');
+  card.dataset.homeCard = 'ad'; card.dataset.placement = p.id; card.dataset.state = p.left > 0 ? 'offer' : 'done';
+  Kicker('動画で受け取る', 28, 24, card, { size: 16, color: p.left > 0 ? CYAN : SOFT });
+  Txt(p.left > 0 ? p.rewardLabel : '今日の分は受け取りました', 28, 84, w - 56, p.left > 0 ? 24 : 19, p.left > 0 ? WHITE : MUTED, card, { weight: 700, nowrap: true });
+  Txt(p.left > 0 ? `今日あと${p.left}回　·　自分で選んだ時だけ再生します` : 'また明日どうぞ（4:00 にリセット）', 28, 120, w - 56, 14, MUTED, card);
+  if (p.left > 0) Cta('動画を見る', 28, h - 72, Math.min(260, w - 56), () => AdPlayer(p, back), card, 'small ad-cta');
+  globalThis.__muchi && (globalThis.__muchi.lastKpi = p.left > 0 ? 'ad_offer_view' : globalThis.__muchi.lastKpi);
+  return card;
+}
+/** The simulated rewarded ad (stands in for the native AdMob full-screen ad), then the server's verdict. */
+async function AdPlayer(p, back = Home) {
+  const st = await L.adStart(p.id);
+  if (!st.ok) { toast(st.code === 'AD_LIMIT_REACHED' ? '今日の分は受け取りました。また明日どうぞ。' : '今は動画を用意できません。時間をおいてお試しください。'); back(); return; }
+  const s = st.value;
+  currentScreen = back; Clear('ad-player'); SetArt('Art/home-paddock', false); Shade('dim heavy');
+  const box = Dialog('Ad player', 880, 520);
+  box.classList.add('ad-player');
+  Kicker('広告　/　プロトタイプのシミュレーション', 52, 44, box, { size: 15, color: SOFT });
+  Txt('ここに広告の動画が流れます', 52, 170, 776, 32, WHITE, box, { align: 'center' });
+  const left = Txt('', 52, 236, 776, 22, CYAN, box, { weight: 700, align: 'center', cls: 'num' });
+  left.dataset.adCountdown = '1';
+  Txt(`最後まで見ると「${s.rewardLabel}」を受け取れます`, 52, 290, 776, 16, MUTED, box, { align: 'center' });
+  let n = AD_SECONDS(), done = false;
+  Ghost('閉じる', 648, 428, 180, 56, () => { done = true; AdWatched(p, { status: 'not_completed' }, back); }, box, 'quiet small').classList.add('ad-close');
+  every(1000, async () => {
+    if (done) return;
+    left.textContent = n > 0 ? `残り ${n} 秒` : '確認しています…';
+    if (n-- > 0) return;
+    done = true;
+    // the network's SSV callback → the server's verdict; the client only polls the session
+    const cb = await L.simulateAdCallback(s);
+    const sess = await L.adSession(s.sessionId);
+    AdWatched(p, sess.ok ? sess.value : { status: 'pending' }, back, cb.ok ? cb.value : null);
+  });
+}
+/** The watched state: what the server granted (or why nothing). */
+async function AdWatched(p, sess, back = Home) {
+  await refresh();
+  Clear('ad-watched'); SetArt('Art/home-paddock', false); Shade('dim');
+  const ok = sess.status === 'rewarded';
+  const box = Dialog('Ad watched', 760, 440);
+  box.classList.add('ad-card'); box.dataset.state = sess.status;
+  Kicker(ok ? '受け取りました' : '受け取れませんでした', 52, 44, box, { size: 16, color: ok ? CYAN : SOFT });
+  Txt(ok ? sess.rewardLabel : sess.status === 'not_completed' ? '最後まで見ると受け取れます' : '今回は受け取れませんでした', 52, 116, 656, ok ? 46 : 30, ok ? GOLD : WHITE, box, { weight: 700 });
+  Txt(ok ? `無償コインの所持：${fmt(sess.wallet.free)}枚（有償コインとは別に管理しています）` : '動画は自分で選んだ時だけ再生します。', 52, 200, 656, 16, MUTED, box, { lh: 1.6 });
+  Cta('つづける', 52, 318, 320, back, box, 'ad-cta');
+  globalThis.__muchi && (globalThis.__muchi.lastAd = sess.status);
 }
 
 // ---- time attack with ghosts (REQ-TA-*, friend ghosts first: REQ-UXS-074)
@@ -1565,15 +1635,18 @@ async function Settings() {
   }
   // ② looks / care and the legal pages: thin-divider lists
   const m = Glass('More', 556, 134, 480, 676, undefined, .9);
-  Kicker('見た目・お世話', 36, 30, m);
-  [['衣装', Wardrobe], ['コースの見た目', CourseThemes], ['レース条件', Conditions], ['お世話', Care]].forEach(([n, go], i) => {
-    const b = Btn(n, 36, 104 + i * 60, 408, 60, go, 'row' + (i === 3 ? ' last' : ''), m); b.style.fontSize = '20px';
+  Kicker('見た目・お世話・仲間', 36, 30, m);
+  // round 10: 支部の応援 (team cheer stamps) and 友達招待 next to the looks / care entries
+  const moreRows = [['衣装', Wardrobe], ['コースの見た目', CourseThemes], ['レース条件', Conditions], ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite']];
+  moreRows.forEach(([n, go, action], i) => {
+    const b = Btn(n, 36, 96 + i * 50, 408, 50, go, 'row' + (i === moreRows.length - 1 ? ' last' : ''), m); b.style.fontSize = '19px';
+    if (action) b.dataset.action = action;
     const em = document.createElement('em'); em.textContent = '›'; b.appendChild(em);
   });
-  Kicker('法定表示・規約', 36, 360, m, { rule: false, size: 15 });
-  [['利用規約', 'terms'], ['プライバシーポリシー', 'privacy'], ['特定商取引法に基づく表記', 'tokushoho'], ['資金決済法に基づく表示', 'shikin']].forEach(([n, k], i) => TextLink(n, 36, 396 + i * 48, 400, () => Legal(k, Settings), m));
+  Kicker('法定表示・規約', 36, 416, m, { rule: false, size: 15 });
+  [['利用規約', 'terms'], ['プライバシーポリシー', 'privacy'], ['特定商取引法に基づく表記', 'tokushoho'], ['資金決済法に基づく表示', 'shikin']].forEach(([n, k], i) => TextLink(n, 36, 448 + i * 42, 400, () => Legal(k, Settings), m));
   // the other front end (Codex's club UI, same logic and engine)
-  TextLink('クラブ版 UI', 36, 602, 400, () => { location.href = 'club.html'; }, m, 'クラブ版 UI を開く ↗');
+  TextLink('クラブ版 UI', 36, 624, 400, () => { location.href = 'club.html'; }, m, 'クラブ版 UI を開く ↗');
   // ③ demo states for review (REQ-UXP-002): the same rules on a moved clock
   const demo = Glass('Demo', 1056, 134, 508, 676, undefined, .78);
   Kicker('デモ（レビュー用）', 36, 30, demo, { color: SOFT });
@@ -1581,7 +1654,9 @@ async function Settings() {
   [['初日', 'day1'], ['3日目', 'day3'], ['7日目', 'day7'], ['最初から', 'new']].forEach(([n, k], i) => { const b = Btn(n, 36 + i * 110, 142, 102, 52, () => Demo(k), 'choice', demo); b.style.fontSize = '16px'; b.style.whiteSpace = 'nowrap'; b.style.padding = '0'; });
   Ghost('初回購入の直後', 36, 222, 436, 56, () => { linkOp('purchase'); if (!MaybeLinkPrompt('PurchaseComplete', Settings)) toast('引き継ぎの案内は出ません（表示済み・登録済み・FTUE中）'); }, demo, 'quiet small');
   Ghost('タイムアタック', 36, 292, 436, 56, () => TimeAttack(), demo, 'quiet small');
-  Txt('サーバーと同じ規則のまま、日付だけ進めてログボとレースを消化します。', 36, 372, 436, 14, SOFT, demo, { lh: 1.6 });
+  // round 10: a demo purchase of this season's pass (no billing) to see the 購入済み state
+  Ghost('パス購入済み（デモ）', 36, 362, 436, 56, async () => { const r = await L.demoPurchase('season_pass'); toast(r.ok ? '今シーズンのパスを購入済みにしました（決済なし）' : r.code === 'ALREADY_PURCHASED' ? '今シーズンのパスは購入済みです' : r.message); }, demo, 'quiet small');
+  Txt('サーバーと同じ規則のまま、日付だけ進めてログボとレースを消化します。', 36, 600, 436, 14, SOFT, demo, { lh: 1.6 });
   NavBar(4);
 }
 function ConfirmDeletion(v) {
@@ -1603,11 +1678,257 @@ async function Demo(kind) {
   for (const k of ['muchi.partner', 'muchi.notify.primer', 'muchi.link.prompt', 'muchi.link.firstPurchase', 'muchi.link.provider', 'muchi.proto.taFriends']) { try { localStorage.removeItem(k); } catch { /* */ } }
   try { for (const k of Object.keys(localStorage)) if (k.startsWith('muchi.proto.ta.')) localStorage.removeItem(k); } catch { /* */ }
   taCache = null;
+  globalThis.__cbWhatsNewClosed = false;
+  try { localStorage.removeItem('muchi.comeback.pushAsked'); } catch { /* */ }
   if (kind === 'new') { await L.bootstrap(); await refresh(); return Title(); }
+  if (kind === 'comeback') { await L.seedComeback(14); await refresh(); return Home(); }
   const spec = { day1: [1, [1]], day3: [3, [2, 2, 2]], day7: [7, [3, 3, 3, 3, 3, 3, 3]] }[kind];
   await L.seedDemo(spec[0], spec[1]);
   await refresh();
   return Home();
+}
+
+// ================================================================= round 10: 友達招待 (REQ-INV-*, contracts/protocol.md §19)
+// The same screen as the Unity InviteModel: my code + share, the milestone table, my invitees, and the code entry only while
+// the server says it is open. All values come from L.invite (the real InviteService on the local PlayerService).
+// ムチ一閃 tone: paddock art, translucent navy panels, letter-spaced cyan kickers, one skewed cyan CTA » per panel.
+const INVITE_LINK_KEY = 'muchi.invite.linkCode';
+const inviteMilestoneTitle = (m) => (m.kind === 'beginner_complete' ? '初心者ミッションをすべて達成' : m.kind === 'class' ? `${m.classId}級に昇級` : `ランク戦${m.target}戦`);
+const inviteItemName = (id) => (id === 'gacha_ticket' ? 'スカウト券' : id === 'gacha_ticket_10' ? '10連スカウト券' : L.master.itemLabels[id] ?? id);
+const inviteReward = (r) => [r.freeCoins ? `無償コイン${r.freeCoins}枚` : null, ...(r.items ?? []).map((it) => `${inviteItemName(it.itemId)}×${it.qty}`)].filter(Boolean).join('・');
+const INVITE_ERRORS = {
+  INVITE_CODE_INVALID: '招待コードが正しくありません。8文字を確かめてください。', NOT_FOUND: 'この招待コードは見つかりませんでした。',
+  INVITE_SELF: '自分の招待コードは入力できません。', INVITE_ALREADY_REDEEMED: '招待コードはすでに入力済みです。',
+  INVITE_WINDOW_CLOSED: '招待コードを入力できる期間は終わりました。', INVITE_REFUSED: 'この招待コードは使用できません。',
+  NOT_ELIGIBLE: 'チュートリアルを終えると入力できます。', RATE_LIMITED: '入力が続いたため、しばらくしてからお試しください。',
+};
+async function Invite(demoNote = '') {
+  currentScreen = () => Invite(demoNote);
+  const r = await L.invite.view();
+  await refresh();
+  Clear('invite'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('友達招待', '自分のコードを送る　·　友達のコードを入力する（始めてから7日以内）');
+  Back(Settings, 'BACK', 40, 834);
+  if (!r.ok) { const e = Glass('Invite error', 400, 360, 800, 140, undefined, .9); Txt(r.message, 44, 52, 712, 20, RED, e, { align: 'center' }); return; }
+  const v = r.value;
+  // ① my code + share, then what the inviter gets per friend (milestones) and the cap
+  const me = Glass('Invite code', 36, 134, 740, 676, undefined, .88); me.dataset.invite = 'mine';
+  Kicker('あなたの招待コード', 44, 32, me);
+  const code = Txt(v.displayCode, 44, 100, 652, 72, WHITE, me, { cls: 'invite-code num', ls: '.14em', nowrap: true }); code.dataset.code = v.code;
+  Txt('このコードで友達が始めると、友達に「はじめてのプレゼント」。\n友達がゲームを進めると、あなたにも招待ボーナスが届きます。', 44, 206, 652, 15, MUTED, me, { lh: 1.65 });
+  Cta('招待コードを送る', 44, 284, 380, async () => {
+    // OS share sheet in the app (IShareSheet); the browser uses navigator.share when it has one, else copies the text
+    let shared = false;
+    try { if (navigator.share) { await navigator.share({ text: v.share.text }); shared = true; } } catch { /* cancelled */ }
+    if (!shared) { try { await navigator.clipboard?.writeText(v.share.text); } catch { /* */ } }
+    toast(shared ? '共有しました（KPI invite_share）' : '共有の文をコピーしました（アプリでは共有シートを開きます）');
+    globalThis.__muchi && (globalThis.__muchi.lastKpi = 'invite_share');
+  }, me).dataset.action = 'share';
+  Ghost('コピー', 444, 290, 130, 60, async () => { try { await navigator.clipboard?.writeText(v.displayCode); } catch { /* */ } toast('コードをコピーしました'); }, me, 'small');
+  TextLink('規約', 600, 302, 96, () => Legal('terms', Invite), me, '規約').dataset.terms = v.termsKey;
+  Hair(44, 394, 652, me);
+  Kicker(`招待ボーナス　/　${v.cap}人まで`, 44, 420, me, { rule: false, size: 16 });
+  Txt('友達1人につき、友達が到達したときに届きます（インストールだけでは届きません）', 44, 452, 652, 14, SOFT, me);
+  v.milestones.forEach((m, i) => {
+    const row = el('invite-row', 44, 480 + i * 46, 652, 46, me); row.dataset.milestone = m.id;
+    Txt(inviteMilestoneTitle(m), 0, 12, 400, 18, WHITE, row, { weight: 500, nowrap: true });
+    Txt(inviteReward(m.reward), 400, 12, 252, 17, GOLD, row, { weight: 700, align: 'right', nowrap: true });
+  });
+  const capLine = Txt(`招待ボーナスの対象　${Math.min(v.counted, v.cap)} / ${v.cap}人`, 44, 632, 652, 16, CYAN, me, { weight: 700, ls: '.1em' }); capLine.dataset.cap = `${v.counted}/${v.cap}`;
+  // ② my invitees (crew) with each milestone reached / rewarded
+  const list = Glass('Invitees', 796, 134, 768, 400, undefined, .86);
+  Kicker('招待した仲間', 44, 32, list);
+  if (!v.invitees.length) Txt('まだいません。コードを送ってみましょう。', 44, 116, 680, 18, SOFT, list);
+  v.invitees.slice(0, 5).forEach((x, i) => {
+    const row = el('invite-row', 44, 100 + i * 52, 680, 52, list); row.dataset.invitee = x.playerId;
+    Txt((x.deleted ? '退会したプレイヤー' : x.displayName ?? '騎手') + (x.counted ? '' : '（対象外）'), 0, 14, 230, 18, x.deleted ? DIM : WHITE, row, { weight: 700, nowrap: true });
+    v.milestones.forEach((m, k) => {
+      const hit = x.milestones.find((y) => y.id === m.id);
+      const chip = Txt((hit ? (hit.rewarded ? '✓ ' : '・ ') : '— ') + inviteMilestoneTitle(m).replace('初心者ミッションをすべて達成', '初心者卒業').replace('に昇級', ''), 240 + k * 148, 16, 140, 15, hit ? (hit.rewarded ? OK : MUTED) : DIM, row, { weight: 500, nowrap: true });
+      chip.classList.add('invite-chip'); chip.dataset.reached = hit ? (hit.rewarded ? 'rewarded' : 'reached') : 'no';
+    });
+  });
+  if (v.invitees.length > 5) Txt(`ほか${v.invitees.length - 5}人`, 44, 366, 400, 14, SOFT, list);
+  // ③ code entry (only while the server allows it)
+  const entry = Glass('Invite entry', 796, 552, 768, 234, undefined, .9); entry.dataset.eligible = String(v.redeem.eligible);
+  if (v.redeem.eligible) {
+    Kicker(`友達のコードを入力　/　あと${v.redeem.daysLeft}日`, 44, 30, entry, { rule: false, size: 16 });
+    Txt(`友達のコードを入力すると ${inviteReward(v.redeem.welcomeGift)} がもらえます`, 44, 62, 680, 15, MUTED, entry);
+    const fieldBox = el('fieldbox invite-field', 44, 100, 400, 72, entry);
+    const input = document.createElement('input');
+    input.className = 'field invite-input'; input.maxLength = 12; input.placeholder = 'XXXX-XXXX'; input.setAttribute('aria-label', '招待コード');
+    input.autocapitalize = 'characters'; input.spellcheck = false;
+    Object.assign(input.style, { left: '20px', top: '8px', width: '360px', height: '56px', fontSize: '32px' });
+    fieldBox.appendChild(input);
+    const err = Txt('', 44, 186, 380, 14, RED, entry, { weight: 500 });
+    const go = Cta('受け取る', 464, 100, 260, async () => {
+      const res = await L.invite.redeem(input.value);
+      if (!res.ok) { err.textContent = INVITE_ERRORS[res.code] ?? res.message; return; }
+      prefs.set(INVITE_LINK_KEY, '');
+      toast(`${inviteReward(res.value.welcomeGift)}を受け取りました` + (res.value.friended ? `。${res.value.inviter.displayName ?? '招待してくれた人'}さんとフレンドになりました` : ''));
+      Invite();
+    }, entry);
+    go.dataset.action = 'redeem';
+    const sync = () => { const ok = !!L.invite.normalize(input.value); go.classList.toggle('disabled', !ok); err.textContent = !ok && input.value.replace(/[\s-]/g, '').length >= 8 ? INVITE_ERRORS.INVITE_CODE_INVALID : ''; };
+    input.addEventListener('input', sync);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !go.classList.contains('disabled')) go.click(); });
+    const linked = prefs.get(INVITE_LINK_KEY, '');
+    if (linked) input.value = L.invite.display(L.invite.normalize(linked) ?? linked);
+    sync();
+    if (!demoNote) L.invite.demoInviterCode().then((c) => { const n = Txt(`デモ用の友達のコード：${c}`, 440, 188, 284, 13, DIM, entry, { align: 'right', nowrap: true }); n.dataset.demoCode = c; });
+  } else {
+    Kicker('友達のコードを入力', 44, 30, entry, { rule: false, size: 16 });
+    const ib = v.redeem.invitedBy;
+    const why = v.redeem.reason === 'already_redeemed' ? `${ib?.displayName ?? '友達'}さんの招待で参加しました` : v.redeem.reason === 'ftue' ? 'チュートリアルを終えると入力できます'
+      : v.redeem.reason === 'window_closed' ? `入力できるのは始めてから${v.redeem.windowDays}日間です` : '今は入力できません';
+    Txt(why, 44, 82, 680, 22, WHITE, entry, { weight: 700 }).dataset.reason = v.redeem.reason ?? '';
+  }
+  // review-only demo actions (same rules: other local players redeem my code / reach milestones)
+  const demo = el('invite-demo', 796, 800, 768, 48);
+  Ghost('デモ：友達が参加', 0, 0, 250, 48, async () => { const d = await L.invite.demoFriendJoins(); toast(d.ok ? (d.value.result.friended ? '友達があなたのコードで参加し、フレンドになりました' : '友達があなたのコードで参加しました') : (INVITE_ERRORS[d.code] ?? d.message)); Invite(); }, demo, 'quiet small');
+  Ghost('デモ：初心者卒業', 259, 0, 250, 48, async () => { const d = await L.invite.demoMilestone('im_graduate'); toast(d.ok ? `招待ボーナス：無償コイン+${d.value.freeCoinsGained}` : '対象の友達がいません'); Invite(); }, demo, 'quiet small');
+  Ghost('デモ：A級昇級', 518, 0, 250, 48, async () => { const d = await L.invite.demoMilestone('im_class_a'); toast(d.ok ? `招待ボーナス：無償コイン+${d.value.freeCoinsGained}` : '対象の友達がいません'); Invite(); }, demo, 'quiet small');
+}
+
+// ================================================================= returning players (REQ-CB-001..012, 06 §4.5, contracts/protocol.md §20)
+// ムチ一閃 tone: photoreal art, sparse translucent navy panels, letter-spaced cyan kickers, one skewed cyan CTA » per view.
+// Everything shown comes from the real comeback rules (MuchiLogic.comeback = GET /v1/comeback): the real window end as a
+// date (no countdown timer), rewards as they are (free coins / tickets / material, no 「倍」), the lapse-reminder opt-in
+// (push category `comeback`, off by default) asked once and never pre-ticked.
+const cbDay = (ms) => { const d = new Date(ms - 1 + 9 * 3600e3); return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日`; };
+// the window's last GAME day (endsAt is 4:00 the next calendar day with the 4:00 rollover; ComebackModel.EndText)
+const cbEnd = (w) => (/^\d{4}-\d{2}-\d{2}$/.test(w.endDay || '') ? `${+w.endDay.slice(5, 7)}月${+w.endDay.slice(8, 10)}日` : cbDay(w.endsAt));
+async function cbView() { const r = await L.comeback(); return r.ok ? r.value : { active: false, window: null, push: { enabled: false } }; }
+
+// ---- the home card slot (round 10): home shows at most ONE card, in the left column between the season panel and the
+// partner. Priority: the comeback welcome (a full screen before home, once per window) > what's new (once) > the comeback
+// campaign card (while a window runs) > the rewarded-ad offer. Closing a card draws the next one in the same place.
+const HOME_CARD = { x: 33, y: 152, w: 450 };
+async function HomeCard(cb) {
+  if (cur?.dataset.screen !== 'home') return null;
+  cur.querySelectorAll('[data-home-card]').forEach((n) => n.remove());
+  const wn = await L.whatsNew();
+  if (wn.ok && wn.value.showCard && !globalThis.__cbWhatsNewClosed) return WhatsNewCard(wn.value, cb);
+  if (cb?.active) return ComebackCard(cb);
+  if (typeof AdOfferSlot === 'function') return AdOfferSlot('home', HOME_CARD.x, HOME_CARD.y, HOME_CARD.w, 214, Home);
+  return null;
+}
+/** REQ-CB-008: the one-time card: what went live since the player last looked. Closing marks it seen. */
+function WhatsNewCard(data, cb) {
+  const KIND = { feature: '新機能', banner: 'スカウト', event: 'イベント', balance: '調整' };
+  const card = Glass('What\'s new', HOME_CARD.x, HOME_CARD.y, HOME_CARD.w, 404, undefined, .86);
+  card.dataset.homeCard = 'whatsnew'; card.dataset.whatsnew = String(data.items.length); card.classList.add('rise');
+  Kicker('前回からのお知らせ', 28, 24, card, { size: 16 });
+  const shown = data.items.slice(0, 3);
+  shown.forEach((it, i) => {
+    const row = el('cb-item', 28, 92 + i * 84, 394, 84, card); row.dataset.item = it.id;
+    Txt(KIND[it.kind] ?? 'お知らせ', 0, 12, 90, 12, CYAN, row, { weight: 700, ls: '.18em' });
+    if (it.endsAt) Txt(`${cbDay(it.endsAt)}まで`, 250, 12, 144, 12, GOLD, row, { weight: 700, align: 'right' });
+    Txt(it.title, 0, 32, 394, 18, WHITE, row, { weight: 700, nowrap: true });
+    Txt(it.body, 0, 58, 394, 12, MUTED, row, { nowrap: true }).style.overflow = 'hidden';
+  });
+  const more = Math.max(0, data.items.length - shown.length) + (data.more ?? 0);
+  if (more > 0) Txt(`ほか${more}件`, 28, 352, 200, 14, SOFT, card);
+  Ghost('閉じる', 282, 336, 140, 48, async () => {
+    globalThis.__cbWhatsNewClosed = true; card.remove(); await L.whatsNewSeen(data.upTo); HomeCard(cb);
+  }, card, 'small').dataset.whatsnewClose = '1';
+  return card;
+}
+/** While a comeback window runs: one card leading back to the campaign. */
+function ComebackCard(v) {
+  const w = v.window;
+  const card = Glass('Comeback', HOME_CARD.x, HOME_CARD.y, HOME_CARD.w, 214, undefined, .84);
+  card.dataset.homeCard = 'comeback'; card.dataset.comeback = w.tier;
+  Kicker('復帰キャンペーン', 28, 24, card, { size: 16 });
+  Txt(`${cbEnd(w)}まで　·　残り${w.remainingDays}日`, 28, 88, 394, 18, GOLD, card, { weight: 700 });
+  Txt(w.login.claimableToday ? '今日の復帰ログインボーナスを受け取れます' : `ログインボーナス ${w.login.claimed}/${w.login.total}　·　明日また受け取れます`, 28, 116, 394, 14, MUTED, card);
+  Cta('受け取りにいく', 28, 142, 300, () => ComebackTrack(), card, 'small');
+  return card;
+}
+
+async function ComebackWelcome(v) {
+  currentScreen = () => ComebackWelcome();
+  v ??= await cbView();
+  if (!v.active) return Home();
+  const w = v.window;
+  Clear('comeback-welcome'); SetArt('Art/first-ride'); Shade('left');
+  Kicker('おかえりなさい　/　復帰キャンペーン', 82, 112, undefined, { size: 18 });
+  Txt('おかえりなさい！', 78, 186, 900, 76, WHITE, undefined, { cls: 'tshadow', ls: '.04em' });
+  Txt(`${w.lapseDays}日ぶりのご来場です。\n${cbEnd(w)}まで、復帰キャンペーンを用意しました。`, 82, 296, 820, 22, WHITE, undefined, { cls: 'tshadow', weight: 500, lh: 1.65 });
+  const lines = [
+    ['復帰ログインボーナス', `${w.login.total}日分　·　1日1回、とぎれても進みます`],
+    ['復帰ミッション', `${w.missions.length}本　·　新しくなった機能を順に案内します`],
+    ['パスXPの上乗せ', w.catchUp.capXp > 0 ? `1レースごとに +${w.catchUp.bonusPerRace}　·　最大 ${fmt(w.catchUp.capXp)}` : 'このシーズンは上乗せなし'],
+  ];
+  const box = Glass('Welcome list', 82, 410, 760, 222, undefined, .8);
+  lines.forEach(([t, d], i) => {
+    Txt(t, 36, 30 + i * 62, 280, 20, WHITE, box, { weight: 700, nowrap: true });
+    Txt(d, 300, 33 + i * 62, 430, 15, MUTED, box, { weight: 500, nowrap: true });
+    if (i < lines.length - 1) Hair(36, 72 + i * 62, 688, box);
+  });
+  Cta('受け取りにいく', 82, 670, 460, () => ComebackTrack());
+  Ghost('あとで', 572, 676, 180, 60, Home, undefined, 'quiet');
+  Caption(`期間：${w.startDay.replace(/-/g, '/')} 〜 ${w.endDay.replace(/-/g, '/')}（ゲーム日）`, 82, 790, undefined, 14).classList.add('tshadow');
+  await L.comebackWelcomed(); // shown once (POST /v1/comeback/welcome)
+}
+
+async function ComebackTrack() {
+  currentScreen = ComebackTrack;
+  await refresh();
+  const v = await cbView();
+  if (!v.active) { toast('復帰キャンペーンは終了しました'); return Home(); }
+  const w = v.window;
+  Clear('comeback'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('復帰キャンペーン', `${w.day}日目 / ${w.days}日　·　期間はゲーム日で数えます　·　受け取れるのは無償コイン・券・素材です`);
+  // left: real end date, catch-up meter, the 7-day login track, the opt-in
+  const p = Glass('Comeback', 36, 134, 1060, 676, undefined, .88);
+  Txt(`${cbEnd(w)}まで　·　残り${w.remainingDays}日`, 44, 32, 600, 24, GOLD, p, { weight: 700, nowrap: true }).dataset.cbEnd = String(w.endsAt);
+  const cu = w.catchUp;
+  Txt(cu.active ? `パスXP上乗せ中　1レースごとに +${cu.bonusPerRace}（残り ${fmt(cu.remainingXp)}）` : cu.capXp > 0 ? 'パスXPの上乗せは受け取り済み' : 'このシーズンのパスXPは追いついています', 44, 76, 900, 15, MUTED, p, { weight: 500 });
+  Gauge(44, 106, 600, cu.capXp > 0 ? cu.grantedXp / cu.capXp : 0, p);
+  if (w.blocked) Txt('アカウント削除の予定があります。取り消すと受け取れます', 664, 100, 360, 14, RED, p, { weight: 700 }).dataset.cbBlocked = '1';
+  Hair(44, 138, 972, p);
+  Kicker(`復帰ログインボーナス　${w.login.claimed} / ${w.login.total}`, 44, 160, p, { rule: false, size: 16 });
+  const strip = el('cb-strip', 44, 196, 972, 168, p);
+  w.login.days.forEach((d) => {
+    const today = !d.claimed && d.day === w.login.claimed + 1 && w.login.claimableToday && !w.blocked;
+    const c = document.createElement('div');
+    c.className = 'cb-cell' + (d.claimed ? ' claimed' : '') + (today ? ' today' : '');
+    c.dataset.day = String(d.day);
+    c.innerHTML = `<small>${d.day}日目</small><b></b><em>${d.claimed ? '受取済' : today ? '今日' : ''}</em>`;
+    c.querySelector('b').textContent = rewardText(d.reward);
+    strip.appendChild(c);
+  });
+  if (w.login.claimableToday && !w.blocked) {
+    Cta('今日の分を受け取る', 44, 392, 440, async () => {
+      const r = await L.comebackClaimLogin();
+      toast(r.ok ? `復帰ログインボーナス ${r.value.day}日目：${rewardText(r.value.reward)}` : r.message);
+      ComebackTrack();
+    }, p);
+  } else Txt(w.login.claimed >= w.login.total ? 'ログインボーナスはすべて受け取りました' : '明日また受け取れます（とぎれても進みます）', 44, 412, 700, 18, WHITE, p, { weight: 500 });
+  // the lapse-reminder opt-in: once, never pre-ticked (06 §3.5: a re-engagement push has its own category and consent)
+  if (!v.push.enabled && prefs.get('muchi.comeback.pushAsked', '') !== '1') {
+    Hair(44, 506, 972, p);
+    const op = el('cb-optin', 44, 528, 972, 110, p); op.dataset.optin = '1';
+    Kicker('お知らせ', 0, 0, op, { rule: false, size: 15 });
+    Txt('また間があいたとき、お知らせを受け取りますか？\n3日目・7日目の夜に1回ずつ。あとから設定で変えられます。', 0, 30, 600, 15, WHITE, op, { lh: 1.6 });
+    Ghost('お知らせを受け取る', 640, 30, 200, 56, async () => { prefs.set('muchi.comeback.pushAsked', '1'); await L.setComebackPush(true); toast('お知らせを受け取ります'); ComebackTrack(); }, op, 'small');
+    Ghost('いいえ', 852, 30, 120, 56, () => { prefs.set('muchi.comeback.pushAsked', '1'); ComebackTrack(); }, op, 'quiet small');
+  }
+  // right: missions that re-teach what changed
+  const mp = Glass('Comeback missions', 1116, 134, 448, 676, undefined, .88);
+  Kicker('新しくなったこと', 32, 30, mp, { size: 16 });
+  const go = { skills: Stable, scout: () => Scout(), bond: Care, my_stable: Stable, race: RaceLobby };
+  w.missions.forEach((m, i) => {
+    const row = el('cb-mission' + (m.claimed ? ' done' : ''), 32, 96 + i * 114, 384, 114, mp); row.dataset.mission = m.id;
+    Txt((m.claimed ? '✓ ' : '') + m.title, 0, 14, 300, 17, m.claimed ? DIM : WHITE, row, { weight: 700, nowrap: true });
+    Txt(`${Math.min(m.progress, m.target)}/${m.target}`, 300, 14, 84, 16, GOLD, row, { weight: 700, align: 'right', cls: 'num' });
+    Txt(m.guide, 0, 40, 384, 12, MUTED, row, { lh: 1.5 });
+    Txt(rewardText(m.reward), 0, 84, 240, 13, CYAN, row, { weight: 500, nowrap: true });
+    if (m.claimable) Ghost('受け取る', 264, 72, 120, 36, async () => { const r = await L.comebackClaimMission(m.id); toast(r.ok ? `${m.title}：${rewardText(r.value.reward)}` : r.message); ComebackTrack(); }, row, 'small gold');
+    else if (!m.claimed && go[m.feature]) Ghost('行ってみる', 264, 72, 120, 36, go[m.feature], row, 'quiet small');
+  });
+  Back(Home, 'ホームへ', 40, 834);
 }
 
 // ================================================================= stable — 07-stable
@@ -1795,6 +2116,108 @@ function Care() {
   Back(Home, 'BACK', 40, 834);
 }
 
+// ================================================================= round 10: 支部の応援スタンプ (REQ-TEAMFEED-*)
+// The team feed on the real server rules (TeamsService / TeamCore in the browser) — fixed stamps only, no text field.
+// Mirrors unity/Assets/Muchi/Game/TeamFeedModel.cs: palette with server-built unlock texts, 10 s post cooldown, cheering a
+// teammate's race result (one stamp each, tap again to take it back), mute (local at once) and report (hidden at once).
+// ムチ一閃 tone: photoreal paddock art, two translucent navy panels, letter-spaced cyan kickers, one skewed cyan CTA ».
+let tfSelected = 'cheer';
+let tfLastPost = -1e15;
+const TF_INTERVAL = 10_000;
+const tfWhen = (at) => { const d = Math.max(0, L.now() - at); return d < 60e3 ? 'たった今' : d < 3600e3 ? `${Math.floor(d / 60e3)}分前` : d < 86400e3 ? `${Math.floor(d / 3600e3)}時間前` : jstDate(at).split(' ')[0]; };
+function tfLine(it, label) {
+  if (it.kind === 'race' && it.race) return `${it.displayName}さんが${it.race.mode === 'tournament' ? '大会' : 'ランク戦'}で${it.race.place === 1 ? '1着！' : it.race.place + '着'}`;
+  return label(it.stampId);
+}
+const tfNode = (tag, cls, text) => { const n = document.createElement(tag); n.className = cls; if (text != null) n.textContent = text; return n; };
+async function TeamFeed() {
+  currentScreen = TeamFeed;
+  const team = await L.teamDemo();
+  const [cat, res] = await Promise.all([L.stamps(), L.teamFeed()]);
+  await refresh();
+  const items = res.ok ? res.value.items : [];
+  const stampOf = (id) => cat.stamps.find((s) => s.id === id);
+  const label = (id) => stampOf(id)?.label ?? id;
+  if (!stampOf(tfSelected)?.unlocked) tfSelected = cat.stamps.find((s) => s.unlocked)?.id ?? 'cheer';
+  const deleting = player.deletion?.status === 'scheduled';
+  Clear('team-feed'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar(`支部　/　${team.name}`, '応援スタンプ　·　定型スタンプだけ（自由入力はありません）');
+  // ① the feed (newest first)
+  const feed = Glass('Team feed', 36, 134, 940, 676, undefined, .86);
+  feed.classList.add('tf-feed');
+  Kicker('フィード', 36, 30, feed);
+  Ghost('支部員のデモ', 700, 34, 204, 50, async () => { L.setClockMs(L.now() + 11_000); await L.teamActivity(); TeamFeed(); }, feed, 'quiet small');
+  const list = el('tf-list', 0, 112, 940, 556, feed);
+  list.dataset.count = items.length;
+  if (!items.length) Txt('まだ何もありません。スタンプで声をかけてみよう', 36, 24, 860, 19, MUTED, list);
+  for (const it of items) {
+    const row = tfNode('div', 'tf-row' + (it.kind === 'race' ? ' race' : '') + (it.mine ? ' mine' : ''));
+    row.dataset.seq = it.seq; row.dataset.kind = it.kind; row.dataset.player = it.playerId;
+    row.appendChild(tfNode('div', 'tf-meta', `${it.mine ? 'あなた' : it.displayName}　·　${tfWhen(it.at)}`));
+    const main = tfNode('div', 'tf-main');
+    if (it.kind === 'stamp') { const b = tfNode('span', 'tf-badge', label(it.stampId)); b.dataset.asset = it.stampAsset; main.appendChild(b); }
+    else main.appendChild(tfNode('span', 'tf-race', tfLine(it, label)));
+    row.appendChild(main);
+    const foot = tfNode('div', 'tf-foot');
+    for (const r of it.reactions) foot.appendChild(tfNode('span', 'tf-react' + (r.mine ? ' mine' : ''), `${label(r.stampId)} ${r.count}`));
+    if (it.kind === 'race' && !it.mine) {
+      const on = it.myReaction === tfSelected;
+      const cheer = tfNode('button', 'tf-cheer' + (on ? ' on' : ''), on ? '応援を取り消す' : `「${label(tfSelected)}」で応援 »`);
+      cheer.disabled = deleting;
+      cheer.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const r = await L.reactToFeed(it.seq, on ? null : tfSelected);
+        if (!r.ok) { toast(r.code === 'RATE_LIMITED' ? '少し待ってから応援してください' : r.code === 'DELETION_PENDING' ? 'アカウント削除の手続き中は送れません' : r.message); return; }
+        TeamFeed();
+      });
+      foot.appendChild(cheer);
+    }
+    if (!it.mine) {
+      const mute = tfNode('button', 'tf-link', '非表示');
+      mute.addEventListener('click', async (e) => { e.stopPropagation(); const r = await L.muteMember(it.playerId, true); toast(r.ok ? `${it.displayName}さんのスタンプを表示しません（その他から戻せます）` : r.message); TeamFeed(); });
+      const rep = tfNode('button', 'tf-link', '報告');
+      rep.addEventListener('click', async (e) => { e.stopPropagation(); const r = await L.reportFeed(it.seq, 'spam'); toast(r.ok ? '報告しました。ご協力ありがとうございます' : r.message); TeamFeed(); });
+      foot.appendChild(mute); foot.appendChild(rep);
+    }
+    row.appendChild(foot);
+    list.appendChild(row);
+  }
+  // ② the stamp palette: every stamp; locked ones say how they unlock (play / pass / direct sale — never gacha)
+  const pal = Glass('Stamp palette', 996, 134, 568, 560, undefined, .86);
+  Kicker('スタンプ', 36, 30, pal);
+  Txt(`${cat.stamps.filter((s) => s.unlocked).length} / ${cat.stamps.length} 解放`, 300, 72, 232, 14, SOFT, pal, { align: 'right', ls: '.12em' });
+  const grid = el('tf-grid', 36, 112, 496, 420, pal);
+  for (const s of cat.stamps) {
+    const t = tfNode('button', 'tf-stamp' + (s.unlocked ? '' : ' locked') + (s.id === tfSelected ? ' sel' : ''));
+    t.dataset.stamp = s.id; t.dataset.asset = s.asset;
+    t.appendChild(tfNode('b', '', s.label));
+    t.appendChild(tfNode('small', '', s.unlocked ? '' : s.unlockText));
+    t.addEventListener('click', () => {
+      if (!s.unlocked) { toast(s.unlockText); if (s.unlock.kind === 'cosmetic') Store('looks'); return; }
+      tfSelected = s.id; TeamFeed();
+    });
+    grid.appendChild(t);
+  }
+  // ③ the one filled CTA: skewed cyan with », the 10 s rule shown on it
+  const wait = Math.max(0, tfLastPost + TF_INTERVAL - L.now());
+  const send = Cta(deleting ? 'アカウント削除の手続き中は送れません' : `「${label(tfSelected)}」を送る`, 996, 716, 568, async () => {
+    const r = await L.postStamp(tfSelected);
+    tfLastPost = L.now();
+    if (!r.ok) { toast(r.code === 'RATE_LIMITED' ? 'スタンプは10秒に1回、1日50回までです' : r.code === 'STAMP_LOCKED' ? r.message : r.code === 'DELETION_PENDING' ? 'アカウント削除の手続き中は送れません' : r.message); return; }
+    TeamFeed();
+  }, undefined, 'tf-cta');
+  if (deleting) disable(send);
+  if (wait > 0) {
+    disable(send);
+    const sp = send.querySelector('span');
+    every(250, () => {
+      const w = Math.max(0, tfLastPost + TF_INTERVAL - L.now());
+      if (w <= 0) { send.classList.remove('disabled'); sp.textContent = `「${label(tfSelected)}」を送る`; } else sp.textContent = `あと${Math.ceil(w / 1000)}秒で送れます`;
+    });
+  }
+  NavBar(4);
+}
+
 // ================================================================= boot
 function fit() {
   const s = Math.min(window.innerWidth / 1600, window.innerHeight / 900);
@@ -1823,13 +2246,17 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),
     logic: L, view: () => view,
   };
+  // round 10: index.html?invite=<code> (or unity.html?invite=…, redirected) stands in for muchi://invite/<code> (pre-fills the entry; kept through the FTUE)
+  const inviteLink = new URLSearchParams(location.search).get('invite');
+  if (inviteLink) prefs.set('muchi.invite.linkCode', inviteLink);
   if (demo) await Demo(demo);
+  else if (inviteLink && player.flags?.partnerHorseId) await Invite();
   else if (player.flags?.partnerHorseId || player.horses.some((h) => h.named)) await Home(); else Title();
   requestAnimationFrame(raceLoop);
   globalThis.__muchi.ready = true;

@@ -1,0 +1,19 @@
+{
+  "_comment": "支部の応援スタンプ（REQ-TEAMFEED-*）。自由入力のない定型スタンプだけ（docs/planning/03）。asset は stamp/<id>（contracts/assets.md）。unlock: default=最初から / races=通算出走回数 / pass=シーズンパスを一度でも購入 / cosmetic=見た目ショップでコイン直販（items.json の kind \"stamp\"。ガチャからは出ない）。",
+  "version": 1,
+  "config": { "postIntervalMs": 10000, "postsPerDay": 50, "feedSize": 100, "pageDefault": 20, "pageMax": 50, "reportsPerDay": 10, "muteMax": 100, "racePlaceMax": 3 },
+  "stamps": [
+    { "id": "cheer", "label": "がんばれ！", "unlock": { "kind": "default" } },
+    { "id": "nice", "label": "ナイス！", "unlock": { "kind": "default" } },
+    { "id": "thanks", "label": "ありがとう", "unlock": { "kind": "default" } },
+    { "id": "gg", "label": "おつかれ！", "unlock": { "kind": "default" } },
+    { "id": "lets_go", "label": "いくぞ！", "unlock": { "kind": "default" } },
+    { "id": "clap", "label": "パチパチ", "unlock": { "kind": "default" } },
+    { "id": "whip", "label": "ムチ一閃！", "unlock": { "kind": "races", "count": 10 } },
+    { "id": "photo_finish", "label": "ハナ差！", "unlock": { "kind": "races", "count": 50 } },
+    { "id": "legend", "label": "伝説の走り", "unlock": { "kind": "races", "count": 200 } },
+    { "id": "pass_crown", "label": "王者の風格", "unlock": { "kind": "pass" } },
+    { "id": "carrot", "label": "にんじん！", "unlock": { "kind": "cosmetic", "itemId": "stamp_carrot" } },
+    { "id": "horseshoe", "label": "幸運の蹄鉄", "unlock": { "kind": "cosmetic", "itemId": "stamp_horseshoe" } }
+  ]
+}

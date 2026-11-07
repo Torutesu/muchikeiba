@@ -1,5 +1,5 @@
 import type { Env } from './env.js';
-import { eventPlayersFrom, friendIdsFrom, handle, makeFriendsService, makeStudService, teamPlayersFrom, tournamentPlayersFrom, type AppContext, type PlayerInvoker, type RaceEntry } from './http/app.js';
+import { eventPlayersFrom, friendIdsFrom, handle, makeFriendsService, makeInviteService, makeStudService, teamPlayersFrom, tournamentPlayersFrom, type AppContext, type PlayerInvoker, type RaceEntry } from './http/app.js';
 import { bearer, verifyFirebaseIdToken } from './http/auth.js';
 import { parseStoreNotification, storeSettingsFromEnv } from './http/stores.js';
 import { accountingStoreIndex } from './do/storeIndex.js';
@@ -27,7 +27,8 @@ import { SpectateService, SPECTATE_RATE } from './domain/spectate.js';
 import { TournamentsService, type TournamentBackend } from './domain/tournamentService.js';
 import type { TournamentSummary } from './domain/tournaments.js';
 import { signTicket } from './http/ticket.js';
-import { TeamsService, type TeamLeagueView, type TeamPort, type TeamView } from './domain/teamService.js';
+import { TeamsService, type TeamFeedPage, type TeamLeagueView, type TeamPort, type TeamView } from './domain/teamService.js';
+import { stampsProblems, type FeedItem } from './domain/teamFeed.js';
 import type { TeamSummary } from './domain/teams.js';
 import { EventsService } from './domain/eventService.js';
 import { eventBoardKey, eventCronPlan, validateEvents } from './domain/events.js';
@@ -38,7 +39,7 @@ import { authenticateAdmin, parseAdminTokens, RateLimiter, type AdminAuthConfig,
 import { DeadLetterService, type DeadLetterOwner, type DeadLetterRegistry, type DeadLetterSource } from './ops/deadLetter.js';
 import { activeConfig } from './ops/activeConfig.js';
 import type { ResolvedConfig } from './ops/config.js';
-import { shardedDirectory, shardedStableDirectory, shardedStudDirectory } from './do/directory.js';
+import { shardedDirectory, shardedInviteDirectory, shardedStableDirectory, shardedStudDirectory } from './do/directory.js';
 import { makeStableService } from './http/stablePorts.js';
 import { boardKey, indexKey, type RolloverState } from './domain/leaderboard.js';
 import { validateLeagueAndWeather } from './domain/league.js';
@@ -54,6 +55,22 @@ import { validateUx } from './domain/onboarding.js';
 import type { TournamentClosingInfo } from './domain/nudges.js';
 import { jstMonthKey } from './domain/time.js';
 import { collectItemIds } from './domain/visuals.js';
+import { parseAdUnits, RemoteKeySource, StaticKeySource, type PemKey, type SsvKeySource } from './ads/ssv.js';
+
+/** REQ-AD-006: SSV key sources are cached per isolate (the remote set is fetched at most once a day / per unknown key id). */
+const ssvSources = new Map<string, SsvKeySource>();
+function ssvKeys(env: Env): SsvKeySource | null {
+  const k = env.ADS_SSV_KEYS ? 'static:' + env.ADS_SSV_KEYS : env.ADS_SSV_KEYS_URL ? 'url:' + env.ADS_SSV_KEYS_URL : null;
+  if (!k) return null;
+  let src = ssvSources.get(k);
+  if (!src) {
+    src = env.ADS_SSV_KEYS ? new StaticKeySource(JSON.parse(env.ADS_SSV_KEYS) as PemKey[]) : new RemoteKeySource({ url: env.ADS_SSV_KEYS_URL! });
+    ssvSources.set(k, src);
+  }
+  return src;
+}
+/** REQ-AD-006: failed SSV callbacks per source IP and valid ones per player (per isolate; the player object also caps sessions per day). */
+const ssvLimiter = new RateLimiter({ read: { capacity: 30, refillPerSec: 1 }, write: { capacity: 30, refillPerSec: 1 } }, 'ssv');
 
 /** REQ-PUSH-006: one FCM topic send reaches every opted-in device (no per-player fan-out). */
 async function broadcastSeasonReminder(env: Env, now: number): Promise<string | null> {
@@ -72,6 +89,7 @@ async function broadcastSeasonReminder(env: Env, now: number): Promise<string | 
 const baseMaster = loadMaster();
 validateGacha(baseMaster); // fail fast on a broken gacha/master definition (REQ-GACHA-003/008)
 validateItems(baseMaster); // REQ-ITEM-*: tickets may not reach paid-only banners, cosmetics reference real assets/patterns
+{ const sp = stampsProblems(baseMaster); if (sp.length) throw new Error('master/stamps.json: ' + sp.join('; ')); } // REQ-TEAMFEED-002
 validateEvents(baseMaster, baseMaster.events); // REQ-EVENT-001
 validateLeagueAndWeather(baseMaster); // REQ-LEAGUE-* and per-course climate (REQ-TRACK-003)
 validateUx(baseMaster, new Set(collectItemIds(baseMaster))); // REQ-UXS-*: onboarding, missions, experiments, deletion
@@ -99,6 +117,13 @@ function makeTeamsService(env: Env, master: () => Master, player: (uid: string) 
     disband: async (id, a) => { await call(team(id).disband!(a)); },
     managers: async (id) => (await call(team(id).managers!())) as string[],
     reportPoints: async (id, p, s, pts, n) => { await call(team(id).reportPoints!(p, s, pts, n)); },
+    // REQ-TEAMFEED-*
+    feedPost: async (id, p, s) => (await call(team(id).feedPost!(p, s))) as FeedItem,
+    feedRace: async (id, p, r) => (await call(team(id).feedRace!(p, r))) as FeedItem | null,
+    feedReact: async (id, p, seq, s) => (await call(team(id).feedReact!(p, seq, s))) as { ownerId: string; isNew: boolean; kind: 'stamp' | 'race' },
+    feedReport: async (id, p, seq) => (await call(team(id).feedReport!(p, seq))) as { ownerId: string; first: boolean },
+    feedPage: async (id, v, muted, before, limit) => (await call(team(id).feedPage!(v, muted, before, limit))) as TeamFeedPage,
+    feedForget: async (id, p) => (await call(team(id).feedForget!(p))) as { removed: number },
   };
   const dir = () => stub(env.TEAM_DIRECTORY, 'global');
   return new TeamsService(master, port, teamPlayersFrom(player), {
@@ -315,6 +340,8 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
   const mm = () => stub(env.MATCHMAKER, 'ranked-jp');
   const call = async (p: Promise<Envelope<unknown>>) => unwrap(await p);
   const lb = (seasonId: string) => stub(env.LEADERBOARD, `lb:${seasonId}`);
+  const adKeys = ssvKeys(env);
+  const adUnits = parseAdUnits(env.ADS_AD_UNITS);
   const player = (uid: string): PlayerInvoker => {
     const s = stub(env.PLAYER, uid);
     return { invoke: (async (m: string, ...args: unknown[]) => call(s.invoke!(m, args))) as PlayerInvoker['invoke'] };
@@ -349,6 +376,7 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
     friends: makeFriendsService((uid) => player(uid), shardedDirectory(env.DIRECTORY)),
     stud: makeStudService(player, shardedStudDirectory(env.DIRECTORY), () => master),
     stable: makeStableService(player, shardedStableDirectory(env.DIRECTORY), () => master),
+    invite: makeInviteService(player, shardedInviteDirectory(env.DIRECTORY), shardedDirectory(env.DIRECTORY), () => master), // REQ-INV-*
     teams: makeTeamsService(env, () => master, player),
     events: new EventsService(() => master, eventPlayersFrom(player), {
       enqueue: (eventId, p, e) => call(mm().eventEnqueue!(eventId, p, e)),
@@ -406,6 +434,7 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
     ...(ops ? { ops } : {}),
     authenticateAdmin: (req) => authenticateAdmin(req, adminAuthConfig(env)),
     ...(env.ASSET_CDN_BASE ? { assetCdnBase: env.ASSET_CDN_BASE } : {}),
+    ...(adKeys ? { ads: { keys: adKeys, ...(adUnits ? { adUnits } : {}), admit: (key: string, now: number) => ssvLimiter.take(key, 'write', now) } } : {}),
     configInfo: async () => ({ versionId: cfg?.versionId ?? 'base', hash: cfg?.hash ?? 'base', rulesetVersion: cfg?.ruleset.rulesetVersion ?? '', activatedAt: cfg?.activatedAt ?? null }),
   };
 }

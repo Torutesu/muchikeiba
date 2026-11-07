@@ -17,6 +17,12 @@ import { classDef } from '../../../server/src/domain/season.js';
 import { startTimeAttack } from '../../../server/src/domain/timeAttack.js';
 import { createHorseFromTemplate } from '../../../server/src/domain/horses.js';
 import tracksJson from '../../../server/master/tracks.json';
+import { FakeStoreVerifier } from '../../../server/src/domain/purchase.js';
+import { MemoryTeams, TeamsService, type TeamPlayers } from '../../../server/src/domain/teamService.js';
+import type { ReportReason } from '../../../server/src/domain/teamFeed.js';
+import { InviteService, MemoryInviteDirectory, deliverInviteOutbox, displayInviteCode, inviteRewardYen, normalizeInviteCode } from '../../../server/src/domain/invite.js';
+import type { Directory } from '../../../server/src/domain/friends.js';
+import { signAdMobQuery, StaticKeySource, verifyAdMobCallback } from '../../../server/src/ads/ssv.js';
 
 const trackNames = new Map((tracksJson as { tracks: { id: string; name?: string }[] }).tracks.map((t) => [t.id, t.name ?? t.id]));
 
@@ -42,7 +48,28 @@ const now = () => Date.now() + dayOffset * DAY_MS + clockShift;
 // a blank player state to build demo ghost riders' horses on (never stored)
 let blank: PlayerState | null = null;
 const svcStateTemplate = () => blank!;
-const svc = new PlayerService(new LocalRepo(), { master, rng: cryptoRng, clock: now, verifiers: {} });
+// round 10: a fake store so the demo can stand after a purchase (no billing: receipts are issued locally)
+const store = new FakeStoreVerifier();
+// round 10 (REQ-TEAMFEED-*): a demo 支部 on the real team objects (MemoryTeams = TeamCore, the TeamDO logic, in memory)
+const teams = new MemoryTeams(() => master, now);
+const repo = new LocalRepo();
+const svc = new PlayerService(repo, {
+  master, rng: cryptoRng, clock: now, verifiers: { fake: store },
+  onTeamPoints: async (p) => { await teams.reportPoints(p.teamId, p.playerId, p.seasonId, p.points, p.displayName).catch(() => undefined); },
+  onTeamFeed: async (p) => { await teams.feedRace(p.teamId, p.playerId, p.race); },
+});
+const teamPlayers: TeamPlayers = {
+  prepareJoin: (u, t) => svc.teamPrepareJoin(u, t), commitJoin: (u, t) => svc.teamCommitJoin(u, t), abortJoin: (u, t) => svc.teamAbortJoin(u, t),
+  addOutgoing: (u, t) => svc.teamAddOutgoing(u, t), removeOutgoing: (u, t) => svc.teamRemoveOutgoing(u, t), left: (u, t, c) => svc.teamLeft(u, t, c),
+  state: (u) => svc.teamState(u), push: (u, id, v) => svc.queuePush(u, id, v),
+  stampCatalog: (u) => svc.stampCatalog(u), stampCheck: (u, s) => svc.stampCheck(u, s), stampPosted: (u, s, k, t) => svc.stampPosted(u, s, k, t),
+  feedViewer: (u, f) => svc.feedViewer(u, f), feedMutes: (u) => svc.feedMutes(u), feedMute: (u, t, m) => svc.feedMute(u, t, m),
+  feedReported: (u, t, q, b, r) => svc.feedReported(u, t, q, b, r), cheerPush: (u, f, n) => svc.cheerPush(u, f, n),
+};
+const teamsSvc = new TeamsService(() => master, teams, teamPlayers, teams, teams, cryptoRng, now);
+const DEMO_MEMBERS = [['demo_tm_lead', 'ミドリカワ'], ['demo_tm_2', 'クロサキ'], ['demo_tm_3', 'ハヤテ']] as const;
+let demoRace = 0;
+let demoTeamId: string | null = null;
 let n = 0;
 const key = () => `c:/proto:${Date.now()}:${n++}`;
 
@@ -68,7 +95,8 @@ export const MuchiLogic = {
     rooms: master.progression.rooms,
     tracks: master.tracks.map((t) => ({ id: t.id, name: trackNames.get(t.id) ?? t.id, surface: t.surface, distanceM: t.distanceM, lit: master.litTracks.has(t.id) })),
     ageLimits: master.ageLimits,
-    itemLabels: (master.shopDisplay?.itemLabels ?? {}) as Record<string, string>,
+    // ticket names for rewards that are not shop items (comeback track: 10連スカウト券, SR以上確定スカウト券)
+    itemLabels: { ...Object.fromEntries(Object.entries(master.items.tickets).map(([k, t]) => [k, t.name])), ...(master.shopDisplay?.itemLabels ?? {}) } as Record<string, string>,
     passRewards: master.progression.passRewards,
     unlocks: master.progression.unlocks,
     beginnerLoginBonus: master.progression.beginnerLoginBonus,
@@ -115,7 +143,15 @@ export const MuchiLogic = {
   applyRace: (raceId: string, place: number, fieldSize: number, details: { trackId: string; style: Style; finishTick: number | null; whips: number }) =>
     wrap(() => svc.applyRace(ID, { raceId, mode: 'ranked', place, fieldSize, newRating: null, void: false, humans: 1,
       details: { ...details, startReactionTicks: null, whipMashed: false, cpuAssisted: false } })),
-  reset() { try { localStorage.removeItem(KEY + ':' + ID); localStorage.removeItem(DAY_KEY); } catch { /* ignore */ } dayOffset = 0; },
+  reset() {
+    try {
+      localStorage.removeItem(KEY + ':' + ID); localStorage.removeItem(DAY_KEY);
+      // round 10: demo players of the invite screen and the invite directory start over too
+      for (const k of Object.keys(localStorage)) if (k.startsWith(KEY + ':demo_')) localStorage.removeItem(k);
+    } catch { /* ignore */ }
+    inviteCodes.clear();
+    dayOffset = 0;
+  },
 
   // ---------------------------------------------------------------- round 8 (docs/planning/06, REQ-UXS-*), used by unity.html
   now,
@@ -218,7 +254,204 @@ export const MuchiLogic = {
     }
     return svc.view(ID);
   },
+  // ---------------------------------------------------------------- returning players (REQ-CB-001..012, contracts/protocol.md §20), index.html
+  // GET /v1/comeback, the claims and the what's-new card, on the real comeback rules (server/src/domain/comeback.ts)
+  comeback: () => wrap(() => svc.comeback(ID)),
+  comebackClaimLogin: () => wrap(() => svc.comebackClaimLogin(ID, key())),
+  comebackClaimMission: (missionId: string) => wrap(() => svc.comebackClaimMission(ID, missionId, key())),
+  comebackWelcomed: () => wrap(() => svc.comebackWelcomed(ID)),
+  whatsNew: () => wrap(() => svc.whatsNew(ID)),
+  whatsNewSeen: (upTo: number) => wrap(() => svc.whatsNewSeen(ID, upTo)),
+  pushPreferences: () => svc.pushPreferences(ID),
+  setComebackPush: (on: boolean) => wrap(() => svc.setPushPreferences(ID, { categories: { comeback: on } })),
+  comebackConfig: master.progression.comeback ?? null,
+  /**
+   * Demo state 「復帰」: 3 game days of play (6 races, past minRacesBefore), then 14 days away. The return goes through
+   * bootstrap like the app, so the window (mid tier), the login track and the catch-up come from the server rules. The
+   * what's-new position is put back to before the dated changelog entries so the card has something to show.
+   */
+  async seedComeback(awayDays = 14) {
+    await this.seedDemo(3, [2, 2, 2]);
+    const st = await svc.state(ID);
+    if (st.comeback) { st.comeback.seenUpTo = Date.UTC(2026, 9, 25); repo.put(st); }
+    this.setDayOffset(2 + awayDays);
+    await this.bootstrap();
+    return svc.view(ID);
+  },
   playerView,
+
+  // ---------------------------------------------------------------- round 10
+  // r10 fix: the shop list with this player's ownership (GET /v1/shop/products?mine=1)
+  myShopProducts: () => svc.shopProducts(ID),
+  /** Demo only: a store purchase granted through a locally issued receipt (no billing), so the "already bought" state can be seen. */
+  async demoPurchase(productId: string) {
+    const v = await svc.view(ID);
+    if (!v.age) await wrap(() => svc.setAge(ID, 1990, 1, false));
+    const p = master.products.find((x) => x.id === productId)!;
+    return wrap(async () => {
+      await svc.purchaseIntent(ID, productId);
+      return svc.purchase(ID, 'fake', productId, store.issue({ transactionId: `proto_${Date.now().toString(36)}_${n++}`, productId, purchasedAt: now(), priceYen: p.priceYen }));
+    });
+  },
+  // 支部の応援スタンプ (REQ-TEAMFEED-*): a demo team led by demo members; every rule is the server's (TeamsService/TeamCore)
+  async teamDemo() {
+    const live = (t: string | null) => !!t && teams.cores.has(t) && !teams.cores.get(t)!.state?.disbanded;
+    const st = await svc.teamState(ID);
+    if (live(st.teamId)) return { teamId: st.teamId!, name: (await teams.view(st.teamId!, ID)).name };
+    if (st.teamId) await svc.teamLeft(ID, st.teamId, false); // the team lived in memory before a reload
+    let fresh = false;
+    if (!live(demoTeamId)) {
+      for (const [id, name] of DEMO_MEMBERS) {
+        await svc.bootstrap(id);
+        await wrap(() => svc.setDisplayName(id, name));
+        const t = (await svc.teamState(id)).teamId;
+        if (t && !live(t)) await svc.teamLeft(id, t, false);
+      }
+      const v = await teamsSvc.create(DEMO_MEMBERS[0][0], 'あおばRC', 'open', '毎晩21時に集合！');
+      for (const [id] of DEMO_MEMBERS.slice(1)) await teamsSvc.join(id, v.teamId);
+      demoTeamId = v.teamId;
+      fresh = true;
+    }
+    const s = await svc.state(ID);
+    if ((s.team?.cooldownUntil ?? 0) > now()) { s.team!.cooldownUntil = 0; new LocalRepo().put(s); } // demo: no rejoin wait
+    // a demo reset wiped the local player but the in-memory team still lists it: take that stale membership out first
+    if (teams.cores.get(demoTeamId!)!.isMember(ID)) await teams.leave(demoTeamId!, ID);
+    await teamsSvc.join(ID, demoTeamId!);
+    // some history: stamps and a teammate's race result (settled by the real reward rules → an automatic feed item)
+    if (fresh) await this.teamActivity();
+    return { teamId: demoTeamId!, name: (await teams.view(demoTeamId!, ID)).name };
+  },
+  /** Demo teammates act: a race result (1st–3rd in ranked or a tournament) and a stamp. */
+  async teamActivity() {
+    const [lead, m2, m3] = DEMO_MEMBERS.map((x) => x[0]);
+    const k = demoRace++;
+    await svc.applyRace(m2!, { raceId: `proto_tm_${Date.now().toString(36)}_${k}`, mode: k % 2 ? 'tournament' : 'ranked', place: 1 + (k % 3), fieldSize: 12, newRating: null, void: false, humans: 6 });
+    await wrap(() => teamsSvc.postStamp(lead!, ['cheer', 'lets_go', 'nice'][k % 3]!));
+    await wrap(() => teamsSvc.postStamp(m3!, ['clap', 'thanks', 'gg'][k % 3]!));
+  },
+  stamps: () => svc.stampCatalog(ID),
+  teamFeed: (before: number | null = null) => wrap(() => teamsSvc.feed(ID, before, 20)),
+  postStamp: (stampId: string) => wrap(() => teamsSvc.postStamp(ID, stampId)),
+  reactToFeed: (seq: number, stampId: string | null) => wrap(() => teamsSvc.react(ID, seq, stampId)),
+  reportFeed: (seq: number, reason: ReportReason) => wrap(() => teamsSvc.report(ID, seq, reason)),
+  muteMember: (playerId: string, muted: boolean) => wrap(() => teamsSvc.mute(ID, playerId, muted)),
+  /** Unlocks for the demo: lifetime races (play) — the pass and cosmetic stamps unlock by demoPurchase / the 見た目 shop. */
+  async demoRaces(count: number) { const s = await svc.state(ID); s.stats.races = Math.max(s.stats.races, count); new LocalRepo().put(s); },
+  // ---------------------------------------------------------------- round 10: 友達招待 (REQ-INV-*, contracts/protocol.md §19)
+  // The real InviteService / per-player steps / milestone outbox on the local PlayerService. Demo friends are extra players
+  // in the same local repo (ids demo_inv_*), so "a friend joins with my code" and "the friend reaches a milestone" run the
+  // exact server code paths (directory lookup, device claim, inviter + invitee steps, outbox delivery).
+  invite: {
+    view: () => wrap(() => inviteSvc.view(ID, installId())),
+    redeem: (code: string) => wrap(() => inviteSvc.redeem(ID, code, installId())),
+    normalize: (raw: string) => normalizeInviteCode(raw),
+    display: (code: string) => displayInviteCode(code),
+    rewardYen: (r: Parameters<typeof inviteRewardYen>[1]) => inviteRewardYen(master, r),
+    config: master.progression.invite ?? null,
+    /** A demo friend enters MY code (bootstrap → partner → redeem from their own device). */
+    async demoFriendJoins() {
+      const n = (await svc.state(ID)).referral?.invitees.length ?? 0;
+      const id = `demo_inv_${n + 1}`;
+      return wrap(async () => {
+        await svc.bootstrap(id);
+        await svc.setDisplayName(id, DEMO_NAMES[n % DEMO_NAMES.length]!);
+        await svc.grantPartner(id, 'デモノアイボウ', key());
+        const code = (await inviteSvc.view(ID, installId())).code;
+        return { id, result: await inviteSvc.redeem(id, code, `demo-install-${id}`) };
+      });
+    },
+    /** The newest demo friend without this milestone reaches it (their own transaction notices it; the outbox delivers it). */
+    async demoMilestone(milestoneId: string) {
+      return wrap(async () => {
+        const me = await svc.state(ID);
+        const target = me.referral?.invitees.find((x) => !x.deleted && x.playerId.startsWith('demo_inv_') && !x.milestones.some((m) => m.id === milestoneId));
+        if (!target) throw new AppError('NOT_FOUND', 'no demo friend left for this milestone');
+        const repo = localRepo;
+        const s = (await svc.state(target.playerId));
+        if (milestoneId === 'im_graduate') s.onboarding = { races: 15, breedings: 1, counts: {}, ...(s.onboarding ?? {}), claimed: (master.progression.beginnerMissions ?? []).map((d) => d.id) };
+        else s.season.classId = master.progression.invite!.milestones.find((m) => m.id === milestoneId)?.classId ?? 'B';
+        repo.put(s);
+        await svc.missionsAll(target.playerId);
+        const before = (await svc.view(ID)).wallet.free;
+        const out = await deliverInviteOutbox({
+          due: (u) => svc.inviteDue(u), deliver: (o, i, ms, nm) => svc.inviteMilestone(o, i, ms, nm),
+          acked: (u, x) => svc.inviteAcked(u, x), later: (u, x) => svc.inviteRetryLater(u, x),
+        }, target.playerId);
+        return { friend: target.playerId, delivered: out.delivered, freeCoinsGained: (await svc.view(ID)).wallet.free - before };
+      });
+    },
+    /** A demo player's code for trying the entry (only redeemable while the local player is in the window, after the FTUE). */
+    async demoInviterCode() {
+      await svc.bootstrap('demo_inviter');
+      await svc.setDisplayName('demo_inviter', 'ミナトの騎手').catch(() => undefined);
+      return displayInviteCode(await inviteCodes.codeOf('demo_inviter'));
+    },
+  },
+  // ---------------------------------------------------------------- rewarded ads (REQ-AD-*, contracts/protocol.md §21)
+  // The real server rules: eligibility (FTUE, install day, 30 days after a payment, age), caps by game day, sessions. The
+  // ad network is simulated in the browser: it signs an AdMob-style SSV callback with a local ECDSA P-256 key, and the
+  // real verifyAdMobCallback checks that signature before the real applyAdCallback grants free coins. No ad SDK, no network.
+  ads: () => svc.ads(ID),
+  setAdPref: (mode: 'auto' | 'on' | 'off') => wrap(() => svc.setAdPref(ID, mode)),
+  adStart: (placementId: string) => wrap(() => svc.adStart(ID, placementId, key())),
+  adSession: (sessionId: string) => wrap(() => svc.adSession(ID, sessionId)),
+  /** The simulated network's SSV callback for a watched ad (what AdMob would GET on the server). */
+  simulateAdCallback: (start: { customData: string; userId: string; adUnitKey: string }) => wrap(async () => {
+    adKeys ??= (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign', 'verify'])) as CryptoKeyPair;
+    const q = await signAdMobQuery({ adUnit: 'proto/' + start.adUnitKey, customData: start.customData, timestamp: now(), transactionId: `proto_${Date.now().toString(36)}_${n++}`, userId: start.userId, keyId: 'proto' }, adKeys.privateKey);
+    const cb = await verifyAdMobCallback(q, StaticKeySource.fromCryptoKeys({ proto: adKeys.publicKey }));
+    return svc.adReward(cb.userId, cb);
+  }),
 };
+let adKeys: CryptoKeyPair | null = null;
+
+const DEMO_NAMES = ['ハヤテ', 'サクラ', 'コウガ', 'ミズキ', 'レン', 'ツバサ', 'ヒナタ', 'カイ', 'ユズ', 'アオイ', 'ソラ', 'リク'];
+/** Random per install, like the app's keychain value (only its hash reaches the invite code). */
+function installId() {
+  try {
+    let v = localStorage.getItem('muchi.installId');
+    if (!v) { v = 'i-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10); localStorage.setItem('muchi.installId', v); }
+    return v;
+  } catch { return 'i-private-mode'; }
+}
+/** The invite directory in localStorage (codes and install claims survive a reload, like DirectoryDO). */
+class LocalInviteDirectory extends MemoryInviteDirectory {
+  private static K = 'muchi.proto.inviteDir';
+  constructor() {
+    super(cryptoRng);
+    try {
+      const j = JSON.parse(localStorage.getItem(LocalInviteDirectory.K) ?? 'null') as { codes: [string, { playerId: string | null; retired: boolean }][]; installs: [string, string | null][] } | null;
+      if (j) {
+        for (const [c, v] of j.codes) { this.codes.set(c, v); if (v.playerId) (this as unknown as { byPlayer: Map<string, string> }).byPlayer.set(v.playerId, c); }
+        for (const [h, p] of j.installs) this.installs.set(h, p);
+      }
+    } catch { /* fresh */ }
+  }
+  clear() {
+    this.codes.clear(); this.installs.clear(); (this as unknown as { byPlayer: Map<string, string> }).byPlayer.clear();
+    try { localStorage.removeItem(LocalInviteDirectory.K); } catch { /* */ }
+  }
+  private save() { try { localStorage.setItem(LocalInviteDirectory.K, JSON.stringify({ codes: [...this.codes], installs: [...this.installs] })); } catch { /* */ } }
+  override async codeOf(p: string) { const c = await super.codeOf(p); this.save(); return c; }
+  override async claimInstall(h: string, p: string) { const r = await super.claimInstall(h, p); this.save(); return r; }
+  override async releaseInstall(h: string, p: string) { await super.releaseInstall(h, p); this.save(); }
+}
+const localRepo = new LocalRepo();
+const inviteCodes = new LocalInviteDirectory();
+/** Display names straight from the local players' states (the server reads them from DirectoryDO profiles). */
+const profileDir: Directory = {
+  codeOf: async () => '', lookup: async () => null, putProfile: async () => undefined,
+  profiles: async (ids) => ids.map((id) => localRepo.get(id)).filter((s): s is PlayerState => !!s).map((s) => ({ playerId: s.id, displayName: s.profile.displayName } as never)),
+};
+// the same per-player ports as server/src/http/app.ts invitePlayersFrom, on the local PlayerService
+const inviteSvc = new InviteService({
+  attempt: (u, h) => svc.inviteAttempt(u, h),
+  view: (u, h) => svc.inviteView(u, h),
+  accept: (o, i, h, nm) => svc.inviteAccept(o, i, h, nm),
+  revert: (o, i, unfriend) => svc.inviteRevert(o, i, unfriend),
+  commit: (u, o, c, h, f) => svc.inviteCommit(u, o, c, h, f),
+  flag: (u, f) => svc.inviteFlag(u, f),
+  unfriend: (u, o) => svc.friendRemove(u, o),
+}, inviteCodes, profileDir, () => master);
 
 (globalThis as unknown as { MuchiLogic: typeof MuchiLogic }).MuchiLogic = MuchiLogic;

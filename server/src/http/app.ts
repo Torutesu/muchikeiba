@@ -22,19 +22,22 @@ import { LEAGUE_BOARD_RE } from '../domain/league.js';
 import { TeamsService, type TeamPlayers } from '../domain/teamService.js';
 import { EventsService, type EventPlayers } from '../domain/eventService.js';
 import { TEAM_ID_RE } from '../domain/teams.js';
+import { REPORT_REASONS, STAMP_ID_RE } from '../domain/teamFeed.js';
 import { EVENT_ID_RE } from '../domain/events.js';
 import { goingSchema } from '../domain/schemas.js';
 import { StudService, type StudDirectory, type StudPlayers } from '../domain/studService.js';
 import type { SpectateService } from '../domain/spectate.js';
 import type { TournamentEntryInfo, TournamentPlayers, TournamentsService } from '../domain/tournamentService.js';
 import type { StableService } from '../domain/stable.js';
+import { InviteService, type InviteDirectory, type InvitePlayers } from '../domain/invite.js';
+import { SsvError, verifyAdMobCallback, type SsvKeySource } from '../ads/ssv.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
   | 'bootstrap' | 'view' | 'setAge' | 'purchaseIntent' | 'purchase' | 'refund' | 'draw' | 'tutorialDraw' | 'pityExchange' | 'gachaStatus'
   | 'nameHorse' | 'awaken' | 'retire' | 'breedingPreview' | 'breed' | 'pedigree' | 'claimLogin' | 'missions'
   | 'claimMission' | 'passView' | 'claimPass' | 'applyRace' | 'raceEntry'
-  | 'shopOffers' | 'markOfferViewed' | 'allowance' | 'claimAllowance' | 'firstWinBonus'
+  | 'shopProducts' | 'shopOffers' | 'markOfferViewed' | 'allowance' | 'claimAllowance' | 'firstWinBonus'
   | 'storeRenewal' | 'subscriptionStatus'
   | 'setDisplayName' | 'equipTitle' | 'titles' | 'stats' | 'publicProfile' | 'closeSeason' | 'setSilks'
   | 'useTicket' | 'cosmetics' | 'buyCosmetic' | 'setEquipment'
@@ -48,7 +51,12 @@ export type PlayerMethod =
   | 'studView' | 'studList' | 'studUnlist' | 'studPeek' | 'studReserve' | 'studSettle' | 'studPreview' | 'studApply' | 'studAcked' | 'studDue' | 'studRetryLater'
   | 'stableMine' | 'stableSave' | 'stableVisit' | 'stableLikeGive' | 'stableLikeReceive' | 'stableClear' | 'stableForget'
   | 'recordConsent' | 'grantPartner' | 'missionsAll' | 'requestDeletion' | 'cancelDeletion' | 'deletionDue' | 'deletionSnapshot' | 'deletionMarkStep'
-  | 'deletionRetryLater' | 'deletionFinalize' | 'deletionStart' | 'runNudges' | 'nudgeTaBeaten' | 'nudgeTournamentClosing';
+  | 'deletionRetryLater' | 'deletionFinalize' | 'deletionStart' | 'runNudges' | 'nudgeTaBeaten' | 'nudgeTournamentClosing'
+  | 'stampCatalog' | 'stampCheck' | 'stampPosted' | 'feedViewer' | 'feedMutes' | 'feedMute' | 'feedReported' | 'cheerPush'
+  | 'inviteView' | 'inviteAttempt' | 'inviteAccept' | 'inviteRevert' | 'inviteCommit' | 'inviteFlag' | 'inviteMilestone' | 'inviteDue' | 'inviteAcked'
+  | 'inviteRetryLater' | 'inviteForgetInvitee' | 'inviteForgetInviter' | 'inviteForfeit'
+  | 'comeback' | 'comebackClaimLogin' | 'comebackClaimMission' | 'comebackWelcomed' | 'whatsNew' | 'whatsNewSeen'
+  | 'ads' | 'setAdPref' | 'adStart' | 'adSession' | 'adReward';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -104,6 +112,8 @@ export interface AppContext {
   tournaments?: TournamentsService;
   /** REQ-STABLE-*: マイ厩舎 (http/stablePorts.ts makeStableService). */
   stable?: StableService;
+  /** REQ-INV-*: friend invite codes (makeInviteService). Absent → the routes answer NOT_FOUND. */
+  invite?: InviteService;
   clock?: () => number;
   paidBalance(): Promise<unknown>;
   /**
@@ -118,6 +128,11 @@ export interface AppContext {
   authenticateAdmin?(req: Request): Promise<AdminPrincipal>;
   /** Active remote config summary for clients (REQ-OPS-007). */
   configInfo?(): Promise<ClientConfigInfo>;
+  /**
+   * REQ-AD-006: rewarded-ad server-side verification (the network's key set and the ad unit map from env). Absent =
+   * the SSV callback answers NOT_FOUND (no reward can ever be granted; offers still list but cannot pay out).
+   */
+  ads?: { keys: SsvKeySource; adUnits?: Record<string, string>; admit?(key: string, now: number): void };
   /** REQ-DLV-002: CDN base URL for asset downloads (wrangler var ASSET_CDN_BASE). Unset → catalog baseUrl "" (bundled assets only). */
   assetCdnBase?: string;
 }
@@ -173,12 +188,27 @@ const stable = (c: AppContext) => {
   if (!c.stable) throw new AppError('NOT_FOUND', 'stables are not available');
   return c.stable;
 };
+const invite = (c: AppContext) => {
+  if (!c.invite || !c.master.progression.invite) throw new AppError('NOT_FOUND', 'invites are not available');
+  return c.invite;
+};
+/** REQ-INV-005: the app's install id (random per install, kept in the keychain / keystore). Only a hash is stored. */
+const installIdSchema = z.string().min(8).max(128).regex(/^[\w\-.:]+$/);
 const playerIdParam = (s: string) => {
   if (s.length < 1 || s.length > 128 || /[\s/]/.test(s)) throw new AppError('BAD_REQUEST', 'bad player id');
   return s;
 };
 const teamIdParam = (s: string) => {
   if (!TEAM_ID_RE.test(s)) throw new AppError('BAD_REQUEST', 'bad team id');
+  return s;
+};
+const seqParam = (s: string) => {
+  if (!/^\d{1,9}$/.test(s) || Number(s) < 1) throw new AppError('BAD_REQUEST', 'bad feed item');
+  return Number(s);
+};
+const stampId = z.string().regex(STAMP_ID_RE);
+const missionIdParam = (s: string) => {
+  if (!/^[a-z0-9_]{1,40}$/.test(s)) throw new AppError('BAD_REQUEST', 'bad mission id');
   return s;
 };
 const offerIdParam = (s: string) => {
@@ -257,7 +287,12 @@ export const routes: Route[] = [
   } },
   // shop
   // REQ-UXS-022: display data built on the server (contents, quantities, free-coin first-purchase bonus, legal notice keys)
-  { method: 'GET', path: '/v1/shop/products', auth: 'none', handler: async (_r, _p, c) => shopProducts(c.master) },
+  // r10: `?mine=1` (authenticated) adds the player's ownership (owned / ownedReason / purchasedThisSeason)
+  { method: 'GET', path: '/v1/shop/products', auth: 'none', handler: async (r, _p, c) => {
+    if (new URL(r.url).searchParams.get('mine') !== '1') return shopProducts(c.master);
+    const u = await c.authenticate(r);
+    return c.player(u).invoke('shopProducts', u);
+  } },
   // REQ-UXS-017: offers to show (triggers, shown-once records); bought offers are never returned
   { method: 'GET', path: '/v1/shop/offers', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('shopOffers', u) },
   { method: 'POST', path: '/v1/shop/offers/:offerId/view', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('markOfferViewed', u, offerIdParam(p.offerId!)) },
@@ -401,6 +436,16 @@ export const routes: Route[] = [
   // daily (REQ-REW-002), beginner (REQ-UXS-015) and season missions (REQ-UXS-016); first-win bonus (REQ-UXS-010); one claim endpoint for all
   { method: 'GET', path: '/v1/missions', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('missionsAll', u) },
   { method: 'POST', path: '/v1/missions/:missionId/claim', auth: 'player', handler: async (r, p, c, u) => c.player(u).invoke('claimMission', u, p.missionId!, idem(r)) },
+  // returning players (REQ-CB-001..012) and the what's-new card (REQ-CB-008)
+  { method: 'GET', path: '/v1/comeback', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('comeback', u) },
+  { method: 'POST', path: '/v1/comeback/login', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('comebackClaimLogin', u, idem(r)) },
+  { method: 'POST', path: '/v1/comeback/missions/:missionId/claim', auth: 'player', handler: async (r, p, c, u) => c.player(u).invoke('comebackClaimMission', u, missionIdParam(p.missionId!), idem(r)) },
+  { method: 'POST', path: '/v1/comeback/welcome', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('comebackWelcomed', u) },
+  { method: 'GET', path: '/v1/whats-new', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('whatsNew', u) },
+  { method: 'POST', path: '/v1/whats-new/seen', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ upTo: z.number().int().min(0) }));
+    return c.player(u).invoke('whatsNewSeen', u, b.upTo);
+  } },
   { method: 'GET', path: '/v1/season-pass', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('passView', u) },
   { method: 'POST', path: '/v1/season-pass/claim', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ track: z.enum(['free', 'premium']), level: z.number().int().min(1) }));
@@ -487,6 +532,26 @@ export const routes: Route[] = [
   { method: 'POST', path: '/v1/teams/me/requests/:playerId/decline', auth: 'player', handler: async (_r, p, c, u) => teams(c).decline(u, p.playerId!) },
   // 支部対抗シーズン (REQ-LEAGUE-005): my team's league; division tables are leaderboard boards `league-<divisionId>`
   { method: 'GET', path: '/v1/league/me', auth: 'player', handler: async (_r, _p, c, u) => teams(c).league(u) },
+  // REQ-TEAMFEED-*: cheer stamps and the team feed (fixed stamps only, no free text)
+  { method: 'GET', path: '/v1/stamps', auth: 'player', handler: async (_r, _p, c, u) => teams(c).stamps(u) },
+  { method: 'GET', path: '/v1/teams/me/feed', auth: 'player', handler: async (r, _p, c, u) => {
+    const q = new URL(r.url).searchParams;
+    const num = (k: string, max: number) => {
+      const v = q.get(k);
+      if (v === null || v === '') return null;
+      if (!/^\d{1,9}$/.test(v) || Number(v) < 1 || Number(v) > max) throw new AppError('BAD_REQUEST', `bad ${k}`);
+      return Number(v);
+    };
+    return teams(c).feed(u, num('before', 999_999_999), num('limit', 500));
+  } },
+  { method: 'POST', path: '/v1/teams/me/feed/stamps', auth: 'player', handler: async (r, _p, c, u) => teams(c).postStamp(u, (await body(r, z.object({ stampId: stampId }).strict())).stampId) },
+  { method: 'PUT', path: '/v1/teams/me/feed/:seq/reaction', auth: 'player', handler: async (r, p, c, u) => teams(c).react(u, seqParam(p.seq!), (await body(r, z.object({ stampId: stampId.nullable() }).strict())).stampId) },
+  { method: 'POST', path: '/v1/teams/me/feed/:seq/report', auth: 'player', handler: async (r, p, c, u) => teams(c).report(u, seqParam(p.seq!), (await body(r, z.object({ reason: z.enum(REPORT_REASONS) }).strict())).reason) },
+  { method: 'GET', path: '/v1/teams/me/feed/mutes', auth: 'player', handler: async (_r, _p, c, u) => teams(c).mutes(u) },
+  { method: 'PUT', path: '/v1/teams/me/feed/mutes', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ playerId: id, muted: z.boolean() }).strict());
+    return teams(c).mute(u, playerIdParam(b.playerId), b.muted);
+  } },
   { method: 'GET', path: '/v1/teams/search', auth: 'player', handler: async (r, _p, c) => teams(c).search(new URL(r.url).searchParams.get('q') ?? '') },
   { method: 'GET', path: '/v1/teams/leaderboard/:seasonId', auth: 'none', handler: async (_r, p, c) => {
     const season = p.seasonId === 'current' ? jstMonthKey((c.clock ?? Date.now)()) : p.seasonId!;
@@ -521,6 +586,17 @@ export const routes: Route[] = [
     if (!(await c.match.friendMember(p.passphrase!, u))) throw new AppError('NOT_ELIGIBLE', 'not a member of this room');
     return c.friends.invite(u, b.friendId, p.passphrase!);
   } },
+  // friend invite codes (REQ-INV-*, contracts/protocol.md §19)
+  { method: 'GET', path: '/v1/invite', auth: 'player', handler: async (r, _p, c, u) => {
+    const raw = r.headers.get('x-install-id');
+    const inst = raw === null ? null : installIdSchema.safeParse(raw);
+    if (inst && !inst.success) throw new AppError('BAD_REQUEST', 'bad x-install-id');
+    return invite(c).view(u, inst?.data ?? null);
+  } },
+  { method: 'POST', path: '/v1/invite/redeem', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ code: z.string().min(1).max(32), installId: installIdSchema }).strict());
+    return invite(c).redeem(u, b.code, b.installId);
+  } },
   // push notifications (REQ-PUSH-*)
   { method: 'PUT', path: '/v1/push/devices', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ token: z.string().min(8).max(4096), platform: z.enum(['ios', 'android']) }));
@@ -534,7 +610,7 @@ export const routes: Route[] = [
   { method: 'PUT', path: '/v1/push/preferences', auth: 'player', handler: async (r, _p, c, u) => {
     const hour = z.number().int().min(0).max(23);
     const b = await body(r, z.object({
-      categories: z.object({ season: z.boolean(), friends: z.boolean(), invites: z.boolean(), events: z.boolean() }).partial().optional(),
+      categories: z.object({ season: z.boolean(), friends: z.boolean(), invites: z.boolean(), events: z.boolean(), comeback: z.boolean() }).partial().optional(),
       quietHours: z.object({ startHour: hour, endHour: hour }).nullable().optional(),
     }));
     return c.player(u).invoke('setPushPreferences', u, {
@@ -568,6 +644,41 @@ export const routes: Route[] = [
   { method: 'GET', path: '/v1/time-attack/ghosts/:seasonId/:trackId/:playerId', auth: 'player', handler: async (_r, p, c) => {
     if (!/^\d{4}-\d{2}$/.test(p.seasonId!) || !/^[a-z0-9_]{1,48}$/.test(p.trackId!)) throw new AppError('BAD_REQUEST', 'bad season or track');
     return c.timeAttack.ghost(p.seasonId!, p.trackId!, p.playerId!);
+  } },
+  // rewarded ads (REQ-AD-*, contracts/protocol.md §21)
+  { method: 'GET', path: '/v1/ads', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('ads', u) },
+  { method: 'PUT', path: '/v1/ads/preferences', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ mode: z.enum(['auto', 'on', 'off']) }).strict());
+    return c.player(u).invoke('setAdPref', u, b.mode);
+  } },
+  { method: 'GET', path: '/v1/ads/sessions/:sessionId', auth: 'player', handler: async (_r, p, c, u) => {
+    if (!/^ad_[0-9a-f]{16}$/.test(p.sessionId!)) throw new AppError('BAD_REQUEST', 'bad session id');
+    return c.player(u).invoke('adSession', u, p.sessionId!);
+  } },
+  // the ad network's server-side verification callback (no player auth: the signature is the authentication)
+  { method: 'GET', path: '/v1/ads/ssv/admob', auth: 'none', handler: async (r, _p, c) => {
+    if (!c.ads) throw new AppError('NOT_FOUND', 'rewarded ads are not configured');
+    const now = (c.clock ?? Date.now)();
+    let cb;
+    try {
+      cb = await verifyAdMobCallback(rawQuery(r.url), c.ads.keys, c.ads.adUnits);
+    } catch (e) {
+      if (e instanceof SsvError) {
+        // r10 QA: only FAILED callbacks count against the source IP. Every valid callback comes from the ad network's
+        // few servers, so a per-IP budget on them would throttle real rewards; valid ones are limited per player below.
+        c.ads.admit?.('ip:' + (r.headers.get('cf-connecting-ip') ?? '?'), now);
+        throw new AppError('UNAUTHORIZED', e.message);
+      }
+      throw e;
+    }
+    playerIdParam(cb.userId);
+    c.ads.admit?.('u:' + cb.userId, now);
+    const out = await c.player(cb.userId).invoke('adReward', cb.userId, cb);
+    return { ok: true, status: out.status };
+  } },
+  { method: 'POST', path: '/v1/ads/:placementId/start', auth: 'player', handler: async (r, p, c, u) => {
+    if (!/^[a-z0-9_]{1,32}$/.test(p.placementId!)) throw new AppError('BAD_REQUEST', 'bad placement id');
+    return c.player(u).invoke('adStart', u, p.placementId!, idem(r));
   } },
   // admin
   { method: 'GET', path: '/v1/admin/paid-balance', auth: 'admin', handler: async (_r, _p, c) => c.paidBalance() },
@@ -637,6 +748,32 @@ export function makeFriendsService(player: (uid: string) => PlayerInvoker, dir: 
   return new FriendsService(ports, dir);
 }
 
+/**
+ * REQ-AD-006: the query string exactly as it arrived (after `?`, before any `#`). The SSV signature covers these bytes,
+ * so it is not re-serialised through URL (which percent-encodes some characters, e.g. `'`).
+ */
+export function rawQuery(url: string): string {
+  const q = url.indexOf('?');
+  if (q < 0) return '';
+  const h = url.indexOf('#', q);
+  return url.slice(q + 1, h < 0 ? undefined : h);
+}
+
+/** Adapts per-player invocations to the invite orchestration (REQ-INV-*). */
+export function invitePlayersFrom(player: (uid: string) => PlayerInvoker): InvitePlayers {
+  return {
+    attempt: (u, h) => player(u).invoke('inviteAttempt', u, h),
+    view: (u, h) => player(u).invoke('inviteView', u, h),
+    accept: (o, i, h, name) => player(o).invoke('inviteAccept', o, i, h, name),
+    revert: (o, i, unfriend) => player(o).invoke('inviteRevert', o, i, unfriend),
+    commit: (u, o, code, h, f) => player(u).invoke('inviteCommit', u, o, code, h, f),
+    flag: (u, f) => player(u).invoke('inviteFlag', u, f),
+    unfriend: (u, o) => player(u).invoke('friendRemove', u, o),
+  };
+}
+export function makeInviteService(player: (uid: string) => PlayerInvoker, codes: InviteDirectory, dir: Directory, master: () => Master): InviteService {
+  return new InviteService(invitePlayersFrom(player), codes, dir, master);
+}
 /** Adapts per-player invocations to the team orchestration (REQ-TEAM-*). */
 export function teamPlayersFrom(player: (uid: string) => PlayerInvoker): TeamPlayers {
   return {
@@ -648,6 +785,14 @@ export function teamPlayersFrom(player: (uid: string) => PlayerInvoker): TeamPla
     left: (u, t, byChoice) => player(u).invoke('teamLeft', u, t, byChoice),
     state: (u) => player(u).invoke('teamState', u),
     push: (u, templateId, vars) => player(u).invoke('queuePush', u, templateId, vars),
+    stampCatalog: (u) => player(u).invoke('stampCatalog', u),
+    stampCheck: (u, s) => player(u).invoke('stampCheck', u, s),
+    stampPosted: (u, s, k, t) => player(u).invoke('stampPosted', u, s, k, t),
+    feedViewer: (u, first) => player(u).invoke('feedViewer', u, first),
+    feedMutes: (u) => player(u).invoke('feedMutes', u),
+    feedMute: (u, t, muted) => player(u).invoke('feedMute', u, t, muted),
+    feedReported: (u, t, seq, by, reason) => player(u).invoke('feedReported', u, t, seq, by, reason),
+    cheerPush: (u, from, name) => player(u).invoke('cheerPush', u, from, name),
   };
 }
 

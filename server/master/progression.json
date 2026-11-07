@@ -827,5 +827,60 @@
     ] }
   ],
   "accountDeletion": { "cancelWindowDays": 14, "confirmTtlMs": 600000, "ledgerRetentionDays": 2557 },
-  "nudges": { "promotionNearPoints": 30, "promotionIdleMs": 86400000, "tournamentClosingLeadMs": 3600000, "tournamentClosingMaxTargets": 1000 }
+  "nudges": { "promotionNearPoints": 30, "promotionIdleMs": 86400000, "tournamentClosingLeadMs": 3600000, "tournamentClosingMaxTargets": 1000 },
+  "invite": {
+    "_note": "REQ-INV-*（友達招待）。招待された人は初回チュートリアル（相棒の命名）の後、最初の redeemWindowDays ゲーム日以内にコードを1回だけ入力できる。招待した人への報酬はインストールではなく、招待された人の実際の到達（初心者ミッション完了・A級昇級・S級昇級、Round 10 の統合で E2 に合わせて変更）でだけ、maxCountedInvitees 人まで。報酬は無償コインと券のみ（有償コインは出さない）。1回の付与は景品表示法の総付景品の下限 ¥200 以内（最小パックの単価で換算、INVITE_HARD_LIMITS・docs/planning/03-legal-risk.md）。",
+    "redeemWindowDays": 7, "maxCountedInvitees": 10, "milestoneWindowDays": 90,
+    "redeemAttemptsPerHour": 5, "redeemAttemptsPerDay": 10, "burstPerDay": 5,
+    "welcomeGift": { "items": [{ "itemId": "gacha_ticket", "qty": 1 }] },
+    "milestones": [
+      { "id": "im_graduate", "kind": "beginner_complete", "reward": { "freeCoins": 20 } },
+      { "id": "im_class_a", "kind": "class", "classId": "A", "reward": { "freeCoins": 40 } },
+      { "id": "im_class_s", "kind": "class", "classId": "S", "reward": { "items": [{ "itemId": "gacha_ticket", "qty": 1 }] } }
+    ],
+    "shareBaseUrl": "https://invite.muchi-issen.example/i/", "deepLinkScheme": "muchi", "termsKey": "terms.invite"
+  },
+  "comeback": {
+    "_note": "REQ-CB-001..012 復帰キャンペーン（docs/planning/06 §4.5、contracts/protocol.md「復帰キャンペーン・お知らせ」）。最後に遊んだゲーム日から minLapseDays 以上あいた人が戻った日に、windowDays ゲーム日の期間が1回だけ始まる。期間中は復帰ログボ7日・復帰ミッション・パスXPの追いつき。次の期間は前回の開始から cooldownDays 後まで始まらない（放置で稼げない）。報酬は無償コインと有償でない券・素材だけ。1段階のログボ＋ミッションの価値は minLapseDays × valueCapPerLapseDay 以下（毎日遊ぶ無課金は約179/日、balance-targets.md §4.7）。",
+    "tiers": [
+      {"id": "short", "minLapseDays": 7, "loginTrack": [{"freeCoins": 100}, {"items": [{"itemId": "gacha_ticket", "qty": 1}]}, {"freeCoins": 100}, {"items": [{"itemId": "breeding_material", "qty": 2}]}, {"freeCoins": 100}, {"items": [{"itemId": "gacha_ticket", "qty": 1}]}, {"freeCoins": 150}]},
+      {"id": "mid", "minLapseDays": 14, "loginTrack": [{"freeCoins": 100}, {"items": [{"itemId": "gacha_ticket", "qty": 1}]}, {"freeCoins": 100}, {"items": [{"itemId": "breeding_material", "qty": 3}]}, {"freeCoins": 150}, {"items": [{"itemId": "gacha_ticket", "qty": 1}]}, {"items": [{"itemId": "gacha_ticket_10", "qty": 1}]}]},
+      {"id": "long", "minLapseDays": 30, "loginTrack": [{"freeCoins": 150}, {"items": [{"itemId": "gacha_ticket", "qty": 1}]}, {"items": [{"itemId": "ticket_sr_plus", "qty": 1}]}, {"items": [{"itemId": "breeding_material", "qty": 3}]}, {"freeCoins": 150}, {"items": [{"itemId": "gacha_ticket", "qty": 1}]}, {"items": [{"itemId": "gacha_ticket_10", "qty": 1}]}]}
+    ],
+    "windowDays": 14,
+    "cooldownDays": 60,
+    "minRacesBefore": 5,
+    "valueCapPerLapseDay": 150,
+    "missions": [
+      {"id": "cb_race", "kind": "races", "target": 1, "feature": "skills", "title": "まずは1レース", "guide": "馬ごとの固有スキルが加わりました。発動の瞬間を見てみよう", "reward": {"freeCoins": 50}},
+      {"id": "cb_scout", "kind": "gacha", "target": 1, "feature": "scout", "title": "スカウトを1回", "guide": "開催カレンダーで今のスカウトと終了日を確認できます（復帰ログボのスカウト券でもOK）", "reward": {"freeCoins": 50}},
+      {"id": "cb_care", "kind": "care", "target": 1, "feature": "bond", "title": "相棒のお世話", "guide": "飼い葉で絆が深まります（能力は変わりません）", "reward": {"items": [{"itemId": "breeding_material", "qty": 2}]}},
+      {"id": "cb_stable", "kind": "stable", "target": 1, "feature": "my_stable", "title": "マイ厩舎を飾る", "guide": "厩舎を飾ってフレンドに見せられるようになりました", "reward": {"freeCoins": 50}},
+      {"id": "cb_ranked3", "kind": "ranked_races", "target": 3, "feature": "race", "title": "ランク戦を3回", "guide": "今のシーズンに戻ろう。期間中はパスXPが上乗せされます", "reward": {"items": [{"itemId": "gacha_ticket", "qty": 1}]}}
+    ],
+    "catchUp": {"medianXpPerSeasonDay": 60, "bonusPermille": 1000, "maxBonusXp": 1500, "perLapseDayXp": 100},
+    "pushes": [{"afterDays": 3, "templateId": "lapse_3d"}, {"afterDays": 7, "templateId": "lapse_7d", "requireEligible": true}],
+    "pushHourJst": 19,
+    "offer": {"enabled": true}
+  },
+  "ads": {
+    "_note": "REQ-AD-*（contracts/protocol.md §21、docs/spec/balance-targets.md 4.9）。任意の動画広告（自分で押した時だけ・全画面の強制広告なし）。報酬は無償コインかタイムアタック1回だけで、文言は「無償コイン◯枚」の固定額（「倍」は使わない、検証あり）。報酬は広告ネットワークのサーバー検証（SSV）でだけ付与。上限はゲーム日（progression.dayRollover）で数える。コード側の上限は ADS_HARD_LIMITS（1日の無償コイン40枚まで）。",
+    "enabled": true,
+    "network": "admob",
+    "globalDailyCap": 3,
+    "startsPerDay": 12,
+    "maxOpenSessions": 3,
+    "sessionTtlMs": 3600000,
+    "maxClockSkewMs": 600000,
+    "minRankedRaces": 3,
+    "minGameDay": 2,
+    "payerQuietDays": 30,
+    "minAge": 13,
+    "anomalyFlagAt": 5,
+    "placements": [
+      { "id": "daily_coins", "surface": "home", "title": "動画を見て、無償コインを受け取る", "dailyCap": 1, "reward": { "freeCoins": 10 }, "adUnitKey": "REWARDED_HOME" },
+      { "id": "result_coins", "surface": "result", "title": "動画を見て、もう少しコインを", "dailyCap": 1, "reward": { "freeCoins": 10 }, "adUnitKey": "REWARDED_RESULT" },
+      { "id": "ta_attempt", "surface": "time_attack", "title": "動画を見て、タイムアタックをもう1回", "dailyCap": 1, "reward": { "taAttempts": 1 }, "adUnitKey": "REWARDED_TA" }
+    ]
+  }
 }

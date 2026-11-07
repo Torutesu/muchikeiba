@@ -6,6 +6,8 @@ const LEDGER_KEEP_IN_STATE = 100;
 function ensurePlayerSchema(sql: SqlStorage) {
   sql.exec(`CREATE TABLE IF NOT EXISTS state (id TEXT PRIMARY KEY, json TEXT NOT NULL)`);
   sql.exec(`CREATE TABLE IF NOT EXISTS ledger (seq INTEGER PRIMARY KEY, at INTEGER NOT NULL, kind TEXT NOT NULL, currency TEXT NOT NULL, delta INTEGER NOT NULL, balance_after INTEGER NOT NULL, reason TEXT NOT NULL, ref TEXT NOT NULL)`);
+  // r10: the deletion tombstone (player id + wipe time only, no personal data) — written right after the wipe
+  sql.exec(`CREATE TABLE IF NOT EXISTS deleted (id TEXT PRIMARY KEY, at INTEGER NOT NULL)`);
 }
 
 /**
@@ -13,9 +15,12 @@ function ensurePlayerSchema(sql: SqlStorage) {
  * repo) can keep serving calls until it is evicted: the empty tables are created again, so those calls see "no
  * player" (PlayerService answers deliveries to a wiped player as no-ops) instead of failing on a missing table.
  */
-export async function wipePlayerStorage(storage: DurableObjectStorage) {
+export async function wipePlayerStorage(storage: DurableObjectStorage, playerId?: string) {
   await storage.deleteAll();
   ensurePlayerSchema(storage.sql);
+  // r10: remember that this id was deleted, so a late delivery (a race result settled after the wipe) is ACKed as a no-op
+  // instead of creating a fresh player under the deleted id (PlayerService.applyRace)
+  if (playerId) storage.sql.exec('INSERT INTO deleted (id, at) VALUES (?, ?) ON CONFLICT(id) DO NOTHING', playerId, Date.now());
 }
 
 /**
@@ -26,6 +31,11 @@ export async function wipePlayerStorage(storage: DurableObjectStorage) {
 export class SqlPlayerRepo implements PlayerRepo {
   constructor(private readonly sql: SqlStorage) {
     ensurePlayerSchema(sql);
+  }
+
+  /** r10: true once this id's account deletion wiped the storage (wipePlayerStorage wrote the tombstone). */
+  tombstoned(id: string): boolean {
+    return this.sql.exec<{ id: string }>('SELECT id FROM deleted WHERE id = ?', id).toArray().length > 0;
   }
 
   get(id: string): PlayerState | null {

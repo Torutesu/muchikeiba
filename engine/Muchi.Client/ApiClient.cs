@@ -106,6 +106,13 @@ namespace Muchi.Client
             => Call("GET", "/v1/shop/products", null, false, null, true, ProductList.Parse, ct);
 
         /// <summary>
+        /// The same list with this player's ownership: <see cref="Product.Owned"/> / <see cref="Product.PurchasedThisSeason"/>
+        /// (exactly the purchase-intent ALREADY_PURCHASED rules), so a bought season pass is never drawn as buyable.
+        /// </summary>
+        public Task<ProductList> GetMyProductsAsync(CancellationToken ct = default)
+            => Call("GET", "/v1/shop/products?mine=1", null, true, null, true, ProductList.Parse, ct);
+
+        /// <summary>
         /// Per-player tokens to attach to the store purchase so receipts and store notifications map back to this player:
         /// pass AppleAppAccountToken as StoreKit 2 <c>appAccountToken</c>, GoogleObfuscatedAccountId as Play Billing
         /// <c>setObfuscatedAccountId</c>. Fetch once per session before the first purchase.
@@ -778,7 +785,7 @@ namespace Muchi.Client
             }
         }
 
-        private async Task<T> Call<T>(string method, string path, JsonNode body, bool auth, string idemKey, bool safe, Func<JsonNode, T> parse, CancellationToken ct)
+        private async Task<T> Call<T>(string method, string path, JsonNode body, bool auth, string idemKey, bool safe, Func<JsonNode, T> parse, CancellationToken ct, IDictionary<string, string> extraHeaders = null)
         {
             bool retryable = safe || method == "GET" || idemKey != null;
             bool refreshedToken = false;
@@ -790,6 +797,7 @@ namespace Muchi.Client
                 req.Headers["accept"] = "application/json";
                 if (body != null) req.Headers["content-type"] = "application/json";
                 if (idemKey != null) req.Headers["idempotency-key"] = idemKey;
+                if (extraHeaders != null) foreach (var kv in extraHeaders) req.Headers[kv.Key] = kv.Value;
                 if (auth)
                 {
                     if (!string.IsNullOrEmpty(_opt.DevUserId)) req.Headers["x-dev-user"] = _opt.DevUserId;

@@ -17,13 +17,13 @@ describe('economy targets (90 days, 3 seeds)', () => {
     expect(r.firstPityDay).not.toBeNull();
     expect(r.firstPityDay!).toBeGreaterThanOrEqual(40);
     expect(r.firstPityDay!).toBeLessThanOrEqual(75);
-  }, 180_000);
+  }, 600_000);
 
   it('E4 a casual free player still pulls every couple of weeks', async () => {
     const r = (await run()).f2p_casual!;
     expect(r.pullsPerMonth).toBeGreaterThanOrEqual(15);
     expect(r.pullsPerMonth).toBeLessThanOrEqual(40);
-  }, 180_000);
+  }, 600_000);
 
   it('E5-E6 paying helps, but a free player is never far behind', async () => {
     const all = await run();
@@ -32,7 +32,7 @@ describe('economy targets (90 days, 3 seeds)', () => {
     expect(all.light!.pullsPerMonth / f).toBeLessThanOrEqual(1.6);
     expect(all.medium!.pullsPerMonth / f).toBeGreaterThanOrEqual(1.8);
     expect(all.medium!.pullsPerMonth / f).toBeLessThanOrEqual(3.0);
-  }, 180_000);
+  }, 600_000);
 
   it('E10 the daily pack (厩舎手当 ¥480) helps a little, less than the season pass (REQ-UXS-018)', async () => {
     const all = await run();
@@ -42,14 +42,54 @@ describe('economy targets (90 days, 3 seeds)', () => {
     expect(ratio).toBeLessThan(all.light!.pullsPerMonth / all.f2p!.pullsPerMonth);
     // claimed every active day: 30 free coins a day while it runs
     expect(all.allowance!.allowanceCoins / all.allowance!.activeDays).toBeCloseTo(30, 0);
-  }, 180_000);
+  }, 600_000);
+
+  it('E13 rewarded ads help a free player a little — less than the cheapest paid product (REQ-AD-011)', async () => {
+    const all = await run();
+    const f = all.f2p!.pullsPerMonth;
+    const ratio = all.ads!.pullsPerMonth / f;
+    expect(ratio).toBeGreaterThanOrEqual(1.03);
+    expect(ratio).toBeLessThanOrEqual(1.15);
+    // never worth more than paying: below the daily pack (E10) and the season pass (E5)
+    expect(ratio).toBeLessThan(all.allowance!.pullsPerMonth / f);
+    expect(ratio).toBeLessThan(all.light!.pullsPerMonth / f);
+    // free coins only, within the code ceiling, and no ads on the install day
+    expect(all.ads!.adCoins / all.ads!.activeDays).toBeLessThanOrEqual(40);
+    expect(all.ads!.adViews).toBeLessThan(all.ads!.activeDays * 3);
+    expect(all.ads!.paidCoinsBought).toBe(0);
+  }, 600_000);
 
   it('E1 note: the daily first-win bonus pays on ranked wins only and is part of the free income (REQ-UXS-010)', async () => {
     const r = (await run()).f2p!;
     expect(r.firstWinCoins).toBeGreaterThan(0);
     // at most 30+20+10 a day
     expect(r.firstWinCoins / r.activeDays).toBeLessThanOrEqual(60);
-  }, 180_000);
+  }, 600_000);
+
+  it('E11 the invite program (REQ-INV-*): an invited free player stays inside E1/E2, an inviter at the cap gains less than the season pass', async () => {
+    const all = await run();
+    const invited = all.f2p_invited!;
+    expect(invited.pullsPerMonth).toBeGreaterThanOrEqual(40);
+    expect(invited.pullsPerMonth).toBeLessThanOrEqual(65);
+    expect(invited.ssrPerMonth).toBeLessThanOrEqual(2.8);
+    expect(invited.inviteTickets).toBe(1);
+    const inviter = all.f2p_inviter!;
+    const c = m.progression.invite!;
+    // the counted cap bounds the inviter's lifetime income from invites: 10 × (20 + 40 coins + 1 ticket). Inside the
+    // 90 days every graduation and most class-A promotions arrive; class S (≥ 3 seasons) lies beyond the window.
+    const lifetimeCoins = c.milestones.reduce((a, d) => a + (d.reward.freeCoins ?? 0), 0) * c.maxCountedInvitees;
+    expect(inviter.inviteCoins).toBeGreaterThan(0);
+    expect(inviter.inviteCoins).toBeLessThanOrEqual(lifetimeCoins);
+    expect(inviter.inviteTickets).toBeLessThanOrEqual(c.maxCountedInvitees);
+    // E2 holds for the capped inviter too (r10 merge: the earlier 100 coins + ticket at class B gave 3.00 SSR/month),
+    // and the invite income never buys an extra pity exchange over the daily free player
+    expect(inviter.ssrPerMonth).toBeLessThanOrEqual(2.8);
+    expect(inviter.pityExchanges).toBeLessThanOrEqual(all.f2p!.pityExchanges);
+    const ratio = inviter.pullsPerMonth / all.f2p!.pullsPerMonth;
+    expect(ratio).toBeGreaterThanOrEqual(1.0);
+    expect(ratio).toBeLessThanOrEqual(1.15);
+    expect(ratio).toBeLessThan(all.light!.pullsPerMonth / all.f2p!.pullsPerMonth);
+  }, 600_000);
 
   it('E7 the season pass is worth clearly more than its price in coins', () => {
     const pass = m.products.find((p) => p.id === 'season_pass')!;
@@ -71,9 +111,26 @@ describe('economy targets (90 days, 3 seeds)', () => {
     }
   });
 
+  it('E12 a returner (14 days off) gets back less than a daily free player earned in those days (REQ-CB-010)', async () => {
+    const all = await run();
+    const r = all.lapsed!;
+    const daily = all.f2p!;
+    const missed = 14;
+    expect(r.comebackWindows).toBe(1);
+    expect(r.comebackValue).toBeGreaterThan(0);
+    expect(r.comebackValue).toBeLessThanOrEqual(daily.freeCoinsPerActiveDay * missed);
+    const dailyXpPerDay = (daily.seasonMissionXp + daily.activeDays * 6 * m.progression.passXpPerRace) / daily.activeDays;
+    expect(r.comebackXp).toBeGreaterThan(0);
+    expect(r.comebackXp).toBeLessThanOrEqual(dailyXpPerDay * missed);
+    // the returner still ends behind the daily player over the 90 days
+    expect(r.pullsPerMonth).toBeLessThanOrEqual(daily.pullsPerMonth);
+    // players who never lapse never get a window: their numbers (E1–E3, E5–E10) are unchanged
+    for (const id of ['f2p', 'light', 'medium', 'allowance']) expect(all[id]!.comebackWindows).toBe(0);
+  }, 600_000);
+
   it('E9 friend races cannot replace ranked play as an income (daily cap ≤ 30% of a free player day)', async () => {
     const r = (await run()).f2p!;
     const maxFriendPerDay = m.progression.friendRewardDailyCap * Math.max(...m.progression.raceFreeCoinsByPlace.friend!);
     expect(maxFriendPerDay).toBeLessThanOrEqual(0.3 * r.freeCoinsPerActiveDay);
-  }, 180_000);
+  }, 600_000);
 });

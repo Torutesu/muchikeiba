@@ -8,6 +8,10 @@
 //  3. Round 9 (06 §7 item 12 / §7.3): the replay share card from a result (re-simulated on the device, same hash), the
 //     account-link prompt (day 3 once; right after the first purchase; linking sends account_link), and the time attack
 //     ghost picker (opens on フレンド, falls back to 上位 without friend ghosts) with a run beside the friend's ghost.
+//  4. Round 10: the 支部 cheer-stamp feed (no text field; locked stamps say how they unlock; a stamp sent with the 10 s
+//     rule on the CTA; cheering a teammate's race result; mute and report) and this season's pass shown as 購入済み.
+//  5. Returning players (REQ-CB-*, 06 §4.5): the comeback welcome (once), the 7-day comeback login track and missions, the
+//     lapse-reminder opt-in (asked once), the home chip and the one-time what's-new card.
 // Screenshots: <out>/u-<nn>-<name>.png. Returns { shots, ftue }.
 const path = require('path');
 const fs = require('fs');
@@ -191,12 +195,20 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.equal(v.day, 1); assert.equal(v.races, 1);
   assert.ok(await page.locator('.screen.in .btn.tab.locked').count() >= 1, 'shop tab is locked on day 1');
   await btn('ショップ　🔒').click(); await shot('home-day1-locked-toast', 250);
+  await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .ad-card').count(), 0, 'no rewarded-ad card in the first session (REQ-AD-001)');
 
   // ------------------------------------------------------------------ 2. other screens and states
   // the account-link prompt (REQ-UXS-073) comes up once on the first home of day 3+ after the FTUE: shot once, then 「あとで」
   let linkShots = 0;
+  // REQ-CB-008: a demo day can cross a dated what's-new entry; the one-time card is closed like a player would
+  const closeWhatsNew = async () => {
+    const c = page.locator('.screen.in [data-whatsnew-close]');
+    if (await c.count()) { await c.first().click(); await page.waitForTimeout(250); }
+  };
   const demo = async (k) => {
     await page.evaluate((x) => globalThis.__muchi.demo(x), k); await waitScreen(['home', 'link-prompt'], 20000); await page.waitForTimeout(500);
+    await closeWhatsNew();
     if (await screen() === 'link-prompt') {
       assert.notEqual(k, 'day1', 'no account-link prompt on day 1');
       assert.equal(await page.locator('.screen.in [data-trigger]').getAttribute('data-trigger'), 'Day3');
@@ -206,6 +218,23 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   };
   await demo('day3');
   await shot('home-day3', 600);
+  // rewarded ads (REQ-AD-*): the opt-in card on home from day 2 → the simulated ad → the server's verdict from the
+  // signed SSV callback → the watched state → the card says today's view is done
+  await page.waitForSelector('.screen.in .ad-card[data-placement="daily_coins"][data-state="offer"]', { timeout: 10000 });
+  assert.ok(!/倍/.test(await page.locator('.screen.in .ad-card').innerText()), 'ad card: fixed amounts, no 「倍」');
+  await shot('ad-offer-home', 200);
+  const free0 = await page.evaluate(() => globalThis.__muchi.state().player.wallet.free);
+  const paid0 = await page.evaluate(() => globalThis.__muchi.state().player.wallet.paid);
+  await click('動画を見る'); await waitScreen('ad-player'); await shot('ad-player-simulated', 300);
+  await waitScreen('ad-watched', 30000);
+  assert.equal(await page.evaluate(() => globalThis.__muchi.lastAd), 'rewarded');
+  await shot('ad-watched', 300);
+  const w1 = await page.evaluate(() => globalThis.__muchi.state().player.wallet);
+  assert.equal(w1.free - free0, 10, 'the SSV callback granted 10 free coins');
+  assert.equal(w1.paid, paid0, 'never paid coins');
+  await click('つづける'); await waitScreen('home');
+  await page.waitForSelector('.screen.in .ad-card[data-state="done"]', { timeout: 10000 });
+  await shot('ad-offer-done', 200);
   assert.equal(await page.locator('.screen.in .btn.tab.locked').count(), 0, 'shop open on day 3');
   await click('ショップ'); await waitScreen('shop-recommended'); await shot('shop-recommended', 600);
   assert.ok(await page.locator('.screen.in .countdown').count() === 1, 'pass offer shows the real season-end countdown');
@@ -320,6 +349,85 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await shot('settings-linked', 400);
   await click('初回購入の直後'); await page.waitForTimeout(300);
   assert.equal(await screen(), 'settings', 'linked: the prompt never comes back');
+  // ------------------------------------------------------------------ 4. round 10
+  // 支部の応援スタンプ (REQ-TEAMFEED-*): the demo team's feed on the real TeamsService / TeamCore
+  await page.evaluate(() => globalThis.__muchi.show('TeamFeed')); await waitScreen('team-feed', 20000); await page.waitForTimeout(500);
+  assert.ok(await page.locator('.screen.in .tf-row[data-kind="race"]').count() >= 1, 'a teammate race result is in the feed');
+  assert.equal(await page.locator('.screen.in input, .screen.in textarea, .screen.in [contenteditable]').count(), 0, 'no free text anywhere in the feed');
+  assert.ok(await page.locator('.screen.in .tf-stamp.locked').count() >= 1, 'locked stamps are shown with their unlock text');
+  await shot('team-feed', 300);
+  await page.locator('.screen.in .tf-stamp.locked[data-stamp="whip"]').click(); await page.waitForTimeout(250);
+  assert.match(await page.locator('.toast').last().textContent(), /レースに10回出走で解放/);
+  await shot('team-feed-locked-toast', 100);
+  await page.locator('.screen.in .tf-stamp[data-stamp="nice"]').click(); await page.waitForTimeout(400);
+  await page.locator('.screen.in .btn.tf-cta').click(); await page.waitForTimeout(700);
+  const first = page.locator('.screen.in .tf-row').first();
+  assert.equal(await first.getAttribute('data-kind'), 'stamp'); assert.match(await first.getAttribute('class'), /mine/);
+  assert.match(await page.locator('.screen.in .btn.tf-cta').getAttribute('class'), /disabled/, '10 s cooldown on the CTA');
+  await shot('team-feed-sent', 300);
+  await click('支部員のデモ'); await page.waitForTimeout(700); // teammates act (the demo clock moves past the 10 s rule)
+  await page.locator('.screen.in .tf-row.race:not(.mine) .tf-cheer').first().click(); await page.waitForTimeout(700);
+  assert.ok(await page.locator('.screen.in .tf-cheer.on').count() >= 1, 'my cheer is on the teammate race result');
+  await shot('team-feed-cheered', 300);
+  const victim = await page.locator('.screen.in .tf-row.race:not(.mine)').first().getAttribute('data-player');
+  await page.locator(`.screen.in .tf-row[data-player="${victim}"] .tf-link`, { hasText: '非表示' }).first().click(); await page.waitForTimeout(700);
+  assert.equal(await page.locator(`.screen.in .tf-row[data-player="${victim}"]`).count(), 0, 'a muted member disappears from my feed');
+  const before = Number(await page.locator('.screen.in .tf-list').getAttribute('data-count'));
+  await page.locator('.screen.in .tf-row:not(.mine) .tf-link', { hasText: '報告' }).first().click(); await page.waitForTimeout(700);
+  assert.equal(Number(await page.locator('.screen.in .tf-list').getAttribute('data-count')), before - 1, 'a reported item is hidden for me');
+  await shot('team-feed-muted-reported', 300);
+  // r10 fix: this season's pass bought (demo receipt, no billing) → 購入済み in the shop and on the pass screen
+  assert.ok((await page.evaluate(() => globalThis.__muchi.logic.demoPurchase('season_pass'))).ok);
+  await page.evaluate(() => globalThis.__muchi.show('Store', 'recommended')); await waitScreen('shop-recommended'); await page.waitForTimeout(400);
+  assert.match(await page.locator('.screen.in [data-product="season_pass"]').innerText(), /購入済み/);
+  await shot('shop-pass-owned', 300);
+  await page.evaluate(() => globalThis.__muchi.show('SeasonPass')); await waitScreen('pass'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .btn[data-label="購入済み"].disabled').count(), 1, 'the bought pass is not buyable');
+  assert.equal(await page.locator('.screen.in .btn[data-label="今シーズンは購入済み"].disabled').count(), 1, 'Pass+ is closed too (one per season)');
+  await shot('season-pass-owned', 500);
+  // ------------------------------------------------------------------ 4. round 10: 友達招待 (REQ-INV-*)
+  // my code + share, demo friends redeeming it (real InviteService), milestone rewards via the outbox, entering a code
+  await demo('day1');
+  await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings');
+  await page.locator('.screen.in [data-action="invite"]').click(); await waitScreen('invite'); await page.waitForTimeout(400);
+  const myCode = await page.locator('.screen.in [data-code]').getAttribute('data-code');
+  assert.match(myCode, /^[23456789BCDFGHJKMNPQRSTVWXZ]{8}$/, 'my invite code');
+  assert.equal(await page.locator('.screen.in [data-cap]').getAttribute('data-cap'), '0/10');
+  assert.equal(await page.locator('.screen.in [data-milestone]').count(), 3, 'milestone table');
+  assert.equal(await page.locator('.screen.in [data-eligible]').getAttribute('data-eligible'), 'true', 'day 1 after the FTUE: entry open');
+  assert.equal(await page.locator('.screen.in [data-action="redeem"]').evaluate((e) => e.classList.contains('disabled')), true, 'empty input: redeem disabled');
+  await page.waitForSelector('.screen.in [data-demo-code]');
+  await shot('invite-mine', 300);
+  await click('デモ：友達が参加'); await waitScreen('invite'); await page.waitForTimeout(300);
+  await click('デモ：友達が参加'); await waitScreen('invite'); await page.waitForTimeout(300);
+  await click('デモ：初心者卒業'); await waitScreen('invite'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in [data-invitee]').count(), 2, 'two friends joined with my code');
+  assert.equal(await page.locator('.screen.in [data-cap]').getAttribute('data-cap'), '2/10');
+  assert.equal(await page.locator('.screen.in [data-reached="rewarded"]').count(), 1, 'one milestone paid');
+  await page.waitForSelector('.screen.in [data-demo-code]');
+  await shot('invite-crew', 300);
+  // enter the demo friend's code: a typo keeps the button disabled, the real code redeems (welcome gift + friend)
+  const demoCode = await page.locator('.screen.in [data-demo-code]').getAttribute('data-demo-code');
+  const field = page.locator('.screen.in .invite-input');
+  await field.fill(demoCode.slice(0, -1) + (demoCode.endsWith('B') ? 'C' : 'B'));
+  assert.equal(await page.locator('.screen.in [data-action="redeem"]').evaluate((e) => e.classList.contains('disabled')), true, 'typo: redeem disabled');
+  await shot('invite-typo', 200);
+  await field.fill(demoCode.toLowerCase());
+  assert.equal(await page.locator('.screen.in [data-action="redeem"]').evaluate((e) => e.classList.contains('disabled')), false);
+  await page.locator('.screen.in [data-action="redeem"]').click(); await page.waitForTimeout(600); await waitScreen('invite');
+  assert.equal(await page.locator('.screen.in [data-eligible]').getAttribute('data-eligible'), 'false');
+  assert.equal(await page.locator('.screen.in [data-reason]').getAttribute('data-reason'), 'already_redeemed');
+  await shot('invite-redeemed', 300);
+  // a deep link (unity.html?invite=<code> stands in for muchi://invite/<code>) pre-fills the entry of a fresh player
+  await demo('day1');
+  const linkCode = await page.evaluate(() => globalThis.__muchi.logic.invite.demoInviterCode());
+  await page.goto(url + '?invite=' + encodeURIComponent(linkCode.replace('-', ''))); await ready(); await waitScreen('invite'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .invite-input').inputValue(), linkCode, 'deep link pre-fills the code');
+  assert.equal(await page.locator('.screen.in [data-action="redeem"]').evaluate((e) => e.classList.contains('disabled')), false, '…ready to redeem (never automatic)');
+  await shot('invite-deeplink', 300);
+  await page.evaluate(() => localStorage.removeItem('muchi.invite.linkCode'));
+  await page.goto(url); await ready();
+
   // the tutorial screens: the whip-only HUD, the whip cue, and the close-2nd retry when the player never whips
   await page.evaluate(() => globalThis.__muchi.demo('new')); await waitScreen('title', 20000);
   await click('同意してはじめる'); await waitScreen('race-tutorial');
@@ -334,6 +442,43 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await waitScreen(['tutorial-retry', 'victory'], 20000);
   assert.equal(await screen(), 'tutorial-retry', 'no whip → close 2nd and a retry');
   await shot('tutorial-retry', 600);
+
+  // ------------------------------------------------------------------ 4. returning players (REQ-CB-001..012)
+  // 3 days of play, 14 days away, back: the server rules start a mid-tier window; the welcome is shown once
+  await page.evaluate(() => globalThis.__muchi.demo('comeback')); await waitScreen('comeback-welcome', 30000); await page.waitForTimeout(300);
+  const welcome = await page.locator('.screen.in').innerText();
+  assert.match(welcome, /14日ぶりのご来場です/);
+  assert.match(welcome, /\d+月\d+日まで、復帰キャンペーン/, 'the real window end as a date');
+  assert.ok(!/倍/.test(welcome), 'no 「倍」 wording');
+  await shot('comeback-welcome', 500);
+  await click('受け取りにいく'); await waitScreen('comeback'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in .cb-cell').count(), 7, '7-day comeback login track');
+  assert.equal(await page.locator('.screen.in .cb-cell.today').count(), 1);
+  assert.match(await page.locator('.screen.in [data-cb-end]').textContent(), /^\d+月\d+日まで　·　残り14日$/, 'end date + game days left, no timer');
+  assert.equal(await page.locator('.screen.in [data-mission]').count(), 5);
+  assert.equal(await page.locator('.screen.in [data-optin]').count(), 1, 'the lapse-reminder opt-in is offered');
+  await shot('comeback-track', 500);
+  await click('今日の分を受け取る'); await page.waitForTimeout(700); await waitScreen('comeback');
+  await page.waitForSelector('.screen.in .cb-cell.claimed', { timeout: 10000 });
+  assert.equal(await page.locator('.screen.in .cb-cell.claimed').count(), 1);
+  assert.equal(await page.locator('.screen.in .btn[data-label="今日の分を受け取る"]').count(), 0, 'one comeback login day per game day');
+  await shot('comeback-claimed-toast', 250);
+  await click('いいえ'); await page.waitForTimeout(500);
+  assert.equal(await page.locator('.screen.in [data-optin]').count(), 0, 'the opt-in is asked once');
+  await click('ホームへ'); await waitScreen(['home', 'link-prompt'], 10000); await page.waitForTimeout(500);
+  if (await screen() === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); await page.waitForTimeout(500); }
+  await page.waitForSelector('.screen.in [data-whatsnew]', { timeout: 10000 });
+  const items = await page.locator('.screen.in [data-item]').evaluateAll((els) => els.map((e) => e.dataset.item));
+  assert.ok(items.includes('skills_v1') || items.length >= 1, 'what\'s new lists what went live while away');
+  await shot('home-whats-new', 400);
+  await page.locator('.screen.in [data-whatsnew-close]').click(); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in [data-whatsnew]').count(), 0);
+  assert.equal(await page.locator('.screen.in [data-comeback="mid"]').count(), 1, 'the home chip leads back to the campaign');
+  await shot('home-comeback-chip', 300);
+  await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen(['home', 'link-prompt'], 10000); await page.waitForTimeout(500);
+  if (await screen() === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); await page.waitForTimeout(500); }
+  assert.equal(await screen(), 'home', 'the welcome is not shown again');
+  assert.equal(await page.locator('.screen.in [data-whatsnew]').count(), 0, 'the what\'s-new card is shown once');
 
   // a reload on a named player goes straight home
   await demo('day3');

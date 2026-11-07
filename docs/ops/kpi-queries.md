@@ -56,6 +56,8 @@
 | `stable_save` | サーバー（マイ厩舎の保存、REQ-STABLE-010） | テーマID | | | `double5` 飾りの数、`double9` 選んだ馬の数 |
 | `stable_visit` | サーバー（他人の厩舎を見た。書き込みなし） | `friend`/`other` | | | |
 | `stable_like` | サーバー（いいね。コインは付かない） | `friend`/`other` | | | `double9` 今日の残り回数 |
+| `stamp_post` | サーバー（支部フィードにスタンプを投稿・応援した、REQ-TEAMFEED-009） | スタンプID | `post`/`reaction` | 支部ID | |
+| `team_feed_view` | サーバー（支部フィードの1ページ目を開いた） | 支部ID | | | `double5` ミュートしている人数 |
 | `session_start` / `session_end` | クライアント | | | | `double6` セッションの長さ |
 | `tutorial_step` | クライアント | ステップ名（固定の8つ：`consent` 1, `race1_start` 2, `race1_whip` 3, `race1_win` 4, `named` 5, `gacha_done` 6, `race2_done` 7, `home` 8） | | | `double9` ステップ番号、`double5` 任意の数値（`race1_win` はやり直し回数）。REQ-UXS-030 |
 | `feature_unlock` | クライアント | 機能キー（`unlocks` のキー） | | | |
@@ -63,15 +65,68 @@
 | `race_quit` | クライアント | モード | | | `double9` 残り距離(m) |
 | `account_link` | クライアント | `apple`/`google` | | | |
 | `share` | クライアント（リプレイをOSの共有に渡した。キャンセルは送らない、REQ-UXS-072） | `replay_video`/`replay_image` | | | |
+| `ad_offer_view` | クライアント（リワード広告のカードを出した。画面ごとに1回、REQ-AD-010） | 枠ID | 画面 `home`/`result`/`time_attack`/`shop` | | |
+| `ad_start` | クライアント（カードを押した後の SDK の結果） | 枠ID | 画面 | `shown`/`no_fill`/`failed`/`closed_early` | |
+| `ad_reward` | サーバー（SSV コールバックで付与した。クライアントからは送れない） | 枠ID | ネットワーク（`admob`） | 画面 | `double3` 無償コイン、`double9` タイムアタックの回数、`double5` その日の回数 |
+| `ad_reject` | サーバー（コールバックを弾いた） | 理由（`user_mismatch`/`unknown_session`/`session_used`/`expired`/`clock_skew`/`ad_unit_mismatch`/`cap`/`deleting`） | 枠ID | ネットワーク | `double5` その日の弾いた数 |
 | `consent` | サーバー | 規約の版 | プライバシーポリシーの版 | | |
 | `partner_granted` | サーバー | テンプレートID（`t_partner`） | | | |
 | `ab_assign` | サーバー（初回の bootstrap、実験ごとに1回） | 実験ID | バケットID | | |
 | `account_delete` | サーバー | `requested`/`cancelled`/`deleted` | | | `deleted` は `double2`/`double3` 放棄したコイン |
+| `comeback_start` | サーバー（休眠からの復帰で期間が始まった、REQ-CB-002） | 段階 `short`/`mid`/`long` | | | `double9` 休眠したゲーム日数、`double5` そのプレイヤーの何回目の期間か |
+| `comeback_day` | サーバー（復帰ログボの受け取り、REQ-CB-004） | 段階 | | | `double9` 何日目（1〜7） |
+| `comeback_complete` | サーバー（復帰ログボ7日とミッションを全部受け取った、REQ-CB-005） | 段階 | | | `double9` 期間の何日目に完了したか |
 | `screen_view` | クライアント | 画面名 | | | |
 | `client_race_start` | クライアント | モード | | | |
 | `purchase_flow` | クライアント | `open`/`cancel`/`fail`/`store_success` | 商品ID | | |
 | `push_open` | クライアント | テンプレートID | | | |
 | `push_permission` | クライアント | | | | `double9` 1 = 許可 |
+| `invite_share` | クライアント（招待コードを共有シートに渡した／コピーした。キャンセルは送らない、REQ-INV-011） | `os_share`/`copy_code`/`copy_link` | | | |
+| `invite_redeem` | サーバー（招待コードの引き換え。1回で2行） | | `inviter`/`invitee` | | 招待した人の行：`double9` 1 = 報酬の対象（上限内）。招待された人の行：`double3` ギフトの無償コイン、`double5` ギフトの券の枚数 |
+| `invite_milestone` | サーバー（招待された人の到達。双方に1行） | マイルストーンID | `invitee`/`inviter` | | 招待した人の行：`double3` 無償コイン、`double5` 券の枚数（上限外は行が出ない） |
+
+## リワード広告（REQ-AD-010、contracts/protocol.md §21）
+
+カードの表示 → 再生 → 付与の流れを枠ごとに見ます（7日間）。`ad_start` の `shown` に対して `ad_reward` が少ないときは、SSV コールバックが届いていない（設定・鍵・ネットワーク側の遅れ）か、弾かれています（下の `ad_reject`）。
+
+```sql
+SELECT blob8 AS placement,
+  sumIf(_sample_interval, blob1 = 'ad_offer_view') AS offer_views,
+  sumIf(_sample_interval, blob1 = 'ad_start') AS starts,
+  sumIf(_sample_interval, blob1 = 'ad_start' AND blob10 = 'shown') AS shown,
+  sumIf(_sample_interval, blob1 = 'ad_start' AND blob10 = 'no_fill') AS no_fill,
+  sumIf(_sample_interval, blob1 = 'ad_reward') AS rewarded,
+  round(sumIf(_sample_interval, blob1 = 'ad_reward') / sumIf(_sample_interval, blob1 = 'ad_start' AND blob10 = 'shown'), 3) AS reward_per_shown,
+  round(sumIf(_sample_interval, blob1 = 'ad_start') / sumIf(_sample_interval, blob1 = 'ad_offer_view'), 3) AS start_rate
+FROM muchi_kpi
+WHERE blob1 IN ('ad_offer_view', 'ad_start', 'ad_reward') AND timestamp > NOW() - INTERVAL '7' DAY
+GROUP BY placement
+ORDER BY placement
+```
+
+弾いた理由の内訳（不正の兆候：`user_mismatch`・`session_used`・`clock_skew` が急に増えたら調べる。1日に5件を超えたプレイヤーにはサポート用の印 `ads_anomaly:<ゲーム日>` が付きます）：
+
+```sql
+SELECT blob8 AS reason, sum(_sample_interval) AS n, count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'ad_reject' AND timestamp > NOW() - INTERVAL '7' DAY
+GROUP BY reason
+ORDER BY n DESC
+```
+
+広告を見る人の割合と1人あたりの無償コイン（課金者は既定で30日間広告が出ないので、`blob7` で分けて確かめる。課金者の行が多いなら設定でオンにした人です）：
+
+```sql
+SELECT blob6 AS day, blob7 AS payer,
+  count(DISTINCT blob2) AS watchers,
+  sum(_sample_interval * double3) / count(DISTINCT blob2) AS free_coins_per_watcher
+FROM muchi_kpi
+WHERE blob1 = 'ad_reward' AND timestamp > NOW() - INTERVAL '14' DAY
+GROUP BY day, payer
+ORDER BY day DESC, payer
+```
+
+ゲーム日で数えたいとき（1日の上限はゲーム日）は「前提」の `formatDateTime(timestamp + INTERVAL '5' HOUR, '%Y-%m-%d')` を使います。
 
 ## 継続率（D1 / D7 / D30）
 
@@ -319,6 +374,53 @@ GROUP BY style
 ORDER BY win_rate DESC
 ```
 
+## 復帰者のコホート（REQ-CB-012）
+
+`comeback_start` の日を「復帰日」として、復帰者ごとに復帰日からの経過日数で継続を数えます。JOIN もウィンドウ関数も無いので2段階にします。
+
+1. 復帰者と復帰日（段階・休眠日数つき）を出す：
+
+```sql
+SELECT blob2 AS player, blob8 AS tier, min(timestamp) AS returned_at, max(double9) AS lapse_days
+FROM muchi_kpi
+WHERE blob1 = 'comeback_start' AND timestamp > NOW() - INTERVAL '75' DAY
+GROUP BY player, tier
+```
+
+2. 同じ復帰日の人をまとめて（例：段階 `mid`、復帰日 `2026-11-17`）、その人たちの活動日を数える。`blob2 IN (…)` に 1 の結果の `player` を入れる（多い時は分割）。R1 / R7 / R14 / R30 は復帰日の翌日・7日後・期間の終わり（14日後）・30日後に何かのイベントがあった割合：
+
+```sql
+SELECT
+  count() AS returners,
+  round(countIf(d1)  / count(), 3) AS r1_rate,
+  round(countIf(d7)  / count(), 3) AS r7_rate,
+  round(countIf(d14) / count(), 3) AS r14_rate,
+  round(countIf(d30) / count(), 3) AS r30_rate,
+  round(countIf(done) / count(), 3) AS complete_rate
+FROM (
+  SELECT blob2 AS player,
+    max(blob6 = '2026-11-18') AS d1, max(blob6 = '2026-11-24') AS d7, max(blob6 = '2026-12-01') AS d14, max(blob6 = '2026-12-17') AS d30,
+    max(blob1 = 'comeback_complete') AS done
+  FROM muchi_kpi
+  WHERE timestamp >= toDateTime('2026-11-17 00:00:00') AND blob2 IN ('<player>', '<player>')
+  GROUP BY player
+)
+```
+
+比較の対照には、同じ日に休眠明けで来たが期間が始まらなかった人（`comeback_start` が無い人：クールダウン中・休眠前のレース不足）を同じ式で数えます。
+
+復帰ログボの何日目まで受け取ったかの分布（期間中の離脱の場所）：
+
+```sql
+SELECT blob8 AS tier, double9 AS day, count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'comeback_day' AND timestamp > NOW() - INTERVAL '45' DAY
+GROUP BY tier, day
+ORDER BY tier, day
+```
+
+あわせて見る指標：`push_open` の `blob8 = 'lapse_3d'` / `'lapse_7d'`（呼び戻しの通知からの起動。種類 `comeback` はオプトイン）、復帰者の `purchase`（`comeback_<期間ID>` のオファーは通常のパスの案内なので売上の上乗せではなく、復帰後の課金率として見る）。
+
 ## 離脱の兆候
 
 最後に来た日が7日以上前の人数を、コホートごとに数えます。サブクエリでプレイヤーごとの最終日を出しています。
@@ -336,6 +438,60 @@ ORDER BY cohort DESC
 ```
 
 あわせて見る指標：`session_end` の `double6`（セッションの長さ）の中央値の推移、`push_permission` で拒否した割合、`purchase_flow` の `cancel`/`fail` の割合。
+
+## 友達招待：バイラル係数（REQ-INV-011、contracts/protocol.md §19）
+
+`invite_redeem` は1回の引き換えで2行出ます（`blob9` = `inviter`：招待した人の行、`invitee`：招待された人の行）。招待した人の行には **招待した人のコホート** が入るので、JOIN なしで「コホートの1人が何人を呼んだか」を数えられます。
+
+**バイラル係数 K**（コホートごと、インストールから30日以内に呼んだ人数 ÷ コホートの人数）。招待した人の行の `double9` は報酬の対象（上限10人以内）なら1。
+
+```sql
+SELECT
+  cohort,
+  countIf(ev = 'first_open') AS installs,
+  countIf(ev = 'invite_redeem' AND role = 'inviter' AND d <= 30) AS invited_30d,
+  round(countIf(ev = 'invite_redeem' AND role = 'inviter' AND d <= 30) / countIf(ev = 'first_open'), 3) AS k_30d,
+  countIf(ev = 'invite_share' AND d <= 30) AS shares_30d,
+  round(countIf(ev = 'invite_redeem' AND role = 'inviter' AND d <= 30) / countIf(ev = 'invite_share' AND d <= 30), 3) AS redeem_per_share
+FROM (
+  SELECT blob5 AS cohort, blob1 AS ev, blob9 AS role, double7 AS d, _sample_interval AS w
+  FROM muchi_kpi
+  WHERE timestamp > NOW() - INTERVAL '75' DAY
+    AND blob1 IN ('first_open', 'invite_redeem', 'invite_share')
+)
+GROUP BY cohort
+ORDER BY cohort DESC
+```
+
+- サンプリングが起きている期間は `countIf(…)` を `sumIf(w, …)` にします。
+- K < 1 が普通です（招待だけでは増え続けない）。インストールのうち招待経由の割合は `invite_redeem` の `invitee` の行 ÷ `first_open`（同じコホート、`double7 <= 7`）。
+- 招待経由の人の継続率は、`invite_redeem`（`invitee`）を出したプレイヤーだけで「継続率」のクエリを回します（内側のサブクエリで `blob2 IN (SELECT …)` は使えないので、先にプレイヤーの一覧を取り出して `blob2 IN ('…', …)` で絞る）。
+
+**到達率**（招待された人が本当に遊んだか。報酬はこの行でだけ出る）：
+
+```sql
+SELECT
+  blob8 AS milestone,
+  countIf(blob9 = 'invitee') AS reached,
+  countIf(blob9 = 'inviter' AND double3 + double5 > 0) AS rewarded
+FROM muchi_kpi
+WHERE blob1 = 'invite_milestone' AND timestamp > NOW() - INTERVAL '60' DAY
+GROUP BY milestone
+```
+
+`reached` と `rewarded` の差は、上限を超えた招待（報酬なし）・削除された招待した人・配達待ち。
+
+**不正の監視**：サーバーのサポート用フラグ（`supportFlags`：`invite_burst:<日>`、`invite_install_reuse:…`、`invite_same_device:…`、`invite_loop:…`、`invite_rate_limited:<日>`）は管理画面のプレイヤー表示に出ます。KPI では「1人の招待した人の1日の引き換え数」の上位を見ます：
+
+```sql
+SELECT blob2 AS inviter, blob6 AS day, count() AS redeems
+FROM muchi_kpi
+WHERE blob1 = 'invite_redeem' AND blob9 = 'inviter' AND timestamp > NOW() - INTERVAL '14' DAY
+GROUP BY inviter, day
+HAVING redeems >= 5
+ORDER BY redeems DESC
+LIMIT 50
+```
 
 ## 注意
 

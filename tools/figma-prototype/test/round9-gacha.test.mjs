@@ -89,9 +89,10 @@ assert.ok(!/倍|通常価格|今だけ|残りわずか/.test(texts), 'no mislead
 // the step-up needs paid coins: the free-coin player is refused with INSUFFICIENT_COINS, single pulls with BAD_REQUEST
 assert.strictEqual((await L.draw('stepup_paid', 10)).code, 'INSUFFICIENT_COINS');
 assert.strictEqual((await L.draw('stepup_paid', 1)).code, 'BAD_REQUEST');
-// 1 ms before the real end the pull goes through, 1 ms after it is refused with the end time (server clock decides)
-L.setClockMs(ginga.endAtMs - 1);
-assert.ok((await L.draw('pickup_ginga', 1)).ok);
+// just before the real end the pull goes through, 1 ms after it is refused with the end time (server clock decides)
+// the demo clock keeps running after setClockMs (Date.now() + shift): stand 1 s before the end, not 1 ms (a slow draw crossed it)
+L.setClockMs(ginga.endAtMs - 1000);
+{ const r = await L.draw('pickup_ginga', 1); assert.ok(r.ok, JSON.stringify(r)); }
 L.setClockMs(ginga.endAtMs + 1);
 const closed = await L.draw('pickup_ginga', 1);
 assert.strictEqual(closed.code, 'BANNER_CLOSED');

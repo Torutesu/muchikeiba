@@ -5,7 +5,7 @@ import type { PlayerInvoker, PlayerMethod } from '../http/app.js';
 import { pastSeasons } from '../domain/scheduled.js';
 import { jstMonthKey } from '../domain/time.js';
 import type { TournamentSummary } from '../domain/tournaments.js';
-import { forgetInDirectory, shardedStableDirectory } from './directory.js';
+import { forgetInDirectory, shardedInviteDirectory, shardedStableDirectory } from './directory.js';
 import { stableDeletionPort } from '../domain/stable.js';
 import { makeStableService } from '../http/stablePorts.js';
 import { loadMaster } from '../domain/master.js';
@@ -37,11 +37,19 @@ export function deletionPortsFromEnv(env: Env, ctx: DurableObjectState, svc: Pla
       dropOutgoing: (from, uid) => other(from, 'friendCancel', uid),
       dropIncoming: (to, uid) => other(to, 'friendDecline', uid),
     },
+    invites: {
+      forfeitOwn: (uid) => svc.inviteForfeit(uid),
+      retireCode: (uid) => shardedInviteDirectory(env.DIRECTORY).retire(uid),
+      anonymizeInstall: (h) => shardedInviteDirectory(env.DIRECTORY).anonymizeInstall(h),
+      forgetInvitee: (inviter, uid) => other(inviter, 'inviteForgetInvitee', uid),
+      forgetInviter: (invitee, uid) => other(invitee, 'inviteForgetInviter', uid),
+    },
     team: {
       members: async (teamId, uid) => ((await call(stub(env.TEAMS, teamId).view!(uid))) as { members: { playerId: string; role: string; joinedAt: number }[] }).members,
       leave: (teamId, uid) => call(stub(env.TEAMS, teamId).leave!(uid)),
       transfer: (teamId, uid, to) => call(stub(env.TEAMS, teamId).transfer!(uid, to)),
       dropRequest: (teamId, uid) => call(stub(env.TEAMS, teamId).dropRequest!(uid)),
+      forgetFeed: (teamId, uid) => call(stub(env.TEAMS, teamId).feedForget!(uid)),
     },
     directory: { forget: (uid) => forgetInDirectory(env.DIRECTORY, uid) },
     // layout and like records in this object first, then the visitors' copy (REQ-UXS-040 × REQ-STABLE-003)
@@ -75,6 +83,6 @@ export function deletionPortsFromEnv(env: Env, ctx: DurableObjectState, svc: Pla
       const acc = env.ACCOUNTING.get(env.ACCOUNTING.idFromName('global')) as unknown as { retainDeleted(p: string, r: RetainedRecord): Promise<unknown> };
       await acc.retainDeleted(uid, record);
     },
-    wipe: async () => { await wipePlayerStorage(ctx.storage); },
+    wipe: async (uid) => { await wipePlayerStorage(ctx.storage, uid); },
   };
 }

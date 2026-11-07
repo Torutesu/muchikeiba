@@ -277,6 +277,7 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 表示の文言・数量・期間は全てサーバーが作る。クライアントは組み立てない（「2倍」などの倍率表現は使わない。初回購入ボーナスは「無償コイン◯枚」）。時刻は ms（UTC エポック）、日付はゲーム日の `YYYY-MM-DD`（`gameDayKey`、切り替えは `progression.dayRollover`、§15。2026-12-01 04:00 JST から 4:00 JST、それまでは 0:00 JST）、残り日数（`remainingDays`）もゲーム日で数える。シーズンは JST の暦月 `YYYY-MM`（暦のまま）。**このセクションで新しいエラーコードは無い**（既存のコードの意味を下に追記。アカウント削除の予約中は §8.7 の `DELETION_PENDING`）。
 
 ### 13.1 `GET /v1/shop/products`（認証なし、REQ-UXS-022）
+`?mine=1`（要認証）を付けると、プレイヤーごとの所持（`owned` / `ownedReason` / `purchasedThisSeason`）が加わる（§18.1）。
 従来のフィールド（`id, kind, priceYen, paidCoins, once?, items?`）はそのまま。追加は表示用：
 ```json
 { "products": [
@@ -469,3 +470,204 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 **`GET /v1/gacha/:id/odds` の追加**：`period.lastDay`、`pickup: { templateId, name, rarity, ppm, rate, guaranteePpm, guaranteeRate } | null`（抽選表の行そのもの）、`stepUp: { afterLast, notice, steps: [ { step, priceTen, finalSlot: { appliesTo, items | null, rarityTotals | null } } ] } | null`、`pity.label`・`pity.costCoins`（交換までの最大コイン、ステップアップは各ステップの価格から）・`pity.closesAtMs`・`pity.carryOver`（上と同じ形）。`estimatedMaxCostYen` は `costCoins` から計算する。
 
 **期間外の操作**：引く・チケット・天井交換は `BANNER_CLOSED`（409）。`message` は `banner <id> ended at 2026-12-01 00:00 JST` / `banner <id> opens at …` / `banner <id> is not open`（予告前）。判定はその取引でサーバーが読んだ時刻（Durable Object の中で1回）。
+
+
+## 18. 支部の応援スタンプ・支部フィード（REQ-TEAMFEED-001〜009、`server/src/domain/teamFeed.ts`、C# `TeamFeed.cs`・`Muchi.Game` `TeamFeedModel`）
+支部の中だけで使う、**定型スタンプだけ**のやりとり。自由入力の文字はどこにも無い（本文に `text` などを付けると `BAD_REQUEST`）。そのため利用者の文章を審査する仕組みは要らない（docs/planning/03）。スタンプの絵はアセットキー `stamp/<id>`（`contracts/assets.md`、`npm run gen:assets` でマニフェストに載る。絵が届くまでは `stamp/default`）。
+
+**マスターデータ** `server/master/stamps.json`：
+```json
+{ "version": 1,
+  "config": { "postIntervalMs": 10000, "postsPerDay": 50, "feedSize": 100, "pageDefault": 20, "pageMax": 50, "reportsPerDay": 10, "muteMax": 100, "racePlaceMax": 3 },
+  "stamps": [ { "id": "cheer", "label": "がんばれ！", "unlock": { "kind": "default" } },
+              { "id": "whip", "label": "ムチ一閃！", "unlock": { "kind": "races", "count": 10 } },
+              { "id": "pass_crown", "label": "王者の風格", "unlock": { "kind": "pass" } },
+              { "id": "carrot", "label": "にんじん！", "unlock": { "kind": "cosmetic", "itemId": "stamp_carrot" } } ] }
+```
+- 解放の条件（REQ-TEAMFEED-002）：`default` 最初から／`races` 通算出走回数（`stats.races`、遊んで解放）／`pass` シーズンパス（パス・パス＋）を一度でも購入（返金済みは除く。一度買えばずっと使える）／`cosmetic` 見た目ショップでコインで直接買う（`items.json` の `kind: "stamp"`・`asset: "stamp/<id>"`。決まった価格、ガチャ・ランダムからは出ない）。スタンプの見た目以外の効果は無い。
+- 起動時とリモートコンフィグで `stampsProblems` が検証する（無料のスタンプが1つ以上、`cosmetic` は直販の `kind: "stamp"` の品と1対1、ラベル1〜12文字、上限値の範囲）。
+
+**エンドポイント**（全て要認証。支部に入っていないと `NOT_IN_TEAM`（404））：
+
+| メソッド・パス | 本文 | 応答 | エラー |
+|---|---|---|---|
+| `GET /v1/stamps` | — | `{ "version", "limits": { "postIntervalMs", "postsPerDay", "feedSize", "pageMax" }, "stamps": [ { "id", "label", "asset": "stamp/<id>", "unlock": { "kind", "count"?, "itemId"? }, "unlockText": "レースに10回出走で解放", "unlocked": true } ] }` | — |
+| `GET /v1/teams/me/feed?before=<seq>&limit=<n>` | — | 下の `FeedPage`（新しい順） | `before`/`limit` が数字でない・0 は `BAD_REQUEST` |
+| `POST /v1/teams/me/feed/stamps` | `{ "stampId": "cheer" }` | `{ "teamId", "seq", "at", "stampId" }` | `STAMP_LOCKED`（409、未解放。`message` は解放条件）、`RATE_LIMITED`（429、10秒に1回・ゲーム日ごとに50回）、`DELETION_PENDING`（削除予定中）、`NOT_FOUND`（無いスタンプ） |
+| `PUT /v1/teams/me/feed/:seq/reaction` | `{ "stampId": "nice" \| null }` | `{ "teamId", "seq", "myReaction" }` | 1つの項目に1人1つ（新しいスタンプで置き換え、null で取り消し）。同じ人の操作は2秒あける（`RATE_LIMITED`）。項目が古くて消えていれば `NOT_FOUND` |
+| `POST /v1/teams/me/feed/:seq/report` | `{ "reason": "spam" \| "harassment" \| "other" }` | `{ "reported": true, "seq" }` | 自分の項目は `BAD_REQUEST`、1日10件まで（`RATE_LIMITED`）。同じ項目の2回目は何もしない |
+| `GET /v1/teams/me/feed/mutes` | — | `{ "muted": ["<playerId>"] }` | — |
+| `PUT /v1/teams/me/feed/mutes` | `{ "playerId", "muted": true \| false }` | `{ "muted": [...] }` | 自分は `BAD_REQUEST`、100人まで（`TEAM_LIMIT`） |
+
+```json
+FeedPage = { "teamId": "tabc123456", "latestSeq": 130, "nextBefore": 111 | null, "muted": ["p9"],
+  "items": [ { "seq": 130, "at": 1795575600000, "kind": "stamp" | "race", "playerId": "p1", "displayName": "ミドリカワ", "mine": false,
+               "stampId": "cheer" | null, "stampAsset": "stamp/cheer" | null,
+               "race": { "raceId": "r_…", "mode": "ranked" | "tournament", "place": 1, "fieldSize": 12, "trackId": "kirameki_turf_2000" | null } | null,
+               "reactions": [ { "stampId": "nice", "count": 2, "mine": true } ], "myReaction": "nice" | null } ] }
+```
+- **リングバッファ**（REQ-TEAMFEED-004）：支部ごとに最新 `feedSize`（100）件だけを TeamDO が持つ（キー `feed`、支部の状態とは別）。`seq` は支部の中で増え続ける番号。ページは `nextBefore` を次の `before` に渡す。古い項目は消えるので、その `seq` への応援・報告は `NOT_FOUND`。
+- **レース結果の自動項目**（REQ-TEAMFEED-004）：支部員がランク戦か大会で `racePlaceMax`（3）着以内に入ると、レースの精算（プレイヤーのDurable Object）の後に支部へ1件届く（同じレース・同じ人は1件。無効レース・フレンド戦・4着以下は出ない）。届かなくても精算は失敗にしない（ベストエフォート）。
+- **名前**：支部員の項目は今の支部の名前（メンバー一覧の `displayName`）で表示。抜けた人の項目は投稿時の名前のまま。
+- **ミュート（ブロック）**（REQ-TEAMFEED-006）：見る人ごと。ミュートした人の項目とリアクションは自分のページから消え、その人の応援の通知も来ない。端末はすぐに自分の一覧に反映し（`TeamFeedModel`）、サーバーの一覧へ送る（失敗したら次に開いたときに送り直す）。
+- **報告**（REQ-TEAMFEED-007）：報告した人のページからはその項目が消え、投稿者のプレイヤー状態にサポート用のフラグ `team_feed_report:<teamId>:<seq>:<reporter>:<reason>` が付く（運営の `GET /v1/admin/players/:id` の `supportFlags` で見える）。
+- **通知**（任意）：自分のレース結果に支部員が新しく応援スタンプを付けると、push テンプレート `team_cheer`（カテゴリ `friends`、1日の上限・静かな時間帯は通常どおり）。ミュートした相手からは来ない。支部全体への呼びかけ（メンション）は無い。
+- **アカウント削除**（REQ-TEAMFEED-008）：削除予定中（`scheduled`）は投稿・応援が `DELETION_PENDING`（見ることはできる）。削除の処理の「支部」の段で、その人が投稿・応援した全ての支部（今の支部と、最近抜けた支部。プレイヤー状態の `teamFeed.postedIn`、最大10）から、その人の項目・リアクション・報告・投稿の回数を消す。
+- **KPI**（REQ-TEAMFEED-009、サーバーが書く。クライアントイベントは無い）：`stamp_post`（`s1` スタンプID、`s2` `post` | `reaction`、`s3` 支部ID）、`team_feed_view`（フィードの1ページ目を開いたとき。`s1` 支部ID、`count` ミュート人数）。docs/ops/kpi-queries.md。
+
+### 18.1 関連する小さな修正（ラウンド10）
+- **`GET /v1/shop/products?mine=1`**（要認証、§13.1）：同じ一覧に、そのプレイヤーの所持を加える。各商品に `owned`（今は買えない：1回限りの商品を購入済み／今シーズンのパス（パス・パス＋のどちらか）を購入済み／厩舎手当の受け取り中か予約中。`purchase-intent` が `ALREADY_PURCHASED` を返す条件と全く同じ）、`ownedReason`（`"once"` | `"season_pass"` | `"allowance"` | null）、`purchasedThisSeason`（シーズンパスだけ：その商品を今シーズン買ったか。他は null）。最上位に `"personalized": true, "seasonId": "2026-11"`。`mine` なしは従来どおり（`"personalized": false`、所持の項目は無い）。C# `ApiClient.GetMyProductsAsync`、`ShopModel` はこちらを使い、買ったパスのカードを「購入済み」にする。
+- **削除の処理中のレース結果**（§8.7）：アカウント削除の処理が始まった（`deleting`）プレイヤーへのレース結果は、何も変えずに成功で返す（`{ "skipped": "deletion_pending" }`）。部屋はそのプレイヤーを済みとして他の人を通常どおり精算し、再試行もデッドレターもしない。
+- **削除が済んだ後のレース結果**（ラウンド10の統合で追加）：削除の最後の段（`wipe`）はプレイヤーのストレージを消した後に墓標（`deleted` 表：プレイヤーIDと時刻だけ）を残す。状態が無く墓標があるプレイヤーへのレース結果は、プレイヤーを作り直さずに成功で返す（`{ "skipped": "deleted" }`）。状態がまだ無いだけの新しいプレイヤー（墓標なし）は従来どおり反映する。
+
+## 19. 友達招待（招待コード、REQ-INV-001〜012、`server/src/domain/invite.ts`、C# `Invite.cs`・`InviteModel`）
+
+**招待コード**：プレイヤーごとに1つ、変わらない8文字。文字は `23456789BCDFGHJKMNPQRSTVWXZ`（母音なし＝単語にならない、0/O・1/I/L などの見間違いなし）。1文字目はディレクトリのシャード（0〜15）、2〜7文字目は乱数、8文字目は検査文字（各文字の (位置+1)×(位置+2) の重み付き和を27で割った余り。C# `InviteCodes.Check` と同じ）。表示は `92W6-5BGF`。入力は大文字小文字・空白・ハイフンを無視する。禁止の並び（`INVITE_BLOCKLIST`）を含むコードは作らない。重複は DirectoryDO が作り直す。アカウント削除でコードは**引退**（行を残し二度と配らない）。
+
+**`GET /v1/invite`**（要認証。任意ヘッダー `x-install-id`：アプリのインストールごとの乱数 ID。サーバーはハッシュ（SHA-256 の先頭16バイト）だけを保存し、このプレイヤーのコードを同じ端末から使うことを断るのに使う）
+```json
+{ "code": "92W65BGF", "displayCode": "92W6-5BGF",
+  "share": { "deepLink": "muchi://invite/92W65BGF", "url": "https://invite.muchi-issen.example/i/92W65BGF", "text": "…さんから「ムチ一閃」への招待です。招待コード 92W6-5BGF を入力すると、はじめてのプレゼントがもらえます。\nhttps://…" },
+  "redeem": { "eligible": true, "reason": null | "ftue" | "window_closed" | "already_redeemed" | "deletion", "windowDays": 7, "daysLeft": 7,
+    "invitedBy": { "playerId": "alice" | null, "displayName": "…" | null, "at": 1793934000000, "milestones": ["im_graduate"] } | null,
+    "welcomeGift": { "items": [ { "itemId": "gacha_ticket", "qty": 1 } ] } },
+  "invitees": [ { "playerId": "bob" | "deleted:2", "displayName": "ボブ" | null, "at": 1793934000000, "counted": true, "deleted": true?,
+    "milestones": [ { "id": "im_graduate", "at": 1793937600000, "rewarded": true } ] } ],
+  "counted": 2, "cap": 10,
+  "milestones": [ { "id": "im_graduate", "kind": "beginner_complete" | "class" | "ranked_races", "classId": "B" | null, "target": null, "reward": { "freeCoins": 100 }, "rewardYen": 160 } ],
+  "termsKey": "terms.invite" }
+```
+- `share.text` はそのまま OS の共有シートに渡す（報酬の額は入れない。03-legal-risk.md「友達招待」）。`share.url` の https は仮のドメイン（本番のドメインが決まったら `progression.invite.shareBaseUrl` を変える）。
+- `redeem.daysLeft` は今日を1と数えるゲーム日（§15）。`eligible` が false のときは入力欄を出さない。
+- `counted: false` の招待（上限を超えた分）は参加・フレンドにはなるが、到達しても招待した人に報酬は出ない（`rewarded: false`）。
+- `rewardYen` は景品表示法のチェックに使う円換算（最小パックの単価）。画面には出さなくてよい（規約・ヘルプ用）。
+
+**`POST /v1/invite/redeem`**（要認証）`{ "code": "92w6-5bgf", "installId": "i-…" }` → `{ "status": "redeemed" | "already", "inviter": { "playerId", "displayName" | null }, "welcomeGift": {…}, "friended": true }`
+- 1アカウント1回。条件：チュートリアルの相棒を迎えた後（`NOT_ELIGIBLE`）・始めてから `redeemWindowDays`（7）ゲーム日以内（`INVITE_WINDOW_CLOSED`）・アカウント削除の予定がない（`DELETION_PENDING`）・まだ入力していない（`INVITE_ALREADY_REDEEMED`）。
+- 誤り：形が違う・検査文字が合わない `INVITE_CODE_INVALID`（400）／存在しない・引退したコード `NOT_FOUND`／自分のコード `INVITE_SELF`／不正対策で断る `INVITE_REFUSED`（同じ端末・同じインストールで2回目・招待の輪・招待した人が削除予定や停止中。**理由は画面に出さない**）／入力しすぎ `RATE_LIMITED`（429。1時間5回・1日10回、失敗も数える）。
+- 成功すると、招待された人にウェルカムギフト（無償のみ）、両者がフレンドになる（どちらかのフレンドが上限なら `friended: false`、招待は有効）。招待した人には**この時点では何も付与しない**（インストールだけでは報酬なし）。プッシュ `invite_joined`。
+- 手順（`InviteService.redeem`）：試行の記録 → コードの検証と検索 → インストールの確保（DirectoryDO、1インストール1回） → 招待した人の記録（冪等） → 招待された人の記録とギフト。後半が失敗したら招待した人の記録とインストールの確保を戻す。自動で再送しない（再送しても `already` になるだけだが、試行回数に数える）。
+
+**到達報酬（マイルストーン）**：招待された人の取引の終わりで到達を調べ（`noteInviteMilestones`）、届け先を本人の送信箱に入れる。Durable Object のアラームが招待した人へ届ける（失敗したら 2分・4分…最大6時間の間隔で再送。受け取り側は「招待された人＋マイルストーン」で冪等）。対象は引き換えから `milestoneWindowDays`（90）日以内。既定：
+| id | 条件 | 招待した人への報酬 | 円換算 |
+|---|---|---|---|
+| im_graduate | 初心者ミッションをすべて受け取った | 無償コイン20 | ¥32 |
+| im_class_a | A級に昇級（シーズン履歴の昇級も含む） | 無償コイン40 | ¥64 |
+| im_class_s | S級に昇級（同上） | スカウト券1枚 | ¥160 |
+
+（Round 10 の統合で変更：以前の「初心者完了で無償コイン100・B級でスカウト券1枚」は、招待上限の人の SSR/月 が E2 の上限を超えたため、小さく・遅く（深く遊んだ時点へ）分けた。docs/spec/balance-targets.md 4.10）
+- 上限：招待した人1人につき `maxCountedInvitees`（10）人まで。到達時にプッシュ `invite_milestone`。KPI は双方に `invite_milestone`。
+
+**アカウント削除（REQ-UXS-040 の手順 `invites`）**：本人の送信箱（届いていない到達報酬）は放棄、コードは引退、インストールの確保はハッシュだけ残す（同じ端末で作り直して再び使うことはできない）。招待した人の側の記録は `deleted:<n>` に匿名化（上限の枠は空かない）、招待された人の側は `invitedBy.playerId` を null にして、その人宛ての送信箱を捨てる。
+
+**設定**（`progression.invite`、リモート設定でも同じ検証）：報酬は無償コインとスカウト券（1回・10連）だけ、1回の付与は ¥200 以下（`INVITE_HARD_LIMITS.maxRewardYen`、最小パックの単価で換算）。上限は人数20・入力期間14日・マイルストーン5個まで。マイルストーンの種類は `beginner_complete` / `class` / `ranked_races` のみ（購入を条件にする種類はない）。設定が無ければ招待のルートは `NOT_FOUND`。
+
+**深いリンク**：`muchi://invite/<code>`（アプリが入っているとき）と `https://<招待ドメイン>/i/<code>`（入っていないときはストアへ。Universal Links / App Links にすればアプリが開く）。アプリはコードを入力欄に入れるだけで、自動では引き換えない。チュートリアル前に開いた場合はコードを端末に覚えておき、入力できるようになったら入れる（C# `InviteCodes.FromLink`・`InviteModel.HandleLink`）。iOS / Android の設定は `docs/handoff-codex-round10-invite.md`。
+
+**KPI**：クライアント `invite_share`（`props.channel`: `os_share` | `copy_code` | `copy_link`、共有シートで実際に共有したときだけ）。サーバー `invite_redeem`（s2 = `inviter` / `invitee`）・`invite_milestone`（s1 = マイルストーン id、s2 = `invitee` / `inviter`）。クエリは docs/ops/kpi-queries.md。
+
+## 20. 復帰キャンペーン・お知らせ（What's new）（REQ-CB-001〜012、`server/src/domain/comeback.ts`、C# `Comeback.cs`・`Muchi.Game` `ComebackModel`/`WhatsNewModel`、docs/planning/06 §4.5）
+
+**活動日と休眠**：サーバーは「最後に遊んだゲーム日」（`lastActiveDay`、§15 の切り替え時刻で数える）を持つ。更新するのはプレイヤーからの呼び出しだけ（`POST /v1/player/bootstrap`・`POST /v1/rewards/login-bonus`・`GET /v1/missions`・`GET /v1/comeback`）。通知の配信・フレンド申請・種付け料などサーバー側の処理では更新しない。その日に初めて遊んだ時、前の活動日から `progression.comeback.tiers[].minLapseDays`（既定 7 / 14 / 30）以上あいていれば、期間を1回だけ始める（条件は REQ-CB-002）。
+
+**`GET /v1/comeback`**（要認証。活動日として数える＝ここで期間が始まることもある）：
+```json
+{ "active": true,
+  "push": { "category": "comeback", "enabled": false },
+  "window": { "id": "cb1_20261117", "tier": "short" | "mid" | "long", "lapseDays": 7,
+    "startDay": "2026-11-17", "endDay": "2026-11-30", "endsAt": 1796050800000, "remainingDays": 14, "day": 1, "days": 14,
+    "showWelcome": true, "completed": false, "blocked": false,
+    "login": { "claimed": 0, "total": 7, "claimableToday": true, "days": [ { "day": 1, "reward": { "freeCoins": 100 }, "claimed": false } ] },
+    "missions": [ { "id": "cb_race", "kind": "races", "feature": "skills", "title": "まずは1レース", "guide": "…", "target": 1, "progress": 0,
+      "reward": { "freeCoins": 50 }, "claimed": false, "claimable": false } ],
+    "catchUp": { "seasonId": "2026-11", "targetXp": 1020, "capXp": 700, "grantedXp": 0, "remainingXp": 700, "bonusPerRace": 20, "active": true } } }
+```
+- 期間が無い時は `{ "active": false, "window": null, "push": … }`。`endsAt` は期間の最後のゲーム日の次の切り替え時刻（含まない）。画面は**日付**で「11月30日まで」と出し、カウントダウンは出さない（06 §5.5）。`remainingDays` は今日を1と数えるゲーム日。
+- `blocked: true`：アカウント削除の予約中（REQ-UXS-040）。受け取りは全て `DELETION_PENDING`（取り消せば戻る）。`claimable`・`claimableToday` も false で返る。
+- `missions[].progress` は期間の開始時からの増分（`kind`：`races`・`ranked_races`・`wins`・`gacha`（券を含むスカウト）・`care`・`stable`（マイ厩舎の保存）・`breed`・`silks`）。`feature` はミッションが案内する画面のキー（`skills`・`scout`・`bond`・`my_stable`・`race` など、クライアントの対応表）。
+- `catchUp`：期間中、報酬の出るレースごとにパスXPを `bonusPerRace`（＝`passXpPerRace` × `bonusPermille`）上乗せする。上限は `capXp`（開始時に `min(maxBonusXp, lapseDays × perLapseDayXp, targetXp − その時のXP)`）と、シーズンの中央値の目安 `targetXp`（`medianXpPerSeasonDay` × シーズンの何日目か、暦の月）。シーズンが変わったら止まる。レース結果の `comebackXp` に上乗せ分が入る。
+
+**`POST /v1/comeback/login`**（要認証・冪等キー必須）：今日の分を受け取る。`{ "day": 2, "reward": {…}, "window": {…上と同じ…} }`。1ゲーム日に1回、とぎれても日数は進む（失わない）。期間外は `NOT_ELIGIBLE`、受け取り済み／7日分済みは `ALREADY_CLAIMED`、削除予約中は `DELETION_PENDING`。通常のログインボーナス（REQ-REW-002）とは別に受け取れる。
+
+**`POST /v1/comeback/missions/:missionId/claim`**（要認証・冪等キー必須、`missionId` は `[a-z0-9_]{1,40}`）：`{ "missionId", "reward", "window" }`。未達は `NOT_ELIGIBLE`、存在しない ID は `NOT_FOUND`。
+
+**`POST /v1/comeback/welcome`**（要認証）：歓迎画面を出した。`{ "windowId", "welcomedAt" }`（最初の時刻のまま）。以後 `showWelcome` は false。
+
+**報酬**：無償コイン・スカウト券・10連券・SR以上確定券・配合素材だけ（設定の検証で、有償コイン・見た目のアイテム・馬・パスXP の報酬、`collect` のミッション、上限を超える価値を拒否。REQ-CB-009/010）。
+
+**`GET /v1/whats-new`**（要認証）：前回見た位置より後に始まったもの（新しい順、最大10件、残りは `more`）。
+```json
+{ "since": 1793199600000, "upTo": 1795316400000, "showCard": true, "more": 0,
+  "items": [ { "id": "banner_pickup_ginga", "kind": "feature" | "banner" | "event" | "balance", "title": "…", "body": "…", "at": 1793458800000,
+    "feature": "scout" | null, "bannerId": "pickup_ginga" | null, "eventId": null, "endsAt": 1796050800000 | null } ] }
+```
+- 元は `server/master/changelog.json`（機能・調整。`day` はゲーム日の切り替え時刻から、または `atMs`。リモート設定の `changelog` で丸ごと差し替え）と、その間に開いて今も開いているバナー、始まって今も開催中のイベント。`endsAt` は実在の終わり（バナー・イベント）だけ。
+- 新規プレイヤーは登録時点から数える（過去の一覧は出ない）。
+
+**`POST /v1/whats-new/seen`**（要認証）：本文 `{ "upTo": <GET の upTo> }`。`{ "seenUpTo" }`。戻らない・今より先へは進まない。カードは1回だけ出す。
+
+**通知**：プッシュの種類 `comeback`（既定で受け取らない。`PUT /v1/push/preferences` の `categories.comeback`、06 §3.5 の「新しい種類と同意」）。最後の活動日から `pushes[].afterDays`（3日目・7日目）の `pushHourJst`（19時 JST）に、1日の上限・静かな時間帯（push.json）の中で1回ずつ。7日目の文面（「おかえりボーナスを用意しています」）は、戻れば期間が始まる人にだけ送る。削除予約中・停止中は送らない。
+
+**ショップ**（`GET /v1/shop/offers`、§13.3 の追加）：期間中で今シーズンのパス未購入なら、`touchpoint: "comeback"`・`id: "comeback_<windowId>"`・`productId: "season_pass"` のオファーを1件（ポップアップは1回、§13.4 で記録）。価格・中身は通常のパスと同じ、`endsAt` はパスの実在の販売終了（シーズン末）。その間 T3 のパスのポップアップは出さない（ショップの「おすすめ」には並ぶ）。新しい商品・割引は作らない（REQ-CB-011）。
+
+## 21. リワード広告（任意の動画広告、REQ-AD-001〜012、`server/src/domain/ads.ts`・`server/src/ads/ssv.ts`、C# `Ads.cs`・`Muchi.Game.RewardedAdModel`）
+無課金の人が、自分で選んだ時だけ動画を見て少しの報酬を受け取る。**全画面の強制広告（インタースティシャル）は無い**。報酬は**無償コイン**（有償コインには絶対にならない＝資金決済法の有償残高に入らない）か**タイムアタック1回**だけ。文言はサーバーが作る固定額（「無償コイン10枚」）で、「倍」「お得」「今だけ」は使わない（設定の検証で弾く）。報酬は**広告ネットワークのサーバー検証（SSV）コールバックでだけ**付与し、クライアントの報告では付与しない。
+
+### 21.1 設定（`progression.ads`、リモート設定で変更可・`adsProblems` で検証）
+| キー | 既定 | 意味 |
+|---|---|---|
+| `enabled` / `network` | true / `admob` | |
+| `globalDailyCap` | 3 | 1ゲーム日（§15）に受け取れる回数（全部の枠で） |
+| `startsPerDay` / `maxOpenSessions` | 12 / 3 | 1日に開ける視聴セッション数・同時に開いておける数（乱用の制限） |
+| `sessionTtlMs` / `maxClockSkewMs` | 1時間 / 10分 | セッションの有効期限・コールバックの時刻のずれの許容 |
+| `minRankedRaces` / `minGameDay` | 3 / 2 | FTUE（ランク戦3戦まで）とインストール当日（最初のセッション）は出さない |
+| `payerQuietDays` | 30 | 直近30日に実際の支払いがある人には、自分でオンにしない限り出さない |
+| `minAge` | 13 | 登録済みの年齢が13歳未満なら出さない |
+| `anomalyFlagAt` | 5 | 1日に弾いたコールバックがこの数に届くとサポート用の印 `ads_anomaly:<日>` |
+| `placements[]` | 下表 | `id`・`surface`（home/result/time_attack/shop）・`title`・`dailyCap`・`reward`（`freeCoins` か `taAttempts` のどちらか1つ）・`adUnitKey`（広告ユニットIDの**キー名**。IDそのものは env） |
+
+| 枠 | 画面 | 報酬 | 1日 |
+|---|---|---|---|
+| `daily_coins` | ホーム | 無償コイン10枚 | 1回 |
+| `result_coins` | ランク戦の結果（**3着以内の時だけ**。4着以下の結果画面には出さない） | 無償コイン10枚 | 1回 |
+| `ta_attempt` | タイムアタック | その日の挑戦 +1回 | 1回 |
+
+コード側の上限（`ADS_HARD_LIMITS`、リモート設定でも超えられない）：全体6回/日、枠ごと3回/日、1回の無償コイン20枚、**1日の広告の無償コイン40枚**（上限の組み合わせで計算）、タイムアタック+1回、`minGameDay ≥ 2`、`minRankedRaces ≥ 1`、`minAge ≥ 13`、`payerQuietDays ≤ 90`。
+
+### 21.2 `GET /v1/ads`（要認証）
+```json
+{ "enabled": true, "eligible": true, "reason": null, "pref": "auto", "payerQuietUntil": null, "day": "2026-12-11",
+  "globalCap": 3, "globalUsed": 0, "globalLeft": 3, "startsLeft": 12, "network": "admob",
+  "placements": [ { "id": "daily_coins", "surface": "home", "title": "動画を見て、無償コインを受け取る", "rewardLabel": "無償コイン10枚",
+    "reward": { "freeCoins": 10 }, "dailyCap": 1, "used": 0, "left": 1, "adUnitKey": "REWARDED_HOME", "available": true } ],
+  "adRequest": { "nonPersonalized": true, "underAgeOfConsent": false, "ageKnown": false },
+  "open": [ { "sessionId", "placementId", "expiresAt" } ] }
+```
+- `reason`（出さない理由）：`disabled` / `opted_out`（設定でオフ）/ `deleting`（削除の予約中）/ `moderation`（BAN）/ `ftue` / `first_day` / `age` / `payer_quiet`（`payerQuietUntil` まで）。
+- `adRequest`：登録済みの成人でなければ**パーソナライズしない**広告を要求（年齢未登録も含む）。16歳未満は「同意年齢未満」の印を付けて要求する。
+- 何も書き込まない（日の切り替えは表示用に計算するだけ）。
+
+### 21.3 `PUT /v1/ads/preferences`・`POST /v1/ads/:placementId/start`・`GET /v1/ads/sessions/:sessionId`（要認証）
+- `PUT /v1/ads/preferences` `{ "mode": "auto" | "on" | "off" }` → §21.2 の形。`auto`（既定：支払いから30日は出さない）、`on`（支払った人も見る）、`off`（誰でも出さない）。
+- `POST /v1/ads/:placementId/start`（`Idempotency-Key` 必須。再送は同じセッション）→
+  `{ "sessionId": "ad_<16桁hex>", "placementId", "network": "admob", "adUnitKey", "customData": "<sessionId>", "userId": "<プレイヤーID>", "expiresAt", "rewardLabel", "adRequest" }`。
+  **ここでは何も付与しない**。SDK のサーバー検証オプションに `customData`（セッションID）と `userId`（プレイヤーID）を渡して広告を出す。エラー：`NOT_ELIGIBLE`（§21.2 の理由）、`DELETION_PENDING`、`AD_LIMIT_REACHED`（409、今日の分を使い切った）、`RATE_LIMITED`（開始回数・同時セッション）、`NOT_FOUND`（枠が無い）。
+- `GET /v1/ads/sessions/:sessionId` → `{ "sessionId", "placementId", "status": "open" | "rewarded" | "rejected" | "expired", "expiresAt", "reward" | null, "rewardLabel" | null, "reason" | null, "wallet" }`。広告を閉じた後、`status` が `open` でなくなるまで1秒ごとに数回確かめる（`RewardedAdModel`：8回）。間に合わなければ「確認に時間がかかっています。届きしだい反映されます」。
+
+### 21.4 SSV コールバック `GET /v1/ads/ssv/admob`（認証なし、署名で認証）
+AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&reward_item=…&timestamp=<ms>&transaction_id=…&user_id=…&signature=…&key_id=…`。
+1. **署名**（`ssv.ts` `verifyAdMobCallback`）：`&signature=` より前のクエリ文字列（受け取ったまま。URL として解釈し直さず、リクエストの URL の `?` から `#` までをそのまま使う：`app.ts` `rawQuery`）を、`key_id` の公開鍵（ECDSA P-256 / SHA-256、署名は DER の base64url）で検証。鍵の組は差し替え可能（`SsvKeySource`）：env `ADS_SSV_KEYS_URL`（ネットワークが公開する鍵の JSON。1日キャッシュ、知らない `key_id` の時だけ最短1分おきに取り直す。取り直しに失敗した時は最後に取れた鍵の組で検証を続け（最大7日、`maxStaleMs`。使うたびにログ）、それより古ければ失敗を返す）か `ADS_SSV_KEYS`（固定の鍵、開発・結合テスト用）。署名より後ろに付け足された値は読まない。署名が無い・違う・知らない鍵・必須の値が無い → **401**（ネットワーク側で失敗として見える）。鍵の組が設定されていなければ **404**（どの報酬も付与されない）。
+2. **広告ユニット**：env `ADS_AD_UNITS`（`{"REWARDED_HOME":"<ID>",…}`）があれば、知らないユニット・枠と違うユニットは弾く。
+3. **プレイヤーのオブジェクト**（`user_id` の Durable Object、`ads.ts` `applyAdCallback`）で判定：
+   - 同じ `transaction_id` は `duplicate`（冪等。直近200件を覚え、さらに取引の冪等キー `ad:admob:<tx>` で同じ結果を返す）。署名が `user_id` を含むので、別のプレイヤーへの再送は起こらない（全体の索引は不要）。
+   - 弾く理由：`user_mismatch`・`unknown_session`（`custom_data` がこのプレイヤーのセッションでない）・`session_used`（同じセッションに別の取引）・`expired`・`clock_skew`（サーバーの時刻と `maxClockSkewMs` 以上ずれる、またはセッションより前）・`ad_unit_mismatch`・`cap`（1日の上限）・`deleting`、それに広告を見ている間に変わった資格：`opted_out`（`pref: off`）・`age`（登録した年齢が `minAge` 未満）・`moderation`（利用停止）。広告の途中で課金した場合は弾かない（支払った人の30日の非表示は新しい案内を出さないためのもので、課金前に自分で選んで見始めた広告の報酬までは取り上げない）。弾いた時も **200** `{ "ok": true, "status": "rejected" }` を返す（ネットワークが再送しない）。KPI `ad_reject` と、多い日はサポート用の印。
+   - 付与：無償コイン（台帳の参照 `ad:admob:<tx>`）か、タイムアタックのその日の挑戦回数 +1。回数を数え、セッションを `rewarded` にし、KPI `ad_reward`。応答 `{ "ok": true, "status": "rewarded" }`。
+4. **乱用の制限**：検証に失敗したコールバックは送り元IPごと、検証に通ったものはプレイヤーごとにトークンバケット（Worker のインスタンスごと、30回・毎秒1回）。正しいコールバックは広告ネットワークの少数のサーバーから来るので、IPごとの上限は失敗にだけかける（正しい報酬を止めない）。プレイヤーのオブジェクトでも開始回数・同時セッション・1日の上限で止まる。
+
+### 21.5 クライアント（`RewardedAdModel`、`IAdProvider` はネイティブ側）
+- カードを出すのは：サーバーが `eligible` で、その画面の枠に今日の残りがあり、SDK が広告を用意できている時だけ。**チュートリアル・マッチング・レース中・4着以下の結果画面・オフラインには出さない**。再生はカードのボタンからだけ（自動で始めない）。1回に1つ。
+- KPI（クライアント）：`ad_offer_view {placementId, surface}`（画面に出した時、画面ごとに1回）、`ad_start {placementId, surface, outcome: shown|no_fill|failed|closed_early}`。報酬（`ad_reward`）はサーバーのイベントだけで、クライアントからは送れない。
+- 同意：iOS の ATT は 06 §2.3 のとおり（2日目以降の2回目の起動で1回だけ、FTUE では聞かない）。許可が無ければパーソナライズしない広告。GDPR/UMP は日本だけの配信では不要だが、`IAdConsent` の差し込み口を残す。
+
+### 21.6 広告なしパス（`ad_free_pass`）は作らない
+強制広告が無く、広告は自分で選んだ時だけ再生されるので、「広告を消す」商品には消すものが無い（払っても何も変わらない商品は誤認のおそれ）。代わりに、支払った人には既定で広告を出さない（`payerQuietDays` 30日、`pref: on` で自分から見ることはできる）。経済の目標 E13（balance-targets 4.9）も、広告の価値を一番安い有料商品より小さく保つ。

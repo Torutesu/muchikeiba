@@ -3,7 +3,8 @@
 #   C# verifier (Muchi.Verifier serve)  <-- HTTP --  TS server (wrangler dev)  <-- WebSocket --  C# bots (Muchi.Bot)
 # Checks that real races confirm, that the server's final hash equals each bot's own simulation,
 # that a solo ranked race is settled by the real C# verifier, that the stored replay log
-# reproduces the same hash offline, and that a tournament (heats → final) and a spectator run end to end.
+# reproduces the same hash offline, that a tournament (heats → final) and a spectator run end to end, and that a
+# rewarded-ad SSV callback is verified by signature in front of the player's object.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VERIFIER_PORT="${VERIFIER_PORT:-8090}"
@@ -51,10 +52,14 @@ wait_for "http://127.0.0.1:${VERIFIER_PORT}/healthz" verifier
 code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -d '{}' "http://127.0.0.1:${VERIFIER_PORT}/verify")
 [[ "$code" == "401" ]] || { echo "verifier accepted an unauthenticated call (HTTP $code)"; exit 1; }
 
+# REQ-AD-006: a throwaway ECDSA key pair stands in for the ad network's SSV keys (public half → ADS_SSV_KEYS)
+ADS_SSV_KEYS=$(cd "$ROOT/server" && npx tsx scripts/ads-ssv-check.ts keygen "$LOG_DIR")
+
 echo "== start TS server (wrangler dev) on :$SERVER_PORT"
 (cd "$ROOT/server" && exec npx wrangler dev --port "$SERVER_PORT" --ip 127.0.0.1 \
   --var DEV_MODE:1 --var TICKET_SECRET:devsecret --var ADMIN_TOKEN:dev-admin \
-  --var "VERIFIER_URL:http://127.0.0.1:${VERIFIER_PORT}" --var "VERIFIER_TOKEN:${VERIFIER_SECRET}" >"$LOG_DIR/server.log" 2>&1) &
+  --var "VERIFIER_URL:http://127.0.0.1:${VERIFIER_PORT}" --var "VERIFIER_TOKEN:${VERIFIER_SECRET}" \
+  --var "ADS_SSV_KEYS:${ADS_SSV_KEYS}" >"$LOG_DIR/server.log" 2>&1) &
 SERVER_PID=$!
 wait_for "${BASE}/v1/health" server
 
@@ -93,6 +98,9 @@ echo "== 8) Unity app game layer (unity/Assets/Muchi/Game): naming + first scout
 
 echo "== 9) tournament: admin creates a mini tournament → 4 bots register → 2 heats + final over real race rooms (TournamentDO alarms) → standings + prize; a spectator watches a heat (delayed, read-only) and gets the players' final hash"
 $BOT "$BASE" tournament | tee "$LOG_DIR/tournament.jsonl" || fail=1
+
+echo "== 10) rewarded ads: signed SSV callback (ECDSA) → player object (no session: rejected, 200), replay answered the same, tampered/unsigned 401; no offers in the FTUE"
+(cd "$ROOT/server" && npx tsx scripts/ads-ssv-check.ts check "$BASE" "$LOG_DIR") | tee "$LOG_DIR/ads.log" || fail=1
 
 if [[ $fail -ne 0 ]]; then
   echo "== INTEGRATION FAILED"; echo "--- server log"; tail -50 "$LOG_DIR/server.log"; echo "--- verifier log"; tail -20 "$LOG_DIR/verifier.log"

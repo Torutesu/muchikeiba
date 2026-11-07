@@ -62,6 +62,12 @@
    "dynamic": false,
    "count": 5
   },
+  "stamp": {
+   "fallback": "stamp/default",
+   "description": "支部の応援スタンプ（REQ-TEAMFEED-001。定型の絵とラベルだけ）",
+   "dynamic": false,
+   "count": 13
+  },
   "stable/theme": {
    "fallback": "stable/theme/default",
    "description": "マイ厩舎の部屋のテーマ（壁・床。REQ-STABLE-001）",
@@ -72,7 +78,7 @@
    "fallback": "item/default",
    "description": "アイテムのアイコン",
    "dynamic": false,
-   "count": 24
+   "count": 26
   },
   "banner/gacha": {
    "fallback": "banner/gacha/default",
@@ -260,6 +266,8 @@
   "item/event_ticket",
   "item/gacha_ticket",
   "item/gacha_ticket_10",
+  "item/stamp_carrot",
+  "item/stamp_horseshoe",
   "item/tack_bridle_classic",
   "item/tack_bridle_gold",
   "item/tack_bridle_pass_plus",
@@ -341,6 +349,19 @@
   "stable/theme/default",
   "stable/theme/sakura",
   "stable/theme/standard",
+  "stamp/carrot",
+  "stamp/cheer",
+  "stamp/clap",
+  "stamp/default",
+  "stamp/gg",
+  "stamp/horseshoe",
+  "stamp/legend",
+  "stamp/lets_go",
+  "stamp/nice",
+  "stamp/pass_crown",
+  "stamp/photo_finish",
+  "stamp/thanks",
+  "stamp/whip",
   "tack/bridle_classic",
   "tack/bridle_gold",
   "tack/bridle_pass_plus",

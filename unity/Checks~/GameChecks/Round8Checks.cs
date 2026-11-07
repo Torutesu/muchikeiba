@@ -402,7 +402,7 @@ static partial class Round8Checks
     {
         var player = new P { ConsentRequired = false, ConsentedTerms = "2026-11-01", PartnerId = "h1", GachaUsed = true, Horses = "[" + Horse1 + "]", Unlocks = AllUnlocks };
         var (s, b, kv) = Setup(player, rs);
-        s.Routes["GET /v1/shop/products"] = _ => Ok(Products);
+        s.Routes["GET /v1/shop/products?mine=1"] = _ => Ok(Products);
         s.Routes["GET /v1/shop/offers"] = _ => Ok(Offers);
         s.Routes["POST /v1/shop/offers/starter_pack/view"] = _ => Ok("{\"offerId\":\"starter_pack\",\"viewedAt\":1796008800000}");
         var kpi = new List<AnalyticsEvent>();
@@ -435,10 +435,10 @@ static partial class Round8Checks
         check(shop.LiveOffers.All(o => o.Id != pass.Id) && shop.PopupFor(OfferContext.PassScreen) == null && shop.Countdown(pass) == null, "at 00:00 JST Dec 1 the season offer is gone (no stale timer)");
 
         // a server label with multiplier wording would be caught
-        s.Routes["GET /v1/shop/products"] = _ => Ok(Products.Replace("無償コイン310枚をプレゼント", "2倍！"));
+        s.Routes["GET /v1/shop/products?mine=1"] = _ => Ok(Products.Replace("無償コイン310枚をプレゼント", "2倍！"));
         await shop.LoadAsync();
         check(shop.WordingProblems().Count == 0, "a pack without its bonus for this player does not show the label at all");
-        s.Routes["GET /v1/shop/products"] = _ => Ok(Products.Replace("無償コイン100枚をプレゼント", "2倍！"));
+        s.Routes["GET /v1/shop/products?mine=1"] = _ => Ok(Products.Replace("無償コイン100枚をプレゼント", "2倍！"));
         await shop.LoadAsync();
         check(shop.WordingProblems().Contains("はじめての購入時のみ：2倍！"), "WordingProblems flags 「倍」 if the server data ever had it");
 

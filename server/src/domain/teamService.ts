@@ -9,6 +9,11 @@ import {
 } from './teams.js';
 import { jstMonthKey } from './time.js';
 import { leagueTick, newLeague, teamLeagueView, type LeagueState } from './league.js';
+import {
+  feedForget, feedPage, feedPost, feedRace, feedReact, feedReport, newFeed, type FeedItem, type FeedRace, type ReportReason, type TeamFeedState,
+  type stampCatalog,
+} from './teamFeed.js';
+export type TeamFeedPage = ReturnType<typeof feedPage>;
 export type TeamLeagueView = ReturnType<typeof teamLeagueView>;
 
 /**
@@ -40,6 +45,14 @@ export interface TeamPort {
   /** Leader and officers (push targets for new requests). */
   managers(teamId: string): Promise<string[]>;
   reportPoints(teamId: string, playerId: string, seasonId: string, points: number, displayName: string): Promise<void>;
+  // REQ-TEAMFEED-*: the feed lives in the team object (members only, except forget)
+  feedPost(teamId: string, playerId: string, stampId: string): Promise<FeedItem>;
+  feedRace(teamId: string, playerId: string, race: FeedRace): Promise<FeedItem | null>;
+  feedReact(teamId: string, playerId: string, seq: number, stampId: string | null): Promise<{ ownerId: string; isNew: boolean; kind: 'stamp' | 'race' }>;
+  feedReport(teamId: string, playerId: string, seq: number): Promise<{ ownerId: string; first: boolean }>;
+  feedPage(teamId: string, viewer: string, muted: string[], before: number | null, limit: number | null): Promise<TeamFeedPage>;
+  /** REQ-UXS-040: removes a deleted player's items and reactions (no membership needed). */
+  feedForget(teamId: string, playerId: string): Promise<{ removed: number }>;
 }
 
 export interface TeamPlayerState { teamId: string | null; joinedAt: number | null; cooldownUntil: number; outgoing: string[]; snapshot: MemberSnapshot }
@@ -54,6 +67,15 @@ export interface TeamPlayers {
   left(uid: string, teamId: string, byChoice: boolean): Promise<unknown>;
   state(uid: string): Promise<TeamPlayerState>;
   push(uid: string, templateId: string, vars: Record<string, string>): Promise<unknown>;
+  // REQ-TEAMFEED-*
+  stampCatalog(uid: string): Promise<ReturnType<typeof stampCatalog>>;
+  stampCheck(uid: string, stampId: string): Promise<{ teamId: string; displayName: string }>;
+  stampPosted(uid: string, stampId: string, kind: 'post' | 'reaction', teamId: string): Promise<unknown>;
+  feedViewer(uid: string, firstPage: boolean): Promise<{ teamId: string | null; muted: string[] }>;
+  feedMutes(uid: string): Promise<{ muted: string[] }>;
+  feedMute(uid: string, target: string, muted: boolean): Promise<{ muted: string[] }>;
+  feedReported(uid: string, teamId: string, seq: number, reporter: string, reason: ReportReason): Promise<unknown>;
+  cheerPush(uid: string, fromId: string, fromName: string): Promise<unknown>;
 }
 
 export interface TeamDirectoryPort {
@@ -248,6 +270,52 @@ export class TeamsService {
   search(query: string) { return this.directory.search(query.normalize('NFKC').trim().slice(0, 24), 30); }
   leaderboard(seasonId: string) { return this.board.board(seasonId); }
 
+  // ---------------------------------------------------------------- cheer stamps (REQ-TEAMFEED-*)
+
+  /** REQ-TEAMFEED-001: the stamp set with the caller's unlocks. */
+  stamps(uid: string) { return this.players.stampCatalog(uid); }
+
+  /** REQ-TEAMFEED-003: post a stamp (player checks → team stores with its rate limit → KPI). */
+  async postStamp(uid: string, stampId: string) {
+    const info = await this.players.stampCheck(uid, stampId);
+    const item = await this.teams.feedPost(info.teamId, uid, stampId);
+    await this.players.stampPosted(uid, stampId, 'post', info.teamId).catch(() => undefined);
+    return { teamId: info.teamId, seq: item.seq, at: item.at, stampId };
+  }
+
+  /**
+   * REQ-TEAMFEED-005: react to an item with a stamp (null removes the reaction). A new reaction to a teammate's race
+   * result may notify them (push, optional; muted members never notify).
+   */
+  async react(uid: string, seq: number, stampId: string | null) {
+    const info = stampId !== null ? await this.players.stampCheck(uid, stampId) : { teamId: await this.myTeamId(uid), displayName: '' };
+    const r = await this.teams.feedReact(info.teamId, uid, seq, stampId);
+    if (r.isNew && stampId !== null) {
+      await this.players.stampPosted(uid, stampId, 'reaction', info.teamId).catch(() => undefined);
+      if (r.kind === 'race' && r.ownerId !== uid) await this.players.cheerPush(r.ownerId, uid, info.displayName).catch(() => undefined);
+    }
+    return { teamId: info.teamId, seq, myReaction: stampId };
+  }
+
+  /** REQ-TEAMFEED-005/006: a page of my team's feed (newest first), muted members left out. */
+  async feed(uid: string, before: number | null, limit: number | null) {
+    const v = await this.players.feedViewer(uid, before === null);
+    if (!v.teamId) throw new AppError('NOT_IN_TEAM');
+    return { teamId: v.teamId, ...(await this.teams.feedPage(v.teamId, uid, v.muted, before, limit)), muted: v.muted };
+  }
+
+  mutes(uid: string) { return this.players.feedMutes(uid); }
+  /** REQ-TEAMFEED-006: mute (block) / unmute a member; applies to the feed and to cheer pushes. */
+  mute(uid: string, target: string, muted: boolean) { return this.players.feedMute(uid, target, muted); }
+
+  /** REQ-TEAMFEED-007: report an item: hidden for me, support flag on its owner. */
+  async report(uid: string, seq: number, reason: ReportReason) {
+    const teamId = await this.myTeamId(uid);
+    const r = await this.teams.feedReport(teamId, uid, seq);
+    if (r.first) await this.players.feedReported(r.ownerId, teamId, seq, uid, reason);
+    return { reported: true, seq };
+  }
+
   /** REQ-LEAGUE-005: my team's league this season — division table, weekly matchups and (after the season) its place. */
   async league(uid: string) {
     const st = await this.players.state(uid);
@@ -266,6 +334,8 @@ export class TeamsService {
  * the new summary (directory + season board are updated from it).
  */
 export class TeamCore {
+  /** REQ-TEAMFEED-*: the team feed (stored under its own key by TeamDO). */
+  public feed: TeamFeedState = newFeed();
   constructor(public state: TeamState | null, private readonly master: () => Master, private readonly clock: () => number = Date.now) {}
 
   private get cfg() { return this.master().progression.teams; }
@@ -314,6 +384,32 @@ export class TeamCore {
     return this.state ? reportPoints(this.state, playerId, seasonId, points, displayName) : false;
   }
   isMember(playerId: string) { return !!(this.state && memberOf(this.state, playerId)); }
+
+  // REQ-TEAMFEED-*
+  private member(playerId: string) {
+    assertAlive(this.t);
+    const mm = memberOf(this.t, playerId);
+    if (!mm) throw new AppError('NOT_IN_TEAM');
+    return mm;
+  }
+  feedPost(playerId: string, stampId: string) {
+    const mm = this.member(playerId);
+    return feedPost(this.master(), this.feed, { playerId, displayName: mm.displayName }, stampId, this.clock());
+  }
+  /** From the player's object after a race: ignored when the player is no longer a member. */
+  feedRace(playerId: string, race: FeedRace) {
+    if (!this.state || this.state.disbanded) return null;
+    const mm = memberOf(this.state, playerId);
+    if (!mm) return null;
+    return feedRace(this.master(), this.feed, { playerId, displayName: mm.displayName }, race, this.clock());
+  }
+  feedReact(playerId: string, seq: number, stampId: string | null) { this.member(playerId); return feedReact(this.master(), this.feed, seq, playerId, stampId, this.clock()); }
+  feedReport(playerId: string, seq: number) { this.member(playerId); return feedReport(this.master(), this.feed, seq, playerId, this.clock()); }
+  feedPage(viewer: string, muted: string[], before: number | null, limit: number | null) {
+    this.member(viewer);
+    return feedPage(this.master(), this.feed, viewer, muted, new Map(this.t.members.map((x) => [x.playerId, x.displayName])), before, limit);
+  }
+  feedForget(playerId: string) { return feedForget(this.feed, playerId); }
 }
 
 /** In-memory TeamPort/TeamDirectoryPort/TeamBoardPort for tests and local tools. */
@@ -340,12 +436,14 @@ export class MemoryTeams implements TeamPort, TeamDirectoryPort, TeamBoardPort {
   private async run<T>(teamId: string, f: (c: TeamCore) => T, create = false): Promise<T> {
     const c = this.core(teamId, create);
     const before = c.state ? structuredClone(c.state) : null;
+    const feedBefore = structuredClone(c.feed);
     try {
       const r = f(c);
       this.touch(teamId);
       return r;
     } catch (e) {
       c.state = before; // all-or-nothing like the Durable Object
+      c.feed = feedBefore;
       throw e;
     }
   }
@@ -367,6 +465,12 @@ export class MemoryTeams implements TeamPort, TeamDirectoryPort, TeamBoardPort {
   disband(teamId: string, a: string) { return this.run(teamId, (c) => c.disband(a)); }
   managers(teamId: string) { return this.run(teamId, (c) => c.managers()); }
   async reportPoints(teamId: string, p: string, season: string, points: number, name: string) { await this.run(teamId, (c) => c.reportPoints(p, season, points, name)); }
+  feedPost(teamId: string, p: string, stampId: string) { return this.run(teamId, (c) => c.feedPost(p, stampId)); }
+  async feedRace(teamId: string, p: string, race: FeedRace) { return this.cores.has(teamId) ? this.run(teamId, (c) => c.feedRace(p, race)) : null; }
+  feedReact(teamId: string, p: string, seq: number, stampId: string | null) { return this.run(teamId, (c) => c.feedReact(p, seq, stampId)); }
+  feedReport(teamId: string, p: string, seq: number) { return this.run(teamId, (c) => c.feedReport(p, seq)); }
+  feedPage(teamId: string, viewer: string, muted: string[], before: number | null, limit: number | null) { return this.run(teamId, (c) => c.feedPage(viewer, muted, before, limit)); }
+  async feedForget(teamId: string, p: string) { return this.cores.has(teamId) ? this.run(teamId, (c) => c.feedForget(p)) : { removed: 0 }; }
 
   async search(q: string, limit: number) {
     const f = q.toLowerCase();

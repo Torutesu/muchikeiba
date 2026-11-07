@@ -61,10 +61,16 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | GET | `/v1/player` | 要 | | 財布・所持馬・アイテム・天井・パス・レート |
 | PUT | `/v1/player/age` | 要 | | `{birthYear, birthMonth, guardianConsent}` → 年齢帯と月額上限 |
 | GET | `/v1/shop/products` | なし | | 商品一覧と表示データ（中身・数量・初回の無償上乗せ・1回限り・期間・説明キー。`contracts/protocol.md` §13.1） |
+| GET | `/v1/shop/products?mine=1` | 要 | | 同じ一覧＋そのプレイヤーの所持（`owned`・`ownedReason`・`purchasedThisSeason`。今シーズンのパス購入済みなど、§18.1） |
 | GET | `/v1/shop/offers` | 要 | | オファーの状態（スターター・パス・昇級記念・手当、初回購入ボーナスの残り。§13.3） |
 | POST | `/v1/shop/offers/:offerId/view` | 要 | | 1回だけの案内を表示した記録（§13.4） |
 | GET | `/v1/shop/allowance` | 要 | | 厩舎手当（30日）の状態（§13.5） |
 | POST | `/v1/shop/allowance/claim` | 要 | 必須 | 今日の厩舎手当を受け取る（`ALREADY_CLAIMED` / `NOT_ELIGIBLE`） |
+| GET | `/v1/ads` | 要 | | リワード広告のカード・今日の残り・出さない理由（protocol §21） |
+| PUT | `/v1/ads/preferences` | 要 | | `{mode: auto|on|off}` 動画広告の設定 |
+| POST | `/v1/ads/:placementId/start` | 要 | 必須 | 視聴セッションを開く（付与しない。`AD_LIMIT_REACHED` / `NOT_ELIGIBLE` / `RATE_LIMITED`） |
+| GET | `/v1/ads/sessions/:sessionId` | 要 | | セッションの状態（`open`/`rewarded`/`rejected`/`expired`）とウォレット |
+| GET | `/v1/ads/ssv/admob` | 署名 | | 広告ネットワークのサーバー検証コールバック（ECDSA 署名、env `ADS_SSV_KEYS_URL`/`ADS_SSV_KEYS`/`ADS_AD_UNITS`。未設定なら 404） |
 | POST | `/v1/shop/purchase-intent` | 要 | | `{productId}` ストア購入を始めてよいか（`AGE_REQUIRED` / `GUARDIAN_CONSENT_REQUIRED` / `AGE_LIMIT_EXCEEDED` / `ALREADY_PURCHASED` / `UNSETTLED_DEBT` / `NOT_ELIGIBLE`）。パスは残り日数、コインは初回の無償上乗せも返す（§13.2） |
 | GET | `/v1/shop/store-account` | 要 | | `{appleAppAccountToken, googleObfuscatedAccountId}` 購入時にストアへ渡す値（下記「ストア連携」） |
 | POST | `/v1/shop/purchase` | 要 | （取引IDで自動） | `{platform: apple\|google\|fake, productId, receipt}`。apple＝`Transaction.jwsRepresentation`、google＝`{"purchaseToken":"…"}` |
@@ -109,6 +115,12 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | POST | `/v1/rewards/login-bonus` | 要 | 必須 | |
 | GET | `/v1/missions` | 要 | | デイリーミッションと今日の初勝利ボーナスの残り（`firstWinBonus`） |
 | POST | `/v1/missions/:missionId/claim` | 要 | 必須 | |
+| GET | `/v1/comeback` | 要 | | 復帰キャンペーンの期間（REQ-CB-*、contracts/protocol.md「復帰キャンペーン・お知らせ」）。活動日として数える |
+| POST | `/v1/comeback/login` | 要 | 必須 | 復帰ログインボーナス（1ゲーム日1回） |
+| POST | `/v1/comeback/missions/:missionId/claim` | 要 | 必須 | 復帰ミッション |
+| POST | `/v1/comeback/welcome` | 要 | | 歓迎画面を出した（1回） |
+| GET | `/v1/whats-new` | 要 | | 前回見た後に始まったもの（ホームのカード） |
+| POST | `/v1/whats-new/seen` | 要 | | 本文 `{ upTo }`。見た位置を進める |
 | GET | `/v1/season-pass` | 要 | | シーズン（暦月）限りのパス：レベル・30段の報酬・期間・残り日数・前シーズンの自動付与（§13.6） |
 | POST | `/v1/season-pass/claim` | 要 | 必須 | `{track: free\|premium, level}` |
 | POST | `/v1/match/enqueue` | 要 | | `{horseId}` ランク戦の待ち行列へ |
@@ -143,6 +155,12 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | POST | `/v1/teams/me/transfer` | 要 | | `{playerId}` リーダー譲渡（元リーダーは幹部に） |
 | POST | `/v1/teams/me/requests/:playerId/approve` | 要 | | 加入申請の承認（リーダー/幹部）。申請者が他所に入っていれば申請は消える |
 | POST | `/v1/teams/me/requests/:playerId/decline` | 要 | | 加入申請の却下 |
+| GET | `/v1/stamps` | 要 | | 応援スタンプの一覧と解放状況（REQ-TEAMFEED-001/002、`contracts/protocol.md` §18） |
+| GET | `/v1/teams/me/feed` | 要 | | 支部フィード（最新100件のリングバッファ、新しい順、`?before=&limit=`）。ミュートした人は除く |
+| POST | `/v1/teams/me/feed/stamps` | 要 | | `{stampId}` スタンプを投稿（10秒に1回・1日50回、未解放は `STAMP_LOCKED`、削除予定中は `DELETION_PENDING`） |
+| PUT | `/v1/teams/me/feed/:seq/reaction` | 要 | | `{stampId\|null}` 項目への応援（1人1つ、null で取り消し） |
+| POST | `/v1/teams/me/feed/:seq/report` | 要 | | `{reason: spam\|harassment\|other}` 報告（自分の画面から消え、投稿者にサポート用フラグ） |
+| GET / PUT | `/v1/teams/me/feed/mutes` | 要 | | ミュート（ブロック）の一覧 / `{playerId, muted}` |
 | GET | `/v1/league/me` | 要 | | 支部対抗シーズン（REQ-LEAGUE-*）：自分の支部の部・順位表・週ごとの対戦（相手・得点＝その週のシーズンポイントの伸び・勝敗）・シーズン後の最終順位と報酬と次の部。支部に入っていなければ `teamId: null` と部の一覧 |
 | GET | `/v1/teams/search` | 要 | | `?q=` 支部名の部分一致（または支部ID）。空なら今シーズン活発な支部 |
 | GET | `/v1/teams/leaderboard/:seasonId` | なし | | 支部ランキングのスナップショット（R2、`current` 可） |
@@ -170,6 +188,8 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | DELETE | `/v1/friends/requests/:toId` | 要 | | 自分の申請を取り消し |
 | DELETE | `/v1/friends/:friendId` | 要 | | フレンド解除（双方） |
 | POST | `/v1/friend-rooms/:passphrase/invite` | 要 | | `{friendId}` 部屋のメンバーがフレンドを招待 |
+| GET | `/v1/invite` | 要 | | 友達招待：自分の招待コード（8文字）・共有リンク・入力できるか・招待した仲間・到達報酬の表。任意ヘッダー `x-install-id`（REQ-INV-*、protocol.md §19） |
+| POST | `/v1/invite/redeem` | 要 | | `{code, installId}` 招待コードを1回だけ入力（チュートリアル後・7ゲーム日以内）。ウェルカムギフトとフレンド |
 | GET | `/v1/config` | なし | | 有効な設定の版 `{versionId, hash, rulesetVersion, activatedAt, visualsVersion}`。アプリはhashごとにマスターデータ、visualsVersion ごとに `/v1/visuals` をキャッシュ（REQ-OPS-007） |
 | PUT | `/v1/push/devices` | 要 | | `{token, platform: ios\|android}` FCMトークンを登録（1人最大5台。古い順に外れる） |
 | POST | `/v1/push/devices/unregister` | 要 | | `{token}` ログアウト・通知オフ時に外す |
@@ -320,6 +340,12 @@ App Store Server API（`AppStoreServerApi`、ES256 JWT）はアプリが報告�
 - クライアントでしか分からないイベント（セッション・チュートリアルの各ステップ・画面・購入画面の操作・通知の開封など）は `POST /v1/analytics/events` で受ける。種類ごとにスキーマで検証し、時刻が7日より古いか5分より未来のものは捨てる。
 - 個人情報は送らない。プレイヤーIDはソルト（secret `KPI_SALT`）付きSHA-256の先頭16桁に置き換える。`KPI_SALT` が無ければ何も書かない。
 - 列の並びとクエリ（継続率・チュートリアル・初回課金・ARPDAU・課金率・パス継続・課金者と無課金者の勝率差）は `docs/ops/kpi-queries.md`。
+
+## リワード広告（`src/domain/ads.ts`・`src/ads/ssv.ts`、REQ-AD-*）
+
+- 任意の動画広告だけ（強制広告なし）。報酬は無償コインかタイムアタック+1回で、付与は広告ネットワークの SSV コールバック（ECDSA P-256 署名）からだけ。冪等（取引ID）・セッション・時刻のずれ・1日の上限（ゲーム日）で検証し、弾いたものは KPI `ad_reject` とサポート用の印。
+- 鍵の組：`ADS_SSV_KEYS_URL`（ネットワークの公開鍵 JSON。isolate ごとに1日キャッシュ）か `ADS_SSV_KEYS`（固定、開発・結合テスト）。広告ユニットID は `ADS_AD_UNITS`。どれもリポジトリに本番の値を書かない。
+- 設定は `master/progression.json` の `ads`（リモート設定で変更可、`adsProblems` で検証、上限は `ADS_HARD_LIMITS`）。経済の目標 E13 は docs/spec/balance-targets.md 4.9。
 
 ## 配合の拡張（`src/domain/stud.ts`・`studService.ts`・`horses.ts`、REQ-BREED-*）
 - **種牡馬の貸し借り**：2人のPlayerDOにまたがる取引を、同じ操作IDで ①持ち主が確保 → ②借り手が支払い＋配合＋未送金記録（1トランザクション）→ ③持ち主が受取 → ④借り手が未送金を消す、の順に進める。どの段階も繰り返して安全。②失敗で①を戻し、③④が届かなければ借り手のアラームが再送（`retryMs` から倍々、最大1時間）。確保だけ残った枠は `reserveTtlMs` で失効。検索用の写しは DirectoryDO の `studs` 表（持ち主のシャード、公開一覧は全シャードから集める）。

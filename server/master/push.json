@@ -1,7 +1,7 @@
 {
-  "_comment": "プッシュ通知（REQ-PUSH-*）。1日の上限は既定2（REQ-UXS-012）。promotion_near・tournament_closing・ta_beaten は個人あての呼びかけ（docs/planning/06 §3.5）。文言はすべて日本語。{name} などはサーバーが差し込む。timeSensitive=true は静かな時間帯なら送らない（遅れて届くと意味がない）。それ以外は静かな時間帯の終わりまで遅らせる。1日の上限は送る時刻のゲーム日（progression.dayRollover、既定4:00 JST 切り替え、REQ-DAY-005）で数える。シーズンのお知らせ（seasonReminders）は暦の日付で正午に配信（シーズンは暦の月、REQ-DAY-004）。",
+  "_comment": "プッシュ通知（REQ-PUSH-*）。1日の上限は既定2（REQ-UXS-012）。promotion_near・tournament_closing・ta_beaten は個人あての呼びかけ（docs/planning/06 §3.5）。文言はすべて日本語。{name} などはサーバーが差し込む。timeSensitive=true は静かな時間帯なら送らない（遅れて届くと意味がない）。それ以外は静かな時間帯の終わりまで遅らせる。1日の上限は送る時刻のゲーム日（progression.dayRollover、既定4:00 JST 切り替え、REQ-DAY-005）で数える。comeback（REQ-CB-007）は呼び戻しのお知らせ専用の種類で既定は受け取らない（オプトイン、06 §3.5）。最後に遊んだゲーム日から3日目・7日目の19時（JST）に、上限・静かな時間帯の中で送る。シーズンのお知らせ（seasonReminders）は暦の日付で正午に配信（シーズンは暦の月、REQ-DAY-004）。",
   "defaults": {
-    "categories": { "season": true, "friends": true, "invites": true, "events": true },
+    "categories": { "season": true, "friends": true, "invites": true, "events": true, "comeback": false },
     "quietHours": { "startHour": 22, "endHour": 8 },
     "dailyCap": 2
   },
@@ -13,16 +13,21 @@
   "templates": {
     "friend_request": { "category": "friends", "title": "フレンド申請", "body": "{name}さんからフレンド申請が届きました", "ttlSec": 86400, "timeSensitive": false },
     "friend_accepted": { "category": "friends", "title": "フレンド成立", "body": "{name}さんとフレンドになりました", "ttlSec": 86400, "timeSensitive": false },
+    "invite_joined": { "category": "friends", "title": "招待コードが使われました", "body": "{name}さんがあなたの招待コードで参加しました", "ttlSec": 86400, "timeSensitive": false },
+    "invite_milestone": { "category": "friends", "title": "招待ボーナス", "body": "{name}さんが目標に到達しました。招待ボーナスが届いています", "ttlSec": 86400, "timeSensitive": false },
     "room_invite": { "category": "invites", "title": "レースのお誘い", "body": "{name}さんがフレンド部屋に招待しています", "ttlSec": 600, "timeSensitive": true },
     "season_start": { "category": "season", "title": "新シーズン開幕", "body": "{season}シーズンが始まりました。昇級を目指そう！", "ttlSec": 86400, "timeSensitive": false },
     "season_end": { "category": "season", "title": "シーズン終了まであと{days}日", "body": "今のクラスを守りきるなら今のうち", "ttlSec": 43200, "timeSensitive": false },
     "season_last_day": { "category": "season", "title": "本日シーズン最終日", "body": "昇級をかけた最後の勝負に出よう", "ttlSec": 36000, "timeSensitive": false },
+    "team_cheer": { "category": "friends", "title": "支部の応援", "body": "{name}さんがあなたのレースに応援スタンプを送りました", "ttlSec": 86400, "timeSensitive": false },
     "team_request": { "category": "friends", "title": "支部への加入申請", "body": "{name}さんが支部への加入を希望しています", "ttlSec": 86400, "timeSensitive": false },
     "team_approved": { "category": "friends", "title": "支部に加入しました", "body": "「{team}」への加入が承認されました", "ttlSec": 86400, "timeSensitive": false },
     "event_start": { "category": "events", "title": "イベント開催中", "body": "「{event}」が始まりました。上位を目指そう！", "ttlSec": 43200, "timeSensitive": false },
     "tournament_heat_soon": { "category": "events", "title": "まもなく{round}", "body": "「{tournament}」の{round}が{minutes}分後に始まります", "ttlSec": 600, "timeSensitive": true },
     "promotion_near": { "category": "season", "title": "昇級まであと1勝", "body": "昇級ラインまであと{points}pt。1着ひとつで届きます", "ttlSec": 43200, "timeSensitive": false },
     "tournament_closing": { "category": "events", "title": "大会の受付は残り{minutes}分", "body": "「{tournament}」のエントリー受付がまもなく締め切られます", "ttlSec": 3600, "timeSensitive": true },
-    "ta_beaten": { "category": "friends", "title": "記録を抜かれました", "body": "{name}さんがタイムアタックであなたの記録を抜きました。取り返しに行こう", "ttlSec": 86400, "timeSensitive": false }
+    "ta_beaten": { "category": "friends", "title": "記録を抜かれました", "body": "{name}さんがタイムアタックであなたの記録を抜きました。取り返しに行こう", "ttlSec": 86400, "timeSensitive": false },
+    "lapse_3d": { "category": "comeback", "title": "相棒が待っています", "body": "ランク戦は今日も開催中。1レース90秒から遊べます", "ttlSec": 43200, "timeSensitive": false },
+    "lapse_7d": { "category": "comeback", "title": "おかえりボーナスを用意しています", "body": "次に遊ぶと、7日間の復帰ログインボーナスと復帰ミッションが受け取れます", "ttlSec": 43200, "timeSensitive": false }
   }
 }

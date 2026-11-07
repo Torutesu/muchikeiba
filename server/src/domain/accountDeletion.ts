@@ -5,7 +5,7 @@
  *   2. DELETE /v1/player + token    → deletion scheduled `cancelWindowDays` (14) later; the account keeps working
  *   3. POST /v1/player/deletion/cancel within the window → nothing happens
  *   4. at the scheduled time the player's object alarm runs runAccountDeletion(): the player is taken out of
- *      friends, teams, stud listings, leaderboards, event boards and tournaments; the purchase records and coin
+ *      friends, teams (and their team feeds), stud listings, leaderboards, event boards and tournaments; the purchase records and coin
  *      ledger required by law (資金決済法・特商法・帳簿) are anonymised and kept `ledgerRetentionDays` under a
  *      random id that is not linked to the account; then every piece of the player's own data is deleted.
  *
@@ -19,6 +19,7 @@ import { DAY_MS, jstMonthKey } from './time.js';
 import { forfeitAll } from './wallet.js';
 import { allowanceRemaining, forfeitAllowances } from './shop.js';
 import { forfeitPass, passRemaining } from './pass.js';
+import { inviteDeletionSnapshot } from './invite.js';
 
 export interface AccountDeletionConfig {
   /** Days between the confirmed request and the deletion (the request can be cancelled meanwhile). */
@@ -79,7 +80,7 @@ export interface RetainedRecord {
   };
 }
 
-export const DELETION_STEPS = ['friends', 'team', 'stud', 'stable', 'leaderboards', 'events', 'tournaments', 'finalize', 'retain', 'wipe'] as const;
+export const DELETION_STEPS = ['friends', 'invites', 'team', 'stud', 'stable', 'leaderboards', 'events', 'tournaments', 'finalize', 'retain', 'wipe'] as const;
 export type DeletionStep = typeof DELETION_STEPS[number];
 export const DELETED_PLAYER_NAME = '退会したプレイヤー';
 const RETRY_MS = [60_000, 600_000, 3_600_000, 6 * 3_600_000];
@@ -148,10 +149,14 @@ export const deletionDue = (s: PlayerState, now: number) => {
 export interface DeletionSnapshot {
   friends: string[]; incoming: string[]; outgoing: string[];
   teamId: string | null; teamRequests: string[];
+  /** REQ-TEAMFEED-008: teams whose feed holds this player's stamps, race items or reactions (current team included). */
+  feedTeams?: string[];
   studHorseIds: string[];
   eventIds: string[];
   /** R2 keys of this player's ghosts. */
   ghostKeys: string[];
+  /** REQ-INV-010: who invited the player, whom they invited, and the install claim of their redemption. Absent on older snapshots. */
+  invite?: { inviterId: string | null; invitees: string[]; installHash: string | null };
   steps: string[];
 }
 
@@ -159,10 +164,12 @@ export function deletionSnapshot(s: PlayerState): DeletionSnapshot {
   return {
     friends: [...s.friends.ids], incoming: s.friends.incoming.map((x) => x.from), outgoing: s.friends.outgoing.map((x) => x.to),
     teamId: s.team?.teamId ?? null, teamRequests: (s.team?.outgoing ?? []).map((o) => o.teamId),
+    feedTeams: [...new Set([...((s as PlayerState & { teamFeed?: { postedIn: string[] } }).teamFeed?.postedIn ?? []), ...(s.team?.teamId ? [s.team.teamId] : [])])],
     studHorseIds: (s.stud?.listings ?? []).map((l) => l.horseId),
     eventIds: Object.keys(s.events ?? {}),
     ghostKeys: Object.keys(s.timeAttack?.seasonBest ?? {}).map((k) => { const [season, track] = k.split(':'); return `ghosts/${season}/${track}/${s.id}.json`; }),
     steps: [...(s.deletion?.steps ?? [])],
+    invite: inviteDeletionSnapshot(s),
   };
 }
 
@@ -282,11 +289,24 @@ export interface DeletionPorts {
     /** uid had sent `to` a request: drop it from to's incoming list. */
     dropIncoming(to: string, uid: string): Promise<unknown>;
   };
+  /**
+   * REQ-INV-010: the invite code is retired, the install claim keeps only its hash, both sides' records are anonymised
+   * and the player's undelivered milestone rewards are forfeited.
+   */
+  invites?: {
+    forfeitOwn(uid: string): Promise<unknown>;
+    retireCode(uid: string): Promise<void>;
+    anonymizeInstall(installHash: string): Promise<void>;
+    forgetInvitee(inviterId: string, uid: string): Promise<unknown>;
+    forgetInviter(inviteeId: string, uid: string): Promise<unknown>;
+  };
   team?: {
     members(teamId: string, uid: string): Promise<{ playerId: string; role: string; joinedAt: number }[]>;
     leave(teamId: string, uid: string): Promise<unknown>;
     transfer(teamId: string, uid: string, to: string): Promise<unknown>;
     dropRequest(teamId: string, uid: string): Promise<unknown>;
+    /** REQ-TEAMFEED-008: remove the player's feed items and reactions from a team's feed. */
+    forgetFeed?(teamId: string, uid: string): Promise<unknown>;
   };
   /** Friend code, public profile and stud listings in the directory. */
   directory: { forget(uid: string): Promise<void> };
@@ -322,10 +342,23 @@ export async function runAccountDeletion(p: DeletionPorts, uid: string, now: num
     for (const f of snap.incoming) await tolerant(() => p.friends.dropOutgoing(f, uid));
     for (const t of snap.outgoing) await tolerant(() => p.friends.dropIncoming(t, uid));
   });
+  await step('invites', async () => {
+    const iv = p.invites;
+    if (!iv) return;
+    await iv.forfeitOwn(uid);
+    await iv.retireCode(uid);
+    const x = snap.invite;
+    if (!x) return;
+    if (x.installHash) await iv.anonymizeInstall(x.installHash);
+    if (x.inviterId) await tolerant(() => iv.forgetInvitee(x.inviterId!, uid));
+    for (const o of x.invitees) await tolerant(() => iv.forgetInviter(o, uid));
+  });
   await step('team', async () => {
     const t = p.team;
     if (!t) return;
     for (const tid of snap.teamRequests) await tolerant(() => t.dropRequest(tid, uid));
+    // REQ-TEAMFEED-008: the player's stamps, race items and reactions leave every feed they were posted to
+    if (t.forgetFeed) for (const tid of snap.feedTeams ?? []) await tolerant(() => t.forgetFeed!(tid, uid));
     const teamId = snap.teamId;
     if (!teamId) return;
     try {

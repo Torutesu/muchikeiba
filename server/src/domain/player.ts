@@ -13,6 +13,8 @@ import type { PassSeasonRecord, ShopState } from './shop.js';
 import type { ConsentState, OnboardingState, SeasonMissionState } from './onboarding.js';
 import type { NudgeState } from './nudges.js';
 import type { DeletionState } from './accountDeletion.js';
+import type { ReferralState } from './invite.js';
+import type { ComebackState } from './comeback.js';
 
 export type Currency = 'paid' | 'free';
 
@@ -86,6 +88,8 @@ export interface FriendsState {
   outgoing: { to: string; at: number }[];
   invites: { from: string; passphrase: string; at: number }[];
 }
+
+import type { AdsState } from './ads.js';
 
 export interface PlayerState {
   v: 1;
@@ -186,6 +190,12 @@ export interface PlayerState {
   nudges?: NudgeState;
   /** REQ-UXS-040: account deletion request (confirmation token, then the scheduled deletion). */
   deletion?: DeletionState;
+  /** REQ-INV-*: invite code redemption, invitees, milestone outbox (created on first use; see invite.ts). */
+  referral?: ReferralState;
+  /** REQ-CB-*: last active game day, the comeback window, lapse reminders and what's-new position (comeback.ts). */
+  comeback?: ComebackState;
+  /** REQ-AD-*: rewarded ads — preference, today's counts, sessions, seen transaction ids (created on first use; ads.ts ensureAds). */
+  ads?: AdsState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

@@ -10,6 +10,7 @@ import type { Master } from '../domain/master.js';
 import { AppError } from '../domain/errors.js';
 import { jstMonthKey } from '../domain/time.js';
 import { countOnboarding, ensureOnboarding } from '../domain/onboarding.js';
+import { rewardValue } from '../domain/comeback.js';
 
 export interface Persona {
   id: string;
@@ -26,7 +27,22 @@ export interface Persona {
   monthlyPurchases: string[];
   /** Average finishing place is uniform over 1..12 ("average rider"); a skilled rider shifts it. */
   placeBias: number;
+  /**
+   * REQ-INV-*: `invited` redeems a friend's code on day 1 after the FTUE (welcome gift, the friend for bm_friend);
+   * `inviter` is the upper bound of the invite program: a new invitee every INVITER_EVERY_DAYS days until the counted
+   * cap, each finishing the beginner missions INVITEE_GRADUATE_DAYS later and reaching class B at the next season.
+   */
+  invite?: 'invited' | 'inviter';
+  /** REQ-CB-010: a lapsed player — no play from `fromDay` (0-based) for `days` days, then daily again. */
+  lapse?: { fromDay: number; days: number };
+  /** REQ-AD-*: watches every rewarded ad the server offers on each active day (after the day's races). */
+  watchesAds?: boolean;
 }
+
+const INVITER_FIRST_DAY = 3;
+const INVITER_EVERY_DAYS = 3;
+const INVITEE_GRADUATE_DAYS = 3;
+const INVITEE_RACES_PER_DAY = 6;
 
 /**
  * REQ-UXS-015: the day (0-based, counted from install) on which an engaged new player does each beginner step
@@ -42,6 +58,11 @@ export const PERSONAS: Persona[] = [
   { id: 'light', label: '微課金（パス¥1,000/月）', racesPerDay: 6, activePermille: 1000, monthlyPurchases: ['season_pass'], placeBias: 0 },
   { id: 'medium', label: '中課金（パス＋¥5,000/月）', racesPerDay: 6, activePermille: 1000, monthlyPurchases: ['season_pass', 'coin_5000'], placeBias: 0 },
   { id: 'allowance', label: '微課金（厩舎手当¥480/30日）', racesPerDay: 6, activePermille: 1000, monthlyPurchases: ['stable_allowance_30d'], placeBias: 0 },
+  { id: 'f2p_invited', label: '無課金（毎日・招待された）', racesPerDay: 6, activePermille: 1000, monthlyPurchases: [], placeBias: 0, invite: 'invited' },
+  { id: 'f2p_inviter', label: '無課金（毎日・招待上限まで）', racesPerDay: 6, activePermille: 1000, monthlyPurchases: [], placeBias: 0, invite: 'inviter' },
+  // REQ-CB-010: plays daily for 3 weeks, stops for 14 days (mid tier), comes back and plays daily again
+  { id: 'lapsed', label: '復帰（無課金、14日休んで復帰）', racesPerDay: 6, activePermille: 1000, monthlyPurchases: [], placeBias: 0, lapse: { fromDay: 21, days: 14 } },
+  { id: 'ads', label: '無課金（毎日・広告を全部見る）', racesPerDay: 6, activePermille: 1000, monthlyPurchases: [], placeBias: 0, watchesAds: true },
 ];
 
 export interface EconomyResult {
@@ -69,6 +90,17 @@ export interface EconomyResult {
   beginnerSteps: number;
   /** REQ-UXS-016: pass XP from season missions. */
   seasonMissionXp: number;
+  /** REQ-INV-*: free coins and tickets from the invite program (welcome gift or inviter milestones). */
+  inviteCoins: number;
+  inviteTickets: number;
+  /** REQ-CB-*: comeback windows started, coin value of the comeback login track + missions, pass XP from the catch-up. */
+  comebackWindows: number;
+  comebackValue: number;
+  comebackXp: number;
+  /** REQ-AD-*: rewarded views and the free coins / time attack attempts they gave. */
+  adViews: number;
+  adCoins: number;
+  adTaAttempts: number;
   /** Derived. */
   freeCoinsPerActiveDay: number;
   pullsPerMonth: number;
@@ -101,10 +133,52 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
   const k = () => `c:sim:${key++}`;
   const r: EconomyResult = {
     persona: persona.id, days, activeDays: 0, freeCoinsEarned: 0, paidCoinsBought: 0, yenSpent: 0, pulls: 0, ssr: 0, sr: 0,
-    pityExchanges: 0, firstPityDay: null, breedingMaterial: 0, gachaTickets: 0, ticketPulls: 0, firstWinCoins: 0, allowanceCoins: 0, beginnerCoins: 0, beginnerSteps: 0, seasonMissionXp: 0, freeCoinsPerActiveDay: 0, pullsPerMonth: 0, ssrPerMonth: 0,
+    pityExchanges: 0, firstPityDay: null, breedingMaterial: 0, gachaTickets: 0, ticketPulls: 0, firstWinCoins: 0, allowanceCoins: 0, beginnerCoins: 0, beginnerSteps: 0, seasonMissionXp: 0, inviteCoins: 0, inviteTickets: 0, comebackWindows: 0, comebackValue: 0, comebackXp: 0, adViews: 0, adCoins: 0, adTaAttempts: 0, freeCoinsPerActiveDay: 0, pullsPerMonth: 0, ssrPerMonth: 0,
   };
   await svc.bootstrap(id);
   await svc.setAge(id, 1990, 1, false);
+  const inv = master.progression.invite;
+  if (persona.invite === 'invited' && inv) {
+    // FTUE (partner horse), then a friend's code: the welcome gift and the friend (bm_friend) on day 1
+    await svc.grantPartner(id, 'シミュ', k());
+    const acc = await svc.inviteAccept(`sim_inviter_${persona.id}`, id, 'sim_install_invitee', 'sim');
+    const before = (await svc.state(id)).items;
+    await svc.inviteCommit(id, `sim_inviter_${persona.id}`, 'SIMCODE0', 'sim_install_invitee', acc.status !== 'refused' && acc.friended);
+    const after = (await svc.state(id)).items;
+    r.inviteTickets += Object.entries(after).reduce((a, [it, n]) => a + (n - (before[it] ?? 0)), 0);
+    r.inviteCoins += inv.welcomeGift.freeCoins ?? 0;
+  }
+  /** Inviter upper bound: synthetic invitees join and hit their milestones on a fixed schedule (real reward code). */
+  const inviterDay = async (d: number) => {
+    if (persona.invite !== 'inviter' || !inv) return;
+    const joinDays = Array.from({ length: inv.maxCountedInvitees }, (_, i) => INVITER_FIRST_DAY + i * INVITER_EVERY_DAYS);
+    const pay = async (inviteeId: string, milestoneId: string) => {
+      const before = await svc.state(id);
+      const out = await svc.inviteMilestone(id, inviteeId, milestoneId, 'sim');
+      if (out.status !== 'rewarded') return;
+      const after = await svc.state(id);
+      r.inviteCoins += after.wallet.free - before.wallet.free;
+      r.inviteTickets += (after.items['gacha_ticket'] ?? 0) - (before.items['gacha_ticket'] ?? 0);
+    };
+    for (const [i, jd] of joinDays.entries()) {
+      const inviteeId = `sim_invitee_${persona.id}_${i}`;
+      if (d === jd) await svc.inviteAccept(id, inviteeId, `sim_install_${i}`, 'sim');
+      // beginner missions done INVITEE_GRADUATE_DAYS after joining; ranked races at the invitee's 6 a day
+      for (const ms of inv.milestones) {
+        if (ms.kind === 'beginner_complete' && d === jd + INVITEE_GRADUATE_DAYS) await pay(inviteeId, ms.id);
+        if (ms.kind === 'ranked_races' && d === jd + Math.ceil((ms.target ?? 0) / INVITEE_RACES_PER_DAY)) await pay(inviteeId, ms.id);
+      }
+      // one class up per season (the fastest a promotion can go): class B at the first season change after graduating,
+      // class A at the second, …
+      if (d > jd + INVITEE_GRADUATE_DAYS && jstMonthKey(start + d * DAY) !== jstMonthKey(start + (d - 1) * DAY)) {
+        let changes = 0;
+        for (let x = jd + INVITEE_GRADUATE_DAYS + 1; x <= d; x++) if (jstMonthKey(start + x * DAY) !== jstMonthKey(start + (x - 1) * DAY)) changes++;
+        for (const ms of inv.milestones.filter((x) => x.kind === 'class')) {
+          if (master.progression.classes.findIndex((c) => c.id === ms.classId) === changes) await pay(inviteeId, ms.id);
+        }
+      }
+    }
+  };
   const tut = await svc.tutorialDraw(id, k());
   for (const x of tut.results) { r.pulls++; if (x.rarity === 'SSR') r.ssr++; if (x.rarity === 'SR') r.sr++; }
   const pityTarget = master.gacha.banners.find((b) => b.id === 'standard')!.pityTargets[0]!;
@@ -145,6 +219,8 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
       r.yenSpent += p.priceYen;
       r.paidCoinsBought += p.paidCoins;
     }
+    await inviterDay(d);
+    if (persona.lapse && d >= persona.lapse.fromDay && d < persona.lapse.fromDay + persona.lapse.days) continue;
     if (unit(rng) * 1000 >= persona.activePermille) continue;
     r.activeDays++;
     await svc.claimLogin(id, k()).catch(() => undefined);
@@ -165,6 +241,14 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
       now += 10 * 60_000;
       const ar = await svc.applyRace(id, { raceId: `sim_${persona.id}_${d}_${i}`, mode: 'ranked', place: place(rng, persona.placeBias), fieldSize: 12, newRating: null, void: false, humans: 4 });
       if ('firstWinBonus' in ar && typeof ar.firstWinBonus === 'number') r.firstWinCoins += ar.firstWinBonus;
+      if ('comebackXp' in ar && typeof ar.comebackXp === 'number') r.comebackXp += ar.comebackXp;
+    }
+    // REQ-CB-004/005: a returner claims the comeback login day and every comeback mission it can
+    const cb = await svc.comeback(id);
+    if (cb.window) {
+      if (cb.window.day === 1 && cb.window.login.claimed === 0) r.comebackWindows++;
+      if (cb.window.login.claimableToday) r.comebackValue += rewardValue((await svc.comebackClaimLogin(id, k())).reward);
+      for (const cm of cb.window.missions.filter((x) => x.claimable)) r.comebackValue += rewardValue((await svc.comebackClaimMission(id, cm.id, k())).reward);
     }
     // daily, beginner (one step at a time, REQ-UXS-015) and season missions (pass XP, REQ-UXS-016): all claimable
     for (;;) {
@@ -187,6 +271,22 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
       for (const track of ['free', 'premium'] as const) {
         if (pv.claimed[track].includes(lvl)) continue;
         await svc.claimPass(id, track, lvl, k()).catch((e: unknown) => { if (!(e instanceof AppError)) throw e; });
+      }
+    }
+    // REQ-AD-*: every offered rewarded view, granted through the real session + callback path (the SSV signature is
+    // checked in front of the player object, src/ads/ssv.ts; here the callback is already "verified")
+    if (persona.watchesAds) {
+      for (;;) {
+        const av = await svc.ads(id);
+        const p = av.placements.find((x) => x.available);
+        if (!p) break;
+        const st = await svc.adStart(id, p.id, k());
+        const before = (await wallet()).free;
+        const res = await svc.adReward(id, { network: 'admob', transactionId: `sim_${persona.id}_${seed}_${tx++}`, userId: id, customData: st.customData, adUnit: p.adUnitKey, timestamp: now, rewardAmount: 1, rewardItem: 'reward' });
+        if (res.status !== 'rewarded') throw new Error(`sim ad not rewarded: ${JSON.stringify(res)}`);
+        r.adViews++;
+        r.adCoins += (await wallet()).free - before;
+        r.adTaAttempts += res.reward.taAttempts ?? 0;
       }
     }
     // spend: 10-pulls on the standard banner while affordable, exchange pity as soon as it is full
@@ -247,6 +347,9 @@ export async function simulateAll(master: Master, days = 90, seeds = [1, 2, 3], 
       breedingMaterial: avg((x) => x.breedingMaterial), gachaTickets: avg((x) => x.gachaTickets), ticketPulls: avg((x) => x.ticketPulls),
       firstWinCoins: avg((x) => x.firstWinCoins), allowanceCoins: avg((x) => x.allowanceCoins),
       beginnerCoins: avg((x) => x.beginnerCoins), beginnerSteps: avg((x) => x.beginnerSteps), seasonMissionXp: avg((x) => x.seasonMissionXp),
+      inviteCoins: avg((x) => x.inviteCoins), inviteTickets: avg((x) => x.inviteTickets),
+      comebackWindows: avg((x) => x.comebackWindows), comebackValue: avg((x) => x.comebackValue), comebackXp: avg((x) => x.comebackXp),
+      adViews: avg((x) => x.adViews), adCoins: avg((x) => x.adCoins), adTaAttempts: avg((x) => x.adTaAttempts),
       freeCoinsPerActiveDay: avg((x) => x.freeCoinsPerActiveDay), pullsPerMonth: avg((x) => x.pullsPerMonth), ssrPerMonth: avg((x) => x.ssrPerMonth),
     };
   }

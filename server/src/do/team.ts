@@ -7,6 +7,7 @@ import { TeamCore } from '../domain/teamService.js';
 import type { LeaguePlace } from '../domain/league.js';
 import { closeSeasonStep, type JoinPolicy, type MemberSnapshot, type TeamState, type TeamSummary } from '../domain/teams.js';
 import { jstMonthKey } from '../domain/time.js';
+import { newFeed, type FeedRace, type TeamFeedState } from '../domain/teamFeed.js';
 import { unwrap, wrap, type Envelope } from './rpc.js';
 
 type Rpc = Record<string, (...a: unknown[]) => Promise<Envelope<unknown>>>;
@@ -26,11 +27,14 @@ export class TeamDO extends DurableObject<Env> {
     this.core = new TeamCore(null, () => this.master);
     ctx.blockConcurrencyWhile(async () => {
       this.core.state = (await ctx.storage.get<TeamState>('team')) ?? null;
+      this.core.feed = (await ctx.storage.get<TeamFeedState>('feed')) ?? newFeed();
     });
   }
 
   private async save() {
-    if (this.core.state) await this.ctx.storage.put('team', this.core.state);
+    // REQ-TEAMFEED-*: the feed (ring buffer of the last items) is stored under its own key
+    if (this.core.state) await this.ctx.storage.put({ team: this.core.state, feed: this.core.feed });
+    else await this.ctx.storage.put('feed', this.core.feed);
   }
 
   /** Runs one operation all-or-nothing, persists, then publishes the summary. */
@@ -38,11 +42,13 @@ export class TeamDO extends DurableObject<Env> {
     return wrap(async () => {
       this.master = (await activeConfig(this.env)).master;
       const before = this.core.state ? structuredClone(this.core.state) : null;
+      const feedBefore = structuredClone(this.core.feed);
       let r: T;
       try {
         r = f(this.core);
       } catch (e) {
         this.core.state = before;
+        this.core.feed = feedBefore;
         throw e;
       }
       await this.save();
@@ -89,6 +95,14 @@ export class TeamDO extends DurableObject<Env> {
   reportPoints(playerId: string, seasonId: string, points: number, displayName: string) {
     return this.run((c) => c.reportPoints(playerId, seasonId, points, displayName));
   }
+
+  // REQ-TEAMFEED-*: the team feed (the summary does not change, so nothing is published)
+  feedPost(playerId: string, stampId: string) { return this.run((c) => c.feedPost(playerId, stampId), false); }
+  feedRace(playerId: string, race: FeedRace) { return this.run((c) => c.feedRace(playerId, race), false); }
+  feedReact(playerId: string, seq: number, stampId: string | null) { return this.run((c) => c.feedReact(playerId, seq, stampId), false); }
+  feedReport(playerId: string, seq: number) { return this.run((c) => c.feedReport(playerId, seq), false); }
+  feedPage(viewer: string, muted: string[], before: number | null, limit: number | null) { return this.run((c) => c.feedPage(viewer, muted, before, limit), false); }
+  feedForget(playerId: string) { return this.run((c) => c.feedForget(playerId), false); }
 
   /** REQ-TEAM-008: pay a closed season's team reward to eligible members (resumable; called by the season board). */
   async closeSeasonStep(seasonId: string, rank: number | null, total: number, league: LeaguePlace | null = null): Promise<Envelope<{ done: boolean; paid: number; eligible: number }>> {

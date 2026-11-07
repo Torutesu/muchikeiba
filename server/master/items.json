@@ -33,6 +33,8 @@
     { "id": "decor_stable_plaque", "name": "厩舎の表札", "kind": "decor", "asset": "decor/stable_plaque", "price": 200, "currency": "any" },
     { "id": "decor_flower_box", "name": "花のプランター", "kind": "decor", "asset": "decor/flower_box", "price": 200, "currency": "any" },
     { "id": "decor_trophy_shelf", "name": "トロフィー棚", "kind": "decor", "asset": "decor/trophy_shelf", "price": 500, "currency": "any" },
-    { "id": "decor_golden_horseshoe", "name": "金の蹄鉄", "kind": "decor", "asset": "decor/golden_horseshoe", "price": 1000, "currency": "paidOnly" }
+    { "id": "decor_golden_horseshoe", "name": "金の蹄鉄", "kind": "decor", "asset": "decor/golden_horseshoe", "price": 1000, "currency": "paidOnly" },
+    { "id": "stamp_carrot", "name": "スタンプ「にんじん！」", "kind": "stamp", "asset": "stamp/carrot", "price": 200, "currency": "any" },
+    { "id": "stamp_horseshoe", "name": "スタンプ「幸運の蹄鉄」", "kind": "stamp", "asset": "stamp/horseshoe", "price": 300, "currency": "any" }
   ]
 }

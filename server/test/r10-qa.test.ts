@@ -7,9 +7,9 @@ import { AppError } from '../src/domain/errors.js';
 import { MemoryDirectory } from '../src/domain/friends.js';
 import { MemoryTeams, TeamsService } from '../src/domain/teamService.js';
 import { hashInstallId, InviteService, MemoryInviteDirectory } from '../src/domain/invite.js';
-import { handle, invitePlayersFrom, makeFriendsService, teamPlayersFrom, type AppContext, type PlayerInvoker } from '../src/http/app.js';
+import { handle, invitePlayersFrom, makeFriendsService, rawQuery, teamPlayersFrom, type AppContext, type PlayerInvoker } from '../src/http/app.js';
 import { runAccountDeletion, type DeletionPorts } from '../src/domain/accountDeletion.js';
-import { signAdMobQuery, StaticKeySource } from '../src/ads/ssv.js';
+import { RemoteKeySource, signAdMobQuery, StaticKeySource } from '../src/ads/ssv.js';
 import type { AdCallback } from '../src/domain/ads.js';
 import type { PlayerState } from '../src/domain/player.js';
 
@@ -136,5 +136,78 @@ describe('r10 QA: a failed concurrent redemption never frees the device claim of
     const h = await hashInstallId('inst-race-0001');
     expect(await codes.claimInstall(h, 'n2')).toBe('n'); // still n's: a second account on the device is refused
     expect((w.repo.get('n') as PlayerState).referral?.invitedBy).toBeTruthy();
+  });
+});
+
+describe('r10 QA: the SSV callback re-checks eligibility at reward time (REQ-AD-001/006)', () => {
+  /** A veteran with an open session on the home placement; `change` runs between the start and the callback. */
+  async function midAd(change: (w: ReturnType<typeof world>) => Promise<unknown>) {
+    const w = world();
+    await w.svc.bootstrap('p');
+    for (let i = 0; i < 3; i++) await w.ranked('p');
+    w.advance(DAY);
+    const st = await w.svc.adStart('p', 'daily_coins', 'c:ad:1');
+    await change(w);
+    const free = (w.repo.get('p') as PlayerState).wallet.free;
+    const out = await w.svc.adReward('p', { network: 'admob', transactionId: 'T-mid', userId: 'p', customData: st.customData, adUnit: 'u', timestamp: w.now(), rewardAmount: 1, rewardItem: 'r' });
+    return { out, gained: (w.repo.get('p') as PlayerState).wallet.free - free };
+  }
+  it('opted out mid-ad (pref off): rejected, nothing granted', async () => {
+    const r = await midAd((w) => w.svc.setAdPref('p', 'off'));
+    expect(r.out).toMatchObject({ status: 'rejected', reason: 'opted_out' });
+    expect(r.gained).toBe(0);
+  });
+  it('registered an age under 13 mid-ad: rejected', async () => {
+    const r = await midAd((w) => w.svc.setAge('p', 2016, 1, true));
+    expect(r.out).toMatchObject({ status: 'rejected', reason: 'age' });
+    expect(r.gained).toBe(0);
+  });
+  it('banned mid-ad: rejected', async () => {
+    const r = await midAd((w) => w.svc.setModeration('p', 'banned', null, 'cheat'));
+    expect(r.out).toMatchObject({ status: 'rejected', reason: 'moderation' });
+    expect(r.gained).toBe(0);
+  });
+  it('deletion scheduled mid-ad: rejected', async () => {
+    const r = await midAd(async (w) => { const t = (await w.svc.requestDeletion('p', null)) as { confirmToken: string }; await w.svc.requestDeletion('p', t.confirmToken); });
+    expect(r.out).toMatchObject({ status: 'rejected', reason: 'deleting' });
+    expect(r.gained).toBe(0);
+  });
+  it('control: nothing changed → rewarded', async () => {
+    const r = await midAd(async () => undefined);
+    expect(r.out).toMatchObject({ status: 'rewarded' });
+    expect(r.gained).toBe(10);
+  });
+});
+
+describe('r10 QA: a failed key refresh after the cache expired falls back to the last good set (bounded)', () => {
+  it('serves the stale set up to maxStaleMs, reports it, then fails; recovers when the URL answers', async () => {
+    const kp = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']) as CryptoKeyPair;
+    const spki = new Uint8Array(await crypto.subtle.exportKey('spki', kp.publicKey) as ArrayBuffer);
+    const pem = `-----BEGIN PUBLIC KEY-----\n${btoa(String.fromCharCode(...spki))}\n-----END PUBLIC KEY-----`;
+    let now = 0, up = true;
+    const stale: number[] = [];
+    const src = new RemoteKeySource({
+      url: 'https://keys.example.invalid/k.json', clock: () => now, maxStaleMs: 7 * DAY, onStale: (ageMs) => { stale.push(ageMs); },
+      fetch: async () => { if (!up) throw new Error('network down'); return { ok: true, json: async () => ({ keys: [{ keyId: 7, pem }] }) }; },
+    });
+    expect(await src.get('7')).not.toBeNull();
+    up = false;
+    now = 2 * DAY; // past the 24 h cache lifetime; the refresh fails
+    expect(await src.get('7')).not.toBeNull();
+    expect(stale[0]).toBe(2 * DAY);
+    now = 8 * DAY; // older than maxStaleMs: no longer trusted
+    await expect(src.get('7')).rejects.toThrow();
+    up = true;
+    now += 61_000;
+    expect(await src.get('7')).not.toBeNull();
+  });
+});
+
+describe('r10 QA: the SSV route verifies the raw query string', () => {
+  it('takes the query exactly as received (no URL re-serialisation)', () => {
+    expect(rawQuery("https://x/v1/ads/ssv/admob?a=1&b=%7E&c='x'&signature=s&key_id=1")).toBe("a=1&b=%7E&c='x'&signature=s&key_id=1");
+    expect(new URL("https://x/p?c='x'").search).not.toBe("?c='x'"); // what URL normalisation would have changed
+    expect(rawQuery('https://x/p')).toBe('');
+    expect(rawQuery('https://x/p?a=1#frag')).toBe('a=1');
   });
 });

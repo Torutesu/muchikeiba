@@ -656,11 +656,11 @@ FeedPage = { "teamId": "tabc123456", "latestSeq": 130, "nextBefore": 111 | null,
 
 ### 21.4 SSV コールバック `GET /v1/ads/ssv/admob`（認証なし、署名で認証）
 AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&reward_item=…&timestamp=<ms>&transaction_id=…&user_id=…&signature=…&key_id=…`。
-1. **署名**（`ssv.ts` `verifyAdMobCallback`）：`&signature=` より前のクエリ文字列（受け取ったまま）を、`key_id` の公開鍵（ECDSA P-256 / SHA-256、署名は DER の base64url）で検証。鍵の組は差し替え可能（`SsvKeySource`）：env `ADS_SSV_KEYS_URL`（ネットワークが公開する鍵の JSON。1日キャッシュ、知らない `key_id` の時だけ最短1分おきに取り直す）か `ADS_SSV_KEYS`（固定の鍵、開発・結合テスト用）。署名より後ろに付け足された値は読まない。署名が無い・違う・知らない鍵・必須の値が無い → **401**（ネットワーク側で失敗として見える）。鍵の組が設定されていなければ **404**（どの報酬も付与されない）。
+1. **署名**（`ssv.ts` `verifyAdMobCallback`）：`&signature=` より前のクエリ文字列（受け取ったまま。URL として解釈し直さず、リクエストの URL の `?` から `#` までをそのまま使う：`app.ts` `rawQuery`）を、`key_id` の公開鍵（ECDSA P-256 / SHA-256、署名は DER の base64url）で検証。鍵の組は差し替え可能（`SsvKeySource`）：env `ADS_SSV_KEYS_URL`（ネットワークが公開する鍵の JSON。1日キャッシュ、知らない `key_id` の時だけ最短1分おきに取り直す。取り直しに失敗した時は最後に取れた鍵の組で検証を続け（最大7日、`maxStaleMs`。使うたびにログ）、それより古ければ失敗を返す）か `ADS_SSV_KEYS`（固定の鍵、開発・結合テスト用）。署名より後ろに付け足された値は読まない。署名が無い・違う・知らない鍵・必須の値が無い → **401**（ネットワーク側で失敗として見える）。鍵の組が設定されていなければ **404**（どの報酬も付与されない）。
 2. **広告ユニット**：env `ADS_AD_UNITS`（`{"REWARDED_HOME":"<ID>",…}`）があれば、知らないユニット・枠と違うユニットは弾く。
 3. **プレイヤーのオブジェクト**（`user_id` の Durable Object、`ads.ts` `applyAdCallback`）で判定：
    - 同じ `transaction_id` は `duplicate`（冪等。直近200件を覚え、さらに取引の冪等キー `ad:admob:<tx>` で同じ結果を返す）。署名が `user_id` を含むので、別のプレイヤーへの再送は起こらない（全体の索引は不要）。
-   - 弾く理由：`user_mismatch`・`unknown_session`（`custom_data` がこのプレイヤーのセッションでない）・`session_used`（同じセッションに別の取引）・`expired`・`clock_skew`（サーバーの時刻と `maxClockSkewMs` 以上ずれる、またはセッションより前）・`ad_unit_mismatch`・`cap`（1日の上限）・`deleting`。弾いた時も **200** `{ "ok": true, "status": "rejected" }` を返す（ネットワークが再送しない）。KPI `ad_reject` と、多い日はサポート用の印。
+   - 弾く理由：`user_mismatch`・`unknown_session`（`custom_data` がこのプレイヤーのセッションでない）・`session_used`（同じセッションに別の取引）・`expired`・`clock_skew`（サーバーの時刻と `maxClockSkewMs` 以上ずれる、またはセッションより前）・`ad_unit_mismatch`・`cap`（1日の上限）・`deleting`、それに広告を見ている間に変わった資格：`opted_out`（`pref: off`）・`age`（登録した年齢が `minAge` 未満）・`moderation`（利用停止）。広告の途中で課金した場合は弾かない（支払った人の30日の非表示は新しい案内を出さないためのもので、課金前に自分で選んで見始めた広告の報酬までは取り上げない）。弾いた時も **200** `{ "ok": true, "status": "rejected" }` を返す（ネットワークが再送しない）。KPI `ad_reject` と、多い日はサポート用の印。
    - 付与：無償コイン（台帳の参照 `ad:admob:<tx>`）か、タイムアタックのその日の挑戦回数 +1。回数を数え、セッションを `rewarded` にし、KPI `ad_reward`。応答 `{ "ok": true, "status": "rewarded" }`。
 4. **乱用の制限**：検証に失敗したコールバックは送り元IPごと、検証に通ったものはプレイヤーごとにトークンバケット（Worker のインスタンスごと、30回・毎秒1回）。正しいコールバックは広告ネットワークの少数のサーバーから来るので、IPごとの上限は失敗にだけかける（正しい報酬を止めない）。プレイヤーのオブジェクトでも開始回数・同時セッション・1日の上限で止まる。
 

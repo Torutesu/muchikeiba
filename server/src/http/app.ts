@@ -661,7 +661,7 @@ export const routes: Route[] = [
     const now = (c.clock ?? Date.now)();
     let cb;
     try {
-      cb = await verifyAdMobCallback(new URL(r.url).search, c.ads.keys, c.ads.adUnits);
+      cb = await verifyAdMobCallback(rawQuery(r.url), c.ads.keys, c.ads.adUnits);
     } catch (e) {
       if (e instanceof SsvError) {
         // r10 QA: only FAILED callbacks count against the source IP. Every valid callback comes from the ad network's
@@ -746,6 +746,17 @@ export function makeFriendsService(player: (uid: string) => PlayerInvoker, dir: 
     friendsState: (u) => player(u).invoke('friendsState', u),
   };
   return new FriendsService(ports, dir);
+}
+
+/**
+ * REQ-AD-006: the query string exactly as it arrived (after `?`, before any `#`). The SSV signature covers these bytes,
+ * so it is not re-serialised through URL (which percent-encodes some characters, e.g. `'`).
+ */
+export function rawQuery(url: string): string {
+  const q = url.indexOf('?');
+  if (q < 0) return '';
+  const h = url.indexOf('#', q);
+  return url.slice(q + 1, h < 0 ? undefined : h);
 }
 
 /** Adapts per-player invocations to the invite orchestration (REQ-INV-*). */

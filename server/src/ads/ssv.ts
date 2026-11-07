@@ -60,6 +60,13 @@ export interface RemoteKeySourceOptions {
   ttlMs?: number;
   /** Least time between fetches caused by an unknown key id (default 60 s; stops key-id spraying from hammering the URL). */
   minRefetchMs?: number;
+  /**
+   * When a refresh fails, the last good set keeps verifying callbacks until it is this old (default 7 days), so a
+   * network-key URL outage does not turn every callback into a 5xx. Older than this, the failure is thrown.
+   */
+  maxStaleMs?: number;
+  /** Called each time the stale set is used after a failed refresh (log / KPI). Default: console.warn. */
+  onStale?: (ageMs: number, error: unknown) => void;
 }
 
 /** The network's published key set, fetched and cached per isolate. */
@@ -85,7 +92,14 @@ export class RemoteKeySource implements SsvKeySource {
     const stale = !this.cache || this.now() - this.cache.at > (this.o.ttlMs ?? 86_400_000);
     if (!stale && !(force && this.now() - this.lastFetch >= (this.o.minRefetchMs ?? 60_000))) return;
     this.inflight ??= this.refresh().finally(() => { this.inflight = null; });
-    await this.inflight;
+    try {
+      await this.inflight;
+    } catch (e) {
+      // r10 QA: keep verifying with the last good set (bounded) instead of failing every callback
+      const age = this.cache ? this.now() - this.cache.at : Infinity;
+      if (age > (this.o.maxStaleMs ?? 7 * 86_400_000)) throw e;
+      (this.o.onStale ?? ((a, err) => console.warn('ssv: key refresh failed, using the last good set', Math.round(a / 1000), 's old', String(err))))(age, e);
+    }
   }
   async get(keyId: string) {
     await this.load(false);

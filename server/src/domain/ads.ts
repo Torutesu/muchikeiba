@@ -20,7 +20,7 @@
 import { z } from 'zod';
 import { AppError } from './errors.js';
 import type { Master } from './master.js';
-import type { PlayerState } from './player.js';
+import { moderationOf, type PlayerState } from './player.js';
 import { dayRule, gameDayIndex, gameDayKey, sameGameDay, ageAt, DAY_MS } from './time.js';
 import { grantFree } from './wallet.js';
 import { taState } from './timeAttack.js';
@@ -139,7 +139,9 @@ export function adsProblems(raw: unknown, path = 'progression.ads'): string[] {
 export type AdPref = 'auto' | 'on' | 'off';
 export type AdSessionStatus = 'open' | 'rewarded' | 'rejected' | 'expired';
 export type AdRejectReason =
-  | 'user_mismatch' | 'unknown_session' | 'session_used' | 'expired' | 'clock_skew' | 'ad_unit_mismatch' | 'cap' | 'deleting';
+  | 'user_mismatch' | 'unknown_session' | 'session_used' | 'expired' | 'clock_skew' | 'ad_unit_mismatch' | 'cap' | 'deleting'
+  // r10 QA: eligibility re-checked when the reward would be paid (changed while the ad played)
+  | 'opted_out' | 'age' | 'moderation';
 export interface AdSession {
   id: string; placementId: string; createdAt: number; expiresAt: number; status: AdSessionStatus;
   txId?: string; at?: number; reason?: AdRejectReason; reward?: AdRewardDef;
@@ -190,7 +192,7 @@ export function adIneligibility(m: Master, s: PlayerState, now: number): AdIneli
   const a = s.ads;
   if (a?.pref === 'off') return 'opted_out';
   if (s.deletion?.status === 'scheduled' || s.deletion?.status === 'deleting') return 'deleting';
-  if (s.moderation && s.moderation.status === 'banned') return 'moderation';
+  if (moderationOf(s, now) === 'banned') return 'moderation';
   if (s.rating.rankedRaces < c.minRankedRaces) return 'ftue';
   const day = gameDayIndex(now, dayRule(m)) - gameDayIndex(s.createdAt, dayRule(m)) + 1;
   if (day < c.minGameDay) return 'first_day';
@@ -337,7 +339,13 @@ export function applyAdCallback(m: Master, s: PlayerState, cb: AdCallback, now: 
   const p = c.placements.find((x) => x.id === sess.placementId);
   if (!p) return reject('unknown_session');
   if (cb.adUnitKey !== undefined && cb.adUnitKey !== p.adUnitKey) return reject('ad_unit_mismatch');
+  // r10 QA: re-check what the player decided or what support decided while the ad played. Opting out (`pref: off`),
+  // a registered age under `minAge`, a ban or a scheduled deletion block the reward. A payment made mid-ad does NOT:
+  // the payer quiet period only hides new offers (the player already chose to watch before paying; REQ-AD-001).
   if (s.deletion?.status === 'scheduled' || s.deletion?.status === 'deleting') return reject('deleting');
+  if (a.pref === 'off') return reject('opted_out');
+  if (s.age && ageAt(s.age.birthYear, s.age.birthMonth, now) < c.minAge) return reject('age');
+  if (moderationOf(s, now) === 'banned') return reject('moderation');
   if ((a.counts[p.id] ?? 0) >= p.dailyCap || a.total >= c.globalDailyCap) return reject('cap');
   // grant: free coins only (資金決済法), or time attack attempts for today
   if (p.reward.freeCoins) grantFree(s, p.reward.freeCoins, now, `rewarded ad ${p.id}`, `ad:${cb.network}:${cb.transactionId}`);

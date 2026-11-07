@@ -626,3 +626,16 @@
 - REQ-TRAIN-012 設定 `progression.training`（リモート設定で変更可）：形・重複・コード側の上限 `TRAINING_HARD_LIMITS`（1日5回・1頭3回・`baseGain ≤ 15`・素質 ≤ 400・絆 ≤ 120‰・回復 ≤ 50・ミニゲーム ≤ 150‰）・ミニゲームの形（`perfectMs < goodMs`、ビートの間隔 ≥ 2 × `goodMs`）・素質の順・アイテムの入手経路を検証。
 - REQ-TRAIN-013 経済：調教はコインを出さない（E1〜E14 は変わらない）。全ての想定が毎日の回数を使う経済シミュレーションで、課金者の伸び/稼働日が無課金の 1.05 倍以下、ランク戦の正規化後の能力合計の差（中課金 − 無課金）が全クラスで調教によって広がらないことを確かめる（E15、balance-targets §4.12、`server/test/economy.test.ts`）。
 - REQ-TRAIN-014 KPI とクライアント：サーバーのイベント `training_start`（メニュー・レア度・疲れ・今日の回数）・`training_done`（メニュー・評価・記録の理由・伸び・点数・初回）。クエリは `docs/ops/kpi-queries.md`。`Muchi.Client` `ApiClient.GetTrainingAsync`・`StartTrainingAsync`・`FinishTrainingAsync`・`UseTrainingItemAsync`、`Horse.Trained`、`TrainingScorer`。Unity のゲーム層 `TrainingModel`（メニューのカードと選べない理由、受け付けられるタップだけ記録、start/finish の冪等キーは答えが来るまで保持、開いたままのセッションはミニゲームなしで仕上げ、公平性の文言、ショップへの導線なし）。
+
+## 29. コイン不足の案内（T6、TS＋C#、`src/domain/shortfall.ts`、`contracts/protocol.md` §29、docs/planning/06 §5.1 T6）
+拘束条件：課金の案内は決まった場面だけ（06 §5.1）。偽の残り時間・倍率表現は使わない（03・06 §5.5）。有償と無償は分けて数える（資金決済法）。
+- REQ-SHORT-001 足りないコインの種類：`any`（有償＋無償）・`paid`（有償限定の支払い。無償コインは数えない）・`free`（無償のみの支払い。購入の案内は出さない）。`wallet.spend` / `spendFree` と同じ数え方。
+- REQ-SHORT-002 パックの選び方：有償コインがすぐ入る商品のうち、今この人が買えるもの（`checkPurchaseIntent` と同じ判定：1回限りの購入済み・クラス未到達・年齢帯の月額上限・今月の上限超過を除く）から、有償コインだけで不足を満たす一番安いもの1つ（同額ならコインのパック、次に枚数の少ない方）。無ければ一番大きいものを `covers: false` で、買えるものが無ければ `offer: null` と理由のコード。
+- REQ-SHORT-003 文言：見出し・1文・注意はサーバーが作る（`コインが{n}枚足りません` など）。初回購入ボーナスはショップと同じ表示（REQ-UXS-022）で、まだ受け取っていないパックだけ。「倍」「お得」「今だけ」「残りわずか」「通常価格」・残り時間を使わない。英語は応答の境界で訳す（REQ-L10N-002）。
+- REQ-SHORT-004 失敗時：コインで払う操作がコイン不足で失敗した 409 `INSUFFICIENT_COINS` に `details.shortfall` を付ける。取引は取り消され冪等の記録にも残らない。ほかのエラーの形は変えない（Workers RPC の封筒でも `details` を運ぶ）。
+- REQ-SHORT-005 事前の確認：`GET /v1/shop/shortfall`（`for=gacha|cosmetic|coins`）で同じ答え。価格はガチャ（ステップアップの今の段を含む）・見た目の実際の支払いと同じ関数から出す。
+- REQ-SHORT-006 表示の場面：ガチャの確認・見た目の購入・ショップだけ。レース中・マッチング中・チュートリアル中・負けた直後の結果画面には出さない（`CoinShortfallModel.Allowed`、GameChecks で確認）。
+- REQ-SHORT-007 流れ：シート（不足の枚数＋パック1枚＋閉じる）→ 既存の購入確認（REQ-UXU-010）→ 完了で元の操作へ戻る。購入確認の年齢・保護者の同意・上限の手順はそのまま。
+- REQ-SHORT-008 KPI：`offer_view` / `offer_click`（`offerId: "shortfall"`、`trigger: "T6"`）を1回の表示につき1回。
+- REQ-SHORT-009 クライアント：`Muchi.Client` `InsufficientCoinsException.Shortfall`（`CoinShortfall`）、`ApiClient.GetCoinShortfallForGachaAsync` / `ForCosmeticAsync` / `GetCoinShortfallAsync`。Unity のゲーム層 `CoinShortfallModel`。プロトタイプのシート（日本語・英語）。
+- REQ-SHORT-010 コンプガチャ防止の一本化（R11 の残り）：「集める」ミッション（図鑑の条件・初心者・シーズン）の 2つ以上ルールは、有償で引ける**すべての**抽選（バナーの通常・確定枠・ステップアップの最終枠・SR以上確定券などの抽選券）を `paidRandomTemplates` 1つで数える（`compGachaProblems` と `gachaObtainable` が同じ関数を使う）。

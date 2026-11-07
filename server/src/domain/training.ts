@@ -395,35 +395,56 @@ function settleExpired(m: Master, s: PlayerState, now: number, emit: Emit) {
   return settle(m, requireConfig(m), s, t.open, [], 'expired', now, emit);
 }
 
+/** GET /v1/training: everything the screen needs (config, every active horse, the open session, the rules). */
 export function trainingView(m: Master, s: PlayerState, now: number) {
   const c = trainingConfig(m);
   if (!c) return { enabled: false as const };
-  const t = s.training;
-  const today = gameDayKey(now, dayRule(m));
-  const used = t && sameGameDay(t.day, today) ? t.used : 0;
-  const open = t?.open && now <= t.open.expiresAt ? sessionView(c, t.open) : null;
   return {
-    enabled: true as const,
-    slotsPerDay: c.slotsPerDay, usedToday: used, slotsLeft: Math.max(0, c.slotsPerDay - used), perHorsePerDay: c.perHorsePerDay,
+    ...trainingCounts(m, c, s, now),
     menus: c.menus.map((x) => ({ id: x.id, name: x.name, baseGain: x.baseGain, fatigue: x.fatigue, weights: x.weights, bondMultiplier: x.bondMultiplier ?? 1 })),
     timing: { ...c.timing, maxScore: maxScore(c.timing) },
     fatigue: { max: c.fatigue.max, restAt: c.fatigue.restAt, recoveryPerDay: c.fatigue.recoveryPerDay },
-    items: c.items.map((x) => ({ itemId: x.itemId, name: x.name, fatigueRelief: x.fatigueRelief, owned: s.items[x.itemId] ?? 0 })),
-    horses: s.horses.filter((h) => h.status === 'active').map((h) => {
-      const rec = t?.horses[h.id];
-      const fatigue = fatigueNow(m, c, rec, now);
-      return {
-        horseId: h.id, name: h.name, rarity: h.rarity,
-        trained: { ...zeroStats(), ...(h.trained ?? {}) }, trainedTotal: trainedTotal(h), potential: potentialOf(c, h), perStatCap: perStatCap(c, h),
-        fatigue, condition: conditionOf(c, fatigue), bondLevel: horseBondLevel(m, s, h.id),
-        todayCount: rec && sameGameDay(rec.day, today) ? rec.dayCount : 0, sessions: rec?.sessions ?? 0, log: rec?.log ?? [],
-        blocked: blockReason(m, c, s, h, null, now),
-        menus: c.menus.map((x) => ({ id: x.id, blocked: blockReason(m, c, s, h, x, now) })),
-      };
-    }),
-    open,
+    partial: false,
+    horses: s.horses.filter((h) => h.status === 'active').map((h) => horseView(m, c, s, h, now)),
     // REQ-TRAIN-003/009: stated so the UI can say it plainly
     rules: { rankedNormalized: true, fatigueAffectsRaces: false, inherited: false, paidBoosts: false },
+  };
+}
+
+/**
+ * The `training` of the start / finish / item responses: what an action changes (counts, items, the open session) and the
+ * one horse concerned, with `partial: true`. The client merges it into the full view it has. Kept small on purpose: the
+ * response is also stored as the idempotency record in the player's state.
+ */
+export function trainingDelta(m: Master, s: PlayerState, now: number, horseId: string) {
+  const c = requireConfig(m);
+  const h = s.horses.find((x) => x.id === horseId);
+  return { ...trainingCounts(m, c, s, now), partial: true, horses: h && h.status === 'active' ? [horseView(m, c, s, h, now, false)] : [] };
+}
+
+function trainingCounts(m: Master, c: TrainingConfig, s: PlayerState, now: number) {
+  const t = s.training;
+  const today = gameDayKey(now, dayRule(m));
+  const used = t && sameGameDay(t.day, today) ? t.used : 0;
+  return {
+    enabled: true as const,
+    slotsPerDay: c.slotsPerDay, usedToday: used, slotsLeft: Math.max(0, c.slotsPerDay - used), perHorsePerDay: c.perHorsePerDay,
+    items: c.items.map((x) => ({ itemId: x.itemId, name: x.name, fatigueRelief: x.fatigueRelief, owned: s.items[x.itemId] ?? 0 })),
+    open: t?.open && now <= t.open.expiresAt ? sessionView(c, t.open) : null,
+  };
+}
+
+function horseView(m: Master, c: TrainingConfig, s: PlayerState, h: HorseInstance, now: number, withLog = true) {
+  const today = gameDayKey(now, dayRule(m));
+  const rec = s.training?.horses[h.id];
+  const fatigue = fatigueNow(m, c, rec, now);
+  return {
+    horseId: h.id, name: h.name, rarity: h.rarity,
+    trained: { ...zeroStats(), ...(h.trained ?? {}) }, trainedTotal: trainedTotal(h), potential: potentialOf(c, h), perStatCap: perStatCap(c, h),
+    fatigue, condition: conditionOf(c, fatigue), bondLevel: horseBondLevel(m, s, h.id),
+    todayCount: rec && sameGameDay(rec.day, today) ? rec.dayCount : 0, sessions: rec?.sessions ?? 0, ...(withLog ? { log: rec?.log ?? [] } : {}),
+    blocked: blockReason(m, c, s, h, null, now),
+    menus: c.menus.map((x) => ({ id: x.id, blocked: blockReason(m, c, s, h, x, now) })),
   };
 }
 

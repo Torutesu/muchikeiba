@@ -221,16 +221,16 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
     const st0 = await svc.state(id);
     const order = best(st0.horses);
     const rotation = ['hill', 'wood', 'awase'];
-    type View = Extract<typeof tv, { enabled: true }>;
+    type View = { perHorsePerDay: number; horses: { horseId: string; fatigue: number; blocked: string | null }[] };
     for (const h of order) {
       for (let i = 0; i < (tv as View).perHorsePerDay && slots > 0; i++) {
-        const hv = (tv as View).horses.find((x) => x.horseId === h.id)!;
+        const hv = (tv as View).horses.find((x) => x.horseId === h.id) ?? (tv = await svc.training(id), (tv as View).horses.find((x) => x.horseId === h.id)!);
         if (hv.blocked) break;
         const menu = hv.fatigue >= 60 ? 'pool' : rotation[(r.trainingSessions + i) % rotation.length]!;
         const st = await svc.trainingStart(id, h.id, menu, k());
         now += 7_000;
         const res = await svc.trainingFinish(id, st.session.sessionId, { taps: st.session.beats.map((b) => b + 100) }, k());
-        tv = res.training;
+        tv = res.training as unknown as typeof tv;
         r.trainingSessions++;
         r.trainedPoints += res.total;
         slots--;
@@ -239,7 +239,7 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
     }
     const top = order[0];
     if (top && (st0.items['training_apple'] ?? 0) > 0) {
-      const hv = (tv as View).horses.find((x) => x.horseId === top.id);
+      const hv = (tv as View).horses.find((x) => x.horseId === top.id) ?? (await svc.training(id) as View).horses.find((x) => x.horseId === top.id);
       if (hv && hv.fatigue >= 40) await svc.trainingUseItem(id, 'training_apple', top.id, k());
     }
   };

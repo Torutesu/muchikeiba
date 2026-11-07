@@ -176,7 +176,7 @@ namespace Muchi.Game
                 Started = await B.Api.StartTrainingAsync(HorseId, menuId, key, ct);
                 Kv.Set(KeyPendingStart, "");
                 Session = Started.Session;
-                if (Started.Training != null) View = Started.Training;
+                if (Started.Training != null) View = Started.Training.MergeInto(View);
                 _taps.Clear(); Judgements.Clear(); _miniGameStart = -1; Skipped = false; Result = null;
                 Phase = TrainingPhase.Ready;
                 return ActionResult.Success();
@@ -231,7 +231,7 @@ namespace Muchi.Game
             {
                 Result = await B.Api.FinishTrainingAsync(Session.SessionId, Skipped ? null : _taps.ToArray(), Skipped, key, ct);
                 Kv.Set(KeyPendingFinish, "");
-                if (Result.Training != null) View = Result.Training;
+                if (Result.Training != null) View = Result.Training.MergeInto(View);
                 Session = null;
                 Phase = TrainingPhase.Result;
                 return ActionResult.Success(ResultHeadline);
@@ -289,7 +289,7 @@ namespace Muchi.Game
             try
             {
                 var r = await B.Api.UseTrainingItemAsync(Apple.ItemId, HorseId, null, ct);
-                if (r.Training != null) View = r.Training;
+                if (r.Training != null) View = r.Training.MergeInto(View);
                 return ActionResult.Success("疲れ " + r.FatigueBefore + " → " + r.Fatigue);
             }
             catch (ApiException e) { Message = UxText.For(e); return ActionResult.Error(Message); }

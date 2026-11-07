@@ -2140,7 +2140,7 @@ async function Training() {
   if (!r.ok || !r.value.enabled) { toast('調教は今は行えません'); Home(); return; }
   let v = r.value;
   // a session left open (the app was closed mid-game) is finished as skipped: its time has passed
-  if (v.open) { const f = await L.trainingFinish(v.open.sessionId, [], true); if (f.ok) v = f.value.training; }
+  if (v.open) { await L.trainingFinish(v.open.sessionId, [], true); const again = await L.training(); if (again.ok) v = again.value; }
   if (!v.horses.some((h) => h.horseId === trHorse)) trHorse = (v.horses.find((h) => h.horseId === partner()?.id) ?? v.horses.find((h) => !h.blocked) ?? v.horses[0])?.horseId ?? null;
   const h = v.horses.find((x) => x.horseId === trHorse);
   Clear('training'); SetArt('Art/home-paddock', false); Shade('left');
@@ -2210,7 +2210,9 @@ async function Training() {
 async function TrainingPlay(horseId, menuId) {
   const st = await L.trainingStart(horseId, menuId);
   if (!st.ok) { toast(TR_BLOCKED[{ TRAINING_TIRED: 'tired', TRAINING_POTENTIAL_FULL: 'potential_full' }[st.code]] ?? (st.code === 'TRAINING_LIMIT' ? TR_BLOCKED.no_slots : st.message)); Training(); return; }
-  const s = st.value.session, tv = st.value.training, t = tv.timing, menu = tv.menus.find((m) => m.id === menuId);
+  // the start response carries only what changed (partial); the menus and the mini-game rules come from the full view
+  const full = await L.training();
+  const s = st.value.session, tv = full.value, t = tv.timing, menu = tv.menus.find((m) => m.id === menuId);
   currentScreen = Training; Clear('training-play'); SetArt('Art/first-ride'); Shade('left');
   const head = Glass('Training head', 36, 31, 760, 108, undefined, .82);
   Kicker(`調教　/　${menu.name}`, 22, 18, head, { rule: false, size: 17 });

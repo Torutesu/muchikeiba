@@ -128,6 +128,8 @@ namespace Muchi.Client
         public Stats Trained = new Stats();
         public int TrainedTotal, Potential, PerStatCap, Fatigue, BondLevel, TodayCount, Sessions;
         public List<TrainingLogEntry> Log = new List<TrainingLogEntry>();
+        /// <summary>False in the action responses' partial views (the log is only in GET /v1/training; MergeInto keeps the old one).</summary>
+        public bool HasLog;
         public Dictionary<string, string> MenuBlocked = new Dictionary<string, string>();
         public bool CanTrain(string menuId) => MenuBlocked.TryGetValue(menuId, out var b) ? b == null : Blocked == null;
         internal static TrainingHorse Parse(JsonNode o)
@@ -137,7 +139,7 @@ namespace Muchi.Client
                 HorseId = J.Str(o, "horseId"), Name = J.Str(o, "name"), Rarity = J.Str(o, "rarity"), Condition = J.Str(o, "condition"), Blocked = J.Str(o, "blocked"),
                 Trained = Stats.Parse(J.Opt(o, "trained")), TrainedTotal = J.Int(o, "trainedTotal"), Potential = J.Int(o, "potential"), PerStatCap = J.Int(o, "perStatCap"),
                 Fatigue = J.Int(o, "fatigue"), BondLevel = J.Int(o, "bondLevel", 1), TodayCount = J.Int(o, "todayCount"), Sessions = J.Int(o, "sessions"),
-                Log = J.List(o, "log", TrainingLogEntry.Parse),
+                Log = J.List(o, "log", TrainingLogEntry.Parse), HasLog = J.Opt(o, "log") != null,
             };
             foreach (var m in J.List(o, "menus", x => x)) h.MenuBlocked[J.Str(m, "id")] = J.Str(m, "blocked");
             return h;
@@ -168,10 +170,13 @@ namespace Muchi.Client
         };
     }
 
-    /// <summary>GET /v1/training. Enabled=false → hide the tile.</summary>
+    /// <summary>
+    /// GET /v1/training. Enabled=false → hide the tile. In the start / finish / item responses <see cref="Partial"/> is true and
+    /// <see cref="Horses"/> holds only the horse concerned: use <see cref="MergeInto"/> on the full view you have.
+    /// </summary>
     public sealed class TrainingView
     {
-        public bool Enabled;
+        public bool Enabled, Partial;
         public int SlotsPerDay, UsedToday, SlotsLeft, PerHorsePerDay, FatigueMax, RestAt, RecoveryPerDay;
         public List<TrainingMenu> Menus = new List<TrainingMenu>();
         public TrainingTiming Timing = new TrainingTiming();
@@ -181,13 +186,37 @@ namespace Muchi.Client
         public TrainingRules Rules = new TrainingRules();
         public TrainingHorse Horse(string id) => Horses.Find(h => h.HorseId == id);
         public TrainingMenu Menu(string id) => Menus.Find(m => m.Id == id);
+
+        /// <summary>A partial view (one horse) applied to the full view <paramref name="full"/>: counts, items, open session and that horse. Returns the merged view.</summary>
+        public TrainingView MergeInto(TrainingView full)
+        {
+            if (!Partial || full == null) return this;
+            var horses = new List<TrainingHorse>(full.Horses);
+            foreach (var h in Horses)
+            {
+                int i = horses.FindIndex(x => x.HorseId == h.HorseId);
+                if (i >= 0) { if (!h.HasLog) { h.Log = horses[i].Log; h.HasLog = horses[i].HasLog; } horses[i] = h; } else horses.Add(h);
+            }
+            // the account's slots changed: every other horse's "no_slots" state follows the new count
+            foreach (var h in horses)
+            {
+                if (Horses.Exists(x => x.HorseId == h.HorseId)) continue;
+                if (SlotsLeft <= 0) { if (h.Blocked == null) h.Blocked = "no_slots"; foreach (var k in new List<string>(h.MenuBlocked.Keys)) if (h.MenuBlocked[k] == null) h.MenuBlocked[k] = "no_slots"; }
+            }
+            return new TrainingView
+            {
+                Enabled = Enabled, Partial = false, SlotsPerDay = SlotsPerDay, UsedToday = UsedToday, SlotsLeft = SlotsLeft, PerHorsePerDay = PerHorsePerDay,
+                FatigueMax = FatigueMax, RestAt = RestAt, RecoveryPerDay = RecoveryPerDay, Menus = Menus, Timing = Timing, Items = Items,
+                Horses = horses, Open = Open, Rules = Rules,
+            };
+        }
         internal static TrainingView Parse(JsonNode o)
         {
             if (o == null) return null;
             var f = J.Opt(o, "fatigue");
             return new TrainingView
             {
-                Enabled = J.Bool(o, "enabled"), SlotsPerDay = J.Int(o, "slotsPerDay"), UsedToday = J.Int(o, "usedToday"), SlotsLeft = J.Int(o, "slotsLeft"),
+                Enabled = J.Bool(o, "enabled"), Partial = J.Bool(o, "partial"), SlotsPerDay = J.Int(o, "slotsPerDay"), UsedToday = J.Int(o, "usedToday"), SlotsLeft = J.Int(o, "slotsLeft"),
                 PerHorsePerDay = J.Int(o, "perHorsePerDay"), FatigueMax = J.Int(f, "max", 100), RestAt = J.Int(f, "restAt"), RecoveryPerDay = J.Int(f, "recoveryPerDay"),
                 Menus = J.List(o, "menus", TrainingMenu.Parse), Timing = TrainingTiming.Parse(J.Opt(o, "timing")), Items = J.List(o, "items", TrainingItem.Parse),
                 Horses = J.List(o, "horses", TrainingHorse.Parse), Open = TrainingSession.Parse(J.Opt(o, "open")), Rules = TrainingRules.Parse(J.Opt(o, "rules")),

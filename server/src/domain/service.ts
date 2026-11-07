@@ -61,7 +61,7 @@ import {
 import {
   claimComebackLogin, claimComebackMission, comebackView, markComebackWelcomed, markWhatsNewSeen, nextComebackWake, noteActivity, runDueComebackPush, whatsNew,
 } from './comeback.js';
-import { finishTraining, startTraining, trainingTick, trainingView, useTrainingItem } from './training.js';
+import { finishTraining, startTraining, trainingDelta, trainingTick, trainingView, useTrainingItem } from './training.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
 export interface PlayerRepo {
@@ -595,22 +595,28 @@ export class PlayerService {
 
   // ---------------------------------------------------------------- 調教 training (REQ-TRAIN-*, training.ts)
   /** GET /v1/training: slots, menus, each active horse's growth / fatigue; an expired open session is settled here. */
-  training(id: string) { return this.tx(id, null, (s, now, emit) => { trainingTick(this.d.master, s, now, emit); return trainingView(this.d.master, s, now); }); }
+  async training(id: string) {
+    const s = await this.load(id);
+    const now = this.d.clock();
+    // read-only unless an open session has expired (then it is settled in a transaction)
+    if (!s.training?.open || now <= s.training.open.expiresAt) return trainingView(this.d.master, s, now);
+    return this.tx(id, null, (st, at, emit) => { trainingTick(this.d.master, st, at, emit); return trainingView(this.d.master, st, at); });
+  }
   /** POST /v1/training/start (keyed): uses a slot; the beat schedule comes from a server seed. */
   async trainingStart(id: string, horseId: string, menuId: string, idemKey: string | null) {
     return this.tx(id, this.requireKey(idemKey), (s, now, emit) => {
       notWhileDeleting(s);
-      return { ...startTraining(this.d.master, s, horseId, menuId, this.d.trainingRng ?? this.d.rng, now, emit), training: trainingView(this.d.master, s, now) };
+      return { ...startTraining(this.d.master, s, horseId, menuId, this.d.trainingRng ?? this.d.rng, now, emit), training: trainingDelta(this.d.master, s, now, horseId) };
     });
   }
   /** POST /v1/training/:sessionId/finish (keyed): the server re-scores the taps against the issued beats. */
   async trainingFinish(id: string, sessionId: string, input: { taps: number[]; skipped?: boolean }, idemKey: string | null) {
-    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => ({ ...finishTraining(this.d.master, s, sessionId, input, now, emit), training: trainingView(this.d.master, s, now) }));
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => { const r = finishTraining(this.d.master, s, sessionId, input, now, emit); return { ...r, training: trainingDelta(this.d.master, s, now, r.horseId) }; });
   }
   /** POST /v1/training/items/:itemId/use (keyed): fatigue relief on one horse. */
   async trainingUseItem(id: string, itemId: string, horseId: string, idemKey: string | null) {
     const key = this.requireKey(idemKey);
-    return this.tx(id, key, (s, now) => ({ ...useTrainingItem(this.d.master, s, itemId, horseId, now, key), training: trainingView(this.d.master, s, now) }));
+    return this.tx(id, key, (s, now) => ({ ...useTrainingItem(this.d.master, s, itemId, horseId, now, key), training: trainingDelta(this.d.master, s, now, horseId) }));
   }
 
   async claimPass(id: string, track: 'free' | 'premium', level: number, idemKey: string | null) {

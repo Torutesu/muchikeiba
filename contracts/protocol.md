@@ -735,17 +735,18 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
   "rules": { "rankedNormalized": true, "fatigueAffectsRaces": false, "inherited": false, "paidBoosts": false } }
 ```
 - `horses` は現役の馬だけ。`blocked`（馬）・`menus[].blocked`（メニュー）：`null` / `no_slots` / `horse_daily_limit` / `potential_full` / `tired`（疲れを足すメニューだけ）/ `retired`。`condition`：`fresh`（疲れ < 40）/ `normal` / `tired`（≥ `restAt`）。
-- `open`：仕上げていないセッション（`sessionId`・`horseId`・`menuId`・`startedAt`・`expiresAt`・`beats`・`durationMs`）。期限を過ぎたものはこの GET で**ミニゲームなしとして記録**される（書き込みがあるので取引で処理）。
+- `open`：仕上げていないセッション（`sessionId`・`horseId`・`menuId`・`startedAt`・`expiresAt`・`beats`・`durationMs`）。期限を過ぎたものはこの GET で**ミニゲームなしとして記録**される（その時だけ取引で書き込む。普段は読み取りだけ）。
 - `rules` は画面に「ランク戦はクラスの上限にそろえる」「疲れはレースに影響しない」と書くための値（いつも上の値）。
 - プレイヤー（`GET /v1/player` などの `horses[]`）にも `trained` が載る（無ければ伸びなし）。
 
 ### 22.4 `POST /v1/training/start`・`POST /v1/training/:sessionId/finish`・`POST /v1/training/items/:itemId/use`（要認証・`Idempotency-Key` 必須）
-- **start** `{ "horseId", "menuId" }`（他のキーは 400）→ `{ "session": { … §22.3 の open の形 }, "preview": { "min", "max", "minMilli", "maxMilli" }, "slotsLeft", "training": §22.3 }`。ここで**回数を1つ使い、メニューの疲れを足す**（伸びは finish で、開始時の状態から決める）。`preview` はミニゲームなし／満点の時の伸び（整数部分と千分の1点）。開いたままの前のセッションがあれば、先にミニゲームなしで記録する（アプリが落ちても止まらない）。エラー：`TRAINING_LIMIT`（`no_slots` / `horse_daily_limit`）、`TRAINING_TIRED`、`TRAINING_POTENTIAL_FULL`、`HORSE_NOT_ACTIVE`、`NOT_FOUND`（メニュー・馬・調教が無効）、`DELETION_PENDING`（削除の実行中）。
+- 3つとも応答の `training` は**差分**（`partial: true`）：`enabled`・`slotsPerDay`・`usedToday`・`slotsLeft`・`perHorsePerDay`・`items`・`open` と、対象の馬1頭だけの `horses`（`log` は含まない）。`menus`・`timing`・`fatigue`・`rules` は含まない。クライアントは手元の §22.3 に重ねる（C# `TrainingView.MergeInto`：その馬を差し替え、回数が0なら他の馬も `no_slots`）。応答はプレイヤーの状態に冪等の記録として残るので小さくしている。
+- **start** `{ "horseId", "menuId" }`（他のキーは 400）→ `{ "session": { … §22.3 の open の形 }, "preview": { "min", "max", "minMilli", "maxMilli" }, "slotsLeft", "training": 差分 }`。ここで**回数を1つ使い、メニューの疲れを足す**（伸びは finish で、開始時の状態から決める）。`preview` はミニゲームなし／満点の時の伸び（整数部分と千分の1点）。開いたままの前のセッションがあれば、先にミニゲームなしで記録する（アプリが落ちても止まらない）。エラー：`TRAINING_LIMIT`（`no_slots` / `horse_daily_limit`）、`TRAINING_TIRED`、`TRAINING_POTENTIAL_FULL`、`HORSE_NOT_ACTIVE`、`NOT_FOUND`（メニュー・馬・調教が無効）、`DELETION_PENDING`（削除の実行中）。
 - **finish** `{ "taps": [int…], "skipped"?: true }`（`skipped` なら `taps` は無視して点数0）→
   `{ "sessionId", "horseId", "menuId", "grade", "timing": { "perfect", "good", "miss", "stray", "score", "bonusPermille" }, "gain": {5能力}, "total", "capped",
-     "breakdown": { "efficiencyPermille", "bondPermille", "timingPermille", "softPermille" }, "trained", "trainedTotal", "potential", "fatigue", "settled": "done" | "skipped" | "expired", "void": false, "training": §22.3 }`。
+     "breakdown": { "efficiencyPermille", "bondPermille", "timingPermille", "softPermille" }, "trained", "trainedTotal", "potential", "fatigue", "settled": "done" | "skipped" | "expired", "void": false, "training": 差分 }`。
   エラー：422 `TRAINING_INPUT_INVALID`（§22.2）、`TRAINING_SESSION_EXPIRED`（期限切れ。次の調教の呼び出しでミニゲームなしとして記録）、`TRAINING_SESSION_USED`（その id の開いたセッションが無い）。再送は同じキーで同じ結果。
-- **items/:itemId/use** `{ "horseId" }` → `{ "itemId", "horseId", "fatigueBefore", "fatigue", "remaining", "training" }`。疲れが0なら `NOT_ELIGIBLE`、持っていなければ `INSUFFICIENT_ITEMS`。
+- **items/:itemId/use** `{ "horseId" }` → `{ "itemId", "horseId", "fatigueBefore", "fatigue", "remaining", "training": 差分 }`。疲れが0なら `NOT_ELIGIBLE`、持っていなければ `INSUFFICIENT_ITEMS`。
 - デイリーミッションの種類 `training`（`train1`：調教を1回 → `training_apple` ×1）は finish（期限切れの記録も含む）で進む。
 
 ### 22.5 KPI（サーバーのイベント）

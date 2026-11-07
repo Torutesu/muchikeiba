@@ -99,6 +99,26 @@ namespace Muchi.Engine.Tests
         }
 
         [Fact]
+        public async Task PartialViewsMergeIntoTheFullOne()
+        {
+            _http.Reply(200, View.Replace("\"horses\":[", "\"horses\":[{\"horseId\":\"h2\",\"name\":\"ハヤテ\",\"rarity\":\"R\",\"trained\":{},\"trainedTotal\":0,\"potential\":300,\"fatigue\":0,\"condition\":\"fresh\",\"blocked\":null,\"menus\":[{\"id\":\"hill\",\"blocked\":null}]},"));
+            var full = await _api.GetTrainingAsync();
+            Assert.Equal(2, full.Horses.Count);
+            // a finish response: one horse, no slots left
+            var partialJson = Finish.Replace("\"void\":false}", "\"void\":false,\"training\":" + View.Replace("\"slotsLeft\":2", "\"slotsLeft\":0").Replace("\"enabled\":true,", "\"enabled\":true,\"partial\":true,") + "}");
+            _http.Reply(200, partialJson);
+            var r = await _api.FinishTrainingAsync("tr_x", new[] { 1 });
+            Assert.True(r.Training.Partial);
+            var merged = r.Training.MergeInto(full);
+            Assert.False(merged.Partial);
+            Assert.Equal(2, merged.Horses.Count);
+            Assert.Equal(0, merged.SlotsLeft);
+            Assert.Equal("no_slots", merged.Horse("h2").Blocked);
+            Assert.False(merged.Horse("h2").CanTrain("hill"));
+            Assert.Equal(6, merged.Horse("h1").TrainedTotal);
+        }
+
+        [Fact]
         public async Task ItemUseSendsTheHorse()
         {
             _http.Reply(200, "{\"itemId\":\"training_apple\",\"horseId\":\"h1\",\"fatigueBefore\":60,\"fatigue\":30,\"remaining\":2}");

@@ -2644,7 +2644,7 @@ function RivalResultSheet(v) {
   const res = v.result;
   const sheet = Sheet(RV_OUTCOME[res.outcome] ?? res.outcome, `${rvWeek(res.weekId)}　/　結果`, (s, close, y) => {
     s.dataset.rivalResult = res.outcome; s.classList.add('rv-result');
-    Txt(res.rivalName ? `vs ${res.rivalName}` : '', 48, y, 564, 20, MUTED, s, { weight: 500, nowrap: true });
+    Txt(res.rivalName || res.cpuName ? `vs ${res.rivalName ?? res.cpuName}` : '', 48, y, 564, 20, MUTED, s, { weight: 500, nowrap: true });
     Txt(`${res.me} - ${res.them}`, 48, y + 40, 564, 80, GOLD, s, { weight: 700, cls: 'num' });
     Txt(res.me === res.them && (res.taMe || res.taThem) ? `直接対決は同点。タイムアタック ${res.taMe} - ${res.taThem}` : '直接対決（同じランク戦で先着した数）', 48, y + 146, 564, 15, SOFT, s);
     Txt(res.freeCoins > 0 ? `報酬　無償コイン${res.freeCoins}枚` : res.outcome === 'not_enough' ? `ランク戦が${v.rewards.minRaces}戦に届かなかったため、報酬はありません` : '報酬はありません', 48, y + 196, 564, 20, res.freeCoins > 0 ? WHITE : MUTED, s, { weight: 700 }).classList.add('rv-reward');

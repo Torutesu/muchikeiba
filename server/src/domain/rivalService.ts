@@ -217,7 +217,7 @@ type Ret<K extends keyof Svc> = Awaited<ReturnType<Svc[K] extends (...a: never[]
 /** Player steps the orchestration needs (Durable Object RPC in production, PlayerService in tests). */
 export interface RivalPlayers {
   peek(uid: string): Promise<Ret<'rivalPeek'>>;
-  sync(uid: string, data: Record<string, RegistryWeek | null>): Promise<Ret<'rivalSync'>>;
+  sync(uid: string, data: Record<string, RegistryWeek | null>, quiet?: boolean): Promise<Ret<'rivalSync'>>;
   setOptOut(uid: string, optOut: boolean): Promise<Ret<'rivalSetOptOut'>>;
   block(uid: string): Promise<Ret<'rivalBlock'>>;
   challengeCheck(uid: string): Promise<Ret<'rivalChallengeCheck'>>;
@@ -229,7 +229,7 @@ export interface RivalPlayers {
 export function rivalPlayersFrom(player: (uid: string) => PlayerInvoker): RivalPlayers {
   return {
     peek: (u) => player(u).invoke('rivalPeek', u),
-    sync: (u, d) => player(u).invoke('rivalSync', u, d),
+    sync: (u, d, q) => player(u).invoke('rivalSync', u, d, q),
     setOptOut: (u, o) => player(u).invoke('rivalSetOptOut', u, o),
     block: (u) => player(u).invoke('rivalBlock', u),
     challengeCheck: (u) => player(u).invoke('rivalChallengeCheck', u),
@@ -251,13 +251,15 @@ export class RivalService {
    * player last saw it), re-sends what the registry should already know (a pair I dissolved, my weekly bests), then
    * lets the player object apply the answers and settle ended weeks.
    */
-  async view(uid: string) {
+  async view(uid: string, quiet = false) {
     if (!rivalConfig(this.master())) return { enabled: false as const };
     const p = await this.players.peek(uid);
     const data: Record<string, RegistryWeek | null> = {};
     if (p.withdrawn) {
       await this.reg.withdraw(p.currentWeek, uid).catch((e) => console.error('rival withdraw failed', uid, (e as Error).message));
     } else {
+      // a candidate entry the post-transaction update may have lost (registry outage): latest wins, so re-sending is safe
+      if (p.entry) await this.reg.register(p.currentWeek, p.entry).catch((e) => console.error('rival register failed', uid, (e as Error).message));
       for (const w of p.weeks) {
         try {
           let d = await this.reg.assignment(w, uid);
@@ -272,11 +274,13 @@ export class RivalService {
         }
       }
     }
-    return this.players.sync(uid, data);
+    return this.players.sync(uid, data, quiet);
   }
 
   async setOptOut(uid: string, optOut: boolean) {
     this.enabled();
+    // an ended week is settled (and paid) before the open weeks are dropped by the opt-out
+    if (optOut) await this.view(uid, true).catch((e) => console.error('rival sync before opt-out failed', uid, (e as Error).message));
     const r = await this.players.setOptOut(uid, optOut);
     if (optOut) await this.reg.withdraw(r.view.weekId as string, uid).catch(() => undefined); // the hook sends it too
     return { optOut: r.optOut };
@@ -299,7 +303,7 @@ export class RivalService {
     if (d.assignment.kind !== 'human' || d.assignment.dissolvedAt !== null) throw new AppError('NOT_ELIGIBLE', 'no human rival to challenge this week');
     const c = await this.players.challengeCheck(uid);
     if (c.rivalId !== d.assignment.rivalId) throw new AppError('NOT_ELIGIBLE', 'open the rival screen first');
-    await this.view(c.rivalId); // the rival may not have opened the rival screen this week: sync it first
+    await this.view(c.rivalId, true); // the rival may not have opened the rival screen this week: sync it first (not a view)
     await this.players.challengeReceive(c.rivalId, uid, passphrase, c.displayName);
     return { ok: true, rivalId: c.rivalId };
   }

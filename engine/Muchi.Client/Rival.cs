@@ -89,7 +89,7 @@ namespace Muchi.Client
         };
     }
 
-    /// <summary>A settled week. Outcome: win | lose | draw | no_contest | not_enough. FreeCoins = what was actually granted.</summary>
+    /// <summary>A settled week. Outcome: win | lose | draw | no_contest | not_enough. FreeCoins = what was actually granted. RivalName = the human's display name (never translated) or the CPU's name.</summary>
     public sealed class RivalResult
     {
         public string WeekId, Outcome, Kind, RivalName;
@@ -98,7 +98,7 @@ namespace Muchi.Client
         public List<string> NewTitles = new List<string>();
         internal static RivalResult Parse(JsonNode o) => o == null ? null : new RivalResult
         {
-            WeekId = J.Str(o, "weekId"), Outcome = J.Str(o, "outcome"), Kind = J.Str(o, "kind"), RivalName = J.Str(o, "rivalName"),
+            WeekId = J.Str(o, "weekId"), Outcome = J.Str(o, "outcome"), Kind = J.Str(o, "kind"), RivalName = J.Str(o, "rivalName") ?? J.Str(o, "cpuName"),
             Me = J.Int(o, "me"), Them = J.Int(o, "them"), TaMe = J.Int(o, "taMe"), TaThem = J.Int(o, "taThem"), FreeCoins = J.Int(o, "freeCoins"), SettledAt = J.Long(o, "settledAt"),
             NewTitles = J.List(o, "newTitles", x => x.AsString()),
         };

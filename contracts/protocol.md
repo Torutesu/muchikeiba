@@ -915,11 +915,11 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 | 項目 | 決めたこと |
 |---|---|
 | 週 | ゲーム日（§15、`progression.dayRollover`、既定 4:00 JST）で数えて **`weekStartsOn`（既定 1 = 月曜）から7ゲーム日**。週ID = その週の最初のゲーム日（`"2026-12-07"`）。週の終わり = 次の週の最初のゲーム日の切り替え（`weekEndMs`）。 |
-| 誰と組むか | **先週ランク戦を走った人**（週 W にランク戦を1回でも確定させた人が、W+1 の候補として週 W の登録簿に載る）。同じクラス・レーティング差 `maxRatingGap`（200）以内・お互いにブロックしていない・オプトアウト／BAN／削除予定でない。 |
+| 誰と組むか | **先週ランク戦を走った人**（週 W にランク戦を1回でも確定させた人が、W+1 の候補として週 W の登録簿に載る）。同じクラス・レーティング差 `maxRatingGap`（200）以内・お互いにブロックしていない・オプトアウト／BAN／削除予定でない・隔離中（REQ-OPS-032）でない。登録はトランザクションの後に送り、届かなかった時は次の `GET /v1/rival` で送り直す（最新が勝つ）。 |
 | 決定論 | `pairWeek(config, weekId, 候補)`：クラスごとに「レーティング＋（週IDとプレイヤーIDの FNV-1a から決まる ±`jitter`）」の降順（同点はプレイヤーID）に並べ、上から順に、まだ組んでいない人を `pairWindow`（3）人先まで見て最初に条件を満たす人と組む。**入力の順番に依らず、同じ週・同じ候補なら同じ組み合わせ**（再現できる）。 |
 | CPU のライバル | 組めなかった人（奇数の余り・候補がいない・差が大きい・週の途中から来た人）は `cpuRivals` から「週ID＋プレイヤーID」のハッシュで決まる名前と性格のある CPU（堅実のアサギ・強気のクレナイ・気まぐれのヒスイ・粘りのコガネ）。その週の間は同じ CPU。 |
 | どこに置くか | 週ごとの登録簿 = **LeaderboardDO のインスタンス `rival:<weekId>`**（専用の `rv_*` テーブル。DO クラスとマイグレーションは増やさない）。週 W の登録簿は「W の組み合わせ（初回の問い合わせか cron で、W−1 の登録簿の候補を読んで1回だけ作る）」「W+1 の候補」「W の両者のタイムアタックのベスト」を持つ。プレイヤーの DO は自分の集計を自分で持ち、登録簿とは**常に一致していることを前提にしない**（登録簿が落ちても画面は手元の値で出る）。 |
-| 直接対決 | **確定したランク戦**（精算と同じ信頼のルール：合意か検証サービス、無効のレースは数えない）で、2人とも走っていれば**先着した方に1点**。確定結果に全員の着順（`field`）が入り、2人の DO が同じ結果を受け取るので、点数は互いに話さなくても一致する。CPU のライバルとは**全てのランク戦**で：自分が `targetPlace`（性格ごと、既定 5〜7）以内なら自分に、それ以外は CPU に1点。 |
+| 直接対決 | **確定したランク戦**（精算と同じ信頼のルール：合意か検証サービス、無効のレースは数えない）で、2人とも走っていれば**先着した方に1点**。レースは**結果を受け取った時の週**に数える（精算は終わってから数秒なので、週の切り替えの瞬間をまたぐレースだけは2人の週がずれることがある）。確定結果に全員の着順（`field`）が入り、2人の DO が同じ結果を受け取るので、点数は互いに話さなくても一致する。CPU のライバルとは**全てのランク戦**で：自分が `targetPlace`（性格ごと、既定 5〜7）以内なら自分に、それ以外は CPU に1点。 |
 | タイムアタック | 今週の各コースの自分のベスト（検証済みの記録だけ）を登録簿に送り、ライバルのものと並べる。**直接対決が同点の時だけ**、相手より速いコースの数で勝敗を決める（それも同点なら引き分け）。CPU のタイムは性格のメダル（銅・銀・金）の秒数。 |
 | ライバルと走る | **ランク戦のマッチングは変えない**（同じ部屋に入りやすくすると、待ち時間・公平性の目標を崩し、2人で示し合わせた勝ち負けの譲り合いでレーティングを動かせるため）。代わりに**フレンド部屋への挑戦状**：自分の部屋にライバルを招く（フレンドでなくてよい、1日 `challengesPerDay` 回まで）。**順位は表示するが点にはならない**（レーティング・報酬はフレンド戦の通常のルールのまま）。 |
 | 報酬 | 週の結果で決まる**固定の無償コイン**（勝ち 20・引き分け 10・負け 10・解除 10）。週の自分のランク戦が `minRacesForResult`（3）未満なら報酬なし（`not_enough`）。乱数なし・連勝の上乗せなし・有償コインは出さない。1回 ≤ `RIVAL_HARD_LIMITS.freeCoinsPerWeek` 100（¥160 相当、¥200 未満）。 |
@@ -950,7 +950,7 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
   "recent": [ { "raceId": "r_…", "at": 1797…, "mode": "ranked", "me": 2, "them": 5, "point": "me" } ],
   "timeAttack": [ { "trackId": "aoba_turf_1600", "trackName": "青葉競馬場 芝1600m", "me": 70210, "rival": 71004, "faster": "me" } ],
   "result": null,
-  "history": [ { "weekId": "2026-12-07", "outcome": "win", "kind": "cpu", "rivalName": "堅実のアサギ", "me": 5, "them": 3, "taMe": 0, "taThem": 0, "freeCoins": 20, "settledAt": 1797…, "newTitles": ["rival_first"] } ],
+  "history": [ { "weekId": "2026-12-07", "outcome": "win", "kind": "cpu", "rivalName": null, "cpuId": "cpu_asagi", "cpuName": "堅実のアサギ", "me": 5, "them": 3, "taMe": 0, "taThem": 0, "freeCoins": 20, "settledAt": 1797…, "newTitles": ["rival_first"] } ],
   "record": { "weeksWon": 1, "weeksPlayed": 1, "titles": [ { "titleId": "rival_first", "name": "好敵手", "weeksWon": 1, "unlocked": true } ], "nextTitle": { "titleId": "rival_5", "…": "…" } },
   "rewards": { "win": 20, "draw": 10, "lose": 10, "noContest": 10, "minRaces": 3 },
   "challenge": { "left": 3, "perDay": 3 },
@@ -958,11 +958,12 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 ```
 - `rival`：`{ kind: "human", playerId, card, dissolved }`（解除後は `playerId`・`card` が `null`）／`{ kind: "cpu", cpuId, name, personality, line, style, targetPlace, taMedal }`／`null`（オプトアウト）。
 - `recent`：今週の新しい順。`mode: "friend"` は挑戦状のレース（`point: null`、点にならない）。CPU の時 `them` は `null`。
+- `result` / `history[]` の名前：人間の週は `rivalName`（相手が付けた表示名、英語でも**翻訳しない**：`PLAYER_TEXT_KEYS`）、CPU の週は `cpuName`（設定の名前、英語では英語）。
 - `result`：まだ見ていない週の結果（週の結果シート）。`outcome`：`win` / `lose` / `draw` / `no_contest`（解除）/ `not_enough`（ランク戦が足りない、報酬0）。`freeCoins` は実際に付与した額。
 - 登録簿が答えない時は、その週は手元の値で返す（精算はしない＝次の表示で）。
 
 ### 28.3 `PUT /v1/rival/settings`・`POST /v1/rival/block`・`POST /v1/rival/challenge`・`POST /v1/rival/results/:weekId/seen`（要認証）
-- **settings** `{ "optOut": boolean }`（他のキーは 400）→ `{ "optOut" }`。オプトアウトで今週の組は両方とも解除、今週の記録は結果なしで捨てる、来週から組まれない。戻すと次の週の候補から（今週は解除のまま）。
+- **settings** `{ "optOut": boolean }`（他のキーは 400）→ `{ "optOut" }`。オプトアウトの前に終わった週を精算する（報酬は払う）。オプトアウトで今週の組は両方とも解除、今週の記録は結果なしで捨てる、来週から組まれない。戻すと次の週の候補から（今週は解除のまま）。
 - **block** → `{ "blocked": "<playerId>", "dissolved": true }`。今週の人間のライバルをブロック一覧（支部フィードのミュートと同じ、`PUT /v1/teams/me/feed/mutes` でも見える）に入れ、組を解除。人間のライバルがいなければ `NOT_ELIGIBLE`。
 - **challenge** `{ "passphrase" }` → `{ "ok": true, "rivalId" }`。自分がその部屋のメンバー（でなければ `NOT_ELIGIBLE`）、今週の解除されていない人間のライバルがいる、1日の回数内（超えたら 409 `RIVAL_CHALLENGE_LIMIT`）。相手の招待一覧（`GET /v1/friends` の `invites`）に入り、`room_invite` のプッシュ（上限・設定の中）。相手が自分をブロックしていれば `NOT_ELIGIBLE`。
 - **results/:weekId/seen** → `{ "unseen": null }`（結果シートを閉じた）。

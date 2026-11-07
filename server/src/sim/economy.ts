@@ -161,7 +161,7 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
   // REQ-RIVAL-* (E16): the weekly rival through the real service and an in-memory registry. The sim has no other humans,
   // so every persona gets a CPU rival (head to head on every ranked race against its targetPlace).
   const rp: RivalPlayers = {
-    peek: (u) => svc.rivalPeek(u), sync: (u, d) => svc.rivalSync(u, d), setOptOut: (u, o) => svc.rivalSetOptOut(u, o), block: (u) => svc.rivalBlock(u),
+    peek: (u) => svc.rivalPeek(u), sync: (u, d, q) => svc.rivalSync(u, d, q), setOptOut: (u, o) => svc.rivalSetOptOut(u, o), block: (u) => svc.rivalBlock(u),
     challengeCheck: (u) => svc.rivalChallengeCheck(u), challengeReceive: (u, f, p, n) => svc.rivalChallengeReceive(u, f, p, n), seen: (u, w) => svc.rivalSeen(u, w), push: (u, n, c) => svc.rivalPush(u, n, c),
   };
   // every persona meets the same middle-of-the-road CPU (targetPlace 6) so personas differ only by what they pay

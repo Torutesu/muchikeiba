@@ -652,11 +652,12 @@ export class PlayerService {
     return {
       weeks: weeksToSync(this.d.master, s, now), currentWeek: cur, withdrawn: rivalWithdrawn(s, now), optOut: !!s.rival?.optOut,
       dissolveMine: w?.assignment?.kind === 'human' && w.assignment.dissolvedBy === 'me', ta: { ...(w?.ta ?? {}) },
+      entry: rivalOutbound(this.d.master, s, now)?.entry ?? null,
     };
   }
   /** REQ-RIVAL-006: apply the registry's answers (server-side only), settle ended weeks, return GET /v1/rival. */
-  rivalSync(id: string, data: Record<string, RegistryWeek | null>) {
-    return this.tx(id, null, (s, now, emit) => { rivalSync(this.d.master, s, now, data, emit); return rivalView(this.d.master, s, now); });
+  rivalSync(id: string, data: Record<string, RegistryWeek | null>, quiet = false) {
+    return this.tx(id, null, (s, now, emit) => { rivalSync(this.d.master, s, now, data, emit, quiet); return rivalView(this.d.master, s, now); });
   }
   rivalSetOptOut(id: string, optOut: boolean) {
     return this.tx(id, null, (s, now, emit) => {

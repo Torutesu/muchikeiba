@@ -334,6 +334,72 @@ describe('REQ-RIVAL-004 the confirmed result carries the human field', () => {
   });
 });
 
+describe('self-QA (round 12)', () => {
+  it('a quarantined player (REQ-OPS-032) is never offered as a rival', async () => {
+    const w = world();
+    await w.player('a'); await w.player('q');
+    await w.svc.tx('q', null, (s, now) => { s.moderation = { status: 'quarantined', until: null, reason: 'test', at: now }; });
+    await w.ranked({ a: 1, q: 2 });
+    expect(w.reg.store(W1).entries.has('q')).toBe(false);
+    expect(w.reg.store(W1).entries.has('a')).toBe(true);
+  });
+  it('opting out right after a week ended still settles (and pays) that week first', async () => {
+    const w = world();
+    await w.player('a');
+    w.at(jst(2026, 12, 15));
+    await w.rival.view('a');
+    for (let i = 0; i < 3; i++) await w.ranked({ a: 1 });
+    w.at(jst(2026, 12, 22));
+    const free = (await w.svc.state('a')).wallet.free;
+    await w.rival.setOptOut('a', true);
+    expect((await w.svc.state('a')).wallet.free - free).toBe(cfg.rewards.win.freeCoins);
+    expect((await w.svc.state('a')).rival!.results.at(-1)).toMatchObject({ weekId: W2, outcome: 'win' });
+  });
+  it('a registry outage at week end never drops the week: it settles on the next sync', async () => {
+    const w = world();
+    await w.player('a'); await w.player('b');
+    await w.ranked({ a: 1, b: 2 });
+    w.at(jst(2026, 12, 15));
+    await w.rival.view('a');
+    for (let i = 0; i < 3; i++) await w.ranked({ a: 1, b: 2 });
+    w.at(jst(2026, 12, 22));
+    const real = w.reg.assignment.bind(w.reg);
+    w.reg.assignment = async () => { throw new Error('down'); };
+    const v1 = await w.rival.view('a') as any;
+    expect(v1.result?.weekId).not.toBe(W2); // (week 1 against the CPU settles without the registry)
+    expect((await w.svc.state('a')).rival!.weeks.some((x) => x.weekId === W2)).toBe(true);
+    w.reg.assignment = real;
+    expect((await w.rival.view('a') as any).result).toMatchObject({ weekId: W2, outcome: 'win', me: 3 });
+  });
+  it('a lost registration is re-sent by the next view', async () => {
+    const w = world();
+    await w.player('a');
+    await w.ranked({ a: 1 });
+    w.reg.store(W1).entries.delete('a'); // the post-transaction update never arrived
+    await w.rival.view('a');
+    expect(w.reg.store(W1).entries.has('a')).toBe(true);
+  });
+  it('syncing the challenged rival is not their rival_view', async () => {
+    const w = world();
+    await w.player('a'); await w.player('b');
+    await w.ranked({ a: 1, b: 2 });
+    w.at(jst(2026, 12, 15));
+    await w.rival.view('a');
+    const before = w.kpi.filter((x) => x.name === 'rival_view').length;
+    await w.rival.challenge('a', 'room1');
+    expect(w.kpi.filter((x) => x.name === 'rival_view').length).toBe(before);
+    expect((await w.svc.state('b')).friends.invites).toHaveLength(1);
+  });
+  it('English: a human rival\'s name is never translated; a CPU rival\'s name is', async () => {
+    const { localize, catalogFor } = await import('../src/i18n/catalog.js');
+    const cat = catalogFor(m);
+    const out = localize({ result: { rivalName: '好敵手', cpuName: null }, history: [{ rivalName: null, cpuName: '堅実のアサギ' }], rival: { card: { displayName: '好敵手' } } }, 'en', cat);
+    expect(out.result.rivalName).toBe('好敵手');
+    expect(out.rival.card.displayName).toBe('好敵手');
+    expect(out.history[0]!.cpuName).toBe('Steady Asagi');
+  });
+});
+
 describe('REQ-RIVAL-009 HTTP routes', () => {
   it('GET /v1/rival, PUT settings, POST block / challenge / results seen', async () => {
     const w = world();

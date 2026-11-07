@@ -241,7 +241,8 @@ export interface RivalWeek {
 }
 export type RivalResultOutcome = RivalOutcome | 'not_enough';
 export interface RivalResult {
-  weekId: string; outcome: RivalResultOutcome; kind: 'human' | 'cpu'; rivalName: string;
+  /** rivalName: the human rival's display name (player text, never translated); cpuId for a CPU week. */
+  weekId: string; outcome: RivalResultOutcome; kind: 'human' | 'cpu'; rivalName: string | null; cpuId?: string;
   me: number; them: number; taMe: number; taThem: number; freeCoins: number; settledAt: number; newTitles: string[];
 }
 export interface RivalState {
@@ -394,11 +395,6 @@ export function rivalTaOf(m: Master, w: RivalWeek): Record<string, number> {
   return out;
 }
 
-const rivalNameOf = (m: Master, a: RivalAssign | null) => {
-  if (!a) return '';
-  if (a.kind === 'cpu') return rivalConfig(m) ? cpuDef(rivalConfig(m)!, a.cpuId)?.name ?? '' : '';
-  return a.card?.displayName ?? '';
-};
 
 /** REQ-RIVAL-006/007: one ended week → result, fixed reward, counters, titles. Idempotent (the week is removed). */
 function settleWeek(m: Master, s: PlayerState, w: RivalWeek, now: number, emit: (e: KpiEvent) => void): RivalResult | null {
@@ -420,7 +416,8 @@ function settleWeek(m: Master, s: PlayerState, w: RivalWeek, now: number, emit: 
   if (outcome !== 'not_enough') r.weeksPlayed++;
   if (outcome === 'win') r.weeksWon++;
   const newTitles = outcome === 'win' ? evaluateTitles(m, s) : [];
-  const res: RivalResult = { weekId: w.weekId, outcome, kind: a.kind, rivalName: rivalNameOf(m, a), me: w.me, them: w.them, taMe, taThem, freeCoins: paid, settledAt: now, newTitles };
+  const res: RivalResult = {
+    weekId: w.weekId, outcome, kind: a.kind, rivalName: a.kind === 'human' ? a.card?.displayName ?? null : null, ...(a.kind === 'cpu' ? { cpuId: a.cpuId } : {}), me: w.me, them: w.them, taMe, taThem, freeCoins: paid, settledAt: now, newTitles };
   r.results.push(res);
   if (r.results.length > RIVAL_HARD_LIMITS.resultsKept) r.results.splice(0, r.results.length - RIVAL_HARD_LIMITS.resultsKept);
   r.unseen = w.weekId;
@@ -432,7 +429,7 @@ function settleWeek(m: Master, s: PlayerState, w: RivalWeek, now: number, emit: 
  * REQ-RIVAL-006: the sync step (GET /v1/rival): apply what the registry answered for each unsettled week, settle every
  * week that has ended, emit rival_view once per game day. `data` comes from the server-side RivalService, never a client.
  */
-export function rivalSync(m: Master, s: PlayerState, now: number, data: Record<string, RegistryWeek | null>, emit: (e: KpiEvent) => void) {
+export function rivalSync(m: Master, s: PlayerState, now: number, data: Record<string, RegistryWeek | null>, emit: (e: KpiEvent) => void, quiet = false) {
   const c = rivalConfig(m);
   if (!c) return;
   const r = ensureRival(s);
@@ -441,11 +438,14 @@ export function rivalSync(m: Master, s: PlayerState, now: number, data: Record<s
   for (const w of r.weeks) { const d = data[w.weekId]; if (d) applyRegistry(m, w, d, emit); }
   for (const w of [...r.weeks]) {
     if (w.weekId >= cur.weekId) continue;
+    // a human week settles only on a fresh registry answer (dissolution, final time-attack bests); a CPU week needs none.
+    // A week whose rival is not known yet (registry down) waits for the next sync instead of being dropped.
+    if (!w.assignment || (w.assignment.kind === 'human' && !data[w.weekId])) continue;
     settleWeek(m, s, w, now, emit);
     r.weeks = r.weeks.filter((x) => x !== w);
   }
   const day = gameDayKey(now, dayRule(m));
-  if (!sameGameDay(r.viewDay, day)) {
+  if (!quiet && !sameGameDay(r.viewDay, day)) {
     r.viewDay = day;
     emit({ name: 'rival_view', s1: cur.assignment?.kind ?? 'none', count: cur.me, value: cur.them });
   }
@@ -528,7 +528,8 @@ export function rivalOutbound(m: Master, s: PlayerState, now: number): RivalOutb
   const weekId = weekIdAt(m, now);
   const w = s.rival?.weeks.find((x) => x.weekId === weekId);
   const withdraw = rivalWithdrawn(s, now);
-  const raced = !withdraw && !!w && w.rankedRaces > 0;
+  // quarantined players (REQ-OPS-032, matched only with each other) are not offered as anyone's rival
+  const raced = !withdraw && !!w && w.rankedRaces > 0 && moderationOf(s, now) !== 'quarantined';
   const card = raced ? rivalCard(m, s) : null;
   const blocked = [...ensureFeedPeek(s)];
   const regKey = withdraw ? 'withdraw' : raced ? JSON.stringify([s.season.classId, Math.round(s.rating.r), blocked, card]) : '';
@@ -571,9 +572,13 @@ export function rivalView(m: Master, s: PlayerState, now: number) {
     .map((t) => ({ titleId: t.id, name: t.name, weeksWon: (t.condition as unknown as { value: number }).value, unlocked: s.titles.includes(t.id) }))
     .sort((a, b) => a.weeksWon - b.weeksWon);
   const record = { weeksWon: r.weeksWon, weeksPlayed: r.weeksPlayed, titles, nextTitle: titles.find((t) => !t.unlocked) ?? null };
-  const result = r.unseen ? r.results.find((x) => x.weekId === r.unseen) ?? null : null;
+  // results: the human's name as stored (player text), the CPU's name from the config (translated in English)
+  const shown = (x: RivalResult) => ({ ...x, rivalName: x.kind === 'human' ? x.rivalName : null, cpuName: x.kind === 'cpu' && x.cpuId ? cpuDef(c, x.cpuId)?.name ?? null : null });
+  const unseen = r.unseen ? r.results.find((x) => x.weekId === r.unseen) ?? null : null;
+  const result = unseen ? shown(unseen) : null;
+  const history = r.results.slice().reverse().map(shown);
   const weekId = weekIdAt(m, now);
-  if (r.optOut) return { enabled: true as const, optOut: true, weekId, weekEndsAt: weekEndMs(m, weekId), rival: null, score: null, recent: [], timeAttack: [], result, history: r.results.slice().reverse(), record, rewards, challenge: null, rules };
+  if (r.optOut) return { enabled: true as const, optOut: true, weekId, weekEndsAt: weekEndMs(m, weekId), rival: null, score: null, recent: [], timeAttack: [], result, history, record, rewards, challenge: null, rules };
   const w = r.weeks.find((x) => x.weekId === weekId) ?? newWeek(weekId);
   const a = w.assignment;
   let rival: unknown = null;
@@ -595,7 +600,7 @@ export function rivalView(m: Master, s: PlayerState, now: number) {
   return {
     enabled: true as const, optOut: false, weekId, weekEndsAt: weekEndMs(m, weekId),
     rival, score: { me: w.me, them: w.them, rankedRaces: w.rankedRaces, minRaces: c.minRacesForResult, ...taCompare(m, w) },
-    recent: w.races.slice().reverse(), timeAttack, result, history: r.results.slice().reverse(), record, rewards,
+    recent: w.races.slice().reverse(), timeAttack, result, history, record, rewards,
     challenge: canChallenge ? { left: Math.max(0, c.challengesPerDay - used), perDay: c.challengesPerDay } : null,
     rules,
   };

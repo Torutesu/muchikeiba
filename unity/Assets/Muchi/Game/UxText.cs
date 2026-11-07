@@ -7,6 +7,8 @@ namespace Muchi.Game
     /// REQ-UXU-016: server error code → one Japanese sentence (the club prototype's ERROR_TEXT is the reference, plus the
     /// round 8 codes). Screens show <see cref="For"/> instead of the raw "CODE / message" form. Codes not in the table
     /// fall back to "通信に失敗しました（CODE）" with a retry.
+    /// REQ-L10N-010: the Japanese here is the source; <see cref="For"/> and <see cref="Reward"/> return the app's language
+    /// (Loc.T with Resources/Muchi/ui-en.json). Model properties stay Japanese: screens show <c>Loc.T(model.X)</c>.
     /// </summary>
     public static class UxText
     {
@@ -44,8 +46,8 @@ namespace Muchi.Game
         public static string For(ApiException e)
         {
             if (e == null) return null;
-            if (e is NetworkException) return Offline;
-            return Errors.TryGetValue(e.WireCode ?? "", out var t) ? t : "通信に失敗しました（" + e.WireCode + "）";
+            if (e is NetworkException) return Loc.T(Offline);
+            return Loc.T(Errors.TryGetValue(e.WireCode ?? "", out var t) ? t : "通信に失敗しました（" + e.WireCode + "）");
         }
 
         /// <summary>A reward as one line ("無償コイン50枚" / "繁殖牝馬1頭" / "パスXP 100" / "gacha_ticket ×1"). Item names come from the item catalog when the screen has it.</summary>
@@ -58,7 +60,7 @@ namespace Muchi.Game
             if (r.Broodmare != null) parts.Add("繁殖牝馬1頭");
             if (r.Horse != null) parts.Add("馬1頭");
             if (r.PassXp > 0) parts.Add("パスXP " + r.PassXp);
-            return string.Join("・", parts);
+            return Loc.T(string.Join("・", parts));
         }
     }
 }

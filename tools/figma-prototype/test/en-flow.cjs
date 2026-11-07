@@ -103,6 +103,11 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await show('Settings'); await waitScreen('settings'); await shot('settings', 400);
   assert.equal(await page.locator('.screen.in [data-label="English"].on').count(), 1, 'settings: English is selected');
 
+  // round 12: かんたん操作 in English — the options screen; the ranked race below rides with the whip assist (the HUD chip)
+  await show('AssistSettings'); await waitScreen('assist-settings'); await shot('assist-settings', 400);
+  assert.match(await page.locator('.screen.in').innerText(), /never rides better than skilled play/i, 'assist: the fairness rule in English');
+  await page.evaluate(() => globalThis.__muchi.logic.setAssist('whip'));
+
   // a ranked race in English: HUD, then the result
   await show('Home'); await waitScreen('home');
   await click('レースへ'); await waitScreen('lobby'); await shot('lobby', 400);
@@ -114,13 +119,18 @@ module.exports = async function enFlow(browser, base, out, errors) {
     if (!f) { await page.waitForTimeout(60); continue; }
     if (f.done) break;
     if (!started && f.gateOpen && !f.departed) { await page.locator('.screen.in .btn.whip').click({ force: true }); started = true; }
-    if (!hudShot && f.departed && f.remainingM < f.distanceM * .6) { hudShot = true; await shot('race-hud', 0); }
+    if (!hudShot && f.departed && f.remainingM < f.distanceM * .6) {
+      hudShot = true;
+      assert.equal(await page.locator('.screen.in .chip.assist').textContent(), 'Easy Controls ON', 'assist: the HUD chip in English');
+      await shot('race-hud', 0);
+    }
     if (f.departed && whips < 2 && f.remainingM <= (whips === 0 ? 380 : 220) && f.whips > 0 && Date.now() - lastW > 1500) { await page.locator('.screen.in .btn.whip').click({ force: true }); whips++; lastW = Date.now(); }
     await page.waitForTimeout(40);
   }
   await waitScreen(['result'], 40000); await shot('result', 1200);
   const commentary = await page.evaluate(() => globalThis.__muchi.state().lastFrame?.subtitle ?? '');
   assert.ok(!/[぀-ヿ一-鿿]/.test(commentary), 'the race commentary is in English: ' + commentary);
+  await page.evaluate(() => globalThis.__muchi.logic.setAssist('off'));
 
   // round 11: 調教 in English (REQ-TRAIN-*): the menu cards, the timing mini-game, the result, the skipped result, the apple
   const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
@@ -159,6 +169,11 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await shot('achievement-claimed', 300);
   await click('まとめて受け取る'); await page.waitForTimeout(800); await waitScreen('achievements');
   await click('称号を変える'); await shot('achievement-titles', 500);
+
+  // round 12: the one-time かんたん操作 suggestion in English (three last places on the real rules)
+  await page.evaluate(() => globalThis.__muchi.demo('assist')); await waitScreen('assist-prompt', 60000); await shot('assist-prompt', 500);
+  assert.match(await page.locator('.screen.in').innerText(), /Not now/, 'assist: 「今はいい」 in English');
+  await page.locator('.screen.in [data-assist-choice="later"]').click(); await waitScreen(['home', 'link-prompt'], 10000);
 
   const misses = await page.evaluate(() => globalThis.__muchi.l10n.misses());
   fs.writeFileSync(path.join(out, 'en-report.json'), JSON.stringify({ report, misses }, null, 2));

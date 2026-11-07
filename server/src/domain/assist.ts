@@ -6,6 +6,7 @@
  * one-time suggestion after three last-place finishes in a row, and the KPI marks. The level a race was ridden with
  * comes from the rider's own `res.assist` (race room) and is used for KPI only — never shown to opponents.
  */
+import { AppError } from './errors.js';
 import type { PlayerState } from './player.js';
 import type { RaceResultForPlayer } from './rewards.js';
 import type { Emit } from './service.js';
@@ -57,6 +58,9 @@ export function assistView(s: PlayerState) {
 
 /** PUT /v1/player/assist. Idempotent: setting the current level again changes nothing and emits nothing. */
 export function setAssist(s: PlayerState, level: AssistLevel, source: AssistSource, now: number, emit: Emit) {
+  // the route validates too; this keeps internal callers (the prototype, tests) to the same three levels
+  if (!(ASSIST_LEVELS as readonly string[]).includes(level)) throw new AppError('BAD_REQUEST', `assist level must be one of ${ASSIST_LEVELS.join('|')}`);
+  if (!(ASSIST_SOURCES as readonly string[]).includes(source)) throw new AppError('BAD_REQUEST', `assist source must be one of ${ASSIST_SOURCES.join('|')}`);
   const a = ensureAssist(s);
   const before = a.level;
   if (before !== level) {

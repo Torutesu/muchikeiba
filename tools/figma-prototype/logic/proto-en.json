@@ -693,6 +693,16 @@
   "りんごのおやつ を受け取りました": "Received an Apple Treat",
   "{item}（{n}）": "{item} ({n})",
   "調教できる馬がいません": "No horse can train",
-  "調教は今は行えません": "Training is not available now"
+  "調教は今は行えません": "Training is not available now",
+  "_assist": "---- round 12: easy controls (settings row, the options screen, the one-time suggestion, the race HUD)",
+  "その他　/　かんたん操作": "More / Easy Controls",
+  "ムチや手綱をおまかせできます。いつでも戻せます": "Let the game handle the whip and the rein. You can switch back any time",
+  "変更する": "Change",
+  "設定中": "Selected",
+  "これにする": "Choose this",
+  "公平性": "Fairness",
+  "はじめてのレースでは使えません。おまかせでも、送るのは指で押すのと同じ操作だけです（レースの計算は変わりません）。": "Not available in your first race. Even on auto, it only sends the same inputs as your fingers (the race calculation does not change).",
+  "おまかせ": "AUTO",
+  "最下位が3回続いた（デモ）": "Last place three times in a row (demo)"
  }
 }

@@ -565,3 +565,19 @@
 - REQ-AD-010 KPI：クライアント `ad_offer_view`（カードを出した、画面ごとに1回）・`ad_start`（SDK の結果）、サーバー `ad_reward`（付与）・`ad_reject`（弾いた理由）。報酬はクライアントのイベントにしない。クエリは `docs/ops/kpi-queries.md`。
 - REQ-AD-011 経済：広告を全部見る無課金の引ける回数 ÷ 無課金 を 1.03〜1.15 に保ち、厩舎手当（E10）とパス（E5）の比より小さくする（E13、`server/test/economy.test.ts`）。
 - REQ-AD-012 支払った人：直近 `payerQuietDays`（30）日に実際の支払い（返金・サンドボックス・0円を除く）がある人には、自分で設定をオンにしない限り出さない。設定でオフにすれば誰でも出さない。広告なしパス（`ad_free_pass`）は作らない（強制広告が無いので消すものが無い、protocol §21.6）。
+
+## 22. ローカライズ（英語、TS＋C#、`src/i18n/*`・`master/locale-en.json`、`contracts/protocol.md` §22）
+日本語が元の言語。英語は日本語の文をキーにした表で訳し、ドメイン・マスター・ゴールデンファイルの日本語は変えない。法定表示は日本語のまま。
+- REQ-L10N-001 言語の決め方：`?lang=` → `Accept-Language`（q値順）→ `ja`。対応は `ja`・`en`。応答に `content-language` と `vary: accept-language`。
+- REQ-L10N-002 サーバーの応答：`en` の時、全ての文字列の値を表で訳す（キー・ID・識別子・プレイヤーが書いた文字は訳さない）。エラーの詳細も同じ。訳せない文は日本語のまま返す（空にしない）。
+- REQ-L10N-003 コードが作る文（`i18n/en.ts`）：商品の中身・はじめての購入・提供割合のページ・券・天井の移行・スキルの条件と効果・スタンプの解放条件・削除の確認・招待の共有文・大会の回戦名・選手に見えるエラー。型（`{…}`）と文・区切りごとの訳で、組み立てた文も訳す。
+- REQ-L10N-004 マスターの英語（`master/locale-en.json`）：プレイヤーに見える日本語の全ての文に英語がある（起動時に検証、無ければ起動しない）。内部だけの表（NG語・禁止服色・アセットカタログなど）は対象外。
+- REQ-L10N-005 リモート設定：版は `locale.en` を持てる。版を解決したマスターの全ての日本語に英語が無ければ `CONFIG_INVALID`（新しいバナー・イベント・お知らせは英語と一緒に出す）。
+- REQ-L10N-006 網羅のテスト：主なプレイヤーの画面の API（設定・見た目・プレイヤー・ショップ・オファー・厩舎手当・スキル・バナー・天井・提供割合・馬・血統・絆・プリセット・券・見た目ショップ・ミッション・復帰・お知らせ・パス・称号・戦績・広告・プッシュ設定・削除の確認・エラー）を `?lang=en` と `Accept-Language: en` で呼び、日本語が残らないこと（プレイヤーの名前を除く）。`ja` の応答は変わらない（`server/test/l10n.test.ts`）。
+- REQ-L10N-007 プッシュ：端末ごとの言語（登録時の `locale`）で文を作る。一斉配信は言語ごとのトピック（`season_en`・`events_en`）。設定の応答は他の言語のトピックを解除させる。
+- REQ-L10N-008 文言の規則（英語）：倍率（2x・double）、偽の急かし（limited time only・hurry・ends soon）、参考価格・割引（% off・regular price）、`free gacha`・`rate up` を使わない（表の検証・テスト）。広告の枠は `guarantee`・`bonus`・`deal` も使わない。特商法・資金決済法の表示は日本語のまま、英語では参考訳である旨の注記を付け、日本国外での法的な効力をうたわない。
+- REQ-L10N-009 C# クライアント：`ApiClientOptions.Locale`／`ApiClient.Locale` を毎回 `Accept-Language` で送る。プッシュの端末登録に `locale`。Unity は `MuchiServices.SetLanguage`（PlayerPrefs `muchi.language`）。
+- REQ-L10N-010 ゲーム層（`Muchi.Game`）：モデルは日本語を作り、画面は `Loc.T` を通して出す。`UxText.For`・`UxText.Reward`・`ActionResult` は言語どおりで返す。カタカナの馬名は英語ではローマ字で表示する（保存する名前は変えない）。表は `Resources/Muchi/ui-en.json`。GameChecks `L10nChecks`：ゲーム層の日本語の文字列すべてと組み立てた行が英語になる。
+- REQ-L10N-011 共通の表：サーバーの2つの表をクライアント用に `Resources/Muchi/server-en.json` へ生成（`npm run gen:client-locale`）。古いとサーバーのテストが失敗する。
+- REQ-L10N-012 実況：`commentary-en.json` は日本語と同じ全ての種類・変種ID・`{…}`。着順は序数、馬名・スキル名は英語の表から、カタカナはローマ字。英語の実況に日本語が残らない（engine `LocalizationTests`・GameChecks）。
+- REQ-L10N-013 Web プロトタイプ：EN で全ての画面を英語にする（サーバー・ゲーム層・プロトタイプの表）。英語の長さで枠からはみ出さない（収まらなければ小さくする）。e2e の英語の回（`test/en-flow.cjs`）が主な画面（ホーム・ショップ・法定表示・購入確認・パス・スカウト・提供割合・厩舎・設定・出走登録・レース・結果）で日本語の残りとはみ出しを調べ、スクリーンショット `en-*.png` を残す。フォントの字形に Latin を含める。

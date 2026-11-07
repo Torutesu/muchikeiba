@@ -31,8 +31,8 @@ function loginView() {
       const me = await api('GET', '/v1/admin/whoami', undefined, { token: token.value, base: apiBase });
       setSession({ token: token.value, apiBase, id: me.id, role: me.role, via: me.via });
       token.value = '';
-      if (!location.hash || location.hash === '#/login') location.hash = '#/config';
-      route();
+      if (!location.hash || location.hash === '#/login') location.hash = '#/config'; // hashchange renders it
+      else route();
     } catch (err) {
       mount(out, errorBox(err));
     }
@@ -45,6 +45,7 @@ function loginView() {
   token.focus();
 }
 
+let renderSeq = 0;
 async function route() {
   const s = getSession();
   if (!s) { loginView(); return; }
@@ -53,11 +54,14 @@ async function route() {
   const name = (location.hash.replace(/^#\/?/, '').split('/')[0]) || 'config';
   const view = views[name] ?? views.config;
   for (const a of nav.querySelectorAll('a')) a.classList.toggle('active', a.dataset.view === name);
-  mount(main, h('div', { class: 'loading' }, '読み込み中…'));
+  // each render draws into its own container and only the latest one is attached (no stale render overwrites a newer one)
+  const seq = ++renderSeq;
+  const box = h('div', { class: 'view' }, h('div', { class: 'loading' }, '読み込み中…'));
+  mount(main, box);
   try {
-    await view(main, location.hash.split('/').slice(2).map(decodeURIComponent));
+    await view(box, location.hash.split('/').slice(2).map(decodeURIComponent));
   } catch (e) {
-    mount(main, errorBox(e));
+    if (seq === renderSeq) mount(box, errorBox(e));
   }
   main.focus({ preventScroll: true });
 }

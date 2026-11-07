@@ -26,6 +26,12 @@ const assert = require("node:assert/strict");
     await p.waitForSelector('[data-model-ready="fallback"]');
     await p.locator("#lane-out").click();
     assert.equal(await p.locator("#lane-number").textContent(), "3");
+    await p.selectOption("#screen-select", "4");
+    await p.locator("#club-open").click();
+    await p.locator('[data-costume="costume_login"]').click();
+    await p.waitForSelector('.wardrobe-model [data-model-ready="fallback"]');
+    assert((await p.locator(".wardrobe-model > p").innerText()).includes("標準装い"));
+    assert(await p.locator("#equip-outfit").isDisabled());
     assert.deepEqual(errors, []);
     console.log(
       "PASS: WebGL unavailable uses visible static art and retains controls; no JS errors.",

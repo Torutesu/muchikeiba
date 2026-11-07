@@ -60,6 +60,7 @@ const { events } = require('../../server/master/events.json');
       for (const tab of ['welcome', 'event', 'pass']) {
         await page.locator('#campaign-menu').click(); await page.locator(`[data-campaign-tab="${tab}"]`).click();
         await page.locator('dialog img').evaluateAll(imgs => Promise.all(imgs.map(i => i.decode())));
+        if (tab === 'pass') assert(await page.locator('.pass-detail-hero h3').evaluate(el => el.scrollHeight <= parseFloat(getComputedStyle(el).lineHeight) * 2.2), 'pass headline remains two readable lines');
         assert(await page.locator('dialog').evaluate(el => el.scrollWidth <= el.clientWidth + 1), `dialog overflow ${width}/${tab}`);
         await page.locator('dialog').screenshot({ path: `design/campaign/review/${tab}-${width}.png` });
         await page.locator('dialog .close').click();

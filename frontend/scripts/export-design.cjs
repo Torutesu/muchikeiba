@@ -38,6 +38,7 @@ const fs = require("node:fs");
         .evaluateAll((imgs) =>
           Promise.all(imgs.map((i) => i.decode().catch(() => {}))),
         );
+      await target.evaluate(el => { if (el.tagName === "DIALOG") el.scrollTop = 0; });
       await target.scrollIntoViewIfNeeded();
       if (await target.locator(".model-canvas").count())
         await page.waitForFunction(() =>
@@ -369,6 +370,41 @@ const fs = require("node:fs");
     await close();
     await page.locator('[data-buy-starter]').click();
     await capture("40-mobile-starter", "スターター・モバイル", "dialog");
+    await close();
+    await page.setViewportSize({ width: 1440, height: 1400 });
+    // Explicit design fixtures in an isolated browser context for earned-state variants.
+    await page.evaluate(async () => {
+      const { readClub } = await import("/src/club-state.js");
+      const s = readClub();
+      Object.assign(s, { items: { ...s.items, costume_login: 1, costume_starter: 1, costume_season_limited: 1, breeding_material: 4, ticket_sr_plus: 1 }, paid: 300, xp: 100, completed: 8, passUntil: Date.now() + 30*86400000, outfits: { 0: "costume_starter" }, freeLevels: [1], premiumLevels: [], eventPoints: { sprint_cup_2026_11: 330 } });
+      localStorage.setItem("muchi-club-v1", JSON.stringify(s));
+    });
+    await screen(4);
+    await page.locator("#club-open").click();
+    await page.locator("#wardrobe-partner").selectOption("0");
+    await page.waitForSelector('.wardrobe-model [data-model-ready="true"]', { timeout: 60000 });
+    await capture("41-wardrobe", "勝負服・3D配色プレビュー", "dialog");
+    await page.locator('[data-club-tab="items"]').click();
+    await capture("42-inventory", "所持品・デモ受取一覧", "dialog");
+    await close();
+    await page.locator("#campaign-menu").click();
+    await page.locator('[data-campaign-tab="pass"]').click();
+    await capture("43-pass-progress", "完走XP・パス報酬の受取", "dialog");
+    await page.locator('[data-campaign-tab="event"]').click();
+    await capture("44-event-progress", "イベント累積・目標報酬", "dialog");
+    await page.locator("#event-enter").click();
+    await capture("45-event-entry", "イベント出走登録・参加費");
+    await page.setViewportSize({ width: 390, height: 1100 });
+    await page.locator("#club-open").click();
+    await page.locator("#wardrobe-partner").selectOption("0");
+    await page.waitForSelector('.wardrobe-model [data-model-ready="true"]', { timeout: 60000 });
+    await capture("46-mobile-wardrobe", "勝負服・モバイル", "dialog");
+    await page.locator('[data-club-tab="items"]').click();
+    await capture("47-mobile-inventory", "所持品・モバイル", "dialog");
+    await close();
+    await page.locator("#campaign-menu").click();
+    await page.locator('[data-campaign-tab="pass"]').click();
+    await capture("48-mobile-pass-progress", "パス進行・モバイル", "dialog");
     await close();
     await page.setViewportSize({ width: 1440, height: 1400 });
     let y = 80;

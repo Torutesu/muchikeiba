@@ -244,7 +244,7 @@
   .event-milestones b { font-size: 24px; margin: 0; }
   .event-action { flex-direction: column; align-items: stretch; }
   .pass-detail-hero { padding: 20px 16px; position: relative; overflow: hidden; }
-  .pass-detail-hero > div { z-index: 1; }
+  .pass-detail-hero > div { z-index: 1; width: 100%; }
   .pass-detail-hero > img { width: 90px; height: 90px; position: absolute; right: -10px; top: 40px; }
   .pass-detail-hero p { max-width: 190px; font-size: 10px; }
   .pass-detail-hero h3 { font-size: 25px; }

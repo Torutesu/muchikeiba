@@ -1,3 +1,4 @@
+import { outfits } from "./club-state.js";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -214,6 +215,24 @@ export async function stage(container, index, { race = false } = {}) {
     const source = await modelFor(index);
     if (closed) return;
     const horse = cloneSkeleton(source.scene);
+    const outfit = outfits[container.dataset.outfit];
+    if (outfit?.color) {
+      const recolored = new Map();
+      horse.traverse(o => {
+        if (!o.isMesh) return;
+        const recolor = m => {
+          if (!/^(Racing silk|Woven silk|Helmet|Trim|Woven pattern) \//.test(m.name)) return m;
+          if (!recolored.has(m)) {
+            const copy = m.clone();
+            copy.color.set(/^(Trim|Woven pattern)/.test(m.name) ? outfit.trim : outfit.color);
+            recolored.set(m, copy); localResources.push(copy);
+          }
+          return recolored.get(m);
+        };
+        o.material = Array.isArray(o.material) ? o.material.map(recolor) : recolor(o.material);
+      });
+      container.dataset.appliedOutfit = container.dataset.outfit;
+    }
     const sharedSkeletons = new Map();
     horse.traverse((o) => {
       if (o.isSkinnedMesh) {
@@ -292,6 +311,8 @@ export async function stage(container, index, { race = false } = {}) {
     if (help)
       help.textContent =
         "3D表示を利用できないため、モデルの静止画を表示しています。";
+    const outfitHelp = container.closest(".wardrobe-model")?.querySelector("p");
+    if (outfitHelp) outfitHelp.textContent = "この端末では標準装いの静止画を表示しています。選んだ衣装の柄と配色は衣装カードで確認できます。";
     if (fallback) fallback.style.opacity = "1";
   }
 }

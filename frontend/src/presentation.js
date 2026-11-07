@@ -41,7 +41,7 @@ export function mountPresentation({ app, current, selected, horseArt }) {
   observer = new MutationObserver(() => {
     // Dialogs created by detail interactions retain the same 3D art direction.
     document
-      .querySelectorAll("dialog .detail-summary>.horse-art")
+      .querySelectorAll("dialog .detail-summary>.horse-art, dialog .wardrobe-model>.horse-art")
       .forEach((el) => stage(el, Number(el.dataset.partner) || 0));
     backend?.cleanup();
   });

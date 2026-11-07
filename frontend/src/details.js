@@ -1,3 +1,5 @@
+import { readClub } from "./club-state.js";
+import { mountClub, openWardrobe } from "./club-ui.js";
 import { icon } from "./icons.js";
 import { openCheckout } from "./commerce.js";
 import { mountJourney, track } from "./journey.js";
@@ -245,6 +247,10 @@ export function enhance(ctx) {
               .join("")
           : `<div class="skill-note"><b>✧ ${skills[i][0]}</b><p>${skills[i][1]}</p></div><dl class="spec-list"><div><dt>芝適性</dt><dd>A</dd></div><div><dt>得意距離</dt><dd>${horses[i][3].split(" / ")[1]}</dd></div><div><dt>脚質</dt><dd>${horses[i][2]}</dd></div></dl>`;
     };
+    const wardrobe = document.createElement("button");
+    wardrobe.className = "text-button"; wardrobe.id = "detail-wardrobe"; wardrobe.textContent = "勝負服を選ぶ →";
+    d.querySelector(".partner-kit").after(wardrobe);
+    wardrobe.onclick = () => { d.close(); openWardrobe({ ...ctx, dialog }, i); };
     paint("stats");
     bind(d, "[data-tab]", (el) => {
       d.querySelectorAll("[data-tab]").forEach((b) =>
@@ -360,7 +366,7 @@ export function enhance(ctx) {
     };
   }
   if (current === 8) {
-    profile.raced = true;
+    if (["finished", "settled"].includes(readClub().race?.status)) profile.raced = true;
     save();
     app.querySelector(".result-title p").textContent =
       chosen + " とつかんだ、最高の直線。";
@@ -465,8 +471,9 @@ export function enhance(ctx) {
     };
     bind(app, ".purchase", (el) => {
       const id = el.dataset.product || (el.closest(".store-banner") ? "season_pass" : "coin_" + el.dataset.price);
-      openCheckout(id, { dialog, coins, track });
+      openCheckout(id, { dialog, coins, track, refresh: ctx.refresh });
     });
   }
   mountJourney({ ...ctx, dialog, profile });
+  mountClub({ ...ctx, dialog });
 }

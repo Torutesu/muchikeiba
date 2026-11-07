@@ -27,7 +27,7 @@
     "name": "05",
     "title": "ホーム",
     "width": 1440,
-    "height": 1545
+    "height": 1547
   },
   {
     "name": "06",
@@ -63,13 +63,13 @@
     "name": "11-horse-stats",
     "title": "馬詳細・能力",
     "width": 810,
-    "height": 674
+    "height": 730
   },
   {
     "name": "12-horse-skill",
     "title": "馬詳細・スキルと適性",
     "width": 810,
-    "height": 752
+    "height": 808
   },
   {
     "name": "13-stable-empty",
@@ -117,13 +117,13 @@
     "name": "20-purchase-complete",
     "title": "購入確認完了",
     "width": 560,
-    "height": 361
+    "height": 514
   },
   {
     "name": "21-home-claimed",
     "title": "ホーム・報酬受取済み",
     "width": 1440,
-    "height": 1545
+    "height": 1547
   },
   {
     "name": "22-name-error",
@@ -183,7 +183,7 @@
     "name": "31-journey-complete",
     "title": "初回4章完了・ホーム",
     "width": 1440,
-    "height": 1545
+    "height": 1547
   },
   {
     "name": "32-welcome-gifts",
@@ -201,13 +201,13 @@
     "name": "34-event-campaign",
     "title": "イベント・条件と目標",
     "width": 950,
-    "height": 914
+    "height": 1115
   },
   {
     "name": "35-club-pass",
     "title": "30日クラブパス・比較",
     "width": 950,
-    "height": 1093
+    "height": 1260
   },
   {
     "name": "36-starter-product",
@@ -238,5 +238,53 @@
     "title": "スターター・モバイル",
     "width": 367,
     "height": 982
+  },
+  {
+    "name": "41-wardrobe",
+    "title": "勝負服・3D配色プレビュー",
+    "width": 1080,
+    "height": 926
+  },
+  {
+    "name": "42-inventory",
+    "title": "所持品・デモ受取一覧",
+    "width": 1080,
+    "height": 924
+  },
+  {
+    "name": "43-pass-progress",
+    "title": "完走XP・パス報酬の受取",
+    "width": 950,
+    "height": 1260
+  },
+  {
+    "name": "44-event-progress",
+    "title": "イベント累積・目標報酬",
+    "width": 950,
+    "height": 1115
+  },
+  {
+    "name": "45-event-entry",
+    "title": "イベント出走登録・参加費",
+    "width": 1440,
+    "height": 997
+  },
+  {
+    "name": "46-mobile-wardrobe",
+    "title": "勝負服・モバイル",
+    "width": 367,
+    "height": 990
+  },
+  {
+    "name": "47-mobile-inventory",
+    "title": "所持品・モバイル",
+    "width": 367,
+    "height": 990
+  },
+  {
+    "name": "48-mobile-pass-progress",
+    "title": "パス進行・モバイル",
+    "width": 367,
+    "height": 990
   }
 ]

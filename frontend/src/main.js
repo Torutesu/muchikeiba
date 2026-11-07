@@ -1,6 +1,7 @@
 import "./style.css";
 import "./details.css";
 import "./atelier.css";
+import { equipped, outfits, finishRace, freeBalance } from "./club-state.js";
 import { enhance } from "./details.js";
 import { icon } from "./icons.js";
 import { mountPresentation, disposePresentation } from "./presentation.js";
@@ -53,7 +54,7 @@ const navigation = [
 ];
 const horseArt = (cls = "") => {
   const i = Number(cls.match(/variant-(\d)/)?.[1] ?? selected);
-  return `<div class="horse-art ${cls}" data-partner="${i}"><div class="model-halo"></div><img src="/art/partner-${i}.webp" alt="${["鹿毛・クリムゾンの勝負服", "栗毛・アズールの勝負服", "芦毛・ヴァイオレットの勝負服"][i]}の相棒" width="1100" height="900" draggable="false"><span class="art-caption">THOROUGHBRED COLLECTION / ${String(i + 1).padStart(2, "0")}</span></div>`;
+  return `<div class="horse-art ${cls}" data-partner="${i}" data-outfit="${equipped(i)}"><div class="model-halo"></div><img src="/art/partner-${i}.webp" alt="${["鹿毛・クリムゾンの勝負服", "栗毛・アズールの勝負服", "芦毛・ヴァイオレットの勝負服"][i]}の相棒" width="1100" height="900" draggable="false">${equipped(i) !== "default" ? `<span class="outfit-badge">${outfits[equipped(i)].label} / 装備中</span>` : ""}<span class="art-caption">THOROUGHBRED COLLECTION / ${String(i + 1).padStart(2, "0")}</span></div>`;
 };
 function go(n) {
   clearTimeout(timer);
@@ -72,6 +73,7 @@ function shell(content) {
   return `<aside class="rail"><a class="brand" href="#4" aria-label="ムチ一閃 ホーム"><span class="brand-crest">M<i>一閃</i></span></a><span class="rail-caption">RACING CLUB</span>${nav()}<div class="rail-membership">${icon("laurel")}<span>YOUR NEXT<br>GREAT STORY.</span></div><div class="rail-foot">JAPAN · 2026</div></aside><div class="workspace"><header><div class="wordmark">ムチ一閃 <small>THE JOCKEY RACING CLUB</small></div><div class="header-path"><span>CLUB</span><i>/</i>${screens[current]}</div><div class="wallet"><span>${icon("coin")}<b>${coins.toLocaleString()}</b><small>無償</small></span><span class="club-money">◎ <b>24,800</b></span><button class="header-icon" id="club-guide" aria-label="クラブガイド">${icon("help")}</button><button class="avatar" data-go="4" aria-label="ホーム">Y</button></div></header><main>${content}</main><div class="mobile-nav">${nav()}</div><footer><span>MUCHI ISSEN <i>®</i> <b>RIDE YOUR OWN STORY.</b></span><span><i class="status-dot"></i> LOCAL PREVIEW <span class="footer-divider">/</span> JAPAN · TURF · 2,000m</span></footer></div>`;
 }
 function render() {
+  coins = freeBalance();
   document.querySelectorAll("dialog[open]").forEach((d) => {
     d.close();
     d.remove();
@@ -154,6 +156,7 @@ function render() {
         document.querySelector(".track")?.classList.add("spur-flash"),
       );
       if (hits >= 4) {
+        if (current === 7) finishRace();
         document.querySelector("#whip").disabled = true;
         timer = setTimeout(() => go(current === 1 ? 2 : 8), 600);
       }

@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="560" height="361" viewBox="0 0 560 361"><title>購入確認完了</title><rect x="0" y="0" width="560" height="360.1875" rx="10" fill="rgb(247, 246, 240)" stroke="rgb(200, 206, 186)" stroke-width="1" opacity="1"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="514" viewBox="0 0 560 514"><title>購入確認完了</title><rect x="0" y="0" width="560" height="513.96875" rx="10" fill="rgb(247, 246, 240)" stroke="rgb(200, 206, 186)" stroke-width="1" opacity="1"/>
 <rect x="511" y="13" width="32" height="32" rx="16" fill="rgb(239, 241, 231)" stroke="rgb(215, 222, 204)" stroke-width="1" opacity="1"/>
 <svg x="519" y="21" width="16" height="16" viewBox="0 0 24 24" color="rgb(114, 131, 107)" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m5 5 14 14M5 19 19 5"></path></svg>
 <rect x="37" y="47" width="23" height="1" rx="0" fill="rgb(179, 148, 89)" stroke="none" stroke-width="0" opacity="1"/>
@@ -7,4 +7,9 @@
 <rect x="242" y="138.1875" width="76" height="76" rx="38" fill="rgb(231, 237, 217)" stroke="rgb(207, 219, 186)" stroke-width="1" opacity="1"/>
 <text x="269.75" y="179.9875" fill="rgb(130, 151, 97)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="30px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">✓</text>
 <text x="133.828125" y="258.2475" fill="rgb(33, 58, 50)" font-family="&quot;Club Serif&quot;, &quot;Noto Serif JP&quot;, serif" font-size="21px" font-weight="600" font-style="normal" letter-spacing="0" opacity="1">ご確認ありがとうございます。</text>
-<text x="142.9375" y="297.6475" fill="rgb(122, 130, 117)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="11px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">決済・コインの追加・生年月の保存は行っていません。</text></svg>
+<text x="142.9375" y="297.6475" fill="rgb(122, 130, 117)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="11px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">決済・コインの追加・生年月の保存は行っていません。</text>
+<rect x="37" y="332.1875" width="486" height="144.78125" rx="0" fill="none" stroke="rgb(222, 223, 211) rgb(33, 58, 50) rgb(33, 58, 50)" stroke-width="1" opacity="1"/>
+<text x="37" y="379.6475" fill="rgb(104, 118, 95)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="11px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">続きの画面を試す場合だけ、体験用としてセット内容を反映できます。実際の購入・所持にはなり</text>
+<text x="37" y="400.538125" fill="rgb(104, 118, 95)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="11px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">ません。</text>
+<rect x="37" y="424.96875" width="486" height="52" rx="5" fill="none" stroke="rgb(192, 203, 181)" stroke-width="1" opacity="1"/>
+<text x="59" y="452.78875" fill="rgb(33, 58, 50)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="12px" font-weight="500" font-style="normal" letter-spacing="0.42px" opacity="1">この内容をデモで試す</text></svg>

@@ -53,6 +53,7 @@
 <text x="97" y="872.0675" fill="rgb(122, 133, 108)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="8px" font-weight="400" font-style="normal" letter-spacing="1px" opacity="1">SADDLECLOTH</text>
 <text x="97" y="891.5075" fill="rgb(41, 66, 55)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="12px" font-weight="700" font-style="normal" letter-spacing="0.4px" opacity="1">アイボリー</text>
 <text x="97" y="910.9275" fill="rgb(122, 133, 108)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="9px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">クラブ共通のゼッケン</text>
-<rect x="24" y="950.1875" width="318.59375" height="52" rx="5" fill="rgb(20, 47, 39)" stroke="rgb(20, 47, 39)" stroke-width="1" opacity="1"/>
-<text x="46" y="977.6475" fill="rgb(255, 248, 223)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="11px" font-weight="500" font-style="normal" letter-spacing="0.385px" opacity="1">この相棒で出走する</text>
-<text x="309.203125" y="977.6475" fill="rgb(255, 248, 223)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="11px" font-weight="500" font-style="normal" letter-spacing="0.385px" opacity="1">↗</text></svg>
+<text x="24" y="966.2875" fill="rgb(113, 130, 99)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="10px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">勝負服を選ぶ →</text>
+<rect x="24" y="1006.1875" width="318.59375" height="52" rx="5" fill="rgb(20, 47, 39)" stroke="rgb(20, 47, 39)" stroke-width="1" opacity="1"/>
+<text x="46" y="1033.6475" fill="rgb(255, 248, 223)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="11px" font-weight="500" font-style="normal" letter-spacing="0.385px" opacity="1">この相棒で出走する</text>
+<text x="309.203125" y="1033.6475" fill="rgb(255, 248, 223)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="11px" font-weight="500" font-style="normal" letter-spacing="0.385px" opacity="1">↗</text></svg>

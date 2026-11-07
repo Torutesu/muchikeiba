@@ -92,6 +92,22 @@ describe('REQ-ACH-007 master/collection.json', () => {
     expect(() => validateGacha(withPool)).toThrow(/comp gacha is prohibited/);
   });
 
+  it('QA R11: a horse only the sold SR+ ticket can draw still counts as gacha-obtainable (comp-gacha lint)', () => {
+    // take an SR horse out of every banner pool: the SR+ guaranteed ticket (sold in the starter pack) still draws it
+    const sr = m.templates.find((t) => t.rarity === 'SR' && !t.giftOnly && !t.seasonal)!.id;
+    const strip = (pool: { templateId: string; ppm: number }[]) => {
+      const out = pool.filter((e) => e.templateId !== sr);
+      const lost = pool.filter((e) => e.templateId === sr).reduce((a, e) => a + e.ppm, 0);
+      if (lost > 0 && out.length > 0) out[0] = { ...out[0]!, ppm: out[0]!.ppm + lost };
+      return out;
+    };
+    const banners = m.gacha.banners.map((b) => ({ ...b, pool: strip(b.pool), ...(b.stepUp ? { stepUp: { ...b.stepUp, steps: b.stepUp.steps.map((st) => (st.finalSlotPool ? { ...st, finalSlotPool: strip(st.finalSlotPool) } : st)) } } : {}) }));
+    const base: Master = { ...m, gacha: { ...m.gacha, banners } };
+    expect(gachaObtainable(base).templates.has(sr)).toBe(true);
+    const mm: Master = { ...base, collection: { ...cm, achievements: [{ id: 'set', category: 'race', name: 'x', description: 'x', metric: 'collect', section: 'horses', ids: [sr], tiers: [tier(1)] }] as AchievementDef[] } as CollectionMaster };
+    expect(collectionRewardProblems(mm).join(';')).toMatch(/comp gacha is prohibited/);
+  });
+
   it('every remote-config version runs the collection checks (the shipped data passes)', () => {
     expect(() => resolveBundle(m, {})).not.toThrow();
     expect(resolveBundle(m, {}).master.collection).toBe(m.collection);

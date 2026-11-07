@@ -30,7 +30,7 @@ import { z } from 'zod';
 import { AppError } from './errors.js';
 import { grantReward } from './items.js';
 import type { HorseInstance, PlayerState } from './player.js';
-import type { Master } from './master.js';
+import { expandPool, type Master } from './master.js';
 import type { RaceResultForPlayer } from './rewards.js';
 import type { RaceStartConfig } from './schemas.js';
 import { deletionScheduled } from './accountDeletion.js';
@@ -108,12 +108,20 @@ const collectionSchema = z.object({
   achievements: z.array(z.unknown()).max(COLLECTION_HARD_LIMITS.maxAchievements),
 }).strict();
 
-/** What a paid random draw can give: every template in a banner pool (all banners take paid coins) and its skill. */
-export function gachaObtainable(m: Pick<Master, 'gacha' | 'templateById' | 'skills'>): { templates: Set<string>; skills: Set<string> } {
+/**
+ * What a paid random draw can give: every template in a banner pool (all banners take paid coins), every template a
+ * guaranteed-SR+ ticket can draw (sold in the starter pack; its table is all non-gift templates of its rarities, not a
+ * banner pool — QA R11) and their skills.
+ */
+export function gachaObtainable(m: Pick<Master, 'gacha' | 'templateById' | 'skills'> & Partial<Pick<Master, 'items' | 'templates'>>): { templates: Set<string>; skills: Set<string> } {
   const templates = new Set<string>();
   for (const b of m.gacha.banners) {
     for (const e of b.pool) templates.add(e.templateId);
     for (const st of b.stepUp?.steps ?? []) for (const e of st.finalSlotPool ?? []) templates.add(e.templateId);
+  }
+  for (const t of Object.values(m.items?.tickets ?? {})) {
+    if (t.kind !== 'srPlus') continue;
+    for (const e of expandPool(m.templates ?? [], t.rates)) templates.add(e.templateId);
   }
   const skills = new Set<string>();
   for (const t of templates) {

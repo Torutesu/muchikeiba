@@ -7,7 +7,7 @@ import { shopProducts } from '../domain/shop.js';
 import { skillCatalog } from '../domain/skills.js';
 import { ticketDisclosure } from '../domain/itemShop.js';
 import type { Master } from '../domain/master.js';
-import type { PlayerService } from '../domain/service.js';
+import type { PlayerService, ShortfallQuery } from '../domain/service.js';
 import type { SubscriptionStatus, VerifiedReceipt } from '../domain/purchase.js';
 import type { PurchaseRecord } from '../domain/player.js';
 import { appleAccountToken, googleAccountId } from '../stores/binding.js';
@@ -39,7 +39,7 @@ export type PlayerMethod =
   | 'bootstrap' | 'view' | 'setAge' | 'purchaseIntent' | 'purchase' | 'refund' | 'draw' | 'tutorialDraw' | 'pityExchange' | 'gachaStatus'
   | 'nameHorse' | 'awaken' | 'retire' | 'breedingPreview' | 'breed' | 'pedigree' | 'claimLogin' | 'missions'
   | 'claimMission' | 'passView' | 'claimPass' | 'applyRace' | 'raceEntry'
-  | 'shopProducts' | 'shopOffers' | 'markOfferViewed' | 'allowance' | 'claimAllowance' | 'firstWinBonus'
+  | 'shopProducts' | 'shopOffers' | 'markOfferViewed' | 'coinShortfall' | 'allowance' | 'claimAllowance' | 'firstWinBonus'
   | 'storeRenewal' | 'subscriptionStatus'
   | 'setDisplayName' | 'equipTitle' | 'titles' | 'stats' | 'publicProfile' | 'closeSeason' | 'setSilks'
   | 'useTicket' | 'cosmetics' | 'buyCosmetic' | 'setEquipment'
@@ -149,8 +149,23 @@ export interface AppContext {
 export interface ClientConfigInfo { versionId: string; hash: string; rulesetVersion: string; activatedAt: number | null }
 
 const json = (data: unknown, status = 200, lang?: Locale) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', ...(lang ? { 'content-language': lang, vary: 'accept-language' } : {}) } });
-const errorResponse = (e: AppError, l?: { lang: Locale; cat: Catalog }) =>
-  json(l ? localize({ error: { code: e.code, message: e.message } }, l.lang, l.cat) : { error: { code: e.code, message: e.message } }, e.status, l?.lang);
+const errorResponse = (e: AppError, l?: { lang: Locale; cat: Catalog }) => {
+  // REQ-SHORT-004: `details` only where the domain attached it (INSUFFICIENT_COINS); every other error keeps its shape
+  const body = { error: { code: e.code, message: e.message, ...(e.details ? { details: e.details } : {}) } };
+  return json(l ? localize(body, l.lang, l.cat) : body, e.status, l?.lang);
+};
+
+/** REQ-SHORT-005: `for=gacha&bannerId&count` | `for=cosmetic&itemId` | `for=coins&coins&kind` (anything else is 400). */
+function shortfallQuery(q: URLSearchParams): ShortfallQuery {
+  const raw = Object.fromEntries(q.entries());
+  const r = z.discriminatedUnion('for', [
+    z.object({ for: z.literal('gacha'), bannerId: id, count: z.enum(['1', '10']).default('10').transform((v) => (v === '1' ? 1 : 10) as 1 | 10) }).strict(),
+    z.object({ for: z.literal('cosmetic'), itemId: id }).strict(),
+    z.object({ for: z.literal('coins'), coins: z.string().regex(/^[1-9][0-9]{0,6}$/).transform(Number).refine((n) => n <= 1_000_000), kind: z.enum(['any', 'paid']).default('any') }).strict(),
+  ]).safeParse(raw);
+  if (!r.success) throw new AppError('BAD_REQUEST', r.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '));
+  return r.data;
+}
 
 async function body<T>(req: Request, schema: z.ZodType<T>): Promise<T> {
   let raw: unknown;
@@ -307,6 +322,8 @@ export const routes: Route[] = [
   // REQ-UXS-017: offers to show (triggers, shown-once records); bought offers are never returned
   { method: 'GET', path: '/v1/shop/offers', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('shopOffers', u) },
   { method: 'POST', path: '/v1/shop/offers/:offerId/view', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('markOfferViewed', u, offerIdParam(p.offerId!)) },
+  // REQ-SHORT-005: T6 — the coin shortfall of a gacha pull / a cosmetic / an amount, before trying (read only, protocol §29)
+  { method: 'GET', path: '/v1/shop/shortfall', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('coinShortfall', u, shortfallQuery(new URL(r.url).searchParams)) },
   // REQ-UXS-018: 厩舎手当 (30-day daily-coin pack)
   { method: 'GET', path: '/v1/shop/allowance', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('allowance', u) },
   { method: 'POST', path: '/v1/shop/allowance/claim', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('claimAllowance', u, idem(r)) },

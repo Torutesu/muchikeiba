@@ -157,7 +157,10 @@ namespace Muchi.Client
         public static ApiErrorCode Parse(string wire) => wire != null && ByWire.TryGetValue(wire, out var c) ? c : ApiErrorCode.Unknown;
 
         /// <summary>Builds the typed exception for a server error.</summary>
-        public static ApiException Create(string wire, string message, int status)
+        public static ApiException Create(string wire, string message, int status) => Create(wire, message, status, null);
+
+        /// <summary>Builds the typed exception; <paramref name="details"/> is the error's optional <c>details</c> object (REQ-SHORT-004).</summary>
+        public static ApiException Create(string wire, string message, int status, Muchi.Net.JsonNode details)
         {
             var code = Parse(wire);
             switch (code)
@@ -186,7 +189,7 @@ namespace Muchi.Client
                 case ApiErrorCode.DeletionPending:
                     return new PurchaseBlockedException(code, wire, message, status);
                 case ApiErrorCode.InsufficientCoins:
-                    return new InsufficientCoinsException(wire, message, status);
+                    return new InsufficientCoinsException(wire, message, status, CoinShortfall.Parse(J.Opt(details, "shortfall")));
                 case ApiErrorCode.RateLimited:
                     return new RateLimitedException(wire, message, status);
                 case ApiErrorCode.Internal:
@@ -238,10 +241,14 @@ namespace Muchi.Client
         public PurchaseBlockedException(ApiErrorCode c, string wire, string message, int status) : base(c, wire, message, status) { }
     }
 
-    /// <summary>Not enough coins: show the shop.</summary>
+    /// <summary>
+    /// Not enough coins. <see cref="Shortfall"/> (REQ-SHORT-004): which coins, how many, and the one pack to offer (T6, shown by
+    /// Muchi.Game CoinShortfallModel); null from an older server or a shortage that is not the wallet's (show the shop).
+    /// </summary>
     public sealed class InsufficientCoinsException : ApiException
     {
-        public InsufficientCoinsException(string wire, string message, int status) : base(ApiErrorCode.InsufficientCoins, wire, message, status) { }
+        public CoinShortfall Shortfall { get; }
+        public InsufficientCoinsException(string wire, string message, int status, CoinShortfall shortfall = null) : base(ApiErrorCode.InsufficientCoins, wire, message, status) { Shortfall = shortfall; }
     }
 
     /// <summary>409-style game rule rejections (ALREADY_CLAIMED, BREEDING_DAILY_LIMIT, ROOM_FULL ...).</summary>

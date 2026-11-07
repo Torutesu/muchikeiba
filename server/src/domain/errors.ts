@@ -28,10 +28,22 @@ const STATUS: Partial<Record<ErrorCode, number>> = {
 
 export class AppError extends Error {
   readonly status: number;
-  constructor(readonly code: ErrorCode, message?: string, status?: number) {
+  /**
+   * Structured data for the client, sent as `error.details` (REQ-SHORT-004: INSUFFICIENT_COINS carries
+   * `{ coinKind, need, have }` from the wallet and `shortfall` added by the service). Absent on other errors.
+   */
+  details?: Record<string, unknown>;
+  constructor(readonly code: ErrorCode, message?: string, status?: number, details?: Record<string, unknown>) {
     super(message ?? code);
     this.status = status ?? STATUS[code] ?? 409;
+    if (details) this.details = details;
   }
+}
+
+/** REQ-SHORT-001: what the wallet says about a coin spend it refused (`have` = the coins that may pay for it). */
+export interface CoinNeed { coinKind: 'any' | 'paid' | 'free'; need: number; have: number }
+export function insufficientCoins(n: CoinNeed, message?: string): AppError {
+  return new AppError('INSUFFICIENT_COINS', message ?? `need ${n.need}${n.coinKind === 'any' ? '' : ` ${n.coinKind} coins`}, have ${n.have}`, undefined, { ...n });
 }
 
 export function assert(cond: unknown, code: ErrorCode, message?: string): asserts cond {

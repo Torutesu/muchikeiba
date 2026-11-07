@@ -17,6 +17,21 @@ export const CODE_EN: Record<string, string> = {
   'はじめての購入時のみ：無償コイン{n}枚をプレゼント': 'First purchase only: {n} free coins included',
   'はじめての購入時のみ：有償コイン{n}枚をプレゼント': 'First purchase only: {n} paid coins included',
 
+  // ---- T6 coin shortfall (shortfall.ts, protocol §29; REQ-SHORT-003)
+  'コインが{n}枚足りません': 'You need {n} more coins',
+  '有償コインが{n}枚足りません': 'You need {n} more paid coins',
+  '無償コインが{n}枚足りません': 'You need {n} more free coins',
+  '{product}（¥{p}）で足ります': '{product} (¥{p}) covers it',
+  'いちばん大きい{product}（¥{p}）でも、あと{n}枚足りません': 'Even the largest pack, {product} (¥{p}), leaves you {n} coins short',
+  '今月の購入上限に達しているため、いま購入できるパックはありません': 'You have reached this month\'s purchase limit, so no pack can be bought now',
+  '未精算の返金があるため、いまは購入できません': 'Purchases are paused until an unsettled refund is settled',
+  'アカウント削除の手続き中のため、購入できません': 'Purchases are unavailable while the account is scheduled for deletion',
+  'このアカウントでは購入できません': 'This account cannot make purchases',
+  'いま購入できるパックはありません': 'No pack can be bought right now',
+  '有償コインだけで支払います（無償コインは使えません）': 'Paid with paid coins only (free coins cannot be used)',
+  '無償コインだけで支払う項目です（購入したコインでは支払えません）': 'This is paid with free coins only (purchased coins cannot be used)',
+  '購入の前に、生年月を確認します': 'Your birth year and month are checked before the purchase',
+
   // ---- scout odds page (gacha.ts oddsDisclosure / carryOverRule, itemShop.ts ticketDisclosure)
   '季節限定の馬は期間終了後この表から外れます。': 'Seasonal horses leave this table when the period ends.',
   '入手済みの馬はそのまま所持・出走・種付けできます。': 'Horses you already have stay yours to race and breed.',

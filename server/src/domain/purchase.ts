@@ -1,4 +1,4 @@
-import { AppError, assert } from './errors.js';
+import { AppError, assert, type ErrorCode } from './errors.js';
 import type { Master, Product } from './master.js';
 import type { PlayerState, PurchaseRecord } from './player.js';
 import { ageAt, DAY_MS, jstMonthKey } from './time.js';
@@ -80,6 +80,31 @@ export function registerAge(m: Master, s: PlayerState, birthYear: number, birthM
   return ageBand(m, s, now)!;
 }
 
+/**
+ * REQ-PUR-001 / REQ-SHORT-002: the product-level refusals of checkPurchaseIntent, in its order (null = this product may be
+ * bought now). The player-level ones (age not registered, unsettled refund, guardian consent) stay in checkPurchaseIntent.
+ * `ab` null = age not registered yet: the monthly limit is not judged (the purchase confirmation asks for it first).
+ */
+export function productBlock(m: Master, s: PlayerState, p: Product, now: number, ab: ReturnType<typeof ageBand>): { code: ErrorCode; message?: string } | null {
+  // once-only products stay used even if refunded (otherwise buy → refund → buy farms the bundle).
+  if (p.once && s.purchases.some((x) => x.productId === p.id)) return { code: 'ALREADY_PURCHASED' };
+  // REQ-UXS-019: a promotion pack is sold once its class has been reached
+  if (p.kind === 'promotion' && p.classId && !classReached(m, s, p.classId)) return { code: 'NOT_ELIGIBLE', message: `class ${p.classId} not reached yet` };
+  // REQ-UXS-020: one pass (Pass or Pass+) per season
+  if (p.kind === 'season_pass' && p.storeType !== 'auto_renewing' && passPurchasesFor(s, jstMonthKey(now)).length > 0) return { code: 'ALREADY_PURCHASED', message: `a season pass for ${jstMonthKey(now)} is already active` };
+  // REQ-UXS-018: the daily pack cannot be bought while one is running
+  if (p.kind === 'allowance' && pendingAllowance(m, s, now)) return { code: 'ALREADY_PURCHASED', message: 'a daily pack is still running' };
+  const month = jstMonthKey(now);
+  // A purchase that went over the limit this month (e.g. the app skipped this check) blocks further purchases.
+  // the breach belongs to the month of purchase (as monthlySpendYen and the support flag), not of grant
+  if (s.purchases.some((x) => x.limitBreach && !x.sandbox && (x.month ?? jstMonthKey(x.at)) === month)) return { code: 'AGE_LIMIT_EXCEEDED', message: 'monthly limit already exceeded this month' };
+  if (!ab) return null;
+  const spent = s.monthlySpendYen[month] ?? 0;
+  const limit = ab.band.monthlyLimitYen;
+  if (limit !== null && spent + p.priceYen > limit) return { code: 'AGE_LIMIT_EXCEEDED', message: `monthly ${spent}+${p.priceYen} > ${limit}` };
+  return null;
+}
+
 /** REQ-PUR-001: may the player start this store purchase? Throws with a specific code if not. */
 export function checkPurchaseIntent(m: Master, s: PlayerState, productId: string, now: number) {
   const p = findProduct(m, productId);
@@ -87,21 +112,11 @@ export function checkPurchaseIntent(m: Master, s: PlayerState, productId: string
   if (s.wallet.debt > 0 || hasItemDebt(s)) throw new AppError('UNSETTLED_DEBT');
   const ab = ageBand(m, s, now)!;
   if (ab.age < m.ageLimits.guardianConsentUnderAge && !s.age.guardianConsent) throw new AppError('GUARDIAN_CONSENT_REQUIRED');
-  // once-only products stay used even if refunded (otherwise buy → refund → buy farms the bundle).
-  if (p.once && s.purchases.some((x) => x.productId === p.id)) throw new AppError('ALREADY_PURCHASED');
-  // REQ-UXS-019: a promotion pack is sold once its class has been reached
-  if (p.kind === 'promotion' && p.classId && !classReached(m, s, p.classId)) throw new AppError('NOT_ELIGIBLE', `class ${p.classId} not reached yet`);
-  // REQ-UXS-020: one pass (Pass or Pass+) per season
-  if (p.kind === 'season_pass' && p.storeType !== 'auto_renewing' && passPurchasesFor(s, jstMonthKey(now)).length > 0) throw new AppError('ALREADY_PURCHASED', `a season pass for ${jstMonthKey(now)} is already active`);
-  // REQ-UXS-018: the daily pack cannot be bought while one is running
-  if (p.kind === 'allowance' && pendingAllowance(m, s, now)) throw new AppError('ALREADY_PURCHASED', 'a daily pack is still running');
+  const block = productBlock(m, s, p, now, ab);
+  if (block) throw new AppError(block.code, block.message);
   const month = jstMonthKey(now);
-  // A purchase that went over the limit this month (e.g. the app skipped this check) blocks further purchases.
-  // the breach belongs to the month of purchase (as monthlySpendYen and the support flag), not of grant
-  if (s.purchases.some((x) => x.limitBreach && !x.sandbox && (x.month ?? jstMonthKey(x.at)) === month)) throw new AppError('AGE_LIMIT_EXCEEDED', 'monthly limit already exceeded this month');
   const spent = s.monthlySpendYen[month] ?? 0;
   const limit = ab.band.monthlyLimitYen;
-  if (limit !== null && spent + p.priceYen > limit) throw new AppError('AGE_LIMIT_EXCEEDED', `monthly ${spent}+${p.priceYen} > ${limit}`);
   // REQ-UXS-020/022: what the confirmation sheet shows besides the price (server-built, per player)
   const bonus = p.kind === 'coins' && !s.firstPurchased.includes(p.id) ? firstPurchaseBonusOf(m, p) : null;
   return {

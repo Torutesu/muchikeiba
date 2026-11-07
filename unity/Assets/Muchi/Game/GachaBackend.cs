@@ -34,6 +34,7 @@ namespace Muchi.Game
         /// <summary>One scout; the reveal model on success, or the message (BANNER_CLOSED → reload the list).</summary>
         public async Task<(GachaRevealModel reveal, ApiErrorCode? error, string message)> DrawAsync(string bannerId, int count, Func<string, string> nameOf = null, CancellationToken ct = default)
         {
+            LastShortfall = null;
             if (!_b.Online) return (null, null, OfflineNotice);
             try
             {
@@ -41,7 +42,14 @@ namespace Muchi.Game
                 await _b.RefreshAsync(ct);
                 return (new GachaRevealModel(r, nameOf), null, null);
             }
+            catch (InsufficientCoinsException e) { LastShortfall = e; return (null, e.Code, BannerListModel.ErrorText(e.Code)); }
             catch (ApiException e) { return (null, e.Code, BannerListModel.ErrorText(e.Code)); }
         }
+
+        /// <summary>
+        /// REQ-SHORT-004: the last pull refused for lack of coins (null after any other outcome). Hand it to
+        /// <see cref="CoinShortfallModel.FromError"/> with ShortfallContext.ScoutConfirm and ShortfallOrigin.Gacha.
+        /// </summary>
+        public InsufficientCoinsException LastShortfall { get; private set; }
     }
 }

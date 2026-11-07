@@ -260,6 +260,15 @@ export function rollPulls(m: Master, b: BannerDef, count: 1 | 10, rng: Rng, fina
 }
 
 /**
+ * What the next pull of `count` on this banner costs this player (REQ-GACHA-014: a step-up banner charges its current
+ * step's 10-pull price). The draw and the shortfall preview (REQ-SHORT-005) both use it.
+ */
+export function gachaPrice(b: BannerDef, s: PlayerState, count: 1 | 10): number {
+  if (b.stepUp) return b.stepUp.steps[stepIndex(b, s.stepUp?.[b.id] ?? 0)]!.priceTen;
+  return count === 10 ? b.priceTen : b.priceSingle;
+}
+
+/**
  * REQ-GACHA-004..010. Must be called on a draft state inside a transaction (all-or-nothing, REQ-GACHA-009).
  */
 export function drawGacha(m: Master, s: PlayerState, bannerId: string, count: 1 | 10, rng: Rng, now: number, opts: { tutorialFree?: boolean } = {}) {
@@ -280,7 +289,7 @@ export function drawGacha(m: Master, s: PlayerState, bannerId: string, count: 1 
     assert(count === 10, 'BAD_REQUEST', 'tutorial gacha is a 10-pull');
     s.flags.tutorialGachaUsed = true;
   } else {
-    const price = step !== null ? b.stepUp!.steps[step]!.priceTen : count === 10 ? b.priceTen : b.priceSingle;
+    const price = gachaPrice(b, s, count);
     paid = spend(s, price, { paidOnly: b.currency === 'paidOnly' }, now, `gacha ${b.id} x${count}${step !== null ? ` step ${step + 1}` : ''}`, b.id);
   }
   const finalSlot = step !== null ? b.stepUp!.steps[step]!.finalSlotPool : undefined;

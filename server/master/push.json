@@ -9,6 +9,7 @@
   "maxOutbox": 20,
   "retry": { "backoffMs": [30000, 120000, 600000, 3600000], "maxAttempts": 5 },
   "topics": { "season": "season_ja", "events": "events_ja" },
+  "topicsByLocale": { "en": { "season": "season_en", "events": "events_en" } },
   "seasonReminders": { "endDaysBefore": [2], "lastDay": true, "start": true },
   "templates": {
     "friend_request": { "category": "friends", "title": "フレンド申請", "body": "{name}さんからフレンド申請が届きました", "ttlSec": 86400, "timeSensitive": false },

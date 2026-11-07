@@ -9,6 +9,8 @@
     "gen:golden": "tsx scripts/gen-golden.ts",
     "gen:assets": "tsx scripts/gen-assets.ts",
     "scan:assets": "tsx scripts/scan-assets.ts",
+    "l10n:missing": "tsx scripts/l10n-missing.ts",
+    "gen:client-locale": "tsx scripts/gen-client-locale.ts",
     "lint:deploy": "tsx scripts/lint-deploy.ts",
     "economy": "tsx scripts/economy.ts",
     "smoke": "tsx scripts/smoke.ts",

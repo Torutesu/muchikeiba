@@ -22,6 +22,7 @@ import { eventProblems } from '../domain/events.js';
 import type { EventDef } from '../domain/master.js';
 import { canonicalJson, hashOf } from './hash.js';
 import { dayRolloverChangeProblems, dayRolloverProblems, dayRule, type DayRollover } from '../domain/time.js';
+import { localeProblems } from '../i18n/validate.js';
 import { assetCatalogProblems, assetCatalogSchema, EMPTY_ASSET_CATALOG, sameCatalogContent, type AssetCatalog } from '../domain/assetCatalog.js';
 
 /**
@@ -74,6 +75,12 @@ export const configBundleSchema = z.object({
   assets: assetCatalogSchema.optional(),
   /** REQ-CB-008: replaces the what's-new entries (master/changelog.json). */
   changelog: z.array(z.record(z.string(), z.unknown())).max(200).optional(),
+  /**
+   * REQ-L10N-005: English for the Japanese texts of this version (added to master/locale-en.json, same key = replaced).
+   * Every player-facing Japanese text of the resolved version must have English (a new banner, event or changelog entry
+   * ships with its translation).
+   */
+  locale: z.object({ en: z.record(z.string().min(1).max(2000), z.string().min(1).max(4000)) }).strict().optional(),
 }).strict();
 export type ConfigBundle = z.infer<typeof configBundleSchema>;
 
@@ -172,8 +179,9 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
   if (b.stable) problems.push(...stableConfigProblems(b.stable as StableConfig, base));
   const assetCatalog = (b.assets as AssetCatalog | undefined) ?? base.assetCatalog;
   if (b.assets) problems.push(...assetCatalogVersionProblems(b.assets as AssetCatalog, base.assetCatalog ?? EMPTY_ASSET_CATALOG));
-  const master: Master = { ...base, tracks, litTracks, gacha: { ...base.gacha, pityGroups, banners, daySchedules: { banners: b.gacha?.banners ? gameDaySchedules(b.gacha.banners as RawBanner[], {}).banners : baseGacha.daySchedules?.banners ?? {}, pityEndDays: b.gacha?.pityGroups ? gameDaySchedules([], b.gacha.pityGroups).pityEndDays : baseGacha.daySchedules?.pityEndDays ?? {} } }, progression, ng: b.ng ?? base.ng, events, bannedSilks, ...(stable ? { stable } : {}), ...(assetCatalog ? { assetCatalog } : {}), ...(b.changelog ? { changelog: b.changelog as unknown as ChangelogEntry[] } : {}) };
+  const master: Master = { ...base, tracks, litTracks, gacha: { ...base.gacha, pityGroups, banners, daySchedules: { banners: b.gacha?.banners ? gameDaySchedules(b.gacha.banners as RawBanner[], {}).banners : baseGacha.daySchedules?.banners ?? {}, pityEndDays: b.gacha?.pityGroups ? gameDaySchedules([], b.gacha.pityGroups).pityEndDays : baseGacha.daySchedules?.pityEndDays ?? {} } }, progression, ng: b.ng ?? base.ng, events, bannedSilks, ...(stable ? { stable } : {}), ...(assetCatalog ? { assetCatalog } : {}), ...(b.changelog ? { changelog: b.changelog as unknown as ChangelogEntry[] } : {}), ...(b.locale ? { locale: { en: { ...base.locale?.en, ...b.locale.en } } } : {}) };
   problems.push(...eventProblems(master, events, ruleset));
+  problems.push(...localeProblems(master)); // REQ-L10N-005
   // QA r6 #1: tickets must never reach a paid-only banner, including after a remote-config banner change
   if (master.items) problems.push(...itemsProblems(master));
   if (master.items) problems.push(...stampsProblems(master)); // REQ-TEAMFEED-002: stamp cosmetics and stamps stay paired

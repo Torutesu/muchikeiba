@@ -90,6 +90,22 @@ describe('string tables (REQ-L10N-004/008)', () => {
     expect(translateText('Already English', c)).toBe('Already English');
     expect(translateText('脚を2.5%回復、4秒間 目標速度+1.5%・加速+20%', cat)).toBe('recovers 2.5% stamina, for 4 s: target speed +1.5%, acceleration +20%');
   });
+
+  it('QA R11: names players typed are never translated, even when they equal a table entry', () => {
+    // a player may call themselves 「決勝」 or name a branch 「フレンド」: those are table keys, but they are names here
+    const body = {
+      displayName: '決勝', teamName: 'フレンド', plateName: '支部の応援', ownerName: '大会の覇者', opponentName: '坂路', inviterName: 'ミメイ', inviteeName: 'プール',
+      fromName: 'ウッド', byName: '併せ馬', anonName: '決勝', friends: [{ displayName: '大会の覇者' }],
+      name: '決勝', title: '坂路', // master / server texts stay translated
+    };
+    const out = localize(body, 'en', cat);
+    expect(out).toMatchObject({
+      displayName: '決勝', teamName: 'フレンド', plateName: '支部の応援', ownerName: '大会の覇者', opponentName: '坂路', inviterName: 'ミメイ', inviteeName: 'プール',
+      fromName: 'ウッド', byName: '併せ馬', anonName: '決勝', friends: [{ displayName: '大会の覇者' }],
+    });
+    expect(out.name).toBe('Final');
+    expect(out.title).toBe('Hill Course');
+  });
 });
 
 describe('remote config needs English for its new texts (REQ-L10N-005)', () => {

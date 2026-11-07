@@ -177,6 +177,11 @@ export function textIn(locale: Locale, s: string, cat: Catalog): string {
  */
 /** Fields that hold identifiers, never display text (asset and voice keys may embed a Japanese name). */
 export const ID_KEYS = new Set(['id', 'key', 'voiceName', 'asset', 'assetKey', 'icon', 'templateId', 'clipKey', 'clipKeys']);
+/**
+ * Fields that only ever hold what a player typed (display, branch, plate names and the names copied from them): never
+ * looked up, even when the name happens to equal a table entry (a player called 「決勝」 stays 「決勝」, QA R11).
+ */
+export const PLAYER_TEXT_KEYS = new Set(['displayName', 'teamName', 'plateName', 'ownerName', 'opponentName', 'inviterName', 'inviteeName', 'fromName', 'byName', 'anonName']);
 /** `name:シンセイアカツキ`, `voice/ja/name/…`: an identifier, not a text. */
 const ID_LIKE = /^[a-z][a-z0-9_]*[:/]/;
 
@@ -187,7 +192,7 @@ export function localize<T>(v: T, locale: Locale, cat: Catalog): T {
     if (Array.isArray(x)) return x.map(walk);
     if (x && typeof x === 'object' && Object.getPrototypeOf(x) === Object.prototype) {
       const o: Record<string, unknown> = {};
-      for (const [k, val] of Object.entries(x)) o[k] = ID_KEYS.has(k) ? val : walk(val);
+      for (const [k, val] of Object.entries(x)) o[k] = ID_KEYS.has(k) || PLAYER_TEXT_KEYS.has(k) ? val : walk(val);
       return o;
     }
     return x;

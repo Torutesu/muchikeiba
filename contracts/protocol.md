@@ -704,7 +704,7 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 
 ### 23.2 サーバーの訳し方（`http/app.ts` の応答の出口、`i18n/catalog.ts`）
 - ドメインは日本語で作る。`en` の時だけ、応答の JSON の**全ての文字列の値**を表で訳してから返す（キー・数値・ID はそのまま）。エラーの `message` も同じ。管理API（`/v1/admin/*`）と `GET /v1/assets/catalog` は対象外。
-- 訳さないもの：ID の欄（`id`・`key`・`voiceName`・`asset`・`assetKey`・`icon`・`templateId`）と、`name:…` `voice/…` のような識別子の形の文字列。**プレイヤーが書いた文字**（表示名・支部名・表札・自分で付けた馬名）は表に無いのでそのまま返る。クライアントがカタカナの馬名をローマ字で表示する（§23.6）。
+- 訳さないもの：ID の欄（`id`・`key`・`voiceName`・`asset`・`assetKey`・`icon`・`templateId`）と、`name:…` `voice/…` のような識別子の形の文字列。**プレイヤーが書いた文字**（表示名・支部名・表札・自分で付けた馬名）はそのまま返る：表示名・支部名・表札とその写しの欄（`displayName`・`teamName`・`plateName`・`ownerName`・`opponentName`・`inviterName`・`inviteeName`・`fromName`・`byName`・`anonName`、`PLAYER_TEXT_KEYS`）は表を引かない（「決勝」という名前の人は「決勝」のまま）。馬名は表に無いカタカナなのでそのまま。クライアントがカタカナの馬名をローマ字で表示する（§23.6）。
 - 表は2つで、どちらも日本語の文そのものがキー：
   - `server/master/locale-en.json`（`Master.locale.en`）：マスターの**プレイヤーに見える日本語すべて**（商品名・注記・法定表示のリンク名・スカウトのバナーと天井の名前・馬名と血統名・称号・スキル名・スタンプ・イベント名・アイテム名・支部リーグの部・復帰ミッション・広告の枠の文言・お知らせ（What's new）・プッシュの文・競馬場名・厩舎テーマ）。
   - `server/src/i18n/en.ts`（`CODE_EN`）：ドメインのコードが組み立てる文（商品の中身の行・はじめての購入の行・提供割合のページの注記と各表の説明・券の説明・天井の移行・スキルの発動条件と効果・スタンプの解放条件・削除の確認・招待の共有文・名前の既定値・大会の回戦名・選手に見えるエラーの詳細）。

@@ -1,0 +1,16 @@
+{
+  "name": "muchi-ops-console",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Live-ops console (static SPA) for the /v1/admin API. No runtime dependencies; builds offline.",
+  "scripts": {
+    "build": "node build.mjs",
+    "serve": "node serve.mjs",
+    "test": "node --test test/*.test.mjs",
+    "e2e": "node e2e/console.e2e.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

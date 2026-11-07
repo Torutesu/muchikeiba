@@ -108,5 +108,16 @@ export function supportView(m: Master, s: PlayerState, now: number) {
     moderation: { status: moderationOf(s, now), detail: s.moderation ?? null },
     friends: { count: s.friends.ids.length },
     seasonHistory: s.seasonHistory,
+    // REQ-OPS-020: account deletion progress (never the confirmation token)
+    deletion: s.deletion ? {
+      status: s.deletion.status, requestedAt: s.deletion.requestedAt ?? null, deleteAt: s.deletion.deleteAt ?? null,
+      steps: s.deletion.steps, attempts: s.deletion.attempts, retryAt: s.deletion.retryAt ?? null,
+    } : null,
+    // REQ-INV-*: who invited them and whom they invited (no install hashes)
+    referral: s.referral ? {
+      invitedBy: s.referral.invitedBy ? { playerId: s.referral.invitedBy.playerId, code: s.referral.invitedBy.code, at: s.referral.invitedBy.at, milestones: s.referral.invitedBy.milestones } : null,
+      invitees: s.referral.invitees.map((x) => ({ playerId: x.playerId, at: x.at, counted: x.counted, deleted: x.deleted ?? false, milestones: x.milestones.length })),
+      installs: s.referral.installs.length,
+    } : null,
   };
 }

@@ -671,3 +671,24 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 
 ### 21.6 広告なしパス（`ad_free_pass`）は作らない
 強制広告が無く、広告は自分で選んだ時だけ再生されるので、「広告を消す」商品には消すものが無い（払っても何も変わらない商品は誤認のおそれ）。代わりに、支払った人には既定で広告を出さない（`payerQuietDays` 30日、`pref: on` で自分から見ることはできる）。経済の目標 E13（balance-targets 4.9）も、広告の価値を一番安い有料商品より小さく保つ。
+
+## 22. 運用コンソール向けの管理API（REQ-OPS-008/009/015/020a/026/027、`server/src/http/admin.ts`、`tools/ops-console`、`docs/ops/console.md`）
+管理APIは端末（Unity）からは呼ばない。認証は `Authorization: Bearer <管理トークン>`（Cookie なし）。書き込みは `content-type: application/json` と本文の `reason`（3〜500文字）が必須で、全呼び出しが監査ログに残る。ブラウザからは `ADMIN_CONSOLE_ORIGINS` のオリジンだけ CORS で許可（`OPTIONS` は認証前に 204、資格情報は不可。未許可のオリジンは 403）。
+
+| メソッド | パス | 権限 | 本文 → 応答 |
+|---|---|---|---|
+| POST | `/v1/admin/config/validate` | viewer | `{bundle}` → `{ok, problems: string[], groups: {dayRule, assetCatalog, gacha, ruleset, other}}`（`groups` は追加） |
+| POST | `/v1/admin/config/dry-run` | viewer | `{op}`（`{kind:'activate', versionId, at?}`／`{kind:'rollback', versionId: string\|null}`／`{kind:'cancel', activationId}`）→ `{ok, problems, groups, effect: Activation\|null}`。何も保存しない（`effect.id` は `"(dry run)"`） |
+| GET | `/v1/admin/config/diff?from=&to=` | viewer | → `{from, to, changes: [{path, before, after}], total, truncated}`。`base`＝空のバンドル。`id` 付きの一覧は `path[<id>]` |
+| GET | `/v1/admin/gacha/calendar?versionId=` | viewer | → `{versionId, serverNowMs, today, dayRollover, banners: [{id, name, currency, priceSingle, priceTen, status, startAtMs, endAtMs, announceAtMs, firstDay, lastDay, pityGroup, pityLabel, pityCost, pityTargets, pickup, stepUp: {afterLast, prices, finalSlotSteps}\|null}], pityGroups: [{id, label, cost, endAtMs, lastDay, convertTo, finalGroup, chain, banners, carryOver}]}` |
+| GET | `/v1/admin/gacha/:bannerId/odds?versionId=` | viewer | → `{versionId, odds}`。`odds` は `GET /v1/gacha/:bannerId/odds` と同じ形（公開前・終了後も） |
+| GET | `/v1/admin/events?versionId=` | viewer | → `{versionId, serverNowMs, events: [{id, name, startAtMs, endAtMs, status, trackIds, fee, maxPlayers, entry}], tracks: [{id, surface, distanceM}]}` |
+| GET | `/v1/admin/tournaments` | viewer | → `GET /v1/tournaments` と同じ |
+| GET | `/v1/admin/players/lookup?inviteCode=` | viewer | → `{playerId, inviteCode}`（形式違いは400、該当なしは404） |
+| GET | `/v1/admin/players/:playerId` | viewer | → `{state, integrity, flags: [{raw, kind, group, detail}], compensations}`。`state` に `exists`・`accountDeleted`・`deletion: {status, requestedAt, deleteAt, steps, attempts, retryAt}\|null`・`referral: {invitedBy, invitees, installs}\|null` |
+| GET | `/v1/admin/compensations?status=&playerId=&limit=` | viewer | → `{requests: CompensationRequest[], threshold: {freeCoins, itemQty}, hardCap}` |
+| POST | `/v1/admin/compensations` | operator | `{playerId, grant: {freeCoins?, items?: [{itemId, qty}]}, opKey, reason}` → `{request, created, payment: {before, after}\|null}`。閾値以下は `status: executed`、超えると `pending` |
+| POST | `/v1/admin/compensations/:id/approve` | admin | `{note?, reason}` → `{request, payment}`。依頼者本人は403、期限切れ・却下済み・付与済みは409 |
+| POST | `/v1/admin/compensations/:id/reject` | operator | `{note?, reason}` → `{request}` |
+
+`CompensationRequest`：`{id, opKey, playerId, grant, reason, requestedBy, requestedRole, requestedAt, expiresAt, needsApproval, status: pending|approved|executed|rejected|expired, decidedBy, decidedAt, decisionNote, executedAt, error}`。

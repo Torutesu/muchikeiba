@@ -837,7 +837,12 @@ export class PlayerService {
   inviteForfeit(id: string) { return this.tx(id, null, (s) => forfeitInviteOutbox(s)); }
 
   // ---- support / anti-cheat (admin API only; REQ-OPS-020..025, REQ-OPS-032) ----
-  async adminView(id: string) { return supportView(this.d.master, await this.load(id), this.d.clock()); }
+  /** REQ-OPS-020: `exists` false = no stored player (the view is a fresh default); `accountDeleted` = wiped by a deletion. */
+  async adminView(id: string) {
+    const exists = (await this.repo.get(id)) !== null;
+    const accountDeleted = !exists && !!(await this.repo.tombstoned?.(id));
+    return { ...supportView(this.d.master, await this.load(id), this.d.clock()), exists, accountDeleted };
+  }
   /**
    * Admin money operations are idempotent per opKey FOREVER (review r5 #4): the general idempotency cache
    * keeps only the last IDEM_KEEP results, so their results live in a never-evicted per-player record.

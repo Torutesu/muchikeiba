@@ -1,6 +1,12 @@
 import { z } from 'zod';
 import { AppError } from '../domain/errors.js';
-import type { ConfigBundle, ConfigVersion, Activation, ActiveConfigInfo } from '../ops/config.js';
+import { BASE_VERSION_ID, bundleDiff, groupProblems, resolveBundle, type ConfigBundle, type ConfigVersion, type Activation, type ActiveConfigInfo, type DryRunOp, type DryRunResult } from '../ops/config.js';
+import { compPaymentKey, needsApproval, COMP_APPROVAL_THRESHOLD, COMP_HARD_CAP, type CompensationQuery, type CompensationRequest, type CompensationStatus } from '../ops/compensation.js';
+import type { Master } from '../domain/master.js';
+import { bannerStatus, carryOverRule, findBanner, finalPityGroup, oddsDisclosure, pityLabel } from '../domain/gacha.js';
+import { eventStatus } from '../domain/events.js';
+import { dayRule, gameDayKey } from '../domain/time.js';
+import { normalizeInviteCode } from '../domain/invite.js';
 import { requireRole, type AdminPrincipal, type AdminRole, type AuditEntry, type AuditInput, type AuditQuery } from '../ops/admin.js';
 import { checkGrantLimits, grantSchema, itemIdSchema, type Grant } from '../ops/support.js';
 import type { ModerationChange, ModerationStatus, RaceIntegrityReport, RaceReport } from '../ops/integrity.js';
@@ -34,6 +40,17 @@ export interface OpsApi {
     rollback(versionId: string | null, by: string, reason: string, now: number): Promise<Activation>;
     list(now: number): Promise<unknown>;
     get(id: string): Promise<ConfigVersion>;
+    /** REQ-OPS-008: dry run of activate / rollback / cancel (nothing stored). */
+    dryRun(op: DryRunOp, by: string, now: number): Promise<DryRunResult>;
+  };
+  /** REQ-OPS-026: compensation requests under the two-person rule (absent = the routes answer NOT_FOUND). */
+  compensations?: {
+    create(input: { opKey: string; playerId: string; grant: Grant; reason: string }, by: AdminPrincipal, now: number): Promise<{ request: CompensationRequest; created: boolean }>;
+    get(id: string, now: number): Promise<CompensationRequest>;
+    list(q: CompensationQuery, now: number): Promise<CompensationRequest[]>;
+    approve(id: string, by: AdminPrincipal, note: string, now: number): Promise<CompensationRequest>;
+    reject(id: string, by: AdminPrincipal, note: string, now: number): Promise<CompensationRequest>;
+    executed(id: string, error: string | null, now: number): Promise<CompensationRequest>;
   };
   integrity: {
     recordRace(r: RaceIntegrityReport): Promise<ModerationChange[]>;
@@ -60,11 +77,104 @@ export interface AdminContext {
   clock?: () => number;
   /** REQ-TOUR-001/010 (absent = tournament routes answer NOT_FOUND). */
   tournaments?: TournamentsService;
+  /** The shipped master (remote-config versions are resolved on top of it). Absent = no gacha calendar / events view. */
+  baseMaster?: Master;
+  /** REQ-INV-*: invite code → player id (null for unknown or retired codes). Absent = lookup by code answers NOT_FOUND. */
+  inviteLookup?(code: string): Promise<string | null>;
+  /** REQ-OPS-015: browser origins of the ops console allowed to call the admin API (CORS, no credentials). */
+  consoleOrigins?: readonly string[];
 }
 const tours = (ctx: AdminContext) => {
   if (!ctx.tournaments) throw new AppError('NOT_FOUND', 'tournaments are not available');
   return ctx.tournaments;
 };
+const comps = (ctx: AdminContext) => {
+  if (!ctx.ops.compensations) throw new AppError('NOT_FOUND', 'compensations are not available');
+  return ctx.ops.compensations;
+};
+
+/** The master a config version resolves to (`active` = the version in effect now, `base` = the shipped master). */
+async function masterFor(ctx: AdminContext, versionId: string | null, now: number): Promise<{ versionId: string; master: Master }> {
+  if (!ctx.baseMaster) throw new AppError('NOT_FOUND', 'master data is not available');
+  let id = versionId ?? 'active';
+  let bundle: ConfigBundle | null = null;
+  if (id === 'active') {
+    const a = await ctx.ops.config.active(now, null);
+    id = a.versionId;
+    bundle = a.bundle;
+  } else if (id !== BASE_VERSION_ID) {
+    bundle = (await ctx.ops.config.get(id)).bundle;
+  }
+  return { versionId: id, master: bundle ? resolveBundle(ctx.baseMaster, bundle).master : ctx.baseMaster };
+}
+async function bundleOf(ctx: AdminContext, id: string): Promise<ConfigBundle> {
+  if (id === BASE_VERSION_ID) return {};
+  return (await ctx.ops.config.get(id)).bundle;
+}
+
+/** REQ-OPS-027: the gacha calendar of one resolved master (game-day aware), as the console draws it. */
+export function gachaCalendar(m: Master, now: number) {
+  const rule = dayRule(m);
+  const lastDay = (endAtMs: number | undefined) => (endAtMs !== undefined ? gameDayKey(endAtMs - 1, rule) : null);
+  const chain = (group: string) => {
+    const out = [group];
+    let cur = group;
+    for (let i = 0; i < 16; i++) {
+      const g = m.gacha.pityGroups[cur];
+      if (!g || g.endAtMs === undefined) break;
+      cur = g.convertTo ?? 'standard';
+      if (out.includes(cur)) break;
+      out.push(cur);
+    }
+    return out;
+  };
+  return {
+    serverNowMs: now, today: gameDayKey(now, rule), dayRollover: rule,
+    banners: m.gacha.banners.map((b) => {
+      const pk = b.pickupTemplateId ? m.templateById.get(b.pickupTemplateId) : undefined;
+      return {
+        id: b.id, name: b.name, currency: b.currency, priceSingle: b.priceSingle, priceTen: b.priceTen,
+        status: bannerStatus(b, now), startAtMs: b.startAtMs ?? null, endAtMs: b.endAtMs ?? null, announceAtMs: b.announceAtMs ?? null,
+        firstDay: b.startAtMs !== undefined ? gameDayKey(b.startAtMs, rule) : null, lastDay: lastDay(b.endAtMs),
+        pityGroup: b.pityGroup, pityLabel: pityLabel(m, b.pityGroup), pityCost: m.gacha.pityGroups[b.pityGroup]?.cost ?? null,
+        pityTargets: b.pityTargets.map((id) => ({ templateId: id, name: m.templateById.get(id)?.name ?? id })),
+        pickup: pk ? { templateId: pk.id, name: pk.name, rarity: pk.rarity } : null,
+        stepUp: b.stepUp ? { afterLast: b.stepUp.afterLast, prices: b.stepUp.steps.map((x) => x.priceTen), finalSlotSteps: b.stepUp.steps.flatMap((x, i) => (x.finalSlotPool ? [i + 1] : [])) } : null,
+      };
+    }),
+    pityGroups: Object.entries(m.gacha.pityGroups).map(([id, g]) => ({
+      id, label: pityLabel(m, id), cost: g.cost, endAtMs: g.endAtMs ?? null, lastDay: lastDay(g.endAtMs),
+      convertTo: g.endAtMs !== undefined ? g.convertTo ?? 'standard' : null, finalGroup: finalPityGroup(m, id), chain: chain(id),
+      banners: m.gacha.banners.filter((b) => b.pityGroup === id).map((b) => b.id),
+      carryOver: carryOverRule(m, id),
+    })),
+  };
+}
+
+/** Support flags as stored (`kind:detail…`), split for display. */
+export function parseSupportFlags(flags: string[]) {
+  const groupOf = (kind: string) => (kind.startsWith('invite_') ? 'invite' : kind.startsWith('ads_') ? 'ads'
+    : /^(promotion_not_reached|once_duplicate|pass_duplicate|allowance_overlap|purchase_while_)/.test(kind) ? 'purchase'
+      : kind.startsWith('team_feed') ? 'social' : 'support');
+  return flags.map((raw) => {
+    const i = raw.indexOf(':');
+    const kind = i < 0 ? raw : raw.slice(0, i);
+    return { raw, kind, group: groupOf(kind), detail: i < 0 ? '' : raw.slice(i + 1) };
+  });
+}
+const COMP_STATUSES: CompensationStatus[] = ['pending', 'approved', 'executed', 'rejected', 'expired'];
+
+/** Pays an approved compensation (idempotent per request on the player side) and records the outcome on the request. */
+async function payCompensation(ctx: AdminContext, req: CompensationRequest, now: number) {
+  const actor = req.needsApproval ? `${req.requestedBy}, approved by ${req.decidedBy}` : req.requestedBy;
+  try {
+    const payment = await ctx.player(req.playerId).invoke('adminGrant', req.playerId, req.grant, req.reason, actor, compPaymentKey(req.opKey));
+    return { request: await comps(ctx).executed(req.id, null, now), payment };
+  } catch (e) {
+    await comps(ctx).executed(req.id, e instanceof AppError ? e.code : 'INTERNAL', now);
+    throw e;
+  }
+}
 
 interface Outcome { result: unknown; target?: string | null; before?: unknown; after?: unknown }
 interface AdminRoute {
@@ -111,7 +221,43 @@ export const adminRoutes: AdminRoute[] = [
   // ---- remote config (REQ-OPS-002..007) ----
   { method: 'GET', path: '/v1/admin/config', role: 'viewer', write: false, action: 'config.list', handler: async (r) => ({ result: await r.ctx.ops.config.list(r.now) }) },
   { method: 'GET', path: '/v1/admin/config/versions/:id', role: 'viewer', write: false, action: 'config.view', handler: async (r) => ({ result: await r.ctx.ops.config.get(r.params.id!), target: `config:${r.params.id}` }) },
-  { method: 'POST', path: '/v1/admin/config/validate', role: 'viewer', write: false, action: 'config.validate', handler: async (r) => ({ result: await r.ctx.ops.config.validate(r.body.bundle) }) },
+  { method: 'POST', path: '/v1/admin/config/validate', role: 'viewer', write: false, action: 'config.validate', handler: async (r) => {
+    const out = await r.ctx.ops.config.validate(r.body.bundle);
+    return { result: { ...out, ok: out.problems.length === 0, groups: groupProblems(out.problems) } };
+  } },
+  // REQ-OPS-008: dry run of an activation / rollback / cancellation (same checks as the real call, nothing stored)
+  { method: 'POST', path: '/v1/admin/config/dry-run', role: 'viewer', write: false, action: 'config.dryrun', handler: async (r) => {
+    const op = parse(z.discriminatedUnion('kind', [
+      z.object({ kind: z.literal('activate'), versionId: z.string().min(1).max(64), at: z.number().int().optional() }).strict(),
+      z.object({ kind: z.literal('rollback'), versionId: z.string().min(1).max(64).nullable().default(null) }).strict(),
+      z.object({ kind: z.literal('cancel'), activationId: z.string().min(1).max(64) }).strict(),
+    ]), r.body.op) as DryRunOp;
+    const out = await r.ctx.ops.config.dryRun(op, r.principal.id, r.now);
+    return { result: { ...out, groups: groupProblems(out.problems) }, target: 'versionId' in op && op.versionId ? `config:${op.versionId}` : null };
+  } },
+  // REQ-OPS-009: path-level diff of two stored bundles (`base` = the shipped master, an empty bundle)
+  { method: 'GET', path: '/v1/admin/config/diff', role: 'viewer', write: false, action: 'config.diff', handler: async (r) => {
+    const from = r.query.get('from'), to = r.query.get('to');
+    if (!from || !to) throw new AppError('BAD_REQUEST', 'from and to are required (version ids or base)');
+    const [a, b] = await Promise.all([bundleOf(r.ctx, from), bundleOf(r.ctx, to)]);
+    const changes = bundleDiff(a, b);
+    return { result: { from, to, changes: changes.slice(0, 500), total: changes.length, truncated: changes.length > 500 } };
+  } },
+  // ---- gacha calendar & odds preview (REQ-OPS-027) ----
+  { method: 'GET', path: '/v1/admin/gacha/calendar', role: 'viewer', write: false, action: 'gacha.calendar', handler: async (r) => {
+    const { versionId, master } = await masterFor(r.ctx, r.query.get('versionId'), r.now);
+    return { result: { versionId, ...gachaCalendar(master, r.now) } };
+  } },
+  /** The odds page exactly as players get it from GET /v1/gacha/:bannerId/odds, for any banner of any version (also hidden / future ones). */
+  { method: 'GET', path: '/v1/admin/gacha/:bannerId/odds', role: 'viewer', write: false, action: 'gacha.odds.preview', handler: async (r) => {
+    const { versionId, master } = await masterFor(r.ctx, r.query.get('versionId'), r.now);
+    return { result: { versionId, odds: oddsDisclosure(master, findBanner(master, r.params.bannerId!)) } };
+  } },
+  // ---- events (REQ-EVENT-*) ----
+  { method: 'GET', path: '/v1/admin/events', role: 'viewer', write: false, action: 'events.list', handler: async (r) => {
+    const { versionId, master } = await masterFor(r.ctx, r.query.get('versionId'), r.now);
+    return { result: { versionId, serverNowMs: r.now, events: master.events.map((ev) => ({ id: ev.id, name: ev.name, startAtMs: ev.startAtMs, endAtMs: ev.endAtMs, status: eventStatus(ev, r.now), trackIds: ev.trackIds, fee: ev.fee, maxPlayers: ev.rules.maxPlayers, entry: ev.entry })), tracks: master.tracks.map((t) => ({ id: t.id, surface: t.surface, distanceM: t.distanceM })) } };
+  } },
   { method: 'POST', path: '/v1/admin/config/versions', role: 'operator', write: true, action: 'config.stage', handler: async (r) => {
     const b = parse(z.object({ bundle: z.record(z.string(), z.unknown()), note: z.string().max(500).default(''), reason: z.string() }), r.body);
     const out = await r.ctx.ops.config.stage(b.bundle as ConfigBundle, r.principal.id, b.note, r.now);
@@ -135,15 +281,28 @@ export const adminRoutes: AdminRoute[] = [
   } },
 
   // ---- support (REQ-OPS-020..025) ----
+  // REQ-OPS-020: find a player by invite code (the code a player reads out to support)
+  { method: 'GET', path: '/v1/admin/players/lookup', role: 'viewer', write: false, action: 'player.lookup', handler: async (r) => {
+    const code = normalizeInviteCode(r.query.get('inviteCode') ?? '');
+    if (!code) throw new AppError('BAD_REQUEST', 'inviteCode is not a well-formed invite code');
+    if (!r.ctx.inviteLookup) throw new AppError('NOT_FOUND', 'invite codes are not available');
+    const playerId = await r.ctx.inviteLookup(code);
+    if (!playerId) throw new AppError('NOT_FOUND', 'no player holds this invite code');
+    return { result: { playerId, inviteCode: code }, target: `player:${playerId}` };
+  } },
   { method: 'GET', path: '/v1/admin/players/:playerId', role: 'viewer', write: false, action: 'player.view', handler: async (r) => {
     const id = parse(pid, r.params.playerId);
-    const [state, integrity] = await Promise.all([r.ctx.player(id).invoke('adminView', id), r.ctx.ops.integrity.view(id, r.now)]);
-    return { result: { state, integrity }, target: `player:${id}` };
+    const [state, integrity, compensations] = await Promise.all([
+      r.ctx.player(id).invoke('adminView', id), r.ctx.ops.integrity.view(id, r.now),
+      r.ctx.ops.compensations ? r.ctx.ops.compensations.list({ playerId: id, limit: 20 }, r.now) : Promise.resolve([]),
+    ]);
+    return { result: { state, integrity, flags: parseSupportFlags(state.supportFlags), compensations }, target: `player:${id}` };
   } },
   { method: 'POST', path: '/v1/admin/players/:playerId/grants', role: 'operator', write: true, action: 'player.grant', handler: async (r) => {
     const id = parse(pid, r.params.playerId);
     const b = parse(z.object({ grant: grantSchema, opKey: opKeySchema, reason: z.string() }), r.body);
     checkGrantLimits(b.grant, r.principal.role);
+    if (needsApproval(b.grant)) throw new AppError('FORBIDDEN', `over ${COMP_APPROVAL_THRESHOLD.freeCoins} coins / ${COMP_APPROVAL_THRESHOLD.itemQty} per item needs two-person approval: POST /v1/admin/compensations`);
     const out = await r.ctx.player(id).invoke('adminGrant', id, b.grant, r.reason!, r.principal.id, b.opKey);
     return { result: out, target: `player:${id}`, before: out.before, after: out.after };
   } },
@@ -154,6 +313,7 @@ export const adminRoutes: AdminRoute[] = [
       segment: z.object({ kind: z.literal('leaderboard'), seasonId: z.string().regex(/^\d{4}-\d{2}$/), board: z.string().regex(/^(class-[A-Z]|rating)$/), offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(BULK_MAX_RECIPIENTS).default(BULK_MAX_RECIPIENTS) }).strict().optional(),
     }), r.body);
     checkGrantLimits(b.grant, r.principal.role);
+    if (needsApproval(b.grant)) throw new AppError('FORBIDDEN', `a bulk grant per recipient is capped at ${COMP_APPROVAL_THRESHOLD.freeCoins} coins / ${COMP_APPROVAL_THRESHOLD.itemQty} per item`);
     if (!b.playerIds === !b.segment) throw new AppError('BAD_REQUEST', 'give exactly one of playerIds or segment');
     let ids = b.playerIds ?? [];
     let total: number | null = null;
@@ -197,6 +357,35 @@ export const adminRoutes: AdminRoute[] = [
     return { result: out, target: `player:${id}`, before: out.before, after: out.after };
   } },
 
+  // ---- compensation with the two-person rule (REQ-OPS-026) ----
+  { method: 'GET', path: '/v1/admin/compensations', role: 'viewer', write: false, action: 'compensation.list', handler: async (r) => {
+    const st = r.query.get('status');
+    if (st && !(COMP_STATUSES as string[]).includes(st)) throw new AppError('BAD_REQUEST', `status must be one of ${COMP_STATUSES.join('|')}`);
+    const playerId = r.query.get('playerId');
+    const q: CompensationQuery = { limit: num(r.query, 'limit', 50), ...(st ? { status: st as CompensationStatus } : {}), ...(playerId ? { playerId } : {}) };
+    return { result: { requests: await comps(r.ctx).list(q, r.now), threshold: COMP_APPROVAL_THRESHOLD, hardCap: COMP_HARD_CAP } };
+  } },
+  { method: 'POST', path: '/v1/admin/compensations', role: 'operator', write: true, action: 'compensation.request', handler: async (r) => {
+    const b = parse(z.object({ playerId: pid, grant: grantSchema, opKey: opKeySchema, reason: z.string() }).strict(), r.body);
+    const { request, created } = await comps(r.ctx).create({ opKey: b.opKey, playerId: b.playerId, grant: b.grant, reason: r.reason! }, r.principal, r.now);
+    const target = `player:${b.playerId}`;
+    if (request.status !== 'approved') return { result: { request, created, payment: null }, target, after: { compensation: request.id, status: request.status, grant: request.grant } };
+    const paid = await payCompensation(r.ctx, request, r.now);
+    return { result: { ...paid, created }, target, before: paid.payment.before, after: { compensation: request.id, status: paid.request.status, ...paid.payment.after } };
+  } },
+  { method: 'POST', path: '/v1/admin/compensations/:id/approve', role: 'admin', write: true, action: 'compensation.approve', handler: async (r) => {
+    const b = parse(z.object({ note: z.string().trim().max(500).default(''), reason: z.string() }).strict(), r.body);
+    const prev = await comps(r.ctx).get(r.params.id!, r.now);
+    const approved = await comps(r.ctx).approve(r.params.id!, r.principal, b.note || r.reason!, r.now);
+    const paid = await payCompensation(r.ctx, approved, r.now);
+    return { result: paid, target: `player:${approved.playerId}`, before: { compensation: prev.id, status: prev.status, requestedBy: prev.requestedBy, ...paid.payment.before }, after: { compensation: prev.id, status: paid.request.status, approvedBy: r.principal.id, ...paid.payment.after } };
+  } },
+  { method: 'POST', path: '/v1/admin/compensations/:id/reject', role: 'operator', write: true, action: 'compensation.reject', handler: async (r) => {
+    const b = parse(z.object({ note: z.string().trim().max(500).default(''), reason: z.string() }).strict(), r.body);
+    const rej = await comps(r.ctx).reject(r.params.id!, r.principal, b.note || r.reason!, r.now);
+    return { result: { request: rej }, target: `player:${rej.playerId}`, before: { compensation: rej.id, status: 'pending' }, after: { compensation: rej.id, status: rej.status } };
+  } },
+
   // ---- anti-cheat & reports (REQ-OPS-030..035) ----
   { method: 'GET', path: '/v1/admin/integrity/players', role: 'viewer', write: false, action: 'integrity.list', handler: async (r) => {
     const st = r.query.get('status');
@@ -223,6 +412,7 @@ export const adminRoutes: AdminRoute[] = [
   } },
   // ---- dead letters (REQ-OPS-041) ----
   // ---- tournaments (REQ-TOUR-001/010) ----
+  { method: 'GET', path: '/v1/admin/tournaments', role: 'viewer', write: false, action: 'tournament.list', handler: async (r) => ({ result: await tours(r.ctx).list() }) },
   { method: 'POST', path: '/v1/admin/tournaments', role: 'operator', write: true, action: 'tournament.create', handler: async (r) => {
     const out = (await tours(r.ctx).adminCreate(r.body.tournament, r.principal.id)) as { id: string };
     return { result: out, target: `tournament:${out.id}`, after: r.body.tournament };
@@ -313,13 +503,32 @@ function matchPath(path: string, pattern: string): Record<string, string> | null
   return params;
 }
 
-const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
+const SECURITY_HEADERS = { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer' };
 
 /**
- * Admin API (REQ-OPS-010..014): authenticate → role check → rate limit → run → audit (success and failure).
- * Writes require a `reason`. Reads are audited too (who looked at which player).
+ * REQ-OPS-015: CORS for the ops console. Only origins listed in ADMIN_CONSOLE_ORIGINS get CORS headers; credentials are
+ * never allowed (the console sends a bearer token, no cookies), so another site can neither read responses nor ride a
+ * session. Unlisted origins get no CORS headers at all and the browser blocks the call.
+ */
+export function corsHeaders(req: Request, origins: readonly string[] | undefined): Record<string, string> | null {
+  const origin = req.headers.get('origin');
+  if (!origin || !origins?.includes(origin)) return null;
+  return {
+    'access-control-allow-origin': origin, vary: 'Origin',
+    'access-control-allow-methods': 'GET, POST, PUT', 'access-control-allow-headers': 'authorization, content-type',
+    'access-control-max-age': '600',
+  };
+}
+
+/**
+ * Admin API (REQ-OPS-010..015): authenticate → role check → rate limit → run → audit (success and failure).
+ * Writes require a `reason` and a JSON body (`content-type: application/json`, which also forces a CORS preflight).
+ * Reads are audited too (who looked at which player).
  */
 export async function handleAdmin(req: Request, ctx: AdminContext): Promise<Response> {
+  const cors = corsHeaders(req, ctx.consoleOrigins);
+  if (req.method === 'OPTIONS') return new Response(null, { status: cors ? 204 : 403, headers: { ...SECURITY_HEADERS, ...(cors ?? {}) } });
+  const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', ...SECURITY_HEADERS, ...(cors ?? {}) } });
   const url = new URL(req.url);
   const now = (ctx.clock ?? Date.now)();
   let principal: AdminPrincipal | null = null;
@@ -327,6 +536,8 @@ export async function handleAdmin(req: Request, ctx: AdminContext): Promise<Resp
   let params: Record<string, string> = {};
   let reason: string | null = null;
   try {
+    // a browser on an unlisted origin never gets here with a token it could read, but refuse it outright anyway
+    if (req.headers.get('origin') && !cors && ctx.consoleOrigins?.length) throw new AppError('FORBIDDEN', 'origin not allowed');
     principal = await ctx.authenticateAdmin(req);
     let methodMismatch = false;
     for (const r of adminRoutes) {
@@ -340,6 +551,7 @@ export async function handleAdmin(req: Request, ctx: AdminContext): Promise<Resp
     if (!route) return json({ error: { code: methodMismatch ? 'BAD_REQUEST' : 'NOT_FOUND', message: methodMismatch ? 'method not allowed' : 'NOT_FOUND' } }, methodMismatch ? 405 : 404);
     requireRole(principal, route.role);
     await ctx.ops.admit(principal.id, route.write ? 'write' : 'read', now);
+    if (route.write && !/^application\/json\b/i.test(req.headers.get('content-type') ?? '')) throw new AppError('BAD_REQUEST', 'writes need content-type: application/json');
     let body: Record<string, unknown> = {};
     if (req.method !== 'GET') {
       try {

@@ -18,3 +18,6 @@ coverage/
 # Figma gallery build outputs
 tools/figma-gallery/site/img/
 tools/figma-gallery/site/data/
+
+# Ops console build + e2e screenshots
+tools/ops-console/e2e-screenshots/

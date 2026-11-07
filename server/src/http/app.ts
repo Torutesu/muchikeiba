@@ -126,6 +126,12 @@ export interface AppContext {
   /** Live-ops backend (REQ-OPS-*). When present, /v1/admin/* is served by http/admin.ts with roles and audit. */
   ops?: OpsApi;
   authenticateAdmin?(req: Request): Promise<AdminPrincipal>;
+  /** The shipped master before remote config (admin gacha calendar / odds preview resolve versions on it). Defaults to `master`. */
+  baseMaster?: Master;
+  /** REQ-OPS-020: admin lookup of a player by invite code (the invite directory). */
+  inviteLookup?(code: string): Promise<string | null>;
+  /** REQ-OPS-015: ops console origins allowed by CORS on /v1/admin/* (wrangler var ADMIN_CONSOLE_ORIGINS, comma-separated). */
+  adminConsoleOrigins?: readonly string[];
   /** Active remote config summary for clients (REQ-OPS-007). */
   configInfo?(): Promise<ClientConfigInfo>;
   /**
@@ -706,6 +712,9 @@ export const handle: Handler = async (req, _p, ctx) => {
       ops: ctx.ops, authenticateAdmin: (r) => ctx.authenticateAdmin!(r), player: ctx.player, leaderboard: ctx.leaderboard,
       paidBalance: () => ctx.paidBalance(), replay: (id) => ctx.race.replay(id), ...(ctx.clock ? { clock: ctx.clock } : {}),
       ...(ctx.tournaments ? { tournaments: ctx.tournaments } : {}),
+      baseMaster: ctx.baseMaster ?? ctx.master,
+      ...(ctx.inviteLookup ? { inviteLookup: ctx.inviteLookup } : {}),
+      ...(ctx.adminConsoleOrigins ? { consoleOrigins: ctx.adminConsoleOrigins } : {}),
     });
   }
   try {

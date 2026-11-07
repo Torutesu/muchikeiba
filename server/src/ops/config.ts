@@ -433,6 +433,83 @@ export class ConfigStore {
     const v = this.get(a.versionId);
     return { versionId: v.id, hash: v.hash, activatedAt: a.at, bundle: knownHash === v.hash ? null : v.bundle, nextChangeAt: this.pending(now)[0]?.at ?? null };
   }
+
+  /** REQ-OPS-008: dry run of an activation / rollback / cancellation (nothing is stored). */
+  dryRun(op: DryRunOp, by: string, now: number) { return configDryRun(this.repo, this.base, op, by, now); }
+}
+
+/** A read-only view of a repo: writes land in a scratch overlay, so a dry run can call the real operations. */
+class DryRunRepo implements ConfigRepo {
+  private acts = new Map<string, Activation>();
+  private seq = 0;
+  constructor(private readonly inner: ConfigRepo) {}
+  versions() { return this.inner.versions(); }
+  version(id: string) { return this.inner.version(id); }
+  versionByHash(hash: string) { return this.inner.versionByHash(hash); }
+  putVersion() { /* never stored */ }
+  activations() {
+    const base = this.inner.activations().map((a) => this.acts.get(a.id) ?? a);
+    return [...base, ...[...this.acts.values()].filter((a) => !base.some((b) => b.id === a.id))];
+  }
+  putActivation(a: Activation) { this.acts.set(a.id, a); }
+  nextSeq() { return -++this.seq; } // negative: never equal to a real id
+}
+
+export type DryRunOp =
+  | { kind: 'activate'; versionId: string; at?: number | undefined }
+  | { kind: 'rollback'; versionId: string | null }
+  | { kind: 'cancel'; activationId: string };
+export interface DryRunResult { ok: boolean; problems: string[]; effect: Activation | null }
+
+/**
+ * Admin dry run of an activation, a rollback or a cancellation (REQ-OPS-008): runs the real ConfigStore operation on a
+ * scratch overlay of the repo (nothing is stored) and reports every problem — the bundle re-validated against the current
+ * base master, and the game-day rule chain over the timeline the change would produce (REQ-DAY-002).
+ */
+export function configDryRun(repo: ConfigRepo, base: Master, op: DryRunOp, by: string, now: number): DryRunResult {
+  const store = new ConfigStore(new DryRunRepo(repo), base);
+  try {
+    const effect = op.kind === 'activate' ? store.schedule(op.versionId, op.at ?? now, by, 'dry run', now)
+      : op.kind === 'rollback' ? store.rollback(op.versionId, by, 'dry run', now)
+        : store.cancel(op.activationId, now);
+    return { ok: true, problems: [], effect: effect.id.startsWith('act_-') ? { ...effect, id: '(dry run)' } : effect };
+  } catch (e) {
+    if (!(e instanceof AppError)) throw e;
+    return { ok: false, problems: e.message.split('; '), effect: null };
+  }
+}
+
+export type ProblemGroup = 'dayRule' | 'assetCatalog' | 'gacha' | 'ruleset' | 'other';
+/** Groups validator messages for the ops console (the messages themselves are unchanged). */
+export function groupProblems(problems: string[]): Record<ProblemGroup, string[]> {
+  const out: Record<ProblemGroup, string[]> = { dayRule: [], assetCatalog: [], gacha: [], ruleset: [], other: [] };
+  for (const p of problems) {
+    if (/dayRollover|game day|pending activation/i.test(p)) out.dayRule.push(p);
+    else if (/^assets[:.]|catalogVersion/.test(p)) out.assetCatalog.push(p);
+    else if (/gacha|banner|pity|ppm|step-?up|pool|ticket/i.test(p)) out.gacha.push(p);
+    else if (/ruleset/i.test(p)) out.ruleset.push(p);
+    else out.other.push(p);
+  }
+  return out;
+}
+
+export interface DiffRow { path: string; before: unknown; after: unknown }
+/** A flat JSON diff (path → before/after) between two bundles, for the console's version compare. */
+export function bundleDiff(a: unknown, b: unknown, path = ''): DiffRow[] {
+  const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+  if (isObj(a) && isObj(b)) {
+    const keys = [...new Set([...Object.keys(a), ...Object.keys(b)])].sort();
+    return keys.flatMap((k) => bundleDiff(a[k], b[k], path ? `${path}.${k}` : k));
+  }
+  if (Array.isArray(a) && Array.isArray(b)) {
+    // lists of objects with ids (banners, events, tracks) are compared by id
+    const ids = (x: unknown[]) => (x.every((e) => isObj(e) && typeof e.id === 'string') ? new Map(x.map((e) => [(e as { id: string }).id, e])) : null);
+    const ia = ids(a), ib = ids(b);
+    if (ia && ib) return [...new Set([...ia.keys(), ...ib.keys()])].flatMap((k) => bundleDiff(ia.get(k), ib.get(k), `${path}[${k}]`));
+    if (a.length === b.length) return a.flatMap((x, i) => bundleDiff(x, b[i], `${path}[${i}]`));
+  }
+  if (canonicalJson(a ?? null) === canonicalJson(b ?? null)) return [];
+  return [{ path: path || '(root)', before: a ?? null, after: b ?? null }];
 }
 
 export interface ActiveConfigInfo {

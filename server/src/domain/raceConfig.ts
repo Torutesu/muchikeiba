@@ -1,6 +1,6 @@
 import { STAT_KEYS, trackById, type Master, type Stats } from './master.js';
 import type { HorseInstance } from './player.js';
-import { effectiveStats } from './horses.js';
+import { raceStats } from './training.js';
 import { normalizeStats } from './season.js';
 import { buildRuleset } from './ruleset.js';
 import { randInt, randU64Decimal, type Rng } from './rng.js';
@@ -10,8 +10,9 @@ import { capSkill, horseSkill, rulesetSkillCaps, templateSkill, toRaceSkill, typ
 
 export const DEFAULT_NET: NetParams = { tickHz: 20, inputDelayTicks: 3, bundleIntervalTicks: 2, checksumIntervalTicks: 20, disconnectGraceMs: 3000 };
 
+/** REQ-TRAIN-003: base + awakening + training growth; ranked/tournament/time attack normalise it to the class cap below. */
 export function toRaceHorse(m: Master, h: HorseInstance): RaceHorse {
-  return { id: h.id, name: h.name, ...effectiveStats(m, h), style: h.style, distMinM: h.distMinM, distMaxM: h.distMaxM, surface: h.surface, ...aptField(h.goingAptitude), ...skillField(horseSkill(m, h)) };
+  return { id: h.id, name: h.name, ...raceStats(m, h), style: h.style, distMinM: h.distMinM, distMaxM: h.distMaxM, surface: h.surface, ...aptField(h.goingAptitude), ...skillField(horseSkill(m, h)) };
 }
 
 /** REQ-UXS-050: the horse's unique skill as the master defines it (buildRaceConfig caps it for the race). Absent = none. */

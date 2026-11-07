@@ -4,7 +4,8 @@
 # Checks that real races confirm, that the server's final hash equals each bot's own simulation,
 # that a solo ranked race is settled by the real C# verifier, that the stored replay log
 # reproduces the same hash offline, that a tournament (heats → final) and a spectator run end to end, and that a
-# rewarded-ad SSV callback is verified by signature in front of the player's object.
+# rewarded-ad SSV callback is verified by signature in front of the player's object, and that a training session's
+# mini-game taps are re-scored by the server (REQ-TRAIN-*).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VERIFIER_PORT="${VERIFIER_PORT:-8090}"
@@ -101,6 +102,9 @@ $BOT "$BASE" tournament | tee "$LOG_DIR/tournament.jsonl" || fail=1
 
 echo "== 10) rewarded ads: signed SSV callback (ECDSA) → player object (no session: rejected, 200), replay answered the same, tampered/unsigned 401; no offers in the FTUE"
 (cd "$ROOT/server" && npx tsx scripts/ads-ssv-check.ts check "$BASE" "$LOG_DIR") | tee "$LOG_DIR/ads.log" || fail=1
+
+echo "== 11) 調教: start → instant taps refused (422, the server clock) → taps after the mini-game re-scored on the server → growth on the horse, daily mission, keyed retry, 2 per horse a day"
+(cd "$ROOT/server" && npx tsx scripts/training-check.ts "$BASE") | tee "$LOG_DIR/training.log" || fail=1
 
 if [[ $fail -ne 0 ]]; then
   echo "== INTEGRATION FAILED"; echo "--- server log"; tail -50 "$LOG_DIR/server.log"; echo "--- verifier log"; tail -20 "$LOG_DIR/verifier.log"

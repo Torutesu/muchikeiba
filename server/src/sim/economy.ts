@@ -11,6 +11,11 @@ import { AppError } from '../domain/errors.js';
 import { jstMonthKey } from '../domain/time.js';
 import { countOnboarding, ensureOnboarding } from '../domain/onboarding.js';
 import { rewardValue } from '../domain/comeback.js';
+import { raceStats } from '../domain/training.js';
+import { effectiveStats } from '../domain/horses.js';
+import { normalizeStats } from '../domain/season.js';
+import { STAT_KEYS, type Stats } from '../domain/master.js';
+import type { HorseInstance } from '../domain/player.js';
 
 export interface Persona {
   id: string;
@@ -101,6 +106,14 @@ export interface EconomyResult {
   adViews: number;
   adCoins: number;
   adTaAttempts: number;
+  /** REQ-TRAIN-* (E14): training sessions finished and stat points they gave, over the run. */
+  trainingSessions: number;
+  trainedPoints: number;
+  /**
+   * E14: per class (cap), the best ranked stat total over the player's active horses at the end of the run — after the
+   * class normalisation — with the training growth (`trained`) and without it (`untrained`).
+   */
+  rankedTotalByClass: Record<string, { trained: number; untrained: number }>;
   /** Derived. */
   freeCoinsPerActiveDay: number;
   pullsPerMonth: number;
@@ -127,13 +140,13 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
   const repo = new MemoryPlayerRepo();
   const store = new FakeStoreVerifier();
   const rng = seededRng(seed);
-  const svc = new PlayerService(repo, { master, rng: seededRng(seed + 1000), clock: () => now, verifiers: { fake: store } });
+  const svc = new PlayerService(repo, { master, rng: seededRng(seed + 1000), trainingRng: seededRng(seed + 2000), clock: () => now, verifiers: { fake: store } });
   const id = `sim_${persona.id}`;
   let key = 0;
   const k = () => `c:sim:${key++}`;
   const r: EconomyResult = {
     persona: persona.id, days, activeDays: 0, freeCoinsEarned: 0, paidCoinsBought: 0, yenSpent: 0, pulls: 0, ssr: 0, sr: 0,
-    pityExchanges: 0, firstPityDay: null, breedingMaterial: 0, gachaTickets: 0, ticketPulls: 0, firstWinCoins: 0, allowanceCoins: 0, beginnerCoins: 0, beginnerSteps: 0, seasonMissionXp: 0, inviteCoins: 0, inviteTickets: 0, comebackWindows: 0, comebackValue: 0, comebackXp: 0, adViews: 0, adCoins: 0, adTaAttempts: 0, freeCoinsPerActiveDay: 0, pullsPerMonth: 0, ssrPerMonth: 0,
+    pityExchanges: 0, firstPityDay: null, breedingMaterial: 0, gachaTickets: 0, ticketPulls: 0, firstWinCoins: 0, allowanceCoins: 0, beginnerCoins: 0, beginnerSteps: 0, seasonMissionXp: 0, inviteCoins: 0, inviteTickets: 0, comebackWindows: 0, comebackValue: 0, comebackXp: 0, adViews: 0, adCoins: 0, adTaAttempts: 0, trainingSessions: 0, trainedPoints: 0, rankedTotalByClass: {}, freeCoinsPerActiveDay: 0, pullsPerMonth: 0, ssrPerMonth: 0,
   };
   await svc.bootstrap(id);
   await svc.setAge(id, 1990, 1, false);
@@ -199,6 +212,37 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
     else { if (kind === 'breed') ensureOnboarding(st).breedings += 1; countOnboarding(st, kind); }
     await repo.put(st);
   };
+  const total = (st: Stats) => STAT_KEYS.reduce((a, x) => a + st[x], 0);
+  const best = (hs: HorseInstance[]) => [...hs].filter((h) => h.status === 'active').sort((a, b) => total(raceStats(master, b)) - total(raceStats(master, a)));
+  const trainDay = async () => {
+    let tv = await svc.training(id);
+    if (!tv.enabled) return;
+    let slots = tv.slotsLeft;
+    const st0 = await svc.state(id);
+    const order = best(st0.horses);
+    const rotation = ['hill', 'wood', 'awase'];
+    type View = Extract<typeof tv, { enabled: true }>;
+    for (const h of order) {
+      for (let i = 0; i < (tv as View).perHorsePerDay && slots > 0; i++) {
+        const hv = (tv as View).horses.find((x) => x.horseId === h.id)!;
+        if (hv.blocked) break;
+        const menu = hv.fatigue >= 60 ? 'pool' : rotation[(r.trainingSessions + i) % rotation.length]!;
+        const st = await svc.trainingStart(id, h.id, menu, k());
+        now += 7_000;
+        const res = await svc.trainingFinish(id, st.session.sessionId, { taps: st.session.beats.map((b) => b + 100) }, k());
+        tv = res.training;
+        r.trainingSessions++;
+        r.trainedPoints += res.total;
+        slots--;
+      }
+      if (slots <= 0) break;
+    }
+    const top = order[0];
+    if (top && (st0.items['training_apple'] ?? 0) > 0) {
+      const hv = (tv as View).horses.find((x) => x.horseId === top.id);
+      if (hv && hv.fatigue >= 40) await svc.trainingUseItem(id, 'training_apple', top.id, k());
+    }
+  };
   for (let d = 0; d < days; d++) {
     now = start + d * DAY;
     const newSeason = jstMonthKey(now) !== season;
@@ -243,6 +287,10 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
       if ('firstWinBonus' in ar && typeof ar.firstWinBonus === 'number') r.firstWinCoins += ar.firstWinBonus;
       if ('comebackXp' in ar && typeof ar.comebackXp === 'number') r.comebackXp += ar.comebackXp;
     }
+    // REQ-TRAIN-* (E14): every persona uses its training slots on its best horses (2 on the best, the rest on the next),
+    // plays the mini-game at an average level (every beat 100 ms late = "good"), rests a tired horse in the pool and
+    // feeds the apple from the daily mission to the best horse. Training gives no coins, so E1–E13 do not move.
+    await trainDay();
     // REQ-CB-004/005: a returner claims the comeback login day and every comeback mission it can
     const cb = await svc.comeback(id);
     if (cb.window) {
@@ -328,6 +376,11 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
   r.breedingMaterial = s.items['breeding_material'] ?? 0;
   r.gachaTickets = s.items['gacha_ticket'] ?? 0;
   r.freeCoinsPerActiveDay = r.activeDays ? r.freeCoinsEarned / r.activeDays : 0;
+  for (const c of master.progression.classes) {
+    const act = s.horses.filter((h) => h.status === 'active');
+    const pick = (f: (h: HorseInstance) => Stats) => Math.max(0, ...act.map((h) => total(normalizeStats(f(h), c.statCap))));
+    r.rankedTotalByClass[c.id] = { trained: pick((h) => raceStats(master, h)), untrained: pick((h) => effectiveStats(master, h)) };
+  }
   r.pullsPerMonth = (r.pulls - 10) / (days / 30); // excluding the tutorial 10-pull
   r.ssrPerMonth = r.ssr / (days / 30);
   return r;
@@ -350,6 +403,10 @@ export async function simulateAll(master: Master, days = 90, seeds = [1, 2, 3], 
       inviteCoins: avg((x) => x.inviteCoins), inviteTickets: avg((x) => x.inviteTickets),
       comebackWindows: avg((x) => x.comebackWindows), comebackValue: avg((x) => x.comebackValue), comebackXp: avg((x) => x.comebackXp),
       adViews: avg((x) => x.adViews), adCoins: avg((x) => x.adCoins), adTaAttempts: avg((x) => x.adTaAttempts),
+      trainingSessions: avg((x) => x.trainingSessions), trainedPoints: avg((x) => x.trainedPoints),
+      rankedTotalByClass: Object.fromEntries(master.progression.classes.map((c) => [c.id, {
+        trained: avg((x) => x.rankedTotalByClass[c.id]!.trained), untrained: avg((x) => x.rankedTotalByClass[c.id]!.untrained),
+      }])),
       freeCoinsPerActiveDay: avg((x) => x.freeCoinsPerActiveDay), pullsPerMonth: avg((x) => x.pullsPerMonth), ssrPerMonth: avg((x) => x.ssrPerMonth),
     };
   }

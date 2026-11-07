@@ -232,6 +232,19 @@
           }
         ]
       }
+    },
+    {
+      "id": "train1",
+      "kind": "training",
+      "target": 1,
+      "reward": {
+        "items": [
+          {
+            "itemId": "training_apple",
+            "qty": 1
+          }
+        ]
+      }
     }
   ],
   "collectionMissions": [],
@@ -769,6 +782,7 @@
     { "key": "shop", "races": 3 },
     { "key": "season_pass", "races": 3 },
     { "key": "bond", "races": 3 },
+    { "key": "training", "races": 3 },
     { "key": "season", "rankedRaces": 5 },
     { "key": "breeding", "days": 2, "races": 8 },
     { "key": "friends", "days": 2, "races": 10 },
@@ -882,5 +896,29 @@
       { "id": "result_coins", "surface": "result", "title": "動画を見て、もう少しコインを", "dailyCap": 1, "reward": { "freeCoins": 10 }, "adUnitKey": "REWARDED_RESULT" },
       { "id": "ta_attempt", "surface": "time_attack", "title": "動画を見て、タイムアタックをもう1回", "dailyCap": 1, "reward": { "taAttempts": 1 }, "adUnitKey": "REWARDED_TA" }
     ]
+  },
+  "training": {
+    "_note": "REQ-TRAIN-*（docs/spec/requirements.md 22章、contracts/protocol.md §22、docs/spec/balance-targets.md 4.11 E14）。調教は1日 slotsPerDay 回（アカウント単位で、馬の数では増えない）。伸びは馬ごとの素質 potentialByRarity まで（R ≥ SR ≥ SSR：はじめの馬ほど伸びしろが大きい）。ランク戦・大会・タイムアタックはこれまでどおりクラス上限で正規化する（raceConfig.ts）。疲れはどのレースにも影響しない（調教の効率だけ）。調教に効くアイテム（affectsGrowth）は購入・ショップ・パス（無料ラインも：パス＋はレベルを売るため）・イベント・ガチャから出せない（trainingProblems）。ミニゲームの上乗せは最大 +10%（beats × perfectPoints × permillePerPoint = 100‰）。",
+    "enabled": true,
+    "slotsPerDay": 3,
+    "perHorsePerDay": 2,
+    "sessionTtlMs": 600000,
+    "potentialByRarity": { "R": 300, "SR": 240, "SSR": 180 },
+    "perStatCapPermille": 400,
+    "softFloorPermille": 150,
+    "fatigue": { "max": 100, "recoveryPerDay": 40, "restAt": 80, "penaltyPermillePerPoint": 5, "minEfficiencyPermille": 500 },
+    "bond": { "permillePerLevel": 10, "maxPermille": 90 },
+    "menus": [
+      { "id": "hill", "name": "坂路", "baseGain": 6, "fatigue": 30, "weights": { "burst": 2, "guts": 1, "stamina": 1 } },
+      { "id": "wood", "name": "ウッド", "baseGain": 6, "fatigue": 25, "weights": { "speed": 2, "stamina": 1, "temper": 1 } },
+      { "id": "pool", "name": "プール", "baseGain": 3, "fatigue": -20, "weights": { "stamina": 2, "temper": 1 } },
+      { "id": "awase", "name": "併せ馬", "baseGain": 7, "fatigue": 35, "bondMultiplier": 2, "weights": { "guts": 2, "speed": 1, "burst": 1 } }
+    ],
+    "timing": {
+      "beats": 5, "durationMs": 6000, "leadMs": 800, "tailMs": 200, "perfectMs": 60, "goodMs": 150,
+      "perfectPoints": 2, "goodPoints": 1, "strayPenalty": 1, "permillePerPoint": 10, "maxTaps": 10, "minTapGapMs": 80
+    },
+    "items": [ { "itemId": "training_apple", "name": "りんごのおやつ", "fatigueRelief": 30, "affectsGrowth": true } ],
+    "logKeep": 10
   }
 }

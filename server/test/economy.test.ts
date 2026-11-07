@@ -128,6 +128,28 @@ describe('economy targets (90 days, 3 seeds)', () => {
     for (const id of ['f2p', 'light', 'medium', 'allowance']) expect(all[id]!.comebackWindows).toBe(0);
   }, 600_000);
 
+  it('E14 training (REQ-TRAIN-013): time-gated growth, the same for everyone; in ranked it never widens the paid/free gap', async () => {
+    const all = await run();
+    const perDay = (id: string) => all[id]!.trainedPoints / all[id]!.activeDays;
+    // every persona trains every active day with the same slots
+    for (const id of ['f2p', 'light', 'medium', 'allowance']) {
+      expect(all[id]!.trainingSessions / all[id]!.activeDays).toBeGreaterThanOrEqual(2.5);
+      expect(all[id]!.trainedPoints).toBeGreaterThan(0);
+    }
+    // paying never buys more growth: the payer's horses (rarer, less potential) grow at most as fast as the free player's
+    for (const id of ['light', 'medium', 'allowance', 'ads']) expect(perDay(id)).toBeLessThanOrEqual(perDay('f2p') * 1.05);
+    // in ranked (class-normalised stat totals) the gap between the medium payer's and the free player's best horse
+    // after 90 days of training is never wider than without the training, in every class
+    for (const c of m.progression.classes) {
+      const gap = (k: 'trained' | 'untrained') => all.medium!.rankedTotalByClass[c.id]![k] - all.f2p!.rankedTotalByClass[c.id]![k];
+      expect(gap('trained')).toBeLessThanOrEqual(gap('untrained') + 0.5);
+      // and the growth never lifts a horse past the class cap
+      expect(all.f2p!.rankedTotalByClass[c.id]!.trained).toBeLessThanOrEqual(c.statCap);
+    }
+    // training pays no coins: the free player's income is the same as without it (E1 holds above)
+    expect(all.f2p!.paidCoinsBought).toBe(0);
+  }, 600_000);
+
   it('E9 friend races cannot replace ranked play as an income (daily cap ≤ 30% of a free player day)', async () => {
     const r = (await run()).f2p!;
     const maxFriendPerDay = m.progression.friendRewardDailyCap * Math.max(...m.progression.raceFreeCoinsByPlace.friend!);

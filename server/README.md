@@ -71,6 +71,10 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | POST | `/v1/ads/:placementId/start` | 要 | 必須 | 視聴セッションを開く（付与しない。`AD_LIMIT_REACHED` / `NOT_ELIGIBLE` / `RATE_LIMITED`） |
 | GET | `/v1/ads/sessions/:sessionId` | 要 | | セッションの状態（`open`/`rewarded`/`rejected`/`expired`）とウォレット |
 | GET | `/v1/ads/ssv/admob` | 署名 | | 広告ネットワークのサーバー検証コールバック（ECDSA 署名、env `ADS_SSV_KEYS_URL`/`ADS_SSV_KEYS`/`ADS_AD_UNITS`。未設定なら 404） |
+| GET | `/v1/training` | 要 | | 調教：今日の回数・メニュー・馬ごとの伸び／素質／疲れ・開いたままのセッション（期限切れはここでミニゲームなしとして記録）（protocol §22） |
+| POST | `/v1/training/start` | 要 | 必須 | `{horseId, menuId}` 回数を1つ使い、ミニゲームのビートを返す（`TRAINING_LIMIT` / `TRAINING_TIRED` / `TRAINING_POTENTIAL_FULL`） |
+| POST | `/v1/training/:sessionId/finish` | 要 | 必須 | `{taps:[ms…], skipped?}` サーバーが採点し直して伸びを付ける（`TRAINING_INPUT_INVALID` 422 / `TRAINING_SESSION_EXPIRED`） |
+| POST | `/v1/training/items/:itemId/use` | 要 | 必須 | `{horseId}` 疲れを回復するアイテム（デイリーミッションでだけ入手） |
 | POST | `/v1/shop/purchase-intent` | 要 | | `{productId}` ストア購入を始めてよいか（`AGE_REQUIRED` / `GUARDIAN_CONSENT_REQUIRED` / `AGE_LIMIT_EXCEEDED` / `ALREADY_PURCHASED` / `UNSETTLED_DEBT` / `NOT_ELIGIBLE`）。パスは残り日数、コインは初回の無償上乗せも返す（§13.2） |
 | GET | `/v1/shop/store-account` | 要 | | `{appleAppAccountToken, googleObfuscatedAccountId}` 購入時にストアへ渡す値（下記「ストア連携」） |
 | POST | `/v1/shop/purchase` | 要 | （取引IDで自動） | `{platform: apple\|google\|fake, productId, receipt}`。apple＝`Transaction.jwsRepresentation`、google＝`{"purchaseToken":"…"}` |

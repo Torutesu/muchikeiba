@@ -43,6 +43,8 @@ export interface HorseInstance {
   atavism?: { trait: 'style' | 'goingAptitude'; value: string; from: string };
   /** 固有スキル id (REQ-UXS-050): from the template, or inherited by a foal. Absent on a foal = none (see skills.ts horseSkillId). */
   skillId?: string;
+  /** REQ-TRAIN-003: stat points gained from training (training.ts). Counts in races (normalised in ranked), not in breeding. */
+  trained?: Stats;
 }
 
 export interface PurchaseRecord {
@@ -196,6 +198,8 @@ export interface PlayerState {
   comeback?: ComebackState;
   /** REQ-AD-*: rewarded ads — preference, today's counts, sessions, seen transaction ids (created on first use; ads.ts ensureAds). */
   ads?: AdsState;
+  /** REQ-TRAIN-*: today's training slots, the open session, per-horse fatigue and log (training.ts ensureTraining). */
+  training?: import('./training.js').TrainingState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

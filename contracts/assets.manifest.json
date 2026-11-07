@@ -78,7 +78,7 @@
    "fallback": "item/default",
    "description": "アイテムのアイコン",
    "dynamic": false,
-   "count": 26
+   "count": 27
   },
   "banner/gacha": {
    "fallback": "banner/gacha/default",
@@ -274,6 +274,7 @@
   "item/tack_saddlecloth_crimson",
   "item/tack_saddlecloth_navy",
   "item/ticket_sr_plus",
+  "item/training_apple",
   "scene/look/autumn_gold",
   "scene/look/default",
   "scene/look/greenfield",

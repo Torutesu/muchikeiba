@@ -122,7 +122,8 @@ export interface ItemsMaster {
 export interface AgeBand { id: string; minAge: number; maxAge: number; monthlyLimitYen: number | null }
 export interface AgeLimits { status: string; guardianConsentUnderAge: number; bands: AgeBand[] }
 export interface ClassDef { id: string; statCap: number; promotePoints: number | null; demoteBelowPoints: number | null }
-export interface MissionDef { id: string; kind: 'races' | 'wins' | 'top3'; target: number; reward: Reward }
+/** `training` (REQ-TRAIN-011): finished training sessions (training.ts). */
+export interface MissionDef { id: string; kind: 'races' | 'wins' | 'top3' | 'training'; target: number; reward: Reward }
 export interface CollectionMissionDef { id: string; kind: 'collect'; templateIds: string[]; reward: Reward }
 export interface Progression {
   classes: ClassDef[]; seasonPointsByPlace: number[];
@@ -177,6 +178,8 @@ export interface Progression {
   invite?: import('./invite.js').InviteConfig;
   /** REQ-CB-*: returning-player campaign (comeback.ts). Absent = disabled. */
   comeback?: import('./comeback.js').ComebackConfig;
+  /** REQ-TRAIN-*: 調教 (training.ts, validated by trainingProblems). Absent = no training. */
+  training?: import('./training.js').TrainingConfig;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */

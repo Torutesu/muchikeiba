@@ -61,6 +61,7 @@ import {
 import {
   claimComebackLogin, claimComebackMission, comebackView, markComebackWelcomed, markWhatsNewSeen, nextComebackWake, noteActivity, runDueComebackPush, whatsNew,
 } from './comeback.js';
+import { finishTraining, startTraining, trainingTick, trainingView, useTrainingItem } from './training.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
 export interface PlayerRepo {
@@ -101,6 +102,8 @@ export class MemoryPlayerRepo implements PlayerRepo {
 export interface PlayerServiceDeps {
   master: Master;
   rng: Rng;
+  /** REQ-TRAIN-005: the training beat seeds (default: `rng`). The economy sim passes its own so gacha draws stay the same. */
+  trainingRng?: Rng;
   clock: Clock;
   verifiers: Partial<Record<PurchaseRecord['platform'], StoreVerifier>>;
   onPaidBalance?: (snap: PaidBalanceSnapshot) => void | Promise<void>;
@@ -588,6 +591,26 @@ export class PlayerService {
   /** A verified SSV callback (signature checked by src/ads/ssv.ts). Idempotent by the network transaction id. */
   async adReward(id: string, cb: AdCallback) {
     return this.tx(id, `ad:${cb.network}:${cb.transactionId}`, (s, now, emit) => applyAdCallback(this.d.master, s, cb, now, emit));
+  }
+
+  // ---------------------------------------------------------------- 調教 training (REQ-TRAIN-*, training.ts)
+  /** GET /v1/training: slots, menus, each active horse's growth / fatigue; an expired open session is settled here. */
+  training(id: string) { return this.tx(id, null, (s, now, emit) => { trainingTick(this.d.master, s, now, emit); return trainingView(this.d.master, s, now); }); }
+  /** POST /v1/training/start (keyed): uses a slot; the beat schedule comes from a server seed. */
+  async trainingStart(id: string, horseId: string, menuId: string, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => {
+      notWhileDeleting(s);
+      return { ...startTraining(this.d.master, s, horseId, menuId, this.d.trainingRng ?? this.d.rng, now, emit), training: trainingView(this.d.master, s, now) };
+    });
+  }
+  /** POST /v1/training/:sessionId/finish (keyed): the server re-scores the taps against the issued beats. */
+  async trainingFinish(id: string, sessionId: string, input: { taps: number[]; skipped?: boolean }, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => ({ ...finishTraining(this.d.master, s, sessionId, input, now, emit), training: trainingView(this.d.master, s, now) }));
+  }
+  /** POST /v1/training/items/:itemId/use (keyed): fatigue relief on one horse. */
+  async trainingUseItem(id: string, itemId: string, horseId: string, idemKey: string | null) {
+    const key = this.requireKey(idemKey);
+    return this.tx(id, key, (s, now) => ({ ...useTrainingItem(this.d.master, s, itemId, horseId, now, key), training: trainingView(this.d.master, s, now) }));
   }
 
   async claimPass(id: string, track: 'free' | 'premium', level: number, idemKey: string | null) {

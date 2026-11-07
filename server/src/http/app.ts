@@ -56,7 +56,8 @@ export type PlayerMethod =
   | 'inviteView' | 'inviteAttempt' | 'inviteAccept' | 'inviteRevert' | 'inviteCommit' | 'inviteFlag' | 'inviteMilestone' | 'inviteDue' | 'inviteAcked'
   | 'inviteRetryLater' | 'inviteForgetInvitee' | 'inviteForgetInviter' | 'inviteForfeit'
   | 'comeback' | 'comebackClaimLogin' | 'comebackClaimMission' | 'comebackWelcomed' | 'whatsNew' | 'whatsNewSeen'
-  | 'ads' | 'setAdPref' | 'adStart' | 'adSession' | 'adReward';
+  | 'ads' | 'setAdPref' | 'adStart' | 'adSession' | 'adReward'
+  | 'training' | 'trainingStart' | 'trainingFinish' | 'trainingUseItem';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -675,6 +676,22 @@ export const routes: Route[] = [
   { method: 'POST', path: '/v1/ads/:placementId/start', auth: 'player', handler: async (r, p, c, u) => {
     if (!/^[a-z0-9_]{1,32}$/.test(p.placementId!)) throw new AppError('BAD_REQUEST', 'bad placement id');
     return c.player(u).invoke('adStart', u, p.placementId!, idem(r));
+  } },
+  // 調教 training (REQ-TRAIN-*, contracts/protocol.md §22)
+  { method: 'GET', path: '/v1/training', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('training', u) },
+  { method: 'POST', path: '/v1/training/start', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ horseId: z.string().min(1).max(40), menuId: z.string().regex(/^[a-z0-9_]{1,24}$/) }).strict());
+    return c.player(u).invoke('trainingStart', u, b.horseId, b.menuId, idem(r));
+  } },
+  { method: 'POST', path: '/v1/training/:sessionId/finish', auth: 'player', handler: async (r, p, c, u) => {
+    if (!/^tr_[a-z0-9_]{1,40}$/.test(p.sessionId!)) throw new AppError('BAD_REQUEST', 'bad session id');
+    const b = await body(r, z.object({ taps: z.array(z.number().int()).max(40), skipped: z.boolean().optional() }).strict());
+    return c.player(u).invoke('trainingFinish', u, p.sessionId!, b, idem(r));
+  } },
+  { method: 'POST', path: '/v1/training/items/:itemId/use', auth: 'player', handler: async (r, p, c, u) => {
+    if (!/^[a-z0-9_]{1,40}$/.test(p.itemId!)) throw new AppError('BAD_REQUEST', 'bad item id');
+    const b = await body(r, z.object({ horseId: z.string().min(1).max(40) }).strict());
+    return c.player(u).invoke('trainingUseItem', u, p.itemId!, b.horseId, idem(r));
   } },
   // admin
   { method: 'GET', path: '/v1/admin/paid-balance', auth: 'admin', handler: async (_r, _p, c) => c.paidBalance() },

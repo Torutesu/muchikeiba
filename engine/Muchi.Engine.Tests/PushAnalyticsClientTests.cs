@@ -35,7 +35,7 @@ namespace Muchi.Engine.Tests
             var r = Assert.Single(_http.Requests);
             Assert.Equal("PUT", r.Method);
             Assert.Equal("/v1/push/devices", r.Path);
-            Assert.Equal(Canon("{\"token\":\"fcm-token-1\",\"platform\":\"android\"}"), Canon(r.Body));
+            Assert.Equal(Canon("{\"token\":\"fcm-token-1\",\"platform\":\"android\",\"locale\":\"ja\"}"), Canon(r.Body)); // REQ-L10N-007
 
             _http.Requests.Clear();
             _http.Reply(200, "{\"removed\":1,\"devices\":0}");

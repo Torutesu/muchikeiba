@@ -141,3 +141,16 @@ describe('race tickets and orchestration', () => {
     expect(v.a).toMatchObject({ void: true });
   });
 });
+
+describe('ticket HTTP route', () => {
+ it('dispatches the ticket route before banner draws and scopes its idempotency key', async () => {
+  const {c}=ctx();c.player=()=>({invoke:async(method: string,...args:unknown[])=>({method,args})} as unknown as PlayerInvoker);
+  const response=await handle(new Request('https://game.test/v1/gacha/tickets/draw',{method:'POST',headers:{'content-type':'application/json','x-test-user':'ticket-player','idempotency-key':'ticket-one'},body:JSON.stringify({ticketId:'ticket_sr_plus'})}),{},c);
+  expect(response.status).toBe(200);expect(await response.json()).toEqual({method:'drawTicket',args:['ticket-player','ticket_sr_plus','c:/v1/gacha/tickets/draw:ticket-one']});
+ });
+ it('requires authentication and rejects unsupported ticket identifiers', async () => {
+  const {c}=ctx();
+  const request=(auth:boolean)=>new Request('https://game.test/v1/gacha/tickets/draw',{method:'POST',headers:{'content-type':'application/json','idempotency-key':'x',...(auth?{'x-test-user':'p1'}:{})},body:JSON.stringify({ticketId:'unknown'})});
+  expect((await handle(request(false),{},c)).status).toBe(401);expect((await handle(request(true),{},c)).status).toBe(400);
+ });
+});

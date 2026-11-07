@@ -28,7 +28,7 @@ function inspect(index, horseArt) {
     d.remove();
   });
   d.showModal();
-  stage(d.querySelector(".horse-art"), index);
+  stage(d.querySelector(".horse-art"), index % 3);
 }
 export function mountPresentation({ app, current, selected, horseArt }) {
   const inspectButton = app.querySelector("#home-inspect");
@@ -36,7 +36,7 @@ export function mountPresentation({ app, current, selected, horseArt }) {
   if (current === 1 || current === 7) {
     const track = app.querySelector(".track");
     const art = track.querySelector(".horse-art");
-    stage(art, selected, { race: true });
+    stage(art, selected % 3, { race: true });
   }
   observer = new MutationObserver(() => {
     // Dialogs created by detail interactions retain the same 3D art direction.

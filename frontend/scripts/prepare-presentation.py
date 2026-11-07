@@ -15,7 +15,7 @@ for folder,filenames in [('Courses',['spring-course.png'])]:
 # Transcode without changing composition; keep browser transfers small.
 for src in (public/'art').glob('*.png'):
  im=Image.open(src);im.thumbnail((1600,1100),Image.Resampling.LANCZOS);im.save(src.with_suffix('.webp'),'WEBP',quality=88,method=6);src.unlink()
-text=''.join(p.read_text() for p in (front/'src').glob('*.js'))
+text=''.join(p.read_text() for p in list((front/'src').glob('*.js'))+list((front/'src').glob('*.ts')))
 for extra in [front/'scripts/creative-catalog.html',front/'scripts/build-creative.py',front/'design/creative/GUIDE.md']:
  if extra.exists():text+=extra.read_text()
 unicodes=set(range(0x20,0x100))|set(range(0x3000,0x3100))|{ord(c) for c in text}

@@ -10,7 +10,7 @@ import type { Rng } from './rng.js';
 import type { Clock } from './time.js';
 import { seasonIdFor, rollSeason, classDef } from './season.js';
 import { applyRefund, applySubscriptionStatus, applyVerifiedPurchase, checkPurchaseIntent, registerAge, type StoreVerifier, type SubscriptionStatus, type VerifiedReceipt } from './purchase.js';
-import { drawGacha, exchangePity, settlePityGroups } from './gacha.js';
+import { drawGacha, drawTicket, exchangePity, settlePityGroups } from './gacha.js';
 import { awaken, breed, breedingPreview, getHorse, nameHorse, pedigree, retire } from './horses.js';
 import { applyRaceResult, claimLoginBonus, claimMission, claimPass, missionsView, passLevel, type RaceResultForPlayer } from './rewards.js';
 import { toRaceHorse } from './raceConfig.js';
@@ -241,6 +241,10 @@ export class PlayerService {
       emit({ name: 'gacha_draw', s1: bannerId, count, paidCoins: r.spent.paid, freeCoins: r.spent.free, value: r.results.filter((x) => x.rarity === 'SSR').length });
       return { ...r, wallet: playerView(s).wallet };
     });
+  }
+
+  async drawTicket(id: string, ticketId: string, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now) => drawTicket(this.d.master, s, ticketId, this.d.rng, now));
   }
 
   async tutorialDraw(id: string, idemKey: string | null) {

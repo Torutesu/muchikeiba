@@ -6,6 +6,7 @@ export const itemLabels = {
   ticket_sr_plus: "SR以上スカウトチケット",
   gacha_ticket: "スカウトチケット",
   breeding_material: "配合素材",
+  awakening_material: "覚醒素材",
   costume_starter: "スターター勝負服・稲妻",
   costume_season_limited: "シーズン勝負服・炎",
   costume_login: "ログイン勝負服・翼",

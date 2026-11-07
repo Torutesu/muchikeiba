@@ -21,7 +21,7 @@
     "name": "04",
     "title": "無料スカウト",
     "width": 1440,
-    "height": 1035
+    "height": 1459
   },
   {
     "name": "05",
@@ -63,13 +63,13 @@
     "name": "11-horse-stats",
     "title": "馬詳細・能力",
     "width": 810,
-    "height": 730
+    "height": 824
   },
   {
     "name": "12-horse-skill",
     "title": "馬詳細・スキルと適性",
     "width": 810,
-    "height": 808
+    "height": 844
   },
   {
     "name": "13-stable-empty",
@@ -80,8 +80,8 @@
   {
     "name": "14-breeding",
     "title": "配合・開放条件",
-    "width": 810,
-    "height": 589
+    "width": 1040,
+    "height": 996
   },
   {
     "name": "15-race-ready",
@@ -96,16 +96,28 @@
     "height": 358
   },
   {
+    "name": "49-scout-confirm",
+    "title": "スカウト・消費前の確認",
+    "width": 1040,
+    "height": 639
+  },
+  {
+    "name": "50-scout-sealed",
+    "title": "スカウト・未開封",
+    "width": 1040,
+    "height": 992
+  },
+  {
     "name": "17-scout-results",
     "title": "スカウト10頭結果",
-    "width": 810,
-    "height": 695
+    "width": 1040,
+    "height": 992
   },
   {
     "name": "18-scout-info",
     "title": "提供内容",
-    "width": 810,
-    "height": 418
+    "width": 1040,
+    "height": 984
   },
   {
     "name": "19-purchase-review",
@@ -141,7 +153,7 @@
     "name": "24-mobile-stable",
     "title": "厩舎・モバイル",
     "width": 390,
-    "height": 2582
+    "height": 7974
   },
   {
     "name": "25-mobile-race",
@@ -171,7 +183,7 @@
     "name": "29-scout-received",
     "title": "スカウト・初回受取済み",
     "width": 1440,
-    "height": 1069
+    "height": 1136
   },
   {
     "name": "30-season-collection",
@@ -284,6 +296,66 @@
   {
     "name": "48-mobile-pass-progress",
     "title": "パス進行・モバイル",
+    "width": 367,
+    "height": 990
+  },
+  {
+    "name": "51-scout-shortage",
+    "title": "スカウト・コイン不足",
+    "width": 1040,
+    "height": 707
+  },
+  {
+    "name": "57-mobile-scout-reveal",
+    "title": "スカウト開封・モバイル",
+    "width": 367,
+    "height": 990
+  },
+  {
+    "name": "52-horse-record",
+    "title": "馬の記録・覚醒と引退",
+    "width": 1040,
+    "height": 971
+  },
+  {
+    "name": "53-pedigree",
+    "title": "血統・記録をたどる",
+    "width": 1040,
+    "height": 1043
+  },
+  {
+    "name": "54-breeding-forecast",
+    "title": "配合・親と能力予測",
+    "width": 1040,
+    "height": 1260
+  },
+  {
+    "name": "58-mobile-breeding",
+    "title": "配合予測・モバイル",
+    "width": 367,
+    "height": 990
+  },
+  {
+    "name": "55-breeding-confirm",
+    "title": "配合・回数と親の確認",
+    "width": 1040,
+    "height": 809
+  },
+  {
+    "name": "56-new-partner",
+    "title": "誕生・新しい相棒の命名",
+    "width": 1040,
+    "height": 787
+  },
+  {
+    "name": "59-mobile-new-partner",
+    "title": "誕生と命名・モバイル",
+    "width": 367,
+    "height": 877
+  },
+  {
+    "name": "60-mobile-horse-record",
+    "title": "馬の記録・モバイル",
     "width": 367,
     "height": 990
   }

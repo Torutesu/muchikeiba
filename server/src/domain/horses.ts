@@ -1,5 +1,6 @@
 import { AppError, assert } from './errors.js';
-import { STAT_KEYS, type HorseTemplate, type Master, type Rarity, type Sex, type Stats, type Style } from './master.js';
+import { STAT_KEYS } from '../../../contracts/master-values.js';
+import type { HorseTemplate, Master, Rarity, Sex, Stats, Style } from './master.js';
 import type { HorseInstance, PlayerState } from './player.js';
 import type { GoingAptitude } from './schemas.js';
 import { randInt, randRange, type Rng } from './rng.js';

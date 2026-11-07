@@ -97,3 +97,13 @@ describe('idempotency key namespaces (bug review #2)', () => {
     await expect(svc.claimLogin('p9', 'refund:T_1')).rejects.toMatchObject({ code: 'BAD_REQUEST' });
   });
 });
+
+describe('ticket transaction retries', () => {
+ it('reuses the same result without consuming a second ticket', async () => {
+  const {svc,repo}=setup();await svc.bootstrap('ticket-player');
+  const state=JSON.parse(repo.data.get('ticket-player')!);state.items.ticket_sr_plus=1;repo.data.set('ticket-player',JSON.stringify(state));
+  const a=await svc.drawTicket('ticket-player','ticket_sr_plus','c:ticket-one');
+  const b=await svc.drawTicket('ticket-player','ticket_sr_plus','c:ticket-one');
+  expect(b).toEqual(a);expect((await svc.view('ticket-player')).items.ticket_sr_plus).toBe(0);
+ });
+});

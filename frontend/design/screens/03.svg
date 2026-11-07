@@ -86,12 +86,12 @@
 <rect x="983.8125" y="508.09375" width="94" height="24.796875" rx="12.3984375" fill="rgb(237, 240, 226)" stroke="rgb(217, 223, 201)" stroke-width="1" opacity="1"/>
 <text x="994.8125" y="520.97375" fill="rgb(124, 139, 100)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="8px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">あなたの最初の相棒</text>
 <text x="829.5" y="580.32" fill="rgb(33, 58, 50)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="12px" font-weight="500" font-style="normal" letter-spacing="0" opacity="1">相棒の名前 </text>
-<text x="1352.34375" y="578.6" fill="rgb(138, 147, 124)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="10px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">2〜12文字</text>
+<text x="1317.890625" y="578.6" fill="rgb(138, 147, 124)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="10px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">カタカナ2〜9文字</text>
 <defs><clipPath id="03-clip-20"><rect x="829.5" y="597" width="569.5" height="55" rx="5"/></clipPath></defs><g clip-path="url(#03-clip-20)">
 <rect x="829.5" y="597" width="569.5" height="55" rx="5" fill="rgb(255, 254, 249)" stroke="rgb(189, 203, 177)" stroke-width="1" opacity="1"/>
 <text x="849.5" y="630.45" fill="rgb(33, 58, 50)" font-size="17px" font-family="sans-serif">アカツキ</text>
 </g>
-<text x="829.5" y="671.6" fill="rgb(122, 130, 117)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="10px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">4 / 12文字 · あとから変更できます。</text>
+<text x="829.5" y="671.6" fill="rgb(122, 130, 117)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="10px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">アカツキ / 4文字 · あとから変更できます。</text>
 <rect x="829.5" y="705" width="569.5" height="52" rx="5" fill="rgb(20, 47, 39)" stroke="rgb(20, 47, 39)" stroke-width="1" opacity="1"/>
 <text x="851.5" y="732.82" fill="rgb(255, 248, 223)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="12px" font-weight="500" font-style="normal" letter-spacing="0.42px" opacity="1">この名前で、一緒に走る </text>
 <svg x="1359" y="722" width="18" height="18" viewBox="0 0 24 24" color="rgb(214, 186, 120)" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12h16m-6-6 6 6-6 6"></path></svg>

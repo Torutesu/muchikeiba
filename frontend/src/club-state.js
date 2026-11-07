@@ -39,7 +39,7 @@ export function equipped(index) {
 }
 export function equip(index, id) {
   const s = readClub();
-  if (!Number.isInteger(index) || index < 0 || index > 2 || !outfits[id] || (id !== "default" && !s.items[id])) return false;
+  if (!Number.isInteger(index) || index < 0 || index >= 1000 || !outfits[id] || (id !== "default" && !s.items[id])) return false;
   s.outfits[index] = id; write(s); return true;
 }
 export function simulateProduct(p) {
@@ -83,3 +83,5 @@ export function claimEvent(event, index) {
   if (!m || Date.now() < event.startAtMs || Date.now() >= event.endAtMs || amount(s.eventPoints[event.id]) < m.points || s.eventClaims[id]) return false;
   apply(s, m.reward); s.eventClaims[id] = true; write(s); return true;
 }
+
+export function replaceDemoWallet(paid, free, items) { const s=readClub();s.paid=amount(paid);s.items={...items};write(s);localStorage.setItem("muchi-coins",amount(free)); }

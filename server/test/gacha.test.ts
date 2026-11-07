@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bannerProblems, compGachaProblems, drawFromPool, drawGacha, exchangePity, findBanner, oddsDisclosure, rollPulls, validateGacha } from '../src/domain/gacha.js';
+import { bannerProblems, compGachaProblems, drawFromPool, drawGacha, drawTicket, exchangePity, findBanner, oddsDisclosure, rollPulls, validateGacha } from '../src/domain/gacha.js';
 import { PPM_TOTAL, RARITY_ORDER } from '../src/domain/master.js';
 import { seededRng } from '../src/domain/rng.js';
 import { grantFree, grantPaid } from '../src/domain/wallet.js';
@@ -120,4 +120,19 @@ describe('comp gacha guard (REQ-GACHA-008)', () => {
     expect(compGachaProblems([{ id: 'ok', kind: 'collect', templateIds: ['t_akatsuki', 't_ginga'], reward: { freeCoins: 1 } }], banners, new Set(['t_ginga']))).toHaveLength(0);
     expect(compGachaProblems(m.progression.collectionMissions, banners, new Set())).toEqual([]);
   });
+});
+
+describe('awarded scout tickets', () => {
+ it('uses exactly one SR+ ticket, no coins and no pity', () => {
+  const s=freshPlayer();s.items.ticket_sr_plus=2;s.wallet.free=500;
+  const r=drawTicket(m,s,'ticket_sr_plus',seededRng(8),NOW);
+  expect(s.items.ticket_sr_plus).toBe(1);expect(s.wallet.free).toBe(500);expect(s.wallet.paid).toBe(0);
+  expect(r.results).toHaveLength(1);expect(r.results[0]!.rarity).not.toBe('R');expect(r.pityPoints).toBe(0);
+ });
+ it('rejects missing, unknown or debt-blocked tickets before consuming', () => {
+  const s=freshPlayer();expect(code(()=>drawTicket(m,s,'gacha_ticket',seededRng(1),NOW))).toBe('INSUFFICIENT_ITEMS');
+  s.items.ticket_sr_plus=1;s.wallet.debt=1;
+  expect(code(()=>drawTicket(m,s,'ticket_sr_plus',seededRng(1),NOW))).toBe('UNSETTLED_DEBT');expect(s.items.ticket_sr_plus).toBe(1);
+  expect(code(()=>drawTicket(m,s,'other',seededRng(1),NOW))).toBe('BAD_REQUEST');
+ });
 });

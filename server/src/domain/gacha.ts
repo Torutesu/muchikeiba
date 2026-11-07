@@ -1,6 +1,7 @@
 import { AppError, assert } from './errors.js';
 import { templateAppearance, type Appearance } from './visuals.js';
-import { PPM_TOTAL, RARITY_ORDER, type BannerDef, type CollectionMissionDef, type GachaMaster, type HorseTemplate, type Master, type PoolEntry, type Rarity } from './master.js';
+import { PPM_TOTAL, RARITY_ORDER } from '../../../contracts/master-values.js';
+import type { BannerDef, CollectionMissionDef, GachaMaster, HorseTemplate, Master, PoolEntry, Rarity } from './master.js';
 import type { PlayerState } from './player.js';
 import { randInt, type Rng } from './rng.js';
 import { spend } from './wallet.js';
@@ -169,6 +170,18 @@ export function drawGacha(m: Master, s: PlayerState, bannerId: string, count: 1 
   const results = rolls.map((r) => grantPull(m, s, m.templateById.get(r.templateId)!, now, r.guaranteed));
   s.pity[b.pityGroup] = (s.pity[b.pityGroup] ?? 0) + count;
   return { bannerId: b.id, results, spent: paid, pityPoints: s.pity[b.pityGroup]! };
+}
+
+/** Consume one awarded ticket. Tickets never spend coins or accrue pity points. */
+export function drawTicket(m: Master, s: PlayerState, ticketId: string, rng: Rng, now: number) {
+  assert(ticketId === 'gacha_ticket' || ticketId === 'ticket_sr_plus', 'BAD_REQUEST', 'unknown ticket');
+  if (s.wallet.debt > 0 || hasItemDebt(s)) throw new AppError('UNSETTLED_DEBT');
+  assert((s.items[ticketId] ?? 0) >= 1, 'INSUFFICIENT_ITEMS');
+  const b = findBanner(m, 'standard');
+  const templateId = drawFromPool(ticketId === 'ticket_sr_plus' ? b.guaranteePool : b.pool, rng);
+  s.items[ticketId]! -= 1;
+  const result = grantPull(m, s, m.templateById.get(templateId)!, now, ticketId === 'ticket_sr_plus');
+  return { bannerId: b.id, results: [result], spent: { paid: 0, free: 0 }, ticket: ticketId, pityPoints: s.pity[b.pityGroup] ?? 0 };
 }
 
 /** REQ-GACHA-005: exchange pity points for a target. */

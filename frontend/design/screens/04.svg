@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1035" viewBox="0 0 1440 1035"><title>無料スカウト</title><defs><clipPath id="04-clip-1"><rect x="0" y="0" width="1440" height="1034.171875" rx="10"/></clipPath></defs><g clip-path="url(#04-clip-1)">
-<rect x="0" y="0" width="1440" height="1034.171875" rx="10" fill="rgb(247, 246, 240)" stroke="rgb(204, 210, 195)" stroke-width="1" opacity="1"/>
-<rect x="1" y="1" width="174" height="1032.171875" rx="0" fill="rgb(20, 47, 39)" stroke="none" stroke-width="0" opacity="1"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1459" viewBox="0 0 1440 1459"><title>無料スカウト</title><defs><clipPath id="04-clip-1"><rect x="0" y="0" width="1440" height="1458.859375" rx="10"/></clipPath></defs><g clip-path="url(#04-clip-1)">
+<rect x="0" y="0" width="1440" height="1458.859375" rx="10" fill="rgb(247, 246, 240)" stroke="rgb(204, 210, 195)" stroke-width="1" opacity="1"/>
+<rect x="1" y="1" width="174" height="1456.859375" rx="0" fill="rgb(20, 47, 39)" stroke="none" stroke-width="0" opacity="1"/>
 <rect x="51" y="31" width="74" height="85" rx="37" fill="none" stroke="rgba(188, 170, 117, 0.3)" stroke-width="1" opacity="1"/>
 <text x="69.71875" y="74.7" fill="rgb(226, 207, 158)" font-family="Georgia" font-size="45px" font-weight="400" font-style="italic" letter-spacing="0" opacity="1">M</text>
 <text x="75" y="104.6" fill="rgb(226, 207, 158)" font-family="&quot;Club Serif&quot;, serif" font-size="10px" font-weight="400" font-style="normal" letter-spacing="3px" opacity="1">一閃</text>
@@ -25,11 +25,11 @@
 <svg x="30" y="450" width="20" height="20" viewBox="0 0 24 24" color="rgb(166, 179, 155)" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 9h18l-2-6H5ZM4 9v12h16V9M9 21v-7h6v7M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"></path></svg>
 <text x="62" y="461.82" fill="rgb(158, 176, 159)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="12px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">ショップ</text>
 <svg x="133" y="453.5" width="13" height="13" viewBox="0 0 24 24" color="rgb(166, 179, 155)" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m9 5 7 7-7 7"></path></svg>
-<svg x="69.984375" y="867.171875" width="36" height="36" viewBox="0 0 24 24" color="rgb(184, 164, 112)" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4c-5 7-3 13 3 16m11-16c5 7 3 13-3 16M3 8l4 2M2 13l5 1m-3 4 4-1M21 8l-4 2m5 3-5 1m3 4-4-1M9 21h6"></path></svg>
-<text x="52.484375" y="925.771875" fill="rgb(138, 159, 133)" font-family="Georgia" font-size="10px" font-weight="400" font-style="normal" letter-spacing="2px" opacity="1">YOUR NEXT</text>
-<text x="43.421875" y="944.771875" fill="rgb(138, 159, 133)" font-family="Georgia" font-size="10px" font-weight="400" font-style="normal" letter-spacing="2px" opacity="1">GREAT STORY.</text>
-<rect x="17" y="979.171875" width="142" height="32" rx="0" fill="none" stroke="rgba(255, 255, 255, 0.082) rgb(119, 145, 124) rgb(119, 145, 124)" stroke-width="1" opacity="1"/>
-<text x="50.875" y="1007.051875" fill="rgb(119, 145, 124)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="8px" font-weight="400" font-style="normal" letter-spacing="2px" opacity="1">JAPAN · 2026</text>
+<svg x="69.984375" y="1291.859375" width="36" height="36" viewBox="0 0 24 24" color="rgb(184, 164, 112)" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4c-5 7-3 13 3 16m11-16c5 7 3 13-3 16M3 8l4 2M2 13l5 1m-3 4 4-1M21 8l-4 2m5 3-5 1m3 4-4-1M9 21h6"></path></svg>
+<text x="52.484375" y="1350.459375" fill="rgb(138, 159, 133)" font-family="Georgia" font-size="10px" font-weight="400" font-style="normal" letter-spacing="2px" opacity="1">YOUR NEXT</text>
+<text x="43.421875" y="1369.459375" fill="rgb(138, 159, 133)" font-family="Georgia" font-size="10px" font-weight="400" font-style="normal" letter-spacing="2px" opacity="1">GREAT STORY.</text>
+<rect x="17" y="1403.859375" width="142" height="32" rx="0" fill="none" stroke="rgba(255, 255, 255, 0.082) rgb(119, 145, 124) rgb(119, 145, 124)" stroke-width="1" opacity="1"/>
+<text x="50.875" y="1431.739375" fill="rgb(119, 145, 124)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="8px" font-weight="400" font-style="normal" letter-spacing="2px" opacity="1">JAPAN · 2026</text>
 <text x="215" y="44.5" fill="rgb(33, 58, 50)" font-family="&quot;Club Serif&quot;, serif" font-size="25px" font-weight="600" font-style="normal" letter-spacing="3px" opacity="1">ムチ一閃 </text>
 <text x="215" y="70.02" fill="rgb(126, 135, 110)" font-family="&quot;Club Sans&quot;, sans-serif" font-size="7px" font-weight="400" font-style="normal" letter-spacing="1.8px" opacity="1">THE JOCKEY RACING CLUB</text>
 <text x="376.171875" y="48.24" fill="rgb(141, 149, 127)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="9px" font-weight="400" font-style="normal" letter-spacing="1px" opacity="1">CLUB</text>
@@ -97,21 +97,49 @@
 <text x="1306.390625" y="797.975" fill="rgb(214, 188, 125)" font-family="Georgia" font-size="60px" font-weight="400" font-style="italic" letter-spacing="0" opacity="1">10</text>
 <text x="1310.421875" y="836.395" fill="rgb(214, 188, 125)" font-family="&quot;Club Sans&quot;, sans-serif" font-size="7px" font-weight="400" font-style="normal" letter-spacing="3px" opacity="1">PARTNERS</text>
 </g>
-<text x="215" y="917.295" fill="rgb(176, 154, 102)" font-family="Georgia" font-size="22px" font-weight="400" font-style="italic" letter-spacing="0" opacity="1">01</text>
-<text x="251.421875" y="909.835" fill="rgb(65, 88, 62)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="11px" font-weight="500" font-style="normal" letter-spacing="0" opacity="1">一頭ずつ、違う個性</text>
-<text x="251.421875" y="934.771875" fill="rgb(122, 130, 117)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="10px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">脚質や距離適性を知って、相棒を選ぼう。</text>
-<text x="616.328125" y="917.295" fill="rgb(176, 154, 102)" font-family="Georgia" font-size="22px" font-weight="400" font-style="italic" letter-spacing="0" opacity="1">02</text>
-<text x="652.75" y="909.835" fill="rgb(65, 88, 62)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="11px" font-weight="500" font-style="normal" letter-spacing="0" opacity="1">レースで、才能が開く</text>
-<text x="652.75" y="934.771875" fill="rgb(122, 130, 117)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="10px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">能力と操作を組み合わせて、自分の走りへ。</text>
-<text x="1017.65625" y="917.295" fill="rgb(176, 154, 102)" font-family="Georgia" font-size="22px" font-weight="400" font-style="italic" letter-spacing="0" opacity="1">03</text>
-<text x="1054.078125" y="909.835" fill="rgb(65, 88, 62)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="11px" font-weight="500" font-style="normal" letter-spacing="0" opacity="1">出会いは、一度きり</text>
-<text x="1054.078125" y="934.771875" fill="rgb(122, 130, 117)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="10px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">初回無料スカウトは1回だけ受け取れます。</text>
-<rect x="215" y="975.171875" width="1184" height="58" rx="0" fill="none" stroke="rgb(222, 223, 211) rgb(139, 148, 127) rgb(139, 148, 127)" stroke-width="1" opacity="1"/>
-<text x="215" y="1006.051875" fill="rgb(139, 148, 127)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="8px" font-weight="400" font-style="normal" letter-spacing="1px" opacity="1">MUCHI ISSEN </text>
-<text x="283.59375" y="1006.051875" fill="rgb(139, 148, 127)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="8px" font-weight="400" font-style="normal" letter-spacing="1px" opacity="1">®</text>
-<text x="306.390625" y="1005.691875" fill="rgb(164, 171, 152)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="7px" font-weight="400" font-style="normal" letter-spacing="1.5px" opacity="1">RIDE YOUR OWN STORY.</text>
-<rect x="1164.171875" y="1002.171875" width="5" height="5" rx="2.5" fill="rgb(158, 171, 127)" stroke="none" stroke-width="0" opacity="1"/>
-<text x="1177.171875" y="1006.051875" fill="rgb(139, 148, 127)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="8px" font-weight="400" font-style="normal" letter-spacing="1px" opacity="1"> LOCAL PREVIEW </text>
-<text x="1267.859375" y="1006.051875" fill="rgb(192, 197, 183)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="8px" font-weight="400" font-style="normal" letter-spacing="1px" opacity="1">/</text>
-<text x="1290" y="1006.051875" fill="rgb(139, 148, 127)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="8px" font-weight="400" font-style="normal" letter-spacing="1px" opacity="1"> JAPAN · TURF · 2,000m</text>
+<defs><clipPath id="04-clip-23"><rect x="215" y="895.375" width="1184" height="376.6875" rx="7"/></clipPath></defs><g clip-path="url(#04-clip-23)">
+<rect x="215" y="895.375" width="1184" height="376.6875" rx="7" fill="rgb(255, 254, 250)" stroke="rgb(222, 223, 211)" stroke-width="1" opacity="1"/>
+<text x="244" y="931.255" fill="rgb(148, 118, 61)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="8px" font-weight="400" font-style="normal" letter-spacing="2px" opacity="1">THE PADDOCK / ALWAYS A NEW STORY</text>
+<text x="244" y="972.671875" fill="rgb(33, 58, 50)" font-family="&quot;Club Serif&quot;, serif" font-size="25px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">次に惹かれるのは、どんな個性だろう。</text>
+<text x="244" y="1012.631875" fill="rgb(104, 119, 94)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="11px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">常設スカウト。出会った相棒は厩舎へ、重複は覚醒素材に。</text>
+<text x="1316.203125" y="977.01875" fill="rgb(154, 124, 69)" font-family="&quot;Club Serif&quot;, serif" font-size="30px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">0</text>
+<text x="1332.921875" y="982.81875" fill="rgb(154, 124, 69)" font-family="&quot;Club Sans&quot;, sans-serif" font-size="10px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1"> / 100 pt</text>
+<rect x="216" y="1050.0625" width="1182" height="152" rx="0" fill="none" stroke="rgb(222, 223, 211) rgb(33, 58, 50) rgb(33, 58, 50)" stroke-width="1" opacity="1"/>
+<rect x="216" y="1051.0625" width="394" height="151" rx="0" fill="rgb(242, 242, 231)" stroke="none" stroke-width="0" opacity="1"/>
+<text x="240" y="1088.9425" fill="rgb(142, 118, 73)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="8px" font-weight="400" font-style="normal" letter-spacing="2px" opacity="1">SINGLE SCOUT</text>
+<text x="240" y="1129.9825" fill="rgb(33, 58, 50)" font-family="&quot;Club Serif&quot;, serif" font-size="22px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">一頭との出会い</text>
+<text x="240" y="1170.6625" fill="rgb(104, 119, 94)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="10px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">100 コイン →</text>
+<rect x="610" y="1051.0625" width="394" height="151" rx="0" fill="rgb(33, 58, 50)" stroke="none" stroke-width="0" opacity="1"/>
+<text x="634" y="1088.9425" fill="rgb(214, 189, 129)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="8px" font-weight="400" font-style="normal" letter-spacing="2px" opacity="1">TEN PARTNERS</text>
+<text x="634" y="1129.9825" fill="rgb(247, 246, 240)" font-family="&quot;Club Serif&quot;, serif" font-size="22px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">十頭の可能性</text>
+<text x="634" y="1170.6625" fill="rgb(215, 223, 204)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="10px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">1,000 コイン / SR以上1頭以上 →</text>
+<rect x="1004" y="1051.0625" width="394" height="151" rx="0" fill="rgb(242, 242, 231)" stroke="none" stroke-width="0" opacity="1"/>
+<text x="1028" y="1088.9425" fill="rgb(142, 118, 73)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="8px" font-weight="400" font-style="normal" letter-spacing="2px" opacity="1">YOUR TICKETS</text>
+<text x="1028" y="1129.9825" fill="rgb(33, 58, 50)" font-family="&quot;Club Serif&quot;, serif" font-size="22px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">チケットで出会う</text>
+<text x="1028" y="1170.6625" fill="rgb(104, 119, 94)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="10px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">通常 0 / SR以上 0 →</text>
+<rect x="216" y="1202.0625" width="1182" height="69" rx="0" fill="none" stroke="rgb(222, 223, 211) rgb(104, 119, 94) rgb(104, 119, 94)" stroke-width="1" opacity="1"/>
+<text x="244" y="1238.1625" fill="rgb(104, 119, 94)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="10px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">重複による覚醒素材 </text>
+<text x="335.953125" y="1238.1625" fill="rgb(104, 119, 94)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="10px" font-weight="700" font-style="normal" letter-spacing="0" opacity="1">0</text>
+<text x="341.859375" y="1238.1625" fill="rgb(104, 119, 94)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="10px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1"> 個</text>
+<text x="374.109375" y="1238.1625" fill="rgb(113, 130, 99)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="10px" font-weight="400" font-style="normal" letter-spacing="0" opacity="0.46">前回の結果を見る →</text>
+<text x="486.359375" y="1238.1625" fill="rgb(113, 130, 99)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="10px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">提供割合と確定枠 →</text>
+<text x="598.609375" y="1238.1625" fill="rgb(113, 130, 99)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="10px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">ポイント交換 →</text>
+</g>
+<text x="215" y="1341.9825" fill="rgb(176, 154, 102)" font-family="Georgia" font-size="22px" font-weight="400" font-style="italic" letter-spacing="0" opacity="1">01</text>
+<text x="251.421875" y="1334.5225" fill="rgb(65, 88, 62)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="11px" font-weight="500" font-style="normal" letter-spacing="0" opacity="1">一頭ずつ、違う個性</text>
+<text x="251.421875" y="1359.459375" fill="rgb(122, 130, 117)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="10px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">脚質や距離適性を知って、相棒を選ぼう。</text>
+<text x="616.328125" y="1341.9825" fill="rgb(176, 154, 102)" font-family="Georgia" font-size="22px" font-weight="400" font-style="italic" letter-spacing="0" opacity="1">02</text>
+<text x="652.75" y="1334.5225" fill="rgb(65, 88, 62)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="11px" font-weight="500" font-style="normal" letter-spacing="0" opacity="1">レースで、才能が開く</text>
+<text x="652.75" y="1359.459375" fill="rgb(122, 130, 117)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="10px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">能力と操作を組み合わせて、自分の走りへ。</text>
+<text x="1017.65625" y="1341.9825" fill="rgb(176, 154, 102)" font-family="Georgia" font-size="22px" font-weight="400" font-style="italic" letter-spacing="0" opacity="1">03</text>
+<text x="1054.078125" y="1334.5225" fill="rgb(65, 88, 62)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="11px" font-weight="500" font-style="normal" letter-spacing="0" opacity="1">出会いは、一度きり</text>
+<text x="1054.078125" y="1359.459375" fill="rgb(122, 130, 117)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="10px" font-weight="400" font-style="normal" letter-spacing="0" opacity="1">初回無料スカウトは1回だけ受け取れます。</text>
+<rect x="215" y="1399.859375" width="1184" height="58" rx="0" fill="none" stroke="rgb(222, 223, 211) rgb(139, 148, 127) rgb(139, 148, 127)" stroke-width="1" opacity="1"/>
+<text x="215" y="1430.739375" fill="rgb(139, 148, 127)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="8px" font-weight="400" font-style="normal" letter-spacing="1px" opacity="1">MUCHI ISSEN </text>
+<text x="283.59375" y="1430.739375" fill="rgb(139, 148, 127)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="8px" font-weight="400" font-style="normal" letter-spacing="1px" opacity="1">®</text>
+<text x="306.390625" y="1430.379375" fill="rgb(164, 171, 152)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="7px" font-weight="400" font-style="normal" letter-spacing="1.5px" opacity="1">RIDE YOUR OWN STORY.</text>
+<rect x="1164.171875" y="1426.859375" width="5" height="5" rx="2.5" fill="rgb(158, 171, 127)" stroke="none" stroke-width="0" opacity="1"/>
+<text x="1177.171875" y="1430.739375" fill="rgb(139, 148, 127)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="8px" font-weight="400" font-style="normal" letter-spacing="1px" opacity="1"> LOCAL PREVIEW </text>
+<text x="1267.859375" y="1430.739375" fill="rgb(192, 197, 183)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="8px" font-weight="400" font-style="normal" letter-spacing="1px" opacity="1">/</text>
+<text x="1290" y="1430.739375" fill="rgb(139, 148, 127)" font-family="&quot;Club Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="8px" font-weight="400" font-style="normal" letter-spacing="1px" opacity="1"> JAPAN · TURF · 2,000m</text>
 </g></svg>

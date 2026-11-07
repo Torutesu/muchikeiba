@@ -1,0 +1,11 @@
+{
+  "id": "next-chapter",
+  "origin": "image_gen",
+  "generationReference": "exec-29b5648e-456c-463a-88bf-0ef5bec80339",
+  "master": "masters/next-chapter.png",
+  "sha256": "74e72cf895063011972595afe30b6a1fbca32968e8e382abc6f7b794791b7acc",
+  "artDirection": "Premium Japanese equestrian club. Chestnut foal at dawn, forest green / ivory / antique brass. Stable and blurred mother mare. Dark left negative space. No text, logos or people. Painterly cinematic 3D.",
+  "usage": "誕生結果のキービジュアル。個体の毛色・馬体を再現する3Dではなく、出会いのイメージ。",
+  "transparentBackground": false,
+  "prompt": "Premium Japanese equestrian racing club game campaign artwork, 3:2 landscape. Tender editorial illustration, cinematic painterly 3D with realistic soft material and refined warm lighting, coherent forest green #142F27, ivory #F7F6F0, antique brass #B39459. Scene: a beautiful young thoroughbred foal standing confidently on clean golden straw on the RIGHT HALF in a refined old stable at dawn. Slender anatomically plausible legs, elegant chestnut coat with a small ivory forehead marking, curious gentle face, ears upright, no tack on young foal, no exaggerated toy joints. An open dark forest green stable door with brass hinges, distant blurred mother mare silhouette safely behind a timber divider, ivy, warm morning sun shafts. Sentimental sense of a new companion and a family story. LEFT THIRD naturally shaded deep forest negative space for live UI typography, no flat box. Entire foal visible and framed with crop room, eyes and muzzle carefully rendered. Luxurious restrained game key art, nuanced texture, no text, no letters, no numbers, no logo, no watermark, no people. Wide composition for an in-game birth result panel."
+}

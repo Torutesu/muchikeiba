@@ -1,3 +1,5 @@
+import { mountPaddock, openScoutConfirm, openScoutResults, openOdds, openBreeding, openHorseRecord } from "./paddock.js";
+import { collection, roster, validateHorseName } from "./collection.ts";
 import { readClub } from "./club-state.js";
 import { mountClub, openWardrobe } from "./club-ui.js";
 import { icon } from "./icons.js";
@@ -45,18 +47,13 @@ let filter = "all",
   lane = 2,
   stamina = 80,
   raceReward = read("muchi-race-reward", false) === true;
-const stats = [
-  [94, 86, 91, 88],
-  [88, 94, 76, 90],
-  [86, 79, 96, 82],
-];
 const skills = [
   ["直線の一閃", "最後の直線で伸びる、差し脚が持ち味。"],
   ["好位のリズム", "序盤から好位置を取りやすい先行タイプ。"],
   ["ラストスパート", "脚をためて、後方から長い末脚を使う。"],
 ];
 const meter = (label, value) =>
-  `<div class="stat-line"><span>${label}</span><div class="meter"><i style="width:${value}%"></i></div><b>${value}</b></div>`;
+  `<div class="stat-line"><span>${label}</span><div class="meter"><i style="width:${value / 10}%"></i></div><b>${value}</b></div>`;
 const creative = (file, cls = "", alt = "") =>
   `<img class="creative-art ${cls}" src="/creative/${file}" alt="${alt}" width="128" height="128" draggable="false">`;
 const silks = ["crimson", "azure", "violet"];
@@ -91,9 +88,10 @@ export function enhance(ctx) {
     toast,
     selectHorse,
   } = ctx;
+  const stats = horses.map(h=>[h[5].stats.speed,h[5].stats.burst,h[5].stats.stamina,h[5].stats.temper]);
   const names = horses.map((h, i) => (i === 0 ? horse : h[0])),
     chosen = names[selected],
-    rivals = names.filter((_, i) => i !== selected),
+    rivals = names.filter((_, i) => i !== selected).slice(0,2),
     content = app.querySelector("main");
   if (current === 0) {
     const consent = app.querySelector("#consent"),
@@ -113,15 +111,10 @@ export function enhance(ctx) {
       help = app.querySelector("#name-help"),
       button = app.querySelector("#save-name");
     input.setAttribute("aria-describedby", "name-help");
+    input.maxLength=18;
     const validate = () => {
-      const n = Array.from(input.value.trim()).length,
-        invalid = n < 2 || n > 12 || /[<>]/.test(input.value);
-      help.textContent = invalid
-        ? "2〜12文字で入力してください。記号 < > は使用できません。"
-        : `${n} / 12文字 · あとから変更できます。`;
-      help.classList.toggle("field-error", invalid);
-      input.setAttribute("aria-invalid", String(invalid));
-      button.disabled = invalid;
+      try { const name=validateHorseName(input.value);help.textContent=`${name} / ${Array.from(name).length}文字 · あとから変更できます。`;help.classList.remove("field-error");input.setAttribute("aria-invalid","false");button.disabled=false; }
+      catch { help.textContent="カタカナ2〜9文字で入力してください。使用できない名前もあります。";help.classList.add("field-error");input.setAttribute("aria-invalid","true");button.disabled=true; }
     };
     input.oninput = validate;
     validate();
@@ -164,6 +157,8 @@ export function enhance(ctx) {
         .scrollIntoView({ behavior: "smooth", block: "center" });
   }
   if (current === 5) {
+    app.querySelector("#stable-tab b").textContent=horses.length;
+    app.querySelector(".tabs>span").innerHTML=`YOUR COLLECTION <b>${horses.length}頭</b>`;
     const grid = app.querySelector(".horse-grid");
     grid.insertAdjacentHTML(
       "beforebegin",
@@ -185,7 +180,7 @@ export function enhance(ctx) {
         .map((h, i) => ({ h, i }))
         .filter(
           ({ h, i }) =>
-            (filter === "all" || h[1] === filter) && names[i].includes(query),
+            (filter === "all" || h[1] === filter) && names[i].normalize("NFKC").includes(query.normalize("NFKC")),
         )
         .sort((a, b) =>
           sort === "name"
@@ -196,7 +191,7 @@ export function enhance(ctx) {
         list
           .map(
             ({ h, i }) =>
-              `<article class="horse-card rarity-${h[1].toLowerCase()} ${i === selected ? "chosen" : ""}"><div class="card-top"><span>${h[1]}</span><small>${i === selected ? "● 出走馬に選択中" : "PARTNER / 0" + (i + 1)}</small></div>${horseArt("variant-" + i)}<h2>${safe(names[i])}</h2><p>${h[2]}<span>${h[3]}</span></p>${meter("スピード", stats[i][0])}${meter("スタミナ", stats[i][2])}<div class="rating">TOTAL RATING <b>${h[4]}</b></div><div class="card-actions"><button class="small-button" data-detail="${i}">能力・スキル</button><button class="small-button filled" data-pick="${i}" ${selected === i ? "disabled" : ""}>${selected === i ? "選択中" : "出走馬にする"}</button></div></article>`,
+              `<article class="horse-card rarity-${h[1].toLowerCase()} ${i === selected ? "chosen" : ""}"><div class="card-top"><span>${h[1]}</span><small>${i === selected ? "● 出走馬に選択中" : "PARTNER / 0" + (i + 1)}</small></div>${horseArt("variant-" + i)}<h2>${safe(names[i])}</h2><p>${h[2]}<span>${h[3]}</span></p>${meter("スピード", stats[i][0])}${meter("スタミナ", stats[i][2])}<div class="rating">TOTAL RATING <b>${h[4]}</b></div><div class="card-actions"><button class="small-button" data-detail="${i}">能力・スキル</button><button class="small-button filled" data-pick="${i}" ${selected === i || h[5].status === "retired" ? "disabled" : ""}>${h[5].status === "retired" ? "引退済み" : selected === i ? "選択中" : "出走馬にする"}</button></div></article>`,
           )
           .join("") ||
         `<div class="empty-state">${creative("states/search-empty.svg", "state-art")}<h2>相棒が見つかりません</h2><p>名前や絞り込み条件を変えてみてください。</p><button class="small-button" id="clear-filter">条件をクリア</button></div>`;
@@ -228,25 +223,25 @@ export function enhance(ctx) {
       paint();
     });
     paint();
-    app.querySelector("#breed-tab").onclick = () =>
-      dialog(
-        "次の世代へ、物語をつなぐ。",
-        '<div class="locked-feature"><img class="state-art" src="/creative/states/breeding-locked.svg" alt="" width="180" height="140"><h3>配合は、クラブ2日目に開放</h3><p>引退した父馬と母馬から、適性や個性を引き継ぎます。</p></div><ol class="guide-list"><li>父馬と母馬を選ぶ</li><li>血統と相性を確認する</li><li>新しい相棒を迎える</li></ol><p class="quiet">現在は画面プレビューです。配合処理は行いません。</p>',
-      );
+    app.querySelector("#breed-tab").onclick = () => openBreeding({ ...ctx, dialog });
+
   }
   function horseDetail(i) {
     const d = dialog(
       safe(names[i]),
-      `<div class="detail-summary">${horseArt("variant-" + i)}<div>${badge(horses[i][1] + " / " + horses[i][2])}<p>${horses[i][3]} · 総合評価 ${horses[i][4]}</p><div class="detail-tabs"><button data-tab="stats" aria-pressed="true">能力</button><button data-tab="skill" aria-pressed="false">スキル・適性</button></div><div id="detail-body"></div></div></div><section class="partner-kit" aria-label="相棒の装い"><div>${creative("items/silks-" + silks[i] + ".svg")}<span>RACING SILKS<b>${["クリムゾン", "アズール", "ヴァイオレット"][i]}</b><small>モデルに合わせた勝負服</small></span></div><div>${creative("items/saddlecloth-ivory.svg")}<span>SADDLECLOTH<b>アイボリー</b><small>クラブ共通のゼッケン</small></span></div></section><button class="primary" id="detail-select" ${i === selected ? "disabled" : ""}>${i === selected ? "出走馬に選択中" : "この相棒で出走する"}<span>↗</span></button>`,
+      `<div class="detail-summary">${horseArt("variant-" + i)}<div>${badge(horses[i][1] + " / " + horses[i][2])}<p>${horses[i][3]} · 総合評価 ${horses[i][4]}</p><div class="detail-tabs"><button data-tab="stats" aria-pressed="true">能力</button><button data-tab="skill" aria-pressed="false">適性・走り方</button></div><div id="detail-body"></div></div></div><section class="partner-kit" aria-label="相棒の装い"><div>${creative("items/silks-" + silks[i % 3] + ".svg")}<span>RACING SILKS<b>${["クリムゾン", "アズール", "ヴァイオレット"][i % 3]}</b><small>モデルに合わせた勝負服</small></span></div><div>${creative("items/saddlecloth-ivory.svg")}<span>SADDLECLOTH<b>アイボリー</b><small>クラブ共通のゼッケン</small></span></div></section><button class="primary" id="detail-select" ${i === selected || horses[i][5].status === "retired" ? "disabled" : ""}>${horses[i][5].status === "retired" ? "引退済み" : i === selected ? "出走馬に選択中" : "この相棒で出走する"}<span>↗</span></button>`,
     );
     const paint = (t) => {
       d.querySelector("#detail-body").innerHTML =
         t === "stats"
-          ? ["スピード", "加速", "スタミナ", "折り合い"]
-              .map((l, j) => meter(l, stats[i][j]))
+          ? '<p class="detail-value-note">能力値 / 各1,000</p>' + [["スピード","speed"],["スタミナ","stamina"],["瞬発力","burst"],["勝負根性","guts"],["折り合い","temper"]]
+              .map(([label,key]) => meter(label, horses[i][5].stats[key]))
               .join("")
-          : `<div class="skill-note"><b>✧ ${skills[i][0]}</b><p>${skills[i][1]}</p></div><dl class="spec-list"><div><dt>芝適性</dt><dd>A</dd></div><div><dt>得意距離</dt><dd>${horses[i][3].split(" / ")[1]}</dd></div><div><dt>脚質</dt><dd>${horses[i][2]}</dd></div></dl>`;
+          : `<div class="skill-note"><b>✧ ${horses[i][2]}の走り</b><p>${({逃げ:"先頭でリズムを作り、脚を残して直線へ。",先行:"好位で流れに乗り、仕掛けどころを見つけよう。",差し:"脚をため、最後の直線で伸びを生かそう。",追込:"後方で脚を残し、長い末脚を引き出そう。"})[horses[i][2]]}</p></div><dl class="spec-list"><div><dt>馬場適性</dt><dd>${horses[i][3].split(" / ")[0]}</dd></div><div><dt>得意距離</dt><dd>${horses[i][3].split(" / ")[1]}</dd></div><div><dt>脚質</dt><dd>${horses[i][2]}</dd></div></dl>`;
     };
+    const record = document.createElement("button"); record.className="text-button record-open-button"; record.id="horse-record"; record.textContent="血統・覚醒・名前と記録 →";
+    d.querySelector(".partner-kit").after(record);
+    record.onclick=()=>{d.close();openHorseRecord({ ...ctx, dialog },horses[i][5].id);};
     const wardrobe = document.createElement("button");
     wardrobe.className = "text-button"; wardrobe.id = "detail-wardrobe"; wardrobe.textContent = "勝負服を選ぶ →";
     d.querySelector(".partner-kit").after(wardrobe);
@@ -268,7 +263,7 @@ export function enhance(ctx) {
       .querySelector(".entry-side")
       .insertAdjacentHTML(
         "beforeend",
-        '<div class="entry-check"><span>✓ 芝適性 A</span><span>✓ 出走条件を満たしています</span></div>',
+        `<div class="entry-check"><span>馬場適性：${horses[selected][3].split(" / ")[0]}</span><span>現役 / 出走馬に選択中</span></div>`,
       );
     app
       .querySelector(".rank-card")
@@ -398,48 +393,14 @@ export function enhance(ctx) {
     app.querySelector("#race-again").onclick = () => go(6);
   }
   if (current === 3) {
+    const scoutCtx = { ...ctx, dialog, markScouted: () => { profile.scouted = true; save(); } };
     const button = app.querySelector("#scout");
-    if (profile.scouted) {
+    if (profile.scouted || collection().flags.tutorialGachaUsed) {
       button.textContent = "ホームへ戻る";
-      button.insertAdjacentHTML(
-        "beforebegin",
-        '<p class="scout-received">✓ 初回無料スカウト受取済み</p>',
-      );
-    }
-    button.onclick = () => {
-      if (profile.scouted) {
-        go(4);
-        return;
-      }
-      profile.scouted = true;
-      save();
-      const pulls = [
-        "コハク",
-        "シラナミ",
-        "ハルヒ",
-        "カゲロウ",
-        "フブキ",
-        "アサギ",
-        "ユウナギ",
-        "ホタル",
-        "サツキ",
-        "アオバ",
-      ];
-      const d = dialog(
-        "新しい仲間を、迎えよう。",
-        `<p>初回無料10連スカウト ${badge("SR以上確定枠 ×1")}</p><div class="scout-results">${pulls.map((n, i) => `<div class="pull-card ${i < 2 ? "rare" : ""}"><small>${i < 2 ? "SR" : "R"}</small><img src="/art/partner-${i % 3}.webp" alt="${n}の相棒プレビュー" width="110" height="90"><b>${n}</b><em>NEW</em></div>`).join("")}</div><p class="quiet">固定結果の画面デモです。所属馬への追加・抽選処理は未接続です。</p><button class="primary" id="finish-scout">ホームへ <span>↗</span></button>`,
-      );
-      d.querySelector("#finish-scout").onclick = () => {
-        d.close();
-        go(4);
-      };
-      d.addEventListener("close", () => ctx.refresh());
-    };
-    app.querySelector("#rates").onclick = () =>
-      dialog(
-        "スカウトの提供内容",
-        `<dl class="spec-list"><div><dt>対象</dt><dd>チュートリアル初回限定</dd></div><div><dt>消費コイン</dt><dd>0</dd></div><div><dt>内容</dt><dd>10頭 / SR以上1頭確定</dd></div></dl><div class="notice"><b>提供割合は未確定です</b><p>現在の画面は固定結果です。実際の確率・個別提供割合・重複時の交換条件は、本提供前にここへ掲載します。</p></div>`,
-      );
+      button.insertAdjacentHTML("beforebegin", '<p class="scout-received">✓ 初回無料スカウト受取済み</p>');
+      button.onclick = () => go(4);
+    } else button.onclick = () => openScoutConfirm(scoutCtx, { count: 10, tutorial: true });
+    app.querySelector("#rates").onclick = () => openOdds(scoutCtx);
   }
   if (current === 9) {
     app
@@ -460,7 +421,7 @@ export function enhance(ctx) {
     preview.innerHTML = `コレクションを見る ${icon("arrow")}`;
     app.querySelector(".pass-copy").append(preview);
     preview.onclick = () => {
-      const d = dialog("クラブの色を、まとう。", `<div class="collection-cover"><img src="/creative/keyart/season-collection.webp" alt="深緑とアイボリーのシーズン勝負服"></div><div class="collection-heading"><span>THE NOVEMBER COLLECTION</span><h3>走る日にも、あなたらしさを。</h3><p>シーズン衣装のアートプレビューです。</p></div><div class="collection-items">${silks.map((color, i) => `<button class="silks-option" data-silks="${i}" aria-pressed="${i === 0}">${creative("items/silks-" + color + ".svg")}<b>${["クリムゾン", "アズール", "ヴァイオレット"][i]}</b><span>${i === 0 ? "表示中" : "プレビュー"}</span></button>`).join("")}</div><p class="collection-selection" role="status">クリムゾン · 勝負服の配色サンプル</p><p class="quiet">色違いは制作見本です。販売内容・装備・所持状態を変更するものではありません。</p>`);
+      const d = dialog("クラブの色を、まとう。", `<div class="collection-cover"><img src="/creative/keyart/season-collection.webp" alt="深緑とアイボリーのシーズン勝負服"></div><div class="collection-heading"><span>THE NOVEMBER COLLECTION</span><h3>走る日にも、あなたらしさを。</h3><p>シーズン衣装のアートプレビューです。</p></div><div class="collection-items">${silks.map((color, i) => `<button class="silks-option" data-silks="${i}" aria-pressed="${i === 0}">${creative("items/silks-" + color + ".svg")}<b>${["クリムゾン", "アズール", "ヴァイオレット"][i % 3]}</b><span>${i === 0 ? "表示中" : "プレビュー"}</span></button>`).join("")}</div><p class="collection-selection" role="status">クリムゾン · 勝負服の配色サンプル</p><p class="quiet">色違いは制作見本です。販売内容・装備・所持状態を変更するものではありません。</p>`);
       bind(d, "[data-silks]", (el) => {
         d.querySelectorAll("[data-silks]").forEach((b) => {
           b.setAttribute("aria-pressed", String(b === el));
@@ -476,4 +437,5 @@ export function enhance(ctx) {
   }
   mountJourney({ ...ctx, dialog, profile });
   mountClub({ ...ctx, dialog });
+  mountPaddock({ ...ctx, dialog, profile });
 }

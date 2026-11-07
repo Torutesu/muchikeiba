@@ -270,3 +270,9 @@ App Store Server API（`AppStoreServerApi`、ES256 JWT）はアプリが報告�
 - 年齢帯ごとの月額上限の金額（`master/age-limits.json` は仮値・未確定）
 - NGリストの本番版（`master/ng-names.json` は仮）
 - マッチングは1シャード（`ranked-jp`）。規模に応じて地域・レート帯で分割する
+
+## チケットスカウト
+
+`POST /v1/gacha/tickets/draw` は認証と `Idempotency-Key` を要求し、`{ "ticketId": "gacha_ticket" }` または `ticket_sr_plus` を受け取ります。通常チケットは常設の通常枠、SR以上チケットは常設の確定枠を使い、1枚だけ消費します。コインと天井ポイントは変わりません。重複は既存の覚醒素材へ変換します。未精算のコイン／アイテム債務がある場合は消費前に拒否します。
+
+`contracts/master-values.ts` はブラウザと共用する定数・確率表生成です。既存の `master.ts` のexportも維持しています。

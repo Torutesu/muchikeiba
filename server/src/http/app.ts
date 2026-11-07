@@ -21,7 +21,7 @@ import { EVENT_ID_RE } from '../domain/events.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
-  | 'bootstrap' | 'view' | 'setAge' | 'purchaseIntent' | 'purchase' | 'refund' | 'draw' | 'tutorialDraw' | 'pityExchange'
+  | 'bootstrap' | 'view' | 'setAge' | 'purchaseIntent' | 'purchase' | 'refund' | 'draw' | 'drawTicket' | 'tutorialDraw' | 'pityExchange'
   | 'nameHorse' | 'awaken' | 'retire' | 'breedingPreview' | 'breed' | 'pedigree' | 'claimLogin' | 'missions'
   | 'claimMission' | 'passView' | 'claimPass' | 'applyRace' | 'raceEntry'
   | 'storeRenewal' | 'subscriptionStatus'
@@ -194,6 +194,10 @@ export const routes: Route[] = [
   // gacha
   { method: 'GET', path: '/v1/gacha/banners', auth: 'none', handler: async (_r, _p, c) => ({ banners: c.master.gacha.banners.map((b) => ({ id: b.id, name: b.name, currency: b.currency, priceSingle: b.priceSingle, priceTen: b.priceTen, startAtMs: b.startAtMs ?? null, endAtMs: b.endAtMs ?? null })) }) },
   { method: 'GET', path: '/v1/gacha/:bannerId/odds', auth: 'none', handler: async (_r, p, c) => oddsDisclosure(c.master, findBanner(c.master, p.bannerId!)) },
+  { method: 'POST', path: '/v1/gacha/tickets/draw', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ ticketId: z.enum(['gacha_ticket', 'ticket_sr_plus']) }));
+    return c.player(u).invoke('drawTicket', u, b.ticketId, idem(r));
+  } },
   { method: 'POST', path: '/v1/gacha/:bannerId/draw', auth: 'player', handler: async (r, p, c, u) => {
     const b = await body(r, z.object({ count: z.union([z.literal(1), z.literal(10)]) }));
     return c.player(u).invoke('draw', u, p.bannerId!, b.count, idem(r));

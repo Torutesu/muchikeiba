@@ -229,6 +229,11 @@ namespace Muchi.Net
                 var ft = JsonNode.Arr();
                 foreach (var f in Sim.Result.FinishTicks) ft.Add(JsonNode.Num(f));
                 o.Set("finishTicks", ft);
+                // optional (protocol §4, REQ-ACH-002): slots whose unique skill fired — presentation data outside the result
+                // hash; the server credits it only when every agreeing client sent the same list
+                var sk = JsonNode.Arr();
+                for (int slot = 0; slot < Sim.EntrantCount; slot++) if (Sim.GetHorse(slot).SkillUsed) sk.Add(JsonNode.Num(slot));
+                o.Set("skills", sk);
                 _transport.Send(o.ToString());
             }
         }

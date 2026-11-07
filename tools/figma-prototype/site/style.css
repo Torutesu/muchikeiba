@@ -457,3 +457,18 @@ html[lang="en"] .keep-ja { word-break: keep-all; letter-spacing: .02em; }
 html[lang="en"] .pass-strip .cell { padding-top: 38px; font-size: 13px; line-height: 1.25; gap: 4px; }
 html[lang="en"] .pass-strip .cell .plusnote { font-size: 11px; }
 html[lang="en"] .pass-strip .cell small { font-size: 12px; }
+/* round 11: 図鑑・実績 (REQ-COL-*, REQ-ACH-*) — cells on the navy card, silhouettes for unknown horses, tier badges */
+.col-cell { position: absolute; background: rgba(var(--navy-rgb), .93); border-radius: var(--radius-card); overflow: hidden; cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(150, 173, 187, .18); }
+.col-cell::before { content: ""; position: absolute; left: 2px; right: 2px; top: 2px; height: 3px; background: rgba(var(--cyan-rgb), .35); }
+.col-cell.obtained::before { background: var(--cyan); }
+.col-cell.sel { box-shadow: inset 0 0 0 2px var(--cyan); }
+.col-cell.unknown { opacity: .78; }
+.img.col-por { object-fit: contain; }
+.img.col-sil { object-fit: contain; filter: brightness(0) saturate(0) opacity(.55) drop-shadow(0 0 1px rgba(150, 173, 187, .5)); }
+.el.ach-row { border-bottom: 1px solid rgba(150, 173, 187, .3); }
+.ach-badges { display: flex; gap: 8px; pointer-events: none; }
+.ach-badge { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; font-style: normal; font-size: 13px; font-weight: 700;
+  color: var(--text-4); clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); background: rgba(150, 173, 187, .22); }
+.ach-badge.on { color: #06131c; background: var(--cyan); }
+.ach-badge.claimed { background: var(--gold); }

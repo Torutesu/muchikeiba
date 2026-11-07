@@ -785,7 +785,16 @@ namespace Muchi.Client
         /// <summary>Asset key of the title icon (title/&lt;id&gt;).</summary>
         public string Icon;
         public bool Unlocked;
-        internal static TitleInfo Parse(JsonNode o) => new TitleInfo { Id = J.Str(o, "id"), Name = J.Str(o, "name"), Icon = J.Str(o, "icon") ?? AssetKeys.Title(J.Str(o, "id") ?? "default"), Unlocked = J.Bool(o, "unlocked") };
+        /// <summary>REQ-ACH-006: "record" (play statistics) or "achievement" (a tier of <see cref="AchievementId"/>).</summary>
+        public string Source = "record";
+        public string AchievementId;
+        public int Tier;
+        public bool FromAchievement => Source == "achievement";
+        internal static TitleInfo Parse(JsonNode o) => new TitleInfo
+        {
+            Id = J.Str(o, "id"), Name = J.Str(o, "name"), Icon = J.Str(o, "icon") ?? AssetKeys.Title(J.Str(o, "id") ?? "default"), Unlocked = J.Bool(o, "unlocked"),
+            Source = J.Str(o, "source") ?? "record", AchievementId = J.Str(o, "achievementId"), Tier = J.Int(o, "tier"),
+        };
     }
 
     public sealed class TitleList

@@ -78,6 +78,8 @@ static class Program
         await RewardedAdChecks.Run(Check);
         Console.WriteLine("== round 11: English (Loc tables, composite lines, commentary, request language; REQ-L10N-009..012)");
         await L10nChecks.Run(Check, Root, Ruleset());
+        Console.WriteLine("== round 11: 図鑑, 実績 and titles (CollectionModel / AchievementModel / TitleShowcaseModel; REQ-COL-*, REQ-ACH-*)");
+        await CollectionChecks.Run(Check, Ruleset());
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);
@@ -421,6 +423,15 @@ static class Program
         await b.RefreshAsync();
         Check(b.Player.RankedRaces >= 1, "ranked race settled on the server (ranked races " + b.Player.RankedRaces + ", season pt " + pointsBefore + " → " + b.Player.SeasonPoints + ")");
         d.Dispose();
+        // round 11 (REQ-COL-*, REQ-ACH-*): the race's CPU field is in the book as 出会った, the course as 走った; the book pays nothing
+        var col = new CollectionModel(b);
+        var cl = await col.LoadAsync();
+        Check(cl.Ok && col.Book.Horses.Counts.Total > 0 && col.Book.Horses.Counts.Seen > 0 && !col.Book.CompletionRewards, "collection: the ranked race's CPU field is recorded as seen (" + (cl.Message ?? col.TabCountsText) + ")");
+        col.SelectTab("courses");
+        Check(col.Book.Courses.Counts.Obtained >= 1, "collection: the course raced is recorded");
+        var ach = new AchievementModel(b);
+        var al = await ach.LoadAsync();
+        Check(al.Ok && ach.Rows.Count > 0 && ach.Rows.Exists(r => r.Id == "races" && r.Progress >= 1), "achievements load with the race counted (" + (al.Message ?? ach.TotalText) + ")");
     }
 
     // round 6: care / course looks / room conditions / friends / teams / events / time attack / leaderboards

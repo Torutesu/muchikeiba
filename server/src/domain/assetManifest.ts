@@ -6,6 +6,7 @@
 import type { Master } from './master.js';
 import { DIRT_GOINGS, TURF_GOINGS } from './schemas.js';
 import { stableConfig } from './stable.js';
+import { collectionOf } from './collection.js';
 import { stampAsset, stampsOf } from './teamFeed.js';
 import { ASSET_KEY_RE, ASSET_KINDS, assetKeys, collectItemIds, fallbackKey, kindOf, VISUALS, type VisualsMaster } from './visuals.js';
 
@@ -57,6 +58,9 @@ export function buildAssetManifest(m: Master, commentary: CommentaryJson, v: Vis
   m.gacha.banners.forEach((b) => add(assetKeys.gachaBanner(b.id)));
   m.events.forEach((e) => add(assetKeys.eventBanner(e.id)));
   m.titles.forEach((t) => add(assetKeys.title(t.id)));
+  // REQ-COL-003 / REQ-ACH-004: 図鑑 art per template (portrait + unknown silhouette) and a badge per achievement tier
+  m.templates.forEach((t) => { add(assetKeys.collectionPortrait(t.id)); add(assetKeys.collectionSilhouette(t.id)); });
+  collectionOf(m).achievements.forEach((d) => d.tiers.forEach((t) => add(assetKeys.badge(d.id, t.tier))));
   v.emblem.shapes.forEach((x) => add(assetKeys.emblemShape(x)));
   v.emblem.symbols.forEach((x) => add(assetKeys.emblemSymbol(x)));
   for (const t of m.tracks) {

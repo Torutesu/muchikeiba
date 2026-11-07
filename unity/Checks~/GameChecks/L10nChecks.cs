@@ -38,7 +38,7 @@ static class L10nChecks
         // not shown as text: the forbidden-word list of the shop lint, kana test characters
         var skip = new HashSet<string> { "倍", "×2", "お得", "通常価格" };
         // pieces of a concatenation chosen by a ternary (the whole line is checked in Composites)
-        skip.UnionWith(new[] { "に開放", "で開放", "（不参加）", "今日 ", "明日 ", "（交換できます）", "1着！", "差し切った", "馬身半", "馬身", "半", "芝", "ダート" });
+        skip.UnionWith(new[] { "に開放", "で開放", "（不参加）", "今日 ", "明日 ", "（交換できます）", "1着！", "差し切った", "馬身半", "馬身", "半", "芝", "ダート", "走った ", "所持 ", " 獲得済み" });
         int total = 0;
         var missing = new List<string>();
         foreach (var f in files)

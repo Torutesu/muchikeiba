@@ -118,7 +118,7 @@ export const clientMessageSchema = z.discriminatedUnion('t', [
   z.object({ t: z.literal('in'), tick: tickN, cmd: int.min(0).max(255) }).strict(),
   z.object({ t: z.literal('chk'), tick: tickN, h: hex16 }).strict(),
   // finishTicks (optional, same order as `order`, -1 = did not finish) lets the server keep best times without the verifier
-  z.object({ t: z.literal('res'), h: hex64, order: z.array(int.min(0).max(11)).min(1).max(12), finishTicks: z.array(int.min(-1).max(1_000_000)).max(12).optional() }).strict(),
+  z.object({ t: z.literal('res'), h: hex64, order: z.array(int.min(0).max(11)).min(1).max(12), finishTicks: z.array(int.min(-1).max(1_000_000)).max(12).optional(), skills: z.array(int.min(0).max(11)).max(12).optional() }).strict(),
   z.object({ t: z.literal('ping'), c: z.number() }).strict(),
 ]);
 export type ClientMessage = z.infer<typeof clientMessageSchema>;

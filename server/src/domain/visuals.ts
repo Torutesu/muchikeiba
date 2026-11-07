@@ -77,6 +77,11 @@ export const assetKeys = {
   gachaBanner: (id: string) => `banner/gacha/${id}`,
   eventBanner: (id: string) => `banner/event/${id}`,
   title: (id: string) => `title/${id}`,
+  /** REQ-COL-003: 図鑑 art per horse template — the portrait once obtained or seen, the silhouette while unknown. */
+  collectionPortrait: (templateId: string) => `collection/portrait/${templateId}`,
+  collectionSilhouette: (templateId: string) => `collection/silhouette/${templateId}`,
+  /** REQ-ACH-004: achievement badge per tier (master/collection.json `achievements[].id`, tier 1..5). */
+  badge: (achievementId: string, tier: number) => `badge/${achievementId}_${tier}`,
   emblemShape: (id: string) => `emblem/shape/${id}`,
   emblemSymbol: (id: string) => `emblem/symbol/${id}`,
   venue: (venue: string) => `scene/venue/${venue}`,
@@ -112,6 +117,9 @@ export const ASSET_KINDS: Record<string, { description: string; dynamic?: boolea
   'banner/gacha': { description: 'ガチャのバナー' },
   'banner/event': { description: 'イベントのバナー' },
   title: { description: '称号のアイコン' },
+  'collection/portrait': { description: '図鑑の馬の絵（入手・出会った馬。REQ-COL-003）' },
+  'collection/silhouette': { description: '図鑑の未発見の馬のシルエット（REQ-COL-003）' },
+  badge: { description: '実績のバッジ（実績×段。REQ-ACH-004）' },
   'emblem/shape': { description: '支部エンブレムの形' },
   'emblem/symbol': { description: '支部エンブレムの図柄' },
   'scene/venue': { description: '競馬場のシーン（地形・スタンド）' },

@@ -58,7 +58,8 @@ export type PlayerMethod =
   | 'inviteView' | 'inviteAttempt' | 'inviteAccept' | 'inviteRevert' | 'inviteCommit' | 'inviteFlag' | 'inviteMilestone' | 'inviteDue' | 'inviteAcked'
   | 'inviteRetryLater' | 'inviteForgetInvitee' | 'inviteForgetInviter' | 'inviteForfeit'
   | 'comeback' | 'comebackClaimLogin' | 'comebackClaimMission' | 'comebackWelcomed' | 'whatsNew' | 'whatsNewSeen'
-  | 'ads' | 'setAdPref' | 'adStart' | 'adSession' | 'adReward';
+  | 'ads' | 'setAdPref' | 'adStart' | 'adSession' | 'adReward'
+  | 'collection' | 'achievements' | 'claimAchievement' | 'claimAllAchievements';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -506,6 +507,15 @@ export const routes: Route[] = [
     return c.player(u).invoke('setDisplayName', u, b.displayName);
   } },
   { method: 'GET', path: '/v1/titles', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('titles', u) },
+  // 図鑑・実績 (REQ-COL-*, REQ-ACH-*)
+  { method: 'GET', path: '/v1/collection', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('collection', u) },
+  { method: 'GET', path: '/v1/achievements', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('achievements', u) },
+  { method: 'POST', path: '/v1/achievements/claim-all', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('claimAllAchievements', u, idem(r)) },
+  { method: 'POST', path: '/v1/achievements/:achievementId/tiers/:tier/claim', auth: 'player', handler: async (r, p, c, u) => {
+    const tier = Number(p.tier);
+    if (!Number.isInteger(tier) || tier < 1 || tier > 5) throw new AppError('BAD_REQUEST', 'bad tier');
+    return c.player(u).invoke('claimAchievement', u, missionIdParam(p.achievementId!), tier, idem(r));
+  } },
   { method: 'PUT', path: '/v1/player/title', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ titleId: id.nullable() }));
     return c.player(u).invoke('equipTitle', u, b.titleId);
@@ -802,7 +812,7 @@ export function teamPlayersFrom(player: (uid: string) => PlayerInvoker): TeamPla
     push: (u, templateId, vars) => player(u).invoke('queuePush', u, templateId, vars),
     stampCatalog: (u) => player(u).invoke('stampCatalog', u),
     stampCheck: (u, s) => player(u).invoke('stampCheck', u, s),
-    stampPosted: (u, s, k, t) => player(u).invoke('stampPosted', u, s, k, t),
+    stampPosted: (u, s, k, t, ref) => player(u).invoke('stampPosted', u, s, k, t, ref ?? null),
     feedViewer: (u, first) => player(u).invoke('feedViewer', u, first),
     feedMutes: (u) => player(u).invoke('feedMutes', u),
     feedMute: (u, t, muted) => player(u).invoke('feedMute', u, t, muted),

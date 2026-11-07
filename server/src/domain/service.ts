@@ -6,6 +6,7 @@ const TOURNAMENT_HISTORY_KEEP = 50;
 import { migratePlayer, moderationOf, newPlayer, playerView, type PlayerState, type PurchaseRecord } from './player.js';
 import { setModeration, supportCorrectAge, supportGrant, supportResetName, supportSettleDebt, supportView, type Grant } from '../ops/support.js';
 import { equipTitle, evaluateTitles, publicProfile, setDisplayName, type PublicProfile } from './stats.js';
+import { achievementsView, claimAchievement, claimAllAchievements, collectionView, noteCheer, noteRaceCollection, noteTournamentResult, syncCollection } from './collection.js';
 import { closeSeason } from './season.js';
 import { friendAccept, friendAccepted, friendCancel, friendDecline, friendReceive, friendRemove, friendSend, pruneInvites, receiveInvite } from './friends.js';
 import type { SeasonEntry } from './leaderboard.js';
@@ -182,6 +183,8 @@ export class PlayerService {
     const emit: Emit = (e) => { kpi.push(kpiRecord(draft, now, e)); };
     const result = fn(draft, now, emit);
     noteInviteMilestones(this.d.master, draft, now, emit); // REQ-INV-007: the invitee's milestones, once each
+    // REQ-ACH-003: unlock achievement tiers that became due in this transaction (idempotent), then their titles
+    if (syncCollection(this.d.master, draft, now, emit).length > 0) evaluateTitles(this.d.master, draft);
     if (!invariantsHold(draft)) throw new Error('wallet invariant violated');
     if (idemKey) {
       draft.idem.push({ key: idemKey, result: JSON.parse(JSON.stringify(result ?? null)) });
@@ -615,7 +618,11 @@ export class PlayerService {
       for (const [k, at] of Object.entries(applied)) if (now - at > APPLIED_RACE_KEEP_MS) delete applied[k];
       if (applied[r.raceId] !== undefined) return { duplicate: true as const, event: null };
       applied[r.raceId] = now;
-      const base = applyRaceResult(this.d.master, s, r, now);
+      const base0 = applyRaceResult(this.d.master, s, r, now);
+      // REQ-COL-002 / REQ-ACH-002: what the race showed the 図鑑, a fired skill, and the tiers it unlocked (with titles)
+      noteRaceCollection(this.d.master, s, r);
+      const achievements = syncCollection(this.d.master, s, now, emit);
+      const base = { ...base0, titles: [...base0.titles, ...(achievements.length ? evaluateTitles(this.d.master, s) : [])], achievements };
       // REQ-TEAMFEED-004: a win or a place in a ranked race or a tournament shows in the team feed
       const teamId = s.team?.teamId ?? null;
       if (!r.void && teamId && (FEED_RACE_MODES as readonly string[]).includes(r.mode) && r.place >= 1 && r.place <= stampsOf(this.d.master).config.racePlaceMax) {
@@ -727,7 +734,26 @@ export class PlayerService {
   }
   async titles(id: string) {
     const s = await this.load(id);
-    return { equipped: s.profile.titleId, titles: this.d.master.titles.map((t) => ({ id: t.id, name: t.name, icon: assetKeys.title(t.id), unlocked: s.titles.includes(t.id) })) };
+    // REQ-ACH-006: one title list — achievement titles name the tier that unlocks them
+    return {
+      equipped: s.profile.titleId,
+      titles: this.d.master.titles.map((t) => ({
+        id: t.id, name: t.name, icon: assetKeys.title(t.id), unlocked: s.titles.includes(t.id),
+        source: t.condition.kind === 'achievement' ? 'achievement' as const : 'record' as const,
+        ...(t.condition.kind === 'achievement' ? { achievementId: t.condition.achievementId, tier: t.condition.tier } : {}),
+      })),
+    };
+  }
+
+  // ---- 図鑑 and 実績 (REQ-COL-*, REQ-ACH-*) ----
+  async collection(id: string) { return collectionView(this.d.master, await this.load(id)); }
+  /** A read through tx so tiers that are due (e.g. after a master change) unlock before they are shown. */
+  async achievements(id: string) { return this.tx(id, null, (s) => achievementsView(this.d.master, s)); }
+  async claimAchievement(id: string, achievementId: string, tier: number, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => ({ ...claimAchievement(this.d.master, s, achievementId, tier, now, emit), wallet: { free: s.wallet.free, paid: s.wallet.paid } }));
+  }
+  async claimAllAchievements(id: string, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => ({ ...claimAllAchievements(this.d.master, s, now, emit), wallet: { free: s.wallet.free, paid: s.wallet.paid } }));
   }
   async stats(id: string) { return (await this.load(id)).stats; }
   async publicProfile(id: string) { return publicProfile(await this.load(id), this.d.master.bannedSilks); }
@@ -993,8 +1019,13 @@ export class PlayerService {
   /** Before a post / reaction: deletion, membership and unlock checks; returns the team and the display name. */
   stampCheck(id: string, stampId: string) { return this.tx(id, null, (s) => playerStampCheck(this.d.master, s, stampId)); }
   /** After the team stored it: the KPI row (REQ-TEAMFEED-009). */
-  stampPosted(id: string, stampId: string, kind: 'post' | 'reaction', teamId: string) {
-    return this.tx(id, null, (_s, _now, emit) => { emit({ name: 'stamp_post', s1: stampId, s2: kind, s3: teamId }); return { ok: true }; });
+  stampPosted(id: string, stampId: string, kind: 'post' | 'reaction', teamId: string, ref: string | null = null) {
+    return this.tx(id, null, (s, _now, emit) => {
+      emit({ name: 'stamp_post', s1: stampId, s2: kind, s3: teamId });
+      // REQ-ACH-002: a cheer counts once per feed ref (a retried call or a removed-then-renewed reaction is not a second cheer)
+      if (!deletionScheduled(s)) noteCheer(s, ref);
+      return { ok: true };
+    });
   }
   /** The feed's viewer side: team and mute list; the first page of a visit is the team_feed_view KPI row. */
   feedViewer(id: string, firstPage: boolean) {
@@ -1057,6 +1088,7 @@ export class PlayerService {
       if (done[tournamentId]) return { status: 'already' as const, reward: done[tournamentId]!.reward };
       if (reward) grantReward(s, reward, now, `tournament ${tournamentId} rank ${rank}`, `tournament:${tournamentId}:rank`);
       done[tournamentId] = { name, rank, at: now, reward };
+      noteTournamentResult(s, rank); // REQ-ACH-002 (once per tournament, behind the same guard)
       const keys = Object.entries(done).sort((a, b) => b[1].at - a[1].at).map(([k]) => k);
       for (const k of keys.slice(TOURNAMENT_HISTORY_KEEP)) delete done[k];
       return { status: 'rewarded' as const, reward };

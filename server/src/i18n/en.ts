@@ -92,6 +92,10 @@ export const CODE_EN: Record<string, string> = {
   '{name} 決勝': '{name} Final',
   '{y}年{m}月': '{y}/{m}',
 
+  // ---- 図鑑・実績 (collection.ts, REQ-COL-005 / REQ-ACH-*)
+  '図鑑の達成率は記録の表示だけです。そろえても報酬はありません。': 'The completion rate of the collection is a record only. Completing it pays no reward.',
+  '実績はレースや育成などのプレイで達成します。課金やガチャの回数では達成しません。報酬は無償コインです。': 'Achievements come from play, such as racing and raising horses, never from spending or the number of scouts. Rewards are free coins.',
+
   // ---- error details shown to players (REQ-API-004 messages; codes are the contract)
   'カタカナ2〜9文字': '2–9 katakana characters',
   '{a}〜{b}文字': '{a}–{b} characters',

@@ -126,7 +126,7 @@ def add(text):
 for p in [os.path.join(site, 'app.js'), os.path.join(site, 'index.html'), os.path.join(site, 'js', 'logic.js'), os.path.join(data, 'ja.json'), os.path.join(data, 'commentary-ja.json'),
           os.path.join(data, 'commentary-en.json'), os.path.join(data, 'server-en.json'), os.path.join(data, 'ui-en.json'), os.path.join(root, 'tools', 'figma-prototype', 'logic', 'proto-en.json')]:
     add(open(p, encoding='utf-8').read())
-for p in ['server/master/horses.json', 'server/master/gacha.json', 'server/master/products.json', 'server/master/ng-names.json', 'server/master/progression.json', 'server/master/skills.json', 'server/master/items.json', 'server/master/tracks.json']:
+for p in ['server/master/horses.json', 'server/master/gacha.json', 'server/master/products.json', 'server/master/ng-names.json', 'server/master/progression.json', 'server/master/skills.json', 'server/master/items.json', 'server/master/tracks.json', 'server/master/collection.json', 'server/master/titles.json']:
     full = os.path.join(root, p)
     if os.path.exists(full):
         add(open(full, encoding='utf-8').read())

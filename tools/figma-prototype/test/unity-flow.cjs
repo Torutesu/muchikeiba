@@ -12,6 +12,8 @@
 //     rule on the CTA; cheering a teammate's race result; mute and report) and this season's pass shown as 購入済み.
 //  5. Returning players (REQ-CB-*, 06 §4.5): the comeback welcome (once), the 7-day comeback login track and missions, the
 //     lapse-reminder opt-in (asked once), the home chip and the one-time what's-new card.
+//  6. Round 11 (REQ-COL-*, REQ-ACH-*): the 図鑑 (obtained / seen / unknown silhouettes, completion with no reward and no scout
+//     link), achievements (claim one tier, claim all) and equipping an achievement title.
 // Screenshots: <out>/u-<nn>-<name>.png. Returns { shots, ftue }.
 const path = require('path');
 const fs = require('fs');
@@ -479,6 +481,50 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   if (await screen() === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); await page.waitForTimeout(500); }
   assert.equal(await screen(), 'home', 'the welcome is not shown again');
   assert.equal(await page.locator('.screen.in [data-whatsnew]').count(), 0, 'the what\'s-new card is shown once');
+
+  // ------------------------------------------------------------------ 5. round 11: 図鑑・実績・称号 (REQ-COL-*, REQ-ACH-*)
+  // a week of play on the real rules (races on 5 courses against CPU fields, a fired skill every other race, a cup win,
+  // stable likes): the book, the achievements and the titles all come from the server code
+  await page.evaluate(() => globalThis.__muchi.demo('collection')); await waitScreen('collection', 60000); await page.waitForTimeout(400);
+  const colText = await page.locator('.screen.in').innerText();
+  assert.match(colText, /達成率 \d+%（\d+ \/ \d+）/, 'completion shown as a number');
+  assert.match(colText, /そろえても報酬はありません/, 'the book says completing it pays nothing');
+  assert.ok(!/スカウト|ガチャ|あと\d+体|もらえる/.test(colText), 'no scout / gacha / 「あと◯体」 wording in the book');
+  const cells = page.locator('.screen.in [data-col-cell]');
+  assert.ok((await cells.count()) >= 20, 'every horse template has a cell');
+  for (const st of ['obtained', 'seen', 'unknown']) assert.ok((await page.locator(`.screen.in [data-col-cell][data-state="${st}"]`).count()) > 0, `some ${st} horses`);
+  const unknownCell = page.locator('.screen.in [data-col-cell][data-state="unknown"]').first();
+  assert.match(await unknownCell.innerText(), /？？？/, 'an unknown horse is a silhouette with ？？？');
+  assert.equal(await unknownCell.locator('img.col-sil').count(), 1);
+  await shot('collection-horses', 500);
+  await unknownCell.click(); await page.waitForTimeout(500);
+  assert.match(await page.locator('.screen.in [data-col-detail]').innerText(), /？？？[\s\S]*まだ出会っていません/, 'detail of an unknown horse: no name, no stats, no scout link');
+  assert.equal(await page.locator('.screen.in [data-col-detail] .btn').count(), 0, 'nothing to buy from the book');
+  const seenCell = page.locator('.screen.in [data-col-cell][data-state="seen"]').first();
+  await seenCell.click(); await page.waitForTimeout(500);
+  assert.match(await page.locator('.screen.in [data-col-detail]').innerText(), /出会った/, 'a horse met in a race');
+  await shot('collection-seen-detail', 400);
+  await page.locator('.screen.in [data-tab="courses"]').click(); await page.waitForTimeout(500);
+  assert.equal(await page.locator('.screen.in [data-col-cell][data-state="obtained"]').count(), 5, 'the five courses raced');
+  await shot('collection-courses', 400);
+  await click('実績'); await waitScreen('achievements'); await page.waitForTimeout(400);
+  const achText = await page.locator('.screen.in').innerText();
+  assert.match(achText, /課金やガチャの回数では達成しません/);
+  const claims = page.locator('.screen.in [data-claim]');
+  assert.ok((await claims.count()) > 0, 'unlocked tiers can be claimed');
+  const achFree0 = Number(await page.locator('.screen.in [data-free]').first().getAttribute('data-free'));
+  await shot('achievements', 500);
+  await claims.first().click(); await page.waitForTimeout(800); await waitScreen('achievements');
+  const achFree1 = Number(await page.locator('.screen.in [data-free]').first().getAttribute('data-free'));
+  assert.ok(achFree1 > achFree0 && achFree1 - achFree0 <= 50, 'one tier pays a few free coins');
+  await shot('achievement-claimed-toast', 250);
+  await click('まとめて受け取る'); await page.waitForTimeout(800); await waitScreen('achievements');
+  assert.equal(await page.locator('.screen.in [data-claim]').count(), 0, 'claim-all pays every unlocked tier once');
+  assert.equal(await page.locator('.screen.in .btn[data-label="まとめて受け取る"]').count(), 0);
+  await click('称号を変える'); await page.waitForTimeout(500);
+  await page.locator('.screen.in [data-equip="ach_champion"]').click(); await page.waitForTimeout(800); await waitScreen('achievements');
+  assert.equal(await page.locator('.screen.in [data-title-equipped]').getAttribute('data-title-equipped'), 'ach_champion', 'an achievement title is equipped (profile and stable)');
+  await shot('achievements-title', 400);
 
   // a reload on a named player goes straight home
   await demo('day3');

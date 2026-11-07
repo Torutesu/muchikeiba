@@ -128,6 +128,18 @@ describe('economy targets (90 days, 3 seeds)', () => {
     for (const id of ['f2p', 'light', 'medium', 'allowance']) expect(all[id]!.comebackWindows).toBe(0);
   }, 600_000);
 
+  it('E14 achievements (REQ-ACH-*): play only, free coins, offset by the daily 3-race mission; paying never advances one', async () => {
+    const all = await run();
+    const f = all.f2p!;
+    // the 90-day payout of a daily free player (races, wins, podiums, courses, skills) stays below what the daily
+    // 「3戦する」 mission gave up for it (20 → 18 coins × 90 days), so E1–E13 keep their Round 10 values
+    expect(f.achievementCoins).toBeGreaterThan(0);
+    expect(f.achievementCoins).toBeLessThanOrEqual(2 * 90);
+    // spending money never moves an achievement: the paying personas play the same races and get exactly the same
+    for (const id of ['light', 'medium', 'allowance', 'f2p_invited', 'f2p_inviter', 'ads']) expect(all[id]!.achievementCoins).toBe(f.achievementCoins);
+    expect(all.f2p_casual!.achievementCoins).toBeLessThan(f.achievementCoins);
+  }, 600_000);
+
   it('E9 friend races cannot replace ranked play as an income (daily cap ≤ 30% of a free player day)', async () => {
     const r = (await run()).f2p!;
     const maxFriendPerDay = m.progression.friendRewardDailyCap * Math.max(...m.progression.raceFreeCoinsByPlace.friend!);

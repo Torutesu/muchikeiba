@@ -28,7 +28,7 @@ function world(start = Date.UTC(2026, 10, 5, 3)) {
     prepareJoin: (u, x) => svc.teamPrepareJoin(u, x), commitJoin: (u, x) => svc.teamCommitJoin(u, x), abortJoin: (u, x) => svc.teamAbortJoin(u, x),
     addOutgoing: (u, x) => svc.teamAddOutgoing(u, x), removeOutgoing: (u, x) => svc.teamRemoveOutgoing(u, x),
     left: (u, x, c) => svc.teamLeft(u, x, c), state: (u) => svc.teamState(u), push: (u, id, v) => svc.queuePush(u, id, v),
-    stampCatalog: (u) => svc.stampCatalog(u), stampCheck: (u, s) => svc.stampCheck(u, s), stampPosted: (u, s, k, t) => svc.stampPosted(u, s, k, t),
+    stampCatalog: (u) => svc.stampCatalog(u), stampCheck: (u, s) => svc.stampCheck(u, s), stampPosted: (u, s, k, t, ref) => svc.stampPosted(u, s, k, t, ref ?? null),
     feedViewer: (u, f) => svc.feedViewer(u, f), feedMutes: (u) => svc.feedMutes(u), feedMute: (u, t, x) => svc.feedMute(u, t, x),
     feedReported: (u, t, q, b, r) => svc.feedReported(u, t, q, b, r), cheerPush: (u, f, n) => svc.cheerPush(u, f, n),
   };

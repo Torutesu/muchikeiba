@@ -22,6 +22,8 @@ import { parseAssetCatalog, type AssetCatalog } from './assetCatalog.js';
 import type { StampsMaster } from './teamFeed.js';
 import stampsJson from '../../master/stamps.json';
 import localeEnJson from '../../master/locale-en.json';
+import type { CollectionMaster } from './collection.js';
+import collectionJson from '../../master/collection.json';
 import { trackSchema, type GoingAptitude, type Going, type Track } from './schemas.js';
 import { AppError } from './errors.js';
 import { loadSkills, type SkillsMaster } from './skills.js';
@@ -246,7 +248,9 @@ export type TitleCondition =
   | { kind: 'bestTime'; trackId: string; value: number }
   | { kind: 'classReached'; classId: string }
   | { kind: 'rating'; value: number }
-  | { kind: 'bondLevel'; value: number };
+  | { kind: 'bondLevel'; value: number }
+  /** REQ-ACH-006: reached tier `tier` of achievement `achievementId` (master/collection.json). */
+  | { kind: 'achievement'; achievementId: string; tier: number };
 export interface TitleDef { id: string; name: string; condition: TitleCondition }
 /** `comeback` (REQ-CB-007): lapse reminders, opt-in (06 §3.5: a re-engagement push needs its own category and consent). */
 export type PushCategory = 'season' | 'friends' | 'invites' | 'events' | 'comeback';
@@ -338,6 +342,8 @@ export interface Master {
    * remote config `locale.en` adds to it). Absent in hand-built test masters (responses then stay Japanese).
    */
   locale?: { en: Record<string, string> };
+  /** REQ-COL-* / REQ-ACH-*: 図鑑 lore and achievements (master/collection.json; collection.ts collectionOf falls back to it when absent). */
+  collection?: CollectionMaster;
 }
 
 export const PPM_TOTAL = 1_000_000;
@@ -489,6 +495,7 @@ export function loadMaster(): Master {
     stamps: stampsJson as unknown as StampsMaster,
     changelog: (changelogJson as unknown as { entries: import('./comeback.js').ChangelogEntry[] }).entries,
     locale: { en: (localeEnJson as unknown as { strings: Record<string, string> }).strings },
+    collection: collectionJson as unknown as CollectionMaster,
   };
   cached = m;
   return m;

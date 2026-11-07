@@ -34,6 +34,11 @@ namespace Muchi.Client
         public static string GachaBanner(string id) => "banner/gacha/" + id;
         public static string EventBanner(string id) => "banner/event/" + id;
         public static string Title(string id) => "title/" + id;
+        /// <summary>REQ-COL-003: 図鑑 portrait (obtained / seen) and silhouette (unknown) per horse template.</summary>
+        public static string CollectionPortrait(string templateId) => "collection/portrait/" + templateId;
+        public static string CollectionSilhouette(string templateId) => "collection/silhouette/" + templateId;
+        /// <summary>REQ-ACH-004: achievement badge per tier.</summary>
+        public static string Badge(string achievementId, int tier) => "badge/" + achievementId + "_" + tier.ToString(CultureInfo.InvariantCulture);
         public static string EmblemShape(string id) => "emblem/shape/" + id;
         public static string EmblemSymbol(string id) => "emblem/symbol/" + id;
         public static string Venue(string venue) => "scene/venue/" + venue;

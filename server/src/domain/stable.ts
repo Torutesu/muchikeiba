@@ -24,6 +24,9 @@ import { appearanceOf, assetKeys, effectiveSilks, type Appearance, type Silks } 
 import { dayRule, gameDayKey, sameGameDay } from './time.js';
 import type { KpiEvent } from './kpi.js';
 import stableJson from '../../master/stable.json';
+import { achievementBadges } from './collection.js';
+
+const badgesField = (b: { achievementId: string; tier: number; badge: string }[]) => (b.length ? { badges: b } : {});
 
 // ------------------------------------------------------------------------------------------- config
 
@@ -230,7 +233,11 @@ export interface StableSnapshot {
   horses: StableHorse[];
   autoHorses: boolean;
   /** トロフィー棚 (automatic from titles, stats and tournaments). */
-  trophies: { titleIds: string[]; races: number; wins: number; top3: number; tournamentWins: number; tournamentPodiums: number };
+  trophies: {
+    titleIds: string[]; races: number; wins: number; top3: number; tournamentWins: number; tournamentPodiums: number;
+    /** REQ-ACH-009: achievement badges (highest tier per achievement, best first; absent when none / older copies). */
+    badges?: { achievementId: string; tier: number; badge: string }[];
+  };
   likes: number;
   updatedAt: number;
 }
@@ -277,6 +284,7 @@ export function stableSnapshot(m: Master, s: PlayerState, now: number): StableSn
     trophies: {
       titleIds: s.titles.slice(-12), races: s.stats.races, wins: s.stats.wins, top3: s.stats.top3,
       tournamentWins: tours.filter((t) => t.rank === 1).length, tournamentPodiums: tours.filter((t) => t.rank >= 1 && t.rank <= 3).length,
+      ...badgesField(achievementBadges(m, s)),
     },
     likes: st.likes,
     updatedAt: L.updatedAt,

@@ -39,4 +39,5 @@ node "$HERE/test/round9.test.mjs"   # round 9: replay share (ReplayClip/ShareCar
 node "$HERE/test/round10.test.mjs"   # round 10: 支部 cheer stamps on TeamsService/TeamCore, the bought pass in the per-player shop list
 node "$HERE/test/round9-gacha.test.mjs"   # round 9: banner calendar, GachaRevealModel/BannerListModel in WASM, pity meter, step-up, the end boundary
 node "$HERE/test/round10-invite.test.mjs" # round 10: 友達招待 — my code, demo friends redeeming it, milestone rewards, entering a code, reset
+node "$HERE/test/round11.test.mjs"   # round 11: 図鑑 (obtained / seen / unknown, no reward for completion), achievements and claims, achievement titles
 echo "built $SITE ($(du -sh "$SITE" | cut -f1))"

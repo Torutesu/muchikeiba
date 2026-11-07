@@ -70,7 +70,8 @@ export interface TeamPlayers {
   // REQ-TEAMFEED-*
   stampCatalog(uid: string): Promise<ReturnType<typeof stampCatalog>>;
   stampCheck(uid: string, stampId: string): Promise<{ teamId: string; displayName: string }>;
-  stampPosted(uid: string, stampId: string, kind: 'post' | 'reaction', teamId: string): Promise<unknown>;
+  /** `ref`: the stored feed item / reaction (REQ-ACH-002 counts a cheer once per ref). */
+  stampPosted(uid: string, stampId: string, kind: 'post' | 'reaction', teamId: string, ref?: string | null): Promise<unknown>;
   feedViewer(uid: string, firstPage: boolean): Promise<{ teamId: string | null; muted: string[] }>;
   feedMutes(uid: string): Promise<{ muted: string[] }>;
   feedMute(uid: string, target: string, muted: boolean): Promise<{ muted: string[] }>;
@@ -279,7 +280,7 @@ export class TeamsService {
   async postStamp(uid: string, stampId: string) {
     const info = await this.players.stampCheck(uid, stampId);
     const item = await this.teams.feedPost(info.teamId, uid, stampId);
-    await this.players.stampPosted(uid, stampId, 'post', info.teamId).catch(() => undefined);
+    await this.players.stampPosted(uid, stampId, 'post', info.teamId, `post:${info.teamId}:${item.seq}`).catch(() => undefined);
     return { teamId: info.teamId, seq: item.seq, at: item.at, stampId };
   }
 
@@ -291,7 +292,7 @@ export class TeamsService {
     const info = stampId !== null ? await this.players.stampCheck(uid, stampId) : { teamId: await this.myTeamId(uid), displayName: '' };
     const r = await this.teams.feedReact(info.teamId, uid, seq, stampId);
     if (r.isNew && stampId !== null) {
-      await this.players.stampPosted(uid, stampId, 'reaction', info.teamId).catch(() => undefined);
+      await this.players.stampPosted(uid, stampId, 'reaction', info.teamId, `react:${info.teamId}:${seq}`).catch(() => undefined);
       if (r.kind === 'race' && r.ownerId !== uid) await this.players.cheerPush(r.ownerId, uid, info.displayName).catch(() => undefined);
     }
     return { teamId: info.teamId, seq, myReaction: stampId };

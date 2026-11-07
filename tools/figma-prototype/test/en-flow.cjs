@@ -1,7 +1,8 @@
 // Round 11 (REQ-L10N-013): a short pass of the ムチ一閃 UI in English on the landscape phone (844×390 @2x).
 // EN on from the start, the day-7 demo player: home, shop (recommended / coins / looks), the legal page (Japanese text
 // with the English courtesy note), purchase confirmation, season pass, scout calendar and odds, the stable, settings,
-// a ranked race (HUD) and its result. On every screen:
+// a ranked race (HUD) and its result, then the 図鑑 (every tab, details), 実績 (claim one / all) and the title chooser.
+// On every screen:
 //   - no Japanese is left on the stage (outside the .keep-ja legal text and the 日本語 language button);
 //   - no text overflows: nothing is still too wide / too tall for its box after fitText, nothing leaves the stage.
 // Screenshots: <out>/en-<nn>-<name>.png. Returns { shots, report }.
@@ -120,6 +121,25 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await waitScreen(['result'], 40000); await shot('result', 1200);
   const commentary = await page.evaluate(() => globalThis.__muchi.state().lastFrame?.subtitle ?? '');
   assert.ok(!/[぀-ヿ一-鿿]/.test(commentary), 'the race commentary is in English: ' + commentary);
+
+  // round 11: 図鑑・実績・称号 in English (REQ-COL-*, REQ-ACH-*): a week of play on the real rules, every tab, a detail,
+  // the achievement list (claim one, claim all), the title chooser
+  await page.evaluate(() => globalThis.__muchi.demo('collection')); await waitScreen('collection', 60000);
+  await shot('collection-horses', 600);
+  assert.match(await page.locator('.screen.in').innerText(), /pays no reward/i, 'the book says completing it pays nothing (English)');
+  await page.locator('.screen.in [data-col-cell][data-state="seen"]').first().click(); await shot('collection-seen-detail', 500);
+  await page.locator('.screen.in [data-col-cell][data-state="unknown"]').first().click(); await shot('collection-unknown-detail', 500);
+  for (const tab of ['skills', 'courses', 'cosmetics']) {
+    await page.locator(`.screen.in [data-tab="${tab}"]`).click(); await page.waitForTimeout(400);
+    const cell = page.locator('.screen.in [data-col-cell][data-state="obtained"]').first();
+    if (await cell.count()) await cell.click();
+    await shot('collection-' + tab, 400);
+  }
+  await click('実績'); await waitScreen('achievements'); await shot('achievements', 600);
+  await page.locator('.screen.in [data-claim]').first().click(); await page.waitForTimeout(800); await waitScreen('achievements');
+  await shot('achievement-claimed', 300);
+  await click('まとめて受け取る'); await page.waitForTimeout(800); await waitScreen('achievements');
+  await click('称号を変える'); await shot('achievement-titles', 500);
 
   const misses = await page.evaluate(() => globalThis.__muchi.l10n.misses());
   fs.writeFileSync(path.join(out, 'en-report.json'), JSON.stringify({ report, misses }, null, 2));

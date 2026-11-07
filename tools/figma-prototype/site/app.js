@@ -86,6 +86,9 @@ function fitText(root) {
     const over = () => e.scrollWidth > e.clientWidth + 1 || (e.style.height && e.scrollHeight > e.clientHeight + 1)
       || (host && !host.classList.contains('btn') && text().bottom > host.getBoundingClientRect().bottom + 1)
       || text().right > $stage.getBoundingClientRect().right + 1;
+    // fit again from the base size (a sheet measured mid slide-in must not stay 'overflow' once it has settled)
+    const setSize = (px) => { e.style.fontSize = px; if (e.classList.contains('btn')) e.querySelectorAll('span').forEach((s) => { s.style.fontSize = px; }); };
+    if (e.dataset.fitBase) { setSize(e.dataset.fitBase + 'px'); delete e.dataset.fit; }
     if (!over()) continue;
     const base = parseFloat(e.dataset.fitBase ?? getComputedStyle(e).fontSize);
     e.dataset.fitBase = String(base);
@@ -594,7 +597,8 @@ async function RaceResult(f) {
   const r = f.result;
   const finishTick = r.place > 0 ? f.finishTicks[r.place - 1] : -1;
   const passBefore = await L.passView();
-  const applied = await L.applyRace(raceCtx.config.raceId, r.place, r.runners, { trackId: raceCtx.trackId, style: partner()?.style ?? 'sashi', finishTick: finishTick >= 0 ? finishTick : null, whips: r.facts?.whips ?? 0 });
+  // round 11: the field met (図鑑) and whether the partner's skill fired (実績) go with the result, like a room's settlement
+  const applied = await L.applyRace(raceCtx.config.raceId, r.place, r.runners, { trackId: raceCtx.trackId, style: partner()?.style ?? 'sashi', finishTick: finishTick >= 0 ? finishTick : null, whips: r.facts?.whips ?? 0, skillFired: !!(f.skill?.used ?? lastFrame?.skill?.used) }, raceCtx.config);
   const passAfter = await L.passView();
   const missions = await L.missions();
   await refresh();
@@ -978,7 +982,7 @@ function Missions(ms, fw, bonus) {
 }
 /** Feature keys unlocked by races or days (server unlocks), each with its key and condition. */
 function Features() {
-  const keys = [['season_pass', 'シーズンパス', () => SeasonPass()], ['time_attack', 'タイムアタック', () => TimeAttack()], ['breeding', '配合'], ['friends', 'フレンド'], ['teams', '支部'], ['events', 'イベント'], ['my_stable', 'マイ厩舎']];
+  const keys = [['season_pass', 'シーズンパス', () => SeasonPass()], ['time_attack', 'タイムアタック', () => TimeAttack()], ['collection', '図鑑', () => Collection()], ['achievements', '実績・称号', () => Achievements()], ['breeding', '配合'], ['friends', 'フレンド'], ['teams', '支部'], ['events', 'イベント'], ['my_stable', 'マイ厩舎']];
   Sheet('機能・イベント', '開放', (s, close, y) => {
     keys.forEach(([k, name, go], i) => {
       const f = unlock(k);
@@ -1756,6 +1760,7 @@ async function Demo(kind) {
   try { localStorage.removeItem('muchi.comeback.pushAsked'); } catch { /* */ }
   if (kind === 'new') { await L.bootstrap(); await refresh(); return Title(); }
   if (kind === 'comeback') { await L.seedComeback(14); await refresh(); return Home(); }
+  if (kind === 'collection') { await L.seedCollection(); await refresh(); return Collection('horses'); }
   const spec = { day1: [1, [1]], day3: [3, [2, 2, 2]], day7: [7, [3, 3, 3, 3, 3, 3, 3]] }[kind];
   await L.seedDemo(spec[0], spec[1]);
   await refresh();
@@ -2003,6 +2008,144 @@ async function ComebackTrack() {
     else if (!m.claimed && go[m.feature]) Ghost('行ってみる', 264, 72, 120, 36, go[m.feature], row, 'quiet small');
   });
   Back(Home, 'ホームへ', 40, 834);
+}
+
+// ================================================================= 図鑑・実績・称号 (round 11; REQ-COL-*, REQ-ACH-*, contracts/protocol.md §24)
+// ムチ一閃 tone: the photoreal paddock behind sparse navy panels, letter-spaced cyan kickers, one skewed cyan CTA » per view.
+// Everything comes from the real server rules (MuchiLogic.collection / achievements / titles = GET /v1/collection,
+// GET /v1/achievements, GET /v1/titles). Legal (docs/planning/03): the book's completion is a number only — no reward,
+// no 「あと1体」, no link from a missing horse to the scout; unknown entries are silhouettes with ？？？. Achievements count
+// play only and pay free coins. Art: portraits/silhouettes/badges are Codex's (asset keys collection/portrait|silhouette/*,
+// badge/*); until then the partner renders stand in (a silhouette = the same render, blacked out).
+const COL_TABS = [['horses', '競走馬'], ['skills', '固有スキル'], ['courses', 'コース'], ['cosmetics', '見た目']];
+const COL_STATE = { horses: { obtained: '入手', seen: '出会った', unknown: '未発見' }, skills: { obtained: '入手', seen: '出会った', unknown: '未発見' }, courses: { obtained: '走った', unknown: '未出走' }, cosmetics: { obtained: '所持', unknown: '未所持' } };
+const ACH_CATS = [[null, 'すべて'], ['race', 'レース'], ['course', 'コース'], ['skill', 'スキル'], ['breeding', '配合'], ['time_attack', 'TA'], ['tournament', '大会'], ['stable', '厩舎'], ['team', '支部']];
+const colPct = (permille) => `${Math.floor(permille / 10)}%`;
+const colArt = (id) => partnerPreview([...id].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % 5);
+const colState = { tab: 'horses', sel: null, achCat: null, achPage: 0 };
+
+async function Collection(tab) {
+  if (tab) { colState.tab = tab; colState.sel = null; }
+  currentScreen = () => Collection();
+  const r = await L.collection();
+  if (!r.ok) { toast(r.message); return Home(); }
+  const book = r.value;
+  const c = book.sections[colState.tab];
+  Clear('collection'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('図鑑', `達成率 ${colPct(book.totals.completionPermille)}（${book.totals.obtained} / ${book.totals.total}）　·　記録の表示だけです。そろえても報酬はありません`).dataset.colTotal = String(book.totals.completionPermille);
+  const p = Glass('Collection', 36, 134, 1060, 676, undefined, .88);
+  COL_TABS.forEach(([k, name], i) => { const b = Btn(name, 36 + i * 168, 28, 156, 48, () => Collection(k), 'choice' + (colState.tab === k ? ' on' : ''), p); b.dataset.tab = k; });
+  const counts = colState.tab === 'horses' || colState.tab === 'skills' ? `入手 ${c.obtained}　·　出会った ${c.seen}　·　未発見 ${c.unknown}` : `${COL_STATE[colState.tab].obtained} ${c.obtained} / ${c.total}`;
+  Txt(counts, 720, 40, 304, 15, MUTED, p, { weight: 500, align: 'right', nowrap: true }).dataset.colCounts = '1';
+  Gauge(36, 96, 988, c.total ? c.obtained / c.total : 0, p);
+  const horses = colState.tab === 'horses';
+  const cols = horses ? 7 : 4, cw = horses ? 136 : 238, ch = horses ? 124 : 104;
+  const grid = el('col-grid', 36, 124, 988, 520, p);
+  c.entries.forEach((e, i) => {
+    const cell = el('col-cell ' + e.state + (colState.sel === e.id ? ' sel' : ''), (i % cols) * (cw + 6), Math.floor(i / cols) * (ch + 6), cw, ch, grid);
+    cell.dataset.colCell = e.id; cell.dataset.state = e.state; cell.setAttribute('role', 'button');
+    if (horses) {
+      ArtImage(colArt(e.id), 14, 6, cw - 28, 74, cell, e.state === 'unknown' ? 'col-sil' : 'col-por');
+      Txt(e.name ?? '？？？', 8, 82, cw - 16, 13, e.state === 'unknown' ? DIM : WHITE, cell, { weight: 700, nowrap: true, align: 'center' });
+      Txt(`${e.rarity}　${COL_STATE.horses[e.state]}`, 8, 102, cw - 16, 11, e.rarity === 'SSR' ? GOLD : e.rarity === 'SR' ? CYAN : MUTED, cell, { weight: 700, align: 'center', ls: '.12em', nowrap: true });
+    } else {
+      // a course name (racecourse + surface + distance) may take two lines (long in English: "Bellmoor Racecourse, Turf 1200 m (straight)")
+      const course = colState.tab === 'courses';
+      Txt(e.name ?? '？？？', 16, course ? 10 : 16, cw - 32, 15, e.state === 'unknown' ? DIM : WHITE, cell, course ? { weight: 700, lh: 1.25 } : { weight: 700, nowrap: true });
+      const sub = colState.tab === 'skills' ? (e.condition ?? e.rarity) : course ? (e.state === 'obtained' ? `出走 ${e.races}　·　1着 ${e.wins}` : `${surfaceJa(e.surface)} ${fmt(e.distanceM)}m`) : e.kind;
+      Txt(sub, 16, course ? 54 : 44, cw - 32, 12, MUTED, cell, { nowrap: true }).style.overflow = 'hidden';
+      Txt(COL_STATE[colState.tab][e.state], 16, course ? 78 : 72, cw - 32, 12, e.state === 'obtained' ? CYAN : SOFT, cell, { weight: 700, ls: '.16em' });
+    }
+    cell.addEventListener('click', (ev) => { ev.stopPropagation(); colState.sel = e.id; Collection(); });
+  });
+  // right: the selected entry (lore, stats) — never a link to the scout
+  const d = Glass('Collection detail', 1116, 134, 448, 676, undefined, .9);
+  const e = c.entries.find((x) => x.id === colState.sel) ?? c.entries.find((x) => x.state !== 'unknown') ?? c.entries[0];
+  if (e) {
+    d.dataset.colDetail = e.id;
+    Kicker(`${COL_TABS.find(([k]) => k === colState.tab)[1]}　/　${COL_STATE[colState.tab][e.state]}`, 36, 30, d, { size: 15 });
+    let y = 100;
+    if (horses) { ArtImage(colArt(e.id), 36, y, 376, 200, d, e.state === 'unknown' ? 'col-sil' : 'col-por'); y += 214; }
+    Txt(e.name ?? '？？？', 36, y, 376, 28, e.state === 'unknown' ? DIM : WHITE, d, { weight: 700, nowrap: true, ls: '.04em' }); y += 46;
+    const meta = horses ? (e.state === 'unknown' ? e.rarity : `${e.rarity}　/　${STYLE_JA[e.style] ?? ''}　/　${surfaceJa(e.surface)} ${fmt(e.distance.minM)}〜${fmt(e.distance.maxM)}m`)
+      : colState.tab === 'skills' ? (e.condition ?? e.rarity) : colState.tab === 'courses' ? `${surfaceJa(e.surface)}　${fmt(e.distanceM)}m` : e.kind;
+    Txt(meta + (e.seasonal ? `　·　${e.seasonal.label}` : ''), 36, y, 376, 15, GOLD, d, { weight: 700 }); y += 34;
+    Txt(e.lore ?? (e.state === 'unknown' ? 'まだ出会っていません。レースで出会うと記録されます。' : ''), 36, y, 376, 15, MUTED, d, { lh: 1.65 }).dataset.colLore = '1'; y += 80;
+    if (e.stats) [['スピード', e.stats.speed], ['スタミナ', e.stats.stamina], ['瞬発', e.stats.burst]].forEach(([k, v], i) => {
+      Txt(k, 36, y + i * 44, 160, 14, WHITE, d, { weight: 700 }); Txt(String(stat100(v)), 340, y + i * 44 - 2, 72, 16, GOLD, d, { weight: 700, align: 'right', cls: 'num' });
+      Gauge(36, y + i * 44 + 24, 376, v / 1000, d);
+    });
+    if (colState.tab === 'skills' && e.effect) Txt(e.effect, 36, y, 376, 15, WHITE, d, { lh: 1.6 });
+    if (colState.tab === 'courses' && e.state === 'obtained') Txt(`出走 ${e.races}　·　1着 ${e.wins}${e.timeAttackBestMs ? `　·　タイムアタック ${fmtMs(e.timeAttackBestMs)}` : ''}`, 36, y, 376, 15, WHITE, d, { weight: 500 });
+  }
+  Txt(book.notice, 36, 620, 376, 13, SOFT, d, { lh: 1.5 }).dataset.colNotice = '1';
+  Back(Home, 'ホームへ', 40, 834);
+  TextLink('実績', 220, 834, 160, () => Achievements(), undefined, '実績・称号 ›');
+}
+
+async function Achievements() {
+  currentScreen = Achievements;
+  await refresh();
+  const r = await L.achievements();
+  if (!r.ok) { toast(r.message); return Home(); }
+  const v = r.value;
+  Clear('achievements'); SetArt('Art/race-result', false); Shade('left');
+  TopBar('実績', 'レースや育成などのプレイで達成します　·　課金やガチャの回数では達成しません　·　報酬は無償コイン');
+  const p = Glass('Achievements', 36, 134, 1060, 676, undefined, .88);
+  ACH_CATS.forEach(([k, name], i) => { const b = Btn(name, 36 + i * 110, 28, 100, 44, () => { colState.achCat = k; colState.achPage = 0; Achievements(); }, 'choice' + (colState.achCat === k ? ' on' : ''), p); b.dataset.cat = k ?? 'all'; b.style.fontSize = '15px'; });
+  const rows = v.achievements.filter((a) => colState.achCat === null || a.category === colState.achCat)
+    .map((a) => ({ a, claim: v.blocked ? null : a.tiers.find((t) => t.claimable) }))
+    .sort((x, y) => (x.claim ? 0 : 1) - (y.claim ? 0 : 1));
+  const PER = 6, pages = Math.max(1, Math.ceil(rows.length / PER));
+  colState.achPage = clamp(colState.achPage, 0, pages - 1);
+  rows.slice(colState.achPage * PER, colState.achPage * PER + PER).forEach(({ a, claim }, i) => {
+    const row = el('ach-row', 36, 96 + i * 90, 988, 90, p); row.dataset.ach = a.id;
+    Txt(a.name, 0, 14, 420, 17, WHITE, row, { weight: 700, nowrap: true });
+    Txt(a.description, 0, 42, 420, 12, MUTED, row, { nowrap: true }).style.overflow = 'hidden';
+    const prev = [...a.tiers].reverse().find((t) => t.unlocked)?.target ?? 0;
+    Txt(a.nextTarget ? `${fmt(Math.min(a.progress, a.nextTarget))} / ${fmt(a.nextTarget)}` : '達成', 440, 14, 150, 16, GOLD, row, { weight: 700, align: 'right', cls: 'num' });
+    Gauge(440, 44, 150, a.nextTarget ? (a.progress - prev) / Math.max(1, a.nextTarget - prev) : 1, row, { gold: !a.nextTarget });
+    const badges = el('ach-badges', 620, 14, 220, 34, row);
+    a.tiers.forEach((t) => { const b = document.createElement('i'); b.className = 'ach-badge' + (t.unlocked ? ' on' : '') + (t.claimed ? ' claimed' : ''); b.textContent = String(t.tier); b.dataset.badge = t.badge; badges.appendChild(b); });
+    if (a.titles.length) Txt(`称号「${a.titles[0].name}」${a.titles[0].unlocked ? '　獲得' : `　${a.titles[0].tier}段`}`, 620, 58, 220, 11, a.titles[0].unlocked ? CYAN : SOFT, row, { weight: 700, nowrap: true });
+    if (claim) Ghost('受け取る', 860, 22, 128, 44, async () => { const c = await L.claimAchievement(a.id, claim.tier); toast(c.ok ? `実績「${a.name}」${claim.tier}段：無償コイン${c.value.reward.freeCoins}枚` : c.message); Achievements(); }, row, 'small gold').dataset.claim = `${a.id}:${claim.tier}`;
+  });
+  if (pages > 1) {
+    Txt(`${colState.achPage + 1} / ${pages}`, 740, 648, 120, 14, MUTED, p, { align: 'right', cls: 'num' }).dataset.achPage = String(colState.achPage + 1);
+    Ghost('前へ', 872, 636, 72, 40, () => { colState.achPage--; Achievements(); }, p, 'small');
+    Ghost('次へ', 952, 636, 72, 40, () => { colState.achPage++; Achievements(); }, p, 'small');
+  }
+  // right: totals, the one CTA (claim everything), the equipped title
+  const s = Glass('Achievement totals', 1116, 134, 448, 676, undefined, .9);
+  Kicker('実績', 36, 30, s, { size: 16 });
+  Txt(`${v.totals.unlocked} / ${v.totals.tiers}段`, 36, 100, 376, 40, WHITE, s, { weight: 700, cls: 'num' }).dataset.achTotal = String(v.totals.unlocked);
+  Txt(`受け取った無償コイン ${fmt(v.totals.earnedCoins)}　·　全部で ${fmt(v.totals.totalCoins)}`, 36, 158, 376, 14, MUTED, s, { weight: 500 });
+  if (v.blocked) Txt('アカウント削除の予定があります。取り消すと受け取れます', 36, 200, 376, 14, RED, s, { weight: 700, lh: 1.5 }).dataset.achBlocked = '1';
+  else if (v.totals.claimable > 0) Cta('まとめて受け取る', 36, 196, 376, async () => { const c = await L.claimAllAchievements(); toast(c.ok ? `${c.value.claimed.length}件の実績：無償コイン${c.value.freeCoins}枚` : c.message); Achievements(); }, s, 'small');
+  else Txt('受け取れる実績はありません', 36, 214, 376, 15, SOFT, s);
+  Hair(36, 296, 376, s);
+  const tl = await L.titles();
+  const eq = tl.titles.find((t) => t.id === tl.equipped);
+  Kicker('称号　/　プロフィールとマイ厩舎に表示', 36, 318, s, { rule: false, size: 14 });
+  Txt(eq ? eq.name : 'なし', 36, 352, 376, 26, eq ? GOLD : SOFT, s, { weight: 700, nowrap: true }).dataset.titleEquipped = tl.equipped ?? '';
+  Txt(`${tl.titles.filter((t) => t.unlocked).length} / ${tl.titles.length} 獲得`, 36, 398, 376, 14, MUTED, s);
+  Ghost('称号を変える', 36, 430, 220, 52, () => TitleSheet(tl, v), s, 'small');
+  Txt(v.notice, 36, 600, 376, 13, SOFT, s, { lh: 1.5 });
+  Back(Home, 'ホームへ', 40, 834);
+  TextLink('図鑑', 220, 834, 120, () => Collection(), undefined, '図鑑 ›');
+}
+
+function TitleSheet(tl, ach) {
+  Sheet('称号', '記録と実績でもらえます　/　買えません', (sh, close, y) => {
+    const list = [...tl.titles].sort((a, b) => Number(b.unlocked) - Number(a.unlocked)).slice(0, 12);
+    list.forEach((t, i) => {
+      const yy = y + i * 48;
+      Txt(t.name, 48, yy, 240, 17, t.unlocked ? WHITE : DIM, sh, { weight: 700, nowrap: true });
+      const hint = t.unlocked ? (t.id === tl.equipped ? '使用中' : '') : t.source === 'achievement' ? `実績「${ach.achievements.find((a) => a.id === t.achievementId)?.name ?? t.achievementId}」${t.tier}段` : '記録で獲得';
+      Txt(hint, 290, yy + 2, 210, 13, t.id === tl.equipped ? GOLD : SOFT, sh, { nowrap: true });
+      if (t.unlocked && t.id !== tl.equipped) Ghost('つける', 512, yy - 8, 100, 40, async () => { const r = await L.equipTitle(t.id); toast(r.ok ? `称号「${t.name}」をつけました` : r.message); close(); Achievements(); }, sh, 'small').dataset.equip = t.id;
+    });
+  });
 }
 
 // ================================================================= stable — 07-stable
@@ -2324,7 +2467,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Collection, Achievements, TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

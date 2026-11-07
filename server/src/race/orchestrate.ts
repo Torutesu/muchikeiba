@@ -5,7 +5,8 @@ import { buildRaceConfig } from '../domain/raceConfig.js';
 import { groundFor } from '../domain/ground.js';
 import { randInt, randomId, type Rng } from '../domain/rng.js';
 import type { RaceMode, RaceStartConfig, ReplayLog } from '../domain/schemas.js';
-import { raceDetailsFor } from '../domain/stats.js';
+import { raceDetailsFor, type RaceDetails } from '../domain/stats.js';
+import { raceFieldSeen } from '../domain/collection.js';
 import { updateRace, type Rating } from '../domain/rating.js';
 import type { FinalOutcome } from '../domain/raceRoom.js';
 import type { RaceResultForPlayer } from '../domain/rewards.js';
@@ -99,6 +100,11 @@ function friendBond(m: Master, h: RaceEntry): RaceEntry['horse'] {
   return out;
 }
 
+/** REQ-ACH-002: mark whether the rider's skill fired (only when the outcome knows the skill list). */
+function withSkill(d: RaceDetails, fired: number[] | undefined, slot: number): RaceDetails {
+  return fired ? { ...d, skillFired: fired.includes(slot) } : d;
+}
+
 /**
  * Turns a final race outcome into per-player results (places, rating updates for ranked, ride details
  * for statistics/titles derived from the confirmed input log when it is given).
@@ -123,7 +129,8 @@ export function settleRace(config: RaceStartConfig, final: FinalOutcome, ratings
     out[h.playerId!] = {
       raceId: config.raceId, mode: config.mode, place: placeOf.get(h.slot) ?? config.entrants.length,
       fieldSize: config.entrants.length, newRating: newRatings.get(h.playerId!) ?? null, void: false,
-      details: log && config.mode !== 'tutorial' ? raceDetailsFor(config, log, h.slot, ft === undefined || ft < 0 ? null : ft) : null,
+      details: log && config.mode !== 'tutorial' ? withSkill(raceDetailsFor(config, log, h.slot, ft === undefined || ft < 0 ? null : ft), final.skillFired, h.slot) : null,
+      ...(config.mode !== 'tutorial' ? { seen: raceFieldSeen(config, h.slot) } : {}),
       humans: humans.length,
       oldRating: ratings[h.playerId!] ?? null,
       ...ev,

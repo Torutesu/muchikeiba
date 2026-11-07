@@ -530,6 +530,16 @@ export class InviteService {
     };
   }
 
+  /**
+   * Undo this attempt's device claim — unless the account HAS redeemed (a concurrent request of the same account on the
+   * same device succeeded: the claim is that redemption's and must stay, or another account could reuse the device).
+   * When the check itself fails the claim is kept (the same account can still retry; only other accounts are refused).
+   */
+  private async release(h: string, uid: string) {
+    const st = await this.players.view(uid, null).catch(() => null);
+    if (st && !st.redeem.invitedBy) await this.codes.releaseInstall(h, uid);
+  }
+
   /** REQ-INV-003..005: enter a code. */
   async redeem(uid: string, rawCode: string, installId: string) {
     const h = await hashInstallId(installId);
@@ -551,11 +561,11 @@ export class InviteService {
     try {
       acc = await this.players.accept(inviter, uid, h, name);
     } catch (e) {
-      await this.codes.releaseInstall(h, uid);
+      await this.release(h, uid);
       throw e;
     }
     if (acc.status === 'refused') {
-      await this.codes.releaseInstall(h, uid);
+      await this.release(h, uid);
       if (acc.reason === 'same_device') await this.players.flag(uid, `invite_same_device:${inviter}`);
       throw new AppError('INVITE_REFUSED', acc.reason === 'unavailable' ? 'this invite code cannot be used now' : 'this invite code cannot be used from this account');
     }
@@ -564,9 +574,11 @@ export class InviteService {
       out = await this.players.commit(uid, inviter, code, h, acc.friended);
     } catch (e) {
       if (acc.status === 'accepted') await this.players.revert(inviter, uid, acc.friended);
-      await this.codes.releaseInstall(h, uid);
+      await this.release(h, uid);
       throw e;
     }
+    // r10 QA: (re)claim the device — a concurrent failed attempt of the same account may have released it meanwhile
+    await this.codes.claimInstall(h, uid);
     // friend caps: the pair is linked only when both sides had room
     if (acc.friended && !out.friended) await this.players.unfriend(inviter, uid);
     let inviterName: string | null = null;

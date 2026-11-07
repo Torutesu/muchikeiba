@@ -162,9 +162,14 @@ export function playerStampCheck(m: Master, s: PlayerState, stampId: string) {
   if (!teamId) throw new AppError('NOT_IN_TEAM');
   const d = findStamp(m, stampId);
   if (!stampUnlocked(s, d)) throw new AppError('STAMP_LOCKED', unlockText(m, d));
+  notePostedIn(s, teamId);
+  return { teamId, displayName: s.profile.displayName };
+}
+
+/** REQ-TEAMFEED-008: remember a team whose feed holds something of this player (stamp, reaction or race item). */
+export function notePostedIn(s: PlayerState, teamId: string) {
   const f = ensureFeed(s);
   f.postedIn = [...f.postedIn.filter((t) => t !== teamId), teamId].slice(-POSTED_IN_KEEP);
-  return { teamId, displayName: s.profile.displayName };
 }
 
 /** REQ-TEAMFEED-006: mute / unmute a member (server copy of the client's local list). */

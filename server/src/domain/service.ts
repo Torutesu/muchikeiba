@@ -20,7 +20,7 @@ import { buyCosmetic, cosmeticsCatalog, setEquipment, useTicket, type EquipmentP
 import { applyRaceResult, claimLoginBonus, claimMission, claimPass, firstWinBonusView, missionsView, type RaceResultForPlayer } from './rewards.js';
 import { allowanceView, claimAllowance, markOfferViewed, noteRaceForOffers, shopOffers, shopProducts } from './shop.js';
 import { passScreen } from './pass.js';
-import { adSessionView, adsView, applyAdCallback, setAdPref, startAd, type AdCallback, type AdPref } from './ads.js';
+import { adSessionView, adsView, applyAdCallback, setAdPref, startAd, type AdCallback, type AdPref, type AdRewardResult } from './ads.js';
 import { toRaceHorse } from './raceConfig.js';
 import { paidBalanceYen, invariantsHold } from './wallet.js';
 import type { PaidBalanceSnapshot } from './accounting.js';
@@ -52,7 +52,7 @@ import {
   nextDeletionWake, notWhileDeleting, requestDeletion, startDeletion, type DeletionStep,
 } from './accountDeletion.js';
 import {
-  ensureFeed, FEED_RACE_MODES, playerMute, playerReported, playerStampCheck, stampCatalog, stampsOf, type FeedRace, type ReportReason,
+  ensureFeed, FEED_RACE_MODES, notePostedIn, playerMute, playerReported, playerStampCheck, stampCatalog, stampsOf, type FeedRace, type ReportReason,
 } from './teamFeed.js';
 import {
   dueInviteOutbox, forfeitInviteOutbox, forgetInvitee, forgetInviter, inviteAcked, inviteeCommit, inviteRetryLater, inviterAccept, inviterMilestone,
@@ -586,7 +586,11 @@ export class PlayerService {
   }
   async adSession(id: string, sessionId: string) { return adSessionView(this.d.master, await this.load(id), sessionId, this.d.clock()); }
   /** A verified SSV callback (signature checked by src/ads/ssv.ts). Idempotent by the network transaction id. */
-  async adReward(id: string, cb: AdCallback) {
+  async adReward(id: string, cb: AdCallback): Promise<AdRewardResult> {
+    // r10 QA: the signed user_id is whatever the app passed to the SDK, so it may name a player with no state (never
+    // played, or wiped by an account deletion). No session can exist there: reject without writing, so a callback never
+    // creates a player — nor resurrects a deleted one past its tombstone.
+    if (!(await this.repo.get(id))) return { status: 'rejected', reason: 'unknown_session', sessionId: null };
     return this.tx(id, `ad:${cb.network}:${cb.transactionId}`, (s, now, emit) => applyAdCallback(this.d.master, s, cb, now, emit));
   }
 
@@ -614,6 +618,8 @@ export class PlayerService {
       // REQ-TEAMFEED-004: a win or a place in a ranked race or a tournament shows in the team feed
       const teamId = s.team?.teamId ?? null;
       if (!r.void && teamId && (FEED_RACE_MODES as readonly string[]).includes(r.mode) && r.place >= 1 && r.place <= stampsOf(this.d.master).config.racePlaceMax) {
+        // r10 QA: the deletion must find this item even after the player left the team (REQ-TEAMFEED-008)
+        notePostedIn(s, teamId);
         feed = { teamId, playerId: id, displayName: s.profile.displayName, race: { raceId: r.raceId, mode: r.mode as FeedRace['mode'], place: r.place, fieldSize: r.fieldSize, trackId: r.details?.trackId ?? null } };
       }
       if (!r.void && r.mode === 'ranked') noteRaceForOffers(this.d.master, s, r.place, now); // REQ-UXS-017 T2

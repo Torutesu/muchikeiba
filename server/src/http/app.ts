@@ -659,12 +659,16 @@ export const routes: Route[] = [
   { method: 'GET', path: '/v1/ads/ssv/admob', auth: 'none', handler: async (r, _p, c) => {
     if (!c.ads) throw new AppError('NOT_FOUND', 'rewarded ads are not configured');
     const now = (c.clock ?? Date.now)();
-    c.ads.admit?.('ip:' + (r.headers.get('cf-connecting-ip') ?? '?'), now);
     let cb;
     try {
       cb = await verifyAdMobCallback(new URL(r.url).search, c.ads.keys, c.ads.adUnits);
     } catch (e) {
-      if (e instanceof SsvError) throw new AppError('UNAUTHORIZED', e.message);
+      if (e instanceof SsvError) {
+        // r10 QA: only FAILED callbacks count against the source IP. Every valid callback comes from the ad network's
+        // few servers, so a per-IP budget on them would throttle real rewards; valid ones are limited per player below.
+        c.ads.admit?.('ip:' + (r.headers.get('cf-connecting-ip') ?? '?'), now);
+        throw new AppError('UNAUTHORIZED', e.message);
+      }
       throw e;
     }
     playerIdParam(cb.userId);

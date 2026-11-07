@@ -69,7 +69,7 @@ function ssvKeys(env: Env): SsvKeySource | null {
   }
   return src;
 }
-/** REQ-AD-006: SSV callbacks per source IP and per player (per isolate; the player object also caps sessions per day). */
+/** REQ-AD-006: failed SSV callbacks per source IP and valid ones per player (per isolate; the player object also caps sessions per day). */
 const ssvLimiter = new RateLimiter({ read: { capacity: 30, refillPerSec: 1 }, write: { capacity: 30, refillPerSec: 1 } }, 'ssv');
 
 /** REQ-PUSH-006: one FCM topic send reaches every opted-in device (no per-player fan-out). */

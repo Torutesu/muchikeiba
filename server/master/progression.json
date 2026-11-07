@@ -829,7 +829,7 @@
   "accountDeletion": { "cancelWindowDays": 14, "confirmTtlMs": 600000, "ledgerRetentionDays": 2557 },
   "nudges": { "promotionNearPoints": 30, "promotionIdleMs": 86400000, "tournamentClosingLeadMs": 3600000, "tournamentClosingMaxTargets": 1000 },
   "invite": {
-    "_note": "REQ-INV-*（友達招待）。招待された人は初回チュートリアル（相棒の命名）の後、最初の redeemWindowDays ゲーム日以内にコードを1回だけ入力できる。招待した人への報酬はインストールではなく、招待された人の実際の到達（初心者ミッション完了・B級昇級）でだけ、maxCountedInvitees 人まで。報酬は無償コインと券のみ（有償コインは出さない）。1回の付与は景品表示法の総付景品の下限 ¥200 以内（最小パックの単価で換算、INVITE_HARD_LIMITS・docs/planning/03-legal-risk.md）。",
+    "_note": "REQ-INV-*（友達招待）。招待された人は初回チュートリアル（相棒の命名）の後、最初の redeemWindowDays ゲーム日以内にコードを1回だけ入力できる。招待した人への報酬はインストールではなく、招待された人の実際の到達（初心者ミッション完了・A級昇級・S級昇級、Round 10 の統合で E2 に合わせて変更）でだけ、maxCountedInvitees 人まで。報酬は無償コインと券のみ（有償コインは出さない）。1回の付与は景品表示法の総付景品の下限 ¥200 以内（最小パックの単価で換算、INVITE_HARD_LIMITS・docs/planning/03-legal-risk.md）。",
     "redeemWindowDays": 7, "maxCountedInvitees": 10, "milestoneWindowDays": 90,
     "redeemAttemptsPerHour": 5, "redeemAttemptsPerDay": 10, "burstPerDay": 5,
     "welcomeGift": { "items": [{ "itemId": "gacha_ticket", "qty": 1 }] },

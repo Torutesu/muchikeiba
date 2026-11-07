@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="%CSP%">
+<meta name="referrer" content="no-referrer">
+<title>Muchi Ops Console</title>
+<link rel="stylesheet" href="style.css">
+<script src="config.js"></script>
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand">Muchi <span>Ops</span></div>
+  <span id="env-badge" class="env-badge"></span>
+  <div class="spacer"></div>
+  <div id="who" class="who" data-testid="whoami"></div>
+  <button id="logout" class="btn ghost small" hidden data-testid="logout">ログアウト</button>
+</header>
+<div class="layout">
+  <nav id="nav" class="nav" hidden>
+    <a href="#/config" data-view="config">リモート設定</a>
+    <a href="#/gacha" data-view="gacha">ガチャ カレンダー</a>
+    <a href="#/events" data-view="events">イベント・大会</a>
+    <a href="#/players" data-view="players">プレイヤー サポート</a>
+    <a href="#/compensations" data-view="compensations">補填の承認</a>
+    <a href="#/audit" data-view="audit">監査ログ</a>
+    <a href="#/kpi" data-view="kpi">KPI</a>
+  </nav>
+  <main id="main" class="main" tabindex="-1"></main>
+</div>
+<div id="toasts" class="toasts" aria-live="polite"></div>
+<div id="modal-root"></div>
+</body>
+</html>

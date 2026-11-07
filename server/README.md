@@ -244,6 +244,19 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | GET | `/v1/admin/silks/banned` | viewer | 有効な禁止勝負服の一覧（REQ-OPS-040） |
 | POST | `/v1/admin/silks/banned/check` | viewer | `{silks:{pattern, colors, cap}}` 当たるか確認 |
 | POST | `/v1/admin/silks/banned/import` | admin | `{list, reason}` 一覧を丸ごと取り込み、設定の新しい版として登録（有効化は `/v1/admin/config/activations`） |
+| POST | `/v1/admin/config/dry-run` | viewer | `{op:{kind:'activate', versionId, at?} \| {kind:'rollback', versionId?} \| {kind:'cancel', activationId}}` 本番と同じ検証を保存せずに実行（REQ-OPS-008）→ `{ok, problems, groups, effect}` |
+| GET | `/v1/admin/config/diff` | viewer | `?from=&to=`（版IDか `base`）パスごとの差分（REQ-OPS-009） |
+| GET | `/v1/admin/gacha/calendar` | viewer | `?versionId=active\|base\|cfg_N` バナーの日程（ゲーム日）・天井グループと引き継ぎの連鎖・ステップアップの価格（REQ-OPS-027） |
+| GET | `/v1/admin/gacha/:bannerId/odds` | viewer | `?versionId=` プレイヤー向けと同じ提供割合ページ（公開前・終了後も） |
+| GET | `/v1/admin/events` | viewer | `?versionId=` イベントの一覧と状態、コース一覧 |
+| GET | `/v1/admin/tournaments` | viewer | 大会の一覧と状態 |
+| GET | `/v1/admin/players/lookup` | viewer | `?inviteCode=XXXX-XXXX` 招待コードからプレイヤーID（REQ-OPS-020a） |
+| GET | `/v1/admin/compensations` | viewer | `?status=pending\|approved\|executed\|rejected\|expired&playerId=&limit=` 補填の依頼（REQ-OPS-026） |
+| POST | `/v1/admin/compensations` | operator | `{playerId, grant:{freeCoins?, items?}, opKey, reason}` 閾値（1万コイン・100個）以下は即付与、超えると承認待ち（上限10万・1000個） |
+| POST | `/v1/admin/compensations/:id/approve` | admin | `{note?, reason}` 依頼者以外の admin が承認して付与（2人ルール。付与失敗後は再承認で再試行） |
+| POST | `/v1/admin/compensations/:id/reject` | operator | `{note?, reason}` 承認待ちを却下（依頼者の取り下げも可） |
+
+`GET /v1/admin/players/:playerId` は `{state, integrity, flags, compensations}`（`state` に `exists`・`accountDeleted`・`deletion`・`referral` を含む）。`/players/:id/grants` と一括配布の1人あたりは補填の閾値（1万コイン・100個）まで。運用コンソールからの呼び出しは `ADMIN_CONSOLE_ORIGINS`（wrangler の変数、カンマ区切りのオリジン）に載せたオリジンだけ CORS で許可（資格情報なし）。書き込みは `content-type: application/json` 必須。手順は `docs/ops/console.md`。
 
 ### 設定配信（リモートコンフィグ）
 - バンドルで変えられるもの：`ruleset`（一部でも全部でも可。キー集合は固定）、`gacha.banners`（一覧ごと置き換え。開催日程は `startDay`/`endDay`（ゲーム日）か `startAtMs`/`endAtMs`、予告は `announceDays`/`announceAtMs`、ステップアップは `stepUp`）、`gacha.pityGroups`（`endDay`/`endAtMs`・`convertTo`・`label`）、`tracks`、`progression`（浅いマージ）、`ng`。

@@ -1,0 +1,268 @@
+// Ops console end to end (Playwright, headless Chromium) against a local `wrangler dev` started by scripts/console-e2e.sh.
+// Env: API_BASE, CONSOLE_URL, TOKEN_VIEWER, TOKEN_OPERATOR, TOKEN_ADMIN, TOKEN_ADMIN2, SCREENSHOT_DIR.
+import assert from 'node:assert/strict';
+import { execSync } from 'node:child_process';
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+async function loadPlaywright() {
+  try { return await import('playwright'); } catch {
+    const root = execSync('npm root -g').toString().trim(); // CI images ship playwright globally (browsers in PLAYWRIGHT_BROWSERS_PATH)
+    return import(pathToFileURL(join(root, 'playwright', 'index.mjs')).href);
+  }
+}
+
+const env = (k) => { const v = process.env[k]; if (!v) throw new Error(`${k} is required`); return v; };
+const API = env('API_BASE');
+const CONSOLE = env('CONSOLE_URL');
+const T = { viewer: env('TOKEN_VIEWER'), operator: env('TOKEN_OPERATOR'), admin: env('TOKEN_ADMIN'), admin2: env('TOKEN_ADMIN2') };
+const SHOTS = process.env.SCREENSHOT_DIR ?? 'e2e-screenshots';
+mkdirSync(SHOTS, { recursive: true });
+const runId = Date.now().toString(36);
+const steps = [];
+const step = async (name, fn) => {
+  const t0 = Date.now();
+  try { await fn(); steps.push({ name, ok: true, ms: Date.now() - t0 }); console.log(`ok   ${name}`); } catch (e) { steps.push({ name, ok: false }); console.log(`FAIL ${name}\n${e.stack}`); throw e; }
+};
+
+// ---- seed a player through the public API (DEV_MODE: x-dev-user, fake store)
+const PLAYER = `e2e_${runId}`;
+let n = 0;
+async function asPlayer(method, path, body) {
+  const r = await fetch(API + path, { method, headers: { 'content-type': 'application/json', 'x-dev-user': PLAYER, 'idempotency-key': `e2e-${runId}-${n++}` }, ...(body ? { body: JSON.stringify(body) } : {}) });
+  const j = await r.json();
+  if (!r.ok) throw new Error(`${method} ${path} → ${r.status} ${JSON.stringify(j)}`);
+  return j;
+}
+async function asAdmin(who, method, path, body, extraHeaders = {}) {
+  const r = await fetch(API + path, { method, headers: { authorization: `Bearer ${T[who]}`, ...(body ? { 'content-type': 'application/json' } : {}), ...extraHeaders }, ...(body ? { body: JSON.stringify(body) } : {}) });
+  return { status: r.status, headers: r.headers, body: await r.json().catch(() => null) };
+}
+
+await asPlayer('POST', '/v1/player/bootstrap');
+await asPlayer('PUT', '/v1/player/age', { birthYear: 1990, birthMonth: 1, guardianConsent: false });
+await asPlayer('POST', '/v1/shop/purchase-intent', { productId: 'coin_1500' });
+await asPlayer('POST', '/v1/shop/purchase', { platform: 'fake', productId: 'coin_1500', receipt: JSON.stringify({ transactionId: `T_${PLAYER}`, productId: 'coin_1500', purchasedAt: Date.now(), priceYen: 1500 }) });
+const invite = await asPlayer('GET', '/v1/invite');
+const inviteCode = invite.displayCode; // what a player reads out to support ("XXXX-XXXX")
+assert.ok(inviteCode, `invite code in ${JSON.stringify(invite)}`);
+const seeded = (await asAdmin('admin', 'GET', `/v1/admin/players/${PLAYER}`)).body.state;
+const paid0 = seeded.walletDetail.paid, free0 = seeded.walletDetail.free;
+assert.ok(paid0 > 0, 'seeded player has paid coins');
+
+const { chromium } = await loadPlaywright();
+const browser = await chromium.launch({ headless: true });
+const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: 'ja-JP', timezoneId: 'Asia/Tokyo' });
+const page = await ctx.newPage();
+const consoleErrors = [];
+page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
+page.on('pageerror', (e) => consoleErrors.push(String(e)));
+const tid = (id) => page.getByTestId(id);
+const shot = (name) => page.screenshot({ path: join(SHOTS, `${name}.png`), fullPage: true });
+async function login(who) {
+  await page.goto(`${CONSOLE}/#/login`);
+  if (await tid('logout').isVisible()) { await tid('logout').click(); }
+  await tid('login-base').fill(API);
+  await tid('login-token').fill(T[who]);
+  await tid('login-submit').click();
+  await page.getByTestId('whoami').getByText(who, { exact: true }).first().waitFor();
+}
+async function confirmWith(reason) {
+  await tid('reason').fill(reason);
+  await tid('confirm').click();
+}
+
+try {
+  await step('login is required: a bad token is refused and nothing renders', async () => {
+    await page.goto(CONSOLE);
+    await tid('login-token').fill('not-a-real-token-000');
+    await tid('login-base').fill(API);
+    await tid('login-submit').click();
+    await tid('error').getByText('UNAUTHORIZED').waitFor();
+    assert.equal(await page.locator('#nav').isHidden(), true);
+    await shot('01-login-refused');
+  });
+
+  await step('viewer: read-only UI, server refuses writes (403) and every call is audited', async () => {
+    await login('viewer');
+    await page.locator('#nav a[data-view=config]').click();
+    await tid('active-version').waitFor();
+    assert.equal(await tid('stage').count(), 0, 'no stage button for viewer');
+    assert.equal(await tid('rollback-prev').count(), 0);
+    const r = await asAdmin('viewer', 'POST', `/v1/admin/compensations`, { playerId: PLAYER, grant: { freeCoins: 10 }, opKey: `v-${runId}`, reason: 'viewer try' });
+    assert.equal(r.status, 403);
+    // the token stays out of URLs and local storage
+    assert.ok(!page.url().includes(T.viewer));
+    assert.equal(await page.evaluate(() => JSON.stringify(localStorage)), '{}');
+  });
+
+  await step('CSRF / CORS: listed origin gets CORS headers without credentials; other origins are refused', async () => {
+    const ok = await asAdmin('viewer', 'GET', '/v1/admin/whoami', null, { origin: new URL(CONSOLE).origin });
+    assert.equal(ok.status, 200);
+    assert.equal(ok.headers.get('access-control-allow-origin'), new URL(CONSOLE).origin);
+    assert.equal(ok.headers.get('access-control-allow-credentials'), null);
+    const evil = await asAdmin('admin', 'GET', '/v1/admin/whoami', null, { origin: 'https://evil.example' });
+    assert.equal(evil.status, 403);
+    // from inside the console page, a write without a token fails (no cookie can stand in for it)
+    const s = await page.evaluate(async (api) => (await fetch(`${api}/v1/admin/config/rollback`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"reason":"csrf try"}' })).status, API);
+    assert.equal(s, 401);
+  });
+
+  await step('operator: draft validation shows grouped server problems; stage versions', async () => {
+    await login('operator');
+    await page.locator('#nav a[data-view=config]').click();
+    await tid('draft').fill(JSON.stringify({ gacha: { pityGroups: { standard: { cost: 0 } } } }));
+    await tid('validate').click();
+    await tid('validate-problems').locator('[data-group=gacha]').waitFor();
+    await shot('02-config-validate-problems');
+    // a version whose day rule rewrites the past (REQ-DAY-002): valid as a bundle, refused at activation
+    await tid('draft').fill(JSON.stringify({ progression: { dayRollover: { hourJst: 4, previousHourJst: 1, effectiveAtMs: Date.UTC(2026, 10, 30, 19) } } }));
+    await tid('draft-note').fill(`e2e day rule ${runId}`);
+    await tid('stage').click();
+    await confirmWith('e2e: stage a day-rule change');
+    await page.getByText(`e2e day rule ${runId}`).waitFor();
+    await tid('draft').fill(JSON.stringify({ ng: { exact: [`e2e${runId}`], contains: [] } }));
+    await tid('draft-note').fill(`e2e ng ${runId}`);
+    await tid('stage').click();
+    await confirmWith('e2e: stage an NG list change');
+    await page.getByText(`e2e ng ${runId}`).waitFor();
+    assert.equal(await tid('rollback-prev').count(), 0, 'operator cannot roll back');
+  });
+
+  await step('operator: player lookup by invite code shows wallet split, purchases, flags', async () => {
+    await page.locator('#nav a[data-view=players]').click();
+    await tid('player-query').fill(inviteCode);
+    await tid('player-search').click();
+    await tid('player-head').getByText(PLAYER).waitFor();
+    assert.equal((await tid('wallet-paid').textContent()).replace(/,/g, ''), String(paid0));
+    assert.equal((await tid('wallet-free').textContent()).replace(/,/g, ''), String(free0));
+    await tid('purchases-table').getByText(`T_${PLAYER}`).waitFor();
+    await shot('03-player-support');
+  });
+
+  await step('operator: small compensation is paid at once; a large one waits for approval', async () => {
+    await tid('comp-coins').fill('500');
+    await tid('comp-submit').click();
+    await confirmWith('e2e: outage compensation');
+    await tid('toast-ok').first().waitFor();
+    await page.waitForFunction((v) => document.querySelector('[data-testid=wallet-free]')?.textContent?.replace(/,/g, '') === String(v), free0 + 500);
+    await tid('comp-coins').fill('20000');
+    await tid('comp-submit').click();
+    await page.locator('.modal').getByText('大口のため承認待ちになります', { exact: false }).waitFor();
+    await confirmWith('e2e: long outage compensation');
+    await tid('player-comps').getByText('pending').waitFor();
+    assert.equal((await tid('wallet-free').textContent()).replace(/,/g, ''), String(free0 + 500));
+  });
+
+  let tourId = `e2e_${runId}`.slice(0, 40);
+  await step('operator: create a mini tournament and see it listed', async () => {
+    await page.locator('#nav a[data-view=events]').click();
+    await tid('events-table').or(page.getByText('イベントはありません')).first().waitFor();
+    await tid('t-id').fill(tourId);
+    await tid('t-name').fill('E2Eミニ大会');
+    await tid('t-create').click();
+    await confirmWith('e2e: mini tournament');
+    await tid('tournament-detail').getByText(`大会 ${tourId}`).waitFor();
+    await tid(`tour-${tourId}`).waitFor();
+    await shot('04-events-tournaments');
+  });
+
+  await step('admin: approves the pending compensation (two-person rule)', async () => {
+    await login('admin');
+    await page.locator('#nav a[data-view=compensations]').click();
+    const row = tid('comp-table').locator('tr', { hasText: PLAYER });
+    await row.first().waitFor();
+    await shot('05-compensation-pending');
+    await row.first().getByRole('button', { name: '承認' }).click();
+    await confirmWith('e2e: incident INC-1 confirmed');
+    await page.getByText('承認し、付与しました').waitFor();
+    await tid('comp-table').or(page.getByText('該当する依頼はありません')).first().waitFor();
+    const v = (await asAdmin('viewer', 'GET', `/v1/admin/players/${PLAYER}`)).body.state.walletDetail;
+    assert.equal(v.free, free0 + 20_500);
+    assert.equal(v.paid, paid0, 'compensation never creates paid coins');
+    // the admin's own large request cannot be self-approved: disabled in the UI and refused by the server
+    const own = await asAdmin('admin', 'POST', '/v1/admin/compensations', { playerId: PLAYER, grant: { freeCoins: 30_000 }, opKey: `own-${runId}`, reason: 'admin own request' });
+    assert.equal(own.body.request.status, 'pending');
+    await page.reload();
+    await tid(`approve-${own.body.request.id}`).waitFor();
+    assert.equal(await tid(`approve-${own.body.request.id}`).isDisabled(), true);
+    assert.equal((await asAdmin('admin', 'POST', `/v1/admin/compensations/${own.body.request.id}/approve`, { reason: 'self approve' })).status, 403);
+    assert.equal((await asAdmin('admin2', 'POST', `/v1/admin/compensations/${own.body.request.id}/reject`, { reason: 'not needed' })).body.request.status, 'rejected');
+  });
+
+  await step('admin: dry run surfaces the day-rule problem; clean version is activated; diff', async () => {
+    await page.locator('#nav a[data-view=config]').click();
+    const dayRow = tid('versions-table').locator('tr', { hasText: `e2e day rule ${runId}` });
+    await dayRow.getByRole('button', { name: '有効化…' }).click();
+    await tid('dryrun-problems').locator('[data-group=dayRule]').waitFor();
+    await shot('06-config-dryrun-dayrule');
+    assert.equal(await page.locator('.modal').count(), 0, 'no confirmation after a failed dry run');
+    const ngRow = tid('versions-table').locator('tr', { hasText: `e2e ng ${runId}` });
+    const ngId = (await ngRow.locator('td').first().textContent()).trim();
+    await ngRow.getByRole('button', { name: '有効化…' }).click();
+    await confirmWith('e2e: activate NG list');
+    await page.waitForFunction((id) => document.querySelector('[data-testid=active-version]')?.textContent === id, ngId);
+    await tid('diff-from').selectOption('base');
+    await tid('diff-to').selectOption(ngId);
+    await tid('diff-run').click();
+    await tid('diff-table').getByText('ng').first().waitFor();
+    await shot('07-config-active-diff');
+  });
+
+  await step('admin: gacha calendar timeline and the odds page exactly as players see it', async () => {
+    await page.locator('#nav a[data-view=gacha]').click();
+    await tid('gacha-timeline').waitFor();
+    const pub = await (await fetch(`${API}/v1/gacha/banners`)).json();
+    const banner = pub.banners[0];
+    await tid(`odds-${banner.id}`).click();
+    await tid('odds-preview').getByText(`提供割合プレビュー：${banner.name}`).waitFor();
+    const playerOdds = await (await fetch(`${API}/v1/gacha/${banner.id}/odds`)).json();
+    const adminOdds = (await asAdmin('viewer', 'GET', `/v1/admin/gacha/${banner.id}/odds`)).body.odds;
+    assert.deepEqual(adminOdds, playerOdds);
+    for (const row of playerOdds.items.slice(0, 3)) await tid('odds-preview').getByText(row.rate).first().waitFor();
+    await tid('pity-table').waitFor();
+    await shot('08-gacha-calendar-odds');
+  });
+
+  await step('admin: ban and unban from the player page', async () => {
+    await page.goto(`${CONSOLE}/#/players/${PLAYER}`);
+    await tid('ban').click();
+    await confirmWith('e2e: abuse test ban');
+    await tid('integrity-kv').getByText('banned').first().waitFor();
+    await tid('unban').click();
+    await confirmWith('e2e: lift test ban');
+    await tid('integrity-kv').getByText('ok').first().waitFor();
+  });
+
+  await step('audit log: who / when / what / before / after for every write', async () => {
+    await page.locator('#nav a[data-view=audit]').click();
+    await tid('audit-action').fill('compensation.approve');
+    await tid('audit-search').click();
+    // the refused self-approval is logged too (result FORBIDDEN), newest first
+    await tid('audit-table').locator('tbody tr', { hasText: 'self approve' }).getByText('FORBIDDEN').waitFor();
+    const row = tid('audit-table').locator('tbody tr', { hasText: 'e2e: incident INC-1 confirmed' }).first();
+    await row.getByText('admin', { exact: true }).first().waitFor();
+    await row.locator('summary').click();
+    await shot('09-audit-log');
+    const all = (await asAdmin('viewer', 'GET', '/v1/admin/audit?limit=200')).body.entries;
+    for (const a of ['config.stage', 'config.activate', 'compensation.request', 'compensation.approve', 'compensation.reject', 'tournament.create', 'integrity.ban', 'integrity.unban', 'config.dryrun']) {
+      assert.ok(all.some((e) => e.action === a && e.result === 'ok'), `audited: ${a}`);
+    }
+    const approve = all.find((e) => e.action === 'compensation.approve' && e.result === 'ok' && e.target === `player:${PLAYER}`);
+    assert.equal(approve.before.free, free0 + 500);
+    assert.equal(approve.after.free, free0 + 20_500);
+  });
+
+  await step('KPI quick view lists the documented queries', async () => {
+    await page.locator('#nav a[data-view=kpi]').click();
+    await tid('kpi-doc').waitFor();
+    assert.ok((await page.locator('.sql').count()) >= 5);
+    await shot('10-kpi');
+  });
+
+  assert.deepEqual(consoleErrors.filter((e) => !/Failed to load resource/.test(e)), [], 'no console / CSP errors');
+} finally {
+  await browser.close();
+}
+console.log(JSON.stringify({ ok: steps.every((s) => s.ok), steps: steps.length, screenshots: SHOTS }));

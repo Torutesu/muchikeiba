@@ -35,7 +35,7 @@ import { eventBoardKey, eventCronPlan, validateEvents } from './domain/events.js
 import { cryptoRng } from './domain/rng.js';
 import type { Master } from './domain/master.js';
 import type { OpsApi } from './http/admin.js';
-import { authenticateAdmin, parseAdminTokens, RateLimiter, type AdminAuthConfig, type AdminRole } from './ops/admin.js';
+import { authenticateAdmin, parseAdminTokens, parseConsoleOrigins, RateLimiter, type AdminAuthConfig, type AdminRole } from './ops/admin.js';
 import { DeadLetterService, type DeadLetterOwner, type DeadLetterRegistry, type DeadLetterSource } from './ops/deadLetter.js';
 import { activeConfig } from './ops/activeConfig.js';
 import type { ResolvedConfig } from './ops/config.js';
@@ -258,6 +258,15 @@ export function makeOpsApi(env: Env): OpsApi | undefined {
       rollback: (v, by, reason, now) => call(ops().configRollback!(v, by, reason, now)),
       list: (now) => call(ops().configList!(now)),
       get: (id) => call(ops().configGet!(id)),
+      dryRun: (op, by, now) => call(ops().configDryRun!(op, by, now)),
+    },
+    compensations: {
+      create: (input, by, now) => call(ops().compCreate!(input, by, now)),
+      get: (id, now) => call(ops().compGet!(id, now)),
+      list: (q, now) => call(ops().compList!(q, now)),
+      approve: (id, by, note, now) => call(ops().compApprove!(id, by, note, now)),
+      reject: (id, by, note, now) => call(ops().compReject!(id, by, note, now)),
+      executed: (id, error, now) => call(ops().compExecuted!(id, error, now)),
     },
     integrity: {
       recordRace: (r) => call(integ().recordRace!(r)),
@@ -433,6 +442,9 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
     parseStoreNotification: (platform, req) => parseStoreNotification(platform, req, storeSettingsFromEnv(env, master), accountingStoreIndex(env)),
     ...(ops ? { ops } : {}),
     authenticateAdmin: (req) => authenticateAdmin(req, adminAuthConfig(env)),
+    baseMaster, // REQ-OPS-027: the admin calendar resolves any version on the shipped master
+    inviteLookup: (code) => shardedInviteDirectory(env.DIRECTORY).lookup(code), // REQ-OPS-020
+    ...(env.ADMIN_CONSOLE_ORIGINS ? { adminConsoleOrigins: parseConsoleOrigins(env.ADMIN_CONSOLE_ORIGINS) } : {}), // REQ-OPS-015
     ...(env.ASSET_CDN_BASE ? { assetCdnBase: env.ASSET_CDN_BASE } : {}),
     ...(adKeys ? { ads: { keys: adKeys, ...(adUnits ? { adUnits } : {}), admit: (key: string, now: number) => ssvLimiter.take(key, 'write', now) } } : {}),
     configInfo: async () => ({ versionId: cfg?.versionId ?? 'base', hash: cfg?.hash ?? 'base', rulesetVersion: cfg?.ruleset.rulesetVersion ?? '', activatedAt: cfg?.activatedAt ?? null }),

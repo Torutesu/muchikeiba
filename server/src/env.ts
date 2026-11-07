@@ -24,6 +24,8 @@ export interface Env {
   ACCESS_TEAM_DOMAIN?: string;
   ACCESS_AUD?: string;
   ACCESS_ROLES?: string;
+  /** REQ-OPS-015: comma-separated origins of the ops console (tools/ops-console) allowed by CORS on /v1/admin/*. Not a secret. */
+  ADMIN_CONSOLE_ORIGINS?: string;
   REPLAYS: R2Bucket;
   /** Public, CDN-cacheable JSON (leaderboard snapshots). */
   SNAPSHOTS: R2Bucket;

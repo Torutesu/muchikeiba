@@ -250,7 +250,7 @@ function rewardText(r) {
   if (r.broodmare) out.push(`繁殖牝馬「${templateName(r.broodmare)}」`);
   return out.join('＋');
 }
-const missionName = (m) => (m.kind === 'races' ? '出走' : m.kind === 'wins' ? '勝利' : '3着内');
+const missionName = (m) => (m.kind === 'races' ? '出走' : m.kind === 'wins' ? '勝利' : m.kind === 'training' ? '調教' : '3着内');
 // the server's season end is the exclusive start of the next month: show its last minute (「11月30日 23:59まで」)
 const seasonEnd = (ms) => jstDate(ms - 60_000);
 const jstDate = (ms) => { const d = new Date(ms + 9 * 3600e3); return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日 ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`; };
@@ -833,7 +833,7 @@ async function Home() {
   // REQ-CB-*: the comeback welcome replaces home once per window (decided before home is drawn)
   const comeback = await cbView();
   if (comeback.active && comeback.window.showWelcome) return ComebackWelcome(comeback);
-  const [missions, fw, bond] = await Promise.all([L.missions(), L.firstWinBonus(), p ? L.bond(p.id) : null]);
+  const [missions, fw, bond, training] = await Promise.all([L.missions(), L.firstWinBonus(), p ? L.bond(p.id) : null, unlock('training').unlocked ? L.training() : null]);
   Clear('home'); SetArt('Art/home-paddock');
   const u = player.unlocks;
   // top left: season / class (④)
@@ -850,12 +850,14 @@ async function Home() {
   Wallet();
   EnToggle();
   // right: the thin-divider menu (厩舎 / スカウト / ミッション / 機能)
-  const menu = Glass('Menu', 1139, 224, 388, 320, undefined, .77);
+  const menu = Glass('Menu', 1139, 190, 388, 394, undefined, .77);
   const ms = missions.ok ? missions.value : [];
   const done = ms.filter((m) => m.progress >= m.target).length;
   const claimable = ms.filter((x) => x.progress >= x.target && !x.claimed);
   const rows = [
     ['厩舎', `${player.horses.length}頭`, () => Stable()],
+    // round 11 (REQ-TRAIN-*): 調教 — today's slots left, opens with the unlock table
+    unlock('training').unlocked ? ['調教', training?.ok && training.value.enabled ? `今日あと${training.value.slotsLeft}回` : '', () => Training(), training?.ok && training.value.slotsLeft > 0] : ['調教', unlockText('training'), () => toast('調教は' + unlockText('training')), false, true],
     ['スカウト', unlock('gacha').unlocked === false ? '' : `${L.bannerList().banners.filter((b) => b.status !== 'upcoming').length}件 開催中`, () => Scout()],
     unlock('missions').unlocked ? ['ミッション', `${done} / ${ms.length}`, () => Missions(ms, fw, bonus), claimable.length > 0] : ['ミッション', unlockText('missions'), () => toast('デイリーミッションは' + unlockText('missions')), false, true],
     ['機能・イベント', `${(player.unlocks.features ?? []).filter((f) => f.unlocked).length}件 開放`, () => Features()],
@@ -896,7 +898,7 @@ function Missions(ms, fw, bonus) {
       Hair(48, yy + 92, 564, s);
     };
     row(y, 'ログインボーナス', lb?.beginnerDay ? `初心者 ${lb.beginnerDay}/7日` : `${lb?.streakDay ?? 0}日目`, bonus ? '受け取りました：' + rewardText(bonus.reward) : '今日の分は受け取り済み', null, true);
-    ms.forEach((m, i) => row(y + 112 + i * 112, 'デイリー：' + missionName(m), `${m.progress} / ${m.target}${m.claimed ? '　受取済' : ''}`, m.claimed ? '受け取り済み' : m.progress >= m.target ? '受け取れます' : 'レースで進みます', m.progress / m.target, m.progress >= m.target));
+    ms.forEach((m, i) => row(y + 112 + i * 112, 'デイリー：' + missionName(m), `${m.progress} / ${m.target}${m.claimed ? '　受取済' : ''}`, m.claimed ? '受け取り済み' : m.progress >= m.target ? '受け取れます' : m.kind === 'training' ? '調教で進みます' : 'レースで進みます', m.progress / m.target, m.progress >= m.target));
     const yy = y + 112 + ms.length * 112;
     row(yy, '初勝利ボーナス', fw.remaining > 0 ? `残り${fw.remaining}回` : '本日終了', fw.next ? `今日の次の1着で 無償コイン+${fw.next}（ランク戦）` : '明日また受け取れます', null, fw.remaining === 0);
     const claimable = ms.filter((x) => x.progress >= x.target && !x.claimed);
@@ -1949,7 +1951,8 @@ function Stable() {
   Txt(p ? `${surfaceJa(p.surface)}　/　${fmt(p.distMinM)}〜${fmt(p.distMaxM)}m${L.horseSkill(p) ? '　/　「' + L.horseSkill(p).name + '」' : ''}` : '—', 43, 562, 500, 18, WHITE, d, { weight: 700 });
   Cta('この馬で出走', 43, 640, 464, RaceLobby, d);
   TextLink('所属馬の一覧', 43, 734, 240, () => StableList(horses), d, `所属馬の一覧（${horses.length}頭）`);
-  TextLink('お世話', 320, 734, 120, Care, d, 'お世話・餌');
+  TextLink('お世話', 300, 734, 120, Care, d, 'お世話・餌');
+  TextLink('調教', 440, 734, 100, () => { trHorse = p?.id ?? null; Training(); }, d, '調教');
   Back(Home);
   EnToggle();
 }
@@ -2114,6 +2117,204 @@ function Care() {
   Back(Home, 'BACK', 40, 834);
 }
 
+// ================================================================= round 11: 調教 (REQ-TRAIN-*, contracts/protocol.md §22)
+// Mirrors unity/Assets/Muchi/Game/TrainingModel.cs on the real server rules (slots by game day, menus, fatigue, potential,
+// the beat schedule from a server seed, the deterministic re-score of the taps with the anti-cheat bounds).
+// ムチ一閃 tone: photoreal paddock / first-ride art, sparse navy panels, letter-spaced cyan kickers, one skewed cyan CTA ».
+const TR_STAT = { speed: 'スピード', stamina: 'スタミナ', burst: '瞬発', guts: '根性', temper: '気性' };
+const TR_STAT_ORDER = ['speed', 'stamina', 'burst', 'guts', 'temper'];
+const TR_BLOCKED = {
+  no_slots: '今日の調教はおしまい。4:00に戻ります', horse_daily_limit: 'この馬は今日はここまで。別の馬を選べます',
+  potential_full: 'この馬は素質いっぱいまで伸びました', tired: '疲れがたまっています。プールか、1日休ませましょう', retired: '引退した馬は調教できません',
+};
+const TR_GRADE = { great: '◎ 会心の追い切り', good: '○ いい動き', normal: '△ まずまず' };
+const TR_COND = { fresh: '好調', normal: 'ふつう', tired: 'お疲れ' };
+const TR_RULES = '調教で伸びた能力はレースで使われます。ランク戦・大会・タイムアタックはこれまでどおりクラスの上限にそろえます。疲れはどのレースにも影響しません。伸びは仔に受け継がれません。';
+let trHorse = null, trMenu = null;
+const trFocus = (m) => Object.entries(m.weights).filter(([, w]) => w > 0).sort((a, b) => b[1] - a[1] || TR_STAT_ORDER.indexOf(a[0]) - TR_STAT_ORDER.indexOf(b[0])).map(([k]) => TR_STAT[k]).join('・');
+const trGain = (g) => TR_STAT_ORDER.filter((k) => g[k] > 0).map((k) => `${TR_STAT[k]}+${g[k]}`).join('・');
+async function Training() {
+  currentScreen = Training;
+  const r = await L.training();
+  await refresh();
+  if (!r.ok || !r.value.enabled) { toast('調教は今は行えません'); Home(); return; }
+  let v = r.value;
+  // a session left open (the app was closed mid-game) is finished as skipped: its time has passed
+  if (v.open) { const f = await L.trainingFinish(v.open.sessionId, [], true); if (f.ok) v = f.value.training; }
+  if (!v.horses.some((h) => h.horseId === trHorse)) trHorse = (v.horses.find((h) => h.horseId === partner()?.id) ?? v.horses.find((h) => !h.blocked) ?? v.horses[0])?.horseId ?? null;
+  const h = v.horses.find((x) => x.horseId === trHorse);
+  Clear('training'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar(`調教　/　今日あと${v.slotsLeft}回`, 'タイミングよく押すと、伸びが少しだけ良くなります（最大 +10%）');
+  // ① the horse: condition, fatigue, potential, what it has grown
+  const hp = Glass('Training horse', 36, 134, 560, 676, undefined, .88);
+  hp.classList.add('tr-horse');
+  Kicker(`相棒　/　${v.horses.length}頭`, 36, 30, hp);
+  if (!h) { Txt('調教できる馬がいません', 36, 120, 480, 22, WHITE, hp); Back(Home, 'BACK', 40, 834); return; }
+  hp.dataset.horse = h.horseId;
+  Txt(h.name, 36, 100, 400, 40, WHITE, hp, { ls: '.06em', nowrap: true });
+  Txt(`${h.rarity}　·　調子 ${TR_COND[h.condition] ?? 'ふつう'}　·　絆 Lv${h.bondLevel}`, 36, 160, 488, 16, GOLD, hp, { weight: 700, ls: '.06em' });
+  if (v.horses.length > 1) {
+    const i = v.horses.findIndex((x) => x.horseId === h.horseId);
+    Ghost('別の馬', 380, 96, 144, 46, () => { trHorse = v.horses[(i + 1) % v.horses.length].horseId; trMenu = null; Training(); }, hp, 'quiet small');
+  }
+  Txt('疲れ', 36, 214, 200, 16, WHITE, hp, { weight: 700, ls: '.06em' });
+  Txt(`${h.fatigue} / ${v.fatigue.max}`, 344, 212, 180, 18, h.fatigue >= v.fatigue.restAt ? WARN : GOLD, hp, { weight: 700, align: 'right', cls: 'num' }).classList.add('tr-fatigue');
+  const fg = Gauge(36, 246, 488, h.fatigue / v.fatigue.max, hp); if (h.fatigue >= v.fatigue.restAt) fg.classList.add('warn');
+  Txt(`1日休むと ${v.fatigue.recoveryPerDay} 回復。疲れていると伸びが落ちます（レースには影響しません）`, 36, 262, 488, 13, SOFT, hp);
+  Txt('素質', 36, 306, 200, 16, WHITE, hp, { weight: 700, ls: '.06em' });
+  Txt(`${h.trainedTotal} / ${h.potential}`, 344, 304, 180, 18, GOLD, hp, { weight: 700, align: 'right', cls: 'num' }).classList.add('tr-potential');
+  Gauge(36, 338, 488, h.potential ? h.trainedTotal / h.potential : 0, hp, { gold: true });
+  TR_STAT_ORDER.forEach((k, j) => {
+    const x = 36 + (j % 3) * 168, y = 380 + Math.floor(j / 3) * 52;
+    Txt(TR_STAT[k], x, y, 100, 14, MUTED, hp, { weight: 500 });
+    Txt(`+${h.trained[k]}`, x + 92, y - 3, 60, 18, h.trained[k] > 0 ? WHITE : DIM, hp, { weight: 700, cls: 'num' });
+  });
+  const rs = L.trainingRaceStats(h.horseId);
+  if (rs) Txt(`レースでの能力合計 ${fmt(rs.total)}　·　ランク戦（${player.season.classId}級 上限 ${fmt(rs.cap)}）では ${fmt(rs.ranked)}${rs.capped ? '（上限にそろえます）' : ''}`, 36, 486, 488, 13, SOFT, hp).classList.add('tr-ranked');
+  const apple = v.items.find((x) => x.owned > 0);
+  if (apple && h.fatigue > 0) {
+    const ab = Ghost(`${apple.name}（${apple.owned}）`, 36, 530, 300, 54, async () => {
+      const u = await L.trainingUseItem(apple.itemId, h.horseId);
+      toast(u.ok ? `疲れ ${u.value.fatigueBefore} → ${u.value.fatigue}` : u.code === 'NOT_ELIGIBLE' ? '疲れていません' : u.message);
+      Training();
+    }, hp, 'small');
+    ab.classList.add('tr-item');
+  } else Txt('りんごのおやつはデイリーミッション「調教を1回」でもらえます', 36, 540, 488, 13, DIM, hp);
+  Txt(TR_RULES, 36, 600, 488, 12, SOFT, hp, { lh: 1.55 }).classList.add('tr-rules');
+  // ② the menus (2 × 2), one is chosen; then one CTA
+  const mp = Glass('Training menus', 620, 134, 944, 676, undefined, .86);
+  Kicker('メニュー', 36, 30, mp);
+  if (!v.menus.some((m) => m.id === trMenu)) trMenu = null;
+  const blockedOf = (m) => (v.slotsLeft <= 0 ? 'no_slots' : h.menus.find((x) => x.id === m.id)?.blocked ?? h.blocked);
+  v.menus.forEach((m, i) => {
+    const x = 36 + (i % 2) * 444, y = 100 + Math.floor(i / 2) * 230;
+    const why = blockedOf(m);
+    const c = Card('Menu ' + m.id, x, y, 428, 214, mp, i === 3 ? GOLD : CYAN);
+    c.classList.add('tr-menu'); c.dataset.menu = m.id; c.dataset.state = why ? 'blocked' : m.id === trMenu ? 'sel' : 'ok';
+    if (m.id === trMenu) c.classList.add('sel');
+    Txt(m.name, 24, 24, 300, 30, why ? DIM : WHITE, c, { weight: 700, ls: '.06em' });
+    Txt(m.fatigue >= 0 ? `疲れ +${m.fatigue}` : `疲れ −${-m.fatigue}（回復）`, 220, 34, 184, 14, m.fatigue >= 0 ? MUTED : OK, c, { align: 'right', weight: 500 });
+    Txt(trFocus(m), 24, 80, 380, 18, why ? DIM : GOLD, c, { weight: 700 });
+    Txt(m.bondMultiplier > 1 ? `絆が効く ×${m.bondMultiplier}　·　伸び ${m.baseGain}` : `伸び ${m.baseGain}`, 24, 116, 380, 14, MUTED, c);
+    if (why) Txt(TR_BLOCKED[why] ?? '選べません', 24, 156, 380, 14, WARN, c, { weight: 500 });
+    c.style.cursor = why ? 'not-allowed' : 'pointer';
+    c.addEventListener('click', () => { if (why) { toast(TR_BLOCKED[why] ?? '選べません'); return; } trMenu = m.id; Training(); });
+  });
+  const go = Cta(trMenu ? `${v.menus.find((m) => m.id === trMenu).name}で調教` : 'メニューを選ぶ', 36, 576, 428, () => TrainingPlay(trHorse, trMenu), mp);
+  go.classList.add('tr-go');
+  if (!trMenu) disable(go);
+  Txt(`今日 ${v.usedToday} / ${v.slotsPerDay} 回　·　1頭 1日 ${v.perHorsePerDay} 回まで　·　4:00 に戻ります`, 490, 600, 420, 14, SOFT, mp);
+  Back(Home, 'BACK', 40, 834);
+}
+/** The timing mini-game: the server's beats slide to the line; tap 「追う」 (or Space) as each one arrives. */
+async function TrainingPlay(horseId, menuId) {
+  const st = await L.trainingStart(horseId, menuId);
+  if (!st.ok) { toast(TR_BLOCKED[{ TRAINING_TIRED: 'tired', TRAINING_POTENTIAL_FULL: 'potential_full' }[st.code]] ?? (st.code === 'TRAINING_LIMIT' ? TR_BLOCKED.no_slots : st.message)); Training(); return; }
+  const s = st.value.session, tv = st.value.training, t = tv.timing, menu = tv.menus.find((m) => m.id === menuId);
+  currentScreen = Training; Clear('training-play'); SetArt('Art/first-ride'); Shade('left');
+  const head = Glass('Training head', 36, 31, 760, 108, undefined, .82);
+  Kicker(`調教　/　${menu.name}`, 22, 18, head, { rule: false, size: 17 });
+  Txt('光る印が線に重なった瞬間に「追う」', 22, 52, 720, 26, WHITE, head, { weight: 700 });
+  const pv = st.value.preview;
+  Txt(`見込み +${(pv.minMilli / 1000).toFixed(1)}〜+${(pv.maxMilli / 1000).toFixed(1)}　·　ミニゲームの上乗せは最大 +${t.maxScore * t.permillePerPoint / 10}%`, 22, 84, 720, 14, MUTED, head);
+  // the beat lane: markers move right → left onto the hit line
+  const lane = Glass('Beat lane', 36, 610, 1100, 120, undefined, .8);
+  lane.classList.add('tr-lane');
+  const LINE_X = 120, SPEED = 0.22; // px per ms
+  const line = el('tr-line', LINE_X, 14, 4, 92, lane);
+  const marks = s.beats.map((b, i) => { const m = el('tr-beat', 0, 36, 48, 48, lane); m.dataset.i = i; return m; });
+  const judge = Txt('', 36, 520, 1100, 54, GOLD, undefined, { weight: 700, align: 'center' }); judge.classList.add('tr-judge', 'tshadow');
+  const scoreLine = Txt('◎0　○0', 1180, 540, 380, 22, WHITE, undefined, { weight: 700, align: 'right' }); scoreLine.classList.add('tshadow');
+  const taps = [];
+  let t0 = null, finished = false, skipped = false;
+  const elapsed = () => (t0 === null ? 0 : Math.round(performance.now() - t0));
+  const nearest = (ms) => Math.min(...s.beats.map((b) => Math.abs(b - ms)));
+  const tap = () => {
+    if (t0 === null || finished) return null;
+    const ms = elapsed();
+    // the same bounds the server checks: a tap it would refuse is never recorded
+    if (taps.length >= t.maxTaps || ms > t.durationMs || (taps.length && ms - taps[taps.length - 1] < t.minTapGapMs)) return null;
+    taps.push(ms);
+    const d = nearest(ms), j = d <= t.perfectMs ? 'perfect' : d <= t.goodMs ? 'good' : 'miss';
+    judge.textContent = j === 'perfect' ? '◎' : j === 'good' ? '○' : '×';
+    judge.dataset.judge = j;
+    whip.classList.remove('hit'); void whip.offsetWidth; whip.classList.add('hit');
+    const live = trScore(t, s.beats, taps);
+    scoreLine.textContent = `◎${live.perfect}　○${live.good}`;
+    return j;
+  };
+  const whip = Btn('追う', 1250, 600, 170, 170, () => tap(), 'whip big');
+  const skip = Ghost('スキップ', 1180, 31, 200, 56, () => { skipped = true; finish(); }, undefined, 'quiet');
+  skip.classList.add('tr-skip');
+  const keyTap = (e) => { if (e.code === 'Space' && !e.repeat) { e.preventDefault(); tap(); } };
+  document.addEventListener('keydown', keyTap);
+  const finish = async () => {
+    if (finished) return;
+    finished = true;
+    document.removeEventListener('keydown', keyTap);
+    const f = await L.trainingFinish(s.sessionId, skipped ? [] : taps, skipped);
+    if (globalThis.__muchi) globalThis.__muchi.lastTraining = f.ok ? f.value : { error: f.code };
+    if (!f.ok) { toast(f.code === 'TRAINING_SESSION_EXPIRED' ? '時間切れのため、ミニゲームなしで記録しました' : f.message); Training(); return; }
+    TrainingResult(f.value);
+  };
+  if (globalThis.__muchi) Object.assign(globalThis.__muchi, { trainingBeats: s.beats, trainingTap: tap, trainingElapsed: elapsed });
+  // READY → GO, then the beats run on the local monotonic clock
+  judge.textContent = 'READY';
+  setTimeout(() => {
+    if (finished) return;
+    judge.textContent = ''; t0 = performance.now();
+    if (globalThis.__muchi) globalThis.__muchi.trainingStartedAt = t0;
+    const tick = () => {
+      if (finished || !document.body.contains(lane)) return;
+      const e = elapsed();
+      marks.forEach((m, i) => {
+        const x = LINE_X - 22 + (s.beats[i] - e) * SPEED;
+        m.style.left = x + 'px';
+        m.style.opacity = x < -60 || x > 1100 ? '0' : '1';
+        m.classList.toggle('near', Math.abs(s.beats[i] - e) <= t.goodMs);
+      });
+      if (e >= t.durationMs) { finish(); return; }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }, 900);
+}
+/** TrainingScorer (engine/Muchi.Client/Training.cs) / scoreTiming (server): the live count on screen. */
+function trScore(t, beats, taps) {
+  const used = taps.map(() => false);
+  let perfect = 0, good = 0;
+  for (const b of beats) {
+    let best = -1, bd = Infinity;
+    taps.forEach((x, j) => { const d = Math.abs(x - b); if (!used[j] && d <= t.goodMs && d < bd) { best = j; bd = d; } });
+    if (best < 0) continue;
+    used[best] = true;
+    if (bd <= t.perfectMs) perfect++; else good++;
+  }
+  return { perfect, good };
+}
+async function TrainingResult(res) {
+  await refresh();
+  currentScreen = Training; Clear('training-result'); SetArt('Art/home-paddock'); Shade('left');
+  const d = Glass('Training result', 36, 134, 760, 676, undefined, .88);
+  d.classList.add('rise', 'tr-result'); d.dataset.grade = res.grade; d.dataset.total = String(res.total);
+  Kicker(`調教　/　${res.settled === 'done' ? '結果' : 'ミニゲームなし'}`, 40, 34, d);
+  Txt(TR_GRADE[res.grade] ?? res.grade, 40, 100, 680, 30, WHITE, d, { weight: 700, ls: '.06em' });
+  Txt(res.total > 0 ? `+${res.total}` : '±0', 40, 150, 300, 96, GOLD, d, { weight: 700, cls: 'num' }).classList.add('tr-total');
+  Txt(res.total > 0 ? trGain(res.gain) : '小さな伸びは次回に加わります', 40, 270, 680, 22, WHITE, d, { weight: 700 });
+  Txt(res.settled === 'done' ? `ミニゲーム ◎${res.timing.perfect} ○${res.timing.good} ×${res.timing.miss}（+${res.timing.bonusPermille / 10}%）` : 'ミニゲームなし（伸びの上乗せなし）', 40, 318, 680, 17, MUTED, d).classList.add('tr-timing');
+  Txt('素質', 40, 384, 200, 16, WHITE, d, { weight: 700, ls: '.06em' });
+  Txt(`${res.trainedTotal} / ${res.potential}`, 520, 382, 200, 18, GOLD, d, { weight: 700, align: 'right', cls: 'num' });
+  Gauge(40, 416, 680, res.potential ? res.trainedTotal / res.potential : 0, d, { gold: true });
+  Txt(`疲れ ${res.fatigue}${res.capped ? '　·　素質いっぱいまで伸びました' : ''}`, 40, 446, 680, 15, SOFT, d);
+  const bd = res.breakdown;
+  if (bd) Txt(`内訳：調子 ${bd.efficiencyPermille / 10}%　·　絆 +${bd.bondPermille / 10}%　·　ミニゲーム +${bd.timingPermille / 10}%　·　伸びしろ ${bd.softPermille / 10}%`, 40, 486, 680, 13, DIM, d);
+  Cta('つづける', 40, 560, 360, Training, d);
+  const ms = await L.missions();
+  const m = ms.ok ? ms.value.find((x) => x.kind === 'training' && x.progress >= x.target && !x.claimed) : null;
+  if (m) Ghost('ミッション報酬を受け取る', 420, 570, 300, 56, async () => { const c = await L.claimMission(m.id); toast(c.ok ? 'りんごのおやつ を受け取りました' : c.message); TrainingResult(res); }, d, 'small').classList.add('tr-claim');
+  EnToggle();
+}
+
 // ================================================================= round 10: 支部の応援スタンプ (REQ-TEAMFEED-*)
 // The team feed on the real server rules (TeamsService / TeamCore in the browser) — fixed stamps only, no text field.
 // Mirrors unity/Assets/Muchi/Game/TeamFeedModel.cs: palette with server-built unlock texts, 10 s post cooldown, cheering a
@@ -2244,7 +2445,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Training, TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

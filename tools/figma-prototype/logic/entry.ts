@@ -173,6 +173,24 @@ export const MuchiLogic = {
   firstWinBonus: () => svc.firstWinBonus(ID),
   cosmetics: () => svc.cosmetics(ID),
   bond: (horseId: string) => wrap(() => svc.bond(ID, horseId)),
+  // ---------------------------------------------------------------- 調教 (REQ-TRAIN-*, contracts/protocol.md §22)
+  // The real server rules: slots by game day, menus, fatigue, the potential, the beat schedule from a server seed, and the
+  // deterministic re-score of the taps (times in ms after the mini-game began) with the anti-cheat bounds.
+  training: () => wrap(() => svc.training(ID)),
+  trainingStart: (horseId: string, menuId: string) => wrap(() => svc.trainingStart(ID, horseId, menuId, key())),
+  trainingFinish: (sessionId: string, taps: number[], skipped = false) => wrap(() => svc.trainingFinish(ID, sessionId, skipped ? { taps: [], skipped: true } : { taps }, key())),
+  trainingUseItem: (itemId: string, horseId: string) => wrap(() => svc.trainingUseItem(ID, itemId, horseId, key())),
+  /** The stats the horse races with (base + awakening + growth) and after the class normalisation (ranked). */
+  trainingRaceStats: (horseId: string) => {
+    const s = repo.get(ID);
+    const h = s?.horses.find((x) => x.id === horseId);
+    if (!s || !h) return null;
+    const cap = classDef(master, s.season.classId).statCap;
+    const raw = toRaceHorse(master, h);
+    const keys = ['speed', 'stamina', 'burst', 'guts', 'temper'] as const;
+    const total = keys.reduce((a, k) => a + raw[k], 0);
+    return { total, cap, ranked: Math.min(total, cap), capped: total > cap };
+  },
   // REQ-UXS-040: account deletion (two steps, 14-day cancel window); purchases and offers are blocked meanwhile
   requestDeletion: (token: string | null) => wrap(() => svc.requestDeletion(ID, token)),
   cancelDeletion: () => wrap(() => svc.cancelDeletion(ID)),

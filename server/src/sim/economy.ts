@@ -159,12 +159,15 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
   await svc.bootstrap(id);
   await svc.setAge(id, 1990, 1, false);
   // REQ-RIVAL-* (E16): the weekly rival through the real service and an in-memory registry. The sim has no other humans,
-  // so every persona gets the CPU rival the server would assign (head to head on every ranked race, targetPlace).
+  // so every persona gets a CPU rival (head to head on every ranked race against its targetPlace).
   const rp: RivalPlayers = {
     peek: (u) => svc.rivalPeek(u), sync: (u, d) => svc.rivalSync(u, d), setOptOut: (u, o) => svc.rivalSetOptOut(u, o), block: (u) => svc.rivalBlock(u),
     challengeCheck: (u) => svc.rivalChallengeCheck(u), challengeReceive: (u, f, p, n) => svc.rivalChallengeReceive(u, f, p, n), seen: (u, w) => svc.rivalSeen(u, w), push: (u, n, c) => svc.rivalPush(u, n, c),
   };
-  const rival = new RivalService(() => master, rp, new MemoryRivalRegistry(() => master, () => now));
+  // every persona meets the same middle-of-the-road CPU (targetPlace 6) so personas differ only by what they pay
+  const rc = master.progression.rival;
+  const rivalMaster: Master = rc ? { ...master, progression: { ...master.progression, rival: { ...rc, cpuRivals: [rc.cpuRivals.find((c) => c.targetPlace === 6) ?? rc.cpuRivals[0]!] } } } : master;
+  const rival = new RivalService(() => master, rp, new MemoryRivalRegistry(() => rivalMaster, () => now));
   const rivalDay = async () => {
     const v = await rival.view(id);
     if (!('result' in v) || !v.result) return;

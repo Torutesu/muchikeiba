@@ -529,6 +529,47 @@ ORDER BY runs DESC
 LIMIT 50
 ```
 
+## ライバル：表示・対戦・週の結果（REQ-RIVAL-015、contracts/protocol.md §28）
+
+**週ごとの結果の内訳**（課金者／無課金で分ける）。`blob10` は週ID、`blob8` は結果、`blob9` は人間のライバルか CPU か。`not_enough` が多いなら3戦の条件が重い、`no_contest` が多いならブロック・オプトアウトが多い（組み合わせの質の問題）。
+
+```sql
+SELECT
+  blob10 AS week, blob7 AS payer, blob9 AS kind,
+  sumIf(_sample_interval, blob8 = 'win') AS win, sumIf(_sample_interval, blob8 = 'lose') AS lose, sumIf(_sample_interval, blob8 = 'draw') AS draw,
+  sumIf(_sample_interval, blob8 = 'no_contest') AS no_contest, sumIf(_sample_interval, blob8 = 'not_enough') AS not_enough,
+  round(sumIf(_sample_interval * double3, blob1 = 'rival_week_result') / sum(_sample_interval), 1) AS avg_free_coins
+FROM muchi_kpi
+WHERE blob1 = 'rival_week_result' AND timestamp > NOW() - INTERVAL '60' DAY
+GROUP BY week, payer, kind
+ORDER BY week DESC, payer, kind
+```
+
+**直接対決が起きているか**（人間のライバルと同じランク戦になった回数／日）。少ないなら同時接続が多くて同じ部屋になりにくい（タイムアタックの比較が実質の勝負になっている）。挑戦状のレース（`challenge`）の数も見る。
+
+```sql
+SELECT blob6 AS day, blob8 AS kind, sum(_sample_interval) AS races, count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'rival_race' AND timestamp > NOW() - INTERVAL '14' DAY
+GROUP BY day, kind
+ORDER BY day DESC, kind
+```
+
+**見られているか**（1日1回の `rival_view` を出したプレイヤー ÷ その日ランク戦を走ったプレイヤー）と、オプトアウトの推移（`rival_opt`）。
+
+```sql
+SELECT blob6 AS day,
+  count(DISTINCT if(blob1 = 'rival_view', blob2, NULL)) AS viewers,
+  count(DISTINCT if(blob1 = 'race_finish' AND blob8 = 'ranked', blob2, NULL)) AS ranked_players,
+  sumIf(_sample_interval, blob1 = 'rival_opt' AND blob8 = 'out') AS opt_out, sumIf(_sample_interval, blob1 = 'rival_opt' AND blob8 = 'in') AS opt_in
+FROM muchi_kpi
+WHERE blob1 IN ('rival_view', 'race_finish', 'rival_opt') AND timestamp > NOW() - INTERVAL '14' DAY
+GROUP BY day
+ORDER BY day DESC
+```
+
+- **公平性の監視**：`avg_free_coins` が課金者と無課金で大きく違うなら、どちらかの結果が偏っている（ライバルの報酬は課金で増えない前提）。勝ちの率が人間のライバルで50%から大きく外れる週は、組み合わせのレーティング差（`maxRatingGap`・`jitter`）を見直す。
+
 ## 注意
 
 - Analytics Engine のデータ保持期間は有限（現時点で約3か月）です。長期の推移はこのクエリ結果を毎月どこかに書き出して残します。

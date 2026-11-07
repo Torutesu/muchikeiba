@@ -269,7 +269,7 @@ describe('REQ-RIVAL-011 privacy: opt out, block, deletion', () => {
   it('blocking the rival uses the one block list, dissolves the pair and they are never paired again', async () => {
     const w = await pairedWorld();
     expect(await w.rival.block('a')).toMatchObject({ blocked: 'b', dissolved: true });
-    expect((await w.svc.state('a')).teamFeed?.muted).toContain('b');
+    expect((await w.svc.state('a') as { teamFeed?: { muted: string[] } }).teamFeed?.muted).toContain('b');
     expect((await w.rival.view('b') as any).rival).toMatchObject({ dissolved: true, card: null });
     for (let i = 0; i < 2; i++) await w.ranked({ a: 1, b: 2 });
     w.at(jst(2026, 12, 22));

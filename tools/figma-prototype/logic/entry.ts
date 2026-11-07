@@ -25,6 +25,9 @@ import type { ReportReason } from '../../../server/src/domain/teamFeed.js';
 import { InviteService, MemoryInviteDirectory, deliverInviteOutbox, displayInviteCode, inviteRewardYen, normalizeInviteCode } from '../../../server/src/domain/invite.js';
 import type { Directory } from '../../../server/src/domain/friends.js';
 import { signAdMobQuery, StaticKeySource, verifyAdMobCallback } from '../../../server/src/ads/ssv.js';
+import { MemoryRivalRegistry, RivalService, rivalPlayersFrom } from '../../../server/src/domain/rivalService.js';
+import { noteRivalTa, prevWeekId, rivalCard, weekEndMs, weekIdAt } from '../../../server/src/domain/rival.js';
+import type { PlayerInvoker } from '../../../server/src/http/app.js';
 // REQ-L10N-*: the server's English tables (master/locale-en.json + i18n/en.ts), the client's (ui-en.json) and the
 // prototype's own screen texts (proto-en.json), in one catalog with the server's template rules (katakana names romanized)
 import { compileCatalogWith, translateText, romanizeName } from '../../../server/src/i18n/catalog.js';
@@ -65,7 +68,32 @@ const svc = new PlayerService(repo, {
   master, rng: cryptoRng, clock: now, verifiers: { fake: store },
   onTeamPoints: async (p) => { await teams.reportPoints(p.teamId, p.playerId, p.seasonId, p.points, p.displayName).catch(() => undefined); },
   onTeamFeed: async (p) => { await teams.feedRace(p.teamId, p.playerId, p.race); },
+  // round 12 (REQ-RIVAL-*): the week registry learns candidates / withdrawals / weekly bests after each transaction
+  onRival: async (u) => { await rivalSvc.apply(u); },
 });
+// round 12 (REQ-RIVAL-*): the weekly rival on the real RivalService + an in-memory week registry (RivalWeekCore, the
+// LeaderboardDO rival:<week> logic). A demo rival (demo_rv_1, ミドリカワ) registers with the local player as last week's
+// candidates, so this week's pairing, head to head, time attack and the week result run the server code paths.
+const rivalReg = new MemoryRivalRegistry(() => master, now);
+const rivalInvoker: PlayerInvoker = { invoke: (async (m: string, ...a: unknown[]) => (svc as unknown as Record<string, (...x: unknown[]) => unknown>)[m]!.apply(svc, a)) as PlayerInvoker['invoke'] };
+const rivalSvc = new RivalService(() => master, rivalPlayersFrom(() => rivalInvoker), rivalReg);
+const RIVAL_DEMO = 'demo_rv_1';
+let rivalRace = 0;
+async function rivalDemoSeed() {
+  const week = weekIdAt(master, now());
+  if (rivalReg.store(week).paired()) return;
+  if (!(await repo.get(RIVAL_DEMO))) {
+    await svc.bootstrap(RIVAL_DEMO);
+    await svc.setDisplayName(RIVAL_DEMO, 'ミドリカワ');
+    await svc.grantPartner(RIVAL_DEMO, 'ハヤテ', key());
+  }
+  const me = await svc.state(ID);
+  const them = await svc.state(RIVAL_DEMO);
+  const at = now() - DAY_MS;
+  for (const s of [me, them]) {
+    await rivalReg.register(prevWeekId(week), { playerId: s.id, classId: me.season.classId, rating: Math.round(me.rating.r) + (s.id === ID ? 0 : 20), rankedAt: at, blocked: [], card: { ...rivalCard(master, s), classId: me.season.classId }, updatedAt: at });
+  }
+}
 const teamPlayers: TeamPlayers = {
   prepareJoin: (u, t) => svc.teamPrepareJoin(u, t), commitJoin: (u, t) => svc.teamCommitJoin(u, t), abortJoin: (u, t) => svc.teamAbortJoin(u, t),
   addOutgoing: (u, t) => svc.teamAddOutgoing(u, t), removeOutgoing: (u, t) => svc.teamRemoveOutgoing(u, t), left: (u, t, c) => svc.teamLeft(u, t, c),
@@ -165,6 +193,7 @@ export const MuchiLogic = {
       for (const k of Object.keys(localStorage)) if (k.startsWith(KEY + ':demo_')) localStorage.removeItem(k);
     } catch { /* ignore */ }
     inviteCodes.clear();
+    rivalReg.weeks.clear(); // round 12: the rival week registry starts over too
     dayOffset = 0;
   },
 
@@ -398,6 +427,27 @@ export const MuchiLogic = {
   muteMember: (playerId: string, muted: boolean) => wrap(() => teamsSvc.mute(ID, playerId, muted)),
   /** Unlocks for the demo: lifetime races (play) — the pass and cosmetic stamps unlock by demoPurchase / the 見た目 shop. */
   async demoRaces(count: number) { const s = await svc.state(ID); s.stats.races = Math.max(s.stats.races, count); new LocalRepo().put(s); },
+  // ---------------------------------------------------------------- round 12: ライバル (REQ-RIVAL-*, contracts/protocol.md §28)
+  rival: {
+    view: () => wrap(async () => { await rivalDemoSeed(); return rivalSvc.view(ID); }),
+    seen: (weekId: string) => wrap(() => rivalSvc.seen(ID, weekId)),
+    optOut: (optOut: boolean) => wrap(() => rivalSvc.setOptOut(ID, optOut)),
+    block: () => wrap(() => rivalSvc.block(ID)),
+    challenge: () => wrap(() => rivalSvc.challenge(ID, 'demo-room')),
+    /** A confirmed ranked race with the rival in the field (both objects receive the same places). */
+    demoRace: (mine: number, theirs: number, mode: 'ranked' | 'friend' = 'ranked') => wrap(async () => {
+      const raceId = `proto_rv_${Date.now().toString(36)}_${rivalRace++}`;
+      const field = [{ playerId: ID, place: mine }, { playerId: RIVAL_DEMO, place: theirs }];
+      for (const f of field) await svc.applyRace(f.playerId, { raceId, mode, place: f.place, fieldSize: 12, newRating: null, void: false, humans: 2, field });
+    }),
+    /** Verified time-attack bests this week for both (the path PlayerService.taRecord takes). */
+    demoTa: (trackId: string, mineMs: number, theirsMs: number) => wrap(async () => {
+      await svc.tx(ID, null, (s, t) => { noteRivalTa(master, s, trackId, mineMs, t); });
+      await svc.tx(RIVAL_DEMO, null, (s, t) => { noteRivalTa(master, s, trackId, theirsMs, t); });
+    }),
+    /** Moves the clock into next week (the week settles on the next view). */
+    demoWeekEnd() { const end = weekEndMs(master, weekIdAt(master, now())); clockShift += end + 3_600_000 - now(); },
+  },
   // ---------------------------------------------------------------- round 10: 友達招待 (REQ-INV-*, contracts/protocol.md §19)
   // The real InviteService / per-player steps / milestone outbox on the local PlayerService. Demo friends are extra players
   // in the same local repo (ids demo_inv_*), so "a friend joins with my code" and "the friend reaches a milestone" run the

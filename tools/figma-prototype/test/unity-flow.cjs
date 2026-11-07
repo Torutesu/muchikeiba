@@ -12,6 +12,7 @@
 //     rule on the CTA; cheering a teammate's race result; mute and report) and this season's pass shown as 購入済み.
 //  5. Returning players (REQ-CB-*, 06 §4.5): the comeback welcome (once), the 7-day comeback login track and missions, the
 //     lapse-reminder opt-in (asked once), the home chip and the one-time what's-new card.
+//  7. Round 12 (REQ-RIVAL-*): the rival strip on home, the rival detail, a race together, the week-result sheet.
 //  6. Round 11 (REQ-COL-*, REQ-ACH-*): the 図鑑 (obtained / seen / unknown silhouettes, completion with no reward and no scout
 //     link), achievements (claim one tier, claim all) and equipping an achievement title.
 // Screenshots: <out>/u-<nn>-<name>.png. Returns { shots, ftue }.
@@ -89,6 +90,36 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     assert.equal(await page.locator('.screen.in .tr-menu[data-state="blocked"]').count(), 4, 'the horse is done for today: every card says why');
     await shot('training-horse-done', 300);
     await click('BACK'); await waitScreen('home');
+  }
+
+  // round 12 (REQ-RIVAL-*): ライバル — the home strip → the detail (public card, score, races, time attack, rules) → a race
+  // together, a time attack each, a challenge (no point) → the week ends → the result sheet once (fixed reward, title)
+  async function rivalFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await waitScreen('home'); await waitIn('.rv-strip');
+    assert.equal(await page.locator('.screen.in .rv-strip').getAttribute('data-home-rival'), 'human', 'rival: paired with last week\'s candidate');
+    await shot('rival-home-strip', 300);
+    await page.locator('.screen.in .rv-strip').click(); await waitScreen('rival'); await waitIn('.rv-card[data-state="human"]');
+    // the demo days crossed a week boundary: an earlier week's result sheet comes first (once)
+    if (await page.locator('.screen.in .rv-result').count()) { await shot('rival-earlier-week', 400); await page.locator('.screen.in .rv-result .rv-continue').click(); await page.waitForTimeout(400); }
+    const text = await page.locator('.screen.in').innerText();
+    assert.ok(text.includes('点になりません') && text.includes('連勝の上乗せはありません') && text.includes('相棒'), 'rival: public card and the rules on the screen');
+    assert.ok(!/倍|ショップ/.test(text.replace(/ホーム ・ 厩舎 ・ スカウト ・ ショップ ・ その他/, '')), 'rival: no 「倍」, no shop link');
+    await shot('rival-detail', 400);
+    await click('デモ：同じレース'); await waitIn('.rv-race');
+    await click('デモ：タイム'); await waitIn('.rv-ta');
+    await page.locator('.screen.in .rv-challenge').click(); await page.waitForTimeout(600); await waitIn('.rv-card');
+    await shot('rival-detail-races', 400);
+    const free0 = await page.evaluate(() => globalThis.__muchi.state().player.wallet.free);
+    await click('デモ：週を終える'); await waitIn('.rv-result');
+    await shot('rival-week-result', 500);
+    const sheet = await page.locator('.screen.in .rv-result').innerText();
+    assert.ok(/報酬/.test(sheet) && !/倍/.test(sheet), 'rival: the week result states the fixed reward');
+    await page.locator('.screen.in .rv-result .rv-continue').click(); await page.waitForTimeout(300);
+    const free1 = await page.evaluate(async () => (await globalThis.__muchi.logic.view()).wallet.free);
+    assert.ok(free1 - free0 <= 20, 'rival: at most the fixed reward');
+    await click('BACK'); await waitScreen('home');
+    await page.evaluate(() => globalThis.__muchi.logic.setClockMs(null)); // back to the demo day for the next flows
   }
 
   // round 9 (06 §6.5 / §7 item 7): banner calendar with real end times, pity meter, step-up, reveal → summary, the end
@@ -334,6 +365,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   // day 7 home; scout (paid) and its reveal; legacy screens
   await demo('day7'); await shot('home-day7', 600);
   await trainingFlow();
+  await rivalFlow();
   await page.evaluate(() => globalThis.__muchi.show('Scout')); await waitScreen('scout'); await shot('scout', 500);
   await click('提供割合'); await shot('scout-rates', 400); await click('BACK');
   await waitScreen('scout'); await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal'); await shot('scout-paid-reveal', 700);

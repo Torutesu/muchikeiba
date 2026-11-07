@@ -2030,9 +2030,9 @@ async function Achievements() {
     if (claim) Ghost('受け取る', 860, 22, 128, 44, async () => { const c = await L.claimAchievement(a.id, claim.tier); toast(c.ok ? `実績「${a.name}」${claim.tier}段：無償コイン${c.value.reward.freeCoins}枚` : c.message); Achievements(); }, row, 'small gold').dataset.claim = `${a.id}:${claim.tier}`;
   });
   if (pages > 1) {
-    Txt(`${colState.achPage + 1} / ${pages}`, 760, 648, 120, 14, MUTED, p, { align: 'right', cls: 'num' }).dataset.achPage = String(colState.achPage + 1);
-    Ghost('前へ', 900, 636, 60, 40, () => { colState.achPage--; Achievements(); }, p, 'quiet small');
-    Ghost('次へ', 966, 636, 60, 40, () => { colState.achPage++; Achievements(); }, p, 'quiet small');
+    Txt(`${colState.achPage + 1} / ${pages}`, 740, 648, 120, 14, MUTED, p, { align: 'right', cls: 'num' }).dataset.achPage = String(colState.achPage + 1);
+    Ghost('前へ', 872, 636, 72, 40, () => { colState.achPage--; Achievements(); }, p, 'small');
+    Ghost('次へ', 952, 636, 72, 40, () => { colState.achPage++; Achievements(); }, p, 'small');
   }
   // right: totals, the one CTA (claim everything), the equipped title
   const s = Glass('Achievement totals', 1116, 134, 448, 676, undefined, .9);

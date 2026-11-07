@@ -1,4 +1,5 @@
 import type { Env } from './env.js';
+import { validateLocale } from './i18n/validate.js';
 import { eventPlayersFrom, friendIdsFrom, handle, makeFriendsService, makeInviteService, makeStudService, teamPlayersFrom, tournamentPlayersFrom, type AppContext, type PlayerInvoker, type RaceEntry } from './http/app.js';
 import { bearer, verifyFirebaseIdToken } from './http/auth.js';
 import { parseStoreNotification, storeSettingsFromEnv } from './http/stores.js';
@@ -45,7 +46,8 @@ import { boardKey, indexKey, type RolloverState } from './domain/leaderboard.js'
 import { validateLeagueAndWeather } from './domain/league.js';
 import { runScheduled } from './domain/scheduled.js';
 import { DEFAULT_HOLD_POLICY, sweepReplays, SWEEP_CURSOR_KEY, type ReplayBucket, type SweepCursorStore } from './domain/retention.js';
-import { renderTemplate, seasonReminderFor } from './domain/push.js';
+import { renderTemplate, seasonReminderFor, topicFor } from './domain/push.js';
+import { LOCALES } from './i18n/locale.js';
 import { fcmFromEnv } from './push/fcm.js';
 import { TimeAttackService } from './race/timeAttack.js';
 import { HttpVerifierClient } from './domain/verifier.js';
@@ -78,11 +80,14 @@ async function broadcastSeasonReminder(env: Env, now: number): Promise<string | 
   const r = seasonReminderFor(master, now);
   if (!r) return null;
   const t = master.push.templates[r.templateId];
-  const topic = t && master.push.topics[t.category];
   const sender = fcmFromEnv(env);
-  if (!t || !topic || !sender) return null;
-  const out = await sender.sendTopic(topic, renderTemplate(t, r.templateId, r.vars));
-  if (out.kind !== 'ok') console.error('season reminder failed', r.templateId, out);
+  if (!t || !master.push.topics[t.category] || !sender) return null;
+  for (const locale of LOCALES) { // REQ-L10N-007: one topic per language
+    const topic = topicFor(master, t.category, locale);
+    if (!topic || (locale !== 'ja' && topic === master.push.topics[t.category])) continue;
+    const out = await sender.sendTopic(topic, renderTemplate(t, r.templateId, r.vars, locale, master));
+    if (out.kind !== 'ok') console.error('season reminder failed', r.templateId, locale, out);
+  }
   return r.templateId;
 }
 
@@ -94,6 +99,7 @@ validateEvents(baseMaster, baseMaster.events); // REQ-EVENT-001
 validateLeagueAndWeather(baseMaster); // REQ-LEAGUE-* and per-course climate (REQ-TRACK-003)
 validateUx(baseMaster, new Set(collectItemIds(baseMaster))); // REQ-UXS-*: onboarding, missions, experiments, deletion
 validateSkills(baseMaster, DEFAULT_RULESET); // REQ-UXS-050: unknown skills, effects above the ruleset caps, rarity/style fit
+validateLocale(baseMaster); // REQ-L10N-004/008: every player-facing Japanese master text has English that passes the wording lint
 
 /** REQ-TEAM-*: team orchestration over TeamDOs, the team directory and the season board in LeaderboardDO. */
 function makeTeamsService(env: Env, master: () => Master, player: (uid: string) => PlayerInvoker): TeamsService {
@@ -149,11 +155,14 @@ async function eventsStep(env: Env, now: number): Promise<string[]> {
       if (a.notifyStart && (unwrap(await ev.markStartNotified!()) as boolean)) {
         const def = master.events.find((e) => e.id === a.eventId)!;
         const t = master.push.templates.event_start;
-        const topic = master.push.topics.events;
         const sender = fcmFromEnv(env);
-        if (t && topic && sender) {
-          const out = await sender.sendTopic(topic, renderTemplate(t, 'event_start', { event: def.name }));
-          if (out.kind !== 'ok') console.error('event start push failed', a.eventId, out);
+        if (t && master.push.topics.events && sender) {
+          for (const locale of LOCALES) { // REQ-L10N-007
+            const topic = topicFor(master, 'events', locale);
+            if (!topic || (locale !== 'ja' && topic === master.push.topics.events)) continue;
+            const out = await sender.sendTopic(topic, renderTemplate(t, 'event_start', { event: def.name }, locale, master));
+            if (out.kind !== 'ok') console.error('event start push failed', a.eventId, locale, out);
+          }
         }
         log.push(`eventStart:${a.eventId}`);
       }

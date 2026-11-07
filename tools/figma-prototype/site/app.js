@@ -40,6 +40,69 @@ const EXTRA_JA = {
 const isJa = () => prefs.get('muchi.language', 'ja') === 'ja';
 const T = (s) => (s == null ? s : isJa() ? (JA[s] ?? EXTRA_JA[s] ?? s) : s);
 
+// ---------------------------------------------------------------- English (REQ-L10N-013, contracts/protocol.md §23)
+// The screens build Japanese (the source language, like the server and the Unity game layer). With EN on, every text
+// node on the stage goes through MuchiLogic.l10n: the server's English (master/locale-en.json + i18n/en.ts — the same
+// strings a request with Accept-Language: en gets), the game layer's (ui-en.json) and this prototype's (proto-en.json).
+// Katakana horse names come back romanized. Text that does not fit its box is shrunk (fitText). Legal pages under
+// Japanese law stay Japanese with an English courtesy note (.keep-ja).
+const JP_RE = /[\u3040-\u30ff\u3400-\u9fff\u3000-\u303f\uff01-\uff60]/;
+const l10nMisses = new Map();
+function enText(s) {
+  if (!s || !JP_RE.test(s)) return s;
+  const m = /^(\s*)([\s\S]*?)(\s*)$/.exec(s);
+  const t = L.l10n.translate(m[2]);
+  if (t == null) { l10nMisses.set(m[2], (l10nMisses.get(m[2]) ?? 0) + 1); return s; }
+  return m[1] + t + m[3];
+}
+const EN_LEGAL_NOTE = 'This notice is required by Japanese law and is provided in Japanese, the language that applies. The English below is a courtesy translation only; it has no legal effect and does not extend these terms outside Japan.';
+const keepJa = (n) => !!(n.parentElement ?? n).closest?.('.keep-ja');
+function translateTree(n) {
+  if (n.nodeType === 3) { if (!keepJa(n)) { const v = enText(n.nodeValue); if (v !== n.nodeValue) n.nodeValue = v; } return; }
+  if (n.nodeType !== 1 || n.classList?.contains('keep-ja')) return;
+  if (n.placeholder && JP_RE.test(n.placeholder)) n.placeholder = enText(n.placeholder);
+  n.childNodes.forEach(translateTree);
+}
+let fitPending = false;
+const l10nObserver = new MutationObserver((muts) => {
+  if (isJa()) return;
+  for (const m of muts) {
+    if (m.type === 'characterData') translateTree(m.target);
+    else m.addedNodes.forEach(translateTree);
+  }
+  if (!fitPending) { fitPending = true; requestAnimationFrame(() => { fitPending = false; fitText(cur); }); }
+});
+/**
+ * English is longer than Japanese: a text that overflows its box (wider than its element, taller than a fixed height,
+ * or below the bottom of its panel) is set smaller, down to 66 % of its size. Japanese is never touched.
+ */
+function fitText(root) {
+  if (isJa() || !root) return;
+  const els = root.querySelectorAll('.label, .kicker, .caption, .btn, .pill, .tag');
+  for (const e of els) {
+    if (e.offsetParent === null) continue;
+    const host = e.classList.contains('btn') ? null : e.parentElement?.closest('.glass, .card, .sheet, .btn');
+    const text = () => { const r = document.createRange(); r.selectNodeContents(e); return r.getBoundingClientRect(); };
+    const over = () => e.scrollWidth > e.clientWidth + 1 || (e.style.height && e.scrollHeight > e.clientHeight + 1)
+      || (host && !host.classList.contains('btn') && text().bottom > host.getBoundingClientRect().bottom + 1)
+      || text().right > $stage.getBoundingClientRect().right + 1;
+    if (!over()) continue;
+    const base = parseFloat(e.dataset.fitBase ?? getComputedStyle(e).fontSize);
+    e.dataset.fitBase = String(base);
+    for (let k = 1; k <= 6 && over(); k++) {
+      e.style.fontSize = (base * (1 - .057 * k)).toFixed(1) + 'px';
+      if (e.classList.contains('btn')) e.querySelectorAll('span').forEach((s) => { s.style.fontSize = e.style.fontSize; });
+    }
+    e.dataset.fit = over() ? 'overflow' : 'shrunk';
+  }
+}
+/** The screens' language: html lang (CSS), the observer, and the commentary language of the next race. */
+let enTables = null;
+function applyLanguage() {
+  document.documentElement.lang = isJa() ? 'ja' : 'en';
+  if (engine && enTables) engine.SetLanguage(isJa() ? 'ja' : 'en', isJa() ? enTables.commentaryJa : enTables.commentaryEn, enTables.server, enTables.ui);
+}
+
 // ---------------------------------------------------------------- art (Unity Resources paths → site files)
 let ART = {};
 const art = (res) => ART[res] || '';
@@ -138,9 +201,11 @@ function Pills(list, x, y, w, parent) {
 function EnToggle(x = 1435, y = 124, w = 120, h = 50) {
   const b = Btn('EN', x, y, w, h, () => {
     prefs.set('muchi.language', isJa() ? 'en' : 'ja');
-    toast(isJa() ? '日本語に戻しました' : 'English: some screens only (the rest stays Japanese)');
+    applyLanguage();
+    toast(isJa() ? '日本語に戻しました' : 'English (legal pages under Japanese law stay in Japanese)');
     currentScreen?.();
   }, 'lang', undefined, isJa() ? 'EN' : 'JA');
+  b.classList.add('keep-ja');
   return b;
 }
 /** Currency HUD: free ◎ and paid ◈ coins apart, gold numbers (06 / doc 03: 有償・無償は分けて表示). */
@@ -318,9 +383,17 @@ function Legal(kind, back) {
   const [title, body] = docs[kind];
   const d = Dialog('Legal', 1000, 700);
   Kicker('法定表示・規約', 52, 48, d);
-  Txt(title, 52, 112, 896, 34, WHITE, d);
+  Txt(title, 52, 112, 896, isJa() ? 34 : 27, WHITE, d, { nowrap: !isJa() }); // English titles are longer: one line
   Hair(52, 178, 896, d);
-  Txt(body, 52, 206, 896, 19, MUTED, d, { lh: 1.75 });
+  // REQ-L10N-008: the notices required by Japanese law (特商法・資金決済法) stay in Japanese; in English a courtesy
+  // translation follows that claims no legal effect outside Japan
+  const legalJa = !isJa() && (kind === 'tokushoho' || kind === 'shikin');
+  const bodyEl = Txt(body, 52, 206, 896, legalJa ? 16 : 19, MUTED, d, { lh: legalJa ? 1.6 : 1.75 });
+  if (legalJa) {
+    bodyEl.classList.add('keep-ja'); bodyEl.lang = 'ja';
+    const note = Txt(EN_LEGAL_NOTE + '\n\n' + (L.l10n.translate(body) ?? ''), 52, 206 + 16 * 1.6 * (body.split('\n').length + 1.4), 896, 15, SOFT, d, { lh: 1.5 });
+    note.dataset.courtesy = 'en';
+  }
   Cta('閉じる', 52, 590, 380, back, d);
   EnToggle();
 }
@@ -435,7 +508,7 @@ function paintHud(f) {
   const pos = f.rankKnown ? `${f.rank}|${f.runners}` : '—';
   if (pos !== hud.lastPos) {
     hud.lastPos = pos;
-    hud.position.innerHTML = f.rankKnown ? `<span>${f.rank}位</span><small>/</small><span class="of">${f.runners}頭</span>` : '—';
+    hud.position.innerHTML = f.rankKnown ? `<span>${f.rank}位</span><small>/</small><span class="of">${f.runners}${isJa() ? '頭' : ''}</span>` : '—';
   }
   setText(hud.distance, `残り ${fmt(f.remainingM)} m`);
   setText(hud.clock, f.time);
@@ -1609,8 +1682,9 @@ async function Settings() {
   const a = Glass('Account', 36, 134, 500, 676, undefined, .9);
   Kicker('設定', 36, 30, a);
   Txt('言語', 36, 104, 200, 21, WHITE, a, { weight: 500 });
-  const ja = Btn('日本語', 196, 96, 120, 46, () => { prefs.set('muchi.language', 'ja'); Settings(); }, 'choice' + (isJa() ? ' on' : ''), a);
-  const en = Btn('English（一部）', 328, 96, 136, 46, () => { prefs.set('muchi.language', 'en'); Settings(); }, 'choice' + (!isJa() ? ' on' : ''), a);
+  const ja = Btn('日本語', 196, 96, 120, 46, () => { prefs.set('muchi.language', 'ja'); applyLanguage(); Settings(); }, 'choice' + (isJa() ? ' on' : ''), a);
+  ja.classList.add('keep-ja');
+  const en = Btn('English', 328, 96, 136, 46, () => { prefs.set('muchi.language', 'en'); applyLanguage(); Settings(); }, 'choice' + (!isJa() ? ' on' : ''), a);
   en.style.fontSize = '14px'; en.style.whiteSpace = 'nowrap'; en.style.padding = '0'; ja.dataset.name = 'Language';
   Hair(36, 162, 428, a);
   // 引き継ぎ (REQ-API-005): the same buttons as the prompt; the prompt itself shows once (REQ-UXS-073)
@@ -2227,10 +2301,12 @@ window.addEventListener('resize', fit);
 fit();
 
 async function boot() {
-  const [ja, artIndex, ruleset, commentary, partners] = await Promise.all([
+  const [ja, artIndex, ruleset, commentary, partners, commentaryEn, serverEn, uiEn] = await Promise.all([
     fetch('data/ja.json').then((r) => r.json()), fetch('data/art.json').then((r) => r.json()),
     fetch('data/ruleset.json').then((r) => r.text()), fetch('data/commentary-ja.json').then((r) => r.text()), fetch('data/partners.json').then((r) => r.json()),
+    fetch('data/commentary-en.json').then((r) => r.text()), fetch('data/server-en.json').then((r) => r.text()), fetch('data/ui-en.json').then((r) => r.text()),
   ]);
+  enTables = { commentaryJa: commentary, commentaryEn, server: serverEn, ui: uiEn };
   for (const e of ja.entries ?? []) JA[e.key] = e.value;
   ART = artIndex;
   const demo = new URLSearchParams(location.search).get('demo');
@@ -2240,6 +2316,8 @@ async function boot() {
   const runtime = await dotnet.create();
   engine = (await runtime.getAssemblyExports(runtime.getConfig().mainAssemblyName)).MuchiRace;
   engine.Init(ruleset, commentary);
+  applyLanguage(); // REQ-L10N-012: English commentary when EN is on
+  l10nObserver.observe($stage, { subtree: true, childList: true, characterData: true });
   view = new RaceView($canvas, (res) => art(res), partners);
   // the 3D models load while the title is up (the first race waits for them)
   viewReady = view.load();
@@ -2251,6 +2329,8 @@ async function boot() {
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),
     logic: L, view: () => view,
+    // REQ-L10N-013 (test/en-flow.cjs): texts with no English seen so far, and the fit state of the current screen
+    l10n: { misses: () => [...l10nMisses.keys()], clear: () => l10nMisses.clear(), fit: () => fitText(cur) },
   };
   // round 10: index.html?invite=<code> (or unity.html?invite=…, redirected) stands in for muchi://invite/<code> (pre-fills the entry; kept through the FTUE)
   const inviteLink = new URLSearchParams(location.search).get('invite');

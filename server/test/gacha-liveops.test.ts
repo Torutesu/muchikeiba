@@ -156,13 +156,16 @@ describe('banner schedule (REQ-GACHA-011)', () => {
     const g = rawGroups();
     b.push({ id: 'pickup_kohaku', name: 'ピックアップ：コハクノヒカリ', currency: 'any', priceSingle: 100, priceTen: 1000, pityGroup: 'pickup_kohaku', pityTargets: ['t_kohaku'], pickup: { templateId: 't_kohaku', ppm: 15000 }, pool: 'auto', rates: { SSR: 30000, SR: 180000, R: 790000 }, guaranteeRates: { SSR: 30000, SR: 970000 }, startDay: '2026-12-01', endDay: '2026-12-10', announceDays: 2 });
     g.pickup_kohaku = { cost: 100, endDay: '2026-12-10', convertTo: 'standard', label: 'ピックアップ（コハク）' };
-    const { master } = resolveBundle(m, { gacha: { banners: b, pityGroups: g } });
+    // REQ-L10N-005: a new banner ships with its English (without it the version is refused)
+    expect(() => resolveBundle(m, { gacha: { banners: b, pityGroups: g } })).toThrow(/no English for gacha\.banners\[pickup_kohaku\]\.name/);
+    const locale = { en: { 'ピックアップ：コハクノヒカリ': 'Pickup: Kohaku no Hikari', 'ピックアップ（コハク）': 'Pickup (Kohaku)' } };
+    const { master } = resolveBundle(m, { gacha: { banners: b, pityGroups: g }, locale });
     const k = findBanner(master, 'pickup_kohaku');
     expect([k.startAtMs, k.endAtMs, k.announceAtMs]).toEqual([gameDayStartMs('2026-12-01', dayRule(m)), gameDayStartMs('2026-12-11', dayRule(m)), gameDayStartMs('2026-11-29', dayRule(m))]);
     expect(bannerList(master, gameDayStartMs('2026-12-01', dayRule(m))).banners.map((x) => x.id)).toEqual(['pickup_kohaku', 'pickup_akatsuki', 'stepup_paid', 'standard']);
     // closing the group one day after the banner strands points → refused
     g.pickup_kohaku = { cost: 100, endDay: '2026-12-11', convertTo: 'standard' };
-    expect(() => resolveBundle(m, { gacha: { banners: b, pityGroups: g } })).toThrow(/closes after its last banner/);
+    expect(() => resolveBundle(m, { gacha: { banners: b, pityGroups: g }, locale })).toThrow(/closes after its last banner/);
     // bad day keys and both forms at once are rejected by the schema / builder
     expect(() => resolveBundle(m, { gacha: { banners: [...rawBanners(), { ...b.at(-1)!, id: 'x', startDay: '12/01' }] } } as never)).toThrow(/startDay/);
   });

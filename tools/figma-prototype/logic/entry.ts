@@ -23,6 +23,12 @@ import type { ReportReason } from '../../../server/src/domain/teamFeed.js';
 import { InviteService, MemoryInviteDirectory, deliverInviteOutbox, displayInviteCode, inviteRewardYen, normalizeInviteCode } from '../../../server/src/domain/invite.js';
 import type { Directory } from '../../../server/src/domain/friends.js';
 import { signAdMobQuery, StaticKeySource, verifyAdMobCallback } from '../../../server/src/ads/ssv.js';
+// REQ-L10N-*: the server's English tables (master/locale-en.json + i18n/en.ts), the client's (ui-en.json) and the
+// prototype's own screen texts (proto-en.json), in one catalog with the server's template rules (katakana names romanized)
+import { compileCatalogWith, translateText, romanizeName } from '../../../server/src/i18n/catalog.js';
+import { CODE_EN } from '../../../server/src/i18n/en.js';
+import uiEn from '../../../engine/Muchi.Client/Resources/Muchi/ui-en.json';
+import protoEn from './proto-en.json';
 
 const trackNames = new Map((tracksJson as { tracks: { id: string; name?: string }[] }).tracks.map((t) => [t.id, t.name ?? t.id]));
 
@@ -81,7 +87,11 @@ async function wrap<T>(f: () => Promise<T> | T): Promise<{ ok: true; value: T } 
   }
 }
 
+const enCatalog = compileCatalogWith({ romanize: true }, CODE_EN, master.locale?.en, (uiEn as { strings: Record<string, string> }).strings, (protoEn as { strings: Record<string, string> }).strings);
+
 export const MuchiLogic = {
+  /** REQ-L10N-*: English of a Japanese text (null when there is none); a katakana name comes back romanized. */
+  l10n: { translate: (s: string) => translateText(s, enCatalog), romanize: romanizeName, size: enCatalog.exact.size },
   master: {
     templates: master.templates.map((t) => ({ id: t.id, name: t.name, rarity: t.rarity, style: t.style, surface: t.surface, distMinM: t.distMinM, distMaxM: t.distMaxM, stats: t.stats })),
     banners: master.gacha.banners.map((b) => ({ id: b.id, name: b.name, currency: b.currency, priceSingle: b.priceSingle, priceTen: b.priceTen, pityGroup: b.pityGroup, pityTargets: b.pityTargets })),

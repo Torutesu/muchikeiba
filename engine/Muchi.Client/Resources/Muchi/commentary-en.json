@@ -1,0 +1,386 @@
+{
+  "version": 1,
+  "language": "en",
+  "_note": "REQ-L10N-012: English race commentary. Same phrase kinds, variant ids and placeholders as commentary-ja.json (engine test CommentaryLocaleTests checks every key). {place} is spoken as an ordinal (3rd); horse and skill names come from the English tables, katakana names romanized. Animal welfare: the whip is a cue, never described as hurting the horse.",
+  "ticksPerChar": 1,
+  "minLineTicks": 30,
+  "gapTicks": 4,
+  "leaderStableTicks": 30,
+  "positionCallIntervalTicks": 240,
+  "pendingExpiryTicks": 60,
+  "mustSayExpiryTicks": 200,
+  "photoFinishTicks": 2,
+  "duelWindowTicks": 150,
+  "comebackFromRank": 5,
+  "phrases": {
+    "gate_open": {
+      "priority": 100, "mustSay": true,
+      "variants": [
+        { "id": "gate_open_1", "text": "The gates open! They're all away!" },
+        { "id": "gate_open_2", "text": "And they're off!" },
+        { "id": "gate_open_3", "text": "Here we go, the gates are open!" }
+      ]
+    },
+    "good_start": {
+      "priority": 55,
+      "variants": [
+        { "id": "good_start_1", "text": "{name}, a great start!" },
+        { "id": "good_start_2", "text": "{name} breaks sharply!" }
+      ]
+    },
+    "late_start": {
+      "priority": 60,
+      "variants": [
+        { "id": "late_start_1", "text": "{name} is slow away!" },
+        { "id": "late_start_2", "text": "Oh, {name} missed the break!" }
+      ]
+    },
+    "leader": {
+      "priority": 80, "mustSay": true,
+      "variants": [
+        { "id": "leader_1", "text": "{name} leads!" },
+        { "id": "leader_2", "text": "{name} goes straight to the front!" },
+        { "id": "leader_3", "text": "{name} takes the lead!" }
+      ]
+    },
+    "position_call": {
+      "priority": 20,
+      "variants": [
+        { "id": "position_call_1", "text": "{name} in front, {name2} second, then {name3}." },
+        { "id": "position_call_2", "text": "{name} sets the pace, followed by {name2} and {name3}." }
+      ]
+    },
+    "kakari": {
+      "priority": 50,
+      "variants": [
+        { "id": "kakari_1", "text": "{name} is pulling hard!" },
+        { "id": "kakari_2", "text": "{name} wants to go faster!" }
+      ]
+    },
+    "spurt": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "spurt_1", "text": "Into the final straight!" },
+        { "id": "spurt_2", "text": "They turn for home!" }
+      ]
+    },
+    "focus_whip": {
+      "priority": 45,
+      "variants": [
+        { "id": "focus_whip_1", "text": "{name} gets the signal to go!" },
+        { "id": "focus_whip_2", "text": "{name} answers the call and lengthens!" }
+      ]
+    },
+    "cpu_takeover": {
+      "priority": 40,
+      "variants": [
+        { "id": "cpu_takeover_1", "text": "{name} is now on auto-ride." }
+      ]
+    },
+    "finish_win": {
+      "priority": 110, "mustSay": true,
+      "variants": [
+        { "id": "finish_win_1", "text": "{name} wins it!" },
+        { "id": "finish_win_2", "text": "Got up in time! It's {name}!" },
+        { "id": "finish_win_3", "text": "{name} crosses the line first!" }
+      ]
+    },
+    "bond_call": { "priority": 50, "variants": [ { "id": "bond_call_1", "text": "{name}, running on a bond built in the stable!" }, { "id": "bond_call_2", "text": "Horse and rider as one, here comes {name}!" } ] },
+    "skill": { "priority": 58, "variants": [ { "id": "skill_1", "text": "{name}, {skill} kicks in!" }, { "id": "skill_2", "text": "There it is! {name}'s {skill}!" }, { "id": "skill_3", "text": "{skill}! {name} changes gear!" } ] },
+    "focus_finish": {
+      "priority": 70,
+      "variants": [
+        { "id": "focus_finish_1", "text": "{name} finishes {place}." }
+      ]
+    },
+    "result": {
+      "priority": 105, "mustSay": true,
+      "variants": [
+        { "id": "result_1", "text": "First {name}, second {name2}, third {name3}." }
+      ]
+    },
+    "result_two": {
+      "priority": 105, "mustSay": true,
+      "variants": [
+        { "id": "result_two_1", "text": "First {name}, second {name2}." }
+      ]
+    },
+    "result_solo": {
+      "priority": 105, "mustSay": true,
+      "variants": [
+        { "id": "result_solo_1", "text": "{name} runs it all the way to the line!" }
+      ]
+    },
+    "spurt@aoba": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "spurt_aoba_1", "text": "Into the Aoba home straight!" },
+        { "id": "spurt_aoba_2", "text": "Up the Aoba hill and into the final straight!" }
+      ]
+    },
+    "spurt@kirameki": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "spurt_kirameki_1", "text": "They turn into the Kirameki straight!" },
+        { "id": "spurt_kirameki_2", "text": "Round the last right-hand turn, and into the straight!" }
+      ]
+    },
+    "spurt@minato": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "spurt_minato_1", "text": "The long Minato straight, this is where it's decided!" },
+        { "id": "spurt_minato_2", "text": "Into the sea breeze, the final straight at Minato!" }
+      ]
+    },
+    "spurt@nordhaven": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "spurt_nordhaven_1", "text": "The long, long Nordhaven straight, 700 metres to go!" },
+        { "id": "spurt_nordhaven_2", "text": "Round the sweeping harbour turn, and it's a battle down the straight!" }
+      ]
+    },
+    "spurt@santalucera": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "spurt_santalucera_1", "text": "Out of the tight Santa Lucera turns, into the short straight!" },
+        { "id": "spurt_santalucera_2", "text": "Kicking up the dry sand, the final straight at Santa Lucera!" }
+      ]
+    },
+    "spurt@bellmoor": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "spurt_bellmoor_1", "text": "Straight as an arrow at Bellmoor, 400 metres to go!" },
+        { "id": "spurt_bellmoor_2", "text": "No turns on this course, it's a drive to the line from here!" }
+      ]
+    },
+    "gate_open@tutorial": {
+      "priority": 100, "mustSay": true,
+      "variants": [
+        { "id": "gate_open_tutorial_1", "text": "The gates are open! Stay calm and find a good position." },
+        { "id": "gate_open_tutorial_2", "text": "We're off! Save the whip for the final straight." }
+      ]
+    },
+    "gate_open@ranked": {
+      "priority": 100, "mustSay": true,
+      "variants": [
+        { "id": "gate_open_ranked_1", "text": "Ranked race, the gates are open!" },
+        { "id": "gate_open_ranked_2", "text": "A race nobody wants to lose, and they're away!" }
+      ]
+    },
+    "gate_open@event": {
+      "priority": 100, "mustSay": true,
+      "variants": [
+        { "id": "gate_open_event_1", "text": "Event race, the gates open!" },
+        { "id": "gate_open_event_2", "text": "A special race, and they're all away!" }
+      ]
+    },
+    "late_start@tutorial": {
+      "priority": 60,
+      "variants": [
+        { "id": "late_start_tutorial_1", "text": "{name} is a little slow away. Don't worry, there's time to make it up!" }
+      ]
+    },
+    "focus_whip@tutorial": {
+      "priority": 45,
+      "variants": [
+        { "id": "focus_whip_tutorial_1", "text": "Good timing! {name} gets the signal!" },
+        { "id": "focus_whip_tutorial_2", "text": "{name} responds and picks up speed! Keep it up!" }
+      ]
+    },
+    "focus_finish@tutorial": {
+      "priority": 70,
+      "variants": [
+        { "id": "focus_finish_tutorial_1", "text": "{name} finishes {place}. Well ridden!" }
+      ]
+    },
+    "focus_finish@ranked": {
+      "priority": 70,
+      "variants": [
+        { "id": "focus_finish_ranked_1", "text": "{name} crosses the line {place}." },
+        { "id": "focus_finish_ranked_2", "text": "{name} comes home {place}." }
+      ]
+    },
+    "duel": {
+      "priority": 85,
+      "variants": [
+        { "id": "duel_1", "text": "{name} and {name2}, locked in a fierce battle!" },
+        { "id": "duel_2", "text": "{name} fights back! A head-to-head with {name2}!" }
+      ]
+    },
+    "photo_finish": {
+      "priority": 108, "mustSay": true,
+      "variants": [
+        { "id": "photo_finish_1", "text": "So close! Almost level with {name} in second!" },
+        { "id": "photo_finish_2", "text": "A blanket finish, this could go to the photo!" }
+      ]
+    },
+    "comeback_win": {
+      "priority": 110, "mustSay": true,
+      "variants": [
+        { "id": "comeback_win_1", "text": "From the back in one surge! {name} gets up!" },
+        { "id": "comeback_win_2", "text": "{name} storms down the outside and powers clear!" }
+      ]
+    },
+    "wire_win": {
+      "priority": 110, "mustSay": true,
+      "variants": [
+        { "id": "wire_win_1", "text": "{name} makes every yard! Never headed!" },
+        { "id": "wire_win_2", "text": "{name} keeps going all the way to the line!" }
+      ]
+    },
+    "going_call_turf_firm": {
+      "priority": 20,
+      "variants": [
+        { "id": "going_call_turf_firm_1", "text": "A fast pace on quick ground, {name} in front." },
+        { "id": "going_call_turf_firm_2", "text": "On this firm turf the pace is quickening." }
+      ]
+    },
+    "going_call_turf_yielding": {
+      "priority": 20,
+      "variants": [
+        { "id": "going_call_turf_yielding_1", "text": "On slightly soft turf, {name} in front." },
+        { "id": "going_call_turf_yielding_2", "text": "Yielding turf, everyone is saving energy." }
+      ]
+    },
+    "going_call_turf_soft": {
+      "priority": 20,
+      "variants": [
+        { "id": "going_call_turf_soft_1", "text": "Heavy going is testing them all, {name} in front." },
+        { "id": "going_call_turf_soft_2", "text": "Testing turf, stamina will be the question here." }
+      ]
+    },
+    "going_call_dirt_fast": {
+      "priority": 20,
+      "variants": [
+        { "id": "going_call_dirt_fast_1", "text": "Dry, deep sand making it slow, {name} in front." },
+        { "id": "going_call_dirt_fast_2", "text": "Tiring dirt, they're all working hard to keep up." }
+      ]
+    },
+    "going_call_dirt_muddy": {
+      "priority": 20,
+      "variants": [
+        { "id": "going_call_dirt_muddy_1", "text": "The damp sand rides well, {name} in front." },
+        { "id": "going_call_dirt_muddy_2", "text": "Moist dirt, and the pace is on the quick side." }
+      ]
+    },
+    "going_call_dirt_sloppy": {
+      "priority": 20,
+      "variants": [
+        { "id": "going_call_dirt_sloppy_1", "text": "Water lying on the dirt, {name} out in front." },
+        { "id": "going_call_dirt_sloppy_2", "text": "A sloppy track, and the leaders just keep going." }
+      ]
+    },
+    "ground_turf_firm": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_turf_firm_1", "text": "The turf is firm and perfect. Expect a fast time." },
+        { "id": "ground_turf_firm_2", "text": "Rock-hard, firm ground. Just what the speedsters want." }
+      ]
+    },
+    "ground_turf_firm_night": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_turf_firm_night_1", "text": "Under the floodlights, the turf is firm and perfect. Expect a fast time." },
+        { "id": "ground_turf_firm_night_2", "text": "Under the floodlights, rock-hard, firm ground. Just what the speedsters want." }
+      ]
+    },
+    "ground_turf_good": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_turf_good_1", "text": "The going on the turf is officially good." },
+        { "id": "ground_turf_good_2", "text": "Good turf. The best horse should win today." }
+      ]
+    },
+    "ground_turf_good_night": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_turf_good_night_1", "text": "Under the floodlights, the going on the turf is officially good." },
+        { "id": "ground_turf_good_night_2", "text": "Under the floodlights, good turf. The best horse should win today." }
+      ]
+    },
+    "ground_turf_yielding": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_turf_yielding_1", "text": "The turf is yielding. It will take a bit more strength." },
+        { "id": "ground_turf_yielding_2", "text": "Slightly soft turf, a race on yielding ground." }
+      ]
+    },
+    "ground_turf_yielding_night": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_turf_yielding_night_1", "text": "Under the floodlights, the turf is yielding. It will take a bit more strength." },
+        { "id": "ground_turf_yielding_night_2", "text": "Under the floodlights, slightly soft turf, a race on yielding ground." }
+      ]
+    },
+    "ground_turf_soft": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_turf_soft_1", "text": "After the rain the turf is soft. A test of stamina." },
+        { "id": "ground_turf_soft_2", "text": "Soft turf. Some love it, some hate it." }
+      ]
+    },
+    "ground_turf_soft_night": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_turf_soft_night_1", "text": "Under the floodlights, after the rain the turf is soft. A test of stamina." },
+        { "id": "ground_turf_soft_night_2", "text": "Under the floodlights, soft turf. Some love it, some hate it." }
+      ]
+    },
+    "ground_dirt_fast": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_dirt_fast_1", "text": "The dirt is dry and fast. Deep, tiring sand." },
+        { "id": "ground_dirt_fast_2", "text": "Dry dirt. Loose sand, so the time may be slow." }
+      ]
+    },
+    "ground_dirt_fast_night": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_dirt_fast_night_1", "text": "Under the floodlights, the dirt is dry and fast. Deep, tiring sand." },
+        { "id": "ground_dirt_fast_night_2", "text": "Under the floodlights, dry dirt. Loose sand, so the time may be slow." }
+      ]
+    },
+    "ground_dirt_good": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_dirt_good_1", "text": "The going on the dirt is officially good." },
+        { "id": "ground_dirt_good_2", "text": "Good dirt. A test of strength." }
+      ]
+    },
+    "ground_dirt_good_night": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_dirt_good_night_1", "text": "Under the floodlights, the going on the dirt is officially good." },
+        { "id": "ground_dirt_good_night_2", "text": "Under the floodlights, good dirt. A test of strength." }
+      ]
+    },
+    "ground_dirt_muddy": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_dirt_muddy_1", "text": "The dirt is muddy. It rides quick today." },
+        { "id": "ground_dirt_muddy_2", "text": "Damp dirt, a race on muddy ground." }
+      ]
+    },
+    "ground_dirt_muddy_night": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_dirt_muddy_night_1", "text": "Under the floodlights, the dirt is muddy. It rides quick today." },
+        { "id": "ground_dirt_muddy_night_2", "text": "Under the floodlights, damp dirt, a race on muddy ground." }
+      ]
+    },
+    "ground_dirt_sloppy": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_dirt_sloppy_1", "text": "The dirt is sloppy. The leaders will be hard to catch." },
+        { "id": "ground_dirt_sloppy_2", "text": "Water lying on a sloppy track. Front-runners may hang on." }
+      ]
+    },
+    "ground_dirt_sloppy_night": {
+      "priority": 90, "mustSay": true,
+      "variants": [
+        { "id": "ground_dirt_sloppy_night_1", "text": "Under the floodlights, the dirt is sloppy. The leaders will be hard to catch." },
+        { "id": "ground_dirt_sloppy_night_2", "text": "Under the floodlights, water lying on a sloppy track. Front-runners may hang on." }
+      ]
+    }
+  }
+}

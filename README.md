@@ -43,6 +43,7 @@ bash scripts/integration.sh
 | [docs/spec/implementation-plan.md](docs/spec/implementation-plan.md) | 実装計画・実装状況 |
 | [unity/README.md](unity/README.md) | Unityフロントエンド、画面、アート、検証状況 |
 | [docs/handoff-unity-3d.md](docs/handoff-unity-3d.md) | 3Dモデル統合とClaude側のUnity検証手順 |
+| [docs/handoff-codex-round11-english.md](docs/handoff-codex-round11-english.md) | 英語（Round 11）：`Loc.T` で画面に出す・英語の長さのレイアウト・法定表示・フォント（protocol §23） |
 | [frontend/README.md](frontend/README.md) | ブラウザ画面プロトタイプとFigma素材 |
 
 ## 関連資料（claude.ai Artifacts、オーナーのみ閲覧可・共有はShareメニューから）

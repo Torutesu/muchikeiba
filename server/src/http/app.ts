@@ -31,6 +31,8 @@ import type { TournamentEntryInfo, TournamentPlayers, TournamentsService } from 
 import type { StableService } from '../domain/stable.js';
 import { InviteService, type InviteDirectory, type InvitePlayers } from '../domain/invite.js';
 import { SsvError, verifyAdMobCallback, type SsvKeySource } from '../ads/ssv.js';
+import { LOCALES, resolveLocale, type Locale } from '../i18n/locale.js';
+import { catalogFor, localize, type Catalog } from '../i18n/catalog.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -144,8 +146,9 @@ export interface AppContext {
 }
 export interface ClientConfigInfo { versionId: string; hash: string; rulesetVersion: string; activatedAt: number | null }
 
-const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8' } });
-const errorResponse = (e: AppError) => json({ error: { code: e.code, message: e.message } }, e.status);
+const json = (data: unknown, status = 200, lang?: Locale) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', ...(lang ? { 'content-language': lang, vary: 'accept-language' } : {}) } });
+const errorResponse = (e: AppError, l?: { lang: Locale; cat: Catalog }) =>
+  json(l ? localize({ error: { code: e.code, message: e.message } }, l.lang, l.cat) : { error: { code: e.code, message: e.message } }, e.status, l?.lang);
 
 async function body<T>(req: Request, schema: z.ZodType<T>): Promise<T> {
   let raw: unknown;
@@ -605,14 +608,15 @@ export const routes: Route[] = [
   } },
   // push notifications (REQ-PUSH-*)
   { method: 'PUT', path: '/v1/push/devices', auth: 'player', handler: async (r, _p, c, u) => {
-    const b = await body(r, z.object({ token: z.string().min(8).max(4096), platform: z.enum(['ios', 'android']) }));
-    return c.player(u).invoke('registerDevice', u, b.token, b.platform);
+    // REQ-L10N-007: the device's language (body `locale`, else the request's ?lang= / Accept-Language)
+    const b = await body(r, z.object({ token: z.string().min(8).max(4096), platform: z.enum(['ios', 'android']), locale: z.enum(LOCALES).optional() }));
+    return c.player(u).invoke('registerDevice', u, b.token, b.platform, b.locale ?? resolveLocale(r));
   } },
   { method: 'POST', path: '/v1/push/devices/unregister', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ token: z.string().min(1).max(4096) }));
     return c.player(u).invoke('unregisterDevice', u, b.token);
   } },
-  { method: 'GET', path: '/v1/push/preferences', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('pushPreferences', u) },
+  { method: 'GET', path: '/v1/push/preferences', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('pushPreferences', u, resolveLocale(r)) },
   { method: 'PUT', path: '/v1/push/preferences', auth: 'player', handler: async (r, _p, c, u) => {
     const hour = z.number().int().min(0).max(23);
     const b = await body(r, z.object({
@@ -622,7 +626,7 @@ export const routes: Route[] = [
     return c.player(u).invoke('setPushPreferences', u, {
       ...(b.categories ? { categories: b.categories } : {}),
       ...(b.quietHours !== undefined ? { quietHours: b.quietHours } : {}),
-    });
+    }, resolveLocale(r));
   } },
   // analytics (REQ-KPI-003)
   { method: 'POST', path: '/v1/analytics/events', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('kpiIngest', u, await body(r, clientBatchSchema)) },
@@ -717,6 +721,8 @@ export const handle: Handler = async (req, _p, ctx) => {
       ...(ctx.adminConsoleOrigins ? { consoleOrigins: ctx.adminConsoleOrigins } : {}),
     });
   }
+  // REQ-L10N-001..003: `?lang=` / Accept-Language; Japanese is rendered by the domain, English translated here
+  const l10n = { lang: resolveLocale(req), cat: catalogFor(ctx.master) };
   try {
     let methodMismatch = false;
     for (const r of routes) {
@@ -731,11 +737,11 @@ export const handle: Handler = async (req, _p, ctx) => {
       if (r.auth === 'player') uid = await ctx.authenticate(req);
       if (r.auth === 'admin' && (!ctx.adminToken || !timingSafeEqual(req.headers.get('authorization') ?? '', `Bearer ${ctx.adminToken}`))) throw new AppError('UNAUTHORIZED');
       const out = await r.handler(req, params, ctx, uid);
-      return out instanceof Response ? out : json(out);
+      return out instanceof Response ? out : json(localize(out, l10n.lang, l10n.cat), 200, l10n.lang);
     }
-    return methodMismatch ? json({ error: { code: 'BAD_REQUEST', message: 'method not allowed' } }, 405) : errorResponse(new AppError('NOT_FOUND'));
+    return methodMismatch ? json({ error: { code: 'BAD_REQUEST', message: 'method not allowed' } }, 405) : errorResponse(new AppError('NOT_FOUND'), l10n);
   } catch (e) {
-    if (e instanceof AppError) return errorResponse(e);
+    if (e instanceof AppError) return errorResponse(e, l10n);
     console.error(e);
     return json({ error: { code: 'INTERNAL', message: 'internal error' } }, 500);
   }

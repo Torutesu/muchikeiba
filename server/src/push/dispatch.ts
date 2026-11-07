@@ -5,7 +5,7 @@
  * is durable across eviction and deploys, retries/backoff are just a later alarm, and it needs no extra
  * paid binding. Request handlers only append to the outbox and set the alarm — they never wait on FCM.
  */
-import type { DeliveryOutcome, DueDelivery } from '../domain/push.js';
+import { messageFor, type DeliveryOutcome, type DueDelivery } from '../domain/push.js';
 import type { PushSender } from './fcm.js';
 
 export interface PushPorts {
@@ -20,7 +20,7 @@ export async function deliverDuePushes(ports: PushPorts, playerId: string, sende
     const results = [];
     for (const token of d.tokens) {
       if (!sender) { results.push({ token, kind: 'failed' as const }); continue; }
-      const r = await sender.send(token, d.message);
+      const r = await sender.send(token, messageFor(d, token)); // REQ-L10N-007: each device in its language
       results.push({ token, kind: r.kind, ...(r.retryAfterMs !== undefined ? { retryAfterMs: r.retryAfterMs } : {}) });
     }
     outcomes.push({ id: d.id, results });

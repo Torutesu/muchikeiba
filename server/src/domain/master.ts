@@ -21,6 +21,7 @@ import changelogJson from '../../master/changelog.json';
 import { parseAssetCatalog, type AssetCatalog } from './assetCatalog.js';
 import type { StampsMaster } from './teamFeed.js';
 import stampsJson from '../../master/stamps.json';
+import localeEnJson from '../../master/locale-en.json';
 import { trackSchema, type GoingAptitude, type Going, type Track } from './schemas.js';
 import { AppError } from './errors.js';
 import { loadSkills, type SkillsMaster } from './skills.js';
@@ -258,6 +259,8 @@ export interface PushMaster {
   retry: { backoffMs: number[]; maxAttempts: number };
   /** FCM topics for broadcast categories (one send reaches every subscribed device). */
   topics: Partial<Record<PushCategory, string>>;
+  /** REQ-L10N-007: the topics of other languages (an English device subscribes to these instead). */
+  topicsByLocale?: Partial<Record<'ja' | 'en', Partial<Record<PushCategory, string>>>>;
   seasonReminders: { endDaysBefore: number[]; lastDay: boolean; start: boolean };
   templates: Record<string, PushTemplate>;
 }
@@ -330,6 +333,11 @@ export interface Master {
   stamps?: StampsMaster;
   /** REQ-CB-008: what's new entries (master/changelog.json; remote config `changelog` may replace it). */
   changelog?: import('./comeback.js').ChangelogEntry[];
+  /**
+   * REQ-L10N-004: the English of every player-facing Japanese text above, keyed by the Japanese (master/locale-en.json;
+   * remote config `locale.en` adds to it). Absent in hand-built test masters (responses then stay Japanese).
+   */
+  locale?: { en: Record<string, string> };
 }
 
 export const PPM_TOTAL = 1_000_000;
@@ -480,6 +488,7 @@ export function loadMaster(): Master {
     assetCatalog: parseAssetCatalog(assetsCatalogJson),
     stamps: stampsJson as unknown as StampsMaster,
     changelog: (changelogJson as unknown as { entries: import('./comeback.js').ChangelogEntry[] }).entries,
+    locale: { en: (localeEnJson as unknown as { strings: Record<string, string> }).strings },
   };
   cached = m;
   return m;
@@ -487,7 +496,7 @@ export function loadMaster(): Master {
 
 /** Separates master-only track fields (name, lights) from the race-config track. */
 export function splitMasterTrack(raw: Record<string, unknown>): { track: Record<string, unknown>; lights: boolean } {
-  const { name: _name, lights, ...track } = raw;
+  const { name: _name, lights, en: _en, ...track } = raw;
   return { track, lights: lights === true };
 }
 

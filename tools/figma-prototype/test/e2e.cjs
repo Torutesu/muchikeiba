@@ -3,6 +3,8 @@
 //      (club-flow.cjs; club-<screen>.png, named after frontend/design/screens)
 //   2. ムチ一閃 UI (index.html, the site root): the round 8 FTUE measured with a simulated new player (unity-flow.cjs, ftue.json) and
 //      every screen and state on a landscape phone (844×390 @2x, u-<nn>-<name>.png)
+//   3. round 11 (REQ-L10N-013): a short pass in English (en-flow.cjs; en-<nn>-<name>.png): no Japanese left, no overflow
+//   E2E_ONLY=club | unity | en runs one part.
 // Fails on any console error / page error. Screenshots go to <outDir> (default: tools/figma-prototype/.screens), plus
 // contact-sheet.png of every ムチ一閃 screen (contact-sheet.py).
 // usage: node tools/figma-prototype/test/e2e.cjs [outDir]
@@ -12,6 +14,7 @@ const path = require('path');
 const { chromium } = require('playwright');
 const clubFlow = require('./club-flow.cjs');
 const unityFlow = require('./unity-flow.cjs');
+const enFlow = require('./en-flow.cjs');
 
 const SITE = path.join(__dirname, '..', 'site');
 const OUT = path.resolve(process.argv[2] || path.join(__dirname, '..', '.screens'));
@@ -37,6 +40,13 @@ function serve() {
   const url = base + 'index.html';
   const browser = await chromium.launch();
   const errors = [];
+  if (process.env.E2E_ONLY === 'en') {
+    const en = await enFlow(browser, base, OUT, errors);
+    console.log(`English: ${en.shots.length} screenshots, ${en.report.reduce((a, r) => a + r.shrunk, 0)} texts shrunk to fit, ${en.misses.length} texts without English`);
+    await browser.close(); server.close();
+    if (errors.length) { console.error('ERRORS:\n' + errors.join('\n')); process.exit(1); }
+    console.log('E2E OK (en)'); return;
+  }
   const clubShots = process.env.E2E_ONLY === 'unity' ? [] : await clubFlow(browser, base, OUT, errors);
   console.log(`club UI: ${clubShots.length} screenshots`);
   if (process.env.E2E_ONLY === 'club') { await browser.close(); server.close(); if (errors.length) { console.error('ERRORS:\n' + errors.join('\n')); process.exit(1); } return; }
@@ -47,9 +57,11 @@ function serve() {
   console.log(`  taps to home ${ftue.taps} (navigation ${ftue.navTaps} + race ${ftue.raceTaps}); targets: aha ≤ 30 s, gacha ≤ 100 s, home ≤ 240 s, ≤ 15 taps; ${ftue.thinkMs} ms think time before each navigation tap`);
   console.log('  2nd race debrief: ' + ftue.resultLine);
   const n = shots.length;
+  const en = await enFlow(browser, base, OUT, errors);
+  console.log(`English (REQ-L10N-013): ${en.shots.length} screenshots, ${en.report.reduce((a, r) => a + r.shrunk, 0)} texts shrunk to fit, ${en.misses.length} texts without English`);
   await browser.close(); server.close();
   if (errors.length) { console.error('ERRORS:\n' + errors.join('\n')); process.exit(1); }
   const cs = require('child_process').spawnSync('python3', [path.join(__dirname, 'contact-sheet.py'), OUT], { encoding: 'utf8' });
   if (cs.status === 0) process.stdout.write(cs.stdout);
-  console.log(`E2E OK — club ${clubShots.length} + ムチ一閃 ${n} screenshots in ${OUT}`);
+  console.log(`E2E OK — club ${clubShots.length} + ムチ一閃 ${n} + English ${en.shots.length} screenshots in ${OUT}`);
 })().catch((e) => { console.error(e); process.exit(1); });

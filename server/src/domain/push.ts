@@ -12,9 +12,12 @@ import { AppError } from './errors.js';
 import { PUSH_CATEGORIES, type Master, type PushCategory, type PushTemplate } from './master.js';
 import type { PlayerState } from './player.js';
 import { dayRule, gameDayKey, jstDateKey, sameGameDay } from './time.js';
+import { catalogFor, textIn } from '../i18n/catalog.js';
+import { DEFAULT_LOCALE, LOCALES, type Locale } from '../i18n/locale.js';
 
 export type DevicePlatform = 'ios' | 'android';
-export interface PushDevice { token: string; platform: DevicePlatform; addedAt: number; lastSeenAt: number }
+/** `locale` (REQ-L10N-007): the language the app registered the token with; absent (old records) = Japanese. */
+export interface PushDevice { token: string; platform: DevicePlatform; addedAt: number; lastSeenAt: number; locale?: Locale }
 export interface QuietHours { startHour: number; endHour: number }
 export interface PushPrefs { categories: Record<PushCategory, boolean>; quietHours: QuietHours | null }
 export interface OutboxItem {
@@ -33,7 +36,12 @@ export interface PushState {
 
 /** What the dispatcher sends to one device. */
 export interface PushMessage { title: string; body: string; data: Record<string, string>; ttlSec: number; timeSensitive: boolean }
-export interface DueDelivery { id: string; message: PushMessage; tokens: string[] }
+/**
+ * `message` is the Japanese; `messages` holds the message per locale and `tokenLocales` the locale of each token that
+ * is not Japanese (REQ-L10N-007). Send each token `messageFor(d, token)`.
+ */
+export interface DueDelivery { id: string; message: PushMessage; tokens: string[]; messages?: Partial<Record<Locale, PushMessage>>; tokenLocales?: Record<string, Locale> }
+export const messageFor = (d: DueDelivery, token: string): PushMessage => d.messages?.[d.tokenLocales?.[token] ?? DEFAULT_LOCALE] ?? d.message;
 /** Result of one device send (push/fcm.ts classifies FCM responses into these). */
 export type SendKind = 'ok' | 'invalid_token' | 'retry' | 'failed';
 export interface SendResult { token: string; kind: SendKind; retryAfterMs?: number }
@@ -57,10 +65,18 @@ export function render(text: string, vars: Record<string, string>): string {
   return text.replace(/\{(\w+)\}/g, (_, k: string) => vars[k] ?? '');
 }
 
-export function renderTemplate(t: PushTemplate, templateId: string, vars: Record<string, string>): PushMessage {
+/**
+ * A template rendered in a locale (REQ-L10N-007): the English template from the master's string table, and the
+ * variables the server built in Japanese (「決勝」, 「2026年11月」, master names) translated too. Player-written values
+ * (display names, team names) have no entry and are sent as written. `data` keeps the raw variables.
+ */
+export function renderTemplate(t: PushTemplate, templateId: string, vars: Record<string, string>, locale: Locale = 'ja', m?: Pick<Master, 'locale'>): PushMessage {
+  const cat = locale === 'ja' ? null : catalogFor(m ?? {});
+  const tx = (x: string) => (cat ? textIn(locale, x, cat) : x);
+  const v = cat ? Object.fromEntries(Object.entries(vars).map(([k, x]) => [k, tx(x)])) : vars;
   return {
-    title: render(t.title, vars), body: render(t.body, vars),
-    data: { templateId, category: t.category, ...vars },
+    title: render(tx(t.title), v), body: render(tx(t.body), v),
+    data: { templateId, category: t.category, ...vars, ...(locale === 'ja' ? {} : { locale }) },
     ttlSec: t.ttlSec, timeSensitive: t.timeSensitive,
   };
 }
@@ -85,15 +101,16 @@ export function quietHoursEnd(q: QuietHours, ms: number): number {
 
 // ---------------------------------------------------------------- devices & preferences
 
-export function registerDevice(m: Master, s: PlayerState, token: string, platform: DevicePlatform, now: number) {
+export function registerDevice(m: Master, s: PlayerState, token: string, platform: DevicePlatform, now: number, locale: Locale = DEFAULT_LOCALE) {
   if (token.length < 8 || token.length > 4096) throw new AppError('BAD_REQUEST', 'bad device token');
   const p = ensurePush(m, s);
   const d = p.devices.find((x) => x.token === token);
   if (d) {
     d.platform = platform;
     d.lastSeenAt = now;
+    if (locale === DEFAULT_LOCALE) delete d.locale; else d.locale = locale;
   } else {
-    p.devices.push({ token, platform, addedAt: now, lastSeenAt: now });
+    p.devices.push({ token, platform, addedAt: now, lastSeenAt: now, ...(locale === DEFAULT_LOCALE ? {} : { locale }) });
     p.devices.sort((a, b) => b.lastSeenAt - a.lastSeenAt);
     p.devices.splice(m.push.maxDevices);
   }
@@ -109,7 +126,7 @@ export function unregisterDevice(m: Master, s: PlayerState, token: string) {
 
 export interface PrefsPatch { categories?: Partial<Record<PushCategory, boolean>>; quietHours?: QuietHours | null }
 
-export function setPushPrefs(m: Master, s: PlayerState, patch: PrefsPatch) {
+export function setPushPrefs(m: Master, s: PlayerState, patch: PrefsPatch, locale: Locale = DEFAULT_LOCALE) {
   const p = ensurePush(m, s);
   for (const [k, v] of Object.entries(patch.categories ?? {})) {
     if (!PUSH_CATEGORIES.includes(k as PushCategory)) throw new AppError('BAD_REQUEST', `unknown category ${k}`);
@@ -120,20 +137,27 @@ export function setPushPrefs(m: Master, s: PlayerState, patch: PrefsPatch) {
     if (q && !([q.startHour, q.endHour].every((h) => Number.isInteger(h) && h >= 0 && h <= 23))) throw new AppError('BAD_REQUEST', 'quiet hours must be 0-23');
     p.prefs.quietHours = q ? { startHour: q.startHour, endHour: q.endHour } : null;
   }
-  return pushPrefsView(m, s);
+  return pushPrefsView(m, s, locale);
 }
 
 /**
  * Preferences plus the FCM topics the app must subscribe to / unsubscribe from (broadcast categories such
  * as season reminders are sent once per topic instead of once per player — REQ-PUSH-006).
  */
-export function pushPrefsView(m: Master, s: PlayerState) {
+/** REQ-L10N-007: the broadcast topic of a category in a locale (`topicsByLocale`, else the Japanese topic). */
+export const topicFor = (m: Pick<Master, 'push'>, cat: PushCategory, locale: Locale): string | undefined =>
+  locale === DEFAULT_LOCALE ? m.push.topics[cat] : m.push.topicsByLocale?.[locale]?.[cat] ?? m.push.topics[cat];
+
+export function pushPrefsView(m: Master, s: PlayerState, locale: Locale = DEFAULT_LOCALE) {
   const p = ensurePush(m, s);
   const subscribe: string[] = [];
   const unsubscribe: string[] = [];
-  for (const [cat, topic] of Object.entries(m.push.topics)) {
-    if (!topic) continue;
-    (p.prefs.categories[cat as PushCategory] ? subscribe : unsubscribe).push(topic);
+  for (const cat of Object.keys(m.push.topics) as PushCategory[]) {
+    const mine = topicFor(m, cat, locale);
+    if (!mine) continue;
+    (p.prefs.categories[cat] ? subscribe : unsubscribe).push(mine);
+    // the same category in the other languages: never received twice after a language switch
+    for (const l of LOCALES) { const t = topicFor(m, cat, l); if (t && t !== mine && !unsubscribe.includes(t)) unsubscribe.push(t); }
   }
   return { categories: p.prefs.categories, quietHours: p.prefs.quietHours, dailyCap: m.push.defaults.dailyCap, devices: p.devices.length, topics: { subscribe, unsubscribe } };
 }
@@ -188,7 +212,16 @@ export function takeDuePushes(m: Master, s: PlayerState, now: number): { due: Du
     // A due item with no device left or no template can never be delivered: drop it now, otherwise its
     // past notBefore would re-arm the alarm every second until it expires (up to its TTL).
     if (!t || tokens.length === 0) { dead.add(x.id); continue; }
-    due.push({ id: x.id, message: renderTemplate(t, x.templateId, x.vars), tokens });
+    const tokenLocales: Record<string, Locale> = {};
+    for (const d of p.devices) if (d.locale && d.locale !== DEFAULT_LOCALE && tokens.includes(d.token)) tokenLocales[d.token] = d.locale;
+    const used = new Set(Object.values(tokenLocales));
+    const delivery: DueDelivery = { id: x.id, message: renderTemplate(t, x.templateId, x.vars), tokens };
+    if (used.size > 0) {
+      delivery.tokenLocales = tokenLocales;
+      delivery.messages = { ja: delivery.message };
+      for (const l of used) delivery.messages[l] = renderTemplate(t, x.templateId, x.vars, l, m);
+    }
+    due.push(delivery);
   }
   if (dead.size > 0) p.outbox = p.outbox.filter((x) => !dead.has(x.id));
   return { due, expired, undeliverable: dead.size };

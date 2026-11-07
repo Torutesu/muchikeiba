@@ -76,6 +76,8 @@ static class Program
         await ComebackChecks.Run(Check, Ruleset());
         Console.WriteLine("== rewarded ads: where cards may appear, one view at a time, reward only from the server (SSV), KPI");
         await RewardedAdChecks.Run(Check);
+        Console.WriteLine("== round 11: English (Loc tables, composite lines, commentary, request language; REQ-L10N-009..012)");
+        await L10nChecks.Run(Check, Root, Ruleset());
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

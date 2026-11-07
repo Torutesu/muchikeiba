@@ -692,3 +692,42 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 | POST | `/v1/admin/compensations/:id/reject` | operator | `{note?, reason}` → `{request}` |
 
 `CompensationRequest`：`{id, opKey, playerId, grant, reason, requestedBy, requestedRole, requestedAt, expiresAt, needsApproval, status: pending|approved|executed|rejected|expired, decidedBy, decidedAt, decisionNote, executedAt, error}`。
+
+## 23. ローカライズ（英語、REQ-L10N-001〜013、`server/src/i18n/*`、C# `Localization.cs`（`Loc`・`LocaleCatalog`・`Romaji`）、`Muchi.Game` `UxText`）
+文言の元は**日本語**（ドメインのコード・マスター・ゴールデンファイルは変えない）。英語は日本語の文をキーにした**文字列表**で訳す。対応言語は `ja`（既定）と `en`。
+
+### 23.1 リクエストの言語
+- `?lang=ja|en`（`en-US` などは `en`）を最優先。無ければ `Accept-Language`（q値の高い順、同じなら書いた順に最初の対応言語。`*`・`q=0` は選ばない）。どちらも無ければ `ja`。対応していない言語は無視する。
+- 応答に `content-language: ja|en` と `vary: accept-language`。`?lang=` の無い同じURLでも言語で中身が変わるので、キャッシュは `vary` に従うこと。
+- C# の `ApiClient` は毎回 `accept-language` を送る（`ApiClientOptions.Locale`、実行中は `ApiClient.Locale` で切り替え）。Unity は `MuchiServices.SetLanguage(locale)`（PlayerPrefs `muchi.language`、Runtime の `LocaleService` と同じキー）。
+
+### 23.2 サーバーの訳し方（`http/app.ts` の応答の出口、`i18n/catalog.ts`）
+- ドメインは日本語で作る。`en` の時だけ、応答の JSON の**全ての文字列の値**を表で訳してから返す（キー・数値・ID はそのまま）。エラーの `message` も同じ。管理API（`/v1/admin/*`）と `GET /v1/assets/catalog` は対象外。
+- 訳さないもの：ID の欄（`id`・`key`・`voiceName`・`asset`・`assetKey`・`icon`・`templateId`）と、`name:…` `voice/…` のような識別子の形の文字列。**プレイヤーが書いた文字**（表示名・支部名・表札・自分で付けた馬名）は表に無いのでそのまま返る。クライアントがカタカナの馬名をローマ字で表示する（§23.6）。
+- 表は2つで、どちらも日本語の文そのものがキー：
+  - `server/master/locale-en.json`（`Master.locale.en`）：マスターの**プレイヤーに見える日本語すべて**（商品名・注記・法定表示のリンク名・スカウトのバナーと天井の名前・馬名と血統名・称号・スキル名・スタンプ・イベント名・アイテム名・支部リーグの部・復帰ミッション・広告の枠の文言・お知らせ（What's new）・プッシュの文・競馬場名・厩舎テーマ）。
+  - `server/src/i18n/en.ts`（`CODE_EN`）：ドメインのコードが組み立てる文（商品の中身の行・はじめての購入の行・提供割合のページの注記と各表の説明・券の説明・天井の移行・スキルの発動条件と効果・スタンプの解放条件・削除の確認・招待の共有文・名前の既定値・大会の回戦名・選手に見えるエラーの詳細）。
+- **テンプレート**：キーに `{名前}` があれば型として照合する。`n` `m` `v` `p` `a` `b` `i` `y` `days` `levels` `qty` `minutes` `points` は数字だけ（`1,020`・`2.5%`）、`hm` は時刻（`4:00`）、`id` `code` `url` はその形、ほかは任意の文字列（取り込んだ部分が日本語なら、さらに表で訳す。例：「スカウト券×1」は `{item}×{qty}` で `item` を訳す）。`name` `team` は訳せなくてもそのまま入れる（プレイヤーの名前）。英語側の `{n:ord}` は序数（「3着」→ `3rd`）。
+- **組み立てた文**：表に無ければ文（「。」）ごと、それでも無ければ区切り（`  /  `・` / `・改行・` または `・` ・ `・`＋`・`・`・`、`・全角空白）で分けて訳す。どれでも訳せなければ**日本語のまま返す**（欠けても空にはしない）。
+- 1つの日本語に英語は1つ（文脈で訳し分けが要るなら日本語の文を変える）。
+
+### 23.3 検証（起動時・リモート設定）
+- 起動時（`index.ts` `validateLocale`）とリモート設定の各版（`resolveBundle` の `localeProblems`）で、マスターの**プレイヤーに見える日本語の全ての文**に英語があることを確かめる。内部だけのもの（NG語・実在の服色の禁止リスト・アセットカタログ・ニックス・年齢上限の状態・`_note` などの `_` で始まるキー）は対象外。英語が無い・英語に日本語が残っている・`{…}` の名前が日本語と違う・下の禁止表現、のどれかで**起動しない／その版を有効にしない**。
+- リモート設定は `locale: { en: { "<日本語>": "<英語>" } }` を持てる（`master/locale-en.json` に足す。同じキーは上書き）。新しいバナー・イベント・お知らせを出す版は、その英語も一緒に入れる（無ければ `CONFIG_INVALID`：`locale.en: no English for gacha.banners[pickup_kohaku].name「…」`）。
+- **英語の禁止表現**（`EN_BANNED`、景品表示法・REQ-UXS-022 の日本語の規則と同じ考え）：倍率（`2x`・`x2`・`×2`・`double`・`twice`・`triple`）、偽の急かし（`limited time`・`today only`・`ends soon`・`hurry`・`last chance`・`act now`・`don't miss`・`while supplies last`・`only N left`）、参考価格・割引（`% off`・`regular/usual/original price`・`best deal/value`・`bargain`・`save N`）、`free gacha`・`rate up`・`odds up`。広告の枠の文言はさらに `guarantee`・`bonus`・`deal` も使わない（`EN_AD_BANNED`、REQ-AD-004）。季節のものは `Seasonal`、限定の柄は `Exclusive` と書き、期間は実際の終了日時だけを示す。
+- `npm run l10n:missing` が英語の無いマスターの文を一覧にする。
+
+### 23.4 法定表示
+特定商取引法に基づく表記・資金決済法に基づく表示は**日本語のまま**表示する（日本の法令に基づく表示で、日本語の本文が効力を持つ）。英語ではリンク名を `Specified Commercial Transactions Act notice (Japanese)` / `Payment Services Act notice (Japanese)` とし、ページでは日本語の本文の下に**参考訳であることの注記**（「日本の法令が求める表示で、適用される日本語で掲載している。以下の英語は参考訳で法的効力は無く、日本国外に条件を広げるものではない」）と参考訳を付ける。日本国外での法的な有効性はうたわない。
+
+### 23.5 プッシュ通知
+- `PUT /v1/push/devices` の本文に `locale`（`ja`|`en`、省略時はリクエストの言語）。端末ごとに記録し（`PushDevice.locale`、無い古い記録は `ja`）、送る時に端末ごとの言語で文を作る（`DueDelivery.messages[locale]`・`tokenLocales`、送り側は `messageFor(d, token)`）。英語の文はプッシュの型（`{name}さんから…`）を表で訳し、サーバーが作った値（「決勝」「2026年11月」・マスターの名前）も訳す。プレイヤーの名前はそのまま。
+- 一斉配信の FCM トピックは言語ごと：`push.json` `topicsByLocale.en`（`season_en`・`events_en`）。`GET/PUT /v1/push/preferences` はリクエストの言語のトピックを `subscribe`、他の言語の同じ種類を `unsubscribe` に入れる（言語を切り替えても二重に届かない）。シーズンの知らせ・イベント開始は言語ごとのトピックへそれぞれの言語で送る。
+
+### 23.6 クライアント（C# `Muchi.Client` / Unity `Muchi.Game` / Web プロトタイプ）
+- サーバーの文は要求した言語で届くので、クライアントは訳し直さない。**クライアントが作る文**（`UxText`・各画面のモデル・`RaceDebrief`・`RaceFeel`・`ReplayClip`）は日本語のまま作り、画面に出す時に `Loc.T(text)` を通す（`ja` では何もしない）。`UxText.For`・`UxText.Reward`・`ActionResult` のメッセージは `Loc.T` 済みで返す。
+- 表：`engine/Muchi.Client/Resources/Muchi/ui-en.json`（クライアントが作る文）と `server-en.json`（サーバーの2つの表をまとめたもの。`npm run gen:client-locale` で生成、サーバーのテストが古いと失敗する。レースの設定に入っている馬名・スキル名、オフラインのキャッシュの文に使う）。照合の規則はサーバーと同じ（`LocaleCatalog`）。
+- 馬名：表にある馬（テンプレート馬）は英語名（`Shinsei Akatsuki`）、無いカタカナの名前（プレイヤーが付けた馬・CPUの馬）は**ヘボン式のローマ字**で表示（`Romaji.Name`、「ミドリカワ」→ `Midorikawa`、長音は付けない）。保存する名前は変えない（命名の規則はカタカナのまま、REQ-HORSE-004）。
+- 実況：`Resources/Muchi/commentary-en.json`（全ての種類・変種・特化（`kind@mode`・`kind@venue`）が日本語と同じID・同じ `{…}`）。`{place}` は序数（`3rd`）、馬名・スキル名は英語の表から。`ticksPerChar` は 1（英語は1秒あたりの文字数が多い）。
+- Web プロトタイプ（`tools/figma-prototype`）：EN の切り替えで、画面の全ての文字を同じ表（サーバーの2つ＋`ui-en.json`＋`logic/proto-en.json`）で訳す。英語は長いので、枠に収まらない文字は小さくして収める（66%まで）。`test/en-flow.cjs` が主な画面で日本語の残りとはみ出しを調べる。
+- フォント：Noto Sans JP（400/500）・Noto Sans CJK JP（700）は Latin の字形を持つので英語も同じ書体。プロトタイプの字形の絞り込みには ASCII・Latin-1・英語の約物（‘’“”–—…）と英語の表の全ての文字を入れる。英語では字間を詰め、単語の区切りで改行する。

@@ -907,3 +907,87 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 - タップは `BeginMiniGame(now)` からの ms で、サーバーが受け付ける形（間隔・回数・範囲）のものだけを記録する。画面の◎○×は `TrainingScorer.Judge`、合計は `TrainingScorer.Score`（サーバーと同じ）。
 - start / finish は応答が来るまで同じ冪等キーを使う（タイムアウト後の再送で回数を2回使わない）。読み込んだ時に開いたセッションがあれば、ミニゲームなしで仕上げる（時間が経っているため）。
 - 画面に `TrainingModel.RulesText`（ランク戦は上限にそろえる・疲れはレースに影響しない・伸びは受け継がれない）を出す。調教の画面からショップへの導線は作らない。
+
+## 26. プレゼントボックス（REQ-BOX-001〜014、`server/src/domain/giftBox.ts`、C# `GiftBox.cs`・`Muchi.Game.GiftBoxModel`）
+その場で受け取る画面が無い**無料の**報酬（運営の補填・配布、招待ボーナス、イベント・大会・支部・リーグ・シーズンの報酬）は、財布に直接入れず**プレゼントボックス**に届く。プレイヤーは好きな時に「受け取る」「まとめて受け取る」で財布・持ち物に移す。ボックスは**届け方を変えるだけで額は変えない**（経済 E1〜E15 は同じ範囲、balance-targets 4.13）。
+
+**入れられるもの**：無償コイン・アイテム（券を含む）だけ。**有償コインは決して入らない**（資金決済法：有償は期限で消えない・無料で配らない）。報酬に馬・繁殖牝馬・パス経験値が付いている場合は、その部分だけこれまでどおりその場で付与し、コインとアイテムをボックスへ入れる。
+
+### 26.1 どの報酬がボックスに届くか（決定事項）
+| 出どころ（`source`） | これまで | これから | 理由 |
+|---|---|---|---|
+| 運営の補填 `ops_compensation`（`POST /v1/admin/compensations`、2人承認を含む） | 即時に財布へ | **ボックス**（期限 90日） | 本人が見ていない時に届く。お知らせの通知（§26.6） |
+| 運営の個別・一括配布 `ops_grant`（`/v1/admin/players/:id/grants`・`/v1/admin/grants/bulk`） | 即時に財布へ | **ボックス**（期限 30日） | 同上 |
+| 招待ボーナス（招待した側）`invite` | マイルストーンの配達時に財布へ | **ボックス** | 招待された人の進み具合で、招待した人の知らない時に届く |
+| イベントの順位報酬 `event`（イベント終了の処理） | 財布へ | **ボックス** | 終了後のバッチで届く |
+| 大会の賞品 `tournament` | 財布へ | **ボックス** | 同上 |
+| 支部のシーズン報酬 `team`・支部対抗リーグ `league` | 財布へ | **ボックス** | 月替わりのバッチで届く |
+| シーズン（クラス順位）の報酬 `season` | 財布へ | **ボックス** | 同上 |
+| シーズンパスの受け取り忘れの自動付与（シーズン終了時） | 財布へ | **そのまま（直接）** | パスの返金の取り消し（REQ-PUR-006）と購入に結び付く無償コインの扱い（REQ-UXS-018/021）が財布の付与に結び付いているため。パス画面の「シーズン終了時に自動で受け取り」の記録（`passHistory`）で見える |
+| 招待された側の歓迎ギフト | コード入力の画面で付与 | **そのまま** | その場の画面がある |
+| ログインボーナス・デイリー/初心者/シーズンミッション・パスの受け取り・実績・絆・復帰キャンペーン・広告・イベントのポイント報酬・タイムアタック | 各画面で受け取り | **そのまま** | その場で受け取る画面がある（実績は自動付与ではなく受け取り式） |
+| 購入（有償コイン・おまけ・デイリーパック）・種付け料 | — | **そのまま** | 報酬ではない（購入・売上）。有償コインは入らない |
+
+`progression.giftBox` が無い（または `enabled: false`）時は、すべて従来どおり直接付与する。
+
+### 26.2 設定（`progression.giftBox`、リモート設定で変更可・`giftBoxProblems` で検証）
+| キー | 既定 | 意味（コード上の範囲） |
+|---|---|---|
+| `enabled` | true | false で従来どおりの直接付与（届いている分は受け取れる） |
+| `expiryDays.default` | 30 | 期限（日、7〜180） |
+| `expiryDays.bySource` | `{ "ops_compensation": 90 }` | 出どころごとの期限（7〜365、`null` = 期限なし）。補填は `default` より短くできない |
+| `maxUnclaimed` | 500 | 未受け取りの上限（50〜1000、§26.5） |
+| `historyDays` / `historyKeep` | 90 / 300 | 履歴に残す日数（30〜180）／件数（50〜1000） |
+| `holdCaps` | `{ "freeCoins": 9999999, "itemQty": 9999 }` | 持てる上限（無償コインの残高、アイテム1種類の個数）。超える受け取りは保留（§26.4） |
+| `expiringSoonDays` | 3 | 「期限が近い」の数え方（1〜7） |
+| `pushSources` | `["ops_compensation"]` | 届いた時に通知する出どころ（テンプレート `gift_arrived`、§26.6） |
+
+運営の配布では、`titleKey`（下の表のうち `ops_*`）と `expiryDays`（1〜365 または `null` = 期限なし）を指定できる（省略時は上の既定）。
+
+| `titleKey` | 表示（日本語／英語） |
+|---|---|
+| `ops_compensation` | お詫びの品 / An apology gift |
+| `ops_compensation_maintenance` | メンテナンスのお詫び / Apology for the maintenance |
+| `ops_compensation_bug` | 不具合のお詫び / Apology for a bug |
+| `ops_grant` | 運営からの贈り物 / A gift from the team |
+| `invite` | 招待ボーナス / Invite reward |
+| `event` | イベントの順位報酬 / Event ranking reward |
+| `tournament` | 大会の賞品 / Tournament prize |
+| `team` | 支部のシーズン報酬 / Branch season reward |
+| `league` | 支部対抗シーズンの報酬 / Branch league reward |
+| `season` | シーズンの報酬 / Season reward |
+
+### 26.3 `GET /v1/gift-box?tab=box|history&offset=0&limit=50`（要認証）
+```json
+{ "enabled": true, "tab": "box", "badge": { "unclaimed": 2, "expiringSoon": 1 }, "maxUnclaimed": 500,
+  "total": 2, "offset": 0, "limit": 50, "nextOffset": null,
+  "rules": { "defaultExpiryDays": 30, "historyDays": 90, "paidCoins": false },
+  "entries": [ { "giftId": "gift_3", "source": "ops_compensation", "titleKey": "ops_compensation_maintenance", "title": "メンテナンスのお詫び",
+    "rank": null, "contents": { "freeCoins": 300, "items": [ { "itemId": "gacha_ticket", "name": "スカウト券", "qty": 1 } ] },
+    "lines": ["無償コイン300枚", "スカウト券×1"], "createdAt": 1796871607000, "expiresAt": 1804647607000,
+    "status": "unclaimed", "doneAt": null, "how": null, "held": null } ] }
+```
+- `tab=box`：未受け取り。期限の近い順（期限なしは最後）、同じなら新しい順。`tab=history`：受け取り済み・期限切れ（直近 `historyDays` 日、新しい順）。`limit` 1〜100。
+- `status`：`unclaimed` / `claimed` / `expired`。`doneAt`：受け取り・期限切れの時刻。`how`：`one` / `all` / `overflow`（§26.5）。`held`：直前の受け取りで保留になった理由（`{ "reason": "item_cap" | "coin_cap", "itemId" }`）。
+- 期限の表示（「あと3日」）は `expiresAt` から出す。`expiresAt: null` は期限なし（表示しない）。**実際の期限が無いものに期限の表示を付けない**。
+- 期限切れは読んだ時に処理する（その時だけ取引で書き込む。普段は読み取りだけ）。プレイヤーの Durable Object のアラームも一番早い期限で起きて処理する。
+- `GET /v1/player`・`POST /v1/player/bootstrap` に `giftBox: { "unclaimed": n, "expiringSoon": n }`（ホームの封筒のバッジ。期限の過ぎたものは数えない）。
+
+### 26.4 `POST /v1/gift-box/:giftId/claim`・`POST /v1/gift-box/claim-all`（要認証・`Idempotency-Key` 必須）
+- 応答 `{ "claimed": [ { "giftId", "source", "freeCoins", "items" } ], "held": [ { "giftId", "reason", "itemId" } ], "totals": { "freeCoins", "items": { "gacha_ticket": 1 } }, "badge": {…}, "wallet": {…}, "items": { 変わったアイテムの今の数 } }`。
+- 1つの取引で、1件ずつ丸ごと受け取る（1件の中を分けない）。**まとめて受け取る**は期限の近い順。持てる上限（`holdCaps`）を超える1件はボックスに残り `held` に理由が載る（他は受け取る）。
+- 1件の受け取りで上限を超える時は `GIFT_HOLD_CAP`（409）。受け取り済みは `ALREADY_CLAIMED`、期限切れは `GIFT_EXPIRED`、無い id は `NOT_FOUND`、削除の予約中は `DELETION_PENDING`（受け取りは止める。届いた分はアカウントの削除で消える）。同じキーの再送は同じ結果。
+- 台帳：無償コインは `gift <source>: <title>`・参照 `gift:<giftId>` で付与（ボックスに届いた時点では財布は変わらない）。アイテムは持ち物に足す（返金による負債があれば先に相殺）。
+
+### 26.5 上限（`maxUnclaimed`）を超えた時（決定事項）
+- 未受け取りが `maxUnclaimed` 件の時に新しいものが届いたら、**補填以外で一番期限の近いもの**を自動で受け取る（財布・持ち物へ移し、履歴に `how: "overflow"`）。何も消さない。
+- 自動で受け取れるもの（補填以外で持てる上限に収まるもの）が無い時は、そのまま上限を超えて入れる（補填は**決して捨てない**、黙って消すことはしない）。サポート用の印 `gift_box_over_cap` を付ける。
+
+### 26.6 削除・通知・KPI
+- アカウントの削除：削除の実行（`deleting`）に入ったら新しく届けない（`ops` の配布は `DELETION_IN_PROGRESS`）。消去の時にボックスも一緒に消え、未受け取りの件数を削除の記録の `forfeited.gifts` に残す。消去済み（トゥームストーン）の id への運営の配布は `NOT_FOUND`（新しいプレイヤーを作らない）。大会・イベント・シーズンなどの配達は今までどおり何もしない。
+- 通知：`pushSources` の出どころ（既定は補填だけ）が届いたら `gift_arrived`（カテゴリ `gifts`、既定オン）を送る。1日の上限・静かな時間帯はほかの通知と同じ。
+- KPI（サーバー）：`gift_receive`（s1 出どころ、s2 `titleKey`、`freeCoins`、`count` アイテムの数、`value` 期限の日数（なしは0））、`gift_claim`（s1 出どころ、s2 `one`/`all`/`overflow`、`freeCoins`、`count`、`value` 届いてから受け取るまでの時間（時間））、`gift_expire`（s1 出どころ、`freeCoins`、`count`）。クエリは `docs/ops/kpi-queries.md`「プレゼントボックス」。
+
+### 26.7 運用コンソール
+- `GET /v1/admin/players/:playerId` の `state.giftBox`：未受け取り（全件）と直近の履歴（50件）、件数。
+- 配布・補填のフォームでボックスに入れる（`titleKey`・`expiryDays` を選べる）。2人承認の閾値・24時間の1人あたりの上限（REQ-OPS-026）はこれまでどおり（ボックスに入れる時点で数える）。

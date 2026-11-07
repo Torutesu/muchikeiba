@@ -20,6 +20,7 @@ import { forfeitAll } from './wallet.js';
 import { allowanceRemaining, forfeitAllowances } from './shop.js';
 import { forfeitPass, passRemaining } from './pass.js';
 import { inviteDeletionSnapshot } from './invite.js';
+import { forfeitGiftBox } from './giftBox.js';
 
 export interface AccountDeletionConfig {
   /** Days between the confirmed request and the deletion (the request can be cancelled meanwhile). */
@@ -77,6 +78,8 @@ export interface RetainedRecord {
     paidCoins: number; freeCoins: number; paidYen: number;
     allowance: { days: number; freeCoins: number };
     pass: { seasonId: string; premium: boolean; level: number; unclaimedFree: number; unclaimedPremium: number };
+    /** REQ-BOX-009: unclaimed gift box entries given up (absent on records made before the box existed). */
+    gifts?: { entries: number; freeCoins: number };
   };
 }
 
@@ -113,6 +116,8 @@ export function requestDeletion(m: Master, s: PlayerState, confirmToken: string 
         paidCoins: s.wallet.paid, freeCoins: s.wallet.free, horses: s.horses.length, items: Object.values(s.items).reduce((a, n) => a + n, 0),
         // REQ-UXS-018/020: unclaimed 厩舎手当 days and the season pass go too
         allowanceDays: allowanceRemaining(m, s, now).days, seasonPass: passRemaining(m, s, now).premium,
+        // REQ-BOX-009: unclaimed gift box entries are cleared with the account
+        gifts: s.giftBox?.box.length ?? 0,
       },
       notice: `削除を確定すると${cfg.cancelWindowDays}日後にアカウントと全てのデータが削除されます。期間内は取り消せます。有償コイン・無償コイン・馬・アイテム・厩舎手当の残りの日数・シーズンパスは全て失われ、払い戻しはありません。購入の記録は法令に基づき、個人を特定できない形で保存します。`,
     };
@@ -215,7 +220,7 @@ export function finalizeDeletion(m: Master, s: PlayerState, rng: Rng, now: numbe
   // rebuilt under the same anonymous id, so the retained purchases and ledger are complete (資金決済法・帳簿).
   if (prev && !recordStale(s, prev)) return prev;
   const anonId = prev?.anonId ?? randomId('anon', rng);
-  const add = { ...forfeitAll(s, now, `delete:${anonId}`), allowance: forfeitAllowances(m, s, now), pass: forfeitPass(m, s, now) };
+  const add = { ...forfeitAll(s, now, `delete:${anonId}`), allowance: forfeitAllowances(m, s, now), pass: forfeitPass(m, s, now), gifts: forfeitGiftBox(s) };
   const forfeited = prev ? mergeForfeited(prev.forfeited, add) : add;
   const record: RetainedRecord = {
     anonId, rev: prev ? prev.rev + 1 : 0, ledgerSeq: s.ledgerSeq,
@@ -236,6 +241,7 @@ function recordStale(s: PlayerState, r: RetainedRecord): boolean {
   if (s.purchases.length !== r.purchases.length) return true;
   if (s.purchases.some((p, i) => p.refunded !== r.purchases[i]?.refunded)) return true;
   if (s.wallet.paid > 0 || s.wallet.free > 0) return true;
+  if ((s.giftBox?.box.length ?? 0) > 0) return true; // REQ-BOX-009: a gift arrived after the record was built
   return false;
 }
 
@@ -244,6 +250,7 @@ function mergeForfeited(a: RetainedRecord['forfeited'], b: RetainedRecord['forfe
     paidCoins: a.paidCoins + b.paidCoins, freeCoins: a.freeCoins + b.freeCoins, paidYen: a.paidYen + b.paidYen,
     allowance: { days: a.allowance.days + b.allowance.days, freeCoins: a.allowance.freeCoins + b.allowance.freeCoins },
     pass: { ...a.pass, premium: a.pass.premium || b.pass.premium },
+    gifts: { entries: (a.gifts?.entries ?? 0) + (b.gifts?.entries ?? 0), freeCoins: (a.gifts?.freeCoins ?? 0) + (b.gifts?.freeCoins ?? 0) },
   };
 }
 

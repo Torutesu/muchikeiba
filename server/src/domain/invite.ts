@@ -17,6 +17,7 @@
  * deletion); the inviter's own install ids are refused; self-invites and invite loops are refused; redeem attempts are
  * rate-limited; bursts of redemptions on one inviter, device reuse and loops raise support flags.
  */
+import { deliverGift } from './giftBox.js';
 import { z } from 'zod';
 import { AppError } from './errors.js';
 import { grantReward } from './items.js';
@@ -365,7 +366,8 @@ export function inviterMilestone(m: Master, s: PlayerState, inviteeId: string, m
   if (rec.milestones.some((x) => x.id === milestoneId)) return { status: 'already' };
   if (!rec.counted) { rec.milestones.push({ id: milestoneId, at: now, rewarded: false }); return { status: 'uncounted' }; }
   rec.milestones.push({ id: milestoneId, at: now, rewarded: true });
-  grantReward(s, def.reward, now, `invite milestone ${milestoneId}`, `invite:${inviteeId}:${milestoneId}`, m);
+  // REQ-BOX-001: the inviter was not there when it happened, so the bonus goes to the gift box
+  deliverGift(m, s, { source: 'invite', ref: `invite:${inviteeId}:${milestoneId}`, reward: def.reward, note: `invite milestone ${milestoneId}` }, now, emit);
   emit({ name: 'invite_milestone', s1: milestoneId, s2: 'inviter', freeCoins: def.reward.freeCoins ?? 0, count: (def.reward.items ?? []).reduce((a, x) => a + x.qty, 0) });
   enqueuePush(m, s, 'invite_milestone', { name: inviteeName }, now);
   return { status: 'rewarded', reward: def.reward };

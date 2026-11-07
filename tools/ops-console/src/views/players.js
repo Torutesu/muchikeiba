@@ -2,7 +2,9 @@ import { can, get, newOpKey, post } from '../api.js';
 import { badge, card, confirmWrite, errorBox, field, fromJstInput, h, jst, json, kv, mount, num, run, statusKind, table, toast, yen } from '../ui.js';
 
 const INVITE_RE = /^[23456789BCDFGHJKMNPQRSTVWXZ]{4}-?[23456789BCDFGHJKMNPQRSTVWXZ]{4}$/i;
-const FLAG_LABEL = { ads: '広告', invite: '招待の不正', purchase: '購入', social: '支部フィード', support: 'サポート' };
+/** REQ-BOX-010: the titles ops may choose for a gift (server giftBox.ts OPS_TITLE_KEYS). */
+const GIFT_TITLES = [['ops_compensation', 'お詫びの品'], ['ops_compensation_maintenance', 'メンテナンスのお詫び'], ['ops_compensation_bug', '不具合のお詫び'], ['ops_grant', '運営からの贈り物']];
+const FLAG_LABEL = { gift: 'プレゼントボックス', ads: '広告', invite: '招待の不正', purchase: '購入', social: '支部フィード', support: 'サポート' };
 
 /** Player support (REQ-OPS-020..026, REQ-OPS-033): lookup, wallet, purchases, flags, compensation, ban, deletion. */
 export async function playersView(main, [playerId]) {
@@ -83,6 +85,20 @@ function playerDetail(v, reload) {
     table([{ label: '招待した人', value: (x) => (x.deleted ? '（削除済み）' : h('a', { href: `#/players/${encodeURIComponent(x.playerId)}` }, x.playerId)) }, { label: '日時', value: (x) => jst(x.at) }, { label: '数える', value: (x) => (x.counted ? 'はい' : 'いいえ') }, { label: '達成', value: (x) => x.milestones, class: 'num' }], ref.invitees, { empty: '招待した人なし' }),
   ] : h('div', { class: 'muted' }, '招待の記録なし'));
 
+  // REQ-BOX-010: the player's gift box (what is waiting, and the latest history with the internal note)
+  const gb = s.giftBox ?? { box: [], history: [], badge: { unclaimed: 0, expiringSoon: 0 } };
+  const giftCols = [
+    { label: 'ID', value: (g) => g.giftId }, { label: '出どころ', value: (g) => badge(g.source, g.source === 'ops_compensation' ? 'warn' : '') },
+    { label: '表示', value: (g) => g.title }, { label: '内容', value: (g) => g.lines.join('、') },
+    { label: '届いた', value: (g) => jst(g.createdAt) }, { label: '期限', value: (g) => (g.expiresAt === null ? '期限なし' : jst(g.expiresAt)) },
+    { label: '状態', value: (g) => [badge(g.status, g.status === 'unclaimed' ? '' : g.status === 'claimed' ? 'ok' : 'muted'), g.held ? badge(`保留 ${g.held.reason}`, 'warn') : null] },
+    { label: 'メモ', value: (g) => h('span', { class: 'muted small' }, g.note) },
+  ];
+  const gifts = card(`プレゼントボックス（未受け取り ${gb.badge.unclaimed} 件${gb.badge.expiringSoon ? `、期限の近いもの ${gb.badge.expiringSoon} 件` : ''}）`,
+    h('p', { class: 'muted small' }, '下の「補填…」で入れたものはここに届きます（プレイヤーが受け取るまで財布は変わりません）。有償コインは入りません。'),
+    table(giftCols, gb.box, { empty: '未受け取りのプレゼントなし', testid: 'player-gifts' }),
+    h('details', {}, h('summary', {}, `履歴（直近 ${gb.history.length} 件）`), table(giftCols, gb.history, { empty: '履歴なし', testid: 'player-gift-history' })));
+
   const comps = card('補填', compensationForm(id, reload), table([
     { label: 'ID', value: (c) => c.id }, { label: '日時', value: (c) => jst(c.requestedAt) }, { label: '内容', value: (c) => grantText(c.grant) },
     { label: '状態', value: (c) => badge(c.status, statusKind(c.status)) }, { label: '依頼', value: (c) => c.requestedBy }, { label: '承認', value: (c) => c.decidedBy ?? '—' }, { label: '理由', value: (c) => c.reason },
@@ -93,7 +109,7 @@ function playerDetail(v, reload) {
     { label: '増減', value: (l) => (l.delta > 0 ? `+${num(l.delta)}` : num(l.delta)), class: 'num' }, { label: '残高', value: (l) => num(l.balanceAfter), class: 'num' }, { label: '理由', value: (l) => l.reason },
   ], [...(s.ledger ?? [])].reverse())));
 
-  return h('div', { class: 'player' }, header, h('div', { class: 'cols' }, wallet, flags), purchases, h('div', { class: 'cols' }, integrity, h('div', {}, deletion, referral)), comps, ledger,
+  return h('div', { class: 'player' }, header, h('div', { class: 'cols' }, wallet, flags), purchases, h('div', { class: 'cols' }, integrity, h('div', {}, deletion, referral)), gifts, comps, ledger,
     h('details', {}, h('summary', {}, '生データ（JSON）'), json(v)));
 }
 
@@ -104,8 +120,13 @@ function compensationForm(playerId, reload) {
   const coins = h('input', { type: 'number', min: 0, max: 100000, value: 0, 'data-testid': 'comp-coins' });
   const itemId = h('input', { type: 'text', placeholder: 'ticket_sr_plus', pattern: '[a-z0-9_]{1,64}', 'data-testid': 'comp-item' });
   const qty = h('input', { type: 'number', min: 1, max: 1000, value: 1, 'data-testid': 'comp-qty' });
+  // REQ-BOX-010: how it shows in the player's gift box (title) and how long it can be received (blank = 90 days)
+  const titleKey = h('select', { 'data-testid': 'comp-title' }, ...GIFT_TITLES.map(([k, t]) => h('option', { value: k }, t)));
+  const expiry = h('input', { type: 'number', min: 1, max: 365, placeholder: '90', 'data-testid': 'comp-expiry' });
+  const noExpiry = h('input', { type: 'checkbox', 'data-testid': 'comp-no-expiry' });
   return h('div', { class: 'comp-form' },
-    h('p', { class: 'muted small' }, '無償コインとアイテムだけ（有償コインは作れません）。1万コイン・1アイテム100個を超えると、別の admin の承認待ちになります（上限10万コイン・1000個）。'),
+    h('p', { class: 'muted small' }, 'プレイヤーのプレゼントボックスに入ります（受け取りで財布へ）。無償コインとアイテムだけ（有償コインは作れません）。1万コイン・1アイテム100個を超えると、別の admin の承認待ちになります（上限10万コイン・1000個）。'),
+    h('div', { class: 'row' }, field('表示（プレゼントボックス）', titleKey), field('受け取り期限（日）', expiry, '空欄＝90日'), field('期限なし', noExpiry)),
     h('div', { class: 'row' }, field('無償コイン', coins), field('アイテムID（任意）', itemId), field('個数', qty),
       h('button', { class: 'btn primary', 'data-testid': 'comp-submit', onclick: async (e) => {
         const grant = {};
@@ -115,7 +136,8 @@ function compensationForm(playerId, reload) {
         const large = (grant.freeCoins ?? 0) > 10000 || (grant.items ?? []).some((i) => i.qty > 100);
         const reason = await confirmWrite({ title: `${playerId} に補填`, summary: [grantText(grant), large ? h('div', { class: 'alert warn' }, '大口のため承認待ちになります（あなた以外の admin が承認するまで付与されません）。') : null], confirmLabel: large ? '承認を依頼' : '付与する' });
         if (!reason) return;
-        const r = await run(e.currentTarget, () => post('/v1/admin/compensations', { playerId, grant, opKey: newOpKey('comp'), reason }), (o) => (o.request.status === 'pending' ? `${o.request.id}：承認待ち` : `${o.request.id}：付与しました`));
+        const gift = { titleKey: titleKey.value, ...(noExpiry.checked ? { expiryDays: null } : expiry.value ? { expiryDays: Number(expiry.value) } : {}) };
+        const r = await run(e.currentTarget, () => post('/v1/admin/compensations', { playerId, grant, opKey: newOpKey('comp'), reason, ...gift }), (o) => (o.request.status === 'pending' ? `${o.request.id}：承認待ち` : `${o.request.id}：プレゼントボックスに入れました`));
         if (r) reload();
       } }, '補填…')));
 }

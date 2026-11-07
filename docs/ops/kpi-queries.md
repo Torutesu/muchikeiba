@@ -548,3 +548,30 @@ GROUP BY achievement, tier
 ORDER BY achievement, tier
 ```
 - 実績は課金・ガチャでは進まない（REQ-ACH-007）ので、課金者と無課金者（`blob7`）で解放の速さに差が出たら、遊び方の違いとして読む（支払いの効果ではない）。
+
+## プレゼントボックス：届いた・受け取った・期限切れ（REQ-BOX-013、Round 12、contracts/protocol.md §26）
+出どころ（`blob8`）ごとに、届いた件数・受け取った件数・期限切れの件数と無償コイン（`double3`）。`gift_claim` の `blob9` は `one` / `all` / `overflow`（満杯で自動受け取り）、`double9` は届いてから受け取るまでの時間（時間）。
+
+```sql
+SELECT blob8 AS source,
+       SUM(IF(blob1 = 'gift_receive', _sample_interval, 0)) AS received,
+       SUM(IF(blob1 = 'gift_claim', _sample_interval, 0)) AS claimed,
+       SUM(IF(blob1 = 'gift_expire', _sample_interval, 0)) AS expired,
+       SUM(IF(blob1 = 'gift_expire', double3 * _sample_interval, 0)) AS expired_free_coins,
+       SUM(IF(blob1 = 'gift_claim' AND blob9 = 'overflow', _sample_interval, 0)) AS overflow_claims
+FROM muchi_kpi
+WHERE blob1 IN ('gift_receive', 'gift_claim', 'gift_expire') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY source
+ORDER BY received DESC
+```
+
+- **補填の期限切れ**（`source = 'ops_compensation'` の `expired`）が出ていたら、通知（`gift_arrived`）が届いていないか、90日では短い。補填の告知と合わせて見る。
+- **overflow** が出るのはボックスが `maxUnclaimed`（500）に達したプレイヤーだけ。多いなら一括配布の頻度が高すぎる。
+- 受け取りまでの時間（中央値）：
+
+```sql
+SELECT blob8 AS source, quantileExactWeighted(0.5)(double9, _sample_interval) AS median_hours
+FROM muchi_kpi
+WHERE blob1 = 'gift_claim' AND blob9 != 'overflow' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY source
+```

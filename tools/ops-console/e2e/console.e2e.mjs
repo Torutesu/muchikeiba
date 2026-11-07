@@ -146,13 +146,16 @@ try {
     await tid('comp-submit').click();
     await confirmWith('e2e: outage compensation');
     await tid('toast-ok').first().waitFor();
-    await page.waitForFunction((v) => document.querySelector('[data-testid=wallet-free]')?.textContent?.replace(/,/g, '') === String(v), free0 + 500);
+    // REQ-BOX-010: the compensation lands in the player's gift box (the wallet changes when the player receives it)
+    await tid('player-gifts').getByText('無償コイン500枚').waitFor();
+    assert.equal((await tid('wallet-free').textContent()).replace(/,/g, ''), String(free0));
     await tid('comp-coins').fill('20000');
     await tid('comp-submit').click();
     await page.locator('.modal').getByText('大口のため承認待ちになります', { exact: false }).waitFor();
     await confirmWith('e2e: long outage compensation');
     await tid('player-comps').getByText('pending').waitFor();
-    assert.equal((await tid('wallet-free').textContent()).replace(/,/g, ''), String(free0 + 500));
+    assert.equal(await tid('player-gifts').locator('tbody tr').count(), 1, 'the pending one is not in the box yet');
+    await shot('03b-player-gift-box');
   });
 
   let tourId = `e2e_${runId}`.slice(0, 40);
@@ -178,8 +181,12 @@ try {
     await confirmWith('e2e: incident INC-1 confirmed');
     await page.getByText('承認し、付与しました').waitFor();
     await tid('comp-table').or(page.getByText('該当する依頼はありません')).first().waitFor();
-    const v = (await asAdmin('viewer', 'GET', `/v1/admin/players/${PLAYER}`)).body.state.walletDetail;
-    assert.equal(v.free, free0 + 20_500);
+    const st = (await asAdmin('viewer', 'GET', `/v1/admin/players/${PLAYER}`)).body.state;
+    const v = st.walletDetail;
+    const boxed = st.giftBox.box.reduce((a, g) => a + g.contents.freeCoins, 0);
+    assert.equal(boxed, 20_500, 'both compensations wait in the gift box');
+    assert.ok(st.giftBox.box.every((g) => g.source === 'ops_compensation' && g.expiresAt > Date.now() + 89 * 86_400_000), 'compensations: 90 days');
+    assert.equal(v.free, free0);
     assert.equal(v.paid, paid0, 'compensation never creates paid coins');
     // the admin's own large request cannot be self-approved: disabled in the UI and refused by the server
     const own = await asAdmin('admin', 'POST', '/v1/admin/compensations', { playerId: PLAYER, grant: { freeCoins: 30_000 }, opKey: `own-${runId}`, reason: 'admin own request' });
@@ -250,8 +257,9 @@ try {
       assert.ok(all.some((e) => e.action === a && e.result === 'ok'), `audited: ${a}`);
     }
     const approve = all.find((e) => e.action === 'compensation.approve' && e.result === 'ok' && e.target === `player:${PLAYER}`);
-    assert.equal(approve.before.free, free0 + 500);
-    assert.equal(approve.after.free, free0 + 20_500);
+    assert.equal(approve.before.free, free0);
+    assert.equal(approve.after.free, free0);
+    assert.ok(approve.after.gift?.giftId, 'the audit names the gift box entry');
   });
 
   await step('KPI quick view lists the documented queries', async () => {

@@ -347,6 +347,8 @@ namespace Muchi.Game
         public string PrimaryLabel => PrimaryButton == "ranked_promotion" ? "ランク戦へ（昇級をめざす）" : "レースへ";
         public List<FeatureTile> Tiles => TileKeys.Select(Unlocks.Tile).ToList();
         public string DeletionBanner => DeletionGuard.Banner(_b);
+        /// <summary>REQ-BOX-004: the envelope badge on the home screen (0 = no badge; open GiftBoxModel).</summary>
+        public int GiftBadge => _b.Player?.GiftBox?.Unclaimed ?? 0;
         /// <summary>Opened since the last visit (show the guide one screen at a time).</summary>
         public List<string> NewlyUnlocked { get; private set; } = new List<string>();
         public string Toast => LoginBonus.Toast;

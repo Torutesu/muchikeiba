@@ -1,6 +1,7 @@
 import { AppError } from '../domain/errors.js';
 import type { AdminPrincipal, AdminRole } from './admin.js';
 import { GRANT_LIMITS, type Grant } from './support.js';
+import type { OpsTitleKey } from '../domain/giftBox.js';
 
 /**
  * REQ-OPS-026: compensation grants with a two-person rule. A grant up to the approval threshold is paid at once (like the
@@ -15,9 +16,12 @@ export const COMP_HARD_CAP = GRANT_LIMITS.admin;
 /** A pending request nobody decided on expires (a stale request must be raised again, with fresh context). */
 export const COMP_TTL_MS = 72 * 3600 * 1000;
 
+export interface CompensationGift { titleKey?: OpsTitleKey; expiryDays?: number | null }
 export type CompensationStatus = 'pending' | 'approved' | 'executed' | 'rejected' | 'expired';
 export interface CompensationRequest {
   id: string; opKey: string; playerId: string; grant: Grant; reason: string;
+  /** REQ-BOX-010: the gift box title and expiry chosen by the requester (absent = the defaults for compensations). */
+  gift?: CompensationGift;
   requestedBy: string; requestedRole: AdminRole; requestedAt: number; expiresAt: number;
   needsApproval: boolean; status: CompensationStatus;
   decidedBy: string | null; decidedAt: number | null; decisionNote: string | null;
@@ -54,16 +58,17 @@ export class CompensationStore {
   constructor(private readonly repo: CompensationRepo) {}
 
   /** Creates a request (or returns the one already created with this opKey — same player and grant only). */
-  create(input: { opKey: string; playerId: string; grant: Grant; reason: string }, by: AdminPrincipal, now: number): { request: CompensationRequest; created: boolean } {
+  create(input: { opKey: string; playerId: string; grant: Grant; reason: string; gift?: CompensationGift }, by: AdminPrincipal, now: number): { request: CompensationRequest; created: boolean } {
     const prev = this.repo.byOpKey(input.opKey);
     if (prev) {
-      if (prev.playerId !== input.playerId || JSON.stringify(prev.grant) !== JSON.stringify(input.grant)) throw new AppError('CONFLICT', `opKey ${input.opKey} was already used for another compensation`);
+      if (prev.playerId !== input.playerId || JSON.stringify(prev.grant) !== JSON.stringify(input.grant) || JSON.stringify(prev.gift ?? {}) !== JSON.stringify(input.gift ?? {})) throw new AppError('CONFLICT', `opKey ${input.opKey} was already used for another compensation`);
       return { request: withExpiry(prev, now), created: false };
     }
     checkHardCap(input.grant);
     const approval = needsApproval(input.grant);
     const r: CompensationRequest = {
       id: `comp_${this.repo.nextSeq()}`, opKey: input.opKey, playerId: input.playerId, grant: input.grant, reason: input.reason,
+      ...(input.gift && Object.keys(input.gift).length ? { gift: input.gift } : {}),
       requestedBy: by.id, requestedRole: by.role, requestedAt: now, expiresAt: now + COMP_TTL_MS,
       needsApproval: approval, status: approval ? 'pending' : 'approved',
       decidedBy: approval ? null : by.id, decidedAt: approval ? null : now, decisionNote: approval ? null : 'under the approval threshold',

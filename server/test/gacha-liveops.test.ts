@@ -124,6 +124,7 @@ describe('banner schedule (REQ-GACHA-011)', () => {
     const clock = { now: ginga.endAtMs! - 1 };
     const svc = new PlayerService(new MemoryPlayerRepo(), { master: m, rng: seededRng(5), clock: () => clock.now, verifiers: {} });
     await svc.adminGrant('p', { freeCoins: 1000 }, 'test', 'test', 'g1');
+    await svc.giftClaimAll('p', 'c:gift-setup-1'); // REQ-BOX-001: ops grants arrive in the gift box
     const ok = await svc.draw('p', 'pickup_ginga', 1, 'c:k1');
     expect(ok.results).toHaveLength(1);
     clock.now = ginga.endAtMs! + 1;
@@ -321,6 +322,7 @@ describe('HTTP: banners, status and odds', () => {
     expect(l.banners.map((b) => b.id)).toEqual(['pickup_ginga', 'pickup_akatsuki', 'stepup_paid', 'standard']);
     expect((await handle(get('/v1/gacha/status'), {}, c)).status).toBe(401);
     await svc.adminGrant('u', { freeCoins: 1000 }, 't', 't', 'g');
+    await svc.giftClaimAll('u', 'c:gift-setup-2'); // REQ-BOX-001: ops grants arrive in the gift box
     await svc.draw('u', 'pickup_ginga', 10, 'c:d');
     const st = await (await handle(get('/v1/gacha/status', 'u'), {}, c)).json() as ReturnType<typeof gachaStatus>;
     expect(st.groups.find((g) => g.group === 'pickup_ginga')).toMatchObject({ points: 10, remaining: 90 });
@@ -337,6 +339,7 @@ describe('HTTP: banners, status and odds', () => {
   it('a pull after the end answers BANNER_CLOSED (409) with the end time', async () => {
     const { c, svc } = ctx(ginga.endAtMs!);
     await svc.adminGrant('u', { freeCoins: 1000 }, 't', 't', 'g');
+    await svc.giftClaimAll('u', 'c:gift-setup-3'); // REQ-BOX-001: ops grants arrive in the gift box
     const r = await handle(new Request('https://x/v1/gacha/pickup_ginga/draw', { method: 'POST', headers: { 'x-test-user': 'u', 'content-type': 'application/json', 'idempotency-key': 'k' }, body: JSON.stringify({ count: 1 }) }), {}, c);
     expect(r.status).toBe(409);
     expect(await r.json()).toMatchObject({ error: { code: 'BANNER_CLOSED', message: 'banner pickup_ginga ended at 2026-12-01 00:00 JST' } });

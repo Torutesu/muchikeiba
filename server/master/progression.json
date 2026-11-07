@@ -920,5 +920,16 @@
     },
     "items": [ { "itemId": "training_apple", "name": "りんごのおやつ", "fatigueRelief": 30, "affectsGrowth": true } ],
     "logKeep": 10
+  },
+  "giftBox": {
+    "_note": "REQ-BOX-*: プレゼントボックス（contracts/protocol.md §26）。届け方だけを変え、額は変えない。中身は無償コインとアイテムだけ（有償コインは入らない）。expiryDays は日数（bySource の null は期限なし）。補填は既定より短くできない。",
+    "enabled": true,
+    "expiryDays": { "default": 30, "bySource": { "ops_compensation": 90 } },
+    "maxUnclaimed": 500,
+    "historyDays": 90,
+    "historyKeep": 300,
+    "holdCaps": { "freeCoins": 9999999, "itemQty": 9999 },
+    "expiringSoonDays": 3,
+    "pushSources": ["ops_compensation"]
   }
 }

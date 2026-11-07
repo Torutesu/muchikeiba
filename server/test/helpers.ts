@@ -16,3 +16,18 @@ export function makeConfig(humans: number, mode: RaceMode = 'ranked', cpu = 12 -
 export function freshPlayer(id = 'p1', now = Date.UTC(2026, 10, 5)) {
   return newPlayer(id, now, '2026-11');
 }
+
+/**
+ * REQ-BOX-001: what a player was granted = the wallet / items plus what waits unclaimed in the gift box (ops grants,
+ * tournament / event / season / branch rewards and invite bonuses are delivered there). Shaped like a player view.
+ */
+export async function granted(svc: { state(id: string): Promise<import('../src/domain/player.js').PlayerState> }, id: string) {
+  const s = await svc.state(id);
+  const items: Record<string, number> = { ...s.items };
+  let free = s.wallet.free;
+  for (const e of s.giftBox?.box ?? []) {
+    free += e.contents.freeCoins ?? 0;
+    for (const it of e.contents.items ?? []) items[it.itemId] = (items[it.itemId] ?? 0) + it.qty;
+  }
+  return { wallet: { free, paid: s.wallet.paid, debt: s.wallet.debt }, items };
+}

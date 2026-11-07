@@ -626,3 +626,20 @@
 - REQ-TRAIN-012 設定 `progression.training`（リモート設定で変更可）：形・重複・コード側の上限 `TRAINING_HARD_LIMITS`（1日5回・1頭3回・`baseGain ≤ 15`・素質 ≤ 400・絆 ≤ 120‰・回復 ≤ 50・ミニゲーム ≤ 150‰）・ミニゲームの形（`perfectMs < goodMs`、ビートの間隔 ≥ 2 × `goodMs`）・素質の順・アイテムの入手経路を検証。
 - REQ-TRAIN-013 経済：調教はコインを出さない（E1〜E14 は変わらない）。全ての想定が毎日の回数を使う経済シミュレーションで、課金者の伸び/稼働日が無課金の 1.05 倍以下、ランク戦の正規化後の能力合計の差（中課金 − 無課金）が全クラスで調教によって広がらないことを確かめる（E15、balance-targets §4.12、`server/test/economy.test.ts`）。
 - REQ-TRAIN-014 KPI とクライアント：サーバーのイベント `training_start`（メニュー・レア度・疲れ・今日の回数）・`training_done`（メニュー・評価・記録の理由・伸び・点数・初回）。クエリは `docs/ops/kpi-queries.md`。`Muchi.Client` `ApiClient.GetTrainingAsync`・`StartTrainingAsync`・`FinishTrainingAsync`・`UseTrainingItemAsync`、`Horse.Trained`、`TrainingScorer`。Unity のゲーム層 `TrainingModel`（メニューのカードと選べない理由、受け付けられるタップだけ記録、start/finish の冪等キーは答えが来るまで保持、開いたままのセッションはミニゲームなしで仕上げ、公平性の文言、ショップへの導線なし）。
+
+## 26. プレゼントボックス（TS＋C#、`src/domain/giftBox.ts`、`contracts/protocol.md` §26、docs/planning/03-legal-risk.md「プレゼントボックス」）
+拘束条件：届け方を変えるだけで額は変えない。有償コインは入れない（資金決済法）。補填は黙って捨てない。
+- REQ-BOX-001 届く報酬：その場で受け取る画面が無い無料の報酬（運営の補填・個別/一括配布、招待した側の招待ボーナス、イベントの順位報酬、大会の賞品、支部のシーズン報酬、支部対抗リーグの報酬、シーズンの報酬）はボックスに届く。その場の画面がある受け取り（ログインボーナス・ミッション・パス・実績・絆・復帰キャンペーン・広告・歓迎ギフトなど）とシーズンパスの自動付与はそのまま（protocol §26.1 の表）。`progression.giftBox` が無い・無効の時は従来どおり直接付与。
+- REQ-BOX-002 中身：無償コインとアイテム（券を含む）だけ。有償コインは決して入らない（型・検証の両方で）。馬・繁殖牝馬・パス経験値の部分はその場で付与する。
+- REQ-BOX-003 1件の形：`giftId`・`source`（列挙）・`titleKey`（表示はサーバーが日本語で描き、英語は応答の境界で訳す）・中身・`createdAt`・`expiresAt`（既定30日、補填90日、出どころごと・運営の配布ごとに変更でき、`null` は期限なし）・状態（`unclaimed`/`claimed`/`expired`）。
+- REQ-BOX-004 一覧：`GET /v1/gift-box`（`tab=box` 未受け取り・期限の近い順、`tab=history` 直近90日の受け取り済み・期限切れ、`offset`/`limit` のページ）。バッジ `giftBox.unclaimed`/`expiringSoon` を `GET /v1/player`・bootstrap に載せる。
+- REQ-BOX-005 受け取り：`POST /v1/gift-box/:giftId/claim`・`POST /v1/gift-box/claim-all`（冪等キー必須、プレイヤーの1取引で丸ごと）。1件の中は分けない。持てる上限（`holdCaps`）を超える1件は残して理由を返し、他は受け取る（まとめて受け取る）。1件の受け取りでは `GIFT_HOLD_CAP`。二重の受け取りは `ALREADY_CLAIMED`、期限切れは `GIFT_EXPIRED`。
+- REQ-BOX-006 期限：期限を過ぎたものは受け取れない。読んだ時（取引の始め・一覧）とアラーム（一番早い期限）で履歴へ `expired` として移し、KPI `gift_expire`。
+- REQ-BOX-007 上限：未受け取り `maxUnclaimed`（500）。満杯で届いたら補填以外で一番期限の近いものを自動で受け取る（`how: overflow`）。それも無い時は上限を超えて入れ、サポート用の印 `gift_box_over_cap`。何も黙って消さない。
+- REQ-BOX-008 冪等：届ける側はそれぞれの仕組み（運営の opKey、大会・イベント・シーズン・支部の1回だけの印、招待のマイルストーン）で1回だけ。さらに同じ参照（`ref`）の2件目は入れない。
+- REQ-BOX-009 削除：削除の予約中は受け取れない（`DELETION_PENDING`）。削除の実行中は届けない（運営の配布は `DELETION_IN_PROGRESS`）。消去でボックスも消え、件数を削除の記録に残す。消去済みの id への運営の配布は `NOT_FOUND`。
+- REQ-BOX-010 運用：運営の配布・補填はボックスに入る（`titleKey`・`expiryDays` を指定可）。2人承認と24時間の1人あたりの上限（REQ-OPS-026）は入れる時点で数える。コンソールのプレイヤー画面にボックス（未受け取り・履歴）を出す。
+- REQ-BOX-011 通知：`pushSources`（既定は補填）が届いたら `gift_arrived`（カテゴリ `gifts`、既定オン、1日の上限と静かな時間帯は他と同じ）。
+- REQ-BOX-012 設定 `progression.giftBox`：形と範囲（期限 7〜180日／出どころ 7〜365日または null、補填は既定より短くしない、上限 50〜1000、履歴 30〜180日・50〜1000件、持てる上限、通知のテンプレートの存在）を起動時とリモート設定で検証（`giftBoxProblems`）。
+- REQ-BOX-013 KPI：`gift_receive`・`gift_claim`・`gift_expire`（protocol §26.6）。経済：ボックスは額を変えない。招待する想定は届いたものを毎日まとめて受け取り、期限切れは0件で E1〜E15 は同じ範囲（balance-targets 4.13）。
+- REQ-BOX-014 クライアント：`Muchi.Client` `ApiClient.GetGiftBoxAsync`・`ClaimGiftAsync`・`ClaimAllGiftsAsync`、`PlayerView.GiftBox`。Unity のゲーム層 `GiftBoxModel`（タブ、期限の表示は実際の期限だけ「あと◯日」、受け取りの冪等キーは答えが来るまで保持、保留の理由、削除予約中はボタンなし）。

@@ -1,3 +1,4 @@
+import type { Give } from './giftBox.js';
 import { AppError } from './errors.js';
 import { defaultEmblem, validateEmblem, type Emblem } from './visuals.js';
 import { grantReward } from './items.js';
@@ -487,6 +488,7 @@ export function playerLeft(s: PlayerState, cfg: TeamsConfig, teamId: string, now
 export function playerTeamReward(
   s: PlayerState, cfg: TeamsConfig, seasonId: string, teamId: string, rank: number | null, total: number, now: number,
   league: { cfg: LeagueConfig; place: LeaguePlace | null } | null = null,
+  give?: Give,
 ) {
   const p = ensureTeam(s);
   if (p.rewarded.includes(seasonId)) return { status: 'already' as const, reward: null, leagueReward: null };
@@ -494,9 +496,11 @@ export function playerTeamReward(
   const leagueReward = league ? leagueRewardFor(league.cfg, league.place) : null;
   p.rewarded.push(seasonId);
   if (p.rewarded.length > 24) p.rewarded.splice(0, p.rewarded.length - 24);
-  if (reward) grantReward(s, reward, now, `team ${teamId} season ${seasonId} rank ${rank ?? '-'}`, `team:${seasonId}`);
+  // REQ-BOX-001: the service passes the gift box (`give`); absent = straight into the wallet
+  const pay: Give = give ?? ((r, note, ref) => grantReward(s, r, now, note, ref));
+  if (reward) pay(reward, `team ${teamId} season ${seasonId} rank ${rank ?? '-'}`, `team:${seasonId}`, 'team', rank);
   if (leagueReward && league?.place) {
-    grantReward(s, leagueReward, now, `league ${seasonId} ${league.place.divisionId} place ${league.place.place} team ${teamId}`, `league:${seasonId}`);
+    pay(leagueReward, `league ${seasonId} ${league.place.divisionId} place ${league.place.place} team ${teamId}`, `league:${seasonId}`, 'league', league.place.place);
   }
   return { status: 'rewarded' as const, reward, leagueReward };
 }

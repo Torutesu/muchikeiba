@@ -11,7 +11,7 @@ import { createHorseFromTemplate } from '../src/domain/horses.js';
 import { handle, tournamentPlayersFrom, type AppContext, type PlayerInvoker } from '../src/http/app.js';
 import { AppError } from '../src/domain/errors.js';
 import type { PlayerState } from '../src/domain/player.js';
-import { m } from './helpers.js';
+import { granted, m } from './helpers.js';
 
 const NOW = Date.UTC(2026, 10, 6, 3);
 const OPEN = NOW - 60_000;
@@ -304,7 +304,7 @@ describe('tournaments over HTTP (REQ-TOUR-001/002/009)', () => {
     const before = ((await repo.get('p1')) as PlayerState).wallet.free;
     expect(await svc.tournamentClose('p1', 'cup_test', 1, { freeCoins: 500 }, 'テスト杯')).toEqual({ status: 'rewarded', reward: { freeCoins: 500 } });
     expect(await svc.tournamentClose('p1', 'cup_test', 1, { freeCoins: 500 }, 'テスト杯')).toMatchObject({ status: 'already' });
-    expect(((await repo.get('p1')) as PlayerState).wallet.free).toBe(before + 500);
+    expect((await granted(svc, 'p1')).wallet.free).toBe(before + 500); // REQ-BOX-001: in the gift box
     const h = await call(c, 'GET', '/v1/tournaments/history/me', { user: 'p1' });
     expect(h.body.history).toEqual([{ tournamentId: 'cup_test', name: 'テスト杯', rank: 1, at: NOW, reward: { freeCoins: 500 } }]);
   });

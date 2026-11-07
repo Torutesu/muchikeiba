@@ -1,6 +1,5 @@
 import { AppError } from './errors.js';
 import type { Master, Reward } from './master.js';
-import { grantReward } from './items.js';
 
 const TOURNAMENT_HISTORY_KEEP = 50;
 import { migratePlayer, moderationOf, newPlayer, playerView, type PlayerState, type PurchaseRecord } from './player.js';
@@ -63,6 +62,7 @@ import {
 import {
   claimComebackLogin, claimComebackMission, comebackView, markComebackWelcomed, markWhatsNewSeen, nextComebackWake, noteActivity, runDueComebackPush, whatsNew,
 } from './comeback.js';
+import { claimAllGifts, claimGift, expireGifts, giftBadge, giftBoxView, giftGiver, giftsNeedExpiry, nextGiftWake, type OpsTitleKey } from './giftBox.js';
 import { finishTraining, startTraining, trainingDelta, trainingTick, trainingView, useTrainingItem } from './training.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
@@ -101,6 +101,9 @@ export class MemoryPlayerRepo implements PlayerRepo {
   tombstoned(id: string) { return this.tombstones.has(id); }
 }
 
+/** REQ-BOX-010: how an ops grant lands in the gift box. */
+export interface AdminGiftOptions { source?: 'ops_grant' | 'ops_compensation'; titleKey?: OpsTitleKey; expiryDays?: number | null }
+
 export interface PlayerServiceDeps {
   master: Master;
   rng: Rng;
@@ -136,10 +139,10 @@ const IDEM_KEEP = 200;
 /**
  * The object's alarm serves the push outbox, the stud fee outbox (REQ-PUSH-005, REQ-BREED-012), personal
  * nudges (REQ-UXS-012), a scheduled account deletion (REQ-UXS-040), invite milestone deliveries (REQ-INV-007)
- * and comeback lapse reminders (REQ-CB-007).
+ * comeback lapse reminders (REQ-CB-007) and gift box expiry (REQ-BOX-006).
  */
 const nextWake = (s: PlayerState) => {
-  const all = [nextPushWake(s), nextStudWake(s), nextNudgeWake(s), nextDeletionWake(s), nextInviteWake(s), nextComebackWake(s)].filter((x): x is number => x !== null);
+  const all = [nextPushWake(s), nextStudWake(s), nextNudgeWake(s), nextDeletionWake(s), nextInviteWake(s), nextComebackWake(s), nextGiftWake(s)].filter((x): x is number => x !== null);
   return all.length ? Math.min(...all) : null;
 };
 /** How long applied race ids are remembered (well beyond any settlement/dead-letter retry window). */
@@ -184,6 +187,7 @@ export class PlayerService {
     const stableBefore = this.d.onStable ? stableSnapshotKey(this.d.master, draft, now) : '';
     const kpi: KpiRecord[] = [];
     const emit: Emit = (e) => { kpi.push(kpiRecord(draft, now, e)); };
+    expireGifts(this.d.master, draft, now, emit); // REQ-BOX-006: lazy expiry on every transaction (the alarm runs one too)
     const result = fn(draft, now, emit);
     noteInviteMilestones(this.d.master, draft, now, emit); // REQ-INV-007: the invitee's milestones, once each
     // REQ-ACH-003: unlock achievement tiers that became due in this transaction (idempotent), then their titles
@@ -232,7 +236,7 @@ export class PlayerService {
   /** REQ-UXS-001/014/032/040: computed sections of GET /v1/player and bootstrap. */
   private extras(s: PlayerState, now: number) {
     const m = this.d.master;
-    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s) };
+    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now) };
   }
 
   async view(id: string) {
@@ -310,7 +314,7 @@ export class PlayerService {
   /** Next nudge / deletion time (the object's alarm keeps them armed; push and stud have their own). */
   async nextWakeOf(id: string) {
     const s = await this.load(id);
-    const all = [nextNudgeWake(s), nextDeletionWake(s), nextInviteWake(s), nextComebackWake(s)].filter((x): x is number => x !== null);
+    const all = [nextNudgeWake(s), nextDeletionWake(s), nextInviteWake(s), nextComebackWake(s), nextGiftWake(s)].filter((x): x is number => x !== null);
     return all.length ? Math.min(...all) : null;
   }
   /**
@@ -784,6 +788,21 @@ export class PlayerService {
   async claimAllAchievements(id: string, idemKey: string | null) {
     return this.tx(id, this.requireKey(idemKey), (s, now, emit) => ({ ...claimAllAchievements(this.d.master, s, now, emit), wallet: { free: s.wallet.free, paid: s.wallet.paid } }));
   }
+  // ---- プレゼントボックス (REQ-BOX-*, giftBox.ts, contracts/protocol.md §26) ----
+  /** GET /v1/gift-box: read-only unless something expired (then the expiry is written, REQ-BOX-006). */
+  async giftBox(id: string, tab: 'box' | 'history' = 'box', offset = 0, limit = 50) {
+    const s = await this.load(id);
+    const q = { tab, offset, limit };
+    if (giftsNeedExpiry(s, this.d.clock())) return this.tx(id, null, (d, now) => giftBoxView(this.d.master, d, now, q));
+    return giftBoxView(this.d.master, s, this.d.clock(), q);
+  }
+  giftClaim(id: string, giftId: string, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => claimGift(this.d.master, s, giftId, now, emit));
+  }
+  giftClaimAll(id: string, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => claimAllGifts(this.d.master, s, now, emit));
+  }
+
   async stats(id: string) { return (await this.load(id)).stats; }
   async publicProfile(id: string) { return publicProfile(await this.load(id), this.d.master.bannedSilks); }
 
@@ -791,7 +810,7 @@ export class PlayerService {
   async closeSeason(id: string, seasonId: string, rank: number | null) {
     if (await this.wiped(id)) return { status: 'no-record' as const, reward: null, pass: null, titles: [] as string[] };
     return this.tx(id, null, (s, now, emit) => {
-      const r = closeSeason(this.d.master, s, seasonId, rank, now);
+      const r = closeSeason(this.d.master, s, seasonId, rank, now, emit);
       if (r.status === 'rewarded') emit({ name: 'season_close', s1: seasonId, s2: r.classId ?? '', s3: r.nextClassId ?? '', ...(rank !== null ? { place: rank } : {}) });
       const titles = evaluateTitles(this.d.master, s); // class titles (promotion happened in rollSeason)
       return { ...r, titles };
@@ -903,18 +922,26 @@ export class PlayerService {
    * Admin money operations are idempotent per opKey FOREVER (review r5 #4): the general idempotency cache
    * keeps only the last IDEM_KEEP results, so their results live in a never-evicted per-player record.
    */
-  private adminOnce<T>(id: string, key: string, fn: (s: PlayerState, now: number) => T): Promise<T> {
-    return this.tx(id, null, (s, now) => {
+  private adminOnce<T>(id: string, key: string, fn: (s: PlayerState, now: number, emit: Emit) => T): Promise<T> {
+    return this.tx(id, null, (s, now, emit) => {
       const ops = (s.adminOps ??= {});
       if (key in ops) return ops[key] as T;
-      const r = fn(s, now);
+      const r = fn(s, now, emit);
       ops[key] = JSON.parse(JSON.stringify(r ?? null));
       return r;
     });
   }
-  /** `singlePerson`: nobody else approved this grant, so it counts against the player's 24 h budget (QA R11, REQ-OPS-026). */
-  adminGrant(id: string, grant: Grant, reason: string, actor: string, opKey: string, singlePerson = false) {
-    return this.adminOnce(id, `grant:${opKey}`, (s, now) => supportGrant(s, grant, reason, actor, `admin:${opKey}`, now, singlePerson ? GRANT_LIMITS.operator : undefined));
+  /**
+   * `singlePerson`: nobody else approved this grant, so it counts against the player's 24 h budget (QA R11, REQ-OPS-026).
+   * `gift` (REQ-BOX-010): the grant goes to the gift box as a compensation or a plain grant, with an optional title and
+   * expiry. An account wiped by a deletion is refused (no fresh player is created under its id).
+   */
+  async adminGrant(id: string, grant: Grant, reason: string, actor: string, opKey: string, singlePerson = false, gift: AdminGiftOptions = {}) {
+    if (!(await this.repo.get(id)) && (await this.repo.tombstoned?.(id))) throw new AppError('NOT_FOUND', 'the account was deleted');
+    return this.adminOnce(id, `grant:${opKey}`, (s, now, emit) => {
+      if (s.deletion?.status === 'deleting') throw new AppError('DELETION_IN_PROGRESS', 'the account is being deleted');
+      return supportGrant(s, grant, reason, actor, `admin:${opKey}`, now, singlePerson ? GRANT_LIMITS.operator : undefined, { master: this.d.master, emit, source: gift.source ?? 'ops_grant', ...(gift.titleKey ? { titleKey: gift.titleKey } : {}), ...(gift.expiryDays !== undefined ? { expiryDays: gift.expiryDays } : {}) });
+    });
   }
   adminSettleDebt(id: string, coins: number, items: Record<string, number>, reason: string, actor: string, opKey: string) {
     return this.adminOnce(id, `settle:${opKey}`, (s, now) => supportSettleDebt(s, coins, items, reason, actor, `admin:${opKey}`, now));
@@ -1041,7 +1068,7 @@ export class PlayerService {
   /** REQ-TEAM-008: team season reward (rollover job; idempotent per season). */
   async teamSeasonReward(id: string, seasonId: string, teamId: string, rank: number | null, total: number, league: LeaguePlace | null = null) {
     if (await this.wiped(id)) return null;
-    return this.tx(id, null, (s, now) => playerTeamReward(s, this.d.master.progression.teams, seasonId, teamId, rank, total, now, { cfg: this.d.master.progression.league, place: league }));
+    return this.tx(id, null, (s, now, emit) => playerTeamReward(s, this.d.master.progression.teams, seasonId, teamId, rank, total, now, { cfg: this.d.master.progression.league, place: league }, giftGiver(this.d.master, s, now, emit)));
   }
 
   // ---- team cheer stamps (REQ-TEAMFEED-*) ----
@@ -1113,10 +1140,11 @@ export class PlayerService {
   /** REQ-TOUR-007: final rank + prize, once per tournament (resumable payout; a retry is a no-op). */
   async tournamentClose(id: string, tournamentId: string, rank: number, reward: Reward | null, name: string) {
     if (await this.wiped(id)) return { status: 'already' as const, reward: null };
-    return this.tx(id, null, (s, now) => {
+    return this.tx(id, null, (s, now, emit) => {
       const done = (s.tournaments ??= {});
       if (done[tournamentId]) return { status: 'already' as const, reward: done[tournamentId]!.reward };
-      if (reward) grantReward(s, reward, now, `tournament ${tournamentId} rank ${rank}`, `tournament:${tournamentId}:rank`);
+      // REQ-BOX-001: the prize goes to the gift box
+      if (reward) giftGiver(this.d.master, s, now, emit)(reward, `tournament ${tournamentId} rank ${rank}`, `tournament:${tournamentId}:rank`, 'tournament', rank);
       done[tournamentId] = { name, rank, at: now, reward };
       noteTournamentResult(s, rank); // REQ-ACH-002 (once per tournament, behind the same guard)
       const keys = Object.entries(done).sort((a, b) => b[1].at - a[1].at).map(([k]) => k);
@@ -1132,14 +1160,14 @@ export class PlayerService {
   /** REQ-EVENT-008: final rank reward (event end job; idempotent). An event removed from config pays nothing. */
   async eventClose(id: string, eventId: string, rank: number | null) {
     if (await this.wiped(id)) return { status: 'unknown_event' as const, reward: null };
-    return this.tx(id, null, (s, now) => {
+    return this.tx(id, null, (s, now, emit) => {
       const ev = this.d.master.events.find((e) => e.id === eventId);
       if (!ev) {
         const st = ensureEvent(s, eventId);
         st.closed = true;
         return { status: 'unknown_event' as const, reward: null };
       }
-      return closeEventForPlayer(ev, s, rank, now, this.d.master);
+      return closeEventForPlayer(ev, s, rank, now, this.d.master, giftGiver(this.d.master, s, now, emit));
     });
   }
 }

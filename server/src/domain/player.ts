@@ -202,6 +202,8 @@ export interface PlayerState {
   ads?: AdsState;
   /** REQ-TRAIN-*: today's training slots, the open session, per-horse fatigue and log (training.ts ensureTraining). */
   training?: import('./training.js').TrainingState;
+  /** REQ-BOX-*: プレゼントボックス — unclaimed entries and the recent history (giftBox.ts ensureGiftBox). */
+  giftBox?: import('./giftBox.js').GiftBoxState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

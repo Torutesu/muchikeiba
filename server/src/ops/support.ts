@@ -3,6 +3,8 @@ import { AppError } from '../domain/errors.js';
 import type { ItemQty, Master } from '../domain/master.js';
 import { defaultDisplayName, moderationOf, playerView, type PlayerState } from '../domain/player.js';
 import { addItems } from '../domain/items.js';
+import { deliverGift, giftBoxSupportView, type DeliverResult, type OpsTitleKey } from '../domain/giftBox.js';
+import type { KpiEvent } from '../domain/kpi.js';
 import { grantFree, paidBalanceYen, writeOffDebt } from '../domain/wallet.js';
 import { registerAge, ageBand } from '../domain/purchase.js';
 import { getHorse } from '../domain/horses.js';
@@ -59,13 +61,28 @@ function chargeSinglePersonBudget(s: PlayerState, g: Grant, cap: { freeCoins: nu
  * Compensation grant (free coins / items only — paid coins are never created by support). `singlePersonCap`: a grant
  * nobody else approved is charged against the player's 24 h budget (absent = approved by a second admin).
  */
-export function supportGrant(s: PlayerState, g: Grant, reason: string, actor: string, ref: string, now: number, singlePersonCap?: { freeCoins: number; itemQty: number }) {
+export function supportGrant(s: PlayerState, g: Grant, reason: string, actor: string, ref: string, now: number, singlePersonCap?: { freeCoins: number; itemQty: number }, gift?: SupportGift) {
   if (singlePersonCap) chargeSinglePersonBudget(s, g, singlePersonCap, now);
   const before = { ...walletOf(s), items: { ...s.items } };
-  if (g.freeCoins) grantFree(s, g.freeCoins, now, `support grant by ${actor}: ${reason}`, ref);
-  if (g.items?.length) addItems(s, g.items as ItemQty[]);
-  return { before, after: { ...walletOf(s), items: { ...s.items } } };
+  const note = `support grant by ${actor}: ${reason}`;
+  let delivered: DeliverResult | null = null;
+  if (gift) {
+    // REQ-BOX-010: into the gift box (the budget above is charged when it is put in, not when it is claimed)
+    delivered = deliverGift(gift.master, s, {
+      source: gift.source, ref, reward: { ...(g.freeCoins ? { freeCoins: g.freeCoins } : {}), ...(g.items?.length ? { items: g.items as ItemQty[] } : {}) }, note,
+      ...(gift.titleKey ? { titleKey: gift.titleKey } : {}), ...(gift.expiryDays !== undefined ? { expiryDays: gift.expiryDays } : {}),
+    }, now, gift.emit);
+  } else {
+    if (g.freeCoins) grantFree(s, g.freeCoins, now, note, ref);
+    if (g.items?.length) addItems(s, g.items as ItemQty[]);
+  }
+  const boxed = delivered && delivered.status === 'boxed' ? { giftId: delivered.giftId, expiresAt: delivered.expiresAt } : null;
+  // the audit's after shows the gift box entry (the wallet only changes when the player claims it)
+  return { before, after: { ...walletOf(s), items: { ...s.items }, ...(boxed ? { gift: boxed } : {}) }, gift: boxed };
 }
+
+/** REQ-BOX-010: an ops grant delivered to the gift box. */
+export interface SupportGift { master: Master; emit?: (e: KpiEvent) => void; source: 'ops_grant' | 'ops_compensation'; titleKey?: OpsTitleKey; expiryDays?: number | null }
 
 /** Forgives outstanding refund debt (coins and/or items owed). */
 export function supportSettleDebt(s: PlayerState, coins: number, items: Record<string, number>, reason: string, actor: string, ref: string, now: number) {
@@ -132,6 +149,8 @@ export function supportView(m: Master, s: PlayerState, now: number) {
     moderation: { status: moderationOf(s, now), detail: s.moderation ?? null },
     friends: { count: s.friends.ids.length },
     seasonHistory: s.seasonHistory,
+    // REQ-BOX-010: the gift box (unclaimed entries and the latest history, with the internal note)
+    giftBox: giftBoxSupportView(m, s, now),
     // REQ-OPS-020: account deletion progress (never the confirmation token)
     deletion: s.deletion ? {
       status: s.deletion.status, requestedAt: s.deletion.requestedAt ?? null, deleteAt: s.deletion.deleteAt ?? null,

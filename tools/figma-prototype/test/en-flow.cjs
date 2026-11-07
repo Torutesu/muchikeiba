@@ -1,7 +1,8 @@
 // Round 11 (REQ-L10N-013): a short pass of the ムチ一閃 UI in English on the landscape phone (844×390 @2x).
 // EN on from the start, the day-7 demo player: home, shop (recommended / coins / looks), the legal page (Japanese text
 // with the English courtesy note), purchase confirmation, season pass, scout calendar and odds, the stable, settings,
-// a ranked race (HUD) and its result, 調教 (cards, mini-game, result, skip), then the 図鑑 (every tab, details), 実績 (claim one / all) and the title chooser.
+// a ranked race (HUD) and its result, 調教 (cards, mini-game, result, skip), then the 図鑑 (every tab, details), 実績 (claim one / all) and the title chooser,
+// and the プレゼントボックス (box, claim one / all, history).
 // On every screen:
 //   - no Japanese is left on the stage (outside the .keep-ja legal text and the 日本語 language button);
 //   - no text overflows: nothing is still too wide / too tall for its box after fitText, nothing leaves the stage.
@@ -159,6 +160,16 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await shot('achievement-claimed', 300);
   await click('まとめて受け取る'); await page.waitForTimeout(800); await waitScreen('achievements');
   await click('称号を変える'); await shot('achievement-titles', 500);
+
+  // round 12: プレゼントボックス in English (REQ-BOX-*): the box, the home envelope, a claim, claim all, the history
+  await page.evaluate(() => globalThis.__muchi.demo('gifts')); await waitScreen('gift-box', 60000);
+  await shot('gift-box', 600);
+  assert.match(await page.locator('.screen.in').innerText(), /Paid coins never go into the gift box/, 'the box rule in English');
+  await page.locator('.screen.in [data-gift-claim]').first().click(); await waitScreen('gift-result'); await shot('gift-result-one', 400);
+  await click('つづける'); await waitScreen('gift-box');
+  await click('まとめて受け取る'); await waitScreen('gift-result'); await shot('gift-result-all', 400);
+  await click('つづける'); await waitScreen('gift-box'); await shot('gift-box-empty', 400);
+  await page.locator('.screen.in [data-tab="history"]').click(); await waitScreen('gift-history'); await shot('gift-history', 500);
 
   const misses = await page.evaluate(() => globalThis.__muchi.l10n.misses());
   fs.writeFileSync(path.join(out, 'en-report.json'), JSON.stringify({ report, misses }, null, 2));

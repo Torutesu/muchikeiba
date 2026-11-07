@@ -57,6 +57,7 @@ const a = await I.demoMilestone('im_class_a');
 assert.ok(a.ok && a.value.delivered === 1 && a.value.freeCoinsGained === 40, 'class A → +40 free coins');
 const b = await I.demoMilestone('im_class_s');
 assert.ok(b.ok && b.value.delivered === 1, 'class S → delivered');
+assert.ok((await L.giftClaimAll()).ok, 'round 12: the bonuses wait in the gift box until received');
 assert.strictEqual((await L.view()).items.gacha_ticket, tickets + 1, '…a scout ticket');
 v = await I.view();
 assert.deepStrictEqual(v.value.invitees[0].milestones.map((m) => [m.id, m.rewarded]), [['im_graduate', true], ['im_class_a', true], ['im_class_s', true]]);

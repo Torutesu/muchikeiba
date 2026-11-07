@@ -19,6 +19,7 @@ import { createHorseFromTemplate } from '../../../server/src/domain/horses.js';
 import tracksJson from '../../../server/master/tracks.json';
 import { FakeStoreVerifier } from '../../../server/src/domain/purchase.js';
 import { raceFieldSeen } from '../../../server/src/domain/collection.js';
+import { deliverGift } from '../../../server/src/domain/giftBox.js';
 import type { RaceStartConfig } from '../../../server/src/domain/schemas.js';
 import { MemoryTeams, TeamsService, type TeamPlayers } from '../../../server/src/domain/teamService.js';
 import type { ReportReason } from '../../../server/src/domain/teamFeed.js';
@@ -129,7 +130,10 @@ export const MuchiLogic = {
     if (!blank) { const st = structuredClone(await svc.state(ID)); st.horses = []; blank = st; }
     // Prototype starting balance (the Unity offline build shows the same sample wallet): free coins only.
     // adminGrant is idempotent per opKey (persistent admin op set), so this grants exactly once per device.
-    await wrap(() => svc.adminGrant(ID, { freeCoins: 1200 }, 'web prototype starting balance', 'prototype', 'proto-start'));
+    // REQ-BOX-001: an ops grant now arrives in the gift box; the starting balance is received at once (a second boot
+    // answers ALREADY_CLAIMED, which is fine)
+    const g = await wrap(() => svc.adminGrant(ID, { freeCoins: 1200 }, 'web prototype starting balance', 'prototype', 'proto-start'));
+    if (g.ok && g.value.gift) await wrap(() => svc.giftClaim(ID, g.value.gift!.giftId, key()));
     return r;
   },
   view: () => svc.view(ID),
@@ -205,6 +209,31 @@ export const MuchiLogic = {
     const keys = ['speed', 'stamina', 'burst', 'guts', 'temper'] as const;
     const total = keys.reduce((a, k) => a + raw[k], 0);
     return { total, cap, ranked: Math.min(total, cap), capped: total > cap };
+  },
+  // ---------------------------------------------------------------- プレゼントボックス (REQ-BOX-*, contracts/protocol.md §26)
+  // The real server rules: what arrives in the box (ops grants, compensations, tournament prizes…), expiry, hold limits,
+  // keyed claims; free coins and items only.
+  giftBox: (tab: 'box' | 'history' = 'box', offset = 0, limit = 50) => wrap(() => svc.giftBox(ID, tab, offset, limit)),
+  giftClaim: (giftId: string) => wrap(() => svc.giftClaim(ID, giftId, key())),
+  giftClaimAll: () => wrap(() => svc.giftClaimAll(ID, key())),
+  /**
+   * Demo state 「プレゼントボックス」: what the box looks like after a maintenance, a tournament and a promotion — delivered by
+   * the real routes (a compensation under the two-person threshold, a tournament prize, a grant with no expiry, one that
+   * expires in 3 days), plus one already received and one that expired (history).
+   */
+  async seedGifts() {
+    await this.seedDemo(3, [2, 2, 2]);
+    await svc.adminGrant(ID, { freeCoins: 300, items: [{ itemId: 'gacha_ticket', qty: 1 }] }, 'maintenance 11/10', 'ops', 'demo-gift-comp', true, { source: 'ops_compensation', titleKey: 'ops_compensation_maintenance' });
+    await svc.tournamentClose(ID, 'demo_gift_cup', 2, { freeCoins: 150, items: [{ itemId: 'breeding_material', qty: 2 }] }, 'デモ杯');
+    await svc.adminGrant(ID, { freeCoins: 50 }, 'thank-you gift', 'ops', 'demo-gift-forever', true, { expiryDays: null });
+    await svc.adminGrant(ID, { items: [{ itemId: 'gacha_ticket', qty: 1 }] }, 'campaign', 'ops', 'demo-gift-soon', true, { expiryDays: 3 });
+    // history: one received, one that expired yesterday (delivered 2 days ago with a 1-day expiry)
+    const old = await svc.adminGrant(ID, { freeCoins: 20 }, 'earlier gift', 'ops', 'demo-gift-old', true);
+    if (old.gift) await svc.giftClaim(ID, old.gift.giftId, key());
+    const s = await svc.state(ID);
+    deliverGift(master, s, { source: 'event', ref: 'demo:event:rank', reward: { freeCoins: 80 }, note: 'demo event', expiryDays: 1, rank: 12 }, now() - 2 * DAY_MS);
+    repo.put(s);
+    return svc.giftBox(ID);
   },
   // REQ-UXS-040: account deletion (two steps, 14-day cancel window); purchases and offers are blocked meanwhile
   requestDeletion: (token: string | null) => wrap(() => svc.requestDeletion(ID, token)),
@@ -433,12 +462,14 @@ export const MuchiLogic = {
         else s.season.classId = master.progression.invite!.milestones.find((m) => m.id === milestoneId)?.classId ?? 'B';
         repo.put(s);
         await svc.missionsAll(target.playerId);
-        const before = (await svc.view(ID)).wallet.free;
+        // REQ-BOX-001: the inviter's bonus arrives in the gift box (counted there, the wallet changes on claim)
+        const boxed = async () => { const st = await svc.state(ID); return st.wallet.free + (st.giftBox?.box ?? []).reduce((a, x) => a + (x.contents.freeCoins ?? 0), 0); };
+        const before = await boxed();
         const out = await deliverInviteOutbox({
           due: (u) => svc.inviteDue(u), deliver: (o, i, ms, nm) => svc.inviteMilestone(o, i, ms, nm),
           acked: (u, x) => svc.inviteAcked(u, x), later: (u, x) => svc.inviteRetryLater(u, x),
         }, target.playerId);
-        return { friend: target.playerId, delivered: out.delivered, freeCoinsGained: (await svc.view(ID)).wallet.free - before };
+        return { friend: target.playerId, delivered: out.delivered, freeCoinsGained: (await boxed()) - before, inGiftBox: true };
       });
     },
     /** A demo player's code for trying the entry (only redeemable while the local player is in the window, after the FTUE). */

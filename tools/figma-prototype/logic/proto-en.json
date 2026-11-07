@@ -626,6 +626,7 @@
   "ヒント：{s}": "Tip: {s}",
   "前と{gap}": "{gap} to the horse ahead",
   "・": "·",
-  "はじめての購入": "First purchase:"
+  "はじめての購入": "First purchase:",
+  "{x}（所持）": "{x} (owned)"
  }
 }

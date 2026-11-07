@@ -44,6 +44,7 @@ namespace Muchi.Game
             ["TRAINING_POTENTIAL_FULL"] = "この馬は素質いっぱいまで伸びました。",
             ["TRAINING_SESSION_EXPIRED"] = "時間切れのため、ミニゲームなしで記録しました。",
             ["TRAINING_INPUT_INVALID"] = "入力を確認できませんでした。もう一度お試しください。",
+            ["RIVAL_CHALLENGE_LIMIT"] = "今日の挑戦状は送り切りました。4:00に戻ります。",
             ["NETWORK"] = Offline,
         };
 

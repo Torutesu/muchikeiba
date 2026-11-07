@@ -34,7 +34,7 @@ namespace Muchi.Game
             ["race"] = "レース", ["partner"] = "相棒", ["scout"] = "スカウト", ["stable"] = "厩舎", ["missions"] = "ミッション", ["login_bonus"] = "ログインボーナス",
             ["shop"] = "ショップ", ["season_pass"] = "シーズンパス", ["bond"] = "絆・飼い葉", ["season"] = "シーズン・ランキング", ["breeding"] = "配合",
             ["friends"] = "フレンド", ["friend_rooms"] = "フレンド部屋", ["teams"] = "支部", ["spectate"] = "観戦", ["time_attack"] = "タイムアタック",
-            ["events"] = "イベント", ["tournaments"] = "大会", ["my_stable"] = "マイ厩舎", ["stud"] = "種牡馬の貸し借り", ["training"] = "調教",
+            ["events"] = "イベント", ["tournaments"] = "大会", ["my_stable"] = "マイ厩舎", ["stud"] = "種牡馬の貸し借り", ["training"] = "調教", ["rival"] = "ライバル",
         };
 
         /// <summary>The one-screen guide when a feature opens (06 §4.3 third column); null = no guide.</summary>
@@ -49,6 +49,7 @@ namespace Muchi.Game
             ["events"] = "開催中のイベントにエントリーできます",
             ["my_stable"] = "飾りを1つプレゼント。厩舎を飾ってみよう",
             ["training"] = "1日3回、相棒を鍛えよう。タイミングよく押すと少しだけ伸びが良くなる",
+            ["rival"] = "毎週ひとり、近い実力のライバル。同じランク戦で先着すれば1点",
         };
 
         private readonly GameBackend _b;
@@ -320,7 +321,7 @@ namespace Muchi.Game
     public sealed class HomeModel
     {
         /// <summary>Tabs / tiles in display order (06 §6.1 ⑤ and the unlock table).</summary>
-        public static readonly string[] TileKeys = { "stable", "scout", "shop", "season_pass", "missions", "bond", "training", "season", "breeding", "friends", "teams", "time_attack", "events", "my_stable" };
+        public static readonly string[] TileKeys = { "stable", "scout", "shop", "season_pass", "missions", "bond", "training", "season", "rival", "breeding", "friends", "teams", "time_attack", "events", "my_stable" };
 
         private readonly GameBackend _b;
         public UnlockGate Unlocks { get; }

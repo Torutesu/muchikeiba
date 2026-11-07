@@ -66,6 +66,8 @@ namespace Muchi.Client
         TrainingSessionUsed,
         /// <summary>422: the submitted taps break the mini-game bounds (REQ-TRAIN-007).</summary>
         TrainingInputInvalid,
+        /// <summary>REQ-RIVAL-008: too many ライバルと走る challenges today (409).</summary>
+        RivalChallengeLimit,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -148,6 +150,7 @@ namespace Muchi.Client
             ["TRAINING_SESSION_EXPIRED"] = ApiErrorCode.TrainingSessionExpired,
             ["TRAINING_SESSION_USED"] = ApiErrorCode.TrainingSessionUsed,
             ["TRAINING_INPUT_INVALID"] = ApiErrorCode.TrainingInputInvalid,
+            ["RIVAL_CHALLENGE_LIMIT"] = ApiErrorCode.RivalChallengeLimit,
             ["VERIFIER_UNAVAILABLE"] = ApiErrorCode.VerifierUnavailable,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };

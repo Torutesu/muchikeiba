@@ -32,7 +32,8 @@ export const DEFAULT_ROOM_OPTIONS = { verifySampleRate: 0.05, resultWaitMs: 5000
 export type Outbound = { to: number | 'all'; msg: ServerMessage };
 export type RoomPhase = 'running' | 'awaitingResults' | 'verifying' | 'final';
 
-interface ReportedResult { h: string; order: number[]; finishTicks?: number[] }
+/** `skills`: slots whose unique skill fired (optional, REQ-ACH-002; presentation data outside the result hash). */
+interface ReportedResult { h: string; order: number[]; finishTicks?: number[]; skills?: number[] }
 interface Conn {
   connected: boolean; disconnectedAt: number | null; cpu: boolean; everConnected: boolean;
   /** Last message time (REQ-NET-013: a silent socket counts as disconnected after disconnectGraceMs). */
@@ -48,6 +49,11 @@ export interface FinalOutcome {
   suspects: number[];
   /** Finish ticks in `order` (verifier output, or identical reports of all agreeing clients). Optional. */
   finishTicks?: number[];
+  /**
+   * REQ-ACH-002: slots whose unique skill fired, when every agreeing reporter sent the same list (skills are not part of
+   * the result hash, so a lone dissenting list is not trusted). Absent = unknown (credits nothing).
+   */
+  skillFired?: number[];
 }
 
 export interface RoomSnapshot {
@@ -219,7 +225,7 @@ export class RaceRoomCore {
         if (this._phase !== 'running' && this._phase !== 'awaitingResults') return [{ to: slot, msg: { t: 'err', code: 'RACE_OVER' } }];
         if (this.results.has(slot)) return []; // first report counts; a client cannot swap its hash later
         if (this.confirmedTick < this.minResultTick) return [{ to: slot, msg: { t: 'err', code: 'RESULT_TOO_EARLY' } }];
-        this.results.set(slot, msg.finishTicks ? { h: msg.h, order: msg.order, finishTicks: msg.finishTicks } : { h: msg.h, order: msg.order });
+        this.results.set(slot, { h: msg.h, order: msg.order, ...(msg.finishTicks ? { finishTicks: msg.finishTicks } : {}), ...(msg.skills ? { skills: msg.skills } : {}) });
         return this.checkResults(now);
     }
   }
@@ -379,6 +385,8 @@ export class RaceRoomCore {
     this._final = { status: 'confirmed', order, hash, via: 'consensus', suspects: reporters.filter(([, r]) => r.h !== hash).map(([s]) => s) };
     const ft = agreedFinishTicks(reporters.filter(([, r]) => r.h === hash).map(([, r]) => r), order.length);
     if (ft) this._final.finishTicks = ft;
+    const sk = agreedSkills(this.config, reporters.filter(([, r]) => r.h === hash).map(([, r]) => r));
+    if (sk) this._final.skillFired = sk;
     this._phase = 'final';
     return [{ to: 'all', msg: this.finalMsg() }];
   }
@@ -387,7 +395,12 @@ export class RaceRoomCore {
   applyVerification(out: VerifierOutput | null): Outbound[] {
     if (this._phase !== 'verifying') return [];
     if (!out) this._final = { status: 'void', order: [], hash: '', via: 'none', suspects: [] };
-    else this._final = { status: 'confirmed', order: out.order, hash: out.resultHash, via: 'verifier', suspects: [...this.results.entries()].filter(([, r]) => r.h !== out.resultHash).map(([s]) => s), finishTicks: out.finishTicks };
+    else {
+      this._final = { status: 'confirmed', order: out.order, hash: out.resultHash, via: 'verifier', suspects: [...this.results.entries()].filter(([, r]) => r.h !== out.resultHash).map(([s]) => s), finishTicks: out.finishTicks };
+      // the verifier does not report skills; the clients that agree with its hash ran the same race
+      const sk = agreedSkills(this.config, [...this.results.values()].filter((r) => r.h === out.resultHash));
+      if (sk) this._final.skillFired = sk;
+    }
     this._phase = 'final';
     return [{ to: 'all', msg: this.finalMsg() }];
   }
@@ -431,6 +444,14 @@ function agreedFinishTicks(agreeing: ReportedResult[], n: number): number[] | nu
   const first = agreeing[0]?.finishTicks;
   if (!first || first.length !== n) return null;
   return agreeing.every((r) => r.finishTicks && r.finishTicks.length === n && r.finishTicks.every((v, i) => v === first[i])) ? [...first] : null;
+}
+
+/** REQ-ACH-002: the skill list every agreeing reporter sent (only slots whose horse has a skill), else null. */
+function agreedSkills(config: RaceStartConfig, agreeing: ReportedResult[]): number[] | null {
+  if (agreeing.length === 0 || agreeing.some((r) => !r.skills)) return null;
+  const norm = (xs: number[]) => [...new Set(xs)].filter((x) => config.entrants.some((e) => e.slot === x && e.horse.skill)).sort((a, b) => a - b);
+  const first = norm(agreeing[0]!.skills!);
+  return agreeing.every((r) => { const n = norm(r.skills!); return n.length === first.length && n.every((v, i) => v === first[i]); }) ? first : null;
 }
 
 /**

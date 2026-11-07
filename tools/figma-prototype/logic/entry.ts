@@ -18,6 +18,8 @@ import { startTimeAttack } from '../../../server/src/domain/timeAttack.js';
 import { createHorseFromTemplate } from '../../../server/src/domain/horses.js';
 import tracksJson from '../../../server/master/tracks.json';
 import { FakeStoreVerifier } from '../../../server/src/domain/purchase.js';
+import { raceFieldSeen } from '../../../server/src/domain/collection.js';
+import type { RaceStartConfig } from '../../../server/src/domain/schemas.js';
 import { MemoryTeams, TeamsService, type TeamPlayers } from '../../../server/src/domain/teamService.js';
 import type { ReportReason } from '../../../server/src/domain/teamFeed.js';
 import { InviteService, MemoryInviteDirectory, deliverInviteOutbox, displayInviteCode, inviteRewardYen, normalizeInviteCode } from '../../../server/src/domain/invite.js';
@@ -62,7 +64,7 @@ const teamPlayers: TeamPlayers = {
   prepareJoin: (u, t) => svc.teamPrepareJoin(u, t), commitJoin: (u, t) => svc.teamCommitJoin(u, t), abortJoin: (u, t) => svc.teamAbortJoin(u, t),
   addOutgoing: (u, t) => svc.teamAddOutgoing(u, t), removeOutgoing: (u, t) => svc.teamRemoveOutgoing(u, t), left: (u, t, c) => svc.teamLeft(u, t, c),
   state: (u) => svc.teamState(u), push: (u, id, v) => svc.queuePush(u, id, v),
-  stampCatalog: (u) => svc.stampCatalog(u), stampCheck: (u, s) => svc.stampCheck(u, s), stampPosted: (u, s, k, t) => svc.stampPosted(u, s, k, t),
+  stampCatalog: (u) => svc.stampCatalog(u), stampCheck: (u, s) => svc.stampCheck(u, s), stampPosted: (u, s, k, t, ref) => svc.stampPosted(u, s, k, t, ref ?? null),
   feedViewer: (u, f) => svc.feedViewer(u, f), feedMutes: (u) => svc.feedMutes(u), feedMute: (u, t, m) => svc.feedMute(u, t, m),
   feedReported: (u, t, q, b, r) => svc.feedReported(u, t, q, b, r), cheerPush: (u, f, n) => svc.cheerPush(u, f, n),
 };
@@ -140,9 +142,12 @@ export const MuchiLogic = {
   setRoomConditions: (c: Parameters<PlayerService['setRoomConditions']>[1]) => wrap(() => svc.setRoomConditions(ID, c)),
   // Settles a race run on the device (WASM engine) through the real reward rules: coins by place, season
   // points, pass XP and mission progress. Offline: there is no rating update and no server verification.
-  applyRace: (raceId: string, place: number, fieldSize: number, details: { trackId: string; style: Style; finishTick: number | null; whips: number }) =>
+  // round 11: `config` (the race the WASM engine ran) gives the 図鑑 the CPU field it met (REQ-COL-002) and `skillFired` the
+  // player's unique-skill activation (REQ-ACH-002), exactly what settleRace sends from a confirmed room
+  applyRace: (raceId: string, place: number, fieldSize: number, details: { trackId: string; style: Style; finishTick: number | null; whips: number; skillFired?: boolean }, config?: RaceStartConfig) =>
     wrap(() => svc.applyRace(ID, { raceId, mode: 'ranked', place, fieldSize, newRating: null, void: false, humans: 1,
-      details: { ...details, startReactionTicks: null, whipMashed: false, cpuAssisted: false } })),
+      details: { ...details, startReactionTicks: null, whipMashed: false, cpuAssisted: false },
+      ...(config ? { seen: raceFieldSeen(config, config.entrants.find((e) => e.playerId === ID)?.slot ?? -1) } : {}) })),
   reset() {
     try {
       localStorage.removeItem(KEY + ':' + ID); localStorage.removeItem(DAY_KEY);
@@ -279,6 +284,34 @@ export const MuchiLogic = {
     return svc.view(ID);
   },
   playerView,
+
+  // ---------------------------------------------------------------- round 11: 図鑑・実績・称号 (REQ-COL-*, REQ-ACH-*, contracts/protocol.md §22)
+  collection: () => wrap(() => svc.collection(ID)),
+  achievements: () => wrap(() => svc.achievements(ID)),
+  claimAchievement: (achievementId: string, tier: number) => wrap(() => svc.claimAchievement(ID, achievementId, tier, key())),
+  claimAllAchievements: () => wrap(() => svc.claimAllAchievements(ID, key())),
+  titles: () => svc.titles(ID),
+  equipTitle: (titleId: string | null) => wrap(() => svc.equipTitle(ID, titleId)),
+  /**
+   * Demo state 「図鑑」: a week of play on the real rules — races on several courses against CPU fields built by the server's
+   * buildRaceConfig (so the book shows the horses and skills met as 出会った), every other race the partner's skill fires,
+   * a tournament win and five stable likes from demo players — then the book, achievements and titles are all server data.
+   */
+  async seedCollection() {
+    await this.seedDemo(3, [2, 2, 2]);
+    const s = await svc.state(ID);
+    const h = s.horses.find((x) => x.status === 'active') ?? s.horses[0]!;
+    let k = 0;
+    for (const t of master.tracks.slice(0, 5)) {
+      for (let i = 0; i < 3; i++, k++) {
+        const config = buildRaceConfig(master, { raceId: `demo_col_${k}`, mode: 'ranked', trackId: t.id, statCap: 3200, humans: [{ playerId: ID, horse: toRaceHorse(master, h), cpuLevel: 3 }], cpuCount: 11, cpuLevel: 3, rng: cryptoRng });
+        await this.applyRace(config.raceId, [1, 3, 5][i]!, 12, { trackId: t.id, style: h.style, finishTick: 1900, whips: 3, skillFired: k % 2 === 0 }, config);
+      }
+    }
+    await svc.tournamentClose(ID, 'demo_cup', 1, null, 'デモ杯');
+    for (const from of ['demo_like_1', 'demo_like_2', 'demo_like_3', 'demo_like_4', 'demo_like_5']) await svc.stableLikeReceive(ID, from, `like:${from}:demo:1`);
+    return svc.view(ID);
+  },
 
   // ---------------------------------------------------------------- round 10
   // r10 fix: the shop list with this player's ownership (GET /v1/shop/products?mine=1)

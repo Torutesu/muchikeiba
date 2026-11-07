@@ -1,5 +1,6 @@
 import { AppError } from './errors.js';
 import { maxBondLevel } from './bond.js';
+import { tierReached } from './collection.js';
 import { effectiveSilks, type Silks } from './visuals.js';
 import type { BannedSilksList } from './bannedSilks.js';
 import { foldForCompare } from './horses.js';
@@ -21,6 +22,8 @@ export interface RaceDetails {
   whipMashed: boolean;
   /** The CPU rode for this player at some point (disconnect takeover): skill stats are not credited. */
   cpuAssisted: boolean;
+  /** REQ-ACH-002: the rider's unique skill fired (agreeing client reports; absent = unknown). */
+  skillFired?: boolean;
 }
 
 export function raceDetailsFor(config: RaceStartConfig, log: ReplayLog, slot: number, finishTick: number | null): RaceDetails {
@@ -93,6 +96,7 @@ export function conditionMet(m: Master, s: PlayerState, c: TitleCondition): bool
     }
     case 'rating': return s.rating.rankedRaces > 0 && s.rating.r >= c.value;
     case 'bondLevel': return maxBondLevel(m, s) >= c.value;
+    case 'achievement': return tierReached(s, c.achievementId, c.tier); // REQ-ACH-006
   }
 }
 

@@ -1,5 +1,5 @@
 {
-  "_note": "称号の定義（全て架空の名称）。condition の kind: races / wins / top3 / winsByStyle(style) / perfectStarts / startReaction(≦value tick) / whipPerfectWins / trackWins(trackId) / bestTime(trackId, ≦value tick) / classReached(classId) / rating(≧value) / bondLevel(≧value、いずれかの馬の絆レベル)",
+  "_note": "称号の定義（全て架空の名称）。condition の kind: races / wins / top3 / winsByStyle(style) / perfectStarts / startReaction(≦value tick) / whipPerfectWins / trackWins(trackId) / bestTime(trackId, ≦value tick) / classReached(classId) / rating(≧value) / bondLevel(≧value、いずれかの馬の絆レベル) / achievement(achievementId, tier: collection.json の実績のその段に到達。REQ-ACH-006)",
   "titles": [
     { "id": "debut", "name": "デビュー", "condition": { "kind": "races", "value": 1 } },
     { "id": "first_win", "name": "初勝利", "condition": { "kind": "wins", "value": 1 } },
@@ -19,6 +19,13 @@
     { "id": "class_s", "name": "S級騎手", "condition": { "kind": "classReached", "classId": "S" } },
     { "id": "rating_1800", "name": "実力派", "condition": { "kind": "rating", "value": 1800 } },
     { "id": "bond_first", "name": "絆の芽生え", "condition": { "kind": "bondLevel", "value": 3 } },
-    { "id": "bond_master", "name": "人馬一体", "condition": { "kind": "bondLevel", "value": 10 } }
+    { "id": "bond_master", "name": "人馬一体", "condition": { "kind": "bondLevel", "value": 10 } },
+    { "id": "ach_traveler", "name": "全場制覇", "condition": { "kind": "achievement", "achievementId": "courses_all", "tier": 3 } },
+    { "id": "ach_skill_master", "name": "スキルの使い手", "condition": { "kind": "achievement", "achievementId": "skills", "tier": 3 } },
+    { "id": "ach_bloodline", "name": "血統の守り人", "condition": { "kind": "achievement", "achievementId": "generations", "tier": 3 } },
+    { "id": "ach_clockwork", "name": "時計の支配者", "condition": { "kind": "achievement", "achievementId": "ta_gold", "tier": 2 } },
+    { "id": "ach_champion", "name": "大会の覇者", "condition": { "kind": "achievement", "achievementId": "tournament_win", "tier": 1 } },
+    { "id": "ach_popular_stable", "name": "人気厩舎", "condition": { "kind": "achievement", "achievementId": "stable_likes", "tier": 2 } },
+    { "id": "ach_cheer_leader", "name": "応援団長", "condition": { "kind": "achievement", "achievementId": "team_cheers", "tier": 2 } }
   ]
 }

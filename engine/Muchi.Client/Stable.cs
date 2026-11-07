@@ -34,10 +34,12 @@ namespace Muchi.Client
     {
         public List<string> TitleIds = new List<string>();
         public int Races, Wins, Top3, TournamentWins, TournamentPodiums;
+        /// <summary>REQ-ACH-009: achievement badges on the trophy shelf (highest tier per achievement, best first; empty for older copies).</summary>
+        public List<AchievementBadge> Badges = new List<AchievementBadge>();
         internal static StableTrophies Parse(JsonNode o) => new StableTrophies
         {
             TitleIds = J.List(o, "titleIds", x => x.AsString()), Races = J.Int(o, "races"), Wins = J.Int(o, "wins"), Top3 = J.Int(o, "top3"),
-            TournamentWins = J.Int(o, "tournamentWins"), TournamentPodiums = J.Int(o, "tournamentPodiums"),
+            TournamentWins = J.Int(o, "tournamentWins"), TournamentPodiums = J.Int(o, "tournamentPodiums"), Badges = J.List(o, "badges", AchievementBadge.Parse),
         };
     }
 

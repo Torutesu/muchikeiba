@@ -31,6 +31,7 @@ src/domain/     純粋ロジック（I/Oなし・時刻と乱数は注入）
   purchase.ts     購入前チェック（年齢・保護者同意・月額上限）、レシート反映、初回ボーナス、パス、返金
   accounting.ts   資金決済法の基準日判定・未使用残高の集計
   gacha.ts        ppmテーブル、検証、提供割合の自動生成、10連保証、天井、ダブり→素材、コンプガチャ検出
+  collection.ts   図鑑（入手・出会った・未発見）、実績（遊びだけを数える段・無償コイン・称号）、組の実績のコンプガチャ検出
   horses.ts       覚醒、命名（正規化＋NG）、引退、配合、ニックス、5代血統、近親ペナルティ、予想
   rewards.ts      ログボ、デイリーミッション、シーズンパス、レース報酬
   service.ts      PlayerService（ドラフト上で実行→成功時のみ保存、冪等キー）
@@ -119,6 +120,10 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | POST | `/v1/comeback/login` | 要 | 必須 | 復帰ログインボーナス（1ゲーム日1回） |
 | POST | `/v1/comeback/missions/:missionId/claim` | 要 | 必須 | 復帰ミッション |
 | POST | `/v1/comeback/welcome` | 要 | | 歓迎画面を出した（1回） |
+| GET | `/v1/collection` | 要 | | 図鑑（REQ-COL-*、contracts/protocol.md §22）。入手・出会った・未発見と数。達成率に報酬は無い |
+| GET | `/v1/achievements` | 要 | | 実績（REQ-ACH-*）：進み具合・段・バッジ・称号 |
+| POST | `/v1/achievements/:achievementId/tiers/:tier/claim` | 要 | 必須 | 実績の段の無償コイン |
+| POST | `/v1/achievements/claim-all` | 要 | 必須 | 受け取れる段を全部 |
 | GET | `/v1/whats-new` | 要 | | 前回見た後に始まったもの（ホームのカード） |
 | POST | `/v1/whats-new/seen` | 要 | | 本文 `{ upTo }`。見た位置を進める |
 | GET | `/v1/season-pass` | 要 | | シーズン（暦月）限りのパス：レベル・30段の報酬・期間・残り日数・前シーズンの自動付与（§13.6） |

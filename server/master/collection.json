@@ -1,0 +1,766 @@
+{
+ "_note": "図鑑（REQ-COL-*）と実績（REQ-ACH-*）。全て架空の名称。実績の報酬は無償コインだけ（1段 ≤ caps.maxFreeCoinsPerTier、合計 ≤ caps.maxTotalFreeCoins。コード上の上限 COLLECTION_HARD_LIMITS）。称号は titles.json の condition kind \"achievement\" で段に結び付ける。metric に課金・ガチャの回数は無い。metric \"collect\" は、ガチャで出る物（馬・その固有スキル）や買える物（見た目のアイテム）を含む組み合わせを設定の検証で拒否する（コンプガチャ・購入への報酬の禁止、docs/planning/03）。図鑑の達成率そのものには報酬を付けない。",
+ "caps": {
+  "maxFreeCoinsPerTier": 50,
+  "maxTotalFreeCoins": 2000
+ },
+ "lore": {
+  "horses": {
+   "t_akatsuki": "夜明けの直線で一気に伸びる差し馬。父アカツキオーの切れ味を最もよく受け継いだと言われる。",
+   "t_ginga": "先行して王道を行く一頭。どの展開でも崩れない落ち着きが持ち味。",
+   "t_kohaku": "琥珀色の光をまとうように先頭を駆ける逃げ馬。スタートの速さは世代随一。",
+   "t_tsukikage": "月影の夜に生まれた追い込み馬。最後方から豪快に差し切る。",
+   "t_harukaze": "春風のように軽やかにハナを奪う。影を踏ませない逃げが得意。",
+   "t_kurogane": "鉄のような脚を持つ追い込み馬。雷鳴のような末脚で知られる。",
+   "t_hanabi": "芝もダートもこなす器用な先行馬。内ラチ沿いのコーナーワークが光る。",
+   "t_umineko": "海辺の牧場育ち。賑やかな性格で、直線の末脚は鋭い。",
+   "t_inazuma": "稲妻のように飛び出す逃げ馬。苦しくなってからもうひと踏ん張りが利く。",
+   "t_sakura": "並木道を行くように好位から抜け出す先行馬。",
+   "t_yukimi": "雪見の季節に生まれた先行馬。好位で粘る堅実な走り。",
+   "t_natsu": "夏の嵐のように最後にひと伸びする先行馬。",
+   "t_aozora": "青空の下で一番槍を決める元気な逃げ馬。",
+   "t_yuyake": "夕焼けの中、風を読んで脚をためる差し馬。",
+   "t_minamo": "水面のリズムで大外を回る追い込み馬。",
+   "t_hoshifuru": "星降る丘の牧場出身。上手にひと息入れる差し馬。",
+   "t_kazamidori": "風見鶏のように流れを読む先行馬。芝もダートも走る。",
+   "t_morino": "森のしずくのように静かな逃げ馬。ペース配分がうまい。",
+   "t_hinode": "日の出とともに飛び出す快速の逃げ馬。",
+   "t_akanegumo": "茜色の雲のように最後に伸びてくる追い込み馬。",
+   "t_sunaarashi": "砂嵐を巻き上げて逃げるダートの名手。",
+   "t_dorobune": "重い馬場でも沈まない、ダートの先行馬。",
+   "t_kawarabi": "河原の灯のように静かに機を待つダートの差し馬。",
+   "t_seiya": "冬の夜に鐘を鳴らすように駆ける季節の一頭。",
+   "t_hatsuyuki": "初雪のころに現れる季節の逃げ馬。どの馬場もこなす。",
+   "t_partner": "はじめての相棒。ここから物語が始まる。",
+   "t_broodmare": "牧場の母。はじめての配合を見守ってくれる。"
+  },
+  "skills": {
+   "sk_ichibanyari": "ゲートが開いた瞬間、誰よりも早く前へ。",
+   "sk_kagefumase": "先頭に立てば、後続に影すら踏ませない。",
+   "sk_shippu": "疾風のように先頭を駆け抜ける。",
+   "sk_kouinonebari": "好位からの粘り腰。最後の直線で踏ん張る。",
+   "sk_nukedashi": "直線で好位からすっと抜け出す。",
+   "sk_oudou": "王道の位置取りから、直線で力強く伸びる。",
+   "sk_kazeyomi": "前の馬の後ろで風を読み、力をためる。",
+   "sk_sueashi": "後方から一閃の末脚。",
+   "sk_kireaji": "鋭い切れ味で直線を切り裂く。",
+   "sk_ooso": "大外を回って一気に差し切る。",
+   "sk_jinrai": "雷のような速さで追い上げる。",
+   "sk_goukyaku": "豪快な脚で最後方からまとめて差す。",
+   "sk_hitoiki": "苦しいところでひと息入れて立て直す。",
+   "sk_hitonobi": "残りわずかで、もうひと伸び。",
+   "sk_uchirachi": "内ラチ沿いのコーナーを誰よりもうまく回る。",
+   "sk_ninoashi": "苦しくなってから出る根性の二の脚。"
+  },
+  "courses": {
+   "aoba_turf_1600": "青葉に囲まれたマイルの舞台。はじめてのレースもここから。",
+   "kirameki_turf_2000": "きらめく照明の下、王道の2000m。ナイターの名所。",
+   "minato_turf_2400": "港の風が吹く長い直線。スタミナが試される。",
+   "aoba_dirt_1400": "青葉の砂の短距離戦。スタートが勝負を分ける。",
+   "minato_dirt_1800": "港のダート1800m。力と粘りの舞台。",
+   "nordhaven_turf_2400": "北の港町の芝2400m。冷たい風の中の長丁場。",
+   "santalucera_dirt_1700": "陽光の砂の1700m。乾いた砂が舞う。",
+   "bellmoor_turf_1200": "荒野をまっすぐ貫く直線1200m。純粋な速さの勝負。"
+  }
+ },
+ "achievements": [
+  {
+   "id": "races",
+   "category": "race",
+   "name": "出走の記録",
+   "description": "ランク戦・フレンド戦・大会・イベントに出走する",
+   "metric": "races",
+   "tiers": [
+    {
+     "tier": 1,
+     "target": 10,
+     "reward": {
+      "freeCoins": 5
+     }
+    },
+    {
+     "tier": 2,
+     "target": 100,
+     "reward": {
+      "freeCoins": 10
+     }
+    },
+    {
+     "tier": 3,
+     "target": 300,
+     "reward": {
+      "freeCoins": 20
+     }
+    },
+    {
+     "tier": 4,
+     "target": 1000,
+     "reward": {
+      "freeCoins": 40
+     }
+    },
+    {
+     "tier": 5,
+     "target": 2000,
+     "reward": {
+      "freeCoins": 50
+     }
+    }
+   ]
+  },
+  {
+   "id": "wins",
+   "category": "race",
+   "name": "勝利の記録",
+   "description": "1着になる",
+   "metric": "wins",
+   "tiers": [
+    {
+     "tier": 1,
+     "target": 1,
+     "reward": {
+      "freeCoins": 5
+     }
+    },
+    {
+     "tier": 2,
+     "target": 10,
+     "reward": {
+      "freeCoins": 5
+     }
+    },
+    {
+     "tier": 3,
+     "target": 50,
+     "reward": {
+      "freeCoins": 10
+     }
+    },
+    {
+     "tier": 4,
+     "target": 150,
+     "reward": {
+      "freeCoins": 30
+     }
+    },
+    {
+     "tier": 5,
+     "target": 300,
+     "reward": {
+      "freeCoins": 50
+     }
+    }
+   ]
+  },
+  {
+   "id": "podiums",
+   "category": "race",
+   "name": "上位の常連",
+   "description": "3着以内に入る",
+   "metric": "top3",
+   "tiers": [
+    {
+     "tier": 1,
+     "target": 5,
+     "reward": {
+      "freeCoins": 5
+     }
+    },
+    {
+     "tier": 2,
+     "target": 30,
+     "reward": {
+      "freeCoins": 5
+     }
+    },
+    {
+     "tier": 3,
+     "target": 100,
+     "reward": {
+      "freeCoins": 10
+     }
+    },
+    {
+     "tier": 4,
+     "target": 300,
+     "reward": {
+      "freeCoins": 30
+     }
+    }
+   ]
+  },
+  {
+   "id": "course_aoba_turf_1600",
+   "category": "course",
+   "name": "青葉 芝1600の勝ち名乗り",
+   "description": "青葉競馬場 芝1600mで1着になる",
+   "metric": "trackWins",
+   "trackId": "aoba_turf_1600",
+   "tiers": [
+    {
+     "tier": 1,
+     "target": 1,
+     "reward": {
+      "freeCoins": 5
+     }
+    },
+    {
+     "tier": 2,
+     "target": 15,
+     "reward": {
+      "freeCoins": 10
+     }
+    },
+    {
+     "tier": 3,
+     "target": 40,
+     "reward": {
+      "freeCoins": 20
+     }
+    }
+   ]
+  },
+  {
+   "id": "course_kirameki_turf_2000",
+   "category": "course",
+   "name": "きらめき 芝2000の勝ち名乗り",
+   "description": "きらめき競馬場 芝2000mで1着になる",
+   "metric": "trackWins",
+   "trackId": "kirameki_turf_2000",
+   "tiers": [
+    {
+     "tier": 1,
+     "target": 1,
+     "reward": {
+      "freeCoins": 5
+     }
+    },
+    {
+     "tier": 2,
+     "target": 15,
+     "reward": {
+      "freeCoins": 10
+     }
+    },
+    {
+     "tier": 3,
+     "target": 40,
+     "reward": {
+      "freeCoins": 20
+     }
+    }
+   ]
+  },
+  {
+   "id": "course_minato_turf_2400",
+   "category": "course",
+   "name": "みなと 芝2400の勝ち名乗り",
+   "description": "みなと競馬場 芝2400mで1着になる",
+   "metric": "trackWins",
+   "trackId": "minato_turf_2400",
+   "tiers": [
+    {
+     "tier": 1,
+     "target": 1,
+     "reward": {
+      "freeCoins": 5
+     }
+    },
+    {
+     "tier": 2,
+     "target": 15,
+     "reward": {
+      "freeCoins": 10
+     }
+    },
+    {
+     "tier": 3,
+     "target": 40,
+     "reward": {
+      "freeCoins": 20
+     }
+    }
+   ]
+  },
+  {
+   "id": "course_aoba_dirt_1400",
+   "category": "course",
+   "name": "青葉 ダート1400の勝ち名乗り",
+   "description": "青葉競馬場 ダート1400mで1着になる",
+   "metric": "trackWins",
+   "trackId": "aoba_dirt_1400",
+   "tiers": [
+    {
+     "tier": 1,
+     "target": 1,
+     "reward": {
+      "freeCoins": 5
+     }
+    },
+    {
+     "tier": 2,
+     "target": 15,
+     "reward": {
+      "freeCoins": 10
+     }
+    },
+    {
+     "tier": 3,
+     "target": 40,
+     "reward": {
+      "freeCoins": 20
+     }
+    }
+   ]
+  },
+  {
+   "id": "course_minato_dirt_1800",
+   "category": "course",
+   "name": "みなと ダート1800の勝ち名乗り",
+   "description": "みなと競馬場 ダート1800mで1着になる",
+   "metric": "trackWins",
+   "trackId": "minato_dirt_1800",
+   "tiers": [
+    {
+     "tier": 1,
+     "target": 1,
+     "reward": {
+      "freeCoins": 5
+     }
+    },
+    {
+     "tier": 2,
+     "target": 15,
+     "reward": {
+      "freeCoins": 10
+     }
+    },
+    {
+     "tier": 3,
+     "target": 40,
+     "reward": {
+      "freeCoins": 20
+     }
+    }
+   ]
+  },
+  {
+   "id": "course_nordhaven_turf_2400",
+   "category": "course",
+   "name": "ノルトハーフェンの勝ち名乗り",
+   "description": "ノルトハーフェン競馬場 芝2400mで1着になる",
+   "metric": "trackWins",
+   "trackId": "nordhaven_turf_2400",
+   "tiers": [
+    {
+     "tier": 1,
+     "target": 1,
+     "reward": {
+      "freeCoins": 5
+     }
+    },
+    {
+     "tier": 2,
+     "target": 15,
+     "reward": {
+      "freeCoins": 10
+     }
+    },
+    {
+     "tier": 3,
+     "target": 40,
+     "reward": {
+      "freeCoins": 20
+     }
+    }
+   ]
+  },
+  {
+   "id": "course_santalucera_dirt_1700",
+   "category": "course",
+   "name": "サンタルチェラの勝ち名乗り",
+   "description": "サンタルチェラ競馬場 ダート1700mで1着になる",
+   "metric": "trackWins",
+   "trackId": "santalucera_dirt_1700",
+   "tiers": [
+    {
+     "tier": 1,
+     "target": 1,
+     "reward": {
+      "freeCoins": 5
+     }
+    },
+    {
+     "tier": 2,
+     "target": 15,
+     "reward": {
+      "freeCoins": 10
+     }
+    },
+    {
+     "tier": 3,
+     "target": 40,
+     "reward": {
+      "freeCoins": 20
+     }
+    }
+   ]
+  },
+  {
+   "id": "course_bellmoor_turf_1200",
+   "category": "course",
+   "name": "ベルムーアの勝ち名乗り",
+   "description": "ベルムーア競馬場 芝1200m（直線）で1着になる",
+   "metric": "trackWins",
+   "trackId": "bellmoor_turf_1200",
+   "tiers": [
+    {
+     "tier": 1,
+     "target": 1,
+     "reward": {
+      "freeCoins": 5
+     }
+    },
+    {
+     "tier": 2,
+     "target": 15,
+     "reward": {
+      "freeCoins": 10
+     }
+    },
+    {
+     "tier": 3,
+     "target": 40,
+     "reward": {
+      "freeCoins": 20
+     }
+    }
+   ]
+  },
+  {
+   "id": "courses_all",
+   "category": "course",
+   "name": "全場制覇の旅",
+   "description": "いろいろな競馬場・コースで走る（コースはガチャでは出ません）",
+   "metric": "collect",
+   "section": "courses",
+   "tiers": [
+    {
+     "tier": 1,
+     "target": 3,
+     "reward": {
+      "freeCoins": 5
+     }
+    },
+    {
+     "tier": 2,
+     "target": 6,
+     "reward": {
+      "freeCoins": 5
+     }
+    },
+    {
+     "tier": 3,
+     "target": 8,
+     "reward": {
+      "freeCoins": 10
+     }
+    }
+   ]
+  },
+  {
+   "id": "skills",
+   "category": "skill",
+   "name": "固有スキルの発動",
+   "description": "自分の馬の固有スキルがレースで発動する",
+   "metric": "skillsActivated",
+   "tiers": [
+    {
+     "tier": 1,
+     "target": 1,
+     "reward": {
+      "freeCoins": 5
+     }
+    },
+    {
+     "tier": 2,
+     "target": 30,
+     "reward": {
+      "freeCoins": 10
+     }
+    },
+    {
+     "tier": 3,
+     "target": 100,
+     "reward": {
+      "freeCoins": 20
+     }
+    },
+    {
+     "tier": 4,
+     "target": 300,
+     "reward": {
+      "freeCoins": 30
+     }
+    }
+   ]
+  },
+  {
+   "id": "generations",
+   "category": "breeding",
+   "name": "血統をつなぐ",
+   "description": "配合で世代を重ねる（自分の厩舎で生まれた仔の世代）",
+   "metric": "breedingGeneration",
+   "tiers": [
+    {
+     "tier": 1,
+     "target": 1,
+     "reward": {
+      "freeCoins": 10
+     }
+    },
+    {
+     "tier": 2,
+     "target": 2,
+     "reward": {
+      "freeCoins": 20
+     }
+    },
+    {
+     "tier": 3,
+     "target": 3,
+     "reward": {
+      "freeCoins": 30
+     }
+    },
+    {
+     "tier": 4,
+     "target": 5,
+     "reward": {
+      "freeCoins": 40
+     }
+    }
+   ]
+  },
+  {
+   "id": "ta_bronze",
+   "category": "time_attack",
+   "name": "タイムアタック 銅",
+   "description": "タイムアタックで銅メダルのタイムを出す（コースごと）",
+   "metric": "taMedals",
+   "medal": "bronze",
+   "tiers": [
+    {
+     "tier": 1,
+     "target": 1,
+     "reward": {
+      "freeCoins": 10
+     }
+    },
+    {
+     "tier": 2,
+     "target": 4,
+     "reward": {
+      "freeCoins": 20
+     }
+    },
+    {
+     "tier": 3,
+     "target": 8,
+     "reward": {
+      "freeCoins": 30
+     }
+    }
+   ]
+  },
+  {
+   "id": "ta_silver",
+   "category": "time_attack",
+   "name": "タイムアタック 銀",
+   "description": "タイムアタックで銀メダルのタイムを出す（コースごと）",
+   "metric": "taMedals",
+   "medal": "silver",
+   "tiers": [
+    {
+     "tier": 1,
+     "target": 1,
+     "reward": {
+      "freeCoins": 10
+     }
+    },
+    {
+     "tier": 2,
+     "target": 4,
+     "reward": {
+      "freeCoins": 20
+     }
+    },
+    {
+     "tier": 3,
+     "target": 8,
+     "reward": {
+      "freeCoins": 30
+     }
+    }
+   ]
+  },
+  {
+   "id": "ta_gold",
+   "category": "time_attack",
+   "name": "タイムアタック 金",
+   "description": "タイムアタックで金メダルのタイムを出す（コースごと）",
+   "metric": "taMedals",
+   "medal": "gold",
+   "tiers": [
+    {
+     "tier": 1,
+     "target": 1,
+     "reward": {
+      "freeCoins": 20
+     }
+    },
+    {
+     "tier": 2,
+     "target": 4,
+     "reward": {
+      "freeCoins": 30
+     }
+    },
+    {
+     "tier": 3,
+     "target": 8,
+     "reward": {
+      "freeCoins": 40
+     }
+    }
+   ]
+  },
+  {
+   "id": "tournament_podium",
+   "category": "tournament",
+   "name": "大会の表彰台",
+   "description": "大会で3位以内に入る",
+   "metric": "tournamentPodiums",
+   "tiers": [
+    {
+     "tier": 1,
+     "target": 1,
+     "reward": {
+      "freeCoins": 10
+     }
+    },
+    {
+     "tier": 2,
+     "target": 5,
+     "reward": {
+      "freeCoins": 20
+     }
+    },
+    {
+     "tier": 3,
+     "target": 15,
+     "reward": {
+      "freeCoins": 30
+     }
+    }
+   ]
+  },
+  {
+   "id": "tournament_win",
+   "category": "tournament",
+   "name": "大会の覇者",
+   "description": "大会で優勝する",
+   "metric": "tournamentWins",
+   "tiers": [
+    {
+     "tier": 1,
+     "target": 1,
+     "reward": {
+      "freeCoins": 20
+     }
+    },
+    {
+     "tier": 2,
+     "target": 3,
+     "reward": {
+      "freeCoins": 30
+     }
+    },
+    {
+     "tier": 3,
+     "target": 10,
+     "reward": {
+      "freeCoins": 40
+     }
+    }
+   ]
+  },
+  {
+   "id": "stable_likes",
+   "category": "stable",
+   "name": "愛される厩舎",
+   "description": "マイ厩舎に「いいね」をもらう",
+   "metric": "stableLikes",
+   "tiers": [
+    {
+     "tier": 1,
+     "target": 5,
+     "reward": {
+      "freeCoins": 10
+     }
+    },
+    {
+     "tier": 2,
+     "target": 30,
+     "reward": {
+      "freeCoins": 20
+     }
+    },
+    {
+     "tier": 3,
+     "target": 100,
+     "reward": {
+      "freeCoins": 30
+     }
+    },
+    {
+     "tier": 4,
+     "target": 300,
+     "reward": {
+      "freeCoins": 40
+     }
+    }
+   ]
+  },
+  {
+   "id": "team_cheers",
+   "category": "team",
+   "name": "支部の応援団",
+   "description": "支部のフィードでスタンプを送って応援する",
+   "metric": "teamCheers",
+   "tiers": [
+    {
+     "tier": 1,
+     "target": 5,
+     "reward": {
+      "freeCoins": 5
+     }
+    },
+    {
+     "tier": 2,
+     "target": 30,
+     "reward": {
+      "freeCoins": 10
+     }
+    },
+    {
+     "tier": 3,
+     "target": 100,
+     "reward": {
+      "freeCoins": 20
+     }
+    }
+   ]
+  }
+ ]
+}

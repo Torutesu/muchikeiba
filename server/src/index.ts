@@ -6,6 +6,7 @@ import { accountingStoreIndex } from './do/storeIndex.js';
 import { loadMaster } from './domain/master.js';
 import { validateGacha } from './domain/gacha.js';
 import { validateSkills } from './domain/skills.js';
+import { validateCollection } from './domain/collection.js';
 import { DEFAULT_RULESET } from './domain/ruleset.js';
 import { validateItems } from './domain/itemShop.js';
 import { unwrap, type Envelope } from './do/rpc.js';
@@ -94,6 +95,7 @@ validateEvents(baseMaster, baseMaster.events); // REQ-EVENT-001
 validateLeagueAndWeather(baseMaster); // REQ-LEAGUE-* and per-course climate (REQ-TRACK-003)
 validateUx(baseMaster, new Set(collectItemIds(baseMaster))); // REQ-UXS-*: onboarding, missions, experiments, deletion
 validateSkills(baseMaster, DEFAULT_RULESET); // REQ-UXS-050: unknown skills, effects above the ruleset caps, rarity/style fit
+validateCollection(baseMaster); // REQ-COL-* / REQ-ACH-*: free-coin caps, play-only metrics, no comp-gacha sets, title tiers
 
 /** REQ-TEAM-*: team orchestration over TeamDOs, the team directory and the season board in LeaderboardDO. */
 function makeTeamsService(env: Env, master: () => Master, player: (uid: string) => PlayerInvoker): TeamsService {

@@ -217,7 +217,7 @@
 ### 9.4 戦績・称号（TS）
 - REQ-STAT-001 戦績：出走数・勝利・3着内・脚質別・コース別（ベストタイム）・ムチを上手く使った勝利・スタート反応の最良・好スタート数。ランク戦と人間2人以上のフレンド戦で記録（チュートリアルは除く）。
 - REQ-STAT-002 スタート反応・ムチの回数と連打は、確定した入力ログから求める。ゴールtickは検証結果、または合意した端末全員が同じ値を送った時だけ使う。CPUに引き継がれたレースは技術系の記録に数えない。
-- REQ-TITLE-001 称号はマスターデータ（`master/titles.json`）で条件を定義する。
+- REQ-TITLE-001 称号はマスターデータ（`master/titles.json`）で条件を定義する。実績の段（`achievement`）も条件にできる（REQ-ACH-006）。
 - REQ-TITLE-002 条件を満たした称号はレース・シーズン締めの時に解放する（何度評価しても重複しない）。
 - REQ-TITLE-003 解放済みの称号を1つ装備できる。
 
@@ -565,3 +565,22 @@
 - REQ-AD-010 KPI：クライアント `ad_offer_view`（カードを出した、画面ごとに1回）・`ad_start`（SDK の結果）、サーバー `ad_reward`（付与）・`ad_reject`（弾いた理由）。報酬はクライアントのイベントにしない。クエリは `docs/ops/kpi-queries.md`。
 - REQ-AD-011 経済：広告を全部見る無課金の引ける回数 ÷ 無課金 を 1.03〜1.15 に保ち、厩舎手当（E10）とパス（E5）の比より小さくする（E13、`server/test/economy.test.ts`）。
 - REQ-AD-012 支払った人：直近 `payerQuietDays`（30）日に実際の支払い（返金・サンドボックス・0円を除く）がある人には、自分で設定をオンにしない限り出さない。設定でオフにすれば誰でも出さない。広告なしパス（`ad_free_pass`）は作らない（強制広告が無いので消すものが無い、protocol §21.6）。
+
+## 22. 図鑑・実績・称号（TS＋C#、`src/domain/collection.ts`、`contracts/protocol.md` §22、`server/master/collection.json`）
+法務の拘束条件（docs/planning/03「図鑑・実績でコンプガチャを作らない理由」）：有償ガチャで出るものを含む組み合わせをそろえたことへの報酬は作らない（カード合わせ）、課金・購入額・ガチャの回数への報酬は作らない、報酬は無償コインだけで1回 ¥200（総付景品）以下。
+- REQ-COL-001 図鑑 `GET /v1/collection`：テンプレート馬・固有スキル・コース・見た目のアイテムをマスターから全て並べ、それぞれ `obtained`（持っている・持っていた）/ `seen`（確定したレースで同じ場を走った）/ `unknown` と、一覧ごと・全体の数（総数・入手・出会った・未発見・達成率‰）を返す。読み取りだけ。
+- REQ-COL-002 「出会った」は確定したレースの設定からサーバーが決める（`settleRace` の `seen`：CPU の馬のテンプレートと場の全ての固有スキル）。チュートリアル・無効のレースは数えない。クライアントの申告では増えない。
+- REQ-COL-003 表示の段階：`unknown` の馬・スキルは名前・説明・能力を返さず、レア度とシルエットのキー（`collection/silhouette/<templateId>`）だけ。`seen` は名前・説明・絵（`collection/portrait/<templateId>`）、能力は `obtained` だけ。説明文は `collection.json` の `lore`（全て架空）。季節限定の馬は印（ラベル）を出す。
+- REQ-COL-004 持っていた馬・スキルは記録に残す（`collection.owned`、馬が引退しても消えない）。
+- REQ-COL-005 図鑑の達成率・そろえたことには報酬を付けない（`completionRewards: false`、画面にも「そろえても報酬はありません」）。未発見の馬からスカウト画面へのリンク・「あと◯体」の表示は作らない。
+- REQ-ACH-001 実績は `collection.json` の `achievements`（21個・71段）：出走・1着・3着以内・コースごとの1着（全8コース）・走ったコース・固有スキルの発動・配合の世代・タイムアタックの銅/銀/金・大会の3位以内/優勝・マイ厩舎のいいね・支部の応援。段は1〜5、目標は増加。
+- REQ-ACH-002 進み具合はイベントで数え、冪等：レースはレースIDごと（`applyRace`）、大会は1大会1回（`tournamentClose`）、支部のスタンプは保存された投稿・応援の参照ごと（`stampPosted` の `ref`）。固有スキルの発動は結果の報告の任意の `skills`（protocol §4）を、同じハッシュを報告した全員の一覧が一致した時だけ採る（検証に回ったレースは検証と同じハッシュのクライアント）。CPU が代わりに乗ったレースは数えない。配合の世代は持っている馬の血統から計算し、最大値を覚える。
+- REQ-ACH-003 解放：全てのプレイヤーのトランザクションの最後に、届いた段を1回だけ解放する（取り消さない）。KPI `achievement_unlock`（実績ID・カテゴリ・metric・段・進み具合）。削除の予約中は解放しない。
+- REQ-ACH-004 `GET /v1/achievements`：実績ごとの進み具合・次の目標・段（目標・報酬・解放・受け取り・バッジのキー `badge/<id>_<tier>`）・結び付いた称号、合計（段・解放・受け取り・受け取れる数とコイン・全段のコイン）、`blocked`（削除の予約中）。
+- REQ-ACH-005 受け取り：段ごと `POST /v1/achievements/:id/tiers/:tier/claim` と全部 `POST /v1/achievements/claim-all`（どちらも冪等キー必須）。無償コインを台帳に `achievement <id> tier <n>` で付与。2回目は `ALREADY_CLAIMED`、未達は `NOT_ELIGIBLE`、削除の予約中は `DELETION_PENDING`。KPI `achievement_claim`。
+- REQ-ACH-006 称号の一本化：`titles.json` の条件に `achievement`（実績ID・段）を足し、実績の段で解放される称号も従来の称号一覧（REQ-TITLE-*）に入る。`GET /v1/titles` は各行に `source`（record / achievement）と実績・段を付ける。装備は従来の `PUT /v1/player/title`、プロフィール・マイ厩舎の表札に出る。
+- REQ-ACH-007 設定の検証（起動時と各リモート設定の版）：形、`metric` は遊びのものだけ（`purchases`・`yenSpent`・`gachaPulls`・`collectionPercent` などは専用のエラー）、報酬は `{ freeCoins }` だけ・1段 ≤ `caps.maxFreeCoinsPerTier`（50、コード上の上限100 = ¥160）・全段の合計 ≤ `caps.maxTotalFreeCoins`（2,000、コード上5,000）、称号の参照先（実績・段）が存在する、`trackWins` のコース・`collect` のIDが存在する。
+- REQ-ACH-008 コンプガチャの検出：`collect`（そろえたら報酬）の組み合わせに、ガチャのプール（全てのバナー、ステップアップの最終枠を含む）に入っている馬、またはその馬の固有スキルが**1つでも**あれば拒否。見た目のアイテムは売り物なので組み合わせにできない（購入への報酬）。ガチャの検証（`validateGacha`）の中でも実行し、バナーを変えるリモート設定で既存の組み合わせがガチャの対象になった時も拒否する。今の組み合わせは「走ったコース」だけ。
+- REQ-ACH-009 マイ厩舎のトロフィー棚に実績のバッジ（実績ごとの最も高い段、高い順に6つ）を出す（公開コピー `trophies.badges`）。
+- REQ-ACH-010 経済（balance-targets 4.11、E14）：毎日遊ぶ無課金の90日の実績の受け取りは、同じ「出走」に払っていたデイリー「3戦する」の減額（20→18コイン、90日で180）以下。課金する想定・招待・広告の想定は同じレースで同じ額を受け取る（支払いで実績は進まない）。E1〜E13 は Round 10 と同じ範囲。
+- REQ-ACH-011 クライアント：`Muchi.Client` `ApiClient.GetCollectionAsync`・`GetAchievementsAsync`・`ClaimAchievementAsync`・`ClaimAllAchievementsAsync`、`TitleInfo.Source/AchievementId/Tier`、`StableTrophies.Badges`、`AssetKeys.CollectionPortrait/CollectionSilhouette/Badge`、`LockstepClient` の `res.skills`。Unity のゲーム層 `CollectionModel`（タブ、未発見は「？？？」とシルエット、達成率は表示だけ）・`AchievementModel`（受け取りの冪等キーは答えが来るまで保持、まとめて受け取る、削除予約中はボタンなし）・`TitleShowcaseModel`（一本化した称号一覧と装備）。

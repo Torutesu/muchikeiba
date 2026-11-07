@@ -101,6 +101,9 @@ export interface EconomyResult {
   adViews: number;
   adCoins: number;
   adTaAttempts: number;
+  /** REQ-ACH-005: achievement tiers claimed and the free coins they paid. */
+  achievementTiers: number;
+  achievementCoins: number;
   /** Derived. */
   freeCoinsPerActiveDay: number;
   pullsPerMonth: number;
@@ -133,7 +136,7 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
   const k = () => `c:sim:${key++}`;
   const r: EconomyResult = {
     persona: persona.id, days, activeDays: 0, freeCoinsEarned: 0, paidCoinsBought: 0, yenSpent: 0, pulls: 0, ssr: 0, sr: 0,
-    pityExchanges: 0, firstPityDay: null, breedingMaterial: 0, gachaTickets: 0, ticketPulls: 0, firstWinCoins: 0, allowanceCoins: 0, beginnerCoins: 0, beginnerSteps: 0, seasonMissionXp: 0, inviteCoins: 0, inviteTickets: 0, comebackWindows: 0, comebackValue: 0, comebackXp: 0, adViews: 0, adCoins: 0, adTaAttempts: 0, freeCoinsPerActiveDay: 0, pullsPerMonth: 0, ssrPerMonth: 0,
+    pityExchanges: 0, firstPityDay: null, breedingMaterial: 0, gachaTickets: 0, ticketPulls: 0, firstWinCoins: 0, allowanceCoins: 0, beginnerCoins: 0, beginnerSteps: 0, seasonMissionXp: 0, inviteCoins: 0, inviteTickets: 0, comebackWindows: 0, comebackValue: 0, comebackXp: 0, adViews: 0, adCoins: 0, adTaAttempts: 0, achievementTiers: 0, achievementCoins: 0, freeCoinsPerActiveDay: 0, pullsPerMonth: 0, ssrPerMonth: 0,
   };
   await svc.bootstrap(id);
   await svc.setAge(id, 1990, 1, false);
@@ -239,7 +242,11 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
     }
     for (let i = 0; i < persona.racesPerDay; i++) {
       now += 10 * 60_000;
-      const ar = await svc.applyRace(id, { raceId: `sim_${persona.id}_${d}_${i}`, mode: 'ranked', place: place(rng, persona.placeBias), fieldSize: 12, newRating: null, void: false, humans: 4 });
+      // ride details as a confirmed room sends them (stats, wins per course, every other race the horse's skill fires):
+      // the achievements (REQ-ACH-*) count from these, so the sim pays them like a real player earns them
+      const trackId = master.tracks[(d * persona.racesPerDay + i) % master.tracks.length]!.id;
+      const details = { trackId, style: 'senko' as const, finishTick: null, startReactionTicks: null, whips: 0, whipMashed: false, cpuAssisted: false, skillFired: i % 2 === 0 };
+      const ar = await svc.applyRace(id, { raceId: `sim_${persona.id}_${d}_${i}`, mode: 'ranked', place: place(rng, persona.placeBias), fieldSize: 12, newRating: null, void: false, humans: 4, details });
       if ('firstWinBonus' in ar && typeof ar.firstWinBonus === 'number') r.firstWinCoins += ar.firstWinBonus;
       if ('comebackXp' in ar && typeof ar.comebackXp === 'number') r.comebackXp += ar.comebackXp;
     }
@@ -266,6 +273,10 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
         r.seasonMissionXp += (rw as { passXp?: number }).passXp ?? 0;
       }
     }
+    // REQ-ACH-005: every unlocked achievement tier is claimed the day it unlocks (free coins only)
+    const ac = await svc.claimAllAchievements(id, k());
+    r.achievementTiers += ac.claimed.length;
+    r.achievementCoins += ac.freeCoins;
     const pv = await svc.passView(id);
     for (let lvl = 1; lvl <= pv.level; lvl++) {
       for (const track of ['free', 'premium'] as const) {
@@ -350,6 +361,7 @@ export async function simulateAll(master: Master, days = 90, seeds = [1, 2, 3], 
       inviteCoins: avg((x) => x.inviteCoins), inviteTickets: avg((x) => x.inviteTickets),
       comebackWindows: avg((x) => x.comebackWindows), comebackValue: avg((x) => x.comebackValue), comebackXp: avg((x) => x.comebackXp),
       adViews: avg((x) => x.adViews), adCoins: avg((x) => x.adCoins), adTaAttempts: avg((x) => x.adTaAttempts),
+      achievementTiers: avg((x) => x.achievementTiers), achievementCoins: avg((x) => x.achievementCoins),
       freeCoinsPerActiveDay: avg((x) => x.freeCoinsPerActiveDay), pullsPerMonth: avg((x) => x.pullsPerMonth), ssrPerMonth: avg((x) => x.ssrPerMonth),
     };
   }

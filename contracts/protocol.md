@@ -93,7 +93,7 @@ C#（端末・検証サーバー）とTypeScript（Cloudflareサーバー）の�
 | `hello` | `{"t":"hello","raceId":"…","token":"…","lastTick":-1}` | 参加・再接続。`lastTick`は計算済みの最後のtick（初回は-1） |
 | `in` | `{"t":"in","tick":123,"cmd":32}` | 入力。`tick`は宛先tick |
 | `chk` | `{"t":"chk","tick":120,"h":"0123456789abcdef"}` | チェックサム（`tick`は`checksumIntervalTicks`の倍数） |
-| `res` | `{"t":"res","h":"<64hex>","order":[3,0,…],"finishTicks":[1830,1835,…]}` | 結果ハッシュと着順。`finishTicks`は任意（`order`と同じ並び、未完走は-1）。合意した全員が同じ値を送った時だけ戦績のベストタイムに使う。最も速い馬でもゴールできないtickより前の`res`は`err` `RESULT_TOO_EARLY`、2回目以降の`res`は無視 |
+| `res` | `{"t":"res","h":"<64hex>","order":[3,0,…],"finishTicks":[1830,1835,…],"skills":[0,5]}` | 結果ハッシュと着順。`finishTicks`は任意（`order`と同じ並び、未完走は-1）。合意した全員が同じ値を送った時だけ戦績のベストタイムに使う。`skills`は任意（固有スキルが発動した枠、§22.4）。同じく合意した全員が同じ一覧の時だけ実績に使う。最も速い馬でもゴールできないtickより前の`res`は`err` `RESULT_TOO_EARLY`、2回目以降の`res`は無視 |
 | `ping` | `{"t":"ping","c":1730000000000}` | 時刻合わせ |
 
 ### 部屋 → 端末
@@ -671,3 +671,87 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 
 ### 21.6 広告なしパス（`ad_free_pass`）は作らない
 強制広告が無く、広告は自分で選んだ時だけ再生されるので、「広告を消す」商品には消すものが無い（払っても何も変わらない商品は誤認のおそれ）。代わりに、支払った人には既定で広告を出さない（`payerQuietDays` 30日、`pref: on` で自分から見ることはできる）。経済の目標 E13（balance-targets 4.9）も、広告の価値を一番安い有料商品より小さく保つ。
+
+## 22. 図鑑・実績・称号（REQ-COL-001〜005、REQ-ACH-001〜009、`server/src/domain/collection.ts`、C# `Collection.cs`・`Muchi.Game` `CollectionModel`/`AchievementModel`/`TitleShowcaseModel`）
+図鑑は「集めた・出会った記録」を見るだけの画面で、**そろえても何も貰えない**（達成率は数字の表示だけ）。実績は**遊んだこと**（出走・勝利・コース・固有スキルの発動・配合の世代・タイムアタックのメダル・大会・マイ厩舎のいいね・支部の応援）に段を付け、段ごとに**無償コイン**を少し払う。**課金・購入額・ガチャの回数を数える実績は無い**。称号は従来の一覧（§13 `GET /v1/titles`）に一本化し、実績の段で解放される称号もそこに並ぶ（docs/planning/03「図鑑・実績でコンプガチャを作らない理由」）。
+
+### 22.1 マスターデータ（`server/master/collection.json`、起動時と各リモート設定の版で検証）
+| キー | 意味 |
+|---|---|
+| `caps.maxFreeCoinsPerTier` / `caps.maxTotalFreeCoins` | 1段の上限 50 / 全段の合計の上限 2,000（今の合計 **1,235**）。コード上の上限 `COLLECTION_HARD_LIMITS`：1段100（最小パック ¥1.6/コインで ¥160 ≤ 総付景品の ¥200）、合計5,000、5段まで |
+| `lore.horses` / `lore.skills` / `lore.courses` | 図鑑の説明文（全て架空）。テンプレート馬・スキル・コースのIDごと |
+| `achievements[]` | `id`・`category`（race / course / skill / breeding / time_attack / tournament / stable / team）・`name`・`description`・`metric`・`tiers[]`（`tier` 1〜5 の連番、`target` は増加、`reward` は `{ "freeCoins": n }` だけ） |
+
+`metric`（これ以外は拒否。`purchases`・`yenSpent`・`gachaPulls`・`collectionPercent` などは「課金・ガチャへの報酬」として専用のエラー）：
+
+| metric | 数えるもの（どこから） |
+|---|---|
+| `races` / `wins` / `top3` | 出走・1着・3着以内（`stats`、確定したレースだけ。チュートリアルは数えない） |
+| `trackWins`（`trackId`） | そのコースでの1着（`stats.byTrack`） |
+| `collect`（`section`、`ids` 省略時は全部） | その一覧で「入手」したものの数。**`horses`・`skills` は1つでもガチャで出るものを含むと拒否、`cosmetics` は売り物なので拒否**（コンプガチャ・購入への報酬）。今は `courses`（走ったコース）だけ |
+| `skillsActivated` | 自分の馬の固有スキルがレースで発動した回数（§22.4。CPU が代わりに乗った時は数えない） |
+| `breedingGeneration` | 自分の厩舎で配合した仔の最も深い世代（テンプレートの馬 = 0、仔 = 1 + 親の大きい方） |
+| `taMedals`（`medal`: bronze/silver/gold） | タイムアタックのメダル（`progression.timeAttack.milestones` の `_<medal>` で終わるもの） |
+| `tournamentPodiums` / `tournamentWins` | 大会の3位以内・優勝（大会の結果は1大会に1回だけ反映） |
+| `stableLikes` | マイ厩舎がもらった「いいね」（§マイ厩舎の数そのもの） |
+| `teamCheers` | 支部フィードで送ったスタンプ（投稿・新しい応援。同じ投稿・応援は1回だけ） |
+
+称号：`master/titles.json` の `condition: { "kind": "achievement", "achievementId", "tier" }` が実績の段に結び付く（存在しない実績・段は検証で拒否）。今は7つ（全場制覇・スキルの使い手・血統の守り人・時計の支配者・大会の覇者・人気厩舎・応援団長）。
+
+### 22.2 `GET /v1/collection`（要認証）
+```json
+{ "sections": {
+    "horses":   { "total": 27, "obtained": 3, "seen": 9, "unknown": 15, "completionPermille": 111, "entries": [
+      { "id": "t_partner", "state": "obtained", "rarity": "SR", "name": "アイボウ", "style": "sashi", "surface": "turf",
+        "distance": { "minM": 1600, "maxM": 2400 }, "skillId": "sk_sueashi", "lore": "はじめての相棒。…",
+        "stats": { "speed": 600, "stamina": 550, "burst": 650, "guts": 500, "temper": 500 }, "seasonal": null, "art": "collection/portrait/t_partner" },
+      { "id": "t_seiya", "state": "unknown", "rarity": "SSR", "name": null, "style": null, "surface": null, "distance": null,
+        "skillId": null, "lore": null, "stats": null, "seasonal": { "label": "冬季限定" }, "art": "collection/silhouette/t_seiya" } ] },
+    "skills":    { …, "entries": [ { "id", "state", "rarity", "name", "styles", "condition", "effect", "lore" } ] },
+    "courses":   { …, "entries": [ { "id", "state": "obtained|unknown", "name", "surface", "distanceM", "lore", "races", "wins", "bestFinishTick", "timeAttackBestMs" } ] },
+    "cosmetics": { …, "entries": [ { "id", "state": "obtained|unknown", "kind", "name", "lore", "icon" } ] } },
+  "totals": { "total": 63, "obtained": 9, "seen": 12, "unknown": 42, "completionPermille": 142 },
+  "completionRewards": false,
+  "notice": "図鑑の達成率は記録の表示だけです。そろえても報酬はありません。" }
+```
+- `state`：`obtained`（持っている・持っていた。馬は引退しても残る）/ `seen`（確定したレースで同じ場を走った：CPU の馬のテンプレートと、場の全ての馬の固有スキル。§22.4）/ `unknown`。
+- `unknown` の馬・スキルは**名前・説明・能力を返さない**（並び順とレア度とシルエットのキーだけ）。`seen` は名前・説明まで、能力は `obtained` だけ。
+- `completionPermille` = `obtained × 1000 / total`（切り捨て）。`completionRewards` は常に `false`（達成率に報酬を付ける設定は作れない）。
+- 何も書き込まない。
+
+### 22.3 `GET /v1/achievements`・`POST /v1/achievements/:achievementId/tiers/:tier/claim`・`POST /v1/achievements/claim-all`（要認証）
+```json
+{ "achievements": [ { "id": "races", "category": "race", "name": "出走の記録", "description": "…", "metric": "races",
+    "progress": 120, "nextTarget": 300, "tier": 2, "maxTier": 5, "badge": "badge/races_2",
+    "tiers": [ { "tier": 1, "target": 10, "reward": { "freeCoins": 5 }, "unlocked": true, "unlockedAt": 1795…, "claimed": true, "claimable": false, "badge": "badge/races_1" }, … ],
+    "titles": [ { "id": "ach_champion", "name": "大会の覇者", "tier": 1, "unlocked": false, "icon": "title/ach_champion" } ] } ],
+  "blocked": false,
+  "totals": { "tiers": 71, "unlocked": 12, "claimed": 10, "claimable": 2, "claimableCoins": 15, "earnedCoins": 85, "totalCoins": 1235 },
+  "notice": "実績はレースや育成などのプレイで達成します。課金やガチャの回数では達成しません。報酬は無償コインです。" }
+```
+- 段の解放はサーバーが自動で行う（§22.4）。受け取りは段ごと（`…/tiers/:tier/claim`、`Idempotency-Key` 必須）か全部（`claim-all`、同じく必須）。
+  応答：1段 `{ "achievementId", "tier", "reward": { "freeCoins" }, "wallet": { "free", "paid" } }`、全部 `{ "claimed": [ {achievementId, tier, reward} ], "freeCoins", "wallet" }`。
+- エラー：`NOT_FOUND`（実績・段が無い）、`NOT_ELIGIBLE`（まだ届いていない）、`ALREADY_CLAIMED`（409）、`DELETION_PENDING`（削除の予約中。`blocked: true` で `claimable` は全て false）、`BAD_REQUEST`（段が 1〜5 でない）、`IDEMPOTENCY_KEY_REQUIRED`。
+- `GET` は読むだけに見えるが、マスターの変更で届いた段があればここでも解放する（トランザクションの最後の手順、§22.4）。
+- 台帳：`grant` / `free`、理由 `achievement <id> tier <n>`、参照 `ach:<id>:<n>`。
+
+### 22.4 進み具合（イベントで・冪等）
+- **全てのプレイヤーのトランザクションの最後**に `syncCollection` が走り、条件に届いた段を1回だけ解放する（KPI `achievement_unlock`：s1 実績ID・s2 カテゴリ・s3 metric・value 段・count 進み具合）。解放された段は取り消さない。続けて称号を評価する（実績の称号）。削除の予約中は解放しない。
+- 数のほとんどは既存の状態から計算する（`stats`・タイムアタックのメダル・いいね・持っている馬）。状態に無いものだけ、その処理のトランザクションの中で数える：
+  - レースの結果（`applyRace`、レースIDごとに1回だけ）：`RaceResultForPlayer.seen`（`settleRace` がレースの設定から作る：CPU の `cpu_<templateId>` と場の全てのスキルID）と `details.skillFired`。
+  - 大会の結果（`tournamentClose`、1大会に1回）：3位以内・優勝。
+  - 支部のスタンプ（`stampPosted`、参照 `post:<teamId>:<seq>` / `react:<teamId>:<seq>` ごとに1回）。
+  - 配合：持っている馬の血統から世代を計算し、最大値を覚える。
+- **固有スキルの発動**（`skillsActivated`）：クライアントは結果の報告（§4 `res`）に任意の `"skills": [slot…]`（そのレースで固有スキルが発動した枠）を付ける。結果のハッシュには入らない表示用の情報なので、**同じハッシュを報告した全員が同じ一覧を送った時だけ**採る（スキルを持たない枠は除く）。検証に回ったレースでは、検証の結果と同じハッシュを報告したクライアントの一覧を使う（検証サービスの出力は変えない：golden の出力は同じ）。一覧が無い・食い違う時は数えない。
+- 削除：アカウント削除（REQ-UXS-040）で状態ごと消える。予約中は受け取り・解放とも止まり、取り消せば次のトランザクションで届いた段が解放される。マイ厩舎の公開コピーのバッジも削除の手順で消える。
+
+### 22.5 称号・マイ厩舎
+- `GET /v1/titles` の各行に `source`（`record` / `achievement`）、実績の称号は `achievementId`・`tier` が付く。装備は従来どおり `PUT /v1/player/title`（解放済みだけ、`NOT_ELIGIBLE`）。プロフィール・ランキング・マイ厩舎の表札に同じ `titleId` が出る。
+- マイ厩舎の公開コピー（`StableSnapshot.trophies`）に `badges`（実績ごとの最も高い段、高い順に6つまで：`{ achievementId, tier, badge }`）。無い時は項目ごと省く（古いコピーと同じ形）。
+
+### 22.6 アセットキー（`npm run gen:assets` で `contracts/assets.manifest.json` に入る、先読みグループ home）
+| 種類 | キー | 既定 |
+|---|---|---|
+| `collection/portrait` | `collection/portrait/<templateId>`（入手・出会った馬の絵） | `collection/portrait/default` |
+| `collection/silhouette` | `collection/silhouette/<templateId>`（未発見のシルエット） | `collection/silhouette/default` |
+| `badge` | `badge/<achievementId>_<tier>` | `badge/default` |

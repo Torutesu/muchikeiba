@@ -76,6 +76,8 @@
 | `comeback_start` | サーバー（休眠からの復帰で期間が始まった、REQ-CB-002） | 段階 `short`/`mid`/`long` | | | `double9` 休眠したゲーム日数、`double5` そのプレイヤーの何回目の期間か |
 | `comeback_day` | サーバー（復帰ログボの受け取り、REQ-CB-004） | 段階 | | | `double9` 何日目（1〜7） |
 | `comeback_complete` | サーバー（復帰ログボ7日とミッションを全部受け取った、REQ-CB-005） | 段階 | | | `double9` 期間の何日目に完了したか |
+| `achievement_unlock` | サーバー（実績の段に届いた、1段1回、REQ-ACH-003） | 実績ID | カテゴリ（race/course/skill/breeding/time_attack/tournament/stable/team） | metric | `double9` 段、`double5` その時の進み具合 |
+| `achievement_claim` | サーバー（実績の段の無償コインを受け取った、REQ-ACH-005） | 実績ID | カテゴリ | | `double9` 段、`double3` 無償コイン |
 | `screen_view` | クライアント | 画面名 | | | |
 | `client_race_start` | クライアント | モード | | | |
 | `purchase_flow` | クライアント | `open`/`cancel`/`fail`/`store_success` | 商品ID | | |
@@ -498,3 +500,17 @@ LIMIT 50
 - Analytics Engine のデータ保持期間は有限（現時点で約3か月）です。長期の推移はこのクエリ結果を毎月どこかに書き出して残します。
 - サンドボックスとテスト購入は `blob10 = 'sandbox'` で、金額は0円です。売上の計算では除外しています。
 - 関数の対応は [SQL reference](https://developers.cloudflare.com/analytics/analytics-engine/sql-reference/) を参照してください。`countIf`/`sumIf`/`quantileExactWeighted`/`if`/`count(DISTINCT …)`/`FROM` のサブクエリは使えます。`JOIN`/`UNION` は使えません。
+
+## 実績の解放と受け取り（REQ-ACH-003/005、Round 11）
+段ごとの到達者数と、解放から受け取りまでの率（受け取られない段は、画面の導線か報酬の小ささの問題）。
+
+```sql
+SELECT blob8 AS achievement, double9 AS tier,
+       SUM(IF(blob1 = 'achievement_unlock', _sample_interval, 0)) AS unlocked,
+       SUM(IF(blob1 = 'achievement_claim', _sample_interval, 0)) AS claimed
+FROM muchi_kpi
+WHERE blob1 IN ('achievement_unlock', 'achievement_claim') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY achievement, tier
+ORDER BY achievement, tier
+```
+- 実績は課金・ガチャでは進まない（REQ-ACH-007）ので、課金者と無課金者（`blob7`）で解放の速さに差が出たら、遊び方の違いとして読む（支払いの効果ではない）。

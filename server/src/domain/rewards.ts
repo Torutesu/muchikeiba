@@ -112,6 +112,8 @@ export interface RaceResultForPlayer {
   oldRating?: Rating | null;
   /** REQ-EVENT-005: set for event races. */
   eventId?: string;
+  /** REQ-COL-002: what the player raced against (CPU templates, skills in the field), from the race config. */
+  seen?: { templates: string[]; skills: string[] };
 }
 
 /** REQ-RATE-004: apply the race's rating change as a delta, so a newer rating is never overwritten by a stale snapshot. */

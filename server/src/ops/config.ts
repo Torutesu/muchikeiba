@@ -16,6 +16,7 @@ import { AppError } from '../domain/errors.js';
 import { buildBanner, buildPityGroups, gameDaySchedules, rescheduleGacha, splitMasterTrack, type Master, type Progression, type RawBanner } from '../domain/master.js';
 import { validateGacha } from '../domain/gacha.js';
 import { skillProblems } from '../domain/skills.js';
+import { collectionProblems } from '../domain/collection.js';
 import { buildRuleset, DEFAULT_RULESET, type Ruleset } from '../domain/ruleset.js';
 import { trackSchema } from '../domain/schemas.js';
 import { eventProblems } from '../domain/events.js';
@@ -179,6 +180,9 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
   if (master.items) problems.push(...stampsProblems(master)); // REQ-TEAMFEED-002: stamp cosmetics and stamps stay paired
   // REQ-UXS-050: a ruleset override may not lower a skill cap below what the skill master uses
   if (master.skills) problems.push(...skillProblems(master, ruleset));
+  // REQ-ACH-007: achievement caps / metrics / title tiers against this version (tracks, titles); the comp-gacha set
+  // check runs inside validateGacha below with this version's banners
+  problems.push(...collectionProblems(master, undefined, { skipSets: true }));
   if (problems.length === 0) {
     try {
       validateGacha(master); // ppm sums, pools, pity groups, comp-gacha lint (REQ-GACHA-003/008)

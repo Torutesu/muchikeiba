@@ -11,6 +11,8 @@ import { makeStableService } from '../http/stablePorts.js';
 import { loadMaster } from '../domain/master.js';
 import { unwrap, type Envelope } from './rpc.js';
 import { wipePlayerStorage } from './sqlRepo.js';
+import { durableRivalRegistry } from './rivalStore.js';
+import { prevWeekId, weekIdAt } from '../domain/rival.js';
 
 type Rpc = Record<string, (...a: unknown[]) => Promise<Envelope<unknown>>>;
 const stub = (ns: DurableObjectNamespace, name: string) => ns.get(ns.idFromName(name)) as unknown as Rpc;
@@ -70,6 +72,14 @@ export function deletionPortsFromEnv(env: Env, ctx: DurableObjectState, svc: Pla
         },
       },
     } : {}),
+    // REQ-RIVAL-011: this week's and last week's registries (the pairing of this week reads last week's candidates)
+    rival: {
+      forget: async (uid, now) => {
+        const reg = durableRivalRegistry(env.LEADERBOARD);
+        const cur = weekIdAt(loadMaster(), now);
+        for (const w of [cur, prevWeekId(cur)]) await reg.forget(w, uid);
+      },
+    },
     finalize: async (uid) => {
       const r = await svc.deletionFinalize(uid);
       // the state keeps only the recent ledger; the full audit trail lives in this object's ledger table

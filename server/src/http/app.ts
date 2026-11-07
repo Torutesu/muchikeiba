@@ -33,6 +33,7 @@ import { InviteService, type InviteDirectory, type InvitePlayers } from '../doma
 import { SsvError, verifyAdMobCallback, type SsvKeySource } from '../ads/ssv.js';
 import { LOCALES, resolveLocale, type Locale } from '../i18n/locale.js';
 import { catalogFor, localize, type Catalog } from '../i18n/catalog.js';
+import type { RivalService } from '../domain/rivalService.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -60,7 +61,8 @@ export type PlayerMethod =
   | 'comeback' | 'comebackClaimLogin' | 'comebackClaimMission' | 'comebackWelcomed' | 'whatsNew' | 'whatsNewSeen'
   | 'ads' | 'setAdPref' | 'adStart' | 'adSession' | 'adReward'
   | 'collection' | 'achievements' | 'claimAchievement' | 'claimAllAchievements'
-  | 'training' | 'trainingStart' | 'trainingFinish' | 'trainingUseItem';
+  | 'training' | 'trainingStart' | 'trainingFinish' | 'trainingUseItem'
+  | 'rivalPeek' | 'rivalSync' | 'rivalSetOptOut' | 'rivalBlock' | 'rivalChallengeCheck' | 'rivalChallengeReceive' | 'rivalSeen' | 'rivalPush';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -118,6 +120,8 @@ export interface AppContext {
   stable?: StableService;
   /** REQ-INV-*: friend invite codes (makeInviteService). Absent → the routes answer NOT_FOUND. */
   invite?: InviteService;
+  /** REQ-RIVAL-*: weekly rival (domain/rivalService.ts). Absent → the routes answer NOT_FOUND. */
+  rival?: RivalService;
   clock?: () => number;
   paidBalance(): Promise<unknown>;
   /**
@@ -198,6 +202,14 @@ const tournaments = (c: AppContext) => {
 const stable = (c: AppContext) => {
   if (!c.stable) throw new AppError('NOT_FOUND', 'stables are not available');
   return c.stable;
+};
+const rival = (c: AppContext) => {
+  if (!c.rival) throw new AppError('NOT_FOUND', 'rivals are not available');
+  return c.rival;
+};
+const weekIdParam = (s: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) throw new AppError('BAD_REQUEST', 'bad week id');
+  return s;
 };
 const invite = (c: AppContext) => {
   if (!c.invite || !c.master.progression.invite) throw new AppError('NOT_FOUND', 'invites are not available');
@@ -718,6 +730,16 @@ export const routes: Route[] = [
     return c.player(u).invoke('trainingUseItem', u, p.itemId!, b.horseId, idem(r));
   } },
   // admin
+  // weekly rival (REQ-RIVAL-*, contracts/protocol.md §28)
+  { method: 'GET', path: '/v1/rival', auth: 'player', handler: async (_r, _p, c, u) => (c.rival ? c.rival.view(u) : { enabled: false }) },
+  { method: 'PUT', path: '/v1/rival/settings', auth: 'player', handler: async (r, _p, c, u) => rival(c).setOptOut(u, (await body(r, z.object({ optOut: z.boolean() }).strict())).optOut) },
+  { method: 'POST', path: '/v1/rival/block', auth: 'player', handler: async (_r, _p, c, u) => rival(c).block(u) },
+  { method: 'POST', path: '/v1/rival/challenge', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ passphrase: z.string().min(1).max(64) }).strict());
+    if (!(await c.match.friendMember(b.passphrase, u))) throw new AppError('NOT_ELIGIBLE', 'not a member of this room');
+    return rival(c).challenge(u, b.passphrase);
+  } },
+  { method: 'POST', path: '/v1/rival/results/:weekId/seen', auth: 'player', handler: async (_r, p, c, u) => rival(c).seen(u, weekIdParam(p.weekId!)) },
   { method: 'GET', path: '/v1/admin/paid-balance', auth: 'admin', handler: async (_r, _p, c) => c.paidBalance() },
   { method: 'GET', path: '/v1/admin/replays/:raceId', auth: 'admin', handler: async (_r, p, c) => c.race.replay(p.raceId!) },
 ];

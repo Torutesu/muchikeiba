@@ -43,6 +43,9 @@ import { activeConfig } from './ops/activeConfig.js';
 import type { ResolvedConfig } from './ops/config.js';
 import { shardedDirectory, shardedInviteDirectory, shardedStableDirectory, shardedStudDirectory } from './do/directory.js';
 import { makeStableService } from './http/stablePorts.js';
+import { RivalService, rivalPlayersFrom } from './domain/rivalService.js';
+import { durableRivalRegistry } from './do/rivalStore.js';
+import { weekIdAt } from './domain/rival.js';
 import { boardKey, indexKey, type RolloverState } from './domain/leaderboard.js';
 import { validateLeagueAndWeather } from './domain/league.js';
 import { runScheduled } from './domain/scheduled.js';
@@ -398,6 +401,7 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
     stable: makeStableService(player, shardedStableDirectory(env.DIRECTORY), () => master),
     invite: makeInviteService(player, shardedInviteDirectory(env.DIRECTORY), shardedDirectory(env.DIRECTORY), () => master), // REQ-INV-*
     teams: makeTeamsService(env, () => master, player),
+    rival: new RivalService(() => master, rivalPlayersFrom(player), durableRivalRegistry(env.LEADERBOARD)), // REQ-RIVAL-*
     events: new EventsService(() => master, eventPlayersFrom(player), {
       enqueue: (eventId, p, e) => call(mm().eventEnqueue!(eventId, p, e)),
       cancel: (eventId, p) => call(mm().eventCancel!(eventId, p)),
@@ -502,6 +506,8 @@ export default {
       leagueStep: async (seasonId) => unwrap(await (stub(env.LEADERBOARD, `lb:${seasonId}`).leagueStep!(seasonId, now))) as { status: string },
       tournamentsStep: (t) => tournamentsStep(env, t),
       tournamentClosingStep: (t) => tournamentClosingStep(env, t),
+      // REQ-RIVAL-003: pair the current week early (the first GET /v1/rival of the week would do it otherwise)
+      rivalStep: async (t) => durableRivalRegistry(env.LEADERBOARD).ensurePaired(weekIdAt((await activeConfig(env)).master, t)),
       purgeRetained: async (t) => (env.ACCOUNTING.get(env.ACCOUNTING.idFromName('global')) as unknown as { purgeRetained(n: number): Promise<{ purged: number }> }).purgeRetained(t),
     });
     console.log('scheduled', event.cron, done.join(' '));

@@ -97,6 +97,7 @@ export function conditionMet(m: Master, s: PlayerState, c: TitleCondition): bool
     case 'rating': return s.rating.rankedRaces > 0 && s.rating.r >= c.value;
     case 'bondLevel': return maxBondLevel(m, s) >= c.value;
     case 'achievement': return tierReached(s, c.achievementId, c.tier); // REQ-ACH-006
+    case 'rivalWeeksWon': return (s.rival?.weeksWon ?? 0) >= c.value; // REQ-RIVAL-007
   }
 }
 

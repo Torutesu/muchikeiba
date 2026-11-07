@@ -6,6 +6,7 @@
  */
 import { adsProblems } from './ads.js';
 import { trainingProblems } from './training.js';
+import { rivalProblems } from './rival.js';
 import { z } from 'zod';
 import { AppError } from './errors.js';
 import { createHorseFromTemplate, validateName } from './horses.js';
@@ -46,7 +47,7 @@ export interface ExperimentDef { id: string; active: boolean; buckets: { id: str
 /** §4.3 feature keys (the client maps each to a home tile / screen). */
 export const UNLOCK_KEYS = [
   'race', 'partner', 'scout', 'stable', 'missions', 'login_bonus', 'shop', 'season_pass', 'bond', 'season',
-  'breeding', 'friends', 'friend_rooms', 'teams', 'spectate', 'time_attack', 'events', 'tournaments', 'my_stable', 'stud', 'training',
+  'breeding', 'friends', 'friend_rooms', 'teams', 'spectate', 'time_attack', 'events', 'tournaments', 'my_stable', 'stud', 'training', 'rival',
 ] as const;
 export type UnlockKey = typeof UNLOCK_KEYS[number];
 
@@ -428,7 +429,7 @@ export function firstRaceOf(m: Master, s: PlayerState): { cpuFillAfterMs: number
 /** Every onboarding-related check on a master (boot: index.ts; remote config: ops/config.ts). */
 export function uxProblems(m: Master, knownItems: Set<string>): string[] {
   return [...onboardingProblems(m.progression, m, knownItems), ...nudgeProblems(m.progression.nudges), ...accountDeletionProblems(m.progression.accountDeletion), ...dayRolloverProblems(m.progression.dayRollover),
-    ...inviteProblems(m), ...comebackProblems(m), ...changelogProblems(m.changelog), ...adsProblems(m.progression.ads), ...trainingProblems(m)]; // REQ-INV-*, REQ-CB-*, REQ-AD-002, REQ-TRAIN-012
+    ...inviteProblems(m), ...comebackProblems(m), ...changelogProblems(m.changelog), ...adsProblems(m.progression.ads), ...trainingProblems(m), ...rivalProblems(m)]; // REQ-INV-*, REQ-CB-*, REQ-AD-002, REQ-TRAIN-012, REQ-RIVAL-012
 }
 
 export function validateUx(m: Master, knownItems: Set<string>): void {

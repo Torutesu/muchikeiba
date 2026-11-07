@@ -25,7 +25,8 @@ import { adSessionView, adsView, applyAdCallback, setAdPref, startAd, type AdCal
 import { toRaceHorse } from './raceConfig.js';
 import { paidBalanceYen, invariantsHold } from './wallet.js';
 import type { PaidBalanceSnapshot } from './accounting.js';
-import { dayRule, jstDateKey } from './time.js';
+import { dayRule, gameDayKey, jstDateKey } from './time.js';
+const gameDayKeyOf = (m: Master, now: number) => gameDayKey(now, dayRule(m));
 import type { Locale } from '../i18n/locale.js';
 import { enqueuePush, ensurePush, nextPushWake, pushPrefsView, registerDevice, setPushPrefs, settlePushes, takeDuePushes, unregisterDevice, type DeliveryOutcome, type DevicePlatform, type PrefsPatch } from './push.js';
 import { admitClientBatch, clientToKpi, ensureKpi, isPayer, kpiRecord, type ClientBatch, type KpiEvent, type KpiRecord } from './kpi.js';
@@ -64,6 +65,10 @@ import {
   claimComebackLogin, claimComebackMission, comebackView, markComebackWelcomed, markWhatsNewSeen, nextComebackWake, noteActivity, runDueComebackPush, whatsNew,
 } from './comeback.js';
 import { finishTraining, startTraining, trainingDelta, trainingTick, trainingView, useTrainingItem } from './training.js';
+import {
+  ensureRival, noteRivalRace, noteRivalTa, rivalBlock, rivalChallengeCheck, rivalChallengeReceive, rivalOutbound, rivalSeen, rivalSetOptOut, rivalSync,
+  rivalUpdateOf, rivalView, rivalWithdrawn, weekIdAt, weeksToSync, type RegistryWeek, type RivalUpdate,
+} from './rival.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
 export interface PlayerRepo {
@@ -127,6 +132,11 @@ export interface PlayerServiceDeps {
   onStable?: (playerId: string, snap: StableSnapshot | null) => void | Promise<void>;
   /** REQ-TEAMFEED-004: a member won or placed in a ranked / tournament race (the Durable Object tells the team feed). */
   onTeamFeed?: (p: { teamId: string; playerId: string; displayName: string; race: FeedRace }) => void | Promise<void>;
+  /**
+   * REQ-RIVAL-002/005/011: what the week's rival registry must learn from a saved transaction (candidate entry, withdrawal,
+   * a pair I dissolved, new weekly time-attack bests). Best effort: RivalService re-sends what matters on the next sync.
+   */
+  onRival?: (u: RivalUpdate) => void | Promise<void>;
 }
 
 const standingKey = (s: PlayerState) => JSON.stringify([s.season.id, s.season.classId, s.season.points, s.season.races, Math.round(s.rating.r), s.profile.displayName, s.profile.titleId]);
@@ -182,6 +192,7 @@ export class PlayerService {
     const profileBefore = profileKey(draft);
     const wakeBefore = nextWake(draft);
     const stableBefore = this.d.onStable ? stableSnapshotKey(this.d.master, draft, now) : '';
+    const rivalBefore = this.d.onRival ? rivalOutbound(this.d.master, draft, now) : null;
     const kpi: KpiRecord[] = [];
     const emit: Emit = (e) => { kpi.push(kpiRecord(draft, now, e)); };
     const result = fn(draft, now, emit);
@@ -206,6 +217,10 @@ export class PlayerService {
     if (kpi.length > 0 && this.d.onKpi) await this.d.onKpi(id, kpi);
     if (pushProfile) await this.d.onProfile!(publicProfile(draft, this.d.master.bannedSilks));
     if (this.d.onStable && stableSnapshotKey(this.d.master, draft, now) !== stableBefore) await this.d.onStable(id, stableSnapshot(this.d.master, draft, now));
+    if (this.d.onRival) {
+      const u = rivalUpdateOf(id, rivalBefore, rivalOutbound(this.d.master, draft, now));
+      if (u) { try { await this.d.onRival(u); } catch (e) { console.error('rival registry update failed', id, (e as Error).message); } }
+    }
     if (!deleting && this.d.onSeasonEntry && draft.season.races > 0 && standingKey(draft) !== standingBefore) {
       await this.d.onSeasonEntry({
         playerId: id, seasonId: draft.season.id, classId: draft.season.classId, points: draft.season.points, rating: Math.round(draft.rating.r),
@@ -627,6 +642,55 @@ export class PlayerService {
     return this.tx(id, key, (s, now) => ({ ...useTrainingItem(this.d.master, s, itemId, horseId, now, key), training: trainingDelta(this.d.master, s, now, horseId) }));
   }
 
+  // ---------------------------------------------------------------- ライバル weekly rival (REQ-RIVAL-*, rival.ts; orchestrated by RivalService)
+  /** What the sync needs: the unsettled weeks to ask the registry about, and what to re-send (read only). */
+  async rivalPeek(id: string) {
+    const s = await this.load(id);
+    const now = this.d.clock();
+    const cur = weekIdAt(this.d.master, now);
+    const w = s.rival?.weeks.find((x) => x.weekId === cur);
+    return {
+      weeks: weeksToSync(this.d.master, s, now), currentWeek: cur, withdrawn: rivalWithdrawn(s, now), optOut: !!s.rival?.optOut,
+      dissolveMine: w?.assignment?.kind === 'human' && w.assignment.dissolvedBy === 'me', ta: { ...(w?.ta ?? {}) },
+    };
+  }
+  /** REQ-RIVAL-006: apply the registry's answers (server-side only), settle ended weeks, return GET /v1/rival. */
+  rivalSync(id: string, data: Record<string, RegistryWeek | null>) {
+    return this.tx(id, null, (s, now, emit) => { rivalSync(this.d.master, s, now, data, emit); return rivalView(this.d.master, s, now); });
+  }
+  rivalSetOptOut(id: string, optOut: boolean) {
+    return this.tx(id, null, (s, now, emit) => {
+      const was = !!s.rival?.optOut;
+      const r = rivalSetOptOut(this.d.master, s, optOut);
+      if (was !== optOut) emit({ name: 'rival_opt', s1: optOut ? 'out' : 'in' });
+      return { ...r, view: rivalView(this.d.master, s, now) };
+    });
+  }
+  rivalBlock(id: string) { return this.tx(id, null, (s, now) => rivalBlock(this.d.master, s, now)); }
+  rivalChallengeCheck(id: string) { return this.tx(id, null, (s, now) => ({ rivalId: rivalChallengeCheck(this.d.master, s, now), displayName: s.profile.displayName })); }
+  async rivalChallengeReceive(id: string, fromId: string, passphrase: string, fromName?: string) {
+    if (await this.wiped(id)) throw new AppError('NOT_ELIGIBLE', 'not your rival this week');
+    return this.tx(id, null, (s, now) => {
+      const r = rivalChallengeReceive(this.d.master, s, fromId, passphrase, now);
+      enqueuePush(this.d.master, s, 'room_invite', { name: fromName ?? 'ライバル' }, now);
+      return r;
+    });
+  }
+  rivalSeen(id: string, weekId: string) { return this.tx(id, null, (s) => rivalSeen(s, weekId)); }
+  /** REQ-RIVAL-013: 「ライバルが記録を更新」 — at most once per game day, inside the push daily cap and preferences. */
+  async rivalPush(id: string, byName: string, course: string) {
+    if (await this.wiped(id)) return { status: 'skipped' as const, reason: 'deleted' as const };
+    return this.tx(id, null, (s, now) => {
+      const r = ensureRival(s);
+      if (r.optOut) return { status: 'skipped' as const, reason: 'opted_out' as const };
+      const day = gameDayKeyOf(this.d.master, now);
+      if (r.pushDay && r.pushDay >= day) return { status: 'skipped' as const, reason: 'already_today' as const };
+      const out = enqueuePush(this.d.master, s, 'rival_record', { name: byName, course }, now);
+      if (out.status === 'queued') r.pushDay = day;
+      return out;
+    });
+  }
+
   async claimPass(id: string, track: 'free' | 'premium', level: number, idemKey: string | null) {
     return this.tx(id, this.requireKey(idemKey), (s, now) => claimPass(this.d.master, s, track, level, now));
   }
@@ -648,6 +712,7 @@ export class PlayerService {
       if (applied[r.raceId] !== undefined) return { duplicate: true as const, event: null };
       applied[r.raceId] = now;
       const base0 = applyRaceResult(this.d.master, s, r, now);
+      noteRivalRace(this.d.master, s, r, now, emit); // REQ-RIVAL-004: head to head (ranked) / challenge (friend)
       // REQ-COL-002 / REQ-ACH-002: what the race showed the 図鑑, a fired skill, and the tiers it unlocked (with titles)
       noteRaceCollection(this.d.master, s, r);
       const achievements = syncCollection(this.d.master, s, now, emit);
@@ -1005,6 +1070,7 @@ export class PlayerService {
       const counted = s.timeAttack?.sessions.find((x) => x.id === sessionId)?.result ?? null;
       const r = recordResult(this.d.master, s, this.d.master.progression.timeAttack, sessionId, out, claimedHash, now);
       if (!counted && 'finished' in r && r.finished) countOnboarding(s, 'ta_finish');
+      if (!counted && 'finished' in r && r.finished && r.timeMs !== null) noteRivalTa(this.d.master, s, r.trackId, r.timeMs, now); // REQ-RIVAL-005
       return r;
     });
   }

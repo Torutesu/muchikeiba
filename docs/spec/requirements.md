@@ -599,7 +599,7 @@
 - REQ-COL-004 持っていた馬・スキルは記録に残す（`collection.owned`、馬が引退しても消えない）。
 - REQ-COL-005 図鑑の達成率・そろえたことには報酬を付けない（`completionRewards: false`、画面にも「そろえても報酬はありません」）。未発見の馬からスカウト画面へのリンク・「あと◯体」の表示は作らない。
 - REQ-ACH-001 実績は `collection.json` の `achievements`（21個・71段）：出走・1着・3着以内・コースごとの1着（全8コース）・走ったコース・固有スキルの発動・配合の世代・タイムアタックの銅/銀/金・大会の3位以内/優勝・マイ厩舎のいいね・支部の応援。段は1〜5、目標は増加。
-- REQ-ACH-002 進み具合はイベントで数え、冪等：レースはレースIDごと（`applyRace`）、大会は1大会1回（`tournamentClose`）、支部のスタンプは保存された投稿・応援の参照ごと（`stampPosted` の `ref`）。固有スキルの発動は結果の報告の任意の `skills`（protocol §4）を、同じハッシュを報告した全員の一覧が一致した時だけ採る（検証に回ったレースは検証と同じハッシュのクライアント）。CPU が代わりに乗ったレースは数えない。配合の世代は持っている馬の血統から計算し、最大値を覚える。
+- REQ-ACH-002 進み具合はイベントで数え、冪等：レースはレースIDごと（`applyRace`）、大会は1大会1回（`tournamentClose`）、支部のスタンプは保存された投稿・応援の参照ごと（`stampPosted` の `ref`）。固有スキルの発動は結果の報告の任意の `skills`（protocol §4）を、同じハッシュを報告した2人以上の一覧が一致した時だけ採る（1台の報告だけでは採らない）。検証に回ったレースは検証サービスの再シミュレーションの `skillsFired`（protocol §8）を使う。CPU が代わりに乗ったレースは数えない。配合の世代は持っている馬の血統から計算し、最大値を覚える。
 - REQ-ACH-003 解放：全てのプレイヤーのトランザクションの最後に、届いた段を1回だけ解放する（取り消さない）。KPI `achievement_unlock`（実績ID・カテゴリ・metric・段・進み具合）。削除の予約中は解放しない。
 - REQ-ACH-004 `GET /v1/achievements`：実績ごとの進み具合・次の目標・段（目標・報酬・解放・受け取り・バッジのキー `badge/<id>_<tier>`）・結び付いた称号、合計（段・解放・受け取り・受け取れる数とコイン・全段のコイン）、`blocked`（削除の予約中）。
 - REQ-ACH-005 受け取り：段ごと `POST /v1/achievements/:id/tiers/:tier/claim` と全部 `POST /v1/achievements/claim-all`（どちらも冪等キー必須）。無償コインを台帳に `achievement <id> tier <n>` で付与。2回目は `ALREADY_CLAIMED`、未達は `NOT_ELIGIBLE`、削除の予約中は `DELETION_PENDING`。KPI `achievement_claim`。

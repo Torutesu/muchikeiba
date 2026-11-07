@@ -50,8 +50,9 @@ export interface FinalOutcome {
   /** Finish ticks in `order` (verifier output, or identical reports of all agreeing clients). Optional. */
   finishTicks?: number[];
   /**
-   * REQ-ACH-002: slots whose unique skill fired, when every agreeing reporter sent the same list (skills are not part of
-   * the result hash, so a lone dissenting list is not trusted). Absent = unknown (credits nothing).
+   * REQ-ACH-002: slots whose unique skill fired — the verifier's own re-simulation when it ran, else the list that at
+   * least two agreeing reporters sent identically (skills are not part of the result hash, so one client alone could
+   * claim anything). Absent = unknown (credits nothing).
    */
   skillFired?: number[];
 }
@@ -397,8 +398,8 @@ export class RaceRoomCore {
     if (!out) this._final = { status: 'void', order: [], hash: '', via: 'none', suspects: [] };
     else {
       this._final = { status: 'confirmed', order: out.order, hash: out.resultHash, via: 'verifier', suspects: [...this.results.entries()].filter(([, r]) => r.h !== out.resultHash).map(([s]) => s), finishTicks: out.finishTicks };
-      // the verifier does not report skills; the clients that agree with its hash ran the same race
-      const sk = agreedSkills(this.config, [...this.results.values()].filter((r) => r.h === out.resultHash));
+      // the verifier's re-simulation is authoritative; an older verifier without the list falls back to the agreeing clients
+      const sk = out.skillsFired ? skilledSlots(this.config, out.skillsFired) : agreedSkills(this.config, [...this.results.values()].filter((r) => r.h === out.resultHash));
       if (sk) this._final.skillFired = sk;
     }
     this._phase = 'final';
@@ -446,10 +447,19 @@ function agreedFinishTicks(agreeing: ReportedResult[], n: number): number[] | nu
   return agreeing.every((r) => r.finishTicks && r.finishTicks.length === n && r.finishTicks.every((v, i) => v === first[i])) ? [...first] : null;
 }
 
-/** REQ-ACH-002: the skill list every agreeing reporter sent (only slots whose horse has a skill), else null. */
+/** Distinct slots whose horse has a unique skill, ascending. */
+function skilledSlots(config: RaceStartConfig, xs: number[]): number[] {
+  return [...new Set(xs)].filter((x) => config.entrants.some((e) => e.slot === x && e.horse.skill)).sort((a, b) => a - b);
+}
+
+/**
+ * REQ-ACH-002: the skill list every agreeing reporter sent (only slots whose horse has a skill), else null. Needs at least
+ * two agreeing reporters: the list is outside the result hash, so a lone client (a solo friend race, or the only human
+ * of a verified race) could otherwise credit its own skill on every race (QA R11).
+ */
 function agreedSkills(config: RaceStartConfig, agreeing: ReportedResult[]): number[] | null {
-  if (agreeing.length === 0 || agreeing.some((r) => !r.skills)) return null;
-  const norm = (xs: number[]) => [...new Set(xs)].filter((x) => config.entrants.some((e) => e.slot === x && e.horse.skill)).sort((a, b) => a - b);
+  if (agreeing.length < 2 || agreeing.some((r) => !r.skills)) return null;
+  const norm = (xs: number[]) => skilledSlots(config, xs);
   const first = norm(agreeing[0]!.skills!);
   return agreeing.every((r) => { const n = norm(r.skills!); return n.length === first.length && n.every((v, i) => v === first[i]); }) ? first : null;
 }

@@ -202,7 +202,7 @@ if (args.Length >= 1 && args[0] == "serve")
         using var reader = new StreamReader(req.Body);
         string body = await reader.ReadToEndAsync();
         if (body.Length > VerifyService.MaxBodyBytes) return Results.Text("{\"error\":\"body too large\"}", "application/json", statusCode: 413);
-        var (status, json) = VerifyService.Verify(body);
+        var (status, json) = VerifyService.Verify(body, withSkills: true);
         return Results.Text(json, "application/json", statusCode: status);
     });
     app.Run();

@@ -156,6 +156,8 @@ export const verifierOutputSchema = z
     /** Q16.16 fraction of the finish tick per place, -1 = did not finish (optional for older verifiers). */
     finishFracs: z.array(int.min(-1).max(65535)).optional(),
     checksums: z.record(z.string().regex(/^\d+$/), hex16),
+    /** REQ-ACH-002: slots whose unique skill fired in the re-simulation (optional for older verifiers). */
+    skillsFired: z.array(int.min(0).max(11)).max(12).optional(),
   })
   .strict()
   .refine((o) => o.order.length === o.finishTicks.length, 'order/finishTicks length mismatch')

@@ -688,9 +688,11 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 | GET | `/v1/admin/players/lookup?inviteCode=` | viewer | → `{playerId, inviteCode}`（形式違いは400、該当なしは404） |
 | GET | `/v1/admin/players/:playerId` | viewer | → `{state, integrity, flags: [{raw, kind, group, detail}], compensations}`。`state` に `exists`・`accountDeleted`・`deletion: {status, requestedAt, deleteAt, steps, attempts, retryAt}\|null`・`referral: {invitedBy, invitees, installs}\|null` |
 | GET | `/v1/admin/compensations?status=&playerId=&limit=` | viewer | → `{requests: CompensationRequest[], threshold: {freeCoins, itemQty}, hardCap}` |
-| POST | `/v1/admin/compensations` | operator | `{playerId, grant: {freeCoins?, items?: [{itemId, qty}]}, opKey, reason}` → `{request, created, payment: {before, after}\|null}`。閾値以下は `status: executed`、超えると `pending` |
+| POST | `/v1/admin/compensations` | operator | `{playerId, grant: {freeCoins?, items?: [{itemId, qty}]}, opKey, reason}` → `{request, created, payment: {before, after}\|null}`。閾値以下は `status: executed`、超えると `pending`。閾値以下でも、そのプレイヤーへの1人で決めた付与（直接配布・一括配布・閾値以下の補填）の直近24時間の合計が閾値を超えるなら `pending`（`needsApproval: true`、`payment: null`。分けて2人目を省けない、QA R11） |
 | POST | `/v1/admin/compensations/:id/approve` | admin | `{note?, reason}` → `{request, payment}`。依頼者本人は403、期限切れ・却下済み・付与済みは409 |
 | POST | `/v1/admin/compensations/:id/reject` | operator | `{note?, reason}` → `{request}` |
+
+`POST /v1/admin/players/:playerId/grants`・`POST /v1/admin/grants/bulk` も同じ24時間の合計に数え、超える分は `403 FORBIDDEN`（`two-person approval required: …`、一括配布は `failed[]` に入る）。失敗した書き込みの監査ログの対象は、パスに `:id` があれば `<種類>:<id>`（例 `compensation:comp_3`）。
 
 `CompensationRequest`：`{id, opKey, playerId, grant, reason, requestedBy, requestedRole, requestedAt, expiresAt, needsApproval, status: pending|approved|executed|rejected|expired, decidedBy, decidedAt, decisionNote, executedAt, error}`。
 

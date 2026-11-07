@@ -139,6 +139,8 @@ export interface PlayerState {
   itemDebt?: Record<string, number>;
   /** Flags for customer support (e.g. `monthly_limit_breach:2026-11`). */
   supportFlags?: string[];
+  /** QA R11 (REQ-OPS-026): single-person support grants of the last 24 h (the budget that splitting cannot get around). */
+  supportGrants?: { at: number; freeCoins: number; items: Record<string, number> }[];
   /** Store subscriptions (auto-renewing season pass), keyed by original transaction id. Optional for older states. */
   storeSubscriptions?: Record<string, { platform: PurchaseRecord['platform']; status: string; expiresAt: number | null; updatedAt: number }>;
   profile: { displayName: string; titleId: string | null; lastSeenAt: number; lastPushedAt: number; silks?: Silks };

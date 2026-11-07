@@ -1,14 +1,14 @@
 import { z } from 'zod';
 import { AppError } from '../domain/errors.js';
 import { BASE_VERSION_ID, bundleDiff, groupProblems, resolveBundle, type ConfigBundle, type ConfigVersion, type Activation, type ActiveConfigInfo, type DryRunOp, type DryRunResult } from '../ops/config.js';
-import { compPaymentKey, needsApproval, COMP_APPROVAL_THRESHOLD, COMP_HARD_CAP, type CompensationQuery, type CompensationRequest, type CompensationStatus } from '../ops/compensation.js';
+import { compPaymentKey, needsApproval, NEEDS_SECOND_PERSON, COMP_APPROVAL_THRESHOLD, COMP_HARD_CAP, type CompensationQuery, type CompensationRequest, type CompensationStatus } from '../ops/compensation.js';
 import type { Master } from '../domain/master.js';
 import { bannerStatus, carryOverRule, findBanner, finalPityGroup, oddsDisclosure, pityLabel } from '../domain/gacha.js';
 import { eventStatus } from '../domain/events.js';
 import { dayRule, gameDayKey } from '../domain/time.js';
 import { normalizeInviteCode } from '../domain/invite.js';
 import { requireRole, type AdminPrincipal, type AdminRole, type AuditEntry, type AuditInput, type AuditQuery } from '../ops/admin.js';
-import { checkGrantLimits, grantSchema, itemIdSchema, type Grant } from '../ops/support.js';
+import { checkGrantLimits, grantSchema, itemIdSchema, TWO_PERSON_REQUIRED, type Grant } from '../ops/support.js';
 import type { ModerationChange, ModerationStatus, RaceIntegrityReport, RaceReport } from '../ops/integrity.js';
 import type { LeaderboardApi, PlayerInvoker } from './app.js';
 import { BASE_BANNED_SILKS, bannedMatch, bannedSilksListSchema, bannedSilksProblems, combinedBanned, type BannedSilksList } from '../domain/bannedSilks.js';
@@ -168,9 +168,14 @@ const COMP_STATUSES: CompensationStatus[] = ['pending', 'approved', 'executed', 
 async function payCompensation(ctx: AdminContext, req: CompensationRequest, now: number) {
   const actor = req.needsApproval ? `${req.requestedBy}, approved by ${req.decidedBy}` : req.requestedBy;
   try {
-    const payment = await ctx.player(req.playerId).invoke('adminGrant', req.playerId, req.grant, req.reason, actor, compPaymentKey(req.opKey));
+    // a request nobody else approved counts against the player's 24 h single-person budget (QA R11: no split grants)
+    const payment = await ctx.player(req.playerId).invoke('adminGrant', req.playerId, req.grant, req.reason, actor, compPaymentKey(req.opKey), !req.needsApproval);
     return { request: await comps(ctx).executed(req.id, null, now), payment };
   } catch (e) {
+    if (!req.needsApproval && e instanceof AppError && e.code === 'FORBIDDEN' && e.message.startsWith(TWO_PERSON_REQUIRED)) {
+      // over the budget: the request waits for a second admin instead of failing
+      return { request: await comps(ctx).executed(req.id, NEEDS_SECOND_PERSON, now), payment: null };
+    }
     await comps(ctx).executed(req.id, e instanceof AppError ? e.code : 'INTERNAL', now);
     throw e;
   }
@@ -303,7 +308,7 @@ export const adminRoutes: AdminRoute[] = [
     const b = parse(z.object({ grant: grantSchema, opKey: opKeySchema, reason: z.string() }), r.body);
     checkGrantLimits(b.grant, r.principal.role);
     if (needsApproval(b.grant)) throw new AppError('FORBIDDEN', `over ${COMP_APPROVAL_THRESHOLD.freeCoins} coins / ${COMP_APPROVAL_THRESHOLD.itemQty} per item needs two-person approval: POST /v1/admin/compensations`);
-    const out = await r.ctx.player(id).invoke('adminGrant', id, b.grant, r.reason!, r.principal.id, b.opKey);
+    const out = await r.ctx.player(id).invoke('adminGrant', id, b.grant, r.reason!, r.principal.id, b.opKey, true);
     return { result: out, target: `player:${id}`, before: out.before, after: out.after };
   } },
   { method: 'POST', path: '/v1/admin/grants/bulk', role: 'operator', write: true, action: 'player.grant.bulk', handler: async (r) => {
@@ -329,7 +334,7 @@ export const adminRoutes: AdminRoute[] = [
       try {
         // per-recipient key: re-running the same bulk call never grants twice. '/' cannot appear in a client
         // opKey (opKeySchema), so bulk keys never collide with single-grant keys (review r5 #5).
-        await r.ctx.player(id).invoke('adminGrant', id, b.grant as Grant, r.reason!, r.principal.id, bulkOpKey(b.opKey, id));
+        await r.ctx.player(id).invoke('adminGrant', id, b.grant as Grant, r.reason!, r.principal.id, bulkOpKey(b.opKey, id), true);
         results.push({ playerId: id, ok: true });
       } catch (e) {
         results.push({ playerId: id, ok: false, error: e instanceof AppError ? e.code : 'INTERNAL' });
@@ -371,6 +376,7 @@ export const adminRoutes: AdminRoute[] = [
     const target = `player:${b.playerId}`;
     if (request.status !== 'approved') return { result: { request, created, payment: null }, target, after: { compensation: request.id, status: request.status, grant: request.grant } };
     const paid = await payCompensation(r.ctx, request, r.now);
+    if (!paid.payment) return { result: { ...paid, created }, target, after: { compensation: request.id, status: paid.request.status, grant: request.grant, escalated: 'single-person budget' } };
     return { result: { ...paid, created }, target, before: paid.payment.before, after: { compensation: request.id, status: paid.request.status, ...paid.payment.after } };
   } },
   { method: 'POST', path: '/v1/admin/compensations/:id/approve', role: 'admin', write: true, action: 'compensation.approve', handler: async (r) => {
@@ -378,6 +384,7 @@ export const adminRoutes: AdminRoute[] = [
     const prev = await comps(r.ctx).get(r.params.id!, r.now);
     const approved = await comps(r.ctx).approve(r.params.id!, r.principal, b.note || r.reason!, r.now);
     const paid = await payCompensation(r.ctx, approved, r.now);
+    if (!paid.payment) return { result: paid, target: `player:${approved.playerId}`, before: { compensation: prev.id, status: prev.status }, after: { compensation: prev.id, status: paid.request.status, escalated: 'single-person budget' } };
     return { result: paid, target: `player:${approved.playerId}`, before: { compensation: prev.id, status: prev.status, requestedBy: prev.requestedBy, ...paid.payment.before }, after: { compensation: prev.id, status: paid.request.status, approvedBy: r.principal.id, ...paid.payment.after } };
   } },
   { method: 'POST', path: '/v1/admin/compensations/:id/reject', role: 'operator', write: true, action: 'compensation.reject', handler: async (r) => {
@@ -576,7 +583,7 @@ export async function handleAdmin(req: Request, ctx: AdminContext): Promise<Resp
       try {
         await ctx.ops.audit({
           actor: principal.id, role: principal.role, action: route.action, method: req.method, path: url.pathname,
-          target: params.playerId ? `player:${params.playerId}` : null, reason, before: null, after: null, result: 'error', error: err?.code ?? 'INTERNAL',
+          target: params.playerId ? `player:${params.playerId}` : params.id ? `${route.action.split('.')[0]}:${params.id}` : null, reason, before: null, after: null, result: 'error', error: err?.code ?? 'INTERNAL',
         }, now);
       } catch (ae) {
         console.error('audit write failed', ae);

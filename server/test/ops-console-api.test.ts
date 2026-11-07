@@ -234,6 +234,8 @@ describe('compensation with the two-person rule (REQ-OPS-026)', () => {
     const self = await call('admin', 'POST', `/v1/admin/compensations/${own.body.request.id}/approve`, { reason: 'self approve' });
     expect(self.status).toBe(403);
     expect(self.body.error.message).toMatch(/two-person/);
+    // QA R11: the refused self-approval is audited against the request it tried to approve
+    expect(ops.audits.rows.find((r) => r.action === 'compensation.approve' && r.result === 'error' && r.actor === 'admin')).toMatchObject({ actor: 'admin', error: 'FORBIDDEN', target: `compensation:${own.body.request.id}` });
 
     const ok = await call('admin', 'POST', `/v1/admin/compensations/${id}/approve`, { reason: 'checked the incident', note: 'INC-42' });
     expect(ok.status).toBe(200);
@@ -275,6 +277,30 @@ describe('compensation with the two-person rule (REQ-OPS-026)', () => {
   it('bulk grants are capped per recipient at the approval threshold', async () => {
     const { call } = await setup();
     expect((await call('admin', 'POST', '/v1/admin/grants/bulk', { grant: { freeCoins: 10_001 }, opKey: 'bulk-big-01', reason: 'too much', playerIds: ['a'] })).status).toBe(403);
+  });
+
+  it('QA R11: splitting a large grant into small ones does not skip the second person (24 h budget per player)', async () => {
+    const { call, svc, setNow, ops } = await setup();
+    // two direct grants under the threshold each, over it together
+    expect((await call('operator', 'POST', '/v1/admin/players/p1/grants', { grant: { freeCoins: 6_000 }, opKey: 'split-direct-1', reason: 'outage part 1' })).status).toBe(200);
+    const second = await call('operator', 'POST', '/v1/admin/players/p1/grants', { grant: { freeCoins: 6_000 }, opKey: 'split-direct-2', reason: 'outage part 2' });
+    expect(second.status).toBe(403);
+    expect(second.body.error.message).toMatch(/two-person approval/);
+    expect((await call('operator', 'POST', '/v1/admin/grants/bulk', { grant: { freeCoins: 6_000 }, opKey: 'split-bulk-01', reason: 'outage part 3', playerIds: ['p1'] })).body).toMatchObject({ granted: 0, failed: [{ playerId: 'p1', error: 'FORBIDDEN' }] });
+    expect((await svc.view('p1')).wallet.free).toBe(6_000);
+    // a small compensation over the remaining budget waits for a different admin instead of being paid
+    const comp = await call('operator', 'POST', '/v1/admin/compensations', { playerId: 'p1', grant: { freeCoins: 6_000 }, opKey: 'split-comp-01', reason: 'outage part 4' });
+    expect(comp.status).toBe(200);
+    expect(comp.body.request).toMatchObject({ status: 'pending', needsApproval: true });
+    expect((await svc.view('p1')).wallet.free).toBe(6_000);
+    const ok = await call('admin', 'POST', `/v1/admin/compensations/${comp.body.request.id}/approve`, { reason: 'checked: one incident' });
+    expect(ok.body.request.status).toBe('executed');
+    expect((await svc.view('p1')).wallet.free).toBe(12_000);
+    // items count per item too; other players have their own budget; the window rolls over
+    expect((await call('operator', 'POST', '/v1/admin/players/p2/grants', { grant: { freeCoins: 10_000 }, opKey: 'other-player-1', reason: 'outage' })).status).toBe(200);
+    setNow(NOW + 24 * 3600 * 1000 + 1);
+    expect((await call('operator', 'POST', '/v1/admin/players/p1/grants', { grant: { freeCoins: 6_000 }, opKey: 'split-direct-3', reason: 'next day' })).status).toBe(200);
+    expect(ops.audits.rows.some((r) => r.action === 'player.grant' && r.result === 'error' && r.error === 'FORBIDDEN')).toBe(true);
   });
 });
 

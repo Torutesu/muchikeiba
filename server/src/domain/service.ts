@@ -4,7 +4,7 @@ import { grantReward } from './items.js';
 
 const TOURNAMENT_HISTORY_KEEP = 50;
 import { migratePlayer, moderationOf, newPlayer, playerView, type PlayerState, type PurchaseRecord } from './player.js';
-import { setModeration, supportCorrectAge, supportGrant, supportResetName, supportSettleDebt, supportView, type Grant } from '../ops/support.js';
+import { GRANT_LIMITS, setModeration, supportCorrectAge, supportGrant, supportResetName, supportSettleDebt, supportView, type Grant } from '../ops/support.js';
 import { equipTitle, evaluateTitles, publicProfile, setDisplayName, type PublicProfile } from './stats.js';
 import { achievementsView, claimAchievement, claimAllAchievements, collectionView, noteCheer, noteRaceCollection, noteTournamentResult, syncCollection } from './collection.js';
 import { closeSeason } from './season.js';
@@ -912,8 +912,9 @@ export class PlayerService {
       return r;
     });
   }
-  adminGrant(id: string, grant: Grant, reason: string, actor: string, opKey: string) {
-    return this.adminOnce(id, `grant:${opKey}`, (s, now) => supportGrant(s, grant, reason, actor, `admin:${opKey}`, now));
+  /** `singlePerson`: nobody else approved this grant, so it counts against the player's 24 h budget (QA R11, REQ-OPS-026). */
+  adminGrant(id: string, grant: Grant, reason: string, actor: string, opKey: string, singlePerson = false) {
+    return this.adminOnce(id, `grant:${opKey}`, (s, now) => supportGrant(s, grant, reason, actor, `admin:${opKey}`, now, singlePerson ? GRANT_LIMITS.operator : undefined));
   }
   adminSettleDebt(id: string, coins: number, items: Record<string, number>, reason: string, actor: string, opKey: string) {
     return this.adminOnce(id, `settle:${opKey}`, (s, now) => supportSettleDebt(s, coins, items, reason, actor, `admin:${opKey}`, now));

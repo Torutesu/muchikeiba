@@ -33,6 +33,8 @@ export interface CompensationRepo {
 }
 
 export const compPaymentKey = (opKey: string) => `comp/${opKey}`;
+/** `executed()` outcome: the single-person budget refused the payment; the request needs a second admin. */
+export const NEEDS_SECOND_PERSON = 'NEEDS_SECOND_PERSON';
 
 /** Over the threshold → two-person approval. */
 export function needsApproval(g: Grant): boolean {
@@ -107,11 +109,19 @@ export class CompensationStore {
     return next;
   }
 
-  /** Records the payment outcome of an approved request. */
+  /**
+   * Records the payment outcome of an approved request. `NEEDS_SECOND_PERSON`: a request under the threshold that the
+   * player's 24 h single-person budget refused (split grants, QA R11) goes back to pending and waits for another admin.
+   */
   executed(id: string, error: string | null, now: number): CompensationRequest {
     const r = this.repo.get(id);
     if (!r) throw new AppError('NOT_FOUND', `compensation ${id}`);
     if (r.status !== 'approved') return r;
+    if (error === NEEDS_SECOND_PERSON && !r.needsApproval) {
+      const back: CompensationRequest = { ...r, needsApproval: true, status: 'pending', decidedBy: null, decidedAt: null, decisionNote: null, error: null };
+      this.repo.put(back);
+      return withExpiry(back, now);
+    }
     const next: CompensationRequest = error ? { ...r, error } : { ...r, status: 'executed', executedAt: now, error: null };
     this.repo.put(next);
     return next;

@@ -93,7 +93,7 @@ C#（端末・検証サーバー）とTypeScript（Cloudflareサーバー）の�
 | `hello` | `{"t":"hello","raceId":"…","token":"…","lastTick":-1}` | 参加・再接続。`lastTick`は計算済みの最後のtick（初回は-1） |
 | `in` | `{"t":"in","tick":123,"cmd":32}` | 入力。`tick`は宛先tick |
 | `chk` | `{"t":"chk","tick":120,"h":"0123456789abcdef"}` | チェックサム（`tick`は`checksumIntervalTicks`の倍数） |
-| `res` | `{"t":"res","h":"<64hex>","order":[3,0,…],"finishTicks":[1830,1835,…],"skills":[0,5]}` | 結果ハッシュと着順。`finishTicks`は任意（`order`と同じ並び、未完走は-1）。合意した全員が同じ値を送った時だけ戦績のベストタイムに使う。`skills`は任意（固有スキルが発動した枠、§24.4）。合意した2人以上が同じ一覧の時だけ実績に使う（検証に回ったレースは検証サービスの `skillsFired`）。最も速い馬でもゴールできないtickより前の`res`は`err` `RESULT_TOO_EARLY`、2回目以降の`res`は無視 |
+| `res` | `{"t":"res","h":"<64hex>","order":[3,0,…],"finishTicks":[1830,1835,…],"skills":[0,5],"assist":"whip"}` | 結果ハッシュと着順。`finishTicks`は任意（`order`と同じ並び、未完走は-1）。合意した全員が同じ値を送った時だけ戦績のベストタイムに使う。`skills`は任意（固有スキルが発動した枠、§24.4）。合意した2人以上が同じ一覧の時だけ実績に使う（検証に回ったレースは検証サービスの `skillsFired`）。`assist`は任意（`"whip"`/`"full"`、自分の枠のかんたん操作、§27。KPIだけに使い誰にも送らない）。最も速い馬でもゴールできないtickより前の`res`は`err` `RESULT_TOO_EARLY`、2回目以降の`res`は無視 |
 | `ping` | `{"t":"ping","c":1730000000000}` | 時刻合わせ |
 
 ### 部屋 → 端末
@@ -907,3 +907,55 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 - タップは `BeginMiniGame(now)` からの ms で、サーバーが受け付ける形（間隔・回数・範囲）のものだけを記録する。画面の◎○×は `TrainingScorer.Judge`、合計は `TrainingScorer.Score`（サーバーと同じ）。
 - start / finish は応答が来るまで同じ冪等キーを使う（タイムアウト後の再送で回数を2回使わない）。読み込んだ時に開いたセッションがあれば、ミニゲームなしで仕上げる（時間が経っているため）。
 - 画面に `TrainingModel.RulesText`（ランク戦は上限にそろえる・疲れはレースに影響しない・伸びは受け継がれない）を出す。調教の画面からショップへの導線は作らない。
+
+## 27. かんたん操作（easy controls、REQ-ASSIST-001〜012、`server/src/domain/assist.ts`、C# `InputAssist.cs`（`InputAssistant`・`AssistLevels`）・`Assist.cs`・`Muchi.Game.AssistModel`）
+操作が苦手なプレイヤー向けの任意の補助（docs/planning/06 REQ-UXU-030、P2）。**補助はクライアントの中だけで動き、プレイヤーが送るのと同じ入力バイト（§3 の Cmd）を作るだけ**。エンジン・ルールセット・検証器・結果ハッシュ・リプレイの形式は変わらない（ゴールデンも同じ）。
+
+| レベル | 線の値 | 何をするか | プレイヤーの操作 |
+|---|---|---|---|
+| オフ（既定） | `off` | 何もしない | 全部自分 |
+| ムチだけおまかせ | `whip` | 最後の直線でムチを間隔をあけて打つ | スタート・手綱・進路は自分。発走後の自分のムチは無視（無駄打ちを防ぐ） |
+| ぜんぶおまかせ | `full` | スタート（ゲートが開いて2tick後）・スタミナを見た手綱・遅い馬の後ろから外へ出す進路・ムチ | 無視（補助と取り合わない） |
+
+### 27.1 決定論と入力の経路（REQ-ASSIST-002）
+- `InputAssistant.Decide(sim)` はクライアントが持っているレースの状態（`RaceSim`）だけを読む。乱数・時計は使わない。1tickに1回だけ決める（毎フレーム呼んでよい）。
+- オフライン（`OfflineRace.Assistant`）：補助のコマンドはプレイヤーの入力と合わせてから記録される＝ `RecordedInputs` に普通の入力として残る（タイムアタックはそのまま送れる。サーバーは今までどおり再シミュレーションで確かめる）。
+- オンライン（`RaceSession.Assistant`）：確定した tick が進むたびに補助のコマンドを普通の `in`（§4）で送る。部屋は入力遅延を足すので、指で押した時と同じく少し遅れて効く。補助は送った手綱の向き・最後のムチの tick を自分で覚え、届く前の自分のコマンドを状態から読み直さない。
+- 補助の作り方（定数、`InputAssistant`）：スタート `StartReactionTicks` 2、ムチの間隔 = max(`whipEffectTicks`, `whipDiminishWindowTicks`) + 6 tick、残りのムチが最後に打ち終わる地点より 60m 手前から（スパート区間の中だけ）、手綱は「スタミナ‰ − 180 < 残り距離‰」または折り合いが悪い・掛かっている時（スパート区間では引かない）、進路は8tickごとに前の遅い馬（スパート区間では前の馬すべて）を外→内の順でかわす。風よけは探さない。値を変えたら R11（balance-targets §2.3）を測り直す。
+
+### 27.2 公平性の決まり（REQ-ASSIST-005〜007）
+| 項目 | 決めたこと |
+|---|---|
+| ランク戦 | **使ってよい**。補助は上手な手動操作より弱く作り、テストで確かめる（R11：勝率比 < 1.0、同じ能力の一騎打ちで上手い人に勝つのは5割未満、何もしない人よりはっきり上）。課金で買えるものではない。 |
+| 印 | 乗り手が自分の `res` に `assist: "whip" \| "full"`（任意）を付ける。部屋は**その乗り手の分だけ**覚え（`FinalOutcome.assisted`）、精算で `RaceDetails.assist` に入れ、KPI `race_assisted` にだけ使う。`final` やスペクテーター・相手に送るメッセージ、リプレイのログには入らない（相手には見せない）。自己申告だが報酬・着順・レートには一切効かないので検証は要らない。 |
+| チュートリアル | **使わない**。`AssistLevels.AllowedIn(Tutorial)` は false で、`OfflineRace` も `RaceSession` もチュートリアルでは補助を無視する。REQ-UXS-004（2発以上で勝ち・0〜1発は僅差の2着・3回目から勝ち）は補助オフの前提のまま。設定に出すのは FTUE が終わってから、提案はオンラインのレースの結果からだけ出る（＝最初の勝利の後）。 |
+| タイムアタック・フレンド・イベント・大会 | 使ってよい（同じ入力の経路なので記録・検証は変わらない）。 |
+
+### 27.3 `GET /v1/player/assist`・`PUT /v1/player/assist`・`POST /v1/player/assist/prompt-seen`（要認証）
+```json
+{ "level": "off", "promptDue": false, "lastPlaceStreak": 0, "promptShown": false, "levels": ["off", "whip", "full"],
+  "rules": { "ranked": "allowed", "cappedBelowSkilled": true, "shownToOpponents": false, "tutorial": "off" } }
+```
+- `GET /v1/player`（bootstrap も）にも同じ形で `assist` が入る。読み取りは状態を作らない。
+- **PUT** `{ "level": "off" | "whip" | "full", "source"?: "settings" | "prompt" }`（他のキーは 400、`source` の既定は `settings`）→ 上の形。同じレベルを送り直しても何も変わらない（冪等キー不要）。`source: "prompt"` は提案シートが出たことも記録する。
+- **prompt-seen** → 上の形。提案が出る条件を満たしている時だけ1回記録する（条件の前に呼んでも何も起きない＝早く呼んで提案を消すことはできない）。
+- 端末はオフラインの間、最後に選んだレベルを端末に残し、オフラインのレースに使う（`AssistModel.KeyLevel`）。
+
+### 27.4 一度だけの提案（REQ-ASSIST-010）
+- 部屋で精算されたレース（ランク戦・フレンド・イベント・大会。無効・チュートリアル・タイムアタック・1頭立ては数えない）で**最下位（`place == fieldSize`）が3回続いたら** `promptDue = true`。最下位以外で連続は0に戻る。`applyRace` のレースごとの重複防止に乗るので、精算の再送で二重に数えない。
+- 補助がオンの時・アカウント削除の手続き中は出さない。出したら（`prompt-seen` か `source: "prompt"` の PUT）二度と出さない。
+- 画面：結果画面からホームへ戻る時のシート。急かさない（タイマー・「今だけ」・強調色の押し付けなし）。「ムチだけおまかせ」「ぜんぶおまかせ」「今はいい」を同じ大きさで並べ、「いつでも設定で戻せます」と公平性の一文を出す。
+
+### 27.5 KPI
+| イベント | 送り手 | s1 | s2 | s3 | 数値 |
+|---|---|---|---|---|---|
+| `assist_enable` | サーバー（PUT でオンにした・レベルを変えた） | `whip`/`full` | `settings`/`prompt` | 前のレベル | `value` その時の最下位の連続、`isFirst` 初めてオンにした |
+| `assist_disable` | サーバー（PUT でオフにした） | 前のレベル | `settings`/`prompt` | | |
+| `assist_prompt_view` | サーバー（提案シートが出た、1回だけ） | | | | `value` 最下位の連続 |
+| `race_assisted` | サーバー（補助ありで精算されたレース） | `whip`/`full` | モード | | `double4` 着順、`double5` 頭数 |
+| `client_race_start` | クライアント（既存） | モード | 補助のレベル（オフは空） | | |
+クエリは `docs/ops/kpi-queries.md`「かんたん操作」。
+
+### 27.6 クライアント
+- `Muchi.Client`：`InputAssistant`（`Decide`・`Apply`・`FilterPlayer`）、`AssistLevel`・`AssistLevels`（`Wire`・`Parse`・`AllowedIn`・`HudLabel`）、`OfflineRace.Assistant`／`EffectiveAssist`、`RaceSession.Assistant`／`EffectiveAssist`、`LockstepClient.AssistLevel`（`res.assist`）、`ApiClient.GetAssistAsync`・`SetAssistAsync`・`MarkAssistPromptSeenAsync`、`PlayerView.Assist`、`Analytics.RaceStart(at, mode, assist)`。
+- `Muchi.Game`：`AssistModel`（3つの選択肢と説明、`ShouldShowPrompt(inFtue)`、`Prompt()`、`SetAsync`、`MarkPromptShownAsync`、`Attach(driver, level)`、`RidingLevel`）、`GameBackend.AssistLevel`（練習・ランク戦の作成時に付ける。チュートリアルには付けない）、`HudSnapshot.Assist`／`AssistLabel`（「かんたん操作 ON」）／`WhipAuto`／`SteeringAuto`。

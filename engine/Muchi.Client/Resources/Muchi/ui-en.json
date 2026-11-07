@@ -540,6 +540,22 @@
   "ウッド": "Woodchip",
   "プール": "Pool",
   "併せ馬": "Paired Workout",
-  "りんごのおやつ": "Apple Treat"
+  "りんごのおやつ": "Apple Treat",
+  "_assist": "---- easy controls (InputAssistant / AssistModel / HUD; REQ-ASSIST-*)",
+  "かんたん操作": "Easy Controls",
+  "かんたん操作 ON": "Easy Controls ON",
+  "オフ": "Off",
+  "ムチだけおまかせ": "Auto Whip",
+  "ぜんぶおまかせ": "Full Auto",
+  "自分で全部操作します": "You ride everything yourself",
+  "ムチのタイミングだけ自動。スタート・手綱・進路は自分で": "Only the whip timing is automatic. You start, rein and steer",
+  "スタート・手綱・進路・ムチを自動で。上手な操作よりは控えめです": "Start, rein, steering and whip are automatic. It rides more modestly than a skilled player",
+  "ランク戦でも使えます。上手な操作より強くはなりません。相手には表示されません。": "Allowed in ranked races. It never rides better than skilled play. Opponents are not shown that you use it.",
+  "はじめてのレースでは使えません": "Not available in your first race",
+  "かんたん操作を試してみませんか？": "Want to try Easy Controls?",
+  "ムチのタイミングや手綱をおまかせできます。いつでも設定で戻せます。": "Let the game time the whip and handle the rein. You can switch back any time in Settings.",
+  "今はいい": "Not now",
+  "かんたん操作を変更しました": "Easy Controls updated",
+  "かんたん操作の変更はオンラインで保存されます": "Your Easy Controls choice is saved when you are online"
  }
 }

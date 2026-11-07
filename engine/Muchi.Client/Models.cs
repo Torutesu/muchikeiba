@@ -255,6 +255,8 @@ namespace Muchi.Client
         public ExperimentsView Experiments;
         /// <summary>REQ-UXS-040: account deletion status.</summary>
         public DeletionStatus Deletion;
+        /// <summary>REQ-ASSIST-008: かんたん操作 setting and the one-time suggestion (never null; Off when the server sent none).</summary>
+        public AssistSettings Assist = new AssistSettings();
         public int Rating, RatingDeviation, RankedRaces;
         public string SeasonId, ClassId;
         public int SeasonPoints;
@@ -285,6 +287,7 @@ namespace Muchi.Client
                 SeasonId = J.Str(s, "id"), ClassId = J.Str(s, "classId"), SeasonPoints = J.Int(s, "points"),
                 DisplayName = J.Str(pr, "displayName"), TitleId = J.Str(pr, "titleId"), Silks = Silks.Parse(J.Opt(pr, "silks")) ?? new Silks(),
                 Equipment = Equipment.Parse(J.Opt(o, "equipment")),
+                Assist = AssistSettings.Parse(J.Opt(o, "assist")),
             };
         }
     }

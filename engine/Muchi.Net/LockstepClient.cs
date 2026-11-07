@@ -76,6 +76,12 @@ namespace Muchi.Net
         /// <summary>Checksums we computed (tick → hex), for diagnostics/tests.</summary>
         public readonly SortedDictionary<int, string> SentChecksums = new SortedDictionary<int, string>();
 
+        /// <summary>
+        /// かんたん操作 (REQ-ASSIST-007): "whip" | "full" when the player's input assistant rode this race, else null.
+        /// Sent only in our own `res` (KPI only, outside the result hash); never part of what the room relays.
+        /// </summary>
+        public string AssistLevel { get; set; }
+
         public event Action<LockstepClient> RaceStarted;
         public event Action<LockstepClient, int> TicksAdvanced;
         public event Action<LockstepClient, FinalMessage> RaceFinal;
@@ -234,6 +240,8 @@ namespace Muchi.Net
                 var sk = JsonNode.Arr();
                 for (int slot = 0; slot < Sim.EntrantCount; slot++) if (Sim.GetHorse(slot).SkillUsed) sk.Add(JsonNode.Num(slot));
                 o.Set("skills", sk);
+                // optional (protocol §27, REQ-ASSIST-007): our own assist level, KPI only
+                if (AssistLevel == "whip" || AssistLevel == "full") o.Set("assist", AssistLevel);
                 _transport.Send(o.ToString());
             }
         }

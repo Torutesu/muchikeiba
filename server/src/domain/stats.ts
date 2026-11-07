@@ -24,6 +24,8 @@ export interface RaceDetails {
   cpuAssisted: boolean;
   /** REQ-ACH-002: the rider's unique skill fired (agreeing client reports; absent = unknown). */
   skillFired?: boolean;
+  /** REQ-ASSIST-007: かんたん操作 rode this race (the rider's own `res.assist`; KPI only, never shown to others). */
+  assist?: 'whip' | 'full';
 }
 
 export function raceDetailsFor(config: RaceStartConfig, log: ReplayLog, slot: number, finishTick: number | null): RaceDetails {

@@ -33,6 +33,7 @@ import { InviteService, type InviteDirectory, type InvitePlayers } from '../doma
 import { SsvError, verifyAdMobCallback, type SsvKeySource } from '../ads/ssv.js';
 import { LOCALES, resolveLocale, type Locale } from '../i18n/locale.js';
 import { catalogFor, localize, type Catalog } from '../i18n/catalog.js';
+import { ASSIST_LEVELS, ASSIST_SOURCES } from '../domain/assist.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -60,7 +61,8 @@ export type PlayerMethod =
   | 'comeback' | 'comebackClaimLogin' | 'comebackClaimMission' | 'comebackWelcomed' | 'whatsNew' | 'whatsNewSeen'
   | 'ads' | 'setAdPref' | 'adStart' | 'adSession' | 'adReward'
   | 'collection' | 'achievements' | 'claimAchievement' | 'claimAllAchievements'
-  | 'training' | 'trainingStart' | 'trainingFinish' | 'trainingUseItem';
+  | 'training' | 'trainingStart' | 'trainingFinish' | 'trainingUseItem'
+  | 'assist' | 'setAssist' | 'assistPromptSeen';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -292,6 +294,13 @@ export const routes: Route[] = [
     return c.player(u).invoke('requestDeletion', u, b.data.confirmToken ?? q ?? null);
   } },
   { method: 'POST', path: '/v1/player/deletion/cancel', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('cancelDeletion', u) },
+  // REQ-ASSIST-008/010: かんたん操作 (easy controls) setting — default off; also in GET /v1/player as `assist`
+  { method: 'GET', path: '/v1/player/assist', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('assist', u) },
+  { method: 'PUT', path: '/v1/player/assist', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ level: z.enum(ASSIST_LEVELS), source: z.enum(ASSIST_SOURCES).optional() }).strict());
+    return c.player(u).invoke('setAssist', u, b.level, b.source ?? 'settings');
+  } },
+  { method: 'POST', path: '/v1/player/assist/prompt-seen', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('assistPromptSeen', u) },
   { method: 'PUT', path: '/v1/player/age', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ birthYear: z.number().int(), birthMonth: z.number().int().min(1).max(12), guardianConsent: z.boolean() }));
     return c.player(u).invoke('setAge', u, b.birthYear, b.birthMonth, b.guardianConsent);

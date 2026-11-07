@@ -18,11 +18,19 @@ import { startTimeAttack } from '../../../server/src/domain/timeAttack.js';
 import { createHorseFromTemplate } from '../../../server/src/domain/horses.js';
 import tracksJson from '../../../server/master/tracks.json';
 import { FakeStoreVerifier } from '../../../server/src/domain/purchase.js';
+import { raceFieldSeen } from '../../../server/src/domain/collection.js';
+import type { RaceStartConfig } from '../../../server/src/domain/schemas.js';
 import { MemoryTeams, TeamsService, type TeamPlayers } from '../../../server/src/domain/teamService.js';
 import type { ReportReason } from '../../../server/src/domain/teamFeed.js';
 import { InviteService, MemoryInviteDirectory, deliverInviteOutbox, displayInviteCode, inviteRewardYen, normalizeInviteCode } from '../../../server/src/domain/invite.js';
 import type { Directory } from '../../../server/src/domain/friends.js';
 import { signAdMobQuery, StaticKeySource, verifyAdMobCallback } from '../../../server/src/ads/ssv.js';
+// REQ-L10N-*: the server's English tables (master/locale-en.json + i18n/en.ts), the client's (ui-en.json) and the
+// prototype's own screen texts (proto-en.json), in one catalog with the server's template rules (katakana names romanized)
+import { compileCatalogWith, translateText, romanizeName } from '../../../server/src/i18n/catalog.js';
+import { CODE_EN } from '../../../server/src/i18n/en.js';
+import uiEn from '../../../engine/Muchi.Client/Resources/Muchi/ui-en.json';
+import protoEn from './proto-en.json';
 
 const trackNames = new Map((tracksJson as { tracks: { id: string; name?: string }[] }).tracks.map((t) => [t.id, t.name ?? t.id]));
 
@@ -62,7 +70,7 @@ const teamPlayers: TeamPlayers = {
   prepareJoin: (u, t) => svc.teamPrepareJoin(u, t), commitJoin: (u, t) => svc.teamCommitJoin(u, t), abortJoin: (u, t) => svc.teamAbortJoin(u, t),
   addOutgoing: (u, t) => svc.teamAddOutgoing(u, t), removeOutgoing: (u, t) => svc.teamRemoveOutgoing(u, t), left: (u, t, c) => svc.teamLeft(u, t, c),
   state: (u) => svc.teamState(u), push: (u, id, v) => svc.queuePush(u, id, v),
-  stampCatalog: (u) => svc.stampCatalog(u), stampCheck: (u, s) => svc.stampCheck(u, s), stampPosted: (u, s, k, t) => svc.stampPosted(u, s, k, t),
+  stampCatalog: (u) => svc.stampCatalog(u), stampCheck: (u, s) => svc.stampCheck(u, s), stampPosted: (u, s, k, t, ref) => svc.stampPosted(u, s, k, t, ref ?? null),
   feedViewer: (u, f) => svc.feedViewer(u, f), feedMutes: (u) => svc.feedMutes(u), feedMute: (u, t, m) => svc.feedMute(u, t, m),
   feedReported: (u, t, q, b, r) => svc.feedReported(u, t, q, b, r), cheerPush: (u, f, n) => svc.cheerPush(u, f, n),
 };
@@ -81,7 +89,11 @@ async function wrap<T>(f: () => Promise<T> | T): Promise<{ ok: true; value: T } 
   }
 }
 
+const enCatalog = compileCatalogWith({ romanize: true }, CODE_EN, master.locale?.en, (uiEn as { strings: Record<string, string> }).strings, (protoEn as { strings: Record<string, string> }).strings);
+
 export const MuchiLogic = {
+  /** REQ-L10N-*: English of a Japanese text (null when there is none); a katakana name comes back romanized. */
+  l10n: { translate: (s: string) => translateText(s, enCatalog), romanize: romanizeName, size: enCatalog.exact.size },
   master: {
     templates: master.templates.map((t) => ({ id: t.id, name: t.name, rarity: t.rarity, style: t.style, surface: t.surface, distMinM: t.distMinM, distMaxM: t.distMaxM, stats: t.stats })),
     banners: master.gacha.banners.map((b) => ({ id: b.id, name: b.name, currency: b.currency, priceSingle: b.priceSingle, priceTen: b.priceTen, pityGroup: b.pityGroup, pityTargets: b.pityTargets })),
@@ -140,9 +152,12 @@ export const MuchiLogic = {
   setRoomConditions: (c: Parameters<PlayerService['setRoomConditions']>[1]) => wrap(() => svc.setRoomConditions(ID, c)),
   // Settles a race run on the device (WASM engine) through the real reward rules: coins by place, season
   // points, pass XP and mission progress. Offline: there is no rating update and no server verification.
-  applyRace: (raceId: string, place: number, fieldSize: number, details: { trackId: string; style: Style; finishTick: number | null; whips: number }) =>
+  // round 11: `config` (the race the WASM engine ran) gives the 図鑑 the CPU field it met (REQ-COL-002) and `skillFired` the
+  // player's unique-skill activation (REQ-ACH-002), exactly what settleRace sends from a confirmed room
+  applyRace: (raceId: string, place: number, fieldSize: number, details: { trackId: string; style: Style; finishTick: number | null; whips: number; skillFired?: boolean }, config?: RaceStartConfig) =>
     wrap(() => svc.applyRace(ID, { raceId, mode: 'ranked', place, fieldSize, newRating: null, void: false, humans: 1,
-      details: { ...details, startReactionTicks: null, whipMashed: false, cpuAssisted: false } })),
+      details: { ...details, startReactionTicks: null, whipMashed: false, cpuAssisted: false },
+      ...(config ? { seen: raceFieldSeen(config, config.entrants.find((e) => e.playerId === ID)?.slot ?? -1) } : {}) })),
   reset() {
     try {
       localStorage.removeItem(KEY + ':' + ID); localStorage.removeItem(DAY_KEY);
@@ -173,6 +188,24 @@ export const MuchiLogic = {
   firstWinBonus: () => svc.firstWinBonus(ID),
   cosmetics: () => svc.cosmetics(ID),
   bond: (horseId: string) => wrap(() => svc.bond(ID, horseId)),
+  // ---------------------------------------------------------------- 調教 (REQ-TRAIN-*, contracts/protocol.md §25)
+  // The real server rules: slots by game day, menus, fatigue, the potential, the beat schedule from a server seed, and the
+  // deterministic re-score of the taps (times in ms after the mini-game began) with the anti-cheat bounds.
+  training: () => wrap(() => svc.training(ID)),
+  trainingStart: (horseId: string, menuId: string) => wrap(() => svc.trainingStart(ID, horseId, menuId, key())),
+  trainingFinish: (sessionId: string, taps: number[], skipped = false) => wrap(() => svc.trainingFinish(ID, sessionId, skipped ? { taps: [], skipped: true } : { taps }, key())),
+  trainingUseItem: (itemId: string, horseId: string) => wrap(() => svc.trainingUseItem(ID, itemId, horseId, key())),
+  /** The stats the horse races with (base + awakening + growth) and after the class normalisation (ranked). */
+  trainingRaceStats: (horseId: string) => {
+    const s = repo.get(ID);
+    const h = s?.horses.find((x) => x.id === horseId);
+    if (!s || !h) return null;
+    const cap = classDef(master, s.season.classId).statCap;
+    const raw = toRaceHorse(master, h);
+    const keys = ['speed', 'stamina', 'burst', 'guts', 'temper'] as const;
+    const total = keys.reduce((a, k) => a + raw[k], 0);
+    return { total, cap, ranked: Math.min(total, cap), capped: total > cap };
+  },
   // REQ-UXS-040: account deletion (two steps, 14-day cancel window); purchases and offers are blocked meanwhile
   requestDeletion: (token: string | null) => wrap(() => svc.requestDeletion(ID, token)),
   cancelDeletion: () => wrap(() => svc.cancelDeletion(ID)),
@@ -279,6 +312,34 @@ export const MuchiLogic = {
     return svc.view(ID);
   },
   playerView,
+
+  // ---------------------------------------------------------------- round 11: 図鑑・実績・称号 (REQ-COL-*, REQ-ACH-*, contracts/protocol.md §24)
+  collection: () => wrap(() => svc.collection(ID)),
+  achievements: () => wrap(() => svc.achievements(ID)),
+  claimAchievement: (achievementId: string, tier: number) => wrap(() => svc.claimAchievement(ID, achievementId, tier, key())),
+  claimAllAchievements: () => wrap(() => svc.claimAllAchievements(ID, key())),
+  titles: () => svc.titles(ID),
+  equipTitle: (titleId: string | null) => wrap(() => svc.equipTitle(ID, titleId)),
+  /**
+   * Demo state 「図鑑」: a week of play on the real rules — races on several courses against CPU fields built by the server's
+   * buildRaceConfig (so the book shows the horses and skills met as 出会った), every other race the partner's skill fires,
+   * a tournament win and five stable likes from demo players — then the book, achievements and titles are all server data.
+   */
+  async seedCollection() {
+    await this.seedDemo(3, [2, 2, 2]);
+    const s = await svc.state(ID);
+    const h = s.horses.find((x) => x.status === 'active') ?? s.horses[0]!;
+    let k = 0;
+    for (const t of master.tracks.slice(0, 5)) {
+      for (let i = 0; i < 3; i++, k++) {
+        const config = buildRaceConfig(master, { raceId: `demo_col_${k}`, mode: 'ranked', trackId: t.id, statCap: 3200, humans: [{ playerId: ID, horse: toRaceHorse(master, h), cpuLevel: 3 }], cpuCount: 11, cpuLevel: 3, rng: cryptoRng });
+        await this.applyRace(config.raceId, [1, 3, 5][i]!, 12, { trackId: t.id, style: h.style, finishTick: 1900, whips: 3, skillFired: k % 2 === 0 }, config);
+      }
+    }
+    await svc.tournamentClose(ID, 'demo_cup', 1, null, 'デモ杯');
+    for (const from of ['demo_like_1', 'demo_like_2', 'demo_like_3', 'demo_like_4', 'demo_like_5']) await svc.stableLikeReceive(ID, from, `like:${from}:demo:1`);
+    return svc.view(ID);
+  },
 
   // ---------------------------------------------------------------- round 10
   // r10 fix: the shop list with this player's ownership (GET /v1/shop/products?mine=1)

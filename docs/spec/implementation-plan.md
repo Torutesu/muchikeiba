@@ -133,3 +133,13 @@ docs/                           企画・要件・計画
 | バグレビュー13件の修正（偽の結果での停止、ソロのフレンド部屋、返金の回収漏れ、年齢の再登録、冪等キーの衝突、部屋の状態保存、検証の二重実行 ほか） | 完了 |
 
 テスト：C# 157件、サーバー 168件、結合テスト4シナリオ。
+
+## 9. Round 11（英語、REQ-L10N-001〜013、contracts/protocol.md §23）
+
+| 内容 | 状態 |
+|---|---|
+| サーバー：`?lang=`／`Accept-Language` → 応答の出口で日本語の文を表で英語に（`src/i18n/*`）。マスターの英語 `master/locale-en.json`、コードの文 `i18n/en.ts`、起動時とリモート設定で網羅と英語の禁止表現を検証 | 完了 |
+| プッシュ：端末ごとの言語、言語ごとのトピック（`season_en`・`events_en`） | 完了 |
+| C#：`ApiClient.Locale`（Accept-Language・プッシュ登録の `locale`）、`Loc`／`LocaleCatalog`／`Romaji`、英語の実況 `commentary-en.json`（序数・英語の馬名） | 完了 |
+| Unity ゲーム層：`UxText`・`ActionResult` は言語どおり、表 `ui-en.json`／`server-en.json`、`MuchiServices.SetLanguage`、GameChecks `L10nChecks` | 完了（画面の `Loc.T` は Codex：docs/handoff-codex-round11-english.md） |
+| Web プロトタイプ：EN で全画面を英語に、はみ出しを縮めて収める、法定表示は日本語＋参考訳の注記、e2e の英語の回（`test/en-flow.cjs`） | 完了 |

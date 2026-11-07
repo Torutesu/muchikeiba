@@ -37,13 +37,16 @@ namespace Muchi.Game
         public bool TutorialScoutAvailable = true;
     }
 
-    /// <summary>Outcome of a screen action: ok, or a message the screen shows (server error text, offline notice…).</summary>
+    /// <summary>
+    /// Outcome of a screen action: ok, or a message the screen shows (server error text, offline notice…). The message is
+    /// in the app's language (REQ-L10N-010: <see cref="Loc.T"/>; Japanese unchanged).
+    /// </summary>
     public sealed class ActionResult
     {
         public bool Ok;
         public string Message;
-        public static ActionResult Success(string message = null) => new ActionResult { Ok = true, Message = message };
-        public static ActionResult Error(string message) => new ActionResult { Ok = false, Message = message };
+        public static ActionResult Success(string message = null) => new ActionResult { Ok = true, Message = Loc.T(message) };
+        public static ActionResult Error(string message) => new ActionResult { Ok = false, Message = Loc.T(message) };
     }
 
     /// <summary>

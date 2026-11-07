@@ -16,12 +16,14 @@ import { AppError } from '../domain/errors.js';
 import { buildBanner, buildPityGroups, gameDaySchedules, rescheduleGacha, splitMasterTrack, type Master, type Progression, type RawBanner } from '../domain/master.js';
 import { validateGacha } from '../domain/gacha.js';
 import { skillProblems } from '../domain/skills.js';
+import { collectionProblems } from '../domain/collection.js';
 import { buildRuleset, DEFAULT_RULESET, type Ruleset } from '../domain/ruleset.js';
 import { trackSchema } from '../domain/schemas.js';
 import { eventProblems } from '../domain/events.js';
 import type { EventDef } from '../domain/master.js';
 import { canonicalJson, hashOf } from './hash.js';
 import { dayRolloverChangeProblems, dayRolloverProblems, dayRule, type DayRollover } from '../domain/time.js';
+import { localeProblems } from '../i18n/validate.js';
 import { assetCatalogProblems, assetCatalogSchema, EMPTY_ASSET_CATALOG, sameCatalogContent, type AssetCatalog } from '../domain/assetCatalog.js';
 
 /**
@@ -74,6 +76,12 @@ export const configBundleSchema = z.object({
   assets: assetCatalogSchema.optional(),
   /** REQ-CB-008: replaces the what's-new entries (master/changelog.json). */
   changelog: z.array(z.record(z.string(), z.unknown())).max(200).optional(),
+  /**
+   * REQ-L10N-005: English for the Japanese texts of this version (added to master/locale-en.json, same key = replaced).
+   * Every player-facing Japanese text of the resolved version must have English (a new banner, event or changelog entry
+   * ships with its translation).
+   */
+  locale: z.object({ en: z.record(z.string().min(1).max(2000), z.string().min(1).max(4000)) }).strict().optional(),
 }).strict();
 export type ConfigBundle = z.infer<typeof configBundleSchema>;
 
@@ -172,13 +180,17 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
   if (b.stable) problems.push(...stableConfigProblems(b.stable as StableConfig, base));
   const assetCatalog = (b.assets as AssetCatalog | undefined) ?? base.assetCatalog;
   if (b.assets) problems.push(...assetCatalogVersionProblems(b.assets as AssetCatalog, base.assetCatalog ?? EMPTY_ASSET_CATALOG));
-  const master: Master = { ...base, tracks, litTracks, gacha: { ...base.gacha, pityGroups, banners, daySchedules: { banners: b.gacha?.banners ? gameDaySchedules(b.gacha.banners as RawBanner[], {}).banners : baseGacha.daySchedules?.banners ?? {}, pityEndDays: b.gacha?.pityGroups ? gameDaySchedules([], b.gacha.pityGroups).pityEndDays : baseGacha.daySchedules?.pityEndDays ?? {} } }, progression, ng: b.ng ?? base.ng, events, bannedSilks, ...(stable ? { stable } : {}), ...(assetCatalog ? { assetCatalog } : {}), ...(b.changelog ? { changelog: b.changelog as unknown as ChangelogEntry[] } : {}) };
+  const master: Master = { ...base, tracks, litTracks, gacha: { ...base.gacha, pityGroups, banners, daySchedules: { banners: b.gacha?.banners ? gameDaySchedules(b.gacha.banners as RawBanner[], {}).banners : baseGacha.daySchedules?.banners ?? {}, pityEndDays: b.gacha?.pityGroups ? gameDaySchedules([], b.gacha.pityGroups).pityEndDays : baseGacha.daySchedules?.pityEndDays ?? {} } }, progression, ng: b.ng ?? base.ng, events, bannedSilks, ...(stable ? { stable } : {}), ...(assetCatalog ? { assetCatalog } : {}), ...(b.changelog ? { changelog: b.changelog as unknown as ChangelogEntry[] } : {}), ...(b.locale ? { locale: { en: { ...base.locale?.en, ...b.locale.en } } } : {}) };
   problems.push(...eventProblems(master, events, ruleset));
+  problems.push(...localeProblems(master)); // REQ-L10N-005
   // QA r6 #1: tickets must never reach a paid-only banner, including after a remote-config banner change
   if (master.items) problems.push(...itemsProblems(master));
   if (master.items) problems.push(...stampsProblems(master)); // REQ-TEAMFEED-002: stamp cosmetics and stamps stay paired
   // REQ-UXS-050: a ruleset override may not lower a skill cap below what the skill master uses
   if (master.skills) problems.push(...skillProblems(master, ruleset));
+  // REQ-ACH-007: achievement caps / metrics / title tiers against this version (tracks, titles); the comp-gacha set
+  // check runs inside validateGacha below with this version's banners
+  problems.push(...collectionProblems(master, undefined, { skipSets: true }));
   if (problems.length === 0) {
     try {
       validateGacha(master); // ppm sums, pools, pity groups, comp-gacha lint (REQ-GACHA-003/008)
@@ -433,6 +445,83 @@ export class ConfigStore {
     const v = this.get(a.versionId);
     return { versionId: v.id, hash: v.hash, activatedAt: a.at, bundle: knownHash === v.hash ? null : v.bundle, nextChangeAt: this.pending(now)[0]?.at ?? null };
   }
+
+  /** REQ-OPS-008: dry run of an activation / rollback / cancellation (nothing is stored). */
+  dryRun(op: DryRunOp, by: string, now: number) { return configDryRun(this.repo, this.base, op, by, now); }
+}
+
+/** A read-only view of a repo: writes land in a scratch overlay, so a dry run can call the real operations. */
+class DryRunRepo implements ConfigRepo {
+  private acts = new Map<string, Activation>();
+  private seq = 0;
+  constructor(private readonly inner: ConfigRepo) {}
+  versions() { return this.inner.versions(); }
+  version(id: string) { return this.inner.version(id); }
+  versionByHash(hash: string) { return this.inner.versionByHash(hash); }
+  putVersion() { /* never stored */ }
+  activations() {
+    const base = this.inner.activations().map((a) => this.acts.get(a.id) ?? a);
+    return [...base, ...[...this.acts.values()].filter((a) => !base.some((b) => b.id === a.id))];
+  }
+  putActivation(a: Activation) { this.acts.set(a.id, a); }
+  nextSeq() { return -++this.seq; } // negative: never equal to a real id
+}
+
+export type DryRunOp =
+  | { kind: 'activate'; versionId: string; at?: number | undefined }
+  | { kind: 'rollback'; versionId: string | null }
+  | { kind: 'cancel'; activationId: string };
+export interface DryRunResult { ok: boolean; problems: string[]; effect: Activation | null }
+
+/**
+ * Admin dry run of an activation, a rollback or a cancellation (REQ-OPS-008): runs the real ConfigStore operation on a
+ * scratch overlay of the repo (nothing is stored) and reports every problem — the bundle re-validated against the current
+ * base master, and the game-day rule chain over the timeline the change would produce (REQ-DAY-002).
+ */
+export function configDryRun(repo: ConfigRepo, base: Master, op: DryRunOp, by: string, now: number): DryRunResult {
+  const store = new ConfigStore(new DryRunRepo(repo), base);
+  try {
+    const effect = op.kind === 'activate' ? store.schedule(op.versionId, op.at ?? now, by, 'dry run', now)
+      : op.kind === 'rollback' ? store.rollback(op.versionId, by, 'dry run', now)
+        : store.cancel(op.activationId, now);
+    return { ok: true, problems: [], effect: effect.id.startsWith('act_-') ? { ...effect, id: '(dry run)' } : effect };
+  } catch (e) {
+    if (!(e instanceof AppError)) throw e;
+    return { ok: false, problems: e.message.split('; '), effect: null };
+  }
+}
+
+export type ProblemGroup = 'dayRule' | 'assetCatalog' | 'gacha' | 'ruleset' | 'other';
+/** Groups validator messages for the ops console (the messages themselves are unchanged). */
+export function groupProblems(problems: string[]): Record<ProblemGroup, string[]> {
+  const out: Record<ProblemGroup, string[]> = { dayRule: [], assetCatalog: [], gacha: [], ruleset: [], other: [] };
+  for (const p of problems) {
+    if (/dayRollover|game day|pending activation/i.test(p)) out.dayRule.push(p);
+    else if (/^assets[:.]|catalogVersion/.test(p)) out.assetCatalog.push(p);
+    else if (/gacha|banner|pity|ppm|step-?up|pool|ticket/i.test(p)) out.gacha.push(p);
+    else if (/ruleset/i.test(p)) out.ruleset.push(p);
+    else out.other.push(p);
+  }
+  return out;
+}
+
+export interface DiffRow { path: string; before: unknown; after: unknown }
+/** A flat JSON diff (path → before/after) between two bundles, for the console's version compare. */
+export function bundleDiff(a: unknown, b: unknown, path = ''): DiffRow[] {
+  const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+  if (isObj(a) && isObj(b)) {
+    const keys = [...new Set([...Object.keys(a), ...Object.keys(b)])].sort();
+    return keys.flatMap((k) => bundleDiff(a[k], b[k], path ? `${path}.${k}` : k));
+  }
+  if (Array.isArray(a) && Array.isArray(b)) {
+    // lists of objects with ids (banners, events, tracks) are compared by id
+    const ids = (x: unknown[]) => (x.every((e) => isObj(e) && typeof e.id === 'string') ? new Map(x.map((e) => [(e as { id: string }).id, e])) : null);
+    const ia = ids(a), ib = ids(b);
+    if (ia && ib) return [...new Set([...ia.keys(), ...ib.keys()])].flatMap((k) => bundleDiff(ia.get(k), ib.get(k), `${path}[${k}]`));
+    if (a.length === b.length) return a.flatMap((x, i) => bundleDiff(x, b[i], `${path}[${i}]`));
+  }
+  if (canonicalJson(a ?? null) === canonicalJson(b ?? null)) return [];
+  return [{ path: path || '(root)', before: a ?? null, after: b ?? null }];
 }
 
 export interface ActiveConfigInfo {

@@ -217,7 +217,7 @@
 ### 9.4 戦績・称号（TS）
 - REQ-STAT-001 戦績：出走数・勝利・3着内・脚質別・コース別（ベストタイム）・ムチを上手く使った勝利・スタート反応の最良・好スタート数。ランク戦と人間2人以上のフレンド戦で記録（チュートリアルは除く）。
 - REQ-STAT-002 スタート反応・ムチの回数と連打は、確定した入力ログから求める。ゴールtickは検証結果、または合意した端末全員が同じ値を送った時だけ使う。CPUに引き継がれたレースは技術系の記録に数えない。
-- REQ-TITLE-001 称号はマスターデータ（`master/titles.json`）で条件を定義する。
+- REQ-TITLE-001 称号はマスターデータ（`master/titles.json`）で条件を定義する。実績の段（`achievement`）も条件にできる（REQ-ACH-006）。
 - REQ-TITLE-002 条件を満たした称号はレース・シーズン締めの時に解放する（何度評価しても重複しない）。
 - REQ-TITLE-003 解放済みの称号を1つ装備できる。
 
@@ -258,6 +258,10 @@
 - REQ-OPS-012 書き込み操作は理由（3〜500文字）が必須。全ての管理操作（閲覧を含む）を監査ログに残す：誰が・権限・操作・対象・理由・変更前・変更後・成否・時刻。失敗や権限不足も記録する。
 - REQ-OPS-013 管理APIは操作者ごとにレート制限する（閲覧と書き込みで別枠）。超えたら429 `RATE_LIMITED`。
 - REQ-OPS-014 監査ログは操作者・対象・操作で絞り込み、新しい順にページングして読める。
+- REQ-OPS-015 運用コンソール（`tools/ops-console`、`docs/ops/console.md`）向けの CORS：`ADMIN_CONSOLE_ORIGINS`（カンマ区切りの完全なオリジン、ワイルドカード不可）に載ったオリジンにだけ CORS ヘッダを返し、資格情報（Cookie）は許可しない。載っていないオリジンからの呼び出しはトークンが正しくても403。書き込みは `content-type: application/json` 必須（単純リクエストでは書き込めない）。認証はベアラートークンだけで Cookie を使わないので CSRF は成立しない。レスポンスは `cache-control: no-store`・`x-content-type-options: nosniff`。
+- REQ-OPS-008 設定のドライラン：`POST /v1/admin/config/dry-run`（viewer）で有効化（今すぐ／予約）・ロールバック（1つ前／指定）・予約の取り消しを、本番と同じ処理を書き込まない仮の保存先で実行し、問題（現在の base に対するバンドルの再検証、ゲーム日の切り替えの連鎖 REQ-DAY-002）を返す。何も保存しない。`POST /v1/admin/config/validate` と同じく、問題を「ゲーム日・アセットカタログ・ガチャ・ルールセット・その他」に分けた `groups` も返す。
+- REQ-OPS-009 版の比較：`GET /v1/admin/config/diff?from=&to=`（`base` は空のバンドル）でパスごとの変更前・変更後を返す。`id` を持つオブジェクトの一覧（バナー・イベント・コース）は `id` で突き合わせる。最大500件。
+- REQ-OPS-027 ガチャのカレンダー：`GET /v1/admin/gacha/calendar?versionId=`（`active`・`base`・版ID）で、その版を base に重ねたマスターの全バナー（状態・開始と最終のゲーム日・予告・価格・ステップアップの価格・天井・ピックアップ）と天井グループ（締め・引き継ぎ先の連鎖・プレイヤーに見せる引き継ぎの文言）を返す。`GET /v1/admin/gacha/:bannerId/odds?versionId=` はプレイヤー向けの `GET /v1/gacha/:bannerId/odds` と同じ関数で、公開前・終了後のバナーも含めて提供割合ページを返す。`GET /v1/admin/events`・`GET /v1/admin/tournaments` で一覧と状態を返す。
 
 ### 9.9 サポート（TS）
 - REQ-OPS-020 プレイヤー検索：財布（有償ロット・円換算の残高）、台帳（直近）、購入履歴、月別の支払額、年齢と年齢帯、サポート用の印、購読、不正対策の状態を表示する（冪等キャッシュは出さない）。
@@ -266,6 +270,8 @@
 - REQ-OPS-023 返金負債の免除：コインとアイテムの負債を指定量まで免除し、台帳に0円の`settle`行と理由を残す。
 - REQ-OPS-024 年齢の訂正：アプリからは「若くなる方向」しか変えられない年齢（REQ-PUR-002）を、本人確認のうえサポートが訂正できる。サポート用の印を残す。
 - REQ-OPS-025 名前のリセット：不適切な表示名・馬名を既定の名前に戻す。
+- REQ-OPS-026 補填の2人ルール：`POST /v1/admin/compensations`（operator）で依頼する。無償コイン1万枚・1アイテム100個（承認の閾値＝operatorの上限）以下はその場で付与、超える分は承認待ちになり、**依頼者とは別の admin** が承認したときに付与する（自分の依頼は承認できない）。1件の上限は10万コイン・1000個、承認待ちは72時間で期限切れ。依頼は操作キーで冪等（同じキーで別の内容は409）、付与はプレイヤー側で `comp/<opKey>` により冪等（承認の二重押し・支払い失敗後の再承認でも二重にならない）。台帳の理由に依頼者と承認者が残る。直接配布（`/players/:id/grants`）と一括配布の1人あたりも閾値までに制限する（REQ-OPS-021 の admin の上限10万は補填の依頼でだけ使う）。 **分けても2人目は省けない**（QA R11）：1人で決めた付与（直接配布・一括配布・閾値以下の補填）は、プレイヤーごとに直近24時間の合計で閾値（1万コイン・1アイテム100個）までで、超える直接・一括配布は403、超える閾値以下の補填は承認待ち（`pending`）に戻る。拒否・失敗も監査ログに残し、対象の依頼ID（`compensation:<id>`）を記録する。
+- REQ-OPS-020a プレイヤー検索の追加：招待コード（`XXXX-XXXX`、小文字・ハイフン可）からプレイヤーIDを引ける。詳細にはアカウント削除の進み具合（状態・申請・削除予定・済んだ手順。確認トークンは出さない）、削除済み（墓標あり）か・データの有無、友達招待（招待元・招待した人・端末数。端末ハッシュは出さない）、サポート用の印を種類（広告・招待の不正・購入・支部フィード・サポート）に分けたもの、そのプレイヤーの補填の依頼を含める。
 
 ### 9.10 不正対策の運用（TS）
 - REQ-OPS-030 レース確定後、結果が食い違った人（容疑者）とチェックサムがズレた人を不正対策の記録に送る（レース単位で冪等。チュートリアルは対象外）。
@@ -565,3 +571,58 @@
 - REQ-AD-010 KPI：クライアント `ad_offer_view`（カードを出した、画面ごとに1回）・`ad_start`（SDK の結果）、サーバー `ad_reward`（付与）・`ad_reject`（弾いた理由）。報酬はクライアントのイベントにしない。クエリは `docs/ops/kpi-queries.md`。
 - REQ-AD-011 経済：広告を全部見る無課金の引ける回数 ÷ 無課金 を 1.03〜1.15 に保ち、厩舎手当（E10）とパス（E5）の比より小さくする（E13、`server/test/economy.test.ts`）。
 - REQ-AD-012 支払った人：直近 `payerQuietDays`（30）日に実際の支払い（返金・サンドボックス・0円を除く）がある人には、自分で設定をオンにしない限り出さない。設定でオフにすれば誰でも出さない。広告なしパス（`ad_free_pass`）は作らない（強制広告が無いので消すものが無い、protocol §21.6）。
+
+## 22. 運用コンソール（TS＋Web、`src/http/admin.ts`・`tools/ops-console`、`contracts/protocol.md` §22、`docs/ops/console.md`）
+運用コンソールの要件は運用の節に追記した：REQ-OPS-008（設定のドライラン）・REQ-OPS-009（版の比較）・REQ-OPS-015（CORS）・REQ-OPS-027（ガチャのカレンダー）は §9.8、REQ-OPS-020a（プレイヤー検索の追加）・REQ-OPS-026（補填の2人ルール）は §9.9。管理APIの形は `contracts/protocol.md` §22。
+
+## 23. ローカライズ（英語、TS＋C#、`src/i18n/*`・`master/locale-en.json`、`contracts/protocol.md` §23）
+日本語が元の言語。英語は日本語の文をキーにした表で訳し、ドメイン・マスター・ゴールデンファイルの日本語は変えない。法定表示は日本語のまま。
+- REQ-L10N-001 言語の決め方：`?lang=` → `Accept-Language`（q値順）→ `ja`。対応は `ja`・`en`。応答に `content-language` と `vary: accept-language`。
+- REQ-L10N-002 サーバーの応答：`en` の時、全ての文字列の値を表で訳す（キー・ID・識別子・プレイヤーが書いた文字は訳さない）。エラーの詳細も同じ。訳せない文は日本語のまま返す（空にしない）。
+- REQ-L10N-003 コードが作る文（`i18n/en.ts`）：商品の中身・はじめての購入・提供割合のページ・券・天井の移行・スキルの条件と効果・スタンプの解放条件・削除の確認・招待の共有文・大会の回戦名・選手に見えるエラー。型（`{…}`）と文・区切りごとの訳で、組み立てた文も訳す。
+- REQ-L10N-004 マスターの英語（`master/locale-en.json`）：プレイヤーに見える日本語の全ての文に英語がある（起動時に検証、無ければ起動しない）。内部だけの表（NG語・禁止服色・アセットカタログなど）は対象外。
+- REQ-L10N-005 リモート設定：版は `locale.en` を持てる。版を解決したマスターの全ての日本語に英語が無ければ `CONFIG_INVALID`（新しいバナー・イベント・お知らせは英語と一緒に出す）。
+- REQ-L10N-006 網羅のテスト：主なプレイヤーの画面の API（設定・見た目・プレイヤー・ショップ・オファー・厩舎手当・スキル・バナー・天井・提供割合・馬・血統・絆・プリセット・券・見た目ショップ・ミッション・復帰・お知らせ・パス・称号・戦績・広告・プッシュ設定・削除の確認・エラー）を `?lang=en` と `Accept-Language: en` で呼び、日本語が残らないこと（プレイヤーの名前を除く）。`ja` の応答は変わらない（`server/test/l10n.test.ts`）。
+- REQ-L10N-007 プッシュ：端末ごとの言語（登録時の `locale`）で文を作る。一斉配信は言語ごとのトピック（`season_en`・`events_en`）。設定の応答は他の言語のトピックを解除させる。
+- REQ-L10N-008 文言の規則（英語）：倍率（2x・double）、偽の急かし（limited time only・hurry・ends soon）、参考価格・割引（% off・regular price）、`free gacha`・`rate up` を使わない（表の検証・テスト）。広告の枠は `guarantee`・`bonus`・`deal` も使わない。特商法・資金決済法の表示は日本語のまま、英語では参考訳である旨の注記を付け、日本国外での法的な効力をうたわない。
+- REQ-L10N-009 C# クライアント：`ApiClientOptions.Locale`／`ApiClient.Locale` を毎回 `Accept-Language` で送る。プッシュの端末登録に `locale`。Unity は `MuchiServices.SetLanguage`（PlayerPrefs `muchi.language`）。
+- REQ-L10N-010 ゲーム層（`Muchi.Game`）：モデルは日本語を作り、画面は `Loc.T` を通して出す。`UxText.For`・`UxText.Reward`・`ActionResult` は言語どおりで返す。カタカナの馬名は英語ではローマ字で表示する（保存する名前は変えない）。表は `Resources/Muchi/ui-en.json`。GameChecks `L10nChecks`：ゲーム層の日本語の文字列すべてと組み立てた行が英語になる。
+- REQ-L10N-011 共通の表：サーバーの2つの表をクライアント用に `Resources/Muchi/server-en.json` へ生成（`npm run gen:client-locale`）。古いとサーバーのテストが失敗する。
+- REQ-L10N-012 実況：`commentary-en.json` は日本語と同じ全ての種類・変種ID・`{…}`。着順は序数、馬名・スキル名は英語の表から、カタカナはローマ字。英語の実況に日本語が残らない（engine `LocalizationTests`・GameChecks）。
+- REQ-L10N-013 Web プロトタイプ：EN で全ての画面を英語にする（サーバー・ゲーム層・プロトタイプの表）。英語の長さで枠からはみ出さない（収まらなければ小さくする）。e2e の英語の回（`test/en-flow.cjs`）が主な画面（ホーム・ショップ・法定表示・購入確認・パス・スカウト・提供割合・厩舎・設定・出走登録・レース・結果）で日本語の残りとはみ出しを調べ、スクリーンショット `en-*.png` を残す。フォントの字形に Latin を含める。
+
+## 24. 図鑑・実績・称号（TS＋C#、`src/domain/collection.ts`、`contracts/protocol.md` §24、`server/master/collection.json`）
+法務の拘束条件（docs/planning/03「図鑑・実績でコンプガチャを作らない理由」）：有償ガチャで出るものを含む組み合わせをそろえたことへの報酬は作らない（カード合わせ）、課金・購入額・ガチャの回数への報酬は作らない、報酬は無償コインだけで1回 ¥200（総付景品）以下。
+- REQ-COL-001 図鑑 `GET /v1/collection`：テンプレート馬・固有スキル・コース・見た目のアイテムをマスターから全て並べ、それぞれ `obtained`（持っている・持っていた）/ `seen`（確定したレースで同じ場を走った）/ `unknown` と、一覧ごと・全体の数（総数・入手・出会った・未発見・達成率‰）を返す。読み取りだけ。
+- REQ-COL-002 「出会った」は確定したレースの設定からサーバーが決める（`settleRace` の `seen`：CPU の馬のテンプレートと場の全ての固有スキル）。チュートリアル・無効のレースは数えない。クライアントの申告では増えない。
+- REQ-COL-003 表示の段階：`unknown` の馬・スキルは名前・説明・能力を返さず、レア度とシルエットのキー（`collection/silhouette/<templateId>`）だけ。`seen` は名前・説明・絵（`collection/portrait/<templateId>`）、能力は `obtained` だけ。説明文は `collection.json` の `lore`（全て架空）。季節限定の馬は印（ラベル）を出す。
+- REQ-COL-004 持っていた馬・スキルは記録に残す（`collection.owned`、馬が引退しても消えない）。
+- REQ-COL-005 図鑑の達成率・そろえたことには報酬を付けない（`completionRewards: false`、画面にも「そろえても報酬はありません」）。未発見の馬からスカウト画面へのリンク・「あと◯体」の表示は作らない。
+- REQ-ACH-001 実績は `collection.json` の `achievements`（21個・71段）：出走・1着・3着以内・コースごとの1着（全8コース）・走ったコース・固有スキルの発動・配合の世代・タイムアタックの銅/銀/金・大会の3位以内/優勝・マイ厩舎のいいね・支部の応援。段は1〜5、目標は増加。
+- REQ-ACH-002 進み具合はイベントで数え、冪等：レースはレースIDごと（`applyRace`）、大会は1大会1回（`tournamentClose`）、支部のスタンプは保存された投稿・応援の参照ごと（`stampPosted` の `ref`）。固有スキルの発動は結果の報告の任意の `skills`（protocol §4）を、同じハッシュを報告した2人以上の一覧が一致した時だけ採る（1台の報告だけでは採らない）。検証に回ったレースは検証サービスの再シミュレーションの `skillsFired`（protocol §8）を使う。CPU が代わりに乗ったレースは数えない。配合の世代は持っている馬の血統から計算し、最大値を覚える。
+- REQ-ACH-003 解放：全てのプレイヤーのトランザクションの最後に、届いた段を1回だけ解放する（取り消さない）。KPI `achievement_unlock`（実績ID・カテゴリ・metric・段・進み具合）。削除の予約中は解放しない。
+- REQ-ACH-004 `GET /v1/achievements`：実績ごとの進み具合・次の目標・段（目標・報酬・解放・受け取り・バッジのキー `badge/<id>_<tier>`）・結び付いた称号、合計（段・解放・受け取り・受け取れる数とコイン・全段のコイン）、`blocked`（削除の予約中）。
+- REQ-ACH-005 受け取り：段ごと `POST /v1/achievements/:id/tiers/:tier/claim` と全部 `POST /v1/achievements/claim-all`（どちらも冪等キー必須）。無償コインを台帳に `achievement <id> tier <n>` で付与。2回目は `ALREADY_CLAIMED`、未達は `NOT_ELIGIBLE`、削除の予約中は `DELETION_PENDING`。KPI `achievement_claim`。
+- REQ-ACH-006 称号の一本化：`titles.json` の条件に `achievement`（実績ID・段）を足し、実績の段で解放される称号も従来の称号一覧（REQ-TITLE-*）に入る。`GET /v1/titles` は各行に `source`（record / achievement）と実績・段を付ける。装備は従来の `PUT /v1/player/title`、プロフィール・マイ厩舎の表札に出る。
+- REQ-ACH-007 設定の検証（起動時と各リモート設定の版）：形、`metric` は遊びのものだけ（`purchases`・`yenSpent`・`gachaPulls`・`collectionPercent` などは専用のエラー）、報酬は `{ freeCoins }` だけ・1段 ≤ `caps.maxFreeCoinsPerTier`（50、コード上の上限100 = ¥160）・全段の合計 ≤ `caps.maxTotalFreeCoins`（2,000、コード上5,000）、称号の参照先（実績・段）が存在する、`trackWins` のコース・`collect` のIDが存在する。
+- REQ-ACH-008 コンプガチャの検出：`collect`（そろえたら報酬）の組み合わせに、ガチャのプール（全てのバナー、ステップアップの最終枠を含む）に入っている馬、またはその馬の固有スキルが**1つでも**あれば拒否。見た目のアイテムは売り物なので組み合わせにできない（購入への報酬）。ガチャの検証（`validateGacha`）の中でも実行し、バナーを変えるリモート設定で既存の組み合わせがガチャの対象になった時も拒否する。今の組み合わせは「走ったコース」だけ。
+- REQ-ACH-009 マイ厩舎のトロフィー棚に実績のバッジ（実績ごとの最も高い段、高い順に6つ）を出す（公開コピー `trophies.badges`）。
+- REQ-ACH-010 経済（balance-targets 4.11、E14）：毎日遊ぶ無課金の90日の実績の受け取りは、同じ「出走」に払っていたデイリー「3戦する」の減額（20→18コイン、90日で180）以下。課金する想定・招待・広告の想定は同じレースで同じ額を受け取る（支払いで実績は進まない）。E1〜E13 は Round 10 と同じ範囲。
+- REQ-ACH-011 クライアント：`Muchi.Client` `ApiClient.GetCollectionAsync`・`GetAchievementsAsync`・`ClaimAchievementAsync`・`ClaimAllAchievementsAsync`、`TitleInfo.Source/AchievementId/Tier`、`StableTrophies.Badges`、`AssetKeys.CollectionPortrait/CollectionSilhouette/Badge`、`LockstepClient` の `res.skills`。Unity のゲーム層 `CollectionModel`（タブ、未発見は「？？？」とシルエット、達成率は表示だけ）・`AchievementModel`（受け取りの冪等キーは答えが来るまで保持、まとめて受け取る、削除予約中はボタンなし）・`TitleShowcaseModel`（一本化した称号一覧と装備）。
+
+## 25. 調教（TS＋C#、`src/domain/training.ts`、`contracts/protocol.md` §25、docs/planning/06 §1.1 柱②・§1.3）
+拘束条件：ランク戦は課金で決まらない（06 §1.3、REQ-RATE-003）。調教は毎日の短いループで、相棒への愛着（柱②「この馬は俺が育てた」）を深めるためのもの。
+- REQ-TRAIN-001 回数：1ゲーム日（REQ-DAY-001）にアカウントで `slotsPerDay`（3）回、1頭 `perHorsePerDay`（2）回まで。馬の数・課金で回数は増えない。回数を増やす商品は作らない。
+- REQ-TRAIN-002 セッション：`POST /v1/training/start` で回数を1つ使い、サーバーの乱数（本番は暗号用乱数）の seed からミニゲームのビートを決めて返す。`POST /v1/training/:sessionId/finish` で仕上げる。期限（`sessionTtlMs`）を過ぎたもの・新しく始めた時に開いたままのものは、ミニゲームなし（点数0）で記録する。どちらも冪等キー必須。
+- REQ-TRAIN-003 公平性：伸びは馬の `trained` に残り、`toRaceHorse`（基礎＋覚醒＋伸び）でレースに入る。ランク戦・大会・タイムアタックはこれまでどおりクラスの上限に正規化する（上限に届いた馬は伸びても変わらない）。固定能力のイベントは伸びを使わない。伸びは配合で受け継がれない（`effectiveStats` だけを使う）。ルールセットとエンジンは変えない（保存済みのリプレイ・ゴースト・ゴールデンレースは変わらない）。
+- REQ-TRAIN-004 伸びの計算：決定論。開始時の疲れ・絆・これまでの伸びとメニュー・ミニゲームの点数だけで決まる（protocol §25.1 の式）。千分の1点で計算し端数は馬ごとに持ち越す。素質 `potentialByRarity`（R ≥ SR ≥ SSR を検証で強制）と1能力の上限（`perStatCapPermille`）、各能力 1000 を超えない。プレビュー（ミニゲームなし／満点）は同じ関数で出す。
+- REQ-TRAIN-005 ビート：`beatSchedule(timing, seed)`（区間ごとに1つ、`leadMs`/`tailMs` の余白）。サーバーが返し、クライアントはそれに合わせて表示する。
+- REQ-TRAIN-006 採点：送られたタップ（ミニゲーム開始からの ms）をサーバーが同じ手順で採点し直す（`scoreTiming`、C# `TrainingScorer` と同じ。共有の検算例あり）。上乗せは点数 × `permillePerPoint`（既定 最大 +10%、コード上の上限 150‰）。
+- REQ-TRAIN-007 不正対策：タップの数・範囲・間隔の検証、サーバーの時計で経った時間より後のタップは拒否、最後のビートより前に終えた送信は拒否（422 `TRAINING_INPUT_INVALID`）。機械で満点を出しても上乗せは最大 +10%。
+- REQ-TRAIN-008 アイテム：`training_apple`（疲れ −30）。`POST /v1/training/items/:itemId/use`。疲れていなければ使えない。
+- REQ-TRAIN-009 疲れ：調教の効率だけに効き（1点 5‰、下限 50%）、ゲーム日ごとに `recoveryPerDay` 回復、`restAt` 以上では疲れを足すメニューを選べない（プールか休養）。どのレースの設定にも入らない。故障・痛がる表現は作らない（03「動物福祉」）。
+- REQ-TRAIN-010 アイテムの入手経路：伸びに効くアイテム（`affectsGrowth`）は商品・コインショップ・パス（無料ラインを含む：パス＋がレベルを売るため）・イベント報酬・ガチャに入れられない（`trainingProblems`、起動時とリモート設定で検証）。入手はデイリーミッション `train1`（調教を1回）だけ。伸びに効かないアイテムは直販してよい。
+- REQ-TRAIN-011 ミッション：デイリーミッションの種類 `training`（`train1`：1回 → `training_apple` ×1、コインは付けない）。
+- REQ-TRAIN-012 設定 `progression.training`（リモート設定で変更可）：形・重複・コード側の上限 `TRAINING_HARD_LIMITS`（1日5回・1頭3回・`baseGain ≤ 15`・素質 ≤ 400・絆 ≤ 120‰・回復 ≤ 50・ミニゲーム ≤ 150‰）・ミニゲームの形（`perfectMs < goodMs`、ビートの間隔 ≥ 2 × `goodMs`）・素質の順・アイテムの入手経路を検証。
+- REQ-TRAIN-013 経済：調教はコインを出さない（E1〜E14 は変わらない）。全ての想定が毎日の回数を使う経済シミュレーションで、課金者の伸び/稼働日が無課金の 1.05 倍以下、ランク戦の正規化後の能力合計の差（中課金 − 無課金）が全クラスで調教によって広がらないことを確かめる（E15、balance-targets §4.12、`server/test/economy.test.ts`）。
+- REQ-TRAIN-014 KPI とクライアント：サーバーのイベント `training_start`（メニュー・レア度・疲れ・今日の回数）・`training_done`（メニュー・評価・記録の理由・伸び・点数・初回）。クエリは `docs/ops/kpi-queries.md`。`Muchi.Client` `ApiClient.GetTrainingAsync`・`StartTrainingAsync`・`FinishTrainingAsync`・`UseTrainingItemAsync`、`Horse.Trained`、`TrainingScorer`。Unity のゲーム層 `TrainingModel`（メニューのカードと選べない理由、受け付けられるタップだけ記録、start/finish の冪等キーは答えが来るまで保持、開いたままのセッションはミニゲームなしで仕上げ、公平性の文言、ショップへの導線なし）。

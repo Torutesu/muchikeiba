@@ -31,6 +31,8 @@ import type { TournamentEntryInfo, TournamentPlayers, TournamentsService } from 
 import type { StableService } from '../domain/stable.js';
 import { InviteService, type InviteDirectory, type InvitePlayers } from '../domain/invite.js';
 import { SsvError, verifyAdMobCallback, type SsvKeySource } from '../ads/ssv.js';
+import { LOCALES, resolveLocale, type Locale } from '../i18n/locale.js';
+import { catalogFor, localize, type Catalog } from '../i18n/catalog.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -56,7 +58,9 @@ export type PlayerMethod =
   | 'inviteView' | 'inviteAttempt' | 'inviteAccept' | 'inviteRevert' | 'inviteCommit' | 'inviteFlag' | 'inviteMilestone' | 'inviteDue' | 'inviteAcked'
   | 'inviteRetryLater' | 'inviteForgetInvitee' | 'inviteForgetInviter' | 'inviteForfeit'
   | 'comeback' | 'comebackClaimLogin' | 'comebackClaimMission' | 'comebackWelcomed' | 'whatsNew' | 'whatsNewSeen'
-  | 'ads' | 'setAdPref' | 'adStart' | 'adSession' | 'adReward';
+  | 'ads' | 'setAdPref' | 'adStart' | 'adSession' | 'adReward'
+  | 'collection' | 'achievements' | 'claimAchievement' | 'claimAllAchievements'
+  | 'training' | 'trainingStart' | 'trainingFinish' | 'trainingUseItem';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -126,6 +130,12 @@ export interface AppContext {
   /** Live-ops backend (REQ-OPS-*). When present, /v1/admin/* is served by http/admin.ts with roles and audit. */
   ops?: OpsApi;
   authenticateAdmin?(req: Request): Promise<AdminPrincipal>;
+  /** The shipped master before remote config (admin gacha calendar / odds preview resolve versions on it). Defaults to `master`. */
+  baseMaster?: Master;
+  /** REQ-OPS-020: admin lookup of a player by invite code (the invite directory). */
+  inviteLookup?(code: string): Promise<string | null>;
+  /** REQ-OPS-015: ops console origins allowed by CORS on /v1/admin/* (wrangler var ADMIN_CONSOLE_ORIGINS, comma-separated). */
+  adminConsoleOrigins?: readonly string[];
   /** Active remote config summary for clients (REQ-OPS-007). */
   configInfo?(): Promise<ClientConfigInfo>;
   /**
@@ -138,8 +148,9 @@ export interface AppContext {
 }
 export interface ClientConfigInfo { versionId: string; hash: string; rulesetVersion: string; activatedAt: number | null }
 
-const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8' } });
-const errorResponse = (e: AppError) => json({ error: { code: e.code, message: e.message } }, e.status);
+const json = (data: unknown, status = 200, lang?: Locale) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', ...(lang ? { 'content-language': lang, vary: 'accept-language' } : {}) } });
+const errorResponse = (e: AppError, l?: { lang: Locale; cat: Catalog }) =>
+  json(l ? localize({ error: { code: e.code, message: e.message } }, l.lang, l.cat) : { error: { code: e.code, message: e.message } }, e.status, l?.lang);
 
 async function body<T>(req: Request, schema: z.ZodType<T>): Promise<T> {
   let raw: unknown;
@@ -497,6 +508,15 @@ export const routes: Route[] = [
     return c.player(u).invoke('setDisplayName', u, b.displayName);
   } },
   { method: 'GET', path: '/v1/titles', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('titles', u) },
+  // 図鑑・実績 (REQ-COL-*, REQ-ACH-*)
+  { method: 'GET', path: '/v1/collection', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('collection', u) },
+  { method: 'GET', path: '/v1/achievements', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('achievements', u) },
+  { method: 'POST', path: '/v1/achievements/claim-all', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('claimAllAchievements', u, idem(r)) },
+  { method: 'POST', path: '/v1/achievements/:achievementId/tiers/:tier/claim', auth: 'player', handler: async (r, p, c, u) => {
+    const tier = Number(p.tier);
+    if (!Number.isInteger(tier) || tier < 1 || tier > 5) throw new AppError('BAD_REQUEST', 'bad tier');
+    return c.player(u).invoke('claimAchievement', u, missionIdParam(p.achievementId!), tier, idem(r));
+  } },
   { method: 'PUT', path: '/v1/player/title', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ titleId: id.nullable() }));
     return c.player(u).invoke('equipTitle', u, b.titleId);
@@ -599,14 +619,15 @@ export const routes: Route[] = [
   } },
   // push notifications (REQ-PUSH-*)
   { method: 'PUT', path: '/v1/push/devices', auth: 'player', handler: async (r, _p, c, u) => {
-    const b = await body(r, z.object({ token: z.string().min(8).max(4096), platform: z.enum(['ios', 'android']) }));
-    return c.player(u).invoke('registerDevice', u, b.token, b.platform);
+    // REQ-L10N-007: the device's language (body `locale`, else the request's ?lang= / Accept-Language)
+    const b = await body(r, z.object({ token: z.string().min(8).max(4096), platform: z.enum(['ios', 'android']), locale: z.enum(LOCALES).optional() }));
+    return c.player(u).invoke('registerDevice', u, b.token, b.platform, b.locale ?? resolveLocale(r));
   } },
   { method: 'POST', path: '/v1/push/devices/unregister', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ token: z.string().min(1).max(4096) }));
     return c.player(u).invoke('unregisterDevice', u, b.token);
   } },
-  { method: 'GET', path: '/v1/push/preferences', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('pushPreferences', u) },
+  { method: 'GET', path: '/v1/push/preferences', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('pushPreferences', u, resolveLocale(r)) },
   { method: 'PUT', path: '/v1/push/preferences', auth: 'player', handler: async (r, _p, c, u) => {
     const hour = z.number().int().min(0).max(23);
     const b = await body(r, z.object({
@@ -616,7 +637,7 @@ export const routes: Route[] = [
     return c.player(u).invoke('setPushPreferences', u, {
       ...(b.categories ? { categories: b.categories } : {}),
       ...(b.quietHours !== undefined ? { quietHours: b.quietHours } : {}),
-    });
+    }, resolveLocale(r));
   } },
   // analytics (REQ-KPI-003)
   { method: 'POST', path: '/v1/analytics/events', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('kpiIngest', u, await body(r, clientBatchSchema)) },
@@ -680,6 +701,22 @@ export const routes: Route[] = [
     if (!/^[a-z0-9_]{1,32}$/.test(p.placementId!)) throw new AppError('BAD_REQUEST', 'bad placement id');
     return c.player(u).invoke('adStart', u, p.placementId!, idem(r));
   } },
+  // 調教 training (REQ-TRAIN-*, contracts/protocol.md §25)
+  { method: 'GET', path: '/v1/training', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('training', u) },
+  { method: 'POST', path: '/v1/training/start', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ horseId: z.string().min(1).max(40), menuId: z.string().regex(/^[a-z0-9_]{1,24}$/) }).strict());
+    return c.player(u).invoke('trainingStart', u, b.horseId, b.menuId, idem(r));
+  } },
+  { method: 'POST', path: '/v1/training/:sessionId/finish', auth: 'player', handler: async (r, p, c, u) => {
+    if (!/^tr_[a-z0-9_]{1,40}$/.test(p.sessionId!)) throw new AppError('BAD_REQUEST', 'bad session id');
+    const b = await body(r, z.object({ taps: z.array(z.number().int()).max(40), skipped: z.boolean().optional() }).strict());
+    return c.player(u).invoke('trainingFinish', u, p.sessionId!, b, idem(r));
+  } },
+  { method: 'POST', path: '/v1/training/items/:itemId/use', auth: 'player', handler: async (r, p, c, u) => {
+    if (!/^[a-z0-9_]{1,40}$/.test(p.itemId!)) throw new AppError('BAD_REQUEST', 'bad item id');
+    const b = await body(r, z.object({ horseId: z.string().min(1).max(40) }).strict());
+    return c.player(u).invoke('trainingUseItem', u, p.itemId!, b.horseId, idem(r));
+  } },
   // admin
   { method: 'GET', path: '/v1/admin/paid-balance', auth: 'admin', handler: async (_r, _p, c) => c.paidBalance() },
   { method: 'GET', path: '/v1/admin/replays/:raceId', auth: 'admin', handler: async (_r, p, c) => c.race.replay(p.raceId!) },
@@ -706,8 +743,13 @@ export const handle: Handler = async (req, _p, ctx) => {
       ops: ctx.ops, authenticateAdmin: (r) => ctx.authenticateAdmin!(r), player: ctx.player, leaderboard: ctx.leaderboard,
       paidBalance: () => ctx.paidBalance(), replay: (id) => ctx.race.replay(id), ...(ctx.clock ? { clock: ctx.clock } : {}),
       ...(ctx.tournaments ? { tournaments: ctx.tournaments } : {}),
+      baseMaster: ctx.baseMaster ?? ctx.master,
+      ...(ctx.inviteLookup ? { inviteLookup: ctx.inviteLookup } : {}),
+      ...(ctx.adminConsoleOrigins ? { consoleOrigins: ctx.adminConsoleOrigins } : {}),
     });
   }
+  // REQ-L10N-001..003: `?lang=` / Accept-Language; Japanese is rendered by the domain, English translated here
+  const l10n = { lang: resolveLocale(req), cat: catalogFor(ctx.master) };
   try {
     let methodMismatch = false;
     for (const r of routes) {
@@ -722,11 +764,11 @@ export const handle: Handler = async (req, _p, ctx) => {
       if (r.auth === 'player') uid = await ctx.authenticate(req);
       if (r.auth === 'admin' && (!ctx.adminToken || !timingSafeEqual(req.headers.get('authorization') ?? '', `Bearer ${ctx.adminToken}`))) throw new AppError('UNAUTHORIZED');
       const out = await r.handler(req, params, ctx, uid);
-      return out instanceof Response ? out : json(out);
+      return out instanceof Response ? out : json(localize(out, l10n.lang, l10n.cat), 200, l10n.lang);
     }
-    return methodMismatch ? json({ error: { code: 'BAD_REQUEST', message: 'method not allowed' } }, 405) : errorResponse(new AppError('NOT_FOUND'));
+    return methodMismatch ? json({ error: { code: 'BAD_REQUEST', message: 'method not allowed' } }, 405) : errorResponse(new AppError('NOT_FOUND'), l10n);
   } catch (e) {
-    if (e instanceof AppError) return errorResponse(e);
+    if (e instanceof AppError) return errorResponse(e, l10n);
     console.error(e);
     return json({ error: { code: 'INTERNAL', message: 'internal error' } }, 500);
   }
@@ -787,7 +829,7 @@ export function teamPlayersFrom(player: (uid: string) => PlayerInvoker): TeamPla
     push: (u, templateId, vars) => player(u).invoke('queuePush', u, templateId, vars),
     stampCatalog: (u) => player(u).invoke('stampCatalog', u),
     stampCheck: (u, s) => player(u).invoke('stampCheck', u, s),
-    stampPosted: (u, s, k, t) => player(u).invoke('stampPosted', u, s, k, t),
+    stampPosted: (u, s, k, t, ref) => player(u).invoke('stampPosted', u, s, k, t, ref ?? null),
     feedViewer: (u, first) => player(u).invoke('feedViewer', u, first),
     feedMutes: (u) => player(u).invoke('feedMutes', u),
     feedMute: (u, t, muted) => player(u).invoke('feedMute', u, t, muted),

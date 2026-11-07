@@ -323,6 +323,53 @@ describe('result consensus (REQ-NET-008/012)', () => {
     expect(b.r.final?.status).toBe('confirmed');
     expect(b.r.final?.finishTicks).toBeUndefined();
   });
+
+  it('REQ-ACH-002: takes the fired-skill slots only when every agreeing client sent the same list (verifier path too)', () => {
+    const { r, slots, cfg } = room(3);
+    const e = end(r);
+    runTo(r, slots, e);
+    const skilled = cfg.entrants.filter((x) => x.horse.skill).map((x) => x.slot);
+    const noSkill = cfg.entrants.find((x) => !x.horse.skill)?.slot;
+    const list = [skilled[0]!, ...(noSkill !== undefined ? [noSkill] : [])];
+    slots.forEach((s) => r.message(s, { t: 'res', h: H('a'), order: [2, 1, 0], skills: list }, at(e)));
+    expect(r.final?.skillFired).toEqual([skilled[0]]); // slots without a skill are dropped
+    const b = room(3);
+    runTo(b.r, b.slots, e);
+    b.slots.forEach((s, i) => b.r.message(s, { t: 'res', h: H('a'), order: [2, 1, 0], ...(i === 0 ? {} : { skills: [skilled[0]!] }) }, at(e)));
+    expect(b.r.final?.status).toBe('confirmed');
+    expect(b.r.final?.skillFired).toBeUndefined();
+    const c = room(2);
+    runTo(c.r, c.slots, e);
+    c.r.message(c.slots[0]!, { t: 'res', h: H('a'), order: [1, 0], skills: [skilled[0]!] }, at(e));
+    c.r.message(c.slots[1]!, { t: 'res', h: H('b'), order: [0, 1], skills: [] }, at(e));
+    c.r.applyVerification({ resultHash: H('a'), order: [1, 0], finishTicks: [10, 11], checksums: {}, skillsFired: [skilled[0]!] });
+    expect(c.r.final?.skillFired).toEqual([skilled[0]]); // the verifier's own re-simulation
+  });
+
+  it('QA R11: one client alone cannot forge fired skills (lone solo report, lone verified report)', () => {
+    const { cfg } = room(1, 'friend');
+    const skilled = cfg.entrants.filter((x) => x.horse.skill).map((x) => x.slot);
+    // a friend race where only one human showed up: its result is trusted, its skill claims are not
+    const a = room(1, 'friend');
+    const e = end(a.r);
+    runTo(a.r, a.slots, e);
+    a.r.message(a.slots[0]!, { t: 'res', h: H('a'), order: [0], skills: skilled }, at(e));
+    expect(a.r.final?.status).toBe('confirmed');
+    expect(a.r.final?.skillFired).toBeUndefined();
+    // ranked with one human goes to the verifier: the verifier's list counts, not the client's claim
+    const b = room(1, 'ranked');
+    runTo(b.r, b.slots, e);
+    b.r.message(b.slots[0]!, { t: 'res', h: H('a'), order: [0], skills: skilled }, at(e));
+    b.r.applyVerification({ resultHash: H('a'), order: [0], finishTicks: [10], checksums: {}, skillsFired: [] });
+    expect(b.r.final?.status).toBe('confirmed');
+    expect(b.r.final?.skillFired ?? []).toEqual([]);
+    // an older verifier without the list: a single agreeing client is still not enough
+    const c = room(1, 'ranked');
+    runTo(c.r, c.slots, e);
+    c.r.message(c.slots[0]!, { t: 'res', h: H('a'), order: [0], skills: skilled }, at(e));
+    c.r.applyVerification({ resultHash: H('a'), order: [0], finishTicks: [10], checksums: {} });
+    expect(c.r.final?.skillFired).toBeUndefined();
+  });
 });
 
 describe('silence detection (REQ-NET-013)', () => {

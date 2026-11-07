@@ -31,6 +31,7 @@ src/domain/     純粋ロジック（I/Oなし・時刻と乱数は注入）
   purchase.ts     購入前チェック（年齢・保護者同意・月額上限）、レシート反映、初回ボーナス、パス、返金
   accounting.ts   資金決済法の基準日判定・未使用残高の集計
   gacha.ts        ppmテーブル、検証、提供割合の自動生成、10連保証、天井、ダブり→素材、コンプガチャ検出
+  collection.ts   図鑑（入手・出会った・未発見）、実績（遊びだけを数える段・無償コイン・称号）、組の実績のコンプガチャ検出
   horses.ts       覚醒、命名（正規化＋NG）、引退、配合、ニックス、5代血統、近親ペナルティ、予想
   rewards.ts      ログボ、デイリーミッション、シーズンパス、レース報酬
   service.ts      PlayerService（ドラフト上で実行→成功時のみ保存、冪等キー）
@@ -71,6 +72,10 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | POST | `/v1/ads/:placementId/start` | 要 | 必須 | 視聴セッションを開く（付与しない。`AD_LIMIT_REACHED` / `NOT_ELIGIBLE` / `RATE_LIMITED`） |
 | GET | `/v1/ads/sessions/:sessionId` | 要 | | セッションの状態（`open`/`rewarded`/`rejected`/`expired`）とウォレット |
 | GET | `/v1/ads/ssv/admob` | 署名 | | 広告ネットワークのサーバー検証コールバック（ECDSA 署名、env `ADS_SSV_KEYS_URL`/`ADS_SSV_KEYS`/`ADS_AD_UNITS`。未設定なら 404） |
+| GET | `/v1/training` | 要 | | 調教：今日の回数・メニュー・馬ごとの伸び／素質／疲れ・開いたままのセッション（期限切れはここでミニゲームなしとして記録）（protocol §25） |
+| POST | `/v1/training/start` | 要 | 必須 | `{horseId, menuId}` 回数を1つ使い、ミニゲームのビートを返す（`TRAINING_LIMIT` / `TRAINING_TIRED` / `TRAINING_POTENTIAL_FULL`） |
+| POST | `/v1/training/:sessionId/finish` | 要 | 必須 | `{taps:[ms…], skipped?}` サーバーが採点し直して伸びを付ける（`TRAINING_INPUT_INVALID` 422 / `TRAINING_SESSION_EXPIRED`） |
+| POST | `/v1/training/items/:itemId/use` | 要 | 必須 | `{horseId}` 疲れを回復するアイテム（デイリーミッションでだけ入手） |
 | POST | `/v1/shop/purchase-intent` | 要 | | `{productId}` ストア購入を始めてよいか（`AGE_REQUIRED` / `GUARDIAN_CONSENT_REQUIRED` / `AGE_LIMIT_EXCEEDED` / `ALREADY_PURCHASED` / `UNSETTLED_DEBT` / `NOT_ELIGIBLE`）。パスは残り日数、コインは初回の無償上乗せも返す（§13.2） |
 | GET | `/v1/shop/store-account` | 要 | | `{appleAppAccountToken, googleObfuscatedAccountId}` 購入時にストアへ渡す値（下記「ストア連携」） |
 | POST | `/v1/shop/purchase` | 要 | （取引IDで自動） | `{platform: apple\|google\|fake, productId, receipt}`。apple＝`Transaction.jwsRepresentation`、google＝`{"purchaseToken":"…"}` |
@@ -119,6 +124,10 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | POST | `/v1/comeback/login` | 要 | 必須 | 復帰ログインボーナス（1ゲーム日1回） |
 | POST | `/v1/comeback/missions/:missionId/claim` | 要 | 必須 | 復帰ミッション |
 | POST | `/v1/comeback/welcome` | 要 | | 歓迎画面を出した（1回） |
+| GET | `/v1/collection` | 要 | | 図鑑（REQ-COL-*、contracts/protocol.md §24）。入手・出会った・未発見と数。達成率に報酬は無い |
+| GET | `/v1/achievements` | 要 | | 実績（REQ-ACH-*）：進み具合・段・バッジ・称号 |
+| POST | `/v1/achievements/:achievementId/tiers/:tier/claim` | 要 | 必須 | 実績の段の無償コイン |
+| POST | `/v1/achievements/claim-all` | 要 | 必須 | 受け取れる段を全部 |
 | GET | `/v1/whats-new` | 要 | | 前回見た後に始まったもの（ホームのカード） |
 | POST | `/v1/whats-new/seen` | 要 | | 本文 `{ upTo }`。見た位置を進める |
 | GET | `/v1/season-pass` | 要 | | シーズン（暦月）限りのパス：レベル・30段の報酬・期間・残り日数・前シーズンの自動付与（§13.6） |
@@ -244,6 +253,19 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | GET | `/v1/admin/silks/banned` | viewer | 有効な禁止勝負服の一覧（REQ-OPS-040） |
 | POST | `/v1/admin/silks/banned/check` | viewer | `{silks:{pattern, colors, cap}}` 当たるか確認 |
 | POST | `/v1/admin/silks/banned/import` | admin | `{list, reason}` 一覧を丸ごと取り込み、設定の新しい版として登録（有効化は `/v1/admin/config/activations`） |
+| POST | `/v1/admin/config/dry-run` | viewer | `{op:{kind:'activate', versionId, at?} \| {kind:'rollback', versionId?} \| {kind:'cancel', activationId}}` 本番と同じ検証を保存せずに実行（REQ-OPS-008）→ `{ok, problems, groups, effect}` |
+| GET | `/v1/admin/config/diff` | viewer | `?from=&to=`（版IDか `base`）パスごとの差分（REQ-OPS-009） |
+| GET | `/v1/admin/gacha/calendar` | viewer | `?versionId=active\|base\|cfg_N` バナーの日程（ゲーム日）・天井グループと引き継ぎの連鎖・ステップアップの価格（REQ-OPS-027） |
+| GET | `/v1/admin/gacha/:bannerId/odds` | viewer | `?versionId=` プレイヤー向けと同じ提供割合ページ（公開前・終了後も） |
+| GET | `/v1/admin/events` | viewer | `?versionId=` イベントの一覧と状態、コース一覧 |
+| GET | `/v1/admin/tournaments` | viewer | 大会の一覧と状態 |
+| GET | `/v1/admin/players/lookup` | viewer | `?inviteCode=XXXX-XXXX` 招待コードからプレイヤーID（REQ-OPS-020a） |
+| GET | `/v1/admin/compensations` | viewer | `?status=pending\|approved\|executed\|rejected\|expired&playerId=&limit=` 補填の依頼（REQ-OPS-026） |
+| POST | `/v1/admin/compensations` | operator | `{playerId, grant:{freeCoins?, items?}, opKey, reason}` 閾値（1万コイン・100個）以下は即付与、超えると承認待ち（上限10万・1000個） |
+| POST | `/v1/admin/compensations/:id/approve` | admin | `{note?, reason}` 依頼者以外の admin が承認して付与（2人ルール。付与失敗後は再承認で再試行） |
+| POST | `/v1/admin/compensations/:id/reject` | operator | `{note?, reason}` 承認待ちを却下（依頼者の取り下げも可） |
+
+`GET /v1/admin/players/:playerId` は `{state, integrity, flags, compensations}`（`state` に `exists`・`accountDeleted`・`deletion`・`referral` を含む）。`/players/:id/grants` と一括配布の1人あたりは補填の閾値（1万コイン・100個）まで。運用コンソールからの呼び出しは `ADMIN_CONSOLE_ORIGINS`（wrangler の変数、カンマ区切りのオリジン）に載せたオリジンだけ CORS で許可（資格情報なし）。書き込みは `content-type: application/json` 必須。手順は `docs/ops/console.md`。
 
 ### 設定配信（リモートコンフィグ）
 - バンドルで変えられるもの：`ruleset`（一部でも全部でも可。キー集合は固定）、`gacha.banners`（一覧ごと置き換え。開催日程は `startDay`/`endDay`（ゲーム日）か `startAtMs`/`endAtMs`、予告は `announceDays`/`announceAtMs`、ステップアップは `stepUp`）、`gacha.pityGroups`（`endDay`/`endAtMs`・`convertTo`・`label`）、`tracks`、`progression`（浅いマージ）、`ng`。

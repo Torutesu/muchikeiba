@@ -19,6 +19,11 @@ namespace Muchi.Client
         /// <summary>Development only (server DEV_MODE=1): send x-dev-user instead of a Firebase token.</summary>
         public string DevUserId;
         public RetryPolicy Retry = new RetryPolicy();
+        /// <summary>
+        /// REQ-L10N-009: the language of the server's texts ("ja" default, "en"). Sent as Accept-Language on every request;
+        /// change it at runtime with <see cref="ApiClient.Locale"/> (the settings language toggle).
+        /// </summary>
+        public string Locale = Loc.Ja;
     }
 
     /// <summary>
@@ -48,6 +53,9 @@ namespace Muchi.Client
         }
 
         public string BaseUrl => _opt.BaseUrl?.TrimEnd('/') ?? "";
+
+        /// <summary>REQ-L10N-009: "ja" or "en" — server texts (shop, notices, skills, odds pages, errors…) come back in it.</summary>
+        public string Locale { get => Loc.Normalize(_opt.Locale); set => _opt.Locale = Loc.Normalize(value); }
 
         /// <summary>WebSocket URL for a race assignment (http→ws, https→wss).</summary>
         public string RaceWebSocketUrl(RaceAssignment a)
@@ -631,6 +639,7 @@ namespace Muchi.Client
             var b = JsonNode.Obj();
             b.Set("token", fcmToken);
             b.Set("platform", platform == PushPlatform.Ios ? "ios" : "android");
+            b.Set("locale", Locale); // REQ-L10N-007: pushes to this device come in the app's language
             return Call("PUT", "/v1/push/devices", b, true, null, true, o => J.Int(o, "devices"), ct);
         }
 
@@ -795,6 +804,7 @@ namespace Muchi.Client
                 ct.ThrowIfCancellationRequested();
                 var req = new HttpRequest { Method = method, Path = path, Body = body?.ToString() };
                 req.Headers["accept"] = "application/json";
+                req.Headers["accept-language"] = Locale; // REQ-L10N-001
                 if (body != null) req.Headers["content-type"] = "application/json";
                 if (idemKey != null) req.Headers["idempotency-key"] = idemKey;
                 if (extraHeaders != null) foreach (var kv in extraHeaders) req.Headers[kv.Key] = kv.Value;

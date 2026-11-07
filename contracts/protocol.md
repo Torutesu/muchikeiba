@@ -93,7 +93,7 @@ C#（端末・検証サーバー）とTypeScript（Cloudflareサーバー）の�
 | `hello` | `{"t":"hello","raceId":"…","token":"…","lastTick":-1}` | 参加・再接続。`lastTick`は計算済みの最後のtick（初回は-1） |
 | `in` | `{"t":"in","tick":123,"cmd":32}` | 入力。`tick`は宛先tick |
 | `chk` | `{"t":"chk","tick":120,"h":"0123456789abcdef"}` | チェックサム（`tick`は`checksumIntervalTicks`の倍数） |
-| `res` | `{"t":"res","h":"<64hex>","order":[3,0,…],"finishTicks":[1830,1835,…]}` | 結果ハッシュと着順。`finishTicks`は任意（`order`と同じ並び、未完走は-1）。合意した全員が同じ値を送った時だけ戦績のベストタイムに使う。最も速い馬でもゴールできないtickより前の`res`は`err` `RESULT_TOO_EARLY`、2回目以降の`res`は無視 |
+| `res` | `{"t":"res","h":"<64hex>","order":[3,0,…],"finishTicks":[1830,1835,…],"skills":[0,5]}` | 結果ハッシュと着順。`finishTicks`は任意（`order`と同じ並び、未完走は-1）。合意した全員が同じ値を送った時だけ戦績のベストタイムに使う。`skills`は任意（固有スキルが発動した枠、§24.4）。合意した2人以上が同じ一覧の時だけ実績に使う（検証に回ったレースは検証サービスの `skillsFired`）。最も速い馬でもゴールできないtickより前の`res`は`err` `RESULT_TOO_EARLY`、2回目以降の`res`は無視 |
 | `ping` | `{"t":"ping","c":1730000000000}` | 時刻合わせ |
 
 ### 部屋 → 端末
@@ -158,6 +158,7 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 ```
 - `finishTicks` は `order` と同じ並び。未完走は -1。
 - `finishFracs`（追加・任意）：同じ並びで、ゴールしたtick内の割合（Q16.16の小数部 0〜65535）。未完走は -1。タイムアタックの正確なタイム計算に使う。古い検証サーバーは出さないので、受け手は無い場合を0として扱う。
+- `skillsFired`（追加・任意、Round 11）：再シミュレーションで固有スキルが発動した枠（昇順）。HTTP の `POST /verify` だけが付ける（`VerifyService.Verify(json, withSkills: true)`。golden ファイル・`replay` コマンドの出力は今までどおり無し）。サーバーはこれで実績の「固有スキルの発動」を数える（§24.4）。サーバーのスキーマは厳格なので、**サーバーを先に更新してから検証サービスを更新する**こと（古いサーバーはこの欄を拒否する）。
 - 形式違反・ルールセットのキー不一致は `400 {"error":"…"}`。
 
 ## 8.1 タイムアタック（REQ-TA-*）
@@ -671,3 +672,238 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 
 ### 21.6 広告なしパス（`ad_free_pass`）は作らない
 強制広告が無く、広告は自分で選んだ時だけ再生されるので、「広告を消す」商品には消すものが無い（払っても何も変わらない商品は誤認のおそれ）。代わりに、支払った人には既定で広告を出さない（`payerQuietDays` 30日、`pref: on` で自分から見ることはできる）。経済の目標 E13（balance-targets 4.9）も、広告の価値を一番安い有料商品より小さく保つ。
+
+## 22. 運用コンソール向けの管理API（REQ-OPS-008/009/015/020a/026/027、`server/src/http/admin.ts`、`tools/ops-console`、`docs/ops/console.md`）
+管理APIは端末（Unity）からは呼ばない。認証は `Authorization: Bearer <管理トークン>`（Cookie なし）。書き込みは `content-type: application/json` と本文の `reason`（3〜500文字）が必須で、全呼び出しが監査ログに残る。ブラウザからは `ADMIN_CONSOLE_ORIGINS` のオリジンだけ CORS で許可（`OPTIONS` は認証前に 204、資格情報は不可。未許可のオリジンは 403）。
+
+| メソッド | パス | 権限 | 本文 → 応答 |
+|---|---|---|---|
+| POST | `/v1/admin/config/validate` | viewer | `{bundle}` → `{ok, problems: string[], groups: {dayRule, assetCatalog, gacha, ruleset, other}}`（`groups` は追加） |
+| POST | `/v1/admin/config/dry-run` | viewer | `{op}`（`{kind:'activate', versionId, at?}`／`{kind:'rollback', versionId: string\|null}`／`{kind:'cancel', activationId}`）→ `{ok, problems, groups, effect: Activation\|null}`。何も保存しない（`effect.id` は `"(dry run)"`） |
+| GET | `/v1/admin/config/diff?from=&to=` | viewer | → `{from, to, changes: [{path, before, after}], total, truncated}`。`base`＝空のバンドル。`id` 付きの一覧は `path[<id>]` |
+| GET | `/v1/admin/gacha/calendar?versionId=` | viewer | → `{versionId, serverNowMs, today, dayRollover, banners: [{id, name, currency, priceSingle, priceTen, status, startAtMs, endAtMs, announceAtMs, firstDay, lastDay, pityGroup, pityLabel, pityCost, pityTargets, pickup, stepUp: {afterLast, prices, finalSlotSteps}\|null}], pityGroups: [{id, label, cost, endAtMs, lastDay, convertTo, finalGroup, chain, banners, carryOver}]}` |
+| GET | `/v1/admin/gacha/:bannerId/odds?versionId=` | viewer | → `{versionId, odds}`。`odds` は `GET /v1/gacha/:bannerId/odds` と同じ形（公開前・終了後も） |
+| GET | `/v1/admin/events?versionId=` | viewer | → `{versionId, serverNowMs, events: [{id, name, startAtMs, endAtMs, status, trackIds, fee, maxPlayers, entry}], tracks: [{id, surface, distanceM}]}` |
+| GET | `/v1/admin/tournaments` | viewer | → `GET /v1/tournaments` と同じ |
+| GET | `/v1/admin/players/lookup?inviteCode=` | viewer | → `{playerId, inviteCode}`（形式違いは400、該当なしは404） |
+| GET | `/v1/admin/players/:playerId` | viewer | → `{state, integrity, flags: [{raw, kind, group, detail}], compensations}`。`state` に `exists`・`accountDeleted`・`deletion: {status, requestedAt, deleteAt, steps, attempts, retryAt}\|null`・`referral: {invitedBy, invitees, installs}\|null` |
+| GET | `/v1/admin/compensations?status=&playerId=&limit=` | viewer | → `{requests: CompensationRequest[], threshold: {freeCoins, itemQty}, hardCap}` |
+| POST | `/v1/admin/compensations` | operator | `{playerId, grant: {freeCoins?, items?: [{itemId, qty}]}, opKey, reason}` → `{request, created, payment: {before, after}\|null}`。閾値以下は `status: executed`、超えると `pending`。閾値以下でも、そのプレイヤーへの1人で決めた付与（直接配布・一括配布・閾値以下の補填）の直近24時間の合計が閾値を超えるなら `pending`（`needsApproval: true`、`payment: null`。分けて2人目を省けない、QA R11） |
+| POST | `/v1/admin/compensations/:id/approve` | admin | `{note?, reason}` → `{request, payment}`。依頼者本人は403、期限切れ・却下済み・付与済みは409 |
+| POST | `/v1/admin/compensations/:id/reject` | operator | `{note?, reason}` → `{request}` |
+
+`POST /v1/admin/players/:playerId/grants`・`POST /v1/admin/grants/bulk` も同じ24時間の合計に数え、超える分は `403 FORBIDDEN`（`two-person approval required: …`、一括配布は `failed[]` に入る）。失敗した書き込みの監査ログの対象は、パスに `:id` があれば `<種類>:<id>`（例 `compensation:comp_3`）。
+
+`CompensationRequest`：`{id, opKey, playerId, grant, reason, requestedBy, requestedRole, requestedAt, expiresAt, needsApproval, status: pending|approved|executed|rejected|expired, decidedBy, decidedAt, decisionNote, executedAt, error}`。
+
+## 23. ローカライズ（英語、REQ-L10N-001〜013、`server/src/i18n/*`、C# `Localization.cs`（`Loc`・`LocaleCatalog`・`Romaji`）、`Muchi.Game` `UxText`）
+文言の元は**日本語**（ドメインのコード・マスター・ゴールデンファイルは変えない）。英語は日本語の文をキーにした**文字列表**で訳す。対応言語は `ja`（既定）と `en`。
+
+### 23.1 リクエストの言語
+- `?lang=ja|en`（`en-US` などは `en`）を最優先。無ければ `Accept-Language`（q値の高い順、同じなら書いた順に最初の対応言語。`*`・`q=0` は選ばない）。どちらも無ければ `ja`。対応していない言語は無視する。
+- 応答に `content-language: ja|en` と `vary: accept-language`。`?lang=` の無い同じURLでも言語で中身が変わるので、キャッシュは `vary` に従うこと。
+- C# の `ApiClient` は毎回 `accept-language` を送る（`ApiClientOptions.Locale`、実行中は `ApiClient.Locale` で切り替え）。Unity は `MuchiServices.SetLanguage(locale)`（PlayerPrefs `muchi.language`、Runtime の `LocaleService` と同じキー）。
+
+### 23.2 サーバーの訳し方（`http/app.ts` の応答の出口、`i18n/catalog.ts`）
+- ドメインは日本語で作る。`en` の時だけ、応答の JSON の**全ての文字列の値**を表で訳してから返す（キー・数値・ID はそのまま）。エラーの `message` も同じ。管理API（`/v1/admin/*`）と `GET /v1/assets/catalog` は対象外。
+- 訳さないもの：ID の欄（`id`・`key`・`voiceName`・`asset`・`assetKey`・`icon`・`templateId`）と、`name:…` `voice/…` のような識別子の形の文字列。**プレイヤーが書いた文字**（表示名・支部名・表札・自分で付けた馬名）はそのまま返る：表示名・支部名・表札とその写しの欄（`displayName`・`teamName`・`plateName`・`ownerName`・`opponentName`・`inviterName`・`inviteeName`・`fromName`・`byName`・`anonName`、`PLAYER_TEXT_KEYS`）は表を引かない（「決勝」という名前の人は「決勝」のまま）。馬名は表に無いカタカナなのでそのまま。クライアントがカタカナの馬名をローマ字で表示する（§23.6）。
+- 表は2つで、どちらも日本語の文そのものがキー：
+  - `server/master/locale-en.json`（`Master.locale.en`）：マスターの**プレイヤーに見える日本語すべて**（商品名・注記・法定表示のリンク名・スカウトのバナーと天井の名前・馬名と血統名・称号・スキル名・スタンプ・イベント名・アイテム名・支部リーグの部・復帰ミッション・広告の枠の文言・お知らせ（What's new）・プッシュの文・競馬場名・厩舎テーマ）。
+  - `server/src/i18n/en.ts`（`CODE_EN`）：ドメインのコードが組み立てる文（商品の中身の行・はじめての購入の行・提供割合のページの注記と各表の説明・券の説明・天井の移行・スキルの発動条件と効果・スタンプの解放条件・削除の確認・招待の共有文・名前の既定値・大会の回戦名・選手に見えるエラーの詳細）。
+- **テンプレート**：キーに `{名前}` があれば型として照合する。`n` `m` `v` `p` `a` `b` `i` `y` `days` `levels` `qty` `minutes` `points` は数字だけ（`1,020`・`2.5%`）、`hm` は時刻（`4:00`）、`id` `code` `url` はその形、ほかは任意の文字列（取り込んだ部分が日本語なら、さらに表で訳す。例：「スカウト券×1」は `{item}×{qty}` で `item` を訳す）。`name` `team` は訳せなくてもそのまま入れる（プレイヤーの名前）。英語側の `{n:ord}` は序数（「3着」→ `3rd`）。
+- **組み立てた文**：表に無ければ文（「。」）ごと、それでも無ければ区切り（`  /  `・` / `・改行・` または `・` ・ `・`＋`・`・`・`、`・全角空白）で分けて訳す。どれでも訳せなければ**日本語のまま返す**（欠けても空にはしない）。
+- 1つの日本語に英語は1つ（文脈で訳し分けが要るなら日本語の文を変える）。
+
+### 23.3 検証（起動時・リモート設定）
+- 起動時（`index.ts` `validateLocale`）とリモート設定の各版（`resolveBundle` の `localeProblems`）で、マスターの**プレイヤーに見える日本語の全ての文**に英語があることを確かめる。内部だけのもの（NG語・実在の服色の禁止リスト・アセットカタログ・ニックス・年齢上限の状態・`_note` などの `_` で始まるキー）は対象外。英語が無い・英語に日本語が残っている・`{…}` の名前が日本語と違う・下の禁止表現、のどれかで**起動しない／その版を有効にしない**。
+- リモート設定は `locale: { en: { "<日本語>": "<英語>" } }` を持てる（`master/locale-en.json` に足す。同じキーは上書き）。新しいバナー・イベント・お知らせを出す版は、その英語も一緒に入れる（無ければ `CONFIG_INVALID`：`locale.en: no English for gacha.banners[pickup_kohaku].name「…」`）。
+- **英語の禁止表現**（`EN_BANNED`、景品表示法・REQ-UXS-022 の日本語の規則と同じ考え）：倍率（`2x`・`x2`・`×2`・`double`・`twice`・`triple`）、偽の急かし（`limited time`・`today only`・`ends soon`・`hurry`・`last chance`・`act now`・`don't miss`・`while supplies last`・`only N left`）、参考価格・割引（`% off`・`regular/usual/original price`・`best deal/value`・`bargain`・`save N`）、`free gacha`・`rate up`・`odds up`。広告の枠の文言はさらに `guarantee`・`bonus`・`deal` も使わない（`EN_AD_BANNED`、REQ-AD-004）。季節のものは `Seasonal`、限定の柄は `Exclusive` と書き、期間は実際の終了日時だけを示す。
+- `npm run l10n:missing` が英語の無いマスターの文を一覧にする。
+
+### 23.4 法定表示
+特定商取引法に基づく表記・資金決済法に基づく表示は**日本語のまま**表示する（日本の法令に基づく表示で、日本語の本文が効力を持つ）。英語ではリンク名を `Specified Commercial Transactions Act notice (Japanese)` / `Payment Services Act notice (Japanese)` とし、ページでは日本語の本文の下に**参考訳であることの注記**（「日本の法令が求める表示で、適用される日本語で掲載している。以下の英語は参考訳で法的効力は無く、日本国外に条件を広げるものではない」）と参考訳を付ける。日本国外での法的な有効性はうたわない。
+
+### 23.5 プッシュ通知
+- `PUT /v1/push/devices` の本文に `locale`（`ja`|`en`、省略時はリクエストの言語）。端末ごとに記録し（`PushDevice.locale`、無い古い記録は `ja`）、送る時に端末ごとの言語で文を作る（`DueDelivery.messages[locale]`・`tokenLocales`、送り側は `messageFor(d, token)`）。英語の文はプッシュの型（`{name}さんから…`）を表で訳し、サーバーが作った値（「決勝」「2026年11月」・マスターの名前）も訳す。プレイヤーの名前はそのまま。
+- 一斉配信の FCM トピックは言語ごと：`push.json` `topicsByLocale.en`（`season_en`・`events_en`）。`GET/PUT /v1/push/preferences` はリクエストの言語のトピックを `subscribe`、他の言語の同じ種類を `unsubscribe` に入れる（言語を切り替えても二重に届かない）。シーズンの知らせ・イベント開始は言語ごとのトピックへそれぞれの言語で送る。
+
+### 23.6 クライアント（C# `Muchi.Client` / Unity `Muchi.Game` / Web プロトタイプ）
+- サーバーの文は要求した言語で届くので、クライアントは訳し直さない。**クライアントが作る文**（`UxText`・各画面のモデル・`RaceDebrief`・`RaceFeel`・`ReplayClip`）は日本語のまま作り、画面に出す時に `Loc.T(text)` を通す（`ja` では何もしない）。`UxText.For`・`UxText.Reward`・`ActionResult` のメッセージは `Loc.T` 済みで返す。
+- 表：`engine/Muchi.Client/Resources/Muchi/ui-en.json`（クライアントが作る文）と `server-en.json`（サーバーの2つの表をまとめたもの。`npm run gen:client-locale` で生成、サーバーのテストが古いと失敗する。レースの設定に入っている馬名・スキル名、オフラインのキャッシュの文に使う）。照合の規則はサーバーと同じ（`LocaleCatalog`）。
+- 馬名：表にある馬（テンプレート馬）は英語名（`Shinsei Akatsuki`）、無いカタカナの名前（プレイヤーが付けた馬・CPUの馬）は**ヘボン式のローマ字**で表示（`Romaji.Name`、「ミドリカワ」→ `Midorikawa`、長音は付けない）。保存する名前は変えない（命名の規則はカタカナのまま、REQ-HORSE-004）。
+- 実況：`Resources/Muchi/commentary-en.json`（全ての種類・変種・特化（`kind@mode`・`kind@venue`）が日本語と同じID・同じ `{…}`）。`{place}` は序数（`3rd`）、馬名・スキル名は英語の表から。`ticksPerChar` は 1（英語は1秒あたりの文字数が多い）。
+- Web プロトタイプ（`tools/figma-prototype`）：EN の切り替えで、画面の全ての文字を同じ表（サーバーの2つ＋`ui-en.json`＋`logic/proto-en.json`）で訳す。英語は長いので、枠に収まらない文字は小さくして収める（66%まで）。`test/en-flow.cjs` が主な画面で日本語の残りとはみ出しを調べる。
+- フォント：Noto Sans JP（400/500）・Noto Sans CJK JP（700）は Latin の字形を持つので英語も同じ書体。プロトタイプの字形の絞り込みには ASCII・Latin-1・英語の約物（‘’“”–—…）と英語の表の全ての文字を入れる。英語では字間を詰め、単語の区切りで改行する。
+
+## 24. 図鑑・実績・称号（REQ-COL-001〜005、REQ-ACH-001〜009、`server/src/domain/collection.ts`、C# `Collection.cs`・`Muchi.Game` `CollectionModel`/`AchievementModel`/`TitleShowcaseModel`）
+図鑑は「集めた・出会った記録」を見るだけの画面で、**そろえても何も貰えない**（達成率は数字の表示だけ）。実績は**遊んだこと**（出走・勝利・コース・固有スキルの発動・配合の世代・タイムアタックのメダル・大会・マイ厩舎のいいね・支部の応援）に段を付け、段ごとに**無償コイン**を少し払う。**課金・購入額・ガチャの回数を数える実績は無い**。称号は従来の一覧（§13 `GET /v1/titles`）に一本化し、実績の段で解放される称号もそこに並ぶ（docs/planning/03「図鑑・実績でコンプガチャを作らない理由」）。
+
+### 24.1 マスターデータ（`server/master/collection.json`、起動時と各リモート設定の版で検証）
+| キー | 意味 |
+|---|---|
+| `caps.maxFreeCoinsPerTier` / `caps.maxTotalFreeCoins` | 1段の上限 50 / 全段の合計の上限 2,000（今の合計 **1,235**）。コード上の上限 `COLLECTION_HARD_LIMITS`：1段100（最小パック ¥1.6/コインで ¥160 ≤ 総付景品の ¥200）、合計5,000、5段まで |
+| `lore.horses` / `lore.skills` / `lore.courses` | 図鑑の説明文（全て架空）。テンプレート馬・スキル・コースのIDごと |
+| `achievements[]` | `id`・`category`（race / course / skill / breeding / time_attack / tournament / stable / team）・`name`・`description`・`metric`・`tiers[]`（`tier` 1〜5 の連番、`target` は増加、`reward` は `{ "freeCoins": n }` だけ） |
+
+`metric`（これ以外は拒否。`purchases`・`yenSpent`・`gachaPulls`・`collectionPercent` などは「課金・ガチャへの報酬」として専用のエラー）：
+
+| metric | 数えるもの（どこから） |
+|---|---|
+| `races` / `wins` / `top3` | 出走・1着・3着以内（`stats`、確定したレースだけ。チュートリアルは数えない） |
+| `trackWins`（`trackId`） | そのコースでの1着（`stats.byTrack`） |
+| `collect`（`section`、`ids` 省略時は全部） | その一覧で「入手」したものの数。**`horses`・`skills` は1つでもガチャで出るものを含むと拒否、`cosmetics` は売り物なので拒否**（コンプガチャ・購入への報酬）。今は `courses`（走ったコース）だけ |
+| `skillsActivated` | 自分の馬の固有スキルがレースで発動した回数（§24.4。CPU が代わりに乗った時は数えない） |
+| `breedingGeneration` | 自分の厩舎で配合した仔の最も深い世代（テンプレートの馬 = 0、仔 = 1 + 親の大きい方） |
+| `taMedals`（`medal`: bronze/silver/gold） | タイムアタックのメダル（`progression.timeAttack.milestones` の `_<medal>` で終わるもの） |
+| `tournamentPodiums` / `tournamentWins` | 大会の3位以内・優勝（大会の結果は1大会に1回だけ反映） |
+| `stableLikes` | マイ厩舎がもらった「いいね」（§マイ厩舎の数そのもの） |
+| `teamCheers` | 支部フィードで送ったスタンプ（投稿・新しい応援。同じ投稿・応援は1回だけ） |
+
+称号：`master/titles.json` の `condition: { "kind": "achievement", "achievementId", "tier" }` が実績の段に結び付く（存在しない実績・段は検証で拒否）。今は7つ（全場制覇・スキルの使い手・血統の守り人・時計の支配者・大会の覇者・人気厩舎・応援団長）。
+
+### 24.2 `GET /v1/collection`（要認証）
+```json
+{ "sections": {
+    "horses":   { "total": 27, "obtained": 3, "seen": 9, "unknown": 15, "completionPermille": 111, "entries": [
+      { "id": "t_partner", "state": "obtained", "rarity": "SR", "name": "アイボウ", "style": "sashi", "surface": "turf",
+        "distance": { "minM": 1600, "maxM": 2400 }, "skillId": "sk_sueashi", "lore": "はじめての相棒。…",
+        "stats": { "speed": 600, "stamina": 550, "burst": 650, "guts": 500, "temper": 500 }, "seasonal": null, "art": "collection/portrait/t_partner" },
+      { "id": "t_seiya", "state": "unknown", "rarity": "SSR", "name": null, "style": null, "surface": null, "distance": null,
+        "skillId": null, "lore": null, "stats": null, "seasonal": { "label": "冬季限定" }, "art": "collection/silhouette/t_seiya" } ] },
+    "skills":    { …, "entries": [ { "id", "state", "rarity", "name", "styles", "condition", "effect", "lore" } ] },
+    "courses":   { …, "entries": [ { "id", "state": "obtained|unknown", "name", "surface", "distanceM", "lore", "races", "wins", "bestFinishTick", "timeAttackBestMs" } ] },
+    "cosmetics": { …, "entries": [ { "id", "state": "obtained|unknown", "kind", "name", "lore", "icon" } ] } },
+  "totals": { "total": 63, "obtained": 9, "seen": 12, "unknown": 42, "completionPermille": 142 },
+  "completionRewards": false,
+  "notice": "図鑑の達成率は記録の表示だけです。そろえても報酬はありません。" }
+```
+- `state`：`obtained`（持っている・持っていた。馬は引退しても残る）/ `seen`（確定したレースで同じ場を走った：CPU の馬のテンプレートと、場の全ての馬の固有スキル。§24.4）/ `unknown`。
+- `unknown` の馬・スキルは**名前・説明・能力を返さない**（並び順とレア度とシルエットのキーだけ）。`seen` は名前・説明まで、能力は `obtained` だけ。
+- `completionPermille` = `obtained × 1000 / total`（切り捨て）。`completionRewards` は常に `false`（達成率に報酬を付ける設定は作れない）。
+- 何も書き込まない。
+
+### 24.3 `GET /v1/achievements`・`POST /v1/achievements/:achievementId/tiers/:tier/claim`・`POST /v1/achievements/claim-all`（要認証）
+```json
+{ "achievements": [ { "id": "races", "category": "race", "name": "出走の記録", "description": "…", "metric": "races",
+    "progress": 120, "nextTarget": 300, "tier": 2, "maxTier": 5, "badge": "badge/races_2",
+    "tiers": [ { "tier": 1, "target": 10, "reward": { "freeCoins": 5 }, "unlocked": true, "unlockedAt": 1795…, "claimed": true, "claimable": false, "badge": "badge/races_1" }, … ],
+    "titles": [ { "id": "ach_champion", "name": "大会の覇者", "tier": 1, "unlocked": false, "icon": "title/ach_champion" } ] } ],
+  "blocked": false,
+  "totals": { "tiers": 71, "unlocked": 12, "claimed": 10, "claimable": 2, "claimableCoins": 15, "earnedCoins": 85, "totalCoins": 1235 },
+  "notice": "実績はレースや育成などのプレイで達成します。課金やガチャの回数では達成しません。報酬は無償コインです。" }
+```
+- 段の解放はサーバーが自動で行う（§24.4）。受け取りは段ごと（`…/tiers/:tier/claim`、`Idempotency-Key` 必須）か全部（`claim-all`、同じく必須）。
+  応答：1段 `{ "achievementId", "tier", "reward": { "freeCoins" }, "wallet": { "free", "paid" } }`、全部 `{ "claimed": [ {achievementId, tier, reward} ], "freeCoins", "wallet" }`。
+- エラー：`NOT_FOUND`（実績・段が無い）、`NOT_ELIGIBLE`（まだ届いていない）、`ALREADY_CLAIMED`（409）、`DELETION_PENDING`（削除の予約中。`blocked: true` で `claimable` は全て false）、`BAD_REQUEST`（段が 1〜5 でない）、`IDEMPOTENCY_KEY_REQUIRED`。
+- `GET` は読むだけに見えるが、マスターの変更で届いた段があればここでも解放する（トランザクションの最後の手順、§24.4）。
+- 台帳：`grant` / `free`、理由 `achievement <id> tier <n>`、参照 `ach:<id>:<n>`。
+
+### 24.4 進み具合（イベントで・冪等）
+- **全てのプレイヤーのトランザクションの最後**に `syncCollection` が走り、条件に届いた段を1回だけ解放する（KPI `achievement_unlock`：s1 実績ID・s2 カテゴリ・s3 metric・value 段・count 進み具合）。解放された段は取り消さない。続けて称号を評価する（実績の称号）。削除の予約中は解放しない。
+- 数のほとんどは既存の状態から計算する（`stats`・タイムアタックのメダル・いいね・持っている馬）。状態に無いものだけ、その処理のトランザクションの中で数える：
+  - レースの結果（`applyRace`、レースIDごとに1回だけ）：`RaceResultForPlayer.seen`（`settleRace` がレースの設定から作る：CPU の `cpu_<templateId>` と場の全てのスキルID）と `details.skillFired`。
+  - 大会の結果（`tournamentClose`、1大会に1回）：3位以内・優勝。
+  - 支部のスタンプ（`stampPosted`、参照 `post:<teamId>:<seq>` / `react:<teamId>:<seq>` ごとに1回）。
+  - 配合：持っている馬の血統から世代を計算し、最大値を覚える。
+- **固有スキルの発動**（`skillsActivated`）：クライアントは結果の報告（§4 `res`）に任意の `"skills": [slot…]`（そのレースで固有スキルが発動した枠）を付ける。結果のハッシュには入らない情報なので、**同じハッシュを報告した2人以上の全員が同じ一覧を送った時だけ**採る（スキルを持たない枠は除く。1人だけの報告は採らない：1台の端末が毎レース「発動した」と書けてしまう）。検証に回ったレース（ランク戦で人間が1人のレースは必ず回る）では、**検証サービスの再シミュレーションの `skillsFired`** を使う（§8。古い検証サービスで無い時は、検証と同じハッシュを報告した2人以上のクライアントの一致した一覧）。一覧が無い・食い違う時は数えない。
+- 削除：アカウント削除（REQ-UXS-040）で状態ごと消える。予約中は受け取り・解放とも止まり、取り消せば次のトランザクションで届いた段が解放される。マイ厩舎の公開コピーのバッジも削除の手順で消える。
+
+### 24.5 称号・マイ厩舎
+- `GET /v1/titles` の各行に `source`（`record` / `achievement`）、実績の称号は `achievementId`・`tier` が付く。装備は従来どおり `PUT /v1/player/title`（解放済みだけ、`NOT_ELIGIBLE`）。プロフィール・ランキング・マイ厩舎の表札に同じ `titleId` が出る。
+- マイ厩舎の公開コピー（`StableSnapshot.trophies`）に `badges`（実績ごとの最も高い段、高い順に6つまで：`{ achievementId, tier, badge }`）。無い時は項目ごと省く（古いコピーと同じ形）。
+
+### 24.6 アセットキー（`npm run gen:assets` で `contracts/assets.manifest.json` に入る、先読みグループ home）
+| 種類 | キー | 既定 |
+|---|---|---|
+| `collection/portrait` | `collection/portrait/<templateId>`（入手・出会った馬の絵） | `collection/portrait/default` |
+| `collection/silhouette` | `collection/silhouette/<templateId>`（未発見のシルエット） | `collection/silhouette/default` |
+| `badge` | `badge/<achievementId>_<tier>` | `badge/default` |
+
+## 25. 調教（REQ-TRAIN-001〜014、`server/src/domain/training.ts`、C# `Training.cs`・`Muchi.Game.TrainingModel`）
+自分の馬を毎日少しずつ鍛える短いループ。1ゲーム日（§15）に **アカウントで `slotsPerDay` 回**（馬の数では増えない）、1頭は `perHorsePerDay` 回まで。メニュー（坂路・ウッド・プール・併せ馬）を選び、任意のタイミングのミニゲーム（ムチと同じ「押す瞬間」）で結果が**少しだけ**良くなる。結果はすべて決定論：開始時の馬の状態（疲れ・絆・これまでの伸び）・メニュー・ミニゲームの点数だけで決まり、点数はサーバーが**送られたタップの時刻を自分で採点し直して**出す。サーバーの乱数はビートの並び（とステータスの分け方の同点の順）にしか使わない。
+
+**ランク戦の公平性（決定事項）**
+| 項目 | 決めたこと |
+|---|---|
+| 伸び | 馬に残る小さな能力の上乗せ `HorseInstance.trained`（5能力）。馬ごとの素質 `potentialByRarity`（R 300 ≥ SR 240 ≥ SSR 180、検証で R ≥ SR ≥ SSR を強制）まで、1能力は素質の `perStatCapPermille`（40%）まで、各能力 1000 まで。伸びるほど遅くなる（残りの素質の割合、下限 `softFloorPermille`）。 |
+| レースへの入り方 | `toRaceHorse` = 基礎 + 覚醒 + 伸び（`raceStats`）。ランク戦・大会・タイムアタックは**これまでどおりクラスの上限に正規化**（`normalizeStats`）するので、上限に届いている馬は伸びてもランク戦では変わらない。伸びは「上限までの距離」を縮めるだけ＝はじめの馬（無課金の馬）ほど効き、課金と無課金の差は**縮むことはあっても広がらない**（経済 E15、balance-targets 4.12）。固定能力のイベントは伸びを使わない。フレンド部屋（上限なし）はそのまま。 |
+| 疲れ・調子 | **調教の効率にだけ効く**（`penaltyPermillePerPoint` 5‰/点、下限 50%）。どのレース（ランク戦・フレンド・イベント・大会・タイムアタック）の設定にも入らない。 |
+| 課金 | 調教の回数・伸び・素質を増やす商品は無い。伸びに効くアイテム（`affectsGrowth: true`）は**商品・コインショップ・パス（無料ラインも：パス＋がレベルを売るため）・イベント報酬・ガチャ**に入れられない（`trainingProblems` が起動時・リモート設定で拒否）。入手はデイリーミッション「調教を1回」（`train1`）だけ。伸びに効かないアイテムなら直販してよい。 |
+| 遺伝 | 伸びは仔に受け継がれない（配合は基礎＋覚醒の `effectiveStats` だけを使う）。 |
+| リプレイ・ゴールデン | 能力は RaceStartConfig の入力。ルールセットとエンジンは変わらないので、保存済みのリプレイ・ゴースト・ゴールデンレースはそのまま。 |
+
+### 25.1 設定（`progression.training`、リモート設定で変更可・`trainingProblems` で検証）
+| キー | 既定 | 意味 |
+|---|---|---|
+| `enabled` | true | false で画面ごと隠す（`GET` は `{ "enabled": false }`） |
+| `slotsPerDay` / `perHorsePerDay` | 3 / 2 | 1ゲーム日の回数（アカウント）／1頭の回数 |
+| `sessionTtlMs` | 10分 | 始めたセッションを仕上げられる時間。過ぎたらミニゲームなし（点数0）で記録 |
+| `potentialByRarity` | R 300 / SR 240 / SSR 180 | 素質（伸びの合計の上限） |
+| `perStatCapPermille` / `softFloorPermille` | 400 / 150 | 1能力の上限（素質の割合）／伸びの遅くなり方の下限 |
+| `fatigue` | max 100・1日 40 回復・80 で休養・1点 5‰・効率の下限 500‰ | 疲れ（ゲーム日ごとに自動で回復） |
+| `bond` | 1レベル 10‰・上限 90‰ | 絆の上乗せ（`bondMultiplier` のメニューは倍） |
+| `menus[]` | 下表 | `id`・`name`・`baseGain`（1回の伸び、整数）・`fatigue`（負は回復）・`weights`（能力の配分）・`bondMultiplier` |
+| `timing` | 下記 | ミニゲーム |
+| `items[]` | `training_apple`（疲れ −30、`affectsGrowth: true`） | 調教のアイテム |
+| `logKeep` | 10 | 馬ごとの調教日誌の件数 |
+
+| メニュー | 伸び | 疲れ | 伸びる能力（重み） |
+|---|---|---|---|
+| `hill` 坂路 | 6 | +30 | 瞬発2・根性1・スタミナ1 |
+| `wood` ウッド | 6 | +25 | スピード2・スタミナ1・気性1 |
+| `pool` プール | 3 | −20（回復） | スタミナ2・気性1 |
+| `awase` 併せ馬 | 7 | +35 | 根性2・スピード1・瞬発1（絆 ×2） |
+
+コード側の上限（`TRAINING_HARD_LIMITS`）：1日5回・1頭3回、`baseGain ≤ 15`、素質 ≤ 400、絆 ≤ 120‰、アイテムの疲れの回復 ≤ 50、**ミニゲームの上乗せ ≤ 150‰**（既定は 100‰ = +10%）。
+
+**1回の伸び**（千分の1点で計算、端数は馬ごとに持ち越す `carry`）：
+`milli = baseGain × (効率 + 絆 + ミニゲーム) × 伸びしろ / 1000`。効率 = max(下限, 1000 − 疲れ × 5)、絆 = min(上限×倍率, (絆Lv−1) × 10 × 倍率)、ミニゲーム = 点数 × `permillePerPoint`、伸びしろ = max(下限, 1000 × 残りの素質 / 素質)。整数部分（`carry` と合わせて）を `weights` で最大剰余法により分け（同点はセッションの seed の順）、上限に届いた能力の分は同じメニューの別の能力へ回し、それも無ければ与えない。
+
+### 25.2 ミニゲーム（`timing`）と採点（サーバー `scoreTiming`・C# `TrainingScorer`）
+既定：`beats` 5・`durationMs` 6000・`leadMs` 800・`tailMs` 200・`perfectMs` 60・`goodMs` 150・`perfectPoints` 2・`goodPoints` 1・`strayPenalty` 1・`permillePerPoint` 10・`maxTaps` 10・`minTapGapMs` 80。
+- **ビート**：`beatSchedule(timing, seed)`。`leadMs`〜`durationMs − tailMs` を `beats` 等分し、各区間の先頭から区間の半分までのどこか（seed の乱数）に1つ。サーバーが開始時に返す。
+- **タップ**：ミニゲームが始まってからの ms（整数、増えていく）。
+- **採点**（同じ手順をクライアントも持つ。共有の検算例：ビート `[1000,2000,3000,4000,5000]`、タップ `[1010,2100,3200,4950,5000]` → ◎2 ○1 ×2・空振り2・点数3・上乗せ30‰）：ビートを順に、まだ使っていないタップのうち `goodMs` 以内で一番近いもの（同じ距離なら先のタップ）を割り当てる。`perfectMs` 以内は◎（2点）、それ以外は○（1点）。どのビートにも当たらないタップは1つにつき −1点。0〜`beats × perfectPoints` に収める。
+- **評価**：点数が満点の 90% 以上 `great`（◎ 会心の追い切り）、50% 以上 `good`、それ未満とスキップ `normal`。
+- **不正の防止**（`validateTaps`、違反は 422 `TRAINING_INPUT_INVALID`）：タップは `maxTaps` まで・0〜`durationMs` の整数・`minTapGapMs` 以上の間隔で増える。**サーバーの時計で開始から経った時間より後のタップは受けない**（一瞬で満点を送れない）。タップがあるのに最後のビートより前に終えた送信も受けない。上乗せは最大 +10% なので、機械で完璧に押しても伸びは1割しか増えない。
+
+### 25.3 `GET /v1/training`（要認証）
+```json
+{ "enabled": true, "slotsPerDay": 3, "usedToday": 1, "slotsLeft": 2, "perHorsePerDay": 2,
+  "menus": [ { "id": "hill", "name": "坂路", "baseGain": 6, "fatigue": 30, "weights": { "burst": 2, "guts": 1, "stamina": 1 }, "bondMultiplier": 1 } ],
+  "timing": { "beats": 5, "durationMs": 6000, "…": "…", "maxScore": 10 },
+  "fatigue": { "max": 100, "restAt": 80, "recoveryPerDay": 40 },
+  "items": [ { "itemId": "training_apple", "name": "りんごのおやつ", "fatigueRelief": 30, "owned": 0 } ],
+  "horses": [ { "horseId": "h1", "name": "アイボウ", "rarity": "SR", "trained": { "speed": 0, "stamina": 2, "burst": 3, "guts": 1, "temper": 0 },
+    "trainedTotal": 6, "potential": 240, "perStatCap": 96, "fatigue": 30, "condition": "fresh", "bondLevel": 1, "todayCount": 1, "sessions": 1,
+    "log": [ { "at": 1796871607000, "menuId": "hill", "grade": "great", "gain": 6, "score": 10 } ],
+    "blocked": null, "menus": [ { "id": "hill", "blocked": null } ] } ],
+  "open": null,
+  "rules": { "rankedNormalized": true, "fatigueAffectsRaces": false, "inherited": false, "paidBoosts": false } }
+```
+- `horses` は現役の馬だけ。`blocked`（馬）・`menus[].blocked`（メニュー）：`null` / `no_slots` / `horse_daily_limit` / `potential_full` / `tired`（疲れを足すメニューだけ）/ `retired`。`condition`：`fresh`（疲れ < 40）/ `normal` / `tired`（≥ `restAt`）。
+- `open`：仕上げていないセッション（`sessionId`・`horseId`・`menuId`・`startedAt`・`expiresAt`・`beats`・`durationMs`）。期限を過ぎたものはこの GET で**ミニゲームなしとして記録**される（その時だけ取引で書き込む。普段は読み取りだけ）。
+- `rules` は画面に「ランク戦はクラスの上限にそろえる」「疲れはレースに影響しない」と書くための値（いつも上の値）。
+- プレイヤー（`GET /v1/player` などの `horses[]`）にも `trained` が載る（無ければ伸びなし）。
+
+### 25.4 `POST /v1/training/start`・`POST /v1/training/:sessionId/finish`・`POST /v1/training/items/:itemId/use`（要認証・`Idempotency-Key` 必須）
+- 3つとも応答の `training` は**差分**（`partial: true`）：`enabled`・`slotsPerDay`・`usedToday`・`slotsLeft`・`perHorsePerDay`・`items`・`open` と、対象の馬1頭だけの `horses`（`log` は含まない）。`menus`・`timing`・`fatigue`・`rules` は含まない。クライアントは手元の §25.3 に重ねる（C# `TrainingView.MergeInto`：その馬を差し替え、回数が0なら他の馬も `no_slots`）。応答はプレイヤーの状態に冪等の記録として残るので小さくしている。
+- **start** `{ "horseId", "menuId" }`（他のキーは 400）→ `{ "session": { … §25.3 の open の形 }, "preview": { "min", "max", "minMilli", "maxMilli" }, "slotsLeft", "training": 差分 }`。ここで**回数を1つ使い、メニューの疲れを足す**（伸びは finish で、開始時の状態から決める）。`preview` はミニゲームなし／満点の時の伸び（整数部分と千分の1点）。開いたままの前のセッションがあれば、先にミニゲームなしで記録する（アプリが落ちても止まらない）。エラー：`TRAINING_LIMIT`（`no_slots` / `horse_daily_limit`）、`TRAINING_TIRED`、`TRAINING_POTENTIAL_FULL`、`HORSE_NOT_ACTIVE`、`NOT_FOUND`（メニュー・馬・調教が無効）、`DELETION_PENDING`（削除の実行中）。
+- **finish** `{ "taps": [int…], "skipped"?: true }`（`skipped` なら `taps` は無視して点数0）→
+  `{ "sessionId", "horseId", "menuId", "grade", "timing": { "perfect", "good", "miss", "stray", "score", "bonusPermille" }, "gain": {5能力}, "total", "capped",
+     "breakdown": { "efficiencyPermille", "bondPermille", "timingPermille", "softPermille" }, "trained", "trainedTotal", "potential", "fatigue", "settled": "done" | "skipped" | "expired", "void": false, "training": 差分 }`。
+  エラー：422 `TRAINING_INPUT_INVALID`（§25.2）、`TRAINING_SESSION_EXPIRED`（期限切れ。次の調教の呼び出しでミニゲームなしとして記録）、`TRAINING_SESSION_USED`（その id の開いたセッションが無い）。再送は同じキーで同じ結果。
+- **items/:itemId/use** `{ "horseId" }` → `{ "itemId", "horseId", "fatigueBefore", "fatigue", "remaining", "training": 差分 }`。疲れが0なら `NOT_ELIGIBLE`、持っていなければ `INSUFFICIENT_ITEMS`。
+- デイリーミッションの種類 `training`（`train1`：調教を1回 → `training_apple` ×1）は finish（期限切れの記録も含む）で進む。
+
+### 25.5 KPI（サーバーのイベント）
+| イベント | s1 | s2 | s3 | 数値 |
+|---|---|---|---|---|
+| `training_start` | メニュー | 馬のレア度 | — | `value` 開始時の疲れ、`count` 今日の回数 |
+| `training_done` | メニュー | 評価 `great`/`good`/`normal` | `done`/`skipped`/`expired` | `value` 伸びの合計、`count` 点数、`isFirst` そのアカウントの初回 |
+クエリは `docs/ops/kpi-queries.md`「調教」。
+
+### 25.6 クライアント（`TrainingModel`）
+- タップは `BeginMiniGame(now)` からの ms で、サーバーが受け付ける形（間隔・回数・範囲）のものだけを記録する。画面の◎○×は `TrainingScorer.Judge`、合計は `TrainingScorer.Score`（サーバーと同じ）。
+- start / finish は応答が来るまで同じ冪等キーを使う（タイムアウト後の再送で回数を2回使わない）。読み込んだ時に開いたセッションがあれば、ミニゲームなしで仕上げる（時間が経っているため）。
+- 画面に `TrainingModel.RulesText`（ランク戦は上限にそろえる・疲れはレースに影響しない・伸びは受け継がれない）を出す。調教の画面からショップへの導線は作らない。

@@ -118,7 +118,7 @@ export const clientMessageSchema = z.discriminatedUnion('t', [
   z.object({ t: z.literal('in'), tick: tickN, cmd: int.min(0).max(255) }).strict(),
   z.object({ t: z.literal('chk'), tick: tickN, h: hex16 }).strict(),
   // finishTicks (optional, same order as `order`, -1 = did not finish) lets the server keep best times without the verifier
-  z.object({ t: z.literal('res'), h: hex64, order: z.array(int.min(0).max(11)).min(1).max(12), finishTicks: z.array(int.min(-1).max(1_000_000)).max(12).optional() }).strict(),
+  z.object({ t: z.literal('res'), h: hex64, order: z.array(int.min(0).max(11)).min(1).max(12), finishTicks: z.array(int.min(-1).max(1_000_000)).max(12).optional(), skills: z.array(int.min(0).max(11)).max(12).optional() }).strict(),
   z.object({ t: z.literal('ping'), c: z.number() }).strict(),
 ]);
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
@@ -156,6 +156,8 @@ export const verifierOutputSchema = z
     /** Q16.16 fraction of the finish tick per place, -1 = did not finish (optional for older verifiers). */
     finishFracs: z.array(int.min(-1).max(65535)).optional(),
     checksums: z.record(z.string().regex(/^\d+$/), hex16),
+    /** REQ-ACH-002: slots whose unique skill fired in the re-simulation (optional for older verifiers). */
+    skillsFired: z.array(int.min(0).max(11)).max(12).optional(),
   })
   .strict()
   .refine((o) => o.order.length === o.finishTicks.length, 'order/finishTicks length mismatch')

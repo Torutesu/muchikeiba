@@ -35,8 +35,32 @@ export function checkGrantLimits(g: Grant, role: AdminRole) {
 
 const walletOf = (s: PlayerState) => ({ paid: s.wallet.paid, free: s.wallet.free, debt: s.wallet.debt, itemDebt: s.itemDebt ?? {} });
 
-/** Compensation grant (free coins / items only — paid coins are never created by support). */
-export function supportGrant(s: PlayerState, g: Grant, reason: string, actor: string, ref: string, now: number) {
+/** QA R11 (REQ-OPS-026): the rolling window of the single-person grant budget per player. */
+export const SINGLE_PERSON_WINDOW_MS = 24 * 3600 * 1000;
+/** The error message that tells the compensation route to wait for a second admin instead of paying. */
+export const TWO_PERSON_REQUIRED = 'two-person approval required';
+
+/**
+ * Single-person grants (direct, bulk and compensations under the threshold) to one player add up over 24 h against the
+ * approval threshold: ten grants of 10,000 are the same as one of 100,000 and need a second admin (REQ-OPS-026).
+ */
+function chargeSinglePersonBudget(s: PlayerState, g: Grant, cap: { freeCoins: number; itemQty: number }, now: number) {
+  const log = (s.supportGrants ?? []).filter((x) => now - x.at < SINGLE_PERSON_WINDOW_MS);
+  const coins = log.reduce((a, x) => a + x.freeCoins, 0) + (g.freeCoins ?? 0);
+  const over = coins > cap.freeCoins || (g.items ?? []).some((it) => log.reduce((a, x) => a + (x.items[it.itemId] ?? 0), 0) + it.qty > cap.itemQty);
+  if (over) throw new AppError('FORBIDDEN', `${TWO_PERSON_REQUIRED}: single-person grants to this player are capped at ${cap.freeCoins} coins / ${cap.itemQty} per item in 24 h (POST /v1/admin/compensations)`);
+  const items: Record<string, number> = {};
+  for (const it of g.items ?? []) items[it.itemId] = (items[it.itemId] ?? 0) + it.qty;
+  log.push({ at: now, freeCoins: g.freeCoins ?? 0, items });
+  s.supportGrants = log;
+}
+
+/**
+ * Compensation grant (free coins / items only — paid coins are never created by support). `singlePersonCap`: a grant
+ * nobody else approved is charged against the player's 24 h budget (absent = approved by a second admin).
+ */
+export function supportGrant(s: PlayerState, g: Grant, reason: string, actor: string, ref: string, now: number, singlePersonCap?: { freeCoins: number; itemQty: number }) {
+  if (singlePersonCap) chargeSinglePersonBudget(s, g, singlePersonCap, now);
   const before = { ...walletOf(s), items: { ...s.items } };
   if (g.freeCoins) grantFree(s, g.freeCoins, now, `support grant by ${actor}: ${reason}`, ref);
   if (g.items?.length) addItems(s, g.items as ItemQty[]);
@@ -108,5 +132,16 @@ export function supportView(m: Master, s: PlayerState, now: number) {
     moderation: { status: moderationOf(s, now), detail: s.moderation ?? null },
     friends: { count: s.friends.ids.length },
     seasonHistory: s.seasonHistory,
+    // REQ-OPS-020: account deletion progress (never the confirmation token)
+    deletion: s.deletion ? {
+      status: s.deletion.status, requestedAt: s.deletion.requestedAt ?? null, deleteAt: s.deletion.deleteAt ?? null,
+      steps: s.deletion.steps, attempts: s.deletion.attempts, retryAt: s.deletion.retryAt ?? null,
+    } : null,
+    // REQ-INV-*: who invited them and whom they invited (no install hashes)
+    referral: s.referral ? {
+      invitedBy: s.referral.invitedBy ? { playerId: s.referral.invitedBy.playerId, code: s.referral.invitedBy.code, at: s.referral.invitedBy.at, milestones: s.referral.invitedBy.milestones } : null,
+      invitees: s.referral.invitees.map((x) => ({ playerId: x.playerId, at: x.at, counted: x.counted, deleted: x.deleted ?? false, milestones: x.milestones.length })),
+      installs: s.referral.installs.length,
+    } : null,
   };
 }

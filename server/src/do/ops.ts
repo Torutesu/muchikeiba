@@ -7,6 +7,42 @@ import { auditValue, RateLimiter, type AuditEntry, type AuditInput, type AuditQu
 import { wrap, type Envelope } from './rpc.js';
 import { SqlDeadLetterRegistry } from './deadLetters.js';
 import type { DeadLetterRecord, DeadLetterSource, DeadLetterStatus } from '../ops/deadLetter.js';
+import type { DryRunOp } from '../ops/config.js';
+import type { AdminPrincipal } from '../ops/admin.js';
+import type { Grant } from '../ops/support.js';
+import { CompensationStore, type CompensationQuery, type CompensationRepo, type CompensationRequest } from '../ops/compensation.js';
+
+/** REQ-OPS-026: compensation requests on SQLite (one JSON row per request; opKey unique). */
+export class SqlCompensationRepo implements CompensationRepo {
+  constructor(private readonly sql: SqlStorage) {
+    sql.exec('CREATE TABLE IF NOT EXISTS compensations (id TEXT PRIMARY KEY, op_key TEXT UNIQUE NOT NULL, player_id TEXT NOT NULL, status TEXT NOT NULL, requested_at INTEGER NOT NULL, json TEXT NOT NULL)');
+    sql.exec('CREATE INDEX IF NOT EXISTS compensations_player ON compensations (player_id)');
+    sql.exec('CREATE TABLE IF NOT EXISTS ops_seq (kind TEXT PRIMARY KEY, n INTEGER NOT NULL)');
+  }
+  private one(where: string, arg: string) {
+    const r = this.sql.exec<{ json: string }>(`SELECT json FROM compensations WHERE ${where} = ?`, arg).toArray()[0];
+    return r ? (JSON.parse(r.json) as CompensationRequest) : null;
+  }
+  get(id: string) { return this.one('id', id); }
+  byOpKey(opKey: string) { return this.one('op_key', opKey); }
+  put(r: CompensationRequest) {
+    this.sql.exec('INSERT INTO compensations (id, op_key, player_id, status, requested_at, json) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET status = excluded.status, json = excluded.json',
+      r.id, r.opKey, r.playerId, r.status, r.requestedAt, JSON.stringify(r));
+  }
+  list(q: CompensationQuery) {
+    const where: string[] = [];
+    const args: (string | number)[] = [];
+    if (q.status) { where.push('status = ?'); args.push(q.status); }
+    if (q.playerId) { where.push('player_id = ?'); args.push(q.playerId); }
+    const sql = `SELECT json FROM compensations ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY requested_at DESC, id DESC LIMIT ?`;
+    return this.sql.exec<{ json: string }>(sql, ...args, q.limit ?? 50).toArray().map((r) => JSON.parse(r.json) as CompensationRequest);
+  }
+  nextSeq() {
+    const n = (this.sql.exec<{ n: number }>("SELECT n FROM ops_seq WHERE kind = 'compensation'").toArray()[0]?.n ?? 0) + 1;
+    this.sql.exec("INSERT INTO ops_seq (kind, n) VALUES ('compensation', ?) ON CONFLICT(kind) DO UPDATE SET n = excluded.n", n);
+    return n;
+  }
+}
 
 /** ConfigRepo on SQLite (versions are immutable rows; activations are append-only except `cancelled`). */
 export class SqlConfigRepo implements ConfigRepo {
@@ -61,12 +97,14 @@ export class OpsDO extends DurableObject<Env> {
   private readonly audits: SqlAuditRepo;
   private readonly limiter = new RateLimiter();
   private readonly deadLetters: SqlDeadLetterRegistry;
+  private readonly compensations: CompensationStore;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.config = new ConfigStore(new SqlConfigRepo(ctx.storage.sql), loadMaster());
     this.audits = new SqlAuditRepo(ctx.storage.sql);
     this.deadLetters = new SqlDeadLetterRegistry(ctx.storage.sql);
+    this.compensations = new CompensationStore(new SqlCompensationRepo(ctx.storage.sql));
   }
 
   // ---- dead-letter index (REQ-OPS-041) ----
@@ -93,6 +131,15 @@ export class OpsDO extends DurableObject<Env> {
   configRollback(versionId: string | null, by: string, reason: string, now: number) { return wrap(() => this.config.rollback(versionId, by, reason, now)); }
   configList(now: number) { return wrap(() => this.config.list(now)); }
   configGet(id: string) { return wrap(() => this.config.get(id)); }
+  configDryRun(op: DryRunOp, by: string, now: number) { return wrap(() => this.config.dryRun(op, by, now)); }
+
+  // ---- compensation requests (REQ-OPS-026) ----
+  compCreate(input: { opKey: string; playerId: string; grant: Grant; reason: string }, by: AdminPrincipal, now: number) { return wrap(() => this.compensations.create(input, by, now)); }
+  compGet(id: string, now: number) { return wrap(() => this.compensations.get(id, now)); }
+  compList(q: CompensationQuery, now: number) { return wrap(() => this.compensations.list(q, now)); }
+  compApprove(id: string, by: AdminPrincipal, note: string, now: number) { return wrap(() => this.compensations.approve(id, by, note, now)); }
+  compReject(id: string, by: AdminPrincipal, note: string, now: number) { return wrap(() => this.compensations.reject(id, by, note, now)); }
+  compExecuted(id: string, error: string | null, now: number) { return wrap(() => this.compensations.executed(id, error, now)); }
 
   admit(principalId: string, kind: 'read' | 'write', now: number): Promise<Envelope<boolean>> {
     return wrap(() => { this.limiter.take(principalId, kind, now); return true; });

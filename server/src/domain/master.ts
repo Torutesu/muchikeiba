@@ -21,6 +21,9 @@ import changelogJson from '../../master/changelog.json';
 import { parseAssetCatalog, type AssetCatalog } from './assetCatalog.js';
 import type { StampsMaster } from './teamFeed.js';
 import stampsJson from '../../master/stamps.json';
+import localeEnJson from '../../master/locale-en.json';
+import type { CollectionMaster } from './collection.js';
+import collectionJson from '../../master/collection.json';
 import { trackSchema, type GoingAptitude, type Going, type Track } from './schemas.js';
 import { AppError } from './errors.js';
 import { loadSkills, type SkillsMaster } from './skills.js';
@@ -122,7 +125,8 @@ export interface ItemsMaster {
 export interface AgeBand { id: string; minAge: number; maxAge: number; monthlyLimitYen: number | null }
 export interface AgeLimits { status: string; guardianConsentUnderAge: number; bands: AgeBand[] }
 export interface ClassDef { id: string; statCap: number; promotePoints: number | null; demoteBelowPoints: number | null }
-export interface MissionDef { id: string; kind: 'races' | 'wins' | 'top3'; target: number; reward: Reward }
+/** `training` (REQ-TRAIN-011): finished training sessions (training.ts). */
+export interface MissionDef { id: string; kind: 'races' | 'wins' | 'top3' | 'training'; target: number; reward: Reward }
 export interface CollectionMissionDef { id: string; kind: 'collect'; templateIds: string[]; reward: Reward }
 export interface Progression {
   classes: ClassDef[]; seasonPointsByPlace: number[];
@@ -177,6 +181,8 @@ export interface Progression {
   invite?: import('./invite.js').InviteConfig;
   /** REQ-CB-*: returning-player campaign (comeback.ts). Absent = disabled. */
   comeback?: import('./comeback.js').ComebackConfig;
+  /** REQ-TRAIN-*: 調教 (training.ts, validated by trainingProblems). Absent = no training. */
+  training?: import('./training.js').TrainingConfig;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */
@@ -245,7 +251,9 @@ export type TitleCondition =
   | { kind: 'bestTime'; trackId: string; value: number }
   | { kind: 'classReached'; classId: string }
   | { kind: 'rating'; value: number }
-  | { kind: 'bondLevel'; value: number };
+  | { kind: 'bondLevel'; value: number }
+  /** REQ-ACH-006: reached tier `tier` of achievement `achievementId` (master/collection.json). */
+  | { kind: 'achievement'; achievementId: string; tier: number };
 export interface TitleDef { id: string; name: string; condition: TitleCondition }
 /** `comeback` (REQ-CB-007): lapse reminders, opt-in (06 §3.5: a re-engagement push needs its own category and consent). */
 export type PushCategory = 'season' | 'friends' | 'invites' | 'events' | 'comeback';
@@ -258,6 +266,8 @@ export interface PushMaster {
   retry: { backoffMs: number[]; maxAttempts: number };
   /** FCM topics for broadcast categories (one send reaches every subscribed device). */
   topics: Partial<Record<PushCategory, string>>;
+  /** REQ-L10N-007: the topics of other languages (an English device subscribes to these instead). */
+  topicsByLocale?: Partial<Record<'ja' | 'en', Partial<Record<PushCategory, string>>>>;
   seasonReminders: { endDaysBefore: number[]; lastDay: boolean; start: boolean };
   templates: Record<string, PushTemplate>;
 }
@@ -330,6 +340,13 @@ export interface Master {
   stamps?: StampsMaster;
   /** REQ-CB-008: what's new entries (master/changelog.json; remote config `changelog` may replace it). */
   changelog?: import('./comeback.js').ChangelogEntry[];
+  /**
+   * REQ-L10N-004: the English of every player-facing Japanese text above, keyed by the Japanese (master/locale-en.json;
+   * remote config `locale.en` adds to it). Absent in hand-built test masters (responses then stay Japanese).
+   */
+  locale?: { en: Record<string, string> };
+  /** REQ-COL-* / REQ-ACH-*: 図鑑 lore and achievements (master/collection.json; collection.ts collectionOf falls back to it when absent). */
+  collection?: CollectionMaster;
 }
 
 export const PPM_TOTAL = 1_000_000;
@@ -480,6 +497,8 @@ export function loadMaster(): Master {
     assetCatalog: parseAssetCatalog(assetsCatalogJson),
     stamps: stampsJson as unknown as StampsMaster,
     changelog: (changelogJson as unknown as { entries: import('./comeback.js').ChangelogEntry[] }).entries,
+    locale: { en: (localeEnJson as unknown as { strings: Record<string, string> }).strings },
+    collection: collectionJson as unknown as CollectionMaster,
   };
   cached = m;
   return m;
@@ -487,7 +506,7 @@ export function loadMaster(): Master {
 
 /** Separates master-only track fields (name, lights) from the race-config track. */
 export function splitMasterTrack(raw: Record<string, unknown>): { track: Record<string, unknown>; lights: boolean } {
-  const { name: _name, lights, ...track } = raw;
+  const { name: _name, lights, en: _en, ...track } = raw;
   return { track, lights: lights === true };
 }
 

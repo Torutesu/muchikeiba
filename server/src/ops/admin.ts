@@ -23,6 +23,11 @@ export function parseAdminTokens(json: string | undefined): AdminTokenEntry[] {
   return r.data;
 }
 
+/** REQ-OPS-015: `https://ops.example.com,http://127.0.0.1:9217` → exact origins (scheme://host[:port], no path, no wildcard). */
+export function parseConsoleOrigins(raw: string): string[] {
+  return raw.split(',').map((s) => s.trim()).filter((s) => /^https?:\/\/[A-Za-z0-9.-]+(:\d{1,5})?$/.test(s));
+}
+
 function constantTimeHexEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let d = 0;

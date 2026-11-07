@@ -12,6 +12,8 @@
 //     rule on the CTA; cheering a teammate's race result; mute and report) and this season's pass shown as 購入済み.
 //  5. Returning players (REQ-CB-*, 06 §4.5): the comeback welcome (once), the 7-day comeback login track and missions, the
 //     lapse-reminder opt-in (asked once), the home chip and the one-time what's-new card.
+//  6. Round 11 (REQ-COL-*, REQ-ACH-*): the 図鑑 (obtained / seen / unknown silhouettes, completion with no reward and no scout
+//     link), achievements (claim one tier, claim all) and equipping an achievement title.
 // Screenshots: <out>/u-<nn>-<name>.png. Returns { shots, ftue }.
 const path = require('path');
 const fs = require('fs');
@@ -45,6 +47,49 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   const btn = (label) => page.locator(`.screen.in [data-label="${label}"]`).first();
   const click = async (label) => { await btn(label).click(); await page.waitForTimeout(350); };
   const ready = () => page.waitForFunction(() => globalThis.__muchi?.ready === true, null, { timeout: 90000 });
+
+  // round 11 (REQ-TRAIN-*): 調教 from the home row → the menu cards (fairness wording, no shop link) → 坂路 with the timing
+  // mini-game (taps scheduled on the server's beats, re-scored by the real server rules) → the result and the mission's apple
+  // → プール skipped (no mini-game line) → the apple on the horse → the horse's daily limit on every card
+  async function trainingFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await click('調教'); await waitScreen('training'); await waitIn('.tr-menu[data-menu="hill"]');
+    const text = await page.locator('.screen.in').innerText();
+    assert.ok(text.includes('クラスの上限') && text.includes('疲れはどのレースにも影響しません'), 'training: the fairness rules are on the screen');
+    assert.ok(!/ショップ|倍/.test(text.replace(/ホーム ・ 厩舎 ・ スカウト ・ ショップ ・ その他/, '')), 'training: no shop link, no 「倍」');
+    assert.equal(await page.locator('.screen.in .tr-menu').count(), 4);
+    await shot('training', 400);
+    await page.locator('.screen.in .tr-menu[data-menu="hill"]').click(); await waitIn('.tr-menu.sel[data-menu="hill"]');
+    await click('坂路で調教'); await waitScreen('training-play');
+    await page.waitForFunction(() => typeof globalThis.__muchi.trainingStartedAt === 'number' && globalThis.__muchi.screen === 'training-play', null, { timeout: 10000 });
+    // tap on every beat (scheduled against the mini-game's own clock, like a precise player)
+    await page.evaluate(() => {
+      const m = globalThis.__muchi;
+      for (const b of m.trainingBeats) setTimeout(() => m.trainingTap(), Math.max(0, b - m.trainingElapsed()));
+    });
+    await page.waitForTimeout(2600); await shot('training-play', 0);
+    await waitScreen('training-result', 20000);
+    const r = await page.evaluate(() => globalThis.__muchi.lastTraining);
+    assert.equal(r.settled, 'done');
+    assert.ok(r.timing.perfect + r.timing.good === 5 && r.grade !== 'normal', `every beat hit (${JSON.stringify(r.timing)})`);
+    assert.ok(r.total > 0 && r.trainedTotal >= r.total, 'growth applied');
+    await shot('training-result', 400);
+    await click('ミッション報酬を受け取る'); await waitScreen('training-result');
+    await page.waitForTimeout(400);
+    assert.equal(await page.evaluate(() => globalThis.__muchi.state().player.items.training_apple), 1, 'the daily mission gave the apple');
+    await click('つづける'); await waitScreen('training'); await waitIn('.tr-menu[data-menu="pool"]');
+    await page.locator('.screen.in .tr-menu[data-menu="pool"]').click(); await waitIn('.tr-menu.sel[data-menu="pool"]');
+    await click('プールで調教'); await waitScreen('training-play'); await page.waitForTimeout(300);
+    await click('スキップ'); await waitScreen('training-result', 20000);
+    assert.equal((await page.evaluate(() => globalThis.__muchi.lastTraining)).settled, 'skipped');
+    await shot('training-result-skipped', 300);
+    await click('つづける'); await waitScreen('training'); await waitIn('.tr-item');
+    await page.locator('.screen.in .tr-item').click(); await waitScreen('training'); await page.waitForTimeout(500);
+    assert.equal(await page.evaluate(() => globalThis.__muchi.state().player.items.training_apple ?? 0), 0, 'the apple was given');
+    assert.equal(await page.locator('.screen.in .tr-menu[data-state="blocked"]').count(), 4, 'the horse is done for today: every card says why');
+    await shot('training-horse-done', 300);
+    await click('BACK'); await waitScreen('home');
+  }
 
   // round 9 (06 §6.5 / §7 item 7): banner calendar with real end times, pity meter, step-up, reveal → summary, the end
   // of a limited banner. The logic clock is set to 2026-11-06 12:00 JST so pickup_ginga (11/1–11/30) is open.
@@ -288,6 +333,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await click('アカウント削除の取り消し'); await waitScreen('settings');
   // day 7 home; scout (paid) and its reveal; legacy screens
   await demo('day7'); await shot('home-day7', 600);
+  await trainingFlow();
   await page.evaluate(() => globalThis.__muchi.show('Scout')); await waitScreen('scout'); await shot('scout', 500);
   await click('提供割合'); await shot('scout-rates', 400); await click('BACK');
   await waitScreen('scout'); await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal'); await shot('scout-paid-reveal', 700);
@@ -479,6 +525,50 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   if (await screen() === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); await page.waitForTimeout(500); }
   assert.equal(await screen(), 'home', 'the welcome is not shown again');
   assert.equal(await page.locator('.screen.in [data-whatsnew]').count(), 0, 'the what\'s-new card is shown once');
+
+  // ------------------------------------------------------------------ 5. round 11: 図鑑・実績・称号 (REQ-COL-*, REQ-ACH-*)
+  // a week of play on the real rules (races on 5 courses against CPU fields, a fired skill every other race, a cup win,
+  // stable likes): the book, the achievements and the titles all come from the server code
+  await page.evaluate(() => globalThis.__muchi.demo('collection')); await waitScreen('collection', 60000); await page.waitForTimeout(400);
+  const colText = await page.locator('.screen.in').innerText();
+  assert.match(colText, /達成率 \d+%（\d+ \/ \d+）/, 'completion shown as a number');
+  assert.match(colText, /そろえても報酬はありません/, 'the book says completing it pays nothing');
+  assert.ok(!/スカウト|ガチャ|あと\d+体|もらえる/.test(colText), 'no scout / gacha / 「あと◯体」 wording in the book');
+  const cells = page.locator('.screen.in [data-col-cell]');
+  assert.ok((await cells.count()) >= 20, 'every horse template has a cell');
+  for (const st of ['obtained', 'seen', 'unknown']) assert.ok((await page.locator(`.screen.in [data-col-cell][data-state="${st}"]`).count()) > 0, `some ${st} horses`);
+  const unknownCell = page.locator('.screen.in [data-col-cell][data-state="unknown"]').first();
+  assert.match(await unknownCell.innerText(), /？？？/, 'an unknown horse is a silhouette with ？？？');
+  assert.equal(await unknownCell.locator('img.col-sil').count(), 1);
+  await shot('collection-horses', 500);
+  await unknownCell.click(); await page.waitForTimeout(500);
+  assert.match(await page.locator('.screen.in [data-col-detail]').innerText(), /？？？[\s\S]*まだ出会っていません/, 'detail of an unknown horse: no name, no stats, no scout link');
+  assert.equal(await page.locator('.screen.in [data-col-detail] .btn').count(), 0, 'nothing to buy from the book');
+  const seenCell = page.locator('.screen.in [data-col-cell][data-state="seen"]').first();
+  await seenCell.click(); await page.waitForTimeout(500);
+  assert.match(await page.locator('.screen.in [data-col-detail]').innerText(), /出会った/, 'a horse met in a race');
+  await shot('collection-seen-detail', 400);
+  await page.locator('.screen.in [data-tab="courses"]').click(); await page.waitForTimeout(500);
+  assert.equal(await page.locator('.screen.in [data-col-cell][data-state="obtained"]').count(), 5, 'the five courses raced');
+  await shot('collection-courses', 400);
+  await click('実績'); await waitScreen('achievements'); await page.waitForTimeout(400);
+  const achText = await page.locator('.screen.in').innerText();
+  assert.match(achText, /課金やガチャの回数では達成しません/);
+  const claims = page.locator('.screen.in [data-claim]');
+  assert.ok((await claims.count()) > 0, 'unlocked tiers can be claimed');
+  const achFree0 = Number(await page.locator('.screen.in [data-free]').first().getAttribute('data-free'));
+  await shot('achievements', 500);
+  await claims.first().click(); await page.waitForTimeout(800); await waitScreen('achievements');
+  const achFree1 = Number(await page.locator('.screen.in [data-free]').first().getAttribute('data-free'));
+  assert.ok(achFree1 > achFree0 && achFree1 - achFree0 <= 50, 'one tier pays a few free coins');
+  await shot('achievement-claimed-toast', 250);
+  await click('まとめて受け取る'); await page.waitForTimeout(800); await waitScreen('achievements');
+  assert.equal(await page.locator('.screen.in [data-claim]').count(), 0, 'claim-all pays every unlocked tier once');
+  assert.equal(await page.locator('.screen.in .btn[data-label="まとめて受け取る"]').count(), 0);
+  await click('称号を変える'); await page.waitForTimeout(500);
+  await page.locator('.screen.in [data-equip="ach_champion"]').click(); await page.waitForTimeout(800); await waitScreen('achievements');
+  assert.equal(await page.locator('.screen.in [data-title-equipped]').getAttribute('data-title-equipped'), 'ach_champion', 'an achievement title is equipped (profile and stable)');
+  await shot('achievements-title', 400);
 
   // a reload on a named player goes straight home
   await demo('day3');

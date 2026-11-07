@@ -437,3 +437,52 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
 .el.cb-mission:last-of-type, .el.cb-item:last-of-type { border-bottom-color: transparent; }
 .btn.ghost.gold .bg { box-shadow: inset 0 0 0 2px var(--gold); }
 .btn.ghost.gold { color: var(--gold); }
+
+/* ---------------------------------------------------------------- English (REQ-L10N-013)
+   The Noto Sans JP faces carry full Latin glyphs (the subset includes ASCII, Latin-1 and typographic punctuation:
+   prepare_assets.py), so English never falls back to another font. The wide tracking that suits kana and kanji is
+   tightened for Latin, lines break at spaces (keep-all is for Japanese), kerning and proportional figures are on,
+   and the stage shrinks a text that would not fit its box (app.js fitText). Japanese is unchanged. */
+html[lang="en"] body { letter-spacing: 0; font-kerning: normal; font-feature-settings: "kern" 1, "palt" 0; }
+html[lang="en"] .label { word-break: normal; overflow-wrap: break-word; hyphens: manual; }
+html[lang="en"] .kicker { letter-spacing: .06em; }
+html[lang="en"] .caption { letter-spacing: .08em; }
+html[lang="en"] .btn.cta { letter-spacing: .02em; }
+html[lang="en"] .btn.ghost, html[lang="en"] .btn.back, html[lang="en"] .btn.lang { letter-spacing: .03em; }
+html[lang="en"] .btn.tab { letter-spacing: .06em; }
+html[lang="en"] .btn.row { letter-spacing: .03em; }
+html[lang="en"] .btn.tabtext, html[lang="en"] .pill, html[lang="en"] .tag, html[lang="en"] .toast { letter-spacing: .02em; }
+html[lang="en"] .label.num, html[lang="en"] [data-countdown] { font-variant-numeric: tabular-nums; }
+html[lang="en"] .keep-ja { word-break: keep-all; letter-spacing: .02em; }
+html[lang="en"] .pass-strip .cell { padding-top: 38px; font-size: 13px; line-height: 1.25; gap: 4px; }
+html[lang="en"] .pass-strip .cell .plusnote { font-size: 11px; }
+html[lang="en"] .pass-strip .cell small { font-size: 12px; }
+/* round 11: 図鑑・実績 (REQ-COL-*, REQ-ACH-*) — cells on the navy card, silhouettes for unknown horses, tier badges */
+.col-cell { position: absolute; background: rgba(var(--navy-rgb), .93); border-radius: var(--radius-card); overflow: hidden; cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(150, 173, 187, .18); }
+.col-cell::before { content: ""; position: absolute; left: 2px; right: 2px; top: 2px; height: 3px; background: rgba(var(--cyan-rgb), .35); }
+.col-cell.obtained::before { background: var(--cyan); }
+.col-cell.sel { box-shadow: inset 0 0 0 2px var(--cyan); }
+.col-cell.unknown { opacity: .78; }
+.img.col-por { object-fit: contain; }
+.img.col-sil { object-fit: contain; filter: brightness(0) saturate(0) opacity(.55) drop-shadow(0 0 1px rgba(150, 173, 187, .5)); }
+.el.ach-row { border-bottom: 1px solid rgba(150, 173, 187, .3); }
+.ach-badges { display: flex; gap: 8px; pointer-events: none; }
+.ach-badge { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; font-style: normal; font-size: 13px; font-weight: 700;
+  color: var(--text-4); clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); background: rgba(150, 173, 187, .22); }
+.ach-badge.on { color: #06131c; background: var(--cyan); }
+.ach-badge.claimed { background: var(--gold); }
+/* round 11: 調教 (REQ-TRAIN-*) — menu cards, the beat lane of the timing mini-game, the result */
+.bar.warn i { background: var(--warn); }
+.card.tr-menu { transition: transform .15s ease, box-shadow .15s ease; }
+.card.tr-menu.sel { box-shadow: inset 0 0 0 2px var(--cyan), 0 0 26px rgba(0, 210, 237, .28); transform: translateY(-2px); }
+.card.tr-menu[data-state="blocked"] { background: rgba(var(--navy-rgb), .7); }
+.tr-lane { overflow: hidden; }
+.tr-line { position: absolute; background: var(--gold); border-radius: 2px; box-shadow: 0 0 14px rgba(255, 211, 79, .8); }
+.tr-beat { position: absolute; background: rgba(0, 210, 237, .22); box-shadow: inset 0 0 0 3px var(--cyan); transform: rotate(45deg); border-radius: 6px; }
+.tr-beat.near { background: rgba(255, 211, 79, .5); box-shadow: inset 0 0 0 3px var(--gold), 0 0 22px rgba(255, 211, 79, .8); }
+.tr-judge { letter-spacing: .12em; pointer-events: none; }
+.tr-judge[data-judge="perfect"] { color: var(--gold); }
+.tr-judge[data-judge="good"] { color: var(--cyan); }
+.tr-judge[data-judge="miss"] { color: var(--text-3); }
+.tr-total { line-height: 1; }

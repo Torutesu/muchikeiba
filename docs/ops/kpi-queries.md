@@ -69,6 +69,8 @@
 | `ad_start` | クライアント（カードを押した後の SDK の結果） | 枠ID | 画面 | `shown`/`no_fill`/`failed`/`closed_early` | |
 | `ad_reward` | サーバー（SSV コールバックで付与した。クライアントからは送れない） | 枠ID | ネットワーク（`admob`） | 画面 | `double3` 無償コイン、`double9` タイムアタックの回数、`double5` その日の回数 |
 | `ad_reject` | サーバー（コールバックを弾いた） | 理由（`user_mismatch`/`unknown_session`/`session_used`/`expired`/`clock_skew`/`ad_unit_mismatch`/`cap`/`deleting`） | 枠ID | ネットワーク | `double5` その日の弾いた数 |
+| `training_start` | サーバー（調教を始めた、REQ-TRAIN-014） | メニュー（`hill`/`wood`/`pool`/`awase`） | 馬のレア度 | | `double9` 開始時の疲れ、`double5` 今日の回数 |
+| `training_done` | サーバー（調教を記録した） | メニュー | 評価 `great`/`good`/`normal` | `done`/`skipped`/`expired` | `double9` 伸びの合計、`double5` ミニゲームの点数、`double8` そのアカウントの初回 |
 | `consent` | サーバー | 規約の版 | プライバシーポリシーの版 | | |
 | `partner_granted` | サーバー | テンプレートID（`t_partner`） | | | |
 | `ab_assign` | サーバー（初回の bootstrap、実験ごとに1回） | 実験ID | バケットID | | |
@@ -76,6 +78,8 @@
 | `comeback_start` | サーバー（休眠からの復帰で期間が始まった、REQ-CB-002） | 段階 `short`/`mid`/`long` | | | `double9` 休眠したゲーム日数、`double5` そのプレイヤーの何回目の期間か |
 | `comeback_day` | サーバー（復帰ログボの受け取り、REQ-CB-004） | 段階 | | | `double9` 何日目（1〜7） |
 | `comeback_complete` | サーバー（復帰ログボ7日とミッションを全部受け取った、REQ-CB-005） | 段階 | | | `double9` 期間の何日目に完了したか |
+| `achievement_unlock` | サーバー（実績の段に届いた、1段1回、REQ-ACH-003） | 実績ID | カテゴリ（race/course/skill/breeding/time_attack/tournament/stable/team） | metric | `double9` 段、`double5` その時の進み具合 |
+| `achievement_claim` | サーバー（実績の段の無償コインを受け取った、REQ-ACH-005） | 実績ID | カテゴリ | | `double9` 段、`double3` 無償コイン |
 | `screen_view` | クライアント | 画面名 | | | |
 | `client_race_start` | クライアント | モード | | | |
 | `purchase_flow` | クライアント | `open`/`cancel`/`fail`/`store_success` | 商品ID | | |
@@ -493,8 +497,54 @@ ORDER BY redeems DESC
 LIMIT 50
 ```
 
+## 調教：毎日のループと公平性（REQ-TRAIN-014、contracts/protocol.md §25）
+
+**1日の調教の回数とミニゲームの遊ばれ方**（日ごと、課金者／無課金で分ける）。`blob7` は課金者の印。スキップ率が高いならミニゲームが面倒に感じられている、`expired` が多いならアプリが途中で閉じられている。
+
+```sql
+SELECT
+  blob6 AS day, blob7 AS payer,
+  sumIf(_sample_interval, blob1 = 'training_start') AS starts,
+  sumIf(_sample_interval, blob1 = 'training_done') AS done,
+  round(sumIf(_sample_interval, blob1 = 'training_done' AND blob10 = 'skipped') / sumIf(_sample_interval, blob1 = 'training_done'), 3) AS skip_rate,
+  round(sumIf(_sample_interval, blob1 = 'training_done' AND blob10 = 'expired') / sumIf(_sample_interval, blob1 = 'training_done'), 3) AS expired_rate,
+  round(sumIf(_sample_interval * double9, blob1 = 'training_done') / sumIf(_sample_interval, blob1 = 'training_done'), 2) AS avg_gain,
+  round(sumIf(_sample_interval * double5, blob1 = 'training_done' AND blob10 = 'done') / sumIf(_sample_interval, blob1 = 'training_done' AND blob10 = 'done'), 2) AS avg_score
+FROM muchi_kpi
+WHERE blob1 IN ('training_start', 'training_done') AND timestamp > NOW() - INTERVAL '14' DAY
+GROUP BY day, payer
+ORDER BY day DESC, payer
+```
+
+- **公平性の監視**：`avg_gain` が課金者で無課金より大きいなら、課金者の馬に伸びしろが多い（素質の順 R ≥ SR ≥ SSR が崩れている）か、回数の上限が破られている。どちらも設定の検証で起きない前提なので、差が出たら調べる。ランク戦の勝率の差（「無課金と課金者のランク戦勝率の差」のクエリ）が調教の開始後に広がっていないかも合わせて見る（E15 の実測）。
+- **満点の多さ**（機械の疑い）：`double5` が満点（10）の割合がプレイヤーごとに極端に高い（例：50回以上で95%超）なら、自動化の可能性。上乗せは最大 +10% なので急ぎではないが、`blob2` で上位を出してサポートに回す。
+
+```sql
+SELECT blob2 AS player, count() AS runs, round(countIf(double5 >= 10) / count(), 3) AS perfect_rate
+FROM muchi_kpi
+WHERE blob1 = 'training_done' AND blob10 = 'done' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY player
+HAVING runs >= 50 AND perfect_rate > 0.95
+ORDER BY runs DESC
+LIMIT 50
+```
+
 ## 注意
 
 - Analytics Engine のデータ保持期間は有限（現時点で約3か月）です。長期の推移はこのクエリ結果を毎月どこかに書き出して残します。
 - サンドボックスとテスト購入は `blob10 = 'sandbox'` で、金額は0円です。売上の計算では除外しています。
 - 関数の対応は [SQL reference](https://developers.cloudflare.com/analytics/analytics-engine/sql-reference/) を参照してください。`countIf`/`sumIf`/`quantileExactWeighted`/`if`/`count(DISTINCT …)`/`FROM` のサブクエリは使えます。`JOIN`/`UNION` は使えません。
+
+## 実績の解放と受け取り（REQ-ACH-003/005、Round 11）
+段ごとの到達者数と、解放から受け取りまでの率（受け取られない段は、画面の導線か報酬の小ささの問題）。
+
+```sql
+SELECT blob8 AS achievement, double9 AS tier,
+       SUM(IF(blob1 = 'achievement_unlock', _sample_interval, 0)) AS unlocked,
+       SUM(IF(blob1 = 'achievement_claim', _sample_interval, 0)) AS claimed
+FROM muchi_kpi
+WHERE blob1 IN ('achievement_unlock', 'achievement_claim') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY achievement, tier
+ORDER BY achievement, tier
+```
+- 実績は課金・ガチャでは進まない（REQ-ACH-007）ので、課金者と無課金者（`blob7`）で解放の速さに差が出たら、遊び方の違いとして読む（支払いの効果ではない）。

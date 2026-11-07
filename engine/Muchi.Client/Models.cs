@@ -104,6 +104,8 @@ namespace Muchi.Client
         public AtavismTrait Atavism;
         /// <summary>固有スキル id (REQ-UXS-050), or null (no skill / older servers). Look it up with <see cref="SkillCatalog.Find"/>.</summary>
         public string SkillId;
+        /// <summary>Stat points gained from 調教 (REQ-TRAIN-003); all zero when untrained. Races use Base+awakening+Trained, ranked normalises it.</summary>
+        public Stats Trained = new Stats();
         public bool IsActive => Status == "active";
         public bool IsRetired => Status == "retired";
 
@@ -118,7 +120,7 @@ namespace Muchi.Client
             GoingAptitude = J.Str(o, "goingAptitude") ?? "any",
             Appearance = Appearance.Parse(J.Opt(o, "appearance")) ?? new Appearance(),
             StudSire = StudSireRef.Parse(J.Opt(o, "studSire")), Atavism = AtavismTrait.Parse(J.Opt(o, "atavism")),
-            SkillId = J.Str(o, "skillId"),
+            SkillId = J.Str(o, "skillId"), Trained = Stats.Parse(J.Opt(o, "trained")),
         };
     }
 
@@ -785,7 +787,16 @@ namespace Muchi.Client
         /// <summary>Asset key of the title icon (title/&lt;id&gt;).</summary>
         public string Icon;
         public bool Unlocked;
-        internal static TitleInfo Parse(JsonNode o) => new TitleInfo { Id = J.Str(o, "id"), Name = J.Str(o, "name"), Icon = J.Str(o, "icon") ?? AssetKeys.Title(J.Str(o, "id") ?? "default"), Unlocked = J.Bool(o, "unlocked") };
+        /// <summary>REQ-ACH-006: "record" (play statistics) or "achievement" (a tier of <see cref="AchievementId"/>).</summary>
+        public string Source = "record";
+        public string AchievementId;
+        public int Tier;
+        public bool FromAchievement => Source == "achievement";
+        internal static TitleInfo Parse(JsonNode o) => new TitleInfo
+        {
+            Id = J.Str(o, "id"), Name = J.Str(o, "name"), Icon = J.Str(o, "icon") ?? AssetKeys.Title(J.Str(o, "id") ?? "default"), Unlocked = J.Bool(o, "unlocked"),
+            Source = J.Str(o, "source") ?? "record", AchievementId = J.Str(o, "achievementId"), Tier = J.Int(o, "tier"),
+        };
     }
 
     public sealed class TitleList

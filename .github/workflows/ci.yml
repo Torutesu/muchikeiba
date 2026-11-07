@@ -60,6 +60,32 @@ jobs:
         continue-on-error: true
         run: npm run scan:assets -- --check --json asset-coverage.json
 
+  # Ops console (tools/ops-console, docs/ops/console.md): offline build + unit tests, then Playwright against wrangler dev
+  ops-console:
+    needs: [server]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install server deps
+        working-directory: server
+        run: npm ci
+      - name: Install console deps (Playwright only; the console itself has none)
+        working-directory: tools/ops-console
+        run: npm ci && npx playwright install --with-deps chromium
+      - name: Build + unit tests
+        working-directory: tools/ops-console
+        run: node build.mjs && npm test
+      - name: Console e2e
+        run: bash scripts/console-e2e.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ops-console-screenshots
+          path: tools/ops-console/e2e-screenshots
+
   integration:
     needs: [engine, server]
     runs-on: ubuntu-latest

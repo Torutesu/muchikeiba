@@ -35,6 +35,11 @@ namespace Muchi.Client
     /// <summary>Commentary templates (engine/Muchi.Client/Resources/Muchi/commentary-ja.json). In Unity load the file as a TextAsset.</summary>
     public sealed class CommentaryTemplates
     {
+        /// <summary>
+        /// "ja" (commentary-ja.json) or "en" (commentary-en.json, REQ-L10N-012). In English, places are ordinals ("3rd"),
+        /// horse and skill names come from the English tables (<see cref="Loc.English"/>; katakana names romanized).
+        /// </summary>
+        public string Language = "ja";
         public int TicksPerChar = 3;
         public int MinLineTicks = 24;
         public int GapTicks = 4;
@@ -74,6 +79,7 @@ namespace Muchi.Client
             var o = JsonNode.Parse(json);
             var t = new CommentaryTemplates
             {
+                Language = Loc.Normalize(J.Str(o, "language")),
                 TicksPerChar = J.Int(o, "ticksPerChar", 3),
                 MinLineTicks = J.Int(o, "minLineTicks", 24),
                 GapTicks = J.Int(o, "gapTicks", 4),
@@ -505,6 +511,16 @@ namespace Muchi.Client
             return best;
         }
 
+        private bool _en => _t.Language == Loc.En;
+
+        /// <summary>A master name in English ("シンセイアカツキ" → "Shinsei Akatsuki"), else the katakana romanized.</summary>
+        private static string EnglishName(string ja)
+        {
+            if (string.IsNullOrEmpty(ja)) return "";
+            var t = Loc.English.Translate(ja);
+            return t != null && !Loc.HasJapanese(t) ? t : Romaji.Name(ja);
+        }
+
         private CommentaryLine Speak(Cand c, int tick)
         {
             // variants are chosen from the race seed and the phrase key (a plain kind hashes exactly as before)
@@ -520,18 +536,18 @@ namespace Muchi.Client
             foreach (var p in v.Parts)
             {
                 if (p.ClipId != null) { text.Append(p.Text); clips.Add(p.ClipId); continue; }
-                if (p.Placeholder == "place") { text.Append(c.Place); clips.Add("num:" + c.Place); continue; }
+                if (p.Placeholder == "place") { text.Append(_en ? Loc.Ordinal(c.Place) : c.Place.ToString(System.Globalization.CultureInfo.InvariantCulture)); clips.Add("num:" + c.Place); continue; }
                 if (p.Placeholder == "skill")
                 {
                     // skill names are pre-generated per skill like horse names ("skill:<skillId>")
                     var sk = c.Slot >= 0 && c.Slot < _cfg.Entrants.Count ? _cfg.Entrants[c.Slot].Horse.Skill : null;
-                    text.Append(sk?.Name ?? "");
+                    text.Append(_en ? EnglishName(sk?.Name) : sk?.Name ?? "");
                     clips.Add("skill:" + (sk?.Id ?? "?"));
                     continue;
                 }
                 int slot = p.Placeholder == "name" ? c.Slot : p.Placeholder == "name2" ? c.Slot2 : c.Slot3;
                 var horse = slot >= 0 && slot < _cfg.Entrants.Count ? _cfg.Entrants[slot].Horse : null;
-                text.Append(horse?.Name ?? "");
+                text.Append(_en ? EnglishName(horse?.Name) : horse?.Name ?? "");
                 clips.Add("name:" + (horse?.Id ?? "?"));
             }
             string s = text.ToString();

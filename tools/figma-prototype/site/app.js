@@ -40,6 +40,72 @@ const EXTRA_JA = {
 const isJa = () => prefs.get('muchi.language', 'ja') === 'ja';
 const T = (s) => (s == null ? s : isJa() ? (JA[s] ?? EXTRA_JA[s] ?? s) : s);
 
+// ---------------------------------------------------------------- English (REQ-L10N-013, contracts/protocol.md §23)
+// The screens build Japanese (the source language, like the server and the Unity game layer). With EN on, every text
+// node on the stage goes through MuchiLogic.l10n: the server's English (master/locale-en.json + i18n/en.ts — the same
+// strings a request with Accept-Language: en gets), the game layer's (ui-en.json) and this prototype's (proto-en.json).
+// Katakana horse names come back romanized. Text that does not fit its box is shrunk (fitText). Legal pages under
+// Japanese law stay Japanese with an English courtesy note (.keep-ja).
+const JP_RE = /[\u3040-\u30ff\u3400-\u9fff\u3000-\u303f\uff01-\uff60]/;
+const l10nMisses = new Map();
+function enText(s) {
+  if (!s || !JP_RE.test(s)) return s;
+  const m = /^(\s*)([\s\S]*?)(\s*)$/.exec(s);
+  const t = L.l10n.translate(m[2]);
+  if (t == null) { l10nMisses.set(m[2], (l10nMisses.get(m[2]) ?? 0) + 1); return s; }
+  return m[1] + t + m[3];
+}
+const EN_LEGAL_NOTE = 'This notice is required by Japanese law and is provided in Japanese, the language that applies. The English below is a courtesy translation only; it has no legal effect and does not extend these terms outside Japan.';
+const keepJa = (n) => !!(n.parentElement ?? n).closest?.('.keep-ja');
+function translateTree(n) {
+  if (n.nodeType === 3) { if (!keepJa(n)) { const v = enText(n.nodeValue); if (v !== n.nodeValue) n.nodeValue = v; } return; }
+  if (n.nodeType !== 1 || n.classList?.contains('keep-ja')) return;
+  if (n.placeholder && JP_RE.test(n.placeholder)) n.placeholder = enText(n.placeholder);
+  n.childNodes.forEach(translateTree);
+}
+let fitPending = false;
+const l10nObserver = new MutationObserver((muts) => {
+  if (isJa()) return;
+  for (const m of muts) {
+    if (m.type === 'characterData') translateTree(m.target);
+    else m.addedNodes.forEach(translateTree);
+  }
+  if (!fitPending) { fitPending = true; requestAnimationFrame(() => { fitPending = false; fitText(cur); }); }
+});
+/**
+ * English is longer than Japanese: a text that overflows its box (wider than its element, taller than a fixed height,
+ * or below the bottom of its panel) is set smaller, down to 66 % of its size. Japanese is never touched.
+ */
+function fitText(root) {
+  if (isJa() || !root) return;
+  const els = root.querySelectorAll('.label, .kicker, .caption, .btn, .pill, .tag');
+  for (const e of els) {
+    if (e.offsetParent === null) continue;
+    const host = e.classList.contains('btn') ? null : e.parentElement?.closest('.glass, .card, .sheet, .btn');
+    const text = () => { const r = document.createRange(); r.selectNodeContents(e); return r.getBoundingClientRect(); };
+    const over = () => e.scrollWidth > e.clientWidth + 1 || (e.style.height && e.scrollHeight > e.clientHeight + 1)
+      || (host && !host.classList.contains('btn') && text().bottom > host.getBoundingClientRect().bottom + 1)
+      || text().right > $stage.getBoundingClientRect().right + 1;
+    // fit again from the base size (a sheet measured mid slide-in must not stay 'overflow' once it has settled)
+    const setSize = (px) => { e.style.fontSize = px; if (e.classList.contains('btn')) e.querySelectorAll('span').forEach((s) => { s.style.fontSize = px; }); };
+    if (e.dataset.fitBase) { setSize(e.dataset.fitBase + 'px'); delete e.dataset.fit; }
+    if (!over()) continue;
+    const base = parseFloat(e.dataset.fitBase ?? getComputedStyle(e).fontSize);
+    e.dataset.fitBase = String(base);
+    for (let k = 1; k <= 6 && over(); k++) {
+      e.style.fontSize = (base * (1 - .057 * k)).toFixed(1) + 'px';
+      if (e.classList.contains('btn')) e.querySelectorAll('span').forEach((s) => { s.style.fontSize = e.style.fontSize; });
+    }
+    e.dataset.fit = over() ? 'overflow' : 'shrunk';
+  }
+}
+/** The screens' language: html lang (CSS), the observer, and the commentary language of the next race. */
+let enTables = null;
+function applyLanguage() {
+  document.documentElement.lang = isJa() ? 'ja' : 'en';
+  if (engine && enTables) engine.SetLanguage(isJa() ? 'ja' : 'en', isJa() ? enTables.commentaryJa : enTables.commentaryEn, enTables.server, enTables.ui);
+}
+
 // ---------------------------------------------------------------- art (Unity Resources paths → site files)
 let ART = {};
 const art = (res) => ART[res] || '';
@@ -138,9 +204,11 @@ function Pills(list, x, y, w, parent) {
 function EnToggle(x = 1435, y = 124, w = 120, h = 50) {
   const b = Btn('EN', x, y, w, h, () => {
     prefs.set('muchi.language', isJa() ? 'en' : 'ja');
-    toast(isJa() ? '日本語に戻しました' : 'English: some screens only (the rest stays Japanese)');
+    applyLanguage();
+    toast(isJa() ? '日本語に戻しました' : 'English (legal pages under Japanese law stay in Japanese)');
     currentScreen?.();
   }, 'lang', undefined, isJa() ? 'EN' : 'JA');
+  b.classList.add('keep-ja');
   return b;
 }
 /** Currency HUD: free ◎ and paid ◈ coins apart, gold numbers (06 / doc 03: 有償・無償は分けて表示). */
@@ -250,7 +318,7 @@ function rewardText(r) {
   if (r.broodmare) out.push(`繁殖牝馬「${templateName(r.broodmare)}」`);
   return out.join('＋');
 }
-const missionName = (m) => (m.kind === 'races' ? '出走' : m.kind === 'wins' ? '勝利' : '3着内');
+const missionName = (m) => (m.kind === 'races' ? '出走' : m.kind === 'wins' ? '勝利' : m.kind === 'training' ? '調教' : '3着内');
 // the server's season end is the exclusive start of the next month: show its last minute (「11月30日 23:59まで」)
 const seasonEnd = (ms) => jstDate(ms - 60_000);
 const jstDate = (ms) => { const d = new Date(ms + 9 * 3600e3); return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日 ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`; };
@@ -318,9 +386,17 @@ function Legal(kind, back) {
   const [title, body] = docs[kind];
   const d = Dialog('Legal', 1000, 700);
   Kicker('法定表示・規約', 52, 48, d);
-  Txt(title, 52, 112, 896, 34, WHITE, d);
+  Txt(title, 52, 112, 896, isJa() ? 34 : 27, WHITE, d, { nowrap: !isJa() }); // English titles are longer: one line
   Hair(52, 178, 896, d);
-  Txt(body, 52, 206, 896, 19, MUTED, d, { lh: 1.75 });
+  // REQ-L10N-008: the notices required by Japanese law (特商法・資金決済法) stay in Japanese; in English a courtesy
+  // translation follows that claims no legal effect outside Japan
+  const legalJa = !isJa() && (kind === 'tokushoho' || kind === 'shikin');
+  const bodyEl = Txt(body, 52, 206, 896, legalJa ? 16 : 19, MUTED, d, { lh: legalJa ? 1.6 : 1.75 });
+  if (legalJa) {
+    bodyEl.classList.add('keep-ja'); bodyEl.lang = 'ja';
+    const note = Txt(EN_LEGAL_NOTE + '\n\n' + (L.l10n.translate(body) ?? ''), 52, 206 + 16 * 1.6 * (body.split('\n').length + 1.4), 896, 15, SOFT, d, { lh: 1.5 });
+    note.dataset.courtesy = 'en';
+  }
   Cta('閉じる', 52, 590, 380, back, d);
   EnToggle();
 }
@@ -435,7 +511,7 @@ function paintHud(f) {
   const pos = f.rankKnown ? `${f.rank}|${f.runners}` : '—';
   if (pos !== hud.lastPos) {
     hud.lastPos = pos;
-    hud.position.innerHTML = f.rankKnown ? `<span>${f.rank}位</span><small>/</small><span class="of">${f.runners}頭</span>` : '—';
+    hud.position.innerHTML = f.rankKnown ? `<span>${f.rank}位</span><small>/</small><span class="of">${f.runners}${isJa() ? '頭' : ''}</span>` : '—';
   }
   setText(hud.distance, `残り ${fmt(f.remainingM)} m`);
   setText(hud.clock, f.time);
@@ -521,7 +597,8 @@ async function RaceResult(f) {
   const r = f.result;
   const finishTick = r.place > 0 ? f.finishTicks[r.place - 1] : -1;
   const passBefore = await L.passView();
-  const applied = await L.applyRace(raceCtx.config.raceId, r.place, r.runners, { trackId: raceCtx.trackId, style: partner()?.style ?? 'sashi', finishTick: finishTick >= 0 ? finishTick : null, whips: r.facts?.whips ?? 0 });
+  // round 11: the field met (図鑑) and whether the partner's skill fired (実績) go with the result, like a room's settlement
+  const applied = await L.applyRace(raceCtx.config.raceId, r.place, r.runners, { trackId: raceCtx.trackId, style: partner()?.style ?? 'sashi', finishTick: finishTick >= 0 ? finishTick : null, whips: r.facts?.whips ?? 0, skillFired: !!(f.skill?.used ?? lastFrame?.skill?.used) }, raceCtx.config);
   const passAfter = await L.passView();
   const missions = await L.missions();
   await refresh();
@@ -833,7 +910,7 @@ async function Home() {
   // REQ-CB-*: the comeback welcome replaces home once per window (decided before home is drawn)
   const comeback = await cbView();
   if (comeback.active && comeback.window.showWelcome) return ComebackWelcome(comeback);
-  const [missions, fw, bond] = await Promise.all([L.missions(), L.firstWinBonus(), p ? L.bond(p.id) : null]);
+  const [missions, fw, bond, training] = await Promise.all([L.missions(), L.firstWinBonus(), p ? L.bond(p.id) : null, unlock('training').unlocked ? L.training() : null]);
   Clear('home'); SetArt('Art/home-paddock');
   const u = player.unlocks;
   // top left: season / class (④)
@@ -850,12 +927,14 @@ async function Home() {
   Wallet();
   EnToggle();
   // right: the thin-divider menu (厩舎 / スカウト / ミッション / 機能)
-  const menu = Glass('Menu', 1139, 224, 388, 320, undefined, .77);
+  const menu = Glass('Menu', 1139, 190, 388, 394, undefined, .77);
   const ms = missions.ok ? missions.value : [];
   const done = ms.filter((m) => m.progress >= m.target).length;
   const claimable = ms.filter((x) => x.progress >= x.target && !x.claimed);
   const rows = [
     ['厩舎', `${player.horses.length}頭`, () => Stable()],
+    // round 11 (REQ-TRAIN-*): 調教 — today's slots left, opens with the unlock table
+    unlock('training').unlocked ? ['調教', training?.ok && training.value.enabled ? `今日あと${training.value.slotsLeft}回` : '', () => Training(), training?.ok && training.value.slotsLeft > 0] : ['調教', unlockText('training'), () => toast('調教は' + unlockText('training')), false, true],
     ['スカウト', unlock('gacha').unlocked === false ? '' : `${L.bannerList().banners.filter((b) => b.status !== 'upcoming').length}件 開催中`, () => Scout()],
     unlock('missions').unlocked ? ['ミッション', `${done} / ${ms.length}`, () => Missions(ms, fw, bonus), claimable.length > 0] : ['ミッション', unlockText('missions'), () => toast('デイリーミッションは' + unlockText('missions')), false, true],
     ['機能・イベント', `${(player.unlocks.features ?? []).filter((f) => f.unlocked).length}件 開放`, () => Features()],
@@ -896,7 +975,7 @@ function Missions(ms, fw, bonus) {
       Hair(48, yy + 92, 564, s);
     };
     row(y, 'ログインボーナス', lb?.beginnerDay ? `初心者 ${lb.beginnerDay}/7日` : `${lb?.streakDay ?? 0}日目`, bonus ? '受け取りました：' + rewardText(bonus.reward) : '今日の分は受け取り済み', null, true);
-    ms.forEach((m, i) => row(y + 112 + i * 112, 'デイリー：' + missionName(m), `${m.progress} / ${m.target}${m.claimed ? '　受取済' : ''}`, m.claimed ? '受け取り済み' : m.progress >= m.target ? '受け取れます' : 'レースで進みます', m.progress / m.target, m.progress >= m.target));
+    ms.forEach((m, i) => row(y + 112 + i * 112, 'デイリー：' + missionName(m), `${m.progress} / ${m.target}${m.claimed ? '　受取済' : ''}`, m.claimed ? '受け取り済み' : m.progress >= m.target ? '受け取れます' : m.kind === 'training' ? '調教で進みます' : 'レースで進みます', m.progress / m.target, m.progress >= m.target));
     const yy = y + 112 + ms.length * 112;
     row(yy, '初勝利ボーナス', fw.remaining > 0 ? `残り${fw.remaining}回` : '本日終了', fw.next ? `今日の次の1着で 無償コイン+${fw.next}（ランク戦）` : '明日また受け取れます', null, fw.remaining === 0);
     const claimable = ms.filter((x) => x.progress >= x.target && !x.claimed);
@@ -905,7 +984,7 @@ function Missions(ms, fw, bonus) {
 }
 /** Feature keys unlocked by races or days (server unlocks), each with its key and condition. */
 function Features() {
-  const keys = [['season_pass', 'シーズンパス', () => SeasonPass()], ['time_attack', 'タイムアタック', () => TimeAttack()], ['breeding', '配合'], ['friends', 'フレンド'], ['teams', '支部'], ['events', 'イベント'], ['my_stable', 'マイ厩舎']];
+  const keys = [['season_pass', 'シーズンパス', () => SeasonPass()], ['time_attack', 'タイムアタック', () => TimeAttack()], ['collection', '図鑑', () => Collection()], ['achievements', '実績・称号', () => Achievements()], ['breeding', '配合'], ['friends', 'フレンド'], ['teams', '支部'], ['events', 'イベント'], ['my_stable', 'マイ厩舎']];
   Sheet('機能・イベント', '開放', (s, close, y) => {
     keys.forEach(([k, name, go], i) => {
       const f = unlock(k);
@@ -1609,8 +1688,9 @@ async function Settings() {
   const a = Glass('Account', 36, 134, 500, 676, undefined, .9);
   Kicker('設定', 36, 30, a);
   Txt('言語', 36, 104, 200, 21, WHITE, a, { weight: 500 });
-  const ja = Btn('日本語', 196, 96, 120, 46, () => { prefs.set('muchi.language', 'ja'); Settings(); }, 'choice' + (isJa() ? ' on' : ''), a);
-  const en = Btn('English（一部）', 328, 96, 136, 46, () => { prefs.set('muchi.language', 'en'); Settings(); }, 'choice' + (!isJa() ? ' on' : ''), a);
+  const ja = Btn('日本語', 196, 96, 120, 46, () => { prefs.set('muchi.language', 'ja'); applyLanguage(); Settings(); }, 'choice' + (isJa() ? ' on' : ''), a);
+  ja.classList.add('keep-ja');
+  const en = Btn('English', 328, 96, 136, 46, () => { prefs.set('muchi.language', 'en'); applyLanguage(); Settings(); }, 'choice' + (!isJa() ? ' on' : ''), a);
   en.style.fontSize = '14px'; en.style.whiteSpace = 'nowrap'; en.style.padding = '0'; ja.dataset.name = 'Language';
   Hair(36, 162, 428, a);
   // 引き継ぎ (REQ-API-005): the same buttons as the prompt; the prompt itself shows once (REQ-UXS-073)
@@ -1682,6 +1762,7 @@ async function Demo(kind) {
   try { localStorage.removeItem('muchi.comeback.pushAsked'); } catch { /* */ }
   if (kind === 'new') { await L.bootstrap(); await refresh(); return Title(); }
   if (kind === 'comeback') { await L.seedComeback(14); await refresh(); return Home(); }
+  if (kind === 'collection') { await L.seedCollection(); await refresh(); return Collection('horses'); }
   const spec = { day1: [1, [1]], day3: [3, [2, 2, 2]], day7: [7, [3, 3, 3, 3, 3, 3, 3]] }[kind];
   await L.seedDemo(spec[0], spec[1]);
   await refresh();
@@ -1931,6 +2012,144 @@ async function ComebackTrack() {
   Back(Home, 'ホームへ', 40, 834);
 }
 
+// ================================================================= 図鑑・実績・称号 (round 11; REQ-COL-*, REQ-ACH-*, contracts/protocol.md §24)
+// ムチ一閃 tone: the photoreal paddock behind sparse navy panels, letter-spaced cyan kickers, one skewed cyan CTA » per view.
+// Everything comes from the real server rules (MuchiLogic.collection / achievements / titles = GET /v1/collection,
+// GET /v1/achievements, GET /v1/titles). Legal (docs/planning/03): the book's completion is a number only — no reward,
+// no 「あと1体」, no link from a missing horse to the scout; unknown entries are silhouettes with ？？？. Achievements count
+// play only and pay free coins. Art: portraits/silhouettes/badges are Codex's (asset keys collection/portrait|silhouette/*,
+// badge/*); until then the partner renders stand in (a silhouette = the same render, blacked out).
+const COL_TABS = [['horses', '競走馬'], ['skills', '固有スキル'], ['courses', 'コース'], ['cosmetics', '見た目']];
+const COL_STATE = { horses: { obtained: '入手', seen: '出会った', unknown: '未発見' }, skills: { obtained: '入手', seen: '出会った', unknown: '未発見' }, courses: { obtained: '走った', unknown: '未出走' }, cosmetics: { obtained: '所持', unknown: '未所持' } };
+const ACH_CATS = [[null, 'すべて'], ['race', 'レース'], ['course', 'コース'], ['skill', 'スキル'], ['breeding', '配合'], ['time_attack', 'TA'], ['tournament', '大会'], ['stable', '厩舎'], ['team', '支部']];
+const colPct = (permille) => `${Math.floor(permille / 10)}%`;
+const colArt = (id) => partnerPreview([...id].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % 5);
+const colState = { tab: 'horses', sel: null, achCat: null, achPage: 0 };
+
+async function Collection(tab) {
+  if (tab) { colState.tab = tab; colState.sel = null; }
+  currentScreen = () => Collection();
+  const r = await L.collection();
+  if (!r.ok) { toast(r.message); return Home(); }
+  const book = r.value;
+  const c = book.sections[colState.tab];
+  Clear('collection'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('図鑑', `達成率 ${colPct(book.totals.completionPermille)}（${book.totals.obtained} / ${book.totals.total}）　·　記録の表示だけです。そろえても報酬はありません`).dataset.colTotal = String(book.totals.completionPermille);
+  const p = Glass('Collection', 36, 134, 1060, 676, undefined, .88);
+  COL_TABS.forEach(([k, name], i) => { const b = Btn(name, 36 + i * 168, 28, 156, 48, () => Collection(k), 'choice' + (colState.tab === k ? ' on' : ''), p); b.dataset.tab = k; });
+  const counts = colState.tab === 'horses' || colState.tab === 'skills' ? `入手 ${c.obtained}　·　出会った ${c.seen}　·　未発見 ${c.unknown}` : `${COL_STATE[colState.tab].obtained} ${c.obtained} / ${c.total}`;
+  Txt(counts, 720, 40, 304, 15, MUTED, p, { weight: 500, align: 'right', nowrap: true }).dataset.colCounts = '1';
+  Gauge(36, 96, 988, c.total ? c.obtained / c.total : 0, p);
+  const horses = colState.tab === 'horses';
+  const cols = horses ? 7 : 4, cw = horses ? 136 : 238, ch = horses ? 124 : 104;
+  const grid = el('col-grid', 36, 124, 988, 520, p);
+  c.entries.forEach((e, i) => {
+    const cell = el('col-cell ' + e.state + (colState.sel === e.id ? ' sel' : ''), (i % cols) * (cw + 6), Math.floor(i / cols) * (ch + 6), cw, ch, grid);
+    cell.dataset.colCell = e.id; cell.dataset.state = e.state; cell.setAttribute('role', 'button');
+    if (horses) {
+      ArtImage(colArt(e.id), 14, 6, cw - 28, 74, cell, e.state === 'unknown' ? 'col-sil' : 'col-por');
+      Txt(e.name ?? '？？？', 8, 82, cw - 16, 13, e.state === 'unknown' ? DIM : WHITE, cell, { weight: 700, nowrap: true, align: 'center' });
+      Txt(`${e.rarity}　${COL_STATE.horses[e.state]}`, 8, 102, cw - 16, 11, e.rarity === 'SSR' ? GOLD : e.rarity === 'SR' ? CYAN : MUTED, cell, { weight: 700, align: 'center', ls: '.12em', nowrap: true });
+    } else {
+      // a course name (racecourse + surface + distance) may take two lines (long in English: "Bellmoor Racecourse, Turf 1200 m (straight)")
+      const course = colState.tab === 'courses';
+      Txt(e.name ?? '？？？', 16, course ? 10 : 16, cw - 32, 15, e.state === 'unknown' ? DIM : WHITE, cell, course ? { weight: 700, lh: 1.25 } : { weight: 700, nowrap: true });
+      const sub = colState.tab === 'skills' ? (e.condition ?? e.rarity) : course ? (e.state === 'obtained' ? `出走 ${e.races}　·　1着 ${e.wins}` : `${surfaceJa(e.surface)} ${fmt(e.distanceM)}m`) : e.kind;
+      Txt(sub, 16, course ? 54 : 44, cw - 32, 12, MUTED, cell, { nowrap: true }).style.overflow = 'hidden';
+      Txt(COL_STATE[colState.tab][e.state], 16, course ? 78 : 72, cw - 32, 12, e.state === 'obtained' ? CYAN : SOFT, cell, { weight: 700, ls: '.16em' });
+    }
+    cell.addEventListener('click', (ev) => { ev.stopPropagation(); colState.sel = e.id; Collection(); });
+  });
+  // right: the selected entry (lore, stats) — never a link to the scout
+  const d = Glass('Collection detail', 1116, 134, 448, 676, undefined, .9);
+  const e = c.entries.find((x) => x.id === colState.sel) ?? c.entries.find((x) => x.state !== 'unknown') ?? c.entries[0];
+  if (e) {
+    d.dataset.colDetail = e.id;
+    Kicker(`${COL_TABS.find(([k]) => k === colState.tab)[1]}　/　${COL_STATE[colState.tab][e.state]}`, 36, 30, d, { size: 15 });
+    let y = 100;
+    if (horses) { ArtImage(colArt(e.id), 36, y, 376, 200, d, e.state === 'unknown' ? 'col-sil' : 'col-por'); y += 214; }
+    Txt(e.name ?? '？？？', 36, y, 376, 28, e.state === 'unknown' ? DIM : WHITE, d, { weight: 700, nowrap: true, ls: '.04em' }); y += 46;
+    const meta = horses ? (e.state === 'unknown' ? e.rarity : `${e.rarity}　/　${STYLE_JA[e.style] ?? ''}　/　${surfaceJa(e.surface)} ${fmt(e.distance.minM)}〜${fmt(e.distance.maxM)}m`)
+      : colState.tab === 'skills' ? (e.condition ?? e.rarity) : colState.tab === 'courses' ? `${surfaceJa(e.surface)}　${fmt(e.distanceM)}m` : e.kind;
+    Txt(meta + (e.seasonal ? `　·　${e.seasonal.label}` : ''), 36, y, 376, 15, GOLD, d, { weight: 700 }); y += 34;
+    Txt(e.lore ?? (e.state === 'unknown' ? 'まだ出会っていません。レースで出会うと記録されます。' : ''), 36, y, 376, 15, MUTED, d, { lh: 1.65 }).dataset.colLore = '1'; y += 80;
+    if (e.stats) [['スピード', e.stats.speed], ['スタミナ', e.stats.stamina], ['瞬発', e.stats.burst]].forEach(([k, v], i) => {
+      Txt(k, 36, y + i * 44, 160, 14, WHITE, d, { weight: 700 }); Txt(String(stat100(v)), 340, y + i * 44 - 2, 72, 16, GOLD, d, { weight: 700, align: 'right', cls: 'num' });
+      Gauge(36, y + i * 44 + 24, 376, v / 1000, d);
+    });
+    if (colState.tab === 'skills' && e.effect) Txt(e.effect, 36, y, 376, 15, WHITE, d, { lh: 1.6 });
+    if (colState.tab === 'courses' && e.state === 'obtained') Txt(`出走 ${e.races}　·　1着 ${e.wins}${e.timeAttackBestMs ? `　·　タイムアタック ${fmtMs(e.timeAttackBestMs)}` : ''}`, 36, y, 376, 15, WHITE, d, { weight: 500 });
+  }
+  Txt(book.notice, 36, 620, 376, 13, SOFT, d, { lh: 1.5 }).dataset.colNotice = '1';
+  Back(Home, 'ホームへ', 40, 834);
+  TextLink('実績', 220, 834, 160, () => Achievements(), undefined, '実績・称号 ›');
+}
+
+async function Achievements() {
+  currentScreen = Achievements;
+  await refresh();
+  const r = await L.achievements();
+  if (!r.ok) { toast(r.message); return Home(); }
+  const v = r.value;
+  Clear('achievements'); SetArt('Art/race-result', false); Shade('left');
+  TopBar('実績', 'レースや育成などのプレイで達成します　·　課金やガチャの回数では達成しません　·　報酬は無償コイン');
+  const p = Glass('Achievements', 36, 134, 1060, 676, undefined, .88);
+  ACH_CATS.forEach(([k, name], i) => { const b = Btn(name, 36 + i * 110, 28, 100, 44, () => { colState.achCat = k; colState.achPage = 0; Achievements(); }, 'choice' + (colState.achCat === k ? ' on' : ''), p); b.dataset.cat = k ?? 'all'; b.style.fontSize = '15px'; });
+  const rows = v.achievements.filter((a) => colState.achCat === null || a.category === colState.achCat)
+    .map((a) => ({ a, claim: v.blocked ? null : a.tiers.find((t) => t.claimable) }))
+    .sort((x, y) => (x.claim ? 0 : 1) - (y.claim ? 0 : 1));
+  const PER = 6, pages = Math.max(1, Math.ceil(rows.length / PER));
+  colState.achPage = clamp(colState.achPage, 0, pages - 1);
+  rows.slice(colState.achPage * PER, colState.achPage * PER + PER).forEach(({ a, claim }, i) => {
+    const row = el('ach-row', 36, 96 + i * 90, 988, 90, p); row.dataset.ach = a.id;
+    Txt(a.name, 0, 14, 420, 17, WHITE, row, { weight: 700, nowrap: true });
+    Txt(a.description, 0, 42, 420, 12, MUTED, row, { nowrap: true }).style.overflow = 'hidden';
+    const prev = [...a.tiers].reverse().find((t) => t.unlocked)?.target ?? 0;
+    Txt(a.nextTarget ? `${fmt(Math.min(a.progress, a.nextTarget))} / ${fmt(a.nextTarget)}` : '達成', 440, 14, 150, 16, GOLD, row, { weight: 700, align: 'right', cls: 'num' });
+    Gauge(440, 44, 150, a.nextTarget ? (a.progress - prev) / Math.max(1, a.nextTarget - prev) : 1, row, { gold: !a.nextTarget });
+    const badges = el('ach-badges', 620, 14, 220, 34, row);
+    a.tiers.forEach((t) => { const b = document.createElement('i'); b.className = 'ach-badge' + (t.unlocked ? ' on' : '') + (t.claimed ? ' claimed' : ''); b.textContent = String(t.tier); b.dataset.badge = t.badge; badges.appendChild(b); });
+    if (a.titles.length) Txt(`称号「${a.titles[0].name}」${a.titles[0].unlocked ? '　獲得' : `　${a.titles[0].tier}段`}`, 620, 58, 220, 11, a.titles[0].unlocked ? CYAN : SOFT, row, { weight: 700, nowrap: true });
+    if (claim) Ghost('受け取る', 860, 22, 128, 44, async () => { const c = await L.claimAchievement(a.id, claim.tier); toast(c.ok ? `実績「${a.name}」${claim.tier}段：無償コイン${c.value.reward.freeCoins}枚` : c.message); Achievements(); }, row, 'small gold').dataset.claim = `${a.id}:${claim.tier}`;
+  });
+  if (pages > 1) {
+    Txt(`${colState.achPage + 1} / ${pages}`, 740, 648, 120, 14, MUTED, p, { align: 'right', cls: 'num' }).dataset.achPage = String(colState.achPage + 1);
+    Ghost('前へ', 872, 636, 72, 40, () => { colState.achPage--; Achievements(); }, p, 'small');
+    Ghost('次へ', 952, 636, 72, 40, () => { colState.achPage++; Achievements(); }, p, 'small');
+  }
+  // right: totals, the one CTA (claim everything), the equipped title
+  const s = Glass('Achievement totals', 1116, 134, 448, 676, undefined, .9);
+  Kicker('実績', 36, 30, s, { size: 16 });
+  Txt(`${v.totals.unlocked} / ${v.totals.tiers}段`, 36, 100, 376, 40, WHITE, s, { weight: 700, cls: 'num' }).dataset.achTotal = String(v.totals.unlocked);
+  Txt(`受け取った無償コイン ${fmt(v.totals.earnedCoins)}　·　全部で ${fmt(v.totals.totalCoins)}`, 36, 158, 376, 14, MUTED, s, { weight: 500 });
+  if (v.blocked) Txt('アカウント削除の予定があります。取り消すと受け取れます', 36, 200, 376, 14, RED, s, { weight: 700, lh: 1.5 }).dataset.achBlocked = '1';
+  else if (v.totals.claimable > 0) Cta('まとめて受け取る', 36, 196, 376, async () => { const c = await L.claimAllAchievements(); toast(c.ok ? `${c.value.claimed.length}件の実績：無償コイン${c.value.freeCoins}枚` : c.message); Achievements(); }, s, 'small');
+  else Txt('受け取れる実績はありません', 36, 214, 376, 15, SOFT, s);
+  Hair(36, 296, 376, s);
+  const tl = await L.titles();
+  const eq = tl.titles.find((t) => t.id === tl.equipped);
+  Kicker('称号　/　プロフィールとマイ厩舎に表示', 36, 318, s, { rule: false, size: 14 });
+  Txt(eq ? eq.name : 'なし', 36, 352, 376, 26, eq ? GOLD : SOFT, s, { weight: 700, nowrap: true }).dataset.titleEquipped = tl.equipped ?? '';
+  Txt(`${tl.titles.filter((t) => t.unlocked).length} / ${tl.titles.length} 獲得`, 36, 398, 376, 14, MUTED, s);
+  Ghost('称号を変える', 36, 430, 220, 52, () => TitleSheet(tl, v), s, 'small');
+  Txt(v.notice, 36, 600, 376, 13, SOFT, s, { lh: 1.5 });
+  Back(Home, 'ホームへ', 40, 834);
+  TextLink('図鑑', 220, 834, 120, () => Collection(), undefined, '図鑑 ›');
+}
+
+function TitleSheet(tl, ach) {
+  Sheet('称号', '記録と実績でもらえます　/　買えません', (sh, close, y) => {
+    const list = [...tl.titles].sort((a, b) => Number(b.unlocked) - Number(a.unlocked)).slice(0, 12);
+    list.forEach((t, i) => {
+      const yy = y + i * 48;
+      Txt(t.name, 48, yy, 240, 17, t.unlocked ? WHITE : DIM, sh, { weight: 700, nowrap: true });
+      const hint = t.unlocked ? (t.id === tl.equipped ? '使用中' : '') : t.source === 'achievement' ? `実績「${ach.achievements.find((a) => a.id === t.achievementId)?.name ?? t.achievementId}」${t.tier}段` : '記録で獲得';
+      Txt(hint, 290, yy + 2, 210, 13, t.id === tl.equipped ? GOLD : SOFT, sh, { nowrap: true });
+      if (t.unlocked && t.id !== tl.equipped) Ghost('つける', 512, yy - 8, 100, 40, async () => { const r = await L.equipTitle(t.id); toast(r.ok ? `称号「${t.name}」をつけました` : r.message); close(); Achievements(); }, sh, 'small').dataset.equip = t.id;
+    });
+  });
+}
+
 // ================================================================= stable — 07-stable
 function Stable() {
   currentScreen = Stable; Clear('stable'); SetArt('Art/partner-naming');
@@ -1951,7 +2170,8 @@ function Stable() {
   Txt(p ? `${surfaceJa(p.surface)}　/　${fmt(p.distMinM)}〜${fmt(p.distMaxM)}m${L.horseSkill(p) ? '　/　「' + L.horseSkill(p).name + '」' : ''}` : '—', 43, 562, 500, 18, WHITE, d, { weight: 700 });
   Cta('この馬で出走', 43, 640, 464, RaceLobby, d);
   TextLink('所属馬の一覧', 43, 734, 240, () => StableList(horses), d, `所属馬の一覧（${horses.length}頭）`);
-  TextLink('お世話', 320, 734, 120, Care, d, 'お世話・餌');
+  TextLink('お世話', 300, 734, 120, Care, d, 'お世話・餌');
+  TextLink('調教', 440, 734, 100, () => { trHorse = p?.id ?? null; Training(); }, d, '調教');
   Back(Home);
   EnToggle();
 }
@@ -2116,6 +2336,206 @@ function Care() {
   Back(Home, 'BACK', 40, 834);
 }
 
+// ================================================================= round 11: 調教 (REQ-TRAIN-*, contracts/protocol.md §25)
+// Mirrors unity/Assets/Muchi/Game/TrainingModel.cs on the real server rules (slots by game day, menus, fatigue, potential,
+// the beat schedule from a server seed, the deterministic re-score of the taps with the anti-cheat bounds).
+// ムチ一閃 tone: photoreal paddock / first-ride art, sparse navy panels, letter-spaced cyan kickers, one skewed cyan CTA ».
+const TR_STAT = { speed: 'スピード', stamina: 'スタミナ', burst: '瞬発', guts: '根性', temper: '気性' };
+const TR_STAT_ORDER = ['speed', 'stamina', 'burst', 'guts', 'temper'];
+const TR_BLOCKED = {
+  no_slots: '今日の調教はおしまい。4:00に戻ります', horse_daily_limit: 'この馬は今日はここまで。別の馬を選べます',
+  potential_full: 'この馬は素質いっぱいまで伸びました', tired: '疲れがたまっています。プールか、1日休ませましょう', retired: '引退した馬は調教できません',
+};
+const TR_GRADE = { great: '◎ 会心の追い切り', good: '○ いい動き', normal: '△ まずまず' };
+const TR_COND = { fresh: '好調', normal: 'ふつう', tired: 'お疲れ' };
+const TR_RULES = '調教で伸びた能力はレースで使われます。ランク戦・大会・タイムアタックはこれまでどおりクラスの上限にそろえます。疲れはどのレースにも影響しません。伸びは仔に受け継がれません。';
+let trHorse = null, trMenu = null;
+const trFocus = (m) => Object.entries(m.weights).filter(([, w]) => w > 0).sort((a, b) => b[1] - a[1] || TR_STAT_ORDER.indexOf(a[0]) - TR_STAT_ORDER.indexOf(b[0])).map(([k]) => TR_STAT[k]).join('・');
+const trGain = (g) => TR_STAT_ORDER.filter((k) => g[k] > 0).map((k) => `${TR_STAT[k]}+${g[k]}`).join('・');
+async function Training() {
+  currentScreen = Training;
+  const r = await L.training();
+  await refresh();
+  if (!r.ok || !r.value.enabled) { toast('調教は今は行えません'); Home(); return; }
+  let v = r.value;
+  // a session left open (the app was closed mid-game) is finished as skipped: its time has passed
+  if (v.open) { await L.trainingFinish(v.open.sessionId, [], true); const again = await L.training(); if (again.ok) v = again.value; }
+  if (!v.horses.some((h) => h.horseId === trHorse)) trHorse = (v.horses.find((h) => h.horseId === partner()?.id) ?? v.horses.find((h) => !h.blocked) ?? v.horses[0])?.horseId ?? null;
+  const h = v.horses.find((x) => x.horseId === trHorse);
+  Clear('training'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar(`調教　/　今日あと${v.slotsLeft}回`, 'タイミングよく押すと、伸びが少しだけ良くなります（最大 +10%）');
+  // ① the horse: condition, fatigue, potential, what it has grown
+  const hp = Glass('Training horse', 36, 134, 560, 676, undefined, .88);
+  hp.classList.add('tr-horse');
+  Kicker(`相棒　/　${v.horses.length}頭`, 36, 30, hp);
+  if (!h) { Txt('調教できる馬がいません', 36, 120, 480, 22, WHITE, hp); Back(Home, 'BACK', 40, 834); return; }
+  hp.dataset.horse = h.horseId;
+  Txt(h.name, 36, 100, 400, 40, WHITE, hp, { ls: '.06em', nowrap: true });
+  Txt(`${h.rarity}　·　調子 ${TR_COND[h.condition] ?? 'ふつう'}　·　絆 Lv${h.bondLevel}`, 36, 160, 488, 16, GOLD, hp, { weight: 700, ls: '.06em' });
+  if (v.horses.length > 1) {
+    const i = v.horses.findIndex((x) => x.horseId === h.horseId);
+    Ghost('別の馬', 380, 96, 144, 46, () => { trHorse = v.horses[(i + 1) % v.horses.length].horseId; trMenu = null; Training(); }, hp, 'quiet small');
+  }
+  Txt('疲れ', 36, 214, 200, 16, WHITE, hp, { weight: 700, ls: '.06em' });
+  Txt(`${h.fatigue} / ${v.fatigue.max}`, 344, 212, 180, 18, h.fatigue >= v.fatigue.restAt ? WARN : GOLD, hp, { weight: 700, align: 'right', cls: 'num' }).classList.add('tr-fatigue');
+  const fg = Gauge(36, 246, 488, h.fatigue / v.fatigue.max, hp); if (h.fatigue >= v.fatigue.restAt) fg.classList.add('warn');
+  Txt(`1日休むと ${v.fatigue.recoveryPerDay} 回復。疲れていると伸びが落ちます（レースには影響しません）`, 36, 262, 488, 13, SOFT, hp);
+  Txt('素質', 36, 306, 200, 16, WHITE, hp, { weight: 700, ls: '.06em' });
+  Txt(`${h.trainedTotal} / ${h.potential}`, 344, 304, 180, 18, GOLD, hp, { weight: 700, align: 'right', cls: 'num' }).classList.add('tr-potential');
+  Gauge(36, 338, 488, h.potential ? h.trainedTotal / h.potential : 0, hp, { gold: true });
+  TR_STAT_ORDER.forEach((k, j) => {
+    const x = 36 + (j % 3) * 168, y = 380 + Math.floor(j / 3) * 52;
+    Txt(TR_STAT[k], x, y, 100, 14, MUTED, hp, { weight: 500 });
+    Txt(`+${h.trained[k]}`, x + 92, y - 3, 60, 18, h.trained[k] > 0 ? WHITE : DIM, hp, { weight: 700, cls: 'num' });
+  });
+  const rs = L.trainingRaceStats(h.horseId);
+  if (rs) Txt(`レースでの能力合計 ${fmt(rs.total)}　·　ランク戦（${player.season.classId}級 上限 ${fmt(rs.cap)}）では ${fmt(rs.ranked)}${rs.capped ? '（上限にそろえます）' : ''}`, 36, 486, 488, 13, SOFT, hp).classList.add('tr-ranked');
+  const apple = v.items.find((x) => x.owned > 0);
+  if (apple && h.fatigue > 0) {
+    const ab = Ghost(`${apple.name}（${apple.owned}）`, 36, 530, 300, 54, async () => {
+      const u = await L.trainingUseItem(apple.itemId, h.horseId);
+      toast(u.ok ? `疲れ ${u.value.fatigueBefore} → ${u.value.fatigue}` : u.code === 'NOT_ELIGIBLE' ? '疲れていません' : u.message);
+      Training();
+    }, hp, 'small');
+    ab.classList.add('tr-item');
+  } else Txt('りんごのおやつはデイリーミッション「調教を1回」でもらえます', 36, 540, 488, 13, DIM, hp);
+  Txt(TR_RULES, 36, 600, 488, 12, SOFT, hp, { lh: 1.55 }).classList.add('tr-rules');
+  // ② the menus (2 × 2), one is chosen; then one CTA
+  const mp = Glass('Training menus', 620, 134, 944, 676, undefined, .86);
+  Kicker('メニュー', 36, 30, mp);
+  if (!v.menus.some((m) => m.id === trMenu)) trMenu = null;
+  const blockedOf = (m) => (v.slotsLeft <= 0 ? 'no_slots' : h.menus.find((x) => x.id === m.id)?.blocked ?? h.blocked);
+  v.menus.forEach((m, i) => {
+    const x = 36 + (i % 2) * 444, y = 100 + Math.floor(i / 2) * 230;
+    const why = blockedOf(m);
+    const c = Card('Menu ' + m.id, x, y, 428, 214, mp, i === 3 ? GOLD : CYAN);
+    c.classList.add('tr-menu'); c.dataset.menu = m.id; c.dataset.state = why ? 'blocked' : m.id === trMenu ? 'sel' : 'ok';
+    if (m.id === trMenu) c.classList.add('sel');
+    Txt(m.name, 24, 24, 300, 30, why ? DIM : WHITE, c, { weight: 700, ls: '.06em' });
+    Txt(m.fatigue >= 0 ? `疲れ +${m.fatigue}` : `疲れ −${-m.fatigue}（回復）`, 220, 34, 184, 14, m.fatigue >= 0 ? MUTED : OK, c, { align: 'right', weight: 500 });
+    Txt(trFocus(m), 24, 80, 380, 18, why ? DIM : GOLD, c, { weight: 700 });
+    Txt(m.bondMultiplier > 1 ? `絆が効く ×${m.bondMultiplier}　·　伸び ${m.baseGain}` : `伸び ${m.baseGain}`, 24, 116, 380, 14, MUTED, c);
+    if (why) Txt(TR_BLOCKED[why] ?? '選べません', 24, 156, 380, 14, WARN, c, { weight: 500 });
+    c.style.cursor = why ? 'not-allowed' : 'pointer';
+    c.addEventListener('click', () => { if (why) { toast(TR_BLOCKED[why] ?? '選べません'); return; } trMenu = m.id; Training(); });
+  });
+  const go = Cta(trMenu ? `${v.menus.find((m) => m.id === trMenu).name}で調教` : 'メニューを選ぶ', 36, 576, 428, () => TrainingPlay(trHorse, trMenu), mp);
+  go.classList.add('tr-go');
+  if (!trMenu) disable(go);
+  Txt(`今日 ${v.usedToday} / ${v.slotsPerDay} 回　·　1頭 1日 ${v.perHorsePerDay} 回まで　·　4:00 に戻ります`, 490, 600, 420, 14, SOFT, mp);
+  Back(Home, 'BACK', 40, 834);
+}
+/** The timing mini-game: the server's beats slide to the line; tap 「追う」 (or Space) as each one arrives. */
+async function TrainingPlay(horseId, menuId) {
+  const st = await L.trainingStart(horseId, menuId);
+  if (!st.ok) { toast(TR_BLOCKED[{ TRAINING_TIRED: 'tired', TRAINING_POTENTIAL_FULL: 'potential_full' }[st.code]] ?? (st.code === 'TRAINING_LIMIT' ? TR_BLOCKED.no_slots : st.message)); Training(); return; }
+  // the start response carries only what changed (partial); the menus and the mini-game rules come from the full view
+  const full = await L.training();
+  const s = st.value.session, tv = full.value, t = tv.timing, menu = tv.menus.find((m) => m.id === menuId);
+  currentScreen = Training; Clear('training-play'); SetArt('Art/first-ride'); Shade('left');
+  const head = Glass('Training head', 36, 31, 760, 108, undefined, .82);
+  Kicker(`調教　/　${menu.name}`, 22, 18, head, { rule: false, size: 17 });
+  Txt('光る印が線に重なった瞬間に「追う」', 22, 52, 720, 26, WHITE, head, { weight: 700 });
+  const pv = st.value.preview;
+  Txt(`見込み +${(pv.minMilli / 1000).toFixed(1)}〜+${(pv.maxMilli / 1000).toFixed(1)}　·　ミニゲームの上乗せは最大 +${t.maxScore * t.permillePerPoint / 10}%`, 22, 84, 720, 14, MUTED, head);
+  // the beat lane: markers move right → left onto the hit line
+  const lane = Glass('Beat lane', 36, 610, 1100, 120, undefined, .8);
+  lane.classList.add('tr-lane');
+  const LINE_X = 120, SPEED = 0.22; // px per ms
+  const line = el('tr-line', LINE_X, 14, 4, 92, lane);
+  const marks = s.beats.map((b, i) => { const m = el('tr-beat', 0, 36, 48, 48, lane); m.dataset.i = i; return m; });
+  const judge = Txt('', 36, 520, 1100, 54, GOLD, undefined, { weight: 700, align: 'center' }); judge.classList.add('tr-judge', 'tshadow');
+  const scoreLine = Txt('◎0　○0', 1180, 540, 380, 22, WHITE, undefined, { weight: 700, align: 'right' }); scoreLine.classList.add('tshadow');
+  const taps = [];
+  let t0 = null, finished = false, skipped = false;
+  const elapsed = () => (t0 === null ? 0 : Math.round(performance.now() - t0));
+  const nearest = (ms) => Math.min(...s.beats.map((b) => Math.abs(b - ms)));
+  const tap = () => {
+    if (t0 === null || finished) return null;
+    const ms = elapsed();
+    // the same bounds the server checks: a tap it would refuse is never recorded
+    if (taps.length >= t.maxTaps || ms > t.durationMs || (taps.length && ms - taps[taps.length - 1] < t.minTapGapMs)) return null;
+    taps.push(ms);
+    const d = nearest(ms), j = d <= t.perfectMs ? 'perfect' : d <= t.goodMs ? 'good' : 'miss';
+    judge.textContent = j === 'perfect' ? '◎' : j === 'good' ? '○' : '×';
+    judge.dataset.judge = j;
+    whip.classList.remove('hit'); void whip.offsetWidth; whip.classList.add('hit');
+    const live = trScore(t, s.beats, taps);
+    scoreLine.textContent = `◎${live.perfect}　○${live.good}`;
+    return j;
+  };
+  const whip = Btn('追う', 1250, 600, 170, 170, () => tap(), 'whip big');
+  const skip = Ghost('スキップ', 1180, 31, 200, 56, () => { skipped = true; finish(); }, undefined, 'quiet');
+  skip.classList.add('tr-skip');
+  const keyTap = (e) => { if (e.code === 'Space' && !e.repeat) { e.preventDefault(); tap(); } };
+  document.addEventListener('keydown', keyTap);
+  const finish = async () => {
+    if (finished) return;
+    finished = true;
+    document.removeEventListener('keydown', keyTap);
+    const f = await L.trainingFinish(s.sessionId, skipped ? [] : taps, skipped);
+    if (globalThis.__muchi) globalThis.__muchi.lastTraining = f.ok ? f.value : { error: f.code };
+    if (!f.ok) { toast(f.code === 'TRAINING_SESSION_EXPIRED' ? '時間切れのため、ミニゲームなしで記録しました' : f.message); Training(); return; }
+    TrainingResult(f.value);
+  };
+  if (globalThis.__muchi) Object.assign(globalThis.__muchi, { trainingBeats: s.beats, trainingTap: tap, trainingElapsed: elapsed });
+  // READY → GO, then the beats run on the local monotonic clock
+  judge.textContent = 'READY';
+  setTimeout(() => {
+    if (finished) return;
+    judge.textContent = ''; t0 = performance.now();
+    if (globalThis.__muchi) globalThis.__muchi.trainingStartedAt = t0;
+    const tick = () => {
+      if (finished || !document.body.contains(lane)) return;
+      const e = elapsed();
+      marks.forEach((m, i) => {
+        const x = LINE_X - 22 + (s.beats[i] - e) * SPEED;
+        m.style.left = x + 'px';
+        m.style.opacity = x < -60 || x > 1100 ? '0' : '1';
+        m.classList.toggle('near', Math.abs(s.beats[i] - e) <= t.goodMs);
+      });
+      if (e >= t.durationMs) { finish(); return; }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }, 900);
+}
+/** TrainingScorer (engine/Muchi.Client/Training.cs) / scoreTiming (server): the live count on screen. */
+function trScore(t, beats, taps) {
+  const used = taps.map(() => false);
+  let perfect = 0, good = 0;
+  for (const b of beats) {
+    let best = -1, bd = Infinity;
+    taps.forEach((x, j) => { const d = Math.abs(x - b); if (!used[j] && d <= t.goodMs && d < bd) { best = j; bd = d; } });
+    if (best < 0) continue;
+    used[best] = true;
+    if (bd <= t.perfectMs) perfect++; else good++;
+  }
+  return { perfect, good };
+}
+async function TrainingResult(res) {
+  await refresh();
+  currentScreen = Training; Clear('training-result'); SetArt('Art/home-paddock'); Shade('left');
+  const d = Glass('Training result', 36, 134, 760, 676, undefined, .88);
+  d.classList.add('rise', 'tr-result'); d.dataset.grade = res.grade; d.dataset.total = String(res.total);
+  Kicker(`調教　/　${res.settled === 'done' ? '結果' : 'ミニゲームなし'}`, 40, 34, d);
+  Txt(TR_GRADE[res.grade] ?? res.grade, 40, 100, 680, 30, WHITE, d, { weight: 700, ls: '.06em' });
+  Txt(res.total > 0 ? `+${res.total}` : '±0', 40, 150, 300, 96, GOLD, d, { weight: 700, cls: 'num' }).classList.add('tr-total');
+  Txt(res.total > 0 ? trGain(res.gain) : '小さな伸びは次回に加わります', 40, 270, 680, 22, WHITE, d, { weight: 700 });
+  Txt(res.settled === 'done' ? `ミニゲーム ◎${res.timing.perfect} ○${res.timing.good} ×${res.timing.miss}（+${res.timing.bonusPermille / 10}%）` : 'ミニゲームなし（伸びの上乗せなし）', 40, 318, 680, 17, MUTED, d).classList.add('tr-timing');
+  Txt('素質', 40, 384, 200, 16, WHITE, d, { weight: 700, ls: '.06em' });
+  Txt(`${res.trainedTotal} / ${res.potential}`, 520, 382, 200, 18, GOLD, d, { weight: 700, align: 'right', cls: 'num' });
+  Gauge(40, 416, 680, res.potential ? res.trainedTotal / res.potential : 0, d, { gold: true });
+  Txt(`疲れ ${res.fatigue}${res.capped ? '　·　素質いっぱいまで伸びました' : ''}`, 40, 446, 680, 15, SOFT, d);
+  const bd = res.breakdown;
+  if (bd) Txt(`内訳：調子 ${bd.efficiencyPermille / 10}%　·　絆 +${bd.bondPermille / 10}%　·　ミニゲーム +${bd.timingPermille / 10}%　·　伸びしろ ${bd.softPermille / 10}%`, 40, 486, 680, 13, DIM, d);
+  Cta('つづける', 40, 560, 360, Training, d);
+  const ms = await L.missions();
+  const m = ms.ok ? ms.value.find((x) => x.kind === 'training' && x.progress >= x.target && !x.claimed) : null;
+  if (m) Ghost('ミッション報酬を受け取る', 420, 570, 300, 56, async () => { const c = await L.claimMission(m.id); toast(c.ok ? 'りんごのおやつ を受け取りました' : c.message); TrainingResult(res); }, d, 'small').classList.add('tr-claim');
+  EnToggle();
+}
+
 // ================================================================= round 10: 支部の応援スタンプ (REQ-TEAMFEED-*)
 // The team feed on the real server rules (TeamsService / TeamCore in the browser) — fixed stamps only, no text field.
 // Mirrors unity/Assets/Muchi/Game/TeamFeedModel.cs: palette with server-built unlock texts, 10 s post cooldown, cheering a
@@ -2227,10 +2647,12 @@ window.addEventListener('resize', fit);
 fit();
 
 async function boot() {
-  const [ja, artIndex, ruleset, commentary, partners] = await Promise.all([
+  const [ja, artIndex, ruleset, commentary, partners, commentaryEn, serverEn, uiEn] = await Promise.all([
     fetch('data/ja.json').then((r) => r.json()), fetch('data/art.json').then((r) => r.json()),
     fetch('data/ruleset.json').then((r) => r.text()), fetch('data/commentary-ja.json').then((r) => r.text()), fetch('data/partners.json').then((r) => r.json()),
+    fetch('data/commentary-en.json').then((r) => r.text()), fetch('data/server-en.json').then((r) => r.text()), fetch('data/ui-en.json').then((r) => r.text()),
   ]);
+  enTables = { commentaryJa: commentary, commentaryEn, server: serverEn, ui: uiEn };
   for (const e of ja.entries ?? []) JA[e.key] = e.value;
   ART = artIndex;
   const demo = new URLSearchParams(location.search).get('demo');
@@ -2240,17 +2662,21 @@ async function boot() {
   const runtime = await dotnet.create();
   engine = (await runtime.getAssemblyExports(runtime.getConfig().mainAssemblyName)).MuchiRace;
   engine.Init(ruleset, commentary);
+  applyLanguage(); // REQ-L10N-012: English commentary when EN is on
+  l10nObserver.observe($stage, { subtree: true, childList: true, characterData: true });
   view = new RaceView($canvas, (res) => art(res), partners);
   // the 3D models load while the title is up (the first race waits for them)
   viewReady = view.load();
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Collection, Achievements, Training, TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),
     logic: L, view: () => view,
+    // REQ-L10N-013 (test/en-flow.cjs): texts with no English seen so far, and the fit state of the current screen
+    l10n: { misses: () => [...l10nMisses.keys()], clear: () => l10nMisses.clear(), fit: () => fitText(cur) },
   };
   // round 10: index.html?invite=<code> (or unity.html?invite=…, redirected) stands in for muchi://invite/<code> (pre-fills the entry; kept through the FTUE)
   const inviteLink = new URLSearchParams(location.search).get('invite');

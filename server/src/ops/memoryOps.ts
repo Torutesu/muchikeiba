@@ -2,6 +2,7 @@ import type { Master } from '../domain/master.js';
 import type { OpsApi } from '../http/admin.js';
 import type { PlayerInvoker } from '../http/app.js';
 import { ConfigStore, MemoryConfigRepo } from './config.js';
+import { CompensationStore, MemoryCompensationRepo } from './compensation.js';
 import { auditValue, MemoryAuditRepo, RateLimiter, ADMIN_RATE, type RateLimitPolicy } from './admin.js';
 import { IntegrityCore, MemoryIntegrityRepo, type ModerationChange } from './integrity.js';
 import { DeadLetterService, MemoryDeadLetterRegistry, type DeadLetterOwner, type DeadLetterSource } from './deadLetter.js';
@@ -21,6 +22,8 @@ export function memoryOps(base: Master, player: (uid: string) => PlayerInvoker, 
     for (const c of cs) await player(c.playerId).invoke('setModeration', c.playerId, c.status, c.until, c.reason);
   };
   const deadLetterRegistry = new MemoryDeadLetterRegistry();
+  const compensationRepo = new MemoryCompensationRepo();
+  const compensations = new CompensationStore(compensationRepo);
   const api: OpsApi = {
     deadLetters: new DeadLetterService(deadLetterRegistry, opts.deadLetterOwners ?? {}),
     admit: async (id, kind, now) => { limiter.take(id, kind, now); return true; },
@@ -35,6 +38,15 @@ export function memoryOps(base: Master, player: (uid: string) => PlayerInvoker, 
       rollback: async (v, by, reason, now) => config.rollback(v, by, reason, now),
       list: async (now) => config.list(now),
       get: async (id) => config.get(id),
+      dryRun: async (op, by, now) => config.dryRun(op, by, now),
+    },
+    compensations: {
+      create: async (input, by, now) => compensations.create(input, by, now),
+      get: async (id, now) => compensations.get(id, now),
+      list: async (q, now) => compensations.list(q, now),
+      approve: async (id, by, note, now) => compensations.approve(id, by, note, now),
+      reject: async (id, by, note, now) => compensations.reject(id, by, note, now),
+      executed: async (id, error, now) => compensations.executed(id, error, now),
     },
     integrity: {
       recordRace: async (r) => { const cs = integrity.recordRace(r); await push(cs); return cs; },
@@ -48,5 +60,5 @@ export function memoryOps(base: Master, player: (uid: string) => PlayerInvoker, 
       release: async (pid, reason, by, now) => { const c = integrity.release(pid, reason, by, now); await push([c]); return c; },
     },
   };
-  return { api, config, audits, integrity, integrityRepo, deadLetterRegistry };
+  return { api, config, audits, integrity, integrityRepo, deadLetterRegistry, compensationRepo };
 }

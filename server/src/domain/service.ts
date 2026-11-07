@@ -4,8 +4,9 @@ import { grantReward } from './items.js';
 
 const TOURNAMENT_HISTORY_KEEP = 50;
 import { migratePlayer, moderationOf, newPlayer, playerView, type PlayerState, type PurchaseRecord } from './player.js';
-import { setModeration, supportCorrectAge, supportGrant, supportResetName, supportSettleDebt, supportView, type Grant } from '../ops/support.js';
+import { GRANT_LIMITS, setModeration, supportCorrectAge, supportGrant, supportResetName, supportSettleDebt, supportView, type Grant } from '../ops/support.js';
 import { equipTitle, evaluateTitles, publicProfile, setDisplayName, type PublicProfile } from './stats.js';
+import { achievementsView, claimAchievement, claimAllAchievements, collectionView, noteCheer, noteRaceCollection, noteTournamentResult, syncCollection } from './collection.js';
 import { closeSeason } from './season.js';
 import { friendAccept, friendAccepted, friendCancel, friendDecline, friendReceive, friendRemove, friendSend, pruneInvites, receiveInvite } from './friends.js';
 import type { SeasonEntry } from './leaderboard.js';
@@ -25,6 +26,7 @@ import { toRaceHorse } from './raceConfig.js';
 import { paidBalanceYen, invariantsHold } from './wallet.js';
 import type { PaidBalanceSnapshot } from './accounting.js';
 import { dayRule, jstDateKey } from './time.js';
+import type { Locale } from '../i18n/locale.js';
 import { enqueuePush, ensurePush, nextPushWake, pushPrefsView, registerDevice, setPushPrefs, settlePushes, takeDuePushes, unregisterDevice, type DeliveryOutcome, type DevicePlatform, type PrefsPatch } from './push.js';
 import { admitClientBatch, clientToKpi, ensureKpi, isPayer, kpiRecord, type ClientBatch, type KpiEvent, type KpiRecord } from './kpi.js';
 
@@ -61,6 +63,7 @@ import {
 import {
   claimComebackLogin, claimComebackMission, comebackView, markComebackWelcomed, markWhatsNewSeen, nextComebackWake, noteActivity, runDueComebackPush, whatsNew,
 } from './comeback.js';
+import { finishTraining, startTraining, trainingDelta, trainingTick, trainingView, useTrainingItem } from './training.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
 export interface PlayerRepo {
@@ -101,6 +104,8 @@ export class MemoryPlayerRepo implements PlayerRepo {
 export interface PlayerServiceDeps {
   master: Master;
   rng: Rng;
+  /** REQ-TRAIN-005: the training beat seeds (default: `rng`). The economy sim passes its own so gacha draws stay the same. */
+  trainingRng?: Rng;
   clock: Clock;
   verifiers: Partial<Record<PurchaseRecord['platform'], StoreVerifier>>;
   onPaidBalance?: (snap: PaidBalanceSnapshot) => void | Promise<void>;
@@ -181,6 +186,8 @@ export class PlayerService {
     const emit: Emit = (e) => { kpi.push(kpiRecord(draft, now, e)); };
     const result = fn(draft, now, emit);
     noteInviteMilestones(this.d.master, draft, now, emit); // REQ-INV-007: the invitee's milestones, once each
+    // REQ-ACH-003: unlock achievement tiers that became due in this transaction (idempotent), then their titles
+    if (syncCollection(this.d.master, draft, now, emit).length > 0) evaluateTitles(this.d.master, draft);
     if (!invariantsHold(draft)) throw new Error('wallet invariant violated');
     if (idemKey) {
       draft.idem.push({ key: idemKey, result: JSON.parse(JSON.stringify(result ?? null)) });
@@ -594,6 +601,32 @@ export class PlayerService {
     return this.tx(id, `ad:${cb.network}:${cb.transactionId}`, (s, now, emit) => applyAdCallback(this.d.master, s, cb, now, emit));
   }
 
+  // ---------------------------------------------------------------- 調教 training (REQ-TRAIN-*, training.ts)
+  /** GET /v1/training: slots, menus, each active horse's growth / fatigue; an expired open session is settled here. */
+  async training(id: string) {
+    const s = await this.load(id);
+    const now = this.d.clock();
+    // read-only unless an open session has expired (then it is settled in a transaction)
+    if (!s.training?.open || now <= s.training.open.expiresAt) return trainingView(this.d.master, s, now);
+    return this.tx(id, null, (st, at, emit) => { trainingTick(this.d.master, st, at, emit); return trainingView(this.d.master, st, at); });
+  }
+  /** POST /v1/training/start (keyed): uses a slot; the beat schedule comes from a server seed. */
+  async trainingStart(id: string, horseId: string, menuId: string, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => {
+      notWhileDeleting(s);
+      return { ...startTraining(this.d.master, s, horseId, menuId, this.d.trainingRng ?? this.d.rng, now, emit), training: trainingDelta(this.d.master, s, now, horseId) };
+    });
+  }
+  /** POST /v1/training/:sessionId/finish (keyed): the server re-scores the taps against the issued beats. */
+  async trainingFinish(id: string, sessionId: string, input: { taps: number[]; skipped?: boolean }, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => { const r = finishTraining(this.d.master, s, sessionId, input, now, emit); return { ...r, training: trainingDelta(this.d.master, s, now, r.horseId) }; });
+  }
+  /** POST /v1/training/items/:itemId/use (keyed): fatigue relief on one horse. */
+  async trainingUseItem(id: string, itemId: string, horseId: string, idemKey: string | null) {
+    const key = this.requireKey(idemKey);
+    return this.tx(id, key, (s, now) => ({ ...useTrainingItem(this.d.master, s, itemId, horseId, now, key), training: trainingDelta(this.d.master, s, now, horseId) }));
+  }
+
   async claimPass(id: string, track: 'free' | 'premium', level: number, idemKey: string | null) {
     return this.tx(id, this.requireKey(idemKey), (s, now) => claimPass(this.d.master, s, track, level, now));
   }
@@ -614,7 +647,11 @@ export class PlayerService {
       for (const [k, at] of Object.entries(applied)) if (now - at > APPLIED_RACE_KEEP_MS) delete applied[k];
       if (applied[r.raceId] !== undefined) return { duplicate: true as const, event: null };
       applied[r.raceId] = now;
-      const base = applyRaceResult(this.d.master, s, r, now);
+      const base0 = applyRaceResult(this.d.master, s, r, now);
+      // REQ-COL-002 / REQ-ACH-002: what the race showed the 図鑑, a fired skill, and the tiers it unlocked (with titles)
+      noteRaceCollection(this.d.master, s, r);
+      const achievements = syncCollection(this.d.master, s, now, emit);
+      const base = { ...base0, titles: [...base0.titles, ...(achievements.length ? evaluateTitles(this.d.master, s) : [])], achievements };
       // REQ-TEAMFEED-004: a win or a place in a ranked race or a tournament shows in the team feed
       const teamId = s.team?.teamId ?? null;
       if (!r.void && teamId && (FEED_RACE_MODES as readonly string[]).includes(r.mode) && r.place >= 1 && r.place <= stampsOf(this.d.master).config.racePlaceMax) {
@@ -726,7 +763,26 @@ export class PlayerService {
   }
   async titles(id: string) {
     const s = await this.load(id);
-    return { equipped: s.profile.titleId, titles: this.d.master.titles.map((t) => ({ id: t.id, name: t.name, icon: assetKeys.title(t.id), unlocked: s.titles.includes(t.id) })) };
+    // REQ-ACH-006: one title list — achievement titles name the tier that unlocks them
+    return {
+      equipped: s.profile.titleId,
+      titles: this.d.master.titles.map((t) => ({
+        id: t.id, name: t.name, icon: assetKeys.title(t.id), unlocked: s.titles.includes(t.id),
+        source: t.condition.kind === 'achievement' ? 'achievement' as const : 'record' as const,
+        ...(t.condition.kind === 'achievement' ? { achievementId: t.condition.achievementId, tier: t.condition.tier } : {}),
+      })),
+    };
+  }
+
+  // ---- 図鑑 and 実績 (REQ-COL-*, REQ-ACH-*) ----
+  async collection(id: string) { return collectionView(this.d.master, await this.load(id)); }
+  /** A read through tx so tiers that are due (e.g. after a master change) unlock before they are shown. */
+  async achievements(id: string) { return this.tx(id, null, (s) => achievementsView(this.d.master, s)); }
+  async claimAchievement(id: string, achievementId: string, tier: number, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => ({ ...claimAchievement(this.d.master, s, achievementId, tier, now, emit), wallet: { free: s.wallet.free, paid: s.wallet.paid } }));
+  }
+  async claimAllAchievements(id: string, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => ({ ...claimAllAchievements(this.d.master, s, now, emit), wallet: { free: s.wallet.free, paid: s.wallet.paid } }));
   }
   async stats(id: string) { return (await this.load(id)).stats; }
   async publicProfile(id: string) { return publicProfile(await this.load(id), this.d.master.bannedSilks); }
@@ -837,7 +893,12 @@ export class PlayerService {
   inviteForfeit(id: string) { return this.tx(id, null, (s) => forfeitInviteOutbox(s)); }
 
   // ---- support / anti-cheat (admin API only; REQ-OPS-020..025, REQ-OPS-032) ----
-  async adminView(id: string) { return supportView(this.d.master, await this.load(id), this.d.clock()); }
+  /** REQ-OPS-020: `exists` false = no stored player (the view is a fresh default); `accountDeleted` = wiped by a deletion. */
+  async adminView(id: string) {
+    const exists = (await this.repo.get(id)) !== null;
+    const accountDeleted = !exists && !!(await this.repo.tombstoned?.(id));
+    return { ...supportView(this.d.master, await this.load(id), this.d.clock()), exists, accountDeleted };
+  }
   /**
    * Admin money operations are idempotent per opKey FOREVER (review r5 #4): the general idempotency cache
    * keeps only the last IDEM_KEEP results, so their results live in a never-evicted per-player record.
@@ -851,8 +912,9 @@ export class PlayerService {
       return r;
     });
   }
-  adminGrant(id: string, grant: Grant, reason: string, actor: string, opKey: string) {
-    return this.adminOnce(id, `grant:${opKey}`, (s, now) => supportGrant(s, grant, reason, actor, `admin:${opKey}`, now));
+  /** `singlePerson`: nobody else approved this grant, so it counts against the player's 24 h budget (QA R11, REQ-OPS-026). */
+  adminGrant(id: string, grant: Grant, reason: string, actor: string, opKey: string, singlePerson = false) {
+    return this.adminOnce(id, `grant:${opKey}`, (s, now) => supportGrant(s, grant, reason, actor, `admin:${opKey}`, now, singlePerson ? GRANT_LIMITS.operator : undefined));
   }
   adminSettleDebt(id: string, coins: number, items: Record<string, number>, reason: string, actor: string, opKey: string) {
     return this.adminOnce(id, `settle:${opKey}`, (s, now) => supportSettleDebt(s, coins, items, reason, actor, `admin:${opKey}`, now));
@@ -897,10 +959,10 @@ export class PlayerService {
   stableForget(id: string) { return this.tx(id, null, (s) => forgetStable(s)); }
 
   // ---- push notifications (REQ-PUSH-*) ----
-  registerDevice(id: string, token: string, platform: DevicePlatform) { return this.tx(id, null, (s, now) => registerDevice(this.d.master, s, token, platform, now)); }
+  registerDevice(id: string, token: string, platform: DevicePlatform, locale: Locale = 'ja') { return this.tx(id, null, (s, now) => registerDevice(this.d.master, s, token, platform, now, locale)); }
   unregisterDevice(id: string, token: string) { return this.tx(id, null, (s) => unregisterDevice(this.d.master, s, token)); }
-  async pushPreferences(id: string) { return pushPrefsView(this.d.master, await this.load(id)); }
-  setPushPreferences(id: string, patch: PrefsPatch) { return this.tx(id, null, (s) => setPushPrefs(this.d.master, s, patch)); }
+  async pushPreferences(id: string, locale: Locale = 'ja') { return pushPrefsView(this.d.master, await this.load(id), locale); }
+  setPushPreferences(id: string, patch: PrefsPatch, locale: Locale = 'ja') { return this.tx(id, null, (s) => setPushPrefs(this.d.master, s, patch, locale)); }
   /** Alarm step 1: drop expired messages and return what is due (kept in the outbox until settled). */
   pushTake(id: string) { return this.tx(id, null, (s, now) => takeDuePushes(this.d.master, s, now)); }
   /** Alarm step 2: apply send results (prune dead tokens, back off retries). */
@@ -987,8 +1049,13 @@ export class PlayerService {
   /** Before a post / reaction: deletion, membership and unlock checks; returns the team and the display name. */
   stampCheck(id: string, stampId: string) { return this.tx(id, null, (s) => playerStampCheck(this.d.master, s, stampId)); }
   /** After the team stored it: the KPI row (REQ-TEAMFEED-009). */
-  stampPosted(id: string, stampId: string, kind: 'post' | 'reaction', teamId: string) {
-    return this.tx(id, null, (_s, _now, emit) => { emit({ name: 'stamp_post', s1: stampId, s2: kind, s3: teamId }); return { ok: true }; });
+  stampPosted(id: string, stampId: string, kind: 'post' | 'reaction', teamId: string, ref: string | null = null) {
+    return this.tx(id, null, (s, _now, emit) => {
+      emit({ name: 'stamp_post', s1: stampId, s2: kind, s3: teamId });
+      // REQ-ACH-002: a cheer counts once per feed ref (a retried call or a removed-then-renewed reaction is not a second cheer)
+      if (!deletionScheduled(s)) noteCheer(s, ref);
+      return { ok: true };
+    });
   }
   /** The feed's viewer side: team and mute list; the first page of a visit is the team_feed_view KPI row. */
   feedViewer(id: string, firstPage: boolean) {
@@ -1051,6 +1118,7 @@ export class PlayerService {
       if (done[tournamentId]) return { status: 'already' as const, reward: done[tournamentId]!.reward };
       if (reward) grantReward(s, reward, now, `tournament ${tournamentId} rank ${rank}`, `tournament:${tournamentId}:rank`);
       done[tournamentId] = { name, rank, at: now, reward };
+      noteTournamentResult(s, rank); // REQ-ACH-002 (once per tournament, behind the same guard)
       const keys = Object.entries(done).sort((a, b) => b[1].at - a[1].at).map(([k]) => k);
       for (const k of keys.slice(TOURNAMENT_HISTORY_KEEP)) delete done[k];
       return { status: 'rewarded' as const, reward };

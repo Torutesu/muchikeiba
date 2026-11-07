@@ -1,4 +1,5 @@
 import { AppError, assert } from './errors.js';
+import { collectionRewardProblems } from './collection.js';
 import { templateAppearance, type Appearance } from './visuals.js';
 import { dayRule, gameDayKey, gameDaysUntil } from './time.js';
 import { PPM_TOTAL, RARITY_ORDER, type BannerDef, type CollectionMissionDef, type GachaMaster, type HorseTemplate, type Master, type PoolEntry, type Rarity } from './master.js';
@@ -123,6 +124,8 @@ export function validateGacha(m: Master): void {
   const collects = [...(m.progression.beginnerMissions ?? []), ...(m.progression.seasonMissions ?? [])]
     .filter((d) => d.kind === 'collect').map((d) => ({ id: d.id, kind: 'collect' as const, templateIds: d.templateIds ?? [], reward: d.reward }));
   problems.push(...compGachaProblems([...m.progression.collectionMissions, ...collects], m.gacha.banners, new Set()));
+  // REQ-ACH-008: 図鑑・実績 — no reward for a set that contains a gacha-obtainable horse or skill (re-checked on every banner change)
+  problems.push(...collectionRewardProblems(m));
   if (problems.length) throw new AppError('CONFIG_INVALID', problems.join('; '));
 }
 

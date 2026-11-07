@@ -326,5 +326,27 @@ namespace Muchi.Engine.Tests
                     && s.RecoverPermille <= rs.SkillMaxRecoverPermille && s.DurationTicks <= rs.SkillMaxDurationTicks, s.Id);
             }
         }
+
+        [Fact]
+        public void VerifierReportsTheSkillsThatFiredOnlyWhenAsked()
+        {
+            // QA R11 (REQ-ACH-002): the server credits skill activations from the verifier's re-simulation, not from a
+            // lone client's `skills` claim; the golden output (no flag) is unchanged
+            var doc = JsonNode.Parse(File.ReadAllText(Golden("race-turf2000-skills.json")));
+            string log = doc.Get("log").ToString();
+            var plain = JsonNode.Parse(VerifyService.Verify(log).body);
+            Assert.False(plain.Has("skillsFired"));
+            var (status, body) = VerifyService.Verify(log, withSkills: true);
+            Assert.Equal(200, status);
+            var o = JsonNode.Parse(body);
+            var fired = o.Get("skillsFired").Items.Select(x => (int)x.AsLong()).ToList();
+            var parsed = ProtocolCodec.ParseReplayLog(doc.Get("log"));
+            var replay = RaceReplay.Run(parsed.Config, parsed.Inputs);
+            var expected = Enumerable.Range(0, parsed.Config.Entrants.Count).Where(s => replay.Sim.GetHorse(s).SkillUsed).ToList();
+            Assert.NotEmpty(expected);
+            Assert.Equal(expected, fired);
+            Assert.All(fired, s => Assert.NotNull(parsed.Config.Entrants[s].Horse.Skill));
+            Assert.Equal(plain.Get("resultHash").AsString(), o.Get("resultHash").AsString());
+        }
     }
 }

@@ -123,6 +123,7 @@ npx wrangler secret put TICKET_SECRET --env staging
 | `FCM_PROJECT_ID` | 変数 | 必須 | 必須 | |
 | `REPLAY_RETENTION_DAYS` | 変数（任意） | | | 指定時はマスターの保存日数を上書き |
 | `ACCESS_TEAM_DOMAIN` / `ACCESS_AUD` / `ACCESS_ROLES` | 変数（任意） | | | 管理APIを Cloudflare Access で守る場合 |
+| `ADMIN_CONSOLE_ORIGINS` | 変数（任意） | | | 運用コンソールのオリジン（カンマ区切り、例 `https://ops-staging.example.com`）。未設定なら CORS なし（`docs/ops/console.md`） |
 | `TICKET_SECRET` | シークレット | 必須 | 必須 | レース入場チケットのHMAC鍵（32バイト以上のランダム値） |
 | `VERIFIER_TOKEN` | シークレット | 必須 | 必須 | Cloud Run の `verifier-auth-secret` と**同じ値** |
 | `ADMIN_TOKENS` | シークレット | 必須 | 必須 | `[{"name","role","sha256"}]`。トークンそのものではなくSHA-256を入れる |

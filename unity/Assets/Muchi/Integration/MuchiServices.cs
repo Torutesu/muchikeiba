@@ -19,6 +19,11 @@ namespace Muchi.Unity
         public const string ConfigResource = "Muchi/server-config";
         public const string RulesetResource = "Muchi/ruleset-params.default";     // engine/Muchi.Client/Resources
         public const string CommentaryResource = "Muchi/commentary-ja";            // engine/Muchi.Client/Resources
+        public const string CommentaryEnResource = "Muchi/commentary-en";          // REQ-L10N-012
+        public const string UiEnResource = "Muchi/ui-en";                          // REQ-L10N-010: client-built texts
+        public const string ServerEnResource = "Muchi/server-en";                  // REQ-L10N-011: names in race configs, cached server texts
+        /// <summary>The language preference the settings screen toggles (same key as Runtime/LocaleService).</summary>
+        public const string LanguagePref = "muchi.language";
         public const string PartnerCatalogResource = "Models/Partners/catalog";    // Codex's art catalog
 
         /// <summary>Firebase ID token source for staging/production (set by the Firebase integration).</summary>
@@ -36,7 +41,10 @@ namespace Muchi.Unity
         {
             if (Backend != null) return Backend;
             var settings = LoadSettings();
-            Commentary = LoadText(CommentaryResource) is string c ? CommentaryTemplates.Parse(c) : null;
+            // REQ-L10N-009..012: English tables, the saved language, commentary in that language
+            foreach (var r in new[] { ServerEnResource, UiEnResource }) if (LoadText(r) is string t) Loc.LoadEnglish(t);
+            Loc.SetLocale(Store.Get(LanguagePref));
+            Commentary = LoadText(Loc.IsEnglish ? CommentaryEnResource : CommentaryResource) is string c ? CommentaryTemplates.Parse(c) : null;
             Partners = LoadText(PartnerCatalogResource) is string p ? PartnerCatalog.Parse(p) : null;
             string rulesetJson = LoadText(RulesetResource) ?? throw new InvalidOperationException("Resources/" + RulesetResource + ".json missing (com.muchi.client package not imported?)");
             var ruleset = RaceFactory.ParseRuleset(rulesetJson);
@@ -44,7 +52,7 @@ namespace Muchi.Unity
             ApiClient api = null;
             if (!settings.OfflineOnly)
             {
-                var options = new ApiClientOptions { BaseUrl = settings.BaseUrl };
+                var options = new ApiClientOptions { BaseUrl = settings.BaseUrl, Locale = Loc.Current };
                 IAuthTokenProvider auth = null;
                 if (settings.UsesDevAuth) options.DevUserId = DevUserId(settings);
                 else auth = FirebaseTokens;
@@ -57,6 +65,18 @@ namespace Muchi.Unity
             if (api != null)
                 Analytics = new AnalyticsClient(api, new AnalyticsOptions { Platform = Application.platform == RuntimePlatform.Android ? "android" : "ios", AppVersion = Application.version }, Store, NowMs);
             return Backend;
+        }
+
+        /// <summary>
+        /// REQ-L10N-009: switch the language at runtime (settings toggle): texts the client builds, server texts on the
+        /// next request (Accept-Language), commentary from the next race, push language on the next device registration.
+        /// </summary>
+        public static void SetLanguage(string locale)
+        {
+            Loc.SetLocale(locale);
+            Store.Set(LanguagePref, Loc.Current);
+            if (Backend?.Api != null) Backend.Api.Locale = Loc.Current;
+            Commentary = LoadText(Loc.IsEnglish ? CommentaryEnResource : CommentaryResource) is string c ? CommentaryTemplates.Parse(c) : Commentary;
         }
 
         public static GameSettings LoadSettings()

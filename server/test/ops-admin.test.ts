@@ -108,7 +108,9 @@ describe('support tools (REQ-OPS-020..025)', () => {
     expect(v.wallet.free).toBe(500);
     expect(v.items.ticket_sr_plus).toBe(1);
     expect((await call('operator', 'POST', '/v1/admin/players/p1/grants', { ...body, opKey: 'big-one-0001', grant: { freeCoins: 50_000 } })).status).toBe(403);
-    expect((await call('admin', 'POST', '/v1/admin/players/p1/grants', { ...body, opKey: 'big-one-0001', grant: { freeCoins: 50_000 } })).status).toBe(200);
+    // REQ-OPS-026: over the operator limit needs two-person approval, even for an admin (POST /v1/admin/compensations)
+    expect((await call('admin', 'POST', '/v1/admin/players/p1/grants', { ...body, opKey: 'big-one-0001', grant: { freeCoins: 50_000 } })).status).toBe(403);
+    expect((await call('admin', 'POST', '/v1/admin/players/p1/grants', { ...body, opKey: 'big-one-0002', grant: { freeCoins: 9_500 } })).status).toBe(200); // 500 + 9,500: the 24 h single-person budget (QA R11)
     const audit = await call('viewer', 'GET', '/v1/admin/audit?target=player:p1&action=player.grant');
     const okRows = audit.body.entries.filter((e: { result: string }) => e.result === 'ok');
     expect(okRows).toHaveLength(3);

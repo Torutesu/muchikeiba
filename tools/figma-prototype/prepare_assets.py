@@ -113,6 +113,9 @@ shutil.copy(os.path.join(root, 'unity/Assets/Resources/Localization/ja.json'), o
 shutil.copy(os.path.join(root, 'unity/Assets/Resources/Models/Partners/catalog.json'), os.path.join(data, 'partners.json'))
 shutil.copy(os.path.join(root, 'contracts/ruleset-params.default.json'), os.path.join(data, 'ruleset.json'))
 shutil.copy(os.path.join(root, 'engine/Muchi.Client/Resources/Muchi/commentary-ja.json'), os.path.join(data, 'commentary-ja.json'))
+# REQ-L10N-012/013: English commentary and the English tables the WASM game layer loads (names in commentary)
+for f in ['commentary-en.json', 'server-en.json', 'ui-en.json']:
+    shutil.copy(os.path.join(root, 'engine/Muchi.Client/Resources/Muchi', f), os.path.join(data, f))
 
 # Font subset: every character the prototype can render (UI strings, translations, master data, commentary).
 chars = set()
@@ -120,13 +123,17 @@ def add(text):
     chars.update(text)
     # esbuild writes non-ASCII as \uXXXX (logic.js holds the server's own labels: shop contents, skill texts, notices)
     chars.update(chr(int(h, 16)) for h in re.findall(r'\\u([0-9a-fA-F]{4})', text) if not 0xd800 <= int(h, 16) <= 0xdfff)
-for p in [os.path.join(site, 'app.js'), os.path.join(site, 'index.html'), os.path.join(site, 'js', 'logic.js'), os.path.join(data, 'ja.json'), os.path.join(data, 'commentary-ja.json')]:
+for p in [os.path.join(site, 'app.js'), os.path.join(site, 'index.html'), os.path.join(site, 'js', 'logic.js'), os.path.join(data, 'ja.json'), os.path.join(data, 'commentary-ja.json'),
+          os.path.join(data, 'commentary-en.json'), os.path.join(data, 'server-en.json'), os.path.join(data, 'ui-en.json'), os.path.join(root, 'tools', 'figma-prototype', 'logic', 'proto-en.json')]:
     add(open(p, encoding='utf-8').read())
-for p in ['server/master/horses.json', 'server/master/gacha.json', 'server/master/products.json', 'server/master/ng-names.json', 'server/master/progression.json', 'server/master/skills.json', 'server/master/items.json', 'server/master/tracks.json']:
+for p in ['server/master/horses.json', 'server/master/gacha.json', 'server/master/products.json', 'server/master/ng-names.json', 'server/master/progression.json', 'server/master/skills.json', 'server/master/items.json', 'server/master/tracks.json', 'server/master/collection.json', 'server/master/titles.json']:
     full = os.path.join(root, p)
     if os.path.exists(full):
         add(open(full, encoding='utf-8').read())
 add(''.join(chr(c) for c in range(0x20, 0x7f)))
+# REQ-L10N-013: Latin-1 and the typographic punctuation English uses (½ ¼ ¾ é ’ “ ” – —), so English never falls back
+add(''.join(chr(c) for c in range(0xa0, 0x100)))
+add('‘’“”‚„–—‒•·…′″‹›«»€™')
 add(''.join(chr(c) for c in range(0x3041, 0x3097)))  # hiragana (name input)
 add(''.join(chr(c) for c in range(0x30a1, 0x30fd)))  # katakana (name input)
 add('ー・、。「」！？（）／〜◎◈━•·–—…→←↑↓×°%¥')

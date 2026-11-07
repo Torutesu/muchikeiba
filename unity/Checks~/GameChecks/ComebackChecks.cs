@@ -23,7 +23,7 @@ static class ComebackChecks
     const string PlayerDeleting = "{\"id\":\"c\",\"wallet\":{\"paid\":0,\"free\":500,\"total\":500,\"debt\":0},\"season\":{\"id\":\"2026-11\",\"classId\":\"C\",\"points\":0},\"items\":{},\"horses\":[],\"equipment\":{\"tack\":{},\"decor\":[]},\"deletion\":{\"status\":\"scheduled\",\"requestedAt\":1,\"deleteAt\":1796482800000}}";
     // 2026-11-10 .. 11-23 (exclusive end 11-24 00:00 JST)
     static string Window(int claimed, bool claimable, bool blocked = false, bool welcome = true, int missionProgress = 0) =>
-        "{\"id\":\"cb1_20261110\",\"tier\":\"short\",\"lapseDays\":7,\"startDay\":\"2026-11-10\",\"endDay\":\"2026-11-23\",\"endsAt\":1795446000000,"
+        "{\"id\":\"cb1_20261110\",\"tier\":\"short\",\"lapseDays\":7,\"startDay\":\"2026-11-10\",\"endDay\":\"2026-11-23\",\"endsAt\":1795460400000,"
         + "\"remainingDays\":14,\"day\":1,\"days\":14,\"showWelcome\":" + (welcome ? "true" : "false") + ",\"completed\":false,\"blocked\":" + (blocked ? "true" : "false") + ","
         + "\"login\":{\"claimed\":" + claimed + ",\"total\":7,\"claimableToday\":" + (claimable ? "true" : "false") + ",\"days\":["
         + "{\"day\":1,\"reward\":{\"freeCoins\":100},\"claimed\":" + (claimed >= 1 ? "true" : "false") + "},"

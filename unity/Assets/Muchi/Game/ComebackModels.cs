@@ -61,8 +61,20 @@ namespace Muchi.Game
         public string WelcomeTitle => "おかえりなさい！";
         /// <summary>"7日ぶりのご来場です。11月23日まで、復帰キャンペーンを用意しました".</summary>
         public string WelcomeBody => Active ? Window.LapseDays.ToString(CultureInfo.InvariantCulture) + "日ぶりのご来場です。" + EndText + "、復帰キャンペーンを用意しました" : null;
-        /// <summary>"11月23日まで" — the last game day of the window (the exclusive end minus one instant).</summary>
-        public string EndText => Active ? DeletionGuard.JstDate(Window.EndsAt - 1) + "まで" : null;
+        /// <summary>
+        /// "11月23日まで" — the last game day of the window (endDay). Not EndsAt − 1: with the 4:00 rollover (REQ-DAY-001)
+        /// the window ends at 4:00 the NEXT calendar day, which would read as one day longer than the campaign.
+        /// </summary>
+        public string EndText => Active ? GameDayText(Window.EndDay, Window.EndsAt) + "まで" : null;
+
+        /// <summary>"YYYY-MM-DD" game day → "11月23日"; falls back to the instant when the day is missing.</summary>
+        internal static string GameDayText(string day, long endsAt)
+        {
+            if (day != null && day.Length == 10 && int.TryParse(day.Substring(5, 2), NumberStyles.Integer, CultureInfo.InvariantCulture, out var mo)
+                && int.TryParse(day.Substring(8, 2), NumberStyles.Integer, CultureInfo.InvariantCulture, out var d))
+                return mo.ToString(CultureInfo.InvariantCulture) + "月" + d.ToString(CultureInfo.InvariantCulture) + "日";
+            return DeletionGuard.JstDate(endsAt - 1);
+        }
         /// <summary>"残り14日" (game days, counting today).</summary>
         public string RemainingText => Active ? "残り" + Window.RemainingDays.ToString(CultureInfo.InvariantCulture) + "日" : null;
         /// <summary>"ログインボーナス 2/7".</summary>

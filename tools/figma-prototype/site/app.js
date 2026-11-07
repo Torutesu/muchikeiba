@@ -1796,6 +1796,8 @@ async function Invite(demoNote = '') {
 // date (no countdown timer), rewards as they are (free coins / tickets / material, no 「倍」), the lapse-reminder opt-in
 // (push category `comeback`, off by default) asked once and never pre-ticked.
 const cbDay = (ms) => { const d = new Date(ms - 1 + 9 * 3600e3); return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日`; };
+// the window's last GAME day (endsAt is 4:00 the next calendar day with the 4:00 rollover; ComebackModel.EndText)
+const cbEnd = (w) => (/^\d{4}-\d{2}-\d{2}$/.test(w.endDay || '') ? `${+w.endDay.slice(5, 7)}月${+w.endDay.slice(8, 10)}日` : cbDay(w.endsAt));
 async function cbView() { const r = await L.comeback(); return r.ok ? r.value : { active: false, window: null, push: { enabled: false } }; }
 
 // ---- the home card slot (round 10): home shows at most ONE card, in the left column between the season panel and the
@@ -1838,7 +1840,7 @@ function ComebackCard(v) {
   const card = Glass('Comeback', HOME_CARD.x, HOME_CARD.y, HOME_CARD.w, 214, undefined, .84);
   card.dataset.homeCard = 'comeback'; card.dataset.comeback = w.tier;
   Kicker('復帰キャンペーン', 28, 24, card, { size: 16 });
-  Txt(`${cbDay(w.endsAt)}まで　·　残り${w.remainingDays}日`, 28, 88, 394, 18, GOLD, card, { weight: 700 });
+  Txt(`${cbEnd(w)}まで　·　残り${w.remainingDays}日`, 28, 88, 394, 18, GOLD, card, { weight: 700 });
   Txt(w.login.claimableToday ? '今日の復帰ログインボーナスを受け取れます' : `ログインボーナス ${w.login.claimed}/${w.login.total}　·　明日また受け取れます`, 28, 116, 394, 14, MUTED, card);
   Cta('受け取りにいく', 28, 142, 300, () => ComebackTrack(), card, 'small');
   return card;
@@ -1852,7 +1854,7 @@ async function ComebackWelcome(v) {
   Clear('comeback-welcome'); SetArt('Art/first-ride'); Shade('left');
   Kicker('おかえりなさい　/　復帰キャンペーン', 82, 112, undefined, { size: 18 });
   Txt('おかえりなさい！', 78, 186, 900, 76, WHITE, undefined, { cls: 'tshadow', ls: '.04em' });
-  Txt(`${w.lapseDays}日ぶりのご来場です。\n${cbDay(w.endsAt)}まで、復帰キャンペーンを用意しました。`, 82, 296, 820, 22, WHITE, undefined, { cls: 'tshadow', weight: 500, lh: 1.65 });
+  Txt(`${w.lapseDays}日ぶりのご来場です。\n${cbEnd(w)}まで、復帰キャンペーンを用意しました。`, 82, 296, 820, 22, WHITE, undefined, { cls: 'tshadow', weight: 500, lh: 1.65 });
   const lines = [
     ['復帰ログインボーナス', `${w.login.total}日分　·　1日1回、とぎれても進みます`],
     ['復帰ミッション', `${w.missions.length}本　·　新しくなった機能を順に案内します`],
@@ -1880,7 +1882,7 @@ async function ComebackTrack() {
   TopBar('復帰キャンペーン', `${w.day}日目 / ${w.days}日　·　期間はゲーム日で数えます　·　受け取れるのは無償コイン・券・素材です`);
   // left: real end date, catch-up meter, the 7-day login track, the opt-in
   const p = Glass('Comeback', 36, 134, 1060, 676, undefined, .88);
-  Txt(`${cbDay(w.endsAt)}まで　·　残り${w.remainingDays}日`, 44, 32, 600, 24, GOLD, p, { weight: 700, nowrap: true }).dataset.cbEnd = String(w.endsAt);
+  Txt(`${cbEnd(w)}まで　·　残り${w.remainingDays}日`, 44, 32, 600, 24, GOLD, p, { weight: 700, nowrap: true }).dataset.cbEnd = String(w.endsAt);
   const cu = w.catchUp;
   Txt(cu.active ? `パスXP上乗せ中　1レースごとに +${cu.bonusPerRace}（残り ${fmt(cu.remainingXp)}）` : cu.capXp > 0 ? 'パスXPの上乗せは受け取り済み' : 'このシーズンのパスXPは追いついています', 44, 76, 900, 15, MUTED, p, { weight: 500 });
   Gauge(44, 106, 600, cu.capXp > 0 ? cu.grantedXp / cu.capXp : 0, p);

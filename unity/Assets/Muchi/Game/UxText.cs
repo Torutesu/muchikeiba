@@ -37,6 +37,11 @@ namespace Muchi.Game
             ["ALREADY_LIKED"] = "今日はこの厩舎にいいね済みです。",
             ["ALREADY_IN_RACE"] = "前のレースが続いています。",
             ["RATE_LIMITED"] = "混み合っています。少し待ってからお試しください。",
+            ["TRAINING_LIMIT"] = "今日の調教はおしまいです。4:00に戻ります。",
+            ["TRAINING_TIRED"] = "疲れがたまっています。プールか、1日休ませましょう。",
+            ["TRAINING_POTENTIAL_FULL"] = "この馬は素質いっぱいまで伸びました。",
+            ["TRAINING_SESSION_EXPIRED"] = "時間切れのため、ミニゲームなしで記録しました。",
+            ["TRAINING_INPUT_INVALID"] = "入力を確認できませんでした。もう一度お試しください。",
             ["NETWORK"] = Offline,
         };
 

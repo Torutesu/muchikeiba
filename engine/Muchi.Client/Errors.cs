@@ -54,6 +54,18 @@ namespace Muchi.Client
         InviteRefused,
         /// <summary>409: today's rewarded-ad views for that placement (or overall) are used up (REQ-AD-008).</summary>
         AdLimitReached,
+        /// <summary>409: today's training slots (or this horse's sessions today) are used up (REQ-TRAIN-001).</summary>
+        TrainingLimit,
+        /// <summary>409: the horse is tired; only プール or a rest day (or a training item) (REQ-TRAIN-009).</summary>
+        TrainingTired,
+        /// <summary>409: the horse has grown to its potential (REQ-TRAIN-004).</summary>
+        TrainingPotentialFull,
+        /// <summary>409: the training session expired; it was settled as skipped (REQ-TRAIN-002).</summary>
+        TrainingSessionExpired,
+        /// <summary>409: no open training session with this id (already finished or replaced).</summary>
+        TrainingSessionUsed,
+        /// <summary>422: the submitted taps break the mini-game bounds (REQ-TRAIN-007).</summary>
+        TrainingInputInvalid,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -130,6 +142,12 @@ namespace Muchi.Client
             ["INVITE_WINDOW_CLOSED"] = ApiErrorCode.InviteWindowClosed,
             ["INVITE_REFUSED"] = ApiErrorCode.InviteRefused,
             ["AD_LIMIT_REACHED"] = ApiErrorCode.AdLimitReached,
+            ["TRAINING_LIMIT"] = ApiErrorCode.TrainingLimit,
+            ["TRAINING_TIRED"] = ApiErrorCode.TrainingTired,
+            ["TRAINING_POTENTIAL_FULL"] = ApiErrorCode.TrainingPotentialFull,
+            ["TRAINING_SESSION_EXPIRED"] = ApiErrorCode.TrainingSessionExpired,
+            ["TRAINING_SESSION_USED"] = ApiErrorCode.TrainingSessionUsed,
+            ["TRAINING_INPUT_INVALID"] = ApiErrorCode.TrainingInputInvalid,
             ["VERIFIER_UNAVAILABLE"] = ApiErrorCode.VerifierUnavailable,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };
@@ -152,6 +170,7 @@ namespace Muchi.Client
                 case ApiErrorCode.NgName:
                 case ApiErrorCode.TaConfigMismatch:
                 case ApiErrorCode.InviteCodeInvalid:
+                case ApiErrorCode.TrainingInputInvalid:
                     return new ValidationException(code, wire, message, status);
                 case ApiErrorCode.NotFound:
                 case ApiErrorCode.HorseNotFound:

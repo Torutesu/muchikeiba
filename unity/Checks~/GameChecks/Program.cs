@@ -76,6 +76,8 @@ static class Program
         await ComebackChecks.Run(Check, Ruleset());
         Console.WriteLine("== rewarded ads: where cards may appear, one view at a time, reward only from the server (SSV), KPI");
         await RewardedAdChecks.Run(Check);
+        Console.WriteLine("== 調教 (training: menus, timing mini-game, keyed start/finish, fairness wording)");
+        await TrainingChecks.Run(Check, Ruleset());
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

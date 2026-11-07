@@ -292,6 +292,32 @@ namespace Muchi.Engine.Tests
         }
 
         [Fact]
+        public void ALostReinEdgeIsSentAgain()
+        {
+            // online a command can be lost with a dropped socket: the assistant re-sends a rein edge the horse never showed
+            var rs = TestUtil.Ruleset();
+            var horses = Enumerable.Range(0, 12).Select(i => SampleRaces.Horse("h" + i, 500, (RunningStyle)(i % 4))).ToList();
+            var cfg = BalanceHarness.Config("lost", 9, SampleRaces.Turf2000(), rs, horses, new HashSet<int> { 0 }, _ => 3);
+            var sim = new RaceSim(cfg);
+            var a = new InputAssistant(AssistLevel.Full, 0);
+            var cmds = new byte[cfg.Entrants.Count];
+            int dropped = -1, resent = -1;
+            while (!sim.IsFinished && resent < 0)
+            {
+                byte c = a.Decide(sim);
+                if ((c & (Cmd.ReinPress | Cmd.ReinRelease)) != 0)
+                {
+                    if (dropped < 0) { dropped = sim.Tick; c = (byte)(c & ~(Cmd.ReinPress | Cmd.ReinRelease)); } // lost on the way
+                    else resent = sim.Tick;
+                }
+                Array.Clear(cmds, 0, cmds.Length); cmds[0] = c;
+                sim.Step(cmds);
+            }
+            Assert.True(dropped >= 0, "the assistant used the rein");
+            Assert.True(resent - dropped >= InputAssistant.ResyncTicks, "re-sent only after the resync window, not every tick");
+        }
+
+        [Fact]
         public void WireValuesRoundTrip()
         {
             foreach (AssistLevel l in Enum.GetValues(typeof(AssistLevel))) Assert.Equal(l, AssistLevels.Parse(AssistLevels.Wire(l)));

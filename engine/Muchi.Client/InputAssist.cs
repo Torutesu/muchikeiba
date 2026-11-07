@@ -74,7 +74,14 @@ namespace Muchi.Client
         private int _lastWhipTick = -100000;
         private int _lastLaneTick = -100000;
         private bool _reinSent;
+        private int _reinSentTick = -100000;
         private bool _startSent;
+
+        /// <summary>
+        /// Online only in practice: a rein edge whose effect has not shown after this many ticks (far beyond the room's
+        /// input delay) was lost with a dropped socket and is sent again. Offline the effect is immediate, so it never fires.
+        /// </summary>
+        public const int ResyncTicks = 40;
 
         public InputAssistant(AssistLevel level, int slot)
         {
@@ -149,10 +156,13 @@ namespace Muchi.Client
                 bool composure = me.Composure < p.BadComposureThreshold + ComposureMargin || me.IsKakari;
                 wantRein = composure || me.StaminaPermille + ReinMarginPermille < remPermille;
             }
-            if (wantRein != _reinSent)
+            // send the edge once; if the horse still disagrees long after (an "in" lost in a reconnect), send it again
+            bool resync = wantRein == _reinSent && me.Reining != wantRein && t - _reinSentTick >= ResyncTicks;
+            if (wantRein != _reinSent || resync)
             {
                 c |= wantRein ? Cmd.ReinPress : Cmd.ReinRelease;
                 _reinSent = wantRein;
+                _reinSentTick = t;
             }
 
             // lanes: only steer round a slower horse in front (the jockey's auto-steer keeps to the rail otherwise)

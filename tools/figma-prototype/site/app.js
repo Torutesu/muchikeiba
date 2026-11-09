@@ -3983,7 +3983,6 @@ const RC_HIDE_KEY = 'muchi.recap.hideRank';
  */
 const rcReducedMotion = () => prefs.get('muchi.a11y.reduceMotion', '0') === '1' || !!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 const rcTyped = (node) => { node.classList.add('keep-ja', 'typed'); node.dataset.typed = '1'; return node; };
-const rcUnit = (u) => (u && /^[\x20-\x7e]/.test(enText(u)) && !isJa() ? ' ' : '') + (u ?? '');
 
 async function Recaps() {
   currentScreen = Recaps;
@@ -4032,24 +4031,25 @@ async function Recap(id, i = 0) {
   const bars = el('rc-bars', 64, 40, 900, 4);
   v.steps.forEach((_, k) => { const b = el('rc-bar' + (k <= i ? ' on' : ''), k * (900 / v.steps.length), 0, 900 / v.steps.length - 6, 4, bars); b.dataset.k = String(k); });
   Kicker(`${v.title}　/　RECAP`, 64, 70, undefined, { w: 900, size: 17 });
-  if (st.key === 'horse') ArtImage(colArt(st.horseName ?? 'horse'), 860, 140, 700, 560, undefined, 'col-por rc-horse');
   const label = Txt(st.label, 64, st.key === 'end' ? 330 : 236, 960, st.key === 'end' ? 54 : 22, st.key === 'end' ? WHITE : CYAN, undefined, { weight: 700, ls: st.key === 'end' ? '.04em' : '.32em' });
   label.classList.add('rc-label');
   // the big text: a number counts up (unless reduced motion), a class / time / place shows as is, a horse name as typed
   const big = st.value ?? st.horseName ?? null;
   if (big !== null) {
     const isName = st.value === null && st.horseName != null;
-    const node = Txt(big, 64, 282, 900, isName ? 96 : 168, isName ? WHITE : GOLD, undefined, { weight: 700, cls: isName ? '' : 'num', nowrap: true, ls: isName ? '.04em' : '0' });
+    // the number and its unit in one line (spans), so the unit always sits right after the final number
+    const node = Txt('', 64, 282, 1000, isName ? 96 : 168, isName ? WHITE : GOLD, undefined, { weight: 700, cls: isName ? '' : 'num', nowrap: true, ls: isName ? '.04em' : '0' });
+    const num = document.createElement('span'); num.textContent = big; num.className = 'rc-num'; node.appendChild(num);
     node.classList.add('rc-big'); node.dataset.final = big;
     if (isName) rcTyped(node);
     if (st.unit) {
-      const u = Txt(rcUnit(st.unit), 64, 404, 300, 34, WHITE, undefined, { weight: 700, ls: '.1em' });
-      u.classList.add('rc-unit');
-      requestAnimationFrame(() => { const w = node.firstChild ? (() => { const rg = document.createRange(); rg.selectNodeContents(node); return rg.getBoundingClientRect().width / ($stage.getBoundingClientRect().width / 1600); })() : 0; u.style.left = (64 + w + 14) + 'px'; });
+      const u = document.createElement('span'); u.className = 'rc-unit'; u.textContent = st.unit;
+      Object.assign(u.style, { fontSize: '34px', color: 'var(--white)', marginLeft: '14px', letterSpacing: '.1em' });
+      node.appendChild(u);
     }
     if (!isName && /^\d+$/.test(big) && !reduced && Number(big) > 1) {
       const n = Number(big), t0 = performance.now();
-      every(30, () => { const k = Math.min(1, (performance.now() - t0) / 900); node.textContent = String(Math.round(n * (1 - (1 - k) ** 3))); });
+      every(30, () => { const k = Math.min(1, (performance.now() - t0) / 900); num.textContent = String(Math.round(n * (1 - (1 - k) ** 3))); });
     }
   }
   let y = big !== null ? 500 : 300;
@@ -4073,7 +4073,7 @@ async function Recap(id, i = 0) {
     Cta('共有する', 1180, 780, 360, () => RecapShare(v)).classList.add('rc-share');
     Ghost('一覧へ', 940, 790, 220, 56, Recaps, undefined, 'quiet').classList.add('rc-done');
   }
-  if (i > 0) Ghost('戻る', last ? 700 : 940, 790, 220, 56, () => Recap(id, i - 1), undefined, 'quiet').classList.add('rc-back');
+  if (i > 0) Ghost('前へ', last ? 700 : 940, 790, 220, 56, () => Recap(id, i - 1), undefined, 'quiet').classList.add('rc-back');
   Back(Recaps, 'BACK', 40, 834);
   EnToggle(1435, 124, 120, 50);
   globalThis.__muchi && (globalThis.__muchi.recap = { id, index: i, key: st.key, steps: v.steps.length, short: v.short });
@@ -4092,8 +4092,13 @@ function RecapShare(v) {
       const card = Card('Share card', 48, y + 96 + k * 128, 564, 116, s, c.rank ? 'var(--gold)' : 'var(--cyan)');
       card.classList.add('rc-card-share'); card.dataset.card = c.card;
       Txt('ムチ一閃', 20, 14, 200, 13, CYAN, card, { weight: 700, ls: '.2em' });
-      const head = c.headline ? c.headline + rcUnit(c.unit) : '';
-      if (head) Txt(head, 20, 38, 240, 36, GOLD, card, { weight: 700, cls: 'num', nowrap: true });
+      const head = !!c.headline;
+      if (head) {
+        // the number and the unit as two text nodes (the unit is a server word: translated on its own in English)
+        const h = Txt('', 20, 38, 240, 36, GOLD, card, { weight: 700, cls: 'num', nowrap: true });
+        const hn = document.createElement('span'); hn.textContent = c.headline; h.appendChild(hn);
+        if (c.unit) { const hu = document.createElement('span'); hu.textContent = c.unit; hu.style.marginLeft = '8px'; hu.style.fontSize = '24px'; h.appendChild(hu); }
+      }
       if (c.horseName) rcTyped(Txt(c.horseName, head ? 230 : 20, 42, 300, 24, WHITE, card, { weight: 700, nowrap: true }));
       Txt(c.lines.join('　·　'), 20, 84, 400, 14, SOFT, card, { weight: 500, nowrap: true });
       Ghost('共有する', 430, 60, 116, 44, () => {

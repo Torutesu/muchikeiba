@@ -246,6 +246,28 @@ describe('REQ-RECAP-006/007 sources read by period, and the hooks', () => {
   });
 });
 
+describe('REQ-RECAP-006 switched off and on again', () => {
+  it('a gap in the records is never covered up: the records start again from the day it came back', async () => {
+    const off = withCfg({ enabled: false });
+    const repo = new MemoryPlayerRepo();
+    let now = jst(2026, 11, 2);
+    const on = new PlayerService(repo, { master: m, rng: seededRng(1), clock: () => now, verifiers: {} });
+    const offSvc = new PlayerService(repo, { master: off, rng: seededRng(1), clock: () => now, verifiers: {} });
+    await on.bootstrap('u'); await on.grantPartner('u', 'アイボウ', 'c:1');
+    const horse = (await on.state('u')).flags.partnerHorseId!;
+    const race = (svc: PlayerService, id: string) => svc.applyRace('u', { raceId: id, mode: 'ranked', place: 1, fieldSize: 12, newRating: null, void: false, humans: 2, horseId: horse });
+    now = jst(2026, 11, 20, 13); await race(on, 'a');
+    expect((await on.state('u')).seasonRecap!.paused).toBeUndefined();
+    now = jst(2026, 11, 21); await race(offSvc, 'b'); // switched off: not recorded
+    expect((await offSvc.state('u')).seasonRecap!.paused).toBe(true);
+    now = jst(2026, 11, 25); await race(on, 'c');
+    now = jst(2026, 12, 1, 9);
+    const v = await on.recap('u', 'season:2026-11');
+    expect(v.steps[0]!.value).toBe('1'); // only the race after it came back
+    expect(v.sinceNote).toBe('2026-11-25からの記録です');
+  });
+});
+
 describe('REQ-RECAP-009 keep', () => {
   it('keeps the newest keepSeasons season recaps', async () => {
     const w = world(withCfg({ keepSeasons: 2 }), jst(2026, 9, 3));

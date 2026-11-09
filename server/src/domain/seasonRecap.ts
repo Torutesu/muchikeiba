@@ -110,6 +110,8 @@ export interface RecapSnapshot {
 export interface SeasonRecapState {
   acc: { season: RecapAcc | null; year: RecapAcc | null };
   recaps: RecapSnapshot[];
+  /** Set while the feature was switched off by remote config: nothing was recorded, so the running records are not trusted. */
+  paused?: boolean;
 }
 
 export function ensureRecap(s: PlayerState): SeasonRecapState {
@@ -316,9 +318,20 @@ function store(m: Master, st: SeasonRecapState, snap: RecapSnapshot) {
  * Returns the ids built in this call (the §40 activity entry belongs here — not written in this round).
  */
 export function rollRecaps(m: Master, s: PlayerState, now: number): string[] {
-  if (!seasonRecapConfig(m)) return [];
+  if (!seasonRecapConfig(m)) {
+    // switched off: the hooks record nothing from now on, so remember that the running records have a gap
+    if (s.seasonRecap && !s.seasonRecap.paused) s.seasonRecap.paused = true;
+    return [];
+  }
   if (s.deletion?.status === 'deleting') return [];
   const st = ensureRecap(s);
+  if (st.paused) {
+    // REQ-RECAP-006: back on after a gap — never claim a period the records did not cover: start again from now
+    // (the unfinished records are dropped; a period that ended during the gap gets no recap)
+    st.acc = { season: newAcc(seasonPeriodId(now), now), year: newAcc(gameYearOf(m, now), now) };
+    delete st.paused;
+    return [];
+  }
   const built: string[] = [];
   for (const kind of ['season', 'year'] as const) {
     const a = st.acc[kind];

@@ -989,6 +989,10 @@
   "名前・IDは入りません（選んだ馬の名前だけ）": "No names or IDs are included (only the chosen horse's name)",
   "共有する": "Share",
   "共有しました（アプリでは共有シートを開きます）": "Shared (the app opens the share sheet)",
-  "マイリプレイに残す": "Keep in My Replays"
+  "マイリプレイに残す": "Keep in My Replays",
+
+  "_next": "---- round 16: 次にやること (home next card; the card texts are the game layer's, ui-en.json)",
+  "今日は閉じる": "Hide for today",
+  "今日はこのお知らせを閉じました": "Hidden for today"
  }
 }

@@ -206,3 +206,52 @@ describe('§36 commentary packs × §29 coin shortfall × §33 coin history', ()
     expect(JSON.stringify(page.items)).not.toMatch(/commentary pack ochitsuki/);
   });
 });
+
+describe('§36 commentary packs × §30 event exchange (REQ-EXCH-002, REQ-CMT-010)', () => {
+  const line = (packId: string, extra: object = {}) => ({ id: `ex_pack_${packId}`, name: '実況パック', kind: 'commentary_pack' as const, price: 300, stock: 1, reward: { items: [{ itemId: packId, qty: 1 }] }, ...extra });
+  type View = { items: { id: string; owned: boolean }[] };
+
+  it('a coin-sold pack is a valid exchange line (stock 1); the standard, an achievement pack, an unknown pack or stock > 1 are refused', () => {
+    const ok = withExchangeLine(line('ochitsuki'));
+    expect(exchangeProblems(m, ok, [ok])).toEqual([]);
+    for (const [bad, re] of [[line('standard'), /sold for coins/], [line('nekketsu'), /sold for coins/], [line('nope'), /known commentary pack/], [line('kofuu', { stock: 2 }), /stock 1/]] as const) {
+      const ev = withExchangeLine(bad);
+      expect(exchangeProblems(m, ev, [ev]).join()).toMatch(re);
+    }
+  });
+
+  it('a pack taken from the exchange is owned (equippable), never an inventory item, and the shop then refuses to sell it', async () => {
+    const ev = withExchangeLine(line('ochitsuki'));
+    const master = { ...m, events: m.events.map((e) => (e.id === ev.id ? ev : e)) } as Master;
+    const now = ev.startAtMs + 3_600_000;
+    const repo = new MemoryPlayerRepo();
+    const svc = new PlayerService(repo, { master, rng: seededRng(3), clock: () => now, verifiers: {} });
+    await svc.bootstrap('p');
+    const s = repo.get('p')!;
+    ensureExchange(master, s, ev).points = 900;
+    repo.put(s);
+    expect(((await svc.exchangeView('p', ev.id)) as View).items.find((x) => x.id === 'ex_pack_ochitsuki')?.owned).toBe(false);
+    await svc.exchangeBuy('p', ev.id, 'ex_pack_ochitsuki', 1, 'c:x1');
+    expect(repo.get('p')!.commentaryPack?.owned.ochitsuki).toMatchObject({ via: 'exchange' });
+    expect(repo.get('p')!.items.ochitsuki).toBeUndefined();
+    await svc.equipCommentaryPack('p', 'ochitsuki', 'settings');
+    expect(((await svc.exchangeView('p', ev.id)) as View).items.find((x) => x.id === 'ex_pack_ochitsuki')?.owned).toBe(true);
+    await expect(svc.buyCommentaryPack('p', 'ochitsuki', false, 'c:b9')).rejects.toMatchObject({ code: 'ALREADY_PURCHASED' });
+  });
+
+  it('the exchange refuses a pack the player already owns (no points spent)', async () => {
+    const ev = withExchangeLine(line('kofuu'));
+    const master = { ...m, events: m.events.map((e) => (e.id === ev.id ? ev : e)) } as Master;
+    const now = ev.startAtMs + 3_600_000;
+    const repo = new MemoryPlayerRepo();
+    const svc = new PlayerService(repo, { master, rng: seededRng(3), clock: () => now, verifiers: {} });
+    await svc.bootstrap('p');
+    const s = repo.get('p')!;
+    grantFree(s, 500, now, 'test', 't');
+    ensureExchange(master, s, ev).points = 900;
+    repo.put(s);
+    await svc.buyCommentaryPack('p', 'kofuu', false, 'c:b1');
+    await expect(svc.exchangeBuy('p', ev.id, 'ex_pack_kofuu', 1, 'c:x2')).rejects.toMatchObject({ code: 'ALREADY_PURCHASED' });
+    expect(repo.get('p')!.events?.[ev.id]?.exchange?.points).toBe(900);
+  });
+});

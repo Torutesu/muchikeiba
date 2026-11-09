@@ -71,7 +71,7 @@ namespace Muchi.Client
     public sealed class ExchangeLine
     {
         public string Id, Name;
-        /// <summary>"coins" / "material" / "ticket" / "cosmetic" / "horse".</summary>
+        /// <summary>"coins" / "material" / "ticket" / "cosmetic" / "commentary_pack" (Round 14, §36) / "horse".</summary>
         public string Kind;
         public int Price, Stock, Bought, Remaining, MaxQty;
         public bool Owned, Affordable;

@@ -1213,6 +1213,8 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 ```
 検証（`exchangeProblems`、`eventProblems` の中で起動時・リモート設定・テスト）：strict な形、コード側の上限 `EXCHANGE_HARD_LIMITS`（24行・価格 ≤ 100,000・在庫 ≤ 99・`graceDays` 1〜7・`dailyCap` ≤ 5,000・`pointsPerUnit` ≤ 1,000・1行のアイテム数 ≤ 10・コイン ≤ 100/個・¥200/個）、`dailyCap` ≥ 1着1回分、id の重複、`reward` はちょうど1種類で `kind` と合うこと、上の「中身」の規則、`leftover.itemId` は配合素材。英語は `locale.en`（REQ-L10N-005、`name` も対象）。
 
+- **Round 14 の統合**：勝負服エディタのパーツ（§35、`kind: "silks_part"` の見た目アイテム、`currency: "any"` のもの）はそのまま `kind: "cosmetic"` の行にできる（交換で得たパーツはエディタで持っている扱い）。実況パック（§36）は `kind: "commentary_pack"`・`reward.items: [{ "itemId": "<packId>", "qty": 1 }]`・`stock: 1` の行にでき、コインで売っているパック（有償限定でない）だけ（標準・実績のパックは不可）。パックはアイテムではなくプレイヤーの `commentaryPack.owned`（`via: "exchange"`）に入り、もう持っていれば `ALREADY_PURCHASED`（ショップの購入も同じ）。`icon` は `null`（クライアントはパックの絵）。出荷の設定にはまだどちらの行も入れていない（テストのみ、`server/test/r14-integration.test.ts`）。
+
 ### 30.2 `GET /v1/events/:eventId/exchange`（要認証）
 ```json
 { "eventId": "newyear_cup_2027_01", "name": "新春交換祭杯", "status": "open",

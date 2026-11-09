@@ -225,7 +225,7 @@ export function validateCommentaryPacks(m: Master): void {
 export interface CommentaryPackState {
   equipped: string;
   /** Owned packs other than the standard: how and when (a bought pack keeps its ledger ref). */
-  owned: Record<string, { at: number; via: 'buy' | 'achievement'; ref?: string }>;
+  owned: Record<string, { at: number; via: 'buy' | 'achievement' | 'exchange'; ref?: string }>;
   updatedAt: number | null;
   /** A pack other than the standard was ever equipped (commentary_pack_equip isFirst). */
   everEquipped?: boolean;
@@ -234,6 +234,12 @@ export interface CommentaryPackState {
 function ensureState(s: PlayerState): CommentaryPackState {
   s.commentaryPack ??= { equipped: STANDARD_PACK_ID, owned: {}, updatedAt: null };
   return s.commentaryPack;
+}
+
+/** Round 14 integration (§30 × §36): a pack taken from an event exchange line (the exchange checks ownership first). */
+export function grantPackOwnership(s: PlayerState, packId: string, now: number, ref: string) {
+  const st = ensureState(s);
+  if (!st.owned[packId]) st.owned[packId] = { at: now, via: 'exchange', ref };
 }
 
 /** Owned now: the standard always, a recorded pack, or an achievement pack whose tier is reached. */

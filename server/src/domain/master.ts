@@ -258,7 +258,7 @@ export interface EventDef {
   exchange?: EventExchange;
 }
 /** REQ-EXCH-002: what one exchange line gives. Exactly one of the keys; never anything random. */
-export type ExchangeItemKind = 'coins' | 'material' | 'ticket' | 'cosmetic' | 'horse';
+export type ExchangeItemKind = 'coins' | 'material' | 'ticket' | 'cosmetic' | 'commentary_pack' | 'horse';
 export interface ExchangeItemDef {
   id: string; name: string; kind: ExchangeItemKind;
   /** Event points per unit (fixed). */

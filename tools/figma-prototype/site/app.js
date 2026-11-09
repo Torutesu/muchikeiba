@@ -3719,6 +3719,7 @@ const CUP_STATUS = { open: '受付中', running: 'レース中', finished: '終�
 const CUP_UNRANKED = 'ランク外のカップです。レーティング・シーズン・ライバルの記録・報酬には関係しません';
 const CUP_FAIR = '主催者も他の人の馬は選べません。条件は作った後に変えられません';
 const cupWhen = (ms) => { const d = new Date(ms + 9 * 3600e3); return `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`; };
+const cupWindow = (a, b) => cupWhen(a) + (isJa() ? '〜' : ' – ') + cupWhen(b);
 const cupRules = (c) => [c.trackId ? L.trackName(c.trackId) : 'コースはレースごとに抽選', CUP_GOING[c.going] ?? null, c.night ? 'ナイター' : null].filter(Boolean).join('・');
 /** Marks player-typed text (cup names, player names, horse names) so the English layer leaves it as typed (REQ-CUP-002). */
 const cupTyped = (node) => { node.classList.add('keep-ja', 'typed'); node.dataset.typed = '1'; return node; };
@@ -3746,7 +3747,7 @@ async function HostedCups() {
     Txt(`${CUP_FORMAT[c.format]}　·　${c.entrants.length}/${c.capacity}人`, 24, 56, 360, 15, SOFT, k, { weight: 500, nowrap: true, cls: 'num' });
     Txt(cupRules(c.conditions), 390, 56, 330, 15, SOFT, k, { weight: 500, nowrap: true });
     Pills([[c.role === 'host' ? '主催' : '参加', c.role === 'host' ? 'gold' : 'cyan'], [CUP_STATUS[c.status], c.status === 'running' ? 'warn' : '']], 24, 82, 400, k);
-    Txt(`${cupWhen(c.opensAt)}〜${cupWhen(c.closesAt)}`, 430, 86, 300, 13, DIM, k, { nowrap: true, cls: 'num', align: 'right' });
+    Txt(cupWindow(c.opensAt, c.closesAt), 430, 86, 300, 13, DIM, k, { nowrap: true, cls: 'num', align: 'right' });
     k.style.cursor = 'pointer'; k.addEventListener('click', () => CupLobby(c.cupId));
   });
   const rp = Glass('Invites and trophies', 880, 134, 684, 676, undefined, .86);
@@ -3864,7 +3865,7 @@ function CupJoin(state = {}) {
   cupTyped(Txt(p.hostName, 120, 150, 588, 16, MUTED, rp, { nowrap: true }));
   Txt(`${CUP_FORMAT[p.format]}　·　${p.entrants}/${p.capacity}人`, 36, 196, 672, 18, GOLD, rp, { weight: 700, cls: 'num' });
   if (p.conditions) Txt(cupRules(p.conditions), 36, 236, 672, 16, SOFT, rp, { weight: 500 });
-  Txt(`${cupWhen(p.opensAt)}〜${cupWhen(p.closesAt)}`, 36, 272, 672, 15, SOFT, rp, { cls: 'num' });
+  Txt(cupWindow(p.opensAt, p.closesAt), 36, 272, 672, 15, SOFT, rp, { cls: 'num' });
   Txt(CUP_UNRANKED, 36, 330, 672, 13, MUTED, rp, { lh: 1.6 });
   const j = Cta('参加する', 36, 470, 672, async () => {
     const r = await L.cups.join({ code: state.code });
@@ -3912,7 +3913,7 @@ async function CupLobby(cupId) {
   rp.classList.add('cup-progress');
   const closed = c.status === 'finished' || c.status === 'cancelled';
   Kicker(closed ? (c.status === 'cancelled' ? '中止' : '結果') : `第${Math.min(c.racesDone + 1, c.racesTotal)}レース / 全${c.racesTotal}レース`, 36, 30, rp).classList.add('cup-round');
-  Txt(`${cupWhen(c.opensAt)}〜${cupWhen(c.closesAt)}`, 36, 100, 612, 16, SOFT, rp, { cls: 'num' });
+  Txt(cupWindow(c.opensAt, c.closesAt), 36, 100, 612, 16, SOFT, rp, { cls: 'num' });
   Txt(cupRules(c.conditions), 36, 134, 612, 18, WHITE, rp, { weight: 700 });
   if (c.status === 'cancelled') Txt(CUP_CANCEL[c.cancelReason] ?? '中止になりました', 36, 190, 612, 16, WARN, rp, { weight: 700, lh: 1.6 }).classList.add('cup-cancelled');
   else if (c.standings.length) {

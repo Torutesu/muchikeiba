@@ -110,7 +110,7 @@ namespace Muchi.Game
             var d = DateTimeOffset.FromUnixTimeMilliseconds(ms).ToOffset(TimeSpan.FromHours(9));
             return N(d.Month) + "/" + N(d.Day) + " " + d.Hour.ToString("00", CultureInfo.InvariantCulture) + ":" + d.Minute.ToString("00", CultureInfo.InvariantCulture);
         }
-        public static string WindowText(long opensAt, long closesAt) => When(opensAt) + "〜" + When(closesAt);
+        public static string WindowText(long opensAt, long closesAt) => When(opensAt) + (Loc.IsEnglish ? " – " : "〜") + When(closesAt);
 
         /// <summary>「青葉 芝1600m・良・晴れ」 — course, going, weather of the rules.</summary>
         public string RulesText(CupConditions c)

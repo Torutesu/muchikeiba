@@ -228,6 +228,7 @@ async function wrap<T>(f: () => Promise<T> | T): Promise<{ ok: true; value: T } 
 // createRace (mode "cup") and simulated by the page in WASM, then settled like a room (heat outcome → standings).
 const CUP_KEY = 'muchi.proto.cups';
 const CUP_DEMO = [['demo_cup_1', 'ミドリ'], ['demo_cup_2', 'サクラ'], ['demo_cup_3', 'Kenta'], ['demo_cup_4', 'アオイ'], ['demo_cup_5', 'Rin'], ['demo_cup_6', 'ユウキ'], ['demo_cup_7', 'Sora']] as const;
+const CUP_HORSES = ['ミドリノカゼ', 'サクラフブキ', 'ハヤブサ', 'アオイソラ', 'リンドウ', 'ユウヒ', 'ソラノカナタ'];
 const cupSpecs = new Map<string, CupRaceSpec<RaceEntry>>();
 const cupOutcomes = new Map<string, HeatOutcome | null>();
 const cupBackend = new MemoryCupBackend<RaceEntry>(() => master, {
@@ -247,7 +248,7 @@ const cupsSvc = new HostedCupsService<RaceEntry>(() => master, cupBackend, () =>
 async function ensureCupDemo() {
   for (const [id, name] of CUP_DEMO) {
     const st = await svc.state(id);
-    if (st.horses.length === 0) { await svc.bootstrap(id); await svc.grantPartner(id, `${name}号`.replace(/[A-Za-z]+号/, 'ハヤブサ'), key()); await svc.setDisplayName(id, name); }
+    if (st.horses.length === 0) { await svc.bootstrap(id); await svc.grantPartner(id, CUP_HORSES[CUP_DEMO.findIndex((x) => x[0] === id)] ?? 'ハヤブサ', key()); await svc.setDisplayName(id, name); }
     for (const [a, b] of [[ID, id], [id, ID]] as const) {
       const x = await svc.state(a);
       if (!x.friends.ids.includes(b)) { x.friends.ids.push(b); repo.put(x); }

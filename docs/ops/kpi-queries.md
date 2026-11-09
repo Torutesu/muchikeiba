@@ -75,6 +75,8 @@
 | `assist_disable` | サーバー（かんたん操作をオフにした） | 前のレベル | `settings`/`prompt` | | |
 | `assist_prompt_view` | サーバー（一度だけの提案シートが出た） | | | | `double9` 最下位の連続 |
 | `race_assisted` | サーバー（かんたん操作ありで精算されたレース。本人の申告、KPI専用） | `whip`/`full` | モード | | `double4` 着順、`double5` 頭数 |
+| `silks_edit` | サーバー（勝負服エディタで装備が変わった：`PUT /v1/silks`・プリセットの適用、REQ-SILK-014） | コード | `editor`/`preset` | | `double9` 無料でないパーツの数、`double5` プリセットの数 |
+| `silks_part_buy` | サーバー（勝負服のパーツを買った：エディタ・ショップの見た目タブのどちらでも） | itemId | パーツの種類 `pattern`/`color`/`sleeve`/`cap` | `any`/`paidOnly` | `double2` 有償コイン、`double3` 無償コイン、`double9` 価格 |
 | `consent` | サーバー | 規約の版 | プライバシーポリシーの版 | | |
 | `partner_granted` | サーバー | テンプレートID（`t_partner`） | | | |
 | `ab_assign` | サーバー（初回の bootstrap、実験ごとに1回） | 実験ID | バケットID | | |
@@ -653,3 +655,30 @@ ORDER BY races DESC
 
 - 補助を使った人の継続（D7）は、`assist_enable` を出した人の `blob2` で「リテンション」のクエリを絞って比べる。
 - `client_race_start` の `blob9` にもレベルが入る（オフラインのレース・タイムアタックを含めた使われ方）。
+
+## 勝負服エディタ：編集とパーツの購入（REQ-SILK-014、Round 14、contracts/protocol.md §35）
+
+**編集した人とパーツを買った人**（週ごと）。パーツは抽選ではないので、買った人の割合と1人あたりの額だけを見る（無料のパーツだけで作る人の割合も `double9 = 0` で分かる）。
+
+```sql
+SELECT toStartOfWeek(timestamp) AS week,
+  count(DISTINCT if(blob1 = 'silks_edit', blob2, NULL)) AS editors,
+  count(DISTINCT if(blob1 = 'silks_edit' AND double9 = 0, blob2, NULL)) AS free_parts_only,
+  count(DISTINCT if(blob1 = 'silks_part_buy', blob2, NULL)) AS buyers,
+  sumIf(_sample_interval * double2, blob1 = 'silks_part_buy') AS paid_coins,
+  sumIf(_sample_interval * double3, blob1 = 'silks_part_buy') AS free_coins
+FROM muchi_kpi
+WHERE blob1 IN ('silks_edit', 'silks_part_buy') AND timestamp > NOW() - INTERVAL '56' DAY
+GROUP BY week
+ORDER BY week DESC
+```
+
+**売れているパーツ**（直近28日）。
+
+```sql
+SELECT blob8 AS item, blob9 AS part, blob10 AS currency, sum(_sample_interval) AS buys
+FROM muchi_kpi
+WHERE blob1 = 'silks_part_buy' AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY item, part, currency
+ORDER BY buys DESC
+```

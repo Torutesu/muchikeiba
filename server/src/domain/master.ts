@@ -113,7 +113,9 @@ export type CosmeticDef =
   | { id: string; name: string; kind: 'tack'; slot: TackSlot; asset: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean }
   | { id: string; name: string; kind: 'decor'; asset: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean }
   /** REQ-TEAMFEED-002: a team-feed stamp sold directly for coins (asset stamp/<id>; master/stamps.json says which stamp it unlocks). */
-  | { id: string; name: string; kind: 'stamp'; asset: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean };
+  | { id: string; name: string; kind: 'stamp'; asset: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean }
+  /** REQ-SILK-005: a 勝負服エディタ part sold directly (master/silks-editor.json names this item as the part's source). */
+  | { id: string; name: string; kind: 'silks_part'; part: 'color' | 'sleeve' | 'cap'; ref: string; asset: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean };
 export type TackSlot = 'bridle' | 'saddlecloth';
 export const TACK_SLOTS: TackSlot[] = ['bridle', 'saddlecloth'];
 export interface ItemsMaster {
@@ -354,6 +356,8 @@ export interface Master {
   locale?: { en: Record<string, string> };
   /** REQ-COL-* / REQ-ACH-*: 図鑑 lore and achievements (master/collection.json; collection.ts collectionOf falls back to it when absent). */
   collection?: CollectionMaster;
+  /** REQ-SILK-*: 勝負服エディタ parts (master/silks-editor.json; silksEditor.ts silksEditorOf falls back to it when absent). */
+  silksEditor?: import('./silksEditor.js').SilksEditorMaster;
 }
 
 export const PPM_TOTAL = 1_000_000;

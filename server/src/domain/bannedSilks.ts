@@ -1,4 +1,5 @@
 import bannedJson from '../../master/banned-silks.json';
+import editorJson from '../../master/silks-editor.json';
 import { z } from 'zod';
 import type { Silks, VisualsMaster } from './visuals.js';
 
@@ -10,7 +11,11 @@ import type { Silks, VisualsMaster } from './visuals.js';
  * Matching is on a normalised signature: pattern aliases ("襷" → sash), colour aliases ("青" → blue) and
  * colour families (navy ≈ blue, maroon ≈ red, …) so a near-identical shade cannot slip past an exact match.
  */
-export interface BannedSilksEntry { id: string; source: string; description?: string; pattern: string; colors: string[]; cap?: string }
+/**
+ * REQ-SILK-009: `sleeve` / `capColors` are optional extra conditions for the 勝負服エディタ result. When absent the entry
+ * matches whatever the sleeves and cap colours are, so changing only the sleeves or the cap never escapes a reserved body.
+ */
+export interface BannedSilksEntry { id: string; source: string; description?: string; pattern: string; colors: string[]; cap?: string; sleeve?: string; capColors?: string[] }
 export interface BannedSilksList {
   format: 1;
   patternAliases: Record<string, string>;
@@ -34,6 +39,8 @@ export const bannedSilksEntrySchema = z.object({
   pattern: z.string().min(1).max(32),
   colors: z.array(z.string().min(1).max(16)).min(2).max(3),
   cap: z.string().min(1).max(32).optional(),
+  sleeve: z.string().min(1).max(32).optional(),
+  capColors: z.array(z.string().min(1).max(16)).length(2).optional(),
 }).strict();
 export const bannedSilksListSchema = z.object({
   format: z.literal(1),
@@ -72,17 +79,22 @@ export function bannedMatch(l: BannedSilksList, s: Silks): BannedSilksEntry | nu
     if (e.colors.length === 2 && symmetric.has(normPattern(l, e.pattern))) sigs.push(silksSignature(l, e.pattern, [e.colors[1]!, e.colors[0]!]));
     if (!sigs.includes(sig)) continue;
     if (e.cap !== undefined && e.cap !== s.cap) continue;
+    // REQ-SILK-009: editor silks carry sleeve / capColors (legacy silks: sleeves like the body, cap in body colours 1 and 2)
+    if (e.sleeve !== undefined && e.sleeve !== (s.sleeve ?? 'match')) continue;
+    if (e.capColors !== undefined && silksSignature(l, '', e.capColors) !== silksSignature(l, '', s.capColors ?? [s.colors[0] ?? '', s.colors[1] ?? ''])) continue;
     return e;
   }
   return null;
 }
 
 /** Validation of a (base or imported) list against the visuals catalogue. */
-export function bannedSilksProblems(l: BannedSilksList, v: VisualsMaster): string[] {
+export function bannedSilksProblems(l: BannedSilksList, v: VisualsMaster, editor: { caps: { id: string }[]; sleeves: { id: string }[] } = editorJson): string[] {
   const p: string[] = [];
   const patterns = new Map(v.silks.patterns.map((x) => [x.id, x]));
   const palette = new Set(v.palette.map((x) => x.id));
   const caps = new Set(v.silks.caps.map((x) => x.id));
+  const editorCaps = new Set(editor.caps.map((x) => x.id));
+  const editorSleeves = new Set(editor.sleeves.map((x) => x.id));
   for (const [k, to] of Object.entries(l.patternAliases)) if (!patterns.has(to)) p.push(`patternAliases.${k}: unknown pattern ${to}`);
   for (const [k, to] of Object.entries(l.colorAliases)) if (!palette.has(to)) p.push(`colorAliases.${k}: unknown colour ${to}`);
   for (const sp of l.symmetricPatterns ?? []) if (!patterns.has(normPattern(l, sp))) p.push(`symmetricPatterns: unknown pattern ${sp}`);
@@ -100,7 +112,9 @@ export function bannedSilksProblems(l: BannedSilksList, v: VisualsMaster): strin
     if (!pat) p.push(`entry ${e.id}: unknown pattern ${e.pattern}`);
     else if (pat.colors !== e.colors.length) p.push(`entry ${e.id}: pattern ${pat.id} takes ${pat.colors} colours`);
     for (const c of e.colors) if (!palette.has(normColor(l, c))) p.push(`entry ${e.id}: unknown colour ${c}`);
-    if (e.cap !== undefined && !caps.has(e.cap)) p.push(`entry ${e.id}: unknown cap ${e.cap}`);
+    if (e.cap !== undefined && !caps.has(e.cap) && !editorCaps.has(e.cap)) p.push(`entry ${e.id}: unknown cap ${e.cap}`);
+    if (e.sleeve !== undefined && !editorSleeves.has(e.sleeve)) p.push(`entry ${e.id}: unknown sleeve ${e.sleeve}`);
+    for (const c of e.capColors ?? []) if (!palette.has(normColor(l, c))) p.push(`entry ${e.id}: unknown cap colour ${c}`);
   }
   // our own guaranteed fallback for default silks must never be reserved
   if (bannedMatch(l, { pattern: 'plain', colors: ['white', 'navy'], cap: 'plain' })) p.push('the default fallback silks (plain white/navy) is on the banned list');

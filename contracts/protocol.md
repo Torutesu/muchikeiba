@@ -1175,3 +1175,93 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 - 出してよいのは**ガチャの確認・見た目の購入・ショップ**の中だけ。**レース中・マッチング中・チュートリアル中・負けた直後の結果画面には出さない**（`CoinShortfallModel.Allowed`）。
 - シートは「◯コインが◯枚足りません」＋パックのカード1枚＋閉じる（閉じるが一番目立つ）。パックを押すと既存の購入確認（§13、REQ-UXU-010）へ。購入が完了したら元の操作（そのガチャ・その見た目）に戻る。
 - KPI：シートを出した時 `offer_view`、パックを押した時 `offer_click`（`offerId: "shortfall"`・`trigger: "T6"`、§13 の KPI と同じイベント）。1回の失敗（1回のプレビュー）につき1回。
+
+## 35. 勝負服エディタ（REQ-SILK-001〜016、`server/src/domain/silksEditor.ts`・`server/master/silks-editor.json`、C# `SilksEditor.cs`（`SilksCode`・`SilksDesign`）・`Muchi.Game.SilksEditorModel`）
+勝負服を**パーツの組み合わせ**で作る。抽選は一切ない（**確率なし**）。パーツは「最初から使える」「遊んで解放（実績・レース数など固定の条件）」「コインで直販（固定価格）」「アイテムで解放（商品・パス・交換所の固定報酬）」のどれか。見た目だけで、レースの能力・結果ハッシュ・ゴールデンには関係しない（ランク戦の公平性 REQ-RATE-003）。
+
+### 35.1 デザイン（`SilksDesign`）
+| キー | 中身 | 規則 |
+|---|---|---|
+| `pattern` | 胴の模様（`visuals.json` `silks.patterns` の id：plain・hoops・stripes・sash・cross_sashes・chevrons・diamonds・quartered・halves・stars・spots・braces・…） | 模様ごとの色数（2 または 3） |
+| `colors` | 胴の色（`[1色目（地）, 2色目（模様）, 3色目?]`） | 色数は模様と同じ。エディタの色（基本16色＋特別色） |
+| `sleeve` | 袖の模様（`match`＝胴と同じ・plain＝2色目の無地・hoops・stripes・armlets・chevrons・stars・diamonds） | 袖は胴の1色目／2色目で塗る |
+| `cap` | 帽子の模様（plain・quartered・star・hooped・peak・spots・checks・diamond） | |
+| `capColors` | 帽子の色 `[地, 模様]` | 2色 |
+
+- **旧い勝負服**（`{ pattern, colors, cap }`、REQ-ASSET-005）はそのままデザインとして読める：`sleeve: "match"`、`capColors: [colors[0], colors[1]]`（今までの帽子の塗り方と同じ）。
+- 特別色は `base`（基本16色のどれか）を持つ。旧いクライアントへは `base` の色で送り、禁止リストの照合も `base` の色の系統で行う。
+
+### 35.2 コード（`code`、全員が同じ見た目を描くための短い文字列）
+- 形：`"1"`（版）＋ 2桁の36進数（`0-9a-z`、小文字）×8 ＝ **17文字**。順に `pattern`・`colors[0]`・`colors[1]`・`colors[2]`（2色の模様は `zz`）・`sleeve`・`cap`・`capColors[0]`・`capColors[1]`。正規表現 `^1[0-9a-z]{16}$`。
+- 数はパーツごとの**固定の番号**（`silks-editor.json` の `code`。並べ替え・削除しても番号は再利用しない）。同じデザインは必ず同じコード、コード→デザイン→コードで同じ文字列（TS `encodeSilksCode`/`decodeSilksCode`、C# `SilksCode.Encode`/`Decode`。テストベクタ `contracts/silks-code.vectors.json` を両方の言語で確かめる）。
+- 旧い勝負服にもコードがある（35.1 の読み替えをしてから符号化。`silksCodeOf(silks)`）。旧い id・旧いクライアントはそのまま動く。
+- レースの `start.visuals.entrants[].silks`（§4・REQ-ASSET-006）・公開プロフィール・厩舎の写し・ライバルのカードの `silks` に、今までのキーに加えて `code`（エディタで作った時だけ）が入る。今までのキー（`pattern`・`colors`・`cap`）は旧いクライアント向けの近い形（特別色は `base`、新しい帽子は `plain`）。新しいクライアントは `code` があれば `code` を、無ければ今までのキーから作ったコードを描く。ハッシュされるレースの設定には入らない。
+
+### 35.3 検証（サーバー、保存・プリセット・装備の時）
+1. 形：知らない id・色数の違い・同じ色だけ（胴の色が全部同じ）は 400 `BAD_REQUEST`。
+2. 所持：使うパーツを全部持っていること（無ければ 409 `NOT_ELIGIBLE`、`details.locked` に足りないパーツ）。試着（35.6 の `preview`）だけは持っていなくてよい。
+3. 読みやすさ：胴の1色目と2色目、帽子の2色は**色の差（CIE76 ΔE）が `contrast.minDeltaE`（20）以上**。足りなければ 400 `BAD_REQUEST`（`details.problem: "LOW_CONTRAST"`）。どの組が足りないかはカタログの `lowContrastPairs` に全部載せる（クライアントは計算しない）。
+4. 実在の勝負服（REQ-ASSET-010）：胴の模様＋色の系統で禁止リストと照合（今までと同じ。特別色は `base`）。項目は任意で `sleeve`・`capColors` も持てる（書いてあれば一致する時だけ、書いていなければ袖・帽子の色が何でも一致）＝**袖や帽子を変えただけでは避けられない**。当たれば 400 `BAD_REQUEST`（`details.problem: "RESERVED"`）。リストが後から増えた時は、表示の時点で当たる勝負服を既定の勝負服に置き換える（今までと同じ `effectiveSilks`）。
+5. 旧い `PUT /v1/player/silks` は今までどおり（読みやすさの検査はしない）。保存すると `code` は消え、35.1 の読み替えになる。
+
+### 35.4 パーツの入手（`silks-editor.json`、REQ-SILK-004）
+| `source.kind` | 持っている条件 | 例 |
+|---|---|---|
+| `free`（既定） | いつでも | 胴の無料の模様・基本16色・袖 match/plain/hoops/stripes・帽子の今までの5種 |
+| `item` | `items[itemId] > 0`（直販の見た目 `kind: "silks_part"`・商品・パス・交換所の固定報酬） | 特別色 crimson（200コイン）・袖 stars・帽子 spots |
+| `achievement` | 実績のその段に届いた（`tierReached`。報酬を受け取ったかは問わない） | 特別色 royal（勝利数の2段目） |
+| `races` | 確定したレースの数（`stats.races`）が `count` 以上 | 特別色 sakura（50戦） |
+- 胴の模様の解放は今までどおり `visuals.json` の `unlockItem`（勝負服の柄の見た目 `kind: "silks"`・昇級記念パック）。
+- 直販のパーツは**見た目の直販**（§13・REQ-ITEM-005）そのもの：`items.json` `cosmetics[]` の `kind: "silks_part"`（`part: "color"|"sleeve"|"cap"`、`ref`、`asset`）。ショップの見た目タブにも並び、`POST /v1/shop/cosmetics/:itemId/buy`・コイン不足の案内（§29 `for=cosmetic`）・有償/無償の分け方（有償から先、`paidOnly` は有償だけ）がそのまま使える。1回買えばずっと持つ（期限なし）。
+- 遊んで解放するパーツは報酬として**配らない**（条件を満たすと持っている扱い）。コイン・ガチャの経済（E1〜E16）は変わらない。セットを集めると何かもらえる仕組みは無い（コンプガチャにならない）。
+
+### 35.5 返金で失ったパーツ（REQ-SILK-010）
+- ストアの返金（REQ-PUR-006）でパーツのアイテムが取り消された時（商品の中身・パスの報酬）：
+  - **装備中の勝負服**がそのパーツを使っていたら、同じ取引の中で**既定の勝負服**（`defaultSilks`、その人の最初の勝負服）に戻し、`resetNotice`（`{ at, reason: "refund" }`）を残す。エディタは「返金によりパーツが取り消されたため、勝負服を初期の柄に戻しました」を1回出して消す（`POST /v1/silks/notice-seen`）。
+  - **プリセット**は消さない。`usable: false`・`missing`（足りないパーツ）を付け、適用は 409 `NOT_ELIGIBLE`。パーツを買い直す・条件を満たすとまた使える。
+- コインで買ったパーツはコインの取引なので個別の返金は無い（コインの元になった購入が返金されると、今までどおりコインの借り（debt）になり、パーツは残る）。
+
+### 35.6 API（要認証。英語は §23 のとおり境界で訳す）
+- **`GET /v1/silks/editor`** → カタログ＋自分の状態（読み取りのみ、状態を作らない）
+```json
+{ "version": 1, "codeVersion": 1, "notice": "見た目のみ。ランク戦の能力には影響しません。パーツは抽選ではありません（固定の価格・条件）。",
+  "contrast": { "minDeltaE": 20 }, "lowContrastPairs": [["white", "platinum"], ["red", "crimson"]],
+  "parts": {
+    "patterns": [ { "id": "stars", "code": 9, "colors": 3, "name": "星", "owned": true, "source": { "kind": "free" }, "sourceLabel": "最初から使える", "asset": "silks/pattern/stars" } ],
+    "colors":   [ { "id": "crimson", "code": 16, "hex": "#B3122E", "base": "red", "name": "クリムゾン", "owned": false,
+                    "source": { "kind": "item", "itemId": "silkpart_color_crimson" }, "sourceLabel": "コイン200で購入",
+                    "shop": { "itemId": "silkpart_color_crimson", "price": 200, "currency": "any", "forSale": true } } ],
+    "sleeves":  [ { "id": "stars", "code": 6, "name": "星", "owned": false, "source": { "kind": "item", "itemId": "silkpart_sleeve_stars" }, "sourceLabel": "コイン200で購入", "shop": { "…": "…" }, "asset": "silks/sleeve/stars" } ],
+    "caps":     [ { "id": "diamond", "code": 7, "name": "ダイヤ", "owned": false, "source": { "kind": "achievement", "achievementId": "podiums", "tier": 3 }, "sourceLabel": "実績「3着以内」の3段目で解放", "asset": "silks/cap/diamond" } ] },
+  "current": { "design": { "pattern": "hoops", "colors": ["navy", "white"], "sleeve": "match", "cap": "plain", "capColors": ["navy", "white"] },
+               "code": "1010a00zz00000a00", "silks": { "pattern": "hoops", "colors": ["navy", "white"], "cap": "plain" }, "resetNotice": null },
+  "presets": [ { "slot": 0, "name": "本番用", "code": "1…", "design": { "…": "…" }, "savedAt": 0, "usable": true, "missing": [] } ],
+  "maxPresets": 5, "presetNameMax": 12, "wallet": { "free": 120, "paid": 0 } }
+```
+  - `sourceLabel`：`最初から使える`／`コイン{n}で購入`／`有償コイン{n}で購入`／`実績「{name}」の{tier}段目で解放`／`レースを{n}回走ると解放`／`商品・報酬で入手`（直販でないアイテム）。
+- **`POST /v1/silks/preview`** `{ design } | { code }` → 試着（何も変わらない、持っていなくてよい）：`{ design, code, owned: bool, locked: [{ type, id, name, sourceLabel, shop? }], totalPrice: { any, paidOnly }, problems: [{ problem: "LOW_CONTRAST"|"RESERVED", message }], savable }`。`savable` は「全部持っていて問題が無い」。
+- **`PUT /v1/silks`** `{ design } | { code }`（どちらか一方、他のキーは 400）→ 35.3 で検証して装備：`{ design, code, silks }`。同じデザインを送り直しても結果は同じ（冪等キー不要。KPI は変わった時だけ）。初心者・復帰ミッションの `silks` を数える（旧い PUT と同じ）。
+- **プリセット**（最大 `maxPresets` = 5、名前は自分にしか見えない・1〜12文字・制御文字不可・前後の空白は削る。名前を省くと「プリセット{n}」）：
+  - `POST /v1/silks/presets` `{ name?, design | code }` → 空いている一番小さい `slot` に保存（35.3 の検証。満杯は 409 `CONFLICT`）→ `{ presets }`。
+  - `PUT /v1/silks/presets/:slot` `{ name?, design? | code? }` → 上書き（名前だけの変更も可）。無い slot は 404。
+  - `DELETE /v1/silks/presets/:slot` → `{ presets }`（無い slot は 404）。
+  - `POST /v1/silks/presets/:slot/apply` → 装備（`PUT /v1/silks` と同じ検証・同じ応答。`usable: false` は 409 `NOT_ELIGIBLE`）。
+- **`POST /v1/silks/parts/:itemId/buy`**（冪等キー必須）→ パーツの直販（`kind: "silks_part"` か勝負服の柄 `kind: "silks"` だけ。ほかは 404）。中身は `POST /v1/shop/cosmetics/:itemId/buy` と同じ（所持済み 409 `ALREADY_PURCHASED`、コイン不足 409 `INSUFFICIENT_COINS`＋§29 の `details.shortfall`、未精算の返金 `UNSETTLED_DEBT`）→ `{ itemId, spent: { paid, free }, wallet, part: { type, id, owned: true } }`。
+- **`POST /v1/silks/notice-seen`** → `resetNotice` を消す。
+
+### 35.7 画面（プロトタイプ `silks` 画面、Unity は handoff 文書）
+- 上半分：騎手と馬の写真の上に、**色を塗り替えるレイヤー**（胴・袖・帽子のマスク）でライブプレビュー。下半分：タブ（胴の模様・色・袖・帽子）とパーツの一覧、プリセットの枠（5つ）。
+- 持っていないパーツも選べる（**試着中**のラベル＋鍵＋入手方法／価格）。試着のまま「保存」すると、足りないパーツと合計の価格を出す。買うのはパーツ1つずつ、既存の購入確認（価格・有償/無償の内訳・`有償限定`）を通す。
+- 読みやすさが足りない組・実在の勝負服に当たる組は、保存の前にサーバーの文言で知らせる（色の一覧では `lowContrastPairs` の相手を薄く表示）。
+- 急かさない：「今だけ」「残りわずか」「お得」「倍」・残り時間・通常価格は出さない。
+
+### 35.8 KPI
+| イベント | 送り手 | s1 | s2 | s3 | 数値 |
+|---|---|---|---|---|---|
+| `silks_edit` | サーバー（装備が変わった：`PUT /v1/silks`・プリセットの適用） | コード | `editor`/`preset` | | `value` 無料でないパーツの数、`count` プリセットの数 |
+| `silks_part_buy` | サーバー（パーツを買った：どちらの購入 API でも） | itemId | パーツの種類（`pattern`/`color`/`sleeve`/`cap`） | `any`/`paidOnly` | `paidCoins`・`freeCoins`、`value` 価格 |
+クエリは `docs/ops/kpi-queries.md`「勝負服エディタ」。
+
+### 35.9 クライアント
+- `Muchi.Client`：`SilksCode`（`Encode`・`Decode`・`IsValid`・`OfSilks`）、`SilksDesign`（`FromLegacy`）、`SilksCodeTables`、`SilksEditorView`・`SilksPart`・`SilksPreset`・`SilksPreview`、`ApiClient.GetSilksEditorAsync`・`PreviewSilksAsync`・`SaveSilksAsync`・`SaveSilksPresetAsync`・`UpdateSilksPresetAsync`・`DeleteSilksPresetAsync`・`ApplySilksPresetAsync`・`BuySilksPartAsync`・`MarkSilksNoticeSeenAsync`、`Silks.Code`。
+- `Muchi.Game`：`SilksEditorModel`（タブ・選択・試着中の判定・保存の前の確認・購入確認の行・プリセットの枠）。

@@ -56,6 +56,18 @@ export const CODE_EN: Record<string, string> = {
   '1枚でSR以上が1頭確定。天井ポイントは加算されません。': 'One ticket = one horse of SR or higher. Adds no pity points.',
   '見た目のみ。ランク戦の能力には影響しません。有償コインから先に使われます（「有償限定」の品は有償コインのみ）。': 'Looks only: no effect on ranked stats. Paid coins are used first ("paid coins only" items take paid coins only).',
 
+  // ---- 勝負服エディタ (silksEditor.ts sourceLabel / notices / problems; REQ-SILK-015)
+  '見た目のみ。ランク戦の能力には影響しません。パーツは抽選ではありません（固定の価格・条件）。': 'Looks only: no effect on ranked stats. Parts are never random (fixed prices and conditions).',
+  'コイン{n}で購入': 'Buy for {n} coins',
+  '有償コイン{n}で購入': 'Buy for {n} paid coins',
+  '実績「{name}」の{tier}段目で解放': 'Unlocks at tier {tier} of the achievement "{name}"',
+  'レースを{n}回走ると解放': 'Unlocks after {n} races',
+  '商品・報酬で入手': 'Comes with a product or reward',
+  '返金によりパーツが取り消されたため、勝負服を初期の柄に戻しました': 'A refund took back a part, so your silks went back to their original design',
+  '色が近すぎて見分けにくい組み合わせです（胴の1色目と2色目、帽子の2色）': 'These colours are too close to tell apart (body colours 1 and 2, or the two cap colours)',
+  '実在の勝負服と同じ（または紛らわしい）組み合わせのため使えません': 'This combination matches (or looks like) real registered silks, so it cannot be used',
+  'プリセット{n}': 'Preset {n}',
+
   // ---- skills (skills.ts conditionText / effectText / skillCatalog; REQ-UXS-050)
   '{n}秒': '{n} s',
   '最後の直線で先頭': 'Leading in the final straight',

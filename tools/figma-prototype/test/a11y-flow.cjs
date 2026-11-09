@@ -104,11 +104,43 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await page.screenshot({ path: f }); shots.push(f);
   };
 
+  /**
+   * Round 15 integration: boxes that must never overlap (each pair of visible matches, > 2 px both ways) — the home top bar
+   * (season, rival strip, gift envelope, activity bell, wallet, EN, menu) and the settings lists (rows, kickers, links).
+   */
+  const boxesClear = async (name, sels, english = false) => {
+    const r = await page.evaluate((sels) => {
+      // buttons and panels by their box; text labels by their glyphs (a label's box is often wider than its words)
+      const rectOf = (e) => { if (e.classList.contains('btn') || e.classList.contains('glass')) return e.getBoundingClientRect(); const rg = document.createRange(); rg.selectNodeContents(e); return rg.getBoundingClientRect(); };
+      const bs = sels.flatMap((s) => [...document.querySelectorAll('.screen.in ' + s)].filter((e) => e.offsetParent !== null).map((e) => ({ s: s + ' "' + e.textContent.trim().slice(0, 16) + '"', r: rectOf(e), e })));
+      const out = [];
+      for (let i = 0; i < bs.length; i++) for (let j = i + 1; j < bs.length; j++) {
+        const a = bs[i], b = bs[j];
+        if (a.e.contains(b.e) || b.e.contains(a.e)) continue;
+        const w = Math.min(a.r.right, b.r.right) - Math.max(a.r.left, b.r.left), h = Math.min(a.r.bottom, b.r.bottom) - Math.max(a.r.top, b.r.top);
+        if (w > 2 && h > 2) out.push(`${a.s} × ${b.s}`);
+      }
+      return { out, n: bs.length };
+    }, sels);
+    if (r.out.length) errors.push(`a11y ${name}${english ? ' (en)' : ''}: boxes overlap: ${r.out.slice(0, 6).join(' | ')}`);
+    return r;
+  };
+  const HOME_BAR = ['[data-name="Season"]', '.rv-strip', '.btn.envelope', '.btn.bell', '[data-name="Wallet"]', '.btn.lang', '[data-name="Menu"]'];
+  const SETTINGS_LISTS = ['[data-name="More"] > .btn', '[data-name="More"] > .kicker', '[data-name="Account"] > .btn', '[data-name="Account"] > .label'];
+
   await page.goto(base + 'index.html?demo=day7');
   await page.waitForFunction(() => globalThis.__muchi?.ready === true, null, { timeout: 90000 });
   await waitScreen(['home', 'link-prompt']);
   if ((await screen()) === 'link-prompt') await page.locator('.screen.in [data-label="あとで"]').click();
   await waitScreen('home');
+  // at the standard size: the home top bar (bell / gift envelope / rival strip) and the settings rows
+  await page.waitForTimeout(700);
+  const homeBar = await boxesClear('home top bar', HOME_BAR);
+  assert.ok(homeBar.n >= 6, 'home top bar: season, rival strip, envelope, bell, wallet, EN and menu are drawn: ' + homeBar.n);
+  await show('Settings'); await waitScreen('settings');
+  const settingsBoxes = await boxesClear('settings lists', SETTINGS_LISTS);
+  assert.ok(settingsBoxes.n >= 12, 'settings: the lists are drawn: ' + settingsBoxes.n);
+  await show('Home'); await waitScreen('home');
 
   // 1) the settings screen applies each choice everywhere and saves it on the server rules
   await show('Settings'); await waitScreen('settings');
@@ -150,6 +182,16 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('GiftBox'); await shot('gift-box', english, 600);
     await show('Collection'); await shot('collection', english, 600);
     await show('Training'); await shot('training', english, 600);
+    // Round 14 screens (integration): 殿堂, 勝負服エディタ, 実況パック, マイリプレイ
+    await show('Hall'); await waitScreen('hall'); await shot('hall', english, 600);
+    await show('SilksEditor'); await waitScreen('silks'); await shot('silks-editor', english, 600);
+    await show('CommentaryPacks'); await waitScreen('commentary-packs'); await shot('commentary-packs', english, 600);
+    await show('MyReplays'); await waitScreen('my-replays'); await shot('my-replays', english, 600);
+    // Round 15 screens: the pre-race advice panel (the lobby), アクティビティ; the settings rows again at this size
+    await show('RaceAdvice'); await waitScreen('lobby'); await page.waitForSelector('.screen.in .adv-row', { timeout: 15000 }); await shot('race-advice', english, 600);
+    await show('Activity'); await waitScreen('activity'); await shot('activity', english, 600);
+    await show('Settings'); await waitScreen('settings'); await boxesClear('settings lists (largest)', SETTINGS_LISTS, english);
+    await show('Home'); await waitScreen('home'); await page.waitForTimeout(700); await boxesClear('home top bar (largest)', HOME_BAR, english);
   };
   await keyScreens(false);
 
@@ -182,6 +224,11 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
   assert.equal(sawSpeed, false, 'reduce motion: no speed lines');
   assert.equal(await page.evaluate(() => globalThis.__vibrations), 0, 'haptics off: no vibration at all');
   await shot('result', false, 1000);
+  // Round 15 photo mode at the largest size: Japanese, then English in place (the finished race stays in the engine)
+  await page.locator('.screen.in [data-action="photo-result"]').click(); await waitScreen('photo', 20000); await shot('photo', false, 600);
+  await page.evaluate(() => globalThis.__muchi.l10n.set('en')); await waitScreen('photo'); await shot('photo', true, 600);
+  await page.evaluate(() => globalThis.__muchi.l10n.set('ja'));
+  await page.locator('.screen.in [data-action="ph-back"]').click(); await waitScreen('result');
 
   // 4) the scout reveal with reduce motion: the face at once, every result in the plan
   await show('Scout'); await waitScreen('scout');

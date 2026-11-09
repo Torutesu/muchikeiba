@@ -33,7 +33,7 @@ export type Outbound = { to: number | 'all'; msg: ServerMessage };
 export type RoomPhase = 'running' | 'awaitingResults' | 'verifying' | 'final';
 
 /** `skills`: slots whose unique skill fired (optional, REQ-ACH-002; presentation data outside the result hash). */
-interface ReportedResult { h: string; order: number[]; finishTicks?: number[]; skills?: number[] }
+interface ReportedResult { h: string; order: number[]; finishTicks?: number[]; skills?: number[]; assist?: 'whip' | 'full' }
 interface Conn {
   connected: boolean; disconnectedAt: number | null; cpu: boolean; everConnected: boolean;
   /** Last message time (REQ-NET-013: a silent socket counts as disconnected after disconnectGraceMs). */
@@ -55,6 +55,11 @@ export interface FinalOutcome {
    * claim anything). Absent = unknown (credits nothing).
    */
   skillFired?: number[];
+  /**
+   * REQ-ASSIST-007: [slot, level] for riders whose own `res` said かんたん操作 rode. Self-declared and about the
+   * reporter's own slot only (no trust needed: KPI only). Never part of the final message any client receives.
+   */
+  assisted?: [number, 'whip' | 'full'][];
 }
 
 export interface RoomSnapshot {
@@ -226,7 +231,7 @@ export class RaceRoomCore {
         if (this._phase !== 'running' && this._phase !== 'awaitingResults') return [{ to: slot, msg: { t: 'err', code: 'RACE_OVER' } }];
         if (this.results.has(slot)) return []; // first report counts; a client cannot swap its hash later
         if (this.confirmedTick < this.minResultTick) return [{ to: slot, msg: { t: 'err', code: 'RESULT_TOO_EARLY' } }];
-        this.results.set(slot, { h: msg.h, order: msg.order, ...(msg.finishTicks ? { finishTicks: msg.finishTicks } : {}), ...(msg.skills ? { skills: msg.skills } : {}) });
+        this.results.set(slot, { h: msg.h, order: msg.order, ...(msg.finishTicks ? { finishTicks: msg.finishTicks } : {}), ...(msg.skills ? { skills: msg.skills } : {}), ...(msg.assist ? { assist: msg.assist } : {}) });
         return this.checkResults(now);
     }
   }
@@ -388,8 +393,16 @@ export class RaceRoomCore {
     if (ft) this._final.finishTicks = ft;
     const sk = agreedSkills(this.config, reporters.filter(([, r]) => r.h === hash).map(([, r]) => r));
     if (sk) this._final.skillFired = sk;
+    this.noteAssisted();
     this._phase = 'final';
     return [{ to: 'all', msg: this.finalMsg() }];
+  }
+
+  /** REQ-ASSIST-007: each reporter's own assist level (human slots only), for the settlement's KPI. */
+  private noteAssisted() {
+    if (!this._final || this._final.status !== 'confirmed') return;
+    const a = [...this.results.entries()].filter(([s, r]) => r.assist && this.humanSlots.includes(s)).map(([s, r]) => [s, r.assist!] as [number, 'whip' | 'full']);
+    if (a.length) this._final.assisted = a.sort((x, y) => x[0] - y[0]);
   }
 
   /** Apply the verifier's re-simulation (null = verifier unavailable → race void). */
@@ -402,6 +415,7 @@ export class RaceRoomCore {
       const sk = out.skillsFired ? skilledSlots(this.config, out.skillsFired) : agreedSkills(this.config, [...this.results.values()].filter((r) => r.h === out.resultHash));
       if (sk) this._final.skillFired = sk;
     }
+    this.noteAssisted();
     this._phase = 'final';
     return [{ to: 'all', msg: this.finalMsg() }];
   }

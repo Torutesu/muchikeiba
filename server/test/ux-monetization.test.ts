@@ -208,7 +208,8 @@ describe('REQ-UXS-021 unclaimed pass rewards are granted at the season close', (
     const free = m.progression.passRewards.free.reward.freeCoins!;
     const prem = m.progression.passRewards.premium.reward.freeCoins!;
     const s = await w.svc.state('p');
-    expect(s.wallet.free - before).toBe(4 * free + 4 * prem + (close.reward?.freeCoins ?? 0));
+    expect(s.wallet.free - before).toBe(4 * free + 4 * prem); // the pass close stays a direct grant (protocol §26.1)
+    expect((s.giftBox?.box ?? []).reduce((a, e) => a + (e.contents.freeCoins ?? 0), 0)).toBe(close.reward?.freeCoins ?? 0); // the season reward: gift box
     expect(s.ledger.filter((l) => l.ref.startsWith('passclose:2026-11:'))).toHaveLength(8);
     // the job retries (dead-letter retry, overlapping cron): nothing is paid twice
     const again = await w.svc.closeSeason('p', '2026-11', 50);

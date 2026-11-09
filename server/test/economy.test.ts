@@ -154,13 +154,33 @@ describe('economy targets (90 days, 3 seeds)', () => {
     const all = await run();
     const f = all.f2p!;
     // the 90-day payout of a daily free player (races, wins, podiums, courses, skills) stays below what the daily
-    // 「3戦する」 mission gave up for it (20 → 18 coins × 90 days), so E1–E13 keep their Round 10 values
+    // 「3戦する」 mission gave up for it (20 → 18 coins × 90 days; 18 → 16 went to the weekly rival, E16), so E1–E13 keep their Round 10 values
     expect(f.achievementCoins).toBeGreaterThan(0);
     expect(f.achievementCoins).toBeLessThanOrEqual(2 * 90);
     // spending money never moves an achievement: the paying personas play the same races and get exactly the same
     for (const id of ['light', 'medium', 'allowance', 'f2p_invited', 'f2p_inviter', 'ads']) expect(all[id]!.achievementCoins).toBe(f.achievementCoins);
     expect(all.f2p_casual!.achievementCoins).toBeLessThan(f.achievementCoins);
   }, 600_000);
+
+  it('E16 weekly rival (REQ-RIVAL-014): fixed free coins, offset by the daily 3-race mission; paying never changes the result', async () => {
+    const all = await run();
+    const f = all.f2p!;
+    // every week settles once (12 full weeks in 90 days after the first one) and pays a fixed amount
+    expect(f.rivalWeeks).toBeGreaterThanOrEqual(11);
+    expect(f.rivalCoins).toBeGreaterThan(0);
+    const c = m.progression.rival!;
+    expect(f.rivalCoins).toBeLessThanOrEqual(f.rivalWeeks * c.rewards.win.freeCoins);
+    // the 90-day payout stays below what 「3戦する」 gave up for it (18 → 16 coins × 90 days), so E1–E15 keep their values
+    expect(f.rivalCoins).toBeLessThanOrEqual(2 * 90);
+    // paying never moves the weekly result: the same races give the same rival coins
+    for (const id of ['light', 'medium', 'allowance', 'f2p_invited', 'f2p_inviter', 'ads']) expect(all[id]!.rivalCoins).toBe(f.rivalCoins);
+    // E1/E2 in range for every free daily persona that the targets apply to
+    for (const id of ['f2p', 'f2p_invited', 'f2p_inviter']) {
+      expect(all[id]!.pullsPerMonth).toBeLessThanOrEqual(66);
+      expect(all[id]!.ssrPerMonth).toBeLessThanOrEqual(2.8);
+    }
+    expect(f.pullsPerMonth).toBeLessThanOrEqual(65);
+  }, 3_600_000);
 
   it('E9 friend races cannot replace ranked play as an income (daily cap ≤ 30% of a free player day)', async () => {
     const r = (await run()).f2p!;

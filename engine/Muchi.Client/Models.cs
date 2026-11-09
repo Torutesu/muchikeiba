@@ -255,6 +255,10 @@ namespace Muchi.Client
         public ExperimentsView Experiments;
         /// <summary>REQ-UXS-040: account deletion status.</summary>
         public DeletionStatus Deletion;
+        /// <summary>REQ-BOX-004: the home envelope badge (unclaimed gifts, and how many expire soon).</summary>
+        public GiftBadge GiftBox = new GiftBadge();
+        /// <summary>REQ-ASSIST-008: かんたん操作 setting and the one-time suggestion (never null; Off when the server sent none).</summary>
+        public AssistSettings Assist = new AssistSettings();
         public int Rating, RatingDeviation, RankedRaces;
         public string SeasonId, ClassId;
         public int SeasonPoints;
@@ -281,10 +285,12 @@ namespace Muchi.Client
                 PartnerHorseId = J.Str(J.Opt(o, "flags"), "partnerHorseId"),
                 Consent = ConsentView.Parse(J.Opt(o, "consent")), Unlocks = UnlocksView.Parse(J.Opt(o, "unlocks")),
                 Experiments = ExperimentsView.Parse(J.Opt(o, "experiments")), Deletion = DeletionStatus.Parse(J.Opt(o, "deletion")),
+                GiftBox = GiftBadge.Parse(J.Opt(o, "giftBox")),
                 Rating = J.Int(r, "r"), RatingDeviation = J.Int(r, "rd"), RankedRaces = J.Int(r, "rankedRaces"),
                 SeasonId = J.Str(s, "id"), ClassId = J.Str(s, "classId"), SeasonPoints = J.Int(s, "points"),
                 DisplayName = J.Str(pr, "displayName"), TitleId = J.Str(pr, "titleId"), Silks = Silks.Parse(J.Opt(pr, "silks")) ?? new Silks(),
                 Equipment = Equipment.Parse(J.Opt(o, "equipment")),
+                Assist = AssistSettings.Parse(J.Opt(o, "assist")),
             };
         }
     }
@@ -935,6 +941,8 @@ namespace Muchi.Client
         public bool Season, Friends, Invites, Events;
         /// <summary>REQ-CB-007: lapse reminders (opt-in, off by default). Ask once before turning it on (06 §3.5).</summary>
         public bool Comeback;
+        /// <summary>REQ-BOX-011: a compensation arrived in the gift box (on by default).</summary>
+        public bool Gifts;
         /// <summary>Quiet hours in JST (0-23); null = none. Urgent pushes (room invites) are not sent then; others are delayed.</summary>
         public int? QuietStartHour, QuietEndHour;
         public int DailyCap, Devices;
@@ -948,7 +956,7 @@ namespace Muchi.Client
             var t = J.Opt(o, "topics");
             return new PushPreferences
             {
-                Season = J.Bool(c, "season"), Friends = J.Bool(c, "friends"), Invites = J.Bool(c, "invites"), Events = J.Bool(c, "events"), Comeback = J.Bool(c, "comeback"),
+                Season = J.Bool(c, "season"), Friends = J.Bool(c, "friends"), Invites = J.Bool(c, "invites"), Events = J.Bool(c, "events"), Comeback = J.Bool(c, "comeback"), Gifts = J.Bool(c, "gifts"),
                 QuietStartHour = q == null ? (int?)null : J.Int(q, "startHour"), QuietEndHour = q == null ? (int?)null : J.Int(q, "endHour"),
                 DailyCap = J.Int(o, "dailyCap"), Devices = J.Int(o, "devices"),
                 SubscribeTopics = J.List(t, "subscribe", x => x.AsString()), UnsubscribeTopics = J.List(t, "unsubscribe", x => x.AsString()),
@@ -959,14 +967,14 @@ namespace Muchi.Client
     /// <summary>Only the fields you set are sent. Set <see cref="ClearQuietHours"/> to turn quiet hours off.</summary>
     public sealed class PushPreferencesPatch
     {
-        public bool? Season, Friends, Invites, Events, Comeback;
+        public bool? Season, Friends, Invites, Events, Comeback, Gifts;
         public int? QuietStartHour, QuietEndHour;
         public bool ClearQuietHours;
 
         internal JsonNode ToJson()
         {
             var b = JsonNode.Obj();
-            if (Season.HasValue || Friends.HasValue || Invites.HasValue || Events.HasValue || Comeback.HasValue)
+            if (Season.HasValue || Friends.HasValue || Invites.HasValue || Events.HasValue || Comeback.HasValue || Gifts.HasValue)
             {
                 var c = JsonNode.Obj();
                 if (Season.HasValue) c.Set("season", Season.Value);
@@ -974,6 +982,7 @@ namespace Muchi.Client
                 if (Invites.HasValue) c.Set("invites", Invites.Value);
                 if (Events.HasValue) c.Set("events", Events.Value);
                 if (Comeback.HasValue) c.Set("comeback", Comeback.Value);
+                if (Gifts.HasValue) c.Set("gifts", Gifts.Value);
                 b.Set("categories", c);
             }
             if (ClearQuietHours) b.Set("quietHours", JsonNode.Null());

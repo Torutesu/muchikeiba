@@ -108,7 +108,9 @@ describe('season rollover (REQ-SEASON-001..003)', () => {
     // re-running the close (cron overlap) pays nothing more
     expect((await w.svc.closeSeason('top', '2026-11', 1)).status).toBe('already');
     expect((await w.svc.state('top')).wallet.free).toBe(coinsAfter);
-    expect(top.ledger.some((l) => l.ref === 'season:2026-11' && l.delta === 300)).toBe(true); // C rank ≤10 band
+    // REQ-BOX-001: the season reward is delivered to the gift box (C rank ≤10 band)
+    expect(top.giftBox!.box.some((e) => e.ref === 'season:2026-11' && e.source === 'season' && e.contents.freeCoins === 300 && e.rank === 1)).toBe(true);
+    expect((await w.svc.state('top')).giftBox!.box.filter((e) => e.ref === 'season:2026-11')).toHaveLength(1);
   });
 
   it('a player who acted in the new month before the job still gets the old season’s reward', async () => {

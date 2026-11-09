@@ -71,6 +71,10 @@
 | `ad_reject` | サーバー（コールバックを弾いた） | 理由（`user_mismatch`/`unknown_session`/`session_used`/`expired`/`clock_skew`/`ad_unit_mismatch`/`cap`/`deleting`） | 枠ID | ネットワーク | `double5` その日の弾いた数 |
 | `training_start` | サーバー（調教を始めた、REQ-TRAIN-014） | メニュー（`hill`/`wood`/`pool`/`awase`） | 馬のレア度 | | `double9` 開始時の疲れ、`double5` 今日の回数 |
 | `training_done` | サーバー（調教を記録した） | メニュー | 評価 `great`/`good`/`normal` | `done`/`skipped`/`expired` | `double9` 伸びの合計、`double5` ミニゲームの点数、`double8` そのアカウントの初回 |
+| `assist_enable` | サーバー（かんたん操作をオンにした・レベルを変えた、REQ-ASSIST-011） | `whip`/`full` | `settings`/`prompt` | 前のレベル | `double9` その時の最下位の連続、`double8` 初めてオンにした |
+| `assist_disable` | サーバー（かんたん操作をオフにした） | 前のレベル | `settings`/`prompt` | | |
+| `assist_prompt_view` | サーバー（一度だけの提案シートが出た） | | | | `double9` 最下位の連続 |
+| `race_assisted` | サーバー（かんたん操作ありで精算されたレース。本人の申告、KPI専用） | `whip`/`full` | モード | | `double4` 着順、`double5` 頭数 |
 | `consent` | サーバー | 規約の版 | プライバシーポリシーの版 | | |
 | `partner_granted` | サーバー | テンプレートID（`t_partner`） | | | |
 | `ab_assign` | サーバー（初回の bootstrap、実験ごとに1回） | 実験ID | バケットID | | |
@@ -529,6 +533,47 @@ ORDER BY runs DESC
 LIMIT 50
 ```
 
+## ライバル：表示・対戦・週の結果（REQ-RIVAL-015、contracts/protocol.md §28）
+
+**週ごとの結果の内訳**（課金者／無課金で分ける）。`blob10` は週ID、`blob8` は結果、`blob9` は人間のライバルか CPU か。`not_enough` が多いなら3戦の条件が重い、`no_contest` が多いならブロック・オプトアウトが多い（組み合わせの質の問題）。
+
+```sql
+SELECT
+  blob10 AS week, blob7 AS payer, blob9 AS kind,
+  sumIf(_sample_interval, blob8 = 'win') AS win, sumIf(_sample_interval, blob8 = 'lose') AS lose, sumIf(_sample_interval, blob8 = 'draw') AS draw,
+  sumIf(_sample_interval, blob8 = 'no_contest') AS no_contest, sumIf(_sample_interval, blob8 = 'not_enough') AS not_enough,
+  round(sumIf(_sample_interval * double3, blob1 = 'rival_week_result') / sum(_sample_interval), 1) AS avg_free_coins
+FROM muchi_kpi
+WHERE blob1 = 'rival_week_result' AND timestamp > NOW() - INTERVAL '60' DAY
+GROUP BY week, payer, kind
+ORDER BY week DESC, payer, kind
+```
+
+**直接対決が起きているか**（人間のライバルと同じランク戦になった回数／日）。少ないなら同時接続が多くて同じ部屋になりにくい（タイムアタックの比較が実質の勝負になっている）。挑戦状のレース（`challenge`）の数も見る。
+
+```sql
+SELECT blob6 AS day, blob8 AS kind, sum(_sample_interval) AS races, count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'rival_race' AND timestamp > NOW() - INTERVAL '14' DAY
+GROUP BY day, kind
+ORDER BY day DESC, kind
+```
+
+**見られているか**（1日1回の `rival_view` を出したプレイヤー ÷ その日ランク戦を走ったプレイヤー）と、オプトアウトの推移（`rival_opt`）。
+
+```sql
+SELECT blob6 AS day,
+  count(DISTINCT if(blob1 = 'rival_view', blob2, NULL)) AS viewers,
+  count(DISTINCT if(blob1 = 'race_finish' AND blob8 = 'ranked', blob2, NULL)) AS ranked_players,
+  sumIf(_sample_interval, blob1 = 'rival_opt' AND blob8 = 'out') AS opt_out, sumIf(_sample_interval, blob1 = 'rival_opt' AND blob8 = 'in') AS opt_in
+FROM muchi_kpi
+WHERE blob1 IN ('rival_view', 'race_finish', 'rival_opt') AND timestamp > NOW() - INTERVAL '14' DAY
+GROUP BY day
+ORDER BY day DESC
+```
+
+- **公平性の監視**：`avg_free_coins` が課金者と無課金で大きく違うなら、どちらかの結果が偏っている（ライバルの報酬は課金で増えない前提）。勝ちの率が人間のライバルで50%から大きく外れる週は、組み合わせのレーティング差（`maxRatingGap`・`jitter`）を見直す。
+
 ## 注意
 
 - Analytics Engine のデータ保持期間は有限（現時点で約3か月）です。長期の推移はこのクエリ結果を毎月どこかに書き出して残します。
@@ -548,3 +593,63 @@ GROUP BY achievement, tier
 ORDER BY achievement, tier
 ```
 - 実績は課金・ガチャでは進まない（REQ-ACH-007）ので、課金者と無課金者（`blob7`）で解放の速さに差が出たら、遊び方の違いとして読む（支払いの効果ではない）。
+
+## プレゼントボックス：届いた・受け取った・期限切れ（REQ-BOX-013、Round 12、contracts/protocol.md §26）
+出どころ（`blob8`）ごとに、届いた件数・受け取った件数・期限切れの件数と無償コイン（`double3`）。`gift_claim` の `blob9` は `one` / `all` / `overflow`（満杯で自動受け取り）、`double9` は届いてから受け取るまでの時間（時間）。
+
+```sql
+SELECT blob8 AS source,
+       SUM(IF(blob1 = 'gift_receive', _sample_interval, 0)) AS received,
+       SUM(IF(blob1 = 'gift_claim', _sample_interval, 0)) AS claimed,
+       SUM(IF(blob1 = 'gift_expire', _sample_interval, 0)) AS expired,
+       SUM(IF(blob1 = 'gift_expire', double3 * _sample_interval, 0)) AS expired_free_coins,
+       SUM(IF(blob1 = 'gift_claim' AND blob9 = 'overflow', _sample_interval, 0)) AS overflow_claims
+FROM muchi_kpi
+WHERE blob1 IN ('gift_receive', 'gift_claim', 'gift_expire') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY source
+ORDER BY received DESC
+```
+
+- **補填の期限切れ**（`source = 'ops_compensation'` の `expired`）が出ていたら、通知（`gift_arrived`）が届いていないか、90日では短い。補填の告知と合わせて見る。
+- **overflow** が出るのはボックスが `maxUnclaimed`（500）に達したプレイヤーだけ。多いなら一括配布の頻度が高すぎる。
+- 受け取りまでの時間（中央値）：
+
+```sql
+SELECT blob8 AS source, quantileExactWeighted(0.5)(double9, _sample_interval) AS median_hours
+FROM muchi_kpi
+WHERE blob1 = 'gift_claim' AND blob9 != 'overflow' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY source
+```
+
+## かんたん操作：提案から使い始めるまでと公平性（REQ-ASSIST-011、contracts/protocol.md §27）
+
+**提案の効き目**（週ごと）：最下位が3回続いて提案が出た人のうち、その場でオンにした人（`assist_enable` の `blob9 = 'prompt'`）と、設定から自分でオンにした人。
+
+```sql
+SELECT
+  toStartOfWeek(timestamp) AS week,
+  sumIf(_sample_interval, blob1 = 'assist_prompt_view') AS prompts,
+  sumIf(_sample_interval, blob1 = 'assist_enable' AND blob9 = 'prompt') AS enabled_from_prompt,
+  sumIf(_sample_interval, blob1 = 'assist_enable' AND blob9 = 'settings' AND double8 = 1) AS first_enable_from_settings,
+  sumIf(_sample_interval, blob1 = 'assist_disable') AS disabled,
+  round(sumIf(_sample_interval, blob1 = 'assist_enable' AND blob9 = 'prompt') / sumIf(_sample_interval, blob1 = 'assist_prompt_view'), 3) AS prompt_conversion
+FROM muchi_kpi
+WHERE blob1 IN ('assist_prompt_view', 'assist_enable', 'assist_disable') AND timestamp > NOW() - INTERVAL '56' DAY
+GROUP BY week
+ORDER BY week DESC
+```
+
+**補助ありのレースの着順**（モード・レベルごと）。`race_assisted` の平均着順がランク戦で補助なしの上手な層（例：勝率上位10%）より良くなっていたら、R11（balance-targets §2.3）の前提が崩れている。補助の定数を見直す。
+
+```sql
+SELECT blob8 AS level, blob9 AS mode, sum(_sample_interval) AS races,
+  round(sum(_sample_interval * double4) / sum(_sample_interval), 2) AS avg_place,
+  round(sumIf(_sample_interval, double4 = 1) / sum(_sample_interval), 3) AS win_rate
+FROM muchi_kpi
+WHERE blob1 = 'race_assisted' AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY level, mode
+ORDER BY races DESC
+```
+
+- 補助を使った人の継続（D7）は、`assist_enable` を出した人の `blob2` で「リテンション」のクエリを絞って比べる。
+- `client_race_start` の `blob9` にもレベルが入る（オフラインのレース・タイムアタックを含めた使われ方）。

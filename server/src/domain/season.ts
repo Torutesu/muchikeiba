@@ -1,3 +1,5 @@
+import { deliverGift } from './giftBox.js';
+import type { KpiEvent } from './kpi.js';
 import { AppError } from './errors.js';
 import { STAT_KEYS, type ClassDef, type Master, type Reward, type Stats } from './master.js';
 import { grantReward } from './items.js';
@@ -67,7 +69,7 @@ export function seasonRewardFor(m: Master, classId: string, rank: number | null)
  * REQ-SEASON-002: grant the reward of a closed season once. Called by the rollover job with the final
  * class rank. Idempotent: a rewarded record is never paid twice; a player who never raced gets nothing.
  */
-export function closeSeason(m: Master, s: PlayerState, seasonId: string, rank: number | null, now: number) {
+export function closeSeason(m: Master, s: PlayerState, seasonId: string, rank: number | null, now: number, emit?: (e: KpiEvent) => void) {
   const h = s.seasonHistory.find((x) => x.seasonId === seasonId);
   // REQ-UXS-021: the pass close already ran in rollSeason (this transaction's first step); report it
   const pass = (s.passHistory ?? []).find((x) => x.seasonId === seasonId) ?? null;
@@ -76,6 +78,7 @@ export function closeSeason(m: Master, s: PlayerState, seasonId: string, rank: n
   h.rank = rank;
   h.rewarded = true;
   const reward = h.races > 0 ? seasonRewardFor(m, h.classId, rank) : null;
-  if (reward) grantReward(s, reward, now, 'season ' + seasonId + ' ' + h.classId + ' rank ' + (rank ?? '-'), 'season:' + seasonId);
+  // REQ-BOX-001: delivered to the gift box (straight into the wallet when the box is off)
+  if (reward) deliverGift(m, s, { source: 'season', ref: 'season:' + seasonId, reward, note: 'season ' + seasonId + ' ' + h.classId + ' rank ' + (rank ?? '-'), rank }, now, emit);
   return { status: 'rewarded' as const, reward, classId: h.classId, nextClassId: h.nextClassId, pass };
 }

@@ -1,3 +1,4 @@
+import type { Give } from './giftBox.js';
 import { AppError } from './errors.js';
 import { assetKeys } from './visuals.js';
 import { addItems, grantReward } from './items.js';
@@ -216,7 +217,8 @@ export function eventRankReward(ev: EventDef, rank: number | null): Reward | nul
 }
 
 /** REQ-EVENT-008: final rank reward, once; players who never raced get nothing. */
-export function closeEventForPlayer(ev: EventDef, s: PlayerState, rank: number | null, now: number, m?: Pick<Master, 'templateById'>) {
+/** `give` (REQ-BOX-001): where the rank reward goes (the service passes the gift box; absent = straight into the wallet). */
+export function closeEventForPlayer(ev: EventDef, s: PlayerState, rank: number | null, now: number, m?: Pick<Master, 'templateById'>, give?: Give) {
   const st = ensureEvent(s, ev.id);
   if (st.closed) return { status: 'already' as const, reward: null };
   st.closed = true;
@@ -224,7 +226,10 @@ export function closeEventForPlayer(ev: EventDef, s: PlayerState, rank: number |
   // a fee still held when the event is over can never be used: give it back
   if (st.pending) cancelEntry(s, ev.id, null, now);
   const reward = st.races > 0 ? eventRankReward(ev, rank) : null;
-  if (reward) grantReward(s, reward, now, `event ${ev.id} rank ${rank ?? '-'}`, `event:${ev.id}:rank`, m);
+  if (reward) {
+    if (give) give(reward, `event ${ev.id} rank ${rank ?? '-'}`, `event:${ev.id}:rank`, 'event', rank);
+    else grantReward(s, reward, now, `event ${ev.id} rank ${rank ?? '-'}`, `event:${ev.id}:rank`, m);
+  }
   return { status: 'rewarded' as const, reward };
 }
 

@@ -7,7 +7,7 @@ import { shopProducts } from '../domain/shop.js';
 import { skillCatalog } from '../domain/skills.js';
 import { ticketDisclosure } from '../domain/itemShop.js';
 import type { Master } from '../domain/master.js';
-import type { PlayerService } from '../domain/service.js';
+import type { PlayerService, ShortfallQuery } from '../domain/service.js';
 import type { SubscriptionStatus, VerifiedReceipt } from '../domain/purchase.js';
 import type { PurchaseRecord } from '../domain/player.js';
 import { appleAccountToken, googleAccountId } from '../stores/binding.js';
@@ -33,13 +33,15 @@ import { InviteService, type InviteDirectory, type InvitePlayers } from '../doma
 import { SsvError, verifyAdMobCallback, type SsvKeySource } from '../ads/ssv.js';
 import { LOCALES, resolveLocale, type Locale } from '../i18n/locale.js';
 import { catalogFor, localize, type Catalog } from '../i18n/catalog.js';
+import { ASSIST_LEVELS, ASSIST_SOURCES } from '../domain/assist.js';
+import type { RivalService } from '../domain/rivalService.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
   | 'bootstrap' | 'view' | 'setAge' | 'purchaseIntent' | 'purchase' | 'refund' | 'draw' | 'tutorialDraw' | 'pityExchange' | 'gachaStatus'
   | 'nameHorse' | 'awaken' | 'retire' | 'breedingPreview' | 'breed' | 'pedigree' | 'claimLogin' | 'missions'
   | 'claimMission' | 'passView' | 'claimPass' | 'applyRace' | 'raceEntry'
-  | 'shopProducts' | 'shopOffers' | 'markOfferViewed' | 'allowance' | 'claimAllowance' | 'firstWinBonus'
+  | 'shopProducts' | 'shopOffers' | 'markOfferViewed' | 'coinShortfall' | 'allowance' | 'claimAllowance' | 'firstWinBonus'
   | 'storeRenewal' | 'subscriptionStatus'
   | 'setDisplayName' | 'equipTitle' | 'titles' | 'stats' | 'publicProfile' | 'closeSeason' | 'setSilks'
   | 'useTicket' | 'cosmetics' | 'buyCosmetic' | 'setEquipment'
@@ -60,7 +62,10 @@ export type PlayerMethod =
   | 'comeback' | 'comebackClaimLogin' | 'comebackClaimMission' | 'comebackWelcomed' | 'whatsNew' | 'whatsNewSeen'
   | 'ads' | 'setAdPref' | 'adStart' | 'adSession' | 'adReward'
   | 'collection' | 'achievements' | 'claimAchievement' | 'claimAllAchievements'
-  | 'training' | 'trainingStart' | 'trainingFinish' | 'trainingUseItem';
+  | 'training' | 'trainingStart' | 'trainingFinish' | 'trainingUseItem'
+  | 'giftBox' | 'giftClaim' | 'giftClaimAll'
+  | 'assist' | 'setAssist' | 'assistPromptSeen'
+  | 'rivalPeek' | 'rivalSync' | 'rivalSetOptOut' | 'rivalBlock' | 'rivalChallengeCheck' | 'rivalChallengeReceive' | 'rivalSeen' | 'rivalPush';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -118,6 +123,8 @@ export interface AppContext {
   stable?: StableService;
   /** REQ-INV-*: friend invite codes (makeInviteService). Absent → the routes answer NOT_FOUND. */
   invite?: InviteService;
+  /** REQ-RIVAL-*: weekly rival (domain/rivalService.ts). Absent → the routes answer NOT_FOUND. */
+  rival?: RivalService;
   clock?: () => number;
   paidBalance(): Promise<unknown>;
   /**
@@ -149,8 +156,23 @@ export interface AppContext {
 export interface ClientConfigInfo { versionId: string; hash: string; rulesetVersion: string; activatedAt: number | null }
 
 const json = (data: unknown, status = 200, lang?: Locale) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', ...(lang ? { 'content-language': lang, vary: 'accept-language' } : {}) } });
-const errorResponse = (e: AppError, l?: { lang: Locale; cat: Catalog }) =>
-  json(l ? localize({ error: { code: e.code, message: e.message } }, l.lang, l.cat) : { error: { code: e.code, message: e.message } }, e.status, l?.lang);
+const errorResponse = (e: AppError, l?: { lang: Locale; cat: Catalog }) => {
+  // REQ-SHORT-004: `details` only where the domain attached it (INSUFFICIENT_COINS); every other error keeps its shape
+  const body = { error: { code: e.code, message: e.message, ...(e.details ? { details: e.details } : {}) } };
+  return json(l ? localize(body, l.lang, l.cat) : body, e.status, l?.lang);
+};
+
+/** REQ-SHORT-005: `for=gacha&bannerId&count` | `for=cosmetic&itemId` | `for=coins&coins&kind` (anything else is 400). */
+function shortfallQuery(q: URLSearchParams): ShortfallQuery {
+  const raw = Object.fromEntries(q.entries());
+  const r = z.discriminatedUnion('for', [
+    z.object({ for: z.literal('gacha'), bannerId: id, count: z.enum(['1', '10']).default('10').transform((v) => (v === '1' ? 1 : 10) as 1 | 10) }).strict(),
+    z.object({ for: z.literal('cosmetic'), itemId: id }).strict(),
+    z.object({ for: z.literal('coins'), coins: z.string().regex(/^[1-9][0-9]{0,6}$/).transform(Number).refine((n) => n <= 1_000_000), kind: z.enum(['any', 'paid']).default('any') }).strict(),
+  ]).safeParse(raw);
+  if (!r.success) throw new AppError('BAD_REQUEST', r.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '));
+  return r.data;
+}
 
 async function body<T>(req: Request, schema: z.ZodType<T>): Promise<T> {
   let raw: unknown;
@@ -198,6 +220,14 @@ const tournaments = (c: AppContext) => {
 const stable = (c: AppContext) => {
   if (!c.stable) throw new AppError('NOT_FOUND', 'stables are not available');
   return c.stable;
+};
+const rival = (c: AppContext) => {
+  if (!c.rival) throw new AppError('NOT_FOUND', 'rivals are not available');
+  return c.rival;
+};
+const weekIdParam = (s: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) throw new AppError('BAD_REQUEST', 'bad week id');
+  return s;
 };
 const invite = (c: AppContext) => {
   if (!c.invite || !c.master.progression.invite) throw new AppError('NOT_FOUND', 'invites are not available');
@@ -292,6 +322,13 @@ export const routes: Route[] = [
     return c.player(u).invoke('requestDeletion', u, b.data.confirmToken ?? q ?? null);
   } },
   { method: 'POST', path: '/v1/player/deletion/cancel', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('cancelDeletion', u) },
+  // REQ-ASSIST-008/010: かんたん操作 (easy controls) setting — default off; also in GET /v1/player as `assist`
+  { method: 'GET', path: '/v1/player/assist', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('assist', u) },
+  { method: 'PUT', path: '/v1/player/assist', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ level: z.enum(ASSIST_LEVELS), source: z.enum(ASSIST_SOURCES).optional() }).strict());
+    return c.player(u).invoke('setAssist', u, b.level, b.source ?? 'settings');
+  } },
+  { method: 'POST', path: '/v1/player/assist/prompt-seen', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('assistPromptSeen', u) },
   { method: 'PUT', path: '/v1/player/age', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ birthYear: z.number().int(), birthMonth: z.number().int().min(1).max(12), guardianConsent: z.boolean() }));
     return c.player(u).invoke('setAge', u, b.birthYear, b.birthMonth, b.guardianConsent);
@@ -307,6 +344,8 @@ export const routes: Route[] = [
   // REQ-UXS-017: offers to show (triggers, shown-once records); bought offers are never returned
   { method: 'GET', path: '/v1/shop/offers', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('shopOffers', u) },
   { method: 'POST', path: '/v1/shop/offers/:offerId/view', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('markOfferViewed', u, offerIdParam(p.offerId!)) },
+  // REQ-SHORT-005: T6 — the coin shortfall of a gacha pull / a cosmetic / an amount, before trying (read only, protocol §29)
+  { method: 'GET', path: '/v1/shop/shortfall', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('coinShortfall', u, shortfallQuery(new URL(r.url).searchParams)) },
   // REQ-UXS-018: 厩舎手当 (30-day daily-coin pack)
   { method: 'GET', path: '/v1/shop/allowance', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('allowance', u) },
   { method: 'POST', path: '/v1/shop/allowance/claim', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('claimAllowance', u, idem(r)) },
@@ -510,6 +549,24 @@ export const routes: Route[] = [
   { method: 'GET', path: '/v1/titles', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('titles', u) },
   // 図鑑・実績 (REQ-COL-*, REQ-ACH-*)
   { method: 'GET', path: '/v1/collection', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('collection', u) },
+  // プレゼントボックス (REQ-BOX-*, contracts/protocol.md §26)
+  { method: 'GET', path: '/v1/gift-box', auth: 'player', handler: async (r, _p, c, u) => {
+    const q = new URL(r.url).searchParams;
+    const tab = q.get('tab') ?? 'box';
+    if (tab !== 'box' && tab !== 'history') throw new AppError('BAD_REQUEST', 'tab must be box or history');
+    const int = (k: string, d: number, lo: number, hi: number) => {
+      const v = q.get(k);
+      if (v === null) return d;
+      if (!/^\d{1,5}$/.test(v) || Number(v) < lo || Number(v) > hi) throw new AppError('BAD_REQUEST', `${k} must be an integer ${lo}..${hi}`);
+      return Number(v);
+    };
+    return c.player(u).invoke('giftBox', u, tab, int('offset', 0, 0, 10_000), int('limit', 50, 1, 100));
+  } },
+  { method: 'POST', path: '/v1/gift-box/claim-all', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('giftClaimAll', u, idem(r)) },
+  { method: 'POST', path: '/v1/gift-box/:giftId/claim', auth: 'player', handler: async (r, p, c, u) => {
+    if (!/^gift_[0-9]{1,9}$/.test(p.giftId!)) throw new AppError('BAD_REQUEST', 'bad gift id');
+    return c.player(u).invoke('giftClaim', u, p.giftId!, idem(r));
+  } },
   { method: 'GET', path: '/v1/achievements', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('achievements', u) },
   { method: 'POST', path: '/v1/achievements/claim-all', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('claimAllAchievements', u, idem(r)) },
   { method: 'POST', path: '/v1/achievements/:achievementId/tiers/:tier/claim', auth: 'player', handler: async (r, p, c, u) => {
@@ -718,6 +775,16 @@ export const routes: Route[] = [
     return c.player(u).invoke('trainingUseItem', u, p.itemId!, b.horseId, idem(r));
   } },
   // admin
+  // weekly rival (REQ-RIVAL-*, contracts/protocol.md §28)
+  { method: 'GET', path: '/v1/rival', auth: 'player', handler: async (_r, _p, c, u) => (c.rival ? c.rival.view(u) : { enabled: false }) },
+  { method: 'PUT', path: '/v1/rival/settings', auth: 'player', handler: async (r, _p, c, u) => rival(c).setOptOut(u, (await body(r, z.object({ optOut: z.boolean() }).strict())).optOut) },
+  { method: 'POST', path: '/v1/rival/block', auth: 'player', handler: async (_r, _p, c, u) => rival(c).block(u) },
+  { method: 'POST', path: '/v1/rival/challenge', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ passphrase: z.string().min(1).max(64) }).strict());
+    if (!(await c.match.friendMember(b.passphrase, u))) throw new AppError('NOT_ELIGIBLE', 'not a member of this room');
+    return rival(c).challenge(u, b.passphrase);
+  } },
+  { method: 'POST', path: '/v1/rival/results/:weekId/seen', auth: 'player', handler: async (_r, p, c, u) => rival(c).seen(u, weekIdParam(p.weekId!)) },
   { method: 'GET', path: '/v1/admin/paid-balance', auth: 'admin', handler: async (_r, _p, c) => c.paidBalance() },
   { method: 'GET', path: '/v1/admin/replays/:raceId', auth: 'admin', handler: async (_r, p, c) => c.race.replay(p.raceId!) },
 ];

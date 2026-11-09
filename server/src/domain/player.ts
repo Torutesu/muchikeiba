@@ -202,6 +202,12 @@ export interface PlayerState {
   ads?: AdsState;
   /** REQ-TRAIN-*: today's training slots, the open session, per-horse fatigue and log (training.ts ensureTraining). */
   training?: import('./training.js').TrainingState;
+  /** REQ-BOX-*: プレゼントボックス — unclaimed entries and the recent history (giftBox.ts ensureGiftBox). */
+  giftBox?: import('./giftBox.js').GiftBoxState;
+  /** REQ-ASSIST-*: かんたん操作 setting, the last-place streak and the one-time suggestion (assist.ts ensureAssist). */
+  assist?: import('./assist.js').AssistState;
+  /** REQ-RIVAL-*: opt-out, this week's rival and score, unsettled weeks, results (rival.ts ensureRival). */
+  rival?: import('./rival.js').RivalState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

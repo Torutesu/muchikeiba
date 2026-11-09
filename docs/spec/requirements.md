@@ -626,3 +626,68 @@
 - REQ-TRAIN-012 設定 `progression.training`（リモート設定で変更可）：形・重複・コード側の上限 `TRAINING_HARD_LIMITS`（1日5回・1頭3回・`baseGain ≤ 15`・素質 ≤ 400・絆 ≤ 120‰・回復 ≤ 50・ミニゲーム ≤ 150‰）・ミニゲームの形（`perfectMs < goodMs`、ビートの間隔 ≥ 2 × `goodMs`）・素質の順・アイテムの入手経路を検証。
 - REQ-TRAIN-013 経済：調教はコインを出さない（E1〜E14 は変わらない）。全ての想定が毎日の回数を使う経済シミュレーションで、課金者の伸び/稼働日が無課金の 1.05 倍以下、ランク戦の正規化後の能力合計の差（中課金 − 無課金）が全クラスで調教によって広がらないことを確かめる（E15、balance-targets §4.12、`server/test/economy.test.ts`）。
 - REQ-TRAIN-014 KPI とクライアント：サーバーのイベント `training_start`（メニュー・レア度・疲れ・今日の回数）・`training_done`（メニュー・評価・記録の理由・伸び・点数・初回）。クエリは `docs/ops/kpi-queries.md`。`Muchi.Client` `ApiClient.GetTrainingAsync`・`StartTrainingAsync`・`FinishTrainingAsync`・`UseTrainingItemAsync`、`Horse.Trained`、`TrainingScorer`。Unity のゲーム層 `TrainingModel`（メニューのカードと選べない理由、受け付けられるタップだけ記録、start/finish の冪等キーは答えが来るまで保持、開いたままのセッションはミニゲームなしで仕上げ、公平性の文言、ショップへの導線なし）。
+
+## 26. プレゼントボックス（TS＋C#、`src/domain/giftBox.ts`、`contracts/protocol.md` §26、docs/planning/03-legal-risk.md「プレゼントボックス」）
+拘束条件：届け方を変えるだけで額は変えない。有償コインは入れない（資金決済法）。補填は黙って捨てない。
+- REQ-BOX-001 届く報酬：その場で受け取る画面が無い無料の報酬（運営の補填・個別/一括配布、招待した側の招待ボーナス、イベントの順位報酬、大会の賞品、支部のシーズン報酬、支部対抗リーグの報酬、シーズンの報酬）はボックスに届く。その場の画面がある受け取り（ログインボーナス・ミッション・パス・実績・絆・復帰キャンペーン・広告・歓迎ギフトなど）とシーズンパスの自動付与はそのまま（protocol §26.1 の表）。`progression.giftBox` が無い・無効の時は従来どおり直接付与。 ライバルの週の結果（§28）は週の結果シートがその場の受け取り画面なので財布へ直接（Round 12 の統合で決定、`server/test/r12-integration.test.ts`）。
+- REQ-BOX-002 中身：無償コインとアイテム（券を含む）だけ。有償コインは決して入らない（型・検証の両方で）。馬・繁殖牝馬・パス経験値の部分はその場で付与する。
+- REQ-BOX-003 1件の形：`giftId`・`source`（列挙）・`titleKey`（表示はサーバーが日本語で描き、英語は応答の境界で訳す）・中身・`createdAt`・`expiresAt`（既定30日、補填90日、出どころごと・運営の配布ごとに変更でき、`null` は期限なし）・状態（`unclaimed`/`claimed`/`expired`）。
+- REQ-BOX-004 一覧：`GET /v1/gift-box`（`tab=box` 未受け取り・期限の近い順、`tab=history` 直近90日の受け取り済み・期限切れ、`offset`/`limit` のページ）。バッジ `giftBox.unclaimed`/`expiringSoon` を `GET /v1/player`・bootstrap に載せる。
+- REQ-BOX-005 受け取り：`POST /v1/gift-box/:giftId/claim`・`POST /v1/gift-box/claim-all`（冪等キー必須、プレイヤーの1取引で丸ごと）。1件の中は分けない。持てる上限（`holdCaps`）を超える1件は残して理由を返し、他は受け取る（まとめて受け取る）。1件の受け取りでは `GIFT_HOLD_CAP`。二重の受け取りは `ALREADY_CLAIMED`、期限切れは `GIFT_EXPIRED`。
+- REQ-BOX-006 期限：期限を過ぎたものは受け取れない。読んだ時（取引の始め・一覧）とアラーム（一番早い期限）で履歴へ `expired` として移し、KPI `gift_expire`。
+- REQ-BOX-007 上限：未受け取り `maxUnclaimed`（500）。満杯で届いたら補填以外で一番期限の近いものを自動で受け取る（`how: overflow`）。それも無い時は上限を超えて入れ、サポート用の印 `gift_box_over_cap`。何も黙って消さない。
+- REQ-BOX-008 冪等：届ける側はそれぞれの仕組み（運営の opKey、大会・イベント・シーズン・支部の1回だけの印、招待のマイルストーン）で1回だけ。さらに同じ参照（`ref`）の2件目は入れない。
+- REQ-BOX-009 削除：削除の予約中は受け取れない（`DELETION_PENDING`）。削除の実行中は届けない（運営の配布は `DELETION_IN_PROGRESS`）。消去でボックスも消え、件数を削除の記録に残す。消去済みの id への運営の配布は `NOT_FOUND`。
+- REQ-BOX-010 運用：運営の配布・補填はボックスに入る（`titleKey`・`expiryDays` を指定可）。2人承認と24時間の1人あたりの上限（REQ-OPS-026）は入れる時点で数える。コンソールのプレイヤー画面にボックス（未受け取り・履歴）を出す。
+- REQ-BOX-011 通知：`pushSources`（既定は補填）が届いたら `gift_arrived`（カテゴリ `gifts`、既定オン、1日の上限と静かな時間帯は他と同じ）。
+- REQ-BOX-012 設定 `progression.giftBox`：形と範囲（期限 7〜180日／出どころ 7〜365日または null、補填は既定より短くしない、上限 50〜1000、履歴 30〜180日・50〜1000件、持てる上限、通知のテンプレートの存在）を起動時とリモート設定で検証（`giftBoxProblems`）。
+- REQ-BOX-013 KPI：`gift_receive`・`gift_claim`・`gift_expire`（protocol §26.6）。経済：ボックスは額を変えない。招待する想定は届いたものを毎日まとめて受け取り、期限切れは0件で E1〜E15 は同じ範囲（balance-targets 4.13）。
+- REQ-BOX-014 クライアント：`Muchi.Client` `ApiClient.GetGiftBoxAsync`・`ClaimGiftAsync`・`ClaimAllGiftsAsync`、`PlayerView.GiftBox`。Unity のゲーム層 `GiftBoxModel`（タブ、期限の表示は実際の期限だけ「あと◯日」、受け取りの冪等キーは答えが来るまで保持、保留の理由、削除予約中はボタンなし）。
+
+## 27. かんたん操作（TS＋C#、`src/domain/assist.ts`・`Muchi.Client/InputAssist.cs`、`contracts/protocol.md` §27、docs/planning/06 REQ-UXU-030）
+拘束条件：ランク戦は課金で決まらない（06 §1.3）。腕で勝つのが柱なので、補助は「上手な手動操作には届かないが、何もしないよりずっと良い」に抑える。
+- REQ-ASSIST-001 レベル：オフ（既定）／ムチだけおまかせ（`whip`：ムチのタイミングだけ自動。スタート・手綱・進路はプレイヤー）／ぜんぶおまかせ（`full`：スタート・手綱・進路・ムチを自動）。
+- REQ-ASSIST-002 入力だけを作る：補助（`InputAssistant`）はクライアントの持つレースの状態だけを読み、プレイヤーが送るのと同じ入力バイトを作る。乱数・時計を使わない決定論。オフラインは `OfflineRace` の記録された入力、オンラインは普通の `in` メッセージ（入力遅延つき）として送る。エンジン・ルールセット・検証器・結果ハッシュ・リプレイの形式・ゴールデンは変えない。
+- REQ-ASSIST-003 プレイヤーの操作との関係：`whip` では発走後のプレイヤーのムチを捨てる（無駄打ち防止）、ほかは通す。`full` ではプレイヤーの操作を全て捨てる。オフは何も変えない（同じ入力で同じハッシュ）。
+- REQ-ASSIST-004 作り：スタートはゲートが開いて2tick後、ムチはスパート区間の中で間隔を最短より6tick広く、打ち終わりの60m手前から。手綱はスタミナ‰−180が残り距離‰を下回る時と折り合いが悪い・掛かった時（スパート区間では引かない）。進路は遅い馬の後ろだけ外（だめなら内）へ。風よけは探さない（protocol §27.1）。
+- REQ-ASSIST-005 公平性：ランク戦で使ってよい。補助の勝率は同じ馬・同じレースの上手い手動操作（`SkilledRider`）より必ず低く、何もしない場合よりはっきり高い（balance-targets §2.3 R11、`InputAssistTests`、全コースでも成り立つ）。課金で買える・強くなる要素は作らない。
+- REQ-ASSIST-006 チュートリアル：補助はチュートリアルでは動かない（`AssistLevels.AllowedIn`、`OfflineRace`・`RaceSession` の両方で無視）。REQ-UXS-004 の結果の決まり（3回目から勝ち）は補助オフで保たれる。設定に出すのは FTUE の後、提案はオンラインのレースの結果からだけ（＝最初の勝利の後）。
+- REQ-ASSIST-007 印：乗り手は自分の `res` に任意の `assist`（`whip`/`full`）を付ける。部屋は乗り手ごとに覚え（`FinalOutcome.assisted`）、精算で `RaceDetails.assist` にし、KPI だけに使う。`final`・観戦・相手へのメッセージ・リプレイのログには入れない（相手に見せない）。報酬・着順・レート・実績には効かない。
+- REQ-ASSIST-008 設定の保存：サーバーに保存（`GET`/`PUT /v1/player/assist`、`GET /v1/player` の `assist`）。既定はオフ。同じ値の再送は何も変えない。端末はオフラインの時に最後のレベルを残してオフラインのレースに使う。
+- REQ-ASSIST-009 画面：設定に3つの選択肢（名前と1行の説明、公平性の一文「ランク戦でも使えます。上手な操作より強くはなりません。相手には表示されません。」）。レース中は HUD に小さな「かんたん操作 ON」、自動のボタンは控えめに表示。日本語と英語。
+- REQ-ASSIST-010 一度だけの提案：部屋で精算されたレース（ランク戦・フレンド・イベント・大会）で最下位が3回続いたら、補助がオフで未表示なら提案を出す（`promptDue`）。結果画面からホームへ戻る時に1回だけ。急かさない（タイマー・限定の言葉なし、「今はいい」を同じ大きさで）。出したら二度と出さない（`prompt-seen`、または提案から選んだ PUT）。削除の手続き中は出さない。
+- REQ-ASSIST-011 KPI：`assist_prompt_view`（提案が出た）、`assist_enable`（レベル・どこから・前のレベル・初回）、`assist_disable`、`race_assisted`（補助ありで精算されたレース）、クライアントの `race_start` に任意の `assist`。クエリは `docs/ops/kpi-queries.md`。
+- REQ-ASSIST-012 クライアント：`Muchi.Client` の `InputAssistant`・`AssistLevels`・`ApiClient.GetAssistAsync`/`SetAssistAsync`/`MarkAssistPromptSeenAsync`・`PlayerView.Assist`。Unity のゲーム層 `AssistModel`（選択肢・提案・保存・レースへの取り付け）、`GameBackend.AssistLevel`、`HudSnapshot.Assist`/`AssistLabel`。プロトタイプは本物のエンジンで補助が走る（設定・提案シート・HUD）。
+
+## 28. ライバル（週ごとのライバル、TS＋C#、`src/domain/rival.ts`・`src/domain/rivalService.ts`・`src/do/rivalStore.ts`、`contracts/protocol.md` §28）
+拘束条件：ランク戦は課金で決まらない（06 §1.3）、マッチングの公平性と待ち時間の目標を変えない（REQ-MM-*）、報酬は乱数なし・連勝の上乗せなし・無償コインだけで1回 ¥200 以下（docs/planning/03「ライバル」）、ライバルに見えるのは公開カードだけ。
+- REQ-RIVAL-001 週：ゲーム日（REQ-DAY-001、`progression.dayRollover`）で数えて `weekStartsOn`（既定 月曜）から7ゲーム日。週ID は最初のゲーム日の日付、週の終わりは次の週の最初のゲーム日の切り替え（既定 月曜 4:00 JST）。
+- REQ-RIVAL-002 候補：週 W に確定したランク戦を走ったプレイヤーは、週 W の登録簿（LeaderboardDO `rival:<W>`）に W+1 の候補として載る（クラス・レーティング・ブロック一覧・公開カード。最新の登録が勝つ）。プレイヤーの DO のトランザクションの後に送る（失敗しても結果は保存済み、次の表示で必要なものを送り直す）。
+- REQ-RIVAL-003 組み合わせ：週 W の最初の問い合わせ（または cron）で、W−1 の候補から `pairWeek` で1回だけ作る。同じクラス・`maxRatingGap` 以内・お互いにブロックしていない・抜けていない・隔離中（REQ-OPS-032）でない人同士。「レーティング＋週IDとプレイヤーIDで決まる ±`jitter`」の順に並べ、`pairWindow` 人先までで最初に合う人。入力の順に依らず再現できる。組めなかった人・週の途中から来た人は、週IDとプレイヤーIDで決まる名前と性格のある CPU のライバル（その週の間は同じ）。
+- REQ-RIVAL-004 直接対決：確定したランク戦（合意または検証サービス、無効は除く）の結果に人間の全員の着順（`field`）を載せ、両者の DO が同じ結果から先着した方に1点を付ける（同じレースは1回だけ：`appliedRaces`）。ライバルが分かる前のレースは着順を持っておき、分かった時に数える。CPU とは全てのランク戦で、自分が `targetPlace` 以内なら自分、それ以外は CPU に1点。
+- REQ-RIVAL-005 タイムアタック：検証済みの記録で今週のコースごとのベストを更新し、登録簿に送る。画面で並べ、直接対決が同点の時だけ「相手より速いコースの数」で勝敗を決める。CPU は性格のメダルの秒数。
+- REQ-RIVAL-006 精算：週が終わった後の最初の表示（`GET /v1/rival`、サーバーが登録簿の答えを渡す）で、終わった週ごとに1回だけ：勝ち・負け・引き分け・解除（`no_contest`）・ランク戦が `minRacesForResult` 未満（`not_enough`）。人間のライバルの週はその時の登録簿の答え（解除・最終のタイム）がある時だけ精算し、登録簿が答えない時は次の表示まで待つ（捨てない）。オプトアウトの前にも終わった週を精算する。結果は記録に残し、見ていない結果は週の結果シートとして1回出す。
+- REQ-RIVAL-007 報酬と称号：結果で決まる固定の無償コイン（勝ち ≥ 引き分け ≥ 負け、解除 ≤ 引き分け、1回 ≤ 100 = ¥160 相当）。乱数・連勝の上乗せ・有償コイン・アイテムは無い。削除の予約中は付与しない。称号は勝った週の通算（`rivalWeeksWon`、連続ではない）で、見た目だけ。
+- REQ-RIVAL-008 ライバルと走る：ランク戦のマッチングは変えない（同じ部屋に入りやすくすると待ち時間・公平性を崩し、2人の示し合わせでレーティングを動かせるため）。代わりにフレンド部屋への挑戦状（自分が部屋のメンバー、今週の解除されていない人間のライバルだけ、1日 `challengesPerDay` 回、ブロックされていれば不可）。挑戦状のレースは表示するが点にしない。
+- REQ-RIVAL-009 `GET /v1/rival`：今週のライバル（人間の公開カード／CPU の名前・性格・ひとこと）、点、ランク戦の数、最近のレース、タイムアタックの比較、見ていない結果、過去の結果、通算と称号、報酬の額、挑戦状の残り、ルールの文言用の値。
+- REQ-RIVAL-010 公開カード：表示名・称号・クラス・勝負服・相棒（`partnerHorseId`、引退していれば最初の現役馬）の名前・レア度・脚質・見た目だけ。財布・購入・レーティングの値・プレイヤーの他の情報は出さない。
+- REQ-RIVAL-011 抜ける：オプトアウト（`PUT /v1/rival/settings`）、ブロック（`POST /v1/rival/block`、支部フィードのミュートと同じブロック一覧）、BAN、削除の予約・実行中の人は組まれない。今週の組は両方とも解除され（以後のレースは数えない）、相手のカードは消える。アカウント削除の手順に `rival`（今週・先週の登録簿から候補・組・カード・タイムを消す）を足す。
+- REQ-RIVAL-012 設定 `progression.rival`（リモート設定で変更可）：形（報酬は `freeCoins` だけ）・コード側の上限 `RIVAL_HARD_LIMITS`・報酬の順・CPU の重複・称号 `rivalWeeksWon` の値を起動時と各版で検証。
+- REQ-RIVAL-013 プッシュ「ライバルが記録を更新」（`rival_record`）：ライバルが今週のタイムアタックで自分のベストを上回った時、組・コース・週ごとに1回、受け取る側では1ゲーム日に1回まで、プッシュの1日の上限・静かな時間帯・種類の設定の中で。
+- REQ-RIVAL-014 経済（balance-targets 4.14、E16）：毎日遊ぶ無課金の90日のライバルの報酬は、同じ「ランク戦を走る」に払っていたデイリー「3戦する」の減額（18→16コイン、90日で180）以下。E1〜E15 は Round 11 と同じ範囲、課金・招待・広告の想定も同じ額（払ってもライバルの結果は変わらない）。
+- REQ-RIVAL-015 KPI：`rival_view`（1ゲーム日に1回）・`rival_race`・`rival_week_result`・`rival_opt`。クエリは `docs/ops/kpi-queries.md`。
+- REQ-RIVAL-016 クライアント：`Muchi.Client` `ApiClient.GetRivalAsync`・`SetRivalOptOutAsync`・`BlockRivalAsync`・`ChallengeRivalAsync`・`MarkRivalResultSeenAsync`、`RivalView` ほか。Unity のゲーム層 `RivalModel`（ホームのカード、詳細、週の結果シートを1回、オプトアウト・ブロック、挑戦状、ルールの文言、ショップへの導線なし）。プロトタイプにホームのライバルカード・詳細・週の結果シート（日本語・英語）。
+
+## 29. コイン不足の案内（T6、TS＋C#、`src/domain/shortfall.ts`、`contracts/protocol.md` §29、docs/planning/06 §5.1 T6）
+拘束条件：課金の案内は決まった場面だけ（06 §5.1）。偽の残り時間・倍率表現は使わない（03・06 §5.5）。有償と無償は分けて数える（資金決済法）。
+- REQ-SHORT-001 足りないコインの種類：`any`（有償＋無償）・`paid`（有償限定の支払い。無償コインは数えない）・`free`（無償のみの支払い。購入の案内は出さない）。`wallet.spend` / `spendFree` と同じ数え方。
+- REQ-SHORT-002 パックの選び方：有償コインがすぐ入る商品のうち、今この人が買えるもの（`checkPurchaseIntent` と同じ判定：1回限りの購入済み・クラス未到達・年齢帯の月額上限・今月の上限超過を除く）から、有償コインだけで不足を満たす一番安いもの1つ（同額ならコインのパック、次に枚数の少ない方）。無ければ一番大きいものを `covers: false` で、買えるものが無ければ `offer: null` と理由のコード。
+- REQ-SHORT-003 文言：見出し・1文・注意はサーバーが作る（`コインが{n}枚足りません` など）。初回購入ボーナスはショップと同じ表示（REQ-UXS-022）で、まだ受け取っていないパックだけ。「倍」「お得」「今だけ」「残りわずか」「通常価格」・残り時間を使わない。英語は応答の境界で訳す（REQ-L10N-002）。
+- REQ-SHORT-004 失敗時：コインで払う操作がコイン不足で失敗した 409 `INSUFFICIENT_COINS` に `details.shortfall` を付ける。取引は取り消され冪等の記録にも残らない。ほかのエラーの形は変えない（Workers RPC の封筒でも `details` を運ぶ）。
+- REQ-SHORT-005 事前の確認：`GET /v1/shop/shortfall`（`for=gacha|cosmetic|coins`）で同じ答え。価格はガチャ（ステップアップの今の段を含む）・見た目の実際の支払いと同じ関数から出す。
+- REQ-SHORT-006 表示の場面：ガチャの確認・見た目の購入・ショップだけ。レース中・マッチング中・チュートリアル中・負けた直後の結果画面には出さない（`CoinShortfallModel.Allowed`、GameChecks で確認）。
+- REQ-SHORT-007 流れ：シート（不足の枚数＋パック1枚＋閉じる）→ 既存の購入確認（REQ-UXU-010）→ 完了で元の操作へ戻る。購入確認の年齢・保護者の同意・上限の手順はそのまま。
+- REQ-SHORT-008 KPI：`offer_view` / `offer_click`（`offerId: "shortfall"`、`trigger: "T6"`）を1回の表示につき1回。
+- REQ-SHORT-009 クライアント：`Muchi.Client` `InsufficientCoinsException.Shortfall`（`CoinShortfall`）、`ApiClient.GetCoinShortfallForGachaAsync` / `ForCosmeticAsync` / `GetCoinShortfallAsync`。Unity のゲーム層 `CoinShortfallModel`。プロトタイプのシート（日本語・英語）。
+- REQ-SHORT-010 コンプガチャ防止の一本化（R11 の残り）：「集める」ミッション（図鑑の条件・初心者・シーズン）の 2つ以上ルールは、有償で引ける**すべての**抽選（バナーの通常・確定枠・ステップアップの最終枠・SR以上確定券などの抽選券）を `paidRandomTemplates` 1つで数える（`compGachaProblems` と `gachaObtainable` が同じ関数を使う）。
+- REQ-SHORT-011 プレゼントボックスとの関係（Round 12 の統合）：ボックスの無償コインは受け取るまで所持に数えない。`any`/`free` の不足で期限内の未受け取りの無償コインがある時だけ、注意に「プレゼントボックスに受け取っていない無償コインが{n}枚あります（受け取ると使えます）」を足す（`paid`・削除の予約中は出さない）。

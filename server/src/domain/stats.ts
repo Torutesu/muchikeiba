@@ -24,6 +24,8 @@ export interface RaceDetails {
   cpuAssisted: boolean;
   /** REQ-ACH-002: the rider's unique skill fired (agreeing client reports; absent = unknown). */
   skillFired?: boolean;
+  /** REQ-ASSIST-007: かんたん操作 rode this race (the rider's own `res.assist`; KPI only, never shown to others). */
+  assist?: 'whip' | 'full';
 }
 
 export function raceDetailsFor(config: RaceStartConfig, log: ReplayLog, slot: number, finishTick: number | null): RaceDetails {
@@ -97,6 +99,7 @@ export function conditionMet(m: Master, s: PlayerState, c: TitleCondition): bool
     case 'rating': return s.rating.rankedRaces > 0 && s.rating.r >= c.value;
     case 'bondLevel': return maxBondLevel(m, s) >= c.value;
     case 'achievement': return tierReached(s, c.achievementId, c.tier); // REQ-ACH-006
+    case 'rivalWeeksWon': return (s.rival?.weeksWon ?? 0) >= c.value; // REQ-RIVAL-007
   }
 }
 

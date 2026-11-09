@@ -34,6 +34,8 @@ export interface ScheduledDeps {
   tournamentClosingStep?(now: number): Promise<string[]>;
   /** REQ-UXS-040: drop anonymised records of deleted accounts past their legal retention. */
   purgeRetained?(now: number): Promise<{ purged: number }>;
+  /** REQ-RIVAL-003: pair this game week's rivals (no-op once paired). */
+  rivalStep?(now: number): Promise<unknown>;
 }
 
 /** How many past seasons the cron keeps stepping until they report closed (a stalled one is not abandoned). */
@@ -84,6 +86,8 @@ export async function runScheduled(cron: string, now: number, deps: ScheduledDep
     if (tours) await step('tournaments', () => tours(now));
     const closing = deps.tournamentClosingStep;
     if (closing) await step('tournamentClosing', () => closing(now));
+    const rival = deps.rivalStep;
+    if (rival) await step('rival', async () => { await rival(now); return 'rival'; });
   } else if (cron === CRONS.noon) {
     await step('reminder', async () => `reminder:${(deps.seasonReminder ? await deps.seasonReminder(now) : null) ?? 'none'}`);
   } else if (cron === CRONS.daily) {

@@ -405,6 +405,7 @@ function Legal(kind, back) {
 let engine = null, view = null, hud = {};
 async function StartTutorial() {
   await viewReady;
+  engine.SetAssist('off'); // REQ-ASSIST-006: the tutorial is never assisted (the engine refuses it anyway)
   raceInfo = JSON.parse(engine.StartTutorial(tutorialAttempt));
   raceCtx = { tutorial: true, attempt: tutorialAttempt, ftue };
   view.useRig = true; view.start(raceInfo, equippedPartner());
@@ -414,6 +415,8 @@ async function StartRace(trackId = null) {
   await viewReady;
   const p = partner();
   const { config, trackName, beginner } = await L.raceConfig(p.id, trackId);
+  // round 12: かんたん操作 rides the race with the real InputAssistant inside the WASM engine (never the tutorial)
+  engine.SetAssist(assistLevel());
   raceInfo = JSON.parse(engine.StartConfig(JSON.stringify(config), 'local'));
   raceCtx = { tutorial: false, config, trackName, beginner, ftue, trackId: config.track.id };
   view.useRig = true; view.start(raceInfo, equippedPartner());
@@ -467,9 +470,11 @@ function BuildRaceScreen() {
   hud.spread = el('who', 0, 0, 182, null, hud.minimap); hud.spread.style.position = 'absolute'; hud.spread.style.top = '80px';
   Caption('手綱を長押し　/　‹ › で進路変更', 35, 704).classList.add('tshadow');
   // left thumb: lanes; right thumb: the rein (hold, left of the whip)
-  Btn('内へ', 36, 584, 104, 104, () => Lane(-1), 'pad', undefined, '‹ 内');
-  Btn('外へ', 156, 584, 104, 104, () => Lane(1), 'pad', undefined, '外 ›');
+  hud.laneIn = Btn('内へ', 36, 584, 104, 104, () => Lane(-1), 'pad', undefined, '‹ 内');
+  hud.laneOut = Btn('外へ', 156, 584, 104, 104, () => Lane(1), 'pad', undefined, '外 ›');
   const rein = Btn('手綱', 1222, 742, 118, 118, () => {}, 'pad rein', undefined, '手綱'); hud.rein = rein;
+  // round 12: 「かんたん操作 ON」 (REQ-ASSIST-009) — a small chip between the distance and the banner, only while it rides
+  hud.assist = el('chip assist', 300, 50, 228, 44); hud.assist.hidden = true; hud.assist.dataset.assist = 'off'; hud.lastAssist = '';
   const hold = (v) => (e) => { e.preventDefault(); reinHeld = v; rein.classList.toggle('held', v); };
   rein.addEventListener('pointerdown', hold(true)); rein.addEventListener('pointerup', hold(false)); rein.addEventListener('pointerleave', hold(false)); rein.addEventListener('pointercancel', hold(false));
   // skill cut-ins (engine Skill events)
@@ -481,6 +486,8 @@ function Whip() {
   if (!lastFrame || !raceActive) return;
   if (raceCtx.tutorial && !lastFrame.departed) return;
   if (lastFrame.departed && lastFrame.whips <= 0) return;
+  // round 12: with かんたん操作 the whip (and with full auto the start too) is the assistant's; a tap does nothing
+  if (!raceCtx.tutorial && lastFrame.assist && lastFrame.assist !== 'off' && (lastFrame.departed || lastFrame.assist === 'full')) return;
   engine.Spur();
   // presentation first (06 §6.3: the button and the horse react within a frame; the engine takes the input next tick)
   flash(hud.feedback, lastFrame.departed ? '伸びる！' : 'スタート！');
@@ -516,7 +523,15 @@ function paintHud(f) {
   setText(hud.distance, `残り ${fmt(f.remainingM)} m`);
   setText(hud.clock, f.time);
   // whip button: START before the gate (normal races), glowing only inside the whip window (F5)
-  if (!tut) setText(hud.whipText, f.departed ? '仕掛ける' : 'スタート');
+  const auto = !tut && f.assist && f.assist !== 'off';
+  if (!tut && hud.lastAssist !== f.assist) {
+    hud.lastAssist = f.assist;
+    hud.assist.hidden = !auto; hud.assist.dataset.assist = f.assist ?? 'off'; hud.assist.textContent = auto ? f.assistLabel : '';
+    hud.laneIn.classList.toggle('auto', f.assist === 'full'); hud.laneOut.classList.toggle('auto', f.assist === 'full'); hud.rein.classList.toggle('auto', f.assist === 'full');
+  }
+  hud.whip.classList.toggle('auto', !!auto && (f.departed || f.assist === 'full'));
+  if (auto && (f.departed || f.assist === 'full')) setText(hud.whipText, 'おまかせ');
+  else if (!tut) setText(hud.whipText, f.departed ? '仕掛ける' : 'スタート');
   else setText(hud.whipText, f.departed ? '仕掛ける' : 'まもなく');
   hud.whip.classList.toggle('chance', !!feel.whipChance);
   hud.whip.classList.toggle('disabled', tut ? !f.departed || f.whips <= 0 : f.departed && f.whips <= 0);
@@ -598,7 +613,7 @@ async function RaceResult(f) {
   const finishTick = r.place > 0 ? f.finishTicks[r.place - 1] : -1;
   const passBefore = await L.passView();
   // round 11: the field met (図鑑) and whether the partner's skill fired (実績) go with the result, like a room's settlement
-  const applied = await L.applyRace(raceCtx.config.raceId, r.place, r.runners, { trackId: raceCtx.trackId, style: partner()?.style ?? 'sashi', finishTick: finishTick >= 0 ? finishTick : null, whips: r.facts?.whips ?? 0, skillFired: !!(f.skill?.used ?? lastFrame?.skill?.used) }, raceCtx.config);
+  const applied = await L.applyRace(raceCtx.config.raceId, r.place, r.runners, { trackId: raceCtx.trackId, style: partner()?.style ?? 'sashi', finishTick: finishTick >= 0 ? finishTick : null, whips: r.facts?.whips ?? 0, skillFired: !!(f.skill?.used ?? lastFrame?.skill?.used), ...(f.assist && f.assist !== 'off' ? { assist: f.assist } : {}) }, raceCtx.config);
   const passAfter = await L.passView();
   const missions = await L.missions();
   await refresh();
@@ -634,8 +649,9 @@ function ResultScreen(f, rewards, passXp, pass, missions) {
     Cta('つづける', 44, 640, 478, () => AfterFirstRace(r), p);
     TextLink('もう一度', 44, 734, 120, () => { raceCtx.ftue = false; ftue = false; StartRace(); }, p);
   } else {
-    Cta('もう一度', 44, 640, 478, () => OfferThen(() => StartRace()), p);
-    TextLink('ホーム', 44, 734, 90, () => OfferThen(Home), p);
+    // round 12: the one-time かんたん操作 suggestion (REQ-ASSIST-010) on the way out, only when no offer was shown
+    Cta('もう一度', 44, 640, 478, () => OfferThen(() => StartRace(), () => AssistThen(() => StartRace())), p);
+    TextLink('ホーム', 44, 734, 90, () => OfferThen(Home, () => AssistThen(Home)), p);
   }
   // ③ the rest (pass XP, missions, the full order) in a drawer
   TextLink('着順と報酬の詳細', 200, 734, 200, () => ResultDetails(r, rewards, passXp, pass, missions), p);
@@ -926,6 +942,7 @@ async function Home() {
   }
   Wallet();
   EnToggle();
+  GiftEnvelope(); // round 12 (REQ-BOX-004): the envelope with the unclaimed count
   // right: the thin-divider menu (厩舎 / スカウト / ミッション / 機能)
   const menu = Glass('Menu', 1139, 190, 388, 394, undefined, .77);
   const ms = missions.ok ? missions.value : [];
@@ -960,6 +977,7 @@ async function Home() {
   Cta('レースへ', 1110, 636, 416, RaceLobby, undefined, 'hero');
   if (bonus) toast(`ログインボーナス ${bonus.track === 'beginner' ? '初心者' : ''}${bonus.day}日目：${rewardText(bonus.reward)}`);
   NavBar(0);
+  if (unlock('rival').unlocked) await RivalStrip(); // round 12: this week's rival, top centre (its own slot, not the card slot)
   await HomeCard(comeback); // round 10: one card at a time (what's new > comeback campaign > ad offer)
   MaybeLinkPrompt('Home', Home);
 }
@@ -1098,17 +1116,15 @@ async function Scout(selectId) {
   NavBar(2);
 }
 async function PaidScout(b, count) {
+  // T6 (REQ-SHORT-005): ask first — when the coins are short the sheet replaces the pull (nothing is tried)
+  const pre = await L.coinShortfall({ for: 'gacha', bannerId: b.id, count });
+  if (pre.ok && pre.value.short) return Shortfall(pre.value, 'scout', () => PaidScout(b, count), () => Scout(b.id));
   const r = await L.draw(b.id, count);
   if (!r.ok) {
-    if (r.code === 'INSUFFICIENT_COINS') {
-      // T6: the shortfall and the one smallest pack that covers it (paid-only banners count paid coins only)
-      const st = (await L.gachaStatus()).banners.find((x) => x.bannerId === b.id);
-      const price = count === 10 ? (st?.stepUp?.priceTen ?? b.stepUp?.prices[0] ?? b.priceTen) : b.priceSingle;
-      const need = price - (b.currency === 'paidOnly' ? player.wallet.paid : player.wallet.paid + player.wallet.free);
-      const pack = L.shopProducts().products.filter((p) => p.kind === 'coins' && p.paidCoins >= need).sort((a, c) => a.priceYen - c.priceYen)[0];
-      return Info('コインが足りません', `${b.currency === 'paidOnly' ? '有償コインが' : ''}あと${fmt(need)}コイン必要です。${pack ? `\n${pack.name}（${yen(pack.priceYen)}）で足ります。` : ''}`, () => (pack ? PurchaseConfirm(pack.id, () => Scout(b.id)) : Scout(b.id)));
-    }
-    // REQ-GACHA-011: the server decides by its clock; a pull after the end is refused with the end time and the list reloads
+    // REQ-SHORT-004: a refused pull carries the same shortfall (paid-only banners count paid coins only)
+    if (r.code === 'INSUFFICIENT_COINS' && r.details?.shortfall) return Shortfall(r.details.shortfall, 'scout', () => PaidScout(b, count), () => Scout(b.id));
+    if (r.code === 'INSUFFICIENT_COINS') return Info('コインが足りません', r.message, () => Scout(b.id));
+  // REQ-GACHA-011: the server decides by its clock; a pull after the end is refused with the end time and the list reloads
     if (r.code === 'BANNER_CLOSED') return Info('このスカウトは終了しました', `${r.message}\n一覧を更新します。`, () => Scout());
     return Info('スカウトできませんでした', r.message, () => Scout(b.id));
   }
@@ -1132,6 +1148,59 @@ function Info(title, body, next) {
   Txt(title, 52, 112, 700, 34, WHITE, d);
   Txt(body, 52, 180, 700, 20, MUTED, d, { lh: 1.7 });
   Cta('OK', 52, 320, 360, next, d);
+}
+
+// ================================================================= round 12: コイン不足の案内 (T6, REQ-SHORT-*, protocol §29)
+// One sheet: the server's 「コインが◯枚足りません」, the ONE pack that covers it (or the largest one, said plainly), and 閉じる as
+// the most prominent button (06 §5.1). Reached only from the scout confirmation and the cosmetics shop — never in a race, while
+// matching, in the tutorial or right after a loss (SHORTFALL_CONTEXTS). KPI offer_view / offer_click (offerId shortfall, T6) once
+// per sheet. The pack opens the normal purchase confirmation; once bought, the original pull / purchase runs again.
+const SHORTFALL_CONTEXTS = new Set(['scout', 'looks', 'shop']);
+let shortfallShown = null; // the sheet object last counted for offer_view (a redraw — EN toggle, resize — is not a new view)
+async function Shortfall(sf, ctx, retry, back) {
+  if (!SHORTFALL_CONTEXTS.has(ctx) || !sf?.short || ftue) return back();
+  currentScreen = () => Shortfall(sf, ctx, retry, back);
+  Clear('shortfall'); SetArt(ctx === 'looks' ? 'Art/home-paddock' : 'Art/scout-reveal', false); Shade('dim');
+  const d = Dialog('Coin shortfall', 1080, 660);
+  Object.assign(d.dataset, { shortfall: String(sf.shortfall), coinKind: sf.coinKind, status: sf.status, offer: sf.offer?.productId ?? '' });
+  Kicker(sf.coinKind === 'paid' ? '有償コイン　/　足りない枚数' : sf.coinKind === 'free' ? '無償コイン　/　足りない枚数' : 'コイン　/　足りない枚数', 52, 44, d);
+  Txt(sf.headline, 52, 104, 976, 40, WHITE, d, { weight: 700, nowrap: true }).dataset.headline = '1';
+  Txt(`必要 ${fmt(sf.need)}　·　使えるコイン ${fmt(sf.have)}`, 52, 162, 976, 16, MUTED, d, { weight: 500, nowrap: true });
+  if (sf.notes.length) Txt(sf.notes.join('\n'), 52, 190, 976, 14, SOFT, d, { lh: 1.55 });
+  const o = sf.offer;
+  if (o) {
+    // the one pack card (the shop's card, smaller): name, price, contents, the shop's own first-purchase line
+    const c = Card('Shortfall pack ' + o.productId, 52, 242, 976, 232, d, o.covers ? CYAN : GOLD);
+    c.dataset.product = o.productId;
+    ArtImage('Art/Cosmetics/stable-plaque', 10, 14, 150, 204, c);
+    Txt(o.name, 194, 26, 520, 26, WHITE, c, { weight: 700, nowrap: true });
+    Txt(yen(o.priceYen), 740, 24, 212, 28, GOLD, c, { weight: 700, align: 'right', cls: 'num' });
+    Txt(o.contents.map((x) => x.label).join('　·　'), 194, 70, 758, 17, WHITE, c, { weight: 500 });
+    if (o.firstPurchaseBonus) Txt(o.firstPurchaseBonus.label, 194, 104, 758, 15, CYAN, c, { weight: 500 }).dataset.bonus = '1';
+    Txt(sf.line, 194, 140, 520, 15, o.covers ? OK : GOLD, c, { weight: 700, lh: 1.5 }).dataset.line = '1';
+    Cta('購入を確認', 726, 150, 226, () => {
+      L.kpi([{ name: 'offer_click', at: L.now(), props: { offerId: 'shortfall', trigger: 'T6' } }]);
+      PurchaseConfirm(o.productId, back, retry);
+    }, c, 'small');
+  } else {
+    // free-only payments, the monthly limit, an unsettled refund…: the shortfall is said, nothing is sold
+    const c = Card('Shortfall none', 52, 242, 976, 160, d, 'var(--text-3)');
+    Txt(sf.line, 30, 34, 916, 19, WHITE, c, { weight: 500, lh: 1.6 }).dataset.line = '1';
+  }
+  Txt('購入するとこの画面の前の操作に戻ります　·　有償コインから先に使われます', 52, 494, 976, 13, SOFT, d, { nowrap: true });
+  Cta('閉じる', 52, 548, 380, back, d);
+  if (shortfallShown !== sf) {
+    shortfallShown = sf;
+    L.kpi([{ name: 'offer_view', at: L.now(), props: { offerId: 'shortfall', trigger: 'T6' } }]);
+  }
+}
+/** Demo states for the e2e / design review: 'paid' (the paid step-up with no paid coins), 'any' (a big amount), 'free' (free-only). */
+async function DemoShortfall(kind = 'paid') {
+  await refresh();
+  const q = kind === 'paid' ? { for: 'gacha', bannerId: 'stepup_paid', count: 10 } : kind === 'free' ? null : { for: 'coins', coins: (player.wallet.paid + player.wallet.free) + 1200, kind: 'any' };
+  if (!q) return Shortfall({ short: true, coinKind: 'free', need: 300, have: 0, shortfall: 300, headline: '無償コインが300枚足りません', status: 'free_only', blockedCode: null, ageCheck: false, line: '無償コインだけで支払う項目です（購入したコインでは支払えません）', notes: [], offer: null }, 'shop', Home, Home);
+  const r = await L.coinShortfall(q);
+  return Shortfall(r.value, kind === 'paid' ? 'scout' : 'shop', kind === 'paid' ? () => Scout('stepup_paid') : Home, kind === 'paid' ? () => Scout('stepup_paid') : Home);
 }
 
 // ================================================================= shop (REQ-UXP-003, 06 §6.8, doc 03 legal guards) — 15 / 16
@@ -1207,7 +1276,7 @@ function DrawRecommended(parent, shop, offers, top, blocked) {
   const starterOffer = list.find((o) => o.productId === 'starter_pack');
   const H = blocked ? 236 : 290;
   // T2 starter: in the recommended tab after its trigger, until bought (no fake timer: it has no end date)
-  if (starter) productCard(parent, starter, 32, top, 724, H, { art: 'Art/Cosmetics/jockey-crimson', note: starterOffer ? 'おすすめ：期限はありません（購入するまでここに置いておきます）' : 'ランク戦で初めて4着以下になるか、5戦目の後に案内します', disabled: blocked });
+  if (starter) productCard(parent, starter, 32, top, 724, H, { art: 'Art/Cosmetics/jockey-crimson', note: starter.owned ? '購入済みです（1回限り）' : starterOffer ? 'おすすめ：期限はありません（購入するまでここに置いておきます）' : 'ランク戦で初めて4着以下になるか、5戦目の後に案内します', disabled: blocked });
   // T3 pass (real season end, live countdown)
   const passOffer = list.find((o) => o.productId === 'season_pass');
   const pass = byId.get('season_pass');
@@ -1228,7 +1297,9 @@ function DrawRecommended(parent, shop, offers, top, blocked) {
     const ok = promoOffer.some((o) => o.productId === p.id);
     const x = 24 + i * 228, yy = H2 - 74;
     const t = el('promo', x, yy, 216, 56, pr); t.dataset.product = p.id;
-    if (ok) Cta(`${p.classId}級　${yen(p.priceYen)}`, 0, 0, 216, () => PurchaseConfirm(p.id, currentScreen), t, 'small');
+    // r12 (R8 gap): a bought pack is drawn as bought, never as 「昇級すると購入できます」 or a buy button
+    if (p.owned) { t.dataset.owned = 'true'; Txt(`${p.classId}級　購入済み`, 0, 0, 216, 17, OK, t, { weight: 700 }); Txt('各クラス1回限り', 0, 28, 216, 12, SOFT, t); }
+    else if (ok) Cta(`${p.classId}級　${yen(p.priceYen)}`, 0, 0, 216, () => PurchaseConfirm(p.id, currentScreen), t, 'small');
     else { Txt(`${p.classId}級　${yen(p.priceYen)}`, 0, 0, 216, 17, DIM, t, { weight: 700 }); Txt(`${p.classId}級に昇級すると購入できます`, 0, 28, 216, 12, DIM, t); }
   });
 }
@@ -1258,7 +1329,13 @@ async function DrawLooks(parent, top, blocked) {
     Txt(it.name, 138, 26, 204, 17, WHITE, c, { weight: 700, lh: 1.4 });
     Txt(`${{ silks: '勝負服の柄', tack: '馬具', decor: '厩舎の飾り' }[it.kind] ?? '見た目'}　/　見た目のみ`, 138, 80, 204, 13, GOLD, c, { weight: 500 });
     Txt(`${fmt(it.price)}コイン${it.currency === 'paidOnly' ? '（有償限定）' : ''}`, 138, 108, 204, 15, CYAN, c, { weight: 700 });
-    const b = Cta(it.owned ? '所持' : '試着して買う', 138, ch - 70, 200, () => toast('試着してから買えます（確率なしの直販）'), c, 'small');
+    const b = Cta(it.owned ? '所持' : '試着して買う', 138, ch - 70, 200, async () => {
+      // T6 (REQ-SHORT-005): short of coins → the shortfall sheet before the try-on (paid-only items count paid coins only)
+      const sf = await L.coinShortfall({ for: 'cosmetic', itemId: it.id });
+      if (sf.ok && sf.value.short) return Shortfall(sf.value, 'looks', () => Store('looks'), () => Store('looks'));
+      toast('試着してから買えます（確率なしの直販）');
+    }, c, 'small');
+    c.dataset.item = it.id;
     if (it.owned || blocked) disable(b);
   });
   Txt(cat.notice, 32, 576, 1464, 14, MUTED, parent);
@@ -1266,8 +1343,9 @@ async function DrawLooks(parent, top, blocked) {
 
 // ---- purchase confirmation: unregistered / registered / under 18 / over the limit (REQ-PUR-001/002, 06 §6.8) — 18
 let ageForm = null; // { year, month, guardian }
-async function PurchaseConfirm(productId, back) {
-  if (back) purchaseReturn = back;
+let purchaseAfter = null; // round 12: what to run once a demo purchase completes (the pull the shortfall sheet came from)
+async function PurchaseConfirm(productId, back, after) {
+  if (back) { purchaseReturn = back; purchaseAfter = after ?? null; }
   currentScreen = () => PurchaseConfirm(productId);
   const shop = L.shopProducts();
   const p = shop.products.find((x) => x.id === productId);
@@ -1286,7 +1364,7 @@ async function PurchaseConfirm(productId, back) {
   Hair(48, 330, 1004, box);
   const state = el('pstate', 48, 352, 1004, 270, box);
   const S = (t, y, size, c, o = {}) => Txt(t, 0, y, 1004, size, c, state, o);
-  const close = () => { ageForm = null; (purchaseReturn ?? Home)(); };
+  const close = () => { ageForm = null; purchaseAfter = null; (purchaseReturn ?? Home)(); };
   if (r.ok) {
     // registered: what is bought, the free coins on top (first time only), this month's remaining limit
     const v = r.value;
@@ -1298,6 +1376,15 @@ async function PurchaseConfirm(productId, back) {
     if (v.allowance) S(`${v.allowance.days}日間、毎日 無償コイン${v.allowance.dailyFreeCoins}枚（自動更新なし）`, 110, 16, GOLD);
     const buy = disable(Cta('購入する（プロトタイプでは決済しません）', 492, 652, 560, () => {}, box, 'gold'));
     TextLink('年齢を訂正する', 0, 160, 200, () => { buy.remove(); ageForm = { year: '', month: '', guardian: false, correcting: true }; AgeForm(productId, box, state); }, state);
+    // round 12: from the shortfall sheet, a demo purchase (a locally issued receipt, no billing) then back to the original action
+    if (purchaseAfter) Ghost('デモ：決済なしで購入する', 640, 150, 364, 56, async () => {
+      const after = purchaseAfter;
+      const g = await L.demoPurchase(productId);
+      if (!g.ok) { toast(g.message); return; }
+      purchaseAfter = null; await refresh();
+      toast('購入しました（デモ・決済なし）。元の操作に戻ります');
+      after();
+    }, state, 'quiet small').dataset.demoBuy = '1';
   } else if (r.code === 'AGE_REQUIRED' || r.code === 'GUARDIAN_CONSENT_REQUIRED') {
     state.dataset.state = r.code === 'AGE_REQUIRED' ? 'unregistered' : 'guardian';
     if (r.code === 'GUARDIAN_CONSENT_REQUIRED') ageForm = { ...(ageForm ?? { year: '', month: '' }), guardian: false, needGuardian: true };
@@ -1353,11 +1440,11 @@ function AgeForm(productId, box, state) {
   }, state);
   if (!ok) disable(b);
 }
-async function OfferThen(next) {
+async function OfferThen(next, noOffer = next) {
   // T2 / T4: once, after the result screen is closed (never during the tutorial or right on a loss screen)
   const o = await L.shopOffers();
   const pop = o.ok ? o.value.offers.find((x) => x.showPopup && (x.touchpoint === 'T2' || x.touchpoint === 'T4')) : null;
-  if (!pop) return next();
+  if (!pop) return noOffer();
   await L.markOfferViewed(pop.id);
   const p = L.shopProducts().products.find((x) => x.id === pop.productId);
   currentScreen = () => next(); Clear('offer'); SetArt('Art/home-paddock', false); Shade('dim');
@@ -1649,6 +1736,7 @@ async function TimeAttack(trackId = 'aoba_turf_1600', tab = '', selected = '') {
 const fmtMs = (ms) => { const t = Math.floor(ms / 100); return `${Math.floor(t / 600)}:${String(Math.floor(t / 10) % 60).padStart(2, '0')}.${t % 10}`; };
 async function StartTimeAttack(trackId, ghostId) {
   await viewReady;
+  engine.SetAssist(assistLevel()); // round 12: the time attack records the assist's inputs like taps (REQ-ASSIST-002)
   raceInfo = JSON.parse(engine.StartTimeAttack(JSON.stringify(taCache.config), ghostId));
   raceCtx = { tutorial: false, ta: true, trackId, trackName: taCache.trackName, config: taCache.config, ghost: raceInfo.ghosts[0] ?? null };
   view.useRig = true; view.start(raceInfo, equippedPartner()); view.setGhosts(raceInfo.ghosts.length, equippedPartner());
@@ -1713,6 +1801,13 @@ async function Settings() {
       ConfirmDeletion(r.value);
     }, a, 'danger');
   }
+  // round 12: かんたん操作 (REQ-ASSIST-008/009) — the current level and the way to change it (shown after the FTUE)
+  if (!ftue) {
+    Hair(36, 552, 428, a);
+    Txt('かんたん操作', 36, 574, 240, 21, WHITE, a, { weight: 500 }).dataset.name = 'Assist';
+    Txt(ASSIST_NAME[assistLevel()], 36, 610, 260, 16, assistLevel() === 'off' ? MUTED : CYAN, a, { weight: 500 }).dataset.assistLevel = assistLevel();
+    Ghost('変更する', 304, 572, 160, 56, () => AssistSettings(), a, 'quiet small').dataset.action = 'assist';
+  }
   // ② looks / care and the legal pages: thin-divider lists
   const m = Glass('More', 556, 134, 480, 676, undefined, .9);
   Kicker('見た目・お世話・仲間', 36, 30, m);
@@ -1736,8 +1831,74 @@ async function Settings() {
   Ghost('タイムアタック', 36, 292, 436, 56, () => TimeAttack(), demo, 'quiet small');
   // round 10: a demo purchase of this season's pass (no billing) to see the 購入済み state
   Ghost('パス購入済み（デモ）', 36, 362, 436, 56, async () => { const r = await L.demoPurchase('season_pass'); toast(r.ok ? '今シーズンのパスを購入済みにしました（決済なし）' : r.code === 'ALREADY_PURCHASED' ? '今シーズンのパスは購入済みです' : r.message); }, demo, 'quiet small');
+  // round 12: the gift box after a maintenance, a tournament and a promotion (real delivery routes)
+  Ghost('プレゼントボックス（デモ）', 36, 432, 436, 56, () => Demo('gifts'), demo, 'quiet small');
+  // round 12: three last places in a row → the one-time かんたん操作 suggestion (REQ-ASSIST-010)
+  Ghost('最下位が3回続いた（デモ）', 36, 502, 436, 56, () => Demo('assist'), demo, 'quiet small');
   Txt('サーバーと同じ規則のまま、日付だけ進めてログボとレースを消化します。', 36, 600, 436, 14, SOFT, demo, { lh: 1.6 });
   NavBar(4);
+}
+// ================================================================= round 12: かんたん操作 (REQ-ASSIST-*, contracts/protocol.md §27)
+// Mirrors unity/Assets/Muchi/Game/AssistModel.cs on the real server rules (setting default off, the last-place streak, the
+// one-time suggestion). The races run the real Muchi.Client.InputAssistant in the WASM engine: it only sends normal inputs.
+const ASSIST_NAME = { off: 'オフ', whip: 'ムチだけおまかせ', full: 'ぜんぶおまかせ' };
+const ASSIST_MARK = { off: 'MANUAL', whip: 'AUTO WHIP', full: 'FULL AUTO' };
+const ASSIST_DESC = {
+  off: '自分で全部操作します',
+  whip: 'ムチのタイミングだけ自動。スタート・手綱・進路は自分で',
+  full: 'スタート・手綱・進路・ムチを自動で。上手な操作よりは控えめです',
+};
+const ASSIST_POLICY = 'ランク戦でも使えます。上手な操作より強くはなりません。相手には表示されません。';
+const assistLevel = () => player?.assist?.level ?? 'off';
+async function setAssist(level, source) {
+  const r = await L.setAssist(level, source);
+  await refresh();
+  toast(r.ok ? 'かんたん操作を変更しました' : r.message);
+  return r;
+}
+async function AssistSettings() {
+  currentScreen = AssistSettings; await refresh();
+  Clear('assist-settings'); SetArt('Art/first-ride', false);
+  TopBar('その他　/　かんたん操作', 'ムチや手綱をおまかせできます。いつでも戻せます', { wallet: false });
+  const p = Glass('Frame', 36, 134, 1528, 676, undefined, .9);
+  const cur0 = assistLevel();
+  ['off', 'whip', 'full'].forEach((lv, i) => {
+    const c = Card('Assist ' + lv, 32 + i * 496, 24, 472, 430, p, lv === 'full' ? GOLD : lv === 'whip' ? CYAN : '#c8eaff');
+    c.classList.add('as-opt'); c.dataset.assistOption = lv; if (lv === cur0) c.classList.add('on');
+    Txt(ASSIST_MARK[lv], 28, 34, 420, 14, lv === 'full' ? GOLD : CYAN, c, { weight: 700, ls: '.22em' });
+    Txt(ASSIST_NAME[lv], 28, 66, 420, 30, WHITE, c, { weight: 700 });
+    Txt(ASSIST_DESC[lv], 28, 128, 416, 17, WHITE, c, { weight: 500, lh: 1.7 });
+    if (lv === cur0) disable(Ghost('設定中', 24, 340, 424, 60, () => {}, c, 'quiet'));
+    else Cta('これにする', 24, 334, 424, async () => { await setAssist(lv, 'settings'); AssistSettings(); }, c, 'small');
+  });
+  const pol = Glass('Fairness', 32, 476, 1464, 176, p, .94); pol.classList.add('flat');
+  Kicker('公平性', 28, 20, pol, { size: 15 });
+  Txt(ASSIST_POLICY, 28, 84, 1400, 18, WHITE, pol, { weight: 500 });
+  Txt('はじめてのレースでは使えません。おまかせでも、送るのは指で押すのと同じ操作だけです（レースの計算は変わりません）。', 28, 120, 1400, 15, MUTED, pol, { lh: 1.6 });
+  Back(Settings, 'BACK', 40, 834);
+}
+/** REQ-ASSIST-010: the one-time suggestion after three last places in a row — calm, 「今はいい」 as big as the rest. */
+async function AssistThen(next) {
+  if (ftue) return next();
+  const a = await L.assist();
+  if (!a.promptDue || a.level !== 'off') return next();
+  return AssistPrompt(next);
+}
+async function AssistPrompt(next) {
+  currentScreen = () => next(); Clear('assist-prompt'); SetArt('Art/first-ride', false); Shade('dim');
+  await L.assistPromptSeen(); // once: from here on it never shows again
+  const box = Dialog('Assist prompt', 1000, 560);
+  Kicker('かんたん操作', 48, 44, box);
+  Txt('かんたん操作を試してみませんか？', 48, 108, 900, 32, WHITE, box, { weight: 700 });
+  Txt('ムチのタイミングや手綱をおまかせできます。いつでも設定で戻せます。', 48, 168, 900, 18, WHITE, box, { weight: 500, lh: 1.7 });
+  [['whip', 48], ['full', 368]].forEach(([lv, x]) => {
+    const b = Ghost(ASSIST_NAME[lv], x, 270, 296, 64, async () => { await setAssist(lv, 'prompt'); next(); }, box);
+    b.dataset.assistChoice = lv;
+    Txt(ASSIST_DESC[lv], x, 346, 296, 14, MUTED, box, { lh: 1.5 });
+  });
+  Ghost('今はいい', 688, 270, 264, 64, next, box, 'quiet').dataset.assistChoice = 'later';
+  Hair(48, 444, 904, box);
+  Txt(ASSIST_POLICY, 48, 466, 904, 15, SOFT, box, { lh: 1.6 });
 }
 function ConfirmDeletion(v) {
   currentScreen = () => ConfirmDeletion(v); Clear('delete-confirm'); SetArt('Art/home-paddock', false); Shade('dim heavy');
@@ -1748,12 +1909,13 @@ function ConfirmDeletion(v) {
   const f = v.forfeit;
   Hair(52, 330, 896, box);
   Kicker('失うもの', 52, 352, box, { rule: false, size: 15, color: GOLD });
-  Txt(`有償コイン ${fmt(f.paidCoins)}　·　無償コイン ${fmt(f.freeCoins)}　·　馬 ${f.horses}頭　·　アイテム ${f.items}個${f.allowanceDays ? `　·　厩舎手当 残り${f.allowanceDays}日` : ''}${f.seasonPass ? '　·　シーズンパス' : ''}`, 52, 382, 896, 19, WHITE, box, { weight: 500, lh: 1.6 });
+  Txt(`有償コイン ${fmt(f.paidCoins)}　·　無償コイン ${fmt(f.freeCoins)}　·　馬 ${f.horses}頭　·　アイテム ${f.items}個${f.allowanceDays ? `　·　厩舎手当 残り${f.allowanceDays}日` : ''}${f.seasonPass ? '　·　シーズンパス' : ''}${f.gifts ? `　·　受け取っていないプレゼント ${f.gifts}件` : ''}`, 52, 382, 896, 19, WHITE, box, { weight: 500, lh: 1.6 });
   Cta('やめる', 52, 500, 400, Settings, box);
   Ghost('削除を確定（14日後）', 640, 506, 308, 60, async () => { const r = await L.requestDeletion(v.confirmToken); toast(r.ok ? '削除を受け付けました。14日以内なら取り消せます。' : r.message); Settings(); }, box, 'danger');
 }
 async function Demo(kind) {
   L.reset();
+  ftue = false; // every demo state is a player past the first run
   document.querySelectorAll('.toast').forEach((t) => t.remove());
   for (const k of ['muchi.partner', 'muchi.notify.primer', 'muchi.link.prompt', 'muchi.link.firstPurchase', 'muchi.link.provider', 'muchi.proto.taFriends']) { try { localStorage.removeItem(k); } catch { /* */ } }
   try { for (const k of Object.keys(localStorage)) if (k.startsWith('muchi.proto.ta.')) localStorage.removeItem(k); } catch { /* */ }
@@ -1763,6 +1925,9 @@ async function Demo(kind) {
   if (kind === 'new') { await L.bootstrap(); await refresh(); return Title(); }
   if (kind === 'comeback') { await L.seedComeback(14); await refresh(); return Home(); }
   if (kind === 'collection') { await L.seedCollection(); await refresh(); return Collection('horses'); }
+  if (kind === 'gifts') { await L.seedGifts(); await refresh(); giftState.tab = 'box'; giftState.page = 0; return GiftBox('box'); }
+  // round 12: a week of play, then three ranked races in last place (settled by the real applyRace) → the one-time suggestion
+  if (kind === 'assist') { await L.seedDemo(7, [3, 3, 3, 3, 3, 3, 3]); ftue = false; await L.demoLastPlaces(3); await refresh(); return AssistThen(Home); }
   const spec = { day1: [1, [1]], day3: [3, [2, 2, 2]], day7: [7, [3, 3, 3, 3, 3, 3, 3]] }[kind];
   await L.seedDemo(spec[0], spec[1]);
   await refresh();
@@ -1867,8 +2032,8 @@ async function Invite(demoNote = '') {
   // review-only demo actions (same rules: other local players redeem my code / reach milestones)
   const demo = el('invite-demo', 796, 800, 768, 48);
   Ghost('デモ：友達が参加', 0, 0, 250, 48, async () => { const d = await L.invite.demoFriendJoins(); toast(d.ok ? (d.value.result.friended ? '友達があなたのコードで参加し、フレンドになりました' : '友達があなたのコードで参加しました') : (INVITE_ERRORS[d.code] ?? d.message)); Invite(); }, demo, 'quiet small');
-  Ghost('デモ：初心者卒業', 259, 0, 250, 48, async () => { const d = await L.invite.demoMilestone('im_graduate'); toast(d.ok ? `招待ボーナス：無償コイン+${d.value.freeCoinsGained}` : '対象の友達がいません'); Invite(); }, demo, 'quiet small');
-  Ghost('デモ：A級昇級', 518, 0, 250, 48, async () => { const d = await L.invite.demoMilestone('im_class_a'); toast(d.ok ? `招待ボーナス：無償コイン+${d.value.freeCoinsGained}` : '対象の友達がいません'); Invite(); }, demo, 'quiet small');
+  Ghost('デモ：初心者卒業', 259, 0, 250, 48, async () => { const d = await L.invite.demoMilestone('im_graduate'); toast(d.ok ? `招待ボーナスがプレゼントボックスに届きました：無償コイン+${d.value.freeCoinsGained}` : '対象の友達がいません'); Invite(); }, demo, 'quiet small');
+  Ghost('デモ：A級昇級', 518, 0, 250, 48, async () => { const d = await L.invite.demoMilestone('im_class_a'); toast(d.ok ? `招待ボーナスがプレゼントボックスに届きました：無償コイン+${d.value.freeCoinsGained}` : '対象の友達がいません'); Invite(); }, demo, 'quiet small');
 }
 
 // ================================================================= returning players (REQ-CB-001..012, 06 §4.5, contracts/protocol.md §20)
@@ -2536,6 +2701,127 @@ async function TrainingResult(res) {
   EnToggle();
 }
 
+// ================================================================= round 12: ライバル (REQ-RIVAL-*, contracts/protocol.md §28)
+// The weekly rival on the real RivalService / week registry in the browser. Mirrors unity/Assets/Muchi/Game/RivalModel.cs:
+// the home strip (name, this week's score, days left), the detail (public card only, recent races, time attack this week,
+// fixed rewards, total record, the rules) and the week-result sheet shown once. ムチ一閃 tone: paddock art, translucent navy
+// panels, letter-spaced cyan kickers, one skewed cyan CTA ».
+const RV_OUTCOME = { win: '勝ち', lose: '負け', draw: '引き分け', no_contest: '解除', not_enough: '記録なし' };
+const RV_RULES = '同じランク戦で先着した方に1点。直接対決が同点なら、今週のタイムアタックで速いコースの多い方が勝ち。挑戦状のレースは点になりません。報酬は結果で決まる固定の額で、連勝の上乗せはありません。';
+const rvClock = (ms) => (ms == null ? '—' : `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}.${Math.floor(ms / 100) % 10}`);
+const rvDaysLeft = (v) => Math.max(1, Math.ceil((v.weekEndsAt - L.now()) / 86_400_000));
+const rvName = (v) => (!v.rival ? '—' : v.rival.kind === 'cpu' ? v.rival.name : v.rival.dissolved ? 'ライバル解除' : v.rival.card?.displayName ?? '—');
+const rvWeek = (id) => `${+id.slice(5, 7)}月${+id.slice(8, 10)}日からの週`;
+/** Home: one slim strip at the top centre — tap for the detail. */
+async function RivalStrip() {
+  const r = await L.rival.view();
+  if (cur?.dataset.screen !== 'home' || !r.ok || !r.value.enabled || r.value.optOut || !r.value.rival) return null;
+  const v = r.value;
+  const g = Glass('Rival', 520, 32, 600, 100, undefined, .78);
+  g.dataset.homeRival = v.rival.kind; g.classList.add('rv-strip');
+  Kicker(v.result ? 'ライバル　/　結果が出ました' : `ライバル　/　あと${rvDaysLeft(v)}日`, 24, 18, g, { rule: false, size: 15 });
+  Txt(rvName(v), 24, 48, 340, 24, WHITE, g, { weight: 700, ls: '.06em', nowrap: true });
+  Txt(v.score ? `${v.score.me} - ${v.score.them}` : '', 400, 34, 170, 40, GOLD, g, { weight: 700, align: 'right', cls: 'num' });
+  g.style.cursor = 'pointer'; g.addEventListener('click', () => Rival());
+  return g;
+}
+async function Rival() {
+  currentScreen = Rival;
+  const r = await L.rival.view();
+  await refresh();
+  if (!r.ok || !r.value.enabled) { toast('ライバルは今は表示できません'); Home(); return; }
+  const v = r.value;
+  Clear('rival'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar(`ライバル　/　${rvWeek(v.weekId)}`, '同じランク戦で先着すれば1点。週の終わりに結果と、決まった額の報酬');
+  // ① this week's rival: the public card only (name, class, partner horse) or the CPU's personality
+  const lp = Glass('Rival card', 36, 134, 560, 676, undefined, .88);
+  lp.classList.add('rv-card');
+  Kicker('今週のライバル', 36, 30, lp);
+  if (v.optOut) {
+    lp.dataset.state = 'opted-out';
+    Txt('ライバルはお休み中です', 36, 110, 488, 26, WHITE, lp, { weight: 700 });
+    Txt('再開すると、来週から近い実力のライバルが決まります', 36, 160, 488, 15, MUTED, lp);
+    Cta('ライバルを再開する', 36, 220, 400, async () => { await L.rival.optOut(false); Rival(); }, lp);
+    Back(Home, 'BACK', 40, 834);
+    return;
+  }
+  const rv = v.rival;
+  lp.dataset.state = rv.kind === 'cpu' ? 'cpu' : rv.dissolved ? 'dissolved' : 'human';
+  Txt(rvName(v), 36, 100, 488, 38, WHITE, lp, { ls: '.06em', nowrap: true }).classList.add('rv-name');
+  if (rv.kind === 'human' && !rv.dissolved && rv.card) {
+    const pt = rv.card.partner;
+    Txt(`${rv.card.classId}級${pt ? `　·　相棒 ${pt.name}（${STYLE_JA[pt.style] ?? pt.style}）` : ''}`, 36, 156, 488, 16, GOLD, lp, { weight: 700, ls: '.04em' });
+  } else if (rv.kind === 'cpu') {
+    Txt(`${STYLE_JA[rv.style] ?? rv.style}　·　目標${rv.targetPlace}着以内`, 36, 156, 488, 16, GOLD, lp, { weight: 700, ls: '.04em' });
+    Txt(`「${rv.line}」`, 36, 188, 488, 15, MUTED, lp, { lh: 1.5 }).classList.add('rv-line');
+  } else Txt('ブロック・お休み・退会のため、今週の組は解除されました', 36, 156, 488, 15, MUTED, lp, { lh: 1.5 });
+  Txt('あなた', 36, 262, 200, 14, MUTED, lp, { weight: 700, ls: '.18em' });
+  Txt('ライバル', 324, 262, 200, 14, MUTED, lp, { weight: 700, ls: '.18em', align: 'right' });
+  Txt(`${v.score.me} - ${v.score.them}`, 36, 280, 488, 88, GOLD, lp, { weight: 700, align: 'center', cls: 'num' }).classList.add('rv-score');
+  const sc = v.score;
+  Txt(sc.rankedRaces >= sc.minRaces ? `ランク戦 ${sc.rankedRaces}戦　·　あと${rvDaysLeft(v)}日` : `ランク戦 ${sc.rankedRaces}/${sc.minRaces}戦（${sc.minRaces}戦で週の結果に報酬）　·　あと${rvDaysLeft(v)}日`, 36, 400, 488, 14, SOFT, lp, { align: 'center' }).classList.add('rv-races');
+  if (v.challenge) {
+    const c = Cta(`挑戦状を送る（あと${v.challenge.left}回）`, 36, 450, 488, async () => {
+      const x = await L.rival.challenge();
+      toast(x.ok ? '挑戦状を送りました（このレースは点になりません）' : x.code === 'RIVAL_CHALLENGE_LIMIT' ? '今日の挑戦状は送り切りました。4:00に戻ります。' : x.message);
+      Rival();
+    }, lp, 'small');
+    c.classList.add('rv-challenge'); if (!v.challenge.left) disable(c);
+    Txt('フレンド部屋に招待します。順位は表示しますが点にはなりません', 36, 524, 488, 12, DIM, lp);
+  }
+  if (rv.kind === 'human' && !rv.dissolved) TextLink('ブロック', 36, 600, 180, async () => { const x = await L.rival.block(); toast(x.ok ? 'ブロックしました' : x.message); Rival(); }, lp).classList.add('rv-block');
+  TextLink('お休みにする', 304, 600, 220, async () => { const x = await L.rival.optOut(true); toast(x.ok ? 'ライバルをお休みにしました。来週から組まれません' : x.message); Rival(); }, lp).classList.add('rv-optout');
+  // ② recent races, time attack this week, rewards and record
+  const rp = Glass('Rival detail', 620, 134, 944, 676, undefined, .86);
+  Kicker('最近のレース', 36, 30, rp);
+  Ghost('デモ：同じレース', 660, 34, 248, 50, async () => { const a = 1 + Math.floor(Math.random() * 6); await L.rival.demoRace(a, a + 1 + Math.floor(Math.random() * 4)); Rival(); }, rp, 'quiet small').classList.add('rv-demo-race');
+  const races = (v.recent ?? []).slice(0, 5);
+  if (!races.length) Txt('まだ同じレースを走っていません。ランク戦で一緒になると点がつきます', 36, 104, 872, 15, MUTED, rp);
+  races.forEach((x, i) => {
+    const row = el('rv-race', 36, 100 + i * 44, 872, 40, rp); row.dataset.point = x.point ?? 'none'; row.dataset.mode = x.mode;
+    Txt(x.mode === 'friend' ? '挑戦状' : 'ランク戦', 0, 10, 140, 13, x.mode === 'friend' ? MUTED : CYAN, row, { weight: 700, ls: '.12em' });
+    Txt(x.them != null ? `${x.me}着 vs ${x.them}着` : `${x.me}着（目標${rv.targetPlace ?? 6}着以内）`, 150, 6, 420, 18, WHITE, row, { weight: 700, cls: 'num' });
+    Txt(x.point === 'me' ? 'あなたに1点' : x.point === 'them' ? 'ライバルに1点' : '点なし', 600, 9, 272, 14, x.point === 'me' ? GOLD : x.point === 'them' ? MUTED : DIM, row, { weight: 700, align: 'right' });
+    Hair(0, 39, 872, row);
+  });
+  Kicker('タイムアタック　/　今週のベスト', 36, 330, rp);
+  Ghost('デモ：タイム', 660, 334, 248, 50, async () => { await L.rival.demoTa('aoba_turf_1600', 70_000 + Math.floor(Math.random() * 1500), 70_400 + Math.floor(Math.random() * 1500)); Rival(); }, rp, 'quiet small').classList.add('rv-demo-ta');
+  const tas = (v.timeAttack ?? []).slice(0, 2);
+  if (!tas.length) Txt('今週のタイムアタックはまだありません（同点の時だけ勝敗に使います）', 36, 404, 872, 15, MUTED, rp);
+  tas.forEach((t, i) => {
+    const row = el('rv-ta', 36, 400 + i * 44, 872, 40, rp); row.dataset.faster = t.faster ?? 'none';
+    Txt(t.trackName, 0, 9, 360, 15, WHITE, row, { weight: 500, nowrap: true });
+    Txt(`${rvClock(t.me)}　vs　${rvClock(t.rival)}`, 370, 6, 300, 18, WHITE, row, { weight: 700, cls: 'num' });
+    Txt(t.faster === 'me' ? 'あなたが速い' : t.faster === 'rival' ? 'ライバルが速い' : '—', 680, 9, 192, 14, t.faster === 'me' ? GOLD : MUTED, row, { weight: 700, align: 'right' });
+    Hair(0, 39, 872, row);
+  });
+  Txt(`報酬（無償コイン）　勝ち ${v.rewards.win}・引き分け ${v.rewards.draw}・負け ${v.rewards.lose}　·　ランク戦${v.rewards.minRaces}戦から`, 36, 510, 872, 15, WHITE, rp, { weight: 500 }).classList.add('rv-rewards');
+  const nt = v.record.nextTitle;
+  Txt(`通算 ${v.record.weeksWon}勝 / ${v.record.weeksPlayed}週${nt ? `　·　称号「${nt.name}」まで あと${Math.max(0, nt.weeksWon - v.record.weeksWon)}勝` : ''}`, 36, 542, 872, 15, GOLD, rp, { weight: 700 }).classList.add('rv-record');
+  Txt(RV_RULES, 36, 584, 620, 12, SOFT, rp, { lh: 1.55 }).classList.add('rv-rules');
+  Ghost('デモ：週を終える', 680, 596, 228, 50, () => { L.rival.demoWeekEnd(); Rival(); }, rp, 'quiet small').classList.add('rv-demo-week');
+  Back(Home, 'BACK', 40, 834);
+  if (v.result) RivalResultSheet(v);
+}
+/** The week-result sheet: shown once (closing marks it seen). Fixed reward, no streak bonus. */
+function RivalResultSheet(v) {
+  const res = v.result;
+  const sheet = Sheet(RV_OUTCOME[res.outcome] ?? res.outcome, `${rvWeek(res.weekId)}　/　結果`, (s, close, y) => {
+    s.dataset.rivalResult = res.outcome; s.classList.add('rv-result');
+    Txt(res.rivalName || res.cpuName ? `vs ${res.rivalName ?? res.cpuName}` : '', 48, y, 564, 20, MUTED, s, { weight: 500, nowrap: true });
+    Txt(`${res.me} - ${res.them}`, 48, y + 40, 564, 80, GOLD, s, { weight: 700, cls: 'num' });
+    Txt(res.me === res.them && (res.taMe || res.taThem) ? `直接対決は同点。タイムアタック ${res.taMe} - ${res.taThem}` : '直接対決（同じランク戦で先着した数）', 48, y + 146, 564, 15, SOFT, s);
+    Txt(res.freeCoins > 0 ? `報酬　無償コイン${res.freeCoins}枚` : res.outcome === 'not_enough' ? `ランク戦が${v.rewards.minRaces}戦に届かなかったため、報酬はありません` : '報酬はありません', 48, y + 196, 564, 20, res.freeCoins > 0 ? WHITE : MUTED, s, { weight: 700 }).classList.add('rv-reward');
+    if (res.outcome === 'no_contest') Txt('ライバルが解除されたため、今週の勝敗はつきません', 48, y + 236, 564, 14, MUTED, s);
+    const names = (res.newTitles ?? []).map((id) => v.record.titles.find((t) => t.titleId === id)?.name ?? id);
+    if (names.length) Txt(`称号「${names.join('」「')}」を獲得`, 48, y + 272, 564, 18, GOLD, s, { weight: 700 }).classList.add('rv-title');
+    Txt('報酬は結果で決まる固定の額です。連勝の上乗せはありません', 48, y + 326, 564, 13, DIM, s);
+    Cta('つづける', 48, y + 376, 340, () => { close(); }, s).classList.add('rv-continue');
+  });
+  L.rival.seen(res.weekId);
+  return sheet;
+}
+
 // ================================================================= round 10: 支部の応援スタンプ (REQ-TEAMFEED-*)
 // The team feed on the real server rules (TeamsService / TeamCore in the browser) — fixed stamps only, no text field.
 // Mirrors unity/Assets/Muchi/Game/TeamFeedModel.cs: palette with server-built unlock texts, 10 s post cooldown, cheering a
@@ -2638,6 +2924,103 @@ async function TeamFeed() {
   NavBar(4);
 }
 
+// ================================================================= round 12: プレゼントボックス (REQ-BOX-*, contracts/protocol.md §26)
+// The same screen as the Unity GiftBoxModel: the box (soonest expiry first) and the 90-day history, one claim per row and
+// one claim-all CTA, the result panel. All values come from L.giftBox (the real PlayerService rules). The expiry text
+// 「あと3日」 is drawn only from a real expiresAt (no expiry = no text); paid coins never appear here.
+// ムチ一閃 tone: paddock art, translucent navy panels, letter-spaced cyan labels, one skewed cyan CTA » per view.
+const GIFT_SOURCE_JA = { ops_compensation: 'お詫び', ops_grant: '運営', invite: '招待', event: 'イベント', tournament: '大会', team: '支部', league: '支部対抗', season: 'シーズン' };
+const giftState = { tab: 'box', page: 0 };
+const giftDays = (exp) => Math.max(1, Math.ceil((exp - L.now()) / 86_400_000));
+const jstDay = (ms) => { const d = new Date(ms + 9 * 3600e3); return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日`; };
+/** The home envelope (top bar, left of the wallet) with the unclaimed count from the player view (REQ-BOX-004). */
+function GiftEnvelope(x = 1088, y = 33) {
+  const n = player?.giftBox?.unclaimed ?? 0;
+  const b = Btn('プレゼント', x, y, 80, 77, () => GiftBox('box'), 'envelope', undefined, '');
+  b.innerHTML += '<svg viewBox="0 0 40 28" width="40" height="28" aria-hidden="true"><rect x="1.5" y="1.5" width="37" height="25" rx="2" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M2.5 3 L20 16 L37.5 3" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/></svg>';
+  b.dataset.badge = String(n);
+  if (n > 0) { const i = document.createElement('b'); i.className = 'env-badge num'; i.textContent = n > 99 ? '99+' : String(n); b.appendChild(i); }
+  return b;
+}
+async function GiftBox(tab = giftState.tab) {
+  if (tab !== giftState.tab) giftState.page = 0;
+  giftState.tab = tab;
+  currentScreen = () => GiftBox(tab);
+  await refresh();
+  const PER = 6;
+  const r = await L.giftBox(tab, giftState.page * PER, PER);
+  if (!r.ok) { toast(r.message); return Home(); }
+  const v = r.value;
+  const pages = Math.max(1, Math.ceil(v.total / PER));
+  if (giftState.page > pages - 1) { giftState.page = pages - 1; return GiftBox(tab); }
+  const blocked = player.deletion?.status === 'scheduled';
+  Clear(tab === 'box' ? 'gift-box' : 'gift-history'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('プレゼントボックス', '運営からのお詫びや、大会・シーズンの報酬が届きます　·　中身は無償コインとアイテムだけ');
+  const p = Glass('Gift list', 36, 134, 1060, 676, undefined, .88);
+  [['box', 'ボックス'], ['history', '履歴']].forEach(([k, name], i) => { const b = Btn(name, 36 + i * 130, 28, 120, 44, () => GiftBox(k), 'choice' + (tab === k ? ' on' : ''), p); b.dataset.tab = k; b.style.fontSize = '16px'; });
+  if (tab === 'history') Txt(`直近${v.rules.historyDays}日`, 316, 40, 300, 14, SOFT, p, { weight: 500 });
+  if (v.entries.length === 0) Txt(tab === 'box' ? 'プレゼントはありません' : `直近${v.rules.historyDays}日の履歴はありません`, 36, 130, 900, 18, SOFT, p).dataset.giftEmpty = '1';
+  v.entries.forEach((e, i) => {
+    const row = el('ach-row gift-row', 36, 96 + i * 90, 988, 90, p); row.dataset.gift = e.giftId; row.dataset.status = e.status;
+    Txt(GIFT_SOURCE_JA[e.source] ?? e.source, 0, 12, 150, 12, e.source === 'ops_compensation' ? GOLD : CYAN, row, { weight: 700, ls: '.18em', nowrap: true });
+    Txt(e.title + (e.rank ? `　·　${e.rank}位` : ''), 0, 32, 470, 18, WHITE, row, { weight: 700, nowrap: true });
+    Txt(e.lines.join('　·　'), 0, 60, 470, 13, MUTED, row, { nowrap: true }).style.overflow = 'hidden';
+    if (tab === 'box') {
+      // the expiry text only for a real expiresAt (REQ-BOX-004); gold inside the server's "expiring soon" window
+      if (e.expiresAt != null) {
+        const d = giftDays(e.expiresAt);
+        Txt(`あと${d}日`, 500, 22, 160, 17, d <= 3 ? GOLD : MUTED, row, { weight: 700, align: 'right', nowrap: true, cls: 'num' }).dataset.expiry = String(d);
+        Txt(`${jstDay(e.expiresAt)}まで`, 500, 52, 160, 12, SOFT, row, { align: 'right', nowrap: true });
+      }
+      if (e.held) Txt(e.held.reason === 'coin_cap' ? '無償コインの持てる上限のため受け取れませんでした' : 'アイテムの持てる上限のため受け取れませんでした', 680, 64, 300, 11, WARN, row, { nowrap: true }).dataset.held = e.held.reason;
+      if (!blocked) Ghost('受け取る', 860, 18, 128, 44, () => GiftClaim(() => L.giftClaim(e.giftId)), row, 'small gold').dataset.giftClaim = e.giftId;
+    } else {
+      Txt(e.status === 'expired' ? '期限切れ' : '受け取り済み', 680, 22, 300, 15, e.status === 'expired' ? SOFT : OK, row, { weight: 700, align: 'right', nowrap: true });
+      Txt(jstDay(e.doneAt), 680, 52, 300, 12, SOFT, row, { align: 'right', nowrap: true, cls: 'num' });
+    }
+  });
+  if (pages > 1) {
+    Txt(`${giftState.page + 1} / ${pages}`, 740, 648, 120, 14, MUTED, p, { align: 'right', cls: 'num' }).dataset.giftPage = String(giftState.page + 1);
+    const prev = Ghost('前へ', 872, 636, 72, 40, () => { giftState.page--; GiftBox(tab); }, p, 'small');
+    const next = Ghost('次へ', 952, 636, 72, 40, () => { giftState.page++; GiftBox(tab); }, p, 'small');
+    if (giftState.page === 0) disable(prev);
+    if (giftState.page >= pages - 1) disable(next);
+  }
+  // right: the count, the one CTA (claim everything that fits), the rule in plain words
+  const s = Glass('Gift totals', 1116, 134, 448, 676, undefined, .9);
+  Kicker('受け取り待ち', 36, 30, s, { size: 16 });
+  Txt(`${v.badge.unclaimed}件`, 36, 100, 376, 40, WHITE, s, { weight: 700, cls: 'num' }).dataset.giftCount = String(v.badge.unclaimed);
+  if (v.badge.expiringSoon > 0) Txt(`うち${v.badge.expiringSoon}件は3日以内に期限`, 36, 158, 376, 14, GOLD, s, { weight: 500 });
+  if (blocked) Txt('アカウント削除の予定があります。取り消すと受け取れます', 36, 200, 376, 14, RED, s, { weight: 700, lh: 1.5 }).dataset.giftBlocked = '1';
+  else if (v.badge.unclaimed > 0) Cta('まとめて受け取る', 36, 196, 376, () => GiftClaim(() => L.giftClaimAll()), s, 'small');
+  else Txt('受け取れるプレゼントはありません', 36, 214, 376, 15, SOFT, s);
+  Hair(36, 296, 376, s);
+  Kicker('受け取りのきまり', 36, 318, s, { rule: false, size: 14 });
+  Txt(`受け取り期限は届いてから${v.rules.defaultExpiryDays}日（お詫びは90日）。期限を過ぎたプレゼントは受け取れなくなります。`, 36, 352, 376, 13, MUTED, s, { lh: 1.6 });
+  Txt('持てる上限を超えるプレゼントは、ボックスに残ります。', 36, 440, 376, 13, MUTED, s, { lh: 1.6 });
+  Txt('有償コインはプレゼントボックスに入りません。', 36, 600, 376, 13, SOFT, s, { lh: 1.5 });
+  Back(Home, 'ホームへ', 40, 834);
+}
+/** Runs a claim (one / all) and shows what came in and what stayed in the box. */
+async function GiftClaim(call) {
+  const r = await call();
+  if (!r.ok) { toast(r.code === 'GIFT_HOLD_CAP' ? '持てる上限に達しているため、受け取れません。' : r.code === 'GIFT_EXPIRED' ? 'このプレゼントは受け取り期限を過ぎました。' : r.message); return GiftBox(); }
+  await refresh();
+  GiftResult(r.value);
+}
+function GiftResult(c) {
+  currentScreen = () => GiftResult(c); Clear('gift-result'); SetArt('Art/home-paddock', false); Shade('dim heavy');
+  const box = Dialog('Gift result', 900, 560);
+  Kicker('受け取り結果', 52, 48, box);
+  Txt(c.claimed.length > 0 ? `${c.claimed.length}件のプレゼントを受け取りました` : '受け取れるプレゼントはありませんでした', 52, 112, 796, 30, WHITE, box, { weight: 700 }).dataset.giftClaimed = String(c.claimed.length);
+  const lines = [];
+  if (c.totals.freeCoins > 0) lines.push([`無償コイン${fmt(c.totals.freeCoins)}枚`, GOLD]);
+  for (const [id, q] of Object.entries(c.totals.items)) lines.push([`${inviteItemName(id)}×${q}`, WHITE]);
+  lines.slice(0, 5).forEach(([t, col], i) => Txt(t, 52, 186 + i * 40, 796, 22, col, box, { weight: 700, nowrap: true }));
+  if (c.held.length) Txt(`${c.held.length}件は持てる上限のため、ボックスに残しました`, 52, 400, 796, 15, WARN, box, { weight: 500 }).dataset.giftHeld = String(c.held.length);
+  Cta('つづける', 52, 466, 360, () => GiftBox('box'), box, 'small');
+}
+
 // ================================================================= boot
 function fit() {
   const s = Math.min(window.innerWidth / 1600, window.innerHeight / 900);
@@ -2670,7 +3053,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Collection, Achievements, Training, TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ GiftBox, AssistSettings, Collection, Achievements, Training, Rival, TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

@@ -108,6 +108,8 @@ public static partial class MuchiRace
         _driver = driver;
         _mode = mode;
         var cfg = driver.Config;
+        // round 12: かんたん操作 (REQ-ASSIST-*) — the same AssistModel.Attach the game layer uses; never in the tutorial
+        if (mode != "tutorial") AssistModel.Attach(driver, _assist);
         _director = driver.Race.Director as TutorialDirector;
         _obs = new RaceObserver(_driver);
         _eventIdx = 0;
@@ -171,6 +173,10 @@ public static partial class MuchiRace
     [JSExport] public static void Spur() => _input.Spur();
     [JSExport] public static void Rein(bool held) => _input.SetRein(held);
 
+    private static AssistLevel _assist = AssistLevel.Off;
+    /// <summary>Round 12: the かんたん操作 level ("off" | "whip" | "full", the server setting) used from the next race.</summary>
+    [JSExport] public static string SetAssist(string level) { _assist = AssistLevels.Parse(level); return AssistLevels.Wire(_assist); }
+
     /// <summary>One frame: collect input (as MuchiApp.Update does), advance the race to nowMs, return HUD + interpolated poses.</summary>
     [JSExport]
     public static string Frame(double nowMs)
@@ -194,6 +200,9 @@ public static partial class MuchiRace
         for (int i = 0; i < hud.Progress.Length; i++) { if (i > 0) sb.Append(','); sb.Append(F(hud.Progress[i])); }
         sb.Append(']');
         AppendFeel(sb, hud, now);
+        // round 12: the level riding this race and the HUD chip (HudSnapshot.Assist / AssistLabel)
+        sb.Append(",\"assist\":\"").Append(AssistLevels.Wire(hud.Assist)).Append("\",\"assistLabel\":\"").Append(Esc(hud.AssistLabel)).Append("\",\"assistCmds\":")
+          .Append(_driver.Race.Assistant?.CommandsSent ?? 0);
         sb.Append(",\"horses\":[");
         int n = _driver.Config.Entrants.Count, laneW = _driver.Config.Ruleset.LaneWidthMm;
         for (int i = 0; i < n; i++)

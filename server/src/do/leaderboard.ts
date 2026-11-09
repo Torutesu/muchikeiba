@@ -21,6 +21,9 @@ import { DirtyTracker } from '../domain/dirty.js';
 import { DELETED_PLAYER_NAME } from '../domain/accountDeletion.js';
 import { dismissRolloverItem, retryRolloverItem, rolloverDeadLetters, type DeadLetterItem, type RetryOutcome, type RolloverWithLog } from '../ops/deadLetter.js';
 import { newlyDead, reportDeadLetters } from './deadLetters.js';
+import { SqlRivalWeekStore } from './rivalStore.js';
+import { RivalWeekCore } from '../domain/rivalService.js';
+import { prevWeekId, type RegistryWeek, type RivalEntry } from '../domain/rival.js';
 
 /** Wall-clock budget of one cron rollover call (the cron runs every 5 minutes). */
 const ROLLOVER_BUDGET_MS = 20_000;
@@ -449,5 +452,36 @@ export class LeaderboardDO extends DurableObject<Env> {
       this.kvPut(this.dlKey(kind), dismissRolloverItem(st, itemId, by, note, now));
       return true;
     });
+  }
+  // ---------------------------------------------------------------- weekly rival registry (REQ-RIVAL-*, instance `rival:<weekId>`)
+  private async rivalCore(weekId: string) {
+    const master = (await activeConfig(this.env)).master;
+    const prev = this.env.LEADERBOARD.get(this.env.LEADERBOARD.idFromName(`rival:${prevWeekId(weekId)}`)) as unknown as { rivalCandidates(a: string, l: number): Promise<Envelope<RivalEntry[]>> };
+    return new RivalWeekCore(new SqlRivalWeekStore(this.sql), weekId, master, async (after, limit) => unwrap(await prev.rivalCandidates(after, limit)));
+  }
+  /** Next week's pairing reads this week's candidates (paged, player-id order). */
+  async rivalCandidates(after: string, limit: number): Promise<Envelope<RivalEntry[]>> {
+    return wrap(() => new SqlRivalWeekStore(this.sql).entriesAfter(after, Math.min(1000, Math.max(1, limit))));
+  }
+  async rivalEnsurePaired(weekId: string, now: number): Promise<Envelope<{ pairs: number; candidates: number }>> {
+    return wrap(async () => (await this.rivalCore(weekId)).ensurePaired(now));
+  }
+  async rivalAssignment(weekId: string, playerId: string, now: number): Promise<Envelope<RegistryWeek>> {
+    return wrap(async () => (await this.rivalCore(weekId)).assignment(playerId, now));
+  }
+  async rivalRegister(weekId: string, e: RivalEntry, now: number): Promise<Envelope<boolean>> {
+    return wrap(async () => { (await this.rivalCore(weekId)).register(e, now); return true; });
+  }
+  async rivalWithdraw(weekId: string, playerId: string, now: number): Promise<Envelope<boolean>> {
+    return wrap(async () => { (await this.rivalCore(weekId)).withdraw(playerId, now); return true; });
+  }
+  async rivalDissolve(weekId: string, playerId: string, now: number): Promise<Envelope<boolean>> {
+    return wrap(async () => { (await this.rivalCore(weekId)).dissolve(playerId, now); return true; });
+  }
+  async rivalTaBest(weekId: string, playerId: string, trackId: string, timeMs: number): Promise<Envelope<{ notify: string | null }>> {
+    return wrap(async () => (await this.rivalCore(weekId)).taBest(playerId, trackId, timeMs));
+  }
+  async rivalForget(weekId: string, playerId: string, now: number): Promise<Envelope<boolean>> {
+    return wrap(async () => { (await this.rivalCore(weekId)).forget(playerId, now); return true; });
   }
 }

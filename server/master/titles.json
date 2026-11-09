@@ -1,5 +1,5 @@
 {
-  "_note": "称号の定義（全て架空の名称）。condition の kind: races / wins / top3 / winsByStyle(style) / perfectStarts / startReaction(≦value tick) / whipPerfectWins / trackWins(trackId) / bestTime(trackId, ≦value tick) / classReached(classId) / rating(≧value) / bondLevel(≧value、いずれかの馬の絆レベル) / achievement(achievementId, tier: collection.json の実績のその段に到達。REQ-ACH-006)",
+  "_note": "称号の定義（全て架空の名称）。condition の kind: races / wins / top3 / winsByStyle(style) / perfectStarts / startReaction(≦value tick) / whipPerfectWins / trackWins(trackId) / bestTime(trackId, ≦value tick) / classReached(classId) / rating(≧value) / bondLevel(≧value、いずれかの馬の絆レベル) / achievement(achievementId, tier: collection.json の実績のその段に到達。REQ-ACH-006) / rivalWeeksWon(≧value、ライバルの週の勝ちの通算。連勝ではない。REQ-RIVAL-007)",
   "titles": [
     { "id": "debut", "name": "デビュー", "condition": { "kind": "races", "value": 1 } },
     { "id": "first_win", "name": "初勝利", "condition": { "kind": "wins", "value": 1 } },
@@ -26,6 +26,9 @@
     { "id": "ach_clockwork", "name": "時計の支配者", "condition": { "kind": "achievement", "achievementId": "ta_gold", "tier": 2 } },
     { "id": "ach_champion", "name": "大会の覇者", "condition": { "kind": "achievement", "achievementId": "tournament_win", "tier": 1 } },
     { "id": "ach_popular_stable", "name": "人気厩舎", "condition": { "kind": "achievement", "achievementId": "stable_likes", "tier": 2 } },
-    { "id": "ach_cheer_leader", "name": "応援団長", "condition": { "kind": "achievement", "achievementId": "team_cheers", "tier": 2 } }
+    { "id": "ach_cheer_leader", "name": "応援団長", "condition": { "kind": "achievement", "achievementId": "team_cheers", "tier": 2 } },
+    { "id": "rival_first", "name": "好敵手", "condition": { "kind": "rivalWeeksWon", "value": 1 } },
+    { "id": "rival_5", "name": "宿命の対決", "condition": { "kind": "rivalWeeksWon", "value": 5 } },
+    { "id": "rival_20", "name": "ライバルキラー", "condition": { "kind": "rivalWeeksWon", "value": 20 } }
   ]
 }

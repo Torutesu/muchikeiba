@@ -93,7 +93,7 @@ C#（端末・検証サーバー）とTypeScript（Cloudflareサーバー）の�
 | `hello` | `{"t":"hello","raceId":"…","token":"…","lastTick":-1}` | 参加・再接続。`lastTick`は計算済みの最後のtick（初回は-1） |
 | `in` | `{"t":"in","tick":123,"cmd":32}` | 入力。`tick`は宛先tick |
 | `chk` | `{"t":"chk","tick":120,"h":"0123456789abcdef"}` | チェックサム（`tick`は`checksumIntervalTicks`の倍数） |
-| `res` | `{"t":"res","h":"<64hex>","order":[3,0,…],"finishTicks":[1830,1835,…],"skills":[0,5]}` | 結果ハッシュと着順。`finishTicks`は任意（`order`と同じ並び、未完走は-1）。合意した全員が同じ値を送った時だけ戦績のベストタイムに使う。`skills`は任意（固有スキルが発動した枠、§24.4）。合意した2人以上が同じ一覧の時だけ実績に使う（検証に回ったレースは検証サービスの `skillsFired`）。最も速い馬でもゴールできないtickより前の`res`は`err` `RESULT_TOO_EARLY`、2回目以降の`res`は無視 |
+| `res` | `{"t":"res","h":"<64hex>","order":[3,0,…],"finishTicks":[1830,1835,…],"skills":[0,5],"assist":"whip"}` | 結果ハッシュと着順。`finishTicks`は任意（`order`と同じ並び、未完走は-1）。合意した全員が同じ値を送った時だけ戦績のベストタイムに使う。`skills`は任意（固有スキルが発動した枠、§24.4）。合意した2人以上が同じ一覧の時だけ実績に使う（検証に回ったレースは検証サービスの `skillsFired`）。`assist`は任意（`"whip"`/`"full"`、自分の枠のかんたん操作、§27。KPIだけに使い誰にも送らない）。最も速い馬でもゴールできないtickより前の`res`は`err` `RESULT_TOO_EARLY`、2回目以降の`res`は無視 |
 | `ping` | `{"t":"ping","c":1730000000000}` | 時刻合わせ |
 
 ### 部屋 → 端末
@@ -907,3 +907,271 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 - タップは `BeginMiniGame(now)` からの ms で、サーバーが受け付ける形（間隔・回数・範囲）のものだけを記録する。画面の◎○×は `TrainingScorer.Judge`、合計は `TrainingScorer.Score`（サーバーと同じ）。
 - start / finish は応答が来るまで同じ冪等キーを使う（タイムアウト後の再送で回数を2回使わない）。読み込んだ時に開いたセッションがあれば、ミニゲームなしで仕上げる（時間が経っているため）。
 - 画面に `TrainingModel.RulesText`（ランク戦は上限にそろえる・疲れはレースに影響しない・伸びは受け継がれない）を出す。調教の画面からショップへの導線は作らない。
+
+## 26. プレゼントボックス（REQ-BOX-001〜014、`server/src/domain/giftBox.ts`、C# `GiftBox.cs`・`Muchi.Game.GiftBoxModel`）
+その場で受け取る画面が無い**無料の**報酬（運営の補填・配布、招待ボーナス、イベント・大会・支部・リーグ・シーズンの報酬）は、財布に直接入れず**プレゼントボックス**に届く。プレイヤーは好きな時に「受け取る」「まとめて受け取る」で財布・持ち物に移す。ボックスは**届け方を変えるだけで額は変えない**（経済 E1〜E15 は同じ範囲、balance-targets 4.13）。
+
+**入れられるもの**：無償コイン・アイテム（券を含む）だけ。**有償コインは決して入らない**（資金決済法：有償は期限で消えない・無料で配らない）。報酬に馬・繁殖牝馬・パス経験値が付いている場合は、その部分だけこれまでどおりその場で付与し、コインとアイテムをボックスへ入れる。
+
+### 26.1 どの報酬がボックスに届くか（決定事項）
+| 出どころ（`source`） | これまで | これから | 理由 |
+|---|---|---|---|
+| 運営の補填 `ops_compensation`（`POST /v1/admin/compensations`、2人承認を含む） | 即時に財布へ | **ボックス**（期限 90日） | 本人が見ていない時に届く。お知らせの通知（§26.6） |
+| 運営の個別・一括配布 `ops_grant`（`/v1/admin/players/:id/grants`・`/v1/admin/grants/bulk`） | 即時に財布へ | **ボックス**（期限 30日） | 同上 |
+| 招待ボーナス（招待した側）`invite` | マイルストーンの配達時に財布へ | **ボックス** | 招待された人の進み具合で、招待した人の知らない時に届く |
+| イベントの順位報酬 `event`（イベント終了の処理） | 財布へ | **ボックス** | 終了後のバッチで届く |
+| 大会の賞品 `tournament` | 財布へ | **ボックス** | 同上 |
+| 支部のシーズン報酬 `team`・支部対抗リーグ `league` | 財布へ | **ボックス** | 月替わりのバッチで届く |
+| シーズン（クラス順位）の報酬 `season` | 財布へ | **ボックス** | 同上 |
+| シーズンパスの受け取り忘れの自動付与（シーズン終了時） | 財布へ | **そのまま（直接）** | パスの返金の取り消し（REQ-PUR-006）と購入に結び付く無償コインの扱い（REQ-UXS-018/021）が財布の付与に結び付いているため。パス画面の「シーズン終了時に自動で受け取り」の記録（`passHistory`）で見える |
+| 招待された側の歓迎ギフト | コード入力の画面で付与 | **そのまま** | その場の画面がある |
+| ライバルの週の結果（§28、Round 12 の統合で決定） | — | **そのまま（直接）** | 週の結果シート（`GET /v1/rival` の `result`）がその場の受け取り画面。精算は本人がライバルの画面を開いた時（またはオプトアウトの前）だけ行い、台帳の参照は `rival:<weekId>` |
+| ログインボーナス・デイリー/初心者/シーズンミッション・パスの受け取り・実績・絆・復帰キャンペーン・広告・イベントのポイント報酬・タイムアタック | 各画面で受け取り | **そのまま** | その場で受け取る画面がある（実績は自動付与ではなく受け取り式） |
+| 購入（有償コイン・おまけ・デイリーパック）・種付け料 | — | **そのまま** | 報酬ではない（購入・売上）。有償コインは入らない |
+
+`progression.giftBox` が無い（または `enabled: false`）時は、すべて従来どおり直接付与する。
+
+### 26.2 設定（`progression.giftBox`、リモート設定で変更可・`giftBoxProblems` で検証）
+| キー | 既定 | 意味（コード上の範囲） |
+|---|---|---|
+| `enabled` | true | false で従来どおりの直接付与（届いている分は受け取れる） |
+| `expiryDays.default` | 30 | 期限（日、7〜180） |
+| `expiryDays.bySource` | `{ "ops_compensation": 90 }` | 出どころごとの期限（7〜365、`null` = 期限なし）。補填は `default` より短くできない |
+| `maxUnclaimed` | 500 | 未受け取りの上限（50〜1000、§26.5） |
+| `historyDays` / `historyKeep` | 90 / 300 | 履歴に残す日数（30〜180）／件数（50〜1000） |
+| `holdCaps` | `{ "freeCoins": 9999999, "itemQty": 9999 }` | 持てる上限（無償コインの残高、アイテム1種類の個数）。超える受け取りは保留（§26.4） |
+| `expiringSoonDays` | 3 | 「期限が近い」の数え方（1〜7） |
+| `pushSources` | `["ops_compensation"]` | 届いた時に通知する出どころ（テンプレート `gift_arrived`、§26.6） |
+
+運営の配布では、`titleKey`（下の表のうち `ops_*`）と `expiryDays`（1〜365 または `null` = 期限なし）を指定できる（省略時は上の既定）。
+
+| `titleKey` | 表示（日本語／英語） |
+|---|---|
+| `ops_compensation` | お詫びの品 / An apology gift |
+| `ops_compensation_maintenance` | メンテナンスのお詫び / Apology for the maintenance |
+| `ops_compensation_bug` | 不具合のお詫び / Apology for a bug |
+| `ops_grant` | 運営からの贈り物 / A gift from the team |
+| `invite` | 招待ボーナス / Invite reward |
+| `event` | イベントの順位報酬 / Event ranking reward |
+| `tournament` | 大会の賞品 / Tournament prize |
+| `team` | 支部のシーズン報酬 / Branch season reward |
+| `league` | 支部対抗シーズンの報酬 / Branch league reward |
+| `season` | シーズンの報酬 / Season reward |
+
+### 26.3 `GET /v1/gift-box?tab=box|history&offset=0&limit=50`（要認証）
+```json
+{ "enabled": true, "tab": "box", "badge": { "unclaimed": 2, "expiringSoon": 1 }, "maxUnclaimed": 500,
+  "total": 2, "offset": 0, "limit": 50, "nextOffset": null,
+  "rules": { "defaultExpiryDays": 30, "historyDays": 90, "paidCoins": false },
+  "entries": [ { "giftId": "gift_3", "source": "ops_compensation", "titleKey": "ops_compensation_maintenance", "title": "メンテナンスのお詫び",
+    "rank": null, "contents": { "freeCoins": 300, "items": [ { "itemId": "gacha_ticket", "name": "スカウト券", "qty": 1 } ] },
+    "lines": ["無償コイン300枚", "スカウト券×1"], "createdAt": 1796871607000, "expiresAt": 1804647607000,
+    "status": "unclaimed", "doneAt": null, "how": null, "held": null } ] }
+```
+- `tab=box`：未受け取り。期限の近い順（期限なしは最後）、同じなら新しい順。`tab=history`：受け取り済み・期限切れ（直近 `historyDays` 日、新しい順）。`limit` 1〜100。
+- `status`：`unclaimed` / `claimed` / `expired`。`doneAt`：受け取り・期限切れの時刻。`how`：`one` / `all` / `overflow`（§26.5）。`held`：直前の受け取りで保留になった理由（`{ "reason": "item_cap" | "coin_cap", "itemId" }`）。
+- 期限の表示（「あと3日」）は `expiresAt` から出す。`expiresAt: null` は期限なし（表示しない）。**実際の期限が無いものに期限の表示を付けない**。
+- 期限切れは読んだ時に処理する（その時だけ取引で書き込む。普段は読み取りだけ）。プレイヤーの Durable Object のアラームも一番早い期限で起きて処理する。
+- `GET /v1/player`・`POST /v1/player/bootstrap` に `giftBox: { "unclaimed": n, "expiringSoon": n }`（ホームの封筒のバッジ。期限の過ぎたものは数えない）。
+
+### 26.4 `POST /v1/gift-box/:giftId/claim`・`POST /v1/gift-box/claim-all`（要認証・`Idempotency-Key` 必須）
+- 応答 `{ "claimed": [ { "giftId", "source", "freeCoins", "items" } ], "held": [ { "giftId", "reason", "itemId" } ], "totals": { "freeCoins", "items": { "gacha_ticket": 1 } }, "badge": {…}, "wallet": {…}, "items": { 変わったアイテムの今の数 } }`。
+- 1つの取引で、1件ずつ丸ごと受け取る（1件の中を分けない）。**まとめて受け取る**は期限の近い順。持てる上限（`holdCaps`）を超える1件はボックスに残り `held` に理由が載る（他は受け取る）。
+- 1件の受け取りで上限を超える時は `GIFT_HOLD_CAP`（409）。受け取り済みは `ALREADY_CLAIMED`、期限切れは `GIFT_EXPIRED`、無い id は `NOT_FOUND`、削除の予約中は `DELETION_PENDING`（受け取りは止める。届いた分はアカウントの削除で消える）。同じキーの再送は同じ結果。
+- 台帳：無償コインは `gift <source>: <title>`・参照 `gift:<giftId>` で付与（ボックスに届いた時点では財布は変わらない）。アイテムは持ち物に足す（返金による負債があれば先に相殺）。
+
+### 26.5 上限（`maxUnclaimed`）を超えた時（決定事項）
+- 未受け取りが `maxUnclaimed` 件の時に新しいものが届いたら、**補填以外で一番期限の近いもの**を自動で受け取る（財布・持ち物へ移し、履歴に `how: "overflow"`）。何も消さない。
+- 自動で受け取れるもの（補填以外で持てる上限に収まるもの）が無い時は、そのまま上限を超えて入れる（補填は**決して捨てない**、黙って消すことはしない）。サポート用の印 `gift_box_over_cap` を付ける。
+
+### 26.6 削除・通知・KPI
+- アカウントの削除：削除の実行（`deleting`）に入ったら新しく届けない（`ops` の配布は `DELETION_IN_PROGRESS`）。消去の時にボックスも一緒に消え、未受け取りの件数を削除の記録の `forfeited.gifts` に残す。消去済み（トゥームストーン）の id への運営の配布は `NOT_FOUND`（新しいプレイヤーを作らない）。大会・イベント・シーズンなどの配達は今までどおり何もしない。
+- 通知：`pushSources` の出どころ（既定は補填だけ）が届いたら `gift_arrived`（カテゴリ `gifts`、既定オン）を送る。1日の上限・静かな時間帯はほかの通知と同じ。
+- KPI（サーバー）：`gift_receive`（s1 出どころ、s2 `titleKey`、`freeCoins`、`count` アイテムの数、`value` 期限の日数（なしは0））、`gift_claim`（s1 出どころ、s2 `one`/`all`/`overflow`、`freeCoins`、`count`、`value` 届いてから受け取るまでの時間（時間））、`gift_expire`（s1 出どころ、`freeCoins`、`count`）。クエリは `docs/ops/kpi-queries.md`「プレゼントボックス」。
+
+### 26.7 運用コンソール
+- `GET /v1/admin/players/:playerId` の `state.giftBox`：未受け取り（全件）と直近の履歴（50件）、件数。
+- 配布・補填のフォームでボックスに入れる（`titleKey`・`expiryDays` を選べる）。2人承認の閾値・24時間の1人あたりの上限（REQ-OPS-026）はこれまでどおり（ボックスに入れる時点で数える）。
+
+## 27. かんたん操作（easy controls、REQ-ASSIST-001〜012、`server/src/domain/assist.ts`、C# `InputAssist.cs`（`InputAssistant`・`AssistLevels`）・`Assist.cs`・`Muchi.Game.AssistModel`）
+操作が苦手なプレイヤー向けの任意の補助（docs/planning/06 REQ-UXU-030、P2）。**補助はクライアントの中だけで動き、プレイヤーが送るのと同じ入力バイト（§3 の Cmd）を作るだけ**。エンジン・ルールセット・検証器・結果ハッシュ・リプレイの形式は変わらない（ゴールデンも同じ）。
+
+| レベル | 線の値 | 何をするか | プレイヤーの操作 |
+|---|---|---|---|
+| オフ（既定） | `off` | 何もしない | 全部自分 |
+| ムチだけおまかせ | `whip` | 最後の直線でムチを間隔をあけて打つ | スタート・手綱・進路は自分。発走後の自分のムチは無視（無駄打ちを防ぐ） |
+| ぜんぶおまかせ | `full` | スタート（ゲートが開いて2tick後）・スタミナを見た手綱・遅い馬の後ろから外へ出す進路・ムチ | 無視（補助と取り合わない） |
+
+### 27.1 決定論と入力の経路（REQ-ASSIST-002）
+- `InputAssistant.Decide(sim)` はクライアントが持っているレースの状態（`RaceSim`）だけを読む。乱数・時計は使わない。1tickに1回だけ決める（毎フレーム呼んでよい）。
+- オフライン（`OfflineRace.Assistant`）：補助のコマンドはプレイヤーの入力と合わせてから記録される＝ `RecordedInputs` に普通の入力として残る（タイムアタックはそのまま送れる。サーバーは今までどおり再シミュレーションで確かめる）。
+- オンライン（`RaceSession.Assistant`）：確定した tick が進むたびに補助のコマンドを普通の `in`（§4）で送る。部屋は入力遅延を足すので、指で押した時と同じく少し遅れて効く。補助は送った手綱の向き・最後のムチの tick を自分で覚え、届く前の自分のコマンドを状態から読み直さない。送った手綱が40tick（`ResyncTicks`）たっても馬に表れない時だけ（切断で `in` が失われた時）もう一度送る。
+- 補助の作り方（定数、`InputAssistant`）：スタート `StartReactionTicks` 2、ムチの間隔 = max(`whipEffectTicks`, `whipDiminishWindowTicks`) + 6 tick、残りのムチが最後に打ち終わる地点より 60m 手前から（スパート区間の中だけ）、手綱は「スタミナ‰ − 180 < 残り距離‰」または折り合いが悪い・掛かっている時（スパート区間では引かない）、進路は8tickごとに前の遅い馬（スパート区間では前の馬すべて）を外→内の順でかわす。風よけは探さない。値を変えたら R11（balance-targets §2.3）を測り直す。
+
+### 27.2 公平性の決まり（REQ-ASSIST-005〜007）
+| 項目 | 決めたこと |
+|---|---|
+| ランク戦 | **使ってよい**。補助は上手な手動操作より弱く作り、テストで確かめる（R11：勝率比 < 1.0、同じ能力の一騎打ちで上手い人に勝つのは5割未満、何もしない人よりはっきり上）。課金で買えるものではない。 |
+| 印 | 乗り手が自分の `res` に `assist: "whip" \| "full"`（任意）を付ける。部屋は**その乗り手の分だけ**覚え（`FinalOutcome.assisted`）、精算で `RaceDetails.assist` に入れ、KPI `race_assisted` にだけ使う。`final` やスペクテーター・相手に送るメッセージ、リプレイのログには入らない（相手には見せない）。自己申告だが報酬・着順・レートには一切効かないので検証は要らない。 |
+| チュートリアル | **使わない**。`AssistLevels.AllowedIn(Tutorial)` は false で、`OfflineRace` も `RaceSession` もチュートリアルでは補助を無視する。REQ-UXS-004（2発以上で勝ち・0〜1発は僅差の2着・3回目から勝ち）は補助オフの前提のまま。設定に出すのは FTUE が終わってから、提案はオンラインのレースの結果からだけ出る（＝最初の勝利の後）。 |
+| タイムアタック・フレンド・イベント・大会 | 使ってよい（同じ入力の経路なので記録・検証は変わらない）。 |
+
+### 27.3 `GET /v1/player/assist`・`PUT /v1/player/assist`・`POST /v1/player/assist/prompt-seen`（要認証）
+```json
+{ "level": "off", "promptDue": false, "lastPlaceStreak": 0, "promptShown": false, "levels": ["off", "whip", "full"],
+  "rules": { "ranked": "allowed", "cappedBelowSkilled": true, "shownToOpponents": false, "tutorial": "off" } }
+```
+- `GET /v1/player`（bootstrap も）にも同じ形で `assist` が入る。読み取りは状態を作らない。
+- **PUT** `{ "level": "off" | "whip" | "full", "source"?: "settings" | "prompt" }`（他のキーは 400、`source` の既定は `settings`）→ 上の形。同じレベルを送り直しても何も変わらない（冪等キー不要）。`source: "prompt"` は提案シートが出たことも記録する。
+- **prompt-seen** → 上の形。提案が出る条件を満たしている時だけ1回記録する（条件の前に呼んでも何も起きない＝早く呼んで提案を消すことはできない）。
+- 端末はオフラインの間、最後に選んだレベルを端末に残し、オフラインのレースに使う（`AssistModel.KeyLevel`）。
+
+### 27.4 一度だけの提案（REQ-ASSIST-010）
+- 部屋で精算されたレース（ランク戦・フレンド・イベント・大会。無効・チュートリアル・タイムアタック・1頭立ては数えない）で**最下位（`place == fieldSize`）が3回続いたら** `promptDue = true`。最下位以外で連続は0に戻る。`applyRace` のレースごとの重複防止に乗るので、精算の再送で二重に数えない。
+- 補助がオンの時・アカウント削除の手続き中は出さない。出したら（`prompt-seen` か `source: "prompt"` の PUT）二度と出さない。
+- 画面：結果画面からホームへ戻る時のシート。急かさない（タイマー・「今だけ」・強調色の押し付けなし）。「ムチだけおまかせ」「ぜんぶおまかせ」「今はいい」を同じ大きさで並べ、「いつでも設定で戻せます」と公平性の一文を出す。
+
+### 27.5 KPI
+| イベント | 送り手 | s1 | s2 | s3 | 数値 |
+|---|---|---|---|---|---|
+| `assist_enable` | サーバー（PUT でオンにした・レベルを変えた） | `whip`/`full` | `settings`/`prompt` | 前のレベル | `value` その時の最下位の連続、`isFirst` 初めてオンにした |
+| `assist_disable` | サーバー（PUT でオフにした） | 前のレベル | `settings`/`prompt` | | |
+| `assist_prompt_view` | サーバー（提案シートが出た、1回だけ） | | | | `value` 最下位の連続 |
+| `race_assisted` | サーバー（補助ありで精算されたレース） | `whip`/`full` | モード | | `double4` 着順、`double5` 頭数 |
+| `client_race_start` | クライアント（既存） | モード | 補助のレベル（オフは空） | | |
+クエリは `docs/ops/kpi-queries.md`「かんたん操作」。
+
+### 27.6 クライアント
+- `Muchi.Client`：`InputAssistant`（`Decide`・`Apply`・`FilterPlayer`）、`AssistLevel`・`AssistLevels`（`Wire`・`Parse`・`AllowedIn`・`HudLabel`）、`OfflineRace.Assistant`／`EffectiveAssist`、`RaceSession.Assistant`／`EffectiveAssist`、`LockstepClient.AssistLevel`（`res.assist`）、`ApiClient.GetAssistAsync`・`SetAssistAsync`・`MarkAssistPromptSeenAsync`、`PlayerView.Assist`、`Analytics.RaceStart(at, mode, assist)`。
+- `Muchi.Game`：`AssistModel`（3つの選択肢と説明、`ShouldShowPrompt(inFtue)`、`Prompt()`、`SetAsync`、`MarkPromptShownAsync`、`Attach(driver, level)`、`RidingLevel`）、`GameBackend.AssistLevel`（練習・ランク戦の作成時に付ける。チュートリアルには付けない）、`HudSnapshot.Assist`／`AssistLabel`（「かんたん操作 ON」）／`WhipAuto`／`SteeringAuto`。
+
+## 28. ライバル（週ごとのライバル、REQ-RIVAL-001〜016、`server/src/domain/rival.ts`・`rivalService.ts`・`server/src/do/rivalStore.ts`、C# `Rival.cs`・`Muchi.Game.RivalModel`）
+毎週ひとり、同じクラスでレーティングの近いライバルが決まる。同じランク戦で走れば直接対決、タイムアタックでは今週のベストを比べる。週の終わりに結果と小さな固定の報酬。
+
+**決めたこと**
+| 項目 | 決めたこと |
+|---|---|
+| 週 | ゲーム日（§15、`progression.dayRollover`、既定 4:00 JST）で数えて **`weekStartsOn`（既定 1 = 月曜）から7ゲーム日**。週ID = その週の最初のゲーム日（`"2026-12-07"`）。週の終わり = 次の週の最初のゲーム日の切り替え（`weekEndMs`）。 |
+| 誰と組むか | **先週ランク戦を走った人**（週 W にランク戦を1回でも確定させた人が、W+1 の候補として週 W の登録簿に載る）。同じクラス・レーティング差 `maxRatingGap`（200）以内・お互いにブロックしていない・オプトアウト／BAN／削除予定でない・隔離中（REQ-OPS-032）でない。登録はトランザクションの後に送り、届かなかった時は次の `GET /v1/rival` で送り直す（最新が勝つ）。 |
+| 決定論 | `pairWeek(config, weekId, 候補)`：クラスごとに「レーティング＋（週IDとプレイヤーIDの FNV-1a から決まる ±`jitter`）」の降順（同点はプレイヤーID）に並べ、上から順に、まだ組んでいない人を `pairWindow`（3）人先まで見て最初に条件を満たす人と組む。**入力の順番に依らず、同じ週・同じ候補なら同じ組み合わせ**（再現できる）。 |
+| CPU のライバル | 組めなかった人（奇数の余り・候補がいない・差が大きい・週の途中から来た人）は `cpuRivals` から「週ID＋プレイヤーID」のハッシュで決まる名前と性格のある CPU（堅実のアサギ・強気のクレナイ・気まぐれのヒスイ・粘りのコガネ）。その週の間は同じ CPU。 |
+| どこに置くか | 週ごとの登録簿 = **LeaderboardDO のインスタンス `rival:<weekId>`**（専用の `rv_*` テーブル。DO クラスとマイグレーションは増やさない）。週 W の登録簿は「W の組み合わせ（初回の問い合わせか cron で、W−1 の登録簿の候補を読んで1回だけ作る）」「W+1 の候補」「W の両者のタイムアタックのベスト」を持つ。プレイヤーの DO は自分の集計を自分で持ち、登録簿とは**常に一致していることを前提にしない**（登録簿が落ちても画面は手元の値で出る）。 |
+| 直接対決 | **確定したランク戦**（精算と同じ信頼のルール：合意か検証サービス、無効のレースは数えない）で、2人とも走っていれば**先着した方に1点**。レースは**結果を受け取った時の週**に数える（精算は終わってから数秒なので、週の切り替えの瞬間をまたぐレースだけは2人の週がずれることがある）。確定結果に全員の着順（`field`）が入り、2人の DO が同じ結果を受け取るので、点数は互いに話さなくても一致する。CPU のライバルとは**全てのランク戦**で：自分が `targetPlace`（性格ごと、既定 5〜7）以内なら自分に、それ以外は CPU に1点。 |
+| タイムアタック | 今週の各コースの自分のベスト（検証済みの記録だけ）を登録簿に送り、ライバルのものと並べる。**直接対決が同点の時だけ**、相手より速いコースの数で勝敗を決める（それも同点なら引き分け）。CPU のタイムは性格のメダル（銅・銀・金）の秒数。 |
+| ライバルと走る | **ランク戦のマッチングは変えない**（同じ部屋に入りやすくすると、待ち時間・公平性の目標を崩し、2人で示し合わせた勝ち負けの譲り合いでレーティングを動かせるため）。代わりに**フレンド部屋への挑戦状**：自分の部屋にライバルを招く（フレンドでなくてよい、1日 `challengesPerDay` 回まで）。**順位は表示するが点にはならない**（レーティング・報酬はフレンド戦の通常のルールのまま）。 |
+| 報酬 | （財布へ直接。プレゼントボックスには入れない：精算は本人がライバルの画面を開いた時で、週の結果シートがその場の受け取り画面、§26.1）週の結果で決まる**固定の無償コイン**（勝ち 20・引き分け 10・負け 10・解除 10）。週の自分のランク戦が `minRacesForResult`（3）未満なら報酬なし（`not_enough`）。乱数なし・連勝の上乗せなし・有償コインは出さない。1回 ≤ `RIVAL_HARD_LIMITS.freeCoinsPerWeek` 100（¥160 相当、¥200 未満）。 |
+| 称号 | `titles.json` の条件 `rivalWeeksWon`（勝った週の**通算**、連続ではない）：1週「好敵手」・5週「宿命の対決」・20週「ライバルキラー」。見た目だけ。 |
+| プライバシー | ライバルに見えるのは**公開カード**だけ（表示名・称号・クラス・勝負服・相棒の馬の名前/レア度/脚質/見た目＝公開プロフィールの写し＋相棒）。ブロック（支部フィードのミュートと同じ1つのブロック一覧）・オプトアウト・BAN・削除予定の人は組まれず、今週の組は**両方とも解除**（`no_contest`、カードは消える）。 |
+
+### 28.1 設定（`progression.rival`、リモート設定で変更可・`rivalProblems` で検証）
+| キー | 既定 | 意味 |
+|---|---|---|
+| `enabled` | true | false で `GET /v1/rival` は `{ "enabled": false }` |
+| `weekStartsOn` | 1 | 週の始まりの曜日（0 = 日曜） |
+| `maxRatingGap` / `jitter` / `pairWindow` | 200 / 40 / 3 | 組み合わせ（上記） |
+| `minRacesForResult` | 3 | 結果の報酬に要る自分のランク戦の数 |
+| `rewards` | win 20 / draw 10 / lose 10 / no_contest 10 | `{ freeCoins }` だけ（他のキーは拒否） |
+| `challengesPerDay` | 3 | 挑戦状の1日の回数 |
+| `recentKeep` | 10 | 「最近のレース」に残す数 |
+| `cpuRivals[]` | 4人 | `id`・`name`・`personality`・`line`（ひとこと）・`style`・`targetPlace`・`taMedal` |
+コード側の上限（`RIVAL_HARD_LIMITS`）：報酬 ≤ 100、`challengesPerDay` ≤ 10、`maxRatingGap` ≤ 600、`jitter` ≤ 200、`pairWindow` ≤ 8、`recentKeep` ≤ 30、CPU ≤ 20 人。報酬の順は **勝ち ≥ 引き分け ≥ 負け**、解除 ≤ 引き分け（組を解除しても得をしない）。
+
+### 28.2 `GET /v1/rival`（要認証）
+サーバーが未精算の週（今週と、終わったがまだ精算していない週）ごとに登録簿へ問い合わせ、プレイヤーの DO で反映・精算してから返す（その日最初の表示で KPI `rival_view`）。
+```json
+{ "enabled": true, "optOut": false, "weekId": "2026-12-14", "weekEndsAt": 1797447600000,
+  "rival": { "kind": "human", "playerId": "u_123", "dissolved": false,
+    "card": { "displayName": "ハヤテ乗り", "titleId": "first_win", "classId": "B", "silks": { "…": "…" },
+      "partner": { "name": "ハヤテ", "rarity": "SR", "style": "senko", "appearance": { "…": "…" } } } },
+  "score": { "me": 2, "them": 1, "rankedRaces": 7, "minRaces": 3, "taMe": 1, "taThem": 0 },
+  "recent": [ { "raceId": "r_…", "at": 1797…, "mode": "ranked", "me": 2, "them": 5, "point": "me" } ],
+  "timeAttack": [ { "trackId": "aoba_turf_1600", "trackName": "青葉競馬場 芝1600m", "me": 70210, "rival": 71004, "faster": "me" } ],
+  "result": null,
+  "history": [ { "weekId": "2026-12-07", "outcome": "win", "kind": "cpu", "rivalName": null, "cpuId": "cpu_asagi", "cpuName": "堅実のアサギ", "me": 5, "them": 3, "taMe": 0, "taThem": 0, "freeCoins": 20, "settledAt": 1797…, "newTitles": ["rival_first"] } ],
+  "record": { "weeksWon": 1, "weeksPlayed": 1, "titles": [ { "titleId": "rival_first", "name": "好敵手", "weeksWon": 1, "unlocked": true } ], "nextTitle": { "titleId": "rival_5", "…": "…" } },
+  "rewards": { "win": 20, "draw": 10, "lose": 10, "noContest": 10, "minRaces": 3 },
+  "challenge": { "left": 3, "perDay": 3 },
+  "rules": { "rankedOnly": true, "challengeUnranked": true, "fixedRewards": true, "noStreakRewards": true, "taBreaksTies": true } }
+```
+- `rival`：`{ kind: "human", playerId, card, dissolved }`（解除後は `playerId`・`card` が `null`）／`{ kind: "cpu", cpuId, name, personality, line, style, targetPlace, taMedal }`／`null`（オプトアウト）。
+- `recent`：今週の新しい順。`mode: "friend"` は挑戦状のレース（`point: null`、点にならない）。CPU の時 `them` は `null`。
+- `result` / `history[]` の名前：人間の週は `rivalName`（相手が付けた表示名、英語でも**翻訳しない**：`PLAYER_TEXT_KEYS`）、CPU の週は `cpuName`（設定の名前、英語では英語）。
+- `result`：まだ見ていない週の結果（週の結果シート）。`outcome`：`win` / `lose` / `draw` / `no_contest`（解除）/ `not_enough`（ランク戦が足りない、報酬0）。`freeCoins` は実際に付与した額。
+- 登録簿が答えない時は、その週は手元の値で返す（精算はしない＝次の表示で）。
+
+### 28.3 `PUT /v1/rival/settings`・`POST /v1/rival/block`・`POST /v1/rival/challenge`・`POST /v1/rival/results/:weekId/seen`（要認証）
+- **settings** `{ "optOut": boolean }`（他のキーは 400）→ `{ "optOut" }`。オプトアウトの前に終わった週を精算する（報酬は払う）。オプトアウトで今週の組は両方とも解除、今週の記録は結果なしで捨てる、来週から組まれない。戻すと次の週の候補から（今週は解除のまま）。
+- **block** → `{ "blocked": "<playerId>", "dissolved": true }`。今週の人間のライバルをブロック一覧（支部フィードのミュートと同じ、`PUT /v1/teams/me/feed/mutes` でも見える）に入れ、組を解除。人間のライバルがいなければ `NOT_ELIGIBLE`。
+- **challenge** `{ "passphrase" }` → `{ "ok": true, "rivalId" }`。自分がその部屋のメンバー（でなければ `NOT_ELIGIBLE`）、今週の解除されていない人間のライバルがいる、1日の回数内（超えたら 409 `RIVAL_CHALLENGE_LIMIT`）。相手の招待一覧（`GET /v1/friends` の `invites`）に入り、`room_invite` のプッシュ（上限・設定の中）。相手が自分をブロックしていれば `NOT_ELIGIBLE`。
+- **results/:weekId/seen** → `{ "unseen": null }`（結果シートを閉じた）。
+
+### 28.4 プッシュ「ライバルが記録を更新」（`rival_record`、種類 `friends`）
+ライバルが今週のタイムアタックで、**自分の今週のベストより前にいたコースで自分を上回った**時に1回（組・コース・週ごとに1回、登録簿が覚える）。受け取る側では**1ゲーム日に1回まで**、さらにプッシュの1日の上限（`dailyCap`）・静かな時間帯・種類の設定の中で送る。
+
+### 28.5 KPI（サーバーのイベント）
+| イベント | s1 | s2 | s3 | 数値 |
+|---|---|---|---|---|
+| `rival_view` | `human` / `cpu` / `none` | — | — | `count` 自分の点、`value` 相手の点（1ゲーム日に1回） |
+| `rival_race` | `human` / `cpu` / `challenge` | 点を取った側 `me` / `them` | — | `place` 自分の着順、`value` 相手の着順（CPU は目標の着順） |
+| `rival_week_result` | `win` / `lose` / `draw` / `no_contest` / `not_enough` | `human` / `cpu` | 週ID | `count` 自分の点、`value` 相手の点、`freeCoins` 報酬、`place` 週のランク戦の数 |
+| `rival_opt` | `out` / `in` | — | — | — |
+クエリは `docs/ops/kpi-queries.md`「ライバル」。
+
+### 28.6 クライアント（`Muchi.Client` `Rival.cs`、`Muchi.Game.RivalModel`）
+- `ApiClient.GetRivalAsync`・`SetRivalOptOutAsync`・`BlockRivalAsync`・`ChallengeRivalAsync`・`MarkRivalResultSeenAsync`。
+- `RivalModel`：ホームのライバルカード（名前・クラス・相棒・今週の点・残り日数）、詳細（今週の点・最近のレース・タイムアタックの比較）、週の結果シート（`result` があれば一度だけ、閉じたら seen）、オプトアウト・ブロック、挑戦状（フレンド部屋を作ってから）。文言に「ランク戦の点」「挑戦状は点にならない」「報酬は結果で決まる固定の額」を出す。ショップへの導線は作らない。
+
+## 29. コイン不足の案内（T6、REQ-SHORT-001〜010、`server/src/domain/shortfall.ts`、C# `Shortfall.cs`・`Muchi.Game.CoinShortfallModel`、docs/planning/06 §5.1 T6）
+ガチャ・見た目の直販・その他コインで払う操作が**コイン不足**で失敗した時（または失敗する前の確認画面で）、「何コインが・何枚足りないか」と「それを満たす一番小さいパック1つだけ」をサーバーが返す。クライアントは文言を組み立てない（§13 と同じ）。
+
+### 29.1 足りないコインの種類（`coinKind`）
+| `coinKind` | どこで | 数えるコイン |
+|---|---|---|
+| `any` | 通常のガチャ・見た目（`currency: "any"`） | 有償＋無償 |
+| `paid` | 有償限定のガチャ（ステップアップなど `currency: "paidOnly"`）・有償限定の見た目 | **有償だけ**（無償コインは数えない） |
+| `free` | イベントの参加費・種付け料（無償コインのみで払う、REQ-EVENT-004・REQ-BREED-012） | 無償だけ。**購入の案内は出さない**（`status: "free_only"`、お金を払って賞品の機会を買う形にしないため） |
+
+### 29.2 パックの選び方（`coinShortfall`）
+- 候補：有償コインがすぐ入る商品（`kind` が `coins`・`starter`・`promotion`、`paidCoins > 0`）。パス・厩舎手当は候補にしない（コインの商品ではない）。
+- **今この人が買えるものだけ**：購入の確認（REQ-PUR-001 `checkPurchaseIntent`）と同じ判定を商品ごとに行う ― 1回限りで購入済み、昇級記念パックのクラスに未到達、今月の上限（年齢帯、`age-limits.json`）を超える、今月すでに上限超過の購入がある、は除く。年齢が未登録なら上限は判定せず（購入の確認で生年月を聞く）`ageCheck: true`。
+- 「足りる」は**そのパックの有償コインだけ**で数える（初回購入ボーナスの無償コインは数えない。`paid` のときは無償コインは使えないため、`any` のときも案内を控えめにするため）。
+- 足りるもののうち価格の安い順（同じ価格ならコインのパック `kind: "coins"` を先、次に有償コインの少ない順）で**1つ**。`status: "covered"`。
+- 足りるものが無ければ、買えるもののうち有償コインが一番多いもの（同じなら安い方）を返し `covers: false`・`status: "largest_only"`（「いちばん大きい〜でも、あと◯枚足りません」）。
+- 買えるものが1つも無ければ `offer: null`・`status: "none_buyable"`・`blockedCode`（`AGE_LIMIT_EXCEEDED` / `UNSETTLED_DEBT` / `DELETION_PENDING` / `BANNED`）。
+- 初回購入ボーナスは**ショップと同じ表示**（§13 `firstPurchaseBonus.label`「はじめての購入時のみ：無償コイン◯枚をプレゼント」）を、そのパックでまだ受け取っていない時だけ付ける。「倍」「お得」「今だけ」「残りわずか」・残り時間は使わない（テストで確認）。
+
+### 29.3 形（`CoinShortfall`）
+```json
+{ "short": true, "coinKind": "paid", "need": 1500, "have": 300, "shortfall": 1200,
+  "headline": "有償コインが1,200枚足りません",
+  "status": "covered", "blockedCode": null, "ageCheck": false,
+  "line": "コイン1,660（¥2,400）で足ります",
+  "notes": ["有償コインだけで支払います（無償コインは使えません）"],
+  "offer": { "offerId": "shortfall", "touchpoint": "T6", "productId": "coin_2400", "name": "コイン1,660", "priceYen": 2400, "paidCoins": 1660,
+             "covers": true, "contents": [ { "type": "paid_coins", "qty": 1660, "label": "有償コイン1,660枚" } ],
+             "firstPurchaseBonus": { "coins": 1660, "currency": "free", "label": "はじめての購入時のみ：無償コイン1,660枚をプレゼント" }, "oneTime": false } }
+```
+- `short: false`（足りている）なら `status: "not_short"`・`shortfall: 0`・`offer: null`・`headline`/`line` は null。
+- `headline`：`コインが{n}枚足りません`（any）／`有償コインが{n}枚足りません`（paid）／`無償コインが{n}枚足りません`（free）。
+- `line`：covered `{product}（¥{p}）で足ります`／largest_only `いちばん大きい{product}（¥{p}）でも、あと{n}枚足りません`／none_buyable は `blockedCode` ごとの1文／free_only `無償コインだけで支払う項目です（購入したコインでは支払えません）`。
+- 英語（`Accept-Language: en`、§23）はほかのサーバー文言と同じく応答の境界で訳す。
+- プレゼントボックス（§26）との関係（Round 12 の統合で決定、REQ-SHORT-011）：ボックスの中の無償コインは**受け取るまで持っていない**ものとして数える（`have` に入れない）。`coinKind` が `any` / `free` で、期限内の未受け取りの無償コインがある時だけ `notes` に `プレゼントボックスに受け取っていない無償コインが{n}枚あります（受け取ると使えます）` を足す（`paid` では無償コインで払えないので出さない。削除の予約中は受け取れないので出さない）。パックの選び方は変えない。
+
+### 29.4 失敗した時（エラーの `details`）
+コインで払う操作（`POST /v1/gacha/draw`・`POST /v1/shop/cosmetics/:itemId/buy`・イベントの参加・種付け など、`wallet.spend` / `spendFree` を通るもの全部）がコイン不足で失敗すると、409 `INSUFFICIENT_COINS` に `details.shortfall`（29.3 の形）が付く。何も変わらない（取引ごと取り消し、冪等の記録にも残らない）。
+```json
+{ "error": { "code": "INSUFFICIENT_COINS", "message": "need 1500, have 300", "details": { "shortfall": { "…": "29.3" } } } }
+```
+`details` はこのエラーにだけ付く（ほかのエラーの形は変わらない）。古いクライアントは無視してよい。
+
+### 29.5 `GET /v1/shop/shortfall`（要認証、読み取りのみ）
+試す前（ガチャの確認シートなど）に同じ答えを出す。クエリ：
+- `for=gacha&bannerId=<id>&count=1|10`：そのバナーの今の価格（ステップアップは今の段の価格、`currency` で `any`/`paid`）。
+- `for=cosmetic&itemId=<id>`：その見た目の価格（`currency` で `any`/`paid`）。直販でない品は `NOT_ELIGIBLE`、所持済みは `ALREADY_PURCHASED`。
+- `for=coins&coins=<1..1000000>&kind=any|paid`：任意の金額。
+→ 29.3 の `CoinShortfall`。ほかの値は 400、無いバナー・品は 404。
+
+### 29.6 表示のルール（06 §5.1、クライアントが守る）
+- 出してよいのは**ガチャの確認・見た目の購入・ショップ**の中だけ。**レース中・マッチング中・チュートリアル中・負けた直後の結果画面には出さない**（`CoinShortfallModel.Allowed`）。
+- シートは「◯コインが◯枚足りません」＋パックのカード1枚＋閉じる（閉じるが一番目立つ）。パックを押すと既存の購入確認（§13、REQ-UXU-010）へ。購入が完了したら元の操作（そのガチャ・その見た目）に戻る。
+- KPI：シートを出した時 `offer_view`、パックを押した時 `offer_click`（`offerId: "shortfall"`・`trigger: "T6"`、§13 の KPI と同じイベント）。1回の失敗（1回のプレビュー）につき1回。

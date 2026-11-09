@@ -47,6 +47,15 @@ namespace Muchi.Client
         /// </summary>
         public IOfflineRaceDirector Director { get; set; }
 
+        /// <summary>
+        /// かんたん操作 (REQ-ASSIST-002): when set, its commands are merged into the player's before the tick is recorded,
+        /// so they are ordinary recorded inputs (a time attack submits them like taps). Ignored in the tutorial (REQ-ASSIST-006).
+        /// </summary>
+        public InputAssistant Assistant { get; set; }
+
+        /// <summary>The assist level that actually rides this race (Off in the tutorial or without an assistant).</summary>
+        public AssistLevel EffectiveAssist => Assistant != null && Assistant.Active && Assistant.Slot == PlayerSlot && AssistLevels.AllowedIn(Config.Mode) ? Assistant.Level : AssistLevel.Off;
+
         public OfflineRace(RaceConfig config, int playerSlot)
         {
             config.Validate();
@@ -115,6 +124,7 @@ namespace Muchi.Client
                 byte c = 0;
                 foreach (var q in _queued) c |= q;
                 _queued.Clear();
+                if (EffectiveAssist != AssistLevel.Off) c = Assistant.Apply(Sim, c);
                 if (AutoStart && (Sim.Tick == Sim.P.GateOpenTick || Sim.Tick == Sim.P.GateOpenTick + 1)) c |= Cmd.Start;
                 c = EffectiveCommand(Sim, PlayerSlot, c);
                 if (Director != null) c = (byte)(c & Director.AllowedPlayerBits);

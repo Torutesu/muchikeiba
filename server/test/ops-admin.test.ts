@@ -10,7 +10,7 @@ import { DEFAULT_RULESET } from '../src/domain/ruleset.js';
 import { authenticateAdmin, type AdminAuthConfig, type RateLimitPolicy } from '../src/ops/admin.js';
 import { sha256Hex } from '../src/ops/hash.js';
 import { memoryOps } from '../src/ops/memoryOps.js';
-import { m } from './helpers.js';
+import { granted, m } from './helpers.js';
 
 const NOW = Date.UTC(2026, 10, 10, 3);
 const TOKENS = { viewer: 'viewer-token-0123456789', operator: 'operator-token-0123456789', admin: 'admin-token-0123456789' };
@@ -104,7 +104,7 @@ describe('support tools (REQ-OPS-020..025)', () => {
     const a = await call('operator', 'POST', '/v1/admin/players/p1/grants', body);
     expect(a.status).toBe(200);
     expect((await call('operator', 'POST', '/v1/admin/players/p1/grants', body)).status).toBe(200);
-    const v = await svc.view('p1');
+    const v = await granted(svc, 'p1');
     expect(v.wallet.free).toBe(500);
     expect(v.items.ticket_sr_plus).toBe(1);
     expect((await call('operator', 'POST', '/v1/admin/players/p1/grants', { ...body, opKey: 'big-one-0001', grant: { freeCoins: 50_000 } })).status).toBe(403);
@@ -114,10 +114,11 @@ describe('support tools (REQ-OPS-020..025)', () => {
     const audit = await call('viewer', 'GET', '/v1/admin/audit?target=player:p1&action=player.grant');
     const okRows = audit.body.entries.filter((e: { result: string }) => e.result === 'ok');
     expect(okRows).toHaveLength(3);
-    expect(okRows[2]).toMatchObject({ actor: 'operator', reason: 'server outage 11/10', before: { free: 0 }, after: { free: 500 } });
+    expect(okRows[2]).toMatchObject({ actor: 'operator', reason: 'server outage 11/10', before: { free: 0 }, after: { free: 0, gift: { giftId: 'gift_1' } } }); // REQ-BOX-010: into the gift box
+    await svc.giftClaimAll('p1', 'c:claim'); // the ledger rows are written when the player claims
     const ledger = (await svc.state('p1')).ledger.filter((l) => l.kind === 'grant');
     expect(ledger).toHaveLength(2);
-    expect(ledger[0]!.reason).toMatch(/support grant by operator: server outage/);
+    expect(ledger.map((l) => l.reason).join()).toMatch(/support grant by operator: server outage/);
     expect(ops.audits.rows.every((r) => r.at === NOW)).toBe(true);
   });
 
@@ -129,7 +130,7 @@ describe('support tools (REQ-OPS-020..025)', () => {
     expect(r1.body).toMatchObject({ granted: 3, failed: [], nextOffset: 3 });
     const r2 = await call('operator', 'POST', '/v1/admin/grants/bulk', { ...body, segment: { kind: 'leaderboard', seasonId: '2026-10', board: 'class-A', offset: 0, limit: 5 } });
     expect(r2.body).toMatchObject({ granted: 5, nextOffset: null });
-    for (const e of entries) expect((await svc.view(e.playerId)).wallet.free).toBe(100); // s0..s2 not granted twice
+    for (const e of entries) expect((await granted(svc, e.playerId)).wallet.free).toBe(100); // s0..s2 not granted twice
     const tooMuch = await call('admin', 'POST', '/v1/admin/grants/bulk', { grant: { freeCoins: 100_000 }, opKey: 'oops-0001', reason: 'typo', playerIds: Array.from({ length: 11 }, (_, i) => `x${i}`) });
     expect(tooMuch.status).toBe(403);
     expect((await call('operator', 'POST', '/v1/admin/grants/bulk', { ...body, playerIds: ['a'], segment: { kind: 'leaderboard', seasonId: '2026-10', board: 'rating' } })).status).toBe(400);

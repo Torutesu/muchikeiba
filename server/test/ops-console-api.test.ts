@@ -14,7 +14,7 @@ import { COMP_TTL_MS } from '../src/ops/compensation.js';
 import { MemoryInviteDirectory } from '../src/domain/invite.js';
 import { oddsDisclosure, findVisibleBanner } from '../src/domain/gacha.js';
 import { parseConsoleOrigins } from '../src/ops/admin.js';
-import { m } from './helpers.js';
+import { granted, m } from './helpers.js';
 
 /** Admin endpoints added for the ops console (REQ-OPS-008/009/015/020/026/027). */
 const NOW = Date.UTC(2026, 10, 10, 3);
@@ -218,12 +218,12 @@ describe('compensation with the two-person rule (REQ-OPS-026)', () => {
     const small = await call('operator', 'POST', '/v1/admin/compensations', { playerId: 'p1', grant: { freeCoins: 300 }, opKey: 'outage-small-01', reason: 'outage 11/10' });
     expect(small.status).toBe(200);
     expect(small.body.request).toMatchObject({ status: 'executed', needsApproval: false });
-    expect((await svc.view('p1')).wallet.free).toBe(300);
+    expect((await granted(svc, 'p1')).wallet.free).toBe(300);
 
     const big = { playerId: 'p1', grant: { freeCoins: 50_000, items: [{ itemId: 'ticket_sr_plus', qty: 2 }] }, opKey: 'outage-big-01', reason: 'long outage 11/10' };
     const req = await call('operator', 'POST', '/v1/admin/compensations', big);
     expect(req.body.request).toMatchObject({ status: 'pending', needsApproval: true, requestedBy: 'operator' });
-    expect((await svc.view('p1')).wallet.free).toBe(300); // nothing paid yet
+    expect((await granted(svc, 'p1')).wallet.free).toBe(300); // nothing paid yet
     // idempotent creation; same key with another grant is a conflict
     expect((await call('operator', 'POST', '/v1/admin/compensations', big)).body).toMatchObject({ created: false, request: { id: req.body.request.id } });
     expect((await call('operator', 'POST', '/v1/admin/compensations', { ...big, grant: { freeCoins: 60_000 } })).status).toBe(409);
@@ -240,18 +240,19 @@ describe('compensation with the two-person rule (REQ-OPS-026)', () => {
     const ok = await call('admin', 'POST', `/v1/admin/compensations/${id}/approve`, { reason: 'checked the incident', note: 'INC-42' });
     expect(ok.status).toBe(200);
     expect(ok.body.request).toMatchObject({ status: 'executed', decidedBy: 'admin', decisionNote: 'INC-42' });
-    const v = await svc.view('p1');
+    const v = await granted(svc, 'p1');
     expect(v.wallet.free).toBe(50_300);
     expect(v.wallet.paid).toBe(0); // never paid coins
     expect(v.items.ticket_sr_plus).toBe(2);
     // approving again never pays twice
     expect((await call('admin2', 'POST', `/v1/admin/compensations/${id}/approve`, { reason: 'double click' })).status).toBe(409);
-    expect((await svc.view('p1')).wallet.free).toBe(50_300);
+    expect((await granted(svc, 'p1')).wallet.free).toBe(50_300);
+    await svc.giftClaim('p1', 'gift_2', 'c:claim'); // REQ-BOX-001: the ledger row is written when the player claims it
     const ledger = (await svc.state('p1')).ledger.filter((l) => l.kind === 'grant');
     expect(ledger.at(-1)!.reason).toMatch(/operator, approved by admin/);
 
     const audit = ops.audits.rows.find((r) => r.action === 'compensation.approve' && r.result === 'ok')!;
-    expect(audit).toMatchObject({ actor: 'admin', target: 'player:p1', reason: 'checked the incident', before: { status: 'pending', requestedBy: 'operator', free: 300 }, after: { status: 'executed', approvedBy: 'admin', free: 50_300 } });
+    expect(audit).toMatchObject({ actor: 'admin', target: 'player:p1', reason: 'checked the incident', before: { status: 'pending', requestedBy: 'operator', free: 0 }, after: { status: 'executed', approvedBy: 'admin', free: 0, gift: { giftId: 'gift_2' } } }); // REQ-BOX-010
 
     // reject the admin's own request (anyone with operator may reject / withdraw)
     expect((await call('operator', 'POST', `/v1/admin/compensations/${own.body.request.id}/reject`, { reason: 'duplicate of comp_2' })).body.request.status).toBe('rejected');
@@ -287,15 +288,15 @@ describe('compensation with the two-person rule (REQ-OPS-026)', () => {
     expect(second.status).toBe(403);
     expect(second.body.error.message).toMatch(/two-person approval/);
     expect((await call('operator', 'POST', '/v1/admin/grants/bulk', { grant: { freeCoins: 6_000 }, opKey: 'split-bulk-01', reason: 'outage part 3', playerIds: ['p1'] })).body).toMatchObject({ granted: 0, failed: [{ playerId: 'p1', error: 'FORBIDDEN' }] });
-    expect((await svc.view('p1')).wallet.free).toBe(6_000);
+    expect((await granted(svc, 'p1')).wallet.free).toBe(6_000);
     // a small compensation over the remaining budget waits for a different admin instead of being paid
     const comp = await call('operator', 'POST', '/v1/admin/compensations', { playerId: 'p1', grant: { freeCoins: 6_000 }, opKey: 'split-comp-01', reason: 'outage part 4' });
     expect(comp.status).toBe(200);
     expect(comp.body.request).toMatchObject({ status: 'pending', needsApproval: true });
-    expect((await svc.view('p1')).wallet.free).toBe(6_000);
+    expect((await granted(svc, 'p1')).wallet.free).toBe(6_000);
     const ok = await call('admin', 'POST', `/v1/admin/compensations/${comp.body.request.id}/approve`, { reason: 'checked: one incident' });
     expect(ok.body.request.status).toBe('executed');
-    expect((await svc.view('p1')).wallet.free).toBe(12_000);
+    expect((await granted(svc, 'p1')).wallet.free).toBe(12_000);
     // items count per item too; other players have their own budget; the window rolls over
     expect((await call('operator', 'POST', '/v1/admin/players/p2/grants', { grant: { freeCoins: 10_000 }, opKey: 'other-player-1', reason: 'outage' })).status).toBe(200);
     setNow(NOW + 24 * 3600 * 1000 + 1);

@@ -3,7 +3,8 @@
 // wallet paid/free ordering, purchase-intent age checks, season pass), odds disclosure from the same tables.
 // State lives in localStorage (one player, "local"). No server, no billing.
 import { loadMaster } from '../../../server/src/domain/master.js';
-import { PlayerService, type PlayerRepo } from '../../../server/src/domain/service.js';
+import { PlayerService, type PlayerRepo, type ShortfallQuery } from '../../../server/src/domain/service.js';
+import type { ClientBatch } from '../../../server/src/domain/kpi.js';
 import { playerView, type PlayerState } from '../../../server/src/domain/player.js';
 import { oddsDisclosure, findBanner, bannerList, bannerStatus } from '../../../server/src/domain/gacha.js';
 import { cryptoRng } from '../../../server/src/domain/rng.js';
@@ -19,12 +20,16 @@ import { createHorseFromTemplate } from '../../../server/src/domain/horses.js';
 import tracksJson from '../../../server/master/tracks.json';
 import { FakeStoreVerifier } from '../../../server/src/domain/purchase.js';
 import { raceFieldSeen } from '../../../server/src/domain/collection.js';
+import { deliverGift } from '../../../server/src/domain/giftBox.js';
 import type { RaceStartConfig } from '../../../server/src/domain/schemas.js';
 import { MemoryTeams, TeamsService, type TeamPlayers } from '../../../server/src/domain/teamService.js';
 import type { ReportReason } from '../../../server/src/domain/teamFeed.js';
 import { InviteService, MemoryInviteDirectory, deliverInviteOutbox, displayInviteCode, inviteRewardYen, normalizeInviteCode } from '../../../server/src/domain/invite.js';
 import type { Directory } from '../../../server/src/domain/friends.js';
 import { signAdMobQuery, StaticKeySource, verifyAdMobCallback } from '../../../server/src/ads/ssv.js';
+import { MemoryRivalRegistry, RivalService, rivalPlayersFrom } from '../../../server/src/domain/rivalService.js';
+import { noteRivalTa, prevWeekId, rivalCard, weekEndMs, weekIdAt } from '../../../server/src/domain/rival.js';
+import type { PlayerInvoker } from '../../../server/src/http/app.js';
 // REQ-L10N-*: the server's English tables (master/locale-en.json + i18n/en.ts), the client's (ui-en.json) and the
 // prototype's own screen texts (proto-en.json), in one catalog with the server's template rules (katakana names romanized)
 import { compileCatalogWith, translateText, romanizeName } from '../../../server/src/i18n/catalog.js';
@@ -65,7 +70,32 @@ const svc = new PlayerService(repo, {
   master, rng: cryptoRng, clock: now, verifiers: { fake: store },
   onTeamPoints: async (p) => { await teams.reportPoints(p.teamId, p.playerId, p.seasonId, p.points, p.displayName).catch(() => undefined); },
   onTeamFeed: async (p) => { await teams.feedRace(p.teamId, p.playerId, p.race); },
+  // round 12 (REQ-RIVAL-*): the week registry learns candidates / withdrawals / weekly bests after each transaction
+  onRival: async (u) => { await rivalSvc.apply(u); },
 });
+// round 12 (REQ-RIVAL-*): the weekly rival on the real RivalService + an in-memory week registry (RivalWeekCore, the
+// LeaderboardDO rival:<week> logic). A demo rival (demo_rv_1, ミドリカワ) registers with the local player as last week's
+// candidates, so this week's pairing, head to head, time attack and the week result run the server code paths.
+const rivalReg = new MemoryRivalRegistry(() => master, now);
+const rivalInvoker: PlayerInvoker = { invoke: (async (m: string, ...a: unknown[]) => (svc as unknown as Record<string, (...x: unknown[]) => unknown>)[m]!.apply(svc, a)) as PlayerInvoker['invoke'] };
+const rivalSvc = new RivalService(() => master, rivalPlayersFrom(() => rivalInvoker), rivalReg);
+const RIVAL_DEMO = 'demo_rv_1';
+let rivalRace = 0;
+async function rivalDemoSeed() {
+  const week = weekIdAt(master, now());
+  if (rivalReg.store(week).paired()) return;
+  if (!(await repo.get(RIVAL_DEMO))) {
+    await svc.bootstrap(RIVAL_DEMO);
+    await svc.setDisplayName(RIVAL_DEMO, 'ミドリカワ');
+    await svc.grantPartner(RIVAL_DEMO, 'ハヤテ', key());
+  }
+  const me = await svc.state(ID);
+  const them = await svc.state(RIVAL_DEMO);
+  const at = now() - DAY_MS;
+  for (const s of [me, them]) {
+    await rivalReg.register(prevWeekId(week), { playerId: s.id, classId: me.season.classId, rating: Math.round(me.rating.r) + (s.id === ID ? 0 : 20), rankedAt: at, blocked: [], card: { ...rivalCard(master, s), classId: me.season.classId }, updatedAt: at });
+  }
+}
 const teamPlayers: TeamPlayers = {
   prepareJoin: (u, t) => svc.teamPrepareJoin(u, t), commitJoin: (u, t) => svc.teamCommitJoin(u, t), abortJoin: (u, t) => svc.teamAbortJoin(u, t),
   addOutgoing: (u, t) => svc.teamAddOutgoing(u, t), removeOutgoing: (u, t) => svc.teamRemoveOutgoing(u, t), left: (u, t, c) => svc.teamLeft(u, t, c),
@@ -79,12 +109,14 @@ const DEMO_MEMBERS = [['demo_tm_lead', 'ミドリカワ'], ['demo_tm_2', 'クロ
 let demoRace = 0;
 let demoTeamId: string | null = null;
 let n = 0;
+const kpiLog: ClientBatch['events'] = [];
 const key = () => `c:/proto:${Date.now()}:${n++}`;
 
-async function wrap<T>(f: () => Promise<T> | T): Promise<{ ok: true; value: T } | { ok: false; code: string; message: string }> {
+async function wrap<T>(f: () => Promise<T> | T): Promise<{ ok: true; value: T } | { ok: false; code: string; message: string; details?: Record<string, unknown> }> {
   try { return { ok: true, value: await f() }; }
   catch (e) {
-    if (e instanceof AppError) return { ok: false, code: e.code, message: e.message };
+    // REQ-SHORT-004: `details` as the HTTP error body carries it (INSUFFICIENT_COINS → details.shortfall)
+    if (e instanceof AppError) return { ok: false, code: e.code, message: e.message, ...(e.details ? { details: JSON.parse(JSON.stringify(e.details)) } : {}) };
     return { ok: false, code: 'INTERNAL', message: String((e as Error)?.message ?? e) };
   }
 }
@@ -129,7 +161,10 @@ export const MuchiLogic = {
     if (!blank) { const st = structuredClone(await svc.state(ID)); st.horses = []; blank = st; }
     // Prototype starting balance (the Unity offline build shows the same sample wallet): free coins only.
     // adminGrant is idempotent per opKey (persistent admin op set), so this grants exactly once per device.
-    await wrap(() => svc.adminGrant(ID, { freeCoins: 1200 }, 'web prototype starting balance', 'prototype', 'proto-start'));
+    // REQ-BOX-001: an ops grant now arrives in the gift box; the starting balance is received at once (a second boot
+    // answers ALREADY_CLAIMED, which is fine)
+    const g = await wrap(() => svc.adminGrant(ID, { freeCoins: 1200 }, 'web prototype starting balance', 'prototype', 'proto-start'));
+    if (g.ok && g.value.gift) await wrap(() => svc.giftClaim(ID, g.value.gift!.giftId, key()));
     return r;
   },
   view: () => svc.view(ID),
@@ -154,7 +189,8 @@ export const MuchiLogic = {
   // points, pass XP and mission progress. Offline: there is no rating update and no server verification.
   // round 11: `config` (the race the WASM engine ran) gives the 図鑑 the CPU field it met (REQ-COL-002) and `skillFired` the
   // player's unique-skill activation (REQ-ACH-002), exactly what settleRace sends from a confirmed room
-  applyRace: (raceId: string, place: number, fieldSize: number, details: { trackId: string; style: Style; finishTick: number | null; whips: number; skillFired?: boolean }, config?: RaceStartConfig) =>
+  // round 12: `assist` (whip | full) is what the rider's own `res.assist` gives the room (REQ-ASSIST-007): KPI only
+  applyRace: (raceId: string, place: number, fieldSize: number, details: { trackId: string; style: Style; finishTick: number | null; whips: number; skillFired?: boolean; assist?: 'whip' | 'full' }, config?: RaceStartConfig) =>
     wrap(() => svc.applyRace(ID, { raceId, mode: 'ranked', place, fieldSize, newRating: null, void: false, humans: 1,
       details: { ...details, startReactionTicks: null, whipMashed: false, cpuAssisted: false },
       ...(config ? { seen: raceFieldSeen(config, config.entrants.find((e) => e.playerId === ID)?.slot ?? -1) } : {}) })),
@@ -165,6 +201,7 @@ export const MuchiLogic = {
       for (const k of Object.keys(localStorage)) if (k.startsWith(KEY + ':demo_')) localStorage.removeItem(k);
     } catch { /* ignore */ }
     inviteCodes.clear();
+    rivalReg.weeks.clear(); // round 12: the rival week registry starts over too
     dayOffset = 0;
   },
 
@@ -205,6 +242,31 @@ export const MuchiLogic = {
     const keys = ['speed', 'stamina', 'burst', 'guts', 'temper'] as const;
     const total = keys.reduce((a, k) => a + raw[k], 0);
     return { total, cap, ranked: Math.min(total, cap), capped: total > cap };
+  },
+  // ---------------------------------------------------------------- プレゼントボックス (REQ-BOX-*, contracts/protocol.md §26)
+  // The real server rules: what arrives in the box (ops grants, compensations, tournament prizes…), expiry, hold limits,
+  // keyed claims; free coins and items only.
+  giftBox: (tab: 'box' | 'history' = 'box', offset = 0, limit = 50) => wrap(() => svc.giftBox(ID, tab, offset, limit)),
+  giftClaim: (giftId: string) => wrap(() => svc.giftClaim(ID, giftId, key())),
+  giftClaimAll: () => wrap(() => svc.giftClaimAll(ID, key())),
+  /**
+   * Demo state 「プレゼントボックス」: what the box looks like after a maintenance, a tournament and a promotion — delivered by
+   * the real routes (a compensation under the two-person threshold, a tournament prize, a grant with no expiry, one that
+   * expires in 3 days), plus one already received and one that expired (history).
+   */
+  async seedGifts() {
+    await this.seedDemo(3, [2, 2, 2]);
+    await svc.adminGrant(ID, { freeCoins: 300, items: [{ itemId: 'gacha_ticket', qty: 1 }] }, 'maintenance 11/10', 'ops', 'demo-gift-comp', true, { source: 'ops_compensation', titleKey: 'ops_compensation_maintenance' });
+    await svc.tournamentClose(ID, 'demo_gift_cup', 2, { freeCoins: 150, items: [{ itemId: 'breeding_material', qty: 2 }] }, 'デモ杯');
+    await svc.adminGrant(ID, { freeCoins: 50 }, 'thank-you gift', 'ops', 'demo-gift-forever', true, { expiryDays: null });
+    await svc.adminGrant(ID, { items: [{ itemId: 'gacha_ticket', qty: 1 }] }, 'campaign', 'ops', 'demo-gift-soon', true, { expiryDays: 3 });
+    // history: one received, one that expired yesterday (delivered 2 days ago with a 1-day expiry)
+    const old = await svc.adminGrant(ID, { freeCoins: 20 }, 'earlier gift', 'ops', 'demo-gift-old', true);
+    if (old.gift) await svc.giftClaim(ID, old.gift.giftId, key());
+    const s = await svc.state(ID);
+    deliverGift(master, s, { source: 'event', ref: 'demo:event:rank', reward: { freeCoins: 80 }, note: 'demo event', expiryDays: 1, rank: 12 }, now() - 2 * DAY_MS);
+    repo.put(s);
+    return svc.giftBox(ID);
   },
   // REQ-UXS-040: account deletion (two steps, 14-day cancel window); purchases and offers are blocked meanwhile
   requestDeletion: (token: string | null) => wrap(() => svc.requestDeletion(ID, token)),
@@ -344,6 +406,16 @@ export const MuchiLogic = {
   // ---------------------------------------------------------------- round 10
   // r10 fix: the shop list with this player's ownership (GET /v1/shop/products?mine=1)
   myShopProducts: () => svc.shopProducts(ID),
+  // ---------------------------------------------------------------- round 12
+  // T6 コイン不足の案内 (REQ-SHORT-*, protocol §29): GET /v1/shop/shortfall on the real rules
+  coinShortfall: (q: ShortfallQuery) => wrap(() => svc.coinShortfall(ID, q)),
+  /** Client KPI (offer_view / offer_click …) through the server's own batch check (kpi.ts clientEventSchema); kept for the tests. */
+  async kpi(events: ClientBatch['events']) {
+    const r = await wrap(() => svc.kpiIngest(ID, { platform: 'editor', appVersion: 'proto', events }));
+    if (r.ok) kpiLog.push(...events);
+    return r;
+  },
+  kpiLog: () => kpiLog.slice(),
   /** Demo only: a store purchase granted through a locally issued receipt (no billing), so the "already bought" state can be seen. */
   async demoPurchase(productId: string) {
     const v = await svc.view(ID);
@@ -398,6 +470,27 @@ export const MuchiLogic = {
   muteMember: (playerId: string, muted: boolean) => wrap(() => teamsSvc.mute(ID, playerId, muted)),
   /** Unlocks for the demo: lifetime races (play) — the pass and cosmetic stamps unlock by demoPurchase / the 見た目 shop. */
   async demoRaces(count: number) { const s = await svc.state(ID); s.stats.races = Math.max(s.stats.races, count); new LocalRepo().put(s); },
+  // ---------------------------------------------------------------- round 12: ライバル (REQ-RIVAL-*, contracts/protocol.md §28)
+  rival: {
+    view: () => wrap(async () => { await rivalDemoSeed(); return rivalSvc.view(ID); }),
+    seen: (weekId: string) => wrap(() => rivalSvc.seen(ID, weekId)),
+    optOut: (optOut: boolean) => wrap(() => rivalSvc.setOptOut(ID, optOut)),
+    block: () => wrap(() => rivalSvc.block(ID)),
+    challenge: () => wrap(() => rivalSvc.challenge(ID, 'demo-room')),
+    /** A confirmed ranked race with the rival in the field (both objects receive the same places). */
+    demoRace: (mine: number, theirs: number, mode: 'ranked' | 'friend' = 'ranked') => wrap(async () => {
+      const raceId = `proto_rv_${Date.now().toString(36)}_${rivalRace++}`;
+      const field = [{ playerId: ID, place: mine }, { playerId: RIVAL_DEMO, place: theirs }];
+      for (const f of field) await svc.applyRace(f.playerId, { raceId, mode, place: f.place, fieldSize: 12, newRating: null, void: false, humans: 2, field });
+    }),
+    /** Verified time-attack bests this week for both (the path PlayerService.taRecord takes). */
+    demoTa: (trackId: string, mineMs: number, theirsMs: number) => wrap(async () => {
+      await svc.tx(ID, null, (s, t) => { noteRivalTa(master, s, trackId, mineMs, t); });
+      await svc.tx(RIVAL_DEMO, null, (s, t) => { noteRivalTa(master, s, trackId, theirsMs, t); });
+    }),
+    /** Moves the clock into next week (the week settles on the next view). */
+    demoWeekEnd() { const end = weekEndMs(master, weekIdAt(master, now())); clockShift += end + 3_600_000 - now(); },
+  },
   // ---------------------------------------------------------------- round 10: 友達招待 (REQ-INV-*, contracts/protocol.md §19)
   // The real InviteService / per-player steps / milestone outbox on the local PlayerService. Demo friends are extra players
   // in the same local repo (ids demo_inv_*), so "a friend joins with my code" and "the friend reaches a milestone" run the
@@ -433,12 +526,14 @@ export const MuchiLogic = {
         else s.season.classId = master.progression.invite!.milestones.find((m) => m.id === milestoneId)?.classId ?? 'B';
         repo.put(s);
         await svc.missionsAll(target.playerId);
-        const before = (await svc.view(ID)).wallet.free;
+        // REQ-BOX-001: the inviter's bonus arrives in the gift box (counted there, the wallet changes on claim)
+        const boxed = async () => { const st = await svc.state(ID); return st.wallet.free + (st.giftBox?.box ?? []).reduce((a, x) => a + (x.contents.freeCoins ?? 0), 0); };
+        const before = await boxed();
         const out = await deliverInviteOutbox({
           due: (u) => svc.inviteDue(u), deliver: (o, i, ms, nm) => svc.inviteMilestone(o, i, ms, nm),
           acked: (u, x) => svc.inviteAcked(u, x), later: (u, x) => svc.inviteRetryLater(u, x),
         }, target.playerId);
-        return { friend: target.playerId, delivered: out.delivered, freeCoinsGained: (await svc.view(ID)).wallet.free - before };
+        return { friend: target.playerId, delivered: out.delivered, freeCoinsGained: (await boxed()) - before, inGiftBox: true };
       });
     },
     /** A demo player's code for trying the entry (only redeemable while the local player is in the window, after the FTUE). */
@@ -452,6 +547,16 @@ export const MuchiLogic = {
   // The real server rules: eligibility (FTUE, install day, 30 days after a payment, age), caps by game day, sessions. The
   // ad network is simulated in the browser: it signs an AdMob-style SSV callback with a local ECDSA P-256 key, and the
   // real verifyAdMobCallback checks that signature before the real applyAdCallback grants free coins. No ad SDK, no network.
+  // ---------------------------------------------------------------- かんたん操作 (REQ-ASSIST-*, contracts/protocol.md §27)
+  // The real server rules: the setting (default off), the last-place streak counted by applyRace, the one-time prompt.
+  assist: () => svc.assist(ID),
+  setAssist: (level: 'off' | 'whip' | 'full', source: 'settings' | 'prompt' = 'settings') => wrap(() => svc.setAssist(ID, level, source)),
+  assistPromptSeen: () => wrap(() => svc.assistPromptSeen(ID)),
+  /** Demo: three ranked races finishing last (12th of 12), settled by the real applyRace — the prompt becomes due. */
+  async demoLastPlaces(n = 3) {
+    for (let i = 0; i < n; i++) await svc.applyRace(ID, { raceId: `demo_last_${Date.now().toString(36)}_${i}`, mode: 'ranked', place: 12, fieldSize: 12, newRating: null, void: false, humans: 1 });
+    return svc.assist(ID);
+  },
   ads: () => svc.ads(ID),
   setAdPref: (mode: 'auto' | 'on' | 'off') => wrap(() => svc.setAdPref(ID, mode)),
   adStart: (placementId: string) => wrap(() => svc.adStart(ID, placementId, key())),

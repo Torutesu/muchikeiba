@@ -14,7 +14,7 @@
  * A crash between steps leaves either a reservation (expires; nobody was charged) or an outbox entry
  * (retried from the borrower's alarm until the owner acknowledges). Every step is safe to repeat.
  */
-import { AppError, assert } from './errors.js';
+import { AppError, assert, insufficientCoins } from './errors.js';
 import type { Master, StudConfig } from './master.js';
 import type { HorseInstance, PlayerState, StudHistoryEntry, StudState } from './player.js';
 import { breedingAllowance, breedWith, checkDam, effectiveStats, getHorse, parentTraits, previewFor, studKey, type GrandTrait } from './horses.js';
@@ -327,9 +327,9 @@ export function studApply(m: Master, s: PlayerState, opId: string, snap: StudSna
   const sire = studSireView(snap);
   const fee = Math.max(0, Math.min(snap.fee, c.feeMax));
   if (fee > 0) {
-    if (s.wallet.free < fee) throw new AppError('INSUFFICIENT_COINS', `stud fee is ${fee} free coins (paid coins cannot be used)`);
+    if (s.wallet.free < fee) throw insufficientCoins({ coinKind: 'free', need: fee, have: s.wallet.free }, `stud fee is ${fee} free coins (paid coins cannot be used)`);
     const held = studHeldFree(s, now);
-    if (s.wallet.free - fee < held) throw new AppError('INSUFFICIENT_COINS', `${held} free coins from a recent purchase (first-purchase bonus) cannot pay stud fees for ${STUD_PURCHASE_HOLD_DAYS} days`);
+    if (s.wallet.free - fee < held) throw insufficientCoins({ coinKind: 'free', need: fee, have: Math.max(0, s.wallet.free - held) }, `${held} free coins from a recent purchase (first-purchase bonus) cannot pay stud fees for ${STUD_PURCHASE_HOLD_DAYS} days`);
     spendFree(s, fee, now, 'stud fee', opId);
   }
   const r = breedWith(m, s, sire, dam, [...snap.grand, ...parentTraits(s, dam)], rng, now, {

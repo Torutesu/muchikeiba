@@ -82,6 +82,14 @@ static class Program
         await CollectionChecks.Run(Check, Ruleset());
         Console.WriteLine("== 調教 (training: menus, timing mini-game, keyed start/finish, fairness wording)");
         await TrainingChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 12: コイン不足の案内 T6 (CoinShortfallModel: one pack, where it may appear, KPI, back to the pull) and bought packs in the shop");
+        await ShortfallChecks.Run(Check, Ruleset());
+        Console.WriteLine("== プレゼントボックス (gift box: badge, real expiry text only, keyed claims, held entries, history, deletion)");
+        await GiftBoxChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 12: かんたん操作 (AssistModel, InputAssistant on a practice race, HUD chip, the one-time suggestion; REQ-ASSIST-*)");
+        await AssistChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 12: ライバル (home card, detail, week-result sheet, challenge, opt-out / block; REQ-RIVAL-*)");
+        await RivalChecks.Run(Check, Ruleset());
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

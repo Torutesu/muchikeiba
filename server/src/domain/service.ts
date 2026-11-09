@@ -1,6 +1,5 @@
 import { AppError } from './errors.js';
 import type { Master, Reward } from './master.js';
-import { grantReward } from './items.js';
 
 const TOURNAMENT_HISTORY_KEEP = 50;
 import { migratePlayer, moderationOf, newPlayer, playerView, type PlayerState, type PurchaseRecord } from './player.js';
@@ -14,10 +13,11 @@ import type { Rng } from './rng.js';
 import type { Clock } from './time.js';
 import { seasonIdFor, rollSeason, classDef } from './season.js';
 import { applyRefund, applySubscriptionStatus, applyVerifiedPurchase, checkPurchaseIntent, registerAge, type StoreVerifier, type SubscriptionStatus, type VerifiedReceipt } from './purchase.js';
-import { drawGacha, exchangePity, gachaStatus, settlePityGroups } from './gacha.js';
+import { assertBannerOpen, drawGacha, exchangePity, findBanner, gachaPrice, gachaStatus, settlePityGroups } from './gacha.js';
+import { attachShortfall, coinShortfall } from './shortfall.js';
 import { awaken, breed, breedingPreviewWithAllowance, getHorse, nameHorse, pedigree, retire } from './horses.js';
 import { migrateSkills } from './skills.js';
-import { buyCosmetic, cosmeticsCatalog, setEquipment, useTicket, type EquipmentPatch } from './itemShop.js';
+import { buyCosmetic, cosmeticsCatalog, findCosmetic, setEquipment, useTicket, type EquipmentPatch } from './itemShop.js';
 import { applyRaceResult, claimLoginBonus, claimMission, claimPass, firstWinBonusView, missionsView, type RaceResultForPlayer } from './rewards.js';
 import { allowanceView, claimAllowance, markOfferViewed, noteRaceForOffers, shopOffers, shopProducts } from './shop.js';
 import { passScreen } from './pass.js';
@@ -25,7 +25,8 @@ import { adSessionView, adsView, applyAdCallback, setAdPref, startAd, type AdCal
 import { toRaceHorse } from './raceConfig.js';
 import { paidBalanceYen, invariantsHold } from './wallet.js';
 import type { PaidBalanceSnapshot } from './accounting.js';
-import { dayRule, jstDateKey } from './time.js';
+import { dayRule, gameDayKey, jstDateKey } from './time.js';
+const gameDayKeyOf = (m: Master, now: number) => gameDayKey(now, dayRule(m));
 import type { Locale } from '../i18n/locale.js';
 import { enqueuePush, ensurePush, nextPushWake, pushPrefsView, registerDevice, setPushPrefs, settlePushes, takeDuePushes, unregisterDevice, type DeliveryOutcome, type DevicePlatform, type PrefsPatch } from './push.js';
 import { admitClientBatch, clientToKpi, ensureKpi, isPayer, kpiRecord, type ClientBatch, type KpiEvent, type KpiRecord } from './kpi.js';
@@ -63,7 +64,13 @@ import {
 import {
   claimComebackLogin, claimComebackMission, comebackView, markComebackWelcomed, markWhatsNewSeen, nextComebackWake, noteActivity, runDueComebackPush, whatsNew,
 } from './comeback.js';
+import { claimAllGifts, claimGift, expireGifts, giftBadge, giftBoxView, giftGiver, giftsNeedExpiry, nextGiftWake, type OpsTitleKey } from './giftBox.js';
 import { finishTraining, startTraining, trainingDelta, trainingTick, trainingView, useTrainingItem } from './training.js';
+import { assistView, markAssistPromptSeen, noteRaceForAssist, setAssist, type AssistLevel, type AssistSource } from './assist.js';
+import {
+  ensureRival, noteRivalRace, noteRivalTa, rivalBlock, rivalChallengeCheck, rivalChallengeReceive, rivalOutbound, rivalSeen, rivalSetOptOut, rivalSync,
+  rivalUpdateOf, rivalView, rivalWithdrawn, weekIdAt, weeksToSync, type RegistryWeek, type RivalUpdate,
+} from './rival.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
 export interface PlayerRepo {
@@ -76,6 +83,12 @@ export interface PlayerRepo {
 }
 
 /** REQ-UXS-040: purchases, offers and the daily pack are disabled while the account is scheduled for deletion. */
+/** REQ-SHORT-005: what GET /v1/shop/shortfall asks about. */
+export type ShortfallQuery =
+  | { for: 'gacha'; bannerId: string; count: 1 | 10 }
+  | { for: 'cosmetic'; itemId: string }
+  | { for: 'coins'; coins: number; kind: 'any' | 'paid' };
+
 function notDeleting(s: PlayerState) {
   if (deletionScheduled(s)) throw new AppError('DELETION_PENDING', 'the account is scheduled for deletion');
 }
@@ -100,6 +113,9 @@ export class MemoryPlayerRepo implements PlayerRepo {
   delete(id: string) { this.data.delete(id); this.tombstones.add(id); }
   tombstoned(id: string) { return this.tombstones.has(id); }
 }
+
+/** REQ-BOX-010: how an ops grant lands in the gift box. */
+export interface AdminGiftOptions { source?: 'ops_grant' | 'ops_compensation'; titleKey?: OpsTitleKey; expiryDays?: number | null }
 
 export interface PlayerServiceDeps {
   master: Master;
@@ -127,6 +143,11 @@ export interface PlayerServiceDeps {
   onStable?: (playerId: string, snap: StableSnapshot | null) => void | Promise<void>;
   /** REQ-TEAMFEED-004: a member won or placed in a ranked / tournament race (the Durable Object tells the team feed). */
   onTeamFeed?: (p: { teamId: string; playerId: string; displayName: string; race: FeedRace }) => void | Promise<void>;
+  /**
+   * REQ-RIVAL-002/005/011: what the week's rival registry must learn from a saved transaction (candidate entry, withdrawal,
+   * a pair I dissolved, new weekly time-attack bests). Best effort: RivalService re-sends what matters on the next sync.
+   */
+  onRival?: (u: RivalUpdate) => void | Promise<void>;
 }
 
 const standingKey = (s: PlayerState) => JSON.stringify([s.season.id, s.season.classId, s.season.points, s.season.races, Math.round(s.rating.r), s.profile.displayName, s.profile.titleId]);
@@ -136,10 +157,10 @@ const IDEM_KEEP = 200;
 /**
  * The object's alarm serves the push outbox, the stud fee outbox (REQ-PUSH-005, REQ-BREED-012), personal
  * nudges (REQ-UXS-012), a scheduled account deletion (REQ-UXS-040), invite milestone deliveries (REQ-INV-007)
- * and comeback lapse reminders (REQ-CB-007).
+ * comeback lapse reminders (REQ-CB-007) and gift box expiry (REQ-BOX-006).
  */
 const nextWake = (s: PlayerState) => {
-  const all = [nextPushWake(s), nextStudWake(s), nextNudgeWake(s), nextDeletionWake(s), nextInviteWake(s), nextComebackWake(s)].filter((x): x is number => x !== null);
+  const all = [nextPushWake(s), nextStudWake(s), nextNudgeWake(s), nextDeletionWake(s), nextInviteWake(s), nextComebackWake(s), nextGiftWake(s)].filter((x): x is number => x !== null);
   return all.length ? Math.min(...all) : null;
 };
 /** How long applied race ids are remembered (well beyond any settlement/dead-letter retry window). */
@@ -182,9 +203,18 @@ export class PlayerService {
     const profileBefore = profileKey(draft);
     const wakeBefore = nextWake(draft);
     const stableBefore = this.d.onStable ? stableSnapshotKey(this.d.master, draft, now) : '';
+    const rivalBefore = this.d.onRival ? rivalOutbound(this.d.master, draft, now) : null;
     const kpi: KpiRecord[] = [];
     const emit: Emit = (e) => { kpi.push(kpiRecord(draft, now, e)); };
-    const result = fn(draft, now, emit);
+    expireGifts(this.d.master, draft, now, emit); // REQ-BOX-006: lazy expiry on every transaction (the alarm runs one too)
+    let result: T;
+    try { result = fn(draft, now, emit); }
+    catch (e) {
+      // REQ-SHORT-004: a coin spend refused for lack of coins says what is short and the one pack that covers it.
+      // Nothing of the draft is kept (the transaction is dropped and no idempotency record is written).
+      attachShortfall(this.d.master, draft, e, now);
+      throw e;
+    }
     noteInviteMilestones(this.d.master, draft, now, emit); // REQ-INV-007: the invitee's milestones, once each
     // REQ-ACH-003: unlock achievement tiers that became due in this transaction (idempotent), then their titles
     if (syncCollection(this.d.master, draft, now, emit).length > 0) evaluateTitles(this.d.master, draft);
@@ -206,6 +236,10 @@ export class PlayerService {
     if (kpi.length > 0 && this.d.onKpi) await this.d.onKpi(id, kpi);
     if (pushProfile) await this.d.onProfile!(publicProfile(draft, this.d.master.bannedSilks));
     if (this.d.onStable && stableSnapshotKey(this.d.master, draft, now) !== stableBefore) await this.d.onStable(id, stableSnapshot(this.d.master, draft, now));
+    if (this.d.onRival) {
+      const u = rivalUpdateOf(id, rivalBefore, rivalOutbound(this.d.master, draft, now));
+      if (u) { try { await this.d.onRival(u); } catch (e) { console.error('rival registry update failed', id, (e as Error).message); } }
+    }
     if (!deleting && this.d.onSeasonEntry && draft.season.races > 0 && standingKey(draft) !== standingBefore) {
       await this.d.onSeasonEntry({
         playerId: id, seasonId: draft.season.id, classId: draft.season.classId, points: draft.season.points, rating: Math.round(draft.rating.r),
@@ -232,7 +266,7 @@ export class PlayerService {
   /** REQ-UXS-001/014/032/040: computed sections of GET /v1/player and bootstrap. */
   private extras(s: PlayerState, now: number) {
     const m = this.d.master;
-    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s) };
+    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s) };
   }
 
   async view(id: string) {
@@ -310,7 +344,7 @@ export class PlayerService {
   /** Next nudge / deletion time (the object's alarm keeps them armed; push and stud have their own). */
   async nextWakeOf(id: string) {
     const s = await this.load(id);
-    const all = [nextNudgeWake(s), nextDeletionWake(s), nextInviteWake(s), nextComebackWake(s)].filter((x): x is number => x !== null);
+    const all = [nextNudgeWake(s), nextDeletionWake(s), nextInviteWake(s), nextComebackWake(s), nextGiftWake(s)].filter((x): x is number => x !== null);
     return all.length ? Math.min(...all) : null;
   }
   /**
@@ -573,6 +607,29 @@ export class PlayerService {
   /** Lazy triggers (race count, season start, promotion) are recorded, so this runs in a transaction. */
   // REQ-UXS-040: while a deletion is scheduled no offer is shown and no daily pack is paid (like purchase-intent)
   /** r10: the product list with this player's ownership (GET /v1/shop/products?mine=1). Read-only. */
+  /**
+   * REQ-SHORT-005: GET /v1/shop/shortfall — the shortfall of a gacha pull, a cosmetic or an amount before trying (read
+   * only). Prices come from the same functions the payment uses (gachaPrice, the cosmetic's price and currency).
+   */
+  async coinShortfall(id: string, q: ShortfallQuery) {
+    const s = structuredClone(await this.load(id));
+    const now = this.d.clock();
+    const m = this.d.master;
+    rollSeason(m, s, now); // the copy only: a season close is not saved by a read
+    if (q.for === 'gacha') {
+      const b = findBanner(m, q.bannerId);
+      assertBannerOpen(b, now); // the pull would be refused for this first (BANNER_CLOSED), so is its preview
+      return coinShortfall(m, s, { coinKind: b.currency === 'paidOnly' ? 'paid' : 'any', need: gachaPrice(b, s, b.stepUp ? 10 : q.count) }, now);
+    }
+    if (q.for === 'cosmetic') {
+      const c = findCosmetic(m, q.itemId);
+      if (c.notForSale) throw new AppError('NOT_ELIGIBLE', `${c.id} is not sold for coins`);
+      if ((s.items[c.id] ?? 0) > 0) throw new AppError('ALREADY_PURCHASED', `${c.id} is already owned`);
+      return coinShortfall(m, s, { coinKind: c.currency === 'paidOnly' ? 'paid' : 'any', need: c.price }, now);
+    }
+    return coinShortfall(m, s, { coinKind: q.kind, need: q.coins }, now);
+  }
+
   async shopProducts(id: string) { return shopProducts(this.d.master, { s: await this.load(id), now: this.d.clock() }); }
   shopOffers(id: string) { return this.tx(id, null, (s, now) => { notDeleting(s); return shopOffers(this.d.master, s, now); }); }
   markOfferViewed(id: string, offerId: string) { return this.tx(id, null, (s, now) => { notDeleting(s); return markOfferViewed(this.d.master, s, offerId, now); }); }
@@ -627,6 +684,56 @@ export class PlayerService {
     return this.tx(id, key, (s, now) => ({ ...useTrainingItem(this.d.master, s, itemId, horseId, now, key), training: trainingDelta(this.d.master, s, now, horseId) }));
   }
 
+  // ---------------------------------------------------------------- ライバル weekly rival (REQ-RIVAL-*, rival.ts; orchestrated by RivalService)
+  /** What the sync needs: the unsettled weeks to ask the registry about, and what to re-send (read only). */
+  async rivalPeek(id: string) {
+    const s = await this.load(id);
+    const now = this.d.clock();
+    const cur = weekIdAt(this.d.master, now);
+    const w = s.rival?.weeks.find((x) => x.weekId === cur);
+    return {
+      weeks: weeksToSync(this.d.master, s, now), currentWeek: cur, withdrawn: rivalWithdrawn(s, now), optOut: !!s.rival?.optOut,
+      dissolveMine: w?.assignment?.kind === 'human' && w.assignment.dissolvedBy === 'me', ta: { ...(w?.ta ?? {}) },
+      entry: rivalOutbound(this.d.master, s, now)?.entry ?? null,
+    };
+  }
+  /** REQ-RIVAL-006: apply the registry's answers (server-side only), settle ended weeks, return GET /v1/rival. */
+  rivalSync(id: string, data: Record<string, RegistryWeek | null>, quiet = false) {
+    return this.tx(id, null, (s, now, emit) => { rivalSync(this.d.master, s, now, data, emit, quiet); return rivalView(this.d.master, s, now); });
+  }
+  rivalSetOptOut(id: string, optOut: boolean) {
+    return this.tx(id, null, (s, now, emit) => {
+      const was = !!s.rival?.optOut;
+      const r = rivalSetOptOut(this.d.master, s, optOut);
+      if (was !== optOut) emit({ name: 'rival_opt', s1: optOut ? 'out' : 'in' });
+      return { ...r, view: rivalView(this.d.master, s, now) };
+    });
+  }
+  rivalBlock(id: string) { return this.tx(id, null, (s, now) => rivalBlock(this.d.master, s, now)); }
+  rivalChallengeCheck(id: string) { return this.tx(id, null, (s, now) => ({ rivalId: rivalChallengeCheck(this.d.master, s, now), displayName: s.profile.displayName })); }
+  async rivalChallengeReceive(id: string, fromId: string, passphrase: string, fromName?: string) {
+    if (await this.wiped(id)) throw new AppError('NOT_ELIGIBLE', 'not your rival this week');
+    return this.tx(id, null, (s, now) => {
+      const r = rivalChallengeReceive(this.d.master, s, fromId, passphrase, now);
+      enqueuePush(this.d.master, s, 'room_invite', { name: fromName ?? 'ライバル' }, now);
+      return r;
+    });
+  }
+  rivalSeen(id: string, weekId: string) { return this.tx(id, null, (s) => rivalSeen(s, weekId)); }
+  /** REQ-RIVAL-013: 「ライバルが記録を更新」 — at most once per game day, inside the push daily cap and preferences. */
+  async rivalPush(id: string, byName: string, course: string) {
+    if (await this.wiped(id)) return { status: 'skipped' as const, reason: 'deleted' as const };
+    return this.tx(id, null, (s, now) => {
+      const r = ensureRival(s);
+      if (r.optOut) return { status: 'skipped' as const, reason: 'opted_out' as const };
+      const day = gameDayKeyOf(this.d.master, now);
+      if (r.pushDay && r.pushDay >= day) return { status: 'skipped' as const, reason: 'already_today' as const };
+      const out = enqueuePush(this.d.master, s, 'rival_record', { name: byName, course }, now);
+      if (out.status === 'queued') r.pushDay = day;
+      return out;
+    });
+  }
+
   async claimPass(id: string, track: 'free' | 'premium', level: number, idemKey: string | null) {
     return this.tx(id, this.requireKey(idemKey), (s, now) => claimPass(this.d.master, s, track, level, now));
   }
@@ -648,6 +755,7 @@ export class PlayerService {
       if (applied[r.raceId] !== undefined) return { duplicate: true as const, event: null };
       applied[r.raceId] = now;
       const base0 = applyRaceResult(this.d.master, s, r, now);
+      noteRivalRace(this.d.master, s, r, now, emit); // REQ-RIVAL-004: head to head (ranked) / challenge (friend)
       // REQ-COL-002 / REQ-ACH-002: what the race showed the 図鑑, a fired skill, and the tiers it unlocked (with titles)
       noteRaceCollection(this.d.master, s, r);
       const achievements = syncCollection(this.d.master, s, now, emit);
@@ -660,6 +768,7 @@ export class PlayerService {
         feed = { teamId, playerId: id, displayName: s.profile.displayName, race: { raceId: r.raceId, mode: r.mode as FeedRace['mode'], place: r.place, fieldSize: r.fieldSize, trackId: r.details?.trackId ?? null } };
       }
       if (!r.void && r.mode === 'ranked') noteRaceForOffers(this.d.master, s, r.place, now); // REQ-UXS-017 T2
+      noteRaceForAssist(s, r, now, emit); // REQ-ASSIST-010/011: last-place streak, race_assisted
       if (r.mode === 'ranked' && !r.void) armPromotionNudge(this.d.master, s, now); // REQ-UXS-012
       if (!r.void) {
         emit({
@@ -784,6 +893,21 @@ export class PlayerService {
   async claimAllAchievements(id: string, idemKey: string | null) {
     return this.tx(id, this.requireKey(idemKey), (s, now, emit) => ({ ...claimAllAchievements(this.d.master, s, now, emit), wallet: { free: s.wallet.free, paid: s.wallet.paid } }));
   }
+  // ---- プレゼントボックス (REQ-BOX-*, giftBox.ts, contracts/protocol.md §26) ----
+  /** GET /v1/gift-box: read-only unless something expired (then the expiry is written, REQ-BOX-006). */
+  async giftBox(id: string, tab: 'box' | 'history' = 'box', offset = 0, limit = 50) {
+    const s = await this.load(id);
+    const q = { tab, offset, limit };
+    if (giftsNeedExpiry(s, this.d.clock())) return this.tx(id, null, (d, now) => giftBoxView(this.d.master, d, now, q));
+    return giftBoxView(this.d.master, s, this.d.clock(), q);
+  }
+  giftClaim(id: string, giftId: string, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => claimGift(this.d.master, s, giftId, now, emit));
+  }
+  giftClaimAll(id: string, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => claimAllGifts(this.d.master, s, now, emit));
+  }
+
   async stats(id: string) { return (await this.load(id)).stats; }
   async publicProfile(id: string) { return publicProfile(await this.load(id), this.d.master.bannedSilks); }
 
@@ -791,7 +915,7 @@ export class PlayerService {
   async closeSeason(id: string, seasonId: string, rank: number | null) {
     if (await this.wiped(id)) return { status: 'no-record' as const, reward: null, pass: null, titles: [] as string[] };
     return this.tx(id, null, (s, now, emit) => {
-      const r = closeSeason(this.d.master, s, seasonId, rank, now);
+      const r = closeSeason(this.d.master, s, seasonId, rank, now, emit);
       if (r.status === 'rewarded') emit({ name: 'season_close', s1: seasonId, s2: r.classId ?? '', s3: r.nextClassId ?? '', ...(rank !== null ? { place: rank } : {}) });
       const titles = evaluateTitles(this.d.master, s); // class titles (promotion happened in rollSeason)
       return { ...r, titles };
@@ -903,18 +1027,26 @@ export class PlayerService {
    * Admin money operations are idempotent per opKey FOREVER (review r5 #4): the general idempotency cache
    * keeps only the last IDEM_KEEP results, so their results live in a never-evicted per-player record.
    */
-  private adminOnce<T>(id: string, key: string, fn: (s: PlayerState, now: number) => T): Promise<T> {
-    return this.tx(id, null, (s, now) => {
+  private adminOnce<T>(id: string, key: string, fn: (s: PlayerState, now: number, emit: Emit) => T): Promise<T> {
+    return this.tx(id, null, (s, now, emit) => {
       const ops = (s.adminOps ??= {});
       if (key in ops) return ops[key] as T;
-      const r = fn(s, now);
+      const r = fn(s, now, emit);
       ops[key] = JSON.parse(JSON.stringify(r ?? null));
       return r;
     });
   }
-  /** `singlePerson`: nobody else approved this grant, so it counts against the player's 24 h budget (QA R11, REQ-OPS-026). */
-  adminGrant(id: string, grant: Grant, reason: string, actor: string, opKey: string, singlePerson = false) {
-    return this.adminOnce(id, `grant:${opKey}`, (s, now) => supportGrant(s, grant, reason, actor, `admin:${opKey}`, now, singlePerson ? GRANT_LIMITS.operator : undefined));
+  /**
+   * `singlePerson`: nobody else approved this grant, so it counts against the player's 24 h budget (QA R11, REQ-OPS-026).
+   * `gift` (REQ-BOX-010): the grant goes to the gift box as a compensation or a plain grant, with an optional title and
+   * expiry. An account wiped by a deletion is refused (no fresh player is created under its id).
+   */
+  async adminGrant(id: string, grant: Grant, reason: string, actor: string, opKey: string, singlePerson = false, gift: AdminGiftOptions = {}) {
+    if (!(await this.repo.get(id)) && (await this.repo.tombstoned?.(id))) throw new AppError('NOT_FOUND', 'the account was deleted');
+    return this.adminOnce(id, `grant:${opKey}`, (s, now, emit) => {
+      if (s.deletion?.status === 'deleting') throw new AppError('DELETION_IN_PROGRESS', 'the account is being deleted');
+      return supportGrant(s, grant, reason, actor, `admin:${opKey}`, now, singlePerson ? GRANT_LIMITS.operator : undefined, { master: this.d.master, emit, source: gift.source ?? 'ops_grant', ...(gift.titleKey ? { titleKey: gift.titleKey } : {}), ...(gift.expiryDays !== undefined ? { expiryDays: gift.expiryDays } : {}) });
+    });
   }
   adminSettleDebt(id: string, coins: number, items: Record<string, number>, reason: string, actor: string, opKey: string) {
     return this.adminOnce(id, `settle:${opKey}`, (s, now) => supportSettleDebt(s, coins, items, reason, actor, `admin:${opKey}`, now));
@@ -961,6 +1093,18 @@ export class PlayerService {
   // ---- push notifications (REQ-PUSH-*) ----
   registerDevice(id: string, token: string, platform: DevicePlatform, locale: Locale = 'ja') { return this.tx(id, null, (s, now) => registerDevice(this.d.master, s, token, platform, now, locale)); }
   unregisterDevice(id: string, token: string) { return this.tx(id, null, (s) => unregisterDevice(this.d.master, s, token)); }
+  // ---------------------------------------------------------------- かんたん操作 easy controls (REQ-ASSIST-*, assist.ts)
+  /** GET /v1/player/assist: read-only. */
+  async assist(id: string) { return assistView(await this.load(id)); }
+  /** PUT /v1/player/assist: off | whip | full (idempotent; the same level twice changes nothing). */
+  setAssist(id: string, level: AssistLevel, source: AssistSource) {
+    return this.tx(id, null, (s, now, emit) => setAssist(s, level, source, now, emit));
+  }
+  /** POST /v1/player/assist/prompt-seen: the one-time suggestion was shown (once only). */
+  assistPromptSeen(id: string) {
+    return this.tx(id, null, (s, now, emit) => markAssistPromptSeen(s, now, emit));
+  }
+
   async pushPreferences(id: string, locale: Locale = 'ja') { return pushPrefsView(this.d.master, await this.load(id), locale); }
   setPushPreferences(id: string, patch: PrefsPatch, locale: Locale = 'ja') { return this.tx(id, null, (s) => setPushPrefs(this.d.master, s, patch, locale)); }
   /** Alarm step 1: drop expired messages and return what is due (kept in the outbox until settled). */
@@ -1005,6 +1149,7 @@ export class PlayerService {
       const counted = s.timeAttack?.sessions.find((x) => x.id === sessionId)?.result ?? null;
       const r = recordResult(this.d.master, s, this.d.master.progression.timeAttack, sessionId, out, claimedHash, now);
       if (!counted && 'finished' in r && r.finished) countOnboarding(s, 'ta_finish');
+      if (!counted && 'finished' in r && r.finished && r.timeMs !== null) noteRivalTa(this.d.master, s, r.trackId, r.timeMs, now); // REQ-RIVAL-005
       return r;
     });
   }
@@ -1041,7 +1186,7 @@ export class PlayerService {
   /** REQ-TEAM-008: team season reward (rollover job; idempotent per season). */
   async teamSeasonReward(id: string, seasonId: string, teamId: string, rank: number | null, total: number, league: LeaguePlace | null = null) {
     if (await this.wiped(id)) return null;
-    return this.tx(id, null, (s, now) => playerTeamReward(s, this.d.master.progression.teams, seasonId, teamId, rank, total, now, { cfg: this.d.master.progression.league, place: league }));
+    return this.tx(id, null, (s, now, emit) => playerTeamReward(s, this.d.master.progression.teams, seasonId, teamId, rank, total, now, { cfg: this.d.master.progression.league, place: league }, giftGiver(this.d.master, s, now, emit)));
   }
 
   // ---- team cheer stamps (REQ-TEAMFEED-*) ----
@@ -1113,10 +1258,11 @@ export class PlayerService {
   /** REQ-TOUR-007: final rank + prize, once per tournament (resumable payout; a retry is a no-op). */
   async tournamentClose(id: string, tournamentId: string, rank: number, reward: Reward | null, name: string) {
     if (await this.wiped(id)) return { status: 'already' as const, reward: null };
-    return this.tx(id, null, (s, now) => {
+    return this.tx(id, null, (s, now, emit) => {
       const done = (s.tournaments ??= {});
       if (done[tournamentId]) return { status: 'already' as const, reward: done[tournamentId]!.reward };
-      if (reward) grantReward(s, reward, now, `tournament ${tournamentId} rank ${rank}`, `tournament:${tournamentId}:rank`);
+      // REQ-BOX-001: the prize goes to the gift box
+      if (reward) giftGiver(this.d.master, s, now, emit)(reward, `tournament ${tournamentId} rank ${rank}`, `tournament:${tournamentId}:rank`, 'tournament', rank);
       done[tournamentId] = { name, rank, at: now, reward };
       noteTournamentResult(s, rank); // REQ-ACH-002 (once per tournament, behind the same guard)
       const keys = Object.entries(done).sort((a, b) => b[1].at - a[1].at).map(([k]) => k);
@@ -1132,14 +1278,14 @@ export class PlayerService {
   /** REQ-EVENT-008: final rank reward (event end job; idempotent). An event removed from config pays nothing. */
   async eventClose(id: string, eventId: string, rank: number | null) {
     if (await this.wiped(id)) return { status: 'unknown_event' as const, reward: null };
-    return this.tx(id, null, (s, now) => {
+    return this.tx(id, null, (s, now, emit) => {
       const ev = this.d.master.events.find((e) => e.id === eventId);
       if (!ev) {
         const st = ensureEvent(s, eventId);
         st.closed = true;
         return { status: 'unknown_event' as const, reward: null };
       }
-      return closeEventForPlayer(ev, s, rank, now, this.d.master);
+      return closeEventForPlayer(ev, s, rank, now, this.d.master, giftGiver(this.d.master, s, now, emit));
     });
   }
 }

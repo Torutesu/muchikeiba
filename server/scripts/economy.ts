@@ -40,3 +40,16 @@ for (const p of PERSONAS) {
 const gap = (a: string, b: string, cls: string, key: 'trained' | 'untrained') => res[a]!.rankedTotalByClass[cls]![key] - res[b]!.rankedTotalByClass[cls]![key];
 const perDay = (id: string) => res[id]!.trainedPoints / Math.max(1, res[id]!.activeDays);
 console.log(`\nE15 中課金−無課金のランク戦能力差（正規化後、調教なし→あり）: ${classes.map((c) => `${c.id} ${gap('medium', 'f2p', c.id, 'untrained').toFixed(0)}→${gap('medium', 'f2p', c.id, 'trained').toFixed(0)}`).join('  ')}  伸び/稼働日 中課金÷無課金 ${(perDay('medium') / perDay('f2p')).toFixed(2)}`);
+
+// REQ-BOX-013: the gift box changes routing only — what arrived is claimed on the next active day, nothing expires
+console.log('');
+console.log('| persona | プレゼントボックス 受け取り（件） | 期限切れ（件） |');
+console.log('|---|---|---|');
+for (const p of PERSONAS) { const r = res[p.id]!; console.log(`| ${p.label} | ${r.giftsClaimed.toFixed(1)} | ${r.giftsExpired.toFixed(1)} |`); }
+
+// REQ-RIVAL-014 (E16): the weekly rival's fixed free coins over 90 days, against the 「3戦する」 cut (18 → 16 × 90 = 180)
+console.log('');
+console.log('| persona | ライバル 精算した週 | 勝った週 | 受け取った無償コイン（90日） |');
+console.log('|---|---|---|---|');
+for (const p of PERSONAS) { const r = res[p.id]!; console.log(`| ${p.label} | ${r.rivalWeeks.toFixed(1)} | ${r.rivalWins.toFixed(1)} | ${r.rivalCoins.toFixed(0)} |`); }
+console.log(`\nE16 ライバル（無課金・毎日）の90日の受け取り ${res.f2p!.rivalCoins.toFixed(0)} ≤ 180`);

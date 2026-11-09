@@ -37,7 +37,8 @@ describe('event fee regressions (review r5 #1, #2)', () => {
     await repo.put(s);
     return h.id;
   }
-  const free = async (repo: MemoryPlayerRepo) => ((await repo.get('p1')) as PlayerState).wallet.free;
+  // REQ-BOX-001: ops grants arrive in the gift box; what was granted = wallet + unclaimed box coins
+  const free = async (repo: MemoryPlayerRepo) => { const s = (await repo.get('p1')) as PlayerState; return s.wallet.free + (s.giftBox?.box ?? []).reduce((a, e) => a + (e.contents.freeCoins ?? 0), 0); };
 
   it('#1 resending the same Idempotency-Key after the race settled charges the fee again', async () => {
     const { repo, svc, es } = setup();
@@ -154,7 +155,8 @@ describe('admin grant op keys (review r5 #4, #5)', () => {
     const svc = new PlayerService(repo, { master: m, rng: seededRng(3), clock: () => NOW, verifiers: {} });
     return { repo, svc };
   }
-  const free = async (repo: MemoryPlayerRepo) => ((await repo.get('p1')) as PlayerState).wallet.free;
+  // REQ-BOX-001: ops grants arrive in the gift box; what was granted = wallet + unclaimed box coins
+  const free = async (repo: MemoryPlayerRepo) => { const s = (await repo.get('p1')) as PlayerState; return s.wallet.free + (s.giftBox?.box ?? []).reduce((a, e) => a + (e.contents.freeCoins ?? 0), 0); };
 
   it('#4 an opKey never grants twice, even after the idempotency cache evicted it', async () => {
     const { repo, svc } = setup();

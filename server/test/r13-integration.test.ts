@@ -69,6 +69,31 @@ describe('§26.1 gift box routing for Round 13 rewards', () => {
   });
 });
 
+describe('account deletion clears the Round 13 state', () => {
+  it('exchange points, weekly challenge progress, team goal state, gacha log and gift box go with the wipe; late background calls never recreate it', async () => {
+    const w = world(ev.startAtMs + 3_600_000);
+    await w.svc.bootstrap('d');
+    await w.svc.tutorialDraw('d', 'c:tut');
+    const s = w.state('d');
+    ensureExchange(m, s, ev).points = 90;
+    w.repo.put(s);
+    await w.svc.teamGoalReward('d', WEEK, 'team_1', 1, 5);
+    await w.svc.wchView('d');
+    const before = w.state('d');
+    expect(before.gachaLog?.entries.length).toBeGreaterThan(0);
+    expect(before.events?.[ev.id]?.exchange?.points).toBe(90);
+    expect(before.giftBox?.box.length).toBe(1);
+    expect((before as typeof before & { teamGoal?: { rewarded: string[] } }).teamGoal?.rewarded).toContain(WEEK);
+    await w.svc.wipe('d');
+    expect(w.repo.data.has('d')).toBe(false);
+    // the team object's payout retry and a late week close are no-ops on a wiped id (no fresh state written)
+    expect(await w.svc.teamGoalReward('d', '2026-12-14', 'team_1', 2, 12)).toBeNull();
+    expect(w.repo.data.has('d')).toBe(false);
+    await expect(w.svc.history('d', 'gacha')).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(w.repo.data.has('d')).toBe(false);
+  });
+});
+
 describe('§33 coin history: Round 12 / 13 rewards map to readable categories (no raw reason)', () => {
   const cases: [string, string, string][] = [
     ['rival week 2026-12-07 win', 'rival', 'ライバルの週の報酬'],

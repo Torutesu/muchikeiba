@@ -108,6 +108,8 @@ static class Program
         await CommentaryPackChecks.Run(Check, Ruleset(), Root);
         Console.WriteLine("== round 14: マイリプレイ (list cards, save / rename / favourite / public / delete, ReplayPlayer, 再生できません; REQ-MYRP-*)");
         await MyReplaysChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 16: 厩舎の整理 (RosterOrganiserModel: local sort / filters / search per device, lock, favourite, bulk retire two-step, all or nothing; REQ-ORG-*)");
+        await RosterChecks.Run(Check, Ruleset());
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

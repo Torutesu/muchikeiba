@@ -541,3 +541,9 @@ html[lang="en"] .pass-strip .cell small { font-size: 12px; }
 .hof-stamp .label { color: #e8564c; }
 @keyframes hof-stamp { from { transform: rotate(-14deg) scale(2.2); opacity: 0; } to { transform: rotate(-14deg) scale(1); opacity: 1; } }
 .hof-vis[data-on="true"] { outline: 2px solid var(--cyan); outline-offset: -2px; }
+
+/* round 16: 厩舎の整理 (REQ-ORG-*) */
+.btn.ghost.on .bg { background: rgba(var(--cyan-rgb), .16); box-shadow: inset 0 0 0 2px var(--cyan); }
+.btn.ghost.on { color: var(--white); }
+.org-row:hover { background: rgba(var(--cyan-rgb), .05); }
+.org-row[data-locked="true"] .org-name::after { content: ""; }

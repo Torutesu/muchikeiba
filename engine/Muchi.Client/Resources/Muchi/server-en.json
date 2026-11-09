@@ -475,6 +475,7 @@
   "3着以内{n}回": "{n} top-3 finishes",
   "現役{days}日・{n}戦": "{days} days and {n} races on the track",
   "殿堂入りは確定したレースの成績だけで決まります（購入やアイテムでは決まりません）。": "Entry to the Hall of Fame depends only on confirmed race results (never on purchases or items).",
+  "まとめて引退しても、コインや素材は返ってきません": "Retiring several horses at once gives back no coins or materials",
   "コインが{n}枚足りません": "You need {n} more coins",
   "有償コインが{n}枚足りません": "You need {n} more paid coins",
   "無償コインが{n}枚足りません": "You need {n} more free coins",

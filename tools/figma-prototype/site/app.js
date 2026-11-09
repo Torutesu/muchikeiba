@@ -2652,7 +2652,7 @@ function Stable() {
   Kicker('適性', 43, 528, d, { rule: false, size: 17 });
   Txt(p ? `${surfaceJa(p.surface)}　/　${fmt(p.distMinM)}〜${fmt(p.distMaxM)}m${L.horseSkill(p) ? '　/　「' + L.horseSkill(p).name + '」' : ''}` : '—', 43, 562, 500, 18, WHITE, d, { weight: 700 });
   Cta('この馬で出走', 43, 640, 464, RaceLobby, d);
-  TextLink('所属馬の一覧', 43, 734, 240, () => StableList(horses), d, `所属馬の一覧（${horses.length}頭）`);
+  TextLink('所属馬の一覧', 43, 734, 240, () => Roster(), d, `所属馬の一覧（${horses.length}頭）`); // round 16: 厩舎の整理 (REQ-ORG-*)
   TextLink('お世話', 300, 734, 120, Care, d, 'お世話・餌');
   TextLink('調教', 440, 734, 100, () => { trHorse = p?.id ?? null; Training(); }, d, '調教');
   Back(Home);
@@ -2669,6 +2669,244 @@ function StableList(horses) {
       Hair(48, yy + 34, 564, s);
     });
   });
+}
+
+// ================================================================= round 16: 厩舎の整理 (REQ-ORG-*, contracts/protocol.md §44)
+// The stable list on the real PlayerService roster rules: sort / filters / search run locally with the server's own
+// applyRosterQuery (the C# RosterSorter is the same), the chosen view is kept on this device (localStorage = PlayerPrefs),
+// lock and favourite go to the server, and the bulk retire is two-step (every horse listed, nothing given back, cancel and
+// confirm the same size) and all or nothing. Mirrors unity/Assets/Muchi/Game/RosterOrganiserModel.cs. Horse names are
+// what the player typed: never translated (.keep-ja).
+const ORG_SORTS = [['rating', '能力'], ['aptitude', '適性'], ['age', '年齢'], ['acquired', '入手順'], ['races', '出走数'], ['rarity', 'レア度'], ['name', '名前']];
+const ORG_BANDS = [['sprint', '短距離'], ['mile', 'マイル'], ['intermediate', '中距離'], ['long', '長距離']];
+const ORG_SURF = { turf: '芝', dirt: 'ダート', both: '芝・ダート' };
+const ORG_REASON = {
+  not_found: '厩舎にいない馬です', locked: 'ロック中', partner: '最初の相棒はまとめて引退できません', not_active: 'もう引退しています',
+  on_loan: '種牡馬として貸し出し中', in_training: '調教中', tournament_entry: '大会に登録中', hall_pending: '引退式をまだ見ていません',
+};
+const ORG_VIEW_KEY = 'muchi.roster.view';
+const ORG_PER_PAGE = 7;
+let orgPage = 0, orgSelect = null, orgLastKpi = -1e15, orgCourseName = null;
+function orgQuery() {
+  let q = L.roster.defaults();
+  try { q = { ...q, ...JSON.parse(prefs.get(ORG_VIEW_KEY, '{}')) }; } catch { /* a broken saved view → defaults */ }
+  if (q.sort === 'aptitude' && !q.course) q.sort = 'acquired';
+  return q;
+}
+const orgFilterCount = (q) => ['surface', 'band', 'style'].filter((k) => q[k]).length + (q.status !== 'all' ? 1 : 0)
+  + ['skill', 'partner', 'locked', 'favorite'].filter((k) => q[k] !== null && q[k] !== undefined).length + (q.q ? 1 : 0);
+/** Saves the view on this device and sends roster_sort (at most once a second). */
+function orgSave(q) {
+  prefs.set(ORG_VIEW_KEY, JSON.stringify(q));
+  orgPage = 0;
+  const t = L.now();
+  if (t - orgLastKpi >= 1000) { orgLastKpi = t; L.kpi([{ name: 'roster_sort', at: t, props: { sort: q.sort, filters: Math.min(10, orgFilterCount(q)) } }]); }
+}
+const orgSortText = (q) => `並び：${ORG_SORTS.find(([k]) => k === q.sort)?.[1] ?? '入手順'}${q.dir === 'asc' ? '（低い順）' : '（高い順）'}`;
+
+async function Roster() {
+  currentScreen = Roster;
+  const r = await L.roster.view();
+  if (!r.ok) { toast('厩舎の整理は今は表示できません'); Stable(); return; }
+  const v = r.value, q = orgQuery();
+  const rows = L.roster.apply(v.horses, q);
+  if (orgSelect) for (const id of [...orgSelect]) if (!v.horses.some((h) => h.horseId === id && h.blocks.length === 0)) orgSelect.delete(id);
+  Clear('roster'); SetArt('Art/partner-naming', false); Shade('left');
+  TopBar('厩舎の整理', '並び替え・絞り込み・ロック・まとめて引退', { wallet: false });
+  const lp = Glass('Roster list', 36, 134, 1080, 676, undefined, .9); lp.classList.add('org-list');
+  // controls: search, sort, filters, select
+  const box = el('fieldbox', 36, 24, 290, 56, lp);
+  const input = document.createElement('input');
+  input.className = 'field org-search keep-ja'; input.maxLength = 20; input.value = q.q ?? ''; input.placeholder = isJa() ? '名前で探す' : 'Search by name'; input.setAttribute('aria-label', '名前で探す');
+  Object.assign(input.style, { left: '18px', top: '10px', width: '254px', height: '36px', fontSize: '20px' });
+  box.appendChild(input);
+  const search = () => { const nq = orgQuery(); nq.q = input.value.trim().slice(0, 20); orgSave(nq); Roster(); };
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') search(); });
+  input.addEventListener('change', search);
+  Ghost(orgSortText(q), 342, 24, 300, 56, () => OrgSortSheet(), lp, 'small').classList.add('org-sort');
+  const fc = orgFilterCount({ ...q, q: '' });
+  Ghost(fc ? `絞り込み（${fc}）` : '絞り込み', 658, 24, 196, 56, () => OrgFilterSheet(), lp, 'small').classList.add('org-filter');
+  Ghost(orgSelect ? '選択をやめる' : 'まとめて選ぶ', 870, 24, 174, 56, () => { orgSelect = orgSelect ? null : new Set(); Roster(); }, lp, 'small').classList.add('org-select');
+  const pages = Math.max(1, Math.ceil(rows.length / ORG_PER_PAGE));
+  orgPage = Math.min(orgPage, pages - 1);
+  Kicker(`${v.total}頭（現役${v.active}・引退${v.retired}）`, 36, 96, lp, { rule: false, size: 14 }).classList.add('org-total');
+  if (q.course && q.sort === 'aptitude') Txt(orgCourseName ?? '', 560, 98, 484, 13, CYAN, lp, { align: 'right', nowrap: true, weight: 700 });
+  if (!rows.length) Txt('条件に合う馬はいません', 36, 160, 1008, 16, MUTED, lp).classList.add('org-empty');
+  rows.slice(orgPage * ORG_PER_PAGE, orgPage * ORG_PER_PAGE + ORG_PER_PAGE).forEach((h, i) => {
+    const row = el('org-row', 36, 130 + i * 68, 1008, 62, lp);
+    Object.assign(row.dataset, { horseId: h.horseId, locked: String(h.locked), favorite: String(h.favorite), blocks: h.blocks.join(' '), status: h.status });
+    let x = 0;
+    if (orgSelect) {
+      const on = orgSelect.has(h.horseId), can = h.blocks.length === 0;
+      const cb = Txt(on ? '☑' : '☐', 0, 10, 36, 28, can ? (on ? CYAN : WHITE) : DIM, row, { align: 'center' });
+      cb.classList.add('org-check'); cb.dataset.on = String(on);
+      x = 44;
+    }
+    Txt(h.rarity, x, 10, 56, 15, h.rarity === 'SSR' ? GOLD : h.rarity === 'SR' ? CYAN : MUTED, row, { weight: 700, ls: '.08em' });
+    Txt(h.name, x + 60, 4, 300, 20, h.status === 'active' ? WHITE : SOFT, row, { weight: 700, nowrap: true, cls: 'keep-ja org-name' }); // as typed
+    Txt(STYLE_JA[h.style] ?? h.style, x + 60, 34, 90, 13, SOFT, row, { nowrap: true });
+    Txt(ORG_SURF[h.surface] ?? h.surface, x + 150, 34, 100, 13, SOFT, row, { nowrap: true });
+    Txt(`${fmt(h.distMinM)}–${fmt(h.distMaxM)}m`, x + 250, 34, 130, 13, SOFT, row, { nowrap: true, cls: 'num' });
+    Txt(`能力 ${fmt(h.rating)}`, 430, 8, 150, 16, GOLD, row, { weight: 700, nowrap: true, cls: 'num' });
+    Txt(`${h.races}戦${h.wins}勝`, 430, 34, 150, 13, MUTED, row, { nowrap: true, cls: 'num' });
+    if (q.course && q.sort === 'aptitude') Txt(L.roster.aptitude(h, q.course).mark, 584, 8, 44, 28, CYAN, row, { align: 'center', weight: 700 }).classList.add('org-apt');
+    const pills = [];
+    if (h.partner) pills.push(['相棒', 'cyan']);
+    if (h.status !== 'active') pills.push(['引退', '']);
+    if (orgSelect && h.blocks.length && !h.locked) pills.push([ORG_REASON[h.blocks[0]] ?? '引退できません', 'warn']);
+    if (pills.length) Pills(pills, 640, 16, 220, row);
+    const star = Txt(h.favorite ? '★' : '☆', 860, 6, 44, 30, h.favorite ? GOLD : DIM, row, { align: 'center' });
+    star.classList.add('org-fav'); star.style.cursor = 'pointer';
+    star.addEventListener('click', async (e) => { e.stopPropagation(); const s = await L.roster.favorite(h.horseId, !h.favorite); if (!s.ok) toast(s.message); Roster(); });
+    const lk = Ghost(h.locked ? 'ロック中' : 'ロック', 912, 8, 96, 46, async () => {
+      const s = await L.roster.lock(h.horseId, !h.locked);
+      toast(s.ok ? (s.value.locked ? 'ロックしました' : 'ロックを外しました') : s.message); Roster();
+    }, row, 'small' + (h.locked ? ' on' : ''));
+    lk.classList.add('org-lock');
+    if (orgSelect) {
+      row.style.cursor = h.blocks.length ? 'default' : 'pointer';
+      row.addEventListener('click', () => {
+        if (h.blocks.length) { toast(ORG_REASON[h.blocks[0]] ?? '引退できません'); return; }
+        if (orgSelect.has(h.horseId)) orgSelect.delete(h.horseId); else if (orgSelect.size < v.bulkMax) orgSelect.add(h.horseId);
+        Roster();
+      });
+    }
+    Hair(0, 61, 1008, row);
+  });
+  if (pages > 1) {
+    TextLink('前へ', 36, 620, 100, () => { orgPage = Math.max(0, orgPage - 1); Roster(); }, lp, '‹ 前へ');
+    Txt(`${orgPage + 1} / ${pages}`, 470, 626, 140, 15, MUTED, lp, { align: 'center', cls: 'num' });
+    TextLink('次へ', 944, 620, 100, () => { orgPage = Math.min(pages - 1, orgPage + 1); Roster(); }, lp, '次へ ›');
+  }
+  // right: the bulk retire and the rules
+  const rp = Glass('Roster actions', 1140, 134, 424, 676, undefined, .88); rp.classList.add('org-side');
+  Kicker('まとめて引退', 36, 30, rp);
+  if (orgSelect) {
+    Txt(`${orgSelect.size}頭を選択中`, 36, 100, 352, 30, WHITE, rp, { weight: 700, nowrap: true }).classList.add('org-count');
+    Txt('ロック中・最初の相棒・調教中などの馬は選べません', 36, 150, 352, 13, SOFT, rp, { lh: 1.5 });
+    Ghost('表示中を全部選ぶ', 36, 200, 352, 52, () => { for (const h of rows) if (!h.blocks.length && orgSelect.size < v.bulkMax) orgSelect.add(h.horseId); Roster(); }, rp, 'small').classList.add('org-all');
+    const c = Cta('確認へ', 36, 276, 352, () => OrgConfirm([...orgSelect]), rp, 'small'); c.classList.add('org-review');
+    if (!orgSelect.size) disable(c);
+  } else {
+    Txt('「まとめて選ぶ」から、引退させる馬を選びます', 36, 100, 352, 15, MUTED, rp, { lh: 1.6 });
+  }
+  Hair(36, 372, 352, rp);
+  Txt(v.notice, 36, 392, 352, 14, WARN, rp, { lh: 1.55 }).classList.add('org-notice');
+  Txt('ロックした馬は、1頭ずつの引退でもまとめての引退でも断られます', 36, 452, 352, 13, SOFT, rp, { lh: 1.55 });
+  Txt(`ロック ${v.locked}頭`, 36, 520, 170, 13, MUTED, rp, { nowrap: true, cls: 'num' });
+  Txt(`お気に入り ${v.favorites}頭`, 206, 520, 182, 13, MUTED, rp, { nowrap: true, cls: 'num' });
+  Ghost('デモ：馬を増やす', 36, 590, 352, 50, async () => { await L.roster.demoHorses(6); await refresh(); Roster(); }, rp, 'quiet small').classList.add('org-demo');
+  Back(Stable, 'BACK', 40, 834);
+}
+
+/** Sort: the key (again = flip the direction), aptitude for a chosen course, favourites first. */
+function OrgSortSheet() {
+  const q = orgQuery();
+  Sheet('並び替え', '厩舎の整理　/　並び', (s, close, y) => {
+    s.classList.add('org-sort-sheet');
+    ORG_SORTS.filter(([k]) => k !== 'aptitude').forEach(([k, label], i) => {
+      const on = q.sort === k;
+      const b = Ghost(label, 48 + (i % 3) * 192, y + Math.floor(i / 3) * 64, 180, 52, () => {
+        const nq = orgQuery(); nq.dir = nq.sort === k ? (nq.dir === 'desc' ? 'asc' : 'desc') : k === 'name' ? 'asc' : 'desc'; nq.sort = k; orgSave(nq); close(); Roster();
+      }, s, 'small' + (on ? ' on' : ''));
+      b.dataset.sort = k;
+    });
+    Kicker('適性　/　コースを選ぶ', 48, y + 150, s, { rule: false, size: 14 });
+    L.roster.tracks().slice(0, 6).forEach((t, i) => {
+      const b = Ghost(t.name, 48 + (i % 2) * 288, y + 186 + Math.floor(i / 2) * 60, 276, 50, () => {
+        const nq = orgQuery(); nq.sort = 'aptitude'; nq.dir = 'desc'; nq.course = L.roster.course(t.id); orgCourseName = t.name; orgSave(nq); close(); Roster();
+      }, s, 'small'); b.dataset.track = t.id; b.classList.add('org-track');
+    });
+    const ff = Ghost(q.favoritesFirst ? 'お気に入りを先頭に：オン' : 'お気に入りを先頭に：オフ', 48, y + 384, 372, 52, () => {
+      const nq = orgQuery(); nq.favoritesFirst = !nq.favoritesFirst; orgSave(nq); close(); Roster();
+    }, s, 'small'); ff.classList.add('org-ff');
+    Txt(orgSortText(q), 48, y + 460, 564, 15, MUTED, s);
+  });
+}
+
+/** Filters: surface, distance band, style, active / retired, skill, partner, lock, favourite; clear all. */
+function OrgFilterSheet() {
+  const q = orgQuery();
+  const set = async (k, val) => { const nq = orgQuery(); nq[k] = nq[k] === val ? (k === 'status' ? 'all' : null) : val; orgSave(nq); await Roster(); OrgFilterSheet(); };
+  Sheet('絞り込み', '厩舎の整理　/　条件', (s, close, y) => {
+    s.classList.add('org-filter-sheet');
+    const group = (label, k, opts, gy) => {
+      Txt(label, 48, gy + 14, 110, 14, CYAN, s, { weight: 700, ls: '.12em', nowrap: true });
+      opts.forEach(([val, text], i) => {
+        const b = Ghost(text, 160 + i * 112, gy, 104, 46, () => { close(); set(k, val); }, s, 'small' + (q[k] === val ? ' on' : ''));
+        b.dataset.filter = k; b.dataset.value = String(val);
+      });
+    };
+    group('芝・ダート', 'surface', [['turf', '芝'], ['dirt', 'ダート']], y);
+    group('距離', 'band', ORG_BANDS, y + 58);
+    group('脚質', 'style', Object.entries(STYLE_JA), y + 116);
+    group('状態', 'status', [['active', '現役'], ['retired', '引退']], y + 174);
+    group('スキル', 'skill', [[true, 'あり'], [false, 'なし']], y + 232);
+    group('ロック', 'locked', [[true, 'ロック中'], [false, 'なし']], y + 290);
+    group('お気に入り', 'favorite', [[true, '★のみ']], y + 348);
+    group('相棒', 'partner', [[true, '相棒のみ']], y + 406);
+    TextLink('すべて解除', 48, y + 476, 200, () => {
+      const nq = orgQuery(); Object.assign(nq, { surface: null, band: null, style: null, status: 'all', skill: null, partner: null, locked: null, favorite: null, q: '' }); orgSave(nq); close(); Roster();
+    }, s).classList.add('org-clear');
+  });
+}
+
+/** Step 2 of the bulk retire: every horse with its reason, nothing given back, cannot be undone, same-size buttons. */
+async function OrgConfirm(ids, page = 0) {
+  const p = await L.roster.preview(ids);
+  if (!p.ok) { toast(p.message); return Roster(); }
+  const pv = p.value;
+  const idemKey = L.roster.newKey(); // one key per confirmation: a second tap returns the first result
+  currentScreen = () => OrgConfirm(ids, page);
+  Clear('roster-confirm'); SetArt('Art/partner-naming', false); Shade('dim');
+  const d = Dialog('Bulk retire confirm', 1040, 720, { y: 90 }); d.classList.add('org-confirm');
+  d.dataset.canConfirm = String(pv.canConfirm); d.dataset.count = String(pv.count);
+  Kicker('まとめて引退　/　確認', 40, 30, d);
+  Txt(`${pv.count}頭をまとめて引退させますか？`, 40, 92, 960, 30, WHITE, d, { weight: 700 }).classList.add('org-confirm-title');
+  const per = 10, pages = Math.max(1, Math.ceil(pv.horses.length / per));
+  pv.horses.slice(page * per, page * per + per).forEach((h, i) => {
+    const x = 40 + Math.floor(i / 5) * 490, y = 152 + (i % 5) * 52;
+    const line = el('org-line', x, y, 470, 46, d); line.dataset.horseId = h.horseId; line.dataset.ok = String(h.ok);
+    const row = v0(h.horseId);
+    Txt(row?.rarity ?? '', 0, 8, 50, 14, row?.rarity === 'SSR' ? GOLD : row?.rarity === 'SR' ? CYAN : MUTED, line, { weight: 700 });
+    Txt(h.name, 54, 4, 220, 18, h.ok ? WHITE : SOFT, line, { weight: 700, nowrap: true, cls: 'keep-ja' });
+    Txt(h.ok ? '引退' : h.reasons.map((r) => ORG_REASON[r] ?? r).join('・'), 278, 8, 192, 13, h.ok ? MUTED : WARN, line, { nowrap: true, align: 'right' });
+    Hair(0, 45, 470, line);
+  });
+  if (pages > 1) {
+    TextLink('前へ', 40, 418, 100, () => OrgConfirm(ids, Math.max(0, page - 1)), d, '‹ 前へ');
+    Txt(`${page + 1} / ${pages}`, 450, 424, 140, 15, MUTED, d, { align: 'center', cls: 'num' });
+    TextLink('次へ', 900, 418, 100, () => OrgConfirm(ids, Math.min(pages - 1, page + 1)), d, '次へ ›');
+  }
+  Hair(40, 466, 960, d);
+  const zero = !pv.refund.paidCoins && !pv.refund.freeCoins;
+  Txt(zero ? '返ってくるもの：なし（コイン・素材は返ってきません）' : `返ってくるもの：無償コイン${pv.refund.freeCoins}枚`, 40, 484, 960, 17, GOLD, d, { weight: 700 }).classList.add('org-refund');
+  Txt('引退は元に戻せません。引退した馬は繁殖馬として厩舎に残ります', 40, 518, 960, 14, WARN, d).classList.add('org-undo');
+  if (!pv.canConfirm) {
+    Txt(`引退できない馬が${pv.refused}頭います`, 40, 552, 560, 14, WARN, d, { weight: 700 });
+    TextLink('引退できない馬を外す', 640, 546, 360, () => {
+      for (const h of pv.horses) if (!h.ok) orgSelect?.delete(h.horseId);
+      const left = ids.filter((id) => pv.horses.some((h) => h.horseId === id && h.ok));
+      return left.length ? OrgConfirm(left) : Roster();
+    }, d, '引退できない馬を外す').classList.add('org-remove-refused');
+  }
+  // cancel and confirm: the same size, neither is the default (06 UX rule, protocol §44.5)
+  const cancel = Ghost('やめる', 40, 610, 470, 72, () => Roster(), d); cancel.classList.add('org-cancel');
+  const ok = Ghost('まとめて引退させる', 530, 610, 470, 72, async () => {
+    disable(ok);
+    const r = await L.roster.bulk(ids, pv.confirmToken, idemKey);
+    if (!r.ok) {
+      toast(r.code === 'ROSTER_BULK_STALE' ? '確認の後に厩舎が変わりました。もう一度確認してください' : r.code === 'ROSTER_BULK_REFUSED' ? '引退できない馬が含まれています' : r.message);
+      return r.code === 'ROSTER_BULK_REFUSED' ? OrgConfirm(ids) : Roster();
+    }
+    orgSelect = null; await refresh();
+    toast(`${r.value.count}頭を引退させました`);
+    globalThis.__muchi && (globalThis.__muchi.lastBulk = r.value);
+    Roster();
+  }, d);
+  ok.classList.add('org-ok');
+  if (!pv.canConfirm) disable(ok);
+  function v0(id) { return (player?.horses ?? []).find((x) => x.id === id); }
 }
 
 // ================================================================= scout rates (REQ-GACHA-002/015)
@@ -4436,7 +4674,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Roster, OrgConfirm, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

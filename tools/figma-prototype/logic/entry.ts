@@ -74,6 +74,14 @@ const svc = new PlayerService(repo, {
   onTeamFeed: async (p) => { await teams.feedRace(p.teamId, p.playerId, p.race); },
   // round 12 (REQ-RIVAL-*): the week registry learns candidates / withdrawals / weekly bests after each transaction
   onRival: async (u) => { await rivalSvc.apply(u); },
+  // round 13 (REQ-TGOAL-*): settled results count toward the team's weekly goal (TeamCore, like TeamDO); a milestone
+  // queues the team_goal push for the other members (the daily cap applies)
+  onTeamGoal: async (c) => {
+    const r = await teams.goalContribute(c.teamId, c);
+    if (r.milestone !== null) for (const to of r.notify) await svc.queuePush(to, 'team_goal', { n: String(r.milestone) }).catch(() => undefined);
+    return r;
+  },
+  onTeamGoalForget: async (p) => teams.goalForget(p.teamId, p.playerId),
 });
 // round 12 (REQ-RIVAL-*): the weekly rival on the real RivalService + an in-memory week registry (RivalWeekCore, the
 // LeaderboardDO rival:<week> logic). A demo rival (demo_rv_1, ミドリカワ) registers with the local player as last week's
@@ -105,6 +113,7 @@ const teamPlayers: TeamPlayers = {
   stampCatalog: (u) => svc.stampCatalog(u), stampCheck: (u, s) => svc.stampCheck(u, s), stampPosted: (u, s, k, t, ref) => svc.stampPosted(u, s, k, t, ref ?? null),
   feedViewer: (u, f) => svc.feedViewer(u, f), feedMutes: (u) => svc.feedMutes(u), feedMute: (u, t, m) => svc.feedMute(u, t, m),
   feedReported: (u, t, q, b, r) => svc.feedReported(u, t, q, b, r), cheerPush: (u, f, n) => svc.cheerPush(u, f, n),
+  goalPlayerView: (u) => svc.goalPlayerView(u),
 };
 const teamsSvc = new TeamsService(() => master, teams, teamPlayers, teams, teams, cryptoRng, now);
 const DEMO_MEMBERS = [['demo_tm_lead', 'ミドリカワ'], ['demo_tm_2', 'クロサキ'], ['demo_tm_3', 'ハヤテ']] as const;
@@ -520,6 +529,40 @@ export const MuchiLogic = {
     await svc.applyRace(m2!, { raceId: `proto_tm_${Date.now().toString(36)}_${k}`, mode: k % 2 ? 'tournament' : 'ranked', place: 1 + (k % 3), fieldSize: 12, newRating: null, void: false, humans: 6 });
     await wrap(() => teamsSvc.postStamp(lead!, ['cheer', 'lets_go', 'nice'][k % 3]!));
     await wrap(() => teamsSvc.postStamp(m3!, ['clap', 'thanks', 'gg'][k % 3]!));
+  },
+  // 支部の共同目標 (REQ-TGOAL-*): the weekly goal of the demo team on the real TeamCore / PlayerService rules
+  teamGoal: () => wrap(() => teamsSvc.goal(ID)),
+  /**
+   * Demo teammates play: settled ranked races (place 1–5, the real reward and goal rules: kinds, the per-member daily cap)
+   * and, for a time attack goal, a verified season best each (the stand-in for the verifier: the team still applies its rules).
+   */
+  async teamGoalActivity(races = 4) {
+    const st = await svc.teamState(ID);
+    if (!st.teamId) return;
+    for (const [id, name] of DEMO_MEMBERS) {
+      for (let i = 0; i < races; i++) {
+        const k = demoRace++;
+        await svc.applyRace(id, { raceId: `proto_tg_${Date.now().toString(36)}_${k}`, mode: 'ranked', place: 1 + (k % 5), fieldSize: 12, newRating: null, void: false, humans: 6 });
+      }
+      await teams.goalContribute(st.teamId, { teamId: st.teamId, playerId: id, displayName: name, ref: `ta:proto_${Date.now().toString(36)}_${demoRace++}`, at: now(), races: 0, wins: 0, taPb: 1 });
+    }
+  },
+  /** My settled races (as many as asked; the same rules as a ranked race result from the room). */
+  async teamGoalMyRaces(count = 3) {
+    for (let i = 0; i < count; i++) {
+      const k = demoRace++;
+      await svc.applyRace(ID, { raceId: `proto_tgme_${Date.now().toString(36)}_${k}`, mode: 'ranked', place: 1 + ((k * 3) % 6), fieldSize: 12, newRating: null, void: false, humans: 6 });
+    }
+  },
+  /** Demo: the week ends — the clock moves past Monday 04:00 JST and the team object's alarm closes the week and pays. */
+  async teamGoalCloseWeek() {
+    const st = await svc.teamState(ID);
+    if (!st.teamId) return wrap(() => teamsSvc.goal(ID));
+    const v = await teamsSvc.goal(ID);
+    if (v.current) clockShift = v.current.endsAt + 60_000 - Date.now() - dayOffset * DAY_MS;
+    const teamId = st.teamId;
+    await teams.goalAlarm(teamId, async (pid, c) => { await svc.teamGoalReward(pid, c.week, teamId, c.tier, c.eligible.find((x) => x.playerId === pid)?.n ?? 0); });
+    return wrap(() => teamsSvc.goal(ID));
   },
   stamps: () => svc.stampCatalog(ID),
   teamFeed: (before: number | null = null) => wrap(() => teamsSvc.feed(ID, before, 20)),

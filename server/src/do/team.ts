@@ -8,6 +8,7 @@ import type { LeaguePlace } from '../domain/league.js';
 import { closeSeasonStep, type JoinPolicy, type MemberSnapshot, type TeamState, type TeamSummary } from '../domain/teams.js';
 import { jstMonthKey } from '../domain/time.js';
 import { newFeed, type FeedRace, type TeamFeedState } from '../domain/teamFeed.js';
+import { newGoalState, type GoalContribution, type TeamGoalState } from '../domain/teamGoal.js';
 import { unwrap, wrap, type Envelope } from './rpc.js';
 
 type Rpc = Record<string, (...a: unknown[]) => Promise<Envelope<unknown>>>;
@@ -28,13 +29,36 @@ export class TeamDO extends DurableObject<Env> {
     ctx.blockConcurrencyWhile(async () => {
       this.core.state = (await ctx.storage.get<TeamState>('team')) ?? null;
       this.core.feed = (await ctx.storage.get<TeamFeedState>('feed')) ?? newFeed();
+      this.core.goal = (await ctx.storage.get<TeamGoalState>('goal')) ?? newGoalState();
     });
   }
 
   private async save() {
-    // REQ-TEAMFEED-*: the feed (ring buffer of the last items) is stored under its own key
-    if (this.core.state) await this.ctx.storage.put({ team: this.core.state, feed: this.core.feed });
-    else await this.ctx.storage.put('feed', this.core.feed);
+    // REQ-TEAMFEED-*: the feed (ring buffer of the last items) is stored under its own key; REQ-TGOAL-*: so is the weekly goal
+    if (this.core.state) await this.ctx.storage.put({ team: this.core.state, feed: this.core.feed, goal: this.core.goal });
+    else await this.ctx.storage.put({ feed: this.core.feed, goal: this.core.goal });
+  }
+
+  /** REQ-TGOAL-007: the alarm closes a finished week and pays its members (the scheduled job; resumable, idempotent). */
+  private async scheduleGoal() {
+    const at = this.core.goalNextWake();
+    if (at === null) return;
+    const cur = await this.ctx.storage.getAlarm();
+    if (cur === null || at < cur) await this.ctx.storage.setAlarm(Math.max(at, Date.now()));
+  }
+
+  override async alarm() {
+    this.master = (await activeConfig(this.env)).master;
+    const teamId = this.core.state?.id;
+    if (!teamId) return;
+    const r = await this.core.goalPay(async (pid, c) => {
+      const p = this.env.PLAYER.get(this.env.PLAYER.idFromName(pid)) as unknown as { invoke(m: string, a: unknown[]): Promise<Envelope<unknown>> };
+      unwrap(await p.invoke('teamGoalReward', [pid, c.week, teamId, c.tier, c.eligible.find((x) => x.playerId === pid)?.n ?? 0]));
+    }, () => this.save());
+    await this.save();
+    if (r.paid > 0) console.log('team goal paid', teamId, r.week, r.paid);
+    const next = this.core.goalNextWake();
+    if (next !== null) await this.ctx.storage.setAlarm(Math.max(next, Date.now() + 1000));
   }
 
   /** Runs one operation all-or-nothing, persists, then publishes the summary. */
@@ -43,15 +67,18 @@ export class TeamDO extends DurableObject<Env> {
       this.master = (await activeConfig(this.env)).master;
       const before = this.core.state ? structuredClone(this.core.state) : null;
       const feedBefore = structuredClone(this.core.feed);
+      const goalBefore = structuredClone(this.core.goal);
       let r: T;
       try {
         r = f(this.core);
       } catch (e) {
         this.core.state = before;
         this.core.feed = feedBefore;
+        this.core.goal = goalBefore;
         throw e;
       }
       await this.save();
+      await this.scheduleGoal();
       if (publish) await this.publish();
       return r;
     });
@@ -103,6 +130,23 @@ export class TeamDO extends DurableObject<Env> {
   feedReport(playerId: string, seq: number) { return this.run((c) => c.feedReport(playerId, seq), false); }
   feedPage(viewer: string, muted: string[], before: number | null, limit: number | null) { return this.run((c) => c.feedPage(viewer, muted, before, limit), false); }
   feedForget(playerId: string) { return this.run((c) => c.feedForget(playerId), false); }
+
+  // REQ-TGOAL-*: the weekly goal (the summary does not change, so nothing is published)
+  /** From a player's object after a confirmed event. A newly reached milestone notifies the other members (push, daily cap applies). */
+  async goalContribute(c: GoalContribution) {
+    const env = await this.run((x) => x.goalContribute(c), false);
+    const r = env.ok ? env.value : null;
+    if (r && r.milestone !== null && r.notify.length > 0) {
+      const vars = { n: String(r.milestone) };
+      this.ctx.waitUntil(Promise.all(r.notify.map(async (pid) => {
+        const p = this.env.PLAYER.get(this.env.PLAYER.idFromName(pid)) as unknown as { invoke(m: string, a: unknown[]): Promise<unknown> };
+        await p.invoke('queuePush', [pid, 'team_goal', vars]).catch((e) => console.error('team goal push failed', pid, (e as Error).message));
+      })).then(() => undefined));
+    }
+    return env;
+  }
+  goalView(viewer: string) { return this.run((c) => c.goalView(viewer), false); }
+  goalForget(playerId: string) { return this.run((c) => c.goalForget(playerId), false); }
 
   /** REQ-TEAM-008: pay a closed season's team reward to eligible members (resumable; called by the season board). */
   async closeSeasonStep(seasonId: string, rank: number | null, total: number, league: LeaguePlace | null = null): Promise<Envelope<{ done: boolean; paid: number; eligible: number }>> {

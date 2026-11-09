@@ -1356,6 +1356,72 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 - Unity ゲーム層 `WeeklyChallengeModel`：ホームのカード（今週のクリア数・残り日数）、一覧（条件の文・報酬・貸し出し馬）、レース中の HUD の条件の行（「ムチ 2/3」など、満たせなくなったら赤）、結果（クリア／失敗、条件ごとの○×、初クリアの報酬、バッジ）。ホームのカードはタイムアタックの解放（`time_attack`）と同時に出す（サーバーは解放で制限しない）。
 - デプロイ：モード `challenge` を知っている検証器（`Muchi.Net` の `ParseMode`）を先に出してから、サーバーを出す。
 
+
+## 32. 支部の共同目標（REQ-TGOAL-001〜012、`server/src/domain/teamGoal.ts`、C# `TeamGoal.cs`・`Muchi.Game` `TeamGoalModel`）
+支部ごとに**週1つの共同目標**（例：「支部で合計60レース」）。支部員みんなのレース結果で段（マイルストーン、3段）が進み、週の終わりに、届いた一番上の段の決まった報酬を、最低限貢献した支部員全員に配る。報酬は無償・ランダムなし・1回 ¥200 以内（景品表示法 総付景品）。課金は関係しない（買って進むものは何も無い）。
+
+**週**（REQ-TGOAL-001）：月曜のゲーム日の切り替え（4:00 JST、`progression.dayRollover`）から7ゲーム日。週のキーはその月曜のゲーム日 `"YYYY-MM-DD"`。終わり＝次の月曜 4:00 JST（`endsAt`）。
+
+**目標の選び方**（REQ-TGOAL-002）：週が始まると、`progression.teamGoal.goals` から **支部IDと週のハッシュ**（FNV-1a）で1つ選ぶ（どのオブジェクトでも同じ）。段の目標値 = `perMember[i] × scale`。`scale` = 先週に貢献した人数（先週が無い・誰も貢献しなかった週は支部の人数）を `scale.min..scale.max`（3..20）に収めた値で、週の間は変わらない。ただし人数で決めた週は、その週に加入があると上にだけ合わせる（小さく始めて人を集める抜け道を作らない）。
+
+**マスターデータ** `progression.teamGoal`（リモート設定で変更可）：
+```json
+{ "goals": [ { "id": "races_sum", "kind": "races", "label": "支部で合計{n}レース", "perMember": [6, 12, 20], "minContribution": 3 },
+             { "id": "wins_sum", "kind": "wins", "label": "支部で合計{n}勝", "perMember": [1, 2, 4], "minContribution": 1 },
+             { "id": "ta_pb_sum", "kind": "ta_pb", "label": "支部でタイムアタック自己ベスト更新 合計{n}回", "perMember": [1, 2, 3], "minContribution": 1 } ],
+  "tiers": [ { "reward": { "freeCoins": 5 } }, { "reward": { "freeCoins": 10, "items": [{ "itemId": "breeding_material", "qty": 1 }] } },
+             { "reward": { "freeCoins": 20, "items": [{ "itemId": "breeding_material", "qty": 1 }] } } ],
+  "dailyCap": { "races": 10, "wins": 3, "ta_pb": 2 }, "scale": { "min": 3, "max": 20 },
+  "modes": ["ranked", "event", "tournament"], "topN": 5, "payBatch": 50 }
+```
+- `label` の `{n}` は最後の段の目標値（表示は「支部で合計60レース」。英語は `{n} races as a branch`）。
+- 起動時とリモート設定で `teamGoalProblems` が検証する（REQ-TGOAL-010）：形、`perMember` は段の数と同じ長さで昇順、`minContribution ≤ dailyCap × 7`、`scale.max ≤ teams.maxMembers`、報酬は無償コイン・スカウト券（1回・10連）・配合素材（3個まで）だけで、1回の価値 ≤ ¥200（最も高いコイン単価で換算、`inviteRewardYen`）、上の段ほどコインが少なくならない。コード側の上限 `TEAM_GOAL_HARD_LIMITS`。
+
+**貢献**（REQ-TGOAL-003/004）：サーバーが確定した出来事だけ。クライアントから貢献を送るエンドポイントは無い。
+- レース：レースの精算（`applyRace`、`modes` のどれか、無効レースは除く）。1レース = `races` 1、1着なら `wins` も 1。
+- タイムアタック：検証済みの走りがそのコースの今シーズンの自己ベストを更新した時（`taRecord` の `seasonBest`）= `ta_pb` 1。同じセッションの再送は数えない。
+- プレイヤーのオブジェクトが種類ごとの **1日の上限**（`dailyCap`、アカウント全体：支部を移っても戻らない）まで数えて支部へ送る（`GoalContribution { teamId, playerId, displayName, ref: "race:<raceId>" | "ta:<sessionId>", at, races, wins, taPb }`）。届かなければプレイヤーに残し（最大20件・8日）、次の貢献と一緒に送り直す。
+- 支部（TeamDO）は、その週の `kind` の分だけを、**今の支部員で `at` の時点で加入済み**の人について、`ref` ごとに1回、**1人1日の上限**（同じ `dailyCap`）まで数える。`at` が今の週でなければ数えない（前の週の遅れた再送は新しい週に入らない）。
+- 途中で加入した人は加入から数える。**抜けると本人の貢献は0に戻る**（それまでの分は支部の進み具合に残るが、その週の報酬の対象ではなくなる。同じ週に戻っても0から）。
+- 削除予定中・隔離（quarantined）・BAN 中のプレイヤーは送らない。隔離・BAN になった時（`setModeration`）と、アカウント削除の「支部」の段（`feedForget`）で、その人の貢献を今の週と未払いの週から消す（進み具合が下がる。告知済みの段は再告知しない）。
+
+**エンドポイント**（要認証）：
+
+| メソッド・パス | 応答 |
+|---|---|
+| `GET /v1/teams/me/goal` | 下の `TeamGoalView`。支部に入っていなければ `{ "teamId": null, "teamName": null, "enabled": true, "current": null, "lastWeek": null, "player": {…} }` |
+
+```json
+TeamGoalView = { "teamId": "tabc123456", "teamName": "あおばRC", "enabled": true,
+  "current": { "week": "2026-12-07", "endsAt": 1797188400000, "goalId": "races_sum", "kind": "races", "label": "支部で合計60レース",
+    "scale": 3, "progress": 38, "tier": 2, "minContribution": 3,
+    "milestones": [ { "tier": 1, "target": 18, "reached": true, "reward": { "freeCoins": 5 } }, … ],
+    "my": { "contribution": 20, "today": 10, "dailyCap": 10, "qualified": true },
+    "top": [ { "playerId": "p1", "displayName": "ミドリカワ", "n": 20 } ], "contributors": 3 } | null,
+  "lastWeek": { "week": "2026-11-30", "goalId": "wins_sum", "kind": "wins", "label": "支部で合計12勝", "targets": [3, 6, 12], "progress": 7, "tier": 2,
+    "reward": { "freeCoins": 10, "items": [ … ] } | null, "top": [ … ], "eligible": true, "paid": true } | null,
+  "player": { "enabled": true, "sentToday": { "races": 6, "wins": 1, "ta_pb": 0 }, "pending": 0,
+    "lastReward": { "week": "2026-11-30", "teamId": "tabc123456", "tier": 2, "contribution": 9, "reward": { … } } | null } }
+```
+- `top` は今の支部員で貢献の多い順（同じなら先に積んだ人）に `topN`（5）人。`displayName`・`teamName` はプレイヤーが付けた名前で、英語でも翻訳しない（§23 `PLAYER_TEXT_KEYS`）。
+- `?lang=en` では `label` が英語になる（`master/locale-en.json` のテンプレート）。
+
+**週の締めと報酬**（REQ-TGOAL-007/009）：
+- 週の締めは、その週が終わった後の最初の支部の操作（貢献・表示・加入・脱退など）か、TeamDO の **アラーム**（週の終わりに鳴る。定期ジョブ）で行う。締めの時点で届いた段（`progress ≥ target` の数）と、**その時の支部員で本人の貢献が `minContribution` 以上の人**の一覧を固定する。加入・脱退の前には必ず締めるので、週の終わりの支部員で決まる。
+- アラームが一覧を `payBatch` 人ずつプレイヤーのオブジェクトへ払う（`teamGoalReward(week, teamId, tier, contribution)`、途中で止まっても続きから）。プレイヤーは**週ごとに1回だけ**受け取る（`teamGoal.rewarded`、支部が変わっても同じ週は2回目を受け取らない）。削除予定中・隔離中の人は受け取らない（その週は受け取り済みとして記録し、後から払わない）。
+- 届いた段が0なら誰にも払わない。報酬は台帳に `team_goal:<week>` で記録（無償コイン。有償コインは出さない）。
+
+**支部フィード**（REQ-TGOAL-008、§18 のフィードに追加）：段に初めて届いた時、支部の項目 `kind: "goal"` を1件（同じ週・同じ段は1件）。
+```json
+{ "seq": 131, "kind": "goal", "playerId": "", "displayName": "", "mine": false, "stampId": null, "race": null,
+  "goal": { "week": "2026-12-07", "goalId": "races_sum", "label": "支部で合計60レース", "tier": 1, "target": 18, "tiers": 3 }, "reactions": [], "myReaction": null }
+```
+投稿者の無い項目なので、報告は `BAD_REQUEST`、ミュートでは消えない。応援スタンプは付けられる（通知は無い）。
+
+**通知**：段に届いた時、貢献した本人以外の支部員へ push テンプレート `team_goal`（カテゴリ `friends`、「支部の共同目標が{n}段目に到達しました」。1日の上限・静かな時間帯は通常どおり）。
+
+**KPI**（REQ-TGOAL-011、サーバーが書く）：`team_goal_contribute`（送った貢献。`s1` 支部ID、`s2` `race` | `win` | `ta_pb`、`s3` ref、`count` 単位）、`team_goal_milestone`（段に届けた貢献の本人。`s1` 支部ID、`s2` 週、`value` 段）、`team_goal_reward`（受け取り。`s1` 支部ID、`s2` 週、`value` 段、`count` 本人の貢献）。docs/ops/kpi-queries.md。
+
 ## 33. 購入履歴・コイン履歴・ガチャ履歴（REQ-HIST-001〜014、`server/src/domain/history.ts`、C# `History.cs`・`Muchi.Game.HistoryModel`）
 プレイヤーが自分で「いつ・何に・いくら」を確かめられる画面（設定 → 購入履歴／コイン履歴／ガチャ履歴）。資金決済法（有償・無償を分けた残高と増減）・特商法（購入の記録）・ガチャの履歴開示（業界の自主基準で求められる直近90日の結果）に応え、問い合わせの手間を減らす。**表示だけ**：この API はコイン・アイテムを動かさない（経済の E は変わらない）。
 

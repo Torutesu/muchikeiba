@@ -89,6 +89,8 @@
   "支部の応援": "Branch cheer", "{name}さんがあなたのレースに応援スタンプを送りました": "{name} cheered your race with a stamp",
   "支部への加入申請": "Branch join request", "{name}さんが支部への加入を希望しています": "{name} would like to join your branch",
   "支部に加入しました": "You joined a branch", "「{team}」への加入が承認されました": "Your request to join \"{team}\" was approved",
+  "支部の共同目標": "Branch weekly goal", "支部の共同目標が{n}段目に到達しました": "Your branch reached milestone {n} of the weekly goal",
+  "支部で合計{n}レース": "{n} races as a branch", "支部で合計{n}勝": "{n} wins as a branch", "支部でタイムアタック自己ベスト更新 合計{n}回": "{n} time attack personal bests as a branch",
   "イベント開催中": "Event now on", "「{event}」が始まりました。上位を目指そう！": "\"{event}\" has started. Aim for the top!",
   "まもなく{round}": "{round} starting soon", "「{tournament}」の{round}が{minutes}分後に始まります": "\"{tournament}\" {round} starts in {minutes} min",
   "昇級まであと1勝": "One win from promotion", "昇級ラインまであと{points}pt。1着ひとつで届きます": "{points} pts to the promotion line. One win gets you there",

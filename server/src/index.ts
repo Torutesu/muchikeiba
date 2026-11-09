@@ -29,7 +29,7 @@ import { SpectateService, SPECTATE_RATE } from './domain/spectate.js';
 import { TournamentsService, type TournamentBackend } from './domain/tournamentService.js';
 import type { TournamentSummary } from './domain/tournaments.js';
 import { signTicket } from './http/ticket.js';
-import { TeamsService, type TeamFeedPage, type TeamLeagueView, type TeamPort, type TeamView } from './domain/teamService.js';
+import { TeamsService, type TeamFeedPage, type TeamGoalView, type TeamLeagueView, type TeamPort, type TeamView } from './domain/teamService.js';
 import { stampsProblems, type FeedItem } from './domain/teamFeed.js';
 import type { TeamSummary } from './domain/teams.js';
 import { EventsService } from './domain/eventService.js';
@@ -132,10 +132,12 @@ function makeTeamsService(env: Env, master: () => Master, player: (uid: string) 
     // REQ-TEAMFEED-*
     feedPost: async (id, p, s) => (await call(team(id).feedPost!(p, s))) as FeedItem,
     feedRace: async (id, p, r) => (await call(team(id).feedRace!(p, r))) as FeedItem | null,
-    feedReact: async (id, p, seq, s) => (await call(team(id).feedReact!(p, seq, s))) as { ownerId: string; isNew: boolean; kind: 'stamp' | 'race' },
+    feedReact: async (id, p, seq, s) => (await call(team(id).feedReact!(p, seq, s))) as { ownerId: string; isNew: boolean; kind: FeedItem['kind'] },
     feedReport: async (id, p, seq) => (await call(team(id).feedReport!(p, seq))) as { ownerId: string; first: boolean },
     feedPage: async (id, v, muted, before, limit) => (await call(team(id).feedPage!(v, muted, before, limit))) as TeamFeedPage,
     feedForget: async (id, p) => (await call(team(id).feedForget!(p))) as { removed: number },
+    // REQ-TGOAL-*
+    goalView: async (id, v) => (await call(team(id).goalView!(v))) as TeamGoalView,
   };
   const dir = () => stub(env.TEAM_DIRECTORY, 'global');
   return new TeamsService(master, port, teamPlayersFrom(player), {

@@ -24,6 +24,8 @@ namespace Muchi.Game
     {
         public long Seq;
         public bool IsRace, Mine;
+        /// <summary>REQ-TGOAL-008: a milestone of the team's weekly goal (team item: no author, cannot be reported or muted away).</summary>
+        public bool IsGoal;
         public string PlayerId, Name;
         /// <summary>Stamp rows: the stamp's label and asset (stamp/&lt;id&gt;). Race rows: null asset.</summary>
         public string StampLabel, StampAsset;
@@ -104,7 +106,7 @@ namespace Muchi.Game
                 return _items.Where(x => !muted.Contains(x.PlayerId) && !reported.Contains(TeamId + ":" + x.Seq.ToString(CultureInfo.InvariantCulture)))
                     .Select(x => new FeedRow
                     {
-                        Seq = x.Seq, IsRace = x.IsRace, Mine = x.Mine, PlayerId = x.PlayerId, Name = x.DisplayName,
+                        Seq = x.Seq, IsRace = x.IsRace, IsGoal = x.IsGoal, Mine = x.Mine, PlayerId = x.PlayerId, Name = x.DisplayName,
                         StampLabel = x.StampId != null ? LabelOf(x.StampId) : null, StampAsset = x.StampAsset ?? (x.StampId != null ? AssetKeys.Stamp(x.StampId) : null),
                         Line = LineOf(x), When = WhenText(x.At, _now()),
                         Reactions = x.Reactions, MyReaction = x.MyReaction, CanCheer = x.IsRace && !x.Mine,
@@ -114,6 +116,8 @@ namespace Muchi.Game
 
         public string LineOf(FeedItem x)
         {
+            if (x.IsGoal && x.Goal != null)
+                return "共同目標「" + x.Goal.Label + "」が" + x.Goal.Tier.ToString(CultureInfo.InvariantCulture) + "段目に到達！";
             if (x.IsRace && x.Race != null)
             {
                 string where = x.Race.Mode == "tournament" ? "大会" : "ランク戦";
@@ -278,7 +282,7 @@ namespace Muchi.Game
         public async Task<ActionResult> ReportAsync(long seq, FeedReportReason reason, CancellationToken ct = default)
         {
             var it = _items.FirstOrDefault(x => x.Seq == seq);
-            if (it == null || it.Mine) return ActionResult.Error("cannot report this row");
+            if (it == null || it.Mine || it.IsGoal) return ActionResult.Error("cannot report this row");
             var rep = Read(KeyReported);
             rep.Add(TeamId + ":" + seq.ToString(CultureInfo.InvariantCulture));
             Write(KeyReported, rep.Skip(Math.Max(0, rep.Count - 200)));

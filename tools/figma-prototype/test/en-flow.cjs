@@ -258,6 +258,13 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await page.locator('.screen.in [data-action="history-ticket"]').click(); await page.waitForTimeout(600);
   await shot('history-ticket', 300);
 
+  // round 13: 支部の共同目標 in English (REQ-TGOAL-*): the week, after the demo races, the week result sheet
+  await show('TeamGoal'); await waitScreen('team-goal', 20000); await shot('team-goal', 600);
+  assert.match(await page.locator('.screen.in').innerText(), /as a branch/, 'team goal: the goal label in English');
+  await click('みんなでレース（デモ）'); await waitScreen('team-goal'); await shot('team-goal-progress', 700);
+  await click('週の締め（デモ）'); await waitScreen('team-goal'); await page.waitForTimeout(600); await shot('team-goal-result', 500);
+  await page.evaluate(() => globalThis.__muchi.logic.setClockMs(null));
+
   const misses = await page.evaluate(() => globalThis.__muchi.l10n.misses());
   fs.writeFileSync(path.join(out, 'en-report.json'), JSON.stringify({ report, misses }, null, 2));
   await ctx.close();

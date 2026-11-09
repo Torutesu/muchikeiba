@@ -189,6 +189,8 @@ export interface Progression {
   rival?: import('./rival.js').RivalConfig;
   /** REQ-WCH-*: 週替わりチャレンジ (weeklyChallenge.ts, validated by weeklyChallengeProblems). Absent = no weekly challenges. */
   weeklyChallenge?: import('./weeklyChallenge.js').WeeklyChallengeConfig;
+  /** REQ-TGOAL-*: 支部の共同目標 (teamGoal.ts, validated by teamGoalProblems). Absent = no team goals. */
+  teamGoal?: import('./teamGoal.js').TeamGoalConfig;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */

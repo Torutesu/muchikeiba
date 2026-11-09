@@ -842,6 +842,21 @@
   "失敗": "Failed",
   "記録できませんでした": "Not recorded",
   "一覧へ": "To the list",
-  "今週のチャレンジ": "This week's challenges"
+  "今週のチャレンジ": "This week's challenges",
+  "_team_goal": "---- round 13: 支部の共同目標 (REQ-TGOAL-*)",
+  "支部　/　共同目標": "Branch / Weekly goal",
+  "今週の目標を支部のみんなで　·　進むのは確定したレース結果だけ": "This week's goal for the whole branch · only settled race results count",
+  "今週の共同目標": "This week's branch goal",
+  "週の締め（デモ）": "End the week (demo)",
+  "みんなでレース（デモ）": "Everyone races (demo)",
+  "目標 {c}": "Goal {c}",
+  "あなたの貢献": "Your contribution",
+  "{c}（報酬は{d}から）": "{c} (reward from {d})",
+  "貢献の多い支部員": "Top contributors",
+  "まだ貢献がありません。レースに出ると積み上がります": "No contributions yet. Race to add to the goal",
+  "レースに出て貢献する": "Race to contribute",
+  "先週の共同目標": "Last week's branch goal",
+  "週の結果": "Week result",
+  "共同目標": "Weekly goal"
  }
 }

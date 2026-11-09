@@ -76,6 +76,7 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | POST | `/v1/training/start` | 要 | 必須 | `{horseId, menuId}` 回数を1つ使い、ミニゲームのビートを返す（`TRAINING_LIMIT` / `TRAINING_TIRED` / `TRAINING_POTENTIAL_FULL`） |
 | POST | `/v1/training/:sessionId/finish` | 要 | 必須 | `{taps:[ms…], skipped?}` サーバーが採点し直して伸びを付ける（`TRAINING_INPUT_INVALID` 422 / `TRAINING_SESSION_EXPIRED`） |
 | POST | `/v1/training/items/:itemId/use` | 要 | 必須 | `{horseId}` 疲れを回復するアイテム（デイリーミッションでだけ入手） |
+| GET | `/v1/teams/me/goal` | 要 | | 支部の共同目標：今週の目標・段と報酬・自分の貢献と今日の数・上位の貢献者・先週の結果。貢献は確定したレース結果と検証済みのタイムアタックだけ（クライアントから送る経路は無い）。週の締めと配布は TeamDO のアラーム（protocol §32） |
 | POST | `/v1/shop/purchase-intent` | 要 | | `{productId}` ストア購入を始めてよいか（`AGE_REQUIRED` / `GUARDIAN_CONSENT_REQUIRED` / `AGE_LIMIT_EXCEEDED` / `ALREADY_PURCHASED` / `UNSETTLED_DEBT` / `NOT_ELIGIBLE`）。パスは残り日数、コインは初回の無償上乗せも返す（§13.2） |
 | GET | `/v1/shop/store-account` | 要 | | `{appleAppAccountToken, googleObfuscatedAccountId}` 購入時にストアへ渡す値（下記「ストア連携」） |
 | POST | `/v1/shop/purchase` | 要 | （取引IDで自動） | `{platform: apple\|google\|fake, productId, receipt}`。apple＝`Transaction.jwsRepresentation`、google＝`{"purchaseToken":"…"}` |

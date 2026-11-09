@@ -692,6 +692,22 @@
 - REQ-SHORT-009 クライアント：`Muchi.Client` `InsufficientCoinsException.Shortfall`（`CoinShortfall`）、`ApiClient.GetCoinShortfallForGachaAsync` / `ForCosmeticAsync` / `GetCoinShortfallAsync`。Unity のゲーム層 `CoinShortfallModel`。プロトタイプのシート（日本語・英語）。
 - REQ-SHORT-010 コンプガチャ防止の一本化（R11 の残り）：「集める」ミッション（図鑑の条件・初心者・シーズン）の 2つ以上ルールは、有償で引ける**すべての**抽選（バナーの通常・確定枠・ステップアップの最終枠・SR以上確定券などの抽選券）を `paidRandomTemplates` 1つで数える（`compGachaProblems` と `gachaObtainable` が同じ関数を使う）。
 - REQ-SHORT-011 プレゼントボックスとの関係（Round 12 の統合）：ボックスの無償コインは受け取るまで所持に数えない。`any`/`free` の不足で期限内の未受け取りの無償コインがある時だけ、注意に「プレゼントボックスに受け取っていない無償コインが{n}枚あります（受け取ると使えます）」を足す（`paid`・削除の予約中は出さない）。
+
+## 30. イベント交換所（TS＋C#、`src/domain/exchange.ts`、`contracts/protocol.md` §30、docs/planning/03-legal-risk.md「景品表示法」「コンプガチャ」）
+拘束条件：交換所は「イベントを遊んだ分だけ選んで受け取れる」場所で、課金やくじではない。ポイントは買えず、ランダムなものも全交換の報酬も無い。経済は E17（balance-targets §4.15）。
+- REQ-EXCH-001 定義：イベントごとに `exchange`（ポイントの貯まり方・1日の上限・交換の猶予日数・残りの換算・交換の行）を `master/events.json` かリモート設定の `events` で持つ。無いイベントには交換所が無い。
+- REQ-EXCH-002 交換の行：固定価格・固定の中身（無償コイン・配合素材・券・見た目・指定の馬のどれか1種類）・1人あたりの在庫（イベントの間、補充なし）。ランダムなものは定義できない（strict なスキーマ）。
+- REQ-EXCH-003 ポイントの入手経路：そのイベントのレースだけ。購入・ガチャ・商品・パス・ミッション・報酬・運営の付与から入らない（報酬の型に欄が無く、`eventPointSourceProblems` が起動時・リモート設定で拒否）。
+- REQ-EXCH-004 貯まり方：確定したイベントのレース1回につき `byPlace[着順-1] + participation`、1ゲーム日（REQ-DAY-001）に `dailyCap` まで。レースごとに1回だけ（`applyRace` の冪等）。無効レースは0。閉じた後は貯まらない。
+- REQ-EXCH-005 期間：開始から終了までは貯まって交換でき、終了後 `graceDays`（既定 3）ゲーム日は交換だけできる（閉じる時刻は 04:00 JST の切り替え）。開始前・閉じた後は交換できない。交換所が開いている間はイベント一覧に残す。
+- REQ-EXCH-006 残りのポイント：閉じた後の最初の取引で `ceil(残り / pointsPerUnit)` 個の配合素材に換える（1回だけ、イベントが設定から消えても保存した率で換える）。換算の率と見込みの数は閉じる前から見せる。黙って失われることは無い。
+- REQ-EXCH-007 法務の検証（`exchangeProblems`）：コンプガチャの防止（全交換の報酬は書けない）、景品表示法（コイン 1個 ≤ 100・≤ ¥200、券は1回分で ≤ ¥200、1個ずつ別の付与）、有償限定・非売品の見た目は不可、馬は在庫1で季節限定なら閉じるまで期間内、残りの換算先は配合素材、コード側の上限 `EXCHANGE_HARD_LIMITS`。伸びに効くアイテムは既存の `trainingProblems` がイベントの中身として拒否。
+- REQ-EXCH-008 交換：`POST /v1/events/:eventId/exchange`（冪等キー必須）。プレイヤーの Durable Object の1つの取引で期間・在庫・所持・ポイントを確かめ、全部か何もしないか。エラー `EXCHANGE_NOT_OPEN`・`EXCHANGE_CLOSED`・`OUT_OF_STOCK`・`INSUFFICIENT_POINTS`・`ALREADY_PURCHASED`・`DELETION_PENDING`。
+- REQ-EXCH-009 表示：`GET /v1/events/:eventId/exchange`（行・在庫・所持ポイント・今日の残り・閉じる時刻・換算の見込み）と `GET /v1/events` の `exchange`。時刻は実データだけ（演出のカウントダウン・「残りわずか」は出さない）。
+- REQ-EXCH-010 KPI：`event_point_earn`（イベント・上限で削られたか・着順・得た数・所持）、`exchange_buy`（イベント・行・種類・個数・使った数）。クエリは `docs/ops/kpi-queries.md`。
+- REQ-EXCH-011 経済 E17：全ての想定でイベント期間中に1日3レースをイベントにし、猶予期間に交換所を使っても E1〜E6 が目標内、どの想定も引ける回数がイベントなしの 1.03 倍以下、課金しても貯まるポイントは同じ、1イベントの交換のコイン価値（コイン＋券の1回分の価格）≤ 250（`server/test/economy.test.ts`、`npm run economy`）。
+- REQ-EXCH-012 クライアントと運用：`Muchi.Client` `ApiClient.GetExchangeAsync`・`ExchangeAsync`、Unity のゲーム層 `ExchangeModel`（行のカード・在庫「残り n / m」・確認シート・確定まで冪等キーを保持・猶予期間の案内・課金への導線なし）、英語の文言。運用コンソールはイベントの一覧で交換所の行・在庫・猶予日数を読める（`GET /v1/admin/config` 系の既存の表示）。
+
 ## 33. 購入履歴・コイン履歴・ガチャ履歴（TS＋C#、`src/domain/history.ts`、`contracts/protocol.md` §33、docs/planning/03-legal-risk.md）
 拘束条件：資金決済法（有償・無償を分ける）、特商法（購入の記録）、ガチャの履歴開示。表示だけでコイン・アイテムは動かない。
 - REQ-HIST-001 残高ヘッダー：有償・無償・未精算を分けて出す。今月（JST）の購入額と、年齢区分に上限がある（20歳未満の区分）ときはその上限と残り（`GET /v1/history/summary`）。

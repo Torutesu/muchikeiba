@@ -72,6 +72,14 @@ namespace Muchi.Client
         GiftHoldCap,
         /// <summary>REQ-RIVAL-008: too many ライバルと走る challenges today (409).</summary>
         RivalChallengeLimit,
+        /// <summary>409: the event's exchange has not opened yet (REQ-EXCH-005).</summary>
+        ExchangeNotOpen,
+        /// <summary>409: the exchange closed; leftover points were converted into material (REQ-EXCH-006).</summary>
+        ExchangeClosed,
+        /// <summary>409: this exchange line has no stock left for the player (REQ-EXCH-008).</summary>
+        OutOfStock,
+        /// <summary>409: not enough event points (REQ-EXCH-008).</summary>
+        InsufficientPoints,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -157,6 +165,10 @@ namespace Muchi.Client
             ["GIFT_EXPIRED"] = ApiErrorCode.GiftExpired,
             ["GIFT_HOLD_CAP"] = ApiErrorCode.GiftHoldCap,
             ["RIVAL_CHALLENGE_LIMIT"] = ApiErrorCode.RivalChallengeLimit,
+            ["EXCHANGE_NOT_OPEN"] = ApiErrorCode.ExchangeNotOpen,
+            ["EXCHANGE_CLOSED"] = ApiErrorCode.ExchangeClosed,
+            ["OUT_OF_STOCK"] = ApiErrorCode.OutOfStock,
+            ["INSUFFICIENT_POINTS"] = ApiErrorCode.InsufficientPoints,
             ["VERIFIER_UNAVAILABLE"] = ApiErrorCode.VerifierUnavailable,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };

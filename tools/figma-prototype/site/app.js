@@ -1002,7 +1002,7 @@ function Missions(ms, fw, bonus) {
 }
 /** Feature keys unlocked by races or days (server unlocks), each with its key and condition. */
 function Features() {
-  const keys = [['season_pass', 'シーズンパス', () => SeasonPass()], ['time_attack', 'タイムアタック', () => TimeAttack()], ['collection', '図鑑', () => Collection()], ['achievements', '実績・称号', () => Achievements()], ['breeding', '配合'], ['friends', 'フレンド'], ['teams', '支部'], ['events', 'イベント'], ['my_stable', 'マイ厩舎']];
+  const keys = [['season_pass', 'シーズンパス', () => SeasonPass()], ['time_attack', 'タイムアタック', () => TimeAttack()], ['collection', '図鑑', () => Collection()], ['achievements', '実績・称号', () => Achievements()], ['breeding', '配合'], ['friends', 'フレンド'], ['teams', '支部'], ['events', 'イベント', () => EventTop()], ['my_stable', 'マイ厩舎']];
   Sheet('機能・イベント', '開放', (s, close, y) => {
     keys.forEach(([k, name, go], i) => {
       const f = unlock(k);
@@ -2520,6 +2520,136 @@ const TR_BLOCKED = {
 };
 const TR_GRADE = { great: '◎ 会心の追い切り', good: '○ いい動き', normal: '△ まずまず' };
 const TR_COND = { fresh: '好調', normal: 'ふつう', tired: 'お疲れ' };
+// ================================================================= イベント交換所 (REQ-EXCH-*, contracts/protocol.md §30)
+// The event top (point counter, today's cap, the real period, the post-event notice, the leftover rate) and the exchange
+// grid (price, the player's own stock 「残り 2 / 3」, owned) with a confirm sheet. Points come only from event races: there is
+// no purchase path, nothing random and no reward for taking every line. Times come from the server's instants only.
+const EX_RULES = 'イベントポイントはこのイベントのレースでだけ貯まります（購入はできません）。交換の中身はすべて固定で、ランダムなものはありません。全部そろえても追加の報酬はありません。';
+const EX_KIND = { coins: '無償コイン', material: '素材', ticket: '券', cosmetic: '見た目', horse: '馬' };
+const exArt = (l) => (l.kind === 'horse' ? partnerPreview(1) : l.kind === 'cosmetic' ? 'Art/Cosmetics/stable-plaque' : l.kind === 'material' ? 'Art/Food/oats-apple' : l.kind === 'ticket' ? 'Art/scout-reveal' : 'Art/Food/premium-bowl');
+const EX_ERR = { OUT_OF_STOCK: 'この交換は上限まで交換済みです。', INSUFFICIENT_POINTS: 'イベントポイントが足りません。', EXCHANGE_CLOSED: '交換所は終了しました。残りのポイントは配合素材になります。', EXCHANGE_NOT_OPEN: '交換所はまだ開いていません。', ALREADY_PURCHASED: 'この商品は購入済みです。' };
+const exReward = (l) => (l.reward.freeCoins ? `無償コイン${l.reward.freeCoins}枚` : l.name);
+/** The period line from the real instants (the minute before the end/close, like the scout calendar). */
+function exPeriod(v) {
+  if (v.status === 'upcoming') return `${jstDate(v.startAtMs)}から`;
+  if (v.status === 'open') return `イベントは ${jstDate(v.endAtMs - 60_000)}まで`;
+  if (v.status === 'grace') return `イベントは終了しました。交換は ${jstDate(v.closesAtMs - 60_000)}まで`;
+  return '交換は終了しました';
+}
+function exLeftover(v) {
+  const l = v.leftover;
+  if (l.converted) return `残りの ${l.converted.points} ポイントは配合素材 ${l.converted.qty}個になりました`;
+  return `残りのポイントは交換の終了時に配合素材 ${l.preview}個になります（${l.pointsPerUnit}ポイントごとに1個・切り上げ）`;
+}
+async function EventTop(eventId) {
+  eventId = eventId ?? L.exchangeEventId();
+  currentScreen = () => EventTop(eventId);
+  const r = eventId ? await L.exchange(eventId) : { ok: false };
+  await refresh();
+  if (!r.ok) { toast('交換所のあるイベントはありません'); Home(); return; }
+  const v = r.value;
+  Clear('event-top'); SetArt('Art/race-result'); Shade('left');
+  TopBar(`イベント　/　${v.name}`, exPeriod(v));
+  // ① the point counter
+  const lp = Glass('Event points', 36, 134, 700, 676, undefined, .88);
+  Kicker('イベントポイント', 36, 30, lp);
+  const pts = Txt(fmt(v.points), 36, 96, 400, 84, GOLD, lp, { weight: 700, cls: 'num ev-points' });
+  pts.dataset.points = String(v.points);
+  Txt('ポイント', 36 + Math.max(1, fmt(v.points).length) * 50 + 16, 150, 200, 20, MUTED, lp, { weight: 500 });
+  if (v.status === 'open') {
+    Txt(v.earn.remainingToday > 0 ? `今日あと ${v.earn.remainingToday} ポイントまで` : '今日のポイントは上限です。4:00に戻ります', 36, 216, 628, 18, v.earn.remainingToday > 0 ? WHITE : WARN, lp, { weight: 700 }).classList.add('ev-cap');
+    Gauge(36, 252, 628, v.earn.dailyCap ? v.earn.earnedToday / v.earn.dailyCap : 0, lp, { gold: true });
+    Txt(`1着 ${v.earn.byPlace[0] + v.earn.participation} ポイント　·　参加 ${v.earn.participation} ポイント　·　1日 ${v.earn.dailyCap} ポイントまで`, 36, 274, 628, 14, SOFT, lp);
+  } else {
+    const g = Txt(exPeriod(v), 36, 216, 628, 18, v.status === 'grace' ? GOLD : WARN, lp, { weight: 700, lh: 1.5 });
+    g.classList.add('ev-grace'); g.dataset.status = v.status;
+  }
+  Txt(exLeftover(v), 36, 330, 628, 14, MUTED, lp, { lh: 1.6 }).classList.add('ev-leftover');
+  Txt(EX_RULES, 36, 410, 628, 13, SOFT, lp, { lh: 1.6 }).classList.add('ev-rules');
+  if (v.status === 'open') {
+    Ghost('デモ：イベントレースを1回', 36, 520, 330, 54, async () => {
+      const place = 1 + Math.floor(Math.random() * 12);
+      const e = await L.eventDemoRace(eventId, place);
+      toast(e.ok && e.value ? `${place}着　+${e.value.gained} ポイント` : '記録できませんでした');
+      EventTop(eventId);
+    }, lp, 'small');
+  }
+  const go = Cta('交換所へ', 36, 590, 360, () => Exchange(eventId), lp);
+  go.classList.add('ev-go');
+  // ② the schedule and what the exchange has (from the definition)
+  const rp = Glass('Event schedule', 760, 134, 804, 676, undefined, .84);
+  Kicker('日程', 36, 30, rp);
+  const row = (y, k, val) => { Txt(k, 36, y, 220, 15, MUTED, rp, { weight: 500 }); Txt(val, 260, y - 2, 508, 17, WHITE, rp, { weight: 700, nowrap: true }); Hair(36, y + 34, 732, rp); };
+  row(110, 'イベント', `${jstDate(v.startAtMs)} 〜 ${jstDate(v.endAtMs - 60_000)}`);
+  row(166, '交換の締切', `${jstDate(v.closesAtMs - 60_000)}（終了後 ${v.graceDays} 日）`);
+  row(222, '残りの換算', `${v.leftover.pointsPerUnit} ポイントごとに配合素材 1個`);
+  Kicker('交換所', 36, 290, rp);
+  v.items.forEach((l, i) => {
+    const y = 370 + i * 54;
+    Txt(l.name, 36, y, 420, 16, WHITE, rp, { weight: 700, nowrap: true });
+    Txt(`${l.price} ポイント`, 470, y, 140, 16, CYAN, rp, { weight: 700, align: 'right', cls: 'num' });
+    Txt(`残り ${l.remaining} / ${l.stock}`, 620, y, 148, 15, l.remaining > 0 ? MUTED : DIM, rp, { align: 'right', cls: 'num' });
+  });
+  Back(Home, 'BACK', 40, 834);
+}
+async function Exchange(eventId) {
+  eventId = eventId ?? L.exchangeEventId();
+  currentScreen = () => Exchange(eventId);
+  const r = await L.exchange(eventId);
+  await refresh();
+  if (!r.ok) { toast('交換所を開けませんでした'); EventTop(eventId); return; }
+  const v = r.value;
+  Clear('exchange'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar(`交換所　/　${v.name}`, exPeriod(v));
+  // the points strip
+  const sp = Glass('Exchange points', 36, 134, 1528, 104, undefined, .88);
+  Txt('イベントポイント', 28, 22, 300, 15, MUTED, sp, { weight: 500, ls: '.12em' });
+  const pts = Txt(fmt(v.points), 28, 44, 260, 44, GOLD, sp, { weight: 700, cls: 'num ex-points' });
+  pts.dataset.points = String(v.points);
+  if (v.status === 'open') Txt(v.earn.remainingToday > 0 ? `今日あと ${v.earn.remainingToday} ポイントまで` : '今日のポイントは上限です。4:00に戻ります', 300, 30, 560, 16, WHITE, sp, { weight: 700 });
+  else { const g = Txt(exPeriod(v), 300, 30, 560, 16, v.status === 'grace' ? GOLD : WARN, sp, { weight: 700 }); g.classList.add('ex-grace'); g.dataset.status = v.status; }
+  Txt(exLeftover(v), 300, 62, 1200, 13, SOFT, sp);
+  // the grid
+  const gp = Glass('Exchange grid', 36, 254, 1528, 556, undefined, .84);
+  const can = v.status === 'open' || v.status === 'grace';
+  v.items.forEach((l, i) => {
+    const x = 24 + i * 300, w = 284;
+    const why = !can ? (v.status === 'upcoming' ? '交換所はまだ開いていません' : '交換は終了しました') : l.owned ? '所持しています' : l.remaining <= 0 ? '交換済み' : v.points < l.price ? 'ポイントが足りません' : null;
+    const c = Card('Exchange ' + l.id, x, 24, w, 508, gp, l.kind === 'horse' ? GOLD : CYAN);
+    c.classList.add('ex-card'); c.dataset.item = l.id; c.dataset.state = why ? 'blocked' : 'ok';
+    ArtImage(exArt(l), 14, 16, w - 28, 170, c, l.kind === 'horse' ? '' : 'cover');
+    Txt(EX_KIND[l.kind] ?? '', 20, 200, 244, 13, GOLD, c, { weight: 700, ls: '.12em' });
+    Txt(l.name, 20, 224, 244, 19, why ? MUTED : WHITE, c, { weight: 700, lh: 1.35 });
+    Txt(exReward(l) === l.name ? '固定の中身・1個' : exReward(l), 20, 290, 244, 14, MUTED, c);
+    Txt(`${l.price} ポイント`, 20, 330, 244, 22, CYAN, c, { weight: 700, cls: 'num' });
+    const st = Txt(`残り ${l.remaining} / ${l.stock}`, 20, 372, 244, 15, l.remaining > 0 ? WHITE : DIM, c, { weight: 500, cls: 'num ex-stock' });
+    st.dataset.remaining = String(l.remaining);
+    if (why) Txt(why, 20, 404, 244, 13, WARN, c, { weight: 500 });
+    const b = Cta('交換する', 20, 430, 244, () => ExchangeConfirm(eventId, v, l), c, 'small');
+    if (why) disable(b);
+  });
+  Txt(EX_RULES, 200, 826, 1360, 12, SOFT, null, { lh: 1.5 }).classList.add('ex-rules');
+  Back(() => EventTop(eventId), 'BACK', 40, 834);
+}
+/** The confirm sheet: what it gives, the points it uses and leaves, the stock before → after. */
+function ExchangeConfirm(eventId, v, l) {
+  Sheet(l.name, '交換の確認', (s, close, y) => {
+    s.dataset.item = l.id; s.classList.add('ex-sheet');
+    const row = (yy, k, val, color = WHITE) => { Txt(k, 48, yy, 240, 15, MUTED, s, { weight: 500 }); Txt(val, 290, yy - 2, 322, 18, color, s, { weight: 700, align: 'right', cls: 'num' }); Hair(48, yy + 36, 564, s); };
+    row(y + 10, '中身', exReward(l));
+    row(y + 70, '交換に使うポイント', `${l.price} ポイント`, CYAN);
+    row(y + 130, '交換後のポイント', `${v.points - l.price} ポイント`, GOLD);
+    row(y + 190, '在庫', `残り ${l.remaining} / ${l.stock} → ${l.remaining - 1} / ${l.stock}`);
+    Txt('交換は取り消せません', 48, y + 262, 564, 14, SOFT, s);
+    if (v.status === 'grace') Txt(exPeriod(v), 48, y + 292, 564, 14, GOLD, s, { lh: 1.5 });
+    Cta('交換する', 48, 690, 420, async () => {
+      const r = await L.exchangeBuy(eventId, l.id, 1);
+      close();
+      toast(r.ok ? `交換しました：${exReward(l)}` : EX_ERR[r.code] ?? '交換できませんでした');
+      Exchange(eventId);
+    }, s).classList.add('ex-confirm');
+  });
+}
 const TR_RULES = '調教で伸びた能力はレースで使われます。ランク戦・大会・タイムアタックはこれまでどおりクラスの上限にそろえます。疲れはどのレースにも影響しません。伸びは仔に受け継がれません。';
 let trHorse = null, trMenu = null;
 const trFocus = (m) => Object.entries(m.weights).filter(([, w]) => w > 0).sort((a, b) => b[1] - a[1] || TR_STAT_ORDER.indexOf(a[0]) - TR_STAT_ORDER.indexOf(b[0])).map(([k]) => TR_STAT[k]).join('・');
@@ -3184,7 +3314,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ GiftBox, AssistSettings, History, Collection, Achievements, Training, Rival, TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ GiftBox, AssistSettings, History, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

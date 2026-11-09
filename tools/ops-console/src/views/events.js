@@ -17,6 +17,21 @@ export async function eventsView(main, [tourId]) {
     { label: '人数', value: (e) => e.maxPlayers, class: 'num' },
   ], ev.events, { empty: 'イベントはありません', testid: 'events-table' }));
 
+  // イベント交換所 (REQ-EXCH-012): read-only view of every exchange list; changes go through a config version
+  const withEx = ev.events.filter((e) => e.exchange);
+  const exchangeCard = withEx.length ? card('イベント交換所（読み取り専用・変更は設定の版で）', ...withEx.map((e) => h('div', { 'data-testid': `exchange-${e.id}` },
+    h('h3', {}, `${e.name}（${e.id}）`),
+    kv([
+      ['ポイント', `着順 ${e.exchange.earn.byPlace.join('/')} ＋ 参加 ${e.exchange.earn.participation}、1日 ${num(e.exchange.earn.dailyCap)} まで（イベントのレースだけ）`],
+      ['交換の締切', `${jst(e.exchange.closesAtMs)}（終了後 ${e.exchange.graceDays} ゲーム日）`],
+      ['残りの換算', `${num(e.exchange.leftover.pointsPerUnit)} ポイントごとに ${e.exchange.leftover.itemId} ×1（切り上げ）`],
+    ]),
+    table([
+      { label: 'ID', value: (x) => h('code', {}, x.id) }, { label: '名前', value: (x) => x.name }, { label: '種類', value: (x) => x.kind },
+      { label: '価格', value: (x) => num(x.price), class: 'num' }, { label: '在庫/人', value: (x) => x.stock, class: 'num' },
+      { label: '中身', value: (x) => (x.reward.freeCoins ? `無償コイン ${x.reward.freeCoins}` : x.reward.horse ? `馬 ${x.reward.horse}` : x.reward.items.map((i) => `${i.itemId} ×${i.qty}`).join(', ')) },
+    ], e.exchange.items, { empty: '行がありません', testid: `exchange-table-${e.id}` })))) : null;
+
   async function showTournament(id) {
     try {
       const d = await get(`/v1/admin/tournaments/${encodeURIComponent(id)}`);
@@ -38,7 +53,7 @@ export async function eventsView(main, [tourId]) {
     { label: '参加', value: (t) => `${t.entrants} / ${t.maxEntrants}`, class: 'num' },
   ], tours.tournaments, { empty: '大会はありません', testid: 'tournaments-table' }));
 
-  mount(main, h('h1', {}, 'イベント・大会'), eventsCard, toursCard, detailOut, can('operator') ? createForm(ev.tracks, main) : null);
+  mount(main, h('h1', {}, 'イベント・大会'), eventsCard, exchangeCard, toursCard, detailOut, can('operator') ? createForm(ev.tracks, main) : null);
   if (tourId) showTournament(tourId);
 }
 

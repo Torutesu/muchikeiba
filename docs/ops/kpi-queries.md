@@ -75,6 +75,8 @@
 | `assist_disable` | サーバー（かんたん操作をオフにした） | 前のレベル | `settings`/`prompt` | | |
 | `assist_prompt_view` | サーバー（一度だけの提案シートが出た） | | | | `double9` 最下位の連続 |
 | `race_assisted` | サーバー（かんたん操作ありで精算されたレース。本人の申告、KPI専用） | `whip`/`full` | モード | | `double4` 着順、`double5` 頭数 |
+| `event_point_earn` | サーバー（イベントのレースでイベントポイントを得た、REQ-EXCH-010） | イベントID | `full` / `capped`（1日の上限で削られた） | | `double4` 着順、`double9` 得たポイント、`double5` 所持ポイント |
+| `exchange_buy` | サーバー（イベント交換所で交換した） | イベントID | 行のID | 種類 `coins`/`material`/`ticket`/`cosmetic`/`horse` | `double5` 個数、`double9` 使ったポイント |
 | `consent` | サーバー | 規約の版 | プライバシーポリシーの版 | | |
 | `partner_granted` | サーバー | テンプレートID（`t_partner`） | | | |
 | `ab_assign` | サーバー（初回の bootstrap、実験ごとに1回） | 実験ID | バケットID | | |
@@ -573,6 +575,36 @@ ORDER BY day DESC
 ```
 
 - **公平性の監視**：`avg_free_coins` が課金者と無課金で大きく違うなら、どちらかの結果が偏っている（ライバルの報酬は課金で増えない前提）。勝ちの率が人間のライバルで50%から大きく外れる週は、組み合わせのレーティング差（`maxRatingGap`・`jitter`）を見直す。
+
+## イベント交換所：ポイントと交換（REQ-EXCH-010、contracts/protocol.md §30）
+
+**1日のポイントの貯まり方と上限に届いた割合**（イベントごと・課金者／無課金で分ける）。`capped` の割合が高いなら `dailyCap` が低すぎて遊んだ分が報われていない、低すぎる（ほぼ0）なら上限が意味を持っていない。課金者と無課金の平均が大きく違うなら調べる（ポイントは買えないので、差は遊んだ量の差だけのはず：E17）。
+
+```sql
+SELECT
+  blob8 AS event_id, blob6 AS day, blob7 AS payer,
+  sumIf(_sample_interval, blob1 = 'event_point_earn') AS races,
+  round(sumIf(_sample_interval, blob1 = 'event_point_earn' AND blob9 = 'capped') / sumIf(_sample_interval, blob1 = 'event_point_earn'), 3) AS capped_rate,
+  round(sumIf(_sample_interval * double9, blob1 = 'event_point_earn') / sumIf(_sample_interval, blob1 = 'event_point_earn'), 1) AS avg_points
+FROM muchi_kpi
+WHERE blob1 = 'event_point_earn' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY event_id, day, payer
+ORDER BY event_id, day DESC, payer
+```
+
+**何が交換されているか**（行ごと）。在庫まで交換された行・ほとんど交換されない行を見て、次のイベントの価格と在庫を決める（ランダムな行は作らない・全交換の報酬は作らない）。
+
+```sql
+SELECT blob8 AS event_id, blob9 AS item_id, blob10 AS kind,
+  sum(_sample_interval * double5) AS units, sum(_sample_interval * double9) AS points_spent,
+  count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'exchange_buy' AND timestamp > NOW() - INTERVAL '45' DAY
+GROUP BY event_id, item_id, kind
+ORDER BY event_id, points_spent DESC
+```
+
+- 残りのポイントの換算（閉じた後）は KPI ではなくアイテム台帳（理由 `exchange <イベント> leftover <n>pt`）に残る。サポートで「ポイントが消えた」と言われたら台帳を見る。
 
 ## 注意
 

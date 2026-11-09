@@ -47,6 +47,10 @@ namespace Muchi.Game
             ["GIFT_EXPIRED"] = "このプレゼントは受け取り期限を過ぎました。",
             ["GIFT_HOLD_CAP"] = "持てる上限に達しているため、受け取れません。",
             ["RIVAL_CHALLENGE_LIMIT"] = "今日の挑戦状は送り切りました。4:00に戻ります。",
+            ["EXCHANGE_NOT_OPEN"] = "交換所はまだ開いていません。",
+            ["EXCHANGE_CLOSED"] = "交換所は終了しました。残りのポイントは配合素材になります。",
+            ["OUT_OF_STOCK"] = "この交換は上限まで交換済みです。",
+            ["INSUFFICIENT_POINTS"] = "イベントポイントが足りません。",
             ["NETWORK"] = Offline,
         };
 

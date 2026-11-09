@@ -40,6 +40,7 @@ import { trackById } from './master.js';
 import { appearanceOf, assetKeys, defaultSilks, validateSilks, type EntrantVisual, type Silks, effectiveSilks } from './visuals.js';
 import type { LeaguePlace } from './league.js';
 import { ensureTeam, playerAbortJoin, playerAddOutgoing, playerCommitJoin, playerLeft, playerPrepareJoin, playerRemoveOutgoing, playerTeamReward, snapshotOf } from './teams.js';
+import { buyExchange, earnExchangePoints, exchangeView, settleExchanges } from './exchange.js';
 import { applyEventResult, cancelEntry, closeEventForPlayer, ensureEvent, enterEvent, eventsForPlayer, findEvent, type EventEntry } from './events.js';
 import { bondLevels, bondView, careHorse, horseBondLevel } from './bond.js';
 import { dueStudOutbox, ensureStud, nextStudWake, studAcked, studApply, studList, studPeek, studPreview, studReserve, studRetryLater, studSettle, studUnlist, studView, type StudSnapshot, type StudVisibility } from './stud.js';
@@ -213,6 +214,7 @@ export class PlayerService {
     const now = this.d.clock();
     rollSeason(this.d.master, draft, now);
     settlePityGroups(this.d.master, draft, now);
+    settleExchanges(this.d.master, draft, now); // REQ-EXCH-006: leftover event points → material once the exchange closed
     const paidBefore = draft.wallet.paid;
     const standingBefore = standingKey(draft);
     const profileBefore = profileKey(draft);
@@ -799,10 +801,14 @@ export class PlayerService {
       const ev = r.mode === 'event' && r.eventId ? this.d.master.events.find((e) => e.id === r.eventId) : undefined;
       if (!ev) return { ...base, event: null };
       const e = applyEventResult(ev, s, r, now, this.d.master);
+      // REQ-EXCH-004: event points for the exchange (fixed by place + participation, daily cap); a void race earns none
+      const ex = r.void ? null : earnExchangePoints(this.d.master, ev, s, r.place, now);
+      if (ex) emit({ name: 'event_point_earn', s1: ev.id, s2: ex.capped ? 'capped' : 'full', place: r.place, value: ex.gained, count: ex.points });
       const st = s.events![ev.id]!;
       return {
         ...base,
         event: { eventId: ev.id, gained: e.gained, total: e.total, milestones: e.milestones, refunded: e.refunded,
+          exchange: ex ? { gained: ex.gained, capped: ex.capped, points: ex.points, remainingToday: ex.remainingToday } : null,
           entry: { playerId: id, eventId: ev.id, points: st.points, races: st.races, wins: st.wins, displayName: s.profile.displayName, updatedAt: now } as EventEntry },
       };
     });
@@ -1308,6 +1314,28 @@ export class PlayerService {
       const r = enterEvent(ev, s, getHorse(s, horseId), entryId, now);
       if (!r.existing) emit({ name: 'event_entry', s1: eventId, s2: r.fee.kind });
       return r;
+    });
+  }
+  /**
+   * REQ-EXCH-009: the event's exchange. Runs as a transaction (no client key) so leftover points of a closed exchange
+   * are converted before they are shown (settleExchanges); otherwise nothing changes.
+   */
+  async exchangeView(id: string, eventId: string) {
+    const ev = findEvent(this.d.master, eventId);
+    const s = await this.load(id);
+    const closed = Object.values(s.events ?? {}).some((e) => e.exchange && !e.exchange.converted && this.d.clock() >= e.exchange.rule.closesAtMs);
+    if (!closed) return exchangeView(this.d.master, ev, s, this.d.clock());
+    return this.tx(id, null, (st, now) => exchangeView(this.d.master, ev, st, now));
+  }
+  /** REQ-EXCH-008: spend event points on one exchange line (atomic, idempotent per client key). */
+  async exchangeBuy(id: string, eventId: string, itemId: string, qty: number, idemKey: string | null) {
+    const key = this.requireKey(idemKey);
+    return this.tx(id, key, (s, now, emit) => {
+      notWhileDeleting(s);
+      const ev = findEvent(this.d.master, eventId);
+      const r = buyExchange(this.d.master, ev, s, itemId, qty, now, `exch:${eventId}:${itemId}:${key}`);
+      emit({ name: 'exchange_buy', s1: eventId, s2: itemId, s3: r.kind, count: qty, value: r.spent });
+      return { ...r, exchange: exchangeView(this.d.master, ev, s, now), wallet: playerView(s).wallet };
     });
   }
   /** Refunds a held entry fee (queue cancelled / refused). `entryId` null = whatever is held. */

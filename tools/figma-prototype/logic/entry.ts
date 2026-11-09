@@ -8,6 +8,8 @@ import type { ClientBatch } from '../../../server/src/domain/kpi.js';
 import { playerView, type PlayerState } from '../../../server/src/domain/player.js';
 import { oddsDisclosure, findBanner, bannerList, bannerStatus } from '../../../server/src/domain/gacha.js';
 import { cryptoRng } from '../../../server/src/domain/rng.js';
+import { exchangeClosesAt } from '../../../server/src/domain/exchange.js';
+import { dayRule } from '../../../server/src/domain/time.js';
 import { AppError } from '../../../server/src/domain/errors.js';
 import type { Style } from '../../../server/src/domain/master.js';
 import { shopProducts } from '../../../server/src/domain/shop.js';
@@ -267,6 +269,26 @@ export const MuchiLogic = {
     deliverGift(master, s, { source: 'event', ref: 'demo:event:rank', reward: { freeCoins: 80 }, note: 'demo event', expiryDays: 1, rank: 12 }, now() - 2 * DAY_MS);
     repo.put(s);
     return svc.giftBox(ID);
+  },
+  // ---------------------------------------------------------------- イベント交換所 (REQ-EXCH-*, contracts/protocol.md §30)
+  // The real server rules: points only from event race results (place + participation, daily cap by game day), fixed-price
+  // lines with a per-player stock, the grace days after the event and the leftover conversion at the close.
+  exchangeEventId: () => master.events.find((e) => e.exchange)?.id ?? null,
+  events: () => wrap(() => svc.eventsView(ID)),
+  exchange: (eventId: string) => wrap(() => svc.exchangeView(ID, eventId)),
+  exchangeBuy: (eventId: string, itemId: string, qty = 1) => wrap(() => svc.exchangeBuy(ID, eventId, itemId, qty, key())),
+  /** Demo: one confirmed event race at `place` (the race room's result path, PlayerService.applyRace with mode "event"). */
+  eventDemoRace: (eventId: string, place: number) => wrap(async () => {
+    const r = await svc.applyRace(ID, { raceId: `demo_ev_${now()}_${Math.floor(Math.random() * 1e6)}`, mode: 'event', eventId, place, fieldSize: 12, newRating: null, void: false, humans: 4 });
+    return (r as { event?: { exchange?: { gained: number; capped: boolean; points: number; remainingToday: number } | null } | null }).event?.exchange ?? null;
+  }),
+  /** Demo clock for the exchange: `open` = the event's 2nd day at 12:00 JST, `grace` = the day after it ended, `closed` = after the close, null = real time. */
+  exchangeDemo(phase: 'open' | 'grace' | 'closed' | null) {
+    const ev = master.events.find((e) => e.exchange);
+    if (!ev || phase === null) { this.setClockMs(null); return null; }
+    const at = phase === 'open' ? ev.startAtMs + 36 * 3600_000 : phase === 'grace' ? ev.endAtMs + 24 * 3600_000 : exchangeClosesAt(ev, ev.exchange!, dayRule(master)) + 3600_000;
+    this.setClockMs(at);
+    return ev.id;
   },
   // REQ-UXS-040: account deletion (two steps, 14-day cancel window); purchases and offers are blocked meanwhile
   requestDeletion: (token: string | null) => wrap(() => svc.requestDeletion(ID, token)),

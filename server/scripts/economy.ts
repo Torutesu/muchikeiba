@@ -53,3 +53,15 @@ console.log('| persona | ライバル 精算した週 | 勝った週 | 受け取
 console.log('|---|---|---|---|');
 for (const p of PERSONAS) { const r = res[p.id]!; console.log(`| ${p.label} | ${r.rivalWeeks.toFixed(1)} | ${r.rivalWins.toFixed(1)} | ${r.rivalCoins.toFixed(0)} |`); }
 console.log(`\nE16 ライバル（無課金・毎日）の90日の受け取り ${res.f2p!.rivalCoins.toFixed(0)} ≤ 180`);
+
+// REQ-EXCH-* (E17): the same 90 days with the event that has an exchange played (3 of the day's races) and its exchange spent
+const evRes = await simulateAll(loadMaster(), days, [1, 2, 3], hh * 60 + (mm ?? 0), { events: true });
+console.log('');
+console.log('| persona | 引いた回数/月（イベントなし→あり） | SSR/月（なし→あり） | イベントのレース | イベントポイント | 交換：無償コイン | 券 | 馬 | 配合素材 | 飾り | 残りポイント→素材 |');
+console.log('|---|---|---|---|---|---|---|---|---|---|---|');
+for (const p of PERSONAS) {
+  const a = res[p.id]!, b = evRes[p.id]!;
+  console.log(`| ${p.label} | ${a.pullsPerMonth.toFixed(1)}→${b.pullsPerMonth.toFixed(1)} | ${a.ssrPerMonth.toFixed(2)}→${b.ssrPerMonth.toFixed(2)} | ${b.eventRaces.toFixed(1)} | ${b.eventPoints.toFixed(0)} | ${b.exchangeCoins.toFixed(0)} | ${b.exchangeTickets.toFixed(2)} | ${b.exchangeHorses.toFixed(2)} | ${b.exchangeMaterial.toFixed(2)} | ${b.exchangeCosmetics.toFixed(2)} | ${b.leftoverMaterial.toFixed(2)} |`);
+}
+const fe = evRes.f2p!.pullsPerMonth;
+console.log(`\nE17 イベントあり: E1 ${fe.toFixed(1)}  E2 ${evRes.f2p!.ssrPerMonth.toFixed(2)}  E4 ${evRes.f2p_casual!.pullsPerMonth.toFixed(1)}  E5 ${(evRes.light!.pullsPerMonth / fe).toFixed(2)}  E6 ${(evRes.medium!.pullsPerMonth / fe).toFixed(2)}`);

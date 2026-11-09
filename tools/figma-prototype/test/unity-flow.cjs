@@ -17,6 +17,8 @@
 //     link), achievements (claim one tier, claim all) and equipping an achievement title.
 //  7. Round 12 (REQ-SHORT-*): the coin shortfall sheet (T6) from the paid step-up → the purchase confirmation → back to the
 //     pull; the free-only state; bought packs drawn as 購入済み in the shop.
+//  7. Round 13 (REQ-EXCH-*): the event exchange — point counter, event races up to the daily cap, the grid with the stock
+//     fact, the confirm sheet, a keyed exchange, the grace notice and the closed state with the leftover converted.
 // Screenshots: <out>/u-<nn>-<name>.png. Returns { shots, ftue }.
 const path = require('path');
 const fs = require('fs');
@@ -122,6 +124,48 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     assert.ok(free1 - free0 <= 20, 'rival: at most the fixed reward');
     await click('BACK'); await waitScreen('home');
     await page.evaluate(() => globalThis.__muchi.logic.setClockMs(null)); // back to the demo day for the next flows
+  }
+
+  // round 13 (REQ-EXCH-*): イベント交換所 — the event top's point counter on the real rules (demo clock inside the event), event
+  // races earning points up to the daily cap, the exchange grid with the stock fact, the confirm sheet, a keyed exchange, the
+  // post-event grace notice (exchange only) and the closed state with the leftover converted into material
+  async function exchangeFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(() => globalThis.__muchi.logic.exchangeDemo('open'));
+    await page.evaluate(() => globalThis.__muchi.show('EventTop')); await waitScreen('event-top'); await waitIn('.ev-points');
+    const text = await page.locator('.screen.in').innerText();
+    assert.ok(text.includes('購入はできません') && text.includes('ランダムなものはありません'), 'exchange: points cannot be bought, nothing random');
+    assert.ok(!/倍|今だけ|残りわずか|お得|通常価格/.test(text), 'exchange: no multipliers or urgency words');
+    await shot('event-top', 400);
+    await click('デモ：イベントレースを1回'); await waitScreen('event-top'); await waitIn('.ev-points');
+    // three wins on the real result path (the demo button uses a random place) so the material line is affordable
+    await page.evaluate(async () => { const L = globalThis.__muchi.logic; for (let i = 0; i < 3; i++) await L.eventDemoRace(L.exchangeEventId(), 1); });
+    await page.evaluate(() => globalThis.__muchi.show('EventTop')); await waitScreen('event-top'); await waitIn('.ev-points');
+    const pts = Number(await page.locator('.screen.in .ev-points').getAttribute('data-points'));
+    assert.ok(pts > 0, 'event races earned points');
+    await shot('event-top-points', 400);
+    await click('交換所へ'); await waitScreen('exchange'); await waitIn('.ex-card[data-item="ex_material"]');
+    assert.equal(await page.locator('.screen.in .ex-card').count(), 5);
+    assert.match(await page.locator('.screen.in .ex-card[data-item="ex_material"] .ex-stock').innerText(), /残り 3 \/ 3/);
+    await shot('exchange', 400);
+    await page.locator('.screen.in .ex-card[data-item="ex_material"] [data-label="交換する"]').click(); await waitIn('.ex-sheet');
+    await shot('exchange-confirm', 400);
+    await page.locator('.screen.in .ex-sheet [data-label="交換する"]').click();
+    await page.waitForTimeout(500); await waitScreen('exchange'); await waitIn('.ex-card[data-item="ex_material"] .ex-stock[data-remaining="2"]');
+    assert.equal(Number(await page.locator('.screen.in .ex-points').getAttribute('data-points')), pts - 120, 'the price was taken');
+    await shot('exchange-after', 400);
+    await page.evaluate(() => globalThis.__muchi.logic.exchangeDemo('grace'));
+    await page.evaluate(() => globalThis.__muchi.show('EventTop')); await waitScreen('event-top'); await waitIn('.ev-grace[data-status="grace"]');
+    assert.match(await page.locator('.screen.in .ev-grace').innerText(), /イベントは終了しました。交換は \d+月\d+日 \d\d:\d\dまで/);
+    await shot('event-top-grace', 400);
+    await click('交換所へ'); await waitScreen('exchange'); await waitIn('.ex-grace'); await shot('exchange-grace', 400);
+    await page.evaluate(() => globalThis.__muchi.logic.exchangeDemo('closed'));
+    await page.evaluate(() => globalThis.__muchi.show('Exchange')); await waitScreen('exchange'); await waitIn('.ex-grace[data-status="closed"]');
+    assert.equal(await page.locator('.screen.in .ex-card[data-state="ok"]').count(), 0, 'closed: nothing can be exchanged');
+    assert.match(await page.locator('.screen.in').innerText(), /配合素材 \d+個になりました/);
+    await shot('exchange-closed', 400);
+    await page.evaluate(() => globalThis.__muchi.logic.exchangeDemo(null));
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
   }
 
   // round 9 (06 §6.5 / §7 item 7): banner calendar with real end times, pity meter, step-up, reveal → summary, the end
@@ -368,6 +412,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await demo('day7'); await shot('home-day7', 600);
   await trainingFlow();
   await rivalFlow();
+  await exchangeFlow();
   await page.evaluate(() => globalThis.__muchi.show('Scout')); await waitScreen('scout'); await shot('scout', 500);
   await click('提供割合'); await shot('scout-rates', 400); await click('BACK');
   await waitScreen('scout'); await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal'); await shot('scout-paid-reveal', 700);

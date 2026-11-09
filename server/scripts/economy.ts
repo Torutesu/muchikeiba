@@ -47,7 +47,7 @@ console.log('| persona | プレゼントボックス 受け取り（件） | 期
 console.log('|---|---|---|');
 for (const p of PERSONAS) { const r = res[p.id]!; console.log(`| ${p.label} | ${r.giftsClaimed.toFixed(1)} | ${r.giftsExpired.toFixed(1)} |`); }
 
-// REQ-RIVAL-014 (E16): the weekly rival's fixed free coins over 90 days, against the 「3戦する」 cut (18 → 16 × 90 = 180)
+// REQ-RIVAL-014 (E16): the weekly rival's fixed free coins over 90 days, against the 「3戦する」 cut (18 → 16 × 90 = 180; 16 → 15 went to the team goal, balance-targets 4.18)
 console.log('');
 console.log('| persona | ライバル 精算した週 | 勝った週 | 受け取った無償コイン（90日） |');
 console.log('|---|---|---|---|');

@@ -80,6 +80,8 @@ static class Program
         await L10nChecks.Run(Check, Root, Ruleset());
         Console.WriteLine("== round 13: 購入履歴・コイン履歴・ガチャ履歴 (header, tabs, paging, detail, 問い合わせ; REQ-HIST-*)");
         await HistoryChecks.Run(Check);
+        Console.WriteLine("== round 15: アクティビティ (bell, list, paging, mark read, deep links, gift link only; REQ-ACT-*)");
+        await ActivityChecks.Run(Check);
         Console.WriteLine("== round 11: 図鑑, 実績 and titles (CollectionModel / AchievementModel / TitleShowcaseModel; REQ-COL-*, REQ-ACH-*)");
         await CollectionChecks.Run(Check, Ruleset());
         Console.WriteLine("== 調教 (training: menus, timing mini-game, keyed start/finish, fairness wording)");

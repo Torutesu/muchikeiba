@@ -201,6 +201,24 @@ export const CODE_EN: Record<string, string> = {
   '{time}以内で完走': 'Finish within {time}',
   '完走する': 'Finish the race',
 
+  // ---- アクティビティ (activity.ts ACTIVITY_TEXT, protocol §40; REQ-ACT-014). {name} is a player name: never translated.
+  '{name}さんとフレンドになりました': 'You and {name} are now friends',
+  'ライバル対決の結果：勝ち': 'Rival match result: win',
+  'ライバル対決の結果：負け': 'Rival match result: loss',
+  'ライバル対決の結果：引き分け': 'Rival match result: draw',
+  'ライバル対決の結果：不成立': 'Rival match result: called off',
+  'ライバル対決の結果：レース数が足りず結果なし': 'Rival match result: not enough races for a result',
+  '{name}さんがマイ厩舎にいいねしました': '{name} liked My Stable',
+  'マイ厩舎に{n}件のいいねが届きました': 'My Stable got {n} likes',
+  'あなたのレースに{n}件の応援スタンプが届きました': 'Your races got {n} cheer stamps',
+  '「{tournament}」の最終順位は{n}位でした': 'You finished {n:ord} in “{tournament}”',
+  'プレゼントボックスにプレゼントが届きました': 'A gift arrived in your gift box',
+  'プレゼントボックスに{n}件のプレゼントが届きました': '{n} gifts arrived in your gift box',
+  '先週の支部の共同目標は{n}段目まで届きました': 'Last week your branch reached milestone {n} of the weekly goal',
+  '先週の支部の共同目標は段に届きませんでした': 'Last week your branch did not reach a milestone of the weekly goal',
+  '{name}さんがリプレイを共有しました': '{name} shared a replay',
+  'プレイヤー': 'Player',
+
   // ---- error details shown to players (REQ-API-004 messages; codes are the contract)
   'カタカナ2〜9文字': '2–9 katakana characters',
   '{a}〜{b}文字': '{a}–{b} characters',

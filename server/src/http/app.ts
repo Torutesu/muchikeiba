@@ -37,6 +37,7 @@ import { catalogFor, localize, type Catalog } from '../i18n/catalog.js';
 import { ASSIST_LEVELS, ASSIST_SOURCES } from '../domain/assist.js';
 import type { RivalService } from '../domain/rivalService.js';
 import { HISTORY_LIMITS, historyQuery, REF_RE, SUPPORT_TOPICS } from '../domain/history.js';
+import { activityQuery, actorIdsOf, parseUpTo, renderActivityItems } from '../domain/activity.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -71,7 +72,8 @@ export type PlayerMethod =
   | 'history' | 'historyTicket' | 'adminHistory' | 'adminHistoryRefs'
   | 'exchangeView' | 'exchangeBuy'
   | 'wchView' | 'wchStart' | 'wchPrepare' | 'wchAbort' | 'wchRecord'
-  | 'teamGoalReward' | 'goalPlayerView';
+  | 'teamGoalReward' | 'goalPlayerView'
+  | 'activity' | 'activityRead' | 'teamGoalMilestone';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -820,6 +822,19 @@ export const routes: Route[] = [
     const b = await body(r, z.object({ refs: z.array(z.string().regex(REF_RE)).min(1).max(HISTORY_LIMITS.ticketRefsMax), topic: z.enum(SUPPORT_TOPICS) }).strict());
     return c.player(u).invoke('historyTicket', u, b.refs, b.topic);
   } },
+  // アクティビティ (REQ-ACT-*, contracts/protocol.md §40)
+  { method: 'GET', path: '/v1/activity', auth: 'player', handler: async (r, _p, c, u) => {
+    const q = activityQuery(c.master, new URL(r.url).searchParams);
+    const page = await c.player(u).invoke('activity', u, q.cursor, q.limit);
+    // REQ-ACT-012: names as of now from the directory (deleted / banned → neutral); unreachable → stored names
+    const ids = actorIdsOf(page.items);
+    const profiles = ids.length === 0 ? [] : await c.friends.profilesOf(ids).catch(() => null);
+    return { ...page, items: renderActivityItems(page.items, profiles) };
+  } },
+  { method: 'POST', path: '/v1/activity/read', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ upTo: z.string().max(12).optional() }).strict());
+    return c.player(u).invoke('activityRead', u, parseUpTo(b.upTo));
+  } },
   // admin
   // weekly rival (REQ-RIVAL-*, contracts/protocol.md §28)
   { method: 'GET', path: '/v1/rival', auth: 'player', handler: async (_r, _p, c, u) => (c.rival ? c.rival.view(u) : { enabled: false }) },
@@ -948,7 +963,7 @@ export function teamPlayersFrom(player: (uid: string) => PlayerInvoker): TeamPla
     feedMutes: (u) => player(u).invoke('feedMutes', u),
     feedMute: (u, t, muted) => player(u).invoke('feedMute', u, t, muted),
     feedReported: (u, t, seq, by, reason) => player(u).invoke('feedReported', u, t, seq, by, reason),
-    cheerPush: (u, from, name) => player(u).invoke('cheerPush', u, from, name),
+    cheerPush: (u, from, name, ref) => player(u).invoke('cheerPush', u, from, name, ref),
     goalPlayerView: (u) => player(u).invoke('goalPlayerView', u),
   };
 }

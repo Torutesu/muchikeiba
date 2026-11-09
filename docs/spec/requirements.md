@@ -759,3 +759,22 @@
 - REQ-HIST-012 クライアント：C# `ApiClient.GetHistory*Async`・`CreateSupportTicketAsync`、Unity `HistoryModel`（タブ・続きの読み込み・問い合わせシート・オフライン）。
 - REQ-HIST-013 ガチャ記録の保存上限：状態の中は最大300件（古い順に消す）、Durable Object の `gacha_log` は90日を過ぎた行を書き込みごとに消し、状態には直近20件だけ残す。
 - REQ-HIST-014 経済：履歴はコインを動かさない（E1〜E15 は変わらない）。
+
+## 40. アクティビティ（お知らせ一覧、TS＋C#、`src/domain/activity.ts`、`contracts/protocol.md` §40、docs/planning/06 §3.5）
+拘束条件：表示とリンクだけ（コイン・アイテムは動かない、受け取りボタンなし）、ブロックした相手からは出さない、退会・BAN の相手の名前は出さない。E番号なし。
+- REQ-ACT-001 一覧：留守の間に自分に起きたこと（フレンド申請・成立、ライバルの週の結果・記録更新、マイ厩舎のいいね、応援スタンプ、大会の結果、プレゼントの到着、支部の共同目標の到達・週の結果）を新しい順に1か所で（`GET /v1/activity`）。
+- REQ-ACT-002 書く箇所：プッシュを送るのと同じ箇所で、送り元のイベント id ごとに1回だけ（再送・やり直しで2件にならない）。プッシュの設定・上限・静かな時間帯に関係なく書く。
+- REQ-ACT-003 リンク：各項目は行き先の画面（`link.screen`、必要なら `link.id`）を持つ。プレゼントは「プレゼントボックスへ」だけで、受け取りはプレゼントボックスで行う。
+- REQ-ACT-004 重複させない：大会・共同目標の賞品は `gift_arrived` にしない。おかえり・新着情報は項目にせず、`links.whatsNew` で案内する。
+- REQ-ACT-005 プッシュの種類：各項目はプッシュと同じ `category`（`friends`・`events`・`gifts`）を持つ。プッシュの設定はプッシュだけに効き、一覧はいつでも全部見られる。
+- REQ-ACT-006 まとめる：いいね・応援スタンプ・プレゼントは、まだ読んでいない同じ種類の項目が `collapseHours` 以内にあれば1件にまとめる（「12件のいいね」）。
+- REQ-ACT-007 ページ：カーソル式（`nextCursor`）、`limit` 1〜`pageMax`（既定 `pageSize`）、新しい順。
+- REQ-ACT-008 既読：`POST /v1/activity/read`（`upTo` まで、省略は全部）。何度送っても同じで、戻さない。
+- REQ-ACT-009 バッジ：`GET /v1/player` の `activity.unread`（`badgeMax` で頭打ち）。ホームのベルに出す。
+- REQ-ACT-010 保存の上限：`progression.activity`（`maxEntries` 既定100件・`maxDays` 30日・`collapseHours`・`pageSize`・`pageMax`・`badgeMax`）。起動時とリモート設定で範囲を検査する。
+- REQ-ACT-011 ブロック：支部フィードのミュート（＝ブロックの一覧）にいる相手からは項目を作らず、あとからブロックした相手の分も一覧と未読の数から外す。
+- REQ-ACT-012 退会・BAN：相手の公開プロフィールが無い・BAN なら中立の名前「プレイヤー」を出す。プレイヤーの名前は訳さない。
+- REQ-ACT-013 アカウント削除：一覧は状態と一緒に消える。削除が進行中のアカウントには書かない。
+- REQ-ACT-014 英語：すべての文言に英語（`i18n/en.ts`）。倍・期間限定などの言葉を使わない。
+- REQ-ACT-015 KPI：クライアントのイベント `activity_open`（未読の数）・`activity_tap`（種類・行き先）。
+- REQ-ACT-016 クライアント：C# `ApiClient.GetActivityAsync`・`MarkActivityReadAsync`、Unity `ActivityModel`（ベルとバッジ、一覧、続きの読み込み、リンク、既読、オフライン）。

@@ -140,6 +140,22 @@ namespace Muchi.Client
             return new AnalyticsEvent("history_view", atMs, JsonNode.Obj().Set("tab", tab));
         }
 
+        // ---- REQ-ACT-015 activity list (read-only GET; opening and taps are client events)
+        /// <summary>The activity list was opened (once per opening); unread = the bell's number then (0..999).</summary>
+        public static AnalyticsEvent ActivityOpen(long atMs, int unread)
+        {
+            if (unread < 0 || unread > 999) throw new ArgumentOutOfRangeException(nameof(unread));
+            return new AnalyticsEvent("activity_open", atMs, JsonNode.Obj().Set("unread", unread));
+        }
+
+        /// <summary>An entry was tapped: its kind and where it led (ActivityKinds / ActivityScreens).</summary>
+        public static AnalyticsEvent ActivityTap(long atMs, string kind, string screen)
+        {
+            if (IndexIn(ActivityKinds.All, kind) < 0) throw new ArgumentException("unknown activity kind " + kind);
+            if (IndexIn(ActivityScreens.All, screen) < 0) throw new ArgumentException("unknown activity screen " + screen);
+            return new AnalyticsEvent("activity_tap", atMs, JsonNode.Obj().Set("kind", kind).Set("screen", screen));
+        }
+
         // ---- REQ-AD-010 rewarded ads (the reward itself is the server event ad_reward; never sent from here)
         private static readonly string[] AdSurfaces = { "home", "result", "time_attack", "shop" };
         private static readonly string[] AdOutcomes = { "shown", "no_fill", "failed", "closed_early" };

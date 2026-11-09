@@ -5,7 +5,7 @@ import { effectiveSilks, type Silks } from './visuals.js';
 import type { BannedSilksList } from './bannedSilks.js';
 import { foldForCompare } from './horses.js';
 import type { Master, Style, TitleCondition } from './master.js';
-import type { PlayerState } from './player.js';
+import { moderationOf, type PlayerState } from './player.js';
 import { CMD } from './raceRoom.js';
 import type { RaceStartConfig, ReplayLog } from './schemas.js';
 
@@ -152,12 +152,16 @@ export interface PublicProfile {
   silks?: Silks;
   /** REQ-ITEM-006: equipped tack, so other players can render it (absent = default tack). */
   tack?: Partial<Record<'bridle' | 'saddlecloth', string>>;
+  /** REQ-ACT-012: the account is banned (absent otherwise). */
+  banned?: true;
 }
 
-export function publicProfile(s: PlayerState, banned?: BannedSilksList): PublicProfile {
+export function publicProfile(s: PlayerState, banned?: BannedSilksList, now?: number): PublicProfile {
   return {
     playerId: s.id, displayName: s.profile.displayName, titleId: s.profile.titleId, silks: effectiveSilks(s.profile.silks, `p:${s.id}`, banned), classId: s.season.classId,
     rating: Math.round(s.rating.r), stats: { races: s.stats.races, wins: s.stats.wins, top3: s.stats.top3 }, lastSeenAt: s.profile.lastSeenAt,
     ...(s.equipment && Object.keys(s.equipment.tack).length > 0 ? { tack: { ...s.equipment.tack } } : {}),
+    // REQ-ACT-012: others show a neutral name for a banned account (activity list)
+    ...(now !== undefined && moderationOf(s, now) === 'banned' ? { banned: true as const } : {}),
   };
 }

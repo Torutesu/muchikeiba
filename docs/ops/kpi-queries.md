@@ -764,3 +764,28 @@ LIMIT 100
 - `team_goal_contribute` はプレイヤーのオブジェクトが送った時の行（支部がその週の種類でない・上限で数えないこともある）。`race` と `win` は1レースで1行（1着なら `s2 = 'win'`、`count` 2）。
 - 課金者と無課金者（`blob7`）で受け取りの段に差が出ても、支払いの効果ではない（共同目標は課金で進まない、REQ-TGOAL-012）。支部の活発さの違いとして読む。
 - 継続への効果：`team_goal_reward` を受け取った人と、支部にいるが受け取っていない人の翌週の `race_finish` の数を比べる（支部の共同目標の目的は週の継続）。
+
+## アクティビティ：開いた・押した（REQ-ACT-015、contracts/protocol.md §40、Round 15）
+
+**ベルから一覧を開く人の割合と、どの種類の項目が押されるか**。`activity_open`（`double9` = 開いたときの未読の数）と `activity_tap`（`blob8` = 種類、`blob9` = 行き先の画面）はクライアントのイベント。一覧は読むだけの GET なので、開いた・押したはアプリが送る。
+
+```sql
+-- 日ごとの開いた人数と、開いたときの未読の平均（未読 0 で開く人が多いなら、ベルが目に入っていない）
+SELECT blob6 AS day, blob7 AS payer,
+  sum(_sample_interval) AS opens, count(DISTINCT blob2) AS players,
+  sum(_sample_interval * double9) / sum(_sample_interval) AS avg_unread
+FROM muchi_kpi
+WHERE blob1 = 'activity_open' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY day, payer ORDER BY day DESC, payer
+```
+
+```sql
+-- 押された項目（種類 × 行き先）：押されない種類は文言か並びを見直す
+SELECT blob8 AS kind, blob9 AS screen, sum(_sample_interval) AS taps, count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'activity_tap' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY kind, screen ORDER BY taps DESC
+```
+
+- **戻ってきた人に効いているか**：`session_start` の日に `activity_open` もある人の割合を、ライバル・支部・フレンドを使っている人とそれ以外で分けて見る。
+- プレゼント（`gift_arrived` → `gift_box`）を押した人のうち、同じ日に `gift_claim` がある割合が低ければ、プレゼントボックスへの導線（ボタンの文言）を見直す。受け取りボタンを一覧に置くことはしない（§40）。

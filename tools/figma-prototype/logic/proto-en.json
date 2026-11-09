@@ -1052,7 +1052,6 @@
   "フォトモード　/　共有": "Photo mode / share",
   "重ねたもの：{x}": "Overlays: {x}",
   "共有の文と画像に、ほかのプレイヤーの名前・IDは入れません。": "The share text and image never include other players' names or IDs.",
-  "共有する": "Share",
   "共有しました（画像の書き出しと共有シートはアプリで行います）": "Shared (the app renders the image and opens the share sheet)",
   "写真を保存": "Save photo",
   "写真を保存しました（{a} / {b}）": "Photo saved ({a} / {b})",

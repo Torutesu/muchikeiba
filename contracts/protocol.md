@@ -1910,6 +1910,7 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 ### 39.3 正直さ（REQ-ADV-003/004、lint `adviceTextProblems`）
 - 生成する文に使わない言葉：勝率・確率・オッズ・本命・対抗・大穴・穴馬・単勝・複勝・馬券・予想・必勝・勝てる・絶対・確実・%・倍・買・購入・課金・ガチャ・スカウト・ショップ・有償・今だけ・残りわずか・お得・通常価格・◎○▲△☆。英語も同じ（odds・win rate・chance・probability・favourite・long shot・bet・buy・purchase・shop・scout・gacha・guarantee・sure win・%・double・limited time・paid）。テストは全コース×全馬場×昼夜×全モード×マスターの全馬の組み合わせで出る文の全部を日英で検査する（馬の名前はプレイヤーが付けた文なので除く）。
 - 「順位」は並べ方で、予想ではない。出すのは適性・ルールセットの数字から言えることだけ。
+- 公営競技の賭けの語（馬券・オッズ・配当・的中・単勝… / bet・odds・wager・payout・favourite…）は実況パック（§36）の lint と**同じ一つの一覧**（`server/src/domain/bettingWords.ts`）を読む。上の一覧はそれに足すアドバイスだけの語。`bet` は語の境目で見る（better・between は対象外）。
 
 ### 39.4 `GET /v1/races/advice`（要認証、読み取りだけ）
 クエリ：
@@ -1967,6 +1968,7 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 - `Muchi.Client`：`ApiClient.GetRaceAdviceAsync(RaceAdviceQuery)`、`RaceAdvice.Compute(AdviceInput)`（39.1 と同じ。オフラインのレース・チュートリアル用）、`RaceAdvice.Rules(RulesetParams)`、`RaceAdvice.CheckWhipTip`、`AnalyticsEvents.AdviceView`・`AdviceFollow`。
 - Unity ゲーム層 `RaceAdviceModel`：パネルの行（おすすめ・馬ごとの○△のかわりに「よく合う／合う／条件外あり」の言葉と理由）、選んだ馬が変わったらヒントを計算し直す（サーバーに聞き直さず、受け取った馬の情報から端末で計算。結果はサーバーと同じ）、設定の ON/OFF、KPI、結果画面の1行。オフラインでは端末で計算。
 - デプロイ：新しい GET だけ（検証器は変わらない）。サーバーだけ出せばよい（§7.1 の順番に影響なし）。
+- 大会（§13 のトーナメント）のエントリー画面にはまだアドバイスを出さない（Round 15 統合で確認）：大会の定義（コース・`statCap`）は TournamentDO にあり、アドバイスを計算するプレイヤーのオブジェクトからは引けない。足すときは `context: "tournament"` に大会 id を渡し、ルーターが大会の定義を添えて呼ぶ形にする（`AdviceMode` には `tournament` が既にある）。
 
 ## 40. アクティビティ（お知らせ一覧、REQ-ACT-001〜016、`server/src/domain/activity.ts`、C# `Activity.cs`・`Muchi.Game.ActivityModel`）
 留守の間に**自分に起きたこと**を1か所にまとめる一覧と、ホームのベル（未読の数のバッジ）。**表示とリンクだけ**：この一覧はコイン・アイテムを動かさない（受け取りボタンは出さない。プレゼントはプレゼントボックスで受け取る）。E番号なし（経済は変わらない）。

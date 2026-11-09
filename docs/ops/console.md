@@ -77,3 +77,8 @@
 - サーバー：`cd server && npm test`（`test/ops-console-api.test.ts`：CORS、ドライラン、差分、カレンダー、招待コード検索、2人ルール）。
 - コンソール：`cd tools/ops-console && npm test`（KPI の取り込み）。
 - e2e：`scripts/console-e2e.sh`（`SERVER_PORT=9117`、`CONSOLE_PORT=9217`、`VERIFIER_PORT=9017`）。wrangler dev を新しいローカル状態で起動し、Playwright（headless Chromium）でログイン拒否・viewer の読み取り専用・CORS/CSRF・下書きの検証・版の登録・招待コード検索・補填（即時と承認待ち）・ミニ大会・承認（自己承認の拒否）・ドライランでのゲーム日の問題・有効化・差分・カレンダーと提供割合の一致・BAN／解除・監査ログ・KPI を確認。スクリーンショットは `tools/ops-console/e2e-screenshots/`。
+
+## プレイヤーの履歴（REQ-HIST-010、contracts/protocol.md §33.4）
+
+プレイヤー画面の「履歴（本人の画面と同じ・読み取り専用）」：種類（購入／有償コイン／無償コイン／ガチャ）を選んで「表示」、20件ずつ。本人の画面と同じ行に、サポート用の内部の値（購入の取引ID、台帳の理由文）を足して出す。プレイヤーがアプリの「問い合わせ」で作った下書きの番号（`P-…`・`C-…`・`G-…`）は「番号で開く」でその行を開ける（期間外・他人の番号は「見つかりません」）。API は `GET /v1/admin/players/:playerId/history?kind=…`／`?refs=…`（viewer、読み取りのみ、監査ログの action は `player.history.view`）。削除済みアカウントは 404：匿名で保存された法定の記録はここからは見えない。
+

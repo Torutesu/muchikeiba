@@ -616,6 +616,22 @@
   "ブロックしました": "Blocked",
   "挑戦状を送れるライバルがいません": "There is no rival to challenge",
   "先にフレンド部屋を作ってください": "Create a friend room first",
-  "挑戦状を送りました（このレースは点になりません）": "Challenge sent (this race does not score)"
+  "挑戦状を送りました（このレースは点になりません）": "Challenge sent (this race does not score)",
+
+  "_history": "---- 購入履歴・コイン履歴・ガチャ履歴 (HistoryModel, REQ-HIST-*)",
+  "履歴はオンラインで確認できます": "History is available online",
+  "まだ記録がありません": "Nothing recorded yet",
+  "選んだ記録の問い合わせ番号だけを送ります（お名前や連絡先は含みません）。": "Only the reference numbers of the records you chose are sent (no name or contact details).",
+  "購入履歴": "Purchases",
+  "有償コイン": "Paid coins",
+  "無償コイン": "Free coins",
+  "ガチャ履歴": "Scout history",
+  "記録を選んでください": "Choose a record",
+  "問い合わせの下書きを作りました": "Your support request draft is ready",
+  "単発": "Single",
+  "{n}連": "{n}-scout",
+  "残高 {n}": "Balance {n}",
+  "その他の問い合わせ": "Something else",
+  "問い合わせ番号 {ref}": "Reference {ref}"
  }
 }

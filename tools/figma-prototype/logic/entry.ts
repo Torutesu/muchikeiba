@@ -403,6 +403,24 @@ export const MuchiLogic = {
     return svc.view(ID);
   },
 
+  // ---------------------------------------------------------------- round 13: 購入履歴・コイン履歴・ガチャ履歴 (REQ-HIST-*, contracts/protocol.md §33)
+  // What GET /v1/history/* and POST /v1/history/support-ticket return, on the real rules (the local state holds the whole ledger).
+  history: (kind: 'summary' | 'purchases' | 'coins' | 'gacha', q: { cursor?: string | null; limit?: number; currency?: 'paid' | 'free' | null } = {}) => wrap(() => svc.history(ID, kind, q)),
+  historyTicket: (refs: string[], topic: 'purchase_missing' | 'refund' | 'coins' | 'gacha' | 'other') => wrap(() => svc.historyTicket(ID, refs, topic)),
+  /** Demo: a 14-year-old's month (¥5,000 limit): two coin packs bought, one refunded by the store, scouts on paid and free coins. */
+  async seedHistory() {
+    await this.seedDemo(3, [2, 2, 2]);
+    await wrap(() => svc.setAge(ID, 2012, 1, true));
+    const buy = (productId: string, priceYen: number) => wrap(() => svc.purchase(ID, 'fake', productId, store.issue({ transactionId: `proto_h_${productId}_${n++}`, productId, purchasedAt: now(), priceYen })));
+    const a = await buy('coin_480', 480);
+    // refunded before anything was spent, so no refund debt blocks the demo player
+    if (a.ok) await wrap(() => svc.refund(ID, (a.value as { record?: { txId: string } }).record?.txId ?? ''));
+    await buy('coin_1500', 1500);
+    await wrap(() => svc.draw(ID, 'standard', 10, key()));
+    await wrap(() => svc.draw(ID, 'pickup_akatsuki', 1, key()));
+    return svc.view(ID);
+  },
+
   // ---------------------------------------------------------------- round 10
   // r10 fix: the shop list with this player's ownership (GET /v1/shop/products?mine=1)
   myShopProducts: () => svc.shopProducts(ID),

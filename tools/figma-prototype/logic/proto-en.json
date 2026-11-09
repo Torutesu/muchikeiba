@@ -771,6 +771,24 @@
   "報酬　無償コイン{n}枚": "Reward  {n} free coins",
   "報酬はありません": "No reward",
   "称号「{t}」を獲得": "Title \"{t}\" unlocked",
-  "報酬は結果で決まる固定の額です。連勝の上乗せはありません": "The reward is a fixed amount set by the result. There is no extra for winning streaks"
+  "報酬は結果で決まる固定の額です。連勝の上乗せはありません": "The reward is a fixed amount set by the result. There is no extra for winning streaks",
+
+  "_history": "---- round 13: 購入・コイン・ガチャ履歴 (REQ-HIST-*)",
+  "購入・コイン・ガチャ履歴": "Purchases, coins and scouts",
+  "有償と無償は分けて記録しています": "Paid and free coins are recorded apart",
+  "問い合わせ番号で運営に確認できます": "Support can look a record up by its reference number",
+  "残高": "Balance",
+  "問い合わせ番号": "Reference",
+  "問い合わせ": "Contact support",
+  "問い合わせ（{n}件）": "Contact support ({n})",
+  "設定へ": "Settings",
+  "未精算の返金 {n}枚": "Unsettled refund: {n} coins",
+  "選んだ記録": "Selected records",
+  "内容": "Topic",
+  "下書きを作る": "Create draft",
+  "選択を外す": "Clear selection",
+  "問い合わせの下書きをコピーしました": "Draft copied",
+  "期間外の記録が含まれています": "A record is outside the period",
+  "問い合わせに添えられるのは10件までです": "Up to 10 records per request"
  }
 }

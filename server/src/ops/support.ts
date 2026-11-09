@@ -10,6 +10,7 @@ import { registerAge, ageBand } from '../domain/purchase.js';
 import { getHorse } from '../domain/horses.js';
 import { resetStableName } from '../domain/stable.js';
 import type { AdminRole } from './admin.js';
+import { SUPPORT_TOPIC_TEXT, ticketDetail, type ResolvedRef, type SupportTopic } from '../domain/history.js';
 
 /**
  * Customer-support operations on one player's state (REQ-OPS-020..025). Pure functions: the
@@ -162,5 +163,20 @@ export function supportView(m: Master, s: PlayerState, now: number) {
       invitees: s.referral.invitees.map((x) => ({ playerId: x.playerId, at: x.at, counted: x.counted, deleted: x.deleted ?? false, milestones: x.milestones.length })),
       installs: s.referral.installs.length,
     } : null,
+  };
+}
+
+/**
+ * REQ-HIST-009 (contracts/protocol.md §33.3): the 問い合わせ draft built from the history rows a player selected. It holds
+ * only what the player support view (GET /v1/admin/players/:playerId) already takes — the player id — plus the support
+ * references of the rows (no name, mail, device or store transaction id). Nothing is stored; the app attaches it to
+ * the operator's contact form, and support opens the same rows with GET /v1/admin/players/:playerId/history?refs=….
+ */
+export function buildSupportTicket(playerId: string, topic: SupportTopic, rows: ResolvedRef[], now: number) {
+  return {
+    format: 'muchi.support-ticket.v1' as const,
+    playerId, topic, topicText: SUPPORT_TOPIC_TEXT[topic], createdAt: now,
+    items: rows.map((r) => ({ ref: r.ref, kind: r.kind, at: r.row.at, ...ticketDetail(r) })),
+    body: `問い合わせ番号：${rows.map((r) => r.ref).join(' / ')}`,
   };
 }

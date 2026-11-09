@@ -12,6 +12,7 @@ import { requireRole, type AdminPrincipal, type AdminRole, type AuditEntry, type
 import { checkGrantLimits, grantSchema, itemIdSchema, TWO_PERSON_REQUIRED, type Grant } from '../ops/support.js';
 import type { ModerationChange, ModerationStatus, RaceIntegrityReport, RaceReport } from '../ops/integrity.js';
 import type { LeaderboardApi, PlayerInvoker } from './app.js';
+import { HISTORY_LIMITS, historyQuery, REF_RE } from '../domain/history.js';
 import { BASE_BANNED_SILKS, bannedMatch, bannedSilksListSchema, bannedSilksProblems, combinedBanned, type BannedSilksList } from '../domain/bannedSilks.js';
 import { VISUALS } from '../domain/visuals.js';
 import type { TournamentsService } from '../domain/tournamentService.js';
@@ -310,6 +311,19 @@ export const adminRoutes: AdminRoute[] = [
       r.ctx.ops.compensations ? r.ctx.ops.compensations.list({ playerId: id, limit: 20 }, r.now) : Promise.resolve([]),
     ]);
     return { result: { state, integrity, flags: parseSupportFlags(state.supportFlags), compensations }, target: `player:${id}` };
+  } },
+  // REQ-HIST-010 (contracts/protocol.md §33.4): the player's purchase / coin / gacha history, read only (audited like every route)
+  { method: 'GET', path: '/v1/admin/players/:playerId/history', role: 'viewer', write: false, action: 'player.history.view', handler: async (r) => {
+    const id = parse(pid, r.params.playerId);
+    const refs = r.query.get('refs');
+    if (refs !== null) {
+      const list = refs.split(',').map((x) => x.trim()).filter(Boolean);
+      if (list.length < 1 || list.length > HISTORY_LIMITS.ticketRefsMax || list.some((x) => !REF_RE.test(x))) throw new AppError('BAD_REQUEST', `refs: 1..${HISTORY_LIMITS.ticketRefsMax} support references (P-/C-/G-)`);
+      return { result: await r.ctx.player(id).invoke('adminHistoryRefs', id, list), target: `player:${id}` };
+    }
+    const kind = r.query.get('kind') ?? 'summary';
+    if (kind !== 'summary' && kind !== 'purchases' && kind !== 'coins' && kind !== 'gacha') throw new AppError('BAD_REQUEST', 'kind must be summary|purchases|coins|gacha');
+    return { result: await r.ctx.player(id).invoke('adminHistory', id, kind, historyQuery(r.query, kind)), target: `player:${id}` };
   } },
   { method: 'POST', path: '/v1/admin/players/:playerId/grants', role: 'operator', write: true, action: 'player.grant', handler: async (r) => {
     const id = parse(pid, r.params.playerId);

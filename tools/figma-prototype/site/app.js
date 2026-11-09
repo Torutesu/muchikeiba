@@ -1803,11 +1803,17 @@ async function Settings() {
   }
   // round 12: かんたん操作 (REQ-ASSIST-008/009) — the current level and the way to change it (shown after the FTUE)
   if (!ftue) {
-    Hair(36, 552, 428, a);
-    Txt('かんたん操作', 36, 574, 240, 21, WHITE, a, { weight: 500 }).dataset.name = 'Assist';
-    Txt(ASSIST_NAME[assistLevel()], 36, 610, 260, 16, assistLevel() === 'off' ? MUTED : CYAN, a, { weight: 500 }).dataset.assistLevel = assistLevel();
-    Ghost('変更する', 304, 572, 160, 56, () => AssistSettings(), a, 'quiet small').dataset.action = 'assist';
+    Hair(36, 540, 428, a);
+    Txt('かんたん操作', 36, 558, 240, 21, WHITE, a, { weight: 500 }).dataset.name = 'Assist';
+    Txt(ASSIST_NAME[assistLevel()], 36, 592, 260, 16, assistLevel() === 'off' ? MUTED : CYAN, a, { weight: 500 }).dataset.assistLevel = assistLevel();
+    Ghost('変更する', 304, 552, 160, 52, () => AssistSettings(), a, 'quiet small').dataset.action = 'assist';
   }
+  // round 13 (REQ-HIST-*): 購入・コイン・ガチャの履歴 (資金決済法・特商法: what was bought, paid and free coins apart)
+  const hy = ftue ? 566 : 622;
+  Hair(36, hy, 428, a);
+  const hist = Btn('購入・コイン・ガチャ履歴', 36, hy + 10, 428, ftue ? 56 : 44, () => History('purchases'), 'row last', a); hist.style.fontSize = '19px';
+  hist.dataset.action = 'history';
+  { const em = document.createElement('em'); em.textContent = '›'; hist.appendChild(em); }
   // ② looks / care and the legal pages: thin-divider lists
   const m = Glass('More', 556, 134, 480, 676, undefined, .9);
   Kicker('見た目・お世話・仲間', 36, 30, m);
@@ -1928,6 +1934,7 @@ async function Demo(kind) {
   if (kind === 'gifts') { await L.seedGifts(); await refresh(); giftState.tab = 'box'; giftState.page = 0; return GiftBox('box'); }
   // round 12: a week of play, then three ranked races in last place (settled by the real applyRace) → the one-time suggestion
   if (kind === 'assist') { await L.seedDemo(7, [3, 3, 3, 3, 3, 3, 3]); ftue = false; await L.demoLastPlaces(3); await refresh(); return AssistThen(Home); }
+  if (kind === 'history') { await L.seedHistory(); await refresh(); hiState.picked = []; return History('purchases'); }
   const spec = { day1: [1, [1]], day3: [3, [2, 2, 2]], day7: [7, [3, 3, 3, 3, 3, 3, 3]] }[kind];
   await L.seedDemo(spec[0], spec[1]);
   await refresh();
@@ -3019,6 +3026,130 @@ function GiftResult(c) {
   lines.slice(0, 5).forEach(([t, col], i) => Txt(t, 52, 186 + i * 40, 796, 22, col, box, { weight: 700, nowrap: true }));
   if (c.held.length) Txt(`${c.held.length}件は持てる上限のため、ボックスに残しました`, 52, 400, 796, 15, WARN, box, { weight: 500 }).dataset.giftHeld = String(c.held.length);
   Cta('つづける', 52, 466, 360, () => GiftBox('box'), box, 'small');
+// ================================================================= round 13: 購入履歴・コイン履歴・ガチャ履歴 (REQ-HIST-*, contracts/protocol.md §33)
+// The same screen as the Unity HistoryModel: a balance header with 有償 / 無償 apart and this month against the age limit,
+// four tabs (購入 / 有償コイン / 無償コイン / ガチャ), pages by the server's cursor, the selected row's detail, and the
+// 問い合わせ sheet (the selected rows' reference numbers only). Every value comes from L.history (the real PlayerService).
+// ムチ一閃 tone: paddock art, translucent navy panels, letter-spaced cyan kickers, one skewed cyan CTA ».
+const HI_TABS = [['purchases', '購入履歴'], ['coins_paid', '有償コイン'], ['coins_free', '無償コイン'], ['gacha', 'ガチャ履歴']];
+const HI_TOPICS = [['purchase_missing', '購入したのに届かない'], ['refund', '返金について'], ['coins', 'コインの増減について'], ['gacha', 'スカウトの結果について'], ['other', 'その他の問い合わせ']];
+const HI_PAGE = 7;
+const hiState = { tab: 'purchases', cursor: null, stack: [], sel: null, picked: [], topic: 'purchase_missing', viewed: '' };
+const hiQuery = (tab, cursor) => (tab === 'purchases' ? ['purchases', { cursor, limit: HI_PAGE }] : tab === 'gacha' ? ['gacha', { cursor, limit: HI_PAGE }] : ['coins', { cursor, limit: HI_PAGE, currency: tab === 'coins_paid' ? 'paid' : 'free' }]);
+const hiSigned = (r) => (r.direction === 'earned' ? `+${fmt(r.amount)}` : r.direction === 'spent' ? `−${fmt(r.amount)}` : '±0');
+function hiLine(tab, r) {
+  if (tab === 'purchases') return { title: r.product, amount: `¥${fmt(r.priceYen)}`, sub: `${r.storeName}・${r.statusText}`, muted: r.status === 'refunded' || r.status === 'test', neg: false };
+  if (tab === 'gacha') return { title: r.banner, amount: r.count === 1 ? '単発' : `${r.count}連`, sub: r.via === 'coins' ? `有償 ${fmt(r.coins.paid)}・無償 ${fmt(r.coins.free)}` : r.viaText, muted: false, neg: false };
+  return { title: r.title, amount: hiSigned(r), sub: `残高 ${fmt(r.balanceAfter)}`, muted: r.direction === 'note', neg: r.direction === 'spent' };
+}
+async function History(tab) {
+  if (tab && tab !== hiState.tab) { hiState.tab = tab; hiState.cursor = null; hiState.stack = []; hiState.sel = null; }
+  currentScreen = () => History();
+  const [sum, page] = await Promise.all([L.history('summary'), L.history(...hiQuery(hiState.tab, hiState.cursor))]);
+  if (!sum.ok || !page.ok) { toast((sum.ok ? page : sum).message); return Settings(); }
+  // REQ-HIST-011: one history_view per tab opening (the Unity build sends it through AnalyticsClient)
+  if (hiState.viewed !== hiState.tab) { hiState.viewed = hiState.tab; (globalThis.__muchiKpi ??= []).push({ name: 'history_view', tab: hiState.tab }); }
+  const S = sum.value, P = page.value;
+  Clear('history'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('購入・コイン・ガチャ履歴', '有償と無償は分けて記録しています　·　問い合わせ番号で運営に確認できます');
+  // ① the list: tabs, rows (newest first), pager
+  const p = Glass('History', 36, 134, 1060, 676, undefined, .88);
+  p.classList.add('hi-list'); p.dataset.tab = hiState.tab;
+  HI_TABS.forEach(([k, name], i) => { const b = Btn(name, 36 + i * 168, 28, 156, 48, () => History(k), 'choice' + (hiState.tab === k ? ' on' : ''), p); b.dataset.tab = k; b.style.fontSize = '16px'; b.style.whiteSpace = 'nowrap'; b.style.padding = '0'; });
+  Txt(`直近${fmt(P.windowDays)}日`, 724, 42, 300, 14, MUTED, p, { weight: 500, align: 'right', nowrap: true });
+  if (!P.items.length) Txt('まだ記録がありません', 36, 130, 900, 19, MUTED, p).dataset.hiEmpty = '1';
+  if (!P.items.some((r) => r.ref === hiState.sel)) hiState.sel = P.items[0]?.ref ?? null;
+  P.items.forEach((r, i) => {
+    const L1 = hiLine(hiState.tab, r);
+    const row = el('hi-row' + (r.ref === hiState.sel ? ' sel' : '') + (L1.muted ? ' muted' : ''), 24, 96 + i * 70, 1012, 64, p);
+    row.dataset.ref = r.ref; row.setAttribute('role', 'button');
+    const picked = hiState.picked.includes(r.ref);
+    const box = el('hi-pick' + (picked ? ' on' : ''), 14, 20, 24, 24, row); box.dataset.pick = r.ref; box.setAttribute('role', 'button');
+    box.addEventListener('click', (ev) => { ev.stopPropagation(); hiToggle(r.ref); History(); });
+    Txt(jstDate(r.at), 54, 8, 220, 13, MUTED, row, { weight: 500, nowrap: true });
+    Txt(L1.title, 54, 28, 560, 18, L1.muted ? SOFT : WHITE, row, { weight: 700, nowrap: true });
+    Txt(L1.sub, 620, 32, 236, 12, MUTED, row, { nowrap: true, align: 'right' }).classList.add('hi-sub');
+    Txt(L1.amount, 864, 18, 132, 24, L1.neg ? WARN : L1.muted ? SOFT : GOLD, row, { weight: 700, align: 'right', nowrap: true, cls: 'num' });
+    row.addEventListener('click', () => { hiState.sel = r.ref; History(); });
+  });
+  if (P.note) Txt(P.note, 36, 596, 560, 12, SOFT, p, { lh: 1.5 });
+  const prev = Ghost('前へ', 640, 600, 180, 52, () => { hiState.cursor = hiState.stack.pop() ?? null; hiState.sel = null; History(); }, p, 'quiet small');
+  if (!hiState.stack.length && hiState.cursor === null) disable(prev);
+  const next = Ghost('次へ', 836, 600, 188, 52, () => { hiState.stack.push(hiState.cursor); hiState.cursor = P.nextCursor; hiState.sel = null; History(); }, p, 'quiet small');
+  if (!P.nextCursor) disable(next);
+  next.dataset.more = P.nextCursor ? '1' : '0';
+  // ② balance header + the selected row + 問い合わせ
+  const d = Glass('History balance', 1116, 134, 448, 676, undefined, .9);
+  d.classList.add('hi-balance');
+  Kicker('残高', 36, 30, d);
+  const col = (k, v, x) => { Txt(k, x, 96, 180, 14, MUTED, d, { weight: 500, ls: '.18em', nowrap: true }); Txt(fmt(v), x, 118, 180, 34, GOLD, d, { weight: 700, nowrap: true, cls: 'num' }); };
+  col('有償コイン', S.wallet.paid, 36); col('無償コイン', S.wallet.free, 236);
+  d.dataset.paid = String(S.wallet.paid); d.dataset.free = String(S.wallet.free);
+  let y = 172;
+  if (S.wallet.debt > 0) { Txt(`未精算の返金 ${fmt(S.wallet.debt)}枚`, 36, y, 376, 14, WARN, d, { weight: 700 }); y += 26; }
+  if (S.limitText) {
+    Txt(S.limitText, 36, y, 376, 13, WHITE, d, { weight: 500, lh: 1.5 }).dataset.hiLimit = '1';
+    Gauge(36, y + 46, 376, S.monthlyLimitYen ? S.monthSpentYen / S.monthlyLimitYen : 0, d, { gold: true }); y += 66;
+  }
+  Txt(S.notice, 36, y, 376, 12, SOFT, d, { lh: 1.5 }); y = Math.max(y + 76, 310);
+  Hair(36, y, 376, d); y += 16;
+  const r = P.items.find((x) => x.ref === hiState.sel);
+  if (r) {
+    const L1 = hiLine(hiState.tab, r);
+    d.dataset.hiDetail = r.ref;
+    Kicker(`問い合わせ番号　${r.ref}`, 36, y, d, { rule: false, size: 14 }); y += 30;
+    Txt(L1.title, 36, y, 376, 18, WHITE, d, { weight: 700, lh: 1.3 }); y += 50;
+    // one text node per line (each is translated on its own in English; horse names are romanized)
+    const lines = hiState.tab === 'purchases'
+      ? [jstDate(r.at), `${r.storeName}・${r.statusText}`, r.paidCoins ? `有償コイン${fmt(r.paidCoins)}枚` : null, r.bonusCoins ? `${r.bonusPaid ? '有償コイン' : '無償コイン'}${fmt(r.bonusCoins)}枚` : null]
+      : hiState.tab === 'gacha' ? [jstDate(r.at), r.summary]
+      : [jstDate(r.at), `${r.currency === 'paid' ? '有償コイン' : '無償コイン'}${fmt(r.amount)}枚`];
+    for (const line of lines.filter(Boolean)) { Txt(line, 36, y, 376, 13, MUTED, d, { nowrap: true }); y += 22; }
+    if (hiState.tab === 'gacha') r.results.filter((x) => x.rarity !== 'R').slice(0, Math.max(0, Math.floor((560 - y) / 22))).forEach((x) => {
+      Txt(x.rarity, 36, y, 48, 13, x.rarity === 'SSR' ? GOLD : CYAN, d, { weight: 700 }); Txt(x.name, 88, y, 324, 13, WHITE, d, { nowrap: true }); y += 22;
+    });
+  }
+  const cta = Cta(hiState.picked.length ? `問い合わせ（${hiState.picked.length}件）` : '問い合わせ', 36, 576, 376, () => {
+    if (!hiState.picked.length && hiState.sel) hiState.picked.push(hiState.sel);
+    if (!hiState.picked.length) { toast('記録を選んでください'); return; }
+    HistoryContact();
+  }, d);
+  cta.dataset.action = 'history-contact';
+  Back(Settings, '設定へ', 40, 834);
+}
+function hiToggle(ref) {
+  const i = hiState.picked.indexOf(ref);
+  if (i >= 0) hiState.picked.splice(i, 1);
+  else if (hiState.picked.length < 10) hiState.picked.push(ref);
+  else toast('問い合わせに添えられるのは10件までです');
+}
+/** The 問い合わせ sheet: the selected references, a topic, then the draft from the server (nothing personal in it). */
+function HistoryContact(ticket = null) {
+  Sheet('問い合わせ', '履歴', (s, close, top) => {
+    s.dataset.name = 'History contact'; s.classList.add('hi-contact');
+    Txt('選んだ記録の問い合わせ番号だけを送ります（お名前や連絡先は含みません）。', 48, top, 564, 14, MUTED, s, { lh: 1.6 });
+    Kicker('選んだ記録', 48, top + 50, s, { rule: false, size: 14 });
+    Txt(hiState.picked.join('　·　'), 48, top + 78, 564, 15, WHITE, s, { weight: 700, lh: 1.5, cls: 'num' }).dataset.hiPicked = String(hiState.picked.length);
+    Kicker('内容', 48, top + 124, s, { rule: false, size: 14 });
+    HI_TOPICS.forEach(([k, name], i) => {
+      const b = Btn(name, 48 + (i % 2) * 288, top + 154 + Math.floor(i / 2) * 54, 276, 44, () => { hiState.topic = k; close(); HistoryContact(); }, 'choice' + (hiState.topic === k ? ' on' : ''), s);
+      b.dataset.topic = k; b.style.fontSize = '15px'; b.style.whiteSpace = 'nowrap'; b.style.padding = '0';
+    });
+    if (ticket) {
+      const t = el('hi-ticket', 48, top + 322, 564, 180, s); t.dataset.ticket = ticket.format;
+      Txt(ticket.topicText, 16, 12, 532, 16, CYAN, t, { weight: 700, nowrap: true });
+      Txt(ticket.items.map((it) => `${it.ref}　${it.title}`).join('\n'), 16, 42, 532, 13, WHITE, t, { lh: 1.6, h: 100 }).style.overflow = 'hidden';
+      Txt(ticket.body, 16, 148, 532, 12, MUTED, t, { nowrap: true });
+    }
+    const make = Cta(ticket ? 'コピー' : '下書きを作る', 48, 716, 300, async () => {
+      if (ticket) { try { await navigator.clipboard?.writeText(JSON.stringify(ticket)); } catch { /* no clipboard */ } toast('問い合わせの下書きをコピーしました'); return; }
+      const r = await L.historyTicket(hiState.picked, hiState.topic);
+      if (!r.ok) { toast(r.code === 'NOT_FOUND' ? '期間外の記録が含まれています' : r.message); return; }
+      close(); HistoryContact(r.value);
+    }, s, 'small');
+    make.dataset.action = ticket ? 'history-copy' : 'history-ticket';
+    TextLink('選択を外す', 48, 812, 200, () => { hiState.picked = []; close(); History(); }, s);
+  });
 }
 
 // ================================================================= boot
@@ -3053,7 +3184,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ GiftBox, AssistSettings, Collection, Achievements, Training, Rival, TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ GiftBox, AssistSettings, History, Collection, Achievements, Training, Rival, TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

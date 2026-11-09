@@ -109,8 +109,53 @@ function playerDetail(v, reload) {
     { label: '増減', value: (l) => (l.delta > 0 ? `+${num(l.delta)}` : num(l.delta)), class: 'num' }, { label: '残高', value: (l) => num(l.balanceAfter), class: 'num' }, { label: '理由', value: (l) => l.reason },
   ], [...(s.ledger ?? [])].reverse())));
 
-  return h('div', { class: 'player' }, header, h('div', { class: 'cols' }, wallet, flags), purchases, h('div', { class: 'cols' }, integrity, h('div', {}, deletion, referral)), gifts, comps, ledger,
+  return h('div', { class: 'player' }, header, h('div', { class: 'cols' }, wallet, flags), purchases, historyCard(id), h('div', { class: 'cols' }, integrity, h('div', {}, deletion, referral)), gifts, comps, ledger,
     h('details', {}, h('summary', {}, '生データ（JSON）'), json(v)));
+}
+
+/**
+ * REQ-HIST-010 (contracts/protocol.md §33.4): the player's own history screen, read only (every read is in the audit log), with
+ * the internal values support needs (store transaction id, raw ledger reason). A 問い合わせ draft's reference numbers
+ * (P-… / C-… / G-…) open the rows they point at. Deleted accounts answer 404: their anonymised legal record is never shown here.
+ */
+const HISTORY_KINDS = [['purchases', '購入'], ['coins:paid', '有償コイン'], ['coins:free', '無償コイン'], ['gacha', 'ガチャ']];
+function historyCard(playerId) {
+  const base = `/v1/admin/players/${encodeURIComponent(playerId)}/history`;
+  const out = h('div', { 'data-testid': 'history-out' });
+  const kind = h('select', { 'data-testid': 'history-kind' }, HISTORY_KINDS.map(([k, label]) => h('option', { value: k }, label)));
+  const refs = h('input', { type: 'search', placeholder: '問い合わせ番号（P-1A2B3C4D, C-123, G-7）', 'data-testid': 'history-refs', autocomplete: 'off', spellcheck: 'false' });
+  const cols = {
+    purchases: [{ label: '番号', value: (r) => h('code', {}, r.ref) }, { label: '日時', value: (r) => jst(r.at) }, { label: '商品', value: (r) => r.product }, { label: '金額', value: (r) => yen(r.priceYen), class: 'num' },
+      { label: 'ストア', value: (r) => r.storeName }, { label: '状態', value: (r) => badge(r.statusText, r.status === 'refunded' ? 'bad' : r.status === 'pending' ? 'warn' : 'ok') }, { label: '取引ID', value: (r) => h('code', {}, r.internal?.txId ?? '') }],
+    coins: [{ label: '番号', value: (r) => h('code', {}, r.ref) }, { label: '日時', value: (r) => jst(r.at) }, { label: '通貨', value: (r) => r.currency }, { label: '増減', value: (r) => (r.direction === 'spent' ? `-${num(r.amount)}` : r.direction === 'earned' ? `+${num(r.amount)}` : '0'), class: 'num' },
+      { label: '残高', value: (r) => num(r.balanceAfter), class: 'num' }, { label: '表示', value: (r) => r.title }, { label: '台帳の理由', value: (r) => h('code', {}, r.internal?.reason ?? '') }],
+    gacha: [{ label: '番号', value: (r) => h('code', {}, r.ref) }, { label: '日時', value: (r) => jst(r.at) }, { label: 'バナー', value: (r) => r.banner }, { label: '回数', value: (r) => r.count, class: 'num' },
+      { label: '有償/無償', value: (r) => `${num(r.coins.paid)} / ${num(r.coins.free)}`, class: 'num' }, { label: '結果', value: (r) => r.summary }],
+  };
+  const load = async (cursor = null) => {
+    const [k, currency] = kind.value.split(':');
+    const q = new URLSearchParams({ kind: k, limit: '20', ...(currency ? { currency } : {}), ...(cursor ? { cursor } : {}) });
+    try {
+      const r = await get(`${base}?${q}`);
+      mount(out, table(cols[k], r.items, { empty: '記録なし', testid: 'history-table' }),
+        r.nextCursor ? h('button', { class: 'btn small', 'data-testid': 'history-more', onclick: () => load(r.nextCursor) }, '次の20件') : null,
+        h('p', { class: 'muted small' }, `直近 ${r.windowDays} 日`));
+    } catch (err) { mount(out, errorBox(err)); }
+  };
+  const lookup = async () => {
+    const list = refs.value.split(/[\s,、]+/).map((x) => x.trim().toUpperCase()).filter(Boolean);
+    if (!list.length) return;
+    try {
+      const r = await get(`${base}?refs=${encodeURIComponent(list.join(','))}`);
+      mount(out, table([{ label: '番号', value: (x) => h('code', {}, x.ref) }, { label: '種類', value: (x) => x.kind ?? badge('見つかりません', 'bad') },
+        { label: '日時', value: (x) => (x.row ? jst(x.row.at) : '—') }, { label: '内容', value: (x) => (x.row ? json(x.row) : '期間外か、このプレイヤーの記録ではありません') }], r.items, { testid: 'history-refs-table' }));
+    } catch (err) { mount(out, errorBox(err)); }
+  };
+  return card('履歴（本人の画面と同じ・読み取り専用）',
+    h('p', { class: 'muted small' }, '購入は法定の保存期間、コインは直近365日、ガチャは直近90日。表示は監査ログに残ります。'),
+    h('div', { class: 'row' }, kind, h('button', { class: 'btn small', 'data-testid': 'history-load', onclick: () => load() }, '表示'),
+      refs, h('button', { class: 'btn small', 'data-testid': 'history-lookup', onclick: lookup }, '番号で開く')),
+    out);
 }
 
 export const grantText = (g) => [g.freeCoins ? `無償コイン ${num(g.freeCoins)}` : null, ...(g.items ?? []).map((i) => `${i.itemId} ×${i.qty}`)].filter(Boolean).join('、');

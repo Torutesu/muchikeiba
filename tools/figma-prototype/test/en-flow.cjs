@@ -203,6 +203,19 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await page.evaluate(() => globalThis.__muchi.demo('assist')); await waitScreen('assist-prompt', 60000); await shot('assist-prompt', 500);
   assert.match(await page.locator('.screen.in').innerText(), /Not now/, 'assist: 「今はいい」 in English');
   await page.locator('.screen.in [data-assist-choice="later"]').click(); await waitScreen(['home', 'link-prompt'], 10000);
+  // round 13: 購入・コイン・ガチャ履歴 in English (REQ-HIST-008): every tab, a detail, the 問い合わせ sheet and its draft
+  await page.evaluate(() => globalThis.__muchi.demo('history')); await waitScreen('history', 60000);
+  await shot('history-purchases', 600);
+  assert.match(await page.locator('.screen.in').innerText(), /monthly limit for your age/, 'history: the age limit line in English');
+  for (const tab of ['coins_paid', 'coins_free', 'gacha']) {
+    await page.locator(`.screen.in [data-tab="${tab}"]`).click(); await page.waitForTimeout(500);
+    await shot('history-' + tab, 300);
+  }
+  await page.locator('.screen.in .hi-pick').first().click(); await page.waitForTimeout(400);
+  await page.locator('.screen.in [data-action="history-contact"]').click(); await page.waitForTimeout(500);
+  await shot('history-contact', 300);
+  await page.locator('.screen.in [data-action="history-ticket"]').click(); await page.waitForTimeout(600);
+  await shot('history-ticket', 300);
 
   const misses = await page.evaluate(() => globalThis.__muchi.l10n.misses());
   fs.writeFileSync(path.join(out, 'en-report.json'), JSON.stringify({ report, misses }, null, 2));

@@ -653,3 +653,19 @@ ORDER BY races DESC
 
 - 補助を使った人の継続（D7）は、`assist_enable` を出した人の `blob2` で「リテンション」のクエリを絞って比べる。
 - `client_race_start` の `blob9` にもレベルが入る（オフラインのレース・タイムアタックを含めた使われ方）。
+## 履歴：購入・コイン・ガチャ履歴の閲覧（REQ-HIST-011、contracts/protocol.md §33）
+
+**どのタブがどれだけ開かれているか**（日ごと、課金者／無課金で分ける）。`history_view` はクライアントのイベント（`blob8` = `purchases` / `coins_paid` / `coins_free` / `gacha`）。問い合わせの件数（運営の窓口側）が減ったか、`purchases` の閲覧が返金・ストア障害の日に跳ねていないかと合わせて見る。
+
+```sql
+SELECT
+  blob6 AS day, blob7 AS payer, blob8 AS tab,
+  sum(_sample_interval) AS views,
+  count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'history_view' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY day, payer, tab
+ORDER BY day DESC, payer, tab
+```
+
+- **購入直後の確認**：同じ日に `purchase`（サーバー）と `history_view`（`purchases`）がある課金者の割合が高いなら、購入完了の表示が分かりにくい（届いたか不安で履歴を見に行っている）。

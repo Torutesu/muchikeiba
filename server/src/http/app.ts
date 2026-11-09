@@ -35,6 +35,7 @@ import { LOCALES, resolveLocale, type Locale } from '../i18n/locale.js';
 import { catalogFor, localize, type Catalog } from '../i18n/catalog.js';
 import { ASSIST_LEVELS, ASSIST_SOURCES } from '../domain/assist.js';
 import type { RivalService } from '../domain/rivalService.js';
+import { HISTORY_LIMITS, historyQuery, REF_RE, SUPPORT_TOPICS } from '../domain/history.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -65,7 +66,8 @@ export type PlayerMethod =
   | 'training' | 'trainingStart' | 'trainingFinish' | 'trainingUseItem'
   | 'giftBox' | 'giftClaim' | 'giftClaimAll'
   | 'assist' | 'setAssist' | 'assistPromptSeen'
-  | 'rivalPeek' | 'rivalSync' | 'rivalSetOptOut' | 'rivalBlock' | 'rivalChallengeCheck' | 'rivalChallengeReceive' | 'rivalSeen' | 'rivalPush';
+  | 'rivalPeek' | 'rivalSync' | 'rivalSetOptOut' | 'rivalBlock' | 'rivalChallengeCheck' | 'rivalChallengeReceive' | 'rivalSeen' | 'rivalPush'
+  | 'history' | 'historyTicket' | 'adminHistory' | 'adminHistoryRefs';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -195,6 +197,7 @@ export const clientIdemKey = (req: Request) => {
   return `c:${new URL(req.url).pathname}:${k}`;
 };
 const idem = clientIdemKey;
+
 const id = z.string().min(1).max(64);
 
 const teams = (c: AppContext) => {
@@ -773,6 +776,17 @@ export const routes: Route[] = [
     if (!/^[a-z0-9_]{1,40}$/.test(p.itemId!)) throw new AppError('BAD_REQUEST', 'bad item id');
     const b = await body(r, z.object({ horseId: z.string().min(1).max(40) }).strict());
     return c.player(u).invoke('trainingUseItem', u, p.itemId!, b.horseId, idem(r));
+  } },
+  // 購入履歴・コイン履歴・ガチャ履歴 (REQ-HIST-*, contracts/protocol.md §33; read only)
+  { method: 'GET', path: '/v1/history/summary', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('history', u, 'summary', {}) },
+  { method: 'GET', path: '/v1/history/:kind', auth: 'player', handler: async (r, p, c, u) => {
+    const kind = p.kind!;
+    if (kind !== 'purchases' && kind !== 'coins' && kind !== 'gacha') throw new AppError('NOT_FOUND', 'NOT_FOUND');
+    return c.player(u).invoke('history', u, kind, historyQuery(new URL(r.url).searchParams, kind));
+  } },
+  { method: 'POST', path: '/v1/history/support-ticket', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ refs: z.array(z.string().regex(REF_RE)).min(1).max(HISTORY_LIMITS.ticketRefsMax), topic: z.enum(SUPPORT_TOPICS) }).strict());
+    return c.player(u).invoke('historyTicket', u, b.refs, b.topic);
   } },
   // admin
   // weekly rival (REQ-RIVAL-*, contracts/protocol.md §28)

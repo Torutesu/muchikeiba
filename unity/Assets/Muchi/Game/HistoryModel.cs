@@ -43,7 +43,7 @@ namespace Muchi.Game
         /// <summary>"2026/11/09 12:00" (JST).</summary>
         public string When;
         public string Title;
-        /// <summary>Right column: "¥480" / "+310" / "−1,000" / "10回".</summary>
+        /// <summary>Right column: "¥480" / "+310" / "−1,000" / "10連".</summary>
         public string Amount;
         /// <summary>Second line: store and status / balance after / the rarity summary.</summary>
         public string Sub;
@@ -74,7 +74,7 @@ namespace Muchi.Game
         public static readonly IReadOnlyDictionary<string, string> TopicNames = new Dictionary<string, string>
         {
             [SupportTopics.PurchaseMissing] = "購入したのに届かない", [SupportTopics.Refund] = "返金について", [SupportTopics.Coins] = "コインの増減について",
-            [SupportTopics.Gacha] = "スカウトの結果について", [SupportTopics.Other] = "その他",
+            [SupportTopics.Gacha] = "スカウトの結果について", [SupportTopics.Other] = "その他の問い合わせ",
         };
 
         private readonly IHistoryApi _api;
@@ -174,14 +174,17 @@ namespace Muchi.Game
         };
         public static HistoryLine CoinLine(CoinHistoryRow r) => new HistoryLine
         {
-            Ref = r.Ref, At = r.At, When = When(r.At), Title = r.Title, Amount = Signed(r.Delta), Sub = "残り " + N(r.BalanceAfter),
+            Ref = r.Ref, At = r.At, When = When(r.At), Title = r.Title, Amount = Signed(r.Delta), Sub = "残高 " + N(r.BalanceAfter),
             Negative = r.Delta < 0, Muted = r.Direction == "note", Source = r,
         };
         public static HistoryLine GachaLine(GachaHistoryRow r) => new HistoryLine
         {
-            Ref = r.Ref, At = r.At, When = When(r.At), Title = r.Banner, Amount = r.Count.ToString(CultureInfo.InvariantCulture) + "回",
+            Ref = r.Ref, At = r.At, When = When(r.At), Title = r.Banner, Amount = CountText(r.Count),
             Sub = r.Summary + "・" + (r.Via == "coins" ? "有償 " + N(r.PaidCoins) + "・無償 " + N(r.FreeCoins) : r.ViaText), Source = r,
         };
+
+        /// <summary>"単発" for one scout, "10連" for ten.</summary>
+        public static string CountText(int n) => n == 1 ? "単発" : n.ToString(CultureInfo.InvariantCulture) + "連";
 
         /// <summary>The detail row (tap on a line).</summary>
         public void ShowDetail(string reference) => Detail = Lines.FirstOrDefault(l => l.Ref == reference);

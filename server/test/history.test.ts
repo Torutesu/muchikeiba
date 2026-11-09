@@ -187,7 +187,7 @@ describe('coin history (REQ-HIST-003/007/008)', () => {
       expect(c.title, reason).not.toMatch(/[a-z]{3,}/); // no English reason / ids leak into the Japanese title
     }
     expect(classifyLedger(m, { reason: 'stud fee', kind: 'spend', delta: -1 }).title).toBe('種付け料の支払い');
-    expect(classifyLedger(m, { reason: 'something new 123', kind: 'grant', delta: 1 })).toEqual({ category: 'other', title: 'その他' });
+    expect(classifyLedger(m, { reason: 'something new 123', kind: 'grant', delta: 1 })).toEqual({ category: 'other', title: 'その他の増減' });
     expect(classifyLedger(m, { reason: 'gacha retired_banner x1', kind: 'spend', delta: -100 }).title).toBe('スカウト1回');
   });
 });
@@ -318,7 +318,7 @@ describe('HTTP (REQ-HIST-005/008/010/011)', () => {
     const t = await x.get('u1', '/v1/history/support-ticket?lang=en', { method: 'POST', body: { refs: [ref], topic: 'purchase_missing' } });
     expect(t.status).toBe(200);
     expect(untranslated(t.body)).toEqual([]);
-    expect(t.body.topicText).toBe('I bought something but did not receive it');
+    expect(t.body.topicText).toBe('Bought but not received');
     expect((await x.get('u1', '/v1/history/support-ticket', { method: 'POST', body: { refs: [ref], topic: 'refund', email: 'a@b.c' } })).status).toBe(400);
     expect((await x.get('u1', '/v1/history/support-ticket', { method: 'POST', body: { refs: ['fake:ORDER-1'], topic: 'refund' } })).status).toBe(400);
   });

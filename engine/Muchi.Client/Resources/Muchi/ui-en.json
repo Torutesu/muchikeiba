@@ -552,7 +552,10 @@
   "ガチャ履歴": "Scout history",
   "記録を選んでください": "Choose a record",
   "問い合わせの下書きを作りました": "Your support request draft is ready",
-  "{n}回": "{n} scouts",
+  "単発": "Single",
+  "{n}連": "{n}-scout",
+  "残高 {n}": "Balance {n}",
+  "その他の問い合わせ": "Something else",
   "問い合わせ番号 {ref}": "Reference {ref}"
  }
 }

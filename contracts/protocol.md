@@ -941,7 +941,7 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 - **ガチャ**：`{ "ref": "G-7", "at", "banner": "恒常スカウト", "bannerId": string|null, "via": "coins"|"ticket"|"tutorial", "viaText", "count", "coins": { "paid", "free" }, "results": [ { "templateId", "name", "rarity", "duplicate" } ], "summary": "SSR 1・SR 2・R 7" }`。SR以上確定券は `bannerId: null`・`banner` は券の名前。
 
 ### 33.3 `POST /v1/history/support-ticket`（要認証、状態を変えない）
-`{ "refs": ["P-1A2B3C4D", "C-123"], "topic": "purchase_missing"|"refund"|"coins"|"gacha"|"other" }`（他のキーは 400、`refs` は1〜10個・重複なし）→
+`{ "refs": ["P-1A2B3C4D", "C-123"], "topic": "purchase_missing"|"refund"|"coins"|"gacha"|"other" }（`topicText`：購入したのに届かない／返金について／コインの増減について／スカウトの結果について／その他の問い合わせ）`（他のキーは 400、`refs` は1〜10個・重複なし）→
 ```json
 { "format": "muchi.support-ticket.v1", "playerId": "…", "topic": "purchase_missing", "topicText": "購入したのに届かない", "createdAt": 1796871600000,
   "items": [ { "ref": "P-1A2B3C4D", "kind": "purchase", "at": 1796870000000, "title": "コイン 480枚", "detail": "¥480・App Store・購入済み" } ],

@@ -486,3 +486,10 @@ html[lang="en"] .pass-strip .cell small { font-size: 12px; }
 .tr-judge[data-judge="good"] { color: var(--cyan); }
 .tr-judge[data-judge="miss"] { color: var(--text-3); }
 .tr-total { line-height: 1; }
+/* round 13: 購入・コイン・ガチャ履歴 (REQ-HIST-*) */
+.hi-row { position: absolute; border-radius: var(--radius-card); cursor: pointer; background: rgba(var(--navy-rgb), .55); }
+.hi-row.sel { box-shadow: inset 0 0 0 2px var(--cyan); background: rgba(var(--cyan-rgb), .08); }
+.hi-pick { position: absolute; border-radius: 4px; box-shadow: inset 0 0 0 2px rgba(150, 173, 187, .7); cursor: pointer; }
+.hi-pick.on { background: var(--cyan); box-shadow: none; }
+.hi-pick.on::after { content: "\2713"; position: absolute; inset: 0; color: var(--navy); font-weight: 700; font-size: 16px; text-align: center; line-height: 24px; }
+.hi-ticket { position: absolute; background: rgba(var(--navy-rgb), .9); border-radius: var(--radius-card); box-shadow: inset 0 0 0 1px rgba(var(--cyan-rgb), .45); }

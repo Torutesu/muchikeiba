@@ -1,7 +1,7 @@
 // Round 11 (REQ-L10N-013): a short pass of the ムチ一閃 UI in English on the landscape phone (844×390 @2x).
 // EN on from the start, the day-7 demo player: home, shop (recommended / coins / looks), the legal page (Japanese text
 // with the English courtesy note), purchase confirmation, season pass, scout calendar and odds, the stable, settings,
-// a ranked race (HUD) and its result, 調教 (cards, mini-game, result, skip), then the 図鑑 (every tab, details), 実績 (claim one / all) and the title chooser.
+// a ranked race (HUD) and its result, 調教 (cards, mini-game, result, skip), then the 図鑑 (every tab, details), 実績 (claim one / all), the title chooser and the round 13 history (tabs, contact sheet).
 // On every screen:
 //   - no Japanese is left on the stage (outside the .keep-ja legal text and the 日本語 language button);
 //   - no text overflows: nothing is still too wide / too tall for its box after fitText, nothing leaves the stage.
@@ -159,6 +159,20 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await shot('achievement-claimed', 300);
   await click('まとめて受け取る'); await page.waitForTimeout(800); await waitScreen('achievements');
   await click('称号を変える'); await shot('achievement-titles', 500);
+
+  // round 13: 購入・コイン・ガチャ履歴 in English (REQ-HIST-008): every tab, a detail, the 問い合わせ sheet and its draft
+  await page.evaluate(() => globalThis.__muchi.demo('history')); await waitScreen('history', 60000);
+  await shot('history-purchases', 600);
+  assert.match(await page.locator('.screen.in').innerText(), /monthly limit for your age/, 'history: the age limit line in English');
+  for (const tab of ['coins_paid', 'coins_free', 'gacha']) {
+    await page.locator(`.screen.in [data-tab="${tab}"]`).click(); await page.waitForTimeout(500);
+    await shot('history-' + tab, 300);
+  }
+  await page.locator('.screen.in .hi-pick').first().click(); await page.waitForTimeout(400);
+  await page.locator('.screen.in [data-action="history-contact"]').click(); await page.waitForTimeout(500);
+  await shot('history-contact', 300);
+  await page.locator('.screen.in [data-action="history-ticket"]').click(); await page.waitForTimeout(600);
+  await shot('history-ticket', 300);
 
   const misses = await page.evaluate(() => globalThis.__muchi.l10n.misses());
   fs.writeFileSync(path.join(out, 'en-report.json'), JSON.stringify({ report, misses }, null, 2));

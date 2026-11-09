@@ -123,7 +123,7 @@ export const COIN_TITLES: Record<CoinCategory, string> = {
   mission: 'ミッションの報酬', achievement: '実績の報酬', race: 'レースの報酬', time_attack: 'タイムアタックの報酬', pass: 'シーズンパスの報酬',
   season: 'シーズンの報酬', team: '支部の報酬', event_fee: 'イベントの参加費', event_fee_refund: 'イベントの参加費の返却', event: 'イベントの報酬',
   tournament: '大会の報酬', stud: '種付け料', invite: '友達招待の報酬', bond: '絆レベルの報酬', comeback: '復帰キャンペーンの報酬',
-  refund: 'ストアの返金による回収', debt: '未精算の返金', debt_settle: '返金の精算', forfeit: 'アカウント削除による放棄', other: 'その他',
+  refund: 'ストアの返金による回収', debt: '未精算の返金', debt_settle: '返金の精算', forfeit: 'アカウント削除による放棄', other: 'その他の増減',
 };
 
 /**
@@ -313,7 +313,7 @@ export async function resolveRefs(m: Master, s: PlayerState, ledger: LedgerPager
 export const SUPPORT_TOPICS = ['purchase_missing', 'refund', 'coins', 'gacha', 'other'] as const;
 export type SupportTopic = typeof SUPPORT_TOPICS[number];
 export const SUPPORT_TOPIC_TEXT: Record<SupportTopic, string> = {
-  purchase_missing: '購入したのに届かない', refund: '返金について', coins: 'コインの増減について', gacha: 'スカウトの結果について', other: 'その他',
+  purchase_missing: '購入したのに届かない', refund: '返金について', coins: 'コインの増減について', gacha: 'スカウトの結果について', other: 'その他の問い合わせ',
 };
 
 /** One line per referenced row for the ticket (what the player selected, without internal ids). */

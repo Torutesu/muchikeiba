@@ -570,6 +570,47 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.equal(await page.locator('.screen.in [data-title-equipped]').getAttribute('data-title-equipped'), 'ach_champion', 'an achievement title is equipped (profile and stable)');
   await shot('achievements-title', 400);
 
+  // ------------------------------------------------------------------ 6. round 13: 購入・コイン・ガチャ履歴 (REQ-HIST-*)
+  // a 14-year-old's month on the real rules (two packs, one refunded by the store, scouts): settings → the history, each
+  // tab, paging by the server's cursor, the detail of a row, and the 問い合わせ sheet that sends reference numbers only
+  await page.evaluate(() => globalThis.__muchi.demo('history')); await waitScreen('history', 60000); await page.waitForTimeout(400);
+  await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings');
+  await page.locator('.screen.in [data-action="history"]').click(); await waitScreen('history'); await page.waitForTimeout(400);
+  const hiText = await page.locator('.screen.in').innerText();
+  assert.match(hiText, /有償コイン[\s\S]*無償コイン/, 'history: the header keeps paid and free coins apart');
+  assert.match(hiText, /今月の購入 ¥[\d,]+ ／ 上限 ¥5,000/, 'history: this month against the age limit');
+  assert.match(hiText, /返金済み/, 'history: the refunded pack');
+  assert.ok(!/proto_h_|fake:|coin_480|support grant/.test(hiText), 'history: no internal id or raw reason on screen');
+  const bal = page.locator('.screen.in .hi-balance');
+  const pst = await page.evaluate(() => globalThis.__muchi.state().player.wallet);
+  assert.equal(Number(await bal.getAttribute('data-paid')), pst.paid); assert.equal(Number(await bal.getAttribute('data-free')), pst.free);
+  await shot('history-purchases', 400);
+  await page.locator('.screen.in [data-tab="coins_paid"]').click(); await page.waitForTimeout(500);
+  assert.match(await page.locator('.screen.in .hi-list').innerText(), /スカウト10回/, 'paid coins: the scout');
+  await shot('history-coins-paid', 300);
+  if ((await page.locator('.screen.in [data-more="1"]').count()) > 0) {
+    const first = await page.locator('.screen.in .hi-row').first().getAttribute('data-ref');
+    await click('次へ'); await page.waitForTimeout(400);
+    assert.notEqual(await page.locator('.screen.in .hi-row').first().getAttribute('data-ref'), first, 'next page: older rows');
+    await click('前へ'); await page.waitForTimeout(400);
+    assert.equal(await page.locator('.screen.in .hi-row').first().getAttribute('data-ref'), first, 'back to the first page');
+  }
+  await page.locator('.screen.in [data-tab="coins_free"]').click(); await page.waitForTimeout(500);
+  await shot('history-coins-free', 300);
+  await page.locator('.screen.in [data-tab="gacha"]').click(); await page.waitForTimeout(500);
+  await page.locator('.screen.in .hi-row').first().click(); await page.waitForTimeout(400);
+  assert.match(await page.locator('.screen.in .hi-balance').innerText(), /問い合わせ番号\s+G-\d+/, 'gacha detail: the reference number');
+  await shot('history-gacha', 300);
+  await page.locator('.screen.in .hi-pick').first().click(); await page.waitForTimeout(400);
+  await page.locator('.screen.in [data-action="history-contact"]').click(); await page.waitForTimeout(500);
+  assert.match(await page.locator('.screen.in .hi-contact').innerText(), /問い合わせ番号だけを送ります/, 'the sheet says only reference numbers are sent');
+  await page.locator('.screen.in .hi-contact [data-topic="gacha"]').click(); await page.waitForTimeout(500);
+  await page.locator('.screen.in [data-action="history-ticket"]').click(); await page.waitForTimeout(600);
+  assert.equal(await page.locator('.screen.in .hi-ticket').getAttribute('data-ticket'), 'muchi.support-ticket.v1', 'the draft came back from the server');
+  assert.match(await page.locator('.screen.in .hi-ticket').innerText(), /問い合わせ番号：G-\d+/);
+  await shot('history-contact', 300);
+  assert.deepEqual(await page.evaluate(() => (globalThis.__muchiKpi ?? []).map((e) => e.tab)), ['purchases', 'coins_paid', 'coins_free', 'gacha'], 'history_view once per tab');
+
   // a reload on a named player goes straight home
   await demo('day3');
   await page.goto(url); await ready(); await waitScreen('home'); await shot('home-reload', 500);

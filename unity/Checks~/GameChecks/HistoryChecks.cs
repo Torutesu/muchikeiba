@@ -63,11 +63,11 @@ static class HistoryChecks
         check(api.Calls.Count(c => c.StartsWith("purchases")) == 2, "no request past the end");
 
         await m.SelectTabAsync(HistoryTab.PaidCoins);
-        check(m.Lines.Count == 1 && m.Lines[0].Amount == "−1,000" && m.Lines[0].Negative && m.Lines[0].Sub == "残り 20" && api.Calls.Contains("coins:paid:-"), "paid coins tab: spent with a sign and the balance after");
+        check(m.Lines.Count == 1 && m.Lines[0].Amount == "−1,000" && m.Lines[0].Negative && m.Lines[0].Sub == "残高 20" && api.Calls.Contains("coins:paid:-"), "paid coins tab: spent with a sign and the balance after");
         await m.SelectTabAsync(HistoryTab.FreeCoins);
         check(api.Calls.Contains("coins:free:-"), "free coins tab asks for free coins only");
         await m.SelectTabAsync(HistoryTab.Gacha);
-        check(m.Lines[0].Amount == "10回" && m.Lines[0].Sub == "SR 1・R 9・有償 1,000・無償 0", "gacha tab: count, rarity summary, coins used paid / free");
+        check(m.Lines[0].Amount == "10連" && HistoryModel.CountText(1) == "単発" && m.Lines[0].Sub == "SR 1・R 9・有償 1,000・無償 0", "gacha tab: count, rarity summary, coins used paid / free");
         m.ShowDetail("G-1");
         var d = m.DetailLines();
         check(d.Contains("問い合わせ番号 G-1") && d.Contains("SR　イナズマランナー"), "detail: the reference and what was drawn");

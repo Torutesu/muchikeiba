@@ -16,6 +16,19 @@ namespace Muchi.Client
     // different race is never shown. Titles are what the player typed: never translated or romanized.
     // =====================================================================================================
 
+    /// <summary>
+    /// REQ-MYRP-008: how another human is named in anything replayed or photographed from a race — <c>p&lt;slot&gt;</c>
+    /// (0-based slot), the same rule as the server's <c>maskedPlayerId</c> (myReplays.ts). Saved replays arrive already
+    /// masked; photo mode (§38, <see cref="PhotoNames"/>) names plates through this one helper.
+    /// </summary>
+    public static class ReplayPrivacy
+    {
+        public static string MaskedId(int slot) => "p" + slot.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        /// <summary>True for an id this rule produced (a saved replay's other players).</summary>
+        public static bool IsMasked(string playerId)
+            => playerId != null && playerId.Length > 1 && playerId[0] == 'p' && int.TryParse(playerId.Substring(1), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var n) && MaskedId(n) == playerId;
+    }
+
     /// <summary>Why a replay cannot be played (server `reason`, plus the device's own checks).</summary>
     public static class ReplayUnplayable
     {

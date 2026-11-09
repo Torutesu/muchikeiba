@@ -1847,8 +1847,10 @@ PhotoInput = {
   "camera": { "focusSlot": 0〜17, "orbitDeg": -180〜180, "distanceDm": 20〜200, "heightDm": 3〜100, "fovDeg": 20〜70, "dof": 0〜3 },
   "lookId": "natural", "frameId": "plain" | null, "stamps": [ { "id", "xPermille": 0〜1000, "yPermille": 0〜1000, "scalePermille": 250〜2000, "rotDeg": -180〜180 } ]（0〜stampsMax）,
   "caption": string | null, "names": "masked" | "hidden", "hideUi": true }
-PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }
+PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `source.replayId` のある記録に `"replaySaved": boolean` を足す）
 ```
+- `source.replayId`（任意、Round 15 統合）：§37 のマイリプレイの再生から撮った写真が、**自分の保存したリプレイ**を指す（保存は raceId で引くので `replayId` = `raceId`）。`kind: "replay"` 以外・`raceId` と違う値は 400、保存していないレースは 404。あとでリプレイを消しても写真は残り、一覧の `replaySaved` が false になる（アプリは「リプレイを見る」を出さない）。フレンドの公開リプレイから撮った写真は `replayId` なし。
+- 名札の伏せ方は §37 と同じ一つの規則（`p<slot>`：サーバー `maskedPlayerId`、C# `ReplayPrivacy.MaskedId`。`PhotoNames.Masked` はそれを呼ぶだけ）。
 - カメラの値は整数（dm・度）。範囲は `limits.camera`（範囲外は 400）。高さの下限（0.3 m）は**コースの下にカメラが入らない**ための値で、クライアントの `PhotoCamera` も同じ値で止める。
 - 使ったルック・フレーム・スタンプは**解放済みであること**（未解放は 409 `PHOTO_LOCKED`）。上限に達していたら 409 `PHOTO_LIMIT`（古い記録を消してから）。同じ冪等キーの再送は最初の答え。
 - 削除の予約中も保存・削除はできる（状態の中にあり、アカウント削除で状態ごと消える）。記録は本人だけが読める（他人に公開する API は無い）。
@@ -1858,7 +1860,7 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }
 クライアントのイベント `photo_take`（撮った時。`props.source`：`paused`|`result`|`replay`、`props.look`：ルックの id）→ s1 = source、s2 = look。`photo_share`（OS の共有シートに渡した時だけ。`props.source`、`props.framed`：フレームを付けたか）→ s1 = source、s2 = `framed`|`plain`。サーバーのイベント `photo_save`（記録を保存した時）→ s1 = source.kind、s2 = mode。クエリは `docs/ops/kpi-queries.md`「フォトモード」。
 
 ### 38.5 クライアント（`PhotoModeModel`）
-- 入口：レースのポーズ（`CanPause` が true のときだけ）・結果画面（終わったレースはどのモードでも）・リプレイ再生（共有の流れ、§37 が入るまでは結果画面の「共有」と同じ `ReplayShareModel` の入力）。
+- 入口：レースのポーズ（`CanPause` が true のときだけ）・結果画面（終わったレースはどのモードでも）・リプレイ再生（結果画面の「共有」の `ReplayShareModel`、および §37 マイリプレイの再生画面の「この瞬間を撮る」＝ `OpenFromSavedReplay(ReplayPlayer)`：画面のフレームの tick、自分の保存なら `replayId` 付き）。
 - `PhotoSnapshot.Capture(config, inputs, tick)` で止めた瞬間の全馬を作る。止めたレースの `Sim.Tick` と同じ tick なら、走っているレースの馬と同じ状態になる（テストで確認）。
 - `PhotoCamera`：注目の馬を中心に回る（orbit）・寄る（distance／fov）・高さ。値は `limits.camera` で止め、カメラは常にコース面（Y=0）より 0.3 m 以上上。結果は `RaceCameraShot`（`CourseFrame.ToWorld` で置く）。
 - UI を隠す（`HideUi`）：撮影画面の操作パネルを消して構図を確かめる。写真に HUD（着順・タイム）は入れない。
@@ -1982,7 +1984,7 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }
 | `gift_arrived` | プレゼントボックスに入ったとき（`deliverGift`、`gift_arrived` は REQ-BOX-011 の送り元だけ） | `gift:{ref}` | する | `gifts` | `gift_box` |
 | `team_goal_tier` | 支部の共同目標の段に到達（`teamGoalMilestone`、`team_goal`） | `team_goal_tier:{teamId}:{週}:{段}` | しない | `friends` | `team_goal` |
 | `team_goal_week` | 共同目標の週の結果（`teamGoalReward`） | `team_goal_week:{週}` | しない | `friends` | `team_goal` |
-| `replay_share` | 予約（リプレイを相手に送る仕組みが入ったとき。今は書く箇所なし） | `replay_share:{id}` | しない | `friends` | `replay` |
+| `replay_share` | フレンドがマイリプレイ（§37）の保存を公開にしたとき（`MyReplaysService.update` が非公開→公開の時だけ各フレンドへ `activityReplayShare`、Round 15 統合） | `replay_share:{owner}:{raceId}`（公開を外してまた公開しても1件） | しない | `friends` | `replay`（`id` = 公開した人。フレンドのリプレイ一覧へ） |
 
 - 大会（`tournament`）と共同目標（`team_goal`）の賞品はプレゼントボックスにも入るが、`gift_arrived` は書かない（同じことを2回書かない。各行のリンクから見られる）。
 - おかえり・新着情報（REQ-CB-*）は**項目にしない**：一覧の `links.whatsNew`（新着の数）でその画面へ案内するだけ。週替わりチャレンジ（§31）の結果は自分で走った直後に結果画面で出るので、留守の間の出来事にならない（項目なし）。

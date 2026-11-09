@@ -28,7 +28,12 @@ const idOrThrow = (raceId: string) => { if (!isReplayId(raceId)) throw new AppEr
 const bytesOf = (s: string) => new TextEncoder().encode(s).length;
 
 export class MyReplaysService {
-  constructor(private readonly master: () => Master, private readonly player: (uid: string) => PlayerInvoker, private readonly store: ReplayStore) {}
+  /**
+   * @param friendIds REQ-ACT-002 (§40): the player's friends, for the activity entry when a save becomes public
+   *   (http/app.ts friendIdsFrom). Absent = no activity entries (tests and tools that do not need them).
+   */
+  constructor(private readonly master: () => Master, private readonly player: (uid: string) => PlayerInvoker, private readonly store: ReplayStore,
+    private readonly friendIds?: (uid: string) => Promise<string[]>) {}
 
   view(uid: string) { return this.player(uid).invoke('myReplays', uid); }
 
@@ -67,9 +72,21 @@ export class MyReplaysService {
     }
   }
 
-  update(uid: string, raceId: string, patch: ReplayPatch) {
+  /**
+   * REQ-MYRP-004. When a save becomes public (§40 REQ-ACT-002), each friend gets one `replay_share` activity entry — keyed by
+   * owner + race, so turning it off and on again writes nothing new; a friend who blocked the owner gets none (recordActivity).
+   * Best effort after the change is stored: a friend that cannot be reached misses the entry, the update still succeeds.
+   */
+  async update(uid: string, raceId: string, patch: ReplayPatch) {
     idOrThrow(raceId);
-    return this.player(uid).invoke('replayUpdate', uid, raceId, patch);
+    const p = this.player(uid);
+    const was = patch.public === true && this.friendIds ? await p.invoke('replayOwnRef', uid, raceId).catch(() => null) : null;
+    const out = await p.invoke('replayUpdate', uid, raceId, patch);
+    if (was?.kind === 'saved' && !was.rec.public && out.saved.public && this.friendIds) {
+      const friends = await this.friendIds(uid).catch(() => [] as string[]);
+      await Promise.all(friends.map((f) => this.player(f).invoke('activityReplayShare', f, uid, raceId).catch(() => undefined)));
+    }
+    return out;
   }
 
   /** REQ-MYRP-005: the record first, then the copy (a copy left by a failed delete is never listed and goes with the account). */

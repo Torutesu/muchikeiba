@@ -300,13 +300,20 @@ export function sharedFor(m: Master, s: PlayerState, viewerId: string, now: numb
 export type EntrantOwner = 'you' | 'player' | 'cpu' | 'owner_player';
 
 /**
+ * REQ-MYRP-008: how another human is named in anything replayed or photographed from a race (`p<slot>`, 0-based slot).
+ * The one implementation on the server: saved replays (below) and photo mode (§38, client PhotoNames →
+ * Muchi.Client.ReplayPrivacy.MaskedId, the same rule in C#) never name other players.
+ */
+export const maskedPlayerId = (slot: number) => `p${slot}`;
+
+/**
  * REQ-MYRP-008: the log as stored, with every human `playerId` other than the owner's replaced by `p<slot>` (the engine
  * never reads it, so the result hash is unchanged) and per-slot horse names with who rode them — never other players' names.
  */
 export function replayDataOf(m: Master, ownerId: string, viewer: 'me' | 'friend', file: SavedReplayFile, meta: { raceId: string; replayTitle: string | null; slot: number; rulesetVersion: string }) {
   const cfg = file.log.config as RaceStartConfig;
   const entrants = cfg.entrants.map((e) => ({
-    ...e, playerId: e.kind === 'cpu' ? null : e.playerId === ownerId ? e.playerId : `p${e.slot}`,
+    ...e, playerId: e.kind === 'cpu' ? null : e.playerId === ownerId ? e.playerId : maskedPlayerId(e.slot),
   }));
   const log = { ...file.log, config: { ...cfg, entrants } };
   const owner = (e: RaceStartConfig['entrants'][number]): EntrantOwner =>

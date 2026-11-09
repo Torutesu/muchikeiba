@@ -413,7 +413,7 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
     hall: makeHallService(player, shardedHallDirectory(env.DIRECTORY), () => master), // REQ-HOF-*
     invite: makeInviteService(player, shardedInviteDirectory(env.DIRECTORY), shardedDirectory(env.DIRECTORY), () => master), // REQ-INV-*
     teams: makeTeamsService(env, () => master, player),
-    myReplays: new MyReplaysService(() => master, player, r2ReplayStore(env.REPLAYS)), // REQ-MYRP-*
+    myReplays: new MyReplaysService(() => master, player, r2ReplayStore(env.REPLAYS), friendIdsFrom(player)), // REQ-MYRP-*; friends for the §40 replay_share entry
     rival: new RivalService(() => master, rivalPlayersFrom(player), durableRivalRegistry(env.LEADERBOARD)), // REQ-RIVAL-*
     events: new EventsService(() => master, eventPlayersFrom(player), {
       enqueue: (eventId, p, e) => call(mm().eventEnqueue!(eventId, p, e)),

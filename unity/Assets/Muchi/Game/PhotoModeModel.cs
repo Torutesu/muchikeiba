@@ -166,6 +166,23 @@ namespace Muchi.Game
             return new PhotoModeModel(api, snap, src, playerSlot, visuals, courseName, friends, online, track, clock);
         }
 
+        /// <summary>
+        /// §37 マイリプレイ: 「この瞬間を撮る」 in the replay player — the verified saved replay at the frame on screen. Other
+        /// players are already p&lt;slot&gt; in a saved replay (the server masks them, <see cref="ReplayPrivacy"/>), so the
+        /// plates name them the same way. Your own save is recorded with its replay id (the photo list can reopen it); a
+        /// friend's public replay is a plain replay source. Null when the replay is not playable (再生できません).
+        /// </summary>
+        public static PhotoModeModel OpenFromSavedReplay(ReplayPlayer player, IPhotoApi api, RaceVisuals visuals = null, string courseName = null,
+            IReadOnlyDictionary<string, string> friends = null, Func<bool> online = null, Action<AnalyticsEvent> track = null, Func<long> clock = null)
+        {
+            if (player == null || !player.Playable) return null;
+            var tick = player.Frame().Tick;
+            var mode = PhotoSource.ModeOf(player.Config.Mode, true); // a saved replay is a race the server confirmed
+            var pm = OpenFromReplay(player.Config, player.Data.Log.Inputs, tick, player.OwnSlot, mode, player.Data.RaceId, api, visuals, courseName, friends, online, track, clock);
+            if (player.Data.Owner == "me") pm.Spec.Source.ReplayId = player.Data.RaceId;
+            return pm;
+        }
+
         /// <summary>A local id for a race without a server id ("local:&lt;seed&gt;"): enough to find it again on this device.</summary>
         public static string LocalRaceId(RaceConfig cfg) => "local:" + (cfg.RaceId ?? "race") .Replace(' ', '_') + "_" + cfg.Seed;
 

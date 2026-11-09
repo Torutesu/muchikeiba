@@ -134,9 +134,17 @@ namespace Muchi.Client
     public sealed class PhotoSource
     {
         public string Kind = PhotoSourceKinds.Result, Mode = "practice", RaceId;
+        /// <summary>§37: the player's own saved replay the photo was taken from (= its raceId; null otherwise).</summary>
+        public string ReplayId;
         public int Tick;
-        internal static PhotoSource Parse(JsonNode o) => new PhotoSource { Kind = J.Str(o, "kind"), Mode = J.Str(o, "mode"), RaceId = J.Str(o, "raceId"), Tick = J.Int(o, "tick") };
-        internal JsonNode ToJson() => JsonNode.Obj().Set("kind", Kind).Set("mode", Mode).Set("raceId", RaceId).Set("tick", Tick);
+        internal static PhotoSource Parse(JsonNode o) => new PhotoSource { Kind = J.Str(o, "kind"), Mode = J.Str(o, "mode"), RaceId = J.Str(o, "raceId"), Tick = J.Int(o, "tick"), ReplayId = J.Str(o, "replayId") };
+        /// <summary>The wire form (POST /v1/photos `source`).</summary>
+        public JsonNode ToJson()
+        {
+            var o = JsonNode.Obj().Set("kind", Kind).Set("mode", Mode).Set("raceId", RaceId).Set("tick", Tick);
+            if (!string.IsNullOrEmpty(ReplayId)) o.Set("replayId", ReplayId);
+            return o;
+        }
 
         /// <summary>
         /// The wire mode of a race (photo record `source.mode`). A race the device runs alone (offline practice, which uses a
@@ -216,9 +224,11 @@ namespace Muchi.Client
         public string Id;
         public long CreatedAt;
         public PhotoSpec Spec;
+        /// <summary>§37: the saved replay it points at is still saved (offer 「リプレイを見る」). False without one.</summary>
+        public bool ReplaySaved;
         internal static PhotoRecord Parse(JsonNode o) => new PhotoRecord
         {
-            Id = J.Str(o, "id"), CreatedAt = J.Long(o, "createdAt"),
+            Id = J.Str(o, "id"), CreatedAt = J.Long(o, "createdAt"), ReplaySaved = J.Bool(o, "replaySaved", false),
             Spec = new PhotoSpec
             {
                 Source = PhotoSource.Parse(J.Opt(o, "source")), Camera = PhotoCameraParams.Parse(J.Opt(o, "camera")), LookId = J.Str(o, "lookId"), FrameId = J.Str(o, "frameId"),
@@ -412,8 +422,8 @@ namespace Muchi.Client
         public const string YouLabel = "あなた";
         public const string CpuLabel = "CPU";
 
-        /// <summary>The masked id of a non-friend human (0-based slot, like §37).</summary>
-        public static string Masked(int slot) => "p" + slot.ToString(CultureInfo.InvariantCulture);
+        /// <summary>The masked id of a non-friend human: the §37 rule itself (one implementation, <see cref="ReplayPrivacy"/>).</summary>
+        public static string Masked(int slot) => ReplayPrivacy.MaskedId(slot);
 
         /// <param name="friendNames">Friends' player id → display name (what the friend list shows).</param>
         public static List<PhotoNamePlate> Plates(RaceConfig config, int playerSlot, IReadOnlyDictionary<string, string> friendNames, string mode)

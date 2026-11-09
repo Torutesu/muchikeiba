@@ -144,6 +144,25 @@ namespace Muchi.Engine.Tests
         }
 
         [Fact]
+        public void PlatesUseTheSavedReplayMaskingAndASavedReplayPhotoKeepsItsReplayId()
+        {
+            // §37 × §38: one masking rule (ReplayPrivacy, = the server's maskedPlayerId); a saved replay arrives masked
+            Assert.Equal("p2", ReplayPrivacy.MaskedId(2));
+            Assert.Equal(ReplayPrivacy.MaskedId(5), PhotoNames.Masked(5));
+            Assert.True(ReplayPrivacy.IsMasked("p11"));
+            Assert.False(ReplayPrivacy.IsMasked("p01"));
+            Assert.False(ReplayPrivacy.IsMasked("player_9"));
+            var cfg = Field();
+            cfg.Entrants[2].PlayerId = ReplayPrivacy.MaskedId(2); // as GET /v1/replays/:raceId/data returns it
+            Assert.Equal("p2", PhotoNames.Plates(cfg, 0, new Dictionary<string, string> { ["friend_1"] = "ともだち" }, PhotoNameModes.Masked)[2].Rider);
+            // the record points at the saved replay (POST /v1/photos source.replayId), and reads it back
+            var src = new PhotoSource { Kind = PhotoSourceKinds.Replay, Mode = "ranked", RaceId = "rk_1", Tick = 300, ReplayId = "rk_1" };
+            var json = src.ToJson().ToString();
+            Assert.Contains("\"replayId\":\"rk_1\"", json);
+            Assert.DoesNotContain("replayId", new PhotoSource { RaceId = "rk_2" }.ToJson().ToString());
+        }
+
+        [Fact]
         public void CaptionCheckFollowsTheWordingRules()
         {
             Assert.Null(PhotoCaption.Problem(null));

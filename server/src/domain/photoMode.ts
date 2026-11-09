@@ -185,7 +185,8 @@ export function validateCaption(m: Master, raw: string | null | undefined): stri
 
 export interface PhotoStampPlacement { id: string; xPermille: number; yPermille: number; scalePermille: number; rotDeg: number }
 export interface PhotoInput {
-  source: { kind: typeof PHOTO_SOURCES[number]; mode: typeof PHOTO_MODES[number]; raceId: string; tick: number };
+  /** replayId (§37): the player's own saved replay the photo was taken from (kind replay; saved replays are keyed by raceId). */
+  source: { kind: typeof PHOTO_SOURCES[number]; mode: typeof PHOTO_MODES[number]; raceId: string; tick: number; replayId?: string };
   camera: { focusSlot: number; orbitDeg: number; distanceDm: number; heightDm: number; fovDeg: number; dof: number };
   lookId: string; frameId: string | null; stamps: PhotoStampPlacement[];
   caption: string | null; names: 'masked' | 'hidden'; hideUi: boolean;
@@ -199,6 +200,7 @@ export const photoInputSchema = z.object({
   source: z.object({
     kind: z.enum(PHOTO_SOURCES), mode: z.enum(PHOTO_MODES),
     raceId: z.string().min(1).max(128).regex(/^[A-Za-z0-9_:.-]+$/), tick: int.min(0).max(PHOTO_HARD_LIMITS.maxTick),
+    replayId: z.string().min(1).max(128).regex(/^[A-Za-z0-9_:.-]+$/).optional(),
   }).strict(),
   camera: z.object({ focusSlot: int.min(0).max(17), orbitDeg: int, distanceDm: int, heightDm: int, fovDeg: int, dof: int }).strict(),
   lookId: z.string().regex(PHOTO_ID_RE),
@@ -217,9 +219,14 @@ export function ensurePhotos(s: PlayerState): PhotoState {
 }
 
 const enabledOrThrow = (m: Master) => { if (!photoOf(m).config.enabled) throw new AppError('NOT_FOUND', 'photo mode is not available'); };
+/** The player's saved replays (§37) by raceId: a photo taken from one may point at it. */
+const savedReplayIds = (s: PlayerState) => new Set((s.myReplays?.saved ?? []).map((r) => r.raceId));
 const listView = (m: Master, s: PlayerState) => {
   const recs = s.photos?.records ?? [];
-  return { photos: [...recs].reverse(), count: recs.length, max: photoOf(m).config.maxSaved };
+  const saved = savedReplayIds(s);
+  // replaySaved: the saved replay is still there (the app offers 「リプレイを見る」); a deleted one leaves the photo as it is
+  const view = (r: PhotoRecord) => (r.source.replayId ? { ...r, replaySaved: saved.has(r.source.replayId) } : r);
+  return { photos: [...recs].reverse().map(view), count: recs.length, max: photoOf(m).config.maxSaved };
 };
 
 export function photosView(m: Master, s: PlayerState) {
@@ -241,6 +248,12 @@ export function savePhoto(m: Master, s: PlayerState, input: PhotoInput, now: num
   // REQ-PHOTO-001: a race run together with other people is never paused live
   if (input.source.kind === 'paused' && (SHARED_RACE_MODES as readonly string[]).includes(input.source.mode)) {
     throw new AppError('PHOTO_SOURCE_INVALID', `a ${input.source.mode} race cannot be paused; take the photo from the result or the replay`);
+  }
+  // §37: a photo from the replay player may point at the player's own saved replay (the same race, still saved)
+  const replayId = input.source.replayId;
+  if (replayId !== undefined) {
+    if (input.source.kind !== 'replay' || replayId !== input.source.raceId) throw new AppError('BAD_REQUEST', 'replayId is the raceId of a replay source');
+    if (!savedReplayIds(s).has(replayId)) throw new AppError('NOT_FOUND', 'no such saved replay');
   }
   const cam = input.camera;
   for (const k of ['orbitDeg', 'distanceDm', 'heightDm', 'fovDeg', 'dof'] as const) {

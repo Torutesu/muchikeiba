@@ -6,6 +6,7 @@
 using Muchi.Client;
 using Muchi.Engine;
 using Muchi.Game;
+using Muchi.Net;
 
 static class PhotoModeChecks
 {
@@ -164,6 +165,20 @@ static class PhotoModeChecks
         check(off.Snapshot.Tick == Math.Min(me.FinishTick + 1, d.Sim.Tick), "the result photo is the moment the partner crossed the line (tick " + off.Snapshot.Tick + ")");
         var rp = PhotoModeModel.OpenFromReplay(d.Config, d.Race.AllInputs(), 300, 0, "ranked", "r_9", api);
         check(rp.Spec.Source.Kind == "replay" && rp.Spec.Source.Mode == "ranked" && rp.Snapshot.Tick == 300, "the replay player opens photo mode at its tick (any mode)");
+
+        // §37 マイリプレイ: 「この瞬間を撮る」 in the saved-replay player — the frame on screen, the replay id for your own save
+        foreach (var owner in new[] { "me", "friend" })
+        {
+            var log = new ReplayLog { Config = d.Config, EndTick = d.Sim.Tick, Inputs = d.Race.AllInputs().ToList() };
+            var data = ReplayData.FromJson(JsonNode.Obj().Set("raceId", "rk_saved").Set("owner", owner).Set("resultHash", d.Sim.Result.Hash).Set("focusSlot", 0)
+                .Set("rulesetVersion", rs.RulesetVersion).Set("playable", true).Set("entrants", JsonNode.Arr()).Set("replayLog", ProtocolCodec.ReplayLogToJson(log)).ToString());
+            var player = ReplayPlayer.Open(data);
+            player.Seek(12_000);
+            var sp = PhotoModeModel.OpenFromSavedReplay(player, api);
+            check(sp != null && sp.Spec.Source.Kind == "replay" && sp.Snapshot.Tick == player.Frame().Tick && sp.Spec.Source.RaceId == "rk_saved",
+                "saved replay (" + owner + "): photo mode opens at the frame on screen (tick " + sp?.Snapshot.Tick + ")");
+            check(sp.Spec.Source.ReplayId == (owner == "me" ? "rk_saved" : null), "saved replay (" + owner + "): the record points at your own save only");
+        }
 
         // English
         Loc.LoadEnglish(File.ReadAllText(Path.Combine(root, "engine", "Muchi.Client", "Resources", "Muchi", "ui-en.json")));

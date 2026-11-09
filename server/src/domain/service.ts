@@ -1250,6 +1250,10 @@ export class PlayerService {
     try { const w = whatsNew(this.d.master, s, now); whatsNewCount = w.items.length + w.more; } catch { /* comeback disabled */ }
     return activityPage(this.d.master, s, now, cursor, limit, whatsNewCount);
   }
+  /** REQ-ACT-002 (§37 × §40): a friend made a saved replay public — one entry per owner + race (blocks: recordActivity). */
+  activityReplayShare(id: string, ownerId: string, raceId: string) {
+    return this.tx(id, null, (s, now) => recordActivity(this.d.master, s, { kind: 'replay_share', source: `replay_share:${ownerId}:${raceId}`, actor: { id: ownerId }, linkId: ownerId }, now));
+  }
   /** REQ-ACT-008: mark read up to an id (idempotent). */
   activityRead(id: string, upTo: number | null) { return this.tx(id, null, (s, now) => markActivityRead(this.d.master, s, upTo, now)); }
 

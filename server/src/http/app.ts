@@ -88,7 +88,7 @@ export type PlayerMethod =
   | 'myReplays' | 'replayPrepareSave' | 'replayCommitSave' | 'replayForget' | 'replayUpdate' | 'replayDelete' | 'replayOwnRef' | 'replayShared' | 'replayViewed'
   | 'raceAdvice'
   | 'photoCatalog' | 'photos' | 'photoSave' | 'photoDelete'
-  | 'activity' | 'activityRead' | 'teamGoalMilestone';
+  | 'activity' | 'activityRead' | 'activityReplayShare' | 'teamGoalMilestone';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;

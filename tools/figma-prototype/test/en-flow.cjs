@@ -1,7 +1,7 @@
 // Round 11 (REQ-L10N-013): a short pass of the ムチ一閃 UI in English on the landscape phone (844×390 @2x).
 // EN on from the start, the day-7 demo player: home, shop (recommended / coins / looks), the legal page (Japanese text
 // with the English courtesy note), purchase confirmation, season pass, scout calendar and odds, the stable, settings,
-// the coin shortfall sheet (round 12), a ranked race (HUD) and its result, 調教 (cards, mini-game, result, skip), ライバル (detail, races, week result), then the 図鑑 (every tab, details), 実績 (claim one / all) and the title chooser,
+// the coin shortfall sheet (round 12), a ranked race (HUD) and its result, 調教 (cards, mini-game, result, skip), ライバル (detail, races, week result), 殿堂 (gallery, ceremony, plaque, a friend's hall, round 14), then the 図鑑 (every tab, details), 実績 (claim one / all) and the title chooser,
 // the プレゼントボックス (box, claim one / all, history) and the かんたん操作 suggestion, the weekly challenge (list, next week, a race with the condition in the HUD, the verified result).
 // On every screen:
 //   - no Japanese is left on the stage (outside the .keep-ja legal text and the 日本語 language button);
@@ -211,6 +211,21 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await waitScreen('challenge-result', 60000); await waitIn('.wch-verdict'); await shot('challenge-result', 600);
   assert.match(await page.locator('.screen.in .wch-verdict').innerText(), /^Challenge (cleared|failed)$/, 'challenge: the verdict in English');
   await click('一覧へ'); await waitScreen('weekly-challenge'); await waitIn('.wch-card'); await shot('weekly-challenge-after', 400);
+
+  // round 14: 殿堂 in English (REQ-HOF-*): the gallery, a retirement ceremony, the plaque detail, a friend's hall
+  await show('Hall'); await waitScreen(['hall', 'hall-ceremony']);
+  if (await screen() === 'hall-ceremony') { await page.locator('.screen.in .hof-continue').click(); await waitScreen('hall'); }
+  await waitIn('.hof-summary'); await shot('hall', 400);
+  await click('デモ：引退式'); await waitScreen('hall-ceremony'); await waitIn('.hof-ceremony');
+  await shot('hall-ceremony', 900);
+  assert.match(await page.locator('.screen.in').innerText(), /Career highlights/, 'hall: the ceremony in English');
+  await page.locator('.screen.in .hof-continue').click(); await waitScreen('hall'); await waitIn('.hof-plaque');
+  await shot('hall-gallery', 400);
+  await page.locator('.screen.in .hof-plaque').first().click(); await waitIn('.hof-detail');
+  await shot('hall-plaque', 500);
+  await page.locator('.screen.in .hof-detail [data-label="閉じる"]').click(); await page.waitForTimeout(300);
+  await click('デモ：友達の殿堂'); await waitScreen('hall-friend'); await waitIn('.hof-plaque');
+  await shot('hall-friend', 400);
 
   // round 11: 図鑑・実績・称号 in English (REQ-COL-*, REQ-ACH-*): a week of play on the real rules, every tab, a detail,
   // the achievement list (claim one, claim all), the title chooser

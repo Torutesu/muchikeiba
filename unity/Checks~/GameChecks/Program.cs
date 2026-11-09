@@ -100,6 +100,8 @@ static class Program
         Loc.LoadEnglish(File.ReadAllText(Path.Combine(Root, "engine", "Muchi.Client", "Resources", "Muchi", "server-en.json")));
         Loc.LoadEnglish(File.ReadAllText(Path.Combine(Root, "engine", "Muchi.Client", "Resources", "Muchi", "ui-en.json")));
         await TeamGoalChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 14: 殿堂・引退式 (HallModel: gallery, ceremony once, retire, friend's hall, progress, visibility; REQ-HOF-*)");
+        await HallChecks.Run(Check, Ruleset());
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

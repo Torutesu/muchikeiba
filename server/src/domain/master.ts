@@ -191,6 +191,8 @@ export interface Progression {
   weeklyChallenge?: import('./weeklyChallenge.js').WeeklyChallengeConfig;
   /** REQ-TGOAL-*: 支部の共同目標 (teamGoal.ts, validated by teamGoalProblems). Absent = no team goals. */
   teamGoal?: import('./teamGoal.js').TeamGoalConfig;
+  /** REQ-HOF-*: 殿堂 and the retirement ceremony (hallOfFame.ts, validated by hallProblems). Absent / disabled = none. */
+  hall?: import('./hallOfFame.js').HallConfig;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */

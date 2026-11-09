@@ -372,7 +372,8 @@ export interface TournamentPorts<E> {
   heatResult(raceId: string): Promise<HeatOutcome | null>;
   notify(playerId: string, templateId: string, vars: Record<string, string>): Promise<void>;
   /** Records the result on the player (once per tournament) and grants the prize. */
-  award(playerId: string, tournamentId: string, rank: number, reward: Reward | null, name: string): Promise<void>;
+  /** `horseId` (REQ-HOF-002): the horse the player registered, so its career records the final rank. */
+  award(playerId: string, tournamentId: string, rank: number, reward: Reward | null, name: string, horseId?: string | null): Promise<void>;
 }
 
 /**
@@ -574,7 +575,7 @@ async function stepInner<E>(
       if (p.done || p.dead) continue;
       if (now < p.retryAt) { wake.push(p.retryAt); continue; }
       let failure: unknown = null;
-      try { await ports.award(p.playerId, t.def.id, p.rank, prizeFor(t.def, p.rank), t.def.name); } catch (e) { failure = e ?? new Error('award failed'); }
+      try { await ports.award(p.playerId, t.def.id, p.rank, prizeFor(t.def, p.rank), t.def.name, t.registrants[p.playerId]?.horseId ?? null); } catch (e) { failure = e ?? new Error('award failed'); }
       if (!failure) {
         p.done = true;
         p.error = null;
@@ -618,7 +619,7 @@ export async function retryPayout<E>(t: TournamentState<E>, playerId: string, aw
   if (!p) return { ok: false, error: 'no such payout' };
   if (p.done) return { ok: true };
   try {
-    await award(p.playerId, t.def.id, p.rank, prizeFor(t.def, p.rank), t.def.name);
+    await award(p.playerId, t.def.id, p.rank, prizeFor(t.def, p.rank), t.def.name, t.registrants[p.playerId]?.horseId ?? null);
     p.done = true; p.dead = false; p.error = null;
     if (t.status === 'paying' && Object.values(t.payouts).every((x) => x.done || x.dead)) { t.status = 'finished'; t.finishedAt = now; }
     return { ok: true };

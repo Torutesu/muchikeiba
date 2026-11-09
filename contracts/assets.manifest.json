@@ -60,7 +60,7 @@
    "fallback": "decor/default",
    "description": "厩舎の飾り（REQ-ITEM-006）",
    "dynamic": false,
-   "count": 5
+   "count": 6
   },
   "stamp": {
    "fallback": "stamp/default",
@@ -78,7 +78,7 @@
    "fallback": "item/default",
    "description": "アイテムのアイコン",
    "dynamic": false,
-   "count": 27
+   "count": 28
   },
   "banner/gacha": {
    "fallback": "banner/gacha/default",
@@ -337,6 +337,7 @@
   "decor/default",
   "decor/flower_box",
   "decor/golden_horseshoe",
+  "decor/hall_plaque_frame",
   "decor/stable_plaque",
   "decor/trophy_shelf",
   "emblem/shape/circle",
@@ -407,6 +408,7 @@
   "item/course_spring_meadow",
   "item/decor_flower_box",
   "item/decor_golden_horseshoe",
+  "item/decor_hall_plaque_frame",
   "item/decor_stable_plaque",
   "item/decor_trophy_shelf",
   "item/default",

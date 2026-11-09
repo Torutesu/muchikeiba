@@ -530,3 +530,14 @@ html[lang="en"] .pass-strip .cell small { font-size: 12px; }
 .tg-row.mine { box-shadow: inset 3px 0 0 var(--cyan); background: rgba(var(--cyan-rgb), .08); }
 .tg-row.mine .tg-name { color: var(--cyan); }
 .tf-row.goal .tf-main { color: var(--cyan); }
+
+/* round 14: 殿堂・引退式 (REQ-HOF-*) */
+.hof-plaque .img { object-fit: cover; border-radius: 2px; }
+.hof-framed { box-shadow: inset 0 0 0 2px var(--gold), 0 0 0 1px rgba(240, 192, 32, .35); }
+.hof-framed-img { box-shadow: 0 0 0 3px var(--gold); }
+.hof-hero { object-fit: contain; filter: drop-shadow(0 18px 40px rgba(0, 0, 0, .55)); }
+.hof-stamp { border: 6px double #d8423a; color: #d8423a; border-radius: 50%; transform: rotate(-14deg); background: rgba(20, 8, 8, .35);
+  box-shadow: 0 0 0 2px rgba(216, 66, 58, .35); animation: hof-stamp .5s cubic-bezier(.2, 1.6, .4, 1) both .25s; }
+.hof-stamp .label { color: #e8564c; }
+@keyframes hof-stamp { from { transform: rotate(-14deg) scale(2.2); opacity: 0; } to { transform: rotate(-14deg) scale(1); opacity: 1; } }
+.hof-vis[data-on="true"] { outline: 2px solid var(--cyan); outline-offset: -2px; }

@@ -212,6 +212,8 @@ export interface PlayerState {
   gachaLog?: import('./history.js').GachaLogState;
   /** REQ-WCH-*: weekly challenge sessions, this and last week's progress, earned badges (weeklyChallenge.ts wchState). */
   weeklyChallenge?: import('./weeklyChallenge.js').WeeklyChallengeState;
+  /** REQ-HOF-*: 殿堂 — per-horse careers, retirement ceremonies, permanent plaques, visibility (hallOfFame.ts ensureHall). */
+  hall?: import('./hallOfFame.js').HallState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

@@ -32,6 +32,8 @@ import { signAdMobQuery, StaticKeySource, verifyAdMobCallback } from '../../../s
 import { MemoryRivalRegistry, RivalService, rivalPlayersFrom } from '../../../server/src/domain/rivalService.js';
 import { noteRivalTa, prevWeekId, rivalCard, weekEndMs, weekIdAt } from '../../../server/src/domain/rival.js';
 import type { PlayerInvoker } from '../../../server/src/http/app.js';
+import { HallService, MemoryHallDirectory, hallConfig, hallSnapshot } from '../../../server/src/domain/hallOfFame.js';
+import { hallPlayersFrom } from '../../../server/src/http/hallPorts.js';
 // REQ-L10N-*: the server's English tables (master/locale-en.json + i18n/en.ts), the client's (ui-en.json) and the
 // prototype's own screen texts (proto-en.json), in one catalog with the server's template rules (katakana names romanized)
 import { compileCatalogWith, translateText, romanizeName } from '../../../server/src/i18n/catalog.js';
@@ -82,7 +84,42 @@ const svc = new PlayerService(repo, {
     return r;
   },
   onTeamGoalForget: async (p) => teams.goalForget(p.teamId, p.playerId),
+  // round 14 (REQ-HOF-011): the visitors' copy of each hall (DirectoryDO halls in production; memory here)
+  onHall: async (id, snap) => { if (snap) await hallDir.put(snap); else await hallDir.remove(id); },
 });
+// round 14 (REQ-HOF-*): 殿堂 on the real HallService. A demo friend (demo_hof_1, アオバ) has a hall of their own to visit.
+const hallDir = new MemoryHallDirectory();
+const hallSvc = new HallService(hallPlayersFrom(() => rivalInvoker), hallDir, () => hallConfig(master));
+const HALL_DEMO = 'demo_hof_1';
+let hallRace = 0;
+/** Confirmed races for one horse (the path settleRace → applyRace takes, with the entrant's horse id). */
+async function hallRaces(uid: string, horseId: string, places: number[], mode: 'ranked' | 'event' = 'ranked') {
+  for (const place of places) {
+    await svc.applyRace(uid, { raceId: `proto_hof_${Date.now().toString(36)}_${hallRace++}`, mode, place, fieldSize: 12, newRating: null, void: false, humans: 4, horseId,
+      details: { trackId: 'aoba_turf_1600', style: 'sashi', finishTick: 1900, startReactionTicks: 2, whips: 3, whipMashed: false, cpuAssisted: false } });
+  }
+}
+/** A horse of `uid` with a career: wins / other places, an optional tournament title, then (optionally) retired. */
+async function hallDemoHorse(uid: string, tpl: number, name: string, wins: number, others: number, title: string | null, retire: boolean) {
+  const horseId = await svc.tx(uid, null, (s, t) => { const h = createHorseFromTemplate(s, master.templates[tpl % master.templates.length]!, t); h.name = name; h.named = true; return h.id; });
+  await hallRaces(uid, horseId, [...Array(wins).fill(1), ...Array.from({ length: others }, (_, i) => 2 + (i % 6))]);
+  if (title) await svc.tournamentClose(uid, `proto_cup_${horseId}`, 1, null, title, horseId);
+  return retire ? (await svc.retire(uid, horseId)).ceremony : horseId;
+}
+async function hallDemoFriend() {
+  if (!(await repo.get(HALL_DEMO))) {
+    await svc.bootstrap(HALL_DEMO);
+    await svc.setDisplayName(HALL_DEMO, 'アオバ');
+    await hallDemoHorse(HALL_DEMO, 3, 'アオバノツバサ', 12, 9, null, true);
+    await hallDemoHorse(HALL_DEMO, 5, 'ギンノカケハシ', 4, 6, '秋の陣', true);
+    await hallDemoHorse(HALL_DEMO, 7, 'ハルカゼダンサー', 10, 20, '春の陣', true);
+  }
+  await svc.tx(HALL_DEMO, null, (s) => { if (!s.friends.ids.includes(ID)) s.friends.ids.push(ID); });
+  await svc.tx(ID, null, (s) => { if (!s.friends.ids.includes(HALL_DEMO)) s.friends.ids.push(HALL_DEMO); });
+  // the memory directory does not survive a reload: re-publish the friend's copy from their state
+  if (!(await hallDir.get(HALL_DEMO))) { const snap = hallSnapshot(master, await svc.state(HALL_DEMO), now()); if (snap) await hallDir.put(snap); }
+  return HALL_DEMO;
+}
 // round 12 (REQ-RIVAL-*): the weekly rival on the real RivalService + an in-memory week registry (RivalWeekCore, the
 // LeaderboardDO rival:<week> logic). A demo rival (demo_rv_1, ミドリカワ) registers with the local player as last week's
 // candidates, so this week's pairing, head to head, time attack and the week result run the server code paths.
@@ -204,7 +241,9 @@ export const MuchiLogic = {
   applyRace: (raceId: string, place: number, fieldSize: number, details: { trackId: string; style: Style; finishTick: number | null; whips: number; skillFired?: boolean; assist?: 'whip' | 'full' }, config?: RaceStartConfig) =>
     wrap(() => svc.applyRace(ID, { raceId, mode: 'ranked', place, fieldSize, newRating: null, void: false, humans: 1,
       details: { ...details, startReactionTicks: null, whipMashed: false, cpuAssisted: false },
-      ...(config ? { seen: raceFieldSeen(config, config.entrants.find((e) => e.playerId === ID)?.slot ?? -1) } : {}) })),
+      ...(config ? { seen: raceFieldSeen(config, config.entrants.find((e) => e.playerId === ID)?.slot ?? -1) } : {}),
+      // round 14 (REQ-HOF-002): the horse that ran, as settleRace takes it from the entrant
+      ...(config?.entrants.find((e) => e.playerId === ID) ? { horseId: config.entrants.find((e) => e.playerId === ID)!.horse.id } : {}) })),
   reset() {
     try {
       localStorage.removeItem(KEY + ':' + ID); localStorage.removeItem(DAY_KEY);
@@ -213,6 +252,7 @@ export const MuchiLogic = {
     } catch { /* ignore */ }
     inviteCodes.clear();
     rivalReg.weeks.clear(); // round 12: the rival week registry starts over too
+    hallDir.rows.clear(); // round 14: the hall copies too
     dayOffset = 0;
   },
 
@@ -572,6 +612,22 @@ export const MuchiLogic = {
   muteMember: (playerId: string, muted: boolean) => wrap(() => teamsSvc.mute(ID, playerId, muted)),
   /** Unlocks for the demo: lifetime races (play) — the pass and cosmetic stamps unlock by demoPurchase / the 見た目 shop. */
   async demoRaces(count: number) { const s = await svc.state(ID); s.stats.races = Math.max(s.stats.races, count); new LocalRepo().put(s); },
+  // ---------------------------------------------------------------- round 14: 殿堂・引退式 (REQ-HOF-*, contracts/protocol.md §34)
+  hall: {
+    mine: (cursor: string | null = null, limit: number | null = null) => wrap(() => hallSvc.mine(ID, cursor, limit)),
+    visit: (playerId: string, cursor: string | null = null) => wrap(() => hallSvc.visit(ID, playerId, cursor, null)),
+    career: (horseId: string) => wrap(() => svc.horseCareer(ID, horseId)),
+    ack: (horseId: string) => wrap(() => svc.hallAck(ID, horseId)),
+    setVisibility: (v: string) => wrap(() => svc.hallSettings(ID, v)),
+    /** A friend with a hall of three plaques (the friendship both ways), for 友達の殿堂. */
+    demoFriend: () => wrap(() => hallDemoFriend()),
+    /** Confirmed races for one of my horses (wins first), e.g. to bring the partner to its induction. */
+    demoRaces: (horseId: string, wins: number, others: number) => wrap(() => hallRaces(ID, horseId, [...Array(wins).fill(1), ...Array(others).fill(4)])),
+    /** A new horse of mine with a career (a tournament title when `title`), retired: returns its ceremony. */
+    demoRetire: (name: string, wins: number, others: number, title: string | null) => wrap(() => hallDemoHorse(ID, 2 + hallRace % 9, name, wins, others, title, true)),
+    /** A tournament final rank for one of my horses (tournamentClose with the registered horse). */
+    demoTitle: (horseId: string, name: string) => wrap(() => svc.tournamentClose(ID, `proto_cup_${horseId}_${hallRace++}`, 1, null, name, horseId)),
+  },
   // ---------------------------------------------------------------- round 12: ライバル (REQ-RIVAL-*, contracts/protocol.md §28)
   rival: {
     view: () => wrap(async () => { await rivalDemoSeed(); return rivalSvc.view(ID); }),

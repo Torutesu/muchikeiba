@@ -759,3 +759,22 @@
 - REQ-HIST-012 クライアント：C# `ApiClient.GetHistory*Async`・`CreateSupportTicketAsync`、Unity `HistoryModel`（タブ・続きの読み込み・問い合わせシート・オフライン）。
 - REQ-HIST-013 ガチャ記録の保存上限：状態の中は最大300件（古い順に消す）、Durable Object の `gacha_log` は90日を過ぎた行を書き込みごとに消し、状態には直近20件だけ残す。
 - REQ-HIST-014 経済：履歴はコインを動かさない（E1〜E15 は変わらない）。
+
+## 34. 殿堂・引退式（TS＋C#、`src/domain/hallOfFame.ts`、`contracts/protocol.md` §34）
+
+- REQ-HOF-001 戦績：馬ごとの戦績（戦数・勝数・3着以内・モード別・コースごとの最速タイムアタック・大会の最終順位と優勝数・最大の勝利・ライバルへの先着・最初と最後のレース）をサーバーが確定した結果（`applyRace` のレースごとのガード内、検証済みのタイムアタック、大会の確定順位）からだけ記録する。数えるレースはプレイヤー統計（REQ-STAT-001）と同じ。無効・チュートリアルは数えない。
+- REQ-HOF-002 馬の特定：レース結果には出走表の馬ID（`horseId`）を、大会の確定には登録した馬IDを付ける。どちらも任意のフィールドで、古い結果は数えない。既存のルールセット・レース結果は変えない。
+- REQ-HOF-003 引退式：`POST /v1/horses/:horseId/retire` で引退した時に1回だけ作る。見どころは決まった順（大会優勝→相棒→勝数→最大の勝利→ライバル→タイムアタック→3着以内→現役期間）でデータのあるものを最大 `highlightsMax` 行。乱数を使わない（同じ記録なら同じ引退式）。
+- REQ-HOF-004 確認：`POST /v1/hall/ceremonies/:horseId/ack` は冪等。まだ見ていない引退式は `GET /v1/hall` の `pendingCeremonies` に残る。
+- REQ-HOF-005 殿堂入りの条件：`wins ≥ winsMin`・大会優勝・相棒で `races ≥ partnerRacesMin` のどれか（`progression.hall.criteria`、少なくとも1つは有効）。引退式を作る時に判定する。
+- REQ-HOF-006 永久：殿堂の銘板は種付け・貸し出し・名前の変更で消えない。アカウント削除の時だけ消える。上限は無く、一覧はキーセットでページ分けする。
+- REQ-HOF-007 お金で近道できない：条件は確定したレース結果だけ。レアリティ・能力値・購入・アイテムは条件に入らない。報酬の額縁も売らない（非売品・価格0を `hallProblems` で検証）。
+- REQ-HOF-008 報酬：アカウントで最初の殿堂入りの時に1回だけ、飾り「殿堂の額縁」（見た目だけ、乱数なし、コインなし）。
+- REQ-HOF-009 自分の殿堂：`GET /v1/hall`（ページ、条件、額縁、公開範囲、未確認の引退式）。`PUT /v1/hall/settings` で公開範囲（`friends_team`・`friends`・`private`）。
+- REQ-HOF-010 馬の戦績：`GET /v1/horses/:horseId/career`（記録、条件までの進み具合、現役なら引退式の下見、引退式、銘板）。
+- REQ-HOF-011 公開用の写し：DirectoryDO の `halls` に、持ち主の取引の後に変わっていれば書く。殿堂入り0・非公開・BAN・削除の予約中／実行中は置かない。アカウント削除で消える。
+- REQ-HOF-012 見られる人：友達、または同じ支部のメンバー（`friends_team` の時）。どちらかがブロック（支部フィードのミュート）していれば見られない。見られない時は理由を言わず 404。
+- REQ-HOF-013 見せる中身：持ち主の表示名・称号・勝負服と銘板だけ。支部ID・公開範囲・ブロックリストは返さない。
+- REQ-HOF-014 名前：馬の名前・表示名はプレイヤーが入力したもの。英語でも訳さない（`horseName` は `PLAYER_TEXT_KEYS`）。
+- REQ-HOF-015 クライアント：`Muchi.Client` の API（`Hall.cs`）、Unity の `HallModel`、プロトタイプ（引退式・殿堂・銘板・友達の殿堂、日本語・英語）。
+- REQ-HOF-016 KPI：`hof_induct`（殿堂入り）・`hof_view`（自分／友達／支部の殿堂を見た、書き込みなし）。

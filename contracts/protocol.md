@@ -1480,3 +1480,74 @@ TeamGoalView = { "teamId": "tabc123456", "teamName": "あおばRC", "enabled": t
 
 ### 33.6 クライアント（`HistoryModel`）
 - タブ（購入／有償コイン／無償コイン／ガチャ）、残高ヘッダー（有償・無償を分けて）、月の購入額と上限（未成年のみ）、`nextCursor` で続きを読む（同じタブで2回同時に読まない）、行の詳細、問い合わせシート（行を最大10件選ぶ → `support-ticket`）。オフラインは「オンラインで確認できます」。タブを開くたびに `history_view` を1回。
+
+## 34. 殿堂・引退式（REQ-HOF-001〜016、`server/src/domain/hallOfFame.ts`・`server/src/http/hallPorts.ts`、C# `Hall.cs`・`Muchi.Game.HallModel`）
+馬ごとの**戦績**をサーバーが確定した結果だけから記録し、引退（`POST /v1/horses/:horseId/retire`、REQ-HORSE / 種付け用の既存の引退）のときに**引退式**（決まったルールで選んだ戦績の見どころ）を1回だけ作る。条件を満たした馬は**殿堂入り**し、銘板（プレート）が永久に残る。友達・同じ支部の人は公開用の写しから殿堂を見に行ける（§24 の公開プロフィール・REQ-STABLE-003 のマイ厩舎と同じ仕組み）。報酬は見た目だけ（コインは出ない）。設定は `progression.hall`（`hallProblems` で検証、無い／`enabled: false` なら機能ごと無し）。
+
+### 34.1 戦績（`CareerRecord`、REQ-HOF-001/002）
+プレイヤーの部屋（PlayerDO）の `hall.careers[horseId]` に持つ。書くのは次の3か所だけ（クライアントの申告・購入・アイテムでは増えない）：
+| 出どころ | 何を数える |
+|---|---|
+| `applyRace`（レースID ごとに1回のガード内） | `races`・`wins`（1着）・`places`（3着以内）・`byMode`・`biggestWin`・`rivalWins`・`firstRaceAt`/`lastRaceAt`。数えるのはプレイヤー統計（REQ-STAT-001）と同じ：ランク戦・イベント・大会、人間2人以上のフレンド戦。無効レース・チュートリアル・馬IDの無い結果（古い部屋）は数えない。馬は `settleRace` が出走表から付ける `horseId`（`RaceResultForPlayer` に追加、任意） |
+| `taRecord`（検証済みのタイムアタック、セッションごとに1回） | `bestTa[trackId]`：コースごとの最速タイム（ms） |
+| `tournamentClose`（大会ごとに1回のガード内） | `tournaments[]`（大会名・最終順位）・`tournamentWins`。馬は大会に登録した馬（`award` に `horseId` を追加、任意） |
+- `biggestWin`：モードの重み（大会＞イベント＞ランク戦＞フレンド戦）→ 頭数 → 人間の騎手の数 → 先に勝った方。
+- `rivalWins`：その週の人間のライバル（§28）がその時点で分かっていて、そのランク戦でライバルより先着した回数。
+- 相棒（`flags.partnerHorseId`、REQ-UXS-002）かどうかは記録ではなく毎回判定する。
+- 記録はこの機能の公開後のレースから（それ以前の結果はさかのぼらない）。
+
+### 34.2 引退式（`Ceremony`、REQ-HOF-003/004）
+`POST /v1/horses/:horseId/retire` の応答に `ceremony` が付く（既存のフィールドはそのまま）。引退は現役の馬にしかできないので、引退式は**1頭に1回**。報酬の繁殖牝馬など最初から引退している馬には無い。
+見どころ（`highlights[]`、最大 `highlightsMax`、乱数なし）は次の順に、データがあるものだけ：
+| 順 | `kind` | 文言（サーバーが作る、英語は §23 の境界で訳す） |
+|---|---|---|
+| 1 | `tournament_win` | `大会「{tournament}」優勝`／`大会優勝{n}回（初優勝「{tournament}」）` |
+| 2 | `partner` | `最初の相棒として{n}戦をともに走った` |
+| 3 | `wins` | `通算{races}戦{wins}勝` |
+| 4 | `biggest_win` | `最大の勝利：{course}の{mode}（{n}頭立て）` |
+| 5 | `rival_wins` | `ライバルに{n}回先着` |
+| 6 | `ta_best` | `タイムアタック {course} {time}`（いちばん最近更新したコース、同時ならコースID順） |
+| 7 | `places` | `3着以内{n}回`（勝ちが無い時だけ） |
+| 8 | `career_span` | `現役{days}日・{n}戦` |
+```json
+{ "horseId": "h_12", "horseName": "ミドリノカゼ", "retiredAt": 1793000000000, "partner": true,
+  "career": { "races": 34, "wins": 11, "places": 20, "tournamentWins": 1, "firstRaceAt": 1790000000000, "lastRaceAt": 1792990000000 },
+  "highlights": [ { "kind": "tournament_win", "text": "大会「秋の陣」優勝", "params": { "tournament": "秋の陣", "n": 1 } }, "…" ],
+  "inducted": true, "reasons": ["wins", "tournament", "partner"], "rewardItemId": "decor_hall_plaque_frame", "ackedAt": null }
+```
+- `POST /v1/hall/ceremonies/:horseId/ack`（要認証）：見たことを記録。**冪等**（2回目以降は最初の `ackedAt` と `already: true`）。引退式の無い馬は 404。
+- `GET /v1/hall` の `pendingCeremonies` に、まだ見ていない引退式（新しい順、最大20）が並ぶ。オフラインで見逃しても次に開いた時に出せる。
+
+### 34.3 殿堂入り（REQ-HOF-005〜008）
+引退式を作る時に、記録が次の**どれか**を満たせば殿堂入り（`reasons`）：
+| `reason` | 条件（`progression.hall.criteria`） | 既定 |
+|---|---|---|
+| `wins` | `wins ≥ winsMin` | 10勝 |
+| `tournament` | 大会で優勝（`tournamentWin: true`） | あり |
+| `partner` | 相棒の馬で `races ≥ partnerRacesMin` | 30戦 |
+- 数えるのは 34.1 の確定した結果だけ。レアリティ・能力値・課金・アイテムは条件に入らない（お金で近道できない、REQ-HOF-007）。
+- 殿堂の銘板（`Plaque`）：`horseName`（プレイヤーが付けた名前、**訳さない**。サポートの名前リセットは反映）・`rarity`・`sex`・`appearance`（毛色など）・`partner`・`reasons`・`inductedAt`・`career`（戦績の1行）・`highlights`・`frame`。
+- **永久**：種付け・種牡馬の貸し出し・名前の変更では消えない。消えるのはアカウント削除の時だけ。枠の上限は無い（一覧はページ分け）。
+- 報酬（REQ-HOF-008）：アカウントで最初の殿堂入りの時に1回だけ、飾り「殿堂の額縁」（`decor_hall_plaque_frame`、非売品・価格0、マイ厩舎に置ける）。持っていれば銘板に額縁が付く（`frame: true`）。プレゼントボックスを通さず直接（§26.1 の「見た目は直接」）。コインは出ない。
+- KPI `hof_induct`（s1=reasons を `+` でつないだもの、s2=`partner`|空、count=戦数、value=勝数）。
+
+### 34.4 自分の殿堂・馬の戦績（REQ-HOF-009/010）
+- `GET /v1/hall?cursor=&limit=`：`{ entries: Plaque[], nextCursor, total, relation: "self", visibility, frame: { itemId, owned }, criteria, pendingCeremonies, notice }`。新しい順。`cursor` は前のページの最後の `"<inductedAt>_<horseId>"`（キーセット。新しい殿堂入りがあってもページがずれない）。`limit` は 1〜`pageSizeMax`（既定 `pageSize`）。
+- `GET /v1/horses/:horseId/career`：`{ horseId, horseName, status, partner, career, progress: { wins: {have,need}|null, tournamentWin: bool|null, partnerRaces: {have,need}|null }, qualifies, reasons, preview, ceremony, entry }`。`preview` は現役の馬が今引退したら出る見どころ（引退後は null、引退式は固定）。
+- `PUT /v1/hall/settings` `{ "visibility": "friends_team" | "friends" | "private" }`：見に来られる範囲（既定 `friends_team`）。
+
+### 34.5 見に行く（REQ-HOF-011〜013）
+- 公開用の写し（`HallSnapshot`）を DirectoryDO（`halls` テーブル、プレイヤーIDでシャード）に置き、持ち主の取引の後に変わっていれば書き直す（REQ-STABLE-003 と同じ）。見に行っても持ち主の部屋には触れない。
+- 写しを置かない：殿堂入りが0、`private`、BAN 中、アカウント削除の予約中・実行中。削除されたアカウントはディレクトリから消える（`forget`）。
+- `GET /v1/hall/:playerId?cursor=&limit=`：見られるのは
+  - 友達（自分のフレンドに相手がいる）、または
+  - 同じ支部のメンバー（自分の支部IDが相手の写しの支部IDと同じ、`visibility: "friends_team"` の時だけ）。
+  - どちらかがブロックしている（支部フィードのミュート＝唯一のブロックリスト、REQ-RIVAL-011）なら見られない。
+  - 見られない時はすべて **404 `NOT_FOUND`**（殿堂が無い時と同じ。理由は言わない）。
+  → `{ owner: { playerId, displayName, titleId, silks }, relation: "friend"|"team", entries, nextCursor, total, frame }`。支部ID・公開範囲・ブロックリストは返さない。自分のIDなら `GET /v1/hall` と同じ。
+- KPI `hof_view`（s1=`self`|`friend`|`team`、value=そのページの件数）。書き込みはしない。
+
+### 34.6 クライアント（REQ-HOF-014/015）
+- `Muchi.Client` `ApiClient.GetMyHallAsync(cursor, limit)`・`GetHallAsync(playerId, cursor, limit)`・`GetHorseCareerAsync(horseId)`・`AcknowledgeCeremonyAsync(horseId)`・`SetHallVisibilityAsync(visibility)`。`RetireHorseAsync` の応答の `Ceremony`。
+- Unity のゲーム層 `HallModel`：引退式の画面（馬の写真・見どころの行・殿堂入りの印）・殿堂の一覧（ページ送り）・銘板の詳細・友達の殿堂。名前はそのまま（訳さない）。
+- 文言・形の英語は §23 と同じ（`server-en.json`・`ui-en.json`）。

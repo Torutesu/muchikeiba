@@ -17,6 +17,23 @@ export const CODE_EN: Record<string, string> = {
   'はじめての購入時のみ：無償コイン{n}枚をプレゼント': 'First purchase only: {n} free coins included',
   'はじめての購入時のみ：有償コイン{n}枚をプレゼント': 'First purchase only: {n} paid coins included',
 
+  // ---- 殿堂・引退式 (hallOfFame.ts pickHighlights / myHallView, protocol §34; REQ-HOF-003). {name} = a tournament name (kept as written)
+  '大会「{name}」優勝': 'Won the tournament "{name}"',
+  '大会優勝{n}回（初優勝「{name}」）': '{n} tournament wins (first: "{name}")',
+  '最初の相棒として{n}戦をともに走った': '{n} races together as your first partner',
+  '通算{n}戦{m}勝': '{n} races, {m} wins',
+  '最大の勝利：{course}の{mode}（{n}頭立て）': 'Biggest win: {mode} at {course} ({n} runners)',
+  '最大の勝利：{mode}（{n}頭立て）': 'Biggest win: {mode} ({n} runners)',
+  '大会': 'tournament',
+  'イベント': 'event',
+  'ランク戦': 'ranked race',
+  'フレンド戦': 'friend race',
+  'ライバルに{n}回先着': 'Finished ahead of your rival {n} times',
+  'タイムアタック {course}：{time}': 'Time attack: {course}, {time}',
+  '3着以内{n}回': '{n} top-3 finishes',
+  '現役{days}日・{n}戦': '{days} days and {n} races on the track',
+  '殿堂入りは確定したレースの成績だけで決まります（購入やアイテムでは決まりません）。': 'Entry to the Hall of Fame depends only on confirmed race results (never on purchases or items).',
+
   // ---- T6 coin shortfall (shortfall.ts, protocol §29; REQ-SHORT-003)
   'コインが{n}枚足りません': 'You need {n} more coins',
   '有償コインが{n}枚足りません': 'You need {n} more paid coins',

@@ -66,6 +66,14 @@ namespace Muchi.Client
         TrainingSessionUsed,
         /// <summary>422: the submitted taps break the mini-game bounds (REQ-TRAIN-007).</summary>
         TrainingInputInvalid,
+        /// <summary>409: the event's exchange has not opened yet (REQ-EXCH-005).</summary>
+        ExchangeNotOpen,
+        /// <summary>409: the exchange closed; leftover points were converted into material (REQ-EXCH-006).</summary>
+        ExchangeClosed,
+        /// <summary>409: this exchange line has no stock left for the player (REQ-EXCH-008).</summary>
+        OutOfStock,
+        /// <summary>409: not enough event points (REQ-EXCH-008).</summary>
+        InsufficientPoints,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -148,6 +156,10 @@ namespace Muchi.Client
             ["TRAINING_SESSION_EXPIRED"] = ApiErrorCode.TrainingSessionExpired,
             ["TRAINING_SESSION_USED"] = ApiErrorCode.TrainingSessionUsed,
             ["TRAINING_INPUT_INVALID"] = ApiErrorCode.TrainingInputInvalid,
+            ["EXCHANGE_NOT_OPEN"] = ApiErrorCode.ExchangeNotOpen,
+            ["EXCHANGE_CLOSED"] = ApiErrorCode.ExchangeClosed,
+            ["OUT_OF_STOCK"] = ApiErrorCode.OutOfStock,
+            ["INSUFFICIENT_POINTS"] = ApiErrorCode.InsufficientPoints,
             ["VERIFIER_UNAVAILABLE"] = ApiErrorCode.VerifierUnavailable,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };

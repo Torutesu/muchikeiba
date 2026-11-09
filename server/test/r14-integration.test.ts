@@ -12,6 +12,12 @@ import { weeklyChallengeConfig } from '../src/domain/weeklyChallenge.js';
 import type { PlayerState } from '../src/domain/player.js';
 import type { RaceResultForPlayer } from '../src/domain/rewards.js';
 import { m } from './helpers.js';
+import { ensureExchange, exchangeProblems } from '../src/domain/exchange.js';
+import { ownsPart } from '../src/domain/silksEditor.js';
+import { classifyLedger } from '../src/domain/history.js';
+import { grantFree } from '../src/domain/wallet.js';
+import { catalogFor, localize, untranslated } from '../src/i18n/catalog.js';
+import type { EventDef, Master } from '../src/domain/master.js';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 
@@ -107,5 +113,56 @@ describe('§34 hall of fame × §31 weekly challenge (REQ-HOF-001, REQ-STAT-001)
     await w.svc.applyRace('p', rankedWin('rk1', horseId));
     expect(w.state('p').hall!.careers[horseId]).toMatchObject({ races: 1, wins: 1 });
     expect(w.state('p').stats.races).toBe(1);
+  });
+});
+
+// ------------------------------------------------------------------------------------------------ §35 × §30 / §33
+
+const exEvent = m.events.find((e) => e.exchange)!;
+/** A sample exchange line (test only: no live config ships one). */
+const withExchangeLine = (line: NonNullable<EventDef['exchange']>['items'][number]): EventDef => ({
+  ...exEvent, exchange: { ...exEvent.exchange!, items: [...exEvent.exchange!.items, line] },
+});
+
+describe('§35 silks parts × §30 event exchange (REQ-EXCH-002, REQ-SILK-005)', () => {
+  it('a silks part (an `any`-currency silks_part cosmetic) is a valid cosmetic exchange line; a paid-only part is refused', () => {
+    const ok = withExchangeLine({ id: 'ex_silk_crimson', name: '勝負服の色', kind: 'cosmetic', price: 300, stock: 1, reward: { items: [{ itemId: 'silkpart_color_crimson', qty: 1 }] } });
+    expect(exchangeProblems(m, ok, [ok])).toEqual([]);
+    const paid = withExchangeLine({ id: 'ex_silk_platinum', name: '勝負服の色', kind: 'cosmetic', price: 300, stock: 1, reward: { items: [{ itemId: 'silkpart_color_platinum', qty: 1 }] } });
+    expect(exchangeProblems(m, paid, [paid]).join()).toMatch(/paid-only/);
+  });
+
+  it('a part taken from the exchange is owned in the editor (the same item the shop sells)', async () => {
+    const ev = withExchangeLine({ id: 'ex_silk_crimson', name: '勝負服の色', kind: 'cosmetic', price: 300, stock: 1, reward: { items: [{ itemId: 'silkpart_color_crimson', qty: 1 }] } });
+    const master = { ...m, events: m.events.map((e) => (e.id === ev.id ? ev : e)) } as Master;
+    let now = ev.startAtMs + 3_600_000;
+    const repo = new MemoryPlayerRepo();
+    const svc = new PlayerService(repo, { master, rng: seededRng(3), clock: () => now, verifiers: {} });
+    await svc.bootstrap('p');
+    const s = repo.get('p')!;
+    expect(ownsPart(master, s, 'color', 'crimson')).toBe(false);
+    ensureExchange(master, s, ev).points = 300;
+    repo.put(s);
+    await svc.exchangeBuy('p', ev.id, 'ex_silk_crimson', 1, 'c:x1');
+    expect(ownsPart(master, repo.get('p')!, 'color', 'crimson')).toBe(true);
+    expect(repo.get('p')!.wallet.free).toBe(s.wallet.free); // no coins move
+    now += 1;
+  });
+});
+
+describe('§35 silks part purchase × §33 coin history (REQ-HIST-003)', () => {
+  it('shows a readable category in Japanese and English (never the raw reason)', async () => {
+    const w = world();
+    await w.svc.bootstrap('p');
+    const s = w.repo.get('p')!;
+    grantFree(s, 500, w.now(), 'test', 't');
+    w.repo.put(s);
+    await w.svc.buyCosmetic('p', 'silkpart_color_crimson', 'c:k1');
+    const e = w.repo.get('p')!.ledger.at(-1)!;
+    const row = classifyLedger(m, e);
+    expect(row).toEqual({ category: 'shop', title: 'ショップで購入（勝負服の色「クリムゾン」）' });
+    const en = localize(row.title, 'en', catalogFor(m));
+    expect(en).toBe('Shop purchase (Silks colour "Crimson")');
+    expect(untranslated(en)).toEqual([]);
   });
 });

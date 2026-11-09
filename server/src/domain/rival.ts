@@ -34,7 +34,7 @@ import { AppError } from './errors.js';
 import type { Master, Style } from './master.js';
 import { moderationOf, type PlayerState } from './player.js';
 import { deletionScheduled } from './accountDeletion.js';
-import { addJstDays, dayRule, gameDayKey, gameDayStartMs, sameGameDay } from './time.js';
+import { addJstDays, dayRule, gameDayKey, gameWeekEndMs, gameWeekId, sameGameDay } from './time.js';
 import { grantFree } from './wallet.js';
 import { appearanceOf, effectiveSilks, type Appearance, type Silks } from './visuals.js';
 import { ensureFeed, playerMute } from './teamFeed.js';
@@ -133,15 +133,15 @@ export function rivalProblems(m: Pick<Master, 'progression' | 'titles'>, path = 
 
 // ------------------------------------------------------------------------------------------------ week
 
-const weekdayOf = (dayKey: string) => new Date(`${dayKey}T00:00:00Z`).getUTCDay();
-
-/** REQ-RIVAL-001: the game week of `now` = the game day key ("YYYY-MM-DD") of its first day. */
+/**
+ * REQ-RIVAL-001: the game week of `now` = the game day key ("YYYY-MM-DD") of its first day. The shared game week of
+ * time.ts (gameWeekId), the same one the weekly challenge (§31) and the team goal (§32) use.
+ */
 export function weekIdAt(m: Pick<Master, 'progression'>, now: number, weekStartsOn = rivalConfig(m)?.weekStartsOn ?? 1): string {
-  const day = gameDayKey(now, dayRule(m));
-  return addJstDays(day, -((weekdayOf(day) - weekStartsOn + 7) % 7));
+  return gameWeekId(now, dayRule(m), weekStartsOn);
 }
 /** First instant of the next week (the rollover of its first game day). */
-export const weekEndMs = (m: Pick<Master, 'progression'>, weekId: string) => gameDayStartMs(addJstDays(weekId, 7), dayRule(m));
+export const weekEndMs = (m: Pick<Master, 'progression'>, weekId: string) => gameWeekEndMs(weekId, dayRule(m));
 export const prevWeekId = (weekId: string) => addJstDays(weekId, -7);
 
 // ------------------------------------------------------------------------------------------------ public card / registry entry

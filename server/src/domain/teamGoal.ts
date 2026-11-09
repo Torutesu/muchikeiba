@@ -28,7 +28,7 @@ import { moderationOf } from './player.js';
 import { deletionScheduled } from './accountDeletion.js';
 import { grantReward } from './items.js';
 import { inviteRewardYen } from './invite.js';
-import { addJstDays, dayRule, gameDayKey, gameDayStartMs, type DayRule } from './time.js';
+import { addJstDays, dayRule, gameDayKey, gameWeekEndMs, gameWeekId, gameWeekStartMs, type DayRule } from './time.js';
 
 export const GOAL_KINDS = ['races', 'wins', 'ta_pb'] as const;
 export type GoalKind = typeof GOAL_KINDS[number];
@@ -123,14 +123,10 @@ export function teamGoalProblems(m: Pick<Master, 'progression' | 'products' | 'i
 
 // ------------------------------------------------------------------------------------- the game week
 
-/** REQ-TGOAL-001: the game week (Monday's game-day key) that contains `ms`. */
-export function weekKeyOf(ms: number, rule: DayRule): string {
-  const day = gameDayKey(ms, rule);
-  const dow = new Date(`${day}T00:00:00Z`).getUTCDay(); // 0 = Sunday
-  return addJstDays(day, -((dow + 6) % 7));
-}
-export const weekStartMs = (week: string, rule: DayRule) => gameDayStartMs(week, rule);
-export const weekEndMs = (week: string, rule: DayRule) => gameDayStartMs(addJstDays(week, 7), rule);
+/** REQ-TGOAL-001: the game week (Monday's game-day key) that contains `ms` — the shared game week of time.ts (gameWeekId). */
+export const weekKeyOf = (ms: number, rule: DayRule): string => gameWeekId(ms, rule, 1);
+export const weekStartMs = (week: string, rule: DayRule) => gameWeekStartMs(week, rule);
+export const weekEndMs = (week: string, rule: DayRule) => gameWeekEndMs(week, rule);
 
 /** FNV-1a 32-bit (deterministic goal choice). */
 function fnv(s: string): number {

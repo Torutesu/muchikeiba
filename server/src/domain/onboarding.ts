@@ -433,7 +433,22 @@ export function firstRaceOf(m: Master, s: PlayerState): { cpuFillAfterMs: number
 export function uxProblems(m: Master, knownItems: Set<string>): string[] {
   return [...onboardingProblems(m.progression, m, knownItems), ...nudgeProblems(m.progression.nudges), ...accountDeletionProblems(m.progression.accountDeletion), ...dayRolloverProblems(m.progression.dayRollover),
     ...inviteProblems(m), ...comebackProblems(m), ...changelogProblems(m.changelog), ...adsProblems(m.progression.ads), ...trainingProblems(m), ...giftBoxProblems(m), ...rivalProblems(m),
-    ...weeklyChallengeProblems(m), ...teamGoalProblems(m)]; // REQ-INV-*, REQ-CB-*, REQ-AD-002, REQ-TRAIN-012, REQ-BOX-012, REQ-RIVAL-012, REQ-WCH-012, REQ-TGOAL-010
+    ...weeklyChallengeProblems(m), ...teamGoalProblems(m), ...weekStartProblems(m)]; // REQ-INV-*, REQ-CB-*, REQ-AD-002, REQ-TRAIN-012, REQ-BOX-012, REQ-RIVAL-012, REQ-WCH-012, REQ-TGOAL-010
+}
+
+/**
+ * Round 13: the weekly features share one game week (time.ts gameWeekId). The team goal's week is always Monday, so the
+ * rival's and the weekly challenge's `weekStartsOn` must be Monday (1) too — otherwise one screen would roll over on a
+ * different day than the others.
+ */
+export function weekStartProblems(m: Pick<Master, 'progression'>): string[] {
+  const out: string[] = [];
+  const p = m.progression as { rival?: { weekStartsOn?: unknown }; weeklyChallenge?: { weekStartsOn?: unknown } };
+  for (const k of ['rival', 'weeklyChallenge'] as const) {
+    const v = p[k]?.weekStartsOn;
+    if (v !== undefined && v !== 1) out.push(`progression.${k}.weekStartsOn: must be 1 (Monday) — the rival, the weekly challenge and the team goal share one game week`);
+  }
+  return out;
 }
 
 export function validateUx(m: Master, knownItems: Set<string>): void {

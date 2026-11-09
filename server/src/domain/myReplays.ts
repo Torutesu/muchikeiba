@@ -144,7 +144,7 @@ export function pruneRecent(m: Master, st: MyReplaysState, now: number) {
 /** REQ-MYRP-001/002: remember a confirmed race of the player (applyRace, already de-duplicated per race id). */
 export function noteRaceForReplays(m: Master, s: PlayerState, r: RaceResultForPlayer, prevBest: number | null, now: number) {
   const c = myReplaysConfig(m);
-  if (!c.enabled || r.void || !r.replay || r.mode === 'tutorial' || r.mode === 'timeattack') return;
+  if (!c.enabled || r.void || !r.replay || r.mode === 'tutorial' || r.mode === 'timeattack' || r.mode === 'challenge') return; // challenge (§31): verified like time attack, not a room race
   const st = ensureMyReplays(s);
   if (st.recent.some((x) => x.raceId === r.raceId)) return;
   st.recent.push({

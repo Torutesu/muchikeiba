@@ -817,7 +817,7 @@
 
 ## 37. マイリプレイ（保存したリプレイ、TS＋C#、`src/domain/myReplays.ts`・`src/domain/myReplaysService.ts`・`Muchi.Client/MyReplays.cs`、`contracts/protocol.md` §37）
 拘束条件：保存はリプレイログ（設定＋確定入力）と結果ハッシュだけで、見る時に端末で再計算する（REQ-RACE-073）。違うレースは絶対に流さない（ハッシュ不一致・引退したルールセットは「再生できません」）。コイン・アイテムは動かない（経済の目標なし、購入で枠は増えない）。他のプレイヤーの私的な情報（プレイヤーID・名前）は出さない。
-- REQ-MYRP-001 最近のレース：確定したレース（無効・チュートリアル・タイムアタックを除く）を `applyRace` で状態の `myReplays.recent` に1回だけ覚える（`raceId`・時刻・モード・コース・着順・頭数・自分の枠・結果ハッシュ・ルールセットの版・名場面）。元のログ（R2 `replays/`）が残っている `momentDays` 日（既定 28、`replayRetentionDays` − 1 以下）だけ保存できる。
+- REQ-MYRP-001 最近のレース：確定したレース（無効・チュートリアル・タイムアタック・週替わりチャレンジ（§31、Round 14 の統合）を除く）を `applyRace` で状態の `myReplays.recent` に1回だけ覚える（`raceId`・時刻・モード・コース・着順・頭数・自分の枠・結果ハッシュ・ルールセットの版・名場面）。元のログ（R2 `replays/`）が残っている `momentDays` 日（既定 28、`replayRetentionDays` − 1 以下）だけ保存できる。
 - REQ-MYRP-002 名場面の自動保存：`win`（1着）・`photo`（隣の着順とのゴール tick の差が `photoFinishTicks` 以下）・`pb`（そのコースの自己ベスト更新、CPU が乗った回は除く）。優先 win > photo > pb。`momentsKeep` 件・`momentDays` 日で古い順に入れ替わる。名場面でないものは `recentKeep` 件まで。
 - REQ-MYRP-003 保存：`POST /v1/replays`（冪等キー必須）。自分の最近のレースだけ。同じレースは1件（2回目は `alreadySaved`）。上限 `maxSaved`（既定 20、無料、購入で増やさない）を超えると `REPLAY_LIMIT`。元のログを `myreplays/<playerId>/<raceId>.json` に `{v, log, resultHash}` で写す（保存期限の削除の対象外）。`maxBytes` を超えるものは `REPLAY_TOO_LARGE`、元が無ければ `REPLAY_EXPIRED`（最近のレースから外す）。R2 に書けてから状態に記録する（失敗すれば何も残らない、写しの上書きは同じ内容なので再試行してよい）。
 - REQ-MYRP-004 タイトル：プレイヤーが入力（1〜`titleMaxChars` 文字、NFKC、制御文字・URL 不可、NG 語は表示名と同じ一覧）。null = タイトルなし。英語の応答でも訳さない（`replayTitle` は `PLAYER_TEXT_KEYS`）。

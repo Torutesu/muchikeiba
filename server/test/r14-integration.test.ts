@@ -11,7 +11,14 @@ import { createHorseFromTemplate } from '../src/domain/horses.js';
 import { weeklyChallengeConfig } from '../src/domain/weeklyChallenge.js';
 import type { PlayerState } from '../src/domain/player.js';
 import type { RaceResultForPlayer } from '../src/domain/rewards.js';
-import { m } from './helpers.js';
+import { m, makeConfig } from './helpers.js';
+import { MemoryHallDirectory, type HallSnapshot } from '../src/domain/hallOfFame.js';
+import { MemoryReplayStore, MyReplaysService } from '../src/domain/myReplaysService.js';
+import { savedReplayKey, sourceReplayKey } from '../src/domain/myReplays.js';
+import { settleRace } from '../src/race/orchestrate.js';
+import { DELETION_STEPS, runAccountDeletion, type DeletionPorts } from '../src/domain/accountDeletion.js';
+import type { PlayerInvoker } from '../src/http/app.js';
+import type { RaceStartConfig } from '../src/domain/schemas.js';
 import { ensureExchange, exchangeProblems } from '../src/domain/exchange.js';
 import { ownsPart } from '../src/domain/silksEditor.js';
 import { classifyLedger, COIN_TITLES } from '../src/domain/history.js';
@@ -253,5 +260,129 @@ describe('§36 commentary packs × §30 event exchange (REQ-EXCH-002, REQ-CMT-01
     await svc.buyCommentaryPack('p', 'kofuu', false, 'c:b1');
     await expect(svc.exchangeBuy('p', ev.id, 'ex_pack_kofuu', 1, 'c:x2')).rejects.toMatchObject({ code: 'ALREADY_PURCHASED' });
     expect(repo.get('p')!.events?.[ev.id]?.exchange?.points).toBe(900);
+  });
+});
+
+// ------------------------------------------------------------------------------------------------ §37 × §31, account deletion
+
+/** Players, the hall's public copies, R2 (source logs + saved replays) and マイリプレイ, wired like the Durable Objects. */
+function fullWorld(start: number) {
+  let now = start;
+  const repo = new MemoryPlayerRepo();
+  const hallDir = new MemoryHallDirectory();
+  const svc = new PlayerService(repo, {
+    master: m, rng: seededRng(11), clock: () => now, verifiers: {},
+    onHall: async (id: string, snap: HallSnapshot | null) => { if (snap) await hallDir.put(snap); else await hallDir.remove(id); },
+  });
+  let gate: Promise<unknown> = Promise.resolve();
+  const invoker: PlayerInvoker = { invoke: (async (method: string, ...args: unknown[]) => {
+    const run = gate.then(() => (svc as unknown as Record<string, (...a: unknown[]) => unknown>)[method]!.apply(svc, args));
+    gate = run.catch(() => undefined);
+    return run;
+  }) as PlayerInvoker['invoke'] };
+  const store = new MemoryReplayStore();
+  const replays = new MyReplaysService(() => m, () => invoker, store);
+  /** A confirmed ranked race ridden by `uid` alone (slot 0, 1st): the room writes the log, settleRace settles it. */
+  const race = async (uid: string, raceId: string, horseId?: string) => {
+    const c0 = makeConfig(1, 'ranked', 11) as RaceStartConfig;
+    const entrants = c0.entrants.map((e) => (e.kind === 'human' ? { ...e, playerId: uid } : e));
+    const c = { ...c0, raceId, entrants };
+    const log = { v: 1 as const, config: c, endTick: 1500, inputs: [[60, 0, 1]] as [number, number, number][] };
+    await store.put(sourceReplayKey(raceId), JSON.stringify(log));
+    const human = c.entrants.find((e) => e.kind === 'human')!.slot;
+    const order = [human, ...c.entrants.filter((e) => e.slot !== human).map((e) => e.slot)];
+    const results = settleRace(c, { status: 'confirmed', order, hash: 'c'.repeat(64), via: 'consensus', suspects: [] }, {}, log);
+    const r = results[uid]!;
+    await svc.applyRace(uid, horseId ? { ...r, horseId } : r);
+    return r;
+  };
+  return { svc, repo, hallDir, store, replays, race, now: () => now, set: (t: number) => { now = t; }, advance: (ms: number) => { now += ms; } };
+}
+
+describe('§37 my replays × §31 weekly challenge (REQ-MYRP-001, "confirmed race" rule)', () => {
+  it('a weekly challenge run is not offered in マイリプレイ (verified like time attack, never applyRace); a ranked race is, and saves', async () => {
+    const w = fullWorld(T_WCH);
+    await w.svc.bootstrap('p');
+    const s = w.repo.get('p')!;
+    const h = createHorseFromTemplate(s, m.templateById.get('t_kohaku')!, w.now());
+    w.repo.put(s);
+    const ww = { svc: w.svc, repo: w.repo, state: (u: string) => w.repo.get(u) as PlayerState, set: w.set, now: w.now };
+    const st = await challengeWin(ww, 'p', h.id);
+    const v0 = await w.svc.myReplays('p') as { recent: { raceId: string }[]; moments: { raceId: string }[] };
+    expect([...v0.recent, ...v0.moments].map((x) => x.raceId)).not.toContain(`wch_${st.sessionId}`);
+    expect([...v0.recent, ...v0.moments]).toHaveLength(0);
+    // even a result shaped like a room's (mode "challenge") is not remembered
+    const r = await w.race('p', 'rk_1');
+    await w.svc.applyRace('p', { ...r, raceId: 'wch_fake', mode: 'challenge' } as RaceResultForPlayer);
+    const v1 = await w.svc.myReplays('p') as { recent: { raceId: string }[]; moments: { raceId: string }[] };
+    expect([...v1.recent, ...v1.moments].map((x) => x.raceId)).toEqual(['rk_1']);
+    await w.replays.save('p', 'rk_1', null, 'c:s1');
+    expect(w.store.files.has(savedReplayKey('p', 'rk_1'))).toBe(true);
+  });
+});
+
+describe('account deletion clears Round 13 + Round 14 state (REQ-UXS-040, REQ-HOF-011, REQ-SILK-*, REQ-CMT-*, REQ-MYRP-012)', () => {
+  it('runs every step, leaves nothing of R13 / R14 behind, and late writes never recreate the account', async () => {
+    const ev = m.events.find((e) => e.exchange)!;
+    const w = fullWorld(ev.startAtMs + 3_600_000);
+    const uid = 'gone';
+    await w.svc.bootstrap(uid);
+    const s0 = w.repo.get(uid)!;
+    const horse = createHorseFromTemplate(s0, m.templateById.get('t_kohaku')!, w.now());
+    grantFree(s0, 1000, w.now(), 'test', 't');
+    ensureExchange(m, s0, ev).points = 90; // §30
+    w.repo.put(s0);
+    // R14: a hall plaque (tournament win → inducted at retirement) with its public copy, a saved replay, a silks preset,
+    // a bought commentary pack; R13: weekly challenge state, a team goal gift, a gacha log entry
+    await w.race(uid, 'rk_del', horse.id);
+    await w.svc.tournamentClose(uid, 'cup_del', 1, null, '新春杯', horse.id);
+    await w.svc.retire(uid, horse.id);
+    expect(w.hallDir.rows.has(uid)).toBe(true);
+    await w.replays.save(uid, 'rk_del', null, 'c:s1');
+    await w.svc.silksPresetCreate(uid, '本番', { design: { pattern: 'hoops', colors: ['navy', 'white'], sleeve: 'match', cap: 'plain', capColors: ['navy', 'white'] } });
+    await w.svc.buyCommentaryPack(uid, 'ochitsuki', true, 'c:b1');
+    await w.svc.wchView(uid);
+    await w.svc.teamGoalReward(uid, '2026-12-07', 'team_1', 1, 5);
+    await w.svc.tutorialDraw(uid, 'c:tut');
+    const before = w.repo.get(uid)!;
+    expect(before.hall?.entries.length).toBe(1);
+    expect(before.silksEditor?.presets.length).toBe(1);
+    expect(before.commentaryPack?.owned.ochitsuki).toBeTruthy();
+    expect(before.myReplays?.saved.length).toBe(1);
+    expect(before.gachaLog?.entries.length).toBeGreaterThan(0);
+    expect(before.giftBox?.box.length).toBe(1);
+    expect(w.store.files.has(savedReplayKey(uid, 'rk_del'))).toBe(true);
+
+    // request → the hall copy leaves the directory at once (a scheduled deletion is not visited)
+    const tok = (await w.svc.requestDeletion(uid, null)) as { confirmToken: string };
+    await w.svc.requestDeletion(uid, tok.confirmToken);
+    expect(w.hallDir.rows.has(uid)).toBe(false);
+    w.advance(15 * 86_400_000);
+    const ports: DeletionPorts = {
+      start: async (u) => { await w.svc.deletionStart(u); },
+      snapshot: (u) => w.svc.deletionSnapshot(u),
+      markStep: async (u, st) => { await w.svc.deletionMarkStep(u, st); },
+      friends: { removeFriend: async () => undefined, dropOutgoing: async () => undefined, dropIncoming: async () => undefined },
+      // DirectoryDO.forget drops profiles, studs, stables and the hall copies (REQ-HOF-011)
+      directory: { forget: async (u) => { await w.hallDir.remove(u); } },
+      leaderboards: { forget: async () => undefined, deleteGhosts: async () => undefined },
+      replays: { deleteAll: async (keys) => { for (const k of keys) await w.store.delete(k); } },
+      finalize: (u) => w.svc.deletionFinalize(u), retain: async () => undefined, wipe: (u) => w.svc.wipe(u),
+    };
+    const r = await runAccountDeletion(ports, uid, w.now());
+    expect(DELETION_STEPS).toEqual(expect.arrayContaining(['rival', 'replays', 'finalize', 'wipe']));
+    expect(r.done).toEqual(expect.arrayContaining(['replays', 'wipe']));
+    expect(w.repo.data.has(uid)).toBe(false);
+    expect(w.hallDir.rows.has(uid)).toBe(false);
+    expect([...w.store.files.keys()].filter((k) => k.startsWith(`myreplays/${uid}/`))).toEqual([]);
+
+    // late background deliveries (other objects still holding the id): a race result settled after the wipe, the team's
+    // payout retry, a tournament close naming the retired horse (hall career), a friend opening the public replays
+    expect(await w.svc.applyRace(uid, { ...(await w.race('other', 'rk_late')), raceId: 'rk_late2' })).toMatchObject({ skipped: 'deleted' });
+    expect(await w.svc.teamGoalReward(uid, '2026-12-14', 'team_1', 2, 12)).toBeNull();
+    expect(await w.svc.tournamentClose(uid, 'cup_late', 1, { freeCoins: 50 }, '冬杯', horse.id)).toMatchObject({ status: 'already' });
+    expect(await w.svc.replayShared(uid, 'other')).toBeNull();
+    expect(w.repo.data.has(uid)).toBe(false);
+    expect(w.hallDir.rows.has(uid)).toBe(false);
   });
 });

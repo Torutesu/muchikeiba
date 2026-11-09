@@ -1743,10 +1743,13 @@ TeamGoalView = { "teamId": "tabc123456", "teamName": "あおばRC", "enabled": t
 自分が走ったレースのリプレイを、通常の保存期限（§7・REQ-OPS-001 の `replayRetentionDays`）を越えて残す。保存するのは **§7 のリプレイログ（設定＋確定入力）と結果ハッシュだけ**で、動画も状態も保存しない。見る時は端末で再計算する（REQ-RACE-073、REQ-UXS-070 と同じ）。コインもアイテムも動かない（経済の目標なし）。
 
 ### 37.1 しくみ
-- **最近のレース**（`recent`）：確定した（無効・チュートリアル・タイムアタックを除く）レースを、プレイヤーの状態に `{raceId, at, mode, trackId, place, fieldSize, slot, resultHash, rulesetVersion, moment}` で覚える（`applyRace`、同じレースは1回）。元のログが R2 の `replays/<raceId>.json` に残っている間（`momentDays` 日、既定 28 < `replayRetentionDays`）だけ保存できる。
+- **最近のレース**（`recent`）：確定した（無効・チュートリアル・タイムアタック・週替わりチャレンジを除く）レースを、プレイヤーの状態に `{raceId, at, mode, trackId, place, fieldSize, slot, resultHash, rulesetVersion, moment}` で覚える（`applyRace`、同じレースは1回）。元のログが R2 の `replays/<raceId>.json` に残っている間（`momentDays` 日、既定 28 < `replayRetentionDays`）だけ保存できる。
 - **名場面**（`moment`）：自動で選ぶ ― `win`（1着）・`photo`（隣の着順の馬とゴールの tick の差が `photoFinishTicks` 以下）・`pb`（そのコースの自己ベストの更新、`stats.byTrack.bestFinishTick`、CPU が乗った回は除く）。優先は `win` > `photo` > `pb`。名場面は `momentsKeep`（既定10）件まで・`momentDays` 日で入れ替わる（古い順に消える）。残したければ保存する。名場面でない最近のレースは `recentKeep`（既定30）件まで。
 - **保存**（`saved`）：`maxSaved`（既定 20、無料）件まで。保存するとサーバーが元のログを `myreplays/<playerId>/<raceId>.json` に写す（本文 `{ "v":1, "log": §7 のログ, "resultHash": "<64hex>" }`、`maxBytes`（既定 256 KiB）を超えるものは `413 REPLAY_TOO_LARGE`）。この接頭辞は保存期限の削除（`replays/` だけを見る）の対象外。一覧の記録（タイトル・お気に入り・公開）はプレイヤーの状態に持つ。
 - ルールセットの固定：ログの設定にはルールセットの値がすべて入っている（§2）。保存の記録に `rulesetVersion` を残し、見る時に「今のエンジンで再生できるか」を判定する（37.4）。
+
+- **週替わりチャレンジ（§31）は保存できない**（Round 14 の統合で決定）：チャレンジは部屋で確定するレースではなく、端末の走りを検証サーバーで確かめる（タイムアタックと同じ `wchRecord` の経路、`applyRace` を通らない）。「確定したレースだけ」の決まりのとおり一覧に出さず、`mode: "challenge"` の結果が届いても覚えない（`noteRaceForReplays`）。チャレンジは保存しないので `retiredRulesets` との関係も起きない（引退させた版の判定は保存済みの部屋のレースだけ）。
+- **解放キーは使わない**（Round 14 の統合で決定）：最初のレースから自分のレースがあり、保存は無料なので、§4.3 の解放（R13 の `weekly_challenge` のような「4日目 or 20戦」）では隠さない。プロトタイプの「機能・イベント」の行（`my_replays`）はサーバーの解放キーではなく、いつも開いている（勝負服エディタ §35・殿堂 §34・実況パック §36 も同じ：見た目の着せ替え・厩舎・設定の中にあり、解放の対象の画面から開く）。
 
 ### 37.2 API（すべて要認証）
 | メソッド | パス | 冪等キー | 本文 → 応答 |

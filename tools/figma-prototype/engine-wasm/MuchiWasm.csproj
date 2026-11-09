@@ -36,5 +36,7 @@
     <Compile Include="../../../unity/Assets/Muchi/Game/GachaModels.cs" Link="Game/GachaModels.cs" />
     <!-- round 12: かんたん操作 (AssistModel.Attach / RidingLevel; HudModel reads it) -->
     <Compile Include="../../../unity/Assets/Muchi/Game/AssistModel.cs" Link="Game/AssistModel.cs" />
+    <!-- round 15: フォトモード (PhotoModeModel over PhotoSnapshot / PhotoCamera / PhotoShareCard) -->
+    <Compile Include="../../../unity/Assets/Muchi/Game/PhotoModeModel.cs" Link="Game/PhotoModeModel.cs" />
   </ItemGroup>
 </Project>

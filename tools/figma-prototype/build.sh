@@ -49,4 +49,5 @@ node "$HERE/test/round13-history.test.mjs" # round 13: 購入・コイン・ガ�
 node "$HERE/test/round13-exchange.test.mjs" # round 13: イベント交換所 — points by event race (daily cap), keyed exchange with stock, grace days, leftover → material
 node "$HERE/test/round13-weekly-challenge.test.mjs" # round 13: 週替わりチャレンジ — the week, a loan-horse start, the verdict only from the verified result, once a week, mismatch
 node "$HERE/test/round13-team-goal.test.mjs" # round 13: 支部の共同目標 — the week, settled races with the daily cap, the feed milestone, the week close paying once
+node "$HERE/test/round15-photo.test.mjs" # round 15: フォトモード — pause a solo race (same state, same hash after), camera limits, no pause in ranked, catalog / purchase / keyed record / KPI
 echo "built $SITE ($(du -sh "$SITE" | cut -f1))"

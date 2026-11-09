@@ -454,7 +454,14 @@ namespace Muchi.Client
             return t.Length == 0 ? null : t;
         }
 
-        public static int Length(string t) => t == null ? 0 : new StringInfo(t).LengthInTextElements;
+        /// <summary>Characters as the server counts them (code points, not grapheme clusters).</summary>
+        public static int Length(string t)
+        {
+            if (t == null) return 0;
+            int n = 0;
+            for (int i = 0; i < t.Length; i++) { n++; if (char.IsHighSurrogate(t[i]) && i + 1 < t.Length && char.IsLowSurrogate(t[i + 1])) i++; }
+            return n;
+        }
 
         /// <summary>null when the caption may be sent, else the sentence to show (Japanese; Loc.T for English).</summary>
         public static string Problem(string raw, int maxChars = DefaultMaxChars)

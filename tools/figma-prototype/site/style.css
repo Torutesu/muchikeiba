@@ -530,3 +530,22 @@ html[lang="en"] .pass-strip .cell small { font-size: 12px; }
 .tg-row.mine { box-shadow: inset 3px 0 0 var(--cyan); background: rgba(var(--cyan-rgb), .08); }
 .tg-row.mine .tg-name { color: var(--cyan); }
 .tf-row.goal .tf-main { color: var(--cyan); }
+
+/* ---- round 15: フォトモード (REQ-PHOTO-*). The viewfinder over the 3D view; frames / stamps / plates are DOM stand-ins for Codex's art. */
+.ph-view { overflow: hidden; }
+.ph-dof { position: absolute; pointer-events: none; background: radial-gradient(ellipse 46% 52% at 50% 50%, transparent 55%, rgba(6, 21, 36, calc(var(--dof) * .16)) 100%); }
+.ph-frameart { position: absolute; pointer-events: none; border-radius: var(--radius); }
+.ph-frameart[data-frame="plain"] { box-shadow: inset 0 0 0 10px rgba(247, 251, 255, .92); }
+.ph-frameart[data-frame="gate"] { box-shadow: inset 0 0 0 4px var(--cyan), inset 0 0 0 12px rgba(var(--navy-rgb), .85), inset 0 0 0 14px var(--cyan); }
+.ph-frameart[data-frame="victory"] { box-shadow: inset 0 0 0 6px var(--gold), inset 0 0 0 16px rgba(var(--navy-rgb), .7), inset 0 0 0 18px var(--gold-soft); }
+.ph-frameart[data-frame="champion"] { box-shadow: inset 0 0 0 10px var(--gold), inset 0 0 0 22px rgba(var(--navy-rgb), .8), inset 0 0 0 25px var(--gold-ring); }
+.ph-frameart[data-frame="ta_gold"] { box-shadow: inset 0 0 0 8px var(--gold-ring), inset 0 0 40px rgba(255, 211, 79, .35); }
+.ph-frameart[data-frame="sakura"] { box-shadow: inset 0 0 0 8px #f6b6c8, inset 0 0 60px rgba(246, 182, 200, .45); }
+.ph-frameart[data-frame="gold_leaf"] { box-shadow: inset 0 0 0 14px #c9a23a, inset 0 0 0 16px var(--gold-soft); }
+.ph-plate { position: absolute; background: rgba(var(--navy-rgb), .78); border-radius: var(--radius); box-shadow: inset 0 -2px 0 rgba(var(--cyan-rgb), .7); }
+.ph-plate.you { box-shadow: inset 0 -2px 0 var(--gold); }
+.ph-stamp { position: absolute; display: flex; align-items: center; justify-content: center; font-size: 30px; font-weight: 700; color: var(--gold); text-shadow: 0 2px 8px rgba(0, 0, 0, .6); }
+.ph-state { font-size: 18px; letter-spacing: .08em; }
+.btn.choice.ph-locked span { color: var(--text-4); }
+.btn.choice.ph-locked span::after, .btn.quit.ph-locked span::after { content: ""; display: inline-block; width: 10px; height: 8px; margin-left: 8px; border-radius: 2px; background: currentColor; vertical-align: 1px; }
+.btn.quit.ph-locked { opacity: .6; }

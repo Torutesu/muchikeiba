@@ -4,7 +4,7 @@
 // State lives in localStorage (one player, "local"). No server, no billing.
 import { loadMaster } from '../../../server/src/domain/master.js';
 import { PlayerService, type PlayerRepo, type ShortfallQuery } from '../../../server/src/domain/service.js';
-import type { ClientBatch } from '../../../server/src/domain/kpi.js';
+import { clientBatchSchema, clientToKpi, type ClientBatch } from '../../../server/src/domain/kpi.js';
 import { playerView, type PlayerState } from '../../../server/src/domain/player.js';
 import { oddsDisclosure, findBanner, bannerList, bannerStatus } from '../../../server/src/domain/gacha.js';
 import { cryptoRng } from '../../../server/src/domain/rng.js';
@@ -457,6 +457,17 @@ export const MuchiLogic = {
   // What GET /v1/history/* and POST /v1/history/support-ticket return, on the real rules (the local state holds the whole ledger).
   history: (kind: 'summary' | 'purchases' | 'coins' | 'gacha', q: { cursor?: string | null; limit?: number; currency?: 'paid' | 'free' | null } = {}) => wrap(() => svc.history(ID, kind, q)),
   historyTicket: (refs: string[], topic: 'purchase_missing' | 'refund' | 'coins' | 'gacha' | 'other') => wrap(() => svc.historyTicket(ID, refs, topic)),
+
+  // ---------------------------------------------------------------- round 15: フォトモード (REQ-PHOTO-*, contracts/protocol.md §38)
+  // GET /v1/photo/catalog, the photo records and the shop purchase of a photo frame / stamp, on the real rules. The picture
+  // itself (snapshot, camera, card) is the C# PhotoModeModel in WASM.
+  photoCatalog: () => wrap(() => svc.photoCatalog(ID)),
+  photos: () => wrap(() => svc.photos(ID)),
+  photoSave: (spec: unknown, idemKey?: string) => wrap(() => svc.photoSave(ID, spec as never, idemKey ? 'c:/v1/photos:' + idemKey : key())),
+  photoDelete: (photoId: string) => wrap(() => svc.photoDelete(ID, photoId)),
+  buyCosmetic: (itemId: string) => wrap(() => svc.buyCosmetic(ID, itemId, key())),
+  /** KPI rows the client would send (photo_take / photo_share), checked against the server's client-event schema. */
+  photoKpi: (name: 'photo_take' | 'photo_share', props: Record<string, unknown>) => wrap(() => clientBatchSchema.parse({ platform: 'editor', appVersion: 'proto', events: [{ name, at: now(), props }] }).events.map(clientToKpi)[0]),
   /** Demo: a 14-year-old's month (¥5,000 limit): two coin packs bought, one refunded by the store, scouts on paid and free coins. */
   async seedHistory() {
     await this.seedDemo(3, [2, 2, 2]);

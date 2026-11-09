@@ -172,7 +172,9 @@ export function validateCaption(m: Master, raw: string | null | undefined): stri
   if ([...t].length > max) throw new AppError('INVALID_NAME', `0〜${max}文字`);
   if (/[\p{C}]/u.test(t)) throw new AppError('INVALID_NAME', 'control characters');
   if (/https?:|www\.|\.(com|net|jp)\b/i.test(t)) throw new AppError('INVALID_NAME', 'no URLs');
-  if (bannedIn(t).length) throw new AppError('NG_NAME', 'wording not allowed in a caption');
+  // also on the folded form (small kana, long vowels, ヴ), like the NG list: 「オッズ」 written 「おっず」/「オツズ」 is caught
+  const folded = foldForCompare(t);
+  if (bannedIn(t).length || PHOTO_BANNED_WORDS.some((w) => folded.includes(foldForCompare(w)))) throw new AppError('NG_NAME', 'wording not allowed in a caption');
   const f = foldForCompare(t);
   if (m.ng.exact.some((n) => foldForCompare(n) === f)) throw new AppError('NG_NAME');
   if (m.ng.contains.some((n) => f.includes(foldForCompare(n)))) throw new AppError('NG_NAME');

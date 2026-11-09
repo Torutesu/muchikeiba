@@ -286,7 +286,7 @@ describe('REQ-PHOTO-007 captions', () => {
   it('shop wording rules and betting words are refused', () => {
     const code = (t: string) => { try { validateCaption(m, t); return 'ok'; } catch (e) { return (e as AppError).code; } };
     for (const w of PHOTO_BANNED_WORDS) expect(code(`今日の${w}`)).toBe('NG_NAME');
-    for (const t of ['馬券が当たった', 'オッズ10倍', 'お得な一枚', '今だけの走り']) expect(code(t)).toBe('NG_NAME');
+    for (const t of ['馬券が当たった', 'オッズ10倍', 'お得な一枚', '今だけの走り', 'おっずが高い', 'ｵｯｽﾞ', '馬 券']) expect(code(t)).toBe('NG_NAME');
     expect(code('差し切った！')).toBe('ok');
   });
 });

@@ -764,3 +764,32 @@ LIMIT 100
 - `team_goal_contribute` はプレイヤーのオブジェクトが送った時の行（支部がその週の種類でない・上限で数えないこともある）。`race` と `win` は1レースで1行（1着なら `s2 = 'win'`、`count` 2）。
 - 課金者と無課金者（`blob7`）で受け取りの段に差が出ても、支払いの効果ではない（共同目標は課金で進まない、REQ-TGOAL-012）。支部の活発さの違いとして読む。
 - 継続への効果：`team_goal_reward` を受け取った人と、支部にいるが受け取っていない人の翌週の `race_finish` の数を比べる（支部の共同目標の目的は週の継続）。
+
+## フォトモード（REQ-PHOTO-014、contracts/protocol.md §38、Round 15）
+**撮った・共有した・保存した**：`photo_take`（クライアント、`blob8` = source：paused／result／replay、`blob9` = ルック）、`photo_share`（クライアント、OS の共有シートで共有した時だけ、`blob8` = source、`blob9` = framed／plain）、`photo_save`（サーバー、`blob8` = source、`blob9` = モード、`double5` = 保存後の件数）。
+
+```sql
+SELECT
+  blob6 AS day,
+  sumIf(_sample_interval, blob1 = 'photo_take') AS takes,
+  sumIf(_sample_interval, blob1 = 'photo_share') AS shares,
+  sumIf(_sample_interval, blob1 = 'photo_save') AS saves,
+  round(sumIf(_sample_interval, blob1 = 'photo_share') / sumIf(_sample_interval, blob1 = 'photo_take'), 3) AS share_rate,
+  count(DISTINCT IF(blob1 = 'photo_take', blob2, NULL)) AS players
+FROM muchi_kpi
+WHERE blob1 IN ('photo_take', 'photo_share', 'photo_save') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY day
+ORDER BY day DESC
+```
+
+**どこから撮るか・どのルックが使われるか**：
+
+```sql
+SELECT blob8 AS source, blob9 AS look, sum(_sample_interval) AS takes
+FROM muchi_kpi
+WHERE blob1 = 'photo_take' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY source, look
+ORDER BY takes DESC
+```
+- `photo_save` の `blob9` に `ranked` などがあっても、`blob8` は `result`／`replay` だけのはず（`paused` はサーバーが拒む）。`paused` × 共有レースの行が出たら REQ-PHOTO-001 の実装を調べる。
+- フレーム・スタンプの購入は既存の見た目ショップの購入（台帳 `cosmetic photo_*`）で見る。写真の品の売上がランク戦の勝率と関係しないこと（能力に影響しない）は設計上の前提。

@@ -480,6 +480,9 @@ function BuildRaceScreen() {
   // skill cut-ins (engine Skill events)
   hud.skillBox = el('cutins', 540, 560, 520, 230);
   Btn('中断', 33, 120, 120, 40, () => { raceActive = false; Home(); }, 'quit');
+  // round 15 (REQ-PHOTO-001): a solo race (time attack, weekly challenge) pauses for a photo; a race with other people never does
+  const pb = Btn('フォト', 163, 120, 120, 40, () => (phShared() ? toast('このレースは走っている途中では撮れません。結果画面かリプレイから撮ってください。') : PhotoOpen('paused')), 'quit' + (phShared() ? ' ph-locked' : ''));
+  pb.dataset.photo = phShared() ? 'blocked' : 'pause';
 }
 function Lane(dir) { if (!raceActive || raceCtx.tutorial) return; engine.Lane(dir); }
 function Whip() {
@@ -659,6 +662,7 @@ function ResultScreen(f, rewards, passXp, pass, missions) {
   TextLink('着順と報酬の詳細', 200, 734, 200, () => ResultDetails(r, rewards, passXp, pass, missions), p);
   // replay share (REQ-UXS-070): the last 200 m re-simulated on the device
   if (!first) Ghost('リプレイを共有', 1286, 800, 274, 60, () => ShareCard(currentScreen)).classList.add('share');
+  if (!first) Ghost('写真を撮る', 1286, 724, 274, 60, () => PhotoOpen('result', currentScreen)).dataset.action = 'photo-result'; // round 15
   EnToggle();
 }
 function ResultDetails(r, rewards, passXp, pass, missions) {
@@ -1572,7 +1576,8 @@ async function ShareCard(back) {
   const same = clip.hash === clip.liveHash;
   Txt(`最後の${Math.round(clip.startRemainingM)}m・${(clip.durationMs / 1000).toFixed(1)}秒・${clip.fps}fps（${clip.frames}フレーム）\n端末で再計算：${same ? '結果が一致 ✓' : '不一致'}　カメラ ${clip.modes.map((m) => ({ Follow: '追走', FinalStraight: '直線', Finish: 'ゴール横' }[m] ?? m)).join('→')}`, 36, 566, 440, 13, same ? OK : RED, c, { lh: 1.6 }).dataset.hash = same ? 'match' : 'mismatch';
   Cta('動画で共有', 36, 660, 438, () => toast('書き出しと共有はアプリ（IClipRecorder）で行います'), c, 'gold');
-  Ghost('戻る', 36, 754, 438, 56, back ?? Home, c, 'quiet');
+  Ghost('この瞬間を撮る', 36, 754, 211, 56, () => PhotoOpen('replay', () => ShareCard(back)), c, 'quiet').dataset.action = 'photo-replay'; // round 15: the replay player's frame
+  Ghost('戻る', 263, 754, 211, 56, back ?? Home, c, 'quiet');
   Caption('動画には名前・IDを入れません（選んだ馬の名前だけ）', 32, 614, undefined, 14, MUTED).classList.add('tshadow');
 }
 
@@ -1767,6 +1772,7 @@ function TaResult(f) {
   Cta('もう一度', 44, 640, 478, () => TimeAttack(raceCtx.trackId), p);
   TextLink('ホーム', 44, 734, 90, Home, p);
   Ghost('リプレイを共有', 1286, 800, 274, 60, () => ShareCard(currentScreen));
+  Ghost('写真を撮る', 1286, 724, 274, 60, () => PhotoOpen('result', currentScreen)).dataset.action = 'photo-result'; // round 15
   EnToggle();
 }
 
@@ -3565,6 +3571,180 @@ async function TeamGoal() {
   }
 }
 
+// ================================================================= round 15: フォトモード (REQ-PHOTO-*, contracts/protocol.md §38)
+// The real PhotoModeModel in WASM (PhotoSnapshot re-simulates the race to the tick — the live race is only paused —,
+// PhotoCamera keeps the camera in the limits and above the course, PhotoShareCard builds the card) and the real server
+// rules in JS (GET /v1/photo/catalog unlocks, the cosmetics shop purchase, the keyed photo record, the KPI schema).
+const PH_TABS = [['camera', 'カメラ'], ['look', 'ルック'], ['frame', 'フレーム'], ['stamp', 'スタンプ'], ['caption', 'ひとこと']];
+const PH_LOOK_CSS = { natural: 'none', film: 'sepia(.28) contrast(1.06) saturate(.9)', mono: 'grayscale(1) contrast(1.08)', dusk: 'sepia(.45) hue-rotate(-18deg) saturate(1.25) brightness(.9)', vivid: 'saturate(1.55) contrast(1.1)' };
+const PH_STAMP_GLYPH = { muchi: '閃', hoof: '∩∩', star: '✦', photo_finish: '◇', crown: '♛', carrot_pop: '🥕' };
+let ph = null;
+/** Is the race on screen run with other people? (the prototype's main race stands for a ranked race) */
+const phShared = () => !raceCtx?.ta && !raceCtx?.challenge && !raceCtx?.tutorial;
+/** kind: paused (race HUD) | result (result screens) | replay (replay share player, at its clip time). */
+async function PhotoOpen(kind, back) {
+  const clipMs = Math.round(globalThis.__muchi?.clipT ?? 0);
+  const info = JSON.parse(engine.PhotoOpen(kind, performance.now(), raceCtx?.config?.raceId ?? '', phShared(), kind === 'replay' ? clipMs : 0));
+  if (!info.ok) { toast(info.message); return; }
+  const cat = await L.photoCatalog();
+  ph = { kind, info, back, cat: cat.ok && cat.value.enabled ? cat.value : null, tab: 'camera', look: 'natural', frame: null, stamps: [], caption: null, names: 'masked', hideUi: false, camera: info.camera, problem: null };
+  if (!ph.cat) { engine.PhotoClose(performance.now()); toast('フォトモードはいま使えません'); return; }
+  globalThis.__muchi.photo = { open: info, catalog: ph.cat };
+  PhotoMode();
+}
+function phItem(cat, id) { return ph.cat[cat].find((x) => x.id === id); }
+function phCard() { return JSON.parse(engine.PhotoCard(ph.look, ph.frame ?? '', ph.stamps.map((s) => `${s.id}:${s.x}:${s.y}`).join(','), ph.caption ?? '', ph.names)); }
+function phCam(op, v = 0) { ph.camera = JSON.parse(engine.PhotoCamera(op, v)); PhotoMode(); }
+function PhotoMode() {
+  currentScreen = PhotoMode;
+  Clear('photo'); cur.classList.add('race', 'photo'); $canvas.hidden = false;
+  $canvas.style.filter = PH_LOOK_CSS[ph.look] ?? 'none';
+  const f = JSON.parse(engine.PhotoFrame());
+  view.draw(f);
+  const card = phCard();
+  // ① the viewfinder: frame, vignette for the depth of field, name plates on the horses, stamps, caption, the logo
+  const vf = Panel('Viewfinder', 30, 30, 1000, 566, 'transparent'); vf.classList.add('clipframe', 'ph-view'); vf.dataset.frame = ph.frame ?? 'none'; vf.dataset.look = ph.look;
+  if (ph.camera.dof > 0) { const v = el('ph-dof', 0, 0, 1000, 566, vf); v.style.setProperty('--dof', String(ph.camera.dof)); }
+  if (ph.frame) { const fr = el('ph-frameart', 0, 0, 1000, 566, vf); fr.dataset.frame = ph.frame; }
+  if (ph.names !== 'hidden') card.plates.forEach((p) => {
+    const at = view.project(p.slot, 2.9);
+    if (!at || at.x < 100 || at.x > 960 || at.y < 60 || at.y > 560) return;
+    const t = el('ph-plate' + (p.you ? ' you' : ''), at.x - 30 - 70, at.y - 30 - 18, 140, 26, vf);
+    t.dataset.rider = p.rider; t.dataset.slot = String(p.slot);
+    Txt(p.rider, 0, 4, 140, 13, p.you ? GOLD : WHITE, t, { align: 'center', weight: 700, nowrap: true });
+  });
+  ph.stamps.forEach((s, i) => { const g = el('ph-stamp', s.x - 30, Math.round(s.y * 0.566) - 26, 60, 52, vf); g.textContent = PH_STAMP_GLYPH[s.id] ?? '★'; g.dataset.stamp = s.id; g.dataset.i = String(i); g.classList.add('keep-ja'); });
+  if (card.spec.caption) { const c = Txt(card.spec.caption, 28, 490, 640, 24, WHITE, vf, { weight: 700, cls: 'tshadow ph-caption keep-ja', nowrap: true }); c.dataset.caption = card.spec.caption; }
+  const wm = Txt(card.watermark, 760, 500, 220, 28, WHITE, vf, { align: 'right', cls: 'tshadow watermark', ls: '.12em' }); wm.dataset.name = 'watermark';
+  // the state line: paused / result / replay, the tick, and the re-simulated state equals the live race
+  const same = !ph.info.liveChecksum || ph.info.liveChecksum === ph.info.fingerprint;
+  const src = { paused: 'レースを一時停止中', result: 'レース結果から', replay: 'リプレイから' }[ph.kind];
+  const st = el('chip ph-state', 54, 50, 380, 50); st.textContent = `${src}　残り ${ph.info.remainingM} m`;
+  st.dataset.photoHash = same ? 'match' : 'mismatch'; st.dataset.tick = String(ph.info.tick); st.dataset.source = ph.info.source.kind; st.dataset.mode = ph.info.source.mode;
+  Caption(`撮影する瞬間：${ph.info.tick}tick　端末で再計算：${same ? 'レースと同じ状態 ✓' : '不一致'}　レースの結果は変わりません`, 34, 614, undefined, 13, same ? OK : RED).classList.add('tshadow');
+  if (ph.hideUi) { Ghost('UIを表示', 1380, 40, 180, 52, () => { ph.hideUi = false; PhotoMode(); }, undefined, 'quiet').dataset.action = 'ph-showui'; return; }
+  Caption(ph.names === 'hidden' ? '名前は表示しません' : '名前：あなた・フレンド・それ以外は p＋枠番・CPU', 34, 640, undefined, 13, MUTED).classList.add('tshadow');
+  // ② the controls: one tab at a time, one CTA
+  const p = Glass('Photo controls', 1060, 30, 510, 840, undefined, .92); p.classList.add('ph-panel'); p.dataset.tab = ph.tab;
+  Kicker('フォトモード', 36, 30, p, { size: 17 });
+  PH_TABS.forEach(([k, name], i) => { const b = Btn(name, 30 + i * 92, 92, 86, 44, () => { ph.tab = k; PhotoMode(); }, 'choice' + (ph.tab === k ? ' on' : ''), p); b.dataset.tab = k; b.style.fontSize = '14px'; b.style.padding = '0'; });
+  const y0 = 164;
+  if (ph.tab === 'camera') {
+    const c = ph.camera;
+    Txt(`回転 ${c.orbitDeg}°　距離 ${(c.distanceDm / 10).toFixed(1)} m　高さ ${(c.heightDm / 10).toFixed(1)} m　画角 ${c.fovDeg}°`, 36, y0, 440, 15, WHITE, p, { weight: 500, cls: 'num', nowrap: true }).dataset.camera = JSON.stringify(c);
+    const row = (y, a, b) => { Ghost(a[0], 36, y, 212, 50, a[1], p, 'small').dataset.cam = a[2]; Ghost(b[0], 264, y, 212, 50, b[1], p, 'small').dataset.cam = b[2]; };
+    row(y0 + 36, ['‹ 左へ回る', () => phCam('orbit', -15), 'orbit-'], ['右へ回る ›', () => phCam('orbit', 15), 'orbit+']);
+    row(y0 + 98, ['寄る', () => phCam('zoom', -10), 'zoom-'], ['引く', () => phCam('zoom', 10), 'zoom+']);
+    row(y0 + 160, ['上から', () => phCam('raise', 5), 'raise+'], ['低く', () => phCam('raise', -5), 'raise-']);
+    row(y0 + 222, ['望遠', () => phCam('fov', -5), 'fov-'], ['広角', () => phCam('fov', 5), 'fov+']);
+    Txt('ぼかし', 36, y0 + 296, 90, 14, MUTED, p, { weight: 500, nowrap: true });
+    [0, 1, 2, 3].forEach((n) => { const b = Btn(n === 0 ? 'なし' : String(n), 130 + n * 88, y0 + 284, 78, 42, () => phCam('dof', n), 'choice' + (c.dof === n ? ' on' : ''), p); b.dataset.dof = String(n); b.style.fontSize = '14px'; });
+    TextLink('カメラを戻す', 36, y0 + 344, 170, () => phCam('reset'), p);
+    Txt('カメラはコースより下に入りません', 214, y0 + 352, 262, 12, SOFT, p, { nowrap: true });
+  } else if (ph.tab === 'look') {
+    ph.cat.looks.forEach((x, i) => { const b = Btn(x.name, 36 + (i % 2) * 228, y0 + Math.floor(i / 2) * 62, 212, 50, () => { ph.look = x.id; PhotoMode(); }, 'choice' + (ph.look === x.id ? ' on' : ''), p); b.dataset.look = x.id; });
+    Txt('ルックはすべて無料です', 36, y0 + 200, 440, 13, SOFT, p);
+  } else if (ph.tab === 'frame' || ph.tab === 'stamp') {
+    const isFrame = ph.tab === 'frame', list = isFrame ? ph.cat.frames : ph.cat.stamps;
+    const items = isFrame ? [{ id: null, name: 'なし', unlocked: true }, ...list] : list;
+    items.forEach((x, i) => {
+      const on = isFrame ? ph.frame === x.id : ph.stamps.some((s) => s.id === x.id);
+      const b = Btn(x.name, 36 + (i % 2) * 228, y0 + Math.floor(i / 2) * 56, 212, 46, () => phPick(isFrame ? 'frames' : 'stamps', x), 'choice' + (on ? ' on' : '') + (x.unlocked ? '' : ' ph-locked'), p);
+      b.dataset[isFrame ? 'frame' : 'stamp'] = x.id ?? 'none'; b.dataset.unlocked = String(!!x.unlocked); b.style.fontSize = '15px';
+    });
+    const yb = y0 + Math.ceil(items.length / 2) * 56 + 6;
+    if (!isFrame) Txt(`置いたスタンプ ${ph.stamps.length} / ${ph.cat.limits.stampsMax}`, 36, yb, 250, 13, MUTED, p, { weight: 500, nowrap: true });
+    if (!isFrame && ph.stamps.length) TextLink('スタンプを外す', 300, yb - 8, 170, () => { ph.stamps.pop(); PhotoMode(); }, p);
+    Txt('鍵の付いた品は実績で解放、または見た目ショップで決まった価格で買えます（ランダムではありません）', 36, yb + 30, 440, 12, SOFT, p, { lh: 1.5 });
+  } else {
+    const box = el('fieldbox', 36, y0, 440, 60, p);
+    const input = document.createElement('input');
+    input.className = 'field ph-input'; input.maxLength = 40; input.value = ph.caption ?? ''; input.placeholder = `ひとこと（${ph.cat.limits.captionMaxChars}文字まで）`; input.setAttribute('aria-label', 'ひとこと');
+    Object.assign(input.style, { left: '18px', top: '10px', width: '404px', height: '40px', fontSize: '20px' });
+    box.appendChild(input);
+    const apply = () => {
+      const r = JSON.parse(engine.PhotoCaption(input.value, ph.cat.limits.captionMaxChars));
+      ph.problem = r.problem; if (r.ok) ph.caption = r.caption;
+      PhotoMode();
+    };
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') apply(); });
+    Ghost('ひとことを決める', 36, y0 + 76, 220, 50, apply, p, 'small').dataset.action = 'ph-caption';
+    if (ph.caption) TextLink('消す', 272, y0 + 82, 80, () => { ph.caption = null; ph.problem = null; PhotoMode(); }, p);
+    if (ph.problem) Txt(ph.problem, 36, y0 + 140, 440, 14, WARN, p, { weight: 500 }).dataset.problem = ph.problem;
+    Txt('ひとことは翻訳されません。URL・賭けを思わせる言葉・ショップの宣伝の言葉は使えません。', 36, y0 + 176, 440, 12, SOFT, p, { lh: 1.6 });
+  }
+  // toggles, the shutter, back
+  const nb = Ghost(ph.names === 'hidden' ? '名前を表示' : '名前を隠す', 36, 570, 212, 50, () => { ph.names = ph.names === 'hidden' ? 'masked' : 'hidden'; PhotoMode(); }, p, 'small'); nb.dataset.action = 'ph-names';
+  Ghost('UIを隠す', 264, 570, 212, 50, () => { ph.hideUi = true; PhotoMode(); }, p, 'small').dataset.action = 'ph-hideui';
+  Cta('撮影する', 36, 660, 440, PhotoShoot, p, 'gold').dataset.action = 'ph-shoot';
+  Ghost(ph.kind === 'paused' ? 'レースに戻る' : '戻る', 36, 754, 440, 56, PhotoBack, p, 'quiet').dataset.action = 'ph-back';
+}
+function phPick(cat, x) {
+  if (x.id === null) { ph.frame = null; return PhotoMode(); }
+  if (!x.unlocked) return phLocked(cat, x);
+  if (cat === 'frames') ph.frame = ph.frame === x.id ? null : x.id;
+  else if (ph.stamps.length < ph.cat.limits.stampsMax) { const n = ph.stamps.length; ph.stamps.push({ id: x.id, x: [880, 160, 520][n] ?? 500, y: [200, 240, 160][n] ?? 500 }); }
+  else toast(`スタンプは${ph.cat.limits.stampsMax}つまでです`);
+  PhotoMode();
+}
+/** A locked item: the server's unlock text; a shop item can be bought at its fixed price (the cosmetics shop path). */
+function phLocked(cat, x) {
+  Sheet(x.name, cat === 'frames' ? 'フレーム　/　未解放' : 'スタンプ　/　未解放', (s, close, y) => {
+    s.dataset.locked = x.id;
+    Txt(x.unlockText, 48, y, 560, 19, WHITE, s, { weight: 500, lh: 1.6 }).dataset.unlockText = x.unlockText;
+    Txt('写真に重ねる見た目だけです。レースの能力には影響しません。', 48, y + 70, 560, 14, MUTED, s, { lh: 1.6 });
+    if (x.price != null) {
+      Txt(`${fmt(x.price)}コイン`, 48, y + 130, 300, 30, GOLD, s, { cls: 'num' });
+      Cta('コインで買う', 48, y + 190, 400, async () => {
+        const r = await L.buyCosmetic(x.unlock.itemId);
+        if (!r.ok) { toast(r.code === 'INSUFFICIENT_COINS' ? 'コインが足りません' : r.message); return; }
+        await refresh();
+        const c = await L.photoCatalog(); if (c.ok) ph.cat = c.value;
+        close(); toast(`${x.name}を購入しました`); PhotoMode();
+      }, s).dataset.action = 'ph-buy';
+    }
+  });
+}
+async function PhotoShoot() {
+  const card = phCard();
+  ph.card = card; ph.saveKey = 'ph_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const k = await L.photoKpi('photo_take', { source: card.spec.source.kind, look: card.spec.lookId });
+  globalThis.__muchi.lastPhotoKpi = k.ok ? k.value : null;
+  globalThis.__muchi.lastPhotoCard = card;
+  Sheet('写真を撮りました', 'フォトモード　/　共有', (s, close, y) => {
+    s.dataset.photoCard = card.kind;
+    Kicker(card.watermark, 48, y, s, { rule: false, size: 17 });
+    Txt(card.horse, 48, y + 40, 560, 30, GOLD, s, { ls: '.06em' });
+    Txt(card.course, 48, y + 86, 300, 16, WHITE, s, { weight: 500, nowrap: true });
+    if (card.mode) Txt(card.mode, 360, y + 86, 250, 16, MUTED, s, { weight: 500, nowrap: true });
+    const parts = [phItem('looks', card.spec.lookId)?.name, card.spec.frameId ? phItem('frames', card.spec.frameId)?.name : null, ...card.spec.stamps.map((x) => phItem('stamps', x.id)?.name)].filter(Boolean);
+    Txt('重ねたもの：' + parts.join('・'), 48, y + 120, 560, 14, MUTED, s, { lh: 1.6 });
+    Txt('共有の文', 48, y + 156, 300, 13, SOFT, s, { weight: 500 });
+    // the text handed to the share sheet as is (your caption is never translated)
+    const t = Txt(card.shareText, 48, y + 178, 560, 14, MUTED, s, { lh: 1.6, cls: 'keep-ja' }); t.dataset.shareText = card.shareText;
+    Txt('共有の文と画像に、ほかのプレイヤーの名前・IDは入れません。', 48, y + 236, 560, 13, SOFT, s, { lh: 1.5 });
+    Cta('共有する', 48, y + 290, 400, async () => {
+      const r = await L.photoKpi('photo_share', { source: card.spec.source.kind, framed: !!card.spec.frameId });
+      globalThis.__muchi.lastPhotoKpi = r.ok ? r.value : null;
+      toast('共有しました（画像の書き出しと共有シートはアプリで行います）');
+    }, s).dataset.action = 'ph-share';
+    Ghost('写真を保存', 48, y + 384, 260, 56, async () => {
+      const r = await L.photoSave(card.spec, ph.saveKey);
+      if (!r.ok) { toast(r.code === 'PHOTO_LIMIT' ? '保存できる写真がいっぱいです。古い写真を消してから保存してください。' : r.code === 'PHOTO_LOCKED' ? 'まだ使えないフレーム・スタンプが含まれています。' : r.message); return; }
+      globalThis.__muchi.lastPhotoSave = r.value;
+      toast(`写真を保存しました（${r.value.count} / ${r.value.max}）`);
+    }, s, 'small').dataset.action = 'ph-save';
+  });
+}
+function PhotoBack() {
+  const kind = ph?.kind, back = ph?.back;
+  engine.PhotoClose(performance.now());
+  $canvas.style.filter = '';
+  ph = null;
+  if (kind === 'paused') return BuildRaceScreen(); // the race resumes where it stopped
+  return (back ?? Home)();
+}
+
 // ================================================================= boot
 function fit() {
   const s = Math.min(window.innerWidth / 1600, window.innerHeight / 900);
@@ -3597,7 +3777,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

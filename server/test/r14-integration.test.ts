@@ -346,7 +346,7 @@ describe('account deletion clears Round 13 + Round 14 state (REQ-UXS-040, REQ-HO
     await w.svc.tutorialDraw(uid, 'c:tut');
     const before = w.repo.get(uid)!;
     expect(before.hall?.entries.length).toBe(1);
-    expect(before.silksEditor?.presets.length).toBe(1);
+    expect((before as PlayerState & { silksEditor?: { presets: unknown[] } }).silksEditor?.presets.length).toBe(1);
     expect(before.commentaryPack?.owned.ochitsuki).toBeTruthy();
     expect(before.myReplays?.saved.length).toBe(1);
     expect(before.gachaLog?.entries.length).toBeGreaterThan(0);

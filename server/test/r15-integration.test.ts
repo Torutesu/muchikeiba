@@ -19,6 +19,7 @@ import { grantFree } from '../src/domain/wallet.js';
 import { catalogFor, localize, untranslated } from '../src/i18n/catalog.js';
 import type { EventDef, Master } from '../src/domain/master.js';
 import { photoInputSchema, type PhotoInput } from '../src/domain/photoMode.js';
+import { deltaE76 } from '../src/domain/silksEditor.js';
 import { BETTING_WORDS_EN, BETTING_WORDS_JA } from '../src/domain/bettingWords.js';
 import * as packs from '../src/domain/commentaryPacks.js';
 import { adviceTextProblems } from '../src/domain/raceAdvice.js';
@@ -187,5 +188,26 @@ describe('§40 activity × §37 my replays (REQ-ACT-002/011, REQ-MYRP-010)', () 
     expect(await items('f2')).toEqual([]);
     expect(await items('stranger')).toEqual([]);
     expect(await items('owner')).toEqual([]);
+  });
+});
+
+// ------------------------------------------------------------------------------------------------ §41 × §35
+
+describe('§41 accessibility colours × §35 silks editor colour check (REQ-A11Y-006, REQ-SILK-008)', () => {
+  const tokens = JSON.parse(readFileSync(join(ROOT, 'contracts/a11y-tokens.json'), 'utf8')) as { modes: Record<string, Record<string, string>>; groups: Record<string, string[]>; rules: { minDeltaE76Cvd: number } };
+  it('one ΔE (CIE76) for both: the cvd cue groups stay apart by the silks editor\'s own deltaE76 (normal vision)', () => {
+    for (const keys of Object.values(tokens.groups)) for (let i = 0; i < keys.length; i++) for (let j = i + 1; j < keys.length; j++) {
+      const a = tokens.modes.cvd![keys[i]!]!, b = tokens.modes.cvd![keys[j]!]!;
+      expect(deltaE76(a, b), `${keys[i]} × ${keys[j]}`).toBeGreaterThanOrEqual(tokens.rules.minDeltaE76Cvd);
+    }
+  });
+  it('colour-vision support recolours cues only — never the silks the player designed (prototype stylesheet)', () => {
+    const css = readFileSync(join(ROOT, 'tools/figma-prototype/site/style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    const cvdRules = [...css.matchAll(/([^{}]*html\[data-color-mode="cvd"\][^{}]*)\{([^{}]*)\}/g)];
+    expect(cvdRules.length).toBeGreaterThan(0);
+    for (const [, sel, body] of cvdRules) {
+      expect(sel, sel).not.toMatch(/silk|sk-|\.coat|jersey/);
+      expect(body, sel).not.toMatch(/--silk/);
+    }
   });
 });

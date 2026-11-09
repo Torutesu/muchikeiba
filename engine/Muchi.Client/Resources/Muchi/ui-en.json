@@ -616,6 +616,21 @@
   "ブロックしました": "Blocked",
   "挑戦状を送れるライバルがいません": "There is no rival to challenge",
   "先にフレンド部屋を作ってください": "Create a friend room first",
-  "挑戦状を送りました（このレースは点になりません）": "Challenge sent (this race does not score)"
+  "挑戦状を送りました（このレースは点になりません）": "Challenge sent (this race does not score)",
+  "勝負服エディタ": "Silks Editor",
+  "試着中": "Trying on",
+  "保存する": "Save",
+  "勝負服を保存しました": "Silks saved",
+  "持っていないパーツがあります。入手すると保存できます": "Some parts are not yours yet. Get them to save",
+  "有償限定（有償コインのみ）": "Paid coins only",
+  "パーツを入手しました": "Part added",
+  "空き": "Empty",
+  "プリセットに保存しました": "Saved to a preset",
+  "使えないパーツがあります": "Has a part you no longer own",
+  "勝負服の編集はオンラインで行えます": "Editing silks needs a connection",
+  "見た目のみ。ランク戦の能力には影響しません": "Looks only: no effect on ranked stats",
+  "有償コイン": "Paid coins",
+  "コイン{n}枚": "{n} coins",
+  "有償コイン{n}枚": "{n} paid coins"
  }
 }

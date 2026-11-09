@@ -41,4 +41,5 @@ node "$HERE/test/round9-gacha.test.mjs"   # round 9: banner calendar, GachaRevea
 node "$HERE/test/round10-invite.test.mjs" # round 10: 友達招待 — my code, demo friends redeeming it, milestone rewards, entering a code, reset
 node "$HERE/test/round11.test.mjs"   # round 11: 図鑑 (obtained / seen / unknown, no reward for completion), achievements and claims, achievement titles
 node "$HERE/test/round11-training.test.mjs" # round 11: 調教 — view, a session re-scored on the server rules, anti-cheat, skip, the mission apple, the ranked line
+node "$HERE/test/round13-team-goal.test.mjs" # round 13: 支部の共同目標 — the week, settled races with the daily cap, the feed milestone, the week close paying once
 echo "built $SITE ($(du -sh "$SITE" | cut -f1))"

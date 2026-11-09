@@ -431,6 +431,28 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.equal(await page.locator('.screen.in .btn[data-label="購入済み"].disabled').count(), 1, 'the bought pass is not buyable');
   assert.equal(await page.locator('.screen.in .btn[data-label="今シーズンは購入済み"].disabled').count(), 1, 'Pass+ is closed too (one per season)');
   await shot('season-pass-owned', 500);
+  // ------------------------------------------------------------------ 4. round 13: 支部の共同目標 (REQ-TGOAL-*)
+  // the demo team's week on the real TeamCore / PlayerService rules: milestone bar, contributors, the week result sheet
+  await page.evaluate(() => globalThis.__muchi.show('TeamFeed')); await waitScreen('team-feed', 20000); await page.waitForTimeout(400);
+  await click('共同目標'); await waitScreen('team-goal'); await page.waitForTimeout(500);
+  assert.equal(await page.locator('.screen.in .tg-mark').count(), 3, 'team goal: three milestones on the bar');
+  assert.equal(await page.locator('.screen.in input, .screen.in textarea, .screen.in [contenteditable]').count(), 0, 'team goal: nothing to type, no button adds to the goal');
+  assert.match(await page.locator('.screen.in').innerText(), /無償・抽選なし/, 'team goal: the reward is free and not a lottery');
+  await shot('team-goal', 300);
+  const p0 = Number(await page.locator('.screen.in .tg-panel').getAttribute('data-progress'));
+  await click('みんなでレース（デモ）'); await waitScreen('team-goal'); await page.waitForTimeout(900);
+  const p1 = Number(await page.locator('.screen.in .tg-panel').getAttribute('data-progress'));
+  assert.ok(p1 > p0, `team goal: settled races moved the goal (${p0} → ${p1})`);
+  assert.ok(await page.locator('.screen.in .tg-row').count() >= 1, 'team goal: top contributors listed');
+  assert.ok(await page.locator('.screen.in .tg-name.keep-ja').count() >= 1, 'team goal: names are shown as typed');
+  await shot('team-goal-progress', 300);
+  await click('週の締め（デモ）'); await waitScreen('team-goal'); await page.waitForTimeout(1000);
+  assert.equal(await page.locator('.screen.in .sheet.tg-result').count(), 1, 'team goal: the week result sheet');
+  await shot('team-goal-result', 400);
+  await page.locator('.screen.in .sheet [data-label="閉じる"]').click(); await page.waitForTimeout(400);
+  await page.evaluate(() => globalThis.__muchi.show('TeamGoal')); await waitScreen('team-goal'); await page.waitForTimeout(500);
+  assert.equal(await page.locator('.screen.in .sheet.tg-result').count(), 0, 'team goal: the result sheet is shown once per week');
+  await page.evaluate(() => globalThis.__muchi.logic.setClockMs(null));
   // ------------------------------------------------------------------ 4. round 10: 友達招待 (REQ-INV-*)
   // my code + share, demo friends redeeming it (real InviteService), milestone rewards via the outbox, entering a code
   await demo('day1');

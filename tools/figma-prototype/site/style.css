@@ -486,3 +486,15 @@ html[lang="en"] .pass-strip .cell small { font-size: 12px; }
 .tr-judge[data-judge="good"] { color: var(--cyan); }
 .tr-judge[data-judge="miss"] { color: var(--text-3); }
 .tr-total { line-height: 1; }
+
+/* round 13: 支部の共同目標 (REQ-TGOAL-*) */
+.tg-bar { background: #19364b; border-radius: 2px; overflow: hidden; }
+.tg-bar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--cyan), #b9f7ff); box-shadow: 0 0 16px rgba(0, 210, 237, .55); }
+.tg-mark { background: rgba(213, 225, 233, .55); }
+.tg-mark.on { background: var(--gold); box-shadow: 0 0 12px rgba(255, 211, 79, .8); }
+.tg-progress { line-height: 1; }
+.tg-list { overflow: hidden; }
+.tg-row { border-bottom: 1px solid rgba(150, 173, 187, .28); }
+.tg-row.mine { box-shadow: inset 3px 0 0 var(--cyan); background: rgba(var(--cyan-rgb), .08); }
+.tg-row.mine .tg-name { color: var(--cyan); }
+.tf-row.goal .tf-main { color: var(--cyan); }

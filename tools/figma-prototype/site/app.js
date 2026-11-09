@@ -2546,6 +2546,7 @@ let tfLastPost = -1e15;
 const TF_INTERVAL = 10_000;
 const tfWhen = (at) => { const d = Math.max(0, L.now() - at); return d < 60e3 ? 'たった今' : d < 3600e3 ? `${Math.floor(d / 60e3)}分前` : d < 86400e3 ? `${Math.floor(d / 3600e3)}時間前` : jstDate(at).split(' ')[0]; };
 function tfLine(it, label) {
+  if (it.kind === 'goal' && it.goal) return `共同目標「${it.goal.label}」が${it.goal.tier}段目に到達！`;
   if (it.kind === 'race' && it.race) return `${it.displayName}さんが${it.race.mode === 'tournament' ? '大会' : 'ランク戦'}で${it.race.place === 1 ? '1着！' : it.race.place + '着'}`;
   return label(it.stampId);
 }
@@ -2567,13 +2568,16 @@ async function TeamFeed() {
   feed.classList.add('tf-feed');
   Kicker('フィード', 36, 30, feed);
   Ghost('支部員のデモ', 700, 34, 204, 50, async () => { L.setClockMs(L.now() + 11_000); await L.teamActivity(); TeamFeed(); }, feed, 'quiet small');
+  Ghost('共同目標', 480, 34, 204, 50, () => show(TeamGoal), feed, 'small').classList.add('tf-goal-link');
   const list = el('tf-list', 0, 112, 940, 556, feed);
   list.dataset.count = items.length;
   if (!items.length) Txt('まだ何もありません。スタンプで声をかけてみよう', 36, 24, 860, 19, MUTED, list);
   for (const it of items) {
-    const row = tfNode('div', 'tf-row' + (it.kind === 'race' ? ' race' : '') + (it.mine ? ' mine' : ''));
+    const goal = it.kind === 'goal';
+    const row = tfNode('div', 'tf-row' + (it.kind === 'race' || goal ? ' race' : '') + (goal ? ' goal' : '') + (it.mine ? ' mine' : ''));
     row.dataset.seq = it.seq; row.dataset.kind = it.kind; row.dataset.player = it.playerId;
-    row.appendChild(tfNode('div', 'tf-meta', `${it.mine ? 'あなた' : it.displayName}　·　${tfWhen(it.at)}`));
+    row.appendChild(tfNode('div', 'tf-meta', `${goal ? '支部' : it.mine ? 'あなた' : it.displayName}　·　${tfWhen(it.at)}`));
+    if (goal) row.addEventListener('click', () => show(TeamGoal));
     const main = tfNode('div', 'tf-main');
     if (it.kind === 'stamp') { const b = tfNode('span', 'tf-badge', label(it.stampId)); b.dataset.asset = it.stampAsset; main.appendChild(b); }
     else main.appendChild(tfNode('span', 'tf-race', tfLine(it, label)));
@@ -2592,7 +2596,7 @@ async function TeamFeed() {
       });
       foot.appendChild(cheer);
     }
-    if (!it.mine) {
+    if (!it.mine && !goal) { // a goal item is the team's (no author): nothing to mute or report
       const mute = tfNode('button', 'tf-link', '非表示');
       mute.addEventListener('click', async (e) => { e.stopPropagation(); const r = await L.muteMember(it.playerId, true); toast(r.ok ? `${it.displayName}さんのスタンプを表示しません（その他から戻せます）` : r.message); TeamFeed(); });
       const rep = tfNode('button', 'tf-link', '報告');
@@ -2638,6 +2642,113 @@ async function TeamFeed() {
   NavBar(4);
 }
 
+// ================================================================= round 13: 支部の共同目標 (REQ-TGOAL-*)
+// The team's weekly goal on the real rules (TeamsService / TeamCore + PlayerService in the browser): the goal picked for
+// the team and week, the milestone bar, my contribution against the minimum and the per-member daily cap, the top
+// contributors (names as typed: never translated, .keep-ja), the week result sheet once per week. Progress only comes from
+// settled race results — there is no button that adds to it (the demo buttons play races / end the week on the clock).
+// Mirrors unity/Assets/Muchi/Game/TeamGoalModel.cs. ムチ一閃 tone: paddock art, two navy panels, cyan kickers, one CTA ».
+const TG_RULES = '支部員みんなのレース結果で進みます。1人が1日に積める数には上限があります。週の終わり（月曜4:00）に、最低限貢献した支部員全員へ届いた段の報酬を配ります（無償・抽選なし）。';
+const tgUnit = (kind) => (kind === 'wins' ? '勝' : kind === 'ta_pb' ? '回更新' : 'レース');
+const tgCount = (n, kind) => `${n}${tgUnit(kind)}`;
+function tgReward(r) {
+  if (!r) return '';
+  const parts = [];
+  if (r.freeCoins) parts.push(`無償コイン${r.freeCoins}枚`);
+  for (const it of r.items ?? []) parts.push(`${it.itemId === 'breeding_material' ? '配合素材' : it.itemId}×${it.qty}`);
+  return parts.join('・');
+}
+const TG_SEEN = 'muchi.teamgoal.result_seen';
+async function TeamGoal() {
+  currentScreen = TeamGoal;
+  const team = await L.teamDemo();
+  const res = await L.teamGoal();
+  await refresh();
+  const v = res.ok ? res.value : null;
+  const w = v?.current ?? null;
+  Clear('team-goal'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('支部　/　共同目標', '今週の目標を支部のみんなで　·　進むのは確定したレース結果だけ');
+  // ① the week's goal: label, the milestone bar with each tier's fixed reward, my contribution
+  const g = Glass('Team goal', 36, 134, 940, 676, undefined, .86);
+  g.classList.add('tg-panel');
+  Kicker('今週の共同目標', 36, 30, g);
+  Ghost('週の締め（デモ）', 700, 34, 204, 50, async () => { await L.teamGoalCloseWeek(); TeamGoal(); }, g, 'quiet small');
+  Ghost('みんなでレース（デモ）', 440, 34, 244, 50, async () => { await L.teamGoalActivity(4); await L.teamGoalMyRaces(3); TeamGoal(); }, g, 'quiet small');
+  if (!w) {
+    Txt(res.ok ? '支部に入ると共同目標に参加できます' : res.message, 36, 130, 868, 22, MUTED, g);
+  } else {
+    g.dataset.kind = w.kind; g.dataset.progress = String(w.progress); g.dataset.tier = String(w.tier);
+    Txt(w.label, 36, 110, 868, 34, WHITE, g, { weight: 700, ls: '.04em', cls: 'tg-label' });
+    Txt(team.name, 36, 160, 520, 15, SOFT, g, { weight: 500, ls: '.12em', cls: 'keep-ja tg-team' });
+    Txt(`${jstDate(w.endsAt).split(' ')[0]} 4:00 締め`, 560, 160, 344, 15, SOFT, g, { align: 'right', ls: '.08em' });
+    const final = w.milestones[w.milestones.length - 1]?.target ?? 1;
+    Txt(String(w.progress), 36, 190, 240, 76, GOLD, g, { weight: 700, cls: 'num tg-progress' });
+    Txt(`目標 ${tgCount(final, w.kind)}`, 280, 226, 400, 20, MUTED, g, { weight: 500 });
+    const BX = 36, BW = 868, BY = 300;
+    const bar = el('tg-bar', BX, BY, BW, 14, g);
+    const fill = document.createElement('i'); fill.style.width = Math.round(100 * clamp(w.progress / final, 0, 1)) + '%'; bar.appendChild(fill);
+    w.milestones.forEach((x, i) => {
+      const pos = clamp(x.target / final, 0, 1);
+      const mx = Math.round(BX + pos * BW);
+      const mk = el('tg-mark' + (x.reached ? ' on' : ''), mx - 2, BY - 10, 4, 34, g);
+      mk.dataset.tier = String(x.tier);
+      const last = i === w.milestones.length - 1;
+      const lx = last ? mx - 200 : mx - 100;
+      const o = { align: last ? 'right' : 'center' };
+      const t = Txt(`${x.tier}段目`, lx, BY + 34, 200, 16, x.reached ? GOLD : WHITE, g, { weight: 700, ls: '.08em', ...o });
+      t.classList.add('tg-tier'); t.dataset.reached = String(x.reached);
+      Txt(tgCount(x.target, w.kind), lx, BY + 58, 200, 14, SOFT, g, o);
+      Txt(tgReward(x.reward), last ? mx - 160 : mx - 80, BY + 80, 160, 13, GOLD, g, { weight: 500, ...o });
+    });
+    const next = w.milestones.find((x) => !x.reached);
+    Txt(next ? `次の段まで あと${tgCount(next.target - w.progress, w.kind)}` : '最後の段に到達しました', 36, 438, 868, 19, WHITE, g, { weight: 700 });
+    Hair(36, 482, 868, g);
+    Kicker('あなたの貢献', 36, 500, g);
+    Txt(`${tgCount(w.my.contribution, w.kind)}（報酬は${tgCount(w.minContribution, w.kind)}から）`, 36, 562, 560, 22, WHITE, g, { weight: 700, cls: 'tg-mine' });
+    Txt(w.my.qualified ? '報酬の対象です' : `あと${tgCount(w.minContribution - w.my.contribution, w.kind)}で報酬の対象`, 600, 566, 304, 16, w.my.qualified ? CYAN : MUTED, g, { weight: 700, align: 'right' }).classList.add('tg-qualified');
+    Txt(`今日 ${w.my.today} / ${w.my.dailyCap}（1日の上限）`, 36, 610, 560, 15, SOFT, g);
+    Gauge(36, 640, 560, w.my.dailyCap ? w.my.today / w.my.dailyCap : 0, g);
+    if (w.my.today >= w.my.dailyCap) Txt('今日の上限に届きました。4:00に戻ります', 36, 660, 868, 14, MUTED, g);
+  }
+  // ② top contributors (names are what the players typed: shown as written in every language)
+  const c = Glass('Contributors', 996, 134, 568, 560, undefined, .86);
+  Kicker('貢献の多い支部員', 36, 30, c);
+  const top = w?.top ?? [];
+  const list = el('tg-list', 36, 112, 496, 290, c);
+  list.dataset.count = String(top.length);
+  if (!top.length) Txt('まだ貢献がありません。レースに出ると積み上がります', 0, 8, 496, 16, MUTED, list);
+  top.forEach((x, i) => {
+    const row = el('tg-row' + (x.playerId === 'local' ? ' mine' : ''), 0, i * 56, 496, 52, list);
+    row.dataset.player = x.playerId;
+    Txt(String(i + 1), 12, 12, 36, 22, CYAN, row, { weight: 700, cls: 'num' });
+    Txt(x.displayName, 52, 14, 300, 18, WHITE, row, { weight: 700, cls: 'keep-ja tg-name', nowrap: true });
+    Txt(tgCount(x.n, w.kind), 356, 14, 140, 18, GOLD, row, { weight: 700, align: 'right' });
+  });
+  Txt(TG_RULES, 36, 420, 496, 13, SOFT, c, { lh: 1.6 });
+  Cta('レースに出て貢献する', 996, 716, 568, () => show(RaceLobby), undefined, 'tg-cta');
+  NavBar(4);
+  // ③ the week result sheet: once per closed week (kept on the device)
+  const lw = v?.lastWeek;
+  if (lw && prefs.get(TG_SEEN, '') !== lw.week) {
+    prefs.set(TG_SEEN, lw.week);
+    Sheet('先週の共同目標', '週の結果', (sh, _close, y) => {
+      sh.classList.add('tg-result'); sh.dataset.tier = String(lw.tier); sh.dataset.paid = String(lw.paid);
+      Txt(lw.label, 48, y, 564, 20, WHITE, sh, { weight: 700 });
+      Txt(lw.tier > 0 ? `${lw.tier}段目に到達` : '段に届きませんでした', 48, y + 44, 564, 30, lw.tier > 0 ? GOLD : MUTED, sh, { weight: 700 });
+      Txt(`${lw.progress} / ${lw.targets[lw.targets.length - 1]}`, 48, y + 92, 300, 22, GOLD, sh, { weight: 700, cls: 'num' });
+      if (lw.reward) Txt(tgReward(lw.reward), 48, y + 132, 564, 18, GOLD, sh, { weight: 500 });
+      Txt(lw.tier === 0 ? '次の週も支部のみんなで挑戦しましょう' : lw.paid ? '報酬を受け取りました' : lw.eligible ? '受け取りの準備中です' : '貢献が最低限に届かず、今回は対象外でした', 48, y + 168, 564, 17, lw.paid ? CYAN : MUTED, sh, { weight: 700 }).classList.add('tg-result-mine');
+      Hair(48, y + 214, 564, sh);
+      Kicker('貢献の多い支部員', 48, y + 234, sh);
+      lw.top.slice(0, 5).forEach((x, i) => {
+        Txt(String(i + 1), 48, y + 300 + i * 40, 40, 18, CYAN, sh, { weight: 700, cls: 'num' });
+        Txt(x.displayName, 96, y + 300 + i * 40, 320, 17, WHITE, sh, { weight: 700, cls: 'keep-ja', nowrap: true });
+        Txt(tgCount(x.n, lw.kind), 440, y + 300 + i * 40, 172, 17, GOLD, sh, { weight: 700, align: 'right' });
+      });
+    });
+  }
+}
+
 // ================================================================= boot
 function fit() {
   const s = Math.min(window.innerWidth / 1600, window.innerHeight / 900);
@@ -2670,7 +2781,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Collection, Achievements, Training, TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Collection, Achievements, Training, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

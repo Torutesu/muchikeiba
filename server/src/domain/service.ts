@@ -73,6 +73,7 @@ import {
 import { claimAllGifts, claimGift, expireGifts, giftBadge, giftBoxView, giftGiver, giftsNeedExpiry, nextGiftWake, type OpsTitleKey } from './giftBox.js';
 import { finishTraining, startTraining, trainingDelta, trainingTick, trainingView, useTrainingItem } from './training.js';
 import { assistView, markAssistPromptSeen, noteRaceForAssist, setAssist, type AssistLevel, type AssistSource } from './assist.js';
+import { buyPack, commentaryPackBadge, equipPack, packsView, type EquipSource } from './commentaryPacks.js';
 import {
   ensureRival, noteRivalRace, noteRivalTa, rivalBlock, rivalChallengeCheck, rivalChallengeReceive, rivalOutbound, rivalSeen, rivalSetOptOut, rivalSync,
   rivalUpdateOf, rivalView, rivalWithdrawn, weekIdAt, weeksToSync, type RegistryWeek, type RivalUpdate,
@@ -306,7 +307,7 @@ export class PlayerService {
   /** REQ-UXS-001/014/032/040: computed sections of GET /v1/player and bootstrap. */
   private extras(s: PlayerState, now: number) {
     const m = this.d.master;
-    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s) };
+    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s), commentaryPack: commentaryPackBadge(m, s) };
   }
 
   async view(id: string) {
@@ -1351,6 +1352,22 @@ export class PlayerService {
   /** POST /v1/player/assist/prompt-seen: the one-time suggestion was shown (once only). */
   assistPromptSeen(id: string) {
     return this.tx(id, null, (s, now, emit) => markAssistPromptSeen(s, now, emit));
+  }
+
+  // ---------------------------------------------------------------- 実況パック commentary packs (REQ-CMT-*, commentaryPacks.ts)
+  /** GET /v1/commentary/packs: read-only. */
+  async commentaryPacks(id: string) { return packsView(this.d.master, await this.load(id)); }
+  /** PUT /v1/commentary/equipped: owned packs only; the same pack twice changes nothing. */
+  equipCommentaryPack(id: string, packId: string, source: EquipSource) {
+    return this.tx(id, null, (s, now, emit) => equipPack(this.d.master, s, packId, source, now, emit));
+  }
+  /** POST /v1/commentary/packs/:packId/buy: coins (paid first), idempotency key required. */
+  async buyCommentaryPack(id: string, packId: string, equip: boolean, idemKey: string | null) {
+    const key = this.requireKey(idemKey);
+    return this.tx(id, key, (s, now, emit) => {
+      const r = buyPack(this.d.master, s, packId, equip, now, key, emit);
+      return { ...r, wallet: playerView(s).wallet, view: packsView(this.d.master, s) };
+    });
   }
 
   async pushPreferences(id: string, locale: Locale = 'ja') { return pushPrefsView(this.d.master, await this.load(id), locale); }

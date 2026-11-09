@@ -230,6 +230,11 @@ export const CODE_EN: Record<string, string> = {
   '{time}以内で完走': 'Finish within {time}',
   '完走する': 'Finish the race',
 
+  // ---- 実況パック (commentaryPacks.ts packsView, protocol §36; REQ-CMT-011)
+  '実況の話し方だけが変わります。レースの結果・能力には影響しません。': 'Only the commentary style changes. Race results and abilities are not affected.',
+  '英語では標準の実況で話します': 'In English, this pack uses the standard commentary',
+  '実績「{name}」{tier}段目で入手': 'Unlocked at tier {tier} of the achievement "{name}"',
+
   // ---- error details shown to players (REQ-API-004 messages; codes are the contract)
   'カタカナ2〜9文字': '2–9 katakana characters',
   '{a}〜{b}文字': '{a}–{b} characters',

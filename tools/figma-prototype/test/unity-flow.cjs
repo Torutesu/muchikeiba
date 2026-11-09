@@ -990,6 +990,62 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await shot('history-contact', 300);
   assert.deepEqual(await page.evaluate(() => (globalThis.__muchiKpi ?? []).map((e) => e.tab)), ['purchases', 'coins_paid', 'coins_free', 'gacha'], 'history_view once per tab');
 
+  // ------------------------------------------------------------------ 7. round 14: 実況パック (REQ-CMT-*)
+  // a week of play (21 races: the 「出走の記録」 pack is owned) → the list (owned / price / achievement), the 10-second sample
+  // of a pack not owned (text ticker on the real CommentarySample), equip the achievement pack, the calm purchase confirm
+  // (buy and cancel the same size), buy + equip, then a ranked race whose commentary speaks the bought pack
+  await page.evaluate(() => globalThis.__muchi.demo('packs')); await waitScreen(['commentary-packs', 'link-prompt'], 60000);
+  if (await screen() === 'link-prompt') { await click('あとで'); await page.evaluate(() => globalThis.__muchi.show('CommentaryPacks')); await waitScreen('commentary-packs'); }
+  await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .cp-card').count(), 4, 'four packs');
+  assert.equal(await page.locator('.screen.in .cp-card[data-pack="nekketsu"]').getAttribute('data-owned'), 'true', 'the achievement pack is owned after 10 races');
+  assert.equal(await page.locator('.screen.in .cp-card[data-pack="ochitsuki"] [data-pack-status]').getAttribute('data-pack-status'), 'price');
+  const packText = await page.locator('.screen.in').innerText();
+  assert.ok(!/倍|今だけ|残りわずか|お得|馬券|オッズ/.test(packText), 'no pressure or betting words on the pack screen');
+  assert.match(packText, /レースの結果・能力には影響しません/);
+  await shot('commentary-packs', 300);
+  await page.locator('.screen.in [data-sample="kofuu"]').click(); await page.waitForTimeout(600);
+  assert.equal(await page.locator('.screen.in [data-ticker]').getAttribute('data-pack-id'), 'kofuu', 'the sample of a pack not owned plays');
+  await page.waitForFunction(() => (document.querySelector('.screen.in [data-ticker]')?.textContent ?? '').length > 2, null, { timeout: 5000 });
+  await shot('commentary-pack-sample', 900);
+  await page.waitForSelector('.screen.in [data-ticker][data-done="1"]', { timeout: 15000 });
+  const sample = await page.evaluate(() => globalThis.__muchi.lastSample);
+  assert.ok(sample.lines.length >= 3 && sample.totalTicks <= 200 && sample.lines.some((l) => l.variant.startsWith('kofuu_')), 'the sample is ≤ 10 s of the pack\'s own lines');
+  await page.locator('.screen.in [data-equip="nekketsu"]').click(); await page.waitForTimeout(700); await waitScreen('commentary-packs');
+  assert.equal(await page.locator('.screen.in [data-equipped]').getAttribute('data-equipped'), 'nekketsu', 'the achievement pack is equipped');
+  await page.locator('.screen.in [data-buy="kofuu"]').click(); await waitScreen(['commentary-pack-buy', 'shortfall'], 10000); await page.waitForTimeout(400);
+  assert.equal(await screen(), 'commentary-pack-buy', 'the day-7 player has the coins for a 300-coin pack');
+  const buyText = await page.locator('.screen.in').innerText();
+  assert.match(buyText, /古風な名調子を購入しますか？/); assert.match(buyText, /300コインを使います。有償コインから先に使われます。/);
+  assert.ok(!/倍|今だけ|残りわずか|お得/.test(buyText), 'no pressure words on the confirm');
+  const hs = await page.locator('.screen.in [data-confirm]').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
+  assert.equal(hs.length, 2); assert.ok(Math.abs(hs[0] - hs[1]) <= 1, 'buy and cancel are the same size');
+  await shot('commentary-pack-buy', 300);
+  const cpW0 = await page.evaluate(() => globalThis.__muchi.state().player.wallet);
+  await page.locator('.screen.in [data-confirm="buy"]').click(); await waitScreen('commentary-packs', 10000); await page.waitForTimeout(500);
+  const cpW1 = await page.evaluate(() => globalThis.__muchi.state().player.wallet);
+  assert.equal(cpW0.paid + cpW0.free - cpW1.paid - cpW1.free, 300, '300 coins spent (paid first)');
+  assert.equal(await page.locator('.screen.in [data-equipped]').getAttribute('data-equipped'), 'kofuu', 'bought and equipped');
+  await shot('commentary-packs-bought', 300);
+  await page.evaluate(() => globalThis.__muchi.logic.setAssist('full')); // nobody taps: the assistant rides, the pack calls it
+  await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen(['home', 'link-prompt'], 10000);
+  if (await screen() === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); }
+  await click('レースへ'); await waitScreen('lobby'); await click('ランク戦に出る'); await waitScreen('race', 20000);
+  assert.equal(await page.locator('.screen.in [data-commentary-pack]').getAttribute('data-commentary-pack'), 'kofuu', 'the HUD says which pack calls the race');
+  const subs = new Set(); let packShot = false;
+  for (let i = 0; i < 6000; i++) {
+    const f = await page.evaluate(() => { const x = globalThis.__muchi.state().lastFrame; return x && { done: x.done, subtitle: x.subtitle, departed: x.departed }; });
+    if ((await screen()) !== 'race') break;
+    if (f?.subtitle) subs.add(f.subtitle);
+    if (!packShot && f?.departed && f.subtitle && /であります|いざ発走|ゲートは開かれた|ハナを奪うは/.test(f.subtitle)) { packShot = true; await shot('race-commentary-pack', 0, true); }
+    if (f?.done) break;
+    await page.waitForTimeout(50);
+  }
+  assert.ok([...subs].some((t) => /であります|いざ発走|ゲートは開かれた|ハナを奪うは|鞭|名調子/.test(t)), 'the race commentary speaks the equipped pack: ' + [...subs].slice(0, 4).join(' | '));
+  await waitScreen(['result'], 60000); await page.waitForTimeout(600);
+  await page.evaluate(() => globalThis.__muchi.logic.equipCommentaryPack('standard'));
+  await page.evaluate(() => globalThis.__muchi.logic.setAssist('off'));
+
   // a reload on a named player goes straight home
   await demo('day3');
   await page.goto(url); await ready(); await waitScreen('home'); await shot('home-reload', 500);

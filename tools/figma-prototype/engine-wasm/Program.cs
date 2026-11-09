@@ -114,7 +114,8 @@ public static partial class MuchiRace
         _director = driver.Race.Director as TutorialDirector;
         _obs = new RaceObserver(_driver);
         _eventIdx = 0;
-        _commentary = new CommentaryFeed(_templates, cfg, driver.PlayerSlot);
+        // round 14: 実況パック (REQ-CMT-002/009) — the equipped pack over the language's templates, as MuchiServices.RaceCommentary
+        _commentary = new CommentaryFeed(CommentaryPackModel.TemplatesFor(_templates, _packs, _packId), cfg, driver.PlayerSlot);
         _geo = TrackGeometry.For(cfg);
         _input.Reset();
         _subtitle = "";
@@ -173,6 +174,36 @@ public static partial class MuchiRace
     [JSExport] public static void Lane(int dir) => _input.Lane(dir);
     [JSExport] public static void Spur() => _input.Spur();
     [JSExport] public static void Rein(bool held) => _input.SetRein(held);
+
+    private static CommentaryPackCatalog _packs;
+    private static string _packId = CommentaryPackCatalog.StandardPackId;
+    /// <summary>Round 14: the commentary pack catalog (data/commentary-packs.json, the client copy of server/master).</summary>
+    [JSExport] public static int SetCommentaryPacks(string json) { _packs = CommentaryPackCatalog.Parse(json); return _packs.Packs.Count; }
+    /// <summary>Round 14: the equipped pack (the server's `commentaryPack.equipped`) used from the next race. Returns the pack the race will speak.</summary>
+    [JSExport] public static string SetCommentaryPack(string packId)
+    {
+        _packId = string.IsNullOrEmpty(packId) ? CommentaryPackCatalog.StandardPackId : packId;
+        return CommentaryPackModel.TemplatesFor(_templates, _packs, _packId)?.PackId ?? CommentaryPackCatalog.StandardPackId;
+    }
+    /// <summary>
+    /// Round 14 (REQ-CMT-008): the 10-second sample of a pack on the stock race, in the current language — the same
+    /// CommentarySample.Build the game layer's CommentaryPackModel.Sample runs. JSON: { packId, totalTicks, tickHz, lines:[{ kind, text, offset, duration }] }.
+    /// </summary>
+    [JSExport] public static string CommentarySampleJson(string packId)
+    {
+        if (_packs?.Sample == null) return "{\"packId\":\"" + Esc(packId) + "\",\"totalTicks\":0,\"tickHz\":20,\"lines\":[]}";
+        var r = CommentarySample.Build(_packs.Sample, _ruleset, CommentaryPackModel.TemplatesFor(_templates, _packs, packId));
+        var sb = new StringBuilder();
+        sb.Append("{\"packId\":\"").Append(Esc(r.PackId)).Append("\",\"totalTicks\":").Append(r.TotalTicks).Append(",\"tickHz\":20,\"lines\":[");
+        for (int i = 0; i < r.Lines.Count; i++)
+        {
+            var l = r.Lines[i];
+            if (i > 0) sb.Append(',');
+            sb.Append("{\"kind\":\"").Append(Esc(l.Kind)).Append("\",\"variant\":\"").Append(Esc(l.VariantId)).Append("\",\"text\":\"").Append(Esc(l.Text))
+              .Append("\",\"offset\":").Append(r.Offsets[i]).Append(",\"duration\":").Append(l.DurationTicks).Append('}');
+        }
+        return sb.Append("]}").ToString();
+    }
 
     private static AssistLevel _assist = AssistLevel.Off;
     /// <summary>Round 12: the かんたん操作 level ("off" | "whip" | "full", the server setting) used from the next race.</summary>

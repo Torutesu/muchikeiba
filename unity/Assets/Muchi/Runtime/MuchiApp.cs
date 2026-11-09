@@ -756,7 +756,7 @@ namespace Muchi.Client
                 world.PlayerPartnerIndex=EquippedPartner;
                 world.StartRace(driver.Config,driver.Visuals,driver.PlayerSlot,MuchiServices.Partners);
                 input.LeftHanded=driver.Visuals?.Track==null||driver.Visuals.Track.LeftHanded;
-                commentary=new CommentaryFeed(MuchiServices.Commentary,driver.Config,driver.PlayerSlot);
+                commentary=new CommentaryFeed(MuchiServices.RaceCommentary(),driver.Config,driver.PlayerSlot); // REQ-CMT-009: the viewer's equipped pack
                 for(int i=0;i<dots.Length;i++)dots[i].gameObject.SetActive(i<driver.Config.Entrants.Count);
                 dots[0].GetComponent<Image>().color=Color.white;
                 if(driver.PlayerSlot>=0&&driver.PlayerSlot<dots.Length)dots[driver.PlayerSlot].GetComponent<Image>().color=gold;

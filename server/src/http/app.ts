@@ -36,6 +36,7 @@ import { SsvError, verifyAdMobCallback, type SsvKeySource } from '../ads/ssv.js'
 import { LOCALES, resolveLocale, type Locale } from '../i18n/locale.js';
 import { catalogFor, localize, type Catalog } from '../i18n/catalog.js';
 import { ASSIST_LEVELS, ASSIST_SOURCES } from '../domain/assist.js';
+import { EQUIP_SOURCES } from '../domain/commentaryPacks.js';
 import type { RivalService } from '../domain/rivalService.js';
 import { HISTORY_LIMITS, historyQuery, REF_RE, SUPPORT_TOPICS } from '../domain/history.js';
 import type { DesignInput, SilksDesign } from '../domain/silksEditor.js';
@@ -70,6 +71,7 @@ export type PlayerMethod =
   | 'training' | 'trainingStart' | 'trainingFinish' | 'trainingUseItem'
   | 'giftBox' | 'giftClaim' | 'giftClaimAll'
   | 'assist' | 'setAssist' | 'assistPromptSeen'
+  | 'commentaryPacks' | 'equipCommentaryPack' | 'buyCommentaryPack'
   | 'rivalPeek' | 'rivalSync' | 'rivalSetOptOut' | 'rivalBlock' | 'rivalChallengeCheck' | 'rivalChallengeReceive' | 'rivalSeen' | 'rivalPush'
   | 'history' | 'historyTicket' | 'adminHistory' | 'adminHistoryRefs'
   | 'exchangeView' | 'exchangeBuy'
@@ -217,6 +219,16 @@ async function body<T>(req: Request, schema: z.ZodType<T>): Promise<T> {
   } catch {
     throw new AppError('BAD_REQUEST', 'invalid JSON');
   }
+  const r = schema.safeParse(raw);
+  if (!r.success) throw new AppError('BAD_REQUEST', r.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '));
+  return r.data;
+}
+/** A JSON body that may be absent (empty request body → null). */
+async function optionalBody<T>(req: Request, schema: z.ZodType<T>): Promise<T | null> {
+  const text = await req.text();
+  if (text.trim() === '') return null;
+  let raw: unknown;
+  try { raw = JSON.parse(text); } catch { throw new AppError('BAD_REQUEST', 'invalid JSON'); }
   const r = schema.safeParse(raw);
   if (!r.success) throw new AppError('BAD_REQUEST', r.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '));
   return r.data;
@@ -402,6 +414,16 @@ export const routes: Route[] = [
     return c.player(u).invoke('setAssist', u, b.level, b.source ?? 'settings');
   } },
   { method: 'POST', path: '/v1/player/assist/prompt-seen', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('assistPromptSeen', u) },
+  // REQ-CMT-009..011: 実況パック (commentary packs) — owned / price / equipped, equip, buy for coins (protocol §36)
+  { method: 'GET', path: '/v1/commentary/packs', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('commentaryPacks', u) },
+  { method: 'PUT', path: '/v1/commentary/equipped', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ packId: z.string().min(1).max(32), source: z.enum(EQUIP_SOURCES).optional() }).strict());
+    return c.player(u).invoke('equipCommentaryPack', u, b.packId, b.source ?? 'settings');
+  } },
+  { method: 'POST', path: '/v1/commentary/packs/:packId/buy', auth: 'player', handler: async (r, p, c, u) => {
+    const b = await optionalBody(r, z.object({ equip: z.boolean().optional() }).strict());
+    return c.player(u).invoke('buyCommentaryPack', u, p.packId!, b?.equip === true, idem(r));
+  } },
   { method: 'PUT', path: '/v1/player/age', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ birthYear: z.number().int(), birthMonth: z.number().int().min(1).max(12), guardianConsent: z.boolean() }));
     return c.player(u).invoke('setAge', u, b.birthYear, b.birthMonth, b.guardianConsent);

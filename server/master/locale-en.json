@@ -265,6 +265,10 @@
   "クリムゾン": "Crimson", "エメラルド": "Emerald", "プラチナ": "Platinum", "ロイヤルパープル": "Royal Purple", "桜色": "Sakura Pink", "ティール": "Teal",
   "胴と同じ": "Same as body", "腕輪": "Armlets", "つば色": "Peak", "格子": "Checks", "ダイヤ": "Diamond",
   "勝負服の色「クリムゾン」": "Silks colour \"Crimson\"", "勝負服の色「エメラルド」": "Silks colour \"Emerald\"", "勝負服の色「プラチナ」": "Silks colour \"Platinum\"",
-  "勝負服の袖「山形」": "Silks sleeves \"Chevrons\"", "勝負服の袖「星」": "Silks sleeves \"Stars\"", "勝負服の帽子「水玉」": "Silks cap \"Spots\"", "勝負服の帽子「格子」": "Silks cap \"Checks\""
+  "勝負服の袖「山形」": "Silks sleeves \"Chevrons\"", "勝負服の袖「星」": "Silks sleeves \"Stars\"", "勝負服の帽子「水玉」": "Silks cap \"Spots\"", "勝負服の帽子「格子」": "Silks cap \"Checks\"",
+  "標準": "Standard", "いつもの実況。はっきり、わかりやすく伝えます。": "The usual commentary: clear and easy to follow.",
+  "熱血": "Fired Up", "叫んで盛り上げる、熱い実況。": "Hot-blooded commentary that shouts the race home.",
+  "落ち着いた解説": "Calm Analyst", "展開を静かに読み解く、解説者の語り口。": "An analyst who calmly reads how the race unfolds.",
+  "古風な名調子": "Classic Caller", "昔ながらの名調子で、レースを語り上げます。": "Calls the race in the grand old broadcasting style."
  }
 }

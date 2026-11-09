@@ -774,6 +774,26 @@
   "勝負服の編集はオンラインで行えます": "Editing silks needs a connection",
   "見た目のみ。ランク戦の能力には影響しません": "Looks only: no effect on ranked stats",
   "コイン{n}枚": "{n} coins",
-  "有償コイン{n}枚": "{n} paid coins"
+  "有償コイン{n}枚": "{n} paid coins",
+
+  "_commentaryPacks": "---- commentary packs (CommentaryPackModel; REQ-CMT-*)",
+  "実況パック": "Commentary Packs",
+  "実況の話し方だけが変わります。レースの結果・能力には影響しません。": "Only the commentary style changes. Race results and abilities are not affected.",
+  "装備中": "Equipped",
+  "持っている": "Owned",
+  "{n}コイン": "{n} coins",
+  "実績で入手（{n}/{m}）": "Achievement unlock ({n}/{m})",
+  "装備する": "Equip",
+  "試聴する": "Listen",
+  "試聴": "Sample",
+  "購入する": "Buy",
+  "やめる": "Cancel",
+  "{name}を購入しますか？": "Buy {name}?",
+  "{n}コインを使います。有償コインから先に使われます。": "This uses {n} coins. Paid coins are used first.",
+  "有償コイン{n}枚を使います（無償コインは使えません）。": "This uses {n} paid coins (free coins cannot be used).",
+  "実況パックを購入しました": "Commentary pack purchased",
+  "実況パックを変更しました": "Commentary pack changed",
+  "実況パックの変更はオンラインで保存されます": "Your commentary pack choice is saved when you are online",
+  "購入はオンラインのときにできます": "Purchases are available when you are online"
  }
 }

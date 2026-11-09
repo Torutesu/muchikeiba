@@ -14,6 +14,8 @@
 //     lapse-reminder opt-in (asked once), the home chip and the one-time what's-new card.
 //  6. Round 11 (REQ-COL-*, REQ-ACH-*): the 図鑑 (obtained / seen / unknown silhouettes, completion with no reward and no scout
 //     link), achievements (claim one tier, claim all) and equipping an achievement title.
+//  7. Round 12 (REQ-SHORT-*): the coin shortfall sheet (T6) from the paid step-up → the purchase confirmation → back to the
+//     pull; the free-only state; bought packs drawn as 購入済み in the shop.
 // Screenshots: <out>/u-<nn>-<name>.png. Returns { shots, ftue }.
 const path = require('path');
 const fs = require('fs');
@@ -569,6 +571,53 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await page.locator('.screen.in [data-equip="ach_champion"]').click(); await page.waitForTimeout(800); await waitScreen('achievements');
   assert.equal(await page.locator('.screen.in [data-title-equipped]').getAttribute('data-title-equipped'), 'ach_champion', 'an achievement title is equipped (profile and stable)');
   await shot('achievements-title', 400);
+
+  // ------------------------------------------------------------------ 6. round 12: コイン不足の案内 (T6, REQ-SHORT-*, protocol §29)
+  // the paid step-up with free coins only: the pull is not tried, the sheet says how many PAID coins are missing and shows ONE
+  // pack (閉じる is the big button) → the normal purchase confirmation (birth month asked first) → a demo purchase → back to
+  // the same pull, which now goes through. KPI offer_view / offer_click (shortfall, T6). Then the R8 gap: bought packs in the shop.
+  await demo('day3');
+  await page.evaluate(() => globalThis.__muchi.show('Scout', 'stepup_paid')); await waitScreen('scout'); await page.waitForTimeout(500);
+  const kpi0 = (await page.evaluate(() => globalThis.__muchi.logic.kpiLog())).length;
+  await page.locator('.screen.in .btn[data-label^="10回引く"]').first().click();
+  await waitScreen('shortfall').catch(async (e) => { await shot('shortfall-FAILED', 0); throw new Error(`no shortfall sheet (screen ${await screen()}, ftue ${await page.evaluate(() => globalThis.__muchi.state().ftue)}, wallet ${JSON.stringify(await page.evaluate(() => globalThis.__muchi.state().player.wallet))}): ${e.message}`); });
+  const sheet = page.locator('.screen.in [data-name="Coin shortfall"]');
+  assert.equal(await sheet.getAttribute('data-coin-kind'), 'paid', 'the paid step-up counts paid coins only');
+  assert.equal(await sheet.getAttribute('data-shortfall'), '500');
+  const sheetText = await sheet.innerText();
+  assert.match(sheetText, /有償コインが500枚足りません/);
+  assert.ok(!/倍|お得|今だけ|残りわずか|通常価格/.test(sheetText), 'shortfall sheet: no multiplier / deal / urgency wording');
+  assert.equal(await sheet.locator('[data-product]').count(), 1, 'exactly one pack card');
+  assert.equal(await sheet.locator('[data-product="coin_800"]').count(), 1, 'the smallest pack that covers 500 paid coins');
+  assert.match(await sheet.locator('[data-bonus]').innerText(), /^はじめての購入時のみ：無償コイン530枚をプレゼント$/, 'the first-purchase line exactly as the shop says it');
+  await shot('shortfall-paid', 400);
+  await sheet.locator('[data-label="購入を確認"]').click(); await waitScreen('purchase');
+  const kpis = await page.evaluate(() => globalThis.__muchi.logic.kpiLog().map((e) => e.name + ':' + e.props.offerId + ':' + e.props.trigger));
+  assert.deepEqual(kpis.slice(kpi0), ['offer_view:shortfall:T6', 'offer_click:shortfall:T6'], 'KPI once each');
+  if (await page.locator('.screen.in .pstate').getAttribute('data-state') === 'unregistered') {
+    const y = new Date().getFullYear();
+    await page.selectOption('.screen.in select[aria-label="年"]', String(y - 31)); await page.selectOption('.screen.in select[aria-label="月"]', '1');
+    await click('登録して確認する');
+  }
+  await page.waitForFunction(() => document.querySelector('.screen.in .pstate')?.dataset.state === 'registered');
+  await shot('shortfall-purchase-confirm', 400);
+  await page.locator('.screen.in [data-demo-buy]').click();
+  await waitScreen('scout-reveal', 20000);
+  assert.ok((await page.evaluate(() => globalThis.__muchi.reveal?.order?.length)) === 10, 'back to the original pull: the 10-pull ran');
+  await shot('shortfall-back-to-pull', 600);
+  // free-only payments: the shortfall is said, nothing is sold
+  await page.evaluate(() => globalThis.__muchi.show('Shortfall', 'free')); await waitScreen('shortfall');
+  assert.equal(await page.locator('.screen.in [data-name="Coin shortfall"] [data-product]').count(), 0, 'free-only: no pack');
+  await shot('shortfall-free-only', 300);
+  await click('閉じる'); await waitScreen(['home', 'link-prompt']);
+  // R8 gap: a bought season pass is 購入済み on the shop's おすすめ (and Pass+ is closed), never a buy button
+  await page.evaluate(() => globalThis.__muchi.logic.demoPurchase('season_pass'));
+  await page.evaluate(() => globalThis.__muchi.logic.demoPurchase('starter_pack'));
+  await page.evaluate(() => globalThis.__muchi.show('Store', 'recommended')); await waitScreen('shop-recommended'); await page.waitForTimeout(400);
+  assert.match(await page.locator('.screen.in [data-product="season_pass"]').innerText(), /購入済み/);
+  assert.match(await page.locator('.screen.in [data-product="starter_pack"]').innerText(), /購入済み/);
+  assert.equal(await page.locator('.screen.in [data-product="starter_pack"] .btn[data-label="購入を確認"]').count(), 0, 'a bought starter pack has no buy button');
+  await shot('shop-bought-packs', 400);
 
   // a reload on a named player goes straight home
   await demo('day3');

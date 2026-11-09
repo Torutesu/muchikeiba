@@ -142,6 +142,7 @@ namespace Muchi.Game
 
         public async Task<ActionResult> BuyAsync(string itemId, CancellationToken ct = default)
         {
+            LastShortfall = null;
             if (!_b.Online) return ActionResult.Error("OFFLINE  /  purchases need the server");
             try
             {
@@ -151,8 +152,12 @@ namespace Muchi.Game
                 return ActionResult.Success("PURCHASED  /  paid " + r.SpentPaid + "  free " + r.SpentFree);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (InsufficientCoinsException e) { LastShortfall = e; return ActionResult.Error(e.WireCode + "  /  " + e.Message); }
             catch (ApiException e) { return ActionResult.Error(e.WireCode + "  /  " + e.Message); }
         }
+
+        /// <summary>REQ-SHORT-004: the last cosmetic purchase refused for lack of coins (for CoinShortfallModel.FromError), else null.</summary>
+        public InsufficientCoinsException LastShortfall { get; private set; }
 
         /// <summary>The purchase response is authoritative: wallet and ownership show at once, even if the refresh fails.</summary>
         private void ApplyPurchase(CosmeticPurchase r)

@@ -858,16 +858,18 @@ namespace Muchi.Client
         internal static ApiException ParseError(HttpResponse res)
         {
             string wire = null, message = null;
+            JsonNode details = null;
             try
             {
                 var o = JsonNode.Parse(res.Body ?? "");
                 var e = J.Opt(o, "error");
                 wire = J.Str(e, "code");
                 message = J.Str(e, "message");
+                details = J.Opt(e, "details");
             }
             catch (FormatException) { }
             if (wire == null) wire = res.Status >= 500 ? "INTERNAL" : res.Status == 401 ? "UNAUTHORIZED" : res.Status == 404 ? "NOT_FOUND" : "BAD_REQUEST";
-            return ApiErrorCodes.Create(wire, message, res.Status);
+            return ApiErrorCodes.Create(wire, message, res.Status, details);
         }
     }
 }

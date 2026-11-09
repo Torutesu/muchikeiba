@@ -14,10 +14,11 @@ import type { Rng } from './rng.js';
 import type { Clock } from './time.js';
 import { seasonIdFor, rollSeason, classDef } from './season.js';
 import { applyRefund, applySubscriptionStatus, applyVerifiedPurchase, checkPurchaseIntent, registerAge, type StoreVerifier, type SubscriptionStatus, type VerifiedReceipt } from './purchase.js';
-import { drawGacha, exchangePity, gachaStatus, settlePityGroups } from './gacha.js';
+import { assertBannerOpen, drawGacha, exchangePity, findBanner, gachaPrice, gachaStatus, settlePityGroups } from './gacha.js';
+import { attachShortfall, coinShortfall } from './shortfall.js';
 import { awaken, breed, breedingPreviewWithAllowance, getHorse, nameHorse, pedigree, retire } from './horses.js';
 import { migrateSkills } from './skills.js';
-import { buyCosmetic, cosmeticsCatalog, setEquipment, useTicket, type EquipmentPatch } from './itemShop.js';
+import { buyCosmetic, cosmeticsCatalog, findCosmetic, setEquipment, useTicket, type EquipmentPatch } from './itemShop.js';
 import { applyRaceResult, claimLoginBonus, claimMission, claimPass, firstWinBonusView, missionsView, type RaceResultForPlayer } from './rewards.js';
 import { allowanceView, claimAllowance, markOfferViewed, noteRaceForOffers, shopOffers, shopProducts } from './shop.js';
 import { passScreen } from './pass.js';
@@ -76,6 +77,12 @@ export interface PlayerRepo {
 }
 
 /** REQ-UXS-040: purchases, offers and the daily pack are disabled while the account is scheduled for deletion. */
+/** REQ-SHORT-005: what GET /v1/shop/shortfall asks about. */
+export type ShortfallQuery =
+  | { for: 'gacha'; bannerId: string; count: 1 | 10 }
+  | { for: 'cosmetic'; itemId: string }
+  | { for: 'coins'; coins: number; kind: 'any' | 'paid' };
+
 function notDeleting(s: PlayerState) {
   if (deletionScheduled(s)) throw new AppError('DELETION_PENDING', 'the account is scheduled for deletion');
 }
@@ -184,7 +191,14 @@ export class PlayerService {
     const stableBefore = this.d.onStable ? stableSnapshotKey(this.d.master, draft, now) : '';
     const kpi: KpiRecord[] = [];
     const emit: Emit = (e) => { kpi.push(kpiRecord(draft, now, e)); };
-    const result = fn(draft, now, emit);
+    let result: T;
+    try { result = fn(draft, now, emit); }
+    catch (e) {
+      // REQ-SHORT-004: a coin spend refused for lack of coins says what is short and the one pack that covers it.
+      // Nothing of the draft is kept (the transaction is dropped and no idempotency record is written).
+      attachShortfall(this.d.master, draft, e, now);
+      throw e;
+    }
     noteInviteMilestones(this.d.master, draft, now, emit); // REQ-INV-007: the invitee's milestones, once each
     // REQ-ACH-003: unlock achievement tiers that became due in this transaction (idempotent), then their titles
     if (syncCollection(this.d.master, draft, now, emit).length > 0) evaluateTitles(this.d.master, draft);
@@ -573,6 +587,29 @@ export class PlayerService {
   /** Lazy triggers (race count, season start, promotion) are recorded, so this runs in a transaction. */
   // REQ-UXS-040: while a deletion is scheduled no offer is shown and no daily pack is paid (like purchase-intent)
   /** r10: the product list with this player's ownership (GET /v1/shop/products?mine=1). Read-only. */
+  /**
+   * REQ-SHORT-005: GET /v1/shop/shortfall — the shortfall of a gacha pull, a cosmetic or an amount before trying (read
+   * only). Prices come from the same functions the payment uses (gachaPrice, the cosmetic's price and currency).
+   */
+  async coinShortfall(id: string, q: ShortfallQuery) {
+    const s = structuredClone(await this.load(id));
+    const now = this.d.clock();
+    const m = this.d.master;
+    rollSeason(m, s, now); // the copy only: a season close is not saved by a read
+    if (q.for === 'gacha') {
+      const b = findBanner(m, q.bannerId);
+      assertBannerOpen(b, now); // the pull would be refused for this first (BANNER_CLOSED), so is its preview
+      return coinShortfall(m, s, { coinKind: b.currency === 'paidOnly' ? 'paid' : 'any', need: gachaPrice(b, s, b.stepUp ? 10 : q.count) }, now);
+    }
+    if (q.for === 'cosmetic') {
+      const c = findCosmetic(m, q.itemId);
+      if (c.notForSale) throw new AppError('NOT_ELIGIBLE', `${c.id} is not sold for coins`);
+      if ((s.items[c.id] ?? 0) > 0) throw new AppError('ALREADY_PURCHASED', `${c.id} is already owned`);
+      return coinShortfall(m, s, { coinKind: c.currency === 'paidOnly' ? 'paid' : 'any', need: c.price }, now);
+    }
+    return coinShortfall(m, s, { coinKind: q.kind, need: q.coins }, now);
+  }
+
   async shopProducts(id: string) { return shopProducts(this.d.master, { s: await this.load(id), now: this.d.clock() }); }
   shopOffers(id: string) { return this.tx(id, null, (s, now) => { notDeleting(s); return shopOffers(this.d.master, s, now); }); }
   markOfferViewed(id: string, offerId: string) { return this.tx(id, null, (s, now) => { notDeleting(s); return markOfferViewed(this.d.master, s, offerId, now); }); }

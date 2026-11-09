@@ -1,4 +1,4 @@
-import { AppError } from './errors.js';
+import { AppError, insufficientCoins } from './errors.js';
 import type { Currency, PlayerState } from './player.js';
 
 /**
@@ -63,7 +63,7 @@ export function spend(s: PlayerState, amount: number, opts: { paidOnly: boolean 
   checkInt(amount);
   if (s.wallet.debt > 0 || Object.values(s.itemDebt ?? {}).some((n) => n > 0)) throw new AppError('UNSETTLED_DEBT');
   const available = opts.paidOnly ? s.wallet.paid : s.wallet.paid + s.wallet.free;
-  if (available < amount) throw new AppError('INSUFFICIENT_COINS', `need ${amount}, have ${available}`);
+  if (available < amount) throw insufficientCoins({ coinKind: opts.paidOnly ? 'paid' : 'any', need: amount, have: available }, `need ${amount}, have ${available}`);
   const fromPaid = Math.min(s.wallet.paid, amount);
   const fromFree = amount - fromPaid;
   if (fromPaid > 0) {
@@ -85,7 +85,7 @@ export function spendFree(s: PlayerState, amount: number, at: number, reason: st
   checkInt(amount);
   if (amount === 0) return;
   if (s.wallet.debt > 0 || Object.values(s.itemDebt ?? {}).some((n) => n > 0)) throw new AppError('UNSETTLED_DEBT');
-  if (s.wallet.free < amount) throw new AppError('INSUFFICIENT_COINS', `need ${amount} free coins, have ${s.wallet.free}`);
+  if (s.wallet.free < amount) throw insufficientCoins({ coinKind: 'free', need: amount, have: s.wallet.free });
   s.wallet.free -= amount;
   ledger(s, at, 'spend', 'free', -amount, reason, ref);
 }

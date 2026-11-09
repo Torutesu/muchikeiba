@@ -30,7 +30,8 @@ import { z } from 'zod';
 import { AppError } from './errors.js';
 import { grantReward } from './items.js';
 import type { HorseInstance, PlayerState } from './player.js';
-import { expandPool, type Master } from './master.js';
+import { type Master } from './master.js';
+import { paidRandomTemplates, type PaidRandomSource } from './paidRandom.js';
 import type { RaceResultForPlayer } from './rewards.js';
 import type { RaceStartConfig } from './schemas.js';
 import { deletionScheduled } from './accountDeletion.js';
@@ -109,20 +110,11 @@ const collectionSchema = z.object({
 }).strict();
 
 /**
- * What a paid random draw can give: every template in a banner pool (all banners take paid coins), every template a
- * guaranteed-SR+ ticket can draw (sold in the starter pack; its table is all non-gift templates of its rarities, not a
- * banner pool — QA R11) and their skills.
+ * What a paid random draw can give (paidRandom.ts — banners, guarantee and step-up tables, pity targets, random
+ * tickets incl. the starter pack's SR以上確定券) and their skills.
  */
-export function gachaObtainable(m: Pick<Master, 'gacha' | 'templateById' | 'skills'> & Partial<Pick<Master, 'items' | 'templates'>>): { templates: Set<string>; skills: Set<string> } {
-  const templates = new Set<string>();
-  for (const b of m.gacha.banners) {
-    for (const e of b.pool) templates.add(e.templateId);
-    for (const st of b.stepUp?.steps ?? []) for (const e of st.finalSlotPool ?? []) templates.add(e.templateId);
-  }
-  for (const t of Object.values(m.items?.tickets ?? {})) {
-    if (t.kind !== 'srPlus') continue;
-    for (const e of expandPool(m.templates ?? [], t.rates)) templates.add(e.templateId);
-  }
+export function gachaObtainable(m: Pick<Master, 'templateById'> & PaidRandomSource): { templates: Set<string>; skills: Set<string> } {
+  const templates = paidRandomTemplates(m); // REQ-SHORT-010: the one list of paid random sources
   const skills = new Set<string>();
   for (const t of templates) {
     const sid = m.templateById.get(t)?.skillId;

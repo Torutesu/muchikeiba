@@ -116,9 +116,8 @@ describe('drawing', () => {
 
 describe('comp gacha guard (REQ-GACHA-008)', () => {
   it('rejects collect-set missions that need 2+ gacha-only items', () => {
-    const banners = m.gacha.banners;
-    expect(compGachaProblems([{ id: 'set', kind: 'collect', templateIds: ['t_akatsuki', 't_ginga'], reward: { freeCoins: 1 } }], banners, new Set())).toHaveLength(1);
-    expect(compGachaProblems([{ id: 'ok', kind: 'collect', templateIds: ['t_akatsuki', 't_ginga'], reward: { freeCoins: 1 } }], banners, new Set(['t_ginga']))).toHaveLength(0);
-    expect(compGachaProblems(m.progression.collectionMissions, banners, new Set())).toEqual([]);
+    expect(compGachaProblems([{ id: 'set', kind: 'collect', templateIds: ['t_akatsuki', 't_ginga'], reward: { freeCoins: 1 } }], m, new Set())).toHaveLength(1);
+    expect(compGachaProblems([{ id: 'ok', kind: 'collect', templateIds: ['t_akatsuki', 't_ginga'], reward: { freeCoins: 1 } }], m, new Set(['t_ginga']))).toHaveLength(0);
+    expect(compGachaProblems(m.progression.collectionMissions, m, new Set())).toEqual([]);
   });
 });

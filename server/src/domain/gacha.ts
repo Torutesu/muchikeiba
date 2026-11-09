@@ -1,5 +1,6 @@
 import { AppError, assert } from './errors.js';
 import { collectionRewardProblems } from './collection.js';
+import { paidRandomTemplates, type PaidRandomSource } from './paidRandom.js';
 import { templateAppearance, type Appearance } from './visuals.js';
 import { dayRule, gameDayKey, gameDaysUntil } from './time.js';
 import { PPM_TOTAL, RARITY_ORDER, type BannerDef, type CollectionMissionDef, type GachaMaster, type HorseTemplate, type Master, type PoolEntry, type Rarity } from './master.js';
@@ -120,10 +121,10 @@ export function validateGacha(m: Master): void {
     if (t.kind !== 'single' && t.kind !== 'ten') continue;
     for (const bid of t.banners) if (m.gacha.banners.find((b) => b.id === bid)?.stepUp) problems.push(`${id}: step-up banner ${bid} cannot take tickets`);
   }
-  // every banner can be paid with paid coins, so nothing in a pool counts as freely obtainable
+  // every paid random source counts (paidRandomTemplates: banners, tickets incl. the starter pack's SR+ ticket …)
   const collects = [...(m.progression.beginnerMissions ?? []), ...(m.progression.seasonMissions ?? [])]
     .filter((d) => d.kind === 'collect').map((d) => ({ id: d.id, kind: 'collect' as const, templateIds: d.templateIds ?? [], reward: d.reward }));
-  problems.push(...compGachaProblems([...m.progression.collectionMissions, ...collects], m.gacha.banners, new Set()));
+  problems.push(...compGachaProblems([...m.progression.collectionMissions, ...collects], m, new Set()));
   // REQ-ACH-008: 図鑑・実績 — no reward for a set that contains a gacha-obtainable horse or skill (re-checked on every banner change)
   problems.push(...collectionRewardProblems(m));
   if (problems.length) throw new AppError('CONFIG_INVALID', problems.join('; '));
@@ -131,11 +132,11 @@ export function validateGacha(m: Master): void {
 
 /**
  * REQ-GACHA-008 (コンプガチャ防止): a "collect a set" condition that needs 2+ items obtainable only
- * from PAID gacha is the prohibited カード合わせ. Returns problems.
+ * from PAID random draws is the prohibited カード合わせ. Returns problems. The paid random sources are
+ * paidRandomTemplates(src) — the same list the 図鑑・実績 check uses (REQ-SHORT-010), never a list of its own.
  */
-export function compGachaProblems(missions: CollectionMissionDef[], banners: BannerDef[], freelyObtainable: Set<string>): string[] {
-  const gachaOnly = new Set<string>();
-  for (const b of banners) for (const e of b.pool) if (!freelyObtainable.has(e.templateId)) gachaOnly.add(e.templateId);
+export function compGachaProblems(missions: CollectionMissionDef[], src: PaidRandomSource, freelyObtainable: Set<string>): string[] {
+  const gachaOnly = new Set([...paidRandomTemplates(src)].filter((t) => !freelyObtainable.has(t)));
   const problems: string[] = [];
   for (const mi of missions) {
     const n = mi.templateIds.filter((t) => gachaOnly.has(t)).length;
@@ -259,6 +260,15 @@ export function rollPulls(m: Master, b: BannerDef, count: 1 | 10, rng: Rng, fina
 }
 
 /**
+ * What the next pull of `count` on this banner costs this player (REQ-GACHA-014: a step-up banner charges its current
+ * step's 10-pull price). The draw and the shortfall preview (REQ-SHORT-005) both use it.
+ */
+export function gachaPrice(b: BannerDef, s: PlayerState, count: 1 | 10): number {
+  if (b.stepUp) return b.stepUp.steps[stepIndex(b, s.stepUp?.[b.id] ?? 0)]!.priceTen;
+  return count === 10 ? b.priceTen : b.priceSingle;
+}
+
+/**
  * REQ-GACHA-004..010. Must be called on a draft state inside a transaction (all-or-nothing, REQ-GACHA-009).
  */
 export function drawGacha(m: Master, s: PlayerState, bannerId: string, count: 1 | 10, rng: Rng, now: number, opts: { tutorialFree?: boolean } = {}) {
@@ -279,7 +289,7 @@ export function drawGacha(m: Master, s: PlayerState, bannerId: string, count: 1 
     assert(count === 10, 'BAD_REQUEST', 'tutorial gacha is a 10-pull');
     s.flags.tutorialGachaUsed = true;
   } else {
-    const price = step !== null ? b.stepUp!.steps[step]!.priceTen : count === 10 ? b.priceTen : b.priceSingle;
+    const price = gachaPrice(b, s, count);
     paid = spend(s, price, { paidOnly: b.currency === 'paidOnly' }, now, `gacha ${b.id} x${count}${step !== null ? ` step ${step + 1}` : ''}`, b.id);
   }
   const finalSlot = step !== null ? b.stepUp!.steps[step]!.finalSlotPool : undefined;

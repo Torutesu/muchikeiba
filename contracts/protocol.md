@@ -907,3 +907,57 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 - タップは `BeginMiniGame(now)` からの ms で、サーバーが受け付ける形（間隔・回数・範囲）のものだけを記録する。画面の◎○×は `TrainingScorer.Judge`、合計は `TrainingScorer.Score`（サーバーと同じ）。
 - start / finish は応答が来るまで同じ冪等キーを使う（タイムアウト後の再送で回数を2回使わない）。読み込んだ時に開いたセッションがあれば、ミニゲームなしで仕上げる（時間が経っているため）。
 - 画面に `TrainingModel.RulesText`（ランク戦は上限にそろえる・疲れはレースに影響しない・伸びは受け継がれない）を出す。調教の画面からショップへの導線は作らない。
+
+## 29. コイン不足の案内（T6、REQ-SHORT-001〜010、`server/src/domain/shortfall.ts`、C# `Shortfall.cs`・`Muchi.Game.CoinShortfallModel`、docs/planning/06 §5.1 T6）
+ガチャ・見た目の直販・その他コインで払う操作が**コイン不足**で失敗した時（または失敗する前の確認画面で）、「何コインが・何枚足りないか」と「それを満たす一番小さいパック1つだけ」をサーバーが返す。クライアントは文言を組み立てない（§13 と同じ）。
+
+### 29.1 足りないコインの種類（`coinKind`）
+| `coinKind` | どこで | 数えるコイン |
+|---|---|---|
+| `any` | 通常のガチャ・見た目（`currency: "any"`） | 有償＋無償 |
+| `paid` | 有償限定のガチャ（ステップアップなど `currency: "paidOnly"`）・有償限定の見た目 | **有償だけ**（無償コインは数えない） |
+| `free` | イベントの参加費・種付け料（無償コインのみで払う、REQ-EVENT-004・REQ-BREED-012） | 無償だけ。**購入の案内は出さない**（`status: "free_only"`、お金を払って賞品の機会を買う形にしないため） |
+
+### 29.2 パックの選び方（`coinShortfall`）
+- 候補：有償コインがすぐ入る商品（`kind` が `coins`・`starter`・`promotion`、`paidCoins > 0`）。パス・厩舎手当は候補にしない（コインの商品ではない）。
+- **今この人が買えるものだけ**：購入の確認（REQ-PUR-001 `checkPurchaseIntent`）と同じ判定を商品ごとに行う ― 1回限りで購入済み、昇級記念パックのクラスに未到達、今月の上限（年齢帯、`age-limits.json`）を超える、今月すでに上限超過の購入がある、は除く。年齢が未登録なら上限は判定せず（購入の確認で生年月を聞く）`ageCheck: true`。
+- 「足りる」は**そのパックの有償コインだけ**で数える（初回購入ボーナスの無償コインは数えない。`paid` のときは無償コインは使えないため、`any` のときも案内を控えめにするため）。
+- 足りるもののうち価格の安い順（同じ価格ならコインのパック `kind: "coins"` を先、次に有償コインの少ない順）で**1つ**。`status: "covered"`。
+- 足りるものが無ければ、買えるもののうち有償コインが一番多いもの（同じなら安い方）を返し `covers: false`・`status: "largest_only"`（「いちばん大きい〜でも、あと◯枚足りません」）。
+- 買えるものが1つも無ければ `offer: null`・`status: "none_buyable"`・`blockedCode`（`AGE_LIMIT_EXCEEDED` / `UNSETTLED_DEBT` / `DELETION_PENDING` / `BANNED`）。
+- 初回購入ボーナスは**ショップと同じ表示**（§13 `firstPurchaseBonus.label`「はじめての購入時のみ：無償コイン◯枚をプレゼント」）を、そのパックでまだ受け取っていない時だけ付ける。「倍」「お得」「今だけ」「残りわずか」・残り時間は使わない（テストで確認）。
+
+### 29.3 形（`CoinShortfall`）
+```json
+{ "short": true, "coinKind": "paid", "need": 1500, "have": 300, "shortfall": 1200,
+  "headline": "有償コインが1,200枚足りません",
+  "status": "covered", "blockedCode": null, "ageCheck": false,
+  "line": "コイン1,660（¥2,400）で足ります",
+  "notes": ["有償コインだけで支払います（無償コインは使えません）"],
+  "offer": { "offerId": "shortfall", "touchpoint": "T6", "productId": "coin_2400", "name": "コイン1,660", "priceYen": 2400, "paidCoins": 1660,
+             "covers": true, "contents": [ { "type": "paid_coins", "qty": 1660, "label": "有償コイン1,660枚" } ],
+             "firstPurchaseBonus": { "coins": 1660, "currency": "free", "label": "はじめての購入時のみ：無償コイン1,660枚をプレゼント" }, "oneTime": false } }
+```
+- `short: false`（足りている）なら `status: "not_short"`・`shortfall: 0`・`offer: null`・`headline`/`line` は null。
+- `headline`：`コインが{n}枚足りません`（any）／`有償コインが{n}枚足りません`（paid）／`無償コインが{n}枚足りません`（free）。
+- `line`：covered `{product}（¥{p}）で足ります`／largest_only `いちばん大きい{product}（¥{p}）でも、あと{n}枚足りません`／none_buyable は `blockedCode` ごとの1文／free_only `無償コインだけで支払う項目です（購入したコインでは支払えません）`。
+- 英語（`Accept-Language: en`、§23）はほかのサーバー文言と同じく応答の境界で訳す。
+
+### 29.4 失敗した時（エラーの `details`）
+コインで払う操作（`POST /v1/gacha/draw`・`POST /v1/shop/cosmetics/:itemId/buy`・イベントの参加・種付け など、`wallet.spend` / `spendFree` を通るもの全部）がコイン不足で失敗すると、409 `INSUFFICIENT_COINS` に `details.shortfall`（29.3 の形）が付く。何も変わらない（取引ごと取り消し、冪等の記録にも残らない）。
+```json
+{ "error": { "code": "INSUFFICIENT_COINS", "message": "need 1500, have 300", "details": { "shortfall": { "…": "29.3" } } } }
+```
+`details` はこのエラーにだけ付く（ほかのエラーの形は変わらない）。古いクライアントは無視してよい。
+
+### 29.5 `GET /v1/shop/shortfall`（要認証、読み取りのみ）
+試す前（ガチャの確認シートなど）に同じ答えを出す。クエリ：
+- `for=gacha&bannerId=<id>&count=1|10`：そのバナーの今の価格（ステップアップは今の段の価格、`currency` で `any`/`paid`）。
+- `for=cosmetic&itemId=<id>`：その見た目の価格（`currency` で `any`/`paid`）。直販でない品は `NOT_ELIGIBLE`、所持済みは `ALREADY_PURCHASED`。
+- `for=coins&coins=<1..1000000>&kind=any|paid`：任意の金額。
+→ 29.3 の `CoinShortfall`。ほかの値は 400、無いバナー・品は 404。
+
+### 29.6 表示のルール（06 §5.1、クライアントが守る）
+- 出してよいのは**ガチャの確認・見た目の購入・ショップ**の中だけ。**レース中・マッチング中・チュートリアル中・負けた直後の結果画面には出さない**（`CoinShortfallModel.Allowed`）。
+- シートは「◯コインが◯枚足りません」＋パックのカード1枚＋閉じる（閉じるが一番目立つ）。パックを押すと既存の購入確認（§13、REQ-UXU-010）へ。購入が完了したら元の操作（そのガチャ・その見た目）に戻る。
+- KPI：シートを出した時 `offer_view`、パックを押した時 `offer_click`（`offerId: "shortfall"`・`trigger: "T6"`、§13 の KPI と同じイベント）。1回の失敗（1回のプレビュー）につき1回。

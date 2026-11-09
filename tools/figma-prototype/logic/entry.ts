@@ -2,6 +2,7 @@
 // PlayerService (gacha draws with the ppm tables, 10-pull guarantee, pity, horse naming with the NG list,
 // wallet paid/free ordering, purchase-intent age checks, season pass), odds disclosure from the same tables.
 // State lives in localStorage (one player, "local"). No server, no billing.
+import { COMMENTARY_PACKS } from '../../../server/src/domain/commentaryPacks.js';
 import { loadMaster } from '../../../server/src/domain/master.js';
 import { PlayerService, type PlayerRepo, type ShortfallQuery } from '../../../server/src/domain/service.js';
 import type { ClientBatch } from '../../../server/src/domain/kpi.js';
@@ -557,6 +558,13 @@ export const MuchiLogic = {
     for (let i = 0; i < n; i++) await svc.applyRace(ID, { raceId: `demo_last_${Date.now().toString(36)}_${i}`, mode: 'ranked', place: 12, fieldSize: 12, newRating: null, void: false, humans: 1 });
     return svc.assist(ID);
   },
+  // ---------------------------------------------------------------- 実況パック (REQ-CMT-*, contracts/protocol.md §36)
+  // The real server rules: owned (standard / the 10-race achievement / bought), price, equip, the coin purchase (paid first).
+  commentaryPacks: () => svc.commentaryPacks(ID),
+  /** The pack's name (Japanese; the EN toggle translates it) for the race HUD label. */
+  commentaryPackName: (packId: string) => COMMENTARY_PACKS.packs.find((p) => p.id === packId)?.name ?? packId,
+  equipCommentaryPack: (packId: string, source: 'settings' | 'shop' = 'settings') => wrap(() => svc.equipCommentaryPack(ID, packId, source)),
+  buyCommentaryPack: (packId: string, equip = true) => wrap(() => svc.buyCommentaryPack(ID, packId, equip, key())),
   ads: () => svc.ads(ID),
   setAdPref: (mode: 'auto' | 'on' | 'off') => wrap(() => svc.setAdPref(ID, mode)),
   adStart: (placementId: string) => wrap(() => svc.adStart(ID, placementId, key())),

@@ -406,6 +406,7 @@ let engine = null, view = null, hud = {};
 async function StartTutorial() {
   await viewReady;
   engine.SetAssist('off'); // REQ-ASSIST-006: the tutorial is never assisted (the engine refuses it anyway)
+  engine.SetCommentaryPack(equippedPack()); // round 14: the tutorial speaks the standard anyway (REQ-CMT-002)
   raceInfo = JSON.parse(engine.StartTutorial(tutorialAttempt));
   raceCtx = { tutorial: true, attempt: tutorialAttempt, ftue };
   view.useRig = true; view.start(raceInfo, equippedPartner());
@@ -417,8 +418,10 @@ async function StartRace(trackId = null) {
   const { config, trackName, beginner } = await L.raceConfig(p.id, trackId);
   // round 12: かんたん操作 rides the race with the real InputAssistant inside the WASM engine (never the tutorial)
   engine.SetAssist(assistLevel());
+  // round 14: 実況パック (REQ-CMT-009) — the race speaks the equipped pack (client only; the race itself is unchanged)
+  const commentaryPack = engine.SetCommentaryPack(equippedPack());
   raceInfo = JSON.parse(engine.StartConfig(JSON.stringify(config), 'local'));
-  raceCtx = { tutorial: false, config, trackName, beginner, ftue, trackId: config.track.id };
+  raceCtx = { tutorial: false, config, trackName, beginner, ftue, trackId: config.track.id, commentaryPack };
   view.useRig = true; view.start(raceInfo, equippedPartner());
   BuildRaceScreen();
 }
@@ -437,6 +440,12 @@ function BuildRaceScreen() {
   hud.feedback = Txt('', 560, 268, 480, 52, WHITE, undefined, { align: 'center', cls: 'pop' });
   hud.subtitle = Txt('', 490, 806, 700, 18, WHITE, undefined, { align: 'center', cls: 'subtitle', lh: 1.5 });
   hud.subtitle.style.padding = '8px 18px';
+  // round 14: 実況パック — which voice is calling the race (only when it is not the standard; never in the tutorial)
+  if (!tut && raceCtx.commentaryPack && raceCtx.commentaryPack !== 'standard') {
+    const pk = L.commentaryPackName(raceCtx.commentaryPack);
+    hud.pack = Txt(`実況　${pk}`, 490, 772, 700, 13, CYAN, undefined, { align: 'center', cls: 'tshadow', weight: 700, ls: '.2em' });
+    hud.pack.dataset.commentaryPack = raceCtx.commentaryPack;
+  }
   // partner overhead marker (silks colour) with the mini gauge, the gap to the horse ahead and slipstream lines
   hud.marker = el('marker', 0, 0, 220, 120); hud.marker.innerHTML = '<div class="tri"></div><div class="nm"></div><div class="mini"><i></i></div><div class="gap"></div><div class="wind"></div>';
   hud.marker.style.setProperty('--silk', SILK_CSS[equippedPartner()]);
@@ -1338,7 +1347,9 @@ async function DrawLooks(parent, top, blocked) {
     c.dataset.item = it.id;
     if (it.owned || blocked) disable(b);
   });
-  Txt(cat.notice, 32, 576, 1464, 14, MUTED, parent);
+  Txt(cat.notice, 32, 576, 1464, 14, MUTED, parent, { nowrap: true }).style.width = '1100px';
+  // round 14: 実況パック (REQ-CMT-011) — sold for coins next to the looks (try before buy on its own screen)
+  Ghost('実況パック', 1196, 563, 300, 44, () => CommentaryPacks('shop'), parent, 'quiet small').dataset.action = 'commentary-packs';
 }
 
 // ---- purchase confirmation: unregistered / registered / under 18 / over the limit (REQ-PUR-001/002, 06 §6.8) — 18
@@ -1737,8 +1748,9 @@ const fmtMs = (ms) => { const t = Math.floor(ms / 100); return `${Math.floor(t /
 async function StartTimeAttack(trackId, ghostId) {
   await viewReady;
   engine.SetAssist(assistLevel()); // round 12: the time attack records the assist's inputs like taps (REQ-ASSIST-002)
+  const commentaryPack = engine.SetCommentaryPack(equippedPack()); // round 14
   raceInfo = JSON.parse(engine.StartTimeAttack(JSON.stringify(taCache.config), ghostId));
-  raceCtx = { tutorial: false, ta: true, trackId, trackName: taCache.trackName, config: taCache.config, ghost: raceInfo.ghosts[0] ?? null };
+  raceCtx = { tutorial: false, ta: true, trackId, trackName: taCache.trackName, config: taCache.config, ghost: raceInfo.ghosts[0] ?? null, commentaryPack };
   view.useRig = true; view.start(raceInfo, equippedPartner()); view.setGhosts(raceInfo.ghosts.length, equippedPartner());
   BuildRaceScreen();
   if (raceCtx.ghost) hud.ghost = Txt('', 545, 122, 510, 17, '#cfe8ff', undefined, { align: 'center', cls: 'tshadow', weight: 500 });
@@ -1812,16 +1824,17 @@ async function Settings() {
   const m = Glass('More', 556, 134, 480, 676, undefined, .9);
   Kicker('見た目・お世話・仲間', 36, 30, m);
   // round 10: 支部の応援 (team cheer stamps) and 友達招待 next to the looks / care entries
-  const moreRows = [['衣装', Wardrobe], ['コースの見た目', CourseThemes], ['レース条件', Conditions], ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite']];
+  // round 14: 実況パック (REQ-CMT-011) after the looks entries
+  const moreRows = [['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions], ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite']];
   moreRows.forEach(([n, go, action], i) => {
-    const b = Btn(n, 36, 96 + i * 50, 408, 50, go, 'row' + (i === moreRows.length - 1 ? ' last' : ''), m); b.style.fontSize = '19px';
+    const b = Btn(n, 36, 90 + i * 46, 408, 46, go, 'row' + (i === moreRows.length - 1 ? ' last' : ''), m); b.style.fontSize = '19px';
     if (action) b.dataset.action = action;
     const em = document.createElement('em'); em.textContent = '›'; b.appendChild(em);
   });
-  Kicker('法定表示・規約', 36, 416, m, { rule: false, size: 15 });
-  [['利用規約', 'terms'], ['プライバシーポリシー', 'privacy'], ['特定商取引法に基づく表記', 'tokushoho'], ['資金決済法に基づく表示', 'shikin']].forEach(([n, k], i) => TextLink(n, 36, 448 + i * 42, 400, () => Legal(k, Settings), m));
+  Kicker('法定表示・規約', 36, 432, m, { rule: false, size: 15 });
+  [['利用規約', 'terms'], ['プライバシーポリシー', 'privacy'], ['特定商取引法に基づく表記', 'tokushoho'], ['資金決済法に基づく表示', 'shikin']].forEach(([n, k], i) => TextLink(n, 36, 462 + i * 40, 400, () => Legal(k, Settings), m));
   // the other front end (Codex's club UI, same logic and engine)
-  TextLink('クラブ版 UI', 36, 624, 400, () => { location.href = 'club.html'; }, m, 'クラブ版 UI を開く ↗');
+  TextLink('クラブ版 UI', 36, 626, 400, () => { location.href = 'club.html'; }, m, 'クラブ版 UI を開く ↗');
   // ③ demo states for review (REQ-UXP-002): the same rules on a moved clock
   const demo = Glass('Demo', 1056, 134, 508, 676, undefined, .78);
   Kicker('デモ（レビュー用）', 36, 30, demo, { color: SOFT });
@@ -1900,6 +1913,110 @@ async function AssistPrompt(next) {
   Hair(48, 444, 904, box);
   Txt(ASSIST_POLICY, 48, 466, 904, 15, SOFT, box, { lh: 1.6 });
 }
+// ================================================================= round 14: 実況パック (REQ-CMT-*, contracts/protocol.md §36)
+// Mirrors unity/Assets/Muchi/Game/CommentaryPackModel.cs on the real server rules (owned / price / equip / the coin purchase,
+// paid coins first) — the list comes from GET /v1/commentary/packs, the wording from data/commentary-packs.json inside the
+// WASM engine. The sample is the real CommentarySample.Build on the stock race (no server call, the same every time), played
+// as a text ticker (no TTS: the voice clips are sound work, the client falls back to subtitles when they are not downloaded).
+// The equipped pack speaks in every race HUD (never the tutorial: the Commentator keeps the standard there).
+const PACK_MARK = { standard: 'STANDARD', nekketsu: 'FIRED UP', ochitsuki: 'ANALYST', kofuu: 'CLASSIC' };
+const PACK_ACCENT = { standard: '#c8eaff', nekketsu: '#ff9a6b', ochitsuki: CYAN, kofuu: GOLD };
+const PACK_NOTICE = '実況の話し方だけが変わります。レースの結果・能力には影響しません。';
+const equippedPack = () => player?.commentaryPack?.equipped ?? 'standard';
+let packTicker = null; // { timer, packId }
+function stopPackTicker() { if (packTicker) { clearInterval(packTicker.timer); packTicker = null; } }
+async function CommentaryPacks(from = 'settings', playing = null) {
+  stopPackTicker();
+  currentScreen = () => CommentaryPacks(from); await refresh();
+  const v = await L.commentaryPacks();
+  Clear('commentary-packs'); SetArt('Art/race-result', false);
+  TopBar('その他　/　実況パック', '実況の話し方を選べます。試聴は何度でも、買う前でも聞けます');
+  const p = Glass('Frame', 36, 134, 1528, 676, undefined, .9);
+  p.dataset.equipped = v.equipped;
+  v.packs.forEach((pk, i) => {
+    const c = Card('Pack ' + pk.id, 24 + i * 374, 24, 360, 392, p, PACK_ACCENT[pk.id] ?? CYAN);
+    c.classList.add('cp-card'); c.dataset.pack = pk.id; c.dataset.owned = String(pk.owned); if (pk.equipped) c.classList.add('on');
+    Txt(PACK_MARK[pk.id] ?? pk.id.toUpperCase(), 28, 30, 304, 14, PACK_ACCENT[pk.id] ?? CYAN, c, { weight: 700, ls: '.22em' });
+    Txt(pk.name, 28, 58, 304, 28, WHITE, c, { weight: 700, nowrap: true });
+    Txt(pk.description, 28, 108, 304, 15, WHITE, c, { weight: 500, lh: 1.65 });
+    const status = pk.equipped ? ['装備中', OK] : pk.owned ? ['持っている', OK] : pk.forSale ? [`${fmt(pk.price)}コイン${pk.currency === 'paidOnly' ? '（有償限定）' : ''}`, GOLD] : pk.unlock ? [`実績で入手（${pk.unlock.progress}/${pk.unlock.target}）`, MUTED] : ['', MUTED];
+    Txt(status[0], 28, 196, 304, 18, status[1], c, { weight: 700, nowrap: true, cls: 'num' }).dataset.packStatus = pk.equipped ? 'equipped' : pk.owned ? 'owned' : pk.forSale ? 'price' : 'unlock';
+    if (!pk.owned && pk.unlock) Txt(pk.unlock.label, 28, 228, 304, 13, SOFT, c, { lh: 1.5 });
+    if (!isJa() && pk.englishNote) Txt(pk.englishNote, 28, 262, 304, 13, SOFT, c, { lh: 1.5 }).dataset.englishNote = '1';
+    Ghost('試聴する', 24, 310, 130, 60, () => CommentaryPacks(from, pk.id), c, 'quiet small').dataset.sample = pk.id;
+    if (pk.equipped) disable(Ghost('装備中', 166, 310, 170, 60, () => {}, c, 'quiet small'));
+    else if (pk.owned) Cta('装備する', 166, 310, 170, async () => {
+      const r = await L.equipCommentaryPack(pk.id, from === 'shop' ? 'shop' : 'settings');
+      toast(r.ok ? '実況パックを変更しました' : r.message); CommentaryPacks(from);
+    }, c, 'small').dataset.equip = pk.id;
+    else if (pk.forSale) Cta('購入する', 166, 310, 170, () => CommentaryPackBuy(pk.id, from), c, 'small').dataset.buy = pk.id;
+    else disable(Ghost('実績で入手', 166, 310, 170, 60, () => {}, c, 'quiet small'));
+  });
+  // the sample ticker: the stock race, the pack's key lines back to back, typed out at the commentary's own speed
+  const s = Glass('Sample', 24, 436, 1480, 216, p, .94); s.classList.add('flat');
+  const sel = playing ? v.packs.find((x) => x.id === playing) : null;
+  Kicker(sel ? `試聴　/　${sel.name}` : '試聴', 28, 18, s, { size: 15 });
+  Txt('青葉競馬場 芝1600m　·　ストックのレース　·　10秒', 1000, 58, 452, 13, SOFT, s, { align: 'right', nowrap: true });
+  const line = Txt(sel ? '' : '「試聴する」で、そのパックの実況が流れます（声の素材が無い時は字幕だけ）', 28, 96, 1424, sel ? 26 : 17, sel ? WHITE : MUTED, s, { weight: sel ? 700 : 500, nowrap: true });
+  line.dataset.ticker = '1';
+  const bar = Gauge(28, 156, 1424, 0, s);
+  Txt(v.notice ?? PACK_NOTICE, 28, 176, 1424, 13, SOFT, s, { nowrap: true });
+  Back(from === 'shop' ? () => Store('looks') : Settings, 'BACK', 40, 834);
+  if (sel) PlayPackSample(sel, line, bar);
+}
+function PlayPackSample(pk, line, bar) {
+  const data = JSON.parse(engine.CommentarySampleJson(pk.id));
+  L.kpi([{ name: 'commentary_pack_sample', at: L.now(), props: { packId: pk.id, owned: !!pk.owned } }]); // REQ-CMT-012
+  line.dataset.packId = data.packId; line.dataset.lines = String(data.lines.length);
+  globalThis.__muchi.lastSample = data;
+  const t0 = performance.now(), total = Math.max(1, data.totalTicks), ms = 1000 / data.tickHz;
+  const step = () => {
+    if (!line.isConnected) return stopPackTicker();
+    const tick = (performance.now() - t0) / ms;
+    const l = data.lines.find((x) => tick >= x.offset && tick < x.offset + x.duration) ?? (tick >= total ? data.lines[data.lines.length - 1] : null);
+    if (l) {
+      // type the line out at the commentary's speed (3 ticks a character), keep it whole once said
+      const chars = tick >= total ? l.text.length : Math.max(1, Math.ceil((tick - l.offset) / 3));
+      const text = l.text; // the WASM engine already speaks the current language
+      if (line.dataset.full !== l.text || line.textContent.length !== Math.min(chars, text.length)) { line.textContent = text.slice(0, chars); line.dataset.full = l.text; line.dataset.kind = l.kind; }
+    }
+    const i = bar.querySelector('i'); if (i) i.style.width = Math.round(100 * clamp(tick / total, 0, 1)) + '%';
+    if (tick >= total) { line.textContent = data.lines[data.lines.length - 1]?.text ?? ''; line.dataset.done = '1'; stopPackTicker(); }
+  };
+  packTicker = { timer: setInterval(step, 50), packId: pk.id };
+  step();
+}
+/** The calm purchase confirm (CommentaryPackModel.PurchaseConfirm): the server's price, paid coins first, cancel as big as buy. */
+async function CommentaryPackBuy(packId, from = 'settings') {
+  stopPackTicker();
+  const v = await L.commentaryPacks();
+  const pk = v.packs.find((x) => x.id === packId);
+  if (!pk || pk.owned || !pk.forSale) return CommentaryPacks(from);
+  const back = () => CommentaryPacks(from);
+  // T6 (REQ-SHORT-005): short of coins → the shortfall sheet first (the same rule as the cosmetics shop)
+  const sf = await L.coinShortfall({ for: 'coins', coins: pk.price, kind: pk.currency === 'paidOnly' ? 'paid' : 'any' });
+  if (sf.ok && sf.value.short) return Shortfall(sf.value, 'shop', () => CommentaryPackBuy(packId, from), back);
+  currentScreen = () => CommentaryPackBuy(packId, from); await refresh();
+  Clear('commentary-pack-buy'); SetArt('Art/race-result', false); Shade('dim');
+  const d = Dialog('Pack purchase', 1000, 560);
+  d.dataset.pack = packId; d.dataset.price = String(pk.price);
+  Kicker('実況パック　/　購入の確認', 48, 44, d);
+  Txt(`${pk.name}を購入しますか？`, 48, 108, 904, 32, WHITE, d, { weight: 700, nowrap: true });
+  Txt(pk.currency === 'paidOnly' ? `有償コイン${fmt(pk.price)}枚を使います（無償コインは使えません）。` : `${fmt(pk.price)}コインを使います。有償コインから先に使われます。`, 48, 170, 904, 18, WHITE, d, { weight: 500 });
+  Txt(`所持　無償 ◎ ${fmt(player.wallet.free)}　·　有償 ◈ ${fmt(player.wallet.paid)}`, 48, 210, 904, 15, MUTED, d, { weight: 500, cls: 'num', nowrap: true });
+  Txt(v.notice ?? PACK_NOTICE, 48, 250, 904, 15, SOFT, d, { lh: 1.6 });
+  Txt('確率のない直販です。買う前に何度でも試聴できます。', 48, 282, 904, 15, SOFT, d, { lh: 1.6 });
+  const buy = Cta('購入する', 48, 400, 420, async () => {
+    disable(buy);
+    const r = await L.buyCommentaryPack(packId, true);
+    if (!r.ok && r.code === 'INSUFFICIENT_COINS' && r.details?.shortfall) return Shortfall(r.details.shortfall, 'shop', () => CommentaryPackBuy(packId, from), back);
+    await refresh();
+    toast(r.ok ? '実況パックを購入しました' : r.message);
+    CommentaryPacks(from);
+  }, d);
+  buy.dataset.confirm = 'buy';
+  Ghost('やめておく', 532, 400, 420, 73, back, d, 'quiet').dataset.confirm = 'cancel';
+}
 function ConfirmDeletion(v) {
   currentScreen = () => ConfirmDeletion(v); Clear('delete-confirm'); SetArt('Art/home-paddock', false); Shade('dim heavy');
   const box = Dialog('Confirm delete', 1000, 640);
@@ -1925,6 +2042,8 @@ async function Demo(kind) {
   if (kind === 'new') { await L.bootstrap(); await refresh(); return Title(); }
   if (kind === 'comeback') { await L.seedComeback(14); await refresh(); return Home(); }
   if (kind === 'collection') { await L.seedCollection(); await refresh(); return Collection('horses'); }
+  // round 14: a week of play (21 races: the 「出走の記録」 achievement pack is owned) → the commentary packs
+  if (kind === 'packs') { await L.seedDemo(7, [3, 3, 3, 3, 3, 3, 3]); ftue = false; await refresh(); return CommentaryPacks('settings'); }
   if (kind === 'gifts') { await L.seedGifts(); await refresh(); giftState.tab = 'box'; giftState.page = 0; return GiftBox('box'); }
   // round 12: a week of play, then three ranked races in last place (settled by the real applyRace) → the one-time suggestion
   if (kind === 'assist') { await L.seedDemo(7, [3, 3, 3, 3, 3, 3, 3]); ftue = false; await L.demoLastPlaces(3); await refresh(); return AssistThen(Home); }
@@ -3030,10 +3149,11 @@ window.addEventListener('resize', fit);
 fit();
 
 async function boot() {
-  const [ja, artIndex, ruleset, commentary, partners, commentaryEn, serverEn, uiEn] = await Promise.all([
+  const [ja, artIndex, ruleset, commentary, partners, commentaryEn, serverEn, uiEn, commentaryPacks] = await Promise.all([
     fetch('data/ja.json').then((r) => r.json()), fetch('data/art.json').then((r) => r.json()),
     fetch('data/ruleset.json').then((r) => r.text()), fetch('data/commentary-ja.json').then((r) => r.text()), fetch('data/partners.json').then((r) => r.json()),
     fetch('data/commentary-en.json').then((r) => r.text()), fetch('data/server-en.json').then((r) => r.text()), fetch('data/ui-en.json').then((r) => r.text()),
+    fetch('data/commentary-packs.json').then((r) => r.text()), // round 14: 実況パック
   ]);
   enTables = { commentaryJa: commentary, commentaryEn, server: serverEn, ui: uiEn };
   for (const e of ja.entries ?? []) JA[e.key] = e.value;
@@ -3045,6 +3165,7 @@ async function boot() {
   const runtime = await dotnet.create();
   engine = (await runtime.getAssemblyExports(runtime.getConfig().mainAssemblyName)).MuchiRace;
   engine.Init(ruleset, commentary);
+  engine.SetCommentaryPacks(commentaryPacks); // round 14 (REQ-CMT-001): the client copy of server/master/commentary-packs.json
   applyLanguage(); // REQ-L10N-012: English commentary when EN is on
   l10nObserver.observe($stage, { subtree: true, childList: true, characterData: true });
   view = new RaceView($canvas, (res) => art(res), partners);
@@ -3053,7 +3174,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ GiftBox, AssistSettings, Collection, Achievements, Training, Rival, TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ CommentaryPacks, CommentaryPackBuy, GiftBox, AssistSettings, Collection, Achievements, Training, Rival, TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

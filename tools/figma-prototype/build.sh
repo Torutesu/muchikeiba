@@ -45,4 +45,5 @@ node "$HERE/test/round11-training.test.mjs" # round 11: 調教 — view, a sessi
 node "$HERE/test/round12-giftbox.test.mjs" # round 12: プレゼントボックス — boot balance, the demo box, claim one / all, history, no paid coins
 node "$HERE/test/round12-assist.test.mjs"   # round 12: かんたん操作 — InputAssistant rides a race in WASM, never the tutorial, the setting and the one-time prompt
 node "$HERE/test/round12-rival.test.mjs"    # round 12: ライバル — weekly pairing (public card), head to head, challenge (no points), TA tiebreak, week result once, block / opt-out
+node "$HERE/test/round14-commentary-packs.test.mjs" # round 14: 実況パック — races speak the equipped pack (never the tutorial), the 10-second sample, owned / equip / buy on the server rules
 echo "built $SITE ($(du -sh "$SITE" | cut -f1))"

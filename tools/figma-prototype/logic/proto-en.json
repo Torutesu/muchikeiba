@@ -771,6 +771,18 @@
   "報酬　無償コイン{n}枚": "Reward  {n} free coins",
   "報酬はありません": "No reward",
   "称号「{t}」を獲得": "Title \"{t}\" unlocked",
-  "報酬は結果で決まる固定の額です。連勝の上乗せはありません": "The reward is a fixed amount set by the result. There is no extra for winning streaks"
+  "報酬は結果で決まる固定の額です。連勝の上乗せはありません": "The reward is a fixed amount set by the result. There is no extra for winning streaks",
+  "_commentaryPacks": "---- round 14: commentary packs (REQ-CMT-*)",
+  "その他　/　実況パック": "More / Commentary Packs",
+  "実況の話し方を選べます。試聴は何度でも、買う前でも聞けます": "Choose how the race is called. Listen as often as you like, even before buying",
+  "実績で入手": "Achievement unlock",
+  "試聴　/　{name}": "Sample / {name}",
+  "青葉競馬場 芝1600m　·　ストックのレース　·　10秒": "Aoba Racecourse Turf 1600m · stock race · 10 seconds",
+  "「試聴する」で、そのパックの実況が流れます（声の素材が無い時は字幕だけ）": "Press Listen to hear the pack call a race (subtitles only when the voice files are not downloaded)",
+  "実況パック　/　購入の確認": "Commentary Pack / Confirm purchase",
+  "所持　無償 ◎ {n}　·　有償 ◈ {m}": "You have: Free ◎ {n} · Paid ◈ {m}",
+  "確率のない直販です。買う前に何度でも試聴できます。": "A direct sale with no random draw. You can listen as often as you like before buying.",
+  "実況　{name}": "Commentary: {name}",
+  "やめておく": "Cancel"
  }
 }

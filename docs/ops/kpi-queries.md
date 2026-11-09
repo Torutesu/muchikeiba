@@ -75,6 +75,9 @@
 | `assist_disable` | サーバー（かんたん操作をオフにした） | 前のレベル | `settings`/`prompt` | | |
 | `assist_prompt_view` | サーバー（一度だけの提案シートが出た） | | | | `double9` 最下位の連続 |
 | `race_assisted` | サーバー（かんたん操作ありで精算されたレース。本人の申告、KPI専用） | `whip`/`full` | モード | | `double4` 着順、`double5` 頭数 |
+| `commentary_pack_equip` | サーバー（実況パックを装備した、REQ-CMT-012） | パック | 前のパック | `settings`/`shop`/`buy` | `double8` 初めて標準以外を装備 |
+| `commentary_pack_buy` | サーバー（実況パックをコインで買った） | パック | 通貨 `any`/`paidOnly` | | `double2` 有償コイン、`double3` 無償コイン、`double9` 値段 |
+| `commentary_pack_sample` | クライアント（試聴を始めた） | パック | `owned`/`not_owned` | | |
 | `consent` | サーバー | 規約の版 | プライバシーポリシーの版 | | |
 | `partner_granted` | サーバー | テンプレートID（`t_partner`） | | | |
 | `ab_assign` | サーバー（初回の bootstrap、実験ごとに1回） | 実験ID | バケットID | | |
@@ -653,3 +656,31 @@ ORDER BY races DESC
 
 - 補助を使った人の継続（D7）は、`assist_enable` を出した人の `blob2` で「リテンション」のクエリを絞って比べる。
 - `client_race_start` の `blob9` にもレベルが入る（オフラインのレース・タイムアタックを含めた使われ方）。
+
+## 実況パック：試聴から購入・装備まで（REQ-CMT-012、contracts/protocol.md §36）
+
+**試聴→購入の流れ**（パックごと、28日）：持っていない人の試聴、そのパックの購入、購入の有償コインの割合。
+
+```sql
+SELECT blob8 AS pack,
+  sumIf(_sample_interval, blob1 = 'commentary_pack_sample' AND blob9 = 'not_owned') AS samples_not_owned,
+  sumIf(_sample_interval, blob1 = 'commentary_pack_buy') AS buys,
+  round(sumIf(_sample_interval, blob1 = 'commentary_pack_buy') / sumIf(_sample_interval, blob1 = 'commentary_pack_sample' AND blob9 = 'not_owned'), 3) AS sample_to_buy,
+  round(sumIf(_sample_interval * double2, blob1 = 'commentary_pack_buy') / sumIf(_sample_interval * double9, blob1 = 'commentary_pack_buy'), 3) AS paid_share
+FROM muchi_kpi
+WHERE blob1 IN ('commentary_pack_sample', 'commentary_pack_buy') AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY pack
+ORDER BY buys DESC
+```
+
+**装備の状態**（パックごと、28日）：初めて標準以外を装備した人（`double8 = 1`）、標準に戻した数。実績のパック（熱血）は購入なしで装備されるので、入手の目安は `commentary_pack_equip` の `blob8 = 'nekketsu'` で見る。
+
+```sql
+SELECT blob8 AS pack, blob10 AS source, sum(_sample_interval) AS equips, sumIf(_sample_interval, double8 = 1) AS first_non_standard
+FROM muchi_kpi
+WHERE blob1 = 'commentary_pack_equip' AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY pack, source
+ORDER BY equips DESC
+```
+
+- 実況パックはレースに効かないので、勝率の比較はしない（買える要素がランク戦に効かないことは REQ-CMT-004 で保証）。

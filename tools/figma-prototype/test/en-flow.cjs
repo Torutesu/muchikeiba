@@ -2,7 +2,7 @@
 // EN on from the start, the day-7 demo player: home, shop (recommended / coins / looks), the legal page (Japanese text
 // with the English courtesy note), purchase confirmation, season pass, scout calendar and odds, the stable, settings,
 // the coin shortfall sheet (round 12), a ranked race (HUD) and its result, 調教 (cards, mini-game, result, skip), ライバル (detail, races, week result), then the 図鑑 (every tab, details), 実績 (claim one / all) and the title chooser,
-// the プレゼントボックス (box, claim one / all, history) and the かんたん操作 suggestion.
+// the プレゼントボックス (box, claim one / all, history), the かんたん操作 suggestion and the 実況パック (list, sample, confirm).
 // On every screen:
 //   - no Japanese is left on the stage (outside the .keep-ja legal text and the 日本語 language button);
 //   - no text overflows: nothing is still too wide / too tall for its box after fitText, nothing leaves the stage.
@@ -203,6 +203,18 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await page.evaluate(() => globalThis.__muchi.demo('assist')); await waitScreen('assist-prompt', 60000); await shot('assist-prompt', 500);
   assert.match(await page.locator('.screen.in').innerText(), /Not now/, 'assist: 「今はいい」 in English');
   await page.locator('.screen.in [data-assist-choice="later"]').click(); await waitScreen(['home', 'link-prompt'], 10000);
+  // round 14: 実況パック in English (REQ-CMT-011): the list, the sample ticker, the purchase confirm
+  await page.evaluate(() => globalThis.__muchi.demo('packs')); await waitScreen(['commentary-packs', 'link-prompt'], 60000);
+  if (await screen() === 'link-prompt') { await click('あとで'); await show('CommentaryPacks'); await waitScreen('commentary-packs'); }
+  await shot('commentary-packs', 600);
+  assert.match(await page.locator('.screen.in').innerText(), /Race results and abilities are not affected/, 'packs: the rule in English');
+  await page.locator('.screen.in [data-sample="nekketsu"]').click(); await page.waitForTimeout(700);
+  await page.waitForFunction(() => (document.querySelector('.screen.in [data-ticker]')?.textContent ?? '').length > 4, null, { timeout: 5000 });
+  await page.waitForSelector('.screen.in [data-ticker][data-done="1"]', { timeout: 15000 });
+  await shot('commentary-pack-sample', 300);
+  await page.locator('.screen.in [data-buy="ochitsuki"]').click(); await waitScreen(['commentary-pack-buy', 'shortfall'], 10000);
+  await shot('commentary-pack-buy', 400);
+  await page.locator('.screen.in [data-confirm="cancel"]').click(); await waitScreen('commentary-packs');
 
   const misses = await page.evaluate(() => globalThis.__muchi.l10n.misses());
   fs.writeFileSync(path.join(out, 'en-report.json'), JSON.stringify({ report, misses }, null, 2));

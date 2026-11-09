@@ -1349,7 +1349,7 @@ async function DrawLooks(parent, top, blocked) {
     const c = Card('Look ' + it.id, x, y, 356, ch, parent, GOLD);
     ArtImage(artOf(it), 10, 16, 118, ch - 26, c);
     Txt(it.name, 138, 26, 204, 17, WHITE, c, { weight: 700, lh: 1.4 });
-    Txt(`${{ silks: '勝負服の柄', tack: '馬具', decor: '厩舎の飾り' }[it.kind] ?? '見た目'}　/　見た目のみ`, 138, 80, 204, 13, GOLD, c, { weight: 500 });
+    Txt(`${{ silks: '勝負服の柄', tack: '馬具', decor: '厩舎の飾り' }[it.kind] ?? '見た目'}　/　見た目のみ`, 138, 80, 204, 13, GOLD, c, { weight: 500, nowrap: true }); // one line (fitText shrinks the English) so it never runs into the price
     Txt(`${fmt(it.price)}コイン${it.currency === 'paidOnly' ? '（有償限定）' : ''}`, 138, 108, 204, 15, CYAN, c, { weight: 700 });
     const b = Cta(it.owned ? '所持' : '試着して買う', 138, ch - 70, 200, async () => {
       // T6 (REQ-SHORT-005): short of coins → the shortfall sheet before the try-on (paid-only items count paid coins only)

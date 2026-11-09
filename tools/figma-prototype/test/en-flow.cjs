@@ -145,8 +145,8 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await page.evaluate(() => globalThis.__muchi.logic.exchangeDemo('open'));
   await show('EventTop'); await waitScreen('event-top'); await waitIn('.ev-points');
   await click('デモ：イベントレースを1回'); await waitScreen('event-top'); await waitIn('.ev-points');
-  await click('デモ：イベントレースを1回'); await waitScreen('event-top'); await waitIn('.ev-points');
-  await click('デモ：イベントレースを1回'); await waitScreen('event-top'); await waitIn('.ev-points');
+  await page.evaluate(async () => { const L = globalThis.__muchi.logic; for (let i = 0; i < 3; i++) await L.eventDemoRace(L.exchangeEventId(), 1); });
+  await show('EventTop'); await waitScreen('event-top'); await waitIn('.ev-points');
   await shot('event-top', 500);
   assert.match(await page.locator('.screen.in').innerText(), /cannot be bought/, 'exchange: the rules in English');
   await click('交換所へ'); await waitScreen('exchange'); await waitIn('.ex-card[data-item="ex_material"]'); await shot('exchange', 500);

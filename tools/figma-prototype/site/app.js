@@ -2383,7 +2383,7 @@ async function EventTop(eventId) {
   Kicker('イベントポイント', 36, 30, lp);
   const pts = Txt(fmt(v.points), 36, 96, 400, 84, GOLD, lp, { weight: 700, cls: 'num ev-points' });
   pts.dataset.points = String(v.points);
-  Txt('ポイント', 300, 150, 200, 20, MUTED, lp, { weight: 500 });
+  Txt('ポイント', 36 + Math.max(1, fmt(v.points).length) * 50 + 16, 150, 200, 20, MUTED, lp, { weight: 500 });
   if (v.status === 'open') {
     Txt(v.earn.remainingToday > 0 ? `今日あと ${v.earn.remainingToday} ポイントまで` : '今日のポイントは上限です。4:00に戻ります', 36, 216, 628, 18, v.earn.remainingToday > 0 ? WHITE : WARN, lp, { weight: 700 }).classList.add('ev-cap');
     Gauge(36, 252, 628, v.earn.dailyCap ? v.earn.earnedToday / v.earn.dailyCap : 0, lp, { gold: true });
@@ -2456,7 +2456,7 @@ async function Exchange(eventId) {
     const b = Cta('交換する', 20, 430, 244, () => ExchangeConfirm(eventId, v, l), c, 'small');
     if (why) disable(b);
   });
-  Txt(EX_RULES, 52, 822, 1100, 12, SOFT, null, { lh: 1.5 }).classList.add('ex-rules');
+  Txt(EX_RULES, 200, 826, 1360, 12, SOFT, null, { lh: 1.5 }).classList.add('ex-rules');
   Back(() => EventTop(eventId), 'BACK', 40, 834);
 }
 /** The confirm sheet: what it gives, the points it uses and leaves, the stock before → after. */

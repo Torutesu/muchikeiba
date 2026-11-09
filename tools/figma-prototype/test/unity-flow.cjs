@@ -104,7 +104,10 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     assert.ok(text.includes('購入はできません') && text.includes('ランダムなものはありません'), 'exchange: points cannot be bought, nothing random');
     assert.ok(!/倍|今だけ|残りわずか|お得|通常価格/.test(text), 'exchange: no multipliers or urgency words');
     await shot('event-top', 400);
-    for (let i = 0; i < 4; i++) { await click('デモ：イベントレースを1回'); await waitScreen('event-top'); await waitIn('.ev-points'); }
+    await click('デモ：イベントレースを1回'); await waitScreen('event-top'); await waitIn('.ev-points');
+    // three wins on the real result path (the demo button uses a random place) so the material line is affordable
+    await page.evaluate(async () => { const L = globalThis.__muchi.logic; for (let i = 0; i < 3; i++) await L.eventDemoRace(L.exchangeEventId(), 1); });
+    await page.evaluate(() => globalThis.__muchi.show('EventTop')); await waitScreen('event-top'); await waitIn('.ev-points');
     const pts = Number(await page.locator('.screen.in .ev-points').getAttribute('data-points'));
     assert.ok(pts > 0, 'event races earned points');
     await shot('event-top-points', 400);

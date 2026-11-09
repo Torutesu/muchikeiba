@@ -644,6 +644,21 @@
 - REQ-BOX-013 KPI：`gift_receive`・`gift_claim`・`gift_expire`（protocol §26.6）。経済：ボックスは額を変えない。招待する想定は届いたものを毎日まとめて受け取り、期限切れは0件で E1〜E15 は同じ範囲（balance-targets 4.13）。
 - REQ-BOX-014 クライアント：`Muchi.Client` `ApiClient.GetGiftBoxAsync`・`ClaimGiftAsync`・`ClaimAllGiftsAsync`、`PlayerView.GiftBox`。Unity のゲーム層 `GiftBoxModel`（タブ、期限の表示は実際の期限だけ「あと◯日」、受け取りの冪等キーは答えが来るまで保持、保留の理由、削除予約中はボタンなし）。
 
+## 27. かんたん操作（TS＋C#、`src/domain/assist.ts`・`Muchi.Client/InputAssist.cs`、`contracts/protocol.md` §27、docs/planning/06 REQ-UXU-030）
+拘束条件：ランク戦は課金で決まらない（06 §1.3）。腕で勝つのが柱なので、補助は「上手な手動操作には届かないが、何もしないよりずっと良い」に抑える。
+- REQ-ASSIST-001 レベル：オフ（既定）／ムチだけおまかせ（`whip`：ムチのタイミングだけ自動。スタート・手綱・進路はプレイヤー）／ぜんぶおまかせ（`full`：スタート・手綱・進路・ムチを自動）。
+- REQ-ASSIST-002 入力だけを作る：補助（`InputAssistant`）はクライアントの持つレースの状態だけを読み、プレイヤーが送るのと同じ入力バイトを作る。乱数・時計を使わない決定論。オフラインは `OfflineRace` の記録された入力、オンラインは普通の `in` メッセージ（入力遅延つき）として送る。エンジン・ルールセット・検証器・結果ハッシュ・リプレイの形式・ゴールデンは変えない。
+- REQ-ASSIST-003 プレイヤーの操作との関係：`whip` では発走後のプレイヤーのムチを捨てる（無駄打ち防止）、ほかは通す。`full` ではプレイヤーの操作を全て捨てる。オフは何も変えない（同じ入力で同じハッシュ）。
+- REQ-ASSIST-004 作り：スタートはゲートが開いて2tick後、ムチはスパート区間の中で間隔を最短より6tick広く、打ち終わりの60m手前から。手綱はスタミナ‰−180が残り距離‰を下回る時と折り合いが悪い・掛かった時（スパート区間では引かない）。進路は遅い馬の後ろだけ外（だめなら内）へ。風よけは探さない（protocol §27.1）。
+- REQ-ASSIST-005 公平性：ランク戦で使ってよい。補助の勝率は同じ馬・同じレースの上手い手動操作（`SkilledRider`）より必ず低く、何もしない場合よりはっきり高い（balance-targets §2.3 R11、`InputAssistTests`、全コースでも成り立つ）。課金で買える・強くなる要素は作らない。
+- REQ-ASSIST-006 チュートリアル：補助はチュートリアルでは動かない（`AssistLevels.AllowedIn`、`OfflineRace`・`RaceSession` の両方で無視）。REQ-UXS-004 の結果の決まり（3回目から勝ち）は補助オフで保たれる。設定に出すのは FTUE の後、提案はオンラインのレースの結果からだけ（＝最初の勝利の後）。
+- REQ-ASSIST-007 印：乗り手は自分の `res` に任意の `assist`（`whip`/`full`）を付ける。部屋は乗り手ごとに覚え（`FinalOutcome.assisted`）、精算で `RaceDetails.assist` にし、KPI だけに使う。`final`・観戦・相手へのメッセージ・リプレイのログには入れない（相手に見せない）。報酬・着順・レート・実績には効かない。
+- REQ-ASSIST-008 設定の保存：サーバーに保存（`GET`/`PUT /v1/player/assist`、`GET /v1/player` の `assist`）。既定はオフ。同じ値の再送は何も変えない。端末はオフラインの時に最後のレベルを残してオフラインのレースに使う。
+- REQ-ASSIST-009 画面：設定に3つの選択肢（名前と1行の説明、公平性の一文「ランク戦でも使えます。上手な操作より強くはなりません。相手には表示されません。」）。レース中は HUD に小さな「かんたん操作 ON」、自動のボタンは控えめに表示。日本語と英語。
+- REQ-ASSIST-010 一度だけの提案：部屋で精算されたレース（ランク戦・フレンド・イベント・大会）で最下位が3回続いたら、補助がオフで未表示なら提案を出す（`promptDue`）。結果画面からホームへ戻る時に1回だけ。急かさない（タイマー・限定の言葉なし、「今はいい」を同じ大きさで）。出したら二度と出さない（`prompt-seen`、または提案から選んだ PUT）。削除の手続き中は出さない。
+- REQ-ASSIST-011 KPI：`assist_prompt_view`（提案が出た）、`assist_enable`（レベル・どこから・前のレベル・初回）、`assist_disable`、`race_assisted`（補助ありで精算されたレース）、クライアントの `race_start` に任意の `assist`。クエリは `docs/ops/kpi-queries.md`。
+- REQ-ASSIST-012 クライアント：`Muchi.Client` の `InputAssistant`・`AssistLevels`・`ApiClient.GetAssistAsync`/`SetAssistAsync`/`MarkAssistPromptSeenAsync`・`PlayerView.Assist`。Unity のゲーム層 `AssistModel`（選択肢・提案・保存・レースへの取り付け）、`GameBackend.AssistLevel`、`HudSnapshot.Assist`/`AssistLabel`。プロトタイプは本物のエンジンで補助が走る（設定・提案シート・HUD）。
+
 ## 29. コイン不足の案内（T6、TS＋C#、`src/domain/shortfall.ts`、`contracts/protocol.md` §29、docs/planning/06 §5.1 T6）
 拘束条件：課金の案内は決まった場面だけ（06 §5.1）。偽の残り時間・倍率表現は使わない（03・06 §5.5）。有償と無償は分けて数える（資金決済法）。
 - REQ-SHORT-001 足りないコインの種類：`any`（有償＋無償）・`paid`（有償限定の支払い。無償コインは数えない）・`free`（無償のみの支払い。購入の案内は出さない）。`wallet.spend` / `spendFree` と同じ数え方。

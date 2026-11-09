@@ -65,6 +65,7 @@ import {
 } from './comeback.js';
 import { claimAllGifts, claimGift, expireGifts, giftBadge, giftBoxView, giftGiver, giftsNeedExpiry, nextGiftWake, type OpsTitleKey } from './giftBox.js';
 import { finishTraining, startTraining, trainingDelta, trainingTick, trainingView, useTrainingItem } from './training.js';
+import { assistView, markAssistPromptSeen, noteRaceForAssist, setAssist, type AssistLevel, type AssistSource } from './assist.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
 export interface PlayerRepo {
@@ -250,7 +251,7 @@ export class PlayerService {
   /** REQ-UXS-001/014/032/040: computed sections of GET /v1/player and bootstrap. */
   private extras(s: PlayerState, now: number) {
     const m = this.d.master;
-    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now) };
+    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s) };
   }
 
   async view(id: string) {
@@ -701,6 +702,7 @@ export class PlayerService {
         feed = { teamId, playerId: id, displayName: s.profile.displayName, race: { raceId: r.raceId, mode: r.mode as FeedRace['mode'], place: r.place, fieldSize: r.fieldSize, trackId: r.details?.trackId ?? null } };
       }
       if (!r.void && r.mode === 'ranked') noteRaceForOffers(this.d.master, s, r.place, now); // REQ-UXS-017 T2
+      noteRaceForAssist(s, r, now, emit); // REQ-ASSIST-010/011: last-place streak, race_assisted
       if (r.mode === 'ranked' && !r.void) armPromotionNudge(this.d.master, s, now); // REQ-UXS-012
       if (!r.void) {
         emit({
@@ -1025,6 +1027,18 @@ export class PlayerService {
   // ---- push notifications (REQ-PUSH-*) ----
   registerDevice(id: string, token: string, platform: DevicePlatform, locale: Locale = 'ja') { return this.tx(id, null, (s, now) => registerDevice(this.d.master, s, token, platform, now, locale)); }
   unregisterDevice(id: string, token: string) { return this.tx(id, null, (s) => unregisterDevice(this.d.master, s, token)); }
+  // ---------------------------------------------------------------- かんたん操作 easy controls (REQ-ASSIST-*, assist.ts)
+  /** GET /v1/player/assist: read-only. */
+  async assist(id: string) { return assistView(await this.load(id)); }
+  /** PUT /v1/player/assist: off | whip | full (idempotent; the same level twice changes nothing). */
+  setAssist(id: string, level: AssistLevel, source: AssistSource) {
+    return this.tx(id, null, (s, now, emit) => setAssist(s, level, source, now, emit));
+  }
+  /** POST /v1/player/assist/prompt-seen: the one-time suggestion was shown (once only). */
+  assistPromptSeen(id: string) {
+    return this.tx(id, null, (s, now, emit) => markAssistPromptSeen(s, now, emit));
+  }
+
   async pushPreferences(id: string, locale: Locale = 'ja') { return pushPrefsView(this.d.master, await this.load(id), locale); }
   setPushPreferences(id: string, patch: PrefsPatch, locale: Locale = 'ja') { return this.tx(id, null, (s) => setPushPrefs(this.d.master, s, patch, locale)); }
   /** Alarm step 1: drop expired messages and return what is due (kept in the outbox until settled). */

@@ -725,6 +725,16 @@
   "{n}件は持てる上限のため、ボックスに残しました": "{n} stayed in the box: you are at the limit you can hold",
   "招待ボーナスがプレゼントボックスに届きました：無償コイン+{n}": "Invite reward in your gift box: free coins +{n}",
   "受け取っていないプレゼント {n}件": "{n} unclaimed gifts",
-  "プレゼントボックス（デモ）": "Gift box (demo)"
+  "プレゼントボックス（デモ）": "Gift box (demo)",
+  "_assist": "---- round 12: easy controls (settings row, the options screen, the one-time suggestion, the race HUD)",
+  "その他　/　かんたん操作": "More / Easy Controls",
+  "ムチや手綱をおまかせできます。いつでも戻せます": "Let the game handle the whip and the rein. You can switch back any time",
+  "変更する": "Change",
+  "設定中": "Selected",
+  "これにする": "Choose this",
+  "公平性": "Fairness",
+  "はじめてのレースでは使えません。おまかせでも、送るのは指で押すのと同じ操作だけです（レースの計算は変わりません）。": "Not available in your first race. Even on auto, it only sends the same inputs as your fingers (the race calculation does not change).",
+  "おまかせ": "AUTO",
+  "最下位が3回続いた（デモ）": "Last place three times in a row (demo)"
  }
 }

@@ -136,6 +136,7 @@ namespace Muchi.Client
             {
                 if (State == RaceSessionState.Waiting) SetState(RaceSessionState.Racing);
                 if (c.Sim.IsFinished && State == RaceSessionState.Racing) SetState(RaceSessionState.Finished);
+                Assist();
                 TicksAdvanced?.Invoke(this, t);
             };
             Client.RaceFinal += (c, f) =>
@@ -155,11 +156,37 @@ namespace Muchi.Client
             OpenConnection();
         }
 
+        /// <summary>
+        /// かんたん操作 (REQ-ASSIST-002/007). Set before the race starts. After every advance of the confirmed simulation the
+        /// assistant's command goes out as an ordinary "in" message (the room adds the input delay like for a tap), the
+        /// player's own bits are filtered (<see cref="InputAssistant.FilterPlayer"/>), and our `res` says the level (KPI
+        /// only: the room never shows it to anyone). Ignored for spectators and in the tutorial.
+        /// </summary>
+        public InputAssistant Assistant
+        {
+            get => _assistant;
+            set { _assistant = value; Client.AssistLevel = value != null && value.Active ? AssistLevels.Wire(value.Level) : null; }
+        }
+        private InputAssistant _assistant;
+
+        /// <summary>The assist level that actually rides (Off for spectators, in the tutorial, or without an assistant).</summary>
+        public AssistLevel EffectiveAssist => _assistant != null && _assistant.Active && Sim != null && !Client.IsSpectator && _assistant.Slot == Slot
+            && AssistLevels.AllowedIn(Sim.Config.Mode) ? _assistant.Level : AssistLevel.Off;
+
+        private void Assist()
+        {
+            if (EffectiveAssist == AssistLevel.Off || Sim.IsFinished || !_open) return;
+            if (State != RaceSessionState.Racing && State != RaceSessionState.Waiting) return;
+            byte a = _assistant.Decide(Sim);
+            if (a != 0) Client.QueueInput(a);
+        }
+
         /// <summary>Queue a player input (Cmd.*). Ignored unless racing.</summary>
         public void Input(byte cmd)
         {
             if (State != RaceSessionState.Racing && State != RaceSessionState.Waiting) return;
             if (!_open) return; // inputs while disconnected would be lost anyway
+            if (EffectiveAssist != AssistLevel.Off) cmd = _assistant.FilterPlayer(Sim, cmd);
             Client.QueueInput(cmd);
         }
 

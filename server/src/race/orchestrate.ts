@@ -105,6 +105,12 @@ function withSkill(d: RaceDetails, fired: number[] | undefined, slot: number): R
   return fired ? { ...d, skillFired: fired.includes(slot) } : d;
 }
 
+/** REQ-ASSIST-007: the rider's own assist level (KPI only). */
+function withAssist(d: RaceDetails, assisted: FinalOutcome['assisted'], slot: number): RaceDetails {
+  const a = assisted?.find(([s]) => s === slot)?.[1];
+  return a ? { ...d, assist: a } : d;
+}
+
 /**
  * Turns a final race outcome into per-player results (places, rating updates for ranked, ride details
  * for statistics/titles derived from the confirmed input log when it is given).
@@ -129,7 +135,7 @@ export function settleRace(config: RaceStartConfig, final: FinalOutcome, ratings
     out[h.playerId!] = {
       raceId: config.raceId, mode: config.mode, place: placeOf.get(h.slot) ?? config.entrants.length,
       fieldSize: config.entrants.length, newRating: newRatings.get(h.playerId!) ?? null, void: false,
-      details: log && config.mode !== 'tutorial' ? withSkill(raceDetailsFor(config, log, h.slot, ft === undefined || ft < 0 ? null : ft), final.skillFired, h.slot) : null,
+      details: log && config.mode !== 'tutorial' ? withAssist(withSkill(raceDetailsFor(config, log, h.slot, ft === undefined || ft < 0 ? null : ft), final.skillFired, h.slot), final.assisted, h.slot) : null,
       ...(config.mode !== 'tutorial' ? { seen: raceFieldSeen(config, h.slot) } : {}),
       humans: humans.length,
       oldRating: ratings[h.playerId!] ?? null,

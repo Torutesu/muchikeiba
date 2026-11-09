@@ -52,6 +52,16 @@ namespace Muchi.Game
         /// has not been given its slot yet) get no rider controls.
         /// </summary>
         public bool RiderControls => PlayerSlot >= 0;
+
+        // ---- かんたん操作 (REQ-ASSIST-009)
+        /// <summary>The assist level riding this race (Off in the tutorial and for spectators).</summary>
+        public AssistLevel Assist;
+        /// <summary>「かんたん操作 ON」 while the assist rides (null when off): a small chip, never shown to other riders.</summary>
+        public string AssistLabel;
+        /// <summary>The whip button is driven by the assist (draw it dimmed with the auto mark; taps are ignored).</summary>
+        public bool WhipAuto => Assist != AssistLevel.Off;
+        /// <summary>Lanes and rein are driven too (full assist): dim those controls.</summary>
+        public bool SteeringAuto => Assist == AssistLevel.Full;
     }
 
     public static class HudModel
@@ -99,6 +109,8 @@ namespace Muchi.Game
                 s.FinishPlace = place < 0 ? 0 : place + 1;
             }
             s.RankKnown = sim.GateOpened && me.Departed;
+            s.Assist = AssistModel.RidingLevel(d);
+            s.AssistLabel = AssistLevels.HudLabel(s.Assist);
             FillFeel(s, sim, d.PlayerSlot, feel);
             return s;
         }

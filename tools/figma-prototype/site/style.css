@@ -494,3 +494,11 @@ html[lang="en"] .pass-strip .cell small { font-size: 12px; }
 .btn.envelope .env-badge { position: absolute; right: 6px; top: 6px; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 12px; background: var(--gold); color: var(--navy);
   font-size: 14px; font-weight: 700; line-height: 24px; text-align: center; font-style: normal; }
 .el.gift-row .btn.small { font-size: 16px; }
+/* round 12: かんたん操作 (REQ-ASSIST-009): the small HUD chip, the automatic controls drawn quieter, the option cards */
+.hud .chip.assist { font-size: 15px; font-weight: 700; letter-spacing: .16em; color: var(--cyan); background: rgba(var(--navy-rgb), .78);
+  box-shadow: inset 0 0 0 1px rgba(var(--cyan-rgb), .55); justify-content: center; padding: 0 16px; }
+.hud .chip.assist[hidden] { display: none; }
+.btn.whip.auto .bg { box-shadow: inset 0 0 0 7px rgba(var(--cyan-rgb), .55), 0 10px 30px rgba(0, 0, 0, .35); }
+.btn.whip.auto span { color: var(--cyan); font-size: 22px; }
+.btn.pad.auto { opacity: .45; pointer-events: none; }
+.card.as-opt.on { box-shadow: inset 0 0 0 2px var(--cyan); }

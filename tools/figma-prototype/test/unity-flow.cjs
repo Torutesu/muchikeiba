@@ -655,6 +655,58 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.ok((await page.locator('.screen.in [data-gift][data-status="expired"]').count()) === 1, 'the expired gift is in the history');
   assert.ok((await page.locator('.screen.in [data-gift][data-status="claimed"]').count()) >= 5, 'received gifts are in the history');
   await shot('gift-history', 300);
+  // ------------------------------------------------------------------ 6. round 12: かんたん操作 (REQ-ASSIST-*)
+  // a week of play, then three last places settled by the real applyRace → the one-time suggestion (calm: 「今はいい」 as big
+  // as the rest) → ぜんぶおまかせ → the settings row and the options screen → a ranked race the real InputAssistant rides with
+  // no tap at all (HUD chip 「かんたん操作 ON」), and the suggestion never comes back
+  await page.evaluate(() => globalThis.__muchi.demo('assist')); await waitScreen('assist-prompt', 60000); await page.waitForTimeout(400);
+  const promptText = await page.locator('.screen.in').innerText();
+  assert.match(promptText, /かんたん操作を試してみませんか？/);
+  assert.match(promptText, /いつでも設定で戻せます/);
+  assert.match(promptText, /相手には表示されません/, 'the sheet states the fairness rule');
+  assert.ok(!/倍|今だけ|残りわずか|お得/.test(promptText), 'no pressure words on the suggestion');
+  const sizes = await page.locator('.screen.in [data-assist-choice]').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
+  assert.equal(sizes.length, 3); assert.ok(Math.max(...sizes) - Math.min(...sizes) <= 1, '「今はいい」 is as big as the choices');
+  assert.equal((await page.evaluate(() => globalThis.__muchi.logic.assist())).promptShown, true, 'shown once (prompt-seen on the real rules)');
+  await shot('assist-prompt', 300);
+  await page.locator('.screen.in [data-assist-choice="full"]').click(); await waitScreen(['home', 'link-prompt'], 10000); await page.waitForTimeout(400);
+  if (await screen() === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); }
+  assert.equal((await page.evaluate(() => globalThis.__muchi.logic.assist())).level, 'full');
+  await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-assist-level]').getAttribute('data-assist-level'), 'full');
+  await shot('settings-assist', 300);
+  await page.locator('.screen.in [data-action="assist"]').click(); await waitScreen('assist-settings'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-assist-option]').count(), 3, 'three levels');
+  assert.equal(await page.locator('.screen.in .as-opt.on').getAttribute('data-assist-option'), 'full');
+  await shot('assist-settings', 300);
+  await page.locator('.screen.in [data-assist-option="whip"] [data-label="これにする"]').click(); await page.waitForTimeout(700); await waitScreen('assist-settings');
+  assert.equal(await page.locator('.screen.in .as-opt.on').getAttribute('data-assist-option'), 'whip');
+  await page.locator('.screen.in [data-assist-option="full"] [data-label="これにする"]').click(); await page.waitForTimeout(700); await waitScreen('assist-settings');
+  // the race: nothing is tapped — the assistant starts, reins, steers and whips through the normal input path
+  await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen(['home', 'link-prompt'], 10000);
+  if (await screen() === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); }
+  await click('レースへ'); await waitScreen('lobby'); await click('ランク戦に出る'); await waitScreen('race', 20000);
+  let assistShot = false, lastAf = null;
+  for (let i = 0; i < 6000; i++) {
+    const af = await page.evaluate(() => { const f = globalThis.__muchi.state().lastFrame; return f && { done: f.done, departed: f.departed, remainingM: f.remainingM, distanceM: f.distanceM, whips: f.whips, maxWhips: f.maxWhips, assist: f.assist, label: f.assistLabel, cmds: f.assistCmds }; });
+    if ((await screen()) !== 'race') break;
+    if (af) lastAf = af;
+    if (af?.done) break;
+    if (!assistShot && af?.departed && af.remainingM < af.distanceM * .5) {
+      assistShot = true;
+      assert.equal(af.assist, 'full'); assert.equal(af.label, 'かんたん操作 ON');
+      assert.equal(await page.locator('.screen.in .chip.assist').isVisible(), true, 'the HUD chip is on');
+      assert.equal(await page.locator('.screen.in .chip.assist').textContent(), 'かんたん操作 ON');
+      await shot('race-assist-hud', 0, true);
+    }
+    await page.waitForTimeout(50);
+  }
+  assert.ok(assistShot, 'the assisted race was captured');
+  assert.ok(lastAf.cmds >= 3, 'the assistant sent inputs (start, rein, whips): ' + lastAf.cmds);
+  assert.ok(lastAf.whips < lastAf.maxWhips, 'the assistant whipped in the last stretch');
+  await waitScreen(['result'], 40000); await shot('race-result-assisted', 900);
+  assert.equal((await page.evaluate(() => globalThis.__muchi.logic.assist())).promptDue, false, 'the suggestion never comes back');
+  await page.evaluate(() => globalThis.__muchi.logic.setAssist('off'));
 
   // a reload on a named player goes straight home
   await demo('day3');

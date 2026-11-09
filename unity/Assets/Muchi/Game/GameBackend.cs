@@ -341,8 +341,20 @@ namespace Muchi.Game
         public IRaceDriver CreatePracticeRace(ulong seed)
         {
             var spec = Partner != null ? RaceFactory.FromServer(Partner) : RaceFactory.DefaultPartner(_kv.Get(KeyPartnerName));
-            return new OfflineRaceDriver(RaceFactory.Practice(_ruleset, spec, seed), 0, autoStart: false);
+            return AssistModel.Attach(new OfflineRaceDriver(RaceFactory.Practice(_ruleset, spec, seed), 0, autoStart: false), AssistLevel);
         }
+
+        /// <summary>
+        /// REQ-ASSIST-008: the かんたん操作 level races start with — the server setting (`assist` in GET /v1/player) or
+        /// what <see cref="AssistModel"/> last stored; offline the device's last known choice. Off by default. The tutorial
+        /// never uses it (<see cref="CreateTutorialRace"/> does not attach it, and the client ignores it there anyway).
+        /// </summary>
+        public AssistLevel AssistLevel
+        {
+            get => _assist ?? (Player?.Assist != null ? Player.Assist.Level : AssistLevels.Parse(_kv.Get(AssistModel.KeyLevel)));
+            set { _assist = value; _kv.Set(AssistModel.KeyLevel, AssistLevels.Wire(value)); }
+        }
+        private AssistLevel? _assist;
 
         /// <summary>
         /// Ranked race: enqueue the partner, poll until matched (CPU fill after ~15 s), then connect.
@@ -379,7 +391,7 @@ namespace Muchi.Game
         public IRaceDriver Connect(RaceAssignment a)
         {
             var session = new RaceSession(_sockets ?? new WebSocketTransportFactory(), _settings.WebSocketUrl(a.WsPath), a.RaceId, a.Ticket);
-            return new OnlineRaceDriver(session);
+            return AssistModel.Attach(new OnlineRaceDriver(session), AssistLevel);
         }
 
         /// <summary>

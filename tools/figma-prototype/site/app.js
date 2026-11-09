@@ -405,6 +405,7 @@ function Legal(kind, back) {
 let engine = null, view = null, hud = {};
 async function StartTutorial() {
   await viewReady;
+  engine.SetAssist('off'); // REQ-ASSIST-006: the tutorial is never assisted (the engine refuses it anyway)
   raceInfo = JSON.parse(engine.StartTutorial(tutorialAttempt));
   raceCtx = { tutorial: true, attempt: tutorialAttempt, ftue };
   view.useRig = true; view.start(raceInfo, equippedPartner());
@@ -414,6 +415,8 @@ async function StartRace(trackId = null) {
   await viewReady;
   const p = partner();
   const { config, trackName, beginner } = await L.raceConfig(p.id, trackId);
+  // round 12: かんたん操作 rides the race with the real InputAssistant inside the WASM engine (never the tutorial)
+  engine.SetAssist(assistLevel());
   raceInfo = JSON.parse(engine.StartConfig(JSON.stringify(config), 'local'));
   raceCtx = { tutorial: false, config, trackName, beginner, ftue, trackId: config.track.id };
   view.useRig = true; view.start(raceInfo, equippedPartner());
@@ -467,9 +470,11 @@ function BuildRaceScreen() {
   hud.spread = el('who', 0, 0, 182, null, hud.minimap); hud.spread.style.position = 'absolute'; hud.spread.style.top = '80px';
   Caption('手綱を長押し　/　‹ › で進路変更', 35, 704).classList.add('tshadow');
   // left thumb: lanes; right thumb: the rein (hold, left of the whip)
-  Btn('内へ', 36, 584, 104, 104, () => Lane(-1), 'pad', undefined, '‹ 内');
-  Btn('外へ', 156, 584, 104, 104, () => Lane(1), 'pad', undefined, '外 ›');
+  hud.laneIn = Btn('内へ', 36, 584, 104, 104, () => Lane(-1), 'pad', undefined, '‹ 内');
+  hud.laneOut = Btn('外へ', 156, 584, 104, 104, () => Lane(1), 'pad', undefined, '外 ›');
   const rein = Btn('手綱', 1222, 742, 118, 118, () => {}, 'pad rein', undefined, '手綱'); hud.rein = rein;
+  // round 12: 「かんたん操作 ON」 (REQ-ASSIST-009) — a small chip between the distance and the banner, only while it rides
+  hud.assist = el('chip assist', 300, 50, 228, 44); hud.assist.hidden = true; hud.assist.dataset.assist = 'off'; hud.lastAssist = '';
   const hold = (v) => (e) => { e.preventDefault(); reinHeld = v; rein.classList.toggle('held', v); };
   rein.addEventListener('pointerdown', hold(true)); rein.addEventListener('pointerup', hold(false)); rein.addEventListener('pointerleave', hold(false)); rein.addEventListener('pointercancel', hold(false));
   // skill cut-ins (engine Skill events)
@@ -481,6 +486,8 @@ function Whip() {
   if (!lastFrame || !raceActive) return;
   if (raceCtx.tutorial && !lastFrame.departed) return;
   if (lastFrame.departed && lastFrame.whips <= 0) return;
+  // round 12: with かんたん操作 the whip (and with full auto the start too) is the assistant's; a tap does nothing
+  if (!raceCtx.tutorial && lastFrame.assist && lastFrame.assist !== 'off' && (lastFrame.departed || lastFrame.assist === 'full')) return;
   engine.Spur();
   // presentation first (06 §6.3: the button and the horse react within a frame; the engine takes the input next tick)
   flash(hud.feedback, lastFrame.departed ? '伸びる！' : 'スタート！');
@@ -516,7 +523,15 @@ function paintHud(f) {
   setText(hud.distance, `残り ${fmt(f.remainingM)} m`);
   setText(hud.clock, f.time);
   // whip button: START before the gate (normal races), glowing only inside the whip window (F5)
-  if (!tut) setText(hud.whipText, f.departed ? '仕掛ける' : 'スタート');
+  const auto = !tut && f.assist && f.assist !== 'off';
+  if (!tut && hud.lastAssist !== f.assist) {
+    hud.lastAssist = f.assist;
+    hud.assist.hidden = !auto; hud.assist.dataset.assist = f.assist ?? 'off'; hud.assist.textContent = auto ? f.assistLabel : '';
+    hud.laneIn.classList.toggle('auto', f.assist === 'full'); hud.laneOut.classList.toggle('auto', f.assist === 'full'); hud.rein.classList.toggle('auto', f.assist === 'full');
+  }
+  hud.whip.classList.toggle('auto', !!auto && (f.departed || f.assist === 'full'));
+  if (auto && (f.departed || f.assist === 'full')) setText(hud.whipText, 'おまかせ');
+  else if (!tut) setText(hud.whipText, f.departed ? '仕掛ける' : 'スタート');
   else setText(hud.whipText, f.departed ? '仕掛ける' : 'まもなく');
   hud.whip.classList.toggle('chance', !!feel.whipChance);
   hud.whip.classList.toggle('disabled', tut ? !f.departed || f.whips <= 0 : f.departed && f.whips <= 0);
@@ -598,7 +613,7 @@ async function RaceResult(f) {
   const finishTick = r.place > 0 ? f.finishTicks[r.place - 1] : -1;
   const passBefore = await L.passView();
   // round 11: the field met (図鑑) and whether the partner's skill fired (実績) go with the result, like a room's settlement
-  const applied = await L.applyRace(raceCtx.config.raceId, r.place, r.runners, { trackId: raceCtx.trackId, style: partner()?.style ?? 'sashi', finishTick: finishTick >= 0 ? finishTick : null, whips: r.facts?.whips ?? 0, skillFired: !!(f.skill?.used ?? lastFrame?.skill?.used) }, raceCtx.config);
+  const applied = await L.applyRace(raceCtx.config.raceId, r.place, r.runners, { trackId: raceCtx.trackId, style: partner()?.style ?? 'sashi', finishTick: finishTick >= 0 ? finishTick : null, whips: r.facts?.whips ?? 0, skillFired: !!(f.skill?.used ?? lastFrame?.skill?.used), ...(f.assist && f.assist !== 'off' ? { assist: f.assist } : {}) }, raceCtx.config);
   const passAfter = await L.passView();
   const missions = await L.missions();
   await refresh();
@@ -634,8 +649,9 @@ function ResultScreen(f, rewards, passXp, pass, missions) {
     Cta('つづける', 44, 640, 478, () => AfterFirstRace(r), p);
     TextLink('もう一度', 44, 734, 120, () => { raceCtx.ftue = false; ftue = false; StartRace(); }, p);
   } else {
-    Cta('もう一度', 44, 640, 478, () => OfferThen(() => StartRace()), p);
-    TextLink('ホーム', 44, 734, 90, () => OfferThen(Home), p);
+    // round 12: the one-time かんたん操作 suggestion (REQ-ASSIST-010) on the way out, only when no offer was shown
+    Cta('もう一度', 44, 640, 478, () => OfferThen(() => StartRace(), () => AssistThen(() => StartRace())), p);
+    TextLink('ホーム', 44, 734, 90, () => OfferThen(Home, () => AssistThen(Home)), p);
   }
   // ③ the rest (pass XP, missions, the full order) in a drawer
   TextLink('着順と報酬の詳細', 200, 734, 200, () => ResultDetails(r, rewards, passXp, pass, missions), p);
@@ -1423,11 +1439,11 @@ function AgeForm(productId, box, state) {
   }, state);
   if (!ok) disable(b);
 }
-async function OfferThen(next) {
+async function OfferThen(next, noOffer = next) {
   // T2 / T4: once, after the result screen is closed (never during the tutorial or right on a loss screen)
   const o = await L.shopOffers();
   const pop = o.ok ? o.value.offers.find((x) => x.showPopup && (x.touchpoint === 'T2' || x.touchpoint === 'T4')) : null;
-  if (!pop) return next();
+  if (!pop) return noOffer();
   await L.markOfferViewed(pop.id);
   const p = L.shopProducts().products.find((x) => x.id === pop.productId);
   currentScreen = () => next(); Clear('offer'); SetArt('Art/home-paddock', false); Shade('dim');
@@ -1719,6 +1735,7 @@ async function TimeAttack(trackId = 'aoba_turf_1600', tab = '', selected = '') {
 const fmtMs = (ms) => { const t = Math.floor(ms / 100); return `${Math.floor(t / 600)}:${String(Math.floor(t / 10) % 60).padStart(2, '0')}.${t % 10}`; };
 async function StartTimeAttack(trackId, ghostId) {
   await viewReady;
+  engine.SetAssist(assistLevel()); // round 12: the time attack records the assist's inputs like taps (REQ-ASSIST-002)
   raceInfo = JSON.parse(engine.StartTimeAttack(JSON.stringify(taCache.config), ghostId));
   raceCtx = { tutorial: false, ta: true, trackId, trackName: taCache.trackName, config: taCache.config, ghost: raceInfo.ghosts[0] ?? null };
   view.useRig = true; view.start(raceInfo, equippedPartner()); view.setGhosts(raceInfo.ghosts.length, equippedPartner());
@@ -1783,6 +1800,13 @@ async function Settings() {
       ConfirmDeletion(r.value);
     }, a, 'danger');
   }
+  // round 12: かんたん操作 (REQ-ASSIST-008/009) — the current level and the way to change it (shown after the FTUE)
+  if (!ftue) {
+    Hair(36, 552, 428, a);
+    Txt('かんたん操作', 36, 574, 240, 21, WHITE, a, { weight: 500 }).dataset.name = 'Assist';
+    Txt(ASSIST_NAME[assistLevel()], 36, 610, 260, 16, assistLevel() === 'off' ? MUTED : CYAN, a, { weight: 500 }).dataset.assistLevel = assistLevel();
+    Ghost('変更する', 304, 572, 160, 56, () => AssistSettings(), a, 'quiet small').dataset.action = 'assist';
+  }
   // ② looks / care and the legal pages: thin-divider lists
   const m = Glass('More', 556, 134, 480, 676, undefined, .9);
   Kicker('見た目・お世話・仲間', 36, 30, m);
@@ -1808,8 +1832,72 @@ async function Settings() {
   Ghost('パス購入済み（デモ）', 36, 362, 436, 56, async () => { const r = await L.demoPurchase('season_pass'); toast(r.ok ? '今シーズンのパスを購入済みにしました（決済なし）' : r.code === 'ALREADY_PURCHASED' ? '今シーズンのパスは購入済みです' : r.message); }, demo, 'quiet small');
   // round 12: the gift box after a maintenance, a tournament and a promotion (real delivery routes)
   Ghost('プレゼントボックス（デモ）', 36, 432, 436, 56, () => Demo('gifts'), demo, 'quiet small');
+  // round 12: three last places in a row → the one-time かんたん操作 suggestion (REQ-ASSIST-010)
+  Ghost('最下位が3回続いた（デモ）', 36, 502, 436, 56, () => Demo('assist'), demo, 'quiet small');
   Txt('サーバーと同じ規則のまま、日付だけ進めてログボとレースを消化します。', 36, 600, 436, 14, SOFT, demo, { lh: 1.6 });
   NavBar(4);
+}
+// ================================================================= round 12: かんたん操作 (REQ-ASSIST-*, contracts/protocol.md §27)
+// Mirrors unity/Assets/Muchi/Game/AssistModel.cs on the real server rules (setting default off, the last-place streak, the
+// one-time suggestion). The races run the real Muchi.Client.InputAssistant in the WASM engine: it only sends normal inputs.
+const ASSIST_NAME = { off: 'オフ', whip: 'ムチだけおまかせ', full: 'ぜんぶおまかせ' };
+const ASSIST_MARK = { off: 'MANUAL', whip: 'AUTO WHIP', full: 'FULL AUTO' };
+const ASSIST_DESC = {
+  off: '自分で全部操作します',
+  whip: 'ムチのタイミングだけ自動。スタート・手綱・進路は自分で',
+  full: 'スタート・手綱・進路・ムチを自動で。上手な操作よりは控えめです',
+};
+const ASSIST_POLICY = 'ランク戦でも使えます。上手な操作より強くはなりません。相手には表示されません。';
+const assistLevel = () => player?.assist?.level ?? 'off';
+async function setAssist(level, source) {
+  const r = await L.setAssist(level, source);
+  await refresh();
+  toast(r.ok ? 'かんたん操作を変更しました' : r.message);
+  return r;
+}
+async function AssistSettings() {
+  currentScreen = AssistSettings; await refresh();
+  Clear('assist-settings'); SetArt('Art/first-ride', false);
+  TopBar('その他　/　かんたん操作', 'ムチや手綱をおまかせできます。いつでも戻せます', { wallet: false });
+  const p = Glass('Frame', 36, 134, 1528, 676, undefined, .9);
+  const cur0 = assistLevel();
+  ['off', 'whip', 'full'].forEach((lv, i) => {
+    const c = Card('Assist ' + lv, 32 + i * 496, 24, 472, 430, p, lv === 'full' ? GOLD : lv === 'whip' ? CYAN : '#c8eaff');
+    c.classList.add('as-opt'); c.dataset.assistOption = lv; if (lv === cur0) c.classList.add('on');
+    Txt(ASSIST_MARK[lv], 28, 34, 420, 14, lv === 'full' ? GOLD : CYAN, c, { weight: 700, ls: '.22em' });
+    Txt(ASSIST_NAME[lv], 28, 66, 420, 30, WHITE, c, { weight: 700 });
+    Txt(ASSIST_DESC[lv], 28, 128, 416, 17, WHITE, c, { weight: 500, lh: 1.7 });
+    if (lv === cur0) disable(Ghost('設定中', 24, 340, 424, 60, () => {}, c, 'quiet'));
+    else Cta('これにする', 24, 334, 424, async () => { await setAssist(lv, 'settings'); AssistSettings(); }, c, 'small');
+  });
+  const pol = Glass('Fairness', 32, 476, 1464, 176, p, .94); pol.classList.add('flat');
+  Kicker('公平性', 28, 20, pol, { size: 15 });
+  Txt(ASSIST_POLICY, 28, 84, 1400, 18, WHITE, pol, { weight: 500 });
+  Txt('はじめてのレースでは使えません。おまかせでも、送るのは指で押すのと同じ操作だけです（レースの計算は変わりません）。', 28, 120, 1400, 15, MUTED, pol, { lh: 1.6 });
+  Back(Settings, 'BACK', 40, 834);
+}
+/** REQ-ASSIST-010: the one-time suggestion after three last places in a row — calm, 「今はいい」 as big as the rest. */
+async function AssistThen(next) {
+  if (ftue) return next();
+  const a = await L.assist();
+  if (!a.promptDue || a.level !== 'off') return next();
+  return AssistPrompt(next);
+}
+async function AssistPrompt(next) {
+  currentScreen = () => next(); Clear('assist-prompt'); SetArt('Art/first-ride', false); Shade('dim');
+  await L.assistPromptSeen(); // once: from here on it never shows again
+  const box = Dialog('Assist prompt', 1000, 560);
+  Kicker('かんたん操作', 48, 44, box);
+  Txt('かんたん操作を試してみませんか？', 48, 108, 900, 32, WHITE, box, { weight: 700 });
+  Txt('ムチのタイミングや手綱をおまかせできます。いつでも設定で戻せます。', 48, 168, 900, 18, WHITE, box, { weight: 500, lh: 1.7 });
+  [['whip', 48], ['full', 368]].forEach(([lv, x]) => {
+    const b = Ghost(ASSIST_NAME[lv], x, 270, 296, 64, async () => { await setAssist(lv, 'prompt'); next(); }, box);
+    b.dataset.assistChoice = lv;
+    Txt(ASSIST_DESC[lv], x, 346, 296, 14, MUTED, box, { lh: 1.5 });
+  });
+  Ghost('今はいい', 688, 270, 264, 64, next, box, 'quiet').dataset.assistChoice = 'later';
+  Hair(48, 444, 904, box);
+  Txt(ASSIST_POLICY, 48, 466, 904, 15, SOFT, box, { lh: 1.6 });
 }
 function ConfirmDeletion(v) {
   currentScreen = () => ConfirmDeletion(v); Clear('delete-confirm'); SetArt('Art/home-paddock', false); Shade('dim heavy');
@@ -1837,6 +1925,8 @@ async function Demo(kind) {
   if (kind === 'comeback') { await L.seedComeback(14); await refresh(); return Home(); }
   if (kind === 'collection') { await L.seedCollection(); await refresh(); return Collection('horses'); }
   if (kind === 'gifts') { await L.seedGifts(); await refresh(); giftState.tab = 'box'; giftState.page = 0; return GiftBox('box'); }
+  // round 12: a week of play, then three ranked races in last place (settled by the real applyRace) → the one-time suggestion
+  if (kind === 'assist') { await L.seedDemo(7, [3, 3, 3, 3, 3, 3, 3]); ftue = false; await L.demoLastPlaces(3); await refresh(); return AssistThen(Home); }
   const spec = { day1: [1, [1]], day3: [3, [2, 2, 2]], day7: [7, [3, 3, 3, 3, 3, 3, 3]] }[kind];
   await L.seedDemo(spec[0], spec[1]);
   await refresh();
@@ -2841,7 +2931,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ GiftBox, Collection, Achievements, Training, TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ GiftBox, AssistSettings, Collection, Achievements, Training, TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

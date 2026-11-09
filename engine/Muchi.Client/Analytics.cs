@@ -36,10 +36,15 @@ namespace Muchi.Client
             => new AnalyticsEvent("tutorial_step", atMs, JsonNode.Obj().Set("step", Id(step, 32, "step")).Set("index", Math.Max(0, Math.Min(index, 100))));
         public static AnalyticsEvent ScreenView(long atMs, string screen) => new AnalyticsEvent("screen_view", atMs, JsonNode.Obj().Set("screen", Id(screen, 32, "screen")));
         /// <summary>mode: ranked | friend | tutorial | offline | time_attack.</summary>
-        public static AnalyticsEvent RaceStart(long atMs, string mode)
+        public static AnalyticsEvent RaceStart(long atMs, string mode) => RaceStart(atMs, mode, AssistLevel.Off);
+
+        /// <summary>REQ-ASSIST-011: with the かんたん操作 level that rides the race (Off is not sent).</summary>
+        public static AnalyticsEvent RaceStart(long atMs, string mode, AssistLevel assist)
         {
             if (mode != "ranked" && mode != "friend" && mode != "tutorial" && mode != "offline" && mode != "time_attack") throw new ArgumentException("unknown race mode " + mode);
-            return new AnalyticsEvent("race_start", atMs, JsonNode.Obj().Set("mode", mode));
+            var props = JsonNode.Obj().Set("mode", mode);
+            if (assist != AssistLevel.Off && mode != "tutorial") props.Set("assist", AssistLevels.Wire(assist));
+            return new AnalyticsEvent("race_start", atMs, props);
         }
         /// <summary>stage: open | cancel | fail | store_success (the server records the verified purchase itself).</summary>
         public static AnalyticsEvent PurchaseFlow(long atMs, string stage, string productId)

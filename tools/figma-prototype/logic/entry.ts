@@ -161,7 +161,8 @@ export const MuchiLogic = {
   // points, pass XP and mission progress. Offline: there is no rating update and no server verification.
   // round 11: `config` (the race the WASM engine ran) gives the 図鑑 the CPU field it met (REQ-COL-002) and `skillFired` the
   // player's unique-skill activation (REQ-ACH-002), exactly what settleRace sends from a confirmed room
-  applyRace: (raceId: string, place: number, fieldSize: number, details: { trackId: string; style: Style; finishTick: number | null; whips: number; skillFired?: boolean }, config?: RaceStartConfig) =>
+  // round 12: `assist` (whip | full) is what the rider's own `res.assist` gives the room (REQ-ASSIST-007): KPI only
+  applyRace: (raceId: string, place: number, fieldSize: number, details: { trackId: string; style: Style; finishTick: number | null; whips: number; skillFired?: boolean; assist?: 'whip' | 'full' }, config?: RaceStartConfig) =>
     wrap(() => svc.applyRace(ID, { raceId, mode: 'ranked', place, fieldSize, newRating: null, void: false, humans: 1,
       details: { ...details, startReactionTicks: null, whipMashed: false, cpuAssisted: false },
       ...(config ? { seen: raceFieldSeen(config, config.entrants.find((e) => e.playerId === ID)?.slot ?? -1) } : {}) })),
@@ -496,6 +497,16 @@ export const MuchiLogic = {
   // The real server rules: eligibility (FTUE, install day, 30 days after a payment, age), caps by game day, sessions. The
   // ad network is simulated in the browser: it signs an AdMob-style SSV callback with a local ECDSA P-256 key, and the
   // real verifyAdMobCallback checks that signature before the real applyAdCallback grants free coins. No ad SDK, no network.
+  // ---------------------------------------------------------------- かんたん操作 (REQ-ASSIST-*, contracts/protocol.md §27)
+  // The real server rules: the setting (default off), the last-place streak counted by applyRace, the one-time prompt.
+  assist: () => svc.assist(ID),
+  setAssist: (level: 'off' | 'whip' | 'full', source: 'settings' | 'prompt' = 'settings') => wrap(() => svc.setAssist(ID, level, source)),
+  assistPromptSeen: () => wrap(() => svc.assistPromptSeen(ID)),
+  /** Demo: three ranked races finishing last (12th of 12), settled by the real applyRace — the prompt becomes due. */
+  async demoLastPlaces(n = 3) {
+    for (let i = 0; i < n; i++) await svc.applyRace(ID, { raceId: `demo_last_${Date.now().toString(36)}_${i}`, mode: 'ranked', place: 12, fieldSize: 12, newRating: null, void: false, humans: 1 });
+    return svc.assist(ID);
+  },
   ads: () => svc.ads(ID),
   setAdPref: (mode: 'auto' | 'on' | 'off') => wrap(() => svc.setAdPref(ID, mode)),
   adStart: (placementId: string) => wrap(() => svc.adStart(ID, placementId, key())),

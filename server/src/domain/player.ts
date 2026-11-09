@@ -204,6 +204,8 @@ export interface PlayerState {
   training?: import('./training.js').TrainingState;
   /** REQ-BOX-*: プレゼントボックス — unclaimed entries and the recent history (giftBox.ts ensureGiftBox). */
   giftBox?: import('./giftBox.js').GiftBoxState;
+  /** REQ-ASSIST-*: かんたん操作 setting, the last-place streak and the one-time suggestion (assist.ts ensureAssist). */
+  assist?: import('./assist.js').AssistState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

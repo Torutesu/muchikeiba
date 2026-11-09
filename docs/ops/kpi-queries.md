@@ -71,6 +71,10 @@
 | `ad_reject` | サーバー（コールバックを弾いた） | 理由（`user_mismatch`/`unknown_session`/`session_used`/`expired`/`clock_skew`/`ad_unit_mismatch`/`cap`/`deleting`） | 枠ID | ネットワーク | `double5` その日の弾いた数 |
 | `training_start` | サーバー（調教を始めた、REQ-TRAIN-014） | メニュー（`hill`/`wood`/`pool`/`awase`） | 馬のレア度 | | `double9` 開始時の疲れ、`double5` 今日の回数 |
 | `training_done` | サーバー（調教を記録した） | メニュー | 評価 `great`/`good`/`normal` | `done`/`skipped`/`expired` | `double9` 伸びの合計、`double5` ミニゲームの点数、`double8` そのアカウントの初回 |
+| `assist_enable` | サーバー（かんたん操作をオンにした・レベルを変えた、REQ-ASSIST-011） | `whip`/`full` | `settings`/`prompt` | 前のレベル | `double9` その時の最下位の連続、`double8` 初めてオンにした |
+| `assist_disable` | サーバー（かんたん操作をオフにした） | 前のレベル | `settings`/`prompt` | | |
+| `assist_prompt_view` | サーバー（一度だけの提案シートが出た） | | | | `double9` 最下位の連続 |
+| `race_assisted` | サーバー（かんたん操作ありで精算されたレース。本人の申告、KPI専用） | `whip`/`full` | モード | | `double4` 着順、`double5` 頭数 |
 | `consent` | サーバー | 規約の版 | プライバシーポリシーの版 | | |
 | `partner_granted` | サーバー | テンプレートID（`t_partner`） | | | |
 | `ab_assign` | サーバー（初回の bootstrap、実験ごとに1回） | 実験ID | バケットID | | |
@@ -575,3 +579,36 @@ FROM muchi_kpi
 WHERE blob1 = 'gift_claim' AND blob9 != 'overflow' AND timestamp > NOW() - INTERVAL '30' DAY
 GROUP BY source
 ```
+
+## かんたん操作：提案から使い始めるまでと公平性（REQ-ASSIST-011、contracts/protocol.md §27）
+
+**提案の効き目**（週ごと）：最下位が3回続いて提案が出た人のうち、その場でオンにした人（`assist_enable` の `blob9 = 'prompt'`）と、設定から自分でオンにした人。
+
+```sql
+SELECT
+  toStartOfWeek(timestamp) AS week,
+  sumIf(_sample_interval, blob1 = 'assist_prompt_view') AS prompts,
+  sumIf(_sample_interval, blob1 = 'assist_enable' AND blob9 = 'prompt') AS enabled_from_prompt,
+  sumIf(_sample_interval, blob1 = 'assist_enable' AND blob9 = 'settings' AND double8 = 1) AS first_enable_from_settings,
+  sumIf(_sample_interval, blob1 = 'assist_disable') AS disabled,
+  round(sumIf(_sample_interval, blob1 = 'assist_enable' AND blob9 = 'prompt') / sumIf(_sample_interval, blob1 = 'assist_prompt_view'), 3) AS prompt_conversion
+FROM muchi_kpi
+WHERE blob1 IN ('assist_prompt_view', 'assist_enable', 'assist_disable') AND timestamp > NOW() - INTERVAL '56' DAY
+GROUP BY week
+ORDER BY week DESC
+```
+
+**補助ありのレースの着順**（モード・レベルごと）。`race_assisted` の平均着順がランク戦で補助なしの上手な層（例：勝率上位10%）より良くなっていたら、R11（balance-targets §2.3）の前提が崩れている。補助の定数を見直す。
+
+```sql
+SELECT blob8 AS level, blob9 AS mode, sum(_sample_interval) AS races,
+  round(sum(_sample_interval * double4) / sum(_sample_interval), 2) AS avg_place,
+  round(sumIf(_sample_interval, double4 = 1) / sum(_sample_interval), 3) AS win_rate
+FROM muchi_kpi
+WHERE blob1 = 'race_assisted' AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY level, mode
+ORDER BY races DESC
+```
+
+- 補助を使った人の継続（D7）は、`assist_enable` を出した人の `blob2` で「リテンション」のクエリを絞って比べる。
+- `client_race_start` の `blob9` にもレベルが入る（オフラインのレース・タイムアタックを含めた使われ方）。

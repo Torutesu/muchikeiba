@@ -86,6 +86,8 @@ static class Program
         await ShortfallChecks.Run(Check, Ruleset());
         Console.WriteLine("== プレゼントボックス (gift box: badge, real expiry text only, keyed claims, held entries, history, deletion)");
         await GiftBoxChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 12: かんたん操作 (AssistModel, InputAssistant on a practice race, HUD chip, the one-time suggestion; REQ-ASSIST-*)");
+        await AssistChecks.Run(Check, Ruleset());
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

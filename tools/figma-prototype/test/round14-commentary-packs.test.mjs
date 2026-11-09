@@ -80,7 +80,20 @@ if (before.free + before.paid >= 300) {
   const after = (await L.view()).wallet;
   assert.strictEqual(before.free + before.paid - after.free - after.paid, 300);
   assert.strictEqual((await L.buyCommentaryPack('kofuu')).code, 'ALREADY_PURCHASED');
-} else assert.strictEqual(buy.code, 'INSUFFICIENT_COINS');
+} else {
+  assert.strictEqual(buy.code, 'INSUFFICIENT_COINS');
+  assert.strictEqual(buy.details?.shortfall?.short, true, 'the refused buy carries the T6 shortfall sheet');
+}
+// round 14 integration (§29 × §36): the pre-check CommentaryPackBuy runs before its confirm opens the shortfall sheet
+// when the pack costs more than the player has (the same query the screen sends, with the pack's currency)
+{
+  const w = (await L.view()).wallet;
+  const sf = await L.coinShortfall({ for: 'coins', coins: w.free + w.paid + 300, kind: 'any' });
+  assert.ok(sf.ok, sf.message);
+  assert.strictEqual(sf.value.short, true);
+  assert.strictEqual(sf.value.shortfall, 300);
+  assert.ok(sf.value.offer || sf.value.status !== 'buyable', 'a pack to buy, or a stated reason');
+}
 assert.strictEqual((await L.buyCommentaryPack('nekketsu')).code, 'NOT_ELIGIBLE', 'the achievement pack is never sold');
 assert.strictEqual(L.commentaryPackName('ochitsuki'), '落ち着いた解説');
 console.log('ROUND 14 COMMENTARY PACKS OK');

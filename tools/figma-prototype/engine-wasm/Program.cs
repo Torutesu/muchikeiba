@@ -131,13 +131,31 @@ public static partial class MuchiRace
             var k = driver.Sim.SkillOf(i);
             if (k == null) sb.Append("null"); else sb.Append("{\"id\":\"").Append(Esc(k.Id)).Append("\",\"name\":\"").Append(Esc(k.Name)).Append("\"}");
         }
+        sb.Append(']');
+        AppendWorld(sb, cfg, _driver.Visuals);
+        // time attack ghosts beside the player (names for the HUD; poses come with every frame)
+        sb.Append(",\"ghosts\":[");
+        if (_taRun != null)
+            for (int i = 0; i < _taRun.Ghosts.Count; i++)
+            {
+                var m = _taRun.Ghosts[i].Meta;
+                if (i > 0) sb.Append(',');
+                sb.Append("{\"name\":\"").Append(Esc(m?.DisplayName)).Append("\",\"horse\":\"").Append(Esc(m?.HorseName)).Append("\",\"timeMs\":").Append(m?.TimeMs ?? -1).Append('}');
+            }
+        sb.Append("]}");
+        return sb.ToString();
+    }
+
+
+    /// <summary>The "world" block view.start() builds the 3D course from (sets _frame / _xShift for the poses).</summary>
+    private static void AppendWorld(StringBuilder sb, RaceConfig cfg, RaceVisuals visuals)
+    {
         // RaceWorld.StartRace: CourseFrame (finish at z=420 facing +Z), straight courses reuse the Greenfield straight
         // with the field centred between its rails (xShift); bends get the generated course (BuildCourse).
-        var visuals = _driver.Visuals;
         _frame = CourseFrame.For(cfg, visuals);
         bool straight = cfg.Track.Segments.TrueForAll(s => s.Kind == SegmentKind.Straight);
         _xShift = straight ? -(_frame.LaneCount * _frame.LaneWidthMm / 1000.0) / 2 : 0;
-        sb.Append("],\"world\":{\"straight\":").Append(B(straight)).Append(",\"xShift\":").Append(F(_xShift))
+        sb.Append(",\"world\":{\"straight\":").Append(B(straight)).Append(",\"xShift\":").Append(F(_xShift))
           .Append(",\"outsideSign\":").Append(F(_frame.OutsideSign)).Append(",\"night\":").Append(B(visuals?.Track != null && visuals.Track.Night))
           .Append(",\"innerRailM\":").Append(F(CourseFrame.InnerRailM)).Append(",\"outerRailM\":").Append(F(_frame.OuterRailM));
         var b = _frame.Bounds();
@@ -156,17 +174,6 @@ public static partial class MuchiRace
             sb.Append("]}");
         }
         sb.Append("]}");
-        // time attack ghosts beside the player (names for the HUD; poses come with every frame)
-        sb.Append(",\"ghosts\":[");
-        if (_taRun != null)
-            for (int i = 0; i < _taRun.Ghosts.Count; i++)
-            {
-                var m = _taRun.Ghosts[i].Meta;
-                if (i > 0) sb.Append(',');
-                sb.Append("{\"name\":\"").Append(Esc(m?.DisplayName)).Append("\",\"horse\":\"").Append(Esc(m?.HorseName)).Append("\",\"timeMs\":").Append(m?.TimeMs ?? -1).Append('}');
-            }
-        sb.Append("]}");
-        return sb.ToString();
     }
 
     [JSExport] public static void Lane(int dir) => _input.Lane(dir);
@@ -544,6 +551,118 @@ public static partial class MuchiRace
               .Append("\",\"margin\":\"").Append(Esc(r.Margin)).Append("\",\"player\":").Append(B(r.IsPlayer)).Append('}');
         }
         sb.Append("]}");
+    }
+
+
+    // ================================================================= round 14: マイリプレイ (REQ-MYRP-*, contracts/protocol.md §37)
+    private static ReplayPlayer _replay;
+
+    /// <summary>The race just run: its confirmed inputs (OfflineRace.AllInputs) and hash. JS pairs them with the server-built config.</summary>
+    [JSExport]
+    public static string LastRaceInputs()
+    {
+        if (!(_driver is OfflineRaceDriver o) || !_driver.Done || _driver.Sim?.Result == null) return "{\"ok\":false}";
+        return "{\"ok\":true,\"endTick\":" + _driver.Sim.Tick + ",\"slot\":" + _driver.PlayerSlot + ",\"hash\":\"" + _driver.Sim.Result.Hash + "\",\"inputs\":" + Muchi.Net.ProtocolCodec.InputsToJson(o.Race.AllInputs()) + "}";
+    }
+
+    /// <summary>
+    /// A whole race of a server-built config ridden by a scripted rider (START on the gate, a whip every 1.2 s from
+    /// <paramref name="whipFromM"/> m left) — the demo races of the list. Returns inputs, hash, order and finish ticks.
+    /// </summary>
+    [JSExport]
+    public static string SimulateConfig(string configJson, string playerId, int whipFromM)
+    {
+        var cfg = Muchi.Net.ProtocolCodec.ParseConfig(configJson);
+        int slot = 0;
+        foreach (var e in cfg.Entrants) if (e.Kind == EntrantKind.Human && e.PlayerId == playerId) { slot = e.Slot; break; }
+        var race = new OfflineRace(cfg, slot);
+        int lastWhip = -100;
+        while (!race.IsFinished)
+        {
+            var me = race.Sim.GetHorse(slot);
+            if (race.Sim.Tick == race.Sim.P.GateOpenTick) race.Input(Cmd.Start);
+            if (me.Departed && (race.Sim.Track.Distance - me.Distance).ToMilli() <= whipFromM * 1000L && race.Sim.Tick - lastWhip >= 24) { lastWhip = race.Sim.Tick; race.Input(Cmd.Whip); }
+            race.StepOnce();
+        }
+        var r = race.Sim.Result;
+        return "{\"endTick\":" + race.Sim.Tick + ",\"slot\":" + slot + ",\"place\":" + (Array.IndexOf(r.Order, slot) + 1) + ",\"hash\":\"" + r.Hash + "\",\"order\":[" + string.Join(",", r.Order)
+            + "],\"finishTicks\":[" + string.Join(",", r.FinishTicks) + "],\"inputs\":" + Muchi.Net.ProtocolCodec.InputsToJson(race.AllInputs()) + "}";
+    }
+
+    /// <summary>
+    /// ReplayPlayer.Open on the server's replay data: re-simulates the whole race and checks the hash. Unplayable →
+    /// {playable:false, reason, message}; else the course for view.start() plus the camera labels (horse names only).
+    /// </summary>
+    [JSExport]
+    public static string ReplayOpen(string dataJson)
+    {
+        var d = ReplayData.FromJson(dataJson);
+        _replay = ReplayPlayer.Open(d);
+        if (!_replay.Playable) return "{\"playable\":false,\"reason\":\"" + Esc(_replay.Reason) + "\",\"message\":\"" + Esc(MyReplaysModel.Unplayable(_replay.Reason)) + "\"}";
+        var cfg = _replay.Config;
+        var sb = new StringBuilder();
+        sb.Append("{\"playable\":true,\"durationMs\":").Append(_replay.DurationMs).Append(",\"ownSlot\":").Append(_replay.OwnSlot).Append(",\"playerSlot\":").Append(_replay.OwnSlot)
+          .Append(",\"hash\":\"").Append(_replay.Result.Hash).Append("\",\"distanceM\":").Append(cfg.Track.DistanceM)
+          .Append(",\"surface\":\"").Append(cfg.Track.Surface == Surface.Dirt ? "dirt" : "turf").Append("\",\"names\":[");
+        for (int i = 0; i < cfg.Entrants.Count; i++) { if (i > 0) sb.Append(','); sb.Append('"').Append(Esc(cfg.Entrants[i].Horse.Name)).Append('"'); }
+        sb.Append("],\"labels\":[");
+        var labels = MyReplaysModel.CameraLabels(d);
+        for (int i = 0; i < labels.Count; i++) { if (i > 0) sb.Append(','); sb.Append('"').Append(Esc(labels[i])).Append('"'); }
+        sb.Append("],\"order\":[").Append(string.Join(",", _replay.Result.Order)).Append(']');
+        AppendWorld(sb, cfg, null);
+        return sb.Append('}').ToString();
+    }
+
+    /// <summary>Player controls: speed (0.5 / 1 / 2), cycle, camera (slot), seek (ms), jump (last 200 m of the camera horse), pause (1/0).</summary>
+    [JSExport]
+    public static string ReplayControl(string op, double value)
+    {
+        if (_replay == null || !_replay.Playable) return "{}";
+        switch (op)
+        {
+            case "speed": _replay.SetSpeed(value); break;
+            case "cycle": _replay.CycleSpeed(); break;
+            case "camera": _replay.SetCamera((int)value); break;
+            case "seek": _replay.Seek((int)value); break;
+            case "jump": _replay.JumpToFinalStretch(); break;
+            case "pause": _replay.Paused = value != 0; break;
+        }
+        return "{\"speed\":" + F(_replay.Speed) + ",\"speedLabel\":\"" + MyReplaysModel.SpeedLabel(_replay.Speed) + "\",\"camera\":" + _replay.CameraSlot + ",\"paused\":" + B(_replay.Paused) + ",\"t\":" + _replay.TimeMs + "}";
+    }
+
+    /// <summary>Advance by <paramref name="realMs"/> of wall time (× speed) and pose the frame (CourseFrame, as the live race).</summary>
+    [JSExport]
+    public static string ReplayFrame(double realMs)
+    {
+        if (_replay == null || !_replay.Playable) return "{}";
+        _replay.Advance(realMs);
+        var f = _replay.Frame();
+        var sb = new StringBuilder(1024);
+        sb.Append("{\"t\":").Append(f.TimeMs).Append(",\"durationMs\":").Append(_replay.DurationMs).Append(",\"remainingM\":").Append(F(f.RemainingM)).Append(",\"rank\":").Append(f.Rank)
+          .Append(",\"camera\":").Append(f.CameraSlot).Append(",\"finished\":").Append(B(f.Finished)).Append(",\"atEnd\":").Append(B(_replay.AtEnd)).Append(",\"horses\":[");
+        for (int i = 0; i < f.To.Length; i++)
+        {
+            var p = _frame.Horse(f.From[i], f.To[i], f.AlphaPermille);
+            if (i > 0) sb.Append(',');
+            sb.Append('[').Append(F(p.X + _xShift)).Append(',').Append(F(p.Z)).Append(',').Append(F(p.YawDegrees)).Append(',').Append(f.To[i].Rank).Append(',').Append(B(f.To[i].IsWhipActive)).Append(',').Append(B(f.To[i].Departed && !f.To[i].Finished)).Append(",true]");
+        }
+        var c = _frame.ToWorld(f.Camera);
+        sb.Append("],\"cam\":[").Append(F(c.Position.X + _xShift)).Append(',').Append(F(c.Height)).Append(',').Append(F(c.Position.Z)).Append(',')
+          .Append(F(c.LookAt.X + _xShift)).Append(',').Append(F(c.LookAtHeight)).Append(',').Append(F(c.LookAt.Z)).Append(',').Append(F(c.FieldOfViewDegrees)).Append(",\"").Append(c.Mode.ToString()).Append("\"]}");
+        return sb.ToString();
+    }
+
+    /// <summary>The share card for the player's own horse (REQ-UXS-071, the same ShareCard as the result screen).</summary>
+    [JSExport]
+    public static string ReplayShareCard(string courseName)
+    {
+        if (_replay == null || !_replay.Playable) return "{\"ok\":false}";
+        var c = _replay.BuildShareCard(string.IsNullOrEmpty(courseName) ? null : courseName);
+        var sb = new StringBuilder();
+        sb.Append("{\"ok\":true,\"watermark\":\"").Append(Esc(c.Watermark)).Append("\",\"place\":").Append(c.Place).Append(",\"placeText\":\"").Append(Esc(c.PlaceText))
+          .Append("\",\"time\":\"").Append(Esc(c.TimeText)).Append("\",\"horse\":\"").Append(Esc(c.HorseName)).Append("\",\"course\":\"").Append(Esc(c.CourseName))
+          .Append("\",\"shareText\":\"").Append(Esc(c.ShareText)).Append("\"}");
+        return sb.ToString();
     }
 
     /// <summary>Re-run a golden race file ({log, expected}) in WebAssembly and return the result hash (must equal expected.resultHash).</summary>

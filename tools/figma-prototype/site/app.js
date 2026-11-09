@@ -613,7 +613,10 @@ async function RaceResult(f) {
   const finishTick = r.place > 0 ? f.finishTicks[r.place - 1] : -1;
   const passBefore = await L.passView();
   // round 11: the field met (図鑑) and whether the partner's skill fired (実績) go with the result, like a room's settlement
-  const applied = await L.applyRace(raceCtx.config.raceId, r.place, r.runners, { trackId: raceCtx.trackId, style: partner()?.style ?? 'sashi', finishTick: finishTick >= 0 ? finishTick : null, whips: r.facts?.whips ?? 0, skillFired: !!(f.skill?.used ?? lastFrame?.skill?.used), ...(f.assist && f.assist !== 'off' ? { assist: f.assist } : {}) }, raceCtx.config);
+  // round 14 (REQ-MYRP-001): the race's confirmed inputs + hash go with the result, so it shows in マイリプレイ
+  const li = JSON.parse(engine.LastRaceInputs());
+  const replay = li.ok ? { slot: li.slot, hash: li.hash, endTick: li.endTick, inputs: li.inputs, marginTicks: L.replays.marginTicks(f.order, f.finishTicks, li.slot) } : undefined;
+  const applied = await L.applyRace(raceCtx.config.raceId, r.place, r.runners, { trackId: raceCtx.trackId, style: partner()?.style ?? 'sashi', finishTick: finishTick >= 0 ? finishTick : null, whips: r.facts?.whips ?? 0, skillFired: !!(f.skill?.used ?? lastFrame?.skill?.used), ...(f.assist && f.assist !== 'off' ? { assist: f.assist } : {}) }, raceCtx.config, replay);
   const passAfter = await L.passView();
   const missions = await L.missions();
   await refresh();
@@ -657,6 +660,11 @@ function ResultScreen(f, rewards, passXp, pass, missions) {
   TextLink('着順と報酬の詳細', 200, 734, 200, () => ResultDetails(r, rewards, passXp, pass, missions), p);
   // replay share (REQ-UXS-070): the last 200 m re-simulated on the device
   if (!first) Ghost('リプレイを共有', 1286, 800, 274, 60, () => ShareCard(currentScreen)).classList.add('share');
+  // round 14: keep this race in マイリプレイ (REQ-MYRP-003)
+  if (!first && raceCtx.config?.raceId) Ghost('マイリプレイに残す', 996, 800, 274, 60, async () => {
+    const k = await L.replays.save(raceCtx.config.raceId);
+    toast(k.ok ? (k.value.alreadySaved ? '保存済みです' : 'リプレイを保存しました') : k.code === 'REPLAY_LIMIT' ? '保存できるのはここまでです。不要なリプレイを削除してください' : k.message);
+  }).classList.add('rp-keep-result');
   EnToggle();
 }
 function ResultDetails(r, rewards, passXp, pass, missions) {
@@ -1002,7 +1010,7 @@ function Missions(ms, fw, bonus) {
 }
 /** Feature keys unlocked by races or days (server unlocks), each with its key and condition. */
 function Features() {
-  const keys = [['season_pass', 'シーズンパス', () => SeasonPass()], ['time_attack', 'タイムアタック', () => TimeAttack()], ['collection', '図鑑', () => Collection()], ['achievements', '実績・称号', () => Achievements()], ['breeding', '配合'], ['friends', 'フレンド'], ['teams', '支部'], ['events', 'イベント'], ['my_stable', 'マイ厩舎']];
+  const keys = [['season_pass', 'シーズンパス', () => SeasonPass()], ['time_attack', 'タイムアタック', () => TimeAttack()], ['collection', '図鑑', () => Collection()], ['achievements', '実績・称号', () => Achievements()], ['breeding', '配合'], ['friends', 'フレンド'], ['teams', '支部'], ['events', 'イベント'], ['my_stable', 'マイ厩舎'], ['my_replays', 'マイリプレイ', () => MyReplays()]];
   Sheet('機能・イベント', '開放', (s, close, y) => {
     keys.forEach(([k, name, go], i) => {
       const f = unlock(k);
@@ -2822,6 +2830,270 @@ function RivalResultSheet(v) {
   return sheet;
 }
 
+// ================================================================= round 14: マイリプレイ (REQ-MYRP-*, contracts/protocol.md §37)
+// Saved replays on the real MyReplaysService / PlayerService rules, played back by ReplayPlayer in WebAssembly: the whole
+// race re-simulated on the device from the stored config + inputs, the hash checked before anything is shown (else
+// 「再生できません」). Mirrors unity/Assets/Muchi/Game/MyReplaysModel.cs. ムチ一閃 tone: race art, two translucent navy
+// panels, letter-spaced cyan kickers, one skewed cyan CTA ». Titles are what the player typed: never translated.
+const RP_MOMENT = { win: '勝利', photo: '写真判定', pb: '自己ベスト' };
+const RP_PUBLIC_NOTE = '公開にすると、フレンドがこのリプレイを見られます（ほかのプレイヤーは馬の名前だけが表示されます）';
+const rpCourse = (id) => L.trackName(id);
+const rpDate = (ms) => { const d = new Date(ms + 9 * 3600e3); return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`; };
+const rpResult = (r) => (r.place > 0 ? `${r.place}着 / ${r.fieldSize}頭` : '完走ならず');
+const rpTitle = (r) => r.replayTitle || rpCourse(r.trackId); // no title: the course (the place is on the line below)
+const rpClock = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}.${Math.floor(ms / 100) % 10}`;
+let rpPage = 0;
+/** Marks a player-typed title so the English layer leaves it as typed (REQ-MYRP-004). */
+function rpTyped(node, r) { if (r.replayTitle) { node.classList.add('keep-ja', 'typed'); node.dataset.typed = '1'; } return node; }
+
+async function MyReplays() {
+  currentScreen = MyReplays;
+  const r = await L.replays.view();
+  if (!r.ok || !r.value.enabled) { toast('マイリプレイは今は表示できません'); Home(); return; }
+  const v = r.value;
+  Clear('my-replays'); SetArt('Art/race-result', false); Shade('left');
+  TopBar('マイリプレイ', `自分のレースを残して、いつでも見返せます　·　保存は無料で${v.maxSaved}件まで`);
+  // ① saved replays (favourites first)
+  const lp = Glass('Saved replays', 36, 134, 820, 676, undefined, .88);
+  lp.classList.add('rp-saved');
+  Kicker(`保存したリプレイ　/　${v.used} / ${v.maxSaved}`, 36, 30, lp).classList.add('rp-count');
+  const per = 4, pages = Math.max(1, Math.ceil(v.saved.length / per));
+  rpPage = Math.min(rpPage, pages - 1);
+  if (!v.saved.length) Txt('保存したリプレイはまだありません。レースの名場面は自動でここに並びます', 36, 110, 748, 16, MUTED, lp, { lh: 1.6 }).classList.add('rp-empty');
+  v.saved.slice(rpPage * per, rpPage * per + per).forEach((x, i) => {
+    const c = Card('Replay card', 36, 100 + i * 128, 748, 116, lp, x.playable ? 'var(--cyan)' : 'var(--warn)');
+    c.classList.add('rp-card'); c.dataset.raceId = x.raceId; c.dataset.playable = String(x.playable); c.dataset.public = String(x.public); c.dataset.favorite = String(x.favorite);
+    rpTyped(Txt(rpTitle(x), 24, 18, 560, 22, WHITE, c, { weight: 700, nowrap: true, ls: '.04em' }), x).classList.add('rp-title');
+    Txt(`${rpResult(x)}　·　${rpDate(x.at)}`, 24, 56, 250, 15, x.place === 1 ? GOLD : SOFT, c, { weight: 500, nowrap: true, cls: 'num' });
+    if (x.replayTitle) Txt(rpCourse(x.trackId), 284, 56, 360, 15, SOFT, c, { weight: 500, nowrap: true }); // untitled: the course is the title
+    const pills = [];
+    if (x.moment) pills.push([RP_MOMENT[x.moment] ?? x.moment, 'gold']);
+    if (x.public) pills.push(['公開', 'cyan']);
+    if (!x.playable) pills.push(['再生できません', 'warn']);
+    if (pills.length) Pills(pills, 24, 82, 600, c);
+    Txt(x.favorite ? '★' : '☆', 680, 30, 44, 32, x.favorite ? GOLD : DIM, c, { align: 'center' }).classList.add('rp-star');
+    c.style.cursor = 'pointer'; c.addEventListener('click', () => ReplaySheet(x));
+  });
+  if (pages > 1) {
+    TextLink('前へ', 36, 620, 100, () => { rpPage = Math.max(0, rpPage - 1); MyReplays(); }, lp, '‹ 前へ');
+    Txt(`${rpPage + 1} / ${pages}`, 340, 626, 140, 15, MUTED, lp, { align: 'center', cls: 'num' });
+    TextLink('次へ', 684, 620, 100, () => { rpPage = Math.min(pages - 1, rpPage + 1); MyReplays(); }, lp, '次へ ›');
+  }
+  // ② best moments (auto, rotating) and recent races that can still be kept
+  const rp = Glass('Moments', 880, 134, 684, 676, undefined, .86);
+  rp.classList.add('rp-moments');
+  Kicker('名場面と最近のレース　/　自動で入れ替わります', 36, 30, rp);
+  const rows = [...v.moments, ...v.recent].slice(0, 6);
+  if (!rows.length) Txt('レースを走ると、勝利・写真判定・自己ベストがここに並びます', 36, 110, 612, 15, MUTED, rp, { lh: 1.6 });
+  rows.forEach((x, i) => {
+    const row = el('rp-row', 36, 100 + i * 70, 612, 62, rp); row.dataset.raceId = x.raceId; row.dataset.moment = x.moment ?? 'none';
+    Txt(x.moment ? RP_MOMENT[x.moment] : '最近のレース', 0, 4, 150, 13, x.moment ? GOLD : CYAN, row, { weight: 700, ls: '.12em', nowrap: true });
+    Txt(rpResult(x), 0, 26, 130, 16, WHITE, row, { weight: 700, nowrap: true, cls: 'num' });
+    Txt(rpCourse(x.trackId), 140, 28, 280, 14, SOFT, row, { weight: 500, nowrap: true });
+    if (!x.saved) Txt(`${rpDate(x.expiresAt - 1)}まで保存できます`, 150, 6, 260, 12, DIM, row, { nowrap: true });
+    const k = Ghost(x.saved ? '保存済み' : '残す', 430, 6, 180, 50, async () => {
+      const s = await L.replays.save(x.raceId);
+      toast(s.ok ? 'リプレイを保存しました' : s.code === 'REPLAY_LIMIT' ? '保存できるのはここまでです。不要なリプレイを削除してください' : s.code === 'REPLAY_EXPIRED' ? 'このレースのリプレイはもう保存できません' : s.code === 'DELETION_PENDING' ? 'アカウント削除の手続き中のため、保存できません' : s.message);
+      MyReplays();
+    }, row, 'small');
+    k.classList.add('rp-keep'); if (x.saved || v.used >= v.maxSaved) disable(k);
+    row.style.cursor = 'pointer'; row.addEventListener('click', () => ReplayPlayer(x.raceId, { title: rpCourse(x.trackId) }));
+    Hair(0, 61, 612, row);
+  });
+  Ghost('デモ：レースを走る', 36, 540, 300, 54, async () => { await RpDemoRace(); MyReplays(); }, rp, 'quiet small').classList.add('rp-demo-race');
+  Ghost('フレンドの公開リプレイ', 352, 540, 296, 54, () => FriendReplays(), rp, 'quiet small').classList.add('rp-friend');
+  Txt('保存はリプレイの記録（設定と操作）だけです。見る時に端末で同じレースを再計算します', 36, 612, 612, 12, SOFT, rp, { lh: 1.55 });
+  Back(Home, 'BACK', 40, 834);
+}
+
+/** A demo race on the real engine: the server's buildRaceConfig, ridden in WASM by a scripted rider, settled like a room. */
+async function RpDemoRace() {
+  const p = partner();
+  if (!p) return;
+  const tracks = ['aoba_turf_1600', 'kirameki_turf_2000'];
+  const { config } = await L.raceConfig(p.id, tracks[Math.floor(Math.random() * tracks.length)]);
+  const sim = JSON.parse(engine.SimulateConfig(JSON.stringify(config), 'local', 300 + Math.floor(Math.random() * 500)));
+  const ft = sim.finishTicks[sim.place - 1];
+  await L.applyRace(config.raceId, sim.place, config.entrants.length, { trackId: config.track.id, style: p.style, finishTick: ft >= 0 ? ft : null, whips: 0 }, config,
+    { slot: sim.slot, hash: sim.hash, endTick: sim.endTick, inputs: sim.inputs, marginTicks: L.replays.marginTicks(sim.order, sim.finishTicks, sim.slot) });
+  await refresh();
+  globalThis.__muchi && (globalThis.__muchi.lastReplayRace = config.raceId);
+  return config.raceId;
+}
+
+/** One saved replay: play, rename, favourite, public, delete. */
+function ReplaySheet(x) {
+  return Sheet(rpTitle(x), 'リプレイ　/　保存', (s, close, y) => {
+    s.classList.add('rp-sheet'); s.dataset.raceId = x.raceId;
+    rpTyped(s.querySelectorAll('.label')[1], x);
+    Txt(`${rpResult(x)}　·　${rpDate(x.at)}`, 48, y, 250, 17, x.place === 1 ? GOLD : WHITE, s, { weight: 700, cls: 'num', nowrap: true });
+    Txt(rpCourse(x.trackId), 310, y + 2, 302, 15, WHITE, s, { weight: 500, nowrap: true });
+    if (x.moment) Txt(RP_MOMENT[x.moment], 48, y + 34, 564, 14, GOLD, s, { weight: 700, ls: '.12em' });
+    if (!x.playable) Txt(rpUnplayable(x.reason), 48, y + 62, 564, 15, WARN, s, { weight: 700, lh: 1.5 }).classList.add('rp-unplayable');
+    const play = Cta('再生する', 48, y + 110, 564, () => { close(); ReplayPlayer(x.raceId, { title: rpTitle(x), typed: !!x.replayTitle }); }, s);
+    play.classList.add('rp-play'); if (!x.playable) disable(play);
+    Ghost('名前を変える', 48, y + 214, 270, 56, () => { close(); RenameSheet(x); }, s, 'small').classList.add('rp-rename');
+    const fav = Ghost(x.favorite ? '★ お気に入り' : '☆ お気に入り', 342, y + 214, 270, 56, async () => {
+      const r = await L.replays.update(x.raceId, { favorite: !x.favorite }); close();
+      if (!r.ok) toast(r.message); MyReplays();
+    }, s, 'small');
+    fav.classList.add('rp-fav'); if (x.favorite) fav.classList.add('on');
+    const pub = Btn('公開', 48, y + 296, 564, 64, async () => {
+      const r = await L.replays.update(x.raceId, { public: !x.public }); close();
+      toast(r.ok ? (r.value.saved.public ? 'フレンドに公開しました' : '非公開にしました') : r.code === 'DELETION_PENDING' ? 'アカウント削除の手続き中のため、公開できません' : r.message);
+      MyReplays();
+    }, 'check', s, (x.public ? '☑　' : '☐　') + 'フレンドに公開する');
+    pub.classList.add('rp-public'); if (x.public) pub.classList.add('on');
+    Txt(RP_PUBLIC_NOTE, 48, y + 372, 564, 13, SOFT, s, { lh: 1.55 });
+    TextLink('削除', 48, y + 440, 160, async () => { const r = await L.replays.remove(x.raceId); close(); toast(r.ok ? 'リプレイを削除しました' : r.message); MyReplays(); }, s, 'このリプレイを削除').classList.add('rp-delete');
+  });
+}
+function rpUnplayable(reason) {
+  return { ruleset_retired: '古いルールのレースのため、再生できません', ruleset_unknown: 'このアプリのバージョンでは再生できません。アプリを更新してください', hash_mismatch: 'このアプリのバージョンでは同じレースを再現できないため、再生できません', broken: 'データを読み込めないため、再生できません' }[reason] ?? 'このリプレイは再生できません';
+}
+
+/** The rename sheet: the server moderates (NG words, URLs); an empty title goes back to course + place. */
+function RenameSheet(x, error = '') {
+  const max = 24;
+  return Sheet('名前を変える', 'リプレイ　/　タイトル', (s, close, y) => {
+    s.classList.add('rp-rename-sheet');
+    Txt(`1〜${max}文字。ほかの人に見える名前です（公開にした時）`, 48, y, 564, 14, MUTED, s);
+    const box = el('fieldbox', 48, y + 34, 564, 72, s);
+    const input = document.createElement('input');
+    input.className = 'field keep-ja'; input.maxLength = max; input.value = x.replayTitle ?? ''; input.placeholder = rpCourse(x.trackId); input.setAttribute('aria-label', 'リプレイのタイトル');
+    Object.assign(input.style, { left: '22px', top: '12px', width: '520px', height: '48px', fontSize: '26px' });
+    box.appendChild(input);
+    const err = Txt(error, 48, y + 118, 564, 15, WARN, s, { weight: 500 }); err.classList.add('rp-rename-error');
+    const save = async (title) => {
+      const r = await L.replays.update(x.raceId, { replayTitle: title });
+      if (!r.ok) {
+        err.textContent = r.code === 'NG_NAME' ? 'この言葉は使えません。別のタイトルにしてください。' : r.code === 'INVALID_NAME' ? `1〜${max}文字で入力してください（URLは使えません）` : r.message;
+        return;
+      }
+      close(); toast(title ? 'タイトルを変えました' : 'タイトルを消しました'); MyReplays();
+    };
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(input.value.trim() || null); });
+    Cta('保存する', 48, y + 160, 564, () => save(input.value.trim() || null), s).classList.add('rp-rename-save');
+    TextLink('タイトルを消す', 48, y + 256, 220, () => save(null), s).classList.add('rp-rename-clear');
+    setTimeout(() => input.focus(), 50);
+  });
+}
+
+/** The demo friend's public replays (privacy rules on the owner's object; a 404 never says why). */
+async function FriendReplays() {
+  currentScreen = FriendReplays;
+  let r = await L.replays.friendList();
+  if (r.ok && !r.value.replays.length) {
+    const { config, playerId } = await L.replays.friendConfig();
+    const sim = JSON.parse(engine.SimulateConfig(JSON.stringify(config), playerId, 600));
+    await L.replays.demoFriendSave(config, sim);
+    r = await L.replays.friendList();
+  }
+  if (!r.ok) { toast('このリプレイは見られません'); return MyReplays(); }
+  const v = r.value;
+  Clear('friend-replays'); SetArt('Art/race-result', false); Shade('left');
+  TopBar('フレンドのリプレイ', 'フレンドが公開したリプレイだけが表示されます');
+  const p = Glass('Friend replays', 36, 134, 820, 676, undefined, .88);
+  p.classList.add('rp-friend-list');
+  Kicker('公開されたリプレイ', 36, 30, p);
+  Txt(v.displayName, 400, 64, 384, 18, GOLD, p, { weight: 700, align: 'right', nowrap: true, cls: 'keep-ja' }).dataset.typed = '1'; // a player-typed name
+  v.replays.slice(0, 4).forEach((x, i) => {
+    const c = Card('Friend replay', 36, 100 + i * 128, 748, 116, p, 'var(--cyan)');
+    c.classList.add('rp-card'); c.dataset.raceId = x.raceId;
+    rpTyped(Txt(rpTitle(x), 24, 18, 560, 22, WHITE, c, { weight: 700, nowrap: true }), x).classList.add('rp-title');
+    Txt(`${rpResult(x)}　·　${rpDate(x.at)}`, 24, 56, 250, 15, SOFT, c, { weight: 500, nowrap: true, cls: 'num' });
+    Txt(rpCourse(x.trackId), 284, 56, 360, 15, SOFT, c, { weight: 500, nowrap: true });
+    c.style.cursor = 'pointer'; c.addEventListener('click', () => ReplayPlayer(x.raceId, { friend: true, title: rpTitle(x), typed: !!x.replayTitle, owner: v.displayName }));
+  });
+  Back(MyReplays, 'BACK', 40, 834);
+}
+
+/** The player: the whole race re-simulated in WASM, 0.5× / 1× / 2×, the camera on any horse, jump to its last 200 m. */
+async function ReplayPlayer(raceId, o = {}) {
+  const d = o.friend ? await L.replays.friendData(raceId) : await L.replays.data(raceId);
+  if (!d.ok) { toast(d.code === 'REPLAY_EXPIRED' ? 'このレースのリプレイはもう残っていません' : 'このリプレイは見られません'); return o.friend ? FriendReplays() : MyReplays(); }
+  const info = JSON.parse(engine.ReplayOpen(JSON.stringify(d.value)));
+  const back = o.friend ? FriendReplays : MyReplays;
+  currentScreen = () => ReplayPlayer(raceId, o);
+  if (!info.playable) {
+    Clear('replay-unplayable'); SetArt('Art/race-result', false); Shade('dim');
+    const box = Dialog('Unplayable', 820, 420); box.dataset.reason = info.reason;
+    Kicker('リプレイ', 52, 48, box);
+    Txt('このリプレイは再生できません', 52, 112, 716, 32, WHITE, box);
+    Txt(info.message, 52, 176, 716, 18, MUTED, box, { lh: 1.7 }).classList.add('rp-unplayable');
+    Txt('違うレースを流さないため、再生しません。保存はそのまま残り、削除できます', 52, 250, 716, 14, SOFT, box, { lh: 1.6 });
+    Cta('もどる', 52, 310, 360, back, box);
+    return;
+  }
+  await viewReady;
+  Clear('replay-player'); cur.classList.add('race'); $canvas.hidden = false;
+  view.useRig = true; view.start(info, equippedPartner());
+  const state = { camera: info.ownSlot, speed: 1, paused: false };
+  // header: the title (typed titles as typed) and whose replay it is
+  const h = Glass('Replay header', 36, 31, 760, 88, undefined, .82);
+  el('rule', 22, 18, 84, 3, h);
+  const t = Txt(o.title ?? 'リプレイ', 22, 30, 720, 24, WHITE, h, { weight: 700, nowrap: true, ls: '.05em' });
+  if (o.typed) { t.classList.add('keep-ja', 'typed'); t.dataset.typed = '1'; }
+  Txt(o.friend ? 'フレンドのリプレイ' : 'マイリプレイ　/　端末で再計算（結果が一致した時だけ再生）', 22, 60, o.friend ? 220 : 720, 14, MUTED, h, { nowrap: true });
+  if (o.friend) Txt(o.owner ?? '', 250, 60, 480, 14, GOLD, h, { nowrap: true, weight: 700, cls: 'keep-ja' });
+  EnToggle(1466, 31, 98, 88);
+  const rem = el('chip num rp-remaining', 54, 150, 230, 64); rem.style.fontSize = '26px';
+  const rank = el('chip num rp-rank', 300, 150, 200, 64); rank.style.fontSize = '24px';
+  const camLabel = Txt('', 54, 230, 700, 18, WHITE, undefined, { weight: 700, cls: 'tshadow', nowrap: true }); camLabel.classList.add('rp-camera');
+  // controls
+  const bar = Glass('Replay controls', 36, 744, 1528, 120, undefined, .86); bar.classList.add('rp-controls');
+  const ctl = (op, value = 0) => { const s = JSON.parse(engine.ReplayControl(op, value)); Object.assign(state, { camera: s.camera, speed: s.speed, paused: s.paused }); paint(); return s; };
+  const pause = Ghost('一時停止', 24, 30, 170, 60, () => ctl('pause', state.paused ? 0 : 1), bar, 'small'); pause.classList.add('rp-pause');
+  const speed = Ghost('1×', 210, 30, 120, 60, () => ctl('cycle'), bar, 'small'); speed.classList.add('rp-speed', 'keep-ja');
+  Btn('前の馬', 346, 30, 70, 60, () => ctl('camera', (state.camera + info.names.length - 1) % info.names.length), 'ghost small rp-cam-prev', bar, '‹');
+  Btn('次の馬', 680, 30, 70, 60, () => ctl('camera', (state.camera + 1) % info.names.length), 'ghost small rp-cam-next', bar, '›');
+  const camName = Txt('', 426, 48, 244, 16, WHITE, bar, { weight: 700, align: 'center', nowrap: true }); camName.classList.add('rp-cam-name');
+  Cta('最後の200mへ', 770, 24, 330, () => ctl('jump'), bar, 'small').classList.add('rp-jump');
+  const seek = el('bar rp-seek', 1124, 40, 220, null, bar); const fill = document.createElement('i'); seek.appendChild(fill); seek.style.cursor = 'pointer';
+  seek.addEventListener('click', (e) => { const r = seek.getBoundingClientRect(); ctl('seek', Math.round(info.durationMs * clamp((e.clientX - r.left) / r.width, 0, 1))); });
+  const clock = Txt('', 1124, 64, 220, 13, MUTED, bar, { cls: 'num', nowrap: true });
+  Ghost('共有', 1362, 30, 140, 60, () => RpShare(o), bar, 'small').classList.add('rp-share');
+  Back(back, 'BACK', 40, 640);
+  function paint() {
+    pause.querySelector('span').textContent = state.paused ? '再生' : '一時停止';
+    speed.querySelector('span').textContent = `${state.speed}×`;
+    camName.textContent = info.labels[state.camera] ?? '';
+    camLabel.textContent = `カメラ：${info.labels[state.camera] ?? ''}`;
+    view.playerSlot = state.camera;
+  }
+  paint();
+  let last = performance.now();
+  every(33, () => {
+    const now = performance.now(), dt = now - last; last = now;
+    const f = JSON.parse(engine.ReplayFrame(dt));
+    view.draw(f);
+    rem.textContent = f.remainingM > 0 ? `残り ${Math.ceil(f.remainingM)} m` : 'ゴール';
+    rank.textContent = `${f.rank}位 / ${info.names.length}頭`;
+    fill.style.width = Math.round(100 * f.t / Math.max(1, f.durationMs)) + '%';
+    clock.textContent = `${rpClock(f.t)} / ${rpClock(f.durationMs)}`;
+    globalThis.__muchi && (globalThis.__muchi.replay = { t: f.t, durationMs: f.durationMs, camera: f.camera, remainingM: f.remainingM, speed: state.speed, paused: state.paused, atEnd: f.atEnd, hash: info.hash, reason: null });
+  });
+}
+
+/** The share card of the replay (REQ-UXS-071 ShareCard for the player's own horse); replay_share when handed to the OS sheet. */
+function RpShare(o = {}) {
+  const c = JSON.parse(engine.ReplayShareCard(''));
+  if (!c.ok) { toast('このレースは共有できません'); return; }
+  Sheet(c.placeText, 'ムチ一閃　/　リプレイを共有', (s, close, y) => {
+    s.classList.add('rp-share-sheet');
+    Txt(c.time, 48, y, 564, 34, WHITE, s, { cls: 'num' });
+    Txt(c.horse, 48, y + 56, 564, 28, GOLD, s, { ls: '.06em' });
+    Txt(c.course, 48, y + 102, 564, 17, WHITE, s, { weight: 500 });
+    Txt('共有の文：' + c.shareText, 48, y + 146, 564, 14, MUTED, s, { lh: 1.6 });
+    Txt('名前・IDは入りません（選んだ馬の名前だけ）', 48, y + 222, 564, 13, SOFT, s);
+    Cta('共有する', 48, y + 270, 564, () => {
+      L.kpi([{ name: 'replay_share', at: L.now(), props: { surface: o.friend ? 'friend_replay' : 'my_replays' } }]);
+      globalThis.__muchi && (globalThis.__muchi.lastKpi = 'replay_share');
+      close(); toast('共有しました（アプリでは共有シートを開きます）');
+    }, s, 'gold').classList.add('rp-share-go');
+  });
+}
+
 // ================================================================= round 10: 支部の応援スタンプ (REQ-TEAMFEED-*)
 // The team feed on the real server rules (TeamsService / TeamCore in the browser) — fixed stamps only, no text field.
 // Mirrors unity/Assets/Muchi/Game/TeamFeedModel.cs: palette with server-built unlock texts, 10 s post cooldown, cheering a
@@ -3053,7 +3325,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ GiftBox, AssistSettings, Collection, Achievements, Training, Rival, TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, Collection, Achievements, Training, Rival, TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

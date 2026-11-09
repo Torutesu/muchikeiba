@@ -653,3 +653,41 @@ ORDER BY races DESC
 
 - 補助を使った人の継続（D7）は、`assist_enable` を出した人の `blob2` で「リテンション」のクエリを絞って比べる。
 - `client_race_start` の `blob9` にもレベルが入る（オフラインのレース・タイムアタックを含めた使われ方）。
+
+## マイリプレイ：保存・再生・共有（REQ-MYRP-014、Round 14、contracts/protocol.md §37）
+列：`replay_save`（サーバー）`blob8` = `moment`／`recent`、`blob9` = モード、`blob10` = 名場面の種類（win／photo／pb）、`double4` = 着順、`double9` = 保存した大きさ（バイト）。`replay_view`（サーバー、再生データを渡した時）`blob8` = `own`／`friend`、`blob9` = `playable` または再生できない理由、`blob10` = モード。`replay_share`（クライアント）`blob8` = `my_replays`／`friend_replay`。
+
+**使われ方**（週ごと）：保存した人・保存数・名場面からの保存の割合、再生（自分／フレンド）、共有。
+
+```sql
+SELECT
+  toStartOfWeek(timestamp) AS week,
+  count(DISTINCT if(blob1 = 'replay_save', blob2, NULL)) AS savers,
+  sumIf(_sample_interval, blob1 = 'replay_save') AS saves,
+  round(sumIf(_sample_interval, blob1 = 'replay_save' AND blob8 = 'moment') / sumIf(_sample_interval, blob1 = 'replay_save'), 3) AS from_moments,
+  sumIf(_sample_interval, blob1 = 'replay_view' AND blob8 = 'own') AS own_views,
+  sumIf(_sample_interval, blob1 = 'replay_view' AND blob8 = 'friend') AS friend_views,
+  sumIf(_sample_interval, blob1 = 'replay_share') AS shares
+FROM muchi_kpi
+WHERE blob1 IN ('replay_save', 'replay_view', 'replay_share') AND timestamp > NOW() - INTERVAL '56' DAY
+GROUP BY week
+ORDER BY week DESC
+```
+
+**再生できない割合**（理由ごと）：`ruleset_retired` が増えたら引退させた版の告知を、`ruleset_unknown` が増えたらアプリの更新の案内を見直す。端末の `hash_mismatch` はサーバーに届かない（クライアントの不具合報告で見る）。
+
+```sql
+SELECT blob9 AS status, sum(_sample_interval) AS views
+FROM muchi_kpi
+WHERE blob1 = 'replay_view' AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY status
+ORDER BY views DESC
+```
+
+**保存の大きさ**（R2 の費用の見積もり）：平均 × 保存数。`maxBytes`（既定 256 KiB）に近い物が多ければ上限を見直す。
+
+```sql
+SELECT round(sum(_sample_interval * double9) / sum(_sample_interval)) AS avg_bytes, max(double9) AS max_bytes, sum(_sample_interval) AS saves
+FROM muchi_kpi
+WHERE blob1 = 'replay_save' AND timestamp > NOW() - INTERVAL '28' DAY
+```

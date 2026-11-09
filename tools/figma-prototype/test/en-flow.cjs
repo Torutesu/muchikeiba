@@ -171,6 +171,28 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await page.locator('.screen.in .rv-result .rv-continue').click(); await page.waitForTimeout(300);
   await page.evaluate(() => globalThis.__muchi.logic.setClockMs(null));
 
+  // round 14: マイリプレイ in English (REQ-MYRP-*): the list, the sheet, the rename sheet, the player, the unplayable state
+  await show('MyReplays'); await waitScreen('my-replays'); await waitIn('.rp-saved');
+  await click('デモ：レースを走る'); await waitIn('.rp-row');
+  await page.locator('.screen.in .rp-keep:not(.disabled)').first().click(); await page.waitForTimeout(500); await waitIn('.rp-card');
+  await shot('my-replays', 500);
+  assert.match(await page.locator('.screen.in').innerText(), /My Replays/i, 'my replays: the title in English');
+  await page.locator('.screen.in .rp-card').first().click(); await waitIn('.rp-sheet'); await shot('my-replays-sheet', 400);
+  await page.locator('.screen.in .rp-sheet .rp-rename').click(); await waitIn('.rp-rename-sheet'); await shot('my-replays-rename', 400);
+  await page.locator('.screen.in .rp-rename-sheet input.field').fill('1着'); await page.locator('.screen.in .rp-rename-save').click(); await page.waitForTimeout(500);
+  await waitScreen('my-replays'); await waitIn('.rp-card .typed');
+  assert.equal(await page.locator('.screen.in .rp-card .rp-title.typed').first().textContent(), '1着', 'a typed title stays as typed in English');
+  await page.locator('.screen.in .rp-card').first().click(); await waitIn('.rp-sheet');
+  await page.locator('.screen.in .rp-sheet .rp-play').click(); await waitScreen('replay-player', 30000);
+  await page.waitForFunction(() => (globalThis.__muchi.replay?.t ?? 0) > 300, null, { timeout: 20000 });
+  await page.locator('.screen.in .rp-pause').click(); await page.waitForTimeout(300);
+  await shot('replay-player', 300);
+  await page.locator('.screen.in .rp-share').click(); await waitIn('.rp-share-sheet'); await shot('replay-share', 400);
+  await page.evaluate(() => globalThis.__muchi.logic.replays.demoRetired(true));
+  await page.evaluate(async () => { const v = (await globalThis.__muchi.logic.replays.view()).value; return globalThis.__muchi.show('ReplayPlayer', v.saved[0].raceId, {}); });
+  await waitScreen('replay-unplayable'); await shot('replay-unplayable', 400);
+  await page.evaluate(() => globalThis.__muchi.logic.replays.demoRetired(false));
+
   // round 11: 図鑑・実績・称号 in English (REQ-COL-*, REQ-ACH-*): a week of play on the real rules, every tab, a detail,
   // the achievement list (claim one, claim all), the title chooser
   await page.evaluate(() => globalThis.__muchi.demo('collection')); await waitScreen('collection', 60000);

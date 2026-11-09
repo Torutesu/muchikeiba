@@ -27,6 +27,15 @@ describe('HttpVerifierClient', () => {
     await new HttpVerifierClient('https://v', fetcher).verify(log());
     expect(auths).toEqual(['Bearer s3cret-token', null]);
   });
+  it('asks for skillsFired with its header (opt-in, so a new verifier never sends it to an older server)', async () => {
+    let h: Headers | null = null;
+    const fetcher = (async (_url: string, init: RequestInit) => {
+      h = new Headers(init.headers);
+      return new Response(JSON.stringify({ resultHash: 'a'.repeat(64), order: [0], finishTicks: [10], checksums: {}, skillsFired: [0] }));
+    }) as unknown as typeof fetch;
+    expect((await new HttpVerifierClient('https://v', fetcher).verify(log())).skillsFired).toEqual([0]);
+    expect(h!.get('x-muchi-verify-skills')).toBe('1');
+  });
   it('rejects malformed verifier output and HTTP errors', async () => {
     const bad = (async () => new Response(JSON.stringify({ resultHash: 'zz', order: [], finishTicks: [1], checksums: {} }))) as unknown as typeof fetch;
     await expect(new HttpVerifierClient('https://v', bad).verify(log())).rejects.toThrow();

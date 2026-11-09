@@ -8,9 +8,19 @@ namespace Muchi.Verifier
     {
         public const int MaxBodyBytes = 4 * 1024 * 1024;
 
+        /// <summary>
+        /// Request header with which the server asks for <c>skillsFired</c> ("1"). Opt-in so that a new verifier never adds the
+        /// key for an older server whose strict output schema would reject it: the verifier can always be deployed first
+        /// (docs/ops/deploy.md §7.1). The server's HttpVerifierClient always asks.
+        /// </summary>
+        public const string SkillsHeader = "X-Muchi-Verify-Skills";
+
+        /// <summary>True when the request asked for <c>skillsFired</c> (header value "1").</summary>
+        public static bool WantsSkills(string headerValue) => headerValue != null && headerValue.Trim() == "1";
+
         /// <param name="withSkills">
         /// Adds <c>skillsFired</c> (slots whose unique skill fired in the re-simulation, ascending). The HTTP endpoint sends
-        /// it so the server credits skill activations (REQ-ACH-002) from the verifier, never from a lone client's claim; the
+        /// it when the server asks (<see cref="SkillsHeader"/>) so the server credits skill activations (REQ-ACH-002) from the verifier, never from a lone client's claim; the
         /// golden files keep the plain output (contracts/protocol.md §8).
         /// </param>
         public static (int status, string body) Verify(string json, bool withSkills = false)

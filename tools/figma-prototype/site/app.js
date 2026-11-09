@@ -411,14 +411,14 @@ async function StartTutorial() {
   view.useRig = true; view.start(raceInfo, equippedPartner());
   BuildRaceScreen();
 }
-async function StartRace(trackId = null) {
+async function StartRace(trackId = null, horseId = null) {
   await viewReady;
-  const p = partner();
+  const p = (horseId && player.horses.find((h) => h.id === horseId && (h.status ?? 'active') === 'active')) || partner();
   const { config, trackName, beginner } = await L.raceConfig(p.id, trackId);
   // round 12: かんたん操作 rides the race with the real InputAssistant inside the WASM engine (never the tutorial)
   engine.SetAssist(assistLevel());
   raceInfo = JSON.parse(engine.StartConfig(JSON.stringify(config), 'local'));
-  raceCtx = { tutorial: false, config, trackName, beginner, ftue, trackId: config.track.id };
+  raceCtx = { tutorial: false, config, trackName, beginner, ftue, trackId: config.track.id, horseId: p.id, advice: advice.lastWhip(config.track.id) };
   view.useRig = true; view.start(raceInfo, equippedPartner());
   BuildRaceScreen();
 }
@@ -646,6 +646,8 @@ function ResultScreen(f, rewards, passXp, pass, missions) {
   Kicker(r.won ? '勝因' : '敗因', 44, 476, p, { rule: false, size: 15, color: r.won ? GOLD : CYAN });
   Txt(r.line || '—', 44, 500, 520, 23, WHITE, p, { weight: 700 }).dataset.debrief = r.code;
   Txt(r.tip ? 'ヒント：' + r.tip : (r.margin ? (r.place > 1 ? '勝ち馬から ' : '2着に ') + r.margin : ''), 44, 542, 520, 16, MUTED, p, { lh: 1.5 });
+  // round 15 (REQ-ADV-014): whether the whip followed the pre-race tip (the C# RaceAdvice.CheckWhipTip on the device's debrief)
+  if (raceCtx.advice) { const wl = engine.AdviceWhipLine(JSON.stringify(raceCtx.advice)); if (wl) Txt('アドバイス：' + wl, 44, 584, 520, 15, CYAN, p, { weight: 500, nowrap: true }).classList.add('adv-debrief'); }
   // primary: もう一度 (F13) — in the first session it continues the onboarding instead
   if (first) {
     Cta('つづける', 44, 640, 478, () => AfterFirstRace(r), p);
@@ -1016,9 +1018,11 @@ function Features() {
   });
 }
 // 08-race-entry
-function RaceLobby() {
-  currentScreen = RaceLobby; Clear('lobby'); SetArt(equippedCourse() === 0 ? 'Art/first-ride' : courseArt(equippedCourse()));
-  const p = partner();
+function RaceLobby(fresh = true) {
+  currentScreen = () => RaceLobby(false); Clear('lobby'); SetArt(equippedCourse() === 0 ? 'Art/first-ride' : courseArt(equippedCourse()));
+  if (fresh) { advice.seen = false; lobbyHorseId = null; }
+  const p = (lobbyHorseId && player.horses.find((h) => h.id === lobbyHorseId)) || partner();
+  if (!ftue) AdvicePanel({ context: 'ranked' }, 36, 110, 856, 740, p?.id ?? null, (id) => { lobbyHorseId = id; RaceLobby(false); });
   const beginner = player.rating.rankedRaces < L.master.beginnerRaces;
   const d = Glass('Lobby', 923, 47, 608, 804, undefined, .91); d.classList.add('rise');
   Kicker(`${beginner ? '初心者マッチ' : 'ランク戦'}　/　出走登録`, 44, 52, d);
@@ -1031,7 +1035,7 @@ function RaceLobby() {
   Txt(`${beginner ? `初心者マッチ　あと${L.master.beginnerRaces - player.rating.rankedRaces}戦` : 'ランク戦'}　/　能力上限あり`, 44, 478, 520, 19, WHITE, d, { weight: 500 });
   Txt(`出走馬　/　${p?.name ?? '—'}（${STYLE_JA[p?.style] ?? ''}・${fmt(p?.distMinM ?? 0)}〜${fmt(p?.distMaxM ?? 0)}m）`, 44, 520, 520, 19, WHITE, d, { weight: 500 });
   Txt('参加費なし。報酬は着順のコイン・シーズンpt・パスXP。端末内のエンジンで走るオフライン版です（ランクの変動なし）。', 44, 566, 500, 14, SOFT, d, { lh: 1.6 });
-  Cta('ランク戦に出る', 44, 640, 478, () => StartRace(), d);
+  Cta('ランク戦に出る', 44, 640, 478, () => { advice.follow('ranked', p?.id); StartRace(null, p?.id ?? null); }, d);
   Back(Home, '戻る');
   EnToggle();
 }
@@ -1837,6 +1841,7 @@ async function WeeklyChallenge(selectId) {
   const rp = Glass('Challenge detail', 816, 134, 748, 676, undefined, .88);
   rp.dataset.challenge = sel.id;
   Kicker('挑戦する', 36, 30, rp);
+  if (advice.enabled()) Ghost('アドバイス', 532, 22, 180, 46, () => ChallengeAdvice(sel), rp, 'quiet small').classList.add('adv-open');
   Txt(sel.title, 36, 98, 676, 34, WHITE, rp, { ls: '.06em', nowrap: true });
   Txt(`${wchTrack(sel.trackId)}　·　${wchGround(sel)}`, 36, 150, 676, 16, GOLD, rp, { weight: 700, nowrap: true });
   Txt(`${sel.cpuCount + 1}頭立て　·　CPU Lv${sel.cpuLevel}`, 36, 180, 676, 15, MUTED, rp, { nowrap: true });
@@ -1844,8 +1849,8 @@ async function WeeklyChallenge(selectId) {
   if (sel.loan) Txt(`貸し出し馬：${sel.loan.name}（${STYLE_JA[sel.loan.style] ?? sel.loan.style}）　·　能力合計 ${fmt(sel.loan.statTotal)}`, 36, 320, 676, 14, MUTED, rp, { nowrap: true }).classList.add('wch-loan');
   const p = partner();
   const ownOk = !!p && (!sel.conditions.style || p.style === sel.conditions.style);
-  Cta('貸し出し馬で挑戦', 36, 364, 420, () => WeeklyChallengeRace(sel.id, null), rp).classList.add('wch-go');
-  const own = Ghost('相棒で挑戦', 476, 372, 236, 58, () => WeeklyChallengeRace(sel.id, p.id), rp, 'small');
+  Cta('貸し出し馬で挑戦', 36, 364, 420, () => { advice.follow('challenge', `loan_${sel.loan?.templateId}`); WeeklyChallengeRace(sel.id, null); }, rp).classList.add('wch-go');
+  const own = Ghost('相棒で挑戦', 476, 372, 236, 58, () => { advice.follow('challenge', p.id); WeeklyChallengeRace(sel.id, p.id); }, rp, 'small');
   own.classList.add('wch-own');
   if (!ownOk) { disable(own); Txt(`${STYLE_JA[sel.conditions.style] ?? ''}の馬だけ挑戦できます`, 476, 436, 236, 12, SOFT, rp, { lh: 1.4 }); }
   Txt(`今日あと${v.startsLeftToday}回　·　何度でも挑戦できます`, 36, 448, 420, 13, SOFT, rp, { nowrap: true });
@@ -1938,6 +1943,111 @@ function ChallengeResult(f, r) {
   EnToggle();
 }
 
+// ================================================================= round 15: 出走前アドバイス (REQ-ADV-*, contracts/protocol.md §39)
+// Mirrors unity/Assets/Muchi/Game/RaceAdviceModel.cs on the real server code (raceAdviceFor: the player's horses, today's
+// going, the challenge's loan horse) — never invented on the page. A selection change recomputes the tips with the C#
+// RaceAdvice.Compute in WASM from the server's input (the same answer as the server). Words, never ◎○△, never odds.
+const ADV_GRADE = { good: 'よく合う', ok: '合う', poor: '条件外あり' };
+const ADV_GRADE_COLOR = { good: GOLD, ok: CYAN, poor: SOFT };
+const ADV_FOOT = 'アドバイスは馬の適性とルールから計算しています。勝ちを約束するものではありません。';
+let lobbyHorseId = null;
+const advice = {
+  cur: null, seen: false, whipByTrack: {},
+  enabled: () => prefs.get('muchi.advice.enabled', '1') !== '0',
+  setEnabled(v) { prefs.set('muchi.advice.enabled', v ? '1' : '0'); },
+  /** The whip tip shown for this course before the race (for the result line), or null. */
+  lastWhip(trackId) { return this.whipByTrack[trackId] ?? null; },
+  view(ctx, a) {
+    if (this.seen) return;
+    this.seen = true;
+    L.kpi([{ name: 'advice_view', at: L.now(), props: { context: ctx, horses: Math.min(30, a.horses.length), suggested: !!a.suggestedHorseId } }]);
+  },
+  follow(ctx, horseId) {
+    const a = this.cur;
+    if (!a || !this.enabled() || !a.suggestedHorseId || a.context !== ctx) return;
+    L.kpi([{ name: 'advice_follow', at: L.now(), props: { context: ctx, followed: horseId === a.suggestedHorseId } }]);
+    this.cur = null;
+  },
+  /** The advice for a query; with a focus horse the C# mirror recomputes it from the server's input (no second request). */
+  async load(q, focus) {
+    const key = JSON.stringify(q);
+    if (this.cur && this.cur.input && this.cur.query === key) {
+      const out = JSON.parse(engine.AdviceCompute(JSON.stringify({ ...this.cur.input, focusHorseId: focus })));
+      return { ...out, context: q.context, input: this.cur.input, query: key, device: true };
+    }
+    const r = await L.raceAdvice(focus ? { ...q, horseId: focus } : q);
+    if (!r.ok) return null;
+    return { ...r.value, query: key };
+  },
+};
+/** The advice panel (lobby): rows in words, the tips for the selected horse, the honest footnote, a hide switch. */
+async function AdvicePanel(q, x, y, w, h, focus, onPick) {
+  const screen = cur;
+  if (!advice.enabled()) {
+    const g = Glass('Advice off', x, y + h - 128, 460, 128, undefined, .8); g.classList.add('adv-panel', 'adv-off');
+    Txt('アドバイスはオフです（設定で変えられます）', 28, 24, 404, 14, MUTED, g, { lh: 1.5, nowrap: true });
+    Ghost('アドバイスを見る', 28, 60, 240, 46, () => { advice.setEnabled(true); RaceLobby(false); }, g, 'quiet small').classList.add('adv-show');
+    return;
+  }
+  await viewReady;
+  const a = await advice.load(q, focus);
+  if (!a || cur !== screen) return;
+  advice.cur = a;
+  // the whip tip is about one known course; a drawn course gets no result line
+  advice.whipByTrack = a.whip && a.courseCount === 1 ? { [a.input?.courses?.[0]?.trackId]: a.whip } : {};
+  advice.view(q.context, a);
+  const g = Glass('Advice', x, y, w, h, undefined, .86); g.classList.add('adv-panel', 'rise');
+  g.dataset.suggested = a.suggestedHorseId ?? ''; g.dataset.focus = a.focusHorseId ?? ''; g.dataset.device = String(!!a.device);
+  Kicker('出走前アドバイス', 36, 30, g);
+  Ghost('アドバイスを隠す', w - 252, 22, 216, 44, () => { advice.setEnabled(false); RaceLobby(false); }, g, 'quiet small').classList.add('adv-hide');
+  Txt(a.courseCount > 1 ? `コースは出走時に決まります　·　今日の${a.courseCount}コースで計算` : 'このコース・馬場で計算', 36, 84, w - 72, 14, MUTED, g, { nowrap: true });
+  // ① the horses (up to 3), in the order of fit; the selected one is the one that races
+  const rows = a.horses.slice(0, 3);
+  rows.forEach((hr, i) => {
+    const c = Card('Advice ' + hr.horseId, 36, 122 + i * 100, w - 72, 88, g, ADV_GRADE_COLOR[hr.grade]);
+    c.classList.add('adv-row'); c.dataset.horse = hr.horseId; c.dataset.grade = hr.grade;
+    if (hr.horseId === a.focusHorseId) c.classList.add('sel');
+    Txt(hr.name, 24, 14, 380, 21, WHITE, c, { weight: 700, nowrap: true });
+    const tag = hr.horseId === a.suggestedHorseId ? 'おすすめ　·　' : '';
+    Txt(tag + ADV_GRADE[hr.grade], w - 72 - 304, 18, 280, 15, ADV_GRADE_COLOR[hr.grade], c, { weight: 700, align: 'right', ls: '.1em', nowrap: true }).classList.add('adv-grade');
+    const why = hr.checks.find((k) => k.mark === 'minus') ?? hr.checks.find((k) => k.mark === 'plus') ?? hr.checks[0];
+    if (why) Txt(why.text, 24, 52, w - 120, 14, why.mark === 'minus' ? SOFT : MUTED, c, { nowrap: true });
+    c.style.cursor = 'pointer';
+    c.addEventListener('click', () => onPick(hr.horseId));
+  });
+  // ② the tips (pick, ground, field, style, whip…) for the selected horse
+  const y0 = 122 + rows.length * 100 + 14;
+  Hair(36, y0, w - 72, g);
+  const lines = a.lines.slice(0, Math.max(3, Math.floor((h - y0 - 96) / 34)));
+  lines.forEach((l, i) => {
+    const t = Txt(l.text, 36, y0 + 20 + i * 34, w - 72, 16, l.kind === 'pick' ? GOLD : l.kind === 'whip' ? CYAN : WHITE, g, { weight: l.kind === 'pick' ? 700 : 500, nowrap: true });
+    t.classList.add('adv-line'); t.dataset.kind = l.kind;
+  });
+  Txt(ADV_FOOT, 36, h - 52, w - 72, 12, SOFT, g, { nowrap: true }).classList.add('adv-foot');
+}
+/** Weekly challenge: the advice sheet (the loan horse and own horses of the right style, the CPUs, no skills). */
+async function ChallengeAdvice(sel) {
+  const r = await L.raceAdvice({ context: 'challenge', challengeId: sel.id });
+  if (!r.ok) { toast(r.message); return; }
+  const a = { ...r.value, query: JSON.stringify({ context: 'challenge', challengeId: sel.id }) };
+  advice.cur = a; advice.seen = false; advice.view('challenge', a);
+  advice.whipByTrack = a.whip ? { [sel.trackId]: a.whip } : {};
+  Sheet(sel.title, '出走前アドバイス', (s, close, y) => {
+    s.classList.add('adv-sheet');
+    a.horses.slice(0, 3).forEach((hr, i) => {
+      const yy = y + i * 70;
+      Txt(hr.name, 48, yy, 330, 19, WHITE, s, { weight: 700, nowrap: true });
+      Txt((hr.horseId === a.suggestedHorseId ? 'おすすめ　·　' : '') + ADV_GRADE[hr.grade], 380, yy + 3, 232, 14, ADV_GRADE_COLOR[hr.grade], s, { weight: 700, align: 'right', nowrap: true }).classList.add('adv-grade');
+      const why = hr.checks.find((k) => k.mark === 'minus') ?? hr.checks.find((k) => k.mark === 'plus') ?? hr.checks[0];
+      if (why) Txt(why.text, 48, yy + 32, 564, 13, MUTED, s, { nowrap: true });
+    });
+    const y1 = y + Math.min(3, a.horses.length) * 70 + 8;
+    Hair(48, y1, 564, s);
+    a.lines.filter((l) => l.kind !== 'pick').slice(0, 6).forEach((l, i) => Txt(l.text, 48, y1 + 18 + i * 30, 564, 14, l.kind === 'whip' ? CYAN : WHITE, s, { weight: 500, nowrap: true }).classList.add('adv-line'));
+    Txt(ADV_FOOT, 48, y1 + 18 + 6 * 30 + 8, 564, 11, SOFT, s, { nowrap: true });
+  });
+}
+
 // ================================================================= その他 / settings (language, legal, account deletion, demo states)
 async function Settings() {
   currentScreen = Settings; await refresh();
@@ -1989,16 +2099,19 @@ async function Settings() {
   const m = Glass('More', 556, 134, 480, 676, undefined, .9);
   Kicker('見た目・お世話・仲間', 36, 30, m);
   // round 10: 支部の応援 (team cheer stamps) and 友達招待 next to the looks / care entries
-  const moreRows = [['衣装', Wardrobe], ['コースの見た目', CourseThemes], ['レース条件', Conditions], ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite']];
-  moreRows.forEach(([n, go, action], i) => {
-    const b = Btn(n, 36, 96 + i * 50, 408, 50, go, 'row' + (i === moreRows.length - 1 ? ' last' : ''), m); b.style.fontSize = '19px';
+  const moreRows = [['衣装', Wardrobe], ['コースの見た目', CourseThemes], ['レース条件', Conditions], ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite'],
+    // round 15 (REQ-ADV-009): the pre-race advice switch (a device setting, default on)
+    ['出走前アドバイス', () => { advice.setEnabled(!advice.enabled()); Settings(); }, 'advice', advice.enabled() ? 'オン' : 'オフ']];
+  moreRows.forEach(([n, go, action, state], i) => {
+    const b = Btn(n, 36, 96 + i * 46, 408, 46, go, 'row' + (i === moreRows.length - 1 ? ' last' : ''), m); b.style.fontSize = '19px';
     if (action) b.dataset.action = action;
-    const em = document.createElement('em'); em.textContent = '›'; b.appendChild(em);
+    if (state) b.dataset.state = state;
+    const em = document.createElement('em'); em.textContent = state ?? '›'; b.appendChild(em);
   });
-  Kicker('法定表示・規約', 36, 416, m, { rule: false, size: 15 });
-  [['利用規約', 'terms'], ['プライバシーポリシー', 'privacy'], ['特定商取引法に基づく表記', 'tokushoho'], ['資金決済法に基づく表示', 'shikin']].forEach(([n, k], i) => TextLink(n, 36, 448 + i * 42, 400, () => Legal(k, Settings), m));
+  Kicker('法定表示・規約', 36, 434, m, { rule: false, size: 15 });
+  [['利用規約', 'terms'], ['プライバシーポリシー', 'privacy'], ['特定商取引法に基づく表記', 'tokushoho'], ['資金決済法に基づく表示', 'shikin']].forEach(([n, k], i) => TextLink(n, 36, 464 + i * 40, 400, () => Legal(k, Settings), m));
   // the other front end (Codex's club UI, same logic and engine)
-  TextLink('クラブ版 UI', 36, 624, 400, () => { location.href = 'club.html'; }, m, 'クラブ版 UI を開く ↗');
+  TextLink('クラブ版 UI', 36, 628, 400, () => { location.href = 'club.html'; }, m, 'クラブ版 UI を開く ↗');
   // ③ demo states for review (REQ-UXP-002): the same rules on a moved clock
   const demo = Glass('Demo', 1056, 134, 508, 676, undefined, .78);
   Kicker('デモ（レビュー用）', 36, 30, demo, { color: SOFT });
@@ -3597,7 +3710,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ RaceAdvice: () => RaceLobby(), GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

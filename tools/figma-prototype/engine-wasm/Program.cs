@@ -573,7 +573,8 @@ public static partial class MuchiRace
             var f = d.Facts;
             sb.Append(",\"facts\":{\"whips\":").Append(f.WhipCount).Append(",\"earlyWhips\":").Append(f.EarlyWhips).Append(",\"mashed\":").Append(f.MashedWhips)
               .Append(",\"passes\":").Append(f.PassesMade).Append(",\"kakari\":").Append(f.KakariCount).Append(",\"lateStart\":").Append(B(f.LateStart))
-              .Append(",\"slipstreamTicks\":").Append(f.SlipstreamTicks).Append(",\"staminaEmptyM\":").Append(f.StaminaEmptyRemainingMm < 0 ? -1 : f.StaminaEmptyRemainingMm / 1000).Append('}');
+              .Append(",\"slipstreamTicks\":").Append(f.SlipstreamTicks).Append(",\"staminaEmptyM\":").Append(f.StaminaEmptyRemainingMm < 0 ? -1 : f.StaminaEmptyRemainingMm / 1000)
+              .Append(",\"firstWhipM\":").Append(f.WhipRemainingMm.Count > 0 ? f.WhipRemainingMm[0] / 1000 : -1).Append('}');
         }
         sb.Append(",\"rows\":[");
         for (int i = 0; i < m.Rows.Count; i++)
@@ -584,6 +585,20 @@ public static partial class MuchiRace
               .Append("\",\"margin\":\"").Append(Esc(r.Margin)).Append("\",\"player\":").Append(B(r.IsPlayer)).Append('}');
         }
         sb.Append("]}");
+    }
+
+    /// <summary>Round 15 (REQ-ADV-001/002): the C# advice (Muchi.Client RaceAdvice.Compute) on an AdviceInput JSON; the same as the server's.</summary>
+    [JSExport]
+    public static string AdviceCompute(string inputJson) => RaceAdvice.Compute(AdviceInput.FromJson(inputJson)).ToJson().ToString();
+
+    /// <summary>Round 15 (REQ-ADV-014): the result line for the last race's whip against a whip tip JSON ({startRemainingM,…}); "" without a race.</summary>
+    [JSExport]
+    public static string AdviceWhipLine(string tipJson)
+    {
+        var d = _obs?.Debrief();
+        if (d == null) return "";
+        var tip = AdviceWhipTip.Parse(Muchi.Net.JsonNode.Parse(tipJson));
+        return RaceAdvice.WhipTipText(RaceAdvice.CheckWhipTip(tip, d.Facts), tip);
     }
 
     /// <summary>Re-run a golden race file ({log, expected}) in WebAssembly and return the result hash (must equal expected.resultHash).</summary>

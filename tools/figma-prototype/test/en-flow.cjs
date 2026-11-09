@@ -116,7 +116,11 @@ module.exports = async function enFlow(browser, base, out, errors) {
 
   // a ranked race in English: HUD, then the result
   await show('Home'); await waitScreen('home');
-  await click('レースへ'); await waitScreen('lobby'); await shot('lobby', 400);
+  await click('レースへ'); await waitScreen('lobby');
+  await page.waitForSelector('.screen.in .adv-panel .adv-row', { timeout: 15000 });
+  await shot('lobby', 400);
+  assert.match(await page.locator('.screen.in .adv-panel').innerText(), /Pre-race advice[\s\S]*It does not promise a win/i, 'advice: the panel and the footnote in English');
+  assert.ok(!/odds|chance|%|\bbuy\b|gacha/i.test(await page.locator('.screen.in .adv-panel').innerText()), 'advice: clean English');
   await click('ランク戦に出る'); await waitScreen('race', 20000);
   let started = false, whips = 0, lastW = 0, hudShot = false;
   for (let i = 0; i < 4000; i++) {

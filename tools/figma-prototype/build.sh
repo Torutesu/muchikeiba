@@ -52,4 +52,5 @@ node "$HERE/test/round13-team-goal.test.mjs" # round 13: 支部の共同目標 �
 node "$HERE/test/round14-hall.test.mjs"     # round 14: 殿堂 — career from confirmed races, the ceremony once, 殿堂入り and the frame once, paging, a friend's hall
 node "$HERE/test/round14-commentary-packs.test.mjs" # round 14: 実況パック — races speak the equipped pack (never the tutorial), the 10-second sample, owned / equip / buy on the server rules
 node "$HERE/test/round14-my-replays.test.mjs"  # round 14: マイリプレイ — races settled with their replay, save / rename / favourite / public / delete, ReplayPlayer in WASM (speed, camera, last 200 m), 再生できません, a friend replay
+node "$HERE/test/round16-season-recap.test.mjs" # round 16: シーズンの振り返り — short / full / year recaps from confirmed races, promotion and the hall, open / complete once, English, recap_share
 echo "built $SITE ($(du -sh "$SITE" | cut -f1))"

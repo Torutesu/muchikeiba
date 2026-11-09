@@ -989,6 +989,21 @@
   "名前・IDは入りません（選んだ馬の名前だけ）": "No names or IDs are included (only the chosen horse's name)",
   "共有する": "Share",
   "共有しました（アプリでは共有シートを開きます）": "Shared (the app opens the share sheet)",
-  "マイリプレイに残す": "Keep in My Replays"
+  "マイリプレイに残す": "Keep in My Replays",
+  "_season_recap": "---- シーズンの振り返り (round 16, REQ-RECAP-*)",
+  "振り返り": "Recap",
+  "振り返りは今は表示できません": "Recaps can't be shown right now",
+  "シーズンと1年の終わりに届きます": "Arrives at the end of each season and each year",
+  "確定したレースの記録だけでできています": "Made only from confirmed race records",
+  "1年の振り返り": "The year in review",
+  "短い版（レースが少なかったシーズン）": "Short version (a season with few races)",
+  "見終わりました": "Seen to the end",
+  "振り返りについて": "About recaps",
+  "ランク戦のシーズンが終わるたびと、1年の終わりに1つずつ届きます。": "One arrives when each ranked season ends, and one at the end of the year.",
+  "中身はサーバーが確定させた記録だけです。": "It holds only records the server has confirmed.",
+  "推定や作り話は入りません。": "Nothing is estimated or made up.",
+  "記録が途中から始まった時は、その日付を書きます。": "If the record started partway through, the recap says from which date.",
+  "新しい振り返りを見る": "See the new recap",
+  "振り返りを共有": "Share the recap"
  }
 }

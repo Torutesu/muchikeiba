@@ -35,6 +35,7 @@ import { noteRivalTa, prevWeekId, rivalCard, weekEndMs, weekIdAt } from '../../.
 import type { PlayerInvoker } from '../../../server/src/http/app.js';
 import { HallService, MemoryHallDirectory, hallConfig, hallSnapshot } from '../../../server/src/domain/hallOfFame.js';
 import { hallPlayersFrom } from '../../../server/src/http/hallPorts.js';
+import { MemoryPlayerRepo } from '../../../server/src/domain/service.js';
 import { MemoryReplayStore, MyReplaysService } from '../../../server/src/domain/myReplaysService.js';
 import { DEFAULT_RULESET } from '../../../server/src/domain/ruleset.js';
 // REQ-L10N-*: the server's English tables (master/locale-en.json + i18n/en.ts), the client's (ui-en.json) and the
@@ -108,6 +109,45 @@ async function hallDemoHorse(uid: string, tpl: number, name: string, wins: numbe
   await hallRaces(uid, horseId, [...Array(wins).fill(1), ...Array.from({ length: others }, (_, i) => 2 + (i % 6))]);
   if (title) await svc.tournamentClose(uid, `proto_cup_${horseId}`, 1, null, title, horseId);
   return retire ? (await svc.retire(uid, horseId)).ceremony : horseId;
+}
+// round 16 (REQ-RECAP-*): the demo history of シーズンの振り返り (see MuchiLogic.recap)
+const RC_ID = 'demo_recap';
+const recapRepo = new MemoryPlayerRepo();
+const rcJst = (y: number, mo: number, d: number, h = 12) => Date.UTC(y, mo - 1, d, h - 9);
+let rcNow = rcJst(2026, 10, 2);
+const recapSvc = new PlayerService(recapRepo, { master, rng: cryptoRng, clock: () => rcNow, verifiers: {} });
+let recapBuilt: Promise<void> | null = null;
+let rcRace = 0;
+async function rcRaces(horseId: string, places: number[], trackId: string, style: Style) {
+  for (const place of places) {
+    rcNow += 3 * 3600_000;
+    await recapSvc.applyRace(RC_ID, { raceId: `proto_rc_${rcRace++}`, mode: 'ranked', place, fieldSize: 12, newRating: null, void: false, humans: 4, horseId,
+      details: { trackId, style, finishTick: 1900, startReactionTicks: 2, whips: 3, whipMashed: false, cpuAssisted: false } });
+  }
+}
+function recapDemo() {
+  recapBuilt ??= (async () => {
+    const me = await svc.state(ID).catch(() => null);
+    const name = me?.horses.find((h) => h.id === me.flags.partnerHorseId)?.name ?? 'アイボウ';
+    rcNow = rcJst(2026, 10, 2);
+    await recapSvc.bootstrap(RC_ID);
+    await recapSvc.grantPartner(RC_ID, name, 'c:rc:partner');
+    const partnerId = (await recapSvc.state(RC_ID)).flags.partnerHorseId!;
+    rcNow = rcJst(2026, 10, 20);
+    await rcRaces(partnerId, [6], 'aoba_turf_1600', 'sashi'); // October: one race → the short version
+    rcNow = rcJst(2026, 11, 3);
+    await rcRaces(partnerId, [3, 1, 1, 2, 4, 1, 5, 1], 'kirameki_turf_2000', 'sashi');
+    const second = await recapSvc.tx(RC_ID, null, (st, t) => { const h = createHorseFromTemplate(st, master.templates[4 % master.templates.length]!, t); h.name = 'ソラノカナタ'; h.named = true; return h.id; });
+    await rcRaces(second, [1, 1, 2, 1, 1, 1, 3, 1, 1, 1, 1, 1], 'aoba_turf_1600', 'senko');
+    await recapSvc.retire(RC_ID, second); // ten wins: into the hall (§34)
+    rcNow = rcJst(2026, 12, 1, 1);
+    await recapSvc.closeSeason(RC_ID, '2026-11', 4); // the rollover job: final class rank
+    rcNow = rcJst(2026, 12, 5);
+    await rcRaces(partnerId, [2, 1, 3, 1, 1], 'minato_turf_2400', 'sashi');
+    rcNow = rcJst(2027, 1, 1, 5); // after 04:00 JST: the game year 2026 has ended
+    await recapSvc.closeSeason(RC_ID, '2026-12', 9);
+  })();
+  return recapBuilt;
 }
 async function hallDemoFriend() {
   if (!(await repo.get(HALL_DEMO))) {
@@ -681,6 +721,18 @@ export const MuchiLogic = {
     demoRetire: (name: string, wins: number, others: number, title: string | null) => wrap(() => hallDemoHorse(ID, 2 + hallRace % 9, name, wins, others, title, true)),
     /** A tournament final rank for one of my horses (tournamentClose with the registered horse). */
     demoTitle: (horseId: string, name: string) => wrap(() => svc.tournamentClose(ID, `proto_cup_${horseId}_${hallRace++}`, 1, null, name, horseId)),
+  },
+  // ---------------------------------------------------------------- round 16: シーズンの振り返り (REQ-RECAP-*, contracts/protocol.md §43)
+  // The real PlayerService / seasonRecap rules on a demo history: a separate demo account (its own memory repo and clock, so the
+  // local player's season is untouched) rides confirmed races from Oct 2026 to Jan 2027 with the local partner's name: a short
+  // October recap (one race), a full November one (promotion C → B, a horse into the hall), December, and the 2026 year recap
+  // (closed at 04:00 JST on 1 January). Every number comes from the server code; nothing is made up in the UI.
+  recap: {
+    list: () => wrap(async () => { await recapDemo(); return recapSvc.recaps(RC_ID); }),
+    view: (id: string) => wrap(async () => { await recapDemo(); return recapSvc.recap(RC_ID, id); }),
+    progress: (id: string, step: 'open' | 'complete') => wrap(async () => { await recapDemo(); return recapSvc.recapProgress(RC_ID, id, step); }),
+    /** Starts the demo history again (the next call rebuilds it). */
+    reset: () => { recapBuilt = null; recapRepo.data.clear(); },
   },
   /** round 14: a course's display name (server tracks.json). */
   trackName: (id: string) => trackNames.get(id) ?? id,

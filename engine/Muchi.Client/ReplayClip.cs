@@ -325,9 +325,11 @@ namespace Muchi.Client
         public string ModeLabel;
         /// <summary>「固有スキル「末脚」 残り320m」 lines, in firing order.</summary>
         public List<string> SkillLines = new List<string>();
+        /// <summary>Free lines under the headline (REQ-RECAP-011 recap cards, built by <see cref="RecapShare"/>); empty on a replay card.</summary>
+        public List<string> Lines = new List<string>();
         /// <summary>One line for the OS share sheet (no URL: the store link is added by the Unity side if wanted).</summary>
         public string ShareText;
-        /// <summary>analytics `share` kind: replay_video or replay_image.</summary>
+        /// <summary>analytics `share` kind: replay_video or replay_image; recap_summary / recap_horse / recap_moment / recap_rank (recap_share).</summary>
         public string Kind = "replay_video";
 
         public static string FormatTime(long ms)

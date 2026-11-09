@@ -322,6 +322,21 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await shot('commentary-pack-buy', 400);
   await page.locator('.screen.in [data-confirm="cancel"]').click(); await waitScreen('commentary-packs');
 
+  // round 16: シーズンの振り返り in English (REQ-RECAP-012): the list, every page of a full recap, the share set, the short version
+  {
+    const waitRc = (sel) => page.waitForSelector(`.screen.in ${sel}`, { timeout: 30000 });
+    await show('Recaps'); await waitScreen('recaps', 30000); await waitRc('.rc-card'); await shot('recaps', 400);
+    await show('Recap', 'season:2026-11', 0); await waitScreen('recap'); await waitRc('.rc-big');
+    const rcSteps = await page.evaluate(() => globalThis.__muchi.recap.steps);
+    for (let k = 0; k < rcSteps; k++) {
+      if (k > 0) { await page.locator('.screen.in .rc-next').click(); await page.waitForSelector(`.screen.in[data-index="${k}"]`, { timeout: 10000 }); }
+      await shot('recap-' + (await page.evaluate(() => globalThis.__muchi.recap.key)), 950);
+    }
+    assert.match(await page.locator('.screen.in').innerText(), /Well ridden/, 'recap: the last page in English');
+    await page.locator('.screen.in .rc-share').click(); await waitRc('.rc-share-sheet'); await shot('recap-share', 400);
+    await show('Recap', 'season:2026-10', 0); await waitScreen('recap'); await waitRc('.rc-big'); await shot('recap-short', 950);
+  }
+
   const misses = await page.evaluate(() => globalThis.__muchi.l10n.misses());
   fs.writeFileSync(path.join(out, 'en-report.json'), JSON.stringify({ report, misses }, null, 2));
   await ctx.close();

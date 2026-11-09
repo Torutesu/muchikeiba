@@ -79,7 +79,8 @@ export type PlayerMethod =
   | 'wchView' | 'wchStart' | 'wchPrepare' | 'wchAbort' | 'wchRecord'
   | 'teamGoalReward' | 'goalPlayerView'
   | 'hallMine' | 'hallViewer' | 'hallNoteView' | 'horseCareer' | 'hallAck' | 'hallSettings'
-  | 'myReplays' | 'replayPrepareSave' | 'replayCommitSave' | 'replayForget' | 'replayUpdate' | 'replayDelete' | 'replayOwnRef' | 'replayShared' | 'replayViewed';
+  | 'myReplays' | 'replayPrepareSave' | 'replayCommitSave' | 'replayForget' | 'replayUpdate' | 'replayDelete' | 'replayOwnRef' | 'replayShared' | 'replayViewed'
+  | 'recaps' | 'recap' | 'recapProgress';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -265,6 +266,11 @@ const events = (c: AppContext) => {
 const stud = (c: AppContext) => {
   if (!c.stud || !c.master.progression.stud) throw new AppError('NOT_FOUND', 'stud lending is not available');
   return c.stud;
+};
+/** REQ-RECAP-010: `season:YYYY-MM` / `year:YYYY` (the router has URL-decoded it). */
+const recapIdParam = (id: string) => {
+  if (!/^(season:\d{4}-\d{2}|year:\d{4})$/.test(id)) throw new AppError('NOT_FOUND', 'no such recap');
+  return id;
 };
 const myReplays = (c: AppContext) => {
   if (!c.myReplays) throw new AppError('NOT_FOUND', 'my replays are not available');
@@ -937,6 +943,13 @@ export const routes: Route[] = [
   { method: 'GET', path: '/v1/replays/:raceId/data', auth: 'player', handler: async (_r, p, c, u) => myReplays(c).data(u, p.raceId!) },
   { method: 'GET', path: '/v1/friends/:playerId/replays', auth: 'player', handler: async (_r, p, c, u) => myReplays(c).friendList(u, p.playerId!) },
   { method: 'GET', path: '/v1/friends/:playerId/replays/:raceId/data', auth: 'player', handler: async (_r, p, c, u) => myReplays(c).friendData(u, p.playerId!, p.raceId!) },
+  // シーズンの振り返り (REQ-RECAP-*, contracts/protocol.md §43)
+  { method: 'GET', path: '/v1/recaps', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('recaps', u) },
+  { method: 'GET', path: '/v1/recaps/:id', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('recap', u, recapIdParam(p.id!)) },
+  { method: 'POST', path: '/v1/recaps/:id/progress', auth: 'player', handler: async (r, p, c, u) => {
+    const b = await body(r, z.object({ step: z.enum(['open', 'complete']) }).strict());
+    return c.player(u).invoke('recapProgress', u, recapIdParam(p.id!), b.step);
+  } },
   // weekly rival (REQ-RIVAL-*, contracts/protocol.md §28)
   { method: 'GET', path: '/v1/rival', auth: 'player', handler: async (_r, _p, c, u) => (c.rival ? c.rival.view(u) : { enabled: false }) },
   { method: 'PUT', path: '/v1/rival/settings', auth: 'player', handler: async (r, _p, c, u) => rival(c).setOptOut(u, (await body(r, z.object({ optOut: z.boolean() }).strict())).optOut) },

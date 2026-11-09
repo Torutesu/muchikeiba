@@ -864,3 +864,31 @@ SELECT round(sum(_sample_interval * double9) / sum(_sample_interval)) AS avg_byt
 FROM muchi_kpi
 WHERE blob1 = 'replay_save' AND timestamp > NOW() - INTERVAL '28' DAY
 ```
+
+## シーズンの振り返り：開いた・最後まで見た・共有した（REQ-RECAP-015、Round 16、contracts/protocol.md §43）
+列：`recap_open`・`recap_complete`（サーバー）`blob8` = `season`／`year`、`blob9` = 期間（`2026-11`／`2026`）、`blob10` = `short`／`full`、`double8` = 1 なら最初の1回（`isFirst`）。`recap_share`（クライアント）`blob8` = `season`／`year`、`blob9` = カード（`summary`／`horse`／`moment`／`rank`）、`blob10` = `hide_rank`／`show_rank`。
+
+**期間ごとの漏斗**：開いた人 → 最後まで見た人 → 共有した人（最初の1回だけ数える）。短い版と通常版で分けて見る。
+
+```sql
+SELECT
+  blob9 AS period, blob10 AS version,
+  count(DISTINCT if(blob1 = 'recap_open' AND double8 = 1, blob2, NULL)) AS opened,
+  count(DISTINCT if(blob1 = 'recap_complete' AND double8 = 1, blob2, NULL)) AS completed,
+  round(count(DISTINCT if(blob1 = 'recap_complete' AND double8 = 1, blob2, NULL)) / count(DISTINCT if(blob1 = 'recap_open' AND double8 = 1, blob2, NULL)), 3) AS complete_rate
+FROM muchi_kpi
+WHERE blob1 IN ('recap_open', 'recap_complete') AND timestamp > NOW() - INTERVAL '90' DAY
+GROUP BY period, version
+ORDER BY period DESC, version
+```
+
+**共有**（カードごと・順位を隠した割合）：`rank` のカードが少なく `hide_rank` が多ければ、順位の見せ方を見直す。
+
+```sql
+SELECT blob8 AS kind, blob9 AS card, sum(_sample_interval) AS shares,
+  round(sumIf(_sample_interval, blob10 = 'hide_rank') / sum(_sample_interval), 3) AS hide_rank_share
+FROM muchi_kpi
+WHERE blob1 = 'recap_share' AND timestamp > NOW() - INTERVAL '90' DAY
+GROUP BY kind, card
+ORDER BY shares DESC
+```

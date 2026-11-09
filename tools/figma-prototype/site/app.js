@@ -2657,6 +2657,7 @@ function Stable() {
   TextLink('調教', 440, 734, 100, () => { trHorse = p?.id ?? null; Training(); }, d, '調教');
   Back(Home);
   Ghost('殿堂', 196, 36, 150, 46, () => Hall(), undefined, 'quiet small').classList.add('hof-entry'); // round 14 (REQ-HOF-*)
+  Ghost('振り返り', 362, 36, 170, 46, () => Recaps(), undefined, 'quiet small').classList.add('rc-entry'); // round 16 (REQ-RECAP-*)
   EnToggle();
 }
 function StableList(horses) {
@@ -3967,6 +3968,143 @@ function RpShare(o = {}) {
   });
 }
 
+// ================================================================= round 16: シーズンの振り返り (REQ-RECAP-*, contracts/protocol.md §43)
+// The recap the server froze at the season close (and at the game year's end, 04:00 JST on 1 January), stepped through one page
+// at a time: photoreal art, a letter-spaced cyan label, one big number, a few notes, one skewed cyan CTA ». Every line comes from
+// the server (seasonRecap.ts); horse names are what the player typed (keep-ja, never translated). Mirrors
+// unity/Assets/Muchi/Game/SeasonRecapModel.cs. Share cards go through the same card idea as the replay share (watermark
+// 「ムチ一閃」, #ムチ一閃), with 「順位を隠す」. No coin, purchase or betting word anywhere.
+const RC_ART = { races: 'Art/first-ride', wins: 'Art/race-result', best_finish: 'Art/race-result', rank: 'Art/title-screen', horse: 'Art/partner-naming',
+  time_attack: 'Art/first-ride', style: 'Art/home-paddock', rival: 'Art/race-result', team: 'Art/home-paddock', hall: 'Art/scout-reveal', replays: 'Art/first-ride', moments: 'Art/race-result', end: 'Art/title-screen' };
+const RC_HIDE_KEY = 'muchi.recap.hideRank';
+/**
+ * §41 hook (accessibility, Round 15 — not on this base yet): "reduce motion" will come from the accessibility setting. Until then
+ * the OS preference and a local key stand in. When on: pages cut instead of sliding, numbers do not count up.
+ */
+const rcReducedMotion = () => prefs.get('muchi.a11y.reduceMotion', '0') === '1' || !!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+const rcTyped = (node) => { node.classList.add('keep-ja', 'typed'); node.dataset.typed = '1'; return node; };
+const rcUnit = (u) => (u && /^[\x20-\x7e]/.test(enText(u)) && !isJa() ? ' ' : '') + (u ?? '');
+
+async function Recaps() {
+  currentScreen = Recaps;
+  const r = await L.recap.list();
+  if (!r.ok || !r.value.enabled) { toast('振り返りは今は表示できません'); Home(); return; }
+  const v = r.value;
+  Clear('recaps'); SetArt('Art/title-screen', false); Shade('left');
+  TopBar('シーズンの振り返り', 'シーズンと1年の終わりに届きます　·　確定したレースの記録だけでできています', { wallet: false });
+  const lp = Glass('Recap list', 36, 134, 820, 676, undefined, .88);
+  lp.classList.add('rc-list');
+  Kicker(`振り返り　/　${v.recaps.length}件`, 36, 30, lp);
+  if (!v.recaps.length) Txt('振り返りは、シーズンが終わるとここに届きます', 36, 110, 748, 16, MUTED, lp, { lh: 1.6 }).classList.add('rc-empty');
+  v.recaps.slice(0, 4).forEach((x, i) => {
+    const c = Card('Recap card', 36, 100 + i * 136, 748, 120, lp, x.kind === 'year' ? 'var(--gold)' : 'var(--cyan)');
+    c.classList.add('rc-card'); c.dataset.recap = x.id; c.dataset.opened = String(x.opened);
+    Txt(x.title, 24, 22, 520, 26, WHITE, c, { weight: 700, nowrap: true, ls: '.04em' });
+    Txt(x.kind === 'year' ? '1年の振り返り' : x.short ? '短い版（レースが少なかったシーズン）' : 'シーズンの振り返り', 24, 66, 520, 15, x.kind === 'year' ? GOLD : SOFT, c, { weight: 500, nowrap: true });
+    if (!x.opened) Txt('NEW', 640, 24, 84, 15, CYAN, c, { weight: 700, ls: '.2em', align: 'right' }).classList.add('rc-new');
+    Txt(x.completed ? '見終わりました' : '開く ›', 560, 70, 164, 14, x.completed ? DIM : CYAN, c, { weight: 700, align: 'right', nowrap: true });
+    c.style.cursor = 'pointer'; c.addEventListener('click', () => Recap(x.id));
+  });
+  const rp = Glass('Recap notes', 880, 134, 684, 676, undefined, .84);
+  Kicker('振り返りについて', 36, 30, rp);
+  Txt('ランク戦のシーズンが終わるたびと、1年の終わりに1つずつ届きます。', 36, 110, 612, 17, WHITE, rp, { weight: 500, lh: 1.6 });
+  Txt('中身はサーバーが確定させた記録だけです。推定や作り話は入りません。記録が途中から始まった時は、その日付を書きます。', 36, 190, 612, 15, SOFT, rp, { lh: 1.7 });
+  Txt('共有カードに入るのは、あなたの馬の名前と数字だけです', 36, 300, 612, 15, SOFT, rp, { lh: 1.7 });
+  if (v.unseen) Cta('新しい振り返りを見る', 36, 560, 612, () => Recap(v.unseen), rp).classList.add('rc-open-new');
+  Back(Stable, 'BACK', 40, 834);
+}
+
+async function Recap(id, i = 0) {
+  const r = await L.recap.view(id);
+  if (!r.ok) { toast('振り返りは今は表示できません'); Recaps(); return; }
+  const v = r.value;
+  if (i === 0 && !v.openedAt) await L.recap.progress(id, 'open'); // recap_open (the server keeps the first time)
+  i = clamp(i, 0, v.steps.length - 1);
+  const st = v.steps[i];
+  const last = i === v.steps.length - 1;
+  if (last && !v.completedAt) await L.recap.progress(id, 'complete'); // recap_complete
+  currentScreen = () => Recap(id, i);
+  const reduced = rcReducedMotion();
+  Clear('recap'); SetArt(RC_ART[st.key] ?? 'Art/race-result', !reduced); Shade('left');
+  cur.dataset.step = st.key; cur.dataset.index = String(i); cur.dataset.reduced = String(reduced);
+  if (reduced) cur.classList.add('rc-reduced');
+  // the page counter: one thin bar per page
+  const bars = el('rc-bars', 64, 40, 900, 4);
+  v.steps.forEach((_, k) => { const b = el('rc-bar' + (k <= i ? ' on' : ''), k * (900 / v.steps.length), 0, 900 / v.steps.length - 6, 4, bars); b.dataset.k = String(k); });
+  Kicker(`${v.title}　/　RECAP`, 64, 70, undefined, { w: 900, size: 17 });
+  if (st.key === 'horse') ArtImage(colArt(st.horseName ?? 'horse'), 860, 140, 700, 560, undefined, 'col-por rc-horse');
+  const label = Txt(st.label, 64, st.key === 'end' ? 330 : 236, 960, st.key === 'end' ? 54 : 22, st.key === 'end' ? WHITE : CYAN, undefined, { weight: 700, ls: st.key === 'end' ? '.04em' : '.32em' });
+  label.classList.add('rc-label');
+  // the big text: a number counts up (unless reduced motion), a class / time / place shows as is, a horse name as typed
+  const big = st.value ?? st.horseName ?? null;
+  if (big !== null) {
+    const isName = st.value === null && st.horseName != null;
+    const node = Txt(big, 64, 282, 900, isName ? 96 : 168, isName ? WHITE : GOLD, undefined, { weight: 700, cls: isName ? '' : 'num', nowrap: true, ls: isName ? '.04em' : '0' });
+    node.classList.add('rc-big'); node.dataset.final = big;
+    if (isName) rcTyped(node);
+    if (st.unit) {
+      const u = Txt(rcUnit(st.unit), 64, 404, 300, 34, WHITE, undefined, { weight: 700, ls: '.1em' });
+      u.classList.add('rc-unit');
+      requestAnimationFrame(() => { const w = node.firstChild ? (() => { const rg = document.createRange(); rg.selectNodeContents(node); return rg.getBoundingClientRect().width / ($stage.getBoundingClientRect().width / 1600); })() : 0; u.style.left = (64 + w + 14) + 'px'; });
+    }
+    if (!isName && /^\d+$/.test(big) && !reduced && Number(big) > 1) {
+      const n = Number(big), t0 = performance.now();
+      every(30, () => { const k = Math.min(1, (performance.now() - t0) / 900); node.textContent = String(Math.round(n * (1 - (1 - k) ** 3))); });
+    }
+  }
+  let y = big !== null ? 500 : 300;
+  if (st.key === 'time_attack' && st.horseName) { rcTyped(Txt(st.horseName, 64, y, 900, 26, WHITE, undefined, { weight: 700, nowrap: true })); y += 44; }
+  (st.notes ?? []).forEach((n) => { Txt(n, 64, y, 900, 22, SOFT, undefined, { weight: 500, nowrap: true }).classList.add('rc-note'); y += 38; });
+  if (st.horses?.length) st.horses.forEach((h) => { rcTyped(Txt(h.horseName, 64, y, 900, 30, WHITE, undefined, { weight: 700, nowrap: true })); y += 48; });
+  if (st.moments?.length) {
+    st.moments.forEach((m, k) => {
+      const row = el('rc-moment', 64, 290 + k * 120, 900, 104); row.dataset.kind = m.kind;
+      el('rule', 0, 18, 46, 3, row);
+      Txt(m.text, 64, 0, 836, 28, WHITE, row, { weight: 700, nowrap: true });
+      if (m.horseName) rcTyped(Txt(m.horseName, 64, 46, 836, 20, GOLD, row, { weight: 700, nowrap: true }));
+    });
+  }
+  if (v.sinceNote) Caption(v.sinceNote, 64, 770, undefined, 15, MUTED).classList.add('rc-since', 'tshadow');
+  // controls: one CTA (次へ / 共有する), back, skip
+  if (!last) {
+    Cta('次へ', 1180, 780, 360, () => Recap(id, i + 1)).classList.add('rc-next');
+    TextLink('最後まで', 1400, 36, 160, () => Recap(id, v.steps.length - 1)).classList.add('rc-skip');
+  } else {
+    Cta('共有する', 1180, 780, 360, () => RecapShare(v)).classList.add('rc-share');
+    Ghost('一覧へ', 940, 790, 220, 56, Recaps, undefined, 'quiet').classList.add('rc-done');
+  }
+  if (i > 0) Ghost('戻る', last ? 700 : 940, 790, 220, 56, () => Recap(id, i - 1), undefined, 'quiet').classList.add('rc-back');
+  Back(Recaps, 'BACK', 40, 834);
+  EnToggle(1435, 124, 120, 50);
+  globalThis.__muchi && (globalThis.__muchi.recap = { id, index: i, key: st.key, steps: v.steps.length, short: v.short });
+}
+
+/** The share set (REQ-RECAP-011): one card each, 「順位を隠す」 drops the rank cards; recap_share when handed to the share sheet. */
+function RecapShare(v) {
+  const hide = prefs.get(RC_HIDE_KEY, '0') === '1';
+  const cards = v.shareCards.filter((c) => !(hide && c.rank));
+  Sheet(v.title, 'ムチ一閃　/　振り返りを共有', (s, close, y) => {
+    s.classList.add('rc-share-sheet'); s.dataset.hideRank = String(hide);
+    const t = Btn('順位を隠す', 48, y, 260, 46, () => { prefs.set(RC_HIDE_KEY, hide ? '0' : '1'); close(); RecapShare(v); }, 'choice' + (hide ? ' on' : ''), s);
+    t.classList.add('rc-hide-rank');
+    Txt('共有カードに入るのは、あなたの馬の名前と数字だけです', 48, y + 62, 564, 13, SOFT, s);
+    cards.forEach((c, k) => {
+      const card = Card('Share card', 48, y + 96 + k * 128, 564, 116, s, c.rank ? 'var(--gold)' : 'var(--cyan)');
+      card.classList.add('rc-card-share'); card.dataset.card = c.card;
+      Txt('ムチ一閃', 20, 14, 200, 13, CYAN, card, { weight: 700, ls: '.2em' });
+      const head = c.headline ? c.headline + rcUnit(c.unit) : '';
+      if (head) Txt(head, 20, 38, 240, 36, GOLD, card, { weight: 700, cls: 'num', nowrap: true });
+      if (c.horseName) rcTyped(Txt(c.horseName, head ? 230 : 20, 42, 300, 24, WHITE, card, { weight: 700, nowrap: true }));
+      Txt(c.lines.join('　·　'), 20, 84, 400, 14, SOFT, card, { weight: 500, nowrap: true });
+      Ghost('共有する', 430, 60, 116, 44, () => {
+        L.kpi([{ name: 'recap_share', at: L.now(), props: { kind: v.kind, card: c.card, hideRank: hide } }]);
+        globalThis.__muchi && (globalThis.__muchi.lastKpi = 'recap_share:' + c.card);
+        toast('共有しました（アプリでは共有シートを開きます）');
+      }, card, 'quiet small').classList.add('rc-share-go');
+    });
+  });
+}
+
 // ================================================================= round 10: 支部の応援スタンプ (REQ-TEAMFEED-*)
 // The team feed on the real server rules (TeamsService / TeamCore in the browser) — fixed stamps only, no text field.
 // Mirrors unity/Assets/Muchi/Game/TeamFeedModel.cs: palette with server-built unlock texts, 10 s post cooldown, cheering a
@@ -4436,7 +4574,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Recaps, Recap, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

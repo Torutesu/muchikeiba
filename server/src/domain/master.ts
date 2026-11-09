@@ -197,6 +197,8 @@ export interface Progression {
   hall?: import('./hallOfFame.js').HallConfig;
   /** REQ-MYRP-*: マイリプレイ (myReplays.ts, validated by myReplaysProblems). Absent / disabled = no saved replays. */
   myReplays?: import('./myReplays.js').MyReplaysConfig;
+  /** REQ-RECAP-*: シーズンの振り返り (seasonRecap.ts, validated by seasonRecapProblems). Absent / disabled = no recaps. */
+  seasonRecap?: import('./seasonRecap.js').SeasonRecapConfig;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */

@@ -321,8 +321,8 @@ describe('§37 my replays × §31 weekly challenge (REQ-MYRP-001, "confirmed rac
   });
 });
 
-describe('account deletion clears Round 13 + Round 14 state (REQ-UXS-040, REQ-HOF-011, REQ-SILK-*, REQ-CMT-*, REQ-MYRP-012)', () => {
-  it('runs every step, leaves nothing of R13 / R14 behind, and late writes never recreate the account', async () => {
+describe('account deletion clears Round 13 + Round 14 + Round 15 state (REQ-UXS-040, REQ-HOF-011, REQ-SILK-*, REQ-CMT-*, REQ-MYRP-012, REQ-PHOTO-*, REQ-ACT-*, REQ-A11Y-*)', () => {
+  it('runs every step, leaves nothing of R13 / R14 / R15 behind, and late writes never recreate the account', async () => {
     const ev = m.events.find((e) => e.exchange)!;
     const w = fullWorld(ev.startAtMs + 3_600_000);
     const uid = 'gone';
@@ -344,7 +344,19 @@ describe('account deletion clears Round 13 + Round 14 state (REQ-UXS-040, REQ-HO
     await w.svc.wchView(uid);
     await w.svc.teamGoalReward(uid, '2026-12-07', 'team_1', 1, 5);
     await w.svc.tutorialDraw(uid, 'c:tut');
+    // R15: accessibility settings, a photo record pointing at the saved replay, an activity entry (a friend request);
+    // the pre-race advice switch is a device setting (no server state, the app clears its device copy on deletion)
+    await w.svc.setAccessibility(uid, { textSize: 'largest', reduceMotion: true });
+    await w.svc.photoSave(uid, {
+      source: { kind: 'replay', mode: 'ranked', raceId: 'rk_del', tick: 300, replayId: 'rk_del' },
+      camera: { focusSlot: 0, orbitDeg: 30, distanceDm: 60, heightDm: 15, fovDeg: 40, dof: 1 },
+      lookId: 'natural', frameId: null, stamps: [], caption: null, names: 'masked', hideUi: true,
+    }, 'c:ph1');
+    await w.svc.friendReceive(uid, 'someone', 'だれか');
     const before = w.repo.get(uid)!;
+    expect(before.accessibility).toBeTruthy();
+    expect(before.photos?.records.length).toBe(1);
+    expect(before.activity?.entries.length).toBeGreaterThan(0);
     expect(before.hall?.entries.length).toBe(1);
     expect((before as PlayerState & { silksEditor?: { presets: unknown[] } }).silksEditor?.presets.length).toBe(1);
     expect(before.commentaryPack?.owned.ochitsuki).toBeTruthy();
@@ -382,6 +394,8 @@ describe('account deletion clears Round 13 + Round 14 state (REQ-UXS-040, REQ-HO
     expect(await w.svc.teamGoalReward(uid, '2026-12-14', 'team_1', 2, 12)).toBeNull();
     expect(await w.svc.tournamentClose(uid, 'cup_late', 1, { freeCoins: 50 }, '冬杯', horse.id)).toMatchObject({ status: 'already' });
     expect(await w.svc.replayShared(uid, 'other')).toBeNull();
+    // R15: a friend making a replay public after the wipe (its friend list not yet cleaned) writes nothing
+    expect(await w.svc.activityReplayShare(uid, 'other', 'rk_x')).toBe('skipped');
     expect(w.repo.data.has(uid)).toBe(false);
     expect(w.hallDir.rows.has(uid)).toBe(false);
   });

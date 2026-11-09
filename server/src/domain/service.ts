@@ -1251,7 +1251,8 @@ export class PlayerService {
     return activityPage(this.d.master, s, now, cursor, limit, whatsNewCount);
   }
   /** REQ-ACT-002 (§37 × §40): a friend made a saved replay public — one entry per owner + race (blocks: recordActivity). */
-  activityReplayShare(id: string, ownerId: string, raceId: string) {
+  async activityReplayShare(id: string, ownerId: string, raceId: string) {
+    if (await this.wiped(id)) return 'skipped' as const; // a late fan-out never recreates a deleted account
     return this.tx(id, null, (s, now) => recordActivity(this.d.master, s, { kind: 'replay_share', source: `replay_share:${ownerId}:${raceId}`, actor: { id: ownerId }, linkId: ownerId }, now));
   }
   /** REQ-ACT-008: mark read up to an id (idempotent). */

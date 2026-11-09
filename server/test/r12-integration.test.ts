@@ -91,6 +91,18 @@ describe('R12 decision: which grants go to the gift box (§26.1 × §28)', () =>
 });
 
 describe('R12 gift box adversarial', () => {
+  it('a re-delivered reward with the same ref is a no-op, including its horse part (REQ-BOX-008)', () => {
+    const s = freshPlayer('p', jst(2026, 12, 8));
+    const horse = m.templates.find((t) => t.rarity === 'R')!.id;
+    const horses0 = s.horses.length;
+    const d = { source: 'season' as const, ref: 'season:2026-11', reward: { freeCoins: 30, horse }, note: 'season 2026-11' };
+    deliverGift(m, s, d, jst(2026, 12, 8));
+    expect(s.horses.length).toBe(horses0 + 1);
+    const again = deliverGift(m, s, d, jst(2026, 12, 8) + 1000);
+    expect(again).toMatchObject({ status: 'boxed', duplicate: true });
+    expect(s.horses.length).toBe(horses0 + 1);
+    expect(s.giftBox!.box).toHaveLength(1);
+  });
   it('claim-one, claim-all and replays pay each gift exactly once (the player object serializes requests)', async () => {
     const w = world();
     await w.svc.bootstrap('p');

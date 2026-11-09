@@ -165,6 +165,10 @@ export function deliverGift(m: Master, s: PlayerState, d: DeliverInput, now: num
     return { status: 'granted' };
   }
   if (s.deletion?.status === 'deleting') return { status: 'forfeited' };
+  // REQ-BOX-008: a second delivery with the same ref is a no-op as a whole — checked before the horse / broodmare /
+  // pass XP part is granted, so a re-delivered reward never grants its horse twice
+  const known = s.giftBox && (s.giftBox.box.find((e) => e.ref === d.ref) ?? s.giftBox.history.find((e) => e.ref === d.ref));
+  if (known) return { status: 'boxed', giftId: known.id, expiresAt: known.expiresAt, duplicate: true };
   // horse / broodmare / pass XP are not box contents: granted as before
   const rest: Reward = {};
   if (d.reward.horse) rest.horse = d.reward.horse;

@@ -201,10 +201,11 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await shot('photo-card', 500);
     await page.locator('.screen.in .sheet [data-action="ph-share"]').click(); await page.waitForTimeout(300);
     assert.deepEqual(await page.evaluate(() => globalThis.__muchi.lastPhotoKpi), { name: 'photo_share', s1: 'paused', s2: 'framed' });
+    const before = (await page.evaluate(() => globalThis.__muchi.logic.photos())).value.count; // the my-replays flow saved one already
     await page.locator('.screen.in .sheet [data-action="ph-save"]').click(); await page.waitForTimeout(500);
     await page.locator('.screen.in .sheet [data-action="ph-save"]').click(); await page.waitForTimeout(500);
     const saved = await page.evaluate(() => globalThis.__muchi.lastPhotoSave);
-    assert.ok(saved && saved.count === 1 && saved.photo.frameId === 'sakura' && saved.photo.caption === 'ゴール前の一閃', 'one record (the retry is keyed)');
+    assert.ok(saved && saved.count === before + 1 && saved.photo.frameId === 'sakura' && saved.photo.caption === 'ゴール前の一閃', 'one record (the retry is keyed)');
     await page.locator('.screen.in .sheet [data-label="閉じる"]').click(); await page.waitForTimeout(300);
     // back to the race: it continues from the paused tick and finishes
     await page.locator('.screen.in [data-action="ph-back"]').click(); await waitScreen('race');
@@ -495,6 +496,24 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await shot('replay-share', 400);
     await page.locator('.screen.in .rp-share-go').click(); await page.waitForTimeout(300);
     assert.equal(await page.evaluate(() => globalThis.__muchi.lastKpi), 'replay_share');
+    // round 15 integration (§38 × §37): 「この瞬間を撮る」 — photo mode at the frame on screen, the record points at the save
+    await page.waitForFunction(() => !document.querySelector('.screen.in .rp-share-sheet'), null, { timeout: 5000 });
+    await waitScreen('replay-player');
+    const rpTick = await page.evaluate(() => globalThis.__muchi.replay.t);
+    await page.locator('.screen.in [data-action="photo-myreplay"]').click(); await waitScreen('photo', 20000);
+    const phInfo = await page.evaluate(() => globalThis.__muchi.photo.open);
+    assert.equal(phInfo.source.kind, 'replay', 'photo from my replay: a replay source');
+    assert.ok(phInfo.source.replayId && phInfo.source.replayId === phInfo.source.raceId, 'photo from my replay: the record points at the save: ' + JSON.stringify(phInfo.source));
+    assert.ok(Math.abs(phInfo.tick * 50 - rpTick) <= 100, `photo from my replay: the frame on screen (${phInfo.tick} tick vs ${rpTick} ms)`);
+    assert.match(await page.locator('.screen.in .ph-state').textContent(), /マイリプレイから/);
+    await shot('photo-from-my-replay', 400);
+    await page.locator('.screen.in [data-action="ph-shoot"]').click(); await page.waitForTimeout(400);
+    await page.locator('.screen.in .sheet [data-action="ph-save"]').click(); await page.waitForTimeout(500);
+    const phRec = (await page.evaluate(() => globalThis.__muchi.logic.photos())).value.photos[0];
+    assert.equal(phRec.source.replayId, phInfo.source.replayId, 'photo from my replay: saved with the replay id');
+    assert.equal(phRec.replaySaved, true, 'photo from my replay: the save is still there');
+    await page.locator('.screen.in .sheet [data-label="閉じる"]').click(); await page.waitForTimeout(300);
+    await page.locator('.screen.in [data-action="ph-back"]').click(); await waitScreen('replay-player', 30000);
     await click('BACK'); await waitScreen('my-replays');
     // a friend's public replay
     await page.locator('.screen.in .rp-friend').click(); await waitScreen('friend-replays', 30000); await waitIn('.rp-card');

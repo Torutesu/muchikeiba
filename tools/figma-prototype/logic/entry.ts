@@ -161,7 +161,8 @@ class LocalReplayStore extends MemoryReplayStore {
   clear() { for (const k of [...this.files.keys()]) { this.files.delete(k); try { localStorage.removeItem(RP_KEY + k); } catch { /* ignore */ } } }
 }
 const replayStore = new LocalReplayStore();
-const myReplaysSvc = new MyReplaysService(() => master, () => rivalInvoker, replayStore);
+// round 15: the friends port — making a save public writes the friends' replay_share activity entry (§40)
+const myReplaysSvc = new MyReplaysService(() => master, () => rivalInvoker, replayStore, async (u) => (await svc.friendsState(u)).ids);
 const RP_FRIEND = 'demo_rp_friend';
 const RP_FRIEND_NAME = 'ハヤテ乗り';
 async function ensureReplayFriend() {

@@ -2279,7 +2279,7 @@ async function Settings() {
   if (!ftue) {
     Hair(36, 540, 428, a);
     Txt('かんたん操作', 36, 558, 240, 21, WHITE, a, { weight: 500 }).dataset.name = 'Assist';
-    Txt(ASSIST_NAME[assistLevel()], 36, 592, 260, 16, assistLevel() === 'off' ? MUTED : CYAN, a, { weight: 500 }).dataset.assistLevel = assistLevel();
+    Txt(ASSIST_NAME[assistLevel()], 36, 598, 260, 15, assistLevel() === 'off' ? MUTED : CYAN, a, { weight: 500 }).dataset.assistLevel = assistLevel();
     Ghost('変更する', 304, 552, 160, 52, () => AssistSettings(), a, 'quiet small').dataset.action = 'assist';
   }
   // round 13 (REQ-HIST-*): 購入・コイン・ガチャの履歴 (資金決済法・特商法: what was bought, paid and free coins apart)
@@ -2298,31 +2298,32 @@ async function Settings() {
     // round 15 (REQ-ADV-009): the pre-race advice switch (a device setting, default on)
     ['出走前アドバイス', () => { advice.setEnabled(!advice.enabled()); Settings(); }, 'advice', advice.enabled() ? 'オン' : 'オフ']];
   moreRows.forEach(([n, go, action, state], i) => {
-    const b = Btn(n, 36, 90 + i * 46, 408, 46, go, 'row' + (i === moreRows.length - 1 ? ' last' : ''), m); b.style.fontSize = '19px';
+    // R15 integration: nine rows (a11y, packs, the advice switch…) of 38 px under the kicker, clear of the legal block below
+    const b = Btn(n, 36, 96 + i * 38, 408, 38, go, 'row' + (i === moreRows.length - 1 ? ' last' : ''), m); b.style.fontSize = '19px';
     if (action) b.dataset.action = action;
     if (state) b.dataset.state = state;
     const em = document.createElement('em'); em.textContent = state ?? '›'; b.appendChild(em);
   });
-  Kicker('法定表示・規約', 36, 432, m, { rule: false, size: 15 });
-  [['利用規約', 'terms'], ['プライバシーポリシー', 'privacy'], ['特定商取引法に基づく表記', 'tokushoho'], ['資金決済法に基づく表示', 'shikin']].forEach(([n, k], i) => TextLink(n, 36, 462 + i * 40, 400, () => Legal(k, Settings), m));
+  Kicker('法定表示・規約', 36, 458, m, { rule: false, size: 15 });
+  [['利用規約', 'terms'], ['プライバシーポリシー', 'privacy'], ['特定商取引法に基づく表記', 'tokushoho'], ['資金決済法に基づく表示', 'shikin']].forEach(([n, k], i) => TextLink(n, 36, 484 + i * 36, 400, () => Legal(k, Settings), m));
   // the other front end (Codex's club UI, same logic and engine)
-  TextLink('クラブ版 UI', 36, 626, 400, () => { location.href = 'club.html'; }, m, 'クラブ版 UI を開く ↗');
+  TextLink('クラブ版 UI', 36, 632, 400, () => { location.href = 'club.html'; }, m, 'クラブ版 UI を開く ↗');
   // ③ demo states for review (REQ-UXP-002): the same rules on a moved clock
   const demo = Glass('Demo', 1056, 134, 508, 676, undefined, .78);
   Kicker('デモ（レビュー用）', 36, 30, demo, { color: SOFT });
   Txt(`いま：${player.unlocks.day}日目・${player.unlocks.races}戦`, 36, 100, 436, 17, WHITE, demo, { weight: 500 });
   [['初日', 'day1'], ['3日目', 'day3'], ['7日目', 'day7'], ['最初から', 'new']].forEach(([n, k], i) => { const b = Btn(n, 36 + i * 110, 142, 102, 52, () => Demo(k), 'choice', demo); b.style.fontSize = '16px'; b.style.whiteSpace = 'nowrap'; b.style.padding = '0'; });
   Ghost('初回購入の直後', 36, 222, 436, 56, () => { linkOp('purchase'); if (!MaybeLinkPrompt('PurchaseComplete', Settings)) toast('引き継ぎの案内は出ません（表示済み・登録済み・FTUE中）'); }, demo, 'quiet small');
-  Ghost('タイムアタック', 36, 292, 436, 56, () => TimeAttack(), demo, 'quiet small');
+  Ghost('タイムアタック', 36, 286, 436, 56, () => TimeAttack(), demo, 'quiet small');
   // round 10: a demo purchase of this season's pass (no billing) to see the 購入済み state
-  Ghost('パス購入済み（デモ）', 36, 362, 436, 56, async () => { const r = await L.demoPurchase('season_pass'); toast(r.ok ? '今シーズンのパスを購入済みにしました（決済なし）' : r.code === 'ALREADY_PURCHASED' ? '今シーズンのパスは購入済みです' : r.message); }, demo, 'quiet small');
+  Ghost('パス購入済み（デモ）', 36, 350, 436, 56, async () => { const r = await L.demoPurchase('season_pass'); toast(r.ok ? '今シーズンのパスを購入済みにしました（決済なし）' : r.code === 'ALREADY_PURCHASED' ? '今シーズンのパスは購入済みです' : r.message); }, demo, 'quiet small');
   // round 12: the gift box after a maintenance, a tournament and a promotion (real delivery routes)
-  Ghost('プレゼントボックス（デモ）', 36, 432, 436, 56, () => Demo('gifts'), demo, 'quiet small');
+  Ghost('プレゼントボックス（デモ）', 36, 414, 436, 56, () => Demo('gifts'), demo, 'quiet small');
   // round 12: three last places in a row → the one-time かんたん操作 suggestion (REQ-ASSIST-010)
-  Ghost('最下位が3回続いた（デモ）', 36, 502, 436, 56, () => Demo('assist'), demo, 'quiet small');
+  Ghost('最下位が3回続いた（デモ）', 36, 478, 436, 56, () => Demo('assist'), demo, 'quiet small');
   // round 15: what happened while away (friend request, likes, cheers, a tournament result, a gift…), real event sources
-  Ghost('アクティビティ（デモ）', 36, 572, 436, 56, () => Demo('activity'), demo, 'quiet small');
-  Txt('サーバーと同じ規則のまま、日付だけ進めてログボとレースを消化します。', 36, 640, 436, 14, SOFT, demo, { lh: 1.6 });
+  Ghost('アクティビティ（デモ）', 36, 542, 436, 56, () => Demo('activity'), demo, 'quiet small');
+  Txt('サーバーと同じ規則のまま、日付だけ進めてログボとレースを消化します。', 36, 612, 436, 14, SOFT, demo, { lh: 1.6 });
   NavBar(4);
 }
 // ================================================================= round 12: かんたん操作 (REQ-ASSIST-*, contracts/protocol.md §27)
@@ -3791,11 +3792,11 @@ async function RivalStrip() {
   const r = await L.rival.view();
   if (cur?.dataset.screen !== 'home' || !r.ok || !r.value.enabled || r.value.optOut || !r.value.rival) return null;
   const v = r.value;
-  const g = Glass('Rival', 520, 32, 600, 100, undefined, .78);
+  const g = Glass('Rival', 520, 32, 548, 100, undefined, .78); // R15 integration: ends at 1068, left of the envelope / bell column
   g.dataset.homeRival = v.rival.kind; g.classList.add('rv-strip');
   Kicker(v.result ? 'ライバル　/　結果が出ました' : `ライバル　/　あと${rvDaysLeft(v)}日`, 24, 18, g, { rule: false, size: 15 });
-  Txt(rvName(v), 24, 48, 340, 24, WHITE, g, { weight: 700, ls: '.06em', nowrap: true });
-  Txt(v.score ? `${v.score.me} - ${v.score.them}` : '', 400, 34, 170, 40, GOLD, g, { weight: 700, align: 'right', cls: 'num' });
+  Txt(rvName(v), 24, 48, 310, 24, WHITE, g, { weight: 700, ls: '.06em', nowrap: true });
+  Txt(v.score ? `${v.score.me} - ${v.score.them}` : '', 350, 34, 174, 40, GOLD, g, { weight: 700, align: 'right', cls: 'num' });
   g.style.cursor = 'pointer'; g.addEventListener('click', () => Rival());
   return g;
 }
@@ -4249,6 +4250,12 @@ async function ReplayPlayer(raceId, o = {}) {
   seek.addEventListener('click', (e) => { const r = seek.getBoundingClientRect(); ctl('seek', Math.round(info.durationMs * clamp((e.clientX - r.left) / r.width, 0, 1))); });
   const clock = Txt('', 1124, 64, 220, 13, MUTED, bar, { cls: 'num', nowrap: true });
   Ghost('共有', 1362, 30, 140, 60, () => RpShare(o), bar, 'small').classList.add('rp-share');
+  // round 15 (§38 × §37): photo mode at the frame on screen (PhotoModeModel.OpenFromSavedReplay); back to the same moment
+  Ghost('この瞬間を撮る', 1304, 664, 260, 60, () => {
+    const at = globalThis.__muchi?.replay?.t ?? 0;
+    if (!state.paused) ctl('pause', 1);
+    PhotoOpen('myreplay', () => ReplayPlayer(raceId, { ...o, seekMs: at }));
+  }, undefined, 'quiet').dataset.action = 'photo-myreplay';
   Back(back, 'BACK', 40, 640);
   function paint() {
     pause.querySelector('span').textContent = state.paused ? '再生' : '一時停止';
@@ -4258,6 +4265,7 @@ async function ReplayPlayer(raceId, o = {}) {
     view.playerSlot = state.camera;
   }
   paint();
+  if (o.seekMs) { ctl('seek', o.seekMs); ctl('pause', 1); } // back from photo mode: the same moment, paused
   let last = performance.now();
   every(33, () => {
     const now = performance.now(), dt = now - last; last = now;
@@ -4502,7 +4510,8 @@ const ACT_PAGE = 7;
 const actState = { cursor: null, stack: [] };
 const actGo = (screen, id) => ({
   friends: () => Invite(), rival: () => Rival(), stable: () => Stable(), team_feed: () => TeamFeed(), tournaments: () => EventTop(),
-  gift_box: () => GiftBox('box'), team_goal: () => TeamGoal(), whats_new: () => Home(), replay: () => toast('リプレイを開きます'),
+  gift_box: () => GiftBox('box'), team_goal: () => TeamGoal(), whats_new: () => Home(),
+  replay: () => FriendReplays(), // §37: the friend's public replays (the entry's link id is the friend; the demo has one friend)
 })[screen]?.(id);
 /** The home bell (under the gift envelope, clear of the rival strip) with the unread count from the player view (REQ-ACT-009). */
 function ActivityBell(x = 1088, y = 122) {
@@ -4806,7 +4815,7 @@ const PH_STAMP_GLYPH = { muchi: '閃', hoof: '∩∩', star: '✦', photo_finish
 let ph = null;
 /** Is the race on screen run with other people? (the prototype's main race stands for a ranked race) */
 const phShared = () => !raceCtx?.ta && !raceCtx?.challenge && !raceCtx?.tutorial;
-/** kind: paused (race HUD) | result (result screens) | replay (replay share player, at its clip time). */
+/** kind: paused (race HUD) | result (result screens) | replay (replay share player, at its clip time) | myreplay (§37 player, its frame). */
 async function PhotoOpen(kind, back) {
   const clipMs = Math.round(globalThis.__muchi?.clipT ?? 0);
   const info = JSON.parse(engine.PhotoOpen(kind, performance.now(), raceCtx?.config?.raceId ?? '', phShared(), kind === 'replay' ? clipMs : 0));
@@ -4843,7 +4852,7 @@ function PhotoMode() {
   const wm = Txt(card.watermark, 760, 500, 220, 28, WHITE, vf, { align: 'right', cls: 'tshadow watermark', ls: '.12em' }); wm.dataset.name = 'watermark';
   // the state line: paused / result / replay, the tick, and the re-simulated state equals the live race
   const same = !ph.info.liveChecksum || ph.info.liveChecksum === ph.info.fingerprint;
-  const src = { paused: 'レースを一時停止中', result: 'レース結果から', replay: 'リプレイから' }[ph.kind];
+  const src = { paused: 'レースを一時停止中', result: 'レース結果から', replay: 'リプレイから', myreplay: 'マイリプレイから' }[ph.kind];
   const st = el('chip ph-state', 54, 50, 380, 50); st.textContent = `${src}　残り ${ph.info.remainingM} m`;
   st.dataset.photoHash = same ? 'match' : 'mismatch'; st.dataset.tick = String(ph.info.tick); st.dataset.source = ph.info.source.kind; st.dataset.mode = ph.info.source.mode;
   Caption(`撮影する瞬間：${ph.info.tick}tick　端末で再計算：${same ? 'レースと同じ状態 ✓' : '不一致'}　レースの結果は変わりません`, 34, 614, undefined, 13, same ? OK : RED).classList.add('tshadow');
@@ -5012,7 +5021,9 @@ async function boot() {
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),
     logic: L, view: () => view,
     // REQ-L10N-013 (test/en-flow.cjs): texts with no English seen so far, and the fit state of the current screen
-    l10n: { misses: () => [...l10nMisses.keys()], clear: () => l10nMisses.clear(), fit: () => { scaleText(cur); fitText(cur); } },
+    l10n: { misses: () => [...l10nMisses.keys()], clear: () => l10nMisses.clear(), fit: () => { scaleText(cur); fitText(cur); },
+      // switch the language in place (the screen is drawn again; the race in the engine stays)
+      set: (lang) => { prefs.set('muchi.language', lang); applyLanguage(); currentScreen?.(); } },
     // round 15 (test/a11y-flow.cjs): the settings in force and the flash limiter
     a11y: { get: () => ({ ...a11y }), set: (k, v) => setA11y(k, v), flashOk: (t) => flashOk(t) },
   };

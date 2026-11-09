@@ -13,10 +13,14 @@ using Muchi.Game;
 public static partial class MuchiRace
 {
     private static PhotoModeModel _pm;
+    /// <summary>The course look of the photographed race (the live race's; none for a saved replay, like ReplayOpen).</summary>
+    private static TrackVisual _pmTrack;
+    private static int _pmSlot;
 
     /// <summary>
     /// kind: paused (the running race) | result (the finished race) | replay (the finished race at <paramref name="tick"/>, or at that
-    /// clip time in ms when the replay share player is open).
+    /// clip time in ms when the replay share player is open) | myreplay (§37: the saved replay open in ReplayOpen, at the frame on
+    /// screen — PhotoModeModel.OpenFromSavedReplay; your own save keeps its replay id).
     /// <paramref name="shared"/>: the race is run with other people (the JS knows: the prototype's ranked race) — never paused.
     /// </summary>
     [JSExport]
@@ -24,9 +28,15 @@ public static partial class MuchiRace
     {
         _pm?.Close();
         _pm = null;
-        if (_driver == null) return Fail("レースがありません");
         string live = null;
-        if (kind == "paused")
+        if (kind == "myreplay")
+        {
+            if (_replay == null || !_replay.Playable) return Fail("このリプレイは見られません");
+            _pm = PhotoModeModel.OpenFromSavedReplay(_replay, null, null, null, null, () => false, null, () => (long)nowMs);
+            _pmTrack = null; _pmSlot = _replay.OwnSlot;
+        }
+        else if (_driver == null) return Fail("レースがありません");
+        else if (kind == "paused")
         {
             if (shared || !PhotoModeModel.CanPause(_driver)) return Fail("このレースは走っている途中では撮れません。結果画面かリプレイから撮ってください。");
             live = _driver.Sim.ComputeChecksum();
@@ -41,15 +51,16 @@ public static partial class MuchiRace
             _pm = PhotoModeModel.OpenFromReplay(_driver.Config, _driver.Race.AllInputs(), tick, _driver.PlayerSlot, mode, raceId, null, _driver.Visuals, null, null, () => false, null, () => (long)nowMs);
         }
         if (_pm == null) return Fail("このレースは撮れません");
-        if (shared) _pm.Spec.Source.Mode = "ranked"; // the prototype's ranked race runs locally; the record says what it stands for
+        if (kind != "myreplay") { _pmTrack = _driver.Visuals?.Track; _pmSlot = _driver.PlayerSlot; }
+        if (shared && kind != "myreplay") _pm.Spec.Source.Mode = "ranked"; // the prototype's ranked race runs locally; the record says what it stands for
         var s = _pm.Snapshot;
         var sb = new StringBuilder("{\"ok\":true");
         sb.Append(",\"tick\":").Append(s.Tick).Append(",\"fingerprint\":\"").Append(s.Fingerprint).Append('"');
         if (live != null) sb.Append(",\"liveChecksum\":\"").Append(live).Append('"');
-        sb.Append(",\"paused\":").Append(B(_driver.Race.IsPaused)).Append(",\"runners\":").Append(s.States.Length);
+        sb.Append(",\"paused\":").Append(B(kind == "paused" && _driver.Race.IsPaused)).Append(",\"runners\":").Append(s.States.Length);
         var src = _pm.Spec.Source;
-        sb.Append(",\"source\":{\"kind\":\"").Append(src.Kind).Append("\",\"mode\":\"").Append(src.Mode).Append("\",\"raceId\":\"").Append(Esc(src.RaceId)).Append("\",\"tick\":").Append(src.Tick).Append('}');
-        sb.Append(",\"remainingM\":").Append((int)Math.Ceiling(Math.Max(0, s.Config.Track.DistanceM - TrackGeometry.DistanceM(s.States[_driver.PlayerSlot].Distance))));
+        sb.Append(",\"source\":").Append(src.ToJson().ToString());
+        sb.Append(",\"remainingM\":").Append((int)Math.Ceiling(Math.Max(0, s.Config.Track.DistanceM - TrackGeometry.DistanceM(s.States[_pmSlot].Distance))));
         sb.Append(",\"camera\":").Append(CameraJson());
         return sb.Append('}').ToString();
     }
@@ -77,7 +88,7 @@ public static partial class MuchiRace
         var c = _pm.Spec.Camera;
         var shot = _pm.Shot;
         return "{\"focusSlot\":" + c.FocusSlot + ",\"orbitDeg\":" + c.OrbitDeg + ",\"distanceDm\":" + c.DistanceDm + ",\"heightDm\":" + c.HeightDm + ",\"fovDeg\":" + c.FovDeg + ",\"dof\":" + c.Dof
-            + ",\"heightM\":" + F(shot.Height) + ",\"inFrame\":" + B(RaceCameraRig.InFrame(shot, _pm.Snapshot.PoseOf(c.FocusSlot, _driver.Visuals?.Track), Muchi.Client.PhotoCamera.LookAtHeightM)) + "}";
+            + ",\"heightM\":" + F(shot.Height) + ",\"inFrame\":" + B(RaceCameraRig.InFrame(shot, _pm.Snapshot.PoseOf(c.FocusSlot, _pmTrack), Muchi.Client.PhotoCamera.LookAtHeightM)) + "}";
     }
 
     /// <summary>The posed photo for the 3D view (same shape as ClipFrame: horses [x, z, yaw, rank, whip, visible, visible] and cam).</summary>
@@ -139,8 +150,8 @@ public static partial class MuchiRace
             sb.Append("{\"slot\":").Append(p.Slot).Append(",\"horse\":\"").Append(Esc(p.HorseName)).Append("\",\"rider\":\"").Append(Esc(p.Rider)).Append("\",\"you\":").Append(B(p.You)).Append('}');
         }
         var c = spec.Camera;
-        sb.Append("],\"spec\":{\"source\":{\"kind\":\"").Append(spec.Source.Kind).Append("\",\"mode\":\"").Append(spec.Source.Mode).Append("\",\"raceId\":\"").Append(Esc(spec.Source.RaceId)).Append("\",\"tick\":").Append(spec.Source.Tick)
-          .Append("},\"camera\":{\"focusSlot\":").Append(c.FocusSlot).Append(",\"orbitDeg\":").Append(c.OrbitDeg).Append(",\"distanceDm\":").Append(c.DistanceDm).Append(",\"heightDm\":").Append(c.HeightDm).Append(",\"fovDeg\":").Append(c.FovDeg).Append(",\"dof\":").Append(c.Dof)
+        sb.Append("],\"spec\":{\"source\":").Append(spec.Source.ToJson().ToString())
+          .Append(",\"camera\":{\"focusSlot\":").Append(c.FocusSlot).Append(",\"orbitDeg\":").Append(c.OrbitDeg).Append(",\"distanceDm\":").Append(c.DistanceDm).Append(",\"heightDm\":").Append(c.HeightDm).Append(",\"fovDeg\":").Append(c.FovDeg).Append(",\"dof\":").Append(c.Dof)
           .Append("},\"lookId\":\"").Append(spec.LookId).Append("\",\"frameId\":").Append(spec.FrameId == null ? "null" : "\"" + spec.FrameId + "\"").Append(",\"stamps\":[");
         for (int i = 0; i < spec.Stamps.Count; i++)
         {

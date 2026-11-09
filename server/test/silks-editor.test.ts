@@ -370,6 +370,19 @@ describe('REQ-SILK-010 refunds take parts back', () => {
   });
 });
 
+describe('REQ-SILK-009/011 presets after a banned-list import', () => {
+  it('a preset that became reserved is marked unusable and apply refuses it', async () => {
+    const w = world();
+    await w.svc.bootstrap('p');
+    await w.svc.silksPresetCreate('p', 'x', { design: D({ pattern: 'stripes', colors: ['green', 'white'] }) });
+    const banned: Master = { ...withBundle, bannedSilks: { ...BASE_BANNED_SILKS, entries: [{ id: 'r1', source: 'test', pattern: 'stripes', colors: ['green', 'white'] }] } };
+    const w2 = new PlayerService(w.repo, { master: banned, rng: seededRng(1), clock: () => NOW, verifiers: {} });
+    const v = await w2.silksEditor('p');
+    expect(v.presets[0]).toMatchObject({ usable: false, problems: [{ problem: 'RESERVED' }] });
+    expect(await w2.silksPresetApply('p', 0).catch((e) => (e as AppError).code)).toBe('BAD_REQUEST');
+  });
+});
+
 describe('REQ-SILK-012 GET /v1/silks/editor', () => {
   it('catalog with owned / source / shop, current design and code, never creates state', async () => {
     const w = world();

@@ -547,6 +547,18 @@ export const MuchiLogic = {
   // The real server rules: eligibility (FTUE, install day, 30 days after a payment, age), caps by game day, sessions. The
   // ad network is simulated in the browser: it signs an AdMob-style SSV callback with a local ECDSA P-256 key, and the
   // real verifyAdMobCallback checks that signature before the real applyAdCallback grants free coins. No ad SDK, no network.
+  // ---------------------------------------------------------------- 勝負服エディタ (REQ-SILK-*, contracts/protocol.md §35)
+  // The real server rules: parts and their sources, the shared code, ownership, readability, the banned list, presets and
+  // the part purchase through the cosmetics flow (paid coins first, paid-only parts on paid coins). Never random.
+  silksEditor: () => svc.silksEditor(ID),
+  silksPreview: (design: Parameters<typeof svc.silksPreview>[1]) => wrap(() => svc.silksPreview(ID, design)),
+  saveSilks: (design: Parameters<typeof svc.saveSilks>[1]) => wrap(() => svc.saveSilks(ID, design)),
+  silksPresetCreate: (name: string | undefined, design: Parameters<typeof svc.saveSilks>[1]) => wrap(() => svc.silksPresetCreate(ID, name, design)),
+  silksPresetUpdate: (slot: number, name: string | undefined, design: Parameters<typeof svc.saveSilks>[1] | null) => wrap(() => svc.silksPresetUpdate(ID, slot, name, design)),
+  silksPresetDelete: (slot: number) => wrap(() => svc.silksPresetDelete(ID, slot)),
+  silksPresetApply: (slot: number) => wrap(() => svc.silksPresetApply(ID, slot)),
+  buySilksPart: (itemId: string) => wrap(() => svc.buySilksPart(ID, itemId, key())),
+  silksNoticeSeen: () => wrap(() => svc.silksNoticeSeen(ID)),
   // ---------------------------------------------------------------- かんたん操作 (REQ-ASSIST-*, contracts/protocol.md §27)
   // The real server rules: the setting (default off), the last-place streak counted by applyRace, the one-time prompt.
   assist: () => svc.assist(ID),

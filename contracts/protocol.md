@@ -1235,9 +1235,10 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
     "caps":     [ { "id": "diamond", "code": 7, "name": "ダイヤ", "owned": false, "source": { "kind": "achievement", "achievementId": "podiums", "tier": 3 }, "sourceLabel": "実績「3着以内」の3段目で解放", "asset": "silks/cap/diamond" } ] },
   "current": { "design": { "pattern": "hoops", "colors": ["navy", "white"], "sleeve": "match", "cap": "plain", "capColors": ["navy", "white"] },
                "code": "1010a00zz00000a00", "silks": { "pattern": "hoops", "colors": ["navy", "white"], "cap": "plain" }, "resetNotice": null },
-  "presets": [ { "slot": 0, "name": "本番用", "code": "1…", "design": { "…": "…" }, "savedAt": 0, "usable": true, "missing": [] } ],
+  "presets": [ { "slot": 0, "name": "本番用", "code": "1…", "design": { "…": "…" }, "savedAt": 0, "usable": true, "missing": [], "problems": [] } ],
   "maxPresets": 5, "presetNameMax": 12, "wallet": { "free": 120, "paid": 0 } }
 ```
+  - プリセットの `usable` は「全部持っている（`missing` が空）かつ今の禁止リスト・読みやすさに当たらない（`problems` が空）」。
   - `sourceLabel`：`最初から使える`／`コイン{n}で購入`／`有償コイン{n}で購入`／`実績「{name}」の{tier}段目で解放`／`レースを{n}回走ると解放`／`商品・報酬で入手`（直販でないアイテム）。
 - **`POST /v1/silks/preview`** `{ design } | { code }` → 試着（何も変わらない、持っていなくてよい）：`{ design, code, owned: bool, locked: [{ type, id, name, sourceLabel, shop? }], totalPrice: { any, paidOnly }, problems: [{ problem: "LOW_CONTRAST"|"RESERVED", message }], savable }`。`savable` は「全部持っていて問題が無い」。
 - **`PUT /v1/silks`** `{ design } | { code }`（どちらか一方、他のキーは 400）→ 35.3 で検証して装備：`{ design, code, silks }`。同じデザインを送り直しても結果は同じ（冪等キー不要。KPI は変わった時だけ）。初心者・復帰ミッションの `silks` を数える（旧い PUT と同じ）。

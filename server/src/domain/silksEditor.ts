@@ -438,7 +438,9 @@ function presetsView(m: Master, s: PlayerState) {
     let design: SilksDesign | null = null;
     try { design = codeToDesign(m, p.code); } catch { /* a part left the master */ }
     const missing = design ? lockedView(m, s, design) : [];
-    return { slot: p.slot, name: p.name, code: p.code, design, savedAt: p.savedAt, usable: !!design && missing.length === 0, missing };
+    // a banned-list import or a stricter readability rule after saving also makes a preset unusable (apply would refuse it)
+    const problems = design ? designProblems(m, design).map((x) => ({ problem: x, message: PROBLEM_TEXT[x] })) : [];
+    return { slot: p.slot, name: p.name, code: p.code, design, savedAt: p.savedAt, usable: !!design && missing.length === 0 && problems.length === 0, missing, problems };
   });
 }
 

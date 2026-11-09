@@ -235,10 +235,13 @@ namespace Muchi.Client
         /// <summary>False when a part was taken back by a refund (Missing lists it) — apply is refused until it is owned again.</summary>
         public bool Usable;
         public List<SilksLockedPart> Missing = new List<SilksLockedPart>();
+        /// <summary>"RESERVED" / "LOW_CONTRAST" when a later banned-list import or readability rule refuses it (server message).</summary>
+        public List<KeyValuePair<string, string>> Problems = new List<KeyValuePair<string, string>>();
         internal static SilksPreset Parse(JsonNode o) => new SilksPreset
         {
             Slot = J.Int(o, "slot"), Name = J.Str(o, "name"), Code = J.Str(o, "code"), Design = SilksDesign.Parse(J.Opt(o, "design")), SavedAt = J.Long(o, "savedAt"),
             Usable = J.Bool(o, "usable"), Missing = J.List(o, "missing", SilksLockedPart.Parse),
+            Problems = J.List(o, "problems", x => new KeyValuePair<string, string>(J.Str(x, "problem"), J.Str(x, "message"))),
         };
     }
 

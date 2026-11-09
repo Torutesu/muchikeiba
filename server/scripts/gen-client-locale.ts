@@ -4,7 +4,14 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { clientLocaleJson } from '../src/i18n/clientLocale.js';
+import { commentaryPacksClientJson } from '../src/domain/commentaryPacks.js';
 
 const out = join(import.meta.dirname, '../../engine/Muchi.Client/Resources/Muchi/server-en.json');
 writeFileSync(out, clientLocaleJson());
 console.log('wrote', out);
+
+// REQ-CMT-001: the commentary packs (server/master/commentary-packs.json) for the client; test/commentary-packs.test.ts
+// fails while the committed copy differs.
+const packsOut = join(import.meta.dirname, '../../engine/Muchi.Client/Resources/Muchi/commentary-packs.json');
+writeFileSync(packsOut, commentaryPacksClientJson());
+console.log('wrote', packsOut);

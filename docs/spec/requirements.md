@@ -691,3 +691,20 @@
 - REQ-SHORT-009 クライアント：`Muchi.Client` `InsufficientCoinsException.Shortfall`（`CoinShortfall`）、`ApiClient.GetCoinShortfallForGachaAsync` / `ForCosmeticAsync` / `GetCoinShortfallAsync`。Unity のゲーム層 `CoinShortfallModel`。プロトタイプのシート（日本語・英語）。
 - REQ-SHORT-010 コンプガチャ防止の一本化（R11 の残り）：「集める」ミッション（図鑑の条件・初心者・シーズン）の 2つ以上ルールは、有償で引ける**すべての**抽選（バナーの通常・確定枠・ステップアップの最終枠・SR以上確定券などの抽選券）を `paidRandomTemplates` 1つで数える（`compGachaProblems` と `gachaObtainable` が同じ関数を使う）。
 - REQ-SHORT-011 プレゼントボックスとの関係（Round 12 の統合）：ボックスの無償コインは受け取るまで所持に数えない。`any`/`free` の不足で期限内の未受け取りの無償コインがある時だけ、注意に「プレゼントボックスに受け取っていない無償コインが{n}枚あります（受け取ると使えます）」を足す（`paid`・削除の予約中は出さない）。
+
+## 36. 実況パック（TS＋C#、`src/domain/commentaryPacks.ts`・`master/commentary-packs.json`・`Muchi.Client/CommentaryPacks.cs`、`contracts/protocol.md` §36）
+拘束条件：ランク戦は課金で決まらない（06 §1.3）、公営競技の賭けを思わせる言葉を使わない（docs/planning/03）、有償と無償は分けて数える（資金決済法）、限定・倍率の表現なし（03・06 §5.5）。
+- REQ-CMT-001 パック：実況の話し方だけを変える品。標準（全員）・熱血（実績で無料）・落ち着いた解説・古風な名調子（コインで直販）。データは `server/master/commentary-packs.json`、クライアントへは `npm run gen:client-locale` が同じ内容を書く（差はテストで検出）。
+- REQ-CMT-002 重ね方：パックの phrase key は標準のその key を置き換える（`priority`・`mustSay` は標準のまま）。元の種類を置き換えたら標準のその種類の特化は使わない。標準の元の種類は全部、パックの日本語にあるか `fallback`（完全一致か `接頭辞*`）に書く＝明示のフォールバック。英語は任意で、無い種類は標準の英語。チュートリアルは常に標準。
+- REQ-CMT-003 決定論：言い回しは今までと同じ式で選び、パックの時だけ salt を `"<packId>/<key>"` にする。標準の実況は1文字も変わらない。同じレース・同じパックなら同じ文（リプレイ・共有クリップ・観戦）。
+- REQ-CMT-004 レースに効かない：実況はクライアントだけ。レースの設定・ハッシュ・結果・リプレイの形式・検証は変わらない。ランク戦の勝率に効く要素は何も売らない。
+- REQ-CMT-005 文の検査：起動時（`validateCommentaryPacks`）にカタログ・値段・実績・言い回しの id・プレースホルダーの種類・禁止語（法務の語、公営競技の賭けの語、NG 名、英語の禁止語、英語に日本語なし）。クライアントの読み込み時とテストで明示のフォールバックとプレースホルダーが標準の部分集合であること（言語ごと）。標準の実況も同じ禁止語の検査を通る。
+- REQ-CMT-006 声：固定の断片 `voice/ja/phrase/<variantId>_p<n>` をアセットの一覧に載せる。名前・数字は共通。断片が1つでも無い行は字幕だけ。録音の一覧は `docs/handoff-codex-round14-commentary-packs.md`。
+- REQ-CMT-007 入手：`default`／`achievement`（決まった実績の段に届いたら持ち物、売らない、抽選なし）／`coins`（決まった値段で直販）。抽選・期間限定・セットを揃えた報酬は形にない。
+- REQ-CMT-008 試聴：買う前に、ストックのレース（`sample`：コース・シード・頭数）を手元で走らせ、最後の直線から10秒の実況をそのパックで出す（`CommentarySample.Build`）。サーバーに問い合わせない。何度でも同じ。
+- REQ-CMT-009 装備：`PUT /v1/commentary/equipped`。持っているパックだけ。同じ値の再送は何も変えない。実績のパックは装備した時に持ち物として記録。プレイヤーごと、観戦・リプレイは見ている人のパック。端末はオフライン用に最後のパックを覚える。
+- REQ-CMT-010 購入：`POST /v1/commentary/packs/:packId/buy`（冪等キー必須）。`wallet.spend`（有償から先・有償限定・未精算の返金で止まる・不足は §29 の案内）。持っていれば `ALREADY_PURCHASED`、売らないパックは `NOT_ELIGIBLE`、削除の予約中は `DELETION_PENDING`。`equip: true` で続けて装備。
+- REQ-CMT-011 表示：`GET /v1/commentary/packs`（持っているか・装備・値段・実績の進み・試聴のレース）、`GET /v1/player` の `commentaryPack`。値段はサーバーのデータからだけ。日本語と英語。
+- REQ-CMT-012 KPI：`commentary_pack_equip`・`commentary_pack_buy`（サーバー）、`commentary_pack_sample`（クライアント）。クエリは `docs/ops/kpi-queries.md`。
+- REQ-CMT-013 クライアント：`Muchi.Client` `CommentaryPackCatalog`・`CommentaryTemplates.WithPack`・`CommentaryPackLint`・`CommentarySample`・`ApiClient.GetCommentaryPacksAsync`/`EquipCommentaryPackAsync`/`BuyCommentaryPackAsync`・`PlayerView.CommentaryPack`・`Analytics.CommentaryPackSample`。Unity のゲーム層 `CommentaryPackModel`（一覧・試聴・装備・購入の確認・レースのテンプレート）。
+- REQ-CMT-014 プロトタイプ：設定／ショップの実況パック画面（試聴の字幕のティッカー、装備、購入の確認）、レースの HUD が装備したパックで話す。ムチ一閃の見た目、日本語と英語、e2e と英語の流れ。

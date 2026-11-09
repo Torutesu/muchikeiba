@@ -239,6 +239,10 @@
   "気まぐれのヒスイ": "Fickle Hisui", "調子の波はあるけど、最後の脚は誰にも負けない": "My form comes and goes, but nobody beats my finish.",
   "粘りのコガネ": "Tenacious Kogane", "最後の直線まで、ずっと隣にいるよ": "I'll be right beside you down the final stretch.",
   "好敵手": "Worthy Rival", "宿命の対決": "Fated Duel", "ライバルキラー": "Rival Slayer",
-  "ライバルが記録を更新": "Your rival set a new record", "ライバルの{name}さんが{course}のタイムアタックであなたの今週の記録を上回りました": "Your rival {name} beat your best time this week in time attack at {course}"
+  "ライバルが記録を更新": "Your rival set a new record", "ライバルの{name}さんが{course}のタイムアタックであなたの今週の記録を上回りました": "Your rival {name} beat your best time this week in time attack at {course}",
+  "標準": "Standard", "いつもの実況。はっきり、わかりやすく伝えます。": "The usual commentary: clear and easy to follow.",
+  "熱血": "Fired Up", "叫んで盛り上げる、熱い実況。": "Hot-blooded commentary that shouts the race home.",
+  "落ち着いた解説": "Calm Analyst", "展開を静かに読み解く、解説者の語り口。": "An analyst who calmly reads how the race unfolds.",
+  "古風な名調子": "Classic Caller", "昔ながらの名調子で、レースを語り上げます。": "Calls the race in the grand old broadcasting style."
  }
 }

@@ -108,6 +108,8 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('session_end'), at: z.number().int(), props: z.object({ durationMs: z.number().int().min(0).max(86_400_000) }) }),
   z.object({ name: z.literal('tutorial_step'), at: z.number().int(), props: tutorialStepProps }),
   z.object({ name: z.literal('screen_view'), at: z.number().int(), props: z.object({ screen: str(32) }) }),
+  // REQ-CMT-012: a commentary pack sample started (try before buy)
+  z.object({ name: z.literal('commentary_pack_sample'), at: z.number().int(), props: z.object({ packId: str(32), owned: z.boolean() }) }),
   // REQ-ASSIST-011: `assist` = the かんたん操作 level that rides this race (absent = off)
   z.object({ name: z.literal('race_start'), at: z.number().int(), props: z.object({ mode: z.enum(['ranked', 'friend', 'tutorial', 'offline', 'time_attack']), assist: z.enum(['off', 'whip', 'full']).optional() }) }),
   z.object({ name: z.literal('purchase_flow'), at: z.number().int(), props: z.object({ stage: z.enum(['open', 'cancel', 'fail', 'store_success']), productId: str(64) }) }),
@@ -143,6 +145,7 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     // index stays in double9 (the column layout never changes); the optional value goes to double5 (count)
     case 'tutorial_step': return { name: e.name, s1: e.props.step, value: tutorialStepIndex(e.props.step), ...(e.props.value !== undefined ? { count: e.props.value } : {}) };
     case 'screen_view': return { name: e.name, s1: e.props.screen };
+    case 'commentary_pack_sample': return { name: e.name, s1: e.props.packId, s2: e.props.owned ? 'owned' : 'not_owned' };
     case 'race_start': return { name: 'client_race_start', s1: e.props.mode, ...(e.props.assist && e.props.assist !== 'off' ? { s2: e.props.assist } : {}) };
     case 'purchase_flow': return { name: e.name, s1: e.props.stage, s2: e.props.productId };
     case 'push_open': return { name: e.name, s1: e.props.templateId };

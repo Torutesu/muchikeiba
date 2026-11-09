@@ -206,6 +206,8 @@ export interface PlayerState {
   giftBox?: import('./giftBox.js').GiftBoxState;
   /** REQ-ASSIST-*: かんたん操作 setting, the last-place streak and the one-time suggestion (assist.ts ensureAssist). */
   assist?: import('./assist.js').AssistState;
+  /** REQ-CMT-*: 実況パック — owned packs and the equipped one (commentaryPacks.ts). Absent = the standard pack. */
+  commentaryPack?: import('./commentaryPacks.js').CommentaryPackState;
   /** REQ-RIVAL-*: opt-out, this week's rival and score, unsettled weeks, results (rival.ts ensureRival). */
   rival?: import('./rival.js').RivalState;
 }

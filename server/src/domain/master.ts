@@ -354,6 +354,8 @@ export interface Master {
   locale?: { en: Record<string, string> };
   /** REQ-COL-* / REQ-ACH-*: 図鑑 lore and achievements (master/collection.json; collection.ts collectionOf falls back to it when absent). */
   collection?: CollectionMaster;
+  /** REQ-CMT-*: 実況パック (master/commentary-packs.json; commentaryPacks.ts commentaryPacksOf falls back to it when absent). */
+  commentaryPacks?: import('./commentaryPacks.js').CommentaryPacksMaster;
 }
 
 export const PPM_TOTAL = 1_000_000;

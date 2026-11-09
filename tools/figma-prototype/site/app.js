@@ -2000,11 +2000,11 @@ async function AdvicePanel(q, x, y, w, h, focus, onPick) {
   g.dataset.suggested = a.suggestedHorseId ?? ''; g.dataset.focus = a.focusHorseId ?? ''; g.dataset.device = String(!!a.device);
   Kicker('出走前アドバイス', 36, 30, g);
   Ghost('アドバイスを隠す', w - 252, 22, 216, 44, () => { advice.setEnabled(false); RaceLobby(false); }, g, 'quiet small').classList.add('adv-hide');
-  Txt(a.courseCount > 1 ? `コースは出走時に決まります　·　今日の${a.courseCount}コースで計算` : 'このコース・馬場で計算', 36, 84, w - 72, 14, MUTED, g, { nowrap: true });
+  Txt(a.courseCount > 1 ? `コースは出走時に決まります　·　今日の${a.courseCount}コースで計算` : 'このコース・馬場で計算', 36, 100, w - 72, 14, MUTED, g, { nowrap: true });
   // ① the horses (up to 3), in the order of fit; the selected one is the one that races
   const rows = a.horses.slice(0, 3);
   rows.forEach((hr, i) => {
-    const c = Card('Advice ' + hr.horseId, 36, 122 + i * 100, w - 72, 88, g, ADV_GRADE_COLOR[hr.grade]);
+    const c = Card('Advice ' + hr.horseId, 36, 140 + i * 98, w - 72, 86, g, ADV_GRADE_COLOR[hr.grade]);
     c.classList.add('adv-row'); c.dataset.horse = hr.horseId; c.dataset.grade = hr.grade;
     if (hr.horseId === a.focusHorseId) c.classList.add('sel');
     Txt(hr.name, 24, 14, 380, 21, WHITE, c, { weight: 700, nowrap: true });
@@ -2016,7 +2016,7 @@ async function AdvicePanel(q, x, y, w, h, focus, onPick) {
     c.addEventListener('click', () => onPick(hr.horseId));
   });
   // ② the tips (pick, ground, field, style, whip…) for the selected horse
-  const y0 = 122 + rows.length * 100 + 14;
+  const y0 = 140 + rows.length * 98 + 12;
   Hair(36, y0, w - 72, g);
   const lines = a.lines.slice(0, Math.max(3, Math.floor((h - y0 - 96) / 34)));
   lines.forEach((l, i) => {

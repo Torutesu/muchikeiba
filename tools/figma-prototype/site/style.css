@@ -530,3 +530,5 @@ html[lang="en"] .pass-strip .cell small { font-size: 12px; }
 .tg-row.mine { box-shadow: inset 3px 0 0 var(--cyan); background: rgba(var(--cyan-rgb), .08); }
 .tg-row.mine .tg-name { color: var(--cyan); }
 .tf-row.goal .tf-main { color: var(--cyan); }
+/* round 15: 出走前アドバイス — the selected horse row (the one that races) */
+.card.adv-row.sel { box-shadow: inset 0 0 0 2px var(--cyan), 0 0 26px rgba(0, 210, 237, .22); transform: translateY(-2px); }

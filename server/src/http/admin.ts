@@ -80,6 +80,8 @@ export interface AdminContext {
   clock?: () => number;
   /** REQ-TOUR-001/010 (absent = tournament routes answer NOT_FOUND). */
   tournaments?: TournamentsService;
+  /** REQ-CUP-015: player-hosted cups (absent = the cup routes answer NOT_FOUND). */
+  hostedCups?: import('../domain/hostedCupService.js').HostedCupsService<unknown>;
   /** The shipped master (remote-config versions are resolved on top of it). Absent = no gacha calendar / events view. */
   baseMaster?: Master;
   /** REQ-INV-*: invite code → player id (null for unknown or retired codes). Absent = lookup by code answers NOT_FOUND. */
@@ -87,6 +89,10 @@ export interface AdminContext {
   /** REQ-OPS-015: browser origins of the ops console allowed to call the admin API (CORS, no credentials). */
   consoleOrigins?: readonly string[];
 }
+const cups = (ctx: AdminContext) => {
+  if (!ctx.hostedCups) throw new AppError('NOT_FOUND', 'hosted cups are not available');
+  return ctx.hostedCups;
+};
 const tours = (ctx: AdminContext) => {
   if (!ctx.tournaments) throw new AppError('NOT_FOUND', 'tournaments are not available');
   return ctx.tournaments;
@@ -454,6 +460,12 @@ export const adminRoutes: AdminRoute[] = [
   { method: 'POST', path: '/v1/admin/tournaments/:id/cancel', role: 'operator', write: true, action: 'tournament.cancel', handler: async (r) => ({
     result: await tours(r.ctx).adminCancel(r.params.id!, r.reason!, r.principal.id), target: `tournament:${r.params.id}`,
   }) },
+  // ---- player-hosted cups (REQ-CUP-015) ----
+  { method: 'GET', path: '/v1/admin/cups/:id', role: 'viewer', write: false, action: 'cup.view', handler: async (r) => ({ result: await cups(r.ctx).adminView(r.params.id!), target: `cup:${r.params.id}` }) },
+  { method: 'POST', path: '/v1/admin/cups/:id/delete', role: 'operator', write: true, action: 'cup.delete', handler: async (r) => {
+    const out = await cups(r.ctx).adminDelete(r.params.id!);
+    return { result: out, target: `cup:${r.params.id}`, after: { status: out.status, cancelReason: out.cancelReason } };
+  } },
   { method: 'GET', path: '/v1/admin/dead-letters', role: 'viewer', write: false, action: 'deadletter.list', handler: async (r) => {
     const st = r.query.get('status') ?? 'open';
     if (!['open', 'resolved', 'dismissed', 'all'].includes(st)) throw new AppError('BAD_REQUEST', 'status must be open|resolved|dismissed|all');

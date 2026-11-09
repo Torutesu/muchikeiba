@@ -41,6 +41,7 @@ import type { RivalService } from '../domain/rivalService.js';
 import { HISTORY_LIMITS, historyQuery, REF_RE, SUPPORT_TOPICS } from '../domain/history.js';
 import type { DesignInput, SilksDesign } from '../domain/silksEditor.js';
 import type { MyReplaysService } from '../domain/myReplaysService.js';
+import type { HostedCupsService } from '../domain/hostedCupService.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -79,7 +80,8 @@ export type PlayerMethod =
   | 'wchView' | 'wchStart' | 'wchPrepare' | 'wchAbort' | 'wchRecord'
   | 'teamGoalReward' | 'goalPlayerView'
   | 'hallMine' | 'hallViewer' | 'hallNoteView' | 'horseCareer' | 'hallAck' | 'hallSettings'
-  | 'myReplays' | 'replayPrepareSave' | 'replayCommitSave' | 'replayForget' | 'replayUpdate' | 'replayDelete' | 'replayOwnRef' | 'replayShared' | 'replayViewed';
+  | 'myReplays' | 'replayPrepareSave' | 'replayCommitSave' | 'replayForget' | 'replayUpdate' | 'replayDelete' | 'replayOwnRef' | 'replayShared' | 'replayViewed'
+  | 'cupsMine' | 'cupReserve' | 'cupRelease' | 'cupLeft' | 'cupCommitted' | 'cupCodeAttempt' | 'cupInvited' | 'cupClosed' | 'cupHorseName';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -145,6 +147,8 @@ export interface AppContext {
   rival?: RivalService;
   /** REQ-MYRP-*: マイリプレイ (domain/myReplaysService.ts). Absent → the routes answer NOT_FOUND. */
   myReplays?: MyReplaysService;
+  /** REQ-CUP-*: プレイヤー主催カップ (domain/hostedCupService.ts). Absent → the routes answer NOT_FOUND. */
+  hostedCups?: HostedCupsService<RaceEntry>;
   clock?: () => number;
   paidBalance(): Promise<unknown>;
   /**
@@ -271,6 +275,16 @@ const myReplays = (c: AppContext) => {
   return c.myReplays;
 };
 const replayTitle = z.string().max(200).nullable();
+const hostedCups = (c: AppContext) => {
+  if (!c.hostedCups) throw new AppError('NOT_FOUND', 'hosted cups are not available');
+  return c.hostedCups;
+};
+/** REQ-CUP-001: the rules are a RoomConditions (checked like a friend room's in the domain). */
+const roomConditionsSchema = z.object({
+  trackId: z.string().min(1).max(64).nullable(), going: goingSchema.nullable(), night: z.boolean().nullable(),
+  weather: z.string().min(1).max(32), temperatureC: z.number().int(), windKmh: z.number().int(),
+}).strict();
+const cupIdParamSchema = z.string().min(1).max(64);
 const spectate = (c: AppContext) => {
   if (!c.spectate) throw new AppError('NOT_FOUND', 'spectating is not available');
   return c.spectate;
@@ -937,6 +951,34 @@ export const routes: Route[] = [
   { method: 'GET', path: '/v1/replays/:raceId/data', auth: 'player', handler: async (_r, p, c, u) => myReplays(c).data(u, p.raceId!) },
   { method: 'GET', path: '/v1/friends/:playerId/replays', auth: 'player', handler: async (_r, p, c, u) => myReplays(c).friendList(u, p.playerId!) },
   { method: 'GET', path: '/v1/friends/:playerId/replays/:raceId/data', auth: 'player', handler: async (_r, p, c, u) => myReplays(c).friendData(u, p.playerId!, p.raceId!) },
+  // プレイヤー主催カップ (REQ-CUP-*, contracts/protocol.md §42)
+  { method: 'GET', path: '/v1/cups', auth: 'player', handler: async (_r, _p, c, u) => hostedCups(c).list(u) },
+  { method: 'POST', path: '/v1/cups', auth: 'player', handler: async (r, _p, c, u) => {
+    const key = idem(r);
+    const b = await body(r, z.object({
+      cupName: z.string().max(200), capacity: z.number().int(), format: z.enum(['single', 'best_of_3']),
+      opensAt: z.number().int().nonnegative(), closesAt: z.number().int().nonnegative(),
+      conditions: roomConditionsSchema.optional(), usePreset: z.boolean().optional(), horseId: id,
+    }).strict());
+    return hostedCups(c).create(u, b, key);
+  } },
+  { method: 'POST', path: '/v1/cups/lookup', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ code: z.string().min(1).max(32) }).strict());
+    return hostedCups(c).lookup(u, b.code);
+  } },
+  { method: 'POST', path: '/v1/cups/join', auth: 'player', handler: async (r, _p, c, u) => {
+    const key = idem(r);
+    const b = await body(r, z.object({ code: z.string().min(1).max(32).optional(), cupId: cupIdParamSchema.optional(), horseId: id }).strict());
+    return hostedCups(c).join(u, b, key);
+  } },
+  { method: 'GET', path: '/v1/cups/:cupId', auth: 'player', handler: async (_r, p, c, u) => hostedCups(c).get(u, p.cupId!) },
+  { method: 'POST', path: '/v1/cups/:cupId/leave', auth: 'player', handler: async (r, p, c, u) => { idem(r); return hostedCups(c).leave(u, p.cupId!); } },
+  { method: 'POST', path: '/v1/cups/:cupId/invite', auth: 'player', handler: async (r, p, c, u) => {
+    const b = await body(r, z.object({ friendIds: z.array(id).max(50).optional(), team: z.literal(true).optional() }).strict()
+      .refine((x) => (x.friendIds?.length ?? 0) > 0 || x.team === true, 'nothing to invite'));
+    return hostedCups(c).invite(u, p.cupId!, b);
+  } },
+  { method: 'POST', path: '/v1/cups/:cupId/start', auth: 'player', handler: async (_r, p, c, u) => hostedCups(c).start(u, p.cupId!) },
   // weekly rival (REQ-RIVAL-*, contracts/protocol.md §28)
   { method: 'GET', path: '/v1/rival', auth: 'player', handler: async (_r, _p, c, u) => (c.rival ? c.rival.view(u) : { enabled: false }) },
   { method: 'PUT', path: '/v1/rival/settings', auth: 'player', handler: async (r, _p, c, u) => rival(c).setOptOut(u, (await body(r, z.object({ optOut: z.boolean() }).strict())).optOut) },
@@ -973,6 +1015,7 @@ export const handle: Handler = async (req, _p, ctx) => {
       ops: ctx.ops, authenticateAdmin: (r) => ctx.authenticateAdmin!(r), player: ctx.player, leaderboard: ctx.leaderboard,
       paidBalance: () => ctx.paidBalance(), replay: (id) => ctx.race.replay(id), ...(ctx.clock ? { clock: ctx.clock } : {}),
       ...(ctx.tournaments ? { tournaments: ctx.tournaments } : {}),
+      ...(ctx.hostedCups ? { hostedCups: ctx.hostedCups } : {}),
       baseMaster: ctx.baseMaster ?? ctx.master,
       ...(ctx.inviteLookup ? { inviteLookup: ctx.inviteLookup } : {}),
       ...(ctx.adminConsoleOrigins ? { consoleOrigins: ctx.adminConsoleOrigins } : {}),

@@ -91,6 +91,16 @@ namespace Muchi.Client
         ReplayExpired,
         /// <summary>REQ-MYRP-003: the replay is larger than the per-replay cap (413).</summary>
         ReplayTooLarge,
+        /// <summary>REQ-CUP-007: too many hosted / entered cups at once (409).</summary>
+        CupLimit,
+        /// <summary>REQ-CUP-005: the cup is full — another player took the last slot (409).</summary>
+        CupFull,
+        /// <summary>REQ-CUP-005/010: the cup started, closed or is over (409).</summary>
+        CupClosed,
+        /// <summary>REQ-CUP-003/006: no such code (or not available to this player; never says why) (404).</summary>
+        CupCodeInvalid,
+        /// <summary>REQ-CUP-008: the next race cannot start now (window, entrants, a race running) (409).</summary>
+        CupNotReady,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -188,6 +198,11 @@ namespace Muchi.Client
             ["REPLAY_LIMIT"] = ApiErrorCode.ReplayLimit,
             ["REPLAY_EXPIRED"] = ApiErrorCode.ReplayExpired,
             ["REPLAY_TOO_LARGE"] = ApiErrorCode.ReplayTooLarge,
+            ["CUP_LIMIT"] = ApiErrorCode.CupLimit,
+            ["CUP_FULL"] = ApiErrorCode.CupFull,
+            ["CUP_CLOSED"] = ApiErrorCode.CupClosed,
+            ["CUP_CODE_INVALID"] = ApiErrorCode.CupCodeInvalid,
+            ["CUP_NOT_READY"] = ApiErrorCode.CupNotReady,
             ["VERIFIER_UNAVAILABLE"] = ApiErrorCode.VerifierUnavailable,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };
@@ -220,6 +235,7 @@ namespace Muchi.Client
                 case ApiErrorCode.RoomNotFound:
                 case ApiErrorCode.NotInTeam:
                 case ApiErrorCode.UnknownProduct:
+                case ApiErrorCode.CupCodeInvalid:
                     return new NotFoundException(code, wire, message, status);
                 case ApiErrorCode.AgeRequired:
                 case ApiErrorCode.GuardianConsentRequired:

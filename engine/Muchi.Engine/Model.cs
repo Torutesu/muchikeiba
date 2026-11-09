@@ -24,7 +24,7 @@ namespace Muchi.Engine
     public enum SegmentKind { Straight = 0, Corner = 1 }
     public enum EntrantKind { Human = 0, Cpu = 1 }
     /// <summary>Challenge = 週替わりチャレンジ (protocol §31): a single-player race against CPU, verified like time attack. The mode never changes the simulation.</summary>
-    public enum RaceMode { Ranked = 0, Friend = 1, Tutorial = 2, TimeAttack = 3, Event = 4, Tournament = 5, Challenge = 6 }
+    public enum RaceMode { Ranked = 0, Friend = 1, Tutorial = 2, TimeAttack = 3, Event = 4, Tournament = 5, Challenge = 6, /* REQ-CUP-008 (§42): player-hosted cup, unranked */ Cup = 7 }
 
     /// <summary>
     /// Ground condition (REQ-RACE-034). Turf: firm/good/yielding/soft. Dirt: fast/good/muddy/sloppy.

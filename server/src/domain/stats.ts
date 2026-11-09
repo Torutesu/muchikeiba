@@ -152,6 +152,8 @@ export interface PublicProfile {
   silks?: Silks;
   /** REQ-ITEM-006: equipped tack, so other players can render it (absent = default tack). */
   tack?: Partial<Record<'bridle' | 'saddlecloth', string>>;
+  /** REQ-CUP-014: hosted cup trophies (counts only; absent until the first one). Cosmetic. */
+  cupTrophies?: { gold: number; silver: number; bronze: number };
 }
 
 export function publicProfile(s: PlayerState, banned?: BannedSilksList): PublicProfile {
@@ -159,5 +161,6 @@ export function publicProfile(s: PlayerState, banned?: BannedSilksList): PublicP
     playerId: s.id, displayName: s.profile.displayName, titleId: s.profile.titleId, silks: effectiveSilks(s.profile.silks, `p:${s.id}`, banned), classId: s.season.classId,
     rating: Math.round(s.rating.r), stats: { races: s.stats.races, wins: s.stats.wins, top3: s.stats.top3 }, lastSeenAt: s.profile.lastSeenAt,
     ...(s.equipment && Object.keys(s.equipment.tack).length > 0 ? { tack: { ...s.equipment.tack } } : {}),
+    ...(s.cups && s.cups.trophies.gold + s.cups.trophies.silver + s.cups.trophies.bronze > 0 ? { cupTrophies: { ...s.cups.trophies } } : {}),
   };
 }

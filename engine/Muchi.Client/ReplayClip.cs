@@ -350,6 +350,7 @@ namespace Muchi.Client
                 case RaceMode.Event: return "イベント";
                 case RaceMode.Tournament: return "大会";
                 case RaceMode.Challenge: return "週替わりチャレンジ";
+                case RaceMode.Cup: return "主催カップ";
                 default: return null;
             }
         }

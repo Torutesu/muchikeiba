@@ -40,7 +40,7 @@ export function liveRaceOf(created: CreatedRace, extra: { title?: string; tourna
   const ratings = humans.map((p) => created.ratings[p]?.r ?? 1500);
   return {
     raceId: c.raceId, mode: c.mode, startAtMs: created.startAtMs, trackId: c.track.id,
-    visibility: c.mode === 'friend' ? 'friends' : 'public',
+    visibility: c.mode === 'friend' || c.mode === 'cup' ? 'friends' : 'public',
     playerIds: humans,
     rating: ratings.length ? Math.round(ratings.reduce((a, b) => a + b, 0) / ratings.length) : 0,
     delayMs: spectateDelayMsFor(c.mode),

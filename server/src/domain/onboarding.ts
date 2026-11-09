@@ -12,6 +12,7 @@ import { weeklyChallengeProblems } from './weeklyChallenge.js';
 import { teamGoalProblems } from './teamGoal.js';
 import { hallProblems } from './hallOfFame.js';
 import { myReplaysProblems } from './myReplays.js';
+import { hostedCupsProblems } from './hostedCups.js';
 import { z } from 'zod';
 import { AppError } from './errors.js';
 import { createHorseFromTemplate, validateName } from './horses.js';
@@ -436,7 +437,7 @@ export function firstRaceOf(m: Master, s: PlayerState): { cpuFillAfterMs: number
 export function uxProblems(m: Master, knownItems: Set<string>): string[] {
   return [...onboardingProblems(m.progression, m, knownItems), ...nudgeProblems(m.progression.nudges), ...accountDeletionProblems(m.progression.accountDeletion), ...dayRolloverProblems(m.progression.dayRollover),
     ...inviteProblems(m), ...comebackProblems(m), ...changelogProblems(m.changelog), ...adsProblems(m.progression.ads), ...trainingProblems(m), ...giftBoxProblems(m), ...rivalProblems(m),
-    ...weeklyChallengeProblems(m), ...teamGoalProblems(m), ...weekStartProblems(m), ...hallProblems(m), ...myReplaysProblems(m)]; // REQ-INV-*, REQ-CB-*, REQ-AD-002, REQ-TRAIN-012, REQ-BOX-012, REQ-RIVAL-012, REQ-WCH-012, REQ-TGOAL-010, REQ-HOF-*, REQ-MYRP-013
+    ...weeklyChallengeProblems(m), ...teamGoalProblems(m), ...weekStartProblems(m), ...hallProblems(m), ...myReplaysProblems(m), ...hostedCupsProblems(m)]; // REQ-INV-*, REQ-CB-*, REQ-AD-002, REQ-TRAIN-012, REQ-BOX-012, REQ-RIVAL-012, REQ-WCH-012, REQ-TGOAL-010, REQ-HOF-*, REQ-MYRP-013, REQ-CUP-*
 }
 
 /**

@@ -833,3 +833,24 @@
 - REQ-MYRP-014 KPI：`replay_save`・`replay_view`（サーバー）、`replay_share`（クライアント）。クエリは `docs/ops/kpi-queries.md`。
 - REQ-MYRP-015 クライアント：`Muchi.Client` `ApiClient.GetMyReplaysAsync`・`SaveReplayAsync`・`UpdateReplayAsync`（名前・お気に入り・公開）・`DeleteReplayAsync`・`GetReplayDataAsync`・`GetFriendReplaysAsync`・`GetFriendReplayDataAsync`、`ReplayPlayer`。Unity のゲーム層 `MyReplaysModel`（一覧のカード、名前の変更シート、公開の切り替え、プレイヤーの操作、再生できない時の文言）。
 - REQ-MYRP-016 プロトタイプ：マイリプレイの一覧（結果・コース・日付のカード）、本物のエンジンの再計算で動くプレイヤー（速度・カメラ・最後の200m）、名前の変更シート、公開の切り替え（日本語・英語）。
+
+## 42. プレイヤー主催カップ（TS＋C#、`src/domain/hostedCups.ts`・`src/domain/hostedCupService.ts`・`src/do/cup.ts`・`Muchi.Client/HostedCups.cs`、`contracts/protocol.md` §42）
+拘束条件：ランク外（レーティング・シーズン・ライバル・ミッション・パス・コイン・アイテムは動かない、経済の目標なし）。主催者に有利をなくす。参加コードは推測・列挙できない。プレイヤーが入力した名前は訳さない。レースは既存のフレンド部屋の仕組みで走る（別の仕組みを作らない）。
+- REQ-CUP-001 作成：`POST /v1/cups`（冪等キー必須、同じキーは同じカップ）。名前・人数（`minCapacity`〜`maxCapacity`）・形式（`single`／`best_of_3`）・時間帯（`opensAt`〜`closesAt`、長さ `minWindowMinutes`〜`maxWindowHours`、開始は `maxLeadHours` 以内）・条件（`RoomConditions`、フレンド部屋と同じ検証、`usePreset` で自分の保存した条件）・自分の馬。
+- REQ-CUP-002 名前：1〜`nameMaxChars` 文字、NFKC、制御文字・URL 不可、NG 語は表示名と同じ一覧（`NG_NAME`）。訳さない（`cupName`・`hostName` は `PLAYER_TEXT_KEYS`）。
+- REQ-CUP-003 参加コード：8文字（31種の文字、暗号の乱数、`XXXX-XXXX`）、索引は先頭の文字で分ける。終わった・中止のカップのコードは無効。コードの照会・参加は1時間 `joinCodeAttemptsPerHour` 回まで（成功も失敗も数える、超えると `RATE_LIMITED`）。無い・使えないコードは理由を言わず `CUP_CODE_INVALID`。
+- REQ-CUP-004 招待：主催者が最初のレースの前に、フレンド（お互いにフレンドの人だけ）か自分の支部の仲間を招待（1カップ `invitesPerCup` 人まで）。招待された人はコードなしで `cupId` で参加できる。プッシュ `cup_invite`。
+- REQ-CUP-005 参加：自分の馬を選んで参加（主催者は他の人の馬を選べない）。最初のレースの前・`closesAt` の前・定員まで。同じ人の再送は1回（`joined: false`）。最後の1枠に同時に2人来ても1人だけが入る（もう1人は `CUP_FULL`）。
+- REQ-CUP-006 ブロック：どちらかがもう一方をミュート（§28・支部フィードと同じ一覧）していれば同じカップに入れない（参加の時に双方向で確かめる、理由は言わない）。招待もしない。BAN・削除の予約中は作成・参加できない。
+- REQ-CUP-007 上限：主催中 `maxActivePerHost`（既定 2）、参加中（主催を含む）`maxEntriesPerPlayer`（既定 4）。終わった・中止のカップは数えない（通知が届かなくても `closesAt` ＋ 余裕で数えなくなる）。
+- REQ-CUP-008 出走：主催者が時間帯の中で、参加者が `minEntrants` 人以上の時に次のレースを始める（`POST /v1/cups/:cupId/start`）。マッチメイカーのフレンド部屋と同じ手順（全員が他のレース・キューにいないこと、部屋を作り、割り当てを `/v1/match/status` に）。モードは `cup`、人間だけ、条件は部屋の条件。レース ID はカップ・回・試行で決まる（再試行は同じ部屋）。
+- REQ-CUP-009 結果：部屋の確定（`heatResult`）で着順。無効なら数えず、主催者がやり直せる。`raceTimeoutMinutes` で確定しなければ無効。`best_of_3` は着順のポイント（`pointsByPlace`）、順位はポイント → 最高着順 → 最終レース → 参加の早い順。全部走ったら終了。
+- REQ-CUP-010 変えられない：作った後に条件・人数・形式を変える API はない。最初のレースの後は参加・招待もできない。
+- REQ-CUP-011 抜ける：主催者が抜けるとカップは中止（`host_left`、参加者の一覧から消え、履歴に「中止」）。参加者は最初のレースの前なら外れ、後なら棄権（以降 0 点）。冪等。
+- REQ-CUP-012 締め切りと片付け：`closesAt` に、走ったレースが無ければ中止（`expired`）、あれば途中の順位で終了（`partial`）。終わったカップは `keepDays` 日後に消える。参加者への結果の通知は届くまで再送する（アラーム）。
+- REQ-CUP-013 ランク外：`mode: "cup"` の結果は `applyRace` で記録だけ（`appliedRaces`・マイリプレイ・`race_finish`）。レーティング・シーズン・ライバル・ミッション・パス・統計・殿堂・支部フィード・共同目標・コインは動かない（テストで確かめる）。
+- REQ-CUP-014 トロフィーと結果のカード：終わったカップの順位 1〜3 にトロフィー（金・銀・銅、見た目だけ）。履歴は `historyKeep` 件。プロフィールに数を出す。結果のカードは既存の共有カード（`ShareCard`）で共有する。
+- REQ-CUP-015 運用の削除：`POST /v1/admin/cups/:cupId/delete`（operator 以上、理由、監査ログ）でカップを中止（`ops_deleted`）。
+- REQ-CUP-016 アカウント削除：手順に `cups`（主催中は中止、参加中は外す／名前を伏せて棄権）。
+- REQ-CUP-017 KPI：`cup_create`・`cup_join`・`cup_finish`（サーバー）。クエリは `docs/ops/kpi-queries.md`。
+- REQ-CUP-018 クライアントとプロトタイプ：`Muchi.Client` `ApiClient.GetCupsAsync`・`CreateCupAsync`・`GetCupAsync`・`LookupCupCodeAsync`・`JoinCupAsync`・`LeaveCupAsync`・`InviteToCupAsync`・`StartCupRaceAsync`、`CupCode`（入力の正規化）・`CupResultCard`（共有カード）。Unity のゲーム層 `HostedCupModel`（作成のフォーム、招待・コードで参加、ロビー、順位表）。プロトタイプの4画面（作成・招待／コード・ロビー・順位表）を日本語・英語で。

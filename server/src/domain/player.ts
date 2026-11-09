@@ -218,6 +218,8 @@ export interface PlayerState {
   hall?: import('./hallOfFame.js').HallState;
   /** REQ-MYRP-*: マイリプレイ — recent races / best moments and the saved list (myReplays.ts ensureMyReplays). */
   myReplays?: import('./myReplays.js').MyReplaysState;
+  /** REQ-CUP-*: プレイヤー主催カップ — cups the player is in, invitations, results and trophies (hostedCups.ts ensureCups). */
+  cups?: import('./hostedCups.js').PlayerCupsState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

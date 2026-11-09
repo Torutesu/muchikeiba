@@ -14,7 +14,7 @@ C#（端末・検証サーバー）とTypeScript（Cloudflareサーバー）の�
 {
   "v": 1,
   "raceId": "r_01JC...",
-  "mode": "ranked",                 // "ranked" | "friend" | "tutorial" | "timeattack" | "event" | "tournament"
+  "mode": "ranked",                 // "ranked" | "friend" | "tutorial" | "timeattack" | "event" | "tournament" | "challenge"（§31） | "cup"（§42）
   "seed": "9876543210123456789",    // uint64（10進文字列）
   "track": {
     "id": "tokyo_like_turf_2000",
@@ -1797,3 +1797,58 @@ TeamGoalView = { "teamId": "tabc123456", "teamName": "あおばRC", "enabled": t
 
 ### 37.7 アカウント削除
 削除の手順に `replays` を足す（`rival` の後）：スナップショットの `replayKeys`（保存した写し `myreplays/<playerId>/<raceId>.json`）を R2 から消す。状態の一覧は最後の `wipe` で消える。
+
+## 42. プレイヤー主催カップ（player-hosted cups、REQ-CUP-001〜018、`server/src/domain/hostedCups.ts`・`hostedCupService.ts`・`server/src/do/cup.ts`、C# `HostedCups.cs`・`Muchi.Game.HostedCupModel`）
+フレンドや支部の仲間と小さなカップを開く。主催者がコース・距離・馬場（フレンド部屋の条件 §REQ-ROOM-002 と同じ `RoomConditions`）・人数（`minCapacity`〜`maxCapacity`、既定 4〜8）・形式（1レース／3レースのポイント制）・開催の時間帯を選び、招待（フレンド・支部・参加コード）で集める。レースは**フレンド部屋の仕組み**（マッチメイカーの部屋作り、`RaceRoomDO`、`/v1/match/status` の割り当て、観戦）で走る。**ランク外**：レーティング・シーズン・ライバルの記録・デイリーミッション・パス・コイン・アイテムは一切動かない（経済の目標なし、E 番号なし）。報酬は見た目だけのトロフィー（プロフィールの棚）。
+
+### 42.1 しくみ
+- **レースのモード `cup`**（§2 の `mode` に追加、エンジンの `RaceMode.Cup = 7`）。既存のモードの設定・結果は変わらない（ゴールデンは不変）。設定は部屋の条件（`roomPreset` と同じ `roomGround`／`roomScene`）。人間だけ（CPU なし）、能力の上限なし、絆の補正なし（`friendBond` は使わない：主催者の有利をなくす）。`applyRace` は `mode: "cup"` を**記録だけ**にする（`appliedRaces`・マイリプレイ・`race_finish` の KPI だけ。報酬・ミッション・パス・統計・ライバル・殿堂・支部フィード・共同目標・かんたん操作の連敗は数えない）。
+- **カップの状態**は1カップ1オブジェクト（`CupDO` `cup:<cupId>`）。参加コードの索引は同じクラスの `cupcode:<先頭の1文字>`。プレイヤーの状態（`cups`）には「参加中のカップ」（上限の判定）・招待・結果の履歴・トロフィーを持つ。
+- **形式**：`single`（1レース）・`best_of_3`（3レース、着順のポイント `pointsByPlace`、既定 10/7/5/4/3/2/1/1）。順位はポイント → 最高着順 → 最終レースの着順 → 参加の早い順。1レースの時はそのレースの着順。来なかった人（no-show）・途中で抜けた人は以降 0 点。
+- **主催者に有利をなくす**：主催者は他の人の馬を選べない（馬は各自が参加の時に選ぶ）。条件・人数・形式は**最初のレースの後は変えられない**（そもそも作った後に変える API はない。最初のレースの後は参加・招待もできない）。主催者が決めるのは「出走」の時刻だけ（開催の時間帯の中、参加者が `minEntrants` 人以上）。
+- **締め切り**：`closesAt` を過ぎると、1レースも走っていなければ中止（`expired`）、走ったレースがあればその時点の順位で終わる（`partial: true`）。走っているレースは結果（か `raceTimeoutMinutes` の無効）を待ってから。終わった・中止のカップは `keepDays` 日後に消える（参加コードは終わった時に無効になる）。
+- **主催者が抜ける** = カップを中止（`host_left`）。参加者は最初のレースの前なら抜けられる（枠が空く）。後は「棄権」（以降 0 点、順位には残る）。
+- **解放**：新しい解放キーは作らない。フレンド部屋と同じ `friend_rooms`（2日目 or 10戦、§4.3）の解放で画面に出す（カップはフレンド部屋の延長）。
+- **最後の1枠の取り合い**：参加は1つのオブジェクトの中で順に処理するので、同時に来た2人の片方だけが入り、もう片方は `409 CUP_FULL`（予約した枠はプレイヤー側で戻す）。
+
+### 42.2 API（すべて要認証。冪等キーは `Idempotency-Key`）
+| メソッド | パス | 冪等キー | 本文 → 応答 |
+|---|---|---|---|
+| GET | `/v1/cups` | | → `{ enabled, limits, active: CupView[], invites: CupInvite[], history: CupResult[], trophies }` |
+| POST | `/v1/cups` | 必須 | `{ cupName, capacity, format, opensAt, closesAt, conditions?: RoomConditions, usePreset?: bool, horseId }` → `{ cup: CupView, created: bool }`。同じキーの再送は同じカップ（`created: false`）。主催者も参加者の1人（自分の馬 `horseId`）。`400 INVALID_NAME`／`NG_NAME`（名前）・`BAD_REQUEST`（人数・時間帯・条件）・`409 CUP_LIMIT`（主催中が `maxActivePerHost`、参加中が `maxEntriesPerPlayer`）・`409 DELETION_PENDING`・`403 BANNED` |
+| GET | `/v1/cups/:cupId` | | 主催者・参加者・招待された人 → `CupView`。他は `404` |
+| POST | `/v1/cups/lookup` | | `{ code }` → `CupPreview`（参加前の確認）。試行の回数を数える（`joinCodeAttemptsPerHour`、超えると `429 RATE_LIMITED`）。無い・終わったコードは `404 CUP_CODE_INVALID` |
+| POST | `/v1/cups/join` | 必須 | `{ code?, cupId?, horseId }`（どちらか一方）→ `{ cup: CupView, joined: bool }`。コードは試行を数える。`cupId` は招待された人だけ。同じ人の再送は `joined: false`。`409 CUP_FULL`／`CUP_CLOSED`（締め切り・最初のレースの後・終わった）／`CUP_LIMIT`、ブロックの関係（どちらかがミュート、§28 の一覧）・BAN は `404 CUP_CODE_INVALID`（理由は言わない） |
+| POST | `/v1/cups/:cupId/leave` | 必須 | → `{ left: bool, cancelled: bool, cup: CupView \| null }`。主催者なら中止。参加していなければ `left: false`（冪等） |
+| POST | `/v1/cups/:cupId/invite` | | 主催者だけ、最初のレースの前。`{ friendIds?: string[], team?: true }` → `{ invited: number, skipped: number }`。フレンドでない人・ブロックの関係の人は数えずに飛ばす。`team: true` は主催者の支部の仲間全員。1カップ `invitesPerCup` 人まで。招待された人にはプッシュ `cup_invite` と招待の一覧 |
+| POST | `/v1/cups/:cupId/start` | | 主催者だけ → `{ raceId, raceIndex, startAtMs }`。各参加者は `/v1/match/status` で部屋の割り当てを受け取る（フレンド部屋と同じ）。`409 CUP_NOT_READY`（時間帯の外・人数不足・前のレースが確定していない・全部走った）・`409 ALREADY_IN_RACE`（参加者の誰かが他のレース中）・`403 NOT_HOST` |
+| POST | `/v1/admin/cups/:cupId/delete` | | 運用（operator 以上、監査ログ）`{ reason }` → カップを中止（`ops_deleted`）。参加者の一覧から消える |
+
+### 42.3 形
+```json
+{ "cupId": "cup_k3m9…", "cupName": "金曜の夜カップ", "hostId": "p_1", "hostName": "トオル", "role": "host",
+  "code": "K7PM-Q2XD", "format": "best_of_3", "capacity": 6, "racesTotal": 3, "racesDone": 1,
+  "conditions": { "trackId": "aoba_turf_1600", "going": "good", "night": false, "weather": "sunny", "temperatureC": 18, "windKmh": 0 },
+  "opensAt": 1794279600000, "closesAt": 1794290400000, "status": "running", "partial": false, "cancelReason": null,
+  "entrants": [ { "playerId": "p_1", "displayName": "トオル", "horseName": "アイボウ", "withdrawn": false } ],
+  "races": [ { "index": 0, "raceId": "cup-cup_k3m9-0-0", "status": "done", "places": { "p_1": 1 } } ],
+  "standings": [ { "playerId": "p_1", "displayName": "トオル", "rank": 1, "points": 10, "places": [1] } ],
+  "canStart": true, "minEntrants": 2 }
+```
+- `code` は主催者と参加者にだけ出す（`XXXX-XXXX`、`ABCDEFGHJKMNPQRSTUVWXYZ23456789` の8文字＝31^8 通り、暗号の乱数）。入力は大文字・小文字・ハイフンを問わない。
+- `cupName`（プレイヤーが入力、1〜`nameMaxChars` 文字、NFKC、制御文字・URL 不可、NG 語は表示名と同じ一覧で `NG_NAME`）・`displayName`・`hostName`・`horseName` は**訳さない**（`PLAYER_TEXT_KEYS`）。
+- `CupPreview` = `{ cupId, cupName, hostName, format, capacity, entrants: number, conditions, opensAt, closesAt }`（参加前なので他の人の名前は出さない）。
+- `CupResult`（履歴）= `{ cupId, cupName, format, rank, points, entrants, at, status: "finished" | "cancelled", partial, trophy: "gold" | "silver" | "bronze" | null }`。トロフィーは順位 1〜3（参加者がその人数以上の時）。トロフィーは見た目だけで、何にも効かない。
+- プロフィール（`publicProfile`）に `cupTrophies: { gold, silver, bronze }` を足す（数だけ、カップ名は出さない）。
+
+### 42.4 設定 `progression.hostedCups`（リモート設定で変更可）
+`{ enabled, minCapacity, maxCapacity, minEntrants, maxActivePerHost, maxEntriesPerPlayer, nameMaxChars, minWindowMinutes, maxWindowHours, maxLeadHours, joinCodeAttemptsPerHour, invitesPerCup, pointsByPlace[], raceTimeoutMinutes, keepDays, historyKeep }`。上限（`HOSTED_CUP_HARD_LIMITS`）：capacity 2..12、maxActivePerHost 1..5、maxEntriesPerPlayer 1..10、nameMaxChars 1..30、joinCodeAttemptsPerHour 1..60、invitesPerCup 1..50、pointsByPlace は 1..12 個の非増加の 0..100。起動時と各版で検証。
+
+### 42.5 KPI
+`cup_create`（サーバー、主催者、`s1` = format、`count` = capacity、`s2` = 支部に招待できるか `team`／`solo`）・`cup_join`（サーバー、参加者、`s1` = `code`／`invite`、`s2` = format）・`cup_finish`（サーバー、各参加者、`s1` = `finished`／`cancelled`、`s2` = format、`place` = 順位、`count` = 参加者数、`s3` = 中止の理由）。
+
+### 42.6 アカウント削除
+削除の手順に `cups` を足す（`replays` の後）：主催中のカップは中止（`host_deleted`）、参加中のカップは最初のレースの前なら外し、後なら名前を `DELETED_PLAYER_NAME` にして棄権にする。状態の一覧は最後の `wipe` で消える。
+
+### 42.7 活動（§40）に書くところ（Round 15 の統合で実装、ここでは書かない）
+招待を受けた（`cupInvited`）・カップが始まった（最初のレースの割り当て）・カップが終わった／中止になった（`cupClosed`、順位とトロフィー）の3つ。

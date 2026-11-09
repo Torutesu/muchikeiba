@@ -12,7 +12,7 @@ export const styleSchema = z.enum(['nige', 'senko', 'sashi', 'oikomi']);
 export const surfaceSchema = z.enum(['turf', 'dirt']);
 export const aptSurfaceSchema = z.enum(['turf', 'dirt', 'both']);
 // 'challenge': 週替わりチャレンジ (§31), a single-player race against CPU verified like time attack
-export const modeSchema = z.enum(['ranked', 'friend', 'tutorial', 'timeattack', 'event', 'tournament', 'challenge']);
+export const modeSchema = z.enum(['ranked', 'friend', 'tutorial', 'timeattack', 'event', 'tournament', 'challenge', 'cup']); // cup: REQ-CUP-008 (§42)
 /** Ground condition names per surface (REQ-RACE-034). Absent = good. */
 export const TURF_GOINGS = ['firm', 'good', 'yielding', 'soft'] as const;
 export const DIRT_GOINGS = ['fast', 'good', 'muddy', 'sloppy'] as const;

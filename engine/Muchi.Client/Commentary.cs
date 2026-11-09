@@ -261,6 +261,7 @@ namespace Muchi.Client
                 case RaceMode.Event: return "event";
                 case RaceMode.Tournament: return "tournament";
                 case RaceMode.Challenge: return "challenge";
+                case RaceMode.Cup: return "cup";
                 default: return "other";
             }
         }

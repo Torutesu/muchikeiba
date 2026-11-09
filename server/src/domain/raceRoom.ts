@@ -26,7 +26,7 @@ export interface RoomOptions {
 
 /** REQ-SPEC-003: friend rooms stream live; ranked / event / tournament races are delayed for spectators. */
 export const SPECTATE_DELAY_MS = 10_000;
-export const spectateDelayMsFor = (mode: string) => (mode === 'friend' ? 0 : SPECTATE_DELAY_MS);
+export const spectateDelayMsFor = (mode: string) => (mode === 'friend' || mode === 'cup' ? 0 : SPECTATE_DELAY_MS);
 export const DEFAULT_ROOM_OPTIONS = { verifySampleRate: 0.05, resultWaitMs: 5000 };
 
 export type Outbound = { to: number | 'all'; msg: ServerMessage };

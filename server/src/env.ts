@@ -46,6 +46,8 @@ export interface Env {
   SPECTATOR_LIMIT?: string;
   /** One per tournament `tour:<id>` plus the index `index` (REQ-TOUR-*). */
   TOURNAMENTS?: DurableObjectNamespace;
+  /** REQ-CUP-*: one per hosted cup `cup:<cupId>` plus the join-code index shards `cupcode:<c>`. */
+  CUPS?: DurableObjectNamespace;
   // ---- stores (server/README.md「ストア連携」). Unset => that store rejects every receipt.
   /** iOS bundle id. Enables Apple verification + App Store Server Notifications V2. */
   APPLE_BUNDLE_ID?: string;

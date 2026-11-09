@@ -920,6 +920,25 @@
     "photoFinishTicks": 1,
     "retiredRulesets": []
   },
+  "hostedCups": {
+    "_note": "REQ-CUP-*（contracts/protocol.md §42）。プレイヤー主催カップ：フレンド・支部の仲間と開く小さなカップ。条件はフレンド部屋と同じ（RoomConditions）。人数 minCapacity〜maxCapacity、形式は1レースか3レースのポイント制（pointsByPlace）。ランク外：レーティング・シーズン・ライバル・ミッション・パス・コイン・アイテムは動かない（経済の目標なし）。報酬は見た目だけのトロフィー。参加コードは8文字（31種）で、照会・参加は1時間 joinCodeAttemptsPerHour 回まで。",
+    "enabled": true,
+    "minCapacity": 4,
+    "maxCapacity": 8,
+    "minEntrants": 2,
+    "maxActivePerHost": 2,
+    "maxEntriesPerPlayer": 4,
+    "nameMaxChars": 20,
+    "minWindowMinutes": 15,
+    "maxWindowHours": 72,
+    "maxLeadHours": 168,
+    "joinCodeAttemptsPerHour": 10,
+    "invitesPerCup": 30,
+    "pointsByPlace": [10, 7, 5, 4, 3, 2, 1, 1],
+    "raceTimeoutMinutes": 20,
+    "keepDays": 7,
+    "historyKeep": 20
+  },
   "rival": {
     "_note": "REQ-RIVAL-*（contracts/protocol.md §28）。週はゲーム日（dayRollover、既定4:00 JST）の weekStartsOn（1=月曜）から7日。先週ランク戦を走った同じクラスのレーティングの近い人（maxRatingGap 以内）と、週IDの seed と並べた候補から決定論で組む。合う人がいなければ cpuRivals から週IDとプレイヤーIDで決まるCPU。報酬は結果で決まる固定の無償コインだけ（1週 ≤ 100 = ¥160 相当、連勝の上乗せなし、乱数なし）。週の自分のランク戦が minRacesForResult 未満なら報酬なし。経済 E16（docs/spec/balance-targets.md 4.14）。",
     "enabled": true,

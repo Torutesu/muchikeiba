@@ -87,6 +87,10 @@ import {
   HISTORY_LIMITS, type GachaLogEntry, type GachaPager, type LedgerPager, type SupportTopic,
 } from './history.js';
 import { buildSupportTicket } from '../ops/support.js';
+import {
+  countCodeAttempt, noteCupCommitted, playerCupsView, receiveCupClosed, receiveCupInvite, releaseCup, reserveCup, ensureCups,
+  type CupClosedNotice, type CupFormat, type PlayerCupInvite,
+} from './hostedCups.js';
 import { abortChallengeSubmit, prepareChallengeSubmit, recordChallengeResult, startChallenge, weeklyChallengeView, type WchStartInput } from './weeklyChallenge.js';
 import {
   ackCeremony, hallSnapshot, hallSnapshotKey, hallViewerOf, horseCareerView, myHallView, noteHallRace, noteHallRetire, noteHallTa, noteHallTournament,
@@ -190,7 +194,7 @@ export interface PlayerServiceDeps {
 }
 
 const standingKey = (s: PlayerState) => JSON.stringify([s.season.id, s.season.classId, s.season.points, s.season.races, Math.round(s.rating.r), s.profile.displayName, s.profile.titleId]);
-const profileKey = (s: PlayerState) => JSON.stringify([s.profile.displayName, s.profile.titleId, s.season.classId, Math.round(s.rating.r), s.stats.races, s.stats.wins, s.stats.top3]);
+const profileKey = (s: PlayerState) => JSON.stringify([s.profile.displayName, s.profile.titleId, s.season.classId, Math.round(s.rating.r), s.stats.races, s.stats.wins, s.stats.top3, s.cups?.trophies ?? null]);
 
 const IDEM_KEEP = 200;
 /**
@@ -876,6 +880,41 @@ export class PlayerService {
     return this.tx(id, null, (_s, _now, emit) => { emit({ name: 'replay_view', s1: source, s2: status, s3: mode }); return true; });
   }
 
+  // ---------------------------------------------------------------- プレイヤー主催カップ (REQ-CUP-*, hostedCups.ts; the cups by HostedCupsService)
+  async cupsMine(id: string) {
+    const s = await this.load(id);
+    return { ...playerCupsView(this.d.master, s, this.d.clock()), teamId: s.team?.teamId ?? null };
+  }
+  /** REQ-CUP-006/007: limits, deletion, BAN — before the cup accepts a create / join (idempotent per cup). */
+  cupReserve(id: string, cupId: string, role: 'host' | 'entrant', until: number) {
+    return this.tx(id, null, (s, now) => reserveCup(this.d.master, s, cupId, role, until, now));
+  }
+  cupRelease(id: string, cupId: string) { return this.tx(id, null, (s) => releaseCup(s, cupId)); }
+  /** The player left a cup before its first race: the slot no longer counts. */
+  cupLeft(id: string, cupId: string) {
+    return this.tx(id, null, (s) => { const st = ensureCups(s); st.active = st.active.filter((r) => r.cupId !== cupId); return true; });
+  }
+  cupCommitted(id: string, cupId: string, kind: 'create' | 'join', meta: { format: CupFormat; capacity?: number; via?: string; team?: boolean }) {
+    return this.tx(id, null, (s, _now, emit) => { noteCupCommitted(s, cupId, kind, meta, emit); return true; });
+  }
+  /** REQ-CUP-003: one code attempt (RATE_LIMITED past the hourly cap). */
+  cupCodeAttempt(id: string) { return this.tx(id, null, (s, now) => countCodeAttempt(this.d.master, s, now)); }
+  /** REQ-CUP-004: an invitation from a host (dropped when muted / deleting) + the cup_invite push. */
+  async cupInvited(id: string, inv: PlayerCupInvite) {
+    if (await this.wiped(id)) return false;
+    return this.tx(id, null, (s, now) => {
+      const ok = receiveCupInvite(this.d.master, s, inv, now);
+      if (ok && this.d.master.push.templates['cup_invite']) { ensurePush(this.d.master, s); enqueuePush(this.d.master, s, 'cup_invite', { name: inv.hostName }, now); }
+      return ok;
+    });
+  }
+  /** REQ-CUP-012/014: the cup closed (result, trophy; once per cup). A wiped account answers ok (nothing to tell). */
+  async cupClosed(id: string, n: CupClosedNotice) {
+    if (await this.wiped(id)) return { recorded: false };
+    return this.tx(id, null, (s, _now, emit) => ({ recorded: receiveCupClosed(this.d.master, s, n, emit) !== null }));
+  }
+  async cupHorseName(id: string, horseId: string) { return getHorse(await this.load(id), horseId).name ?? ''; }
+
   async claimPass(id: string, track: 'free' | 'premium', level: number, idemKey: string | null) {
     return this.tx(id, this.requireKey(idemKey), (s, now) => claimPass(this.d.master, s, track, level, now));
   }
@@ -899,6 +938,13 @@ export class PlayerService {
       applied[r.raceId] = now;
       // REQ-MYRP-002: the course best before this race decides a personal-best moment
       const prevBest = r.details?.trackId ? s.stats.byTrack[r.details.trackId]?.bestFinishTick ?? null : null;
+      if (r.mode === 'cup') {
+        // REQ-CUP-013: a hosted cup race is unranked — recorded only (no coins, missions, pass, rating, season, stats,
+        // rival, hall, team feed / goal, assist streak). The cup's own object keeps the standings.
+        noteRaceForReplays(this.d.master, s, r, prevBest, now);
+        if (!r.void) emit({ name: 'race_finish', s1: r.mode, s2: r.details?.style ?? '', s3: r.details?.trackId ?? '', place: r.place, count: r.fieldSize, value: r.humans ?? 0 });
+        return { coins: 0, seasonPoints: 0, titles: [] as string[], rewarded: false, firstWinBonus: 0, comebackXp: 0, achievements: [] as ReturnType<typeof syncCollection>, event: null };
+      }
       const base0 = applyRaceResult(this.d.master, s, r, now);
       noteRaceForReplays(this.d.master, s, r, prevBest, now); // REQ-MYRP-001: offer the race in マイリプレイ
       noteRivalRace(this.d.master, s, r, now, emit); // REQ-RIVAL-004: head to head (ranked) / challenge (friend)

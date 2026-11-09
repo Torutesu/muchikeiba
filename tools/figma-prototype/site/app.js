@@ -3331,6 +3331,7 @@ function GiftResult(c) {
   lines.slice(0, 5).forEach(([t, col], i) => Txt(t, 52, 186 + i * 40, 796, 22, col, box, { weight: 700, nowrap: true }));
   if (c.held.length) Txt(`${c.held.length}件は持てる上限のため、ボックスに残しました`, 52, 400, 796, 15, WARN, box, { weight: 500 }).dataset.giftHeld = String(c.held.length);
   Cta('つづける', 52, 466, 360, () => GiftBox('box'), box, 'small');
+}
 // ================================================================= round 13: 購入履歴・コイン履歴・ガチャ履歴 (REQ-HIST-*, contracts/protocol.md §33)
 // The same screen as the Unity HistoryModel: a balance header with 有償 / 無償 apart and this month against the age limit,
 // four tabs (購入 / 有償コイン / 無償コイン / ガチャ), pages by the server's cursor, the selected row's detail, and the

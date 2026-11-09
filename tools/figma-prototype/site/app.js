@@ -2827,6 +2827,8 @@ async function ComebackTrack() {
 // play only and pay free coins. Art: portraits/silhouettes/badges are Codex's (asset keys collection/portrait|silhouette/*,
 // badge/*); until then the partner renders stand in (a silhouette = the same render, blacked out).
 const COL_TABS = [['horses', '競走馬'], ['skills', '固有スキル'], ['courses', 'コース'], ['cosmetics', '見た目']];
+/** The cosmetic kinds in words (never the raw item kind; round 15 integration added 写真の飾り). */
+const COL_COS_KIND = { silks: '勝負服', tack: '馬具', decor: '飾り', stamp: 'スタンプ', silks_part: '勝負服パーツ', photo: '写真の飾り' };
 const COL_STATE = { horses: { obtained: '入手', seen: '出会った', unknown: '未発見' }, skills: { obtained: '入手', seen: '出会った', unknown: '未発見' }, courses: { obtained: '走った', unknown: '未出走' }, cosmetics: { obtained: '所持', unknown: '未所持' } };
 const ACH_CATS = [[null, 'すべて'], ['race', 'レース'], ['course', 'コース'], ['skill', 'スキル'], ['breeding', '配合'], ['time_attack', 'TA'], ['tournament', '大会'], ['stable', '厩舎'], ['team', '支部']];
 const colPct = (permille) => `${Math.floor(permille / 10)}%`;
@@ -2848,7 +2850,10 @@ async function Collection(tab) {
   Txt(counts, 720, 40, 304, 15, MUTED, p, { weight: 500, align: 'right', nowrap: true }).dataset.colCounts = '1';
   Gauge(36, 96, 988, c.total ? c.obtained / c.total : 0, p);
   const horses = colState.tab === 'horses';
-  const cols = horses ? 7 : 4, cw = horses ? 136 : 238, ch = horses ? 124 : 104;
+  // more than 20 cosmetics (R14 silks parts + R15 photo frames / stamps): six shorter rows so the grid stays in the panel
+  const dense = !horses && colState.tab !== 'courses' && c.entries.length > 20;
+  const cols = horses ? 7 : 4, cw = horses ? 136 : 238, ch = horses ? 124 : dense ? 84 : 104;
+  const oy = dense ? [10, 36, 58] : [16, 44, 72];
   const grid = el('col-grid', 36, 124, 988, 520, p);
   c.entries.forEach((e, i) => {
     const cell = el('col-cell ' + e.state + (colState.sel === e.id ? ' sel' : ''), (i % cols) * (cw + 6), Math.floor(i / cols) * (ch + 6), cw, ch, grid);
@@ -2860,10 +2865,10 @@ async function Collection(tab) {
     } else {
       // a course name (racecourse + surface + distance) may take two lines (long in English: "Bellmoor Racecourse, Turf 1200 m (straight)")
       const course = colState.tab === 'courses';
-      Txt(e.name ?? '？？？', 16, course ? 10 : 16, cw - 32, 15, e.state === 'unknown' ? DIM : WHITE, cell, course ? { weight: 700, lh: 1.25 } : { weight: 700, nowrap: true });
-      const sub = colState.tab === 'skills' ? (e.condition ?? e.rarity) : course ? (e.state === 'obtained' ? `出走 ${e.races}　·　1着 ${e.wins}` : `${surfaceJa(e.surface)} ${fmt(e.distanceM)}m`) : e.kind;
-      Txt(sub, 16, course ? 54 : 44, cw - 32, 12, MUTED, cell, { nowrap: true }).style.overflow = 'hidden';
-      Txt(COL_STATE[colState.tab][e.state], 16, course ? 78 : 72, cw - 32, 12, e.state === 'obtained' ? CYAN : SOFT, cell, { weight: 700, ls: '.16em' });
+      Txt(e.name ?? '？？？', 16, course ? 10 : oy[0], cw - 32, 15, e.state === 'unknown' ? DIM : WHITE, cell, course ? { weight: 700, lh: 1.25 } : { weight: 700, nowrap: true });
+      const sub = colState.tab === 'skills' ? (e.condition ?? e.rarity) : course ? (e.state === 'obtained' ? `出走 ${e.races}　·　1着 ${e.wins}` : `${surfaceJa(e.surface)} ${fmt(e.distanceM)}m`) : (COL_COS_KIND[e.kind] ?? e.kind);
+      Txt(sub, 16, course ? 54 : oy[1], cw - 32, 12, MUTED, cell, { nowrap: true }).style.overflow = 'hidden';
+      Txt(COL_STATE[colState.tab][e.state], 16, course ? 78 : oy[2], cw - 32, 12, e.state === 'obtained' ? CYAN : SOFT, cell, { weight: 700, ls: '.16em' });
     }
     cell.addEventListener('click', (ev) => { ev.stopPropagation(); colState.sel = e.id; Collection(); });
   });
@@ -2877,7 +2882,7 @@ async function Collection(tab) {
     if (horses) { ArtImage(colArt(e.id), 36, y, 376, 200, d, e.state === 'unknown' ? 'col-sil' : 'col-por'); y += 214; }
     Txt(e.name ?? '？？？', 36, y, 376, 28, e.state === 'unknown' ? DIM : WHITE, d, { weight: 700, nowrap: true, ls: '.04em' }); y += 46;
     const meta = horses ? (e.state === 'unknown' ? e.rarity : `${e.rarity}　/　${STYLE_JA[e.style] ?? ''}　/　${surfaceJa(e.surface)} ${fmt(e.distance.minM)}〜${fmt(e.distance.maxM)}m`)
-      : colState.tab === 'skills' ? (e.condition ?? e.rarity) : colState.tab === 'courses' ? `${surfaceJa(e.surface)}　${fmt(e.distanceM)}m` : e.kind;
+      : colState.tab === 'skills' ? (e.condition ?? e.rarity) : colState.tab === 'courses' ? `${surfaceJa(e.surface)}　${fmt(e.distanceM)}m` : (COL_COS_KIND[e.kind] ?? e.kind);
     Txt(meta + (e.seasonal ? `　·　${e.seasonal.label}` : ''), 36, y, 376, 15, GOLD, d, { weight: 700 }); y += 34;
     Txt(e.lore ?? (e.state === 'unknown' ? 'まだ出会っていません。レースで出会うと記録されます。' : ''), 36, y, 376, 15, MUTED, d, { lh: 1.65 }).dataset.colLore = '1'; y += 80;
     if (e.stats) [['スピード', e.stats.speed], ['スタミナ', e.stats.stamina], ['瞬発', e.stats.burst]].forEach(([k, v], i) => {

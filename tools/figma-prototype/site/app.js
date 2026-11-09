@@ -2299,7 +2299,7 @@ function nxGo(i) {
   }[i.screen] ?? RaceLobby;
   return go();
 }
-function nxKpi(name, i, slot) { L.kpi([{ name, at: L.now(), props: { kind: i.kind, slot } }]); (globalThis.__muchiKpi ??= []).push({ name, kind: i.kind, slot }); }
+function nxKpi(name, i, slot) { L.kpi([{ name, at: L.now(), props: { kind: i.kind, slot } }]); (globalThis.__muchiNextKpi ??= []).push({ name, kind: i.kind, slot }); }
 /** next_card_view once per kind and game day (the server's day key). */
 function nxViews(v) {
   let seen = {};

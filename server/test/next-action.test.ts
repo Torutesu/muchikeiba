@@ -197,6 +197,10 @@ describe('§45 on the real state (REQ-NEXT-004/005/007/008/009/010)', () => {
     const s1 = await w.svc.nextActions('p');
     expect(nextActionSummary(m, await w.svc.state('p'), w.now()).newFeatures).toEqual(expect.arrayContaining(['time_attack', 'weekly_challenge']));
     expect([s1.primary, ...s1.chips].some((c) => c?.kind === 'feature_unlocked')).toBe(true);
+    // the weekly challenge summary reads the same week and counters as GET /v1/challenges/weekly
+    const wv = await w.svc.wchView('p');
+    const ws = nextActionSummary(m, await w.svc.state('p'), w.now()).weeklyChallenge;
+    if (wv.enabled) expect(ws).toEqual({ endsAt: wv.endsAt, uncleared: wv.challenges.length - wv.clearedCount, startsLeftToday: wv.startsLeftToday });
     w.advance(DAY);
     const s2 = await w.svc.nextActions('p');
     expect(nextActionSummary(m, await w.svc.state('p'), w.now()).newFeatures).toEqual([]);

@@ -22,7 +22,7 @@ import { UNLOCK_KEYS, unlocksView, type UnlockKey } from './onboarding.js';
 import { deletionScheduled } from './accountDeletion.js';
 import { levelOf } from './pass.js';
 import { trainingConfig } from './training.js';
-import { weeklyChallengeView } from './weeklyChallenge.js';
+import { weekAt, weeklyChallengeConfig } from './weeklyChallenge.js';
 import { weekEndMs, weekIdAt, rivalConfig } from './rival.js';
 import { exchangeSummary } from './exchange.js';
 import { firstWinBonusView } from './rewards.js';
@@ -212,8 +212,14 @@ export function nextActionSummary(m: Master, s: PlayerState, now: number, teamGo
     return { weekEndsAt: weekEndMs(m, weekId), rankedRaces: w.rankedRaces };
   }, null);
   const weeklyChallenge = safe(() => {
-    const v = weeklyChallengeView(m, s, now);
-    return v.enabled ? { endsAt: v.endsAt, uncleared: v.challenges.length - v.clearedCount, startsLeftToday: v.startsLeftToday } : null;
+    // the same reads as weeklyChallengeView, without building the cards (GET /v1/player stays cheap)
+    const wc = weeklyChallengeConfig(m);
+    if (!wc || !wc.enabled) return null;
+    const cur = weekAt(m, wc, now);
+    const st = s.weeklyChallenge;
+    const wk = st?.weeks[cur.weekId];
+    const used = st && sameGameDay(st.daily.date, today) ? st.daily.count : 0;
+    return { endsAt: cur.endsAt, uncleared: cur.def.challenges.filter((ch) => !wk?.cleared[ch.id]).length, startsLeftToday: Math.max(0, wc.startsPerDay - used) };
   }, null);
   const tg = teamGoal ? (() => {
     const next = teamGoal.milestones.find((x) => !x.reached);

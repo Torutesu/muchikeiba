@@ -72,6 +72,12 @@ namespace Muchi.Client
         GiftHoldCap,
         /// <summary>REQ-RIVAL-008: too many ライバルと走る challenges today (409).</summary>
         RivalChallengeLimit,
+        /// <summary>REQ-MYRP-003: the free saved-replay slots are full (409).</summary>
+        ReplayLimit,
+        /// <summary>REQ-MYRP-003/008: the race's replay is no longer kept (410).</summary>
+        ReplayExpired,
+        /// <summary>REQ-MYRP-003: the replay is larger than the per-replay cap (413).</summary>
+        ReplayTooLarge,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -157,6 +163,9 @@ namespace Muchi.Client
             ["GIFT_EXPIRED"] = ApiErrorCode.GiftExpired,
             ["GIFT_HOLD_CAP"] = ApiErrorCode.GiftHoldCap,
             ["RIVAL_CHALLENGE_LIMIT"] = ApiErrorCode.RivalChallengeLimit,
+            ["REPLAY_LIMIT"] = ApiErrorCode.ReplayLimit,
+            ["REPLAY_EXPIRED"] = ApiErrorCode.ReplayExpired,
+            ["REPLAY_TOO_LARGE"] = ApiErrorCode.ReplayTooLarge,
             ["VERIFIER_UNAVAILABLE"] = ApiErrorCode.VerifierUnavailable,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };

@@ -116,6 +116,8 @@ export interface RaceResultForPlayer {
   seen?: { templates: string[]; skills: string[] };
   /** REQ-RIVAL-004: every human rider's place in this confirmed race (head to head with the weekly rival). */
   field?: { playerId: string; place: number }[];
+  /** REQ-MYRP-001: what マイリプレイ needs to offer this race later (absent for void races and results from older rooms). */
+  replay?: import('./myReplays.js').ReplayRef;
 }
 
 /** REQ-RATE-004: apply the race's rating change as a delta, so a newer rating is never overwritten by a stale snapshot. */

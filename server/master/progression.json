@@ -898,6 +898,18 @@
       { "id": "ta_attempt", "surface": "time_attack", "title": "動画を見て、タイムアタックをもう1回", "dailyCap": 1, "reward": { "taAttempts": 1 }, "adUnitKey": "REWARDED_TA" }
     ]
   },
+  "myReplays": {
+    "_note": "REQ-MYRP-*（contracts/protocol.md §37）。マイリプレイ：自分のレースのリプレイ（設定＋確定入力＋結果ハッシュだけ）を保存期限を越えて残す。保存は無料で maxSaved 件まで（購入で増やさない）。名場面（1着・写真判定・自己ベスト）は momentsKeep 件・momentDays 日で入れ替わる。momentDays は replayRetentionDays より短く（元のログが R2 に残っている間だけ保存できる）。retiredRulesets に入れた版は「再生できません」。コイン・アイテムは動かない。",
+    "enabled": true,
+    "maxSaved": 20,
+    "titleMaxChars": 24,
+    "maxBytes": 262144,
+    "recentKeep": 30,
+    "momentsKeep": 10,
+    "momentDays": 28,
+    "photoFinishTicks": 1,
+    "retiredRulesets": []
+  },
   "rival": {
     "_note": "REQ-RIVAL-*（contracts/protocol.md §28）。週はゲーム日（dayRollover、既定4:00 JST）の weekStartsOn（1=月曜）から7日。先週ランク戦を走った同じクラスのレーティングの近い人（maxRatingGap 以内）と、週IDの seed と並べた候補から決定論で組む。合う人がいなければ cpuRivals から週IDとプレイヤーIDで決まるCPU。報酬は結果で決まる固定の無償コインだけ（1週 ≤ 100 = ¥160 相当、連勝の上乗せなし、乱数なし）。週の自分のランク戦が minRacesForResult 未満なら報酬なし。経済 E16（docs/spec/balance-targets.md 4.13）。",
     "enabled": true,

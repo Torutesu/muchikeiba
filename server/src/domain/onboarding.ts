@@ -8,6 +8,7 @@ import { adsProblems } from './ads.js';
 import { trainingProblems } from './training.js';
 import { giftBoxProblems } from './giftBox.js';
 import { rivalProblems } from './rival.js';
+import { myReplaysProblems } from './myReplays.js';
 import { z } from 'zod';
 import { AppError } from './errors.js';
 import { createHorseFromTemplate, validateName } from './horses.js';
@@ -430,7 +431,7 @@ export function firstRaceOf(m: Master, s: PlayerState): { cpuFillAfterMs: number
 /** Every onboarding-related check on a master (boot: index.ts; remote config: ops/config.ts). */
 export function uxProblems(m: Master, knownItems: Set<string>): string[] {
   return [...onboardingProblems(m.progression, m, knownItems), ...nudgeProblems(m.progression.nudges), ...accountDeletionProblems(m.progression.accountDeletion), ...dayRolloverProblems(m.progression.dayRollover),
-    ...inviteProblems(m), ...comebackProblems(m), ...changelogProblems(m.changelog), ...adsProblems(m.progression.ads), ...trainingProblems(m), ...giftBoxProblems(m), ...rivalProblems(m)]; // REQ-INV-*, REQ-CB-*, REQ-AD-002, REQ-TRAIN-012, REQ-BOX-012, REQ-RIVAL-012
+    ...inviteProblems(m), ...comebackProblems(m), ...changelogProblems(m.changelog), ...adsProblems(m.progression.ads), ...trainingProblems(m), ...giftBoxProblems(m), ...rivalProblems(m), ...myReplaysProblems(m)]; // REQ-INV-*, REQ-CB-*, REQ-AD-002, REQ-TRAIN-012, REQ-BOX-012, REQ-RIVAL-012
 }
 
 export function validateUx(m: Master, knownItems: Set<string>): void {

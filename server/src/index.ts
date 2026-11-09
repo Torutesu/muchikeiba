@@ -1,4 +1,5 @@
 import type { Env } from './env.js';
+import { MyReplaysService, type ReplayStore } from './domain/myReplaysService.js';
 import { validateLocale } from './i18n/validate.js';
 import { eventPlayersFrom, friendIdsFrom, handle, makeFriendsService, makeInviteService, makeStudService, teamPlayersFrom, tournamentPlayersFrom, type AppContext, type PlayerInvoker, type RaceEntry } from './http/app.js';
 import { bearer, verifyFirebaseIdToken } from './http/auth.js';
@@ -401,6 +402,7 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
     stable: makeStableService(player, shardedStableDirectory(env.DIRECTORY), () => master),
     invite: makeInviteService(player, shardedInviteDirectory(env.DIRECTORY), shardedDirectory(env.DIRECTORY), () => master), // REQ-INV-*
     teams: makeTeamsService(env, () => master, player),
+    myReplays: new MyReplaysService(() => master, player, r2ReplayStore(env.REPLAYS)), // REQ-MYRP-*
     rival: new RivalService(() => master, rivalPlayersFrom(player), durableRivalRegistry(env.LEADERBOARD)), // REQ-RIVAL-*
     events: new EventsService(() => master, eventPlayersFrom(player), {
       enqueue: (eventId, p, e) => call(mm().eventEnqueue!(eventId, p, e)),
@@ -467,6 +469,12 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
 }
 
 export { devModeRefused } from './http/devMode.js';
+/** R2Bucket → the store マイリプレイ copies saved replays into (REQ-MYRP-003). */
+const r2ReplayStore = (b: R2Bucket): ReplayStore => ({
+  get: async (key) => (await (await b.get(key))?.text()) ?? null,
+  put: async (key, body) => { await b.put(key, body, { httpMetadata: { contentType: 'application/json' } }); },
+  delete: (key) => b.delete(key),
+});
 /** R2Bucket → the minimal interface the retention sweep uses. */
 const replayBucket = (b: R2Bucket): ReplayBucket => ({
   list: async (o) => {

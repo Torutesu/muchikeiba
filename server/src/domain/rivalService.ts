@@ -220,8 +220,8 @@ export interface RivalPlayers {
   sync(uid: string, data: Record<string, RegistryWeek | null>, quiet?: boolean): Promise<Ret<'rivalSync'>>;
   setOptOut(uid: string, optOut: boolean): Promise<Ret<'rivalSetOptOut'>>;
   block(uid: string): Promise<Ret<'rivalBlock'>>;
-  challengeCheck(uid: string): Promise<Ret<'rivalChallengeCheck'>>;
-  challengeReceive(uid: string, fromId: string, passphrase: string, fromName: string): Promise<unknown>;
+  challengeCheck(uid: string, idemKey?: string | null): Promise<Ret<'rivalChallengeCheck'>>;
+  challengeReceive(uid: string, fromId: string, passphrase: string, fromName: string, idemKey?: string | null): Promise<unknown>;
   seen(uid: string, weekId: string): Promise<unknown>;
   push(uid: string, byName: string, course: string): Promise<unknown>;
 }
@@ -232,8 +232,8 @@ export function rivalPlayersFrom(player: (uid: string) => PlayerInvoker): RivalP
     sync: (u, d, q) => player(u).invoke('rivalSync', u, d, q),
     setOptOut: (u, o) => player(u).invoke('rivalSetOptOut', u, o),
     block: (u) => player(u).invoke('rivalBlock', u),
-    challengeCheck: (u) => player(u).invoke('rivalChallengeCheck', u),
-    challengeReceive: (u, f, p, n) => player(u).invoke('rivalChallengeReceive', u, f, p, n),
+    challengeCheck: (u, k) => player(u).invoke('rivalChallengeCheck', u, k ?? null),
+    challengeReceive: (u, f, p, n, k) => player(u).invoke('rivalChallengeReceive', u, f, p, n, k ?? null),
     seen: (u, w) => player(u).invoke('rivalSeen', u, w),
     push: (u, n, c) => player(u).invoke('rivalPush', u, n, c),
   };
@@ -295,16 +295,20 @@ export class RivalService {
     return r;
   }
 
-  /** REQ-RIVAL-008: ライバルと走る — invite this week's rival to my friend room (membership checked by the route). */
-  async challenge(uid: string, passphrase: string) {
+  /**
+   * REQ-RIVAL-008: ライバルと走る — invite this week's rival to my friend room (membership checked by the route).
+   * `idemKey` (the client's Idempotency-Key): a retry with the same key counts one daily challenge and delivers the invite
+   * (and its push) once — the challenger's check and the rival's receive are each keyed transactions.
+   */
+  async challenge(uid: string, passphrase: string, idemKey: string | null = null) {
     this.enabled();
     const me = await this.players.peek(uid);
     const d = await this.reg.assignment(me.currentWeek, uid);
     if (d.assignment.kind !== 'human' || d.assignment.dissolvedAt !== null) throw new AppError('NOT_ELIGIBLE', 'no human rival to challenge this week');
-    const c = await this.players.challengeCheck(uid);
+    const c = await this.players.challengeCheck(uid, idemKey);
     if (c.rivalId !== d.assignment.rivalId) throw new AppError('NOT_ELIGIBLE', 'open the rival screen first');
     await this.view(c.rivalId, true); // the rival may not have opened the rival screen this week: sync it first (not a view)
-    await this.players.challengeReceive(c.rivalId, uid, passphrase, c.displayName);
+    await this.players.challengeReceive(c.rivalId, uid, passphrase, c.displayName, idemKey ? `rival-challenge:${uid}:${idemKey}` : null);
     return { ok: true, rivalId: c.rivalId };
   }
 

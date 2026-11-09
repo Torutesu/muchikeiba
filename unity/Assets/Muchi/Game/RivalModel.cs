@@ -208,7 +208,7 @@ namespace Muchi.Game
             if (string.IsNullOrEmpty(passphrase)) return ActionResult.Error("先にフレンド部屋を作ってください");
             try
             {
-                await B.Api.ChallengeRivalAsync(passphrase, ct);
+                await B.Api.ChallengeRivalAsync(passphrase, ct: ct);
                 if (View.ChallengesLeft.HasValue) View.ChallengesLeft = Math.Max(0, View.ChallengesLeft.Value - 1);
                 return ActionResult.Success("挑戦状を送りました（このレースは点になりません）");
             }

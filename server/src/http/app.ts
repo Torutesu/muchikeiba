@@ -826,9 +826,10 @@ export const routes: Route[] = [
   { method: 'PUT', path: '/v1/rival/settings', auth: 'player', handler: async (r, _p, c, u) => rival(c).setOptOut(u, (await body(r, z.object({ optOut: z.boolean() }).strict())).optOut) },
   { method: 'POST', path: '/v1/rival/block', auth: 'player', handler: async (_r, _p, c, u) => rival(c).block(u) },
   { method: 'POST', path: '/v1/rival/challenge', auth: 'player', handler: async (r, _p, c, u) => {
+    const key = idem(r); // R12 leftover: a retry after a timeout must not use another daily challenge or re-send the invite
     const b = await body(r, z.object({ passphrase: z.string().min(1).max(64) }).strict());
     if (!(await c.match.friendMember(b.passphrase, u))) throw new AppError('NOT_ELIGIBLE', 'not a member of this room');
-    return rival(c).challenge(u, b.passphrase);
+    return rival(c).challenge(u, b.passphrase, key);
   } },
   { method: 'POST', path: '/v1/rival/results/:weekId/seen', auth: 'player', handler: async (_r, p, c, u) => rival(c).seen(u, weekIdParam(p.weekId!)) },
   { method: 'GET', path: '/v1/admin/paid-balance', auth: 'admin', handler: async (_r, _p, c) => c.paidBalance() },

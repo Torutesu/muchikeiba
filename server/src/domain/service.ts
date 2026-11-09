@@ -738,10 +738,12 @@ export class PlayerService {
     });
   }
   rivalBlock(id: string) { return this.tx(id, null, (s, now) => rivalBlock(this.d.master, s, now)); }
-  rivalChallengeCheck(id: string) { return this.tx(id, null, (s, now) => ({ rivalId: rivalChallengeCheck(this.d.master, s, now), displayName: s.profile.displayName })); }
-  async rivalChallengeReceive(id: string, fromId: string, passphrase: string, fromName?: string) {
+  /** REQ-RIVAL-008: one daily challenge per call; a resent idempotency key returns the stored answer (no second challenge). */
+  rivalChallengeCheck(id: string, idemKey: string | null = null) { return this.tx(id, idemKey, (s, now) => ({ rivalId: rivalChallengeCheck(this.d.master, s, now), displayName: s.profile.displayName })); }
+  /** The rival's side; keyed by the challenger's request so a retried challenge never re-sends the invite push. */
+  async rivalChallengeReceive(id: string, fromId: string, passphrase: string, fromName?: string, idemKey: string | null = null) {
     if (await this.wiped(id)) throw new AppError('NOT_ELIGIBLE', 'not your rival this week');
-    return this.tx(id, null, (s, now) => {
+    return this.tx(id, idemKey, (s, now) => {
       const r = rivalChallengeReceive(this.d.master, s, fromId, passphrase, now);
       enqueuePush(this.d.master, s, 'room_invite', { name: fromName ?? 'ライバル' }, now);
       return r;

@@ -201,12 +201,13 @@ namespace Muchi.Client
         /// <summary>
         /// REQ-RIVAL-008: ライバルと走る — invite this week's rival to a friend room you are in (create it first). Unranked: the race
         /// shows on the rival screen but never scores. ConflictException RIVAL_CHALLENGE_LIMIT, NOT_ELIGIBLE.
+        /// Keyed (Round 13): a retry after a timeout reuses the key, so it never uses a second daily challenge or re-sends the invite.
         /// </summary>
-        public Task<string> ChallengeRivalAsync(string passphrase, CancellationToken ct = default)
+        public Task<string> ChallengeRivalAsync(string passphrase, string idempotencyKey = null, CancellationToken ct = default)
         {
             var b = JsonNode.Obj();
             b.Set("passphrase", passphrase);
-            return Call("POST", "/v1/rival/challenge", b, true, null, false, o => J.Str(o, "rivalId"), ct);
+            return Call("POST", "/v1/rival/challenge", b, true, idempotencyKey ?? NewIdempotencyKey(), true, o => J.Str(o, "rivalId"), ct);
         }
 
         /// <summary>The week result sheet was shown.</summary>

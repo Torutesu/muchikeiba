@@ -95,6 +95,7 @@ namespace Muchi.Engine.Tests
             _http.Reply(200, "{\"ok\":true,\"rivalId\":\"u_9\"}");
             Assert.Equal("u_9", await _api.ChallengeRivalAsync("さくら-42"));
             Assert.Contains("\"passphrase\":\"さくら-42\"", _http.Requests[2].Body);
+            Assert.False(string.IsNullOrEmpty(_http.Requests[2].Headers["idempotency-key"])); // Round 13: keyed (a retry never uses a second challenge)
 
             _http.Reply(200, "{\"unseen\":null}");
             Assert.True(await _api.MarkRivalResultSeenAsync("2026-12-14"));

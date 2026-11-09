@@ -1108,7 +1108,7 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 ### 28.3 `PUT /v1/rival/settings`・`POST /v1/rival/block`・`POST /v1/rival/challenge`・`POST /v1/rival/results/:weekId/seen`（要認証）
 - **settings** `{ "optOut": boolean }`（他のキーは 400）→ `{ "optOut" }`。オプトアウトの前に終わった週を精算する（報酬は払う）。オプトアウトで今週の組は両方とも解除、今週の記録は結果なしで捨てる、来週から組まれない。戻すと次の週の候補から（今週は解除のまま）。
 - **block** → `{ "blocked": "<playerId>", "dissolved": true }`。今週の人間のライバルをブロック一覧（支部フィードのミュートと同じ、`PUT /v1/teams/me/feed/mutes` でも見える）に入れ、組を解除。人間のライバルがいなければ `NOT_ELIGIBLE`。
-- **challenge** `{ "passphrase" }` → `{ "ok": true, "rivalId" }`。自分がその部屋のメンバー（でなければ `NOT_ELIGIBLE`）、今週の解除されていない人間のライバルがいる、1日の回数内（超えたら 409 `RIVAL_CHALLENGE_LIMIT`）。相手の招待一覧（`GET /v1/friends` の `invites`）に入り、`room_invite` のプッシュ（上限・設定の中）。相手が自分をブロックしていれば `NOT_ELIGIBLE`。
+- **challenge** `{ "passphrase" }`（`Idempotency-Key` 必須、Round 13 で追加：同じキーの再送は同じ答えを返し、1日の回数を使わず、招待とプッシュも送り直さない）→ `{ "ok": true, "rivalId" }`。自分がその部屋のメンバー（でなければ `NOT_ELIGIBLE`）、今週の解除されていない人間のライバルがいる、1日の回数内（超えたら 409 `RIVAL_CHALLENGE_LIMIT`）。相手の招待一覧（`GET /v1/friends` の `invites`）に入り、`room_invite` のプッシュ（上限・設定の中）。相手が自分をブロックしていれば `NOT_ELIGIBLE`。
 - **results/:weekId/seen** → `{ "unseen": null }`（結果シートを閉じた）。
 
 ### 28.4 プッシュ「ライバルが記録を更新」（`rival_record`、種類 `friends`）

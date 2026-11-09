@@ -578,7 +578,7 @@ export const MuchiLogic = {
     seen: (weekId: string) => wrap(() => rivalSvc.seen(ID, weekId)),
     optOut: (optOut: boolean) => wrap(() => rivalSvc.setOptOut(ID, optOut)),
     block: () => wrap(() => rivalSvc.block(ID)),
-    challenge: () => wrap(() => rivalSvc.challenge(ID, 'demo-room')),
+    challenge: () => wrap(() => rivalSvc.challenge(ID, 'demo-room', key())),
     /** A confirmed ranked race with the rival in the field (both objects receive the same places). */
     demoRace: (mine: number, theirs: number, mode: 'ranked' | 'friend' = 'ranked') => wrap(async () => {
       const raceId = `proto_rv_${Date.now().toString(36)}_${rivalRace++}`;

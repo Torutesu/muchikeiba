@@ -1,5 +1,5 @@
 {
-  "_comment": "イベントレース（REQ-EVENT-*）。期間はUTCミリ秒。参加費は無償コインかチケットのみ（有償コインを払って賞品を競う形は賭博・景品規制の観点で避ける）。rulesetOverrides は contracts/ruleset-params.default.json に存在するキーだけ変更できる（rulesetVersion は自動で「元の版+ev.<id>」になる）。報酬・ポイントは暫定値。",
+  "_comment": "イベントレース（REQ-EVENT-*）。期間はUTCミリ秒。参加費は無償コインかチケットのみ（有償コインを払って賞品を競う形は賭博・景品規制の観点で避ける）。rulesetOverrides は contracts/ruleset-params.default.json に存在するキーだけ変更できる（rulesetVersion は自動で「元の版+ev.<id>」になる）。報酬・ポイントは暫定値。exchange はイベント交換所（REQ-EXCH-*、contracts/protocol.md §30）：イベントポイントはこのイベントのレースでだけ貯まり（購入・ガチャ・商品からは不可）、固定価格・個数制限の交換のみ（ランダムなし・全交換の報酬なし）、終了後 graceDays ゲーム日まで交換でき、残りは leftover の素材に切り上げで換算。",
   "events": [
     {
       "id": "sprint_cup_2026_11",
@@ -46,6 +46,36 @@
         { "maxRank": 10, "reward": { "freeCoins": 500 } },
         { "maxRank": null, "reward": { "freeCoins": 50 } }
       ]
+    },
+    {
+      "id": "newyear_cup_2027_01",
+      "name": "新春交換祭杯",
+      "startAtMs": 1798729200000,
+      "endAtMs": 1799679600000,
+      "trackIds": ["kirameki_turf_2000", "aoba_turf_1600"],
+      "entry": { "classIds": null, "styles": null, "minRankedRaces": 0 },
+      "fee": { "kind": "none" },
+      "rules": { "rulesetOverrides": {}, "fixedStats": null, "statCap": 3200, "cpuLevel": 3, "maxPlayers": 12, "cpuFillAfterMs": 15000 },
+      "points": { "byPlace": [100, 70, 55, 45, 38, 32, 27, 23, 20, 17, 15, 13], "participation": 10 },
+      "milestones": [
+        { "points": 500, "reward": { "items": [{ "itemId": "breeding_material", "qty": 1 }] } }
+      ],
+      "rankRewards": [
+        { "maxRank": 10, "reward": { "items": [{ "itemId": "breeding_material", "qty": 2 }] } },
+        { "maxRank": null, "reward": { "items": [{ "itemId": "breeding_material", "qty": 1 }] } }
+      ],
+      "exchange": {
+        "earn": { "byPlace": [30, 25, 21, 18, 16, 14, 12, 10, 8, 6, 5, 4], "participation": 10, "dailyCap": 150 },
+        "graceDays": 3,
+        "leftover": { "itemId": "breeding_material", "pointsPerUnit": 100 },
+        "items": [
+          { "id": "ex_hatsuyuki", "name": "ハツユキソウ", "kind": "horse", "price": 800, "stock": 1, "reward": { "horse": "t_hatsuyuki" } },
+          { "id": "ex_scout_ticket", "name": "スカウト券", "kind": "ticket", "price": 300, "stock": 1, "reward": { "items": [{ "itemId": "gacha_ticket", "qty": 1 }] } },
+          { "id": "ex_coins_50", "name": "無償コイン 50", "kind": "coins", "price": 150, "stock": 2, "reward": { "freeCoins": 50 } },
+          { "id": "ex_material", "name": "配合素材", "kind": "material", "price": 120, "stock": 3, "reward": { "items": [{ "itemId": "breeding_material", "qty": 1 }] } },
+          { "id": "ex_flower_box", "name": "花かご（厩舎の飾り）", "kind": "cosmetic", "price": 200, "stock": 1, "reward": { "items": [{ "itemId": "decor_flower_box", "qty": 1 }] } }
+        ]
+      }
     }
   ]
 }

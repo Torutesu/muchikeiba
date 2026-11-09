@@ -16,6 +16,8 @@ import { effectiveStats } from '../domain/horses.js';
 import { normalizeStats } from '../domain/season.js';
 import { STAT_KEYS, type Stats } from '../domain/master.js';
 import type { HorseInstance } from '../domain/player.js';
+import { exchangeClosesAt } from '../domain/exchange.js';
+import { dayRule } from '../domain/time.js';
 
 export interface Persona {
   id: string;
@@ -117,6 +119,18 @@ export interface EconomyResult {
    * class normalisation — with the training growth (`trained`) and without it (`untrained`).
    */
   rankedTotalByClass: Record<string, { trained: number; untrained: number }>;
+  /**
+   * REQ-EXCH-* (E17, only with `events: true`): event races run, event points earned, what the exchange gave (free coins,
+   * scout tickets, horses, breeding material, cosmetics) and the material the leftover points became.
+   */
+  eventRaces: number;
+  eventPoints: number;
+  exchangeCoins: number;
+  exchangeTickets: number;
+  exchangeHorses: number;
+  exchangeMaterial: number;
+  exchangeCosmetics: number;
+  leftoverMaterial: number;
   /** Derived. */
   freeCoinsPerActiveDay: number;
   pullsPerMonth: number;
@@ -137,7 +151,19 @@ function place(rng: Rng, bias: number): number {
  * `sessionStartJstMin`: when the daily session starts, in minutes after 00:00 JST (default 12:00). 03:30 makes
  * every session straddle the 04:00 game-day rollover (REQ-DAY-001), and the first one also the 2026-12-01 switch.
  */
-export async function simulate(master: Master, persona: Persona, days = 90, seed = 1, sessionStartJstMin = 12 * 60): Promise<EconomyResult> {
+/** E17: of each active day's races, this many are event races while an event with an exchange is open (the rest stay ranked). */
+export const EVENT_RACES_PER_DAY = 3;
+export interface SimOptions {
+  /**
+   * REQ-EXCH-* (E17): play the configured events that have an exchange — EVENT_RACES_PER_DAY of the day's races become
+   * event races (same play time), the exchange is spent once it is in its grace days (lines in list order, as many as the
+   * points allow), the final rank reward is taken after the event (rank unknown = the participation tier) and points the
+   * player never spent become material at the close.
+   */
+  events?: boolean;
+}
+
+export async function simulate(master: Master, persona: Persona, days = 90, seed = 1, sessionStartJstMin = 12 * 60, opts: SimOptions = {}): Promise<EconomyResult> {
   const start = Date.UTC(2026, 11, 1, -9, sessionStartJstMin); // on the 1st, a fresh season
   let now = start;
   const repo = new MemoryPlayerRepo();
@@ -149,7 +175,8 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
   const k = () => `c:sim:${key++}`;
   const r: EconomyResult = {
     persona: persona.id, days, activeDays: 0, freeCoinsEarned: 0, paidCoinsBought: 0, yenSpent: 0, pulls: 0, ssr: 0, sr: 0,
-    pityExchanges: 0, firstPityDay: null, breedingMaterial: 0, gachaTickets: 0, ticketPulls: 0, firstWinCoins: 0, allowanceCoins: 0, beginnerCoins: 0, beginnerSteps: 0, seasonMissionXp: 0, inviteCoins: 0, inviteTickets: 0, comebackWindows: 0, comebackValue: 0, comebackXp: 0, adViews: 0, adCoins: 0, adTaAttempts: 0, achievementTiers: 0, achievementCoins: 0, trainingSessions: 0, trainedPoints: 0, rankedTotalByClass: {}, freeCoinsPerActiveDay: 0, pullsPerMonth: 0, ssrPerMonth: 0,
+    pityExchanges: 0, firstPityDay: null, breedingMaterial: 0, gachaTickets: 0, ticketPulls: 0, firstWinCoins: 0, allowanceCoins: 0, beginnerCoins: 0, beginnerSteps: 0, seasonMissionXp: 0, inviteCoins: 0, inviteTickets: 0, comebackWindows: 0, comebackValue: 0, comebackXp: 0, adViews: 0, adCoins: 0, adTaAttempts: 0, achievementTiers: 0, achievementCoins: 0, trainingSessions: 0, trainedPoints: 0, rankedTotalByClass: {},
+    eventRaces: 0, eventPoints: 0, exchangeCoins: 0, exchangeTickets: 0, exchangeHorses: 0, exchangeMaterial: 0, exchangeCosmetics: 0, leftoverMaterial: 0, freeCoinsPerActiveDay: 0, pullsPerMonth: 0, ssrPerMonth: 0,
   };
   await svc.bootstrap(id);
   await svc.setAge(id, 1990, 1, false);
@@ -284,8 +311,22 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
       const a = await svc.claimAllowance(id, k()).catch((e: unknown) => { if (e instanceof AppError) return null; throw e; });
       if (a) { r.allowanceCoins += a.freeCoins; freeFromPurchases += a.freeCoins; }
     }
+    // E17: the event with an exchange that is open now (if any) takes EVENT_RACES_PER_DAY of the day's races
+    const liveEvent = opts.events ? master.events.find((e) => e.exchange && now >= e.startAtMs && now < e.endAtMs) : undefined;
     for (let i = 0; i < persona.racesPerDay; i++) {
       now += 10 * 60_000;
+      if (liveEvent && i < EVENT_RACES_PER_DAY && now < liveEvent.endAtMs) {
+        const horse = best((await svc.state(id)).horses)[0];
+        if (horse) {
+          const entered = await svc.eventEnter(id, liveEvent.id, horse.id, k()).catch((e: unknown) => { if (e instanceof AppError) return null; throw e; });
+          if (entered) {
+            const er = await svc.applyRace(id, { raceId: `sim_ev_${persona.id}_${d}_${i}`, mode: 'event', eventId: liveEvent.id, place: place(rng, persona.placeBias), fieldSize: 12, newRating: null, void: false, humans: 4 });
+            r.eventRaces++;
+            r.eventPoints += (er as { event?: { exchange?: { gained: number } | null } | null }).event?.exchange?.gained ?? 0;
+            continue;
+          }
+        }
+      }
       // ride details as a confirmed room sends them (stats, wins per course, every other race the horse's skill fires):
       // the achievements (REQ-ACH-*) count from these, so the sim pays them like a real player earns them
       const trackId = master.tracks[(d * persona.racesPerDay + i) % master.tracks.length]!.id;
@@ -293,6 +334,29 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
       const ar = await svc.applyRace(id, { raceId: `sim_${persona.id}_${d}_${i}`, mode: 'ranked', place: place(rng, persona.placeBias), fieldSize: 12, newRating: null, void: false, humans: 4, details });
       if ('firstWinBonus' in ar && typeof ar.firstWinBonus === 'number') r.firstWinCoins += ar.firstWinBonus;
       if ('comebackXp' in ar && typeof ar.comebackXp === 'number') r.comebackXp += ar.comebackXp;
+    }
+    // E17: the exchange is spent once the event is over (grace days): every line in list order, as many as the points allow;
+    // the final rank reward is taken then (the board is not simulated: the participation tier)
+    if (opts.events) {
+      for (const ev of master.events.filter((e) => e.exchange && now >= e.endAtMs && now < exchangeClosesAt(e, e.exchange!, dayRule(master)))) {
+        if (!((await svc.state(id)).events?.[ev.id]?.races)) continue;
+        await svc.eventClose(id, ev.id, null);
+        for (const line of ev.exchange!.items) {
+          for (;;) {
+            const v = await svc.exchangeView(id, ev.id);
+            const lv = v.items.find((x) => x.id === line.id)!;
+            if (lv.maxQty <= 0) break;
+            const before = await wallet();
+            await svc.exchangeBuy(id, ev.id, line.id, lv.maxQty, k());
+            r.exchangeCoins += (await wallet()).free - before.free;
+            const n = lv.maxQty * (line.reward.items?.[0]?.qty ?? 1);
+            if (line.kind === 'ticket') r.exchangeTickets += n;
+            if (line.kind === 'horse') r.exchangeHorses += n;
+            if (line.kind === 'material') r.exchangeMaterial += n;
+            if (line.kind === 'cosmetic') r.exchangeCosmetics += n;
+          }
+        }
+      }
     }
     // REQ-TRAIN-* (E15): every persona uses its training slots on its best horses (2 on the best, the rest on the next),
     // plays the mini-game at an average level (every beat 100 ms late = "good"), rests a tired horse in the pool and
@@ -382,6 +446,11 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
       }
     }
   }
+  // E17: leftover points of exchanges that closed during the run were converted by the player's transactions
+  if (opts.events) {
+    await svc.exchangeView(id, master.events.find((e) => e.exchange)?.id ?? '').catch(() => undefined);
+    for (const e of Object.values((await svc.state(id)).events ?? {})) r.leftoverMaterial += e.exchange?.converted?.qty ?? 0;
+  }
   const s = await svc.state(id);
   r.freeCoinsEarned = s.wallet.free - freeAtStart + freeSpent - freeFromPurchases;
   r.breedingMaterial = s.items['breeding_material'] ?? 0;
@@ -397,10 +466,10 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
   return r;
 }
 
-export async function simulateAll(master: Master, days = 90, seeds = [1, 2, 3], sessionStartJstMin = 12 * 60) {
+export async function simulateAll(master: Master, days = 90, seeds = [1, 2, 3], sessionStartJstMin = 12 * 60, opts: SimOptions = {}) {
   const out: Record<string, EconomyResult> = {};
   for (const p of PERSONAS) {
-    const runs = await Promise.all(seeds.map((s) => simulate(master, p, days, s, sessionStartJstMin)));
+    const runs = await Promise.all(seeds.map((s) => simulate(master, p, days, s, sessionStartJstMin, opts)));
     const avg = (f: (x: EconomyResult) => number) => runs.reduce((a, x) => a + f(x), 0) / runs.length;
     const firsts = runs.map((x) => x.firstPityDay).filter((x): x is number => x !== null);
     out[p.id] = {
@@ -416,6 +485,9 @@ export async function simulateAll(master: Master, days = 90, seeds = [1, 2, 3], 
       adViews: avg((x) => x.adViews), adCoins: avg((x) => x.adCoins), adTaAttempts: avg((x) => x.adTaAttempts),
       achievementTiers: avg((x) => x.achievementTiers), achievementCoins: avg((x) => x.achievementCoins),
       trainingSessions: avg((x) => x.trainingSessions), trainedPoints: avg((x) => x.trainedPoints),
+      eventRaces: avg((x) => x.eventRaces), eventPoints: avg((x) => x.eventPoints), exchangeCoins: avg((x) => x.exchangeCoins),
+      exchangeTickets: avg((x) => x.exchangeTickets), exchangeHorses: avg((x) => x.exchangeHorses), exchangeMaterial: avg((x) => x.exchangeMaterial),
+      exchangeCosmetics: avg((x) => x.exchangeCosmetics), leftoverMaterial: avg((x) => x.leftoverMaterial),
       rankedTotalByClass: Object.fromEntries(master.progression.classes.map((c) => [c.id, {
         trained: avg((x) => x.rankedTotalByClass[c.id]!.trained), untrained: avg((x) => x.rankedTotalByClass[c.id]!.untrained),
       }])),

@@ -5,6 +5,8 @@ import { STAT_KEYS, type EventDef, type EventFee, type Master, type Reward } fro
 import type { HorseInstance, PlayerState } from './player.js';
 import { buildRuleset, DEFAULT_RULESET, type Ruleset } from './ruleset.js';
 import { grantFree, spendFree } from './wallet.js';
+import { eventPointSourceProblems, exchangeClosesAt, exchangeProblems, exchangeSummary, type PlayerExchangeState } from './exchange.js';
+import { dayRule } from './time.js';
 
 /**
  * イベントレース REQ-EVENT-*. Pure logic. Definitions come from master/events.json or remote config;
@@ -26,6 +28,8 @@ export interface PlayerEventState {
   pending: { entryId: string; fee: EventFee; at: number } | null;
   /** REQ-EVENT-008: rank reward paid (idempotency). */
   closed: boolean; rank: number | null;
+  /** REQ-EXCH-*: event points and the exchange (only for events with an exchange). */
+  exchange?: PlayerExchangeState;
 }
 
 export type EventStatus = 'upcoming' | 'open' | 'closed';
@@ -100,7 +104,11 @@ export function eventProblems(m: Pick<Master, 'tracks' | 'progression'>, events:
       if (byId && !t) p.push(`${at}: reward horse ${r.horse} unknown`);
       if (t?.seasonal && (ev.startAtMs < t.seasonal.startAtMs || ev.endAtMs > t.seasonal.endAtMs)) p.push(`${at}: seasonal reward horse ${r.horse} outside its window`);
     }
+    // REQ-EXCH-002/003/007: the event's exchange shop (needs the item / product / gacha tables)
+    if (ev.exchange !== undefined && 'items' in m) p.push(...exchangeProblems(m as Master, ev, events));
   }
+  // REQ-EXCH-003 (paid lint): nothing but an event race may give event points (no product, gacha or reward)
+  if ('products' in m) p.push(...eventPointSourceProblems({ ...(m as Master), events }));
   return p;
 }
 
@@ -264,7 +272,8 @@ export function eventPublic(ev: EventDef, now: number) {
 
 export function eventsForPlayer(m: Master, s: PlayerState, now: number) {
   return m.events
-    .filter((ev) => now < ev.endAtMs + 7 * 24 * 3600_000) // hide events closed more than a week ago
+    // hide events closed more than a week ago (REQ-EXCH-005: never while their exchange is still open)
+    .filter((ev) => now < Math.max(ev.endAtMs + 7 * 24 * 3600_000, ev.exchange ? exchangeClosesAt(ev, ev.exchange, dayRule(m)) : 0))
     .sort((a, b) => a.startAtMs - b.startAtMs)
     .map((ev) => {
       const st = s.events?.[ev.id];
@@ -272,6 +281,8 @@ export function eventsForPlayer(m: Master, s: PlayerState, now: number) {
       return {
         ...eventPublic(ev, now), eligible: problems.length === 0, notEligibleReasons: problems,
         me: st ? { points: st.points, races: st.races, wins: st.wins, milestones: st.milestones, pending: st.pending !== null, closed: st.closed, rank: st.rank } : null,
+        // REQ-EXCH-009: the event top's point counter (null = this event has no exchange)
+        exchange: exchangeSummary(m, ev, s, now),
       };
     });
 }

@@ -90,7 +90,7 @@
    "fallback": "banner/event/default",
    "description": "イベントのバナー",
    "dynamic": false,
-   "count": 3
+   "count": 4
   },
   "title": {
    "fallback": "title/default",
@@ -269,6 +269,7 @@
   "badge/wins_4",
   "badge/wins_5",
   "banner/event/default",
+  "banner/event/newyear_cup_2027_01",
   "banner/event/no_whip_cup_2026_12",
   "banner/event/sprint_cup_2026_11",
   "banner/gacha/default",

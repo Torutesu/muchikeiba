@@ -907,3 +907,71 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 - タップは `BeginMiniGame(now)` からの ms で、サーバーが受け付ける形（間隔・回数・範囲）のものだけを記録する。画面の◎○×は `TrainingScorer.Judge`、合計は `TrainingScorer.Score`（サーバーと同じ）。
 - start / finish は応答が来るまで同じ冪等キーを使う（タイムアウト後の再送で回数を2回使わない）。読み込んだ時に開いたセッションがあれば、ミニゲームなしで仕上げる（時間が経っているため）。
 - 画面に `TrainingModel.RulesText`（ランク戦は上限にそろえる・疲れはレースに影響しない・伸びは受け継がれない）を出す。調教の画面からショップへの導線は作らない。
+
+## 30. イベント交換所（REQ-EXCH-001〜012、`server/src/domain/exchange.ts`、C# `Exchange.cs`・`Muchi.Game.ExchangeModel`）
+イベントレース（§8.2、REQ-EVENT-*）に「交換所」を付ける。イベントを走るとそのイベントだけの**イベントポイント**が貯まり、終了後もしばらく交換できる。ランキングのポイント（`points`）とは別の数で、ランキングは変わらない。
+
+**決めたこと（法務・公平性）**
+| 項目 | 決めたこと |
+|---|---|
+| ポイントの入手 | **そのイベントのレース（確定・無効でないもの）だけ**。`byPlace[着順-1] + participation`（固定）、1ゲーム日（§15、04:00 JST）に `dailyCap` まで。購入・有償/無償ガチャ・商品・パス・ミッション・運営の付与からは入らない（報酬の型にポイントの欄が無く、`eventPointSourceProblems` が商品・ガチャ・進行・報酬に `eventPoints` などのキーや `event_point*` のアイテムを見つけたら起動時・リモート設定で拒否）。無効レースは0。 |
+| 交換 | 固定価格・固定の中身・**1人あたりの個数制限**（そのイベントの間ずっと、補充なし）。ランダムなものは無い（スキーマが strict：`rates` などは書けない）。**全部交換した報酬は無い**（コンプガチャにならない。「全交換ボーナス」の欄も書けない）。 |
+| 中身 | `coins`（無償コイン、1個 ≤ 100・1個 ≤ ¥200（最も高い単価で換算）、1個ずつ別の付与）・`material`（配合素材）・`ticket`（スカウト券1回分・イベントの参加券。10連券・SR以上確定券は不可）・`cosmetic`（コインで買える見た目、在庫1。有償限定・非売品は不可）・`horse`（テンプレートを指定した馬、在庫1、季節限定なら交換が閉じるまで期間内）。有償コインは出さない。 |
+| ランク戦 | 交換の馬もランク戦ではクラス上限に正規化（REQ-RATE-003）。ポイントは買えないので課金で勝率は上がらない。 |
+| 終了後 | 終了したゲーム日の翌日から `graceDays` ゲーム日（既定 3）交換できる。閉じる時刻 `closesAtMs` = 終了の最後のゲーム日 + `graceDays` + 1 日の 04:00 JST。閉じた後の最初の取引で、残りのポイントを **`ceil(残り / pointsPerUnit)` 個の `leftover.itemId`（配合素材）** に換える（1ポイントでも1個、失われない）。換算の率と見込み数は閉じる前から GET で見せる。 |
+| 時刻の表示 | 画面の時刻・残り日数はすべて GET の実データ（`endAtMs`・`closesAtMs`・`resetsAtMs`）から。カウントダウンの演出・「残りわずか」などは出さない（在庫の「残り 3 / 5」は事実の表示）。 |
+
+### 30.1 定義（`master/events.json` の `events[].exchange`、リモート設定の `events` で差し替え）
+```json
+"exchange": {
+  "earn": { "byPlace": [30, 25, 21, 18, 16, 14, 12, 10, 8, 6, 5, 4], "participation": 10, "dailyCap": 150 },
+  "graceDays": 3,
+  "leftover": { "itemId": "breeding_material", "pointsPerUnit": 100 },
+  "items": [
+    { "id": "ex_hatsuyuki", "name": "ハツユキソウ", "kind": "horse", "price": 800, "stock": 1, "reward": { "horse": "t_hatsuyuki" } },
+    { "id": "ex_scout_ticket", "name": "スカウト券", "kind": "ticket", "price": 300, "stock": 1, "reward": { "items": [{ "itemId": "gacha_ticket", "qty": 1 }] } },
+    { "id": "ex_coins_50", "name": "無償コイン 50", "kind": "coins", "price": 150, "stock": 2, "reward": { "freeCoins": 50 } },
+    { "id": "ex_material", "name": "配合素材", "kind": "material", "price": 120, "stock": 3, "reward": { "items": [{ "itemId": "breeding_material", "qty": 1 }] } },
+    { "id": "ex_flower_box", "name": "花かご（厩舎の飾り）", "kind": "cosmetic", "price": 200, "stock": 1, "reward": { "items": [{ "itemId": "decor_flower_box", "qty": 1 }] } }
+  ]
+}
+```
+検証（`exchangeProblems`、`eventProblems` の中で起動時・リモート設定・テスト）：strict な形、コード側の上限 `EXCHANGE_HARD_LIMITS`（24行・価格 ≤ 100,000・在庫 ≤ 99・`graceDays` 1〜7・`dailyCap` ≤ 5,000・`pointsPerUnit` ≤ 1,000・1行のアイテム数 ≤ 10・コイン ≤ 100/個・¥200/個）、`dailyCap` ≥ 1着1回分、id の重複、`reward` はちょうど1種類で `kind` と合うこと、上の「中身」の規則、`leftover.itemId` は配合素材。英語は `locale.en`（REQ-L10N-005、`name` も対象）。
+
+### 30.2 `GET /v1/events/:eventId/exchange`（要認証）
+```json
+{ "eventId": "newyear_cup_2027_01", "name": "新春交換祭杯", "status": "open",
+  "startAtMs": 1798729200000, "endAtMs": 1799679600000, "closesAtMs": 1800000000000, "graceDays": 3,
+  "points": 120, "earned": 240, "spent": 120,
+  "earn": { "byPlace": [30, "…"], "participation": 10, "dailyCap": 150, "earnedToday": 40, "remainingToday": 110, "resetsAtMs": 1798772400000 },
+  "leftover": { "itemId": "breeding_material", "pointsPerUnit": 100, "rounding": "up", "preview": 2, "converted": null },
+  "items": [ { "id": "ex_material", "name": "配合素材", "kind": "material", "price": 120, "stock": 3, "bought": 1, "remaining": 2, "owned": false,
+               "reward": { "items": [{ "itemId": "breeding_material", "qty": 1 }] }, "icon": "item/breeding_material", "affordable": true, "maxQty": 1 } ],
+  "rules": { "purchasable": false, "random": false, "completionReward": false, "sources": ["event_race"] } }
+```
+- `status`：`upcoming`（開始前・交換不可）/ `open`（開催中・貯まる・交換可）/ `grace`（終了後・交換だけ可）/ `closed`（閉じた・残りは換算済み）。
+- `earn.remainingToday` は `open` の時だけ（それ以外は0）。`resetsAtMs` は次のゲーム日の開始。
+- `leftover.preview` は今のポイントを換算した時の個数、`converted` は換算の記録（`{ at, points, itemId, qty }`）。
+- `items[].icon`：アイテムの絵のキー（馬は `collection/portrait/<templateId>`、コインは `null` = クライアントのコインの絵）。`owned`：見た目アイテムを持っている（交換できない）。`maxQty`：今のポイントと在庫で交換できる最大数。
+- 閉じた交換所に残りのポイントがあれば、この GET が取引として換算してから返す（普段は読み取りだけ）。
+- 交換所の無いイベントは 404 `NOT_FOUND`、id の形が違えば 400。
+- `GET /v1/events` の各イベントに `exchange`（交換所が無ければ `null`）：`{ status, closesAtMs, graceDays, points, leftover, converted }`。交換所が開いている間は、終了から7日を過ぎても一覧に残る。レース結果（`applyRace`）の `event.exchange` は `{ gained, capped, points, remainingToday }`。
+
+### 30.3 `POST /v1/events/:eventId/exchange`（要認証・`Idempotency-Key` 必須）
+本文 `{ "itemId": "ex_material", "qty"?: 1 }`（`qty` 1〜99、既定 1、他のキーは 400）→
+`{ "eventId", "itemId", "kind", "qty", "spent", "points", "bought", "remaining", "granted": { "freeCoins", "items": [...], "horse": "t_hatsuyuki" | null }, "exchange": §30.2 の形, "wallet" }`
+- プレイヤーの Durable Object の1つの取引：期間・在庫・所持・ポイントを確かめてから、ポイントを減らし、中身を渡す（全部か何もしないか）。同じキーの再送は同じ応答（2回払わない）。
+- エラー：`EXCHANGE_NOT_OPEN`（開始前）・`EXCHANGE_CLOSED`（閉じた後）・`OUT_OF_STOCK`（在庫を超える）・`INSUFFICIENT_POINTS`・`ALREADY_PURCHASED`（見た目アイテムを持っている）・`NOT_FOUND`（交換所・行が無い）・`DELETION_PENDING`（削除の実行中）。どれも 409（`NOT_FOUND` 404）。
+- コインは1個ずつ別の台帳の記録（`<キー>:<n>`）、アイテムはアイテム台帳に記録。
+
+### 30.4 KPI（サーバーのイベント）
+| イベント | s1 | s2 | s3 | 数値 |
+|---|---|---|---|---|
+| `event_point_earn` | イベント id | `full` / `capped`（1日の上限で削られた） | — | `place` 着順、`value` 得たポイント、`count` 所持ポイント |
+| `exchange_buy` | イベント id | 行の id | 種類 `coins`/`material`/`ticket`/`cosmetic`/`horse` | `count` 個数、`value` 使ったポイント |
+クエリは `docs/ops/kpi-queries.md`「イベント交換所」。
+
+### 30.5 クライアント（`ApiClient.GetExchangeAsync`・`ExchangeAsync`、`Muchi.Game.ExchangeModel`）
+- 交換の確認シート：中身・価格・交換後のポイント・在庫（「残り 2 / 3」）を出し、確定まで同じ冪等キーを保持（タイムアウト後の再送で2回払わない）。
+- 終了後（`grace`）は「交換は ◯月◯日 4:00 まで」と、残りのポイントが換わる素材の数（`leftover.preview`）を出す。日時は `closesAtMs` から作る（演出の残り時間は出さない）。
+- 交換所からショップ（課金）への導線は作らない。

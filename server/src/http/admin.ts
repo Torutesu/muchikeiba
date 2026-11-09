@@ -5,6 +5,7 @@ import { compPaymentKey, needsApproval, NEEDS_SECOND_PERSON, COMP_APPROVAL_THRES
 import type { Master } from '../domain/master.js';
 import { bannerStatus, carryOverRule, findBanner, finalPityGroup, oddsDisclosure, pityLabel } from '../domain/gacha.js';
 import { eventStatus } from '../domain/events.js';
+import { exchangeClosesAt } from '../domain/exchange.js';
 import { dayRule, gameDayKey } from '../domain/time.js';
 import { normalizeInviteCode } from '../domain/invite.js';
 import { requireRole, type AdminPrincipal, type AdminRole, type AuditEntry, type AuditInput, type AuditQuery } from '../ops/admin.js';
@@ -261,7 +262,9 @@ export const adminRoutes: AdminRoute[] = [
   // ---- events (REQ-EVENT-*) ----
   { method: 'GET', path: '/v1/admin/events', role: 'viewer', write: false, action: 'events.list', handler: async (r) => {
     const { versionId, master } = await masterFor(r.ctx, r.query.get('versionId'), r.now);
-    return { result: { versionId, serverNowMs: r.now, events: master.events.map((ev) => ({ id: ev.id, name: ev.name, startAtMs: ev.startAtMs, endAtMs: ev.endAtMs, status: eventStatus(ev, r.now), trackIds: ev.trackIds, fee: ev.fee, maxPlayers: ev.rules.maxPlayers, entry: ev.entry })), tracks: master.tracks.map((t) => ({ id: t.id, surface: t.surface, distanceM: t.distanceM })) } };
+    return { result: { versionId, serverNowMs: r.now, events: master.events.map((ev) => ({ id: ev.id, name: ev.name, startAtMs: ev.startAtMs, endAtMs: ev.endAtMs, status: eventStatus(ev, r.now), trackIds: ev.trackIds, fee: ev.fee, maxPlayers: ev.rules.maxPlayers, entry: ev.entry,
+      // REQ-EXCH-012: the exchange list as players get it (read only; changed through config versions)
+      exchange: ev.exchange ? { ...ev.exchange, closesAtMs: exchangeClosesAt(ev, ev.exchange, dayRule(master)) } : null })), tracks: master.tracks.map((t) => ({ id: t.id, surface: t.surface, distanceM: t.distanceM })) } };
   } },
   { method: 'POST', path: '/v1/admin/config/versions', role: 'operator', write: true, action: 'config.stage', handler: async (r) => {
     const b = parse(z.object({ bundle: z.record(z.string(), z.unknown()), note: z.string().max(500).default(''), reason: z.string() }), r.body);

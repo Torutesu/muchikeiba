@@ -162,6 +162,38 @@ describe('economy targets (90 days, 3 seeds)', () => {
     expect(all.f2p_casual!.achievementCoins).toBeLessThan(f.achievementCoins);
   }, 600_000);
 
+  it('E17 event exchange (REQ-EXCH-011): playing the event and spending the exchange keeps E1–E6 in range for every persona', async () => {
+    const base = await run();
+    const ev = await simulateAll(m, 90, [1, 2, 3], 12 * 60, { events: true });
+    const f = ev.f2p!;
+    // the free player actually plays the event, earns points and takes something from the exchange
+    expect(f.eventRaces).toBeGreaterThan(0);
+    expect(f.eventPoints).toBeGreaterThan(0);
+    expect(f.exchangeHorses + f.exchangeTickets + f.exchangeMaterial + f.exchangeCoins).toBeGreaterThan(0);
+    // E1–E4 with the event
+    expect(f.pullsPerMonth).toBeGreaterThanOrEqual(40);
+    expect(f.pullsPerMonth).toBeLessThanOrEqual(65);
+    expect(f.ssrPerMonth).toBeGreaterThanOrEqual(1.2);
+    expect(f.ssrPerMonth).toBeLessThanOrEqual(2.8);
+    expect(ev.f2p_casual!.pullsPerMonth).toBeGreaterThanOrEqual(15);
+    expect(ev.f2p_casual!.pullsPerMonth).toBeLessThanOrEqual(40);
+    // E5/E6 ratios with the event
+    expect(ev.light!.pullsPerMonth / f.pullsPerMonth).toBeGreaterThanOrEqual(1.15);
+    expect(ev.light!.pullsPerMonth / f.pullsPerMonth).toBeLessThanOrEqual(1.6);
+    expect(ev.medium!.pullsPerMonth / f.pullsPerMonth).toBeGreaterThanOrEqual(1.8);
+    expect(ev.medium!.pullsPerMonth / f.pullsPerMonth).toBeLessThanOrEqual(3.0);
+    // for every persona the event (same play time) adds at most 3% pulls over not playing it
+    for (const id of Object.keys(base)) expect(ev[id]!.pullsPerMonth).toBeLessThanOrEqual(base[id]!.pullsPerMonth * 1.03);
+    // paying never earns event points: the paying personas race the same and earn exactly the free player's points
+    for (const id of ['light', 'medium', 'allowance']) expect(ev[id]!.eventPoints).toBe(f.eventPoints);
+    // the exchange's coin value per event (coin lines + scout tickets at the single-pull price) stays ≤ 250 coins
+    for (const e of m.events.filter((x) => x.exchange)) {
+      const single = Math.max(...m.gacha.banners.filter((b) => b.currency === 'any').map((b) => b.priceSingle));
+      const value = e.exchange!.items.reduce((a, l) => a + l.stock * ((l.reward.freeCoins ?? 0) + (l.kind === 'ticket' && m.items.tickets[l.reward.items![0]!.itemId] ? single * l.reward.items![0]!.qty : 0)), 0);
+      expect(value).toBeLessThanOrEqual(250);
+    }
+  }, 3_600_000);
+
   it('E9 friend races cannot replace ranked play as an income (daily cap ≤ 30% of a free player day)', async () => {
     const r = (await run()).f2p!;
     const maxFriendPerDay = m.progression.friendRewardDailyCap * Math.max(...m.progression.raceFreeCoinsByPlace.friend!);

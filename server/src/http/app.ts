@@ -60,7 +60,8 @@ export type PlayerMethod =
   | 'comeback' | 'comebackClaimLogin' | 'comebackClaimMission' | 'comebackWelcomed' | 'whatsNew' | 'whatsNewSeen'
   | 'ads' | 'setAdPref' | 'adStart' | 'adSession' | 'adReward'
   | 'collection' | 'achievements' | 'claimAchievement' | 'claimAllAchievements'
-  | 'training' | 'trainingStart' | 'trainingFinish' | 'trainingUseItem';
+  | 'training' | 'trainingStart' | 'trainingFinish' | 'trainingUseItem'
+  | 'exchangeView' | 'exchangeBuy';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -590,6 +591,12 @@ export const routes: Route[] = [
   { method: 'POST', path: '/v1/events/:eventId/cancel', auth: 'player', handler: async (_r, p, c, u) => events(c).cancel(u, eventIdParam(p.eventId!)) },
   { method: 'GET', path: '/v1/events/:eventId/leaderboard', auth: 'none', handler: async (_r, p, c) => events(c).board(eventIdParam(p.eventId!)) },
   { method: 'GET', path: '/v1/events/:eventId/me', auth: 'player', handler: async (_r, p, c, u) => events(c).me(u, eventIdParam(p.eventId!)) },
+  // イベント交換所 (REQ-EXCH-*, contracts/protocol.md §30)
+  { method: 'GET', path: '/v1/events/:eventId/exchange', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('exchangeView', u, eventIdParam(p.eventId!)) },
+  { method: 'POST', path: '/v1/events/:eventId/exchange', auth: 'player', handler: async (r, p, c, u) => {
+    const b = await body(r, z.object({ itemId: z.string().regex(/^[a-z0-9_]{1,40}$/), qty: z.number().int().min(1).max(99).optional() }).strict());
+    return c.player(u).invoke('exchangeBuy', u, eventIdParam(p.eventId!), b.itemId, b.qty ?? 1, idem(r));
+  } },
   // friends (REQ-SOCIAL-*)
   { method: 'GET', path: '/v1/friends', auth: 'player', handler: async (_r, _p, c, u) => c.friends.list(u) },
   { method: 'GET', path: '/v1/friends/code', auth: 'player', handler: async (_r, _p, c, u) => c.friends.myCode(u) },

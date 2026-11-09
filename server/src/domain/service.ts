@@ -34,7 +34,7 @@ import { admitClientBatch, clientToKpi, ensureKpi, isPayer, kpiRecord, type Clie
 export type Emit = (e: KpiEvent) => void;
 import type { Ruleset } from './ruleset.js';
 import { abortSubmit, prepareSubmit, recordResult, startTimeAttack, timeAttackView } from './timeAttack.js';
-import { ensureGoal, playerGoalPending, playerGoalRace, playerGoalReward, playerGoalTa, playerGoalView, weekKeyOf, type GoalContribution } from './teamGoal.js';
+import { ensureGoal, mayContribute, playerGoalPending, playerGoalRace, playerGoalReward, playerGoalTa, playerGoalView, weekKeyOf, type GoalContribution } from './teamGoal.js';
 import type { VerifierOutput } from './schemas.js';
 import { trackById } from './master.js';
 import { appearanceOf, assetKeys, defaultSilks, validateSilks, type EntrantVisual, type Silks, effectiveSilks } from './visuals.js';
@@ -718,9 +718,11 @@ export class PlayerService {
    */
   private async sendTeamGoal(id: string, c: GoalContribution | null) {
     if (!this.d.onTeamGoal) return;
-    const pending = ensureGoal(await this.load(id)).pending;
+    const cur = await this.load(id);
+    const pending = ensureGoal(cur).pending;
     if (!c && pending.length === 0) return;
-    const queue = [...pending, ...(c ? [c] : [])];
+    // REQ-TGOAL-006: undelivered contributions of a player who was quarantined / scheduled for deletion meanwhile are dropped
+    const queue = mayContribute(cur, this.d.clock()) ? [...pending, ...(c ? [c] : [])] : [];
     const failed: GoalContribution[] = [];
     const milestones: { teamId: string; tier: number }[] = [];
     for (const x of queue) {
@@ -979,7 +981,10 @@ export class PlayerService {
     return this.tx(id, null, (s) => supportResetName(this.d.master, s, target, horseId));
   }
   async setModeration(id: string, status: 'ok' | 'quarantined' | 'banned', until: number | null, reason: string) {
-    const out = await this.tx(id, null, (s, now) => setModeration(s, status, until, reason, now));
+    const out = await this.tx(id, null, (s, now) => {
+      if (status !== 'ok') ensureGoal(s).pending = []; // REQ-TGOAL-006: never delivered later
+      return setModeration(s, status, until, reason, now);
+    });
     // REQ-TGOAL-006: a quarantined or banned player's contribution leaves the weekly goal of every team that holds it
     if (status !== 'ok' && this.d.onTeamGoalForget) {
       const s = await this.load(id);

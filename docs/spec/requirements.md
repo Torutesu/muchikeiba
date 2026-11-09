@@ -639,4 +639,4 @@
 - REQ-TGOAL-009 報酬：届いた一番上の段の決まった報酬を1回（無償コイン・配合素材。ランダムなし、1回 ¥200 以内）。プレイヤーは週ごとに1回だけ受け取る（支部を移っても同じ週は2回受け取れない）。
 - REQ-TGOAL-010 設定の検証（起動時・リモート設定）：`teamGoalProblems`（形、段の数、昇順、最低限が上限で届くこと、報酬の種類と ¥200 の上限、`TEAM_GOAL_HARD_LIMITS`）。
 - REQ-TGOAL-011 KPI：`team_goal_contribute`・`team_goal_milestone`・`team_goal_reward`（サーバーが書く）。
-- REQ-TGOAL-012 経済（E19）：全ての想定が支部に入り、支部が毎週最上段に届く（上限の想定）でも E1・E2（と招待上限の E2）が範囲に収まる。課金で報酬は増えない。クライアント：`ApiClient.GetTeamGoalAsync`、`TeamGoalModel`（段のバー・貢献の一覧・週の結果シート、英語）。
+- REQ-TGOAL-012 経済（E19）：全ての想定が支部に入り、支部が毎週最上段に届く（上限の想定）でも E1・E2（と招待上限の E2）が範囲に収まる。課金で報酬は増えない。同じ行動（レースに出る）への二重払いを避けるため、デイリーミッション「3戦する」を 18 → 15 コインに下げた（balance-targets 4.13）。クライアント：`ApiClient.GetTeamGoalAsync`、`TeamGoalModel`（段のバー・貢献の一覧・週の結果シート、英語）。

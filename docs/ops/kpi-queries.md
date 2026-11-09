@@ -548,3 +548,34 @@ GROUP BY achievement, tier
 ORDER BY achievement, tier
 ```
 - 実績は課金・ガチャでは進まない（REQ-ACH-007）ので、課金者と無課金者（`blob7`）で解放の速さに差が出たら、遊び方の違いとして読む（支払いの効果ではない）。
+
+## 支部の共同目標（REQ-TGOAL-011、contracts/protocol.md §32、Round 13）
+**週ごとの参加と到達**：貢献した人数（送った人）、段に届けた回数、受け取った人数と段。`blob8` = 支部ID、`blob9` = 週（`team_goal_milestone` / `team_goal_reward`）、`double9` = 段。
+
+```sql
+SELECT
+  blob9 AS week,
+  count(DISTINCT IF(blob1 = 'team_goal_reward', blob2, NULL)) AS rewarded_players,
+  sumIf(_sample_interval, blob1 = 'team_goal_milestone') AS milestones,
+  round(sumIf(_sample_interval * double9, blob1 = 'team_goal_reward') / sumIf(_sample_interval, blob1 = 'team_goal_reward'), 2) AS avg_tier,
+  count(DISTINCT IF(blob1 = 'team_goal_reward', blob8, NULL)) AS teams_paid
+FROM muchi_kpi
+WHERE blob1 IN ('team_goal_milestone', 'team_goal_reward') AND timestamp > NOW() - INTERVAL '60' DAY
+GROUP BY week
+ORDER BY week DESC
+```
+
+**1人で運んでいないか**（1日の上限が効いているか）：プレイヤーごとの1日の貢献（送った単位）。上限（レース10・勝利3・自己ベスト2）を超える値が出たら上限の実装を調べる。
+
+```sql
+SELECT blob6 AS day, blob2 AS player, blob9 AS kind, sum(_sample_interval * double5) AS units
+FROM muchi_kpi
+WHERE blob1 = 'team_goal_contribute' AND timestamp > NOW() - INTERVAL '14' DAY
+GROUP BY day, player, kind
+HAVING (kind IN ('race', 'win') AND units > 13) OR (kind = 'ta_pb' AND units > 2)
+ORDER BY units DESC
+LIMIT 100
+```
+- `team_goal_contribute` はプレイヤーのオブジェクトが送った時の行（支部がその週の種類でない・上限で数えないこともある）。`race` と `win` は1レースで1行（1着なら `s2 = 'win'`、`count` 2）。
+- 課金者と無課金者（`blob7`）で受け取りの段に差が出ても、支払いの効果ではない（共同目標は課金で進まない、REQ-TGOAL-012）。支部の活発さの違いとして読む。
+- 継続への効果：`team_goal_reward` を受け取った人と、支部にいるが受け取っていない人の翌週の `race_finish` の数を比べる（支部の共同目標の目的は週の継続）。

@@ -184,6 +184,8 @@ describe('economy targets (90 days, 3 seeds)', () => {
     }
     expect(all.f2p_inviter!.ssrPerMonth).toBeLessThanOrEqual(2.8);
     expect(all.f2p_casual!.pullsPerMonth).toBeLessThanOrEqual(40);
+    // offset like E14: the daily 「3戦する」 mission went 18 → 15 coins; a daily player's 90-day team goal coins stay below it
+    expect(all.f2p!.teamGoalCoins).toBeLessThanOrEqual(3 * all.f2p!.activeDays);
   }, 3_600_000);
 
   it('E9 friend races cannot replace ranked play as an income (daily cap ≤ 30% of a free player day)', async () => {

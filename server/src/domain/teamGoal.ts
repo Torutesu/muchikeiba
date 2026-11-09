@@ -392,7 +392,7 @@ export function ensureGoal(s: PlayerState): PlayerGoalState {
 }
 
 /** Contributions are only sent for a member in good standing (REQ-TGOAL-006). */
-const mayContribute = (s: PlayerState, now: number) => !deletionScheduled(s) && moderationOf(s, now) === 'ok';
+export const mayContribute = (s: PlayerState, now: number) => !deletionScheduled(s) && moderationOf(s, now) === 'ok';
 
 function capped(m: Master, s: PlayerState, now: number, want: Units): Units | null {
   const cfg = teamGoalConfig(m);

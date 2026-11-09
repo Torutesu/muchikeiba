@@ -165,6 +165,14 @@ describe('REQ-TGOAL-003/004 contributions', () => {
     await w.races('a', 1);
     expect((w.state('a') as PlayerState & { teamGoal: { pending: unknown[] } }).teamGoal.pending).toHaveLength(0);
     expect((await w.ts.goal('a')).current!.progress).toBe(2);
+    // undelivered contributions of a player quarantined meanwhile are dropped, never delivered later
+    w.failNext(1);
+    await w.races('a', 1);
+    await w.svc.setModeration('a', 'quarantined', w.now() + DAY, 'test');
+    await w.svc.setModeration('a', 'ok', null, 'released');
+    await w.races('a', 1);
+    expect((w.state('a') as PlayerState & { teamGoal: { pending: unknown[] } }).teamGoal.pending).toHaveLength(0);
+    expect((await w.ts.goal('a')).current!.progress).toBe(1); // only the last race (a's earlier 2 were removed by the quarantine)
     // the same contribution delivered twice is counted once
     const c: GoalContribution = { teamId: (await w.ts.me('a')).team!.teamId, playerId: 'a', displayName: 'x', ref: 'race:r0', at: w.now(), races: 1, wins: 0, taPb: 0 };
     const again = await w.teams.goalContribute(c.teamId, c);

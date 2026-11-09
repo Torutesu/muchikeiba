@@ -548,6 +548,7 @@
   "支部に入ると共同目標に参加できます": "Join a branch to take part in the weekly goal",
   "勝": "wins", "回更新": "PBs",
   "{n}レース": "{n} races", "{n}勝": "{n} wins", "{n}回更新": "{n} PBs",
+  "1レース": "1 race", "1勝": "1 win", "1回更新": "1 PB",
   "進み具合 {a} / {c}": "Progress {a} / {c}",
   "{n}段目": "Milestone {n}",
   "{n}段目に到達": "Reached milestone {n}",

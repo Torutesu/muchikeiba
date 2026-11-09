@@ -222,7 +222,6 @@ export class PlayerService {
     const now = this.d.clock();
     rollSeason(this.d.master, draft, now);
     settlePityGroups(this.d.master, draft, now);
-    settleExchanges(this.d.master, draft, now); // REQ-EXCH-006: leftover event points → material once the exchange closed
     const paidBefore = draft.wallet.paid;
     const standingBefore = standingKey(draft);
     const profileBefore = profileKey(draft);
@@ -232,6 +231,7 @@ export class PlayerService {
     const kpi: KpiRecord[] = [];
     const emit: Emit = (e) => { kpi.push(kpiRecord(draft, now, e)); };
     expireGifts(this.d.master, draft, now, emit); // REQ-BOX-006: lazy expiry on every transaction (the alarm runs one too)
+    settleExchanges(this.d.master, draft, now, giftGiver(this.d.master, draft, now, emit)); // REQ-EXCH-006 / §26.1: leftover event points → material, into the gift box
     let result: T;
     try { result = fn(draft, now, emit); }
     catch (e) {
@@ -881,7 +881,7 @@ export class PlayerService {
   async teamGoalReward(id: string, week: string, teamId: string, tier: number, contribution: number) {
     if (await this.wiped(id)) return null;
     return this.tx(id, null, (s, now, emit) => {
-      const r = playerGoalReward(this.d.master, s, week, teamId, tier, contribution, now);
+      const r = playerGoalReward(this.d.master, s, week, teamId, tier, contribution, now, giftGiver(this.d.master, s, now, emit)); // §26.1: background payout → gift box
       if (r.status === 'rewarded') emit({ name: 'team_goal_reward', s1: teamId, s2: week, value: tier, count: contribution });
       return r;
     });

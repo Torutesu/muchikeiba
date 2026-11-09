@@ -166,8 +166,8 @@ describe('REQ-UXS-014 unlocks', () => {
   });
 
   it('Round 13: 週替わりチャレンジ has its own unlock key, opening with time attack (day 4 or 20 races)', async () => {
-    const def = m.progression.unlocks.find((x) => x.key === 'weekly_challenge');
-    const ta = m.progression.unlocks.find((x) => x.key === 'time_attack');
+    const def = m.progression.unlocks!.find((x) => x.key === 'weekly_challenge');
+    const ta = m.progression.unlocks!.find((x) => x.key === 'time_attack');
     expect(def).toBeDefined();
     expect({ days: def!.days, races: def!.races }).toEqual({ days: ta!.days, races: ta!.races });
     const { svc, advance } = setup();

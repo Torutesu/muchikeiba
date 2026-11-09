@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { AppError } from './errors.js';
 import { addItems, grantReward, logItem } from './items.js';
+import type { Give } from './giftBox.js';
 import { inviteRewardYen } from './invite.js';
 import type { EventDef, EventExchange, ExchangeItemDef, Master } from './master.js';
 import type { PlayerState } from './player.js';
@@ -276,7 +277,7 @@ export function buyExchange(m: Pick<Master, 'progression'> & Partial<Pick<Master
  * every player transaction, like the pity conversion). Uses the current definition when the event still exists,
  * otherwise the rule stored with the points, so nothing is lost if the event is removed from config.
  */
-export function settleExchanges(m: Pick<Master, 'events' | 'progression'>, s: PlayerState, now: number) {
+export function settleExchanges(m: Pick<Master, 'events' | 'progression'>, s: PlayerState, now: number, give?: Give) {
   const out: { eventId: string; points: number; itemId: string; qty: number }[] = [];
   for (const [eventId, e] of Object.entries(s.events ?? {})) {
     const st = e.exchange;
@@ -286,8 +287,13 @@ export function settleExchanges(m: Pick<Master, 'events' | 'progression'>, s: Pl
     if (now < st.rule.closesAtMs) continue;
     const qty = leftoverQty(st.points, st.rule.pointsPerUnit);
     if (qty > 0) {
-      addItems(s, [{ itemId: st.rule.itemId, qty }]);
-      logItem(s, now, st.rule.itemId, qty, `exchange ${eventId} leftover ${st.points}pt`, `exch:${eventId}:leftover`);
+      const note = `exchange ${eventId} leftover ${st.points}pt`;
+      // §26.1 (Round 13 integration): converted in the background → the gift box (the service passes giftGiver)
+      if (give) give({ items: [{ itemId: st.rule.itemId, qty }] }, note, `exch:${eventId}:leftover`, 'exchange');
+      else {
+        addItems(s, [{ itemId: st.rule.itemId, qty }]);
+        logItem(s, now, st.rule.itemId, qty, note, `exch:${eventId}:leftover`);
+      }
     }
     st.converted = { at: now, points: st.points, itemId: st.rule.itemId, qty };
     out.push({ eventId, points: st.points, itemId: st.rule.itemId, qty });

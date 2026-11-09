@@ -3241,7 +3241,7 @@ async function TeamFeed() {
 // one claim-all CTA, the result panel. All values come from L.giftBox (the real PlayerService rules). The expiry text
 // 「あと3日」 is drawn only from a real expiresAt (no expiry = no text); paid coins never appear here.
 // ムチ一閃 tone: paddock art, translucent navy panels, letter-spaced cyan labels, one skewed cyan CTA » per view.
-const GIFT_SOURCE_JA = { ops_compensation: 'お詫び', ops_grant: '運営', invite: '招待', event: 'イベント', tournament: '大会', team: '支部', league: '支部対抗', season: 'シーズン' };
+const GIFT_SOURCE_JA = { ops_compensation: 'お詫び', ops_grant: '運営', invite: '招待', event: 'イベント', tournament: '大会', team: '支部', league: '支部対抗', season: 'シーズン', team_goal: '共同目標', exchange: '交換所' };
 const giftState = { tab: 'box', page: 0 };
 const giftDays = (exp) => Math.max(1, Math.ceil((exp - L.now()) / 86_400_000));
 const jstDay = (ms) => { const d = new Date(ms + 9 * 3600e3); return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日`; };

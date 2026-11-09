@@ -361,12 +361,12 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
     const g = ensureGoal(st);
     const mine = g.week === week && g.weekTeam === SIM_TEAM ? g.weekSent.races : 0;
     if (st.team?.teamId !== SIM_TEAM || mine < goalMin) return;
-    const before = st.items['breeding_material'] ?? 0;
     const out = await svc.teamGoalReward(id, week, SIM_TEAM, goalCfg.tiers.length, mine);
     if (out?.status !== 'rewarded') return;
+    // §26.1: the week reward arrives in the gift box; it is claimed on the persona's next active day (giftClaimAll above)
     r.teamGoalWeeks++;
     r.teamGoalCoins += out.reward?.freeCoins ?? 0;
-    r.teamGoalMaterial += ((await svc.state(id)).items['breeding_material'] ?? 0) - before;
+    r.teamGoalMaterial += (out.reward?.items ?? []).filter((x) => x.itemId === 'breeding_material').reduce((a, x) => a + x.qty, 0);
   };
   for (let d = 0; d < days; d++) {
     now = start + d * DAY;

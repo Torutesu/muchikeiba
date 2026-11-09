@@ -273,10 +273,12 @@ describe('REQ-TGOAL-003/004 contributions', () => {
     w.set(weekEndMs('2026-12-07', dayRule(m)) + 1000);
     expect((await w.alarm(t1)).paid).toBe(1); // lead only
     expect((await w.alarm(t2)).paid).toBe(2); // lead2 and a
+    await w.svc.giftClaimAll('a', 'c:gifts1'); // §26.1: the week reward waits in the gift box
     expect(w.state('a').wallet.free - before).toBe(5);
     // even if the first team tried to pay the same week again, the player's object refuses
     const again = await w.svc.teamGoalReward('a', '2026-12-07', t1, 3, 10);
     expect(again!.status).toBe('already');
+    expect(w.state('a').giftBox?.box ?? []).toEqual([]);
     expect(w.state('a').wallet.free - before).toBe(5);
   });
 });
@@ -341,6 +343,11 @@ describe('REQ-TGOAL-005/007/009 week close and rewards', () => {
     w.set(weekEndMs('2026-12-07', dayRule(m)) + 1000);
     const r = await w.alarm(teamId);
     expect(r).toMatchObject({ done: true, week: '2026-12-07', paid: 2 });
+    // §26.1 (Round 13 integration): a background payout waits in the gift box until claimed
+    expect(free('a') - before.a).toBe(0);
+    expect(w.state('a').giftBox!.box.map((g) => [g.source, g.contents.freeCoins])).toEqual([['team_goal', 10]]);
+    expect(w.state('lead').giftBox?.box ?? []).toEqual([]);
+    for (const u of ['a', 'b', 'lead']) await w.svc.giftClaimAll(u, `c:g:${u}`);
     expect(free('a') - before.a).toBe(10);
     expect(mat('a') - before.am).toBe(1);
     expect(free('b') - before.b).toBe(10);
@@ -348,6 +355,7 @@ describe('REQ-TGOAL-005/007/009 week close and rewards', () => {
     // running the job again pays nothing more; the player method itself is idempotent per week
     expect((await w.alarm(teamId)).paid).toBe(0);
     expect((await w.svc.teamGoalReward('a', '2026-12-07', teamId, 2, 20))!.status).toBe('already');
+    expect(w.state('a').giftBox!.box).toEqual([]);
     expect(free('a') - before.a).toBe(10);
     // the week result for the viewer
     const v = await w.ts.goal('a');
@@ -358,7 +366,7 @@ describe('REQ-TGOAL-005/007/009 week close and rewards', () => {
     expect(w.kpi.filter((k) => k.r.name === 'team_goal_reward').map((k) => k.id).sort()).toEqual(['a', 'b']);
     // the paid grant is free coins (never paid coins) and is in the ledger with its week
     expect(w.state('a').wallet.paid).toBe(0);
-    expect(w.state('a').ledger.some((x) => x.ref === 'team_goal:2026-12-07')).toBe(true);
+    expect(w.state('a').ledger.some((x) => x.reason === 'team goal ' + teamId + ' week 2026-12-07 tier 2')).toBe(true);
   });
 
   it('a member who left before the week ended is not paid; a week below the first milestone pays nobody', async () => {

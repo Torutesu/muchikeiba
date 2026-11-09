@@ -122,6 +122,8 @@ export const CODE_EN: Record<string, string> = {
   '支部のシーズン報酬': 'Branch season reward',
   '支部対抗シーズンの報酬': 'Branch league reward',
   'シーズンの報酬': 'Season reward',
+  '支部の共同目標の報酬': 'Branch weekly goal reward',
+  'イベント交換所の残りポイント': 'Event exchange: leftover points',
   // ---- 購入履歴・コイン履歴・ガチャ履歴 (history.ts, REQ-HIST-008; contracts/protocol.md §33)
   'コインの購入': 'Coin purchase',
   'コインの購入（{product}）': 'Coin purchase ({product})',

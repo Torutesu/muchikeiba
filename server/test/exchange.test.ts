@@ -233,6 +233,9 @@ describe('after the event (REQ-EXCH-005/006)', () => {
     const v = await svc.exchangeView('p1', ev.id);
     expect(v.status).toBe('closed');
     expect(v.leftover.converted).toMatchObject({ points: 40, qty: 1 });
+    // §26.1 (Round 13 integration): the conversion happens in the background, so the material waits in the gift box
+    expect((await repo.get('p1'))!.giftBox!.box.map((g) => g.source)).toEqual(['exchange']);
+    await svc.giftClaimAll('p1', 'c:gifts');
     expect((await repo.get('p1'))!.items.breeding_material).toBeGreaterThanOrEqual(1);
   });
 });

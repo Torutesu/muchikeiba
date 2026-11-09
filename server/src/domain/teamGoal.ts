@@ -27,6 +27,7 @@ import type { PlayerState } from './player.js';
 import { moderationOf } from './player.js';
 import { deletionScheduled } from './accountDeletion.js';
 import { grantReward } from './items.js';
+import type { Give } from './giftBox.js';
 import { inviteRewardYen } from './invite.js';
 import { addJstDays, dayRule, gameDayKey, gameWeekEndMs, gameWeekId, gameWeekStartMs, type DayRule } from './time.js';
 
@@ -438,7 +439,7 @@ export function playerGoalPending(s: PlayerState, keep: GoalContribution[], now:
  * REQ-TGOAL-007/009: pays a closed week's tier reward to an eligible member, once per week whatever the team. A member
  * scheduled for deletion or not in good standing forfeits it (recorded, so a retry does not pay later either).
  */
-export function playerGoalReward(m: Master, s: PlayerState, week: string, teamId: string, tier: number, contribution: number, now: number) {
+export function playerGoalReward(m: Master, s: PlayerState, week: string, teamId: string, tier: number, contribution: number, now: number, give?: Give) {
   const cfg = teamGoalConfig(m);
   const g = ensureGoal(s);
   if (g.rewarded.includes(week)) return { status: 'already' as const, reward: null };
@@ -448,7 +449,10 @@ export function playerGoalReward(m: Master, s: PlayerState, week: string, teamId
   const reward = tierReward(cfg, tier);
   mark();
   if (!reward) return { status: 'none' as const, reward: null };
-  grantReward(s, reward, now, `team goal ${teamId} week ${week} tier ${tier}`, `team_goal:${week}`);
+  // §26.1 (Round 13 integration): a background payout → the gift box (the service passes giftGiver); direct without one
+  const note = `team goal ${teamId} week ${week} tier ${tier}`;
+  if (give) give(reward, note, `team_goal:${week}`, 'team_goal');
+  else grantReward(s, reward, now, note, `team_goal:${week}`);
   g.last = { week, teamId, tier, contribution, reward };
   return { status: 'rewarded' as const, reward };
 }

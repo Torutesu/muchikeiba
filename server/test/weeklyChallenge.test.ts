@@ -216,6 +216,8 @@ describe('submit → verifier → evaluation on the server (REQ-WCH-005/006/008)
     expect(r.evaluation.timeMs).toBe(raceTimeMs(st.config, 1800, 0));
     expect(r.evaluation.checks.map((c) => [c.kind, c.ok])).toEqual([['finish', true], ['place', true], ['style', true]]);
     expect(w.repo.get('p')!.wallet.free).toBe(free0 + NIGE.reward.freeCoins!);
+    // §26.1 (Round 13 integration): the clear has its own result screen, so the reward is granted directly, never boxed
+    expect(w.repo.get('p')!.giftBox?.box ?? []).toEqual([]);
     // idempotent: the same submit again returns the stored result and grants nothing
     const again = await svc.submit('p', { sessionId: st.sessionId, token: st.token, inputs, resultHash: HASH_A });
     expect(again).toEqual(r);

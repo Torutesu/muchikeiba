@@ -493,6 +493,8 @@ export const MuchiLogic = {
     await this.seedDemo(3, [2, 2, 2]);
     const people: [string, string][] = [['demo_act_1', 'アサヒ'], ['demo_act_2', 'カエデ'], ['demo_act_3', 'シノノメ']];
     for (const [id, name] of people) if (!(await repo.get(id))) { await svc.bootstrap(id); await svc.setDisplayName(id, name); }
+    // the demo rival exactly as rivalDemoSeed makes it (with its partner), so its name shows on the rival row
+    if (!(await repo.get(RIVAL_DEMO))) { await svc.bootstrap(RIVAL_DEMO); await svc.setDisplayName(RIVAL_DEMO, 'ミドリカワ'); await svc.grantPartner(RIVAL_DEMO, 'ハヤテ', key()); }
     const day = new Date(now() + 9 * 3600e3).toISOString().slice(0, 10);
     await svc.teamGoalReward(ID, 'demo-week', 'demo_team', 2, 6);
     await svc.friendAccepted(ID, 'demo_act_2', 'カエデ');

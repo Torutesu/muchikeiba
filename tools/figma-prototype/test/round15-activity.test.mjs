@@ -38,6 +38,7 @@ const gift = fresh[0];
 assert.deepStrictEqual(gift.link, { screen: 'gift_box', id: null }, 'a gift row links to the box');
 assert.ok(!('claim' in gift) && !('contents' in gift), 'nothing to claim on the activity list');
 assert.strictEqual(P.items[0].text, 'アサヒさんからフレンド申請が届きました', 'the sender name from the public profile');
+assert.match(P.items.find((i) => i.kind === 'rival_record').text, /^ライバルのミドリカワさんが/, 'the rival name');
 assert.ok(P.items.filter((i) => !i.unread).map((i) => i.kind).includes('friend_accepted'), 'entries seen on an earlier visit are read');
 
 // paging by the server cursor

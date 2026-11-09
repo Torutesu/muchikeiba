@@ -3375,12 +3375,13 @@ async function Activity() {
   Kicker('新しい順', 36, 30, p, { size: 15 });
   if (!P.items.length) Txt('まだお知らせはありません', 36, 110, 900, 19, MUTED, p).dataset.actEmpty = '1';
   P.items.forEach((it, i) => {
-    const row = el('act-row' + (it.unread ? ' unread' : ''), 24, 80 + i * 72, 1012, 66, p);
+    const row = el('act-row' + (it.unread ? ' unread' : ''), 24, 86 + i * 72, 1012, 66, p);
     row.dataset.act = it.kind; row.dataset.screen = it.link.screen; row.dataset.count = String(it.count); row.dataset.unread = it.unread ? '1' : '0';
     if (it.unread) el('act-dot', 0, 28, 10, 10, row);
     Txt(ACT_LABEL[it.kind] ?? 'お知らせ', 22, 8, 160, 12, it.kind === 'gift_arrived' ? GOLD : CYAN, row, { weight: 700, ls: '.18em', nowrap: true });
     Txt(jstDate(it.at), 190, 8, 220, 12, SOFT, row, { weight: 500, nowrap: true, cls: 'num' });
-    Txt(it.text, 22, 30, 760, 18, it.unread ? WHITE : MUTED, row, { weight: 700, nowrap: true });
+    const tx = Txt(it.text, 22, 30, 760, 18, it.unread ? WHITE : MUTED, row, { weight: 700, nowrap: true });
+    tx.style.overflow = 'hidden'; tx.style.textOverflow = 'ellipsis'; // a long course name never runs under the link
     const go = Ghost(it.link.screen === 'gift_box' ? 'プレゼントボックスへ' : '見る', 800, 10, 200, 46, () => {
       (globalThis.__muchiKpi ??= []).push({ name: 'activity_tap', kind: it.kind, screen: it.link.screen });
       actGo(it.link.screen, it.link.id);

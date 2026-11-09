@@ -764,3 +764,22 @@ LIMIT 100
 - `team_goal_contribute` はプレイヤーのオブジェクトが送った時の行（支部がその週の種類でない・上限で数えないこともある）。`race` と `win` は1レースで1行（1着なら `s2 = 'win'`、`count` 2）。
 - 課金者と無課金者（`blob7`）で受け取りの段に差が出ても、支払いの効果ではない（共同目標は課金で進まない、REQ-TGOAL-012）。支部の活発さの違いとして読む。
 - 継続への効果：`team_goal_reward` を受け取った人と、支部にいるが受け取っていない人の翌週の `race_finish` の数を比べる（支部の共同目標の目的は週の継続）。
+
+## 出走前アドバイス：表示と「おすすめどおり」（REQ-ADV-011、contracts/protocol.md §39.7）
+
+**どれだけ見られ、おすすめの馬で出走した割合**（コンテキストごと、週ごと）。どちらもクライアントのイベント：`advice_view`（`blob8` = コンテキスト `ranked` / `friend` / `event` / `challenge` / `timeattack` / `tutorial`、`double5` = 並べた馬の数、`double9` = 1 ならおすすめあり）、`advice_follow`（`blob8` = コンテキスト、`double9` = 1 ならおすすめの馬で出走）。アドバイスを切っている人は送らない。
+
+```sql
+SELECT toStartOfWeek(timestamp) AS week, blob8 AS context,
+  sumIf(_sample_interval, blob1 = 'advice_view') AS views,
+  count(DISTINCT if(blob1 = 'advice_view', blob2, NULL)) AS players,
+  sumIf(_sample_interval, blob1 = 'advice_follow') AS entries,
+  sumIf(_sample_interval, blob1 = 'advice_follow' AND double9 = 1) AS followed,
+  followed / entries AS follow_rate
+FROM muchi_kpi
+WHERE blob1 IN ('advice_view', 'advice_follow') AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY week, context ORDER BY week, context
+```
+
+- 課金者と無課金者（`blob7`）で数字を分けても、アドバイスはどちらにも同じ（無料・全員同じ情報、REQ-ADV-006）。差は遊び方の違いとして読む。
+- 「おすすめどおり」の人の着順が良いかは、同じ日の `race_finish`（サーバー）と突き合わせる。アドバイスは勝ちやすさを約束しない（確率は出さない）ので、効果は着順の平均で見る。

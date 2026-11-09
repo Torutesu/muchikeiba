@@ -1480,3 +1480,105 @@ TeamGoalView = { "teamId": "tabc123456", "teamName": "あおばRC", "enabled": t
 
 ### 33.6 クライアント（`HistoryModel`）
 - タブ（購入／有償コイン／無償コイン／ガチャ）、残高ヘッダー（有償・無償を分けて）、月の購入額と上限（未成年のみ）、`nextCursor` で続きを読む（同じタブで2回同時に読まない）、行の詳細、問い合わせシート（行を最大10件選ぶ → `support-ticket`）。オフラインは「オンラインで確認できます」。タブを開くたびに `history_view` を1回。
+
+
+## 39. 出走前アドバイス（REQ-ADV-001〜016、`server/src/domain/raceAdvice.ts`・`raceAdviceService.ts`、C# `RaceAdvice.cs`・`Muchi.Game.RaceAdviceModel`、共有ベクター `contracts/race-advice.vectors.json`）
+レースの前（馬を選ぶ画面）に、**データから計算した短いアドバイス**を出す：持っている馬のうちこのコース・距離・馬場に合う馬、その馬の乗り方（位置取りの目安・ムチの打ち始め・手綱）、わかっている範囲の相手の脚質。**勝つ確率・オッズ・印（◎○▲△）は出さない**。購入を勧めない。無料で、全員が同じ情報（プレイヤーが既に見られる情報だけ）から同じアドバイスを受け取る。
+
+### 39.1 計算（REQ-ADV-001〜003、純粋な関数 `computeRaceAdvice`）
+入力は普通のデータだけ（時計・乱数・マスター参照なし）。同じ入力から必ず同じ出力。サーバー（TS）とクライアント（C# `RaceAdvice.Compute`）は同じ手順で、`contracts/race-advice.vectors.json` の全ケースで一致すること（`server/test/race-advice.test.ts`・`engine/Muchi.Engine.Tests/RaceAdviceTests.cs`。ファイルは `npm run gen:advice-vectors` が書き、違えばテストが落ちる）。
+
+入力 `AdviceInput`：
+| キー | 中身 |
+|---|---|
+| `mode` | `ranked`/`friend`/`event`/`tournament`/`challenge`/`timeattack`/`tutorial` |
+| `courses[]` | `{ trackId, surface, distanceM, going, night, corners, finalStraightM }`。1件 = コースが決まっている。複数 = レースがその中から1つを選ぶ（ランク戦：全コース、その日の馬場） |
+| `horses[]` | 候補の馬（自分の現役の馬・貸し出し馬）：能力5つ（調教込み）・脚質・距離適性・芝ダート・得意馬場・固有スキル `{ id, name, trigger }` |
+| `field` | わかっている相手 `{ nige, senko, sashi, oikomi, unknown }`、わからなければ null |
+| `rules` | ルールセットから読む値（`adviceRules`）：`aptitudeOutPenaltyPermille`、`goingSpecialistPermille`、馬場ごとの消耗（芝・ダート各4）、`spurtDistanceM` と距離のキー（1.2）、`maxWhips`・`whipDiminishWindowTicks`、CPU の脚質ごとの目標位置、スキルのキーの有無（1.3）。無い任意キー群は中立の値 |
+| `statCap` / `fixedStats` | 能力の正規化（ランク戦のクラス上限・チャレンジ・タイムアタック）／全員同じ能力（イベント） |
+| `focusHorseId` | 画面で選んでいる馬（乗り方のヒントはこの馬について）。無ければおすすめの馬 |
+
+馬ごとの「合い方」`fitPermille`（コースごとに足し、複数コースなら合計）：
+| 要素 | 値 | 根拠 |
+|---|---|---|
+| 距離が適性外 | −`aptitudeOutPenaltyPermille`（50） | エンジンが最高速とスタミナを5%下げる（RaceSim） |
+| 芝ダートが合わない | −同じ | 同上 |
+| 得意馬場 | エンジンの `GoingSpecialistPermille` そのもの（±8、稍重は±4。0 へ切り捨て） | REQ-RACE-035 |
+| 固有スキルがこのコースで出せる | +3（`cornerRail` はコーナーの無いコース、`finalStraight` は最後が直線でないコースでは出ない → 0）。スキルを使わないレース（チャレンジ・タイムアタック・チュートリアル・能力固定・1.3 未満のルールセット）では 0 | 1.3、balance-targets R9（スキルは理由になるが決め手にしない） |
+| 消耗の多い馬場でスタミナの比率 | 比率（能力合計に対する‰）≥220 で +2、<180 で −2。「消耗が多い」= その面の良馬場より 1.5%以上多い（距離のキーが無いルールセットでは 芝2400m・ダート2000m 以上も） | 馬場ごとの消耗（1.1） |
+並べ方：`fitPermille` の大きい順 → 実効の能力合計（`statCap` があればそこで頭打ち、能力固定なら 0）の大きい順 → id の順。評価 `grade`：1コースなら 適性外か合計が負 → `poor`、正 → `good`、0 → `ok`。複数コースなら 全部合う → `good`、半分未満 → `poor`、他 → `ok`。
+
+おすすめ `suggestedHorseId` と理由 `suggestReason`：1頭だけ → `only`。1位の合い方が2位より上 → `aptitude`。同じで能力合計が上 → `stats`。どちらも同じ → `even`（おすすめなし、「どの馬も条件は互角。乗り方で差がつく」）。
+
+行 `lines[]`（`kind`：`pick`/`going`/`night`/`field`/`style`/`rein`/`skill`/`whip`/`rules`）。日本語の文はサーバーとクライアントが同じに作り、英語は応答の境界で訳す（§23、`i18n/en.ts`）：
+- `going`：その面の良馬場との消耗の比が ≥1015‰ なら「◯の馬場：脚が減りやすい。手綱で脚をためる」、≤985‰ なら「脚が残りやすい」。`night`：「ナイター：走りは昼と同じ（見た目だけ）」（エンジンはナイターで何も変えない）。
+- `field`：わかっている相手の脚質の数と頭数、わからない頭数は「出走時に決まる」。ランク戦・イベントは常に「最大12頭。相手は出走時に決まる」。
+- `style`：距離のキーがあるルールセット（1.2+）では「この距離で脚質の有利不利はない」（balance-targets T2：全コース×全馬場で脚質別勝率が一様の±25%）。無い場合は短い距離（基準 −400m 以下）で「前の馬が残りやすい」、長い距離（+400m 以上）で「後ろの馬が伸びやすい」（1.1.0 の表）。脚質ごとの位置の目安 = CPU の目標位置 `1 + ⌊(頭数−1)×cpuTargetRank‰/1000⌋`（2番手以上、逃げは「先頭」、1頭で走るときは出さない）。逃げの馬で、わかっている相手に逃げが2頭以上 → 「無理に競らず2番手からでもいい」、相手が全部わかっていて逃げが0 → 「楽に先頭に立てる形」。
+- `rein`：気性 < 400（掛かりの起きやすさは 1000 − 気性に比例）→「かかったら手綱を長押し」。`skill`：`goodStart` のスキルが使えるとき「ゲートが開いた瞬間にスタート」。
+- `whip`：スパート区間 = `spurtDistanceM` × 距離の係数（1.2 の `DistanceFactorPermille`）。打ち始め = min(400, スパート区間) を 50m 単位で切り捨て（balance-targets R4d：「残り400mから」はムチなしより速い）、間隔 = `whipDiminishWindowTicks`（秒に切り上げ）、本数 = `maxWhips`。`whip` オブジェクトにも同じ数（`startRemainingM`・`spurtM`・`intervalTicks`・`count`）。コースが決まっていなければ「ムチは最後の直線で、間隔をあけて」だけ。
+- `rules`：正規化（「能力は合計N までにそろえて走る」）、能力固定、スキルを使わないレース。
+
+### 39.2 チュートリアル（REQ-ADV-010）
+`mode: tutorial` は入力に関係なく**決まった短い版**：「合図が出たら、ムチ」「ムチは間隔をあけて打つと伸びる」。馬の並べ替え・おすすめは無い（最初のレースの操作はムチだけ、docs/planning/06 F4）。
+
+### 39.3 正直さ（REQ-ADV-003/004、lint `adviceTextProblems`）
+- 生成する文に使わない言葉：勝率・確率・オッズ・本命・対抗・大穴・穴馬・単勝・複勝・馬券・予想・必勝・勝てる・絶対・確実・%・倍・買・購入・課金・ガチャ・スカウト・ショップ・有償・今だけ・残りわずか・お得・通常価格・◎○▲△☆。英語も同じ（odds・win rate・chance・probability・favourite・long shot・bet・buy・purchase・shop・scout・gacha・guarantee・sure win・%・double・limited time・paid）。テストは全コース×全馬場×昼夜×全モード×マスターの全馬の組み合わせで出る文の全部を日英で検査する（馬の名前はプレイヤーが付けた文なので除く）。
+- 「順位」は並べ方で、予想ではない。出すのは適性・ルールセットの数字から言えることだけ。
+
+### 39.4 `GET /v1/races/advice`（要認証、読み取りだけ）
+クエリ：
+| キー | 意味 |
+|---|---|
+| `context` | `ranked`（既定）/`friend`/`event`/`challenge`/`timeattack`/`tutorial` |
+| `trackId` | コース（`friend`・`timeattack` で使う。`event` は開催のコースの1つなら使う） |
+| `going` / `night` | 部屋の条件など、画面に出ている馬場・ナイター（コースの面に合わない馬場は 400。ナイターは照明のある競馬場だけ）。無ければその日の馬場（REQ-RACE-037） |
+| `challengeId` | `challenge`：今週のチャレンジ（無ければ 404） |
+| `eventId` | `event`：イベント（無ければ 404） |
+| `horseId` | 選んでいる馬（ヒントの対象） |
+| `field` | `friend`：部屋の他のメンバーの脚質（`nige,sashi`…、最大11） |
+
+コンテキストごとの入力：
+| context | コース | 候補の馬 | 相手 | 正規化・スキル |
+|---|---|---|---|---|
+| `ranked` | 全コース（その日の馬場）。初めてのランク戦でコースが決まっている場合（REQ-UXS-003）はそのコース | 現役の馬 | null（`field` は受け取らない） | クラスの上限、スキルあり |
+| `friend` | `trackId` があればそのコース、無ければ全コース | 現役の馬 | `field` の脚質 | なし、スキルあり |
+| `event` | 開催のコース（`trackId` が開催のコースならそれ） | 現役の馬（脚質の制限があれば合う馬だけ） | null | イベントの上限・能力固定・イベントのルールセット |
+| `challenge` | チャレンジのコース・馬場・ナイター | **貸し出し馬**＋脚質の条件に合う自分の馬 | CPU の頭数（脚質は不明） | `statCap`、スキルなし |
+| `timeattack` | `trackId`（必須、馬場は良、昼） | 現役の馬 | 1頭 | `statCap`、スキルなし |
+| `tutorial` | — | — | — | 39.2 の決まった版 |
+
+応答 = `AdviceOutput` ＋ `context` ＋ `input`（計算に使った `AdviceInput`。端末は選ぶ馬が変わったら `focusHorseId` だけ変えて `RaceAdvice.Compute` で計算し直す。中身は自分の馬とルールセットの値だけ）：
+```json
+{ "v": 1, "context": "friend", "mode": "friend", "tutorial": false, "courseCount": 1,
+  "horses": [ { "horseId": "h2", "name": "ギンガノカナタ", "rank": 1, "fitPermille": 13, "grade": "good", "fits": 1,
+      "checks": [ { "kind": "distance", "mark": "ok", "text": "距離2,400mは適性内（1,800〜2,600m）" }, { "kind": "going", "mark": "plus", "text": "重の馬場が得意" } ] } ],
+  "suggestedHorseId": "h2", "suggestReason": "aptitude", "focusHorseId": "h2",
+  "lines": [ { "kind": "pick", "text": "おすすめはギンガノカナタ。距離・芝ダート・馬場の条件がいちばん合う" }, { "kind": "whip", "text": "ムチは残り400mから、1秒以上あけて6発まで" } ],
+  "whip": { "startRemainingM": 400, "spurtM": 840, "intervalTicks": 20, "count": 6 },
+  "field": { "nige": 3, "senko": 1, "sashi": 0, "oikomi": 0, "unknown": 0, "size": 5 } }
+```
+- `checks[].mark`：`plus`/`ok`/`minus`/`off`。複数コースのときは `kind: "pool"` の1行（「今日の8コースのうち5コースで距離と芝・ダートが合う」）。数は**コースの数**で、確率ではない。
+- ルールセットはリモート設定の有効なもの（`activeRuleset`、§15）。状態は変えない（冪等キー不要）。削除予定中のアカウントも読める。
+- エラー：`BAD_REQUEST`（context・going・field の形）、`NOT_FOUND`（チャレンジ・イベント）、`CONFIG_INVALID`（無いコース）。
+
+### 39.5 公平性（REQ-ADV-006）
+- 無料・回数制限なし・全員同じ。課金や持ち物で内容が変わらない（同じ馬なら課金者も無課金者も同じ応答、テストで確認）。
+- 使う情報はプレイヤーが既に見られるものだけ：自分の馬・コースとその日の馬場（REQ-DAY-001 で全員同じ）・チャレンジのカード・部屋のメンバーの脚質（クライアントが部屋の画面から渡す）。ランク戦の相手（マッチング前）は使わない。
+- アドバイスはレースの結果に一切関わらない（エンジン・設定は変わらない、表示だけ）。ゴールデンは変わらない。
+
+### 39.6 設定・デバッグ（REQ-ADV-009/014）
+- 端末の設定「出走前アドバイス」（既定 ON）。OFF ならパネルを出さず、API も呼ばず、KPI も送らない（`RaceAdviceModel.Enabled`、キー `muchi.advice.enabled`）。チュートリアルは設定にかかわらず決まった版を出す。
+- 結果画面（Round 8 の振り返り）：ムチのアドバイスを見たレースでは、ムチの打ち始めがアドバイスどおりだったかを1行出す（端末の `RaceDebriefRecorder` の最初のスパート区間のムチの残り距離と比べる：最初のムチが残り（打ち始め＋50m）〜（打ち始め−150m）の間なら「アドバイスどおり」、それより前なら早すぎ、後なら遅すぎ、打たなかった）。C# `RaceAdvice.CheckWhipTip`、`RaceAdviceModel.DebriefLine`。
+
+### 39.7 KPI（クライアントのイベント）
+| イベント | props | 列 |
+|---|---|---|
+| `advice_view` | `context`（39.4 の値）、`horses`（並べた馬の数 0〜30）、`suggested`（おすすめがあったか） | s1 = context、count = horses、value = 1/0 |
+| `advice_follow` | `context`、`followed`（出走した馬 = おすすめの馬か） | s1 = context、value = 1/0 |
+`advice_view` はパネルを出した画面ごとに1回、`advice_follow` は出走（ランク戦の登録・部屋への参加・チャレンジの開始など）ごとに1回、おすすめがあった時だけ。クエリは `docs/ops/kpi-queries.md`「出走前アドバイス」。
+
+### 39.8 クライアント
+- `Muchi.Client`：`ApiClient.GetRaceAdviceAsync(RaceAdviceQuery)`、`RaceAdvice.Compute(AdviceInput)`（39.1 と同じ。オフラインのレース・チュートリアル用）、`RaceAdvice.Rules(RulesetParams)`、`RaceAdvice.CheckWhipTip`、`AnalyticsEvents.AdviceView`・`AdviceFollow`。
+- Unity ゲーム層 `RaceAdviceModel`：パネルの行（おすすめ・馬ごとの○△のかわりに「よく合う／合う／条件外あり」の言葉と理由）、選んだ馬が変わったらヒントを計算し直す（サーバーに聞き直さず、受け取った馬の情報から端末で計算。結果はサーバーと同じ）、設定の ON/OFF、KPI、結果画面の1行。オフラインでは端末で計算。
+- デプロイ：新しい GET だけ（検証器は変わらない）。サーバーだけ出せばよい（§7.1 の順番に影響なし）。

@@ -345,21 +345,21 @@ describe('REQ-TGOAL-005/007/009 week close and rewards', () => {
     expect(r).toMatchObject({ done: true, week: '2026-12-07', paid: 2 });
     // §26.1 (Round 13 integration): a background payout waits in the gift box until claimed
     expect(free('a') - before.a).toBe(0);
-    expect(w.state('a').giftBox!.box.map((g) => [g.source, g.contents.freeCoins])).toEqual([['team_goal', 10]]);
+    expect(w.state('a').giftBox!.box.map((g) => [g.source, g.contents.freeCoins])).toEqual([['team_goal', 8]]);
     expect(w.state('lead').giftBox?.box ?? []).toEqual([]);
     for (const u of ['a', 'b', 'lead']) await w.svc.giftClaimAll(u, `c:g:${u}`);
-    expect(free('a') - before.a).toBe(10);
+    expect(free('a') - before.a).toBe(8);
     expect(mat('a') - before.am).toBe(1);
-    expect(free('b') - before.b).toBe(10);
+    expect(free('b') - before.b).toBe(8);
     expect(free('lead') - before.lead).toBe(0);
     // running the job again pays nothing more; the player method itself is idempotent per week
     expect((await w.alarm(teamId)).paid).toBe(0);
     expect((await w.svc.teamGoalReward('a', '2026-12-07', teamId, 2, 20))!.status).toBe('already');
     expect(w.state('a').giftBox!.box).toEqual([]);
-    expect(free('a') - before.a).toBe(10);
+    expect(free('a') - before.a).toBe(8);
     // the week result for the viewer
     const v = await w.ts.goal('a');
-    expect(v.lastWeek).toMatchObject({ week: '2026-12-07', tier: 2, progress: 38, eligible: true, paid: true, reward: { freeCoins: 10 } });
+    expect(v.lastWeek).toMatchObject({ week: '2026-12-07', tier: 2, progress: 38, eligible: true, paid: true, reward: { freeCoins: 8 } });
     expect(v.lastWeek!.top.map((x) => x.playerId)).toEqual(['a', 'b', 'lead']);
     expect((await w.ts.goal('lead')).lastWeek).toMatchObject({ eligible: false, paid: false });
     expect(v.player.lastReward).toMatchObject({ week: '2026-12-07', tier: 2, contribution: 20 });

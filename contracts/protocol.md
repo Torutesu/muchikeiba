@@ -1377,8 +1377,8 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 { "goals": [ { "id": "races_sum", "kind": "races", "label": "支部で合計{n}レース", "perMember": [6, 12, 20], "minContribution": 3 },
              { "id": "wins_sum", "kind": "wins", "label": "支部で合計{n}勝", "perMember": [1, 2, 4], "minContribution": 1 },
              { "id": "ta_pb_sum", "kind": "ta_pb", "label": "支部でタイムアタック自己ベスト更新 合計{n}回", "perMember": [1, 2, 3], "minContribution": 1 } ],
-  "tiers": [ { "reward": { "freeCoins": 5 } }, { "reward": { "freeCoins": 10, "items": [{ "itemId": "breeding_material", "qty": 1 }] } },
-             { "reward": { "freeCoins": 20, "items": [{ "itemId": "breeding_material", "qty": 1 }] } } ],
+  "tiers": [ { "reward": { "freeCoins": 5 } }, { "reward": { "freeCoins": 8, "items": [{ "itemId": "breeding_material", "qty": 1 }] } },
+             { "reward": { "freeCoins": 12, "items": [{ "itemId": "breeding_material", "qty": 1 }] } } ],
   "dailyCap": { "races": 10, "wins": 3, "ta_pb": 2 }, "scale": { "min": 3, "max": 20 },
   "modes": ["ranked", "event", "tournament"], "topN": 5, "payBatch": 50 }
 ```

@@ -209,7 +209,7 @@
       "kind": "races",
       "target": 3,
       "reward": {
-        "freeCoins": 16
+        "freeCoins": 15
       }
     },
     {
@@ -1008,8 +1008,8 @@
     ],
     "tiers": [
       { "reward": { "freeCoins": 5 } },
-      { "reward": { "freeCoins": 10, "items": [{ "itemId": "breeding_material", "qty": 1 }] } },
-      { "reward": { "freeCoins": 20, "items": [{ "itemId": "breeding_material", "qty": 1 }] } }
+      { "reward": { "freeCoins": 8, "items": [{ "itemId": "breeding_material", "qty": 1 }] } },
+      { "reward": { "freeCoins": 12, "items": [{ "itemId": "breeding_material", "qty": 1 }] } }
     ],
     "dailyCap": { "races": 10, "wins": 3, "ta_pb": 2 },
     "scale": { "min": 3, "max": 20 },

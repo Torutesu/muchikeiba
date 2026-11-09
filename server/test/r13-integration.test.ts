@@ -30,18 +30,18 @@ describe('§26.1 gift box routing for Round 13 rewards', () => {
     const free0 = w.state('a').wallet.free;
     const mat0 = w.state('a').items.breeding_material ?? 0;
     const r = await w.svc.teamGoalReward('a', WEEK, 'team_1', 2, 12);
-    expect(r).toMatchObject({ status: 'rewarded', reward: { freeCoins: 10 } });
+    expect(r).toMatchObject({ status: 'rewarded', reward: { freeCoins: 8 } });
     // nothing reaches the wallet until the player claims it
     expect(w.state('a').wallet.free).toBe(free0);
     expect(w.state('a').items.breeding_material ?? 0).toBe(mat0);
     const box = (await w.svc.giftBox('a', 'box', 0, 50)).entries;
     expect(box).toHaveLength(1);
-    expect(box[0]).toMatchObject({ source: 'team_goal', titleKey: 'team_goal', title: '支部の共同目標の報酬', contents: { freeCoins: 10, items: [{ itemId: 'breeding_material', qty: 1 }] } });
+    expect(box[0]).toMatchObject({ source: 'team_goal', titleKey: 'team_goal', title: '支部の共同目標の報酬', contents: { freeCoins: 8, items: [{ itemId: 'breeding_material', qty: 1 }] } });
     // the alarm running again is a no-op (one gift, one payment)
     expect((await w.svc.teamGoalReward('a', WEEK, 'team_1', 2, 12))!.status).toBe('already');
     expect((await w.svc.giftBox('a', 'box', 0, 50)).entries).toHaveLength(1);
     await w.svc.giftClaimAll('a', 'c:claim');
-    expect(w.state('a').wallet.free).toBe(free0 + 10);
+    expect(w.state('a').wallet.free).toBe(free0 + 8);
     expect(w.state('a').items.breeding_material ?? 0).toBe(mat0 + 1);
     expect(w.state('a').wallet.paid).toBe(0);
   });

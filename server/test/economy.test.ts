@@ -154,7 +154,7 @@ describe('economy targets (90 days, 3 seeds)', () => {
     const all = await run();
     const f = all.f2p!;
     // the 90-day payout of a daily free player (races, wins, podiums, courses, skills) stays below what the daily
-    // 「3戦する」 mission gave up for it (20 → 18 coins × 90 days; 18 → 16 went to the weekly rival, E16), so E1–E13 keep their Round 10 values
+    // 「3戦する」 mission gave up for it (20 → 18 coins × 90 days; 18 → 16 went to the weekly rival, E16; 16 → 15 to the team goal, E19), so E1–E13 keep their Round 10 values
     expect(f.achievementCoins).toBeGreaterThan(0);
     expect(f.achievementCoins).toBeLessThanOrEqual(2 * 90);
     // spending money never moves an achievement: the paying personas play the same races and get exactly the same
@@ -262,7 +262,8 @@ describe('economy targets (90 days, 3 seeds)', () => {
     }
     expect(all.f2p_inviter!.ssrPerMonth).toBeLessThanOrEqual(2.8);
     expect(all.f2p_casual!.pullsPerMonth).toBeLessThanOrEqual(40);
-    // offset like E14: the daily 「3戦する」 mission went 18 → 15 coins; a daily player's 90-day team goal coins stay below it
+    // offset like E14: the daily 「3戦する」 mission went 16 → 15 coins in the Round 13 rebalance (18 → 16 was the rival's, E16) and the
+    // tiers are 5 / 8 / 12 (balance-targets 4.18); a daily player's 90-day team goal coins stay below the 18 → 15 cut (3 × days)
     expect(all.f2p!.teamGoalCoins).toBeLessThanOrEqual(3 * all.f2p!.activeDays);
   }, 3_600_000);
 

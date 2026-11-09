@@ -65,36 +65,70 @@ function translateTree(n) {
 }
 let fitPending = false;
 const l10nObserver = new MutationObserver((muts) => {
-  if (isJa()) return;
-  for (const m of muts) {
-    if (m.type === 'characterData') translateTree(m.target);
-    else m.addedNodes.forEach(translateTree);
+  if (isJa() && textScale() === 1) return;
+  if (!isJa()) {
+    for (const m of muts) {
+      if (m.type === 'characterData') translateTree(m.target);
+      else m.addedNodes.forEach(translateTree);
+    }
   }
-  if (!fitPending) { fitPending = true; requestAnimationFrame(() => { fitPending = false; fitText(cur); }); }
+  if (!fitPending) { fitPending = true; requestAnimationFrame(() => { fitPending = false; scaleText(cur); fitText(cur); }); }
 });
 /**
- * English is longer than Japanese: a text that overflows its box (wider than its element, taller than a fixed height,
- * or below the bottom of its panel) is set smaller, down to 66 % of its size. Japanese is never touched.
+ * English is longer than Japanese, and the larger text sizes (round 15, REQ-A11Y-005) are larger than the layout: a
+ * text that overflows its box (wider than its element, taller than a fixed height, or below the bottom of its panel)
+ * is set smaller, in 5.7 % steps — never below its standard size in Japanese, down to 66 % of it in English.
+ * Japanese at the standard size is never touched.
  */
+/** Line boxes of a text (distinct tops of its client rects). */
+function lineCount(x) { const r = document.createRange(); r.selectNodeContents(x); return new Set([...r.getClientRects()].filter((c) => c.width > 0).map((c) => Math.round(c.top))).size; }
+const rangeRect = (x) => { const r = document.createRange(); r.selectNodeContents(x); return r.getBoundingClientRect(); };
+/** Two texts' glyph boxes cover each other (more than 4 px across and 30 % of the shorter one's height). */
+function textsCollide(a, b, k) {
+  const w = Math.min(a.right, b.right) - Math.max(a.left, b.left), h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+  return w > 4 * k && h > .3 * Math.min(a.height, b.height);
+}
 function fitText(root) {
-  if (isJa() || !root) return;
+  const ja = isJa();
+  if ((ja && textScale() === 1) || !root) return;
   const els = root.querySelectorAll('.label, .kicker, .caption, .btn, .pill, .tag');
+  // round 15: at the larger text sizes a text may also run into its neighbour (a title into its subtitle, a section
+  // label into the first row) — outside the race HUD (repainted every frame) such a text is brought back too
+  const k = $stage.getBoundingClientRect().width / 1600;
+  const neighbours = textScale() > 1 && !root.classList.contains('race') ? [...els].filter((x) => x.offsetParent !== null && x.textContent.trim()) : [];
+  const collides = (e) => {
+    if (!neighbours.length) return false;
+    const a = rangeRect(e);
+    if (!a.width) return false;
+    for (const o of neighbours) {
+      if (o === e || o.contains(e) || e.contains(o)) continue;
+      if (textsCollide(a, rangeRect(o), k)) return true;
+    }
+    return false;
+  };
   for (const e of els) {
     if (e.offsetParent === null) continue;
-    const host = e.classList.contains('btn') ? null : e.parentElement?.closest('.glass, .card, .sheet, .btn');
+    const isBtn = e.classList.contains('btn');
+    const spans = isBtn ? [...e.querySelectorAll(':scope > span')] : [];
+    const host = isBtn ? null : e.parentElement?.closest('.glass, .card, .sheet, .btn');
     const text = () => { const r = document.createRange(); r.selectNodeContents(e); return r.getBoundingClientRect(); };
     const over = () => e.scrollWidth > e.clientWidth + 1 || (e.style.height && e.scrollHeight > e.clientHeight + 1)
       || (host && !host.classList.contains('btn') && text().bottom > host.getBoundingClientRect().bottom + 1)
-      || text().right > $stage.getBoundingClientRect().right + 1;
+      || text().right > $stage.getBoundingClientRect().right + 1 || collides(e)
+      || (isBtn && spans.some((x) => x.dataset.tl && lineCount(x) > +x.dataset.tl));
     // fit again from the base size (a sheet measured mid slide-in must not stay 'overflow' once it has settled)
-    const setSize = (px) => { e.style.fontSize = px; if (e.classList.contains('btn')) e.querySelectorAll('span').forEach((s) => { s.style.fontSize = px; }); };
+    const setSize = (px) => { if (isBtn) spans.forEach((x) => { x.style.fontSize = px; }); else e.style.fontSize = px; };
     if (e.dataset.fitBase) { setSize(e.dataset.fitBase + 'px'); delete e.dataset.fit; }
     if (!over()) continue;
-    const base = parseFloat(e.dataset.fitBase ?? getComputedStyle(e).fontSize);
+    const sized = isBtn ? spans[0] ?? e : e;
+    const base = parseFloat(e.dataset.fitBase ?? getComputedStyle(sized).fontSize);
     e.dataset.fitBase = String(base);
-    for (let k = 1; k <= 6 && over(); k++) {
-      e.style.fontSize = (base * (1 - .057 * k)).toFixed(1) + 'px';
-      if (e.classList.contains('btn')) e.querySelectorAll('span').forEach((s) => { s.style.fontSize = e.style.fontSize; });
+    const std = parseFloat(sized.dataset.ts) || base; // the standard-size font (before the text size step)
+    const floor = ja ? std : std * .66;
+    for (let k = 1; k <= 12 && over(); k++) {
+      const px = Math.max(floor, base * (1 - .057 * k));
+      setSize(px.toFixed(1) + 'px');
+      if (px <= floor) break;
     }
     e.dataset.fit = over() ? 'overflow' : 'shrunk';
   }
@@ -104,6 +138,69 @@ let enTables = null;
 function applyLanguage() {
   document.documentElement.lang = isJa() ? 'ja' : 'en';
   if (engine && enTables) engine.SetLanguage(isJa() ? 'ja' : 'en', isJa() ? enTables.commentaryJa : enTables.commentaryEn, enTables.server, enTables.ui);
+}
+
+// ---------------------------------------------------------------- round 15: アクセシビリティ設定 (REQ-A11Y-*, protocol §41)
+// Mirrors unity/Assets/Muchi/Game/AccessibilityModel.cs: the account's settings on the real server rules (MuchiLogic), a
+// device copy applied from the first frame (and offline), and the values every screen honours: the text size step
+// (body text < 28 px ×1.15 / ×1.3, scaleText), the colour mode (html[data-color-mode] swaps the --a11y-* tokens of
+// contracts/a11y-tokens.json), reduce motion (html[data-reduce-motion]: no drift / shake / speed lines / blinking, short
+// transitions, the scout reveal without its glow wait), haptics, subtitles, the one-handed race layout and the whip hold.
+const A11Y_KEY = 'muchi.a11y.settings', A11Y_DIRTY = 'muchi.a11y.dirty';
+const A11Y_DEFAULTS = { textSize: 'standard', colorMode: 'standard', reduceMotion: false, haptics: true, subtitles: true, oneHanded: 'off', whipInput: 'tap' };
+const A11Y_SCALE = { standard: 1, large: 1.15, largest: 1.3 };
+let a11y = (() => { try { return { ...A11Y_DEFAULTS, ...JSON.parse(prefs.get(A11Y_KEY, '{}')) }; } catch { return { ...A11Y_DEFAULTS }; } })();
+const textScale = () => A11Y_SCALE[a11y.textSize] ?? 1;
+const reduced = () => !!a11y.reduceMotion;
+function applyA11y() {
+  const d = document.documentElement.dataset;
+  d.textSize = a11y.textSize; d.colorMode = a11y.colorMode; d.reduceMotion = a11y.reduceMotion ? 'on' : 'off';
+  d.oneHanded = a11y.oneHanded; d.whipInput = a11y.whipInput;
+  if (engine) engine.SetWhipInput(a11y.whipInput);
+}
+function storeA11y(v, dirty) {
+  a11y = { ...A11Y_DEFAULTS, ...Object.fromEntries(Object.keys(A11Y_DEFAULTS).map((k) => [k, v[k] ?? A11Y_DEFAULTS[k]])) };
+  prefs.set(A11Y_KEY, JSON.stringify({ ...a11y, rev: v.rev ?? 0 })); prefs.set(A11Y_DIRTY, dirty ? '1' : '0');
+  applyA11y();
+}
+/** REQ-A11Y-004: an unsent device change wins; otherwise the account's value replaces the device copy. */
+async function syncA11y() {
+  if (prefs.get(A11Y_DIRTY, '0') === '1') { const r = await L.setAccessibility({ ...a11y }); if (r.ok) storeA11y(r.value, false); return; }
+  storeA11y(await L.accessibility(), false);
+}
+async function setA11y(key, value) {
+  const next = { ...a11y, [key]: value };
+  storeA11y(next, true); // applied at once (and kept if the save fails)
+  const r = await L.setAccessibility(next);
+  if (r.ok) storeA11y(r.value, false);
+  toast(r.ok ? 'アクセシビリティ設定を保存しました' : 'オンラインになったら保存します');
+}
+/**
+ * REQ-A11Y-005: the text size step on every text of the stage. Each text keeps its standard size in data-ts and body
+ * text (< 28 px) is set ×1.15 / ×1.3; headings and big numbers stay. fitText then brings back, towards the standard
+ * size and never below it, only what does not fit its box.
+ */
+const SCALE_SEL = '.label, .kicker, .caption, .btn > span, .pill, .tag, .toast, .stamina .t, .stamina .s, .whipdots b, .marker .nm, .marker .gap, .marker .wind';
+function scaleText(root) {
+  const k = textScale();
+  if (k === 1 || !root) return;
+  for (const e of root.querySelectorAll(SCALE_SEL)) {
+    if (e.dataset.ts) continue;
+    if (e.closest('.btn.whip')) { e.dataset.ts = '0'; continue; } // the whip's label is sized to its ring (like an icon)
+    const base = parseFloat(getComputedStyle(e).fontSize);
+    e.dataset.ts = String(base);
+    if (e.parentElement?.classList.contains('btn')) e.dataset.tl = String(lineCount(e)); // a button label must not start wrapping
+    if (base < 28) e.style.fontSize = (base * k).toFixed(1) + 'px';
+  }
+}
+/** REQ-A11Y-009: every vibration goes through here (off = none at all). */
+function haptic(pattern) { if (!a11y.haptics) return; try { navigator.vibrate?.(pattern); } catch { /* not supported */ } }
+/** REQ-A11Y-008: one-shot lights — at most 3 in any one-second window (the 4th shows its text without the light). */
+const flashTimes = [];
+function flashOk(now = performance.now()) {
+  while (flashTimes.length && now - flashTimes[0] >= 1000) flashTimes.shift();
+  if (flashTimes.length >= 3) return false;
+  flashTimes.push(now); return true;
 }
 
 // ---------------------------------------------------------------- art (Unity Resources paths → site files)
@@ -276,6 +373,7 @@ function toast(text, ms = 2600) {
   const t = document.createElement('div');
   t.className = 'toast'; t.textContent = text;
   $stage.appendChild(t);
+  if (textScale() !== 1) { const b = parseFloat(getComputedStyle(t).fontSize); t.dataset.ts = String(b); t.style.fontSize = (b * textScale()).toFixed(1) + 'px'; }
   setTimeout(() => t.classList.add('gone'), ms); setTimeout(() => t.remove(), ms + 400);
 }
 function show(fn, ...args) { currentScreen = () => fn(...args); return fn(...args); }
@@ -458,6 +556,14 @@ function BuildRaceScreen() {
   hud.whip = Btn('ムチ', wx, wy, W, W, Whip, 'whip' + (tut ? ' big' : ''), undefined, tut ? 'まもなく' : 'スタート');
   hud.whipText = hud.whip.querySelector('span');
   hud.whips = el('whipdots', wx + W / 2 - 124, wy - 66, 248, 48);
+  // round 15 (REQ-A11Y-012): hold mode — the button reports press / release; the engine's WhipHold turns it into taps
+  if (holdMode()) {
+    const hw = (v) => (e) => { e.preventDefault(); WhipHoldPress(v); };
+    hud.whip.addEventListener('pointerdown', hw(true)); hud.whip.addEventListener('pointerup', hw(false));
+    hud.whip.addEventListener('pointerleave', hw(false)); hud.whip.addEventListener('pointercancel', hw(false));
+    hud.holdHint = Txt('', wx + W / 2 - 130, wy + W + 4, 260, 14, CYAN, undefined, { align: 'center', weight: 700, ls: '.12em', cls: 'tshadow holdhint' });
+    hud.prevWhips = null;
+  }
   if (tut) {
     // F4: the first race has one control, the whip. The gate countdown is the 3-second scene-setter.
     hud.intro = Txt('最後の直線。前に7頭。', 300, 336, 1000, 60, WHITE, undefined, { align: 'center', cls: 'intro' });
@@ -473,7 +579,7 @@ function BuildRaceScreen() {
   const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 182 104'); svg.setAttribute('width', '182'); svg.setAttribute('height', '104');
   const ov = document.createElementNS(NS, 'ellipse'); Object.entries({ cx: 91, cy: 44, rx: 64, ry: 24, fill: 'none', stroke: '#d5e3ee', 'stroke-width': 3 }).forEach(([k, v]) => ov.setAttribute(k, v)); svg.appendChild(ov);
   const fin = document.createElementNS(NS, 'line'); Object.entries({ x1: 91, y1: 62, x2: 91, y2: 76, stroke: '#ffd34f', 'stroke-width': 2 }).forEach(([k, v]) => fin.setAttribute(k, v)); svg.appendChild(fin);
-  hud.dots = raceInfo.names.map((_, i) => { const c = document.createElementNS(NS, 'circle'); c.setAttribute('r', i === raceInfo.playerSlot ? 6 : 4); c.setAttribute('fill', i === raceInfo.playerSlot ? '#ffd34f' : '#00d2ed'); c.setAttribute('cx', 91); c.setAttribute('cy', 68); svg.appendChild(c); return c; });
+  hud.dots = raceInfo.names.map((_, i) => { const c = document.createElementNS(NS, 'circle'); c.setAttribute('r', i === raceInfo.playerSlot ? 6 : 4); c.style.fill = i === raceInfo.playerSlot ? 'var(--a11y-position-self)' : 'var(--a11y-position-other)'; c.setAttribute('cx', 91); c.setAttribute('cy', 68); svg.appendChild(c); return c; });
   const me = hud.dots[raceInfo.playerSlot]; svg.appendChild(me); // the partner on top
   hud.minimap.appendChild(svg);
   hud.spread = el('who', 0, 0, 182, null, hud.minimap); hud.spread.style.position = 'absolute'; hud.spread.style.top = '80px';
@@ -489,6 +595,28 @@ function BuildRaceScreen() {
   // skill cut-ins (engine Skill events)
   hud.skillBox = el('cutins', 540, 560, 520, 230);
   Btn('中断', 33, 120, 120, 40, () => { raceActive = false; Home(); }, 'quit');
+  oneHandedLayout(); // round 15 (REQ-A11Y-011)
+}
+/**
+ * REQ-A11Y-011 / REQ-UXA-008: one-handed race layout — every control within one thumb, bottom corner of that side: the
+ * whip outermost, the rein beside it, 内／外 stacked above the rein. Left mirrors the right and moves the stamina
+ * plate and the control caption to the other side. Layout only.
+ */
+function oneHandedLayout() {
+  const side = a11y.oneHanded;
+  if (side === 'off' || raceCtx.tutorial) return;
+  const at = (n, x, y) => { if (n) { n.style.left = x + 'px'; n.style.top = y + 'px'; } };
+  cur.dataset.oneHanded = side;
+  const L = side === 'left', X = (x, w) => (L ? 1600 - x - w : x);
+  at(hud.whip, X(1364, 152), 683); at(hud.whips, X(1364, 152) + 76 - 124, 617);
+  if (hud.holdHint) at(hud.holdHint, X(1364, 152) + 76 - 130, 839);
+  at(hud.rein, X(1222, 118), 742);
+  at(hud.laneIn, X(1110, 104), 520); at(hud.laneOut, X(1110, 104), 636);
+  if (L) {
+    at(hud.stamina, 1137, 743);
+    const cap = [...cur.querySelectorAll('.caption')].find((c) => c.textContent.includes('手綱を長押し'));
+    if (cap) { cap.style.left = 'auto'; cap.style.right = '35px'; cap.style.width = 'auto'; }
+  }
 }
 function Lane(dir) { if (!raceActive || raceCtx.tutorial) return; engine.Lane(dir); }
 function Whip() {
@@ -497,17 +625,36 @@ function Whip() {
   if (lastFrame.departed && lastFrame.whips <= 0) return;
   // round 12: with かんたん操作 the whip (and with full auto the start too) is the assistant's; a tap does nothing
   if (!raceCtx.tutorial && lastFrame.assist && lastFrame.assist !== 'off' && (lastFrame.departed || lastFrame.assist === 'full')) return;
+  if (holdMode()) return; // round 15: the hold sends the whip itself (pointerdown → engine.WhipHold)
   engine.Spur();
+  whipFeedback(lastFrame.departed);
+}
+/** Presentation of a whip (06 §6.3): the pop, the button, the FOV kick and speed lines (not with reduce motion), haptics. */
+function whipFeedback(departed) {
   // presentation first (06 §6.3: the button and the horse react within a frame; the engine takes the input next tick)
-  flash(hud.feedback, lastFrame.departed ? '伸びる！' : 'スタート！');
+  flash(hud.feedback, departed ? '伸びる！' : 'スタート！');
   hud.whip.classList.remove('hit'); void hud.whip.offsetWidth; hud.whip.classList.add('hit');
-  // the spurt: an FOV kick on the 3D view and speed lines on the edges (presentation only)
-  if (lastFrame.departed) { view.kick(); const s = document.createElement('div'); s.className = 'speedlines'; cur.insertBefore(s, cur.firstChild); setTimeout(() => s.remove(), 1300); }
-  try { navigator.vibrate?.(lastFrame.departed ? 40 : [12, 40, 12]); } catch { /* not supported */ }
+  // the spurt: an FOV kick on the 3D view and speed lines on the edges (presentation only; REQ-A11Y-007: none when reduced)
+  if (departed && !reduced()) { view.kick(); const s = document.createElement('div'); s.className = 'speedlines'; cur.insertBefore(s, cur.firstChild); setTimeout(() => s.remove(), 1300); }
+  haptic(departed ? 40 : [12, 40, 12]);
+}
+/** Round 15 (REQ-A11Y-012): the whip button is held, not tapped (never while かんたん操作 owns the whip). */
+const holdMode = () => a11y.whipInput === 'hold';
+function WhipHoldPress(down) {
+  if (!lastFrame || !raceActive) return;
+  engine.WhipHold(down);
+  if (!down) return;
+  if (raceCtx.tutorial && !lastFrame.departed) return;
+  if (lastFrame.departed && lastFrame.whips <= 0) return;
+  if (!raceCtx.tutorial && lastFrame.assist && lastFrame.assist !== 'off' && (lastFrame.departed || lastFrame.assist === 'full')) return;
+  hud.holdPressWhips = lastFrame.whips; // the press is a tap: its whip is shown here, the repeats in paintHud
+  whipFeedback(lastFrame.departed);
 }
 function flash(node, text, ms = 1100) {
   node.textContent = text; hud.msgUntil = performance.now() + ms;
-  node.classList.remove('flash'); void node.offsetWidth; node.classList.add('flash');
+  node.classList.remove('flash');
+  if (!flashOk()) return; // REQ-A11Y-008: the text, without the light
+  void node.offsetWidth; node.classList.add('flash');
 }
 function raceLoop() {
   requestAnimationFrame(raceLoop);
@@ -559,11 +706,17 @@ function paintHud(f) {
   setText(hud.hint, hint);
   setProp(hud.hintBox, "className", 'el hintbox' + (hint ? '' : ' empty') + (feel.kakariWarning || feel.level === 'Critical' || feel.level === 'Empty' ? ' warn' : ''));
   for (const c of feel.cues ?? []) {
-    if (c.kind === 'Overtake') { flash(hud.feedback, '抜いた！', 900); try { navigator.vibrate?.(15); } catch { /* */ } }
-    if (c.kind === 'StaminaCritical') { try { navigator.vibrate?.([30, 30, 30]); } catch { /* */ } }
+    if (c.kind === 'Overtake') { flash(hud.feedback, '抜いた！', 900); haptic(15); }
+    if (c.kind === 'StaminaCritical') haptic([30, 30, 30]);
   }
   if (performance.now() > hud.msgUntil) setText(hud.feedback, '');
-  setText(hud.subtitle, f.subtitle);
+  setText(hud.subtitle, a11y.subtitles ? f.subtitle : ''); // REQ-A11Y-010
+  // round 15: the hold's automatic whips (the press was shown on pointerdown) and the 「長押し あと{n}」 hint
+  if (hud.holdHint) {
+    setText(hud.holdHint, f.whipInput === 'hold' && f.departed && !(f.assist && f.assist !== 'off') ? `長押し あと${f.holdLeft}` : '');
+    if (hud.prevWhips != null && f.whips < hud.prevWhips && hud.holdPressWhips !== hud.prevWhips) whipFeedback(true);
+    hud.holdPressWhips = null; hud.prevWhips = f.whips;
+  }
   if (hud.ghost && f.ghostPoses?.[0]) { const gap = f.ghostPoses[0][4]; setText(hud.ghost, `ゴースト ${raceCtx.ghost.name}：${gap >= 0 ? '前' : '後ろ'} ${Math.abs(gap).toFixed(1)}m`); }
   // overhead marker on the partner
   const p = view.project(raceInfo.playerSlot, 3.1);
@@ -602,17 +755,17 @@ function paintHud(f) {
     hud.skillBox.prepend(c);
     while (hud.skillBox.children.length > 2) hud.skillBox.lastChild.remove();
     setTimeout(() => c.classList.add('gone'), 2200); setTimeout(() => c.remove(), 2600);
-    if (mine) try { navigator.vibrate?.(30); } catch { /* */ }
+    if (mine) haptic(30);
   }
 }
 document.addEventListener('keydown', (e) => {
   if (!raceActive || e.repeat) return;
   if (e.key === 'ArrowLeft') Lane(-1);
   else if (e.key === 'ArrowRight') Lane(1);
-  else if (e.key === 'e' || e.key === 'E') Whip();
+  else if (e.key === 'e' || e.key === 'E') { if (holdMode()) WhipHoldPress(true); else Whip(); }
   else if (e.code === 'Space') { keyRein = true; e.preventDefault(); }
 });
-document.addEventListener('keyup', (e) => { if (e.code === 'Space') keyRein = false; });
+document.addEventListener('keyup', (e) => { if (e.code === 'Space') keyRein = false; if ((e.key === 'e' || e.key === 'E') && holdMode() && raceActive) WhipHoldPress(false); });
 window.addEventListener('blur', () => { reinHeld = false; keyRein = false; });
 
 // ---- results (REQ-UXP-005 debrief line, 06 §6.4) — 10-race-result
@@ -873,7 +1026,7 @@ function Reveal(draw, first, bannerId, pity) {
     const back = cardBack(c); holder.appendChild(back);
     const me = cur;
     const face = () => { if (cur !== me || !holder.contains(back)) return; holder.innerHTML = ''; const f = rarityCard(c, true); f.classList.add('flip'); holder.appendChild(f); };
-    setTimeout(face, 380);
+    setTimeout(face, reduced() ? 0 : 380); // REQ-A11Y-007: the order and the results come from the same plan either way
     back.addEventListener('click', face);
     const t = L.master.templates.find((x) => x.id === c.templateId);
     Txt(templateLine(t, L.horseSkill({ templateId: c.templateId })), 0, 678, 1600, 19, WHITE, undefined, { align: 'center', weight: 500, cls: 'tshadow' });
@@ -2023,7 +2176,8 @@ async function Settings() {
   Kicker('見た目・お世話・仲間', 36, 30, m);
   // round 10: 支部の応援 (team cheer stamps) and 友達招待 next to the looks / care entries
   // round 14: 実況パック (REQ-CMT-011) after the looks entries
-  const moreRows = [['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions], ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite']];
+  // round 15: アクセシビリティ (REQ-A11Y-*) first — reachable in the FTUE too (text size before the first race)
+  const moreRows = [['アクセシビリティ', () => A11ySettings(), 'a11y'], ['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions], ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite']];
   moreRows.forEach(([n, go, action], i) => {
     const b = Btn(n, 36, 90 + i * 46, 408, 46, go, 'row' + (i === moreRows.length - 1 ? ' last' : ''), m); b.style.fontSize = '19px';
     if (action) b.dataset.action = action;
@@ -2214,6 +2368,52 @@ async function CommentaryPackBuy(packId, from = 'settings') {
   }, d);
   buy.dataset.confirm = 'buy';
   Ghost('やめておく', 532, 400, 420, 73, back, d, 'quiet').dataset.confirm = 'cancel';
+}
+// ================================================================= round 15: アクセシビリティ設定 (REQ-A11Y-*, protocol §41)
+// Mirrors AccessibilityModel.Rows(): two columns (表示 / 操作・音), each row a name, one line and its choices; a change
+// applies to the whole prototype at once (no save button) and is saved on the real server rules.
+const A11Y_ROWS = [
+  ['textSize', 'display', '文字の大きさ', '本文の文字を大きくします', [['standard', '標準'], ['large', '大'], ['largest', '特大']]],
+  ['colorMode', 'display', '色覚サポート', 'ゲージ・順位・状態の色を見分けやすくします', [['standard', '標準'], ['cvd', '色覚サポート']]],
+  ['reduceMotion', 'display', '動きを減らす', '揺れ・点滅・演出の動きを減らします', [[false, 'オフ'], [true, 'オン']]],
+  ['subtitles', 'controls', '字幕（実況）', '実況を文字で表示します', [[true, 'オン'], [false, 'オフ']]],
+  ['haptics', 'controls', '振動', 'ムチや警告で端末を振動させます', [[true, 'オン'], [false, 'オフ']]],
+  ['oneHanded', 'controls', '片手レイアウト', 'レースの操作を片側にまとめます', [['off', 'オフ'], ['left', '左手'], ['right', '右手']]],
+  ['whipInput', 'controls', 'ムチの入力', '長押しで決まった間隔のムチ（1レース3本まで、残りはタップ）', [['tap', 'タップ'], ['hold', '長押し']]],
+];
+async function A11ySettings() {
+  currentScreen = A11ySettings;
+  await syncA11y();
+  Clear('a11y-settings'); SetArt('Art/home-paddock', false); Shade('dim');
+  TopBar('その他　/　アクセシビリティ', '文字・色・動き・操作。アカウントに保存され、オフラインでも使えます', { wallet: false });
+  const p = Glass('Frame', 36, 134, 1528, 676, undefined, .9);
+  const col = (group, x, title) => {
+    Kicker(title, x, 26, p, { size: 16 });
+    let y = 92;
+    for (const [key, g, label, desc, choices] of A11Y_ROWS) {
+      if (g !== group) continue;
+      const row = el('a11y-row', x, y, 700, 104, p); row.dataset.a11yRow = key;
+      Txt(label, 0, 0, 300, 21, WHITE, row, { weight: 500 });
+      Txt(desc, 0, 34, 300, 14, MUTED, row, { lh: 1.45 });
+      const w = choices.length === 3 ? 124 : 172;
+      choices.forEach(([v, l], i) => {
+        const on = a11y[key] === v;
+        const b = Btn(l, 316 + i * (w + 10), 2, w, 52, async () => { if (a11y[key] === v) return; await setA11y(key, v); A11ySettings(); }, 'choice' + (on ? ' on' : ''), row);
+        b.dataset.a11yChoice = String(v); b.style.whiteSpace = 'nowrap';
+      });
+      y += key === 'colorMode' ? 150 : 112;
+    }
+  };
+  col('display', 36, '表示');
+  col('controls', 792, '操作・音');
+  // the colour sample: the gauge levels and the position marks in the current palette (REQ-A11Y-006)
+  const sw = el('a11y-swatch', 36 + 316, 92 + 112 + 62, 380, 34, p);
+  sw.innerHTML = '<i class="g ok"></i><i class="g low"></i><i class="g crit"></i><b class="me"></b><b class="other"></b>';
+  // the fairness line under the whip row, the flash line at the bottom (REQ-UXA / 06 §11.1)
+  Txt('長押しはタップと同じ操作を決まった間隔で送るだけです。ランク戦の強さは変わりません。', 792, 540, 700, 15, SOFT, p, { lh: 1.55 }).dataset.a11yFair = '1';
+  Hair(36, 600, 1456, p);
+  Txt('点滅は1秒に3回までに抑えています', 36, 620, 1000, 15, MUTED, p, { weight: 500 }).dataset.a11yFlash = '1';
+  Back(Settings, 'BACK', 40, 834);
 }
 function ConfirmDeletion(v) {
   currentScreen = () => ConfirmDeletion(v); Clear('delete-confirm'); SetArt('Art/home-paddock', false); Shade('dim heavy');
@@ -2688,8 +2888,8 @@ function Odds(bannerId) {
   Kicker(T('PITY'), 36, 330, p, { rule: false, size: 14 });
   const pity = Txt(`${o.pity.pullsRequired} ${T('pulls → exchange')}（${o.pity.label}）\n${o.pity.targets.map(templateName).join(' / ')}\n最大 ${fmt(o.pity.costCoins)}コイン（≈ ${yen(o.pity.estimatedMaxCostYen)}）`, 36, 358, 400, 15, WHITE, p, { weight: 500, lh: 1.6 });
   pity.dataset.pityCost = String(o.pity.costCoins);
-  if (o.pity.carryOver) Txt(o.pity.carryOver.notice, 36, 438, 400, 13, WARN, p, { lh: 1.5 }).dataset.carryOver = '1';
-  else Txt('この天井は期間で閉じません。', 36, 438, 400, 13, MUTED, p);
+  if (o.pity.carryOver) Txt(o.pity.carryOver.notice, 36, 470, 400, 13, WARN, p, { lh: 1.5 }).dataset.carryOver = '1';
+  else Txt('この天井は期間で閉じません。', 36, 470, 400, 13, MUTED, p); // round 15: below the 4-line pity text (it ran into it at the standard size too)
   if (o.limitedNotice) Txt(o.limitedNotice, 36, 540, 400, 12, SOFT, p, { lh: 1.5 });
   Kicker(T('EACH HORSE'), 484, 30, p, { rule: false, size: 14 });
   const items = [...o.items].sort((a, b) => rarityRank(b.rarity) - rarityRank(a.rarity) || b.ppm - a.ppm);
@@ -4422,12 +4622,14 @@ async function boot() {
   ART = artIndex;
   const demo = new URLSearchParams(location.search).get('demo');
   if (demo) { L.reset(); }
+  applyA11y(); // round 15: the device copy from the first frame (REQ-A11Y-004)
   await L.bootstrap(); await refresh();
   const { dotnet } = await import('./engine/_framework/dotnet.js');
   const runtime = await dotnet.create();
   engine = (await runtime.getAssemblyExports(runtime.getConfig().mainAssemblyName)).MuchiRace;
   engine.Init(ruleset, commentary);
   engine.SetCommentaryPacks(commentaryPacks); // round 14 (REQ-CMT-001): the client copy of server/master/commentary-packs.json
+  await syncA11y(); // round 15: the unsent device change, or the account's value (REQ-A11Y-004); sets the whip input
   applyLanguage(); // REQ-L10N-012: English commentary when EN is on
   l10nObserver.observe($stage, { subtree: true, childList: true, characterData: true });
   view = new RaceView($canvas, (res) => art(res), partners);
@@ -4436,13 +4638,15 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),
     logic: L, view: () => view,
     // REQ-L10N-013 (test/en-flow.cjs): texts with no English seen so far, and the fit state of the current screen
-    l10n: { misses: () => [...l10nMisses.keys()], clear: () => l10nMisses.clear(), fit: () => fitText(cur) },
+    l10n: { misses: () => [...l10nMisses.keys()], clear: () => l10nMisses.clear(), fit: () => { scaleText(cur); fitText(cur); } },
+    // round 15 (test/a11y-flow.cjs): the settings in force and the flash limiter
+    a11y: { get: () => ({ ...a11y }), set: (k, v) => setA11y(k, v), flashOk: (t) => flashOk(t) },
   };
   // round 10: index.html?invite=<code> (or unity.html?invite=…, redirected) stands in for muchi://invite/<code> (pre-fills the entry; kept through the FTUE)
   const inviteLink = new URLSearchParams(location.search).get('invite');

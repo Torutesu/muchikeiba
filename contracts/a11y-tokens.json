@@ -1,0 +1,38 @@
+{
+  "_note": "REQ-A11Y-006 (contracts/protocol.md §41.5): colour tokens for gauge / position / status cues, per colour mode. The single source for the C# client (Muchi.Client AccessibilityTokens, checked by AccessibilityTests), the prototype (site/style.css --a11y-* variables, checked by test/a11y-flash.test.cjs) and server/test/a11y-tokens.test.ts (contrast and colour-vision distance). sRGB hex.",
+  "background": "#08182a",
+  "modes": {
+    "standard": {
+      "gauge.ok": "#00d2ed",
+      "gauge.low": "#ffd34f",
+      "gauge.critical": "#ff5a4a",
+      "position.self": "#ffd34f",
+      "position.other": "#00d2ed",
+      "status.ok": "#8fe3a8",
+      "status.danger": "#ff7a6b",
+      "cue.whipChance": "#ffe661"
+    },
+    "cvd": {
+      "gauge.ok": "#00d2ed",
+      "gauge.low": "#ffff33",
+      "gauge.critical": "#cc6633",
+      "position.self": "#ffff33",
+      "position.other": "#5f8fb3",
+      "status.ok": "#00d2ed",
+      "status.danger": "#ff9a3d",
+      "cue.whipChance": "#ffff33"
+    }
+  },
+  "groups": {
+    "gauge": ["gauge.ok", "gauge.low", "gauge.critical"],
+    "position": ["position.self", "position.other"],
+    "status": ["status.ok", "status.danger"]
+  },
+  "text": ["status.ok", "status.danger"],
+  "rules": {
+    "minContrastGraphic": 3.0,
+    "minContrastText": 4.5,
+    "minDeltaE76Cvd": 40,
+    "simulations": ["normal", "protan", "deutan", "tritan"]
+  }
+}

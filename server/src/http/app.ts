@@ -37,6 +37,7 @@ import { LOCALES, resolveLocale, type Locale } from '../i18n/locale.js';
 import { catalogFor, localize, type Catalog } from '../i18n/catalog.js';
 import { ASSIST_LEVELS, ASSIST_SOURCES } from '../domain/assist.js';
 import { EQUIP_SOURCES } from '../domain/commentaryPacks.js';
+import { accessibilityBodySchema } from '../domain/accessibility.js';
 import type { RivalService } from '../domain/rivalService.js';
 import { HISTORY_LIMITS, historyQuery, REF_RE, SUPPORT_TOPICS } from '../domain/history.js';
 import type { DesignInput, SilksDesign } from '../domain/silksEditor.js';
@@ -73,6 +74,7 @@ export type PlayerMethod =
   | 'giftBox' | 'giftClaim' | 'giftClaimAll'
   | 'assist' | 'setAssist' | 'assistPromptSeen'
   | 'commentaryPacks' | 'equipCommentaryPack' | 'buyCommentaryPack'
+  | 'accessibility' | 'setAccessibility'
   | 'rivalPeek' | 'rivalSync' | 'rivalSetOptOut' | 'rivalBlock' | 'rivalChallengeCheck' | 'rivalChallengeReceive' | 'rivalSeen' | 'rivalPush'
   | 'history' | 'historyTicket' | 'adminHistory' | 'adminHistoryRefs'
   | 'exchangeView' | 'exchangeBuy'
@@ -433,6 +435,9 @@ export const routes: Route[] = [
     const b = await optionalBody(r, z.object({ equip: z.boolean().optional() }).strict());
     return c.player(u).invoke('buyCommentaryPack', u, p.packId!, b?.equip === true, idem(r));
   } },
+  // REQ-A11Y-002/003 (contracts/protocol.md §41): アクセシビリティ設定 — idempotent full replace; also in GET /v1/player and bootstrap
+  { method: 'GET', path: '/v1/settings/accessibility', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('accessibility', u) },
+  { method: 'PUT', path: '/v1/settings/accessibility', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('setAccessibility', u, await body(r, accessibilityBodySchema)) },
   { method: 'PUT', path: '/v1/player/age', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ birthYear: z.number().int(), birthMonth: z.number().int().min(1).max(12), guardianConsent: z.boolean() }));
     return c.player(u).invoke('setAge', u, b.birthYear, b.birthMonth, b.guardianConsent);

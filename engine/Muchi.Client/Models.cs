@@ -261,6 +261,8 @@ namespace Muchi.Client
         public AssistSettings Assist = new AssistSettings();
         /// <summary>REQ-CMT-009: the equipped commentary pack ("standard" when the server sent none).</summary>
         public string CommentaryPack = CommentaryPackCatalog.StandardPackId;
+        /// <summary>REQ-A11Y-003: アクセシビリティ設定 (contracts/protocol.md §41; defaults from an older server).</summary>
+        public AccessibilitySettings Accessibility = new AccessibilitySettings();
         public int Rating, RatingDeviation, RankedRaces;
         public string SeasonId, ClassId;
         public int SeasonPoints;
@@ -294,6 +296,7 @@ namespace Muchi.Client
                 Equipment = Equipment.Parse(J.Opt(o, "equipment")),
                 Assist = AssistSettings.Parse(J.Opt(o, "assist")),
                 CommentaryPack = J.Str(J.Opt(o, "commentaryPack"), "equipped") ?? CommentaryPackCatalog.StandardPackId,
+                Accessibility = AccessibilitySettings.Parse(J.Opt(o, "accessibility")),
             };
         }
     }

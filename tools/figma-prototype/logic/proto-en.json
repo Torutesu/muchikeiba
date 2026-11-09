@@ -989,6 +989,11 @@
   "名前・IDは入りません（選んだ馬の名前だけ）": "No names or IDs are included (only the chosen horse's name)",
   "共有する": "Share",
   "共有しました（アプリでは共有シートを開きます）": "Shared (the app opens the share sheet)",
-  "マイリプレイに残す": "Keep in My Replays"
+  "マイリプレイに残す": "Keep in My Replays",
+  "_a11y": "---- round 15: アクセシビリティ設定 (A11ySettings, the hold hint in the race HUD)",
+  "その他　/　アクセシビリティ": "More / Accessibility",
+  "長押し あと0": "Hold: 0 left",
+  "長押し あと1": "Hold: 1 left",
+  "長押し あと2": "Hold: 2 left"
  }
 }

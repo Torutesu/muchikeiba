@@ -90,6 +90,8 @@ static class Program
         await GiftBoxChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 12: かんたん操作 (AssistModel, InputAssistant on a practice race, HUD chip, the one-time suggestion; REQ-ASSIST-*)");
         await AssistChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 15: アクセシビリティ設定 (AccessibilityModel: device copy, sync, rows, tokens, text scale, motion, whip hold; REQ-A11Y-*)");
+        await AccessibilityChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 12: ライバル (home card, detail, week-result sheet, challenge, opt-out / block; REQ-RIVAL-*)");
         await RivalChecks.Run(Check, Ruleset());
         Console.WriteLine("== イベント交換所 (event exchange: point counter, stock, confirm sheet, keyed exchange, grace notice; REQ-EXCH-*)");

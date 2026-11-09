@@ -1797,3 +1797,74 @@ TeamGoalView = { "teamId": "tabc123456", "teamName": "あおばRC", "enabled": t
 
 ### 37.7 アカウント削除
 削除の手順に `replays` を足す（`rival` の後）：スナップショットの `replayKeys`（保存した写し `myreplays/<playerId>/<raceId>.json`）を R2 から消す。状態の一覧は最後の `wipe` で消える。
+
+## 41. アクセシビリティ設定（REQ-A11Y-001〜016、`server/src/domain/accessibility.ts`、C# `Accessibility.cs`（`AccessibilitySettings`・`AccessibilityTokens`・`TextScale`・`MotionPolicy`・`FlashLimiter`・`WhipHold`）・`Muchi.Game.AccessibilityModel`、色のトークン `contracts/a11y-tokens.json`、docs/planning/06 §11）
+より多くの人が遊べるようにする表示・操作の設定。**アカウントに保存**し（機種変更・再インストールでも残る）、端末にも写しを持ってオフラインでも効く。**どの設定もレースの計算・ルールセット・検証・結果ハッシュ・リプレイを変えない**（ゴールデンも同じ）。
+
+### 41.1 設定と既定値（REQ-A11Y-001）
+| キー | 値（線の値） | 既定 | 効くところ |
+|---|---|---|---|
+| `textSize` | `standard` \| `large` \| `largest` | `standard` | 本文（28px 未満）の文字を ×1.00 / ×1.15 / ×1.30（見出し・大きな数字はそのまま）。§41.4 |
+| `colorMode` | `standard` \| `cvd` | `standard` | 色覚サポート：ゲージ・順位・状態の色をトークンの `cvd` に替える（シアン／紺の基調は同じ）。§41.5 |
+| `reduceMotion` | `true` \| `false` | `false` | 画面の揺れ・FOV キック・スピード線・背景のゆっくりしたズーム・ゲージの点滅をやめ、画面の切り替えとガチャの演出を短くする。§41.6 |
+| `haptics` | `true` \| `false` | `true` | 振動（ムチ・追い抜き・スタミナ警告・固有スキル）。オフなら一切振動しない |
+| `subtitles` | `true` \| `false` | `true` | 実況の字幕（レース・観戦・リプレイ）。既定でオン（音を消しても遊べる） |
+| `oneHanded` | `off` \| `left` \| `right` | `off` | 片手レイアウトの案内：レースの操作（ムチ・手綱・内／外）を片側の親指の届く範囲にまとめる。見た目の配置だけ |
+| `whipInput` | `tap` \| `hold` | `tap` | ムチの入力：長押しの間、決まった間隔でムチを入れる。§41.7 |
+
+### 41.2 `GET /v1/settings/accessibility`・`PUT /v1/settings/accessibility`（要認証）
+```json
+{ "textSize": "standard", "colorMode": "standard", "reduceMotion": false, "haptics": true, "subtitles": true, "oneHanded": "off", "whipInput": "tap",
+  "rev": 0, "updatedAt": null,
+  "textScale": { "standard": 1, "large": 1.15, "largest": 1.3 },
+  "rules": { "affectsRace": false, "whipHold": "same_as_tap", "maxFlashesPerSecond": 3 } }
+```
+- **GET** は保存されている値（無ければ既定値）。読むだけでは状態を作らない。`GET /v1/player` と `POST /v1/player/bootstrap` にも同じ形で `accessibility` が入る（起動1回で揃う）。
+- **PUT** は**全体の置き換え**（冪等）：本文は上の7つのキーのオブジェクト。**送らなかったキーは既定値に戻る**（端末はいつも全部送る）。知らないキー・知らない値・型違いは 400 `BAD_REQUEST`。同じ本文を何度送っても `rev` は変わらず、KPI も出ない（冪等キー不要）。値が1つでも変わると `rev` を1増やし `updatedAt` を更新する。応答は GET と同じ形。
+- 削除予定中のアカウントでも変えられる（見た目だけ）。削除されると他のデータと一緒に消える（墓標のある id は今までどおり 404）。
+
+### 41.3 端末の写しとオフライン（REQ-A11Y-004）
+- 端末は最後の設定を写し（`AccessibilityModel.KeyBlob`）に持ち、起動直後・オフラインでもそれを当てる（サーバーを待たない）。
+- 変えたらすぐ画面に当て、写しに保存し、PUT する。届かなかった時は写しに「未送信」の印を付け、次にオンラインになった時（起動・画面を開いた時）にまとめて PUT する。
+- 起動時：写しが未送信ならサーバーへ PUT（端末が勝つ）。未送信でなければサーバーの値（bootstrap の `accessibility`）を写しに入れる（別の端末で変えた値が届く）。同時に2台で変えた時は後から届いた方（最後の書き込み）が残る。
+
+### 41.4 文字の大きさ（REQ-A11Y-005）
+- 倍率は本文（28px 未満の文字・ボタン・字幕・HUD の小さな文字）だけ。見出し・大きな数字（28px 以上）はすでに大きいので変えない。
+- **どの画面もはみ出さない**：箱に入りきらない文字だけ、標準の大きさまで戻してよい（日本語は標準より小さくしない。英語は従来どおり 66% まで、REQ-L10N-013）。プロトタイプの e2e（`test/a11y-flow.cjs`）が主要な画面を「特大」で日本語・英語の両方で調べ、はみ出し0件と、本文の多くが実際に大きくなったこと（各画面で文字の 60% 以上）を確かめる。
+
+### 41.5 色覚サポート（REQ-A11Y-006、`contracts/a11y-tokens.json`）
+| トークン | standard | cvd | 使うところ |
+|---|---|---|---|
+| `gauge.ok` | `#00d2ed` | `#00d2ed` | スタミナ・ミニゲージ（30%より多い） |
+| `gauge.low` | `#ffd34f` | `#ffff33` | 30% 以下 |
+| `gauge.critical` | `#ff5a4a` | `#cc6633` | 10% 以下・空（cvd では斜線の模様も付ける） |
+| `position.self` | `#ffd34f` | `#ffff33` | ミニマップ・頭上の印の自分 |
+| `position.other` | `#00d2ed` | `#5f8fb3` | ミニマップの他の馬 |
+| `status.ok` | `#8fe3a8` | `#00d2ed` | 登録済み・成功の文字 |
+| `status.danger` | `#ff7a6b` | `#ff9a3d` | 警告・削除・エラーの文字 |
+| `cue.whipChance` | `#ffe661` | `#ffff33` | 「今だ」のムチの光 |
+
+- 検査（`server/test/a11y-tokens.test.ts`、C# `AccessibilityTests`）：どのトークンも紺の背景 `#08182a` に対してコントラスト比 3:1 以上（図形、WCAG 1.4.11）、文字に使う `status.*` は 4.5:1 以上。`cvd` のグループ（ゲージの3色・順位の2色・状態の2色）は、通常の見え方と1型・2型・3型の2色覚の見え方（Machado 2009、強さ 1.0）のどれでも、組の色差 ΔE*ab（CIE76）が 40 以上。`standard` は今の見た目のまま（2型でゲージの黄と赤が 28.7 まで近づく。それを補うのが `cvd`）。
+- 色だけで伝えない（docs/planning/06 §9.3）：スタミナは文字（「脚が残り少ない」等）、自分の馬は大きな印と名前、レア度は形と文字を色と一緒に出す。
+
+### 41.6 動きを減らす・点滅（REQ-A11Y-007/008）
+- `reduceMotion`（`MotionPolicy`）：カメラの揺れ ×0、ムチの FOV キック ×0、スピード線なし、背景のドリフトなし、ゲージの点滅は止めて色と文字だけ、画面の切り替え・シートは 150ms 以下のフェード、ガチャの演出は光の待ち（380ms）なしで表が出てめくりも 150ms 以下。**ガチャの提供割合・抽選・結果・めくる順（`GachaRevealModel`）は同じ**（演出の時間だけ）。
+- 点滅は設定に関係なく常に**1秒間に3回まで**（REQ-A11Y-008）：繰り返す点滅（CSS の `infinite` なアニメーションでコントラストが変わるもの）は周期から数え、1回ずつの光（「伸びる！」・追い抜き・ムチの当たり）は `FlashLimiter`（どの1秒の窓でも3回まで、超えた分は光らせずに文字だけ）を通す。プロトタイプの点滅はすべて 2.5 回/秒以下（`test/a11y-flash.test.cjs`）。
+
+### 41.7 ムチの長押し（REQ-A11Y-012、§27 との関係）
+- `whipInput: "hold"`：押した瞬間はタップと同じ（発走前は START、発走後は WHIP）。押し続けている間は `WhipHold.Spacing` = max(`whipEffectTicks`, `whipDiminishWindowTicks`) + `InputAssistant.WhipSpacingExtraTicks`（§27.1 のムチだけおまかせと同じ間隔、既定 26tick）ごとに WHIP を1回。**自動で入るのは1レースに `WhipHold.MaxRepeats` = ムチの数 ÷ 2 − 1 回まで**（6本なら2回：一度押し続けると3本、残りはタップ）。離すと止まる。1tickに1回まで。チュートリアルではタップと同じ（押した瞬間だけ。REQ-UXS-004 はタップの前提、§27.2 と同じ扱い）。まったくタップできない人には §27 のムチだけおまかせがある。
+- 送るのは普通の入力バイト（§3 の Cmd）だけ。長押しが作る入力の並びは、指でタップすれば必ず作れる並び（テストで、同じムチをタップした乗り手と 240/240 レースで同じ着順）。
+- **自動の回数に上限がある理由**（作りながら測って分かったこと）：ムチの効く範囲は広く、決まった間隔で6本すべてを自動にすると、うまく押し始めた長押しは上手なタップと互角になった（一騎打ち 51.7%、§27.2 の「5割未満」を満たさない）。半分（3本）にすると、R11 と同じ道具で、最も上手に押し始めた長押しでも最良のタップの 0.77 倍の勝率、一騎打ち 43.8%、R11 の上手な乗り手との一騎打ち 48.7%、何もしない人には 99.2%（`AccessibilityTests.HoldIsCappedBelowSkilledPlay`）。課金で買えるものでもない。
+- 同じテストで分かったこと：R11 の基準の `SkilledRider`（ムチの間隔＝減衰の窓 20tick）は最良のタップではなく、もっと広い間隔（約32tick）の方が勝つ（240レースで 48 → 57 勝）。R11 の比はやや弱い基準に対するもの（ぜんぶおまかせは最良のタップに対しても 27/57 で上限の内）。
+- かんたん操作（§27）とは別の設定。補助がムチを持っている時（`whip`/`full`）は長押しも無視される（補助が捨てる）。相手には見えず、`res` の印も付けない（入力の種類は報告しない）。
+
+### 41.8 KPI
+| イベント | 送り手 | s1 | s2 | s3 |
+|---|---|---|---|---|
+| `a11y_setting_change` | サーバー（PUT で値が変わったキーごとに1行） | キー（`textSize` 等） | 新しい値（真偽は `on`/`off`） | `settings` |
+個人を特定する情報は入れない（どの設定か・どの値かだけ）。同じ値の PUT では出ない。クエリは `docs/ops/kpi-queries.md`「アクセシビリティ」。
+
+### 41.9 クライアント
+- `Muchi.Client`：`AccessibilitySettings`（`Parse`・`ToJson`・`Defaults`、知らない値は既定値）、`ApiClient.GetAccessibilityAsync`・`SetAccessibilityAsync`、`PlayerView.Accessibility`、`AccessibilityTokens`（トークンの表、`Color(mode, token)`）、`TextScale`（`Factor`・`Px`）、`MotionPolicy`、`FlashLimiter`、`WhipHold`。
+- `Muchi.Game`：`AccessibilityModel`（端末の写し・未送信の再送・`Changed` イベント・画面が結ぶ値 `TextScale`／`Palette`／`Motion`／`Haptics`／`Subtitles`／`OneHanded`／`WhipInput`・設定画面の行 `Rows()`・`ApplyTo(RaceInput)`）、`RaceInput.WhipMode`・`SetWhipHeld`・`Collect(RaceSim, slot)`。
+- 画面が守ること：docs/handoff-codex-round15-accessibility.md。

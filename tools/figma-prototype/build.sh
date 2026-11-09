@@ -52,4 +52,6 @@ node "$HERE/test/round13-team-goal.test.mjs" # round 13: 支部の共同目標 �
 node "$HERE/test/round14-hall.test.mjs"     # round 14: 殿堂 — career from confirmed races, the ceremony once, 殿堂入り and the frame once, paging, a friend's hall
 node "$HERE/test/round14-commentary-packs.test.mjs" # round 14: 実況パック — races speak the equipped pack (never the tutorial), the 10-second sample, owned / equip / buy on the server rules
 node "$HERE/test/round14-my-replays.test.mjs"  # round 14: マイリプレイ — races settled with their replay, save / rename / favourite / public / delete, ReplayPlayer in WASM (speed, camera, last 200 m), 再生できません, a friend replay
+node "$HERE/test/a11y-flash.test.cjs"       # round 15: アクセシビリティ — the --a11y-* tokens equal contracts/a11y-tokens.json, every blink ≤ 3 flashes/s and off with reduce motion
+node "$HERE/test/round15-a11y.test.mjs"     # round 15: アクセシビリティ — the whip hold (RaceInput + WhipHold) in WASM, a hold = taps, the tutorial, the settings on the server rules
 echo "built $SITE ($(du -sh "$SITE" | cut -f1))"

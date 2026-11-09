@@ -176,6 +176,7 @@ printf '%s' '<管理トークン>' | sha256sum
 |---|---|---|
 | Round 11 `skillsFired`（検証サーバーの出力に足したキー） | 新しい検証サーバー × 古い Worker：古い Worker の出力スキーマは厳密（`verifierOutputSchema` は `.strict()`）なので、知らないキーが来るとすべての検証が失敗する | **`skillsFired` は頼まれた時だけ返す**（Round 13）。Worker の `HttpVerifierClient` がヘッダー `X-Muchi-Verify-Skills: 1` を付けた時だけ、検証サーバー（`VerifyService.WantsSkills`）が `skillsFired` を足す。古い Worker は頼まないので、検証サーバーを先に出しても壊れない。新しい Worker × 古い検証サーバーでは `skillsFired` が来ないだけ（スキーマで任意、スキルの実績は数えない） |
 | Round 13 週替わりチャレンジのレースの種類 `challenge` | 新しい Worker × 古い検証サーバー：古い検証サーバーは `mode: "challenge"` を知らず 400 を返す → 送信は `VERIFIER_UNAVAILABLE`（セッションは `wchAbort` で戻り、もう一度送れる） | 検証サーバーが先なので、Worker が `challenge` を送る時には検証サーバーはもう知っている |
+| Round 14（殿堂 §34・勝負服エディタ §35・実況パック §36・マイリプレイ §37） | 組み合わせの問題なし：4つとも検証サーバー（`engine/Muchi.Verifier`・`Muchi.Engine`）とその入出力を変えない（変わるのは Worker・`Muchi.Client`・プロトタイプ・Unity のゲーム層だけ）。マイリプレイの保存は既存の R2 `REPLAYS` バインディングの別の接頭辞 `myreplays/`、殿堂の写しは既存の DirectoryDO の新しい表（起動時に `CREATE TABLE IF NOT EXISTS`）で、新しいバインディング・シークレット・マイグレーションは無い | いつもの「検証サーバー → Worker」の順のまま。特別な順番は要らない（4つのブランチのどれも別の順を求めていない、Round 14 の統合で確認） |
 
 - **切り戻しは逆の順**：Worker を先に戻し、そのあと必要なら検証サーバーを戻す。検証サーバーだけを Round 13 より前に戻すと、週替わりチャレンジの送信が `VERIFIER_UNAVAILABLE` になる（その間は `progression.weeklyChallenge.enabled: false` をリモート設定で出しておく）。
 - Round 11 より前の Worker が動いている環境（Round 11 を一度も出していない環境）でも、この順で出せる（上のとおり `skillsFired` は頼まれた時だけ）。Round 11 の時点の検証サーバー（いつも `skillsFired` を返す版）が動いている環境で Worker を Round 11 より前に戻すことはしない。

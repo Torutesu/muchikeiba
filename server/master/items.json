@@ -43,6 +43,9 @@
     { "id": "silkpart_sleeve_chevrons", "name": "勝負服の袖「山形」", "kind": "silks_part", "part": "sleeve", "ref": "chevrons", "asset": "silks/sleeve/chevrons", "price": 150, "currency": "any" },
     { "id": "silkpart_sleeve_stars", "name": "勝負服の袖「星」", "kind": "silks_part", "part": "sleeve", "ref": "stars", "asset": "silks/sleeve/stars", "price": 200, "currency": "any" },
     { "id": "silkpart_cap_spots", "name": "勝負服の帽子「水玉」", "kind": "silks_part", "part": "cap", "ref": "spots", "asset": "silks/cap/spots", "price": 150, "currency": "any" },
-    { "id": "silkpart_cap_checks", "name": "勝負服の帽子「格子」", "kind": "silks_part", "part": "cap", "ref": "checks", "asset": "silks/cap/checks", "price": 200, "currency": "any" }
+    { "id": "silkpart_cap_checks", "name": "勝負服の帽子「格子」", "kind": "silks_part", "part": "cap", "ref": "checks", "asset": "silks/cap/checks", "price": 200, "currency": "any" },
+    { "id": "photo_frame_sakura", "name": "写真フレーム「桜吹雪」", "kind": "photo", "asset": "photo/frame/sakura", "price": 150, "currency": "any" },
+    { "id": "photo_frame_gold_leaf", "name": "写真フレーム「金箔」", "kind": "photo", "asset": "photo/frame/gold_leaf", "price": 300, "currency": "any" },
+    { "id": "photo_stamp_carrot_pop", "name": "写真スタンプ「にんじんポップ」", "kind": "photo", "asset": "photo/stamp/carrot_pop", "price": 100, "currency": "any" }
   ]
 }

@@ -41,6 +41,7 @@ import { accessibilityBodySchema } from '../domain/accessibility.js';
 import type { RivalService } from '../domain/rivalService.js';
 import { ADVICE_CONTEXTS, type AdviceContext } from '../domain/raceAdviceService.js';
 import type { Ruleset } from '../domain/ruleset.js';
+import { photoInputSchema } from '../domain/photoMode.js';
 import { HISTORY_LIMITS, historyQuery, REF_RE, SUPPORT_TOPICS } from '../domain/history.js';
 import type { DesignInput, SilksDesign } from '../domain/silksEditor.js';
 import type { MyReplaysService } from '../domain/myReplaysService.js';
@@ -84,7 +85,8 @@ export type PlayerMethod =
   | 'teamGoalReward' | 'goalPlayerView'
   | 'hallMine' | 'hallViewer' | 'hallNoteView' | 'horseCareer' | 'hallAck' | 'hallSettings'
   | 'myReplays' | 'replayPrepareSave' | 'replayCommitSave' | 'replayForget' | 'replayUpdate' | 'replayDelete' | 'replayOwnRef' | 'replayShared' | 'replayViewed'
-  | 'raceAdvice';
+  | 'raceAdvice'
+  | 'photoCatalog' | 'photos' | 'photoSave' | 'photoDelete';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -976,6 +978,14 @@ export const routes: Route[] = [
   { method: 'GET', path: '/v1/friends/:playerId/replays', auth: 'player', handler: async (_r, p, c, u) => myReplays(c).friendList(u, p.playerId!) },
   { method: 'GET', path: '/v1/friends/:playerId/replays/:raceId/data', auth: 'player', handler: async (_r, p, c, u) => myReplays(c).friendData(u, p.playerId!, p.raceId!) },
   // weekly rival (REQ-RIVAL-*, contracts/protocol.md §28)
+  // photo mode (REQ-PHOTO-*, contracts/protocol.md §38)
+  { method: 'GET', path: '/v1/photo/catalog', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('photoCatalog', u) },
+  { method: 'GET', path: '/v1/photos', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('photos', u) },
+  { method: 'POST', path: '/v1/photos', auth: 'player', handler: async (r, _p, c, u) => {
+    const key = idem(r);
+    return c.player(u).invoke('photoSave', u, await body(r, photoInputSchema), key);
+  } },
+  { method: 'DELETE', path: '/v1/photos/:photoId', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('photoDelete', u, p.photoId!) },
   { method: 'GET', path: '/v1/rival', auth: 'player', handler: async (_r, _p, c, u) => (c.rival ? c.rival.view(u) : { enabled: false }) },
   { method: 'PUT', path: '/v1/rival/settings', auth: 'player', handler: async (r, _p, c, u) => rival(c).setOptOut(u, (await body(r, z.object({ optOut: z.boolean() }).strict())).optOut) },
   { method: 'POST', path: '/v1/rival/block', auth: 'player', handler: async (_r, _p, c, u) => rival(c).block(u) },

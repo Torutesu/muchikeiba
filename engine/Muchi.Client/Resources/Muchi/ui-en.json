@@ -869,6 +869,21 @@
   "アドバイスは馬の適性とルールから計算しています。勝ちを約束するものではありません。": "Advice is worked out from the horse's aptitudes and the rules. It does not promise a win.",
   "アドバイスはオフです（設定で変えられます）": "Advice is off (change it in Settings)",
   "アドバイスを見る": "Show advice",
-  "アドバイスを表示する": "Show advice before races"
+  "アドバイスを表示する": "Show advice before races",
+  "_photo_mode": "---- フォトモード (round 15, REQ-PHOTO-*, PhotoModeModel / PhotoMode.cs)",
+  "フォトモード": "Photo Mode",
+  "写真の保存はオンラインでできます。共有はこのままできます": "Saving photos needs a connection. You can still share this one",
+  "写真を保存しました": "Photo saved",
+  "保存できる写真がいっぱいです。古い写真を消してから保存してください。": "Your photo storage is full. Delete an old photo, then save",
+  "写真を作れませんでした。もう一度お試しください": "The photo could not be made. Please try again",
+  "UIを隠す": "Hide UI",
+  "名前を表示": "Show names",
+  "名前を隠す": "Hide names",
+  "あなた": "You",
+  "ひとことは{n}文字までです": "Captions can be up to {n} characters",
+  "ひとことにURLは入れられません": "Captions cannot contain URLs",
+  "この言葉はひとことに使えません": "This wording cannot be used in a caption",
+  "まだ使えないフレーム・スタンプが含まれています。": "Some frames or stamps are not unlocked yet.",
+  "このレースは走っている途中では撮れません。結果画面かリプレイから撮ってください。": "This race cannot be paused for a photo. Take one from the result screen or the replay."
  }
 }

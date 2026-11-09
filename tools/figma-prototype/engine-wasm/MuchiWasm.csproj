@@ -41,5 +41,7 @@
     <Compile Include="../../../unity/Assets/Muchi/Game/CommentaryPackModel.cs" Link="Game/CommentaryPackModel.cs" />
     <!-- round 15: アクセシビリティ設定 (GameBackend.Accessibility reads the device copy through it) -->
     <Compile Include="../../../unity/Assets/Muchi/Game/AccessibilityModel.cs" Link="Game/AccessibilityModel.cs" />
+    <!-- round 15: フォトモード (PhotoModeModel over PhotoSnapshot / PhotoCamera / PhotoShareCard) -->
+    <Compile Include="../../../unity/Assets/Muchi/Game/PhotoModeModel.cs" Link="Game/PhotoModeModel.cs" />
   </ItemGroup>
 </Project>

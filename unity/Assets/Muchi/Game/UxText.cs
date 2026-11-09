@@ -56,6 +56,9 @@ namespace Muchi.Game
             ["CHALLENGE_SESSION_EXPIRED"] = "時間切れのため、このレースは記録できませんでした。もう一度挑戦できます。",
             ["CHALLENGE_SESSION_USED"] = "このレースは記録済みです。",
             ["CHALLENGE_RESULT_MISMATCH"] = "レースの記録を確認できませんでした。もう一度挑戦してください。",
+            ["PHOTO_LIMIT"] = "保存できる写真がいっぱいです。古い写真を消してから保存してください。",
+            ["PHOTO_LOCKED"] = "まだ使えないフレーム・スタンプが含まれています。",
+            ["PHOTO_SOURCE_INVALID"] = "このレースは走っている途中では撮れません。結果画面かリプレイから撮ってください。",
             ["NETWORK"] = Offline,
         };
 

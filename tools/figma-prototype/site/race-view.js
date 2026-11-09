@@ -311,7 +311,9 @@ export class RaceView {
   draw(f) {
     if (!this.info || !f.horses) return;
     const now = performance.now(), dt = Math.min(.1, (now - this.clock) / 1000); this.clock = now;
-    const time = (now - this.t0) / 1000;
+    // round 15 (REQ-PHOTO-002): a photo is one engine tick — the gallop pose is frozen too (cam mode 'Photo')
+    const photo = f.cam?.[7] === 'Photo';
+    const time = photo ? 0.37 : (now - this.t0) / 1000;
     const q = new THREE.Quaternion(), X = new THREE.Vector3(1, 0, 0);
     const cycle = time * 12.5;
     for (let i = 0; i < this.horses.length; i++) {
@@ -351,7 +353,7 @@ export class RaceView {
       // smooth the heading, not the position: the camera stays locked to the partner even at a low frame rate
       this.fwd = this.fwd ? this.fwd.lerp(fwd, 1 - Math.exp(-dt * 5)).normalize() : fwd.clone(); fwd.copy(this.fwd);
       let pos, look, fv = fov;
-      if (f.cam && this.useRig && mode === 'Finish') {
+      if (f.cam && (photo || (this.useRig && mode === 'Finish'))) {
         // RaceCameraRig's side-on shot at the line, as the engine places it
         pos = U(px, ph, pz); look = U(lx, lh, lz);
       } else {
@@ -363,8 +365,9 @@ export class RaceView {
         fv = Math.max(50, Math.min(62, fov));
       }
       if (mode === 'Finish' && this.useRig) this.camera.position.lerp(pos, 1 - Math.exp(-dt * 6)); else this.camera.position.copy(pos);
-      const target = fv + this.fovKick;
-      if (Math.abs(this.camera.fov - target) > .01) { this.camera.fov += (target - this.camera.fov) * (1 - Math.exp(-dt * 6)); this.camera.updateProjectionMatrix(); }
+      const target = photo ? fv : fv + this.fovKick;
+      if (photo && this.camera.fov !== target) { this.camera.fov = target; this.camera.updateProjectionMatrix(); }
+      else if (Math.abs(this.camera.fov - target) > .01) { this.camera.fov += (target - this.camera.fov) * (1 - Math.exp(-dt * 6)); this.camera.updateProjectionMatrix(); }
       this.camera.lookAt(look);
       // keep the shadow frustum around the player
       this.sun.target.position.copy(me.position);

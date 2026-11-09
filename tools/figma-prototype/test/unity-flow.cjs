@@ -23,6 +23,9 @@
 //     pull; the free-only state; bought packs drawn as 購入済み in the shop.
 //  7. Round 13 (REQ-EXCH-*): the event exchange — point counter, event races up to the daily cap, the grid with the stock
 //     fact, the confirm sheet, a keyed exchange, the grace notice and the closed state with the leftover converted.
+//  8. Round 15 (REQ-PHOTO-*): フォトモード — a time attack paused for a photo (same state, the race waits), camera limits,
+//     looks, a locked / bought frame, stamps, caption rules, names / UI hidden, shutter + share KPI, keyed save; result and
+//     replay entries; the ranked race never pauses.
 // Screenshots: <out>/u-<nn>-<name>.png. Returns { shots, ftue }.
 const path = require('path');
 const fs = require('fs');
@@ -126,6 +129,105 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     assert.equal(await page.locator('.screen.in .hof-vis').count(), 0, 'hall: no settings on a friend\'s hall');
     await shot('hall-friend', 400);
     await click('BACK'); await waitScreen('hall'); await click('BACK'); await waitScreen('stable');
+  }
+
+  // round 15 (REQ-PHOTO-*): フォトモード — a time attack paused midway (the snapshot equals the live race, the race does not
+  // move), camera limits, a free look, a locked achievement frame, a shop frame bought at its fixed price, stamps, a caption
+  // refused for a betting word then accepted, names hidden, the shutter (photo_take) and share (photo_share), the keyed save;
+  // back to the race, which finishes; the result screen and the replay player open it too; the ranked race never pauses
+  async function photoFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(() => globalThis.__muchi.show('TimeAttack')); await waitScreen('time-attack', 30000); await page.waitForTimeout(400);
+    await page.locator('.screen.in .ta-start').click(); await waitScreen('race', 20000);
+    for (let i = 0; i < 4000; i++) {
+      const s = await state();
+      if (s.f && s.f.gateOpen && !s.f.departed) await tapWhip();
+      if (s.f && s.f.departed && s.f.remainingM < s.f.distanceM * .6) break;
+      await page.waitForTimeout(40);
+    }
+    assert.equal(await page.locator('.screen.in [data-photo]').getAttribute('data-photo'), 'pause', 'a time attack can pause for a photo');
+    await page.locator('.screen.in [data-photo]').click(); await waitScreen('photo'); await waitIn('.ph-state');
+    const st = page.locator('.screen.in .ph-state');
+    assert.equal(await st.getAttribute('data-photo-hash'), 'match', 'the snapshot is the paused race state');
+    assert.equal(await st.getAttribute('data-source'), 'paused');
+    const tick = await st.getAttribute('data-tick');
+    await page.waitForTimeout(800);
+    assert.equal(String((await state()).f.tick), tick, 'the race does not move while photo mode is open');
+    await shot('photo-paused', 600);
+    // camera: closer, lower until the floor, orbit, blur
+    for (let i = 0; i < 4; i++) await page.locator('.screen.in [data-cam="raise-"]').click();
+    for (let i = 0; i < 20; i++) await page.locator('.screen.in [data-cam="raise-"]').click();
+    let cam = JSON.parse(await page.locator('.screen.in [data-camera]').getAttribute('data-camera'));
+    assert.ok(cam.heightDm === 3 && cam.heightM >= 0.3, 'the camera stops above the course');
+    await page.locator('.screen.in [data-cam="orbit+"]').click(); await page.locator('.screen.in [data-cam="orbit+"]').click();
+    await page.locator('.screen.in [data-cam="raise+"]').click(); await page.locator('.screen.in [data-cam="raise+"]').click();
+    await page.locator('.screen.in [data-dof="2"]').click();
+    cam = JSON.parse(await page.locator('.screen.in [data-camera]').getAttribute('data-camera'));
+    assert.ok(cam.orbitDeg === 30 && cam.dof === 2, 'orbit and blur applied');
+    await shot('photo-camera', 500);
+    // look (free), frames (locked: achievement / shop), stamps
+    await page.locator('.screen.in [data-tab="look"]').click(); await page.locator('.screen.in [data-look="film"]').click();
+    assert.equal(await page.locator('.screen.in .ph-view').getAttribute('data-look'), 'film');
+    await page.locator('.screen.in [data-tab="frame"]').click(); await waitIn('[data-frame="victory"]');
+    await page.locator('.screen.in .btn[data-frame][data-unlocked="false"]:not([data-frame="sakura"]):not([data-frame="gold_leaf"])').first().click(); await waitIn('.sheet [data-unlock-text]');
+    assert.match(await page.locator('.screen.in .sheet [data-unlock-text]').textContent(), /^実績「.+」の\d段目で解放$/, 'an achievement frame says how it unlocks');
+    assert.equal(await page.locator('.screen.in .sheet [data-action="ph-buy"]').count(), 0, 'achievement items are not sold');
+    await shot('photo-frame-locked', 400);
+    await page.locator('.screen.in .sheet [data-label="閉じる"]').click(); await page.waitForTimeout(300);
+    await page.locator('.screen.in .btn[data-frame="sakura"]').click(); await waitIn('.sheet [data-action="ph-buy"]');
+    await shot('photo-frame-shop', 400);
+    await page.locator('.screen.in .sheet [data-action="ph-buy"]').click(); await page.waitForTimeout(700);
+    await waitIn('.btn[data-frame="sakura"][data-unlocked="true"]');
+    await page.locator('.screen.in .btn[data-frame="sakura"]').click(); await waitIn('.ph-view[data-frame="sakura"]');
+    await page.locator('.screen.in [data-tab="stamp"]').click(); await page.locator('.screen.in .btn[data-stamp="hoof"]').click(); await page.locator('.screen.in .btn[data-stamp="star"]').click();
+    assert.equal(await page.locator('.screen.in .ph-stamp').count(), 2);
+    // caption: a betting word is refused, then a plain one
+    await page.locator('.screen.in [data-tab="caption"]').click();
+    await page.locator('.screen.in .ph-input').fill('馬券が当たった'); await page.locator('.screen.in [data-action="ph-caption"]').click(); await waitIn('[data-problem]');
+    await page.locator('.screen.in .ph-input').fill('ゴール前の一閃'); await page.locator('.screen.in [data-action="ph-caption"]').click(); await waitIn('.ph-caption');
+    assert.equal(await page.locator('.screen.in .ph-caption').getAttribute('data-caption'), 'ゴール前の一閃');
+    await shot('photo-composed', 500);
+    await page.locator('.screen.in [data-action="ph-names"]').click(); await page.waitForTimeout(200);
+    assert.equal(await page.locator('.screen.in .ph-plate').count(), 0, 'names hidden');
+    await page.locator('.screen.in [data-action="ph-hideui"]').click(); await waitIn('[data-action="ph-showui"]');
+    assert.equal(await page.locator('.screen.in .ph-panel').count(), 0, 'the UI can be hidden');
+    await shot('photo-hide-ui', 400);
+    await page.locator('.screen.in [data-action="ph-showui"]').click(); await waitIn('.ph-panel');
+    // the shutter and the share card; the keyed save
+    await page.locator('.screen.in [data-action="ph-shoot"]').click(); await waitIn('.sheet[data-photo-card="photo_image"]');
+    assert.deepEqual(await page.evaluate(() => globalThis.__muchi.lastPhotoKpi), { name: 'photo_take', s1: 'paused', s2: 'film' });
+    const shareText = await page.locator('.screen.in [data-share-text]').getAttribute('data-share-text');
+    assert.ok(shareText.includes('ゴール前の一閃') && shareText.endsWith('#ムチ一閃') && !shareText.includes('local'), 'share text: horse, course, caption, hashtag — no player id');
+    await shot('photo-card', 500);
+    await page.locator('.screen.in .sheet [data-action="ph-share"]').click(); await page.waitForTimeout(300);
+    assert.deepEqual(await page.evaluate(() => globalThis.__muchi.lastPhotoKpi), { name: 'photo_share', s1: 'paused', s2: 'framed' });
+    await page.locator('.screen.in .sheet [data-action="ph-save"]').click(); await page.waitForTimeout(500);
+    await page.locator('.screen.in .sheet [data-action="ph-save"]').click(); await page.waitForTimeout(500);
+    const saved = await page.evaluate(() => globalThis.__muchi.lastPhotoSave);
+    assert.ok(saved && saved.count === 1 && saved.photo.frameId === 'sakura' && saved.photo.caption === 'ゴール前の一閃', 'one record (the retry is keyed)');
+    await page.locator('.screen.in .sheet [data-label="閉じる"]').click(); await page.waitForTimeout(300);
+    // back to the race: it continues from the paused tick and finishes
+    await page.locator('.screen.in [data-action="ph-back"]').click(); await waitScreen('race');
+    await rideRace(false);
+    await waitScreen('ta-result', 40000);
+    // the result screen and the replay player
+    await page.locator('.screen.in [data-action="photo-result"]').click(); await waitScreen('photo'); await waitIn('.ph-state[data-source="result"]');
+    await shot('photo-from-result', 500);
+    await page.locator('.screen.in [data-action="ph-back"]').click(); await waitScreen('ta-result');
+    await click('リプレイを共有'); await waitScreen('share'); await page.waitForTimeout(1200);
+    await page.locator('.screen.in [data-action="photo-replay"]').click(); await waitScreen('photo'); await waitIn('.ph-state[data-source="replay"]');
+    await shot('photo-from-replay', 500);
+    await page.locator('.screen.in [data-action="ph-back"]').click(); await waitScreen('share');
+    await click('戻る'); await waitScreen('ta-result');
+    // the ranked race never pauses (photographed from its result or replay)
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
+    await click('レースへ'); await waitScreen('lobby'); await click('ランク戦に出る'); await waitScreen('race', 20000);
+    assert.equal(await page.locator('.screen.in [data-photo]').getAttribute('data-photo'), 'blocked', 'a ranked race shows the photo button locked');
+    await page.locator('.screen.in [data-photo]').click(); await page.waitForTimeout(300);
+    assert.equal(await screen(), 'race', 'tapping it explains, the race goes on');
+    await shot('photo-ranked-blocked', 0, true);
+    await rideRace(false);
+    await waitScreen(['result'], 40000);
   }
 
   // round 12 (REQ-RIVAL-*): ライバル — the home strip → the detail (public card, score, races, time attack, rules) → a race
@@ -714,6 +816,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.equal(await page.locator('.screen.in [data-share="place"]').textContent(), '完走');
   await shot('share-card-time-attack', 200);
   await click('戻る'); await waitScreen('ta-result');
+  await photoFlow(); // round 15: フォトモード
   // account-link prompt right after the first purchase (day 1 after the FTUE), then linking (account_link KPI)
   await demo('day1');
   await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings');

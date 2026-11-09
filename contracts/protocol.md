@@ -1796,6 +1796,75 @@ TeamGoalView = { "teamId": "tabc123456", "teamName": "あおばRC", "enabled": t
 ### 37.7 アカウント削除
 削除の手順に `replays` を足す（`rival` の後）：スナップショットの `replayKeys`（保存した写し `myreplays/<playerId>/<raceId>.json`）を R2 から消す。状態の一覧は最後の `wipe` で消える。
 
+## 38. フォトモード（REQ-PHOTO-001〜018、`server/src/domain/photoMode.ts`・`server/master/photo.json`、C# `PhotoMode.cs`（`PhotoCamera`・`PhotoSnapshot`・`PhotoNames`・`PhotoShareCard`）・`Muchi.Game.PhotoModeModel`）
+レースを一時停止（オフライン・練習・タイムアタック・チュートリアル・週替わりチャレンジ＝**ひとりで走るレースだけ**）するか、終わったレース（結果画面）・リプレイを止めて、1枚の写真を撮る。カメラを動かし（制限つき）、見た目（ルック）・フレーム・スタンプ・ひとことを重ねて、既存のリプレイ共有（Round 9、`ShareCard`・`IClipRecorder.CaptureStillAsync`・`IShareSheet`）で画像として共有する。**表示だけ**：コイン・アイテムを配らない（E は無い）。購入できる品は既存の見た目ショップ（§13・REQ-ITEM-005）の決まった価格だけ。
+
+**決まりごと**
+- **ランク戦・フレンド戦・イベント・大会のレース中は止めない**（他の人のレースに影響するため）。この4つは結果画面（レースが終わった後）とリプレイからだけ撮れる。クライアントは `PhotoModeModel.CanPause(driver)` が false のときポーズのフォトボタンを出さない。サーバーは写真の記録で `source.kind: "paused"` にこれらの `mode` が来たら 400 `PHOTO_SOURCE_INVALID`。
+- **決定論**：写真は `(raceId, tick)` とカメラ・重ねる物の値で決まる。端末はレースの設定＋確定入力をその tick まで**もう一度計算**して馬の位置を出す（`PhotoSnapshot.Capture`、走っているレースの `RaceSim` には触らない）。レースの状態・結果ハッシュ・ゴールデンは変わらない。同じ値なら何度でも同じ写真を作り直せる（`PhotoSnapshot.Fingerprint` が一致する）。
+- **プライバシー**：写真の名札は馬の名前と、乗り手の表示。自分は「あなた」、フレンドはそのプレイヤーの表示名、**フレンドでない他の人間は `p<slot>`**（マイリプレイ §37 と同じ置き換え。1始まりの枠番ではなく 0 始まりの slot）、CPU は「CPU」。`names: "hidden"` で名札をすべて消せる（既定は `masked`）。共有のテキスト（`ShareCard.ShareText`）には他の人の名前を入れない。
+- **ひとこと（caption）**：0〜`captionMaxChars`（既定 24）文字。表示名と同じ規則（NFKC・制御文字なし・URL なし・NG 名リスト、§8 REQ-SOCIAL-006）に加えて、ショップの言葉の規則（「倍」「お得」「今だけ」「残りわずか」「通常価格」）と賭けを思わせる言葉（「馬券」「賭け」「賭博」「ベット」「オッズ」「配当」「払戻」「払い戻し」「的中」「予想」）を使えない（400 `INVALID_NAME`／`NG_NAME`）。**翻訳しない**（英語の応答でも打ったまま、`PLAYER_TEXT_KEYS` の `caption`）。
+- 生成する文（解放の条件・注意書き）も同じ言葉の規則を守る（`photoProblems` が検査）。
+
+### 38.1 カタログ（`server/master/photo.json`）
+```json
+{ "version": 1,
+  "config": { "enabled": true, "maxSaved": 30, "captionMaxChars": 24, "stampsMax": 3,
+              "camera": { "orbitDeg": [-180, 180], "distanceDm": [20, 200], "heightDm": [3, 100], "fovDeg": [20, 70], "dof": [0, 3] } },
+  "looks":  [ { "id": "natural", "name": "ナチュラル", "unlock": { "kind": "default" } } ],
+  "frames": [ { "id": "victory", "name": "勝利の額縁", "unlock": { "kind": "achievement", "achievementId": "wins", "tier": 1 } } ],
+  "stamps": [ { "id": "carrot_pop", "name": "にんじんポップ", "unlock": { "kind": "cosmetic", "itemId": "photo_stamp_carrot_pop" } } ] }
+```
+- 種類：`looks`（色味・フィルター。**すべて無料**＝`default` だけ）、`frames`（写真の枠）、`stamps`（写真に置く絵）。id は `[a-z0-9_]{1,32}`、名前は 1〜16 文字。
+- 解放 `unlock.kind`：`default` 最初から／`achievement` 実績（§24）のその段に届いた（`tierReached`、遊んで解放）／`cosmetic` 見た目ショップでコインで直接買う（`items.json` の `kind: "photo"`・`asset` がその品のアセットキー。決まった価格、`notForSale` 不可、ガチャ・ランダムからは出ない）。購入は既存の `POST /v1/shop/cosmetics/:itemId/buy`（冪等キー、1回だけ）。
+- アセットキー：`photo/look/<id>`・`photo/frame/<id>`・`photo/stamp/<id>`（`contracts/assets.md`、未着は各 kind の `default`）。ゲームのロゴ（ウォーターマーク）は既存の共有画像のもの（`ShareCard.Watermark`）。
+- 検査（起動時・リモート設定）：`photoProblems` — 形・範囲、重複 id、ルックは全部 `default`、フレームとスタンプにそれぞれ `default` が1つ以上、実績と段が実在、`cosmetic` は `kind: "photo"` で asset が一致し直販、写真の品はどれもちょうど1つを解放、文の言葉の規則。
+
+### 38.2 `GET /v1/photo/catalog`（要認証）
+```json
+{ "enabled": true, "version": 1,
+  "limits": { "maxSaved": 30, "captionMaxChars": 24, "stampsMax": 3, "camera": { "orbitDeg": [-180, 180], "distanceDm": [20, 200], "heightDm": [3, 100], "fovDeg": [20, 70], "dof": [0, 3] } },
+  "looks":  [ { "id": "natural", "name": "ナチュラル", "asset": "photo/look/natural", "unlock": { "kind": "default" }, "unlockText": "最初から使える", "unlocked": true } ],
+  "frames": [ { "id": "victory", "name": "勝利の額縁", "asset": "photo/frame/victory", "unlock": { "kind": "achievement", "achievementId": "wins", "tier": 1 }, "unlockText": "実績「勝利の記録」の1段目で解放", "unlocked": false } ],
+  "stamps": [ { "id": "carrot_pop", "name": "にんじんポップ", "asset": "photo/stamp/carrot_pop", "unlock": { "kind": "cosmetic", "itemId": "photo_stamp_carrot_pop" },
+                "price": 100, "currency": "any", "unlockText": "見た目ショップで購入（100コイン）", "unlocked": false } ],
+  "notice": "フォトモードの見た目は写真だけに使われ、レースの能力には影響しません。" }
+```
+- `price`／`currency` は `cosmetic` の品だけ。無効（`enabled: false`）のときは `{ "enabled": false }` だけ。
+
+### 38.3 写真の記録（要認証）
+写真そのもの（画像）はサーバーに置かない。作り直すための小さな記録だけを最大 `maxSaved` 件（既定 30、購入で増えない）。
+| メソッド | パス | 本文 | 応答 |
+|---|---|---|---|
+| GET | `/v1/photos` | — | `{ "photos": PhotoRecord[]（新しい順）, "count", "max" }` |
+| POST | `/v1/photos` | `PhotoInput`（`Idempotency-Key` 必須） | `{ "photo": PhotoRecord, "count", "max" }` |
+| DELETE | `/v1/photos/:photoId` | — | `{ "deleted": true, "count", "max" }`（無い id は 404） |
+
+```json
+PhotoInput = {
+  "source": { "kind": "paused" | "result" | "replay", "mode": "ranked"|"friend"|"tutorial"|"time_attack"|"event"|"tournament"|"challenge"|"practice",
+              "raceId": "r_…"（1〜128、[A-Za-z0-9_:.-]、オフラインはクライアントが付けた id）, "tick": 0〜72000 },
+  "camera": { "focusSlot": 0〜17, "orbitDeg": -180〜180, "distanceDm": 20〜200, "heightDm": 3〜100, "fovDeg": 20〜70, "dof": 0〜3 },
+  "lookId": "natural", "frameId": "plain" | null, "stamps": [ { "id", "xPermille": 0〜1000, "yPermille": 0〜1000, "scalePermille": 250〜2000, "rotDeg": -180〜180 } ]（0〜stampsMax）,
+  "caption": string | null, "names": "masked" | "hidden", "hideUi": true }
+PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }
+```
+- カメラの値は整数（dm・度）。範囲は `limits.camera`（範囲外は 400）。高さの下限（0.3 m）は**コースの下にカメラが入らない**ための値で、クライアントの `PhotoCamera` も同じ値で止める。
+- 使ったルック・フレーム・スタンプは**解放済みであること**（未解放は 409 `PHOTO_LOCKED`）。上限に達していたら 409 `PHOTO_LIMIT`（古い記録を消してから）。同じ冪等キーの再送は最初の答え。
+- 削除の予約中も保存・削除はできる（状態の中にあり、アカウント削除で状態ごと消える）。記録は本人だけが読める（他人に公開する API は無い）。
+- 無効（`enabled: false`）のときはどれも 404 `NOT_FOUND`。
+
+### 38.4 KPI
+クライアントのイベント `photo_take`（撮った時。`props.source`：`paused`|`result`|`replay`、`props.look`：ルックの id）→ s1 = source、s2 = look。`photo_share`（OS の共有シートに渡した時だけ。`props.source`、`props.framed`：フレームを付けたか）→ s1 = source、s2 = `framed`|`plain`。サーバーのイベント `photo_save`（記録を保存した時）→ s1 = source.kind、s2 = mode。クエリは `docs/ops/kpi-queries.md`「フォトモード」。
+
+### 38.5 クライアント（`PhotoModeModel`）
+- 入口：レースのポーズ（`CanPause` が true のときだけ）・結果画面（終わったレースはどのモードでも）・リプレイ再生（共有の流れ、§37 が入るまでは結果画面の「共有」と同じ `ReplayShareModel` の入力）。
+- `PhotoSnapshot.Capture(config, inputs, tick)` で止めた瞬間の全馬を作る。止めたレースの `Sim.Tick` と同じ tick なら、走っているレースの馬と同じ状態になる（テストで確認）。
+- `PhotoCamera`：注目の馬を中心に回る（orbit）・寄る（distance／fov）・高さ。値は `limits.camera` で止め、カメラは常にコース面（Y=0）より 0.3 m 以上上。結果は `RaceCameraShot`（`CourseFrame.ToWorld` で置く）。
+- UI を隠す（`HideUi`）：撮影画面の操作パネルを消して構図を確かめる。写真に HUD（着順・タイム）は入れない。
+- 共有：`PhotoShareCard`（`ShareCard` にひとこと・フレーム・スタンプ・ルックを足したもの、`Kind = "photo_image"`）を `IClipRecorder.CaptureStillAsync` に渡し、`IShareSheet` へ。共有した時だけ `photo_share`。
+- 未解放の品は鍵付きで `unlockText` を出し、`cosmetic` は見た目ショップの購入（既存の `BuyCosmeticAsync`、コイン不足は §29 の案内）。オフラインでもルック（すべて無料）と `default` の品で撮って共有できる（保存だけオンライン）。
+
 ## 39. 出走前アドバイス（REQ-ADV-001〜016、`server/src/domain/raceAdvice.ts`・`raceAdviceService.ts`、C# `RaceAdvice.cs`・`Muchi.Game.RaceAdviceModel`、共有ベクター `contracts/race-advice.vectors.json`）
 レースの前（馬を選ぶ画面）に、**データから計算した短いアドバイス**を出す：持っている馬のうちこのコース・距離・馬場に合う馬、その馬の乗り方（位置取りの目安・ムチの打ち始め・手綱）、わかっている範囲の相手の脚質。**勝つ確率・オッズ・印（◎○▲△）は出さない**。購入を勧めない。無料で、全員が同じ情報（プレイヤーが既に見られる情報だけ）から同じアドバイスを受け取る。
 

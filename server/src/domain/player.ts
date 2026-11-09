@@ -212,6 +212,8 @@ export interface PlayerState {
   accessibility?: import('./accessibility.js').AccessibilityState;
   /** REQ-RIVAL-*: opt-out, this week's rival and score, unsettled weeks, results (rival.ts ensureRival). */
   rival?: import('./rival.js').RivalState;
+  /** REQ-PHOTO-010: saved photo records (photoMode.ts ensurePhotos; the images are never stored). */
+  photos?: import('./photoMode.js').PhotoState;
   /** REQ-HIST-004: one record per gacha draw, last 90 days (history.ts recordGachaLog; the Durable Object keeps older ones in SQL). */
   gachaLog?: import('./history.js').GachaLogState;
   /** REQ-WCH-*: weekly challenge sessions, this and last week's progress, earned badges (weeklyChallenge.ts wchState). */

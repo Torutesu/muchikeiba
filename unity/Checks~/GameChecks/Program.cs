@@ -98,6 +98,8 @@ static class Program
         await ExchangeChecks.Run(Check, Ruleset());
         Console.WriteLine("== 週替わりチャレンジ (weekly challenge: list, keyed start, race with the HUD condition, server verdict, badge, English)");
         await WeeklyChallengeChecks.Run(Check, Ruleset(), Root);
+        Console.WriteLine("== round 15: フォトモード (PhotoModeModel: pause a solo race, snapshot, camera limits, locks, shop, caption, plates, share, save; REQ-PHOTO-*)");
+        await PhotoModeChecks.Run(Check, Ruleset(), Root);
         Console.WriteLine("== round 13: 支部の共同目標 (TeamGoalModel: milestone bar, contributions, week result sheet, feed goal rows; REQ-TGOAL-*)");
         Loc.LoadEnglish(File.ReadAllText(Path.Combine(Root, "engine", "Muchi.Client", "Resources", "Muchi", "server-en.json")));
         Loc.LoadEnglish(File.ReadAllText(Path.Combine(Root, "engine", "Muchi.Client", "Resources", "Muchi", "ui-en.json")));

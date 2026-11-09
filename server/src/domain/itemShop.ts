@@ -76,6 +76,8 @@ export function itemsProblems(m: Master, v: VisualsMaster = VISUALS): string[] {
       // REQ-SILK-013: the part side (master/silks-editor.json) is checked by silksEditorProblems; here only the shape
       if (!['color', 'sleeve', 'cap'].includes(c.part)) p.push(`${c.id}: unknown silks part type ${c.part}`);
       if (!ASSET_KEY_RE.test(c.asset) || c.asset !== `silks/${c.part}/${c.ref}`) p.push(`${c.id}: asset must be silks/${c.part}/${c.ref}`);
+    } else if (c.kind === 'photo') {
+      if (!ASSET_KEY_RE.test(c.asset) || !/^photo\/(frame|stamp)\//.test(c.asset)) p.push(`${c.id}: asset must be a photo/frame/<id> or photo/stamp/<id> key`);
     } else p.push(`${(c as CosmeticDef).id}: unknown cosmetic kind`);
   }
   return p;

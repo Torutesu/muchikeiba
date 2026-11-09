@@ -29,6 +29,10 @@ namespace Muchi.Client
         public static string Decor(string name) => "decor/" + name;
         /// <summary>Team cheer stamp (REQ-TEAMFEED-001), master/stamps.json id.</summary>
         public static string Stamp(string id) => "stamp/" + id;
+        /// <summary>REQ-PHOTO-005: photo mode look (filter) / frame / stamp, master/photo.json ids (the catalog also sends them as `asset`).</summary>
+        public static string PhotoLook(string id) => "photo/look/" + id;
+        public static string PhotoFrame(string id) => "photo/frame/" + id;
+        public static string PhotoStamp(string id) => "photo/stamp/" + id;
         /// <summary>マイ厩舎 room theme (REQ-STABLE-001); the server sends it as theme.key.</summary>
         public static string StableTheme(string id) => "stable/theme/" + id;
         public static string GachaBanner(string id) => "banner/gacha/" + id;

@@ -2,7 +2,8 @@
 // EN on from the start, the day-7 demo player: home, shop (recommended / coins / looks), the legal page (Japanese text
 // with the English courtesy note), purchase confirmation, season pass, scout calendar and odds, the stable, settings,
 // the coin shortfall sheet (round 12), a ranked race (HUD) and its result, 調教 (cards, mini-game, result, skip), ライバル (detail, races, week result), 殿堂 (gallery, ceremony, plaque, a friend's hall, round 14), then the 図鑑 (every tab, details), 実績 (claim one / all) and the title chooser,
-// the プレゼントボックス (box, claim one / all, history), the かんたん操作 suggestion, the 実況パック (list, sample, confirm), the weekly challenge (list, next week, a race with the condition in the HUD, the verified result).
+// the プレゼントボックス (box, claim one / all, history), the かんたん操作 suggestion, the 実況パック (list, sample, confirm), the weekly challenge (list, next week, a race with the condition in the HUD, the verified result),
+// フォトモード from the result (round 15: tabs, a locked frame, the caption rule, the card).
 // On every screen:
 //   - no Japanese is left on the stage (outside the .keep-ja legal text and the 日本語 language button);
 //   - no text overflows: nothing is still too wide / too tall for its box after fitText, nothing leaves the stage.
@@ -144,6 +145,29 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await waitScreen(['result'], 40000); await shot('result', 1200);
   const commentary = await page.evaluate(() => globalThis.__muchi.state().lastFrame?.subtitle ?? '');
   assert.ok(!/[぀-ヿ一-鿿]/.test(commentary), 'the race commentary is in English: ' + commentary);
+
+  // round 15: フォトモード in English (REQ-PHOTO-017) from the result: every tab, a locked frame, a caption, the card
+  await page.locator('.screen.in [data-action="photo-result"]').click(); await waitScreen('photo'); await page.waitForTimeout(500);
+  await shot('photo-camera', 400);
+  for (const tab of ['look', 'frame', 'stamp', 'caption']) {
+    await page.locator(`.screen.in [data-tab="${tab}"]`).click(); await page.waitForTimeout(300);
+    if (tab === 'stamp') await page.locator('.screen.in .btn[data-stamp="star"]').click();
+    if (tab === 'caption') {
+      await page.locator('.screen.in .ph-input').fill('https://example.com'); await page.locator('.screen.in [data-action="ph-caption"]').click(); await page.waitForTimeout(300);
+      assert.match(await page.locator('.screen.in [data-problem]').textContent(), /URL/, 'photo: the caption rule in English');
+      await page.locator('.screen.in .ph-input').fill('Final stretch!'); await page.locator('.screen.in [data-action="ph-caption"]').click(); await page.waitForTimeout(300);
+    }
+    await shot('photo-' + tab, 300);
+  }
+  await page.locator('.screen.in [data-tab="frame"]').click(); await page.waitForTimeout(300);
+  await page.locator('.screen.in .btn[data-frame][data-unlocked="false"]:not([data-frame="sakura"]):not([data-frame="gold_leaf"])').first().click(); await page.waitForTimeout(500);
+  assert.match(await page.locator('.screen.in .sheet [data-unlock-text]').textContent(), /^Unlocked at tier \d of the achievement/, 'photo: the unlock text in English');
+  await shot('photo-frame-locked', 300);
+  await page.locator('.screen.in .sheet [data-label="閉じる"]').click(); await page.waitForTimeout(300);
+  await page.locator('.screen.in [data-action="ph-shoot"]').click(); await page.waitForTimeout(600);
+  await shot('photo-card', 300);
+  await page.locator('.screen.in .sheet [data-label="閉じる"]').click(); await page.waitForTimeout(300);
+  await page.locator('.screen.in [data-action="ph-back"]').click(); await waitScreen('result');
   await page.evaluate(() => globalThis.__muchi.logic.setAssist('off'));
 
   // round 11: 調教 in English (REQ-TRAIN-*): the menu cards, the timing mini-game, the result, the skipped result, the apple

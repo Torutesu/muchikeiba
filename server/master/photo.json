@@ -1,0 +1,35 @@
+{
+  "_comment": "フォトモード（REQ-PHOTO-*、contracts/protocol.md §38）。写真に重ねる見た目だけ（能力には影響しない）。looks=色味・フィルター（すべて無料＝default）、frames=写真の枠、stamps=写真に置く絵。asset は photo/look|frame|stamp/<id>（contracts/assets.md）。unlock: default=最初から / achievement=実績（collection.json）のその段に届いた / cosmetic=見た目ショップでコイン直販（items.json の kind \"photo\"。決まった価格、ガチャ・ランダムからは出ない）。コイン・アイテムは配らない（E なし）。",
+  "version": 1,
+  "config": {
+    "enabled": true,
+    "maxSaved": 30,
+    "captionMaxChars": 24,
+    "stampsMax": 3,
+    "camera": { "orbitDeg": [-180, 180], "distanceDm": [20, 200], "heightDm": [3, 100], "fovDeg": [20, 70], "dof": [0, 3] }
+  },
+  "looks": [
+    { "id": "natural", "name": "ナチュラル", "unlock": { "kind": "default" } },
+    { "id": "film", "name": "フィルム", "unlock": { "kind": "default" } },
+    { "id": "mono", "name": "モノクロ", "unlock": { "kind": "default" } },
+    { "id": "dusk", "name": "夕暮れ", "unlock": { "kind": "default" } },
+    { "id": "vivid", "name": "ビビッド", "unlock": { "kind": "default" } }
+  ],
+  "frames": [
+    { "id": "plain", "name": "シンプル", "unlock": { "kind": "default" } },
+    { "id": "gate", "name": "ゲート", "unlock": { "kind": "default" } },
+    { "id": "victory", "name": "勝利の額縁", "unlock": { "kind": "achievement", "achievementId": "wins", "tier": 1 } },
+    { "id": "champion", "name": "王者の額縁", "unlock": { "kind": "achievement", "achievementId": "wins", "tier": 3 } },
+    { "id": "ta_gold", "name": "金時計", "unlock": { "kind": "achievement", "achievementId": "ta_gold", "tier": 1 } },
+    { "id": "sakura", "name": "桜吹雪", "unlock": { "kind": "cosmetic", "itemId": "photo_frame_sakura" } },
+    { "id": "gold_leaf", "name": "金箔", "unlock": { "kind": "cosmetic", "itemId": "photo_frame_gold_leaf" } }
+  ],
+  "stamps": [
+    { "id": "muchi", "name": "筆文字", "unlock": { "kind": "default" } },
+    { "id": "hoof", "name": "蹄あと", "unlock": { "kind": "default" } },
+    { "id": "star", "name": "きらり", "unlock": { "kind": "default" } },
+    { "id": "photo_finish", "name": "ハナ差", "unlock": { "kind": "achievement", "achievementId": "podiums", "tier": 1 } },
+    { "id": "crown", "name": "王冠", "unlock": { "kind": "achievement", "achievementId": "tournament_win", "tier": 1 } },
+    { "id": "carrot_pop", "name": "にんじんポップ", "unlock": { "kind": "cosmetic", "itemId": "photo_stamp_carrot_pop" } }
+  ]
+}

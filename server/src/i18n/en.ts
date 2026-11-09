@@ -77,7 +77,6 @@ export const CODE_EN: Record<string, string> = {
   '見た目のみ。ランク戦の能力には影響しません。パーツは抽選ではありません（固定の価格・条件）。': 'Looks only: no effect on ranked stats. Parts are never random (fixed prices and conditions).',
   'コイン{n}で購入': 'Buy for {n} coins',
   '有償コイン{n}で購入': 'Buy for {n} paid coins',
-  '実績「{name}」の{tier}段目で解放': 'Achievement "{name}" tier {tier}',
   'レースを{n}回走ると解放': 'Unlocks after {n} races',
   '商品・報酬で入手': 'Comes with a product or reward',
   '返金によりパーツが取り消されたため、勝負服を初期の柄に戻しました': 'A refund took back a part, so your silks went back to their original design',
@@ -112,6 +111,11 @@ export const CODE_EN: Record<string, string> = {
   '見た目ショップで購入（{n}コイン）': 'Buy in the cosmetics shop ({n} coins)',
   '見た目ショップで購入（{n}コイン・有償限定）': 'Buy in the cosmetics shop ({n} coins, paid coins only)',
   '見た目ショップで購入': 'Buy in the cosmetics shop',
+
+  // ---- photo mode (photoMode.ts photoUnlockText / photoCatalog; REQ-PHOTO-*)
+  '実績「{name}」の{tier}段目で解放': 'Unlocked at tier {tier} of the achievement "{name}"',
+  '実績で解放': 'Unlocked by an achievement',
+  'フォトモードの見た目は写真だけに使われ、レースの能力には影響しません。': 'Photo mode looks are used only in photos and have no effect on race stats.',
 
   // ---- my stable, what's new, ads, invites, deletion
   'いいねにコインは付きません。累計いいねで厩舎のテーマが解放されます。': 'Likes give no coins. Total likes unlock stable themes.',

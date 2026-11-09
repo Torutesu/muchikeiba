@@ -907,3 +907,54 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 - タップは `BeginMiniGame(now)` からの ms で、サーバーが受け付ける形（間隔・回数・範囲）のものだけを記録する。画面の◎○×は `TrainingScorer.Judge`、合計は `TrainingScorer.Score`（サーバーと同じ）。
 - start / finish は応答が来るまで同じ冪等キーを使う（タイムアウト後の再送で回数を2回使わない）。読み込んだ時に開いたセッションがあれば、ミニゲームなしで仕上げる（時間が経っているため）。
 - 画面に `TrainingModel.RulesText`（ランク戦は上限にそろえる・疲れはレースに影響しない・伸びは受け継がれない）を出す。調教の画面からショップへの導線は作らない。
+
+## 33. 購入履歴・コイン履歴・ガチャ履歴（REQ-HIST-001〜014、`server/src/domain/history.ts`、C# `History.cs`・`Muchi.Game.HistoryModel`）
+プレイヤーが自分で「いつ・何に・いくら」を確かめられる画面（設定 → 購入履歴／コイン履歴／ガチャ履歴）。資金決済法（有償・無償を分けた残高と増減）・特商法（購入の記録）・ガチャの履歴開示（業界の自主基準で求められる直近90日の結果）に応え、問い合わせの手間を減らす。**表示だけ**：この API はコイン・アイテムを動かさない（経済の E は変わらない）。
+
+**データの出どころ（新しい台帳は作らない）**
+| 画面 | 元データ | 期間 |
+|---|---|---|
+| 購入履歴 | `PlayerState.purchases`（`applyVerifiedPurchase` の記録、返金は `refunded`） | 法定の保存期間 `progression.accountDeletion.ledgerRetentionDays`（既定 2557日 = 7年） |
+| コイン履歴 | 台帳（REQ-WAL-001）。状態の JSON は直近100行だけなので、Durable Object では `ledger` テーブル（`SqlPlayerRepo.ledgerPage`）から読む | 直近 365日（`HISTORY_LIMITS.coinDays`） |
+| ガチャ履歴 | 新設のガチャ記録 `PlayerState.gachaLog`（コイン・券・チュートリアルの1回ごと）。Durable Object では `gacha_log` テーブルへ移し、状態には直近20件だけ残す | 直近 90日（`gachaDays`）。保存も90日で消す（`put` ごと）。状態の中は最大 `gachaKeep`（300件） |
+| 残高ヘッダー | `wallet`（有償・無償・未精算）、`monthlySpendYen`、年齢区分の月額上限 | 今月（JST） |
+
+**見せないもの（決定事項）**
+- 削除済みアカウント：削除の最後に Durable Object の保存領域ごと消え、法定保存の記録は AccountingDO に**ランダムな匿名 id** で残る（REQ-UXS-040）。この API はプレイヤー id でしか引かないので、匿名の記録には**誰も（本人・運用コンソールも）届かない**。削除済み（墓標あり）の id は 404 `NOT_FOUND`（`account deleted`）。
+- 内部 id を文に入れない：取引 id（ストアの注文番号）・商品 id・バナー id・台帳の理由文（運用者名を含む「support grant by …」など）は**表示文に出さない**。各行は問い合わせ番号 `ref` を持つ：購入 `P-` + 取引 id の FNV-1a 32bit（16進8桁）、コイン `C-` + 台帳の連番、ガチャ `G-` + 記録の連番。
+- 理由は分類（`category`）とその日本語の文（`title`）で返し、英語は応答の境界で訳す（§23、`i18n/en.ts`）。
+
+### 33.1 `GET /v1/history/summary`（要認証）
+```json
+{ "wallet": { "paid": 1200, "free": 340, "total": 1540, "debt": 0 },
+  "month": "2026-11", "monthSpentYen": 3000, "monthlyLimitYen": 5000, "remainingYen": 2000, "ageLimited": true,
+  "limitText": "今月の購入 ¥3,000 ／ 上限 ¥5,000（年齢に応じた月額上限）",
+  "notice": "有償コインに有効期限はありません。使うときは有償コインから先に使われます。無償コインはゲーム内で受け取ったコインです。",
+  "windows": { "purchasesDays": 2557, "coinsDays": 365, "gachaDays": 90 } }
+```
+- `monthlyLimitYen` は年齢区分（`ageLimits`）の月額上限。上限なし（20歳以上）・年齢未登録は `null`、`ageLimited` は上限がある区分（16歳未満・16〜17歳・18〜19歳）のとき true、`limitText` は上限があるときだけ（無ければ `null`）。
+
+### 33.2 一覧（要認証、カーソル式）
+`GET /v1/history/purchases` ・ `GET /v1/history/coins?currency=paid|free` ・ `GET /v1/history/gacha`。共通のクエリ：`cursor`（前の応答の `nextCursor`、そのまま渡す不透明な文字列）・`limit`（1〜50、既定20）。新しい順。応答 `{ "items": [...], "nextCursor": string | null, "windowDays": n }`。おかしい `cursor`／`limit`／`currency` は 400。
+- **購入**：`{ "ref": "P-1A2B3C4D", "at", "product": "コイン 480枚", "productId", "priceYen", "store": "apple"|"google"|"fake", "storeName": "App Store"|"Google Play"|"テスト", "status": "completed"|"refunded"|"pending"|"test", "statusText", "paidCoins", "bonusCoins", "bonusPaid": bool }`。`pending` = 自動更新のパスのストア側の状態が猶予期間・請求の再試行中（`grace`／`billing_retry`）。ストアで保留中（Google の purchaseState 2）の購入はサーバーが受け付けていないので一覧に無い（ストアの購入履歴で確認：`statusText` の説明に書く）。`test` はサンドボックス（請求なし、¥0）。
+- **コイン**：`{ "ref": "C-123", "at", "currency": "paid"|"free", "direction": "earned"|"spent"|"note", "amount"（絶対値）, "balanceAfter", "category", "title", "purchaseRef"?: "P-…" }`。`note` は枚数が動かない行（未精算の返金の記録など）。`category`：`purchase`・`purchase_bonus`・`purchase_test`・`daily_pack`・`gacha`・`shop`・`ad_reward`・`compensation`・`login`・`mission`・`achievement`・`race`・`time_attack`・`pass`・`season`・`team`・`event_fee`・`event_fee_refund`・`event`・`tournament`・`stud`・`invite`・`bond`・`comeback`・`refund`・`debt`・`debt_settle`・`forfeit`・`other`。`currency` を付けないと両方（画面は有償・無償を別のタブで出す）。
+- **ガチャ**：`{ "ref": "G-7", "at", "banner": "恒常スカウト", "bannerId": string|null, "via": "coins"|"ticket"|"tutorial", "viaText", "count", "coins": { "paid", "free" }, "results": [ { "templateId", "name", "rarity", "duplicate" } ], "summary": "SSR 1・SR 2・R 7" }`。SR以上確定券は `bannerId: null`・`banner` は券の名前。
+
+### 33.3 `POST /v1/history/support-ticket`（要認証、状態を変えない）
+`{ "refs": ["P-1A2B3C4D", "C-123"], "topic": "purchase_missing"|"refund"|"coins"|"gacha"|"other" }`（他のキーは 400、`refs` は1〜10個・重複なし）→
+```json
+{ "format": "muchi.support-ticket.v1", "playerId": "…", "topic": "purchase_missing", "topicText": "購入したのに届かない", "createdAt": 1796871600000,
+  "items": [ { "ref": "P-1A2B3C4D", "kind": "purchase", "at": 1796870000000, "title": "コイン 480枚", "detail": "¥480・App Store・購入済み" } ],
+  "body": "問い合わせ番号：P-1A2B3C4D、C-123" }
+```
+- 期間の外・自分のものでない `ref` は 404 `NOT_FOUND`（他人の取引を確かめる道具にしない）。
+- 中身は運用コンソールのプレイヤー画面（§22、`GET /v1/admin/players/:playerId`）がすでに受け付ける**プレイヤー id と問い合わせ番号だけ**。名前・メール・端末の情報は入れない。アプリはこれを問い合わせ窓口（運営のフォーム／メール）に添える。運用は `GET /v1/admin/players/:playerId/history?refs=…` で同じ行を引く。
+
+### 33.4 運用コンソール `GET /v1/admin/players/:playerId/history`（viewer、読み取り、監査ログに残る）
+`?kind=summary|purchases|coins|gacha`（＋ `currency`・`cursor`・`limit`）でプレイヤーと同じ一覧、各行に `internal`（購入：`txId`・`platform`・`limitBreach`、コイン：台帳の `reason`・`ref`・`kind`、ガチャ：なし）を足したもの。`?refs=P-…,C-…`（1〜10個）は問い合わせ番号の行だけ（`{ "items": [{ "ref", "kind", "row" | null }] }`）。削除済みは 404。書き込みは無い（読み取り専用）。
+
+### 33.5 KPI
+クライアントのイベント `history_view`（`props.tab`：`purchases`|`coins_paid`|`coins_free`|`gacha`）→ s1 = タブ。クエリは `docs/ops/kpi-queries.md`「履歴」。
+
+### 33.6 クライアント（`HistoryModel`）
+- タブ（購入／有償コイン／無償コイン／ガチャ）、残高ヘッダー（有償・無償を分けて）、月の購入額と上限（未成年のみ）、`nextCursor` で続きを読む（同じタブで2回同時に読まない）、行の詳細、問い合わせシート（行を最大10件選ぶ → `support-ticket`）。オフラインは「オンラインで確認できます」。タブを開くたびに `history_view` を1回。

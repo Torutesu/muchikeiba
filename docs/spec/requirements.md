@@ -457,6 +457,7 @@
 - REQ-API-003 プレイヤー部屋への書き込みは冪等キー必須。
 - REQ-API-004 エラーは機械が読めるコード（例：`INSUFFICIENT_COINS`、`AGE_LIMIT_EXCEEDED`）で返す。
 
+
 ---
 
 ## 11. 非機能要件
@@ -626,3 +627,20 @@
 - REQ-TRAIN-012 設定 `progression.training`（リモート設定で変更可）：形・重複・コード側の上限 `TRAINING_HARD_LIMITS`（1日5回・1頭3回・`baseGain ≤ 15`・素質 ≤ 400・絆 ≤ 120‰・回復 ≤ 50・ミニゲーム ≤ 150‰）・ミニゲームの形（`perfectMs < goodMs`、ビートの間隔 ≥ 2 × `goodMs`）・素質の順・アイテムの入手経路を検証。
 - REQ-TRAIN-013 経済：調教はコインを出さない（E1〜E14 は変わらない）。全ての想定が毎日の回数を使う経済シミュレーションで、課金者の伸び/稼働日が無課金の 1.05 倍以下、ランク戦の正規化後の能力合計の差（中課金 − 無課金）が全クラスで調教によって広がらないことを確かめる（E15、balance-targets §4.12、`server/test/economy.test.ts`）。
 - REQ-TRAIN-014 KPI とクライアント：サーバーのイベント `training_start`（メニュー・レア度・疲れ・今日の回数）・`training_done`（メニュー・評価・記録の理由・伸び・点数・初回）。クエリは `docs/ops/kpi-queries.md`。`Muchi.Client` `ApiClient.GetTrainingAsync`・`StartTrainingAsync`・`FinishTrainingAsync`・`UseTrainingItemAsync`、`Horse.Trained`、`TrainingScorer`。Unity のゲーム層 `TrainingModel`（メニューのカードと選べない理由、受け付けられるタップだけ記録、start/finish の冪等キーは答えが来るまで保持、開いたままのセッションはミニゲームなしで仕上げ、公平性の文言、ショップへの導線なし）。
+
+## 33. 購入履歴・コイン履歴・ガチャ履歴（TS＋C#、`src/domain/history.ts`、`contracts/protocol.md` §33、docs/planning/03-legal-risk.md）
+拘束条件：資金決済法（有償・無償を分ける）、特商法（購入の記録）、ガチャの履歴開示。表示だけでコイン・アイテムは動かない。
+- REQ-HIST-001 残高ヘッダー：有償・無償・未精算を分けて出す。今月（JST）の購入額と、年齢区分に上限がある（20歳未満の区分）ときはその上限と残り（`GET /v1/history/summary`）。
+- REQ-HIST-002 購入履歴：日時・商品名・価格・ストア・状態（購入済み／返金済み／確認中／テスト）。法定の保存期間（`ledgerRetentionDays`）分を新しい順に。
+- REQ-HIST-003 コイン履歴：有償・無償を別々に、獲得／使用と理由（ガチャ・ショップ・広告・お詫び・購入…の分類と文）、その後の残高。直近365日。台帳（REQ-WAL-001）の全行（Durable Object の `ledger` テーブル）から読む。
+- REQ-HIST-004 ガチャ履歴：直近90日の1回ごと（バナー・結果・使ったコインの有償／無償・券・チュートリアル）。記録 `gachaLog` を新設し、保存も90日（と件数の上限）で消す。
+- REQ-HIST-005 ページ：カーソル式（不透明な `nextCursor`）、`limit` 1〜50（既定20）、新しい順。記録が増えてもページがずれない（連番・配列の位置で切る）。
+- REQ-HIST-006 削除済みアカウント：墓標のある id は 404。匿名で保存された法定の記録（AccountingDO の `retained`）にはこの API から誰も届かない。
+- REQ-HIST-007 表示文に内部 id（取引 id・商品 id・バナー id・台帳の理由文・運用者名）を出さない。問い合わせ番号 `ref`（`P-`/`C-`/`G-`）で行を指す。
+- REQ-HIST-008 理由は分類 `category` と日本語の `title`。英語は応答の境界で訳す（REQ-L10N-002、`i18n/en.ts`）。英語の文言にも倍・期間限定などの言葉を使わない。
+- REQ-HIST-009 問い合わせ：`POST /v1/history/support-ticket` は選んだ行（1〜10件）の問い合わせ番号とプレイヤー id だけの下書きを返す（個人情報なし、状態は変えない）。期間外・他人の番号は 404。
+- REQ-HIST-010 運用コンソール：`GET /v1/admin/players/:playerId/history`（viewer・読み取り専用・監査ログ）で同じ一覧＋内部の値、`?refs=` で問い合わせ番号の行。
+- REQ-HIST-011 KPI：クライアントのイベント `history_view`（タブ）。
+- REQ-HIST-012 クライアント：C# `ApiClient.GetHistory*Async`・`CreateSupportTicketAsync`、Unity `HistoryModel`（タブ・続きの読み込み・問い合わせシート・オフライン）。
+- REQ-HIST-013 ガチャ記録の保存上限：状態の中は最大300件（古い順に消す）、Durable Object の `gacha_log` は90日を過ぎた行を書き込みごとに消し、状態には直近20件だけ残す。
+- REQ-HIST-014 経済：履歴はコインを動かさない（E1〜E15 は変わらない）。

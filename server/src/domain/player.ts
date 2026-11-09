@@ -202,6 +202,8 @@ export interface PlayerState {
   ads?: AdsState;
   /** REQ-TRAIN-*: today's training slots, the open session, per-horse fatigue and log (training.ts ensureTraining). */
   training?: import('./training.js').TrainingState;
+  /** REQ-HIST-004: one record per gacha draw, last 90 days (history.ts recordGachaLog; the Durable Object keeps older ones in SQL). */
+  gachaLog?: import('./history.js').GachaLogState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

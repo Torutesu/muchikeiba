@@ -102,6 +102,8 @@ const offerProps = z.object({ offerId: str(64), trigger: z.enum(OFFER_TRIGGERS) 
 /** REQ-AD-010: where an ad offer card was shown (domain/ads.ts AdSurface). */
 export const AD_SURFACE_NAMES = ['home', 'result', 'time_attack', 'shop'] as const;
 const adProps = z.object({ placementId: str(32), surface: z.enum(AD_SURFACE_NAMES) }).strict();
+/** REQ-HIST-011: the history screen's tabs (contracts/protocol.md §33.5). */
+export const HISTORY_TABS = ['purchases', 'coins_paid', 'coins_free', 'gacha'] as const;
 /** Events only the client can observe. Server-known events (purchase, gacha, race results…) are not accepted from clients. */
 export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('session_start'), at: z.number().int(), props: z.object({}).strict().optional() }),
@@ -125,6 +127,8 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   // REQ-AD-010: rewarded ads. The reward itself is the server event ad_reward (from the SSV callback, never the client).
   z.object({ name: z.literal('ad_offer_view'), at: z.number().int(), props: adProps }),
   z.object({ name: z.literal('ad_start'), at: z.number().int(), props: z.object({ placementId: str(32), surface: z.enum(AD_SURFACE_NAMES), outcome: z.enum(['shown', 'no_fill', 'failed', 'closed_early']) }).strict() }),
+  // REQ-HIST-011: a history tab was opened (the lists are read-only GETs, so the view is a client event)
+  z.object({ name: z.literal('history_view'), at: z.number().int(), props: z.object({ tab: z.enum(HISTORY_TABS) }).strict() }),
 ]);
 export type ClientEvent = z.infer<typeof clientEventSchema>;
 
@@ -154,6 +158,7 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'invite_share': return { name: e.name, s1: e.props.channel };
     case 'ad_offer_view': return { name: e.name, s1: e.props.placementId, s2: e.props.surface };
     case 'ad_start': return { name: e.name, s1: e.props.placementId, s2: e.props.surface, s3: e.props.outcome };
+    case 'history_view': return { name: e.name, s1: e.props.tab };
   }
 }
 

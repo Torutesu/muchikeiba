@@ -3,7 +3,7 @@ import type { Master, Reward } from './master.js';
 import { grantReward } from './items.js';
 
 const TOURNAMENT_HISTORY_KEEP = 50;
-import { migratePlayer, moderationOf, newPlayer, playerView, type PlayerState, type PurchaseRecord } from './player.js';
+import { migratePlayer, moderationOf, newPlayer, playerView, type Currency, type LedgerEntry, type PlayerState, type PurchaseRecord } from './player.js';
 import { GRANT_LIMITS, setModeration, supportCorrectAge, supportGrant, supportResetName, supportSettleDebt, supportView, type Grant } from '../ops/support.js';
 import { equipTitle, evaluateTitles, publicProfile, setDisplayName, type PublicProfile } from './stats.js';
 import { achievementsView, claimAchievement, claimAllAchievements, collectionView, noteCheer, noteRaceCollection, noteTournamentResult, syncCollection } from './collection.js';
@@ -64,6 +64,11 @@ import {
   claimComebackLogin, claimComebackMission, comebackView, markComebackWelcomed, markWhatsNewSeen, nextComebackWake, noteActivity, runDueComebackPush, whatsNew,
 } from './comeback.js';
 import { finishTraining, startTraining, trainingDelta, trainingTick, trainingView, useTrainingItem } from './training.js';
+import {
+  coinHistory, gachaHistory, historySummary, pageLimit, purchaseHistory, recordGachaLog, resolveRefs, stateGachaPager, stateLedgerPager,
+  HISTORY_LIMITS, type GachaLogEntry, type GachaPager, type LedgerPager, type SupportTopic,
+} from './history.js';
+import { buildSupportTicket } from '../ops/support.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
 export interface PlayerRepo {
@@ -73,7 +78,17 @@ export interface PlayerRepo {
   delete?(id: string): void | Promise<void>;
   /** r10: the account deletion wiped this id (a tombstone was kept). Absent = no tombstones (treated as never deleted). */
   tombstoned?(id: string): boolean | Promise<boolean>;
+  /**
+   * REQ-HIST-003/004: older history than the state JSON keeps (the Durable Object's `ledger` / `gacha_log` tables).
+   * Absent = the state holds every row (memory repos, the prototype).
+   */
+  ledgerPage?(id: string, q: Parameters<LedgerPager>[0]): LedgerEntry[] | Promise<LedgerEntry[]>;
+  gachaPage?(id: string, q: Parameters<GachaPager>[0]): GachaLogEntry[] | Promise<GachaLogEntry[]>;
 }
+
+/** REQ-HIST-*: which list `history` reads, and its query. */
+export type HistoryKindArg = 'summary' | 'purchases' | 'coins' | 'gacha';
+export interface HistoryQuery { cursor?: string | null; limit?: number | null; currency?: Currency | null }
 
 /** REQ-UXS-040: purchases, offers and the daily pack are disabled while the account is scheduled for deletion. */
 function notDeleting(s: PlayerState) {
@@ -424,6 +439,7 @@ export class PlayerService {
     return this.tx(id, this.requireKey(idemKey), (s, now, emit) => {
       const r = drawGacha(this.d.master, s, bannerId, count, this.d.rng, now);
       countOnboarding(s, 'gacha');
+      recordGachaLog(s, now, { bannerId: r.bannerId, via: 'coins', count, paid: r.spent.paid, free: r.spent.free, results: r.results }); // REQ-HIST-004
       emit({ name: 'gacha_draw', s1: bannerId, count, paidCoins: r.spent.paid, freeCoins: r.spent.free, value: r.results.filter((x) => x.rarity === 'SSR').length });
       return { ...r, wallet: playerView(s).wallet };
     });
@@ -433,6 +449,7 @@ export class PlayerService {
     return this.tx(id, this.requireKey(idemKey), (s, now, emit) => {
       const r = drawGacha(this.d.master, s, 'standard', 10, this.d.rng, now, { tutorialFree: true });
       countOnboarding(s, 'gacha');
+      recordGachaLog(s, now, { bannerId: r.bannerId, via: 'tutorial', count: 10, paid: 0, free: 0, results: r.results }); // REQ-HIST-004
       emit({ name: 'tutorial_gacha', count: 10 });
       return r;
     });
@@ -510,6 +527,7 @@ export class PlayerService {
       const r = useTicket(this.d.master, s, itemId, bannerId, this.d.rng, now, key);
       countOnboarding(s, 'gacha');
       const pulls = r.results ?? [r.result];
+      recordGachaLog(s, now, { bannerId: r.bannerId, via: 'ticket', itemId, count: pulls.length, paid: 0, free: 0, results: pulls }); // REQ-HIST-004
       emit({ name: 'gacha_draw', s1: bannerId ?? itemId, s2: 'ticket', count: pulls.length, paidCoins: 0, freeCoins: 0, value: pulls.filter((x) => x.rarity === 'SSR').length });
       return r;
     });
@@ -891,6 +909,54 @@ export class PlayerService {
   }
   /** REQ-UXS-040: the deleting player's undelivered milestone rewards are given up. */
   inviteForfeit(id: string) { return this.tx(id, null, (s) => forfeitInviteOutbox(s)); }
+
+  // ---- 購入履歴・コイン履歴・ガチャ履歴 (REQ-HIST-*, contracts/protocol.md §33; read only) ----
+  /** REQ-HIST-006: a deleted (wiped) account has no history here; its anonymised legal record is never reachable by player id. */
+  private async historyState(id: string): Promise<PlayerState> {
+    const stored = await this.repo.get(id);
+    if (!stored && (await this.repo.tombstoned?.(id))) throw new AppError('NOT_FOUND', 'account deleted');
+    return this.load(id);
+  }
+  private pagers(id: string, s: PlayerState): { ledger: LedgerPager; gacha: GachaPager } {
+    const repo = this.repo;
+    return {
+      ledger: repo.ledgerPage ? (q) => repo.ledgerPage!(id, q) : stateLedgerPager(s),
+      gacha: repo.gachaPage ? (q) => repo.gachaPage!(id, q) : stateGachaPager(s),
+    };
+  }
+  private async historyOf(id: string, kind: HistoryKindArg, q: HistoryQuery, internal: boolean) {
+    const s = await this.historyState(id);
+    const now = this.d.clock();
+    const m = this.d.master;
+    if (kind === 'summary') return historySummary(m, s, now);
+    const limit = pageLimit(q.limit);
+    if (kind === 'purchases') return purchaseHistory(m, s, now, q.cursor ?? null, limit, internal);
+    const p = this.pagers(id, s);
+    if (kind === 'coins') return coinHistory(m, s, p.ledger, now, q.currency ?? null, q.cursor ?? null, limit, internal);
+    if (kind === 'gacha') return gachaHistory(m, p.gacha, now, q.cursor ?? null, limit);
+    throw new AppError('BAD_REQUEST', 'unknown history kind');
+  }
+  /** REQ-HIST-001..005: the player's own history (summary or one list page). */
+  history(id: string, kind: HistoryKindArg, q: HistoryQuery = {}) { return this.historyOf(id, kind, q, false); }
+  /** REQ-HIST-009: the 問い合わせ draft for up to 10 of the player's own rows (refs outside the windows are NOT_FOUND). */
+  async historyTicket(id: string, refs: string[], topic: SupportTopic) {
+    if (refs.length < 1 || refs.length > HISTORY_LIMITS.ticketRefsMax || new Set(refs).size !== refs.length) throw new AppError('BAD_REQUEST', `refs: 1..${HISTORY_LIMITS.ticketRefsMax} distinct references`);
+    const s = await this.historyState(id);
+    const now = this.d.clock();
+    const p = this.pagers(id, s);
+    const rows = await resolveRefs(this.d.master, s, p.ledger, p.gacha, now, refs);
+    const missing = rows.find((r) => r.kind === null);
+    if (missing) throw new AppError('NOT_FOUND', `reference ${missing.ref}`);
+    return buildSupportTicket(id, topic, rows as Exclude<typeof rows[number], { kind: null }>[], now);
+  }
+  /** REQ-HIST-010: the same lists for the ops console, with the internal values (admin API only). */
+  adminHistory(id: string, kind: HistoryKindArg, q: HistoryQuery = {}) { return this.historyOf(id, kind, q, true); }
+  /** REQ-HIST-010: the rows behind support references (unknown ones come back as `row: null`). */
+  async adminHistoryRefs(id: string, refs: string[]) {
+    const s = await this.historyState(id);
+    const p = this.pagers(id, s);
+    return { items: await resolveRefs(this.d.master, s, p.ledger, p.gacha, this.d.clock(), refs, true) };
+  }
 
   // ---- support / anti-cheat (admin API only; REQ-OPS-020..025, REQ-OPS-032) ----
   /** REQ-OPS-020: `exists` false = no stored player (the view is a fresh default); `accountDeleted` = wiped by a deletion. */

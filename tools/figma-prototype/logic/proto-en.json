@@ -1025,6 +1025,9 @@
   "まとめて引退　/　確認": "Retire in bulk / Check",
   "引退できない馬が{n}頭います": "{n} horses cannot be retired",
   "現役": "Active",
-  "名前で探す": "Search by name"
+  "名前で探す": "Search by name",
+  "貸し出し中": "On loan",
+  "引退式を未確認": "Ceremony not watched",
+  "ロック": "Lock"
  }
 }

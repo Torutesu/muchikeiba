@@ -282,6 +282,9 @@ describe('厩舎の整理: bulk retire (REQ-ORG-006..011)', () => {
     expect((await w.svc.roster('p')).horses.find((r) => r.horseId === ids[2])!.blocks).toEqual(['tournament_entry']);
     await tours.unregister('p', 'cup_1');
     expect(bulkReasons(await st(w, 'p'), ids[2]!, 'retire', w.clock.now)).toEqual([]);
+    // a late note for a deleted (or never created) account never creates a state
+    expect(await w.svc.rosterTournament('gone', 'cup_1', null, NOW)).toEqual({ ok: false });
+    expect(w.repo.data.has('gone')).toBe(false);
     await tours.register('p', 'cup_2', ids[3]!);
     await w.svc.tournamentClose('p', 'cup_2', 3, null, 'Cup', ids[3]!);
     expect(bulkReasons(await st(w, 'p'), ids[3]!, 'retire', w.clock.now)).toEqual([]);

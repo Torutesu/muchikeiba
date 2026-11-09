@@ -263,7 +263,7 @@ module.exports = async function enFlow(browser, base, out, errors) {
     await page.locator('.screen.in .org-filter-sheet [data-label="閉じる"]').click(); await page.waitForTimeout(300);
     await click('まとめて選ぶ'); await waitIn('.org-check');
     await page.locator('.screen.in .org-row[data-blocks=""]').first().click(); await page.waitForTimeout(400);
-    await page.locator('.screen.in .org-row[data-blocks=""] .org-check[data-on="false"]').first().click(); await page.waitForTimeout(400);
+    await page.locator('.screen.in .org-row[data-blocks=""]:has(.org-check[data-on="false"])').first().click(); await page.waitForTimeout(400);
     await shot('roster-select', 300);
     await click('確認へ'); await waitScreen('roster-confirm'); await waitIn('.org-confirm');
     await shot('roster-confirm', 400);

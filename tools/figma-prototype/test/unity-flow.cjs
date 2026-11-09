@@ -334,9 +334,12 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     assert.match(await page.locator('.screen.in .org-filter').innerText(), /（1）/, 'roster: one filter in use');
     await page.locator('.screen.in .org-row[data-blocks=""] .org-lock').first().click(); await page.waitForTimeout(500); await waitScreen('roster');
     assert.equal(await page.locator('.screen.in .org-row[data-locked="true"]').count(), 1, 'roster: one horse locked');
+    await page.locator('.screen.in .org-row[data-locked="false"] .org-fav').first().click(); await page.waitForTimeout(500); await waitScreen('roster');
+    assert.equal(await page.locator('.screen.in .org-row[data-favorite="true"]').count(), 1, 'roster: one favourite');
+    assert.equal(await page.locator('.screen.in .org-row').first().getAttribute('data-favorite'), 'true', 'roster: favourites first');
     await click('まとめて選ぶ'); await waitIn('.org-check');
     await page.locator('.screen.in .org-row[data-blocks=""]').first().click(); await page.waitForTimeout(400);
-    await page.locator('.screen.in .org-row[data-blocks=""] .org-check[data-on="false"]').first().click(); await page.waitForTimeout(400);
+    await page.locator('.screen.in .org-row[data-blocks=""]:has(.org-check[data-on="false"])').first().click(); await page.waitForTimeout(400);
     await page.locator('.screen.in .org-row[data-locked="true"]').click(); await page.waitForTimeout(400); // refused: locked
     assert.equal(await page.locator('.screen.in .org-check[data-on="true"]').count(), 2, 'roster: two selected, the locked horse is not');
     await shot('roster-select', 300);

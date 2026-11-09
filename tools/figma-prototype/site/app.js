@@ -2684,6 +2684,7 @@ const ORG_REASON = {
   not_found: '厩舎にいない馬です', locked: 'ロック中', partner: '最初の相棒はまとめて引退できません', not_active: 'もう引退しています',
   on_loan: '種牡馬として貸し出し中', in_training: '調教中', tournament_entry: '大会に登録中', hall_pending: '引退式をまだ見ていません',
 };
+const ORG_SHORT = { on_loan: '貸し出し中', in_training: '調教中', tournament_entry: '大会に登録中', hall_pending: '引退式を未確認', not_found: '厩舎にいない馬です' };
 const ORG_VIEW_KEY = 'muchi.roster.view';
 const ORG_PER_PAGE = 7;
 let orgPage = 0, orgSelect = null, orgLastKpi = -1e15, orgCourseName = null;
@@ -2753,7 +2754,9 @@ async function Roster() {
     const pills = [];
     if (h.partner) pills.push(['相棒', 'cyan']);
     if (h.status !== 'active') pills.push(['引退', '']);
-    if (orgSelect && h.blocks.length && !h.locked) pills.push([ORG_REASON[h.blocks[0]] ?? '引退できません', 'warn']);
+    // why it cannot be selected, short (the partner / retired tags and the lock button already say the rest)
+    const why = orgSelect ? h.blocks.map((b) => ORG_SHORT[b]).find((t) => t) : null;
+    if (why) pills.push([why, 'warn']);
     if (pills.length) Pills(pills, 640, 16, 220, row);
     const star = Txt(h.favorite ? '★' : '☆', 860, 6, 44, 30, h.favorite ? GOLD : DIM, row, { align: 'center' });
     star.classList.add('org-fav'); star.style.cursor = 'pointer';

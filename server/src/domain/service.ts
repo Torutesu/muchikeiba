@@ -555,7 +555,8 @@ export class PlayerService {
     return this.tx(id, this.requireKey(idemKey), (s, now, emit) => { pruneRoster(s, now); return runBulk(this.d.master, s, action, horseIds, confirmToken, now, emit); });
   }
   /** REQ-ORG-011: TournamentsService registered (horseId) / unregistered (null) the player. */
-  rosterTournament(id: string, tournamentId: string, horseId: string | null, untilMs: number) {
+  async rosterTournament(id: string, tournamentId: string, horseId: string | null, untilMs: number) {
+    if (await this.wiped(id)) return { ok: false }; // a deleted account is never re-created by a late tournament note
     return this.tx(id, null, (s, now) => { pruneRoster(s, now); noteTournamentEntry(s, tournamentId, horseId, untilMs); return { ok: true }; });
   }
 

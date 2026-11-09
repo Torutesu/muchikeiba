@@ -549,6 +549,8 @@ html[lang="en"] .pass-strip .cell small { font-size: 12px; }
   box-shadow: 0 0 0 2px rgba(216, 66, 58, .35); animation: hof-stamp .5s cubic-bezier(.2, 1.6, .4, 1) both .25s; }
 .hof-stamp .label { color: #e8564c; }
 @keyframes hof-stamp { from { transform: rotate(-14deg) scale(2.2); opacity: 0; } to { transform: rotate(-14deg) scale(1); opacity: 1; } }
+/* round 15 (REQ-A11Y-007 × REQ-HOF): with reduce motion the stamp does not slam in from 2.2×; it fades in where it lands */
+html[data-reduce-motion="on"] .hof-stamp { animation: fade .15s ease both; }
 .hof-vis[data-on="true"] { outline: 2px solid var(--cyan); outline-offset: -2px; }
 
 /* ---------------------------------------------------------------- round 15: アクセシビリティ設定 (REQ-A11Y-*, protocol §41) */

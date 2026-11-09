@@ -255,6 +255,16 @@
   "長距離の我慢": "Patience Over Distance",
   "青葉の一閃章": "Aoba Flash Badge",
   "みなとの夜章": "Minato Night Badge",
-  "直線の覇者章": "Straight Champion Badge"
+  "直線の覇者章": "Straight Champion Badge",
+  "_silks": "---- 勝負服エディタ parts and part cosmetics (round 14, REQ-SILK-*)",
+  "無地": "Plain", "輪": "Hoops", "縦縞": "Stripes", "襷": "Sash", "十字襷": "Cross Sashes", "山形": "Chevrons", "菱": "Diamonds",
+  "四つ割": "Quartered", "片身替": "Halves", "星": "Stars", "水玉": "Spots", "たすき掛け": "Braces", "稲妻": "Lightning", "炎": "Flame",
+  "翼": "Wings", "月桂冠": "Laurel", "昇級記念B": "Promotion B", "昇級記念A": "Promotion A", "昇級記念S": "Promotion S",
+  "白": "White", "黒": "Black", "赤": "Red", "青": "Blue", "黄": "Yellow", "緑": "Green", "橙": "Orange", "桃": "Pink", "紫": "Purple",
+  "水色": "Sky Blue", "紺": "Navy", "海老": "Maroon", "金": "Gold", "銀": "Silver", "茶": "Brown", "萌黄": "Lime",
+  "クリムゾン": "Crimson", "エメラルド": "Emerald", "プラチナ": "Platinum", "ロイヤルパープル": "Royal Purple", "桜色": "Sakura Pink", "ティール": "Teal",
+  "胴と同じ": "Same as body", "腕輪": "Armlets", "つば色": "Peak", "格子": "Checks", "ダイヤ": "Diamond",
+  "勝負服の色「クリムゾン」": "Silks colour \"Crimson\"", "勝負服の色「エメラルド」": "Silks colour \"Emerald\"", "勝負服の色「プラチナ」": "Silks colour \"Platinum\"",
+  "勝負服の袖「山形」": "Silks sleeves \"Chevrons\"", "勝負服の袖「星」": "Silks sleeves \"Stars\"", "勝負服の帽子「水玉」": "Silks cap \"Spots\"", "勝負服の帽子「格子」": "Silks cap \"Checks\""
  }
 }

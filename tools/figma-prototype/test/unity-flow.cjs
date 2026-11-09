@@ -248,6 +248,66 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await click('BACK'); await waitScreen('home');
   }
 
+  // round 14 (REQ-SILK-*, protocol §35): 勝負服エディタ from the wardrobe — try on a locked sleeve (試着中, live recolour of the
+  // photoreal jockey), save refused until owned → the parts sheet → the purchase confirmation (paid coins first) → bought →
+  // saved; a paid-only colour goes to the coin shortfall sheet (T6); readability dimming; a preset; the shop's parts card
+  async function silksFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(() => globalThis.__muchi.show('Wardrobe')); await page.waitForTimeout(450);
+    await click('勝負服エディタ'); await waitScreen('silks'); await waitIn('.silks-canvas');
+    await page.waitForTimeout(700);
+    await shot('silks-editor', 300);
+    await page.locator('.screen.in [data-silks-tab="sleeve"]').click(); await waitIn('[data-silks-tab="sleeve"].on');
+    await page.locator('.screen.in .silks-part[data-part="stars"]').click(); await waitIn('.silks-part.on[data-part="stars"]');
+    assert.equal(await page.locator('.screen.in [data-name="Silks preview"]').getAttribute('data-trying'), '1', 'silks: the locked sleeve is tried on');
+    assert.ok((await page.locator('.screen.in').innerText()).includes('試着中'), 'silks: 試着中 label');
+    await shot('silks-try-on', 600);
+    assert.equal(await page.locator('.screen.in [data-silks-save]').getAttribute('data-silks-save'), 'needs-parts');
+    await page.locator('.screen.in [data-silks-save]').click(); await page.waitForSelector('.screen.in .sheet [data-need="stars"]');
+    await shot('silks-need-parts', 400);
+    await page.locator('.screen.in .sheet [data-need="stars"] [data-label="購入を確認"]').click(); await waitScreen('silks-buy');
+    const conf = await page.locator('.screen.in').innerText();
+    assert.ok(conf.includes('有償コインから先に使われます') && conf.includes('確率なし') && !/倍|お得|今だけ|残りわずか|通常価格/.test(conf), 'silks: the purchase confirmation states the split, no random, no pressure words');
+    await shot('silks-buy-confirm', 400);
+    const free0 = await page.evaluate(async () => (await globalThis.__muchi.logic.view()).wallet.free);
+    await click('購入する'); await waitScreen('silks'); await waitIn('[data-silks-save="ready"]');
+    const free1 = await page.evaluate(async () => (await globalThis.__muchi.logic.view()).wallet.free);
+    assert.equal(free0 - free1, 200, 'silks: the fixed price, free coins (no paid coins in the demo wallet)');
+    await page.locator('.screen.in [data-silks-save]').click(); await page.waitForTimeout(600); await waitScreen('silks');
+    const cur = await page.evaluate(async () => (await globalThis.__muchi.logic.silksEditor()).current);
+    assert.equal(cur.design.sleeve, 'stars', 'silks: saved on the server rules');
+    assert.match(cur.code, /^1[0-9a-z]{16}$/, 'silks: the shared code');
+    await shot('silks-saved', 400);
+    // readability: the colour paired with a near shade is dimmed; a paid-only colour → the shortfall sheet
+    await page.locator('.screen.in [data-silks-tab="color"]').click(); await waitIn('[data-silks-tab="color"].on');
+    await page.locator('.screen.in [data-silks-slot="1"]').click(); await waitIn('[data-silks-slot="1"].on');
+    await page.locator('.screen.in .silks-part[data-part="white"]').click(); await waitIn('.silks-part.on[data-part="white"]');
+    await page.locator('.screen.in [data-silks-slot="0"]').click(); await waitIn('[data-silks-slot="0"].on');
+    assert.equal(await page.locator('.screen.in .silks-part[data-part="platinum"]').getAttribute('data-low'), 'true', 'silks: platinum next to white is dimmed');
+    await shot('silks-colours', 400);
+    await page.locator('.screen.in .silks-part[data-part="platinum"]').click(); await waitIn('.silks-part.on[data-part="platinum"]');
+    await page.locator('.screen.in [data-silks-slot="1"]').click(); await waitIn('[data-silks-slot="1"].on');
+    await page.locator('.screen.in .silks-part[data-part="navy"]').click(); await waitIn('.silks-part.on[data-part="navy"]');
+    await page.locator('.screen.in [data-silks-save]').click(); await page.waitForSelector('.screen.in .sheet [data-need="platinum"]');
+    await page.locator('.screen.in .sheet [data-need="platinum"] [data-label="購入を確認"]').click(); await waitScreen('silks-buy');
+    assert.ok((await page.locator('.screen.in').innerText()).includes('有償限定'), 'silks: paid-only part says so');
+    await click('購入する'); await waitScreen('shortfall');
+    assert.equal(await page.locator('.screen.in [data-coin-kind]').getAttribute('data-coin-kind'), 'paid', 'silks: the shortfall counts paid coins only');
+    await shot('silks-paid-only-shortfall', 400);
+    await click('閉じる'); await waitScreen('silks');
+    await click('元に戻す'); await waitIn('[data-silks-save]');
+    // a preset in the first slot
+    await page.locator('.screen.in [data-preset="0"]').click(); await page.waitForTimeout(500); await waitScreen('silks');
+    assert.equal((await page.evaluate(async () => (await globalThis.__muchi.logic.silksEditor()).presets)).length, 1, 'silks: preset saved');
+    await shot('silks-preset', 400);
+    // the shop's 見た目 tab: the parts card opens the editor
+    await page.evaluate(() => globalThis.__muchi.show('Store', 'looks')); await waitScreen('shop-looks');
+    await waitIn('[data-item="silks_parts"]'); await shot('shop-looks-silks-parts', 500);
+    await page.locator('.screen.in [data-item="silks_parts"] [data-label="エディタで試着"]').click(); await waitScreen('silks');
+    await click('BACK'); await page.waitForTimeout(400);
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
+  }
+
   // round 9 (06 §6.5 / §7 item 7): banner calendar with real end times, pity meter, step-up, reveal → summary, the end
   // of a limited banner. The logic clock is set to 2026-11-06 12:00 JST so pickup_ginga (11/1–11/30) is open.
   async function scoutLiveOps() {
@@ -495,6 +555,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await exchangeFlow();
   await challengeFlow();
   await hallFlow();
+  await silksFlow();
   await page.evaluate(() => globalThis.__muchi.show('Scout')); await waitScreen('scout'); await shot('scout', 500);
   await click('提供割合'); await shot('scout-rates', 400); await click('BACK');
   await waitScreen('scout'); await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal'); await shot('scout-paid-reveal', 700);

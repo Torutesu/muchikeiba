@@ -246,6 +246,14 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await click('まとめて受け取る'); await page.waitForTimeout(800); await waitScreen('achievements');
   await click('称号を変える'); await shot('achievement-titles', 500);
 
+  // round 14: 勝負服エディタ in English (REQ-SILK-015): parts, locked lines, the try-on, the parts sheet and the purchase confirmation
+  await show('SilksEditor', 'silkpart_sleeve_stars'); await waitScreen('silks'); await page.waitForTimeout(700); await shot('silks-editor', 300);
+  assert.match(await page.locator('.screen.in').innerText(), /Trying on/, 'silks: 試着中 in English');
+  await page.locator('.screen.in [data-silks-tab="color"]').click(); await page.waitForTimeout(500); await shot('silks-colours', 300);
+  await page.locator('.screen.in [data-silks-tab="cap"]').click(); await page.waitForTimeout(500); await shot('silks-caps', 300);
+  await page.locator('.screen.in [data-silks-save]').click(); await page.waitForSelector('.screen.in .sheet [data-need]'); await shot('silks-need-parts', 400);
+  await page.locator('.screen.in .sheet [data-label="購入を確認"]').first().click(); await waitScreen('silks-buy'); await shot('silks-buy-confirm', 400);
+  await click('キャンセル'); await waitScreen('silks');
   // round 12: プレゼントボックス in English (REQ-BOX-*): the box, the home envelope, a claim, claim all, the history
   await page.evaluate(() => globalThis.__muchi.demo('gifts')); await waitScreen('gift-box', 60000);
   await shot('gift-box', 600);

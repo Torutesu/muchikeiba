@@ -38,6 +38,7 @@ import { catalogFor, localize, type Catalog } from '../i18n/catalog.js';
 import { ASSIST_LEVELS, ASSIST_SOURCES } from '../domain/assist.js';
 import type { RivalService } from '../domain/rivalService.js';
 import { HISTORY_LIMITS, historyQuery, REF_RE, SUPPORT_TOPICS } from '../domain/history.js';
+import type { DesignInput, SilksDesign } from '../domain/silksEditor.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -48,6 +49,7 @@ export type PlayerMethod =
   | 'storeRenewal' | 'subscriptionStatus'
   | 'setDisplayName' | 'equipTitle' | 'titles' | 'stats' | 'publicProfile' | 'closeSeason' | 'setSilks'
   | 'useTicket' | 'cosmetics' | 'buyCosmetic' | 'setEquipment'
+  | 'silksEditor' | 'silksPreview' | 'saveSilks' | 'silksPresetCreate' | 'silksPresetUpdate' | 'silksPresetDelete' | 'silksPresetApply' | 'buySilksPart' | 'silksNoticeSeen'
   | 'friendSend' | 'friendReceive' | 'friendAccept' | 'friendAccepted' | 'friendDecline' | 'friendCancel' | 'friendRemove' | 'friendInvite' | 'friendsState'
   | 'adminView' | 'adminGrant' | 'adminSettleDebt' | 'adminCorrectAge' | 'adminResetName' | 'setModeration'
   | 'registerDevice' | 'unregisterDevice' | 'pushPreferences' | 'setPushPreferences' | 'kpiIngest'
@@ -172,6 +174,28 @@ const errorResponse = (e: AppError, l?: { lang: Locale; cat: Catalog }) => {
   // REQ-SHORT-004: `details` only where the domain attached it (INSUFFICIENT_COINS); every other error keeps its shape
   const body = { error: { code: e.code, message: e.message, ...(e.details ? { details: e.details } : {}) } };
   return json(l ? localize(body, l.lang, l.cat) : body, e.status, l?.lang);
+};
+
+/** REQ-SILK-012: a design (`{ pattern, colors, sleeve, cap, capColors }`) or a 17-char code — exactly one of them. */
+const silksPartId = z.string().min(1).max(40);
+const silksDesignSchema = z.object({
+  pattern: silksPartId, colors: z.array(silksPartId).min(2).max(3), sleeve: silksPartId, cap: silksPartId, capColors: z.tuple([silksPartId, silksPartId]),
+}).strict();
+const silksCodeSchema = z.string().regex(/^1[0-9a-z]{16}$/);
+const silksPresetSchema = z.object({ name: z.string().max(64).optional(), design: silksDesignSchema.optional(), code: silksCodeSchema.optional() }).strict();
+function designInputOf(b: { design?: z.infer<typeof silksDesignSchema>; code?: string }, required: boolean): DesignInput | null {
+  if (b.design && b.code !== undefined) throw new AppError('BAD_REQUEST', 'send a design or a code, not both');
+  if (b.design) return { design: b.design as SilksDesign };
+  if (b.code !== undefined) return { code: b.code };
+  if (required) throw new AppError('BAD_REQUEST', 'send a design or a code');
+  return null;
+}
+async function designBody(r: Request): Promise<DesignInput> {
+  return designInputOf(await body(r, z.object({ design: silksDesignSchema.optional(), code: silksCodeSchema.optional() }).strict()), true)!;
+}
+const presetSlot = (raw: string | undefined) => {
+  if (!raw || !/^[0-9]{1,2}$/.test(raw)) throw new AppError('BAD_REQUEST', 'slot must be a number');
+  return Number(raw);
 };
 
 /** REQ-SHORT-005: `for=gacha&bannerId&count` | `for=cosmetic&itemId` | `for=coins&coins&kind` (anything else is 400). */
@@ -326,6 +350,24 @@ export const routes: Route[] = [
     const b = await body(r, z.object({ pattern: z.string().min(1).max(40), colors: z.array(z.string().min(1).max(40)).min(2).max(3), cap: z.string().min(1).max(40) }));
     return c.player(u).invoke('setSilks', u, b);
   } },
+  // 勝負服エディタ (REQ-SILK-*, protocol §35)
+  { method: 'GET', path: '/v1/silks/editor', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('silksEditor', u) },
+  { method: 'POST', path: '/v1/silks/preview', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('silksPreview', u, await designBody(r)) },
+  { method: 'PUT', path: '/v1/silks', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('saveSilks', u, await designBody(r)) },
+  { method: 'POST', path: '/v1/silks/presets', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, silksPresetSchema);
+    return c.player(u).invoke('silksPresetCreate', u, b.name, designInputOf(b, true)!);
+  } },
+  { method: 'PUT', path: '/v1/silks/presets/:slot', auth: 'player', handler: async (r, p, c, u) => {
+    const b = await body(r, silksPresetSchema);
+    const input = designInputOf(b, false);
+    if (!input && b.name === undefined) throw new AppError('BAD_REQUEST', 'send a name, a design or a code');
+    return c.player(u).invoke('silksPresetUpdate', u, presetSlot(p.slot), b.name, input);
+  } },
+  { method: 'DELETE', path: '/v1/silks/presets/:slot', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('silksPresetDelete', u, presetSlot(p.slot)) },
+  { method: 'POST', path: '/v1/silks/presets/:slot/apply', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('silksPresetApply', u, presetSlot(p.slot)) },
+  { method: 'POST', path: '/v1/silks/parts/:itemId/buy', auth: 'player', handler: async (r, p, c, u) => c.player(u).invoke('buySilksPart', u, p.itemId!, idem(r)) },
+  { method: 'POST', path: '/v1/silks/notice-seen', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('silksNoticeSeen', u) },
   // player
   { method: 'POST', path: '/v1/player/bootstrap', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('bootstrap', u) },
   { method: 'GET', path: '/v1/player', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('view', u) },

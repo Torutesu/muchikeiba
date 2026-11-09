@@ -1322,7 +1322,9 @@ function DrawCoins(parent, shop, offers, top, blocked) {
 }
 async function DrawLooks(parent, top, blocked) {
   const cat = await L.cosmetics();
-  const items = cat.items.filter((x) => x.forSale).slice(0, 8);
+  // REQ-SILK-005: 勝負服エディタ parts are cosmetics too — one card opens the editor to try them on (fixed prices, never random)
+  const parts = cat.items.filter((x) => x.forSale && x.kind === 'silks_part');
+  const items = cat.items.filter((x) => x.forSale && x.kind !== 'silks_part').slice(0, parts.length ? 7 : 8);
   const artOf = (it) => (it.kind === 'silks' ? 'Art/Cosmetics/silk-jacket' : it.kind === 'decor' ? 'Art/Cosmetics/stable-plaque' : it.id.includes('saddle') ? 'Art/Cosmetics/saddlecloth' : 'Art/Cosmetics/bridle');
   const ch = Math.floor((560 - top - 14) / 2);
   items.forEach((it, i) => {
@@ -1341,6 +1343,17 @@ async function DrawLooks(parent, top, blocked) {
     c.dataset.item = it.id;
     if (it.owned || blocked) disable(b);
   });
+  if (parts.length) {
+    const x = 32 + (7 % 4) * 370, y = top + Math.floor(7 / 4) * (ch + 14);
+    const c = Card('Look silks parts', x, y, 356, ch, parent, CYAN);
+    c.dataset.item = 'silks_parts';
+    ArtImage('Art/Cosmetics/silk-jacket', 10, 16, 118, ch - 26, c);
+    Txt('勝負服のパーツ', 138, 26, 204, 17, WHITE, c, { weight: 700 });
+    Txt(`色・袖・帽子 ${parts.length}点　/　見た目のみ`, 138, 62, 204, 13, GOLD, c, { weight: 500, lh: 1.4 });
+    Txt(`${fmt(Math.min(...parts.map((x) => x.price)))}コインから`, 138, 108, 204, 15, CYAN, c, { weight: 700 });
+    const b = Cta('エディタで試着', 138, ch - 70, 200, () => { silksDraft = null; SilksEditor(); }, c, 'small');
+    if (blocked) disable(b);
+  }
   Txt(cat.notice, 32, 576, 1464, 14, MUTED, parent);
 }
 
@@ -2607,8 +2620,310 @@ function Wardrobe() {
     const b = Ghost(i === eq ? '装備中' : '装備する', 18, 248, 290, 38, () => { prefs.set('muchi.partner.model', look); Wardrobe(); }, c, 'small');
     if (i === eq) disable(b);
   }
+  Ghost('勝負服エディタ', 820, 650 - 58, 330, 60, () => SilksEditor(), p, 'small');
   Cta('見た目アイテムを見る', 1170, 650 - 58, 340, () => Store('looks'), p, 'small');
   Back(Home, 'BACK', 40, 834);
+}
+// ================================================================= 勝負服エディタ (REQ-SILK-*, contracts/protocol.md §35)
+// Live preview: the photoreal partner render (violet silks) is recoloured on a canvas — the violet pixels of the jockey are
+// the mask (hue band), split into cap / sleeve / body regions, and each pixel takes the chosen colour of the pattern at its
+// place in the region, times its own shading. Unity draws the same thing with masks on the 3D jockey (handoff round 14).
+const SILKS_ART = 'Art/3DPreviews/Partner_DappleGrey_Violet';
+const SILKS_CROP = { x: 0.30, y: 0.15, w: 0.50, h: 0.43 };
+const SILKS_TABS = [['pattern', '胴の模様'], ['color', '色'], ['sleeve', '袖'], ['cap', '帽子']];
+const SILKS_SLOTS = [['胴 1', 0], ['胴 2', 1], ['胴 3', 2], ['帽子 1', 3], ['帽子 2', 4]];
+let silksDraft = null, silksTab = 'pattern', silksSlot = 0, silksMask = null, silksView = null, silksProblem = null;
+const hexRgb = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+const fr = (x) => x - Math.floor(x);
+function inStar(u, v, n) {
+  const cu = fr(u * n) - 0.5, cv = fr(v * n) - 0.5, r = Math.hypot(cu, cv), a = Math.atan2(cv, cu);
+  return r < 0.2 + 0.13 * Math.cos(5 * (a + Math.PI / 2));
+}
+/** Which colour (0, 1, 2) a body pattern puts at (u, v) of the body region — the same idea as the Unity pattern masks. */
+function silkIdx(p, u, v) {
+  switch (p) {
+    case 'hoops': return Math.floor(v * 5) % 2;
+    case 'stripes': return Math.floor(u * 6) % 2;
+    case 'sash': return Math.abs(u - v) < 0.17 ? 1 : 0;
+    case 'cross_sashes': return Math.abs(u - v) < 0.13 || Math.abs(u + v - 1) < 0.13 ? 1 : 0;
+    case 'chevrons': return Math.floor((v + Math.abs(u - 0.5)) * 4) % 2;
+    case 'diamonds': return Math.abs(fr(u * 3) - 0.5) + Math.abs(fr(v * 3) - 0.5) < 0.32 ? 1 : 0;
+    case 'quartered': return (u < 0.5) !== (v < 0.5) ? 1 : 0;
+    case 'halves': return u < 0.5 ? 0 : 1;
+    case 'stars': return inStar(u, v, 3) ? (Math.floor(u * 3) + Math.floor(v * 3)) % 2 === 0 ? 1 : 2 : 0;
+    case 'spots': return Math.hypot(fr(u * 4) - 0.5, fr(v * 4) - 0.5) < 0.22 ? (Math.floor(u * 4) % 2 ? 2 : 1) : 0;
+    case 'braces': return Math.abs(u - 0.3) < 0.08 || Math.abs(u - 0.7) < 0.08 ? 1 : v > 0.82 ? 2 : 0;
+    case 'lightning': { const z = Math.abs(fr(v * 3) - 0.5) * 0.5 + 0.25; return Math.abs(u - z - 0.25) < 0.09 ? 1 : Math.abs(u - z - 0.25) < 0.13 ? 2 : 0; }
+    case 'flame': { const f = 0.62 - 0.14 * Math.abs(Math.sin(u * 14)); return v > f ? (v > f + 0.18 ? 1 : 2) : 0; }
+    case 'wings': { const w = Math.abs(u - 0.5); return v < 0.55 && w > 0.12 && v > w * 0.7 ? (fr(w * 8) < 0.5 ? 1 : 2) : 0; }
+    case 'laurel': return Math.abs(Math.hypot(u - 0.5, v - 0.55) - 0.32) < 0.06 ? (fr(Math.atan2(v - 0.55, u - 0.5) * 3) < 0.5 ? 1 : 2) : 0;
+    default: return p.startsWith('promo_') ? (Math.abs(u - 0.5) < 0.1 ? 2 : Math.floor(v * 4) % 2) : 0;
+  }
+}
+/** Sleeves: `match` continues the body pattern; others use body colours 1 and 2 along the arm (u = along the arm). */
+function sleeveIdx(s, p, u, v, bu, bv) {
+  switch (s) {
+    case 'match': return silkIdx(p, bu, bv);
+    case 'plain': return 1;
+    case 'hoops': return Math.floor(u * 5) % 2;
+    case 'stripes': return Math.floor(v * 4) % 2;
+    case 'armlets': return u > 0.62 && u < 0.78 ? 1 : 0;
+    case 'chevrons': return Math.floor((u + Math.abs(v - 0.5) * 0.6) * 5) % 2;
+    case 'stars': return inStar(u, v, 3) ? 1 : 0;
+    case 'diamonds': return Math.abs(fr(u * 4) - 0.5) + Math.abs(fr(v * 2) - 0.5) < 0.3 ? 1 : 0;
+    default: return 0;
+  }
+}
+/** Cap: colour 1 / 2 of the cap (peak = the brim at the front). */
+function capIdx(c, u, v) {
+  switch (c) {
+    case 'quartered': return (u < 0.5) !== (v < 0.5) ? 1 : 0;
+    case 'star': return inStar(u * 0.5 + 0.25, v * 0.5 + 0.25, 1) ? 1 : 0;
+    case 'hooped': return Math.floor(v * 4) % 2;
+    case 'peak': return u > 0.78 && v > 0.55 ? 1 : 0;
+    case 'spots': return Math.hypot(fr(u * 3) - 0.5, fr(v * 3) - 0.5) < 0.2 ? 1 : 0;
+    case 'checks': return (Math.floor(u * 4) + Math.floor(v * 4)) % 2;
+    case 'diamond': return Math.abs(u - 0.5) + Math.abs(v - 0.5) < 0.3 ? 1 : 0;
+    default: return 0;
+  }
+}
+/** The violet silks of the render as a mask: region (1 body, 2 sleeve, 3 cap), shading and the place in the region. */
+function silksMaskOf(img) {
+  const W = Math.round(img.naturalWidth * SILKS_CROP.w), H = Math.round(img.naturalHeight * SILKS_CROP.h);
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d'); g.drawImage(img, img.naturalWidth * SILKS_CROP.x, img.naturalHeight * SILKS_CROP.y, W, H, 0, 0, W, H);
+  const data = g.getImageData(0, 0, W, H);
+  const reg = new Uint8Array(W * H), shade = new Float32Array(W * H);
+  const box = { 1: [1, 1, 0, 0], 2: [1, 1, 0, 0], 3: [1, 1, 0, 0] };
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x, r = data.data[i * 4] / 255, gg = data.data[i * 4 + 1] / 255, b = data.data[i * 4 + 2] / 255;
+    const mx = Math.max(r, gg, b), mn = Math.min(r, gg, b), d = mx - mn;
+    if (d < 1e-6) continue;
+    let h = mx === r ? ((gg - b) / d) % 6 : mx === gg ? (b - r) / d + 2 : (r - gg) / d + 4; h = (h * 60 + 360) % 360;
+    const s = d / mx;
+    const fx = SILKS_CROP.x + (x / W) * SILKS_CROP.w, fy = SILKS_CROP.y + (y / H) * SILKS_CROP.h;
+    if (!(h > 250 && h < 322 && (s > 0.18 || (s > 0.06 && mx > 0.7)) && mx > 0.25 && fy < 0.405)) continue;
+    const k = fy < 0.285 ? 3 : fx > 0.545 && fy >= 0.3 ? 2 : 1;
+    reg[i] = k; shade[i] = (0.2126 * r + 0.7152 * gg + 0.0722 * b) / 0.56;
+    const bx = box[k]; bx[0] = Math.min(bx[0], x / W); bx[1] = Math.min(bx[1], y / H); bx[2] = Math.max(bx[2], x / W); bx[3] = Math.max(bx[3], y / H);
+  }
+  return { W, H, base: data, reg, shade, box };
+}
+function paintSilks(canvas, design, hexOf) {
+  if (!silksMask || !design) return;
+  const { W, H, base, reg, shade, box } = silksMask;
+  canvas.width = W; canvas.height = H;
+  const out = new ImageData(new Uint8ClampedArray(base.data), W, H);
+  const col = (id) => hexRgb(hexOf(id) ?? '#888888');
+  const body = design.colors.map(col), cap = design.capColors.map(col);
+  const uv = (k, x, y) => { const b = box[k]; return [(x / W - b[0]) / Math.max(1e-3, b[2] - b[0]), (y / H - b[1]) / Math.max(1e-3, b[3] - b[1])]; };
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x, k = reg[i];
+    if (!k) continue;
+    let rgb;
+    if (k === 3) { const [u, v] = uv(3, x, y); rgb = cap[capIdx(design.cap, u, v)]; }
+    else if (k === 2) {
+      const [u, v] = uv(2, x, y), [bu, bv] = uv(1, x, y);
+      rgb = body[Math.min(body.length - 1, sleeveIdx(design.sleeve, design.pattern, (u + v) / 2, Math.abs(u - v), clamp(bu, 0, 1), clamp(bv, 0, 1)))];
+    } else { const [u, v] = uv(1, x, y); rgb = body[Math.min(body.length - 1, silkIdx(design.pattern, u, v))]; }
+    const sh = shade[i];
+    for (let ch = 0; ch < 3; ch++) out.data[i * 4 + ch] = Math.min(255, rgb[ch] * (0.25 + 0.8 * sh) + 40 * Math.max(0, sh - 1.15));
+  }
+  canvas.getContext('2d').putImageData(out, 0, 0);
+}
+/** A small square swatch of a part (pattern / sleeve / cap drawn in navy and white, colours as a chip). */
+function partThumb(type, part, design, hexOf, parent, x, y, s) {
+  const c = document.createElement('canvas'); c.width = 48; c.height = 48; c.className = 'img silks-thumb';
+  Object.assign(c.style, { left: x + 'px', top: y + 'px', width: s + 'px', height: s + 'px', borderRadius: '4px' });
+  const g = c.getContext('2d'); const im = g.createImageData(48, 48);
+  const cols = type === 'color' ? [hexRgb(part.hex)] : [design.colors[0], design.colors[1], design.colors[2] ?? design.colors[0]].map((id) => hexRgb(hexOf(id) ?? '#888888'));
+  const capc = design.capColors.map((id) => hexRgb(hexOf(id) ?? '#888888'));
+  for (let yy = 0; yy < 48; yy++) for (let xx = 0; xx < 48; xx++) {
+    const u = xx / 47, v = yy / 47;
+    const rgb = type === 'color' ? cols[0] : type === 'cap' ? capc[capIdx(part.id, u, v)] : type === 'sleeve' ? cols[sleeveIdx(part.id, design.pattern, u, v, u, v)] : cols[Math.min(part.colors - 1, silkIdx(part.id, u, v))];
+    const j = (yy * 48 + xx) * 4; im.data[j] = rgb[0]; im.data[j + 1] = rgb[1]; im.data[j + 2] = rgb[2]; im.data[j + 3] = 255;
+  }
+  g.putImageData(im, 0, 0); parent.appendChild(c); return c;
+}
+const silksHexOf = (v) => { const m = new Map(v.parts.colors.map((c) => [c.id, c.hex])); return (id) => m.get(id); };
+const silksPartsList = (v, t) => (t === 'pattern' ? v.parts.patterns : t === 'color' ? v.parts.colors : t === 'sleeve' ? v.parts.sleeves : v.parts.caps);
+const silksPart = (v, t, id) => silksPartsList(v, t).find((p) => p.id === id);
+function silksTrying(v, d) {
+  const out = [];
+  const add = (t, id) => { const p = silksPart(v, t, id); if (p && !p.owned && !out.some((x) => x.t === t && x.p.id === id)) out.push({ t, p }); };
+  add('pattern', d.pattern); [...d.colors, ...d.capColors].forEach((c) => add('color', c)); add('sleeve', d.sleeve); add('cap', d.cap);
+  return out;
+}
+const sameDesign = (a, b) => !!a && !!b && JSON.stringify(a) === JSON.stringify(b);
+const lowPair = (v, a, b) => v.lowContrastPairs.some(([x, y]) => (x === a && y === b) || (x === b && y === a));
+function silksPick(v, id) {
+  const d = silksDraft; silksProblem = null;
+  if (silksTab === 'pattern') {
+    d.pattern = id;
+    const n = silksPart(v, 'pattern', id).colors;
+    while (d.colors.length < n) d.colors.push(v.parts.colors.find((c) => c.owned && !d.colors.includes(c.id)).id);
+    d.colors = d.colors.slice(0, n);
+    if (silksSlot === 2 && n < 3) silksSlot = 0;
+  } else if (silksTab === 'sleeve') d.sleeve = id;
+  else if (silksTab === 'cap') d.cap = id;
+  else if (silksSlot < 3) d.colors[silksSlot] = id; else d.capColors[silksSlot - 3] = id;
+}
+
+async function SilksEditor(tryItem) {
+  currentScreen = () => SilksEditor(); await refresh();
+  silksView = await L.silksEditor();
+  const v = silksView;
+  if (!silksDraft) silksDraft = structuredClone(v.current.design);
+  if (tryItem) { // from the shop's 見た目 tab: try that part on at once
+    for (const t of ['color', 'sleeve', 'cap', 'pattern']) {
+      const p = silksPartsList(v, t).find((x) => x.shop?.itemId === tryItem);
+      if (!p) continue;
+      silksTab = t; if (t === 'color') silksSlot = 1;
+      silksPick(v, p.id);
+    }
+  }
+  const d = silksDraft, hexOf = silksHexOf(v);
+  Clear('silks'); SetArt('Art/home-paddock', false);
+  TopBar('勝負服エディタ', '見た目のみ。パーツは抽選ではありません（固定の価格・条件）');
+  // ---- live preview (left)
+  const pv = Glass('Silks preview', 36, 134, 640, 676, undefined, .9);
+  Kicker('ライブプレビュー', 28, 20, pv, { size: 15 });
+  const cv = document.createElement('canvas'); cv.className = 'img silks-canvas';
+  Object.assign(cv.style, { left: '20px', top: '82px', width: '600px', height: '413px', borderRadius: '6px' });
+  pv.appendChild(cv);
+  const draw = () => paintSilks(cv, silksDraft, hexOf);
+  if (silksMask) draw();
+  else {
+    const img = new Image(); img.onload = () => { silksMask = silksMaskOf(img); draw(); }; img.src = art(SILKS_ART);
+  }
+  const trying = silksTrying(v, d);
+  const totalAny = trying.reduce((a, x) => a + (x.p.shop?.forSale && x.p.shop.currency === 'any' ? x.p.shop.price : 0), 0);
+  const totalPaid = trying.reduce((a, x) => a + (x.p.shop?.forSale && x.p.shop.currency === 'paidOnly' ? x.p.shop.price : 0), 0);
+  pv.dataset.trying = String(trying.length);
+  if (trying.length) {
+    const tag = Txt('試着中', 36, 100, 140, 15, GOLD, pv, { weight: 700, ls: '.18em' }); tag.classList.add('silks-trying');
+    Txt(`持っていないパーツ ${trying.length}点`, 28, 512, 580, 17, GOLD, pv, { weight: 700 });
+    const lines = [];
+    if (totalAny) lines.push(`${fmt(totalAny)}コイン`);
+    if (totalPaid) lines.push(`有償コイン${fmt(totalPaid)}（有償限定）`);
+    Txt(lines.length ? `買う場合の合計：${lines.join('　＋　')}` : '遊んで解放するパーツです（購入はできません）', 28, 544, 580, 14, MUTED, pv);
+  } else Txt(sameDesign(d, v.current.design) ? '装備中の勝負服' : '変更あり（まだ保存していません）', 28, 512, 580, 17, sameDesign(d, v.current.design) ? OK : CYAN, pv, { weight: 700 });
+  if (silksProblem) Txt(silksProblem, 28, 576, 580, 14, WARN, pv, { lh: 1.5 }).classList.add('silks-problem');
+  const code = Txt('コード ' + (await L.silksPreview({ design: d }).then((r) => (r.ok ? r.value.code : '—'))), 28, 624, 580, 13, SOFT, pv, { cls: 'num' });
+  code.dataset.silksCode = '1';
+  // ---- parts (right)
+  const p = Glass('Silks parts', 692, 134, 872, 676, undefined, .9);
+  SILKS_TABS.forEach(([t, label], i) => {
+    const b = Btn(label, 24 + i * 152, 20, 140, 50, () => { silksTab = t; SilksEditor(); }, 'choice' + (silksTab === t ? ' on' : ''), p);
+    b.dataset.silksTab = t;
+  });
+  let top = 86;
+  if (silksTab === 'color') {
+    const n = d.colors.length;
+    SILKS_SLOTS.filter(([, slot]) => slot !== 2 || n === 3).forEach(([label, slot], i) => {
+      const b = Btn(label, 24 + i * 120, top, 110, 40, () => { silksSlot = slot; SilksEditor(); }, 'choice' + (silksSlot === slot ? ' on' : ''), p);
+      b.dataset.silksSlot = String(slot);
+    });
+    top += 52;
+  }
+  const list = silksPartsList(v, silksTab);
+  const cur0 = silksTab === 'pattern' ? d.pattern : silksTab === 'sleeve' ? d.sleeve : silksTab === 'cap' ? d.cap : silksSlot < 3 ? d.colors[silksSlot] : d.capColors[silksSlot - 3];
+  const other = silksTab !== 'color' ? null : silksSlot === 0 ? d.colors[1] : silksSlot === 1 ? d.colors[0] : silksSlot === 3 ? d.capColors[1] : silksSlot === 4 ? d.capColors[0] : null;
+  // every list fits on one page (at most 24 parts: 6 × 4 colours, 5 × 4 others)
+  const cols = silksTab === 'color' ? 6 : 5, gap = 8, cw = Math.floor((824 - (cols - 1) * gap) / cols), ch = Math.floor((488 - top - 3 * gap) / 4);
+  const ts = silksTab === 'color' ? 30 : 42, tx = 18 + ts, tw = cw - tx - 8;
+  list.slice(0, cols * 4).forEach((part, i) => {
+    const x = 24 + (i % cols) * (cw + gap), y = top + Math.floor(i / cols) * (ch + gap);
+    const sel = part.id === cur0, low = other && part.id !== other && lowPair(v, part.id, other);
+    const c = Card('Part ' + part.id, x, y, cw, ch, p, sel ? CYAN : part.owned ? 'var(--text-3)' : GOLD);
+    c.classList.add('silks-part'); if (sel) c.classList.add('on');
+    Object.assign(c.dataset, { part: part.id, owned: String(part.owned), low: String(!!low) });
+    if (low) c.style.opacity = '.45';
+    partThumb(silksTab, part, d, hexOf, c, 10, 12, ts);
+    Txt(part.name, tx, 10, tw, 14, sel ? CYAN : WHITE, c, { weight: 700, nowrap: true });
+    if (sel && !part.owned) Txt('試着中', tx, 32, tw, 11, GOLD, c, { weight: 700, ls: '.12em', nowrap: true });
+    else if (!part.owned) Txt('LOCK', tx, 32, tw, 11, GOLD, c, { weight: 700, ls: '.18em' });
+    else if (low) Txt('見分けにくい', tx, 32, tw, 11, WARN, c, { weight: 500, nowrap: true });
+    if (!part.owned) Txt(part.sourceLabel, 10, ch - 34, cw - 20, 10, MUTED, c, { lh: 1.25 });
+    c.addEventListener('click', () => { silksPick(v, part.id); SilksEditor(); });
+    c.setAttribute('role', 'button');
+  });
+  // ---- presets + actions
+  Hair(24, 496, 824, p);
+  Kicker('プリセット', 24, 508, p, { rule: false, size: 13 });
+  for (let i = 0; i < v.maxPresets; i++) {
+    const pr = v.presets.find((x) => x.slot === i);
+    const b = Ghost(pr ? pr.name : '空き', 24 + i * 166, 540, 156, 46, async () => {
+      if (!pr) { const r = await L.silksPresetCreate(undefined, { design: silksDraft }); toast(r.ok ? 'プリセットに保存しました' : (r.details?.problem ? silksProblemText(r) : r.message)); return SilksEditor(); }
+      if (!pr.usable) { silksDraft = structuredClone(pr.design); toast('使えないパーツがあります'); return SilksEditor(); }
+      const r = await L.silksPresetApply(i); if (r.ok) { silksDraft = structuredClone(r.value.design); toast('勝負服を保存しました'); }
+      SilksEditor();
+    }, p, 'small' + (pr && !pr.usable ? ' quiet' : ''));
+    b.dataset.preset = String(i);
+    if (pr && /^プリセット\d+$/.test(pr.name) === false) b.classList.add('keep-ja'); // the player's own name is never translated
+  }
+  const save = Cta(trying.length ? '保存（入手が必要）' : '保存する', 24, 600, 360, async () => {
+    if (trying.length) return SilksGet(trying);
+    const r = await L.saveSilks({ design: silksDraft });
+    if (r.ok) { toast('勝負服を保存しました'); silksProblem = null; } else silksProblem = silksProblemText(r);
+    SilksEditor();
+  }, p, 'small');
+  save.dataset.silksSave = trying.length ? 'needs-parts' : 'ready';
+  if (sameDesign(d, v.current.design)) disable(save);
+  Ghost('元に戻す', 400, 600, 200, 60, () => { silksDraft = structuredClone(v.current.design); silksProblem = null; SilksEditor(); }, p, 'small quiet');
+  Txt(v.notice, 616, 604, 236, 11, SOFT, p, { lh: 1.45 });
+  Back(() => { silksDraft = null; Wardrobe(); }, 'BACK', 40, 834);
+  if (v.current.resetNotice) SilksResetNotice(v.current.resetNotice.message);
+}
+function silksProblemText(r) { return r.details?.problem === 'LOW_CONTRAST' ? '色が近すぎて見分けにくい組み合わせです（胴の1色目と2色目、帽子の2色）' : r.details?.problem === 'RESERVED' ? '実在の勝負服と同じ（または紛らわしい）組み合わせのため使えません' : r.message; }
+function SilksResetNotice(message) {
+  const box = Dialog('Silks reset notice', 900, 360);
+  Kicker('お知らせ', 48, 40, box);
+  Txt(message, 48, 120, 804, 20, WHITE, box, { weight: 500, lh: 1.6 });
+  Cta('OK', 48, 240, 260, async () => { await L.silksNoticeSeen(); SilksEditor(); }, box, 'small');
+}
+/** The parts still to get: each sold part goes through the purchase confirmation; earned parts say how to unlock them. */
+function SilksGet(trying) {
+  Sheet('持っていないパーツ', '試着中　/　入手が必要', (s, close, top) => {
+    trying.slice(0, 5).forEach(({ t, p: part }, i) => {
+      const y = top + i * 112;
+      const c = Card('Need ' + part.id, 48, y, 564, 100, s, part.shop?.forSale ? GOLD : 'var(--text-3)');
+      c.dataset.need = part.id;
+      Txt(SILKS_TABS.find((x) => x[0] === t)[1], 20, 10, 330, 12, MUTED, c, { weight: 500, ls: '.12em' });
+      Txt(part.name, 20, 30, 330, 17, WHITE, c, { weight: 700, nowrap: true });
+      Txt(part.sourceLabel, 20, 62, 330, 13, part.shop?.forSale ? CYAN : MUTED, c, { nowrap: true });
+      if (part.shop?.forSale) Cta('購入を確認', 360, 20, 186, () => { close(); SilksBuy(part); }, c, 'small');
+    });
+    Txt('パーツは1つずつ固定の価格で購入します（抽選ではありません）。', 48, top + Math.min(5, trying.length) * 112 + 6, 564, 13, SOFT, s, { lh: 1.5 });
+  });
+}
+/** Purchase confirmation of one part (the cosmetics flow: paid coins first; 有償限定 on paid coins only). */
+function SilksBuy(part) {
+  currentScreen = () => SilksBuy(part);
+  Clear('silks-buy'); SetArt('Art/home-paddock', false); Shade('dim');
+  const box = Dialog('Silks part purchase', 1000, 600);
+  box.dataset.item = part.shop.itemId;
+  el('rule', 48, 30, 84, 3, box);
+  Txt('購入の確認', 48, 44, 600, 24, WHITE, box, { weight: 700, ls: '.05em' });
+  Txt('見た目のみ。ランク戦の能力には影響しません。確率なしの直販です。', 48, 78, 900, 14, MUTED, box);
+  Txt(part.name, 48, 132, 560, 34, WHITE, box, { weight: 700 });
+  const paidOnly = part.shop.currency === 'paidOnly';
+  Txt(paidOnly ? `有償コイン${fmt(part.shop.price)}` : `${fmt(part.shop.price)}コイン`, 600, 140, 352, 30, GOLD, box, { align: 'right', cls: 'num', weight: 700 });
+  const wl = player.wallet;
+  const fromPaid = Math.min(wl.paid, part.shop.price), fromFree = paidOnly ? 0 : part.shop.price - fromPaid;
+  Hair(48, 214, 904, box);
+  Txt(paidOnly ? '有償限定（有償コインのみ）' : '有償コインから先に使われます', 48, 234, 904, 17, CYAN, box, { weight: 700 });
+  Txt(`所持：有償 ${fmt(wl.paid)}　/　無償 ${fmt(wl.free)}`, 48, 272, 904, 16, WHITE, box);
+  const enough = paidOnly ? wl.paid >= part.shop.price : wl.paid + wl.free >= part.shop.price;
+  Txt(enough ? `使うコイン：有償 ${fmt(fromPaid)}　/　無償 ${fmt(fromFree)}` : 'コインが足りません', 48, 306, 904, 16, enough ? WHITE : WARN, box);
+  Txt('一度買えばずっと使えます（期限なし）。', 48, 344, 904, 14, SOFT, box);
+  Cta('購入する', 48, 470, 360, async () => {
+    const r = await L.buySilksPart(part.shop.itemId);
+    if (r.ok) { toast('パーツを入手しました'); return SilksEditor(); }
+    if (r.code === 'INSUFFICIENT_COINS' && r.details?.shortfall) return Shortfall(r.details.shortfall, 'looks', () => SilksBuy(part), () => SilksEditor());
+    toast(r.message); SilksEditor();
+  }, box, 'small');
+  Ghost('キャンセル', 432, 470, 220, 60, () => SilksEditor(), box, 'small quiet');
 }
 function CourseThemes() {
   const activePreview = previewCourse >= 0 ? previewCourse : equippedCourse();
@@ -3728,7 +4043,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Hall, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Hall, SilksEditor, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

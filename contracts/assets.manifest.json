@@ -40,9 +40,21 @@
   },
   "silks/cap": {
    "fallback": "silks/cap/default",
-   "description": "帽子の模様（色は勝負服の1色目・2色目）",
+   "description": "帽子の模様（色はエディタの帽子の2色。旧い勝負服は胴の1色目・2色目）",
    "dynamic": false,
-   "count": 6
+   "count": 9
+  },
+  "silks/sleeve": {
+   "fallback": "silks/sleeve/default",
+   "description": "勝負服エディタの袖の模様（マスク。胴の1色目・2色目で着色、REQ-SILK-001）",
+   "dynamic": false,
+   "count": 9
+  },
+  "silks/color": {
+   "fallback": "silks/color/default",
+   "description": "勝負服エディタの特別色の見本アイコン（ショップの一覧用。服そのものは hex で着色）",
+   "dynamic": false,
+   "count": 4
   },
   "ui/gate": {
    "fallback": "ui/gate/default",
@@ -78,7 +90,7 @@
    "fallback": "item/default",
    "description": "アイテムのアイコン",
    "dynamic": false,
-   "count": 28
+   "count": 35
   },
   "banner/gacha": {
    "fallback": "banner/gacha/default",
@@ -415,6 +427,13 @@
   "item/event_ticket",
   "item/gacha_ticket",
   "item/gacha_ticket_10",
+  "item/silkpart_cap_checks",
+  "item/silkpart_cap_spots",
+  "item/silkpart_color_crimson",
+  "item/silkpart_color_emerald",
+  "item/silkpart_color_platinum",
+  "item/silkpart_sleeve_chevrons",
+  "item/silkpart_sleeve_stars",
   "item/stamp_carrot",
   "item/stamp_horseshoe",
   "item/tack_bridle_classic",
@@ -469,12 +488,19 @@
   "sfx/ui/level_up",
   "sfx/ui/reward",
   "sfx/ui/tap",
+  "silks/cap/checks",
   "silks/cap/default",
+  "silks/cap/diamond",
   "silks/cap/hooped",
   "silks/cap/peak",
   "silks/cap/plain",
   "silks/cap/quartered",
+  "silks/cap/spots",
   "silks/cap/star",
+  "silks/color/crimson",
+  "silks/color/default",
+  "silks/color/emerald",
+  "silks/color/platinum",
   "silks/pattern/braces",
   "silks/pattern/chevrons",
   "silks/pattern/cross_sashes",
@@ -495,6 +521,15 @@
   "silks/pattern/stars",
   "silks/pattern/stripes",
   "silks/pattern/wings",
+  "silks/sleeve/armlets",
+  "silks/sleeve/chevrons",
+  "silks/sleeve/default",
+  "silks/sleeve/diamonds",
+  "silks/sleeve/hoops",
+  "silks/sleeve/match",
+  "silks/sleeve/plain",
+  "silks/sleeve/stars",
+  "silks/sleeve/stripes",
   "stable/theme/cedar",
   "stable/theme/default",
   "stable/theme/sakura",

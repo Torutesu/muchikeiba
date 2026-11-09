@@ -102,6 +102,8 @@ static class Program
         await TeamGoalChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 14: 殿堂・引退式 (HallModel: gallery, ceremony once, retire, friend's hall, progress, visibility; REQ-HOF-*)");
         await HallChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 14: 勝負服エディタ (SilksEditorModel: try-on 試着中, keyed part purchase, readability, presets, refund notice; REQ-SILK-*)");
+        await SilksEditorChecks.Run(Check, Ruleset());
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

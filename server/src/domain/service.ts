@@ -18,6 +18,10 @@ import { attachShortfall, coinShortfall } from './shortfall.js';
 import { awaken, breed, breedingPreviewWithAllowance, getHorse, nameHorse, pedigree, retire } from './horses.js';
 import { migrateSkills } from './skills.js';
 import { buyCosmetic, cosmeticsCatalog, findCosmetic, setEquipment, useTicket, type EquipmentPatch } from './itemShop.js';
+import {
+  clearResetNotice, createPreset, deletePreset, designFromInput, equipDesign, nonFreeParts, partOfCosmetic, presetDesign, previewDesign, silksEditorView, updatePreset,
+  type DesignInput, type SilksDesign,
+} from './silksEditor.js';
 import { applyRaceResult, claimLoginBonus, claimMission, claimPass, firstWinBonusView, missionsView, type RaceResultForPlayer } from './rewards.js';
 import { allowanceView, claimAllowance, markOfferViewed, noteRaceForOffers, shopOffers, shopProducts } from './shop.js';
 import { passScreen } from './pass.js';
@@ -597,8 +601,66 @@ export class PlayerService {
   async cosmetics(id: string) { return cosmeticsCatalog(this.d.master, await this.load(id)); }
   async buyCosmetic(id: string, itemId: string, idemKey: string | null) {
     const key = this.requireKey(idemKey);
-    return this.tx(id, key, (s, now) => ({ ...buyCosmetic(this.d.master, s, itemId, now, key), wallet: playerView(s).wallet }));
+    return this.tx(id, key, (s, now, emit) => {
+      const r = buyCosmetic(this.d.master, s, itemId, now, key);
+      this.noteSilksPartBuy(r, emit);
+      return { ...r, wallet: playerView(s).wallet };
+    });
   }
+  /** REQ-SILK-014: silks_part_buy whichever purchase API bought a 勝負服エディタ part. */
+  private noteSilksPartBuy(r: { itemId: string; spent: { paid: number; free: number } }, emit: Emit) {
+    const c = findCosmetic(this.d.master, r.itemId);
+    const part = partOfCosmetic(c);
+    if (part) emit({ name: 'silks_part_buy', s1: c.id, s2: part.type, s3: c.currency, paidCoins: r.spent.paid, freeCoins: r.spent.free, value: c.price });
+    return part;
+  }
+
+  // ---- 勝負服エディタ (REQ-SILK-*, silksEditor.ts, contracts/protocol.md §35) ----
+  async silksEditor(id: string) { return silksEditorView(this.d.master, await this.load(id)); }
+  /** REQ-SILK-006: try before buying — read only, parts need not be owned. */
+  async silksPreview(id: string, input: DesignInput) { return previewDesign(this.d.master, await this.load(id), designFromInput(this.d.master, input)); }
+  private equipSilks(s: PlayerState, d: SilksDesign, source: 'editor' | 'preset', emit: Emit) {
+    const r = equipDesign(this.d.master, s, d);
+    countOnboarding(s, 'silks');
+    if (r.changed) emit({ name: 'silks_edit', s1: r.code, s2: source, value: nonFreeParts(this.d.master, r.design), count: silksEditorView(this.d.master, s).presets.length });
+    return { design: r.design, code: r.code, silks: r.silks };
+  }
+  /** REQ-SILK-012 PUT /v1/silks: validated (owned parts, readability, reserved silks) and equipped. Idempotent. */
+  saveSilks(id: string, input: DesignInput) {
+    return this.tx(id, null, (s, _now, emit) => { notWhileDeleting(s); return this.equipSilks(s, designFromInput(this.d.master, input), 'editor', emit); });
+  }
+  silksPresetCreate(id: string, name: string | undefined, input: DesignInput) {
+    return this.tx(id, null, (s, now) => {
+      notWhileDeleting(s);
+      const slot = createPreset(this.d.master, s, name, designFromInput(this.d.master, input), now);
+      return { slot, presets: silksEditorView(this.d.master, s).presets };
+    });
+  }
+  silksPresetUpdate(id: string, slot: number, name: string | undefined, input: DesignInput | null) {
+    return this.tx(id, null, (s, now) => {
+      notWhileDeleting(s);
+      updatePreset(this.d.master, s, slot, name, input ? designFromInput(this.d.master, input) : null, now);
+      return { slot, presets: silksEditorView(this.d.master, s).presets };
+    });
+  }
+  silksPresetDelete(id: string, slot: number) {
+    return this.tx(id, null, (s) => { deletePreset(s, slot); return { presets: silksEditorView(this.d.master, s).presets }; });
+  }
+  silksPresetApply(id: string, slot: number) {
+    return this.tx(id, null, (s, _now, emit) => { notWhileDeleting(s); return this.equipSilks(s, presetDesign(this.d.master, s, slot), 'preset', emit); });
+  }
+  /** REQ-SILK-005: buy one part (same purchase as the shop's cosmetics tab: paid coins first, paid-only parts on paid coins). */
+  async buySilksPart(id: string, itemId: string, idemKey: string | null) {
+    const key = this.requireKey(idemKey);
+    return this.tx(id, key, (s, now, emit) => {
+      const c = this.d.master.items.cosmetics.find((x) => x.id === itemId);
+      if (!c || !partOfCosmetic(c)) throw new AppError('NOT_FOUND', `silks part ${itemId}`);
+      const r = buyCosmetic(this.d.master, s, itemId, now, key);
+      const part = this.noteSilksPartBuy(r, emit)!;
+      return { itemId: r.itemId, spent: r.spent, wallet: playerView(s).wallet, part: { ...part, owned: true } };
+    });
+  }
+  silksNoticeSeen(id: string) { return this.tx(id, null, (s) => { clearResetNotice(s); return { ok: true }; }); }
   setEquipment(id: string, patch: EquipmentPatch) {
     return this.tx(id, null, (s) => ({ equipment: setEquipment(this.d.master, s, patch) }));
   }

@@ -81,6 +81,8 @@
 | `exchange_buy` | サーバー（イベント交換所で交換した） | イベントID | 行のID | 種類 `coins`/`material`/`ticket`/`cosmetic`/`horse` | `double5` 個数、`double9` 使ったポイント |
 | `challenge_start` | サーバー（週替わりチャレンジを始めた、REQ-WCH-014） | チャレンジ id | 週 id | `loan`/`own` | `double5` 今週そのチャレンジを始めた回数 |
 | `challenge_clear` | サーバー（検証済みの走りでクリア） | チャレンジ id | 週 id | `loan`/`own` | `double4` 着順、`double6` タイム（ms）、`double5` 今週のクリア数、`double8` 今週の初クリア、`double9` 1 = この回でバッジ、`double3` 付与した無償コイン |
+| `silks_edit` | サーバー（勝負服エディタで装備が変わった：`PUT /v1/silks`・プリセットの適用、REQ-SILK-014） | コード | `editor`/`preset` | | `double9` 無料でないパーツの数、`double5` プリセットの数 |
+| `silks_part_buy` | サーバー（勝負服のパーツを買った：エディタ・ショップの見た目タブのどちらでも） | itemId | パーツの種類 `pattern`/`color`/`sleeve`/`cap` | `any`/`paidOnly` | `double2` 有償コイン、`double3` 無償コイン、`double9` 価格 |
 | `consent` | サーバー | 規約の版 | プライバシーポリシーの版 | | |
 | `partner_granted` | サーバー | テンプレートID（`t_partner`） | | | |
 | `ab_assign` | サーバー（初回の bootstrap、実験ごとに1回） | 実験ID | バケットID | | |
@@ -766,3 +768,30 @@ LIMIT 100
 - `team_goal_contribute` はプレイヤーのオブジェクトが送った時の行（支部がその週の種類でない・上限で数えないこともある）。`race` と `win` は1レースで1行（1着なら `s2 = 'win'`、`count` 2）。
 - 課金者と無課金者（`blob7`）で受け取りの段に差が出ても、支払いの効果ではない（共同目標は課金で進まない、REQ-TGOAL-012）。支部の活発さの違いとして読む。
 - 継続への効果：`team_goal_reward` を受け取った人と、支部にいるが受け取っていない人の翌週の `race_finish` の数を比べる（支部の共同目標の目的は週の継続）。
+
+## 勝負服エディタ：編集とパーツの購入（REQ-SILK-014、Round 14、contracts/protocol.md §35）
+
+**編集した人とパーツを買った人**（週ごと）。パーツは抽選ではないので、買った人の割合と1人あたりの額だけを見る（無料のパーツだけで作る人の割合も `double9 = 0` で分かる）。
+
+```sql
+SELECT toStartOfWeek(timestamp) AS week,
+  count(DISTINCT if(blob1 = 'silks_edit', blob2, NULL)) AS editors,
+  count(DISTINCT if(blob1 = 'silks_edit' AND double9 = 0, blob2, NULL)) AS free_parts_only,
+  count(DISTINCT if(blob1 = 'silks_part_buy', blob2, NULL)) AS buyers,
+  sumIf(_sample_interval * double2, blob1 = 'silks_part_buy') AS paid_coins,
+  sumIf(_sample_interval * double3, blob1 = 'silks_part_buy') AS free_coins
+FROM muchi_kpi
+WHERE blob1 IN ('silks_edit', 'silks_part_buy') AND timestamp > NOW() - INTERVAL '56' DAY
+GROUP BY week
+ORDER BY week DESC
+```
+
+**売れているパーツ**（直近28日）。
+
+```sql
+SELECT blob8 AS item, blob9 AS part, blob10 AS currency, sum(_sample_interval) AS buys
+FROM muchi_kpi
+WHERE blob1 = 'silks_part_buy' AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY item, part, currency
+ORDER BY buys DESC
+```

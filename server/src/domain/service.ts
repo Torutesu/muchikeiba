@@ -92,6 +92,7 @@ import {
   ackCeremony, hallSnapshot, hallSnapshotKey, hallViewerOf, horseCareerView, myHallView, noteHallRace, noteHallRetire, noteHallTa, noteHallTournament,
   setHallVisibility, type HallRelation, type HallSnapshot,
 } from './hallOfFame.js';
+import { assertNotLocked, bulkPreview, noteTournamentEntry, parseRosterQuery, pruneRoster, rosterView, runBulk, setFavorite, setLock, type BulkAction } from './roster.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
 export interface PlayerRepo {
@@ -531,10 +532,31 @@ export class PlayerService {
   /** REQ-HOF-003: the response also carries the retirement ceremony (null when the hall is disabled). */
   retire(id: string, horseId: string) {
     return this.tx(id, null, (s, now, emit) => {
+      assertNotLocked(s, horseId); // REQ-ORG-005: a locked horse is never retired
       const h = retire(s, horseId);
       const ceremony = noteHallRetire(this.d.master, s, h, now, emit);
       return { ...h, ceremony };
     });
+  }
+
+  // ---- 厩舎の整理 (REQ-ORG-*, roster.ts) ----
+  /** REQ-ORG-001..003: the organiser rows, filtered / sorted by the optional query (the client runs the same rules). */
+  async roster(id: string, query: Record<string, string | undefined> = {}) {
+    const q = parseRosterQuery(this.d.master, query);
+    return rosterView(this.d.master, await this.load(id), this.d.clock(), q);
+  }
+  /** REQ-ORG-005: value replacements (idempotent). */
+  rosterLock(id: string, horseId: string, locked: boolean) { return this.tx(id, null, (s) => setLock(s, horseId, locked)); }
+  rosterFavorite(id: string, horseId: string, favorite: boolean) { return this.tx(id, null, (s) => setFavorite(s, horseId, favorite)); }
+  /** REQ-ORG-007: changes nothing. */
+  async rosterPreview(id: string, action: BulkAction, horseIds: string[]) { return bulkPreview(await this.load(id), action, horseIds, this.d.clock()); }
+  /** REQ-ORG-008: keyed, all or nothing (one transaction). */
+  async rosterBulk(id: string, action: BulkAction, horseIds: string[], confirmToken: string | undefined, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => { pruneRoster(s, now); return runBulk(this.d.master, s, action, horseIds, confirmToken, now, emit); });
+  }
+  /** REQ-ORG-011: TournamentsService registered (horseId) / unregistered (null) the player. */
+  rosterTournament(id: string, tournamentId: string, horseId: string | null, untilMs: number) {
+    return this.tx(id, null, (s, now) => { pruneRoster(s, now); noteTournamentEntry(s, tournamentId, horseId, untilMs); return { ok: true }; });
   }
 
   async breedingPreview(id: string, sireId: string, damId: string) {
@@ -1621,6 +1643,7 @@ export class PlayerService {
       done[tournamentId] = { name, rank, at: now, reward };
       noteTournamentResult(s, rank); // REQ-ACH-002 (once per tournament, behind the same guard)
       noteHallTournament(this.d.master, s, horseId, tournamentId, name, rank, now); // REQ-HOF-001
+      if (s.roster?.tournaments) delete s.roster.tournaments[tournamentId]; // REQ-ORG-011: the entry ends with the tournament
       const keys = Object.entries(done).sort((a, b) => b[1].at - a[1].at).map(([k]) => k);
       for (const k of keys.slice(TOURNAMENT_HISTORY_KEEP)) delete done[k];
       return { status: 'rewarded' as const, reward };

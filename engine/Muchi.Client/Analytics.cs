@@ -133,6 +133,13 @@ namespace Muchi.Client
             return new AnalyticsEvent("replay_share", atMs, JsonNode.Obj().Set("surface", surface));
         }
 
+        /// <summary>REQ-ORG-013: the roster organiser's sort or filters changed. sort: one of RosterQuery.SortKeys; filters: 0..10 in use.</summary>
+        public static AnalyticsEvent RosterSort(long atMs, string sort, int filters)
+        {
+            if (Array.IndexOf(RosterQuery.SortKeys, sort) < 0) throw new ArgumentException("unknown roster sort " + sort);
+            return new AnalyticsEvent("roster_sort", atMs, JsonNode.Obj().Set("sort", sort).Set("filters", Math.Max(0, Math.Min(filters, 10))));
+        }
+
         /// <summary>The invite code was handed to the OS share sheet or copied (REQ-INV-011). channel: os_share | copy_code | copy_link.</summary>
         public static AnalyticsEvent InviteShare(long atMs, string channel)
         {

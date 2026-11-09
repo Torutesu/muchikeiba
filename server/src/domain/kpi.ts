@@ -128,6 +128,8 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   // REQ-INV-011: the invite code handed to the OS share sheet or copied (redemptions and milestones are server events)
   // REQ-MYRP-014: a saved replay handed to the OS share sheet (own list or a friend's public replay)
   z.object({ name: z.literal('replay_share'), at: z.number().int(), props: z.object({ surface: z.enum(['my_replays', 'friend_replay']) }).strict() }),
+  // REQ-ORG-013: the roster organiser's sort or filters changed (sort key + number of filters in use)
+  z.object({ name: z.literal('roster_sort'), at: z.number().int(), props: z.object({ sort: z.enum(['rating', 'aptitude', 'age', 'acquired', 'races', 'rarity', 'name']), filters: z.number().int().min(0).max(10) }).strict() }),
   z.object({ name: z.literal('invite_share'), at: z.number().int(), props: z.object({ channel: z.enum(['os_share', 'copy_code', 'copy_link']) }).strict() }),
   // REQ-AD-010: rewarded ads. The reward itself is the server event ad_reward (from the SSV callback, never the client).
   z.object({ name: z.literal('ad_offer_view'), at: z.number().int(), props: adProps }),
@@ -163,6 +165,7 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'share': return { name: e.name, s1: e.props.kind };
     case 'invite_share': return { name: e.name, s1: e.props.channel };
     case 'replay_share': return { name: e.name, s1: e.props.surface };
+    case 'roster_sort': return { name: e.name, s1: e.props.sort, value: e.props.filters };
     case 'ad_offer_view': return { name: e.name, s1: e.props.placementId, s2: e.props.surface };
     case 'ad_start': return { name: e.name, s1: e.props.placementId, s2: e.props.surface, s3: e.props.outcome };
     case 'history_view': return { name: e.name, s1: e.props.tab };

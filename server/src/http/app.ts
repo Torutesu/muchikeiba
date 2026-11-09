@@ -41,6 +41,7 @@ import type { RivalService } from '../domain/rivalService.js';
 import { HISTORY_LIMITS, historyQuery, REF_RE, SUPPORT_TOPICS } from '../domain/history.js';
 import type { DesignInput, SilksDesign } from '../domain/silksEditor.js';
 import type { MyReplaysService } from '../domain/myReplaysService.js';
+import { bulkBodySchema } from '../domain/roster.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -79,6 +80,7 @@ export type PlayerMethod =
   | 'wchView' | 'wchStart' | 'wchPrepare' | 'wchAbort' | 'wchRecord'
   | 'teamGoalReward' | 'goalPlayerView'
   | 'hallMine' | 'hallViewer' | 'hallNoteView' | 'horseCareer' | 'hallAck' | 'hallSettings'
+  | 'roster' | 'rosterLock' | 'rosterFavorite' | 'rosterPreview' | 'rosterBulk' | 'rosterTournament'
   | 'myReplays' | 'replayPrepareSave' | 'replayCommitSave' | 'replayForget' | 'replayUpdate' | 'replayDelete' | 'replayOwnRef' | 'replayShared' | 'replayViewed';
 
 export interface PlayerInvoker {
@@ -510,6 +512,16 @@ export const routes: Route[] = [
   { method: 'POST', path: '/v1/horses/:horseId/awaken', auth: 'player', handler: async (r, p, c, u) => c.player(u).invoke('awaken', u, p.horseId!, idem(r)) },
   { method: 'POST', path: '/v1/horses/:horseId/retire', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('retire', u, p.horseId!) },
   // 殿堂 (REQ-HOF-*): career record, ceremonies, plaques, visiting
+  // 厩舎の整理 (REQ-ORG-*, contracts/protocol.md §44)
+  { method: 'GET', path: '/v1/roster', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('roster', u, Object.fromEntries(new URL(r.url).searchParams)) },
+  { method: 'PUT', path: '/v1/horses/:horseId/lock', auth: 'player', handler: async (r, p, c, u) => c.player(u).invoke('rosterLock', u, p.horseId!, (await body(r, z.object({ locked: z.boolean() }).strict())).locked) },
+  { method: 'PUT', path: '/v1/horses/:horseId/favorite', auth: 'player', handler: async (r, p, c, u) => c.player(u).invoke('rosterFavorite', u, p.horseId!, (await body(r, z.object({ favorite: z.boolean() }).strict())).favorite) },
+  { method: 'POST', path: '/v1/roster/bulk/preview', auth: 'player', handler: async (r, _p, c, u) => { const b = await body(r, bulkBodySchema); return c.player(u).invoke('rosterPreview', u, b.action, b.horseIds); } },
+  { method: 'POST', path: '/v1/roster/bulk', auth: 'player', handler: async (r, _p, c, u) => {
+    const key = idem(r);
+    const b = await body(r, bulkBodySchema);
+    return c.player(u).invoke('rosterBulk', u, b.action, b.horseIds, b.confirmToken, key);
+  } },
   { method: 'GET', path: '/v1/horses/:horseId/career', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('horseCareer', u, p.horseId!) },
   { method: 'GET', path: '/v1/hall', auth: 'player', handler: async (r, _p, c, u) => { const q = hallPage(r); return hall(c).mine(u, q.cursor, q.limit); } },
   { method: 'PUT', path: '/v1/hall/settings', auth: 'player', handler: async (r, _p, c, u) => {
@@ -1074,6 +1086,7 @@ export function tournamentPlayersFrom(player: (uid: string) => PlayerInvoker): T
   return {
     tournamentEntry: async (u, h) => (await player(u).invoke('tournamentEntry', u, h)) as unknown as TournamentEntryInfo,
     history: (u) => player(u).invoke('tournamentHistory', u),
+    noteEntry: async (u, t, h, until) => { await player(u).invoke('rosterTournament', u, t, h, until); }, // REQ-ORG-011
   };
 }
 

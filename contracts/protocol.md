@@ -1175,3 +1175,59 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 - 出してよいのは**ガチャの確認・見た目の購入・ショップ**の中だけ。**レース中・マッチング中・チュートリアル中・負けた直後の結果画面には出さない**（`CoinShortfallModel.Allowed`）。
 - シートは「◯コインが◯枚足りません」＋パックのカード1枚＋閉じる（閉じるが一番目立つ）。パックを押すと既存の購入確認（§13、REQ-UXU-010）へ。購入が完了したら元の操作（そのガチャ・その見た目）に戻る。
 - KPI：シートを出した時 `offer_view`、パックを押した時 `offer_click`（`offerId: "shortfall"`・`trigger: "T6"`、§13 の KPI と同じイベント）。1回の失敗（1回のプレビュー）につき1回。
+
+## 37. マイリプレイ（保存したリプレイの一覧、REQ-MYRP-001〜016、`server/src/domain/myReplays.ts`・`myReplaysService.ts`、C# `MyReplays.cs`（`ReplayPlayer`）・`Muchi.Game.MyReplaysModel`）
+自分が走ったレースのリプレイを、通常の保存期限（§7・REQ-OPS-001 の `replayRetentionDays`）を越えて残す。保存するのは **§7 のリプレイログ（設定＋確定入力）と結果ハッシュだけ**で、動画も状態も保存しない。見る時は端末で再計算する（REQ-RACE-073、REQ-UXS-070 と同じ）。コインもアイテムも動かない（経済の目標なし）。
+
+### 37.1 しくみ
+- **最近のレース**（`recent`）：確定した（無効・チュートリアル・タイムアタックを除く）レースを、プレイヤーの状態に `{raceId, at, mode, trackId, place, fieldSize, slot, resultHash, rulesetVersion, moment}` で覚える（`applyRace`、同じレースは1回）。元のログが R2 の `replays/<raceId>.json` に残っている間（`momentDays` 日、既定 28 < `replayRetentionDays`）だけ保存できる。
+- **名場面**（`moment`）：自動で選ぶ ― `win`（1着）・`photo`（隣の着順の馬とゴールの tick の差が `photoFinishTicks` 以下）・`pb`（そのコースの自己ベストの更新、`stats.byTrack.bestFinishTick`、CPU が乗った回は除く）。優先は `win` > `photo` > `pb`。名場面は `momentsKeep`（既定10）件まで・`momentDays` 日で入れ替わる（古い順に消える）。残したければ保存する。名場面でない最近のレースは `recentKeep`（既定30）件まで。
+- **保存**（`saved`）：`maxSaved`（既定 20、無料）件まで。保存するとサーバーが元のログを `myreplays/<playerId>/<raceId>.json` に写す（本文 `{ "v":1, "log": §7 のログ, "resultHash": "<64hex>" }`、`maxBytes`（既定 256 KiB）を超えるものは `413 REPLAY_TOO_LARGE`）。この接頭辞は保存期限の削除（`replays/` だけを見る）の対象外。一覧の記録（タイトル・お気に入り・公開）はプレイヤーの状態に持つ。
+- ルールセットの固定：ログの設定にはルールセットの値がすべて入っている（§2）。保存の記録に `rulesetVersion` を残し、見る時に「今のエンジンで再生できるか」を判定する（37.4）。
+
+### 37.2 API（すべて要認証）
+| メソッド | パス | 冪等キー | 本文 → 応答 |
+|---|---|---|---|
+| GET | `/v1/replays` | | → `MyReplaysView`（37.3） |
+| POST | `/v1/replays` | 必須 | `{ "raceId", "replayTitle"? }` → `{ "saved": SavedReplay, "alreadySaved": bool, "view": MyReplaysView }`。同じレースをもう一度保存しても1件のまま（`alreadySaved: true`、タイトルは変えない）。`404 NOT_FOUND`（最近のレースに無い・自分のレースでない）／`410 REPLAY_EXPIRED`（元のログが消えた。最近のレースから外す）／`409 REPLAY_LIMIT`（`maxSaved` 件ある）／`413 REPLAY_TOO_LARGE`／`400 INVALID_NAME`・`NG_NAME`（タイトル） |
+| PATCH | `/v1/replays/:raceId` | | `{ "replayTitle"?: string\|null, "favorite"?: bool, "public"?: bool }`（1つ以上）→ `{ "saved": SavedReplay }`。値を置き換えるだけなので何度送っても同じ（冪等）。保存していない id は `404` |
+| DELETE | `/v1/replays/:raceId` | | → `{ "deleted": bool, "view": MyReplaysView }`。無い id は `deleted: false`（冪等）。R2 の写しも消す |
+| GET | `/v1/replays/:raceId/data` | | 自分の保存・名場面・最近のレース → `ReplayData`（37.4）。保存も最近のレースも無ければ `404`、元のログが消えていれば `410 REPLAY_EXPIRED` |
+| GET | `/v1/friends/:playerId/replays` | | フレンドの**公開**した保存だけ → `{ "playerId", "displayName", "replays": SavedReplay[] }`（`public` だけ、`favorite` は出さない） |
+| GET | `/v1/friends/:playerId/replays/:raceId/data` | | フレンドの公開リプレイ → `ReplayData`（`owner: "friend"`） |
+
+- タイトル（`replayTitle`）：プレイヤーが入力した文字列。NFKC・前後の空白を除く・1〜`titleMaxChars`（既定 24）文字・制御文字と URL は不可・NG 語は表示名と同じ一覧（`master.ng`）で `NG_NAME`。`null` は「タイトルなし」（画面はコース・着順から作る）。**訳さない**（英語の応答でもそのまま、`PLAYER_TEXT_KEYS`）。
+- フレンドの閲覧（`/v1/friends/...`）は、お互いにフレンド・どちらもブロック（支部フィードのミュート、§28 と同じ一覧）していない・持ち主が BAN でも削除の予約中・実行中でもない・その保存が `public` の時だけ。どれかに当たれば `404 NOT_FOUND`（理由は言わない）。
+- 削除の予約中（REQ-UXS-040）は保存・公開にできない（`409 DELETION_PENDING`）。一覧・自分の再生・非公開・削除はできる。
+
+### 37.3 形
+```json
+{ "enabled": true, "maxSaved": 20, "used": 2, "titleMaxChars": 24,
+  "saved": [ { "raceId": "r-1", "replayTitle": "差し切った日", "favorite": true, "public": false, "savedAt": 1794279600000,
+               "at": 1794270000000, "mode": "ranked", "trackId": "aoba_turf_1600", "place": 1, "fieldSize": 12, "slot": 3,
+               "moment": "win", "rulesetVersion": "1.3.0", "resultHash": "…", "sizeBytes": 18234, "playable": true, "reason": null } ],
+  "moments": [ { "raceId": "r-7", "at": …, "mode": "ranked", "trackId": "…", "place": 2, "fieldSize": 12, "slot": 0, "moment": "photo",
+                 "rulesetVersion": "1.3.0", "saved": false, "expiresAt": 1796690000000 } ],
+  "recent":  [ 同じ形（名場面でないもの、新しい順） ] }
+```
+- 並び：`saved` はお気に入り → 保存の新しい順。`moments`・`recent` は新しい順。`expiresAt` は保存できなくなる時刻（`at + momentDays`、本物の時刻だけ。「あと◯日」の煽りは出さない）。
+
+### 37.4 再生データ（`ReplayData`）と再生できない時
+```json
+{ "raceId": "r-1", "owner": "me", "replayTitle": "差し切った日", "resultHash": "…", "focusSlot": 3, "rulesetVersion": "1.3.0",
+  "playable": true, "reason": null,
+  "entrants": [ { "slot": 0, "horseName": "シンセイアカツキ", "owner": "cpu" }, { "slot": 3, "horseName": "アイボウ", "owner": "you" }, { "slot": 5, "horseName": "ハヤテ", "owner": "player" } ],
+  "replayLog": { "v": 1, "config": { … }, "endTick": 1834, "inputs": [ … ] } }
+```
+- `replayLog` は保存したログそのもの（英語の応答でも訳さない、`ID_KEYS`）。ただし**持ち主以外の人間の `playerId` は `p<slot>` に置き換える**（再計算に `playerId` は使わないので結果ハッシュは同じ。テストで確認）。他の人間のプレイヤーの名前は出さない（観戦 §8.4 と同じく、馬の名前だけ。`owner`: `you`／`player`／`cpu`、フレンドが見る時は持ち主が `owner_player`）。
+- `playable: false` の理由（`reason`）：`ruleset_retired`（`progression.myReplays.retiredRulesets` に入っている版。`+ev.…` を除いた元の版で比べる）・`ruleset_unknown`（今のエンジンが知らないキーの組、`rulesetKeyProblems`）。端末はさらに再計算の結果ハッシュを `resultHash` と比べ、違えば再生しない（`hash_mismatch`）。どの場合も**違うレースを流さず**「再生できません」と出す（一覧では保存は残り、削除できる）。
+- 端末の再生（`ReplayPlayer`）：全馬を最初から最後まで再計算して結果ハッシュを確かめてから再生する。速度 0.5×・1×・2×、カメラは任意の馬（既定は自分の馬）、「最後の200mへ」は選んでいる馬の残り 200m の tick へ飛ぶ。共有カードは REQ-UXS-071 と同じ `ShareCard`（`ReplayClip.Build` の最後の200m）。
+
+### 37.5 設定 `progression.myReplays`（リモート設定で変更可）
+`{ enabled, maxSaved, titleMaxChars, maxBytes, recentKeep, momentsKeep, momentDays, photoFinishTicks, retiredRulesets[] }`。上限（`MY_REPLAYS_HARD_LIMITS`、R2 の費用と保存期限から）：`maxSaved` 1..50、`titleMaxChars` 1..30、`maxBytes` 16 KiB..1 MiB、`recentKeep` 1..50、`momentsKeep` 0..20、`momentDays` 1..(`replayRetentionDays` − 1)、`photoFinishTicks` 0..5。起動時と各版で検証。
+
+### 37.6 KPI
+`replay_save`（サーバー、`s1` = `moment`／`recent`、`s2` = mode）・`replay_view`（サーバー、再生データを渡した時、`s1` = `own`／`friend`、`s2` = `playable`／理由）・`replay_share`（クライアント、`props.surface` = `my_replays`／`friend_replay`、OS の共有シートに渡した時）。
+
+### 37.7 アカウント削除
+削除の手順に `replays` を足す（`rival` の後）：スナップショットの `replayKeys`（保存した写し `myreplays/<playerId>/<raceId>.json`）を R2 から消す。状態の一覧は最後の `wipe` で消える。

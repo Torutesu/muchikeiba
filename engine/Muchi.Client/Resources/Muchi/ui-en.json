@@ -721,7 +721,7 @@
   "{date} 4:00 締め": "Closes {date} 4:00",
   "段に届きませんでした": "No milestone was reached",
   "次の週も支部のみんなで挑戦しましょう": "Try again next week with your branch",
-  "報酬を受け取りました": "Reward received",
+  "報酬はプレゼントボックスに届きました": "Your reward is in your gift box",
   "受け取りの準備中です": "Your reward is on its way",
   "貢献が最低限に届かず、今回は対象外でした": "Your contribution was below the minimum, so no reward this time",
   "共同目標「{goal}」が{n}段目に到達！": "Branch goal \"{goal}\": milestone {n} reached!"

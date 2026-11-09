@@ -66,7 +66,7 @@ static class TeamGoalChecks
 
         // week result sheet: once per closed week, kept on the device
         var sheet = m.Result;
-        check(sheet != null && sheet.TierText == "2段目に到達" && sheet.MineText == "報酬を受け取りました" && sheet.RewardText == "無償コイン10枚・配合素材×1" && sheet.Top.Count == 2, "team goal: week result sheet");
+        check(sheet != null && sheet.TierText == "2段目に到達" && sheet.MineText == "報酬はプレゼントボックスに届きました" && sheet.RewardText == "無償コイン10枚・配合素材×1" && sheet.Top.Count == 2, "team goal: week result sheet");
         m.DismissResult();
         check(m.Result == null && kv.Get(TeamGoalModel.KeySeenWeek) == "2026-12-07", "team goal: the result sheet is shown once per week");
         view = View.Replace("\"eligible\":true,\"paid\":true", "\"eligible\":false,\"paid\":false").Replace("2026-12-07", "2026-11-30");
@@ -98,7 +98,7 @@ static class TeamGoalChecks
         {
             var built = new List<string> { m.ProgressText, m.NextText, m.MyText, m.QualifiedText, m.TodayText, m.CappedText, m.EndsText, TeamGoalModel.RulesText, row.Line,
                 "最後の段に到達しました", "あと2レースで報酬の対象", "次の段まで あと3勝", "あなたの貢献 1回更新（報酬は1回更新から）", "共同目標はオンラインで見られます", "共同目標は準備中です", "支部に入ると共同目標に参加できます",
-                "段に届きませんでした", "次の週も支部のみんなで挑戦しましょう", "受け取りの準備中です", "貢献が最低限に届かず、今回は対象外でした", "報酬を受け取りました", "今日の上限に届きました。4:00に戻ります" };
+                "段に届きませんでした", "次の週も支部のみんなで挑戦しましょう", "受け取りの準備中です", "貢献が最低限に届かず、今回は対象外でした", "報酬はプレゼントボックスに届きました", "今日の上限に届きました。4:00に戻ります" };
             foreach (var x in m.Milestones) { built.Add(x.TierText); built.Add(x.TargetText); built.Add(x.RewardText); }
             foreach (var x in m.Contributors) built.Add(x.CountText);
             var r = m.Result;

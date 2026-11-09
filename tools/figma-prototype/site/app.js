@@ -3552,7 +3552,7 @@ async function TeamGoal() {
       Txt(lw.tier > 0 ? `${lw.tier}段目に到達` : '段に届きませんでした', 48, y + 44, 564, 30, lw.tier > 0 ? GOLD : MUTED, sh, { weight: 700 });
       Txt(`${lw.progress} / ${lw.targets[lw.targets.length - 1]}`, 48, y + 92, 300, 22, GOLD, sh, { weight: 700, cls: 'num' });
       if (lw.reward) Txt(tgReward(lw.reward), 48, y + 132, 564, 18, GOLD, sh, { weight: 500 });
-      Txt(lw.tier === 0 ? '次の週も支部のみんなで挑戦しましょう' : lw.paid ? '報酬を受け取りました' : lw.eligible ? '受け取りの準備中です' : '貢献が最低限に届かず、今回は対象外でした', 48, y + 168, 564, 17, lw.paid ? CYAN : MUTED, sh, { weight: 700 }).classList.add('tg-result-mine');
+      Txt(lw.tier === 0 ? '次の週も支部のみんなで挑戦しましょう' : lw.paid ? '報酬はプレゼントボックスに届きました' : lw.eligible ? '受け取りの準備中です' : '貢献が最低限に届かず、今回は対象外でした', 48, y + 168, 564, 17, lw.paid ? CYAN : MUTED, sh, { weight: 700 }).classList.add('tg-result-mine');
       Hair(48, y + 214, 564, sh);
       Kicker('貢献の多い支部員', 48, y + 234, sh);
       lw.top.slice(0, 5).forEach((x, i) => {

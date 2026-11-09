@@ -42,7 +42,7 @@ namespace Muchi.Game
         public string TierText;
         /// <summary>The reached tier's reward ("無償コイン10枚・配合素材×1"), or null.</summary>
         public string RewardText;
-        /// <summary>"報酬を受け取りました" / "受け取りの準備中です" / "貢献が最低限に届かず、今回は対象外でした".</summary>
+        /// <summary>"報酬はプレゼントボックスに届きました" / "受け取りの準備中です" / "貢献が最低限に届かず、今回は対象外でした".</summary>
         public string MineText;
         public List<GoalContributorRow> Top = new List<GoalContributorRow>();
     }
@@ -158,7 +158,7 @@ namespace Muchi.Game
                     Week = r.Week, Label = r.Label, Tier = r.Tier,
                     TierText = r.Tier > 0 ? r.Tier.ToString(CultureInfo.InvariantCulture) + "段目に到達" : "段に届きませんでした",
                     RewardText = r.Reward == null ? null : UxText.Reward(r.Reward, ItemName),
-                    MineText = r.Tier == 0 ? "次の週も支部のみんなで挑戦しましょう" : r.Paid ? "報酬を受け取りました" : r.Eligible ? "受け取りの準備中です" : "貢献が最低限に届かず、今回は対象外でした",
+                    MineText = r.Tier == 0 ? "次の週も支部のみんなで挑戦しましょう" : r.Paid ? "報酬はプレゼントボックスに届きました" : r.Eligible ? "受け取りの準備中です" : "貢献が最低限に届かず、今回は対象外でした",
                     Top = Rows(r.Top, r.Kind),
                 };
             }

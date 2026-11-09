@@ -66,12 +66,20 @@ v = await L.teamGoalCloseWeek();
 assert.ok(v.ok && v.value.lastWeek, 'last week result');
 assert.strictEqual(v.value.lastWeek.tier, tier);
 const mine = v.value.lastWeek;
-const after = (await L.view()).wallet.free;
+// §26.1 (Round 13 integration): the week reward is a background payout, so it waits in the gift box until claimed
+const box = await L.giftBox('box');
+const goalGifts = box.value.entries.filter((g) => g.source === 'team_goal');
+assert.strictEqual((await L.view()).wallet.free, before, 'nothing reaches the wallet before the claim');
 if (mine.eligible) {
   assert.ok(mine.paid, 'paid');
-  assert.strictEqual(after - before, mine.reward.freeCoins, 'free coins of the tier');
+  assert.strictEqual(goalGifts.length, 1, 'one team-goal gift');
+  assert.strictEqual(goalGifts[0].contents.freeCoins, mine.reward.freeCoins);
+  await L.giftClaimAll();
 }
+const after = (await L.view()).wallet.free;
+if (mine.eligible) assert.strictEqual(after - before, mine.reward.freeCoins, 'free coins of the tier (claimed from the box)');
 const again = await L.teamGoalCloseWeek();
+assert.strictEqual((await L.giftBox('box')).value.entries.filter((g) => g.source === 'team_goal').length, 0, 'closing again delivers nothing more');
 assert.strictEqual((await L.view()).wallet.free, after, 'closing again pays nothing more');
 assert.ok(again.value.current && again.value.current.week > mine.week, 'the next week is open');
 

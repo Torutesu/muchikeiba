@@ -90,6 +90,8 @@ static class Program
         await AssistChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 12: ライバル (home card, detail, week-result sheet, challenge, opt-out / block; REQ-RIVAL-*)");
         await RivalChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 14: 実況パック (CommentaryPackModel: list, sample, equip, calm confirm, keyed buy, T6, race templates, offline; REQ-CMT-*)");
+        await CommentaryPackChecks.Run(Check, Ruleset(), Root);
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

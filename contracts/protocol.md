@@ -1190,7 +1190,10 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 サーバーの正本。`npm run gen:client-locale` がクライアント用に `engine/Muchi.Client/Resources/Muchi/commentary-packs.json` へ同じ内容を書く（差があるとテストが落ちる）。
 ```json
 { "version": 1, "standardPackId": "standard",
-  "sample": { "trackId": "aoba_turf_1600", "seed": 3614, "fieldSize": 8, "seconds": 10 },
+  "sample": { "seed": 3614, "seconds": 10,
+              "track": { "id": "aoba_turf_1600", "surface": "turf", "distanceM": 1600, "segments": [ "…master/tracks.json と同じ…" ] },
+              "entrants": [ { "templateId": "t_kohaku", "name": "コハクノヒカリ", "style": "nige", "surface": "turf", "distMinM": 1400, "distMaxM": 2000,
+                              "stats": { "speed": 860, "stamina": 640, "burst": 700, "guts": 780, "temper": 480 } }, "…8頭…" ] },
   "packs": [
     { "id": "standard", "name": "標準", "description": "…", "order": 0, "acquire": { "kind": "default" } },
     { "id": "nekketsu", "name": "熱血", "description": "…", "order": 1,
@@ -1202,6 +1205,7 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 ```
 - `acquire.kind`：`default`（標準、1つだけ）／`achievement`（`achievementId`・`tier` に届いたら持ち物。値段なし・売らない）／`coins`（`price` 正の整数、`currency` `any` | `paidOnly`）。抽選・期間限定・セットを揃えた報酬は**作れない**（形にない）。
 - 名前・説明は日本語。英語は `master/locale-en.json`（§23、応答の境界で訳す）。
+- `sample`：試聴のストックのレース。コースは `master/tracks.json` と同じ形・同じ値、出走馬はテンプレート馬（名前の声 `voice/ja/name/*` がある）で、起動時に一致を確かめる。
 
 ### 36.2 重ね方（REQ-CMT-002）
 - パックの `phrases.<lang>` にある phrase key（`spurt`、`spurt@bellmoor`、`gate_open@ranked` …）は、標準のその key の言い回しを**置き換える**（足すのではない）。`priority`・`mustSay` は標準のまま（パックは文だけを持つ）。
@@ -1225,7 +1229,7 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 ### 36.6 `GET /v1/commentary/packs`（要認証、読み取りのみ）
 ```json
 { "equipped": "standard", "standardPackId": "standard",
-  "sample": { "trackId": "aoba_turf_1600", "seed": 3614, "fieldSize": 8, "seconds": 10 },
+  "sample": { "seed": 3614, "seconds": 10, "trackId": "aoba_turf_1600", "fieldSize": 8 },
   "notice": "実況の話し方だけが変わります。レースの結果・能力には影響しません。",
   "packs": [
     { "id": "standard", "name": "標準", "description": "…", "acquire": "default", "price": null, "currency": null, "forSale": false,
@@ -1235,6 +1239,8 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
       "unlock": { "achievementId": "races", "tier": 1, "label": "実績「出走の記録」1段目で入手", "progress": 3, "target": 10 } },
     { "id": "ochitsuki", "name": "落ち着いた解説", "acquire": "coins", "price": 300, "currency": "any", "forSale": true, "owned": false, "equipped": false, "unlock": null } ] }
 ```
+- `sample` は表示用の要約（`seed`・`seconds`・`trackId`・`fieldSize`）。走らせる中身はクライアントの `commentary-packs.json`。
+- `english`：`own`（パックの英語がある）／`standard`（英語では標準の実況、`englishNote`「英語では標準の実況で話します」）。
 - `equipped` は持っているパックだけ（装備していたパックを持たなくなった時・パックが無くなった時は `standard`）。`GET /v1/player`（bootstrap も）にも `commentaryPack: { "equipped": "…" }` が入る。
 - 値段はこのデータからだけ（クライアントは値段を持たない）。足りない時の案内は §29 の `GET /v1/shop/shortfall?for=coins&coins=<price>&kind=any|paid`。
 
@@ -1247,7 +1253,8 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 - 支払いは見た目の直販と同じ `wallet.spend`（有償から先、`paidOnly` は有償だけ、未精算の返金は `UNSETTLED_DEBT`、コイン不足は 409 `INSUFFICIENT_COINS` に §29 の `details.shortfall`）。台帳の理由は `commentary pack <id>`。同じ冪等キーの再送は最初の答えを返す（二重に払わない）。
 
 ### 36.9 試聴（REQ-CMT-008）
-- サーバーに問い合わせない。クライアントが `sample`（コース・シード・頭数）から決まった**ストックのレース**（テンプレート馬・プレイヤーなし・CPU だけ）を手元で走らせ、最後の直線の実況の始まりから `seconds` 秒ぶん（20Hz × 10 = 200 tick）の行をそのパックで作る（`CommentarySample.Build`）。持っていないパックでも聞ける。何度でも同じ文。
+- サーバーに問い合わせない。クライアントが `sample` の**ストックのレース**（決まったコース・シード・テンプレート馬8頭、プレイヤーなし・CPU だけ、`RaceMode.Friend`）を手元で走らせ、そのパックの実況から要所の行を大事な順（勝ち馬・最後の直線・ゲート・着順・叩き合い／写真判定・最初の先頭）に `seconds` 秒（20Hz × 10 = 200 tick）に収まるだけ選び、レースの順に**続けて**流す（`CommentarySample.Build` → `Lines`・`Offsets`・`TotalTicks`・`At(tick)`）。持っていないパックでも聞ける。何度でも同じ文。
+- KPI `commentary_pack_sample` は試聴を始めた時に1回（クライアント）。
 - 声の断片が端末にあれば声、無ければ字幕だけ（36.5）。
 
 ### 36.10 観戦・リプレイ・オフライン

@@ -20,6 +20,7 @@ namespace Muchi.Unity
         public const string RulesetResource = "Muchi/ruleset-params.default";     // engine/Muchi.Client/Resources
         public const string CommentaryResource = "Muchi/commentary-ja";            // engine/Muchi.Client/Resources
         public const string CommentaryEnResource = "Muchi/commentary-en";          // REQ-L10N-012
+        public const string CommentaryPacksResource = "Muchi/commentary-packs";    // REQ-CMT-001: 実況パック (copy of server/master)
         public const string UiEnResource = "Muchi/ui-en";                          // REQ-L10N-010: client-built texts
         public const string ServerEnResource = "Muchi/server-en";                  // REQ-L10N-011: names in race configs, cached server texts
         /// <summary>The language preference the settings screen toggles (same key as Runtime/LocaleService).</summary>
@@ -32,6 +33,16 @@ namespace Muchi.Unity
         public static GameBackend Backend { get; private set; }
         public static AnalyticsClient Analytics { get; private set; }
         public static CommentaryTemplates Commentary { get; private set; }
+        /// <summary>REQ-CMT-*: the commentary packs the device can speak (null when the resource is missing).</summary>
+        public static CommentaryPackCatalog CommentaryPacks { get; private set; }
+
+        /// <summary>
+        /// REQ-CMT-002/009: the templates a race (or a spectated race / replay) speaks — the viewer's equipped pack over the
+        /// current language's standard commentary; the standard when the pack is unknown here. The tutorial speaks the
+        /// standard anyway.
+        /// </summary>
+        public static CommentaryTemplates RaceCommentary()
+            => CommentaryPackModel.TemplatesFor(Commentary, CommentaryPacks, CommentaryPackModel.EquippedOf(Backend, Store));
         public static PartnerCatalog Partners { get; private set; }
         public static readonly PlayerPrefsStore Store = new PlayerPrefsStore();
 
@@ -45,6 +56,7 @@ namespace Muchi.Unity
             foreach (var r in new[] { ServerEnResource, UiEnResource }) if (LoadText(r) is string t) Loc.LoadEnglish(t);
             Loc.SetLocale(Store.Get(LanguagePref));
             Commentary = LoadText(Loc.IsEnglish ? CommentaryEnResource : CommentaryResource) is string c ? CommentaryTemplates.Parse(c) : null;
+            CommentaryPacks = LoadText(CommentaryPacksResource) is string cp ? CommentaryPackCatalog.Parse(cp) : null;
             Partners = LoadText(PartnerCatalogResource) is string p ? PartnerCatalog.Parse(p) : null;
             string rulesetJson = LoadText(RulesetResource) ?? throw new InvalidOperationException("Resources/" + RulesetResource + ".json missing (com.muchi.client package not imported?)");
             var ruleset = RaceFactory.ParseRuleset(rulesetJson);

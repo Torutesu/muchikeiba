@@ -701,10 +701,10 @@
 - REQ-CMT-005 文の検査：起動時（`validateCommentaryPacks`）にカタログ・値段・実績・言い回しの id・プレースホルダーの種類・禁止語（法務の語、公営競技の賭けの語、NG 名、英語の禁止語、英語に日本語なし）。クライアントの読み込み時とテストで明示のフォールバックとプレースホルダーが標準の部分集合であること（言語ごと）。標準の実況も同じ禁止語の検査を通る。
 - REQ-CMT-006 声：固定の断片 `voice/ja/phrase/<variantId>_p<n>` をアセットの一覧に載せる。名前・数字は共通。断片が1つでも無い行は字幕だけ。録音の一覧は `docs/handoff-codex-round14-commentary-packs.md`。
 - REQ-CMT-007 入手：`default`／`achievement`（決まった実績の段に届いたら持ち物、売らない、抽選なし）／`coins`（決まった値段で直販）。抽選・期間限定・セットを揃えた報酬は形にない。
-- REQ-CMT-008 試聴：買う前に、ストックのレース（`sample`：コース・シード・頭数）を手元で走らせ、最後の直線から10秒の実況をそのパックで出す（`CommentarySample.Build`）。サーバーに問い合わせない。何度でも同じ。
+- REQ-CMT-008 試聴：買う前に、ストックのレース（`sample`：決まったコース・シード・テンプレート馬）を手元で走らせ、そのパックの要所の行（勝ち馬・最後の直線・ゲート・着順…）を10秒に収まるだけ続けて流す（`CommentarySample.Build`）。サーバーに問い合わせない。何度でも同じ。持っていないパックも聞ける。
 - REQ-CMT-009 装備：`PUT /v1/commentary/equipped`。持っているパックだけ。同じ値の再送は何も変えない。実績のパックは装備した時に持ち物として記録。プレイヤーごと、観戦・リプレイは見ている人のパック。端末はオフライン用に最後のパックを覚える。
 - REQ-CMT-010 購入：`POST /v1/commentary/packs/:packId/buy`（冪等キー必須）。`wallet.spend`（有償から先・有償限定・未精算の返金で止まる・不足は §29 の案内）。持っていれば `ALREADY_PURCHASED`、売らないパックは `NOT_ELIGIBLE`、削除の予約中は `DELETION_PENDING`。`equip: true` で続けて装備。
 - REQ-CMT-011 表示：`GET /v1/commentary/packs`（持っているか・装備・値段・実績の進み・試聴のレース）、`GET /v1/player` の `commentaryPack`。値段はサーバーのデータからだけ。日本語と英語。
 - REQ-CMT-012 KPI：`commentary_pack_equip`・`commentary_pack_buy`（サーバー）、`commentary_pack_sample`（クライアント）。クエリは `docs/ops/kpi-queries.md`。
-- REQ-CMT-013 クライアント：`Muchi.Client` `CommentaryPackCatalog`・`CommentaryTemplates.WithPack`・`CommentaryPackLint`・`CommentarySample`・`ApiClient.GetCommentaryPacksAsync`/`EquipCommentaryPackAsync`/`BuyCommentaryPackAsync`・`PlayerView.CommentaryPack`・`Analytics.CommentaryPackSample`。Unity のゲーム層 `CommentaryPackModel`（一覧・試聴・装備・購入の確認・レースのテンプレート）。
+- REQ-CMT-013 クライアント：`Muchi.Client` `CommentaryPackCatalog`・`CommentaryTemplates.WithPack`・`CommentaryPackLint`・`CommentarySample`・`ApiClient.GetCommentaryPacksAsync`/`EquipCommentaryPackAsync`/`BuyCommentaryPackAsync`・`PlayerView.CommentaryPack`・`AnalyticsEvent.CommentaryPackSample`。Unity のゲーム層 `CommentaryPackModel`（一覧・試聴・装備・購入の確認・レースのテンプレート）。
 - REQ-CMT-014 プロトタイプ：設定／ショップの実況パック画面（試聴の字幕のティッカー、装備、購入の確認）、レースの HUD が装備したパックで話す。ムチ一閃の見た目、日本語と英語、e2e と英語の流れ。

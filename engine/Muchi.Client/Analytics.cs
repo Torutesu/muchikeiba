@@ -46,6 +46,9 @@ namespace Muchi.Client
             if (assist != AssistLevel.Off && mode != "tutorial") props.Set("assist", AssistLevels.Wire(assist));
             return new AnalyticsEvent("race_start", atMs, props);
         }
+        /// <summary>REQ-CMT-012: a commentary pack sample started (try before buy).</summary>
+        public static AnalyticsEvent CommentaryPackSample(long atMs, string packId, bool owned)
+            => new AnalyticsEvent("commentary_pack_sample", atMs, JsonNode.Obj().Set("packId", Id(packId, 32, "packId")).Set("owned", owned));
         /// <summary>stage: open | cancel | fail | store_success (the server records the verified purchase itself).</summary>
         public static AnalyticsEvent PurchaseFlow(long atMs, string stage, string productId)
         {

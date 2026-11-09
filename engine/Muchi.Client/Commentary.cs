@@ -62,6 +62,14 @@ namespace Muchi.Client
         public readonly Dictionary<string, PhraseDef> Phrases = new Dictionary<string, PhraseDef>();
 
         /// <summary>
+        /// REQ-CMT-003: the commentary pack these templates speak ("standard" = commentary-ja/en.json as shipped). A pack
+        /// changes the variant salt, so the same race sounds the same in the same pack (replays, shared clips).
+        /// </summary>
+        public string PackId = CommentaryPackCatalog.StandardPackId;
+        /// <summary>The standard templates a pack was laid over (<see cref="CommentaryPackCatalog.Apply"/>); null for the standard itself.</summary>
+        public CommentaryTemplates Standard;
+
+        /// <summary>
         /// Optional kinds the shipped templates carry (REQ-COMM-*; old templates without them speak exactly as before):
         /// race-story lines and the mid-race ground call. Variants of any kind may also be specialised per race mode
         /// ("kind@tutorial", "kind@ranked", …: tone) and per venue ("kind@nordhaven": the venue's own lines).
@@ -116,6 +124,9 @@ namespace Muchi.Client
             }
             return t;
         }
+
+        /// <summary>The template splitter (fixed clips and placeholders), for templates built in code (commentary packs).</summary>
+        public static List<TemplatePart> SplitParts(string id, string text) => Split(id, text);
 
         private static List<TemplatePart> Split(string id, string text)
         {
@@ -231,6 +242,8 @@ namespace Muchi.Client
         {
             _t = templates ?? throw new ArgumentNullException(nameof(templates));
             _cfg = config ?? throw new ArgumentNullException(nameof(config));
+            // REQ-CMT-002: the tutorial always speaks the standard (its teaching lines @tutorial), whatever pack is equipped
+            if (config.Mode == RaceMode.Tutorial && _t.Standard != null) _t = _t.Standard;
             _focus = focusSlot;
             _mode = ModeName(config.Mode);
             _venue = VenueOf(config.Track);
@@ -527,7 +540,9 @@ namespace Muchi.Client
             _kindCount.TryGetValue(c.Key, out int n);
             _kindCount[c.Key] = n + 1;
             ulong salt = 0xcbf29ce484222325UL;
-            foreach (char ch in c.Key) { salt ^= ch; salt *= 0x100000001b3UL; }
+            // REQ-CMT-003: a pack hashes "<packId>/<key>"; the standard hashes the key alone (exactly as before)
+            string saltKey = _t.PackId == null || _t.PackId == CommentaryPackCatalog.StandardPackId ? c.Key : _t.PackId + "/" + c.Key;
+            foreach (char ch in saltKey) { salt ^= ch; salt *= 0x100000001b3UL; }
             var variants = c.Def.Variants;
             var v = variants[(int)(SeedMix.Derive(_cfg.Seed, salt, (ulong)n) % (ulong)variants.Count)];
 

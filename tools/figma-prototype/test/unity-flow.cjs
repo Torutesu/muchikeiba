@@ -15,6 +15,8 @@
 //  7. Round 12 (REQ-RIVAL-*): the rival strip on home, the rival detail, a race together, the week-result sheet.
 //  7. Round 13 (REQ-WCH-*): the weekly challenge — the home card, the list (server condition lines, loan horse, badge, rules,
 //     next week), a race on the real engine with the condition in the HUD, the server's verdict on the result screen.
+//  8. Round 14 (REQ-MYRP-*): マイリプレイ — list, 残す, rename (NG refused), favourite, public, the WASM player (2×, camera,
+//     last 200 m, share), a friend's public replay, 「再生できません」.
 //  6. Round 11 (REQ-COL-*, REQ-ACH-*): the 図鑑 (obtained / seen / unknown silhouettes, completion with no reward and no scout
 //     link), achievements (claim one tier, claim all) and equipping an achievement title.
 //  7. Round 12 (REQ-SHORT-*): the coin shortfall sheet (T6) from the paid step-up → the purchase confirmation → back to the
@@ -308,6 +310,75 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
   }
 
+  // round 14 (REQ-MYRP-*): マイリプレイ — two demo races on the real engine → the list (best moments / recent) → 残す → the
+  // replay sheet → rename (typed, NG word refused) → favourite, public → the player (WASM re-simulation: 2×, camera on
+  // another horse, the last 200 m, share card + replay_share) → a friend's public replay → 「再生できません」 (retired ruleset)
+  async function myReplaysFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(() => globalThis.__muchi.show('MyReplays')); await waitScreen('my-replays'); await waitIn('.rp-saved');
+    await shot('my-replays-empty', 300);
+    await click('デモ：レースを走る'); await waitIn('.rp-row');
+    await click('デモ：レースを走る'); await page.waitForFunction(() => document.querySelectorAll('.screen.in .rp-row').length >= 2, null, { timeout: 15000 });
+    await shot('my-replays-moments', 400);
+    await page.locator('.screen.in .rp-keep:not(.disabled)').first().click(); await page.waitForTimeout(400); await waitIn('.rp-card');
+    await page.locator('.screen.in .rp-keep:not(.disabled)').first().click(); await page.waitForTimeout(400);
+    await page.waitForFunction(() => document.querySelectorAll('.screen.in .rp-card').length >= 2, null, { timeout: 15000 });
+    assert.match(await page.locator('.screen.in .rp-count').textContent(), /2 \/ 20/, 'my replays: two saved of 20');
+    await shot('my-replays-saved', 400);
+    await page.locator('.screen.in .rp-card').first().click(); await waitIn('.rp-sheet');
+    await shot('my-replays-sheet', 400);
+    await page.locator('.screen.in .rp-sheet .rp-rename').click(); await waitIn('.rp-rename-sheet');
+    const input = page.locator('.screen.in .rp-rename-sheet input.field');
+    const ng = await page.evaluate(() => globalThis.__muchi.logic.replays.ngSample());
+    await input.fill(ng); await page.locator('.screen.in .rp-rename-save').click(); await page.waitForTimeout(400);
+    assert.match(await page.locator('.screen.in .rp-rename-error').textContent(), /使えません/, 'my replays: an NG title is refused');
+    await shot('my-replays-rename-ng', 300);
+    await input.fill('差し切った日'); await page.locator('.screen.in .rp-rename-save').click(); await page.waitForTimeout(500);
+    await waitScreen('my-replays'); await waitIn('.rp-card .typed');
+    assert.equal(await page.locator('.screen.in .rp-card .rp-title.typed').first().textContent(), '差し切った日');
+    await page.locator('.screen.in .rp-card[data-favorite="false"]').first().click(); await waitIn('.rp-sheet');
+    await page.locator('.screen.in .rp-sheet .rp-fav').click(); await page.waitForTimeout(500); await waitIn('.rp-card[data-favorite="true"]');
+    await page.locator('.screen.in .rp-card').first().click(); await waitIn('.rp-sheet');
+    await page.locator('.screen.in .rp-sheet .rp-public').click(); await page.waitForTimeout(500); await waitIn('.rp-card[data-public="true"]');
+    await shot('my-replays-favourite-public', 400);
+    // the player
+    await page.locator('.screen.in .rp-card').first().click(); await waitIn('.rp-sheet');
+    await page.locator('.screen.in .rp-sheet .rp-play').click(); await waitScreen('replay-player', 30000);
+    await page.waitForFunction(() => (globalThis.__muchi.replay?.t ?? 0) > 500, null, { timeout: 20000 });
+    await shot('replay-player', 300);
+    await page.locator('.screen.in .rp-speed').click(); await page.waitForTimeout(200);
+    assert.equal(await page.evaluate(() => globalThis.__muchi.replay.speed), 2, 'replay: 2×');
+    const cam0 = await page.evaluate(() => globalThis.__muchi.replay.camera);
+    await page.locator('.screen.in .rp-cam-next').click(); await page.locator('.screen.in .rp-cam-next').click(); await page.waitForTimeout(200);
+    assert.notEqual(await page.evaluate(() => globalThis.__muchi.replay.camera), cam0, 'replay: the camera follows another horse');
+    await page.locator('.screen.in .rp-jump').click();
+    await page.waitForFunction(() => globalThis.__muchi.replay.remainingM <= 200, null, { timeout: 5000 });
+    await page.locator('.screen.in .rp-pause').click(); await page.waitForTimeout(400);
+    await shot('replay-player-last200', 300);
+    await page.locator('.screen.in .rp-share').click(); await waitIn('.rp-share-sheet');
+    await shot('replay-share', 400);
+    await page.locator('.screen.in .rp-share-go').click(); await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(() => globalThis.__muchi.lastKpi), 'replay_share');
+    await click('BACK'); await waitScreen('my-replays');
+    // a friend's public replay
+    await page.locator('.screen.in .rp-friend').click(); await waitScreen('friend-replays', 30000); await waitIn('.rp-card');
+    await shot('friend-replays', 400);
+    await page.locator('.screen.in .rp-card').first().click(); await waitScreen('replay-player', 30000);
+    await page.waitForFunction(() => (globalThis.__muchi.replay?.t ?? 0) > 300, null, { timeout: 20000 });
+    await shot('friend-replay-player', 300);
+    await click('BACK'); await waitScreen('friend-replays'); await click('BACK'); await waitScreen('my-replays');
+    // a retired ruleset: never played
+    await page.evaluate(() => globalThis.__muchi.logic.replays.demoRetired(true));
+    await page.evaluate(() => globalThis.__muchi.show('MyReplays')); await waitScreen('my-replays'); await waitIn('.rp-card[data-playable="false"]');
+    await page.locator('.screen.in .rp-card').first().click(); await waitIn('.rp-sheet .rp-unplayable');
+    await shot('my-replays-unplayable-sheet', 300);
+    await page.evaluate(async () => { const v = (await globalThis.__muchi.logic.replays.view()).value; return globalThis.__muchi.show('ReplayPlayer', v.saved[0].raceId, {}); });
+    await waitScreen('replay-unplayable'); await shot('replay-unplayable', 400);
+    assert.match(await page.locator('.screen.in').innerText(), /再生できません/);
+    await page.evaluate(() => globalThis.__muchi.logic.replays.demoRetired(false));
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
+  }
+
   // round 9 (06 §6.5 / §7 item 7): banner calendar with real end times, pity meter, step-up, reveal → summary, the end
   // of a limited banner. The logic clock is set to 2026-11-06 12:00 JST so pickup_ginga (11/1–11/30) is open.
   async function scoutLiveOps() {
@@ -556,6 +627,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await challengeFlow();
   await hallFlow();
   await silksFlow();
+  await myReplaysFlow();
   await page.evaluate(() => globalThis.__muchi.show('Scout')); await waitScreen('scout'); await shot('scout', 500);
   await click('提供割合'); await shot('scout-rates', 400); await click('BACK');
   await waitScreen('scout'); await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal'); await shot('scout-paid-reveal', 700);

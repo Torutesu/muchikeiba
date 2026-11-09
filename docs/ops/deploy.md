@@ -235,4 +235,5 @@ gcloud run services update-traffic muchi-verifier-production --to-revisions=<前
 - **Cloudflare**：Usage Based Billing の通知。Durable Objects は WebSocket 休止で待機中の時間課金がかからない設計。R2 はリプレイの保存期限（日次の削除処理）で容量を抑える。
 - **Firebase Auth**：匿名ユーザーの自動削除を有効にする（MAU の節約）。
 - **Analytics Engine**：アプリからのイベントは1人あたり毎分30バッチ・1日2,000件まで（サーバー側で制限済み）。
+- **マイリプレイ**（REQ-MYRP-*）の保存は `myreplays/<playerId>/<raceId>.json`（1件 ≤ `maxBytes` 256 KiB、1人 ≤ 20件）で、保存期限の削除の対象外。アカウント削除の手順（`replays`）とプレイヤーの削除操作で消える。
 - **ゴースト**（タイムアタック）は保存期限の削除対象外なので、シーズンが溜まったら別途整理する（未実装・要対応）。

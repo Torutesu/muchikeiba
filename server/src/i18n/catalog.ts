@@ -175,13 +175,13 @@ export function textIn(locale: Locale, s: string, cat: Catalog): string {
  * A JSON value in the locale: every string value translated (object keys, ids and numbers untouched). `ja` returns the
  * value itself. Used on every response body at the boundary (http/app.ts) and on push messages (domain/push.ts).
  */
-/** Fields that hold identifiers, never display text (asset and voice keys may embed a Japanese name). */
-export const ID_KEYS = new Set(['id', 'key', 'voiceName', 'asset', 'assetKey', 'icon', 'templateId', 'clipKey', 'clipKeys']);
+/** Fields that hold identifiers, never display text (asset and voice keys may embed a Japanese name; `replayLog` is re-simulated byte for byte, REQ-MYRP-008). */
+export const ID_KEYS = new Set(['id', 'key', 'voiceName', 'asset', 'assetKey', 'icon', 'templateId', 'clipKey', 'clipKeys', 'replayLog']);
 /**
  * Fields that only ever hold what a player typed (display, branch, plate names and the names copied from them): never
  * looked up, even when the name happens to equal a table entry (a player called 「決勝」 stays 「決勝」, QA R11).
  */
-export const PLAYER_TEXT_KEYS = new Set(['displayName', 'teamName', 'plateName', 'ownerName', 'opponentName', 'inviterName', 'inviteeName', 'fromName', 'byName', 'anonName', 'rivalName', 'horseName']);
+export const PLAYER_TEXT_KEYS = new Set(['displayName', 'teamName', 'plateName', 'ownerName', 'opponentName', 'inviterName', 'inviteeName', 'fromName', 'byName', 'anonName', 'rivalName', 'horseName', 'replayTitle']);
 /** `name:シンセイアカツキ`, `voice/ja/name/…`: an identifier, not a text. */
 const ID_LIKE = /^[a-z][a-z0-9_]*[:/]/;
 

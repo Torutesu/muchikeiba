@@ -195,6 +195,8 @@ export interface Progression {
   teamGoal?: import('./teamGoal.js').TeamGoalConfig;
   /** REQ-HOF-*: 殿堂 and the retirement ceremony (hallOfFame.ts, validated by hallProblems). Absent / disabled = none. */
   hall?: import('./hallOfFame.js').HallConfig;
+  /** REQ-MYRP-*: マイリプレイ (myReplays.ts, validated by myReplaysProblems). Absent / disabled = no saved replays. */
+  myReplays?: import('./myReplays.js').MyReplaysConfig;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */

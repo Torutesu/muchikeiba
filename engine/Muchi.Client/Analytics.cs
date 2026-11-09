@@ -126,6 +126,13 @@ namespace Muchi.Client
             return new AnalyticsEvent("share", atMs, JsonNode.Obj().Set("kind", kind));
         }
 
+        /// <summary>REQ-MYRP-014: a saved replay was handed to the OS share sheet. surface: my_replays | friend_replay.</summary>
+        public static AnalyticsEvent ReplayShare(long atMs, string surface)
+        {
+            if (surface != "my_replays" && surface != "friend_replay") throw new ArgumentException("unknown replay share surface " + surface);
+            return new AnalyticsEvent("replay_share", atMs, JsonNode.Obj().Set("surface", surface));
+        }
+
         /// <summary>The invite code was handed to the OS share sheet or copied (REQ-INV-011). channel: os_share | copy_code | copy_link.</summary>
         public static AnalyticsEvent InviteShare(long atMs, string channel)
         {

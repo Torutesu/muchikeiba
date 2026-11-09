@@ -40,6 +40,7 @@ import { EQUIP_SOURCES } from '../domain/commentaryPacks.js';
 import type { RivalService } from '../domain/rivalService.js';
 import { HISTORY_LIMITS, historyQuery, REF_RE, SUPPORT_TOPICS } from '../domain/history.js';
 import type { DesignInput, SilksDesign } from '../domain/silksEditor.js';
+import type { MyReplaysService } from '../domain/myReplaysService.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -77,7 +78,8 @@ export type PlayerMethod =
   | 'exchangeView' | 'exchangeBuy'
   | 'wchView' | 'wchStart' | 'wchPrepare' | 'wchAbort' | 'wchRecord'
   | 'teamGoalReward' | 'goalPlayerView'
-  | 'hallMine' | 'hallViewer' | 'hallNoteView' | 'horseCareer' | 'hallAck' | 'hallSettings';
+  | 'hallMine' | 'hallViewer' | 'hallNoteView' | 'horseCareer' | 'hallAck' | 'hallSettings'
+  | 'myReplays' | 'replayPrepareSave' | 'replayCommitSave' | 'replayForget' | 'replayUpdate' | 'replayDelete' | 'replayOwnRef' | 'replayShared' | 'replayViewed';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -141,6 +143,8 @@ export interface AppContext {
   invite?: InviteService;
   /** REQ-RIVAL-*: weekly rival (domain/rivalService.ts). Absent → the routes answer NOT_FOUND. */
   rival?: RivalService;
+  /** REQ-MYRP-*: マイリプレイ (domain/myReplaysService.ts). Absent → the routes answer NOT_FOUND. */
+  myReplays?: MyReplaysService;
   clock?: () => number;
   paidBalance(): Promise<unknown>;
   /**
@@ -262,6 +266,11 @@ const stud = (c: AppContext) => {
   if (!c.stud || !c.master.progression.stud) throw new AppError('NOT_FOUND', 'stud lending is not available');
   return c.stud;
 };
+const myReplays = (c: AppContext) => {
+  if (!c.myReplays) throw new AppError('NOT_FOUND', 'my replays are not available');
+  return c.myReplays;
+};
+const replayTitle = z.string().max(200).nullable();
 const spectate = (c: AppContext) => {
   if (!c.spectate) throw new AppError('NOT_FOUND', 'spectating is not available');
   return c.spectate;
@@ -912,6 +921,22 @@ export const routes: Route[] = [
     return c.player(u).invoke('historyTicket', u, b.refs, b.topic);
   } },
   // admin
+  // マイリプレイ (REQ-MYRP-*, contracts/protocol.md §37)
+  { method: 'GET', path: '/v1/replays', auth: 'player', handler: async (_r, _p, c, u) => myReplays(c).view(u) },
+  { method: 'POST', path: '/v1/replays', auth: 'player', handler: async (r, _p, c, u) => {
+    const key = idem(r);
+    const b = await body(r, z.object({ raceId: z.string().min(1).max(128), replayTitle: replayTitle.optional() }).strict());
+    return myReplays(c).save(u, b.raceId, b.replayTitle ?? null, key);
+  } },
+  { method: 'PATCH', path: '/v1/replays/:raceId', auth: 'player', handler: async (r, p, c, u) => {
+    const b = await body(r, z.object({ replayTitle: replayTitle.optional(), favorite: z.boolean().optional(), public: z.boolean().optional() }).strict()
+      .refine((x) => x.replayTitle !== undefined || x.favorite !== undefined || x.public !== undefined, 'nothing to change'));
+    return myReplays(c).update(u, p.raceId!, b);
+  } },
+  { method: 'DELETE', path: '/v1/replays/:raceId', auth: 'player', handler: async (_r, p, c, u) => myReplays(c).remove(u, p.raceId!) },
+  { method: 'GET', path: '/v1/replays/:raceId/data', auth: 'player', handler: async (_r, p, c, u) => myReplays(c).data(u, p.raceId!) },
+  { method: 'GET', path: '/v1/friends/:playerId/replays', auth: 'player', handler: async (_r, p, c, u) => myReplays(c).friendList(u, p.playerId!) },
+  { method: 'GET', path: '/v1/friends/:playerId/replays/:raceId/data', auth: 'player', handler: async (_r, p, c, u) => myReplays(c).friendData(u, p.playerId!, p.raceId!) },
   // weekly rival (REQ-RIVAL-*, contracts/protocol.md §28)
   { method: 'GET', path: '/v1/rival', auth: 'player', handler: async (_r, _p, c, u) => (c.rival ? c.rival.view(u) : { enabled: false }) },
   { method: 'PUT', path: '/v1/rival/settings', auth: 'player', handler: async (r, _p, c, u) => rival(c).setOptOut(u, (await body(r, z.object({ optOut: z.boolean() }).strict())).optOut) },

@@ -132,6 +132,16 @@ export function settleRace(config: RaceStartConfig, final: FinalOutcome, ratings
   if (final.finishTicks && final.finishTicks.length === final.order.length) final.order.forEach((slot, i) => finishOf.set(slot, final.finishTicks![i]!));
   // REQ-RIVAL-004: the same confirmed places for every rider (both rivals' objects count the same race)
   const field = humans.map((e) => ({ playerId: e.playerId!, place: placeOf.get(e.slot) ?? config.entrants.length }));
+  // REQ-MYRP-001/002: the gap to the neighbouring places (photo finish) from the confirmed finish ticks
+  const ticksInOrder = final.finishTicks && final.finishTicks.length === final.order.length ? final.finishTicks : null;
+  const marginOf = (slot: number): number | null => {
+    if (!ticksInOrder) return null;
+    const i = final.order.indexOf(slot);
+    const t = ticksInOrder[i];
+    if (i < 0 || t === undefined || t < 0) return null;
+    const gaps = [ticksInOrder[i - 1], ticksInOrder[i + 1]].filter((x): x is number => x !== undefined && x >= 0).map((x) => Math.abs(x - t));
+    return gaps.length ? Math.min(...gaps) : null;
+  };
   for (const h of humans) {
     const ft = finishOf.get(h.slot);
     out[h.playerId!] = {
@@ -143,6 +153,7 @@ export function settleRace(config: RaceStartConfig, final: FinalOutcome, ratings
       horseId: h.horse.id, // REQ-HOF-002: whose career this race counts for
       oldRating: ratings[h.playerId!] ?? null,
       ...(config.mode === 'ranked' || config.mode === 'friend' ? { field } : {}),
+      ...(config.mode !== 'tutorial' ? { replay: { slot: h.slot, resultHash: final.hash, rulesetVersion: String(config.ruleset.rulesetVersion), trackId: config.track.id, marginTicks: marginOf(h.slot) } } : {}),
       ...ev,
     };
   }

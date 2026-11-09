@@ -85,6 +85,12 @@ namespace Muchi.Client
         ChallengeSessionExpired,
         ChallengeSessionUsed,
         ChallengeResultMismatch,
+        /// <summary>REQ-MYRP-003: the free saved-replay slots are full (409).</summary>
+        ReplayLimit,
+        /// <summary>REQ-MYRP-003/008: the race's replay is no longer kept (410).</summary>
+        ReplayExpired,
+        /// <summary>REQ-MYRP-003: the replay is larger than the per-replay cap (413).</summary>
+        ReplayTooLarge,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -179,6 +185,9 @@ namespace Muchi.Client
             ["CHALLENGE_SESSION_EXPIRED"] = ApiErrorCode.ChallengeSessionExpired,
             ["CHALLENGE_SESSION_USED"] = ApiErrorCode.ChallengeSessionUsed,
             ["CHALLENGE_RESULT_MISMATCH"] = ApiErrorCode.ChallengeResultMismatch,
+            ["REPLAY_LIMIT"] = ApiErrorCode.ReplayLimit,
+            ["REPLAY_EXPIRED"] = ApiErrorCode.ReplayExpired,
+            ["REPLAY_TOO_LARGE"] = ApiErrorCode.ReplayTooLarge,
             ["VERIFIER_UNAVAILABLE"] = ApiErrorCode.VerifierUnavailable,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };

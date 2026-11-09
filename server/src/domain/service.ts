@@ -72,6 +72,10 @@ import {
 } from './comeback.js';
 import { claimAllGifts, claimGift, expireGifts, giftBadge, giftBoxView, giftGiver, giftsNeedExpiry, nextGiftWake, type OpsTitleKey } from './giftBox.js';
 import { finishTraining, startTraining, trainingDelta, trainingTick, trainingView, useTrainingItem } from './training.js';
+import {
+  commitSave, deleteSaved, forgetRecent, myReplaysView, noteRaceForReplays, ownReplayRef, prepareSave, sharedFor, updateSaved, validateReplayTitle,
+  type ReplayPatch,
+} from './myReplays.js';
 import { assistView, markAssistPromptSeen, noteRaceForAssist, setAssist, type AssistLevel, type AssistSource } from './assist.js';
 import { buyPack, commentaryPackBadge, equipPack, packsView, type EquipSource } from './commentaryPacks.js';
 import {
@@ -845,6 +849,33 @@ export class PlayerService {
     });
   }
 
+  // ---------------------------------------------------------------- マイリプレイ (REQ-MYRP-*, myReplays.ts; R2 copies by MyReplaysService)
+  myReplays(id: string) { return this.tx(id, null, (s, now) => myReplaysView(this.d.master, s, now)); }
+  /** Save step 1 (read only): the existing save, or the race to copy. Checks the title first so nothing is uploaded for a bad one. */
+  async replayPrepareSave(id: string, raceId: string, title: string | null) {
+    const s = await this.load(id);
+    const r = prepareSave(this.d.master, s, raceId, this.d.clock());
+    if (!r.existing) validateReplayTitle(this.d.master, title);
+    return r;
+  }
+  /** Save step 2, after the copy is in R2 (keyed with the client's key: a retry returns the first answer). */
+  replayCommitSave(id: string, raceId: string, title: string | null, sizeBytes: number, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => commitSave(this.d.master, s, raceId, title, sizeBytes, now, emit));
+  }
+  replayForget(id: string, raceId: string) { return this.tx(id, null, (s) => { forgetRecent(s, raceId); return true; }); }
+  replayUpdate(id: string, raceId: string, patch: ReplayPatch) { return this.tx(id, null, (s) => updateSaved(this.d.master, s, raceId, patch)); }
+  replayDelete(id: string, raceId: string) { return this.tx(id, null, (s, now) => deleteSaved(this.d.master, s, raceId, now)); }
+  async replayOwnRef(id: string, raceId: string) { return ownReplayRef(this.d.master, await this.load(id), raceId, this.d.clock()); }
+  /** REQ-MYRP-010: the owner's public saves for a friend (null = hidden). */
+  async replayShared(id: string, viewerId: string) {
+    if (await this.wiped(id)) return null;
+    return sharedFor(this.d.master, await this.load(id), viewerId, this.d.clock());
+  }
+  /** REQ-MYRP-014: replay_view on the viewer's own record. */
+  replayViewed(id: string, source: 'own' | 'friend', status: string, mode: string) {
+    return this.tx(id, null, (_s, _now, emit) => { emit({ name: 'replay_view', s1: source, s2: status, s3: mode }); return true; });
+  }
+
   async claimPass(id: string, track: 'free' | 'premium', level: number, idemKey: string | null) {
     return this.tx(id, this.requireKey(idemKey), (s, now) => claimPass(this.d.master, s, track, level, now));
   }
@@ -866,7 +897,10 @@ export class PlayerService {
       for (const [k, at] of Object.entries(applied)) if (now - at > APPLIED_RACE_KEEP_MS) delete applied[k];
       if (applied[r.raceId] !== undefined) return { duplicate: true as const, event: null };
       applied[r.raceId] = now;
+      // REQ-MYRP-002: the course best before this race decides a personal-best moment
+      const prevBest = r.details?.trackId ? s.stats.byTrack[r.details.trackId]?.bestFinishTick ?? null : null;
       const base0 = applyRaceResult(this.d.master, s, r, now);
+      noteRaceForReplays(this.d.master, s, r, prevBest, now); // REQ-MYRP-001: offer the race in マイリプレイ
       noteRivalRace(this.d.master, s, r, now, emit); // REQ-RIVAL-004: head to head (ranked) / challenge (friend)
       // REQ-HOF-001: the horse's career (a ranked race counted against the weekly rival with me ahead is a rival win)
       const rivalWin = r.mode === 'ranked' && !!s.rival?.weeks.some((w) => w.races.some((x) => x.raceId === r.raceId && x.mode === 'ranked' && x.point === 'me'));

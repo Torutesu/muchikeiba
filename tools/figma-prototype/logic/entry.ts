@@ -35,6 +35,8 @@ import { noteRivalTa, prevWeekId, rivalCard, weekEndMs, weekIdAt } from '../../.
 import type { PlayerInvoker } from '../../../server/src/http/app.js';
 import { HallService, MemoryHallDirectory, hallConfig, hallSnapshot } from '../../../server/src/domain/hallOfFame.js';
 import { hallPlayersFrom } from '../../../server/src/http/hallPorts.js';
+import { MemoryReplayStore, MyReplaysService } from '../../../server/src/domain/myReplaysService.js';
+import { DEFAULT_RULESET } from '../../../server/src/domain/ruleset.js';
 // REQ-L10N-*: the server's English tables (master/locale-en.json + i18n/en.ts), the client's (ui-en.json) and the
 // prototype's own screen texts (proto-en.json), in one catalog with the server's template rules (katakana names romanized)
 import { compileCatalogWith, translateText, romanizeName } from '../../../server/src/i18n/catalog.js';
@@ -128,6 +130,52 @@ const rivalReg = new MemoryRivalRegistry(() => master, now);
 const rivalInvoker: PlayerInvoker = { invoke: (async (m: string, ...a: unknown[]) => (svc as unknown as Record<string, (...x: unknown[]) => unknown>)[m]!.apply(svc, a)) as PlayerInvoker['invoke'] };
 const rivalSvc = new RivalService(() => master, rivalPlayersFrom(() => rivalInvoker), rivalReg);
 const RIVAL_DEMO = 'demo_rv_1';
+
+// round 14 (REQ-MYRP-*): マイリプレイ on the real MyReplaysService. The "R2" store keeps its files in localStorage (best
+// effort, oldest source logs dropped first when the quota is full); a demo friend (demo_rp_friend) owns a public replay.
+const RP_KEY = 'muchi.proto.r2:';
+class LocalReplayStore extends MemoryReplayStore {
+  constructor() {
+    super();
+    try { for (const k of Object.keys(localStorage)) if (k.startsWith(RP_KEY)) this.files.set(k.slice(RP_KEY.length), localStorage.getItem(k)!); } catch { /* memory only */ }
+  }
+  async put(key: string, body: string) {
+    await super.put(key, body);
+    for (let i = 0; i < 20; i++) {
+      try { localStorage.setItem(RP_KEY + key, body); return; } catch {
+        const old = [...this.files.keys()].find((k) => k.startsWith('replays/') && k !== key);
+        if (!old) return;
+        try { localStorage.removeItem(RP_KEY + old); } catch { /* ignore */ }
+      }
+    }
+  }
+  async delete(key: string) { await super.delete(key); try { localStorage.removeItem(RP_KEY + key); } catch { /* ignore */ } }
+  clear() { for (const k of [...this.files.keys()]) { this.files.delete(k); try { localStorage.removeItem(RP_KEY + k); } catch { /* ignore */ } } }
+}
+const replayStore = new LocalReplayStore();
+const myReplaysSvc = new MyReplaysService(() => master, () => rivalInvoker, replayStore);
+const RP_FRIEND = 'demo_rp_friend';
+const RP_FRIEND_NAME = 'ハヤテ乗り';
+async function ensureReplayFriend() {
+  const s = await svc.state(RP_FRIEND);
+  if (s.horses.length === 0) {
+    await svc.bootstrap(RP_FRIEND);
+    await svc.grantPartner(RP_FRIEND, 'ハヤテ', key());
+    await svc.setDisplayName(RP_FRIEND, RP_FRIEND_NAME);
+  }
+  for (const [a, b] of [[ID, RP_FRIEND], [RP_FRIEND, ID]] as const) {
+    const st = await svc.state(a);
+    if (!st.friends.ids.includes(b)) { st.friends.ids.push(b); repo.put(st); }
+  }
+}
+/** The smallest finish-tick gap to the neighbouring places (what settleRace puts in `replay.marginTicks`). */
+function marginTicksOf(order: number[], finishTicks: number[], slot: number): number | null {
+  const i = order.indexOf(slot);
+  const t = finishTicks[i];
+  if (i < 0 || t === undefined || t < 0) return null;
+  const gaps = [finishTicks[i - 1], finishTicks[i + 1]].filter((x): x is number => x !== undefined && x >= 0).map((x) => Math.abs(x - t));
+  return gaps.length ? Math.min(...gaps) : null;
+}
 let rivalRace = 0;
 async function rivalDemoSeed() {
   const week = weekIdAt(master, now());
@@ -239,12 +287,16 @@ export const MuchiLogic = {
   // round 11: `config` (the race the WASM engine ran) gives the 図鑑 the CPU field it met (REQ-COL-002) and `skillFired` the
   // player's unique-skill activation (REQ-ACH-002), exactly what settleRace sends from a confirmed room
   // round 12: `assist` (whip | full) is what the rider's own `res.assist` gives the room (REQ-ASSIST-007): KPI only
-  applyRace: (raceId: string, place: number, fieldSize: number, details: { trackId: string; style: Style; finishTick: number | null; whips: number; skillFired?: boolean; assist?: 'whip' | 'full' }, config?: RaceStartConfig) =>
-    wrap(() => svc.applyRace(ID, { raceId, mode: 'ranked', place, fieldSize, newRating: null, void: false, humans: 1,
+  // round 14 (REQ-MYRP-001): `replay` = the race's confirmed inputs + hash from the WASM engine; the source log is stored as the
+  // race room writes it (R2 replays/) and the result carries the replay ref settleRace adds, so the race shows in マイリプレイ
+  applyRace: (raceId: string, place: number, fieldSize: number, details: { trackId: string; style: Style; finishTick: number | null; whips: number; skillFired?: boolean; assist?: 'whip' | 'full' }, config?: RaceStartConfig,
+    replay?: { slot: number; hash: string; endTick: number; inputs: [number, number, number][]; marginTicks: number | null }) =>
+    wrap(async () => (config && replay ? await replayStore.put(`replays/${raceId}.json`, JSON.stringify({ v: 1, config, endTick: replay.endTick, inputs: replay.inputs })) : undefined, svc.applyRace(ID, { raceId, mode: 'ranked', place, fieldSize, newRating: null, void: false, humans: 1,
+      ...(config && replay ? { replay: { slot: replay.slot, resultHash: replay.hash, rulesetVersion: String(config.ruleset.rulesetVersion), trackId: config.track.id, marginTicks: replay.marginTicks } } : {}),
       details: { ...details, startReactionTicks: null, whipMashed: false, cpuAssisted: false },
       ...(config ? { seen: raceFieldSeen(config, config.entrants.find((e) => e.playerId === ID)?.slot ?? -1) } : {}),
       // round 14 (REQ-HOF-002): the horse that ran, as settleRace takes it from the entrant
-      ...(config?.entrants.find((e) => e.playerId === ID) ? { horseId: config.entrants.find((e) => e.playerId === ID)!.horse.id } : {}) })),
+      ...(config?.entrants.find((e) => e.playerId === ID) ? { horseId: config.entrants.find((e) => e.playerId === ID)!.horse.id } : {}) }))),
   reset() {
     try {
       localStorage.removeItem(KEY + ':' + ID); localStorage.removeItem(DAY_KEY);
@@ -254,6 +306,7 @@ export const MuchiLogic = {
     inviteCodes.clear();
     rivalReg.weeks.clear(); // round 12: the rival week registry starts over too
     hallDir.rows.clear(); // round 14: the hall copies too
+    replayStore.clear(); // round 14: the saved replays and source logs too
     dayOffset = 0;
   },
 
@@ -628,6 +681,49 @@ export const MuchiLogic = {
     demoRetire: (name: string, wins: number, others: number, title: string | null) => wrap(() => hallDemoHorse(ID, 2 + hallRace % 9, name, wins, others, title, true)),
     /** A tournament final rank for one of my horses (tournamentClose with the registered horse). */
     demoTitle: (horseId: string, name: string) => wrap(() => svc.tournamentClose(ID, `proto_cup_${horseId}_${hallRace++}`, 1, null, name, horseId)),
+  },
+  /** round 14: a course's display name (server tracks.json). */
+  trackName: (id: string) => trackNames.get(id) ?? id,
+  // ---------------------------------------------------------------- round 14: マイリプレイ (REQ-MYRP-*, contracts/protocol.md §37)
+  // The real MyReplaysService / PlayerService rules on the local player. R2 is a local store (localStorage, best effort):
+  // `replays/<raceId>.json` is what the race room would write, `myreplays/<player>/<raceId>.json` the saved copies.
+  replays: {
+    view: () => wrap(() => myReplaysSvc.view(ID)),
+    save: (raceId: string, title: string | null = null) => wrap(() => myReplaysSvc.save(ID, raceId, title, key())),
+    update: (raceId: string, patch: { replayTitle?: string | null; favorite?: boolean; public?: boolean }) => wrap(() => myReplaysSvc.update(ID, raceId, patch)),
+    remove: (raceId: string) => wrap(() => myReplaysSvc.remove(ID, raceId)),
+    data: (raceId: string) => wrap(() => myReplaysSvc.data(ID, raceId)),
+    /** The demo friend's public replays (friend view, privacy rules on the owner's state). */
+    friendList: () => wrap(async () => { await ensureReplayFriend(); return myReplaysSvc.friendList(ID, RP_FRIEND); }),
+    friendData: (raceId: string) => wrap(() => myReplaysSvc.friendData(ID, RP_FRIEND, raceId)),
+    /** A config for the demo friend's race (the same buildRaceConfig as a ranked room). */
+    async friendConfig() {
+      await ensureReplayFriend();
+      const s = await svc.state(RP_FRIEND);
+      const h = s.horses[0]!;
+      const tId = 'aoba_turf_1600';
+      const config = buildRaceConfig(master, {
+        raceId: 'proto_rpf_' + Date.now().toString(36), mode: 'ranked', trackId: tId, statCap: classDef(master, s.season.classId).statCap,
+        humans: [{ playerId: RP_FRIEND, horse: toRaceHorse(master, h), cpuLevel: 3 }], cpuCount: 11, cpuLevel: 3, rng: cryptoRng, ground: groundFor(master, tId, 'ranked', now()),
+      });
+      return { config, playerId: RP_FRIEND };
+    },
+    /** The friend's race (simulated in WASM by the page) is settled, saved and made public on the friend's object. */
+    demoFriendSave: (config: RaceStartConfig, sim: { slot: number; place: number; hash: string; endTick: number; order: number[]; finishTicks: number[]; inputs: [number, number, number][] }) => wrap(async () => {
+      await replayStore.put(`replays/${config.raceId}.json`, JSON.stringify({ v: 1, config, endTick: sim.endTick, inputs: sim.inputs }));
+      await svc.applyRace(RP_FRIEND, { raceId: config.raceId, mode: 'ranked', place: sim.place, fieldSize: config.entrants.length, newRating: null, void: false, humans: 1,
+        replay: { slot: sim.slot, resultHash: sim.hash, rulesetVersion: String(config.ruleset.rulesetVersion), trackId: config.track.id, marginTicks: marginTicksOf(sim.order, sim.finishTicks, sim.slot) } });
+      await myReplaysSvc.save(RP_FRIEND, config.raceId, '青葉の差し切り', `c:/proto:rpf:${config.raceId}`);
+      await myReplaysSvc.update(RP_FRIEND, config.raceId, { public: true });
+    }),
+    friendName: () => RP_FRIEND_NAME,
+    /** Demo: retire the shipped ruleset version (REQ-MYRP-007) so saved replays show 「再生できません」; false restores. */
+    demoRetired(on: boolean) { master.progression.myReplays!.retiredRulesets = on ? [String(DEFAULT_RULESET.rulesetVersion)] : []; },
+    /** A word on the NG list (test hook for the title moderation). */
+    ngSample: () => master.ng.exact[0] ?? '',
+    marginTicks: (order: number[], finishTicks: number[], slot: number) => marginTicksOf(order, finishTicks, slot),
+    /** The stored files (test hook). */
+    files: () => [...replayStore.files.keys()],
   },
   // ---------------------------------------------------------------- round 12: ライバル (REQ-RIVAL-*, contracts/protocol.md §28)
   rival: {

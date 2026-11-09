@@ -106,6 +106,8 @@ static class Program
         await SilksEditorChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 14: 実況パック (CommentaryPackModel: list, sample, equip, calm confirm, keyed buy, T6, race templates, offline; REQ-CMT-*)");
         await CommentaryPackChecks.Run(Check, Ruleset(), Root);
+        Console.WriteLine("== round 14: マイリプレイ (list cards, save / rename / favourite / public / delete, ReplayPlayer, 再生できません; REQ-MYRP-*)");
+        await MyReplaysChecks.Run(Check, Ruleset());
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

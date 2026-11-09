@@ -118,6 +118,8 @@ export interface RaceResultForPlayer {
   field?: { playerId: string; place: number }[];
   /** REQ-HOF-002: the rider's horse (the entrant's horse id in the race config). Absent in results from older rooms. */
   horseId?: string;
+  /** REQ-MYRP-001: what マイリプレイ needs to offer this race later (absent for void races and results from older rooms). */
+  replay?: import('./myReplays.js').ReplayRef;
 }
 
 /** REQ-RATE-004: apply the race's rating change as a delta, so a newer rating is never overwritten by a stale snapshot. */

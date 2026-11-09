@@ -216,6 +216,8 @@ export interface PlayerState {
   weeklyChallenge?: import('./weeklyChallenge.js').WeeklyChallengeState;
   /** REQ-HOF-*: 殿堂 — per-horse careers, retirement ceremonies, permanent plaques, visibility (hallOfFame.ts ensureHall). */
   hall?: import('./hallOfFame.js').HallState;
+  /** REQ-MYRP-*: マイリプレイ — recent races / best moments and the saved list (myReplays.ts ensureMyReplays). */
+  myReplays?: import('./myReplays.js').MyReplaysState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

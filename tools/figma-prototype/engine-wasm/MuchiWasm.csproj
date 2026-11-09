@@ -24,6 +24,7 @@
     <Compile Include="../../../unity/Assets/Muchi/Game/RaceResultModel.cs" Link="Game/RaceResultModel.cs" />
     <!-- round 9: replay share, account-link prompt, ghost picker (and what they build on) -->
     <Compile Include="../../../unity/Assets/Muchi/Game/ReplayShare.cs" Link="Game/ReplayShare.cs" />
+    <Compile Include="../../../unity/Assets/Muchi/Game/MyReplaysModel.cs" Link="Game/MyReplaysModel.cs" />
     <Compile Include="../../../unity/Assets/Muchi/Game/AccountLinkPrompt.cs" Link="Game/AccountLinkPrompt.cs" />
     <Compile Include="../../../unity/Assets/Muchi/Game/FirebaseAuth.cs" Link="Game/FirebaseAuth.cs" />
     <Compile Include="../../../unity/Assets/Muchi/Game/GameBackend.cs" Link="Game/GameBackend.cs" />

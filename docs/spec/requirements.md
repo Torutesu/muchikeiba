@@ -814,3 +814,22 @@
 - REQ-CMT-012 KPI：`commentary_pack_equip`・`commentary_pack_buy`（サーバー）、`commentary_pack_sample`（クライアント）。クエリは `docs/ops/kpi-queries.md`。
 - REQ-CMT-013 クライアント：`Muchi.Client` `CommentaryPackCatalog`・`CommentaryTemplates.WithPack`・`CommentaryPackLint`・`CommentarySample`・`ApiClient.GetCommentaryPacksAsync`/`EquipCommentaryPackAsync`/`BuyCommentaryPackAsync`・`PlayerView.CommentaryPack`・`AnalyticsEvent.CommentaryPackSample`。Unity のゲーム層 `CommentaryPackModel`（一覧・試聴・装備・購入の確認・レースのテンプレート）。
 - REQ-CMT-014 プロトタイプ：設定／ショップの実況パック画面（試聴の字幕のティッカー、装備、購入の確認）、レースの HUD が装備したパックで話す。ムチ一閃の見た目、日本語と英語、e2e と英語の流れ。
+
+## 37. マイリプレイ（保存したリプレイ、TS＋C#、`src/domain/myReplays.ts`・`src/domain/myReplaysService.ts`・`Muchi.Client/MyReplays.cs`、`contracts/protocol.md` §37）
+拘束条件：保存はリプレイログ（設定＋確定入力）と結果ハッシュだけで、見る時に端末で再計算する（REQ-RACE-073）。違うレースは絶対に流さない（ハッシュ不一致・引退したルールセットは「再生できません」）。コイン・アイテムは動かない（経済の目標なし、購入で枠は増えない）。他のプレイヤーの私的な情報（プレイヤーID・名前）は出さない。
+- REQ-MYRP-001 最近のレース：確定したレース（無効・チュートリアル・タイムアタックを除く）を `applyRace` で状態の `myReplays.recent` に1回だけ覚える（`raceId`・時刻・モード・コース・着順・頭数・自分の枠・結果ハッシュ・ルールセットの版・名場面）。元のログ（R2 `replays/`）が残っている `momentDays` 日（既定 28、`replayRetentionDays` − 1 以下）だけ保存できる。
+- REQ-MYRP-002 名場面の自動保存：`win`（1着）・`photo`（隣の着順とのゴール tick の差が `photoFinishTicks` 以下）・`pb`（そのコースの自己ベスト更新、CPU が乗った回は除く）。優先 win > photo > pb。`momentsKeep` 件・`momentDays` 日で古い順に入れ替わる。名場面でないものは `recentKeep` 件まで。
+- REQ-MYRP-003 保存：`POST /v1/replays`（冪等キー必須）。自分の最近のレースだけ。同じレースは1件（2回目は `alreadySaved`）。上限 `maxSaved`（既定 20、無料、購入で増やさない）を超えると `REPLAY_LIMIT`。元のログを `myreplays/<playerId>/<raceId>.json` に `{v, log, resultHash}` で写す（保存期限の削除の対象外）。`maxBytes` を超えるものは `REPLAY_TOO_LARGE`、元が無ければ `REPLAY_EXPIRED`（最近のレースから外す）。R2 に書けてから状態に記録する（失敗すれば何も残らない、写しの上書きは同じ内容なので再試行してよい）。
+- REQ-MYRP-004 タイトル：プレイヤーが入力（1〜`titleMaxChars` 文字、NFKC、制御文字・URL 不可、NG 語は表示名と同じ一覧）。null = タイトルなし。英語の応答でも訳さない（`replayTitle` は `PLAYER_TEXT_KEYS`）。
+- REQ-MYRP-005 名前の変更・お気に入り・公開：`PATCH /v1/replays/:raceId`（値の置き換えで冪等）。削除：`DELETE`（無ければ `deleted: false`、R2 の写しも消す）。
+- REQ-MYRP-006 一覧：`GET /v1/replays`（保存はお気に入り→新しい順、名場面・最近のレースは新しい順、保存できなくなる本物の時刻 `expiresAt`、各保存の再生可否）。
+- REQ-MYRP-007 ルールセットの固定：保存に `rulesetVersion` を残す。ログの設定はルールセットの全部の値を持つので、今のエンジンが過去の版（1.0〜1.3 のキーの組、`contracts/golden/legacy`）を再生できる。`retiredRulesets` に入れた版、今のエンジンが知らないキーの組は `playable: false`（`ruleset_retired`／`ruleset_unknown`）。
+- REQ-MYRP-008 再生データ：`GET /v1/replays/:raceId/data` → ログそのもの（訳さない）＋結果ハッシュ＋自分の枠＋馬の名前と `owner`（you／player／cpu）。持ち主以外の人間の `playerId` は `p<slot>` に置き換える（結果ハッシュは変わらない）。
+- REQ-MYRP-009 端末の再生（`ReplayPlayer`）：全部を再計算して結果ハッシュが合う時だけ再生（合わなければ `hash_mismatch` で「再生できません」）。速度 0.5×／1×／2×、カメラは任意の馬、「最後の200mへ」、任意の位置へのシーク、共有カードは `ShareCard`（REQ-UXS-071）を再利用。
+- REQ-MYRP-010 フレンドへの公開：`public` にした保存だけ、お互いにフレンドで、どちらもブロックしておらず（支部フィードのミュートと同じ一覧）、持ち主が BAN・削除の予約中でない時に `GET /v1/friends/:playerId/replays`（一覧）・`/data`（再生）で見られる。それ以外は理由を言わず `404`。お気に入りは出さない。
+- REQ-MYRP-011 削除の予約中：保存・公開にできない（`DELETION_PENDING`）。一覧・自分の再生・非公開・削除はできる。
+- REQ-MYRP-012 アカウント削除：手順に `replays`（保存した写しを R2 から消す）を足す。状態は `wipe` で消える。
+- REQ-MYRP-013 設定 `progression.myReplays`：形と上限 `MY_REPLAYS_HARD_LIMITS`（maxSaved ≤ 50、maxBytes ≤ 1 MiB、momentDays < replayRetentionDays ほか）を起動時と各版で検証。
+- REQ-MYRP-014 KPI：`replay_save`・`replay_view`（サーバー）、`replay_share`（クライアント）。クエリは `docs/ops/kpi-queries.md`。
+- REQ-MYRP-015 クライアント：`Muchi.Client` `ApiClient.GetMyReplaysAsync`・`SaveReplayAsync`・`UpdateReplayAsync`（名前・お気に入り・公開）・`DeleteReplayAsync`・`GetReplayDataAsync`・`GetFriendReplaysAsync`・`GetFriendReplayDataAsync`、`ReplayPlayer`。Unity のゲーム層 `MyReplaysModel`（一覧のカード、名前の変更シート、公開の切り替え、プレイヤーの操作、再生できない時の文言）。
+- REQ-MYRP-016 プロトタイプ：マイリプレイの一覧（結果・コース・日付のカード）、本物のエンジンの再計算で動くプレイヤー（速度・カメラ・最後の200m）、名前の変更シート、公開の切り替え（日本語・英語）。

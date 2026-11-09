@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { AppError } from './errors.js';
 import type { PlayerState } from './player.js';
 import { jstDateKey } from './time.js';
+import { NEXT_KINDS, NEXT_SLOTS } from './nextKinds.js';
 
 /** Event-specific fields. Strings go to blob8-10, numbers to double1-6/8/9 (see BLOB/DOUBLE below). */
 export interface KpiEvent {
@@ -134,6 +135,9 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('ad_start'), at: z.number().int(), props: z.object({ placementId: str(32), surface: z.enum(AD_SURFACE_NAMES), outcome: z.enum(['shown', 'no_fill', 'failed', 'closed_early']) }).strict() }),
   // REQ-HIST-011: a history tab was opened (the lists are read-only GETs, so the view is a client event)
   z.object({ name: z.literal('history_view'), at: z.number().int(), props: z.object({ tab: z.enum(HISTORY_TABS) }).strict() }),
+  // REQ-NEXT-012: the home's 次にやること card shown (once per kind and game day) / tapped. Closing it is the server event next_card_dismiss.
+  z.object({ name: z.literal('next_card_view'), at: z.number().int(), props: z.object({ kind: z.enum(NEXT_KINDS), slot: z.enum(NEXT_SLOTS) }).strict() }),
+  z.object({ name: z.literal('next_card_tap'), at: z.number().int(), props: z.object({ kind: z.enum(NEXT_KINDS), slot: z.enum(NEXT_SLOTS) }).strict() }),
 ]);
 export type ClientEvent = z.infer<typeof clientEventSchema>;
 
@@ -166,6 +170,7 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'ad_offer_view': return { name: e.name, s1: e.props.placementId, s2: e.props.surface };
     case 'ad_start': return { name: e.name, s1: e.props.placementId, s2: e.props.surface, s3: e.props.outcome };
     case 'history_view': return { name: e.name, s1: e.props.tab };
+    case 'next_card_view': case 'next_card_tap': return { name: e.name, s1: e.props.kind, s2: e.props.slot };
   }
 }
 

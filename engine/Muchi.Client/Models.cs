@@ -261,6 +261,8 @@ namespace Muchi.Client
         public AssistSettings Assist = new AssistSettings();
         /// <summary>REQ-CMT-009: the equipped commentary pack ("standard" when the server sent none).</summary>
         public string CommentaryPack = CommentaryPackCatalog.StandardPackId;
+        /// <summary>REQ-NEXT-010: the home's next card at bootstrap (no team goal; GET /v1/home/next has it). Null from an older server.</summary>
+        public NextActionsView NextActions;
         public int Rating, RatingDeviation, RankedRaces;
         public string SeasonId, ClassId;
         public int SeasonPoints;
@@ -294,6 +296,7 @@ namespace Muchi.Client
                 Equipment = Equipment.Parse(J.Opt(o, "equipment")),
                 Assist = AssistSettings.Parse(J.Opt(o, "assist")),
                 CommentaryPack = J.Str(J.Opt(o, "commentaryPack"), "equipped") ?? CommentaryPackCatalog.StandardPackId,
+                NextActions = NextActionsView.Parse(J.Opt(o, "nextActions")),
             };
         }
     }

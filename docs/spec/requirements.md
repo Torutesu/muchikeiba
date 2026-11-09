@@ -833,3 +833,20 @@
 - REQ-MYRP-014 KPI：`replay_save`・`replay_view`（サーバー）、`replay_share`（クライアント）。クエリは `docs/ops/kpi-queries.md`。
 - REQ-MYRP-015 クライアント：`Muchi.Client` `ApiClient.GetMyReplaysAsync`・`SaveReplayAsync`・`UpdateReplayAsync`（名前・お気に入り・公開）・`DeleteReplayAsync`・`GetReplayDataAsync`・`GetFriendReplaysAsync`・`GetFriendReplayDataAsync`、`ReplayPlayer`。Unity のゲーム層 `MyReplaysModel`（一覧のカード、名前の変更シート、公開の切り替え、プレイヤーの操作、再生できない時の文言）。
 - REQ-MYRP-016 プロトタイプ：マイリプレイの一覧（結果・コース・日付のカード）、本物のエンジンの再計算で動くプレイヤー（速度・カメラ・最後の200m）、名前の変更シート、公開の切り替え（日本語・英語）。
+
+## 45. 次にやること（ホームの案内カード、TS＋C#、`src/domain/nextAction.ts`・`Muchi.Client/NextAction.cs`、`contracts/protocol.md` §45、docs/planning/06 §6.1）
+拘束条件：購入を主カードにしない（ショップ・パスの購入・有償スカウトの案内は作らない。スカウト券はチップだけ）。偽の急ぎを作らない（期限はデータの本物の時刻だけを日付・時刻で出す。カウントダウン・「今だけ」「残りわずか」は出さない）。オンボーディング（06 §2.3）と競わない。コイン・アイテムは動かない。
+- REQ-NEXT-001 種類：`first_race`・`login_bonus`・`missions_claim`・`pass_claim`・`gift_expiring`・`training_open`・`missions_close`・`exchange_closing`・`feature_unlocked`・`rival_week`・`weekly_challenge`・`team_goal_near`・`training_slots`・`first_win`・`scout_ticket`・`race`。開く画面は種類ごとにコードで固定（設定で変えられない）。
+- REQ-NEXT-002 純粋関数：`computeNextActions(config, summary, dismissed)` は状態の要約（`nextActionSummary`）だけから主カード1枚とチップ最大 `maxChips`（≤ 2）を決める。同じ入力なら同じ結果。並びは `priority` の大きい順。
+- REQ-NEXT-003 主カードの決まり：チップだけの種類（`scout_ticket`）は主カードにしない。`race` は主カードの時だけ（他が無い時の受け皿）。
+- REQ-NEXT-004 オンボーディング：相棒がいないか、チュートリアル以外のレースが `onboardingRaces` 回未満の間は `first_race` だけ（チップなし・閉じられない）。解放されていない機能の種類は出さない（§4.3）。
+- REQ-NEXT-005 今日は閉じる：`POST /v1/home/next/dismiss {kind}`。その種類を今日のゲーム日（REQ-DAY-001）の間だけ出さない。冪等。`first_race`・`race` は `NOT_ELIGIBLE`。KPI `next_card_dismiss` は閉じた時に1回。
+- REQ-NEXT-006 期限：`deadlineAt` はプレゼントの `expiresAt`・交換所の `closesAtMs`・ライバル／チャレンジ／共同目標の週の終わり・調教のセッションの `expiresAt` だけ。他は null。
+- REQ-NEXT-007 プレゼントの期限：`gift_expiring` は箱を開くだけ（カードから受け取らない）。
+- REQ-NEXT-008 新しく開いた機能：`feature_unlocked` は解放を最初に見たゲーム日だけ（`nextAction.features`）。古い状態は最初に見た時に開いていた機能を「前から」とみなす。`shop`・`season_pass`・`scout` は対象にできない。
+- REQ-NEXT-009 削除の予約中（REQ-UXS-040）は `race` だけ。
+- REQ-NEXT-010 API：`GET /v1/home/next`（支部の共同目標も見る）・`POST /v1/home/next/dismiss`、ブートストラップと `GET /v1/player` の `nextActions`（共同目標なし）。
+- REQ-NEXT-011 設定 `progression.nextActions`：形・種類の重複・`priority` の重複・`race` 必須・`threshold` を持てる種類と範囲・`features` の禁止キーを起動時と各版で検証。
+- REQ-NEXT-012 KPI：`next_card_view`・`next_card_tap`（クライアント、`kind`・`slot`）、`next_card_dismiss`（サーバー）。
+- REQ-NEXT-013 クライアント：`Muchi.Client` `ApiClient.GetNextActionsAsync`・`DismissNextActionAsync`、`NextActionsView`。Unity のゲーム層 `NextActionModel`（主カードとチップの文言、期限の日付表示、オフラインの予備 45.6、今日閉じた種類、KPI の1日1回）。
+- REQ-NEXT-014 プロトタイプ：ムチ一閃のホームの下の中央に主カード＋チップ（上のバーは増やさない：プレゼントの封筒・ライバルの帯・後から来る §40 のベルの場所を空けておく）、閉じる、日本語・英語、e2e と en-flow。

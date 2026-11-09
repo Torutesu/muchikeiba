@@ -977,6 +977,7 @@ async function Home() {
   Cta('レースへ', 1110, 636, 416, RaceLobby, undefined, 'hero');
   if (bonus) toast(`ログインボーナス ${bonus.track === 'beginner' ? '初心者' : ''}${bonus.day}日目：${rewardText(bonus.reward)}`);
   NavBar(0);
+  if (unlock('rival').unlocked) await RivalStrip(); // round 12: this week's rival, top centre (its own slot, not the card slot)
   await HomeCard(comeback); // round 10: one card at a time (what's new > comeback campaign > ad offer)
   MaybeLinkPrompt('Home', Home);
 }
@@ -2700,6 +2701,127 @@ async function TrainingResult(res) {
   EnToggle();
 }
 
+// ================================================================= round 12: ライバル (REQ-RIVAL-*, contracts/protocol.md §28)
+// The weekly rival on the real RivalService / week registry in the browser. Mirrors unity/Assets/Muchi/Game/RivalModel.cs:
+// the home strip (name, this week's score, days left), the detail (public card only, recent races, time attack this week,
+// fixed rewards, total record, the rules) and the week-result sheet shown once. ムチ一閃 tone: paddock art, translucent navy
+// panels, letter-spaced cyan kickers, one skewed cyan CTA ».
+const RV_OUTCOME = { win: '勝ち', lose: '負け', draw: '引き分け', no_contest: '解除', not_enough: '記録なし' };
+const RV_RULES = '同じランク戦で先着した方に1点。直接対決が同点なら、今週のタイムアタックで速いコースの多い方が勝ち。挑戦状のレースは点になりません。報酬は結果で決まる固定の額で、連勝の上乗せはありません。';
+const rvClock = (ms) => (ms == null ? '—' : `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}.${Math.floor(ms / 100) % 10}`);
+const rvDaysLeft = (v) => Math.max(1, Math.ceil((v.weekEndsAt - L.now()) / 86_400_000));
+const rvName = (v) => (!v.rival ? '—' : v.rival.kind === 'cpu' ? v.rival.name : v.rival.dissolved ? 'ライバル解除' : v.rival.card?.displayName ?? '—');
+const rvWeek = (id) => `${+id.slice(5, 7)}月${+id.slice(8, 10)}日からの週`;
+/** Home: one slim strip at the top centre — tap for the detail. */
+async function RivalStrip() {
+  const r = await L.rival.view();
+  if (cur?.dataset.screen !== 'home' || !r.ok || !r.value.enabled || r.value.optOut || !r.value.rival) return null;
+  const v = r.value;
+  const g = Glass('Rival', 520, 32, 600, 100, undefined, .78);
+  g.dataset.homeRival = v.rival.kind; g.classList.add('rv-strip');
+  Kicker(v.result ? 'ライバル　/　結果が出ました' : `ライバル　/　あと${rvDaysLeft(v)}日`, 24, 18, g, { rule: false, size: 15 });
+  Txt(rvName(v), 24, 48, 340, 24, WHITE, g, { weight: 700, ls: '.06em', nowrap: true });
+  Txt(v.score ? `${v.score.me} - ${v.score.them}` : '', 400, 34, 170, 40, GOLD, g, { weight: 700, align: 'right', cls: 'num' });
+  g.style.cursor = 'pointer'; g.addEventListener('click', () => Rival());
+  return g;
+}
+async function Rival() {
+  currentScreen = Rival;
+  const r = await L.rival.view();
+  await refresh();
+  if (!r.ok || !r.value.enabled) { toast('ライバルは今は表示できません'); Home(); return; }
+  const v = r.value;
+  Clear('rival'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar(`ライバル　/　${rvWeek(v.weekId)}`, '同じランク戦で先着すれば1点。週の終わりに結果と、決まった額の報酬');
+  // ① this week's rival: the public card only (name, class, partner horse) or the CPU's personality
+  const lp = Glass('Rival card', 36, 134, 560, 676, undefined, .88);
+  lp.classList.add('rv-card');
+  Kicker('今週のライバル', 36, 30, lp);
+  if (v.optOut) {
+    lp.dataset.state = 'opted-out';
+    Txt('ライバルはお休み中です', 36, 110, 488, 26, WHITE, lp, { weight: 700 });
+    Txt('再開すると、来週から近い実力のライバルが決まります', 36, 160, 488, 15, MUTED, lp);
+    Cta('ライバルを再開する', 36, 220, 400, async () => { await L.rival.optOut(false); Rival(); }, lp);
+    Back(Home, 'BACK', 40, 834);
+    return;
+  }
+  const rv = v.rival;
+  lp.dataset.state = rv.kind === 'cpu' ? 'cpu' : rv.dissolved ? 'dissolved' : 'human';
+  Txt(rvName(v), 36, 100, 488, 38, WHITE, lp, { ls: '.06em', nowrap: true }).classList.add('rv-name');
+  if (rv.kind === 'human' && !rv.dissolved && rv.card) {
+    const pt = rv.card.partner;
+    Txt(`${rv.card.classId}級${pt ? `　·　相棒 ${pt.name}（${STYLE_JA[pt.style] ?? pt.style}）` : ''}`, 36, 156, 488, 16, GOLD, lp, { weight: 700, ls: '.04em' });
+  } else if (rv.kind === 'cpu') {
+    Txt(`${STYLE_JA[rv.style] ?? rv.style}　·　目標${rv.targetPlace}着以内`, 36, 156, 488, 16, GOLD, lp, { weight: 700, ls: '.04em' });
+    Txt(`「${rv.line}」`, 36, 188, 488, 15, MUTED, lp, { lh: 1.5 }).classList.add('rv-line');
+  } else Txt('ブロック・お休み・退会のため、今週の組は解除されました', 36, 156, 488, 15, MUTED, lp, { lh: 1.5 });
+  Txt('あなた', 36, 262, 200, 14, MUTED, lp, { weight: 700, ls: '.18em' });
+  Txt('ライバル', 324, 262, 200, 14, MUTED, lp, { weight: 700, ls: '.18em', align: 'right' });
+  Txt(`${v.score.me} - ${v.score.them}`, 36, 280, 488, 88, GOLD, lp, { weight: 700, align: 'center', cls: 'num' }).classList.add('rv-score');
+  const sc = v.score;
+  Txt(sc.rankedRaces >= sc.minRaces ? `ランク戦 ${sc.rankedRaces}戦　·　あと${rvDaysLeft(v)}日` : `ランク戦 ${sc.rankedRaces}/${sc.minRaces}戦（${sc.minRaces}戦で週の結果に報酬）　·　あと${rvDaysLeft(v)}日`, 36, 400, 488, 14, SOFT, lp, { align: 'center' }).classList.add('rv-races');
+  if (v.challenge) {
+    const c = Cta(`挑戦状を送る（あと${v.challenge.left}回）`, 36, 450, 488, async () => {
+      const x = await L.rival.challenge();
+      toast(x.ok ? '挑戦状を送りました（このレースは点になりません）' : x.code === 'RIVAL_CHALLENGE_LIMIT' ? '今日の挑戦状は送り切りました。4:00に戻ります。' : x.message);
+      Rival();
+    }, lp, 'small');
+    c.classList.add('rv-challenge'); if (!v.challenge.left) disable(c);
+    Txt('フレンド部屋に招待します。順位は表示しますが点にはなりません', 36, 524, 488, 12, DIM, lp);
+  }
+  if (rv.kind === 'human' && !rv.dissolved) TextLink('ブロック', 36, 600, 180, async () => { const x = await L.rival.block(); toast(x.ok ? 'ブロックしました' : x.message); Rival(); }, lp).classList.add('rv-block');
+  TextLink('お休みにする', 304, 600, 220, async () => { const x = await L.rival.optOut(true); toast(x.ok ? 'ライバルをお休みにしました。来週から組まれません' : x.message); Rival(); }, lp).classList.add('rv-optout');
+  // ② recent races, time attack this week, rewards and record
+  const rp = Glass('Rival detail', 620, 134, 944, 676, undefined, .86);
+  Kicker('最近のレース', 36, 30, rp);
+  Ghost('デモ：同じレース', 660, 34, 248, 50, async () => { const a = 1 + Math.floor(Math.random() * 6); await L.rival.demoRace(a, a + 1 + Math.floor(Math.random() * 4)); Rival(); }, rp, 'quiet small').classList.add('rv-demo-race');
+  const races = (v.recent ?? []).slice(0, 5);
+  if (!races.length) Txt('まだ同じレースを走っていません。ランク戦で一緒になると点がつきます', 36, 104, 872, 15, MUTED, rp);
+  races.forEach((x, i) => {
+    const row = el('rv-race', 36, 100 + i * 44, 872, 40, rp); row.dataset.point = x.point ?? 'none'; row.dataset.mode = x.mode;
+    Txt(x.mode === 'friend' ? '挑戦状' : 'ランク戦', 0, 10, 140, 13, x.mode === 'friend' ? MUTED : CYAN, row, { weight: 700, ls: '.12em' });
+    Txt(x.them != null ? `${x.me}着 vs ${x.them}着` : `${x.me}着（目標${rv.targetPlace ?? 6}着以内）`, 150, 6, 420, 18, WHITE, row, { weight: 700, cls: 'num' });
+    Txt(x.point === 'me' ? 'あなたに1点' : x.point === 'them' ? 'ライバルに1点' : '点なし', 600, 9, 272, 14, x.point === 'me' ? GOLD : x.point === 'them' ? MUTED : DIM, row, { weight: 700, align: 'right' });
+    Hair(0, 39, 872, row);
+  });
+  Kicker('タイムアタック　/　今週のベスト', 36, 330, rp);
+  Ghost('デモ：タイム', 660, 334, 248, 50, async () => { await L.rival.demoTa('aoba_turf_1600', 70_000 + Math.floor(Math.random() * 1500), 70_400 + Math.floor(Math.random() * 1500)); Rival(); }, rp, 'quiet small').classList.add('rv-demo-ta');
+  const tas = (v.timeAttack ?? []).slice(0, 2);
+  if (!tas.length) Txt('今週のタイムアタックはまだありません（同点の時だけ勝敗に使います）', 36, 404, 872, 15, MUTED, rp);
+  tas.forEach((t, i) => {
+    const row = el('rv-ta', 36, 400 + i * 44, 872, 40, rp); row.dataset.faster = t.faster ?? 'none';
+    Txt(t.trackName, 0, 9, 360, 15, WHITE, row, { weight: 500, nowrap: true });
+    Txt(`${rvClock(t.me)}　vs　${rvClock(t.rival)}`, 370, 6, 300, 18, WHITE, row, { weight: 700, cls: 'num' });
+    Txt(t.faster === 'me' ? 'あなたが速い' : t.faster === 'rival' ? 'ライバルが速い' : '—', 680, 9, 192, 14, t.faster === 'me' ? GOLD : MUTED, row, { weight: 700, align: 'right' });
+    Hair(0, 39, 872, row);
+  });
+  Txt(`報酬（無償コイン）　勝ち ${v.rewards.win}・引き分け ${v.rewards.draw}・負け ${v.rewards.lose}　·　ランク戦${v.rewards.minRaces}戦から`, 36, 510, 872, 15, WHITE, rp, { weight: 500 }).classList.add('rv-rewards');
+  const nt = v.record.nextTitle;
+  Txt(`通算 ${v.record.weeksWon}勝 / ${v.record.weeksPlayed}週${nt ? `　·　称号「${nt.name}」まで あと${Math.max(0, nt.weeksWon - v.record.weeksWon)}勝` : ''}`, 36, 542, 872, 15, GOLD, rp, { weight: 700 }).classList.add('rv-record');
+  Txt(RV_RULES, 36, 584, 620, 12, SOFT, rp, { lh: 1.55 }).classList.add('rv-rules');
+  Ghost('デモ：週を終える', 680, 596, 228, 50, () => { L.rival.demoWeekEnd(); Rival(); }, rp, 'quiet small').classList.add('rv-demo-week');
+  Back(Home, 'BACK', 40, 834);
+  if (v.result) RivalResultSheet(v);
+}
+/** The week-result sheet: shown once (closing marks it seen). Fixed reward, no streak bonus. */
+function RivalResultSheet(v) {
+  const res = v.result;
+  const sheet = Sheet(RV_OUTCOME[res.outcome] ?? res.outcome, `${rvWeek(res.weekId)}　/　結果`, (s, close, y) => {
+    s.dataset.rivalResult = res.outcome; s.classList.add('rv-result');
+    Txt(res.rivalName || res.cpuName ? `vs ${res.rivalName ?? res.cpuName}` : '', 48, y, 564, 20, MUTED, s, { weight: 500, nowrap: true });
+    Txt(`${res.me} - ${res.them}`, 48, y + 40, 564, 80, GOLD, s, { weight: 700, cls: 'num' });
+    Txt(res.me === res.them && (res.taMe || res.taThem) ? `直接対決は同点。タイムアタック ${res.taMe} - ${res.taThem}` : '直接対決（同じランク戦で先着した数）', 48, y + 146, 564, 15, SOFT, s);
+    Txt(res.freeCoins > 0 ? `報酬　無償コイン${res.freeCoins}枚` : res.outcome === 'not_enough' ? `ランク戦が${v.rewards.minRaces}戦に届かなかったため、報酬はありません` : '報酬はありません', 48, y + 196, 564, 20, res.freeCoins > 0 ? WHITE : MUTED, s, { weight: 700 }).classList.add('rv-reward');
+    if (res.outcome === 'no_contest') Txt('ライバルが解除されたため、今週の勝敗はつきません', 48, y + 236, 564, 14, MUTED, s);
+    const names = (res.newTitles ?? []).map((id) => v.record.titles.find((t) => t.titleId === id)?.name ?? id);
+    if (names.length) Txt(`称号「${names.join('」「')}」を獲得`, 48, y + 272, 564, 18, GOLD, s, { weight: 700 }).classList.add('rv-title');
+    Txt('報酬は結果で決まる固定の額です。連勝の上乗せはありません', 48, y + 326, 564, 13, DIM, s);
+    Cta('つづける', 48, y + 376, 340, () => { close(); }, s).classList.add('rv-continue');
+  });
+  L.rival.seen(res.weekId);
+  return sheet;
+}
+
 // ================================================================= round 10: 支部の応援スタンプ (REQ-TEAMFEED-*)
 // The team feed on the real server rules (TeamsService / TeamCore in the browser) — fixed stamps only, no text field.
 // Mirrors unity/Assets/Muchi/Game/TeamFeedModel.cs: palette with server-built unlock texts, 10 s post cooldown, cheering a
@@ -2931,7 +3053,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ GiftBox, AssistSettings, Collection, Achievements, Training, TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ GiftBox, AssistSettings, Collection, Achievements, Training, Rival, TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

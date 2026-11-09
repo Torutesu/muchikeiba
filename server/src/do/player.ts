@@ -18,6 +18,8 @@ import { makeKpiWriter } from '../push/analytics.js';
 import { runAccountDeletion } from '../domain/accountDeletion.js';
 import { deletionPortsFromEnv } from './deletionPorts.js';
 import { deliverInviteOutbox, type MilestoneDelivery } from '../domain/invite.js';
+import { RivalService, rivalPlayersFrom } from '../domain/rivalService.js';
+import { durableRivalRegistry } from './rivalStore.js';
 
 /** One player = one Durable Object (wallet, ledger, horses, gacha pity, purchases, push outbox). */
 export class PlayerDO extends DurableObject<Env> {
@@ -63,6 +65,16 @@ export class PlayerDO extends DurableObject<Env> {
       onEventEntry: (e) => {
         const ev = env.EVENTS.get(env.EVENTS.idFromName(`ev:${e.eventId}`)) as unknown as { upsert(x: typeof e): Promise<unknown> };
         ctx.waitUntil(ev.upsert(e).catch((err) => console.error('event entry upsert failed', e.eventId, err)));
+      },
+      // REQ-RIVAL-002/005/011: candidate entry, withdrawal, a pair I dissolved, weekly bests → the week's registry (best
+      // effort; GET /v1/rival re-sends what matters). A rival whose course record this run took gets one push.
+      onRival: (u) => {
+        const other = (uid: string) => {
+          const s = env.PLAYER.get(env.PLAYER.idFromName(uid)) as unknown as { invoke(m: PlayerMethod, a: unknown[]): Promise<Envelope<unknown>> };
+          return { invoke: (async (m: PlayerMethod, ...args: unknown[]) => unwrap(await s.invoke(m, args))) as unknown as import('../http/app.js').PlayerInvoker['invoke'] };
+        };
+        const rs = new RivalService(loadMaster, rivalPlayersFrom(other), durableRivalRegistry(env.LEADERBOARD));
+        ctx.waitUntil(rs.apply(u).catch((e) => console.error('rival registry update failed', u.playerId, e)));
       },
       // REQ-PUSH-005: deliveries run from this object's alarm, never on the request path.
       onPushWake: async (at) => {

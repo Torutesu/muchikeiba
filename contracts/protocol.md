@@ -1044,6 +1044,82 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 - `Muchi.Client`：`InputAssistant`（`Decide`・`Apply`・`FilterPlayer`）、`AssistLevel`・`AssistLevels`（`Wire`・`Parse`・`AllowedIn`・`HudLabel`）、`OfflineRace.Assistant`／`EffectiveAssist`、`RaceSession.Assistant`／`EffectiveAssist`、`LockstepClient.AssistLevel`（`res.assist`）、`ApiClient.GetAssistAsync`・`SetAssistAsync`・`MarkAssistPromptSeenAsync`、`PlayerView.Assist`、`Analytics.RaceStart(at, mode, assist)`。
 - `Muchi.Game`：`AssistModel`（3つの選択肢と説明、`ShouldShowPrompt(inFtue)`、`Prompt()`、`SetAsync`、`MarkPromptShownAsync`、`Attach(driver, level)`、`RidingLevel`）、`GameBackend.AssistLevel`（練習・ランク戦の作成時に付ける。チュートリアルには付けない）、`HudSnapshot.Assist`／`AssistLabel`（「かんたん操作 ON」）／`WhipAuto`／`SteeringAuto`。
 
+## 28. ライバル（週ごとのライバル、REQ-RIVAL-001〜016、`server/src/domain/rival.ts`・`rivalService.ts`・`server/src/do/rivalStore.ts`、C# `Rival.cs`・`Muchi.Game.RivalModel`）
+毎週ひとり、同じクラスでレーティングの近いライバルが決まる。同じランク戦で走れば直接対決、タイムアタックでは今週のベストを比べる。週の終わりに結果と小さな固定の報酬。
+
+**決めたこと**
+| 項目 | 決めたこと |
+|---|---|
+| 週 | ゲーム日（§15、`progression.dayRollover`、既定 4:00 JST）で数えて **`weekStartsOn`（既定 1 = 月曜）から7ゲーム日**。週ID = その週の最初のゲーム日（`"2026-12-07"`）。週の終わり = 次の週の最初のゲーム日の切り替え（`weekEndMs`）。 |
+| 誰と組むか | **先週ランク戦を走った人**（週 W にランク戦を1回でも確定させた人が、W+1 の候補として週 W の登録簿に載る）。同じクラス・レーティング差 `maxRatingGap`（200）以内・お互いにブロックしていない・オプトアウト／BAN／削除予定でない・隔離中（REQ-OPS-032）でない。登録はトランザクションの後に送り、届かなかった時は次の `GET /v1/rival` で送り直す（最新が勝つ）。 |
+| 決定論 | `pairWeek(config, weekId, 候補)`：クラスごとに「レーティング＋（週IDとプレイヤーIDの FNV-1a から決まる ±`jitter`）」の降順（同点はプレイヤーID）に並べ、上から順に、まだ組んでいない人を `pairWindow`（3）人先まで見て最初に条件を満たす人と組む。**入力の順番に依らず、同じ週・同じ候補なら同じ組み合わせ**（再現できる）。 |
+| CPU のライバル | 組めなかった人（奇数の余り・候補がいない・差が大きい・週の途中から来た人）は `cpuRivals` から「週ID＋プレイヤーID」のハッシュで決まる名前と性格のある CPU（堅実のアサギ・強気のクレナイ・気まぐれのヒスイ・粘りのコガネ）。その週の間は同じ CPU。 |
+| どこに置くか | 週ごとの登録簿 = **LeaderboardDO のインスタンス `rival:<weekId>`**（専用の `rv_*` テーブル。DO クラスとマイグレーションは増やさない）。週 W の登録簿は「W の組み合わせ（初回の問い合わせか cron で、W−1 の登録簿の候補を読んで1回だけ作る）」「W+1 の候補」「W の両者のタイムアタックのベスト」を持つ。プレイヤーの DO は自分の集計を自分で持ち、登録簿とは**常に一致していることを前提にしない**（登録簿が落ちても画面は手元の値で出る）。 |
+| 直接対決 | **確定したランク戦**（精算と同じ信頼のルール：合意か検証サービス、無効のレースは数えない）で、2人とも走っていれば**先着した方に1点**。レースは**結果を受け取った時の週**に数える（精算は終わってから数秒なので、週の切り替えの瞬間をまたぐレースだけは2人の週がずれることがある）。確定結果に全員の着順（`field`）が入り、2人の DO が同じ結果を受け取るので、点数は互いに話さなくても一致する。CPU のライバルとは**全てのランク戦**で：自分が `targetPlace`（性格ごと、既定 5〜7）以内なら自分に、それ以外は CPU に1点。 |
+| タイムアタック | 今週の各コースの自分のベスト（検証済みの記録だけ）を登録簿に送り、ライバルのものと並べる。**直接対決が同点の時だけ**、相手より速いコースの数で勝敗を決める（それも同点なら引き分け）。CPU のタイムは性格のメダル（銅・銀・金）の秒数。 |
+| ライバルと走る | **ランク戦のマッチングは変えない**（同じ部屋に入りやすくすると、待ち時間・公平性の目標を崩し、2人で示し合わせた勝ち負けの譲り合いでレーティングを動かせるため）。代わりに**フレンド部屋への挑戦状**：自分の部屋にライバルを招く（フレンドでなくてよい、1日 `challengesPerDay` 回まで）。**順位は表示するが点にはならない**（レーティング・報酬はフレンド戦の通常のルールのまま）。 |
+| 報酬 | 週の結果で決まる**固定の無償コイン**（勝ち 20・引き分け 10・負け 10・解除 10）。週の自分のランク戦が `minRacesForResult`（3）未満なら報酬なし（`not_enough`）。乱数なし・連勝の上乗せなし・有償コインは出さない。1回 ≤ `RIVAL_HARD_LIMITS.freeCoinsPerWeek` 100（¥160 相当、¥200 未満）。 |
+| 称号 | `titles.json` の条件 `rivalWeeksWon`（勝った週の**通算**、連続ではない）：1週「好敵手」・5週「宿命の対決」・20週「ライバルキラー」。見た目だけ。 |
+| プライバシー | ライバルに見えるのは**公開カード**だけ（表示名・称号・クラス・勝負服・相棒の馬の名前/レア度/脚質/見た目＝公開プロフィールの写し＋相棒）。ブロック（支部フィードのミュートと同じ1つのブロック一覧）・オプトアウト・BAN・削除予定の人は組まれず、今週の組は**両方とも解除**（`no_contest`、カードは消える）。 |
+
+### 28.1 設定（`progression.rival`、リモート設定で変更可・`rivalProblems` で検証）
+| キー | 既定 | 意味 |
+|---|---|---|
+| `enabled` | true | false で `GET /v1/rival` は `{ "enabled": false }` |
+| `weekStartsOn` | 1 | 週の始まりの曜日（0 = 日曜） |
+| `maxRatingGap` / `jitter` / `pairWindow` | 200 / 40 / 3 | 組み合わせ（上記） |
+| `minRacesForResult` | 3 | 結果の報酬に要る自分のランク戦の数 |
+| `rewards` | win 20 / draw 10 / lose 10 / no_contest 10 | `{ freeCoins }` だけ（他のキーは拒否） |
+| `challengesPerDay` | 3 | 挑戦状の1日の回数 |
+| `recentKeep` | 10 | 「最近のレース」に残す数 |
+| `cpuRivals[]` | 4人 | `id`・`name`・`personality`・`line`（ひとこと）・`style`・`targetPlace`・`taMedal` |
+コード側の上限（`RIVAL_HARD_LIMITS`）：報酬 ≤ 100、`challengesPerDay` ≤ 10、`maxRatingGap` ≤ 600、`jitter` ≤ 200、`pairWindow` ≤ 8、`recentKeep` ≤ 30、CPU ≤ 20 人。報酬の順は **勝ち ≥ 引き分け ≥ 負け**、解除 ≤ 引き分け（組を解除しても得をしない）。
+
+### 28.2 `GET /v1/rival`（要認証）
+サーバーが未精算の週（今週と、終わったがまだ精算していない週）ごとに登録簿へ問い合わせ、プレイヤーの DO で反映・精算してから返す（その日最初の表示で KPI `rival_view`）。
+```json
+{ "enabled": true, "optOut": false, "weekId": "2026-12-14", "weekEndsAt": 1797447600000,
+  "rival": { "kind": "human", "playerId": "u_123", "dissolved": false,
+    "card": { "displayName": "ハヤテ乗り", "titleId": "first_win", "classId": "B", "silks": { "…": "…" },
+      "partner": { "name": "ハヤテ", "rarity": "SR", "style": "senko", "appearance": { "…": "…" } } } },
+  "score": { "me": 2, "them": 1, "rankedRaces": 7, "minRaces": 3, "taMe": 1, "taThem": 0 },
+  "recent": [ { "raceId": "r_…", "at": 1797…, "mode": "ranked", "me": 2, "them": 5, "point": "me" } ],
+  "timeAttack": [ { "trackId": "aoba_turf_1600", "trackName": "青葉競馬場 芝1600m", "me": 70210, "rival": 71004, "faster": "me" } ],
+  "result": null,
+  "history": [ { "weekId": "2026-12-07", "outcome": "win", "kind": "cpu", "rivalName": null, "cpuId": "cpu_asagi", "cpuName": "堅実のアサギ", "me": 5, "them": 3, "taMe": 0, "taThem": 0, "freeCoins": 20, "settledAt": 1797…, "newTitles": ["rival_first"] } ],
+  "record": { "weeksWon": 1, "weeksPlayed": 1, "titles": [ { "titleId": "rival_first", "name": "好敵手", "weeksWon": 1, "unlocked": true } ], "nextTitle": { "titleId": "rival_5", "…": "…" } },
+  "rewards": { "win": 20, "draw": 10, "lose": 10, "noContest": 10, "minRaces": 3 },
+  "challenge": { "left": 3, "perDay": 3 },
+  "rules": { "rankedOnly": true, "challengeUnranked": true, "fixedRewards": true, "noStreakRewards": true, "taBreaksTies": true } }
+```
+- `rival`：`{ kind: "human", playerId, card, dissolved }`（解除後は `playerId`・`card` が `null`）／`{ kind: "cpu", cpuId, name, personality, line, style, targetPlace, taMedal }`／`null`（オプトアウト）。
+- `recent`：今週の新しい順。`mode: "friend"` は挑戦状のレース（`point: null`、点にならない）。CPU の時 `them` は `null`。
+- `result` / `history[]` の名前：人間の週は `rivalName`（相手が付けた表示名、英語でも**翻訳しない**：`PLAYER_TEXT_KEYS`）、CPU の週は `cpuName`（設定の名前、英語では英語）。
+- `result`：まだ見ていない週の結果（週の結果シート）。`outcome`：`win` / `lose` / `draw` / `no_contest`（解除）/ `not_enough`（ランク戦が足りない、報酬0）。`freeCoins` は実際に付与した額。
+- 登録簿が答えない時は、その週は手元の値で返す（精算はしない＝次の表示で）。
+
+### 28.3 `PUT /v1/rival/settings`・`POST /v1/rival/block`・`POST /v1/rival/challenge`・`POST /v1/rival/results/:weekId/seen`（要認証）
+- **settings** `{ "optOut": boolean }`（他のキーは 400）→ `{ "optOut" }`。オプトアウトの前に終わった週を精算する（報酬は払う）。オプトアウトで今週の組は両方とも解除、今週の記録は結果なしで捨てる、来週から組まれない。戻すと次の週の候補から（今週は解除のまま）。
+- **block** → `{ "blocked": "<playerId>", "dissolved": true }`。今週の人間のライバルをブロック一覧（支部フィードのミュートと同じ、`PUT /v1/teams/me/feed/mutes` でも見える）に入れ、組を解除。人間のライバルがいなければ `NOT_ELIGIBLE`。
+- **challenge** `{ "passphrase" }` → `{ "ok": true, "rivalId" }`。自分がその部屋のメンバー（でなければ `NOT_ELIGIBLE`）、今週の解除されていない人間のライバルがいる、1日の回数内（超えたら 409 `RIVAL_CHALLENGE_LIMIT`）。相手の招待一覧（`GET /v1/friends` の `invites`）に入り、`room_invite` のプッシュ（上限・設定の中）。相手が自分をブロックしていれば `NOT_ELIGIBLE`。
+- **results/:weekId/seen** → `{ "unseen": null }`（結果シートを閉じた）。
+
+### 28.4 プッシュ「ライバルが記録を更新」（`rival_record`、種類 `friends`）
+ライバルが今週のタイムアタックで、**自分の今週のベストより前にいたコースで自分を上回った**時に1回（組・コース・週ごとに1回、登録簿が覚える）。受け取る側では**1ゲーム日に1回まで**、さらにプッシュの1日の上限（`dailyCap`）・静かな時間帯・種類の設定の中で送る。
+
+### 28.5 KPI（サーバーのイベント）
+| イベント | s1 | s2 | s3 | 数値 |
+|---|---|---|---|---|
+| `rival_view` | `human` / `cpu` / `none` | — | — | `count` 自分の点、`value` 相手の点（1ゲーム日に1回） |
+| `rival_race` | `human` / `cpu` / `challenge` | 点を取った側 `me` / `them` | — | `place` 自分の着順、`value` 相手の着順（CPU は目標の着順） |
+| `rival_week_result` | `win` / `lose` / `draw` / `no_contest` / `not_enough` | `human` / `cpu` | 週ID | `count` 自分の点、`value` 相手の点、`freeCoins` 報酬、`place` 週のランク戦の数 |
+| `rival_opt` | `out` / `in` | — | — | — |
+クエリは `docs/ops/kpi-queries.md`「ライバル」。
+
+### 28.6 クライアント（`Muchi.Client` `Rival.cs`、`Muchi.Game.RivalModel`）
+- `ApiClient.GetRivalAsync`・`SetRivalOptOutAsync`・`BlockRivalAsync`・`ChallengeRivalAsync`・`MarkRivalResultSeenAsync`。
+- `RivalModel`：ホームのライバルカード（名前・クラス・相棒・今週の点・残り日数）、詳細（今週の点・最近のレース・タイムアタックの比較）、週の結果シート（`result` があれば一度だけ、閉じたら seen）、オプトアウト・ブロック、挑戦状（フレンド部屋を作ってから）。文言に「ランク戦の点」「挑戦状は点にならない」「報酬は結果で決まる固定の額」を出す。ショップへの導線は作らない。
+
 ## 29. コイン不足の案内（T6、REQ-SHORT-001〜010、`server/src/domain/shortfall.ts`、C# `Shortfall.cs`・`Muchi.Game.CoinShortfallModel`、docs/planning/06 §5.1 T6）
 ガチャ・見た目の直販・その他コインで払う操作が**コイン不足**で失敗した時（または失敗する前の確認画面で）、「何コインが・何枚足りないか」と「それを満たす一番小さいパック1つだけ」をサーバーが返す。クライアントは文言を組み立てない（§13 と同じ）。
 

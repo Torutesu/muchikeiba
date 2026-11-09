@@ -88,6 +88,8 @@ static class Program
         await GiftBoxChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 12: かんたん操作 (AssistModel, InputAssistant on a practice race, HUD chip, the one-time suggestion; REQ-ASSIST-*)");
         await AssistChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 12: ライバル (home card, detail, week-result sheet, challenge, opt-out / block; REQ-RIVAL-*)");
+        await RivalChecks.Run(Check, Ruleset());
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

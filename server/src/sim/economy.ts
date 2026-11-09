@@ -16,6 +16,7 @@ import { effectiveStats } from '../domain/horses.js';
 import { normalizeStats } from '../domain/season.js';
 import { STAT_KEYS, type Stats } from '../domain/master.js';
 import type { HorseInstance } from '../domain/player.js';
+import { MemoryRivalRegistry, RivalService, type RivalPlayers } from '../domain/rivalService.js';
 
 export interface Persona {
   id: string;
@@ -120,6 +121,10 @@ export interface EconomyResult {
    * class normalisation — with the training growth (`trained`) and without it (`untrained`).
    */
   rankedTotalByClass: Record<string, { trained: number; untrained: number }>;
+  /** REQ-RIVAL-* (E16): weeks settled, weeks won and the free coins the weekly results paid. */
+  rivalWeeks: number;
+  rivalWins: number;
+  rivalCoins: number;
   /** Derived. */
   freeCoinsPerActiveDay: number;
   pullsPerMonth: number;
@@ -152,10 +157,29 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
   const k = () => `c:sim:${key++}`;
   const r: EconomyResult = {
     persona: persona.id, days, activeDays: 0, freeCoinsEarned: 0, paidCoinsBought: 0, yenSpent: 0, pulls: 0, ssr: 0, sr: 0,
-    pityExchanges: 0, firstPityDay: null, breedingMaterial: 0, gachaTickets: 0, ticketPulls: 0, firstWinCoins: 0, allowanceCoins: 0, beginnerCoins: 0, beginnerSteps: 0, seasonMissionXp: 0, inviteCoins: 0, inviteTickets: 0, comebackWindows: 0, comebackValue: 0, comebackXp: 0, adViews: 0, adCoins: 0, adTaAttempts: 0, achievementTiers: 0, achievementCoins: 0, trainingSessions: 0, trainedPoints: 0, giftsClaimed: 0, giftsExpired: 0, rankedTotalByClass: {}, freeCoinsPerActiveDay: 0, pullsPerMonth: 0, ssrPerMonth: 0,
+    pityExchanges: 0, firstPityDay: null, breedingMaterial: 0, gachaTickets: 0, ticketPulls: 0, firstWinCoins: 0, allowanceCoins: 0, beginnerCoins: 0, beginnerSteps: 0, seasonMissionXp: 0, inviteCoins: 0, inviteTickets: 0, comebackWindows: 0, comebackValue: 0, comebackXp: 0, adViews: 0, adCoins: 0, adTaAttempts: 0, achievementTiers: 0, achievementCoins: 0, trainingSessions: 0, trainedPoints: 0, giftsClaimed: 0, giftsExpired: 0, rivalWeeks: 0, rivalWins: 0, rivalCoins: 0, rankedTotalByClass: {}, freeCoinsPerActiveDay: 0, pullsPerMonth: 0, ssrPerMonth: 0,
   };
   await svc.bootstrap(id);
   await svc.setAge(id, 1990, 1, false);
+  // REQ-RIVAL-* (E16): the weekly rival through the real service and an in-memory registry. The sim has no other humans,
+  // so every persona gets a CPU rival (head to head on every ranked race against its targetPlace).
+  const rp: RivalPlayers = {
+    peek: (u) => svc.rivalPeek(u), sync: (u, d, q) => svc.rivalSync(u, d, q), setOptOut: (u, o) => svc.rivalSetOptOut(u, o), block: (u) => svc.rivalBlock(u),
+    challengeCheck: (u) => svc.rivalChallengeCheck(u), challengeReceive: (u, f, p, n) => svc.rivalChallengeReceive(u, f, p, n), seen: (u, w) => svc.rivalSeen(u, w), push: (u, n, c) => svc.rivalPush(u, n, c),
+  };
+  // every persona meets the same middle-of-the-road CPU (targetPlace 6) so personas differ only by what they pay
+  const rc = master.progression.rival;
+  const rivalMaster: Master = rc ? { ...master, progression: { ...master.progression, rival: { ...rc, cpuRivals: [rc.cpuRivals.find((c) => c.targetPlace === 6) ?? rc.cpuRivals[0]!] } } } : master;
+  const rival = new RivalService(() => master, rp, new MemoryRivalRegistry(() => rivalMaster, () => now));
+  const rivalDay = async () => {
+    const v = await rival.view(id);
+    if (!('result' in v) || !v.result) return;
+    const res = v.result as { weekId: string; outcome: string; freeCoins: number };
+    r.rivalWeeks++;
+    if (res.outcome === 'win') r.rivalWins++;
+    r.rivalCoins += res.freeCoins;
+    await rival.seen(id, res.weekId);
+  };
   const inv = master.progression.invite;
   if (persona.invite === 'invited' && inv) {
     // FTUE (partner horse), then a friend's code: the welcome gift and the friend (bm_friend) on day 1
@@ -302,6 +326,7 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
     // plays the mini-game at an average level (every beat 100 ms late = "good"), rests a tired horse in the pool and
     // feeds the apple from the daily mission to the best horse. Training gives no coins, so E1–E13 do not move.
     await trainDay();
+    await rivalDay(); // REQ-RIVAL-006: the home rival card syncs (an ended week settles and pays here)
     // REQ-CB-004/005: a returner claims the comeback login day and every comeback mission it can
     const cb = await svc.comeback(id);
     if (cb.window) {
@@ -422,6 +447,7 @@ export async function simulateAll(master: Master, days = 90, seeds = [1, 2, 3], 
       achievementTiers: avg((x) => x.achievementTiers), achievementCoins: avg((x) => x.achievementCoins),
       trainingSessions: avg((x) => x.trainingSessions), trainedPoints: avg((x) => x.trainedPoints),
       giftsClaimed: avg((x) => x.giftsClaimed), giftsExpired: avg((x) => x.giftsExpired),
+      rivalWeeks: avg((x) => x.rivalWeeks), rivalWins: avg((x) => x.rivalWins), rivalCoins: avg((x) => x.rivalCoins),
       rankedTotalByClass: Object.fromEntries(master.progression.classes.map((c) => [c.id, {
         trained: avg((x) => x.rankedTotalByClass[c.id]!.trained), untrained: avg((x) => x.rankedTotalByClass[c.id]!.untrained),
       }])),

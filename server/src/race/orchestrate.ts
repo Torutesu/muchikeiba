@@ -130,6 +130,8 @@ export function settleRace(config: RaceStartConfig, final: FinalOutcome, ratings
     : new Map<string, Rating>();
   const finishOf = new Map<number, number>();
   if (final.finishTicks && final.finishTicks.length === final.order.length) final.order.forEach((slot, i) => finishOf.set(slot, final.finishTicks![i]!));
+  // REQ-RIVAL-004: the same confirmed places for every rider (both rivals' objects count the same race)
+  const field = humans.map((e) => ({ playerId: e.playerId!, place: placeOf.get(e.slot) ?? config.entrants.length }));
   for (const h of humans) {
     const ft = finishOf.get(h.slot);
     out[h.playerId!] = {
@@ -139,6 +141,7 @@ export function settleRace(config: RaceStartConfig, final: FinalOutcome, ratings
       ...(config.mode !== 'tutorial' ? { seen: raceFieldSeen(config, h.slot) } : {}),
       humans: humans.length,
       oldRating: ratings[h.playerId!] ?? null,
+      ...(config.mode === 'ranked' || config.mode === 'friend' ? { field } : {}),
       ...ev,
     };
   }

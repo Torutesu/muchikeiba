@@ -70,6 +70,8 @@ namespace Muchi.Client
         GiftExpired,
         /// <summary>409: receiving this gift would go over a hold limit (coins or items); it stays in the box (REQ-BOX-005).</summary>
         GiftHoldCap,
+        /// <summary>REQ-RIVAL-008: too many ライバルと走る challenges today (409).</summary>
+        RivalChallengeLimit,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -154,6 +156,7 @@ namespace Muchi.Client
             ["TRAINING_INPUT_INVALID"] = ApiErrorCode.TrainingInputInvalid,
             ["GIFT_EXPIRED"] = ApiErrorCode.GiftExpired,
             ["GIFT_HOLD_CAP"] = ApiErrorCode.GiftHoldCap,
+            ["RIVAL_CHALLENGE_LIMIT"] = ApiErrorCode.RivalChallengeLimit,
             ["VERIFIER_UNAVAILABLE"] = ApiErrorCode.VerifierUnavailable,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };

@@ -185,6 +185,8 @@ export interface Progression {
   training?: import('./training.js').TrainingConfig;
   /** REQ-BOX-*: プレゼントボックス (giftBox.ts, validated by giftBoxProblems). Absent = rewards are granted directly. */
   giftBox?: import('./giftBox.js').GiftBoxConfig;
+  /** REQ-RIVAL-*: weekly rival (rival.ts, validated by rivalProblems). Absent / disabled = no rivals. */
+  rival?: import('./rival.js').RivalConfig;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */
@@ -255,7 +257,9 @@ export type TitleCondition =
   | { kind: 'rating'; value: number }
   | { kind: 'bondLevel'; value: number }
   /** REQ-ACH-006: reached tier `tier` of achievement `achievementId` (master/collection.json). */
-  | { kind: 'achievement'; achievementId: string; tier: number };
+  | { kind: 'achievement'; achievementId: string; tier: number }
+  /** REQ-RIVAL-007: weekly rival wins in total (not in a row), cosmetic only. */
+  | { kind: 'rivalWeeksWon'; value: number };
 export interface TitleDef { id: string; name: string; condition: TitleCondition }
 /** `comeback` (REQ-CB-007): lapse reminders, opt-in (06 §3.5: a re-engagement push needs its own category and consent). */
 /** `gifts` (REQ-BOX-011): a compensation arrived in the gift box. */

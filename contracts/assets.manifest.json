@@ -96,7 +96,7 @@
    "fallback": "title/default",
    "description": "称号のアイコン",
    "dynamic": false,
-   "count": 27
+   "count": 30
   },
   "collection/portrait": {
    "fallback": "collection/portrait/default",
@@ -537,6 +537,9 @@
   "title/oikomi_master",
   "title/podium_50",
   "title/rating_1800",
+  "title/rival_20",
+  "title/rival_5",
+  "title/rival_first",
   "title/sashi_master",
   "title/senko_master",
   "title/start_artist",

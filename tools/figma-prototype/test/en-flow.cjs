@@ -1,8 +1,8 @@
 // Round 11 (REQ-L10N-013): a short pass of the ムチ一閃 UI in English on the landscape phone (844×390 @2x).
 // EN on from the start, the day-7 demo player: home, shop (recommended / coins / looks), the legal page (Japanese text
 // with the English courtesy note), purchase confirmation, season pass, scout calendar and odds, the stable, settings,
-// the coin shortfall sheet (round 12), a ranked race (HUD) and its result, 調教 (cards, mini-game, result, skip), then the 図鑑 (every tab, details), 実績 (claim one / all) and the title chooser,
-// and the プレゼントボックス (box, claim one / all, history).
+// the coin shortfall sheet (round 12), a ranked race (HUD) and its result, 調教 (cards, mini-game, result, skip), ライバル (detail, races, week result), then the 図鑑 (every tab, details), 実績 (claim one / all) and the title chooser,
+// the プレゼントボックス (box, claim one / all, history) and the かんたん操作 suggestion.
 // On every screen:
 //   - no Japanese is left on the stage (outside the .keep-ja legal text and the 日本語 language button);
 //   - no text overflows: nothing is still too wide / too tall for its box after fitText, nothing leaves the stage.
@@ -156,6 +156,20 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await click('プールで調教'); await waitScreen('training-play'); await page.waitForTimeout(300);
   await click('スキップ'); await waitScreen('training-result', 20000); await shot('training-result-skipped', 400);
   await click('つづける'); await waitScreen('training'); await page.waitForTimeout(400); await shot('training-after', 400);
+
+  // round 12: ライバル in English (REQ-RIVAL-*): the detail, a race together and a time attack each, the week-result sheet
+  await show('Rival'); await waitScreen('rival'); await waitIn('.rv-card');
+  // the demo days crossed a week boundary: an earlier week's result sheet comes first (once)
+  if (await page.locator('.screen.in .rv-result').count()) { await shot('rival-earlier-week', 400); await page.locator('.screen.in .rv-result .rv-continue').click(); await page.waitForTimeout(400); }
+  await shot('rival', 500);
+  assert.match(await page.locator('.screen.in').innerText(), /Challenge races never score/, 'rival: the rules in English');
+  await click('デモ：同じレース'); await waitIn('.rv-race');
+  await click('デモ：タイム'); await waitIn('.rv-ta');
+  await shot('rival-races', 400);
+  await click('デモ：週を終える'); await waitIn('.rv-result');
+  await shot('rival-week-result', 500);
+  await page.locator('.screen.in .rv-result .rv-continue').click(); await page.waitForTimeout(300);
+  await page.evaluate(() => globalThis.__muchi.logic.setClockMs(null));
 
   // round 11: 図鑑・実績・称号 in English (REQ-COL-*, REQ-ACH-*): a week of play on the real rules, every tab, a detail,
   // the achievement list (claim one, claim all), the title chooser

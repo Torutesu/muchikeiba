@@ -209,7 +209,7 @@
       "kind": "races",
       "target": 3,
       "reward": {
-        "freeCoins": 18
+        "freeCoins": 16
       }
     },
     {
@@ -784,6 +784,7 @@
     { "key": "bond", "races": 3 },
     { "key": "training", "races": 3 },
     { "key": "season", "rankedRaces": 5 },
+    { "key": "rival", "rankedRaces": 5 },
     { "key": "breeding", "days": 2, "races": 8 },
     { "key": "friends", "days": 2, "races": 10 },
     { "key": "friend_rooms", "days": 2, "races": 10 },
@@ -895,6 +896,24 @@
       { "id": "daily_coins", "surface": "home", "title": "動画を見て、無償コインを受け取る", "dailyCap": 1, "reward": { "freeCoins": 10 }, "adUnitKey": "REWARDED_HOME" },
       { "id": "result_coins", "surface": "result", "title": "動画を見て、もう少しコインを", "dailyCap": 1, "reward": { "freeCoins": 10 }, "adUnitKey": "REWARDED_RESULT" },
       { "id": "ta_attempt", "surface": "time_attack", "title": "動画を見て、タイムアタックをもう1回", "dailyCap": 1, "reward": { "taAttempts": 1 }, "adUnitKey": "REWARDED_TA" }
+    ]
+  },
+  "rival": {
+    "_note": "REQ-RIVAL-*（contracts/protocol.md §28）。週はゲーム日（dayRollover、既定4:00 JST）の weekStartsOn（1=月曜）から7日。先週ランク戦を走った同じクラスのレーティングの近い人（maxRatingGap 以内）と、週IDの seed と並べた候補から決定論で組む。合う人がいなければ cpuRivals から週IDとプレイヤーIDで決まるCPU。報酬は結果で決まる固定の無償コインだけ（1週 ≤ 100 = ¥160 相当、連勝の上乗せなし、乱数なし）。週の自分のランク戦が minRacesForResult 未満なら報酬なし。経済 E16（docs/spec/balance-targets.md 4.13）。",
+    "enabled": true,
+    "weekStartsOn": 1,
+    "maxRatingGap": 200,
+    "jitter": 40,
+    "pairWindow": 3,
+    "minRacesForResult": 3,
+    "rewards": { "win": { "freeCoins": 20 }, "draw": { "freeCoins": 10 }, "lose": { "freeCoins": 10 }, "no_contest": { "freeCoins": 10 } },
+    "challengesPerDay": 3,
+    "recentKeep": 10,
+    "cpuRivals": [
+      { "id": "cpu_asagi", "name": "堅実のアサギ", "personality": "steady", "line": "毎週コツコツ。今週も先に着くのはこっちだ", "style": "senko", "targetPlace": 6, "taMedal": "silver" },
+      { "id": "cpu_kurenai", "name": "強気のクレナイ", "personality": "bold", "line": "前で受けて立つ。抜けるものなら抜いてみろ", "style": "nige", "targetPlace": 5, "taMedal": "gold" },
+      { "id": "cpu_hisui", "name": "気まぐれのヒスイ", "personality": "fickle", "line": "調子の波はあるけど、最後の脚は誰にも負けない", "style": "oikomi", "targetPlace": 7, "taMedal": "bronze" },
+      { "id": "cpu_kogane", "name": "粘りのコガネ", "personality": "tenacious", "line": "最後の直線まで、ずっと隣にいるよ", "style": "sashi", "targetPlace": 6, "taMedal": "silver" }
     ]
   },
   "training": {

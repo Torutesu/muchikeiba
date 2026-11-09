@@ -114,6 +114,8 @@ export interface RaceResultForPlayer {
   eventId?: string;
   /** REQ-COL-002: what the player raced against (CPU templates, skills in the field), from the race config. */
   seen?: { templates: string[]; skills: string[] };
+  /** REQ-RIVAL-004: every human rider's place in this confirmed race (head to head with the weekly rival). */
+  field?: { playerId: string; place: number }[];
 }
 
 /** REQ-RATE-004: apply the race's rating change as a delta, so a newer rating is never overwritten by a stale snapshot. */

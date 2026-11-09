@@ -357,6 +357,19 @@ namespace Muchi.Game
         private AssistLevel? _assist;
 
         /// <summary>
+        /// REQ-A11Y-003/004: the accessibility settings every screen honours — the device copy first (works offline and
+        /// before the first answer), reconciled with the server by <see cref="AccessibilityModel.SyncAsync"/>.
+        /// </summary>
+        public AccessibilitySettings Accessibility
+        {
+            get => _a11y ??= AccessibilityModel.ReadLocal(_kv);
+            set { _a11y = value ?? AccessibilitySettings.Defaults; AccessibilityChanged?.Invoke(_a11y); }
+        }
+        private AccessibilitySettings _a11y;
+        /// <summary>Raised when a setting changes (screens re-bind text size, colours, motion).</summary>
+        public event Action<AccessibilitySettings> AccessibilityChanged;
+
+        /// <summary>
         /// Ranked race: enqueue the partner, poll until matched (CPU fill after ~15 s), then connect.
         /// Returns null with a message when offline, no partner, cancelled or timed out.
         /// </summary>

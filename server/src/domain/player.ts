@@ -206,6 +206,8 @@ export interface PlayerState {
   giftBox?: import('./giftBox.js').GiftBoxState;
   /** REQ-ASSIST-*: かんたん操作 setting, the last-place streak and the one-time suggestion (assist.ts ensureAssist). */
   assist?: import('./assist.js').AssistState;
+  /** REQ-A11Y-*: アクセシビリティ設定 (accessibility.ts; absent = defaults). */
+  accessibility?: import('./accessibility.js').AccessibilityState;
   /** REQ-RIVAL-*: opt-out, this week's rival and score, unsettled weeks, results (rival.ts ensureRival). */
   rival?: import('./rival.js').RivalState;
   /** REQ-HIST-004: one record per gacha draw, last 90 days (history.ts recordGachaLog; the Durable Object keeps older ones in SQL). */

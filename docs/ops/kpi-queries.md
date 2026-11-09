@@ -75,6 +75,7 @@
 | `assist_disable` | サーバー（かんたん操作をオフにした） | 前のレベル | `settings`/`prompt` | | |
 | `assist_prompt_view` | サーバー（一度だけの提案シートが出た） | | | | `double9` 最下位の連続 |
 | `race_assisted` | サーバー（かんたん操作ありで精算されたレース。本人の申告、KPI専用） | `whip`/`full` | モード | | `double4` 着順、`double5` 頭数 |
+| `a11y_setting_change` | サーバー（アクセシビリティ設定の PUT で値が変わったキーごとに1行、REQ-A11Y-014） | キー `textSize`/`colorMode`/`reduceMotion`/`haptics`/`subtitles`/`oneHanded`/`whipInput` | 新しい値（真偽は `on`/`off`） | `settings` | |
 | `event_point_earn` | サーバー（イベントのレースでイベントポイントを得た、REQ-EXCH-010） | イベントID | `full` / `capped`（1日の上限で削られた） | | `double4` 着順、`double9` 得たポイント、`double5` 所持ポイント |
 | `exchange_buy` | サーバー（イベント交換所で交換した） | イベントID | 行のID | 種類 `coins`/`material`/`ticket`/`cosmetic`/`horse` | `double5` 個数、`double9` 使ったポイント |
 | `challenge_start` | サーバー（週替わりチャレンジを始めた、REQ-WCH-014） | チャレンジ id | 週 id | `loan`/`own` | `double5` 今週そのチャレンジを始めた回数 |
@@ -764,3 +765,22 @@ LIMIT 100
 - `team_goal_contribute` はプレイヤーのオブジェクトが送った時の行（支部がその週の種類でない・上限で数えないこともある）。`race` と `win` は1レースで1行（1着なら `s2 = 'win'`、`count` 2）。
 - 課金者と無課金者（`blob7`）で受け取りの段に差が出ても、支払いの効果ではない（共同目標は課金で進まない、REQ-TGOAL-012）。支部の活発さの違いとして読む。
 - 継続への効果：`team_goal_reward` を受け取った人と、支部にいるが受け取っていない人の翌週の `race_finish` の数を比べる（支部の共同目標の目的は週の継続）。
+
+## アクセシビリティ：どの設定が使われているか（REQ-A11Y-014、contracts/protocol.md §41）
+
+**変更の数と値の分布**（週ごと、キーと新しい値ごと）。行はキーごとなので、1回の保存で2つ変えれば2行。人数は `blob2`（ハッシュ化したプレイヤー）の重複を除く。
+
+```sql
+SELECT
+  toStartOfWeek(timestamp) AS week, blob8 AS setting, blob9 AS value,
+  sum(_sample_interval) AS changes,
+  count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'a11y_setting_change' AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY week, setting, value
+ORDER BY week, setting, changes DESC
+LIMIT 200
+```
+- 個人の情報は入らない（どの設定・どの値かだけ）。今オンになっている人の割合は、最後の行がオンの人を数える必要があるので、プレイヤーごとの最新の行（`argMax(blob9, timestamp)`）で出す。
+- 長押し（`whipInput = hold`）の人の勝率がタップの人より高くならないこと（REQ-A11Y-012）は設計とテスト（`AccessibilityTests.HoldIsCappedBelowSkilledPlay`）で担保している。KPI は使い方の分布を見るためで、強さの判定には使わない。
+

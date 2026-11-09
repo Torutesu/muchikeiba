@@ -69,6 +69,7 @@ import {
 import { claimAllGifts, claimGift, expireGifts, giftBadge, giftBoxView, giftGiver, giftsNeedExpiry, nextGiftWake, type OpsTitleKey } from './giftBox.js';
 import { finishTraining, startTraining, trainingDelta, trainingTick, trainingView, useTrainingItem } from './training.js';
 import { assistView, markAssistPromptSeen, noteRaceForAssist, setAssist, type AssistLevel, type AssistSource } from './assist.js';
+import { accessibilityView, setAccessibility, type AccessibilityBody } from './accessibility.js';
 import {
   ensureRival, noteRivalRace, noteRivalTa, rivalBlock, rivalChallengeCheck, rivalChallengeReceive, rivalOutbound, rivalSeen, rivalSetOptOut, rivalSync,
   rivalUpdateOf, rivalView, rivalWithdrawn, weekIdAt, weeksToSync, type RegistryWeek, type RivalUpdate,
@@ -291,7 +292,7 @@ export class PlayerService {
   /** REQ-UXS-001/014/032/040: computed sections of GET /v1/player and bootstrap. */
   private extras(s: PlayerState, now: number) {
     const m = this.d.master;
-    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s) };
+    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s), accessibility: accessibilityView(s) };
   }
 
   async view(id: string) {
@@ -1245,6 +1246,14 @@ export class PlayerService {
   /** POST /v1/player/assist/prompt-seen: the one-time suggestion was shown (once only). */
   assistPromptSeen(id: string) {
     return this.tx(id, null, (s, now, emit) => markAssistPromptSeen(s, now, emit));
+  }
+
+  // ---------------------------------------------------------------- アクセシビリティ設定 (REQ-A11Y-*, accessibility.ts)
+  /** GET /v1/settings/accessibility: read-only (defaults when never set). */
+  async accessibility(id: string) { return accessibilityView(await this.load(id)); }
+  /** PUT /v1/settings/accessibility: idempotent full replace (keys left out = defaults). */
+  setAccessibility(id: string, body: AccessibilityBody) {
+    return this.tx(id, null, (s, now, emit) => setAccessibility(s, body, now, emit));
   }
 
   async pushPreferences(id: string, locale: Locale = 'ja') { return pushPrefsView(this.d.master, await this.load(id), locale); }

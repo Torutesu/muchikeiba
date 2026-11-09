@@ -1,4 +1,5 @@
 using System;
+using Muchi.Client;
 using Muchi.Engine;
 
 namespace Muchi.Game
@@ -20,6 +21,30 @@ namespace Muchi.Game
 
         /// <summary>Course direction (RaceVisuals.Track.LeftHanded; tutorial and practice courses are left-handed).</summary>
         public bool LeftHanded = true;
+
+        /// <summary>
+        /// REQ-A11Y-012: Tap (default) or Hold (AccessibilityModel.ApplyTo sets it). With Hold, the whip button reports
+        /// its state through <see cref="SetWhipHeld"/> and <see cref="Collect(RaceSim, int)"/> turns it into taps
+        /// (<see cref="WhipHold"/>: the press is a tap, a few spaced whips while held). Taps (<see cref="Spur"/>) still work.
+        /// </summary>
+        public WhipInput WhipMode = WhipInput.Tap;
+        private bool _whipHeld;
+        private readonly WhipHold _hold = new WhipHold();
+        public void SetWhipHeld(bool held) => _whipHeld = held;
+        public bool WhipHeld => _whipHeld;
+        /// <summary>Automatic whips the hold may still give this race (for the 「長押し あと{n}」 hint).</summary>
+        public int HoldRepeatsLeft(RulesetParams p) => Math.Max(0, WhipHold.MaxRepeats(p) - _hold.Repeats);
+
+        /// <summary>
+        /// Per frame with the race state (preferred): the same as <see cref="Collect(HorseState)"/> plus the whip hold.
+        /// </summary>
+        public byte Collect(RaceSim sim, int slot)
+        {
+            if (sim == null || slot < 0 || slot >= sim.EntrantCount) return 0;
+            byte c = Collect(sim.GetHorse(slot));
+            if (WhipMode == WhipInput.Hold) c |= _hold.Next(sim, slot, _whipHeld);
+            return c;
+        }
 
         /// <summary>-1 = screen left, +1 = screen right. Taps accumulate until the next Collect (one lane per frame).</summary>
         public void Lane(int screenDirection) { if (screenDirection != 0) _lane = Math.Sign(screenDirection); }
@@ -54,7 +79,7 @@ namespace Muchi.Game
 
         public void Reset()
         {
-            _lane = 0; _spur = false; _reinHeld = false; _reinSent = false;
+            _lane = 0; _spur = false; _reinHeld = false; _reinSent = false; _whipHeld = false; _hold.Reset();
         }
     }
 }

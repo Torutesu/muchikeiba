@@ -57,7 +57,7 @@ static class ExchangeChecks
         var cards = m.Cards;
         var mat = cards.First(c => c.Id == "ex_material");
         var horse = cards.First(c => c.Id == "ex_hatsuyuki");
-        check(cards.Count == 5 && mat.Enabled && mat.StockText == "残り 3 / 3" && mat.PriceText == "120 ポイント" && mat.RewardText == "配合素材 ×1", "exchange: a card shows price, the stock fact and the reward (" + mat.StockText + ")");
+        check(cards.Count == 5 && mat.Enabled && mat.StockText == "残り 3 / 3" && mat.PriceText == "120 ポイント" && mat.RewardText == "配合素材", "exchange: a card shows price, the stock fact and the reward (" + mat.StockText + ")");
         check(!horse.Enabled && horse.BlockedText == "ポイントが足りません" && horse.Icon == "collection/portrait/t_hatsuyuki" && cards.First(c => c.Id == "ex_coins_50").RewardText == "無償コイン50枚", "exchange: an unaffordable line says why; the horse uses its portrait");
         var allText = string.Join("", cards.Select(c => c.Name + c.PriceText + c.StockText + c.RewardText + c.BlockedText)) + m.PointsText + m.EarnTodayText + m.PeriodText + m.LeftoverText + ExchangeModel.RulesText;
         check(new[] { "倍", "今だけ", "残りわずか", "お得", "通常価格", "ショップ", "ガチャ" }.All(w => !allText.Contains(w)), "exchange: no multipliers, urgency words or shop links anywhere");

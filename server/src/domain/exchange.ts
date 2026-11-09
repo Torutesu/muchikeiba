@@ -266,7 +266,7 @@ export function buyExchange(m: Pick<Master, 'progression'> & Partial<Pick<Master
   }
   return {
     eventId: ev.id, itemId: line.id, kind: line.kind, qty, spent: cost, points: st.points,
-    bought: st.bought[line.id]!, remaining: line.stock - st.bought[line.id]!,
+    bought: st.bought[line.id]!, remaining: Math.max(0, line.stock - st.bought[line.id]!),
     granted: { freeCoins: (line.reward.freeCoins ?? 0) * qty, items: (line.reward.items ?? []).map((x) => ({ itemId: x.itemId, qty: x.qty * qty })), horse: line.reward.horse ?? null },
   };
 }
@@ -302,7 +302,8 @@ function lineView(s: PlayerState, line: ExchangeItemDef, st: PlayerExchangeState
   const bought = st?.bought[line.id] ?? 0;
   const itemId = line.reward.items?.[0]?.itemId ?? null;
   const owned = line.kind === 'cosmetic' && itemId ? owns(s, itemId) : false;
-  const remaining = line.stock - bought;
+  // a remote-config change may lower a stock below what was already taken: never show a negative stock
+  const remaining = Math.max(0, line.stock - bought);
   return {
     id: line.id, name: line.name, kind: line.kind, price: line.price, stock: line.stock, bought, remaining, owned,
     reward: line.reward,

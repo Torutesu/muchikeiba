@@ -146,6 +146,15 @@ describe('buying (REQ-EXCH-008)', () => {
     expect(pts(s)).toBeGreaterThanOrEqual(200); // nothing was taken by the refused buy
   });
 
+  it('a stock lowered by remote config below what was taken shows 0 left and refuses more', () => {
+    const s = freshPlayer();
+    give(s, 1000);
+    buyExchange(m, ev, s, 'ex_material', 3, DURING, 'c:m');
+    const lowered = withEx({ items: ex.items.map((l) => (l.id === 'ex_material' ? { ...l, stock: 1 } : l)) });
+    expect(exchangeView(m, lowered, s, DURING).items.find((x) => x.id === 'ex_material')).toMatchObject({ remaining: 0, maxQty: 0, affordable: false });
+    expect(code(() => buyExchange(m, lowered, s, 'ex_material', 1, DURING, 'c:m2'))).toBe('OUT_OF_STOCK');
+  });
+
   it('open before the start? no; during grace yes; after the close no', () => {
     const s = freshPlayer();
     give(s, 200);

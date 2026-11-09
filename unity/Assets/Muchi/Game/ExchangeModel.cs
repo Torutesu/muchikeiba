@@ -22,7 +22,7 @@ namespace Muchi.Game
         public string PriceText;
         /// <summary>"残り 2 / 3" (the player's own stock for this event: a fact, never urgency).</summary>
         public string StockText;
-        /// <summary>"無償コイン50枚" / "配合素材 ×1" / the horse's name.</summary>
+        /// <summary>"無償コイン50枚" / "配合素材" (+ "（2個）" for more than one) / the horse's name.</summary>
         public string RewardText;
         public bool Enabled;
         /// <summary>Why it cannot be exchanged now (one sentence), null when enabled.</summary>
@@ -137,7 +137,7 @@ namespace Muchi.Game
             if (l.RewardFreeCoins > 0) return "無償コイン" + N(l.RewardFreeCoins) + "枚";
             if (l.RewardHorse != null) return l.Name;
             var it = l.RewardItems.FirstOrDefault();
-            return it == null ? l.Name : l.Name + " ×" + N(it.Qty);
+            return it == null || it.Qty <= 1 ? l.Name : l.Name + "（" + N(it.Qty) + "個）";
         }
 
         // ---- confirm sheet

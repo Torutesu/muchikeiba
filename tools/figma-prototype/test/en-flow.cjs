@@ -141,6 +141,23 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await click('スキップ'); await waitScreen('training-result', 20000); await shot('training-result-skipped', 400);
   await click('つづける'); await waitScreen('training'); await page.waitForTimeout(400); await shot('training-after', 400);
 
+  // round 13: イベント交換所 in English (REQ-EXCH-*): the event top, the grid, the confirm sheet, the grace notice
+  await page.evaluate(() => globalThis.__muchi.logic.exchangeDemo('open'));
+  await show('EventTop'); await waitScreen('event-top'); await waitIn('.ev-points');
+  await click('デモ：イベントレースを1回'); await waitScreen('event-top'); await waitIn('.ev-points');
+  await click('デモ：イベントレースを1回'); await waitScreen('event-top'); await waitIn('.ev-points');
+  await click('デモ：イベントレースを1回'); await waitScreen('event-top'); await waitIn('.ev-points');
+  await shot('event-top', 500);
+  assert.match(await page.locator('.screen.in').innerText(), /cannot be bought/, 'exchange: the rules in English');
+  await click('交換所へ'); await waitScreen('exchange'); await waitIn('.ex-card[data-item="ex_material"]'); await shot('exchange', 500);
+  await page.locator('.screen.in .ex-card[data-item="ex_material"] [data-label="交換する"]').click(); await waitIn('.ex-sheet'); await shot('exchange-confirm', 400);
+  await page.locator('.screen.in .ex-sheet [data-label="交換する"]').click(); await page.waitForTimeout(600); await waitScreen('exchange'); await shot('exchange-after', 500);
+  await page.evaluate(() => globalThis.__muchi.logic.exchangeDemo('grace'));
+  await show('EventTop'); await waitScreen('event-top'); await waitIn('.ev-grace'); await shot('event-top-grace', 500);
+  await page.evaluate(() => globalThis.__muchi.logic.exchangeDemo('closed'));
+  await show('Exchange'); await waitScreen('exchange'); await waitIn('.ex-grace[data-status="closed"]'); await shot('exchange-closed', 500);
+  await page.evaluate(() => globalThis.__muchi.logic.exchangeDemo(null));
+
   // round 11: 図鑑・実績・称号 in English (REQ-COL-*, REQ-ACH-*): a week of play on the real rules, every tab, a detail,
   // the achievement list (claim one, claim all), the title chooser
   await page.evaluate(() => globalThis.__muchi.demo('collection')); await waitScreen('collection', 60000);

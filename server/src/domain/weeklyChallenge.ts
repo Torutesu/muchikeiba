@@ -315,7 +315,7 @@ function challengeCard(m: Master, c: WeeklyChallengeConfig, ch: ChallengeDef) {
   const track = trackById(m, ch.trackId);
   const t = m.templateById.get(ch.loanTemplateId);
   return {
-    id: ch.id, title: ch.title, trackId: track.id, trackName: (track as { name?: string }).name ?? track.id, surface: track.surface, distanceM: track.distanceM,
+    id: ch.id, title: ch.title, trackId: track.id, surface: track.surface, distanceM: track.distanceM,
     going: ch.going ?? (track.surface === 'dirt' ? 'fast' : 'good'), night: ch.night ?? false,
     cpuCount: ch.cpuCount, cpuLevel: ch.cpuLevel, cpuStatPermille: ch.cpuStatPermille ?? 1000,
     conditions: ch.conditions, labels: conditionLabels(ch.conditions), reward: ch.reward,

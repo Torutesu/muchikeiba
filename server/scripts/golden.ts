@@ -6,6 +6,8 @@ import { createHorseFromTemplate } from '../src/domain/horses.js';
 import type { RaceStartConfig } from '../src/domain/schemas.js';
 import { eventRuleset } from '../src/domain/events.js';
 import { DEFAULT_RULESET, timeAttackRuleset } from '../src/domain/ruleset.js';
+import { startChallenge, weeklyChallengeConfig } from '../src/domain/weeklyChallenge.js';
+import { addJstDays, dayRule, gameWeekStartMs } from '../src/domain/time.js';
 
 /** Configs written to contracts/golden for the C# side to run (contracts/protocol.md §9). Fixed seeds. */
 export function goldenConfigs(): Record<string, RaceStartConfig> {
@@ -46,5 +48,16 @@ export function goldenConfigs(): Record<string, RaceStartConfig> {
     cpuCount: 6, cpuLevel: ev.rules.cpuLevel, statCap: ev.rules.statCap, rng: seededRng(1225),
     rulesetOverrides: eventRuleset(DEFAULT_RULESET, ev), fixedStats: ev.rules.fixedStats,
   });
-  return { 'ts-config-ranked.json': ranked, 'ts-config-friend.json': friend, 'ts-config-timeattack.json': timeattack, 'ts-config-dirt-night.json': dirt, 'ts-config-event.json': event };
+  // REQ-WCH-003: every weekly challenge exactly as startChallenge issues it with the loan horse (C# WeeklyChallengeTests
+  // rides them: the time limits are reachable, the device evaluation equals the verified one)
+  const challenges: Record<string, RaceStartConfig> = {};
+  const wc = weeklyChallengeConfig(m);
+  wc?.rotation.forEach((w, i) => {
+    const now = gameWeekStartMs(addJstDays(wc.anchorWeekId, 7 * i), dayRule(m)) + 3_600_000;
+    w.challenges.forEach((ch, j) => {
+      const s = newPlayer('p_alice', 0, '2026-11');
+      challenges[`ts-config-challenge-${ch.id}.json`] = startChallenge(m, s, ch.id, { loan: true }, `golden_${ch.id}`, seededRng(3100 + i * 10 + j), now, () => undefined).config;
+    });
+  });
+  return { 'ts-config-ranked.json': ranked, 'ts-config-friend.json': friend, 'ts-config-timeattack.json': timeattack, 'ts-config-dirt-night.json': dirt, 'ts-config-event.json': event, ...challenges };
 }

@@ -13,7 +13,9 @@ import { createHorseFromTemplate } from '../src/domain/horses.js';
 import { raceTimeMs } from '../src/domain/timeAttack.js';
 import { gameWeekEndMs, gameWeekId, gameWeekStartMs, DEFAULT_DAY_ROLLOVER } from '../src/domain/time.js';
 import { STAT_KEYS, type Master } from '../src/domain/master.js';
-import type { ReplayLog, VerifierOutput } from '../src/domain/schemas.js';
+import type { RaceStartConfig, ReplayLog, VerifierOutput } from '../src/domain/schemas.js';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { VerifierClient } from '../src/domain/verifier.js';
 import type { KpiRecord } from '../src/domain/kpi.js';
 import { catalogFor, localize, untranslated, PLAYER_TEXT_KEYS } from '../src/i18n/catalog.js';
@@ -467,5 +469,19 @@ describe('HTTP (REQ-WCH-002/003/008) and English (REQ-WCH-015)', () => {
       expect(JSON.stringify(localize(v, 'en', cat))).not.toMatch(/double|2x|limited time|hurry/i);
     }
     for (const lbl of conditionLabels({ maxPlace: 3, style: 'oikomi', maxWhips: 0, maxTimeMs: 61_000 })) expect(untranslated(localize(lbl, 'en', cat))).toEqual([]);
+  });
+});
+
+describe('shared evaluation example (the same numbers as C# WeeklyChallengeTests.SharedEvaluationExampleMatchesTheServer)', () => {
+  it('golden wa_whip3 config: 2nd place, 89 280 ms, 2 whips of the slot, senko, cleared', () => {
+    const cfgJson = JSON.parse(readFileSync(join(import.meta.dirname, '../../contracts/golden/ts-config-challenge-wa_whip3.json'), 'utf8')) as RaceStartConfig;
+    const slot = cfgJson.entrants.findIndex((e) => e.kind === 'human');
+    expect(slot).toBe(2);
+    const o1 = (slot + 1) % 8;
+    const order = [o1, slot, ...[0, 1, 2, 3, 4, 5, 6, 7].filter((x) => x !== slot && x !== o1)];
+    const out = { order, finishTicks: order.map((_, i) => 1840 + i * 5), finishFracs: order.map((_, i) => 40000 + i) };
+    const ev = evaluateChallenge({ maxPlace: 3, maxWhips: 3, maxTimeMs: 100000 }, cfgJson, slot, [[59, slot, 1], [1200, slot, 32], [1300, slot, 33], [1400, o1, 32]], out);
+    expect(ev).toMatchObject({ finished: true, place: 2, timeMs: 89280, whips: 2, style: 'senko', cleared: true });
+    expect(ev.checks.map((c) => c.kind)).toEqual(['finish', 'place', 'whips', 'time']);
   });
 });

@@ -941,7 +941,7 @@
           { "id": "wa_whip3", "title": "ムチは3発まで", "trackId": "kirameki_turf_2000", "cpuCount": 7, "cpuLevel": 3,
             "conditions": { "maxWhips": 3, "maxPlace": 3 }, "loanTemplateId": "t_natsu", "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
           { "id": "wa_rain", "title": "雨の重馬場", "trackId": "kirameki_turf_2000", "going": "soft", "cpuCount": 5, "cpuLevel": 2,
-            "conditions": { "maxTimeMs": 140000 }, "loanTemplateId": "t_minamo", "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
+            "conditions": { "maxTimeMs": 94000 }, "loanTemplateId": "t_minamo", "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
         ]
       },
       {
@@ -952,7 +952,7 @@
           { "id": "wm_nowhip", "title": "ムチなしの末脚", "trackId": "minato_turf_2400", "cpuCount": 7, "cpuLevel": 2,
             "conditions": { "maxWhips": 0, "maxPlace": 5 }, "loanTemplateId": "t_yuyake", "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
           { "id": "wm_sloppy", "title": "不良馬場を走り切れ", "trackId": "santalucera_dirt_1700", "going": "sloppy", "night": true, "cpuCount": 5, "cpuLevel": 2,
-            "conditions": { "maxTimeMs": 120000 }, "loanTemplateId": "t_kawarabi", "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
+            "conditions": { "maxTimeMs": 79000 }, "loanTemplateId": "t_kawarabi", "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
         ]
       },
       {

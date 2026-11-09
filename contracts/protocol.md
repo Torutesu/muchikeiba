@@ -943,7 +943,7 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 | `w_minato` | みなとの夜章 | ナイターの先行策（みなと ダート1800・**ナイター**・**先行馬で2着以内** → 無償10）／ムチなしの末脚（みなと 芝2400・CPU Lv2・**ムチなしで5着以内** → 素材1）／不良馬場を走り切れ（サンタルチェラ ダート1700・**不良（sloppy）・ナイター**・**タイム以内に完走** → 素材1） |
 | `w_bellmoor` | 直線の覇者章 | 直線一気（ベルムーア 芝1200直線・**ムチ2回以内で1着** → 無償10）／砂の先行争い（青葉 ダート1400・**稍重（muddy）**・**先行馬で3着以内** → 素材1）／長距離の我慢（ノルトハーフェン 芝2400・**ムチ2回以内で3着以内** → 素材1） |
 
-タイムの条件の値は、貸し出し馬で「ゲートでスタート・ムチなし」の素直な乗り方をした時のタイムに余裕を足して決めた（`engine/Muchi.Engine.Tests/WeeklyChallengeTests.cs` の測定、balance-targets E18）。
+タイムの条件の値は、貸し出し馬で素直に乗った時（ゲートでスタート・中盤で手綱・残り400mからムチ3回）に届き、何もしない乗り方（スタートを押さない・手綱もムチもなし）では届かない値にした：雨の重馬場 1:34.0（素直 1:31.9／何もしない 1:37.1）、不良馬場を走り切れ 1:19.0（1:16.8／1:23.7）（`engine/Muchi.Engine.Tests/WeeklyChallengeTests.cs` の測定、balance-targets E18）。
 
 ### 31.3 公平性（REQ-WCH-007）
 | 項目 | 決めたこと |
@@ -957,7 +957,7 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 ### 31.4 `GET /v1/challenges/weekly`（要認証）
 ```json
 { "enabled": true, "weekId": "2026-11-02", "startsAt": 1793804400000, "endsAt": 1794409200000, "serverNow": 1794020400000,
-  "challenges": [ { "id": "wa_nige", "title": "逃げ切りの一閃", "trackId": "aoba_turf_1600", "trackName": "青葉競馬場 芝1600m", "surface": "turf", "distanceM": 1600,
+  "challenges": [ { "id": "wa_nige", "title": "逃げ切りの一閃", "trackId": "aoba_turf_1600", "surface": "turf", "distanceM": 1600,
       "going": "good", "night": false, "cpuCount": 7, "cpuLevel": 3, "cpuStatPermille": 1000,
       "conditions": { "style": "nige", "maxPlace": 1 }, "labels": [ { "kind": "style", "text": "逃げの馬で出走" }, { "kind": "place", "text": "1着でゴール" } ],
       "reward": { "freeCoins": 10 }, "loan": { "templateId": "t_hinode", "name": "ヒノデエクスプレス", "style": "nige", "statTotal": 3200 },
@@ -968,6 +968,7 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
   "badges": [ { "weekId": "2026-10-26", "badgeId": "wch_badge_bellmoor", "at": 1793500000000 } ], "badgeCount": 1,
   "rules": { "statCap": 3200, "normalized": true, "skills": false, "loanAtCap": true, "paidBoosts": false, "rewardOncePerWeek": true } }
 ```
+- コースの表示名はクライアントのコース名（`tracks.json` / visuals）から出す（サーバーの応答には id だけ）。
 - `labels[].text` は条件ごとの短い文（`conditionLabels`）。`?lang=en` / `Accept-Language` で英語（§23。条件の文は `i18n/en.ts` のテンプレート、タイトルとバッジ名は `master/locale-en.json`）。
 - `next` は `previewNext` が false なら null。`badges` は新しい順に最大20件。残り日数は `endsAt` と `serverNow` から出す（偽の締め切りは作らない）。
 

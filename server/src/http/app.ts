@@ -60,7 +60,8 @@ export type PlayerMethod =
   | 'comeback' | 'comebackClaimLogin' | 'comebackClaimMission' | 'comebackWelcomed' | 'whatsNew' | 'whatsNewSeen'
   | 'ads' | 'setAdPref' | 'adStart' | 'adSession' | 'adReward'
   | 'collection' | 'achievements' | 'claimAchievement' | 'claimAllAchievements'
-  | 'training' | 'trainingStart' | 'trainingFinish' | 'trainingUseItem';
+  | 'training' | 'trainingStart' | 'trainingFinish' | 'trainingUseItem'
+  | 'teamGoalReward' | 'goalPlayerView';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -554,6 +555,8 @@ export const routes: Route[] = [
   { method: 'GET', path: '/v1/league/me', auth: 'player', handler: async (_r, _p, c, u) => teams(c).league(u) },
   // REQ-TEAMFEED-*: cheer stamps and the team feed (fixed stamps only, no free text)
   { method: 'GET', path: '/v1/stamps', auth: 'player', handler: async (_r, _p, c, u) => teams(c).stamps(u) },
+  // REQ-TGOAL-008: the team's weekly goal (contracts/protocol.md §32)
+  { method: 'GET', path: '/v1/teams/me/goal', auth: 'player', handler: async (_r, _p, c, u) => teams(c).goal(u) },
   { method: 'GET', path: '/v1/teams/me/feed', auth: 'player', handler: async (r, _p, c, u) => {
     const q = new URL(r.url).searchParams;
     const num = (k: string, max: number) => {
@@ -835,6 +838,7 @@ export function teamPlayersFrom(player: (uid: string) => PlayerInvoker): TeamPla
     feedMute: (u, t, muted) => player(u).invoke('feedMute', u, t, muted),
     feedReported: (u, t, seq, by, reason) => player(u).invoke('feedReported', u, t, seq, by, reason),
     cheerPush: (u, from, name) => player(u).invoke('cheerPush', u, from, name),
+    goalPlayerView: (u) => player(u).invoke('goalPlayerView', u),
   };
 }
 

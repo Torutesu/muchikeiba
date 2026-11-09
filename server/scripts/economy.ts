@@ -40,3 +40,13 @@ for (const p of PERSONAS) {
 const gap = (a: string, b: string, cls: string, key: 'trained' | 'untrained') => res[a]!.rankedTotalByClass[cls]![key] - res[b]!.rankedTotalByClass[cls]![key];
 const perDay = (id: string) => res[id]!.trainedPoints / Math.max(1, res[id]!.activeDays);
 console.log(`\nE15 中課金−無課金のランク戦能力差（正規化後、調教なし→あり）: ${classes.map((c) => `${c.id} ${gap('medium', 'f2p', c.id, 'untrained').toFixed(0)}→${gap('medium', 'f2p', c.id, 'trained').toFixed(0)}`).join('  ')}  伸び/稼働日 中課金÷無課金 ${(perDay('medium') / perDay('f2p')).toFixed(2)}`);
+
+// REQ-TGOAL-* (E19): every persona joins a team on its beginner day; upper bound = the team reaches the top milestone every week
+console.log('');
+console.log('| persona | 共同目標の報酬（週） | 無償コイン（90日） | 配合素材（90日） | 引いた回数/月 | SSR/月 |');
+console.log('|---|---|---|---|---|---|');
+for (const p of PERSONAS) {
+  const r = res[p.id]!;
+  console.log(`| ${p.label} | ${r.teamGoalWeeks.toFixed(1)} | ${r.teamGoalCoins.toFixed(0)} | ${r.teamGoalMaterial.toFixed(1)} | ${r.pullsPerMonth.toFixed(1)} | ${r.ssrPerMonth.toFixed(2)} |`);
+}
+console.log(`\nE19 共同目標（最上段を毎週）を含めて E1 ${res.f2p!.pullsPerMonth.toFixed(1)}（40〜65）・E2 ${res.f2p!.ssrPerMonth.toFixed(2)}（1.2〜2.8）・招待上限 SSR/月 ${res.f2p_inviter!.ssrPerMonth.toFixed(2)}（≤2.8）`);

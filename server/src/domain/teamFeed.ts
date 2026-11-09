@@ -199,11 +199,14 @@ export function playerReported(s: PlayerState, teamId: string, seq: number, repo
 
 export interface FeedRace { raceId: string; mode: typeof FEED_RACE_MODES[number]; place: number; fieldSize: number; trackId: string | null }
 export interface FeedReaction { playerId: string; stampId: string; at: number }
+/** REQ-TGOAL-008: a milestone of the team's weekly goal (a team item: no author, `playerId` is empty). */
+export interface FeedGoal { week: string; goalId: string; label: string; tier: number; target: number; tiers: number }
 export interface FeedItem {
-  seq: number; at: number; kind: 'stamp' | 'race';
+  seq: number; at: number; kind: 'stamp' | 'race' | 'goal';
   playerId: string; displayName: string;
   stampId?: string;
   race?: FeedRace;
+  goal?: FeedGoal;
   reactions: FeedReaction[];
   /** Members who reported this item (hidden for them). */
   reportedBy?: string[];
@@ -252,6 +255,13 @@ export function feedRace(m: Master, f: TeamFeedState, member: { playerId: string
   return push(f, cfg, { at: now, kind: 'race', playerId: member.playerId, displayName: member.displayName, race, reactions: [] });
 }
 
+/** REQ-TGOAL-008: automatic team item when the weekly goal reaches a milestone (once per week and tier). */
+export function feedGoal(m: Master, f: TeamFeedState, goal: FeedGoal, now: number): FeedItem | null {
+  const cfg = stampsOf(m).config;
+  if (f.items.some((x) => x.kind === 'goal' && x.goal?.week === goal.week && x.goal.tier === goal.tier)) return null;
+  return push(f, cfg, { at: now, kind: 'goal', playerId: '', displayName: '', goal, reactions: [] });
+}
+
 /**
  * REQ-TEAMFEED-005: one reaction per member and item (a new stamp replaces it, null removes it). Reactions do not count
  * toward the post limit but share the interval (no reaction storms). Returns the item owner and whether this was new.
@@ -273,6 +283,7 @@ export function feedReact(m: Master, f: TeamFeedState, seq: number, playerId: st
 export function feedReport(m: Master, f: TeamFeedState, seq: number, reporter: string, now: number) {
   const cfg = stampsOf(m).config;
   const it = itemOf(f, seq);
+  if (it.kind === 'goal') throw new AppError('BAD_REQUEST', 'team goal items have no author to report');
   if (it.playerId === reporter) throw new AppError('BAD_REQUEST', 'cannot report your own item');
   const by = (it.reportedBy ??= []);
   if (by.includes(reporter)) return { ownerId: it.playerId, first: false };
@@ -298,8 +309,10 @@ export function feedForget(f: TeamFeedState, playerId: string) {
 }
 
 export interface FeedItemView {
-  seq: number; at: number; kind: 'stamp' | 'race'; playerId: string; displayName: string; mine: boolean;
+  seq: number; at: number; kind: 'stamp' | 'race' | 'goal'; playerId: string; displayName: string; mine: boolean;
   stampId: string | null; stampAsset: string | null; race: FeedRace | null;
+  /** REQ-TGOAL-008: set on `goal` items. */
+  goal: FeedGoal | null;
   reactions: { stampId: string; count: number; mine: boolean }[];
   myReaction: string | null;
 }
@@ -312,7 +325,7 @@ export function feedPage(m: Master, f: TeamFeedState, viewer: string, muted: str
   const cfg = stampsOf(m).config;
   const n = Math.max(1, Math.min(cfg.pageMax, limit ?? cfg.pageDefault));
   const mute = new Set(muted);
-  const visible = f.items.filter((x) => !mute.has(x.playerId) && !(x.reportedBy ?? []).includes(viewer) && (before === null || x.seq < before));
+  const visible = f.items.filter((x) => (x.kind === 'goal' || !mute.has(x.playerId)) && !(x.reportedBy ?? []).includes(viewer) && (before === null || x.seq < before));
   const page = visible.slice(-n).reverse();
   const items: FeedItemView[] = page.map((x) => {
     const reacts = x.reactions.filter((r) => !mute.has(r.playerId));
@@ -324,8 +337,8 @@ export function feedPage(m: Master, f: TeamFeedState, viewer: string, muted: str
       counts.set(r.stampId, c);
     }
     return {
-      seq: x.seq, at: x.at, kind: x.kind, playerId: x.playerId, displayName: names.get(x.playerId) ?? x.displayName, mine: x.playerId === viewer,
-      stampId: x.stampId ?? null, stampAsset: x.stampId ? stampAsset(x.stampId) : null, race: x.race ?? null,
+      seq: x.seq, at: x.at, kind: x.kind, playerId: x.playerId, displayName: names.get(x.playerId) ?? x.displayName, mine: x.playerId !== '' && x.playerId === viewer,
+      stampId: x.stampId ?? null, stampAsset: x.stampId ? stampAsset(x.stampId) : null, race: x.race ?? null, goal: x.goal ?? null,
       reactions: [...counts.entries()].map(([stampId, c]) => ({ stampId, ...c })).sort((a, b) => b.count - a.count || (a.stampId < b.stampId ? -1 : 1)),
       myReaction: reacts.find((r) => r.playerId === viewer)?.stampId ?? null,
     };

@@ -34,6 +34,7 @@ import { admitClientBatch, clientToKpi, ensureKpi, isPayer, kpiRecord, type Clie
 export type Emit = (e: KpiEvent) => void;
 import type { Ruleset } from './ruleset.js';
 import { abortSubmit, prepareSubmit, recordResult, startTimeAttack, timeAttackView } from './timeAttack.js';
+import { ensureGoal, playerGoalPending, playerGoalRace, playerGoalReward, playerGoalTa, playerGoalView, weekKeyOf, type GoalContribution } from './teamGoal.js';
 import type { VerifierOutput } from './schemas.js';
 import { trackById } from './master.js';
 import { appearanceOf, assetKeys, defaultSilks, validateSilks, type EntrantVisual, type Silks, effectiveSilks } from './visuals.js';
@@ -127,6 +128,10 @@ export interface PlayerServiceDeps {
   onStable?: (playerId: string, snap: StableSnapshot | null) => void | Promise<void>;
   /** REQ-TEAMFEED-004: a member won or placed in a ranked / tournament race (the Durable Object tells the team feed). */
   onTeamFeed?: (p: { teamId: string; playerId: string; displayName: string; race: FeedRace }) => void | Promise<void>;
+  /** REQ-TGOAL-003: a confirmed event counts toward the team's weekly goal (the Durable Object tells the team; throws when it is unreachable). */
+  onTeamGoal?: (c: GoalContribution) => Promise<{ milestone: number | null } | null | undefined | void>;
+  /** REQ-TGOAL-006: remove a quarantined / banned player's contribution from a team's weekly goal. */
+  onTeamGoalForget?: (p: { teamId: string; playerId: string }) => Promise<unknown>;
 }
 
 const standingKey = (s: PlayerState) => JSON.stringify([s.season.id, s.season.classId, s.season.points, s.season.races, Math.round(s.rating.r), s.profile.displayName, s.profile.titleId]);
@@ -641,6 +646,7 @@ export class PlayerService {
     // create a fresh player under the deleted id. ACK it as a no-op. A player that merely has no state yet still applies.
     if (!cur && (await this.repo.tombstoned?.(id))) return { skipped: 'deleted' as const, raceId: r.raceId, event: null };
     let feed: { teamId: string; playerId: string; displayName: string; race: FeedRace } | null = null;
+    let goal: GoalContribution | null = null;
     const out = await this.tx(id, `race:${r.raceId}`, (s, now, emit) => {
       // QA r6 #3: durable per-race guard, independent of the evictable idempotency ring
       const applied = (s.appliedRaces ??= {});
@@ -658,6 +664,12 @@ export class PlayerService {
         // r10 QA: the deletion must find this item even after the player left the team (REQ-TEAMFEED-008)
         notePostedIn(s, teamId);
         feed = { teamId, playerId: id, displayName: s.profile.displayName, race: { raceId: r.raceId, mode: r.mode as FeedRace['mode'], place: r.place, fieldSize: r.fieldSize, trackId: r.details?.trackId ?? null } };
+      }
+      // REQ-TGOAL-003/004: the settled result counts toward the team's weekly goal (account-wide daily cap)
+      goal = playerGoalRace(this.d.master, s, r, now);
+      if (goal) {
+        notePostedIn(s, goal.teamId); // REQ-TGOAL-006: the deletion finds this team even after a leave
+        emit({ name: 'team_goal_contribute', s1: goal.teamId, s2: goal.wins ? 'win' : 'race', s3: goal.ref, count: goal.races + goal.wins });
       }
       if (!r.void && r.mode === 'ranked') noteRaceForOffers(this.d.master, s, r.place, now); // REQ-UXS-017 T2
       if (r.mode === 'ranked' && !r.void) armPromotionNudge(this.d.master, s, now); // REQ-UXS-012
@@ -680,6 +692,7 @@ export class PlayerService {
       };
     });
     await this.flushEventPushes(id);
+    await this.sendTeamGoal(id, goal);
     if (feed && this.d.onTeamFeed) {
       // best effort: the result is committed; a TeamDO outage only loses the feed item
       try { await this.d.onTeamFeed(feed); } catch (e) { console.error('team feed race item failed', id, (e as Error).message); }
@@ -697,6 +710,46 @@ export class PlayerService {
     }
     return out;
   }
+
+  /**
+   * REQ-TGOAL-003: delivers a contribution (and any earlier undelivered ones) to the team. Delivery failures are kept on
+   * the player (bounded) and re-sent with the next contribution; the team counts a ref once and only into its own week.
+   * A milestone this contribution reached is the team_goal_milestone KPI row of the contributor.
+   */
+  private async sendTeamGoal(id: string, c: GoalContribution | null) {
+    if (!this.d.onTeamGoal) return;
+    const pending = ensureGoal(await this.load(id)).pending;
+    if (!c && pending.length === 0) return;
+    const queue = [...pending, ...(c ? [c] : [])];
+    const failed: GoalContribution[] = [];
+    const milestones: { teamId: string; tier: number }[] = [];
+    for (const x of queue) {
+      try {
+        const r = await this.d.onTeamGoal(x);
+        if (r && r.milestone !== null && r.milestone !== undefined) milestones.push({ teamId: x.teamId, tier: r.milestone });
+      } catch (e) {
+        console.error('team goal contribution failed; kept for retry', id, x.teamId, (e as Error).message);
+        failed.push(x);
+      }
+    }
+    if (pending.length === 0 && failed.length === 0 && milestones.length === 0) return;
+    await this.tx(id, null, (s, now, emit) => {
+      playerGoalPending(s, failed, now);
+      for (const ms of milestones) emit({ name: 'team_goal_milestone', s1: ms.teamId, s2: weekKeyOf(now, dayRule(this.d.master)), value: ms.tier });
+    });
+  }
+
+  /** REQ-TGOAL-007/009: a closed week's tier reward (the team object's alarm; idempotent per week, whatever the team). */
+  async teamGoalReward(id: string, week: string, teamId: string, tier: number, contribution: number) {
+    if (await this.wiped(id)) return null;
+    return this.tx(id, null, (s, now, emit) => {
+      const r = playerGoalReward(this.d.master, s, week, teamId, tier, contribution, now);
+      if (r.status === 'rewarded') emit({ name: 'team_goal_reward', s1: teamId, s2: week, value: tier, count: contribution });
+      return r;
+    });
+  }
+  /** REQ-TGOAL-008: the player's side of GET /v1/teams/me/goal. */
+  async goalPlayerView(id: string) { return playerGoalView(this.d.master, await this.load(id), this.d.clock()); }
 
   /** Re-sends event board updates that failed earlier (latest entry per event; boards accept newer totals). */
   private async flushEventPushes(id: string) {
@@ -925,8 +978,15 @@ export class PlayerService {
   adminResetName(id: string, target: 'display' | 'horse' | 'stable', horseId: string | null) {
     return this.tx(id, null, (s) => supportResetName(this.d.master, s, target, horseId));
   }
-  setModeration(id: string, status: 'ok' | 'quarantined' | 'banned', until: number | null, reason: string) {
-    return this.tx(id, null, (s, now) => setModeration(s, status, until, reason, now));
+  async setModeration(id: string, status: 'ok' | 'quarantined' | 'banned', until: number | null, reason: string) {
+    const out = await this.tx(id, null, (s, now) => setModeration(s, status, until, reason, now));
+    // REQ-TGOAL-006: a quarantined or banned player's contribution leaves the weekly goal of every team that holds it
+    if (status !== 'ok' && this.d.onTeamGoalForget) {
+      const s = await this.load(id);
+      const teams = [...new Set([...(s.team?.teamId ? [s.team.teamId] : []), ...ensureFeed(s).postedIn])];
+      for (const teamId of teams) await this.d.onTeamGoalForget({ teamId, playerId: id }).catch((e) => console.error('team goal forget failed', id, teamId, (e as Error).message));
+    }
+    return out;
   }
 
   // ---- マイ厩舎 (REQ-STABLE-*, stable.ts) ----
@@ -1000,13 +1060,24 @@ export class PlayerService {
     return this.tx(id, null, (s, now) => { notWhileDeleting(s); return prepareSubmit(s, this.d.master.progression.timeAttack, sessionId, inputs, resultHash, echoedConfig, now); });
   }
   taAbort(id: string, sessionId: string) { return this.tx(id, null, (s) => abortSubmit(s, sessionId)); }
-  taRecord(id: string, sessionId: string, out: VerifierOutput, claimedHash: string) {
-    return this.tx(id, null, (s, now) => {
+  async taRecord(id: string, sessionId: string, out: VerifierOutput, claimedHash: string) {
+    let goal: GoalContribution | null = null;
+    const res = await this.tx(id, null, (s, now, emit) => {
       const counted = s.timeAttack?.sessions.find((x) => x.id === sessionId)?.result ?? null;
       const r = recordResult(this.d.master, s, this.d.master.progression.timeAttack, sessionId, out, claimedHash, now);
       if (!counted && 'finished' in r && r.finished) countOnboarding(s, 'ta_finish');
+      // REQ-TGOAL-003: a verified run that set a season best on its course counts once (a re-submit returns the stored result)
+      if (!counted && 'seasonBest' in r && r.seasonBest) {
+        goal = playerGoalTa(this.d.master, s, sessionId, now);
+        if (goal) {
+          notePostedIn(s, goal.teamId);
+          emit({ name: 'team_goal_contribute', s1: goal.teamId, s2: 'ta_pb', s3: goal.ref, count: 1 });
+        }
+      }
       return r;
     });
+    await this.sendTeamGoal(id, goal);
+    return res;
   }
   async taView(id: string, trackId: string) {
     trackById(this.d.master, trackId);

@@ -31,6 +31,7 @@ function world(start = Date.UTC(2026, 10, 5, 3)) {
     stampCatalog: (u) => svc.stampCatalog(u), stampCheck: (u, s) => svc.stampCheck(u, s), stampPosted: (u, s, k, t, ref) => svc.stampPosted(u, s, k, t, ref ?? null),
     feedViewer: (u, f) => svc.feedViewer(u, f), feedMutes: (u) => svc.feedMutes(u), feedMute: (u, t, x) => svc.feedMute(u, t, x),
     feedReported: (u, t, q, b, r) => svc.feedReported(u, t, q, b, r), cheerPush: (u, f, n) => svc.cheerPush(u, f, n),
+    goalPlayerView: (u) => svc.goalPlayerView(u),
   };
   const ts = new TeamsService(() => m, teams, players, teams, teams, seededRng(77), clock);
   const state = async (u: string) => (await repo.get(u)) as PlayerState;

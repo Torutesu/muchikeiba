@@ -16,6 +16,9 @@ import { effectiveStats } from '../domain/horses.js';
 import { normalizeStats } from '../domain/season.js';
 import { STAT_KEYS, type Stats } from '../domain/master.js';
 import type { HorseInstance } from '../domain/player.js';
+import { ensureTeam } from '../domain/teams.js';
+import { ensureGoal, weekKeyOf } from '../domain/teamGoal.js';
+import { dayRule } from '../domain/time.js';
 
 export interface Persona {
   id: string;
@@ -117,6 +120,13 @@ export interface EconomyResult {
    * class normalisation — with the training growth (`trained`) and without it (`untrained`).
    */
   rankedTotalByClass: Record<string, { trained: number; untrained: number }>;
+  /**
+   * REQ-TGOAL-* (E19): weeks the player's team goal paid them and what it paid. Upper bound: the persona's team reaches
+   * the top milestone every week; the persona is paid when its own races that week reach the minimum.
+   */
+  teamGoalWeeks: number;
+  teamGoalCoins: number;
+  teamGoalMaterial: number;
   /** Derived. */
   freeCoinsPerActiveDay: number;
   pullsPerMonth: number;
@@ -124,6 +134,8 @@ export interface EconomyResult {
 }
 
 const DAY = 86_400_000;
+/** REQ-TGOAL-* (E19): the team every persona joins on its beginner "team" day. */
+const SIM_TEAM = 'tsimteam00';
 
 const unit = (rng: Rng) => rng.nextU32() / 4294967296;
 
@@ -149,7 +161,7 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
   const k = () => `c:sim:${key++}`;
   const r: EconomyResult = {
     persona: persona.id, days, activeDays: 0, freeCoinsEarned: 0, paidCoinsBought: 0, yenSpent: 0, pulls: 0, ssr: 0, sr: 0,
-    pityExchanges: 0, firstPityDay: null, breedingMaterial: 0, gachaTickets: 0, ticketPulls: 0, firstWinCoins: 0, allowanceCoins: 0, beginnerCoins: 0, beginnerSteps: 0, seasonMissionXp: 0, inviteCoins: 0, inviteTickets: 0, comebackWindows: 0, comebackValue: 0, comebackXp: 0, adViews: 0, adCoins: 0, adTaAttempts: 0, achievementTiers: 0, achievementCoins: 0, trainingSessions: 0, trainedPoints: 0, rankedTotalByClass: {}, freeCoinsPerActiveDay: 0, pullsPerMonth: 0, ssrPerMonth: 0,
+    pityExchanges: 0, firstPityDay: null, breedingMaterial: 0, gachaTickets: 0, ticketPulls: 0, firstWinCoins: 0, allowanceCoins: 0, beginnerCoins: 0, beginnerSteps: 0, seasonMissionXp: 0, inviteCoins: 0, inviteTickets: 0, comebackWindows: 0, comebackValue: 0, comebackXp: 0, adViews: 0, adCoins: 0, adTaAttempts: 0, achievementTiers: 0, achievementCoins: 0, trainingSessions: 0, trainedPoints: 0, rankedTotalByClass: {}, teamGoalWeeks: 0, teamGoalCoins: 0, teamGoalMaterial: 0, freeCoinsPerActiveDay: 0, pullsPerMonth: 0, ssrPerMonth: 0,
   };
   await svc.bootstrap(id);
   await svc.setAge(id, 1990, 1, false);
@@ -211,7 +223,12 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
   const record = async (kind: 'breed' | 'friends' | 'team' | 'ta_finish') => {
     const st = await svc.state(id);
     if (kind === 'friends') st.friends.ids.push(`sim_friend_${persona.id}`);
-    else if (kind === 'team') { countOnboarding(st, 'team'); }
+    else if (kind === 'team') {
+      countOnboarding(st, 'team');
+      // REQ-TGOAL-* (E19): from here on the persona is in a team (its races count toward the team's weekly goal)
+      const t = ensureTeam(st);
+      t.teamId = SIM_TEAM; t.joinedAt = now;
+    }
     else { if (kind === 'breed') ensureOnboarding(st).breedings += 1; countOnboarding(st, kind); }
     await repo.put(st);
   };
@@ -246,8 +263,28 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
       if (hv && hv.fatigue >= 40) await svc.trainingUseItem(id, 'training_apple', top.id, k());
     }
   };
+  /** REQ-TGOAL-007 (E19): the week-close payout of the persona's team (top milestone reached: the upper bound). */
+  const goalCfg = master.progression.teamGoal;
+  const goalMin = goalCfg ? Math.min(...goalCfg.goals.filter((g) => g.kind === 'races').map((g) => g.minContribution)) : 0;
+  let goalWeek = '';
+  const payGoal = async (week: string) => {
+    if (!goalCfg) return;
+    const st = await svc.state(id);
+    const g = ensureGoal(st);
+    const mine = g.week === week && g.weekTeam === SIM_TEAM ? g.weekSent.races : 0;
+    if (st.team?.teamId !== SIM_TEAM || mine < goalMin) return;
+    const before = st.items['breeding_material'] ?? 0;
+    const out = await svc.teamGoalReward(id, week, SIM_TEAM, goalCfg.tiers.length, mine);
+    if (out?.status !== 'rewarded') return;
+    r.teamGoalWeeks++;
+    r.teamGoalCoins += out.reward?.freeCoins ?? 0;
+    r.teamGoalMaterial += ((await svc.state(id)).items['breeding_material'] ?? 0) - before;
+  };
   for (let d = 0; d < days; d++) {
     now = start + d * DAY;
+    const wk = weekKeyOf(now, dayRule(master));
+    if (goalWeek && wk !== goalWeek) await payGoal(goalWeek);
+    goalWeek = wk;
     const newSeason = jstMonthKey(now) !== season;
     season = jstMonthKey(now);
     for (const pid of persona.monthlyPurchases) {
@@ -416,6 +453,7 @@ export async function simulateAll(master: Master, days = 90, seeds = [1, 2, 3], 
       adViews: avg((x) => x.adViews), adCoins: avg((x) => x.adCoins), adTaAttempts: avg((x) => x.adTaAttempts),
       achievementTiers: avg((x) => x.achievementTiers), achievementCoins: avg((x) => x.achievementCoins),
       trainingSessions: avg((x) => x.trainingSessions), trainedPoints: avg((x) => x.trainedPoints),
+      teamGoalWeeks: avg((x) => x.teamGoalWeeks), teamGoalCoins: avg((x) => x.teamGoalCoins), teamGoalMaterial: avg((x) => x.teamGoalMaterial),
       rankedTotalByClass: Object.fromEntries(master.progression.classes.map((c) => [c.id, {
         trained: avg((x) => x.rankedTotalByClass[c.id]!.trained), untrained: avg((x) => x.rankedTotalByClass[c.id]!.untrained),
       }])),

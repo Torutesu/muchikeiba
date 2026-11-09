@@ -59,6 +59,16 @@ export class PlayerDO extends DurableObject<Env> {
         const team = env.TEAMS.get(env.TEAMS.idFromName(p.teamId)) as unknown as { feedRace(a: string, r: typeof p.race): Promise<unknown> };
         ctx.waitUntil(team.feedRace(p.playerId, p.race).catch((e) => console.error('team feed race item failed', p.teamId, e)));
       },
+      // REQ-TGOAL-003: a confirmed event → the team's weekly goal (throws when unreachable: the player keeps it for retry)
+      onTeamGoal: async (c) => {
+        const team = env.TEAMS.get(env.TEAMS.idFromName(c.teamId)) as unknown as { goalContribute(x: typeof c): Promise<Envelope<{ milestone: number | null }>> };
+        return unwrap(await team.goalContribute(c));
+      },
+      // REQ-TGOAL-006: a quarantined / banned player's contribution leaves the team's goal
+      onTeamGoalForget: async (p) => {
+        const team = env.TEAMS.get(env.TEAMS.idFromName(p.teamId)) as unknown as { goalForget(x: string): Promise<Envelope<unknown>> };
+        return unwrap(await team.goalForget(p.playerId));
+      },
       // REQ-EVENT-007: event standing → the event's board
       onEventEntry: (e) => {
         const ev = env.EVENTS.get(env.EVENTS.idFromName(`ev:${e.eventId}`)) as unknown as { upsert(x: typeof e): Promise<unknown> };

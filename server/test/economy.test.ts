@@ -162,6 +162,30 @@ describe('economy targets (90 days, 3 seeds)', () => {
     expect(all.f2p_casual!.achievementCoins).toBeLessThan(f.achievementCoins);
   }, 600_000);
 
+  it('E19 team weekly goal (REQ-TGOAL-*): every persona is a team member whose team reaches the top milestone every week, and E1/E2 still hold', async () => {
+    const all = await run();
+    const cfg = m.progression.teamGoal!;
+    const top = cfg.tiers[cfg.tiers.length - 1]!.reward.freeCoins ?? 0;
+    for (const [id, r] of Object.entries(all)) {
+      // at most one top-tier grant per game week the persona was in the team (13 weeks in 90 days)
+      expect(r.teamGoalWeeks, id).toBeLessThanOrEqual(13);
+      expect(r.teamGoalCoins, id).toBeLessThanOrEqual(r.teamGoalWeeks * top + 1e-9);
+    }
+    // a daily player qualifies every full week after joining; the casual one too (4 races on ~4 days ≥ 3)
+    expect(all.f2p!.teamGoalWeeks).toBeGreaterThanOrEqual(11);
+    expect(all.f2p_casual!.teamGoalWeeks).toBeGreaterThanOrEqual(9);
+    // paying never buys more of it: the payout is the same for every daily persona
+    for (const id of ['light', 'medium', 'allowance', 'f2p_invited', 'f2p_inviter', 'ads']) expect(all[id]!.teamGoalCoins).toBe(all.f2p!.teamGoalCoins);
+    // E1 / E2 for the free daily player with the team goal included (and the invited / at-cap inviter, E11)
+    for (const id of ['f2p', 'f2p_invited']) {
+      expect(all[id]!.pullsPerMonth, id).toBeLessThanOrEqual(65);
+      expect(all[id]!.ssrPerMonth, id).toBeLessThanOrEqual(2.8);
+      expect(all[id]!.ssrPerMonth, id).toBeGreaterThanOrEqual(1.2);
+    }
+    expect(all.f2p_inviter!.ssrPerMonth).toBeLessThanOrEqual(2.8);
+    expect(all.f2p_casual!.pullsPerMonth).toBeLessThanOrEqual(40);
+  }, 3_600_000);
+
   it('E9 friend races cannot replace ranked play as an income (daily cap ≤ 30% of a free player day)', async () => {
     const r = (await run()).f2p!;
     const maxFriendPerDay = m.progression.friendRewardDailyCap * Math.max(...m.progression.raceFreeCoinsByPlace.friend!);

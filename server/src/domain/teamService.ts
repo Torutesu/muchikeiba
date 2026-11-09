@@ -10,9 +10,17 @@ import {
 import { jstMonthKey } from './time.js';
 import { leagueTick, newLeague, teamLeagueView, type LeagueState } from './league.js';
 import {
-  feedForget, feedPage, feedPost, feedRace, feedReact, feedReport, newFeed, type FeedItem, type FeedRace, type ReportReason, type TeamFeedState,
+  feedForget, feedGoal, feedPage, feedPost, feedRace, feedReact, feedReport, newFeed, type FeedItem, type FeedRace, type ReportReason, type TeamFeedState,
   type stampCatalog,
 } from './teamFeed.js';
+import {
+  goalContribute, goalForget, goalMemberLeft, goalMembersChanged, goalPayStep, goalRoll, goalTeamView, goalUnpaid, newGoalState, teamGoalConfig, weekEndMs,
+  type GoalClose, type GoalContribution, type GoalCounted, type TeamGoalState, type playerGoalView,
+} from './teamGoal.js';
+import { dayRule } from './time.js';
+export type TeamGoalView = ReturnType<TeamCore['goalView']>;
+/** A counted contribution plus the members to notify of a newly reached milestone (REQ-TGOAL-008). */
+export type GoalContributeResult = GoalCounted & { notify: string[]; teamName: string };
 export type TeamFeedPage = ReturnType<typeof feedPage>;
 export type TeamLeagueView = ReturnType<typeof teamLeagueView>;
 
@@ -48,11 +56,13 @@ export interface TeamPort {
   // REQ-TEAMFEED-*: the feed lives in the team object (members only, except forget)
   feedPost(teamId: string, playerId: string, stampId: string): Promise<FeedItem>;
   feedRace(teamId: string, playerId: string, race: FeedRace): Promise<FeedItem | null>;
-  feedReact(teamId: string, playerId: string, seq: number, stampId: string | null): Promise<{ ownerId: string; isNew: boolean; kind: 'stamp' | 'race' }>;
+  feedReact(teamId: string, playerId: string, seq: number, stampId: string | null): Promise<{ ownerId: string; isNew: boolean; kind: FeedItem['kind'] }>;
   feedReport(teamId: string, playerId: string, seq: number): Promise<{ ownerId: string; first: boolean }>;
   feedPage(teamId: string, viewer: string, muted: string[], before: number | null, limit: number | null): Promise<TeamFeedPage>;
-  /** REQ-UXS-040: removes a deleted player's items and reactions (no membership needed). */
+  /** REQ-UXS-040: removes a deleted player's items and reactions (no membership needed). Also their team goal contribution (REQ-TGOAL-006). */
   feedForget(teamId: string, playerId: string): Promise<{ removed: number }>;
+  // REQ-TGOAL-*: the weekly goal lives in the team object
+  goalView(teamId: string, viewer: string): Promise<TeamGoalView>;
 }
 
 export interface TeamPlayerState { teamId: string | null; joinedAt: number | null; cooldownUntil: number; outgoing: string[]; snapshot: MemberSnapshot }
@@ -77,6 +87,8 @@ export interface TeamPlayers {
   feedMute(uid: string, target: string, muted: boolean): Promise<{ muted: string[] }>;
   feedReported(uid: string, teamId: string, seq: number, reporter: string, reason: ReportReason): Promise<unknown>;
   cheerPush(uid: string, fromId: string, fromName: string): Promise<unknown>;
+  /** REQ-TGOAL-008: today's units sent and the last paid week. */
+  goalPlayerView(uid: string): Promise<ReturnType<typeof playerGoalView>>;
 }
 
 export interface TeamDirectoryPort {
@@ -317,6 +329,14 @@ export class TeamsService {
     return { reported: true, seq };
   }
 
+  /** REQ-TGOAL-008: my team's weekly goal — progress, milestones, my contribution, top contributors, last week's result. */
+  async goal(uid: string) {
+    const st = await this.players.state(uid);
+    const player = await this.players.goalPlayerView(uid);
+    if (!st.teamId) return { teamId: null, teamName: null, enabled: player.enabled, current: null, lastWeek: null, player };
+    return { teamId: st.teamId, ...(await this.teams.goalView(st.teamId, uid)), player };
+  }
+
   /** REQ-LEAGUE-005: my team's league this season — division table, weekly matchups and (after the season) its place. */
   async league(uid: string) {
     const st = await this.players.state(uid);
@@ -337,6 +357,8 @@ export class TeamsService {
 export class TeamCore {
   /** REQ-TEAMFEED-*: the team feed (stored under its own key by TeamDO). */
   public feed: TeamFeedState = newFeed();
+  /** REQ-TGOAL-*: the weekly goal (stored under its own key by TeamDO). */
+  public goal: TeamGoalState = newGoalState();
   constructor(public state: TeamState | null, private readonly master: () => Master, private readonly clock: () => number = Date.now) {}
 
   private get cfg() { return this.master().progression.teams; }
@@ -360,7 +382,12 @@ export class TeamCore {
   }
   reserve(playerId: string) { reserveSlot(this.t, this.cfg, playerId, this.clock()); }
   release(playerId: string) { if (this.state) releaseSlot(this.state, playerId); }
-  commit(m: MemberSnapshot) { commitMember(this.t, this.cfg, m, this.clock()); }
+  commit(m: MemberSnapshot) {
+    this.goalTick();
+    commitMember(this.t, this.cfg, m, this.clock());
+    const cfg = teamGoalConfig(this.master());
+    if (cfg) { this.goalTick(); goalMembersChanged(cfg, this.goal, this.t); }
+  }
   request(playerId: string, displayName: string) { return addRequest(this.t, this.cfg, playerId, displayName, this.clock()); }
   checkRequest(actor: string, applicant: string) {
     assertMay(this.t, actor, 'approve');
@@ -371,12 +398,12 @@ export class TeamCore {
     assertMay(this.t, actor, 'approve');
     return removeRequest(this.t, applicant);
   }
-  leave(playerId: string) { return leave(this.t, this.cfg, playerId, this.clock()); }
-  kick(actor: string, target: string) { kick(this.t, this.cfg, actor, target, this.clock()); }
+  leave(playerId: string) { this.goalTick(); const r = leave(this.t, this.cfg, playerId, this.clock()); goalMemberLeft(this.goal, playerId); return r; }
+  kick(actor: string, target: string) { this.goalTick(); kick(this.t, this.cfg, actor, target, this.clock()); goalMemberLeft(this.goal, target); }
   setRole(actor: string, target: string, role: 'officer' | 'member') { setRole(this.t, this.cfg, actor, target, role); }
   transfer(actor: string, target: string) { transfer(this.t, actor, target); }
   update(actor: string, patch: { announcement?: string; joinPolicy?: JoinPolicy; emblem?: Emblem }) { updateTeam(this.master(), this.cfg, this.t, actor, patch); }
-  disband(actor: string) { disband(this.t, this.cfg, actor, this.clock()); }
+  disband(actor: string) { this.goalTick(); disband(this.t, this.cfg, actor, this.clock()); goalMemberLeft(this.goal, actor); }
   managers() {
     assertAlive(this.t);
     return this.t.members.filter((m) => m.role !== 'member').map((m) => m.playerId);
@@ -410,7 +437,53 @@ export class TeamCore {
     this.member(viewer);
     return feedPage(this.master(), this.feed, viewer, muted, new Map(this.t.members.map((x) => [x.playerId, x.displayName])), before, limit);
   }
-  feedForget(playerId: string) { return feedForget(this.feed, playerId); }
+  feedForget(playerId: string) { this.goalForget(playerId); return feedForget(this.feed, playerId); }
+
+  // REQ-TGOAL-*
+  /** Closes a finished week (with the members it ended with) and opens the current one. Returns the week closed now. */
+  goalTick(): GoalClose | null {
+    const cfg = teamGoalConfig(this.master());
+    if (!cfg || !this.state) return null;
+    return goalRoll(cfg, dayRule(this.master()), this.goal, this.state, this.clock());
+  }
+  /** From a player's object after a confirmed event; a newly reached milestone posts a team feed item once. */
+  goalContribute(c: GoalContribution): GoalContributeResult {
+    const m = this.master();
+    const cfg = teamGoalConfig(m);
+    const teamName = this.state?.name ?? '';
+    if (!cfg) return { counted: 0, milestone: null, progress: 0, tier: 0, reason: 'no_goal', notify: [], teamName };
+    const r = goalContribute(cfg, dayRule(m), this.goal, this.state, c, this.clock());
+    let notify: string[] = [];
+    const w = this.goal.cur;
+    if (r.milestone !== null && w && this.state) {
+      feedGoal(m, this.feed, { week: w.week, goalId: w.goalId, label: w.label, tier: r.milestone, target: w.targets[r.milestone - 1]!, tiers: w.targets.length }, this.clock());
+      notify = this.state.members.map((x) => x.playerId).filter((x) => x !== c.playerId);
+    }
+    return { ...r, notify, teamName };
+  }
+  /** REQ-TGOAL-008: members only. */
+  goalView(viewer: string) {
+    const m = this.master();
+    const cfg = teamGoalConfig(m);
+    this.member(viewer);
+    if (!cfg) return { teamName: this.t.name, enabled: false as boolean, current: null, lastWeek: null };
+    return { teamName: this.t.name, enabled: true as boolean, ...goalTeamView(cfg, dayRule(m), this.goal, this.t, viewer, this.clock()) };
+  }
+  /** REQ-TGOAL-006: a deleted or quarantined player's contribution leaves the team's progress (no membership needed). */
+  goalForget(playerId: string) { return goalForget(this.goal, playerId); }
+  /** REQ-TGOAL-007: one payout step of the oldest unpaid closed week (the alarm runs it until nothing is left). */
+  async goalPay(pay: (playerId: string, c: GoalClose) => Promise<void>, persist: () => Promise<void>) {
+    this.goalTick();
+    const cfg = teamGoalConfig(this.master());
+    return goalPayStep(this.goal, this.state?.id ?? '', cfg?.payBatch ?? 50, pay, persist);
+  }
+  /** When the team object should wake next: now for an unpaid week, else when the running week ends. */
+  goalNextWake(): number | null {
+    if (!teamGoalConfig(this.master()) || !this.state || this.state.disbanded) return goalUnpaid(this.goal) ? this.clock() : null;
+    if (goalUnpaid(this.goal)) return this.clock();
+    const w = this.goal.cur;
+    return w ? weekEndMs(w.week, dayRule(this.master())) : null;
+  }
 }
 
 /** In-memory TeamPort/TeamDirectoryPort/TeamBoardPort for tests and local tools. */
@@ -438,6 +511,7 @@ export class MemoryTeams implements TeamPort, TeamDirectoryPort, TeamBoardPort {
     const c = this.core(teamId, create);
     const before = c.state ? structuredClone(c.state) : null;
     const feedBefore = structuredClone(c.feed);
+    const goalBefore = structuredClone(c.goal);
     try {
       const r = f(c);
       this.touch(teamId);
@@ -445,6 +519,7 @@ export class MemoryTeams implements TeamPort, TeamDirectoryPort, TeamBoardPort {
     } catch (e) {
       c.state = before; // all-or-nothing like the Durable Object
       c.feed = feedBefore;
+      c.goal = goalBefore;
       throw e;
     }
   }
@@ -472,6 +547,19 @@ export class MemoryTeams implements TeamPort, TeamDirectoryPort, TeamBoardPort {
   feedReport(teamId: string, p: string, seq: number) { return this.run(teamId, (c) => c.feedReport(p, seq)); }
   feedPage(teamId: string, viewer: string, muted: string[], before: number | null, limit: number | null) { return this.run(teamId, (c) => c.feedPage(viewer, muted, before, limit)); }
   async feedForget(teamId: string, p: string) { return this.cores.has(teamId) ? this.run(teamId, (c) => c.feedForget(p)) : { removed: 0 }; }
+  // REQ-TGOAL-* (pushes for milestones are sent by the caller in tests, by TeamDO in production)
+  async goalContribute(teamId: string, c: GoalContribution) {
+    return this.cores.has(teamId) ? this.run(teamId, (x) => x.goalContribute(c)) : { counted: 0, milestone: null, progress: 0, tier: 0, reason: 'no_goal' as const, notify: [], teamName: '' };
+  }
+  goalView(teamId: string, viewer: string) { return this.run(teamId, (c) => c.goalView(viewer)); }
+  async goalForget(teamId: string, p: string) { return this.cores.has(teamId) ? this.run(teamId, (c) => c.goalForget(p)) : { removed: 0 }; }
+  /** The TeamDO alarm, in memory: closes a finished week and pays until nothing is left. */
+  async goalAlarm(teamId: string, pay: (playerId: string, c: GoalClose) => Promise<void>) {
+    const c = this.core(teamId);
+    let r = await c.goalPay(pay, async () => undefined);
+    while (!r.done && r.paid > 0) r = await c.goalPay(pay, async () => undefined);
+    return r;
+  }
 
   async search(q: string, limit: number) {
     const f = q.toLowerCase();

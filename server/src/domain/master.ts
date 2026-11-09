@@ -183,6 +183,8 @@ export interface Progression {
   comeback?: import('./comeback.js').ComebackConfig;
   /** REQ-TRAIN-*: 調教 (training.ts, validated by trainingProblems). Absent = no training. */
   training?: import('./training.js').TrainingConfig;
+  /** REQ-TGOAL-*: 支部の共同目標 (teamGoal.ts, validated by teamGoalProblems). Absent = no team goals. */
+  teamGoal?: import('./teamGoal.js').TeamGoalConfig;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */

@@ -72,6 +72,7 @@ import {
   claimComebackLogin, claimComebackMission, comebackView, markComebackWelcomed, markWhatsNewSeen, nextComebackWake, noteActivity, runDueComebackPush, whatsNew,
 } from './comeback.js';
 import { claimAllGifts, claimGift, expireGifts, giftBadge, giftBoxView, giftGiver, giftsNeedExpiry, nextGiftWake, type OpsTitleKey } from './giftBox.js';
+import { activityBadge, activityPage, markActivityRead, recordActivity } from './activity.js';
 import { finishTraining, startTraining, trainingDelta, trainingTick, trainingView, useTrainingItem } from './training.js';
 import {
   commitSave, deleteSaved, forgetRecent, myReplaysView, noteRaceForReplays, ownReplayRef, prepareSave, sharedFor, updateSaved, validateReplayTitle,
@@ -193,7 +194,7 @@ export interface PlayerServiceDeps {
 }
 
 const standingKey = (s: PlayerState) => JSON.stringify([s.season.id, s.season.classId, s.season.points, s.season.races, Math.round(s.rating.r), s.profile.displayName, s.profile.titleId]);
-const profileKey = (s: PlayerState) => JSON.stringify([s.profile.displayName, s.profile.titleId, s.season.classId, Math.round(s.rating.r), s.stats.races, s.stats.wins, s.stats.top3]);
+const profileKey = (s: PlayerState, now: number) => JSON.stringify([s.profile.displayName, s.profile.titleId, s.season.classId, Math.round(s.rating.r), s.stats.races, s.stats.wins, s.stats.top3, moderationOf(s, now) === 'banned']);
 
 const IDEM_KEEP = 200;
 /**
@@ -242,7 +243,7 @@ export class PlayerService {
     settlePityGroups(this.d.master, draft, now);
     const paidBefore = draft.wallet.paid;
     const standingBefore = standingKey(draft);
-    const profileBefore = profileKey(draft);
+    const profileBefore = profileKey(draft, now);
     const wakeBefore = nextWake(draft);
     const stableBefore = this.d.onStable ? stableSnapshotKey(this.d.master, draft, now) : '';
     const rivalBefore = this.d.onRival ? rivalOutbound(this.d.master, draft, now) : null;
@@ -272,13 +273,13 @@ export class PlayerService {
     // directory profile and board rows step by step; a later transaction of the same run or a retry must not put them
     // back), and after the balances were forfeited the paid balance is not reported (retainDeleted removes that row).
     const deleting = draft.deletion?.status === 'deleting';
-    const pushProfile = !deleting && this.d.onProfile && (profileKey(draft) !== profileBefore || now - draft.profile.lastPushedAt >= this.d.master.progression.social.profilePushIntervalMs);
+    const pushProfile = !deleting && this.d.onProfile && (profileKey(draft, now) !== profileBefore || now - draft.profile.lastPushedAt >= this.d.master.progression.social.profilePushIntervalMs);
     if (pushProfile) draft.profile.lastPushedAt = now;
     await this.repo.put(draft);
     const wake = nextWake(draft);
     if (wake !== null && wake !== wakeBefore && this.d.onPushWake) await this.d.onPushWake(wake);
     if (kpi.length > 0 && this.d.onKpi) await this.d.onKpi(id, kpi);
-    if (pushProfile) await this.d.onProfile!(publicProfile(draft, this.d.master.bannedSilks));
+    if (pushProfile) await this.d.onProfile!(publicProfile(draft, this.d.master.bannedSilks, now));
     if (this.d.onStable && stableSnapshotKey(this.d.master, draft, now) !== stableBefore) await this.d.onStable(id, stableSnapshot(this.d.master, draft, now));
     if (this.d.onHall && hallSnapshotKey(this.d.master, draft, now) !== hallBefore) {
       // best effort like the stable copy: the transaction is saved; the next change re-writes the copy
@@ -314,7 +315,7 @@ export class PlayerService {
   /** REQ-UXS-001/014/032/040: computed sections of GET /v1/player and bootstrap. */
   private extras(s: PlayerState, now: number) {
     const m = this.d.master;
-    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s), commentaryPack: commentaryPackBadge(m, s), accessibility: accessibilityView(s) };
+    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s), commentaryPack: commentaryPackBadge(m, s), accessibility: accessibilityView(s), activity: activityBadge(m, s, now) };
   }
 
   async view(id: string) {
@@ -839,12 +840,14 @@ export class PlayerService {
   }
   rivalSeen(id: string, weekId: string) { return this.tx(id, null, (s) => rivalSeen(s, weekId)); }
   /** REQ-RIVAL-013: 「ライバルが記録を更新」 — at most once per game day, inside the push daily cap and preferences. */
-  async rivalPush(id: string, byName: string, course: string) {
+  async rivalPush(id: string, byName: string, course: string, byId?: string) {
     if (await this.wiped(id)) return { status: 'skipped' as const, reason: 'deleted' as const };
     return this.tx(id, null, (s, now) => {
       const r = ensureRival(s);
       if (r.optOut) return { status: 'skipped' as const, reason: 'opted_out' as const };
       const day = gameDayKeyOf(this.d.master, now);
+      // REQ-ACT-002: the activity entry (once per rival and game day, whatever the push preferences)
+      recordActivity(this.d.master, s, { kind: 'rival_record', source: `rival_record:${byId ?? byName}:${day}`, actor: byId ? { id: byId, name: byName } : null, vars: { name: byName, course } }, now);
       if (r.pushDay && r.pushDay >= day) return { status: 'skipped' as const, reason: 'already_today' as const };
       const out = enqueuePush(this.d.master, s, 'rival_record', { name: byName, course }, now);
       if (out.status === 'queued') r.pushDay = day;
@@ -1006,7 +1009,18 @@ export class PlayerService {
     return this.tx(id, null, (s, now, emit) => {
       const r = playerGoalReward(this.d.master, s, week, teamId, tier, contribution, now, giftGiver(this.d.master, s, now, emit)); // §26.1: background payout → gift box
       if (r.status === 'rewarded') emit({ name: 'team_goal_reward', s1: teamId, s2: week, value: tier, count: contribution });
+      // REQ-ACT-002: the week's result (the reward itself waits in the gift box, which writes no second entry)
+      if (r.status === 'rewarded' || r.status === 'none') recordActivity(this.d.master, s, { kind: 'team_goal_week', source: `team_goal_week:${week}`, vars: { n: String(tier) } }, now);
       return r;
+    });
+  }
+  /** REQ-TGOAL-004 / REQ-ACT-002: a newly reached tier of the team's goal — the push (daily cap applies) and the activity entry. */
+  async teamGoalMilestone(id: string, teamId: string, tier: number) {
+    if (await this.wiped(id)) return { status: 'skipped' as const, reason: 'deleted' as const };
+    return this.tx(id, null, (s, now) => {
+      recordActivity(this.d.master, s, { kind: 'team_goal_tier', source: `team_goal_tier:${teamId}:${weekKeyOf(now, dayRule(this.d.master))}:${tier}`, vars: { n: String(tier) } }, now);
+      ensurePush(this.d.master, s);
+      return enqueuePush(this.d.master, s, 'team_goal', { n: String(tier) }, now);
     });
   }
   /** REQ-TGOAL-008: the player's side of GET /v1/teams/me/goal. */
@@ -1141,7 +1155,10 @@ export class PlayerService {
     return this.tx(id, null, (s, now) => {
       notWhileDeleting(s);
       const out = friendReceive(this.d.master, s, fromId, now);
-      if (out === 'received') enqueuePush(this.d.master, s, 'friend_request', { name: fromName ?? 'フレンド' }, now);
+      if (out === 'received') {
+        enqueuePush(this.d.master, s, 'friend_request', { name: fromName ?? 'フレンド' }, now);
+        recordActivity(this.d.master, s, { kind: 'friend_request', source: `friend_request:${fromId}:${now}`, actor: { id: fromId, name: fromName ?? null } }, now); // REQ-ACT-002
+      }
       return out;
     });
   }
@@ -1158,7 +1175,10 @@ export class PlayerService {
       notWhileDeleting(s);
       const was = s.friends.ids.includes(byId);
       const out = friendAccepted(s, byId);
-      if (!was) enqueuePush(this.d.master, s, 'friend_accepted', { name: byName ?? 'フレンド' }, now);
+      if (!was) {
+        enqueuePush(this.d.master, s, 'friend_accepted', { name: byName ?? 'フレンド' }, now);
+        recordActivity(this.d.master, s, { kind: 'friend_accepted', source: `friend_accepted:${byId}:${gameDayKeyOf(this.d.master, now)}`, actor: { id: byId, name: byName ?? null } }, now); // REQ-ACT-002
+      }
       return out;
     });
   }
@@ -1220,6 +1240,18 @@ export class PlayerService {
   }
   /** REQ-UXS-040: the deleting player's undelivered milestone rewards are given up. */
   inviteForfeit(id: string) { return this.tx(id, null, (s) => forfeitInviteOutbox(s)); }
+
+  // ---- アクティビティ (REQ-ACT-*, contracts/protocol.md §40) ----
+  /** REQ-ACT-001/007: one page (names unresolved; the HTTP layer resolves them from the directory, REQ-ACT-012). */
+  async activity(id: string, cursor: number | null = null, limit: number = 20) {
+    const s = await this.load(id);
+    const now = this.d.clock();
+    let whatsNewCount = 0;
+    try { const w = whatsNew(this.d.master, s, now); whatsNewCount = w.items.length + w.more; } catch { /* comeback disabled */ }
+    return activityPage(this.d.master, s, now, cursor, limit, whatsNewCount);
+  }
+  /** REQ-ACT-008: mark read up to an id (idempotent). */
+  activityRead(id: string, upTo: number | null) { return this.tx(id, null, (s, now) => markActivityRead(this.d.master, s, upTo, now)); }
 
   // ---- 購入履歴・コイン履歴・ガチャ履歴 (REQ-HIST-*, contracts/protocol.md §33; read only) ----
   /** REQ-HIST-006: a deleted (wiped) account has no history here; its anonymised legal record is never reachable by player id. */
@@ -1370,7 +1402,11 @@ export class PlayerService {
   async stableLikeReceive(id: string, from: string, likeId: string) {
     // REQ-UXS-040: a like that arrives after the owner's account was wiped must not create a fresh player
     if (!(await this.repo.get(id))) return { counted: false, likes: 0, snapshot: null };
-    return this.tx(id, null, (s, now) => ({ ...stableLikeReceive(this.d.master, s, from, likeId, now), snapshot: stableSnapshot(this.d.master, s, now) }));
+    return this.tx(id, null, (s, now) => {
+      const r = stableLikeReceive(this.d.master, s, from, likeId, now);
+      if (r.counted) recordActivity(this.d.master, s, { kind: 'stable_like', source: `stable_like:${likeId}`, actor: { id: from } }, now); // REQ-ACT-002/006
+      return { ...r, snapshot: stableSnapshot(this.d.master, s, now) };
+    });
   }
   stableClear(id: string) { return this.tx(id, null, (s) => clearStable(s)); }
   /** REQ-UXS-040: the deletion's stable step (layout and like records; the public copy follows via onStable). */
@@ -1573,9 +1609,11 @@ export class PlayerService {
     return this.tx(id, null, (s) => playerReported(s, teamId, seq, reporter, reason));
   }
   /** Optional push to the owner of a race item a teammate cheered (not from muted members, not while deleting). */
-  async cheerPush(id: string, fromId: string, fromName: string) {
+  async cheerPush(id: string, fromId: string, fromName: string, ref?: string) {
     if (await this.wiped(id)) return { queued: false };
     return this.tx(id, null, (s, now) => {
+      // REQ-ACT-002/006/011: the activity entry (a muted sender writes nothing; recordActivity checks the block list)
+      recordActivity(this.d.master, s, { kind: 'team_cheer', source: `team_cheer:${ref ?? `${fromId}:${now}`}:${fromId}`, actor: { id: fromId, name: fromName } }, now);
       if (deletionScheduled(s) || ensureFeed(s).muted.includes(fromId)) return { queued: false };
       ensurePush(this.d.master, s);
       return { queued: enqueuePush(this.d.master, s, 'team_cheer', { name: fromName }, now).status === 'queued' };
@@ -1641,6 +1679,7 @@ export class PlayerService {
       // REQ-BOX-001: the prize goes to the gift box
       if (reward) giftGiver(this.d.master, s, now, emit)(reward, `tournament ${tournamentId} rank ${rank}`, `tournament:${tournamentId}:rank`, 'tournament', rank);
       done[tournamentId] = { name, rank, at: now, reward };
+      recordActivity(this.d.master, s, { kind: 'tournament_result', source: `tournament:${tournamentId}`, vars: { tournament: name, n: String(rank) }, linkId: tournamentId }, now); // REQ-ACT-002
       noteTournamentResult(s, rank); // REQ-ACH-002 (once per tournament, behind the same guard)
       noteHallTournament(this.d.master, s, horseId, tournamentId, name, rank, now); // REQ-HOF-001
       const keys = Object.entries(done).sort((a, b) => b[1].at - a[1].at).map(([k]) => k);

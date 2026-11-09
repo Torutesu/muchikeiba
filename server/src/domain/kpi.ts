@@ -108,6 +108,9 @@ export const HISTORY_TABS = ['purchases', 'coins_paid', 'coins_free', 'gacha'] a
 export const ADVICE_KPI_CONTEXTS = ['ranked', 'friend', 'event', 'challenge', 'timeattack', 'tutorial'] as const;
 /** REQ-PHOTO-014: where a photo was taken (photoMode.ts PHOTO_SOURCES). */
 export const PHOTO_SOURCE_NAMES = ['paused', 'result', 'replay'] as const;
+/** REQ-ACT-015: the activity list's kinds and deep-link screens (domain/activity.ts; repeated here to keep kpi.ts import-free). */
+export const ACTIVITY_KIND_NAMES = ['friend_request', 'friend_accepted', 'rival_week', 'rival_record', 'stable_like', 'team_cheer', 'tournament_result', 'gift_arrived', 'team_goal_tier', 'team_goal_week', 'replay_share'] as const;
+export const ACTIVITY_SCREEN_NAMES = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new'] as const;
 /** Events only the client can observe. Server-known events (purchase, gacha, race results…) are not accepted from clients. */
 export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('session_start'), at: z.number().int(), props: z.object({}).strict().optional() }),
@@ -144,6 +147,9 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   // REQ-PHOTO-014: a photo was taken / handed to the OS share sheet (cancelled shares are not sent; saves are the server's photo_save)
   z.object({ name: z.literal('photo_take'), at: z.number().int(), props: z.object({ source: z.enum(PHOTO_SOURCE_NAMES), look: z.string().regex(/^[a-z0-9_]{1,32}$/) }).strict() }),
   z.object({ name: z.literal('photo_share'), at: z.number().int(), props: z.object({ source: z.enum(PHOTO_SOURCE_NAMES), framed: z.boolean() }).strict() }),
+  // REQ-ACT-015: the activity list was opened (unread count then) / an entry was tapped (its kind and deep link)
+  z.object({ name: z.literal('activity_open'), at: z.number().int(), props: z.object({ unread: z.number().int().min(0).max(999) }).strict() }),
+  z.object({ name: z.literal('activity_tap'), at: z.number().int(), props: z.object({ kind: z.enum(ACTIVITY_KIND_NAMES), screen: z.enum(ACTIVITY_SCREEN_NAMES) }).strict() }),
 ]);
 export type ClientEvent = z.infer<typeof clientEventSchema>;
 
@@ -180,6 +186,8 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'advice_follow': return { name: e.name, s1: e.props.context, value: e.props.followed ? 1 : 0 };
     case 'photo_take': return { name: e.name, s1: e.props.source, s2: e.props.look };
     case 'photo_share': return { name: e.name, s1: e.props.source, s2: e.props.framed ? 'framed' : 'plain' };
+    case 'activity_open': return { name: e.name, value: e.props.unread };
+    case 'activity_tap': return { name: e.name, s1: e.props.kind, s2: e.props.screen };
   }
 }
 

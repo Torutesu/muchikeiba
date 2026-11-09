@@ -884,6 +884,15 @@
   "ひとことにURLは入れられません": "Captions cannot contain URLs",
   "この言葉はひとことに使えません": "This wording cannot be used in a caption",
   "まだ使えないフレーム・スタンプが含まれています。": "Some frames or stamps are not unlocked yet.",
-  "このレースは走っている途中では撮れません。結果画面かリプレイから撮ってください。": "This race cannot be paused for a photo. Take one from the result screen or the replay."
+  "このレースは走っている途中では撮れません。結果画面かリプレイから撮ってください。": "This race cannot be paused for a photo. Take one from the result screen or the replay.",
+  "_activity": "---- アクティビティ (Muchi.Game.ActivityModel, REQ-ACT-016)",
+  "アクティビティ": "Activity",
+  "アクティビティはオンラインで確認できます": "Activity is available online",
+  "まだお知らせはありません": "Nothing new yet",
+  "プレゼントボックスへ": "Go to the gift box",
+  "見る": "View",
+  "新着情報があります": "There is something new",
+  "フレンド": "Friends",
+  "リプレイ": "Replay"
  }
 }

@@ -39,6 +39,7 @@ import { grantFree } from './wallet.js';
 import { appearanceOf, effectiveSilks, type Appearance, type Silks } from './visuals.js';
 import { ensureFeed, playerMute } from './teamFeed.js';
 import { evaluateTitles } from './stats.js';
+import { recordActivity } from './activity.js';
 import type { KpiEvent } from './kpi.js';
 import type { RaceResultForPlayer } from './rewards.js';
 import tracksJson from '../../master/tracks.json';
@@ -421,6 +422,7 @@ function settleWeek(m: Master, s: PlayerState, w: RivalWeek, now: number, emit: 
   r.results.push(res);
   if (r.results.length > RIVAL_HARD_LIMITS.resultsKept) r.results.splice(0, r.results.length - RIVAL_HARD_LIMITS.resultsKept);
   r.unseen = w.weekId;
+  recordActivity(m, s, { kind: 'rival_week', source: `rival_week:${w.weekId}`, vars: { outcome } }, now); // REQ-ACT-002
   emit({ name: 'rival_week_result', s1: outcome, s2: a.kind, s3: w.weekId, count: w.me, value: w.them, freeCoins: paid, place: w.rankedRaces });
   return res;
 }

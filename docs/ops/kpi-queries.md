@@ -932,3 +932,28 @@ ORDER BY takes DESC
 ```
 - `photo_save` の `blob9` に `ranked` などがあっても、`blob8` は `result`／`replay` だけのはず（`paused` はサーバーが拒む）。`paused` × 共有レースの行が出たら REQ-PHOTO-001 の実装を調べる。
 - フレーム・スタンプの購入は既存の見た目ショップの購入（台帳 `cosmetic photo_*`）で見る。写真の品の売上がランク戦の勝率と関係しないこと（能力に影響しない）は設計上の前提。
+
+## アクティビティ：開いた・押した（REQ-ACT-015、contracts/protocol.md §40、Round 15）
+
+**ベルから一覧を開く人の割合と、どの種類の項目が押されるか**。`activity_open`（`double9` = 開いたときの未読の数）と `activity_tap`（`blob8` = 種類、`blob9` = 行き先の画面）はクライアントのイベント。一覧は読むだけの GET なので、開いた・押したはアプリが送る。
+
+```sql
+-- 日ごとの開いた人数と、開いたときの未読の平均（未読 0 で開く人が多いなら、ベルが目に入っていない）
+SELECT blob6 AS day, blob7 AS payer,
+  sum(_sample_interval) AS opens, count(DISTINCT blob2) AS players,
+  sum(_sample_interval * double9) / sum(_sample_interval) AS avg_unread
+FROM muchi_kpi
+WHERE blob1 = 'activity_open' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY day, payer ORDER BY day DESC, payer
+```
+
+```sql
+-- 押された項目（種類 × 行き先）：押されない種類は文言か並びを見直す
+SELECT blob8 AS kind, blob9 AS screen, sum(_sample_interval) AS taps, count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'activity_tap' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY kind, screen ORDER BY taps DESC
+```
+
+- **戻ってきた人に効いているか**：`session_start` の日に `activity_open` もある人の割合を、ライバル・支部・フレンドを使っている人とそれ以外で分けて見る。
+- プレゼント（`gift_arrived` → `gift_box`）を押した人のうち、同じ日に `gift_claim` がある割合が低ければ、プレゼントボックスへの導線（ボタンの文言）を見直す。受け取りボタンを一覧に置くことはしない（§40）。

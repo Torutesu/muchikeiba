@@ -1966,6 +1966,60 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }
 - Unity ゲーム層 `RaceAdviceModel`：パネルの行（おすすめ・馬ごとの○△のかわりに「よく合う／合う／条件外あり」の言葉と理由）、選んだ馬が変わったらヒントを計算し直す（サーバーに聞き直さず、受け取った馬の情報から端末で計算。結果はサーバーと同じ）、設定の ON/OFF、KPI、結果画面の1行。オフラインでは端末で計算。
 - デプロイ：新しい GET だけ（検証器は変わらない）。サーバーだけ出せばよい（§7.1 の順番に影響なし）。
 
+## 40. アクティビティ（お知らせ一覧、REQ-ACT-001〜016、`server/src/domain/activity.ts`、C# `Activity.cs`・`Muchi.Game.ActivityModel`）
+留守の間に**自分に起きたこと**を1か所にまとめる一覧と、ホームのベル（未読の数のバッジ）。**表示とリンクだけ**：この一覧はコイン・アイテムを動かさない（受け取りボタンは出さない。プレゼントはプレゼントボックスで受け取る）。E番号なし（経済は変わらない）。
+
+**書く場所（プッシュと同じ箇所、送り元のイベント id ごとに1回）**
+| 種類 `kind` | 書く箇所（プッシュ） | 送り元 id（重複は無視） | まとめる | プッシュの種類 `category` | リンク `link.screen` |
+|---|---|---|---|---|---|
+| `friend_request` | `friendReceive`（`friend_request`） | `friend_request:{from}:{at}` | しない | `friends` | `friends` |
+| `friend_accepted` | `friendAccepted`（`friend_accepted`） | `friend_accepted:{by}:{ゲーム日}` | しない | `friends` | `friends` |
+| `rival_week` | ライバルの週の結果（`settleWeek`、REQ-RIVAL-006） | `rival_week:{weekId}` | しない | `friends` | `rival` |
+| `rival_record` | `rivalPush`（`rival_record`） | `rival_record:{相手}:{ゲーム日}` | しない | `friends` | `rival` |
+| `stable_like` | マイ厩舎のいいね（`stableLikeReceive`、数えたものだけ） | `stable_like:{likeId}` | する | `friends` | `stable` |
+| `team_cheer` | 応援スタンプ（`cheerPush`、`team_cheer`） | `react:{teamId}:{seq}` + 送り主 | する | `friends` | `team_feed` |
+| `tournament_result` | 大会の最終順位（`tournamentClose`） | `tournament:{tournamentId}` | しない | `events` | `tournaments`（`id` = 大会 id） |
+| `gift_arrived` | プレゼントボックスに入ったとき（`deliverGift`、`gift_arrived` は REQ-BOX-011 の送り元だけ） | `gift:{ref}` | する | `gifts` | `gift_box` |
+| `team_goal_tier` | 支部の共同目標の段に到達（`teamGoalMilestone`、`team_goal`） | `team_goal_tier:{teamId}:{週}:{段}` | しない | `friends` | `team_goal` |
+| `team_goal_week` | 共同目標の週の結果（`teamGoalReward`） | `team_goal_week:{週}` | しない | `friends` | `team_goal` |
+| `replay_share` | 予約（リプレイを相手に送る仕組みが入ったとき。今は書く箇所なし） | `replay_share:{id}` | しない | `friends` | `replay` |
+
+- 大会（`tournament`）と共同目標（`team_goal`）の賞品はプレゼントボックスにも入るが、`gift_arrived` は書かない（同じことを2回書かない。各行のリンクから見られる）。
+- おかえり・新着情報（REQ-CB-*）は**項目にしない**：一覧の `links.whatsNew`（新着の数）でその画面へ案内するだけ。週替わりチャレンジ（§31）の結果は自分で走った直後に結果画面で出るので、留守の間の出来事にならない（項目なし）。
+- プッシュの設定（§10 の `categories`・静かな時間帯）は**プッシュだけ**に効く。一覧はいつでも全部見られる。各項目の `category` はプッシュと同じ種類（設定画面と一覧で同じ分け方）。
+- ブロック（支部フィードのミュート＝ブロックの一覧、REQ-RIVAL-011）している相手からは項目を作らない。あとからブロックした相手の分も一覧と未読の数から外す（まとめた項目は、その相手の分だけ数を減らす）。
+- 退会・BAN された相手の名前は出さない：一覧を返すときに公開プロフィール（ディレクトリ）を引き、無い（退会）・BAN（`banned: true`）なら中立の名前「プレイヤー」。名前はプレイヤーが付けたものなので訳さない。
+- 削除が進行中（`deletion.status = deleting`）のアカウントには書かない。アカウント削除で一覧ごと消える（状態の一部）。
+
+**保存（`progression.activity`、起動時とリモート設定で検査、REQ-ACT-010）**
+`{ "maxEntries": 100, "maxDays": 30, "collapseHours": 24, "pageSize": 20, "pageMax": 50, "badgeMax": 99 }`。範囲：`maxEntries` 10〜500、`maxDays` 1〜90、`collapseHours` 0〜168（0 = まとめない）、`pageMax` 1〜100、`pageSize` 1〜`pageMax`、`badgeMax` 9〜999。無ければこの既定値。書くたびに `maxDays` より古い項目を消し、新しい順に `maxEntries` 件だけ残す。送り元 id は直近500件を覚える。
+- **まとめる**：同じ種類のまだ読んでいない項目が `collapseHours` 以内に始まっていれば、新しく作らずに数を足し（`count`）、送り主を先頭に（最大20人、人ごとの数も）、時刻と id を新しくして一覧の先頭へ動かす（未読に戻る）。読んだ後の分は新しい項目になる。
+
+### 40.1 `GET /v1/activity?cursor=&limit=`（要認証、読むだけ）
+```json
+{ "items": [
+    { "id": "42", "kind": "stable_like", "category": "friends", "at": 1796871600000, "count": 12, "unread": true,
+      "actors": [ { "playerId": "p_9", "name": "ハヤテ" } ],
+      "text": "マイ厩舎に12件のいいねが届きました", "link": { "screen": "stable", "id": null } } ],
+  "nextCursor": "17", "unread": 3, "readUpTo": "39",
+  "links": { "whatsNew": 2 } }
+```
+- 新しい順。`cursor` は前の応答の `nextCursor`（不透明な文字列、数字だけ）、`limit` は 1〜`pageMax`（既定 `pageSize`）。おかしい値は 400。
+- `text` は日本語で作り、英語は応答の境界で訳す（§23、`i18n/en.ts`）。1件のときは名前入り（「{name}さんがマイ厩舎にいいねしました」）、まとめたときは数（「マイ厩舎に{n}件のいいねが届きました」）。
+- `unread` は見える項目のうち `readUpTo` より新しいものの数（`badgeMax` で頭打ち）。`links.whatsNew` は新着情報（REQ-CB-008）のまだ見ていない数。
+
+### 40.2 `POST /v1/activity/read`（要認証、何度送っても同じ）
+`{ "upTo": "42" }`（省略 = 今ある全部）。`readUpTo` を `upTo` まで進める（戻さない。今の最新より先は最新まで）。→ `{ "readUpTo": "42", "unread": 0 }`。他のキーは 400。
+
+### 40.3 バッジ
+`GET /v1/player`（と bootstrap）の `activity: { "unread": 3 }`（`badgeMax` で頭打ち）。ホームのベルはこの数を出し、0 なら出さない。
+
+### 40.4 KPI
+クライアントのイベント `activity_open`（`props.unread`：開いたときの未読の数 0〜999）→ value、`activity_tap`（`props.kind`・`props.screen`）→ s1 = 種類、s2 = 行き先。クエリは `docs/ops/kpi-queries.md`「アクティビティ」。
+
+### 40.5 クライアント（`ActivityModel`）
+- ホームのベルとバッジ（0 は非表示、サーバーは `badgeMax` で頭打ちにするので、その数なら「99+」）、一覧（新しい順・`nextCursor` で続き・同時に2回読まない）、項目を押すと `link.screen` の画面へ（`activity_tap`）、一覧を開いたら `activity_open` を1回、見えている一番新しい id まで既読（`POST /v1/activity/read`、失敗しても次に開いたとき送り直す）。オフラインは「オンラインで確認できます」。受け取りボタンは出さない（プレゼントは「プレゼントボックスへ」のリンク）。
+
 ## 41. アクセシビリティ設定（REQ-A11Y-001〜016、`server/src/domain/accessibility.ts`、C# `Accessibility.cs`（`AccessibilitySettings`・`AccessibilityTokens`・`TextScale`・`MotionPolicy`・`FlashLimiter`・`WhipHold`）・`Muchi.Game.AccessibilityModel`、色のトークン `contracts/a11y-tokens.json`、docs/planning/06 §11）
 より多くの人が遊べるようにする表示・操作の設定。**アカウントに保存**し（機種変更・再インストールでも残る）、端末にも写しを持ってオフラインでも効く。**どの設定もレースの計算・ルールセット・検証・結果ハッシュ・リプレイを変えない**（ゴールデンも同じ）。
 

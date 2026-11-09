@@ -1056,6 +1056,18 @@
   "共有しました（画像の書き出しと共有シートはアプリで行います）": "Shared (the app renders the image and opens the share sheet)",
   "写真を保存": "Save photo",
   "写真を保存しました（{a} / {b}）": "Photo saved ({a} / {b})",
-  "共有の文": "Share text"
+  "共有の文": "Share text",
+  "_activity": "---- round 15: アクティビティ (REQ-ACT-*)",
+  "留守の間のできごと": "What happened while you were away",
+  "タップでその画面へ": "Tap a row to open it",
+  "新しい順": "Newest first",
+  "未読": "Unread",
+  "お知らせのきまり": "About this list",
+  "いいね・応援スタンプ・プレゼントは、まとめて1件で表示します。": "Likes, cheer stamps and gifts are grouped into one row.",
+  "プレゼントの受け取りはプレゼントボックスで行います。": "Gifts are claimed in the gift box.",
+  "プッシュ通知の設定はプッシュだけに効きます。この一覧はいつでも見られます。": "Push settings only change pushes. This list is always available.",
+  "アクティビティ（デモ）": "Activity (demo)",
+  "リプレイを開きます": "Opening the replay",
+  "デモ杯": "Demo Cup"
  }
 }

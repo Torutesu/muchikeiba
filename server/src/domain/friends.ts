@@ -143,6 +143,9 @@ export class FriendsService {
 
   myCode(uid: string) { return this.dir.codeOf(uid).then((code) => ({ code })); }
 
+  /** REQ-ACT-012: public profiles as of now (a deleted account has none). */
+  profilesOf(ids: string[]) { return this.dir.profiles(ids); }
+
   /** Display name for notification text; a missing profile (not yet published) falls back to the template default. */
   private async nameOf(uid: string): Promise<string | undefined> {
     try {
@@ -201,7 +204,8 @@ export class FriendsService {
   async list(uid: string) {
     const st = await this.players.friendsState(uid);
     const profiles = await this.dir.profiles([...st.ids, ...st.incoming.map((x) => x.from), ...st.outgoing.map((x) => x.to)]);
-    const byId = new Map(profiles.map((p) => [p.playerId, p]));
+    // REQ-ACT-012: the moderation mark is only for the activity list's neutral name, never shown to friends
+    const byId = new Map(profiles.map(({ banned: _banned, ...p }) => [p.playerId, p]));
     const view = (id: string) => byId.get(id) ?? { playerId: id, displayName: '???', titleId: null, classId: 'C', rating: 0, stats: { races: 0, wins: 0, top3: 0 }, lastSeenAt: 0 };
     return {
       friends: st.ids.map(view),

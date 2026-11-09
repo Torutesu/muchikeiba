@@ -137,10 +137,11 @@ export class TeamDO extends DurableObject<Env> {
     const env = await this.run((x) => x.goalContribute(c), false);
     const r = env.ok ? env.value : null;
     if (r && r.milestone !== null && r.notify.length > 0) {
-      const vars = { n: String(r.milestone) };
+      const tier = r.milestone;
       this.ctx.waitUntil(Promise.all(r.notify.map(async (pid) => {
         const p = this.env.PLAYER.get(this.env.PLAYER.idFromName(pid)) as unknown as { invoke(m: string, a: unknown[]): Promise<unknown> };
-        await p.invoke('queuePush', [pid, 'team_goal', vars]).catch((e) => console.error('team goal push failed', pid, (e as Error).message));
+        // REQ-TGOAL-004 push + REQ-ACT-002 activity entry (one player call)
+        await p.invoke('teamGoalMilestone', [pid, c.teamId, tier]).catch((e) => console.error('team goal push failed', pid, (e as Error).message));
       })).then(() => undefined));
     }
     return env;

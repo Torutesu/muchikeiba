@@ -32,7 +32,8 @@ import { InviteService, MemoryInviteDirectory, deliverInviteOutbox, displayInvit
 import type { Directory } from '../../../server/src/domain/friends.js';
 import { signAdMobQuery, StaticKeySource, verifyAdMobCallback } from '../../../server/src/ads/ssv.js';
 import { MemoryRivalRegistry, RivalService, rivalPlayersFrom } from '../../../server/src/domain/rivalService.js';
-import { noteRivalTa, prevWeekId, rivalCard, weekEndMs, weekIdAt } from '../../../server/src/domain/rival.js';
+import { noteRivalTa, prevWeekId, rivalCard, rivalTrackName, weekEndMs, weekIdAt } from '../../../server/src/domain/rival.js';
+import { actorIdsOf, renderActivityItems } from '../../../server/src/domain/activity.js';
 import type { PlayerInvoker } from '../../../server/src/http/app.js';
 import { HallService, MemoryHallDirectory, hallConfig, hallSnapshot } from '../../../server/src/domain/hallOfFame.js';
 import { hallPlayersFrom } from '../../../server/src/http/hallPorts.js';
@@ -87,7 +88,8 @@ const svc = new PlayerService(repo, {
   // queues the team_goal push for the other members (the daily cap applies)
   onTeamGoal: async (c) => {
     const r = await teams.goalContribute(c.teamId, c);
-    if (r.milestone !== null) for (const to of r.notify) await svc.queuePush(to, 'team_goal', { n: String(r.milestone) }).catch(() => undefined);
+    // round 15 (REQ-ACT-002): the same player call as TeamDO — push + activity entry
+    if (r.milestone !== null) for (const to of r.notify) await svc.teamGoalMilestone(to, c.teamId, r.milestone).catch(() => undefined);
     return r;
   },
   onTeamGoalForget: async (p) => teams.goalForget(p.teamId, p.playerId),
@@ -586,6 +588,42 @@ export const MuchiLogic = {
     await buy('coin_1500', 1500);
     await wrap(() => svc.draw(ID, 'standard', 10, key()));
     await wrap(() => svc.draw(ID, 'pickup_akatsuki', 1, key()));
+    return svc.view(ID);
+  },
+
+  // ---------------------------------------------------------------- round 15: アクティビティ (REQ-ACT-*, contracts/protocol.md §40)
+  // What GET /v1/activity returns: the real PlayerService page, names resolved like the HTTP route (a player with no
+  // public profile — deleted — shows the neutral name), and POST /v1/activity/read.
+  activity: (cursor: string | null = null, limit = 20) => wrap(async () => {
+    const p = await svc.activity(ID, cursor === null ? null : Number(cursor), limit);
+    const ids = actorIdsOf(p.items);
+    const profiles = (await Promise.all(ids.map(async (id) => ((await repo.get(id)) ? svc.publicProfile(id) : null)))).filter((x) => x !== null);
+    return { ...p, items: renderActivityItems(p.items, profiles) };
+  }),
+  activityRead: (upTo: string | null = null) => wrap(() => svc.activityRead(ID, upTo === null ? null : Number(upTo))),
+  /**
+   * Demo 「アクティビティ」: what happened while away, written by the real event sources at their push points — a friend
+   * request and an accepted one, likes on My Stable (collapsed), cheer stamps, a rival's time-attack record, a tournament
+   * result (its prize waits in the gift box without a second entry), a compensation in the gift box, the team goal's
+   * milestone and last week's result. The oldest few are already read.
+   */
+  async seedActivity() {
+    await this.seedDemo(3, [2, 2, 2]);
+    const people: [string, string][] = [['demo_act_1', 'アサヒ'], ['demo_act_2', 'カエデ'], ['demo_act_3', 'シノノメ']];
+    for (const [id, name] of people) if (!(await repo.get(id))) { await svc.bootstrap(id); await svc.setDisplayName(id, name); }
+    // the demo rival exactly as rivalDemoSeed makes it (with its partner), so its name shows on the rival row
+    if (!(await repo.get(RIVAL_DEMO))) { await svc.bootstrap(RIVAL_DEMO); await svc.setDisplayName(RIVAL_DEMO, 'ミドリカワ'); await svc.grantPartner(RIVAL_DEMO, 'ハヤテ', key()); }
+    const day = new Date(now() + 9 * 3600e3).toISOString().slice(0, 10);
+    await svc.teamGoalReward(ID, 'demo-week', 'demo_team', 2, 6);
+    await svc.friendAccepted(ID, 'demo_act_2', 'カエデ');
+    await svc.activityRead(ID, null); // the two above were seen on an earlier visit
+    await svc.tournamentClose(ID, 'demo_act_cup', 3, { freeCoins: 100 }, 'デモ杯');
+    await svc.adminGrant(ID, { freeCoins: 200 }, 'maintenance', 'ops', 'demo-act-comp', true, { source: 'ops_compensation', titleKey: 'ops_compensation_maintenance' });
+    await svc.rivalPush(ID, 'ミドリカワ', rivalTrackName('aoba_turf_1600'), RIVAL_DEMO);
+    await svc.teamGoalMilestone(ID, 'demo_team', 1);
+    await svc.cheerPush(ID, 'demo_act_3', 'シノノメ', 'react:demo_team:1');
+    for (let i = 0; i < 12; i++) await svc.stableLikeReceive(ID, `demo_like_${i}`, `demo_like_${i}:${day}:0`);
+    await svc.friendReceive(ID, 'demo_act_1', 'アサヒ');
     return svc.view(ID);
   },
 

@@ -1037,5 +1037,9 @@
     "modes": ["ranked", "event", "tournament"],
     "topN": 5,
     "payBatch": 50
+  },
+  "activity": {
+    "_comment": "アクティビティ（REQ-ACT-*、contracts/protocol.md §40）。1人あたり maxEntries 件・maxDays 日まで、新しい順。いいね・応援スタンプ・プレゼントは、まだ読んでいない同じ種類が collapseHours 以内にあれば1件にまとめる（0 = まとめない）。badgeMax はホームのベルの数の頭打ち。",
+    "maxEntries": 100, "maxDays": 30, "collapseHours": 24, "pageSize": 20, "pageMax": 50, "badgeMax": 99
   }
 }

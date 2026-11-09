@@ -2338,6 +2338,7 @@ function Stable() {
   TextLink('お世話', 300, 734, 120, Care, d, 'お世話・餌');
   TextLink('調教', 440, 734, 100, () => { trHorse = p?.id ?? null; Training(); }, d, '調教');
   Back(Home);
+  Ghost('殿堂', 196, 36, 150, 46, () => Hall(), undefined, 'quiet small').classList.add('hof-entry'); // round 14 (REQ-HOF-*)
   EnToggle();
 }
 function StableList(horses) {
@@ -2822,6 +2823,136 @@ function RivalResultSheet(v) {
   return sheet;
 }
 
+// ================================================================= round 14: 殿堂・引退式 (REQ-HOF-*, contracts/protocol.md §34)
+// The hall of fame on the real HallService / career record in the browser. Mirrors unity/Assets/Muchi/Game/HallModel.cs:
+// the retirement ceremony (photoreal horse art, the server's highlight lines, the 殿堂入り stamp), the gallery (paged,
+// newest first), the plaque detail and a friend's hall. Names are shown as typed. ムチ一閃 tone: race-result / paddock art,
+// translucent navy panels, letter-spaced cyan kickers, one skewed cyan CTA ».
+const HOF_REASON = { wins: (c) => `${c.wins}勝`, tournament: () => '大会優勝', partner: () => '最初の相棒' };
+const HOF_VIS = [['friends_team', 'フレンドと支部の仲間'], ['friends', 'フレンドだけ'], ['private', '自分だけ']];
+const HOF_RULES = '殿堂入りは引退の時に決まります。条件は確定したレースの成績だけで、購入やアイテムでは決まりません。';
+const HOF_DEMO_NAMES = ['ソラノカナタ', 'ミナモノヒカリ', 'ユウヒノカケハシ', 'カゼノシルベ', 'ホシノササヤキ'];
+const hofCareer = (c) => (!c || !c.races ? 'まだレースに出ていません' : `${c.races}戦${c.wins}勝・3着以内${c.places}回`);
+const hofReasons = (rs, c) => (rs ?? []).map((r) => HOF_REASON[r]?.(c ?? {}) ?? r).join('・');
+const hofDate = (ms) => { const d = new Date(ms + 9 * 3_600_000); return `${d.getUTCFullYear()}年${d.getUTCMonth() + 1}月${d.getUTCDate()}日`; };
+const hofCriteria = (c) => [c.winsMin ? `${c.winsMin}勝以上` : null, c.tournamentWin ? '大会優勝' : null, c.partnerRacesMin ? `相棒で${c.partnerRacesMin}戦以上` : null].filter(Boolean).join('・');
+const hofState = { owner: null, cursors: [null] };
+let hofDemoN = 0;
+
+/** The gallery: mine (owner null) or a friend's / branch member's (the same NOT_FOUND line for every refusal). */
+async function Hall(owner = null, page = 0) {
+  if (owner !== hofState.owner) { hofState.owner = owner; hofState.cursors = [null]; }
+  currentScreen = () => Hall(owner, page);
+  const cursor = hofState.cursors[page] ?? null;
+  const r = owner ? await L.hall.visit(owner, cursor) : await L.hall.mine(cursor);
+  await refresh();
+  if (!r.ok) { toast(owner && r.code === 'NOT_FOUND' ? 'この殿堂は見られません' : '殿堂は今は表示できません'); if (owner) Hall(); else Stable(); return; }
+  const v = r.value;
+  hofState.cursors[page + 1] = v.nextCursor;
+  // a ceremony missed earlier (offline, a lost response) comes first, once
+  if (!owner && page === 0 && v.pendingCeremonies?.length) { Ceremony(v.pendingCeremonies[0], () => Hall()); return; }
+  Clear(owner ? 'hall-friend' : 'hall'); SetArt('Art/home-paddock', false); Shade('left');
+  const mine = v.relation === 'self';
+  TopBar(mine ? '殿堂　/　HALL OF FAME' : `${v.owner.displayName}の殿堂`, mine ? HOF_RULES : (v.relation === 'team' ? '支部の仲間の殿堂です' : 'フレンドの殿堂です'));
+  // ① summary: count, the rules, the frame, visibility (mine) — or whose hall this is
+  const lp = Glass('Hall summary', 36, 134, 380, 676, undefined, .88);
+  lp.classList.add('hof-summary'); lp.dataset.relation = v.relation;
+  Kicker(mine ? '自分の殿堂' : v.relation === 'team' ? '支部の仲間の殿堂' : 'フレンドの殿堂', 30, 30, lp, { w: 320 });
+  Txt(`${v.total}`, 30, 100, 150, 72, GOLD, lp, { weight: 700, cls: 'num' }).classList.add('hof-count');
+  Txt('頭が殿堂入り', 150, 136, 200, 18, WHITE, lp, { weight: 700 });
+  if (mine) {
+    Txt(`${hofCriteria(v.criteria)} のどれかで殿堂入り`, 30, 210, 320, 14, SOFT, lp, { lh: 1.5 }).classList.add('hof-criteria');
+    Txt(v.frame.owned ? '殿堂の額縁：持っています（マイ厩舎に飾れます）' : '殿堂の額縁：最初の殿堂入りで1回だけもらえます', 30, 276, 320, 13, v.frame.owned ? GOLD : MUTED, lp, { lh: 1.5, weight: 700 });
+    const p = partner();
+    if (p) {
+      const c = await L.hall.career(p.id);
+      if (c.ok && cur?.dataset.screen === 'hall') {
+        const g = c.value.progress;
+        const parts = [g.wins ? `${g.wins.need}勝のうち${g.wins.have}勝` : null, g.partnerRaces ? `相棒で${g.partnerRaces.need}戦のうち${g.partnerRaces.have}戦` : null].filter(Boolean);
+        Kicker('相棒の戦績', 30, 336, lp, { rule: false, size: 14 });
+        Txt(p.name, 30, 366, 320, 18, WHITE, lp, { weight: 700, nowrap: true });
+        Txt(hofCareer(c.value.career), 30, 396, 320, 14, MUTED, lp).classList.add('hof-partner-career');
+        if (parts.length) Txt(`殿堂入りまで：${parts.join('・')}`, 30, 422, 320, 13, SOFT, lp, { lh: 1.5 });
+      }
+    }
+    Kicker('見に来られる人', 30, 486, lp, { rule: false, size: 14 });
+    HOF_VIS.forEach(([k, label], i) => {
+      const b = Ghost(label, 30, 516 + i * 46, 320, 40, async () => { const x = await L.hall.setVisibility(k); toast(x.ok ? `公開範囲を「${label}」にしました` : x.message); Hall(); }, lp, 'quiet small' + (v.visibility === k ? ' on' : ''));
+      b.classList.add('hof-vis'); b.dataset.on = String(v.visibility === k);
+    });
+  } else {
+    Txt(v.owner.displayName, 30, 210, 320, 26, WHITE, lp, { weight: 700, nowrap: true });
+    Txt('名前はプレイヤーが付けたままです', 30, 256, 320, 13, DIM, lp);
+    Ghost('自分の殿堂', 30, 600, 320, 50, () => Hall(), lp, 'quiet small');
+  }
+  // ② the plaques, 6 per page, newest first
+  const grid = el('hof-grid', 440, 134, 1124, 676);
+  if (!v.entries.length) {
+    const e = Glass('Hall empty', 0, 0, 1124, 200, grid, .82);
+    Txt('まだ殿堂入りした馬はいません', 36, 50, 1052, 22, WHITE, e, { weight: 700 });
+    Txt(mine ? '引退の時に条件を満たした馬が、ここに銘板として残ります' : '殿堂入りした馬ができると、ここに並びます', 36, 100, 1052, 15, MUTED, e);
+  }
+  v.entries.forEach((p, i) => {
+    const x = (i % 3) * 378, y = Math.floor(i / 3) * 340;
+    const c = Card('Plaque', x, y, 362, 326, grid, p.frame ? 'var(--gold)' : 'var(--cyan)');
+    c.classList.add('hof-plaque'); if (p.frame) c.classList.add('hof-framed'); c.dataset.horse = p.horseId;
+    ArtImage(colArt(p.horseId), 14, 14, 334, 170, c, 'col-por');
+    Txt(p.horseName, 20, 196, 322, 22, WHITE, c, { weight: 700, nowrap: true, ls: '.04em' }).classList.add('hof-name');
+    Txt(hofCareer(p.career), 20, 232, 322, 14, GOLD, c, { weight: 700 });
+    Txt(hofReasons(p.reasons, p.career), 20, 258, 322, 13, CYAN, c, { weight: 700, ls: '.08em', nowrap: true });
+    Txt(`${hofDate(p.inductedAt)} 殿堂入り`, 20, 284, 322, 12, DIM, c, { nowrap: true });
+    c.style.cursor = 'pointer'; c.addEventListener('click', () => PlaqueDetail(p));
+  });
+  if (page > 0) Ghost('前へ', 1124, 826, 200, 50, () => Hall(owner, page - 1), undefined, 'quiet small').classList.add('hof-prev');
+  if (v.nextCursor) Ghost('次へ', 1364, 826, 200, 50, () => Hall(owner, page + 1), undefined, 'quiet small').classList.add('hof-next');
+  if (mine) {
+    Ghost('デモ：引退式', 440, 826, 260, 50, async () => {
+      const name = HOF_DEMO_NAMES[hofDemoN++ % HOF_DEMO_NAMES.length];
+      const x = await L.hall.demoRetire(name, 10 + (hofDemoN % 3), 6, hofDemoN % 2 ? 'オータムカップ' : null);
+      if (x.ok && x.value) Ceremony(x.value, () => Hall()); else toast(x.message ?? '引退できませんでした');
+    }, undefined, 'quiet small').classList.add('hof-demo-retire');
+    Ghost('デモ：友達の殿堂', 720, 826, 300, 50, async () => { const x = await L.hall.demoFriend(); if (x.ok) Hall(x.value); }, undefined, 'quiet small').classList.add('hof-demo-friend');
+  }
+  Back(owner ? () => Hall() : Stable, 'BACK', 40, 834);
+}
+
+/** The retirement ceremony: shown once per horse (closing acknowledges it). */
+function Ceremony(c, next = () => Hall()) {
+  currentScreen = () => Ceremony(c, next);
+  Clear('hall-ceremony'); SetArt('Art/race-result', false); Shade('left');
+  ArtImage(colArt(c.horseId), 760, 120, 800, 600, undefined, 'col-por hof-hero');
+  const lp = Glass('Ceremony', 36, 60, 700, 780, undefined, .9);
+  lp.classList.add('hof-ceremony'); lp.dataset.inducted = String(!!c.inducted);
+  Kicker('引退式　/　RETIREMENT', 40, 36, lp);
+  Txt(c.horseName, 40, 110, 620, 48, WHITE, lp, { weight: 700, ls: '.06em', nowrap: true }).classList.add('hof-name');
+  Txt(hofCareer(c.career) + (c.partner ? '　·　最初の相棒' : ''), 40, 182, 620, 18, GOLD, lp, { weight: 700 });
+  Kicker('戦績の見どころ', 40, 236, lp, { rule: false, size: 15 });
+  const lines = c.highlights?.length ? c.highlights : [{ kind: 'none', text: 'レースの記録はありません' }];
+  lines.forEach((h, i) => {
+    const row = el('hof-line', 40, 272 + i * 52, 620, 46, lp); row.dataset.kind = h.kind;
+    el('rule', 0, 20, 18, 3, row);
+    Txt(h.text, 32, 8, 588, 18, WHITE, row, { weight: 500, nowrap: true });
+  });
+  if (c.inducted) Txt(`殿堂入り：${hofReasons(c.reasons, c.career)}`, 40, 560, 620, 17, CYAN, lp, { weight: 700, ls: '.06em' }).classList.add('hof-reason');
+  else Txt('おつかれさま。これからは配合で血をつなぎます', 40, 560, 620, 16, MUTED, lp);
+  if (c.rewardItemId) Txt('殿堂の額縁を受け取りました（マイ厩舎に飾れます）', 40, 600, 620, 15, GOLD, lp, { weight: 700 }).classList.add('hof-reward');
+  Cta('つづける', 40, 664, 420, async () => { await L.hall.ack(c.horseId); next(); }, lp).classList.add('hof-continue');
+  if (c.inducted) { const s = el('hof-stamp', 1290, 150, 250, 250); Txt('殿堂入り', 0, 92, 250, 44, null, s, { weight: 700, align: 'center' }); Txt('HALL OF FAME', 0, 150, 250, 13, null, s, { weight: 700, align: 'center', ls: '.2em' }); }
+  EnToggle();
+}
+
+/** The plaque detail (a drawer): art, name as typed, career line, reasons, highlight lines, induction date. */
+function PlaqueDetail(p) {
+  Sheet(p.horseName, `銘板　/　${hofDate(p.inductedAt)} 殿堂入り`, (s, close, y) => {
+    s.classList.add('hof-detail');
+    ArtImage(colArt(p.horseId), 48, y, 564, 260, s, 'col-por' + (p.frame ? ' hof-framed-img' : ''));
+    Txt(`${p.rarity}　·　${hofCareer(p.career)}`, 48, y + 278, 564, 16, GOLD, s, { weight: 700 });
+    Txt(`殿堂入り：${hofReasons(p.reasons, p.career)}`, 48, y + 308, 564, 15, CYAN, s, { weight: 700 });
+    (p.highlights ?? []).slice(0, 5).forEach((h, i) => Txt(h.text, 48, y + 350 + i * 34, 564, 15, WHITE, s, { weight: 500, nowrap: true }));
+    if (p.frame) Txt('殿堂の額縁つき', 48, y + 530, 564, 13, DIM, s);
+  });
+}
+
 // ================================================================= round 10: 支部の応援スタンプ (REQ-TEAMFEED-*)
 // The team feed on the real server rules (TeamsService / TeamCore in the browser) — fixed stamps only, no text field.
 // Mirrors unity/Assets/Muchi/Game/TeamFeedModel.cs: palette with server-built unlock texts, 10 s post cooldown, cheering a
@@ -3053,7 +3184,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ GiftBox, AssistSettings, Collection, Achievements, Training, Rival, TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Hall, GiftBox, AssistSettings, Collection, Achievements, Training, Rival, TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

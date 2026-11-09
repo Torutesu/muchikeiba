@@ -94,6 +94,34 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await click('BACK'); await waitScreen('home');
   }
 
+  // round 14 (REQ-HOF-*): 殿堂 — the stable's 殿堂 button → the gallery → a retirement (the ceremony: horse art, highlight
+  // lines, the 殿堂入り stamp, the frame once) → acknowledged → the plaque detail → a friend's hall
+  async function hallFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(() => globalThis.__muchi.show('Stable')); await waitScreen('stable');
+    await page.locator('.screen.in .hof-entry').click(); await waitScreen('hall'); await waitIn('.hof-summary');
+    await shot('hall-empty', 400);
+    await click('デモ：引退式'); await waitScreen('hall-ceremony'); await waitIn('.hof-ceremony');
+    const text = await page.locator('.screen.in').innerText();
+    assert.ok(text.includes('引退式') && text.includes('戦績の見どころ'), 'hall: the ceremony with its highlight lines');
+    assert.ok(!/倍|ショップ|購入する/.test(text), 'hall: no 「倍」, no shop link on the ceremony');
+    if (await page.locator('.screen.in .hof-ceremony[data-inducted="true"]').count()) {
+      await waitIn('.hof-stamp');
+      assert.ok(await page.locator('.screen.in .hof-reward').count(), 'hall: the frame at the first induction');
+    }
+    await shot('hall-ceremony', 900);
+    await page.locator('.screen.in .hof-continue').click(); await waitScreen('hall'); await waitIn('.hof-plaque');
+    await shot('hall-gallery', 400);
+    await page.locator('.screen.in .hof-plaque').first().click(); await waitIn('.hof-detail');
+    await shot('hall-plaque', 500);
+    await page.locator('.screen.in .hof-detail [data-label="閉じる"]').click(); await page.waitForTimeout(300);
+    await click('デモ：友達の殿堂'); await waitScreen('hall-friend'); await waitIn('.hof-plaque');
+    assert.equal(await page.locator('.screen.in .hof-summary').getAttribute('data-relation'), 'friend', 'hall: a friend\'s hall');
+    assert.equal(await page.locator('.screen.in .hof-vis').count(), 0, 'hall: no settings on a friend\'s hall');
+    await shot('hall-friend', 400);
+    await click('BACK'); await waitScreen('hall'); await click('BACK'); await waitScreen('stable');
+  }
+
   // round 12 (REQ-RIVAL-*): ライバル — the home strip → the detail (public card, score, races, time attack, rules) → a race
   // together, a time attack each, a challenge (no point) → the week ends → the result sheet once (fixed reward, title)
   async function rivalFlow() {
@@ -368,6 +396,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await demo('day7'); await shot('home-day7', 600);
   await trainingFlow();
   await rivalFlow();
+  await hallFlow();
   await page.evaluate(() => globalThis.__muchi.show('Scout')); await waitScreen('scout'); await shot('scout', 500);
   await click('提供割合'); await shot('scout-rates', 400); await click('BACK');
   await waitScreen('scout'); await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal'); await shot('scout-paid-reveal', 700);

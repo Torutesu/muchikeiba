@@ -82,6 +82,8 @@ static class Program
         await CollectionChecks.Run(Check, Ruleset());
         Console.WriteLine("== 調教 (training: menus, timing mini-game, keyed start/finish, fairness wording)");
         await TrainingChecks.Run(Check, Ruleset());
+        Console.WriteLine("== 週替わりチャレンジ (weekly challenge: list, keyed start, race with the HUD condition, server verdict, badge, English)");
+        await WeeklyChallengeChecks.Run(Check, Ruleset(), Root);
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

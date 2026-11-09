@@ -44,6 +44,11 @@ namespace Muchi.Game
             ["TRAINING_POTENTIAL_FULL"] = "この馬は素質いっぱいまで伸びました。",
             ["TRAINING_SESSION_EXPIRED"] = "時間切れのため、ミニゲームなしで記録しました。",
             ["TRAINING_INPUT_INVALID"] = "入力を確認できませんでした。もう一度お試しください。",
+            ["CHALLENGE_LIMIT_REACHED"] = "今日のチャレンジはここまで。4:00に戻ります。",
+            ["CHALLENGE_HORSE_INELIGIBLE"] = "この条件に合う脚質の馬を選んでください。貸し出し馬なら挑戦できます。",
+            ["CHALLENGE_SESSION_EXPIRED"] = "時間切れのため、このレースは記録できませんでした。もう一度挑戦できます。",
+            ["CHALLENGE_SESSION_USED"] = "このレースは記録済みです。",
+            ["CHALLENGE_RESULT_MISMATCH"] = "レースの記録を確認できませんでした。もう一度挑戦してください。",
             ["NETWORK"] = Offline,
         };
 

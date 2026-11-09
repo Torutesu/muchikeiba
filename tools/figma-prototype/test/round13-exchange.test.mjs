@@ -63,7 +63,7 @@ assert.strictEqual(v.value.points, 0);
 // §26.1 (Round 13 integration): the converted material waits in the gift box
 const exGifts = (await L.giftBox('box')).value.entries.filter((g) => g.source === 'exchange');
 assert.strictEqual(exGifts.length, left > 0 ? 1 : 0, 'the leftover material is in the gift box');
-if (left > 0) assert.deepStrictEqual(exGifts[0].contents.items, [{ itemId: 'breeding_material', qty: Math.ceil(left / v.value.leftover.pointsPerUnit) }]);
+if (left > 0) assert.deepStrictEqual(exGifts[0].contents.items.map((x) => [x.itemId, x.qty]), [['breeding_material', Math.ceil(left / v.value.leftover.pointsPerUnit)]]);
 const closed = await L.exchangeBuy(ev, mat.id, 1);
 assert.strictEqual(closed.code, 'EXCHANGE_CLOSED');
 L.exchangeDemo(null);

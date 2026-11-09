@@ -175,3 +175,27 @@ export function addJstDays(dateKey: string, n: number): string {
   const [y, mo, d] = dateKey.split('-').map(Number) as [number, number, number];
   return new Date(Date.UTC(y, mo - 1, d + n)).toISOString().slice(0, 10);
 }
+
+/**
+ * REQ-WCH-001: the game week. A week starts on weekday `weekStartsOn` (0 = Sunday … 6 = Saturday; Monday by default) at
+ * the game-day rollover (progression.dayRollover), so it rolls over exactly when the daily resets do. Its id is the game
+ * day key ("YYYY-MM-DD") of its first day. Meant to be shared by every weekly feature (週替わりチャレンジ §31; the
+ * weekly rival uses the same definition: the first game day of the week, Monday by default, at the rollover).
+ */
+export function gameWeekId(ms: number, rule: DayRule, weekStartsOn = 1): string {
+  const day = gameDayKey(ms, rule);
+  const weekday = new Date(`${day}T00:00:00Z`).getUTCDay();
+  return addJstDays(day, -((weekday - weekStartsOn + 7) % 7));
+}
+
+/** First instant (ms) of the game week `weekId` (the rollover of its first game day). */
+export const gameWeekStartMs = (weekId: string, rule: DayRule): number => gameDayStartMs(weekId, rule);
+
+/** First instant (ms) after the game week `weekId` = the start of the next one. */
+export const gameWeekEndMs = (weekId: string, rule: DayRule): number => gameDayStartMs(addJstDays(weekId, 7), rule);
+
+/** Whole weeks from week `fromId` to week `toId` (negative when `toId` is earlier). Both are week ids of the same weekday. */
+export function gameWeeksBetween(fromId: string, toId: string): number {
+  const d = (k: string) => { const [y, mo, dd] = k.split('-').map(Number) as [number, number, number]; return Date.UTC(y, mo - 1, dd); };
+  return Math.round((d(toId) - d(fromId)) / (7 * DAY_MS));
+}

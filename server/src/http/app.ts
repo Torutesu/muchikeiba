@@ -17,6 +17,7 @@ import { handleAdmin, type OpsApi } from './admin.js';
 import type { AdminPrincipal } from '../ops/admin.js';
 import { clientBatchSchema } from '../domain/kpi.js';
 import type { TimeAttackService } from '../race/timeAttack.js';
+import type { WeeklyChallengeService } from '../race/weeklyChallenge.js';
 import { TA_BOARD_RE } from '../domain/timeAttack.js';
 import { LEAGUE_BOARD_RE } from '../domain/league.js';
 import { TeamsService, type TeamPlayers } from '../domain/teamService.js';
@@ -35,6 +36,7 @@ import { LOCALES, resolveLocale, type Locale } from '../i18n/locale.js';
 import { catalogFor, localize, type Catalog } from '../i18n/catalog.js';
 import { ASSIST_LEVELS, ASSIST_SOURCES } from '../domain/assist.js';
 import type { RivalService } from '../domain/rivalService.js';
+import { HISTORY_LIMITS, historyQuery, REF_RE, SUPPORT_TOPICS } from '../domain/history.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -65,7 +67,11 @@ export type PlayerMethod =
   | 'training' | 'trainingStart' | 'trainingFinish' | 'trainingUseItem'
   | 'giftBox' | 'giftClaim' | 'giftClaimAll'
   | 'assist' | 'setAssist' | 'assistPromptSeen'
-  | 'rivalPeek' | 'rivalSync' | 'rivalSetOptOut' | 'rivalBlock' | 'rivalChallengeCheck' | 'rivalChallengeReceive' | 'rivalSeen' | 'rivalPush';
+  | 'rivalPeek' | 'rivalSync' | 'rivalSetOptOut' | 'rivalBlock' | 'rivalChallengeCheck' | 'rivalChallengeReceive' | 'rivalSeen' | 'rivalPush'
+  | 'history' | 'historyTicket' | 'adminHistory' | 'adminHistoryRefs'
+  | 'exchangeView' | 'exchangeBuy'
+  | 'wchView' | 'wchStart' | 'wchPrepare' | 'wchAbort' | 'wchRecord'
+  | 'teamGoalReward' | 'goalPlayerView';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -109,6 +115,8 @@ export interface AppContext {
   friends: FriendsService;
   leaderboard: LeaderboardApi;
   timeAttack: TimeAttackService;
+  /** REQ-WCH-*: 週替わりチャレンジ. Absent → the routes answer NOT_FOUND. */
+  weeklyChallenge?: WeeklyChallengeService;
   /** REQ-TEAM-*: 支部. Absent in contexts that do not serve teams (routes answer NOT_FOUND). */
   teams?: TeamsService;
   /** REQ-EVENT-*: event races. */
@@ -195,8 +203,13 @@ export const clientIdemKey = (req: Request) => {
   return `c:${new URL(req.url).pathname}:${k}`;
 };
 const idem = clientIdemKey;
+
 const id = z.string().min(1).max(64);
 
+const weekly = (c: AppContext) => {
+  if (!c.weeklyChallenge) throw new AppError('NOT_FOUND', 'weekly challenges are not available');
+  return c.weeklyChallenge;
+};
 const teams = (c: AppContext) => {
   if (!c.teams) throw new AppError('NOT_FOUND', 'teams are not available');
   return c.teams;
@@ -611,6 +624,8 @@ export const routes: Route[] = [
   { method: 'GET', path: '/v1/league/me', auth: 'player', handler: async (_r, _p, c, u) => teams(c).league(u) },
   // REQ-TEAMFEED-*: cheer stamps and the team feed (fixed stamps only, no free text)
   { method: 'GET', path: '/v1/stamps', auth: 'player', handler: async (_r, _p, c, u) => teams(c).stamps(u) },
+  // REQ-TGOAL-008: the team's weekly goal (contracts/protocol.md §32)
+  { method: 'GET', path: '/v1/teams/me/goal', auth: 'player', handler: async (_r, _p, c, u) => teams(c).goal(u) },
   { method: 'GET', path: '/v1/teams/me/feed', auth: 'player', handler: async (r, _p, c, u) => {
     const q = new URL(r.url).searchParams;
     const num = (k: string, max: number) => {
@@ -647,6 +662,12 @@ export const routes: Route[] = [
   { method: 'POST', path: '/v1/events/:eventId/cancel', auth: 'player', handler: async (_r, p, c, u) => events(c).cancel(u, eventIdParam(p.eventId!)) },
   { method: 'GET', path: '/v1/events/:eventId/leaderboard', auth: 'none', handler: async (_r, p, c) => events(c).board(eventIdParam(p.eventId!)) },
   { method: 'GET', path: '/v1/events/:eventId/me', auth: 'player', handler: async (_r, p, c, u) => events(c).me(u, eventIdParam(p.eventId!)) },
+  // イベント交換所 (REQ-EXCH-*, contracts/protocol.md §30)
+  { method: 'GET', path: '/v1/events/:eventId/exchange', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('exchangeView', u, eventIdParam(p.eventId!)) },
+  { method: 'POST', path: '/v1/events/:eventId/exchange', auth: 'player', handler: async (r, p, c, u) => {
+    const b = await body(r, z.object({ itemId: z.string().regex(/^[a-z0-9_]{1,40}$/), qty: z.number().int().min(1).max(99).optional() }).strict());
+    return c.player(u).invoke('exchangeBuy', u, eventIdParam(p.eventId!), b.itemId, b.qty ?? 1, idem(r));
+  } },
   // friends (REQ-SOCIAL-*)
   { method: 'GET', path: '/v1/friends', auth: 'player', handler: async (_r, _p, c, u) => c.friends.list(u) },
   { method: 'GET', path: '/v1/friends/code', auth: 'player', handler: async (_r, _p, c, u) => c.friends.myCode(u) },
@@ -723,6 +744,20 @@ export const routes: Route[] = [
     if (!/^\d{4}-\d{2}$/.test(p.seasonId!) || !/^[a-z0-9_]{1,48}$/.test(p.trackId!)) throw new AppError('BAD_REQUEST', 'bad season or track');
     return c.timeAttack.ghost(p.seasonId!, p.trackId!, p.playerId!);
   } },
+  // 週替わりチャレンジ weekly challenge (REQ-WCH-*, contracts/protocol.md §31)
+  { method: 'GET', path: '/v1/challenges/weekly', auth: 'player', handler: async (_r, _p, c, u) => weekly(c).view(u) },
+  { method: 'POST', path: '/v1/challenges/weekly/:challengeId/start', auth: 'player', handler: async (r, p, c, u) => {
+    if (!/^[a-z0-9_]{1,40}$/.test(p.challengeId!)) throw new AppError('BAD_REQUEST', 'bad challenge id');
+    const b = await body(r, z.union([z.object({ horseId: id }).strict(), z.object({ loan: z.literal(true) }).strict()]));
+    return weekly(c).start(u, p.challengeId!, b, idem(r));
+  } },
+  { method: 'POST', path: '/v1/challenges/weekly/submit', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({
+      sessionId: id, token: z.string().min(1).max(2048), resultHash: z.string().regex(/^[0-9a-f]{64}$/),
+      inputs: z.array(z.unknown()).max(4000), config: z.unknown().optional(),
+    }).strict());
+    return weekly(c).submit(u, b);
+  } },
   // rewarded ads (REQ-AD-*, contracts/protocol.md §21)
   { method: 'GET', path: '/v1/ads', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('ads', u) },
   { method: 'PUT', path: '/v1/ads/preferences', auth: 'player', handler: async (r, _p, c, u) => {
@@ -774,15 +809,27 @@ export const routes: Route[] = [
     const b = await body(r, z.object({ horseId: z.string().min(1).max(40) }).strict());
     return c.player(u).invoke('trainingUseItem', u, p.itemId!, b.horseId, idem(r));
   } },
+  // 購入履歴・コイン履歴・ガチャ履歴 (REQ-HIST-*, contracts/protocol.md §33; read only)
+  { method: 'GET', path: '/v1/history/summary', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('history', u, 'summary', {}) },
+  { method: 'GET', path: '/v1/history/:kind', auth: 'player', handler: async (r, p, c, u) => {
+    const kind = p.kind!;
+    if (kind !== 'purchases' && kind !== 'coins' && kind !== 'gacha') throw new AppError('NOT_FOUND', 'NOT_FOUND');
+    return c.player(u).invoke('history', u, kind, historyQuery(new URL(r.url).searchParams, kind));
+  } },
+  { method: 'POST', path: '/v1/history/support-ticket', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ refs: z.array(z.string().regex(REF_RE)).min(1).max(HISTORY_LIMITS.ticketRefsMax), topic: z.enum(SUPPORT_TOPICS) }).strict());
+    return c.player(u).invoke('historyTicket', u, b.refs, b.topic);
+  } },
   // admin
   // weekly rival (REQ-RIVAL-*, contracts/protocol.md §28)
   { method: 'GET', path: '/v1/rival', auth: 'player', handler: async (_r, _p, c, u) => (c.rival ? c.rival.view(u) : { enabled: false }) },
   { method: 'PUT', path: '/v1/rival/settings', auth: 'player', handler: async (r, _p, c, u) => rival(c).setOptOut(u, (await body(r, z.object({ optOut: z.boolean() }).strict())).optOut) },
   { method: 'POST', path: '/v1/rival/block', auth: 'player', handler: async (_r, _p, c, u) => rival(c).block(u) },
   { method: 'POST', path: '/v1/rival/challenge', auth: 'player', handler: async (r, _p, c, u) => {
+    const key = idem(r); // R12 leftover: a retry after a timeout must not use another daily challenge or re-send the invite
     const b = await body(r, z.object({ passphrase: z.string().min(1).max(64) }).strict());
     if (!(await c.match.friendMember(b.passphrase, u))) throw new AppError('NOT_ELIGIBLE', 'not a member of this room');
-    return rival(c).challenge(u, b.passphrase);
+    return rival(c).challenge(u, b.passphrase, key);
   } },
   { method: 'POST', path: '/v1/rival/results/:weekId/seen', auth: 'player', handler: async (_r, p, c, u) => rival(c).seen(u, weekIdParam(p.weekId!)) },
   { method: 'GET', path: '/v1/admin/paid-balance', auth: 'admin', handler: async (_r, _p, c) => c.paidBalance() },
@@ -902,6 +949,7 @@ export function teamPlayersFrom(player: (uid: string) => PlayerInvoker): TeamPla
     feedMute: (u, t, muted) => player(u).invoke('feedMute', u, t, muted),
     feedReported: (u, t, seq, by, reason) => player(u).invoke('feedReported', u, t, seq, by, reason),
     cheerPush: (u, from, name) => player(u).invoke('cheerPush', u, from, name),
+    goalPlayerView: (u) => player(u).invoke('goalPlayerView', u),
   };
 }
 

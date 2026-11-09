@@ -209,7 +209,7 @@
       "kind": "races",
       "target": 3,
       "reward": {
-        "freeCoins": 16
+        "freeCoins": 15
       }
     },
     {
@@ -791,6 +791,7 @@
     { "key": "teams", "days": 3, "races": 15 },
     { "key": "spectate", "days": 3, "races": 15 },
     { "key": "time_attack", "days": 4, "races": 20 },
+    { "key": "weekly_challenge", "days": 4, "races": 20 },
     { "key": "events", "days": 5, "races": 25 },
     { "key": "tournaments", "days": 5, "races": 25 },
     { "key": "my_stable", "days": 6 },
@@ -899,7 +900,7 @@
     ]
   },
   "rival": {
-    "_note": "REQ-RIVAL-*（contracts/protocol.md §28）。週はゲーム日（dayRollover、既定4:00 JST）の weekStartsOn（1=月曜）から7日。先週ランク戦を走った同じクラスのレーティングの近い人（maxRatingGap 以内）と、週IDの seed と並べた候補から決定論で組む。合う人がいなければ cpuRivals から週IDとプレイヤーIDで決まるCPU。報酬は結果で決まる固定の無償コインだけ（1週 ≤ 100 = ¥160 相当、連勝の上乗せなし、乱数なし）。週の自分のランク戦が minRacesForResult 未満なら報酬なし。経済 E16（docs/spec/balance-targets.md 4.13）。",
+    "_note": "REQ-RIVAL-*（contracts/protocol.md §28）。週はゲーム日（dayRollover、既定4:00 JST）の weekStartsOn（1=月曜）から7日。先週ランク戦を走った同じクラスのレーティングの近い人（maxRatingGap 以内）と、週IDの seed と並べた候補から決定論で組む。合う人がいなければ cpuRivals から週IDとプレイヤーIDで決まるCPU。報酬は結果で決まる固定の無償コインだけ（1週 ≤ 100 = ¥160 相当、連勝の上乗せなし、乱数なし）。週の自分のランク戦が minRacesForResult 未満なら報酬なし。経済 E16（docs/spec/balance-targets.md 4.14）。",
     "enabled": true,
     "weekStartsOn": 1,
     "maxRatingGap": 200,
@@ -950,5 +951,70 @@
     "holdCaps": { "freeCoins": 9999999, "itemQty": 9999 },
     "expiringSoonDays": 3,
     "pushSources": ["ops_compensation"]
+  },
+  "weeklyChallenge": {
+    "_note": "REQ-WCH-*（docs/spec/requirements.md 31章、contracts/protocol.md §31、docs/spec/balance-targets.md E18）。毎週（月曜、ゲーム日の切り替わり）rotation を順に1週ずつ。全員クラスB上限 statCap に正規化・スキルなし・調子の揺らぎなし。貸し出し馬は上限ちょうどに引き上げ、コースと条件に合う馬。報酬は1週1回・少額・固定（無償コイン ≤100・配合素材のみ、ランダムなし）。3つクリアで見た目だけのバッジ（ランダムなし＝コンプガチャではない）。",
+    "enabled": true,
+    "weekStartsOn": 1,
+    "anchorWeekId": "2026-11-02",
+    "statCap": 3200,
+    "sessionTtlMs": 900000,
+    "maxInputs": 400,
+    "startsPerDay": 30,
+    "keepSessions": 20,
+    "previewNext": true,
+    "rotation": [
+      {
+        "id": "w_aoba", "badge": { "id": "wch_badge_aoba", "name": "青葉の一閃章" },
+        "challenges": [
+          { "id": "wa_nige", "title": "逃げ切りの一閃", "trackId": "aoba_turf_1600", "cpuCount": 7, "cpuLevel": 3,
+            "conditions": { "style": "nige", "maxPlace": 1 }, "loanTemplateId": "t_hinode", "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+          { "id": "wa_whip3", "title": "ムチは3発まで", "trackId": "kirameki_turf_2000", "cpuCount": 7, "cpuLevel": 3,
+            "conditions": { "maxWhips": 3, "maxPlace": 3 }, "loanTemplateId": "t_natsu", "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+          { "id": "wa_rain", "title": "雨の重馬場", "trackId": "kirameki_turf_2000", "going": "soft", "cpuCount": 5, "cpuLevel": 2,
+            "conditions": { "maxTimeMs": 94000 }, "loanTemplateId": "t_minamo", "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
+        ]
+      },
+      {
+        "id": "w_minato", "badge": { "id": "wch_badge_minato", "name": "みなとの夜章" },
+        "challenges": [
+          { "id": "wm_night", "title": "ナイターの先行策", "trackId": "minato_dirt_1800", "night": true, "cpuCount": 7, "cpuLevel": 3,
+            "conditions": { "style": "senko", "maxPlace": 2 }, "loanTemplateId": "t_dorobune", "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+          { "id": "wm_nowhip", "title": "ムチなしの末脚", "trackId": "minato_turf_2400", "cpuCount": 7, "cpuLevel": 2,
+            "conditions": { "maxWhips": 0, "maxPlace": 5 }, "loanTemplateId": "t_yuyake", "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+          { "id": "wm_sloppy", "title": "不良馬場を走り切れ", "trackId": "santalucera_dirt_1700", "going": "sloppy", "night": true, "cpuCount": 5, "cpuLevel": 2,
+            "conditions": { "maxTimeMs": 79000 }, "loanTemplateId": "t_kawarabi", "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
+        ]
+      },
+      {
+        "id": "w_bellmoor", "badge": { "id": "wch_badge_bellmoor", "name": "直線の覇者章" },
+        "challenges": [
+          { "id": "wb_sprint", "title": "直線一気", "trackId": "bellmoor_turf_1200", "cpuCount": 7, "cpuLevel": 3,
+            "conditions": { "maxPlace": 1, "maxWhips": 2 }, "loanTemplateId": "t_aozora", "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+          { "id": "wb_dirt", "title": "砂の先行争い", "trackId": "aoba_dirt_1400", "going": "muddy", "cpuCount": 7, "cpuLevel": 3,
+            "conditions": { "style": "senko", "maxPlace": 3 }, "loanTemplateId": "t_dorobune", "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+          { "id": "wb_long", "title": "長距離の我慢", "trackId": "nordhaven_turf_2400", "cpuCount": 7, "cpuLevel": 3,
+            "conditions": { "maxWhips": 2, "maxPlace": 3 }, "loanTemplateId": "t_akanegumo", "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
+        ]
+      }
+    ]
+  },
+  "teamGoal": {
+    "_comment": "支部の共同目標（REQ-TGOAL-*、contracts/protocol.md §32）。週（月曜のゲーム日の切り替えから7ゲーム日）ごとに支部の目標を1つ、支部IDと週から決まった方法で選ぶ。目標の段＝perMember × 規模（先週に貢献した人数、初めての週は人数。scale の範囲）。報酬は最後に届いた段の決まった報酬を1回（無償・ランダムなし・1回 ¥200 以内）。報酬額は E19（docs/spec/balance-targets.md 4.17）で調整。",
+    "goals": [
+      { "id": "races_sum", "kind": "races", "label": "支部で合計{n}レース", "perMember": [6, 12, 20], "minContribution": 3 },
+      { "id": "wins_sum", "kind": "wins", "label": "支部で合計{n}勝", "perMember": [1, 2, 4], "minContribution": 1 },
+      { "id": "ta_pb_sum", "kind": "ta_pb", "label": "支部でタイムアタック自己ベスト更新 合計{n}回", "perMember": [1, 2, 3], "minContribution": 1 }
+    ],
+    "tiers": [
+      { "reward": { "freeCoins": 5 } },
+      { "reward": { "freeCoins": 8, "items": [{ "itemId": "breeding_material", "qty": 1 }] } },
+      { "reward": { "freeCoins": 12, "items": [{ "itemId": "breeding_material", "qty": 1 }] } }
+    ],
+    "dailyCap": { "races": 10, "wins": 3, "ta_pb": 2 },
+    "scale": { "min": 3, "max": 20 },
+    "modes": ["ranked", "event", "tournament"],
+    "topN": 5,
+    "payBatch": 50
   }
 }

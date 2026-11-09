@@ -208,6 +208,10 @@ export interface PlayerState {
   assist?: import('./assist.js').AssistState;
   /** REQ-RIVAL-*: opt-out, this week's rival and score, unsettled weeks, results (rival.ts ensureRival). */
   rival?: import('./rival.js').RivalState;
+  /** REQ-HIST-004: one record per gacha draw, last 90 days (history.ts recordGachaLog; the Durable Object keeps older ones in SQL). */
+  gachaLog?: import('./history.js').GachaLogState;
+  /** REQ-WCH-*: weekly challenge sessions, this and last week's progress, earned badges (weeklyChallenge.ts wchState). */
+  weeklyChallenge?: import('./weeklyChallenge.js').WeeklyChallengeState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

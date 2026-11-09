@@ -19,7 +19,7 @@ import { addItems, grantReward } from './items.js';
 import { grantFree } from './wallet.js';
 import { enqueuePush } from './push.js';
 
-export const GIFT_SOURCES = ['ops_compensation', 'ops_grant', 'invite', 'event', 'tournament', 'team', 'league', 'season'] as const;
+export const GIFT_SOURCES = ['ops_compensation', 'ops_grant', 'invite', 'event', 'tournament', 'team', 'league', 'season', 'team_goal', 'exchange'] as const;
 export type GiftSource = typeof GIFT_SOURCES[number];
 
 /** Display titles (Japanese; the English is in i18n/en.ts and applied at the response boundary). */
@@ -34,6 +34,10 @@ export const GIFT_TITLES = {
   team: '支部のシーズン報酬',
   league: '支部対抗シーズンの報酬',
   season: 'シーズンの報酬',
+  /** Round 13 (§26.1): the team goal's week reward (paid by the team object at the week close). */
+  team_goal: '支部の共同目標の報酬',
+  /** Round 13 (§26.1): an event exchange's leftover points converted at its close (REQ-EXCH-006). */
+  exchange: 'イベント交換所の残りポイント',
 } as const;
 export type GiftTitleKey = keyof typeof GIFT_TITLES;
 /** Title keys ops may choose for a grant / compensation. */

@@ -1302,11 +1302,14 @@ namespace Muchi.Client
         /// <summary>e.g. "class", "ranked_races", "style".</summary>
         public List<string> NotEligibleReasons = new List<string>();
         public EventProgress Me;
+        /// <summary>REQ-EXCH-009: the event top's point counter; null when the event has no exchange (protocol §30).</summary>
+        public ExchangeSummary Exchange;
         internal static EventInfo Parse(JsonNode o) => o == null ? null : new EventInfo
         {
             Id = J.Str(o, "id"), Name = J.Str(o, "name"), Banner = J.Str(o, "banner") ?? AssetKeys.EventBanner(J.Str(o, "id") ?? "default"), Status = J.Str(o, "status"), StartAtMs = J.Long(o, "startAtMs"), EndAtMs = J.Long(o, "endAtMs"),
             TrackIds = J.List(o, "trackIds", x => x.AsString()), Fee = EventFee.Parse(J.Opt(o, "fee")), Eligible = J.Bool(o, "eligible"),
             NotEligibleReasons = J.List(o, "notEligibleReasons", x => x.AsString()), Me = EventProgress.Parse(J.Opt(o, "me")),
+            Exchange = ExchangeSummary.Parse(J.Opt(o, "exchange")),
         };
         internal static List<EventInfo> ParseList(JsonNode o) => TeamWire.Array(o, Parse);
     }

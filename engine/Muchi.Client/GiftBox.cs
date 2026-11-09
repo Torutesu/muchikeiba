@@ -25,7 +25,7 @@ namespace Muchi.Client
     /// <summary>One gift (unclaimed, claimed or expired).</summary>
     public sealed class GiftEntry
     {
-        /// <summary>Source: ops_compensation | ops_grant | invite | event | tournament | team | league | season.</summary>
+        /// <summary>Source: ops_compensation | ops_grant | invite | event | tournament | team | league | season | team_goal | exchange.</summary>
         public string GiftId, Source, TitleKey, Title, Status, How, HeldReason, HeldItemId;
         public int? Rank;
         public int FreeCoins;

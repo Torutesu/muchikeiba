@@ -44,7 +44,7 @@ namespace Muchi.Game
         public static readonly IReadOnlyDictionary<string, string> SourceLabels = new Dictionary<string, string>
         {
             ["ops_compensation"] = "お詫び", ["ops_grant"] = "運営", ["invite"] = "招待", ["event"] = "イベント", ["tournament"] = "大会",
-            ["team"] = "支部", ["league"] = "支部対抗", ["season"] = "シーズン",
+            ["team"] = "支部", ["league"] = "支部対抗", ["season"] = "シーズン", ["team_goal"] = "共同目標", ["exchange"] = "交換所",
         };
 
         private readonly NowMs _now;

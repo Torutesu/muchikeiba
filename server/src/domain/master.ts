@@ -187,6 +187,10 @@ export interface Progression {
   giftBox?: import('./giftBox.js').GiftBoxConfig;
   /** REQ-RIVAL-*: weekly rival (rival.ts, validated by rivalProblems). Absent / disabled = no rivals. */
   rival?: import('./rival.js').RivalConfig;
+  /** REQ-WCH-*: 週替わりチャレンジ (weeklyChallenge.ts, validated by weeklyChallengeProblems). Absent = no weekly challenges. */
+  weeklyChallenge?: import('./weeklyChallenge.js').WeeklyChallengeConfig;
+  /** REQ-TGOAL-*: 支部の共同目標 (teamGoal.ts, validated by teamGoalProblems). Absent = no team goals. */
+  teamGoal?: import('./teamGoal.js').TeamGoalConfig;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */
@@ -246,6 +250,28 @@ export interface EventDef {
   points: { byPlace: number[]; participation: number };
   milestones: { points: number; reward: Reward }[];
   rankRewards: { maxRank: number | null; reward: Reward }[];
+  /** REQ-EXCH-*: the event's exchange shop (contracts/protocol.md §30). Absent = the event has none. */
+  exchange?: EventExchange;
+}
+/** REQ-EXCH-002: what one exchange line gives. Exactly one of the keys; never anything random. */
+export type ExchangeItemKind = 'coins' | 'material' | 'ticket' | 'cosmetic' | 'horse';
+export interface ExchangeItemDef {
+  id: string; name: string; kind: ExchangeItemKind;
+  /** Event points per unit (fixed). */
+  price: number;
+  /** Units one player can take from this line during the event (per event, never restocked). */
+  stock: number;
+  reward: { freeCoins?: number; items?: ItemQty[]; horse?: string };
+}
+/** REQ-EXCH-001: event points (free, earned only by racing the event) and the fixed-price exchange list. */
+export interface EventExchange {
+  /** Points per race result: byPlace[place-1] + participation, at most dailyCap per game day (REQ-DAY-001). */
+  earn: { byPlace: number[]; participation: number; dailyCap: number };
+  /** The exchange stays open this many whole game days after the game day the event ends in. */
+  graceDays: number;
+  /** REQ-EXCH-006: points left when the exchange closes become ceil(points / pointsPerUnit) of itemId. */
+  leftover: { itemId: string; pointsPerUnit: number };
+  items: ExchangeItemDef[];
 }
 export type TitleCondition =
   | { kind: 'races' | 'wins' | 'top3' | 'perfectStarts' | 'whipPerfectWins'; value: number }

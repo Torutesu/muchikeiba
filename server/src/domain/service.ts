@@ -2,7 +2,7 @@ import { AppError } from './errors.js';
 import type { Master, Reward } from './master.js';
 
 const TOURNAMENT_HISTORY_KEEP = 50;
-import { migratePlayer, moderationOf, newPlayer, playerView, type PlayerState, type PurchaseRecord } from './player.js';
+import { migratePlayer, moderationOf, newPlayer, playerView, type Currency, type LedgerEntry, type PlayerState, type PurchaseRecord } from './player.js';
 import { GRANT_LIMITS, setModeration, supportCorrectAge, supportGrant, supportResetName, supportSettleDebt, supportView, type Grant } from '../ops/support.js';
 import { equipTitle, evaluateTitles, publicProfile, setDisplayName, type PublicProfile } from './stats.js';
 import { achievementsView, claimAchievement, claimAllAchievements, collectionView, noteCheer, noteRaceCollection, noteTournamentResult, syncCollection } from './collection.js';
@@ -35,11 +35,13 @@ import { admitClientBatch, clientToKpi, ensureKpi, isPayer, kpiRecord, type Clie
 export type Emit = (e: KpiEvent) => void;
 import type { Ruleset } from './ruleset.js';
 import { abortSubmit, prepareSubmit, recordResult, startTimeAttack, timeAttackView } from './timeAttack.js';
+import { ensureGoal, mayContribute, playerGoalPending, playerGoalRace, playerGoalReward, playerGoalTa, playerGoalView, weekKeyOf, type GoalContribution } from './teamGoal.js';
 import type { VerifierOutput } from './schemas.js';
 import { trackById } from './master.js';
 import { appearanceOf, assetKeys, defaultSilks, validateSilks, type EntrantVisual, type Silks, effectiveSilks } from './visuals.js';
 import type { LeaguePlace } from './league.js';
 import { ensureTeam, playerAbortJoin, playerAddOutgoing, playerCommitJoin, playerLeft, playerPrepareJoin, playerRemoveOutgoing, playerTeamReward, snapshotOf } from './teams.js';
+import { buyExchange, earnExchangePoints, exchangeView, settleExchanges } from './exchange.js';
 import { applyEventResult, cancelEntry, closeEventForPlayer, ensureEvent, enterEvent, eventsForPlayer, findEvent, type EventEntry } from './events.js';
 import { bondLevels, bondView, careHorse, horseBondLevel } from './bond.js';
 import { dueStudOutbox, ensureStud, nextStudWake, studAcked, studApply, studList, studPeek, studPreview, studReserve, studRetryLater, studSettle, studUnlist, studView, type StudSnapshot, type StudVisibility } from './stud.js';
@@ -71,6 +73,12 @@ import {
   ensureRival, noteRivalRace, noteRivalTa, rivalBlock, rivalChallengeCheck, rivalChallengeReceive, rivalOutbound, rivalSeen, rivalSetOptOut, rivalSync,
   rivalUpdateOf, rivalView, rivalWithdrawn, weekIdAt, weeksToSync, type RegistryWeek, type RivalUpdate,
 } from './rival.js';
+import {
+  coinHistory, gachaHistory, historySummary, pageLimit, purchaseHistory, recordGachaLog, resolveRefs, stateGachaPager, stateLedgerPager,
+  HISTORY_LIMITS, type GachaLogEntry, type GachaPager, type LedgerPager, type SupportTopic,
+} from './history.js';
+import { buildSupportTicket } from '../ops/support.js';
+import { abortChallengeSubmit, prepareChallengeSubmit, recordChallengeResult, startChallenge, weeklyChallengeView, type WchStartInput } from './weeklyChallenge.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
 export interface PlayerRepo {
@@ -80,7 +88,17 @@ export interface PlayerRepo {
   delete?(id: string): void | Promise<void>;
   /** r10: the account deletion wiped this id (a tombstone was kept). Absent = no tombstones (treated as never deleted). */
   tombstoned?(id: string): boolean | Promise<boolean>;
+  /**
+   * REQ-HIST-003/004: older history than the state JSON keeps (the Durable Object's `ledger` / `gacha_log` tables).
+   * Absent = the state holds every row (memory repos, the prototype).
+   */
+  ledgerPage?(id: string, q: Parameters<LedgerPager>[0]): LedgerEntry[] | Promise<LedgerEntry[]>;
+  gachaPage?(id: string, q: Parameters<GachaPager>[0]): GachaLogEntry[] | Promise<GachaLogEntry[]>;
 }
+
+/** REQ-HIST-*: which list `history` reads, and its query. */
+export type HistoryKindArg = 'summary' | 'purchases' | 'coins' | 'gacha';
+export interface HistoryQuery { cursor?: string | null; limit?: number | null; currency?: Currency | null }
 
 /** REQ-UXS-040: purchases, offers and the daily pack are disabled while the account is scheduled for deletion. */
 /** REQ-SHORT-005: what GET /v1/shop/shortfall asks about. */
@@ -122,6 +140,8 @@ export interface PlayerServiceDeps {
   rng: Rng;
   /** REQ-TRAIN-005: the training beat seeds (default: `rng`). The economy sim passes its own so gacha draws stay the same. */
   trainingRng?: Rng;
+  /** REQ-WCH-003: challenge session ids and race seeds (default: `rng`). The economy sim passes its own so gacha draws stay the same. */
+  challengeRng?: Rng;
   clock: Clock;
   verifiers: Partial<Record<PurchaseRecord['platform'], StoreVerifier>>;
   onPaidBalance?: (snap: PaidBalanceSnapshot) => void | Promise<void>;
@@ -148,6 +168,10 @@ export interface PlayerServiceDeps {
    * a pair I dissolved, new weekly time-attack bests). Best effort: RivalService re-sends what matters on the next sync.
    */
   onRival?: (u: RivalUpdate) => void | Promise<void>;
+  /** REQ-TGOAL-003: a confirmed event counts toward the team's weekly goal (the Durable Object tells the team; throws when it is unreachable). */
+  onTeamGoal?: (c: GoalContribution) => Promise<{ milestone: number | null } | null | undefined | void>;
+  /** REQ-TGOAL-006: remove a quarantined / banned player's contribution from a team's weekly goal. */
+  onTeamGoalForget?: (p: { teamId: string; playerId: string }) => Promise<unknown>;
 }
 
 const standingKey = (s: PlayerState) => JSON.stringify([s.season.id, s.season.classId, s.season.points, s.season.races, Math.round(s.rating.r), s.profile.displayName, s.profile.titleId]);
@@ -207,6 +231,7 @@ export class PlayerService {
     const kpi: KpiRecord[] = [];
     const emit: Emit = (e) => { kpi.push(kpiRecord(draft, now, e)); };
     expireGifts(this.d.master, draft, now, emit); // REQ-BOX-006: lazy expiry on every transaction (the alarm runs one too)
+    settleExchanges(this.d.master, draft, now, giftGiver(this.d.master, draft, now, emit)); // REQ-EXCH-006 / §26.1: leftover event points → material, into the gift box
     let result: T;
     try { result = fn(draft, now, emit); }
     catch (e) {
@@ -458,6 +483,7 @@ export class PlayerService {
     return this.tx(id, this.requireKey(idemKey), (s, now, emit) => {
       const r = drawGacha(this.d.master, s, bannerId, count, this.d.rng, now);
       countOnboarding(s, 'gacha');
+      recordGachaLog(s, now, { bannerId: r.bannerId, via: 'coins', count, paid: r.spent.paid, free: r.spent.free, results: r.results }); // REQ-HIST-004
       emit({ name: 'gacha_draw', s1: bannerId, count, paidCoins: r.spent.paid, freeCoins: r.spent.free, value: r.results.filter((x) => x.rarity === 'SSR').length });
       return { ...r, wallet: playerView(s).wallet };
     });
@@ -467,6 +493,7 @@ export class PlayerService {
     return this.tx(id, this.requireKey(idemKey), (s, now, emit) => {
       const r = drawGacha(this.d.master, s, 'standard', 10, this.d.rng, now, { tutorialFree: true });
       countOnboarding(s, 'gacha');
+      recordGachaLog(s, now, { bannerId: r.bannerId, via: 'tutorial', count: 10, paid: 0, free: 0, results: r.results }); // REQ-HIST-004
       emit({ name: 'tutorial_gacha', count: 10 });
       return r;
     });
@@ -544,6 +571,7 @@ export class PlayerService {
       const r = useTicket(this.d.master, s, itemId, bannerId, this.d.rng, now, key);
       countOnboarding(s, 'gacha');
       const pulls = r.results ?? [r.result];
+      recordGachaLog(s, now, { bannerId: r.bannerId, via: 'ticket', itemId, count: pulls.length, paid: 0, free: 0, results: pulls }); // REQ-HIST-004
       emit({ name: 'gacha_draw', s1: bannerId ?? itemId, s2: 'ticket', count: pulls.length, paidCoins: 0, freeCoins: 0, value: pulls.filter((x) => x.rarity === 'SSR').length });
       return r;
     });
@@ -710,10 +738,12 @@ export class PlayerService {
     });
   }
   rivalBlock(id: string) { return this.tx(id, null, (s, now) => rivalBlock(this.d.master, s, now)); }
-  rivalChallengeCheck(id: string) { return this.tx(id, null, (s, now) => ({ rivalId: rivalChallengeCheck(this.d.master, s, now), displayName: s.profile.displayName })); }
-  async rivalChallengeReceive(id: string, fromId: string, passphrase: string, fromName?: string) {
+  /** REQ-RIVAL-008: one daily challenge per call; a resent idempotency key returns the stored answer (no second challenge). */
+  rivalChallengeCheck(id: string, idemKey: string | null = null) { return this.tx(id, idemKey, (s, now) => ({ rivalId: rivalChallengeCheck(this.d.master, s, now), displayName: s.profile.displayName })); }
+  /** The rival's side; keyed by the challenger's request so a retried challenge never re-sends the invite push. */
+  async rivalChallengeReceive(id: string, fromId: string, passphrase: string, fromName?: string, idemKey: string | null = null) {
     if (await this.wiped(id)) throw new AppError('NOT_ELIGIBLE', 'not your rival this week');
-    return this.tx(id, null, (s, now) => {
+    return this.tx(id, idemKey, (s, now) => {
       const r = rivalChallengeReceive(this.d.master, s, fromId, passphrase, now);
       enqueuePush(this.d.master, s, 'room_invite', { name: fromName ?? 'ライバル' }, now);
       return r;
@@ -748,6 +778,7 @@ export class PlayerService {
     // create a fresh player under the deleted id. ACK it as a no-op. A player that merely has no state yet still applies.
     if (!cur && (await this.repo.tombstoned?.(id))) return { skipped: 'deleted' as const, raceId: r.raceId, event: null };
     let feed: { teamId: string; playerId: string; displayName: string; race: FeedRace } | null = null;
+    let goal: GoalContribution | null = null;
     const out = await this.tx(id, `race:${r.raceId}`, (s, now, emit) => {
       // QA r6 #3: durable per-race guard, independent of the evictable idempotency ring
       const applied = (s.appliedRaces ??= {});
@@ -767,6 +798,12 @@ export class PlayerService {
         notePostedIn(s, teamId);
         feed = { teamId, playerId: id, displayName: s.profile.displayName, race: { raceId: r.raceId, mode: r.mode as FeedRace['mode'], place: r.place, fieldSize: r.fieldSize, trackId: r.details?.trackId ?? null } };
       }
+      // REQ-TGOAL-003/004: the settled result counts toward the team's weekly goal (account-wide daily cap)
+      goal = playerGoalRace(this.d.master, s, r, now);
+      if (goal) {
+        notePostedIn(s, goal.teamId); // REQ-TGOAL-006: the deletion finds this team even after a leave
+        emit({ name: 'team_goal_contribute', s1: goal.teamId, s2: goal.wins ? 'win' : 'race', s3: goal.ref, count: goal.races + goal.wins });
+      }
       if (!r.void && r.mode === 'ranked') noteRaceForOffers(this.d.master, s, r.place, now); // REQ-UXS-017 T2
       noteRaceForAssist(s, r, now, emit); // REQ-ASSIST-010/011: last-place streak, race_assisted
       if (r.mode === 'ranked' && !r.void) armPromotionNudge(this.d.master, s, now); // REQ-UXS-012
@@ -781,14 +818,19 @@ export class PlayerService {
       const ev = r.mode === 'event' && r.eventId ? this.d.master.events.find((e) => e.id === r.eventId) : undefined;
       if (!ev) return { ...base, event: null };
       const e = applyEventResult(ev, s, r, now, this.d.master);
+      // REQ-EXCH-004: event points for the exchange (fixed by place + participation, daily cap); a void race earns none
+      const ex = r.void ? null : earnExchangePoints(this.d.master, ev, s, r.place, now);
+      if (ex) emit({ name: 'event_point_earn', s1: ev.id, s2: ex.capped ? 'capped' : 'full', place: r.place, value: ex.gained, count: ex.points });
       const st = s.events![ev.id]!;
       return {
         ...base,
         event: { eventId: ev.id, gained: e.gained, total: e.total, milestones: e.milestones, refunded: e.refunded,
+          exchange: ex ? { gained: ex.gained, capped: ex.capped, points: ex.points, remainingToday: ex.remainingToday } : null,
           entry: { playerId: id, eventId: ev.id, points: st.points, races: st.races, wins: st.wins, displayName: s.profile.displayName, updatedAt: now } as EventEntry },
       };
     });
     await this.flushEventPushes(id);
+    await this.sendTeamGoal(id, goal);
     if (feed && this.d.onTeamFeed) {
       // best effort: the result is committed; a TeamDO outage only loses the feed item
       try { await this.d.onTeamFeed(feed); } catch (e) { console.error('team feed race item failed', id, (e as Error).message); }
@@ -806,6 +848,48 @@ export class PlayerService {
     }
     return out;
   }
+
+  /**
+   * REQ-TGOAL-003: delivers a contribution (and any earlier undelivered ones) to the team. Delivery failures are kept on
+   * the player (bounded) and re-sent with the next contribution; the team counts a ref once and only into its own week.
+   * A milestone this contribution reached is the team_goal_milestone KPI row of the contributor.
+   */
+  private async sendTeamGoal(id: string, c: GoalContribution | null) {
+    if (!this.d.onTeamGoal) return;
+    const cur = await this.load(id);
+    const pending = ensureGoal(cur).pending;
+    if (!c && pending.length === 0) return;
+    // REQ-TGOAL-006: undelivered contributions of a player who was quarantined / scheduled for deletion meanwhile are dropped
+    const queue = mayContribute(cur, this.d.clock()) ? [...pending, ...(c ? [c] : [])] : [];
+    const failed: GoalContribution[] = [];
+    const milestones: { teamId: string; tier: number }[] = [];
+    for (const x of queue) {
+      try {
+        const r = await this.d.onTeamGoal(x);
+        if (r && r.milestone !== null && r.milestone !== undefined) milestones.push({ teamId: x.teamId, tier: r.milestone });
+      } catch (e) {
+        console.error('team goal contribution failed; kept for retry', id, x.teamId, (e as Error).message);
+        failed.push(x);
+      }
+    }
+    if (pending.length === 0 && failed.length === 0 && milestones.length === 0) return;
+    await this.tx(id, null, (s, now, emit) => {
+      playerGoalPending(s, failed, now);
+      for (const ms of milestones) emit({ name: 'team_goal_milestone', s1: ms.teamId, s2: weekKeyOf(now, dayRule(this.d.master)), value: ms.tier });
+    });
+  }
+
+  /** REQ-TGOAL-007/009: a closed week's tier reward (the team object's alarm; idempotent per week, whatever the team). */
+  async teamGoalReward(id: string, week: string, teamId: string, tier: number, contribution: number) {
+    if (await this.wiped(id)) return null;
+    return this.tx(id, null, (s, now, emit) => {
+      const r = playerGoalReward(this.d.master, s, week, teamId, tier, contribution, now, giftGiver(this.d.master, s, now, emit)); // §26.1: background payout → gift box
+      if (r.status === 'rewarded') emit({ name: 'team_goal_reward', s1: teamId, s2: week, value: tier, count: contribution });
+      return r;
+    });
+  }
+  /** REQ-TGOAL-008: the player's side of GET /v1/teams/me/goal. */
+  async goalPlayerView(id: string) { return playerGoalView(this.d.master, await this.load(id), this.d.clock()); }
 
   /** Re-sends event board updates that failed earlier (latest entry per event; boards accept newer totals). */
   private async flushEventPushes(id: string) {
@@ -1016,6 +1100,54 @@ export class PlayerService {
   /** REQ-UXS-040: the deleting player's undelivered milestone rewards are given up. */
   inviteForfeit(id: string) { return this.tx(id, null, (s) => forfeitInviteOutbox(s)); }
 
+  // ---- 購入履歴・コイン履歴・ガチャ履歴 (REQ-HIST-*, contracts/protocol.md §33; read only) ----
+  /** REQ-HIST-006: a deleted (wiped) account has no history here; its anonymised legal record is never reachable by player id. */
+  private async historyState(id: string): Promise<PlayerState> {
+    const stored = await this.repo.get(id);
+    if (!stored && (await this.repo.tombstoned?.(id))) throw new AppError('NOT_FOUND', 'account deleted');
+    return this.load(id);
+  }
+  private pagers(id: string, s: PlayerState): { ledger: LedgerPager; gacha: GachaPager } {
+    const repo = this.repo;
+    return {
+      ledger: repo.ledgerPage ? (q) => repo.ledgerPage!(id, q) : stateLedgerPager(s),
+      gacha: repo.gachaPage ? (q) => repo.gachaPage!(id, q) : stateGachaPager(s),
+    };
+  }
+  private async historyOf(id: string, kind: HistoryKindArg, q: HistoryQuery, internal: boolean) {
+    const s = await this.historyState(id);
+    const now = this.d.clock();
+    const m = this.d.master;
+    if (kind === 'summary') return historySummary(m, s, now);
+    const limit = pageLimit(q.limit);
+    if (kind === 'purchases') return purchaseHistory(m, s, now, q.cursor ?? null, limit, internal);
+    const p = this.pagers(id, s);
+    if (kind === 'coins') return coinHistory(m, s, p.ledger, now, q.currency ?? null, q.cursor ?? null, limit, internal);
+    if (kind === 'gacha') return gachaHistory(m, p.gacha, now, q.cursor ?? null, limit);
+    throw new AppError('BAD_REQUEST', 'unknown history kind');
+  }
+  /** REQ-HIST-001..005: the player's own history (summary or one list page). */
+  history(id: string, kind: HistoryKindArg, q: HistoryQuery = {}) { return this.historyOf(id, kind, q, false); }
+  /** REQ-HIST-009: the 問い合わせ draft for up to 10 of the player's own rows (refs outside the windows are NOT_FOUND). */
+  async historyTicket(id: string, refs: string[], topic: SupportTopic) {
+    if (refs.length < 1 || refs.length > HISTORY_LIMITS.ticketRefsMax || new Set(refs).size !== refs.length) throw new AppError('BAD_REQUEST', `refs: 1..${HISTORY_LIMITS.ticketRefsMax} distinct references`);
+    const s = await this.historyState(id);
+    const now = this.d.clock();
+    const p = this.pagers(id, s);
+    const rows = await resolveRefs(this.d.master, s, p.ledger, p.gacha, now, refs);
+    const missing = rows.find((r) => r.kind === null);
+    if (missing) throw new AppError('NOT_FOUND', `reference ${missing.ref}`);
+    return buildSupportTicket(id, topic, rows as Exclude<typeof rows[number], { kind: null }>[], now);
+  }
+  /** REQ-HIST-010: the same lists for the ops console, with the internal values (admin API only). */
+  adminHistory(id: string, kind: HistoryKindArg, q: HistoryQuery = {}) { return this.historyOf(id, kind, q, true); }
+  /** REQ-HIST-010: the rows behind support references (unknown ones come back as `row: null`). */
+  async adminHistoryRefs(id: string, refs: string[]) {
+    const s = await this.historyState(id);
+    const p = this.pagers(id, s);
+    return { items: await resolveRefs(this.d.master, s, p.ledger, p.gacha, this.d.clock(), refs, true) };
+  }
+
   // ---- support / anti-cheat (admin API only; REQ-OPS-020..025, REQ-OPS-032) ----
   /** REQ-OPS-020: `exists` false = no stored player (the view is a fresh default); `accountDeleted` = wiped by a deletion. */
   async adminView(id: string) {
@@ -1057,8 +1189,18 @@ export class PlayerService {
   adminResetName(id: string, target: 'display' | 'horse' | 'stable', horseId: string | null) {
     return this.tx(id, null, (s) => supportResetName(this.d.master, s, target, horseId));
   }
-  setModeration(id: string, status: 'ok' | 'quarantined' | 'banned', until: number | null, reason: string) {
-    return this.tx(id, null, (s, now) => setModeration(s, status, until, reason, now));
+  async setModeration(id: string, status: 'ok' | 'quarantined' | 'banned', until: number | null, reason: string) {
+    const out = await this.tx(id, null, (s, now) => {
+      if (status !== 'ok') ensureGoal(s).pending = []; // REQ-TGOAL-006: never delivered later
+      return setModeration(s, status, until, reason, now);
+    });
+    // REQ-TGOAL-006: a quarantined or banned player's contribution leaves the weekly goal of every team that holds it
+    if (status !== 'ok' && this.d.onTeamGoalForget) {
+      const s = await this.load(id);
+      const teams = [...new Set([...(s.team?.teamId ? [s.team.teamId] : []), ...ensureFeed(s).postedIn])];
+      for (const teamId of teams) await this.d.onTeamGoalForget({ teamId, playerId: id }).catch((e) => console.error('team goal forget failed', id, teamId, (e as Error).message));
+    }
+    return out;
   }
 
   // ---- マイ厩舎 (REQ-STABLE-*, stable.ts) ----
@@ -1144,18 +1286,48 @@ export class PlayerService {
     return this.tx(id, null, (s, now) => { notWhileDeleting(s); return prepareSubmit(s, this.d.master.progression.timeAttack, sessionId, inputs, resultHash, echoedConfig, now); });
   }
   taAbort(id: string, sessionId: string) { return this.tx(id, null, (s) => abortSubmit(s, sessionId)); }
-  taRecord(id: string, sessionId: string, out: VerifierOutput, claimedHash: string) {
-    return this.tx(id, null, (s, now) => {
+  async taRecord(id: string, sessionId: string, out: VerifierOutput, claimedHash: string) {
+    let goal: GoalContribution | null = null;
+    const res = await this.tx(id, null, (s, now, emit) => {
       const counted = s.timeAttack?.sessions.find((x) => x.id === sessionId)?.result ?? null;
       const r = recordResult(this.d.master, s, this.d.master.progression.timeAttack, sessionId, out, claimedHash, now);
       if (!counted && 'finished' in r && r.finished) countOnboarding(s, 'ta_finish');
       if (!counted && 'finished' in r && r.finished && r.timeMs !== null) noteRivalTa(this.d.master, s, r.trackId, r.timeMs, now); // REQ-RIVAL-005
+      // REQ-TGOAL-003: a verified run that set a season best on its course counts once (a re-submit returns the stored result)
+      if (!counted && 'seasonBest' in r && r.seasonBest) {
+        goal = playerGoalTa(this.d.master, s, sessionId, now);
+        if (goal) {
+          notePostedIn(s, goal.teamId);
+          emit({ name: 'team_goal_contribute', s1: goal.teamId, s2: 'ta_pb', s3: goal.ref, count: 1 });
+        }
+      }
       return r;
     });
+    await this.sendTeamGoal(id, goal);
+    return res;
   }
   async taView(id: string, trackId: string) {
     trackById(this.d.master, trackId);
     return timeAttackView(await this.load(id), this.d.master.progression.timeAttack, trackId, this.d.clock(), dayRule(this.d.master));
+  }
+
+  // ---- 週替わりチャレンジ weekly challenge (REQ-WCH-*, contracts/protocol.md §31; orchestrated by race/weeklyChallenge.ts) ----
+  async wchView(id: string) { return weeklyChallengeView(this.d.master, await this.load(id), this.d.clock()); }
+  /** Keyed (a retry returns the same session). `ruleset` = the active remote-config ruleset (the day's form is switched off). */
+  wchStart(id: string, challengeId: string, input: WchStartInput, idemKey: string | null = null, ruleset?: Ruleset) {
+    return this.tx(id, idemKey, (s, now, emit) => {
+      notWhileDeleting(s);
+      const rng = this.d.challengeRng ?? this.d.rng;
+      const sessionId = 'w' + [0, 0, 0].map(() => rng.nextU32().toString(36)).join('');
+      return startChallenge(this.d.master, s, challengeId, input, sessionId, rng, now, emit, ruleset);
+    });
+  }
+  wchPrepare(id: string, sessionId: string, inputs: unknown, resultHash: string, echoedConfig: unknown) {
+    return this.tx(id, null, (s, now) => { notWhileDeleting(s); return prepareChallengeSubmit(this.d.master, s, sessionId, inputs, resultHash, echoedConfig, now); });
+  }
+  wchAbort(id: string, sessionId: string) { return this.tx(id, null, (s) => abortChallengeSubmit(s, sessionId)); }
+  wchRecord(id: string, sessionId: string, out: VerifierOutput, claimedHash: string) {
+    return this.tx(id, null, (s, now, emit) => { notWhileDeleting(s); return recordChallengeResult(this.d.master, s, sessionId, out, claimedHash, now, emit); });
   }
 
   // ---- teams: per-player steps, orchestrated by TeamsService (REQ-TEAM-*) ----
@@ -1242,6 +1414,28 @@ export class PlayerService {
       const r = enterEvent(ev, s, getHorse(s, horseId), entryId, now);
       if (!r.existing) emit({ name: 'event_entry', s1: eventId, s2: r.fee.kind });
       return r;
+    });
+  }
+  /**
+   * REQ-EXCH-009: the event's exchange. Runs as a transaction (no client key) so leftover points of a closed exchange
+   * are converted before they are shown (settleExchanges); otherwise nothing changes.
+   */
+  async exchangeView(id: string, eventId: string) {
+    const ev = findEvent(this.d.master, eventId);
+    const s = await this.load(id);
+    const closed = Object.values(s.events ?? {}).some((e) => e.exchange && !e.exchange.converted && this.d.clock() >= e.exchange.rule.closesAtMs);
+    if (!closed) return exchangeView(this.d.master, ev, s, this.d.clock());
+    return this.tx(id, null, (st, now) => exchangeView(this.d.master, ev, st, now));
+  }
+  /** REQ-EXCH-008: spend event points on one exchange line (atomic, idempotent per client key). */
+  async exchangeBuy(id: string, eventId: string, itemId: string, qty: number, idemKey: string | null) {
+    const key = this.requireKey(idemKey);
+    return this.tx(id, key, (s, now, emit) => {
+      notWhileDeleting(s);
+      const ev = findEvent(this.d.master, eventId);
+      const r = buyExchange(this.d.master, ev, s, itemId, qty, now, `exch:${eventId}:${itemId}:${key}`);
+      emit({ name: 'exchange_buy', s1: eventId, s2: itemId, s3: r.kind, count: qty, value: r.spent });
+      return { ...r, exchange: exchangeView(this.d.master, ev, s, now), wallet: playerView(s).wallet };
     });
   }
   /** Refunds a held entry fee (queue cancelled / refused). `entryId` null = whatever is held. */

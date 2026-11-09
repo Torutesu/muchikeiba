@@ -167,6 +167,7 @@ describe('HTTP responses in English (REQ-L10N-002/006)', () => {
       `/v1/horses/${horses[0]!.id}/pedigree`, '/v1/bond', '/v1/presets', '/v1/items/tickets', ...Object.keys(m.items.tickets).map((t) => `/v1/items/tickets/${t}/odds`),
       '/v1/shop/cosmetics', '/v1/missions', '/v1/comeback', '/v1/whats-new', '/v1/season-pass', '/v1/titles', '/v1/stats', '/v1/ads', '/v1/push/preferences',
       '/v1/collection', '/v1/achievements', '/v1/training', // round 11 (QA R11: the new screens in English too)
+      '/v1/history/summary', '/v1/history/purchases', '/v1/history/coins?currency=paid', '/v1/history/coins?currency=free', '/v1/history/gacha', // round 13 (REQ-HIST-008)
     ];
     for (const p of paths) {
       const ja = await get(c, p);

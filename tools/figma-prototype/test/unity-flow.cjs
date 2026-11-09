@@ -13,10 +13,14 @@
 //  5. Returning players (REQ-CB-*, 06 §4.5): the comeback welcome (once), the 7-day comeback login track and missions, the
 //     lapse-reminder opt-in (asked once), the home chip and the one-time what's-new card.
 //  7. Round 12 (REQ-RIVAL-*): the rival strip on home, the rival detail, a race together, the week-result sheet.
+//  7. Round 13 (REQ-WCH-*): the weekly challenge — the home card, the list (server condition lines, loan horse, badge, rules,
+//     next week), a race on the real engine with the condition in the HUD, the server's verdict on the result screen.
 //  6. Round 11 (REQ-COL-*, REQ-ACH-*): the 図鑑 (obtained / seen / unknown silhouettes, completion with no reward and no scout
 //     link), achievements (claim one tier, claim all) and equipping an achievement title.
 //  7. Round 12 (REQ-SHORT-*): the coin shortfall sheet (T6) from the paid step-up → the purchase confirmation → back to the
 //     pull; the free-only state; bought packs drawn as 購入済み in the shop.
+//  7. Round 13 (REQ-EXCH-*): the event exchange — point counter, event races up to the daily cap, the grid with the stock
+//     fact, the confirm sheet, a keyed exchange, the grace notice and the closed state with the leftover converted.
 // Screenshots: <out>/u-<nn>-<name>.png. Returns { shots, ftue }.
 const path = require('path');
 const fs = require('fs');
@@ -122,6 +126,98 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     assert.ok(free1 - free0 <= 20, 'rival: at most the fixed reward');
     await click('BACK'); await waitScreen('home');
     await page.evaluate(() => globalThis.__muchi.logic.setClockMs(null)); // back to the demo day for the next flows
+  }
+
+  // round 13 (REQ-EXCH-*): イベント交換所 — the event top's point counter on the real rules (demo clock inside the event), event
+  // races earning points up to the daily cap, the exchange grid with the stock fact, the confirm sheet, a keyed exchange, the
+  // post-event grace notice (exchange only) and the closed state with the leftover converted into material
+  async function exchangeFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(() => globalThis.__muchi.logic.exchangeDemo('open'));
+    await page.evaluate(() => globalThis.__muchi.show('EventTop')); await waitScreen('event-top'); await waitIn('.ev-points');
+    const text = await page.locator('.screen.in').innerText();
+    assert.ok(text.includes('購入はできません') && text.includes('ランダムなものはありません'), 'exchange: points cannot be bought, nothing random');
+    assert.ok(!/倍|今だけ|残りわずか|お得|通常価格/.test(text), 'exchange: no multipliers or urgency words');
+    await shot('event-top', 400);
+    await click('デモ：イベントレースを1回'); await waitScreen('event-top'); await waitIn('.ev-points');
+    // three wins on the real result path (the demo button uses a random place) so the material line is affordable
+    await page.evaluate(async () => { const L = globalThis.__muchi.logic; for (let i = 0; i < 3; i++) await L.eventDemoRace(L.exchangeEventId(), 1); });
+    await page.evaluate(() => globalThis.__muchi.show('EventTop')); await waitScreen('event-top'); await waitIn('.ev-points');
+    const pts = Number(await page.locator('.screen.in .ev-points').getAttribute('data-points'));
+    assert.ok(pts > 0, 'event races earned points');
+    await shot('event-top-points', 400);
+    await click('交換所へ'); await waitScreen('exchange'); await waitIn('.ex-card[data-item="ex_material"]');
+    assert.equal(await page.locator('.screen.in .ex-card').count(), 5);
+    assert.match(await page.locator('.screen.in .ex-card[data-item="ex_material"] .ex-stock').innerText(), /残り 3 \/ 3/);
+    await shot('exchange', 400);
+    await page.locator('.screen.in .ex-card[data-item="ex_material"] [data-label="交換する"]').click(); await waitIn('.ex-sheet');
+    await shot('exchange-confirm', 400);
+    await page.locator('.screen.in .ex-sheet [data-label="交換する"]').click();
+    await page.waitForTimeout(500); await waitScreen('exchange'); await waitIn('.ex-card[data-item="ex_material"] .ex-stock[data-remaining="2"]');
+    assert.equal(Number(await page.locator('.screen.in .ex-points').getAttribute('data-points')), pts - 120, 'the price was taken');
+    await shot('exchange-after', 400);
+    await page.evaluate(() => globalThis.__muchi.logic.exchangeDemo('grace'));
+    await page.evaluate(() => globalThis.__muchi.show('EventTop')); await waitScreen('event-top'); await waitIn('.ev-grace[data-status="grace"]');
+    assert.match(await page.locator('.screen.in .ev-grace').innerText(), /イベントは終了しました。交換は \d+月\d+日 \d\d:\d\dまで/);
+    await shot('event-top-grace', 400);
+    await click('交換所へ'); await waitScreen('exchange'); await waitIn('.ex-grace'); await shot('exchange-grace', 400);
+    await page.evaluate(() => globalThis.__muchi.logic.exchangeDemo('closed'));
+    await page.evaluate(() => globalThis.__muchi.show('Exchange')); await waitScreen('exchange'); await waitIn('.ex-grace[data-status="closed"]');
+    assert.equal(await page.locator('.screen.in .ex-card[data-state="ok"]').count(), 0, 'closed: nothing can be exchanged');
+    assert.match(await page.locator('.screen.in').innerText(), /配合素材 \d+個になりました/);
+    await shot('exchange-closed', 400);
+    await page.evaluate(() => globalThis.__muchi.logic.exchangeDemo(null));
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
+  }
+
+  // round 13 (REQ-WCH-*): 週替わりチャレンジ from the home card → this week's three (condition lines from the server, the loan
+  // horse at the cap, the cosmetic badge, the fairness rules, no shop link) → next week's preview → a race with the loan horse
+  // on the real engine, the condition live in the HUD → the result decided by the logic's re-simulation of the issued config
+  async function challengeFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await waitIn('.wch-home');
+    await shot('home-weekly-challenge', 300);
+    await page.locator('.screen.in .wch-open').click(); await waitScreen('weekly-challenge'); await waitIn('.wch-card');
+    const text = await page.locator('.screen.in').innerText();
+    assert.ok(text.includes('クラスBの上限') && text.includes('見た目だけ') && text.includes('週1回'), 'challenge: the fairness rules, the cosmetic badge and once a week are on the screen');
+    assert.ok(!/倍|今だけ|残りわずか|お得|通常価格/.test(text), 'challenge: no banned wording');
+    assert.ok(!/ショップ/.test(text.replace(/ホーム ・ 厩舎 ・ スカウト ・ ショップ ・ その他/, '')), 'challenge: no shop link');
+    assert.equal(await page.locator('.screen.in .wch-card').count(), 3, 'three challenges this week');
+    await shot('weekly-challenge', 400);
+    await page.locator('.screen.in .wch-next').click(); await page.waitForTimeout(400); await shot('weekly-challenge-next', 300);
+    await click('閉じる'); await page.waitForTimeout(300);
+    // the challenge with a place condition and the most whips allowed (the scripted rider whips twice)
+    const pick = await page.evaluate(async () => {
+      const v = (await globalThis.__muchi.logic.weeklyChallenges()).value;
+      const ok = v.challenges.filter((c) => c.conditions.maxWhips === undefined || c.conditions.maxWhips >= 2);
+      return (ok.find((c) => c.conditions.maxPlace !== undefined) ?? ok[0] ?? v.challenges[0]).id;
+    });
+    await page.locator(`.screen.in .wch-card[data-challenge="${pick}"]`).click(); await waitIn(`.glass[data-challenge="${pick}"]`);
+    await click('貸し出し馬で挑戦'); await waitScreen('race', 30000); await waitIn('.wch-hud');
+    const maxWhips = await page.evaluate(() => globalThis.__muchi.challengeSession.challenge.conditions.maxWhips ?? 2);
+    let started = false, w = 0, lastW = 0, hudShot = false;
+    for (let i = 0; i < 4000; i++) {
+      const s = await state();
+      if (!s.f) { await page.waitForTimeout(50); continue; }
+      if (s.f.done || (await screen()) !== 'race') break;
+      if (!started && s.f.gateOpen && !s.f.departed) { await page.locator('.screen.in .btn.whip').click({ force: true }); started = true; }
+      if (!hudShot && s.f.departed && s.f.remainingM < s.f.distanceM * .55) { hudShot = true; await shot('challenge-race-hud', 0, true); }
+      if (s.f.departed && w < Math.min(2, maxWhips) && s.f.remainingM <= (w === 0 ? 380 : 220) && s.f.whips > 0 && Date.now() - lastW > 1500) { await page.locator('.screen.in .btn.whip').click({ force: true }); w++; lastW = Date.now(); }
+      await page.waitForTimeout(40);
+    }
+    await waitScreen('challenge-result', 60000); await waitIn('.wch-verdict');
+    const res = await page.evaluate(() => globalThis.__muchi.lastChallenge);
+    const dev = await page.evaluate(() => globalThis.__muchi.state().lastFrame.challengeRun);
+    assert.ok(res && res.evaluation && !res.error, 'challenge: the logic verified the run');
+    assert.equal(res.cleared, dev.cleared, 'challenge: the device verdict (ChallengeEvaluator) equals the verified one');
+    assert.equal(res.evaluation.place, dev.place, 'challenge: the same place on both sides');
+    assert.equal(res.evaluation.whips, dev.whips, 'challenge: the same whip count on both sides');
+    const nLabels = await page.evaluate(() => globalThis.__muchi.challengeSession.challenge.labels.length);
+    assert.equal(await page.locator('.screen.in .wch-check').count(), nLabels, 'challenge: one ○/× line per condition');
+    await shot('challenge-result', 500);
+    await click('一覧へ'); await waitScreen('weekly-challenge'); await waitIn('.wch-card');
+    await shot('weekly-challenge-after', 300);
+    await click('BACK'); await waitScreen('home');
   }
 
   // round 9 (06 §6.5 / §7 item 7): banner calendar with real end times, pity meter, step-up, reveal → summary, the end
@@ -368,6 +464,8 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await demo('day7'); await shot('home-day7', 600);
   await trainingFlow();
   await rivalFlow();
+  await exchangeFlow();
+  await challengeFlow();
   await page.evaluate(() => globalThis.__muchi.show('Scout')); await waitScreen('scout'); await shot('scout', 500);
   await click('提供割合'); await shot('scout-rates', 400); await click('BACK');
   await waitScreen('scout'); await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal'); await shot('scout-paid-reveal', 700);
@@ -465,6 +563,28 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.equal(await page.locator('.screen.in .btn[data-label="購入済み"].disabled').count(), 1, 'the bought pass is not buyable');
   assert.equal(await page.locator('.screen.in .btn[data-label="今シーズンは購入済み"].disabled').count(), 1, 'Pass+ is closed too (one per season)');
   await shot('season-pass-owned', 500);
+  // ------------------------------------------------------------------ 4. round 13: 支部の共同目標 (REQ-TGOAL-*)
+  // the demo team's week on the real TeamCore / PlayerService rules: milestone bar, contributors, the week result sheet
+  await page.evaluate(() => globalThis.__muchi.show('TeamFeed')); await waitScreen('team-feed', 20000); await page.waitForTimeout(400);
+  await click('共同目標'); await waitScreen('team-goal'); await page.waitForTimeout(500);
+  assert.equal(await page.locator('.screen.in .tg-mark').count(), 3, 'team goal: three milestones on the bar');
+  assert.equal(await page.locator('.screen.in input, .screen.in textarea, .screen.in [contenteditable]').count(), 0, 'team goal: nothing to type, no button adds to the goal');
+  assert.match(await page.locator('.screen.in').innerText(), /無償・抽選なし/, 'team goal: the reward is free and not a lottery');
+  await shot('team-goal', 300);
+  const p0 = Number(await page.locator('.screen.in .tg-panel').getAttribute('data-progress'));
+  await click('みんなでレース（デモ）'); await waitScreen('team-goal'); await page.waitForTimeout(900);
+  const p1 = Number(await page.locator('.screen.in .tg-panel').getAttribute('data-progress'));
+  assert.ok(p1 > p0, `team goal: settled races moved the goal (${p0} → ${p1})`);
+  assert.ok(await page.locator('.screen.in .tg-row').count() >= 1, 'team goal: top contributors listed');
+  assert.ok(await page.locator('.screen.in .tg-name.keep-ja').count() >= 1, 'team goal: names are shown as typed');
+  await shot('team-goal-progress', 300);
+  await click('週の締め（デモ）'); await waitScreen('team-goal'); await page.waitForTimeout(1000);
+  assert.equal(await page.locator('.screen.in .sheet.tg-result').count(), 1, 'team goal: the week result sheet');
+  await shot('team-goal-result', 400);
+  await page.locator('.screen.in .sheet [data-label="閉じる"]').click(); await page.waitForTimeout(400);
+  await page.evaluate(() => globalThis.__muchi.show('TeamGoal')); await waitScreen('team-goal'); await page.waitForTimeout(500);
+  assert.equal(await page.locator('.screen.in .sheet.tg-result').count(), 0, 'team goal: the result sheet is shown once per week');
+  await page.evaluate(() => globalThis.__muchi.logic.setClockMs(null));
   // ------------------------------------------------------------------ 4. round 10: 友達招待 (REQ-INV-*)
   // my code + share, demo friends redeeming it (real InviteService), milestone rewards via the outbox, entering a code
   await demo('day1');
@@ -739,6 +859,46 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await waitScreen(['result'], 40000); await shot('race-result-assisted', 900);
   assert.equal((await page.evaluate(() => globalThis.__muchi.logic.assist())).promptDue, false, 'the suggestion never comes back');
   await page.evaluate(() => globalThis.__muchi.logic.setAssist('off'));
+  // ------------------------------------------------------------------ 6. round 13: 購入・コイン・ガチャ履歴 (REQ-HIST-*)
+  // a 14-year-old's month on the real rules (two packs, one refunded by the store, scouts): settings → the history, each
+  // tab, paging by the server's cursor, the detail of a row, and the 問い合わせ sheet that sends reference numbers only
+  await page.evaluate(() => globalThis.__muchi.demo('history')); await waitScreen('history', 60000); await page.waitForTimeout(400);
+  await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings');
+  await page.locator('.screen.in [data-action="history"]').click(); await waitScreen('history'); await page.waitForTimeout(400);
+  const hiText = await page.locator('.screen.in').innerText();
+  assert.match(hiText, /有償コイン[\s\S]*無償コイン/, 'history: the header keeps paid and free coins apart');
+  assert.match(hiText, /今月の購入 ¥[\d,]+ ／ 上限 ¥5,000/, 'history: this month against the age limit');
+  assert.match(hiText, /返金済み/, 'history: the refunded pack');
+  assert.ok(!/proto_h_|fake:|coin_480|support grant/.test(hiText), 'history: no internal id or raw reason on screen');
+  const bal = page.locator('.screen.in .hi-balance');
+  const pst = await page.evaluate(() => globalThis.__muchi.state().player.wallet);
+  assert.equal(Number(await bal.getAttribute('data-paid')), pst.paid); assert.equal(Number(await bal.getAttribute('data-free')), pst.free);
+  await shot('history-purchases', 400);
+  await page.locator('.screen.in [data-tab="coins_paid"]').click(); await page.waitForTimeout(500);
+  assert.match(await page.locator('.screen.in .hi-list').innerText(), /スカウト10回/, 'paid coins: the scout');
+  await shot('history-coins-paid', 300);
+  if ((await page.locator('.screen.in [data-more="1"]').count()) > 0) {
+    const first = await page.locator('.screen.in .hi-row').first().getAttribute('data-ref');
+    await click('次へ'); await page.waitForTimeout(400);
+    assert.notEqual(await page.locator('.screen.in .hi-row').first().getAttribute('data-ref'), first, 'next page: older rows');
+    await click('前へ'); await page.waitForTimeout(400);
+    assert.equal(await page.locator('.screen.in .hi-row').first().getAttribute('data-ref'), first, 'back to the first page');
+  }
+  await page.locator('.screen.in [data-tab="coins_free"]').click(); await page.waitForTimeout(500);
+  await shot('history-coins-free', 300);
+  await page.locator('.screen.in [data-tab="gacha"]').click(); await page.waitForTimeout(500);
+  await page.locator('.screen.in .hi-row').first().click(); await page.waitForTimeout(400);
+  assert.match(await page.locator('.screen.in .hi-balance').innerText(), /問い合わせ番号\s+G-\d+/, 'gacha detail: the reference number');
+  await shot('history-gacha', 300);
+  await page.locator('.screen.in .hi-pick').first().click(); await page.waitForTimeout(400);
+  await page.locator('.screen.in [data-action="history-contact"]').click(); await page.waitForTimeout(500);
+  assert.match(await page.locator('.screen.in .hi-contact').innerText(), /問い合わせ番号だけを送ります/, 'the sheet says only reference numbers are sent');
+  await page.locator('.screen.in .hi-contact [data-topic="gacha"]').click(); await page.waitForTimeout(500);
+  await page.locator('.screen.in [data-action="history-ticket"]').click(); await page.waitForTimeout(600);
+  assert.equal(await page.locator('.screen.in .hi-ticket').getAttribute('data-ticket'), 'muchi.support-ticket.v1', 'the draft came back from the server');
+  assert.match(await page.locator('.screen.in .hi-ticket').innerText(), /問い合わせ番号：G-\d+/);
+  await shot('history-contact', 300);
+  assert.deepEqual(await page.evaluate(() => (globalThis.__muchiKpi ?? []).map((e) => e.tab)), ['purchases', 'coins_paid', 'coins_free', 'gacha'], 'history_view once per tab');
 
   // a reload on a named player goes straight home
   await demo('day3');

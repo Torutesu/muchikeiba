@@ -2,7 +2,7 @@
 // EN on from the start, the day-7 demo player: home, shop (recommended / coins / looks), the legal page (Japanese text
 // with the English courtesy note), purchase confirmation, season pass, scout calendar and odds, the stable, settings,
 // the coin shortfall sheet (round 12), a ranked race (HUD) and its result, 調教 (cards, mini-game, result, skip), ライバル (detail, races, week result), then the 図鑑 (every tab, details), 実績 (claim one / all) and the title chooser,
-// the プレゼントボックス (box, claim one / all, history) and the かんたん操作 suggestion.
+// the プレゼントボックス (box, claim one / all, history) and the かんたん操作 suggestion, the weekly challenge (list, next week, a race with the condition in the HUD, the verified result).
 // On every screen:
 //   - no Japanese is left on the stage (outside the .keep-ja legal text and the 日本語 language button);
 //   - no text overflows: nothing is still too wide / too tall for its box after fitText, nothing leaves the stage.
@@ -171,6 +171,47 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await page.locator('.screen.in .rv-result .rv-continue').click(); await page.waitForTimeout(300);
   await page.evaluate(() => globalThis.__muchi.logic.setClockMs(null));
 
+  // round 13: イベント交換所 in English (REQ-EXCH-*): the event top, the grid, the confirm sheet, the grace notice
+  await page.evaluate(() => globalThis.__muchi.logic.exchangeDemo('open'));
+  await show('EventTop'); await waitScreen('event-top'); await waitIn('.ev-points');
+  await click('デモ：イベントレースを1回'); await waitScreen('event-top'); await waitIn('.ev-points');
+  await page.evaluate(async () => { const L = globalThis.__muchi.logic; for (let i = 0; i < 3; i++) await L.eventDemoRace(L.exchangeEventId(), 1); });
+  await show('EventTop'); await waitScreen('event-top'); await waitIn('.ev-points');
+  await shot('event-top', 500);
+  assert.match(await page.locator('.screen.in').innerText(), /cannot be bought/, 'exchange: the rules in English');
+  await click('交換所へ'); await waitScreen('exchange'); await waitIn('.ex-card[data-item="ex_material"]'); await shot('exchange', 500);
+  await page.locator('.screen.in .ex-card[data-item="ex_material"] [data-label="交換する"]').click(); await waitIn('.ex-sheet'); await shot('exchange-confirm', 400);
+  await page.locator('.screen.in .ex-sheet [data-label="交換する"]').click(); await page.waitForTimeout(600); await waitScreen('exchange'); await shot('exchange-after', 500);
+  await page.evaluate(() => globalThis.__muchi.logic.exchangeDemo('grace'));
+  await show('EventTop'); await waitScreen('event-top'); await waitIn('.ev-grace'); await shot('event-top-grace', 500);
+  await page.evaluate(() => globalThis.__muchi.logic.exchangeDemo('closed'));
+  await show('Exchange'); await waitScreen('exchange'); await waitIn('.ex-grace[data-status="closed"]'); await shot('exchange-closed', 500);
+  await page.evaluate(() => globalThis.__muchi.logic.exchangeDemo(null));
+
+  // round 13: 週替わりチャレンジ in English (REQ-WCH-015): the list, next week's preview, a loan-horse race with the HUD
+  // condition, the verified result
+  await show('WeeklyChallenge'); await waitScreen('weekly-challenge'); await waitIn('.wch-card');
+  await shot('weekly-challenge', 500);
+  assert.match(await page.locator('.screen.in').innerText(), /class B stat cap/, 'challenge: the fairness rules in English');
+  await page.locator('.screen.in .wch-next').click(); await page.waitForTimeout(400); await shot('weekly-challenge-next', 300);
+  await click('閉じる'); await page.waitForTimeout(300);
+  await click('貸し出し馬で挑戦'); await waitScreen('race', 30000); await waitIn('.wch-hud');
+  const chWhips = await page.evaluate(() => globalThis.__muchi.challengeSession.challenge.conditions.maxWhips ?? 2);
+  let chStarted = false, chW = 0, chLast = 0, chShot = false;
+  for (let i = 0; i < 4000; i++) {
+    const f = await page.evaluate(() => globalThis.__muchi.state().lastFrame);
+    if ((await screen()) !== 'race') break;
+    if (!f) { await page.waitForTimeout(60); continue; }
+    if (f.done) break;
+    if (!chStarted && f.gateOpen && !f.departed) { await page.locator('.screen.in .btn.whip').click({ force: true }); chStarted = true; }
+    if (!chShot && f.departed && f.remainingM < f.distanceM * .6) { chShot = true; await shot('challenge-race-hud', 0); }
+    if (f.departed && chW < Math.min(2, chWhips) && f.remainingM <= (chW === 0 ? 380 : 220) && f.whips > 0 && Date.now() - chLast > 1500) { await page.locator('.screen.in .btn.whip').click({ force: true }); chW++; chLast = Date.now(); }
+    await page.waitForTimeout(40);
+  }
+  await waitScreen('challenge-result', 60000); await waitIn('.wch-verdict'); await shot('challenge-result', 600);
+  assert.match(await page.locator('.screen.in .wch-verdict').innerText(), /^Challenge (cleared|failed)$/, 'challenge: the verdict in English');
+  await click('一覧へ'); await waitScreen('weekly-challenge'); await waitIn('.wch-card'); await shot('weekly-challenge-after', 400);
+
   // round 11: 図鑑・実績・称号 in English (REQ-COL-*, REQ-ACH-*): a week of play on the real rules, every tab, a detail,
   // the achievement list (claim one, claim all), the title chooser
   await page.evaluate(() => globalThis.__muchi.demo('collection')); await waitScreen('collection', 60000);
@@ -203,6 +244,26 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await page.evaluate(() => globalThis.__muchi.demo('assist')); await waitScreen('assist-prompt', 60000); await shot('assist-prompt', 500);
   assert.match(await page.locator('.screen.in').innerText(), /Not now/, 'assist: 「今はいい」 in English');
   await page.locator('.screen.in [data-assist-choice="later"]').click(); await waitScreen(['home', 'link-prompt'], 10000);
+  // round 13: 購入・コイン・ガチャ履歴 in English (REQ-HIST-008): every tab, a detail, the 問い合わせ sheet and its draft
+  await page.evaluate(() => globalThis.__muchi.demo('history')); await waitScreen('history', 60000);
+  await shot('history-purchases', 600);
+  assert.match(await page.locator('.screen.in').innerText(), /monthly limit for your age/, 'history: the age limit line in English');
+  for (const tab of ['coins_paid', 'coins_free', 'gacha']) {
+    await page.locator(`.screen.in [data-tab="${tab}"]`).click(); await page.waitForTimeout(500);
+    await shot('history-' + tab, 300);
+  }
+  await page.locator('.screen.in .hi-pick').first().click(); await page.waitForTimeout(400);
+  await page.locator('.screen.in [data-action="history-contact"]').click(); await page.waitForTimeout(500);
+  await shot('history-contact', 300);
+  await page.locator('.screen.in [data-action="history-ticket"]').click(); await page.waitForTimeout(600);
+  await shot('history-ticket', 300);
+
+  // round 13: 支部の共同目標 in English (REQ-TGOAL-*): the week, after the demo races, the week result sheet
+  await show('TeamGoal'); await waitScreen('team-goal', 20000); await shot('team-goal', 600);
+  assert.match(await page.locator('.screen.in').innerText(), /as a branch/, 'team goal: the goal label in English');
+  await click('みんなでレース（デモ）'); await waitScreen('team-goal'); await shot('team-goal-progress', 700);
+  await click('週の締め（デモ）'); await waitScreen('team-goal'); await page.waitForTimeout(600); await shot('team-goal-result', 500);
+  await page.evaluate(() => globalThis.__muchi.logic.setClockMs(null));
 
   const misses = await page.evaluate(() => globalThis.__muchi.l10n.misses());
   fs.writeFileSync(path.join(out, 'en-report.json'), JSON.stringify({ report, misses }, null, 2));

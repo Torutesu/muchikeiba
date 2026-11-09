@@ -348,5 +348,16 @@ namespace Muchi.Engine.Tests
             Assert.All(fired, s => Assert.NotNull(parsed.Config.Entrants[s].Horse.Skill));
             Assert.Equal(plain.Get("resultHash").AsString(), o.Get("resultHash").AsString());
         }
+
+        [Fact]
+        public void SkillsFiredIsOptIn_ByTheServersHeader()
+        {
+            // Round 13 deploy order: the verifier sends skillsFired only when the server asks, so it can always go first
+            Assert.True(VerifyService.WantsSkills("1"));
+            Assert.False(VerifyService.WantsSkills(null));
+            Assert.False(VerifyService.WantsSkills(""));
+            Assert.False(VerifyService.WantsSkills("0"));
+            Assert.Equal("X-Muchi-Verify-Skills", VerifyService.SkillsHeader);
+        }
     }
 }

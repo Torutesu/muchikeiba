@@ -168,6 +168,19 @@ printf '%s' '<管理トークン>' | sha256sum
 3. **worker**：`wrangler.toml` の `VERIFIER_URL` と Cloud Run の URL の一致を確認、`wrangler secret list` で必要なシークレットが揃っていることを確認、`wrangler deploy --env <env>`。
 4. **smoke**：`/v1/health` と `/v1/config` を確認。`SMOKE_ENABLED=true` なら、匿名の Firebase ユーザーでボット（`engine/Muchi.Bot`）がチュートリアルレースと1人のランク戦（検証サーバーで確定）を走らせる。
 
+### 7.1 検証サーバーと Worker の順番（Round 13 で一本化）
+
+**いつも「検証サーバー（verifier）→ Worker」の順**。ワークフローの `worker` は `needs: verifier` なので、この順は自動で守られる。手で出す時・切り戻す時もこの順を守る。
+
+| 変更 | 新しい側が古い側と組んだ時 | この順で安全な理由（コード） |
+|---|---|---|
+| Round 11 `skillsFired`（検証サーバーの出力に足したキー） | 新しい検証サーバー × 古い Worker：古い Worker の出力スキーマは厳密（`verifierOutputSchema` は `.strict()`）なので、知らないキーが来るとすべての検証が失敗する | **`skillsFired` は頼まれた時だけ返す**（Round 13）。Worker の `HttpVerifierClient` がヘッダー `X-Muchi-Verify-Skills: 1` を付けた時だけ、検証サーバー（`VerifyService.WantsSkills`）が `skillsFired` を足す。古い Worker は頼まないので、検証サーバーを先に出しても壊れない。新しい Worker × 古い検証サーバーでは `skillsFired` が来ないだけ（スキーマで任意、スキルの実績は数えない） |
+| Round 13 週替わりチャレンジのレースの種類 `challenge` | 新しい Worker × 古い検証サーバー：古い検証サーバーは `mode: "challenge"` を知らず 400 を返す → 送信は `VERIFIER_UNAVAILABLE`（セッションは `wchAbort` で戻り、もう一度送れる） | 検証サーバーが先なので、Worker が `challenge` を送る時には検証サーバーはもう知っている |
+
+- **切り戻しは逆の順**：Worker を先に戻し、そのあと必要なら検証サーバーを戻す。検証サーバーだけを Round 13 より前に戻すと、週替わりチャレンジの送信が `VERIFIER_UNAVAILABLE` になる（その間は `progression.weeklyChallenge.enabled: false` をリモート設定で出しておく）。
+- Round 11 より前の Worker が動いている環境（Round 11 を一度も出していない環境）でも、この順で出せる（上のとおり `skillsFired` は頼まれた時だけ）。Round 11 の時点の検証サーバー（いつも `skillsFired` を返す版）が動いている環境で Worker を Round 11 より前に戻すことはしない。
+- 確認：`bash scripts/integration.sh`（C# のボット ⇄ TS のサーバー ⇄ C# の検証サーバー）が、ヘッダーの往復と `challenge` を含めて通ること。
+
 手元での確認：
 
 ```bash

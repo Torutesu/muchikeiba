@@ -94,6 +94,6 @@ static class GiftBoxChecks
         check(m.Blocked && m.BlockedText != null && m.Rows.All(r => !r.CanClaim) && !m.CanClaimAll, "gift box: nothing can be received while the account is scheduled for deletion");
         var blocked = await m.ClaimAllAsync();
         check(!blocked.Ok && s.Sent.Count(r => r.Path == "/v1/gift-box/claim-all") == 2, "gift box: a blocked claim sends nothing");
-        check(GiftBoxModel.SourceLabels.Count == 8, "gift box: every source has a label");
+        check(GiftBoxModel.SourceLabels.Count == 10 && GiftBoxModel.SourceLabels.ContainsKey("team_goal") && GiftBoxModel.SourceLabels.ContainsKey("exchange"), "gift box: every source has a label (Round 13: team_goal, exchange)");
     }
 }

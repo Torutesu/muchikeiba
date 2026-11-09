@@ -154,7 +154,7 @@ describe('economy targets (90 days, 3 seeds)', () => {
     const all = await run();
     const f = all.f2p!;
     // the 90-day payout of a daily free player (races, wins, podiums, courses, skills) stays below what the daily
-    // 「3戦する」 mission gave up for it (20 → 18 coins × 90 days; 18 → 16 went to the weekly rival, E16), so E1–E13 keep their Round 10 values
+    // 「3戦する」 mission gave up for it (20 → 18 coins × 90 days; 18 → 16 went to the weekly rival, E16; 16 → 15 to the team goal, E19), so E1–E13 keep their Round 10 values
     expect(f.achievementCoins).toBeGreaterThan(0);
     expect(f.achievementCoins).toBeLessThanOrEqual(2 * 90);
     // spending money never moves an achievement: the paying personas play the same races and get exactly the same
@@ -180,6 +180,91 @@ describe('economy targets (90 days, 3 seeds)', () => {
       expect(all[id]!.ssrPerMonth).toBeLessThanOrEqual(2.8);
     }
     expect(f.pullsPerMonth).toBeLessThanOrEqual(65);
+  }, 3_600_000);
+
+  it('E17 event exchange (REQ-EXCH-011): playing the event and spending the exchange keeps E1–E6 in range for every persona', async () => {
+    const base = await run();
+    const ev = await simulateAll(m, 90, [1, 2, 3], 12 * 60, { events: true });
+    const f = ev.f2p!;
+    // the free player actually plays the event, earns points and takes something from the exchange
+    expect(f.eventRaces).toBeGreaterThan(0);
+    expect(f.eventPoints).toBeGreaterThan(0);
+    expect(f.exchangeHorses + f.exchangeTickets + f.exchangeMaterial + f.exchangeCoins).toBeGreaterThan(0);
+    // E1–E4 with the event
+    expect(f.pullsPerMonth).toBeGreaterThanOrEqual(40);
+    expect(f.pullsPerMonth).toBeLessThanOrEqual(65);
+    expect(f.ssrPerMonth).toBeGreaterThanOrEqual(1.2);
+    expect(f.ssrPerMonth).toBeLessThanOrEqual(2.8);
+    expect(ev.f2p_casual!.pullsPerMonth).toBeGreaterThanOrEqual(15);
+    expect(ev.f2p_casual!.pullsPerMonth).toBeLessThanOrEqual(40);
+    // E5/E6 ratios with the event
+    expect(ev.light!.pullsPerMonth / f.pullsPerMonth).toBeGreaterThanOrEqual(1.15);
+    expect(ev.light!.pullsPerMonth / f.pullsPerMonth).toBeLessThanOrEqual(1.6);
+    expect(ev.medium!.pullsPerMonth / f.pullsPerMonth).toBeGreaterThanOrEqual(1.8);
+    expect(ev.medium!.pullsPerMonth / f.pullsPerMonth).toBeLessThanOrEqual(3.0);
+    // for every persona the event (same play time) adds at most 3% pulls over not playing it
+    for (const id of Object.keys(base)) expect(ev[id]!.pullsPerMonth).toBeLessThanOrEqual(base[id]!.pullsPerMonth * 1.03);
+    // paying never earns event points: the paying personas race the same and earn exactly the free player's points
+    for (const id of ['light', 'medium', 'allowance']) expect(ev[id]!.eventPoints).toBe(f.eventPoints);
+    // the exchange's coin value per event (coin lines + scout tickets at the single-pull price) stays ≤ 250 coins
+    for (const e of m.events.filter((x) => x.exchange)) {
+      const single = Math.max(...m.gacha.banners.filter((b) => b.currency === 'any').map((b) => b.priceSingle));
+      const value = e.exchange!.items.reduce((a, l) => a + l.stock * ((l.reward.freeCoins ?? 0) + (l.kind === 'ticket' && m.items.tickets[l.reward.items![0]!.itemId] ? single * l.reward.items![0]!.qty : 0)), 0);
+      expect(value).toBeLessThanOrEqual(250);
+    }
+  }, 3_600_000);
+
+  it('E18 weekly challenges (REQ-WCH-013): every persona clears all 3 each week; small fixed rewards, the same for everyone, E1/E2 hold', async () => {
+    const all = await run();
+    const f = all.f2p!;
+    const wc = m.progression.weeklyChallenge!;
+    // the upper bound: 3 first clears and one badge per game week the persona played in (13 weeks in 90 days)
+    expect(f.challengeClears).toBeGreaterThanOrEqual(3 * 12);
+    expect(f.challengeBadges).toBe(f.challengeClears / 3);
+    // paying never adds a clear, a coin or a material: every daily persona gets exactly what the free player gets
+    for (const id of ['light', 'medium', 'allowance', 'f2p_invited', 'f2p_inviter', 'ads']) {
+      expect(all[id]!.challengeClears).toBe(f.challengeClears);
+      expect(all[id]!.challengeCoins).toBe(f.challengeCoins);
+      expect(all[id]!.challengeMaterial).toBe(f.challengeMaterial);
+    }
+    // never paid coins; free coins within the weekly ceiling of the table and ≤ 2% of what a free player earns by playing
+    const weekCoins = Math.max(...wc.rotation.map((w) => w.challenges.reduce((a, c) => a + (c.reward.freeCoins ?? 0), 0)));
+    expect(f.challengeCoins).toBeLessThanOrEqual(weekCoins * Math.ceil(f.challengeBadges));
+    expect(f.challengeCoins).toBeLessThanOrEqual(0.02 * f.freeCoinsEarned);
+    expect(f.challengeMaterial).toBeGreaterThan(0);
+    // E1/E2 stay in range with the challenges included, for the free personas the targets cover
+    for (const id of ['f2p', 'f2p_invited']) {
+      expect(all[id]!.pullsPerMonth).toBeLessThanOrEqual(65);
+      expect(all[id]!.ssrPerMonth).toBeLessThanOrEqual(2.8);
+    }
+    expect(all.f2p_inviter!.ssrPerMonth).toBeLessThanOrEqual(2.8);
+  }, 3_600_000);
+
+  it('E19 team weekly goal (REQ-TGOAL-*): every persona is a team member whose team reaches the top milestone every week, and E1/E2 still hold', async () => {
+    const all = await run();
+    const cfg = m.progression.teamGoal!;
+    const top = cfg.tiers[cfg.tiers.length - 1]!.reward.freeCoins ?? 0;
+    for (const [id, r] of Object.entries(all)) {
+      // at most one top-tier grant per game week the persona was in the team (13 weeks in 90 days)
+      expect(r.teamGoalWeeks, id).toBeLessThanOrEqual(13);
+      expect(r.teamGoalCoins, id).toBeLessThanOrEqual(r.teamGoalWeeks * top + 1e-9);
+    }
+    // a daily player qualifies every full week after joining; the casual one too (4 races on ~4 days ≥ 3)
+    expect(all.f2p!.teamGoalWeeks).toBeGreaterThanOrEqual(11);
+    expect(all.f2p_casual!.teamGoalWeeks).toBeGreaterThanOrEqual(9);
+    // paying never buys more of it: the payout is the same for every daily persona
+    for (const id of ['light', 'medium', 'allowance', 'f2p_invited', 'f2p_inviter', 'ads']) expect(all[id]!.teamGoalCoins).toBe(all.f2p!.teamGoalCoins);
+    // E1 / E2 for the free daily player with the team goal included (and the invited / at-cap inviter, E11)
+    for (const id of ['f2p', 'f2p_invited']) {
+      expect(all[id]!.pullsPerMonth, id).toBeLessThanOrEqual(65);
+      expect(all[id]!.ssrPerMonth, id).toBeLessThanOrEqual(2.8);
+      expect(all[id]!.ssrPerMonth, id).toBeGreaterThanOrEqual(1.2);
+    }
+    expect(all.f2p_inviter!.ssrPerMonth).toBeLessThanOrEqual(2.8);
+    expect(all.f2p_casual!.pullsPerMonth).toBeLessThanOrEqual(40);
+    // offset like E14: the daily 「3戦する」 mission went 16 → 15 coins in the Round 13 rebalance (18 → 16 was the rival's, E16) and the
+    // tiers are 5 / 8 / 12 (balance-targets 4.18); a daily player's 90-day team goal coins stay below the 18 → 15 cut (3 × days)
+    expect(all.f2p!.teamGoalCoins).toBeLessThanOrEqual(3 * all.f2p!.activeDays);
   }, 3_600_000);
 
   it('E9 friend races cannot replace ranked play as an income (daily cap ≤ 30% of a free player day)', async () => {

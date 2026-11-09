@@ -75,6 +75,10 @@
 | `assist_disable` | サーバー（かんたん操作をオフにした） | 前のレベル | `settings`/`prompt` | | |
 | `assist_prompt_view` | サーバー（一度だけの提案シートが出た） | | | | `double9` 最下位の連続 |
 | `race_assisted` | サーバー（かんたん操作ありで精算されたレース。本人の申告、KPI専用） | `whip`/`full` | モード | | `double4` 着順、`double5` 頭数 |
+| `event_point_earn` | サーバー（イベントのレースでイベントポイントを得た、REQ-EXCH-010） | イベントID | `full` / `capped`（1日の上限で削られた） | | `double4` 着順、`double9` 得たポイント、`double5` 所持ポイント |
+| `exchange_buy` | サーバー（イベント交換所で交換した） | イベントID | 行のID | 種類 `coins`/`material`/`ticket`/`cosmetic`/`horse` | `double5` 個数、`double9` 使ったポイント |
+| `challenge_start` | サーバー（週替わりチャレンジを始めた、REQ-WCH-014） | チャレンジ id | 週 id | `loan`/`own` | `double5` 今週そのチャレンジを始めた回数 |
+| `challenge_clear` | サーバー（検証済みの走りでクリア） | チャレンジ id | 週 id | `loan`/`own` | `double4` 着順、`double6` タイム（ms）、`double5` 今週のクリア数、`double8` 今週の初クリア、`double9` 1 = この回でバッジ、`double3` 付与した無償コイン |
 | `consent` | サーバー | 規約の版 | プライバシーポリシーの版 | | |
 | `partner_granted` | サーバー | テンプレートID（`t_partner`） | | | |
 | `ab_assign` | サーバー（初回の bootstrap、実験ごとに1回） | 実験ID | バケットID | | |
@@ -574,6 +578,36 @@ ORDER BY day DESC
 
 - **公平性の監視**：`avg_free_coins` が課金者と無課金で大きく違うなら、どちらかの結果が偏っている（ライバルの報酬は課金で増えない前提）。勝ちの率が人間のライバルで50%から大きく外れる週は、組み合わせのレーティング差（`maxRatingGap`・`jitter`）を見直す。
 
+## イベント交換所：ポイントと交換（REQ-EXCH-010、contracts/protocol.md §30）
+
+**1日のポイントの貯まり方と上限に届いた割合**（イベントごと・課金者／無課金で分ける）。`capped` の割合が高いなら `dailyCap` が低すぎて遊んだ分が報われていない、低すぎる（ほぼ0）なら上限が意味を持っていない。課金者と無課金の平均が大きく違うなら調べる（ポイントは買えないので、差は遊んだ量の差だけのはず：E17）。
+
+```sql
+SELECT
+  blob8 AS event_id, blob6 AS day, blob7 AS payer,
+  sumIf(_sample_interval, blob1 = 'event_point_earn') AS races,
+  round(sumIf(_sample_interval, blob1 = 'event_point_earn' AND blob9 = 'capped') / sumIf(_sample_interval, blob1 = 'event_point_earn'), 3) AS capped_rate,
+  round(sumIf(_sample_interval * double9, blob1 = 'event_point_earn') / sumIf(_sample_interval, blob1 = 'event_point_earn'), 1) AS avg_points
+FROM muchi_kpi
+WHERE blob1 = 'event_point_earn' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY event_id, day, payer
+ORDER BY event_id, day DESC, payer
+```
+
+**何が交換されているか**（行ごと）。在庫まで交換された行・ほとんど交換されない行を見て、次のイベントの価格と在庫を決める（ランダムな行は作らない・全交換の報酬は作らない）。
+
+```sql
+SELECT blob8 AS event_id, blob9 AS item_id, blob10 AS kind,
+  sum(_sample_interval * double5) AS units, sum(_sample_interval * double9) AS points_spent,
+  count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'exchange_buy' AND timestamp > NOW() - INTERVAL '45' DAY
+GROUP BY event_id, item_id, kind
+ORDER BY event_id, points_spent DESC
+```
+
+- 残りのポイントの換算（閉じた後）は KPI ではなくアイテム台帳（理由 `exchange <イベント> leftover <n>pt`）に残る。サポートで「ポイントが消えた」と言われたら台帳を見る。
+
 ## 注意
 
 - Analytics Engine のデータ保持期間は有限（現時点で約3か月）です。長期の推移はこのクエリ結果を毎月どこかに書き出して残します。
@@ -653,3 +687,80 @@ ORDER BY races DESC
 
 - 補助を使った人の継続（D7）は、`assist_enable` を出した人の `blob2` で「リテンション」のクエリを絞って比べる。
 - `client_race_start` の `blob9` にもレベルが入る（オフラインのレース・タイムアタックを含めた使われ方）。
+## 履歴：購入・コイン・ガチャ履歴の閲覧（REQ-HIST-011、contracts/protocol.md §33）
+
+**どのタブがどれだけ開かれているか**（日ごと、課金者／無課金で分ける）。`history_view` はクライアントのイベント（`blob8` = `purchases` / `coins_paid` / `coins_free` / `gacha`）。問い合わせの件数（運営の窓口側）が減ったか、`purchases` の閲覧が返金・ストア障害の日に跳ねていないかと合わせて見る。
+
+```sql
+SELECT
+  blob6 AS day, blob7 AS payer, blob8 AS tab,
+  sum(_sample_interval) AS views,
+  count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'history_view' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY day, payer, tab
+ORDER BY day DESC, payer, tab
+```
+
+- **購入直後の確認**：同じ日に `purchase`（サーバー）と `history_view`（`purchases`）がある課金者の割合が高いなら、購入完了の表示が分かりにくい（届いたか不安で履歴を見に行っている）。
+
+## 週替わりチャレンジ：挑戦と達成（REQ-WCH-014、contracts/protocol.md §31）
+
+**チャレンジごとの挑戦人数・達成率・平均挑戦回数**（週ごと）。達成率が極端に低い（< 10%）なら条件が厳しすぎる、高すぎる（> 90%）なら簡単すぎる。`blob11` = `server`。
+
+```sql
+SELECT blob9 AS week, blob8 AS challenge,
+  countIf(blob1 = 'challenge_start') AS starts,
+  count(DISTINCT if(blob1 = 'challenge_start', blob2, NULL)) AS players,
+  count(DISTINCT if(blob1 = 'challenge_clear' AND double8 = 1, blob2, NULL)) AS cleared_players,
+  cleared_players / players AS clear_rate,
+  starts / players AS tries_per_player
+FROM muchi_kpi
+WHERE blob1 IN ('challenge_start', 'challenge_clear') AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY week, challenge ORDER BY week, challenge
+```
+
+**貸し出し馬と自分の馬**（公平性の監視）：`blob10`（`loan`/`own`）ごとの達成率を課金者（`blob7`）で分ける。自分の馬の課金者の達成率が貸し出し馬の無課金より大きく上回るなら、正規化・スキルなしの前提が崩れていないか（設定・ルールセット）を調べる。
+
+```sql
+SELECT blob10 AS horse, blob7 AS payer,
+  count(DISTINCT if(blob1 = 'challenge_start', blob2, NULL)) AS players,
+  count(DISTINCT if(blob1 = 'challenge_clear', blob2, NULL)) AS cleared
+FROM muchi_kpi
+WHERE blob1 IN ('challenge_start', 'challenge_clear') AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY horse, payer
+```
+
+**週のバッジ**：`challenge_clear` の `double9 = 1` の人数 ÷ その週に挑戦した人数。
+
+
+## 支部の共同目標（REQ-TGOAL-011、contracts/protocol.md §32、Round 13）
+**週ごとの参加と到達**：貢献した人数（送った人）、段に届けた回数、受け取った人数と段。`blob8` = 支部ID、`blob9` = 週（`team_goal_milestone` / `team_goal_reward`）、`double9` = 段。
+
+```sql
+SELECT
+  blob9 AS week,
+  count(DISTINCT IF(blob1 = 'team_goal_reward', blob2, NULL)) AS rewarded_players,
+  sumIf(_sample_interval, blob1 = 'team_goal_milestone') AS milestones,
+  round(sumIf(_sample_interval * double9, blob1 = 'team_goal_reward') / sumIf(_sample_interval, blob1 = 'team_goal_reward'), 2) AS avg_tier,
+  count(DISTINCT IF(blob1 = 'team_goal_reward', blob8, NULL)) AS teams_paid
+FROM muchi_kpi
+WHERE blob1 IN ('team_goal_milestone', 'team_goal_reward') AND timestamp > NOW() - INTERVAL '60' DAY
+GROUP BY week
+ORDER BY week DESC
+```
+
+**1人で運んでいないか**（1日の上限が効いているか）：プレイヤーごとの1日の貢献（送った単位）。上限（レース10・勝利3・自己ベスト2）を超える値が出たら上限の実装を調べる。
+
+```sql
+SELECT blob6 AS day, blob2 AS player, blob9 AS kind, sum(_sample_interval * double5) AS units
+FROM muchi_kpi
+WHERE blob1 = 'team_goal_contribute' AND timestamp > NOW() - INTERVAL '14' DAY
+GROUP BY day, player, kind
+HAVING (kind IN ('race', 'win') AND units > 13) OR (kind = 'ta_pb' AND units > 2)
+ORDER BY units DESC
+LIMIT 100
+```
+- `team_goal_contribute` はプレイヤーのオブジェクトが送った時の行（支部がその週の種類でない・上限で数えないこともある）。`race` と `win` は1レースで1行（1着なら `s2 = 'win'`、`count` 2）。
+- 課金者と無課金者（`blob7`）で受け取りの段に差が出ても、支払いの効果ではない（共同目標は課金で進まない、REQ-TGOAL-012）。支部の活発さの違いとして読む。
+- 継続への効果：`team_goal_reward` を受け取った人と、支部にいるが受け取っていない人の翌週の `race_finish` の数を比べる（支部の共同目標の目的は週の継続）。

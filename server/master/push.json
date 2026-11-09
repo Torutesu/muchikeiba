@@ -23,6 +23,7 @@
     "team_cheer": { "category": "friends", "title": "支部の応援", "body": "{name}さんがあなたのレースに応援スタンプを送りました", "ttlSec": 86400, "timeSensitive": false },
     "team_request": { "category": "friends", "title": "支部への加入申請", "body": "{name}さんが支部への加入を希望しています", "ttlSec": 86400, "timeSensitive": false },
     "team_approved": { "category": "friends", "title": "支部に加入しました", "body": "「{team}」への加入が承認されました", "ttlSec": 86400, "timeSensitive": false },
+    "team_goal": { "category": "friends", "title": "支部の共同目標", "body": "支部の共同目標が{n}段目に到達しました", "ttlSec": 86400, "timeSensitive": false },
     "event_start": { "category": "events", "title": "イベント開催中", "body": "「{event}」が始まりました。上位を目指そう！", "ttlSec": 43200, "timeSensitive": false },
     "tournament_heat_soon": { "category": "events", "title": "まもなく{round}", "body": "「{tournament}」の{round}が{minutes}分後に始まります", "ttlSec": 600, "timeSensitive": true },
     "promotion_near": { "category": "season", "title": "昇級まであと1勝", "body": "昇級ラインまであと{points}pt。1着ひとつで届きます", "ttlSec": 43200, "timeSensitive": false },

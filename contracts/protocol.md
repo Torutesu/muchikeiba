@@ -159,6 +159,7 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 - `finishTicks` は `order` と同じ並び。未完走は -1。
 - `finishFracs`（追加・任意）：同じ並びで、ゴールしたtick内の割合（Q16.16の小数部 0〜65535）。未完走は -1。タイムアタックの正確なタイム計算に使う。古い検証サーバーは出さないので、受け手は無い場合を0として扱う。
 - `skillsFired`（追加・任意、Round 11）：再シミュレーションで固有スキルが発動した枠（昇順）。HTTP の `POST /verify` だけが付ける（`VerifyService.Verify(json, withSkills: true)`。golden ファイル・`replay` コマンドの出力は今までどおり無し）。サーバーはこれで実績の「固有スキルの発動」を数える（§24.4）。サーバーのスキーマは厳格なので、**サーバーを先に更新してから検証サービスを更新する**こと（古いサーバーはこの欄を拒否する）。
+  - Round 13：**頼まれた時だけ**付ける。サーバーはリクエストヘッダー `X-Muchi-Verify-Skills: 1` で頼む（`HttpVerifierClient` は常に付ける）。ヘッダーの無いリクエスト（Round 11 より前のサーバー）には付けないので、検証サーバーをいつも先にデプロイできる（`docs/ops/deploy.md` §7.1）。
 - 形式違反・ルールセットのキー不一致は `400 {"error":"…"}`。
 
 ## 8.1 タイムアタック（REQ-TA-*）
@@ -923,6 +924,10 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 | 大会の賞品 `tournament` | 財布へ | **ボックス** | 同上 |
 | 支部のシーズン報酬 `team`・支部対抗リーグ `league` | 財布へ | **ボックス** | 月替わりのバッチで届く |
 | シーズン（クラス順位）の報酬 `season` | 財布へ | **ボックス** | 同上 |
+| 支部の共同目標の週の報酬 `team_goal`（§32、Round 13 の統合で決定） | — | **ボックス** | 週の締めに支部のオブジェクトが裏で払う（本人がその場にいない）。週の結果シートは結果を見せるだけで受け取りの画面ではない |
+| イベント交換所の残りポイントの変換 `exchange`（§30、Round 13 の統合で決定） | — | **ボックス**（配合素材） | 交換所が閉じた後の最初の取引で裏で変換される。交換所の画面には「変換した」と出すが、閉じた交換所を開かない人もいるのでボックスで知らせる |
+| 週替わりチャレンジのクリア報酬（§31、Round 13 の統合で決定） | — | **そのまま（直接）** | 結果画面（`POST /v1/challenges/weekly/submit` の `reward`）がその場の受け取りの画面 |
+| イベント交換所での交換（§30） | — | **そのまま（直接）** | 交換の確認・結果がその場の画面（本人の操作） |
 | シーズンパスの受け取り忘れの自動付与（シーズン終了時） | 財布へ | **そのまま（直接）** | パスの返金の取り消し（REQ-PUR-006）と購入に結び付く無償コインの扱い（REQ-UXS-018/021）が財布の付与に結び付いているため。パス画面の「シーズン終了時に自動で受け取り」の記録（`passHistory`）で見える |
 | 招待された側の歓迎ギフト | コード入力の画面で付与 | **そのまま** | その場の画面がある |
 | ライバルの週の結果（§28、Round 12 の統合で決定） | — | **そのまま（直接）** | 週の結果シート（`GET /v1/rival` の `result`）がその場の受け取り画面。精算は本人がライバルの画面を開いた時（またはオプトアウトの前）だけ行い、台帳の参照は `rival:<weekId>` |
@@ -957,6 +962,8 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 | `team` | 支部のシーズン報酬 / Branch season reward |
 | `league` | 支部対抗シーズンの報酬 / Branch league reward |
 | `season` | シーズンの報酬 / Season reward |
+| `team_goal` | 支部の共同目標の報酬 / Branch weekly goal reward |
+| `exchange` | イベント交換所の残りポイント / Event exchange: leftover points |
 
 ### 26.3 `GET /v1/gift-box?tab=box|history&offset=0&limit=50`（要認証）
 ```json
@@ -1102,7 +1109,7 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 ### 28.3 `PUT /v1/rival/settings`・`POST /v1/rival/block`・`POST /v1/rival/challenge`・`POST /v1/rival/results/:weekId/seen`（要認証）
 - **settings** `{ "optOut": boolean }`（他のキーは 400）→ `{ "optOut" }`。オプトアウトの前に終わった週を精算する（報酬は払う）。オプトアウトで今週の組は両方とも解除、今週の記録は結果なしで捨てる、来週から組まれない。戻すと次の週の候補から（今週は解除のまま）。
 - **block** → `{ "blocked": "<playerId>", "dissolved": true }`。今週の人間のライバルをブロック一覧（支部フィードのミュートと同じ、`PUT /v1/teams/me/feed/mutes` でも見える）に入れ、組を解除。人間のライバルがいなければ `NOT_ELIGIBLE`。
-- **challenge** `{ "passphrase" }` → `{ "ok": true, "rivalId" }`。自分がその部屋のメンバー（でなければ `NOT_ELIGIBLE`）、今週の解除されていない人間のライバルがいる、1日の回数内（超えたら 409 `RIVAL_CHALLENGE_LIMIT`）。相手の招待一覧（`GET /v1/friends` の `invites`）に入り、`room_invite` のプッシュ（上限・設定の中）。相手が自分をブロックしていれば `NOT_ELIGIBLE`。
+- **challenge** `{ "passphrase" }`（`Idempotency-Key` 必須、Round 13 で追加：同じキーの再送は同じ答えを返し、1日の回数を使わず、招待とプッシュも送り直さない）→ `{ "ok": true, "rivalId" }`。自分がその部屋のメンバー（でなければ `NOT_ELIGIBLE`）、今週の解除されていない人間のライバルがいる、1日の回数内（超えたら 409 `RIVAL_CHALLENGE_LIMIT`）。相手の招待一覧（`GET /v1/friends` の `invites`）に入り、`room_invite` のプッシュ（上限・設定の中）。相手が自分をブロックしていれば `NOT_ELIGIBLE`。
 - **results/:weekId/seen** → `{ "unseen": null }`（結果シートを閉じた）。
 
 ### 28.4 プッシュ「ライバルが記録を更新」（`rival_record`、種類 `friends`）
@@ -1175,3 +1182,301 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 - 出してよいのは**ガチャの確認・見た目の購入・ショップ**の中だけ。**レース中・マッチング中・チュートリアル中・負けた直後の結果画面には出さない**（`CoinShortfallModel.Allowed`）。
 - シートは「◯コインが◯枚足りません」＋パックのカード1枚＋閉じる（閉じるが一番目立つ）。パックを押すと既存の購入確認（§13、REQ-UXU-010）へ。購入が完了したら元の操作（そのガチャ・その見た目）に戻る。
 - KPI：シートを出した時 `offer_view`、パックを押した時 `offer_click`（`offerId: "shortfall"`・`trigger: "T6"`、§13 の KPI と同じイベント）。1回の失敗（1回のプレビュー）につき1回。
+
+## 30. イベント交換所（REQ-EXCH-001〜012、`server/src/domain/exchange.ts`、C# `Exchange.cs`・`Muchi.Game.ExchangeModel`）
+イベントレース（§8.2、REQ-EVENT-*）に「交換所」を付ける。イベントを走るとそのイベントだけの**イベントポイント**が貯まり、終了後もしばらく交換できる。ランキングのポイント（`points`）とは別の数で、ランキングは変わらない。
+
+**決めたこと（法務・公平性）**
+| 項目 | 決めたこと |
+|---|---|
+| ポイントの入手 | **そのイベントのレース（確定・無効でないもの）だけ**。`byPlace[着順-1] + participation`（固定）、1ゲーム日（§15、04:00 JST）に `dailyCap` まで。購入・有償/無償ガチャ・商品・パス・ミッション・運営の付与からは入らない（報酬の型にポイントの欄が無く、`eventPointSourceProblems` が商品・ガチャ・進行・報酬に `eventPoints` などのキーや `event_point*` のアイテムを見つけたら起動時・リモート設定で拒否）。無効レースは0。 |
+| 交換 | 固定価格・固定の中身・**1人あたりの個数制限**（そのイベントの間ずっと、補充なし）。ランダムなものは無い（スキーマが strict：`rates` などは書けない）。**全部交換した報酬は無い**（コンプガチャにならない。「全交換ボーナス」の欄も書けない）。 |
+| 中身 | `coins`（無償コイン、1個 ≤ 100・1個 ≤ ¥200（最も高い単価で換算）、1個ずつ別の付与）・`material`（配合素材）・`ticket`（スカウト券1回分・イベントの参加券。10連券・SR以上確定券は不可）・`cosmetic`（コインで買える見た目、在庫1。有償限定・非売品は不可）・`horse`（テンプレートを指定した馬、在庫1、季節限定なら交換が閉じるまで期間内）。有償コインは出さない。 |
+| ランク戦 | 交換の馬もランク戦ではクラス上限に正規化（REQ-RATE-003）。ポイントは買えないので課金で勝率は上がらない。 |
+| 終了後 | 終了したゲーム日の翌日から `graceDays` ゲーム日（既定 3）交換できる。閉じる時刻 `closesAtMs` = 終了の最後のゲーム日 + `graceDays` + 1 日の 04:00 JST。閉じた後の最初の取引で、残りのポイントを **`ceil(残り / pointsPerUnit)` 個の `leftover.itemId`（配合素材）** に換える（1ポイントでも1個、失われない）。換算の率と見込み数は閉じる前から GET で見せる。 |
+| 時刻の表示 | 画面の時刻・残り日数はすべて GET の実データ（`endAtMs`・`closesAtMs`・`resetsAtMs`）から。カウントダウンの演出・「残りわずか」などは出さない（在庫の「残り 3 / 5」は事実の表示）。 |
+
+### 30.1 定義（`master/events.json` の `events[].exchange`、リモート設定の `events` で差し替え）
+```json
+"exchange": {
+  "earn": { "byPlace": [30, 25, 21, 18, 16, 14, 12, 10, 8, 6, 5, 4], "participation": 10, "dailyCap": 150 },
+  "graceDays": 3,
+  "leftover": { "itemId": "breeding_material", "pointsPerUnit": 100 },
+  "items": [
+    { "id": "ex_hatsuyuki", "name": "ハツユキソウ", "kind": "horse", "price": 800, "stock": 1, "reward": { "horse": "t_hatsuyuki" } },
+    { "id": "ex_scout_ticket", "name": "スカウト券", "kind": "ticket", "price": 300, "stock": 1, "reward": { "items": [{ "itemId": "gacha_ticket", "qty": 1 }] } },
+    { "id": "ex_coins_50", "name": "無償コイン 50", "kind": "coins", "price": 150, "stock": 2, "reward": { "freeCoins": 50 } },
+    { "id": "ex_material", "name": "配合素材", "kind": "material", "price": 120, "stock": 3, "reward": { "items": [{ "itemId": "breeding_material", "qty": 1 }] } },
+    { "id": "ex_flower_box", "name": "花かご（厩舎の飾り）", "kind": "cosmetic", "price": 200, "stock": 1, "reward": { "items": [{ "itemId": "decor_flower_box", "qty": 1 }] } }
+  ]
+}
+```
+検証（`exchangeProblems`、`eventProblems` の中で起動時・リモート設定・テスト）：strict な形、コード側の上限 `EXCHANGE_HARD_LIMITS`（24行・価格 ≤ 100,000・在庫 ≤ 99・`graceDays` 1〜7・`dailyCap` ≤ 5,000・`pointsPerUnit` ≤ 1,000・1行のアイテム数 ≤ 10・コイン ≤ 100/個・¥200/個）、`dailyCap` ≥ 1着1回分、id の重複、`reward` はちょうど1種類で `kind` と合うこと、上の「中身」の規則、`leftover.itemId` は配合素材。英語は `locale.en`（REQ-L10N-005、`name` も対象）。
+
+### 30.2 `GET /v1/events/:eventId/exchange`（要認証）
+```json
+{ "eventId": "newyear_cup_2027_01", "name": "新春交換祭杯", "status": "open",
+  "startAtMs": 1798729200000, "endAtMs": 1799679600000, "closesAtMs": 1800000000000, "graceDays": 3,
+  "points": 120, "earned": 240, "spent": 120,
+  "earn": { "byPlace": [30, "…"], "participation": 10, "dailyCap": 150, "earnedToday": 40, "remainingToday": 110, "resetsAtMs": 1798772400000 },
+  "leftover": { "itemId": "breeding_material", "pointsPerUnit": 100, "rounding": "up", "preview": 2, "converted": null },
+  "items": [ { "id": "ex_material", "name": "配合素材", "kind": "material", "price": 120, "stock": 3, "bought": 1, "remaining": 2, "owned": false,
+               "reward": { "items": [{ "itemId": "breeding_material", "qty": 1 }] }, "icon": "item/breeding_material", "affordable": true, "maxQty": 1 } ],
+  "rules": { "purchasable": false, "random": false, "completionReward": false, "sources": ["event_race"] } }
+```
+- `status`：`upcoming`（開始前・交換不可）/ `open`（開催中・貯まる・交換可）/ `grace`（終了後・交換だけ可）/ `closed`（閉じた・残りは換算済み）。
+- `earn.remainingToday` は `open` の時だけ（それ以外は0）。`resetsAtMs` は次のゲーム日の開始。
+- `leftover.preview` は今のポイントを換算した時の個数、`converted` は換算の記録（`{ at, points, itemId, qty }`）。
+- `items[].icon`：アイテムの絵のキー（馬は `collection/portrait/<templateId>`、コインは `null` = クライアントのコインの絵）。`owned`：見た目アイテムを持っている（交換できない）。`maxQty`：今のポイントと在庫で交換できる最大数。
+- 閉じた交換所に残りのポイントがあれば、この GET が取引として換算してから返す（普段は読み取りだけ）。
+- 交換所の無いイベントは 404 `NOT_FOUND`、id の形が違えば 400。
+- `GET /v1/events` の各イベントに `exchange`（交換所が無ければ `null`）：`{ status, closesAtMs, graceDays, points, leftover, converted }`。交換所が開いている間は、終了から7日を過ぎても一覧に残る。レース結果（`applyRace`）の `event.exchange` は `{ gained, capped, points, remainingToday }`。
+
+### 30.3 `POST /v1/events/:eventId/exchange`（要認証・`Idempotency-Key` 必須）
+本文 `{ "itemId": "ex_material", "qty"?: 1 }`（`qty` 1〜99、既定 1、他のキーは 400）→
+`{ "eventId", "itemId", "kind", "qty", "spent", "points", "bought", "remaining", "granted": { "freeCoins", "items": [...], "horse": "t_hatsuyuki" | null }, "exchange": §30.2 の形, "wallet" }`
+- プレイヤーの Durable Object の1つの取引：期間・在庫・所持・ポイントを確かめてから、ポイントを減らし、中身を渡す（全部か何もしないか）。同じキーの再送は同じ応答（2回払わない）。
+- エラー：`EXCHANGE_NOT_OPEN`（開始前）・`EXCHANGE_CLOSED`（閉じた後）・`OUT_OF_STOCK`（在庫を超える）・`INSUFFICIENT_POINTS`・`ALREADY_PURCHASED`（見た目アイテムを持っている）・`NOT_FOUND`（交換所・行が無い）・`DELETION_PENDING`（削除の実行中）。どれも 409（`NOT_FOUND` 404）。
+- コインは1個ずつ別の台帳の記録（`<キー>:<n>`）、アイテムはアイテム台帳に記録。
+
+### 30.4 KPI（サーバーのイベント）
+| イベント | s1 | s2 | s3 | 数値 |
+|---|---|---|---|---|
+| `event_point_earn` | イベント id | `full` / `capped`（1日の上限で削られた） | — | `place` 着順、`value` 得たポイント、`count` 所持ポイント |
+| `exchange_buy` | イベント id | 行の id | 種類 `coins`/`material`/`ticket`/`cosmetic`/`horse` | `count` 個数、`value` 使ったポイント |
+クエリは `docs/ops/kpi-queries.md`「イベント交換所」。
+
+### 30.5 クライアント（`ApiClient.GetExchangeAsync`・`ExchangeAsync`、`Muchi.Game.ExchangeModel`）
+- 交換の確認シート：中身・価格・交換後のポイント・在庫（「残り 2 / 3」）を出し、確定まで同じ冪等キーを保持（タイムアウト後の再送で2回払わない）。
+- 終了後（`grace`）は「交換は ◯月◯日 4:00 まで」と、残りのポイントが換わる素材の数（`leftover.preview`）を出す。日時は `closesAtMs` から作る（演出の残り時間は出さない）。
+- 交換所からショップ（課金）への導線は作らない。
+
+
+## 31. 週替わりチャレンジ（REQ-WCH-001〜016、`server/src/domain/weeklyChallenge.ts`・`server/src/race/weeklyChallenge.ts`、C# `WeeklyChallenge.cs`（`ChallengeEvaluator`・`ChallengeRun`）・`Muchi.Game.WeeklyChallengeModel`）
+毎ゲーム週、CPU と走る1人用のチャレンジが **3つ** 出る。コース・距離・馬場（重・ダート・ナイター）・相手の強さ（CPU の頭数・レベル・能力の倍率）を既存のレース設定で固定し、条件（「逃げ馬で勝つ」「ムチ3回以内で3着以内」「雨の重馬場で X 以内に完走」など）を付ける。レースは端末で走り（`OfflineRace`）、送るのは入力だけ。**サーバーは発行した設定と送られた入力を C# 検証器で再シミュレーションし**（タイムアタックと同じ §8 の経路）、条件の判定も検証済みの結果からサーバー自身が行う。クライアントの申告だけで達成になることはない。
+
+### 31.1 週（REQ-WCH-001）
+- 週は `weekStartsOn`（既定 1 = 月曜）の **ゲーム日の切り替わり**（§15 `progression.dayRollover`、04:00 JST）に始まる。週 id はその週の最初のゲーム日のキー（`"YYYY-MM-DD"`）。`time.ts` の `gameWeekId`・`gameWeekStartMs`・`gameWeekEndMs`・`gameWeeksBetween`（週単位の機能はこれを共有する。ライバル §28 と同じ定義：月曜のゲーム日の切り替わり）。
+- その週のセット = `rotation[(anchorWeekId から数えた週数) mod rotation.length]`。翌週のセットは条件だけ先に見せてよい（`previewNext`）。
+- 週をまたいだ場合：週の終わりの直前に始めたレースは、セッションの期限内なら**始めた週**の分として数える（今週と先週の進み具合だけを保持）。新しい週は何もクリアしていない状態から始まり、先週のチャレンジはもう始められない（`NOT_FOUND`）。
+
+### 31.2 設定（`progression.weeklyChallenge`、リモート設定で変更可・`weeklyChallengeProblems` で検証）
+| キー | 既定 | 意味 |
+|---|---|---|
+| `enabled` | true | false で画面ごと隠す（`GET` は `{ "enabled": false }`、操作は `NOT_FOUND`） |
+| `weekStartsOn` / `anchorWeekId` | 1 / `2026-11-02` | 週の始まりの曜日／`rotation[0]` を出す週（その曜日であること） |
+| `statCap` | 3200 | 全員の能力合計の上限（ランク戦B級と同じ正規化）。貸し出し馬はちょうどこの値に引き上げる |
+| `sessionTtlMs` / `maxInputs` | 15分 / 400 | セッションの期限／1回の送信の入力の上限 |
+| `startsPerDay` / `keepSessions` | 30 / 20 | 1ゲーム日に始められる回数（乱用防止。再挑戦は自由）／保持するセッション数 |
+| `previewNext` | true | 翌週のセットを見せる |
+| `rotation[]` | 3週分 | `{ id, badge: { id, name }, challenges: [3つ] }` |
+
+チャレンジ：`{ id, title, trackId, going?, night?, cpuCount, cpuLevel, cpuStatPermille?, conditions, loanTemplateId, reward }`。
+- `going`：コースの面に合う馬場（芝 `firm`/`good`/`yielding`/`soft`、ダート `fast`/`muddy`/`sloppy`）。無ければ良（`good`/`fast`）。`night`：照明のある競馬場だけ。
+- `conditions`（すべて満たし、かつ**完走**でクリア）：`maxPlace`（N着以内、1 = 勝利。頭数より小さいこと）、`style`（その脚質の馬で出走。単独では不可）、`maxWhips`（ムチの入力 N 回以内。ムチのビットを含む入力レコードの数で、端末とサーバーで同じ数え方）、`maxTimeMs`（ゲートが開いてからのタイム、タイムアタックと同じ式）。
+- `loanTemplateId`：誰でも使える**貸し出し馬**。季節限定でない、コースの面と距離に合う、`style` があればその脚質であること。
+- `reward`：**無償コイン（≤ 100枚、最も高いパックの単価で ¥200 以下）と配合素材（≤ 2）だけ**。有償コイン・券・ガチャ・馬は不可。1週の無償コインの合計 ≤ 150（E18）。
+- `badge`：3つクリアした週に付く**見た目だけのバッジ**（`id`・`name` のみ。報酬のキーは付けられない。販売中のアイテムと同じ id は不可）。
+
+コード側の上限 `WCH_HARD_LIMITS`：1週3つ・無償コイン ≤ 100/チャレンジ・≤ 150/週・素材 ≤ 2・¥200・`startsPerDay` ≤ 50・`rotation` ≤ 52週・バッジの記録 ≤ 520。
+
+既定のローテーション：
+| 週 | バッジ | チャレンジ（コース・馬場・相手・条件 → 報酬） |
+|---|---|---|
+| `w_aoba` | 青葉の一閃章 | 逃げ切りの一閃（青葉 芝1600・良・CPU 7頭 Lv3・**逃げ馬で1着** → 素材1）／ムチは3発まで（きらめき 芝2000・CPU 7頭 Lv3・**ムチ3回以内で3着以内** → 素材1）／雨の重馬場（きらめき 芝2000・**重（soft）**・CPU 5頭 Lv2・**タイム以内に完走** → 素材1） |
+| `w_minato` | みなとの夜章 | ナイターの先行策（みなと ダート1800・**ナイター**・**先行馬で2着以内** → 素材1）／ムチなしの末脚（みなと 芝2400・CPU Lv2・**ムチなしで5着以内** → 素材1）／不良馬場を走り切れ（サンタルチェラ ダート1700・**不良（sloppy）・ナイター**・**タイム以内に完走** → 素材1） |
+| `w_bellmoor` | 直線の覇者章 | 直線一気（ベルムーア 芝1200直線・**ムチ2回以内で1着** → 素材1）／砂の先行争い（青葉 ダート1400・**稍重（muddy）**・**先行馬で3着以内** → 素材1）／長距離の我慢（ノルトハーフェン 芝2400・**ムチ2回以内で3着以内** → 素材1） |
+
+既定の表の報酬は配合素材だけにした：E1 に余裕がなく（Round 12 時点で 64.2 / 上限 65）、各週の1つに無償コイン10枚を付けただけで E1 65.3・招待された人 65.7・招待上限の人の SSR 3.00（上限 2.8）と範囲を外れたため（balance-targets E18）。無償コインは設定で付けられる（1回 ≤ 100・1週 ≤ 150、¥200 以下）が、付ける時は経済シミュレーションで E1/E2 を確かめること。
+
+タイムの条件の値は、貸し出し馬で素直に乗った時（ゲートでスタート・中盤で手綱・残り400mからムチ3回）に届き、何もしない乗り方（スタートを押さない・手綱もムチもなし）では届かない値にした：雨の重馬場 1:34.0（素直 1:31.9／何もしない 1:37.1）、不良馬場を走り切れ 1:19.0（1:16.8／1:23.7）（`engine/Muchi.Engine.Tests/WeeklyChallengeTests.cs` の測定、balance-targets E18）。
+
+### 31.3 公平性（REQ-WCH-007）
+| 項目 | 決めたこと |
+|---|---|
+| 能力 | 全員（自分の馬・CPU）を `statCap` に正規化（ランク戦と同じ `normalizeStats`）。調教の伸びも上限まで |
+| スキル | 使わない（タイムアタックと同じ「乗り方の勝負」。`raceConfig.ts` の `raceSkill` がモード `challenge` を除く）。買った馬のスキルは効かない |
+| 調子 | ルールセットの調子の揺らぎを切る（`timeAttackRuleset`：`conditionVariancePermille` 0、`rulesetVersion` に `+ta`）。発行時の設定に埋め込むので、途中でルールセットが変わってもそのレースは変わらない |
+| 貸し出し馬 | どのチャレンジにも貸し出し馬があり、**能力合計はちょうど `statCap`**（テンプレートの比率のまま最大剰余で引き上げ）、コースの面と距離・脚質の条件に合う。正規化後のどの馬も合計は `statCap` 以下なので、無課金でも**課金で手に入る最強の馬に合計で劣らない**馬で挑める |
+| 課金 | 挑戦の回数・条件を緩める商品は作らない。報酬に有償コインは無い |
+
+### 31.4 `GET /v1/challenges/weekly`（要認証）
+```json
+{ "enabled": true, "weekId": "2026-11-02", "startsAt": 1793804400000, "endsAt": 1794409200000, "serverNow": 1794020400000,
+  "challenges": [ { "id": "wa_nige", "title": "逃げ切りの一閃", "trackId": "aoba_turf_1600", "surface": "turf", "distanceM": 1600,
+      "going": "good", "night": false, "cpuCount": 7, "cpuLevel": 3, "cpuStatPermille": 1000,
+      "conditions": { "style": "nige", "maxPlace": 1 }, "labels": [ { "kind": "style", "text": "逃げの馬で出走" }, { "kind": "place", "text": "1着でゴール" } ],
+      "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] }, "loan": { "templateId": "t_hinode", "name": "ヒノデエクスプレス", "style": "nige", "statTotal": 3200 },
+      "progress": { "cleared": false, "clearedAt": null, "attempts": 0, "bestPlace": null, "bestTimeMs": null } } ],
+  "clearedCount": 0, "badge": { "id": "wch_badge_aoba", "name": "青葉の一閃章", "earned": false, "earnedAt": null },
+  "startsLeftToday": 30,
+  "next": { "weekId": "2026-11-09", "startsAt": 1794409200000, "badge": { "id": "wch_badge_minato", "name": "みなとの夜章" }, "challenges": [ "…progress なし…" ] },
+  "badges": [ { "weekId": "2026-10-26", "badgeId": "wch_badge_bellmoor", "at": 1793500000000 } ], "badgeCount": 1,
+  "rules": { "statCap": 3200, "normalized": true, "skills": false, "loanAtCap": true, "paidBoosts": false, "rewardOncePerWeek": true } }
+```
+- コースの表示名はクライアントのコース名（`tracks.json` / visuals）から出す（サーバーの応答には id だけ）。
+- `labels[].text` は条件ごとの短い文（`conditionLabels`）。`?lang=en` / `Accept-Language` で英語（§23。条件の文は `i18n/en.ts` のテンプレート、タイトルとバッジ名は `master/locale-en.json`）。
+- `next` は `previewNext` が false なら null。`badges` は新しい順に最大20件。残り日数は `endsAt` と `serverNow` から出す（偽の締め切りは作らない）。
+
+### 31.5 `POST /v1/challenges/weekly/:challengeId/start`（要認証・**冪等キー必須**）
+- 本文：`{ "horseId": "h1" }`（自分の現役の馬）か `{ "loan": true }`（貸し出し馬）のどちらか一方。他のキーは 400。
+- 応答：`{ "sessionId", "weekId", "challengeId", "playerSlot", "config": RaceStartConfig（mode "challenge"）, "expiresAt", "startsLeftToday", "challenge": {31.4 のカード}, "token" }`。同じ冪等キーの再送は同じセッションを返す（回数は1回だけ）。
+- エラー：`NOT_FOUND`（今週のセットに無い・無効）、`CHALLENGE_HORSE_INELIGIBLE`（409、脚質の条件に合わない馬。貸し出し馬は必ず合う）、`CHALLENGE_LIMIT_REACHED`（429、今日の回数）、`HORSE_NOT_ACTIVE`、`HORSE_NOT_FOUND`、`DELETION_PENDING`、`BAD_REQUEST`。
+- 設定はサーバーが決める：seed・CPU の馬と枠（`buildRaceConfig`）、`statCap` での正規化、スキルなし、`going`/`night`、調子なしのルールセット。`playerSlot` は人の馬の枠（枠順は抽選）。`token` は `{ raceId: "wch_<sessionId>", slot: playerSlot, playerId, exp: expiresAt }` の署名（レースのチケットと同じ形式）。
+
+### 31.6 `POST /v1/challenges/weekly/submit`（要認証・セッション単位で冪等）
+- 本文：`{ "sessionId", "token", "inputs": [[tick, slot, cmd], …], "resultHash", "config"? }`（他のキーは 400）。入力は**自分の枠だけ**・クライアントのビットだけ（`CPU_TAKEOVER`/`HUMAN_RESUME` 不可）・tick は増えていく・`maxTicks` より前・`maxInputs` 件まで。`config` を付けた場合は発行したものと一致すること（`TA_CONFIG_MISMATCH`）。
+- サーバー：発行した設定＋入力で検証器を呼ぶ（§8）。ハッシュが端末の `resultHash` と違えば `CHALLENGE_RESULT_MISMATCH`（422、何も記録しない）。検証器が落ちていれば `VERIFIER_UNAVAILABLE`（503、セッションは開いたまま。期限内なら再送できる）。同じセッション・同じハッシュの再送は保存した結果を返す。
+- 応答：
+```json
+{ "sessionId": "w…", "weekId": "2026-11-02", "challengeId": "wa_nige", "resultHash": "…",
+  "evaluation": { "finished": true, "place": 1, "timeMs": 98500, "whips": 2, "style": "nige", "cleared": true,
+    "checks": [ { "kind": "finish", "target": null, "actual": 1, "ok": true }, { "kind": "place", "target": 1, "actual": 1, "ok": true }, { "kind": "style", "target": "nige", "actual": "nige", "ok": true } ] },
+  "cleared": true, "firstClear": true, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] }, "clearedCount": 1,
+  "badge": { "id": "wch_badge_aoba", "name": "青葉の一閃章", "earned": false, "newlyEarned": false }, "credited": true }
+```
+- 判定と報酬は**開始時に見せた条件・報酬**で行う（遊んでいる途中にリモート設定でローテーションが変わっても、そのレースのルールは変わらない）。
+- 報酬は**チャレンジごとに1週1回**（`firstClear`）。2回目以降のクリアも記録・判定はするが報酬は無い（`reward: null`）。3つそろった時に `badge.newlyEarned: true`（1週1回）。
+- エラー：`CHALLENGE_SESSION_EXPIRED`（期限切れ・トークン不正）、`CHALLENGE_SESSION_USED`（送信済み・却下済み）、`UNAUTHORIZED`（他人のトークン）、`NOT_FOUND`、`DELETION_PENDING`。
+
+### 31.7 判定（REQ-WCH-005、サーバー `evaluateChallenge`・C# `ChallengeEvaluator`、同じ手順）
+- 着順：検証器の `order` の中の `playerSlot` の位置 + 1。`finishTicks` が −1 なら完走していない（`place: null`）。
+- タイム：`raceTimeMs`（`(finishTick − gateOpenTick) × ⌊1000/tickHz⌋ + ⌊finishFrac × ⌊1000/tickHz⌋ / 65536⌋`、タイムアタックと同じ）。
+- ムチ：送られた（＝検証した）入力のうち、`playerSlot` でムチのビット（32）を含むレコードの数。スタートと同時に押したムチも1回、他の枠の入力は数えない。
+- 脚質：発行した設定の自分の馬の `style`。
+- `checks` は `finish` ＋条件の順（place → style → whips → time）。すべて `ok` で `cleared`。
+
+### 31.8 KPI（サーバーのイベント）
+| イベント | s1 | s2 | s3 | 数値 |
+|---|---|---|---|---|
+| `challenge_start` | チャレンジ id | 週 id | `loan`/`own` | `count` 今週そのチャレンジを始めた回数 |
+| `challenge_clear` | チャレンジ id | 週 id | `loan`/`own` | `place`、`durationMs` タイム、`count` 今週のクリア数、`isFirst` 今週の初クリア（報酬あり）、`value` 1 = この回でバッジ、`freeCoins` 付与したコイン |
+
+クエリは `docs/ops/kpi-queries.md`「週替わりチャレンジ」。
+
+### 31.9 景品表示法・コンプガチャでないこと（REQ-WCH-010）
+- 報酬は固定・少額で、1つのチャレンジにつき1週1回（無償コイン ≤ 100枚 ≈ ¥160、総付景品の ¥200 を下回る。配合素材は販売していない）。
+- 3つクリアのバッジは**見た目だけ**（能力・報酬なし、販売なし、全員同じ）。チャレンジは誰でも同じ条件で挑め、**ランダムに出るアイテムが一切関わらない**。コンプガチャ（有償のガチャで出る特定の組み合わせをそろえると別の景品が出る）は「ランダムに提供されるアイテムをそろえる」ことが要件なので、これに当たらない。
+
+### 31.10 クライアント
+- `Muchi.Client`：`ApiClient.GetWeeklyChallengesAsync`・`StartWeeklyChallengeAsync`（冪等キーは応答まで保持）・`SubmitWeeklyChallengeAsync`（再送安全）、`ChallengeRun`（`OfflineRace` を `playerSlot` で走らせ、入力を `maxInputs` までに抑え、ムチの入力数を数える）、`ChallengeEvaluator`（31.7 と同じ判定。結果画面は送信前に端末の判定を出し、サーバーの判定で確定する）。
+- Unity ゲーム層 `WeeklyChallengeModel`：ホームのカード（今週のクリア数・残り日数）、一覧（条件の文・報酬・貸し出し馬）、レース中の HUD の条件の行（「ムチ 2/3」など、満たせなくなったら赤）、結果（クリア／失敗、条件ごとの○×、初クリアの報酬、バッジ）。ホームのカードはタイムアタックの解放（`time_attack`）と同時に出す（サーバーは解放で制限しない）。
+- 解放（Round 13 の統合）：解放キー `weekly_challenge`（`progression.unlocks`、タイムアタックと同じ「4日目 or 20戦」、docs/planning/06 §4.3）。表示だけの解放で、サーバーの API は解放前でも答える（他の解放キーと同じ）。ホームのカードは解放後に出す。
+- デプロイ：モード `challenge` を知っている検証器（`Muchi.Net` の `ParseMode`）を先に出してから、サーバーを出す。
+
+
+## 32. 支部の共同目標（REQ-TGOAL-001〜012、`server/src/domain/teamGoal.ts`、C# `TeamGoal.cs`・`Muchi.Game` `TeamGoalModel`）
+支部ごとに**週1つの共同目標**（例：「支部で合計60レース」）。支部員みんなのレース結果で段（マイルストーン、3段）が進み、週の終わりに、届いた一番上の段の決まった報酬を、最低限貢献した支部員全員に配る。報酬は無償・ランダムなし・1回 ¥200 以内（景品表示法 総付景品）。課金は関係しない（買って進むものは何も無い）。
+
+**週**（REQ-TGOAL-001）：月曜のゲーム日の切り替え（4:00 JST、`progression.dayRollover`）から7ゲーム日。週のキーはその月曜のゲーム日 `"YYYY-MM-DD"`。終わり＝次の月曜 4:00 JST（`endsAt`）。
+
+**目標の選び方**（REQ-TGOAL-002）：週が始まると、`progression.teamGoal.goals` から **支部IDと週のハッシュ**（FNV-1a）で1つ選ぶ（どのオブジェクトでも同じ）。段の目標値 = `perMember[i] × scale`。`scale` = 先週に貢献した人数（先週が無い・誰も貢献しなかった週は支部の人数）を `scale.min..scale.max`（3..20）に収めた値で、週の間は変わらない。ただし人数で決めた週は、その週に加入があると上にだけ合わせる（小さく始めて人を集める抜け道を作らない）。
+
+**マスターデータ** `progression.teamGoal`（リモート設定で変更可）：
+```json
+{ "goals": [ { "id": "races_sum", "kind": "races", "label": "支部で合計{n}レース", "perMember": [6, 12, 20], "minContribution": 3 },
+             { "id": "wins_sum", "kind": "wins", "label": "支部で合計{n}勝", "perMember": [1, 2, 4], "minContribution": 1 },
+             { "id": "ta_pb_sum", "kind": "ta_pb", "label": "支部でタイムアタック自己ベスト更新 合計{n}回", "perMember": [1, 2, 3], "minContribution": 1 } ],
+  "tiers": [ { "reward": { "freeCoins": 5 } }, { "reward": { "freeCoins": 8, "items": [{ "itemId": "breeding_material", "qty": 1 }] } },
+             { "reward": { "freeCoins": 12, "items": [{ "itemId": "breeding_material", "qty": 1 }] } } ],
+  "dailyCap": { "races": 10, "wins": 3, "ta_pb": 2 }, "scale": { "min": 3, "max": 20 },
+  "modes": ["ranked", "event", "tournament"], "topN": 5, "payBatch": 50 }
+```
+- `label` の `{n}` は最後の段の目標値（表示は「支部で合計60レース」。英語は `{n} races as a branch`）。
+- 起動時とリモート設定で `teamGoalProblems` が検証する（REQ-TGOAL-010）：形、`perMember` は段の数と同じ長さで昇順、`minContribution ≤ dailyCap × 7`、`scale.max ≤ teams.maxMembers`、報酬は無償コイン・スカウト券（1回・10連）・配合素材（3個まで）だけで、1回の価値 ≤ ¥200（最も高いコイン単価で換算、`inviteRewardYen`）、上の段ほどコインが少なくならない。コード側の上限 `TEAM_GOAL_HARD_LIMITS`。
+
+**貢献**（REQ-TGOAL-003/004）：サーバーが確定した出来事だけ。クライアントから貢献を送るエンドポイントは無い。
+- レース：レースの精算（`applyRace`、`modes` のどれか、無効レースは除く）。1レース = `races` 1、1着なら `wins` も 1。
+- タイムアタック：検証済みの走りがそのコースの今シーズンの自己ベストを更新した時（`taRecord` の `seasonBest`）= `ta_pb` 1。同じセッションの再送は数えない。
+- プレイヤーのオブジェクトが種類ごとの **1日の上限**（`dailyCap`、アカウント全体：支部を移っても戻らない）まで数えて支部へ送る（`GoalContribution { teamId, playerId, displayName, ref: "race:<raceId>" | "ta:<sessionId>", at, races, wins, taPb }`）。届かなければプレイヤーに残し（最大20件・8日）、次の貢献と一緒に送り直す。
+- 支部（TeamDO）は、その週の `kind` の分だけを、**今の支部員で `at` の時点で加入済み**の人について、`ref` ごとに1回、**1人1日の上限**（同じ `dailyCap`）まで数える。`at` が今の週でなければ数えない（前の週の遅れた再送は新しい週に入らない）。
+- 途中で加入した人は加入から数える。**抜けると本人の貢献は0に戻る**（それまでの分は支部の進み具合に残るが、その週の報酬の対象ではなくなる。同じ週に戻っても0から）。
+- 削除予定中・隔離（quarantined）・BAN 中のプレイヤーは送らない。隔離・BAN になった時（`setModeration`）と、アカウント削除の「支部」の段（`feedForget`）で、その人の貢献を今の週と未払いの週から消す（進み具合が下がる。告知済みの段は再告知しない）。
+
+**エンドポイント**（要認証）：
+
+| メソッド・パス | 応答 |
+|---|---|
+| `GET /v1/teams/me/goal` | 下の `TeamGoalView`。支部に入っていなければ `{ "teamId": null, "teamName": null, "enabled": true, "current": null, "lastWeek": null, "player": {…} }` |
+
+```json
+TeamGoalView = { "teamId": "tabc123456", "teamName": "あおばRC", "enabled": true,
+  "current": { "week": "2026-12-07", "endsAt": 1797188400000, "goalId": "races_sum", "kind": "races", "label": "支部で合計60レース",
+    "scale": 3, "progress": 38, "tier": 2, "minContribution": 3,
+    "milestones": [ { "tier": 1, "target": 18, "reached": true, "reward": { "freeCoins": 5 } }, … ],
+    "my": { "contribution": 20, "today": 10, "dailyCap": 10, "qualified": true },
+    "top": [ { "playerId": "p1", "displayName": "ミドリカワ", "n": 20 } ], "contributors": 3 } | null,
+  "lastWeek": { "week": "2026-11-30", "goalId": "wins_sum", "kind": "wins", "label": "支部で合計12勝", "targets": [3, 6, 12], "progress": 7, "tier": 2,
+    "reward": { "freeCoins": 10, "items": [ … ] } | null, "top": [ … ], "eligible": true, "paid": true } | null,
+  "player": { "enabled": true, "sentToday": { "races": 6, "wins": 1, "ta_pb": 0 }, "pending": 0,
+    "lastReward": { "week": "2026-11-30", "teamId": "tabc123456", "tier": 2, "contribution": 9, "reward": { … } } | null } }
+```
+- `top` は今の支部員で貢献の多い順（同じなら先に積んだ人）に `topN`（5）人。`displayName`・`teamName` はプレイヤーが付けた名前で、英語でも翻訳しない（§23 `PLAYER_TEXT_KEYS`）。
+- `?lang=en` では `label` が英語になる（`master/locale-en.json` のテンプレート）。
+
+**週の締めと報酬**（REQ-TGOAL-007/009）：
+- 週の締めは、その週が終わった後の最初の支部の操作（貢献・表示・加入・脱退など）か、TeamDO の **アラーム**（週の終わりに鳴る。定期ジョブ）で行う。締めの時点で届いた段（`progress ≥ target` の数）と、**その時の支部員で本人の貢献が `minContribution` 以上の人**の一覧を固定する。加入・脱退の前には必ず締めるので、週の終わりの支部員で決まる。
+- アラームが一覧を `payBatch` 人ずつプレイヤーのオブジェクトへ払う（`teamGoalReward(week, teamId, tier, contribution)`、途中で止まっても続きから）。プレイヤーは**週ごとに1回だけ**受け取る（`teamGoal.rewarded`、支部が変わっても同じ週は2回目を受け取らない）。削除予定中・隔離中の人は受け取らない（その週は受け取り済みとして記録し、後から払わない）。
+- 届いた段が0なら誰にも払わない。報酬は台帳に `team_goal:<week>` で記録（無償コイン。有償コインは出さない）。
+
+**支部フィード**（REQ-TGOAL-008、§18 のフィードに追加）：段に初めて届いた時、支部の項目 `kind: "goal"` を1件（同じ週・同じ段は1件）。
+```json
+{ "seq": 131, "kind": "goal", "playerId": "", "displayName": "", "mine": false, "stampId": null, "race": null,
+  "goal": { "week": "2026-12-07", "goalId": "races_sum", "label": "支部で合計60レース", "tier": 1, "target": 18, "tiers": 3 }, "reactions": [], "myReaction": null }
+```
+投稿者の無い項目なので、報告は `BAD_REQUEST`、ミュートでは消えない。応援スタンプは付けられる（通知は無い）。
+
+**通知**：段に届いた時、貢献した本人以外の支部員へ push テンプレート `team_goal`（カテゴリ `friends`、「支部の共同目標が{n}段目に到達しました」。1日の上限・静かな時間帯は通常どおり）。
+
+**KPI**（REQ-TGOAL-011、サーバーが書く）：`team_goal_contribute`（送った貢献。`s1` 支部ID、`s2` `race` | `win` | `ta_pb`、`s3` ref、`count` 単位）、`team_goal_milestone`（段に届けた貢献の本人。`s1` 支部ID、`s2` 週、`value` 段）、`team_goal_reward`（受け取り。`s1` 支部ID、`s2` 週、`value` 段、`count` 本人の貢献）。docs/ops/kpi-queries.md。
+
+## 33. 購入履歴・コイン履歴・ガチャ履歴（REQ-HIST-001〜014、`server/src/domain/history.ts`、C# `History.cs`・`Muchi.Game.HistoryModel`）
+プレイヤーが自分で「いつ・何に・いくら」を確かめられる画面（設定 → 購入履歴／コイン履歴／ガチャ履歴）。資金決済法（有償・無償を分けた残高と増減）・特商法（購入の記録）・ガチャの履歴開示（業界の自主基準で求められる直近90日の結果）に応え、問い合わせの手間を減らす。**表示だけ**：この API はコイン・アイテムを動かさない（経済の E は変わらない）。
+
+**データの出どころ（新しい台帳は作らない）**
+| 画面 | 元データ | 期間 |
+|---|---|---|
+| 購入履歴 | `PlayerState.purchases`（`applyVerifiedPurchase` の記録、返金は `refunded`） | 法定の保存期間 `progression.accountDeletion.ledgerRetentionDays`（既定 2557日 = 7年） |
+| コイン履歴 | 台帳（REQ-WAL-001）。状態の JSON は直近100行だけなので、Durable Object では `ledger` テーブル（`SqlPlayerRepo.ledgerPage`）から読む | 直近 365日（`HISTORY_LIMITS.coinDays`） |
+| ガチャ履歴 | 新設のガチャ記録 `PlayerState.gachaLog`（コイン・券・チュートリアルの1回ごと）。Durable Object では `gacha_log` テーブルへ移し、状態には直近20件だけ残す | 直近 90日（`gachaDays`）。保存も90日で消す（`put` ごと）。状態の中は最大 `gachaKeep`（300件） |
+| 残高ヘッダー | `wallet`（有償・無償・未精算）、`monthlySpendYen`、年齢区分の月額上限 | 今月（JST） |
+
+**見せないもの（決定事項）**
+- 削除済みアカウント：削除の最後に Durable Object の保存領域ごと消え、法定保存の記録は AccountingDO に**ランダムな匿名 id** で残る（REQ-UXS-040）。この API はプレイヤー id でしか引かないので、匿名の記録には**誰も（本人・運用コンソールも）届かない**。削除済み（墓標あり）の id は 404 `NOT_FOUND`（`account deleted`）。
+- 内部 id を文に入れない：取引 id（ストアの注文番号）・商品 id・バナー id・台帳の理由文（運用者名を含む「support grant by …」など）は**表示文に出さない**。各行は問い合わせ番号 `ref` を持つ：購入 `P-` + 取引 id の FNV-1a 32bit（16進8桁）、コイン `C-` + 台帳の連番、ガチャ `G-` + 記録の連番。
+- 理由は分類（`category`）とその日本語の文（`title`）で返し、英語は応答の境界で訳す（§23、`i18n/en.ts`）。
+
+### 33.1 `GET /v1/history/summary`（要認証）
+```json
+{ "wallet": { "paid": 1200, "free": 340, "total": 1540, "debt": 0 },
+  "month": "2026-11", "monthSpentYen": 3000, "monthlyLimitYen": 5000, "remainingYen": 2000, "ageLimited": true,
+  "limitText": "今月の購入 ¥3,000 ／ 上限 ¥5,000（年齢に応じた月額上限）",
+  "notice": "有償コインに有効期限はありません。使うときは有償コインから先に使われます。無償コインはゲーム内で受け取ったコインです。",
+  "windows": { "purchasesDays": 2557, "coinsDays": 365, "gachaDays": 90 } }
+```
+- `monthlyLimitYen` は年齢区分（`ageLimits`）の月額上限。上限なし（20歳以上）・年齢未登録は `null`、`ageLimited` は上限がある区分（16歳未満・16〜17歳・18〜19歳）のとき true、`limitText` は上限があるときだけ（無ければ `null`）。
+
+### 33.2 一覧（要認証、カーソル式）
+`GET /v1/history/purchases` ・ `GET /v1/history/coins?currency=paid|free` ・ `GET /v1/history/gacha`。共通のクエリ：`cursor`（前の応答の `nextCursor`、そのまま渡す不透明な文字列）・`limit`（1〜50、既定20）。新しい順。応答 `{ "items": [...], "nextCursor": string | null, "windowDays": n }`。おかしい `cursor`／`limit`／`currency` は 400。
+- **購入**：`{ "ref": "P-1A2B3C4D", "at", "product": "コイン 480枚", "productId", "priceYen", "store": "apple"|"google"|"fake", "storeName": "App Store"|"Google Play"|"テスト", "status": "completed"|"refunded"|"pending"|"test", "statusText", "paidCoins", "bonusCoins", "bonusPaid": bool }`。`pending` = 自動更新のパスのストア側の状態が猶予期間・請求の再試行中（`grace`／`billing_retry`）。ストアで保留中（Google の purchaseState 2）の購入はサーバーが受け付けていないので一覧に無い（ストアの購入履歴で確認：`statusText` の説明に書く）。`test` はサンドボックス（請求なし、¥0）。
+- **コイン**：`{ "ref": "C-123", "at", "currency": "paid"|"free", "direction": "earned"|"spent"|"note", "amount"（絶対値）, "balanceAfter", "category", "title", "purchaseRef"?: "P-…" }`。`note` は枚数が動かない行（未精算の返金の記録など）。`category`：`purchase`・`purchase_bonus`・`purchase_test`・`daily_pack`・`gacha`・`shop`・`ad_reward`・`compensation`・`login`・`mission`・`achievement`・`race`・`time_attack`・`pass`・`season`・`team`・`event_fee`・`event_fee_refund`・`event`・`tournament`・`stud`・`invite`・`bond`・`comeback`・`refund`・`debt`・`debt_settle`・`forfeit`・`rival`・`team_goal`・`weekly_challenge`・`exchange`（Round 13 の統合）・`other`。`currency` を付けないと両方（画面は有償・無償を別のタブで出す）。
+- **ガチャ**：`{ "ref": "G-7", "at", "banner": "恒常スカウト", "bannerId": string|null, "via": "coins"|"ticket"|"tutorial", "viaText", "count", "coins": { "paid", "free" }, "results": [ { "templateId", "name", "rarity", "duplicate" } ], "summary": "SSR 1・SR 2・R 7" }`。SR以上確定券は `bannerId: null`・`banner` は券の名前。
+
+### 33.3 `POST /v1/history/support-ticket`（要認証、状態を変えない）
+`{ "refs": ["P-1A2B3C4D", "C-123"], "topic": "purchase_missing"|"refund"|"coins"|"gacha"|"other" }（`topicText`：購入したのに届かない／返金について／コインの増減について／スカウトの結果について／その他の問い合わせ）`（他のキーは 400、`refs` は1〜10個・重複なし）→
+```json
+{ "format": "muchi.support-ticket.v1", "playerId": "…", "topic": "purchase_missing", "topicText": "購入したのに届かない", "createdAt": 1796871600000,
+  "items": [ { "ref": "P-1A2B3C4D", "kind": "purchase", "at": 1796870000000, "title": "コイン 480枚", "detail": "¥480・App Store・購入済み" } ],
+  "body": "問い合わせ番号：P-1A2B3C4D、C-123" }
+```
+- 期間の外・自分のものでない `ref` は 404 `NOT_FOUND`（他人の取引を確かめる道具にしない）。
+- 中身は運用コンソールのプレイヤー画面（§22、`GET /v1/admin/players/:playerId`）がすでに受け付ける**プレイヤー id と問い合わせ番号だけ**。名前・メール・端末の情報は入れない。アプリはこれを問い合わせ窓口（運営のフォーム／メール）に添える。運用は `GET /v1/admin/players/:playerId/history?refs=…` で同じ行を引く。
+
+### 33.4 運用コンソール `GET /v1/admin/players/:playerId/history`（viewer、読み取り、監査ログに残る）
+`?kind=summary|purchases|coins|gacha`（＋ `currency`・`cursor`・`limit`）でプレイヤーと同じ一覧、各行に `internal`（購入：`txId`・`platform`・`limitBreach`、コイン：台帳の `reason`・`ref`・`kind`、ガチャ：なし）を足したもの。`?refs=P-…,C-…`（1〜10個）は問い合わせ番号の行だけ（`{ "items": [{ "ref", "kind", "row" | null }] }`）。削除済みは 404。書き込みは無い（読み取り専用）。
+
+### 33.5 KPI
+クライアントのイベント `history_view`（`props.tab`：`purchases`|`coins_paid`|`coins_free`|`gacha`）→ s1 = タブ。クエリは `docs/ops/kpi-queries.md`「履歴」。
+
+### 33.6 クライアント（`HistoryModel`）
+- タブ（購入／有償コイン／無償コイン／ガチャ）、残高ヘッダー（有償・無償を分けて）、月の購入額と上限（未成年のみ）、`nextCursor` で続きを読む（同じタブで2回同時に読まない）、行の詳細、問い合わせシート（行を最大10件選ぶ → `support-ticket`）。オフラインは「オンラインで確認できます」。タブを開くたびに `history_view` を1回。

@@ -78,6 +78,8 @@ static class Program
         await RewardedAdChecks.Run(Check);
         Console.WriteLine("== round 11: English (Loc tables, composite lines, commentary, request language; REQ-L10N-009..012)");
         await L10nChecks.Run(Check, Root, Ruleset());
+        Console.WriteLine("== round 13: 購入履歴・コイン履歴・ガチャ履歴 (header, tabs, paging, detail, 問い合わせ; REQ-HIST-*)");
+        await HistoryChecks.Run(Check);
         Console.WriteLine("== round 11: 図鑑, 実績 and titles (CollectionModel / AchievementModel / TitleShowcaseModel; REQ-COL-*, REQ-ACH-*)");
         await CollectionChecks.Run(Check, Ruleset());
         Console.WriteLine("== 調教 (training: menus, timing mini-game, keyed start/finish, fairness wording)");
@@ -90,6 +92,14 @@ static class Program
         await AssistChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 12: ライバル (home card, detail, week-result sheet, challenge, opt-out / block; REQ-RIVAL-*)");
         await RivalChecks.Run(Check, Ruleset());
+        Console.WriteLine("== イベント交換所 (event exchange: point counter, stock, confirm sheet, keyed exchange, grace notice; REQ-EXCH-*)");
+        await ExchangeChecks.Run(Check, Ruleset());
+        Console.WriteLine("== 週替わりチャレンジ (weekly challenge: list, keyed start, race with the HUD condition, server verdict, badge, English)");
+        await WeeklyChallengeChecks.Run(Check, Ruleset(), Root);
+        Console.WriteLine("== round 13: 支部の共同目標 (TeamGoalModel: milestone bar, contributions, week result sheet, feed goal rows; REQ-TGOAL-*)");
+        Loc.LoadEnglish(File.ReadAllText(Path.Combine(Root, "engine", "Muchi.Client", "Resources", "Muchi", "server-en.json")));
+        Loc.LoadEnglish(File.ReadAllText(Path.Combine(Root, "engine", "Muchi.Client", "Resources", "Muchi", "ui-en.json")));
+        await TeamGoalChecks.Run(Check, Ruleset());
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

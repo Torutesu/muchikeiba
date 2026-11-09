@@ -320,6 +320,25 @@ describe('REQ-RIVAL-008 ライバルと走る (friend-room challenge, unranked)'
     expect(v.score).toMatchObject({ me: 0, them: 0 });
     expect(v.recent[0]).toMatchObject({ mode: 'friend', me: 1, them: 2, point: null });
   });
+
+  it('R12 leftover: a retry with the same Idempotency-Key uses one daily challenge and sends the invite (and its push) once', async () => {
+    const w = world();
+    await w.player('a'); await w.player('b');
+    await w.ranked({ a: 1, b: 2 });
+    w.at(jst(2026, 12, 15));
+    await w.rival.view('a'); await w.rival.view('b');
+    const invites = async () => (await w.svc.state('b')).push!.outbox.filter((x) => x.templateId === 'room_invite').length;
+    const first = await w.rival.challenge('a', 'room1', 'c:/v1/rival/challenge:k1');
+    expect(first).toMatchObject({ ok: true, rivalId: 'b' });
+    const pushes = await invites();
+    // the client timed out and retried with the same key: same answer, no second challenge, no second push
+    expect(await w.rival.challenge('a', 'room1', 'c:/v1/rival/challenge:k1')).toEqual(first);
+    expect((await w.svc.state('a')).rival!.challenges!.count).toBe(1);
+    expect(await invites()).toBe(pushes);
+    // a new key is a new challenge
+    await w.rival.challenge('a', 'room1', 'c:/v1/rival/challenge:k2');
+    expect((await w.svc.state('a')).rival!.challenges!.count).toBe(2);
+  });
 });
 
 describe('REQ-RIVAL-004 the confirmed result carries the human field', () => {
@@ -410,14 +429,18 @@ describe('REQ-RIVAL-009 HTTP routes', () => {
     const invoker: PlayerInvoker = { invoke: (async (method: string, ...args: unknown[]) => (svc as unknown as Record<string, (...a: unknown[]) => unknown>)[method]!.apply(svc, args)) as PlayerInvoker['invoke'] };
     const members = new Set(['room9']);
     const c = { master: m, authenticate: async () => 'u', player: () => invoker, clock: w.now, rival: w.rival, match: { friendMember: async (p: string) => members.has(p) } } as unknown as AppContext;
-    const call = async (method: string, path: string, body?: unknown) => {
-      const res = await handle(new Request(`https://x${path}`, { method, headers: { 'content-type': 'application/json' }, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) }), {}, c);
+    const call = async (method: string, path: string, body?: unknown, key?: string) => {
+      const res = await handle(new Request(`https://x${path}`, { method, headers: { 'content-type': 'application/json', ...(key ? { 'idempotency-key': key } : {}) }, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) }), {}, c);
       return { status: res.status, body: (await res.json()) as any };
     };
     expect((await call('GET', '/v1/rival')).body).toMatchObject({ enabled: true, rival: { kind: 'human', playerId: 'v' } });
-    expect((await call('POST', '/v1/rival/challenge', { passphrase: 'nope' })).body.error.code).toBe('NOT_ELIGIBLE');
-    const ch = await call('POST', '/v1/rival/challenge', { passphrase: 'room9' });
+    // R12 leftover: the challenge needs an Idempotency-Key (a retry must not use another daily challenge)
+    expect((await call('POST', '/v1/rival/challenge', { passphrase: 'room9' })).body.error.code).toBe('IDEMPOTENCY_KEY_REQUIRED');
+    expect((await call('POST', '/v1/rival/challenge', { passphrase: 'nope' }, 'k0')).body.error.code).toBe('NOT_ELIGIBLE');
+    const ch = await call('POST', '/v1/rival/challenge', { passphrase: 'room9' }, 'k1');
     expect(ch.body, JSON.stringify(ch.body)).toMatchObject({ ok: true });
+    expect((await call('POST', '/v1/rival/challenge', { passphrase: 'room9' }, 'k1')).body).toEqual(ch.body);
+    expect((await w.svc.state('u')).rival!.challenges!.count).toBe(1);
     expect((await call('PUT', '/v1/rival/settings', { optOut: 'yes' })).status).toBe(400);
     expect((await call('POST', '/v1/rival/results/bad/seen')).status).toBe(400);
     expect((await call('POST', '/v1/rival/block')).body).toMatchObject({ blocked: 'v' });

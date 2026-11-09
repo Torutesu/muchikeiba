@@ -47,9 +47,41 @@ console.log('| persona | プレゼントボックス 受け取り（件） | 期
 console.log('|---|---|---|');
 for (const p of PERSONAS) { const r = res[p.id]!; console.log(`| ${p.label} | ${r.giftsClaimed.toFixed(1)} | ${r.giftsExpired.toFixed(1)} |`); }
 
-// REQ-RIVAL-014 (E16): the weekly rival's fixed free coins over 90 days, against the 「3戦する」 cut (18 → 16 × 90 = 180)
+// REQ-RIVAL-014 (E16): the weekly rival's fixed free coins over 90 days, against the 「3戦する」 cut (18 → 16 × 90 = 180; 16 → 15 went to the team goal, balance-targets 4.18)
 console.log('');
 console.log('| persona | ライバル 精算した週 | 勝った週 | 受け取った無償コイン（90日） |');
 console.log('|---|---|---|---|');
 for (const p of PERSONAS) { const r = res[p.id]!; console.log(`| ${p.label} | ${r.rivalWeeks.toFixed(1)} | ${r.rivalWins.toFixed(1)} | ${r.rivalCoins.toFixed(0)} |`); }
 console.log(`\nE16 ライバル（無課金・毎日）の90日の受け取り ${res.f2p!.rivalCoins.toFixed(0)} ≤ 180`);
+
+// REQ-EXCH-* (E17): the same 90 days with the event that has an exchange played (3 of the day's races) and its exchange spent
+const evRes = await simulateAll(loadMaster(), days, [1, 2, 3], hh * 60 + (mm ?? 0), { events: true });
+console.log('');
+console.log('| persona | 引いた回数/月（イベントなし→あり） | SSR/月（なし→あり） | イベントのレース | イベントポイント | 交換：無償コイン | 券 | 馬 | 配合素材 | 飾り | 残りポイント→素材 |');
+console.log('|---|---|---|---|---|---|---|---|---|---|---|');
+for (const p of PERSONAS) {
+  const a = res[p.id]!, b = evRes[p.id]!;
+  console.log(`| ${p.label} | ${a.pullsPerMonth.toFixed(1)}→${b.pullsPerMonth.toFixed(1)} | ${a.ssrPerMonth.toFixed(2)}→${b.ssrPerMonth.toFixed(2)} | ${b.eventRaces.toFixed(1)} | ${b.eventPoints.toFixed(0)} | ${b.exchangeCoins.toFixed(0)} | ${b.exchangeTickets.toFixed(2)} | ${b.exchangeHorses.toFixed(2)} | ${b.exchangeMaterial.toFixed(2)} | ${b.exchangeCosmetics.toFixed(2)} | ${b.leftoverMaterial.toFixed(2)} |`);
+}
+const fe = evRes.f2p!.pullsPerMonth;
+console.log(`\nE17 イベントあり: E1 ${fe.toFixed(1)}  E2 ${evRes.f2p!.ssrPerMonth.toFixed(2)}  E4 ${evRes.f2p_casual!.pullsPerMonth.toFixed(1)}  E5 ${(evRes.light!.pullsPerMonth / fe).toFixed(2)}  E6 ${(evRes.medium!.pullsPerMonth / fe).toFixed(2)}`);
+
+// REQ-WCH-* (E18): weekly challenges — every persona clears all 3 each week (upper bound); fixed, small, the same for everyone
+console.log('');
+console.log('| persona | 週替わりチャレンジ（初クリア） | 無償コイン | 無償コイン/日 | 配合素材 | バッジ | 無償コインの稼ぎに占める割合 |');
+console.log('|---|---|---|---|---|---|---|');
+for (const p of PERSONAS) {
+  const r = res[p.id]!;
+  console.log(`| ${p.label} | ${r.challengeClears.toFixed(1)} | ${r.challengeCoins.toFixed(0)} | ${(r.challengeCoins / Math.max(1, r.activeDays)).toFixed(2)} | ${r.challengeMaterial.toFixed(1)} | ${r.challengeBadges.toFixed(1)} | ${((100 * r.challengeCoins) / Math.max(1, r.freeCoinsEarned)).toFixed(2)}% |`);
+}
+console.log(`\nE18 E1 無課金 ${res.f2p!.pullsPerMonth.toFixed(1)}（40〜65）・E2 ${res.f2p!.ssrPerMonth.toFixed(2)}（1.2〜2.8）・招待された ${res.f2p_invited!.pullsPerMonth.toFixed(1)}/${res.f2p_invited!.ssrPerMonth.toFixed(2)}・招待上限 SSR ${res.f2p_inviter!.ssrPerMonth.toFixed(2)}・週4日 ${res.f2p_casual!.pullsPerMonth.toFixed(1)}`);
+
+// REQ-TGOAL-* (E19): every persona joins a team on its beginner day; upper bound = the team reaches the top milestone every week
+console.log('');
+console.log('| persona | 共同目標の報酬（週） | 無償コイン（90日） | 配合素材（90日） | 引いた回数/月 | SSR/月 |');
+console.log('|---|---|---|---|---|---|');
+for (const p of PERSONAS) {
+  const r = res[p.id]!;
+  console.log(`| ${p.label} | ${r.teamGoalWeeks.toFixed(1)} | ${r.teamGoalCoins.toFixed(0)} | ${r.teamGoalMaterial.toFixed(1)} | ${r.pullsPerMonth.toFixed(1)} | ${r.ssrPerMonth.toFixed(2)} |`);
+}
+console.log(`\nE19 共同目標（最上段を毎週）を含めて E1 ${res.f2p!.pullsPerMonth.toFixed(1)}（40〜65）・E2 ${res.f2p!.ssrPerMonth.toFixed(2)}（1.2〜2.8）・招待上限 SSR/月 ${res.f2p_inviter!.ssrPerMonth.toFixed(2)}（≤2.8）`);

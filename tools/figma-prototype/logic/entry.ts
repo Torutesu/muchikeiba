@@ -195,6 +195,25 @@ export const MuchiLogic = {
   trainingStart: (horseId: string, menuId: string) => wrap(() => svc.trainingStart(ID, horseId, menuId, key())),
   trainingFinish: (sessionId: string, taps: number[], skipped = false) => wrap(() => svc.trainingFinish(ID, sessionId, skipped ? { taps: [], skipped: true } : { taps }, key())),
   trainingUseItem: (itemId: string, horseId: string) => wrap(() => svc.trainingUseItem(ID, itemId, horseId, key())),
+  // ---------------------------------------------------------------- round 13: 週替わりチャレンジ (REQ-WCH-*, protocol §31)
+  // The real server rules: the week (Monday at the game-day rollover), the rotation, the issued config (CPU field, ground,
+  // normalised stats, no skills, the loan horse at the cap), and the submit path: prepare builds the replay log from the
+  // ISSUED config + the validated inputs, `verify` re-simulates THAT log in the WASM engine (the C# verifier's code), and
+  // record evaluates the conditions on the verified result — the device's own verdict is never sent.
+  weeklyChallenges: () => wrap(() => svc.wchView(ID)),
+  weeklyChallengeStart: (challengeId: string, horseId: string | null) => wrap(() => svc.wchStart(ID, challengeId, horseId ? { horseId } : { loan: true }, key())),
+  async weeklyChallengeSubmit(sessionId: string, inputs: number[][], resultHash: string, verify: (logJson: string) => string) {
+    return wrap(async () => {
+      const prep = await svc.wchPrepare(ID, sessionId, inputs, resultHash, undefined);
+      if (prep.kind === 'done') return prep.result;
+      let out;
+      try { out = JSON.parse(verify(JSON.stringify(prep.log))); }
+      catch (e) { await svc.wchAbort(ID, sessionId); throw new AppError('VERIFIER_UNAVAILABLE', String((e as Error)?.message ?? e)); }
+      const rec = await svc.wchRecord(ID, sessionId, out, resultHash);
+      if ('rejected' in rec) throw new AppError('CHALLENGE_RESULT_MISMATCH', 'the server re-simulation does not match the submitted run');
+      return rec;
+    });
+  },
   /** The stats the horse races with (base + awakening + growth) and after the class normalisation (ranked). */
   trainingRaceStats: (horseId: string) => {
     const s = repo.get(ID);

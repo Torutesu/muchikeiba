@@ -194,7 +194,12 @@ describe('start (REQ-WCH-003/007)', () => {
 
 describe('submit → verifier → evaluation on the server (REQ-WCH-005/006/008)', () => {
   it('a clear is evaluated from the verified result, pays its reward once per week; a repeat clear pays nothing', async () => {
-    const w = setup();
+    // a table that pays free coins too (the shipped one pays breeding material only, E18): coins + material, once a week
+    const coinCfg = structuredClone(cfg);
+    coinCfg.rotation[0]!.challenges[0]!.reward = { freeCoins: 10, items: [{ itemId: 'breeding_material', qty: 1 }] };
+    expect(weeklyChallengeProblems({ ...m, progression: { ...m.progression, weeklyChallenge: coinCfg } } as Master)).toEqual([]);
+    const NIGE = coinCfg.rotation[0]!.challenges[0]!;
+    const w = setup({ ...m, progression: { ...m.progression, weeklyChallenge: coinCfg } } as Master);
     await w.svc.bootstrap('p');
     const ver = new FakeVerifier(1);
     const svc = service(w, ver);
@@ -321,7 +326,10 @@ describe('weekly badge (REQ-WCH-009/010)', () => {
     expect(s.weeklyChallenge!.badges).toEqual([{ weekId: '2026-11-02', badgeId: WEEK0.badge.id, at: T0 }]);
     // the badge is not an item, a horse, coins or a title: only the badge record
     const coins = WEEK0.challenges.reduce((a, c) => a + (c.reward.freeCoins ?? 0), 0);
+    const material = WEEK0.challenges.reduce((a, c) => a + (c.reward.items ?? []).reduce((x, i) => x + i.qty, 0), 0);
     expect(s.wallet.free).toBe(coins);
+    expect(s.items.breeding_material ?? 0).toBe(material);
+    expect(s.wallet.paid).toBe(0);
     expect(s.items[WEEK0.badge.id]).toBeUndefined();
     // a repeat after the badge does not earn it again
     const st = await svc.start('p', NIGE.id, { loan: true }, 'c:again');

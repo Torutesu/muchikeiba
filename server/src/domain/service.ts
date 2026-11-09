@@ -107,6 +107,8 @@ export interface PlayerServiceDeps {
   rng: Rng;
   /** REQ-TRAIN-005: the training beat seeds (default: `rng`). The economy sim passes its own so gacha draws stay the same. */
   trainingRng?: Rng;
+  /** REQ-WCH-003: challenge session ids and race seeds (default: `rng`). The economy sim passes its own so gacha draws stay the same. */
+  challengeRng?: Rng;
   clock: Clock;
   verifiers: Partial<Record<PurchaseRecord['platform'], StoreVerifier>>;
   onPaidBalance?: (snap: PaidBalanceSnapshot) => void | Promise<void>;
@@ -1020,8 +1022,9 @@ export class PlayerService {
   wchStart(id: string, challengeId: string, input: WchStartInput, idemKey: string | null = null, ruleset?: Ruleset) {
     return this.tx(id, idemKey, (s, now, emit) => {
       notWhileDeleting(s);
-      const sessionId = 'w' + [0, 0, 0].map(() => this.d.rng.nextU32().toString(36)).join('');
-      return startChallenge(this.d.master, s, challengeId, input, sessionId, this.d.rng, now, emit, ruleset);
+      const rng = this.d.challengeRng ?? this.d.rng;
+      const sessionId = 'w' + [0, 0, 0].map(() => rng.nextU32().toString(36)).join('');
+      return startChallenge(this.d.master, s, challengeId, input, sessionId, rng, now, emit, ruleset);
     });
   }
   wchPrepare(id: string, sessionId: string, inputs: unknown, resultHash: string, echoedConfig: unknown) {

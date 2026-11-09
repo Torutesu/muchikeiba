@@ -939,9 +939,11 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 既定のローテーション：
 | 週 | バッジ | チャレンジ（コース・馬場・相手・条件 → 報酬） |
 |---|---|---|
-| `w_aoba` | 青葉の一閃章 | 逃げ切りの一閃（青葉 芝1600・良・CPU 7頭 Lv3・**逃げ馬で1着** → 無償10）／ムチは3発まで（きらめき 芝2000・CPU 7頭 Lv3・**ムチ3回以内で3着以内** → 素材1）／雨の重馬場（きらめき 芝2000・**重（soft）**・CPU 5頭 Lv2・**タイム以内に完走** → 素材1） |
-| `w_minato` | みなとの夜章 | ナイターの先行策（みなと ダート1800・**ナイター**・**先行馬で2着以内** → 無償10）／ムチなしの末脚（みなと 芝2400・CPU Lv2・**ムチなしで5着以内** → 素材1）／不良馬場を走り切れ（サンタルチェラ ダート1700・**不良（sloppy）・ナイター**・**タイム以内に完走** → 素材1） |
-| `w_bellmoor` | 直線の覇者章 | 直線一気（ベルムーア 芝1200直線・**ムチ2回以内で1着** → 無償10）／砂の先行争い（青葉 ダート1400・**稍重（muddy）**・**先行馬で3着以内** → 素材1）／長距離の我慢（ノルトハーフェン 芝2400・**ムチ2回以内で3着以内** → 素材1） |
+| `w_aoba` | 青葉の一閃章 | 逃げ切りの一閃（青葉 芝1600・良・CPU 7頭 Lv3・**逃げ馬で1着** → 素材1）／ムチは3発まで（きらめき 芝2000・CPU 7頭 Lv3・**ムチ3回以内で3着以内** → 素材1）／雨の重馬場（きらめき 芝2000・**重（soft）**・CPU 5頭 Lv2・**タイム以内に完走** → 素材1） |
+| `w_minato` | みなとの夜章 | ナイターの先行策（みなと ダート1800・**ナイター**・**先行馬で2着以内** → 素材1）／ムチなしの末脚（みなと 芝2400・CPU Lv2・**ムチなしで5着以内** → 素材1）／不良馬場を走り切れ（サンタルチェラ ダート1700・**不良（sloppy）・ナイター**・**タイム以内に完走** → 素材1） |
+| `w_bellmoor` | 直線の覇者章 | 直線一気（ベルムーア 芝1200直線・**ムチ2回以内で1着** → 素材1）／砂の先行争い（青葉 ダート1400・**稍重（muddy）**・**先行馬で3着以内** → 素材1）／長距離の我慢（ノルトハーフェン 芝2400・**ムチ2回以内で3着以内** → 素材1） |
+
+既定の表の報酬は配合素材だけにした：E1 に余裕がなく（Round 12 時点で 64.2 / 上限 65）、各週の1つに無償コイン10枚を付けただけで E1 65.3・招待された人 65.7・招待上限の人の SSR 3.00（上限 2.8）と範囲を外れたため（balance-targets E18）。無償コインは設定で付けられる（1回 ≤ 100・1週 ≤ 150、¥200 以下）が、付ける時は経済シミュレーションで E1/E2 を確かめること。
 
 タイムの条件の値は、貸し出し馬で素直に乗った時（ゲートでスタート・中盤で手綱・残り400mからムチ3回）に届き、何もしない乗り方（スタートを押さない・手綱もムチもなし）では届かない値にした：雨の重馬場 1:34.0（素直 1:31.9／何もしない 1:37.1）、不良馬場を走り切れ 1:19.0（1:16.8／1:23.7）（`engine/Muchi.Engine.Tests/WeeklyChallengeTests.cs` の測定、balance-targets E18）。
 
@@ -960,7 +962,7 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
   "challenges": [ { "id": "wa_nige", "title": "逃げ切りの一閃", "trackId": "aoba_turf_1600", "surface": "turf", "distanceM": 1600,
       "going": "good", "night": false, "cpuCount": 7, "cpuLevel": 3, "cpuStatPermille": 1000,
       "conditions": { "style": "nige", "maxPlace": 1 }, "labels": [ { "kind": "style", "text": "逃げの馬で出走" }, { "kind": "place", "text": "1着でゴール" } ],
-      "reward": { "freeCoins": 10 }, "loan": { "templateId": "t_hinode", "name": "ヒノデエクスプレス", "style": "nige", "statTotal": 3200 },
+      "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] }, "loan": { "templateId": "t_hinode", "name": "ヒノデエクスプレス", "style": "nige", "statTotal": 3200 },
       "progress": { "cleared": false, "clearedAt": null, "attempts": 0, "bestPlace": null, "bestTimeMs": null } } ],
   "clearedCount": 0, "badge": { "id": "wch_badge_aoba", "name": "青葉の一閃章", "earned": false, "earnedAt": null },
   "startsLeftToday": 30,
@@ -986,7 +988,7 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 { "sessionId": "w…", "weekId": "2026-11-02", "challengeId": "wa_nige", "resultHash": "…",
   "evaluation": { "finished": true, "place": 1, "timeMs": 98500, "whips": 2, "style": "nige", "cleared": true,
     "checks": [ { "kind": "finish", "target": null, "actual": 1, "ok": true }, { "kind": "place", "target": 1, "actual": 1, "ok": true }, { "kind": "style", "target": "nige", "actual": "nige", "ok": true } ] },
-  "cleared": true, "firstClear": true, "reward": { "freeCoins": 10 }, "clearedCount": 1,
+  "cleared": true, "firstClear": true, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] }, "clearedCount": 1,
   "badge": { "id": "wch_badge_aoba", "name": "青葉の一閃章", "earned": false, "newlyEarned": false }, "credited": true }
 ```
 - 報酬は**チャレンジごとに1週1回**（`firstClear`）。2回目以降のクリアも記録・判定はするが報酬は無い（`reward: null`）。3つそろった時に `badge.newlyEarned: true`（1週1回）。

@@ -30,6 +30,7 @@ public static partial class MuchiRace
     private static int _eventIdx;
     private static string _mode = "";
     private static TimeAttackRun _taRun;
+    private static ChallengeRun _chRun;
     private static ReplayShareModel _share;
     private static readonly Dictionary<string, Ghost> _ghosts = new Dictionary<string, Ghost>();
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
@@ -59,7 +60,7 @@ public static partial class MuchiRace
     [JSExport]
     public static string Start(string mode, string partnerName, string partnerJson, double seed)
     {
-        _taRun = null;
+        _taRun = null; _chRun = null;
         RaceConfig cfg;
         if (mode == "tutorial") cfg = RaceFactory.Tutorial(_ruleset);
         else
@@ -85,7 +86,7 @@ public static partial class MuchiRace
     [JSExport]
     public static string StartTutorial(int attempt)
     {
-        _taRun = null;
+        _taRun = null; _chRun = null;
         var race = OfflinePresets.TutorialRace(_ruleset, Math.Max(1, attempt));
         return Begin("tutorial", new OfflineRaceDriver(race));
     }
@@ -94,7 +95,7 @@ public static partial class MuchiRace
     [JSExport]
     public static string StartConfig(string configJson, string playerId)
     {
-        _taRun = null;
+        _taRun = null; _chRun = null;
         var cfg = Muchi.Net.ProtocolCodec.ParseConfig(configJson);
         int slot = 0;
         foreach (var e in cfg.Entrants) if (e.Kind == EntrantKind.Human && e.PlayerId == playerId) { slot = e.Slot; break; }
@@ -210,6 +211,9 @@ public static partial class MuchiRace
         }
         sb.Append(']');
         AppendGhosts(sb, now);
+        if (_chRun != null)
+            sb.Append(",\"challenge\":{\"whips\":").Append(_chRun.WhipsUsed).Append(",\"whipsBroken\":").Append(B(_chRun.WhipsBroken))
+              .Append(",\"timeBroken\":").Append(B(_chRun.TimeBroken)).Append(",\"elapsedMs\":").Append(_chRun.ElapsedMs).Append('}');
         if (_driver.Done && _driver.Sim?.Result != null)
         {
             var res = _driver.Sim.Result;
@@ -219,6 +223,14 @@ public static partial class MuchiRace
             for (int i = 0; i < res.Margins.Length; i++) { if (i > 0) sb.Append(','); sb.Append(F(res.Margins[i].Raw / (double)Fx.OneRaw)); }
             sb.Append(']');
             AppendResult(sb);
+            if (_chRun != null)
+            {
+                // what the device submits (inputs + hash) and its own verdict (ChallengeEvaluator; the server's decides)
+                var ev = _chRun.Evaluate();
+                sb.Append(",\"challengeRun\":{\"hash\":\"").Append(_chRun.Race.ResultHash).Append("\",\"inputs\":[");
+                for (int i = 0; i < _chRun.Race.RecordedInputs.Count; i++) { var r = _chRun.Race.RecordedInputs[i]; if (i > 0) sb.Append(','); sb.Append('[').Append(r.Tick).Append(',').Append(r.Slot).Append(',').Append(r.Cmd).Append(']'); }
+                sb.Append("],\"cleared\":").Append(B(ev.Cleared)).Append(",\"place\":").Append(ev.Place?.ToString() ?? "null").Append(",\"timeMs\":").Append(ev.TimeMs?.ToString() ?? "null").Append(",\"whips\":").Append(ev.Whips).Append('}');
+            }
             if (_taRun != null)
             {
                 // the run's replay log (config + the player's inputs): what the device submits, and what becomes a ghost
@@ -346,8 +358,36 @@ public static partial class MuchiRace
         var session = new TimeAttackSession { SessionId = "proto", Token = "", ConfigJson = cfgNode, Config = Muchi.Net.ProtocolCodec.ParseConfig(cfgNode), AttemptsLeft = 0 };
         var run = new TimeAttackRun(session);
         if (!string.IsNullOrEmpty(ghostId) && _ghosts.TryGetValue(ghostId, out var g)) run.AddGhost(g);
-        _taRun = run;
+        _taRun = run; _chRun = null;
         return Begin("timeattack", new OfflineRaceDriver(run.Race));
+    }
+
+    /// <summary>
+    /// 週替わりチャレンジ (REQ-WCH-*, protocol §31): the server-issued challenge config ridden in the player's slot (ChallengeRun:
+    /// the CPUs ride themselves, inputs capped like the server), the conditions shown live in the HUD (frame "challenge").
+    /// </summary>
+    [JSExport]
+    public static string StartChallenge(string configJson, int playerSlot, string conditionsJson)
+    {
+        _taRun = null;
+        var cfg = Muchi.Net.ProtocolCodec.ParseConfig(configJson);
+        var c = Muchi.Net.JsonNode.Parse(string.IsNullOrEmpty(conditionsJson) ? "{}" : conditionsJson);
+        var cond = new ChallengeConditions
+        {
+            MaxPlace = c.Has("maxPlace") ? c.Get("maxPlace").AsInt() : (int?)null, Style = c.Has("style") ? c.Get("style").AsString() : null,
+            MaxWhips = c.Has("maxWhips") ? c.Get("maxWhips").AsInt() : (int?)null, MaxTimeMs = c.Has("maxTimeMs") ? c.Get("maxTimeMs").AsLong() : (long?)null,
+        };
+        _chRun = new ChallengeRun(cfg, playerSlot, cond);
+        return Begin("challenge", new OfflineRaceDriver(_chRun.Race));
+    }
+
+    /// <summary>The verifier's re-simulation of a replay log (Muchi.Verifier: RaceReplay.Run → protocol §8 output).</summary>
+    [JSExport]
+    public static string VerifyReplay(string logJson)
+    {
+        var log = Muchi.Net.ProtocolCodec.ParseReplayLog(Muchi.Net.JsonNode.Parse(logJson));
+        log.Config.Validate();
+        return Muchi.Net.ProtocolCodec.VerifyOutputToJson(RaceReplay.Run(log.Config, log.Inputs)).ToString();
     }
 
     /// <summary>

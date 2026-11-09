@@ -162,6 +162,32 @@ describe('economy targets (90 days, 3 seeds)', () => {
     expect(all.f2p_casual!.achievementCoins).toBeLessThan(f.achievementCoins);
   }, 600_000);
 
+  it('E18 weekly challenges (REQ-WCH-013): every persona clears all 3 each week; small fixed rewards, the same for everyone, E1/E2 hold', async () => {
+    const all = await run();
+    const f = all.f2p!;
+    const wc = m.progression.weeklyChallenge!;
+    // the upper bound: 3 first clears and one badge per game week the persona played in (13 weeks in 90 days)
+    expect(f.challengeClears).toBeGreaterThanOrEqual(3 * 12);
+    expect(f.challengeBadges).toBe(f.challengeClears / 3);
+    // paying never adds a clear, a coin or a material: every daily persona gets exactly what the free player gets
+    for (const id of ['light', 'medium', 'allowance', 'f2p_invited', 'f2p_inviter', 'ads']) {
+      expect(all[id]!.challengeClears).toBe(f.challengeClears);
+      expect(all[id]!.challengeCoins).toBe(f.challengeCoins);
+      expect(all[id]!.challengeMaterial).toBe(f.challengeMaterial);
+    }
+    // never paid coins; free coins within the weekly ceiling of the table and ≤ 2% of what a free player earns by playing
+    const weekCoins = Math.max(...wc.rotation.map((w) => w.challenges.reduce((a, c) => a + (c.reward.freeCoins ?? 0), 0)));
+    expect(f.challengeCoins).toBeLessThanOrEqual(weekCoins * Math.ceil(f.challengeBadges));
+    expect(f.challengeCoins).toBeLessThanOrEqual(0.02 * f.freeCoinsEarned);
+    expect(f.challengeMaterial).toBeGreaterThan(0);
+    // E1/E2 stay in range with the challenges included, for the free personas the targets cover
+    for (const id of ['f2p', 'f2p_invited']) {
+      expect(all[id]!.pullsPerMonth).toBeLessThanOrEqual(65);
+      expect(all[id]!.ssrPerMonth).toBeLessThanOrEqual(2.8);
+    }
+    expect(all.f2p_inviter!.ssrPerMonth).toBeLessThanOrEqual(2.8);
+  }, 3_600_000);
+
   it('E9 friend races cannot replace ranked play as an income (daily cap ≤ 30% of a free player day)', async () => {
     const r = (await run()).f2p!;
     const maxFriendPerDay = m.progression.friendRewardDailyCap * Math.max(...m.progression.raceFreeCoinsByPlace.friend!);

@@ -937,7 +937,7 @@
         "id": "w_aoba", "badge": { "id": "wch_badge_aoba", "name": "青葉の一閃章" },
         "challenges": [
           { "id": "wa_nige", "title": "逃げ切りの一閃", "trackId": "aoba_turf_1600", "cpuCount": 7, "cpuLevel": 3,
-            "conditions": { "style": "nige", "maxPlace": 1 }, "loanTemplateId": "t_hinode", "reward": { "freeCoins": 10 } },
+            "conditions": { "style": "nige", "maxPlace": 1 }, "loanTemplateId": "t_hinode", "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
           { "id": "wa_whip3", "title": "ムチは3発まで", "trackId": "kirameki_turf_2000", "cpuCount": 7, "cpuLevel": 3,
             "conditions": { "maxWhips": 3, "maxPlace": 3 }, "loanTemplateId": "t_natsu", "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
           { "id": "wa_rain", "title": "雨の重馬場", "trackId": "kirameki_turf_2000", "going": "soft", "cpuCount": 5, "cpuLevel": 2,
@@ -948,7 +948,7 @@
         "id": "w_minato", "badge": { "id": "wch_badge_minato", "name": "みなとの夜章" },
         "challenges": [
           { "id": "wm_night", "title": "ナイターの先行策", "trackId": "minato_dirt_1800", "night": true, "cpuCount": 7, "cpuLevel": 3,
-            "conditions": { "style": "senko", "maxPlace": 2 }, "loanTemplateId": "t_dorobune", "reward": { "freeCoins": 10 } },
+            "conditions": { "style": "senko", "maxPlace": 2 }, "loanTemplateId": "t_dorobune", "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
           { "id": "wm_nowhip", "title": "ムチなしの末脚", "trackId": "minato_turf_2400", "cpuCount": 7, "cpuLevel": 2,
             "conditions": { "maxWhips": 0, "maxPlace": 5 }, "loanTemplateId": "t_yuyake", "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
           { "id": "wm_sloppy", "title": "不良馬場を走り切れ", "trackId": "santalucera_dirt_1700", "going": "sloppy", "night": true, "cpuCount": 5, "cpuLevel": 2,
@@ -959,7 +959,7 @@
         "id": "w_bellmoor", "badge": { "id": "wch_badge_bellmoor", "name": "直線の覇者章" },
         "challenges": [
           { "id": "wb_sprint", "title": "直線一気", "trackId": "bellmoor_turf_1200", "cpuCount": 7, "cpuLevel": 3,
-            "conditions": { "maxPlace": 1, "maxWhips": 2 }, "loanTemplateId": "t_aozora", "reward": { "freeCoins": 10 } },
+            "conditions": { "maxPlace": 1, "maxWhips": 2 }, "loanTemplateId": "t_aozora", "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
           { "id": "wb_dirt", "title": "砂の先行争い", "trackId": "aoba_dirt_1400", "going": "muddy", "cpuCount": 7, "cpuLevel": 3,
             "conditions": { "style": "senko", "maxPlace": 3 }, "loanTemplateId": "t_dorobune", "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
           { "id": "wb_long", "title": "長距離の我慢", "trackId": "nordhaven_turf_2400", "cpuCount": 7, "cpuLevel": 3,

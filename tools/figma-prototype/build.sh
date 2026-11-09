@@ -42,4 +42,5 @@ node "$HERE/test/round10-invite.test.mjs" # round 10: 友達招待 — my code, 
 node "$HERE/test/round11.test.mjs"   # round 11: 図鑑 (obtained / seen / unknown, no reward for completion), achievements and claims, achievement titles
 node "$HERE/test/round12.test.mjs"   # round 12: コイン不足の案内 T6 (the one pack, the refused pull's details, KPI, back to the pull), bought packs owned
 node "$HERE/test/round11-training.test.mjs" # round 11: 調教 — view, a session re-scored on the server rules, anti-cheat, skip, the mission apple, the ranked line
+node "$HERE/test/round12-giftbox.test.mjs" # round 12: プレゼントボックス — boot balance, the demo box, claim one / all, history, no paid coins
 echo "built $SITE ($(du -sh "$SITE" | cut -f1))"

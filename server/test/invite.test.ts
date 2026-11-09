@@ -292,8 +292,12 @@ describe('milestones (REQ-INV-007/008)', () => {
     expect(w.state('bob').referral!.outbox.map((o) => o.milestoneId)).toEqual(['im_graduate']);
     expect(await w.svc.inviteDue('bob')).toMatchObject({ nextAt: w.now() });
     expect(await w.deliver('bob')).toEqual({ attempted: 1, delivered: 1, failed: 0 });
+    // REQ-BOX-001: the inviter's bonus waits in the gift box until alice opens it
+    expect(w.state('alice').wallet.free).toBe(coins0);
+    expect(w.state('alice').giftBox!.box[0]).toMatchObject({ source: 'invite', ref: 'invite:bob:im_graduate', contents: { freeCoins: 20 } });
+    await w.svc.giftClaimAll('alice', 'c:box-1');
     expect(w.state('alice').wallet.free).toBe(coins0 + 20);
-    expect(w.state('alice').ledger.at(-1)).toMatchObject({ kind: 'grant', currency: 'free', delta: 20, ref: 'invite:bob:im_graduate' });
+    expect(w.state('alice').ledger.at(-1)).toMatchObject({ kind: 'grant', currency: 'free', delta: 20, reason: 'invite milestone im_graduate' });
     // a retried delivery does not pay twice
     expect(await w.svc.inviteMilestone('alice', 'bob', 'im_graduate', 'b')).toEqual({ status: 'already' });
     await w.svc.missionsAll('bob');
@@ -306,10 +310,12 @@ describe('milestones (REQ-INV-007/008)', () => {
     const s2 = w.state('bob'); s2.season.classId = 'A'; w.put(s2);
     await w.svc.missionsAll('bob');
     await w.deliver('bob');
+    await w.svc.giftClaimAll('alice', 'c:box-2');
     expect(w.state('alice').wallet.free).toBe(coins0 + 20 + 40);
     const s3 = w.state('bob'); s3.season.classId = 'S'; w.put(s3);
     await w.svc.missionsAll('bob');
     await w.deliver('bob');
+    await w.svc.giftClaimAll('alice', 'c:box-3');
     expect(w.state('alice').items.gacha_ticket).toBe(tickets0 + 1);
     expect(w.state('alice').wallet.paid).toBe(0);
     const view = await w.invite.view('alice', null);

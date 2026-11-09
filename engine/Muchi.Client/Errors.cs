@@ -66,6 +66,10 @@ namespace Muchi.Client
         TrainingSessionUsed,
         /// <summary>422: the submitted taps break the mini-game bounds (REQ-TRAIN-007).</summary>
         TrainingInputInvalid,
+        /// <summary>409: the gift box entry has expired (REQ-BOX-006).</summary>
+        GiftExpired,
+        /// <summary>409: receiving this gift would go over a hold limit (coins or items); it stays in the box (REQ-BOX-005).</summary>
+        GiftHoldCap,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -148,6 +152,8 @@ namespace Muchi.Client
             ["TRAINING_SESSION_EXPIRED"] = ApiErrorCode.TrainingSessionExpired,
             ["TRAINING_SESSION_USED"] = ApiErrorCode.TrainingSessionUsed,
             ["TRAINING_INPUT_INVALID"] = ApiErrorCode.TrainingInputInvalid,
+            ["GIFT_EXPIRED"] = ApiErrorCode.GiftExpired,
+            ["GIFT_HOLD_CAP"] = ApiErrorCode.GiftHoldCap,
             ["VERIFIER_UNAVAILABLE"] = ApiErrorCode.VerifierUnavailable,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };

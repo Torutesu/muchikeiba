@@ -210,6 +210,7 @@ describe('PlayerService items (idempotent, all-or-nothing)', () => {
   it('a retried ticket use or cosmetic purchase with the same key does not charge twice', async () => {
     const p = svc();
     await p.adminGrant('u', { freeCoins: 1000, items: [{ itemId: 'gacha_ticket', qty: 2 }] }, 'test', 'ops', 'op1');
+    await p.giftClaimAll('u', 'c:gift-setup-4'); // REQ-BOX-001: ops grants arrive in the gift box
     const a = await p.useTicket('u', 'gacha_ticket', 'standard', 'c:/v1/items/tickets/gacha_ticket/use:k1');
     const b = await p.useTicket('u', 'gacha_ticket', 'standard', 'c:/v1/items/tickets/gacha_ticket/use:k1');
     expect(b).toEqual(a);
@@ -243,6 +244,7 @@ describe('HTTP routes (REQ-ITEM-*)', () => {
     expect((await call('GET', '/v1/items/tickets/ticket_sr_plus/odds')).status).toBe(200);
     expect((await call('GET', '/v1/items/tickets/nope/odds')).status).toBe(404);
     await p.adminGrant('u1', { freeCoins: 1000, items: [{ itemId: 'ticket_sr_plus', qty: 1 }] }, 'test', 'ops', 'op1');
+    await p.giftClaimAll('u1', 'c:gift-setup-5'); // REQ-BOX-001: ops grants arrive in the gift box
     expect((await call('POST', '/v1/items/tickets/ticket_sr_plus/use', {})).status).toBe(400); // idempotency key required
     const used = await call('POST', '/v1/items/tickets/ticket_sr_plus/use', {}, 'u-1');
     expect(used.status).toBe(200);

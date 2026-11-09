@@ -10,7 +10,7 @@ import type { DeadLetterRecord, DeadLetterSource, DeadLetterStatus } from '../op
 import type { DryRunOp } from '../ops/config.js';
 import type { AdminPrincipal } from '../ops/admin.js';
 import type { Grant } from '../ops/support.js';
-import { CompensationStore, type CompensationQuery, type CompensationRepo, type CompensationRequest } from '../ops/compensation.js';
+import { CompensationStore, type CompensationGift, type CompensationQuery, type CompensationRepo, type CompensationRequest } from '../ops/compensation.js';
 
 /** REQ-OPS-026: compensation requests on SQLite (one JSON row per request; opKey unique). */
 export class SqlCompensationRepo implements CompensationRepo {
@@ -134,7 +134,7 @@ export class OpsDO extends DurableObject<Env> {
   configDryRun(op: DryRunOp, by: string, now: number) { return wrap(() => this.config.dryRun(op, by, now)); }
 
   // ---- compensation requests (REQ-OPS-026) ----
-  compCreate(input: { opKey: string; playerId: string; grant: Grant; reason: string }, by: AdminPrincipal, now: number) { return wrap(() => this.compensations.create(input, by, now)); }
+  compCreate(input: { opKey: string; playerId: string; grant: Grant; reason: string; gift?: CompensationGift }, by: AdminPrincipal, now: number) { return wrap(() => this.compensations.create(input, by, now)); }
   compGet(id: string, now: number) { return wrap(() => this.compensations.get(id, now)); }
   compList(q: CompensationQuery, now: number) { return wrap(() => this.compensations.list(q, now)); }
   compApprove(id: string, by: AdminPrincipal, note: string, now: number) { return wrap(() => this.compensations.approve(id, by, note, now)); }

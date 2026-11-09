@@ -166,13 +166,13 @@ describe('INSUFFICIENT_COINS carries details.shortfall (REQ-SHORT-004)', () => {
   it('a gacha pull: 409 with the shortfall; nothing is written; the same key works once coins arrive', async () => {
     const w = world();
     await w.svc.bootstrap('p');
-    await w.svc.adminGrant('p', { freeCoins: 300 }, 'test', 'op', 'g1');
+    await w.svc.adminGrant('p', { freeCoins: 300 }, 'test', 'op', 'g1'); await w.svc.giftClaimAll('p', 'c:claim-1'); // REQ-BOX-001: ops grants wait in the gift box
     const r = await w.call('POST', '/v1/gacha/standard/draw', 'p', { key: 'k1', body: { count: 10 } });
     expect(r.status).toBe(409);
     expect(r.body.error.code).toBe('INSUFFICIENT_COINS');
     expect(r.body.error.details.shortfall).toMatchObject({ coinKind: 'any', need: 1000, have: 300, shortfall: 700, status: 'covered', offer: { productId: 'coin_1500', offerId: 'shortfall' } });
     expect((await w.svc.view('p')).wallet.free).toBe(300);
-    await w.svc.adminGrant('p', { freeCoins: 700 }, 'test', 'op', 'g2');
+    await w.svc.adminGrant('p', { freeCoins: 700 }, 'test', 'op', 'g2'); await w.svc.giftClaimAll('p', 'c:claim-2'); // REQ-BOX-001: ops grants wait in the gift box
     const ok = await w.call('POST', '/v1/gacha/standard/draw', 'p', { key: 'k1', body: { count: 10 } });
     expect(ok.status).toBe(200);
     expect(ok.body.results).toHaveLength(10);
@@ -181,7 +181,7 @@ describe('INSUFFICIENT_COINS carries details.shortfall (REQ-SHORT-004)', () => {
   it('the paid step-up: paid coins only, free coins are not counted', async () => {
     const w = world();
     await w.svc.bootstrap('p');
-    await w.svc.adminGrant('p', { freeCoins: 5000 }, 'test', 'op', 'g1');
+    await w.svc.adminGrant('p', { freeCoins: 5000 }, 'test', 'op', 'g1'); await w.svc.giftClaimAll('p', 'c:claim-3'); // REQ-BOX-001: ops grants wait in the gift box
     const r = await w.call('POST', '/v1/gacha/stepup_paid/draw', 'p', { key: 'k', body: { count: 10 } });
     expect(r.status).toBe(409);
     expect(r.body.error.details.shortfall).toMatchObject({ coinKind: 'paid', need: 500, have: 0, shortfall: 500, headline: '有償コインが500枚足りません', offer: { productId: 'coin_800' } });
@@ -218,7 +218,7 @@ describe('GET /v1/shop/shortfall (REQ-SHORT-005)', () => {
   it('gacha (the step-up\'s current step price), cosmetic, amount; same answer as the failed spend', async () => {
     const w = world();
     await w.svc.bootstrap('p');
-    await w.svc.adminGrant('p', { freeCoins: 300 }, 'test', 'op', 'g1');
+    await w.svc.adminGrant('p', { freeCoins: 300 }, 'test', 'op', 'g1'); await w.svc.giftClaimAll('p', 'c:claim-4'); // REQ-BOX-001: ops grants wait in the gift box
     const pre = await w.call('GET', '/v1/shop/shortfall?for=gacha&bannerId=standard&count=10', 'p');
     expect(pre.status).toBe(200);
     const fail = await w.call('POST', '/v1/gacha/standard/draw', 'p', { key: 'k', body: { count: 10 } });
@@ -241,7 +241,7 @@ describe('GET /v1/shop/shortfall (REQ-SHORT-005)', () => {
     expect((await w.call('GET', '/v1/shop/shortfall?for=gacha&bannerId=winter_2026', 'p')).body.error.code).toBe('BANNER_CLOSED');
     w.at(NOW);
     expect((await w.call('GET', '/v1/shop/shortfall?for=cosmetic&itemId=tack_bridle_pass_plus', 'p')).body.error.code).toBe('NOT_ELIGIBLE');
-    await w.svc.adminGrant('p', { freeCoins: 300 }, 'test', 'op', 'g1');
+    await w.svc.adminGrant('p', { freeCoins: 300 }, 'test', 'op', 'g1'); await w.svc.giftClaimAll('p', 'c:claim-5'); // REQ-BOX-001: ops grants wait in the gift box
     await w.svc.buyCosmetic('p', 'tack_bridle_classic', 'c:b1');
     expect((await w.call('GET', '/v1/shop/shortfall?for=cosmetic&itemId=tack_bridle_classic', 'p')).body.error.code).toBe('ALREADY_PURCHASED');
   });

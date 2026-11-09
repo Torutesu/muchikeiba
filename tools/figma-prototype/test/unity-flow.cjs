@@ -618,6 +618,43 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.match(await page.locator('.screen.in [data-product="starter_pack"]').innerText(), /購入済み/);
   assert.equal(await page.locator('.screen.in [data-product="starter_pack"] .btn[data-label="購入を確認"]').count(), 0, 'a bought starter pack has no buy button');
   await shot('shop-bought-packs', 400);
+  // ------------------------------------------------------------------ 6. round 12: プレゼントボックス (REQ-BOX-*)
+  // a compensation, a tournament prize, a grant with no expiry and one expiring in 3 days arrive through the real routes;
+  // one gift was received earlier and one expired (history)
+  await page.evaluate(() => globalThis.__muchi.demo('gifts')); await waitScreen('gift-box', 60000); await page.waitForTimeout(400);
+  const gbText = await page.locator('.screen.in').innerText();
+  assert.match(gbText, /メンテナンスのお詫び/, 'the compensation title');
+  assert.match(gbText, /大会の賞品/, 'the tournament prize');
+  assert.match(gbText, /有償コインはプレゼントボックスに入りません/, 'paid coins never go into the box');
+  assert.ok(!/今だけ|残りわずか|倍|お得/.test(gbText), 'no urgency or multiplier wording in the box');
+  assert.equal(await page.locator('.screen.in [data-gift]').count(), 4, 'four gifts waiting');
+  assert.equal(await page.locator('.screen.in [data-expiry]').count(), 3, 'an expiry text only where the gift really expires (not on the no-expiry grant)');
+  assert.equal(await page.locator('.screen.in [data-gift]').first().locator('[data-expiry]').getAttribute('data-expiry'), '3', 'the soonest first: 「あと3日」');
+  await shot('gift-box', 400);
+  await click('ホームへ'); await waitScreen(['home', 'link-prompt'], 20000);
+  if (await screen() === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); }
+  await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .btn.envelope').getAttribute('data-badge'), '4', 'the home envelope shows 4');
+  await shot('home-envelope', 300);
+  await click('プレゼント'); await waitScreen('gift-box'); await page.waitForTimeout(300);
+  const gFree0 = Number(await page.locator('.screen.in [data-free]').first().getAttribute('data-free'));
+  await page.locator('.screen.in [data-gift-claim]').first().click(); await waitScreen('gift-result'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-gift-claimed]').getAttribute('data-gift-claimed'), '1');
+  await shot('gift-result-one', 300);
+  await click('つづける'); await waitScreen('gift-box'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-gift]').count(), 3);
+  await click('まとめて受け取る'); await waitScreen('gift-result'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-gift-claimed]').getAttribute('data-gift-claimed'), '3', 'claim all receives the rest');
+  await shot('gift-result-all', 300);
+  await click('つづける'); await waitScreen('gift-box'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-gift-empty]').count(), 1, 'the box is empty');
+  assert.equal(await page.locator('.screen.in .btn[data-label="まとめて受け取る"]').count(), 0);
+  const gFree1 = Number(await page.locator('.screen.in [data-free]').first().getAttribute('data-free'));
+  assert.equal(gFree1 - gFree0, 300 + 150 + 50, 'free coins of the four gifts (300 + 150 + 50; the ticket is an item)');
+  await page.locator('.screen.in [data-tab="history"]').click(); await waitScreen('gift-history'); await page.waitForTimeout(300);
+  assert.ok((await page.locator('.screen.in [data-gift][data-status="expired"]').count()) === 1, 'the expired gift is in the history');
+  assert.ok((await page.locator('.screen.in [data-gift][data-status="claimed"]').count()) >= 5, 'received gifts are in the history');
+  await shot('gift-history', 300);
 
   // a reload on a named player goes straight home
   await demo('day3');

@@ -40,3 +40,9 @@ for (const p of PERSONAS) {
 const gap = (a: string, b: string, cls: string, key: 'trained' | 'untrained') => res[a]!.rankedTotalByClass[cls]![key] - res[b]!.rankedTotalByClass[cls]![key];
 const perDay = (id: string) => res[id]!.trainedPoints / Math.max(1, res[id]!.activeDays);
 console.log(`\nE15 中課金−無課金のランク戦能力差（正規化後、調教なし→あり）: ${classes.map((c) => `${c.id} ${gap('medium', 'f2p', c.id, 'untrained').toFixed(0)}→${gap('medium', 'f2p', c.id, 'trained').toFixed(0)}`).join('  ')}  伸び/稼働日 中課金÷無課金 ${(perDay('medium') / perDay('f2p')).toFixed(2)}`);
+
+// REQ-BOX-013: the gift box changes routing only — what arrived is claimed on the next active day, nothing expires
+console.log('');
+console.log('| persona | プレゼントボックス 受け取り（件） | 期限切れ（件） |');
+console.log('|---|---|---|');
+for (const p of PERSONAS) { const r = res[p.id]!; console.log(`| ${p.label} | ${r.giftsClaimed.toFixed(1)} | ${r.giftsExpired.toFixed(1)} |`); }

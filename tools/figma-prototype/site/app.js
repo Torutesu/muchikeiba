@@ -926,6 +926,7 @@ async function Home() {
   }
   Wallet();
   EnToggle();
+  GiftEnvelope(); // round 12 (REQ-BOX-004): the envelope with the unclaimed count
   // right: the thin-divider menu (厩舎 / スカウト / ミッション / 機能)
   const menu = Glass('Menu', 1139, 190, 388, 394, undefined, .77);
   const ms = missions.ok ? missions.value : [];
@@ -1805,6 +1806,8 @@ async function Settings() {
   Ghost('タイムアタック', 36, 292, 436, 56, () => TimeAttack(), demo, 'quiet small');
   // round 10: a demo purchase of this season's pass (no billing) to see the 購入済み state
   Ghost('パス購入済み（デモ）', 36, 362, 436, 56, async () => { const r = await L.demoPurchase('season_pass'); toast(r.ok ? '今シーズンのパスを購入済みにしました（決済なし）' : r.code === 'ALREADY_PURCHASED' ? '今シーズンのパスは購入済みです' : r.message); }, demo, 'quiet small');
+  // round 12: the gift box after a maintenance, a tournament and a promotion (real delivery routes)
+  Ghost('プレゼントボックス（デモ）', 36, 432, 436, 56, () => Demo('gifts'), demo, 'quiet small');
   Txt('サーバーと同じ規則のまま、日付だけ進めてログボとレースを消化します。', 36, 600, 436, 14, SOFT, demo, { lh: 1.6 });
   NavBar(4);
 }
@@ -1817,7 +1820,7 @@ function ConfirmDeletion(v) {
   const f = v.forfeit;
   Hair(52, 330, 896, box);
   Kicker('失うもの', 52, 352, box, { rule: false, size: 15, color: GOLD });
-  Txt(`有償コイン ${fmt(f.paidCoins)}　·　無償コイン ${fmt(f.freeCoins)}　·　馬 ${f.horses}頭　·　アイテム ${f.items}個${f.allowanceDays ? `　·　厩舎手当 残り${f.allowanceDays}日` : ''}${f.seasonPass ? '　·　シーズンパス' : ''}`, 52, 382, 896, 19, WHITE, box, { weight: 500, lh: 1.6 });
+  Txt(`有償コイン ${fmt(f.paidCoins)}　·　無償コイン ${fmt(f.freeCoins)}　·　馬 ${f.horses}頭　·　アイテム ${f.items}個${f.allowanceDays ? `　·　厩舎手当 残り${f.allowanceDays}日` : ''}${f.seasonPass ? '　·　シーズンパス' : ''}${f.gifts ? `　·　受け取っていないプレゼント ${f.gifts}件` : ''}`, 52, 382, 896, 19, WHITE, box, { weight: 500, lh: 1.6 });
   Cta('やめる', 52, 500, 400, Settings, box);
   Ghost('削除を確定（14日後）', 640, 506, 308, 60, async () => { const r = await L.requestDeletion(v.confirmToken); toast(r.ok ? '削除を受け付けました。14日以内なら取り消せます。' : r.message); Settings(); }, box, 'danger');
 }
@@ -1833,6 +1836,7 @@ async function Demo(kind) {
   if (kind === 'new') { await L.bootstrap(); await refresh(); return Title(); }
   if (kind === 'comeback') { await L.seedComeback(14); await refresh(); return Home(); }
   if (kind === 'collection') { await L.seedCollection(); await refresh(); return Collection('horses'); }
+  if (kind === 'gifts') { await L.seedGifts(); await refresh(); giftState.tab = 'box'; giftState.page = 0; return GiftBox('box'); }
   const spec = { day1: [1, [1]], day3: [3, [2, 2, 2]], day7: [7, [3, 3, 3, 3, 3, 3, 3]] }[kind];
   await L.seedDemo(spec[0], spec[1]);
   await refresh();
@@ -1937,8 +1941,8 @@ async function Invite(demoNote = '') {
   // review-only demo actions (same rules: other local players redeem my code / reach milestones)
   const demo = el('invite-demo', 796, 800, 768, 48);
   Ghost('デモ：友達が参加', 0, 0, 250, 48, async () => { const d = await L.invite.demoFriendJoins(); toast(d.ok ? (d.value.result.friended ? '友達があなたのコードで参加し、フレンドになりました' : '友達があなたのコードで参加しました') : (INVITE_ERRORS[d.code] ?? d.message)); Invite(); }, demo, 'quiet small');
-  Ghost('デモ：初心者卒業', 259, 0, 250, 48, async () => { const d = await L.invite.demoMilestone('im_graduate'); toast(d.ok ? `招待ボーナス：無償コイン+${d.value.freeCoinsGained}` : '対象の友達がいません'); Invite(); }, demo, 'quiet small');
-  Ghost('デモ：A級昇級', 518, 0, 250, 48, async () => { const d = await L.invite.demoMilestone('im_class_a'); toast(d.ok ? `招待ボーナス：無償コイン+${d.value.freeCoinsGained}` : '対象の友達がいません'); Invite(); }, demo, 'quiet small');
+  Ghost('デモ：初心者卒業', 259, 0, 250, 48, async () => { const d = await L.invite.demoMilestone('im_graduate'); toast(d.ok ? `招待ボーナスがプレゼントボックスに届きました：無償コイン+${d.value.freeCoinsGained}` : '対象の友達がいません'); Invite(); }, demo, 'quiet small');
+  Ghost('デモ：A級昇級', 518, 0, 250, 48, async () => { const d = await L.invite.demoMilestone('im_class_a'); toast(d.ok ? `招待ボーナスがプレゼントボックスに届きました：無償コイン+${d.value.freeCoinsGained}` : '対象の友達がいません'); Invite(); }, demo, 'quiet small');
 }
 
 // ================================================================= returning players (REQ-CB-001..012, 06 §4.5, contracts/protocol.md §20)
@@ -2708,6 +2712,103 @@ async function TeamFeed() {
   NavBar(4);
 }
 
+// ================================================================= round 12: プレゼントボックス (REQ-BOX-*, contracts/protocol.md §26)
+// The same screen as the Unity GiftBoxModel: the box (soonest expiry first) and the 90-day history, one claim per row and
+// one claim-all CTA, the result panel. All values come from L.giftBox (the real PlayerService rules). The expiry text
+// 「あと3日」 is drawn only from a real expiresAt (no expiry = no text); paid coins never appear here.
+// ムチ一閃 tone: paddock art, translucent navy panels, letter-spaced cyan labels, one skewed cyan CTA » per view.
+const GIFT_SOURCE_JA = { ops_compensation: 'お詫び', ops_grant: '運営', invite: '招待', event: 'イベント', tournament: '大会', team: '支部', league: '支部対抗', season: 'シーズン' };
+const giftState = { tab: 'box', page: 0 };
+const giftDays = (exp) => Math.max(1, Math.ceil((exp - L.now()) / 86_400_000));
+const jstDay = (ms) => { const d = new Date(ms + 9 * 3600e3); return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日`; };
+/** The home envelope (top bar, left of the wallet) with the unclaimed count from the player view (REQ-BOX-004). */
+function GiftEnvelope(x = 1088, y = 33) {
+  const n = player?.giftBox?.unclaimed ?? 0;
+  const b = Btn('プレゼント', x, y, 80, 77, () => GiftBox('box'), 'envelope', undefined, '');
+  b.innerHTML += '<svg viewBox="0 0 40 28" width="40" height="28" aria-hidden="true"><rect x="1.5" y="1.5" width="37" height="25" rx="2" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M2.5 3 L20 16 L37.5 3" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/></svg>';
+  b.dataset.badge = String(n);
+  if (n > 0) { const i = document.createElement('b'); i.className = 'env-badge num'; i.textContent = n > 99 ? '99+' : String(n); b.appendChild(i); }
+  return b;
+}
+async function GiftBox(tab = giftState.tab) {
+  if (tab !== giftState.tab) giftState.page = 0;
+  giftState.tab = tab;
+  currentScreen = () => GiftBox(tab);
+  await refresh();
+  const PER = 6;
+  const r = await L.giftBox(tab, giftState.page * PER, PER);
+  if (!r.ok) { toast(r.message); return Home(); }
+  const v = r.value;
+  const pages = Math.max(1, Math.ceil(v.total / PER));
+  if (giftState.page > pages - 1) { giftState.page = pages - 1; return GiftBox(tab); }
+  const blocked = player.deletion?.status === 'scheduled';
+  Clear(tab === 'box' ? 'gift-box' : 'gift-history'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('プレゼントボックス', '運営からのお詫びや、大会・シーズンの報酬が届きます　·　中身は無償コインとアイテムだけ');
+  const p = Glass('Gift list', 36, 134, 1060, 676, undefined, .88);
+  [['box', 'ボックス'], ['history', '履歴']].forEach(([k, name], i) => { const b = Btn(name, 36 + i * 130, 28, 120, 44, () => GiftBox(k), 'choice' + (tab === k ? ' on' : ''), p); b.dataset.tab = k; b.style.fontSize = '16px'; });
+  if (tab === 'history') Txt(`直近${v.rules.historyDays}日`, 316, 40, 300, 14, SOFT, p, { weight: 500 });
+  if (v.entries.length === 0) Txt(tab === 'box' ? 'プレゼントはありません' : `直近${v.rules.historyDays}日の履歴はありません`, 36, 130, 900, 18, SOFT, p).dataset.giftEmpty = '1';
+  v.entries.forEach((e, i) => {
+    const row = el('ach-row gift-row', 36, 96 + i * 90, 988, 90, p); row.dataset.gift = e.giftId; row.dataset.status = e.status;
+    Txt(GIFT_SOURCE_JA[e.source] ?? e.source, 0, 12, 150, 12, e.source === 'ops_compensation' ? GOLD : CYAN, row, { weight: 700, ls: '.18em', nowrap: true });
+    Txt(e.title + (e.rank ? `　·　${e.rank}位` : ''), 0, 32, 470, 18, WHITE, row, { weight: 700, nowrap: true });
+    Txt(e.lines.join('　·　'), 0, 60, 470, 13, MUTED, row, { nowrap: true }).style.overflow = 'hidden';
+    if (tab === 'box') {
+      // the expiry text only for a real expiresAt (REQ-BOX-004); gold inside the server's "expiring soon" window
+      if (e.expiresAt != null) {
+        const d = giftDays(e.expiresAt);
+        Txt(`あと${d}日`, 500, 22, 160, 17, d <= 3 ? GOLD : MUTED, row, { weight: 700, align: 'right', nowrap: true, cls: 'num' }).dataset.expiry = String(d);
+        Txt(`${jstDay(e.expiresAt)}まで`, 500, 52, 160, 12, SOFT, row, { align: 'right', nowrap: true });
+      }
+      if (e.held) Txt(e.held.reason === 'coin_cap' ? '無償コインの持てる上限のため受け取れませんでした' : 'アイテムの持てる上限のため受け取れませんでした', 680, 64, 300, 11, WARN, row, { nowrap: true }).dataset.held = e.held.reason;
+      if (!blocked) Ghost('受け取る', 860, 18, 128, 44, () => GiftClaim(() => L.giftClaim(e.giftId)), row, 'small gold').dataset.giftClaim = e.giftId;
+    } else {
+      Txt(e.status === 'expired' ? '期限切れ' : '受け取り済み', 680, 22, 300, 15, e.status === 'expired' ? SOFT : OK, row, { weight: 700, align: 'right', nowrap: true });
+      Txt(jstDay(e.doneAt), 680, 52, 300, 12, SOFT, row, { align: 'right', nowrap: true, cls: 'num' });
+    }
+  });
+  if (pages > 1) {
+    Txt(`${giftState.page + 1} / ${pages}`, 740, 648, 120, 14, MUTED, p, { align: 'right', cls: 'num' }).dataset.giftPage = String(giftState.page + 1);
+    const prev = Ghost('前へ', 872, 636, 72, 40, () => { giftState.page--; GiftBox(tab); }, p, 'small');
+    const next = Ghost('次へ', 952, 636, 72, 40, () => { giftState.page++; GiftBox(tab); }, p, 'small');
+    if (giftState.page === 0) disable(prev);
+    if (giftState.page >= pages - 1) disable(next);
+  }
+  // right: the count, the one CTA (claim everything that fits), the rule in plain words
+  const s = Glass('Gift totals', 1116, 134, 448, 676, undefined, .9);
+  Kicker('受け取り待ち', 36, 30, s, { size: 16 });
+  Txt(`${v.badge.unclaimed}件`, 36, 100, 376, 40, WHITE, s, { weight: 700, cls: 'num' }).dataset.giftCount = String(v.badge.unclaimed);
+  if (v.badge.expiringSoon > 0) Txt(`うち${v.badge.expiringSoon}件は3日以内に期限`, 36, 158, 376, 14, GOLD, s, { weight: 500 });
+  if (blocked) Txt('アカウント削除の予定があります。取り消すと受け取れます', 36, 200, 376, 14, RED, s, { weight: 700, lh: 1.5 }).dataset.giftBlocked = '1';
+  else if (v.badge.unclaimed > 0) Cta('まとめて受け取る', 36, 196, 376, () => GiftClaim(() => L.giftClaimAll()), s, 'small');
+  else Txt('受け取れるプレゼントはありません', 36, 214, 376, 15, SOFT, s);
+  Hair(36, 296, 376, s);
+  Kicker('受け取りのきまり', 36, 318, s, { rule: false, size: 14 });
+  Txt(`受け取り期限は届いてから${v.rules.defaultExpiryDays}日（お詫びは90日）。期限を過ぎたプレゼントは受け取れなくなります。`, 36, 352, 376, 13, MUTED, s, { lh: 1.6 });
+  Txt('持てる上限を超えるプレゼントは、ボックスに残ります。', 36, 440, 376, 13, MUTED, s, { lh: 1.6 });
+  Txt('有償コインはプレゼントボックスに入りません。', 36, 600, 376, 13, SOFT, s, { lh: 1.5 });
+  Back(Home, 'ホームへ', 40, 834);
+}
+/** Runs a claim (one / all) and shows what came in and what stayed in the box. */
+async function GiftClaim(call) {
+  const r = await call();
+  if (!r.ok) { toast(r.code === 'GIFT_HOLD_CAP' ? '持てる上限に達しているため、受け取れません。' : r.code === 'GIFT_EXPIRED' ? 'このプレゼントは受け取り期限を過ぎました。' : r.message); return GiftBox(); }
+  await refresh();
+  GiftResult(r.value);
+}
+function GiftResult(c) {
+  currentScreen = () => GiftResult(c); Clear('gift-result'); SetArt('Art/home-paddock', false); Shade('dim heavy');
+  const box = Dialog('Gift result', 900, 560);
+  Kicker('受け取り結果', 52, 48, box);
+  Txt(c.claimed.length > 0 ? `${c.claimed.length}件のプレゼントを受け取りました` : '受け取れるプレゼントはありませんでした', 52, 112, 796, 30, WHITE, box, { weight: 700 }).dataset.giftClaimed = String(c.claimed.length);
+  const lines = [];
+  if (c.totals.freeCoins > 0) lines.push([`無償コイン${fmt(c.totals.freeCoins)}枚`, GOLD]);
+  for (const [id, q] of Object.entries(c.totals.items)) lines.push([`${inviteItemName(id)}×${q}`, WHITE]);
+  lines.slice(0, 5).forEach(([t, col], i) => Txt(t, 52, 186 + i * 40, 796, 22, col, box, { weight: 700, nowrap: true }));
+  if (c.held.length) Txt(`${c.held.length}件は持てる上限のため、ボックスに残しました`, 52, 400, 796, 15, WARN, box, { weight: 500 }).dataset.giftHeld = String(c.held.length);
+  Cta('つづける', 52, 466, 360, () => GiftBox('box'), box, 'small');
+}
+
 // ================================================================= boot
 function fit() {
   const s = Math.min(window.innerWidth / 1600, window.innerHeight / 900);
@@ -2740,7 +2841,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Collection, Achievements, Training, TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ GiftBox, Collection, Achievements, Training, TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

@@ -60,7 +60,8 @@ export type PlayerMethod =
   | 'comeback' | 'comebackClaimLogin' | 'comebackClaimMission' | 'comebackWelcomed' | 'whatsNew' | 'whatsNewSeen'
   | 'ads' | 'setAdPref' | 'adStart' | 'adSession' | 'adReward'
   | 'collection' | 'achievements' | 'claimAchievement' | 'claimAllAchievements'
-  | 'training' | 'trainingStart' | 'trainingFinish' | 'trainingUseItem';
+  | 'training' | 'trainingStart' | 'trainingFinish' | 'trainingUseItem'
+  | 'giftBox' | 'giftClaim' | 'giftClaimAll';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -527,6 +528,24 @@ export const routes: Route[] = [
   { method: 'GET', path: '/v1/titles', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('titles', u) },
   // 図鑑・実績 (REQ-COL-*, REQ-ACH-*)
   { method: 'GET', path: '/v1/collection', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('collection', u) },
+  // プレゼントボックス (REQ-BOX-*, contracts/protocol.md §26)
+  { method: 'GET', path: '/v1/gift-box', auth: 'player', handler: async (r, _p, c, u) => {
+    const q = new URL(r.url).searchParams;
+    const tab = q.get('tab') ?? 'box';
+    if (tab !== 'box' && tab !== 'history') throw new AppError('BAD_REQUEST', 'tab must be box or history');
+    const int = (k: string, d: number, lo: number, hi: number) => {
+      const v = q.get(k);
+      if (v === null) return d;
+      if (!/^\d{1,5}$/.test(v) || Number(v) < lo || Number(v) > hi) throw new AppError('BAD_REQUEST', `${k} must be an integer ${lo}..${hi}`);
+      return Number(v);
+    };
+    return c.player(u).invoke('giftBox', u, tab, int('offset', 0, 0, 10_000), int('limit', 50, 1, 100));
+  } },
+  { method: 'POST', path: '/v1/gift-box/claim-all', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('giftClaimAll', u, idem(r)) },
+  { method: 'POST', path: '/v1/gift-box/:giftId/claim', auth: 'player', handler: async (r, p, c, u) => {
+    if (!/^gift_[0-9]{1,9}$/.test(p.giftId!)) throw new AppError('BAD_REQUEST', 'bad gift id');
+    return c.player(u).invoke('giftClaim', u, p.giftId!, idem(r));
+  } },
   { method: 'GET', path: '/v1/achievements', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('achievements', u) },
   { method: 'POST', path: '/v1/achievements/claim-all', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('claimAllAchievements', u, idem(r)) },
   { method: 'POST', path: '/v1/achievements/:achievementId/tiers/:tier/claim', auth: 'player', handler: async (r, p, c, u) => {

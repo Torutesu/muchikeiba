@@ -183,6 +183,8 @@ export interface Progression {
   comeback?: import('./comeback.js').ComebackConfig;
   /** REQ-TRAIN-*: 調教 (training.ts, validated by trainingProblems). Absent = no training. */
   training?: import('./training.js').TrainingConfig;
+  /** REQ-BOX-*: プレゼントボックス (giftBox.ts, validated by giftBoxProblems). Absent = rewards are granted directly. */
+  giftBox?: import('./giftBox.js').GiftBoxConfig;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */
@@ -256,8 +258,9 @@ export type TitleCondition =
   | { kind: 'achievement'; achievementId: string; tier: number };
 export interface TitleDef { id: string; name: string; condition: TitleCondition }
 /** `comeback` (REQ-CB-007): lapse reminders, opt-in (06 §3.5: a re-engagement push needs its own category and consent). */
-export type PushCategory = 'season' | 'friends' | 'invites' | 'events' | 'comeback';
-export const PUSH_CATEGORIES: PushCategory[] = ['season', 'friends', 'invites', 'events', 'comeback'];
+/** `gifts` (REQ-BOX-011): a compensation arrived in the gift box. */
+export type PushCategory = 'season' | 'friends' | 'invites' | 'events' | 'comeback' | 'gifts';
+export const PUSH_CATEGORIES: PushCategory[] = ['season', 'friends', 'invites', 'events', 'comeback', 'gifts'];
 export interface PushTemplate { category: PushCategory; title: string; body: string; ttlSec: number; timeSensitive: boolean }
 /** REQ-PUSH-*: defaults, limits and Japanese templates (master/push.json). */
 export interface PushMaster {

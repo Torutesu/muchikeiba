@@ -111,6 +111,17 @@ export const CODE_EN: Record<string, string> = {
   '図鑑の達成率は記録の表示だけです。そろえても報酬はありません。': 'The completion rate of the collection is a record only. Completing it pays no reward.',
   '実績はレースや育成などのプレイで達成します。課金やガチャの回数では達成しません。報酬は無償コインです。': 'Achievements come from play, such as racing and raising horses, never from spending or the number of scouts. Rewards are free coins.',
 
+  // ---- プレゼントボックス (giftBox.ts GIFT_TITLES, REQ-BOX-003; 招待ボーナス is in master/locale-en.json)
+  'お詫びの品': 'An apology gift',
+  'メンテナンスのお詫び': 'Apology for the maintenance',
+  '不具合のお詫び': 'Apology for a bug',
+  '運営からの贈り物': 'A gift from the team',
+  'イベントの順位報酬': 'Event ranking reward',
+  '大会の賞品': 'Tournament prize',
+  '支部のシーズン報酬': 'Branch season reward',
+  '支部対抗シーズンの報酬': 'Branch league reward',
+  'シーズンの報酬': 'Season reward',
+
   // ---- error details shown to players (REQ-API-004 messages; codes are the contract)
   'カタカナ2〜9文字': '2–9 katakana characters',
   '{a}〜{b}文字': '{a}–{b} characters',

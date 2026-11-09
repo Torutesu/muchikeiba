@@ -54,7 +54,9 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     if (!inRace) captureMs += Date.now() - a;
   };
   const screen = () => page.evaluate(() => globalThis.__muchi?.screen ?? '');
-  const waitScreen = (name, timeout = 30000) => page.waitForFunction((x) => { const s = globalThis.__muchi?.screen ?? ''; return Array.isArray(x) ? x.includes(s) : s === x; }, name, { timeout, polling: 50 });
+  // on a timeout, say which screen is up and the page errors so far (a timeout alone hides an exception in the screen)
+  const waitScreen = (name, timeout = 30000) => page.waitForFunction((x) => { const s = globalThis.__muchi?.screen ?? ''; return Array.isArray(x) ? x.includes(s) : s === x; }, name, { timeout, polling: 50 })
+    .catch(async (e) => { const now = await screen().catch(() => '?'); throw new Error(`waitScreen(${JSON.stringify(name)}) timed out on "${now}"; errors: ${errors.slice(-5).join(' | ')}\n${e.message}`); });
   const state = () => page.evaluate(() => { const s = globalThis.__muchi.state(); const f = s.lastFrame; return { active: s.raceActive, f: f && { tick: f.tick, distanceM: f.distanceM, departed: f.departed, gateOpen: f.gateOpen, remainingM: f.remainingM, whips: f.whips, done: f.done, chance: f.feel?.whipChance, rank: f.rank } }; });
   const btn = (label) => page.locator(`.screen.in [data-label="${label}"]`).first();
   const click = async (label) => { await btn(label).click(); await page.waitForTimeout(350); };
@@ -257,7 +259,10 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await page.locator('.screen.in .rv-result .rv-continue').click(); await page.waitForTimeout(300);
     const free1 = await page.evaluate(async () => (await globalThis.__muchi.logic.view()).wallet.free);
     assert.ok(free1 - free0 <= 20, 'rival: at most the fixed reward');
-    await click('BACK'); await waitScreen('home');
+    // the demo jumped to the end of the week: when that is 7 game days after the last play (it depends on the weekday
+    // the test runs), the comeback welcome rightly comes first — leave it for later
+    await click('BACK'); await waitScreen(['home', 'comeback-welcome']);
+    if ((await screen()) === 'comeback-welcome') { await click('あとで'); await waitScreen('home'); }
     await page.evaluate(() => globalThis.__muchi.logic.setClockMs(null)); // back to the demo day for the next flows
   }
 

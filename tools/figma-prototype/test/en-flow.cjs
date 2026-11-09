@@ -258,6 +258,14 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await page.locator('.screen.in [data-action="history-ticket"]').click(); await page.waitForTimeout(600);
   await shot('history-ticket', 300);
 
+  // round 15: アクティビティ in English (REQ-ACT-014): the list (server texts, player names as written) and the home bell
+  await page.evaluate(() => globalThis.__muchi.demo('activity')); await waitScreen('activity', 60000);
+  await shot('activity', 600);
+  assert.match(await page.locator('.screen.in').innerText(), /My Stable got 12 likes/, 'activity: collapsed likes in English');
+  await click('ホームへ'); await waitScreen(['home', 'link-prompt'], 20000);
+  if ((await screen()) === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); }
+  await shot('home-bell', 400);
+
   // round 13: 支部の共同目標 in English (REQ-TGOAL-*): the week, after the demo races, the week result sheet
   await show('TeamGoal'); await waitScreen('team-goal', 20000); await shot('team-goal', 600);
   assert.match(await page.locator('.screen.in').innerText(), /as a branch/, 'team goal: the goal label in English');

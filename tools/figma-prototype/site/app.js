@@ -945,6 +945,7 @@ async function Home() {
   Wallet();
   EnToggle();
   GiftEnvelope(); // round 12 (REQ-BOX-004): the envelope with the unclaimed count
+  ActivityBell(); // round 15 (REQ-ACT-009): the bell with the unread count
   // right: the thin-divider menu (厩舎 / スカウト / ミッション / 機能)
   const menu = Glass('Menu', 1139, 190, 388, 394, undefined, .77);
   const ms = missions.ok ? missions.value : [];
@@ -2012,7 +2013,9 @@ async function Settings() {
   Ghost('プレゼントボックス（デモ）', 36, 432, 436, 56, () => Demo('gifts'), demo, 'quiet small');
   // round 12: three last places in a row → the one-time かんたん操作 suggestion (REQ-ASSIST-010)
   Ghost('最下位が3回続いた（デモ）', 36, 502, 436, 56, () => Demo('assist'), demo, 'quiet small');
-  Txt('サーバーと同じ規則のまま、日付だけ進めてログボとレースを消化します。', 36, 600, 436, 14, SOFT, demo, { lh: 1.6 });
+  // round 15: what happened while away (friend request, likes, cheers, a tournament result, a gift…), real event sources
+  Ghost('アクティビティ（デモ）', 36, 572, 436, 56, () => Demo('activity'), demo, 'quiet small');
+  Txt('サーバーと同じ規則のまま、日付だけ進めてログボとレースを消化します。', 36, 640, 436, 14, SOFT, demo, { lh: 1.6 });
   NavBar(4);
 }
 // ================================================================= round 12: かんたん操作 (REQ-ASSIST-*, contracts/protocol.md §27)
@@ -2102,6 +2105,7 @@ async function Demo(kind) {
   if (kind === 'new') { await L.bootstrap(); await refresh(); return Title(); }
   if (kind === 'comeback') { await L.seedComeback(14); await refresh(); return Home(); }
   if (kind === 'collection') { await L.seedCollection(); await refresh(); return Collection('horses'); }
+  if (kind === 'activity') { await L.seedActivity(); await refresh(); actState.cursor = null; actState.stack = []; return Activity(); }
   if (kind === 'gifts') { await L.seedGifts(); await refresh(); giftState.tab = 'box'; giftState.page = 0; return GiftBox('box'); }
   // round 12: a week of play, then three ranked races in last place (settled by the real applyRace) → the one-time suggestion
   if (kind === 'assist') { await L.seedDemo(7, [3, 3, 3, 3, 3, 3, 3]); ftue = false; await L.demoLastPlaces(3); await refresh(); return AssistThen(Home); }
@@ -3332,6 +3336,76 @@ function GiftResult(c) {
   if (c.held.length) Txt(`${c.held.length}件は持てる上限のため、ボックスに残しました`, 52, 400, 796, 15, WARN, box, { weight: 500 }).dataset.giftHeld = String(c.held.length);
   Cta('つづける', 52, 466, 360, () => GiftBox('box'), box, 'small');
 }
+// ================================================================= round 15: アクティビティ (REQ-ACT-*, contracts/protocol.md §40)
+// The same screen as the Unity ActivityModel: the home bell (unread count), the list (newest first, server cursor), a deep
+// link per row, mark read up to the newest shown entry on opening. Display + links only: a gift row leads to the gift box,
+// never a claim button. Every value comes from L.activity (the real PlayerService and the same name resolution as the route).
+// ムチ一閃 tone: paddock art, translucent navy panels, letter-spaced cyan labels, one skewed cyan CTA ».
+const ACT_LABEL = { friend_request: 'フレンド', friend_accepted: 'フレンド', rival_week: 'ライバル', rival_record: 'ライバル', stable_like: 'マイ厩舎', team_cheer: '支部', tournament_result: '大会', gift_arrived: 'プレゼント', team_goal_tier: '支部', team_goal_week: '支部', replay_share: 'リプレイ' };
+const ACT_PAGE = 7;
+const actState = { cursor: null, stack: [] };
+const actGo = (screen, id) => ({
+  friends: () => Invite(), rival: () => Rival(), stable: () => Stable(), team_feed: () => TeamFeed(), tournaments: () => EventTop(),
+  gift_box: () => GiftBox('box'), team_goal: () => TeamGoal(), whats_new: () => Home(), replay: () => toast('リプレイを開きます'),
+})[screen]?.(id);
+/** The home bell (under the gift envelope, clear of the rival strip) with the unread count from the player view (REQ-ACT-009). */
+function ActivityBell(x = 1088, y = 122) {
+  const n = player?.activity?.unread ?? 0;
+  const b = Btn('アクティビティ', x, y, 80, 56, () => { actState.cursor = null; actState.stack = []; Activity(); }, 'bell', undefined, '');
+  b.innerHTML += '<svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><path d="M16 4c-5 0-8 3.6-8 8.6v5.6L5 22.5h22l-3-4.3v-5.6C24 7.6 21 4 16 4z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/><path d="M12.5 25.5a3.6 3.6 0 0 0 7 0" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>';
+  b.dataset.badge = String(n); b.dataset.action = 'activity';
+  if (n > 0) { const i = document.createElement('b'); i.className = 'env-badge num'; i.textContent = n >= 99 ? '99+' : String(n); b.appendChild(i); }
+  return b;
+}
+async function Activity() {
+  currentScreen = () => Activity();
+  const r = await L.activity(actState.cursor, ACT_PAGE);
+  if (!r.ok) { toast(r.message); return Home(); }
+  const P = r.value;
+  // REQ-ACT-015: activity_open once per opening (the first page), with the bell's number then
+  if (actState.cursor === null && !actState.stack.length) {
+    (globalThis.__muchiKpi ??= []).push({ name: 'activity_open', unread: P.unread });
+    // REQ-ACT-008: everything up to the newest entry shown is read (the rows still say unread on this visit)
+    if (P.items.length) { await L.activityRead(P.items[0].id); await refresh(); }
+  }
+  Clear('activity'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('アクティビティ', '留守の間のできごと　·　タップでその画面へ');
+  const p = Glass('Activity list', 36, 134, 1060, 676, undefined, .88);
+  p.classList.add('act-list');
+  Kicker('新しい順', 36, 30, p, { size: 15 });
+  if (!P.items.length) Txt('まだお知らせはありません', 36, 110, 900, 19, MUTED, p).dataset.actEmpty = '1';
+  P.items.forEach((it, i) => {
+    const row = el('act-row' + (it.unread ? ' unread' : ''), 24, 80 + i * 72, 1012, 66, p);
+    row.dataset.act = it.kind; row.dataset.screen = it.link.screen; row.dataset.count = String(it.count); row.dataset.unread = it.unread ? '1' : '0';
+    if (it.unread) el('act-dot', 0, 28, 10, 10, row);
+    Txt(ACT_LABEL[it.kind] ?? 'お知らせ', 22, 8, 160, 12, it.kind === 'gift_arrived' ? GOLD : CYAN, row, { weight: 700, ls: '.18em', nowrap: true });
+    Txt(jstDate(it.at), 190, 8, 220, 12, SOFT, row, { weight: 500, nowrap: true, cls: 'num' });
+    Txt(it.text, 22, 30, 760, 18, it.unread ? WHITE : MUTED, row, { weight: 700, nowrap: true });
+    const go = Ghost(it.link.screen === 'gift_box' ? 'プレゼントボックスへ' : '見る', 800, 10, 200, 46, () => {
+      (globalThis.__muchiKpi ??= []).push({ name: 'activity_tap', kind: it.kind, screen: it.link.screen });
+      actGo(it.link.screen, it.link.id);
+    }, row, 'small quiet');
+    go.dataset.actGo = it.link.screen;
+  });
+  const prev = Ghost('前へ', 640, 600, 180, 52, () => { actState.cursor = actState.stack.pop() ?? null; Activity(); }, p, 'quiet small');
+  if (!actState.stack.length && actState.cursor === null) disable(prev);
+  const next = Ghost('次へ', 836, 600, 188, 52, () => { actState.stack.push(actState.cursor); actState.cursor = P.nextCursor; Activity(); }, p, 'quiet small');
+  if (!P.nextCursor) disable(next);
+  next.dataset.more = P.nextCursor ? '1' : '0';
+  // right: unread on arrival, the what's-new link, how pushes relate, the one CTA
+  const d = Glass('Activity summary', 1116, 134, 448, 676, undefined, .9);
+  Kicker('未読', 36, 30, d, { size: 16 });
+  Txt(`${P.unread}件`, 36, 100, 376, 40, WHITE, d, { weight: 700, cls: 'num' }).dataset.actUnread = String(P.unread);
+  if (P.links.whatsNew > 0) TextLink('新着情報があります', 36, 172, 376, () => Home(), d).dataset.actWhatsnew = String(P.links.whatsNew);
+  Hair(36, 236, 376, d);
+  Kicker('お知らせのきまり', 36, 258, d, { rule: false, size: 14 });
+  Txt('いいね・応援スタンプ・プレゼントは、まとめて1件で表示します。', 36, 292, 376, 13, MUTED, d, { lh: 1.6 });
+  Txt('プレゼントの受け取りはプレゼントボックスで行います。', 36, 366, 376, 13, MUTED, d, { lh: 1.6 });
+  Txt('プッシュ通知の設定はプッシュだけに効きます。この一覧はいつでも見られます。', 36, 440, 376, 13, SOFT, d, { lh: 1.6 });
+  Cta('ホームへ', 36, 576, 376, () => Home(), d, 'small');
+  Back(Home, 'ホームへ', 40, 834);
+}
+
 // ================================================================= round 13: 購入履歴・コイン履歴・ガチャ履歴 (REQ-HIST-*, contracts/protocol.md §33)
 // The same screen as the Unity HistoryModel: a balance header with 有償 / 無償 apart and this month against the age limit,
 // four tabs (購入 / 有償コイン / 無償コイン / ガチャ), pages by the server's cursor, the selected row's detail, and the
@@ -3597,7 +3671,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Activity, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

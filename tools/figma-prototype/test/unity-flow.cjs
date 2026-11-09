@@ -807,6 +807,30 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.ok((await page.locator('.screen.in [data-gift][data-status="expired"]').count()) === 1, 'the expired gift is in the history');
   assert.ok((await page.locator('.screen.in [data-gift][data-status="claimed"]').count()) >= 5, 'received gifts are in the history');
   await shot('gift-history', 300);
+  // ------------------------------------------------------------------ 6. round 15: アクティビティ (REQ-ACT-*)
+  // written by the real event sources at their push points (friend request / accept, 12 likes, a cheer, a rival record, a
+  // tournament result, a compensation, the team goal); the home bell, the list (collapsed likes, gift row links to the box,
+  // no claim button), mark read on opening, a deep link
+  await page.evaluate(() => globalThis.__muchi.demo('activity')); await waitScreen('activity', 60000); await page.waitForTimeout(400);
+  const acText = await page.locator('.screen.in').innerText();
+  assert.match(acText, /アサヒさんからフレンド申請が届きました/, 'the newest entry: a friend request with the sender name');
+  assert.match(acText, /マイ厩舎に12件のいいねが届きました/, '12 likes → one row');
+  assert.ok(!/今だけ|残りわずか|倍|お得/.test(acText), 'no urgency or multiplier wording');
+  assert.equal(await page.locator('.screen.in [data-act="stable_like"]').getAttribute('data-count'), '12');
+  assert.equal(await page.locator('.screen.in [data-act="gift_arrived"] [data-act-go="gift_box"]').count(), 1, 'the gift row links to the gift box');
+  assert.equal(await page.locator('.screen.in .act-row .btn[data-label="受け取る"]').count(), 0, 'no claim button on the activity list');
+  assert.ok(Number(await page.locator('.screen.in [data-act-unread]').getAttribute('data-act-unread')) >= 7, 'unread on arrival');
+  await shot('activity', 400);
+  await click('次へ'); await page.waitForTimeout(500); await shot('activity-page2', 300);
+  await click('ホームへ'); await waitScreen(['home', 'link-prompt'], 20000);
+  if (await screen() === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); }
+  await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .btn[data-action="activity"]').getAttribute('data-badge'), '0', 'opened → the bell clears');
+  await shot('home-bell', 300);
+  await click('アクティビティ'); await waitScreen('activity'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .act-row.unread').count(), 0, 'read rows on the next visit');
+  await page.locator('.screen.in [data-act="gift_arrived"] [data-act-go]').click(); await waitScreen('gift-box', 20000);
+  assert.ok((await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name === 'activity_tap').length)) >= 1, 'activity_tap sent');
   // ------------------------------------------------------------------ 6. round 12: かんたん操作 (REQ-ASSIST-*)
   // a week of play, then three last places settled by the real applyRace → the one-time suggestion (calm: 「今はいい」 as big
   // as the rest) → ぜんぶおまかせ → the settings row and the options screen → a ranked race the real InputAssistant rides with
@@ -898,7 +922,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.equal(await page.locator('.screen.in .hi-ticket').getAttribute('data-ticket'), 'muchi.support-ticket.v1', 'the draft came back from the server');
   assert.match(await page.locator('.screen.in .hi-ticket').innerText(), /問い合わせ番号：G-\d+/);
   await shot('history-contact', 300);
-  assert.deepEqual(await page.evaluate(() => (globalThis.__muchiKpi ?? []).map((e) => e.tab)), ['purchases', 'coins_paid', 'coins_free', 'gacha'], 'history_view once per tab');
+  assert.deepEqual(await page.evaluate(() => (globalThis.__muchiKpi ?? []).filter((e) => e.name === 'history_view').map((e) => e.tab)), ['purchases', 'coins_paid', 'coins_free', 'gacha'], 'history_view once per tab');
 
   // a reload on a named player goes straight home
   await demo('day3');

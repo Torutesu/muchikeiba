@@ -530,3 +530,12 @@ html[lang="en"] .pass-strip .cell small { font-size: 12px; }
 .tg-row.mine { box-shadow: inset 3px 0 0 var(--cyan); background: rgba(var(--cyan-rgb), .08); }
 .tg-row.mine .tg-name { color: var(--cyan); }
 .tf-row.goal .tf-main { color: var(--cyan); }
+/* round 15: アクティビティ — rows with a cyan label, an unread dot, a quiet ghost link (no claim buttons) */
+.el.act-row { border-bottom: 1px solid rgba(var(--cyan-rgb), .14); }
+.el.act-row .act-dot { border-radius: 50%; background: var(--cyan); box-shadow: 0 0 8px rgba(var(--cyan-rgb), .7); }
+.el.act-row .btn.small { font-size: 16px; }
+/* round 15: the home bell — the same navy glass and gold count badge as the gift envelope */
+.btn.bell .bg { background: rgba(var(--navy-rgb), .77); border-radius: 4px; backdrop-filter: blur(6px); }
+.btn.bell { color: var(--cyan); justify-content: center; }
+.btn.bell svg { position: relative; }
+.btn.bell .env-badge { position: absolute; right: 6px; top: 6px; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 12px; background: var(--gold); color: var(--navy); font-size: 14px; font-weight: 700; line-height: 24px; text-align: center; font-style: normal; }

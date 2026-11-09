@@ -200,6 +200,35 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
   }
 
+  // round 15 (REQ-ADV-*): 出走前アドバイス on the lobby — rows in words (never marks or odds), the tips for the selected horse
+  // (recomputed by the C# mirror in WASM = the server), the honest footnote, the hide switch and back, advice_view once
+  async function raceAdviceFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await waitIn('.adv-panel .adv-row');
+    const panel = page.locator('.screen.in .adv-panel');
+    const text = await panel.innerText();
+    assert.ok(/今日の\d+コースで計算/.test(text) && text.includes('勝ちを約束するものではありません'), 'advice: drawn course counted, the honest footnote');
+    assert.ok(!/勝率|確率|オッズ|本命|穴|%|％|倍|買|購入|ガチャ|ショップ|◎|○|▲|△/.test(text.replace(/[ァ-ヶー]{2,9}/g, '')), 'advice: no odds, marks or purchase words');
+    const rows = await page.locator('.screen.in .adv-row').count();
+    assert.ok(rows >= 1, 'advice: the horses are listed');
+    const views = () => page.evaluate(() => globalThis.__muchi.logic.kpiLog().filter((e) => e.name === 'advice_view').length);
+    const views0 = await views();
+    assert.ok(views0 >= 1, 'advice_view sent when the panel is shown');
+    await shot('race-lobby-advice', 300);
+    if (rows >= 2) {
+      const second = await page.locator('.screen.in .adv-row').nth(1).getAttribute('data-horse');
+      await page.locator('.screen.in .adv-row').nth(1).click();
+      await page.waitForFunction((h) => document.querySelector('.screen.in .adv-panel')?.dataset.focus === h, second, { timeout: 10000 });
+      assert.equal(await page.locator('.screen.in .adv-panel').getAttribute('data-device'), 'true', 'advice: a selection is recomputed on the device');
+      assert.ok((await page.locator('.screen.in').innerText()).includes(await page.locator('.screen.in .adv-row.sel').locator('.label').first().innerText()), 'advice: the selected horse is the one entered');
+      await shot('race-lobby-advice-selected', 300);
+    }
+    await click('アドバイスを隠す'); await waitIn('.adv-off');
+    await shot('race-lobby-advice-off', 300);
+    await click('アドバイスを見る'); await waitIn('.adv-panel .adv-row');
+    assert.equal(await views(), views0, 'advice_view once per lobby visit (not again on a selection or hide / show)');
+  }
+
   // round 13 (REQ-WCH-*): 週替わりチャレンジ from the home card → this week's three (condition lines from the server, the loan
   // horse at the cap, the cosmetic badge, the fairness rules, no shop link) → next week's preview → a race with the loan horse
   // on the real engine, the condition live in the HUD → the result decided by the logic's re-simulation of the issued config
@@ -223,6 +252,11 @@ module.exports = async function unityFlow(browser, base, out, errors) {
       return (ok.find((c) => c.conditions.maxPlace !== undefined) ?? ok[0] ?? v.challenges[0]).id;
     });
     await page.locator(`.screen.in .wch-card[data-challenge="${pick}"]`).click(); await waitIn(`.glass[data-challenge="${pick}"]`);
+    // round 15: the advice sheet (the loan horse among the candidates, CPUs unknown, no skills)
+    await page.locator('.screen.in .adv-open').click(); await waitIn('.adv-sheet .adv-grade');
+    assert.ok(/ムチは残り\d+mから/.test(await page.locator('.screen.in .adv-sheet').innerText()), 'challenge advice: the whip tip for the known course');
+    await shot('challenge-advice', 400);
+    await click('閉じる'); await page.waitForTimeout(300);
     await click('貸し出し馬で挑戦'); await waitScreen('race', 30000); await waitIn('.wch-hud');
     const maxWhips = await page.evaluate(() => globalThis.__muchi.challengeSession.challenge.conditions.maxWhips ?? 2);
     let started = false, w = 0, lastW = 0, hudShot = false;
@@ -636,7 +670,9 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await scoutLiveOps();
   await click('厩舎'); await shot('stable', 400); await click('BACK');
   await waitScreen('home');
-  await click('レースへ'); await waitScreen('lobby'); await shot('race-lobby', 400); await click('戻る');
+  await click('レースへ'); await waitScreen('lobby'); await shot('race-lobby', 400);
+  await raceAdviceFlow();
+  await click('戻る');
   await waitScreen('home');
   for (const [name, fn] of [['wardrobe', 'Wardrobe'], ['course-looks', 'CourseThemes'], ['conditions', 'Conditions'], ['care', 'Care']]) {
     await page.evaluate((f) => globalThis.__muchi.show(f), fn); await shot(name, 450);

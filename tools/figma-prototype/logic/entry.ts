@@ -38,6 +38,8 @@ import { HallService, MemoryHallDirectory, hallConfig, hallSnapshot } from '../.
 import { hallPlayersFrom } from '../../../server/src/http/hallPorts.js';
 import { MemoryReplayStore, MyReplaysService } from '../../../server/src/domain/myReplaysService.js';
 import { DEFAULT_RULESET } from '../../../server/src/domain/ruleset.js';
+import { computeRaceAdvice, adviceTextProblems, adviceTexts, type AdviceInput } from '../../../server/src/domain/raceAdvice.js';
+import type { AdviceQuery } from '../../../server/src/domain/raceAdviceService.js';
 // REQ-L10N-*: the server's English tables (master/locale-en.json + i18n/en.ts), the client's (ui-en.json) and the
 // prototype's own screen texts (proto-en.json), in one catalog with the server's template rules (katakana names romanized)
 import { compileCatalogWith, translateText, romanizeName } from '../../../server/src/i18n/catalog.js';
@@ -346,6 +348,13 @@ export const MuchiLogic = {
   // normalised stats, no skills, the loan horse at the cap), and the submit path: prepare builds the replay log from the
   // ISSUED config + the validated inputs, `verify` re-simulates THAT log in the WASM engine (the C# verifier's code), and
   // record evaluates the conditions on the verified result — the device's own verdict is never sent.
+  // ---------------------------------------------------------------- round 15: 出走前アドバイス (REQ-ADV-*, protocol §39)
+  // GET /v1/races/advice on the real service (raceAdviceFor: the player's horses, today's going, the challenge's loan horse)
+  // and the pure scorer itself (the page recomputes the tips for another selected horse; the WASM C# mirror must agree).
+  raceAdvice: (q: AdviceQuery) => wrap(() => svc.raceAdvice(ID, q)),
+  computeAdvice: (input: AdviceInput) => computeRaceAdvice(input),
+  adviceLint: (texts: string[]) => texts.flatMap((t) => adviceTextProblems(t)),
+  adviceTexts: (a: Parameters<typeof adviceTexts>[0]) => adviceTexts(a),
   weeklyChallenges: () => wrap(() => svc.wchView(ID)),
   weeklyChallengeStart: (challengeId: string, horseId: string | null) => wrap(() => svc.wchStart(ID, challengeId, horseId ? { horseId } : { loan: true }, key())),
   async weeklyChallengeSubmit(sessionId: string, inputs: number[][], resultHash: string, verify: (logJson: string) => string) {

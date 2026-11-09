@@ -855,6 +855,20 @@
   "点滅は1秒に3回までに抑えています": "Flashing is kept to 3 times a second or less",
   "アクセシビリティ設定を保存しました": "Accessibility settings saved",
   "オンラインになったら保存します": "Will be saved when you are back online",
-  "長押し あと{n}": "Hold: {n} left"
+  "長押し あと{n}": "Hold: {n} left",
+  "_raceAdvice": "---- 出走前アドバイス (round 15, REQ-ADV-*, RaceAdvice / RaceAdviceModel). No odds, chances or purchases.",
+  "ムチはアドバイスどおり残り{n}mから": "Whip came as advised, from {n} m out",
+  "ムチがアドバイス（残り{n}m）より早かった": "Whip came earlier than advised ({n} m out)",
+  "ムチがアドバイス（残り{n}m）より遅かった": "Whip came later than advised ({n} m out)",
+  "ムチを使わなかった（アドバイスは残り{n}mから）": "No whip (the advice was from {n} m out)",
+  "出走前アドバイス": "Pre-race advice",
+  "アドバイス": "Advice",
+  "よく合う": "Good fit",
+  "合う": "Fits",
+  "条件外あり": "Out of range",
+  "アドバイスは馬の適性とルールから計算しています。勝ちを約束するものではありません。": "Advice is worked out from the horse's aptitudes and the rules. It does not promise a win.",
+  "アドバイスはオフです（設定で変えられます）": "Advice is off (change it in Settings)",
+  "アドバイスを見る": "Show advice",
+  "アドバイスを表示する": "Show advice before races"
  }
 }

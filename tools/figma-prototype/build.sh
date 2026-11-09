@@ -54,4 +54,5 @@ node "$HERE/test/round14-commentary-packs.test.mjs" # round 14: 実況パック 
 node "$HERE/test/round14-my-replays.test.mjs"  # round 14: マイリプレイ — races settled with their replay, save / rename / favourite / public / delete, ReplayPlayer in WASM (speed, camera, last 200 m), 再生できません, a friend replay
 node "$HERE/test/a11y-flash.test.cjs"       # round 15: アクセシビリティ — the --a11y-* tokens equal contracts/a11y-tokens.json, every blink ≤ 3 flashes/s and off with reduce motion
 node "$HERE/test/round15-a11y.test.mjs"     # round 15: アクセシビリティ — the whip hold (RaceInput + WhipHold) in WASM, a hold = taps, the tutorial, the settings on the server rules
+node "$HERE/test/round15-race-advice.test.mjs" # round 15: 出走前アドバイス — TS = C# (WASM) on the shared vectors, the lobby over today's courses, the challenge loan horse, tutorial, KPI, English
 echo "built $SITE ($(du -sh "$SITE" | cut -f1))"

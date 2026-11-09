@@ -110,6 +110,8 @@ static class Program
         await CommentaryPackChecks.Run(Check, Ruleset(), Root);
         Console.WriteLine("== round 14: マイリプレイ (list cards, save / rename / favourite / public / delete, ReplayPlayer, 再生できません; REQ-MYRP-*)");
         await MyReplaysChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 15: 出走前アドバイス (RaceAdviceModel: rows in words, device recompute = server, setting, tutorial, offline, KPI, result line; REQ-ADV-*)");
+        await RaceAdviceChecks.Run(Check, Root);
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

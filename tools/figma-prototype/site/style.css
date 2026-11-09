@@ -596,3 +596,5 @@ html[data-color-mode="cvd"] .a11y-swatch .g.crit { background: repeating-linear-
 .a11y-swatch .me, .a11y-swatch .other { display: block; width: 18px; height: 18px; border-radius: 50%; margin-left: 12px; background: var(--a11y-position-self); }
 .a11y-swatch .other { width: 12px; height: 12px; margin-left: 4px; background: var(--a11y-position-other); }
 .hud .label.holdhint { pointer-events: none; }
+/* round 15: 出走前アドバイス — the selected horse row (the one that races) */
+.card.adv-row.sel { box-shadow: inset 0 0 0 2px var(--cyan), 0 0 26px rgba(0, 210, 237, .22); transform: translateY(-2px); }

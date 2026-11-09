@@ -708,7 +708,6 @@
 - REQ-EXCH-011 経済 E17：全ての想定でイベント期間中に1日3レースをイベントにし、猶予期間に交換所を使っても E1〜E6 が目標内、どの想定も引ける回数がイベントなしの 1.03 倍以下、課金しても貯まるポイントは同じ、1イベントの交換のコイン価値（コイン＋券の1回分の価格）≤ 250（`server/test/economy.test.ts`、`npm run economy`）。
 - REQ-EXCH-012 クライアントと運用：`Muchi.Client` `ApiClient.GetExchangeAsync`・`ExchangeAsync`、Unity のゲーム層 `ExchangeModel`（行のカード・在庫「残り n / m」・確認シート・確定まで冪等キーを保持・猶予期間の案内・課金への導線なし）、英語の文言。運用コンソールはイベントの一覧で交換所の行・在庫・猶予日数を読める（`GET /v1/admin/config` 系の既存の表示）。
 
-
 ## 31. 週替わりチャレンジ（TS＋C#、`src/domain/weeklyChallenge.ts`・`src/race/weeklyChallenge.ts`、`contracts/protocol.md` §31、docs/planning/06 §1.3）
 拘束条件：ランク戦は課金で決まらない（06 §1.3）。チャレンジは「乗り方」で毎週少しずつ目標をくれる短いループで、検証はタイムアタックと同じくサーバーの再シミュレーション。
 - REQ-WCH-001 週：`gameWeekId`（`time.ts`）。`weekStartsOn`（月曜）のゲーム日の切り替わり（REQ-DAY-001、04:00 JST）に変わる。セットは `rotation` を `anchorWeekId` から1週ずつ。週の終わりの直前に始めたレースは期限内なら始めた週の分。
@@ -727,7 +726,6 @@
 - REQ-WCH-014 KPI：`challenge_start`・`challenge_clear`（protocol §31.8、`docs/ops/kpi-queries.md`）。
 - REQ-WCH-015 英語：一覧・結果・エラーのすべての文に英語（タイトル・バッジ名は `master/locale-en.json`、条件の文は `i18n/en.ts`）。プロトタイプとクライアントも英語で表示できること。
 - REQ-WCH-016 クライアント：`Muchi.Client` の API・`ChallengeRun`・`ChallengeEvaluator`、Unity の `WeeklyChallengeModel`（ホームのカード・一覧・HUD の条件の行・結果・バッジ）。プロトタイプ（ムチ一閃の画面、本物のエンジンでのレース、日英、e2e と英語の通し）。 解放キー `weekly_challenge`（タイムアタックと同じ条件、Round 13 の統合で追加）。
-
 
 ## 32. 支部の共同目標（TS＋C#、`src/domain/teamGoal.ts`、`contracts/protocol.md` §32、docs/spec/balance-targets.md 4.17）
 - REQ-TGOAL-001 週：月曜のゲーム日の切り替え（4:00 JST）から7ゲーム日。週のキーは月曜のゲーム日。終わりは次の月曜 4:00 JST。 Round 13 の統合：`time.ts` の共通の `gameWeekId`（ライバル・週替わりチャレンジと同じ週。月曜 03:59 は前の週、04:00 から新しい週、`test/game-week.test.ts`）。
@@ -833,6 +831,25 @@
 - REQ-MYRP-014 KPI：`replay_save`・`replay_view`（サーバー）、`replay_share`（クライアント）。クエリは `docs/ops/kpi-queries.md`。
 - REQ-MYRP-015 クライアント：`Muchi.Client` `ApiClient.GetMyReplaysAsync`・`SaveReplayAsync`・`UpdateReplayAsync`（名前・お気に入り・公開）・`DeleteReplayAsync`・`GetReplayDataAsync`・`GetFriendReplaysAsync`・`GetFriendReplayDataAsync`、`ReplayPlayer`。Unity のゲーム層 `MyReplaysModel`（一覧のカード、名前の変更シート、公開の切り替え、プレイヤーの操作、再生できない時の文言）。
 - REQ-MYRP-016 プロトタイプ：マイリプレイの一覧（結果・コース・日付のカード）、本物のエンジンの再計算で動くプレイヤー（速度・カメラ・最後の200m）、名前の変更シート、公開の切り替え（日本語・英語）。
+
+## 39. 出走前アドバイス（TS＋C#、`src/domain/raceAdvice.ts`・`raceAdviceService.ts`・`Muchi.Client/RaceAdvice.cs`、`contracts/protocol.md` §39、共有ベクター `contracts/race-advice.vectors.json`）
+拘束条件：アドバイスはデータから計算し、乱数を使わない。勝つ確率・オッズ・印を出さない。購入を勧めない。無料で全員同じ（ランク戦の公平性）。
+- REQ-ADV-001 計算：純粋な関数 `computeRaceAdvice(AdviceInput)`。コース（1つ、またはレースが選ぶ候補の全部）、候補の馬（能力・脚質・距離適性・芝ダート・得意馬場・固有スキル）、わかっている相手、ルールセットの値（1.1〜1.3 の任意キー群：馬場ごとの消耗・得意馬場・距離の係数・スキルのキー）から、馬の並び・おすすめ・乗り方のヒントを出す（protocol §39.1 の表）。
+- REQ-ADV-002 一致：C# `RaceAdvice.Compute` は同じ手順。`contracts/race-advice.vectors.json`（`npm run gen:advice-vectors`）の全ケースで TS と C# の出力（日本語の文まで）が一致すること。ファイルが古ければ TS のテストが落ちる。
+- REQ-ADV-003 根拠：使う数はエンジンと同じもの（適性外 −5%、得意馬場 ±8‰、スパート区間の距離の係数、ムチの間隔）と balance-targets の結果（1.2+ は脚質の有利不利が距離で変わらない、R4d「残り400mから」）。ナイターは走りに影響しないと正直に書く。
+- REQ-ADV-004 文言の lint：日英とも勝率・確率・オッズ・本命・穴・%・倍・買・購入・ガチャ・◎○▲△ などを使わない（`ADVICE_BANNED_JA`/`EN`、`adviceTextProblems`）。テストは全コース×全馬場×昼夜×全モード×マスターの全馬で出る文の全部を検査する。英語が無い文があってもテストが落ちる。
+- REQ-ADV-005 API：`GET /v1/races/advice?context=…`（読み取りだけ、状態を変えない）。コンテキスト `ranked`/`friend`/`event`/`challenge`/`timeattack`/`tutorial` ごとの入力は protocol §39.4。ルールセットはリモート設定の有効なもの。応答に計算に使った `input` を含め、端末は選ぶ馬が変わったら端末で計算し直す。
+- REQ-ADV-006 公平性：無料・回数制限なし・課金や持ち物で内容が変わらない。プレイヤーが既に見られる情報（自分の馬、コースとその日の馬場、チャレンジのカード、部屋のメンバーの脚質）だけを使う。ランク戦はマッチング前の相手を使わず、`field` も受け取らない。アドバイスはレースの設定・結果に関わらない。
+- REQ-ADV-007 ランク戦：コースは出走時に決まるので、全コース（その日の馬場）で「何コースで距離と芝・ダートが合うか」を数える（確率ではなく数）。初めてのランク戦でコースが決まっている時はそのコース。
+- REQ-ADV-008 チャレンジ：貸し出し馬を候補に入れ、自分の馬は脚質の条件に合うものだけ。CPU の頭数はわかるが脚質は「出走時に決まる」。スキルなし・正規化を明記。
+- REQ-ADV-009 設定：端末の設定でアドバイスを切れる（既定 ON）。切ると API を呼ばず、パネルも KPI も出さない。
+- REQ-ADV-010 チュートリアル：決まった短い版（「合図が出たら、ムチ」「ムチは間隔をあけて打つと伸びる」）。馬の並べ替えなし。設定にかかわらず出す。
+- REQ-ADV-011 KPI：クライアントのイベント `advice_view`（context・並べた馬の数・おすすめの有無）と `advice_follow`（出走した馬がおすすめの馬か）。protocol §39.7、`docs/ops/kpi-queries.md`。
+- REQ-ADV-012 英語：全ての文に英語（`i18n/en.ts` のテンプレート、馬場・脚質の言葉）。馬の名前はプレイヤーが付けたまま。プロトタイプとクライアントも英語で表示できること。
+- REQ-ADV-013 クライアント：`ApiClient.GetRaceAdviceAsync`、`RaceAdvice`（計算・ルールセットからの値・ムチのヒントの答え合わせ）、Unity `RaceAdviceModel`（パネル・馬の選択・設定・KPI・オフライン）。
+- REQ-ADV-014 振り返り：ムチのアドバイスを見たレースの結果画面に、ムチの打ち始めがアドバイスどおりだったかを1行（端末だけで計算、protocol §39.6）。
+- REQ-ADV-015 経済：コイン・アイテムを動かさない（E1〜E19 は変わらない）。
+- REQ-ADV-016 プロトタイプ：ランク戦の出走登録とチャレンジの画面にアドバイスのパネル（ムチ一閃のトーン、日英、e2e と英語の通し）。
 
 ## 41. アクセシビリティ設定（TS＋C#、`src/domain/accessibility.ts`・`Muchi.Client/Accessibility.cs`・`Muchi.Game.AccessibilityModel`、`contracts/protocol.md` §41、docs/planning/06 §11）
 拘束条件：どの設定もレースの計算・結果・検証を変えない。入力の補助は §27 の公平性の決まり（上手な操作より強くならない・課金で買えない・相手に見えない）に従う。

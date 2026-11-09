@@ -470,6 +470,7 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
       clock: () => Date.now(),
       activeRuleset: async () => (await activeConfig(env)).ruleset,
     }),
+    activeRuleset: async () => (await activeConfig(env)).ruleset, // REQ-ADV-005
     paidBalance: () => (stub(env.ACCOUNTING, 'global') as unknown as { summary(): Promise<unknown> }).summary(),
     retainedRefund: (anonId, txId) => (stub(env.ACCOUNTING, 'global') as unknown as { retainedRefund(a: string, t: string, n: number): Promise<unknown | null> }).retainedRefund(anonId, txId, Date.now()),
     adminToken: env.ADMIN_TOKEN,

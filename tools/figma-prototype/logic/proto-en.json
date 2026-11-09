@@ -994,6 +994,14 @@
   "その他　/　アクセシビリティ": "More / Accessibility",
   "長押し あと0": "Hold: 0 left",
   "長押し あと1": "Hold: 1 left",
-  "長押し あと2": "Hold: 2 left"
+  "長押し あと2": "Hold: 2 left",
+  "_raceAdvice": "---- round 15: 出走前アドバイス (lobby panel, challenge sheet, settings switch, result line)",
+  "アドバイスを隠す": "Hide advice",
+  "コースは出走時に決まります": "The course is set at the start",
+  "今日の{n}コースで計算": "Worked out over today's {n} courses",
+  "このコース・馬場で計算": "Worked out for this course and ground",
+  "オン": "On",
+  "おすすめの馬": "Suggested",
+  "アドバイス：{text}": "Advice: {text}"
  }
 }

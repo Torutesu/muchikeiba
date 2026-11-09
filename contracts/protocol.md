@@ -1354,6 +1354,7 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 ### 31.10 クライアント
 - `Muchi.Client`：`ApiClient.GetWeeklyChallengesAsync`・`StartWeeklyChallengeAsync`（冪等キーは応答まで保持）・`SubmitWeeklyChallengeAsync`（再送安全）、`ChallengeRun`（`OfflineRace` を `playerSlot` で走らせ、入力を `maxInputs` までに抑え、ムチの入力数を数える）、`ChallengeEvaluator`（31.7 と同じ判定。結果画面は送信前に端末の判定を出し、サーバーの判定で確定する）。
 - Unity ゲーム層 `WeeklyChallengeModel`：ホームのカード（今週のクリア数・残り日数）、一覧（条件の文・報酬・貸し出し馬）、レース中の HUD の条件の行（「ムチ 2/3」など、満たせなくなったら赤）、結果（クリア／失敗、条件ごとの○×、初クリアの報酬、バッジ）。ホームのカードはタイムアタックの解放（`time_attack`）と同時に出す（サーバーは解放で制限しない）。
+- 解放（Round 13 の統合）：解放キー `weekly_challenge`（`progression.unlocks`、タイムアタックと同じ「4日目 or 20戦」、docs/planning/06 §4.3）。表示だけの解放で、サーバーの API は解放前でも答える（他の解放キーと同じ）。ホームのカードは解放後に出す。
 - デプロイ：モード `challenge` を知っている検証器（`Muchi.Net` の `ParseMode`）を先に出してから、サーバーを出す。
 
 

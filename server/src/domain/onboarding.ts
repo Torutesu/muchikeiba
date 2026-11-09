@@ -51,6 +51,7 @@ export interface ExperimentDef { id: string; active: boolean; buckets: { id: str
 export const UNLOCK_KEYS = [
   'race', 'partner', 'scout', 'stable', 'missions', 'login_bonus', 'shop', 'season_pass', 'bond', 'season',
   'breeding', 'friends', 'friend_rooms', 'teams', 'spectate', 'time_attack', 'events', 'tournaments', 'my_stable', 'stud', 'training', 'rival',
+  'weekly_challenge',
 ] as const;
 export type UnlockKey = typeof UNLOCK_KEYS[number];
 

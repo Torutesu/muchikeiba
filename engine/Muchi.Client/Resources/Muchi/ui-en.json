@@ -585,6 +585,7 @@
 
   "_rival": "---- weekly rival (RivalModel, home unlock; REQ-RIVAL-*)",
   "ライバル": "Rival",
+  "毎週3つの条件つきレース。貸し出し馬でも挑戦できます": "Three races with conditions every week. You can enter with a loan horse",
   "毎週ひとり、近い実力のライバル。同じランク戦で先着すれば1点": "Every week, one rival close to your level. Finish ahead of them in the same ranked race for a point",
   "今日の挑戦状は送り切りました。4:00に戻ります。": "No more challenges today. They come back at 4:00.",
   "同じランク戦で先着した方に1点。直接対決が同点なら、今週のタイムアタックで速いコースの多い方が勝ち。挑戦状のレースは点になりません。報酬は結果で決まる固定の額で、連勝の上乗せはありません。": "Whoever finishes ahead in the same ranked race gets a point. If head to head is tied, whoever was faster on more courses in this week's time attack wins. Challenge races never score. The reward is a fixed amount set by the result, with no extra for winning streaks.",

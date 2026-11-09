@@ -791,6 +791,7 @@
     { "key": "teams", "days": 3, "races": 15 },
     { "key": "spectate", "days": 3, "races": 15 },
     { "key": "time_attack", "days": 4, "races": 20 },
+    { "key": "weekly_challenge", "days": 4, "races": 20 },
     { "key": "events", "days": 5, "races": 25 },
     { "key": "tournaments", "days": 5, "races": 25 },
     { "key": "my_stable", "days": 6 },

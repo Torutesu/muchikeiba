@@ -1793,7 +1793,7 @@ const wchTrack = (id) => L.master.tracks.find((t) => t.id === id)?.name ?? id;
 
 /** Home: one compact card under the home card slot (this week's progress → the list). Not over the what's-new card. */
 async function ChallengeHomeCard() {
-  if (cur?.dataset.screen !== 'home' || !unlock('time_attack').unlocked || cur.querySelector('[data-home-card="whatsnew"]')) return null;
+  if (cur?.dataset.screen !== 'home' || !unlock('weekly_challenge').unlocked || cur.querySelector('[data-home-card="whatsnew"]')) return null;
   cur.querySelectorAll('[data-wch-card]').forEach((n) => n.remove());
   const r = await L.weeklyChallenges();
   if (!r.ok || !r.value.enabled || cur?.dataset.screen !== 'home') return null;

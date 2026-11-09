@@ -726,7 +726,7 @@
 - REQ-WCH-013 経済：報酬は全員が毎週3つクリアしても E1/E2 を範囲内に保つ（E18、balance-targets §4.16、`server/src/sim/economy.ts`）。
 - REQ-WCH-014 KPI：`challenge_start`・`challenge_clear`（protocol §31.8、`docs/ops/kpi-queries.md`）。
 - REQ-WCH-015 英語：一覧・結果・エラーのすべての文に英語（タイトル・バッジ名は `master/locale-en.json`、条件の文は `i18n/en.ts`）。プロトタイプとクライアントも英語で表示できること。
-- REQ-WCH-016 クライアント：`Muchi.Client` の API・`ChallengeRun`・`ChallengeEvaluator`、Unity の `WeeklyChallengeModel`（ホームのカード・一覧・HUD の条件の行・結果・バッジ）。プロトタイプ（ムチ一閃の画面、本物のエンジンでのレース、日英、e2e と英語の通し）。
+- REQ-WCH-016 クライアント：`Muchi.Client` の API・`ChallengeRun`・`ChallengeEvaluator`、Unity の `WeeklyChallengeModel`（ホームのカード・一覧・HUD の条件の行・結果・バッジ）。プロトタイプ（ムチ一閃の画面、本物のエンジンでのレース、日英、e2e と英語の通し）。 解放キー `weekly_challenge`（タイムアタックと同じ条件、Round 13 の統合で追加）。
 
 
 ## 32. 支部の共同目標（TS＋C#、`src/domain/teamGoal.ts`、`contracts/protocol.md` §32、docs/spec/balance-targets.md 4.17）

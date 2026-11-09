@@ -164,6 +164,23 @@ describe('REQ-UXS-014 unlocks', () => {
     for (let i = 0; i < 3; i++) await race('p', 2);
     expect((await f()).season).toBe(true); // 5 ranked races
   });
+
+  it('Round 13: 週替わりチャレンジ has its own unlock key, opening with time attack (day 4 or 20 races)', async () => {
+    const def = m.progression.unlocks.find((x) => x.key === 'weekly_challenge');
+    const ta = m.progression.unlocks.find((x) => x.key === 'time_attack');
+    expect(def).toBeDefined();
+    expect({ days: def!.days, races: def!.races }).toEqual({ days: ta!.days, races: ta!.races });
+    const { svc, advance } = setup();
+    const f = async () => (await svc.view('p')).unlocks.features.find((x) => x.key === 'weekly_challenge');
+    expect(await f()).toMatchObject({ unlocked: false, by: null });
+    let u = (await svc.bootstrap('p')).unlocks;
+    while (u.day < 3) { advance(DAY); u = (await svc.bootstrap('p')).unlocks; }
+    expect(u.features.find((x) => x.key === 'weekly_challenge')).toMatchObject({ unlocked: false });
+    advance(DAY);
+    u = (await svc.bootstrap('p')).unlocks;
+    expect(u.day).toBe(4);
+    expect(u.features.find((x) => x.key === 'weekly_challenge')).toMatchObject({ unlocked: true, by: 'days' });
+  });
 });
 
 describe('REQ-UXS-015 beginner missions', () => {

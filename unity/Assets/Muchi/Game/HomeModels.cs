@@ -35,6 +35,7 @@ namespace Muchi.Game
             ["shop"] = "ショップ", ["season_pass"] = "シーズンパス", ["bond"] = "絆・飼い葉", ["season"] = "シーズン・ランキング", ["breeding"] = "配合",
             ["friends"] = "フレンド", ["friend_rooms"] = "フレンド部屋", ["teams"] = "支部", ["spectate"] = "観戦", ["time_attack"] = "タイムアタック",
             ["events"] = "イベント", ["tournaments"] = "大会", ["my_stable"] = "マイ厩舎", ["stud"] = "種牡馬の貸し借り", ["training"] = "調教", ["rival"] = "ライバル",
+            ["weekly_challenge"] = "週替わりチャレンジ",
         };
 
         /// <summary>The one-screen guide when a feature opens (06 §4.3 third column); null = no guide.</summary>
@@ -50,6 +51,7 @@ namespace Muchi.Game
             ["my_stable"] = "飾りを1つプレゼント。厩舎を飾ってみよう",
             ["training"] = "1日3回、相棒を鍛えよう。タイミングよく押すと少しだけ伸びが良くなる",
             ["rival"] = "毎週ひとり、近い実力のライバル。同じランク戦で先着すれば1点",
+            ["weekly_challenge"] = "毎週3つの条件つきレース。貸し出し馬でも挑戦できます",
         };
 
         private readonly GameBackend _b;

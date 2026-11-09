@@ -535,7 +535,7 @@ export const MuchiLogic = {
     remove: (raceId: string) => wrap(() => myReplaysSvc.remove(ID, raceId)),
     data: (raceId: string) => wrap(() => myReplaysSvc.data(ID, raceId)),
     /** The demo friend's public replays (friend view, privacy rules on the owner's state). */
-    friendList: () => wrap(() => myReplaysSvc.friendList(ID, RP_FRIEND)),
+    friendList: () => wrap(async () => { await ensureReplayFriend(); return myReplaysSvc.friendList(ID, RP_FRIEND); }),
     friendData: (raceId: string) => wrap(() => myReplaysSvc.friendData(ID, RP_FRIEND, raceId)),
     /** A config for the demo friend's race (the same buildRaceConfig as a ranked room). */
     async friendConfig() {

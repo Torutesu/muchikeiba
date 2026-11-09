@@ -104,6 +104,7 @@ assert.strictEqual((await L.replays.view()).value.saved[0].playable, false, 'the
 L.replays.demoRetired(false);
 
 // a friend's public replay (the demo friend's object, privacy rules on the owner's side)
+assert.deepStrictEqual((await L.replays.friendList()).value.replays, [], 'a friend with nothing public: an empty list (the page then makes the demo replay)');
 const fc = await L.replays.friendConfig();
 const fsim = JSON.parse(ex.SimulateConfig(JSON.stringify(fc.config), fc.playerId, 600));
 assert.ok((await L.replays.demoFriendSave(fc.config, fsim)).ok);

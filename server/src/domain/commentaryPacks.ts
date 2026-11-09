@@ -23,6 +23,7 @@ import { spend, type SpendResult } from './wallet.js';
 import { collectionOf, metricValue, tierReached } from './collection.js';
 import { EN_BANNED, enWordingProblems } from '../i18n/catalog.js';
 import { hasJapanese } from '../i18n/locale.js';
+import { BETTING_WORDS_EN, BETTING_WORDS_JA } from './bettingWords.js';
 
 export interface PackVariant { id: string; text: string }
 export type PackPhrases = Record<string, { variants: PackVariant[] }>;
@@ -63,15 +64,8 @@ export const MAX_PACK_PRICE = 5000;
 
 /** Shop wording rules (docs/planning/03, 06 §5.5) — commentary never says them either. */
 export const PACK_LEGAL_WORDS_JA = ['倍', 'お得', '今だけ', '残りわずか', '通常価格'];
-/**
- * Betting words of 公営競技 (horse racing betting): the game must never read like wagering (docs/planning/03).
- * Substrings, so 「儲」 covers 儲かる / 儲け and 「賭」 covers 賭け / 賭博.
- */
-export const BETTING_WORDS_JA = ['馬券', 'オッズ', '配当', '払い戻し', '払戻', '的中', '万馬券', '儲', '賭', '単勝', '複勝', '馬連', '馬単', '三連単', '三連複', '3連単', '3連複', '枠連', 'ワイド', '投票券', '予想屋', 'ギャンブル', '本命', '大穴', '穴馬'];
-export const BETTING_WORDS_EN: RegExp[] = [
-  /\bbet(s|ting|tor)?\b/i, /\bodds\b/i, /\bwager/i, /\bpay-?outs?\b/i, /\bgambl/i, /\bjackpot/i, /\bbookmaker/i, /\bbookies?\b/i,
-  /\bpunters?\b/i, /\btrifecta/i, /\bexacta/i, /\bquinella/i, /\beach[- ]way\b/i, /\bfavou?rite\b/i, /\blong ?shot\b/i, /\bstakes? money\b/i,
-];
+/** Betting words of 公営競技: one shared list (bettingWords.ts), also read by the pre-race advice lint (§39). */
+export { BETTING_WORDS_EN, BETTING_WORDS_JA } from './bettingWords.js';
 
 /** The client copy (engine/Muchi.Client/Resources/Muchi/commentary-packs.json): the master file, byte for byte in content. */
 export const commentaryPacksClientJson = () => JSON.stringify(COMMENTARY_PACKS, null, 1) + '\n';

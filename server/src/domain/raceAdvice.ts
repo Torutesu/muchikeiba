@@ -12,6 +12,7 @@
  * over every generated line in Japanese and English).
  */
 import type { Going, GoingAptitude, Track } from './schemas.js';
+import { BETTING_WORDS_EN, BETTING_WORDS_JA } from './bettingWords.js';
 
 export const ADVICE_VERSION = 1;
 /** Fit bonus (‰) of a unique skill that can fire on this course. Small: a skill is a reason, never the deciding factor. */
@@ -366,14 +367,20 @@ export function adviceField(styles: readonly string[], unknown: number): AdviceF
 
 // ------------------------------------------------------------------------------------------------ lint (REQ-ADV-004)
 
-/** Words the advice must never use: win probability, odds, betting marks, purchases, urgency (Japanese). */
+const escapeRe = (w: string) => new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+/**
+ * Words the advice must never use (Japanese): the shared betting words of 公営競技 (bettingWords.ts, the same list as
+ * the commentary lint) plus what only advice could say — win probability, betting marks, purchases, urgency.
+ */
 export const ADVICE_BANNED_JA: readonly RegExp[] = [
-  /勝率/, /確率/, /オッズ/, /本命/, /対抗/, /大穴/, /穴馬/, /単勝/, /複勝/, /馬券/, /予想/, /必勝/, /勝てる/, /絶対/, /確実/, /[%％]/, /倍/,
+  ...BETTING_WORDS_JA.map(escapeRe),
+  /勝率/, /確率/, /対抗/, /予想/, /必勝/, /勝てる/, /絶対/, /確実/, /[%％]/, /倍/,
   /買/, /購入/, /課金/, /ガチャ/, /スカウト/, /ショップ/, /有償/, /今だけ/, /残りわずか/, /お得/, /通常価格/, /[◎○▲△☆]/,
 ];
-/** The same in English (the catalog's translations are linted too). */
+/** The same in English (the catalog's translations are linted too): the shared betting patterns plus the advice-only words. */
 export const ADVICE_BANNED_EN: readonly RegExp[] = [
-  /odds/i, /win rate/i, /chance/i, /probab/i, /favou?rite/i, /long ?shot/i, /\bbet(s|ting|tor)?\b/i, /\bbuy/i, /purchas/i, /\bshop/i, /scout/i, /gacha/i,
+  ...BETTING_WORDS_EN,
+  /odds/i, /win rate/i, /chance/i, /probab/i, /\bbuy/i, /purchas/i, /\bshop/i, /scout/i, /gacha/i,
   /guarantee/i, /sure win/i, /%/, /\bdouble\b/i, /\bx2\b/i, /limited time/i, /\bpaid\b/i,
 ];
 

@@ -82,6 +82,10 @@ static class Program
         await CollectionChecks.Run(Check, Ruleset());
         Console.WriteLine("== 調教 (training: menus, timing mini-game, keyed start/finish, fairness wording)");
         await TrainingChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 13: 支部の共同目標 (TeamGoalModel: milestone bar, contributions, week result sheet, feed goal rows; REQ-TGOAL-*)");
+        Loc.LoadEnglish(File.ReadAllText(Path.Combine(Root, "engine", "Muchi.Client", "Resources", "Muchi", "server-en.json")));
+        Loc.LoadEnglish(File.ReadAllText(Path.Combine(Root, "engine", "Muchi.Client", "Resources", "Muchi", "ui-en.json")));
+        await TeamGoalChecks.Run(Check, Ruleset());
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

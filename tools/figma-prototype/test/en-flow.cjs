@@ -113,6 +113,10 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await show('AssistSettings'); await waitScreen('assist-settings'); await shot('assist-settings', 400);
   assert.match(await page.locator('.screen.in').innerText(), /never rides better than skilled play/i, 'assist: the fairness rule in English');
   await page.evaluate(() => globalThis.__muchi.logic.setAssist('whip'));
+  // round 15: アクセシビリティ in English at the standard size (a11y-flow.cjs audits the largest size in both languages)
+  await show('A11ySettings'); await waitScreen('a11y-settings'); await shot('a11y-settings', 400);
+  assert.match(await page.locator('.screen.in').innerText(), /does not make you stronger in ranked races/, 'a11y: the fairness line in English');
+  assert.match(await page.locator('.screen.in').innerText(), /Flashing is kept to 3 times a second or less/, 'a11y: the flash line in English');
 
   // a ranked race in English: HUD, then the result
   await show('Home'); await waitScreen('home');

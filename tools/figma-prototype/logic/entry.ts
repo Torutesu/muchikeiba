@@ -5,6 +5,7 @@
 import { loadMaster } from '../../../server/src/domain/master.js';
 import { PlayerService, type PlayerRepo, type ShortfallQuery } from '../../../server/src/domain/service.js';
 import type { ClientBatch } from '../../../server/src/domain/kpi.js';
+import type { AccessibilityBody } from '../../../server/src/domain/accessibility.js';
 import { playerView, type PlayerState } from '../../../server/src/domain/player.js';
 import { oddsDisclosure, findBanner, bannerList, bannerStatus } from '../../../server/src/domain/gacha.js';
 import { cryptoRng } from '../../../server/src/domain/rng.js';
@@ -68,6 +69,7 @@ const store = new FakeStoreVerifier();
 // round 10 (REQ-TEAMFEED-*): a demo 支部 on the real team objects (MemoryTeams = TeamCore, the TeamDO logic, in memory)
 const teams = new MemoryTeams(() => master, now);
 const repo = new LocalRepo();
+const serverKpi: { name: string; s1?: string; s2?: string; s3?: string }[] = [];
 const svc = new PlayerService(repo, {
   master, rng: cryptoRng, clock: now, verifiers: { fake: store },
   onTeamPoints: async (p) => { await teams.reportPoints(p.teamId, p.playerId, p.seasonId, p.points, p.displayName).catch(() => undefined); },
@@ -82,6 +84,8 @@ const svc = new PlayerService(repo, {
     return r;
   },
   onTeamGoalForget: async (p) => teams.goalForget(p.teamId, p.playerId),
+  // round 15 (REQ-A11Y-014): the server-side KPI rows, kept for the tests (the real Analytics Engine is not here)
+  onKpi: (_id, recs) => { serverKpi.push(...recs.map((r) => ({ name: r.name, s1: r.s1, s2: r.s2, s3: r.s3 }))); if (serverKpi.length > 300) serverKpi.splice(0, serverKpi.length - 300); },
 });
 // round 12 (REQ-RIVAL-*): the weekly rival on the real RivalService + an in-memory week registry (RivalWeekCore, the
 // LeaderboardDO rival:<week> logic). A demo rival (demo_rv_1, ミドリカワ) registers with the local player as last week's
@@ -654,6 +658,11 @@ export const MuchiLogic = {
   assist: () => svc.assist(ID),
   setAssist: (level: 'off' | 'whip' | 'full', source: 'settings' | 'prompt' = 'settings') => wrap(() => svc.setAssist(ID, level, source)),
   assistPromptSeen: () => wrap(() => svc.assistPromptSeen(ID)),
+  // ---------------------------------------------------------------- アクセシビリティ設定 (REQ-A11Y-*, contracts/protocol.md §41)
+  // The real server rules: defaults, the idempotent full replace, strict values, one a11y_setting_change per changed key.
+  accessibility: () => svc.accessibility(ID),
+  setAccessibility: (body: AccessibilityBody) => wrap(() => svc.setAccessibility(ID, body)),
+  serverKpiLog: () => serverKpi.slice(),
   /** Demo: three ranked races finishing last (12th of 12), settled by the real applyRace — the prompt becomes due. */
   async demoLastPlaces(n = 3) {
     for (let i = 0; i < n; i++) await svc.applyRace(ID, { raceId: `demo_last_${Date.now().toString(36)}_${i}`, mode: 'ranked', place: 12, fieldSize: 12, newRating: null, void: false, humans: 1 });

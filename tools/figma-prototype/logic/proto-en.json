@@ -857,6 +857,11 @@
   "レースに出て貢献する": "Race to contribute",
   "先週の共同目標": "Last week's branch goal",
   "週の結果": "Week result",
-  "共同目標": "Weekly goal"
+  "共同目標": "Weekly goal",
+  "_a11y": "---- round 15: アクセシビリティ設定 (A11ySettings, the hold hint in the race HUD)",
+  "その他　/　アクセシビリティ": "More / Accessibility",
+  "長押し あと0": "Hold: 0 left",
+  "長押し あと1": "Hold: 1 left",
+  "長押し あと2": "Hold: 2 left"
  }
 }

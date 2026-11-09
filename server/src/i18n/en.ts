@@ -170,6 +170,8 @@ export const CODE_EN: Record<string, string> = {
   'スカウト{n}回（{banner}）': 'Scouts: {n} ({banner})',
   'ショップで購入': 'Shop purchase',
   'ショップで購入（{item}）': 'Shop purchase ({item})',
+  '実況パックの購入': 'Commentary pack purchase',
+  '実況パックの購入（{pack}）': 'Commentary pack purchase ({pack})',
   '動画広告の視聴': 'Rewarded video',
   '運営からのお詫び・補填': 'Compensation from the operator',
   'ログインボーナス': 'Login reward',

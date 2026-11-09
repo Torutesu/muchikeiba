@@ -14,6 +14,7 @@ import type { Currency, LedgerEntry, PlayerState, PurchaseRecord } from './playe
 import { ageBand } from './purchase.js';
 import { DAY_MS, jstMonthKey } from './time.js';
 import { deletionConfig } from './accountDeletion.js';
+import { commentaryPacksOf } from './commentaryPacks.js';
 
 /** Windows and caps (REQ-HIST-003/004/005/013). */
 export const HISTORY_LIMITS = {
@@ -99,6 +100,7 @@ const fmtInt = (n: number) => n.toLocaleString('en-US');
 const named = (base: string, name: string | null | undefined) => (name ? `${base}（${name}）` : base);
 const productName = (m: Master, id: string) => m.products.find((p) => p.id === id)?.name ?? null;
 const bannerName = (m: Master, id: string) => m.gacha.banners.find((b) => b.id === id)?.name ?? null;
+const packName = (m: Master, id: string) => commentaryPacksOf(m).packs.find((p) => p.id === id)?.name ?? null;
 const itemName = (m: Master, id: string) => m.shopDisplay?.itemLabels[id] ?? m.items.tickets[id]?.name ?? m.items.cosmetics.find((c) => c.id === id)?.name ?? null;
 
 export const STORE_NAMES: Record<PurchaseRecord['platform'], string> = { apple: 'App Store', google: 'Google Play', fake: 'テスト' };
@@ -116,7 +118,7 @@ export type CoinCategory =
   | 'purchase' | 'purchase_bonus' | 'purchase_test' | 'daily_pack' | 'gacha' | 'shop' | 'ad_reward' | 'compensation' | 'login' | 'mission'
   | 'achievement' | 'race' | 'time_attack' | 'pass' | 'season' | 'team' | 'event_fee' | 'event_fee_refund' | 'event' | 'tournament'
   | 'stud' | 'invite' | 'bond' | 'comeback' | 'refund' | 'debt' | 'debt_settle' | 'forfeit'
-  | 'rival' | 'team_goal' | 'weekly_challenge' | 'exchange' | 'other';
+  | 'rival' | 'team_goal' | 'weekly_challenge' | 'exchange' | 'commentary_pack' | 'other';
 
 export const COIN_TITLES: Record<CoinCategory, string> = {
   purchase: 'コインの購入', purchase_bonus: 'はじめての購入の特典', purchase_test: 'テスト購入', daily_pack: '毎日の受け取り',
@@ -125,7 +127,7 @@ export const COIN_TITLES: Record<CoinCategory, string> = {
   season: 'シーズンの報酬', team: '支部の報酬', event_fee: 'イベントの参加費', event_fee_refund: 'イベントの参加費の返却', event: 'イベントの報酬',
   tournament: '大会の報酬', stud: '種付け料', invite: '友達招待の報酬', bond: '絆レベルの報酬', comeback: '復帰キャンペーンの報酬',
   refund: 'ストアの返金による回収', debt: '未精算の返金', debt_settle: '返金の精算', forfeit: 'アカウント削除による放棄',
-  rival: 'ライバルの週の報酬', team_goal: '支部の共同目標の報酬', weekly_challenge: '週替わりチャレンジの報酬', exchange: 'イベント交換所', other: 'その他の増減',
+  rival: 'ライバルの週の報酬', team_goal: '支部の共同目標の報酬', weekly_challenge: '週替わりチャレンジの報酬', exchange: 'イベント交換所', commentary_pack: '実況パックの購入', other: 'その他の増減',
 };
 
 /**
@@ -141,7 +143,8 @@ export function classifyLedger(m: Master, e: Pick<LedgerEntry, 'reason' | 'kind'
   if ((x = /^sandbox purchase (\S+)$/.exec(r))) return c('purchase_test', named(COIN_TITLES.purchase_test, productName(m, x[1]!)));
   if ((x = /^daily pack (\S+)/.exec(r))) return c('daily_pack', named(COIN_TITLES.daily_pack, productName(m, x[1]!)));
   if ((x = /^gacha (\S+) x(\d+)/.exec(r))) return c('gacha', named(`スカウト${x[2]}回`, bannerName(m, x[1]!)));
-  if ((x = /^cosmetic (\S+)$/.exec(r))) return c('shop', named(COIN_TITLES.shop, itemName(m, x[1]!)));
+  if ((x = /^cosmetic (\S+)$/.exec(r))) return c('shop', named(COIN_TITLES.shop, itemName(m, x[1]!))); // also 勝負服エディタ parts (§35)
+  if ((x = /^commentary pack (\S+)$/.exec(r))) return c('commentary_pack', named(COIN_TITLES.commentary_pack, packName(m, x[1]!))); // §36
   if (r.startsWith('rewarded ad ')) return c('ad_reward');
   if (r.startsWith('support grant')) return c('compensation');
   if (r.startsWith('comeback ')) return c('comeback');

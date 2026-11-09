@@ -14,7 +14,7 @@ import type { RaceResultForPlayer } from '../src/domain/rewards.js';
 import { m } from './helpers.js';
 import { ensureExchange, exchangeProblems } from '../src/domain/exchange.js';
 import { ownsPart } from '../src/domain/silksEditor.js';
-import { classifyLedger } from '../src/domain/history.js';
+import { classifyLedger, COIN_TITLES } from '../src/domain/history.js';
 import { grantFree } from '../src/domain/wallet.js';
 import { catalogFor, localize, untranslated } from '../src/i18n/catalog.js';
 import type { EventDef, Master } from '../src/domain/master.js';
@@ -164,5 +164,45 @@ describe('§35 silks part purchase × §33 coin history (REQ-HIST-003)', () => {
     const en = localize(row.title, 'en', catalogFor(m));
     expect(en).toBe('Shop purchase (Silks colour "Crimson")');
     expect(untranslated(en)).toEqual([]);
+  });
+});
+
+// ------------------------------------------------------------------------------------------------ §36 × §29 / §33
+
+describe('§36 commentary packs × §29 coin shortfall × §33 coin history', () => {
+  it('buying a pack without enough coins answers INSUFFICIENT_COINS with the shortfall sheet (T6); nothing is owned or spent', async () => {
+    const w = world();
+    await w.svc.bootstrap('p');
+    const s = w.repo.get('p')!;
+    s.wallet.free = 100; s.wallet.paid = 0;
+    w.repo.put(s);
+    const err = await w.svc.buyCommentaryPack('p', 'ochitsuki', true, 'c:b1').then(() => null, (e: unknown) => e as { code: string; details?: Record<string, unknown> });
+    expect(err?.code).toBe('INSUFFICIENT_COINS');
+    expect(err?.details?.shortfall).toMatchObject({ short: true, shortfall: 200 });
+    expect(w.state('p').commentaryPack?.owned?.ochitsuki).toBeUndefined();
+    expect(w.state('p').wallet.free).toBe(100);
+  });
+
+  it('a pack purchase shows a readable category in Japanese and English (never the raw reason); equipping spends nothing', async () => {
+    const w = world();
+    await w.svc.bootstrap('p');
+    const s = w.repo.get('p')!;
+    grantFree(s, 500, w.now(), 'test', 't');
+    w.repo.put(s);
+    await w.svc.buyCommentaryPack('p', 'ochitsuki', false, 'c:b2');
+    const n = w.state('p').ledger.length;
+    await w.svc.equipCommentaryPack('p', 'ochitsuki', 'settings');
+    expect(w.state('p').ledger).toHaveLength(n);
+    const e = w.state('p').ledger.at(-1)!;
+    const row = classifyLedger(m, e);
+    expect(row).toEqual({ category: 'commentary_pack', title: '実況パックの購入（落ち着いた解説）' });
+    expect(COIN_TITLES.commentary_pack).toBe('実況パックの購入');
+    const en = localize(row.title, 'en', catalogFor(m));
+    expect(en).toBe('Commentary pack purchase (Calm Analyst)');
+    expect(untranslated(en)).toEqual([]);
+    // the history page shows the row under that category
+    const page = await w.svc.history('p', 'coins', { currency: 'free', limit: 50 }) as { items: { category: string; title: string }[] };
+    expect(page.items.map((r) => r.category)).toContain('commentary_pack');
+    expect(JSON.stringify(page.items)).not.toMatch(/commentary pack ochitsuki/);
   });
 });

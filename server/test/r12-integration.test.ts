@@ -145,6 +145,28 @@ describe('R12 gift box adversarial', () => {
   });
 });
 
+describe('R12 coin shortfall × gift box (§29 × §26)', () => {
+  it('free coins waiting in the box are not counted as owned; the sheet says they are there (any / free coins only)', async () => {
+    const w = world();
+    await w.svc.bootstrap('p');
+    await w.svc.adminGrant('p', { freeCoins: 700 }, 'g', 'op', 'g1');
+    const s = await w.svc.state('p');
+    const r = coinShortfall(m, s, { coinKind: 'any', need: s.wallet.paid + s.wallet.free + 500 }, w.now());
+    expect(r.shortfall).toBe(500);
+    expect(r.notes).toContain('プレゼントボックスに受け取っていない無償コインが700枚あります（受け取ると使えます）');
+    // paid-only payments: the box cannot help, nothing is said about it
+    const p = coinShortfall(m, s, { coinKind: 'paid', need: 500 }, w.now());
+    expect(p.notes.join()).not.toMatch(/プレゼントボックス/);
+    // English
+    const cat = compileCatalog(m.locale?.en, CODE_EN);
+    expect(r.notes.map((t) => translateText(t, cat)).join(' ')).toMatch(/700 free coins are waiting in your gift box/);
+    // after claiming there is nothing more to say
+    await w.svc.giftClaimAll('p', 'c:x');
+    const s2 = await w.svc.state('p');
+    expect(coinShortfall(m, s2, { coinKind: 'any', need: s2.wallet.paid + s2.wallet.free + 1 }, w.now()).notes.join()).not.toMatch(/プレゼントボックス/);
+  });
+});
+
 describe('R12 rival × easy controls (§28 × §27)', () => {
   it('an assisted ranked race scores head to head like any other; nothing of the assist reaches the rival', async () => {
     const w = await paired();

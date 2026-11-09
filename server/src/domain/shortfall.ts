@@ -15,6 +15,7 @@ import { firstPurchaseBonusOf, productContents, type ProductContent } from './sh
 import { hasItemDebt } from './items.js';
 import { deletionScheduled } from './accountDeletion.js';
 import { moderationOf, type PlayerState } from './player.js';
+import { unclaimedFreeCoins } from './giftBox.js';
 
 export const SHORTFALL_OFFER_ID = 'shortfall';
 /** Products that put paid coins in the wallet at once (the pass and the daily pack are not coin products). */
@@ -59,6 +60,8 @@ const NONE_LINE = 'いま購入できるパックはありません';
 const PAID_NOTE = '有償コインだけで支払います（無償コインは使えません）';
 const FREE_ONLY_LINE = '無償コインだけで支払う項目です（購入したコインでは支払えません）';
 const AGE_NOTE = '購入の前に、生年月を確認します';
+/** REQ-SHORT-011: free coins in the gift box are not owned until claimed; say so where free coins could pay. */
+const giftNote = (n: number) => `プレゼントボックスに受け取っていない無償コインが${fmt(n)}枚あります（受け取ると使えます）`;
 
 /** Player-level reasons nothing can be bought (the product-level ones are productBlock's). */
 function playerBlock(s: PlayerState, now: number): ErrorCode | null {
@@ -91,8 +94,11 @@ export function coinShortfall(m: Master, s: PlayerState, n: { coinKind: CoinNeed
   const base = { coinKind: n.coinKind, need: n.need, have, shortfall, blockedCode: null, ageCheck: false, notes: [] as string[], offer: null };
   if (shortfall === 0) return { ...base, short: false, headline: null, status: 'not_short', line: null };
   const headline = HEADLINE[n.coinKind](shortfall);
-  if (n.coinKind === 'free') return { ...base, short: true, headline, status: 'free_only', line: FREE_ONLY_LINE };
-  const notes = n.coinKind === 'paid' ? [PAID_NOTE] : [];
+  // REQ-SHORT-011: only where free coins can pay, and only while the box can be claimed (not during a deletion)
+  const boxed = n.coinKind !== 'paid' && !deletionScheduled(s) ? unclaimedFreeCoins(s, now) : 0;
+  const gift = boxed > 0 ? [giftNote(boxed)] : [];
+  if (n.coinKind === 'free') return { ...base, short: true, headline, status: 'free_only', line: FREE_ONLY_LINE, notes: gift };
+  const notes = n.coinKind === 'paid' ? [PAID_NOTE] : gift;
   const pb = playerBlock(s, now);
   if (pb) return { ...base, short: true, headline, status: 'none_buyable', blockedCode: pb, line: BLOCKED_LINE[pb] ?? NONE_LINE, notes };
   const ab = s.age ? ageBand(m, s, now) : null;

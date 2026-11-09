@@ -31,6 +31,7 @@ export const CODE_EN: Record<string, string> = {
   '有償コインだけで支払います（無償コインは使えません）': 'Paid with paid coins only (free coins cannot be used)',
   '無償コインだけで支払う項目です（購入したコインでは支払えません）': 'This is paid with free coins only (purchased coins cannot be used)',
   '購入の前に、生年月を確認します': 'Your birth year and month are checked before the purchase',
+  'プレゼントボックスに受け取っていない無償コインが{n}枚あります（受け取ると使えます）': '{n} free coins are waiting in your gift box (claim them to use them)',
 
   // ---- scout odds page (gacha.ts oddsDisclosure / carryOverRule, itemShop.ts ticketDisclosure)
   '季節限定の馬は期間終了後この表から外れます。': 'Seasonal horses leave this table when the period ends.',

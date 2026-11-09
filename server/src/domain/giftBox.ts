@@ -267,6 +267,11 @@ export function nextGiftWake(s: PlayerState): number | null {
   return at.length ? Math.min(...at) : null;
 }
 
+/** Free coins waiting unclaimed (and not past expiry) in the box — not part of the wallet until claimed (REQ-SHORT-011). */
+export function unclaimedFreeCoins(s: PlayerState, now: number): number {
+  return (s.giftBox?.box ?? []).filter((e) => e.expiresAt === null || now < e.expiresAt).reduce((a, e) => a + (e.contents.freeCoins ?? 0), 0);
+}
+
 /** Home envelope badge (REQ-BOX-004): entries past expiry are not counted even before the expiry was written. */
 export function giftBadge(m: Master, s: PlayerState, now: number) {
   const live = (s.giftBox?.box ?? []).filter((e) => e.expiresAt === null || now < e.expiresAt);

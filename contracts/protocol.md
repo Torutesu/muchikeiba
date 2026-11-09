@@ -1155,6 +1155,7 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 - `headline`：`コインが{n}枚足りません`（any）／`有償コインが{n}枚足りません`（paid）／`無償コインが{n}枚足りません`（free）。
 - `line`：covered `{product}（¥{p}）で足ります`／largest_only `いちばん大きい{product}（¥{p}）でも、あと{n}枚足りません`／none_buyable は `blockedCode` ごとの1文／free_only `無償コインだけで支払う項目です（購入したコインでは支払えません）`。
 - 英語（`Accept-Language: en`、§23）はほかのサーバー文言と同じく応答の境界で訳す。
+- プレゼントボックス（§26）との関係（Round 12 の統合で決定、REQ-SHORT-011）：ボックスの中の無償コインは**受け取るまで持っていない**ものとして数える（`have` に入れない）。`coinKind` が `any` / `free` で、期限内の未受け取りの無償コインがある時だけ `notes` に `プレゼントボックスに受け取っていない無償コインが{n}枚あります（受け取ると使えます）` を足す（`paid` では無償コインで払えないので出さない。削除の予約中は受け取れないので出さない）。パックの選び方は変えない。
 
 ### 29.4 失敗した時（エラーの `details`）
 コインで払う操作（`POST /v1/gacha/draw`・`POST /v1/shop/cosmetics/:itemId/buy`・イベントの参加・種付け など、`wallet.spend` / `spendFree` を通るもの全部）がコイン不足で失敗すると、409 `INSUFFICIENT_COINS` に `details.shortfall`（29.3 の形）が付く。何も変わらない（取引ごと取り消し、冪等の記録にも残らない）。

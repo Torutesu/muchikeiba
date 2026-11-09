@@ -690,3 +690,4 @@
 - REQ-SHORT-008 KPI：`offer_view` / `offer_click`（`offerId: "shortfall"`、`trigger: "T6"`）を1回の表示につき1回。
 - REQ-SHORT-009 クライアント：`Muchi.Client` `InsufficientCoinsException.Shortfall`（`CoinShortfall`）、`ApiClient.GetCoinShortfallForGachaAsync` / `ForCosmeticAsync` / `GetCoinShortfallAsync`。Unity のゲーム層 `CoinShortfallModel`。プロトタイプのシート（日本語・英語）。
 - REQ-SHORT-010 コンプガチャ防止の一本化（R11 の残り）：「集める」ミッション（図鑑の条件・初心者・シーズン）の 2つ以上ルールは、有償で引ける**すべての**抽選（バナーの通常・確定枠・ステップアップの最終枠・SR以上確定券などの抽選券）を `paidRandomTemplates` 1つで数える（`compGachaProblems` と `gachaObtainable` が同じ関数を使う）。
+- REQ-SHORT-011 プレゼントボックスとの関係（Round 12 の統合）：ボックスの無償コインは受け取るまで所持に数えない。`any`/`free` の不足で期限内の未受け取りの無償コインがある時だけ、注意に「プレゼントボックスに受け取っていない無償コインが{n}枚あります（受け取ると使えます）」を足す（`paid`・削除の予約中は出さない）。

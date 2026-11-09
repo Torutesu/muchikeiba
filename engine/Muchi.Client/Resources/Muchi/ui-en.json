@@ -540,6 +540,19 @@
   "ウッド": "Woodchip",
   "プール": "Pool",
   "併せ馬": "Paired Workout",
-  "りんごのおやつ": "Apple Treat"
+  "りんごのおやつ": "Apple Treat",
+
+  "_history": "---- 購入履歴・コイン履歴・ガチャ履歴 (HistoryModel, REQ-HIST-*)",
+  "履歴はオンラインで確認できます": "History is available online",
+  "まだ記録がありません": "Nothing recorded yet",
+  "選んだ記録の問い合わせ番号だけを送ります（お名前や連絡先は含みません）。": "Only the reference numbers of the records you chose are sent (no name or contact details).",
+  "購入履歴": "Purchases",
+  "有償コイン": "Paid coins",
+  "無償コイン": "Free coins",
+  "ガチャ履歴": "Scout history",
+  "記録を選んでください": "Choose a record",
+  "問い合わせの下書きを作りました": "Your support request draft is ready",
+  "{n}回": "{n} scouts",
+  "問い合わせ番号 {ref}": "Reference {ref}"
  }
 }

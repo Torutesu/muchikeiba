@@ -125,6 +125,16 @@ namespace Muchi.Client
             return new AnalyticsEvent("invite_share", atMs, JsonNode.Obj().Set("channel", channel));
         }
 
+        // ---- REQ-HIST-011 history screen (the lists are read-only GETs, so the view is a client event)
+        public static readonly string[] HistoryTabs = { "purchases", "coins_paid", "coins_free", "gacha" };
+
+        /// <summary>A history tab was opened (once per opening). tab: purchases | coins_paid | coins_free | gacha.</summary>
+        public static AnalyticsEvent HistoryView(long atMs, string tab)
+        {
+            if (IndexIn(HistoryTabs, tab) < 0) throw new ArgumentException("unknown history tab " + tab);
+            return new AnalyticsEvent("history_view", atMs, JsonNode.Obj().Set("tab", tab));
+        }
+
         // ---- REQ-AD-010 rewarded ads (the reward itself is the server event ad_reward; never sent from here)
         private static readonly string[] AdSurfaces = { "home", "result", "time_attack", "shop" };
         private static readonly string[] AdOutcomes = { "shown", "no_fill", "failed", "closed_early" };

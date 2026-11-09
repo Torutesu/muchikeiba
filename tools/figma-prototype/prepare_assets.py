@@ -114,7 +114,8 @@ shutil.copy(os.path.join(root, 'unity/Assets/Resources/Models/Partners/catalog.j
 shutil.copy(os.path.join(root, 'contracts/ruleset-params.default.json'), os.path.join(data, 'ruleset.json'))
 shutil.copy(os.path.join(root, 'engine/Muchi.Client/Resources/Muchi/commentary-ja.json'), os.path.join(data, 'commentary-ja.json'))
 # REQ-L10N-012/013: English commentary and the English tables the WASM game layer loads (names in commentary)
-for f in ['commentary-en.json', 'server-en.json', 'ui-en.json']:
+# REQ-CMT-*: the commentary packs (the WASM game layer lays them over the templates; sample and races)
+for f in ['commentary-en.json', 'server-en.json', 'ui-en.json', 'commentary-packs.json']:
     shutil.copy(os.path.join(root, 'engine/Muchi.Client/Resources/Muchi', f), os.path.join(data, f))
 
 # Font subset: every character the prototype can render (UI strings, translations, master data, commentary).
@@ -124,7 +125,7 @@ def add(text):
     # esbuild writes non-ASCII as \uXXXX (logic.js holds the server's own labels: shop contents, skill texts, notices)
     chars.update(chr(int(h, 16)) for h in re.findall(r'\\u([0-9a-fA-F]{4})', text) if not 0xd800 <= int(h, 16) <= 0xdfff)
 for p in [os.path.join(site, 'app.js'), os.path.join(site, 'index.html'), os.path.join(site, 'js', 'logic.js'), os.path.join(data, 'ja.json'), os.path.join(data, 'commentary-ja.json'),
-          os.path.join(data, 'commentary-en.json'), os.path.join(data, 'server-en.json'), os.path.join(data, 'ui-en.json'), os.path.join(root, 'tools', 'figma-prototype', 'logic', 'proto-en.json')]:
+          os.path.join(data, 'commentary-en.json'), os.path.join(data, 'commentary-packs.json'), os.path.join(data, 'server-en.json'), os.path.join(data, 'ui-en.json'), os.path.join(root, 'tools', 'figma-prototype', 'logic', 'proto-en.json')]:
     add(open(p, encoding='utf-8').read())
 for p in ['server/master/horses.json', 'server/master/gacha.json', 'server/master/products.json', 'server/master/ng-names.json', 'server/master/progression.json', 'server/master/skills.json', 'server/master/items.json', 'server/master/tracks.json', 'server/master/collection.json', 'server/master/titles.json']:
     full = os.path.join(root, p)

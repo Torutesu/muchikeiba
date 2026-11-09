@@ -1,4 +1,5 @@
 import type { Env } from './env.js';
+import { MyReplaysService, type ReplayStore } from './domain/myReplaysService.js';
 import { validateLocale } from './i18n/validate.js';
 import { eventPlayersFrom, friendIdsFrom, handle, makeFriendsService, makeInviteService, makeStudService, teamPlayersFrom, tournamentPlayersFrom, type AppContext, type PlayerInvoker, type RaceEntry } from './http/app.js';
 import { bearer, verifyFirebaseIdToken } from './http/auth.js';
@@ -9,6 +10,7 @@ import { validateGacha } from './domain/gacha.js';
 import { validateSkills } from './domain/skills.js';
 import { validateCollection } from './domain/collection.js';
 import { DEFAULT_RULESET } from './domain/ruleset.js';
+import { validateCommentaryPacks } from './domain/commentaryPacks.js';
 import { validateItems } from './domain/itemShop.js';
 import { unwrap, type Envelope } from './do/rpc.js';
 import { AppError } from './domain/errors.js';
@@ -31,6 +33,7 @@ import type { TournamentSummary } from './domain/tournaments.js';
 import { signTicket } from './http/ticket.js';
 import { TeamsService, type TeamFeedPage, type TeamGoalView, type TeamLeagueView, type TeamPort, type TeamView } from './domain/teamService.js';
 import { stampsProblems, type FeedItem } from './domain/teamFeed.js';
+import { silksEditorProblems } from './domain/silksEditor.js';
 import type { TeamSummary } from './domain/teams.js';
 import { EventsService } from './domain/eventService.js';
 import { eventBoardKey, eventCronPlan, validateEvents } from './domain/events.js';
@@ -41,8 +44,9 @@ import { authenticateAdmin, parseAdminTokens, parseConsoleOrigins, RateLimiter, 
 import { DeadLetterService, type DeadLetterOwner, type DeadLetterRegistry, type DeadLetterSource } from './ops/deadLetter.js';
 import { activeConfig } from './ops/activeConfig.js';
 import type { ResolvedConfig } from './ops/config.js';
-import { shardedDirectory, shardedInviteDirectory, shardedStableDirectory, shardedStudDirectory } from './do/directory.js';
+import { shardedDirectory, shardedHallDirectory, shardedInviteDirectory, shardedStableDirectory, shardedStudDirectory } from './do/directory.js';
 import { makeStableService } from './http/stablePorts.js';
+import { makeHallService } from './http/hallPorts.js';
 import { RivalService, rivalPlayersFrom } from './domain/rivalService.js';
 import { durableRivalRegistry } from './do/rivalStore.js';
 import { weekIdAt } from './domain/rival.js';
@@ -100,12 +104,14 @@ const baseMaster = loadMaster();
 validateGacha(baseMaster); // fail fast on a broken gacha/master definition (REQ-GACHA-003/008)
 validateItems(baseMaster); // REQ-ITEM-*: tickets may not reach paid-only banners, cosmetics reference real assets/patterns
 { const sp = stampsProblems(baseMaster); if (sp.length) throw new Error('master/stamps.json: ' + sp.join('; ')); } // REQ-TEAMFEED-002
+{ const sp = silksEditorProblems(baseMaster); if (sp.length) throw new Error('master/silks-editor.json: ' + sp.join('; ')); } // REQ-SILK-013
 validateEvents(baseMaster, baseMaster.events); // REQ-EVENT-001
 validateLeagueAndWeather(baseMaster); // REQ-LEAGUE-* and per-course climate (REQ-TRACK-003)
 validateUx(baseMaster, new Set(collectItemIds(baseMaster))); // REQ-UXS-*: onboarding, missions, experiments, deletion
 validateSkills(baseMaster, DEFAULT_RULESET); // REQ-UXS-050: unknown skills, effects above the ruleset caps, rarity/style fit
 validateLocale(baseMaster); // REQ-L10N-004/008: every player-facing Japanese master text has English that passes the wording lint
 validateCollection(baseMaster); // REQ-COL-* / REQ-ACH-*: free-coin caps, play-only metrics, no comp-gacha sets, title tiers
+validateCommentaryPacks(baseMaster); // REQ-CMT-005: pack catalog, prices, achievement, variant ids, no betting / shop / real-name words
 
 /** REQ-TEAM-*: team orchestration over TeamDOs, the team directory and the season board in LeaderboardDO. */
 function makeTeamsService(env: Env, master: () => Master, player: (uid: string) => PlayerInvoker): TeamsService {
@@ -402,8 +408,10 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
     friends: makeFriendsService((uid) => player(uid), shardedDirectory(env.DIRECTORY)),
     stud: makeStudService(player, shardedStudDirectory(env.DIRECTORY), () => master),
     stable: makeStableService(player, shardedStableDirectory(env.DIRECTORY), () => master),
+    hall: makeHallService(player, shardedHallDirectory(env.DIRECTORY), () => master), // REQ-HOF-*
     invite: makeInviteService(player, shardedInviteDirectory(env.DIRECTORY), shardedDirectory(env.DIRECTORY), () => master), // REQ-INV-*
     teams: makeTeamsService(env, () => master, player),
+    myReplays: new MyReplaysService(() => master, player, r2ReplayStore(env.REPLAYS)), // REQ-MYRP-*
     rival: new RivalService(() => master, rivalPlayersFrom(player), durableRivalRegistry(env.LEADERBOARD)), // REQ-RIVAL-*
     events: new EventsService(() => master, eventPlayersFrom(player), {
       enqueue: (eventId, p, e) => call(mm().eventEnqueue!(eventId, p, e)),
@@ -478,6 +486,12 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
 }
 
 export { devModeRefused } from './http/devMode.js';
+/** R2Bucket → the store マイリプレイ copies saved replays into (REQ-MYRP-003). */
+const r2ReplayStore = (b: R2Bucket): ReplayStore => ({
+  get: async (key) => (await (await b.get(key))?.text()) ?? null,
+  put: async (key, body) => { await b.put(key, body, { httpMetadata: { contentType: 'application/json' } }); },
+  delete: (key) => b.delete(key),
+});
 /** R2Bucket → the minimal interface the retention sweep uses. */
 const replayBucket = (b: R2Bucket): ReplayBucket => ({
   list: async (o) => {

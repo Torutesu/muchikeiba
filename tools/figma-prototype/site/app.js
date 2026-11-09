@@ -406,6 +406,7 @@ let engine = null, view = null, hud = {};
 async function StartTutorial() {
   await viewReady;
   engine.SetAssist('off'); // REQ-ASSIST-006: the tutorial is never assisted (the engine refuses it anyway)
+  engine.SetCommentaryPack(equippedPack()); // round 14: the tutorial speaks the standard anyway (REQ-CMT-002)
   raceInfo = JSON.parse(engine.StartTutorial(tutorialAttempt));
   raceCtx = { tutorial: true, attempt: tutorialAttempt, ftue };
   view.useRig = true; view.start(raceInfo, equippedPartner());
@@ -417,8 +418,10 @@ async function StartRace(trackId = null) {
   const { config, trackName, beginner } = await L.raceConfig(p.id, trackId);
   // round 12: かんたん操作 rides the race with the real InputAssistant inside the WASM engine (never the tutorial)
   engine.SetAssist(assistLevel());
+  // round 14: 実況パック (REQ-CMT-009) — the race speaks the equipped pack (client only; the race itself is unchanged)
+  const commentaryPack = engine.SetCommentaryPack(equippedPack());
   raceInfo = JSON.parse(engine.StartConfig(JSON.stringify(config), 'local'));
-  raceCtx = { tutorial: false, config, trackName, beginner, ftue, trackId: config.track.id };
+  raceCtx = { tutorial: false, config, trackName, beginner, ftue, trackId: config.track.id, commentaryPack };
   view.useRig = true; view.start(raceInfo, equippedPartner());
   BuildRaceScreen();
 }
@@ -437,6 +440,12 @@ function BuildRaceScreen() {
   hud.feedback = Txt('', 560, 268, 480, 52, WHITE, undefined, { align: 'center', cls: 'pop' });
   hud.subtitle = Txt('', 490, 806, 700, 18, WHITE, undefined, { align: 'center', cls: 'subtitle', lh: 1.5 });
   hud.subtitle.style.padding = '8px 18px';
+  // round 14: 実況パック — which voice is calling the race (only when it is not the standard; never in the tutorial)
+  if (!tut && raceCtx.commentaryPack && raceCtx.commentaryPack !== 'standard') {
+    const pk = L.commentaryPackName(raceCtx.commentaryPack);
+    hud.pack = Txt(`実況　${pk}`, 490, 772, 700, 13, CYAN, undefined, { align: 'center', cls: 'tshadow', weight: 700, ls: '.2em' });
+    hud.pack.dataset.commentaryPack = raceCtx.commentaryPack;
+  }
   // partner overhead marker (silks colour) with the mini gauge, the gap to the horse ahead and slipstream lines
   hud.marker = el('marker', 0, 0, 220, 120); hud.marker.innerHTML = '<div class="tri"></div><div class="nm"></div><div class="mini"><i></i></div><div class="gap"></div><div class="wind"></div>';
   hud.marker.style.setProperty('--silk', SILK_CSS[equippedPartner()]);
@@ -615,7 +624,10 @@ async function RaceResult(f) {
   const finishTick = r.place > 0 ? f.finishTicks[r.place - 1] : -1;
   const passBefore = await L.passView();
   // round 11: the field met (図鑑) and whether the partner's skill fired (実績) go with the result, like a room's settlement
-  const applied = await L.applyRace(raceCtx.config.raceId, r.place, r.runners, { trackId: raceCtx.trackId, style: partner()?.style ?? 'sashi', finishTick: finishTick >= 0 ? finishTick : null, whips: r.facts?.whips ?? 0, skillFired: !!(f.skill?.used ?? lastFrame?.skill?.used), ...(f.assist && f.assist !== 'off' ? { assist: f.assist } : {}) }, raceCtx.config);
+  // round 14 (REQ-MYRP-001): the race's confirmed inputs + hash go with the result, so it shows in マイリプレイ
+  const li = JSON.parse(engine.LastRaceInputs());
+  const replay = li.ok ? { slot: li.slot, hash: li.hash, endTick: li.endTick, inputs: li.inputs, marginTicks: L.replays.marginTicks(f.order, f.finishTicks, li.slot) } : undefined;
+  const applied = await L.applyRace(raceCtx.config.raceId, r.place, r.runners, { trackId: raceCtx.trackId, style: partner()?.style ?? 'sashi', finishTick: finishTick >= 0 ? finishTick : null, whips: r.facts?.whips ?? 0, skillFired: !!(f.skill?.used ?? lastFrame?.skill?.used), ...(f.assist && f.assist !== 'off' ? { assist: f.assist } : {}) }, raceCtx.config, replay);
   const passAfter = await L.passView();
   const missions = await L.missions();
   await refresh();
@@ -659,6 +671,11 @@ function ResultScreen(f, rewards, passXp, pass, missions) {
   TextLink('着順と報酬の詳細', 200, 734, 200, () => ResultDetails(r, rewards, passXp, pass, missions), p);
   // replay share (REQ-UXS-070): the last 200 m re-simulated on the device
   if (!first) Ghost('リプレイを共有', 1286, 800, 274, 60, () => ShareCard(currentScreen)).classList.add('share');
+  // round 14: keep this race in マイリプレイ (REQ-MYRP-003)
+  if (!first && raceCtx.config?.raceId) Ghost('マイリプレイに残す', 996, 800, 274, 60, async () => {
+    const k = await L.replays.save(raceCtx.config.raceId);
+    toast(k.ok ? (k.value.alreadySaved ? '保存済みです' : 'リプレイを保存しました') : k.code === 'REPLAY_LIMIT' ? '保存できるのはここまでです。不要なリプレイを削除してください' : k.message);
+  }).classList.add('rp-keep-result');
   EnToggle();
 }
 function ResultDetails(r, rewards, passXp, pass, missions) {
@@ -1005,7 +1022,7 @@ function Missions(ms, fw, bonus) {
 }
 /** Feature keys unlocked by races or days (server unlocks), each with its key and condition. */
 function Features() {
-  const keys = [['season_pass', 'シーズンパス', () => SeasonPass()], ['time_attack', 'タイムアタック', () => TimeAttack()], ['collection', '図鑑', () => Collection()], ['achievements', '実績・称号', () => Achievements()], ['breeding', '配合'], ['friends', 'フレンド'], ['teams', '支部'], ['events', 'イベント', () => EventTop()], ['my_stable', 'マイ厩舎']];
+  const keys = [['season_pass', 'シーズンパス', () => SeasonPass()], ['time_attack', 'タイムアタック', () => TimeAttack()], ['collection', '図鑑', () => Collection()], ['achievements', '実績・称号', () => Achievements()], ['breeding', '配合'], ['friends', 'フレンド'], ['teams', '支部'], ['events', 'イベント', () => EventTop()], ['my_stable', 'マイ厩舎'], ['my_replays', 'マイリプレイ', () => MyReplays()]];
   Sheet('機能・イベント', '開放', (s, close, y) => {
     keys.forEach(([k, name, go], i) => {
       const f = unlock(k);
@@ -1322,7 +1339,9 @@ function DrawCoins(parent, shop, offers, top, blocked) {
 }
 async function DrawLooks(parent, top, blocked) {
   const cat = await L.cosmetics();
-  const items = cat.items.filter((x) => x.forSale).slice(0, 8);
+  // REQ-SILK-005: 勝負服エディタ parts are cosmetics too — one card opens the editor to try them on (fixed prices, never random)
+  const parts = cat.items.filter((x) => x.forSale && x.kind === 'silks_part');
+  const items = cat.items.filter((x) => x.forSale && x.kind !== 'silks_part').slice(0, parts.length ? 7 : 8);
   const artOf = (it) => (it.kind === 'silks' ? 'Art/Cosmetics/silk-jacket' : it.kind === 'decor' ? 'Art/Cosmetics/stable-plaque' : it.id.includes('saddle') ? 'Art/Cosmetics/saddlecloth' : 'Art/Cosmetics/bridle');
   const ch = Math.floor((560 - top - 14) / 2);
   items.forEach((it, i) => {
@@ -1330,7 +1349,7 @@ async function DrawLooks(parent, top, blocked) {
     const c = Card('Look ' + it.id, x, y, 356, ch, parent, GOLD);
     ArtImage(artOf(it), 10, 16, 118, ch - 26, c);
     Txt(it.name, 138, 26, 204, 17, WHITE, c, { weight: 700, lh: 1.4 });
-    Txt(`${{ silks: '勝負服の柄', tack: '馬具', decor: '厩舎の飾り' }[it.kind] ?? '見た目'}　/　見た目のみ`, 138, 80, 204, 13, GOLD, c, { weight: 500 });
+    Txt(`${{ silks: '勝負服の柄', tack: '馬具', decor: '厩舎の飾り' }[it.kind] ?? '見た目'}　/　見た目のみ`, 138, 80, 204, 13, GOLD, c, { weight: 500, nowrap: true }); // one line (fitText shrinks the English) so it never runs into the price
     Txt(`${fmt(it.price)}コイン${it.currency === 'paidOnly' ? '（有償限定）' : ''}`, 138, 108, 204, 15, CYAN, c, { weight: 700 });
     const b = Cta(it.owned ? '所持' : '試着して買う', 138, ch - 70, 200, async () => {
       // T6 (REQ-SHORT-005): short of coins → the shortfall sheet before the try-on (paid-only items count paid coins only)
@@ -1341,7 +1360,20 @@ async function DrawLooks(parent, top, blocked) {
     c.dataset.item = it.id;
     if (it.owned || blocked) disable(b);
   });
-  Txt(cat.notice, 32, 576, 1464, 14, MUTED, parent);
+  if (parts.length) {
+    const x = 32 + (7 % 4) * 370, y = top + Math.floor(7 / 4) * (ch + 14);
+    const c = Card('Look silks parts', x, y, 356, ch, parent, CYAN);
+    c.dataset.item = 'silks_parts';
+    ArtImage('Art/Cosmetics/silk-jacket', 10, 16, 118, ch - 26, c);
+    Txt('勝負服のパーツ', 138, 26, 204, 17, WHITE, c, { weight: 700 });
+    Txt(`色・袖・帽子 ${parts.length}点　/　見た目のみ`, 138, 62, 204, 13, GOLD, c, { weight: 500, lh: 1.4 });
+    Txt(`${fmt(Math.min(...parts.map((x) => x.price)))}コインから`, 138, 108, 204, 15, CYAN, c, { weight: 700 });
+    const b = Cta('エディタで試着', 138, ch - 70, 200, () => { silksDraft = null; SilksEditor(); }, c, 'small');
+    if (blocked) disable(b);
+  }
+  Txt(cat.notice, 32, 576, 1464, 14, MUTED, parent, { nowrap: true }).style.width = '1100px';
+  // round 14: 実況パック (REQ-CMT-011) — sold for coins next to the looks (try before buy on its own screen)
+  Ghost('実況パック', 1196, 563, 300, 44, () => CommentaryPacks('shop'), parent, 'quiet small').dataset.action = 'commentary-packs';
 }
 
 // ---- purchase confirmation: unregistered / registered / under 18 / over the limit (REQ-PUR-001/002, 06 §6.8) — 18
@@ -1740,8 +1772,9 @@ const fmtMs = (ms) => { const t = Math.floor(ms / 100); return `${Math.floor(t /
 async function StartTimeAttack(trackId, ghostId) {
   await viewReady;
   engine.SetAssist(assistLevel()); // round 12: the time attack records the assist's inputs like taps (REQ-ASSIST-002)
+  const commentaryPack = engine.SetCommentaryPack(equippedPack()); // round 14
   raceInfo = JSON.parse(engine.StartTimeAttack(JSON.stringify(taCache.config), ghostId));
-  raceCtx = { tutorial: false, ta: true, trackId, trackName: taCache.trackName, config: taCache.config, ghost: raceInfo.ghosts[0] ?? null };
+  raceCtx = { tutorial: false, ta: true, trackId, trackName: taCache.trackName, config: taCache.config, ghost: raceInfo.ghosts[0] ?? null, commentaryPack };
   view.useRig = true; view.start(raceInfo, equippedPartner()); view.setGhosts(raceInfo.ghosts.length, equippedPartner());
   BuildRaceScreen();
   if (raceCtx.ghost) hud.ghost = Txt('', 545, 122, 510, 17, '#cfe8ff', undefined, { align: 'center', cls: 'tshadow', weight: 500 });
@@ -1989,16 +2022,17 @@ async function Settings() {
   const m = Glass('More', 556, 134, 480, 676, undefined, .9);
   Kicker('見た目・お世話・仲間', 36, 30, m);
   // round 10: 支部の応援 (team cheer stamps) and 友達招待 next to the looks / care entries
-  const moreRows = [['衣装', Wardrobe], ['コースの見た目', CourseThemes], ['レース条件', Conditions], ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite']];
+  // round 14: 実況パック (REQ-CMT-011) after the looks entries
+  const moreRows = [['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions], ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite']];
   moreRows.forEach(([n, go, action], i) => {
-    const b = Btn(n, 36, 96 + i * 50, 408, 50, go, 'row' + (i === moreRows.length - 1 ? ' last' : ''), m); b.style.fontSize = '19px';
+    const b = Btn(n, 36, 90 + i * 46, 408, 46, go, 'row' + (i === moreRows.length - 1 ? ' last' : ''), m); b.style.fontSize = '19px';
     if (action) b.dataset.action = action;
     const em = document.createElement('em'); em.textContent = '›'; b.appendChild(em);
   });
-  Kicker('法定表示・規約', 36, 416, m, { rule: false, size: 15 });
-  [['利用規約', 'terms'], ['プライバシーポリシー', 'privacy'], ['特定商取引法に基づく表記', 'tokushoho'], ['資金決済法に基づく表示', 'shikin']].forEach(([n, k], i) => TextLink(n, 36, 448 + i * 42, 400, () => Legal(k, Settings), m));
+  Kicker('法定表示・規約', 36, 432, m, { rule: false, size: 15 });
+  [['利用規約', 'terms'], ['プライバシーポリシー', 'privacy'], ['特定商取引法に基づく表記', 'tokushoho'], ['資金決済法に基づく表示', 'shikin']].forEach(([n, k], i) => TextLink(n, 36, 462 + i * 40, 400, () => Legal(k, Settings), m));
   // the other front end (Codex's club UI, same logic and engine)
-  TextLink('クラブ版 UI', 36, 624, 400, () => { location.href = 'club.html'; }, m, 'クラブ版 UI を開く ↗');
+  TextLink('クラブ版 UI', 36, 626, 400, () => { location.href = 'club.html'; }, m, 'クラブ版 UI を開く ↗');
   // ③ demo states for review (REQ-UXP-002): the same rules on a moved clock
   const demo = Glass('Demo', 1056, 134, 508, 676, undefined, .78);
   Kicker('デモ（レビュー用）', 36, 30, demo, { color: SOFT });
@@ -2077,6 +2111,110 @@ async function AssistPrompt(next) {
   Hair(48, 444, 904, box);
   Txt(ASSIST_POLICY, 48, 466, 904, 15, SOFT, box, { lh: 1.6 });
 }
+// ================================================================= round 14: 実況パック (REQ-CMT-*, contracts/protocol.md §36)
+// Mirrors unity/Assets/Muchi/Game/CommentaryPackModel.cs on the real server rules (owned / price / equip / the coin purchase,
+// paid coins first) — the list comes from GET /v1/commentary/packs, the wording from data/commentary-packs.json inside the
+// WASM engine. The sample is the real CommentarySample.Build on the stock race (no server call, the same every time), played
+// as a text ticker (no TTS: the voice clips are sound work, the client falls back to subtitles when they are not downloaded).
+// The equipped pack speaks in every race HUD (never the tutorial: the Commentator keeps the standard there).
+const PACK_MARK = { standard: 'STANDARD', nekketsu: 'FIRED UP', ochitsuki: 'ANALYST', kofuu: 'CLASSIC' };
+const PACK_ACCENT = { standard: '#c8eaff', nekketsu: '#ff9a6b', ochitsuki: CYAN, kofuu: GOLD };
+const PACK_NOTICE = '実況の話し方だけが変わります。レースの結果・能力には影響しません。';
+const equippedPack = () => player?.commentaryPack?.equipped ?? 'standard';
+let packTicker = null; // { timer, packId }
+function stopPackTicker() { if (packTicker) { clearInterval(packTicker.timer); packTicker = null; } }
+async function CommentaryPacks(from = 'settings', playing = null) {
+  stopPackTicker();
+  currentScreen = () => CommentaryPacks(from); await refresh();
+  const v = await L.commentaryPacks();
+  Clear('commentary-packs'); SetArt('Art/race-result', false);
+  TopBar('その他　/　実況パック', '実況の話し方を選べます。試聴は何度でも、買う前でも聞けます');
+  const p = Glass('Frame', 36, 134, 1528, 676, undefined, .9);
+  p.dataset.equipped = v.equipped;
+  v.packs.forEach((pk, i) => {
+    const c = Card('Pack ' + pk.id, 24 + i * 374, 24, 360, 392, p, PACK_ACCENT[pk.id] ?? CYAN);
+    c.classList.add('cp-card'); c.dataset.pack = pk.id; c.dataset.owned = String(pk.owned); if (pk.equipped) c.classList.add('on');
+    Txt(PACK_MARK[pk.id] ?? pk.id.toUpperCase(), 28, 30, 304, 14, PACK_ACCENT[pk.id] ?? CYAN, c, { weight: 700, ls: '.22em' });
+    Txt(pk.name, 28, 58, 304, 28, WHITE, c, { weight: 700, nowrap: true });
+    Txt(pk.description, 28, 108, 304, 15, WHITE, c, { weight: 500, lh: 1.65 });
+    const status = pk.equipped ? ['装備中', OK] : pk.owned ? ['持っている', OK] : pk.forSale ? [`${fmt(pk.price)}コイン${pk.currency === 'paidOnly' ? '（有償限定）' : ''}`, GOLD] : pk.unlock ? [`実績で入手（${pk.unlock.progress}/${pk.unlock.target}）`, MUTED] : ['', MUTED];
+    Txt(status[0], 28, 196, 304, 18, status[1], c, { weight: 700, nowrap: true, cls: 'num' }).dataset.packStatus = pk.equipped ? 'equipped' : pk.owned ? 'owned' : pk.forSale ? 'price' : 'unlock';
+    if (!pk.owned && pk.unlock) Txt(pk.unlock.label, 28, 228, 304, 13, SOFT, c, { lh: 1.5 });
+    if (!isJa() && pk.englishNote) Txt(pk.englishNote, 28, 262, 304, 13, SOFT, c, { lh: 1.5 }).dataset.englishNote = '1';
+    Ghost('試聴する', 24, 310, 130, 60, () => CommentaryPacks(from, pk.id), c, 'quiet small').dataset.sample = pk.id;
+    if (pk.equipped) disable(Ghost('装備中', 166, 310, 170, 60, () => {}, c, 'quiet small'));
+    else if (pk.owned) Cta('装備する', 166, 310, 170, async () => {
+      const r = await L.equipCommentaryPack(pk.id, from === 'shop' ? 'shop' : 'settings');
+      toast(r.ok ? '実況パックを変更しました' : r.message); CommentaryPacks(from);
+    }, c, 'small').dataset.equip = pk.id;
+    else if (pk.forSale) Cta('購入する', 166, 310, 170, () => CommentaryPackBuy(pk.id, from), c, 'small').dataset.buy = pk.id;
+    else disable(Ghost('実績で入手', 166, 310, 170, 60, () => {}, c, 'quiet small'));
+  });
+  // the sample ticker: the stock race, the pack's key lines back to back, typed out at the commentary's own speed
+  const s = Glass('Sample', 24, 436, 1480, 216, p, .94); s.classList.add('flat');
+  const sel = playing ? v.packs.find((x) => x.id === playing) : null;
+  Kicker(sel ? `試聴　/　${sel.name}` : '試聴', 28, 18, s, { size: 15 });
+  Txt('青葉競馬場 芝1600m　·　ストックのレース　·　10秒', 1000, 58, 452, 13, SOFT, s, { align: 'right', nowrap: true });
+  const line = Txt(sel ? '' : '「試聴する」で、そのパックの実況が流れます（声の素材が無い時は字幕だけ）', 28, 96, 1424, sel ? 26 : 17, sel ? WHITE : MUTED, s, { weight: sel ? 700 : 500, nowrap: true });
+  line.dataset.ticker = '1';
+  const bar = Gauge(28, 156, 1424, 0, s);
+  Txt(v.notice ?? PACK_NOTICE, 28, 176, 1424, 13, SOFT, s, { nowrap: true });
+  Back(from === 'shop' ? () => Store('looks') : Settings, 'BACK', 40, 834);
+  if (sel) PlayPackSample(sel, line, bar);
+}
+function PlayPackSample(pk, line, bar) {
+  const data = JSON.parse(engine.CommentarySampleJson(pk.id));
+  L.kpi([{ name: 'commentary_pack_sample', at: L.now(), props: { packId: pk.id, owned: !!pk.owned } }]); // REQ-CMT-012
+  line.dataset.packId = data.packId; line.dataset.lines = String(data.lines.length);
+  globalThis.__muchi.lastSample = data;
+  const t0 = performance.now(), total = Math.max(1, data.totalTicks), ms = 1000 / data.tickHz;
+  const step = () => {
+    if (!line.isConnected) return stopPackTicker();
+    const tick = (performance.now() - t0) / ms;
+    const l = data.lines.find((x) => tick >= x.offset && tick < x.offset + x.duration) ?? (tick >= total ? data.lines[data.lines.length - 1] : null);
+    if (l) {
+      // type the line out at the commentary's speed (3 ticks a character), keep it whole once said
+      const chars = tick >= total ? l.text.length : Math.max(1, Math.ceil((tick - l.offset) / 3));
+      const text = l.text; // the WASM engine already speaks the current language
+      if (line.dataset.full !== l.text || line.textContent.length !== Math.min(chars, text.length)) { line.textContent = text.slice(0, chars); line.dataset.full = l.text; line.dataset.kind = l.kind; }
+    }
+    const i = bar.querySelector('i'); if (i) i.style.width = Math.round(100 * clamp(tick / total, 0, 1)) + '%';
+    if (tick >= total) { line.textContent = data.lines[data.lines.length - 1]?.text ?? ''; line.dataset.done = '1'; stopPackTicker(); }
+  };
+  packTicker = { timer: setInterval(step, 50), packId: pk.id };
+  step();
+}
+/** The calm purchase confirm (CommentaryPackModel.PurchaseConfirm): the server's price, paid coins first, cancel as big as buy. */
+async function CommentaryPackBuy(packId, from = 'settings') {
+  stopPackTicker();
+  const v = await L.commentaryPacks();
+  const pk = v.packs.find((x) => x.id === packId);
+  if (!pk || pk.owned || !pk.forSale) return CommentaryPacks(from);
+  const back = () => CommentaryPacks(from);
+  // T6 (REQ-SHORT-005): short of coins → the shortfall sheet first (the same rule as the cosmetics shop)
+  const sf = await L.coinShortfall({ for: 'coins', coins: pk.price, kind: pk.currency === 'paidOnly' ? 'paid' : 'any' });
+  if (sf.ok && sf.value.short) return Shortfall(sf.value, 'shop', () => CommentaryPackBuy(packId, from), back);
+  currentScreen = () => CommentaryPackBuy(packId, from); await refresh();
+  Clear('commentary-pack-buy'); SetArt('Art/race-result', false); Shade('dim');
+  const d = Dialog('Pack purchase', 1000, 560);
+  d.dataset.pack = packId; d.dataset.price = String(pk.price);
+  Kicker('実況パック　/　購入の確認', 48, 44, d);
+  Txt(`${pk.name}を購入しますか？`, 48, 108, 904, 32, WHITE, d, { weight: 700, nowrap: true });
+  Txt(pk.currency === 'paidOnly' ? `有償コイン${fmt(pk.price)}枚を使います（無償コインは使えません）。` : `${fmt(pk.price)}コインを使います。有償コインから先に使われます。`, 48, 170, 904, 18, WHITE, d, { weight: 500 });
+  Txt(`所持　無償 ◎ ${fmt(player.wallet.free)}　·　有償 ◈ ${fmt(player.wallet.paid)}`, 48, 210, 904, 15, MUTED, d, { weight: 500, cls: 'num', nowrap: true });
+  Txt(v.notice ?? PACK_NOTICE, 48, 250, 904, 15, SOFT, d, { lh: 1.6 });
+  Txt('確率のない直販です。買う前に何度でも試聴できます。', 48, 282, 904, 15, SOFT, d, { lh: 1.6 });
+  const buy = Cta('購入する', 48, 400, 420, async () => {
+    disable(buy);
+    const r = await L.buyCommentaryPack(packId, true);
+    if (!r.ok && r.code === 'INSUFFICIENT_COINS' && r.details?.shortfall) return Shortfall(r.details.shortfall, 'shop', () => CommentaryPackBuy(packId, from), back);
+    await refresh();
+    toast(r.ok ? '実況パックを購入しました' : r.message);
+    CommentaryPacks(from);
+  }, d);
+  buy.dataset.confirm = 'buy';
+  Ghost('やめておく', 532, 400, 420, 73, back, d, 'quiet').dataset.confirm = 'cancel';
+}
 function ConfirmDeletion(v) {
   currentScreen = () => ConfirmDeletion(v); Clear('delete-confirm'); SetArt('Art/home-paddock', false); Shade('dim heavy');
   const box = Dialog('Confirm delete', 1000, 640);
@@ -2102,6 +2240,8 @@ async function Demo(kind) {
   if (kind === 'new') { await L.bootstrap(); await refresh(); return Title(); }
   if (kind === 'comeback') { await L.seedComeback(14); await refresh(); return Home(); }
   if (kind === 'collection') { await L.seedCollection(); await refresh(); return Collection('horses'); }
+  // round 14: a week of play (21 races: the 「出走の記録」 achievement pack is owned) → the commentary packs
+  if (kind === 'packs') { await L.seedDemo(7, [3, 3, 3, 3, 3, 3, 3]); ftue = false; await refresh(); return CommentaryPacks('settings'); }
   if (kind === 'gifts') { await L.seedGifts(); await refresh(); giftState.tab = 'box'; giftState.page = 0; return GiftBox('box'); }
   // round 12: a week of play, then three ranked races in last place (settled by the real applyRace) → the one-time suggestion
   if (kind === 'assist') { await L.seedDemo(7, [3, 3, 3, 3, 3, 3, 3]); ftue = false; await L.demoLastPlaces(3); await refresh(); return AssistThen(Home); }
@@ -2516,6 +2656,7 @@ function Stable() {
   TextLink('お世話', 300, 734, 120, Care, d, 'お世話・餌');
   TextLink('調教', 440, 734, 100, () => { trHorse = p?.id ?? null; Training(); }, d, '調教');
   Back(Home);
+  Ghost('殿堂', 196, 36, 150, 46, () => Hall(), undefined, 'quiet small').classList.add('hof-entry'); // round 14 (REQ-HOF-*)
   EnToggle();
 }
 function StableList(horses) {
@@ -2606,8 +2747,310 @@ function Wardrobe() {
     const b = Ghost(i === eq ? '装備中' : '装備する', 18, 248, 290, 38, () => { prefs.set('muchi.partner.model', look); Wardrobe(); }, c, 'small');
     if (i === eq) disable(b);
   }
+  Ghost('勝負服エディタ', 820, 650 - 58, 330, 60, () => SilksEditor(), p, 'small');
   Cta('見た目アイテムを見る', 1170, 650 - 58, 340, () => Store('looks'), p, 'small');
   Back(Home, 'BACK', 40, 834);
+}
+// ================================================================= 勝負服エディタ (REQ-SILK-*, contracts/protocol.md §35)
+// Live preview: the photoreal partner render (violet silks) is recoloured on a canvas — the violet pixels of the jockey are
+// the mask (hue band), split into cap / sleeve / body regions, and each pixel takes the chosen colour of the pattern at its
+// place in the region, times its own shading. Unity draws the same thing with masks on the 3D jockey (handoff round 14).
+const SILKS_ART = 'Art/3DPreviews/Partner_DappleGrey_Violet';
+const SILKS_CROP = { x: 0.30, y: 0.15, w: 0.50, h: 0.43 };
+const SILKS_TABS = [['pattern', '胴の模様'], ['color', '色'], ['sleeve', '袖'], ['cap', '帽子']];
+const SILKS_SLOTS = [['胴 1', 0], ['胴 2', 1], ['胴 3', 2], ['帽子 1', 3], ['帽子 2', 4]];
+let silksDraft = null, silksTab = 'pattern', silksSlot = 0, silksMask = null, silksView = null, silksProblem = null;
+const hexRgb = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+const fr = (x) => x - Math.floor(x);
+function inStar(u, v, n) {
+  const cu = fr(u * n) - 0.5, cv = fr(v * n) - 0.5, r = Math.hypot(cu, cv), a = Math.atan2(cv, cu);
+  return r < 0.2 + 0.13 * Math.cos(5 * (a + Math.PI / 2));
+}
+/** Which colour (0, 1, 2) a body pattern puts at (u, v) of the body region — the same idea as the Unity pattern masks. */
+function silkIdx(p, u, v) {
+  switch (p) {
+    case 'hoops': return Math.floor(v * 5) % 2;
+    case 'stripes': return Math.floor(u * 6) % 2;
+    case 'sash': return Math.abs(u - v) < 0.17 ? 1 : 0;
+    case 'cross_sashes': return Math.abs(u - v) < 0.13 || Math.abs(u + v - 1) < 0.13 ? 1 : 0;
+    case 'chevrons': return Math.floor((v + Math.abs(u - 0.5)) * 4) % 2;
+    case 'diamonds': return Math.abs(fr(u * 3) - 0.5) + Math.abs(fr(v * 3) - 0.5) < 0.32 ? 1 : 0;
+    case 'quartered': return (u < 0.5) !== (v < 0.5) ? 1 : 0;
+    case 'halves': return u < 0.5 ? 0 : 1;
+    case 'stars': return inStar(u, v, 3) ? (Math.floor(u * 3) + Math.floor(v * 3)) % 2 === 0 ? 1 : 2 : 0;
+    case 'spots': return Math.hypot(fr(u * 4) - 0.5, fr(v * 4) - 0.5) < 0.22 ? (Math.floor(u * 4) % 2 ? 2 : 1) : 0;
+    case 'braces': return Math.abs(u - 0.3) < 0.08 || Math.abs(u - 0.7) < 0.08 ? 1 : v > 0.82 ? 2 : 0;
+    case 'lightning': { const z = Math.abs(fr(v * 3) - 0.5) * 0.5 + 0.25; return Math.abs(u - z - 0.25) < 0.09 ? 1 : Math.abs(u - z - 0.25) < 0.13 ? 2 : 0; }
+    case 'flame': { const f = 0.62 - 0.14 * Math.abs(Math.sin(u * 14)); return v > f ? (v > f + 0.18 ? 1 : 2) : 0; }
+    case 'wings': { const w = Math.abs(u - 0.5); return v < 0.55 && w > 0.12 && v > w * 0.7 ? (fr(w * 8) < 0.5 ? 1 : 2) : 0; }
+    case 'laurel': return Math.abs(Math.hypot(u - 0.5, v - 0.55) - 0.32) < 0.06 ? (fr(Math.atan2(v - 0.55, u - 0.5) * 3) < 0.5 ? 1 : 2) : 0;
+    default: return p.startsWith('promo_') ? (Math.abs(u - 0.5) < 0.1 ? 2 : Math.floor(v * 4) % 2) : 0;
+  }
+}
+/** Sleeves: `match` continues the body pattern; others use body colours 1 and 2 along the arm (u = along the arm). */
+function sleeveIdx(s, p, u, v, bu, bv) {
+  switch (s) {
+    case 'match': return silkIdx(p, bu, bv);
+    case 'plain': return 1;
+    case 'hoops': return Math.floor(u * 5) % 2;
+    case 'stripes': return Math.floor(v * 4) % 2;
+    case 'armlets': return u > 0.62 && u < 0.78 ? 1 : 0;
+    case 'chevrons': return Math.floor((u + Math.abs(v - 0.5) * 0.6) * 5) % 2;
+    case 'stars': return inStar(u, v, 3) ? 1 : 0;
+    case 'diamonds': return Math.abs(fr(u * 4) - 0.5) + Math.abs(fr(v * 2) - 0.5) < 0.3 ? 1 : 0;
+    default: return 0;
+  }
+}
+/** Cap: colour 1 / 2 of the cap (peak = the brim at the front). */
+function capIdx(c, u, v) {
+  switch (c) {
+    case 'quartered': return (u < 0.5) !== (v < 0.5) ? 1 : 0;
+    case 'star': return inStar(u * 0.5 + 0.25, v * 0.5 + 0.25, 1) ? 1 : 0;
+    case 'hooped': return Math.floor(v * 4) % 2;
+    case 'peak': return u > 0.78 && v > 0.55 ? 1 : 0;
+    case 'spots': return Math.hypot(fr(u * 3) - 0.5, fr(v * 3) - 0.5) < 0.2 ? 1 : 0;
+    case 'checks': return (Math.floor(u * 4) + Math.floor(v * 4)) % 2;
+    case 'diamond': return Math.abs(u - 0.5) + Math.abs(v - 0.5) < 0.3 ? 1 : 0;
+    default: return 0;
+  }
+}
+/** The violet silks of the render as a mask: region (1 body, 2 sleeve, 3 cap), shading and the place in the region. */
+function silksMaskOf(img) {
+  const W = Math.round(img.naturalWidth * SILKS_CROP.w), H = Math.round(img.naturalHeight * SILKS_CROP.h);
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d'); g.drawImage(img, img.naturalWidth * SILKS_CROP.x, img.naturalHeight * SILKS_CROP.y, W, H, 0, 0, W, H);
+  const data = g.getImageData(0, 0, W, H);
+  const reg = new Uint8Array(W * H), shade = new Float32Array(W * H);
+  const box = { 1: [1, 1, 0, 0], 2: [1, 1, 0, 0], 3: [1, 1, 0, 0] };
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x, r = data.data[i * 4] / 255, gg = data.data[i * 4 + 1] / 255, b = data.data[i * 4 + 2] / 255;
+    const mx = Math.max(r, gg, b), mn = Math.min(r, gg, b), d = mx - mn;
+    if (d < 1e-6) continue;
+    let h = mx === r ? ((gg - b) / d) % 6 : mx === gg ? (b - r) / d + 2 : (r - gg) / d + 4; h = (h * 60 + 360) % 360;
+    const s = d / mx;
+    const fx = SILKS_CROP.x + (x / W) * SILKS_CROP.w, fy = SILKS_CROP.y + (y / H) * SILKS_CROP.h;
+    if (!(h > 250 && h < 322 && (s > 0.18 || (s > 0.06 && mx > 0.7)) && mx > 0.25 && fy < 0.405)) continue;
+    const k = fy < 0.285 ? 3 : fx > 0.545 && fy >= 0.3 ? 2 : 1;
+    reg[i] = k; shade[i] = (0.2126 * r + 0.7152 * gg + 0.0722 * b) / 0.56;
+    const bx = box[k]; bx[0] = Math.min(bx[0], x / W); bx[1] = Math.min(bx[1], y / H); bx[2] = Math.max(bx[2], x / W); bx[3] = Math.max(bx[3], y / H);
+  }
+  return { W, H, base: data, reg, shade, box };
+}
+function paintSilks(canvas, design, hexOf) {
+  if (!silksMask || !design) return;
+  const { W, H, base, reg, shade, box } = silksMask;
+  canvas.width = W; canvas.height = H;
+  const out = new ImageData(new Uint8ClampedArray(base.data), W, H);
+  const col = (id) => hexRgb(hexOf(id) ?? '#888888');
+  const body = design.colors.map(col), cap = design.capColors.map(col);
+  const uv = (k, x, y) => { const b = box[k]; return [(x / W - b[0]) / Math.max(1e-3, b[2] - b[0]), (y / H - b[1]) / Math.max(1e-3, b[3] - b[1])]; };
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x, k = reg[i];
+    if (!k) continue;
+    let rgb;
+    if (k === 3) { const [u, v] = uv(3, x, y); rgb = cap[capIdx(design.cap, u, v)]; }
+    else if (k === 2) {
+      const [u, v] = uv(2, x, y), [bu, bv] = uv(1, x, y);
+      rgb = body[Math.min(body.length - 1, sleeveIdx(design.sleeve, design.pattern, (u + v) / 2, Math.abs(u - v), clamp(bu, 0, 1), clamp(bv, 0, 1)))];
+    } else { const [u, v] = uv(1, x, y); rgb = body[Math.min(body.length - 1, silkIdx(design.pattern, u, v))]; }
+    const sh = shade[i];
+    for (let ch = 0; ch < 3; ch++) out.data[i * 4 + ch] = Math.min(255, rgb[ch] * (0.25 + 0.8 * sh) + 40 * Math.max(0, sh - 1.15));
+  }
+  canvas.getContext('2d').putImageData(out, 0, 0);
+}
+/** A small square swatch of a part (pattern / sleeve / cap drawn in navy and white, colours as a chip). */
+function partThumb(type, part, design, hexOf, parent, x, y, s) {
+  const c = document.createElement('canvas'); c.width = 48; c.height = 48; c.className = 'img silks-thumb';
+  Object.assign(c.style, { left: x + 'px', top: y + 'px', width: s + 'px', height: s + 'px', borderRadius: '4px' });
+  const g = c.getContext('2d'); const im = g.createImageData(48, 48);
+  const cols = type === 'color' ? [hexRgb(part.hex)] : [design.colors[0], design.colors[1], design.colors[2] ?? design.colors[0]].map((id) => hexRgb(hexOf(id) ?? '#888888'));
+  const capc = design.capColors.map((id) => hexRgb(hexOf(id) ?? '#888888'));
+  for (let yy = 0; yy < 48; yy++) for (let xx = 0; xx < 48; xx++) {
+    const u = xx / 47, v = yy / 47;
+    const rgb = type === 'color' ? cols[0] : type === 'cap' ? capc[capIdx(part.id, u, v)] : type === 'sleeve' ? cols[sleeveIdx(part.id, design.pattern, u, v, u, v)] : cols[Math.min(part.colors - 1, silkIdx(part.id, u, v))];
+    const j = (yy * 48 + xx) * 4; im.data[j] = rgb[0]; im.data[j + 1] = rgb[1]; im.data[j + 2] = rgb[2]; im.data[j + 3] = 255;
+  }
+  g.putImageData(im, 0, 0); parent.appendChild(c); return c;
+}
+const silksHexOf = (v) => { const m = new Map(v.parts.colors.map((c) => [c.id, c.hex])); return (id) => m.get(id); };
+const silksPartsList = (v, t) => (t === 'pattern' ? v.parts.patterns : t === 'color' ? v.parts.colors : t === 'sleeve' ? v.parts.sleeves : v.parts.caps);
+const silksPart = (v, t, id) => silksPartsList(v, t).find((p) => p.id === id);
+function silksTrying(v, d) {
+  const out = [];
+  const add = (t, id) => { const p = silksPart(v, t, id); if (p && !p.owned && !out.some((x) => x.t === t && x.p.id === id)) out.push({ t, p }); };
+  add('pattern', d.pattern); [...d.colors, ...d.capColors].forEach((c) => add('color', c)); add('sleeve', d.sleeve); add('cap', d.cap);
+  return out;
+}
+const sameDesign = (a, b) => !!a && !!b && JSON.stringify(a) === JSON.stringify(b);
+const lowPair = (v, a, b) => v.lowContrastPairs.some(([x, y]) => (x === a && y === b) || (x === b && y === a));
+function silksPick(v, id) {
+  const d = silksDraft; silksProblem = null;
+  if (silksTab === 'pattern') {
+    d.pattern = id;
+    const n = silksPart(v, 'pattern', id).colors;
+    while (d.colors.length < n) d.colors.push(v.parts.colors.find((c) => c.owned && !d.colors.includes(c.id)).id);
+    d.colors = d.colors.slice(0, n);
+    if (silksSlot === 2 && n < 3) silksSlot = 0;
+  } else if (silksTab === 'sleeve') d.sleeve = id;
+  else if (silksTab === 'cap') d.cap = id;
+  else if (silksSlot < 3) d.colors[silksSlot] = id; else d.capColors[silksSlot - 3] = id;
+}
+
+async function SilksEditor(tryItem) {
+  currentScreen = () => SilksEditor(); await refresh();
+  silksView = await L.silksEditor();
+  const v = silksView;
+  if (!silksDraft) silksDraft = structuredClone(v.current.design);
+  if (tryItem) { // from the shop's 見た目 tab: try that part on at once
+    for (const t of ['color', 'sleeve', 'cap', 'pattern']) {
+      const p = silksPartsList(v, t).find((x) => x.shop?.itemId === tryItem);
+      if (!p) continue;
+      silksTab = t; if (t === 'color') silksSlot = 1;
+      silksPick(v, p.id);
+    }
+  }
+  const d = silksDraft, hexOf = silksHexOf(v);
+  Clear('silks'); SetArt('Art/home-paddock', false);
+  TopBar('勝負服エディタ', '見た目のみ。パーツは抽選ではありません（固定の価格・条件）');
+  // ---- live preview (left)
+  const pv = Glass('Silks preview', 36, 134, 640, 676, undefined, .9);
+  Kicker('ライブプレビュー', 28, 20, pv, { size: 15 });
+  const cv = document.createElement('canvas'); cv.className = 'img silks-canvas';
+  Object.assign(cv.style, { left: '20px', top: '82px', width: '600px', height: '413px', borderRadius: '6px' });
+  pv.appendChild(cv);
+  const draw = () => paintSilks(cv, silksDraft, hexOf);
+  if (silksMask) draw();
+  else {
+    const img = new Image(); img.onload = () => { silksMask = silksMaskOf(img); draw(); }; img.src = art(SILKS_ART);
+  }
+  const trying = silksTrying(v, d);
+  const totalAny = trying.reduce((a, x) => a + (x.p.shop?.forSale && x.p.shop.currency === 'any' ? x.p.shop.price : 0), 0);
+  const totalPaid = trying.reduce((a, x) => a + (x.p.shop?.forSale && x.p.shop.currency === 'paidOnly' ? x.p.shop.price : 0), 0);
+  pv.dataset.trying = String(trying.length);
+  if (trying.length) {
+    const tag = Txt('試着中', 36, 100, 140, 15, GOLD, pv, { weight: 700, ls: '.18em' }); tag.classList.add('silks-trying');
+    Txt(`持っていないパーツ ${trying.length}点`, 28, 512, 580, 17, GOLD, pv, { weight: 700 });
+    const lines = [];
+    if (totalAny) lines.push(`${fmt(totalAny)}コイン`);
+    if (totalPaid) lines.push(`有償コイン${fmt(totalPaid)}（有償限定）`);
+    Txt(lines.length ? `買う場合の合計：${lines.join('　＋　')}` : '遊んで解放するパーツです（購入はできません）', 28, 544, 580, 14, MUTED, pv);
+  } else Txt(sameDesign(d, v.current.design) ? '装備中の勝負服' : '変更あり（まだ保存していません）', 28, 512, 580, 17, sameDesign(d, v.current.design) ? OK : CYAN, pv, { weight: 700 });
+  if (silksProblem) Txt(silksProblem, 28, 576, 580, 14, WARN, pv, { lh: 1.5 }).classList.add('silks-problem');
+  const code = Txt('コード ' + (await L.silksPreview({ design: d }).then((r) => (r.ok ? r.value.code : '—'))), 28, 624, 580, 13, SOFT, pv, { cls: 'num' });
+  code.dataset.silksCode = '1';
+  // ---- parts (right)
+  const p = Glass('Silks parts', 692, 134, 872, 676, undefined, .9);
+  SILKS_TABS.forEach(([t, label], i) => {
+    const b = Btn(label, 24 + i * 152, 20, 140, 50, () => { silksTab = t; SilksEditor(); }, 'choice' + (silksTab === t ? ' on' : ''), p);
+    b.dataset.silksTab = t;
+  });
+  let top = 86;
+  if (silksTab === 'color') {
+    const n = d.colors.length;
+    SILKS_SLOTS.filter(([, slot]) => slot !== 2 || n === 3).forEach(([label, slot], i) => {
+      const b = Btn(label, 24 + i * 120, top, 110, 40, () => { silksSlot = slot; SilksEditor(); }, 'choice' + (silksSlot === slot ? ' on' : ''), p);
+      b.dataset.silksSlot = String(slot);
+    });
+    top += 52;
+  }
+  const list = silksPartsList(v, silksTab);
+  const cur0 = silksTab === 'pattern' ? d.pattern : silksTab === 'sleeve' ? d.sleeve : silksTab === 'cap' ? d.cap : silksSlot < 3 ? d.colors[silksSlot] : d.capColors[silksSlot - 3];
+  const other = silksTab !== 'color' ? null : silksSlot === 0 ? d.colors[1] : silksSlot === 1 ? d.colors[0] : silksSlot === 3 ? d.capColors[1] : silksSlot === 4 ? d.capColors[0] : null;
+  // every list fits on one page (at most 24 parts: 6 × 4 colours, 5 × 4 others)
+  const cols = silksTab === 'color' ? 6 : 5, gap = 8, cw = Math.floor((824 - (cols - 1) * gap) / cols), ch = Math.floor((488 - top - 3 * gap) / 4);
+  const ts = silksTab === 'color' ? 30 : 42, tx = 18 + ts, tw = cw - tx - 8;
+  list.slice(0, cols * 4).forEach((part, i) => {
+    const x = 24 + (i % cols) * (cw + gap), y = top + Math.floor(i / cols) * (ch + gap);
+    const sel = part.id === cur0, low = other && part.id !== other && lowPair(v, part.id, other);
+    const c = Card('Part ' + part.id, x, y, cw, ch, p, sel ? CYAN : part.owned ? 'var(--text-3)' : GOLD);
+    c.classList.add('silks-part'); if (sel) c.classList.add('on');
+    Object.assign(c.dataset, { part: part.id, owned: String(part.owned), low: String(!!low) });
+    if (low) c.style.opacity = '.45';
+    partThumb(silksTab, part, d, hexOf, c, 10, 12, ts);
+    Txt(part.name, tx, 10, tw, 14, sel ? CYAN : WHITE, c, { weight: 700, nowrap: true });
+    if (sel && !part.owned) Txt('試着中', tx, 32, tw, 11, GOLD, c, { weight: 700, ls: '.12em', nowrap: true });
+    else if (!part.owned) Txt('LOCK', tx, 32, tw, 11, GOLD, c, { weight: 700, ls: '.18em' });
+    else if (low) Txt('見分けにくい', tx, 32, tw, 11, WARN, c, { weight: 500, nowrap: true });
+    if (!part.owned) Txt(part.sourceLabel, 10, ch - 34, cw - 20, 10, MUTED, c, { lh: 1.25 });
+    c.addEventListener('click', () => { silksPick(v, part.id); SilksEditor(); });
+    c.setAttribute('role', 'button');
+  });
+  // ---- presets + actions
+  Hair(24, 496, 824, p);
+  Kicker('プリセット', 24, 508, p, { rule: false, size: 13 });
+  for (let i = 0; i < v.maxPresets; i++) {
+    const pr = v.presets.find((x) => x.slot === i);
+    const b = Ghost(pr ? pr.name : '空き', 24 + i * 166, 540, 156, 46, async () => {
+      if (!pr) { const r = await L.silksPresetCreate(undefined, { design: silksDraft }); toast(r.ok ? 'プリセットに保存しました' : (r.details?.problem ? silksProblemText(r) : r.message)); return SilksEditor(); }
+      if (!pr.usable) { silksDraft = structuredClone(pr.design); toast('使えないパーツがあります'); return SilksEditor(); }
+      const r = await L.silksPresetApply(i); if (r.ok) { silksDraft = structuredClone(r.value.design); toast('勝負服を保存しました'); }
+      SilksEditor();
+    }, p, 'small' + (pr && !pr.usable ? ' quiet' : ''));
+    b.dataset.preset = String(i);
+    if (pr && /^プリセット\d+$/.test(pr.name) === false) b.classList.add('keep-ja'); // the player's own name is never translated
+  }
+  const save = Cta(trying.length ? '保存（入手が必要）' : '保存する', 24, 600, 360, async () => {
+    if (trying.length) return SilksGet(trying);
+    const r = await L.saveSilks({ design: silksDraft });
+    if (r.ok) { toast('勝負服を保存しました'); silksProblem = null; } else silksProblem = silksProblemText(r);
+    SilksEditor();
+  }, p, 'small');
+  save.dataset.silksSave = trying.length ? 'needs-parts' : 'ready';
+  if (sameDesign(d, v.current.design)) disable(save);
+  Ghost('元に戻す', 400, 600, 200, 60, () => { silksDraft = structuredClone(v.current.design); silksProblem = null; SilksEditor(); }, p, 'small quiet');
+  Txt(v.notice, 616, 604, 236, 11, SOFT, p, { lh: 1.45 });
+  Back(() => { silksDraft = null; Wardrobe(); }, 'BACK', 40, 834);
+  if (v.current.resetNotice) SilksResetNotice(v.current.resetNotice.message);
+}
+function silksProblemText(r) { return r.details?.problem === 'LOW_CONTRAST' ? '色が近すぎて見分けにくい組み合わせです（胴の1色目と2色目、帽子の2色）' : r.details?.problem === 'RESERVED' ? '実在の勝負服と同じ（または紛らわしい）組み合わせのため使えません' : r.message; }
+function SilksResetNotice(message) {
+  const box = Dialog('Silks reset notice', 900, 360);
+  Kicker('お知らせ', 48, 40, box);
+  Txt(message, 48, 120, 804, 20, WHITE, box, { weight: 500, lh: 1.6 });
+  Cta('OK', 48, 240, 260, async () => { await L.silksNoticeSeen(); SilksEditor(); }, box, 'small');
+}
+/** The parts still to get: each sold part goes through the purchase confirmation; earned parts say how to unlock them. */
+function SilksGet(trying) {
+  Sheet('持っていないパーツ', '試着中　/　入手が必要', (s, close, top) => {
+    trying.slice(0, 5).forEach(({ t, p: part }, i) => {
+      const y = top + i * 112;
+      const c = Card('Need ' + part.id, 48, y, 564, 100, s, part.shop?.forSale ? GOLD : 'var(--text-3)');
+      c.dataset.need = part.id;
+      Txt(SILKS_TABS.find((x) => x[0] === t)[1], 20, 10, 330, 12, MUTED, c, { weight: 500, ls: '.12em' });
+      Txt(part.name, 20, 30, 330, 17, WHITE, c, { weight: 700, nowrap: true });
+      Txt(part.sourceLabel, 20, 62, 330, 13, part.shop?.forSale ? CYAN : MUTED, c, { nowrap: true });
+      if (part.shop?.forSale) Cta('購入を確認', 360, 20, 186, () => { close(); SilksBuy(part); }, c, 'small');
+    });
+    Txt('パーツは1つずつ固定の価格で購入します（抽選ではありません）。', 48, top + Math.min(5, trying.length) * 112 + 6, 564, 13, SOFT, s, { lh: 1.5 });
+  });
+}
+/** Purchase confirmation of one part (the cosmetics flow: paid coins first; 有償限定 on paid coins only). */
+function SilksBuy(part) {
+  currentScreen = () => SilksBuy(part);
+  Clear('silks-buy'); SetArt('Art/home-paddock', false); Shade('dim');
+  const box = Dialog('Silks part purchase', 1000, 600);
+  box.dataset.item = part.shop.itemId;
+  el('rule', 48, 30, 84, 3, box);
+  Txt('購入の確認', 48, 44, 600, 24, WHITE, box, { weight: 700, ls: '.05em' });
+  Txt('見た目のみ。ランク戦の能力には影響しません。確率なしの直販です。', 48, 78, 900, 14, MUTED, box);
+  Txt(part.name, 48, 132, 560, 34, WHITE, box, { weight: 700 });
+  const paidOnly = part.shop.currency === 'paidOnly';
+  Txt(paidOnly ? `有償コイン${fmt(part.shop.price)}` : `${fmt(part.shop.price)}コイン`, 600, 140, 352, 30, GOLD, box, { align: 'right', cls: 'num', weight: 700 });
+  const wl = player.wallet;
+  const fromPaid = Math.min(wl.paid, part.shop.price), fromFree = paidOnly ? 0 : part.shop.price - fromPaid;
+  Hair(48, 214, 904, box);
+  Txt(paidOnly ? '有償限定（有償コインのみ）' : '有償コインから先に使われます', 48, 234, 904, 17, CYAN, box, { weight: 700 });
+  Txt(`所持：有償 ${fmt(wl.paid)}　/　無償 ${fmt(wl.free)}`, 48, 272, 904, 16, WHITE, box);
+  const enough = paidOnly ? wl.paid >= part.shop.price : wl.paid + wl.free >= part.shop.price;
+  Txt(enough ? `使うコイン：有償 ${fmt(fromPaid)}　/　無償 ${fmt(fromFree)}` : 'コインが足りません', 48, 306, 904, 16, enough ? WHITE : WARN, box);
+  Txt('一度買えばずっと使えます（期限なし）。', 48, 344, 904, 14, SOFT, box);
+  Cta('購入する', 48, 470, 360, async () => {
+    const r = await L.buySilksPart(part.shop.itemId);
+    if (r.ok) { toast('パーツを入手しました'); return SilksEditor(); }
+    if (r.code === 'INSUFFICIENT_COINS' && r.details?.shortfall) return Shortfall(r.details.shortfall, 'looks', () => SilksBuy(part), () => SilksEditor());
+    toast(r.message); SilksEditor();
+  }, box, 'small');
+  Ghost('キャンセル', 432, 470, 220, 60, () => SilksEditor(), box, 'small quiet');
 }
 function CourseThemes() {
   const activePreview = previewCourse >= 0 ? previewCourse : equippedCourse();
@@ -3130,6 +3573,400 @@ function RivalResultSheet(v) {
   return sheet;
 }
 
+// ================================================================= round 14: 殿堂・引退式 (REQ-HOF-*, contracts/protocol.md §34)
+// The hall of fame on the real HallService / career record in the browser. Mirrors unity/Assets/Muchi/Game/HallModel.cs:
+// the retirement ceremony (photoreal horse art, the server's highlight lines, the 殿堂入り stamp), the gallery (paged,
+// newest first), the plaque detail and a friend's hall. Names are shown as typed. ムチ一閃 tone: race-result / paddock art,
+// translucent navy panels, letter-spaced cyan kickers, one skewed cyan CTA ».
+const HOF_REASON = { wins: (c) => `${c.wins}勝`, tournament: () => '大会優勝', partner: () => '最初の相棒' };
+const HOF_VIS = [['friends_team', 'フレンドと支部の仲間'], ['friends', 'フレンドだけ'], ['private', '自分だけ']];
+const HOF_RULES = '殿堂入りは引退の時に決まります。条件は確定したレースの成績だけで、購入やアイテムでは決まりません。';
+const HOF_DEMO_NAMES = ['ソラノカナタ', 'ミナモノヒカリ', 'ユウヒノカケハシ', 'カゼノシルベ', 'ホシノササヤキ'];
+const hofCareer = (c) => (!c || !c.races ? 'まだレースに出ていません' : `${c.races}戦${c.wins}勝・3着以内${c.places}回`);
+const hofReasons = (rs, c) => (rs ?? []).map((r) => HOF_REASON[r]?.(c ?? {}) ?? r).join('・');
+const hofDate = (ms) => { const d = new Date(ms + 9 * 3_600_000); return `${d.getUTCFullYear()}年${d.getUTCMonth() + 1}月${d.getUTCDate()}日`; };
+const hofCriteria = (c) => [c.winsMin ? `${c.winsMin}勝以上` : null, c.tournamentWin ? '大会優勝' : null, c.partnerRacesMin ? `相棒で${c.partnerRacesMin}戦以上` : null].filter(Boolean).join('・');
+const hofState = { owner: null, cursors: [null] };
+let hofDemoN = 0;
+
+/** The gallery: mine (owner null) or a friend's / branch member's (the same NOT_FOUND line for every refusal). */
+async function Hall(owner = null, page = 0) {
+  if (owner !== hofState.owner) { hofState.owner = owner; hofState.cursors = [null]; }
+  currentScreen = () => Hall(owner, page);
+  const cursor = hofState.cursors[page] ?? null;
+  const r = owner ? await L.hall.visit(owner, cursor) : await L.hall.mine(cursor);
+  await refresh();
+  if (!r.ok) { toast(owner && r.code === 'NOT_FOUND' ? 'この殿堂は見られません' : '殿堂は今は表示できません'); if (owner) Hall(); else Stable(); return; }
+  const v = r.value;
+  hofState.cursors[page + 1] = v.nextCursor;
+  // a ceremony missed earlier (offline, a lost response) comes first, once
+  if (!owner && page === 0 && v.pendingCeremonies?.length) { Ceremony(v.pendingCeremonies[0], () => Hall()); return; }
+  Clear(owner ? 'hall-friend' : 'hall'); SetArt('Art/home-paddock', false); Shade('left');
+  const mine = v.relation === 'self';
+  TopBar(mine ? '殿堂　/　HALL OF FAME' : `${v.owner.displayName}の殿堂`, mine ? HOF_RULES : (v.relation === 'team' ? '支部の仲間の殿堂です' : 'フレンドの殿堂です'));
+  // ① summary: count, the rules, the frame, visibility (mine) — or whose hall this is
+  const lp = Glass('Hall summary', 36, 134, 380, 676, undefined, .88);
+  lp.classList.add('hof-summary'); lp.dataset.relation = v.relation;
+  Kicker(mine ? '自分の殿堂' : v.relation === 'team' ? '支部の仲間の殿堂' : 'フレンドの殿堂', 30, 30, lp, { w: 320 });
+  Txt(`${v.total}`, 30, 100, 150, 72, GOLD, lp, { weight: 700, cls: 'num' }).classList.add('hof-count');
+  Txt('頭が殿堂入り', 150, 136, 200, 18, WHITE, lp, { weight: 700 });
+  if (mine) {
+    Txt(`${hofCriteria(v.criteria)} のどれかで殿堂入り`, 30, 210, 320, 14, SOFT, lp, { lh: 1.5 }).classList.add('hof-criteria');
+    Txt(v.frame.owned ? '殿堂の額縁：持っています（マイ厩舎に飾れます）' : '殿堂の額縁：最初の殿堂入りで1回だけもらえます', 30, 276, 320, 13, v.frame.owned ? GOLD : MUTED, lp, { lh: 1.5, weight: 700 });
+    const p = partner();
+    if (p) {
+      const c = await L.hall.career(p.id);
+      if (c.ok && cur?.dataset.screen === 'hall') {
+        const g = c.value.progress;
+        const parts = [g.wins ? `${g.wins.need}勝のうち${g.wins.have}勝` : null, g.partnerRaces ? `相棒で${g.partnerRaces.need}戦のうち${g.partnerRaces.have}戦` : null].filter(Boolean);
+        Kicker('相棒の戦績', 30, 336, lp, { rule: false, size: 14 });
+        Txt(p.name, 30, 366, 320, 18, WHITE, lp, { weight: 700, nowrap: true });
+        Txt(hofCareer(c.value.career), 30, 396, 320, 14, MUTED, lp).classList.add('hof-partner-career');
+        if (parts.length) Txt(`殿堂入りまで：${parts.join('・')}`, 30, 422, 320, 13, SOFT, lp, { lh: 1.5 });
+      }
+    }
+    Kicker('見に来られる人', 30, 486, lp, { rule: false, size: 14 });
+    HOF_VIS.forEach(([k, label], i) => {
+      const b = Ghost(label, 30, 516 + i * 46, 320, 40, async () => { const x = await L.hall.setVisibility(k); toast(x.ok ? `公開範囲を「${label}」にしました` : x.message); Hall(); }, lp, 'quiet small' + (v.visibility === k ? ' on' : ''));
+      b.classList.add('hof-vis'); b.dataset.on = String(v.visibility === k);
+    });
+  } else {
+    Txt(v.owner.displayName, 30, 210, 320, 26, WHITE, lp, { weight: 700, nowrap: true });
+    Txt('名前はプレイヤーが付けたままです', 30, 256, 320, 13, DIM, lp);
+    Ghost('自分の殿堂', 30, 600, 320, 50, () => Hall(), lp, 'quiet small');
+  }
+  // ② the plaques, 6 per page, newest first
+  const grid = el('hof-grid', 440, 134, 1124, 676);
+  if (!v.entries.length) {
+    const e = Glass('Hall empty', 0, 0, 1124, 200, grid, .82);
+    Txt('まだ殿堂入りした馬はいません', 36, 50, 1052, 22, WHITE, e, { weight: 700 });
+    Txt(mine ? '引退の時に条件を満たした馬が、ここに銘板として残ります' : '殿堂入りした馬ができると、ここに並びます', 36, 100, 1052, 15, MUTED, e);
+  }
+  v.entries.forEach((p, i) => {
+    const x = (i % 3) * 378, y = Math.floor(i / 3) * 340;
+    const c = Card('Plaque', x, y, 362, 326, grid, p.frame ? 'var(--gold)' : 'var(--cyan)');
+    c.classList.add('hof-plaque'); if (p.frame) c.classList.add('hof-framed'); c.dataset.horse = p.horseId;
+    ArtImage(colArt(p.horseId), 14, 14, 334, 170, c, 'col-por');
+    Txt(p.horseName, 20, 196, 322, 22, WHITE, c, { weight: 700, nowrap: true, ls: '.04em' }).classList.add('hof-name');
+    Txt(hofCareer(p.career), 20, 232, 322, 14, GOLD, c, { weight: 700 });
+    Txt(hofReasons(p.reasons, p.career), 20, 258, 322, 13, CYAN, c, { weight: 700, ls: '.08em', nowrap: true });
+    Txt(`${hofDate(p.inductedAt)} 殿堂入り`, 20, 284, 322, 12, DIM, c, { nowrap: true });
+    c.style.cursor = 'pointer'; c.addEventListener('click', () => PlaqueDetail(p));
+  });
+  if (page > 0) Ghost('前へ', 1124, 826, 200, 50, () => Hall(owner, page - 1), undefined, 'quiet small').classList.add('hof-prev');
+  if (v.nextCursor) Ghost('次へ', 1364, 826, 200, 50, () => Hall(owner, page + 1), undefined, 'quiet small').classList.add('hof-next');
+  if (mine) {
+    Ghost('デモ：引退式', 440, 826, 260, 50, async () => {
+      const name = HOF_DEMO_NAMES[hofDemoN++ % HOF_DEMO_NAMES.length];
+      const x = await L.hall.demoRetire(name, 10 + (hofDemoN % 3), 6, hofDemoN % 2 ? 'オータムカップ' : null);
+      if (x.ok && x.value) Ceremony(x.value, () => Hall()); else toast(x.message ?? '引退できませんでした');
+    }, undefined, 'quiet small').classList.add('hof-demo-retire');
+    Ghost('デモ：友達の殿堂', 720, 826, 300, 50, async () => { const x = await L.hall.demoFriend(); if (x.ok) Hall(x.value); }, undefined, 'quiet small').classList.add('hof-demo-friend');
+  }
+  Back(owner ? () => Hall() : Stable, 'BACK', 40, 834);
+}
+
+/** The retirement ceremony: shown once per horse (closing acknowledges it). */
+function Ceremony(c, next = () => Hall()) {
+  currentScreen = () => Ceremony(c, next);
+  Clear('hall-ceremony'); SetArt('Art/race-result', false); Shade('left');
+  ArtImage(colArt(c.horseId), 760, 120, 800, 600, undefined, 'col-por hof-hero');
+  const lp = Glass('Ceremony', 36, 60, 700, 780, undefined, .9);
+  lp.classList.add('hof-ceremony'); lp.dataset.inducted = String(!!c.inducted);
+  Kicker('引退式　/　RETIREMENT', 40, 36, lp);
+  Txt(c.horseName, 40, 110, 620, 48, WHITE, lp, { weight: 700, ls: '.06em', nowrap: true }).classList.add('hof-name');
+  Txt(hofCareer(c.career) + (c.partner ? '　·　最初の相棒' : ''), 40, 182, 620, 18, GOLD, lp, { weight: 700 });
+  Kicker('戦績の見どころ', 40, 236, lp, { rule: false, size: 15 });
+  const lines = c.highlights?.length ? c.highlights : [{ kind: 'none', text: 'レースの記録はありません' }];
+  lines.forEach((h, i) => {
+    const row = el('hof-line', 40, 272 + i * 52, 620, 46, lp); row.dataset.kind = h.kind;
+    el('rule', 0, 20, 18, 3, row);
+    Txt(h.text, 32, 8, 588, 18, WHITE, row, { weight: 500, nowrap: true });
+  });
+  if (c.inducted) Txt(`殿堂入り：${hofReasons(c.reasons, c.career)}`, 40, 560, 620, 17, CYAN, lp, { weight: 700, ls: '.06em' }).classList.add('hof-reason');
+  else Txt('おつかれさま。これからは配合で血をつなぎます', 40, 560, 620, 16, MUTED, lp);
+  if (c.rewardItemId) Txt('殿堂の額縁を受け取りました（マイ厩舎に飾れます）', 40, 600, 620, 15, GOLD, lp, { weight: 700 }).classList.add('hof-reward');
+  Cta('つづける', 40, 664, 420, async () => { await L.hall.ack(c.horseId); next(); }, lp).classList.add('hof-continue');
+  if (c.inducted) { const s = el('hof-stamp', 1290, 150, 250, 250); Txt('殿堂入り', 0, 92, 250, 44, null, s, { weight: 700, align: 'center' }); Txt('HALL OF FAME', 0, 150, 250, 13, null, s, { weight: 700, align: 'center', ls: '.2em' }); }
+  EnToggle();
+}
+
+/** The plaque detail (a drawer): art, name as typed, career line, reasons, highlight lines, induction date. */
+function PlaqueDetail(p) {
+  Sheet(p.horseName, `銘板　/　${hofDate(p.inductedAt)} 殿堂入り`, (s, close, y) => {
+    s.classList.add('hof-detail');
+    ArtImage(colArt(p.horseId), 48, y, 564, 260, s, 'col-por' + (p.frame ? ' hof-framed-img' : ''));
+    Txt(`${p.rarity}　·　${hofCareer(p.career)}`, 48, y + 278, 564, 16, GOLD, s, { weight: 700 });
+    Txt(`殿堂入り：${hofReasons(p.reasons, p.career)}`, 48, y + 308, 564, 15, CYAN, s, { weight: 700 });
+    (p.highlights ?? []).slice(0, 5).forEach((h, i) => Txt(h.text, 48, y + 350 + i * 34, 564, 15, WHITE, s, { weight: 500, nowrap: true }));
+    if (p.frame) Txt('殿堂の額縁つき', 48, y + 530, 564, 13, DIM, s);
+  });
+}
+
+// ================================================================= round 14: マイリプレイ (REQ-MYRP-*, contracts/protocol.md §37)
+// Saved replays on the real MyReplaysService / PlayerService rules, played back by ReplayPlayer in WebAssembly: the whole
+// race re-simulated on the device from the stored config + inputs, the hash checked before anything is shown (else
+// 「再生できません」). Mirrors unity/Assets/Muchi/Game/MyReplaysModel.cs. ムチ一閃 tone: race art, two translucent navy
+// panels, letter-spaced cyan kickers, one skewed cyan CTA ». Titles are what the player typed: never translated.
+const RP_MOMENT = { win: '勝利', photo: '写真判定', pb: '自己ベスト' };
+const RP_PUBLIC_NOTE = '公開にすると、フレンドがこのリプレイを見られます（ほかのプレイヤーは馬の名前だけが表示されます）';
+const rpCourse = (id) => L.trackName(id);
+const rpDate = (ms) => { const d = new Date(ms + 9 * 3600e3); return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`; };
+const rpResult = (r) => (r.place > 0 ? `${r.place}着 / ${r.fieldSize}頭` : '完走ならず');
+const rpTitle = (r) => r.replayTitle || rpCourse(r.trackId); // no title: the course (the place is on the line below)
+const rpClock = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}.${Math.floor(ms / 100) % 10}`;
+let rpPage = 0;
+/** Marks a player-typed title so the English layer leaves it as typed (REQ-MYRP-004). */
+function rpTyped(node, r) { if (r.replayTitle) { node.classList.add('keep-ja', 'typed'); node.dataset.typed = '1'; } return node; }
+
+async function MyReplays() {
+  currentScreen = MyReplays;
+  const r = await L.replays.view();
+  if (!r.ok || !r.value.enabled) { toast('マイリプレイは今は表示できません'); Home(); return; }
+  const v = r.value;
+  Clear('my-replays'); SetArt('Art/race-result', false); Shade('left');
+  TopBar('マイリプレイ', `自分のレースを残して、いつでも見返せます　·　保存は無料で${v.maxSaved}件まで`);
+  // ① saved replays (favourites first)
+  const lp = Glass('Saved replays', 36, 134, 820, 676, undefined, .88);
+  lp.classList.add('rp-saved');
+  Kicker(`保存したリプレイ　/　${v.used} / ${v.maxSaved}`, 36, 30, lp).classList.add('rp-count');
+  const per = 4, pages = Math.max(1, Math.ceil(v.saved.length / per));
+  rpPage = Math.min(rpPage, pages - 1);
+  if (!v.saved.length) Txt('保存したリプレイはまだありません。レースの名場面は自動でここに並びます', 36, 110, 748, 16, MUTED, lp, { lh: 1.6 }).classList.add('rp-empty');
+  v.saved.slice(rpPage * per, rpPage * per + per).forEach((x, i) => {
+    const c = Card('Replay card', 36, 100 + i * 128, 748, 116, lp, x.playable ? 'var(--cyan)' : 'var(--warn)');
+    c.classList.add('rp-card'); c.dataset.raceId = x.raceId; c.dataset.playable = String(x.playable); c.dataset.public = String(x.public); c.dataset.favorite = String(x.favorite);
+    rpTyped(Txt(rpTitle(x), 24, 18, 560, 22, WHITE, c, { weight: 700, nowrap: true, ls: '.04em' }), x).classList.add('rp-title');
+    Txt(`${rpResult(x)}　·　${rpDate(x.at)}`, 24, 56, 250, 15, x.place === 1 ? GOLD : SOFT, c, { weight: 500, nowrap: true, cls: 'num' });
+    if (x.replayTitle) Txt(rpCourse(x.trackId), 284, 56, 360, 15, SOFT, c, { weight: 500, nowrap: true }); // untitled: the course is the title
+    const pills = [];
+    if (x.moment) pills.push([RP_MOMENT[x.moment] ?? x.moment, 'gold']);
+    if (x.public) pills.push(['公開', 'cyan']);
+    if (!x.playable) pills.push(['再生できません', 'warn']);
+    if (pills.length) Pills(pills, 24, 82, 600, c);
+    Txt(x.favorite ? '★' : '☆', 680, 30, 44, 32, x.favorite ? GOLD : DIM, c, { align: 'center' }).classList.add('rp-star');
+    c.style.cursor = 'pointer'; c.addEventListener('click', () => ReplaySheet(x));
+  });
+  if (pages > 1) {
+    TextLink('前へ', 36, 620, 100, () => { rpPage = Math.max(0, rpPage - 1); MyReplays(); }, lp, '‹ 前へ');
+    Txt(`${rpPage + 1} / ${pages}`, 340, 626, 140, 15, MUTED, lp, { align: 'center', cls: 'num' });
+    TextLink('次へ', 684, 620, 100, () => { rpPage = Math.min(pages - 1, rpPage + 1); MyReplays(); }, lp, '次へ ›');
+  }
+  // ② best moments (auto, rotating) and recent races that can still be kept
+  const rp = Glass('Moments', 880, 134, 684, 676, undefined, .86);
+  rp.classList.add('rp-moments');
+  Kicker('名場面と最近のレース　/　自動で入れ替わります', 36, 30, rp);
+  const rows = [...v.moments, ...v.recent].slice(0, 6);
+  if (!rows.length) Txt('レースを走ると、勝利・写真判定・自己ベストがここに並びます', 36, 110, 612, 15, MUTED, rp, { lh: 1.6 });
+  rows.forEach((x, i) => {
+    const row = el('rp-row', 36, 100 + i * 70, 612, 62, rp); row.dataset.raceId = x.raceId; row.dataset.moment = x.moment ?? 'none';
+    Txt(x.moment ? RP_MOMENT[x.moment] : '最近のレース', 0, 4, 150, 13, x.moment ? GOLD : CYAN, row, { weight: 700, ls: '.12em', nowrap: true });
+    Txt(rpResult(x), 0, 26, 130, 16, WHITE, row, { weight: 700, nowrap: true, cls: 'num' });
+    Txt(rpCourse(x.trackId), 140, 28, 280, 14, SOFT, row, { weight: 500, nowrap: true });
+    if (!x.saved) Txt(`${rpDate(x.expiresAt - 1)}まで保存できます`, 150, 6, 260, 12, DIM, row, { nowrap: true });
+    const k = Ghost(x.saved ? '保存済み' : '残す', 430, 6, 180, 50, async () => {
+      const s = await L.replays.save(x.raceId);
+      toast(s.ok ? 'リプレイを保存しました' : s.code === 'REPLAY_LIMIT' ? '保存できるのはここまでです。不要なリプレイを削除してください' : s.code === 'REPLAY_EXPIRED' ? 'このレースのリプレイはもう保存できません' : s.code === 'DELETION_PENDING' ? 'アカウント削除の手続き中のため、保存できません' : s.message);
+      MyReplays();
+    }, row, 'small');
+    k.classList.add('rp-keep'); if (x.saved || v.used >= v.maxSaved) disable(k);
+    row.style.cursor = 'pointer'; row.addEventListener('click', () => ReplayPlayer(x.raceId, { title: rpCourse(x.trackId) }));
+    Hair(0, 61, 612, row);
+  });
+  Ghost('デモ：レースを走る', 36, 540, 300, 54, async () => { await RpDemoRace(); MyReplays(); }, rp, 'quiet small').classList.add('rp-demo-race');
+  Ghost('フレンドの公開リプレイ', 352, 540, 296, 54, () => FriendReplays(), rp, 'quiet small').classList.add('rp-friend');
+  Txt('保存はリプレイの記録（設定と操作）だけです。見る時に端末で同じレースを再計算します', 36, 612, 612, 12, SOFT, rp, { lh: 1.55 });
+  Back(Home, 'BACK', 40, 834);
+}
+
+/** A demo race on the real engine: the server's buildRaceConfig, ridden in WASM by a scripted rider, settled like a room. */
+async function RpDemoRace() {
+  const p = partner();
+  if (!p) return;
+  const tracks = ['aoba_turf_1600', 'kirameki_turf_2000'];
+  const { config } = await L.raceConfig(p.id, tracks[Math.floor(Math.random() * tracks.length)]);
+  const sim = JSON.parse(engine.SimulateConfig(JSON.stringify(config), 'local', 300 + Math.floor(Math.random() * 500)));
+  const ft = sim.finishTicks[sim.place - 1];
+  await L.applyRace(config.raceId, sim.place, config.entrants.length, { trackId: config.track.id, style: p.style, finishTick: ft >= 0 ? ft : null, whips: 0 }, config,
+    { slot: sim.slot, hash: sim.hash, endTick: sim.endTick, inputs: sim.inputs, marginTicks: L.replays.marginTicks(sim.order, sim.finishTicks, sim.slot) });
+  await refresh();
+  globalThis.__muchi && (globalThis.__muchi.lastReplayRace = config.raceId);
+  return config.raceId;
+}
+
+/** One saved replay: play, rename, favourite, public, delete. */
+function ReplaySheet(x) {
+  return Sheet(rpTitle(x), 'リプレイ　/　保存', (s, close, y) => {
+    s.classList.add('rp-sheet'); s.dataset.raceId = x.raceId;
+    rpTyped(s.querySelectorAll('.label')[1], x);
+    Txt(`${rpResult(x)}　·　${rpDate(x.at)}`, 48, y, 250, 17, x.place === 1 ? GOLD : WHITE, s, { weight: 700, cls: 'num', nowrap: true });
+    Txt(rpCourse(x.trackId), 310, y + 2, 302, 15, WHITE, s, { weight: 500, nowrap: true });
+    if (x.moment) Txt(RP_MOMENT[x.moment], 48, y + 34, 564, 14, GOLD, s, { weight: 700, ls: '.12em' });
+    if (!x.playable) Txt(rpUnplayable(x.reason), 48, y + 62, 564, 15, WARN, s, { weight: 700, lh: 1.5 }).classList.add('rp-unplayable');
+    const play = Cta('再生する', 48, y + 110, 564, () => { close(); ReplayPlayer(x.raceId, { title: rpTitle(x), typed: !!x.replayTitle }); }, s);
+    play.classList.add('rp-play'); if (!x.playable) disable(play);
+    Ghost('名前を変える', 48, y + 214, 270, 56, () => { close(); RenameSheet(x); }, s, 'small').classList.add('rp-rename');
+    const fav = Ghost(x.favorite ? '★ お気に入り' : '☆ お気に入り', 342, y + 214, 270, 56, async () => {
+      const r = await L.replays.update(x.raceId, { favorite: !x.favorite }); close();
+      if (!r.ok) toast(r.message); MyReplays();
+    }, s, 'small');
+    fav.classList.add('rp-fav'); if (x.favorite) fav.classList.add('on');
+    const pub = Btn('公開', 48, y + 296, 564, 64, async () => {
+      const r = await L.replays.update(x.raceId, { public: !x.public }); close();
+      toast(r.ok ? (r.value.saved.public ? 'フレンドに公開しました' : '非公開にしました') : r.code === 'DELETION_PENDING' ? 'アカウント削除の手続き中のため、公開できません' : r.message);
+      MyReplays();
+    }, 'check', s, (x.public ? '☑　' : '☐　') + 'フレンドに公開する');
+    pub.classList.add('rp-public'); if (x.public) pub.classList.add('on');
+    Txt(RP_PUBLIC_NOTE, 48, y + 372, 564, 13, SOFT, s, { lh: 1.55 });
+    TextLink('削除', 48, y + 440, 160, async () => { const r = await L.replays.remove(x.raceId); close(); toast(r.ok ? 'リプレイを削除しました' : r.message); MyReplays(); }, s, 'このリプレイを削除').classList.add('rp-delete');
+  });
+}
+function rpUnplayable(reason) {
+  return { ruleset_retired: '古いルールのレースのため、再生できません', ruleset_unknown: 'このアプリのバージョンでは再生できません。アプリを更新してください', hash_mismatch: 'このアプリのバージョンでは同じレースを再現できないため、再生できません', broken: 'データを読み込めないため、再生できません' }[reason] ?? 'このリプレイは再生できません';
+}
+
+/** The rename sheet: the server moderates (NG words, URLs); an empty title goes back to course + place. */
+function RenameSheet(x, error = '') {
+  const max = 24;
+  return Sheet('名前を変える', 'リプレイ　/　タイトル', (s, close, y) => {
+    s.classList.add('rp-rename-sheet');
+    Txt(`1〜${max}文字。ほかの人に見える名前です（公開にした時）`, 48, y, 564, 14, MUTED, s);
+    const box = el('fieldbox', 48, y + 34, 564, 72, s);
+    const input = document.createElement('input');
+    input.className = 'field keep-ja'; input.maxLength = max; input.value = x.replayTitle ?? ''; input.placeholder = rpCourse(x.trackId); input.setAttribute('aria-label', 'リプレイのタイトル');
+    Object.assign(input.style, { left: '22px', top: '12px', width: '520px', height: '48px', fontSize: '26px' });
+    box.appendChild(input);
+    const err = Txt(error, 48, y + 118, 564, 15, WARN, s, { weight: 500 }); err.classList.add('rp-rename-error');
+    const save = async (title) => {
+      const r = await L.replays.update(x.raceId, { replayTitle: title });
+      if (!r.ok) {
+        err.textContent = r.code === 'NG_NAME' ? 'この言葉は使えません。別のタイトルにしてください。' : r.code === 'INVALID_NAME' ? `1〜${max}文字で入力してください（URLは使えません）` : r.message;
+        return;
+      }
+      close(); toast(title ? 'タイトルを変えました' : 'タイトルを消しました'); MyReplays();
+    };
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(input.value.trim() || null); });
+    Cta('保存する', 48, y + 160, 564, () => save(input.value.trim() || null), s).classList.add('rp-rename-save');
+    TextLink('タイトルを消す', 48, y + 256, 220, () => save(null), s).classList.add('rp-rename-clear');
+    setTimeout(() => input.focus(), 50);
+  });
+}
+
+/** The demo friend's public replays (privacy rules on the owner's object; a 404 never says why). */
+async function FriendReplays() {
+  currentScreen = FriendReplays;
+  let r = await L.replays.friendList();
+  if (r.ok && !r.value.replays.length) {
+    const { config, playerId } = await L.replays.friendConfig();
+    const sim = JSON.parse(engine.SimulateConfig(JSON.stringify(config), playerId, 600));
+    await L.replays.demoFriendSave(config, sim);
+    r = await L.replays.friendList();
+  }
+  if (!r.ok) { toast('このリプレイは見られません'); return MyReplays(); }
+  const v = r.value;
+  Clear('friend-replays'); SetArt('Art/race-result', false); Shade('left');
+  TopBar('フレンドのリプレイ', 'フレンドが公開したリプレイだけが表示されます');
+  const p = Glass('Friend replays', 36, 134, 820, 676, undefined, .88);
+  p.classList.add('rp-friend-list');
+  Kicker('公開されたリプレイ', 36, 30, p);
+  Txt(v.displayName, 400, 64, 384, 18, GOLD, p, { weight: 700, align: 'right', nowrap: true, cls: 'keep-ja' }).dataset.typed = '1'; // a player-typed name
+  v.replays.slice(0, 4).forEach((x, i) => {
+    const c = Card('Friend replay', 36, 100 + i * 128, 748, 116, p, 'var(--cyan)');
+    c.classList.add('rp-card'); c.dataset.raceId = x.raceId;
+    rpTyped(Txt(rpTitle(x), 24, 18, 560, 22, WHITE, c, { weight: 700, nowrap: true }), x).classList.add('rp-title');
+    Txt(`${rpResult(x)}　·　${rpDate(x.at)}`, 24, 56, 250, 15, SOFT, c, { weight: 500, nowrap: true, cls: 'num' });
+    Txt(rpCourse(x.trackId), 284, 56, 360, 15, SOFT, c, { weight: 500, nowrap: true });
+    c.style.cursor = 'pointer'; c.addEventListener('click', () => ReplayPlayer(x.raceId, { friend: true, title: rpTitle(x), typed: !!x.replayTitle, owner: v.displayName }));
+  });
+  Back(MyReplays, 'BACK', 40, 834);
+}
+
+/** The player: the whole race re-simulated in WASM, 0.5× / 1× / 2×, the camera on any horse, jump to its last 200 m. */
+async function ReplayPlayer(raceId, o = {}) {
+  const d = o.friend ? await L.replays.friendData(raceId) : await L.replays.data(raceId);
+  if (!d.ok) { toast(d.code === 'REPLAY_EXPIRED' ? 'このレースのリプレイはもう残っていません' : 'このリプレイは見られません'); return o.friend ? FriendReplays() : MyReplays(); }
+  const info = JSON.parse(engine.ReplayOpen(JSON.stringify(d.value)));
+  const back = o.friend ? FriendReplays : MyReplays;
+  currentScreen = () => ReplayPlayer(raceId, o);
+  if (!info.playable) {
+    Clear('replay-unplayable'); SetArt('Art/race-result', false); Shade('dim');
+    const box = Dialog('Unplayable', 820, 420); box.dataset.reason = info.reason;
+    Kicker('リプレイ', 52, 48, box);
+    Txt('このリプレイは再生できません', 52, 112, 716, 32, WHITE, box);
+    Txt(info.message, 52, 176, 716, 18, MUTED, box, { lh: 1.7 }).classList.add('rp-unplayable');
+    Txt('違うレースを流さないため、再生しません。保存はそのまま残り、削除できます', 52, 250, 716, 14, SOFT, box, { lh: 1.6 });
+    Cta('もどる', 52, 310, 360, back, box);
+    return;
+  }
+  await viewReady;
+  Clear('replay-player'); cur.classList.add('race'); $canvas.hidden = false;
+  view.useRig = true; view.start(info, equippedPartner());
+  const state = { camera: info.ownSlot, speed: 1, paused: false };
+  // header: the title (typed titles as typed) and whose replay it is
+  const h = Glass('Replay header', 36, 31, 760, 88, undefined, .82);
+  el('rule', 22, 18, 84, 3, h);
+  const t = Txt(o.title ?? 'リプレイ', 22, 30, 720, 24, WHITE, h, { weight: 700, nowrap: true, ls: '.05em' });
+  if (o.typed) { t.classList.add('keep-ja', 'typed'); t.dataset.typed = '1'; }
+  Txt(o.friend ? 'フレンドのリプレイ' : 'マイリプレイ　/　端末で再計算（結果が一致した時だけ再生）', 22, 60, o.friend ? 220 : 720, 14, MUTED, h, { nowrap: true });
+  if (o.friend) Txt(o.owner ?? '', 250, 60, 480, 14, GOLD, h, { nowrap: true, weight: 700, cls: 'keep-ja' });
+  EnToggle(1466, 31, 98, 88);
+  const rem = el('chip num rp-remaining', 54, 150, 230, 64); rem.style.fontSize = '26px';
+  const rank = el('chip num rp-rank', 300, 150, 200, 64); rank.style.fontSize = '24px';
+  const camLabel = Txt('', 54, 230, 700, 18, WHITE, undefined, { weight: 700, cls: 'tshadow', nowrap: true }); camLabel.classList.add('rp-camera');
+  // controls
+  const bar = Glass('Replay controls', 36, 744, 1528, 120, undefined, .86); bar.classList.add('rp-controls');
+  const ctl = (op, value = 0) => { const s = JSON.parse(engine.ReplayControl(op, value)); Object.assign(state, { camera: s.camera, speed: s.speed, paused: s.paused }); paint(); return s; };
+  const pause = Ghost('一時停止', 24, 30, 170, 60, () => ctl('pause', state.paused ? 0 : 1), bar, 'small'); pause.classList.add('rp-pause');
+  const speed = Ghost('1×', 210, 30, 120, 60, () => ctl('cycle'), bar, 'small'); speed.classList.add('rp-speed', 'keep-ja');
+  Btn('前の馬', 346, 30, 70, 60, () => ctl('camera', (state.camera + info.names.length - 1) % info.names.length), 'ghost small rp-cam-prev', bar, '‹');
+  Btn('次の馬', 680, 30, 70, 60, () => ctl('camera', (state.camera + 1) % info.names.length), 'ghost small rp-cam-next', bar, '›');
+  const camName = Txt('', 426, 48, 244, 16, WHITE, bar, { weight: 700, align: 'center', nowrap: true }); camName.classList.add('rp-cam-name');
+  Cta('最後の200mへ', 770, 24, 330, () => ctl('jump'), bar, 'small').classList.add('rp-jump');
+  const seek = el('bar rp-seek', 1124, 40, 220, null, bar); const fill = document.createElement('i'); seek.appendChild(fill); seek.style.cursor = 'pointer';
+  seek.addEventListener('click', (e) => { const r = seek.getBoundingClientRect(); ctl('seek', Math.round(info.durationMs * clamp((e.clientX - r.left) / r.width, 0, 1))); });
+  const clock = Txt('', 1124, 64, 220, 13, MUTED, bar, { cls: 'num', nowrap: true });
+  Ghost('共有', 1362, 30, 140, 60, () => RpShare(o), bar, 'small').classList.add('rp-share');
+  Back(back, 'BACK', 40, 640);
+  function paint() {
+    pause.querySelector('span').textContent = state.paused ? '再生' : '一時停止';
+    speed.querySelector('span').textContent = `${state.speed}×`;
+    camName.textContent = info.labels[state.camera] ?? '';
+    camLabel.textContent = `カメラ：${info.labels[state.camera] ?? ''}`;
+    view.playerSlot = state.camera;
+  }
+  paint();
+  let last = performance.now();
+  every(33, () => {
+    const now = performance.now(), dt = now - last; last = now;
+    const f = JSON.parse(engine.ReplayFrame(dt));
+    view.draw(f);
+    rem.textContent = f.remainingM > 0 ? `残り ${Math.ceil(f.remainingM)} m` : 'ゴール';
+    rank.textContent = `${f.rank}位 / ${info.names.length}頭`;
+    fill.style.width = Math.round(100 * f.t / Math.max(1, f.durationMs)) + '%';
+    clock.textContent = `${rpClock(f.t)} / ${rpClock(f.durationMs)}`;
+    globalThis.__muchi && (globalThis.__muchi.replay = { t: f.t, durationMs: f.durationMs, camera: f.camera, remainingM: f.remainingM, speed: state.speed, paused: state.paused, atEnd: f.atEnd, hash: info.hash, reason: null });
+  });
+}
+
+/** The share card of the replay (REQ-UXS-071 ShareCard for the player's own horse); replay_share when handed to the OS sheet. */
+function RpShare(o = {}) {
+  const c = JSON.parse(engine.ReplayShareCard(''));
+  if (!c.ok) { toast('このレースは共有できません'); return; }
+  Sheet(c.placeText, 'ムチ一閃　/　リプレイを共有', (s, close, y) => {
+    s.classList.add('rp-share-sheet');
+    Txt(c.time, 48, y, 564, 34, WHITE, s, { cls: 'num' });
+    Txt(c.horse, 48, y + 56, 564, 28, GOLD, s, { ls: '.06em' });
+    Txt(c.course, 48, y + 102, 564, 17, WHITE, s, { weight: 500 });
+    Txt('共有の文：' + c.shareText, 48, y + 146, 564, 14, MUTED, s, { lh: 1.6 });
+    Txt('名前・IDは入りません（選んだ馬の名前だけ）', 48, y + 222, 564, 13, SOFT, s);
+    Cta('共有する', 48, y + 270, 564, () => {
+      L.kpi([{ name: 'replay_share', at: L.now(), props: { surface: o.friend ? 'friend_replay' : 'my_replays' } }]);
+      globalThis.__muchi && (globalThis.__muchi.lastKpi = 'replay_share');
+      close(); toast('共有しました（アプリでは共有シートを開きます）');
+    }, s, 'gold').classList.add('rp-share-go');
+  });
+}
+
 // ================================================================= round 10: 支部の応援スタンプ (REQ-TEAMFEED-*)
 // The team feed on the real server rules (TeamsService / TeamCore in the browser) — fixed stamps only, no text field.
 // Mirrors unity/Assets/Muchi/Game/TeamFeedModel.cs: palette with server-built unlock texts, 10 s post cooldown, cheering a
@@ -3574,10 +4411,11 @@ window.addEventListener('resize', fit);
 fit();
 
 async function boot() {
-  const [ja, artIndex, ruleset, commentary, partners, commentaryEn, serverEn, uiEn] = await Promise.all([
+  const [ja, artIndex, ruleset, commentary, partners, commentaryEn, serverEn, uiEn, commentaryPacks] = await Promise.all([
     fetch('data/ja.json').then((r) => r.json()), fetch('data/art.json').then((r) => r.json()),
     fetch('data/ruleset.json').then((r) => r.text()), fetch('data/commentary-ja.json').then((r) => r.text()), fetch('data/partners.json').then((r) => r.json()),
     fetch('data/commentary-en.json').then((r) => r.text()), fetch('data/server-en.json').then((r) => r.text()), fetch('data/ui-en.json').then((r) => r.text()),
+    fetch('data/commentary-packs.json').then((r) => r.text()), // round 14: 実況パック
   ]);
   enTables = { commentaryJa: commentary, commentaryEn, server: serverEn, ui: uiEn };
   for (const e of ja.entries ?? []) JA[e.key] = e.value;
@@ -3589,6 +4427,7 @@ async function boot() {
   const runtime = await dotnet.create();
   engine = (await runtime.getAssemblyExports(runtime.getConfig().mainAssemblyName)).MuchiRace;
   engine.Init(ruleset, commentary);
+  engine.SetCommentaryPacks(commentaryPacks); // round 14 (REQ-CMT-001): the client copy of server/master/commentary-packs.json
   applyLanguage(); // REQ-L10N-012: English commentary when EN is on
   l10nObserver.observe($stage, { subtree: true, childList: true, characterData: true });
   view = new RaceView($canvas, (res) => art(res), partners);
@@ -3597,7 +4436,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

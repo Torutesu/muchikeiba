@@ -7,6 +7,7 @@ import type { StudEntry } from '../domain/stud.js';
 import { sortListings, type StudDirectory } from '../domain/studService.js';
 import { sortStables, type StableDirectory, type StableSnapshot } from '../domain/stable.js';
 import { inviteShardOf, makeInviteCode, type InviteDirectory } from '../domain/invite.js';
+import type { HallDirectory, HallSnapshot } from '../domain/hallOfFame.js';
 
 /**
  * Friend codes and public profiles (REQ-SOCIAL-001/004), sharded by player id into DIRECTORY_SHARDS
@@ -26,6 +27,8 @@ export class DirectoryDO extends DurableObject<Env> {
     // REQ-STABLE-003: public copy of each stable (the owner's PlayerDO is the source of truth)
     this.sql.exec(`CREATE TABLE IF NOT EXISTS stables (player_id TEXT PRIMARY KEY, likes INTEGER NOT NULL, updated_at INTEGER NOT NULL, snapshot TEXT NOT NULL)`);
     this.sql.exec(`CREATE INDEX IF NOT EXISTS stables_top ON stables (likes, updated_at)`);
+    // REQ-HOF-011: public copy of each hall of fame (the owner's PlayerDO is the source of truth)
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS halls (player_id TEXT PRIMARY KEY, updated_at INTEGER NOT NULL, snapshot TEXT NOT NULL)`);
     // REQ-INV-001: invite codes (shard = the player's shard, first character of the code). A retired code keeps its
     // row with no player, so it is never handed out again.
     this.sql.exec(`CREATE TABLE IF NOT EXISTS invite_codes (code TEXT PRIMARY KEY, player_id TEXT UNIQUE, created_at INTEGER NOT NULL, retired_at INTEGER)`);
@@ -91,6 +94,25 @@ export class DirectoryDO extends DurableObject<Env> {
     return wrap(() => this.sql.exec<{ snapshot: string }>('SELECT snapshot FROM stables ORDER BY likes DESC, updated_at DESC LIMIT ?', Math.min(200, Math.max(1, limit))).toArray().map((r) => JSON.parse(r.snapshot) as StableSnapshot));
   }
 
+  async hallPut(x: HallSnapshot): Promise<Envelope<boolean>> {
+    return wrap(() => {
+      this.sql.exec('INSERT INTO halls (player_id, updated_at, snapshot) VALUES (?, ?, ?) ON CONFLICT(player_id) DO UPDATE SET updated_at = excluded.updated_at, snapshot = excluded.snapshot',
+        x.playerId, x.updatedAt, JSON.stringify(x));
+      return true;
+    });
+  }
+
+  async hallRemove(playerId: string): Promise<Envelope<boolean>> {
+    return wrap(() => { this.sql.exec('DELETE FROM halls WHERE player_id = ?', playerId); return true; });
+  }
+
+  async hallGet(playerId: string): Promise<Envelope<HallSnapshot | null>> {
+    return wrap(() => {
+      const r = this.sql.exec<{ snapshot: string }>('SELECT snapshot FROM halls WHERE player_id = ?', playerId).toArray()[0];
+      return r ? (JSON.parse(r.snapshot) as HallSnapshot) : null;
+    });
+  }
+
   async studPut(e: StudEntry): Promise<Envelope<boolean>> {
     return wrap(() => {
       this.sql.exec('INSERT INTO studs (owner_id, horse_id, visibility, listed_at, entry) VALUES (?, ?, ?, ?, ?) ON CONFLICT(owner_id, horse_id) DO UPDATE SET visibility = excluded.visibility, listed_at = excluded.listed_at, entry = excluded.entry',
@@ -117,6 +139,7 @@ export class DirectoryDO extends DurableObject<Env> {
       this.sql.exec('DELETE FROM players WHERE player_id = ?', playerId);
       this.sql.exec('DELETE FROM studs WHERE owner_id = ?', playerId);
       this.sql.exec('DELETE FROM stables WHERE player_id = ?', playerId);
+      this.sql.exec('DELETE FROM halls WHERE player_id = ?', playerId); // REQ-HOF-011
       this.sql.exec('UPDATE invite_codes SET player_id = NULL, retired_at = ? WHERE player_id = ?', Date.now(), playerId); // REQ-INV-010
       return true;
     });
@@ -171,6 +194,9 @@ type DirStub = {
   stablesOf(ids: string[]): Promise<Envelope<StableSnapshot[]>>;
   stablesTop(limit: number): Promise<Envelope<StableSnapshot[]>>;
   forget(p: string): Promise<Envelope<boolean>>;
+  hallPut(x: HallSnapshot): Promise<Envelope<boolean>>;
+  hallRemove(id: string): Promise<Envelope<boolean>>;
+  hallGet(id: string): Promise<Envelope<HallSnapshot | null>>;
   inviteCodeOf(p: string, s: number): Promise<Envelope<string>>;
   inviteLookup(c: string): Promise<Envelope<string | null>>;
   inviteRetire(p: string): Promise<Envelope<boolean>>;
@@ -219,6 +245,16 @@ export function shardedStableDirectory(ns: DurableObjectNamespace, clock: () => 
       stableTopCache = { at: now, limit, rows };
       return rows;
     },
+  };
+}
+
+/** REQ-HOF-011: public hall copies, sharded by owner like profiles and stables. */
+export function shardedHallDirectory(ns: DurableObjectNamespace): HallDirectory {
+  const shard = (n: number) => ns.get(ns.idFromName(`dir:${n}`)) as unknown as DirStub;
+  return {
+    async put(x) { unwrap(await shard(shardOf(x.playerId)).hallPut(x)); },
+    async remove(id) { unwrap(await shard(shardOf(id)).hallRemove(id)); },
+    async get(id) { return unwrap(await shard(shardOf(id)).hallGet(id)); },
   };
 }
 

@@ -34,7 +34,15 @@
     { "id": "decor_flower_box", "name": "花のプランター", "kind": "decor", "asset": "decor/flower_box", "price": 200, "currency": "any" },
     { "id": "decor_trophy_shelf", "name": "トロフィー棚", "kind": "decor", "asset": "decor/trophy_shelf", "price": 500, "currency": "any" },
     { "id": "decor_golden_horseshoe", "name": "金の蹄鉄", "kind": "decor", "asset": "decor/golden_horseshoe", "price": 1000, "currency": "paidOnly" },
+    { "id": "decor_hall_plaque_frame", "name": "殿堂の額縁", "kind": "decor", "asset": "decor/hall_plaque_frame", "price": 0, "currency": "any", "notForSale": true },
     { "id": "stamp_carrot", "name": "スタンプ「にんじん！」", "kind": "stamp", "asset": "stamp/carrot", "price": 200, "currency": "any" },
-    { "id": "stamp_horseshoe", "name": "スタンプ「幸運の蹄鉄」", "kind": "stamp", "asset": "stamp/horseshoe", "price": 300, "currency": "any" }
+    { "id": "stamp_horseshoe", "name": "スタンプ「幸運の蹄鉄」", "kind": "stamp", "asset": "stamp/horseshoe", "price": 300, "currency": "any" },
+    { "id": "silkpart_color_crimson", "name": "勝負服の色「クリムゾン」", "kind": "silks_part", "part": "color", "ref": "crimson", "asset": "silks/color/crimson", "price": 200, "currency": "any" },
+    { "id": "silkpart_color_emerald", "name": "勝負服の色「エメラルド」", "kind": "silks_part", "part": "color", "ref": "emerald", "asset": "silks/color/emerald", "price": 200, "currency": "any" },
+    { "id": "silkpart_color_platinum", "name": "勝負服の色「プラチナ」", "kind": "silks_part", "part": "color", "ref": "platinum", "asset": "silks/color/platinum", "price": 400, "currency": "paidOnly" },
+    { "id": "silkpart_sleeve_chevrons", "name": "勝負服の袖「山形」", "kind": "silks_part", "part": "sleeve", "ref": "chevrons", "asset": "silks/sleeve/chevrons", "price": 150, "currency": "any" },
+    { "id": "silkpart_sleeve_stars", "name": "勝負服の袖「星」", "kind": "silks_part", "part": "sleeve", "ref": "stars", "asset": "silks/sleeve/stars", "price": 200, "currency": "any" },
+    { "id": "silkpart_cap_spots", "name": "勝負服の帽子「水玉」", "kind": "silks_part", "part": "cap", "ref": "spots", "asset": "silks/cap/spots", "price": 150, "currency": "any" },
+    { "id": "silkpart_cap_checks", "name": "勝負服の帽子「格子」", "kind": "silks_part", "part": "cap", "ref": "checks", "asset": "silks/cap/checks", "price": 200, "currency": "any" }
   ]
 }

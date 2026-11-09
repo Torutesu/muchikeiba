@@ -30,13 +30,17 @@ import { StudService, type StudDirectory, type StudPlayers } from '../domain/stu
 import type { SpectateService } from '../domain/spectate.js';
 import type { TournamentEntryInfo, TournamentPlayers, TournamentsService } from '../domain/tournamentService.js';
 import type { StableService } from '../domain/stable.js';
+import type { HallService } from '../domain/hallOfFame.js';
 import { InviteService, type InviteDirectory, type InvitePlayers } from '../domain/invite.js';
 import { SsvError, verifyAdMobCallback, type SsvKeySource } from '../ads/ssv.js';
 import { LOCALES, resolveLocale, type Locale } from '../i18n/locale.js';
 import { catalogFor, localize, type Catalog } from '../i18n/catalog.js';
 import { ASSIST_LEVELS, ASSIST_SOURCES } from '../domain/assist.js';
+import { EQUIP_SOURCES } from '../domain/commentaryPacks.js';
 import type { RivalService } from '../domain/rivalService.js';
 import { HISTORY_LIMITS, historyQuery, REF_RE, SUPPORT_TOPICS } from '../domain/history.js';
+import type { DesignInput, SilksDesign } from '../domain/silksEditor.js';
+import type { MyReplaysService } from '../domain/myReplaysService.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -47,6 +51,7 @@ export type PlayerMethod =
   | 'storeRenewal' | 'subscriptionStatus'
   | 'setDisplayName' | 'equipTitle' | 'titles' | 'stats' | 'publicProfile' | 'closeSeason' | 'setSilks'
   | 'useTicket' | 'cosmetics' | 'buyCosmetic' | 'setEquipment'
+  | 'silksEditor' | 'silksPreview' | 'saveSilks' | 'silksPresetCreate' | 'silksPresetUpdate' | 'silksPresetDelete' | 'silksPresetApply' | 'buySilksPart' | 'silksNoticeSeen'
   | 'friendSend' | 'friendReceive' | 'friendAccept' | 'friendAccepted' | 'friendDecline' | 'friendCancel' | 'friendRemove' | 'friendInvite' | 'friendsState'
   | 'adminView' | 'adminGrant' | 'adminSettleDebt' | 'adminCorrectAge' | 'adminResetName' | 'setModeration'
   | 'registerDevice' | 'unregisterDevice' | 'pushPreferences' | 'setPushPreferences' | 'kpiIngest'
@@ -67,11 +72,14 @@ export type PlayerMethod =
   | 'training' | 'trainingStart' | 'trainingFinish' | 'trainingUseItem'
   | 'giftBox' | 'giftClaim' | 'giftClaimAll'
   | 'assist' | 'setAssist' | 'assistPromptSeen'
+  | 'commentaryPacks' | 'equipCommentaryPack' | 'buyCommentaryPack'
   | 'rivalPeek' | 'rivalSync' | 'rivalSetOptOut' | 'rivalBlock' | 'rivalChallengeCheck' | 'rivalChallengeReceive' | 'rivalSeen' | 'rivalPush'
   | 'history' | 'historyTicket' | 'adminHistory' | 'adminHistoryRefs'
   | 'exchangeView' | 'exchangeBuy'
   | 'wchView' | 'wchStart' | 'wchPrepare' | 'wchAbort' | 'wchRecord'
-  | 'teamGoalReward' | 'goalPlayerView';
+  | 'teamGoalReward' | 'goalPlayerView'
+  | 'hallMine' | 'hallViewer' | 'hallNoteView' | 'horseCareer' | 'hallAck' | 'hallSettings'
+  | 'myReplays' | 'replayPrepareSave' | 'replayCommitSave' | 'replayForget' | 'replayUpdate' | 'replayDelete' | 'replayOwnRef' | 'replayShared' | 'replayViewed';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -129,10 +137,14 @@ export interface AppContext {
   tournaments?: TournamentsService;
   /** REQ-STABLE-*: マイ厩舎 (http/stablePorts.ts makeStableService). */
   stable?: StableService;
+  /** REQ-HOF-*: 殿堂 (http/hallPorts.ts makeHallService). */
+  hall?: HallService;
   /** REQ-INV-*: friend invite codes (makeInviteService). Absent → the routes answer NOT_FOUND. */
   invite?: InviteService;
   /** REQ-RIVAL-*: weekly rival (domain/rivalService.ts). Absent → the routes answer NOT_FOUND. */
   rival?: RivalService;
+  /** REQ-MYRP-*: マイリプレイ (domain/myReplaysService.ts). Absent → the routes answer NOT_FOUND. */
+  myReplays?: MyReplaysService;
   clock?: () => number;
   paidBalance(): Promise<unknown>;
   /**
@@ -170,6 +182,28 @@ const errorResponse = (e: AppError, l?: { lang: Locale; cat: Catalog }) => {
   return json(l ? localize(body, l.lang, l.cat) : body, e.status, l?.lang);
 };
 
+/** REQ-SILK-012: a design (`{ pattern, colors, sleeve, cap, capColors }`) or a 17-char code — exactly one of them. */
+const silksPartId = z.string().min(1).max(40);
+const silksDesignSchema = z.object({
+  pattern: silksPartId, colors: z.array(silksPartId).min(2).max(3), sleeve: silksPartId, cap: silksPartId, capColors: z.tuple([silksPartId, silksPartId]),
+}).strict();
+const silksCodeSchema = z.string().regex(/^1[0-9a-z]{16}$/);
+const silksPresetSchema = z.object({ name: z.string().max(64).optional(), design: silksDesignSchema.optional(), code: silksCodeSchema.optional() }).strict();
+function designInputOf(b: { design?: z.infer<typeof silksDesignSchema>; code?: string }, required: boolean): DesignInput | null {
+  if (b.design && b.code !== undefined) throw new AppError('BAD_REQUEST', 'send a design or a code, not both');
+  if (b.design) return { design: b.design as SilksDesign };
+  if (b.code !== undefined) return { code: b.code };
+  if (required) throw new AppError('BAD_REQUEST', 'send a design or a code');
+  return null;
+}
+async function designBody(r: Request): Promise<DesignInput> {
+  return designInputOf(await body(r, z.object({ design: silksDesignSchema.optional(), code: silksCodeSchema.optional() }).strict()), true)!;
+}
+const presetSlot = (raw: string | undefined) => {
+  if (!raw || !/^[0-9]{1,2}$/.test(raw)) throw new AppError('BAD_REQUEST', 'slot must be a number');
+  return Number(raw);
+};
+
 /** REQ-SHORT-005: `for=gacha&bannerId&count` | `for=cosmetic&itemId` | `for=coins&coins&kind` (anything else is 400). */
 function shortfallQuery(q: URLSearchParams): ShortfallQuery {
   const raw = Object.fromEntries(q.entries());
@@ -189,6 +223,16 @@ async function body<T>(req: Request, schema: z.ZodType<T>): Promise<T> {
   } catch {
     throw new AppError('BAD_REQUEST', 'invalid JSON');
   }
+  const r = schema.safeParse(raw);
+  if (!r.success) throw new AppError('BAD_REQUEST', r.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '));
+  return r.data;
+}
+/** A JSON body that may be absent (empty request body → null). */
+async function optionalBody<T>(req: Request, schema: z.ZodType<T>): Promise<T | null> {
+  const text = await req.text();
+  if (text.trim() === '') return null;
+  let raw: unknown;
+  try { raw = JSON.parse(text); } catch { throw new AppError('BAD_REQUEST', 'invalid JSON'); }
   const r = schema.safeParse(raw);
   if (!r.success) throw new AppError('BAD_REQUEST', r.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '));
   return r.data;
@@ -222,6 +266,11 @@ const stud = (c: AppContext) => {
   if (!c.stud || !c.master.progression.stud) throw new AppError('NOT_FOUND', 'stud lending is not available');
   return c.stud;
 };
+const myReplays = (c: AppContext) => {
+  if (!c.myReplays) throw new AppError('NOT_FOUND', 'my replays are not available');
+  return c.myReplays;
+};
+const replayTitle = z.string().max(200).nullable();
 const spectate = (c: AppContext) => {
   if (!c.spectate) throw new AppError('NOT_FOUND', 'spectating is not available');
   return c.spectate;
@@ -233,6 +282,20 @@ const tournaments = (c: AppContext) => {
 const stable = (c: AppContext) => {
   if (!c.stable) throw new AppError('NOT_FOUND', 'stables are not available');
   return c.stable;
+};
+const hall = (c: AppContext) => {
+  if (!c.hall) throw new AppError('NOT_FOUND', 'the hall of fame is not available');
+  return c.hall;
+};
+/** REQ-HOF-009: `?cursor=<inductedAt>_<horseId>&limit=<n>` of a hall listing. */
+const hallPage = (r: Request) => {
+  const q = new URL(r.url).searchParams;
+  const cursor = q.get('cursor');
+  const raw = q.get('limit');
+  if (cursor !== null && cursor !== '' && (cursor.length < 3 || cursor.length > 160)) throw new AppError('BAD_REQUEST', 'bad cursor');
+  const limit = raw === null ? null : Number(raw);
+  if (limit !== null && (!Number.isInteger(limit) || limit < 1 || limit > 1000)) throw new AppError('BAD_REQUEST', 'bad limit');
+  return { cursor: cursor || null, limit };
 };
 const rival = (c: AppContext) => {
   if (!c.rival) throw new AppError('NOT_FOUND', 'rivals are not available');
@@ -308,6 +371,24 @@ export const routes: Route[] = [
     const b = await body(r, z.object({ pattern: z.string().min(1).max(40), colors: z.array(z.string().min(1).max(40)).min(2).max(3), cap: z.string().min(1).max(40) }));
     return c.player(u).invoke('setSilks', u, b);
   } },
+  // 勝負服エディタ (REQ-SILK-*, protocol §35)
+  { method: 'GET', path: '/v1/silks/editor', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('silksEditor', u) },
+  { method: 'POST', path: '/v1/silks/preview', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('silksPreview', u, await designBody(r)) },
+  { method: 'PUT', path: '/v1/silks', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('saveSilks', u, await designBody(r)) },
+  { method: 'POST', path: '/v1/silks/presets', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, silksPresetSchema);
+    return c.player(u).invoke('silksPresetCreate', u, b.name, designInputOf(b, true)!);
+  } },
+  { method: 'PUT', path: '/v1/silks/presets/:slot', auth: 'player', handler: async (r, p, c, u) => {
+    const b = await body(r, silksPresetSchema);
+    const input = designInputOf(b, false);
+    if (!input && b.name === undefined) throw new AppError('BAD_REQUEST', 'send a name, a design or a code');
+    return c.player(u).invoke('silksPresetUpdate', u, presetSlot(p.slot), b.name, input);
+  } },
+  { method: 'DELETE', path: '/v1/silks/presets/:slot', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('silksPresetDelete', u, presetSlot(p.slot)) },
+  { method: 'POST', path: '/v1/silks/presets/:slot/apply', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('silksPresetApply', u, presetSlot(p.slot)) },
+  { method: 'POST', path: '/v1/silks/parts/:itemId/buy', auth: 'player', handler: async (r, p, c, u) => c.player(u).invoke('buySilksPart', u, p.itemId!, idem(r)) },
+  { method: 'POST', path: '/v1/silks/notice-seen', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('silksNoticeSeen', u) },
   // player
   { method: 'POST', path: '/v1/player/bootstrap', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('bootstrap', u) },
   { method: 'GET', path: '/v1/player', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('view', u) },
@@ -342,6 +423,16 @@ export const routes: Route[] = [
     return c.player(u).invoke('setAssist', u, b.level, b.source ?? 'settings');
   } },
   { method: 'POST', path: '/v1/player/assist/prompt-seen', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('assistPromptSeen', u) },
+  // REQ-CMT-009..011: 実況パック (commentary packs) — owned / price / equipped, equip, buy for coins (protocol §36)
+  { method: 'GET', path: '/v1/commentary/packs', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('commentaryPacks', u) },
+  { method: 'PUT', path: '/v1/commentary/equipped', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ packId: z.string().min(1).max(32), source: z.enum(EQUIP_SOURCES).optional() }).strict());
+    return c.player(u).invoke('equipCommentaryPack', u, b.packId, b.source ?? 'settings');
+  } },
+  { method: 'POST', path: '/v1/commentary/packs/:packId/buy', auth: 'player', handler: async (r, p, c, u) => {
+    const b = await optionalBody(r, z.object({ equip: z.boolean().optional() }).strict());
+    return c.player(u).invoke('buyCommentaryPack', u, p.packId!, b?.equip === true, idem(r));
+  } },
   { method: 'PUT', path: '/v1/player/age', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ birthYear: z.number().int(), birthMonth: z.number().int().min(1).max(12), guardianConsent: z.boolean() }));
     return c.player(u).invoke('setAge', u, b.birthYear, b.birthMonth, b.guardianConsent);
@@ -418,6 +509,15 @@ export const routes: Route[] = [
   } },
   { method: 'POST', path: '/v1/horses/:horseId/awaken', auth: 'player', handler: async (r, p, c, u) => c.player(u).invoke('awaken', u, p.horseId!, idem(r)) },
   { method: 'POST', path: '/v1/horses/:horseId/retire', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('retire', u, p.horseId!) },
+  // 殿堂 (REQ-HOF-*): career record, ceremonies, plaques, visiting
+  { method: 'GET', path: '/v1/horses/:horseId/career', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('horseCareer', u, p.horseId!) },
+  { method: 'GET', path: '/v1/hall', auth: 'player', handler: async (r, _p, c, u) => { const q = hallPage(r); return hall(c).mine(u, q.cursor, q.limit); } },
+  { method: 'PUT', path: '/v1/hall/settings', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ visibility: z.enum(['friends_team', 'friends', 'private']) }));
+    return c.player(u).invoke('hallSettings', u, b.visibility);
+  } },
+  { method: 'POST', path: '/v1/hall/ceremonies/:horseId/ack', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('hallAck', u, p.horseId!) },
+  { method: 'GET', path: '/v1/hall/:playerId', auth: 'player', handler: async (r, p, c, u) => { const q = hallPage(r); return hall(c).visit(u, playerIdParam(p.playerId!), q.cursor, q.limit); } },
   { method: 'GET', path: '/v1/horses/:horseId/pedigree', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('pedigree', u, p.horseId!) },
   // stable care / bond (REQ-BOND-*): never affects ranked, event or time attack stats
   { method: 'GET', path: '/v1/bond', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('bondLevels', u) },
@@ -821,6 +921,22 @@ export const routes: Route[] = [
     return c.player(u).invoke('historyTicket', u, b.refs, b.topic);
   } },
   // admin
+  // マイリプレイ (REQ-MYRP-*, contracts/protocol.md §37)
+  { method: 'GET', path: '/v1/replays', auth: 'player', handler: async (_r, _p, c, u) => myReplays(c).view(u) },
+  { method: 'POST', path: '/v1/replays', auth: 'player', handler: async (r, _p, c, u) => {
+    const key = idem(r);
+    const b = await body(r, z.object({ raceId: z.string().min(1).max(128), replayTitle: replayTitle.optional() }).strict());
+    return myReplays(c).save(u, b.raceId, b.replayTitle ?? null, key);
+  } },
+  { method: 'PATCH', path: '/v1/replays/:raceId', auth: 'player', handler: async (r, p, c, u) => {
+    const b = await body(r, z.object({ replayTitle: replayTitle.optional(), favorite: z.boolean().optional(), public: z.boolean().optional() }).strict()
+      .refine((x) => x.replayTitle !== undefined || x.favorite !== undefined || x.public !== undefined, 'nothing to change'));
+    return myReplays(c).update(u, p.raceId!, b);
+  } },
+  { method: 'DELETE', path: '/v1/replays/:raceId', auth: 'player', handler: async (_r, p, c, u) => myReplays(c).remove(u, p.raceId!) },
+  { method: 'GET', path: '/v1/replays/:raceId/data', auth: 'player', handler: async (_r, p, c, u) => myReplays(c).data(u, p.raceId!) },
+  { method: 'GET', path: '/v1/friends/:playerId/replays', auth: 'player', handler: async (_r, p, c, u) => myReplays(c).friendList(u, p.playerId!) },
+  { method: 'GET', path: '/v1/friends/:playerId/replays/:raceId/data', auth: 'player', handler: async (_r, p, c, u) => myReplays(c).friendData(u, p.playerId!, p.raceId!) },
   // weekly rival (REQ-RIVAL-*, contracts/protocol.md §28)
   { method: 'GET', path: '/v1/rival', auth: 'player', handler: async (_r, _p, c, u) => (c.rival ? c.rival.view(u) : { enabled: false }) },
   { method: 'PUT', path: '/v1/rival/settings', auth: 'player', handler: async (r, _p, c, u) => rival(c).setOptOut(u, (await body(r, z.object({ optOut: z.boolean() }).strict())).optOut) },

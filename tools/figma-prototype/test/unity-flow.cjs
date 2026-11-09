@@ -15,6 +15,8 @@
 //  7. Round 12 (REQ-RIVAL-*): the rival strip on home, the rival detail, a race together, the week-result sheet.
 //  7. Round 13 (REQ-WCH-*): the weekly challenge — the home card, the list (server condition lines, loan horse, badge, rules,
 //     next week), a race on the real engine with the condition in the HUD, the server's verdict on the result screen.
+//  8. Round 14 (REQ-MYRP-*): マイリプレイ — list, 残す, rename (NG refused), favourite, public, the WASM player (2×, camera,
+//     last 200 m, share), a friend's public replay, 「再生できません」.
 //  6. Round 11 (REQ-COL-*, REQ-ACH-*): the 図鑑 (obtained / seen / unknown silhouettes, completion with no reward and no scout
 //     link), achievements (claim one tier, claim all) and equipping an achievement title.
 //  7. Round 12 (REQ-SHORT-*): the coin shortfall sheet (T6) from the paid step-up → the purchase confirmation → back to the
@@ -96,6 +98,34 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     assert.equal(await page.locator('.screen.in .tr-menu[data-state="blocked"]').count(), 4, 'the horse is done for today: every card says why');
     await shot('training-horse-done', 300);
     await click('BACK'); await waitScreen('home');
+  }
+
+  // round 14 (REQ-HOF-*): 殿堂 — the stable's 殿堂 button → the gallery → a retirement (the ceremony: horse art, highlight
+  // lines, the 殿堂入り stamp, the frame once) → acknowledged → the plaque detail → a friend's hall
+  async function hallFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(() => globalThis.__muchi.show('Stable')); await waitScreen('stable');
+    await page.locator('.screen.in .hof-entry').click(); await waitScreen('hall'); await waitIn('.hof-summary');
+    await shot('hall-empty', 400);
+    await click('デモ：引退式'); await waitScreen('hall-ceremony'); await waitIn('.hof-ceremony');
+    const text = await page.locator('.screen.in').innerText();
+    assert.ok(text.includes('引退式') && text.includes('戦績の見どころ'), 'hall: the ceremony with its highlight lines');
+    assert.ok(!/倍|ショップ|購入する/.test(text), 'hall: no 「倍」, no shop link on the ceremony');
+    if (await page.locator('.screen.in .hof-ceremony[data-inducted="true"]').count()) {
+      await waitIn('.hof-stamp');
+      assert.ok(await page.locator('.screen.in .hof-reward').count(), 'hall: the frame at the first induction');
+    }
+    await shot('hall-ceremony', 900);
+    await page.locator('.screen.in .hof-continue').click(); await waitScreen('hall'); await waitIn('.hof-plaque');
+    await shot('hall-gallery', 400);
+    await page.locator('.screen.in .hof-plaque').first().click(); await waitIn('.hof-detail');
+    await shot('hall-plaque', 500);
+    await page.locator('.screen.in .hof-detail [data-label="閉じる"]').click(); await page.waitForTimeout(300);
+    await click('デモ：友達の殿堂'); await waitScreen('hall-friend'); await waitIn('.hof-plaque');
+    assert.equal(await page.locator('.screen.in .hof-summary').getAttribute('data-relation'), 'friend', 'hall: a friend\'s hall');
+    assert.equal(await page.locator('.screen.in .hof-vis').count(), 0, 'hall: no settings on a friend\'s hall');
+    await shot('hall-friend', 400);
+    await click('BACK'); await waitScreen('hall'); await click('BACK'); await waitScreen('stable');
   }
 
   // round 12 (REQ-RIVAL-*): ライバル — the home strip → the detail (public card, score, races, time attack, rules) → a race
@@ -218,6 +248,135 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await click('一覧へ'); await waitScreen('weekly-challenge'); await waitIn('.wch-card');
     await shot('weekly-challenge-after', 300);
     await click('BACK'); await waitScreen('home');
+  }
+
+  // round 14 (REQ-SILK-*, protocol §35): 勝負服エディタ from the wardrobe — try on a locked sleeve (試着中, live recolour of the
+  // photoreal jockey), save refused until owned → the parts sheet → the purchase confirmation (paid coins first) → bought →
+  // saved; a paid-only colour goes to the coin shortfall sheet (T6); readability dimming; a preset; the shop's parts card
+  async function silksFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(() => globalThis.__muchi.show('Wardrobe')); await page.waitForTimeout(450);
+    await click('勝負服エディタ'); await waitScreen('silks'); await waitIn('.silks-canvas');
+    await page.waitForTimeout(700);
+    await shot('silks-editor', 300);
+    await page.locator('.screen.in [data-silks-tab="sleeve"]').click(); await waitIn('[data-silks-tab="sleeve"].on');
+    await page.locator('.screen.in .silks-part[data-part="stars"]').click(); await waitIn('.silks-part.on[data-part="stars"]');
+    assert.equal(await page.locator('.screen.in [data-name="Silks preview"]').getAttribute('data-trying'), '1', 'silks: the locked sleeve is tried on');
+    assert.ok((await page.locator('.screen.in').innerText()).includes('試着中'), 'silks: 試着中 label');
+    await shot('silks-try-on', 600);
+    assert.equal(await page.locator('.screen.in [data-silks-save]').getAttribute('data-silks-save'), 'needs-parts');
+    await page.locator('.screen.in [data-silks-save]').click(); await page.waitForSelector('.screen.in .sheet [data-need="stars"]');
+    await shot('silks-need-parts', 400);
+    await page.locator('.screen.in .sheet [data-need="stars"] [data-label="購入を確認"]').click(); await waitScreen('silks-buy');
+    const conf = await page.locator('.screen.in').innerText();
+    assert.ok(conf.includes('有償コインから先に使われます') && conf.includes('確率なし') && !/倍|お得|今だけ|残りわずか|通常価格/.test(conf), 'silks: the purchase confirmation states the split, no random, no pressure words');
+    await shot('silks-buy-confirm', 400);
+    const free0 = await page.evaluate(async () => (await globalThis.__muchi.logic.view()).wallet.free);
+    await click('購入する'); await waitScreen('silks'); await waitIn('[data-silks-save="ready"]');
+    const free1 = await page.evaluate(async () => (await globalThis.__muchi.logic.view()).wallet.free);
+    assert.equal(free0 - free1, 200, 'silks: the fixed price, free coins (no paid coins in the demo wallet)');
+    await page.locator('.screen.in [data-silks-save]').click(); await page.waitForTimeout(600); await waitScreen('silks');
+    const cur = await page.evaluate(async () => (await globalThis.__muchi.logic.silksEditor()).current);
+    assert.equal(cur.design.sleeve, 'stars', 'silks: saved on the server rules');
+    assert.match(cur.code, /^1[0-9a-z]{16}$/, 'silks: the shared code');
+    await shot('silks-saved', 400);
+    // readability: the colour paired with a near shade is dimmed; a paid-only colour → the shortfall sheet
+    await page.locator('.screen.in [data-silks-tab="color"]').click(); await waitIn('[data-silks-tab="color"].on');
+    await page.locator('.screen.in [data-silks-slot="1"]').click(); await waitIn('[data-silks-slot="1"].on');
+    await page.locator('.screen.in .silks-part[data-part="white"]').click(); await waitIn('.silks-part.on[data-part="white"]');
+    await page.locator('.screen.in [data-silks-slot="0"]').click(); await waitIn('[data-silks-slot="0"].on');
+    assert.equal(await page.locator('.screen.in .silks-part[data-part="platinum"]').getAttribute('data-low'), 'true', 'silks: platinum next to white is dimmed');
+    await shot('silks-colours', 400);
+    await page.locator('.screen.in .silks-part[data-part="platinum"]').click(); await waitIn('.silks-part.on[data-part="platinum"]');
+    await page.locator('.screen.in [data-silks-slot="1"]').click(); await waitIn('[data-silks-slot="1"].on');
+    await page.locator('.screen.in .silks-part[data-part="navy"]').click(); await waitIn('.silks-part.on[data-part="navy"]');
+    await page.locator('.screen.in [data-silks-save]').click(); await page.waitForSelector('.screen.in .sheet [data-need="platinum"]');
+    await page.locator('.screen.in .sheet [data-need="platinum"] [data-label="購入を確認"]').click(); await waitScreen('silks-buy');
+    assert.ok((await page.locator('.screen.in').innerText()).includes('有償限定'), 'silks: paid-only part says so');
+    await click('購入する'); await waitScreen('shortfall');
+    assert.equal(await page.locator('.screen.in [data-coin-kind]').getAttribute('data-coin-kind'), 'paid', 'silks: the shortfall counts paid coins only');
+    await shot('silks-paid-only-shortfall', 400);
+    await click('閉じる'); await waitScreen('silks');
+    await click('元に戻す'); await waitIn('[data-silks-save]');
+    // a preset in the first slot
+    await page.locator('.screen.in [data-preset="0"]').click(); await page.waitForTimeout(500); await waitScreen('silks');
+    assert.equal((await page.evaluate(async () => (await globalThis.__muchi.logic.silksEditor()).presets)).length, 1, 'silks: preset saved');
+    await shot('silks-preset', 400);
+    // the shop's 見た目 tab: the parts card opens the editor
+    await page.evaluate(() => globalThis.__muchi.show('Store', 'looks')); await waitScreen('shop-looks');
+    await waitIn('[data-item="silks_parts"]'); await shot('shop-looks-silks-parts', 500);
+    await page.locator('.screen.in [data-item="silks_parts"] [data-label="エディタで試着"]').click(); await waitScreen('silks');
+    await click('BACK'); await page.waitForTimeout(400);
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
+  }
+
+  // round 14 (REQ-MYRP-*): マイリプレイ — two demo races on the real engine → the list (best moments / recent) → 残す → the
+  // replay sheet → rename (typed, NG word refused) → favourite, public → the player (WASM re-simulation: 2×, camera on
+  // another horse, the last 200 m, share card + replay_share) → a friend's public replay → 「再生できません」 (retired ruleset)
+  async function myReplaysFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(() => globalThis.__muchi.show('MyReplays')); await waitScreen('my-replays'); await waitIn('.rp-saved');
+    await shot('my-replays-empty', 300);
+    await click('デモ：レースを走る'); await waitIn('.rp-row');
+    await click('デモ：レースを走る'); await page.waitForFunction(() => document.querySelectorAll('.screen.in .rp-row').length >= 2, null, { timeout: 15000 });
+    await shot('my-replays-moments', 400);
+    await page.locator('.screen.in .rp-keep:not(.disabled)').first().click(); await page.waitForTimeout(400); await waitIn('.rp-card');
+    await page.locator('.screen.in .rp-keep:not(.disabled)').first().click(); await page.waitForTimeout(400);
+    await page.waitForFunction(() => document.querySelectorAll('.screen.in .rp-card').length >= 2, null, { timeout: 15000 });
+    assert.match(await page.locator('.screen.in .rp-count').textContent(), /2 \/ 20/, 'my replays: two saved of 20');
+    await shot('my-replays-saved', 400);
+    await page.locator('.screen.in .rp-card').first().click(); await waitIn('.rp-sheet');
+    await shot('my-replays-sheet', 400);
+    await page.locator('.screen.in .rp-sheet .rp-rename').click(); await waitIn('.rp-rename-sheet');
+    const input = page.locator('.screen.in .rp-rename-sheet input.field');
+    const ng = await page.evaluate(() => globalThis.__muchi.logic.replays.ngSample());
+    await input.fill(ng); await page.locator('.screen.in .rp-rename-save').click(); await page.waitForTimeout(400);
+    assert.match(await page.locator('.screen.in .rp-rename-error').textContent(), /使えません/, 'my replays: an NG title is refused');
+    await shot('my-replays-rename-ng', 300);
+    await input.fill('差し切った日'); await page.locator('.screen.in .rp-rename-save').click(); await page.waitForTimeout(500);
+    await waitScreen('my-replays'); await waitIn('.rp-card .typed');
+    assert.equal(await page.locator('.screen.in .rp-card .rp-title.typed').first().textContent(), '差し切った日');
+    await page.locator('.screen.in .rp-card[data-favorite="false"]').first().click(); await waitIn('.rp-sheet');
+    await page.locator('.screen.in .rp-sheet .rp-fav').click(); await page.waitForTimeout(500); await waitIn('.rp-card[data-favorite="true"]');
+    await page.locator('.screen.in .rp-card').first().click(); await waitIn('.rp-sheet');
+    await page.locator('.screen.in .rp-sheet .rp-public').click(); await page.waitForTimeout(500); await waitIn('.rp-card[data-public="true"]');
+    await shot('my-replays-favourite-public', 400);
+    // the player
+    await page.locator('.screen.in .rp-card').first().click(); await waitIn('.rp-sheet');
+    await page.locator('.screen.in .rp-sheet .rp-play').click(); await waitScreen('replay-player', 30000);
+    await page.waitForFunction(() => (globalThis.__muchi.replay?.t ?? 0) > 500, null, { timeout: 20000 });
+    await shot('replay-player', 300);
+    await page.locator('.screen.in .rp-speed').click(); await page.waitForTimeout(200);
+    assert.equal(await page.evaluate(() => globalThis.__muchi.replay.speed), 2, 'replay: 2×');
+    const cam0 = await page.evaluate(() => globalThis.__muchi.replay.camera);
+    await page.locator('.screen.in .rp-cam-next').click(); await page.locator('.screen.in .rp-cam-next').click(); await page.waitForTimeout(200);
+    assert.notEqual(await page.evaluate(() => globalThis.__muchi.replay.camera), cam0, 'replay: the camera follows another horse');
+    await page.locator('.screen.in .rp-jump').click();
+    await page.waitForFunction(() => globalThis.__muchi.replay.remainingM <= 200, null, { timeout: 5000 });
+    await page.locator('.screen.in .rp-pause').click(); await page.waitForTimeout(400);
+    await shot('replay-player-last200', 300);
+    await page.locator('.screen.in .rp-share').click(); await waitIn('.rp-share-sheet');
+    await shot('replay-share', 400);
+    await page.locator('.screen.in .rp-share-go').click(); await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(() => globalThis.__muchi.lastKpi), 'replay_share');
+    await click('BACK'); await waitScreen('my-replays');
+    // a friend's public replay
+    await page.locator('.screen.in .rp-friend').click(); await waitScreen('friend-replays', 30000); await waitIn('.rp-card');
+    await shot('friend-replays', 400);
+    await page.locator('.screen.in .rp-card').first().click(); await waitScreen('replay-player', 30000);
+    await page.waitForFunction(() => (globalThis.__muchi.replay?.t ?? 0) > 300, null, { timeout: 20000 });
+    await shot('friend-replay-player', 300);
+    await click('BACK'); await waitScreen('friend-replays'); await click('BACK'); await waitScreen('my-replays');
+    // a retired ruleset: never played
+    await page.evaluate(() => globalThis.__muchi.logic.replays.demoRetired(true));
+    await page.evaluate(() => globalThis.__muchi.show('MyReplays')); await waitScreen('my-replays'); await waitIn('.rp-card[data-playable="false"]');
+    await page.locator('.screen.in .rp-card').first().click(); await waitIn('.rp-sheet .rp-unplayable');
+    await shot('my-replays-unplayable-sheet', 300);
+    await page.evaluate(async () => { const v = (await globalThis.__muchi.logic.replays.view()).value; return globalThis.__muchi.show('ReplayPlayer', v.saved[0].raceId, {}); });
+    await waitScreen('replay-unplayable'); await shot('replay-unplayable', 400);
+    assert.match(await page.locator('.screen.in').innerText(), /再生できません/);
+    await page.evaluate(() => globalThis.__muchi.logic.replays.demoRetired(false));
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
   }
 
   // round 9 (06 §6.5 / §7 item 7): banner calendar with real end times, pity meter, step-up, reveal → summary, the end
@@ -466,6 +625,9 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await rivalFlow();
   await exchangeFlow();
   await challengeFlow();
+  await hallFlow();
+  await silksFlow();
+  await myReplaysFlow();
   await page.evaluate(() => globalThis.__muchi.show('Scout')); await waitScreen('scout'); await shot('scout', 500);
   await click('提供割合'); await shot('scout-rates', 400); await click('BACK');
   await waitScreen('scout'); await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal'); await shot('scout-paid-reveal', 700);
@@ -899,6 +1061,62 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.match(await page.locator('.screen.in .hi-ticket').innerText(), /問い合わせ番号：G-\d+/);
   await shot('history-contact', 300);
   assert.deepEqual(await page.evaluate(() => (globalThis.__muchiKpi ?? []).map((e) => e.tab)), ['purchases', 'coins_paid', 'coins_free', 'gacha'], 'history_view once per tab');
+
+  // ------------------------------------------------------------------ 7. round 14: 実況パック (REQ-CMT-*)
+  // a week of play (21 races: the 「出走の記録」 pack is owned) → the list (owned / price / achievement), the 10-second sample
+  // of a pack not owned (text ticker on the real CommentarySample), equip the achievement pack, the calm purchase confirm
+  // (buy and cancel the same size), buy + equip, then a ranked race whose commentary speaks the bought pack
+  await page.evaluate(() => globalThis.__muchi.demo('packs')); await waitScreen(['commentary-packs', 'link-prompt'], 60000);
+  if (await screen() === 'link-prompt') { await click('あとで'); await page.evaluate(() => globalThis.__muchi.show('CommentaryPacks')); await waitScreen('commentary-packs'); }
+  await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .cp-card').count(), 4, 'four packs');
+  assert.equal(await page.locator('.screen.in .cp-card[data-pack="nekketsu"]').getAttribute('data-owned'), 'true', 'the achievement pack is owned after 10 races');
+  assert.equal(await page.locator('.screen.in .cp-card[data-pack="ochitsuki"] [data-pack-status]').getAttribute('data-pack-status'), 'price');
+  const packText = await page.locator('.screen.in').innerText();
+  assert.ok(!/倍|今だけ|残りわずか|お得|馬券|オッズ/.test(packText), 'no pressure or betting words on the pack screen');
+  assert.match(packText, /レースの結果・能力には影響しません/);
+  await shot('commentary-packs', 300);
+  await page.locator('.screen.in [data-sample="kofuu"]').click(); await page.waitForTimeout(600);
+  assert.equal(await page.locator('.screen.in [data-ticker]').getAttribute('data-pack-id'), 'kofuu', 'the sample of a pack not owned plays');
+  await page.waitForFunction(() => (document.querySelector('.screen.in [data-ticker]')?.textContent ?? '').length > 2, null, { timeout: 5000 });
+  await shot('commentary-pack-sample', 900);
+  await page.waitForSelector('.screen.in [data-ticker][data-done="1"]', { timeout: 15000 });
+  const sample = await page.evaluate(() => globalThis.__muchi.lastSample);
+  assert.ok(sample.lines.length >= 3 && sample.totalTicks <= 200 && sample.lines.some((l) => l.variant.startsWith('kofuu_')), 'the sample is ≤ 10 s of the pack\'s own lines');
+  await page.locator('.screen.in [data-equip="nekketsu"]').click(); await page.waitForTimeout(700); await waitScreen('commentary-packs');
+  assert.equal(await page.locator('.screen.in [data-equipped]').getAttribute('data-equipped'), 'nekketsu', 'the achievement pack is equipped');
+  await page.locator('.screen.in [data-buy="kofuu"]').click(); await waitScreen(['commentary-pack-buy', 'shortfall'], 10000); await page.waitForTimeout(400);
+  assert.equal(await screen(), 'commentary-pack-buy', 'the day-7 player has the coins for a 300-coin pack');
+  const buyText = await page.locator('.screen.in').innerText();
+  assert.match(buyText, /古風な名調子を購入しますか？/); assert.match(buyText, /300コインを使います。有償コインから先に使われます。/);
+  assert.ok(!/倍|今だけ|残りわずか|お得/.test(buyText), 'no pressure words on the confirm');
+  const hs = await page.locator('.screen.in [data-confirm]').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
+  assert.equal(hs.length, 2); assert.ok(Math.abs(hs[0] - hs[1]) <= 1, 'buy and cancel are the same size');
+  await shot('commentary-pack-buy', 300);
+  const cpW0 = await page.evaluate(() => globalThis.__muchi.state().player.wallet);
+  await page.locator('.screen.in [data-confirm="buy"]').click(); await waitScreen('commentary-packs', 10000); await page.waitForTimeout(500);
+  const cpW1 = await page.evaluate(() => globalThis.__muchi.state().player.wallet);
+  assert.equal(cpW0.paid + cpW0.free - cpW1.paid - cpW1.free, 300, '300 coins spent (paid first)');
+  assert.equal(await page.locator('.screen.in [data-equipped]').getAttribute('data-equipped'), 'kofuu', 'bought and equipped');
+  await shot('commentary-packs-bought', 300);
+  await page.evaluate(() => globalThis.__muchi.logic.setAssist('full')); // nobody taps: the assistant rides, the pack calls it
+  await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen(['home', 'link-prompt'], 10000);
+  if (await screen() === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); }
+  await click('レースへ'); await waitScreen('lobby'); await click('ランク戦に出る'); await waitScreen('race', 20000);
+  assert.equal(await page.locator('.screen.in [data-commentary-pack]').getAttribute('data-commentary-pack'), 'kofuu', 'the HUD says which pack calls the race');
+  const subs = new Set(); let packShot = false;
+  for (let i = 0; i < 6000; i++) {
+    const f = await page.evaluate(() => { const x = globalThis.__muchi.state().lastFrame; return x && { done: x.done, subtitle: x.subtitle, departed: x.departed }; });
+    if ((await screen()) !== 'race') break;
+    if (f?.subtitle) subs.add(f.subtitle);
+    if (!packShot && f?.departed && f.subtitle && /であります|いざ発走|ゲートは開かれた|ハナを奪うは/.test(f.subtitle)) { packShot = true; await shot('race-commentary-pack', 0, true); }
+    if (f?.done) break;
+    await page.waitForTimeout(50);
+  }
+  assert.ok([...subs].some((t) => /であります|いざ発走|ゲートは開かれた|ハナを奪うは|鞭|名調子/.test(t)), 'the race commentary speaks the equipped pack: ' + [...subs].slice(0, 4).join(' | '));
+  await waitScreen(['result'], 60000); await page.waitForTimeout(600);
+  await page.evaluate(() => globalThis.__muchi.logic.equipCommentaryPack('standard'));
+  await page.evaluate(() => globalThis.__muchi.logic.setAssist('off'));
 
   // a reload on a named player goes straight home
   await demo('day3');

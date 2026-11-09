@@ -696,7 +696,7 @@
 ## 30. イベント交換所（TS＋C#、`src/domain/exchange.ts`、`contracts/protocol.md` §30、docs/planning/03-legal-risk.md「景品表示法」「コンプガチャ」）
 拘束条件：交換所は「イベントを遊んだ分だけ選んで受け取れる」場所で、課金やくじではない。ポイントは買えず、ランダムなものも全交換の報酬も無い。経済は E17（balance-targets §4.15）。
 - REQ-EXCH-001 定義：イベントごとに `exchange`（ポイントの貯まり方・1日の上限・交換の猶予日数・残りの換算・交換の行）を `master/events.json` かリモート設定の `events` で持つ。無いイベントには交換所が無い。
-- REQ-EXCH-002 交換の行：固定価格・固定の中身（無償コイン・配合素材・券・見た目・指定の馬のどれか1種類）・1人あたりの在庫（イベントの間、補充なし）。ランダムなものは定義できない（strict なスキーマ）。
+- REQ-EXCH-002 交換の行：固定価格・固定の中身（無償コイン・配合素材・券・見た目・指定の馬・実況パック（Round 14 の統合、コインで売っているパックだけ、在庫1）のどれか1種類）・1人あたりの在庫（イベントの間、補充なし）。ランダムなものは定義できない（strict なスキーマ）。
 - REQ-EXCH-003 ポイントの入手経路：そのイベントのレースだけ。購入・ガチャ・商品・パス・ミッション・報酬・運営の付与から入らない（報酬の型に欄が無く、`eventPointSourceProblems` が起動時・リモート設定で拒否）。
 - REQ-EXCH-004 貯まり方：確定したイベントのレース1回につき `byPlace[着順-1] + participation`、1ゲーム日（REQ-DAY-001）に `dailyCap` まで。レースごとに1回だけ（`applyRace` の冪等）。無効レースは0。閉じた後は貯まらない。
 - REQ-EXCH-005 期間：開始から終了までは貯まって交換でき、終了後 `graceDays`（既定 3）ゲーム日は交換だけできる（閉じる時刻は 04:00 JST の切り替え）。開始前・閉じた後は交換できない。交換所が開いている間はイベント一覧に残す。
@@ -759,3 +759,77 @@
 - REQ-HIST-012 クライアント：C# `ApiClient.GetHistory*Async`・`CreateSupportTicketAsync`、Unity `HistoryModel`（タブ・続きの読み込み・問い合わせシート・オフライン）。
 - REQ-HIST-013 ガチャ記録の保存上限：状態の中は最大300件（古い順に消す）、Durable Object の `gacha_log` は90日を過ぎた行を書き込みごとに消し、状態には直近20件だけ残す。
 - REQ-HIST-014 経済：履歴はコインを動かさない（E1〜E15 は変わらない）。
+
+## 34. 殿堂・引退式（TS＋C#、`src/domain/hallOfFame.ts`、`contracts/protocol.md` §34）
+
+- REQ-HOF-001 戦績：馬ごとの戦績（戦数・勝数・3着以内・モード別・コースごとの最速タイムアタック・大会の最終順位と優勝数・最大の勝利・ライバルへの先着・最初と最後のレース）をサーバーが確定した結果（`applyRace` のレースごとのガード内、検証済みのタイムアタック、大会の確定順位）からだけ記録する。数えるレースはプレイヤー統計（REQ-STAT-001）と同じ。無効・チュートリアルは数えない。 週替わりチャレンジ（§31）は数えない（統計と同じ、Round 14 統合）。
+- REQ-HOF-002 馬の特定：レース結果には出走表の馬ID（`horseId`）を、大会の確定には登録した馬IDを付ける。どちらも任意のフィールドで、古い結果は数えない。既存のルールセット・レース結果は変えない。
+- REQ-HOF-003 引退式：`POST /v1/horses/:horseId/retire` で引退した時に1回だけ作る。見どころは決まった順（大会優勝→相棒→勝数→最大の勝利→ライバル→タイムアタック→3着以内→現役期間）でデータのあるものを最大 `highlightsMax` 行。乱数を使わない（同じ記録なら同じ引退式）。
+- REQ-HOF-004 確認：`POST /v1/hall/ceremonies/:horseId/ack` は冪等。まだ見ていない引退式は `GET /v1/hall` の `pendingCeremonies` に残る。
+- REQ-HOF-005 殿堂入りの条件：`wins ≥ winsMin`・大会優勝・相棒で `races ≥ partnerRacesMin` のどれか（`progression.hall.criteria`、少なくとも1つは有効）。引退式を作る時に判定する。
+- REQ-HOF-006 永久：殿堂の銘板は種付け・貸し出し・名前の変更で消えない。アカウント削除の時だけ消える。上限は無く、一覧はキーセットでページ分けする。
+- REQ-HOF-007 お金で近道できない：条件は確定したレース結果だけ。レアリティ・能力値・購入・アイテムは条件に入らない。報酬の額縁も売らない（非売品・価格0を `hallProblems` で検証）。
+- REQ-HOF-008 報酬：アカウントで最初の殿堂入りの時に1回だけ、飾り「殿堂の額縁」（見た目だけ、乱数なし、コインなし）。
+- REQ-HOF-009 自分の殿堂：`GET /v1/hall`（ページ、条件、額縁、公開範囲、未確認の引退式）。`PUT /v1/hall/settings` で公開範囲（`friends_team`・`friends`・`private`）。
+- REQ-HOF-010 馬の戦績：`GET /v1/horses/:horseId/career`（記録、条件までの進み具合、現役なら引退式の下見、引退式、銘板）。
+- REQ-HOF-011 公開用の写し：DirectoryDO の `halls` に、持ち主の取引の後に変わっていれば書く。殿堂入り0・非公開・BAN・削除の予約中／実行中は置かない。アカウント削除で消える。
+- REQ-HOF-012 見られる人：友達、または同じ支部のメンバー（`friends_team` の時）。どちらかがブロック（支部フィードのミュート）していれば見られない。見られない時は理由を言わず 404。
+- REQ-HOF-013 見せる中身：持ち主の表示名・称号・勝負服と銘板だけ。支部ID・公開範囲・ブロックリストは返さない。
+- REQ-HOF-014 名前：馬の名前・表示名はプレイヤーが入力したもの。英語でも訳さない（`horseName` は `PLAYER_TEXT_KEYS`）。
+- REQ-HOF-015 クライアント：`Muchi.Client` の API（`Hall.cs`）、Unity の `HallModel`、プロトタイプ（引退式・殿堂・銘板・友達の殿堂、日本語・英語）。
+- REQ-HOF-016 KPI：`hof_induct`（殿堂入り）・`hof_view`（自分／友達／支部の殿堂を見た、書き込みなし）。
+
+## 35. 勝負服エディタ（TS＋C#、`src/domain/silksEditor.ts`・`server/master/silks-editor.json`、`contracts/protocol.md` §35、docs/planning/03-legal-risk.md）
+拘束条件：抽選なし（パーツは固定の価格・固定の条件）。見た目だけでランク戦の能力に影響しない（REQ-RATE-003）。有償と無償のコインは分けて使う（資金決済法、REQ-ITEM-005 と同じ）。セットを集めた報酬は無い（コンプガチャ防止）。急かす表現・偽の残り時間・通常価格は使わない。
+- REQ-SILK-001 デザイン：胴の模様＋胴の色（模様ごとに2〜3色）＋袖の模様＋帽子の模様＋帽子の2色。旧い勝負服（模様・色・帽子）は袖「胴と同じ」・帽子の色＝胴の1色目/2色目として同じデザインに読み替える。
+- REQ-SILK-002 コード：版 `1`＋2桁36進×8 の17文字。パーツごとの固定番号で決まり、同じデザインは同じコード。TS と C# の符号化・復号は共通のテストベクタ（`contracts/silks-code.vectors.json`）で一致を確かめる。旧い勝負服にもコードがある。
+- REQ-SILK-003 他のプレイヤーへの表示：レースの見た目（REQ-ASSET-006）・公開プロフィール・厩舎の写し・ライバルのカードの `silks` に `code` を足す。今までのキーは旧いクライアント向けの近い形のまま。ハッシュされるレースの設定・結果・ゴールデンは変わらない。
+- REQ-SILK-004 パーツの入手：最初から・アイテム（直販・商品・パス・交換所の固定報酬）・実績の段・レース数。遊んで解放するパーツは配らず、条件を満たせば持っている扱い（経済 E1〜E16 は変わらない）。
+- REQ-SILK-005 直販：パーツは見た目の直販（`kind: "silks_part"`）として固定価格で売る。ショップの見た目タブにも並び、購入確認・有償から先に使う・有償限定・コイン不足の案内（§29）・二重購入の拒否・冪等キーは既存の流れのまま。
+- REQ-SILK-006 試着：持っていないパーツでもプレビューできる（`POST /v1/silks/preview`、何も変わらない）。足りないパーツ・入手方法・合計の価格・問題（読みやすさ・実在の勝負服）を返す。
+- REQ-SILK-007 検証：知らない id・色数・同じ色だけは拒否。持っていないパーツは拒否（足りないパーツを返す）。
+- REQ-SILK-008 読みやすさ：胴の1色目と2色目、帽子の2色の色の差（CIE76 ΔE）が下限（20）未満なら拒否。足りない組はカタログに全部載せる。
+- REQ-SILK-009 実在の勝負服：禁止リスト（REQ-ASSET-010）を組み上がった勝負服に広げる。胴の模様と色の系統（特別色は基本色の系統）で照合し、項目が袖・帽子の色を書いていなければ袖や帽子を変えても一致。表示の時にも照合する。
+- REQ-SILK-010 返金：返金でパーツのアイテムが取り消されたら、装備中の勝負服がそれを使っていれば既定の勝負服に戻して1回お知らせする。プリセットは残し、使えない印と足りないパーツを付ける（適用は拒否）。
+- REQ-SILK-011 プリセット：最大5枠。名前は自分にしか見えない（1〜12文字、制御文字不可）。保存・上書き・削除・適用。満杯は拒否。
+- REQ-SILK-012 API：`GET /v1/silks/editor`・`POST /v1/silks/preview`・`PUT /v1/silks`・`POST|PUT|DELETE /v1/silks/presets[/:slot]`・`POST /v1/silks/presets/:slot/apply`・`POST /v1/silks/parts/:itemId/buy`・`POST /v1/silks/notice-seen`。
+- REQ-SILK-013 マスター検証：番号の重複・範囲（0〜1294）、胴の模様が visuals と一致、特別色の `base` が基本色、直販のパーツと見た目の対応（両方向）、実績の参照、価格、プリセット数（1〜10）、ΔE の下限を起動時・テストで確かめる。
+- REQ-SILK-014 KPI：`silks_edit`・`silks_part_buy`。クエリは `docs/ops/kpi-queries.md`。
+- REQ-SILK-015 英語：パーツ名・入手方法・お知らせ・問題の文言はすべて英語がある（`l10n:missing` 0）。プレイヤーが付けたプリセット名は訳さない。
+- REQ-SILK-016 クライアント：`Muchi.Client` の `SilksCode`・`SilksDesign`・`ApiClient` の各メソッド、Unity のゲーム層 `SilksEditorModel`。Unity の描画（3Dの騎手の胴・袖・帽子のマスクとシェーダー）は `docs/handoff-codex-round14-silks-editor.md`。
+
+## 36. 実況パック（TS＋C#、`src/domain/commentaryPacks.ts`・`master/commentary-packs.json`・`Muchi.Client/CommentaryPacks.cs`、`contracts/protocol.md` §36）
+拘束条件：ランク戦は課金で決まらない（06 §1.3）、公営競技の賭けを思わせる言葉を使わない（docs/planning/03）、有償と無償は分けて数える（資金決済法）、限定・倍率の表現なし（03・06 §5.5）。
+- REQ-CMT-001 パック：実況の話し方だけを変える品。標準（全員）・熱血（実績で無料）・落ち着いた解説・古風な名調子（コインで直販）。データは `server/master/commentary-packs.json`、クライアントへは `npm run gen:client-locale` が同じ内容を書く（差はテストで検出）。
+- REQ-CMT-002 重ね方：パックの phrase key は標準のその key を置き換える（`priority`・`mustSay` は標準のまま）。元の種類を置き換えたら標準のその種類の特化は使わない。標準の元の種類は全部、パックの日本語にあるか `fallback`（完全一致か `接頭辞*`）に書く＝明示のフォールバック。英語は任意で、無い種類は標準の英語。チュートリアルは常に標準。
+- REQ-CMT-003 決定論：言い回しは今までと同じ式で選び、パックの時だけ salt を `"<packId>/<key>"` にする。標準の実況は1文字も変わらない。同じレース・同じパックなら同じ文（リプレイ・共有クリップ・観戦）。
+- REQ-CMT-004 レースに効かない：実況はクライアントだけ。レースの設定・ハッシュ・結果・リプレイの形式・検証は変わらない。ランク戦の勝率に効く要素は何も売らない。
+- REQ-CMT-005 文の検査：起動時（`validateCommentaryPacks`）にカタログ・値段・実績・言い回しの id・プレースホルダーの種類・禁止語（法務の語、公営競技の賭けの語、NG 名、英語の禁止語、英語に日本語なし）。クライアントの読み込み時とテストで明示のフォールバックとプレースホルダーが標準の部分集合であること（言語ごと）。標準の実況も同じ禁止語の検査を通る。
+- REQ-CMT-006 声：固定の断片 `voice/ja/phrase/<variantId>_p<n>` をアセットの一覧に載せる。名前・数字は共通。断片が1つでも無い行は字幕だけ。録音の一覧は `docs/handoff-codex-round14-commentary-packs.md`。
+- REQ-CMT-007 入手：`default`／`achievement`（決まった実績の段に届いたら持ち物、売らない、抽選なし）／`coins`（決まった値段で直販）。抽選・期間限定・セットを揃えた報酬は形にない。
+- REQ-CMT-008 試聴：買う前に、ストックのレース（`sample`：決まったコース・シード・テンプレート馬）を手元で走らせ、そのパックの要所の行（勝ち馬・最後の直線・ゲート・着順…）を10秒に収まるだけ続けて流す（`CommentarySample.Build`）。サーバーに問い合わせない。何度でも同じ。持っていないパックも聞ける。
+- REQ-CMT-009 装備：`PUT /v1/commentary/equipped`。持っているパックだけ。同じ値の再送は何も変えない。実績のパックは装備した時に持ち物として記録。プレイヤーごと、観戦・リプレイは見ている人のパック。端末はオフライン用に最後のパックを覚える。
+- REQ-CMT-010 購入：`POST /v1/commentary/packs/:packId/buy`（冪等キー必須）。`wallet.spend`（有償から先・有償限定・未精算の返金で止まる・不足は §29 の案内）。持っていれば `ALREADY_PURCHASED`、売らないパックは `NOT_ELIGIBLE`、削除の予約中は `DELETION_PENDING`。`equip: true` で続けて装備。
+- REQ-CMT-011 表示：`GET /v1/commentary/packs`（持っているか・装備・値段・実績の進み・試聴のレース）、`GET /v1/player` の `commentaryPack`。値段はサーバーのデータからだけ。日本語と英語。
+- REQ-CMT-012 KPI：`commentary_pack_equip`・`commentary_pack_buy`（サーバー）、`commentary_pack_sample`（クライアント）。クエリは `docs/ops/kpi-queries.md`。
+- REQ-CMT-013 クライアント：`Muchi.Client` `CommentaryPackCatalog`・`CommentaryTemplates.WithPack`・`CommentaryPackLint`・`CommentarySample`・`ApiClient.GetCommentaryPacksAsync`/`EquipCommentaryPackAsync`/`BuyCommentaryPackAsync`・`PlayerView.CommentaryPack`・`AnalyticsEvent.CommentaryPackSample`。Unity のゲーム層 `CommentaryPackModel`（一覧・試聴・装備・購入の確認・レースのテンプレート）。
+- REQ-CMT-014 プロトタイプ：設定／ショップの実況パック画面（試聴の字幕のティッカー、装備、購入の確認）、レースの HUD が装備したパックで話す。ムチ一閃の見た目、日本語と英語、e2e と英語の流れ。
+
+## 37. マイリプレイ（保存したリプレイ、TS＋C#、`src/domain/myReplays.ts`・`src/domain/myReplaysService.ts`・`Muchi.Client/MyReplays.cs`、`contracts/protocol.md` §37）
+拘束条件：保存はリプレイログ（設定＋確定入力）と結果ハッシュだけで、見る時に端末で再計算する（REQ-RACE-073）。違うレースは絶対に流さない（ハッシュ不一致・引退したルールセットは「再生できません」）。コイン・アイテムは動かない（経済の目標なし、購入で枠は増えない）。他のプレイヤーの私的な情報（プレイヤーID・名前）は出さない。
+- REQ-MYRP-001 最近のレース：確定したレース（無効・チュートリアル・タイムアタック・週替わりチャレンジ（§31、Round 14 の統合）を除く）を `applyRace` で状態の `myReplays.recent` に1回だけ覚える（`raceId`・時刻・モード・コース・着順・頭数・自分の枠・結果ハッシュ・ルールセットの版・名場面）。元のログ（R2 `replays/`）が残っている `momentDays` 日（既定 28、`replayRetentionDays` − 1 以下）だけ保存できる。
+- REQ-MYRP-002 名場面の自動保存：`win`（1着）・`photo`（隣の着順とのゴール tick の差が `photoFinishTicks` 以下）・`pb`（そのコースの自己ベスト更新、CPU が乗った回は除く）。優先 win > photo > pb。`momentsKeep` 件・`momentDays` 日で古い順に入れ替わる。名場面でないものは `recentKeep` 件まで。
+- REQ-MYRP-003 保存：`POST /v1/replays`（冪等キー必須）。自分の最近のレースだけ。同じレースは1件（2回目は `alreadySaved`）。上限 `maxSaved`（既定 20、無料、購入で増やさない）を超えると `REPLAY_LIMIT`。元のログを `myreplays/<playerId>/<raceId>.json` に `{v, log, resultHash}` で写す（保存期限の削除の対象外）。`maxBytes` を超えるものは `REPLAY_TOO_LARGE`、元が無ければ `REPLAY_EXPIRED`（最近のレースから外す）。R2 に書けてから状態に記録する（失敗すれば何も残らない、写しの上書きは同じ内容なので再試行してよい）。
+- REQ-MYRP-004 タイトル：プレイヤーが入力（1〜`titleMaxChars` 文字、NFKC、制御文字・URL 不可、NG 語は表示名と同じ一覧）。null = タイトルなし。英語の応答でも訳さない（`replayTitle` は `PLAYER_TEXT_KEYS`）。
+- REQ-MYRP-005 名前の変更・お気に入り・公開：`PATCH /v1/replays/:raceId`（値の置き換えで冪等）。削除：`DELETE`（無ければ `deleted: false`、R2 の写しも消す）。
+- REQ-MYRP-006 一覧：`GET /v1/replays`（保存はお気に入り→新しい順、名場面・最近のレースは新しい順、保存できなくなる本物の時刻 `expiresAt`、各保存の再生可否）。
+- REQ-MYRP-007 ルールセットの固定：保存に `rulesetVersion` を残す。ログの設定はルールセットの全部の値を持つので、今のエンジンが過去の版（1.0〜1.3 のキーの組、`contracts/golden/legacy`）を再生できる。`retiredRulesets` に入れた版、今のエンジンが知らないキーの組は `playable: false`（`ruleset_retired`／`ruleset_unknown`）。
+- REQ-MYRP-008 再生データ：`GET /v1/replays/:raceId/data` → ログそのもの（訳さない）＋結果ハッシュ＋自分の枠＋馬の名前と `owner`（you／player／cpu）。持ち主以外の人間の `playerId` は `p<slot>` に置き換える（結果ハッシュは変わらない）。
+- REQ-MYRP-009 端末の再生（`ReplayPlayer`）：全部を再計算して結果ハッシュが合う時だけ再生（合わなければ `hash_mismatch` で「再生できません」）。速度 0.5×／1×／2×、カメラは任意の馬、「最後の200mへ」、任意の位置へのシーク、共有カードは `ShareCard`（REQ-UXS-071）を再利用。
+- REQ-MYRP-010 フレンドへの公開：`public` にした保存だけ、お互いにフレンドで、どちらもブロックしておらず（支部フィードのミュートと同じ一覧）、持ち主が BAN・削除の予約中でない時に `GET /v1/friends/:playerId/replays`（一覧）・`/data`（再生）で見られる。それ以外は理由を言わず `404`。お気に入りは出さない。
+- REQ-MYRP-011 削除の予約中：保存・公開にできない（`DELETION_PENDING`）。一覧・自分の再生・非公開・削除はできる。
+- REQ-MYRP-012 アカウント削除：手順に `replays`（保存した写しを R2 から消す）を足す。状態は `wipe` で消える。
+- REQ-MYRP-013 設定 `progression.myReplays`：形と上限 `MY_REPLAYS_HARD_LIMITS`（maxSaved ≤ 50、maxBytes ≤ 1 MiB、momentDays < replayRetentionDays ほか）を起動時と各版で検証。
+- REQ-MYRP-014 KPI：`replay_save`・`replay_view`（サーバー）、`replay_share`（クライアント）。クエリは `docs/ops/kpi-queries.md`。
+- REQ-MYRP-015 クライアント：`Muchi.Client` `ApiClient.GetMyReplaysAsync`・`SaveReplayAsync`・`UpdateReplayAsync`（名前・お気に入り・公開）・`DeleteReplayAsync`・`GetReplayDataAsync`・`GetFriendReplaysAsync`・`GetFriendReplayDataAsync`、`ReplayPlayer`。Unity のゲーム層 `MyReplaysModel`（一覧のカード、名前の変更シート、公開の切り替え、プレイヤーの操作、再生できない時の文言）。
+- REQ-MYRP-016 プロトタイプ：マイリプレイの一覧（結果・コース・日付のカード）、本物のエンジンの再計算で動くプレイヤー（速度・カメラ・最後の200m）、名前の変更シート、公開の切り替え（日本語・英語）。

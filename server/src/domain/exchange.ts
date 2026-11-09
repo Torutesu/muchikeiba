@@ -8,6 +8,7 @@ import type { PlayerState } from './player.js';
 import { addJstDays, dayRule, gameDayKey, gameDayStartMs, sameGameDay, type DayRule } from './time.js';
 import { assetKeys } from './visuals.js';
 import { grantFree } from './wallet.js';
+import { commentaryPacksOf, grantPackOwnership, ownsPack } from './commentaryPacks.js';
 
 /**
  * イベント交換所 REQ-EXCH-* (contracts/protocol.md §30). Pure logic over the player's state.
@@ -38,7 +39,7 @@ export const exchangeSchema = z.object({
   leftover: z.object({ itemId: z.string().regex(idRe), pointsPerUnit: int.min(1).max(EXCHANGE_HARD_LIMITS.maxPointsPerUnit) }).strict(),
   items: z.array(z.object({
     id: z.string().regex(idRe), name: z.string().min(1).max(40),
-    kind: z.enum(['coins', 'material', 'ticket', 'cosmetic', 'horse']),
+    kind: z.enum(['coins', 'material', 'ticket', 'cosmetic', 'commentary_pack', 'horse']),
     price: int.min(1).max(EXCHANGE_HARD_LIMITS.maxPrice), stock: int.min(1).max(EXCHANGE_HARD_LIMITS.maxStock),
     reward: z.object({
       freeCoins: int.min(1).max(EXCHANGE_HARD_LIMITS.maxFreeCoinsPerUnit).optional(),
@@ -145,6 +146,14 @@ export function exchangeProblems(m: Pick<Master, 'items' | 'products' | 'gacha' 
         if (it.stock !== 1) p.push(`${w}: a cosmetic line has stock 1`);
         break;
       }
+      case 'commentary_pack': {
+        // Round 14 integration (§36): a 実況パック is owned on the player (commentaryPack.owned), not an item
+        const pk = item ? commentaryPacksOf(m as Partial<Pick<Master, 'commentaryPacks'>>).packs.find((x) => x.id === item.itemId) : undefined;
+        if (!pk || item!.qty !== 1) { p.push(`${w}: a commentary_pack line gives one known commentary pack`); break; }
+        if (pk.acquire.kind !== 'coins' || pk.acquire.currency === 'paidOnly') p.push(`${w}: ${pk.id} must be a pack sold for coins (not paid-only, not the standard or an achievement pack)`);
+        if (it.stock !== 1) p.push(`${w}: a commentary_pack line has stock 1`);
+        break;
+      }
       case 'horse': {
         if (!it.reward.horse) { p.push(`${w}: a horse line names a template`); break; }
         if (it.stock !== 1) p.push(`${w}: a horse line has stock 1`);
@@ -231,6 +240,14 @@ export function earnExchangePoints(m: Pick<Master, 'progression'>, ev: EventDef,
 
 /** Owned cosmetics count once (the shop treats any positive count as owned). */
 const owns = (s: PlayerState, itemId: string) => (s.items[itemId] ?? 0) > 0;
+/** A line's one-per-player reward already held: a cosmetic item, or a commentary pack (§36, owned on the player). */
+const ownsLineReward = (m: Partial<Pick<Master, 'commentaryPacks'>>, s: PlayerState, line: ExchangeItemDef) => {
+  const itemId = line.reward.items?.[0]?.itemId;
+  if (!itemId) return false;
+  if (line.kind === 'cosmetic') return owns(s, itemId);
+  if (line.kind === 'commentary_pack') { const pk = commentaryPacksOf(m).packs.find((x) => x.id === itemId); return pk ? ownsPack(s, pk) : false; }
+  return false;
+};
 
 /**
  * REQ-EXCH-008: spends points on `qty` units of one line. Atomic (the caller runs it inside one PlayerService
@@ -249,8 +266,7 @@ export function buyExchange(m: Pick<Master, 'progression'> & Partial<Pick<Master
   if (status === 'closed' || st.converted) throw new AppError('EXCHANGE_CLOSED');
   const bought = st.bought[line.id] ?? 0;
   if (bought + qty > line.stock) throw new AppError('OUT_OF_STOCK', `${line.id}: ${line.stock - bought} left`);
-  const ownedItem = line.kind === 'cosmetic' ? line.reward.items![0]!.itemId : null;
-  if (ownedItem && owns(s, ownedItem)) throw new AppError('ALREADY_PURCHASED', `${ownedItem} is already owned`);
+  if (ownsLineReward(m as Partial<Pick<Master, 'commentaryPacks'>>, s, line)) throw new AppError('ALREADY_PURCHASED', `${line.reward.items![0]!.itemId} is already owned`);
   const cost = line.price * qty;
   if (st.points < cost) throw new AppError('INSUFFICIENT_POINTS', `need ${cost} points, have ${st.points}`);
   st.points -= cost;
@@ -260,6 +276,7 @@ export function buyExchange(m: Pick<Master, 'progression'> & Partial<Pick<Master
     const unitRef = `${ref}:${bought + i + 1}`;
     const reason = `exchange ${ev.id} ${line.id}`;
     if (line.reward.freeCoins) grantFree(s, line.reward.freeCoins, now, reason, unitRef);
+    else if (line.kind === 'commentary_pack') grantPackOwnership(s, line.reward.items![0]!.itemId, now, unitRef);
     else if (line.reward.items) {
       addItems(s, line.reward.items);
       for (const it of line.reward.items) logItem(s, now, it.itemId, it.qty, reason, unitRef);
@@ -304,24 +321,24 @@ export function settleExchanges(m: Pick<Master, 'events' | 'progression'>, s: Pl
 
 // ------------------------------------------------------------------------------------- views
 
-function lineView(s: PlayerState, line: ExchangeItemDef, st: PlayerExchangeState | undefined, points: number) {
+function lineView(m: Partial<Pick<Master, 'commentaryPacks'>>, s: PlayerState, line: ExchangeItemDef, st: PlayerExchangeState | undefined, points: number) {
   const bought = st?.bought[line.id] ?? 0;
   const itemId = line.reward.items?.[0]?.itemId ?? null;
-  const owned = line.kind === 'cosmetic' && itemId ? owns(s, itemId) : false;
+  const owned = ownsLineReward(m, s, line);
   // a remote-config change may lower a stock below what was already taken: never show a negative stock
   const remaining = Math.max(0, line.stock - bought);
   return {
     id: line.id, name: line.name, kind: line.kind, price: line.price, stock: line.stock, bought, remaining, owned,
     reward: line.reward,
-    /** Item art; coins and horses use the client's coin icon / the horse's own appearance (portrait). */
-    icon: itemId ? assetKeys.item(itemId) : line.kind === 'horse' ? assetKeys.collectionPortrait(line.reward.horse!) : null,
+    /** Item art; coins and horses use the client's coin icon / the horse's own appearance (portrait); a commentary pack its own pack art (§36). */
+    icon: line.kind === 'commentary_pack' ? null : itemId ? assetKeys.item(itemId) : line.kind === 'horse' ? assetKeys.collectionPortrait(line.reward.horse!) : null,
     affordable: remaining > 0 && !owned && points >= line.price,
     maxQty: owned ? 0 : Math.max(0, Math.min(remaining, Math.floor(points / line.price))),
   };
 }
 
 /** REQ-EXCH-009: GET /v1/events/:eventId/exchange. Every time is a real instant from the definition (no fake timers). */
-export function exchangeView(m: Pick<Master, 'progression'>, ev: EventDef, s: PlayerState, now: number) {
+export function exchangeView(m: Pick<Master, 'progression'> & Partial<Pick<Master, 'commentaryPacks'>>, ev: EventDef, s: PlayerState, now: number) {
   const ex = ev.exchange;
   if (!ex) throw new AppError('NOT_FOUND', `event ${ev.id} has no exchange`);
   const rule = dayRule(m);
@@ -343,7 +360,7 @@ export function exchangeView(m: Pick<Master, 'progression'>, ev: EventDef, s: Pl
       itemId: ex.leftover.itemId, pointsPerUnit: ex.leftover.pointsPerUnit, rounding: 'up' as const,
       preview: leftoverQty(points, ex.leftover.pointsPerUnit), converted: st?.converted ?? null,
     },
-    items: ex.items.map((line) => lineView(s, line, st, status === 'closed' ? 0 : points)),
+    items: ex.items.map((line) => lineView(m, s, line, st, status === 'closed' ? 0 : points)),
     rules: { purchasable: false, random: false, completionReward: false, sources: ['event_race'] as const },
   };
 }

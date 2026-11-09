@@ -259,6 +259,8 @@ namespace Muchi.Client
         public GiftBadge GiftBox = new GiftBadge();
         /// <summary>REQ-ASSIST-008: かんたん操作 setting and the one-time suggestion (never null; Off when the server sent none).</summary>
         public AssistSettings Assist = new AssistSettings();
+        /// <summary>REQ-CMT-009: the equipped commentary pack ("standard" when the server sent none).</summary>
+        public string CommentaryPack = CommentaryPackCatalog.StandardPackId;
         public int Rating, RatingDeviation, RankedRaces;
         public string SeasonId, ClassId;
         public int SeasonPoints;
@@ -291,6 +293,7 @@ namespace Muchi.Client
                 DisplayName = J.Str(pr, "displayName"), TitleId = J.Str(pr, "titleId"), Silks = Silks.Parse(J.Opt(pr, "silks")) ?? new Silks(),
                 Equipment = Equipment.Parse(J.Opt(o, "equipment")),
                 Assist = AssistSettings.Parse(J.Opt(o, "assist")),
+                CommentaryPack = J.Str(J.Opt(o, "commentaryPack"), "equipped") ?? CommentaryPackCatalog.StandardPackId,
             };
         }
     }

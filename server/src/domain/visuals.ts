@@ -18,7 +18,15 @@ export type Legs = [string, string, string, string];
 /** Horse look. legs = [left fore, right fore, left hind, right hind]. */
 export interface Appearance { coat: string; face: string; legs: Legs; mane: string; build: string }
 /** Jockey silks: pattern + palette colour ids (count fixed per pattern) + cap pattern. */
-export interface Silks { pattern: string; colors: string[]; cap: string }
+export interface Silks {
+  pattern: string; colors: string[]; cap: string;
+  /**
+   * REQ-SILK-003 (protocol §35.2): set when the silks were made in the 勝負服エディタ. `code` is the full design
+   * (17 chars); `colors`/`capColors` hold the base colour of a special colour so older clients and the banned list see
+   * a close match; `sleeve` defaults to "match" and `capColors` to colours 1 and 2 when absent (legacy silks).
+   */
+  code?: string; sleeve?: string; capColors?: [string, string];
+}
 /** Team emblem built from a fixed parts set: shape + symbol + 2 palette colours. */
 export interface Emblem { shape: string; symbol: string; colors: [string, string] }
 
@@ -65,6 +73,9 @@ export const assetKeys = {
   build: (id: string) => `horse/build/${id}`,
   silksPattern: (id: string) => `silks/pattern/${id}`,
   silksCap: (id: string) => `silks/cap/${id}`,
+  /** REQ-SILK-*: 勝負服エディタ sleeve pattern mask / special colour swatch icon. */
+  silksSleeve: (id: string) => `silks/sleeve/${id}`,
+  silksColor: (id: string) => `silks/color/${id}`,
   /** REQ-ITEM-006: tack and stable decor keys come from master/items.json (`asset`). */
   tack: (name: string) => `tack/${name}`,
   decor: (name: string) => `decor/${name}`,
@@ -107,7 +118,9 @@ export const ASSET_KINDS: Record<string, { description: string; dynamic?: boolea
   'horse/mane': { description: 'たてがみ・尾の色' },
   'horse/build': { description: '体型（メッシュのバリエーション）' },
   'silks/pattern': { description: '勝負服の模様（色はパレットで着色）' },
-  'silks/cap': { description: '帽子の模様（色は勝負服の1色目・2色目）' },
+  'silks/cap': { description: '帽子の模様（色はエディタの帽子の2色。旧い勝負服は胴の1色目・2色目）' },
+  'silks/sleeve': { description: '勝負服エディタの袖の模様（マスク。胴の1色目・2色目で着色、REQ-SILK-001）' },
+  'silks/color': { description: '勝負服エディタの特別色の見本アイコン（ショップの一覧用。服そのものは hex で着色）' },
   'ui/gate': { description: '枠番（1〜8）のゼッケン・UI色' },
   tack: { description: '馬具（頭絡・ゼッケン布）。馬のモデルに重ねる見た目（REQ-ITEM-006）' },
   decor: { description: '厩舎の飾り（REQ-ITEM-006）' },

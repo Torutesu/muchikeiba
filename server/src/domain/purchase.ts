@@ -5,6 +5,7 @@ import { ageAt, DAY_MS, jstMonthKey } from './time.js';
 import { clawbackFree, grantFree, grantPaid, refundPaid } from './wallet.js';
 import { addItems, clawbackItems, hasItemDebt } from './items.js';
 import { grantSeasonPass, passPurchaseInfo, passPurchasesFor, refundSeasonPass } from './pass.js';
+import { revalidateEquippedSilks } from './silksEditor.js';
 import { classReached, firstPurchaseBonusOf, grantAllowance, pendingAllowance, refundAllowance } from './shop.js';
 
 /** Store receipt verification result (Apple App Store Server API / Google Play Developer API behind an adapter). */
@@ -234,7 +235,9 @@ export function applyRefund(m: Master, s: PlayerState, transactionId: string, no
     for (const [k, v] of Object.entries(c.owedItems)) itemsOwed[k] = (itemsOwed[k] ?? 0) + v;
     recomputePass(m, s, now);
   }
-  return { removed, debt: s.wallet.debt, alreadyRefunded: false, itemsOwed, linkedClawback: linked };
+  // REQ-SILK-010: equipped silks that used a part the refund just took back go back to the default silks
+  const silksReset = revalidateEquippedSilks(m, s, now);
+  return { removed, debt: s.wallet.debt, alreadyRefunded: false, itemsOwed, linkedClawback: linked, ...(silksReset ? { silksReset } : {}) };
 }
 
 /**

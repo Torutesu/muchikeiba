@@ -24,6 +24,7 @@
     <Compile Include="../../../unity/Assets/Muchi/Game/RaceResultModel.cs" Link="Game/RaceResultModel.cs" />
     <!-- round 9: replay share, account-link prompt, ghost picker (and what they build on) -->
     <Compile Include="../../../unity/Assets/Muchi/Game/ReplayShare.cs" Link="Game/ReplayShare.cs" />
+    <Compile Include="../../../unity/Assets/Muchi/Game/MyReplaysModel.cs" Link="Game/MyReplaysModel.cs" />
     <Compile Include="../../../unity/Assets/Muchi/Game/AccountLinkPrompt.cs" Link="Game/AccountLinkPrompt.cs" />
     <Compile Include="../../../unity/Assets/Muchi/Game/FirebaseAuth.cs" Link="Game/FirebaseAuth.cs" />
     <Compile Include="../../../unity/Assets/Muchi/Game/GameBackend.cs" Link="Game/GameBackend.cs" />
@@ -36,5 +37,7 @@
     <Compile Include="../../../unity/Assets/Muchi/Game/GachaModels.cs" Link="Game/GachaModels.cs" />
     <!-- round 12: かんたん操作 (AssistModel.Attach / RidingLevel; HudModel reads it) -->
     <Compile Include="../../../unity/Assets/Muchi/Game/AssistModel.cs" Link="Game/AssistModel.cs" />
+    <!-- round 14: 実況パック (CommentaryPackModel.TemplatesFor for races, the sample) -->
+    <Compile Include="../../../unity/Assets/Muchi/Game/CommentaryPackModel.cs" Link="Game/CommentaryPackModel.cs" />
   </ItemGroup>
 </Project>

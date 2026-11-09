@@ -56,6 +56,8 @@
 | `stable_save` | サーバー（マイ厩舎の保存、REQ-STABLE-010） | テーマID | | | `double5` 飾りの数、`double9` 選んだ馬の数 |
 | `stable_visit` | サーバー（他人の厩舎を見た。書き込みなし） | `friend`/`other` | | | |
 | `stable_like` | サーバー（いいね。コインは付かない） | `friend`/`other` | | | `double9` 今日の残り回数 |
+| `hof_induct` | サーバー（引退で殿堂入り、REQ-HOF-016） | 理由（`wins`/`tournament`/`partner` を `+` でつなぐ） | `partner`/空 | | `double5` 戦数、`double9` 勝数 |
+| `hof_view` | サーバー（殿堂を見た。書き込みなし） | `self`/`friend`/`team` | | | `double9` そのページの銘板の数 |
 | `stamp_post` | サーバー（支部フィードにスタンプを投稿・応援した、REQ-TEAMFEED-009） | スタンプID | `post`/`reaction` | 支部ID | |
 | `team_feed_view` | サーバー（支部フィードの1ページ目を開いた） | 支部ID | | | `double5` ミュートしている人数 |
 | `session_start` / `session_end` | クライアント | | | | `double6` セッションの長さ |
@@ -79,6 +81,11 @@
 | `exchange_buy` | サーバー（イベント交換所で交換した） | イベントID | 行のID | 種類 `coins`/`material`/`ticket`/`cosmetic`/`horse` | `double5` 個数、`double9` 使ったポイント |
 | `challenge_start` | サーバー（週替わりチャレンジを始めた、REQ-WCH-014） | チャレンジ id | 週 id | `loan`/`own` | `double5` 今週そのチャレンジを始めた回数 |
 | `challenge_clear` | サーバー（検証済みの走りでクリア） | チャレンジ id | 週 id | `loan`/`own` | `double4` 着順、`double6` タイム（ms）、`double5` 今週のクリア数、`double8` 今週の初クリア、`double9` 1 = この回でバッジ、`double3` 付与した無償コイン |
+| `silks_edit` | サーバー（勝負服エディタで装備が変わった：`PUT /v1/silks`・プリセットの適用、REQ-SILK-014） | コード | `editor`/`preset` | | `double9` 無料でないパーツの数、`double5` プリセットの数 |
+| `silks_part_buy` | サーバー（勝負服のパーツを買った：エディタ・ショップの見た目タブのどちらでも） | itemId | パーツの種類 `pattern`/`color`/`sleeve`/`cap` | `any`/`paidOnly` | `double2` 有償コイン、`double3` 無償コイン、`double9` 価格 |
+| `commentary_pack_equip` | サーバー（実況パックを装備した、REQ-CMT-012） | パック | 前のパック | `settings`/`shop`/`buy` | `double8` 初めて標準以外を装備 |
+| `commentary_pack_buy` | サーバー（実況パックをコインで買った） | パック | 通貨 `any`/`paidOnly` | | `double2` 有償コイン、`double3` 無償コイン、`double9` 値段 |
+| `commentary_pack_sample` | クライアント（試聴を始めた） | パック | `owned`/`not_owned` | | |
 | `consent` | サーバー | 規約の版 | プライバシーポリシーの版 | | |
 | `partner_granted` | サーバー | テンプレートID（`t_partner`） | | | |
 | `ab_assign` | サーバー（初回の bootstrap、実験ごとに1回） | 実験ID | バケットID | | |
@@ -764,3 +771,96 @@ LIMIT 100
 - `team_goal_contribute` はプレイヤーのオブジェクトが送った時の行（支部がその週の種類でない・上限で数えないこともある）。`race` と `win` は1レースで1行（1着なら `s2 = 'win'`、`count` 2）。
 - 課金者と無課金者（`blob7`）で受け取りの段に差が出ても、支払いの効果ではない（共同目標は課金で進まない、REQ-TGOAL-012）。支部の活発さの違いとして読む。
 - 継続への効果：`team_goal_reward` を受け取った人と、支部にいるが受け取っていない人の翌週の `race_finish` の数を比べる（支部の共同目標の目的は週の継続）。
+
+## 勝負服エディタ：編集とパーツの購入（REQ-SILK-014、Round 14、contracts/protocol.md §35）
+
+**編集した人とパーツを買った人**（週ごと）。パーツは抽選ではないので、買った人の割合と1人あたりの額だけを見る（無料のパーツだけで作る人の割合も `double9 = 0` で分かる）。
+
+```sql
+SELECT toStartOfWeek(timestamp) AS week,
+  count(DISTINCT if(blob1 = 'silks_edit', blob2, NULL)) AS editors,
+  count(DISTINCT if(blob1 = 'silks_edit' AND double9 = 0, blob2, NULL)) AS free_parts_only,
+  count(DISTINCT if(blob1 = 'silks_part_buy', blob2, NULL)) AS buyers,
+  sumIf(_sample_interval * double2, blob1 = 'silks_part_buy') AS paid_coins,
+  sumIf(_sample_interval * double3, blob1 = 'silks_part_buy') AS free_coins
+FROM muchi_kpi
+WHERE blob1 IN ('silks_edit', 'silks_part_buy') AND timestamp > NOW() - INTERVAL '56' DAY
+GROUP BY week
+ORDER BY week DESC
+```
+
+**売れているパーツ**（直近28日）。
+
+```sql
+SELECT blob8 AS item, blob9 AS part, blob10 AS currency, sum(_sample_interval) AS buys
+FROM muchi_kpi
+WHERE blob1 = 'silks_part_buy' AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY item, part, currency
+ORDER BY buys DESC
+```
+
+## 実況パック：試聴から購入・装備まで（REQ-CMT-012、contracts/protocol.md §36）
+
+**試聴→購入の流れ**（パックごと、28日）：持っていない人の試聴、そのパックの購入、購入の有償コインの割合。
+
+```sql
+SELECT blob8 AS pack,
+  sumIf(_sample_interval, blob1 = 'commentary_pack_sample' AND blob9 = 'not_owned') AS samples_not_owned,
+  sumIf(_sample_interval, blob1 = 'commentary_pack_buy') AS buys,
+  round(sumIf(_sample_interval, blob1 = 'commentary_pack_buy') / sumIf(_sample_interval, blob1 = 'commentary_pack_sample' AND blob9 = 'not_owned'), 3) AS sample_to_buy,
+  round(sumIf(_sample_interval * double2, blob1 = 'commentary_pack_buy') / sumIf(_sample_interval * double9, blob1 = 'commentary_pack_buy'), 3) AS paid_share
+FROM muchi_kpi
+WHERE blob1 IN ('commentary_pack_sample', 'commentary_pack_buy') AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY pack
+ORDER BY buys DESC
+```
+
+**装備の状態**（パックごと、28日）：初めて標準以外を装備した人（`double8 = 1`）、標準に戻した数。実績のパック（熱血）は購入なしで装備されるので、入手の目安は `commentary_pack_equip` の `blob8 = 'nekketsu'` で見る。
+
+```sql
+SELECT blob8 AS pack, blob10 AS source, sum(_sample_interval) AS equips, sumIf(_sample_interval, double8 = 1) AS first_non_standard
+FROM muchi_kpi
+WHERE blob1 = 'commentary_pack_equip' AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY pack, source
+ORDER BY equips DESC
+```
+
+- 実況パックはレースに効かないので、勝率の比較はしない（買える要素がランク戦に効かないことは REQ-CMT-004 で保証）。
+
+## マイリプレイ：保存・再生・共有（REQ-MYRP-014、Round 14、contracts/protocol.md §37）
+列：`replay_save`（サーバー）`blob8` = `moment`／`recent`、`blob9` = モード、`blob10` = 名場面の種類（win／photo／pb）、`double4` = 着順、`double9` = 保存した大きさ（バイト）。`replay_view`（サーバー、再生データを渡した時）`blob8` = `own`／`friend`、`blob9` = `playable` または再生できない理由、`blob10` = モード。`replay_share`（クライアント）`blob8` = `my_replays`／`friend_replay`。
+
+**使われ方**（週ごと）：保存した人・保存数・名場面からの保存の割合、再生（自分／フレンド）、共有。
+
+```sql
+SELECT
+  toStartOfWeek(timestamp) AS week,
+  count(DISTINCT if(blob1 = 'replay_save', blob2, NULL)) AS savers,
+  sumIf(_sample_interval, blob1 = 'replay_save') AS saves,
+  round(sumIf(_sample_interval, blob1 = 'replay_save' AND blob8 = 'moment') / sumIf(_sample_interval, blob1 = 'replay_save'), 3) AS from_moments,
+  sumIf(_sample_interval, blob1 = 'replay_view' AND blob8 = 'own') AS own_views,
+  sumIf(_sample_interval, blob1 = 'replay_view' AND blob8 = 'friend') AS friend_views,
+  sumIf(_sample_interval, blob1 = 'replay_share') AS shares
+FROM muchi_kpi
+WHERE blob1 IN ('replay_save', 'replay_view', 'replay_share') AND timestamp > NOW() - INTERVAL '56' DAY
+GROUP BY week
+ORDER BY week DESC
+```
+
+**再生できない割合**（理由ごと）：`ruleset_retired` が増えたら引退させた版の告知を、`ruleset_unknown` が増えたらアプリの更新の案内を見直す。端末の `hash_mismatch` はサーバーに届かない（クライアントの不具合報告で見る）。
+
+```sql
+SELECT blob9 AS status, sum(_sample_interval) AS views
+FROM muchi_kpi
+WHERE blob1 = 'replay_view' AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY status
+ORDER BY views DESC
+```
+
+**保存の大きさ**（R2 の費用の見積もり）：平均 × 保存数。`maxBytes`（既定 256 KiB）に近い物が多ければ上限を見直す。
+
+```sql
+SELECT round(sum(_sample_interval * double9) / sum(_sample_interval)) AS avg_bytes, max(double9) AS max_bytes, sum(_sample_interval) AS saves
+FROM muchi_kpi
+WHERE blob1 = 'replay_save' AND timestamp > NOW() - INTERVAL '28' DAY
+```

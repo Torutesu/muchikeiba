@@ -6,6 +6,7 @@ import { addItems, consumeItem, logItem } from './items.js';
 import { spend } from './wallet.js';
 import { ASSET_KEY_RE, assetKeys, VISUALS, type VisualsMaster } from './visuals.js';
 import type { Rng } from './rng.js';
+import { designUsesPart } from './silksEditor.js';
 
 /**
  * REQ-ITEM-*: what the tickets and materials handed out by rewards are good for, and the cosmetics
@@ -71,6 +72,10 @@ export function itemsProblems(m: Master, v: VisualsMaster = VISUALS): string[] {
       if (!ASSET_KEY_RE.test(c.asset) || !c.asset.startsWith('decor/')) p.push(`${c.id}: asset must be a decor/<name> key`);
     } else if (c.kind === 'stamp') {
       if (!ASSET_KEY_RE.test(c.asset) || !c.asset.startsWith('stamp/')) p.push(`${c.id}: asset must be a stamp/<id> key`);
+    } else if (c.kind === 'silks_part') {
+      // REQ-SILK-013: the part side (master/silks-editor.json) is checked by silksEditorProblems; here only the shape
+      if (!['color', 'sleeve', 'cap'].includes(c.part)) p.push(`${c.id}: unknown silks part type ${c.part}`);
+      if (!ASSET_KEY_RE.test(c.asset) || c.asset !== `silks/${c.part}/${c.ref}`) p.push(`${c.id}: asset must be silks/${c.part}/${c.ref}`);
     } else p.push(`${(c as CosmeticDef).id}: unknown cosmetic kind`);
   }
   return p;
@@ -192,8 +197,10 @@ export function cosmeticsCatalog(m: Master, s: PlayerState) {
       asset: c.kind === 'silks' ? assetKeys.silksPattern(c.pattern) : c.asset,
       ...(c.kind === 'tack' ? { slot: c.slot } : {}),
       ...(c.kind === 'silks' ? { pattern: c.pattern } : {}),
+      ...(c.kind === 'silks_part' ? { part: c.part, ref: c.ref } : {}),
       owned: ownsItem(s, c.id),
-      equipped: c.kind === 'tack' ? eq.tack[c.slot] === c.id : c.kind === 'decor' ? eq.decor.includes(c.id) : c.kind === 'silks' ? s.profile.silks?.pattern === c.pattern : false, // stamps are used in the team feed, never equipped
+      equipped: c.kind === 'tack' ? eq.tack[c.slot] === c.id : c.kind === 'decor' ? eq.decor.includes(c.id) : c.kind === 'silks' ? s.profile.silks?.pattern === c.pattern
+        : c.kind === 'silks_part' ? designUsesPart(m, s.profile.silks, c.part, c.ref) : false, // stamps are used in the team feed, never equipped
     })),
   };
 }

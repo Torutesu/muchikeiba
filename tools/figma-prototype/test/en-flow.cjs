@@ -1,8 +1,8 @@
 // Round 11 (REQ-L10N-013): a short pass of the ムチ一閃 UI in English on the landscape phone (844×390 @2x).
 // EN on from the start, the day-7 demo player: home, shop (recommended / coins / looks), the legal page (Japanese text
 // with the English courtesy note), purchase confirmation, season pass, scout calendar and odds, the stable, settings,
-// the coin shortfall sheet (round 12), a ranked race (HUD) and its result, 調教 (cards, mini-game, result, skip), ライバル (detail, races, week result), then the 図鑑 (every tab, details), 実績 (claim one / all) and the title chooser,
-// the プレゼントボックス (box, claim one / all, history) and the かんたん操作 suggestion, the weekly challenge (list, next week, a race with the condition in the HUD, the verified result).
+// the coin shortfall sheet (round 12), a ranked race (HUD) and its result, 調教 (cards, mini-game, result, skip), ライバル (detail, races, week result), 殿堂 (gallery, ceremony, plaque, a friend's hall, round 14), then the 図鑑 (every tab, details), 実績 (claim one / all) and the title chooser,
+// the プレゼントボックス (box, claim one / all, history), the かんたん操作 suggestion, the 実況パック (list, sample, confirm), the weekly challenge (list, next week, a race with the condition in the HUD, the verified result).
 // On every screen:
 //   - no Japanese is left on the stage (outside the .keep-ja legal text and the 日本語 language button);
 //   - no text overflows: nothing is still too wide / too tall for its box after fitText, nothing leaves the stage.
@@ -212,6 +212,43 @@ module.exports = async function enFlow(browser, base, out, errors) {
   assert.match(await page.locator('.screen.in .wch-verdict').innerText(), /^Challenge (cleared|failed)$/, 'challenge: the verdict in English');
   await click('一覧へ'); await waitScreen('weekly-challenge'); await waitIn('.wch-card'); await shot('weekly-challenge-after', 400);
 
+  // round 14: 殿堂 in English (REQ-HOF-*): the gallery, a retirement ceremony, the plaque detail, a friend's hall
+  await show('Hall'); await waitScreen(['hall', 'hall-ceremony']);
+  if (await screen() === 'hall-ceremony') { await page.locator('.screen.in .hof-continue').click(); await waitScreen('hall'); }
+  await waitIn('.hof-summary'); await shot('hall', 400);
+  await click('デモ：引退式'); await waitScreen('hall-ceremony'); await waitIn('.hof-ceremony');
+  await shot('hall-ceremony', 900);
+  assert.match(await page.locator('.screen.in').innerText(), /Career highlights/, 'hall: the ceremony in English');
+  await page.locator('.screen.in .hof-continue').click(); await waitScreen('hall'); await waitIn('.hof-plaque');
+  await shot('hall-gallery', 400);
+  await page.locator('.screen.in .hof-plaque').first().click(); await waitIn('.hof-detail');
+  await shot('hall-plaque', 500);
+  await page.locator('.screen.in .hof-detail [data-label="閉じる"]').click(); await page.waitForTimeout(300);
+  await click('デモ：友達の殿堂'); await waitScreen('hall-friend'); await waitIn('.hof-plaque');
+  await shot('hall-friend', 400);
+
+  // round 14: マイリプレイ in English (REQ-MYRP-*): the list, the sheet, the rename sheet, the player, the unplayable state
+  await show('MyReplays'); await waitScreen('my-replays'); await waitIn('.rp-saved');
+  await click('デモ：レースを走る'); await waitIn('.rp-row');
+  await page.locator('.screen.in .rp-keep:not(.disabled)').first().click(); await page.waitForTimeout(500); await waitIn('.rp-card');
+  await shot('my-replays', 500);
+  assert.match(await page.locator('.screen.in').innerText(), /My Replays/i, 'my replays: the title in English');
+  await page.locator('.screen.in .rp-card').first().click(); await waitIn('.rp-sheet'); await shot('my-replays-sheet', 400);
+  await page.locator('.screen.in .rp-sheet .rp-rename').click(); await waitIn('.rp-rename-sheet'); await shot('my-replays-rename', 400);
+  await page.locator('.screen.in .rp-rename-sheet input.field').fill('1着'); await page.locator('.screen.in .rp-rename-save').click(); await page.waitForTimeout(500);
+  await waitScreen('my-replays'); await waitIn('.rp-card .typed');
+  assert.equal(await page.locator('.screen.in .rp-card .rp-title.typed').first().textContent(), '1着', 'a typed title stays as typed in English');
+  await page.locator('.screen.in .rp-card').first().click(); await waitIn('.rp-sheet');
+  await page.locator('.screen.in .rp-sheet .rp-play').click(); await waitScreen('replay-player', 30000);
+  await page.waitForFunction(() => (globalThis.__muchi.replay?.t ?? 0) > 300, null, { timeout: 20000 });
+  await page.locator('.screen.in .rp-pause').click(); await page.waitForTimeout(300);
+  await shot('replay-player', 300);
+  await page.locator('.screen.in .rp-share').click(); await waitIn('.rp-share-sheet'); await shot('replay-share', 400);
+  await page.evaluate(() => globalThis.__muchi.logic.replays.demoRetired(true));
+  await page.evaluate(async () => { const v = (await globalThis.__muchi.logic.replays.view()).value; return globalThis.__muchi.show('ReplayPlayer', v.saved[0].raceId, {}); });
+  await waitScreen('replay-unplayable'); await shot('replay-unplayable', 400);
+  await page.evaluate(() => globalThis.__muchi.logic.replays.demoRetired(false));
+
   // round 11: 図鑑・実績・称号 in English (REQ-COL-*, REQ-ACH-*): a week of play on the real rules, every tab, a detail,
   // the achievement list (claim one, claim all), the title chooser
   await page.evaluate(() => globalThis.__muchi.demo('collection')); await waitScreen('collection', 60000);
@@ -231,6 +268,14 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await click('まとめて受け取る'); await page.waitForTimeout(800); await waitScreen('achievements');
   await click('称号を変える'); await shot('achievement-titles', 500);
 
+  // round 14: 勝負服エディタ in English (REQ-SILK-015): parts, locked lines, the try-on, the parts sheet and the purchase confirmation
+  await show('SilksEditor', 'silkpart_sleeve_stars'); await waitScreen('silks'); await page.waitForTimeout(700); await shot('silks-editor', 300);
+  assert.match(await page.locator('.screen.in').innerText(), /Trying on/, 'silks: 試着中 in English');
+  await page.locator('.screen.in [data-silks-tab="color"]').click(); await page.waitForTimeout(500); await shot('silks-colours', 300);
+  await page.locator('.screen.in [data-silks-tab="cap"]').click(); await page.waitForTimeout(500); await shot('silks-caps', 300);
+  await page.locator('.screen.in [data-silks-save]').click(); await page.waitForSelector('.screen.in .sheet [data-need]'); await shot('silks-need-parts', 400);
+  await page.locator('.screen.in .sheet [data-label="購入を確認"]').first().click(); await waitScreen('silks-buy'); await shot('silks-buy-confirm', 400);
+  await click('キャンセル'); await waitScreen('silks');
   // round 12: プレゼントボックス in English (REQ-BOX-*): the box, the home envelope, a claim, claim all, the history
   await page.evaluate(() => globalThis.__muchi.demo('gifts')); await waitScreen('gift-box', 60000);
   await shot('gift-box', 600);
@@ -264,6 +309,18 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await click('みんなでレース（デモ）'); await waitScreen('team-goal'); await shot('team-goal-progress', 700);
   await click('週の締め（デモ）'); await waitScreen('team-goal'); await page.waitForTimeout(600); await shot('team-goal-result', 500);
   await page.evaluate(() => globalThis.__muchi.logic.setClockMs(null));
+  // round 14: 実況パック in English (REQ-CMT-011): the list, the sample ticker, the purchase confirm
+  await page.evaluate(() => globalThis.__muchi.demo('packs')); await waitScreen(['commentary-packs', 'link-prompt'], 60000);
+  if (await screen() === 'link-prompt') { await click('あとで'); await show('CommentaryPacks'); await waitScreen('commentary-packs'); }
+  await shot('commentary-packs', 600);
+  assert.match(await page.locator('.screen.in').innerText(), /Race results and abilities are not affected/, 'packs: the rule in English');
+  await page.locator('.screen.in [data-sample="nekketsu"]').click(); await page.waitForTimeout(700);
+  await page.waitForFunction(() => (document.querySelector('.screen.in [data-ticker]')?.textContent ?? '').length > 4, null, { timeout: 5000 });
+  await page.waitForSelector('.screen.in [data-ticker][data-done="1"]', { timeout: 15000 });
+  await shot('commentary-pack-sample', 300);
+  await page.locator('.screen.in [data-buy="ochitsuki"]').click(); await waitScreen(['commentary-pack-buy', 'shortfall'], 10000);
+  await shot('commentary-pack-buy', 400);
+  await page.locator('.screen.in [data-confirm="cancel"]').click(); await waitScreen('commentary-packs');
 
   const misses = await page.evaluate(() => globalThis.__muchi.l10n.misses());
   fs.writeFileSync(path.join(out, 'en-report.json'), JSON.stringify({ report, misses }, null, 2));

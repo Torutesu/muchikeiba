@@ -80,6 +80,7 @@ export function deletionPortsFromEnv(env: Env, ctx: DurableObjectState, svc: Pla
         for (const w of [cur, prevWeekId(cur)]) await reg.forget(w, uid);
       },
     },
+    replays: { deleteAll: async (keys) => { for (let i = 0; i < keys.length; i += 1000) await env.REPLAYS.delete(keys.slice(i, i + 1000)); } }, // REQ-MYRP-012
     finalize: async (uid) => {
       const r = await svc.deletionFinalize(uid);
       // the state keeps only the recent ledger; the full audit trail lives in this object's ledger table

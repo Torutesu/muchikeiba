@@ -1,0 +1,1276 @@
+{
+ "_note": "REQ-CMT-*（contracts/protocol.md §36）。実況パックの正本。npm run gen:client-locale が engine/Muchi.Client/Resources/Muchi/commentary-packs.json に同じ内容を書く。パックの phrases は標準（commentary-ja.json / commentary-en.json）の同じ key を置き換える。標準の元の種類は phrases.ja か fallback のどちらかに必ず書く。英語は任意（無い種類は標準の英語）。",
+ "version": 1,
+ "standardPackId": "standard",
+ "sample": {
+  "seed": 3614,
+  "seconds": 10,
+  "track": {
+   "id": "aoba_turf_1600",
+   "surface": "turf",
+   "distanceM": 1600,
+   "segments": [
+    {
+     "kind": "straight",
+     "lengthM": 350
+    },
+    {
+     "kind": "corner",
+     "lengthM": 600,
+     "radiusM": 120
+    },
+    {
+     "kind": "straight",
+     "lengthM": 650
+    }
+   ]
+  },
+  "entrants": [
+   {
+    "templateId": "t_kohaku",
+    "name": "コハクノヒカリ",
+    "style": "nige",
+    "surface": "turf",
+    "distMinM": 1400,
+    "distMaxM": 2000,
+    "stats": {
+     "speed": 860,
+     "stamina": 640,
+     "burst": 700,
+     "guts": 780,
+     "temper": 480
+    }
+   },
+   {
+    "templateId": "t_harukaze",
+    "name": "ハルカゼノミチ",
+    "style": "nige",
+    "surface": "turf",
+    "distMinM": 1600,
+    "distMaxM": 2200,
+    "stats": {
+     "speed": 700,
+     "stamina": 680,
+     "burst": 600,
+     "guts": 650,
+     "temper": 500
+    }
+   },
+   {
+    "templateId": "t_ginga",
+    "name": "ギンガノカナタ",
+    "style": "senko",
+    "surface": "turf",
+    "distMinM": 1800,
+    "distMaxM": 2600,
+    "stats": {
+     "speed": 800,
+     "stamina": 820,
+     "burst": 760,
+     "guts": 720,
+     "temper": 600
+    }
+   },
+   {
+    "templateId": "t_sakura",
+    "name": "サクラナミキ",
+    "style": "senko",
+    "surface": "turf",
+    "distMinM": 1600,
+    "distMaxM": 2400,
+    "stats": {
+     "speed": 700,
+     "stamina": 690,
+     "burst": 660,
+     "guts": 660,
+     "temper": 580
+    }
+   },
+   {
+    "templateId": "t_umineko",
+    "name": "ウミネコパレード",
+    "style": "sashi",
+    "surface": "turf",
+    "distMinM": 1600,
+    "distMaxM": 2400,
+    "stats": {
+     "speed": 690,
+     "stamina": 700,
+     "burst": 720,
+     "guts": 580,
+     "temper": 560
+    }
+   },
+   {
+    "templateId": "t_yuyake",
+    "name": "ユウヤケボシ",
+    "style": "sashi",
+    "surface": "turf",
+    "distMinM": 1600,
+    "distMaxM": 2400,
+    "stats": {
+     "speed": 590,
+     "stamina": 610,
+     "burst": 600,
+     "guts": 540,
+     "temper": 520
+    }
+   },
+   {
+    "templateId": "t_kurogane",
+    "name": "クロガネオウジ",
+    "style": "oikomi",
+    "surface": "turf",
+    "distMinM": 1800,
+    "distMaxM": 2600,
+    "stats": {
+     "speed": 680,
+     "stamina": 720,
+     "burst": 740,
+     "guts": 600,
+     "temper": 450
+    }
+   },
+   {
+    "templateId": "t_tsukikage",
+    "name": "ツキカゲロード",
+    "style": "oikomi",
+    "surface": "turf",
+    "distMinM": 2000,
+    "distMaxM": 3000,
+    "stats": {
+     "speed": 780,
+     "stamina": 860,
+     "burst": 880,
+     "guts": 600,
+     "temper": 560
+    }
+   }
+  ]
+ },
+ "packs": [
+  {
+   "id": "standard",
+   "name": "標準",
+   "description": "いつもの実況。はっきり、わかりやすく伝えます。",
+   "order": 0,
+   "acquire": {
+    "kind": "default"
+   }
+  },
+  {
+   "id": "nekketsu",
+   "name": "熱血",
+   "description": "叫んで盛り上げる、熱い実況。",
+   "order": 1,
+   "acquire": {
+    "kind": "achievement",
+    "achievementId": "races",
+    "tier": 1
+   },
+   "fallback": [
+    "ground_*",
+    "going_call_*",
+    "result_two",
+    "result_solo"
+   ],
+   "phrases": {
+    "ja": {
+     "gate_open": {
+      "variants": [
+       {
+        "id": "nekketsu_gate_open_1",
+        "text": "ゲートオープン！熱い戦いの幕開けだー！"
+       },
+       {
+        "id": "nekketsu_gate_open_2",
+        "text": "飛び出した！全馬いっせいに駆け出したー！"
+       }
+      ]
+     },
+     "good_start": {
+      "variants": [
+       {
+        "id": "nekketsu_good_start_1",
+        "text": "{name}、ロケットスタートだ！"
+       },
+       {
+        "id": "nekketsu_good_start_2",
+        "text": "うまい！{name}が抜群の飛び出し！"
+       }
+      ]
+     },
+     "late_start": {
+      "variants": [
+       {
+        "id": "nekketsu_late_start_1",
+        "text": "あーっと{name}、出遅れたー！"
+       },
+       {
+        "id": "nekketsu_late_start_2",
+        "text": "{name}、痛いスタート！まだ終わっちゃいないぞ！"
+       }
+      ]
+     },
+     "leader": {
+      "variants": [
+       {
+        "id": "nekketsu_leader_1",
+        "text": "先頭は{name}だー！"
+       },
+       {
+        "id": "nekketsu_leader_2",
+        "text": "{name}がハナを奪ったー！"
+       }
+      ]
+     },
+     "position_call": {
+      "variants": [
+       {
+        "id": "nekketsu_position_call_1",
+        "text": "先頭{name}！続いて{name2}！その後ろに{name3}！"
+       },
+       {
+        "id": "nekketsu_position_call_2",
+        "text": "{name}が飛ばす！{name2}、{name3}が追いかける！"
+       }
+      ]
+     },
+     "kakari": {
+      "variants": [
+       {
+        "id": "nekketsu_kakari_1",
+        "text": "{name}、かかっている！抑えきれないぞ！"
+       },
+       {
+        "id": "nekketsu_kakari_2",
+        "text": "{name}、行きたくて仕方がない！"
+       }
+      ]
+     },
+     "spurt": {
+      "variants": [
+       {
+        "id": "nekketsu_spurt_1",
+        "text": "さあ来たぞ最後の直線！ここからが勝負だー！"
+       },
+       {
+        "id": "nekketsu_spurt_2",
+        "text": "直線に向いた！全馬、力を振り絞れー！"
+       }
+      ]
+     },
+     "focus_whip": {
+      "variants": [
+       {
+        "id": "nekketsu_focus_whip_1",
+        "text": "{name}にムチが飛んだ！伸びろー！"
+       },
+       {
+        "id": "nekketsu_focus_whip_2",
+        "text": "{name}、ムチに応えてぐんぐん来るぞ！"
+       }
+      ]
+     },
+     "cpu_takeover": {
+      "variants": [
+       {
+        "id": "nekketsu_cpu_takeover_1",
+        "text": "{name}は自動騎乗に切り替わった！まだまだ走るぞ！"
+       }
+      ]
+     },
+     "finish_win": {
+      "variants": [
+       {
+        "id": "nekketsu_finish_win_1",
+        "text": "{name}だー！一着でゴールイン！"
+       },
+       {
+        "id": "nekketsu_finish_win_2",
+        "text": "やったぞ{name}！堂々の一着！"
+       }
+      ]
+     },
+     "bond_call": {
+      "variants": [
+       {
+        "id": "nekketsu_bond_call_1",
+        "text": "絆の力だ！{name}が燃えている！"
+       },
+       {
+        "id": "nekketsu_bond_call_2",
+        "text": "人馬の心がひとつに！{name}が来たー！"
+       }
+      ]
+     },
+     "skill": {
+      "variants": [
+       {
+        "id": "nekketsu_skill_1",
+        "text": "出たー！{name}の{skill}！"
+       },
+       {
+        "id": "nekketsu_skill_2",
+        "text": "{skill}炸裂！{name}が加速する！"
+       }
+      ]
+     },
+     "focus_finish": {
+      "variants": [
+       {
+        "id": "nekketsu_focus_finish_1",
+        "text": "{name}は{place}着！よく走った！"
+       },
+       {
+        "id": "nekketsu_focus_finish_2",
+        "text": "{name}、{place}着でゴール！次はもっと上だ！"
+       }
+      ]
+     },
+     "result": {
+      "variants": [
+       {
+        "id": "nekketsu_result_1",
+        "text": "一着{name}！二着{name2}！三着{name3}！みんなよく走った！"
+       }
+      ]
+     },
+     "duel": {
+      "variants": [
+       {
+        "id": "nekketsu_duel_1",
+        "text": "{name}と{name2}、火の出るような叩き合い！"
+       },
+       {
+        "id": "nekketsu_duel_2",
+        "text": "{name}が抜き返したー！{name2}も譲らない！"
+       }
+      ]
+     },
+     "photo_finish": {
+      "variants": [
+       {
+        "id": "nekketsu_photo_finish_1",
+        "text": "並んだ並んだ！二着の{name}と大接戦！"
+       },
+       {
+        "id": "nekketsu_photo_finish_2",
+        "text": "わからない！ほとんど同時のゴールだー！"
+       }
+      ]
+     },
+     "comeback_win": {
+      "variants": [
+       {
+        "id": "nekketsu_comeback_win_1",
+        "text": "後方から一気だー！{name}が全部まとめて差し切った！"
+       },
+       {
+        "id": "nekketsu_comeback_win_2",
+        "text": "大外一気！{name}、豪快にゴール！"
+       }
+      ]
+     },
+     "wire_win": {
+      "variants": [
+       {
+        "id": "nekketsu_wire_win_1",
+        "text": "{name}、逃げ切ったー！最後まで先頭を譲らない！"
+       },
+       {
+        "id": "nekketsu_wire_win_2",
+        "text": "押し切った！{name}、見事な逃げ切り！"
+       }
+      ]
+     }
+    },
+    "en": {
+     "gate_open": {
+      "variants": [
+       {
+        "id": "nekketsu_gate_open_1",
+        "text": "The gates crash open! Let the battle begin!"
+       },
+       {
+        "id": "nekketsu_gate_open_2",
+        "text": "They burst out of the gates, every last one!"
+       }
+      ]
+     },
+     "good_start": {
+      "variants": [
+       {
+        "id": "nekketsu_good_start_1",
+        "text": "{name} rockets out of the gate!"
+       },
+       {
+        "id": "nekketsu_good_start_2",
+        "text": "Brilliant! {name} flies away!"
+       }
+      ]
+     },
+     "late_start": {
+      "variants": [
+       {
+        "id": "nekketsu_late_start_1",
+        "text": "Oh no, {name} is slow away!"
+       },
+       {
+        "id": "nekketsu_late_start_2",
+        "text": "A tough start for {name}! It's not over yet!"
+       }
+      ]
+     },
+     "leader": {
+      "variants": [
+       {
+        "id": "nekketsu_leader_1",
+        "text": "{name} grabs the lead!"
+       },
+       {
+        "id": "nekketsu_leader_2",
+        "text": "{name} storms to the front!"
+       }
+      ]
+     },
+     "position_call": {
+      "variants": [
+       {
+        "id": "nekketsu_position_call_1",
+        "text": "{name} out front! {name2} chasing! {name3} right behind!"
+       },
+       {
+        "id": "nekketsu_position_call_2",
+        "text": "{name} is flying! {name2} and {name3} giving chase!"
+       }
+      ]
+     },
+     "kakari": {
+      "variants": [
+       {
+        "id": "nekketsu_kakari_1",
+        "text": "{name} is fighting the reins!"
+       },
+       {
+        "id": "nekketsu_kakari_2",
+        "text": "{name} just wants to run!"
+       }
+      ]
+     },
+     "spurt": {
+      "variants": [
+       {
+        "id": "nekketsu_spurt_1",
+        "text": "Here it comes, the final straight! This is where it counts!"
+       },
+       {
+        "id": "nekketsu_spurt_2",
+        "text": "Into the straight! Give it everything!"
+       }
+      ]
+     },
+     "focus_whip": {
+      "variants": [
+       {
+        "id": "nekketsu_focus_whip_1",
+        "text": "{name} gets the signal! Go, go, go!"
+       },
+       {
+        "id": "nekketsu_focus_whip_2",
+        "text": "{name} answers and surges forward!"
+       }
+      ]
+     },
+     "cpu_takeover": {
+      "variants": [
+       {
+        "id": "nekketsu_cpu_takeover_1",
+        "text": "{name} switches to auto-ride! Still running strong!"
+       }
+      ]
+     },
+     "finish_win": {
+      "variants": [
+       {
+        "id": "nekketsu_finish_win_1",
+        "text": "It's {name}! First past the post!"
+       },
+       {
+        "id": "nekketsu_finish_win_2",
+        "text": "Yes, {name}! A brilliant win!"
+       }
+      ]
+     },
+     "bond_call": {
+      "variants": [
+       {
+        "id": "nekketsu_bond_call_1",
+        "text": "The power of the bond! {name} is on fire!"
+       },
+       {
+        "id": "nekketsu_bond_call_2",
+        "text": "Horse and rider, one heart! Here comes {name}!"
+       }
+      ]
+     },
+     "skill": {
+      "variants": [
+       {
+        "id": "nekketsu_skill_1",
+        "text": "There it is! {name}'s {skill}!"
+       },
+       {
+        "id": "nekketsu_skill_2",
+        "text": "{skill} unleashed! {name} kicks again!"
+       }
+      ]
+     },
+     "focus_finish": {
+      "variants": [
+       {
+        "id": "nekketsu_focus_finish_1",
+        "text": "{name} finishes {place}! What a run!"
+       },
+       {
+        "id": "nekketsu_focus_finish_2",
+        "text": "{name} home in {place}! Next time, higher!"
+       }
+      ]
+     },
+     "result": {
+      "variants": [
+       {
+        "id": "nekketsu_result_1",
+        "text": "First {name}! Second {name2}! Third {name3}! What a race!"
+       }
+      ]
+     },
+     "duel": {
+      "variants": [
+       {
+        "id": "nekketsu_duel_1",
+        "text": "{name} and {name2}, a fiery battle!"
+       },
+       {
+        "id": "nekketsu_duel_2",
+        "text": "{name} fights back! {name2} won't give in!"
+       }
+      ]
+     },
+     "photo_finish": {
+      "variants": [
+       {
+        "id": "nekketsu_photo_finish_1",
+        "text": "Neck and neck with {name} in second!"
+       },
+       {
+        "id": "nekketsu_photo_finish_2",
+        "text": "Too close to call! They hit the line together!"
+       }
+      ]
+     },
+     "comeback_win": {
+      "variants": [
+       {
+        "id": "nekketsu_comeback_win_1",
+        "text": "From the back in one surge! {name} sweeps past them all!"
+       },
+       {
+        "id": "nekketsu_comeback_win_2",
+        "text": "Flying down the outside! {name} powers home!"
+       }
+      ]
+     },
+     "wire_win": {
+      "variants": [
+       {
+        "id": "nekketsu_wire_win_1",
+        "text": "{name} makes every yard! Never headed!"
+       },
+       {
+        "id": "nekketsu_wire_win_2",
+        "text": "{name} holds on! A front-running masterclass!"
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "ochitsuki",
+   "name": "落ち着いた解説",
+   "description": "展開を静かに読み解く、解説者の語り口。",
+   "order": 2,
+   "acquire": {
+    "kind": "coins",
+    "price": 300,
+    "currency": "any"
+   },
+   "fallback": [
+    "ground_*",
+    "going_call_*",
+    "result_two",
+    "result_solo"
+   ],
+   "phrases": {
+    "ja": {
+     "gate_open": {
+      "variants": [
+       {
+        "id": "ochitsuki_gate_open_1",
+        "text": "ゲートが開きました。各馬そろったスタートです。"
+       },
+       {
+        "id": "ochitsuki_gate_open_2",
+        "text": "スタートしました。まずは位置取りに注目です。"
+       }
+      ]
+     },
+     "good_start": {
+      "variants": [
+       {
+        "id": "ochitsuki_good_start_1",
+        "text": "{name}、スムーズに出ました。"
+       },
+       {
+        "id": "ochitsuki_good_start_2",
+        "text": "{name}は好発を決めています。"
+       }
+      ]
+     },
+     "late_start": {
+      "variants": [
+       {
+        "id": "ochitsuki_late_start_1",
+        "text": "{name}はややゲートの出が遅れました。"
+       },
+       {
+        "id": "ochitsuki_late_start_2",
+        "text": "{name}、出負けしましたが、まだ焦る場面ではありません。"
+       }
+      ]
+     },
+     "leader": {
+      "variants": [
+       {
+        "id": "ochitsuki_leader_1",
+        "text": "先頭は{name}です。"
+       },
+       {
+        "id": "ochitsuki_leader_2",
+        "text": "{name}がハナに立ちました。落ち着いたペースです。"
+       }
+      ]
+     },
+     "position_call": {
+      "variants": [
+       {
+        "id": "ochitsuki_position_call_1",
+        "text": "先頭は{name}、二番手{name2}、三番手{name3}という隊列です。"
+       },
+       {
+        "id": "ochitsuki_position_call_2",
+        "text": "{name}がペースを作り、{name2}、{name3}が続く形です。"
+       }
+      ]
+     },
+     "kakari": {
+      "variants": [
+       {
+        "id": "ochitsuki_kakari_1",
+        "text": "{name}は少し力んでいますね。"
+       },
+       {
+        "id": "ochitsuki_kakari_2",
+        "text": "{name}、折り合いに苦労しています。"
+       }
+      ]
+     },
+     "spurt": {
+      "variants": [
+       {
+        "id": "ochitsuki_spurt_1",
+        "text": "最後の直線に入りました。"
+       },
+       {
+        "id": "ochitsuki_spurt_2",
+        "text": "直線コースです。ここからの伸びが鍵になります。"
+       }
+      ]
+     },
+     "focus_whip": {
+      "variants": [
+       {
+        "id": "ochitsuki_focus_whip_1",
+        "text": "{name}にムチが入りました。"
+       },
+       {
+        "id": "ochitsuki_focus_whip_2",
+        "text": "{name}、ムチに反応して伸びています。"
+       }
+      ]
+     },
+     "cpu_takeover": {
+      "variants": [
+       {
+        "id": "ochitsuki_cpu_takeover_1",
+        "text": "{name}は自動騎乗に切り替わりました。"
+       }
+      ]
+     },
+     "finish_win": {
+      "variants": [
+       {
+        "id": "ochitsuki_finish_win_1",
+        "text": "{name}が一着でゴールしました。"
+       },
+       {
+        "id": "ochitsuki_finish_win_2",
+        "text": "{name}、着実に脚を伸ばして一着です。"
+       }
+      ]
+     },
+     "bond_call": {
+      "variants": [
+       {
+        "id": "ochitsuki_bond_call_1",
+        "text": "{name}、人馬の呼吸がよく合っています。"
+       },
+       {
+        "id": "ochitsuki_bond_call_2",
+        "text": "日々の積み重ねが見える走りですね、{name}。"
+       }
+      ]
+     },
+     "skill": {
+      "variants": [
+       {
+        "id": "ochitsuki_skill_1",
+        "text": "{name}の{skill}が発動しました。"
+       },
+       {
+        "id": "ochitsuki_skill_2",
+        "text": "ここで{skill}。{name}の動きが変わりました。"
+       }
+      ]
+     },
+     "focus_finish": {
+      "variants": [
+       {
+        "id": "ochitsuki_focus_finish_1",
+        "text": "{name}は{place}着でした。"
+       },
+       {
+        "id": "ochitsuki_focus_finish_2",
+        "text": "{name}、{place}着でゴールです。"
+       }
+      ]
+     },
+     "result": {
+      "variants": [
+       {
+        "id": "ochitsuki_result_1",
+        "text": "一着{name}、二着{name2}、三着{name3}という結果です。"
+       }
+      ]
+     },
+     "duel": {
+      "variants": [
+       {
+        "id": "ochitsuki_duel_1",
+        "text": "{name}と{name2}の競り合いが続いています。"
+       },
+       {
+        "id": "ochitsuki_duel_2",
+        "text": "{name}が盛り返しました。{name2}との接戦です。"
+       }
+      ]
+     },
+     "photo_finish": {
+      "variants": [
+       {
+        "id": "ochitsuki_photo_finish_1",
+        "text": "二着の{name}とほぼ同時のゴールでした。"
+       },
+       {
+        "id": "ochitsuki_photo_finish_2",
+        "text": "非常に際どい決着です。"
+       }
+      ]
+     },
+     "comeback_win": {
+      "variants": [
+       {
+        "id": "ochitsuki_comeback_win_1",
+        "text": "後方から{name}、見事な末脚で差し切りました。"
+       },
+       {
+        "id": "ochitsuki_comeback_win_2",
+        "text": "{name}、外から脚を伸ばして一着です。"
+       }
+      ]
+     },
+     "wire_win": {
+      "variants": [
+       {
+        "id": "ochitsuki_wire_win_1",
+        "text": "{name}、最後まで先頭を守りました。"
+       },
+       {
+        "id": "ochitsuki_wire_win_2",
+        "text": "{name}の逃げ切りです。ペース配分が見事でした。"
+       }
+      ]
+     }
+    },
+    "en": {
+     "gate_open": {
+      "variants": [
+       {
+        "id": "ochitsuki_gate_open_1",
+        "text": "The gates open, and they're away evenly."
+       },
+       {
+        "id": "ochitsuki_gate_open_2",
+        "text": "They're off. Let's watch how the positions settle."
+       }
+      ]
+     },
+     "good_start": {
+      "variants": [
+       {
+        "id": "ochitsuki_good_start_1",
+        "text": "{name} breaks smoothly."
+       },
+       {
+        "id": "ochitsuki_good_start_2",
+        "text": "A tidy start from {name}."
+       }
+      ]
+     },
+     "late_start": {
+      "variants": [
+       {
+        "id": "ochitsuki_late_start_1",
+        "text": "{name} is a little slow from the gate."
+       },
+       {
+        "id": "ochitsuki_late_start_2",
+        "text": "{name} missed the break, but there's time yet."
+       }
+      ]
+     },
+     "leader": {
+      "variants": [
+       {
+        "id": "ochitsuki_leader_1",
+        "text": "{name} leads."
+       },
+       {
+        "id": "ochitsuki_leader_2",
+        "text": "{name} goes to the front at a steady pace."
+       }
+      ]
+     },
+     "position_call": {
+      "variants": [
+       {
+        "id": "ochitsuki_position_call_1",
+        "text": "{name} leads, {name2} second, {name3} third."
+       },
+       {
+        "id": "ochitsuki_position_call_2",
+        "text": "{name} setting the pace, with {name2} and {name3} following."
+       }
+      ]
+     },
+     "kakari": {
+      "variants": [
+       {
+        "id": "ochitsuki_kakari_1",
+        "text": "{name} looks a little keen."
+       },
+       {
+        "id": "ochitsuki_kakari_2",
+        "text": "{name} is struggling to settle."
+       }
+      ]
+     },
+     "spurt": {
+      "variants": [
+       {
+        "id": "ochitsuki_spurt_1",
+        "text": "Into the final straight."
+       },
+       {
+        "id": "ochitsuki_spurt_2",
+        "text": "They turn for home. The finishing speed will decide it."
+       }
+      ]
+     },
+     "focus_whip": {
+      "variants": [
+       {
+        "id": "ochitsuki_focus_whip_1",
+        "text": "{name} is asked for an effort."
+       },
+       {
+        "id": "ochitsuki_focus_whip_2",
+        "text": "{name} responds and lengthens."
+       }
+      ]
+     },
+     "cpu_takeover": {
+      "variants": [
+       {
+        "id": "ochitsuki_cpu_takeover_1",
+        "text": "{name} is now on auto-ride."
+       }
+      ]
+     },
+     "finish_win": {
+      "variants": [
+       {
+        "id": "ochitsuki_finish_win_1",
+        "text": "{name} crosses the line first."
+       },
+       {
+        "id": "ochitsuki_finish_win_2",
+        "text": "{name} kept finding more and wins."
+       }
+      ]
+     },
+     "bond_call": {
+      "variants": [
+       {
+        "id": "ochitsuki_bond_call_1",
+        "text": "{name} and the rider are in perfect rhythm."
+       },
+       {
+        "id": "ochitsuki_bond_call_2",
+        "text": "You can see the training paying off for {name}."
+       }
+      ]
+     },
+     "skill": {
+      "variants": [
+       {
+        "id": "ochitsuki_skill_1",
+        "text": "{name}'s {skill} comes into play."
+       },
+       {
+        "id": "ochitsuki_skill_2",
+        "text": "And there's {skill}. {name} changes pace."
+       }
+      ]
+     },
+     "focus_finish": {
+      "variants": [
+       {
+        "id": "ochitsuki_focus_finish_1",
+        "text": "{name} finishes {place}."
+       },
+       {
+        "id": "ochitsuki_focus_finish_2",
+        "text": "{name} completes the race in {place}."
+       }
+      ]
+     },
+     "result": {
+      "variants": [
+       {
+        "id": "ochitsuki_result_1",
+        "text": "The result: first {name}, second {name2}, third {name3}."
+       }
+      ]
+     },
+     "duel": {
+      "variants": [
+       {
+        "id": "ochitsuki_duel_1",
+        "text": "{name} and {name2} are going at it."
+       },
+       {
+        "id": "ochitsuki_duel_2",
+        "text": "{name} comes back. A close contest with {name2}."
+       }
+      ]
+     },
+     "photo_finish": {
+      "variants": [
+       {
+        "id": "ochitsuki_photo_finish_1",
+        "text": "Practically level with {name} in second."
+       },
+       {
+        "id": "ochitsuki_photo_finish_2",
+        "text": "A very tight finish."
+       }
+      ]
+     },
+     "comeback_win": {
+      "variants": [
+       {
+        "id": "ochitsuki_comeback_win_1",
+        "text": "{name} comes from the back with a fine finishing run."
+       },
+       {
+        "id": "ochitsuki_comeback_win_2",
+        "text": "{name} finishes strongly down the outside to win."
+       }
+      ]
+     },
+     "wire_win": {
+      "variants": [
+       {
+        "id": "ochitsuki_wire_win_1",
+        "text": "{name} held the lead from start to finish."
+       },
+       {
+        "id": "ochitsuki_wire_win_2",
+        "text": "A well-judged front-running win for {name}."
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "kofuu",
+   "name": "古風な名調子",
+   "description": "昔ながらの名調子で、レースを語り上げます。",
+   "order": 3,
+   "acquire": {
+    "kind": "coins",
+    "price": 300,
+    "currency": "any"
+   },
+   "fallback": [
+    "ground_*",
+    "going_call_*",
+    "result_solo"
+   ],
+   "phrases": {
+    "ja": {
+     "gate_open": {
+      "variants": [
+       {
+        "id": "kofuu_gate_open_1",
+        "text": "いざ発走！各馬いっせいに飛び出しました！"
+       },
+       {
+        "id": "kofuu_gate_open_2",
+        "text": "ゲートは開かれた！さあ、勝負の始まりであります！"
+       }
+      ]
+     },
+     "good_start": {
+      "variants": [
+       {
+        "id": "kofuu_good_start_1",
+        "text": "{name}、見事な出足であります！"
+       },
+       {
+        "id": "kofuu_good_start_2",
+        "text": "{name}、まことに鮮やかなスタート！"
+       }
+      ]
+     },
+     "late_start": {
+      "variants": [
+       {
+        "id": "kofuu_late_start_1",
+        "text": "おおっと{name}、出遅れであります！"
+       },
+       {
+        "id": "kofuu_late_start_2",
+        "text": "{name}、痛恨の出遅れ！されど勝負はこれからだ！"
+       }
+      ]
+     },
+     "leader": {
+      "variants": [
+       {
+        "id": "kofuu_leader_1",
+        "text": "先頭は{name}であります！"
+       },
+       {
+        "id": "kofuu_leader_2",
+        "text": "ハナを奪うは{name}！"
+       }
+      ]
+     },
+     "position_call": {
+      "variants": [
+       {
+        "id": "kofuu_position_call_1",
+        "text": "先頭は{name}、続くは{name2}、その後ろに{name3}であります。"
+       },
+       {
+        "id": "kofuu_position_call_2",
+        "text": "{name}が先導し、{name2}、{name3}と連なってまいります。"
+       }
+      ]
+     },
+     "kakari": {
+      "variants": [
+       {
+        "id": "kofuu_kakari_1",
+        "text": "{name}、はやる気持ちを抑えきれません！"
+       },
+       {
+        "id": "kofuu_kakari_2",
+        "text": "{name}、手綱を引っ張るほどの気合い！"
+       }
+      ]
+     },
+     "spurt": {
+      "variants": [
+       {
+        "id": "kofuu_spurt_1",
+        "text": "さあ、いよいよ最後の直線であります！"
+       },
+       {
+        "id": "kofuu_spurt_2",
+        "text": "直線に向きました！勝負どころはここだ！"
+       }
+      ]
+     },
+     "focus_whip": {
+      "variants": [
+       {
+        "id": "kofuu_focus_whip_1",
+        "text": "{name}に入魂の一鞭！"
+       },
+       {
+        "id": "kofuu_focus_whip_2",
+        "text": "{name}、鞭に応えてぐいぐいと伸びる！"
+       }
+      ]
+     },
+     "cpu_takeover": {
+      "variants": [
+       {
+        "id": "kofuu_cpu_takeover_1",
+        "text": "{name}、ここより自動騎乗に切り替わります。"
+       }
+      ]
+     },
+     "finish_win": {
+      "variants": [
+       {
+        "id": "kofuu_finish_win_1",
+        "text": "{name}、堂々の一着ゴールイン！"
+       },
+       {
+        "id": "kofuu_finish_win_2",
+        "text": "勝ったのは{name}！見事、栄光をつかみました！"
+       }
+      ]
+     },
+     "bond_call": {
+      "variants": [
+       {
+        "id": "kofuu_bond_call_1",
+        "text": "人馬一体とはまさにこのこと、{name}！"
+       },
+       {
+        "id": "kofuu_bond_call_2",
+        "text": "厩舎で結んだ絆が{name}を押し上げる！"
+       }
+      ]
+     },
+     "skill": {
+      "variants": [
+       {
+        "id": "kofuu_skill_1",
+        "text": "出ました、{name}の{skill}！"
+       },
+       {
+        "id": "kofuu_skill_2",
+        "text": "ここで{skill}！{name}の伝家の宝刀であります！"
+       }
+      ]
+     },
+     "focus_finish": {
+      "variants": [
+       {
+        "id": "kofuu_focus_finish_1",
+        "text": "{name}は{place}着であります。"
+       },
+       {
+        "id": "kofuu_focus_finish_2",
+        "text": "{name}、{place}着にてゴール！"
+       }
+      ]
+     },
+     "result": {
+      "variants": [
+       {
+        "id": "kofuu_result_1",
+        "text": "一着{name}、二着{name2}、三着{name3}。以上の結果であります！"
+       }
+      ]
+     },
+     "result_two": {
+      "variants": [
+       {
+        "id": "kofuu_result_two_1",
+        "text": "一着{name}、二着{name2}。以上の結果であります！"
+       }
+      ]
+     },
+     "duel": {
+      "variants": [
+       {
+        "id": "kofuu_duel_1",
+        "text": "{name}と{name2}、一歩も譲らぬ叩き合い！"
+       },
+       {
+        "id": "kofuu_duel_2",
+        "text": "{name}が差し返す！{name2}との一騎打ちであります！"
+       }
+      ]
+     },
+     "photo_finish": {
+      "variants": [
+       {
+        "id": "kofuu_photo_finish_1",
+        "text": "二着{name}とほとんど並んでのゴール！"
+       },
+       {
+        "id": "kofuu_photo_finish_2",
+        "text": "わずかの差！まさに紙一重の大接戦であります！"
+       }
+      ]
+     },
+     "comeback_win": {
+      "variants": [
+       {
+        "id": "kofuu_comeback_win_1",
+        "text": "後方一気！{name}、鮮やかに差し切りました！"
+       },
+       {
+        "id": "kofuu_comeback_win_2",
+        "text": "大外から{name}、豪快に突き抜けたあっ！"
+       }
+      ]
+     },
+     "wire_win": {
+      "variants": [
+       {
+        "id": "kofuu_wire_win_1",
+        "text": "{name}、逃げ切りであります！先頭を一度も譲りませんでした！"
+       },
+       {
+        "id": "kofuu_wire_win_2",
+        "text": "{name}、そのまま押し切ってのゴール！"
+       }
+      ]
+     }
+    }
+   }
+  }
+ ]
+}

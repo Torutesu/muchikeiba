@@ -46,6 +46,9 @@ namespace Muchi.Client
             if (assist != AssistLevel.Off && mode != "tutorial") props.Set("assist", AssistLevels.Wire(assist));
             return new AnalyticsEvent("race_start", atMs, props);
         }
+        /// <summary>REQ-CMT-012: a commentary pack sample started (try before buy).</summary>
+        public static AnalyticsEvent CommentaryPackSample(long atMs, string packId, bool owned)
+            => new AnalyticsEvent("commentary_pack_sample", atMs, JsonNode.Obj().Set("packId", Id(packId, 32, "packId")).Set("owned", owned));
         /// <summary>stage: open | cancel | fail | store_success (the server records the verified purchase itself).</summary>
         public static AnalyticsEvent PurchaseFlow(long atMs, string stage, string productId)
         {
@@ -121,6 +124,13 @@ namespace Muchi.Client
         {
             if (kind != "replay_video" && kind != "replay_image") throw new ArgumentException("unknown share kind " + kind);
             return new AnalyticsEvent("share", atMs, JsonNode.Obj().Set("kind", kind));
+        }
+
+        /// <summary>REQ-MYRP-014: a saved replay was handed to the OS share sheet. surface: my_replays | friend_replay.</summary>
+        public static AnalyticsEvent ReplayShare(long atMs, string surface)
+        {
+            if (surface != "my_replays" && surface != "friend_replay") throw new ArgumentException("unknown replay share surface " + surface);
+            return new AnalyticsEvent("replay_share", atMs, JsonNode.Obj().Set("surface", surface));
         }
 
         /// <summary>The invite code was handed to the OS share sheet or copied (REQ-INV-011). channel: os_share | copy_code | copy_link.</summary>

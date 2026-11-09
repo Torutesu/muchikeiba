@@ -206,12 +206,18 @@ export interface PlayerState {
   giftBox?: import('./giftBox.js').GiftBoxState;
   /** REQ-ASSIST-*: かんたん操作 setting, the last-place streak and the one-time suggestion (assist.ts ensureAssist). */
   assist?: import('./assist.js').AssistState;
+  /** REQ-CMT-*: 実況パック — owned packs and the equipped one (commentaryPacks.ts). Absent = the standard pack. */
+  commentaryPack?: import('./commentaryPacks.js').CommentaryPackState;
   /** REQ-RIVAL-*: opt-out, this week's rival and score, unsettled weeks, results (rival.ts ensureRival). */
   rival?: import('./rival.js').RivalState;
   /** REQ-HIST-004: one record per gacha draw, last 90 days (history.ts recordGachaLog; the Durable Object keeps older ones in SQL). */
   gachaLog?: import('./history.js').GachaLogState;
   /** REQ-WCH-*: weekly challenge sessions, this and last week's progress, earned badges (weeklyChallenge.ts wchState). */
   weeklyChallenge?: import('./weeklyChallenge.js').WeeklyChallengeState;
+  /** REQ-HOF-*: 殿堂 — per-horse careers, retirement ceremonies, permanent plaques, visibility (hallOfFame.ts ensureHall). */
+  hall?: import('./hallOfFame.js').HallState;
+  /** REQ-MYRP-*: マイリプレイ — recent races / best moments and the saved list (myReplays.ts ensureMyReplays). */
+  myReplays?: import('./myReplays.js').MyReplaysState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

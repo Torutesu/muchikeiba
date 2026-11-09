@@ -1213,6 +1213,8 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 ```
 検証（`exchangeProblems`、`eventProblems` の中で起動時・リモート設定・テスト）：strict な形、コード側の上限 `EXCHANGE_HARD_LIMITS`（24行・価格 ≤ 100,000・在庫 ≤ 99・`graceDays` 1〜7・`dailyCap` ≤ 5,000・`pointsPerUnit` ≤ 1,000・1行のアイテム数 ≤ 10・コイン ≤ 100/個・¥200/個）、`dailyCap` ≥ 1着1回分、id の重複、`reward` はちょうど1種類で `kind` と合うこと、上の「中身」の規則、`leftover.itemId` は配合素材。英語は `locale.en`（REQ-L10N-005、`name` も対象）。
 
+- **Round 14 の統合**：勝負服エディタのパーツ（§35、`kind: "silks_part"` の見た目アイテム、`currency: "any"` のもの）はそのまま `kind: "cosmetic"` の行にできる（交換で得たパーツはエディタで持っている扱い）。実況パック（§36）は `kind: "commentary_pack"`・`reward.items: [{ "itemId": "<packId>", "qty": 1 }]`・`stock: 1` の行にでき、コインで売っているパック（有償限定でない）だけ（標準・実績のパックは不可）。パックはアイテムではなくプレイヤーの `commentaryPack.owned`（`via: "exchange"`）に入り、もう持っていれば `ALREADY_PURCHASED`（ショップの購入も同じ）。`icon` は `null`（クライアントはパックの絵）。出荷の設定にはまだどちらの行も入れていない（テストのみ、`server/test/r14-integration.test.ts`）。
+
 ### 30.2 `GET /v1/events/:eventId/exchange`（要認証）
 ```json
 { "eventId": "newyear_cup_2027_01", "name": "新春交換祭杯", "status": "open",
@@ -1459,7 +1461,7 @@ TeamGoalView = { "teamId": "tabc123456", "teamName": "あおばRC", "enabled": t
 ### 33.2 一覧（要認証、カーソル式）
 `GET /v1/history/purchases` ・ `GET /v1/history/coins?currency=paid|free` ・ `GET /v1/history/gacha`。共通のクエリ：`cursor`（前の応答の `nextCursor`、そのまま渡す不透明な文字列）・`limit`（1〜50、既定20）。新しい順。応答 `{ "items": [...], "nextCursor": string | null, "windowDays": n }`。おかしい `cursor`／`limit`／`currency` は 400。
 - **購入**：`{ "ref": "P-1A2B3C4D", "at", "product": "コイン 480枚", "productId", "priceYen", "store": "apple"|"google"|"fake", "storeName": "App Store"|"Google Play"|"テスト", "status": "completed"|"refunded"|"pending"|"test", "statusText", "paidCoins", "bonusCoins", "bonusPaid": bool }`。`pending` = 自動更新のパスのストア側の状態が猶予期間・請求の再試行中（`grace`／`billing_retry`）。ストアで保留中（Google の purchaseState 2）の購入はサーバーが受け付けていないので一覧に無い（ストアの購入履歴で確認：`statusText` の説明に書く）。`test` はサンドボックス（請求なし、¥0）。
-- **コイン**：`{ "ref": "C-123", "at", "currency": "paid"|"free", "direction": "earned"|"spent"|"note", "amount"（絶対値）, "balanceAfter", "category", "title", "purchaseRef"?: "P-…" }`。`note` は枚数が動かない行（未精算の返金の記録など）。`category`：`purchase`・`purchase_bonus`・`purchase_test`・`daily_pack`・`gacha`・`shop`・`ad_reward`・`compensation`・`login`・`mission`・`achievement`・`race`・`time_attack`・`pass`・`season`・`team`・`event_fee`・`event_fee_refund`・`event`・`tournament`・`stud`・`invite`・`bond`・`comeback`・`refund`・`debt`・`debt_settle`・`forfeit`・`rival`・`team_goal`・`weekly_challenge`・`exchange`（Round 13 の統合）・`other`。`currency` を付けないと両方（画面は有償・無償を別のタブで出す）。
+- **コイン**：`{ "ref": "C-123", "at", "currency": "paid"|"free", "direction": "earned"|"spent"|"note", "amount"（絶対値）, "balanceAfter", "category", "title", "purchaseRef"?: "P-…" }`。`note` は枚数が動かない行（未精算の返金の記録など）。`category`：`purchase`・`purchase_bonus`・`purchase_test`・`daily_pack`・`gacha`・`shop`・`ad_reward`・`compensation`・`login`・`mission`・`achievement`・`race`・`time_attack`・`pass`・`season`・`team`・`event_fee`・`event_fee_refund`・`event`・`tournament`・`stud`・`invite`・`bond`・`comeback`・`refund`・`debt`・`debt_settle`・`forfeit`・`rival`・`team_goal`・`weekly_challenge`・`exchange`（Round 13 の統合）・`commentary_pack`（実況パックの購入、§36、Round 14 の統合）・`other`。勝負服エディタのパーツ（§35）は見た目の直販と同じ `shop`（「ショップで購入（勝負服の色「クリムゾン」）」）。`currency` を付けないと両方（画面は有償・無償を別のタブで出す）。
 - **ガチャ**：`{ "ref": "G-7", "at", "banner": "恒常スカウト", "bannerId": string|null, "via": "coins"|"ticket"|"tutorial", "viaText", "count", "coins": { "paid", "free" }, "results": [ { "templateId", "name", "rarity", "duplicate" } ], "summary": "SSR 1・SR 2・R 7" }`。SR以上確定券は `bannerId: null`・`banner` は券の名前。
 
 ### 33.3 `POST /v1/history/support-ticket`（要認証、状態を変えない）
@@ -1480,3 +1482,318 @@ TeamGoalView = { "teamId": "tabc123456", "teamName": "あおばRC", "enabled": t
 
 ### 33.6 クライアント（`HistoryModel`）
 - タブ（購入／有償コイン／無償コイン／ガチャ）、残高ヘッダー（有償・無償を分けて）、月の購入額と上限（未成年のみ）、`nextCursor` で続きを読む（同じタブで2回同時に読まない）、行の詳細、問い合わせシート（行を最大10件選ぶ → `support-ticket`）。オフラインは「オンラインで確認できます」。タブを開くたびに `history_view` を1回。
+
+## 34. 殿堂・引退式（REQ-HOF-001〜016、`server/src/domain/hallOfFame.ts`・`server/src/http/hallPorts.ts`、C# `Hall.cs`・`Muchi.Game.HallModel`）
+馬ごとの**戦績**をサーバーが確定した結果だけから記録し、引退（`POST /v1/horses/:horseId/retire`、REQ-HORSE / 種付け用の既存の引退）のときに**引退式**（決まったルールで選んだ戦績の見どころ）を1回だけ作る。条件を満たした馬は**殿堂入り**し、銘板（プレート）が永久に残る。友達・同じ支部の人は公開用の写しから殿堂を見に行ける（§24 の公開プロフィール・REQ-STABLE-003 のマイ厩舎と同じ仕組み）。報酬は見た目だけ（コインは出ない）。設定は `progression.hall`（`hallProblems` で検証、無い／`enabled: false` なら機能ごと無し）。
+
+### 34.1 戦績（`CareerRecord`、REQ-HOF-001/002）
+プレイヤーの部屋（PlayerDO）の `hall.careers[horseId]` に持つ。書くのは次の3か所だけ（クライアントの申告・購入・アイテムでは増えない）：
+| 出どころ | 何を数える |
+|---|---|
+| `applyRace`（レースID ごとに1回のガード内） | `races`・`wins`（1着）・`places`（3着以内）・`byMode`・`biggestWin`・`rivalWins`・`firstRaceAt`/`lastRaceAt`。数えるのはプレイヤー統計（REQ-STAT-001）と同じ：ランク戦・イベント・大会、人間2人以上のフレンド戦。無効レース・チュートリアル・馬IDの無い結果（古い部屋）は数えない。馬は `settleRace` が出走表から付ける `horseId`（`RaceResultForPlayer` に追加、任意） |
+| `taRecord`（検証済みのタイムアタック、セッションごとに1回） | `bestTa[trackId]`：コースごとの最速タイム（ms） |
+| `tournamentClose`（大会ごとに1回のガード内） | `tournaments[]`（大会名・最終順位）・`tournamentWins`。馬は大会に登録した馬（`award` に `horseId` を追加、任意） |
+- `biggestWin`：モードの重み（大会＞イベント＞ランク戦＞フレンド戦）→ 頭数 → 人間の騎手の数 → 先に勝った方。
+- `rivalWins`：その週の人間のライバル（§28）がその時点で分かっていて、そのランク戦でライバルより先着した回数。
+- **週替わりチャレンジ（§31、`mode: "challenge"`）は数えない**（Round 14 統合で決定）：能力値を上限にそろえた CPU だけのレースで、タイムアタックと同じ検証の経路（`wchRecord`）を通り `applyRace` を通らない。プレイヤー統計（REQ-STAT-001）も数えないので、戦績と統計は同じレースの集合のまま。`applyRace` のレースIDガードがあるので、同じ結果が2回届いても1回だけ数える（`server/test/r14-integration.test.ts`）。週の区切りは使わない（`rivalWins` はライバルの週の記録（§28、time.ts の共通の週）をそのまま見る）。
+- 相棒（`flags.partnerHorseId`、REQ-UXS-002）かどうかは記録ではなく毎回判定する。
+- 記録はこの機能の公開後のレースから（それ以前の結果はさかのぼらない）。
+
+### 34.2 引退式（`Ceremony`、REQ-HOF-003/004）
+`POST /v1/horses/:horseId/retire` の応答に `ceremony` が付く（既存のフィールドはそのまま）。引退は現役の馬にしかできないので、引退式は**1頭に1回**。報酬の繁殖牝馬など最初から引退している馬には無い。
+見どころ（`highlights[]`、最大 `highlightsMax`、乱数なし）は次の順に、データがあるものだけ：
+| 順 | `kind` | 文言（サーバーが作る、英語は §23 の境界で訳す） |
+|---|---|---|
+| 1 | `tournament_win` | `大会「{tournament}」優勝`／`大会優勝{n}回（初優勝「{tournament}」）` |
+| 2 | `partner` | `最初の相棒として{n}戦をともに走った` |
+| 3 | `wins` | `通算{races}戦{wins}勝` |
+| 4 | `biggest_win` | `最大の勝利：{course}の{mode}（{n}頭立て）` |
+| 5 | `rival_wins` | `ライバルに{n}回先着` |
+| 6 | `ta_best` | `タイムアタック {course} {time}`（いちばん最近更新したコース、同時ならコースID順） |
+| 7 | `places` | `3着以内{n}回`（勝ちが無い時だけ） |
+| 8 | `career_span` | `現役{days}日・{n}戦` |
+```json
+{ "horseId": "h_12", "horseName": "ミドリノカゼ", "retiredAt": 1793000000000, "partner": true,
+  "career": { "races": 34, "wins": 11, "places": 20, "tournamentWins": 1, "firstRaceAt": 1790000000000, "lastRaceAt": 1792990000000 },
+  "highlights": [ { "kind": "tournament_win", "text": "大会「秋の陣」優勝", "params": { "tournament": "秋の陣", "n": 1 } }, "…" ],
+  "inducted": true, "reasons": ["wins", "tournament", "partner"], "rewardItemId": "decor_hall_plaque_frame", "ackedAt": null }
+```
+- `POST /v1/hall/ceremonies/:horseId/ack`（要認証）：見たことを記録。**冪等**（2回目以降は最初の `ackedAt` と `already: true`）。引退式の無い馬は 404。
+- `GET /v1/hall` の `pendingCeremonies` に、まだ見ていない引退式（新しい順、最大20）が並ぶ。オフラインで見逃しても次に開いた時に出せる。
+
+### 34.3 殿堂入り（REQ-HOF-005〜008）
+引退式を作る時に、記録が次の**どれか**を満たせば殿堂入り（`reasons`）：
+| `reason` | 条件（`progression.hall.criteria`） | 既定 |
+|---|---|---|
+| `wins` | `wins ≥ winsMin` | 10勝 |
+| `tournament` | 大会で優勝（`tournamentWin: true`） | あり |
+| `partner` | 相棒の馬で `races ≥ partnerRacesMin` | 30戦 |
+- 数えるのは 34.1 の確定した結果だけ。レアリティ・能力値・課金・アイテムは条件に入らない（お金で近道できない、REQ-HOF-007）。
+- 殿堂の銘板（`Plaque`）：`horseName`（プレイヤーが付けた名前、**訳さない**。サポートの名前リセットは反映）・`rarity`・`sex`・`appearance`（毛色など）・`partner`・`reasons`・`inductedAt`・`career`（戦績の1行）・`highlights`・`frame`。
+- **永久**：種付け・種牡馬の貸し出し・名前の変更では消えない。消えるのはアカウント削除の時だけ。枠の上限は無い（一覧はページ分け）。
+- 報酬（REQ-HOF-008）：アカウントで最初の殿堂入りの時に1回だけ、飾り「殿堂の額縁」（`decor_hall_plaque_frame`、非売品・価格0、マイ厩舎に置ける）。持っていれば銘板に額縁が付く（`frame: true`）。プレゼントボックスを通さず直接（§26.1 の「見た目は直接」）。コインは出ない。
+- KPI `hof_induct`（s1=reasons を `+` でつないだもの、s2=`partner`|空、count=戦数、value=勝数）。
+
+### 34.4 自分の殿堂・馬の戦績（REQ-HOF-009/010）
+- `GET /v1/hall?cursor=&limit=`：`{ entries: Plaque[], nextCursor, total, relation: "self", visibility, frame: { itemId, owned }, criteria, pendingCeremonies, notice }`。新しい順。`cursor` は前のページの最後の `"<inductedAt>_<horseId>"`（キーセット。新しい殿堂入りがあってもページがずれない）。`limit` は 1〜`pageSizeMax`（既定 `pageSize`）。
+- `GET /v1/horses/:horseId/career`：`{ horseId, horseName, status, partner, career, progress: { wins: {have,need}|null, tournamentWin: bool|null, partnerRaces: {have,need}|null }, qualifies, reasons, preview, ceremony, entry }`。`preview` は現役の馬が今引退したら出る見どころ（引退後は null、引退式は固定）。
+- `PUT /v1/hall/settings` `{ "visibility": "friends_team" | "friends" | "private" }`：見に来られる範囲（既定 `friends_team`）。
+
+### 34.5 見に行く（REQ-HOF-011〜013）
+- 公開用の写し（`HallSnapshot`）を DirectoryDO（`halls` テーブル、プレイヤーIDでシャード）に置き、持ち主の取引の後に変わっていれば書き直す（REQ-STABLE-003 と同じ）。見に行っても持ち主の部屋には触れない。
+- 写しを置かない：殿堂入りが0、`private`、BAN 中、アカウント削除の予約中・実行中。削除されたアカウントはディレクトリから消える（`forget`）。
+- `GET /v1/hall/:playerId?cursor=&limit=`：見られるのは
+  - 友達（自分のフレンドに相手がいる）、または
+  - 同じ支部のメンバー（自分の支部IDが相手の写しの支部IDと同じ、`visibility: "friends_team"` の時だけ）。
+  - どちらかがブロックしている（支部フィードのミュート＝唯一のブロックリスト、REQ-RIVAL-011）なら見られない。
+  - 見られない時はすべて **404 `NOT_FOUND`**（殿堂が無い時と同じ。理由は言わない）。
+  → `{ owner: { playerId, displayName, titleId, silks }, relation: "friend"|"team", entries, nextCursor, total, frame }`。支部ID・公開範囲・ブロックリストは返さない。自分のIDなら `GET /v1/hall` と同じ。
+- KPI `hof_view`（s1=`self`|`friend`|`team`、value=そのページの件数）。書き込みはしない。
+
+### 34.6 クライアント（REQ-HOF-014/015）
+- `Muchi.Client` `ApiClient.GetMyHallAsync(cursor, limit)`・`GetHallAsync(playerId, cursor, limit)`・`GetHorseCareerAsync(horseId)`・`AcknowledgeCeremonyAsync(horseId)`・`SetHallVisibilityAsync(visibility)`。`RetireHorseAsync` の応答の `Ceremony`。
+- Unity のゲーム層 `HallModel`：引退式の画面（馬の写真・見どころの行・殿堂入りの印）・殿堂の一覧（ページ送り）・銘板の詳細・友達の殿堂。名前はそのまま（訳さない）。
+- 文言・形の英語は §23 と同じ（`server-en.json`・`ui-en.json`）。
+
+## 35. 勝負服エディタ（REQ-SILK-001〜016、`server/src/domain/silksEditor.ts`・`server/master/silks-editor.json`、C# `SilksEditor.cs`（`SilksCode`・`SilksDesign`）・`Muchi.Game.SilksEditorModel`）
+勝負服を**パーツの組み合わせ**で作る。抽選は一切ない（**確率なし**）。パーツは「最初から使える」「遊んで解放（実績・レース数など固定の条件）」「コインで直販（固定価格）」「アイテムで解放（商品・パス・交換所の固定報酬）」のどれか。見た目だけで、レースの能力・結果ハッシュ・ゴールデンには関係しない（ランク戦の公平性 REQ-RATE-003）。
+
+### 35.1 デザイン（`SilksDesign`）
+| キー | 中身 | 規則 |
+|---|---|---|
+| `pattern` | 胴の模様（`visuals.json` `silks.patterns` の id：plain・hoops・stripes・sash・cross_sashes・chevrons・diamonds・quartered・halves・stars・spots・braces・…） | 模様ごとの色数（2 または 3） |
+| `colors` | 胴の色（`[1色目（地）, 2色目（模様）, 3色目?]`） | 色数は模様と同じ。エディタの色（基本16色＋特別色） |
+| `sleeve` | 袖の模様（`match`＝胴と同じ・plain＝2色目の無地・hoops・stripes・armlets・chevrons・stars・diamonds） | 袖は胴の1色目／2色目で塗る |
+| `cap` | 帽子の模様（plain・quartered・star・hooped・peak・spots・checks・diamond） | |
+| `capColors` | 帽子の色 `[地, 模様]` | 2色 |
+
+- **旧い勝負服**（`{ pattern, colors, cap }`、REQ-ASSET-005）はそのままデザインとして読める：`sleeve: "match"`、`capColors: [colors[0], colors[1]]`（今までの帽子の塗り方と同じ）。
+- 特別色は `base`（基本16色のどれか）を持つ。旧いクライアントへは `base` の色で送り、禁止リストの照合も `base` の色の系統で行う。
+
+### 35.2 コード（`code`、全員が同じ見た目を描くための短い文字列）
+- 形：`"1"`（版）＋ 2桁の36進数（`0-9a-z`、小文字）×8 ＝ **17文字**。順に `pattern`・`colors[0]`・`colors[1]`・`colors[2]`（2色の模様は `zz`）・`sleeve`・`cap`・`capColors[0]`・`capColors[1]`。正規表現 `^1[0-9a-z]{16}$`。
+- 数はパーツごとの**固定の番号**（`silks-editor.json` の `code`。並べ替え・削除しても番号は再利用しない）。同じデザインは必ず同じコード、コード→デザイン→コードで同じ文字列（TS `encodeSilksCode`/`decodeSilksCode`、C# `SilksCode.Encode`/`Decode`。テストベクタ `contracts/silks-code.vectors.json` を両方の言語で確かめる）。
+- 旧い勝負服にもコードがある（35.1 の読み替えをしてから符号化。`silksCodeOf(silks)`）。旧い id・旧いクライアントはそのまま動く。
+- レースの `start.visuals.entrants[].silks`（§4・REQ-ASSET-006）・公開プロフィール・厩舎の写し・ライバルのカードの `silks` に、今までのキーに加えて `code`（エディタで作った時だけ）が入る。今までのキー（`pattern`・`colors`・`cap`）は旧いクライアント向けの近い形（特別色は `base`、新しい帽子は `plain`）。新しいクライアントは `code` があれば `code` を、無ければ今までのキーから作ったコードを描く。ハッシュされるレースの設定には入らない。
+
+### 35.3 検証（サーバー、保存・プリセット・装備の時）
+1. 形：知らない id・色数の違い・同じ色だけ（胴の色が全部同じ）は 400 `BAD_REQUEST`。
+2. 所持：使うパーツを全部持っていること（無ければ 409 `NOT_ELIGIBLE`、`details.locked` に足りないパーツ）。試着（35.6 の `preview`）だけは持っていなくてよい。
+3. 読みやすさ：胴の1色目と2色目、帽子の2色は**色の差（CIE76 ΔE）が `contrast.minDeltaE`（20）以上**。足りなければ 400 `BAD_REQUEST`（`details.problem: "LOW_CONTRAST"`）。どの組が足りないかはカタログの `lowContrastPairs` に全部載せる（クライアントは計算しない）。
+4. 実在の勝負服（REQ-ASSET-010）：胴の模様＋色の系統で禁止リストと照合（今までと同じ。特別色は `base`）。項目は任意で `sleeve`・`capColors` も持てる（書いてあれば一致する時だけ、書いていなければ袖・帽子の色が何でも一致）＝**袖や帽子を変えただけでは避けられない**。当たれば 400 `BAD_REQUEST`（`details.problem: "RESERVED"`）。リストが後から増えた時は、表示の時点で当たる勝負服を既定の勝負服に置き換える（今までと同じ `effectiveSilks`）。
+5. 旧い `PUT /v1/player/silks` は今までどおり（読みやすさの検査はしない）。保存すると `code` は消え、35.1 の読み替えになる。
+
+### 35.4 パーツの入手（`silks-editor.json`、REQ-SILK-004）
+| `source.kind` | 持っている条件 | 例 |
+|---|---|---|
+| `free`（既定） | いつでも | 胴の無料の模様・基本16色・袖 match/plain/hoops/stripes・帽子の今までの5種 |
+| `item` | `items[itemId] > 0`（直販の見た目 `kind: "silks_part"`・商品・パス・交換所の固定報酬） | 特別色 crimson（200コイン）・袖 stars・帽子 spots |
+| `achievement` | 実績のその段に届いた（`tierReached`。報酬を受け取ったかは問わない） | 特別色 royal（勝利数の2段目） |
+| `races` | 確定したレースの数（`stats.races`）が `count` 以上 | 特別色 sakura（50戦） |
+- 胴の模様の解放は今までどおり `visuals.json` の `unlockItem`（勝負服の柄の見た目 `kind: "silks"`・昇級記念パック）。
+- 直販のパーツは**見た目の直販**（§13・REQ-ITEM-005）そのもの：`items.json` `cosmetics[]` の `kind: "silks_part"`（`part: "color"|"sleeve"|"cap"`、`ref`、`asset`）。ショップの見た目タブにも並び、`POST /v1/shop/cosmetics/:itemId/buy`・コイン不足の案内（§29 `for=cosmetic`）・有償/無償の分け方（有償から先、`paidOnly` は有償だけ）がそのまま使える。1回買えばずっと持つ（期限なし）。
+- 遊んで解放するパーツは報酬として**配らない**（条件を満たすと持っている扱い）。コイン・ガチャの経済（E1〜E16）は変わらない。セットを集めると何かもらえる仕組みは無い（コンプガチャにならない）。
+
+### 35.5 返金で失ったパーツ（REQ-SILK-010）
+- ストアの返金（REQ-PUR-006）でパーツのアイテムが取り消された時（商品の中身・パスの報酬）：
+  - **装備中の勝負服**がそのパーツを使っていたら、同じ取引の中で**既定の勝負服**（`defaultSilks`、その人の最初の勝負服）に戻し、`resetNotice`（`{ at, reason: "refund" }`）を残す。エディタは「返金によりパーツが取り消されたため、勝負服を初期の柄に戻しました」を1回出して消す（`POST /v1/silks/notice-seen`）。
+  - **プリセット**は消さない。`usable: false`・`missing`（足りないパーツ）を付け、適用は 409 `NOT_ELIGIBLE`。パーツを買い直す・条件を満たすとまた使える。
+- コインで買ったパーツはコインの取引なので個別の返金は無い（コインの元になった購入が返金されると、今までどおりコインの借り（debt）になり、パーツは残る）。
+
+### 35.6 API（要認証。英語は §23 のとおり境界で訳す）
+- **`GET /v1/silks/editor`** → カタログ＋自分の状態（読み取りのみ、状態を作らない）
+```json
+{ "version": 1, "codeVersion": 1, "notice": "見た目のみ。ランク戦の能力には影響しません。パーツは抽選ではありません（固定の価格・条件）。",
+  "contrast": { "minDeltaE": 20 }, "lowContrastPairs": [["white", "platinum"], ["red", "crimson"]],
+  "parts": {
+    "patterns": [ { "id": "stars", "code": 9, "colors": 3, "name": "星", "owned": true, "source": { "kind": "free" }, "sourceLabel": "最初から使える", "asset": "silks/pattern/stars" } ],
+    "colors":   [ { "id": "crimson", "code": 16, "hex": "#B3122E", "base": "red", "name": "クリムゾン", "owned": false,
+                    "source": { "kind": "item", "itemId": "silkpart_color_crimson" }, "sourceLabel": "コイン200で購入",
+                    "shop": { "itemId": "silkpart_color_crimson", "price": 200, "currency": "any", "forSale": true } } ],
+    "sleeves":  [ { "id": "stars", "code": 6, "name": "星", "owned": false, "source": { "kind": "item", "itemId": "silkpart_sleeve_stars" }, "sourceLabel": "コイン200で購入", "shop": { "…": "…" }, "asset": "silks/sleeve/stars" } ],
+    "caps":     [ { "id": "diamond", "code": 7, "name": "ダイヤ", "owned": false, "source": { "kind": "achievement", "achievementId": "podiums", "tier": 3 }, "sourceLabel": "実績「3着以内」の3段目で解放", "asset": "silks/cap/diamond" } ] },
+  "current": { "design": { "pattern": "hoops", "colors": ["navy", "white"], "sleeve": "match", "cap": "plain", "capColors": ["navy", "white"] },
+               "code": "1010a00zz00000a00", "silks": { "pattern": "hoops", "colors": ["navy", "white"], "cap": "plain" }, "resetNotice": null },
+  "presets": [ { "slot": 0, "name": "本番用", "code": "1…", "design": { "…": "…" }, "savedAt": 0, "usable": true, "missing": [], "problems": [] } ],
+  "maxPresets": 5, "presetNameMax": 12, "wallet": { "free": 120, "paid": 0 } }
+```
+  - プリセットの `usable` は「全部持っている（`missing` が空）かつ今の禁止リスト・読みやすさに当たらない（`problems` が空）」。
+  - `sourceLabel`：`最初から使える`／`コイン{n}で購入`／`有償コイン{n}で購入`／`実績「{name}」の{tier}段目で解放`／`レースを{n}回走ると解放`／`商品・報酬で入手`（直販でないアイテム）。
+- **`POST /v1/silks/preview`** `{ design } | { code }` → 試着（何も変わらない、持っていなくてよい）：`{ design, code, owned: bool, locked: [{ type, id, name, sourceLabel, shop? }], totalPrice: { any, paidOnly }, problems: [{ problem: "LOW_CONTRAST"|"RESERVED", message }], savable }`。`savable` は「全部持っていて問題が無い」。
+- **`PUT /v1/silks`** `{ design } | { code }`（どちらか一方、他のキーは 400）→ 35.3 で検証して装備：`{ design, code, silks }`。同じデザインを送り直しても結果は同じ（冪等キー不要。KPI は変わった時だけ）。初心者・復帰ミッションの `silks` を数える（旧い PUT と同じ）。
+- **プリセット**（最大 `maxPresets` = 5、名前は自分にしか見えない・1〜12文字・制御文字不可・前後の空白は削る。名前を省くと「プリセット{n}」）：
+  - `POST /v1/silks/presets` `{ name?, design | code }` → 空いている一番小さい `slot` に保存（35.3 の検証。満杯は 409 `CONFLICT`）→ `{ presets }`。
+  - `PUT /v1/silks/presets/:slot` `{ name?, design? | code? }` → 上書き（名前だけの変更も可）。無い slot は 404。
+  - `DELETE /v1/silks/presets/:slot` → `{ presets }`（無い slot は 404）。
+  - `POST /v1/silks/presets/:slot/apply` → 装備（`PUT /v1/silks` と同じ検証・同じ応答。`usable: false` は 409 `NOT_ELIGIBLE`）。
+- **`POST /v1/silks/parts/:itemId/buy`**（冪等キー必須）→ パーツの直販（`kind: "silks_part"` か勝負服の柄 `kind: "silks"` だけ。ほかは 404）。中身は `POST /v1/shop/cosmetics/:itemId/buy` と同じ（所持済み 409 `ALREADY_PURCHASED`、コイン不足 409 `INSUFFICIENT_COINS`＋§29 の `details.shortfall`、未精算の返金 `UNSETTLED_DEBT`）→ `{ itemId, spent: { paid, free }, wallet, part: { type, id, owned: true } }`。
+- **`POST /v1/silks/notice-seen`** → `resetNotice` を消す。
+
+### 35.7 画面（プロトタイプ `silks` 画面、Unity は handoff 文書）
+- 上半分：騎手と馬の写真の上に、**色を塗り替えるレイヤー**（胴・袖・帽子のマスク）でライブプレビュー。下半分：タブ（胴の模様・色・袖・帽子）とパーツの一覧、プリセットの枠（5つ）。
+- 持っていないパーツも選べる（**試着中**のラベル＋鍵＋入手方法／価格）。試着のまま「保存」すると、足りないパーツと合計の価格を出す。買うのはパーツ1つずつ、既存の購入確認（価格・有償/無償の内訳・`有償限定`）を通す。
+- 読みやすさが足りない組・実在の勝負服に当たる組は、保存の前にサーバーの文言で知らせる（色の一覧では `lowContrastPairs` の相手を薄く表示）。
+- 急かさない：「今だけ」「残りわずか」「お得」「倍」・残り時間・通常価格は出さない。
+
+### 35.8 KPI
+| イベント | 送り手 | s1 | s2 | s3 | 数値 |
+|---|---|---|---|---|---|
+| `silks_edit` | サーバー（装備が変わった：`PUT /v1/silks`・プリセットの適用） | コード | `editor`/`preset` | | `value` 無料でないパーツの数、`count` プリセットの数 |
+| `silks_part_buy` | サーバー（パーツを買った：どちらの購入 API でも） | itemId | パーツの種類（`pattern`/`color`/`sleeve`/`cap`） | `any`/`paidOnly` | `paidCoins`・`freeCoins`、`value` 価格 |
+クエリは `docs/ops/kpi-queries.md`「勝負服エディタ」。
+
+### 35.9 クライアント
+- `Muchi.Client`：`SilksCode`（`Encode`・`Decode`・`IsValid`・`OfSilks`）、`SilksDesign`（`FromLegacy`）、`SilksCodeTables`、`SilksEditorView`・`SilksPart`・`SilksPreset`・`SilksPreview`、`ApiClient.GetSilksEditorAsync`・`PreviewSilksAsync`・`SaveSilksAsync`・`SaveSilksPresetAsync`・`UpdateSilksPresetAsync`・`DeleteSilksPresetAsync`・`ApplySilksPresetAsync`・`BuySilksPartAsync`・`MarkSilksNoticeSeenAsync`、`Silks.Code`。
+- `Muchi.Game`：`SilksEditorModel`（タブ・選択・試着中の判定・保存の前の確認・購入確認の行・プリセットの枠）。
+
+## 36. 実況パック（commentary packs、REQ-CMT-001〜014、`server/src/domain/commentaryPacks.ts`・`server/master/commentary-packs.json`、C# `CommentaryPacks.cs`（`CommentaryPackCatalog`・`CommentaryPackLint`・`CommentarySample`）・`Muchi.Game.CommentaryPackModel`）
+実況の**話し方だけ**を変える見た目（耳で聞く見た目）の品。パックは「標準」の実況（`commentary-ja.json` / `commentary-en.json`）の上に、出来事（phrase kind）ごとの言い回しを重ねる。**実況はクライアントの中だけで作られ、レースの設定・結果・ハッシュ・リプレイの形式・ランク戦の勝率には一切関わらない**（ゴールデンも同じ）。
+
+| id | 名前 | 入手 |
+|---|---|---|
+| `standard` | 標準 | 最初から（全員） |
+| `nekketsu` | 熱血 | 実績「出走の記録」1段目（10戦）に届くと持ち物になる（無料・決まった報酬。抽選なし・売らない） |
+| `ochitsuki` | 落ち着いた解説 | コインで直販 300（有償コインから先に使う） |
+| `kofuu` | 古風な名調子 | コインで直販 300（同上） |
+
+### 36.1 データ（`server/master/commentary-packs.json`）
+サーバーの正本。`npm run gen:client-locale` がクライアント用に `engine/Muchi.Client/Resources/Muchi/commentary-packs.json` へ同じ内容を書く（差があるとテストが落ちる）。
+```json
+{ "version": 1, "standardPackId": "standard",
+  "sample": { "seed": 3614, "seconds": 10,
+              "track": { "id": "aoba_turf_1600", "surface": "turf", "distanceM": 1600, "segments": [ "…master/tracks.json と同じ…" ] },
+              "entrants": [ { "templateId": "t_kohaku", "name": "コハクノヒカリ", "style": "nige", "surface": "turf", "distMinM": 1400, "distMaxM": 2000,
+                              "stats": { "speed": 860, "stamina": 640, "burst": 700, "guts": 780, "temper": 480 } }, "…8頭…" ] },
+  "packs": [
+    { "id": "standard", "name": "標準", "description": "…", "order": 0, "acquire": { "kind": "default" } },
+    { "id": "nekketsu", "name": "熱血", "description": "…", "order": 1,
+      "acquire": { "kind": "achievement", "achievementId": "races", "tier": 1 },
+      "fallback": ["ground_*", "going_call_*", "result_two", "result_solo"],
+      "phrases": { "ja": { "gate_open": { "variants": [ { "id": "nekketsu_gate_open_1", "text": "…" } ] } },
+                   "en": { "gate_open": { "variants": [ { "id": "nekketsu_gate_open_1", "text": "…" } ] } } } },
+    { "id": "ochitsuki", "acquire": { "kind": "coins", "price": 300, "currency": "any" }, "…": "…" } ] }
+```
+- `acquire.kind`：`default`（標準、1つだけ）／`achievement`（`achievementId`・`tier` に届いたら持ち物。値段なし・売らない）／`coins`（`price` 正の整数、`currency` `any` | `paidOnly`）。抽選・期間限定・セットを揃えた報酬は**作れない**（形にない）。
+- 名前・説明は日本語。英語は `master/locale-en.json`（§23、応答の境界で訳す）。
+- `sample`：試聴のストックのレース。コースは `master/tracks.json` と同じ形・同じ値、出走馬はテンプレート馬（名前の声 `voice/ja/name/*` がある）で、起動時に一致を確かめる。
+
+### 36.2 重ね方（REQ-CMT-002）
+- パックの `phrases.<lang>` にある phrase key（`spurt`、`spurt@bellmoor`、`gate_open@ranked` …）は、標準のその key の言い回しを**置き換える**（足すのではない）。`priority`・`mustSay` は標準のまま（パックは文だけを持つ）。
+- パックが元の種類（`spurt`）を置き換えた時、標準のその種類の特化（`spurt@<venue>`・`spurt@<mode>`）は使わない（パックの声のまま）。パックが自分で特化を持てばそれを使う。
+- **明示のフォールバック**：標準にある元の種類（`@` なし）は全部、パックの `phrases.ja` にあるか、`fallback` に書いてある（完全一致、または `ground_*` のような接頭辞＋`*`）。書いていない種類が1つでもあればパックは読み込めない（`CommentaryPackLint`）。フォールバックした種類は標準の言い回しで話す。
+- 英語（`phrases.en`）は任意。パックに英語が無い種類は**標準の英語**で話す（英語の時だけの暗黙のフォールバック）。
+- チュートリアル（`RaceMode.Tutorial`）は装備に関係なく標準で話す（教える口調 `@tutorial` を崩さない）。
+
+### 36.3 決定論（REQ-CMT-003）
+言い回しの選び方は今までと同じ `SeedMix.Derive(seed, salt, n)`。`salt` は FNV-1a 64 で、標準は phrase key だけ（今までと同じ値＝標準の実況は1文字も変わらない）、パックは `"<packId>/<phrase key>"`。同じレース・同じパックなら同じ文になる（リプレイ・共有クリップ・観戦で同じに聞こえる）。
+
+### 36.4 文の検査（REQ-CMT-005、起動時とテスト）
+- サーバーの起動時（`validateCommentaryPacks`）とリモート設定は使わない（パックは配信物と一緒に出す）。検査：id の重複・`standard` が1つ・値段と通貨・実績と段が存在する・`achievement` のパックは売らない・言い回しの id は `<packId>_` で始まり全パック＋標準で重複なし・空の文なし・プレースホルダーは `{name}` `{name2}` `{name3}` `{place}` `{skill}` だけ・**禁止語**：法務の語（「倍」「お得」「今だけ」「残りわずか」「通常価格」）、**公営競技の賭けの語**（馬券・オッズ・配当・払い戻し・的中・万馬券・儲・賭・単勝・複勝・馬連・馬単・三連単・三連複・枠連・ワイド・投票券・予想屋・ギャンブル）、NG 名（`ng-names.json` の実在の馬名・レース名）。英語は `EN_BANNED`（§23）に加え bet / odds / wager / payout / gamble / jackpot / bookmaker / bookie / punter / trifecta / exacta / quinella / each-way、日本語が混ざらないこと。
+- クライアントの読み込み時（`CommentaryTemplates.WithPack`）とサーバーのテスト：上の明示のフォールバック、プレースホルダーが標準のその種類の言い回しが使うものの部分集合（`result` は `{name}{name2}{name3}` まで、`gate_open` はなし…）、言語ごと。
+- 標準の `commentary-ja.json` / `commentary-en.json` 自身も同じ禁止語の検査を通る（テスト）。
+
+### 36.5 声（REQ-CMT-006）
+- 固定の断片は標準と同じ切り方（`<variantId>#<n>`）で `voice/ja/phrase/<variantId>_p<n>`。アセットの一覧（`contracts/assets.manifest.json`、`npm run gen:assets`）に全パックの断片が載る。馬名・数字・スキル名の声は全パック共通（`voice/ja/name/*`・`voice/ja/num/*`）。
+- 1行の断片が1つでも端末に無ければ、その行は**文字だけ**（字幕）で出す（途中まで話して黙ることはしない）。英語の実況は文字だけ（今までと同じ）。
+
+### 36.6 `GET /v1/commentary/packs`（要認証、読み取りのみ）
+```json
+{ "equipped": "standard", "standardPackId": "standard",
+  "sample": { "seed": 3614, "seconds": 10, "trackId": "aoba_turf_1600", "fieldSize": 8 },
+  "notice": "実況の話し方だけが変わります。レースの結果・能力には影響しません。",
+  "packs": [
+    { "id": "standard", "name": "標準", "description": "…", "acquire": "default", "price": null, "currency": null, "forSale": false,
+      "owned": true, "equipped": true, "unlock": null },
+    { "id": "nekketsu", "name": "熱血", "description": "…", "acquire": "achievement", "price": null, "currency": null, "forSale": false,
+      "owned": false, "equipped": false,
+      "unlock": { "achievementId": "races", "tier": 1, "label": "実績「出走の記録」1段目で入手", "progress": 3, "target": 10 } },
+    { "id": "ochitsuki", "name": "落ち着いた解説", "acquire": "coins", "price": 300, "currency": "any", "forSale": true, "owned": false, "equipped": false, "unlock": null } ] }
+```
+- `sample` は表示用の要約（`seed`・`seconds`・`trackId`・`fieldSize`）。走らせる中身はクライアントの `commentary-packs.json`。
+- `english`：`own`（パックの英語がある）／`standard`（英語では標準の実況、`englishNote`「英語では標準の実況で話します」）。
+- `equipped` は持っているパックだけ（装備していたパックを持たなくなった時・パックが無くなった時は `standard`）。`GET /v1/player`（bootstrap も）にも `commentaryPack: { "equipped": "…" }` が入る。
+- 値段はこのデータからだけ（クライアントは値段を持たない）。足りない時の案内は §29 の `GET /v1/shop/shortfall?for=coins&coins=<price>&kind=any|paid`。
+
+### 36.7 `PUT /v1/commentary/equipped`（要認証）
+`{ "packId": "<id>", "source"?: "settings" | "shop" }`（他のキーは 400、`source` の既定 `settings`）→ 36.6 の形。持っていないパックは 409 `NOT_ELIGIBLE`、無い id は 404。同じパックの再送は何も変えない（冪等キー不要、KPI も出さない）。実績のパックは装備した時に持ち物として記録する（以後、実績の定義が変わっても持ち続ける）。
+
+### 36.8 `POST /v1/commentary/packs/:packId/buy`（要認証・`Idempotency-Key` 必須）
+`{ "equip"?: boolean }`（任意、省略は false）→ `{ "packId", "spent": { "paid", "free" }, "wallet", "view": <36.6> }`。
+- `acquire.kind` が `coins` のパックだけ（ほかは 409 `NOT_ELIGIBLE`）。持っていれば 409 `ALREADY_PURCHASED`。削除の予約中は 409 `DELETION_PENDING`。
+- 支払いは見た目の直販と同じ `wallet.spend`（有償から先、`paidOnly` は有償だけ、未精算の返金は `UNSETTLED_DEBT`、コイン不足は 409 `INSUFFICIENT_COINS` に §29 の `details.shortfall`）。台帳の理由は `commentary pack <id>`。同じ冪等キーの再送は最初の答えを返す（二重に払わない）。
+
+### 36.9 試聴（REQ-CMT-008）
+- サーバーに問い合わせない。クライアントが `sample` の**ストックのレース**（決まったコース・シード・テンプレート馬8頭、プレイヤーなし・CPU だけ、`RaceMode.Friend`）を手元で走らせ、そのパックの実況から要所の行を大事な順（勝ち馬・最後の直線・ゲート・着順・叩き合い／写真判定・最初の先頭）に `seconds` 秒（20Hz × 10 = 200 tick）に収まるだけ選び、レースの順に**続けて**流す（`CommentarySample.Build` → `Lines`・`Offsets`・`TotalTicks`・`At(tick)`）。持っていないパックでも聞ける。何度でも同じ文。
+- KPI `commentary_pack_sample` は試聴を始めた時に1回（クライアント）。
+- 声の断片が端末にあれば声、無ければ字幕だけ（36.5）。
+
+### 36.10 観戦・リプレイ・オフライン
+- 観戦・リプレイ・共有クリップの再生は**見ている人が装備しているパック**で話す（クライアントだけのことで、送る・保存するものは変わらない）。
+- 端末は最後に装備したパックを覚え（`CommentaryPackModel.KeyEquipped`）、オフラインのレースに使う。オフラインでの装備の変更は端末にだけ残り、次の成功した呼び出しで保存する。
+
+### 36.11 KPI
+| イベント | 送り手 | s1 | s2 | s3 | 数値 |
+|---|---|---|---|---|---|
+| `commentary_pack_equip` | サーバー（PUT・購入して装備） | パック | 前のパック | `settings`/`shop`/`buy` | `isFirst` 初めて標準以外を装備 |
+| `commentary_pack_buy` | サーバー（購入） | パック | 通貨（`any`/`paidOnly`） | | `paidCoins`・`freeCoins`、`value` 値段 |
+| `commentary_pack_sample` | クライアント（試聴を始めた） | パック | 持っているか（`owned`/`not_owned`） | | |
+クエリは `docs/ops/kpi-queries.md`「実況パック」。
+
+## 37. マイリプレイ（保存したリプレイの一覧、REQ-MYRP-001〜016、`server/src/domain/myReplays.ts`・`myReplaysService.ts`、C# `MyReplays.cs`（`ReplayPlayer`）・`Muchi.Game.MyReplaysModel`）
+自分が走ったレースのリプレイを、通常の保存期限（§7・REQ-OPS-001 の `replayRetentionDays`）を越えて残す。保存するのは **§7 のリプレイログ（設定＋確定入力）と結果ハッシュだけ**で、動画も状態も保存しない。見る時は端末で再計算する（REQ-RACE-073、REQ-UXS-070 と同じ）。コインもアイテムも動かない（経済の目標なし）。
+
+### 37.1 しくみ
+- **最近のレース**（`recent`）：確定した（無効・チュートリアル・タイムアタック・週替わりチャレンジを除く）レースを、プレイヤーの状態に `{raceId, at, mode, trackId, place, fieldSize, slot, resultHash, rulesetVersion, moment}` で覚える（`applyRace`、同じレースは1回）。元のログが R2 の `replays/<raceId>.json` に残っている間（`momentDays` 日、既定 28 < `replayRetentionDays`）だけ保存できる。
+- **名場面**（`moment`）：自動で選ぶ ― `win`（1着）・`photo`（隣の着順の馬とゴールの tick の差が `photoFinishTicks` 以下）・`pb`（そのコースの自己ベストの更新、`stats.byTrack.bestFinishTick`、CPU が乗った回は除く）。優先は `win` > `photo` > `pb`。名場面は `momentsKeep`（既定10）件まで・`momentDays` 日で入れ替わる（古い順に消える）。残したければ保存する。名場面でない最近のレースは `recentKeep`（既定30）件まで。
+- **保存**（`saved`）：`maxSaved`（既定 20、無料）件まで。保存するとサーバーが元のログを `myreplays/<playerId>/<raceId>.json` に写す（本文 `{ "v":1, "log": §7 のログ, "resultHash": "<64hex>" }`、`maxBytes`（既定 256 KiB）を超えるものは `413 REPLAY_TOO_LARGE`）。この接頭辞は保存期限の削除（`replays/` だけを見る）の対象外。一覧の記録（タイトル・お気に入り・公開）はプレイヤーの状態に持つ。
+- ルールセットの固定：ログの設定にはルールセットの値がすべて入っている（§2）。保存の記録に `rulesetVersion` を残し、見る時に「今のエンジンで再生できるか」を判定する（37.4）。
+
+- **週替わりチャレンジ（§31）は保存できない**（Round 14 の統合で決定）：チャレンジは部屋で確定するレースではなく、端末の走りを検証サーバーで確かめる（タイムアタックと同じ `wchRecord` の経路、`applyRace` を通らない）。「確定したレースだけ」の決まりのとおり一覧に出さず、`mode: "challenge"` の結果が届いても覚えない（`noteRaceForReplays`）。チャレンジは保存しないので `retiredRulesets` との関係も起きない（引退させた版の判定は保存済みの部屋のレースだけ）。
+- **解放キーは使わない**（Round 14 の統合で決定）：最初のレースから自分のレースがあり、保存は無料なので、§4.3 の解放（R13 の `weekly_challenge` のような「4日目 or 20戦」）では隠さない。プロトタイプの「機能・イベント」の行（`my_replays`）はサーバーの解放キーではなく、いつも開いている（勝負服エディタ §35・殿堂 §34・実況パック §36 も同じ：見た目の着せ替え・厩舎・設定の中にあり、解放の対象の画面から開く）。
+
+### 37.2 API（すべて要認証）
+| メソッド | パス | 冪等キー | 本文 → 応答 |
+|---|---|---|---|
+| GET | `/v1/replays` | | → `MyReplaysView`（37.3） |
+| POST | `/v1/replays` | 必須 | `{ "raceId", "replayTitle"? }` → `{ "saved": SavedReplay, "alreadySaved": bool, "view": MyReplaysView }`。同じレースをもう一度保存しても1件のまま（`alreadySaved: true`、タイトルは変えない）。`404 NOT_FOUND`（最近のレースに無い・自分のレースでない）／`410 REPLAY_EXPIRED`（元のログが消えた。最近のレースから外す）／`409 REPLAY_LIMIT`（`maxSaved` 件ある）／`413 REPLAY_TOO_LARGE`／`400 INVALID_NAME`・`NG_NAME`（タイトル） |
+| PATCH | `/v1/replays/:raceId` | | `{ "replayTitle"?: string\|null, "favorite"?: bool, "public"?: bool }`（1つ以上）→ `{ "saved": SavedReplay }`。値を置き換えるだけなので何度送っても同じ（冪等）。保存していない id は `404` |
+| DELETE | `/v1/replays/:raceId` | | → `{ "deleted": bool, "view": MyReplaysView }`。無い id は `deleted: false`（冪等）。R2 の写しも消す |
+| GET | `/v1/replays/:raceId/data` | | 自分の保存・名場面・最近のレース → `ReplayData`（37.4）。保存も最近のレースも無ければ `404`、元のログが消えていれば `410 REPLAY_EXPIRED` |
+| GET | `/v1/friends/:playerId/replays` | | フレンドの**公開**した保存だけ → `{ "playerId", "displayName", "replays": SavedReplay[] }`（`public` だけ、`favorite` は出さない） |
+| GET | `/v1/friends/:playerId/replays/:raceId/data` | | フレンドの公開リプレイ → `ReplayData`（`owner: "friend"`） |
+
+- タイトル（`replayTitle`）：プレイヤーが入力した文字列。NFKC・前後の空白を除く・1〜`titleMaxChars`（既定 24）文字・制御文字と URL は不可・NG 語は表示名と同じ一覧（`master.ng`）で `NG_NAME`。`null` は「タイトルなし」（画面はコース・着順から作る）。**訳さない**（英語の応答でもそのまま、`PLAYER_TEXT_KEYS`）。
+- フレンドの閲覧（`/v1/friends/...`）は、お互いにフレンド・どちらもブロック（支部フィードのミュート、§28 と同じ一覧）していない・持ち主が BAN でも削除の予約中・実行中でもない・その保存が `public` の時だけ。どれかに当たれば `404 NOT_FOUND`（理由は言わない）。
+- 削除の予約中（REQ-UXS-040）は保存・公開にできない（`409 DELETION_PENDING`）。一覧・自分の再生・非公開・削除はできる。
+
+### 37.3 形
+```json
+{ "enabled": true, "maxSaved": 20, "used": 2, "titleMaxChars": 24,
+  "saved": [ { "raceId": "r-1", "replayTitle": "差し切った日", "favorite": true, "public": false, "savedAt": 1794279600000,
+               "at": 1794270000000, "mode": "ranked", "trackId": "aoba_turf_1600", "place": 1, "fieldSize": 12, "slot": 3,
+               "moment": "win", "rulesetVersion": "1.3.0", "resultHash": "…", "sizeBytes": 18234, "playable": true, "reason": null } ],
+  "moments": [ { "raceId": "r-7", "at": …, "mode": "ranked", "trackId": "…", "place": 2, "fieldSize": 12, "slot": 0, "moment": "photo",
+                 "rulesetVersion": "1.3.0", "saved": false, "expiresAt": 1796690000000 } ],
+  "recent":  [ 同じ形（名場面でないもの、新しい順） ] }
+```
+- 並び：`saved` はお気に入り → 保存の新しい順。`moments`・`recent` は新しい順。`expiresAt` は保存できなくなる時刻（`at + momentDays`、本物の時刻だけ。「あと◯日」の煽りは出さない）。
+
+### 37.4 再生データ（`ReplayData`）と再生できない時
+```json
+{ "raceId": "r-1", "owner": "me", "replayTitle": "差し切った日", "resultHash": "…", "focusSlot": 3, "rulesetVersion": "1.3.0",
+  "playable": true, "reason": null,
+  "entrants": [ { "slot": 0, "horseName": "シンセイアカツキ", "owner": "cpu" }, { "slot": 3, "horseName": "アイボウ", "owner": "you" }, { "slot": 5, "horseName": "ハヤテ", "owner": "player" } ],
+  "replayLog": { "v": 1, "config": { … }, "endTick": 1834, "inputs": [ … ] } }
+```
+- `replayLog` は保存したログそのもの（英語の応答でも訳さない、`ID_KEYS`）。ただし**持ち主以外の人間の `playerId` は `p<slot>` に置き換える**（再計算に `playerId` は使わないので結果ハッシュは同じ。テストで確認）。他の人間のプレイヤーの名前は出さない（観戦 §8.4 と同じく、馬の名前だけ。`owner`: `you`／`player`／`cpu`、フレンドが見る時は持ち主が `owner_player`）。
+- `playable: false` の理由（`reason`）：`ruleset_retired`（`progression.myReplays.retiredRulesets` に入っている版。`+ev.…` を除いた元の版で比べる）・`ruleset_unknown`（今のエンジンが知らないキーの組、`rulesetKeyProblems`）。端末はさらに再計算の結果ハッシュを `resultHash` と比べ、違えば再生しない（`hash_mismatch`）。どの場合も**違うレースを流さず**「再生できません」と出す（一覧では保存は残り、削除できる）。
+- 端末の再生（`ReplayPlayer`）：全馬を最初から最後まで再計算して結果ハッシュを確かめてから再生する。速度 0.5×・1×・2×、カメラは任意の馬（既定は自分の馬）、「最後の200mへ」は選んでいる馬の残り 200m の tick へ飛ぶ。共有カードは REQ-UXS-071 と同じ `ShareCard`（`ReplayClip.Build` の最後の200m）。
+
+### 37.5 設定 `progression.myReplays`（リモート設定で変更可）
+`{ enabled, maxSaved, titleMaxChars, maxBytes, recentKeep, momentsKeep, momentDays, photoFinishTicks, retiredRulesets[] }`。上限（`MY_REPLAYS_HARD_LIMITS`、R2 の費用と保存期限から）：`maxSaved` 1..50、`titleMaxChars` 1..30、`maxBytes` 16 KiB..1 MiB、`recentKeep` 1..50、`momentsKeep` 0..20、`momentDays` 1..(`replayRetentionDays` − 1)、`photoFinishTicks` 0..5。起動時と各版で検証。
+
+### 37.6 KPI
+`replay_save`（サーバー、`s1` = `moment`／`recent`、`s2` = mode）・`replay_view`（サーバー、再生データを渡した時、`s1` = `own`／`friend`、`s2` = `playable`／理由）・`replay_share`（クライアント、`props.surface` = `my_replays`／`friend_replay`、OS の共有シートに渡した時）。
+
+### 37.7 アカウント削除
+削除の手順に `replays` を足す（`rival` の後）：スナップショットの `replayKeys`（保存した写し `myreplays/<playerId>/<raceId>.json`）を R2 から消す。状態の一覧は最後の `wipe` で消える。

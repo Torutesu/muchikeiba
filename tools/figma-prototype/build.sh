@@ -49,4 +49,7 @@ node "$HERE/test/round13-history.test.mjs" # round 13: 購入・コイン・ガ�
 node "$HERE/test/round13-exchange.test.mjs" # round 13: イベント交換所 — points by event race (daily cap), keyed exchange with stock, grace days, leftover → material
 node "$HERE/test/round13-weekly-challenge.test.mjs" # round 13: 週替わりチャレンジ — the week, a loan-horse start, the verdict only from the verified result, once a week, mismatch
 node "$HERE/test/round13-team-goal.test.mjs" # round 13: 支部の共同目標 — the week, settled races with the daily cap, the feed milestone, the week close paying once
+node "$HERE/test/round14-hall.test.mjs"     # round 14: 殿堂 — career from confirmed races, the ceremony once, 殿堂入り and the frame once, paging, a friend's hall
+node "$HERE/test/round14-commentary-packs.test.mjs" # round 14: 実況パック — races speak the equipped pack (never the tutorial), the 10-second sample, owned / equip / buy on the server rules
+node "$HERE/test/round14-my-replays.test.mjs"  # round 14: マイリプレイ — races settled with their replay, save / rename / favourite / public / delete, ReplayPlayer in WASM (speed, camera, last 200 m), 再生できません, a friend replay
 echo "built $SITE ($(du -sh "$SITE" | cut -f1))"

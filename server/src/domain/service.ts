@@ -18,6 +18,10 @@ import { attachShortfall, coinShortfall } from './shortfall.js';
 import { awaken, breed, breedingPreviewWithAllowance, getHorse, nameHorse, pedigree, retire } from './horses.js';
 import { migrateSkills } from './skills.js';
 import { buyCosmetic, cosmeticsCatalog, findCosmetic, setEquipment, useTicket, type EquipmentPatch } from './itemShop.js';
+import {
+  clearResetNotice, createPreset, deletePreset, designFromInput, equipDesign, nonFreeParts, partOfCosmetic, presetDesign, previewDesign, silksEditorView, updatePreset,
+  type DesignInput, type SilksDesign,
+} from './silksEditor.js';
 import { applyRaceResult, claimLoginBonus, claimMission, claimPass, firstWinBonusView, missionsView, type RaceResultForPlayer } from './rewards.js';
 import { allowanceView, claimAllowance, markOfferViewed, noteRaceForOffers, shopOffers, shopProducts } from './shop.js';
 import { passScreen } from './pass.js';
@@ -68,7 +72,12 @@ import {
 } from './comeback.js';
 import { claimAllGifts, claimGift, expireGifts, giftBadge, giftBoxView, giftGiver, giftsNeedExpiry, nextGiftWake, type OpsTitleKey } from './giftBox.js';
 import { finishTraining, startTraining, trainingDelta, trainingTick, trainingView, useTrainingItem } from './training.js';
+import {
+  commitSave, deleteSaved, forgetRecent, myReplaysView, noteRaceForReplays, ownReplayRef, prepareSave, sharedFor, updateSaved, validateReplayTitle,
+  type ReplayPatch,
+} from './myReplays.js';
 import { assistView, markAssistPromptSeen, noteRaceForAssist, setAssist, type AssistLevel, type AssistSource } from './assist.js';
+import { buyPack, commentaryPackBadge, equipPack, packsView, type EquipSource } from './commentaryPacks.js';
 import {
   ensureRival, noteRivalRace, noteRivalTa, rivalBlock, rivalChallengeCheck, rivalChallengeReceive, rivalOutbound, rivalSeen, rivalSetOptOut, rivalSync,
   rivalUpdateOf, rivalView, rivalWithdrawn, weekIdAt, weeksToSync, type RegistryWeek, type RivalUpdate,
@@ -79,6 +88,10 @@ import {
 } from './history.js';
 import { buildSupportTicket } from '../ops/support.js';
 import { abortChallengeSubmit, prepareChallengeSubmit, recordChallengeResult, startChallenge, weeklyChallengeView, type WchStartInput } from './weeklyChallenge.js';
+import {
+  ackCeremony, hallSnapshot, hallSnapshotKey, hallViewerOf, horseCareerView, myHallView, noteHallRace, noteHallRetire, noteHallTa, noteHallTournament,
+  setHallVisibility, type HallRelation, type HallSnapshot,
+} from './hallOfFame.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
 export interface PlayerRepo {
@@ -172,6 +185,8 @@ export interface PlayerServiceDeps {
   onTeamGoal?: (c: GoalContribution) => Promise<{ milestone: number | null } | null | undefined | void>;
   /** REQ-TGOAL-006: remove a quarantined / banned player's contribution from a team's weekly goal. */
   onTeamGoalForget?: (p: { teamId: string; playerId: string }) => Promise<unknown>;
+  /** REQ-HOF-011: the public hall copy changed (null = remove it: empty, private, banned, deletion). The Durable Object writes the directory. */
+  onHall?: (playerId: string, snap: HallSnapshot | null) => void | Promise<void>;
 }
 
 const standingKey = (s: PlayerState) => JSON.stringify([s.season.id, s.season.classId, s.season.points, s.season.races, Math.round(s.rating.r), s.profile.displayName, s.profile.titleId]);
@@ -228,6 +243,7 @@ export class PlayerService {
     const wakeBefore = nextWake(draft);
     const stableBefore = this.d.onStable ? stableSnapshotKey(this.d.master, draft, now) : '';
     const rivalBefore = this.d.onRival ? rivalOutbound(this.d.master, draft, now) : null;
+    const hallBefore = this.d.onHall ? hallSnapshotKey(this.d.master, draft, now) : '';
     const kpi: KpiRecord[] = [];
     const emit: Emit = (e) => { kpi.push(kpiRecord(draft, now, e)); };
     expireGifts(this.d.master, draft, now, emit); // REQ-BOX-006: lazy expiry on every transaction (the alarm runs one too)
@@ -261,6 +277,10 @@ export class PlayerService {
     if (kpi.length > 0 && this.d.onKpi) await this.d.onKpi(id, kpi);
     if (pushProfile) await this.d.onProfile!(publicProfile(draft, this.d.master.bannedSilks));
     if (this.d.onStable && stableSnapshotKey(this.d.master, draft, now) !== stableBefore) await this.d.onStable(id, stableSnapshot(this.d.master, draft, now));
+    if (this.d.onHall && hallSnapshotKey(this.d.master, draft, now) !== hallBefore) {
+      // best effort like the stable copy: the transaction is saved; the next change re-writes the copy
+      try { await this.d.onHall(id, hallSnapshot(this.d.master, draft, now)); } catch (e) { console.error('hall copy failed', id, (e as Error).message); }
+    }
     if (this.d.onRival) {
       const u = rivalUpdateOf(id, rivalBefore, rivalOutbound(this.d.master, draft, now));
       if (u) { try { await this.d.onRival(u); } catch (e) { console.error('rival registry update failed', id, (e as Error).message); } }
@@ -291,7 +311,7 @@ export class PlayerService {
   /** REQ-UXS-001/014/032/040: computed sections of GET /v1/player and bootstrap. */
   private extras(s: PlayerState, now: number) {
     const m = this.d.master;
-    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s) };
+    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s), commentaryPack: commentaryPackBadge(m, s) };
   }
 
   async view(id: string) {
@@ -508,7 +528,14 @@ export class PlayerService {
 
   nameHorse(id: string, horseId: string, name: string) { return this.tx(id, null, (s) => nameHorse(this.d.master, s, horseId, name)); }
   async awaken(id: string, horseId: string, idemKey: string | null) { return this.tx(id, this.requireKey(idemKey), (s) => awaken(this.d.master, s, horseId)); }
-  retire(id: string, horseId: string) { return this.tx(id, null, (s) => retire(s, horseId)); }
+  /** REQ-HOF-003: the response also carries the retirement ceremony (null when the hall is disabled). */
+  retire(id: string, horseId: string) {
+    return this.tx(id, null, (s, now, emit) => {
+      const h = retire(s, horseId);
+      const ceremony = noteHallRetire(this.d.master, s, h, now, emit);
+      return { ...h, ceremony };
+    });
+  }
 
   async breedingPreview(id: string, sireId: string, damId: string) {
     return breedingPreviewWithAllowance(this.d.master, await this.load(id), sireId, damId, this.d.clock());
@@ -579,8 +606,66 @@ export class PlayerService {
   async cosmetics(id: string) { return cosmeticsCatalog(this.d.master, await this.load(id)); }
   async buyCosmetic(id: string, itemId: string, idemKey: string | null) {
     const key = this.requireKey(idemKey);
-    return this.tx(id, key, (s, now) => ({ ...buyCosmetic(this.d.master, s, itemId, now, key), wallet: playerView(s).wallet }));
+    return this.tx(id, key, (s, now, emit) => {
+      const r = buyCosmetic(this.d.master, s, itemId, now, key);
+      this.noteSilksPartBuy(r, emit);
+      return { ...r, wallet: playerView(s).wallet };
+    });
   }
+  /** REQ-SILK-014: silks_part_buy whichever purchase API bought a 勝負服エディタ part. */
+  private noteSilksPartBuy(r: { itemId: string; spent: { paid: number; free: number } }, emit: Emit) {
+    const c = findCosmetic(this.d.master, r.itemId);
+    const part = partOfCosmetic(c);
+    if (part) emit({ name: 'silks_part_buy', s1: c.id, s2: part.type, s3: c.currency, paidCoins: r.spent.paid, freeCoins: r.spent.free, value: c.price });
+    return part;
+  }
+
+  // ---- 勝負服エディタ (REQ-SILK-*, silksEditor.ts, contracts/protocol.md §35) ----
+  async silksEditor(id: string) { return silksEditorView(this.d.master, await this.load(id)); }
+  /** REQ-SILK-006: try before buying — read only, parts need not be owned. */
+  async silksPreview(id: string, input: DesignInput) { return previewDesign(this.d.master, await this.load(id), designFromInput(this.d.master, input)); }
+  private equipSilks(s: PlayerState, d: SilksDesign, source: 'editor' | 'preset', emit: Emit) {
+    const r = equipDesign(this.d.master, s, d);
+    countOnboarding(s, 'silks');
+    if (r.changed) emit({ name: 'silks_edit', s1: r.code, s2: source, value: nonFreeParts(this.d.master, r.design), count: silksEditorView(this.d.master, s).presets.length });
+    return { design: r.design, code: r.code, silks: r.silks };
+  }
+  /** REQ-SILK-012 PUT /v1/silks: validated (owned parts, readability, reserved silks) and equipped. Idempotent. */
+  saveSilks(id: string, input: DesignInput) {
+    return this.tx(id, null, (s, _now, emit) => { notWhileDeleting(s); return this.equipSilks(s, designFromInput(this.d.master, input), 'editor', emit); });
+  }
+  silksPresetCreate(id: string, name: string | undefined, input: DesignInput) {
+    return this.tx(id, null, (s, now) => {
+      notWhileDeleting(s);
+      const slot = createPreset(this.d.master, s, name, designFromInput(this.d.master, input), now);
+      return { slot, presets: silksEditorView(this.d.master, s).presets };
+    });
+  }
+  silksPresetUpdate(id: string, slot: number, name: string | undefined, input: DesignInput | null) {
+    return this.tx(id, null, (s, now) => {
+      notWhileDeleting(s);
+      updatePreset(this.d.master, s, slot, name, input ? designFromInput(this.d.master, input) : null, now);
+      return { slot, presets: silksEditorView(this.d.master, s).presets };
+    });
+  }
+  silksPresetDelete(id: string, slot: number) {
+    return this.tx(id, null, (s) => { deletePreset(s, slot); return { presets: silksEditorView(this.d.master, s).presets }; });
+  }
+  silksPresetApply(id: string, slot: number) {
+    return this.tx(id, null, (s, _now, emit) => { notWhileDeleting(s); return this.equipSilks(s, presetDesign(this.d.master, s, slot), 'preset', emit); });
+  }
+  /** REQ-SILK-005: buy one part (same purchase as the shop's cosmetics tab: paid coins first, paid-only parts on paid coins). */
+  async buySilksPart(id: string, itemId: string, idemKey: string | null) {
+    const key = this.requireKey(idemKey);
+    return this.tx(id, key, (s, now, emit) => {
+      const c = this.d.master.items.cosmetics.find((x) => x.id === itemId);
+      if (!c || !partOfCosmetic(c)) throw new AppError('NOT_FOUND', `silks part ${itemId}`);
+      const r = buyCosmetic(this.d.master, s, itemId, now, key);
+      const part = this.noteSilksPartBuy(r, emit)!;
+      return { itemId: r.itemId, spent: r.spent, wallet: playerView(s).wallet, part: { ...part, owned: true } };
+    });
+  }
+  silksNoticeSeen(id: string) { return this.tx(id, null, (s) => { clearResetNotice(s); return { ok: true }; }); }
   setEquipment(id: string, patch: EquipmentPatch) {
     return this.tx(id, null, (s) => ({ equipment: setEquipment(this.d.master, s, patch) }));
   }
@@ -764,6 +849,33 @@ export class PlayerService {
     });
   }
 
+  // ---------------------------------------------------------------- マイリプレイ (REQ-MYRP-*, myReplays.ts; R2 copies by MyReplaysService)
+  myReplays(id: string) { return this.tx(id, null, (s, now) => myReplaysView(this.d.master, s, now)); }
+  /** Save step 1 (read only): the existing save, or the race to copy. Checks the title first so nothing is uploaded for a bad one. */
+  async replayPrepareSave(id: string, raceId: string, title: string | null) {
+    const s = await this.load(id);
+    const r = prepareSave(this.d.master, s, raceId, this.d.clock());
+    if (!r.existing) validateReplayTitle(this.d.master, title);
+    return r;
+  }
+  /** Save step 2, after the copy is in R2 (keyed with the client's key: a retry returns the first answer). */
+  replayCommitSave(id: string, raceId: string, title: string | null, sizeBytes: number, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => commitSave(this.d.master, s, raceId, title, sizeBytes, now, emit));
+  }
+  replayForget(id: string, raceId: string) { return this.tx(id, null, (s) => { forgetRecent(s, raceId); return true; }); }
+  replayUpdate(id: string, raceId: string, patch: ReplayPatch) { return this.tx(id, null, (s) => updateSaved(this.d.master, s, raceId, patch)); }
+  replayDelete(id: string, raceId: string) { return this.tx(id, null, (s, now) => deleteSaved(this.d.master, s, raceId, now)); }
+  async replayOwnRef(id: string, raceId: string) { return ownReplayRef(this.d.master, await this.load(id), raceId, this.d.clock()); }
+  /** REQ-MYRP-010: the owner's public saves for a friend (null = hidden). */
+  async replayShared(id: string, viewerId: string) {
+    if (await this.wiped(id)) return null;
+    return sharedFor(this.d.master, await this.load(id), viewerId, this.d.clock());
+  }
+  /** REQ-MYRP-014: replay_view on the viewer's own record. */
+  replayViewed(id: string, source: 'own' | 'friend', status: string, mode: string) {
+    return this.tx(id, null, (_s, _now, emit) => { emit({ name: 'replay_view', s1: source, s2: status, s3: mode }); return true; });
+  }
+
   async claimPass(id: string, track: 'free' | 'premium', level: number, idemKey: string | null) {
     return this.tx(id, this.requireKey(idemKey), (s, now) => claimPass(this.d.master, s, track, level, now));
   }
@@ -785,8 +897,14 @@ export class PlayerService {
       for (const [k, at] of Object.entries(applied)) if (now - at > APPLIED_RACE_KEEP_MS) delete applied[k];
       if (applied[r.raceId] !== undefined) return { duplicate: true as const, event: null };
       applied[r.raceId] = now;
+      // REQ-MYRP-002: the course best before this race decides a personal-best moment
+      const prevBest = r.details?.trackId ? s.stats.byTrack[r.details.trackId]?.bestFinishTick ?? null : null;
       const base0 = applyRaceResult(this.d.master, s, r, now);
+      noteRaceForReplays(this.d.master, s, r, prevBest, now); // REQ-MYRP-001: offer the race in マイリプレイ
       noteRivalRace(this.d.master, s, r, now, emit); // REQ-RIVAL-004: head to head (ranked) / challenge (friend)
+      // REQ-HOF-001: the horse's career (a ranked race counted against the weekly rival with me ahead is a rival win)
+      const rivalWin = r.mode === 'ranked' && !!s.rival?.weeks.some((w) => w.races.some((x) => x.raceId === r.raceId && x.mode === 'ranked' && x.point === 'me'));
+      noteHallRace(this.d.master, s, r, now, rivalWin);
       // REQ-COL-002 / REQ-ACH-002: what the race showed the 図鑑, a fired skill, and the tiers it unlocked (with titles)
       noteRaceCollection(this.d.master, s, r);
       const achievements = syncCollection(this.d.master, s, now, emit);
@@ -1203,6 +1321,29 @@ export class PlayerService {
     return out;
   }
 
+  // ---- 殿堂 (REQ-HOF-*, hallOfFame.ts) ----
+  /** REQ-HOF-009: my hall (a read: the hof_view KPI with relation self, no state is written). */
+  async hallMine(id: string, cursor: string | null, limit: number | null) {
+    const s = await this.load(id);
+    const now = this.d.clock();
+    const v = myHallView(this.d.master, s, cursor, limit);
+    if (this.d.onKpi) await this.d.onKpi(id, [kpiRecord(s, now, { name: 'hof_view', s1: 'self', value: v.entries.length })]);
+    return v;
+  }
+  /** REQ-HOF-012: the visitor's side of a visit (friends, branch, block list), read only. */
+  async hallViewer(id: string) { return hallViewerOf(await this.load(id)); }
+  /** REQ-HOF-016: the hof_view KPI of a visit (no state is written). */
+  async hallNoteView(id: string, relation: HallRelation, count: number) {
+    if (!this.d.onKpi) return { noted: false };
+    const s = await this.load(id);
+    await this.d.onKpi(id, [kpiRecord(s, this.d.clock(), { name: 'hof_view', s1: relation, value: count })]);
+    return { noted: true };
+  }
+  async horseCareer(id: string, horseId: string) { return horseCareerView(this.d.master, await this.load(id), horseId); }
+  /** REQ-HOF-004: idempotent by nature (a repeat returns the first acknowledgement). */
+  hallAck(id: string, horseId: string) { return this.tx(id, null, (s, now) => ackCeremony(s, horseId, now)); }
+  hallSettings(id: string, visibility: string) { return this.tx(id, null, (s) => setHallVisibility(s, visibility)); }
+
   // ---- マイ厩舎 (REQ-STABLE-*, stable.ts) ----
   async stableMine(id: string) { return stableView(this.d.master, await this.load(id), this.d.clock()); }
   stableSave(id: string, input: StableInput) {
@@ -1245,6 +1386,22 @@ export class PlayerService {
   /** POST /v1/player/assist/prompt-seen: the one-time suggestion was shown (once only). */
   assistPromptSeen(id: string) {
     return this.tx(id, null, (s, now, emit) => markAssistPromptSeen(s, now, emit));
+  }
+
+  // ---------------------------------------------------------------- 実況パック commentary packs (REQ-CMT-*, commentaryPacks.ts)
+  /** GET /v1/commentary/packs: read-only. */
+  async commentaryPacks(id: string) { return packsView(this.d.master, await this.load(id)); }
+  /** PUT /v1/commentary/equipped: owned packs only; the same pack twice changes nothing. */
+  equipCommentaryPack(id: string, packId: string, source: EquipSource) {
+    return this.tx(id, null, (s, now, emit) => equipPack(this.d.master, s, packId, source, now, emit));
+  }
+  /** POST /v1/commentary/packs/:packId/buy: coins (paid first), idempotency key required. */
+  async buyCommentaryPack(id: string, packId: string, equip: boolean, idemKey: string | null) {
+    const key = this.requireKey(idemKey);
+    return this.tx(id, key, (s, now, emit) => {
+      const r = buyPack(this.d.master, s, packId, equip, now, key, emit);
+      return { ...r, wallet: playerView(s).wallet, view: packsView(this.d.master, s) };
+    });
   }
 
   async pushPreferences(id: string, locale: Locale = 'ja') { return pushPrefsView(this.d.master, await this.load(id), locale); }
@@ -1300,6 +1457,10 @@ export class PlayerService {
           notePostedIn(s, goal.teamId);
           emit({ name: 'team_goal_contribute', s1: goal.teamId, s2: 'ta_pb', s3: goal.ref, count: 1 });
         }
+      }
+      if (!counted && 'finished' in r && r.finished && r.timeMs !== null) {
+        const horseId = s.timeAttack?.sessions.find((x) => x.id === sessionId)?.horseId;
+        if (horseId) noteHallTa(this.d.master, s, horseId, r.trackId, r.timeMs, now); // REQ-HOF-001
       }
       return r;
     });
@@ -1450,7 +1611,7 @@ export class PlayerService {
     return { entry, displayName: s.profile.displayName, info: { classId: entry.classId, rankedRaces: s.rating.rankedRaces, style: h.style as string, horseActive: h.status === 'active', moderation: entry.moderation } };
   }
   /** REQ-TOUR-007: final rank + prize, once per tournament (resumable payout; a retry is a no-op). */
-  async tournamentClose(id: string, tournamentId: string, rank: number, reward: Reward | null, name: string) {
+  async tournamentClose(id: string, tournamentId: string, rank: number, reward: Reward | null, name: string, horseId: string | null = null) {
     if (await this.wiped(id)) return { status: 'already' as const, reward: null };
     return this.tx(id, null, (s, now, emit) => {
       const done = (s.tournaments ??= {});
@@ -1459,6 +1620,7 @@ export class PlayerService {
       if (reward) giftGiver(this.d.master, s, now, emit)(reward, `tournament ${tournamentId} rank ${rank}`, `tournament:${tournamentId}:rank`, 'tournament', rank);
       done[tournamentId] = { name, rank, at: now, reward };
       noteTournamentResult(s, rank); // REQ-ACH-002 (once per tournament, behind the same guard)
+      noteHallTournament(this.d.master, s, horseId, tournamentId, name, rank, now); // REQ-HOF-001
       const keys = Object.entries(done).sort((a, b) => b[1].at - a[1].at).map(([k]) => k);
       for (const k of keys.slice(TOURNAMENT_HISTORY_KEEP)) delete done[k];
       return { status: 'rewarded' as const, reward };

@@ -17,6 +17,23 @@ export const CODE_EN: Record<string, string> = {
   'はじめての購入時のみ：無償コイン{n}枚をプレゼント': 'First purchase only: {n} free coins included',
   'はじめての購入時のみ：有償コイン{n}枚をプレゼント': 'First purchase only: {n} paid coins included',
 
+  // ---- 殿堂・引退式 (hallOfFame.ts pickHighlights / myHallView, protocol §34; REQ-HOF-003). {name} = a tournament name (kept as written)
+  '大会「{name}」優勝': 'Won the tournament "{name}"',
+  '大会優勝{n}回（初優勝「{name}」）': '{n} tournament wins (first: "{name}")',
+  '最初の相棒として{n}戦をともに走った': '{n} races together as your first partner',
+  '通算{n}戦{m}勝': '{n} races, {m} wins',
+  '最大の勝利：{course}の{mode}（{n}頭立て）': 'Biggest win: {mode} at {course} ({n} runners)',
+  '最大の勝利：{mode}（{n}頭立て）': 'Biggest win: {mode} ({n} runners)',
+  '大会': 'tournament',
+  'イベント': 'event',
+  'ランク戦': 'ranked race',
+  'フレンド戦': 'friend race',
+  'ライバルに{n}回先着': 'Finished ahead of your rival {n} times',
+  'タイムアタック {course}：{time}': 'Time attack: {course}, {time}',
+  '3着以内{n}回': '{n} top-3 finishes',
+  '現役{days}日・{n}戦': '{days} days and {n} races on the track',
+  '殿堂入りは確定したレースの成績だけで決まります（購入やアイテムでは決まりません）。': 'Entry to the Hall of Fame depends only on confirmed race results (never on purchases or items).',
+
   // ---- T6 coin shortfall (shortfall.ts, protocol §29; REQ-SHORT-003)
   'コインが{n}枚足りません': 'You need {n} more coins',
   '有償コインが{n}枚足りません': 'You need {n} more paid coins',
@@ -55,6 +72,18 @@ export const CODE_EN: Record<string, string> = {
   '1枚で対象ガチャの10連を1回引けます（10枠目はSR以上確定の保証つき）。抽選は各ガチャの提供割合（GET /v1/gacha/:bannerId/odds）と同じ表で行い、天井ポイントも10回分加算されます。': 'One ticket = one 10-scout on an eligible banner (slot 10 is SR or higher). It is drawn from the same table as that banner\'s odds (GET /v1/gacha/:bannerId/odds) and adds 10 pity points.',
   '1枚でSR以上が1頭確定。天井ポイントは加算されません。': 'One ticket = one horse of SR or higher. Adds no pity points.',
   '見た目のみ。ランク戦の能力には影響しません。有償コインから先に使われます（「有償限定」の品は有償コインのみ）。': 'Looks only: no effect on ranked stats. Paid coins are used first ("paid coins only" items take paid coins only).',
+
+  // ---- 勝負服エディタ (silksEditor.ts sourceLabel / notices / problems; REQ-SILK-015)
+  '見た目のみ。ランク戦の能力には影響しません。パーツは抽選ではありません（固定の価格・条件）。': 'Looks only: no effect on ranked stats. Parts are never random (fixed prices and conditions).',
+  'コイン{n}で購入': 'Buy for {n} coins',
+  '有償コイン{n}で購入': 'Buy for {n} paid coins',
+  '実績「{name}」の{tier}段目で解放': 'Achievement "{name}" tier {tier}',
+  'レースを{n}回走ると解放': 'Unlocks after {n} races',
+  '商品・報酬で入手': 'Comes with a product or reward',
+  '返金によりパーツが取り消されたため、勝負服を初期の柄に戻しました': 'A refund took back a part, so your silks went back to their original design',
+  '色が近すぎて見分けにくい組み合わせです（胴の1色目と2色目、帽子の2色）': 'These colours are too close to tell apart (body colours 1 and 2, or the two cap colours)',
+  '実在の勝負服と同じ（または紛らわしい）組み合わせのため使えません': 'This combination matches (or looks like) real registered silks, so it cannot be used',
+  'プリセット{n}': 'Preset {n}',
 
   // ---- skills (skills.ts conditionText / effectText / skillCatalog; REQ-UXS-050)
   '{n}秒': '{n} s',
@@ -141,6 +170,8 @@ export const CODE_EN: Record<string, string> = {
   'スカウト{n}回（{banner}）': 'Scouts: {n} ({banner})',
   'ショップで購入': 'Shop purchase',
   'ショップで購入（{item}）': 'Shop purchase ({item})',
+  '実況パックの購入': 'Commentary pack purchase',
+  '実況パックの購入（{pack}）': 'Commentary pack purchase ({pack})',
   '動画広告の視聴': 'Rewarded video',
   '運営からのお詫び・補填': 'Compensation from the operator',
   'ログインボーナス': 'Login reward',
@@ -200,6 +231,11 @@ export const CODE_EN: Record<string, string> = {
   'ムチ{n}回以内': 'Whip {n} times or fewer',
   '{time}以内で完走': 'Finish within {time}',
   '完走する': 'Finish the race',
+
+  // ---- 実況パック (commentaryPacks.ts packsView, protocol §36; REQ-CMT-011)
+  '実況の話し方だけが変わります。レースの結果・能力には影響しません。': 'Only the commentary style changes. Race results and abilities are not affected.',
+  '英語では標準の実況で話します': 'In English, this pack uses the standard commentary',
+  '実績「{name}」{tier}段目で入手': 'Unlocked at tier {tier} of the achievement "{name}"',
 
   // ---- error details shown to players (REQ-API-004 messages; codes are the contract)
   'カタカナ2〜9文字': '2–9 katakana characters',

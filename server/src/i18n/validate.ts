@@ -5,6 +5,7 @@
 import type { Master } from '../domain/master.js';
 import { VISUALS, type VisualsMaster } from '../domain/visuals.js';
 import { stableConfig } from '../domain/stable.js';
+import { commentaryPacksOf } from '../domain/commentaryPacks.js';
 import { CODE_EN } from './en.js';
 import { EN_AD_BANNED, enWordingProblems, tableProblems } from './catalog.js';
 import { hasJapanese } from './locale.js';
@@ -28,6 +29,8 @@ export function masterTexts(m: Master, v: VisualsMaster = VISUALS): { path: stri
   for (const [k, x] of Object.entries(m)) if (!INTERNAL_SECTIONS.has(k)) walk(x, k);
   if (!m.stable) walk(stableConfig(m), 'stable'); // the shipped マイ厩舎 themes (master/stable.json)
   for (const [id, venue] of Object.entries(v.venues)) walk(venue.name, `visuals.venues.${id}.name`);
+  // REQ-CMT-011: pack names and descriptions (the pack phrases are commentary, with their own English in the pack)
+  for (const p of commentaryPacksOf(m).packs) { walk(p.name, `commentaryPacks.${p.id}.name`); walk(p.description, `commentaryPacks.${p.id}.description`); }
   return out;
 }
 

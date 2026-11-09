@@ -113,7 +113,9 @@ export type CosmeticDef =
   | { id: string; name: string; kind: 'tack'; slot: TackSlot; asset: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean }
   | { id: string; name: string; kind: 'decor'; asset: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean }
   /** REQ-TEAMFEED-002: a team-feed stamp sold directly for coins (asset stamp/<id>; master/stamps.json says which stamp it unlocks). */
-  | { id: string; name: string; kind: 'stamp'; asset: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean };
+  | { id: string; name: string; kind: 'stamp'; asset: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean }
+  /** REQ-SILK-005: a 勝負服エディタ part sold directly (master/silks-editor.json names this item as the part's source). */
+  | { id: string; name: string; kind: 'silks_part'; part: 'color' | 'sleeve' | 'cap'; ref: string; asset: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean };
 export type TackSlot = 'bridle' | 'saddlecloth';
 export const TACK_SLOTS: TackSlot[] = ['bridle', 'saddlecloth'];
 export interface ItemsMaster {
@@ -191,6 +193,10 @@ export interface Progression {
   weeklyChallenge?: import('./weeklyChallenge.js').WeeklyChallengeConfig;
   /** REQ-TGOAL-*: 支部の共同目標 (teamGoal.ts, validated by teamGoalProblems). Absent = no team goals. */
   teamGoal?: import('./teamGoal.js').TeamGoalConfig;
+  /** REQ-HOF-*: 殿堂 and the retirement ceremony (hallOfFame.ts, validated by hallProblems). Absent / disabled = none. */
+  hall?: import('./hallOfFame.js').HallConfig;
+  /** REQ-MYRP-*: マイリプレイ (myReplays.ts, validated by myReplaysProblems). Absent / disabled = no saved replays. */
+  myReplays?: import('./myReplays.js').MyReplaysConfig;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */
@@ -254,7 +260,7 @@ export interface EventDef {
   exchange?: EventExchange;
 }
 /** REQ-EXCH-002: what one exchange line gives. Exactly one of the keys; never anything random. */
-export type ExchangeItemKind = 'coins' | 'material' | 'ticket' | 'cosmetic' | 'horse';
+export type ExchangeItemKind = 'coins' | 'material' | 'ticket' | 'cosmetic' | 'commentary_pack' | 'horse';
 export interface ExchangeItemDef {
   id: string; name: string; kind: ExchangeItemKind;
   /** Event points per unit (fixed). */
@@ -380,6 +386,10 @@ export interface Master {
   locale?: { en: Record<string, string> };
   /** REQ-COL-* / REQ-ACH-*: 図鑑 lore and achievements (master/collection.json; collection.ts collectionOf falls back to it when absent). */
   collection?: CollectionMaster;
+  /** REQ-SILK-*: 勝負服エディタ parts (master/silks-editor.json; silksEditor.ts silksEditorOf falls back to it when absent). */
+  silksEditor?: import('./silksEditor.js').SilksEditorMaster;
+  /** REQ-CMT-*: 実況パック (master/commentary-packs.json; commentaryPacks.ts commentaryPacksOf falls back to it when absent). */
+  commentaryPacks?: import('./commentaryPacks.js').CommentaryPacksMaster;
 }
 
 export const PPM_TOTAL = 1_000_000;

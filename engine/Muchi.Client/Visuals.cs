@@ -30,11 +30,22 @@ namespace Muchi.Client
     {
         public string Pattern = "plain", Cap = "plain";
         public string[] Colors = { "white", "navy" };
+        /// <summary>
+        /// REQ-SILK-003 (protocol §35.2): the 勝負服エディタ code (null for legacy silks — use SilksCode.OfSilks to get one either way).
+        /// Sleeve / CapColors are set with it (Colors / CapColors hold the base colour of a special colour).
+        /// </summary>
+        public string Code, Sleeve;
+        public string[] CapColors;
 
         internal static Silks Parse(JsonNode o)
         {
             if (o == null) return null;
-            return new Silks { Pattern = J.Str(o, "pattern") ?? "plain", Cap = J.Str(o, "cap") ?? "plain", Colors = J.List(o, "colors", x => x.AsString()).ToArray() };
+            var cc = J.Opt(o, "capColors");
+            return new Silks
+            {
+                Pattern = J.Str(o, "pattern") ?? "plain", Cap = J.Str(o, "cap") ?? "plain", Colors = J.List(o, "colors", x => x.AsString()).ToArray(),
+                Code = J.Str(o, "code"), Sleeve = J.Str(o, "sleeve"), CapColors = cc == null ? null : J.Strs(o, "capColors"),
+            };
         }
 
         internal JsonNode ToJson()

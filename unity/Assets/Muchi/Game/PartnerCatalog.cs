@@ -33,7 +33,7 @@ namespace Muchi.Game
         public static readonly string[] Featured = { "Partner_Bay_Crimson", "Partner_Chestnut_Azure", "Partner_DappleGrey_Violet", "Partner_Black_Emerald", "Partner_Palomino_Gold" };
 
         /// <summary>Kinds the prototype models cannot show; keys of these kinds always use the model's own look.</summary>
-        public static readonly string[] UnmodelledKinds = { "horse/face", "horse/leg", "horse/mane", "horse/build", "silks/pattern", "silks/cap" };
+        public static readonly string[] UnmodelledKinds = { "horse/face", "horse/leg", "horse/mane", "horse/build", "silks/pattern", "silks/cap", "silks/sleeve", "silks/color" }; // silks/sleeve, silks/color: 勝負服エディタ masks / swatches (REQ-SILK-*, handoff round 14)
 
         private static readonly Dictionary<string, string> CoatMap = new Dictionary<string, string>
         {

@@ -64,7 +64,8 @@ export interface BuildRaceInput {
  */
 function raceSkill(m: Master, input: BuildRaceInput, ruleset: Record<string, unknown>, s: RaceHorse['skill']): RaceHorse['skill'] | undefined {
   const caps = rulesetSkillCaps(ruleset);
-  if (!s || !caps || input.mode === 'timeattack' || input.mode === 'tutorial' || input.fixedStats) return undefined;
+  // REQ-WCH-007: weekly challenges are a riding test on normalised stats too (no skills: a bought horse's skill cannot help)
+  if (!s || !caps || input.mode === 'timeattack' || input.mode === 'challenge' || input.mode === 'tutorial' || input.fixedStats) return undefined;
   const capped = capSkill(s, caps);
   return input.statCap === null ? capped : capSkill(capped, m.skills.rankedCaps);
 }

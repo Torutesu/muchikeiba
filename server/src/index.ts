@@ -51,6 +51,7 @@ import { renderTemplate, seasonReminderFor, topicFor } from './domain/push.js';
 import { LOCALES } from './i18n/locale.js';
 import { fcmFromEnv } from './push/fcm.js';
 import { TimeAttackService } from './race/timeAttack.js';
+import { WeeklyChallengeService } from './race/weeklyChallenge.js';
 import { HttpVerifierClient } from './domain/verifier.js';
 import { taBoardName, type GhostFile, type TaBoardFile, type TaEntry } from './domain/timeAttack.js';
 import { devModeRefused } from './http/devMode.js';
@@ -446,6 +447,14 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
           return obj ? ((await obj.json()) as GhostFile) : null;
         },
       },
+    }),
+    // REQ-WCH-*: weekly challenges (the time attack verifier path)
+    weeklyChallenge: new WeeklyChallengeService({
+      player,
+      verifier: new HttpVerifierClient(env.VERIFIER_URL, undefined, undefined, env.VERIFIER_TOKEN),
+      ticketSecret: env.TICKET_SECRET,
+      clock: () => Date.now(),
+      activeRuleset: async () => (await activeConfig(env)).ruleset,
     }),
     paidBalance: () => (stub(env.ACCOUNTING, 'global') as unknown as { summary(): Promise<unknown> }).summary(),
     retainedRefund: (anonId, txId) => (stub(env.ACCOUNTING, 'global') as unknown as { retainedRefund(a: string, t: string, n: number): Promise<unknown | null> }).retainedRefund(anonId, txId, Date.now()),

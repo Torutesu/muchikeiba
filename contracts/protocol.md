@@ -907,3 +907,110 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 - タップは `BeginMiniGame(now)` からの ms で、サーバーが受け付ける形（間隔・回数・範囲）のものだけを記録する。画面の◎○×は `TrainingScorer.Judge`、合計は `TrainingScorer.Score`（サーバーと同じ）。
 - start / finish は応答が来るまで同じ冪等キーを使う（タイムアウト後の再送で回数を2回使わない）。読み込んだ時に開いたセッションがあれば、ミニゲームなしで仕上げる（時間が経っているため）。
 - 画面に `TrainingModel.RulesText`（ランク戦は上限にそろえる・疲れはレースに影響しない・伸びは受け継がれない）を出す。調教の画面からショップへの導線は作らない。
+
+## 31. 週替わりチャレンジ（REQ-WCH-001〜016、`server/src/domain/weeklyChallenge.ts`・`server/src/race/weeklyChallenge.ts`、C# `WeeklyChallenge.cs`（`ChallengeEvaluator`・`ChallengeRun`）・`Muchi.Game.WeeklyChallengeModel`）
+毎ゲーム週、CPU と走る1人用のチャレンジが **3つ** 出る。コース・距離・馬場（重・ダート・ナイター）・相手の強さ（CPU の頭数・レベル・能力の倍率）を既存のレース設定で固定し、条件（「逃げ馬で勝つ」「ムチ3回以内で3着以内」「雨の重馬場で X 以内に完走」など）を付ける。レースは端末で走り（`OfflineRace`）、送るのは入力だけ。**サーバーは発行した設定と送られた入力を C# 検証器で再シミュレーションし**（タイムアタックと同じ §8 の経路）、条件の判定も検証済みの結果からサーバー自身が行う。クライアントの申告だけで達成になることはない。
+
+### 31.1 週（REQ-WCH-001）
+- 週は `weekStartsOn`（既定 1 = 月曜）の **ゲーム日の切り替わり**（§15 `progression.dayRollover`、04:00 JST）に始まる。週 id はその週の最初のゲーム日のキー（`"YYYY-MM-DD"`）。`time.ts` の `gameWeekId`・`gameWeekStartMs`・`gameWeekEndMs`・`gameWeeksBetween`（週単位の機能はこれを共有する。ライバル §28 と同じ定義：月曜のゲーム日の切り替わり）。
+- その週のセット = `rotation[(anchorWeekId から数えた週数) mod rotation.length]`。翌週のセットは条件だけ先に見せてよい（`previewNext`）。
+- 週をまたいだ場合：週の終わりの直前に始めたレースは、セッションの期限内なら**始めた週**の分として数える（今週と先週の進み具合だけを保持）。新しい週は何もクリアしていない状態から始まり、先週のチャレンジはもう始められない（`NOT_FOUND`）。
+
+### 31.2 設定（`progression.weeklyChallenge`、リモート設定で変更可・`weeklyChallengeProblems` で検証）
+| キー | 既定 | 意味 |
+|---|---|---|
+| `enabled` | true | false で画面ごと隠す（`GET` は `{ "enabled": false }`、操作は `NOT_FOUND`） |
+| `weekStartsOn` / `anchorWeekId` | 1 / `2026-11-02` | 週の始まりの曜日／`rotation[0]` を出す週（その曜日であること） |
+| `statCap` | 3200 | 全員の能力合計の上限（ランク戦B級と同じ正規化）。貸し出し馬はちょうどこの値に引き上げる |
+| `sessionTtlMs` / `maxInputs` | 15分 / 400 | セッションの期限／1回の送信の入力の上限 |
+| `startsPerDay` / `keepSessions` | 30 / 20 | 1ゲーム日に始められる回数（乱用防止。再挑戦は自由）／保持するセッション数 |
+| `previewNext` | true | 翌週のセットを見せる |
+| `rotation[]` | 3週分 | `{ id, badge: { id, name }, challenges: [3つ] }` |
+
+チャレンジ：`{ id, title, trackId, going?, night?, cpuCount, cpuLevel, cpuStatPermille?, conditions, loanTemplateId, reward }`。
+- `going`：コースの面に合う馬場（芝 `firm`/`good`/`yielding`/`soft`、ダート `fast`/`muddy`/`sloppy`）。無ければ良（`good`/`fast`）。`night`：照明のある競馬場だけ。
+- `conditions`（すべて満たし、かつ**完走**でクリア）：`maxPlace`（N着以内、1 = 勝利。頭数より小さいこと）、`style`（その脚質の馬で出走。単独では不可）、`maxWhips`（ムチの入力 N 回以内。ムチのビットを含む入力レコードの数で、端末とサーバーで同じ数え方）、`maxTimeMs`（ゲートが開いてからのタイム、タイムアタックと同じ式）。
+- `loanTemplateId`：誰でも使える**貸し出し馬**。季節限定でない、コースの面と距離に合う、`style` があればその脚質であること。
+- `reward`：**無償コイン（≤ 100枚、最も高いパックの単価で ¥200 以下）と配合素材（≤ 2）だけ**。有償コイン・券・ガチャ・馬は不可。1週の無償コインの合計 ≤ 150（E18）。
+- `badge`：3つクリアした週に付く**見た目だけのバッジ**（`id`・`name` のみ。報酬のキーは付けられない。販売中のアイテムと同じ id は不可）。
+
+コード側の上限 `WCH_HARD_LIMITS`：1週3つ・無償コイン ≤ 100/チャレンジ・≤ 150/週・素材 ≤ 2・¥200・`startsPerDay` ≤ 50・`rotation` ≤ 52週・バッジの記録 ≤ 520。
+
+既定のローテーション：
+| 週 | バッジ | チャレンジ（コース・馬場・相手・条件 → 報酬） |
+|---|---|---|
+| `w_aoba` | 青葉の一閃章 | 逃げ切りの一閃（青葉 芝1600・良・CPU 7頭 Lv3・**逃げ馬で1着** → 無償10）／ムチは3発まで（きらめき 芝2000・CPU 7頭 Lv3・**ムチ3回以内で3着以内** → 素材1）／雨の重馬場（きらめき 芝2000・**重（soft）**・CPU 5頭 Lv2・**タイム以内に完走** → 素材1） |
+| `w_minato` | みなとの夜章 | ナイターの先行策（みなと ダート1800・**ナイター**・**先行馬で2着以内** → 無償10）／ムチなしの末脚（みなと 芝2400・CPU Lv2・**ムチなしで5着以内** → 素材1）／不良馬場を走り切れ（サンタルチェラ ダート1700・**不良（sloppy）・ナイター**・**タイム以内に完走** → 素材1） |
+| `w_bellmoor` | 直線の覇者章 | 直線一気（ベルムーア 芝1200直線・**ムチ2回以内で1着** → 無償10）／砂の先行争い（青葉 ダート1400・**稍重（muddy）**・**先行馬で3着以内** → 素材1）／長距離の我慢（ノルトハーフェン 芝2400・**ムチ2回以内で3着以内** → 素材1） |
+
+タイムの条件の値は、貸し出し馬で「ゲートでスタート・ムチなし」の素直な乗り方をした時のタイムに余裕を足して決めた（`engine/Muchi.Engine.Tests/WeeklyChallengeTests.cs` の測定、balance-targets E18）。
+
+### 31.3 公平性（REQ-WCH-007）
+| 項目 | 決めたこと |
+|---|---|
+| 能力 | 全員（自分の馬・CPU）を `statCap` に正規化（ランク戦と同じ `normalizeStats`）。調教の伸びも上限まで |
+| スキル | 使わない（タイムアタックと同じ「乗り方の勝負」。`raceConfig.ts` の `raceSkill` がモード `challenge` を除く）。買った馬のスキルは効かない |
+| 調子 | ルールセットの調子の揺らぎを切る（`timeAttackRuleset`：`conditionVariancePermille` 0、`rulesetVersion` に `+ta`）。発行時の設定に埋め込むので、途中でルールセットが変わってもそのレースは変わらない |
+| 貸し出し馬 | どのチャレンジにも貸し出し馬があり、**能力合計はちょうど `statCap`**（テンプレートの比率のまま最大剰余で引き上げ）、コースの面と距離・脚質の条件に合う。正規化後のどの馬も合計は `statCap` 以下なので、無課金でも**課金で手に入る最強の馬に合計で劣らない**馬で挑める |
+| 課金 | 挑戦の回数・条件を緩める商品は作らない。報酬に有償コインは無い |
+
+### 31.4 `GET /v1/challenges/weekly`（要認証）
+```json
+{ "enabled": true, "weekId": "2026-11-02", "startsAt": 1793804400000, "endsAt": 1794409200000, "serverNow": 1794020400000,
+  "challenges": [ { "id": "wa_nige", "title": "逃げ切りの一閃", "trackId": "aoba_turf_1600", "trackName": "青葉競馬場 芝1600m", "surface": "turf", "distanceM": 1600,
+      "going": "good", "night": false, "cpuCount": 7, "cpuLevel": 3, "cpuStatPermille": 1000,
+      "conditions": { "style": "nige", "maxPlace": 1 }, "labels": [ { "kind": "style", "text": "逃げの馬で出走" }, { "kind": "place", "text": "1着でゴール" } ],
+      "reward": { "freeCoins": 10 }, "loan": { "templateId": "t_hinode", "name": "ヒノデエクスプレス", "style": "nige", "statTotal": 3200 },
+      "progress": { "cleared": false, "clearedAt": null, "attempts": 0, "bestPlace": null, "bestTimeMs": null } } ],
+  "clearedCount": 0, "badge": { "id": "wch_badge_aoba", "name": "青葉の一閃章", "earned": false, "earnedAt": null },
+  "startsLeftToday": 30,
+  "next": { "weekId": "2026-11-09", "startsAt": 1794409200000, "badge": { "id": "wch_badge_minato", "name": "みなとの夜章" }, "challenges": [ "…progress なし…" ] },
+  "badges": [ { "weekId": "2026-10-26", "badgeId": "wch_badge_bellmoor", "at": 1793500000000 } ], "badgeCount": 1,
+  "rules": { "statCap": 3200, "normalized": true, "skills": false, "loanAtCap": true, "paidBoosts": false, "rewardOncePerWeek": true } }
+```
+- `labels[].text` は条件ごとの短い文（`conditionLabels`）。`?lang=en` / `Accept-Language` で英語（§23。条件の文は `i18n/en.ts` のテンプレート、タイトルとバッジ名は `master/locale-en.json`）。
+- `next` は `previewNext` が false なら null。`badges` は新しい順に最大20件。残り日数は `endsAt` と `serverNow` から出す（偽の締め切りは作らない）。
+
+### 31.5 `POST /v1/challenges/weekly/:challengeId/start`（要認証・**冪等キー必須**）
+- 本文：`{ "horseId": "h1" }`（自分の現役の馬）か `{ "loan": true }`（貸し出し馬）のどちらか一方。他のキーは 400。
+- 応答：`{ "sessionId", "weekId", "challengeId", "playerSlot", "config": RaceStartConfig（mode "challenge"）, "expiresAt", "startsLeftToday", "challenge": {31.4 のカード}, "token" }`。同じ冪等キーの再送は同じセッションを返す（回数は1回だけ）。
+- エラー：`NOT_FOUND`（今週のセットに無い・無効）、`CHALLENGE_HORSE_INELIGIBLE`（409、脚質の条件に合わない馬。貸し出し馬は必ず合う）、`CHALLENGE_LIMIT_REACHED`（429、今日の回数）、`HORSE_NOT_ACTIVE`、`HORSE_NOT_FOUND`、`DELETION_PENDING`、`BAD_REQUEST`。
+- 設定はサーバーが決める：seed・CPU の馬と枠（`buildRaceConfig`）、`statCap` での正規化、スキルなし、`going`/`night`、調子なしのルールセット。`playerSlot` は人の馬の枠（枠順は抽選）。`token` は `{ raceId: "wch_<sessionId>", slot: playerSlot, playerId, exp: expiresAt }` の署名（レースのチケットと同じ形式）。
+
+### 31.6 `POST /v1/challenges/weekly/submit`（要認証・セッション単位で冪等）
+- 本文：`{ "sessionId", "token", "inputs": [[tick, slot, cmd], …], "resultHash", "config"? }`（他のキーは 400）。入力は**自分の枠だけ**・クライアントのビットだけ（`CPU_TAKEOVER`/`HUMAN_RESUME` 不可）・tick は増えていく・`maxTicks` より前・`maxInputs` 件まで。`config` を付けた場合は発行したものと一致すること（`TA_CONFIG_MISMATCH`）。
+- サーバー：発行した設定＋入力で検証器を呼ぶ（§8）。ハッシュが端末の `resultHash` と違えば `CHALLENGE_RESULT_MISMATCH`（422、何も記録しない）。検証器が落ちていれば `VERIFIER_UNAVAILABLE`（503、セッションは開いたまま。期限内なら再送できる）。同じセッション・同じハッシュの再送は保存した結果を返す。
+- 応答：
+```json
+{ "sessionId": "w…", "weekId": "2026-11-02", "challengeId": "wa_nige", "resultHash": "…",
+  "evaluation": { "finished": true, "place": 1, "timeMs": 98500, "whips": 2, "style": "nige", "cleared": true,
+    "checks": [ { "kind": "finish", "target": null, "actual": 1, "ok": true }, { "kind": "place", "target": 1, "actual": 1, "ok": true }, { "kind": "style", "target": "nige", "actual": "nige", "ok": true } ] },
+  "cleared": true, "firstClear": true, "reward": { "freeCoins": 10 }, "clearedCount": 1,
+  "badge": { "id": "wch_badge_aoba", "name": "青葉の一閃章", "earned": false, "newlyEarned": false }, "credited": true }
+```
+- 報酬は**チャレンジごとに1週1回**（`firstClear`）。2回目以降のクリアも記録・判定はするが報酬は無い（`reward: null`）。3つそろった時に `badge.newlyEarned: true`（1週1回）。
+- エラー：`CHALLENGE_SESSION_EXPIRED`（期限切れ・トークン不正）、`CHALLENGE_SESSION_USED`（送信済み・却下済み）、`UNAUTHORIZED`（他人のトークン）、`NOT_FOUND`、`DELETION_PENDING`。
+
+### 31.7 判定（REQ-WCH-005、サーバー `evaluateChallenge`・C# `ChallengeEvaluator`、同じ手順）
+- 着順：検証器の `order` の中の `playerSlot` の位置 + 1。`finishTicks` が −1 なら完走していない（`place: null`）。
+- タイム：`raceTimeMs`（`(finishTick − gateOpenTick) × ⌊1000/tickHz⌋ + ⌊finishFrac × ⌊1000/tickHz⌋ / 65536⌋`、タイムアタックと同じ）。
+- ムチ：送られた（＝検証した）入力のうち、`playerSlot` でムチのビット（32）を含むレコードの数。スタートと同時に押したムチも1回、他の枠の入力は数えない。
+- 脚質：発行した設定の自分の馬の `style`。
+- `checks` は `finish` ＋条件の順（place → style → whips → time）。すべて `ok` で `cleared`。
+
+### 31.8 KPI（サーバーのイベント）
+| イベント | s1 | s2 | s3 | 数値 |
+|---|---|---|---|---|
+| `challenge_start` | チャレンジ id | 週 id | `loan`/`own` | `count` 今週そのチャレンジを始めた回数 |
+| `challenge_clear` | チャレンジ id | 週 id | `loan`/`own` | `place`、`durationMs` タイム、`count` 今週のクリア数、`isFirst` 今週の初クリア（報酬あり）、`value` 1 = この回でバッジ、`freeCoins` 付与したコイン |
+
+クエリは `docs/ops/kpi-queries.md`「週替わりチャレンジ」。
+
+### 31.9 景品表示法・コンプガチャでないこと（REQ-WCH-010）
+- 報酬は固定・少額で、1つのチャレンジにつき1週1回（無償コイン ≤ 100枚 ≈ ¥160、総付景品の ¥200 を下回る。配合素材は販売していない）。
+- 3つクリアのバッジは**見た目だけ**（能力・報酬なし、販売なし、全員同じ）。チャレンジは誰でも同じ条件で挑め、**ランダムに出るアイテムが一切関わらない**。コンプガチャ（有償のガチャで出る特定の組み合わせをそろえると別の景品が出る）は「ランダムに提供されるアイテムをそろえる」ことが要件なので、これに当たらない。
+
+### 31.10 クライアント
+- `Muchi.Client`：`ApiClient.GetWeeklyChallengesAsync`・`StartWeeklyChallengeAsync`（冪等キーは応答まで保持）・`SubmitWeeklyChallengeAsync`（再送安全）、`ChallengeRun`（`OfflineRace` を `playerSlot` で走らせ、入力を `maxInputs` までに抑え、ムチの入力数を数える）、`ChallengeEvaluator`（31.7 と同じ判定。結果画面は送信前に端末の判定を出し、サーバーの判定で確定する）。
+- Unity ゲーム層 `WeeklyChallengeModel`：ホームのカード（今週のクリア数・残り日数）、一覧（条件の文・報酬・貸し出し馬）、レース中の HUD の条件の行（「ムチ 2/3」など、満たせなくなったら赤）、結果（クリア／失敗、条件ごとの○×、初クリアの報酬、バッジ）。ホームのカードはタイムアタックの解放（`time_attack`）と同時に出す（サーバーは解放で制限しない）。
+- デプロイ：モード `challenge` を知っている検証器（`Muchi.Net` の `ParseMode`）を先に出してから、サーバーを出す。

@@ -183,6 +183,8 @@ export interface Progression {
   comeback?: import('./comeback.js').ComebackConfig;
   /** REQ-TRAIN-*: 調教 (training.ts, validated by trainingProblems). Absent = no training. */
   training?: import('./training.js').TrainingConfig;
+  /** REQ-WCH-*: 週替わりチャレンジ (weeklyChallenge.ts, validated by weeklyChallengeProblems). Absent = no weekly challenges. */
+  weeklyChallenge?: import('./weeklyChallenge.js').WeeklyChallengeConfig;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */

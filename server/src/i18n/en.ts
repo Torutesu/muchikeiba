@@ -96,6 +96,18 @@ export const CODE_EN: Record<string, string> = {
   '図鑑の達成率は記録の表示だけです。そろえても報酬はありません。': 'The completion rate of the collection is a record only. Completing it pays no reward.',
   '実績はレースや育成などのプレイで達成します。課金やガチャの回数では達成しません。報酬は無償コインです。': 'Achievements come from play, such as racing and raising horses, never from spending or the number of scouts. Rewards are free coins.',
 
+  // ---- 週替わりチャレンジ condition lines (weeklyChallenge.ts conditionLabels; REQ-WCH-004)
+  '逃げの馬で出走': 'Ride a front-runner',
+  '先行の馬で出走': 'Ride a stalker',
+  '差しの馬で出走': 'Ride a closer',
+  '追込の馬で出走': 'Ride a deep closer',
+  '1着でゴール': 'Win the race',
+  '{n}着以内でゴール': 'Finish in the top {n}',
+  'ムチを使わない': 'No whip',
+  'ムチ{n}回以内': 'Whip {n} times or fewer',
+  '{time}以内で完走': 'Finish within {time}',
+  '完走する': 'Finish the race',
+
   // ---- error details shown to players (REQ-API-004 messages; codes are the contract)
   'カタカナ2〜9文字': '2–9 katakana characters',
   '{a}〜{b}文字': '{a}–{b} characters',

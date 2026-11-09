@@ -17,6 +17,7 @@ import { handleAdmin, type OpsApi } from './admin.js';
 import type { AdminPrincipal } from '../ops/admin.js';
 import { clientBatchSchema } from '../domain/kpi.js';
 import type { TimeAttackService } from '../race/timeAttack.js';
+import type { WeeklyChallengeService } from '../race/weeklyChallenge.js';
 import { TA_BOARD_RE } from '../domain/timeAttack.js';
 import { LEAGUE_BOARD_RE } from '../domain/league.js';
 import { TeamsService, type TeamPlayers } from '../domain/teamService.js';
@@ -60,7 +61,8 @@ export type PlayerMethod =
   | 'comeback' | 'comebackClaimLogin' | 'comebackClaimMission' | 'comebackWelcomed' | 'whatsNew' | 'whatsNewSeen'
   | 'ads' | 'setAdPref' | 'adStart' | 'adSession' | 'adReward'
   | 'collection' | 'achievements' | 'claimAchievement' | 'claimAllAchievements'
-  | 'training' | 'trainingStart' | 'trainingFinish' | 'trainingUseItem';
+  | 'training' | 'trainingStart' | 'trainingFinish' | 'trainingUseItem'
+  | 'wchView' | 'wchStart' | 'wchPrepare' | 'wchAbort' | 'wchRecord';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -104,6 +106,8 @@ export interface AppContext {
   friends: FriendsService;
   leaderboard: LeaderboardApi;
   timeAttack: TimeAttackService;
+  /** REQ-WCH-*: 週替わりチャレンジ. Absent → the routes answer NOT_FOUND. */
+  weeklyChallenge?: WeeklyChallengeService;
   /** REQ-TEAM-*: 支部. Absent in contexts that do not serve teams (routes answer NOT_FOUND). */
   teams?: TeamsService;
   /** REQ-EVENT-*: event races. */
@@ -175,6 +179,10 @@ export const clientIdemKey = (req: Request) => {
 const idem = clientIdemKey;
 const id = z.string().min(1).max(64);
 
+const weekly = (c: AppContext) => {
+  if (!c.weeklyChallenge) throw new AppError('NOT_FOUND', 'weekly challenges are not available');
+  return c.weeklyChallenge;
+};
 const teams = (c: AppContext) => {
   if (!c.teams) throw new AppError('NOT_FOUND', 'teams are not available');
   return c.teams;
@@ -665,6 +673,20 @@ export const routes: Route[] = [
   { method: 'GET', path: '/v1/time-attack/ghosts/:seasonId/:trackId/:playerId', auth: 'player', handler: async (_r, p, c) => {
     if (!/^\d{4}-\d{2}$/.test(p.seasonId!) || !/^[a-z0-9_]{1,48}$/.test(p.trackId!)) throw new AppError('BAD_REQUEST', 'bad season or track');
     return c.timeAttack.ghost(p.seasonId!, p.trackId!, p.playerId!);
+  } },
+  // 週替わりチャレンジ weekly challenge (REQ-WCH-*, contracts/protocol.md §31)
+  { method: 'GET', path: '/v1/challenges/weekly', auth: 'player', handler: async (_r, _p, c, u) => weekly(c).view(u) },
+  { method: 'POST', path: '/v1/challenges/weekly/:challengeId/start', auth: 'player', handler: async (r, p, c, u) => {
+    if (!/^[a-z0-9_]{1,40}$/.test(p.challengeId!)) throw new AppError('BAD_REQUEST', 'bad challenge id');
+    const b = await body(r, z.union([z.object({ horseId: id }).strict(), z.object({ loan: z.literal(true) }).strict()]));
+    return weekly(c).start(u, p.challengeId!, b, idem(r));
+  } },
+  { method: 'POST', path: '/v1/challenges/weekly/submit', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({
+      sessionId: id, token: z.string().min(1).max(2048), resultHash: z.string().regex(/^[0-9a-f]{64}$/),
+      inputs: z.array(z.unknown()).max(4000), config: z.unknown().optional(),
+    }).strict());
+    return weekly(c).submit(u, b);
   } },
   // rewarded ads (REQ-AD-*, contracts/protocol.md §21)
   { method: 'GET', path: '/v1/ads', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('ads', u) },

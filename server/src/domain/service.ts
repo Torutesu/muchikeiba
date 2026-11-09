@@ -64,6 +64,7 @@ import {
   claimComebackLogin, claimComebackMission, comebackView, markComebackWelcomed, markWhatsNewSeen, nextComebackWake, noteActivity, runDueComebackPush, whatsNew,
 } from './comeback.js';
 import { finishTraining, startTraining, trainingDelta, trainingTick, trainingView, useTrainingItem } from './training.js';
+import { abortChallengeSubmit, prepareChallengeSubmit, recordChallengeResult, startChallenge, weeklyChallengeView, type WchStartInput } from './weeklyChallenge.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
 export interface PlayerRepo {
@@ -1011,6 +1012,24 @@ export class PlayerService {
   async taView(id: string, trackId: string) {
     trackById(this.d.master, trackId);
     return timeAttackView(await this.load(id), this.d.master.progression.timeAttack, trackId, this.d.clock(), dayRule(this.d.master));
+  }
+
+  // ---- 週替わりチャレンジ weekly challenge (REQ-WCH-*, contracts/protocol.md §31; orchestrated by race/weeklyChallenge.ts) ----
+  async wchView(id: string) { return weeklyChallengeView(this.d.master, await this.load(id), this.d.clock()); }
+  /** Keyed (a retry returns the same session). `ruleset` = the active remote-config ruleset (the day's form is switched off). */
+  wchStart(id: string, challengeId: string, input: WchStartInput, idemKey: string | null = null, ruleset?: Ruleset) {
+    return this.tx(id, idemKey, (s, now, emit) => {
+      notWhileDeleting(s);
+      const sessionId = 'w' + [0, 0, 0].map(() => this.d.rng.nextU32().toString(36)).join('');
+      return startChallenge(this.d.master, s, challengeId, input, sessionId, this.d.rng, now, emit, ruleset);
+    });
+  }
+  wchPrepare(id: string, sessionId: string, inputs: unknown, resultHash: string, echoedConfig: unknown) {
+    return this.tx(id, null, (s, now) => { notWhileDeleting(s); return prepareChallengeSubmit(this.d.master, s, sessionId, inputs, resultHash, echoedConfig, now); });
+  }
+  wchAbort(id: string, sessionId: string) { return this.tx(id, null, (s) => abortChallengeSubmit(s, sessionId)); }
+  wchRecord(id: string, sessionId: string, out: VerifierOutput, claimedHash: string) {
+    return this.tx(id, null, (s, now, emit) => { notWhileDeleting(s); return recordChallengeResult(this.d.master, s, sessionId, out, claimedHash, now, emit); });
   }
 
   // ---- teams: per-player steps, orchestrated by TeamsService (REQ-TEAM-*) ----

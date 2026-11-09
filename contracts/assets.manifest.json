@@ -68,6 +68,24 @@
    "dynamic": false,
    "count": 13
   },
+  "photo/look": {
+   "fallback": "photo/look/default",
+   "description": "フォトモードのルック（色味・フィルターのLUT／ポストプロセス設定。REQ-PHOTO-004）",
+   "dynamic": false,
+   "count": 6
+  },
+  "photo/frame": {
+   "fallback": "photo/frame/default",
+   "description": "フォトモードの写真フレーム（REQ-PHOTO-005）",
+   "dynamic": false,
+   "count": 8
+  },
+  "photo/stamp": {
+   "fallback": "photo/stamp/default",
+   "description": "フォトモードの写真スタンプ（REQ-PHOTO-005）",
+   "dynamic": false,
+   "count": 7
+  },
   "stable/theme": {
    "fallback": "stable/theme/default",
    "description": "マイ厩舎の部屋のテーマ（壁・床。REQ-STABLE-001）",
@@ -78,7 +96,7 @@
    "fallback": "item/default",
    "description": "アイテムのアイコン",
    "dynamic": false,
-   "count": 27
+   "count": 30
   },
   "banner/gacha": {
    "fallback": "banner/gacha/default",
@@ -413,6 +431,9 @@
   "item/event_ticket",
   "item/gacha_ticket",
   "item/gacha_ticket_10",
+  "item/photo_frame_gold_leaf",
+  "item/photo_frame_sakura",
+  "item/photo_stamp_carrot_pop",
   "item/stamp_carrot",
   "item/stamp_horseshoe",
   "item/tack_bridle_classic",
@@ -422,6 +443,27 @@
   "item/tack_saddlecloth_navy",
   "item/ticket_sr_plus",
   "item/training_apple",
+  "photo/frame/champion",
+  "photo/frame/default",
+  "photo/frame/gate",
+  "photo/frame/gold_leaf",
+  "photo/frame/plain",
+  "photo/frame/sakura",
+  "photo/frame/ta_gold",
+  "photo/frame/victory",
+  "photo/look/default",
+  "photo/look/dusk",
+  "photo/look/film",
+  "photo/look/mono",
+  "photo/look/natural",
+  "photo/look/vivid",
+  "photo/stamp/carrot_pop",
+  "photo/stamp/crown",
+  "photo/stamp/default",
+  "photo/stamp/hoof",
+  "photo/stamp/muchi",
+  "photo/stamp/photo_finish",
+  "photo/stamp/star",
   "scene/look/autumn_gold",
   "scene/look/default",
   "scene/look/greenfield",

@@ -71,6 +71,8 @@ export function itemsProblems(m: Master, v: VisualsMaster = VISUALS): string[] {
       if (!ASSET_KEY_RE.test(c.asset) || !c.asset.startsWith('decor/')) p.push(`${c.id}: asset must be a decor/<name> key`);
     } else if (c.kind === 'stamp') {
       if (!ASSET_KEY_RE.test(c.asset) || !c.asset.startsWith('stamp/')) p.push(`${c.id}: asset must be a stamp/<id> key`);
+    } else if (c.kind === 'photo') {
+      if (!ASSET_KEY_RE.test(c.asset) || !/^photo\/(frame|stamp)\//.test(c.asset)) p.push(`${c.id}: asset must be a photo/frame/<id> or photo/stamp/<id> key`);
     } else p.push(`${(c as CosmeticDef).id}: unknown cosmetic kind`);
   }
   return p;

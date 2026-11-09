@@ -18,6 +18,7 @@ import { attachShortfall, coinShortfall } from './shortfall.js';
 import { awaken, breed, breedingPreviewWithAllowance, getHorse, nameHorse, pedigree, retire } from './horses.js';
 import { migrateSkills } from './skills.js';
 import { buyCosmetic, cosmeticsCatalog, findCosmetic, setEquipment, useTicket, type EquipmentPatch } from './itemShop.js';
+import { deletePhoto, photoCatalog, photosView, savePhoto, type PhotoInput } from './photoMode.js';
 import { applyRaceResult, claimLoginBonus, claimMission, claimPass, firstWinBonusView, missionsView, type RaceResultForPlayer } from './rewards.js';
 import { allowanceView, claimAllowance, markOfferViewed, noteRaceForOffers, shopOffers, shopProducts } from './shop.js';
 import { passScreen } from './pass.js';
@@ -1360,6 +1361,15 @@ export class PlayerService {
     if (await this.wiped(id)) return null;
     return this.tx(id, null, (s, now, emit) => playerTeamReward(s, this.d.master.progression.teams, seasonId, teamId, rank, total, now, { cfg: this.d.master.progression.league, place: league }, giftGiver(this.d.master, s, now, emit)));
   }
+
+  // ---- photo mode (REQ-PHOTO-*, photoMode.ts; the images stay on the device) ----
+  async photoCatalog(id: string) { return photoCatalog(this.d.master, await this.load(id)); }
+  async photos(id: string) { return photosView(this.d.master, await this.load(id)); }
+  /** REQ-PHOTO-010: keyed with the client's key (a retry returns the first answer, never a second record). */
+  photoSave(id: string, input: PhotoInput, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => savePhoto(this.d.master, s, input, now, emit));
+  }
+  photoDelete(id: string, photoId: string) { return this.tx(id, null, (s) => deletePhoto(this.d.master, s, photoId)); }
 
   // ---- team cheer stamps (REQ-TEAMFEED-*) ----
   async stampCatalog(id: string) { return stampCatalog(this.d.master, await this.load(id)); }

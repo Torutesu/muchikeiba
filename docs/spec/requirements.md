@@ -759,3 +759,24 @@
 - REQ-HIST-012 クライアント：C# `ApiClient.GetHistory*Async`・`CreateSupportTicketAsync`、Unity `HistoryModel`（タブ・続きの読み込み・問い合わせシート・オフライン）。
 - REQ-HIST-013 ガチャ記録の保存上限：状態の中は最大300件（古い順に消す）、Durable Object の `gacha_log` は90日を過ぎた行を書き込みごとに消し、状態には直近20件だけ残す。
 - REQ-HIST-014 経済：履歴はコインを動かさない（E1〜E15 は変わらない）。
+
+## 38. フォトモード（TS＋C#、`src/domain/photoMode.ts`・`server/master/photo.json`・`Muchi.Client/PhotoMode.cs`・`Muchi.Game.PhotoModeModel`、`contracts/protocol.md` §38）
+拘束条件：他の人のレースを止めない、レースの結果・ハッシュ・ゴールデンを変えない、ランダムな販売なし、他人の名前を出さない、ひとことは翻訳しない。コイン・アイテムは配らない（E なし）。
+- REQ-PHOTO-001 入口：ひとりで走るレース（オフライン・練習・タイムアタック・チュートリアル・週替わりチャレンジ）はレース中に一時停止して撮れる。ランク戦・フレンド戦・イベント・大会はレース中に止めず、結果画面とリプレイからだけ撮れる（クライアント `PhotoModeModel.CanPause`、サーバーは `source.kind: "paused"` でその4つを 400 `PHOTO_SOURCE_INVALID`）。
+- REQ-PHOTO-002 決定論：写真は `(raceId, tick)`＋カメラ＋重ねる物で決まる。端末は設定＋確定入力をその tick まで計算し直して馬の状態を作る（`PhotoSnapshot.Capture`）。走っているレースの `RaceSim` を触らず、結果ハッシュ・ゴールデンは変わらない。同じ入力なら `Fingerprint` が同じ。
+- REQ-PHOTO-003 カメラ：注目の馬のまわりを回る・寄る・高さ・画角・被写界深度（0〜3）。範囲は `photo.json config.camera`（サーバーとクライアントで同じ）。高さは 0.3 m 以上（コースの下に入らない）。
+- REQ-PHOTO-004 ルック（色味・フィルター）：いくつか用意し、すべて無料（`unlock: default` だけ。検査で強制）。
+- REQ-PHOTO-005 フレーム・スタンプ：無料のもの、実績（§24 の段）で解放するもの、見た目ショップで決まった価格で買えるもの（`items.json` `kind: "photo"`、既存の購入 API、1回だけ、ランダムなし）。能力には影響しない。
+- REQ-PHOTO-006 カタログ：`GET /v1/photo/catalog` は品ごとに名前・アセットキー・解放の条件の文・解放済みか・（買える品は）価格。
+- REQ-PHOTO-007 ひとこと：0〜24文字。表示名と同じ規則（NFKC・制御文字・URL・NG 名）＋ショップの言葉の規則（倍・お得・今だけ・残りわずか・通常価格）＋賭けの言葉（馬券・賭け・オッズ・配当・払戻・的中・予想など）は使えない。応答でも翻訳しない（`PLAYER_TEXT_KEYS`）。
+- REQ-PHOTO-008 名札とプライバシー：自分は「あなた」、フレンドは表示名、フレンドでない人間は `p<slot>`（§37 と同じ）、CPU は「CPU」。名札を全部隠す設定（`names: "hidden"`）。共有の文に他人の名前を入れない。
+- REQ-PHOTO-009 共有：既存のリプレイ共有の静止画（`ShareCard`・`IClipRecorder.CaptureStillAsync`・`IShareSheet`）にゲームのロゴ、ひとこと・フレーム・スタンプ・ルックを足した `PhotoShareCard`（`Kind = "photo_image"`）。UI を隠す切り替え。写真に HUD は入れない。
+- REQ-PHOTO-010 写真の記録：`POST /v1/photos`（冪等キー）でソース・tick・カメラ・重ねる物・ひとことの小さな記録を保存（画像は保存しない）。最大 30 件（購入で増えない）、超えたら 409 `PHOTO_LIMIT`。`GET /v1/photos`・`DELETE /v1/photos/:photoId`。本人だけが読める。
+- REQ-PHOTO-011 記録の検査：値の範囲（カメラ・スタンプの位置・数）、未解放の品は 409 `PHOTO_LOCKED`、他のキーは 400。
+- REQ-PHOTO-012 無効化：`config.enabled: false` で API は 404、カタログは `{ enabled: false }`、クライアントは入口を隠す。
+- REQ-PHOTO-013 設定の検査（起動時・リモート設定）：`photoProblems`（形・範囲・重複・ルックは全部無料・無料のフレームとスタンプが1つ以上・実績と段が実在・写真の品と解放の対応が1対1・文の言葉の規則）。
+- REQ-PHOTO-014 KPI：クライアント `photo_take`（source・look）・`photo_share`（source・framed、共有した時だけ）、サーバー `photo_save`（source.kind・mode）。
+- REQ-PHOTO-015 クライアント SDK：`ApiClient.GetPhotoCatalogAsync`・`GetPhotosAsync`・`SavePhotoAsync`・`DeletePhotoAsync`、`PhotoCamera`・`PhotoSnapshot`・`PhotoNames`・`PhotoShareCard`・`PhotoCaption`（端末での事前チェック、最終判断はサーバー）。
+- REQ-PHOTO-016 Unity：`PhotoModeModel`（入口の判定・カメラ操作・品の選択と鍵・ひとこと・名札・UI を隠す・共有・保存・オフライン）。
+- REQ-PHOTO-017 英語：品の名前・解放の文・注意書き・画面の文は英語あり（`locale-en.json`・`i18n/en.ts`・`ui-en.json`・`proto-en.json`）。ひとこととプレイヤーの名前は訳さない。
+- REQ-PHOTO-018 経済：写真の品の購入は既存の見た目ショップのコインの使い道で、何も配らない（E1〜E19 は変わらない）。

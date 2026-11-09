@@ -24,6 +24,7 @@ import stampsJson from '../../master/stamps.json';
 import localeEnJson from '../../master/locale-en.json';
 import type { CollectionMaster } from './collection.js';
 import collectionJson from '../../master/collection.json';
+import photoJson from '../../master/photo.json';
 import { trackSchema, type GoingAptitude, type Going, type Track } from './schemas.js';
 import { AppError } from './errors.js';
 import { loadSkills, type SkillsMaster } from './skills.js';
@@ -113,7 +114,9 @@ export type CosmeticDef =
   | { id: string; name: string; kind: 'tack'; slot: TackSlot; asset: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean }
   | { id: string; name: string; kind: 'decor'; asset: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean }
   /** REQ-TEAMFEED-002: a team-feed stamp sold directly for coins (asset stamp/<id>; master/stamps.json says which stamp it unlocks). */
-  | { id: string; name: string; kind: 'stamp'; asset: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean };
+  | { id: string; name: string; kind: 'stamp'; asset: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean }
+  /** REQ-PHOTO-005: a photo-mode frame or stamp sold directly for coins (asset photo/frame|stamp/<id>; master/photo.json says which item it unlocks). */
+  | { id: string; name: string; kind: 'photo'; asset: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean };
 export type TackSlot = 'bridle' | 'saddlecloth';
 export const TACK_SLOTS: TackSlot[] = ['bridle', 'saddlecloth'];
 export interface ItemsMaster {
@@ -380,6 +383,8 @@ export interface Master {
   locale?: { en: Record<string, string> };
   /** REQ-COL-* / REQ-ACH-*: 図鑑 lore and achievements (master/collection.json; collection.ts collectionOf falls back to it when absent). */
   collection?: CollectionMaster;
+  /** REQ-PHOTO-*: photo mode looks / frames / stamps (master/photo.json; photoMode.ts photoOf falls back to it when absent). */
+  photo?: import('./photoMode.js').PhotoMaster;
 }
 
 export const PPM_TOTAL = 1_000_000;
@@ -532,6 +537,7 @@ export function loadMaster(): Master {
     changelog: (changelogJson as unknown as { entries: import('./comeback.js').ChangelogEntry[] }).entries,
     locale: { en: (localeEnJson as unknown as { strings: Record<string, string> }).strings },
     collection: collectionJson as unknown as CollectionMaster,
+    photo: photoJson as unknown as import('./photoMode.js').PhotoMaster,
   };
   cached = m;
   return m;

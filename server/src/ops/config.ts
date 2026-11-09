@@ -5,6 +5,7 @@ import { VISUALS, collectItemIds } from '../domain/visuals.js';
 import { bondProblems } from '../domain/bond.js';
 import { itemsProblems } from '../domain/itemShop.js';
 import { stampsProblems } from '../domain/teamFeed.js';
+import { photoProblems } from '../domain/photoMode.js';
 import { holdPolicyProblems } from '../domain/retention.js';
 import { roomsProblems } from '../domain/presets.js';
 import { studConfigProblems } from '../domain/stud.js';
@@ -186,6 +187,7 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
   // QA r6 #1: tickets must never reach a paid-only banner, including after a remote-config banner change
   if (master.items) problems.push(...itemsProblems(master));
   if (master.items) problems.push(...stampsProblems(master)); // REQ-TEAMFEED-002: stamp cosmetics and stamps stay paired
+  if (master.items) problems.push(...photoProblems(master)); // REQ-PHOTO-013: photo cosmetics and photo items stay paired
   // REQ-UXS-050: a ruleset override may not lower a skill cap below what the skill master uses
   if (master.skills) problems.push(...skillProblems(master, ruleset));
   // REQ-ACH-007: achievement caps / metrics / title tiers against this version (tracks, titles); the comp-gacha set

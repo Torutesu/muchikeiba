@@ -85,6 +85,12 @@ namespace Muchi.Client
         ChallengeSessionExpired,
         ChallengeSessionUsed,
         ChallengeResultMismatch,
+        /// <summary>409: at most `maxSaved` photo records (REQ-PHOTO-010).</summary>
+        PhotoLimit,
+        /// <summary>409: a look / frame / stamp that is not unlocked (REQ-PHOTO-011).</summary>
+        PhotoLocked,
+        /// <summary>400: a race run with other people cannot be paused (REQ-PHOTO-001).</summary>
+        PhotoSourceInvalid,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -179,6 +185,9 @@ namespace Muchi.Client
             ["CHALLENGE_SESSION_EXPIRED"] = ApiErrorCode.ChallengeSessionExpired,
             ["CHALLENGE_SESSION_USED"] = ApiErrorCode.ChallengeSessionUsed,
             ["CHALLENGE_RESULT_MISMATCH"] = ApiErrorCode.ChallengeResultMismatch,
+            ["PHOTO_LIMIT"] = ApiErrorCode.PhotoLimit,
+            ["PHOTO_LOCKED"] = ApiErrorCode.PhotoLocked,
+            ["PHOTO_SOURCE_INVALID"] = ApiErrorCode.PhotoSourceInvalid,
             ["VERIFIER_UNAVAILABLE"] = ApiErrorCode.VerifierUnavailable,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };

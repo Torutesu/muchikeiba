@@ -70,6 +70,10 @@ export const assetKeys = {
   decor: (name: string) => `decor/${name}`,
   /** REQ-TEAMFEED-001: team cheer stamp (master/stamps.json `stamps[].id`). */
   stamp: (id: string) => `stamp/${id}`,
+  /** REQ-PHOTO-005: photo mode look (filter) / frame / stamp (master/photo.json ids). */
+  photoLook: (id: string) => `photo/look/${id}`,
+  photoFrame: (id: string) => `photo/frame/${id}`,
+  photoStamp: (id: string) => `photo/stamp/${id}`,
   /** REQ-STABLE-*: マイ厩舎 room theme (walls/floor), master/stable.json `themes[].id`. */
   stableTheme: (id: string) => `stable/theme/${id}`,
   gate: (bracket: number) => `ui/gate/${bracket}`,
@@ -112,6 +116,9 @@ export const ASSET_KINDS: Record<string, { description: string; dynamic?: boolea
   tack: { description: '馬具（頭絡・ゼッケン布）。馬のモデルに重ねる見た目（REQ-ITEM-006）' },
   decor: { description: '厩舎の飾り（REQ-ITEM-006）' },
   stamp: { description: '支部の応援スタンプ（REQ-TEAMFEED-001。定型の絵とラベルだけ）' },
+  'photo/look': { description: 'フォトモードのルック（色味・フィルターのLUT／ポストプロセス設定。REQ-PHOTO-004）' },
+  'photo/frame': { description: 'フォトモードの写真フレーム（REQ-PHOTO-005）' },
+  'photo/stamp': { description: 'フォトモードの写真スタンプ（REQ-PHOTO-005）' },
   'stable/theme': { description: 'マイ厩舎の部屋のテーマ（壁・床。REQ-STABLE-001）' },
   item: { description: 'アイテムのアイコン' },
   'banner/gacha': { description: 'ガチャのバナー' },

@@ -140,6 +140,7 @@ export function settleRace(config: RaceStartConfig, final: FinalOutcome, ratings
       details: log && config.mode !== 'tutorial' ? withAssist(withSkill(raceDetailsFor(config, log, h.slot, ft === undefined || ft < 0 ? null : ft), final.skillFired, h.slot), final.assisted, h.slot) : null,
       ...(config.mode !== 'tutorial' ? { seen: raceFieldSeen(config, h.slot) } : {}),
       humans: humans.length,
+      horseId: h.horse.id, // REQ-HOF-002: whose career this race counts for
       oldRating: ratings[h.playerId!] ?? null,
       ...(config.mode === 'ranked' || config.mode === 'friend' ? { field } : {}),
       ...ev,

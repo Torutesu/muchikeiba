@@ -20,6 +20,7 @@ import { appearanceOf, effectiveSilks, type Appearance, type Silks } from './vis
 import type { RaceResultForPlayer } from './rewards.js';
 import type { KpiEvent } from './kpi.js';
 import { grantReward, logItem } from './items.js';
+import { rivalTrackName } from './rival.js';
 
 // ------------------------------------------------------------------------------------------- config
 
@@ -218,7 +219,7 @@ export function inductReasons(cfg: HallConfig, c: CareerRecord, partner: boolean
  * career span. The time-attack line names the course of the most recent best (ties: course id). No randomness.
  */
 export function pickHighlights(m: Master, cfg: HallConfig, c: CareerRecord, partner: boolean): Highlight[] {
-  const trackName = (id: string | null) => (id ? m.tracks.find((t) => t.id === id)?.name ?? id : '');
+  const trackName = (id: string | null) => (id ? rivalTrackName(id) : '');
   const out: Highlight[] = [];
   const titles = c.tournaments.filter((t) => t.rank === 1);
   if (titles.length > 0) {
@@ -238,7 +239,7 @@ export function pickHighlights(m: Master, cfg: HallConfig, c: CareerRecord, part
   }
   if (c.rivalWins > 0) out.push({ kind: 'rival_wins', text: `ライバルに${c.rivalWins}回先着`, params: { n: c.rivalWins } });
   const ta = Object.entries(c.bestTa).sort((a, b) => b[1].at - a[1].at || a[0].localeCompare(b[0]))[0];
-  if (ta) out.push({ kind: 'ta_best', text: `タイムアタック ${trackName(ta[0])} ${fmtTime(ta[1].timeMs)}`, params: { course: trackName(ta[0]), time: fmtTime(ta[1].timeMs) } });
+  if (ta) out.push({ kind: 'ta_best', text: `タイムアタック ${trackName(ta[0])}：${fmtTime(ta[1].timeMs)}`, params: { course: trackName(ta[0]), time: fmtTime(ta[1].timeMs) } });
   if (c.places > 0 && c.wins === 0) out.push({ kind: 'places', text: `3着以内${c.places}回`, params: { n: c.places } });
   if (c.firstRaceAt !== null && c.lastRaceAt !== null) {
     const days = Math.max(1, Math.floor((c.lastRaceAt - c.firstRaceAt) / DAY_MS) + 1);

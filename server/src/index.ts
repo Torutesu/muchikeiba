@@ -41,8 +41,9 @@ import { authenticateAdmin, parseAdminTokens, parseConsoleOrigins, RateLimiter, 
 import { DeadLetterService, type DeadLetterOwner, type DeadLetterRegistry, type DeadLetterSource } from './ops/deadLetter.js';
 import { activeConfig } from './ops/activeConfig.js';
 import type { ResolvedConfig } from './ops/config.js';
-import { shardedDirectory, shardedInviteDirectory, shardedStableDirectory, shardedStudDirectory } from './do/directory.js';
+import { shardedDirectory, shardedHallDirectory, shardedInviteDirectory, shardedStableDirectory, shardedStudDirectory } from './do/directory.js';
 import { makeStableService } from './http/stablePorts.js';
+import { makeHallService } from './http/hallPorts.js';
 import { RivalService, rivalPlayersFrom } from './domain/rivalService.js';
 import { durableRivalRegistry } from './do/rivalStore.js';
 import { weekIdAt } from './domain/rival.js';
@@ -399,6 +400,7 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
     friends: makeFriendsService((uid) => player(uid), shardedDirectory(env.DIRECTORY)),
     stud: makeStudService(player, shardedStudDirectory(env.DIRECTORY), () => master),
     stable: makeStableService(player, shardedStableDirectory(env.DIRECTORY), () => master),
+    hall: makeHallService(player, shardedHallDirectory(env.DIRECTORY), () => master), // REQ-HOF-*
     invite: makeInviteService(player, shardedInviteDirectory(env.DIRECTORY), shardedDirectory(env.DIRECTORY), () => master), // REQ-INV-*
     teams: makeTeamsService(env, () => master, player),
     rival: new RivalService(() => master, rivalPlayersFrom(player), durableRivalRegistry(env.LEADERBOARD)), // REQ-RIVAL-*

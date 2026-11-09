@@ -71,6 +71,10 @@ import {
   ensureRival, noteRivalRace, noteRivalTa, rivalBlock, rivalChallengeCheck, rivalChallengeReceive, rivalOutbound, rivalSeen, rivalSetOptOut, rivalSync,
   rivalUpdateOf, rivalView, rivalWithdrawn, weekIdAt, weeksToSync, type RegistryWeek, type RivalUpdate,
 } from './rival.js';
+import {
+  ackCeremony, hallSnapshot, hallSnapshotKey, hallViewerOf, horseCareerView, myHallView, noteHallRace, noteHallRetire, noteHallTa, noteHallTournament,
+  setHallVisibility, type HallRelation, type HallSnapshot,
+} from './hallOfFame.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
 export interface PlayerRepo {
@@ -148,6 +152,8 @@ export interface PlayerServiceDeps {
    * a pair I dissolved, new weekly time-attack bests). Best effort: RivalService re-sends what matters on the next sync.
    */
   onRival?: (u: RivalUpdate) => void | Promise<void>;
+  /** REQ-HOF-011: the public hall copy changed (null = remove it: empty, private, banned, deletion). The Durable Object writes the directory. */
+  onHall?: (playerId: string, snap: HallSnapshot | null) => void | Promise<void>;
 }
 
 const standingKey = (s: PlayerState) => JSON.stringify([s.season.id, s.season.classId, s.season.points, s.season.races, Math.round(s.rating.r), s.profile.displayName, s.profile.titleId]);
@@ -204,6 +210,7 @@ export class PlayerService {
     const wakeBefore = nextWake(draft);
     const stableBefore = this.d.onStable ? stableSnapshotKey(this.d.master, draft, now) : '';
     const rivalBefore = this.d.onRival ? rivalOutbound(this.d.master, draft, now) : null;
+    const hallBefore = this.d.onHall ? hallSnapshotKey(this.d.master, draft, now) : '';
     const kpi: KpiRecord[] = [];
     const emit: Emit = (e) => { kpi.push(kpiRecord(draft, now, e)); };
     expireGifts(this.d.master, draft, now, emit); // REQ-BOX-006: lazy expiry on every transaction (the alarm runs one too)
@@ -236,6 +243,10 @@ export class PlayerService {
     if (kpi.length > 0 && this.d.onKpi) await this.d.onKpi(id, kpi);
     if (pushProfile) await this.d.onProfile!(publicProfile(draft, this.d.master.bannedSilks));
     if (this.d.onStable && stableSnapshotKey(this.d.master, draft, now) !== stableBefore) await this.d.onStable(id, stableSnapshot(this.d.master, draft, now));
+    if (this.d.onHall && hallSnapshotKey(this.d.master, draft, now) !== hallBefore) {
+      // best effort like the stable copy: the transaction is saved; the next change re-writes the copy
+      try { await this.d.onHall(id, hallSnapshot(this.d.master, draft, now)); } catch (e) { console.error('hall copy failed', id, (e as Error).message); }
+    }
     if (this.d.onRival) {
       const u = rivalUpdateOf(id, rivalBefore, rivalOutbound(this.d.master, draft, now));
       if (u) { try { await this.d.onRival(u); } catch (e) { console.error('rival registry update failed', id, (e as Error).message); } }
@@ -481,7 +492,14 @@ export class PlayerService {
 
   nameHorse(id: string, horseId: string, name: string) { return this.tx(id, null, (s) => nameHorse(this.d.master, s, horseId, name)); }
   async awaken(id: string, horseId: string, idemKey: string | null) { return this.tx(id, this.requireKey(idemKey), (s) => awaken(this.d.master, s, horseId)); }
-  retire(id: string, horseId: string) { return this.tx(id, null, (s) => retire(s, horseId)); }
+  /** REQ-HOF-003: the response also carries the retirement ceremony (null when the hall is disabled). */
+  retire(id: string, horseId: string) {
+    return this.tx(id, null, (s, now, emit) => {
+      const h = retire(s, horseId);
+      const ceremony = noteHallRetire(this.d.master, s, h, now, emit);
+      return { ...h, ceremony };
+    });
+  }
 
   async breedingPreview(id: string, sireId: string, damId: string) {
     return breedingPreviewWithAllowance(this.d.master, await this.load(id), sireId, damId, this.d.clock());
@@ -756,6 +774,9 @@ export class PlayerService {
       applied[r.raceId] = now;
       const base0 = applyRaceResult(this.d.master, s, r, now);
       noteRivalRace(this.d.master, s, r, now, emit); // REQ-RIVAL-004: head to head (ranked) / challenge (friend)
+      // REQ-HOF-001: the horse's career (a ranked race counted against the weekly rival with me ahead is a rival win)
+      const rivalWin = r.mode === 'ranked' && !!s.rival?.weeks.some((w) => w.races.some((x) => x.raceId === r.raceId && x.mode === 'ranked' && x.point === 'me'));
+      noteHallRace(this.d.master, s, r, now, rivalWin);
       // REQ-COL-002 / REQ-ACH-002: what the race showed the 図鑑, a fired skill, and the tiers it unlocked (with titles)
       noteRaceCollection(this.d.master, s, r);
       const achievements = syncCollection(this.d.master, s, now, emit);
@@ -1061,6 +1082,29 @@ export class PlayerService {
     return this.tx(id, null, (s, now) => setModeration(s, status, until, reason, now));
   }
 
+  // ---- 殿堂 (REQ-HOF-*, hallOfFame.ts) ----
+  /** REQ-HOF-009: my hall (a read: the hof_view KPI with relation self, no state is written). */
+  async hallMine(id: string, cursor: string | null, limit: number | null) {
+    const s = await this.load(id);
+    const now = this.d.clock();
+    const v = myHallView(this.d.master, s, cursor, limit);
+    if (this.d.onKpi) await this.d.onKpi(id, [kpiRecord(s, now, { name: 'hof_view', s1: 'self', value: v.entries.length })]);
+    return v;
+  }
+  /** REQ-HOF-012: the visitor's side of a visit (friends, branch, block list), read only. */
+  async hallViewer(id: string) { return hallViewerOf(await this.load(id)); }
+  /** REQ-HOF-016: the hof_view KPI of a visit (no state is written). */
+  async hallNoteView(id: string, relation: HallRelation, count: number) {
+    if (!this.d.onKpi) return { noted: false };
+    const s = await this.load(id);
+    await this.d.onKpi(id, [kpiRecord(s, this.d.clock(), { name: 'hof_view', s1: relation, value: count })]);
+    return { noted: true };
+  }
+  async horseCareer(id: string, horseId: string) { return horseCareerView(this.d.master, await this.load(id), horseId); }
+  /** REQ-HOF-004: idempotent by nature (a repeat returns the first acknowledgement). */
+  hallAck(id: string, horseId: string) { return this.tx(id, null, (s, now) => ackCeremony(s, horseId, now)); }
+  hallSettings(id: string, visibility: string) { return this.tx(id, null, (s) => setHallVisibility(s, visibility)); }
+
   // ---- マイ厩舎 (REQ-STABLE-*, stable.ts) ----
   async stableMine(id: string) { return stableView(this.d.master, await this.load(id), this.d.clock()); }
   stableSave(id: string, input: StableInput) {
@@ -1150,6 +1194,10 @@ export class PlayerService {
       const r = recordResult(this.d.master, s, this.d.master.progression.timeAttack, sessionId, out, claimedHash, now);
       if (!counted && 'finished' in r && r.finished) countOnboarding(s, 'ta_finish');
       if (!counted && 'finished' in r && r.finished && r.timeMs !== null) noteRivalTa(this.d.master, s, r.trackId, r.timeMs, now); // REQ-RIVAL-005
+      if (!counted && 'finished' in r && r.finished && r.timeMs !== null) {
+        const horseId = s.timeAttack?.sessions.find((x) => x.id === sessionId)?.horseId;
+        if (horseId) noteHallTa(this.d.master, s, horseId, r.trackId, r.timeMs, now); // REQ-HOF-001
+      }
       return r;
     });
   }
@@ -1256,7 +1304,7 @@ export class PlayerService {
     return { entry, displayName: s.profile.displayName, info: { classId: entry.classId, rankedRaces: s.rating.rankedRaces, style: h.style as string, horseActive: h.status === 'active', moderation: entry.moderation } };
   }
   /** REQ-TOUR-007: final rank + prize, once per tournament (resumable payout; a retry is a no-op). */
-  async tournamentClose(id: string, tournamentId: string, rank: number, reward: Reward | null, name: string) {
+  async tournamentClose(id: string, tournamentId: string, rank: number, reward: Reward | null, name: string, horseId: string | null = null) {
     if (await this.wiped(id)) return { status: 'already' as const, reward: null };
     return this.tx(id, null, (s, now, emit) => {
       const done = (s.tournaments ??= {});
@@ -1265,6 +1313,7 @@ export class PlayerService {
       if (reward) giftGiver(this.d.master, s, now, emit)(reward, `tournament ${tournamentId} rank ${rank}`, `tournament:${tournamentId}:rank`, 'tournament', rank);
       done[tournamentId] = { name, rank, at: now, reward };
       noteTournamentResult(s, rank); // REQ-ACH-002 (once per tournament, behind the same guard)
+      noteHallTournament(this.d.master, s, horseId, tournamentId, name, rank, now); // REQ-HOF-001
       const keys = Object.entries(done).sort((a, b) => b[1].at - a[1].at).map(([k]) => k);
       for (const k of keys.slice(TOURNAMENT_HISTORY_KEEP)) delete done[k];
       return { status: 'rewarded' as const, reward };

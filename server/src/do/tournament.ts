@@ -111,7 +111,7 @@ export class TournamentDO extends DurableObject<Env> {
       },
       heatResult: async (raceId) => (await (this.stub(this.env.RACE_ROOM, raceId) as unknown as { heatResult(): Promise<HeatOutcome | null> }).heatResult()),
       notify: async (pid, templateId, vars) => { unwrap(await this.player(pid).invoke('queuePush', [pid, templateId, vars])); },
-      award: async (pid, tid, rank, reward, name) => { unwrap(await this.player(pid).invoke('tournamentClose', [pid, tid, rank, reward, name])); },
+      award: async (pid, tid, rank, reward, name, horseId) => { unwrap(await this.player(pid).invoke('tournamentClose', [pid, tid, rank, reward, name, horseId ?? null])); },
     };
   }
 

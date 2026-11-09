@@ -208,6 +208,8 @@ export interface PlayerState {
   assist?: import('./assist.js').AssistState;
   /** REQ-RIVAL-*: opt-out, this week's rival and score, unsettled weeks, results (rival.ts ensureRival). */
   rival?: import('./rival.js').RivalState;
+  /** REQ-HOF-*: 殿堂 — per-horse careers, retirement ceremonies, permanent plaques, visibility (hallOfFame.ts ensureHall). */
+  hall?: import('./hallOfFame.js').HallState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

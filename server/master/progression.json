@@ -898,6 +898,15 @@
       { "id": "ta_attempt", "surface": "time_attack", "title": "動画を見て、タイムアタックをもう1回", "dailyCap": 1, "reward": { "taAttempts": 1 }, "adUnitKey": "REWARDED_TA" }
     ]
   },
+  "hall": {
+    "_note": "REQ-HOF-*（contracts/protocol.md §34）。殿堂入りは引退の時に、確定したレースの成績だけで判定（winsMin勝以上・大会優勝・相棒でpartnerRacesMin戦以上のどれか）。報酬は最初の殿堂入りの時に1回だけ非売品の飾り（コインなし）。",
+    "enabled": true,
+    "criteria": { "winsMin": 10, "tournamentWin": true, "partnerRacesMin": 30 },
+    "highlightsMax": 5,
+    "pageSize": 20,
+    "pageSizeMax": 50,
+    "rewardItemId": "decor_hall_plaque_frame"
+  },
   "rival": {
     "_note": "REQ-RIVAL-*（contracts/protocol.md §28）。週はゲーム日（dayRollover、既定4:00 JST）の weekStartsOn（1=月曜）から7日。先週ランク戦を走った同じクラスのレーティングの近い人（maxRatingGap 以内）と、週IDの seed と並べた候補から決定論で組む。合う人がいなければ cpuRivals から週IDとプレイヤーIDで決まるCPU。報酬は結果で決まる固定の無償コインだけ（1週 ≤ 100 = ¥160 相当、連勝の上乗せなし、乱数なし）。週の自分のランク戦が minRacesForResult 未満なら報酬なし。経済 E16（docs/spec/balance-targets.md 4.13）。",
     "enabled": true,

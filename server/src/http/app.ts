@@ -29,6 +29,7 @@ import { StudService, type StudDirectory, type StudPlayers } from '../domain/stu
 import type { SpectateService } from '../domain/spectate.js';
 import type { TournamentEntryInfo, TournamentPlayers, TournamentsService } from '../domain/tournamentService.js';
 import type { StableService } from '../domain/stable.js';
+import type { HallService } from '../domain/hallOfFame.js';
 import { InviteService, type InviteDirectory, type InvitePlayers } from '../domain/invite.js';
 import { SsvError, verifyAdMobCallback, type SsvKeySource } from '../ads/ssv.js';
 import { LOCALES, resolveLocale, type Locale } from '../i18n/locale.js';
@@ -65,7 +66,8 @@ export type PlayerMethod =
   | 'training' | 'trainingStart' | 'trainingFinish' | 'trainingUseItem'
   | 'giftBox' | 'giftClaim' | 'giftClaimAll'
   | 'assist' | 'setAssist' | 'assistPromptSeen'
-  | 'rivalPeek' | 'rivalSync' | 'rivalSetOptOut' | 'rivalBlock' | 'rivalChallengeCheck' | 'rivalChallengeReceive' | 'rivalSeen' | 'rivalPush';
+  | 'rivalPeek' | 'rivalSync' | 'rivalSetOptOut' | 'rivalBlock' | 'rivalChallengeCheck' | 'rivalChallengeReceive' | 'rivalSeen' | 'rivalPush'
+  | 'hallMine' | 'hallViewer' | 'hallNoteView' | 'horseCareer' | 'hallAck' | 'hallSettings';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -121,6 +123,8 @@ export interface AppContext {
   tournaments?: TournamentsService;
   /** REQ-STABLE-*: マイ厩舎 (http/stablePorts.ts makeStableService). */
   stable?: StableService;
+  /** REQ-HOF-*: 殿堂 (http/hallPorts.ts makeHallService). */
+  hall?: HallService;
   /** REQ-INV-*: friend invite codes (makeInviteService). Absent → the routes answer NOT_FOUND. */
   invite?: InviteService;
   /** REQ-RIVAL-*: weekly rival (domain/rivalService.ts). Absent → the routes answer NOT_FOUND. */
@@ -220,6 +224,20 @@ const tournaments = (c: AppContext) => {
 const stable = (c: AppContext) => {
   if (!c.stable) throw new AppError('NOT_FOUND', 'stables are not available');
   return c.stable;
+};
+const hall = (c: AppContext) => {
+  if (!c.hall) throw new AppError('NOT_FOUND', 'the hall of fame is not available');
+  return c.hall;
+};
+/** REQ-HOF-009: `?cursor=<inductedAt>_<horseId>&limit=<n>` of a hall listing. */
+const hallPage = (r: Request) => {
+  const q = new URL(r.url).searchParams;
+  const cursor = q.get('cursor');
+  const raw = q.get('limit');
+  if (cursor !== null && cursor !== '' && (cursor.length < 3 || cursor.length > 160)) throw new AppError('BAD_REQUEST', 'bad cursor');
+  const limit = raw === null ? null : Number(raw);
+  if (limit !== null && (!Number.isInteger(limit) || limit < 1 || limit > 1000)) throw new AppError('BAD_REQUEST', 'bad limit');
+  return { cursor: cursor || null, limit };
 };
 const rival = (c: AppContext) => {
   if (!c.rival) throw new AppError('NOT_FOUND', 'rivals are not available');
@@ -405,6 +423,15 @@ export const routes: Route[] = [
   } },
   { method: 'POST', path: '/v1/horses/:horseId/awaken', auth: 'player', handler: async (r, p, c, u) => c.player(u).invoke('awaken', u, p.horseId!, idem(r)) },
   { method: 'POST', path: '/v1/horses/:horseId/retire', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('retire', u, p.horseId!) },
+  // 殿堂 (REQ-HOF-*): career record, ceremonies, plaques, visiting
+  { method: 'GET', path: '/v1/horses/:horseId/career', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('horseCareer', u, p.horseId!) },
+  { method: 'GET', path: '/v1/hall', auth: 'player', handler: async (r, _p, c, u) => { const q = hallPage(r); return hall(c).mine(u, q.cursor, q.limit); } },
+  { method: 'PUT', path: '/v1/hall/settings', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ visibility: z.enum(['friends_team', 'friends', 'private']) }));
+    return c.player(u).invoke('hallSettings', u, b.visibility);
+  } },
+  { method: 'POST', path: '/v1/hall/ceremonies/:horseId/ack', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('hallAck', u, p.horseId!) },
+  { method: 'GET', path: '/v1/hall/:playerId', auth: 'player', handler: async (r, p, c, u) => { const q = hallPage(r); return hall(c).visit(u, playerIdParam(p.playerId!), q.cursor, q.limit); } },
   { method: 'GET', path: '/v1/horses/:horseId/pedigree', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('pedigree', u, p.horseId!) },
   // stable care / bond (REQ-BOND-*): never affects ranked, event or time attack stats
   { method: 'GET', path: '/v1/bond', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('bondLevels', u) },

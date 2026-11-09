@@ -11,7 +11,7 @@ import { SqlPlayerRepo } from './sqlRepo.js';
 import { unwrap, wrap, type Envelope } from './rpc.js';
 import { retryStudOutbox } from '../domain/studService.js';
 import { activeConfig } from '../ops/activeConfig.js';
-import { shardedDirectory, shardedStableDirectory } from './directory.js';
+import { shardedDirectory, shardedHallDirectory, shardedStableDirectory } from './directory.js';
 import { fcmFromEnv, type PushSender } from '../push/fcm.js';
 import { deliverDuePushes } from '../push/dispatch.js';
 import { makeKpiWriter } from '../push/analytics.js';
@@ -50,6 +50,11 @@ export class PlayerDO extends DurableObject<Env> {
       onStable: (id, snap) => {
         const dir = shardedStableDirectory(env.DIRECTORY);
         ctx.waitUntil((snap ? dir.put(snap) : dir.remove(id)).catch((e) => console.error('stable copy failed', id, e)));
+      },
+      // REQ-HOF-011: the visitors' copy of the hall (null = nothing to show: empty, private, banned, deletion)
+      onHall: (id, snap) => {
+        const dir = shardedHallDirectory(env.DIRECTORY);
+        ctx.waitUntil((snap ? dir.put(snap) : dir.remove(id)).catch((e) => console.error('hall copy failed', id, e)));
       },
       // REQ-TEAM-005: the team recomputes its points from members' reported standings
       onTeamPoints: (p) => {

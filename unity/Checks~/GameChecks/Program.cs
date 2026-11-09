@@ -100,6 +100,8 @@ static class Program
         Loc.LoadEnglish(File.ReadAllText(Path.Combine(Root, "engine", "Muchi.Client", "Resources", "Muchi", "server-en.json")));
         Loc.LoadEnglish(File.ReadAllText(Path.Combine(Root, "engine", "Muchi.Client", "Resources", "Muchi", "ui-en.json")));
         await TeamGoalChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 15: 出走前アドバイス (RaceAdviceModel: rows in words, device recompute = server, setting, tutorial, offline, KPI, result line; REQ-ADV-*)");
+        await RaceAdviceChecks.Run(Check, Root);
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

@@ -140,6 +140,24 @@ namespace Muchi.Client
             return new AnalyticsEvent("history_view", atMs, JsonNode.Obj().Set("tab", tab));
         }
 
+        // ---- REQ-ADV-011 pre-race advice (contracts/protocol.md §39.7). Not sent when the player turned advice off.
+        public static readonly string[] AdviceContexts = { "ranked", "friend", "event", "challenge", "timeattack", "tutorial" };
+
+        /// <summary>The advice panel was shown (once per screen visit). horses = horses listed (0..30), suggested = a horse was suggested.</summary>
+        public static AnalyticsEvent AdviceView(long atMs, string context, int horses, bool suggested)
+        {
+            if (IndexIn(AdviceContexts, context) < 0) throw new ArgumentException("unknown advice context " + context);
+            if (horses < 0 || horses > 30) throw new ArgumentOutOfRangeException(nameof(horses));
+            return new AnalyticsEvent("advice_view", atMs, JsonNode.Obj().Set("context", context).Set("horses", horses).Set("suggested", suggested));
+        }
+
+        /// <summary>The race was entered after advice with a suggestion: followed = the entered horse is the suggested one.</summary>
+        public static AnalyticsEvent AdviceFollow(long atMs, string context, bool followed)
+        {
+            if (IndexIn(AdviceContexts, context) < 0) throw new ArgumentException("unknown advice context " + context);
+            return new AnalyticsEvent("advice_follow", atMs, JsonNode.Obj().Set("context", context).Set("followed", followed));
+        }
+
         // ---- REQ-AD-010 rewarded ads (the reward itself is the server event ad_reward; never sent from here)
         private static readonly string[] AdSurfaces = { "home", "result", "time_attack", "shop" };
         private static readonly string[] AdOutcomes = { "shown", "no_fill", "failed", "closed_early" };

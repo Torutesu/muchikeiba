@@ -438,6 +438,51 @@ describe('§42 leaving, expiry, ops delete (REQ-CUP-011/012/015)', () => {
   });
 });
 
+describe('§42 self-QA', () => {
+  it('a cup deleted while its race runs stays cancelled when the room settles (the race is void)', async () => {
+    const w = world();
+    for (const p of ['h', 'a']) await w.player(p);
+    const { cupId } = await w.cupWith('h', ['a']);
+    const r = await w.cups.start('h', cupId);
+    await w.cups.adminDelete(cupId);
+    w.finish(r.raceId, ['a', 'h']);
+    await w.backend.tickAll();
+    const c = w.backend.cups.get(cupId)!;
+    expect(c).toMatchObject({ status: 'cancelled', cancelReason: 'ops_deleted' });
+    expect(c.races[0]!.status).toBe('void');
+    expect((await w.cups.list('a')).trophies.gold).toBe(0);
+  });
+
+  it('a rider banned since joining is left out; the others still race', async () => {
+    const w = world();
+    for (const p of ['h', 'a', 'b']) await w.player(p);
+    const { cupId } = await w.cupWith('h', ['a', 'b']);
+    const s = await w.svc.state('b'); s.moderation = { status: 'banned', until: null, reason: 'x', by: 'ops', at: 0 } as never; await w.repo.put(s);
+    await w.cups.start('h', cupId);
+    expect(w.started[0]!.playerIds).toEqual(['h', 'a']);
+  });
+
+  it('two concurrent retries of one create make one cup; the losing code is released', async () => {
+    const w = world();
+    const h = await w.player('h');
+    const b = { ...w.body(), horseId: h };
+    const [x, y] = await Promise.all([w.cups.create('h', b, 'c:same'), w.cups.create('h', b, 'c:same')]);
+    expect(x.cup.cupId).toBe(y.cup.cupId);
+    expect([x.created, y.created].sort()).toEqual([false, true]);
+    expect([...w.backend.codes.values()]).toEqual([x.cup.cupId]);
+    expect((await w.cups.list('h')).active).toHaveLength(1);
+  });
+
+  it('a join refused by the cup (closed after the first race) leaves no reservation', async () => {
+    const w = world();
+    for (const p of ['h', 'a', 'b']) await w.player(p);
+    const { cupId, code: c } = await w.cupWith('h', ['a']);
+    await w.cups.start('h', cupId);
+    expect(await code(w.cups.join('b', { code: c, horseId: await w.horse('b') }, w.k()))).toBe('CUP_CLOSED');
+    expect((await w.cups.list('b')).active).toEqual([]);
+  });
+});
+
 describe('§42 unranked (REQ-CUP-013) and the race path (REQ-CUP-008)', () => {
   it('a cup race result changes no rating, season, coins, missions, pass, stats or rival — it is only recorded', async () => {
     const w = world();

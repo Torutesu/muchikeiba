@@ -117,6 +117,7 @@ export function durableCupBackend(env: Env) {
   const call = async <T>(p: Promise<unknown>) => unwrap(await (p as Promise<Envelope<T>>));
   return {
     claimCode: (code: string, cupId: string) => call<boolean>(s(cupCodeObjectName(code)).codeClaim!(code, cupId)),
+    releaseCode: async (code: string, cupId: string) => { await call<boolean>(s(cupCodeObjectName(code)).codeRelease!(code, cupId)); },
     lookupCode: (code: string) => call<string | null>(s(cupCodeObjectName(code)).codeLookup!(code)),
     create: (state: State, def: CupCreateInput) => call<{ state: State; created: boolean }>(cup(state.id).create!(state, def)),
     get: (id: string) => call<State | null>(cup(id).get!()),

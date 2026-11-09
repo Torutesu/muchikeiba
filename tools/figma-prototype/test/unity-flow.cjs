@@ -310,6 +310,64 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
   }
 
+  // round 16 (REQ-CUP-*): プレイヤー主催カップ — the list → create (name, entries, format, course, going, window; an NG name
+  // refused) → the lobby with the code → friends join (demo) → 出走 ×3 (createRace in the cup mode, simulated in WASM, settled
+  // like a room) → standings with trophies → the result card (no names); join by code (a wrong code says nothing), an
+  // invitation, and the host leaving cancels the cup
+  async function cupsFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(() => globalThis.__muchi.show('HostedCups')); await waitScreen('hosted-cups'); await waitIn('.cup-mine');
+    await shot('cups-empty', 400);
+    await page.locator('.screen.in .cup-make').click(); await waitScreen('cup-create'); await waitIn('.cup-form');
+    await shot('cup-create', 400);
+    const ng = await page.evaluate(() => globalThis.__muchi.logic.cups.ngSample());
+    await page.locator('.screen.in input.cup-name').fill(ng); await page.locator('.screen.in .cup-create').click(); await page.waitForTimeout(500);
+    assert.match(await page.locator('.screen.in .cup-error').textContent(), /使えません/, 'cups: an NG cup name is refused');
+    await page.locator('.screen.in input.cup-name').fill('金曜の夜カップ');
+    await page.locator('.screen.in [data-format="best_of_3"]').click(); await page.waitForTimeout(300);
+    await page.locator('.screen.in .cup-cap-minus').click(); await page.waitForTimeout(300);
+    await page.locator('.screen.in [data-going="yielding"]').click(); await page.waitForTimeout(300);
+    assert.equal(await page.locator('.screen.in .cup-capacity').textContent(), '5人');
+    await page.locator('.screen.in .cup-create').click(); await waitScreen('cup-lobby'); await waitIn('.cup-code-text');
+    assert.match(await page.locator('.screen.in .cup-code-text').textContent(), /^[A-Z2-9]{4}-[A-Z2-9]{4}$/, 'cups: the join code');
+    assert.equal(await page.locator('.screen.in .cup-start.disabled').count(), 1, 'cups: 出走 is off until friends join');
+    await shot('cup-lobby-host', 400);
+    await page.locator('.screen.in .cup-invite-friends').click(); await waitIn('.cup-invite-sheet');
+    await page.locator('.screen.in .cup-friend').first().click(); await shot('cup-invite-sheet', 300);
+    await page.locator('.screen.in .cup-invite-send').click(); await page.waitForTimeout(500);
+    await page.locator('.screen.in .cup-demo-fill').click(); await page.waitForTimeout(600); await waitIn('.cup-start:not(.disabled)');
+    await shot('cup-lobby-ready', 400);
+    for (let i = 0; i < 3; i++) {
+      await page.locator('.screen.in .cup-start').click();
+      await waitScreen(i < 2 ? 'cup-lobby' : 'cup-standings', 30000); await page.waitForTimeout(400);
+    }
+    await waitIn('.cup-row');
+    assert.equal(await page.locator('.screen.in .cup-row').count(), 4, 'cups: four in the standings');
+    await shot('cup-standings', 400);
+    await page.locator('.screen.in .cup-card-open').click(); await waitIn('.cup-share-sheet');
+    assert.doesNotMatch(await page.locator('.screen.in .cup-share-sheet').innerText(), /金曜の夜カップ|ミドリ|サクラ/, 'cups: the result card shows no names');
+    await shot('cup-result-card', 400);
+    await page.locator('.screen.in .cup-share').click(); await page.waitForTimeout(300);
+    // the list: trophy shelf and the result
+    await page.evaluate(() => globalThis.__muchi.show('HostedCups')); await waitScreen('hosted-cups'); await page.waitForTimeout(400);
+    // an invitation from a friend, joined from the list
+    await page.locator('.screen.in .cup-demo-invite').click(); await page.waitForTimeout(600); await waitIn('.cup-invite');
+    await shot('cups-invited', 400);
+    await page.locator('.screen.in .cup-accept').first().click(); await waitScreen('cup-lobby'); await waitIn('.cup-entrant');
+    await shot('cup-lobby-entrant', 400);
+    const code = await page.locator('.screen.in .cup-code-text').textContent();
+    await page.locator('.screen.in .cup-leave-link').click(); await waitIn('.cup-leave-sheet');
+    await page.locator('.screen.in .cup-leave').click(); await waitScreen('hosted-cups');
+    // join by code: a wrong code says nothing, the right one shows the cup and its host only
+    await page.locator('.screen.in .cup-join-code').click(); await waitScreen('cup-join');
+    await page.locator('.screen.in input.cup-code-input').fill('ZZZZ-ZZZZ'); await page.locator('.screen.in .cup-lookup').click(); await page.waitForTimeout(500);
+    assert.match(await page.locator('.screen.in .cup-join-error').textContent(), /見つかりません/, 'cups: a wrong code');
+    await page.locator('.screen.in input.cup-code-input').fill(code.toLowerCase()); await page.locator('.screen.in .cup-lookup').click(); await page.waitForTimeout(500);
+    await waitIn('.cup-join'); await shot('cup-join-preview', 400);
+    await page.locator('.screen.in .cup-join').click(); await waitScreen('cup-lobby');
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
+  }
+
   // round 14 (REQ-MYRP-*): マイリプレイ — two demo races on the real engine → the list (best moments / recent) → 残す → the
   // replay sheet → rename (typed, NG word refused) → favourite, public → the player (WASM re-simulation: 2×, camera on
   // another horse, the last 200 m, share card + replay_share) → a friend's public replay → 「再生できません」 (retired ruleset)
@@ -628,6 +686,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await hallFlow();
   await silksFlow();
   await myReplaysFlow();
+  await cupsFlow();
   await page.evaluate(() => globalThis.__muchi.show('Scout')); await waitScreen('scout'); await shot('scout', 500);
   await click('提供割合'); await shot('scout-rates', 400); await click('BACK');
   await waitScreen('scout'); await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal'); await shot('scout-paid-reveal', 700);

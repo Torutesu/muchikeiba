@@ -100,6 +100,7 @@ export class CupRunner<E> {
         const ent = c0.entrants.find((x) => x.playerId === pid)!;
         try {
           const fresh = await this.ports.refreshEntry(pid, ent.horseId);
+          if ((fresh as { moderation?: string } | null)?.moderation === 'banned') continue;
           ids.push(pid); entries.push(fresh ?? spec.entries[i]!);
           if (fresh) ent.entry = fresh;
         } catch (e) {
@@ -173,6 +174,7 @@ export class CupRunner<E> {
 /** What the service needs from the cups' storage (CupDO instances in production). */
 export interface CupBackend<E = unknown> {
   claimCode(code: string, cupId: string): Promise<boolean>;
+  releaseCode(code: string, cupId: string): Promise<void>;
   lookupCode(code: string): Promise<string | null>;
   create(state: CupState<E>, def: CupCreateInput): Promise<{ state: CupState<E>; created: boolean }>;
   get(cupId: string): Promise<CupState<E> | null>;
@@ -209,7 +211,8 @@ export class MemoryCupBackend<E = unknown> implements CupBackend<E> {
   /** Each call works on a fresh copy (like reading the object's storage): a thrown op leaves nothing behind. */
   private copy = <T>(x: T): T => structuredClone(x);
 
-  async claimCode(code: string, cupId: string) { if (this.codes.has(code) && this.codes.get(code) !== cupId) return false; this.codes.set(code, cupId); return true; }
+  async claimCode(code: string, cupId: string) { if (this.codes.has(code)) return false; this.codes.set(code, cupId); return true; }
+  async releaseCode(code: string, cupId: string) { if (this.codes.get(code) === cupId) this.codes.delete(code); }
   async lookupCode(code: string) { return this.codes.get(code) ?? null; }
   create(state: CupState<E>, def: CupCreateInput) { return this.serial(state.id, () => this.copy(this.runner(state.id).create(state, def))); }
   async get(cupId: string) { const c = this.cups.get(cupId); return c ? this.copy(c) : null; }
@@ -286,15 +289,17 @@ export class HostedCupsService<E = unknown> {
     }
     const p = this.player(uid);
     const who = await p.invoke('cupReserve', uid, cupId, 'host', def.closesAt);
+    let code: string | null = null;
     try {
       const host = await this.entrantOf(uid, b.horseId, 'host', who);
-      let code: string | null = null;
       for (let i = 0; i < CODE_TRIES && !code; i++) { const c = makeCupCode(); if (await this.backend.claimCode(c, cupId)) code = c; }
       if (!code) throw new Error('cup code space exhausted');
       const out = await this.backend.create(newCup(cupId, code, def, { ...host, joinedAt: now }, who.teamId, now), def);
+      if (out.state.code !== code) { await this.backend.releaseCode(code, cupId).catch(() => undefined); code = null; } // a concurrent retry made the cup
       await p.invoke('cupCommitted', uid, cupId, 'create', { format: def.format, capacity: def.capacity, team: !!who.teamId });
       return { cup: cupView(this.master(), out.state, uid, now), created: out.created };
     } catch (e) {
+      if (code) await this.backend.releaseCode(code, cupId).catch(() => undefined);
       await p.invoke('cupRelease', uid, cupId).catch(() => undefined);
       throw e;
     }

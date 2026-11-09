@@ -268,6 +268,7 @@ export function cancelCup(c: CupState, reason: CupCancelReason, now: number): bo
   if (isClosed(c)) return false;
   c.status = 'cancelled';
   c.cancelReason = reason;
+  for (const r of c.races) if (r.status === 'running') r.status = 'void'; // the room may still finish: it no longer counts
   c.finishedAt = now;
   c.updatedAt = now;
   // everyone in the cup, and invitees who still have the invitation, are told it closed
@@ -358,6 +359,7 @@ export function markRaceStarted<E>(c: CupState<E>, spec: CupRaceSpec<E>, startAt
 
 /** A started race's outcome (null = not final yet). Returns true when the cup changed. */
 export function applyCupRaceOutcome(m: Master, c: CupState, raceId: string, o: HeatOutcome | null, now: number): boolean {
+  if (isClosed(c)) return false; // a cancelled cup stays cancelled (its race was voided by cancelCup)
   const race = c.races.find((r) => r.raceId === raceId);
   if (!race || race.status !== 'running') return false;
   const timedOut = now - race.startAtMs > hostedCupsConfig(m).raceTimeoutMinutes * 60_000;

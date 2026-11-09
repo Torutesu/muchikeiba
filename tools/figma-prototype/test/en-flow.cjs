@@ -322,6 +322,17 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await shot('commentary-pack-buy', 400);
   await page.locator('.screen.in [data-confirm="cancel"]').click(); await waitScreen('commentary-packs');
 
+  // round 16: プレイヤー主催カップ in English (REQ-CUP-*): the list, create, the lobby (host), standings, the result card,
+  // join by code. Cup and player names stay as typed.
+  await show('HostedCups'); await waitScreen('hosted-cups', 30000); await shot('cups', 600);
+  await page.locator('.screen.in .cup-make').click(); await waitScreen('cup-create'); await shot('cup-create', 400);
+  await page.locator('.screen.in .cup-create').click(); await waitScreen('cup-lobby', 20000); await shot('cup-lobby', 500);
+  assert.match(await page.locator('.screen.in').innerText(), /unranked/i, 'cups: the unranked note in English');
+  await page.locator('.screen.in .cup-demo-fill').click(); await page.waitForTimeout(700);
+  await page.locator('.screen.in .cup-start').click(); await waitScreen(['cup-lobby', 'cup-standings'], 30000); await page.waitForTimeout(500);
+  await page.locator('.screen.in .cup-standings-open').click(); await waitScreen('cup-standings'); await shot('cup-standings', 500);
+  await show('CupJoin'); await waitScreen('cup-join'); await shot('cup-join', 400);
+
   const misses = await page.evaluate(() => globalThis.__muchi.l10n.misses());
   fs.writeFileSync(path.join(out, 'en-report.json'), JSON.stringify({ report, misses }, null, 2));
   await ctx.close();

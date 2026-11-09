@@ -1022,7 +1022,7 @@ function Missions(ms, fw, bonus) {
 }
 /** Feature keys unlocked by races or days (server unlocks), each with its key and condition. */
 function Features() {
-  const keys = [['season_pass', 'シーズンパス', () => SeasonPass()], ['time_attack', 'タイムアタック', () => TimeAttack()], ['collection', '図鑑', () => Collection()], ['achievements', '実績・称号', () => Achievements()], ['breeding', '配合'], ['friends', 'フレンド'], ['teams', '支部'], ['events', 'イベント', () => EventTop()], ['my_stable', 'マイ厩舎'], ['my_replays', 'マイリプレイ', () => MyReplays()]];
+  const keys = [['season_pass', 'シーズンパス', () => SeasonPass()], ['time_attack', 'タイムアタック', () => TimeAttack()], ['collection', '図鑑', () => Collection()], ['achievements', '実績・称号', () => Achievements()], ['breeding', '配合'], ['friends', 'フレンド'], ['teams', '支部'], ['events', 'イベント', () => EventTop()], ['my_stable', 'マイ厩舎'], ['my_replays', 'マイリプレイ', () => MyReplays()], ['friend_rooms', '主催カップ', () => HostedCups()]];
   Sheet('機能・イベント', '開放', (s, close, y) => {
     keys.forEach(([k, name, go], i) => {
       const f = unlock(k);
@@ -3703,6 +3703,312 @@ function PlaqueDetail(p) {
   });
 }
 
+// ================================================================= round 16: プレイヤー主催カップ (REQ-CUP-*, contracts/protocol.md §42)
+// Small unranked cups for friends or the branch on the real HostedCupsService / CupRunner (the CupDO logic in memory):
+// create (rules = friend-room conditions), invite / join by an 8-letter code, the lobby (the host presses 出走; the race
+// is the server's createRace in the "cup" mode, simulated in WASM and settled like a room) and the standings with a
+// cosmetic trophy and the result card. Mirrors unity/Assets/Muchi/Game/HostedCupModel.cs. ムチ一閃 tone: race art, two
+// translucent navy panels, letter-spaced cyan kickers, one skewed cyan CTA ». Cup and player names are what players
+// typed: never translated (.keep-ja).
+const CUP_FORMAT = { single: '1レース', best_of_3: '3レースのポイント制' };
+const CUP_GOING = { firm: '良（硬め）', good: '良', yielding: '稍重', soft: '重', fast: '良', muddy: '稍重', sloppy: '不良' };
+const CUP_PROBLEM = { not_open: '開催の時間になると出走できます', too_few: '参加者がそろうと出走できます', race_running: 'レースの結果を待っています', all_raced: '全レースが終わりました', closed: '開催の時間が終わりました' };
+const CUP_CANCEL = { host_left: '主催者が抜けたため中止になりました', host_deleted: '主催者が退会したため中止になりました', ops_deleted: '運営によって中止されました', expired: '開催の時間内にレースが行われなかったため中止になりました' };
+const CUP_TROPHY = { gold: '金のトロフィー', silver: '銀のトロフィー', bronze: '銅のトロフィー' };
+const CUP_STATUS = { open: '受付中', running: 'レース中', finished: '終了', cancelled: '中止' };
+const CUP_UNRANKED = 'ランク外のカップです。レーティング・シーズン・ライバルの記録・報酬には関係しません';
+const CUP_FAIR = '主催者も他の人の馬は選べません。条件は作った後に変えられません';
+const cupWhen = (ms) => { const d = new Date(ms + 9 * 3600e3); return `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`; };
+const cupRules = (c) => [c.trackId ? L.trackName(c.trackId) : 'コースはレースごとに抽選', CUP_GOING[c.going] ?? null, c.night ? 'ナイター' : null].filter(Boolean).join('・');
+/** Marks player-typed text (cup names, player names, horse names) so the English layer leaves it as typed (REQ-CUP-002). */
+const cupTyped = (node) => { node.classList.add('keep-ja', 'typed'); node.dataset.typed = '1'; return node; };
+const cupErr = (r) => ({ CUP_CODE_INVALID: 'このコードのカップは見つかりません', RATE_LIMITED: 'コードの入力が多すぎます。しばらくしてからもう一度お試しください', CUP_FULL: '満員になりました',
+  CUP_CLOSED: 'このカップは受付を終了しています', CUP_LIMIT: '参加中のカップが上限に達しています', NG_NAME: 'この言葉は使えません。別の名前にしてください。', INVALID_NAME: 'カップ名は1〜20文字です（URLは使えません）',
+  DELETION_PENDING: 'アカウント削除の手続き中のため、参加できません', ALREADY_IN_RACE: '参加者の誰かが別のレース中です。少し待ってから出走してください' }[r.code] ?? r.message);
+let cupDraft = null;
+
+async function HostedCups() {
+  currentScreen = HostedCups;
+  const r = await L.cups.view();
+  if (!r.ok || !r.value.enabled) { toast('カップは今は表示できません'); Home(); return; }
+  const v = r.value, lim = v.limits;
+  const hosting = v.active.filter((c) => c.role === 'host').length;
+  Clear('hosted-cups'); SetArt('Art/race-result', false); Shade('left');
+  TopBar('主催カップ', 'フレンドや支部の仲間と小さなカップを開こう　·　ランク外・報酬はトロフィーだけ');
+  const lp = Glass('My cups', 36, 134, 820, 676, undefined, .88);
+  lp.classList.add('cup-mine');
+  Kicker(`参加中のカップ　/　主催 ${hosting}/${lim.maxActivePerHost}・参加 ${v.active.length}/${lim.maxEntriesPerPlayer}`, 36, 30, lp).classList.add('cup-count');
+  if (!v.active.length) Txt('参加中のカップはありません。カップを作るか、届いたコードで参加しましょう', 36, 110, 748, 16, MUTED, lp, { lh: 1.6 }).classList.add('cup-empty');
+  v.active.slice(0, 4).forEach((c, i) => {
+    const k = Card('Cup card', 36, 100 + i * 128, 748, 116, lp, c.role === 'host' ? 'var(--gold)' : 'var(--cyan)');
+    k.classList.add('cup-card'); k.dataset.cupId = c.cupId; k.dataset.role = c.role; k.dataset.status = c.status;
+    cupTyped(Txt(c.cupName, 24, 18, 520, 22, WHITE, k, { weight: 700, nowrap: true, ls: '.04em' }));
+    Txt(`${CUP_FORMAT[c.format]}　·　${c.entrants.length}/${c.capacity}人`, 24, 56, 360, 15, SOFT, k, { weight: 500, nowrap: true, cls: 'num' });
+    Txt(cupRules(c.conditions), 390, 56, 330, 15, SOFT, k, { weight: 500, nowrap: true });
+    Pills([[c.role === 'host' ? '主催' : '参加', c.role === 'host' ? 'gold' : 'cyan'], [CUP_STATUS[c.status], c.status === 'running' ? 'warn' : '']], 24, 82, 400, k);
+    Txt(`${cupWhen(c.opensAt)}〜${cupWhen(c.closesAt)}`, 430, 86, 300, 13, DIM, k, { nowrap: true, cls: 'num', align: 'right' });
+    k.style.cursor = 'pointer'; k.addEventListener('click', () => CupLobby(c.cupId));
+  });
+  const rp = Glass('Invites and trophies', 880, 134, 684, 676, undefined, .86);
+  rp.classList.add('cup-side');
+  Kicker('トロフィー　/　見た目だけの記念です', 36, 30, rp);
+  [['金', v.trophies.gold, GOLD], ['銀', v.trophies.silver, SOFT], ['銅', v.trophies.bronze, 'var(--warn)']].forEach(([t, n, col], i) => {
+    Txt(t, 36 + i * 200, 100, 60, 18, col, rp, { weight: 700, ls: '.12em' });
+    Txt(String(n), 84 + i * 200, 88, 100, 36, WHITE, rp, { weight: 700, cls: 'num' }).classList.add('cup-trophy-' + i);
+  });
+  Hair(36, 150, 612, rp);
+  Kicker('届いた招待', 36, 170, rp, { rule: false, size: 15 });
+  if (!v.invites.length) Txt('招待はまだありません', 36, 204, 612, 14, DIM, rp);
+  v.invites.slice(0, 2).forEach((x, i) => {
+    const row = el('cup-invite', 36, 204 + i * 66, 612, 58, rp); row.dataset.cupId = x.cupId;
+    cupTyped(Txt(x.cupName, 0, 4, 380, 17, WHITE, row, { weight: 700, nowrap: true }));
+    Txt('主催', 0, 31, 70, 13, CYAN, row, { weight: 700, ls: '.12em', nowrap: true });
+    cupTyped(Txt(x.hostName, 74, 30, 300, 13, MUTED, row, { nowrap: true }));
+    Ghost('参加する', 432, 4, 180, 50, async () => { const j = await L.cups.join({ cupId: x.cupId }); toast(j.ok ? 'カップに参加しました' : cupErr(j)); if (j.ok) CupLobby(x.cupId); else HostedCups(); }, row, 'small').classList.add('cup-accept');
+  });
+  if (v.history.length) {
+    Kicker('最近の結果', 36, 352, rp, { rule: false, size: 15 });
+    v.history.slice(0, 2).forEach((h, i) => {
+      cupTyped(Txt(h.cupName, 36, 386 + i * 34, 380, 15, WHITE, rp, { weight: 500, nowrap: true }));
+      Txt(h.status === 'cancelled' ? '中止' : `${h.rank}位 / ${h.entrants}人${h.trophy ? '　' + CUP_TROPHY[h.trophy] : ''}`, 420, 386 + i * 34, 228, 15, h.trophy ? GOLD : SOFT, rp, { weight: 700, nowrap: true, align: 'right', cls: 'num' });
+    });
+  }
+  const make = Cta('カップを作る', 36, 470, 612, () => { cupDraft = null; CupCreate(); }, rp);
+  make.classList.add('cup-make'); if (hosting >= lim.maxActivePerHost || v.active.length >= lim.maxEntriesPerPlayer) disable(make);
+  Ghost('コードで参加', 36, 566, 300, 54, () => CupJoin(), rp, 'small').classList.add('cup-join-code');
+  Ghost('デモ：招待が届く', 352, 566, 296, 54, async () => { const d = await L.cups.demoInvite(); if (!d.ok) toast(cupErr(d)); HostedCups(); }, rp, 'quiet small').classList.add('cup-demo-invite');
+  Txt(CUP_UNRANKED, 36, 632, 612, 12, SOFT, rp, { lh: 1.55 });
+  Back(Home, 'BACK', 40, 834);
+}
+
+/** 作成: name, entries, format, the rules (friend-room conditions), the window. Nothing can change after creation. */
+function CupCreate(error = '') {
+  currentScreen = () => CupCreate(error);
+  const tracks = L.cups.tracks();
+  const lim = L.cups.limits();
+  cupDraft ??= { name: '金曜の夜カップ', capacity: 6, format: 'best_of_3', track: Math.max(0, tracks.findIndex((t) => t.id === 'aoba_turf_1600')), going: 'good', hours: 3 };
+  const d = cupDraft, t = tracks[d.track];
+  const goings = t.surface === 'dirt' ? ['fast', 'good', 'muddy', 'sloppy'] : ['firm', 'good', 'yielding', 'soft'];
+  if (!goings.includes(d.going)) d.going = 'good';
+  Clear('cup-create'); SetArt('Art/first-ride', false); Shade('left');
+  TopBar('カップを作る', '条件はフレンド部屋と同じ。作った後は変えられません');
+  const lp = Glass('Cup form', 36, 134, 900, 676, undefined, .9);
+  lp.classList.add('cup-form');
+  Kicker('01 / カップ名', 36, 30, lp);
+  const box = el('fieldbox', 36, 104, 828, 64, lp);
+  const input = document.createElement('input');
+  input.className = 'field keep-ja cup-name'; input.maxLength = lim.nameMaxChars; input.value = d.name; input.setAttribute('aria-label', 'カップ名');
+  Object.assign(input.style, { left: '20px', top: '9px', width: '780px', height: '46px', fontSize: '24px' });
+  input.addEventListener('input', () => { d.name = input.value; });
+  box.appendChild(input);
+  Txt(error, 36, 176, 828, 14, WARN, lp, { weight: 500 }).classList.add('cup-error');
+  Kicker('02 / 人数と形式', 36, 204, lp);
+  Ghost('−', 36, 274, 70, 54, () => { d.capacity = Math.max(lim.minCapacity, d.capacity - 1); CupCreate(); }, lp, 'small').classList.add('cup-cap-minus');
+  Txt(`${d.capacity}人`, 116, 284, 110, 26, WHITE, lp, { weight: 700, align: 'center', cls: 'num' }).classList.add('cup-capacity');
+  Ghost('+', 236, 274, 70, 54, () => { d.capacity = Math.min(lim.maxCapacity, d.capacity + 1); CupCreate(); }, lp, 'small').classList.add('cup-cap-plus');
+  ['single', 'best_of_3'].forEach((f, i) => {
+    const b = Ghost(CUP_FORMAT[f], 350 + i * 260, 274, 250, 54, () => { d.format = f; CupCreate(); }, lp, 'small' + (d.format === f ? ' on' : ''));
+    b.dataset.format = f;
+  });
+  Kicker('03 / コース・馬場・開催の時間', 36, 356, lp);
+  Ghost('‹', 36, 426, 70, 54, () => { d.track = (d.track + tracks.length - 1) % tracks.length; CupCreate(); }, lp, 'small').classList.add('cup-track-prev');
+  Txt(t.name, 116, 438, 390, 20, WHITE, lp, { weight: 700, align: 'center', nowrap: true }).classList.add('cup-track');
+  Ghost('›', 516, 426, 70, 54, () => { d.track = (d.track + 1) % tracks.length; CupCreate(); }, lp, 'small').classList.add('cup-track-next');
+  goings.forEach((g, i) => { const b = Ghost(CUP_GOING[g], 36 + i * 140, 500, 130, 50, () => { d.going = g; CupCreate(); }, lp, 'small' + (d.going === g ? ' on' : '')); b.dataset.going = g; });
+  [1, 3, 24].forEach((h, i) => { const b = Ghost(`${h}時間`, 36 + i * 140, 570, 130, 50, () => { d.hours = h; CupCreate(); }, lp, 'small' + (d.hours === h ? ' on' : '')); b.dataset.hours = String(h); });
+  Txt(`いまから${d.hours}時間`, 470, 584, 390, 15, MUTED, lp, { nowrap: true });
+  const rp = Glass('Summary', 960, 134, 604, 676, undefined, .86);
+  Kicker('確認', 36, 30, rp);
+  cupTyped(Txt(d.name || ' ', 36, 100, 532, 26, WHITE, rp, { weight: 700, nowrap: true }));
+  Txt(`${CUP_FORMAT[d.format]}　·　${d.capacity}人まで`, 36, 148, 532, 17, GOLD, rp, { weight: 700 });
+  Txt(cupRules({ trackId: t.id, going: d.going, night: false }), 36, 184, 532, 16, SOFT, rp, { weight: 500 });
+  Txt(CUP_FAIR, 36, 236, 532, 14, MUTED, rp, { lh: 1.6 });
+  Txt(CUP_UNRANKED, 36, 300, 532, 14, MUTED, rp, { lh: 1.6 });
+  Txt('出走する馬は自分の相棒です。参加者は各自の馬で走ります', 36, 364, 532, 14, MUTED, rp, { lh: 1.6 });
+  Cta('作成する', 36, 470, 532, async () => {
+    const now = L.now();
+    const r = await L.cups.create({ cupName: d.name, capacity: d.capacity, format: d.format, opensAt: now, closesAt: now + d.hours * 3600e3,
+      conditions: { trackId: t.id, going: d.going, night: false, weather: 'sunny', temperatureC: 18, windKmh: 0 } });
+    if (!r.ok) return CupCreate(cupErr(r));
+    toast('カップを作りました。参加コードを共有しましょう'); cupDraft = null; CupLobby(r.value.cup.cupId);
+  }, rp).classList.add('cup-create');
+  Back(HostedCups, 'BACK', 40, 834);
+}
+
+/** コードで参加: the code shows the cup (and its host only) before joining; a wrong code never says why. */
+function CupJoin(state = {}) {
+  currentScreen = () => CupJoin(state);
+  Clear('cup-join'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('コードで参加', '主催者から届いた8文字のコードを入力してください');
+  const lp = Glass('Code', 36, 134, 760, 676, undefined, .9);
+  lp.classList.add('cup-code');
+  Kicker('参加コード　/　XXXX-XXXX', 36, 30, lp);
+  const box = el('fieldbox', 36, 104, 688, 84, lp);
+  const input = document.createElement('input');
+  input.className = 'field keep-ja cup-code-input'; input.maxLength = 12; input.value = state.code ?? ''; input.placeholder = 'K7PM-Q2XD'; input.setAttribute('aria-label', '参加コード');
+  Object.assign(input.style, { left: '22px', top: '14px', width: '640px', height: '56px', fontSize: '34px', letterSpacing: '.18em' });
+  box.appendChild(input);
+  Txt(state.error ?? '', 36, 200, 688, 15, WARN, lp, { weight: 500 }).classList.add('cup-join-error');
+  Ghost('確認する', 36, 240, 300, 60, async () => {
+    const r = await L.cups.lookup(input.value);
+    CupJoin(r.ok ? { code: input.value, preview: r.value } : { code: input.value, error: cupErr(r) });
+  }, lp, 'small').classList.add('cup-lookup');
+  Txt('大文字・小文字・ハイフンはどちらでもかまいません。入力は1時間に10回までです', 36, 324, 688, 13, SOFT, lp, { lh: 1.55 });
+  const rp = Glass('Preview', 820, 134, 744, 676, undefined, .86);
+  rp.classList.add('cup-preview');
+  Kicker('カップの確認', 36, 30, rp);
+  const p = state.preview;
+  if (!p) { Txt('コードを確認すると、カップの内容がここに表示されます', 36, 110, 672, 15, MUTED, rp, { lh: 1.6 }); Back(HostedCups, 'BACK', 40, 834); return; }
+  cupTyped(Txt(p.cupName, 36, 100, 672, 28, WHITE, rp, { weight: 700, nowrap: true }));
+  Txt('主催', 36, 151, 80, 15, CYAN, rp, { weight: 700, ls: '.12em', nowrap: true });
+  cupTyped(Txt(p.hostName, 120, 150, 588, 16, MUTED, rp, { nowrap: true }));
+  Txt(`${CUP_FORMAT[p.format]}　·　${p.entrants}/${p.capacity}人`, 36, 196, 672, 18, GOLD, rp, { weight: 700, cls: 'num' });
+  if (p.conditions) Txt(cupRules(p.conditions), 36, 236, 672, 16, SOFT, rp, { weight: 500 });
+  Txt(`${cupWhen(p.opensAt)}〜${cupWhen(p.closesAt)}`, 36, 272, 672, 15, SOFT, rp, { cls: 'num' });
+  Txt(CUP_UNRANKED, 36, 330, 672, 13, MUTED, rp, { lh: 1.6 });
+  const j = Cta('参加する', 36, 470, 672, async () => {
+    const r = await L.cups.join({ code: state.code });
+    if (!r.ok) return CupJoin({ ...state, preview: null, error: cupErr(r) });
+    toast(r.value.joined ? 'カップに参加しました' : 'このカップには参加済みです'); CupLobby(r.value.cup.cupId);
+  }, rp);
+  j.classList.add('cup-join'); if (p.entrants >= p.capacity) disable(j);
+  Back(HostedCups, 'BACK', 40, 834);
+}
+
+/** ロビー: entrants (as typed), the code to share, invitations (host, before the first race), 出走 (host), leaving. */
+async function CupLobby(cupId) {
+  currentScreen = () => CupLobby(cupId);
+  const r = await L.cups.get(cupId);
+  if (!r.ok) { toast('このカップは見られません'); return HostedCups(); }
+  const c = r.value, host = c.role === 'host';
+  Clear('cup-lobby'); SetArt('Art/race-result', false); Shade('left');
+  TopBar('カップのロビー', `${CUP_FORMAT[c.format]}　·　${cupRules(c.conditions)}`);
+  const lp = Glass('Lobby', 36, 134, 820, 676, undefined, .88);
+  lp.classList.add('cup-lobby'); lp.dataset.status = c.status; lp.dataset.role = c.role;
+  cupTyped(Txt(c.cupName, 36, 26, 600, 28, WHITE, lp, { weight: 700, nowrap: true })).classList.add('cup-title');
+  Kicker(`参加者　/　${c.entrants.length}/${c.capacity}人`, 36, 76, lp).classList.add('cup-seats');
+  c.entrants.slice(0, 8).forEach((e, i) => {
+    const row = el('cup-entrant', 36 + (i % 2) * 380, 156 + Math.floor(i / 2) * 72, 360, 64, lp); row.dataset.playerId = e.playerId;
+    cupTyped(Txt(e.displayName, 0, 4, 250, 18, e.withdrawn ? DIM : WHITE, row, { weight: 700, nowrap: true }));
+    if (e.horseName) cupTyped(Txt(e.horseName, 0, 34, 250, 13, MUTED, row, { nowrap: true }));
+    const badge = e.withdrawn ? ['棄権', 'warn'] : e.playerId === c.hostId ? ['主催', 'gold'] : e.playerId === player?.id ? ['あなた', 'cyan'] : null;
+    if (badge) Pills([badge], 260, 8, 100, row);
+    Hair(0, 63, 360, row);
+  });
+  if (c.code) {
+    Kicker('参加コード', 36, 470, lp, { rule: false, size: 14 });
+    Txt(c.code, 36, 500, 420, 40, CYAN, lp, { weight: 700, ls: '.22em', cls: 'num keep-ja' }).classList.add('cup-code-text');
+  }
+  if (host && c.racesDone === 0 && c.status === 'open') {
+    Ghost('フレンドを招待', 470, 488, 300, 54, () => CupInviteSheet(c), lp, 'small').classList.add('cup-invite-friends');
+    Ghost('デモ：フレンドが参加', 470, 552, 300, 54, async () => { const f = await L.cups.demoFill(cupId, Math.min(3, c.capacity - c.entrants.length)); if (!f.ok) toast(cupErr(f)); CupLobby(cupId); }, lp, 'quiet small').classList.add('cup-demo-fill');
+  }
+  TextLink('カップから抜ける', 36, 620, 320, () => Sheet('カップから抜けますか？', 'ロビー　/　抜ける', (s, close, y) => {
+    s.classList.add('cup-leave-sheet');
+    Txt(host ? '主催者が抜けるとカップは中止になります' : c.racesDone > 0 ? '抜けると以降のレースは棄権になります' : '最初のレースの前なら、いつでも抜けられます', 48, y, 564, 16, host ? WARN : WHITE, s, { weight: 700, lh: 1.6 });
+    Cta(host ? '中止して抜ける' : '抜ける', 48, y + 90, 564, async () => { const l = await L.cups.leave(cupId); close(); toast(l.ok ? (l.value.cancelled ? 'カップを中止しました' : 'カップから抜けました') : l.message); HostedCups(); }, s).classList.add('cup-leave');
+  }), lp).classList.add('cup-leave-link');
+  const rp = Glass('Progress', 880, 134, 684, 676, undefined, .86);
+  rp.classList.add('cup-progress');
+  const closed = c.status === 'finished' || c.status === 'cancelled';
+  Kicker(closed ? (c.status === 'cancelled' ? '中止' : '結果') : `第${Math.min(c.racesDone + 1, c.racesTotal)}レース / 全${c.racesTotal}レース`, 36, 30, rp).classList.add('cup-round');
+  Txt(`${cupWhen(c.opensAt)}〜${cupWhen(c.closesAt)}`, 36, 100, 612, 16, SOFT, rp, { cls: 'num' });
+  Txt(cupRules(c.conditions), 36, 134, 612, 18, WHITE, rp, { weight: 700 });
+  if (c.status === 'cancelled') Txt(CUP_CANCEL[c.cancelReason] ?? '中止になりました', 36, 190, 612, 16, WARN, rp, { weight: 700, lh: 1.6 }).classList.add('cup-cancelled');
+  else if (c.standings.length) {
+    c.standings.slice(0, 4).forEach((s, i) => {
+      Txt(`${s.rank}`, 36, 190 + i * 40, 40, 20, s.rank === 1 ? GOLD : WHITE, rp, { weight: 700, cls: 'num' });
+      cupTyped(Txt(s.displayName, 80, 192 + i * 40, 360, 17, WHITE, rp, { weight: 500, nowrap: true }));
+      Txt(c.format === 'best_of_3' ? `${s.points}pt` : s.places.at(-1) ? `${s.places.at(-1)}着` : '—', 460, 192 + i * 40, 188, 17, SOFT, rp, { weight: 700, align: 'right', cls: 'num' });
+    });
+  } else Txt(CUP_FAIR, 36, 190, 612, 14, MUTED, rp, { lh: 1.6 });
+  if (host && !closed) {
+    const go = Cta('出走する', 36, 470, 612, async () => {
+      const s = await L.cups.start(cupId);
+      if (!s.ok) { toast(s.code === 'CUP_NOT_READY' ? (CUP_PROBLEM[s.message] ?? 'まだ出走できません') : cupErr(s)); return CupLobby(cupId); }
+      const { raceId, config, raceIndex } = s.value;
+      const sim = JSON.parse(engine.SimulateConfig(JSON.stringify(config), 'local', 300 + Math.floor(Math.random() * 500)));
+      const done = await L.cups.settle(raceId, config, sim);
+      toast(`第${raceIndex + 1}レース　${sim.place}着`);
+      if (done.ok && done.value.status === 'finished') CupStandings(cupId); else CupLobby(cupId);
+    }, rp);
+    go.classList.add('cup-start');
+    if (!c.canStart) { disable(go); Txt(CUP_PROBLEM[c.startProblem] ?? '', 36, 556, 612, 15, MUTED, rp, { weight: 500 }).classList.add('cup-start-hint'); }
+  } else if (!closed) Txt('主催者の出走を待っています。出走するとレースの画面に移ります', 36, 470, 612, 15, MUTED, rp, { lh: 1.6 });
+  if (c.racesDone > 0 || c.status === 'finished') Ghost('順位表', 36, 590, 300, 54, () => CupStandings(cupId), rp, 'small').classList.add('cup-standings-open');
+  Txt(CUP_UNRANKED, 36, 650, 612, 12, SOFT, rp, { lh: 1.5 });
+  Back(HostedCups, 'BACK', 40, 834);
+}
+
+/** 招待: mutual friends only (others are skipped silently). */
+function CupInviteSheet(c) {
+  const picked = new Set();
+  Sheet('フレンドを招待', 'ロビー　/　招待', (s, close, y) => {
+    s.classList.add('cup-invite-sheet');
+    L.cups.friends().slice(0, 5).forEach((f, i) => {
+      const b = Btn(f.playerId, 48, y + i * 70, 564, 62, () => { if (picked.has(f.playerId)) picked.delete(f.playerId); else picked.add(f.playerId); b.classList.toggle('on'); b.querySelector('span').textContent = (picked.has(f.playerId) ? '☑　' : '☐　') + f.displayName; }, 'check', s, '☐　' + f.displayName);
+      b.classList.add('keep-ja', 'cup-friend');
+    });
+    Cta('招待する', 48, y + 380, 564, async () => {
+      const r = await L.cups.invite(c.cupId, { friendIds: [...picked] });
+      close(); toast(r.ok ? `${r.value.invited}人を招待しました` : cupErr(r));
+    }, s).classList.add('cup-invite-send');
+  });
+}
+
+/** 順位表: points (3 races) or the race place, the trophy, and the result card on the shared share card (no names). */
+async function CupStandings(cupId) {
+  currentScreen = () => CupStandings(cupId);
+  const r = await L.cups.get(cupId);
+  if (!r.ok) { toast('このカップは見られません'); return HostedCups(); }
+  const c = r.value;
+  Clear('cup-standings'); SetArt('Art/race-result', false); Shade('left');
+  TopBar('順位表', `${CUP_FORMAT[c.format]}　·　${c.entrants.length}人　·　${c.status === 'finished' ? (c.partial ? '開催の時間が終わったため、ここまでの順位で決着しました' : '全レースが終わりました') : `第${c.racesDone}レースまで`}`);
+  const lp = Glass('Standings', 36, 134, 960, 676, undefined, .9);
+  lp.classList.add('cup-table');
+  cupTyped(Txt(c.cupName, 36, 26, 700, 26, WHITE, lp, { weight: 700, nowrap: true }));
+  Kicker('順位　/　名前　/　各レース　/　合計', 36, 70, lp);
+  c.standings.slice(0, 8).forEach((s, i) => {
+    const row = el('cup-row', 36, 150 + i * 62, 888, 56, lp); row.dataset.rank = String(s.rank); row.dataset.me = String(s.playerId === player?.id);
+    Txt(String(s.rank), 0, 8, 50, 26, s.rank === 1 ? GOLD : WHITE, row, { weight: 700, cls: 'num' });
+    cupTyped(Txt(s.displayName, 64, 12, 330, 19, s.playerId === player?.id ? CYAN : WHITE, row, { weight: 700, nowrap: true }));
+    Txt(s.places.map((p) => (p ? String(p) : '—')).join('-'), 410, 14, 200, 17, SOFT, row, { weight: 500, cls: 'num keep-ja' });
+    Txt(c.format === 'best_of_3' ? `${s.points}pt` : s.places.at(-1) ? `${s.places.at(-1)}着` : '—', 620, 12, 120, 19, WHITE, row, { weight: 700, align: 'right', cls: 'num' });
+    if (s.trophy) Pills([[CUP_TROPHY[s.trophy], s.trophy === 'gold' ? 'gold' : '']], 756, 12, 132, row);
+    Hair(0, 55, 888, row);
+  });
+  const rp = Glass('Result', 1020, 134, 544, 676, undefined, .86);
+  rp.classList.add('cup-result');
+  const me = c.standings.find((s) => s.playerId === player?.id);
+  Kicker('あなたの結果', 36, 30, rp);
+  Txt(me ? `${me.rank}位 / ${c.entrants.length}人` : '参加', 36, 96, 472, 40, me?.rank === 1 ? GOLD : WHITE, rp, { weight: 700, cls: 'num' }).classList.add('cup-my-rank');
+  if (me?.trophy) Txt(CUP_TROPHY[me.trophy], 36, 160, 472, 20, GOLD, rp, { weight: 700, ls: '.1em' }).classList.add('cup-my-trophy');
+  Txt('トロフィーはプロフィールの棚に飾られます（見た目だけ）', 36, 204, 472, 14, MUTED, rp, { lh: 1.6 });
+  const card = Cta('結果カード', 36, 470, 472, () => CupCardSheet(c, me), rp);
+  card.classList.add('cup-card-open'); if (!me || c.status !== 'finished') disable(card);
+  Ghost('ロビーへ', 36, 566, 220, 54, () => CupLobby(cupId), rp, 'small');
+  Back(HostedCups, 'BACK', 40, 834);
+}
+
+/** The cup result card: the same share card as replays (place, field, horse, mode label, watermark) — no player or cup names. */
+function CupCardSheet(c, me) {
+  const horse = partner()?.name ?? '';
+  const place = `${me.rank}位 / ${c.entrants.length}人`;
+  const line = c.format === 'best_of_3' ? `${me.points}pt（3レース）` : '1レース';
+  Sheet('結果カード', '共有　/　ムチ一閃', (s, close, y) => {
+    s.classList.add('cup-share-sheet');
+    const k = Card('Share card', 48, y, 564, 300, s, 'var(--gold)');
+    Txt('主催カップ', 28, 24, 300, 15, CYAN, k, { weight: 700, ls: '.18em' });
+    Txt(place, 28, 60, 500, 42, GOLD, k, { weight: 700, cls: 'num' }).classList.add('cup-share-place');
+    Txt(line, 28, 128, 500, 18, WHITE, k, { weight: 700 });
+    cupTyped(Txt(horse, 28, 170, 500, 20, WHITE, k, { weight: 700, nowrap: true }));
+    Txt(cupRules(c.conditions), 28, 206, 500, 15, SOFT, k, { nowrap: true });
+    Txt('ムチ一閃', 28, 252, 500, 16, DIM, k, { weight: 700, ls: '.3em', cls: 'keep-ja' });
+    Txt('ほかのプレイヤーの名前とカップ名は載りません', 48, y + 320, 564, 13, SOFT, s);
+    Cta('共有する', 48, y + 370, 564, () => { close(); toast('共有の画面を開きました'); }, s).classList.add('cup-share');
+  });
+}
+
 // ================================================================= round 14: マイリプレイ (REQ-MYRP-*, contracts/protocol.md §37)
 // Saved replays on the real MyReplaysService / PlayerService rules, played back by ReplayPlayer in WebAssembly: the whole
 // race re-simulated on the device from the stored config + inputs, the hash checked before anything is shown (else
@@ -4436,7 +4742,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

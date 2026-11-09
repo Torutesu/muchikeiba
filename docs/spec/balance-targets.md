@@ -7,7 +7,7 @@
 |---|---|---|
 | 初心者マッチ（R10） | 相棒＋初心者＋弱いCPUの場（§2.2、BalanceHarness の部品で計測） | 未（§2.2 の注を参照） |
 | レース（R1〜R8） | `engine/Muchi.Verifier/BalanceHarness.cs`（固定シードで約10秒） | `BalanceTests.DefaultRulesetMeetsEveryHarnessTarget` |
-| 経済（E1〜E15） | `server/src/sim/economy.ts`（本物の `PlayerService` とマスターデータで90日分） | `server/test/economy.test.ts` |
+| 経済（E1〜E15、E18） | `server/src/sim/economy.ts`（本物の `PlayerService` とマスターデータで90日分） | `server/test/economy.test.ts` |
 | コース別（T1・T2・T7、全コース×全馬場） | `BalanceHarness.TrackRun`（`server/master/tracks.json` の全コース、固定シード） | `BalanceTests.EveryServerCourseMeetsPerCourseTargets` |
 | 固有スキル（R9・S2、全コース×全馬場） | `engine/Muchi.Verifier/SkillBalance.cs`（`server/master/skills.json` の全スキル、固定シード） | `SkillTests.EverySkillMeetsR9AndStyleParityHoldsWithSkills` |
 | タイムアタックのメダル | `BalanceHarness.TimeAttackThresholds`（上限いっぱいの馬80本） | 値は `server/master/progression.json` に反映。全コースを `BalanceTests.TimeAttackMedalsMatchTheHarnessForEveryCourse` で一致を確認 |
@@ -726,6 +726,30 @@ R1〜R8 は2000m（芝）と1800m（ダート）の基準コースで測る。�
 - 90日後には毎日遊ぶ無課金も天井で SSR（3700）を持つので、C〜A級ではどの想定も上限に届いていて差は0（調教でも0）。S級（4000）では全員が同じだけ伸びる（+約180、SSR の素質いっぱい）。調教は上限を超えない。
 - 序盤（SSR を持つ前）は、無課金の相棒が上限まで伸びて SSR との差が縮む方向にしか働かない（`server/test/training.test.ts` の「the ranked gap to an SSR only narrows」で全クラスを確認）。
 - ミニゲームの上乗せは最大 +10%（`TRAINING_HARD_LIMITS.timingMaxPermille` 150‰ が上限）。機械で満点を出しても伸びは1割しか増えない。
+
+### 4.13 週替わりチャレンジを足した後（Round 13、REQ-WCH-001〜016、`contracts/protocol.md` §31）
+
+想定の追加（上限の見積もり）：**全ての想定が、各ゲーム週の最初の稼働日に3つのチャレンジを全部クリアする**（貸し出し馬で、本物の start → prepare → record の経路。検証器の再シミュレーションの代わりに「1着・タイム条件の1秒前・ムチなし」の結果を渡す）。チャレンジの seed とセッション id は別の乱数列（`challengeRng`）なので、ガチャの抽選は前と同じ。
+
+**目標 E18**：
+- (a) E1/E2 がチャレンジ込みで範囲内（無課金・招待された人の E1 ≤ 65・E2 ≤ 2.8、招待上限の人の SSR ≤ 2.8）。
+- (b) 課金でクリア・報酬は増えない：毎日遊ぶ全ての想定（パス・中課金・厩舎手当・招待・広告）のクリア数・無償コイン・素材が無課金と同じ。
+- (c) 無償コインは無課金の遊びで得た無償コインの 2% 以下、有償コインは 0。1回の付与は ¥200 以下（`WCH_HARD_LIMITS`、設定の検証）。
+
+| 試した報酬（各週） | E1 無課金 | E2 無課金 | E1/E2 招待された | 招待上限 SSR/月 | 判定 |
+|---|---|---|---|---|---|
+| 無償コイン10枚（1つ）＋素材1（2つ）＝ 10枚/週 | **65.3（NG）** | 2.67 | **65.7（NG）**／2.78 | **3.00（NG）** | E1 の余裕（Round 12 時点 64.2 / 65）が 0.8 回/月しかなく、+130枚/90日で10連の回数が1回増える seed が出る |
+| **素材1 × 3（採用）** | **64.2** | **2.56** | **64.6／2.67** | **2.78** | E1〜E15 は 4.12 と**全く同じ値**（素材は引ける回数に効かない） |
+
+| persona | 初クリア（90日） | 無償コイン | 配合素材 | バッジ |
+|---|---|---|---|---|
+| 無課金（毎日）・パス・中課金・厩舎手当・招待・広告 | 39 | 0 | 39 | 13 |
+| 無課金（週4日） | 39 | 0 | 39 | 13 |
+| 復帰（14日休み） | 36 | 0 | 36 | 12 |
+
+- 週4日の人も週に1日は遊ぶので同じだけクリアできる（チャレンジは週単位）。復帰の人は休んだ2週分が少ない。
+- 無償コインを付けたい場合は設定で付けられる（1回 ≤ 100・1週 ≤ 150）。付ける時は他の無償コイン（デイリーミッションなど）を同じだけ下げてから `npm run economy` で E1/E2 を確かめる。
+- タイムの条件（雨の重馬場 1:34.0、不良馬場 1:19.0）は貸し出し馬の素直な乗り方で届き、何もしない乗り方では届かない値（`engine/Muchi.Engine.Tests/WeeklyChallengeTests.cs` `TimeLimitsAreReachableWithTheLoanHorseAndNotFree`）。着順の条件は固定の CPU（Lv2〜3、7頭）相手で、素直な乗り方の1本の実測で9つのうち7つが達成（`EveryIssuedChallengeRunsVerifiesAndEvaluatesTheSameOnBothSides` の出力）。実際の達成率はリリース後に KPI（`challenge_start` / `challenge_clear`）で見る。
 
 ## 5. わかっている課題
 

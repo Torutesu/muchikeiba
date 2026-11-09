@@ -214,6 +214,9 @@ export interface WchSession {
   config: RaceStartConfig; issuedAt: number; expiresAt: number; status: WchSessionStatus; result: WchResult | null;
   /** The validated inputs while the run is being verified (prepare → record). */
   inputs?: [number, number, number][];
+  /** The conditions and reward shown at the start (a rotation edited mid-session never changes this run's rules). */
+  conditions?: ChallengeConditions;
+  reward?: Reward;
 }
 export interface WchClear { at: number; sessionId: string; place: number; timeMs: number; whips: number }
 export interface WchWeek { cleared: Record<string, WchClear>; attempts: Record<string, number>; best: Record<string, { place: number | null; timeMs: number | null }>; badgeAt: number | null }
@@ -389,7 +392,7 @@ export function startChallenge(m: Master, s: PlayerState, challengeId: string, i
   const playerSlot = config.entrants.findIndex((e) => e.kind === 'human');
   const wk = weekState(st, cur.weekId, cur.weekId);
   wk.attempts[ch.id] = (wk.attempts[ch.id] ?? 0) + 1;
-  const session: WchSession = { id: sessionId, weekId: cur.weekId, challengeId: ch.id, horseId: input.loan ? null : input.horseId!, loan: !!input.loan, playerSlot, config, issuedAt: now, expiresAt: now + c.sessionTtlMs, status: 'issued', result: null };
+  const session: WchSession = { id: sessionId, weekId: cur.weekId, challengeId: ch.id, horseId: input.loan ? null : input.horseId!, loan: !!input.loan, playerSlot, config, issuedAt: now, expiresAt: now + c.sessionTtlMs, status: 'issued', result: null, conditions: ch.conditions, reward: ch.reward };
   st.sessions.push(session);
   if (st.sessions.length > c.keepSessions) st.sessions.splice(0, st.sessions.length - c.keepSessions);
   emit({ name: 'challenge_start', s1: ch.id, s2: cur.weekId, s3: input.loan ? 'loan' : 'own', count: wk.attempts[ch.id] });
@@ -473,7 +476,8 @@ export function recordChallengeResult(m: Master, s: PlayerState, sessionId: stri
   const sessionWeek = weekAt(m, c, gameWeekStartMs(x.weekId, dayRule(m)));
   const def = sessionWeek.def.challenges.find((q) => q.id === x.challengeId);
   // the rotation may have been edited since the start: the session's own config and the conditions shown at start win
-  const cond = def?.conditions ?? {};
+  const cond = x.conditions ?? def?.conditions ?? {};
+  const sessionReward = x.reward ?? def?.reward ?? null;
   const evaluation = evaluateChallenge(cond, x.config, x.playerSlot, inputs, out);
   const curWeek = weekAt(m, c, now).weekId;
   const credited = x.weekId === curWeek || x.weekId === addJstDays(curWeek, -7);
@@ -484,10 +488,12 @@ export function recordChallengeResult(m: Master, s: PlayerState, sessionId: stri
   } else if (!prevBest) wk.best[x.challengeId] = { place: null, timeMs: null };
   const firstClear = credited && evaluation.cleared && !wk.cleared[x.challengeId];
   let reward: Reward | null = null;
-  if (firstClear && def) {
+  if (firstClear) {
     wk.cleared[x.challengeId] = { at: now, sessionId, place: evaluation.place!, timeMs: evaluation.timeMs!, whips: evaluation.whips };
-    reward = def.reward;
-    grantReward(s, def.reward, now, `weekly challenge ${x.weekId} ${x.challengeId}`, `wch:${sessionId}`);
+    if (sessionReward) {
+      reward = sessionReward;
+      grantReward(s, sessionReward, now, `weekly challenge ${x.weekId} ${x.challengeId}`, `wch:${sessionId}`);
+    }
   }
   const clearedCount = sessionWeek.def.challenges.filter((q) => wk.cleared[q.id]).length;
   let newlyEarned = false;

@@ -365,6 +365,32 @@ describe('weekly badge (REQ-WCH-009/010)', () => {
   });
 });
 
+describe('a rotation edited mid-session (remote config, REQ-WCH-012)', () => {
+  it('the run is judged on the conditions and paid the reward shown at its start', async () => {
+    let master: Master = m;
+    let now = T0;
+    const repo = new MemoryPlayerRepo();
+    const svc0 = new PlayerService(repo, { master: m, rng: seededRng(9), clock: () => now, verifiers: {} });
+    await svc0.bootstrap('p');
+    const st = await svc0.wchStart('p', WHIP3.id, { loan: true });
+    // an operator tightens the challenge to "no whip" and removes its reward while the run is on the device
+    const edited = structuredClone(cfg);
+    edited.rotation[0]!.challenges[1]!.conditions = { maxWhips: 0, maxPlace: 1 };
+    edited.rotation[0]!.challenges[1]!.reward = { items: [{ itemId: 'breeding_material', qty: 2 }] };
+    master = { ...m, progression: { ...m.progression, weeklyChallenge: edited } } as Master;
+    const svc1 = new PlayerService(repo, { master, rng: seededRng(9), clock: () => now, verifiers: {} });
+    await svc1.wchPrepare('p', st.sessionId, [[60, st.playerSlot, 1], [900, st.playerSlot, 32]], HASH_A, undefined);
+    const order = [st.playerSlot, ...st.config.entrants.map((e) => e.slot).filter((x) => x !== st.playerSlot)];
+    order.splice(0, 1); order.splice(1, 0, st.playerSlot); // 2nd place
+    const r = await svc1.wchRecord('p', st.sessionId, { resultHash: HASH_A, order, finishTicks: order.map((_, i) => 1800 + i), finishFracs: order.map(() => 0), checksums: {} }, HASH_A);
+    if ('rejected' in r) throw new Error();
+    expect(r.cleared).toBe(true); // 2nd with 1 whip meets "3 whips, top 3" (the rules at the start)
+    expect(r.reward).toEqual(WHIP3.reward);
+    expect(repo.get('p')!.items.breeding_material).toBe(1);
+    now += 1;
+  });
+});
+
 describe('evaluation (REQ-WCH-005, shared with C# ChallengeEvaluator)', () => {
   it('place, time (the time attack formula with the fraction), whips of the slot, style; DNF fails every challenge', async () => {
     const w = setup();

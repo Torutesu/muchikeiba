@@ -991,6 +991,7 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
   "cleared": true, "firstClear": true, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] }, "clearedCount": 1,
   "badge": { "id": "wch_badge_aoba", "name": "青葉の一閃章", "earned": false, "newlyEarned": false }, "credited": true }
 ```
+- 判定と報酬は**開始時に見せた条件・報酬**で行う（遊んでいる途中にリモート設定でローテーションが変わっても、そのレースのルールは変わらない）。
 - 報酬は**チャレンジごとに1週1回**（`firstClear`）。2回目以降のクリアも記録・判定はするが報酬は無い（`reward: null`）。3つそろった時に `badge.newlyEarned: true`（1週1回）。
 - エラー：`CHALLENGE_SESSION_EXPIRED`（期限切れ・トークン不正）、`CHALLENGE_SESSION_USED`（送信済み・却下済み）、`UNAUTHORIZED`（他人のトークン）、`NOT_FOUND`、`DELETION_PENDING`。
 

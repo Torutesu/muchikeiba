@@ -1493,6 +1493,7 @@ TeamGoalView = { "teamId": "tabc123456", "teamName": "あおばRC", "enabled": t
 | `tournamentClose`（大会ごとに1回のガード内） | `tournaments[]`（大会名・最終順位）・`tournamentWins`。馬は大会に登録した馬（`award` に `horseId` を追加、任意） |
 - `biggestWin`：モードの重み（大会＞イベント＞ランク戦＞フレンド戦）→ 頭数 → 人間の騎手の数 → 先に勝った方。
 - `rivalWins`：その週の人間のライバル（§28）がその時点で分かっていて、そのランク戦でライバルより先着した回数。
+- **週替わりチャレンジ（§31、`mode: "challenge"`）は数えない**（Round 14 統合で決定）：能力値を上限にそろえた CPU だけのレースで、タイムアタックと同じ検証の経路（`wchRecord`）を通り `applyRace` を通らない。プレイヤー統計（REQ-STAT-001）も数えないので、戦績と統計は同じレースの集合のまま。`applyRace` のレースIDガードがあるので、同じ結果が2回届いても1回だけ数える（`server/test/r14-integration.test.ts`）。週の区切りは使わない（`rivalWins` はライバルの週の記録（§28、time.ts の共通の週）をそのまま見る）。
 - 相棒（`flags.partnerHorseId`、REQ-UXS-002）かどうかは記録ではなく毎回判定する。
 - 記録はこの機能の公開後のレースから（それ以前の結果はさかのぼらない）。
 

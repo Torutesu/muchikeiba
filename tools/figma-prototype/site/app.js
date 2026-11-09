@@ -2008,7 +2008,7 @@ async function AdvicePanel(q, x, y, w, h, focus, onPick) {
     c.classList.add('adv-row'); c.dataset.horse = hr.horseId; c.dataset.grade = hr.grade;
     if (hr.horseId === a.focusHorseId) c.classList.add('sel');
     Txt(hr.name, 24, 14, 380, 21, WHITE, c, { weight: 700, nowrap: true });
-    const tag = hr.horseId === a.suggestedHorseId ? 'おすすめ　·　' : '';
+    const tag = hr.horseId === a.suggestedHorseId ? 'おすすめの馬　·　' : '';
     Txt(tag + ADV_GRADE[hr.grade], w - 72 - 304, 18, 280, 15, ADV_GRADE_COLOR[hr.grade], c, { weight: 700, align: 'right', ls: '.1em', nowrap: true }).classList.add('adv-grade');
     const why = hr.checks.find((k) => k.mark === 'minus') ?? hr.checks.find((k) => k.mark === 'plus') ?? hr.checks[0];
     if (why) Txt(why.text, 24, 52, w - 120, 14, why.mark === 'minus' ? SOFT : MUTED, c, { nowrap: true });
@@ -2037,7 +2037,7 @@ async function ChallengeAdvice(sel) {
     a.horses.slice(0, 3).forEach((hr, i) => {
       const yy = y + i * 70;
       Txt(hr.name, 48, yy, 330, 19, WHITE, s, { weight: 700, nowrap: true });
-      Txt((hr.horseId === a.suggestedHorseId ? 'おすすめ　·　' : '') + ADV_GRADE[hr.grade], 380, yy + 3, 232, 14, ADV_GRADE_COLOR[hr.grade], s, { weight: 700, align: 'right', nowrap: true }).classList.add('adv-grade');
+      Txt((hr.horseId === a.suggestedHorseId ? 'おすすめの馬　·　' : '') + ADV_GRADE[hr.grade], 380, yy + 3, 232, 14, ADV_GRADE_COLOR[hr.grade], s, { weight: 700, align: 'right', nowrap: true }).classList.add('adv-grade');
       const why = hr.checks.find((k) => k.mark === 'minus') ?? hr.checks.find((k) => k.mark === 'plus') ?? hr.checks[0];
       if (why) Txt(why.text, 48, yy + 32, 564, 13, MUTED, s, { nowrap: true });
     });

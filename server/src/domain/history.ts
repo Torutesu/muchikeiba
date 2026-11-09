@@ -115,7 +115,8 @@ export const PENDING_STORE_NOTE = 'ストアで保留中の購入は、支払い
 export type CoinCategory =
   | 'purchase' | 'purchase_bonus' | 'purchase_test' | 'daily_pack' | 'gacha' | 'shop' | 'ad_reward' | 'compensation' | 'login' | 'mission'
   | 'achievement' | 'race' | 'time_attack' | 'pass' | 'season' | 'team' | 'event_fee' | 'event_fee_refund' | 'event' | 'tournament'
-  | 'stud' | 'invite' | 'bond' | 'comeback' | 'refund' | 'debt' | 'debt_settle' | 'forfeit' | 'other';
+  | 'stud' | 'invite' | 'bond' | 'comeback' | 'refund' | 'debt' | 'debt_settle' | 'forfeit'
+  | 'rival' | 'team_goal' | 'weekly_challenge' | 'exchange' | 'other';
 
 export const COIN_TITLES: Record<CoinCategory, string> = {
   purchase: 'コインの購入', purchase_bonus: 'はじめての購入の特典', purchase_test: 'テスト購入', daily_pack: '毎日の受け取り',
@@ -123,7 +124,8 @@ export const COIN_TITLES: Record<CoinCategory, string> = {
   mission: 'ミッションの報酬', achievement: '実績の報酬', race: 'レースの報酬', time_attack: 'タイムアタックの報酬', pass: 'シーズンパスの報酬',
   season: 'シーズンの報酬', team: '支部の報酬', event_fee: 'イベントの参加費', event_fee_refund: 'イベントの参加費の返却', event: 'イベントの報酬',
   tournament: '大会の報酬', stud: '種付け料', invite: '友達招待の報酬', bond: '絆レベルの報酬', comeback: '復帰キャンペーンの報酬',
-  refund: 'ストアの返金による回収', debt: '未精算の返金', debt_settle: '返金の精算', forfeit: 'アカウント削除による放棄', other: 'その他の増減',
+  refund: 'ストアの返金による回収', debt: '未精算の返金', debt_settle: '返金の精算', forfeit: 'アカウント削除による放棄',
+  rival: 'ライバルの週の報酬', team_goal: '支部の共同目標の報酬', weekly_challenge: '週替わりチャレンジの報酬', exchange: 'イベント交換所', other: 'その他の増減',
 };
 
 /**
@@ -150,7 +152,11 @@ export function classifyLedger(m: Master, e: Pick<LedgerEntry, 'reason' | 'kind'
   if (r.startsWith('time attack')) return c('time_attack');
   if (r.startsWith('pass ')) return c('pass');
   if (r.startsWith('season ')) return c('season');
+  if (r.startsWith('team goal ')) return c('team_goal'); // §32 (paid through the gift box: the claim keeps this note)
   if (r.startsWith('team ') || r.startsWith('league ')) return c('team');
+  if (r.startsWith('rival week ')) return c('rival'); // §28
+  if (r.startsWith('weekly challenge ')) return c('weekly_challenge'); // §31
+  if (r.startsWith('exchange ')) return c('exchange'); // §30 (coin lines; the leftover is material, not coins)
   if (r === 'event entry fee refund') return c('event_fee_refund');
   if (r === 'event entry fee') return c('event_fee');
   if (r.startsWith('event ')) return c('event');

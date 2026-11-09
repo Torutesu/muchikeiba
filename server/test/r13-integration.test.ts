@@ -8,6 +8,8 @@ import { exchangeClosesAt, ensureExchange } from '../src/domain/exchange.js';
 import { dayRule } from '../src/domain/time.js';
 import type { PlayerState } from '../src/domain/player.js';
 import { m } from './helpers.js';
+import { classifyLedger, COIN_TITLES } from '../src/domain/history.js';
+import { grantFree } from '../src/domain/wallet.js';
 
 const ev = m.events.find((e) => e.exchange)!;
 const CLOSES = exchangeClosesAt(ev, ev.exchange!, dayRule(m));
@@ -64,5 +66,40 @@ describe('§26.1 gift box routing for Round 13 rewards', () => {
     expect((await w.svc.giftBox('p', 'box', 0, 50)).entries).toHaveLength(1);
     await w.svc.giftClaimAll('p', 'c:x');
     expect(w.state('p').items.breeding_material ?? 0).toBe(mat0 + 2);
+  });
+});
+
+describe('§33 coin history: Round 12 / 13 rewards map to readable categories (no raw reason)', () => {
+  const cases: [string, string, string][] = [
+    ['rival week 2026-12-07 win', 'rival', 'ライバルの週の報酬'],
+    ['team goal team_1 week 2026-12-07 tier 2', 'team_goal', '支部の共同目標の報酬'],
+    ['weekly challenge 2026-12-07 wa_nige', 'weekly_challenge', '週替わりチャレンジの報酬'],
+    ['exchange newyear_cup_2027_01 ex_coins_50', 'exchange', 'イベント交換所'],
+    ['invite milestone first_race', 'invite', '友達招待の報酬'],
+    ['tournament cup_1 rank 3', 'tournament', '大会の報酬'],
+  ];
+  for (const [reason, category, title] of cases) {
+    it(`${reason} → ${category}`, () => {
+      const c = classifyLedger(m, { reason, kind: 'grant', delta: 10 });
+      expect(c).toEqual({ category, title });
+      expect(COIN_TITLES[c.category]).toBe(title);
+    });
+  }
+
+  it('end to end: a claimed team goal gift, a rival week and a weekly challenge row are named, never the raw reason', async () => {
+    const w = world();
+    await w.svc.bootstrap('a');
+    await w.svc.teamGoalReward('a', WEEK, 'team_1', 2, 12);
+    await w.svc.giftClaimAll('a', 'c:claim');
+    const s = w.state('a');
+    grantFree(s, 20, T0 + 1, 'rival week 2026-11-30 win', 'rival:2026-11-30');
+    grantFree(s, 10, T0 + 2, 'weekly challenge 2026-12-07 wa_nige', 'wch:sess_1');
+    w.repo.put(s);
+    const page = await w.svc.history('a', 'coins', { currency: 'free', limit: 50 }) as { items: { category: string; title: string }[] };
+    const cats = page.items.map((r) => r.category);
+    expect(cats).toEqual(expect.arrayContaining(['team_goal', 'rival', 'weekly_challenge']));
+    expect(cats).not.toContain('other');
+    const text = JSON.stringify(page.items);
+    expect(text).not.toMatch(/team_1|rival week|weekly challenge|wa_nige|tier 2/);
   });
 });

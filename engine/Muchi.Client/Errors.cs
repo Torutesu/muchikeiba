@@ -80,6 +80,11 @@ namespace Muchi.Client
         OutOfStock,
         /// <summary>409: not enough event points (REQ-EXCH-008).</summary>
         InsufficientPoints,
+        ChallengeLimitReached,
+        ChallengeHorseIneligible,
+        ChallengeSessionExpired,
+        ChallengeSessionUsed,
+        ChallengeResultMismatch,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -169,6 +174,11 @@ namespace Muchi.Client
             ["EXCHANGE_CLOSED"] = ApiErrorCode.ExchangeClosed,
             ["OUT_OF_STOCK"] = ApiErrorCode.OutOfStock,
             ["INSUFFICIENT_POINTS"] = ApiErrorCode.InsufficientPoints,
+            ["CHALLENGE_LIMIT_REACHED"] = ApiErrorCode.ChallengeLimitReached,
+            ["CHALLENGE_HORSE_INELIGIBLE"] = ApiErrorCode.ChallengeHorseIneligible,
+            ["CHALLENGE_SESSION_EXPIRED"] = ApiErrorCode.ChallengeSessionExpired,
+            ["CHALLENGE_SESSION_USED"] = ApiErrorCode.ChallengeSessionUsed,
+            ["CHALLENGE_RESULT_MISMATCH"] = ApiErrorCode.ChallengeResultMismatch,
             ["VERIFIER_UNAVAILABLE"] = ApiErrorCode.VerifierUnavailable,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };

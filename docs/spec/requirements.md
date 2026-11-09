@@ -708,6 +708,26 @@
 - REQ-EXCH-011 経済 E17：全ての想定でイベント期間中に1日3レースをイベントにし、猶予期間に交換所を使っても E1〜E6 が目標内、どの想定も引ける回数がイベントなしの 1.03 倍以下、課金しても貯まるポイントは同じ、1イベントの交換のコイン価値（コイン＋券の1回分の価格）≤ 250（`server/test/economy.test.ts`、`npm run economy`）。
 - REQ-EXCH-012 クライアントと運用：`Muchi.Client` `ApiClient.GetExchangeAsync`・`ExchangeAsync`、Unity のゲーム層 `ExchangeModel`（行のカード・在庫「残り n / m」・確認シート・確定まで冪等キーを保持・猶予期間の案内・課金への導線なし）、英語の文言。運用コンソールはイベントの一覧で交換所の行・在庫・猶予日数を読める（`GET /v1/admin/config` 系の既存の表示）。
 
+
+## 31. 週替わりチャレンジ（TS＋C#、`src/domain/weeklyChallenge.ts`・`src/race/weeklyChallenge.ts`、`contracts/protocol.md` §31、docs/planning/06 §1.3）
+拘束条件：ランク戦は課金で決まらない（06 §1.3）。チャレンジは「乗り方」で毎週少しずつ目標をくれる短いループで、検証はタイムアタックと同じくサーバーの再シミュレーション。
+- REQ-WCH-001 週：`gameWeekId`（`time.ts`）。`weekStartsOn`（月曜）のゲーム日の切り替わり（REQ-DAY-001、04:00 JST）に変わる。セットは `rotation` を `anchorWeekId` から1週ずつ。週の終わりの直前に始めたレースは期限内なら始めた週の分。
+- REQ-WCH-002 一覧：`GET /v1/challenges/weekly` で今週の3つ（コース・距離・馬場・ナイター・相手・条件の文・報酬・貸し出し馬）と自分の進み具合（クリア・挑戦回数・最高着順/タイム）、バッジ、今日の残り回数、翌週の条件（`previewNext`）。
+- REQ-WCH-003 開始：`POST /v1/challenges/weekly/:challengeId/start`（冪等キー必須）。設定（seed・CPU・枠・正規化・馬場・ルールセット）はサーバーが決め、`playerSlot` と署名付きトークンを返す。1ゲーム日に `startsPerDay` 回まで。
+- REQ-WCH-004 条件：`maxPlace`・`style`・`maxWhips`・`maxTimeMs` の組み合わせ（すべて満たし、かつ完走）。条件ごとの短い文 `labels`（日本語・英語）。
+- REQ-WCH-005 判定：検証器の結果（着順・終了 tick と端数）と検証した入力（自分の枠のムチの入力数）、発行した設定（脚質）から**サーバーが**判定する（`evaluateChallenge`）。C# `ChallengeEvaluator` は同じ手順で端末に同じ判定を出す。クライアントの申告は使わない。
+- REQ-WCH-006 報酬：固定・少額。チャレンジごとに1週1回（2回目以降のクリアは記録だけ）。無償コイン（≤ 100/回、≤ 150/週）と配合素材（≤ 2）だけ。有償コイン・券・ガチャ・馬は不可。
+- REQ-WCH-007 公平性：全員を `statCap` に正規化、スキルなし、調子の揺らぎなし、馬場固定。どのチャレンジにも貸し出し馬（能力合計 = `statCap`、コースと脚質に合う）がある。課金で条件を緩めたり回数を増やしたりする商品は作らない。
+- REQ-WCH-008 送信：`POST /v1/challenges/weekly/submit` は入力だけ（自分の枠・クライアントのビット・増える tick・上限件数）。発行した設定で再シミュレーションし、ハッシュ違いは `CHALLENGE_RESULT_MISMATCH`。セッション単位で冪等（同じハッシュの再送は同じ結果）。検証器が落ちていたらセッションを開いたまま 503。
+- REQ-WCH-009 バッジ：その週の3つをクリアすると、その週のバッジ（見た目だけ、1週1回）を記録する。
+- REQ-WCH-010 法令：景品表示法（1回の付与 ≤ ¥200 相当を最も高いパックの単価で検証）。バッジはランダムなアイテムが一切関わらない達成の記録なのでコンプガチャではない（docs/planning/03-legal-risk.md）。生成する文に「倍」「今だけ」「残りわずか」「お得」「通常価格」や偽の締め切りを使わない（残り日数は週の終わりの実時刻から）。
+- REQ-WCH-011 状態：今週と先週の進み具合だけを保持、セッションは `keepSessions` 件、バッジの記録は 520 件まで。削除中のアカウントは開始・送信できない。
+- REQ-WCH-012 設定 `progression.weeklyChallenge`（リモート設定で変更可）：形・重複・コースと馬場の組み合わせ・照明・条件の意味（N着は頭数未満、脚質だけは不可）・貸し出し馬（存在・季節限定でない・コースと脚質に合う）・報酬（種類・¥200・週の合計）・バッジ（報酬なし・販売アイテムと別 id）・`anchorWeekId` の曜日を起動時とリモート設定で検証（`weeklyChallengeProblems`）。
+- REQ-WCH-013 経済：報酬は全員が毎週3つクリアしても E1/E2 を範囲内に保つ（E18、balance-targets §4.16、`server/src/sim/economy.ts`）。
+- REQ-WCH-014 KPI：`challenge_start`・`challenge_clear`（protocol §31.8、`docs/ops/kpi-queries.md`）。
+- REQ-WCH-015 英語：一覧・結果・エラーのすべての文に英語（タイトル・バッジ名は `master/locale-en.json`、条件の文は `i18n/en.ts`）。プロトタイプとクライアントも英語で表示できること。
+- REQ-WCH-016 クライアント：`Muchi.Client` の API・`ChallengeRun`・`ChallengeEvaluator`、Unity の `WeeklyChallengeModel`（ホームのカード・一覧・HUD の条件の行・結果・バッジ）。プロトタイプ（ムチ一閃の画面、本物のエンジンでのレース、日英、e2e と英語の通し）。
+
 ## 33. 購入履歴・コイン履歴・ガチャ履歴（TS＋C#、`src/domain/history.ts`、`contracts/protocol.md` §33、docs/planning/03-legal-risk.md）
 拘束条件：資金決済法（有償・無償を分ける）、特商法（購入の記録）、ガチャの履歴開示。表示だけでコイン・アイテムは動かない。
 - REQ-HIST-001 残高ヘッダー：有償・無償・未精算を分けて出す。今月（JST）の購入額と、年齢区分に上限がある（20歳未満の区分）ときはその上限と残り（`GET /v1/history/summary`）。

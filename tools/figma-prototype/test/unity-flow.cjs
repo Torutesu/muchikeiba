@@ -13,6 +13,8 @@
 //  5. Returning players (REQ-CB-*, 06 §4.5): the comeback welcome (once), the 7-day comeback login track and missions, the
 //     lapse-reminder opt-in (asked once), the home chip and the one-time what's-new card.
 //  7. Round 12 (REQ-RIVAL-*): the rival strip on home, the rival detail, a race together, the week-result sheet.
+//  7. Round 13 (REQ-WCH-*): the weekly challenge — the home card, the list (server condition lines, loan horse, badge, rules,
+//     next week), a race on the real engine with the condition in the HUD, the server's verdict on the result screen.
 //  6. Round 11 (REQ-COL-*, REQ-ACH-*): the 図鑑 (obtained / seen / unknown silhouettes, completion with no reward and no scout
 //     link), achievements (claim one tier, claim all) and equipping an achievement title.
 //  7. Round 12 (REQ-SHORT-*): the coin shortfall sheet (T6) from the paid step-up → the purchase confirmation → back to the
@@ -166,6 +168,56 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await shot('exchange-closed', 400);
     await page.evaluate(() => globalThis.__muchi.logic.exchangeDemo(null));
     await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
+  }
+
+  // round 13 (REQ-WCH-*): 週替わりチャレンジ from the home card → this week's three (condition lines from the server, the loan
+  // horse at the cap, the cosmetic badge, the fairness rules, no shop link) → next week's preview → a race with the loan horse
+  // on the real engine, the condition live in the HUD → the result decided by the logic's re-simulation of the issued config
+  async function challengeFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await waitIn('.wch-home');
+    await shot('home-weekly-challenge', 300);
+    await page.locator('.screen.in .wch-open').click(); await waitScreen('weekly-challenge'); await waitIn('.wch-card');
+    const text = await page.locator('.screen.in').innerText();
+    assert.ok(text.includes('クラスBの上限') && text.includes('見た目だけ') && text.includes('週1回'), 'challenge: the fairness rules, the cosmetic badge and once a week are on the screen');
+    assert.ok(!/倍|今だけ|残りわずか|お得|通常価格/.test(text), 'challenge: no banned wording');
+    assert.ok(!/ショップ/.test(text.replace(/ホーム ・ 厩舎 ・ スカウト ・ ショップ ・ その他/, '')), 'challenge: no shop link');
+    assert.equal(await page.locator('.screen.in .wch-card').count(), 3, 'three challenges this week');
+    await shot('weekly-challenge', 400);
+    await page.locator('.screen.in .wch-next').click(); await page.waitForTimeout(400); await shot('weekly-challenge-next', 300);
+    await click('閉じる'); await page.waitForTimeout(300);
+    // the challenge with a place condition and the most whips allowed (the scripted rider whips twice)
+    const pick = await page.evaluate(async () => {
+      const v = (await globalThis.__muchi.logic.weeklyChallenges()).value;
+      const ok = v.challenges.filter((c) => c.conditions.maxWhips === undefined || c.conditions.maxWhips >= 2);
+      return (ok.find((c) => c.conditions.maxPlace !== undefined) ?? ok[0] ?? v.challenges[0]).id;
+    });
+    await page.locator(`.screen.in .wch-card[data-challenge="${pick}"]`).click(); await waitIn(`.glass[data-challenge="${pick}"]`);
+    await click('貸し出し馬で挑戦'); await waitScreen('race', 30000); await waitIn('.wch-hud');
+    const maxWhips = await page.evaluate(() => globalThis.__muchi.challengeSession.challenge.conditions.maxWhips ?? 2);
+    let started = false, w = 0, lastW = 0, hudShot = false;
+    for (let i = 0; i < 4000; i++) {
+      const s = await state();
+      if (!s.f) { await page.waitForTimeout(50); continue; }
+      if (s.f.done || (await screen()) !== 'race') break;
+      if (!started && s.f.gateOpen && !s.f.departed) { await page.locator('.screen.in .btn.whip').click({ force: true }); started = true; }
+      if (!hudShot && s.f.departed && s.f.remainingM < s.f.distanceM * .55) { hudShot = true; await shot('challenge-race-hud', 0, true); }
+      if (s.f.departed && w < Math.min(2, maxWhips) && s.f.remainingM <= (w === 0 ? 380 : 220) && s.f.whips > 0 && Date.now() - lastW > 1500) { await page.locator('.screen.in .btn.whip').click({ force: true }); w++; lastW = Date.now(); }
+      await page.waitForTimeout(40);
+    }
+    await waitScreen('challenge-result', 60000); await waitIn('.wch-verdict');
+    const res = await page.evaluate(() => globalThis.__muchi.lastChallenge);
+    const dev = await page.evaluate(() => globalThis.__muchi.state().lastFrame.challengeRun);
+    assert.ok(res && res.evaluation && !res.error, 'challenge: the logic verified the run');
+    assert.equal(res.cleared, dev.cleared, 'challenge: the device verdict (ChallengeEvaluator) equals the verified one');
+    assert.equal(res.evaluation.place, dev.place, 'challenge: the same place on both sides');
+    assert.equal(res.evaluation.whips, dev.whips, 'challenge: the same whip count on both sides');
+    const nLabels = await page.evaluate(() => globalThis.__muchi.challengeSession.challenge.labels.length);
+    assert.equal(await page.locator('.screen.in .wch-check').count(), nLabels, 'challenge: one ○/× line per condition');
+    await shot('challenge-result', 500);
+    await click('一覧へ'); await waitScreen('weekly-challenge'); await waitIn('.wch-card');
+    await shot('weekly-challenge-after', 300);
+    await click('BACK'); await waitScreen('home');
   }
 
   // round 9 (06 §6.5 / §7 item 7): banner calendar with real end times, pity meter, step-up, reveal → summary, the end
@@ -413,6 +465,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await trainingFlow();
   await rivalFlow();
   await exchangeFlow();
+  await challengeFlow();
   await page.evaluate(() => globalThis.__muchi.show('Scout')); await waitScreen('scout'); await shot('scout', 500);
   await click('提供割合'); await shot('scout-rates', 400); await click('BACK');
   await waitScreen('scout'); await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal'); await shot('scout-paid-reveal', 700);

@@ -51,6 +51,11 @@ namespace Muchi.Game
             ["EXCHANGE_CLOSED"] = "交換所は終了しました。残りのポイントは配合素材になります。",
             ["OUT_OF_STOCK"] = "この交換は上限まで交換済みです。",
             ["INSUFFICIENT_POINTS"] = "イベントポイントが足りません。",
+            ["CHALLENGE_LIMIT_REACHED"] = "今日のチャレンジはここまで。4:00に戻ります。",
+            ["CHALLENGE_HORSE_INELIGIBLE"] = "この条件に合う脚質の馬を選んでください。貸し出し馬なら挑戦できます。",
+            ["CHALLENGE_SESSION_EXPIRED"] = "時間切れのため、このレースは記録できませんでした。もう一度挑戦できます。",
+            ["CHALLENGE_SESSION_USED"] = "このレースは記録済みです。",
+            ["CHALLENGE_RESULT_MISMATCH"] = "レースの記録を確認できませんでした。もう一度挑戦してください。",
             ["NETWORK"] = Offline,
         };
 

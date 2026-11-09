@@ -187,6 +187,8 @@ export interface Progression {
   giftBox?: import('./giftBox.js').GiftBoxConfig;
   /** REQ-RIVAL-*: weekly rival (rival.ts, validated by rivalProblems). Absent / disabled = no rivals. */
   rival?: import('./rival.js').RivalConfig;
+  /** REQ-WCH-*: 週替わりチャレンジ (weeklyChallenge.ts, validated by weeklyChallengeProblems). Absent = no weekly challenges. */
+  weeklyChallenge?: import('./weeklyChallenge.js').WeeklyChallengeConfig;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */

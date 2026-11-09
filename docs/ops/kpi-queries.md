@@ -77,6 +77,8 @@
 | `race_assisted` | サーバー（かんたん操作ありで精算されたレース。本人の申告、KPI専用） | `whip`/`full` | モード | | `double4` 着順、`double5` 頭数 |
 | `event_point_earn` | サーバー（イベントのレースでイベントポイントを得た、REQ-EXCH-010） | イベントID | `full` / `capped`（1日の上限で削られた） | | `double4` 着順、`double9` 得たポイント、`double5` 所持ポイント |
 | `exchange_buy` | サーバー（イベント交換所で交換した） | イベントID | 行のID | 種類 `coins`/`material`/`ticket`/`cosmetic`/`horse` | `double5` 個数、`double9` 使ったポイント |
+| `challenge_start` | サーバー（週替わりチャレンジを始めた、REQ-WCH-014） | チャレンジ id | 週 id | `loan`/`own` | `double5` 今週そのチャレンジを始めた回数 |
+| `challenge_clear` | サーバー（検証済みの走りでクリア） | チャレンジ id | 週 id | `loan`/`own` | `double4` 着順、`double6` タイム（ms）、`double5` 今週のクリア数、`double8` 今週の初クリア、`double9` 1 = この回でバッジ、`double3` 付与した無償コイン |
 | `consent` | サーバー | 規約の版 | プライバシーポリシーの版 | | |
 | `partner_granted` | サーバー | テンプレートID（`t_partner`） | | | |
 | `ab_assign` | サーバー（初回の bootstrap、実験ごとに1回） | 実験ID | バケットID | | |
@@ -701,3 +703,33 @@ ORDER BY day DESC, payer, tab
 ```
 
 - **購入直後の確認**：同じ日に `purchase`（サーバー）と `history_view`（`purchases`）がある課金者の割合が高いなら、購入完了の表示が分かりにくい（届いたか不安で履歴を見に行っている）。
+
+## 週替わりチャレンジ：挑戦と達成（REQ-WCH-014、contracts/protocol.md §31）
+
+**チャレンジごとの挑戦人数・達成率・平均挑戦回数**（週ごと）。達成率が極端に低い（< 10%）なら条件が厳しすぎる、高すぎる（> 90%）なら簡単すぎる。`blob11` = `server`。
+
+```sql
+SELECT blob9 AS week, blob8 AS challenge,
+  countIf(blob1 = 'challenge_start') AS starts,
+  count(DISTINCT if(blob1 = 'challenge_start', blob2, NULL)) AS players,
+  count(DISTINCT if(blob1 = 'challenge_clear' AND double8 = 1, blob2, NULL)) AS cleared_players,
+  cleared_players / players AS clear_rate,
+  starts / players AS tries_per_player
+FROM muchi_kpi
+WHERE blob1 IN ('challenge_start', 'challenge_clear') AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY week, challenge ORDER BY week, challenge
+```
+
+**貸し出し馬と自分の馬**（公平性の監視）：`blob10`（`loan`/`own`）ごとの達成率を課金者（`blob7`）で分ける。自分の馬の課金者の達成率が貸し出し馬の無課金より大きく上回るなら、正規化・スキルなしの前提が崩れていないか（設定・ルールセット）を調べる。
+
+```sql
+SELECT blob10 AS horse, blob7 AS payer,
+  count(DISTINCT if(blob1 = 'challenge_start', blob2, NULL)) AS players,
+  count(DISTINCT if(blob1 = 'challenge_clear', blob2, NULL)) AS cleared
+FROM muchi_kpi
+WHERE blob1 IN ('challenge_start', 'challenge_clear') AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY horse, payer
+```
+
+**週のバッジ**：`challenge_clear` の `double9 = 1` の人数 ÷ その週に挑戦した人数。
+

@@ -65,3 +65,13 @@ for (const p of PERSONAS) {
 }
 const fe = evRes.f2p!.pullsPerMonth;
 console.log(`\nE17 イベントあり: E1 ${fe.toFixed(1)}  E2 ${evRes.f2p!.ssrPerMonth.toFixed(2)}  E4 ${evRes.f2p_casual!.pullsPerMonth.toFixed(1)}  E5 ${(evRes.light!.pullsPerMonth / fe).toFixed(2)}  E6 ${(evRes.medium!.pullsPerMonth / fe).toFixed(2)}`);
+
+// REQ-WCH-* (E18): weekly challenges — every persona clears all 3 each week (upper bound); fixed, small, the same for everyone
+console.log('');
+console.log('| persona | 週替わりチャレンジ（初クリア） | 無償コイン | 無償コイン/日 | 配合素材 | バッジ | 無償コインの稼ぎに占める割合 |');
+console.log('|---|---|---|---|---|---|---|');
+for (const p of PERSONAS) {
+  const r = res[p.id]!;
+  console.log(`| ${p.label} | ${r.challengeClears.toFixed(1)} | ${r.challengeCoins.toFixed(0)} | ${(r.challengeCoins / Math.max(1, r.activeDays)).toFixed(2)} | ${r.challengeMaterial.toFixed(1)} | ${r.challengeBadges.toFixed(1)} | ${((100 * r.challengeCoins) / Math.max(1, r.freeCoinsEarned)).toFixed(2)}% |`);
+}
+console.log(`\nE18 E1 無課金 ${res.f2p!.pullsPerMonth.toFixed(1)}（40〜65）・E2 ${res.f2p!.ssrPerMonth.toFixed(2)}（1.2〜2.8）・招待された ${res.f2p_invited!.pullsPerMonth.toFixed(1)}/${res.f2p_invited!.ssrPerMonth.toFixed(2)}・招待上限 SSR ${res.f2p_inviter!.ssrPerMonth.toFixed(2)}・週4日 ${res.f2p_casual!.pullsPerMonth.toFixed(1)}`);

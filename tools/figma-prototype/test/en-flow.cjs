@@ -2,7 +2,7 @@
 // EN on from the start, the day-7 demo player: home, shop (recommended / coins / looks), the legal page (Japanese text
 // with the English courtesy note), purchase confirmation, season pass, scout calendar and odds, the stable, settings,
 // the coin shortfall sheet (round 12), a ranked race (HUD) and its result, 調教 (cards, mini-game, result, skip), ライバル (detail, races, week result), then the 図鑑 (every tab, details), 実績 (claim one / all) and the title chooser,
-// the プレゼントボックス (box, claim one / all, history) and the かんたん操作 suggestion.
+// the プレゼントボックス (box, claim one / all, history) and the かんたん操作 suggestion, the weekly challenge (list, next week, a race with the condition in the HUD, the verified result).
 // On every screen:
 //   - no Japanese is left on the stage (outside the .keep-ja legal text and the 日本語 language button);
 //   - no text overflows: nothing is still too wide / too tall for its box after fitText, nothing leaves the stage.
@@ -187,6 +187,30 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await page.evaluate(() => globalThis.__muchi.logic.exchangeDemo('closed'));
   await show('Exchange'); await waitScreen('exchange'); await waitIn('.ex-grace[data-status="closed"]'); await shot('exchange-closed', 500);
   await page.evaluate(() => globalThis.__muchi.logic.exchangeDemo(null));
+
+  // round 13: 週替わりチャレンジ in English (REQ-WCH-015): the list, next week's preview, a loan-horse race with the HUD
+  // condition, the verified result
+  await show('WeeklyChallenge'); await waitScreen('weekly-challenge'); await waitIn('.wch-card');
+  await shot('weekly-challenge', 500);
+  assert.match(await page.locator('.screen.in').innerText(), /class B stat cap/, 'challenge: the fairness rules in English');
+  await page.locator('.screen.in .wch-next').click(); await page.waitForTimeout(400); await shot('weekly-challenge-next', 300);
+  await click('閉じる'); await page.waitForTimeout(300);
+  await click('貸し出し馬で挑戦'); await waitScreen('race', 30000); await waitIn('.wch-hud');
+  const chWhips = await page.evaluate(() => globalThis.__muchi.challengeSession.challenge.conditions.maxWhips ?? 2);
+  let chStarted = false, chW = 0, chLast = 0, chShot = false;
+  for (let i = 0; i < 4000; i++) {
+    const f = await page.evaluate(() => globalThis.__muchi.state().lastFrame);
+    if ((await screen()) !== 'race') break;
+    if (!f) { await page.waitForTimeout(60); continue; }
+    if (f.done) break;
+    if (!chStarted && f.gateOpen && !f.departed) { await page.locator('.screen.in .btn.whip').click({ force: true }); chStarted = true; }
+    if (!chShot && f.departed && f.remainingM < f.distanceM * .6) { chShot = true; await shot('challenge-race-hud', 0); }
+    if (f.departed && chW < Math.min(2, chWhips) && f.remainingM <= (chW === 0 ? 380 : 220) && f.whips > 0 && Date.now() - chLast > 1500) { await page.locator('.screen.in .btn.whip').click({ force: true }); chW++; chLast = Date.now(); }
+    await page.waitForTimeout(40);
+  }
+  await waitScreen('challenge-result', 60000); await waitIn('.wch-verdict'); await shot('challenge-result', 600);
+  assert.match(await page.locator('.screen.in .wch-verdict').innerText(), /^Challenge (cleared|failed)$/, 'challenge: the verdict in English');
+  await click('一覧へ'); await waitScreen('weekly-challenge'); await waitIn('.wch-card'); await shot('weekly-challenge-after', 400);
 
   // round 11: 図鑑・実績・称号 in English (REQ-COL-*, REQ-ACH-*): a week of play on the real rules, every tab, a detail,
   // the achievement list (claim one, claim all), the title chooser

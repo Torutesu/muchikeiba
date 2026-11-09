@@ -47,4 +47,5 @@ node "$HERE/test/round12-assist.test.mjs"   # round 12: かんたん操作 — I
 node "$HERE/test/round12-rival.test.mjs"    # round 12: ライバル — weekly pairing (public card), head to head, challenge (no points), TA tiebreak, week result once, block / opt-out
 node "$HERE/test/round13-history.test.mjs" # round 13: 購入・コイン・ガチャ履歴 — header (有償/無償), tabs, cursor paging, refunded pack, 問い合わせ draft, English
 node "$HERE/test/round13-exchange.test.mjs" # round 13: イベント交換所 — points by event race (daily cap), keyed exchange with stock, grace days, leftover → material
+node "$HERE/test/round13-weekly-challenge.test.mjs" # round 13: 週替わりチャレンジ — the week, a loan-horse start, the verdict only from the verified result, once a week, mismatch
 echo "built $SITE ($(du -sh "$SITE" | cut -f1))"

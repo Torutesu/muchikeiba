@@ -120,7 +120,7 @@ namespace Muchi.Net
             throw new FormatException("invalid surface: " + s);
         }
 
-        public static string ModeToString(RaceMode m) => m == RaceMode.Ranked ? "ranked" : m == RaceMode.Friend ? "friend" : m == RaceMode.TimeAttack ? "timeattack" : m == RaceMode.Event ? "event" : m == RaceMode.Tournament ? "tournament" : "tutorial";
+        public static string ModeToString(RaceMode m) => m == RaceMode.Ranked ? "ranked" : m == RaceMode.Friend ? "friend" : m == RaceMode.TimeAttack ? "timeattack" : m == RaceMode.Event ? "event" : m == RaceMode.Tournament ? "tournament" : m == RaceMode.Challenge ? "challenge" : "tutorial";
 
         public static RaceMode ParseMode(string s)
         {
@@ -132,6 +132,7 @@ namespace Muchi.Net
                 case "timeattack": return RaceMode.TimeAttack;
                 case "event": return RaceMode.Event;
                 case "tournament": return RaceMode.Tournament;
+                case "challenge": return RaceMode.Challenge;
                 default: throw new FormatException("invalid mode: " + s);
             }
         }

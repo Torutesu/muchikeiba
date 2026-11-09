@@ -247,6 +247,7 @@ namespace Muchi.Client
                 case RaceMode.TimeAttack: return "timeattack";
                 case RaceMode.Event: return "event";
                 case RaceMode.Tournament: return "tournament";
+                case RaceMode.Challenge: return "challenge";
                 default: return "other";
             }
         }

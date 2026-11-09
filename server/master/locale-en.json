@@ -240,6 +240,19 @@
   "気まぐれのヒスイ": "Fickle Hisui", "調子の波はあるけど、最後の脚は誰にも負けない": "My form comes and goes, but nobody beats my finish.",
   "粘りのコガネ": "Tenacious Kogane", "最後の直線まで、ずっと隣にいるよ": "I'll be right beside you down the final stretch.",
   "好敵手": "Worthy Rival", "宿命の対決": "Fated Duel", "ライバルキラー": "Rival Slayer",
-  "ライバルが記録を更新": "Your rival set a new record", "ライバルの{name}さんが{course}のタイムアタックであなたの今週の記録を上回りました": "Your rival {name} beat your best time this week in time attack at {course}"
+  "ライバルが記録を更新": "Your rival set a new record", "ライバルの{name}さんが{course}のタイムアタックであなたの今週の記録を上回りました": "Your rival {name} beat your best time this week in time attack at {course}",
+  "_weeklyChallenge": "---- weekly challenges: titles and badges (round 13, REQ-WCH-*)",
+  "逃げ切りの一閃": "Wire-to-Wire Flash",
+  "ムチは3発まで": "Three Whips Only",
+  "雨の重馬場": "Rain-Soaked Turf",
+  "ナイターの先行策": "Night Race, Stay Close",
+  "ムチなしの末脚": "No-Whip Finish",
+  "不良馬場を走り切れ": "Go the Distance in the Slop",
+  "直線一気": "Straight Sprint",
+  "砂の先行争い": "Dirt Battle Up Front",
+  "長距離の我慢": "Patience Over Distance",
+  "青葉の一閃章": "Aoba Flash Badge",
+  "みなとの夜章": "Minato Night Badge",
+  "直線の覇者章": "Straight Champion Badge"
  }
 }

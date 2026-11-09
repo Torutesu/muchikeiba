@@ -77,6 +77,7 @@ import {
   HISTORY_LIMITS, type GachaLogEntry, type GachaPager, type LedgerPager, type SupportTopic,
 } from './history.js';
 import { buildSupportTicket } from '../ops/support.js';
+import { abortChallengeSubmit, prepareChallengeSubmit, recordChallengeResult, startChallenge, weeklyChallengeView, type WchStartInput } from './weeklyChallenge.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
 export interface PlayerRepo {
@@ -138,6 +139,8 @@ export interface PlayerServiceDeps {
   rng: Rng;
   /** REQ-TRAIN-005: the training beat seeds (default: `rng`). The economy sim passes its own so gacha draws stay the same. */
   trainingRng?: Rng;
+  /** REQ-WCH-003: challenge session ids and race seeds (default: `rng`). The economy sim passes its own so gacha draws stay the same. */
+  challengeRng?: Rng;
   clock: Clock;
   verifiers: Partial<Record<PurchaseRecord['platform'], StoreVerifier>>;
   onPaidBalance?: (snap: PaidBalanceSnapshot) => void | Promise<void>;
@@ -1228,6 +1231,25 @@ export class PlayerService {
   async taView(id: string, trackId: string) {
     trackById(this.d.master, trackId);
     return timeAttackView(await this.load(id), this.d.master.progression.timeAttack, trackId, this.d.clock(), dayRule(this.d.master));
+  }
+
+  // ---- 週替わりチャレンジ weekly challenge (REQ-WCH-*, contracts/protocol.md §31; orchestrated by race/weeklyChallenge.ts) ----
+  async wchView(id: string) { return weeklyChallengeView(this.d.master, await this.load(id), this.d.clock()); }
+  /** Keyed (a retry returns the same session). `ruleset` = the active remote-config ruleset (the day's form is switched off). */
+  wchStart(id: string, challengeId: string, input: WchStartInput, idemKey: string | null = null, ruleset?: Ruleset) {
+    return this.tx(id, idemKey, (s, now, emit) => {
+      notWhileDeleting(s);
+      const rng = this.d.challengeRng ?? this.d.rng;
+      const sessionId = 'w' + [0, 0, 0].map(() => rng.nextU32().toString(36)).join('');
+      return startChallenge(this.d.master, s, challengeId, input, sessionId, rng, now, emit, ruleset);
+    });
+  }
+  wchPrepare(id: string, sessionId: string, inputs: unknown, resultHash: string, echoedConfig: unknown) {
+    return this.tx(id, null, (s, now) => { notWhileDeleting(s); return prepareChallengeSubmit(this.d.master, s, sessionId, inputs, resultHash, echoedConfig, now); });
+  }
+  wchAbort(id: string, sessionId: string) { return this.tx(id, null, (s) => abortChallengeSubmit(s, sessionId)); }
+  wchRecord(id: string, sessionId: string, out: VerifierOutput, claimedHash: string) {
+    return this.tx(id, null, (s, now, emit) => { notWhileDeleting(s); return recordChallengeResult(this.d.master, s, sessionId, out, claimedHash, now, emit); });
   }
 
   // ---- teams: per-player steps, orchestrated by TeamsService (REQ-TEAM-*) ----

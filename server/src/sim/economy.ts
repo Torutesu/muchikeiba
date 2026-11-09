@@ -19,6 +19,7 @@ import type { HorseInstance } from '../domain/player.js';
 import { MemoryRivalRegistry, RivalService, type RivalPlayers } from '../domain/rivalService.js';
 import { exchangeClosesAt } from '../domain/exchange.js';
 import { dayRule } from '../domain/time.js';
+import { raceTimeMs } from '../domain/timeAttack.js';
 
 export interface Persona {
   id: string;
@@ -139,6 +140,11 @@ export interface EconomyResult {
   exchangeMaterial: number;
   exchangeCosmetics: number;
   leftoverMaterial: number;
+  /** REQ-WCH-* (E18): weekly challenges cleared (rewarded first clears), the free coins / breeding material they paid, badges. */
+  challengeClears: number;
+  challengeCoins: number;
+  challengeMaterial: number;
+  challengeBadges: number;
   /** Derived. */
   freeCoinsPerActiveDay: number;
   pullsPerMonth: number;
@@ -177,14 +183,15 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
   const repo = new MemoryPlayerRepo();
   const store = new FakeStoreVerifier();
   const rng = seededRng(seed);
-  const svc = new PlayerService(repo, { master, rng: seededRng(seed + 1000), trainingRng: seededRng(seed + 2000), clock: () => now, verifiers: { fake: store } });
+  const svc = new PlayerService(repo, { master, rng: seededRng(seed + 1000), trainingRng: seededRng(seed + 2000), challengeRng: seededRng(seed + 3000), clock: () => now, verifiers: { fake: store } });
   const id = `sim_${persona.id}`;
   let key = 0;
   const k = () => `c:sim:${key++}`;
   const r: EconomyResult = {
     persona: persona.id, days, activeDays: 0, freeCoinsEarned: 0, paidCoinsBought: 0, yenSpent: 0, pulls: 0, ssr: 0, sr: 0,
     pityExchanges: 0, firstPityDay: null, breedingMaterial: 0, gachaTickets: 0, ticketPulls: 0, firstWinCoins: 0, allowanceCoins: 0, beginnerCoins: 0, beginnerSteps: 0, seasonMissionXp: 0, inviteCoins: 0, inviteTickets: 0, comebackWindows: 0, comebackValue: 0, comebackXp: 0, adViews: 0, adCoins: 0, adTaAttempts: 0, achievementTiers: 0, achievementCoins: 0, trainingSessions: 0, trainedPoints: 0, giftsClaimed: 0, giftsExpired: 0, rivalWeeks: 0, rivalWins: 0, rivalCoins: 0, rankedTotalByClass: {},
-    eventRaces: 0, eventPoints: 0, exchangeCoins: 0, exchangeTickets: 0, exchangeHorses: 0, exchangeMaterial: 0, exchangeCosmetics: 0, leftoverMaterial: 0, freeCoinsPerActiveDay: 0, pullsPerMonth: 0, ssrPerMonth: 0,
+    eventRaces: 0, eventPoints: 0, exchangeCoins: 0, exchangeTickets: 0, exchangeHorses: 0, exchangeMaterial: 0, exchangeCosmetics: 0, leftoverMaterial: 0,
+    challengeClears: 0, challengeCoins: 0, challengeMaterial: 0, challengeBadges: 0, freeCoinsPerActiveDay: 0, pullsPerMonth: 0, ssrPerMonth: 0,
   };
   await svc.bootstrap(id);
   await svc.setAge(id, 1990, 1, false);
@@ -299,6 +306,34 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
       if (hv && hv.fatigue >= 40) await svc.trainingUseItem(id, 'training_apple', top.id, k());
     }
   };
+  /**
+   * REQ-WCH-* (E18), the upper bound: on its first active day of every game week the persona clears all 3 weekly challenges
+   * with the loan horse (anyone can) through the real start → prepare → record path. The verifier's re-simulation is
+   * replaced by an output where the player wins inside every time limit with no whips (a "perfect" week).
+   */
+  const challengeDay = async () => {
+    const v = await svc.wchView(id);
+    if (!v.enabled) return;
+    for (const ch of v.challenges.filter((c) => !c.progress.cleared)) {
+      const st = await svc.wchStart(id, ch.id, { loan: true }, k());
+      const hash = 'e'.repeat(64);
+      const prep = await svc.wchPrepare(id, st.sessionId, [[Number(st.config.ruleset.gateOpenTick), st.playerSlot, 1]], hash, undefined);
+      if (prep.kind !== 'verify') continue;
+      const gate = Number(st.config.ruleset.gateOpenTick);
+      const msPerTick = Math.floor(1000 / st.config.net.tickHz);
+      const tick = gate + Math.floor(((ch.conditions.maxTimeMs ?? 200_000) - 1000) / msPerTick);
+      if (ch.conditions.maxTimeMs !== undefined && raceTimeMs(st.config, tick, 0) > ch.conditions.maxTimeMs) throw new Error('sim challenge time');
+      const order = [st.playerSlot, ...st.config.entrants.map((e) => e.slot).filter((x) => x !== st.playerSlot)];
+      const before = await svc.state(id);
+      const res = await svc.wchRecord(id, st.sessionId, { resultHash: hash, order, finishTicks: order.map((_, i) => tick + i * 3), finishFracs: order.map(() => 0), checksums: {} }, hash);
+      if ('rejected' in res || !res.cleared) throw new Error(`sim challenge not cleared: ${JSON.stringify(res)}`);
+      const after = await svc.state(id);
+      if (res.firstClear) r.challengeClears++;
+      r.challengeCoins += after.wallet.free - before.wallet.free;
+      r.challengeMaterial += (after.items['breeding_material'] ?? 0) - (before.items['breeding_material'] ?? 0);
+      if (res.badge.newlyEarned) r.challengeBadges++;
+    }
+  };
   for (let d = 0; d < days; d++) {
     now = start + d * DAY;
     const newSeason = jstMonthKey(now) !== season;
@@ -391,6 +426,8 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
     // feeds the apple from the daily mission to the best horse. Training gives no coins, so E1–E13 do not move.
     await trainDay();
     await rivalDay(); // REQ-RIVAL-006: the home rival card syncs (an ended week settles and pays here)
+    // REQ-WCH-* (E18): the week's 3 challenges, all cleared (upper bound; small fixed rewards once a week)
+    await challengeDay();
     // REQ-CB-004/005: a returner claims the comeback login day and every comeback mission it can
     const cb = await svc.comeback(id);
     if (cb.window) {
@@ -520,6 +557,7 @@ export async function simulateAll(master: Master, days = 90, seeds = [1, 2, 3], 
       eventRaces: avg((x) => x.eventRaces), eventPoints: avg((x) => x.eventPoints), exchangeCoins: avg((x) => x.exchangeCoins),
       exchangeTickets: avg((x) => x.exchangeTickets), exchangeHorses: avg((x) => x.exchangeHorses), exchangeMaterial: avg((x) => x.exchangeMaterial),
       exchangeCosmetics: avg((x) => x.exchangeCosmetics), leftoverMaterial: avg((x) => x.leftoverMaterial),
+      challengeClears: avg((x) => x.challengeClears), challengeCoins: avg((x) => x.challengeCoins), challengeMaterial: avg((x) => x.challengeMaterial), challengeBadges: avg((x) => x.challengeBadges),
       rankedTotalByClass: Object.fromEntries(master.progression.classes.map((c) => [c.id, {
         trained: avg((x) => x.rankedTotalByClass[c.id]!.trained), untrained: avg((x) => x.rankedTotalByClass[c.id]!.untrained),
       }])),

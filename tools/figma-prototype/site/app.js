@@ -573,7 +573,8 @@ function paintHud(f) {
   hud.stamina.classList.toggle('blink', !!feel.blink);
   setText(hud.staminaText, feel.level === 'Empty' ? '脚が上がった' : f.kakari ? (f.reining ? '手綱で抑えている' : '掛かっている') : f.reining ? '手綱：抑えて脚をためる' : feel.level === 'Low' ? '脚が残り少ない' : feel.level === 'Critical' ? '脚がもうない！' : '');
   if (tut) return;
-  setText(hud.banner, `${raceCtx.ta ? 'タイムアタック' : raceCtx.trackName}　/　${!f.departed ? '発走前' : f.remainingM <= 400 ? '最後の直線' : f.remainingM >= f.distanceM - 200 ? 'スタート' : 'レース中'}`);
+  if (raceCtx.challenge) paintChallengeHud(f);
+  setText(hud.banner, `${raceCtx.ta ? 'タイムアタック' : raceCtx.challenge ? '週替わりチャレンジ' : raceCtx.trackName}　/　${!f.departed ? '発走前' : f.remainingM <= 400 ? '最後の直線' : f.remainingM >= f.distanceM - 200 ? 'スタート' : 'レース中'}`);
   hud.rein.classList.toggle('need', !!feel.kakariWarning);
   // ⑤ the field on the course oval: each runner at its share of the distance (the partner gold, on top)
   f.progress.forEach((pr, i) => {
@@ -609,6 +610,7 @@ window.addEventListener('blur', () => { reinHeld = false; keyRein = false; });
 async function RaceResult(f) {
   if (raceCtx.tutorial) return TutorialResult(f);
   if (raceCtx.ta) return show(TaResult, f);
+  if (raceCtx.challenge) return ChallengeSubmit(f); // round 13: the server decides the clear
   const r = f.result;
   const finishTick = r.place > 0 ? f.finishTicks[r.place - 1] : -1;
   const passBefore = await L.passView();
@@ -979,6 +981,7 @@ async function Home() {
   NavBar(0);
   if (unlock('rival').unlocked) await RivalStrip(); // round 12: this week's rival, top centre (its own slot, not the card slot)
   await HomeCard(comeback); // round 10: one card at a time (what's new > comeback campaign > ad offer)
+  await ChallengeHomeCard(); // round 13: this week's challenges, under the home card
   MaybeLinkPrompt('Home', Home);
 }
 /** ③ today's to-do (login bonus, daily missions, first-win bonus) in a drawer. */
@@ -1764,6 +1767,174 @@ function TaResult(f) {
   Cta('もう一度', 44, 640, 478, () => TimeAttack(raceCtx.trackId), p);
   TextLink('ホーム', 44, 734, 90, Home, p);
   Ghost('リプレイを共有', 1286, 800, 274, 60, () => ShareCard(currentScreen));
+  EnToggle();
+}
+
+// ================================================================= round 13: 週替わりチャレンジ (REQ-WCH-*, contracts/protocol.md §31)
+// Three single-player races against CPU on fixed conditions each game week, on the real server rules (MuchiLogic: the
+// week, the rotation, the issued config with the loan horse at the cap, no skills) and the real engine (WASM ChallengeRun).
+// The device submits only its inputs: the "server" re-simulates the replay log it built from the issued config in the
+// WASM verifier code (MuchiRace.VerifyReplay) and evaluates the conditions itself. Mirrors WeeklyChallengeModel.cs.
+// ムチ一閃 tone: photoreal art, two translucent navy panels, letter-spaced cyan kickers, one skewed cyan CTA ».
+let wchSel = null;
+const WCH_GOING = { firm: '良（硬め）', good: '良', yielding: '稍重', soft: '重', fast: '良', muddy: '稍重', sloppy: '不良' };
+const WCH_ERR = {
+  CHALLENGE_LIMIT_REACHED: '今日のチャレンジはここまで。4:00に戻ります。',
+  CHALLENGE_HORSE_INELIGIBLE: 'この条件に合う脚質の馬を選んでください。貸し出し馬なら挑戦できます。',
+  CHALLENGE_SESSION_EXPIRED: '時間切れのため、このレースは記録できませんでした。もう一度挑戦できます。',
+  CHALLENGE_SESSION_USED: 'このレースは記録済みです。',
+  CHALLENGE_RESULT_MISMATCH: 'レースの記録を確認できませんでした。もう一度挑戦してください。',
+};
+const WCH_RULES = 'どの馬も能力はクラスBの上限にそろえ、スキルは使いません。貸し出し馬はいつでも上限ちょうどの能力で走れます。報酬はチャレンジごとに週1回です。';
+const wchGround = (c) => `${WCH_GOING[c.going] ?? '良'}${c.night ? '・ナイター' : ''}`;
+const wchReward = (r) => [r?.freeCoins ? `無償コイン${r.freeCoins}枚` : null, ...(r?.items ?? []).map((i) => `${i.itemId === 'breeding_material' ? '配合素材' : i.itemId}×${i.qty}`)].filter(Boolean).join('・');
+const wchDays = (v) => Math.max(0, Math.ceil((v.endsAt - v.serverNow) / 86400e3));
+const wchTrack = (id) => L.master.tracks.find((t) => t.id === id)?.name ?? id;
+
+/** Home: one compact card under the home card slot (this week's progress → the list). Not over the what's-new card. */
+async function ChallengeHomeCard() {
+  if (cur?.dataset.screen !== 'home' || !unlock('time_attack').unlocked || cur.querySelector('[data-home-card="whatsnew"]')) return null;
+  cur.querySelectorAll('[data-wch-card]').forEach((n) => n.remove());
+  const r = await L.weeklyChallenges();
+  if (!r.ok || !r.value.enabled || cur?.dataset.screen !== 'home') return null;
+  const v = r.value;
+  const card = Glass('Weekly challenge', HOME_CARD.x, HOME_CARD.y + 230, HOME_CARD.w, 176, undefined, .84);
+  card.dataset.wchCard = String(v.clearedCount); card.classList.add('wch-home');
+  Kicker('週替わりチャレンジ', 28, 20, card, { size: 16 });
+  Txt(`今週のチャレンジ ${v.clearedCount}/${v.challenges.length}`, 28, 76, 260, 20, v.badge.earned ? GOLD : WHITE, card, { weight: 700, nowrap: true });
+  Txt(wchDays(v) <= 1 ? '今日で入れ替え' : `あと${wchDays(v)}日で入れ替え`, 290, 80, 132, 13, MUTED, card, { align: 'right', nowrap: true });
+  Ghost(v.badge.earned ? 'バッジ獲得済み' : '挑戦する', 28, 110, 220, 48, () => WeeklyChallenge(), card, 'small').classList.add('wch-open');
+  return card;
+}
+
+async function WeeklyChallenge(selectId) {
+  currentScreen = () => WeeklyChallenge(selectId ?? wchSel);
+  const r = await L.weeklyChallenges();
+  await refresh();
+  if (!r.ok || !r.value.enabled) { toast('週替わりチャレンジは今は遊べません'); Home(); return; }
+  const v = r.value;
+  if (selectId) wchSel = selectId;
+  if (!v.challenges.some((c) => c.id === wchSel)) wchSel = (v.challenges.find((c) => !c.progress.cleared) ?? v.challenges[0]).id;
+  const sel = v.challenges.find((c) => c.id === wchSel);
+  Clear('weekly-challenge'); SetArt('Art/first-ride', false); Shade('left');
+  TopBar(`週替わりチャレンジ　/　今週 ${v.clearedCount}/${v.challenges.length}`, `月曜 4:00 に入れ替え（あと${wchDays(v)}日）　·　報酬はチャレンジごとに週1回`);
+  // ① this week's three, one card each (condition lines from the server)
+  const lp = Glass('Challenges', 36, 134, 760, 676, undefined, .88);
+  Kicker('今週のチャレンジ', 36, 30, lp);
+  v.challenges.forEach((c, i) => {
+    const card = Card('Challenge ' + c.id, 36, 100 + i * 186, 688, 170, lp, c.progress.cleared ? GOLD : CYAN);
+    card.classList.add('wch-card'); card.dataset.challenge = c.id; card.dataset.cleared = String(c.progress.cleared);
+    if (c.id === wchSel) card.classList.add('sel');
+    Txt(c.title, 24, 18, 440, 24, WHITE, card, { weight: 700, ls: '.06em', nowrap: true });
+    Txt(c.progress.cleared ? 'CLEAR' : c.progress.attempts ? `挑戦 ${c.progress.attempts}回` : '未挑戦', 470, 22, 194, 14, c.progress.cleared ? GOLD : MUTED, card, { weight: 700, align: 'right', ls: '.12em', nowrap: true });
+    Txt(`${wchTrack(c.trackId)}　·　${wchGround(c)}`, 24, 58, 640, 14, MUTED, card, { nowrap: true });
+    Txt(c.labels.map((l) => l.text).join('　/　'), 24, 90, 640, 18, GOLD, card, { weight: 700, nowrap: true });
+    Txt(`報酬：${wchReward(c.reward)}`, 24, 130, 640, 14, WHITE, card, { weight: 500, nowrap: true });
+    card.style.cursor = 'pointer';
+    card.addEventListener('click', () => WeeklyChallenge(c.id));
+  });
+  // ② the selected challenge: field, conditions, the horse, one CTA; the week's badge and the rules
+  const rp = Glass('Challenge detail', 816, 134, 748, 676, undefined, .88);
+  rp.dataset.challenge = sel.id;
+  Kicker('挑戦する', 36, 30, rp);
+  Txt(sel.title, 36, 98, 676, 34, WHITE, rp, { ls: '.06em', nowrap: true });
+  Txt(`${wchTrack(sel.trackId)}　·　${wchGround(sel)}`, 36, 150, 676, 16, GOLD, rp, { weight: 700, nowrap: true });
+  Txt(`${sel.cpuCount + 1}頭立て　·　CPU Lv${sel.cpuLevel}`, 36, 180, 676, 15, MUTED, rp, { nowrap: true });
+  sel.labels.forEach((l, i) => Txt(l.text, 36, 220 + i * 32, 676, 18, WHITE, rp, { weight: 700, nowrap: true, cls: 'wch-cond' }).dataset.kind = l.kind);
+  if (sel.loan) Txt(`貸し出し馬：${sel.loan.name}（${STYLE_JA[sel.loan.style] ?? sel.loan.style}）　·　能力合計 ${fmt(sel.loan.statTotal)}`, 36, 320, 676, 14, MUTED, rp, { nowrap: true }).classList.add('wch-loan');
+  const p = partner();
+  const ownOk = !!p && (!sel.conditions.style || p.style === sel.conditions.style);
+  Cta('貸し出し馬で挑戦', 36, 364, 420, () => WeeklyChallengeRace(sel.id, null), rp).classList.add('wch-go');
+  const own = Ghost('相棒で挑戦', 476, 372, 236, 58, () => WeeklyChallengeRace(sel.id, p.id), rp, 'small');
+  own.classList.add('wch-own');
+  if (!ownOk) { disable(own); Txt(`${STYLE_JA[sel.conditions.style] ?? ''}の馬だけ挑戦できます`, 476, 436, 236, 12, SOFT, rp, { lh: 1.4 }); }
+  Txt(`今日あと${v.startsLeftToday}回　·　何度でも挑戦できます`, 36, 448, 420, 13, SOFT, rp, { nowrap: true });
+  Hair(36, 486, 676, rp);
+  Kicker('今週のバッジ', 36, 506, rp, { rule: false, size: 14 });
+  Txt(v.badge.earned ? `${v.badge.name}　獲得済み` : `${v.badge.name}　あと${v.challenges.length - v.clearedCount}つ`, 36, 534, 420, 18, v.badge.earned ? GOLD : WHITE, rp, { weight: 700, nowrap: true }).classList.add('wch-badge');
+  Txt('3つクリアした週のバッジ（見た目だけ）', 36, 564, 420, 12, SOFT, rp, { nowrap: true });
+  if (v.next) Ghost('来週のチャレンジ', 476, 520, 236, 50, () => WeeklyChallengeNext(v), rp, 'quiet small').classList.add('wch-next');
+  Txt(WCH_RULES, 36, 600, 676, 12, SOFT, rp, { lh: 1.55 }).classList.add('wch-rules');
+  Back(Home, 'BACK', 40, 834);
+}
+/** Next week's set: conditions only (previewNext). */
+function WeeklyChallengeNext(v) {
+  Sheet('来週のチャレンジ', `バッジ「${v.next.badge.name}」`, (s, close, y) => {
+    v.next.challenges.forEach((c, i) => {
+      const yy = y + i * 120;
+      Txt(c.title, 48, yy, 560, 20, WHITE, s, { weight: 700, nowrap: true });
+      Txt(`${wchTrack(c.trackId)}　·　${wchGround(c)}`, 48, yy + 32, 560, 14, MUTED, s, { nowrap: true });
+      Txt(c.labels.map((l) => l.text).join('　/　'), 48, yy + 58, 560, 15, GOLD, s, { weight: 700, nowrap: true });
+      Hair(48, yy + 96, 564, s);
+    });
+  });
+}
+async function WeeklyChallengeRace(challengeId, horseId) {
+  await viewReady;
+  const st = await L.weeklyChallengeStart(challengeId, horseId);
+  if (!st.ok) { toast(WCH_ERR[st.code] ?? st.message); WeeklyChallenge(challengeId); return; }
+  const s = st.value;
+  raceInfo = JSON.parse(engine.StartChallenge(JSON.stringify(s.config), s.playerSlot, JSON.stringify(s.challenge.conditions)));
+  raceCtx = { tutorial: false, ta: false, challenge: s, horseId, trackId: s.config.track.id, trackName: wchTrack(s.config.track.id), config: s.config };
+  view.useRig = true; view.start(raceInfo, equippedPartner());
+  BuildRaceScreen();
+  // the conditions in the HUD, under the distance chip: each line with its live value, red once it can no longer be met
+  hud.challenge = Glass('Challenge HUD', 33, 172, 450, 24 + s.challenge.labels.length * 34, undefined, .74);
+  hud.challenge.classList.add('wch-hud');
+  hud.chLines = s.challenge.labels.map((l, i) => { const t = Txt(l.text, 18, 12 + i * 34, 414, 17, WHITE, hud.challenge, { weight: 700, nowrap: true }); t.dataset.kind = l.kind; t.dataset.ok = 'true'; return t; });
+  if (globalThis.__muchi) globalThis.__muchi.challengeSession = s;
+}
+function paintChallengeHud(f) {
+  const s = raceCtx.challenge, c = f.challenge;
+  if (!s || !c || !hud.chLines) return;
+  s.challenge.labels.forEach((l, i) => {
+    let value = '', ok = true;
+    if (l.kind === 'whips') { value = `ムチ ${c.whips}/${s.challenge.conditions.maxWhips}`; ok = !c.whipsBroken; }
+    else if (l.kind === 'place') { value = f.rankKnown ? `現在 ${f.rank}位` : ''; ok = !f.finished || (f.finishPlace > 0 && f.finishPlace <= s.challenge.conditions.maxPlace); }
+    else if (l.kind === 'time') { value = f.time; ok = !c.timeBroken; }
+    const t = hud.chLines[i];
+    setText(t, value ? `${l.text}　${value}` : l.text);
+    if (t.dataset.ok !== String(ok)) { t.dataset.ok = String(ok); t.style.color = ok ? '' : 'var(--danger)'; }
+  });
+}
+/** The race has finished: submit the run; the logic re-simulates its own log in the WASM verifier and decides. */
+async function ChallengeSubmit(f) {
+  const s = raceCtx.challenge, run = f.challengeRun;
+  const r = await L.weeklyChallengeSubmit(s.sessionId, run.inputs, run.hash, (log) => engine.VerifyReplay(log));
+  if (globalThis.__muchi) globalThis.__muchi.lastChallenge = r.ok ? r.value : { error: r.code };
+  await refresh();
+  show(ChallengeResult, f, r);
+}
+function ChallengeResult(f, r) {
+  const s = raceCtx.challenge, dev = f.challengeRun;
+  Clear('challenge-result'); SetArt(r.ok && r.value.cleared ? 'Art/race-result' : 'Art/first-ride');
+  const p = ResultPanel(`週替わりチャレンジ　/　${s.challenge.title}`);
+  p.classList.add('wch-result');
+  if (!r.ok) {
+    Txt('記録できませんでした', 40, 118, 540, 40, WHITE, p, { weight: 700 });
+    Txt(WCH_ERR[r.code] ?? r.message, 44, 190, 520, 17, MUTED, p, { lh: 1.6 });
+    Cta('一覧へ', 44, 640, 478, () => WeeklyChallenge(s.challengeId), p);
+    EnToggle();
+    return;
+  }
+  const res = r.value, ev = res.evaluation;
+  p.dataset.cleared = String(res.cleared);
+  Txt(res.cleared ? 'チャレンジ達成' : 'チャレンジ失敗', 40, 112, 540, 60, res.cleared ? GOLD : WHITE, p, { weight: 700, ls: '.04em', lh: 1.2 }).classList.add('wch-verdict');
+  Txt(`${ev.place ? ev.place + '着' : '完走できず'}　·　${ev.timeMs != null ? fmtMs(ev.timeMs) : '—'}　·　ムチ ${ev.whips}回`, 44, 206, 520, 20, WHITE, p, { weight: 500, nowrap: true });
+  Hair(44, 254, 478, p);
+  s.challenge.labels.forEach((l, i) => {
+    const chk = ev.checks.find((c) => c.kind === l.kind) ?? ev.checks[0];
+    const row = Txt(`${chk.ok ? '○' : '×'}　${l.text}`, 44, 278 + i * 40, 520, 20, chk.ok ? OK : RED, p, { weight: 700, nowrap: true });
+    row.dataset.ok = String(chk.ok); row.classList.add('wch-check');
+  });
+  const y = 300 + s.challenge.labels.length * 40;
+  if (res.cleared) Txt(res.firstClear && res.reward ? `報酬：${wchReward(res.reward)}` : '今週の報酬は受け取り済み', 44, y, 520, 18, GOLD, p, { weight: 700, nowrap: true }).classList.add('wch-reward');
+  if (res.badge.newlyEarned) Txt(`バッジ「${res.badge.name}」を獲得`, 44, y + 36, 520, 20, GOLD, p, { weight: 700, nowrap: true }).classList.add('wch-badge-new');
+  Txt(`今週 ${res.clearedCount}/3 クリア`, 44, y + 74, 520, 16, WHITE, p, { weight: 500 });
+  Txt('判定はサーバーが同じエンジンで再計算して行います。', 44, 548, 500, 13, SOFT, p, { lh: 1.6 });
+  Txt(`端末の判定：${dev.cleared ? '達成' : '失敗'}`, 44, 574, 500, 13, SOFT, p).dataset.device = String(dev.cleared);
+  Cta('一覧へ', 44, 640, 478, () => WeeklyChallenge(s.challengeId), p);
+  TextLink('もう一度', 44, 734, 120, () => WeeklyChallengeRace(s.challengeId, raceCtx.horseId ?? null), p);
   EnToggle();
 }
 
@@ -3314,7 +3485,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ GiftBox, AssistSettings, History, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

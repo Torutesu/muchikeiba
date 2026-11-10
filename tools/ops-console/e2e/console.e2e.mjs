@@ -282,6 +282,41 @@ try {
     assert.ok(approve.after.gift?.giftId, 'the audit names the gift box entry');
   });
 
+  await step('admin: a maintenance window (§46) for hosted cups — preview, schedule, 503 for cups only, support stays open, cancel reopens', async () => {
+    await login('admin');
+    await page.locator('#nav a[data-view=maintenance]').click();
+    await tid('mnt-table').waitFor();
+    const jstMin = (ms) => new Date(ms + 9 * 3600_000).toISOString().slice(0, 16);
+    const now = Date.now();
+    const id = `e2e-${runId}`;
+    await tid('mnt-id').fill(id);
+    await tid('mnt-start').fill(jstMin(now - 60_000));
+    await tid('mnt-end').fill(jstMin(now + 30 * 60_000));
+    await tid('mnt-all').uncheck();
+    await tid('mnt-g-cups').check();
+    await tid('mnt-ja').fill('主催カップのメンテナンスを行います。');
+    await tid('mnt-en').fill('Hosted cups are under maintenance.');
+    await tid('mnt-preview-btn').click();
+    await tid('mnt-banner-en').getByText('Hosted cups are under maintenance.').waitFor();
+    await shot('11-maintenance-preview');
+    await tid('mnt-schedule').click();
+    await confirmWith('e2e: hosted cup maintenance');
+    await tid(`mnt-cancel-${id}`).waitFor();
+    // the gate reads the active config (cached up to 30 s per isolate)
+    const status = async (path) => (await fetch(API + path, { headers: { 'x-dev-user': PLAYER } })).status;
+    let s = 0;
+    for (let i = 0; i < 40 && s !== 503; i++) { s = await status('/v1/cups'); if (s !== 503) await new Promise((r) => setTimeout(r, 1000)); }
+    assert.equal(s, 503, 'cups are closed by the window');
+    assert.equal(await status('/v1/help'), 200, 'the help center stays open');
+    assert.equal(await status('/v1/blocks'), 200, 'the block list stays open');
+    assert.notEqual(await status('/v1/player'), 503, 'core stays open (scope cups)');
+    await tid(`mnt-cancel-${id}`).click();
+    await confirmWith('e2e: end the window');
+    await page.getByText('変更しました').waitFor();
+    for (let i = 0; i < 40 && s === 503; i++) { s = await status('/v1/cups'); if (s === 503) await new Promise((r) => setTimeout(r, 1000)); }
+    assert.notEqual(s, 503, 'cancel reopens cups');
+  });
+
   await step('KPI quick view lists the documented queries', async () => {
     await page.locator('#nav a[data-view=kpi]').click();
     await tid('kpi-doc').waitFor();

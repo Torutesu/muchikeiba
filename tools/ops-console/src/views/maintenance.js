@@ -76,6 +76,6 @@ export async function maintenanceView(main) {
     card('対応バージョン（強制アップデート）',
       kv([['iOS', h('div', { class: 'row' }, field('最低', vers.ios.min), field('推奨', vers.ios.recommended), field('ストアURL', vers.ios.storeUrl))],
         ['Android', h('div', { class: 'row' }, field('最低', vers.android.min), field('推奨', vers.android.recommended), field('ストアURL', vers.android.storeUrl))],
-        ['エンジン', field('最低レベル', engine, 'ランク戦・イベント・大会・タイムアタックに入れる最低のエンジン（protocol §4 hello.engine）')]], 'ver-table'),
+        ['エンジン', field('最低レベル', engine, 'ランク戦・イベント・大会・タイムアタック・主催カップに入れる最低のエンジン（protocol §4 hello.engine）')]], 'ver-table'),
       can('admin') ? h('button', { class: 'btn primary', 'data-testid': 'ver-save', onclick: saveVersions }, '変更する') : null));
 }

@@ -5241,7 +5241,6 @@ function QuickChatPanel(pal, qc, deleting) {
   if (!qc) { Txt('支部に入ると定型チャットを使えます', 36, 120, 496, 18, MUTED, pal); NavBar(4); return; }
   const opts = (slot) => qc.options[slot] ?? [];
   const available = (p) => p.slots.every((s) => opts(s).length > 0);
-  Txt(`今日 ${qc.usage.postsToday} / ${qc.limits.postsPerDay}`, 36, 72, 240, 14, SOFT, pal, { ls: '.12em', cls: 'qc-usage' });
   const tabs = el('qc-tabs', 36, 104, 496, 44, pal);
   for (const [id, ja] of QC_TABS) {
     const t = tfNode('button', 'qc-tab qc-scale' + (id === qcCategory ? ' sel' : ''), ja);
@@ -5269,7 +5268,9 @@ function QuickChatPanel(pal, qc, deleting) {
   }
   // the slot values of the selected phrase (only what the server accepts: own horses, races, records, cups, members)
   const sel = qc.phrases.find((p) => p.id === qcPhrase && p.category === qcCategory) ?? null;
-  const slotsEl = el('qc-slots', 36, 398, 496, 146, pal);
+  const slotsEl = el('qc-slots', 36, 398, 496, 112, pal);
+  // today's count at the foot of the panel (clear of the kicker at every text size)
+  Txt(`今日 ${qc.usage.postsToday} / ${qc.limits.postsPerDay}`, 232, 520, 300, 14, SOFT, pal, { align: 'right', ls: '.12em', cls: 'qc-usage' });
   if (!sel) slotsEl.appendChild(tfNode('div', 'qc-hint qc-scale', '文を選んでください'));
   for (const s of sel?.slots ?? []) {
     const row = tfNode('div', 'qc-slot');

@@ -204,6 +204,8 @@ export interface Progression {
   activity?: Partial<import('./activity.js').ActivityConfig>;
   /** REQ-NEXT-*: the home's 次にやること card (nextAction.ts, validated by nextActionProblems). Absent / disabled = no card. */
   nextActions?: import('./nextAction.js').NextActionConfig;
+  /** REQ-RECAP-*: シーズンの振り返り (seasonRecap.ts, validated by seasonRecapProblems). Absent / disabled = no recaps. */
+  seasonRecap?: import('./seasonRecap.js').SeasonRecapConfig;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */

@@ -2256,3 +2256,66 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 
 ### 45.9 アカウント削除
 状態の `nextAction`（今日閉じた種類・機能を見た日）は最後の `wipe` で消える。他の場所に写しは無い。
+
+## 43. シーズンの振り返り（season recap、REQ-RECAP-001〜016、`server/src/domain/seasonRecap.ts`、C# `SeasonRecap.cs`（`RecapShare`）・`Muchi.Game.SeasonRecapModel`）
+ランク戦のシーズン（JST の暦月、§13 `seasonIdFor`）が終わるたびに1回、さらにゲームの1年（`time.ts` のゲーム日、`progression.dayRollover` の 04:00 JST で切り替わる年）が終わるたびに1回、プレイヤーの**振り返り**を作る。1画面ずつめくって見られ、共有カードにできる。中身は**サーバーが確定させたデータだけ**から作る（推定・乱数・端末の申告は使わない）。コイン・アイテムは動かない（経済の目標なし、E 番号なし）。課金・支出の数字は一切出さない。
+
+### 43.1 記録（`seasonRecap.acc`）とスナップショット
+- プレイヤーの状態に**集計中の記録**を2つ持つ：`acc.season`（今のシーズン）・`acc.year`（今のゲーム年）。形 `RecapAcc`：`{ periodId, since, races, wins, top3, bestPlace, bestPlaceField, byHorse{horseId:{horseName,races,wins,first}}, byStyle{style:races}, streak, bestStreak, firstWin, bigWin, rival{win,lose,draw}, teamGoal, replaysSaved }`。
+- 書くのは次の場所だけ（どれも1回だけのガードの内側）：
+| 出どころ | 何を数える |
+|---|---|
+| `applyRace`（レースIDのガード内） | `races`・`wins`・`top3`・`bestPlace`（同じ着順なら頭数の多い方）・`byHorse`（`horseId` のある結果だけ）・`byStyle`（`details.style`）・連勝・`firstWin`・`bigWin`（頭数→先に勝った方）。数えるレースは殿堂の戦績（§34.1）・プレイヤー統計と同じ：ランク戦・イベント・大会、人間2人以上のフレンド戦。無効・チュートリアル・タイムアタック・週替わりチャレンジは数えない |
+| `applyRace`／`taRecord` の支部の共同目標（§32 `playerGoalRace`・`playerGoalTa` が数えた時だけ） | `teamGoal`（`races + wins + taPb`） |
+| ライバルの週の確定（§28 `settleWeek`、週ごとに1回） | `rival.win/lose/draw`（`not_enough`・`no_contest` は数えない） |
+| マイリプレイの保存（§37 `commitSave`、同じレースは1回） | `replaysSaved` |
+- 次のものは記録を使わず、もともと時刻つきで残っている確定データから期間で数える：タイムアタックの記録（`timeAttack.seasonBest`、シーズンは `seasonId`、年は記録の時刻 `at`）・殿堂入り（`hall.entries[].inductedAt`）・到達したクラス（`seasonHistory`）。
+- **締め**：プレイヤーのトランザクションの最初（`rollSeason` の直後、`rollRecaps`）で、`acc.season.periodId` が今のシーズンと違えばそのシーズンの、`acc.year.periodId` が今のゲーム年と違えばその年のスナップショットを作り、新しい記録を始める。シーズンの終わりの集計ジョブ（REQ-SEASON-002 の `closeSeason`）もトランザクションなので、ランク戦を走った人は集計ジョブの時点で必ず作られる。ほかの人は次に開いた時に作られる（その間はレースが無いので中身は同じ）。
+- **1プレイヤー・1期間に1つ**（`id` = `season:<YYYY-MM>`／`year:<YYYY>`）。同じ `id` があれば作らない（再試行・二重の締めでも1つ）。何も記録の無い期間（レース 0・ほかの数字も 0）は作らない。
+- 集計ジョブが届けたクラス内の最終順位（`closeSeason` の `rank`）は、まだ `null` の時だけスナップショットに書く（1回）。その年のスナップショットがもう有れば、その年のクラスの行も選び直す。
+- **「〜から」の正直な表示**：記録が期間の途中から始まった（この機能の公開日・その期間の途中で作ったアカウントではない時）なら `since`（記録を始めた時刻）を持ち、画面は「{date}からの記録です」と出す。締めの後に始める次の記録は期間の最初から（`since` なし）。
+- **ゲーム年**：`gameDayKey(now, dayRule).slice(0, 4)`。1月1日の 04:00 JST（日付の切り替えの時刻）に切り替わる。シーズンは暦月（00:00）なので、1月1日 00:00〜04:00 のレースは新しいシーズン・前の年に入る（それぞれの決まりどおり）。
+- 保存：スナップショットは小さく（数字・id・馬の名前だけ、1件 2 KB 未満）、シーズンは新しい方から `keepSeasons` 件・年は `keepYears` 件だけ残す。
+
+### 43.2 中身（`RecapSnapshot`）
+`{ id, kind: "season"|"year", periodId, from, to, builtAt, since|null, short, races, wins, top3, bestFinish{place,fieldSize}|null, rank{classId,nextClassId,finalRank|null,promoted}|null, horse{horseId,horseName,races,wins}|null, timeAttack{trackId,timeMs,horseName,courseBest}|null, style{style,races}|null, rival{win,lose,draw}|null, teamGoal, hall{count,horses[{horseName}]}, replaysSaved, moments[{kind,horseName|null,trackId|null,n|null,from|null,to|null,at}], openedAt|null, completedAt|null }`
+- いちばん一緒に走った馬：`byHorse` のレース数 → 勝ち数 → 先に走った方。
+- タイムアタック：期間の記録のうち、そのコースの自分の歴代最速（`allTimeBest` と同じセッション）を優先 → 新しい記録。コースどうしのタイムは比べない。
+- よく使った脚質：レース数 → 脚質の順（逃げ・先行・差し・追込）。
+- 到達したクラス：シーズンはそのシーズンのクラス・次のクラス（昇格なら `promoted`）・最終順位。年は期間のシーズンのうち最も上のクラス（昇格先も含む）→ その中の最もよい最終順位。
+- 名場面（`moments`、最大 `momentsMax` 件、決まった優先順）：`promotion`（昇格）→ `hall`（殿堂入り、最初の1頭）→ `first_win`（期間の初勝利）→ `big_win`（いちばん頭数の多い勝利、8頭以上）→ `streak`（2連勝以上の最長）→ `ta_best`（歴代最速の更新）。無いものは作らない（足りなければ少ないまま、作り話はしない）。
+- **短い版**：レースが `shortBelowRaces` 戦未満なら `short: true`。画面は「走ったレース」と（あれば）最高着順・いちばん一緒に走った馬・最後の一言だけ（空の画面は出さない）。
+- 他のプレイヤーの名前は持たない（ライバルは勝敗の数だけ、支部は貢献の数だけ）。プレイヤー・馬の名前は訳さない（`horseName` は `PLAYER_TEXT_KEYS`）。
+
+### 43.3 API（すべて要認証）
+| メソッド | パス | 本文 → 応答 |
+|---|---|---|
+| GET | `/v1/recaps` | → `{ "enabled", "recaps": [ { "id", "kind", "periodId", "title", "short", "builtAt", "opened", "completed" } ], "unseen": id\|null }`（新しい順。`unseen` = まだ開いていない一番新しいもの） |
+| GET | `/v1/recaps/:id` | → `RecapView`（43.4）。無い id は `404 NOT_FOUND` |
+| POST | `/v1/recaps/:id/progress` | `{ "step": "open"\|"complete" }` → `{ "openedAt", "completedAt" }`。最初の時刻だけ残す（何度送っても同じ、冪等）。KPI `recap_open`／`recap_complete`（`isFirst`） |
+
+### 43.4 画面の形（`RecapView`）
+```json
+{ "id": "season:2026-11", "kind": "season", "periodId": "2026-11", "title": "2026年11月シーズン", "short": false,
+  "sinceNote": "2026-11-09からの記録です",
+  "steps": [ { "key": "races", "label": "走ったレース", "value": "24", "unit": "戦", "notes": ["3着以内 9回"] },
+             { "key": "horse", "label": "いちばん一緒に走った馬", "value": null, "horseName": "アイボウ", "notes": ["18戦5勝"] },
+             { "key": "moments", "label": "名場面", "moments": [ { "kind": "first_win", "text": "シーズン初勝利（青葉競馬場 芝1600m）", "horseName": "アイボウ" } ] },
+             { "key": "end", "label": "おつかれさまでした", "value": null } ],
+  "shareCards": [ { "card": "summary", "title": "…", "headline": "24", "unit": "戦", "lines": ["…"], "horseName": null, "rank": false } ],
+  "openedAt": null, "completedAt": null }
+```
+- `steps[].key`：`races`・`wins`・`best_finish`・`rank`・`horse`・`time_attack`・`style`・`rival`・`team`・`hall`・`replays`・`moments`・`end`。数字の無いものは出さない。文はサーバーが作り、英語の応答は境界で訳す（REQ-L10N）。
+- 共有カード（`shareCards[].card`）：`summary`（レース・勝利）・`horse`（いちばん一緒に走った馬）・`moment`（最初の名場面）・`rank`（クラス・順位、`rank: true`）。端末は既存の `ShareCard`（REQ-UXS-071、ウォーターマーク「ムチ一閃」・`#ムチ一閃`）で絵にする。**順位を隠す**を選ぶと `rank: true` のカードと順位の行を外す。カードに入るのは自分の馬の名前と自分の数字だけ（プレイヤーID・表示名・他のプレイヤーの名前は入れない）。
+- 文言の決まり：「倍」「お得」「今だけ」など煽り・賭けごとの言葉（賭け・配当・オッズ）・課金を促す言葉は使わない（テストで確認、英語も同じ）。購入・コインの数字は出さない。
+
+### 43.5 設定 `progression.seasonRecap`（リモート設定で変更可）
+`{ enabled, keepSeasons, keepYears, shortBelowRaces, momentsMax }`。範囲（`SEASON_RECAP_LIMITS`）：`keepSeasons` 1..24（`SEASON_HISTORY_KEEP` 以下）、`keepYears` 1..10、`shortBelowRaces` 1..20、`momentsMax` 2..3。起動時と各版で検証。無い／`enabled: false` なら作らず、`GET /v1/recaps` は `enabled: false` と空の一覧。
+
+### 43.6 KPI
+`recap_open`・`recap_complete`（サーバー、`s1` = kind、`s2` = periodId、`s3` = `short`／`full`、`isFirst`）・`recap_share`（クライアント、`props.kind` = `season`／`year`、`props.card` = `summary`／`horse`／`moment`／`rank`、`props.hideRank`）。
+
+### 43.7 アカウント削除・その他
+- 振り返りはプレイヤーの状態の中だけにある（R2・ディレクトリの写しなし）。アカウント削除の `wipe` で消える。削除の実行中（`deleting`）は新しく作らない。削除後に届いた `closeSeason` は何も作らない（`wiped`）。
+- 解放キーは使わない（最初のシーズンが終わった後に出る）。プロフィールから過去の振り返りを開ける。
+- アクティビティ（§40、Round 15）：スナップショットを作った時（`rollRecaps`）に「振り返りができました」の1件を書く場所（本ラウンドでは書かない）。

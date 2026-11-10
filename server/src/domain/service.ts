@@ -92,6 +92,7 @@ import {
 import { buildSupportTicket } from '../ops/support.js';
 import { raceAdviceFor, type AdviceQuery } from './raceAdviceService.js';
 import { dismissNextAction, nextActionsView, noteFeatures, type TeamGoalBrief } from './nextAction.js';
+import { attachRecapRank, noteRecapRace, noteRecapReplaySaved, noteRecapTeamGoal, recapProgress, recapView, recapsList, rollRecaps, type RecapStepName } from './seasonRecap.js';
 import { abortChallengeSubmit, prepareChallengeSubmit, recordChallengeResult, startChallenge, weeklyChallengeView, type WchStartInput } from './weeklyChallenge.js';
 import {
   ackCeremony, hallSnapshot, hallSnapshotKey, hallViewerOf, horseCareerView, myHallView, noteHallRace, noteHallRetire, noteHallTa, noteHallTournament,
@@ -242,6 +243,7 @@ export class PlayerService {
     const draft: PlayerState = structuredClone(current);
     const now = this.d.clock();
     rollSeason(this.d.master, draft, now);
+    rollRecaps(this.d.master, draft, now); // REQ-RECAP-002/003: a closed season / game year becomes its recap (once)
     settlePityGroups(this.d.master, draft, now);
     const paidBefore = draft.wallet.paid;
     const standingBefore = standingKey(draft);
@@ -907,7 +909,11 @@ export class PlayerService {
   }
   /** Save step 2, after the copy is in R2 (keyed with the client's key: a retry returns the first answer). */
   replayCommitSave(id: string, raceId: string, title: string | null, sizeBytes: number, idemKey: string | null) {
-    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => commitSave(this.d.master, s, raceId, title, sizeBytes, now, emit));
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => {
+      const r = commitSave(this.d.master, s, raceId, title, sizeBytes, now, emit);
+      if (!r.alreadySaved) noteRecapReplaySaved(this.d.master, s, now); // REQ-RECAP-001
+      return r;
+    });
   }
   replayForget(id: string, raceId: string) { return this.tx(id, null, (s) => { forgetRecent(s, raceId); return true; }); }
   replayUpdate(id: string, raceId: string, patch: ReplayPatch) { return this.tx(id, null, (s) => updateSaved(this.d.master, s, raceId, patch)); }
@@ -918,6 +924,14 @@ export class PlayerService {
     if (await this.wiped(id)) return null;
     return sharedFor(this.d.master, await this.load(id), viewerId, this.d.clock());
   }
+  // ---------------------------------------------------------------- シーズンの振り返り (REQ-RECAP-*, seasonRecap.ts)
+  /** Runs as a transaction so a period that ended since the last request is closed first (rollRecaps). */
+  recaps(id: string) { return this.tx(id, null, (s) => recapsList(this.d.master, s)); }
+  recap(id: string, recapId: string) { return this.tx(id, null, (s) => recapView(this.d.master, s, recapId)); }
+  recapProgress(id: string, recapId: string, step: RecapStepName) {
+    return this.tx(id, null, (s, now, emit) => recapProgress(this.d.master, s, recapId, step, now, emit));
+  }
+
   /** REQ-MYRP-014: replay_view on the viewer's own record. */
   replayViewed(id: string, source: 'own' | 'friend', status: string, mode: string) {
     return this.tx(id, null, (_s, _now, emit) => { emit({ name: 'replay_view', s1: source, s2: status, s3: mode }); return true; });
@@ -952,6 +966,7 @@ export class PlayerService {
       // REQ-HOF-001: the horse's career (a ranked race counted against the weekly rival with me ahead is a rival win)
       const rivalWin = r.mode === 'ranked' && !!s.rival?.weeks.some((w) => w.races.some((x) => x.raceId === r.raceId && x.mode === 'ranked' && x.point === 'me'));
       noteHallRace(this.d.master, s, r, now, rivalWin);
+      noteRecapRace(this.d.master, s, r, now); // REQ-RECAP-001: this season's and this game year's records
       // REQ-COL-002 / REQ-ACH-002: what the race showed the 図鑑, a fired skill, and the tiers it unlocked (with titles)
       noteRaceCollection(this.d.master, s, r);
       const achievements = syncCollection(this.d.master, s, now, emit);
@@ -965,6 +980,7 @@ export class PlayerService {
       }
       // REQ-TGOAL-003/004: the settled result counts toward the team's weekly goal (account-wide daily cap)
       goal = playerGoalRace(this.d.master, s, r, now);
+      noteRecapTeamGoal(this.d.master, s, goal, now); // REQ-RECAP-001
       if (goal) {
         notePostedIn(s, goal.teamId); // REQ-TGOAL-006: the deletion finds this team even after a leave
         emit({ name: 'team_goal_contribute', s1: goal.teamId, s2: goal.wins ? 'win' : 'race', s3: goal.ref, count: goal.races + goal.wins });
@@ -1178,6 +1194,7 @@ export class PlayerService {
       const r = closeSeason(this.d.master, s, seasonId, rank, now, emit);
       if (r.status === 'rewarded') emit({ name: 'season_close', s1: seasonId, s2: r.classId ?? '', s3: r.nextClassId ?? '', ...(rank !== null ? { place: rank } : {}) });
       const titles = evaluateTitles(this.d.master, s); // class titles (promotion happened in rollSeason)
+      attachRecapRank(this.d.master, s, seasonId); // REQ-RECAP-005: the final class rank, once (the recap itself was built by rollRecaps)
       return { ...r, titles };
     });
   }
@@ -1546,6 +1563,7 @@ export class PlayerService {
       // REQ-TGOAL-003: a verified run that set a season best on its course counts once (a re-submit returns the stored result)
       if (!counted && 'seasonBest' in r && r.seasonBest) {
         goal = playerGoalTa(this.d.master, s, sessionId, now);
+        noteRecapTeamGoal(this.d.master, s, goal, now); // REQ-RECAP-001
         if (goal) {
           notePostedIn(s, goal.teamId);
           emit({ name: 'team_goal_contribute', s1: goal.teamId, s2: 'ta_pb', s3: goal.ref, count: 1 });

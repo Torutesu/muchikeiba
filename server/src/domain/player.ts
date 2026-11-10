@@ -228,6 +228,8 @@ export interface PlayerState {
   roster?: import('./roster.js').RosterState;
   /** REQ-NEXT-005/008: kinds closed for today's game day and the game day each feature was first seen unlocked (nextAction.ts). */
   nextAction?: import('./nextAction.js').NextActionState;
+  /** REQ-RECAP-*: シーズンの振り返り — the running season / year records and the closed snapshots (seasonRecap.ts ensureRecap). */
+  seasonRecap?: import('./seasonRecap.js').SeasonRecapState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

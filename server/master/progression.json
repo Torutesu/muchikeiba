@@ -1064,5 +1064,13 @@
       { "kind": "scout_ticket", "priority": 200 },
       { "kind": "race", "priority": 0 }
     ]
+  },
+  "seasonRecap": {
+    "_note": "REQ-RECAP-*（contracts/protocol.md §43）。シーズン（JSTの暦月）とゲーム年（04:00 JSTで切り替わる）の終わりに、確定したデータだけから振り返りを1つ作る。シーズンは新しい方からkeepSeasons件、年はkeepYears件残す。レースがshortBelowRaces戦未満なら短い版。名場面はmomentsMax件まで。コイン・アイテムは動かない。",
+    "enabled": true,
+    "keepSeasons": 12,
+    "keepYears": 3,
+    "shortBelowRaces": 3,
+    "momentsMax": 3
   }
 }

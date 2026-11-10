@@ -20,6 +20,8 @@ namespace Muchi.Client
 
         private static readonly Regex Ident = new Regex("^[A-Za-z0-9_\\-.:]{1,64}$");
 
+        /// <summary>The props as JSON (checks and logs).</summary>
+        public string PropsJson => _props.ToString();
         private AnalyticsEvent(string name, long atMs, JsonNode props) { Name = name; AtMs = atMs; _props = props ?? JsonNode.Obj(); }
 
         private static string Id(string v, int max, string what)
@@ -138,6 +140,14 @@ namespace Muchi.Client
         {
             if (Array.IndexOf(RosterQuery.SortKeys, sort) < 0) throw new ArgumentException("unknown roster sort " + sort);
             return new AnalyticsEvent("roster_sort", atMs, JsonNode.Obj().Set("sort", sort).Set("filters", Math.Max(0, Math.Min(filters, 10))));
+        }
+
+        /// <summary>REQ-RECAP-015: a recap share card was handed to the OS share sheet. kind: season | year; card: summary | horse | moment | rank.</summary>
+        public static AnalyticsEvent RecapShare(long atMs, string kind, string card, bool hideRank)
+        {
+            if (kind != "season" && kind != "year") throw new ArgumentException("unknown recap kind " + kind);
+            if (card != "summary" && card != "horse" && card != "moment" && card != "rank") throw new ArgumentException("unknown recap card " + card);
+            return new AnalyticsEvent("recap_share", atMs, JsonNode.Obj().Set("kind", kind).Set("card", card).Set("hideRank", hideRank));
         }
 
         /// <summary>The invite code was handed to the OS share sheet or copied (REQ-INV-011). channel: os_share | copy_code | copy_link.</summary>

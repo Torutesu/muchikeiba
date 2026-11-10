@@ -585,6 +585,65 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
   }
 
+  // round 16 (REQ-RECAP-*): シーズンの振り返り — the stable's entry → the list (short / full / year) → a full recap stepped through
+  // (big number, horse as typed, moments) → back → skip to the end (complete) → the share set with 「順位を隠す」 and recap_share →
+  // the short version → reduced motion (no count-up, no slide)
+  async function recapFlow() {
+    const waitIn = (sel, timeout = 20000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    const recap = () => page.evaluate(() => globalThis.__muchi.recap);
+    /** Taps a recap control and waits for the page it leads to (the screen re-renders under the same name). */
+    const go = async (sel, index) => { await page.locator(`.screen.in ${sel}`).first().click(); await page.waitForSelector(`.screen.in[data-index="${index}"]`, { timeout: 10000 }); await page.waitForTimeout(150); };
+    await page.evaluate(() => globalThis.__muchi.show('Stable')); await waitScreen('stable');
+    await page.locator('.screen.in .rc-entry').click(); await waitScreen('recaps', 30000); await waitIn('.rc-card');
+    assert.equal(await page.locator('.screen.in .rc-card').count(), 4, 'recap: four recaps in the demo history');
+    await shot('recap-list', 400);
+    await page.locator('.screen.in .rc-card[data-recap="season:2026-11"]').click(); await waitScreen('recap'); await waitIn('.rc-big');
+    await page.waitForFunction(() => document.querySelector('.screen.in .rc-big .rc-num')?.textContent === '20', null, { timeout: 5000 });
+    assert.equal((await recap()).key, 'races');
+    await shot('recap-races', 300);
+    await go('.rc-next', 1);
+    assert.equal((await recap()).key, 'wins');
+    await go('.rc-next', 2); await go('.rc-next', 3);
+    assert.equal((await recap()).key, 'rank');
+    assert.equal(await page.locator('.screen.in .rc-big .rc-num').textContent(), 'B級');
+    await shot('recap-rank', 300);
+    await go('.rc-next', 4);
+    assert.equal((await recap()).key, 'horse');
+    assert.equal(await page.locator('.screen.in .rc-big.typed .rc-num').textContent(), 'ソラノカナタ', 'recap: the horse as typed');
+    await shot('recap-horse', 300);
+    await go('.rc-back', 3);
+    assert.equal((await recap()).key, 'rank', 'recap: back one page');
+    const total = (await recap()).steps;
+    await go('.rc-skip', total - 1);
+    const r = await recap();
+    assert.equal(r.key, 'end'); assert.equal(r.index, r.steps - 1);
+    const done = await page.evaluate(async () => (await globalThis.__muchi.logic.recap.view('season:2026-11')).value.completedAt);
+    assert.ok(done, 'recap: complete reported at the end');
+    await shot('recap-end', 300);
+    await page.locator('.screen.in .rc-share').click(); await waitIn('.rc-share-sheet');
+    assert.equal(await page.locator('.screen.in .rc-card-share').count(), 4);
+    await shot('recap-share', 400);
+    await page.locator('.screen.in .rc-hide-rank').click(); await page.waitForTimeout(400); await waitIn('.rc-share-sheet[data-hide-rank="true"]');
+    assert.equal(await page.locator('.screen.in .rc-card-share[data-card="rank"]').count(), 0, 'recap: 順位を隠す drops the rank card');
+    await page.locator('.screen.in .rc-card-share[data-card="horse"] .rc-share-go').click(); await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(() => globalThis.__muchi.lastKpi), 'recap_share:horse');
+    await shot('recap-share-hidden-rank', 300);
+    await page.evaluate(() => localStorage.setItem('muchi.recap.hideRank', '0'));
+    // the short version
+    await page.evaluate(() => globalThis.__muchi.show('Recap', 'season:2026-10', 0)); await waitScreen('recap'); await waitIn('.rc-big');
+    assert.equal((await recap()).short, true);
+    assert.equal((await recap()).steps, 4, 'recap: the short version has four pages');
+    // reduced motion: the number is shown at once, the art does not drift
+    await page.evaluate(() => localStorage.setItem('muchi.a11y.reduceMotion', '1'));
+    await page.evaluate(() => globalThis.__muchi.show('Recap', 'year:2026', 0)); await waitScreen('recap'); await waitIn('.rc-big');
+    assert.equal(await page.locator('.screen.in').getAttribute('data-reduced'), 'true');
+    assert.equal(await page.locator('.screen.in .rc-big .rc-num').textContent(), '26', 'recap: reduced motion shows the number at once');
+    assert.equal(await page.locator('.screen.in .art.drift').count(), 0);
+    await shot('recap-year-reduced-motion', 200);
+    await page.evaluate(() => localStorage.removeItem('muchi.a11y.reduceMotion'));
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
+  }
+
   // round 9 (06 §6.5 / §7 item 7): banner calendar with real end times, pity meter, step-up, reveal → summary, the end
   // of a limited banner. The logic clock is set to 2026-11-06 12:00 JST so pickup_ginga (11/1–11/30) is open.
   async function scoutLiveOps() {
@@ -835,6 +894,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await silksFlow();
   await myReplaysFlow();
   await rosterFlow();
+  await recapFlow();
   await page.evaluate(() => globalThis.__muchi.show('Scout')); await waitScreen('scout'); await shot('scout', 500);
   await click('提供割合'); await shot('scout-rates', 400); await click('BACK');
   await waitScreen('scout'); await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal'); await shot('scout-paid-reveal', 700);

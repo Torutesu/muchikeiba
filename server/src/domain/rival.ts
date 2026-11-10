@@ -29,6 +29,7 @@
  * banned players and accounts scheduled for deletion are never paired; a block / opt-out / deletion dissolves the
  * current pair for both sides.
  */
+import { noteRecapRival } from './seasonRecap.js';
 import { z } from 'zod';
 import { AppError } from './errors.js';
 import type { Master, Style } from './master.js';
@@ -423,6 +424,7 @@ function settleWeek(m: Master, s: PlayerState, w: RivalWeek, now: number, emit: 
   if (r.results.length > RIVAL_HARD_LIMITS.resultsKept) r.results.splice(0, r.results.length - RIVAL_HARD_LIMITS.resultsKept);
   r.unseen = w.weekId;
   recordActivity(m, s, { kind: 'rival_week', source: `rival_week:${w.weekId}`, vars: { outcome } }, now); // REQ-ACT-002
+  noteRecapRival(m, s, outcome, now); // REQ-RECAP-001: the week's result counts in this season's / game year's recap
   emit({ name: 'rival_week_result', s1: outcome, s2: a.kind, s3: w.weekId, count: w.me, value: w.them, freeCoins: paid, place: w.rankedRaces });
   return res;
 }

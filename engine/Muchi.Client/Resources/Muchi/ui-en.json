@@ -992,6 +992,16 @@
   "持っている券で引けます": "Scout with the tickets you have",
   "スカウトへ": "Go to scout",
   "次の1レースへ": "On to the next race",
-  "ランク戦・約90秒": "Ranked race · about 90 s"
+  "ランク戦・約90秒": "Ranked race · about 90 s",
+  "_season_recap": "---- シーズンの振り返り (SeasonRecapModel, REQ-RECAP-*)",
+  "シーズンの振り返り": "Season recap",
+  "振り返りは、シーズンが終わるとここに届きます": "Your recap arrives here when a season ends",
+  "次へ": "Next",
+  "戻る": "Back",
+  "最後まで": "Skip to end",
+  "共有する": "Share",
+  "順位を隠す": "Hide my rank",
+  "共有カードに入るのは、あなたの馬の名前と数字だけです": "Share cards show only your horses' names and your numbers",
+  "1年": "Year"
  }
 }

@@ -945,3 +945,22 @@
 - REQ-NEXT-012 KPI：`next_card_view`・`next_card_tap`（クライアント、`kind`・`slot`）、`next_card_dismiss`（サーバー）。
 - REQ-NEXT-013 クライアント：`Muchi.Client` `ApiClient.GetNextActionsAsync`・`DismissNextActionAsync`、`NextActionsView`。Unity のゲーム層 `NextActionModel`（主カードとチップの文言、期限の日付表示、オフラインの予備 45.6、今日閉じた種類、KPI の1日1回）。
 - REQ-NEXT-014 プロトタイプ：ムチ一閃のホームの下の中央に主カード＋チップ（上のバーは増やさない：プレゼントの封筒・ライバルの帯・後から来る §40 のベルの場所を空けておく）、閉じる、日本語・英語、e2e と en-flow。
+
+## 43. シーズンの振り返り（season recap、TS＋C#、`src/domain/seasonRecap.ts`・`Muchi.Client/SeasonRecap.cs`、`contracts/protocol.md` §43）
+拘束条件：中身はサーバーが確定させたデータだけ（推定・乱数・端末の申告なし）。記録の無かった期間を埋めない（途中からなら「〜からの記録」と正直に出す）。コイン・アイテムは動かない（E 番号なし）。課金の数字・煽り・賭けの言葉・支出を促す言葉は出さない。他のプレイヤーの名前は持たない。
+- REQ-RECAP-001 記録：`applyRace`（レースIDのガード内）でレース・勝利・3着以内・最高着順・馬ごと・脚質・連勝・初勝利・最大の勝利を、支部の共同目標が数えた時に貢献を、ライバルの週の確定で勝敗を、マイリプレイの保存で保存数を、今のシーズンと今のゲーム年の記録（`seasonRecap.acc`）に足す。数えるレースは殿堂の戦績・プレイヤー統計と同じ。
+- REQ-RECAP-002 シーズンの締め：トランザクションの最初（`rollSeason` の後の `rollRecaps`）で前のシーズンのスナップショットを作る。集計ジョブの `closeSeason` もこの経路を通る。
+- REQ-RECAP-003 年の締め：ゲーム年（`gameDayKey` の年、`progression.dayRollover` の時刻＝04:00 JST で切り替わる）が変わったら前の年のスナップショットを作る。
+- REQ-RECAP-004 1つだけ：1プレイヤー・1期間に1つ（`season:<YYYY-MM>`／`year:<YYYY>`）。再試行・二重の締めでも増えない。記録の無い期間は作らない。
+- REQ-RECAP-005 最終順位：`closeSeason` の `rank` を、スナップショットの順位がまだ無い時だけ書く。その年のスナップショットのクラスの行も選び直す。
+- REQ-RECAP-006 正直な期間：記録が期間の途中から始まった時は `since` を持ち「{date}からの記録です」と出す。時刻つきで残っている確定データ（タイムアタックの記録・殿堂入り・シーズンの記録）は期間で数える。
+- REQ-RECAP-007 中身：レース・勝利・最高着順・到達したクラス・いちばん一緒に走った馬・タイムアタックの記録・よく使った脚質・ライバルとの週の勝敗・支部への貢献・殿堂入りした馬・保存したリプレイ・名場面 2〜3（決まった優先順、無いものは作らない）。選び方の同点の決め方は protocol §43.2。
+- REQ-RECAP-008 短い版：レースが `shortBelowRaces` 未満なら短い版（空の画面にしない）。
+- REQ-RECAP-009 保存：スナップショットは小さく（1件 2 KB 未満）、シーズン `keepSeasons`・年 `keepYears` 件まで（新しい方を残す）。
+- REQ-RECAP-010 API：`GET /v1/recaps`・`GET /v1/recaps/:id`・`POST /v1/recaps/:id/progress`（最初の時刻だけ、冪等）。
+- REQ-RECAP-011 共有：共有カード（summary・horse・moment・rank）を既存の `ShareCard` の経路で作る。順位を隠す選択。自分の馬と自分の数字だけ（他のプレイヤーの名前・ID なし）。
+- REQ-RECAP-012 文言：日本語・英語のすべての行。「倍」「お得」「今だけ」・賭けの言葉・支出を促す言葉を使わない（テスト）。プレイヤー・馬の名前は訳さない。
+- REQ-RECAP-013 設定 `progression.seasonRecap`：`keepSeasons` 1..24・`keepYears` 1..10・`shortBelowRaces` 1..20・`momentsMax` 2..3 を起動時と各版で検証。
+- REQ-RECAP-014 アカウント削除：状態の `wipe` で消える。削除の実行中は作らない。削除後の `closeSeason` は何も作らない。
+- REQ-RECAP-015 KPI：`recap_open`・`recap_complete`（サーバー）、`recap_share`（クライアント）。クエリは `docs/ops/kpi-queries.md`。
+- REQ-RECAP-016 クライアント：`Muchi.Client` `ApiClient.GetRecapsAsync`・`GetRecapAsync`・`RecapProgressAsync`、`RecapShare`（`ShareCard` を作る、順位を隠す）。Unity のゲーム層 `SeasonRecapModel`（めくる順・戻る・最後・短い版・動きを減らす設定のフック）。プロトタイプ：全画面でめくる振り返り（日本語・英語）。

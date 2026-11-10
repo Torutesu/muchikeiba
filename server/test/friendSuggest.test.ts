@@ -102,6 +102,19 @@ describe('opponents (REQ-FSUG-013)', () => {
     expect(s.friendSuggest!.opponents.map((x) => [x.id, x.mode, x.n])).toEqual([['b', 'event', 1], ['a', 'tournament', 2]]);
   });
 
+  it('Round 17 integration: hosted cup mates (confirmed cup races, §42) count as opponents', async () => {
+    const s = freshPlayer('me', NOW);
+    noteFsugRace(m, s, { mode: 'cup', void: false, field: [{ playerId: 'me' }, { playerId: 'a' }] }, NOW);
+    noteFsugRace(m, s, { mode: 'cup', void: true, field: [{ playerId: 'v1' }] }, NOW);
+    expect(s.friendSuggest!.opponents.map((x) => [x.id, x.mode])).toEqual([['a', 'cup']]);
+    // through applyRace (the cup branch records only, but the suggestion signal is kept)
+    const t = await setup();
+    await joinAll(t, ['me', 'a', 'b']);
+    await t.race('me', 'cup:c1:0:0', 'cup', ['me', 'a']);
+    const l = await t.list('me');
+    expect(l.items.map((x: { playerId: string; text: string }) => [x.playerId, x.text])).toEqual([['a', '最近のレースで対戦']]);
+  });
+
   it('keeps at most opponentKeep and drops races older than opponentDays', () => {
     const s = freshPlayer('me', NOW);
     for (let i = 0; i < 70; i++) noteFsugRace(m, s, { mode: 'friend', void: false, field: [{ playerId: `p${i}` }] }, NOW + i);

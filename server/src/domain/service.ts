@@ -1050,6 +1050,7 @@ export class PlayerService {
         // REQ-CUP-013: a hosted cup race is unranked — recorded only (no coins, missions, pass, rating, season, stats,
         // rival, hall, team feed / goal, assist streak). The cup's own object keeps the standings.
         noteRaceForReplays(this.d.master, s, r, prevBest, now);
+        noteFsugRace(this.d.master, s, r, now); // REQ-FSUG-013: cup mates are people met in the game (Round 17 integration)
         if (!r.void) emit({ name: 'race_finish', s1: r.mode, s2: r.details?.style ?? '', s3: r.details?.trackId ?? '', place: r.place, count: r.fieldSize, value: r.humans ?? 0 });
         return { coins: 0, seasonPoints: 0, titles: [] as string[], rewarded: false, firstWinBonus: 0, comebackXp: 0, achievements: [] as ReturnType<typeof syncCollection>, event: null };
       }

@@ -23,7 +23,7 @@ import { DIRECTORY_SHARDS, shardOf } from './friends.js';
 export const FSUG_KINDS = ['opponent', 'team', 'liked', 'cheered', 'mutual'] as const;
 export type FsugKind = typeof FSUG_KINDS[number];
 /** Modes whose confirmed human field may be suggested (REQ-FSUG-013). Ranked is deliberately absent (§49.1). */
-export const FSUG_RACE_MODES = ['friend', 'event', 'tournament'] as const;
+export const FSUG_RACE_MODES = ['friend', 'event', 'tournament', 'cup'] as const; // cup: hosted cup mates (Round 17 integration, §42)
 
 export interface FsugConfig {
   enabled: boolean; maxShown: number; candidateMax: number; fofFriendsMax: number; fofMin: number; mutualCap: number;

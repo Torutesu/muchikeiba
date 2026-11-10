@@ -20,6 +20,8 @@ import { deletionPortsFromEnv } from './deletionPorts.js';
 import { deliverInviteOutbox, type MilestoneDelivery } from '../domain/invite.js';
 import { RivalService, rivalPlayersFrom } from '../domain/rivalService.js';
 import { durableRivalRegistry } from './rivalStore.js';
+import { runDataExportJob, sweepDataExports } from '../domain/dataExportService.js';
+import { dataExportPortsFromEnv, r2ExportStore } from './dataExportPorts.js';
 
 /** One player = one Durable Object (wallet, ledger, horses, gacha pity, purchases, push outbox). */
 export class PlayerDO extends DurableObject<Env> {
@@ -119,7 +121,8 @@ export class PlayerDO extends DurableObject<Env> {
     const id = await this.ctx.storage.get<string>('playerId');
     if (!id) return;
     // templates may exist only in remote config (REQ-OPS-005); a fresh object starts with the base master
-    this.svc.setMaster((await activeConfig(this.env)).master);
+    const master = (await activeConfig(this.env)).master;
+    this.svc.setMaster(master);
     // REQ-UXS-040: a scheduled account deletion that is due runs first; after the wipe nothing else may touch the
     // player (any call would recreate a fresh state), so the alarm ends there
     if (await this.svc.deletionDue(id)) {
@@ -135,6 +138,12 @@ export class PlayerDO extends DurableObject<Env> {
         return;
       }
     }
+    // REQ-DEX-*: a due personal data export (built here, never on a request path), then expired / replaced export files
+    const dexStore = r2ExportStore(this.env.REPLAYS);
+    const dx = await runDataExportJob(dataExportPortsFromEnv(this.env, this.svc, () => master, dexStore), id).catch((e) => { console.error('data export job failed', id, e); return null; });
+    if (dx && dx.status !== 'idle') console.log('data export', dx.status, dx.bytes ?? 0);
+    await sweepDataExports({ expiring: (u) => this.svc.dataExportExpiring(u), deleted: (u, k) => this.svc.dataExportDeleted(u, k), store: dexStore }, id)
+      .catch((e) => console.error('data export sweep failed', id, e));
     // REQ-UXS-012: personal nudges (promotion) that are due
     await this.svc.runNudges(id).catch((e) => console.error('nudges failed', id, e));
     const r = await deliverDuePushes({ take: (p) => this.svc.pushTake(p), settle: (p, o) => this.svc.pushSettle(p, o) }, id, this.sender);

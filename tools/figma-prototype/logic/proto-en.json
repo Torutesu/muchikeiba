@@ -1209,6 +1209,26 @@
   "カップ名は1〜20文字です（URLは使えません）": "Cup names are 1–20 characters (no URLs)",
   "アカウント削除の手続き中のため、参加できません": "You can't join while your account deletion is pending",
   "{n}着": "{n:ord}",
-  "{n}pt": "{n} pt"
+  "{n}pt": "{n} pt",
+  "_r18dex": "---- round 18: プライバシー › データのダウンロード (§51)",
+  "その他　/　プライバシー": "More / Privacy",
+  "アカウントに保存されているデータの確認とダウンロード": "See and download the data stored on your account",
+  "プロフィール・設定（アクセシビリティを含む）": "Profile and settings (incl. accessibility)",
+  "馬・アイテム・プレゼント": "Horses, items and gifts",
+  "有償コインと無償コインの残高と履歴（別々に記載）": "Paid and free coin balances and history (listed apart)",
+  "購入とスカウトの記録": "Purchases and scout records",
+  "フレンド・ブロック・自分が送った通報": "Friends, blocked players, reports you sent",
+  "お知らせ・リプレイと写真の記録・カップ・振り返り": "Activity, replay and photo records, cups, recaps",
+  "登録した端末・分析イベント": "Registered devices, analytics events",
+  "含まれるもの": "What is included",
+  "含めないもの": "Not included",
+  "他のプレイヤーの情報・運営のメモ・処理用の内部記録": "Other players' information, operator notes, internal processing records",
+  "JSON は機械で読める形式、概要は人が読めるテキストです。": "The JSON file is machine-readable; the summary is plain text.",
+  "メールアドレスは使いません。ログイン中のあなただけがリクエストできます。": "No email address is needed. Only you, signed in, can request it.",
+  "データ（JSON）をダウンロードしました": "Downloaded the data (JSON)",
+  "概要（テキスト）をダウンロードしました": "Downloaded the summary (text)",
+  "準備ができるとお知らせに届きます": "You will get a notice in Activity when it is ready",
+  "リクエストを受け付けました": "Request received",
+  "データ": "Data"
  }
 }

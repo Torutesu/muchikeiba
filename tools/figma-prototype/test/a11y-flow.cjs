@@ -211,6 +211,8 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('HostedCups'); await waitScreen('hosted-cups', 30000); await shot('cups', english, 600);
     await show('CupCreate'); await waitScreen('cup-create'); await shot('cup-create', english, 500);
     await show('CupJoin'); await waitScreen('cup-join'); await shot('cup-join', english, 500);
+    // Round 18: プライバシー › データのダウンロード
+    await show('Privacy'); await waitScreen('privacy'); await page.waitForSelector('.screen.in [data-dex]', { timeout: 15000 }); await shot('privacy', english, 500);
     await show('Settings'); await waitScreen('settings'); await boxesClear('settings lists (largest)', SETTINGS_LISTS, english);
     await show('Home'); await waitScreen('home'); await page.waitForTimeout(700); await boxesClear('home top bar (largest)', HOME_BAR, english);
   };

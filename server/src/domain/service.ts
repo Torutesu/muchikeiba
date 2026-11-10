@@ -30,7 +30,7 @@ import { adSessionView, adsView, applyAdCallback, setAdPref, startAd, type AdCal
 import { toRaceHorse } from './raceConfig.js';
 import { paidBalanceYen, invariantsHold } from './wallet.js';
 import type { PaidBalanceSnapshot } from './accounting.js';
-import { dayRule, gameDayKey, jstDateKey } from './time.js';
+import { DAY_MS, dayRule, gameDayKey, jstDateKey } from './time.js';
 const gameDayKeyOf = (m: Master, now: number) => gameDayKey(now, dayRule(m));
 import type { Locale } from '../i18n/locale.js';
 import { enqueuePush, ensurePush, nextPushWake, pushPrefsView, registerDevice, setPushPrefs, settlePushes, takeDuePushes, unregisterDevice, type DeliveryOutcome, type DevicePlatform, type PrefsPatch } from './push.js';
@@ -58,7 +58,7 @@ import {
 } from './onboarding.js';
 import { armPromotionNudge, nextNudgeWake, nudgeTaBeaten, nudgeTournamentClosing, runDueNudges, type TournamentClosingInfo } from './nudges.js';
 import {
-  cancelDeletion, deletionDue, deletionRetryLater, deletionScheduled, deletionSnapshot, deletionView, finalizeDeletion, markDeletionStep,
+  cancelDeletion, deletionConfig, deletionDue, deletionRetryLater, deletionScheduled, deletionSnapshot, deletionView, finalizeDeletion, markDeletionStep,
   nextDeletionWake, notWhileDeleting, requestDeletion, startDeletion, type DeletionStep,
 } from './accountDeletion.js';
 import {
@@ -102,6 +102,10 @@ import {
   ackCeremony, hallSnapshot, hallSnapshotKey, hallViewerOf, horseCareerView, myHallView, noteHallRace, noteHallRetire, noteHallTa, noteHallTournament,
   setHallVisibility, type HallRelation, type HallSnapshot,
 } from './hallOfFame.js';
+import {
+  dataExportAdminView, dataExportDeleted, dataExportDeletionKeys, dataExportFile, dataExportView, markDataExportFailed, markDataExportReady,
+  nextDataExportWake, noteDataExportDownload, requestDataExport, takeDataExport, takeExpiredDataExport, type DexFile, type DexLang, type DexReadyInfo,
+} from './dataExport.js';
 import { assertNotLocked, bulkPreview, noteTournamentEntry, parseRosterQuery, pruneRoster, rosterView, runBulk, setFavorite, setLock, type BulkAction } from './roster.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
@@ -210,7 +214,7 @@ const IDEM_KEEP = 200;
  * comeback lapse reminders (REQ-CB-007) and gift box expiry (REQ-BOX-006).
  */
 const nextWake = (s: PlayerState) => {
-  const all = [nextPushWake(s), nextStudWake(s), nextNudgeWake(s), nextDeletionWake(s), nextInviteWake(s), nextComebackWake(s), nextGiftWake(s)].filter((x): x is number => x !== null);
+  const all = [nextPushWake(s), nextStudWake(s), nextNudgeWake(s), nextDeletionWake(s), nextInviteWake(s), nextComebackWake(s), nextGiftWake(s), nextDataExportWake(s)].filter((x): x is number => x !== null);
   return all.length ? Math.min(...all) : null;
 };
 /** How long applied race ids are remembered (well beyond any settlement/dead-letter retry window). */
@@ -423,7 +427,7 @@ export class PlayerService {
   /** Next nudge / deletion time (the object's alarm keeps them armed; push and stud have their own). */
   async nextWakeOf(id: string) {
     const s = await this.load(id);
-    const all = [nextNudgeWake(s), nextDeletionWake(s), nextInviteWake(s), nextComebackWake(s), nextGiftWake(s)].filter((x): x is number => x !== null);
+    const all = [nextNudgeWake(s), nextDeletionWake(s), nextInviteWake(s), nextComebackWake(s), nextGiftWake(s), nextDataExportWake(s)].filter((x): x is number => x !== null);
     return all.length ? Math.min(...all) : null;
   }
   /**
@@ -933,6 +937,92 @@ export class PlayerService {
     if (await this.wiped(id)) return null;
     return sharedFor(this.d.master, await this.load(id), viewerId, this.d.clock());
   }
+  // ---------------------------------------------------------------- 個人データの開示 (REQ-DEX-*, dataExport.ts, protocol §51)
+  /** REQ-DEX-003: the status (read only; the HTTP layer adds signed links when ready). A wiped account has nothing. */
+  async dataExportView(id: string) {
+    if (await this.wiped(id) && (await this.repo.tombstoned?.(id))) throw new AppError('NOT_FOUND', 'account deleted');
+    return dataExportView(this.d.master, await this.load(id), this.d.clock());
+  }
+  /** REQ-DEX-002/004/005: request (or the running one again). Keyed by the client's idempotency key. */
+  dataExportRequest(id: string, lang: DexLang, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => {
+      const r = requestDataExport(this.d.master, s, lang, this.d.rng, now);
+      if (r.created) emit({ name: 'dex_request', s1: lang });
+      return { ...dataExportView(this.d.master, s, now), created: r.created };
+    });
+  }
+  /** Alarm: take a due build (null = nothing to build). */
+  async dataExportTake(id: string) {
+    if (await this.wiped(id)) return null;
+    const at = nextDataExportWake(await this.load(id));
+    if (at === null || at > this.d.clock()) return null; // nothing due: no write
+    return this.tx(id, null, (s, now) => takeDataExport(this.d.master, s, now));
+  }
+  /**
+   * Alarm: what the document is built from — the state, every ledger row inside the legal retention window and the
+   * gacha records of the last 90 days (the Durable Object's SQL tables hold the rows the state JSON no longer keeps).
+   */
+  async dataExportCollect(id: string) {
+    const s = await this.load(id);
+    const now = this.d.clock();
+    const p = this.pagers(id, s);
+    const ledger: LedgerEntry[] = [];
+    const ledgerSince = now - deletionConfig(this.d.master).ledgerRetentionDays * DAY_MS;
+    for (let before: number | null = null; ;) {
+      const page = await p.ledger({ beforeSeq: before, sinceAt: ledgerSince, limit: 500, currency: null });
+      ledger.push(...page);
+      if (page.length < 500) break;
+      before = page[page.length - 1]!.seq;
+    }
+    const gacha: GachaLogEntry[] = [];
+    for (let before: number | null = null; ;) {
+      const page = await p.gacha({ beforeSeq: before, sinceAt: now - HISTORY_LIMITS.gachaDays * DAY_MS, limit: 500 });
+      gacha.push(...page);
+      if (page.length < 500) break;
+      before = page[page.length - 1]!.seq;
+    }
+    return { state: s, ledger, gacha, now };
+  }
+  /** Alarm: the files are in R2 → ready, one activity entry (§40), KPI dex_ready. A stale request deletes its files instead. */
+  dataExportReady(id: string, requestId: string, info: DexReadyInfo) {
+    return this.tx(id, null, (s, now, emit) => {
+      const requestedAt = s.dataExport?.current?.requestedAt ?? now;
+      const lang = s.dataExport?.current?.lang ?? 'ja';
+      if (!markDataExportReady(this.d.master, s, requestId, info, now)) return false;
+      recordActivity(this.d.master, s, { kind: 'data_export_ready', source: `data_export_ready:${requestId}`, linkId: requestId }, now);
+      emit({ name: 'dex_ready', s1: lang, value: info.sizeBytes, durationMs: now - requestedAt, count: info.truncated });
+      return true;
+    });
+  }
+  dataExportFailed(id: string, requestId: string, reason: string) { return this.tx(id, null, (s, now) => markDataExportFailed(this.d.master, s, requestId, reason, now)); }
+  /** REQ-DEX-010: the stored file behind a verified signed link (never re-creates a deleted account). */
+  async dataExportFile(id: string, requestId: string, f: DexFile) {
+    if (await this.wiped(id)) throw new AppError('NOT_FOUND', 'this download is no longer available');
+    return dataExportFile(await this.load(id), requestId, f, this.d.clock());
+  }
+  /** REQ-DEX-010/017: audit + KPI dex_download (isFirst = the first download of this request). */
+  async dataExportDownloaded(id: string, requestId: string, f: DexFile) {
+    if (await this.wiped(id)) return false;
+    return this.tx(id, null, (s, now, emit) => {
+      if (!noteDataExportDownload(this.d.master, s, requestId, f, now)) return false;
+      emit({ name: 'dex_download', s1: f, isFirst: s.dataExport!.current!.downloads === 1 });
+      return true;
+    });
+  }
+  /** Alarm: R2 keys to delete now (marks an expired export). */
+  async dataExportExpiring(id: string) {
+    if (await this.wiped(id)) return [] as string[];
+    const at = nextDataExportWake(await this.load(id));
+    if (at === null || at > this.d.clock()) return [] as string[]; // nothing due: no write
+    return this.tx(id, null, (s, now) => takeExpiredDataExport(this.d.master, s, now));
+  }
+  async dataExportDeleted(id: string, keys: string[]) {
+    if (await this.wiped(id)) return;
+    await this.tx(id, null, (s, now) => dataExportDeleted(this.d.master, s, keys, now));
+  }
+  /** REQ-DEX-014: ops status and audit (admin API; never contents or links). */
+  async dataExportAdmin(id: string) { return dataExportAdminView(this.d.master, await this.load(id), this.d.clock()); }
+
   // ---------------------------------------------------------------- シーズンの振り返り (REQ-RECAP-*, seasonRecap.ts)
   /** Runs as a transaction so a period that ended since the last request is closed first (rollRecaps). */
   recaps(id: string) { return this.tx(id, null, (s) => recapsList(this.d.master, s)); }

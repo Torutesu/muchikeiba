@@ -74,6 +74,10 @@ export interface Env {
   ANALYTICS?: AnalyticsEngineDataset;
   /** Secret: salt for hashing player ids before they reach analytics (no PII). */
   KPI_SALT?: string;
+  /** REQ-DEX-007: account id for reading a player's own KPI rows back into their data export (Analytics Engine SQL API). Not a secret. */
+  KPI_SQL_ACCOUNT_ID?: string;
+  /** Secret: API token with Account Analytics read only (unset = the export lists analytics events as not available). */
+  KPI_SQL_TOKEN?: string;
   // ---- rewarded ads (REQ-AD-*, contracts/protocol.md §21). Unset => the SSV callback is NOT_FOUND and no ad reward is ever granted.
   /** URL of the ad network's public SSV key set (AdMob: its published verifier-keys JSON). Not a secret. */
   ADS_SSV_KEYS_URL?: string;

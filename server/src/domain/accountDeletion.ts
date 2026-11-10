@@ -23,6 +23,7 @@ import { inviteDeletionSnapshot } from './invite.js';
 import { forfeitGiftBox } from './giftBox.js';
 import { savedReplayKeys } from './myReplays.js';
 import { playerCupIds } from './hostedCups.js';
+import { dataExportDeletionKeys } from './dataExport.js';
 
 export interface AccountDeletionConfig {
   /** Days between the confirmed request and the deletion (the request can be cancelled meanwhile). */
@@ -85,7 +86,7 @@ export interface RetainedRecord {
   };
 }
 
-export const DELETION_STEPS = ['friends', 'invites', 'team', 'stud', 'stable', 'leaderboards', 'events', 'tournaments', 'rival', 'replays', 'cups', 'finalize', 'retain', 'wipe'] as const;
+export const DELETION_STEPS = ['friends', 'invites', 'team', 'stud', 'stable', 'leaderboards', 'events', 'tournaments', 'rival', 'replays', 'cups', 'data_export', 'finalize', 'retain', 'wipe'] as const;
 export type DeletionStep = typeof DELETION_STEPS[number];
 export const DELETED_PLAYER_NAME = '退会したプレイヤー';
 const RETRY_MS = [60_000, 600_000, 3_600_000, 6 * 3_600_000];
@@ -166,6 +167,8 @@ export interface DeletionSnapshot {
   replayKeys?: string[];
   /** REQ-CUP-016: hosted / entered cups and open invitations (absent on older snapshots). */
   cupIds?: string[];
+  /** REQ-DEX-013: R2 keys of the player's data export files (absent on older snapshots). */
+  dataExportKeys?: string[];
   /** REQ-INV-010: who invited the player, whom they invited, and the install claim of their redemption. Absent on older snapshots. */
   invite?: { inviterId: string | null; invitees: string[]; installHash: string | null };
   steps: string[];
@@ -181,6 +184,7 @@ export function deletionSnapshot(s: PlayerState): DeletionSnapshot {
     ghostKeys: Object.keys(s.timeAttack?.seasonBest ?? {}).map((k) => { const [season, track] = k.split(':'); return `ghosts/${season}/${track}/${s.id}.json`; }),
     replayKeys: savedReplayKeys(s),
     cupIds: playerCupIds(s),
+    dataExportKeys: dataExportDeletionKeys(s),
     steps: [...(s.deletion?.steps ?? [])],
     invite: inviteDeletionSnapshot(s),
   };
@@ -337,6 +341,8 @@ export interface DeletionPorts {
   replays?: { deleteAll(keys: string[]): Promise<void> };
   /** REQ-CUP-016: a hosted cup is cancelled, an entry removed (before the first race) or anonymised (after). */
   cups?: { forget(cupId: string, uid: string): Promise<unknown> };
+  /** REQ-DEX-013: the data export files in R2 (`private/data-export/<playerId>/…`). */
+  dataExports?: { deleteAll(keys: string[]): Promise<void> };
   finalize(uid: string): Promise<RetainedRecord>;
   retain(uid: string, record: RetainedRecord): Promise<void>;
   wipe(uid: string): Promise<void>;
@@ -405,6 +411,7 @@ export async function runAccountDeletion(p: DeletionPorts, uid: string, now: num
   await step('rival', async () => { await p.rival?.forget(uid, now); });
   await step('replays', async () => { if (snap.replayKeys?.length) await p.replays?.deleteAll(snap.replayKeys); }); // REQ-MYRP-012
   await step('cups', async () => { if (p.cups) for (const c of snap.cupIds ?? []) await tolerant(() => p.cups!.forget(c, uid)); }); // REQ-CUP-016
+  await step('data_export', async () => { if (snap.dataExportKeys?.length) await p.dataExports?.deleteAll(snap.dataExportKeys); }); // REQ-DEX-013
   await step('finalize', () => p.finalize(uid));
   // finalize again right before storing: a purchase granted since then is given up and included (same anonId)
   let retainedRev: number | null = null;

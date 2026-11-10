@@ -1,5 +1,7 @@
 import type { Env } from './env.js';
 import { MyReplaysService, type ReplayStore } from './domain/myReplaysService.js';
+import { DataExportService } from './domain/dataExportService.js';
+import { r2ExportStore } from './do/dataExportPorts.js';
 import { validateLocale } from './i18n/validate.js';
 import { eventPlayersFrom, friendIdsFrom, handle, makeFriendsService, makeInviteService, makeStudService, teamPlayersFrom, tournamentPlayersFrom, type AppContext, type PlayerInvoker, type RaceEntry } from './http/app.js';
 import { bearer, verifyFirebaseIdToken } from './http/auth.js';
@@ -418,6 +420,7 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
     teams: makeTeamsService(env, () => master, player),
     myReplays: new MyReplaysService(() => master, player, r2ReplayStore(env.REPLAYS), friendIdsFrom(player)), // REQ-MYRP-*; friends for the §40 replay_share entry
     rival: new RivalService(() => master, rivalPlayersFrom(player), durableRivalRegistry(env.LEADERBOARD)), // REQ-RIVAL-*
+    dataExport: new DataExportService(() => master, player, r2ExportStore(env.REPLAYS), env.TICKET_SECRET), // REQ-DEX-* (links signed with the ticket secret + purpose)
     events: new EventsService(() => master, eventPlayersFrom(player), {
       enqueue: (eventId, p, e) => call(mm().eventEnqueue!(eventId, p, e)),
       cancel: (eventId, p) => call(mm().eventCancel!(eventId, p)),

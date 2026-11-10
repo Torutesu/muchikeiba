@@ -2381,3 +2381,87 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 
 ### 45.9 アカウント削除
 状態の `nextAction`（今日閉じた種類・機能を見た日）は最後の `wipe` で消える。他の場所に写しは無い。
+
+## 51. 個人データの開示・ダウンロード（personal data export / disclosure request、REQ-DEX-001〜020、`server/src/domain/dataExport.ts`・`dataExportService.ts`・`server/src/do/dataExportPorts.ts`、C# `DataExport.cs`・`Muchi.Game.DataExportModel`）
+個人情報保護法の**保有個人データの開示請求**（法33条、電磁的記録での提供を含む）と、海外のプレイヤーが期待する「データのダウンロード」（GDPR 15条・20条の水準）に応える。設定 › プライバシーからプレイヤー本人だけがリクエストでき、サーバーが**非同期に**、機械で読める JSON と人が読める概要（テキスト）を作り、非公開の R2 に置いて、短い時間だけ有効な署名つきリンクで渡す。メールアドレスは集めない（本人確認 = ログイン中のプレイヤー）。コイン・アイテムは動かない（E 番号なし）。
+
+### 51.1 流れ
+1. `POST /v1/player/data-export`（要認証・`Idempotency-Key` 必須・本文なし）→ プレイヤーの状態に `queued` のリクエストを1件作る。KPI `dex_request`。言語は `Accept-Language`／`?lang=`（`ja`／`en`、概要と履歴の文の言語）。
+2. プレイヤーの Durable Object の**アラーム**が作る（リクエストの経路では作らない）：状態・SQL の履歴（コインの台帳は法定保存期間内、ガチャの記録は 90 日以内）・ディレクトリの公開名・自分が送った通報・分析イベントを集め、JSON と概要を R2 の `private/data-export/<playerId>/<requestId>.json`／`.txt`（非公開バケット `REPLAYS`、公開の `SNAPSHOTS` には置かない）に書き、`ready` にする。
+3. `ready` になった時、アクティビティ（§40）に1件（`data_export_ready`、`category: "account"`、リンク先 `privacy`、`linkId` = requestId）。KPI `dex_ready`。プッシュは送らない。
+4. `GET /v1/player/data-export` が `ready` の間、JSON と概要それぞれの**署名つきリンク**（`linkTtlMinutes` 分、ただしエクスポートの期限を超えない）を返す。画面を開くたびに新しいリンク。
+5. `keepDays` 日後にファイルを削除（アラーム。R2 のライフサイクルルール（接頭辞 `private/data-export/`、`keepDays + 1` 日）を予備に設定する、`docs/ops/deploy.md`）。状態は `expired`。
+
+### 51.2 状態とルール
+- 状態 `dataExport`：`{ current: DexRequest|null, lastReadyRequestAt, audit[], pendingDeletes[], deletesTriedAt? }`。`DexRequest`：`{ requestId, status: queued|building|ready|failed|expired, lang, requestedAt, nextAt, attempts, readyAt?, expiresAt?, sizeBytes?, summaryBytes?, sha256?, failReason?, downloads, filesDeleted? }`。
+- **1件ずつ・冪等**：`queued`／`building`／`ready`（期限内）の間にもう一度リクエストすると、新しく作らずに今のものを返す（`created: false`）。同じ `Idempotency-Key` は最初の応答。
+- **回数の制限**：新しいリクエストは、最後に `ready` になったリクエストの `requestedAt` から `cooldownDays` 日後から（`429 DATA_EXPORT_COOLDOWN`、`details.availableAt`）。`failed` は数えない（すぐにもう一度リクエストできる）。`keepDays ≤ cooldownDays`（同時に2つのファイルが残らない）。
+- **作成の再試行**：アラームが取ると `building`（リース 5 分。アラームが途中で止まっても5分後に取り直す）。失敗は 1分・10分・1時間・6時間の間隔で `maxAttempts` 回まで、その後 `failed`（途中まで書いたファイルは削除の予定に入る）。遅れて届いた古いリクエストの完了は無視し、そのファイルを削除の予定に入れる。R2 の削除に失敗したキーは `pendingDeletes` に残り、10分ごとに再試行する。
+- **アカウント削除の予定中**（§9.4 `scheduled`）もリクエスト・ダウンロードできる（画面に「削除が終わるまではダウンロードできます」）。削除の実行が始まったら（`deleting`）新しいリクエストは `DELETION_PENDING`、作成も止まる。削除の手順に `data_export` の段（`finalize` の前）を足し、R2 のファイル（今のものと削除待ちのもの）を消す。削除後のリンクは `404`、アラームの掃除は何も作らない（`wiped`）。
+- **監査ログ**：`requested`・`building`・`ready`・`retry`・`failed`・`downloaded`・`expired`・`files_deleted`（時刻・requestId・短い詳細、`auditKeep` 件）。中身は書かない。
+
+### 51.3 API
+| メソッド | パス | 認証 | 本文 → 応答 |
+|---|---|---|---|
+| GET | `/v1/player/data-export` | プレイヤー | → `DataExportView` |
+| POST | `/v1/player/data-export` | プレイヤー（`Idempotency-Key`） | なし → `DataExportView` ＋ `created` |
+| GET | `/v1/data-export/file?p&r&f&e&s` | なし（署名） | → ファイル本体（`content-disposition: attachment`、`cache-control: private, no-store`、JSON は `x-content-sha256`） |
+| GET | `/v1/admin/players/:playerId/data-export` | 運用（viewer、監査あり） | → 状態・時刻・大きさ・試行回数・ダウンロード回数・監査ログ（**中身・リンク・R2 のキーは返さない**） |
+
+```json
+{ "enabled": true, "status": "ready", "statusText": "ダウンロードできます", "requestId": "dex_…", "requestedAt": 1794790800000,
+  "readyAt": 1794790860000, "expiresAt": 1795395660000, "sizeBytes": 48211, "canRequest": false, "nextAvailableAt": null, "keepDays": 7,
+  "deletionScheduled": false, "deletionNote": null, "notice": "アカウントに保存されているあなたのデータ（…）をまとめてダウンロードできます。…",
+  "download": { "json": { "url": "/v1/data-export/file?p=…&r=dex_…&f=json&e=…&s=…" }, "summary": { "url": "…&f=summary&…" }, "linkExpiresAt": 1794791460000 } }
+```
+- `status`：`none`・`queued`・`building`・`ready`・`failed`・`expired`（`ready` で期限を過ぎたものはアラームの前でも `expired`）。`download` は `ready` の時だけ。`url` は API のベースからの相対パス。
+- 署名：`s = base64url(HMAC-SHA256(TICKET_SECRET + "|data-export", "dex1|p|r|f|e"))`。リンクは1人・1リクエスト・1ファイルに結び付き、`e` を過ぎると `410 LINK_EXPIRED`、形・署名が違えば `403 LINK_INVALID`、今の `ready` のリクエストでなければ `404`。
+- `progression.dataExport` が無い／`enabled: false` なら `404 NOT_FOUND`。
+
+### 51.4 JSON の形（`format: "muchi-issen/personal-data-export"`, `version: 1`、フィールド名は固定。足す時は後ろに足し、意味を変える時は `version` を上げる）
+時刻はすべて Unix ミリ秒（UTC、`timeUnit: "unix_ms_utc"`）。先頭にヘッダー、その後に下の順で1行ずつの区切り（大きな一覧は1要素1行）で、行単位のツール・ストリームのパーサーで読める。
+| キー | 中身 |
+|---|---|
+| `format` `version` `requestId` `playerId` `generatedAt` `language` `timeUnit` `sections` `truncated` `notIncluded` `unclassified` | ヘッダー。`truncated` = `[{section, omitted}]`、`notIncluded` = 持っているが入れていないもの `[{key, reason}]`、`unclassified` = 分類されていないキー（常に空、テストで確認） |
+| `account` | `playerId`・`createdAt`・`lastSeenAt`・`age`（生年月・保護者の同意）・`consent`（規約・プライバシーポリシーの版と履歴）・`flags`・`deletion`（予定の状態・日時、確認トークンなし）・`moderation`（状態・期限・日時。検知の理由は入れない） |
+| `profile` | 表示名・称号・勝負服・勝負服エディタのプリセット・統計・レーティング（丸め）・シーズン・シーズンの記録 |
+| `settings` | アクセシビリティ（§41）・かんたん操作・実況パック・コース／部屋の条件・装備・厩舎の整理・プッシュの設定・広告の設定と視聴の記録（広告ネットワークの取引 ID なし）・殿堂の公開範囲・ライバルの不参加 |
+| `horses` | 馬（`studSire` は他のプレイヤーの ID を外し、馬の名前だけ）・絆・調教 |
+| `items` | アイテム・素材・アイテムの未精算・アイテムの記録 |
+| `wallet` | **有償・無償を分けた**残高・未精算・有償コインのロット（付与・残り・日時・購入の参照）。有償コインに有効期限はない旨の表示 |
+| `coinHistory` | `paid`／`free` を**別の一覧**で（§33 の `CoinRow`：参照・日時・増減・残高・分類・文）。法定保存期間内の全行（大きさの上限を超えた時だけ古い行から省略し `truncated` に書く） |
+| `purchases` | 購入（§33 の `PurchaseRow` ＋ `storeTransactionId`＝ストアのレシートの番号）・月ごとの購入額・初回購入・定期購入・厩舎手当・オファーの表示記録 |
+| `gacha` | ガチャの記録（90 日以内、§33 の `GachaRow`）・天井のポイント・ステップアップ |
+| `giftBox` | 受け取り前・履歴（運営の内部メモ `note` は外す） |
+| `social` | フレンド（ID と今の公開名だけ）・送ったフレンド申請（ID・名前・日時）・受けた申請／部屋の招待（数だけ）・**ブロック**（`teamFeed.muted`、ID と名前）・支部（ID・加入日・申請）・スタンプを送った支部・マイ厩舎（配置・いいねの数）・招待（使ったコード・日時・端末のハッシュ・招待した人の到達。相手の ID なし）・`namesAvailable` |
+| `reportsMade` | **自分が送った**レースの通報（レース・日時・未対応／対応済み）。対応の内容・担当者は入れない。読めない時は `available: false` |
+| `activity` | お知らせ（日時・種類・件数・文。送った人の ID なし） |
+| `replays` | マイリプレイの保存・最近のレース（メタデータ。リプレイ本体は入れない） |
+| `photos` | 保存した写真の記録（§38、画像は元から保存しない） |
+| `cups` | 参加中・履歴・トロフィー・受けた招待（主催者の ID なし） |
+| `recaps` | 振り返りのスナップショット（§43） |
+| `play` | シーズンパス・ログインボーナス・ミッション・オンボーディング・配合・タイムアタック（記録・走行）・週替わりチャレンジ・イベント・大会・ライバル（**結果だけ**、相手の ID・名前なし）・種付け（自分の出品と記録、相手の ID なし）・殿堂・図鑑・支部の共同目標・復帰・次にやること・プッシュの予定 |
+| `devices` | 登録した端末（OS・登録日・最終利用・言語・プッシュトークンの末尾6文字だけ） |
+| `analytics` | KPI の状態・実験の割り当て、`events`：仮名の分析 ID（塩つきハッシュ）に結び付いた KPI の行（Analytics Engine の保存期間 90 日以内、`KPI_SQL_ACCOUNT_ID`／`KPI_SQL_TOKEN` が無ければ `available: false`） |
+| `helpInquiries` | ゲーム内のお問い合わせ（§48、Round 17 で追加。統合までは空） |
+
+### 51.5 入れないもの（`notIncluded[].reason`）
+- `internal_idempotency`：`idem`・`appliedRaces`（再試行の防止。結果は他のセクションにある）
+- `internal_counter`：`v`・`ledgerSeq`・`counters`
+- `internal_queue`：`pendingEventPushes`（配信待ち。届いた結果は他のセクション）
+- `operator_notes`：`supportFlags`（通報した人の ID を含みうる）・`supportGrants`・`adminOps`（運営の操作の記録。付与されたものはコインの履歴・プレゼント・アイテムにある）
+- `export_meta`：`dataExport`（このエクスポート自身の記録）
+- `third_party`：他のプレイヤーについての情報（申請・招待を送ってきた人、ライバル・種付けの相手、お知らせを送った人の ID）。**他のプレイヤーが自分について送った通報**は入れない（通報した人を特定できてしまい、第三者の権利利益を害するおそれ（法33条2項1号）と、モデレーションの業務に著しい支障（同2号）。弁護士の確認待ち、`docs/planning/03-legal-risk.md`）。
+- 新しい状態のキーは `DEX_CLASSIFICATION`（`Record<keyof PlayerState | 拡張キー, …>`）にどちらかを書かないと型チェックとテスト（`test/data-export.test.ts`：インターフェース・`PlayerState & { … }` の拡張・実際の状態）が失敗する。Round 17（§46〜§49）の統合で増えるキー（通報の記録・お問い合わせなど）もここで分類する。
+
+### 51.6 人が読める概要（`.txt`）
+タイトル・説明・作成日時・プレイヤー ID・表示名・作成日・有償／無償の残高・馬・購入・コインの履歴・ガチャ・フレンド・ブロック・通報・お知らせ・リプレイ・写真・振り返り・端末・分析イベントの件数、省略した行（あれば）、入れていないもの、問い合わせ先。ラベルはプレイヤーの言語（英語はカタログで訳す）、値（名前など）は訳さない。
+
+### 51.7 設定 `progression.dataExport`（リモート設定で変更可）
+`{ enabled, cooldownDays (1..30), keepDays (1..30, ≤ cooldownDays), linkTtlMinutes (1..60), maxBytes (1,000,000..50,000,000), maxAttempts (1..10), auditKeep (10..200) }`。起動時と各版で検証（`dataExportProblems`）。既定 `{ true, 7, 7, 10, 20000000, 5, 50 }`。
+
+### 51.8 KPI
+`dex_request`（`s1` = 言語）・`dex_ready`（`s1` = 言語、`value` = バイト数、`durationMs` = リクエストから準備まで、`count` = 省略した行）・`dex_download`（`s1` = `json`／`summary`、`isFirst` = そのリクエストで最初のダウンロード）。すべてサーバー。クエリは `docs/ops/kpi-queries.md`。
+
+### 51.9 クライアント
+`Muchi.Client` `ApiClient.GetDataExportAsync`・`RequestDataExportAsync`・`DataExportFileUrl`、`DataExportStatus`（`DataExport.cs`）。リンクは API のベースにつないで OS のブラウザ／共有シートで開く（アプリの中に保存しない）。Unity のゲーム層 `Muchi.Game.DataExportModel`（状態ごとの文・ボタン・次に申し込める日・削除の予定の注意・期限の表示）。

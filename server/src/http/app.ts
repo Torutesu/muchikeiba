@@ -49,6 +49,7 @@ import { activityQuery, actorIdsOf, parseUpTo, renderActivityItems } from '../do
 import { bulkBodySchema } from '../domain/roster.js';
 import type { TeamGoalBrief } from '../domain/nextAction.js';
 import type { HostedCupsService } from '../domain/hostedCupService.js';
+import type { DataExportService } from '../domain/dataExportService.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -95,6 +96,8 @@ export type PlayerMethod =
   | 'photoCatalog' | 'photos' | 'photoSave' | 'photoDelete'
   | 'activity' | 'activityRead' | 'activityReplayShare' | 'teamGoalMilestone'
   | 'recaps' | 'recap' | 'recapProgress'
+  | 'dataExportView' | 'dataExportRequest' | 'dataExportTake' | 'dataExportCollect' | 'dataExportReady' | 'dataExportFailed' | 'dataExportFile'
+  | 'dataExportDownloaded' | 'dataExportExpiring' | 'dataExportDeleted' | 'dataExportAdmin'
   | 'cupsMine' | 'cupReserve' | 'cupRelease' | 'cupLeft' | 'cupCommitted' | 'cupCodeAttempt' | 'cupInvited' | 'cupStarted' | 'cupClosed' | 'cupHorseName';
 
 export interface PlayerInvoker {
@@ -165,6 +168,8 @@ export interface AppContext {
   activeRuleset?: () => Promise<Ruleset>;
   /** REQ-CUP-*: プレイヤー主催カップ (domain/hostedCupService.ts). Absent → the routes answer NOT_FOUND. */
   hostedCups?: HostedCupsService<RaceEntry>;
+  /** REQ-DEX-*: 個人データの開示・ダウンロード (domain/dataExportService.ts). Absent → the routes answer NOT_FOUND. */
+  dataExport?: DataExportService;
   clock?: () => number;
   paidBalance(): Promise<unknown>;
   /**
@@ -308,6 +313,10 @@ const myReplays = (c: AppContext) => {
   return c.myReplays;
 };
 const replayTitle = z.string().max(200).nullable();
+const dataExport = (c: AppContext) => {
+  if (!c.dataExport || !c.master.progression.dataExport?.enabled) throw new AppError('NOT_FOUND', 'data export is not available');
+  return c.dataExport;
+};
 const hostedCups = (c: AppContext) => {
   if (!c.hostedCups) throw new AppError('NOT_FOUND', 'hosted cups are not available');
   return c.hostedCups;
@@ -1044,6 +1053,13 @@ export const routes: Route[] = [
   { method: 'GET', path: '/v1/replays/:raceId/data', auth: 'player', handler: async (_r, p, c, u) => myReplays(c).data(u, p.raceId!) },
   { method: 'GET', path: '/v1/friends/:playerId/replays', auth: 'player', handler: async (_r, p, c, u) => myReplays(c).friendList(u, p.playerId!) },
   { method: 'GET', path: '/v1/friends/:playerId/replays/:raceId/data', auth: 'player', handler: async (_r, p, c, u) => myReplays(c).friendData(u, p.playerId!, p.raceId!) },
+  // 個人データの開示・ダウンロード (REQ-DEX-*, contracts/protocol.md §51): only the caller's own data, no email, no body
+  { method: 'GET', path: '/v1/player/data-export', auth: 'player', handler: async (_r, _p, c, u) => dataExport(c).view(u) },
+  { method: 'POST', path: '/v1/player/data-export', auth: 'player', handler: async (r, _p, c, u) => {
+    await optionalBody(r, z.object({}).strict()); // nothing to send (identity = the signed-in player)
+    return dataExport(c).request(u, resolveLocale(r), idem(r));
+  } },
+  { method: 'GET', path: '/v1/data-export/file', auth: 'none', handler: async (r, _p, c) => dataExport(c).download(new URL(r.url).searchParams) },
   // シーズンの振り返り (REQ-RECAP-*, contracts/protocol.md §43)
   { method: 'GET', path: '/v1/recaps', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('recaps', u) },
   { method: 'GET', path: '/v1/recaps/:id', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('recap', u, recapIdParam(p.id!)) },

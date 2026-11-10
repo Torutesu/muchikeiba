@@ -19,12 +19,16 @@ export const ACTIVITY_KINDS = [
   'gift_arrived', 'team_goal_tier', 'team_goal_week', 'replay_share',
   // Round 16 (integration): hosted cups (§42.7) and the season recap (§43)
   'cup_invited', 'cup_started', 'cup_finished', 'cup_cancelled', 'recap_ready',
+  // Round 18: the personal data export is ready (§51)
+  'data_export_ready',
 ] as const;
 export type ActivityKind = typeof ACTIVITY_KINDS[number];
-export const ACTIVITY_SCREENS = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new', 'cups', 'recap'] as const;
+export const ACTIVITY_SCREENS = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new', 'cups', 'recap', 'privacy'] as const;
 export type ActivityScreen = typeof ACTIVITY_SCREENS[number];
 
-interface KindMeta { category: PushCategory; screen: ActivityScreen; collapse: boolean }
+/** `account`: about the account itself (REQ-DEX-012); not a push category (no push is sent for it). */
+export type ActivityCategory = PushCategory | 'account';
+interface KindMeta { category: ActivityCategory; screen: ActivityScreen; collapse: boolean }
 /** REQ-ACT-003/005/006: the push category (the same split as the push settings), the deep link and whether entries collapse. */
 export const ACTIVITY_META: Record<ActivityKind, KindMeta> = {
   friend_request: { category: 'friends', screen: 'friends', collapse: false },
@@ -43,6 +47,7 @@ export const ACTIVITY_META: Record<ActivityKind, KindMeta> = {
   cup_finished: { category: 'friends', screen: 'cups', collapse: false },
   cup_cancelled: { category: 'friends', screen: 'cups', collapse: false },
   recap_ready: { category: 'season', screen: 'recap', collapse: false },
+  data_export_ready: { category: 'account', screen: 'privacy', collapse: false },
 };
 
 /** REQ-ACT-010: `progression.activity` (absent → ACTIVITY_DEFAULTS). */
@@ -212,7 +217,7 @@ export const parseUpTo = (x: string | undefined): number | null => {
 };
 
 /** A raw page item (names not resolved yet; renderActivityItems finishes it). */
-export interface ActivityRawItem { id: string; kind: ActivityKind; category: PushCategory; at: number; count: number; unread: boolean; actors: { playerId: string; name: string | null }[]; vars: Record<string, string>; link: { screen: ActivityScreen; id: string | null } }
+export interface ActivityRawItem { id: string; kind: ActivityKind; category: ActivityCategory; at: number; count: number; unread: boolean; actors: { playerId: string; name: string | null }[]; vars: Record<string, string>; link: { screen: ActivityScreen; id: string | null } }
 
 /** REQ-ACT-001/007: one page, newest first. */
 export function activityPage(m: Pick<Master, 'progression'>, s: PlayerState, now: number, cursor: number | null, limit: number, whatsNew = 0) {
@@ -269,6 +274,7 @@ export const ACTIVITY_TEXT = {
   cup_cancelled: '「{cup}」は中止になりました',
   recap_season: '{y}年{m}月シーズンの振り返りができました',
   recap_year: '{y}年の振り返りができました',
+  data_export_ready: 'データのダウンロードの準備ができました',
 } as const;
 
 const fill = (t: string, v: Record<string, string>) => t.replace(/\{(\w+)\}/g, (_, k: string) => v[k] ?? '');
@@ -296,6 +302,7 @@ export function activityText(kind: ActivityKind, count: number, vars: Record<str
     case 'cup_finished': return fill(T.cup_finished, v);
     case 'cup_cancelled': return fill(T.cup_cancelled, v);
     case 'recap_ready': return fill(vars.kind === 'year' ? T.recap_year : T.recap_season, v);
+    case 'data_export_ready': return T.data_export_ready;
   }
 }
 

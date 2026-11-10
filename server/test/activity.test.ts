@@ -68,7 +68,9 @@ describe('recordActivity (REQ-ACT-002/006/010/011/013)', () => {
 
   it('every kind maps to a push category and a known screen', () => {
     for (const k of ACTIVITY_KINDS) {
-      expect(PUSH_CATEGORIES).toContain(ACTIVITY_META[k].category);
+      // Round 18 (§51): `account` is the one category that is not a push category (data_export_ready sends no push)
+      if (ACTIVITY_META[k].category === 'account') expect(k).toBe('data_export_ready');
+      else expect(PUSH_CATEGORIES).toContain(ACTIVITY_META[k].category);
       expect(ACTIVITY_SCREEN_NAMES).toContain(ACTIVITY_META[k].screen);
     }
     expect([...ACTIVITY_KIND_NAMES]).toEqual([...ACTIVITY_KINDS]);

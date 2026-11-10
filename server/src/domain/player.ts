@@ -232,6 +232,8 @@ export interface PlayerState {
   seasonRecap?: import('./seasonRecap.js').SeasonRecapState;
   /** REQ-CUP-*: プレイヤー主催カップ — cups the player is in, invitations, results and trophies (hostedCups.ts ensureCups). */
   cups?: import('./hostedCups.js').PlayerCupsState;
+  /** REQ-DEX-*: 個人データの開示・ダウンロード — the current request, cooldown start, audit log, R2 keys still to delete (dataExport.ts). */
+  dataExport?: import('./dataExport.js').DataExportState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

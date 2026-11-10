@@ -113,6 +113,11 @@ namespace Muchi.Client
         CupCodeInvalid,
         /// <summary>REQ-CUP-008: the next race cannot start now (window, entrants, a race running) (409).</summary>
         CupNotReady,
+        /// <summary>REQ-DEX-004: a new data export is possible from <see cref="DataExportCooldownException.AvailableAt"/> (429).</summary>
+        DataExportCooldown,
+        /// <summary>REQ-DEX-010: the download link is not valid (403) / has expired (410): open the privacy screen for a new one.</summary>
+        LinkInvalid,
+        LinkExpired,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -221,6 +226,9 @@ namespace Muchi.Client
             ["CUP_CLOSED"] = ApiErrorCode.CupClosed,
             ["CUP_CODE_INVALID"] = ApiErrorCode.CupCodeInvalid,
             ["CUP_NOT_READY"] = ApiErrorCode.CupNotReady,
+            ["DATA_EXPORT_COOLDOWN"] = ApiErrorCode.DataExportCooldown,
+            ["LINK_INVALID"] = ApiErrorCode.LinkInvalid,
+            ["LINK_EXPIRED"] = ApiErrorCode.LinkExpired,
             ["VERIFIER_UNAVAILABLE"] = ApiErrorCode.VerifierUnavailable,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };
@@ -266,6 +274,8 @@ namespace Muchi.Client
                     return new InsufficientCoinsException(wire, message, status, CoinShortfall.Parse(J.Opt(details, "shortfall")));
                 case ApiErrorCode.RateLimited:
                     return new RateLimitedException(wire, message, status);
+                case ApiErrorCode.DataExportCooldown:
+                    return new DataExportCooldownException(wire, message, status, J.LongN(details, "availableAt"));
                 case ApiErrorCode.RosterBulkRefused:
                     return new BulkRefusedException(wire, message, status, J.List(details, "horses", BulkHorseCheck.Parse));
                 case ApiErrorCode.Internal:

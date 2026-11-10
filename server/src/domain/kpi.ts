@@ -110,8 +110,8 @@ export const ADVICE_KPI_CONTEXTS = ['ranked', 'friend', 'event', 'challenge', 't
 /** REQ-PHOTO-014: where a photo was taken (photoMode.ts PHOTO_SOURCES). */
 export const PHOTO_SOURCE_NAMES = ['paused', 'result', 'replay'] as const;
 /** REQ-ACT-015: the activity list's kinds and deep-link screens (domain/activity.ts; repeated here to keep kpi.ts import-free). */
-export const ACTIVITY_KIND_NAMES = ['friend_request', 'friend_accepted', 'rival_week', 'rival_record', 'stable_like', 'team_cheer', 'tournament_result', 'gift_arrived', 'team_goal_tier', 'team_goal_week', 'replay_share', 'cup_invited', 'cup_started', 'cup_finished', 'cup_cancelled', 'recap_ready'] as const;
-export const ACTIVITY_SCREEN_NAMES = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new', 'cups', 'recap'] as const;
+export const ACTIVITY_KIND_NAMES = ['friend_request', 'friend_accepted', 'rival_week', 'rival_record', 'stable_like', 'team_cheer', 'tournament_result', 'gift_arrived', 'team_goal_tier', 'team_goal_week', 'replay_share', 'cup_invited', 'cup_started', 'cup_finished', 'cup_cancelled', 'recap_ready', 'data_export_ready'] as const;
+export const ACTIVITY_SCREEN_NAMES = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new', 'cups', 'recap', 'privacy'] as const;
 /** Events only the client can observe. Server-known events (purchase, gacha, race results…) are not accepted from clients. */
 export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('session_start'), at: z.number().int(), props: z.object({}).strict().optional() }),

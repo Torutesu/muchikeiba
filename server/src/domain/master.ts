@@ -206,6 +206,8 @@ export interface Progression {
   nextActions?: import('./nextAction.js').NextActionConfig;
   /** REQ-RECAP-*: シーズンの振り返り (seasonRecap.ts, validated by seasonRecapProblems). Absent / disabled = no recaps. */
   seasonRecap?: import('./seasonRecap.js').SeasonRecapConfig;
+  /** REQ-DEX-*: 個人データの開示・ダウンロード (dataExport.ts, validated by dataExportProblems). Absent / disabled = no export. */
+  dataExport?: Partial<import('./dataExport.js').DataExportConfig> & { enabled: boolean };
   /** REQ-CUP-*: プレイヤー主催カップ (hostedCups.ts, validated by hostedCupsProblems). Absent / disabled = no hosted cups. */
   hostedCups?: import('./hostedCups.js').HostedCupsConfig;
 }

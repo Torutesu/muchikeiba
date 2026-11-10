@@ -48,6 +48,7 @@ import type { CupRaceSpec, CupState } from '../../../server/src/domain/hostedCup
 import type { HeatOutcome } from '../../../server/src/domain/tournaments.js';
 import { createRace } from '../../../server/src/race/orchestrate.js';
 import type { RaceEntry } from '../../../server/src/http/app.js';
+import { DataExportService, runDataExportJob, sweepDataExports, type ExportStore } from '../../../server/src/domain/dataExportService.js';
 // REQ-L10N-*: the server's English tables (master/locale-en.json + i18n/en.ts), the client's (ui-en.json) and the
 // prototype's own screen texts (proto-en.json), in one catalog with the server's template rules (katakana names romanized)
 import { compileCatalogWith, translateText, romanizeName } from '../../../server/src/i18n/catalog.js';
@@ -280,6 +281,16 @@ async function wrap<T>(f: () => Promise<T> | T): Promise<{ ok: true; value: T } 
     return { ok: false, code: 'INTERNAL', message: String((e as Error)?.message ?? e) };
   }
 }
+
+// round 18 (REQ-DEX-*): the private export files in localStorage (the R2 prefix private/data-export/), the HTTP-side service
+const DEX_FILES_KEY = 'muchi.proto.dex:';
+const dexStore: ExportStore = {
+  put: async (k, body) => { try { localStorage.setItem(DEX_FILES_KEY + k, body); } catch { /* private mode / full: the download then says it is gone */ } },
+  get: async (k) => { try { return localStorage.getItem(DEX_FILES_KEY + k); } catch { return null; } },
+  delete: async (keys) => { for (const k of keys) try { localStorage.removeItem(DEX_FILES_KEY + k); } catch { /* ignore */ } },
+};
+const dexInvoker: PlayerInvoker = { invoke: (async (m: string, ...args: unknown[]) => (svc as unknown as Record<string, (...a: unknown[]) => unknown>)[m]!.apply(svc, args)) as PlayerInvoker['invoke'] };
+const dex = new DataExportService(() => master, () => dexInvoker, dexStore, 'prototype-only-link-secret', now);
 
 // round 16 (REQ-CUP-*, contracts/protocol.md §42): プレイヤー主催カップ on the real HostedCupsService / CupRunner with the
 // in-memory cup backend (the CupDO logic). Cups and codes are kept in localStorage; the races are built by the server's
@@ -854,6 +865,30 @@ export const MuchiLogic = {
     demoRetire: (name: string, wins: number, others: number, title: string | null) => wrap(() => hallDemoHorse(ID, 2 + hallRace % 9, name, wins, others, title, true)),
     /** A tournament final rank for one of my horses (tournamentClose with the registered horse). */
     demoTitle: (horseId: string, name: string) => wrap(() => svc.tournamentClose(ID, `proto_cup_${horseId}_${hallRace++}`, 1, null, name, horseId)),
+  },
+  // ---------------------------------------------------------------- round 18: 個人データの開示・ダウンロード (REQ-DEX-*, contracts/protocol.md §51)
+  // The real DataExportService / dataExport rules on the local player. The "alarm" (runDataExportJob) is started by the page a
+  // moment after the request (the server builds it in the player object's alarm, never on the request path); the files are kept
+  // in localStorage (the private R2 prefix) and handed to the browser as a download through the signed link.
+  dataExport: {
+    view: () => wrap(() => dex.view(ID)),
+    request: (lang: 'ja' | 'en') => wrap(() => dex.request(ID, lang, `c:/v1/player/data-export:${Date.now()}`)),
+    /** The alarm: build a due export, then delete expired files. */
+    build: () => wrap(async () => {
+      const r = await runDataExportJob({
+        master: () => master, take: (u) => svc.dataExportTake(u), collect: (u) => svc.dataExportCollect(u),
+        profiles: async (ids) => (await Promise.all(ids.map(async (i) => ((await repo.get(i)) ? svc.publicProfile(i) : null)))).filter((x) => x !== null).map((p) => ({ playerId: p!.playerId, displayName: p!.displayName })),
+        store: dexStore, ready: (u, rid, info) => svc.dataExportReady(u, rid, info), failed: (u, rid, why) => svc.dataExportFailed(u, rid, why),
+      }, ID);
+      await sweepDataExports({ expiring: (u) => svc.dataExportExpiring(u), deleted: (u, k) => svc.dataExportDeleted(u, k), store: dexStore }, ID);
+      return r;
+    }),
+    /** Opens a signed link like the OS browser would: the file's text, name and type (or the server's error). */
+    download: (url: string) => wrap(async () => {
+      const res = await dex.download(new URL(url, 'https://proto.local').searchParams);
+      const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? 'data.json';
+      return { name, type: res.headers.get('content-type') ?? 'application/octet-stream', text: await res.text() };
+    }),
   },
   // ---------------------------------------------------------------- round 16: シーズンの振り返り (REQ-RECAP-*, contracts/protocol.md §43)
   // The real PlayerService / seasonRecap rules on a demo history: a separate demo account (its own memory repo and clock, so the

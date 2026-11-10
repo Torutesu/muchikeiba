@@ -1091,5 +1091,15 @@
     "keepYears": 3,
     "shortBelowRaces": 3,
     "momentsMax": 3
+  },
+  "dataExport": {
+    "_note": "REQ-DEX-*（contracts/protocol.md §51）。個人データの開示・ダウンロード。リクエストはcooldownDays日に1回（準備できたものだけ数える）、ファイルはkeepDays日後に削除（cooldownDays以下）、ダウンロードのリンクはlinkTtlMinutes分だけ有効、JSONはmaxBytesまで（超えたら古いコインの履歴から省略）。作成はmaxAttempts回まで再試行。",
+    "enabled": true,
+    "cooldownDays": 7,
+    "keepDays": 7,
+    "linkTtlMinutes": 10,
+    "maxBytes": 20000000,
+    "maxAttempts": 5,
+    "auditKeep": 50
   }
 }

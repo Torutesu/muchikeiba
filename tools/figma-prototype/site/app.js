@@ -2295,12 +2295,14 @@ async function Settings() {
   // round 10: 支部の応援 (team cheer stamps) and 友達招待 next to the looks / care entries
   // round 14: 実況パック (REQ-CMT-011) after the looks entries
   // round 15: アクセシビリティ (REQ-A11Y-*) first — reachable in the FTUE too (text size before the first race)
-  const moreRows = [['アクセシビリティ', () => A11ySettings(), 'a11y'], ['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions], ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite'],
+  // round 18: プライバシー (REQ-DEX-001) next to the accessibility settings
+  const moreRows = [['アクセシビリティ', () => A11ySettings(), 'a11y'], ['プライバシー', () => Privacy(), 'privacy'], ['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions], ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite'],
     // round 15 (REQ-ADV-009): the pre-race advice switch (a device setting, default on)
     ['出走前アドバイス', () => { advice.setEnabled(!advice.enabled()); Settings(); }, 'advice', advice.enabled() ? 'オン' : 'オフ']];
   moreRows.forEach(([n, go, action, state], i) => {
     // R15 integration: nine rows (a11y, packs, the advice switch…) of 38 px under the kicker, clear of the legal block below
-    const b = Btn(n, 36, 96 + i * 38, 408, 38, go, 'row' + (i === moreRows.length - 1 ? ' last' : ''), m); b.style.fontSize = '19px';
+    // R18: ten rows of 36 px (privacy added), still clear of the legal block at 458
+    const b = Btn(n, 36, 96 + i * 36, 408, 36, go, 'row' + (i === moreRows.length - 1 ? ' last' : ''), m); b.style.fontSize = '19px';
     if (action) b.dataset.action = action;
     if (state) b.dataset.state = state;
     const em = document.createElement('em'); em.textContent = state ?? '›'; b.appendChild(em);
@@ -2326,6 +2328,81 @@ async function Settings() {
   Ghost('アクティビティ（デモ）', 36, 542, 436, 56, () => Demo('activity'), demo, 'quiet small');
   Txt('サーバーと同じ規則のまま、日付だけ進めてログボとレースを消化します。', 36, 612, 436, 14, SOFT, demo, { lh: 1.6 });
   NavBar(4);
+}
+// ================================================================= round 18: プライバシー › データのダウンロード (REQ-DEX-*, contracts/protocol.md §51)
+// The real DataExportService on the local player: request → 準備しています (the "alarm" builds it a moment later, never on the
+// request path) → an activity entry → two downloads through short-lived signed links. 7日に1回, files deleted after 7 days.
+const DEX_INCLUDED = ['プロフィール・設定（アクセシビリティを含む）', '馬・アイテム・プレゼント', '有償コインと無償コインの残高と履歴（別々に記載）', '購入とスカウトの記録', 'フレンド・ブロック・自分が送った通報', 'お知らせ・リプレイと写真の記録・カップ・振り返り', '登録した端末・分析イベント'];
+const dexDay = (ms) => { const d = new Date(ms + 9 * 3600e3); return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日`; };
+const dexSize = (b) => (b < 1024 ? `${b} B` : b < 1048576 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${(b / 1048576).toFixed(1)} MB`);
+let dexBuildTimer = null;
+async function Privacy() {
+  currentScreen = Privacy;
+  const r = await L.dataExport.view();
+  Clear('privacy'); SetArt('Art/home-paddock', false); Shade('dim');
+  TopBar('その他　/　プライバシー', 'アカウントに保存されているデータの確認とダウンロード', { wallet: false });
+  const p = Glass('Data export', 36, 134, 940, 676, undefined, .9);
+  Kicker('データのダウンロード', 36, 30, p);
+  if (!r.ok) { Txt(r.message, 36, 100, 860, 17, MUTED, p); Back(Settings, 'BACK', 40, 834); return; }
+  const v = r.value;
+  p.dataset.dexStatus = v.status;
+  Txt(v.notice ?? '', 36, 96, 868, 16, MUTED, p, { lh: 1.7 }).classList.add('dex-notice');
+  Hair(36, 200, 868, p);
+  Kicker('状態', 36, 222, p, { rule: false, size: 14 });
+  Txt(v.statusText, 36, 252, 868, 30, WHITE, p, { weight: 700, nowrap: true }).classList.add('dex-status');
+  const preparing = v.status === 'queued' || v.status === 'building';
+  const ready = v.status === 'ready' && v.download;
+  let info = null;
+  if (ready) info = `${dexDay(v.expiresAt)}まで`;
+  else if (!v.canRequest && v.nextAvailableAt) info = `次のリクエストは${dexDay(v.nextAvailableAt)}から`;
+  if (info) Txt(info, 36, 304, 600, 17, CYAN, p, { weight: 500, nowrap: true }).classList.add('dex-date');
+  if (ready) Txt(dexSize(v.sizeBytes ?? 0), 704, 304, 200, 17, MUTED, p, { weight: 500, nowrap: true, align: 'right' }).classList.add('dex-size');
+  const get = async (f) => {
+    const fresh = await L.dataExport.view(); // links last minutes: always a fresh one
+    const url = fresh.ok && fresh.value.download ? fresh.value.download[f].url : null;
+    if (!url) { toast('ダウンロードの期限が過ぎました'); Privacy(); return; }
+    const d = await L.dataExport.download(url);
+    if (!d.ok) { toast(d.message); return; }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([d.value.text], { type: d.value.type })); a.download = d.value.name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    toast(f === 'json' ? 'データ（JSON）をダウンロードしました' : '概要（テキスト）をダウンロードしました');
+  };
+  if (ready) {
+    Cta('データ（JSON）をダウンロード', 36, 356, 452, () => get('json'), p).dataset.dex = 'json';
+    Ghost('概要（テキスト）をダウンロード', 508, 362, 396, 60, () => get('summary'), p, 'quiet').dataset.dex = 'summary';
+  } else if (preparing) {
+    Ghost('準備しています', 36, 362, 452, 60, () => toast('準備ができるとお知らせに届きます'), p, 'disabled').dataset.dex = 'preparing';
+  } else {
+    const label = v.status === 'none' ? 'データをリクエスト' : 'もう一度リクエスト';
+    if (v.canRequest) {
+      Cta(label, 36, 356, 452, async () => {
+        const q = await L.dataExport.request(isJa() ? 'ja' : 'en');
+        if (!q.ok) { toast(q.message); Privacy(); return; }
+        toast('リクエストを受け付けました');
+        // the player object's alarm builds it (the prototype runs the same job a moment later)
+        clearTimeout(dexBuildTimer);
+        dexBuildTimer = setTimeout(async () => { await L.dataExport.build(); if (currentScreen === Privacy) Privacy(); }, 1500);
+        Privacy();
+      }, p).dataset.dex = 'request';
+    } else Ghost(label, 36, 362, 452, 60, () => toast(info ?? ''), p, 'disabled').dataset.dex = 'cooldown';
+  }
+  const notes = [];
+  if (preparing) notes.push(['準備ができるとお知らせに届きます。この画面を閉じても大丈夫です。', SOFT]);
+  if (v.status === 'failed') notes.push(['時間をおいて、もう一度リクエストしてください。', SOFT]);
+  if (v.linkNote) notes.push([v.linkNote, SOFT]);
+  if (v.deletionNote) notes.push([v.deletionNote, GOLD]);
+  notes.forEach(([t, c], i) => Txt(t, 36, 470 + i * 58, 868, 15, c, p, { lh: 1.55 }).classList.add('dex-note'));
+  Txt('メールアドレスは使いません。ログイン中のあなただけがリクエストできます。', 36, 616, 868, 14, SOFT, p, { lh: 1.55 });
+  // what the files hold, and what they do not (the same lists as protocol §51.4 / §51.5)
+  const q = Glass('Included', 996, 134, 568, 676, undefined, .86);
+  Kicker('含まれるもの', 36, 30, q);
+  DEX_INCLUDED.forEach((t, i) => Txt(t, 36, 96 + i * 40, 496, 16, WHITE, q, { weight: 500, nowrap: true }).classList.add('dex-inc'));
+  Hair(36, 392, 496, q);
+  Kicker('含めないもの', 36, 412, q, { rule: false, size: 15 });
+  Txt('他のプレイヤーの情報・運営のメモ・処理用の内部記録', 36, 446, 496, 15, MUTED, q, { lh: 1.6 });
+  Txt('JSON は機械で読める形式、概要は人が読めるテキストです。', 36, 520, 496, 15, MUTED, q, { lh: 1.6 });
+  Back(Settings, 'BACK', 40, 834);
 }
 // ================================================================= round 12: かんたん操作 (REQ-ASSIST-*, contracts/protocol.md §27)
 // Mirrors unity/Assets/Muchi/Game/AssistModel.cs on the real server rules (setting default off, the last-place streak, the
@@ -5298,7 +5375,7 @@ function GiftResult(c) {
 // link per row, mark read up to the newest shown entry on opening. Display + links only: a gift row leads to the gift box,
 // never a claim button. Every value comes from L.activity (the real PlayerService and the same name resolution as the route).
 // ムチ一閃 tone: paddock art, translucent navy panels, letter-spaced cyan labels, one skewed cyan CTA ».
-const ACT_LABEL = { friend_request: 'フレンド', friend_accepted: 'フレンド', rival_week: 'ライバル', rival_record: 'ライバル', stable_like: 'マイ厩舎', team_cheer: '支部', tournament_result: '大会', gift_arrived: 'プレゼント', team_goal_tier: '支部', team_goal_week: '支部', replay_share: 'リプレイ', cup_invited: 'カップ', cup_started: 'カップ', cup_finished: 'カップ', cup_cancelled: 'カップ', recap_ready: '振り返り' };
+const ACT_LABEL = { friend_request: 'フレンド', friend_accepted: 'フレンド', rival_week: 'ライバル', rival_record: 'ライバル', stable_like: 'マイ厩舎', team_cheer: '支部', tournament_result: '大会', gift_arrived: 'プレゼント', team_goal_tier: '支部', team_goal_week: '支部', replay_share: 'リプレイ', cup_invited: 'カップ', cup_started: 'カップ', cup_finished: 'カップ', cup_cancelled: 'カップ', recap_ready: '振り返り', data_export_ready: 'データ' };
 const ACT_PAGE = 7;
 const actState = { cursor: null, stack: [] };
 const actGo = (screen, id) => ({
@@ -5307,6 +5384,7 @@ const actGo = (screen, id) => ({
   replay: () => FriendReplays(), // §37: the friend's public replays (the entry's link id is the friend; the demo has one friend)
   cups: (cupId) => (cupId ? CupLobby(cupId) : HostedCups()), // round 16 (§42.7): the cup the entry names
   recap: (rid) => (rid ? Recap(rid) : Recaps()), // round 16 (§43): the recap that became ready
+  privacy: () => Privacy(), // round 18 (§51): the data export is ready
 })[screen]?.(id);
 /** The home bell (under the gift envelope, clear of the rival strip) with the unread count from the player view (REQ-ACT-009). */
 function ActivityBell(x = 1088, y = 122) {
@@ -5810,7 +5888,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Privacy, HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

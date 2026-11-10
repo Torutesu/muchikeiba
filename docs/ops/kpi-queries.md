@@ -957,3 +957,36 @@ GROUP BY kind, screen ORDER BY taps DESC
 
 - **戻ってきた人に効いているか**：`session_start` の日に `activity_open` もある人の割合を、ライバル・支部・フレンドを使っている人とそれ以外で分けて見る。
 - プレゼント（`gift_arrived` → `gift_box`）を押した人のうち、同じ日に `gift_claim` がある割合が低ければ、プレゼントボックスへの導線（ボタンの文言）を見直す。受け取りボタンを一覧に置くことはしない（§40）。
+
+## ヘルプセンター：検索・記事・役に立った・問い合わせ（REQ-HELP-021、contracts/protocol.md §48.9、Round 17）
+
+**自分で解決できているか**。`help_search`（`blob8` = カテゴリか `all`、`double9` = 正規化した検索語の長さ、`double5` = 件数）と `help_article_view`（`blob8` = 記事、`blob9` = 入口 `list`・`search`・`context`・`link`・`related`）はクライアントのイベント。**検索語そのものはどこにも残らない**（個人情報が入りうるため）。`help_feedback`（`blob8` = 記事、`blob9` = カテゴリ、`double9` = 1 役に立った／0）・`inquiry_submit`（`blob8` = 種類、`double5` = 添えた記録の数、`double9` = 置き換えた個人情報の数）・`inquiry_answered`（`blob8` = 種類、`double6` = 受付から最初の返信までの ms）はサーバーのイベント。
+
+```sql
+-- 0件の検索の割合（カテゴリ別）：多ければ記事やキーワードを足す
+SELECT blob8 AS category, sum(_sample_interval) AS searches,
+  sum(if(double5 = 0, _sample_interval, 0)) / sum(_sample_interval) AS zero_rate
+FROM muchi_kpi
+WHERE blob1 = 'help_search' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY category ORDER BY searches DESC
+```
+
+```sql
+-- 記事ごとの表示と入口
+SELECT blob8 AS article, blob9 AS source, sum(_sample_interval) AS views
+FROM muchi_kpi
+WHERE blob1 = 'help_article_view' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY article, source ORDER BY views DESC
+```
+
+```sql
+-- 問い合わせの最初の返信までの時間（種類別、時間）
+SELECT blob8 AS category, sum(_sample_interval) AS answered,
+  sum(_sample_interval * double6) / sum(_sample_interval) / 3600000 AS avg_hours_to_first_reply
+FROM muchi_kpi
+WHERE blob1 = 'inquiry_answered' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY category ORDER BY answered DESC
+```
+
+- 画面からの案内（`source = context`）の後に同じ日の `inquiry_submit` が少ないほど、案内が効いている。
+- `inquiry_submit` の `double9`（置き換えた個人情報の数）が多い種類は、フォームの注意書きを見直す。

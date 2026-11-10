@@ -7,8 +7,9 @@ import { playersView } from './views/players.js';
 import { compensationsView } from './views/compensations.js';
 import { auditView } from './views/audit.js';
 import { kpiView } from './views/kpi.js';
+import { inquiriesView } from './views/inquiries.js';
 
-const views = { config: configView, gacha: gachaView, events: eventsView, players: playersView, compensations: compensationsView, audit: auditView, kpi: kpiView };
+const views = { config: configView, gacha: gachaView, events: eventsView, players: playersView, compensations: compensationsView, inquiries: inquiriesView, audit: auditView, kpi: kpiView };
 const main = document.getElementById('main');
 const nav = document.getElementById('nav');
 const who = document.getElementById('who');

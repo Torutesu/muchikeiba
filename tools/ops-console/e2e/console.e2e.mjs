@@ -198,6 +198,26 @@ try {
     assert.equal((await asAdmin('admin2', 'POST', `/v1/admin/compensations/${own.body.request.id}/reject`, { reason: 'not needed' })).body.request.status, 'rejected');
   });
 
+  await step('operator: a player inquiry (§48) is listed without its text, opened from the player object and answered once', async () => {
+    const t = await asPlayer('POST', '/v1/help/inquiries', { category: 'purchase_missing', description: 'コインを購入しましたが反映されていません。確認をお願いします。', diagnostics: { appVersion: 'e2e', platform: 'ios' } });
+    const list = await asAdmin('viewer', 'GET', '/v1/admin/inquiries?status=received');
+    const row = list.body.items.find((x) => x.playerId === PLAYER && x.ticketId === t.ticketId);
+    assert.ok(row && !('inquiryText' in row), 'the index has no text');
+    await login('operator');
+    await page.locator('#nav a[data-view=inquiries]').click();
+    await tid(`inq-open-${t.ticketId}`).first().click();
+    await tid('inq-text').getByText('反映されていません', { exact: false }).waitFor();
+    await tid('inq-reply').fill('ストアの支払いを確認し、コインを付与しました。');
+    await shot('05b-inquiry-detail');
+    await tid('inq-send').click();
+    await confirmWith('e2e: answer the inquiry');
+    await page.getByText('返信しました').waitFor();
+    const mine = await asPlayer('GET', `/v1/help/inquiries/${t.ticketId}`);
+    assert.equal(mine.status, 'answered');
+    assert.equal(mine.messages.length, 1, 'one reply');
+    assert.equal(mine.messages[0].messageText, 'ストアの支払いを確認し、コインを付与しました。');
+  });
+
   await step('admin: dry run surfaces the day-rule problem; clean version is activated; diff', async () => {
     await page.locator('#nav a[data-view=config]').click();
     const dayRow = tid('versions-table').locator('tr', { hasText: `e2e day rule ${runId}` });

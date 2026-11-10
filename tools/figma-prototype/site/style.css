@@ -628,3 +628,11 @@ html[data-color-mode="cvd"] .a11y-swatch .g.crit { background: repeating-linear-
 .btn.bell { color: var(--cyan); justify-content: center; }
 .btn.bell svg { position: relative; }
 .btn.bell .env-badge { position: absolute; right: 6px; top: 6px; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 12px; background: var(--gold); color: var(--navy); font-size: 14px; font-weight: 700; line-height: 24px; text-align: center; font-style: normal; }
+
+/* round 17: ヘルプセンター (REQ-HELP-*) */
+.help-row { position: absolute; border-radius: var(--radius-card); cursor: pointer; background: rgba(var(--navy-rgb), .55); }
+.help-row.sel { box-shadow: inset 0 0 0 2px var(--cyan); background: rgba(var(--cyan-rgb), .08); }
+.help-row .act-dot { position: absolute; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 8px rgba(var(--cyan-rgb), .7); }
+.btn.help-card { text-align: left; }
+.btn.help-card > .label { pointer-events: none; }
+textarea.field { resize: none; }

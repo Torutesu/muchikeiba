@@ -34,6 +34,7 @@ import { signAdMobQuery, StaticKeySource, verifyAdMobCallback } from '../../../s
 import { MemoryRivalRegistry, RivalService, rivalPlayersFrom } from '../../../server/src/domain/rivalService.js';
 import { noteRivalTa, prevWeekId, rivalCard, rivalTrackName, weekEndMs, weekIdAt } from '../../../server/src/domain/rival.js';
 import { actorIdsOf, renderActivityItems } from '../../../server/src/domain/activity.js';
+import { helpArticle, helpIndex, helpOf, helpQueryWords, searchHelp } from '../../../server/src/domain/help.js';
 import type { PlayerInvoker } from '../../../server/src/http/app.js';
 import { HallService, MemoryHallDirectory, hallConfig, hallSnapshot } from '../../../server/src/domain/hallOfFame.js';
 import { hallPlayersFrom } from '../../../server/src/http/hallPorts.js';
@@ -567,6 +568,36 @@ export const MuchiLogic = {
   // What GET /v1/history/* and POST /v1/history/support-ticket return, on the real rules (the local state holds the whole ledger).
   history: (kind: 'summary' | 'purchases' | 'coins' | 'gacha', q: { cursor?: string | null; limit?: number; currency?: 'paid' | 'free' | null } = {}) => wrap(() => svc.history(ID, kind, q)),
   historyTicket: (refs: string[], topic: 'purchase_missing' | 'refund' | 'coins' | 'gacha' | 'other') => wrap(() => svc.historyTicket(ID, refs, topic)),
+
+  // ---------------------------------------------------------------- round 17: ヘルプセンター (REQ-HELP-*, contracts/protocol.md §48)
+  // What GET /v1/help, /v1/help/articles/:id, /v1/help/search and the inquiry routes return, on the real rules, in the
+  // language the screen shows (lang = 'ja' | 'en', like the server's Accept-Language). Support replies come from the real
+  // ops reply (adminInquiryReply) in the demo.
+  help: (lang: 'ja' | 'en' = 'ja') => wrap(() => helpIndex(master, lang)),
+  helpArticle: (id: string, lang: 'ja' | 'en' = 'ja') => wrap(() => helpArticle(master, id, lang, Number(DEFAULT_RULESET.maxWhips))),
+  helpSearch: (q: string, category: string | null = null, lang: 'ja' | 'en' = 'ja') => wrap(() => searchHelp(master, q, category, null, lang, Number(DEFAULT_RULESET.maxWhips))),
+  helpFeedback: (id: string, helpful: boolean) => wrap(() => svc.helpFeedback(ID, id, helpful)),
+  inquiries: (lang: 'ja' | 'en' = 'ja') => wrap(async () => { const { unindexed: _u, ...l } = await svc.helpInquiries(ID, lang); return l; }),
+  inquiry: (ticketId: string, lang: 'ja' | 'en' = 'ja') => wrap(() => svc.helpInquiry(ID, ticketId, lang)),
+  inquiryRead: (ticketId: string) => wrap(() => svc.helpInquiryRead(ID, ticketId)),
+  /** POST /v1/help/inquiries with the form's key (the same key on a retry returns the same ticket). */
+  submitInquiry: (input: { category: string; description: string; refs: string[] }, formKey: string, lang: 'ja' | 'en' = 'ja') =>
+    wrap(() => svc.helpInquirySubmit(ID, { category: input.category as never, description: input.description, refs: input.refs, diagnostics: { appVersion: 'proto', platform: 'editor' } }, 'c:/v1/help/inquiries:' + formKey, lang)),
+  /** KPI rows the client would send (help_search / help_article_view), checked against the server's client-event schema. */
+  helpKpi: (name: 'help_search' | 'help_article_view', props: Record<string, unknown>) => wrap(() => clientBatchSchema.parse({ platform: 'editor', appVersion: 'proto', events: [{ name, at: now(), props }] }).events.map(clientToKpi)[0]),
+  /** REQ-HELP-008: the article a screen's ? link opens (master/help.json contexts). */
+  helpContext: (ctx: string) => helpOf(master).contexts[ctx] ?? 'first_steps',
+  helpFoldLength: (q: string) => Math.max(1, Math.min(64, helpQueryWords(q).join('').length)),
+  /** Demo: an answered inquiry (the real ops reply → status, unread, the activity entry) and one waiting for an answer. */
+  async seedInquiries() {
+    clockShift += 61_000; // past the minimum interval since any earlier inquiry
+    const a = await wrap(() => svc.helpInquirySubmit(ID, { category: 'purchase_missing', description: 'コイン1,020を購入しましたが、残高に反映されていません。', refs: [], diagnostics: { appVersion: 'proto', platform: 'editor' } }, key(), 'ja'));
+    if (a.ok) await wrap(() => svc.adminInquiryReply(ID, a.value.ticketId, 'お問い合わせありがとうございます。ストアの支払いを確認し、コインの付与が完了しました。ご不便をおかけしました。', false, 'ops-demo', `demo-${a.value.ticketId}`));
+    clockShift += 61_000;
+    await wrap(() => svc.helpInquirySubmit(ID, { category: 'bug', description: 'タイムアタックの結果画面で、まれに記録が表示されません。', refs: [], diagnostics: { appVersion: 'proto', platform: 'editor' } }, key(), 'ja'));
+    clockShift += 61_000;
+    return svc.view(ID);
+  },
 
   // ---------------------------------------------------------------- round 15: フォトモード (REQ-PHOTO-*, contracts/protocol.md §38)
   // GET /v1/photo/catalog, the photo records and the shop purchase of a photo frame / stamp, on the real rules. The picture

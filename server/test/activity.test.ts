@@ -68,7 +68,8 @@ describe('recordActivity (REQ-ACT-002/006/010/011/013)', () => {
 
   it('every kind maps to a push category and a known screen', () => {
     for (const k of ACTIVITY_KINDS) {
-      expect(PUSH_CATEGORIES).toContain(ACTIVITY_META[k].category);
+      // §48.8: a support reply is the one non-push category (no push is sent for it)
+      expect([...PUSH_CATEGORIES, ...(k === 'inquiry_answered' ? ['support'] : [])]).toContain(ACTIVITY_META[k].category);
       expect(ACTIVITY_SCREEN_NAMES).toContain(ACTIVITY_META[k].screen);
     }
     expect([...ACTIVITY_KIND_NAMES]).toEqual([...ACTIVITY_KINDS]);

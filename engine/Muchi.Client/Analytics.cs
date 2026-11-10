@@ -238,6 +238,33 @@ namespace Muchi.Client
             return new AnalyticsEvent("ad_start", atMs, JsonNode.Obj().Set("placementId", Id(placementId, 32, "placementId")).Set("surface", surface).Set("outcome", outcome));
         }
 
+        // ---- REQ-PRAC-015 練習レース (§50.10): course, field size, strength, restart / place only — never inputs, seed or times
+        public static readonly string[] PracticeRestarts = { "none", "same_seed", "new_seed" };
+        private static readonly System.Text.RegularExpressions.Regex PracticeIdRe = new System.Text.RegularExpressions.Regex("^[a-z][a-z0-9_]{0,15}$");
+        private static readonly System.Text.RegularExpressions.Regex TrackIdRe = new System.Text.RegularExpressions.Regex("^[a-z0-9_]{1,64}$");
+
+        private static JsonNode PracticeProps(string trackId, int fieldSize, string strength)
+        {
+            if (trackId == null || !TrackIdRe.IsMatch(trackId)) throw new ArgumentException("bad track id");
+            if (fieldSize < 2 || fieldSize > 12) throw new ArgumentOutOfRangeException(nameof(fieldSize));
+            if (strength == null || !PracticeIdRe.IsMatch(strength)) throw new ArgumentException("bad strength id");
+            return JsonNode.Obj().Set("trackId", trackId).Set("fieldSize", fieldSize).Set("strength", strength);
+        }
+
+        /// <summary>A practice race started on the device. restart: none | same_seed | new_seed.</summary>
+        public static AnalyticsEvent PracticeStart(long atMs, string trackId, int fieldSize, string strength, string restart)
+        {
+            if (IndexIn(PracticeRestarts, restart) < 0) throw new ArgumentException("unknown restart " + restart);
+            return new AnalyticsEvent("practice_start", atMs, PracticeProps(trackId, fieldSize, strength).Set("restart", restart));
+        }
+
+        /// <summary>A practice race ended. place: 1..12, 0 when the player's horse did not finish.</summary>
+        public static AnalyticsEvent PracticeFinish(long atMs, string trackId, int fieldSize, string strength, int place)
+        {
+            if (place < 0 || place > 12) throw new ArgumentOutOfRangeException(nameof(place));
+            return new AnalyticsEvent("practice_finish", atMs, PracticeProps(trackId, fieldSize, strength).Set("place", place));
+        }
+
         internal JsonNode ToJson()
         {
             var o = JsonNode.Obj();

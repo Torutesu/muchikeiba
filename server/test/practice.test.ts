@@ -1,6 +1,9 @@
 // 練習レース (REQ-PRAC-001..018, contracts/protocol.md §50): the catalog the device builds its races from, the master check,
 // the optional KPI path — and, explicitly, that practice grants nothing and has no server path for a result.
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { practiceSampleJson } from '../src/domain/practiceSample.js';
 import { handle, makeFriendsService, type AppContext, type PlayerInvoker } from '../src/http/app.js';
 import { MemoryDirectory } from '../src/domain/friends.js';
 import { MemoryPlayerRepo, PlayerService } from '../src/domain/service.js';
@@ -246,5 +249,11 @@ describe('REQ-PRAC-011 practice grants nothing and has no server path for a resu
     const st = { horses: [], flags: { tutorialGachaUsed: false } } as unknown as Parameters<typeof practiceCatalog>[1];
     const frozen = Object.freeze(st);
     expect(() => practiceCatalog(m, frozen, NOW)).not.toThrow();
+  });
+});
+
+describe('REQ-PRAC-017 the C# client sample', () => {
+  it('contracts/practice-catalog.sample.json is what the server writes (npm run gen:practice-sample)', () => {
+    expect(readFileSync(join(import.meta.dirname, '../../contracts/practice-catalog.sample.json'), 'utf8')).toBe(practiceSampleJson(m));
   });
 });

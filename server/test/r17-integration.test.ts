@@ -15,6 +15,12 @@ import { reportsConfig } from '../src/domain/reports.js';
 import { DELETION_STEPS, runAccountDeletion, type DeletionPorts } from '../src/domain/accountDeletion.js';
 import type { PlayerInvoker } from '../src/http/app.js';
 import type { PlayerReportsApi } from '../src/http/admin.js';
+import { ACTIVITY_KINDS, ACTIVITY_META, ACTIVITY_SCREENS } from '../src/domain/activity.js';
+import { ACTIVITY_KIND_NAMES, ACTIVITY_SCREEN_NAMES } from '../src/domain/kpi.js';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const ROOT = join(import.meta.dirname, '..', '..');
 
 const DAY = 86_400_000;
 const T0 = Date.UTC(2026, 10, 20, 3);
@@ -88,5 +94,20 @@ describe('account deletion clears Round 17 state (REQ-RPT-016, REQ-HELP-018, REQ
     expect(w.inquiries.list({})).toEqual([]);
     expect(w.cards.store.has('gone')).toBe(false);
     expect(reportsConfig(m).enabled).toBe(true);
+  });
+});
+
+describe('§40 activity × Round 16 / 17 kinds', () => {
+  it('server kinds = KPI names (cup_*, recap_ready, ops_notice, inquiry_answered); every screen has a deep link in the prototype; Unity labels them', () => {
+    expect(new Set(ACTIVITY_KINDS)).toEqual(new Set(ACTIVITY_KIND_NAMES));
+    expect(new Set(ACTIVITY_SCREENS)).toEqual(new Set(ACTIVITY_SCREEN_NAMES));
+    for (const k of ['cup_invited', 'cup_started', 'cup_finished', 'cup_cancelled', 'recap_ready', 'ops_notice', 'inquiry_answered']) expect(ACTIVITY_KINDS).toContain(k);
+    expect(ACTIVITY_META.ops_notice.screen).toBe('safety');
+    expect(ACTIVITY_META.inquiry_answered.screen).toBe('help_inquiry');
+    const app = readFileSync(join(ROOT, 'tools/figma-prototype/site/app.js'), 'utf8');
+    const unity = readFileSync(join(ROOT, 'unity/Assets/Muchi/Game/ActivityModel.cs'), 'utf8');
+    const go = app.slice(app.indexOf('const actGo = '), app.indexOf('})[screen]?.(id);'));
+    for (const x of ACTIVITY_SCREENS) expect(go, x).toMatch(new RegExp(`\\b${x}: \\(`));
+    for (const k of ['CupInvited', 'RecapReady', 'OpsNotice', 'InquiryAnswered']) expect(unity.match(new RegExp(`ActivityKinds\\.${k}\\]`, 'g'))?.length, k).toBe(2);
   });
 });

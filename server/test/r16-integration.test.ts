@@ -254,8 +254,8 @@ describe('§37 my replays, §34 hall, §43 recap × §42 hosted cups (REQ-CUP-01
     const w = world();
     const horse = await w.player('u');
     await w.race('u', 1, { horseId: horse, mode: 'cup', raceId: 'cup-abc-0-0' });
-    const v = await w.svc.myReplays('u') as { recent: { raceId: string; mode: string }[] };
-    expect(v.recent.map((x) => x.raceId)).toContain('cup-abc-0-0');
+    const v = await w.svc.myReplays('u') as { recent: { raceId: string; mode: string }[]; moments: { raceId: string; mode: string }[] };
+    expect([...v.recent, ...v.moments].find((x) => x.raceId === 'cup-abc-0-0')?.mode).toBe('cup');
     const career = await w.svc.horseCareer('u', horse) as { career: { races: number } };
     expect(career.career.races).toBe(0);
     const s = await w.svc.state('u');

@@ -2094,3 +2094,102 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 - `Muchi.Client`：`AccessibilitySettings`（`Parse`・`ToJson`・`Defaults`、知らない値は既定値）、`ApiClient.GetAccessibilityAsync`・`SetAccessibilityAsync`、`PlayerView.Accessibility`、`AccessibilityTokens`（トークンの表、`Color(mode, token)`）、`TextScale`（`Factor`・`Px`）、`MotionPolicy`、`FlashLimiter`、`WhipHold`。
 - `Muchi.Game`：`AccessibilityModel`（端末の写し・未送信の再送・`Changed` イベント・画面が結ぶ値 `TextScale`／`Palette`／`Motion`／`Haptics`／`Subtitles`／`OneHanded`／`WhipInput`・設定画面の行 `Rows()`・`ApplyTo(RaceInput)`）、`RaceInput.WhipMode`・`SetWhipHeld`・`Collect(RaceSim, slot)`。
 - 画面が守ること：docs/handoff-codex-round15-accessibility.md。
+
+## 48. ヘルプセンター（よくある質問・問い合わせ、REQ-HELP-001〜024、`server/src/domain/help.ts`・`server/master/help.json`、C# `Help.cs`・`Muchi.Game.HelpCenterModel`）
+アプリの中で読めるよくある質問（日本語・英語）と、アプリから送る問い合わせ。**表示と問い合わせだけ**：コイン・アイテムを動かさない（E番号なし、経済は変わらない）。
+
+**決まりごと**
+- 記事は `server/master/help.json`（リモート設定の `help` で丸ごと置き換えられる）に**日本語と英語の両方**を持つ。応答は要求の言語（§23 の `?lang=`・Accept-Language）の方を返す（境界の翻訳表は使わない）。起動時とリモート設定で検査する（§48.1）。
+- 提供割合・天井・価格・月額上限・削除までの日数など**数字は記事に書かない**。本文の `{{トークン}}` を返すときにデータ（ガチャの表は提供割合の画面と同じ `oddsDisclosure` の計算、年齢の上限は `ageLimits`、削除は `progression.accountDeletion`、ムチの数は有効なルールセット）から埋める。スカウトと購入のカテゴリの記事はトークンの外に数字を置けない（「10連」「10-pull」だけ例外）。どの記事も数字の直後の `%`・`％`・`pt`・`ポイント` は使えない。
+- 言葉：日本語は「倍」「お得」「今だけ」「残りわずか」「通常価格」と賭けの言葉（`bettingWords.ts`）を使わない。英語は §23 の `EN_BANNED` と賭けの言葉を使わない（英語では提供割合を "rates" と書き、"odds" は使わない）。
+- リンクは**アプリ内の画面**（`screen`）・**法定表示**（`legal`：`terms`・`privacy`・`tokushoho`（特定商取引法に基づく表記）・`shikin`（資金決済法に基づく表示）。既存の法定表示の画面を開く）・**別の記事**（`article`）・**公式サポートサイト**（`url`：`https://` で、ホストが `config.supportSiteHost` と一致するものだけ）。それ以外の URL は検査で落とす。
+- 問い合わせは**アカウントに保存**し、本人が状態（受付済み・回答済み・完了）と運営の返信を見られる。返信はアクティビティ（§40）の項目 `inquiry_answered` で知らせる（プッシュは送らない）。
+- 個人情報：自動で添える診断情報は**アプリの版・端末の種類（ios / android / editor）・プレイヤー ID・直近のレース ID（最大3件、サーバーが自分の記録から入れる）**だけ。名前・メール・端末の機種名・OS の版・広告 ID・位置は送らない。フォームにこのことを書く（`diagnosticsNote`）。本文のメールアドレス・電話番号・カード番号らしい並びは保存の前に「［削除しました］」に置き換える。
+- 本文と返信は人が書いた文なので**翻訳しない**（応答のキーは `inquiryText`・`messageText`。`PLAYER_TEXT_KEYS` に入れてある）。問い合わせを送った言語 `lang` を保存し、運営はその言語で返す。
+
+### 48.1 マスター（`server/master/help.json`）
+```json
+{ "version": 1,
+  "config": { "enabled": true, "supportSiteHost": "support.muchi-issen.example", "titleMaxChars": 40, "bodyMaxChars": 1200,
+              "searchMaxChars": 40, "searchMaxResults": 20, "feedbackPerDay": 50,
+              "inquiry": { "descriptionMin": 10, "descriptionMax": 1000, "attachMax": 10, "openMax": 3, "perDay": 5, "minIntervalSec": 60, "keepMax": 30, "replyMax": 2000 } },
+  "categories": [ { "id": "scout", "title": { "ja": "スカウト（提供割合・天井）", "en": "Scout (rates & pity)" }, "icon": "scout" } ],
+  "articles": [ { "id": "pity", "category": "scout", "title": { "ja": "…", "en": "…" }, "body": { "ja": "…{{pity_pulls:standard}}…", "en": "…" },
+                  "keywords": { "ja": ["てんじょう"], "en": ["pity"] }, "links": [ { "type": "screen", "screen": "gacha_odds" } ], "related": ["scout_rates"] } ],
+  "contexts": { "gacha_odds": "pity", "coin_shortfall": "buy_coins" } }
+```
+- カテゴリ `id` は8つ：`getting_started`（はじめに）・`races`（レース・ムチ）・`horses`（馬・配合）・`scout`（スカウト・提供割合・天井）・`purchases`（購入・返金）・`account`（アカウント・引き継ぎ）・`deletion`（アカウント削除）・`accessibility`（アクセシビリティ）。全部そろっていて、それぞれ記事が1件以上。
+- 記事 `id` は `^[a-z0-9_]{2,40}$` で重ならない。`title` は1〜`titleMaxChars` 文字、`body` は1〜`bodyMaxChars` 文字（トークンを埋める前）、`keywords` は各言語20個まで・各20文字まで。日本語と英語でトークンの組が同じ。`related` は存在する別の記事。
+- 画面 `screen`：`home`・`settings`・`race_lobby`・`tutorial`・`training`・`breeding`・`stable`・`collection`・`gacha`・`gacha_odds`・`shop`・`history`・`gift_box`・`activity`・`accessibility`・`account_link`・`deletion`・`inquiry`・`my_inquiries`。
+- トークン：`pity_pulls:<バナー>`（天井までの回数）・`pity_coins:<バナー>`（天井までのコイン）・`pity_cost:<天井グループ>`・`rate:<バナー>:<レア度>`・`guarantee_rate:<バナー>:<レア度>`（10枠目の保証の表）・`price_single:<バナー>`・`price_ten:<バナー>`・`monthly_limit:<年齢帯>`（上限のある帯だけ）・`guardian_age`・`deletion_days`・`purchase_keep_days`・`coin_history_days`・`gacha_history_days`・`max_whips`。知らないトークン・無いバナー／グループ／帯は検査で落とす（リモート設定でバナーを外して記事が壊れる版は有効にできない）。
+- `contexts`（画面からの案内、REQ-HELP-008）：`gacha_odds`・`coin_shortfall`・`purchase`・`race_whip`・`race_result`・`training`・`breeding`・`history`・`gift_box`・`account_link`・`deletion`・`accessibility` → 記事 id。全部そろっていて、存在する記事を指す。
+
+### 48.2 `GET /v1/help`（要認証、読むだけ・プレイヤーの状態に触れない）
+```json
+{ "enabled": true, "version": 1, "lang": "ja",
+  "categories": [ { "id": "scout", "title": "スカウト（提供割合・天井）", "icon": "scout", "count": 2 } ],
+  "articles": [ { "id": "pity", "category": "scout", "title": "天井（交換pt）のしくみ" } ],
+  "contexts": { "gacha_odds": "pity" },
+  "supportSite": "https://support.muchi-issen.example/",
+  "inquiry": { "categories": [ { "id": "purchase_missing", "title": "購入したのに届かない", "history": true } ],
+               "descriptionMin": 10, "descriptionMax": 1000, "attachMax": 10,
+               "diagnosticsNote": "…", "privacyNote": "…" } }
+```
+`enabled: false` のときは `categories`・`articles` が空（問い合わせの一覧と詳細は見られる）。
+
+### 48.3 `GET /v1/help/articles/:articleId`（要認証）
+`{ id, category, categoryTitle, title, body, links: [ { type, label, screen? | doc? | articleId? | url? } ], related: [ { id, title } ], version }`。`body` はトークンを埋めた文（段落は空行、`・` で始まる行は箇条書き）。無い id は 404。
+
+### 48.4 `GET /v1/help/search?q=&category=&limit=`（要認証）
+- `q`：前後の空白を除いて1〜`searchMaxChars` 文字（それ以外は 400）。`category` は省略か8つのどれか、`limit` は1〜`searchMaxResults`。
+- 比べ方（日本語の正規化、REQ-HELP-006）：NFKC（半角カナ → 全角、全角英数 → 半角）→ ひらがな → カタカナ → 小さいカナ → 大きいカナ・長音を除く・ヴ → ブ（名前の NG 判定と同じ `foldForCompare`）→ 英字は小文字。`q` を空白で語に分け、**全部の語**がタイトル・キーワード・本文（その言語、トークンを埋めた後）のどれかに入る記事を返す。点数はタイトル3・キーワード2・本文1の合計の高い順、同点は master の順。
+- `{ "items": [ { "id", "category", "title", "snippet" } ], "total": 3, "query": { "length": 4 } }`。`snippet` は最初に当たった本文の前後（最大60文字）。**検索語は保存もログもしない**（KPI は正規化した長さとカテゴリだけ、§48.9）。
+
+### 48.5 `POST /v1/help/articles/:articleId/feedback`（要認証）
+`{ "helpful": true }` → `{ "articleId": "pity", "helpful": true, "changed": true }`。記事ごとに1票（あとから変えられる。同じ値なら `changed: false` で何も起きない）。1ゲーム日（§15 の日の切り替え `progression.dayRollover`）に `feedbackPerDay` 回まで（超えたら 429 `RATE_LIMITED`）。無い記事は 404、他のキーは 400。票はアカウントの状態に入り、アカウント削除で消える。
+
+### 48.6 問い合わせ（要認証）
+**`POST /v1/help/inquiries`**（`Idempotency-Key` 必須。同じキーの再送は最初の応答をそのまま返し、2件にならない）
+```json
+{ "category": "purchase_missing", "description": "コイン1,020を買ったのに増えていません。",
+  "refs": ["P-1A2B3C4D", "C-120"],
+  "diagnostics": { "appVersion": "1.4.0", "platform": "ios" } }
+```
+- `category`：`purchase_missing`・`refund`・`coins`・`gacha`（§33 の問い合わせ番号の種類と同じ）・`race`・`account`・`deletion`・`accessibility`・`bug`・`other`。
+- `description`：制御文字なし、`descriptionMin`〜`descriptionMax` 文字。メール・電話・カード番号らしい並びは置き換えて保存（`redacted: n` で数を返す）。
+- `refs`：§33 の問い合わせ番号（購入 `P-`・コイン `C-`・ガチャ `G-`）0〜`attachMax` 件、重複なし。§33 の一覧と同じ期間の**自分の**記録だけ（無い・期間外は 404 `NOT_FOUND`）。その時点の行（タイトル・内容、内部の id なし）を写して保存する（`buildSupportTicket` と同じ形）。
+- `diagnostics`：`appVersion`（`^[0-9A-Za-z.+-]{1,32}$`）と `platform`（`ios`・`android`・`editor`）だけ。それ以外のキーは 400。サーバーが `playerId` と直近のレース ID（確定した自分のレース、新しい順に最大3件）を足す。
+- 回数の上限（超えたら 429 `RATE_LIMITED`、`details.retryAt` 付き）：返信待ち（`received`）は `openMax` 件まで・1ゲーム日に `perDay` 件まで・前の送信から `minIntervalSec` 秒。削除の手続き中（`deletion.status = deleting`）は 403 `FORBIDDEN`。
+- 応答：下の詳細の形（`status: "received"`）。保存は新しい順に `keepMax` 件（古い完了・回答済みから消す。返信待ちは消さない）。
+
+**`GET /v1/help/inquiries`** → `{ "items": [ { "ticketId": "q_3", "category", "categoryTitle", "status": "answered", "statusText": "回答済み", "createdAt", "updatedAt", "unread": true } ], "unread": 1, "limits": { "openMax": 3, "open": 1, "perDay": 5, "today": 1, "retryAt": null } }`（新しい順）。
+
+**`GET /v1/help/inquiries/:ticketId`** → `{ ticketId, category, categoryTitle, status, statusText, createdAt, updatedAt, lang, inquiryText, redacted, attachments: [ { ref, kind, at, title, detail } ], diagnostics: { appVersion, platform, playerId, lastRaceIds }, messages: [ { from: "player" | "support", messageText, at } ], unread }`（`inquiryText` は送った本文（置き換えの後））。他人の・無い id は 404。
+
+**`POST /v1/help/inquiries/:ticketId/read`** → `{ ticketId, unread: false, unreadTotal }`（何度送っても同じ）。
+
+- 状態 `status`：`received`（受付済み・返信待ち）→ `answered`（回答済み）→ `closed`（完了）。運営が返すと `answered`（`close: true` なら `closed`）。`statusText` は「受付済み」「回答済み」「完了」。
+- `GET /v1/player`・bootstrap に `help: { "unreadReplies": n }`（設定画面の「ヘルプ・お問い合わせ」のバッジ）。
+
+### 48.7 運営（管理 API・ops コンソール、REQ-HELP-015〜017）
+- 一覧の索引（`OpsApi.inquiries`、OpsDO の SQLite `inquiries` 表、ワーカーは問い合わせを受け付けた後と返信の後に書く）：`ticketId`・`playerId`・`category`・`status`・`lang`・`attachments`（件数）・`createdAt`・`updatedAt` だけ。**本文は索引に入れない**（開くときにプレイヤーのオブジェクトから読み、閲覧は監査ログに残る）。索引に書けなかった問い合わせは `indexed: false` のまま残り、本人が一覧を開いたときにもう一度書く（同じ id は上書き）。
+- `GET /v1/admin/inquiries?status=received|answered|closed&category=&limit=`（viewer）：新しい順。
+- `GET /v1/admin/players/:playerId/inquiries/:ticketId`（viewer）：詳細（本文・添えた行・診断情報・やりとり、運営の返信には書いた人）。削除済みのアカウントは 404（`account deleted`）で、索引からそのプレイヤーの行を消す。
+- `POST /v1/admin/players/:playerId/inquiries/:ticketId/reply`（operator、`reason` 必須）`{ "opKey": "reply-q3-1", "content": "…", "close": false }`：返信を足して `answered`（`close` で `closed`）。`opKey` ごとに1回（再送は同じ結果）。`content` は1〜`replyMax` 文字。アクティビティに `inquiry_answered`（送り元 `inquiry:{ticketId}:{返信の番号}`、リンク `help_inquiry`・`id` = ticketId）を書く。完了した問い合わせには返せない（409 `CONFLICT`）。
+- 返信は人が書いた文で、運営は問い合わせの `lang` の言語で書く（翻訳しない）。
+
+### 48.8 アクティビティ（§40 への追加）
+| 種類 `kind` | 書く箇所 | 送り元 id | まとめる | `category` | `link.screen` |
+|---|---|---|---|---|---|
+| `inquiry_answered` | 運営の返信（`adminInquiryReply`） | `inquiry:{ticketId}:{n}` | しない | `support`（プッシュの種類ではない：プッシュは送らない） | `help_inquiry`（`id` = ticketId） |
+文：「お問い合わせに運営から返信がありました」。
+
+### 48.9 KPI
+- クライアント：`help_search`（`props.length`：正規化した検索語の長さ 1〜64、`props.category`：カテゴリ id か `all`、`props.results`：0〜100）→ s1 = カテゴリ、value = 長さ、count = 件数（**検索語そのものは送らない**）。`help_article_view`（`props.articleId`、`props.source`：`list`・`search`・`context`・`link`・`related`）→ s1 = 記事、s2 = 入口。
+- サーバー：`help_feedback`（票が変わったとき、s1 = 記事、s2 = カテゴリ、value = 1／0）・`inquiry_submit`（s1 = 種類、count = 添えた行の数、value = 置き換えた数）・`inquiry_answered`（s1 = 種類、durationMs = 受付から最初の返信まで）。
+- クエリは `docs/ops/kpi-queries.md`「ヘルプセンター」。
+
+### 48.10 クライアント
+- `Muchi.Client`：`ApiClient.GetHelpAsync`・`GetHelpArticleAsync`・`SearchHelpAsync`・`SendHelpFeedbackAsync`・`GetInquiriesAsync`・`GetInquiryAsync`・`SubmitInquiryAsync`（キーは呼び出しごとに1つ、再送で同じキー）・`MarkInquiryReadAsync`、`HelpText.Fold`（サーバーと同じ正規化）、`PlayerView.Help`、`AnalyticsEvent.HelpSearch`・`HelpArticleView`。
+- `Muchi.Game`：`HelpCenterModel`（カテゴリ・記事・検索（端末でも同じ正規化）・画面からの案内 `OpenContext`・「役に立った」・問い合わせのフォーム（種類・本文・添える履歴の行・診断情報の説明）・送信（同じキーで再送、オフラインは送らない）・自分の問い合わせ一覧と詳細・既読）。
+- 画面が守ること：docs/handoff-codex-round17-help-center.md。

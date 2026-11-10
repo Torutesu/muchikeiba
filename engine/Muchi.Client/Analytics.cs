@@ -21,6 +21,8 @@ namespace Muchi.Client
         private static readonly Regex Ident = new Regex("^[A-Za-z0-9_\\-.:]{1,64}$");
 
         private AnalyticsEvent(string name, long atMs, JsonNode props) { Name = name; AtMs = atMs; _props = props ?? JsonNode.Obj(); }
+        /// <summary>The props as JSON (for checks and debug logs).</summary>
+        public string PropsJson => _props.ToString();
 
         private static string Id(string v, int max, string what)
         {
@@ -200,6 +202,26 @@ namespace Muchi.Client
             if (IndexIn(ActivityKinds.All, kind) < 0) throw new ArgumentException("unknown activity kind " + kind);
             if (IndexIn(ActivityScreens.All, screen) < 0) throw new ArgumentException("unknown activity screen " + screen);
             return new AnalyticsEvent("activity_tap", atMs, JsonNode.Obj().Set("kind", kind).Set("screen", screen));
+        }
+
+        // ---- REQ-HELP-021 help center (feedback and inquiries are server events; the query itself is never sent)
+        public static readonly string[] HelpViewSources = { "list", "search", "context", "link", "related" };
+
+        /// <summary>A help search: the folded query length (1..64, HelpText.KpiLength), the category (null = all) and the result count.</summary>
+        public static AnalyticsEvent HelpSearch(long atMs, int length, string category, int results)
+        {
+            if (length < 1 || length > 64) throw new ArgumentOutOfRangeException(nameof(length));
+            if (results < 0) throw new ArgumentOutOfRangeException(nameof(results));
+            if (category != null && IndexIn(HelpCategories.All, category) < 0) throw new ArgumentException("unknown help category " + category);
+            return new AnalyticsEvent("help_search", atMs, JsonNode.Obj().Set("length", length).Set("category", category ?? "all").Set("results", Math.Min(100, results)));
+        }
+
+        /// <summary>An article was opened: its id and where from (list | search | context | link | related).</summary>
+        public static AnalyticsEvent HelpArticleView(long atMs, string articleId, string source)
+        {
+            if (!ApiClient.IsHelpArticleId(articleId)) throw new ArgumentException("bad article id " + articleId);
+            if (IndexIn(HelpViewSources, source) < 0) throw new ArgumentException("unknown help view source " + source);
+            return new AnalyticsEvent("help_article_view", atMs, JsonNode.Obj().Set("articleId", articleId).Set("source", source));
         }
 
         // ---- REQ-AD-010 rewarded ads (the reward itself is the server event ad_reward; never sent from here)

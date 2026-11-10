@@ -109,8 +109,11 @@ export const ADVICE_KPI_CONTEXTS = ['ranked', 'friend', 'event', 'challenge', 't
 /** REQ-PHOTO-014: where a photo was taken (photoMode.ts PHOTO_SOURCES). */
 export const PHOTO_SOURCE_NAMES = ['paused', 'result', 'replay'] as const;
 /** REQ-ACT-015: the activity list's kinds and deep-link screens (domain/activity.ts; repeated here to keep kpi.ts import-free). */
-export const ACTIVITY_KIND_NAMES = ['friend_request', 'friend_accepted', 'rival_week', 'rival_record', 'stable_like', 'team_cheer', 'tournament_result', 'gift_arrived', 'team_goal_tier', 'team_goal_week', 'replay_share'] as const;
-export const ACTIVITY_SCREEN_NAMES = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new'] as const;
+export const ACTIVITY_KIND_NAMES = ['friend_request', 'friend_accepted', 'rival_week', 'rival_record', 'stable_like', 'team_cheer', 'tournament_result', 'gift_arrived', 'team_goal_tier', 'team_goal_week', 'replay_share', 'inquiry_answered'] as const;
+export const ACTIVITY_SCREEN_NAMES = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new', 'help_inquiry'] as const;
+/** REQ-HELP-021: help categories (domain/help.ts HELP_CATEGORY_IDS) plus `all`, and where an article was opened from. */
+export const HELP_CATEGORY_NAMES = ['all', 'getting_started', 'races', 'horses', 'scout', 'purchases', 'account', 'deletion', 'accessibility'] as const;
+export const HELP_VIEW_SOURCES = ['list', 'search', 'context', 'link', 'related'] as const;
 /** Events only the client can observe. Server-known events (purchase, gacha, race results…) are not accepted from clients. */
 export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('session_start'), at: z.number().int(), props: z.object({}).strict().optional() }),
@@ -150,6 +153,10 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   // REQ-ACT-015: the activity list was opened (unread count then) / an entry was tapped (its kind and deep link)
   z.object({ name: z.literal('activity_open'), at: z.number().int(), props: z.object({ unread: z.number().int().min(0).max(999) }).strict() }),
   z.object({ name: z.literal('activity_tap'), at: z.number().int(), props: z.object({ kind: z.enum(ACTIVITY_KIND_NAMES), screen: z.enum(ACTIVITY_SCREEN_NAMES) }).strict() }),
+  // REQ-HELP-021: a help search (the normalised length, the category and the number of results — never the query) /
+  // an article opened (its id and where it was opened from)
+  z.object({ name: z.literal('help_search'), at: z.number().int(), props: z.object({ length: z.number().int().min(1).max(64), category: z.enum(HELP_CATEGORY_NAMES), results: z.number().int().min(0).max(100) }).strict() }),
+  z.object({ name: z.literal('help_article_view'), at: z.number().int(), props: z.object({ articleId: z.string().regex(/^[a-z0-9_]{2,40}$/), source: z.enum(HELP_VIEW_SOURCES) }).strict() }),
 ]);
 export type ClientEvent = z.infer<typeof clientEventSchema>;
 
@@ -188,6 +195,8 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'photo_share': return { name: e.name, s1: e.props.source, s2: e.props.framed ? 'framed' : 'plain' };
     case 'activity_open': return { name: e.name, value: e.props.unread };
     case 'activity_tap': return { name: e.name, s1: e.props.kind, s2: e.props.screen };
+    case 'help_search': return { name: e.name, s1: e.props.category, value: e.props.length, count: e.props.results };
+    case 'help_article_view': return { name: e.name, s1: e.props.articleId, s2: e.props.source };
   }
 }
 

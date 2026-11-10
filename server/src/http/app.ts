@@ -40,12 +40,13 @@ import { EQUIP_SOURCES } from '../domain/commentaryPacks.js';
 import { accessibilityBodySchema } from '../domain/accessibility.js';
 import type { RivalService } from '../domain/rivalService.js';
 import { ADVICE_CONTEXTS, type AdviceContext } from '../domain/raceAdviceService.js';
-import type { Ruleset } from '../domain/ruleset.js';
+import { DEFAULT_RULESET, type Ruleset } from '../domain/ruleset.js';
 import { photoInputSchema } from '../domain/photoMode.js';
 import { HISTORY_LIMITS, historyQuery, REF_RE, SUPPORT_TOPICS } from '../domain/history.js';
 import type { DesignInput, SilksDesign } from '../domain/silksEditor.js';
 import type { MyReplaysService } from '../domain/myReplaysService.js';
 import { activityQuery, actorIdsOf, parseUpTo, renderActivityItems } from '../domain/activity.js';
+import { helpArticle, helpIndex, helpOf, INQUIRY_CATEGORIES, PLATFORMS, searchHelp, type InquirySummary } from '../domain/help.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -88,7 +89,8 @@ export type PlayerMethod =
   | 'myReplays' | 'replayPrepareSave' | 'replayCommitSave' | 'replayForget' | 'replayUpdate' | 'replayDelete' | 'replayOwnRef' | 'replayShared' | 'replayViewed'
   | 'raceAdvice'
   | 'photoCatalog' | 'photos' | 'photoSave' | 'photoDelete'
-  | 'activity' | 'activityRead' | 'activityReplayShare' | 'teamGoalMilestone';
+  | 'activity' | 'activityRead' | 'activityReplayShare' | 'teamGoalMilestone'
+  | 'helpFeedback' | 'helpInquirySubmit' | 'helpInquiries' | 'helpInquiry' | 'helpInquiryRead' | 'helpInquiryIndexed' | 'adminInquiry' | 'adminInquiryReply';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -258,6 +260,20 @@ export const clientIdemKey = (req: Request) => {
   return `c:${new URL(req.url).pathname}:${k}`;
 };
 const idem = clientIdemKey;
+const ticketParam = (x: string) => { if (!/^q_[0-9]{1,9}$/.test(x)) throw new AppError('NOT_FOUND', 'NOT_FOUND'); return x; };
+/** REQ-HELP-005: the whip count of the ruleset in effect (the help article's {{max_whips}}). */
+async function maxWhipsOf(c: AppContext): Promise<number> {
+  const rs = c.activeRuleset ? await c.activeRuleset().catch(() => null) : null;
+  return Number((rs ?? DEFAULT_RULESET).maxWhips) || 6;
+}
+/** REQ-HELP-016: best-effort write to the ops index, then the player object marks those versions indexed. */
+async function indexInquiries(c: AppContext, u: string, items: InquirySummary[]) {
+  if (!c.ops?.inquiries || items.length === 0) return;
+  try {
+    await c.ops.inquiries.upsert(items);
+    await c.player(u).invoke('helpInquiryIndexed', u, items.map((x) => ({ ticketId: x.ticketId, updatedAt: x.updatedAt })));
+  } catch (e) { console.error('inquiry index write failed', (e as Error).message); }
+}
 
 const id = z.string().min(1).max(64);
 
@@ -974,6 +990,44 @@ export const routes: Route[] = [
   { method: 'POST', path: '/v1/activity/read', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ upTo: z.string().max(12).optional() }).strict());
     return c.player(u).invoke('activityRead', u, parseUpTo(b.upTo));
+  } },
+  // ヘルプセンター (REQ-HELP-*, contracts/protocol.md §48): articles and search read the master only (no player state)
+  { method: 'GET', path: '/v1/help', auth: 'player', handler: async (r, _p, c) => helpIndex(c.master, resolveLocale(r)) },
+  { method: 'GET', path: '/v1/help/articles/:articleId', auth: 'player', handler: async (r, p, c) => {
+    if (!/^[a-z0-9_]{2,40}$/.test(p.articleId!)) throw new AppError('NOT_FOUND', 'NOT_FOUND');
+    return helpArticle(c.master, p.articleId!, resolveLocale(r), await maxWhipsOf(c));
+  } },
+  { method: 'GET', path: '/v1/help/search', auth: 'player', handler: async (r, _p, c) => {
+    const q = new URL(r.url).searchParams;
+    for (const k of q.keys()) if (k !== 'q' && k !== 'category' && k !== 'limit' && k !== 'lang') throw new AppError('BAD_REQUEST', `unknown parameter ${k}`);
+    const lim = q.get('limit');
+    if (lim !== null && !/^[0-9]{1,3}$/.test(lim)) throw new AppError('BAD_REQUEST', 'limit must be an integer');
+    return searchHelp(c.master, q.get('q') ?? '', q.get('category'), lim === null ? null : Number(lim), resolveLocale(r), await maxWhipsOf(c));
+  } },
+  { method: 'POST', path: '/v1/help/articles/:articleId/feedback', auth: 'player', handler: async (r, p, c, u) => {
+    if (!/^[a-z0-9_]{2,40}$/.test(p.articleId!)) throw new AppError('NOT_FOUND', 'NOT_FOUND');
+    const b = await body(r, z.object({ helpful: z.boolean() }).strict());
+    return c.player(u).invoke('helpFeedback', u, p.articleId!, b.helpful);
+  } },
+  { method: 'GET', path: '/v1/help/inquiries', auth: 'player', handler: async (r, _p, c, u) => {
+    const { unindexed, ...list } = await c.player(u).invoke('helpInquiries', u, resolveLocale(r));
+    await indexInquiries(c, u, unindexed); // REQ-HELP-016: a summary the index missed is written again
+    return list;
+  } },
+  { method: 'GET', path: '/v1/help/inquiries/:ticketId', auth: 'player', handler: async (r, p, c, u) => c.player(u).invoke('helpInquiry', u, ticketParam(p.ticketId!), resolveLocale(r)) },
+  { method: 'POST', path: '/v1/help/inquiries/:ticketId/read', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('helpInquiryRead', u, ticketParam(p.ticketId!)) },
+  { method: 'POST', path: '/v1/help/inquiries', auth: 'player', handler: async (r, _p, c, u) => {
+    const key = idem(r);
+    const m = helpOf(c.master).config.inquiry;
+    const b = await body(r, z.object({
+      category: z.enum(INQUIRY_CATEGORIES),
+      description: z.string().max(m.descriptionMax * 2),
+      refs: z.array(z.string().regex(REF_RE)).max(m.attachMax).optional(),
+      diagnostics: z.object({ appVersion: z.string().regex(/^[0-9A-Za-z.+-]{1,32}$/), platform: z.enum(PLATFORMS) }).strict(),
+    }).strict());
+    const t = await c.player(u).invoke('helpInquirySubmit', u, { category: b.category, description: b.description, refs: b.refs ?? [], diagnostics: b.diagnostics }, key, resolveLocale(r));
+    await indexInquiries(c, u, [{ ticketId: t.ticketId, playerId: u, category: t.category, status: t.status, lang: t.lang, attachments: t.attachments.length, createdAt: t.createdAt, updatedAt: t.updatedAt }]);
+    return t;
   } },
   // admin
   // マイリプレイ (REQ-MYRP-*, contracts/protocol.md §37)

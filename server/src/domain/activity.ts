@@ -16,13 +16,15 @@ import type { PublicProfile } from './stats.js';
 
 export const ACTIVITY_KINDS = [
   'friend_request', 'friend_accepted', 'rival_week', 'rival_record', 'stable_like', 'team_cheer', 'tournament_result',
-  'gift_arrived', 'team_goal_tier', 'team_goal_week', 'replay_share',
+  'gift_arrived', 'team_goal_tier', 'team_goal_week', 'replay_share', 'inquiry_answered',
 ] as const;
 export type ActivityKind = typeof ACTIVITY_KINDS[number];
-export const ACTIVITY_SCREENS = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new'] as const;
+export const ACTIVITY_SCREENS = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new', 'help_inquiry'] as const;
 export type ActivityScreen = typeof ACTIVITY_SCREENS[number];
 
-interface KindMeta { category: PushCategory; screen: ActivityScreen; collapse: boolean }
+/** `support` (§48.8, a support reply) is not a push category: no push is sent for it. */
+export type ActivityCategory = PushCategory | 'support';
+interface KindMeta { category: ActivityCategory; screen: ActivityScreen; collapse: boolean }
 /** REQ-ACT-003/005/006: the push category (the same split as the push settings), the deep link and whether entries collapse. */
 export const ACTIVITY_META: Record<ActivityKind, KindMeta> = {
   friend_request: { category: 'friends', screen: 'friends', collapse: false },
@@ -36,6 +38,8 @@ export const ACTIVITY_META: Record<ActivityKind, KindMeta> = {
   team_goal_tier: { category: 'friends', screen: 'team_goal', collapse: false },
   team_goal_week: { category: 'friends', screen: 'team_goal', collapse: false },
   replay_share: { category: 'friends', screen: 'replay', collapse: false },
+  // §48.8 (REQ-HELP-015): an operator answered the player's inquiry (link: the inquiry's detail)
+  inquiry_answered: { category: 'support', screen: 'help_inquiry', collapse: false },
 };
 
 /** REQ-ACT-010: `progression.activity` (absent → ACTIVITY_DEFAULTS). */
@@ -205,7 +209,7 @@ export const parseUpTo = (x: string | undefined): number | null => {
 };
 
 /** A raw page item (names not resolved yet; renderActivityItems finishes it). */
-export interface ActivityRawItem { id: string; kind: ActivityKind; category: PushCategory; at: number; count: number; unread: boolean; actors: { playerId: string; name: string | null }[]; vars: Record<string, string>; link: { screen: ActivityScreen; id: string | null } }
+export interface ActivityRawItem { id: string; kind: ActivityKind; category: ActivityCategory; at: number; count: number; unread: boolean; actors: { playerId: string; name: string | null }[]; vars: Record<string, string>; link: { screen: ActivityScreen; id: string | null } }
 
 /** REQ-ACT-001/007: one page, newest first. */
 export function activityPage(m: Pick<Master, 'progression'>, s: PlayerState, now: number, cursor: number | null, limit: number, whatsNew = 0) {
@@ -255,6 +259,7 @@ export const ACTIVITY_TEXT = {
   team_goal_week: '先週の支部の共同目標は{n}段目まで届きました',
   team_goal_week_none: '先週の支部の共同目標は段に届きませんでした',
   replay_share: '{name}さんがリプレイを共有しました',
+  inquiry_answered: 'お問い合わせに運営から返信がありました',
 } as const;
 
 const fill = (t: string, v: Record<string, string>) => t.replace(/\{(\w+)\}/g, (_, k: string) => v[k] ?? '');
@@ -277,6 +282,7 @@ export function activityText(kind: ActivityKind, count: number, vars: Record<str
     case 'team_goal_tier': return fill(T.team_goal_tier, v);
     case 'team_goal_week': return vars.n && vars.n !== '0' ? fill(T.team_goal_week, v) : T.team_goal_week_none;
     case 'replay_share': return fill(T.replay_share, v);
+    case 'inquiry_answered': return T.inquiry_answered;
   }
 }
 

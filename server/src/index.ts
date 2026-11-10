@@ -35,6 +35,7 @@ import { TeamsService, type TeamFeedPage, type TeamGoalView, type TeamLeagueView
 import { stampsProblems, type FeedItem } from './domain/teamFeed.js';
 import { silksEditorProblems } from './domain/silksEditor.js';
 import { photoProblems } from './domain/photoMode.js';
+import { helpProblems } from './domain/help.js';
 import type { TeamSummary } from './domain/teams.js';
 import { EventsService } from './domain/eventService.js';
 import { eventBoardKey, eventCronPlan, validateEvents } from './domain/events.js';
@@ -107,6 +108,7 @@ validateItems(baseMaster); // REQ-ITEM-*: tickets may not reach paid-only banner
 { const sp = stampsProblems(baseMaster); if (sp.length) throw new Error('master/stamps.json: ' + sp.join('; ')); } // REQ-TEAMFEED-002
 { const sp = silksEditorProblems(baseMaster); if (sp.length) throw new Error('master/silks-editor.json: ' + sp.join('; ')); } // REQ-SILK-013
 { const pp = photoProblems(baseMaster); if (pp.length) throw new Error('master/photo.json: ' + pp.join('; ')); } // REQ-PHOTO-013
+{ const hp = helpProblems(baseMaster, undefined, Number(DEFAULT_RULESET.maxWhips)); if (hp.length) throw new Error('master/help.json: ' + hp.join('; ')); } // REQ-HELP-003
 validateEvents(baseMaster, baseMaster.events); // REQ-EVENT-001
 validateLeagueAndWeather(baseMaster); // REQ-LEAGUE-* and per-course climate (REQ-TRACK-003)
 validateUx(baseMaster, new Set(collectItemIds(baseMaster))); // REQ-UXS-*: onboarding, missions, experiments, deletion
@@ -305,6 +307,12 @@ export function makeOpsApi(env: Env): OpsApi | undefined {
       release: (pid, reason, by, now) => call(integ().release!(pid, reason, by, now)),
     },
     deadLetters: makeDeadLetters(env),
+    // REQ-HELP-016: the inquiry index (OpsDO)
+    inquiries: {
+      upsert: (items) => call(ops().inqUpsert!(items)),
+      list: (q) => call(ops().inqList!(q)),
+      forgetPlayer: (pid) => call(ops().inqForget!(pid)),
+    },
   };
 }
 

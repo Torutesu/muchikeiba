@@ -73,6 +73,7 @@ import {
 } from './comeback.js';
 import { claimAllGifts, claimGift, expireGifts, giftBadge, giftBoxView, giftGiver, giftsNeedExpiry, nextGiftWake, type OpsTitleKey } from './giftBox.js';
 import { activityBadge, activityPage, markActivityRead, recordActivity } from './activity.js';
+import { helpBadge, inquiryDetail, inquiryList, markIndexed, markInquiryRead, replyInquiry, submitInquiry, unindexedSummaries, voteHelp, type InquiryInput } from './help.js';
 import { finishTraining, startTraining, trainingDelta, trainingTick, trainingView, useTrainingItem } from './training.js';
 import {
   commitSave, deleteSaved, forgetRecent, myReplaysView, noteRaceForReplays, ownReplayRef, prepareSave, sharedFor, updateSaved, validateReplayTitle,
@@ -315,7 +316,7 @@ export class PlayerService {
   /** REQ-UXS-001/014/032/040: computed sections of GET /v1/player and bootstrap. */
   private extras(s: PlayerState, now: number) {
     const m = this.d.master;
-    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s), commentaryPack: commentaryPackBadge(m, s), accessibility: accessibilityView(s), activity: activityBadge(m, s, now) };
+    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s), commentaryPack: commentaryPackBadge(m, s), accessibility: accessibilityView(s), activity: activityBadge(m, s, now), help: helpBadge(s) };
   }
 
   async view(id: string) {
@@ -1257,6 +1258,56 @@ export class PlayerService {
   }
   /** REQ-ACT-008: mark read up to an id (idempotent). */
   activityRead(id: string, upTo: number | null) { return this.tx(id, null, (s, now) => markActivityRead(this.d.master, s, upTo, now)); }
+
+  // ---- ヘルプセンター (REQ-HELP-*, contracts/protocol.md §48) ----
+  /** REQ-HELP-007: one vote per article (changeable), capped per game day. */
+  helpFeedback(id: string, articleId: string, helpful: boolean) {
+    return this.tx(id, null, (s, now, emit) => voteHelp(this.d.master, s, articleId, helpful, now, emit));
+  }
+  /**
+   * REQ-HELP-009..013: a new inquiry, keyed with the client's key (a retry returns the stored ticket, even after the
+   * attached rows left their windows). The §33 rows are resolved before the transaction (they are read from SQL pages).
+   */
+  async helpInquirySubmit(id: string, input: InquiryInput, idemKey: string | null, lang: Locale = 'ja') {
+    const key = this.requireKey(idemKey);
+    const s = await this.historyState(id);
+    const known = s.idem.find((e) => e.key === key);
+    if (known) return known.result as ReturnType<typeof inquiryDetail>;
+    const prev = (s as { help?: { tickets: { id: string; key: string }[] } }).help?.tickets.find((t) => t.key === key);
+    if (prev) return inquiryDetail(this.d.master, s, prev.id, lang);
+    let rows: Awaited<ReturnType<typeof resolveRefs>> = [];
+    if (input.refs.length) {
+      if (new Set(input.refs).size !== input.refs.length) throw new AppError('BAD_REQUEST', 'refs must be distinct');
+      const p = this.pagers(id, s);
+      rows = await resolveRefs(this.d.master, s, p.ledger, p.gacha, this.d.clock(), input.refs);
+      const missing = rows.find((r) => r.kind === null);
+      if (missing) throw new AppError('NOT_FOUND', `reference ${missing.ref}`);
+    }
+    return this.tx(id, key, (st, now, emit) => submitInquiry(this.d.master, st, input, rows as Exclude<typeof rows[number], { kind: null }>[], key, lang, now, emit));
+  }
+  /** REQ-HELP-014: the player's inquiries, newest first, with the limits. */
+  async helpInquiries(id: string, lang: Locale = 'ja') {
+    const s = await this.load(id);
+    return { ...inquiryList(this.d.master, s, lang, this.d.clock()), unindexed: unindexedSummaries(s) };
+  }
+  async helpInquiry(id: string, ticketId: string, lang: Locale = 'ja') { return inquiryDetail(this.d.master, await this.load(id), ticketId, lang); }
+  helpInquiryRead(id: string, ticketId: string) { return this.tx(id, null, (s) => markInquiryRead(s, ticketId)); }
+  /** REQ-HELP-016: the ops index stored these ticket versions. */
+  async helpInquiryIndexed(id: string, items: { ticketId: string; updatedAt: number }[]) {
+    if (await this.wiped(id)) return { indexed: 0 };
+    return this.tx(id, null, (s) => markIndexed(s, items));
+  }
+  /** REQ-HELP-016: the ops view of one inquiry (who replied; a deleted account is NOT_FOUND). */
+  async adminInquiry(id: string, ticketId: string) {
+    const s = await this.historyState(id);
+    return { playerId: id, ...inquiryDetail(this.d.master, s, ticketId, 'ja', true), unindexed: unindexedSummaries(s) };
+  }
+  /** REQ-HELP-015/017: an operator's reply (once per opKey; never on a deleted account). */
+  async adminInquiryReply(id: string, ticketId: string, content: string, close: boolean, actor: string, opKey: string) {
+    await this.historyState(id);
+    if (await this.wiped(id)) throw new AppError('NOT_FOUND', `inquiry ${ticketId}`);
+    return this.tx(id, null, (s, now, emit) => replyInquiry(this.d.master, s, ticketId, content, close, actor, opKey, now, emit));
+  }
 
   // ---- 購入履歴・コイン履歴・ガチャ履歴 (REQ-HIST-*, contracts/protocol.md §33; read only) ----
   /** REQ-HIST-006: a deleted (wiped) account has no history here; its anonymised legal record is never reachable by player id. */

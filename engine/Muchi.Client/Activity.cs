@@ -22,16 +22,16 @@ namespace Muchi.Client
     {
         public const string FriendRequest = "friend_request", FriendAccepted = "friend_accepted", RivalWeek = "rival_week", RivalRecord = "rival_record",
             StableLike = "stable_like", TeamCheer = "team_cheer", TournamentResult = "tournament_result", GiftArrived = "gift_arrived",
-            TeamGoalTier = "team_goal_tier", TeamGoalWeek = "team_goal_week", ReplayShare = "replay_share";
-        public static readonly string[] All = { FriendRequest, FriendAccepted, RivalWeek, RivalRecord, StableLike, TeamCheer, TournamentResult, GiftArrived, TeamGoalTier, TeamGoalWeek, ReplayShare };
+            TeamGoalTier = "team_goal_tier", TeamGoalWeek = "team_goal_week", ReplayShare = "replay_share", InquiryAnswered = "inquiry_answered";
+        public static readonly string[] All = { FriendRequest, FriendAccepted, RivalWeek, RivalRecord, StableLike, TeamCheer, TournamentResult, GiftArrived, TeamGoalTier, TeamGoalWeek, ReplayShare, InquiryAnswered };
     }
 
     /// <summary>Where an entry leads (`link.screen`).</summary>
     public static class ActivityScreens
     {
         public const string Friends = "friends", Rival = "rival", Stable = "stable", TeamFeed = "team_feed", Tournaments = "tournaments",
-            GiftBox = "gift_box", TeamGoal = "team_goal", Replay = "replay", WhatsNew = "whats_new";
-        public static readonly string[] All = { Friends, Rival, Stable, TeamFeed, Tournaments, GiftBox, TeamGoal, Replay, WhatsNew };
+            GiftBox = "gift_box", TeamGoal = "team_goal", Replay = "replay", WhatsNew = "whats_new", HelpInquiry = "help_inquiry";
+        public static readonly string[] All = { Friends, Rival, Stable, TeamFeed, Tournaments, GiftBox, TeamGoal, Replay, WhatsNew, HelpInquiry };
     }
 
     public sealed class ActivityActor
@@ -41,7 +41,7 @@ namespace Muchi.Client
         internal static ActivityActor Parse(JsonNode o) => new ActivityActor { PlayerId = J.Str(o, "playerId"), Name = J.Str(o, "name") };
     }
 
-    /// <summary>One entry. Count &gt; 1 = collapsed (「12件のいいね」). Category = the push category (friends | events | gifts).</summary>
+    /// <summary>One entry. Count &gt; 1 = collapsed (「12件のいいね」). Category = the push category (friends | events | gifts), or support (a support reply, §48.8: no push).</summary>
     public sealed class ActivityItem
     {
         public string Id, Kind, Category, Text, Screen, LinkId;

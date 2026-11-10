@@ -25,6 +25,7 @@ import localeEnJson from '../../master/locale-en.json';
 import type { CollectionMaster } from './collection.js';
 import collectionJson from '../../master/collection.json';
 import photoJson from '../../master/photo.json';
+import helpJson from '../../master/help.json';
 import { trackSchema, type GoingAptitude, type Going, type Track } from './schemas.js';
 import { AppError } from './errors.js';
 import { loadSkills, type SkillsMaster } from './skills.js';
@@ -397,6 +398,8 @@ export interface Master {
   commentaryPacks?: import('./commentaryPacks.js').CommentaryPacksMaster;
   /** REQ-PHOTO-*: photo mode looks / frames / stamps (master/photo.json; photoMode.ts photoOf falls back to it when absent). */
   photo?: import('./photoMode.js').PhotoMaster;
+  /** REQ-HELP-*: ヘルプセンター articles (master/help.json; help.ts helpOf falls back to it when absent; remote config `help` replaces it). */
+  help?: import('./help.js').HelpMaster;
 }
 
 export const PPM_TOTAL = 1_000_000;
@@ -550,6 +553,7 @@ export function loadMaster(): Master {
     locale: { en: (localeEnJson as unknown as { strings: Record<string, string> }).strings },
     collection: collectionJson as unknown as CollectionMaster,
     photo: photoJson as unknown as import('./photoMode.js').PhotoMaster,
+    help: helpJson as unknown as import('./help.js').HelpMaster,
   };
   cached = m;
   return m;

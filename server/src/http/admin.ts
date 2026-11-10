@@ -13,10 +13,13 @@ import { requireRole, type AdminPrincipal, type AdminRole, type AuditEntry, type
 import { checkGrantLimits, grantSchema, itemIdSchema, TWO_PERSON_REQUIRED, type Grant } from '../ops/support.js';
 import type { ModerationChange, ModerationStatus, RaceIntegrityReport, RaceReport } from '../ops/integrity.js';
 import type { LeaderboardApi, PlayerInvoker } from './app.js';
+import type { PlayerService } from '../domain/service.js';
 import { HISTORY_LIMITS, historyQuery, REF_RE } from '../domain/history.js';
 import { BASE_BANNED_SILKS, bannedMatch, bannedSilksListSchema, bannedSilksProblems, combinedBanned, type BannedSilksList } from '../domain/bannedSilks.js';
 import { VISUALS } from '../domain/visuals.js';
 import type { TournamentsService } from '../domain/tournamentService.js';
+import { INQUIRY_CATEGORIES, type InquiryCategory, type InquirySummary } from '../domain/help.js';
+import { INQUIRY_STATUSES, type InquiryQuery } from '../ops/inquiries.js';
 import { DEAD_LETTER_SOURCES, type DeadLetterApi, type DeadLetterSource, type DeadLetterStatus } from '../ops/deadLetter.js';
 
 const dl = (ctx: AdminContext): DeadLetterApi => {
@@ -68,6 +71,12 @@ export interface OpsApi {
   };
   /** REQ-OPS-041: dead letters (optional so deployments/tests without the owners still boot). */
   deadLetters?: DeadLetterApi;
+  /** REQ-HELP-016: the inquiry index (no text; absent = the inquiry list answers NOT_FOUND). */
+  inquiries?: {
+    upsert(items: InquirySummary[]): Promise<{ stored: number }>;
+    list(q: InquiryQuery): Promise<InquirySummary[]>;
+    forgetPlayer(playerId: string): Promise<{ removed: number }>;
+  };
 }
 
 export interface AdminContext {
@@ -91,6 +100,19 @@ const tours = (ctx: AdminContext) => {
   if (!ctx.tournaments) throw new AppError('NOT_FOUND', 'tournaments are not available');
   return ctx.tournaments;
 };
+const inq = (ctx: AdminContext) => {
+  if (!ctx.ops.inquiries) throw new AppError('NOT_FOUND', 'inquiries are not available');
+  return ctx.ops.inquiries;
+};
+const ticketIdSchema = z.string().regex(/^q_[0-9]{1,9}$/);
+/** REQ-HELP-016: write ticket summaries to the index and tell the player object (best effort: an unindexed ticket is re-sent later). */
+async function reindex(ctx: AdminContext, playerId: string, items: InquirySummary[]) {
+  if (!ctx.ops.inquiries || items.length === 0) return;
+  try {
+    await ctx.ops.inquiries.upsert(items);
+    await ctx.player(playerId).invoke('helpInquiryIndexed', playerId, items.map((x) => ({ ticketId: x.ticketId, updatedAt: x.updatedAt })));
+  } catch (e) { console.error('inquiry index write failed', playerId, (e as Error).message); }
+}
 const comps = (ctx: AdminContext) => {
   if (!ctx.ops.compensations) throw new AppError('NOT_FOUND', 'compensations are not available');
   return ctx.ops.compensations;
@@ -508,6 +530,38 @@ export const adminRoutes: AdminRoute[] = [
     const out = await r.ctx.ops.config.stage(bundle, r.principal.id, `banned silks import: ${list.entries.length} entries`, r.now);
     const before = (active.bundle?.bannedSilks as BannedSilksList | undefined) ?? BASE_BANNED_SILKS;
     return { result: { ...out, entries: list.entries.length, note: 'staged; activate it with POST /v1/admin/config/activations' }, target: `config:${out.version.id}`, before: { entries: before.entries.length, basedOn: active.versionId }, after: { entries: list.entries.length, version: out.version.id } };
+  } },
+
+  // ---- ヘルプセンターの問い合わせ (REQ-HELP-016/017, contracts/protocol.md §48.7) ----
+  { method: 'GET', path: '/v1/admin/inquiries', role: 'viewer', write: false, action: 'inquiry.list', handler: async (r) => {
+    const st = r.query.get('status');
+    const cat = r.query.get('category');
+    if (st && !(INQUIRY_STATUSES as string[]).includes(st)) throw new AppError('BAD_REQUEST', `status must be one of ${INQUIRY_STATUSES.join('|')}`);
+    if (cat && !(INQUIRY_CATEGORIES as readonly string[]).includes(cat)) throw new AppError('BAD_REQUEST', 'unknown category');
+    return { result: { items: await inq(r.ctx).list({ ...(st ? { status: st as InquiryQuery['status'] } : {}), ...(cat ? { category: cat as InquiryCategory } : {}), limit: num(r.query, 'limit', 100) }) } };
+  } },
+  { method: 'GET', path: '/v1/admin/players/:playerId/inquiries/:ticketId', role: 'viewer', write: false, action: 'inquiry.view', handler: async (r) => {
+    const playerId = parse(pid, r.params.playerId);
+    const ticketId = parse(ticketIdSchema, r.params.ticketId);
+    let v: Awaited<ReturnType<PlayerService['adminInquiry']>>;
+    try { v = await r.ctx.player(playerId).invoke('adminInquiry', playerId, ticketId); }
+    catch (e) {
+      // REQ-HELP-018: a deleted account — its rows leave the index (the ticket is gone with the state)
+      if (e instanceof AppError && e.code === 'NOT_FOUND' && e.message === 'account deleted') await r.ctx.ops.inquiries?.forgetPlayer(playerId).catch(() => null);
+      throw e;
+    }
+    const { unindexed, ...ticket } = v;
+    if (unindexed?.length) await reindex(r.ctx, playerId, unindexed);
+    return { result: ticket, target: `player:${playerId}` };
+  } },
+  { method: 'POST', path: '/v1/admin/players/:playerId/inquiries/:ticketId/reply', role: 'operator', write: true, action: 'inquiry.reply', handler: async (r) => {
+    const playerId = parse(pid, r.params.playerId);
+    const ticketId = parse(ticketIdSchema, r.params.ticketId);
+    const b = parse(z.object({ opKey: opKeySchema, content: z.string().trim().min(1).max(8000), close: z.boolean().optional(), reason: z.string() }).strict(), r.body);
+    const out = await r.ctx.player(playerId).invoke('adminInquiryReply', playerId, ticketId, b.content, b.close ?? false, r.principal.id, b.opKey);
+    const { replies, duplicate, ...summary } = out;
+    await reindex(r.ctx, playerId, [summary]);
+    return { result: { ...summary, replies, duplicate }, target: `player:${playerId}`, before: null, after: { ticketId, status: summary.status, replies } };
   } },
 
   { method: 'GET', path: '/v1/admin/reports', role: 'viewer', write: false, action: 'reports.list', handler: async (r) => {

@@ -313,6 +313,17 @@ export const CODE_EN: Record<string, string> = {
   '先週の支部の共同目標は{n}段目まで届きました': 'Last week your branch reached milestone {n} of the weekly goal',
   '先週の支部の共同目標は段に届きませんでした': 'Last week your branch did not reach a milestone of the weekly goal',
   '{name}さんがリプレイを共有しました': '{name} shared a replay',
+  // ヘルプセンター (REQ-HELP-020, §48): the activity entry, inquiry categories and statuses (the help routes answer in the
+  // requested language themselves; these cover the activity list and clients that translate a stored Japanese label)
+  'お問い合わせに運営から返信がありました': 'Support replied to your inquiry',
+  'レース・ムチについて': 'About races and the whip',
+  'アカウント・引き継ぎについて': 'About your account and data transfer',
+  'アカウント削除について': 'About account deletion',
+  'アクセシビリティについて': 'About accessibility',
+  '不具合の報告': 'Report a problem',
+  '受付済み': 'Received',
+  '回答済み': 'Answered',
+  '［削除しました］': '[removed]',
   'プレイヤー': 'Player',
 
   // ---- error details shown to players (REQ-API-004 messages; codes are the contract)

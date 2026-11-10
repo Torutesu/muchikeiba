@@ -1,0 +1,176 @@
+{
+  "_note": "REQ-HELP-006: the help search fold (server help.ts helpFold / helpQueryWords = C# Muchi.Client HelpText.Fold / Words). Regenerate with npm run gen:help-vectors.",
+  "vectors": [
+    {
+      "input": "てんじょう",
+      "fold": "テンジヨウ",
+      "words": [
+        "テンジヨウ"
+      ]
+    },
+    {
+      "input": "テンジョウ",
+      "fold": "テンジヨウ",
+      "words": [
+        "テンジヨウ"
+      ]
+    },
+    {
+      "input": "ﾃﾝｼﾞｮｳ",
+      "fold": "テンジヨウ",
+      "words": [
+        "テンジヨウ"
+      ]
+    },
+    {
+      "input": "天井",
+      "fold": "天井",
+      "words": [
+        "天井"
+      ]
+    },
+    {
+      "input": "ＰＩＴＹ",
+      "fold": "pity",
+      "words": [
+        "pity"
+      ]
+    },
+    {
+      "input": "Pity Exchange",
+      "fold": "pityexchange",
+      "words": [
+        "pity",
+        "exchange"
+      ]
+    },
+    {
+      "input": "ヴァイオリン",
+      "fold": "ブアイオリン",
+      "words": [
+        "ブアイオリン"
+      ]
+    },
+    {
+      "input": "ゔぁいおりん",
+      "fold": "ブアイオリン",
+      "words": [
+        "ブアイオリン"
+      ]
+    },
+    {
+      "input": "コーヒー",
+      "fold": "コヒ",
+      "words": [
+        "コヒ"
+      ]
+    },
+    {
+      "input": "こ～ひ〜",
+      "fold": "コ~ヒ",
+      "words": [
+        "コ~ヒ"
+      ]
+    },
+    {
+      "input": "ｺｰﾋｰ",
+      "fold": "コヒ",
+      "words": [
+        "コヒ"
+      ]
+    },
+    {
+      "input": "10連",
+      "fold": "10連",
+      "words": [
+        "10連"
+      ]
+    },
+    {
+      "input": "10-pull",
+      "fold": "10pull",
+      "words": [
+        "10pull"
+      ]
+    },
+    {
+      "input": "　有償　コイン　",
+      "fold": "有償コイン",
+      "words": [
+        "有償",
+        "コイン"
+      ]
+    },
+    {
+      "input": "ガチャ履歴",
+      "fold": "ガチヤ履歴",
+      "words": [
+        "ガチヤ履歴"
+      ]
+    },
+    {
+      "input": "がちゃりれき",
+      "fold": "ガチヤリレキ",
+      "words": [
+        "ガチヤリレキ"
+      ]
+    },
+    {
+      "input": "ｶﾞﾁｬ",
+      "fold": "ガチヤ",
+      "words": [
+        "ガチヤ"
+      ]
+    },
+    {
+      "input": "ムチ",
+      "fold": "ムチ",
+      "words": [
+        "ムチ"
+      ]
+    },
+    {
+      "input": "むち",
+      "fold": "ムチ",
+      "words": [
+        "ムチ"
+      ]
+    },
+    {
+      "input": "Ａｂｃ１２３",
+      "fold": "abc123",
+      "words": [
+        "abc123"
+      ]
+    },
+    {
+      "input": "キャンセル",
+      "fold": "キヤンセル",
+      "words": [
+        "キヤンセル"
+      ]
+    },
+    {
+      "input": "きゃんせる",
+      "fold": "キヤンセル",
+      "words": [
+        "キヤンセル"
+      ]
+    },
+    {
+      "input": "ﾍﾙﾌﾟ",
+      "fold": "ヘルプ",
+      "words": [
+        "ヘルプ"
+      ]
+    },
+    {
+      "input": "へるぷ　せんたー",
+      "fold": "ヘルプセンタ",
+      "words": [
+        "ヘルプ",
+        "センタ"
+      ]
+    }
+  ]
+}

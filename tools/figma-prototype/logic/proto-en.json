@@ -1209,6 +1209,12 @@
   "カップ名は1〜20文字です（URLは使えません）": "Cup names are 1–20 characters (no URLs)",
   "アカウント削除の手続き中のため、参加できません": "You can't join while your account deletion is pending",
   "{n}着": "{n:ord}",
-  "{n}pt": "{n} pt"
+  "{n}pt": "{n} pt",
+  "_qchat": "---- round 18: 支部の定型チャット (TeamFeed chat mode, REQ-QCHAT-016)",
+  "決まった文だけ（自由入力はありません）": "Set phrases only (no free typing)",
+  "あなたに": "to you",
+  "今日 {n} / {m}": "Today {n} / {m}",
+  "文を選んでください": "Choose a phrase",
+  "この文を送る": "Send this phrase"
  }
 }

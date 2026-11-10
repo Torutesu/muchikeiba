@@ -641,3 +641,30 @@ html[data-color-mode="cvd"] .a11y-swatch .g.crit { background: repeating-linear-
 .rc-label { text-shadow: 0 2px 12px rgba(0, 0, 0, .6); }
 .rc-note, .rc-unit, .rc-moment .label { text-shadow: 0 2px 10px rgba(0, 0, 0, .65); }
 .screen.rc-reduced, .screen.rc-reduced * { transition: none !important; animation: none !important; }
+
+/* ---------------------------------------------------------------- round 18: 支部の定型チャット (quick chat, REQ-QCHAT-016)
+   The same branch screen: phrase rows in the feed (white words, cyan values, a cyan edge when a phrase names me), and the
+   picker in the right panel — letter-spaced category tabs, phrase rows as navy plates, skewed value chips. No text field. */
+.tf-row.qchat .tf-main { font-size: 21px; font-weight: 700; }
+.tf-row.qchat.me { box-shadow: inset 3px 0 0 var(--cyan); padding-left: 14px; }
+.tf-row.qchat.anon .tf-meta { color: var(--text-4); }
+.qc-text { display: inline; line-height: 1.45; }
+.qc-val { color: var(--cyan); }
+.qc-blank { display: inline-block; width: 4.2em; height: .9em; margin: 0 .2em; vertical-align: -0.1em; border-bottom: 2px solid rgba(var(--cyan-rgb), .7); }
+.qc-tabs { display: flex; gap: 8px; }
+.qc-tab, .qc-phrase, .qc-opt { font: inherit; cursor: pointer; border: 0; color: var(--text-2); }
+.qc-tab { flex: 1; min-width: 0; height: 40px; font-size: 15px; font-weight: 700; letter-spacing: .08em; white-space: nowrap; overflow: hidden; background: rgba(var(--navy-rgb), .7); box-shadow: inset 0 -2px 0 rgba(150, 173, 187, .35); }
+.qc-tab.sel { color: var(--white); box-shadow: inset 0 -3px 0 var(--cyan); background: rgba(var(--cyan-rgb), .10); }
+.qc-list { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: rgba(var(--cyan-rgb), .5) transparent; }
+.qc-phrase { flex: none; text-align: left; padding: 10px 18px; font-size: 18px; font-weight: 700; color: var(--white); background: rgba(var(--navy-rgb), .72);
+  box-shadow: inset 0 0 0 1px rgba(150, 173, 187, .28); display: flex; flex-direction: column; gap: 2px; }
+.qc-phrase.sel { box-shadow: inset 3px 0 0 var(--cyan), inset 0 0 0 1px rgba(var(--cyan-rgb), .6); background: rgba(var(--cyan-rgb), .12); }
+.qc-phrase.off { color: var(--text-4); }
+.qc-phrase:hover:not(.off) { filter: brightness(1.12); }
+.qc-why { font-size: 12px; font-weight: 500; color: var(--text-3); letter-spacing: .04em; }
+.qc-slots { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: rgba(var(--cyan-rgb), .5) transparent; }
+.qc-slot-label, .qc-hint { font-size: 13px; font-weight: 500; letter-spacing: .16em; color: var(--cyan); }
+.qc-hint { color: var(--text-3); padding-top: 8px; }
+.qc-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.qc-opt { font-size: 15px; font-weight: 700; padding: 7px 16px; background: rgba(var(--navy-rgb), .75); box-shadow: inset 0 0 0 1px rgba(150, 173, 187, .45); transform: skewX(-10deg); }
+.qc-opt.sel { color: var(--navy); background: var(--cyan); box-shadow: none; }

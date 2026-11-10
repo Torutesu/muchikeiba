@@ -180,7 +180,7 @@ async function setA11y(key, value) {
  * text (< 28 px) is set ×1.15 / ×1.3; headings and big numbers stay. fitText then brings back, towards the standard
  * size and never below it, only what does not fit its box.
  */
-const SCALE_SEL = '.label, .kicker, .caption, .btn > span, .pill, .tag, .toast, .stamina .t, .stamina .s, .whipdots b, .marker .nm, .marker .gap, .marker .wind';
+const SCALE_SEL = '.label, .kicker, .caption, .btn > span, .pill, .tag, .qc-scale, .toast, .stamina .t, .stamina .s, .whipdots b, .marker .nm, .marker .gap, .marker .wind';
 function scaleText(root) {
   const k = textScale();
   if (k === 1 || !root) return;
@@ -5099,6 +5099,14 @@ function RecapShare(v) {
 let tfSelected = 'cheer';
 let tfLastPost = -1e15;
 const TF_INTERVAL = 10_000;
+// round 18 (REQ-QCHAT-016): 支部の定型チャット in the same branch screen — the right panel switches between the stamp
+// palette and the phrase picker (no text field in either); quick chat posts are rows of the same feed.
+let qcCategory = 'greet';
+let qcPhrase = null;
+let qcChosen = {};
+let qcLastPost = -1e15;
+const QC_TABS = [['greet', 'あいさつ'], ['cheer', '応援'], ['team', '支部'], ['race', 'レース'], ['invite', 'さそう']];
+const QC_SLOT_JA = { course: 'コース', horse: '馬', race: 'レース結果', time: 'タイムアタック', cup: 'カップ', player: '支部の仲間' };
 const tfWhen = (at) => { const d = Math.max(0, L.now() - at); return d < 60e3 ? 'たった今' : d < 3600e3 ? `${Math.floor(d / 60e3)}分前` : d < 86400e3 ? `${Math.floor(d / 3600e3)}時間前` : jstDate(at).split(' ')[0]; };
 function tfLine(it, label) {
   if (it.kind === 'goal' && it.goal) return `共同目標「${it.goal.label}」が${it.goal.tier}段目に到達！`;
@@ -5106,40 +5114,66 @@ function tfLine(it, label) {
   return label(it.stampId);
 }
 const tfNode = (tag, cls, text) => { const n = document.createElement(tag); n.className = cls; if (text != null) n.textContent = text; return n; };
-async function TeamFeed() {
-  currentScreen = TeamFeed;
+/**
+ * A phrase as nodes: its words (already in the language of the request — the server builds them) and its values. A cup
+ * name stays as its host typed it (.keep-ja, like §42); course / race / time values come localized from the server; a
+ * katakana horse or member name is romanized in English like every name on the client (REQ-L10N-010). A blank slot is an
+ * empty underlined box (no placeholder characters).
+ */
+function qcNodes(template, slots) {
+  const wrap = tfNode('span', 'qc-text qc-scale');
+  for (const part of String(template ?? '').split(/(\{\w+\})/)) {
+    const m = /^\{(\w+)\}$/.exec(part);
+    if (!m) { if (part) wrap.appendChild(tfNode('span', 'qc-w', part)); continue; }
+    const v = slots[m[1]];
+    if (v == null) { const b = tfNode('span', 'qc-blank'); b.dataset.slot = m[1]; wrap.appendChild(b); continue; }
+    const n = tfNode('span', 'qc-val' + (m[1] === 'cup' ? ' keep-ja typed' : ''), v);
+    n.dataset.slot = m[1];
+    wrap.appendChild(n);
+  }
+  return wrap;
+}
+async function TeamFeed(mode = 'stamp') {
+  const chat = mode === 'chat';
+  currentScreen = () => TeamFeed(mode);
+  const lang = isJa() ? 'ja' : 'en';
   const team = await L.teamDemo();
-  const [cat, res] = await Promise.all([L.stamps(), L.teamFeed()]);
+  const [cat, res, qres] = await Promise.all([L.stamps(), L.teamFeed(null, lang), L.quickChat(lang)]);
   await refresh();
   const items = res.ok ? res.value.items : [];
+  const qc = qres.ok ? qres.value : null;
   const stampOf = (id) => cat.stamps.find((s) => s.id === id);
   const label = (id) => stampOf(id)?.label ?? id;
   if (!stampOf(tfSelected)?.unlocked) tfSelected = cat.stamps.find((s) => s.unlocked)?.id ?? 'cheer';
   const deleting = player.deletion?.status === 'scheduled';
-  Clear('team-feed'); SetArt('Art/home-paddock', false); Shade('left');
-  TopBar(`支部　/　${team.name}`, '応援スタンプ　·　定型スタンプだけ（自由入力はありません）');
-  // ① the feed (newest first)
+  Clear(chat ? 'team-chat' : 'team-feed'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar(`支部　/　${team.name}`, chat ? '定型チャット　·　決まった文だけ（自由入力はありません）' : '応援スタンプ　·　定型スタンプだけ（自由入力はありません）');
+  // ① the feed (newest first): stamps, race results, goal milestones and quick chat phrases
   const feed = Glass('Team feed', 36, 134, 940, 676, undefined, .86);
   feed.classList.add('tf-feed');
   Kicker('フィード', 36, 30, feed);
-  Ghost('支部員のデモ', 700, 34, 204, 50, async () => { L.setClockMs(L.now() + 11_000); await L.teamActivity(); TeamFeed(); }, feed, 'quiet small');
+  Ghost('支部員のデモ', 700, 34, 204, 50, async () => { L.setClockMs(L.now() + 11_000); await L.teamActivity(); TeamFeed(mode); }, feed, 'quiet small');
   Ghost('共同目標', 480, 34, 204, 50, () => show(TeamGoal), feed, 'small').classList.add('tf-goal-link');
   const list = el('tf-list', 0, 112, 940, 556, feed);
   list.dataset.count = items.length;
-  if (!items.length) Txt('まだ何もありません。スタンプで声をかけてみよう', 36, 24, 860, 19, MUTED, list);
+  if (!items.length) Txt(chat ? 'まだ会話はありません。あいさつから始めよう' : 'まだ何もありません。スタンプで声をかけてみよう', 36, 24, 860, 19, MUTED, list);
+  const phraseOf = (id) => qc?.phrases.find((p) => p.id === id);
   for (const it of items) {
     const goal = it.kind === 'goal';
-    const row = tfNode('div', 'tf-row' + (it.kind === 'race' || goal ? ' race' : '') + (goal ? ' goal' : '') + (it.mine ? ' mine' : ''));
+    const q = it.kind === 'qchat' ? it.qchat : null;
+    const row = tfNode('div', 'tf-row' + (it.kind === 'race' || goal ? ' race' : '') + (goal ? ' goal' : '') + (q ? ' qchat' : '') + (q?.mentionsMe ? ' me' : '') + (q?.anon ? ' anon' : '') + (it.mine ? ' mine' : ''));
     row.dataset.seq = it.seq; row.dataset.kind = it.kind; row.dataset.player = it.playerId;
-    row.appendChild(tfNode('div', 'tf-meta', `${goal ? '支部' : it.mine ? 'あなた' : it.displayName}　·　${tfWhen(it.at)}`));
+    if (q) row.dataset.phrase = q.phraseId;
+    row.appendChild(tfNode('div', 'tf-meta qc-scale', `${goal ? '支部' : it.mine ? 'あなた' : it.displayName}　·　${tfWhen(it.at)}${q?.mentionsMe ? '　·　あなたに' : ''}`));
     if (goal) row.addEventListener('click', () => show(TeamGoal));
     const main = tfNode('div', 'tf-main');
-    if (it.kind === 'stamp') { const b = tfNode('span', 'tf-badge', label(it.stampId)); b.dataset.asset = it.stampAsset; main.appendChild(b); }
+    if (q) main.appendChild(qcNodes(phraseOf(q.phraseId)?.qchatTemplate ?? q.qchatText, Object.fromEntries(q.slots.map((s) => [s.name, s.qchatValue]))));
+    else if (it.kind === 'stamp') { const b = tfNode('span', 'tf-badge', label(it.stampId)); b.dataset.asset = it.stampAsset; main.appendChild(b); }
     else main.appendChild(tfNode('span', 'tf-race', tfLine(it, label)));
     row.appendChild(main);
     const foot = tfNode('div', 'tf-foot');
     for (const r of it.reactions) foot.appendChild(tfNode('span', 'tf-react' + (r.mine ? ' mine' : ''), `${label(r.stampId)} ${r.count}`));
-    if (it.kind === 'race' && !it.mine) {
+    if ((it.kind === 'race' || q) && !it.mine) {
       const on = it.myReaction === tfSelected;
       const cheer = tfNode('button', 'tf-cheer' + (on ? ' on' : ''), on ? '応援を取り消す' : `「${label(tfSelected)}」で応援 »`);
       cheer.disabled = deleting;
@@ -5147,23 +5181,29 @@ async function TeamFeed() {
         e.stopPropagation();
         const r = await L.reactToFeed(it.seq, on ? null : tfSelected);
         if (!r.ok) { toast(r.code === 'RATE_LIMITED' ? '少し待ってから応援してください' : r.code === 'DELETION_PENDING' ? 'アカウント削除の手続き中は送れません' : r.message); return; }
-        TeamFeed();
+        TeamFeed(mode);
       });
       foot.appendChild(cheer);
     }
-    if (!it.mine && !goal) { // a goal item is the team's (no author): nothing to mute or report
-      const mute = tfNode('button', 'tf-link', '非表示');
-      mute.addEventListener('click', async (e) => { e.stopPropagation(); const r = await L.muteMember(it.playerId, true); toast(r.ok ? `${it.displayName}さんのスタンプを表示しません（その他から戻せます）` : r.message); TeamFeed(); });
+    if (!it.mine && !goal) { // a goal item is the team's (no author): nothing to mute or report; a former member's phrase: report only
+      if (!q?.anon) {
+        const mute = tfNode('button', 'tf-link', '非表示');
+        mute.addEventListener('click', async (e) => { e.stopPropagation(); const r = await L.muteMember(it.playerId, true); toast(r.ok ? `${it.displayName}さんのスタンプを表示しません（その他から戻せます）` : r.message); TeamFeed(mode); });
+        foot.appendChild(mute);
+      }
       const rep = tfNode('button', 'tf-link', '報告');
-      rep.addEventListener('click', async (e) => { e.stopPropagation(); const r = await L.reportFeed(it.seq, 'spam'); toast(r.ok ? '報告しました。ご協力ありがとうございます' : r.message); TeamFeed(); });
-      foot.appendChild(mute); foot.appendChild(rep);
+      rep.addEventListener('click', async (e) => { e.stopPropagation(); const r = await L.reportFeed(it.seq, 'spam'); toast(r.ok ? '報告しました。ご協力ありがとうございます' : r.message); TeamFeed(mode); });
+      foot.appendChild(rep);
     }
     row.appendChild(foot);
     list.appendChild(row);
   }
-  // ② the stamp palette: every stamp; locked ones say how they unlock (play / pass / direct sale — never gacha)
-  const pal = Glass('Stamp palette', 996, 134, 568, 560, undefined, .86);
-  Kicker('スタンプ', 36, 30, pal);
+  // ② the right panel: stamp palette or phrase picker (a two-way switch, no text field in either)
+  const pal = Glass(chat ? 'Quick chat' : 'Stamp palette', 996, 134, 568, 560, undefined, .86);
+  Kicker(chat ? '定型チャット' : 'スタンプ', 36, 30, pal);
+  const sw = Ghost(chat ? 'スタンプ' : '定型チャット', 328, 22, 204, 50, () => { qcPhrase = null; qcChosen = {}; TeamFeed(chat ? 'stamp' : 'chat'); }, pal, 'small');
+  sw.classList.add('tf-mode');
+  if (chat) return QuickChatPanel(pal, qc, deleting);
   Txt(`${cat.stamps.filter((s) => s.unlocked).length} / ${cat.stamps.length} 解放`, 300, 72, 232, 14, SOFT, pal, { align: 'right', ls: '.12em' });
   const grid = el('tf-grid', 36, 112, 496, 420, pal);
   for (const s of cat.stamps) {
@@ -5196,6 +5236,79 @@ async function TeamFeed() {
   }
   NavBar(4);
 }
+/** The phrase picker (mirrors unity/Assets/Muchi/Game/QuickChatModel.cs): tabs, phrases, the slot values the server accepts. */
+function QuickChatPanel(pal, qc, deleting) {
+  if (!qc) { Txt('支部に入ると定型チャットを使えます', 36, 120, 496, 18, MUTED, pal); NavBar(4); return; }
+  const opts = (slot) => qc.options[slot] ?? [];
+  const available = (p) => p.slots.every((s) => opts(s).length > 0);
+  Txt(`今日 ${qc.usage.postsToday} / ${qc.limits.postsPerDay}`, 36, 72, 240, 14, SOFT, pal, { ls: '.12em', cls: 'qc-usage' });
+  const tabs = el('qc-tabs', 36, 104, 496, 44, pal);
+  for (const [id, ja] of QC_TABS) {
+    const t = tfNode('button', 'qc-tab qc-scale' + (id === qcCategory ? ' sel' : ''), ja);
+    t.dataset.cat = id;
+    t.addEventListener('click', () => { qcCategory = id; TeamFeed('chat'); });
+    tabs.appendChild(t);
+  }
+  const phrases = qc.phrases.filter((p) => p.category === qcCategory);
+  const chosenText = (slot) => opts(slot).find((o) => o.ref === qcChosen[slot])?.qchatValue;
+  const listEl = el('qc-list', 36, 160, 496, 226, pal);
+  for (const p of phrases) {
+    const ok = available(p);
+    const b = tfNode('button', 'qc-phrase' + (p.id === qcPhrase ? ' sel' : '') + (ok ? '' : ' off'));
+    b.dataset.phrase = p.id;
+    b.appendChild(qcNodes(p.qchatTemplate, p.id === qcPhrase ? Object.fromEntries(p.slots.map((s) => [s, chosenText(s)]).filter(([, v]) => v != null)) : {}));
+    if (!ok) b.appendChild(tfNode('small', 'qc-why qc-scale', `選べるものがまだありません（${p.slots.filter((s) => !opts(s).length).map((s) => QC_SLOT_JA[s]).join('・')}）`));
+    b.addEventListener('click', () => {
+      if (!ok) { toast('選べるものがまだありません'); return; }
+      if (qcPhrase !== p.id) qcChosen = {};
+      qcPhrase = p.id;
+      for (const s of p.slots) if (opts(s).length === 1) qcChosen[s] = opts(s)[0].ref; // the only value is chosen already
+      TeamFeed('chat');
+    });
+    listEl.appendChild(b);
+  }
+  // the slot values of the selected phrase (only what the server accepts: own horses, races, records, cups, members)
+  const sel = qc.phrases.find((p) => p.id === qcPhrase && p.category === qcCategory) ?? null;
+  const slotsEl = el('qc-slots', 36, 398, 496, 146, pal);
+  if (!sel) slotsEl.appendChild(tfNode('div', 'qc-hint qc-scale', '文を選んでください'));
+  for (const s of sel?.slots ?? []) {
+    const row = tfNode('div', 'qc-slot');
+    row.dataset.slot = s;
+    row.appendChild(tfNode('div', 'qc-slot-label qc-scale', QC_SLOT_JA[s]));
+    const chips = tfNode('div', 'qc-chips');
+    for (const o of opts(s)) {
+      const c = tfNode('button', 'qc-opt qc-scale' + (qcChosen[s] === o.ref ? ' sel' : '') + (s === 'cup' ? ' keep-ja typed' : ''), o.qchatValue);
+      c.dataset.ref = o.ref;
+      c.addEventListener('click', () => { qcChosen[s] = o.ref; TeamFeed('chat'); });
+      chips.appendChild(c);
+    }
+    row.appendChild(chips);
+    slotsEl.appendChild(row);
+  }
+  // the one filled CTA: 15 s between phrases (the server's limits are the authority)
+  const until = Math.max(qcLastPost + qc.limits.postIntervalMs, qc.usage.nextPostAt);
+  const wait = Math.max(0, until - L.now());
+  const missing = sel ? sel.slots.some((s) => !qcChosen[s]) : true;
+  const reason = deleting ? 'アカウント削除の手続き中は送れません' : qc.usage.postsToday >= qc.limits.postsPerDay ? '今日の定型チャットはここまでです' : missing ? (sel ? '空欄を選んでください' : '文を選んでください') : null;
+  const send = Cta(reason ?? 'この文を送る', 996, 716, 568, async () => {
+    const r = await L.postQuickChat(sel.id, Object.fromEntries(sel.slots.map((s) => [s, qcChosen[s]])));
+    qcLastPost = L.now();
+    if (!r.ok) { toast(r.code === 'RATE_LIMITED' ? '定型チャットは15秒に1回、1日30回までです。同じ文は続けて送れません' : r.code === 'NOT_ELIGIBLE' ? 'この内容では送れません' : r.code === 'DELETION_PENDING' ? 'アカウント削除の手続き中は送れません' : r.message); TeamFeed('chat'); return; }
+    qcPhrase = null; qcChosen = {};
+    TeamFeed('chat');
+  }, undefined, 'tf-cta qc-cta');
+  if (reason) disable(send);
+  else if (wait > 0) {
+    disable(send);
+    const sp = send.querySelector('span');
+    every(250, () => {
+      const w = Math.max(0, until - L.now());
+      if (w <= 0) { send.classList.remove('disabled'); sp.textContent = T('この文を送る'); } else sp.textContent = `あと${Math.ceil(w / 1000)}秒で送れます`;
+    });
+  }
+  NavBar(4);
+}
+const QuickChat = () => TeamFeed('chat');
 
 // ================================================================= round 12: プレゼントボックス (REQ-BOX-*, contracts/protocol.md §26)
 // The same screen as the Unity GiftBoxModel: the box (soonest expiry first) and the 90-day history, one claim per row and
@@ -5298,7 +5411,7 @@ function GiftResult(c) {
 // link per row, mark read up to the newest shown entry on opening. Display + links only: a gift row leads to the gift box,
 // never a claim button. Every value comes from L.activity (the real PlayerService and the same name resolution as the route).
 // ムチ一閃 tone: paddock art, translucent navy panels, letter-spaced cyan labels, one skewed cyan CTA ».
-const ACT_LABEL = { friend_request: 'フレンド', friend_accepted: 'フレンド', rival_week: 'ライバル', rival_record: 'ライバル', stable_like: 'マイ厩舎', team_cheer: '支部', tournament_result: '大会', gift_arrived: 'プレゼント', team_goal_tier: '支部', team_goal_week: '支部', replay_share: 'リプレイ', cup_invited: 'カップ', cup_started: 'カップ', cup_finished: 'カップ', cup_cancelled: 'カップ', recap_ready: '振り返り' };
+const ACT_LABEL = { friend_request: 'フレンド', friend_accepted: 'フレンド', rival_week: 'ライバル', rival_record: 'ライバル', stable_like: 'マイ厩舎', team_cheer: '支部', tournament_result: '大会', gift_arrived: 'プレゼント', team_goal_tier: '支部', team_goal_week: '支部', replay_share: 'リプレイ', cup_invited: 'カップ', cup_started: 'カップ', cup_finished: 'カップ', cup_cancelled: 'カップ', recap_ready: '振り返り', qchat_mention: '支部' };
 const ACT_PAGE = 7;
 const actState = { cursor: null, stack: [] };
 const actGo = (screen, id) => ({
@@ -5810,7 +5923,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, QuickChat, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

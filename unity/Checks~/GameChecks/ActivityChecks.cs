@@ -35,6 +35,10 @@ static class ActivityChecks
 
     public static async Task Run(Action<bool, string> check)
     {
+        // Round 17 integration: every kind the server sends (Round 16 cups / recap, Round 17 ops notice / inquiry answer) has a
+        // label and an icon in the list
+        var unlabelled = ActivityKinds.All.Where(k => !ActivityModel.Labels.ContainsKey(k) || !ActivityModel.Icons.ContainsKey(k)).ToArray();
+        check(unlabelled.Length == 0, "activity: every kind has a label and an icon (missing: " + string.Join(", ", unlabelled) + ")");
         var api = new FakeApi();
         var events = new List<string>();
         var m = new ActivityModel(api, () => true, e => events.Add(e.Name), () => 1);

@@ -2094,3 +2094,97 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 - `Muchi.Client`：`AccessibilitySettings`（`Parse`・`ToJson`・`Defaults`、知らない値は既定値）、`ApiClient.GetAccessibilityAsync`・`SetAccessibilityAsync`、`PlayerView.Accessibility`、`AccessibilityTokens`（トークンの表、`Color(mode, token)`）、`TextScale`（`Factor`・`Px`）、`MotionPolicy`、`FlashLimiter`、`WhipHold`。
 - `Muchi.Game`：`AccessibilityModel`（端末の写し・未送信の再送・`Changed` イベント・画面が結ぶ値 `TextScale`／`Palette`／`Motion`／`Haptics`／`Subtitles`／`OneHanded`／`WhipInput`・設定画面の行 `Rows()`・`ApplyTo(RaceInput)`）、`RaceInput.WhipMode`・`SetWhipHeld`・`Collect(RaceSim, slot)`。
 - 画面が守ること：docs/handoff-codex-round15-accessibility.md。
+
+## 47. 通報とブロック管理（REQ-RPT-001〜020、`server/src/domain/reports.ts`・`server/src/domain/blocks.ts`・`server/src/ops/playerReports.ts`、C# `Reports.cs`・`Muchi.Game.ReportModel`・`Muchi.Game.BlockListModel`）
+ほかのプレイヤーの名前・文・ふるまいを運営に知らせる「通報」と、自分で相手を見えなくする「ブロック」の管理。**通報は運営の審査の列に入るだけ**で、通報の数だけで誰かを隠したり罰したりはしない（REQ-OPS-034 と同じ考え方。通報を武器にできない）。コイン・アイテムは動かない（E番号なし）。
+
+### 47.1 ブロックの一覧は1つ（REQ-RPT-010）
+- ブロックの一覧は**支部フィードのミュートの一覧**（`PlayerState.teamFeed.muted`、REQ-TEAMFEED-006、REQ-RIVAL-011）そのもの。2つ目の一覧は作らない。支部フィードのミュート（`PUT /v1/teams/me/feed/mutes`）、ライバルのブロック（`POST /v1/rival/block`）、通報の「ブロックもする」、ブロック管理の画面はどれも同じ一覧を変える。上限は `stamps.config.muteMax`（既定 100）。上限を超えると 409 `TEAM_LIMIT`（既存のコード）。
+- ブロックが効くところ（ブロックした人から見て、相手を）：
+
+| 機能 | ブロックしたとき |
+|---|---|
+| アクティビティ（§40） | 相手からの項目を作らない。前の項目も一覧と未読の数から外す |
+| 支部フィード（§17） | 相手のスタンプ・応援が見えない。相手の応援で通知が来ない |
+| ライバル（§28） | 組まれない。今週の組は解除 |
+| マイ厩舎（§25） | 相手の厩舎を開けない・いいねできない（おすすめにも出ない）。相手も自分の厩舎を開けない・いいねできない（**Round 17 で追加**） |
+| 殿堂（§34） | お互いに見られない |
+| リプレイ（§37） | 相手の公開リプレイを見られない。相手も自分のを見られない |
+| 大会・カップ（§20） | 同じレースに出ることはある（公平のため、組み合わせはブロックで変えない）。相手の名前は出るが、相手からの通知・応援は来ない |
+
+- 相手には**ブロックしたことを知らせない**（見えない理由はいつも「見られません」・404 で、ブロックとは言わない）。
+
+### 47.2 `GET /v1/blocks`（要認証、読むだけ）
+```json
+{ "blocked": [ { "playerId": "p_9", "name": "ハヤテ" } ], "count": 1, "max": 100,
+  "effects": [ { "feature": "activity", "text": "相手からのお知らせが届かなくなります" } ] }
+```
+- 新しくブロックした順。名前は公開プロフィール（ディレクトリ）から今の名前を引く。退会・BAN・見つからない相手は中立の名前「プレイヤー」（§40 と同じ）。プレイヤーが付けた名前なので訳さない。
+- `effects` は上の表の各行の短い説明（日本語で作り、英語は応答の境界で訳す）。`feature` は `activity`・`team_feed`・`rival`・`stable`・`hall`・`replays`・`cups`。
+
+### 47.3 `PUT /v1/blocks/:playerId`・`DELETE /v1/blocks/:playerId`（要認証、何度送っても同じ）
+- PUT でブロック、DELETE で解除。本文なし。→ `{ "playerId": "p_9", "blocked": true, "count": 1, "max": 100 }`。
+- 自分自身は 400。すでにその状態なら何も変えず同じ応答（KPI も出ない）。ライバルの組の解除は次の同期（`rivalSync`）で起きる（REQ-RIVAL-011 のとおり）。
+
+### 47.4 `POST /v1/reports`（要認証）
+```json
+{ "targetId": "p_9", "category": "name", "source": "profile",
+  "content": { "kind": "display_name" }, "note": "（任意・短い補足）", "alsoBlock": true }
+```
+- `category`：`name`（不適切な名前）・`text`（不適切なキャプション・文）・`cheating`（不正の疑い）・`harassment`（嫌がらせ）・`other`（その他）。
+- `source`（どこから通報したか）：`profile`・`friends`・`team_feed`・`stable`・`hall`・`replay`・`photo`・`cup_lobby`。
+- `content.kind` と組み合わせ：
+
+| kind | 何を写すか（スナップショット） | 必要なキー | 使える category |
+|---|---|---|---|
+| `player` | 表示名 | — | `harassment`・`other` |
+| `display_name` | 表示名 | — | `name`・`harassment`・`other` |
+| `horse_name` | その馬の名前 | `horseId` | `name`・`harassment`・`other` |
+| `stable_name` | マイ厩舎の名前 | — | `name`・`harassment`・`other` |
+| `replay_title` | 公開しているリプレイのタイトル | `raceId` | `text`・`harassment`・`other` |
+| `photo_caption` | 写真のキャプション | `photoId` | `text`・`harassment`・`other` |
+| `race` | 表示名とレース id | `raceId` | `cheating`・`harassment`・`other` |
+
+- `note`：任意。NFKC・前後の空白を落として `reports.noteMaxChars`（既定 100）文字まで、制御文字は不可（超えたら 400）。**訳さない**（運営だけが読む。プレイヤーの文と同じ扱い）。
+- **スナップショット**：サーバーが**通報を受けた時点で**相手の状態から写す（端末が送る文は信じない）：表示名・対象の文（名前・タイトル・キャプション）・レース id・写した時刻。あとで相手が名前を変えても、運営は通報された文を見られる。対象が無い（馬がいない・リプレイが非公開・写真が無い・相手が退会）なら 404。
+- `cheating` は、通報した人がそのレースに出ていたときだけ（レースの部屋に問い合わせる、`POST /v1/race/:raceId/report` と同じ確認）。出ていなければ 403 `NOT_ELIGIBLE`。受け付けるとそのレースのリプレイは保留（`reported`、REQ-OPS-001）になり、運営は §47.7 からリプレイと検証の結果を開ける。
+- **回数の制限**：1人1ゲーム日（04:00 JST）に `reports.perDay`（既定 10）件、同じ相手へは `reports.perTargetPerDay`（既定 2）件まで。超えたら 429 `RATE_LIMITED`。削除予定中のアカウントからは 409 `DELETION_PENDING`。自分自身は 400。
+- **まとめる**：同じ相手・同じ対象（kind と horseId／raceId／photoId）・同じ写しの文で、まだ審査中の通報があれば、新しく作らずにその通報に通報者を足す（数と重みを足す）。同じ人が同じものをもう一度通報しても1回と数える（回数の制限は使う）。
+- `alsoBlock: true` なら同じ処理でブロックも行う（§47.3 と同じ一覧）。
+- 応答：`{ "received": true, "blocked": true, "remainingToday": 9 }`。**まとめたかどうか・何人が通報したかは返さない**。
+- **通報した人は相手に知らされない**：相手の画面・API・通知のどこにも通報者・通報の有無を出さない。運営の注意（§47.7 `warn`）も「報告がありました」とだけ言い、誰からかは言わない。
+
+### 47.5 `GET /v1/reports/options`（要認証、読むだけ）
+通報シートの中身：`{ "categories": [ { "id": "name", "label": "不適切な名前", "kinds": ["display_name", "horse_name", "stable_name"] } ], "noteMaxChars": 100, "remainingToday": 10, "enabled": true }`。`label` は英語で訳す。
+
+### 47.6 設定（`progression.reports`、起動時とリモート設定で検査、REQ-RPT-015）
+`{ "enabled": true, "perDay": 10, "perTargetPerDay": 2, "noteMaxChars": 100, "minResolved": 5, "lowSharePermille": 500, "lowWeight": 500, "veryLowSharePermille": 800, "veryLowWeight": 250, "resolvedKeepDays": 365 }`。範囲：`perDay` 1〜50、`perTargetPerDay` 1〜`perDay`、`noteMaxChars` 0〜200（0 = 補足なし）、`minResolved` 1〜100、`lowSharePermille` 1〜1000 で `veryLowSharePermille` 以下、重み 1〜1000 で `veryLowWeight` ≤ `lowWeight`、`resolvedKeepDays` 30〜3650。無ければこの既定値。
+
+### 47.7 運営の審査（ops console、`/v1/admin/player-reports`、監査つき）
+- `GET /v1/admin/player-reports?status=open|resolved&category=&kind=&targetId=&limit=`（viewer）：審査中は**重みの合計**（`score`、千分率）の大きい順、次に新しい順。各行：id・相手・category ごとの数・kind・写し・通報者の数・重みの合計・最初と最後の時刻・状態。
+- `GET /v1/admin/player-reports/:id`（viewer）：写し（通報された時点の文）、通報者ごとの時刻・category・source・重み・補足、相手の今の不正対策の状態。`cheating` は `race: { raceId, replay: "/v1/admin/replays/<raceId>", integrity: { status, events } }`（そのレースの容疑者・ズレの記録＝検証の結果）。
+- `POST /v1/admin/player-reports/:id/action`（operator、`ban` は admin）`{ "action": "dismiss|warn|rename|hide|ban", "reason": "…", "until": null }`：
+  - `dismiss`：問題なしで閉じる。
+  - `warn`：相手のアクティビティに「運営からのお願い」（`ops_notice`、§40、通報者は出さない）を1件。
+  - `rename`：既存の名前のリセット（`/v1/admin/players/:id/name-reset` と同じ処理、NG リストの名前に戻す流れ）。`display_name`→表示名、`horse_name`→その馬、`stable_name`→厩舎名。ほかの kind は 400。
+  - `hide`：`replay_title` はそのリプレイを非公開にしてタイトルを消し、運営の印（`opsHidden`）で再公開できなくする。`photo_caption` はキャプションを消す。ほかの kind は 400。
+  - `ban`：既存の BAN（`integrity.ban`、`until` = null で無期限）。
+  - どれも1回だけ（閉じた通報に送ると 409 `CONFLICT`）。監査ログに前後の状態を残す（REQ-OPS-010）。
+- **通報者の重み**（悪用対策、簡単で説明できる決まり）：通報者ごとに審査済みの数（`dismiss` と、それ以外の対応）を数える。審査済みが `minResolved` 件以上で、`dismiss` の割合が `veryLowSharePermille`（80%）以上なら重み `veryLowWeight`（0.25）、`lowSharePermille`（50%）以上なら `lowWeight`（0.5）、それ以外は 1。重みは通報を受けた時点のものを記録し、並び順（`score`）にだけ使う。**重みが低くても通報は消さない**し、重みが高くても自動で処罰しない。
+
+### 47.8 アカウント削除と保存（REQ-RPT-016）
+- 削除の手順に `reports` の段を足す（`replays` の後、`finalize` の前）。**削除した人が出した通報**は通報者を `deleted` に置き換えて補足を消し（匿名化）、重みの記録も消す。通報そのもの（写し・数）は残す。
+- **削除した人についての通報**は残す：既存の決まり（通報されたレースのリプレイは運営が対応するまで残す REQ-OPS-001a、不正対策の記録と通報の列は削除の手順で消さない REQ-OPS-034）と同じく、審査中のものは運営が閉じるまで残り、相手に `targetDeleted` の印が付く（`rename`・`warn`・`hide` は 409、`dismiss`・`ban` は可）。閉じた通報は `resolvedKeepDays`（既定 365 日）後に消す（通報を受けるたびに古いものを少しずつ）。docs/planning/03-legal-risk.md「通報とブロック」。
+
+### 47.9 KPI
+| イベント | 送り手 | s1 | s2 | s3 |
+|---|---|---|---|---|
+| `report_submit` | サーバー（受け付けた通報ごと） | category | kind | source |
+| `block_add` | サーバー（一覧に増えたとき） | どこから（`blocks`・`report`・`team_feed`・`rival`） | — | — |
+| `block_remove` | サーバー（一覧から消えたとき） | どこから（`blocks`・`team_feed`） | — | — |
+相手の id・補足は入れない。クエリは `docs/ops/kpi-queries.md`「通報とブロック」。
+
+### 47.10 クライアント
+- `Muchi.Client`：`ReportCategories`・`ReportContentKinds`・`ReportSources`、`ReportOptions`・`ReportResult`・`BlockList`、`ApiClient.GetReportOptionsAsync`・`SubmitReportAsync`・`GetBlocksAsync`・`BlockAsync`・`UnblockAsync`。
+- `Muchi.Game`：`ReportModel`（通報シート：理由の選択・補足の文字数・ブロックもする・送信中の二重送信を防ぐ・オフライン・結果の文）、`BlockListModel`（一覧・解除の確認・効く機能の説明・オフライン）。
+- 画面が守ること：docs/handoff-codex-round17-reports.md。

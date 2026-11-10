@@ -4584,6 +4584,8 @@ async function CupLobby(cupId) {
     if (e.horseName) cupTyped(Txt(e.horseName, 0, 34, 250, 13, MUTED, row, { nowrap: true }));
     const badge = e.withdrawn ? ['棄権', 'warn'] : e.playerId === c.hostId ? ['主催', 'gold'] : e.playerId === player?.id ? ['あなた', 'cyan'] : null;
     if (badge) Pills([badge], 260, 8, 100, row);
+    // §47 (Round 17 integration): anyone else in the lobby can be reported from here (source cup_lobby); names stay as typed
+    if (e.playerId !== player?.id) TextLink('通報', 270, 30, 90, () => ReportSheet({ playerId: e.playerId, name: e.displayName, kind: 'display_name', source: 'cup_lobby' }), row).classList.add('cup-report');
     Hair(0, 63, 360, row);
   });
   if (c.code) {

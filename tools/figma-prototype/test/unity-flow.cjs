@@ -527,6 +527,11 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await page.locator('.screen.in .cup-invite-send').click(); await page.waitForTimeout(500);
     await page.locator('.screen.in .cup-demo-fill').click(); await page.waitForTimeout(600); await waitIn('.cup-start:not(.disabled)');
     await shot('cup-lobby-ready', 400);
+    // §47 (Round 17 integration): a cup mate can be reported from the lobby (source cup_lobby, the name reasons)
+    await page.locator('.screen.in .cup-report').first().click(); await waitIn('.rpt-sheet');
+    assert.equal(await page.locator('.screen.in .rpt-sheet').getAttribute('data-source'), 'cup_lobby');
+    assert.deepEqual(await page.locator('.screen.in .rpt-sheet .rpt-reason').evaluateAll((els) => els.map((e) => e.dataset.reason)), ['name', 'harassment', 'other']);
+    await page.locator('.screen.in .sheet [data-label="閉じる"]').click(); await page.waitForTimeout(300);
     for (let i = 0; i < 3; i++) {
       await page.locator('.screen.in .cup-start').click();
       await waitScreen(i < 2 ? 'cup-lobby' : 'cup-standings', 30000); await page.waitForTimeout(400);

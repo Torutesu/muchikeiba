@@ -11,8 +11,10 @@ import { jstMonthKey } from './time.js';
 import { leagueTick, newLeague, teamLeagueView, type LeagueState } from './league.js';
 import {
   feedForget, feedGoal, feedPage, feedPost, feedRace, feedReact, feedReport, newFeed, type FeedItem, type FeedRace, type ReportReason, type TeamFeedState,
-  type stampCatalog,
+  type stampCatalog, qchatLeft, qchatPost, qchatSetBlocks, qchatUsage,
 } from './teamFeed.js';
+import { slotValue, type QChatOption, type QChatSlotInput, type QSlot, type playerQchatOptions } from './quickChat.js';
+import type { Locale } from '../i18n/locale.js';
 import {
   goalContribute, goalForget, goalMemberLeft, goalMembersChanged, goalPayStep, goalRoll, goalTeamView, goalUnpaid, newGoalState, teamGoalConfig, weekEndMs,
   type GoalClose, type GoalContribution, type GoalCounted, type TeamGoalState, type playerGoalView,
@@ -56,9 +58,15 @@ export interface TeamPort {
   // REQ-TEAMFEED-*: the feed lives in the team object (members only, except forget)
   feedPost(teamId: string, playerId: string, stampId: string): Promise<FeedItem>;
   feedRace(teamId: string, playerId: string, race: FeedRace): Promise<FeedItem | null>;
-  feedReact(teamId: string, playerId: string, seq: number, stampId: string | null): Promise<{ ownerId: string; isNew: boolean; kind: FeedItem['kind'] }>;
+  feedReact(teamId: string, playerId: string, seq: number, stampId: string | null): Promise<{ ownerId: string; isNew: boolean; kind: FeedItem['kind']; phraseId?: string | null }>;
   feedReport(teamId: string, playerId: string, seq: number): Promise<{ ownerId: string; first: boolean }>;
-  feedPage(teamId: string, viewer: string, muted: string[], before: number | null, limit: number | null): Promise<TeamFeedPage>;
+  /** `locale` (REQ-QCHAT-009): quick chat items are rendered in the viewer's language. Also refreshes the viewer's block copy. */
+  feedPage(teamId: string, viewer: string, muted: string[], before: number | null, limit: number | null, locale?: Locale): Promise<TeamFeedPage>;
+  // REQ-QCHAT-*: quick chat posts live in the same feed
+  qchatPost(teamId: string, playerId: string, phraseId: string, slots: QSlot[], muted: string[]): Promise<QchatPostResult>;
+  /** The members a phrase may name (no block relation either way) and the viewer's usage today. */
+  qchatMembers(teamId: string, viewer: string, muted: string[], locale: Locale): Promise<{ player: QChatOption[]; usage: ReturnType<typeof qchatUsage> }>;
+  qchatBlocks(teamId: string, playerId: string, muted: string[]): Promise<unknown>;
   /** REQ-UXS-040: removes a deleted player's items and reactions (no membership needed). Also their team goal contribution (REQ-TGOAL-006). */
   feedForget(teamId: string, playerId: string): Promise<{ removed: number }>;
   // REQ-TGOAL-*: the weekly goal lives in the team object
@@ -90,7 +98,16 @@ export interface TeamPlayers {
   cheerPush(uid: string, fromId: string, fromName: string, ref?: string): Promise<unknown>;
   /** REQ-TGOAL-008: today's units sent and the last paid week. */
   goalPlayerView(uid: string): Promise<ReturnType<typeof playerGoalView>>;
+  // REQ-QCHAT-*
+  qchatOptions(uid: string, locale: Locale): Promise<ReturnType<typeof playerQchatOptions>>;
+  qchatCheck(uid: string, phraseId: string, slots: QChatSlotInput): Promise<{ teamId: string; displayName: string; muted: string[]; slots: QSlot[]; mention: boolean }>;
+  /** After the team stored it: the KPI row (`qchat_post` / `qchat_react`). */
+  qchatNote(uid: string, kind: 'post' | 'react', a: string, b: string, teamId: string, n: number): Promise<unknown>;
+  /** REQ-QCHAT-012: the named member's activity entry (`ref` = `qchat:{teamId}:{seq}`). */
+  qchatMention(uid: string, fromId: string, fromName: string, ref: string): Promise<unknown>;
 }
+
+export interface QchatPostResult { seq: number; at: number; phraseId: string; mention: string | null }
 
 export interface TeamDirectoryPort {
   search(query: string, limit: number): Promise<TeamSummary[]>;
@@ -306,21 +323,53 @@ export class TeamsService {
     const r = await this.teams.feedReact(info.teamId, uid, seq, stampId);
     if (r.isNew && stampId !== null) {
       await this.players.stampPosted(uid, stampId, 'reaction', info.teamId, `react:${info.teamId}:${seq}`).catch(() => undefined);
+      // REQ-QCHAT-011: a new reaction to a quick chat post
+      if (r.kind === 'qchat') await this.players.qchatNote(uid, 'react', stampId, r.phraseId ?? '', info.teamId, 0).catch(() => undefined);
       if (r.kind === 'race' && r.ownerId !== uid) await this.players.cheerPush(r.ownerId, uid, info.displayName, `react:${info.teamId}:${seq}`).catch(() => undefined);
     }
     return { teamId: info.teamId, seq, myReaction: stampId };
   }
 
   /** REQ-TEAMFEED-005/006: a page of my team's feed (newest first), muted members left out. */
-  async feed(uid: string, before: number | null, limit: number | null) {
+  async feed(uid: string, before: number | null, limit: number | null, locale: Locale = 'ja') {
     const v = await this.players.feedViewer(uid, before === null);
     if (!v.teamId) throw new AppError('NOT_IN_TEAM');
-    return { teamId: v.teamId, ...(await this.teams.feedPage(v.teamId, uid, v.muted, before, limit)), muted: v.muted };
+    return { teamId: v.teamId, ...(await this.teams.feedPage(v.teamId, uid, v.muted, before, limit, locale)), muted: v.muted };
   }
 
   mutes(uid: string) { return this.players.feedMutes(uid); }
-  /** REQ-TEAMFEED-006: mute (block) / unmute a member; applies to the feed and to cheer pushes. */
-  mute(uid: string, target: string, muted: boolean) { return this.players.feedMute(uid, target, muted); }
+  /**
+   * REQ-TEAMFEED-006: mute (block) / unmute a member; applies to the feed and to cheer pushes. REQ-QCHAT-007: the branch's
+   * copy of the list is refreshed at once (best effort: the next feed read refreshes it again).
+   */
+  async mute(uid: string, target: string, muted: boolean) {
+    const r = await this.players.feedMute(uid, target, muted);
+    const st = await this.players.state(uid).catch(() => null);
+    if (st?.teamId) await this.teams.qchatBlocks(st.teamId, uid, r.muted).catch(() => undefined);
+    return r;
+  }
+
+  // ---------------------------------------------------------------- quick chat (REQ-QCHAT-*, protocol §52)
+
+  /** REQ-QCHAT-008: phrases in my language and the values a post would accept (members only when in a branch). */
+  async quickChat(uid: string, locale: Locale = 'ja') {
+    const { muted, ...v } = await this.players.qchatOptions(uid, locale);
+    if (!v.teamId || !v.enabled) return { ...v, usage: { postsToday: 0, mentionsToday: 0, nextPostAt: this.clock() } };
+    const t = await this.teams.qchatMembers(v.teamId, uid, muted, locale);
+    return { ...v, options: { ...v.options, player: t.player }, usage: t.usage };
+  }
+
+  /**
+   * REQ-QCHAT-003..005/011/012: post a phrase — the player's object checks the slots, the branch stores it with its limits,
+   * then the KPI row and (for a mention phrase) the named member's activity entry, both best effort.
+   */
+  async postQuickChat(uid: string, phraseId: string, slots: QChatSlotInput) {
+    const info = await this.players.qchatCheck(uid, phraseId, slots);
+    const r = await this.teams.qchatPost(info.teamId, uid, phraseId, info.slots, info.muted);
+    await this.players.qchatNote(uid, 'post', phraseId, info.mention ? 'mention' : '', info.teamId, info.slots.length).catch(() => undefined);
+    if (r.mention) await this.players.qchatMention(r.mention, uid, info.displayName, `qchat:${info.teamId}:${r.seq}`).catch(() => undefined);
+    return { teamId: info.teamId, seq: r.seq, at: r.at, phraseId };
+  }
 
   /** REQ-TEAMFEED-007: report an item: hidden for me, support flag on its owner. */
   async report(uid: string, seq: number, reason: ReportReason) {
@@ -399,8 +448,8 @@ export class TeamCore {
     assertMay(this.t, actor, 'approve');
     return removeRequest(this.t, applicant);
   }
-  leave(playerId: string) { this.goalTick(); const r = leave(this.t, this.cfg, playerId, this.clock()); goalMemberLeft(this.goal, playerId); return r; }
-  kick(actor: string, target: string) { this.goalTick(); kick(this.t, this.cfg, actor, target, this.clock()); goalMemberLeft(this.goal, target); }
+  leave(playerId: string) { this.goalTick(); const r = leave(this.t, this.cfg, playerId, this.clock()); goalMemberLeft(this.goal, playerId); qchatLeft(this.feed, playerId); return r; }
+  kick(actor: string, target: string) { this.goalTick(); kick(this.t, this.cfg, actor, target, this.clock()); goalMemberLeft(this.goal, target); qchatLeft(this.feed, target); }
   setRole(actor: string, target: string, role: 'officer' | 'member') { setRole(this.t, this.cfg, actor, target, role); }
   transfer(actor: string, target: string) { transfer(this.t, actor, target); }
   update(actor: string, patch: { announcement?: string; joinPolicy?: JoinPolicy; emblem?: Emblem }) { updateTeam(this.master(), this.cfg, this.t, actor, patch); }
@@ -434,9 +483,36 @@ export class TeamCore {
   }
   feedReact(playerId: string, seq: number, stampId: string | null) { this.member(playerId); return feedReact(this.master(), this.feed, seq, playerId, stampId, this.clock()); }
   feedReport(playerId: string, seq: number) { this.member(playerId); return feedReport(this.master(), this.feed, seq, playerId, this.clock()); }
-  feedPage(viewer: string, muted: string[], before: number | null, limit: number | null) {
+  feedPage(viewer: string, muted: string[], before: number | null, limit: number | null, locale: Locale = 'ja') {
     this.member(viewer);
-    return feedPage(this.master(), this.feed, viewer, muted, new Map(this.t.members.map((x) => [x.playerId, x.displayName])), before, limit);
+    qchatSetBlocks(this.master(), this.feed, viewer, muted); // REQ-QCHAT-007: the viewer's block copy
+    return feedPage(this.master(), this.feed, viewer, muted, this.names(), before, limit, locale, this.t.id, this.clock());
+  }
+  private names() { return new Map(this.t.members.map((x) => [x.playerId, x.displayName])); }
+
+  // REQ-QCHAT-*
+  qchatPost(playerId: string, phraseId: string, slots: QSlot[], muted: string[]): QchatPostResult {
+    const mm = this.member(playerId);
+    qchatSetBlocks(this.master(), this.feed, playerId, muted);
+    const r = qchatPost(this.master(), this.feed, { playerId, displayName: mm.displayName }, new Set(this.t.members.map((x) => x.playerId)), phraseId, slots, this.clock());
+    return { seq: r.item.seq, at: r.item.at, phraseId, mention: r.mention };
+  }
+  qchatMembers(viewer: string, muted: string[], locale: Locale) {
+    this.member(viewer);
+    qchatSetBlocks(this.master(), this.feed, viewer, muted);
+    const names = this.names();
+    const blocks = this.feed.qchat?.blocks ?? {};
+    const mine = new Set(muted);
+    const player = this.t.members.filter((x) => x.playerId !== viewer && !mine.has(x.playerId) && !(blocks[x.playerId] ?? []).includes(viewer))
+      .map((x) => ({ ref: x.playerId, qchatValue: slotValue(this.master(), { name: 'player', ref: x.playerId }, locale, names) }))
+      .sort((a, b) => (a.qchatValue < b.qchatValue ? -1 : a.qchatValue > b.qchatValue ? 1 : 0));
+    return { player, usage: qchatUsage(this.master(), this.feed, viewer, this.clock()) };
+  }
+  /** REQ-QCHAT-007: a member's block copy (ignored for a non-member). */
+  qchatBlocks(playerId: string, muted: string[]) {
+    if (!this.isMember(playerId)) return { updated: false };
+    qchatSetBlocks(this.master(), this.feed, playerId, muted);
+    return { updated: true };
   }
   feedForget(playerId: string) { this.goalForget(playerId); return feedForget(this.feed, playerId); }
 
@@ -546,7 +622,10 @@ export class MemoryTeams implements TeamPort, TeamDirectoryPort, TeamBoardPort {
   async feedRace(teamId: string, p: string, race: FeedRace) { return this.cores.has(teamId) ? this.run(teamId, (c) => c.feedRace(p, race)) : null; }
   feedReact(teamId: string, p: string, seq: number, stampId: string | null) { return this.run(teamId, (c) => c.feedReact(p, seq, stampId)); }
   feedReport(teamId: string, p: string, seq: number) { return this.run(teamId, (c) => c.feedReport(p, seq)); }
-  feedPage(teamId: string, viewer: string, muted: string[], before: number | null, limit: number | null) { return this.run(teamId, (c) => c.feedPage(viewer, muted, before, limit)); }
+  feedPage(teamId: string, viewer: string, muted: string[], before: number | null, limit: number | null, locale: Locale = 'ja') { return this.run(teamId, (c) => c.feedPage(viewer, muted, before, limit, locale)); }
+  qchatPost(teamId: string, p: string, phraseId: string, slots: QSlot[], muted: string[]) { return this.run(teamId, (c) => c.qchatPost(p, phraseId, slots, muted)); }
+  qchatMembers(teamId: string, viewer: string, muted: string[], locale: Locale) { return this.run(teamId, (c) => c.qchatMembers(viewer, muted, locale)); }
+  async qchatBlocks(teamId: string, p: string, muted: string[]) { return this.cores.has(teamId) ? this.run(teamId, (c) => c.qchatBlocks(p, muted)) : { updated: false }; }
   async feedForget(teamId: string, p: string) { return this.cores.has(teamId) ? this.run(teamId, (c) => c.feedForget(p)) : { removed: 0 }; }
   // REQ-TGOAL-* (pushes for milestones are sent by the caller in tests, by TeamDO in production)
   async goalContribute(teamId: string, c: GoalContribution) {

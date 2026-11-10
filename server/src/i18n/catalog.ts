@@ -182,6 +182,11 @@ export const ID_KEYS = new Set(['id', 'key', 'voiceName', 'asset', 'assetKey', '
  * looked up, even when the name happens to equal a table entry (a player called 「決勝」 stays 「決勝」, QA R11).
  */
 export const PLAYER_TEXT_KEYS = new Set(['displayName', 'teamName', 'plateName', 'ownerName', 'opponentName', 'inviterName', 'inviteeName', 'fromName', 'byName', 'anonName', 'rivalName', 'horseName', 'replayTitle', 'caption', 'cupName', 'hostName']);
+/**
+ * REQ-QCHAT-009/013: quick chat texts are built in the viewer's language by the domain (the phrase pair plus player-sourced
+ * values that are never translated), so the boundary leaves them as they are.
+ */
+export const PRE_LOCALIZED_KEYS = new Set(['qchatText', 'qchatTemplate', 'qchatValue']);
 /** `name:シンセイアカツキ`, `voice/ja/name/…`: an identifier, not a text. */
 const ID_LIKE = /^[a-z][a-z0-9_]*[:/]/;
 
@@ -192,7 +197,7 @@ export function localize<T>(v: T, locale: Locale, cat: Catalog): T {
     if (Array.isArray(x)) return x.map(walk);
     if (x && typeof x === 'object' && Object.getPrototypeOf(x) === Object.prototype) {
       const o: Record<string, unknown> = {};
-      for (const [k, val] of Object.entries(x)) o[k] = ID_KEYS.has(k) || PLAYER_TEXT_KEYS.has(k) ? val : walk(val);
+      for (const [k, val] of Object.entries(x)) o[k] = ID_KEYS.has(k) || PLAYER_TEXT_KEYS.has(k) || PRE_LOCALIZED_KEYS.has(k) ? val : walk(val);
       return o;
     }
     return x;

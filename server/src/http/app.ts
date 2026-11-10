@@ -24,6 +24,7 @@ import { TeamsService, type TeamPlayers } from '../domain/teamService.js';
 import { EventsService, type EventPlayers } from '../domain/eventService.js';
 import { TEAM_ID_RE } from '../domain/teams.js';
 import { REPORT_REASONS, STAMP_ID_RE } from '../domain/teamFeed.js';
+import { QCHAT_ID_RE, QCHAT_REF_RE } from '../domain/quickChat.js';
 import { EVENT_ID_RE } from '../domain/events.js';
 import { goingSchema } from '../domain/schemas.js';
 import { StudService, type StudDirectory, type StudPlayers } from '../domain/studService.js';
@@ -72,6 +73,7 @@ export type PlayerMethod =
   | 'recordConsent' | 'grantPartner' | 'missionsAll' | 'requestDeletion' | 'cancelDeletion' | 'deletionDue' | 'deletionSnapshot' | 'deletionMarkStep'
   | 'deletionRetryLater' | 'deletionFinalize' | 'deletionStart' | 'runNudges' | 'nudgeTaBeaten' | 'nudgeTournamentClosing'
   | 'stampCatalog' | 'stampCheck' | 'stampPosted' | 'feedViewer' | 'feedMutes' | 'feedMute' | 'feedReported' | 'cheerPush'
+  | 'qchatOptions' | 'qchatCheck' | 'qchatNote' | 'qchatMention'
   | 'inviteView' | 'inviteAttempt' | 'inviteAccept' | 'inviteRevert' | 'inviteCommit' | 'inviteFlag' | 'inviteMilestone' | 'inviteDue' | 'inviteAcked'
   | 'inviteRetryLater' | 'inviteForgetInvitee' | 'inviteForgetInviter' | 'inviteForfeit'
   | 'comeback' | 'comebackClaimLogin' | 'comebackClaimMission' | 'comebackWelcomed' | 'whatsNew' | 'whatsNewSeen'
@@ -828,7 +830,14 @@ export const routes: Route[] = [
       if (!/^\d{1,9}$/.test(v) || Number(v) < 1 || Number(v) > max) throw new AppError('BAD_REQUEST', `bad ${k}`);
       return Number(v);
     };
-    return teams(c).feed(u, num('before', 999_999_999), num('limit', 500));
+    return teams(c).feed(u, num('before', 999_999_999), num('limit', 500), resolveLocale(r));
+  } },
+  // REQ-QCHAT-*: 支部の定型チャット (contracts/protocol.md §52) — fixed phrases only, slot values checked by the server
+  { method: 'GET', path: '/v1/teams/me/quick-chat', auth: 'player', handler: async (r, _p, c, u) => teams(c).quickChat(u, resolveLocale(r)) },
+  { method: 'POST', path: '/v1/teams/me/feed/quick-chat', auth: 'player', handler: async (r, _p, c, u) => {
+    const ref = z.string().regex(QCHAT_REF_RE);
+    const b = await body(r, z.object({ phraseId: z.string().regex(QCHAT_ID_RE), slots: z.object({ course: ref, horse: ref, race: ref, time: ref, cup: ref, player: ref }).partial().strict().default({}) }).strict());
+    return teams(c).postQuickChat(u, b.phraseId, b.slots);
   } },
   { method: 'POST', path: '/v1/teams/me/feed/stamps', auth: 'player', handler: async (r, _p, c, u) => teams(c).postStamp(u, (await body(r, z.object({ stampId: stampId }).strict())).stampId) },
   { method: 'PUT', path: '/v1/teams/me/feed/:seq/reaction', auth: 'player', handler: async (r, p, c, u) => teams(c).react(u, seqParam(p.seq!), (await body(r, z.object({ stampId: stampId.nullable() }).strict())).stampId) },
@@ -1217,6 +1226,10 @@ export function teamPlayersFrom(player: (uid: string) => PlayerInvoker): TeamPla
     feedReported: (u, t, seq, by, reason) => player(u).invoke('feedReported', u, t, seq, by, reason),
     cheerPush: (u, from, name, ref) => player(u).invoke('cheerPush', u, from, name, ref),
     goalPlayerView: (u) => player(u).invoke('goalPlayerView', u),
+    qchatOptions: (u, locale) => player(u).invoke('qchatOptions', u, locale),
+    qchatCheck: (u, ph, sl) => player(u).invoke('qchatCheck', u, ph, sl),
+    qchatNote: (u, k, a, b, t, n) => player(u).invoke('qchatNote', u, k, a, b, t, n),
+    qchatMention: (u, from, name, ref) => player(u).invoke('qchatMention', u, from, name, ref),
   };
 }
 

@@ -355,6 +355,9 @@ export const CODE_EN: Record<string, string> = {
   '{name}さんがマイ厩舎にいいねしました': '{name} liked My Stable',
   'マイ厩舎に{n}件のいいねが届きました': 'My Stable got {n} likes',
   'あなたのレースに{n}件の応援スタンプが届きました': 'Your races got {n} cheer stamps',
+  // §52.8 quick chat mentions ({name} is a display name, never translated)
+  '{name}さんが支部のチャットであなたに声をかけました': '{name} mentioned you in the branch chat',
+  '支部のチャットで{n}件の声がかかりました': 'You were mentioned {n} times in the branch chat',
   '「{tournament}」の最終順位は{n}位でした': 'You finished {n:ord} in “{tournament}”',
   'プレゼントボックスにプレゼントが届きました': 'A gift arrived in your gift box',
   'プレゼントボックスに{n}件のプレゼントが届きました': '{n} gifts arrived in your gift box',

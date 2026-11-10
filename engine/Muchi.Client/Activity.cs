@@ -24,9 +24,11 @@ namespace Muchi.Client
             StableLike = "stable_like", TeamCheer = "team_cheer", TournamentResult = "tournament_result", GiftArrived = "gift_arrived",
             TeamGoalTier = "team_goal_tier", TeamGoalWeek = "team_goal_week", ReplayShare = "replay_share",
             // Round 16 integration: hosted cups (§42.7) and the season recap (§43)
-            CupInvited = "cup_invited", CupStarted = "cup_started", CupFinished = "cup_finished", CupCancelled = "cup_cancelled", RecapReady = "recap_ready";
+            CupInvited = "cup_invited", CupStarted = "cup_started", CupFinished = "cup_finished", CupCancelled = "cup_cancelled", RecapReady = "recap_ready",
+            // Round 18: a quick chat phrase that named me (§52.8)
+            QchatMention = "qchat_mention";
         public static readonly string[] All = { FriendRequest, FriendAccepted, RivalWeek, RivalRecord, StableLike, TeamCheer, TournamentResult, GiftArrived, TeamGoalTier, TeamGoalWeek, ReplayShare,
-            CupInvited, CupStarted, CupFinished, CupCancelled, RecapReady };
+            CupInvited, CupStarted, CupFinished, CupCancelled, RecapReady, QchatMention };
     }
 
     /// <summary>Where an entry leads (`link.screen`).</summary>

@@ -4,7 +4,8 @@ import { BASE_BANNED_SILKS, bannedSilksListSchema, bannedSilksProblems, type Ban
 import { VISUALS, collectItemIds } from '../domain/visuals.js';
 import { bondProblems } from '../domain/bond.js';
 import { itemsProblems } from '../domain/itemShop.js';
-import { stampsProblems } from '../domain/teamFeed.js';
+import { stampsOf, stampsProblems } from '../domain/teamFeed.js';
+import { quickChatProblems } from '../domain/quickChat.js';
 import { silksEditorProblems } from '../domain/silksEditor.js';
 import { photoProblems } from '../domain/photoMode.js';
 import { holdPolicyProblems } from '../domain/retention.js';
@@ -188,6 +189,7 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
   // QA r6 #1: tickets must never reach a paid-only banner, including after a remote-config banner change
   if (master.items) problems.push(...itemsProblems(master));
   if (master.items) problems.push(...stampsProblems(master)); // REQ-TEAMFEED-002: stamp cosmetics and stamps stay paired
+  problems.push(...quickChatProblems(master, stampsOf(master).config.feedSize)); // REQ-QCHAT-002
   if (master.items) problems.push(...silksEditorProblems(master)); // REQ-SILK-013: silks_part cosmetics and editor parts stay paired
   if (master.items) problems.push(...photoProblems(master)); // REQ-PHOTO-013: photo cosmetics and photo items stay paired
   // REQ-UXS-050: a ruleset override may not lower a skill cap below what the skill master uses

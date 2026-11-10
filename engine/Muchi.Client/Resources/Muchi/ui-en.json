@@ -1069,6 +1069,26 @@
   "参加": "Entered",
   "{a}位 / {b}人": "{a:ord} of {b}",
   "{n}pt（3レース）": "{n} pt (3 races)",
-  "3レース": "3 races"
+  "3レース": "3 races",
+  "_qchat": "---- 支部の定型チャット (QuickChatModel, REQ-QCHAT-015). Phrases / previews / rows come from the server in the request language",
+  "定型チャット": "Quick chat",
+  "決まった文だけで話せます（自由入力はありません）": "Chat with set phrases only (no free typing)",
+  "支部に入ると定型チャットを使えます": "Join a branch to use quick chat",
+  "まだ会話はありません。あいさつから始めよう": "No messages yet. Start with a greeting",
+  "定型チャットは15秒に1回、1日30回までです。同じ文は続けて送れません": "Quick chat: one phrase every 15 s, up to 30 a day. The same phrase can't be sent again right away",
+  "今日の定型チャットはここまでです": "That's all your quick chat for today",
+  "この内容では送れません": "This can't be sent",
+  "空欄を選んでください": "Choose the blanks",
+  "選べるものがまだありません": "Nothing to choose yet",
+  "選べるものがまだありません（{slot}）": "Nothing to choose yet ({slot})",
+  "少し待ってから応援してください": "Wait a moment before cheering again",
+  "報告しました。ご協力ありがとうございます": "Reported. Thank you for your help",
+  "あいさつ": "Greetings",
+  "応援": "Cheer",
+  "さそう": "Invite",
+  "馬": "Horse",
+  "レース結果": "Race result",
+  "支部の仲間": "Branch member",
+  "元メンバー": "Former member"
  }
 }

@@ -124,6 +124,8 @@ static class Program
         await SeasonRecapChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 16: プレイヤー主催カップ (HostedCupModel: list, create form, codes, lobby, standings, result card, English; REQ-CUP-*)");
         await HostedCupChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 18: 支部の定型チャット (QuickChatModel: tabs, phrases, slots from the server's options, preview, cooldown, errors as sentences, rows; REQ-QCHAT-*)");
+        await QuickChatChecks.Run(Check, Ruleset(), Root);
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

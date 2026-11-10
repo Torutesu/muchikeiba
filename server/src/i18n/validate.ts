@@ -14,7 +14,7 @@ import { hasJapanese } from './locale.js';
  * Master sections that are not shown to players (internal word lists, the asset catalog, settings notes), and the
  * derived lookups. Keys starting with `_` are notes and are skipped everywhere.
  */
-const INTERNAL_SECTIONS = new Set(['ng', 'bannedSilks', 'assetCatalog', 'nicks', 'ageLimits', 'templateById', 'litTracks', 'locale']);
+const INTERNAL_SECTIONS = new Set(['ng', 'bannedSilks', 'assetCatalog', 'nicks', 'ageLimits', 'templateById', 'litTracks', 'locale', 'quickChat']); // quickChat: JA + EN pairs of their own (REQ-QCHAT-001)
 
 /** Every Japanese text of the player-facing master data, with where it is. */
 export function masterTexts(m: Master, v: VisualsMaster = VISUALS): { path: string; text: string }[] {

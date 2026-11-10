@@ -486,7 +486,8 @@ export function closedNoticeFor(c: CupState, playerId: string): CupClosedNotice 
 // ------------------------------------------------------------------------------------------------ player side
 
 /** `horseId` (Round 16 integration): the horse entered — the roster's bulk retire refuses it while the cup is active (§44 `cup_entry`). */
-export interface PlayerCupRef { cupId: string; role: 'host' | 'entrant'; until: number; noted?: boolean; horseId?: string }
+/** `cupName`: a copy of the cup's name once the cup accepted the create / join (REQ-QCHAT-004: the quick chat `{cup}` slot). */
+export interface PlayerCupRef { cupId: string; role: 'host' | 'entrant'; until: number; noted?: boolean; horseId?: string; cupName?: string }
 export interface PlayerCupInvite { cupId: string; cupName: string; hostId: string; hostName: string; at: number; until: number }
 export interface PlayerCupResult {
   cupId: string; cupName: string; format: CupFormat; rank: number | null; points: number | null; entrants: number; at: number;
@@ -541,8 +542,9 @@ export function releaseCup(s: PlayerState, cupId: string) {
 }
 
 /** KPI once per cup and role (after the cup accepted the create / join). */
-export function noteCupCommitted(s: PlayerState, cupId: string, kind: 'create' | 'join', meta: { format: CupFormat; capacity?: number; via?: string; team?: boolean }, emit: Emit) {
+export function noteCupCommitted(s: PlayerState, cupId: string, kind: 'create' | 'join', meta: { format: CupFormat; capacity?: number; via?: string; team?: boolean; cupName?: string }, emit: Emit) {
   const ref = ensureCups(s).active.find((r) => r.cupId === cupId);
+  if (ref && meta.cupName && !ref.cupName) ref.cupName = meta.cupName;
   if (!ref || ref.noted) return;
   ref.noted = true;
   ensureCups(s).invites = ensureCups(s).invites.filter((i) => i.cupId !== cupId);

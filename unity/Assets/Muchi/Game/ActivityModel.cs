@@ -69,7 +69,7 @@ namespace Muchi.Game
             [ActivityKinds.StableLike] = "マイ厩舎", [ActivityKinds.TeamCheer] = "支部", [ActivityKinds.TournamentResult] = "大会", [ActivityKinds.GiftArrived] = "プレゼント",
             [ActivityKinds.TeamGoalTier] = "支部", [ActivityKinds.TeamGoalWeek] = "支部", [ActivityKinds.ReplayShare] = "リプレイ",
             [ActivityKinds.CupInvited] = "カップ", [ActivityKinds.CupStarted] = "カップ", [ActivityKinds.CupFinished] = "カップ", [ActivityKinds.CupCancelled] = "カップ",
-            [ActivityKinds.RecapReady] = "振り返り",
+            [ActivityKinds.RecapReady] = "振り返り", [ActivityKinds.QchatMention] = "支部",
         };
         public static readonly IReadOnlyDictionary<string, string> Icons = new Dictionary<string, string>
         {
@@ -77,7 +77,7 @@ namespace Muchi.Game
             [ActivityKinds.StableLike] = "like", [ActivityKinds.TeamCheer] = "cheer", [ActivityKinds.TournamentResult] = "trophy", [ActivityKinds.GiftArrived] = "gift",
             [ActivityKinds.TeamGoalTier] = "team", [ActivityKinds.TeamGoalWeek] = "team", [ActivityKinds.ReplayShare] = "replay",
             [ActivityKinds.CupInvited] = "cup", [ActivityKinds.CupStarted] = "cup", [ActivityKinds.CupFinished] = "cup", [ActivityKinds.CupCancelled] = "cup",
-            [ActivityKinds.RecapReady] = "recap",
+            [ActivityKinds.RecapReady] = "recap", [ActivityKinds.QchatMention] = "chat",
         };
 
         private readonly IActivityApi _api;

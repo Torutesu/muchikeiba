@@ -421,7 +421,7 @@ describe('REQ-TGOAL-005/007/009 week close and rewards', () => {
     await w.races('solo', 2);
     expect(w.kpi.filter((k) => k.r.name === 'team_goal_contribute')).toHaveLength(0);
     const { routes } = await import('../src/http/app.js');
-    const goalRoutes = routes.filter((r) => r.path.includes('/goal'));
+    const goalRoutes = routes.filter((r) => r.path.includes('/goal') && !r.path.startsWith('/v1/horses/')); // §53's per-horse goals are reads (GET /v1/horses/:horseId/goals)
     expect(goalRoutes.map((r) => `${r.method} ${r.path}`)).toEqual(['GET /v1/teams/me/goal']);
   });
 });

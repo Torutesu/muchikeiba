@@ -2426,7 +2426,7 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
   "notice": "目標は確定したレースの成績だけで進みます。達成の印は見た目だけです。" }
 ```
 - `HorseGoalPin` = `{ horseId, horseName, goal: <current の目標>, doneCount, total }`。
-- **ピン留め**（REQ-HGOAL-007）：1頭だけホームに出せる。置き換えるだけなので冪等（キー不要）。`null` で外す。持っていない馬は `404 HORSE_NOT_FOUND`。引退した馬・列を全部達成した馬は `409 NOT_ELIGIBLE`。ピン留めした馬が後で引退・全部達成・手元から消えた時は、読む時に `pinned: null` とみなす（状態は次の書き込みで消す）。
+- **ピン留め**（REQ-HGOAL-007）：1頭だけホームに出せる。置き換えるだけなので冪等（キー不要）。`null` で外す。持っていない馬は `404 HORSE_NOT_FOUND`。引退した馬・列を全部達成した馬は `409 NOT_ELIGIBLE`。ピン留めした馬が後で引退・全部達成・手元から消えた時は、読む時に `pinned: null` とみなす（KPI は送らない。新しくピン留めすれば置き換わる）。
 - ブートストラップ・`GET /v1/player` の `horseGoalPin` にも同じ形（ホームの最初の描画用）。
 
 ### 53.4 ホームとの関係（§45、REQ-HGOAL-008）

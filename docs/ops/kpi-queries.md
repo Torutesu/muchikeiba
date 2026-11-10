@@ -1063,3 +1063,28 @@ WHERE blob1 IN ('cup_create', 'cup_join', 'cup_finish') AND timestamp > NOW() - 
 GROUP BY week
 ORDER BY week DESC
 ```
+
+
+## 馬ごとの目標：見た・達成・ピン留め（REQ-HGOAL-012、Round 18、contracts/protocol.md §53）
+列：`hgoal_view`（クライアント）`blob8` = `detail`（馬の目標の面を開いた）／`home`（ホームのピンを見た、1ゲーム日に1回）、`double9` = その時の達成数。`hgoal_complete`（サーバー、目標を達成した時に1回）`blob8` = 目標の種類（`first_win`・`races`・`surface_win`・`ta_course`・`stretch_win`・`wins`・`ranked_top3`・`tournament_win`）、`blob9` = `chain`（列を全部達成した最後の1つ）／空、`double5` = その馬の達成数。`hgoal_pin`（サーバー、ピン留めが変わった時だけ）`blob8` = `pin`／`unpin`、`blob9` = その時の目標の種類。
+
+**種類ごとの達成数**（週ごと）：極端に少ない種類（`stretch_win`・`tournament_win` など）は物語の終わりとして妥当か、多すぎる種類は簡単すぎないかを見る。`need` はコードの版（v1）と共有ベクター `contracts/horse-goals.vectors.json` で決まるので、変える時は版を上げる。
+
+```sql
+SELECT toStartOfWeek(timestamp) AS week, blob8 AS kind, sum(_sample_interval) AS completes,
+  sumIf(_sample_interval, blob9 = 'chain') AS chains_done
+FROM muchi_kpi
+WHERE blob1 = 'hgoal_complete' AND timestamp > NOW() - INTERVAL '56' DAY
+GROUP BY week, kind
+ORDER BY week DESC, completes DESC
+```
+
+**面を開いた人・ピン留めした人**：
+
+```sql
+SELECT blob1 AS name, blob8 AS what, sum(_sample_interval) AS n, count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 IN ('hgoal_view', 'hgoal_pin') AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY name, what
+ORDER BY name, n DESC
+```

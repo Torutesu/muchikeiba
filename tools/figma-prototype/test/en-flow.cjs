@@ -281,6 +281,18 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await waitScreen('replay-unplayable'); await shot('replay-unplayable', 400);
   await page.evaluate(() => globalThis.__muchi.logic.replays.demoRetired(false));
 
+  // round 18: 馬ごとの目標 in English (REQ-HGOAL-013): the panel on the horse detail, the full chain, the home strip; names as typed
+  {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    const pid = await page.evaluate(async () => { const L = globalThis.__muchi.logic; const v = await L.view(); await L.horseGoals.demoRaces(v.flags.partnerHorseId, [1, 2, 4]); return v.flags.partnerHorseId; });
+    await show('Stable'); await waitIn('.hg-panel'); await shot('stable-goals', 500);
+    await show('HorseGoals', pid); await waitScreen('horse-goals'); await waitIn('.hg-row'); await shot('horse-goals', 500);
+    assert.match(await page.locator('.screen.in').innerText(), /Win a first race/, 'goals: the goal lines in English');
+    await page.evaluate((id) => globalThis.__muchi.logic.horseGoals.pin(id), pid);
+    await show('Home'); await waitScreen('home'); await waitIn('.hg-pin-strip'); await shot('home-goal-pin', 600);
+    await page.evaluate(() => globalThis.__muchi.logic.horseGoals.pin(null));
+  }
+
   // round 16: 厩舎の整理 in English (REQ-ORG-015): the list, the sort and filter sheets, selection, the confirmation; names as typed
   {
     const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });

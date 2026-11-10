@@ -1160,6 +1160,7 @@ async function Home() {
   await HomeCard(comeback); // round 10: one card at a time (what's new > comeback campaign > ad offer)
   await ChallengeHomeCard(); // round 13: this week's challenges, under the home card
   await NextCard(); // round 16: 次にやること, bottom centre (the top bar stays as it is)
+  await GoalPinStrip(); // round 18: the pinned horse goal, above the next card
   MaybeLinkPrompt('Home', Home);
 }
 /** ③ today's to-do (login bonus, daily missions, first-win bonus) in a drawer. */
@@ -2572,7 +2573,7 @@ async function Demo(kind) {
   if (kind === 'assist') { await L.seedDemo(7, [3, 3, 3, 3, 3, 3, 3]); ftue = false; await L.demoLastPlaces(3); await refresh(); return AssistThen(Home); }
   if (kind === 'history') { await L.seedHistory(); await refresh(); hiState.picked = []; return History('purchases'); }
   // round 16: 3 game days of play, a gift expiring in 2 days and 2 owned scout tickets → the home's next card and chips
-  if (kind === 'next') { await L.seedNext(); try { localStorage.removeItem(NEXT_VIEWED); } catch { /* */ } await refresh(); return Home(); }
+  if (kind === 'next') { await L.seedNext(); try { localStorage.removeItem(NEXT_VIEWED); } catch { /* */ } await refresh(); if (partner()) await L.horseGoals.pin(partner().id); return Home(); } // round 18: the partner's goal pinned too
   const spec = { day1: [1, [1]], day3: [3, [2, 2, 2]], day7: [7, [3, 3, 3, 3, 3, 3, 3]] }[kind];
   await L.seedDemo(spec[0], spec[1]);
   await refresh();
@@ -2605,6 +2606,7 @@ function nxText(i) {
     rival_week: ['今週のライバルと、まだ走っていません', '同じランク戦で先着すれば1点', 'ライバルを見る', 'ライバル'],
     weekly_challenge: ['週替わりチャレンジ', `未クリア ${n}つ`, '挑戦する', `チャレンジ 未クリア${n}`],
     team_goal_near: [`支部の共同目標、次の段まで あと${n}`, '確定したレース結果で進みます', '共同目標を見る', `共同目標 あと${n}`],
+    horse_goal_near: [`馬の目標まで あと${n}`, 'ピン留めした目標（確定したレースで進みます）', '目標を見る', `馬の目標 あと${n}`],
     training_slots: [`今日の調教 あと${n}回`, 'タイミングよく押すと、伸びが少しだけ良くなります', '調教する', `調教 あと${n}回`],
     first_win: ['今日の初勝利ボーナスがあります', 'ランク戦の1着で受け取れます', 'レースへ', '初勝利ボーナス'],
     scout_ticket: [`スカウト券 ${n}枚`, '持っている券で引けます', 'スカウトへ', `スカウト券 ${n}枚`],
@@ -2619,7 +2621,7 @@ function nxGo(i) {
   const go = {
     race: RaceLobby, login_bonus: async () => { await L.claimLogin(); Home(); }, missions: nxOpenMissions, season_pass: SeasonPass, gift_box: () => GiftBox('box'),
     training: Training, event_exchange: () => Exchange(i.refId), feature: feature[i.featureKey] ?? Features, rival: Rival, weekly_challenge: () => WeeklyChallenge(),
-    team_goal: TeamGoal, scout: () => Scout(),
+    team_goal: TeamGoal, scout: () => Scout(), horse_goals: () => HorseGoals(i.refId),
   }[i.screen] ?? RaceLobby;
   return go();
 }
@@ -3082,6 +3084,7 @@ function Stable() {
   Ghost('殿堂', 196, 36, 150, 46, () => Hall(), undefined, 'quiet small').classList.add('hof-entry'); // round 14 (REQ-HOF-*)
   Ghost('振り返り', 362, 36, 170, 46, () => Recaps(), undefined, 'quiet small').classList.add('rc-entry'); // round 16 (REQ-RECAP-*)
   EnToggle();
+  GoalsPanel(p); // round 18 (REQ-HGOAL-*): the horse's goals, bottom left over the art
 }
 function StableList(horses) {
   Sheet('所属馬', `厩舎　/　${horses.length}頭`, (s, close, y) => {
@@ -3093,6 +3096,111 @@ function StableList(horses) {
       Hair(48, yy + 34, 564, s);
     });
   });
+}
+
+// ================================================================= round 18: 馬ごとの目標 (REQ-HGOAL-*, contracts/protocol.md §53)
+// A short chain of goals per horse (the real horseGoals.ts on the local player): the chain comes from the horse's aptitudes,
+// progress only from confirmed races (§34 career), the ribbon is for show only. The goals panel sits on the horse detail
+// (厩舎), the full chain is its own screen, and one horse's goal can be pinned to the home (a slim strip above the next card).
+// Mirrors unity/Assets/Muchi/Game/HorseGoalsModel.cs. Horse names are what the player typed (never translated). No shop link.
+const HG_CHAPTER = { first_win: 'はじまり', races: '場数', surface_win: '得意の馬場', ta_course: 'コースの記録', stretch_win: '得意の外へ', wins: '勝ち星', ranked_top3: 'ランク戦', tournament_win: '頂点' };
+const HG_RULES = '目標は確定したレースの成績だけで進みます。達成の印は見た目だけで、能力やレースには影響しません。';
+const HG_HOME_VIEWED = 'muchi.hgoal.home_viewed';
+const hgProgress = (g) => (g.done ? '達成' : `${g.have} / ${g.need}`);
+const hgDots = (goals) => goals.map((g) => (g.done ? '■' : g.current ? '▣' : '□')).join(' ');
+function hgKpi(surface, done) { L.kpi([{ name: 'hgoal_view', at: L.now(), props: { surface, done: Math.min(8, done) } }]); (globalThis.__muchiHgoalKpi ??= []).push({ surface, done }); }
+async function hgTogglePin(v, after) {
+  const r = await L.horseGoals.pin(v.pinned ? null : v.horseId);
+  if (!r.ok) return toast(r.code === 'NOT_ELIGIBLE' ? '引退した馬・目標をすべて達成した馬はホームに出せません' : r.message);
+  toast(v.pinned ? 'ホームから外しました' : 'ホームに出しました');
+  after();
+}
+/** The goals panel on the horse detail (厩舎): the current goal, the chain as marks, see all, pin. */
+async function GoalsPanel(h) {
+  if (!h || cur?.dataset.screen !== 'stable') return null;
+  const r = await L.horseGoals.view(h.id);
+  if (!r.ok || cur?.dataset.screen !== 'stable') return null;
+  const v = r.value;
+  const g = v.goals.find((x) => x.current);
+  const p = Glass('Goals', 40, 560, 600, 250, undefined, .86);
+  p.classList.add('hg-panel', 'rise'); p.dataset.done = String(v.doneCount); p.dataset.total = String(v.total);
+  Kicker('この馬の目標', 26, 20, p, { rule: false, size: 15, w: 300 });
+  Txt(`目標 ${v.doneCount} / ${v.total}`, 380, 18, 194, 15, GOLD, p, { weight: 700, align: 'right', nowrap: true }).classList.add('hg-summary');
+  if (v.chainComplete || !g) {
+    Txt('物語を走りきった', 26, 60, 548, 24, GOLD, p, { weight: 700, nowrap: true }).classList.add('hg-ribbon');
+    Txt('達成の印は見た目だけです', 26, 104, 548, 14, MUTED, p, { nowrap: true });
+  } else {
+    Txt(HG_CHAPTER[g.kind] ?? '', 26, 52, 300, 13, CYAN, p, { weight: 700, ls: '.12em', nowrap: true });
+    Txt(g.text, 26, 74, 548, 22, WHITE, p, { weight: 700, nowrap: true }).classList.add('hg-current');
+    Gauge(26, 124, 420, g.have / g.need, p);
+    Txt(hgProgress(g), 460, 114, 114, 16, WHITE, p, { weight: 700, align: 'right', nowrap: true, cls: 'num' });
+  }
+  Txt(hgDots(v.goals), 26, 150, 548, 14, CYAN, p, { nowrap: true, ls: '.1em' }).classList.add('hg-dots');
+  Ghost('目標をすべて見る', 26, 188, 268, 44, () => HorseGoals(h.id), p, 'small').classList.add('hg-open');
+  if (v.pinned || (v.status === 'active' && !v.chainComplete)) {
+    Ghost(v.pinned ? 'ホームから外す' : 'ホームに出す', 306, 188, 268, 44, () => hgTogglePin(v, Stable), p, 'quiet small').classList.add('hg-pin');
+  }
+  hgKpi('detail', v.doneCount);
+  return p;
+}
+/** The full chain of one horse: every goal with its chapter, line and progress; the ribbon; pin. */
+async function HorseGoals(horseId) {
+  currentScreen = () => HorseGoals(horseId);
+  const r = await L.horseGoals.view(horseId);
+  if (!r.ok) { toast('馬の目標は今は表示できません'); Stable(); return; }
+  const v = r.value;
+  const h = (player?.horses ?? []).find((x) => x.id === horseId);
+  Clear('horse-goals'); SetArt('Art/partner-naming', false); Shade('left');
+  TopBar('この馬の目標', '確定したレースで進む、この馬だけの物語　·　達成の印は見た目だけ', { wallet: false });
+  const lp = Glass('Goals horse', 36, 134, 420, 676, undefined, .88);
+  lp.classList.add('hg-head');
+  Kicker('目標', 30, 30, lp, { w: 360 });
+  Txt(v.horseName, 30, 96, 360, 34, WHITE, lp, { weight: 700, nowrap: true, ls: '.04em' }).classList.add('hg-name');
+  if (h) Txt(`${STYLE_JA[h.style] ?? h.style}　/　${surfaceJa(h.surface)}　/　${fmt(h.distMinM)}〜${fmt(h.distMaxM)}m`, 30, 148, 360, 15, MUTED, lp, { nowrap: true });
+  Txt(`${v.doneCount}`, 30, 196, 120, 64, GOLD, lp, { weight: 700, cls: 'num' }).classList.add('hg-count');
+  Txt(`/ ${v.total}　達成`, 84, 226, 286, 18, WHITE, lp, { weight: 700, nowrap: true });
+  if (v.chainComplete) Txt('物語を走りきった', 30, 300, 360, 24, GOLD, lp, { weight: 700, nowrap: true }).classList.add('hg-ribbon');
+  else if (v.status !== 'active') Txt('引退した馬の目標は、達成したまま残ります', 30, 300, 360, 14, SOFT, lp, { lh: 1.5 });
+  Txt(HG_RULES, 30, 370, 360, 13, SOFT, lp, { lh: 1.6 });
+  if (v.pinned || (v.status === 'active' && !v.chainComplete)) {
+    Cta(v.pinned ? 'ホームから外す' : 'ホームに出す', 30, 560, 360, () => hgTogglePin(v, () => HorseGoals(horseId)), lp, 'small').classList.add('hg-pin');
+  }
+  const rp = Glass('Goals chain', 476, 134, 1088, 676, undefined, .86);
+  rp.classList.add('hg-chain');
+  const rowH = Math.min(80, Math.floor(620 / Math.max(1, v.goals.length)));
+  v.goals.forEach((g, i) => {
+    const y = 28 + i * rowH;
+    const row = el('hg-row', 24, y, 1040, rowH - 8, rp);
+    row.dataset.goal = g.id; row.dataset.done = String(g.done); row.dataset.current = String(g.current);
+    Txt(String(i + 1).padStart(2, '0'), 0, 6, 56, 26, g.done ? GOLD : g.current ? CYAN : DIM, row, { weight: 700, cls: 'num' });
+    Txt(HG_CHAPTER[g.kind] ?? '', 72, 4, 220, 12, g.current ? CYAN : SOFT, row, { weight: 700, ls: '.12em', nowrap: true });
+    Txt(g.text, 72, 24, 700, 19, g.done ? MUTED : WHITE, row, { weight: g.current ? 700 : 500, nowrap: true }).classList.add('hg-text');
+    Gauge(800, 34, 140, g.done ? 1 : g.have / g.need, row, { gold: g.done });
+    Txt(hgProgress(g), 950, 22, 90, 16, g.done ? GOLD : WHITE, row, { weight: 700, align: 'right', nowrap: true, cls: 'num' });
+    if (i < v.goals.length - 1) Hair(72, rowH - 10, 968, row);
+  });
+  Back(Stable, 'BACK', 40, 834);
+  hgKpi('detail', v.doneCount);
+}
+/** Home: the pinned goal, one slim strip above the next card (tap → that horse's goals). hgoal_view home once per game day. */
+async function GoalPinStrip() {
+  if (cur?.dataset.screen !== 'home') return null;
+  cur.querySelectorAll('[data-hg-pin]').forEach((n) => n.remove());
+  const r = await L.horseGoals.pinned();
+  if (!r.ok || !r.value.pinned || cur?.dataset.screen !== 'home') return null;
+  const pin = r.value.pinned;
+  const s = Glass('Goal pin', NEXT_BOX.x, 470, NEXT_BOX.w, 76, undefined, .82);
+  s.dataset.hgPin = pin.horseId; s.classList.add('hg-pin-strip', 'rise');
+  Kicker('ピン留めした目標', 22, 12, s, { rule: false, size: 12, w: 260 });
+  Txt(pin.horseName, 290, 10, 248, 13, MUTED, s, { weight: 700, nowrap: true, align: 'right' }).classList.add('hg-pin-name');
+  Txt(pin.goal.text, 22, 38, 400, 18, WHITE, s, { weight: 700, nowrap: true });
+  Txt(`${pin.goal.have} / ${pin.goal.need}`, 430, 38, 108, 18, GOLD, s, { weight: 700, align: 'right', nowrap: true, cls: 'num' });
+  s.style.cursor = 'pointer'; s.setAttribute('role', 'button');
+  s.addEventListener('click', () => HorseGoals(pin.horseId));
+  const day = new Date(L.now() + 5 * 3600e3).toISOString().slice(0, 10); // the game day (04:00 JST)
+  let seen = null; try { seen = localStorage.getItem(HG_HOME_VIEWED); } catch { /* */ }
+  if (seen !== day) { try { localStorage.setItem(HG_HOME_VIEWED, day); } catch { /* */ } hgKpi('home', pin.doneCount); }
+  return s;
 }
 
 // ================================================================= round 16: 厩舎の整理 (REQ-ORG-*, contracts/protocol.md §44)
@@ -5810,7 +5918,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ HorseGoals, HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

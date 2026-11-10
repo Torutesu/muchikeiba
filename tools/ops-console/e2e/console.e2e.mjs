@@ -219,6 +219,7 @@ try {
   });
 
   await step('admin: dry run surfaces the day-rule problem; clean version is activated; diff', async () => {
+    await login('admin'); // the §48 inquiry step before this one works as operator
     await page.locator('#nav a[data-view=config]').click();
     const dayRow = tid('versions-table').locator('tr', { hasText: `e2e day rule ${runId}` });
     await dayRow.getByRole('button', { name: '有効化…' }).click();
@@ -290,7 +291,7 @@ try {
     const now = Date.now();
     const id = `e2e-${runId}`;
     await tid('mnt-id').fill(id);
-    await tid('mnt-start').fill(jstMin(now - 60_000));
+    await tid('mnt-start').fill(jstMin(now + 120_000)); // a window may not start in the past: the next minute but one
     await tid('mnt-end').fill(jstMin(now + 30 * 60_000));
     await tid('mnt-all').uncheck();
     await tid('mnt-g-cups').check();
@@ -302,10 +303,10 @@ try {
     await tid('mnt-schedule').click();
     await confirmWith('e2e: hosted cup maintenance');
     await tid(`mnt-cancel-${id}`).waitFor();
-    // the gate reads the active config (cached up to 30 s per isolate)
+    // the window starts within two minutes; the gate reads the active config (cached up to 30 s per isolate)
     const status = async (path) => (await fetch(API + path, { headers: { 'x-dev-user': PLAYER } })).status;
     let s = 0;
-    for (let i = 0; i < 40 && s !== 503; i++) { s = await status('/v1/cups'); if (s !== 503) await new Promise((r) => setTimeout(r, 1000)); }
+    for (let i = 0; i < 200 && s !== 503; i++) { s = await status('/v1/cups'); if (s !== 503) await new Promise((r) => setTimeout(r, 1000)); }
     assert.equal(s, 503, 'cups are closed by the window');
     assert.equal(await status('/v1/help'), 200, 'the help center stays open');
     assert.equal(await status('/v1/blocks'), 200, 'the block list stays open');

@@ -5010,7 +5010,9 @@ async function Recap(id, i = 0) {
   const bars = el('rc-bars', 64, 40, 900, 4);
   v.steps.forEach((_, k) => { const b = el('rc-bar' + (k <= i ? ' on' : ''), k * (900 / v.steps.length), 0, 900 / v.steps.length - 6, 4, bars); b.dataset.k = String(k); });
   Kicker(`${v.title}　/　RECAP`, 64, 70, undefined, { w: 900, size: 17 });
-  const label = Txt(st.label, 64, st.key === 'end' ? 330 : 236, 960, st.key === 'end' ? 54 : 22, st.key === 'end' ? WHITE : CYAN, undefined, { weight: 700, ls: st.key === 'end' ? '.04em' : '.32em' });
+  // the label sits clear of the big number's line box (its glyphs reach ~30 px above the box): 206, not 236 — at the
+  // largest text size the two ran into each other (Round 16 integration, a11y-flow)
+  const label = Txt(st.label, 64, st.key === 'end' ? 330 : 206, 960, st.key === 'end' ? 54 : 22, st.key === 'end' ? WHITE : CYAN, undefined, { weight: 700, ls: st.key === 'end' ? '.04em' : '.32em' });
   label.classList.add('rc-label');
   // the big text: a number counts up (unless reduced motion), a class / time / place shows as is, a horse name as typed
   const big = st.value ?? st.horseName ?? null;

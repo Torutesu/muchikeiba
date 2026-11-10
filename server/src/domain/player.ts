@@ -226,6 +226,8 @@ export interface PlayerState {
   myReplays?: import('./myReplays.js').MyReplaysState;
   /** REQ-ORG-*: 厩舎の整理 — locked / favourite horse ids and tournament registrations (roster.ts ensureRoster). */
   roster?: import('./roster.js').RosterState;
+  /** REQ-NEXT-005/008: kinds closed for today's game day and the game day each feature was first seen unlocked (nextAction.ts). */
+  nextAction?: import('./nextAction.js').NextActionState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

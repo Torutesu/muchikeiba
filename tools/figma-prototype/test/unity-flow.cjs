@@ -1352,6 +1352,59 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await page.evaluate(() => globalThis.__muchi.logic.equipCommentaryPack('standard'));
   await page.evaluate(() => globalThis.__muchi.logic.setAssist('off'));
 
+  // ------------------------------------------------------------------ 8. round 16: 次にやること (REQ-NEXT-*)
+  // 3 game days of play, a gift expiring in 2 days, 2 owned scout tickets → the server's next card (bottom centre) + chips;
+  // the top bar is untouched; no urgency words or shop; dismiss for today; a chip opens its screen; KPI view once per day
+  await page.evaluate(() => { globalThis.__muchiNextKpi = []; });
+  await page.evaluate(() => globalThis.__muchi.demo('next')); await waitScreen(['home', 'link-prompt'], 60000);
+  if (await screen() === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); }
+  await page.waitForSelector('.screen.in .next-card', { timeout: 10000 }); await page.waitForTimeout(500);
+  const nxPrimary = await page.locator('.screen.in .next-card').getAttribute('data-next');
+  const nxChips = await page.locator('.screen.in [data-next-chip]').evaluateAll((els) => els.map((e) => e.dataset.nextChip));
+  const nxServer = await page.evaluate(async () => (await globalThis.__muchi.logic.nextActions()).value);
+  assert.equal(nxPrimary, nxServer.primary.kind, 'the card is the server\'s primary');
+  assert.deepEqual(nxChips, nxServer.chips.map((c) => c.kind), 'the chips are the server\'s');
+  assert.ok(nxChips.length <= 2 && !nxChips.includes('race'), 'at most two chips, never the race card');
+  assert.notEqual(nxPrimary, 'scout_ticket', 'scout tickets are never the primary card');
+  const nxAll = [nxPrimary, ...nxChips];
+  assert.ok(nxAll.includes('gift_expiring'), 'the gift that expires in 2 days is announced: ' + nxAll.join(', '));
+  const nxGift = page.locator('.screen.in [data-next="gift_expiring"]').first();
+  const nxGiftDeadline = Number(await nxGift.getAttribute('data-deadline'));
+  const nxBox = await page.evaluate(async () => (await globalThis.__muchi.logic.giftBox('box')).value.entries.map((e) => e.expiresAt).filter(Boolean));
+  assert.equal(nxGiftDeadline, Math.min(...nxBox), 'its deadline is the gift\'s real expiry');
+  const nxText = await page.locator('.screen.in .next-card').innerText();
+  assert.ok(!/今だけ|残りわずか|お得|倍|ショップ|購入/.test(nxText), 'no urgency words or shop on the card');
+  if (nxPrimary === 'gift_expiring') assert.match(nxText, /\d+月\d+日 \d\d:\d\dまで/, 'the deadline as a date and time');
+  // the card sits under the top bar (season · rival · envelope · wallet) and clear of the race button
+  const nxRect = await page.locator('.screen.in .next-card').boundingBox();
+  const raceRect = await page.locator('.screen.in .btn.cta.hero').boundingBox();
+  const envRect = await page.locator('.screen.in .btn.envelope').boundingBox();
+  assert.ok(nxRect.y > envRect.y + envRect.height + 20 && nxRect.x + nxRect.width < raceRect.x, 'the next card does not crowd the top bar or the race button');
+  assert.equal(await page.locator('.screen.in .btn.envelope').count(), 1, 'the gift envelope is still there');
+  const nxViews = await page.evaluate(() => (globalThis.__muchiNextKpi ?? []).filter((e) => e.name === 'next_card_view').map((e) => e.kind));
+  assert.deepEqual(nxViews.sort(), [...nxAll].sort(), 'next_card_view once per card shown');
+  await shot('home-next', 300);
+  // 今日は閉じる: the server's next list moves up; home again sends no second view for the same kinds
+  await page.locator('.screen.in [data-next-dismiss]').click(); await page.waitForTimeout(700);
+  const nxAfter = await page.locator('.screen.in .next-card').getAttribute('data-next');
+  assert.notEqual(nxAfter, nxPrimary, 'the closed card is gone for today');
+  assert.deepEqual(await page.evaluate(async () => (await globalThis.__muchi.logic.nextActions()).value.dismissed), [nxPrimary], 'closed on the server for the game day');
+  await shot('home-next-dismissed', 300);
+  await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen(['home', 'link-prompt'], 10000);
+  if (await screen() === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); }
+  await page.waitForSelector('.screen.in .next-card'); await page.waitForTimeout(300);
+  assert.notEqual(await page.locator('.screen.in .next-card').getAttribute('data-next'), nxPrimary, 'still closed when home is drawn again');
+  const nxViews2 = await page.evaluate(() => (globalThis.__muchiNextKpi ?? []).filter((e) => e.name === 'next_card_view').map((e) => e.kind));
+  assert.equal(new Set(nxViews2).size, nxViews2.length, 'next_card_view is never repeated for a kind on the same game day');
+  // the gift card opens the box (a link only: nothing is received from home)
+  const nxFree = await page.evaluate(() => globalThis.__muchi.state().player.wallet.free);
+  await page.locator('.screen.in [data-next="gift_expiring"]').first().click(); await waitScreen('gift-box', 10000);
+  assert.equal(await page.evaluate(() => globalThis.__muchi.state().player.wallet.free), nxFree, 'opening the box from the card receives nothing');
+  assert.ok((await page.evaluate(() => globalThis.__muchiNextKpi.filter((e) => e.name === 'next_card_tap').map((e) => e.kind))).includes('gift_expiring'), 'next_card_tap with the kind');
+  // a brand-new player (before the partner and two races) sees only 「相棒で、本番のコースへ」 — the FTUE stays in charge
+  const nxNew = await page.evaluate(async () => { const L = globalThis.__muchi.logic; L.reset(); await L.bootstrap(); return (await L.nextActions()).value; });
+  assert.equal(nxNew.primary.kind, 'first_race'); assert.equal(nxNew.chips.length, 0); assert.equal(nxNew.onboarding, true);
+
   // a reload on a named player goes straight home
   await demo('day3');
   await page.goto(url); await ready(); await waitScreen('home'); await shot('home-reload', 500);

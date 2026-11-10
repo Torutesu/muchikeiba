@@ -265,6 +265,8 @@ namespace Muchi.Client
         public string CommentaryPack = CommentaryPackCatalog.StandardPackId;
         /// <summary>REQ-A11Y-003: アクセシビリティ設定 (contracts/protocol.md §41; defaults from an older server).</summary>
         public AccessibilitySettings Accessibility = new AccessibilitySettings();
+        /// <summary>REQ-NEXT-010: the home's next card at bootstrap (no team goal; GET /v1/home/next has it). Null from an older server.</summary>
+        public NextActionsView NextActions;
         public int Rating, RatingDeviation, RankedRaces;
         public string SeasonId, ClassId;
         public int SeasonPoints;
@@ -299,6 +301,7 @@ namespace Muchi.Client
                 Assist = AssistSettings.Parse(J.Opt(o, "assist")),
                 CommentaryPack = J.Str(J.Opt(o, "commentaryPack"), "equipped") ?? CommentaryPackCatalog.StandardPackId,
                 Accessibility = AccessibilitySettings.Parse(J.Opt(o, "accessibility")),
+                NextActions = NextActionsView.Parse(J.Opt(o, "nextActions")),
             };
         }
     }

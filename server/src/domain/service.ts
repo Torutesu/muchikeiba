@@ -91,6 +91,7 @@ import {
 } from './history.js';
 import { buildSupportTicket } from '../ops/support.js';
 import { raceAdviceFor, type AdviceQuery } from './raceAdviceService.js';
+import { dismissNextAction, nextActionsView, noteFeatures, type TeamGoalBrief } from './nextAction.js';
 import { abortChallengeSubmit, prepareChallengeSubmit, recordChallengeResult, startChallenge, weeklyChallengeView, type WchStartInput } from './weeklyChallenge.js';
 import {
   ackCeremony, hallSnapshot, hallSnapshotKey, hallViewerOf, horseCareerView, myHallView, noteHallRace, noteHallRetire, noteHallTa, noteHallTournament,
@@ -316,7 +317,7 @@ export class PlayerService {
   /** REQ-UXS-001/014/032/040: computed sections of GET /v1/player and bootstrap. */
   private extras(s: PlayerState, now: number) {
     const m = this.d.master;
-    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s), commentaryPack: commentaryPackBadge(m, s), accessibility: accessibilityView(s), activity: activityBadge(m, s, now) };
+    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s), commentaryPack: commentaryPackBadge(m, s), accessibility: accessibilityView(s), activity: activityBadge(m, s, now), nextActions: nextActionsView(m, s, now) };
   }
 
   async view(id: string) {
@@ -330,6 +331,7 @@ export class PlayerService {
     return this.tx(id, null, (s, now, emit) => {
       const k = ensureKpi(s);
       if (!k.firstOpenSent) { k.firstOpenSent = true; emit({ name: 'first_open' }); }
+      noteFeatures(this.d.master, s, now); // REQ-NEXT-008: the day each feature is first seen unlocked
       const extra = this.extras(s, now);
       // REQ-UXS-032: one ab_assign row per experiment and player, so KPI queries can split any funnel by bucket
       const sent = (k.abSent ??= []);
@@ -341,6 +343,22 @@ export class PlayerService {
       if (sent.length > 50) sent.splice(0, sent.length - 50);
       noteActivity(this.d.master, s, now, emit); // REQ-CB-001: app start = an active day (may start a comeback window)
       return playerView(s, this.d.master.bannedSilks, extra);
+    });
+  }
+
+  // ---- 次にやること (REQ-NEXT-005/010, contracts/protocol.md §45) ----
+  /** GET /v1/home/next. `teamGoal`: the team's weekly goal when the caller is in a team (read from the TeamDO by the route). */
+  nextActions(id: string, teamGoal: TeamGoalBrief | null = null) {
+    return this.tx(id, null, (s, now) => {
+      noteFeatures(this.d.master, s, now);
+      return nextActionsView(this.d.master, s, now, teamGoal);
+    });
+  }
+  /** POST /v1/home/next/dismiss: closes a kind for today's game day (idempotent; KPI next_card_dismiss once). */
+  dismissNextAction(id: string, kind: string, teamGoal: TeamGoalBrief | null = null) {
+    return this.tx(id, null, (s, now, emit) => {
+      if (dismissNextAction(this.d.master, s, kind, now)) emit({ name: 'next_card_dismiss', s1: kind });
+      return nextActionsView(this.d.master, s, now, teamGoal);
     });
   }
 

@@ -2179,3 +2179,80 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 - Unity のゲーム層 `RosterOrganiserModel`：一覧の行、並び・絞り込みのシート、検索、ロック・お気に入りの切り替え、まとめて選ぶ、確認シート。端末の設定は `IPrefs`（PlayerPrefs）に `muchi.roster.view`。
 - 大会の登録（`TournamentPlayers.noteEntry`/`clearEntry`）：`TournamentsService.register`/`unregister` が成功した後に呼ぶ（任意のポート、失敗しても登録は成功のまま）。
 - §40 の活動の一覧（Round 15）ができたら、まとめて引退した時に「◯頭を引退させました」の1行を書く（ここでは書かない）。
+
+## 45. 次にやること（ホームの案内カード、REQ-NEXT-001〜014、`server/src/domain/nextAction.ts`、C# `NextAction.cs`・`Muchi.Game.NextActionModel`、docs/planning/06 §6.1）
+ホームに「次にやること」を**主カード1枚＋小さなチップ最大2つ**で出す。戻ってきた人も始めたばかりの人も、ホームを開けば次の1手が分かるようにする（06 §2.2 F10「次にやることが分からない」）。何を出すかはプレイヤーの状態の要約からの**純粋な関数**で決まり（同じ状態・同じ時刻なら同じ結果）、優先順位はデータ（`progression.nextActions`、起動時と各版で検証）にある。コイン・アイテムは動かない（経済の目標なし、E 番号なし）。
+
+### 45.1 種類（`kind`）と開く画面（`screen`）
+開く画面はコードで種類ごとに決まっていて、設定では変えられない（設定から「ショップへ」のカードは作れない）。
+
+| kind | 出る条件（要約から） | screen | 期限 `deadlineAt`（データの本物の時刻だけ） |
+|---|---|---|---|
+| `first_race` | オンボーディング中（45.3）。これだけを出す | `race` | なし |
+| `login_bonus` | `login_bonus` が解放済みで、今日のゲーム日の分が未受け取り | `login_bonus` | なし |
+| `missions_claim` | 達成して未受け取りのデイリーミッションがある（`count` = 本数） | `missions` | なし |
+| `pass_claim` | シーズンパスの受け取れる段がある（無料の列、プレミアムは有効な時だけ。`count` = 段数）。購入の案内ではない | `season_pass` | なし |
+| `gift_expiring` | プレゼントボックスに `threshold` 日以内に期限の来る物がある（`count` = 件数）。**開くだけ**（カードから受け取らない） | `gift_box` | 一番早い `expiresAt` |
+| `training_open` | 調教の途中のセッションがある | `training` | セッションの `expiresAt` |
+| `missions_close` | 未達成のデイリーミッションのうち、残りが `threshold` 以下のものがある（`count` = 一番近いものの残り） | `missions` | なし |
+| `exchange_closing` | 交換所のポイントが残っていて、交換所が `threshold` 日以内に閉まる（`refId` = イベントID、`count` = ポイント）。残りは閉まる時に素材になる（§30、失われない） | `event_exchange` | `closesAtMs` |
+| `feature_unlocked` | `features` に挙げた解放キーが今日のゲーム日に開いた（`featureKey`） | `feature` | なし |
+| `rival_week` | 今週のライバルがいて、今週のランク戦がまだ0回 | `rival` | `weekEndsAt` |
+| `weekly_challenge` | 週替わりチャレンジが解放済みで、今週の未クリアがあり、今日の挑戦回数が残っている（`count` = 未クリア数） | `weekly_challenge` | 週の `endsAt` |
+| `team_goal_near` | 支部の共同目標の次の段まで `threshold` 単位以下（`count` = 残り）。`GET /v1/home/next` だけ（支部の値は TeamDO にある） | `team_goal` | 週の `endsAt` |
+| `training_slots` | 調教の今日の回数が残っている（`count`） | `training` | なし |
+| `first_win` | 今日の初勝利ボーナスが残っていて、今日まだ1着がない | `race` | なし |
+| `scout_ticket` | スカウト券を持っている（`count` = 枚数）。**チップだけ**（主カードにはならない）。持っている券を使う案内で、購入・有償のスカウトの案内ではない | `scout` | なし |
+| `race` | いつでも（最後の受け皿。主カードが他に無い時） | `race` | なし |
+
+- 主カードにしてはいけないもの：購入（ショップ・パスの購入・有償スカウト）。`scout_ticket` はチップだけ（コードで固定）。有償の商品・価格・割引を出す種類は無い。
+- 文言はクライアントが種類と数から作る（日本語＋英語、`ui-en.json`／`proto-en.json`）。期限は「11月12日 4:00まで」のように**日付と時刻**で出し、カウントダウン・「今だけ」「残りわずか」などの煽りは出さない。
+
+### 45.2 選び方（`computeNextActions`、純粋関数）
+1. 要約から当てはまる候補を作る（45.1）。
+2. 今日のゲーム日に閉じた種類（45.4）を除く。
+3. `priority` の大きい順、同じなら 45.1 の表の順で並べる（`priority` は設定で重複不可なので、実際には表の順は使わない）。
+4. 先頭のうちチップだけの種類でない最初の1つが主カード。残りの先頭から `maxChips`（0〜2）個がチップ。`race` は主カードの時だけ出す（チップにはしない）。
+5. 削除の予約中（REQ-UXS-040）は `race` だけ。
+
+### 45.3 オンボーディングとの関係（06 §2.3 FTUE）
+- 相棒がまだいない（`flags.partnerHorseId` なし）か、チュートリアル以外のレースが `onboardingRaces`（既定 2 = デイリーミッションの解放と同じ）回未満の間は、`first_race`（「相棒で、本番のコースへ」）だけを出す。チップは出さず、閉じることもできない。FTUE の流れ（命名 → 無料10連 → 2戦目）と競わない。
+- 解放されていない機能の種類は出さない（`unlock` が無い機能、§4.3 の表のとおり）。
+- 復帰キャンペーンの歓迎画面（§20）とお知らせのカードは今までどおり先に出る（ホームの左のカード枠）。次にやることのカードは別の場所（ホームの下の中央）に出す。
+
+### 45.4 今日は閉じる
+- `POST /v1/home/next/dismiss` `{ "kind" }` → `NextActionsView`。その種類を**今日のゲーム日（既定 4:00 JST 切り替え、REQ-DAY-001）の間**出さない。翌ゲーム日に戻る。値を足すだけなので何度送っても同じ（冪等、冪等キー不要）。
+- `first_race`・`race` は閉じられない（`409 NOT_ELIGIBLE`）。知らない種類は `400 BAD_REQUEST`。
+- `feature_unlocked` は解放を最初に見たゲーム日だけ出る（翌日には消える）。解放を見た日は状態の `nextAction.features` に覚える（ブートストラップ・`GET /v1/home/next`・閉じる時）。この仕組みより前からの状態は、最初に見た時点で開いている機能を「前から開いていた」とみなす（古いプレイヤーに全部の機能を「新しく開いた」と出さない）。
+
+### 45.5 API（要認証）
+| メソッド | パス | 本文 → 応答 |
+|---|---|---|
+| GET | `/v1/home/next` | → `NextActionsView`（支部に入っていれば共同目標も見る） |
+| POST | `/v1/home/next/dismiss` | `{ "kind": NextKind }` → `NextActionsView` |
+
+`/v1/player/bootstrap`・`GET /v1/player` の `nextActions` にも同じ形が入る（共同目標を除く。ホームの最初の描画用）。
+
+```json
+{ "enabled": true, "day": "2026-11-09", "onboarding": false,
+  "primary": { "kind": "gift_expiring", "screen": "gift_box", "count": 2, "deadlineAt": 1794614400000, "featureKey": null, "refId": null, "dismissible": true },
+  "chips": [ { "kind": "rival_week", "screen": "rival", "count": null, "deadlineAt": 1794880800000, "featureKey": null, "refId": null, "dismissible": true } ],
+  "dismissed": ["missions_close"], "nextDayAt": 1794697200000 }
+```
+- `nextDayAt` = 次のゲーム日の始まり（クライアントの予備の計算で、閉じた種類を戻す時刻。画面には出さない）。
+- `enabled: false`（設定なし・無効）の時は `primary: null`, `chips: []`。
+
+### 45.6 クライアントの予備（オフライン）
+サーバーが計算する。クライアントは最後に受け取った `NextActionsView` を覚えておき、取れない時（オフライン・エラー）はそれを使う：`deadlineAt` を過ぎた物を外し、端末で閉じた種類（同じゲーム日の間、`Muchi.Game.GameDay`）を外し、覚えた `day` が今日のゲーム日と違えば（日をまたいだ）`race` だけにする。何も無ければ `race`。オフラインのレース（練習）はいつでも押せる（06 §6.1）。
+
+### 45.7 設定 `progression.nextActions`（リモート設定で変更可）
+`{ enabled, maxChips (0..2), onboardingRaces (0..20), rules: [{ kind, priority (0..1000、重複不可), threshold?, features? }] }`。
+- `kind` は 45.1 の種類だけ・重複不可。`race` は必須（受け皿）。`first_race` は書かない（オンボーディングはコードで決まる）。
+- `threshold`：`gift_expiring`（日 1..14）・`exchange_closing`（日 1..7）・`missions_close`（残り 1..10）・`team_goal_near`（残り 1..100）だけが持ち、他の種類には書けない。
+- `features`：`feature_unlocked` だけ。§4.3 の解放キーのうち、`shop`・`season_pass`・`scout`（購入・ガチャの画面）は書けない。
+
+### 45.8 KPI
+`next_card_view`（クライアント、`props.kind`・`props.slot` = `primary`／`chip`。同じ種類は1ゲーム日に1回）・`next_card_tap`（クライアント、`props.kind`・`props.slot`）・`next_card_dismiss`（サーバー、`s1` = kind、閉じた時に1回）。クエリは `docs/ops/kpi-queries.md`。
+
+### 45.9 アカウント削除
+状態の `nextAction`（今日閉じた種類・機能を見た日）は最後の `wipe` で消える。他の場所に写しは無い。

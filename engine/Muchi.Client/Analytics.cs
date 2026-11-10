@@ -11,7 +11,7 @@ namespace Muchi.Client
     /// One client analytics event (REQ-KPI-003). Only events the server cannot observe itself are accepted;
     /// purchases, gacha, race results etc. are recorded server-side. Build them with the factory methods.
     /// </summary>
-    public sealed class AnalyticsEvent
+    public sealed partial class AnalyticsEvent
     {
         public readonly string Name;
         /// <summary>Unix time in milliseconds when it happened (the server drops events older than 7 days).</summary>

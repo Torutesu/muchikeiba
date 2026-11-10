@@ -47,6 +47,7 @@ import type { DesignInput, SilksDesign } from '../domain/silksEditor.js';
 import type { MyReplaysService } from '../domain/myReplaysService.js';
 import { activityQuery, actorIdsOf, parseUpTo, renderActivityItems } from '../domain/activity.js';
 import { bulkBodySchema } from '../domain/roster.js';
+import type { TeamGoalBrief } from '../domain/nextAction.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -86,6 +87,7 @@ export type PlayerMethod =
   | 'wchView' | 'wchStart' | 'wchPrepare' | 'wchAbort' | 'wchRecord'
   | 'teamGoalReward' | 'goalPlayerView'
   | 'hallMine' | 'hallViewer' | 'hallNoteView' | 'horseCareer' | 'hallAck' | 'hallSettings'
+  | 'nextActions' | 'dismissNextAction'
   | 'roster' | 'rosterLock' | 'rosterFavorite' | 'rosterPreview' | 'rosterBulk' | 'rosterTournament'
   | 'myReplays' | 'replayPrepareSave' | 'replayCommitSave' | 'replayForget' | 'replayUpdate' | 'replayDelete' | 'replayOwnRef' | 'replayShared' | 'replayViewed'
   | 'raceAdvice'
@@ -271,6 +273,18 @@ const teams = (c: AppContext) => {
   if (!c.teams) throw new AppError('NOT_FOUND', 'teams are not available');
   return c.teams;
 };
+/**
+ * REQ-NEXT-001 `team_goal_near`: the caller's team goal (TeamDO) for the next-action guide. Best effort: no team, no teams
+ * service or a failing read only leaves the team card out — the guide itself never fails because of it.
+ */
+async function teamGoalBrief(c: AppContext, u: string): Promise<TeamGoalBrief | null> {
+  if (!c.teams || !c.master.progression.nextActions?.enabled) return null;
+  try {
+    const g = await c.teams.goal(u);
+    const cur = g.current;
+    return cur ? { endsAt: cur.endsAt, progress: cur.progress, milestones: cur.milestones.map((x) => ({ target: x.target, reached: x.reached })) } : null;
+  } catch { return null; }
+}
 const events = (c: AppContext) => {
   if (!c.events) throw new AppError('NOT_FOUND', 'events are not available');
   return c.events;
@@ -630,6 +644,12 @@ export const routes: Route[] = [
   { method: 'POST', path: '/v1/comeback/login', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('comebackClaimLogin', u, idem(r)) },
   { method: 'POST', path: '/v1/comeback/missions/:missionId/claim', auth: 'player', handler: async (r, p, c, u) => c.player(u).invoke('comebackClaimMission', u, missionIdParam(p.missionId!), idem(r)) },
   { method: 'POST', path: '/v1/comeback/welcome', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('comebackWelcomed', u) },
+  // 次にやること (REQ-NEXT-010, contracts/protocol.md §45): the home's next card and chips
+  { method: 'GET', path: '/v1/home/next', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('nextActions', u, await teamGoalBrief(c, u)) },
+  { method: 'POST', path: '/v1/home/next/dismiss', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ kind: z.string().min(1).max(32) }));
+    return c.player(u).invoke('dismissNextAction', u, b.kind, await teamGoalBrief(c, u));
+  } },
   { method: 'GET', path: '/v1/whats-new', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('whatsNew', u) },
   { method: 'POST', path: '/v1/whats-new/seen', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ upTo: z.number().int().min(0) }));

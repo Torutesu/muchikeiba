@@ -1159,6 +1159,7 @@ async function Home() {
   if (unlock('rival').unlocked) await RivalStrip(); // round 12: this week's rival, top centre (its own slot, not the card slot)
   await HomeCard(comeback); // round 10: one card at a time (what's new > comeback campaign > ad offer)
   await ChallengeHomeCard(); // round 13: this week's challenges, under the home card
+  await NextCard(); // round 16: 次にやること, bottom centre (the top bar stays as it is)
   MaybeLinkPrompt('Home', Home);
 }
 /** ③ today's to-do (login bonus, daily missions, first-win bonus) in a drawer. */
@@ -2570,10 +2571,103 @@ async function Demo(kind) {
   // round 12: a week of play, then three ranked races in last place (settled by the real applyRace) → the one-time suggestion
   if (kind === 'assist') { await L.seedDemo(7, [3, 3, 3, 3, 3, 3, 3]); ftue = false; await L.demoLastPlaces(3); await refresh(); return AssistThen(Home); }
   if (kind === 'history') { await L.seedHistory(); await refresh(); hiState.picked = []; return History('purchases'); }
+  // round 16: 3 game days of play, a gift expiring in 2 days and 2 owned scout tickets → the home's next card and chips
+  if (kind === 'next') { await L.seedNext(); try { localStorage.removeItem(NEXT_VIEWED); } catch { /* */ } await refresh(); return Home(); }
   const spec = { day1: [1, [1]], day3: [3, [2, 2, 2]], day7: [7, [3, 3, 3, 3, 3, 3, 3]] }[kind];
   await L.seedDemo(spec[0], spec[1]);
   await refresh();
   return Home();
+}
+
+// ================================================================= round 16: 次にやること (REQ-NEXT-*, contracts/protocol.md §45)
+// One card at the bottom centre of home (between the partner and the race button, over the paddock art) and up to two chips
+// under it. The server chooses (MuchiLogic.nextActions = GET /v1/home/next on the real nextAction.ts); this only draws it.
+// The top bar is left alone (season · rival strip · gift envelope · wallet; §40's bell will sit there later). Deadlines are
+// real times shown as a date and time, never a countdown; no card leads to the shop. 「今日は閉じる」 holds for the game day.
+const NEXT_BOX = { x: 520, y: 560, w: 560 };
+const NEXT_VIEWED = 'muchi.next.viewed';
+const nxDeadline = (ms) => { const d = new Date(ms - 60_000 + 9 * 3600e3); return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日 ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}まで`; };
+const NX_FEATURE = { missions: 'ミッション', training: '調教', bond: '絆・飼い葉', season: 'シーズン・ランキング', rival: 'ライバル', breeding: '配合', friends: 'フレンド', teams: '支部', time_attack: 'タイムアタック', weekly_challenge: '週替わりチャレンジ', events: 'イベント', tournaments: '大会', my_stable: 'マイ厩舎', stud: '種牡馬の貸し借り' };
+/** The texts of a card: the same Japanese as the Unity NextActionModel (English: ui-en.json / proto-en.json). */
+function nxText(i) {
+  const n = i.count == null ? '' : fmt(i.count);
+  const f = NX_FEATURE[i.featureKey] ?? i.featureKey;
+  const T = {
+    first_race: ['相棒で、本番のコースへ', '初心者マッチに出走しよう', '出走する', 'レースへ'],
+    login_bonus: ['ログインボーナスを受け取れます', '今日の分がまだです', '受け取りにいく', 'ログインボーナス'],
+    missions_claim: ['ミッションの報酬を受け取れます', `達成したミッション ${n}件`, '受け取りにいく', `ミッション報酬 ${n}件`],
+    pass_claim: ['シーズンパスの報酬を受け取れます', `受け取れる報酬 ${n}段`, '受け取りにいく', `パス報酬 ${n}段`],
+    gift_expiring: ['受け取り期限が近いプレゼントがあります', `プレゼント ${n}件`, 'プレゼントを見る', `プレゼント ${n}件`],
+    training_open: ['調教の途中です', '続きから再開できます', '調教を続ける', '調教の続き'],
+    missions_close: [`デイリーミッションまで あと${n}`, 'レースや調教で進みます', 'ミッションを見る', `ミッション あと${n}`],
+    exchange_closing: [`交換所のポイントが ${n}pt あります`, '残ったポイントは、閉まる時に素材になります', '交換所へ', `交換所 ${n}pt`],
+    feature_unlocked: ['新しく開きました', f, '開いてみる', f],
+    rival_week: ['今週のライバルと、まだ走っていません', '同じランク戦で先着すれば1点', 'ライバルを見る', 'ライバル'],
+    weekly_challenge: ['週替わりチャレンジ', `未クリア ${n}つ`, '挑戦する', `チャレンジ 未クリア${n}`],
+    team_goal_near: [`支部の共同目標、次の段まで あと${n}`, '確定したレース結果で進みます', '共同目標を見る', `共同目標 あと${n}`],
+    training_slots: [`今日の調教 あと${n}回`, 'タイミングよく押すと、伸びが少しだけ良くなります', '調教する', `調教 あと${n}回`],
+    first_win: ['今日の初勝利ボーナスがあります', 'ランク戦の1着で受け取れます', 'レースへ', '初勝利ボーナス'],
+    scout_ticket: [`スカウト券 ${n}枚`, '持っている券で引けます', 'スカウトへ', `スカウト券 ${n}枚`],
+    race: ['次の1レースへ', 'ランク戦・約90秒', 'レースへ', 'レースへ'],
+  }[i.kind] ?? ['次の1レースへ', 'ランク戦・約90秒', 'レースへ', 'レースへ'];
+  return { title: T[0], detail: T[1], cta: T[2], chip: T[3], deadline: i.deadlineAt ? nxDeadline(i.deadlineAt) : null };
+}
+async function nxOpenMissions() { const [ms, fw] = await Promise.all([L.missions(), L.firstWinBonus()]); Missions(ms.ok ? ms.value : [], fw, null); }
+/** Where a card leads (the screen ids of §45.1). Never the shop. */
+function nxGo(i) {
+  const feature = { missions: nxOpenMissions, training: Training, rival: Rival, weekly_challenge: () => WeeklyChallenge(), time_attack: () => TimeAttack(), events: () => EventTop(), teams: TeamGoal };
+  const go = {
+    race: RaceLobby, login_bonus: async () => { await L.claimLogin(); Home(); }, missions: nxOpenMissions, season_pass: SeasonPass, gift_box: () => GiftBox('box'),
+    training: Training, event_exchange: () => Exchange(i.refId), feature: feature[i.featureKey] ?? Features, rival: Rival, weekly_challenge: () => WeeklyChallenge(),
+    team_goal: TeamGoal, scout: () => Scout(),
+  }[i.screen] ?? RaceLobby;
+  return go();
+}
+function nxKpi(name, i, slot) { L.kpi([{ name, at: L.now(), props: { kind: i.kind, slot } }]); (globalThis.__muchiNextKpi ??= []).push({ name, kind: i.kind, slot }); }
+/** next_card_view once per kind and game day (the server's day key). */
+function nxViews(v) {
+  let seen = {};
+  try { seen = JSON.parse(localStorage.getItem(NEXT_VIEWED) ?? '{}'); } catch { /* */ }
+  if (seen.day !== v.day || !Array.isArray(seen.kinds)) seen = { day: v.day, kinds: [] };
+  const shown = [...(v.primary ? [[v.primary, 'primary']] : []), ...v.chips.map((c) => [c, 'chip'])];
+  for (const [i, slot] of shown) if (!seen.kinds.includes(i.kind)) { seen.kinds.push(i.kind); nxKpi('next_card_view', i, slot); }
+  try { localStorage.setItem(NEXT_VIEWED, JSON.stringify(seen)); } catch { /* */ }
+}
+async function NextCard() {
+  if (cur?.dataset.screen !== 'home') return null;
+  cur.querySelectorAll('[data-next]').forEach((n) => n.remove());
+  const r = await L.nextActions();
+  if (!r.ok || !r.value.enabled || cur?.dataset.screen !== 'home') return null;
+  const v = r.value;
+  const p = v.primary;
+  // the race card alone repeats the big 「レースへ」: nothing to add, so nothing is drawn
+  if (!p || (p.kind === 'race' && v.chips.length === 0)) return null;
+  const t = nxText(p);
+  const card = Glass('Next', NEXT_BOX.x, NEXT_BOX.y, NEXT_BOX.w, 142, undefined, .84);
+  card.dataset.next = p.kind; card.classList.add('next-card', 'rise');
+  if (p.featureKey) card.dataset.feature = p.featureKey;
+  if (p.deadlineAt) card.dataset.deadline = String(p.deadlineAt);
+  Kicker('次にやること', 24, 18, card, { rule: false, size: 14 });
+  if (p.dismissible) {
+    TextLink('今日は閉じる', 404, 8, 136, async () => {
+      const d = await L.dismissNext(p.kind);
+      if (!d.ok) return toast(d.message);
+      toast('今日はこのお知らせを閉じました');
+      NextCard();
+    }, card).dataset.nextDismiss = p.kind;
+  }
+  Txt(t.title, 24, 44, 512, 21, WHITE, card, { weight: 700, nowrap: true });
+  Txt(t.deadline ? `${t.detail}　·　${t.deadline}` : t.detail, 24, 84, 330, 14, MUTED, card, { weight: 500, nowrap: true });
+  const go = Ghost(t.cta, 370, 78, 166, 46, () => { nxKpi('next_card_tap', p, 'primary'); nxGo(p); }, card, 'small');
+  go.dataset.nextGo = p.kind;
+  v.chips.forEach((c, k) => {
+    const ct = nxText(c);
+    const chip = Ghost(ct.chip, NEXT_BOX.x + k * 214, NEXT_BOX.y + 152, 204, 42, () => { nxKpi('next_card_tap', c, 'chip'); nxGo(c); }, undefined, 'small');
+    chip.dataset.next = c.kind; chip.dataset.nextChip = c.kind; chip.classList.add('next-chip');
+    if (c.deadlineAt) chip.dataset.deadline = String(c.deadlineAt);
+  });
+  nxViews(v);
+  return card;
 }
 
 // ================================================================= round 10: 友達招待 (REQ-INV-*, contracts/protocol.md §19)

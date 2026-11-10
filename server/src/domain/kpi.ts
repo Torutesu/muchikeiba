@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { AppError } from './errors.js';
 import type { PlayerState } from './player.js';
 import { jstDateKey } from './time.js';
+import { NEXT_KINDS, NEXT_SLOTS } from './nextKinds.js';
 
 /** Event-specific fields. Strings go to blob8-10, numbers to double1-6/8/9 (see BLOB/DOUBLE below). */
 export interface KpiEvent {
@@ -152,6 +153,9 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   // REQ-ACT-015: the activity list was opened (unread count then) / an entry was tapped (its kind and deep link)
   z.object({ name: z.literal('activity_open'), at: z.number().int(), props: z.object({ unread: z.number().int().min(0).max(999) }).strict() }),
   z.object({ name: z.literal('activity_tap'), at: z.number().int(), props: z.object({ kind: z.enum(ACTIVITY_KIND_NAMES), screen: z.enum(ACTIVITY_SCREEN_NAMES) }).strict() }),
+  // REQ-NEXT-012: the home's 次にやること card shown (once per kind and game day) / tapped. Closing it is the server event next_card_dismiss.
+  z.object({ name: z.literal('next_card_view'), at: z.number().int(), props: z.object({ kind: z.enum(NEXT_KINDS), slot: z.enum(NEXT_SLOTS) }).strict() }),
+  z.object({ name: z.literal('next_card_tap'), at: z.number().int(), props: z.object({ kind: z.enum(NEXT_KINDS), slot: z.enum(NEXT_SLOTS) }).strict() }),
 ]);
 export type ClientEvent = z.infer<typeof clientEventSchema>;
 
@@ -191,6 +195,7 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'photo_share': return { name: e.name, s1: e.props.source, s2: e.props.framed ? 'framed' : 'plain' };
     case 'activity_open': return { name: e.name, value: e.props.unread };
     case 'activity_tap': return { name: e.name, s1: e.props.kind, s2: e.props.screen };
+    case 'next_card_view': case 'next_card_tap': return { name: e.name, s1: e.props.kind, s2: e.props.slot };
   }
 }
 

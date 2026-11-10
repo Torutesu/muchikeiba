@@ -982,3 +982,35 @@ WHERE blob1 = 'roster_bulk_action' AND timestamp > NOW() - INTERVAL '56' DAY
 GROUP BY week, action
 ORDER BY week DESC
 ```
+
+## 次にやること：カードの表示・タップ・閉じる（REQ-NEXT-012、Round 16、contracts/protocol.md §45）
+列：`next_card_view`（クライアント、同じ種類は1ゲーム日に1回）`blob8` = 種類（`gift_expiring` など）、`blob9` = `primary`／`chip`。`next_card_tap`（クライアント）は同じ列。`next_card_dismiss`（サーバー、閉じた時に1回）`blob8` = 種類。
+
+**種類ごとのタップ率と閉じる率**（週ごと）：タップが少なく閉じるが多い種類は、優先度（`progression.nextActions.rules[].priority`）を下げるか条件（`threshold`）を見直す。
+
+```sql
+SELECT
+  toStartOfWeek(timestamp) AS week,
+  blob8 AS kind,
+  sumIf(_sample_interval, blob1 = 'next_card_view') AS views,
+  sumIf(_sample_interval, blob1 = 'next_card_tap') AS taps,
+  sumIf(_sample_interval, blob1 = 'next_card_dismiss') AS dismisses,
+  round(sumIf(_sample_interval, blob1 = 'next_card_tap') / sumIf(_sample_interval, blob1 = 'next_card_view'), 3) AS tap_rate,
+  round(sumIf(_sample_interval, blob1 = 'next_card_dismiss') / sumIf(_sample_interval, blob1 = 'next_card_view'), 3) AS dismiss_rate
+FROM muchi_kpi
+WHERE blob1 IN ('next_card_view', 'next_card_tap', 'next_card_dismiss') AND timestamp > NOW() - INTERVAL '56' DAY
+GROUP BY week, kind
+ORDER BY week DESC, views DESC
+```
+
+**主カードとチップ**：主カードのタップ率がチップより十分高いこと（低ければ主カードの選び方が合っていない）。
+
+```sql
+SELECT blob9 AS slot, sumIf(_sample_interval, blob1 = 'next_card_view') AS views, sumIf(_sample_interval, blob1 = 'next_card_tap') AS taps
+FROM muchi_kpi
+WHERE blob1 IN ('next_card_view', 'next_card_tap') AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY slot
+```
+
+**新規の人の2日目**：カードをタップした人の D1 残存を見る（`cohortDay` と `daysSinceInstall` で、タップあり／なしに分ける）。
+

@@ -1111,6 +1111,10 @@
   "名前で探す": "Search by name",
   "貸し出し中": "On loan",
   "引退式を未確認": "Ceremony not watched",
-  "ロック": "Lock"
+  "ロック": "Lock",
+
+  "_next": "---- round 16: 次にやること (home next card; the card texts are the game layer's, ui-en.json)",
+  "今日は閉じる": "Hide for today",
+  "今日はこのお知らせを閉じました": "Hidden for today"
  }
 }

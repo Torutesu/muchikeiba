@@ -385,6 +385,15 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await shot('commentary-pack-buy', 400);
   await page.locator('.screen.in [data-confirm="cancel"]').click(); await waitScreen('commentary-packs');
 
+  // round 16: 次にやること in English (REQ-NEXT-014): the home's next card and chips, then after 「今日は閉じる」
+  await page.evaluate(() => globalThis.__muchi.demo('next')); await waitScreen(['home', 'link-prompt'], 60000);
+  if (await screen() === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); }
+  await page.waitForSelector('.screen.in .next-card', { timeout: 10000 });
+  await shot('home-next', 700);
+  assert.match(await page.locator('.screen.in .next-card').innerText(), /Next up/, 'next card: the kicker in English');
+  await page.locator('.screen.in [data-next-dismiss]').click(); await page.waitForTimeout(800);
+  await shot('home-next-dismissed', 500);
+
   const misses = await page.evaluate(() => globalThis.__muchi.l10n.misses());
   fs.writeFileSync(path.join(out, 'en-report.json'), JSON.stringify({ report, misses }, null, 2));
   await ctx.close();

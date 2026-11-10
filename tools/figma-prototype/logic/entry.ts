@@ -219,6 +219,14 @@ let n = 0;
 const kpiLog: ClientBatch['events'] = [];
 const key = () => `c:/proto:${Date.now()}:${n++}`;
 
+/** REQ-NEXT-001 team_goal_near: the team's goal as GET /v1/home/next reads it (http/app.ts teamGoalBrief), best effort. */
+async function nextTeamGoal() {
+  try {
+    const g = await teamsSvc.goal(ID);
+    const c = g.current;
+    return c ? { endsAt: c.endsAt, progress: c.progress, milestones: c.milestones.map((x) => ({ target: x.target, reached: x.reached })) } : null;
+  } catch { return null; }
+}
 async function wrap<T>(f: () => Promise<T> | T): Promise<{ ok: true; value: T } | { ok: false; code: string; message: string; details?: Record<string, unknown> }> {
   try { return { ok: true, value: await f() }; }
   catch (e) {
@@ -687,6 +695,25 @@ export const MuchiLogic = {
     await svc.applyRace(m2!, { raceId: `proto_tm_${Date.now().toString(36)}_${k}`, mode: k % 2 ? 'tournament' : 'ranked', place: 1 + (k % 3), fieldSize: 12, newRating: null, void: false, humans: 6 });
     await wrap(() => teamsSvc.postStamp(lead!, ['cheer', 'lets_go', 'nice'][k % 3]!));
     await wrap(() => teamsSvc.postStamp(m3!, ['clap', 'thanks', 'gg'][k % 3]!));
+  },
+  // ---------------------------------------------------------------- round 16: 次にやること (REQ-NEXT-*, contracts/protocol.md §45)
+  // The real server choice (nextAction.ts): the summary of the player's state, the priorities of progression.nextActions,
+  // onboarding, dismiss for the game day. The team goal comes from the demo team like GET /v1/home/next reads the TeamDO.
+  async nextActions() {
+    return wrap(async () => svc.nextActions(ID, await nextTeamGoal()));
+  },
+  async dismissNext(kind: string) {
+    return wrap(async () => svc.dismissNextAction(ID, kind, await nextTeamGoal()));
+  },
+  /**
+   * Demo state 「次にやること」: 3 game days of play, then today's login bonus left unclaimed is claimed by home itself, so
+   * the card shows what is left: a gift that expires in 2 days (an ops campaign grant) and 2 owned scout tickets (a chip).
+   */
+  async seedNext() {
+    await this.seedDemo(3, [2, 2, 2]);
+    await svc.adminGrant(ID, { freeCoins: 30 }, 'campaign', 'ops', 'demo-next-gift', true, { expiryDays: 2 });
+    await svc.tx(ID, null, (s) => { s.items.gacha_ticket = Math.max(2, s.items.gacha_ticket ?? 0); });
+    return svc.nextActions(ID, await nextTeamGoal());
   },
   // 支部の共同目標 (REQ-TGOAL-*): the weekly goal of the demo team on the real TeamCore / PlayerService rules
   teamGoal: () => wrap(() => teamsSvc.goal(ID)),

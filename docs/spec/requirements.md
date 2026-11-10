@@ -708,7 +708,6 @@
 - REQ-EXCH-011 経済 E17：全ての想定でイベント期間中に1日3レースをイベントにし、猶予期間に交換所を使っても E1〜E6 が目標内、どの想定も引ける回数がイベントなしの 1.03 倍以下、課金しても貯まるポイントは同じ、1イベントの交換のコイン価値（コイン＋券の1回分の価格）≤ 250（`server/test/economy.test.ts`、`npm run economy`）。
 - REQ-EXCH-012 クライアントと運用：`Muchi.Client` `ApiClient.GetExchangeAsync`・`ExchangeAsync`、Unity のゲーム層 `ExchangeModel`（行のカード・在庫「残り n / m」・確認シート・確定まで冪等キーを保持・猶予期間の案内・課金への導線なし）、英語の文言。運用コンソールはイベントの一覧で交換所の行・在庫・猶予日数を読める（`GET /v1/admin/config` 系の既存の表示）。
 
-
 ## 31. 週替わりチャレンジ（TS＋C#、`src/domain/weeklyChallenge.ts`・`src/race/weeklyChallenge.ts`、`contracts/protocol.md` §31、docs/planning/06 §1.3）
 拘束条件：ランク戦は課金で決まらない（06 §1.3）。チャレンジは「乗り方」で毎週少しずつ目標をくれる短いループで、検証はタイムアタックと同じくサーバーの再シミュレーション。
 - REQ-WCH-001 週：`gameWeekId`（`time.ts`）。`weekStartsOn`（月曜）のゲーム日の切り替わり（REQ-DAY-001、04:00 JST）に変わる。セットは `rotation` を `anchorWeekId` から1週ずつ。週の終わりの直前に始めたレースは期限内なら始めた週の分。
@@ -727,7 +726,6 @@
 - REQ-WCH-014 KPI：`challenge_start`・`challenge_clear`（protocol §31.8、`docs/ops/kpi-queries.md`）。
 - REQ-WCH-015 英語：一覧・結果・エラーのすべての文に英語（タイトル・バッジ名は `master/locale-en.json`、条件の文は `i18n/en.ts`）。プロトタイプとクライアントも英語で表示できること。
 - REQ-WCH-016 クライアント：`Muchi.Client` の API・`ChallengeRun`・`ChallengeEvaluator`、Unity の `WeeklyChallengeModel`（ホームのカード・一覧・HUD の条件の行・結果・バッジ）。プロトタイプ（ムチ一閃の画面、本物のエンジンでのレース、日英、e2e と英語の通し）。 解放キー `weekly_challenge`（タイムアタックと同じ条件、Round 13 の統合で追加）。
-
 
 ## 32. 支部の共同目標（TS＋C#、`src/domain/teamGoal.ts`、`contracts/protocol.md` §32、docs/spec/balance-targets.md 4.17）
 - REQ-TGOAL-001 週：月曜のゲーム日の切り替え（4:00 JST）から7ゲーム日。週のキーは月曜のゲーム日。終わりは次の月曜 4:00 JST。 Round 13 の統合：`time.ts` の共通の `gameWeekId`（ライバル・週替わりチャレンジと同じ週。月曜 03:59 は前の週、04:00 から新しい週、`test/game-week.test.ts`）。
@@ -833,3 +831,81 @@
 - REQ-MYRP-014 KPI：`replay_save`・`replay_view`（サーバー）、`replay_share`（クライアント）。クエリは `docs/ops/kpi-queries.md`。
 - REQ-MYRP-015 クライアント：`Muchi.Client` `ApiClient.GetMyReplaysAsync`・`SaveReplayAsync`・`UpdateReplayAsync`（名前・お気に入り・公開）・`DeleteReplayAsync`・`GetReplayDataAsync`・`GetFriendReplaysAsync`・`GetFriendReplayDataAsync`、`ReplayPlayer`。Unity のゲーム層 `MyReplaysModel`（一覧のカード、名前の変更シート、公開の切り替え、プレイヤーの操作、再生できない時の文言）。
 - REQ-MYRP-016 プロトタイプ：マイリプレイの一覧（結果・コース・日付のカード）、本物のエンジンの再計算で動くプレイヤー（速度・カメラ・最後の200m）、名前の変更シート、公開の切り替え（日本語・英語）。
+
+## 38. フォトモード（TS＋C#、`src/domain/photoMode.ts`・`server/master/photo.json`・`Muchi.Client/PhotoMode.cs`・`Muchi.Game.PhotoModeModel`、`contracts/protocol.md` §38）
+拘束条件：他の人のレースを止めない、レースの結果・ハッシュ・ゴールデンを変えない、ランダムな販売なし、他人の名前を出さない、ひとことは翻訳しない。コイン・アイテムは配らない（E なし）。
+- REQ-PHOTO-001 入口：ひとりで走るレース（オフライン・練習・タイムアタック・チュートリアル・週替わりチャレンジ）はレース中に一時停止して撮れる。ランク戦・フレンド戦・イベント・大会はレース中に止めず、結果画面とリプレイからだけ撮れる（クライアント `PhotoModeModel.CanPause`、サーバーは `source.kind: "paused"` でその4つを 400 `PHOTO_SOURCE_INVALID`）。
+- REQ-PHOTO-002 決定論：写真は `(raceId, tick)`＋カメラ＋重ねる物で決まる。端末は設定＋確定入力をその tick まで計算し直して馬の状態を作る（`PhotoSnapshot.Capture`）。走っているレースの `RaceSim` を触らず、結果ハッシュ・ゴールデンは変わらない。同じ入力なら `Fingerprint` が同じ。
+- REQ-PHOTO-003 カメラ：注目の馬のまわりを回る・寄る・高さ・画角・被写界深度（0〜3）。範囲は `photo.json config.camera`（サーバーとクライアントで同じ）。高さは 0.3 m 以上（コースの下に入らない）。
+- REQ-PHOTO-004 ルック（色味・フィルター）：いくつか用意し、すべて無料（`unlock: default` だけ。検査で強制）。
+- REQ-PHOTO-005 フレーム・スタンプ：無料のもの、実績（§24 の段）で解放するもの、見た目ショップで決まった価格で買えるもの（`items.json` `kind: "photo"`、既存の購入 API、1回だけ、ランダムなし）。能力には影響しない。
+- REQ-PHOTO-006 カタログ：`GET /v1/photo/catalog` は品ごとに名前・アセットキー・解放の条件の文・解放済みか・（買える品は）価格。
+- REQ-PHOTO-007 ひとこと：0〜24文字。表示名と同じ規則（NFKC・制御文字・URL・NG 名）＋ショップの言葉の規則（倍・お得・今だけ・残りわずか・通常価格）＋賭けの言葉（馬券・賭け・オッズ・配当・払戻・的中・予想など）は使えない。応答でも翻訳しない（`PLAYER_TEXT_KEYS`）。
+- REQ-PHOTO-008 名札とプライバシー：自分は「あなた」、フレンドは表示名、フレンドでない人間は `p<slot>`（§37 と同じ）、CPU は「CPU」。名札を全部隠す設定（`names: "hidden"`）。共有の文に他人の名前を入れない。
+- REQ-PHOTO-009 共有：既存のリプレイ共有の静止画（`ShareCard`・`IClipRecorder.CaptureStillAsync`・`IShareSheet`）にゲームのロゴ、ひとこと・フレーム・スタンプ・ルックを足した `PhotoShareCard`（`Kind = "photo_image"`）。UI を隠す切り替え。写真に HUD は入れない。
+- REQ-PHOTO-010 写真の記録：`POST /v1/photos`（冪等キー）でソース・tick・カメラ・重ねる物・ひとことの小さな記録を保存（画像は保存しない）。最大 30 件（購入で増えない）、超えたら 409 `PHOTO_LIMIT`。`GET /v1/photos`・`DELETE /v1/photos/:photoId`。本人だけが読める。
+- REQ-PHOTO-011 記録の検査：値の範囲（カメラ・スタンプの位置・数）、未解放の品は 409 `PHOTO_LOCKED`、他のキーは 400。
+- REQ-PHOTO-012 無効化：`config.enabled: false` で API は 404、カタログは `{ enabled: false }`、クライアントは入口を隠す。
+- REQ-PHOTO-013 設定の検査（起動時・リモート設定）：`photoProblems`（形・範囲・重複・ルックは全部無料・無料のフレームとスタンプが1つ以上・実績と段が実在・写真の品と解放の対応が1対1・文の言葉の規則）。
+- REQ-PHOTO-014 KPI：クライアント `photo_take`（source・look）・`photo_share`（source・framed、共有した時だけ）、サーバー `photo_save`（source.kind・mode）。
+- REQ-PHOTO-015 クライアント SDK：`ApiClient.GetPhotoCatalogAsync`・`GetPhotosAsync`・`SavePhotoAsync`・`DeletePhotoAsync`、`PhotoCamera`・`PhotoSnapshot`・`PhotoNames`・`PhotoShareCard`・`PhotoCaption`（端末での事前チェック、最終判断はサーバー）。
+- REQ-PHOTO-016 Unity：`PhotoModeModel`（入口の判定・カメラ操作・品の選択と鍵・ひとこと・名札・UI を隠す・共有・保存・オフライン）。
+- REQ-PHOTO-017 英語：品の名前・解放の文・注意書き・画面の文は英語あり（`locale-en.json`・`i18n/en.ts`・`ui-en.json`・`proto-en.json`）。ひとこととプレイヤーの名前は訳さない。
+- REQ-PHOTO-018 経済：写真の品の購入は既存の見た目ショップのコインの使い道で、何も配らない（E1〜E19 は変わらない）。
+
+## 39. 出走前アドバイス（TS＋C#、`src/domain/raceAdvice.ts`・`raceAdviceService.ts`・`Muchi.Client/RaceAdvice.cs`、`contracts/protocol.md` §39、共有ベクター `contracts/race-advice.vectors.json`）
+拘束条件：アドバイスはデータから計算し、乱数を使わない。勝つ確率・オッズ・印を出さない。購入を勧めない。無料で全員同じ（ランク戦の公平性）。
+- REQ-ADV-001 計算：純粋な関数 `computeRaceAdvice(AdviceInput)`。コース（1つ、またはレースが選ぶ候補の全部）、候補の馬（能力・脚質・距離適性・芝ダート・得意馬場・固有スキル）、わかっている相手、ルールセットの値（1.1〜1.3 の任意キー群：馬場ごとの消耗・得意馬場・距離の係数・スキルのキー）から、馬の並び・おすすめ・乗り方のヒントを出す（protocol §39.1 の表）。
+- REQ-ADV-002 一致：C# `RaceAdvice.Compute` は同じ手順。`contracts/race-advice.vectors.json`（`npm run gen:advice-vectors`）の全ケースで TS と C# の出力（日本語の文まで）が一致すること。ファイルが古ければ TS のテストが落ちる。
+- REQ-ADV-003 根拠：使う数はエンジンと同じもの（適性外 −5%、得意馬場 ±8‰、スパート区間の距離の係数、ムチの間隔）と balance-targets の結果（1.2+ は脚質の有利不利が距離で変わらない、R4d「残り400mから」）。ナイターは走りに影響しないと正直に書く。
+- REQ-ADV-004 文言の lint：日英とも勝率・確率・オッズ・本命・穴・%・倍・買・購入・ガチャ・◎○▲△ などを使わない（`ADVICE_BANNED_JA`/`EN`、`adviceTextProblems`）。公営競技の賭けの語は実況パック（§36）と同じ一つの一覧 `bettingWords.ts` を読む（2つ持たない）。テストは全コース×全馬場×昼夜×全モード×マスターの全馬で出る文の全部を検査する。英語が無い文があってもテストが落ちる。
+- REQ-ADV-005 API：`GET /v1/races/advice?context=…`（読み取りだけ、状態を変えない）。コンテキスト `ranked`/`friend`/`event`/`challenge`/`timeattack`/`tutorial` ごとの入力は protocol §39.4。ルールセットはリモート設定の有効なもの。応答に計算に使った `input` を含め、端末は選ぶ馬が変わったら端末で計算し直す。
+- REQ-ADV-006 公平性：無料・回数制限なし・課金や持ち物で内容が変わらない。プレイヤーが既に見られる情報（自分の馬、コースとその日の馬場、チャレンジのカード、部屋のメンバーの脚質）だけを使う。ランク戦はマッチング前の相手を使わず、`field` も受け取らない。アドバイスはレースの設定・結果に関わらない。
+- REQ-ADV-007 ランク戦：コースは出走時に決まるので、全コース（その日の馬場）で「何コースで距離と芝・ダートが合うか」を数える（確率ではなく数）。初めてのランク戦でコースが決まっている時はそのコース。
+- REQ-ADV-008 チャレンジ：貸し出し馬を候補に入れ、自分の馬は脚質の条件に合うものだけ。CPU の頭数はわかるが脚質は「出走時に決まる」。スキルなし・正規化を明記。
+- REQ-ADV-009 設定：端末の設定でアドバイスを切れる（既定 ON）。切ると API を呼ばず、パネルも KPI も出さない。
+- REQ-ADV-010 チュートリアル：決まった短い版（「合図が出たら、ムチ」「ムチは間隔をあけて打つと伸びる」）。馬の並べ替えなし。設定にかかわらず出す。
+- REQ-ADV-011 KPI：クライアントのイベント `advice_view`（context・並べた馬の数・おすすめの有無）と `advice_follow`（出走した馬がおすすめの馬か）。protocol §39.7、`docs/ops/kpi-queries.md`。
+- REQ-ADV-012 英語：全ての文に英語（`i18n/en.ts` のテンプレート、馬場・脚質の言葉）。馬の名前はプレイヤーが付けたまま。プロトタイプとクライアントも英語で表示できること。
+- REQ-ADV-013 クライアント：`ApiClient.GetRaceAdviceAsync`、`RaceAdvice`（計算・ルールセットからの値・ムチのヒントの答え合わせ）、Unity `RaceAdviceModel`（パネル・馬の選択・設定・KPI・オフライン）。
+- REQ-ADV-014 振り返り：ムチのアドバイスを見たレースの結果画面に、ムチの打ち始めがアドバイスどおりだったかを1行（端末だけで計算、protocol §39.6）。
+- REQ-ADV-015 経済：コイン・アイテムを動かさない（E1〜E19 は変わらない）。
+- REQ-ADV-016 プロトタイプ：ランク戦の出走登録とチャレンジの画面にアドバイスのパネル（ムチ一閃のトーン、日英、e2e と英語の通し）。
+
+## 40. アクティビティ（お知らせ一覧、TS＋C#、`src/domain/activity.ts`、`contracts/protocol.md` §40、docs/planning/06 §3.5）
+拘束条件：表示とリンクだけ（コイン・アイテムは動かない、受け取りボタンなし）、ブロックした相手からは出さない、退会・BAN の相手の名前は出さない。E番号なし。
+- REQ-ACT-001 一覧：留守の間に自分に起きたこと（フレンド申請・成立、ライバルの週の結果・記録更新、マイ厩舎のいいね、応援スタンプ、大会の結果、プレゼントの到着、支部の共同目標の到達・週の結果）を新しい順に1か所で（`GET /v1/activity`）。
+- REQ-ACT-002 書く箇所：プッシュを送るのと同じ箇所で、送り元のイベント id ごとに1回だけ（再送・やり直しで2件にならない）。プッシュの設定・上限・静かな時間帯に関係なく書く。
+- REQ-ACT-003 リンク：各項目は行き先の画面（`link.screen`、必要なら `link.id`）を持つ。プレゼントは「プレゼントボックスへ」だけで、受け取りはプレゼントボックスで行う。
+- REQ-ACT-004 重複させない：大会・共同目標の賞品は `gift_arrived` にしない。おかえり・新着情報は項目にせず、`links.whatsNew` で案内する。
+- REQ-ACT-005 プッシュの種類：各項目はプッシュと同じ `category`（`friends`・`events`・`gifts`）を持つ。プッシュの設定はプッシュだけに効き、一覧はいつでも全部見られる。
+- REQ-ACT-006 まとめる：いいね・応援スタンプ・プレゼントは、まだ読んでいない同じ種類の項目が `collapseHours` 以内にあれば1件にまとめる（「12件のいいね」）。
+- REQ-ACT-007 ページ：カーソル式（`nextCursor`）、`limit` 1〜`pageMax`（既定 `pageSize`）、新しい順。
+- REQ-ACT-008 既読：`POST /v1/activity/read`（`upTo` まで、省略は全部）。何度送っても同じで、戻さない。
+- REQ-ACT-009 バッジ：`GET /v1/player` の `activity.unread`（`badgeMax` で頭打ち）。ホームのベルに出す。
+- REQ-ACT-010 保存の上限：`progression.activity`（`maxEntries` 既定100件・`maxDays` 30日・`collapseHours`・`pageSize`・`pageMax`・`badgeMax`）。起動時とリモート設定で範囲を検査する。
+- REQ-ACT-011 ブロック：支部フィードのミュート（＝ブロックの一覧）にいる相手からは項目を作らず、あとからブロックした相手の分も一覧と未読の数から外す。
+- REQ-ACT-012 退会・BAN：相手の公開プロフィールが無い・BAN なら中立の名前「プレイヤー」を出す。プレイヤーの名前は訳さない。
+- REQ-ACT-013 アカウント削除：一覧は状態と一緒に消える。削除が進行中のアカウントには書かない。
+- REQ-ACT-014 英語：すべての文言に英語（`i18n/en.ts`）。倍・期間限定などの言葉を使わない。
+- REQ-ACT-015 KPI：クライアントのイベント `activity_open`（未読の数）・`activity_tap`（種類・行き先）。
+- REQ-ACT-016 クライアント：C# `ApiClient.GetActivityAsync`・`MarkActivityReadAsync`、Unity `ActivityModel`（ベルとバッジ、一覧、続きの読み込み、リンク、既読、オフライン）。
+
+## 41. アクセシビリティ設定（TS＋C#、`src/domain/accessibility.ts`・`Muchi.Client/Accessibility.cs`・`Muchi.Game.AccessibilityModel`、`contracts/protocol.md` §41、docs/planning/06 §11）
+拘束条件：どの設定もレースの計算・結果・検証を変えない。入力の補助は §27 の公平性の決まり（上手な操作より強くならない・課金で買えない・相手に見えない）に従う。
+- REQ-A11Y-001 設定：文字の大きさ（3段階）・色覚サポート・動きを減らす・振動・字幕・片手レイアウト・ムチの入力（タップ／長押し）。既定値は protocol §41.1。
+- REQ-A11Y-002 保存：アカウントの設定としてサーバーに保存する。`GET`／`PUT /v1/settings/accessibility`。PUT は全体の置き換えで冪等（送らないキーは既定値、知らないキー・値は 400、同じ本文では何も変わらない）。
+- REQ-A11Y-003 起動：`GET /v1/player`・bootstrap に `accessibility` を入れる。読むだけでは状態を作らない。
+- REQ-A11Y-004 オフライン：端末の写しを起動直後から当てる。届かなかった変更は未送信の印を付けて次のオンラインで送る（最後の書き込みが残る）。
+- REQ-A11Y-005 文字の大きさ：本文を ×1.00／×1.15／×1.30。どの画面もはみ出さない（入りきらない文字だけ標準まで戻す。日本語は標準より小さくしない）。プロトタイプの e2e が主要な画面を最大の大きさで日本語・英語とも確かめる。
+- REQ-A11Y-006 色覚サポート：シアン／紺の基調のまま、ゲージ・順位・状態の色を替えるトークン（`contracts/a11y-tokens.json`）。コントラスト比（図形 3:1、文字 4.5:1）と、1型・2型・3型の見え方での色差（ΔE*ab ≥ 40）をテストで確かめる。色だけで伝えない。
+- REQ-A11Y-007 動きを減らす：カメラの揺れ・FOV キック・スピード線・背景のドリフト・ゲージの点滅をやめ、画面の切り替えとガチャの演出を短くする。ガチャの提供割合・結果・めくる順は変えない。
+- REQ-A11Y-008 点滅：どの演出も1秒間に3回まで（設定に関係なく）。繰り返す点滅は周期で、1回ずつの光は `FlashLimiter` で抑える。
+- REQ-A11Y-009 振動：オフにすると一切振動しない。
+- REQ-A11Y-010 字幕：実況の字幕をいつでも出せる（既定オン、オフにもできる）。
+- REQ-A11Y-011 片手レイアウト：レースの操作を左右どちらかの親指の範囲にまとめる案内（配置だけ）。
+- REQ-A11Y-012 ムチの長押し：押した瞬間はタップと同じ、押し続ける間は §27 のムチだけおまかせと同じ間隔で1回ずつ、自動は1レースにムチの数 ÷ 2 − 1 回まで（残りはタップ）。作る入力はタップで作れる並びだけ。最も上手な長押しでも最良のタップより弱いこと（勝率比 < 1.0、一騎打ち ≤ 45%、R11 の上手な乗り手にも 5 割未満）をテストで確かめる。チュートリアルではタップと同じ。
+- REQ-A11Y-013 公平性：設定はエンジン・ルールセット・検証・リプレイに触れない。ランク戦の勝率を上げるものは無い。課金と関係しない。相手には見えない。
+- REQ-A11Y-014 KPI：`a11y_setting_change`（変わったキーごと、s1 キー・s2 値。個人情報なし）。
+- REQ-A11Y-015 英語：設定画面のすべての文に英語（`ui-en.json`・`proto-en.json`）。英語・特大の文字でもはみ出さない。
+- REQ-A11Y-016 クライアント：`Muchi.Client`（設定のモデル・API・トークン・`MotionPolicy`・`FlashLimiter`・`WhipHold`）、Unity の `AccessibilityModel`（Codex が結ぶ値）、プロトタイプ（設定画面が文字の大きさ・色・動きを全画面に実際に当てる、日英、e2e と英語の通し）、Codex 向けの引き継ぎ（docs/handoff-codex-round15-accessibility.md）。

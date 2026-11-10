@@ -24,6 +24,7 @@ import stampsJson from '../../master/stamps.json';
 import localeEnJson from '../../master/locale-en.json';
 import type { CollectionMaster } from './collection.js';
 import collectionJson from '../../master/collection.json';
+import photoJson from '../../master/photo.json';
 import { trackSchema, type GoingAptitude, type Going, type Track } from './schemas.js';
 import { AppError } from './errors.js';
 import { loadSkills, type SkillsMaster } from './skills.js';
@@ -115,7 +116,9 @@ export type CosmeticDef =
   /** REQ-TEAMFEED-002: a team-feed stamp sold directly for coins (asset stamp/<id>; master/stamps.json says which stamp it unlocks). */
   | { id: string; name: string; kind: 'stamp'; asset: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean }
   /** REQ-SILK-005: a 勝負服エディタ part sold directly (master/silks-editor.json names this item as the part's source). */
-  | { id: string; name: string; kind: 'silks_part'; part: 'color' | 'sleeve' | 'cap'; ref: string; asset: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean };
+  | { id: string; name: string; kind: 'silks_part'; part: 'color' | 'sleeve' | 'cap'; ref: string; asset: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean }
+  /** REQ-PHOTO-005: a photo-mode frame or stamp sold directly for coins (asset photo/frame|stamp/<id>; master/photo.json says which item it unlocks). */
+  | { id: string; name: string; kind: 'photo'; asset: string; price: number; currency: 'any' | 'paidOnly'; notForSale?: boolean };
 export type TackSlot = 'bridle' | 'saddlecloth';
 export const TACK_SLOTS: TackSlot[] = ['bridle', 'saddlecloth'];
 export interface ItemsMaster {
@@ -197,6 +200,8 @@ export interface Progression {
   hall?: import('./hallOfFame.js').HallConfig;
   /** REQ-MYRP-*: マイリプレイ (myReplays.ts, validated by myReplaysProblems). Absent / disabled = no saved replays. */
   myReplays?: import('./myReplays.js').MyReplaysConfig;
+  /** REQ-ACT-010: アクティビティ limits (activity.ts, validated by activityProblems). Absent = ACTIVITY_DEFAULTS. */
+  activity?: Partial<import('./activity.js').ActivityConfig>;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */
@@ -390,6 +395,8 @@ export interface Master {
   silksEditor?: import('./silksEditor.js').SilksEditorMaster;
   /** REQ-CMT-*: 実況パック (master/commentary-packs.json; commentaryPacks.ts commentaryPacksOf falls back to it when absent). */
   commentaryPacks?: import('./commentaryPacks.js').CommentaryPacksMaster;
+  /** REQ-PHOTO-*: photo mode looks / frames / stamps (master/photo.json; photoMode.ts photoOf falls back to it when absent). */
+  photo?: import('./photoMode.js').PhotoMaster;
 }
 
 export const PPM_TOTAL = 1_000_000;
@@ -542,6 +549,7 @@ export function loadMaster(): Master {
     changelog: (changelogJson as unknown as { entries: import('./comeback.js').ChangelogEntry[] }).entries,
     locale: { en: (localeEnJson as unknown as { strings: Record<string, string> }).strings },
     collection: collectionJson as unknown as CollectionMaster,
+    photo: photoJson as unknown as import('./photoMode.js').PhotoMaster,
   };
   cached = m;
   return m;

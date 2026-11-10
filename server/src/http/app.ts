@@ -37,10 +37,15 @@ import { LOCALES, resolveLocale, type Locale } from '../i18n/locale.js';
 import { catalogFor, localize, type Catalog } from '../i18n/catalog.js';
 import { ASSIST_LEVELS, ASSIST_SOURCES } from '../domain/assist.js';
 import { EQUIP_SOURCES } from '../domain/commentaryPacks.js';
+import { accessibilityBodySchema } from '../domain/accessibility.js';
 import type { RivalService } from '../domain/rivalService.js';
+import { ADVICE_CONTEXTS, type AdviceContext } from '../domain/raceAdviceService.js';
+import type { Ruleset } from '../domain/ruleset.js';
+import { photoInputSchema } from '../domain/photoMode.js';
 import { HISTORY_LIMITS, historyQuery, REF_RE, SUPPORT_TOPICS } from '../domain/history.js';
 import type { DesignInput, SilksDesign } from '../domain/silksEditor.js';
 import type { MyReplaysService } from '../domain/myReplaysService.js';
+import { activityQuery, actorIdsOf, parseUpTo, renderActivityItems } from '../domain/activity.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -73,13 +78,17 @@ export type PlayerMethod =
   | 'giftBox' | 'giftClaim' | 'giftClaimAll'
   | 'assist' | 'setAssist' | 'assistPromptSeen'
   | 'commentaryPacks' | 'equipCommentaryPack' | 'buyCommentaryPack'
+  | 'accessibility' | 'setAccessibility'
   | 'rivalPeek' | 'rivalSync' | 'rivalSetOptOut' | 'rivalBlock' | 'rivalChallengeCheck' | 'rivalChallengeReceive' | 'rivalSeen' | 'rivalPush'
   | 'history' | 'historyTicket' | 'adminHistory' | 'adminHistoryRefs'
   | 'exchangeView' | 'exchangeBuy'
   | 'wchView' | 'wchStart' | 'wchPrepare' | 'wchAbort' | 'wchRecord'
   | 'teamGoalReward' | 'goalPlayerView'
   | 'hallMine' | 'hallViewer' | 'hallNoteView' | 'horseCareer' | 'hallAck' | 'hallSettings'
-  | 'myReplays' | 'replayPrepareSave' | 'replayCommitSave' | 'replayForget' | 'replayUpdate' | 'replayDelete' | 'replayOwnRef' | 'replayShared' | 'replayViewed';
+  | 'myReplays' | 'replayPrepareSave' | 'replayCommitSave' | 'replayForget' | 'replayUpdate' | 'replayDelete' | 'replayOwnRef' | 'replayShared' | 'replayViewed'
+  | 'raceAdvice'
+  | 'photoCatalog' | 'photos' | 'photoSave' | 'photoDelete'
+  | 'activity' | 'activityRead' | 'activityReplayShare' | 'teamGoalMilestone';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -145,6 +154,8 @@ export interface AppContext {
   rival?: RivalService;
   /** REQ-MYRP-*: マイリプレイ (domain/myReplaysService.ts). Absent → the routes answer NOT_FOUND. */
   myReplays?: MyReplaysService;
+  /** REQ-ADV-005: the active (remote config) ruleset the advice reads; absent = the default ruleset. */
+  activeRuleset?: () => Promise<Ruleset>;
   clock?: () => number;
   paidBalance(): Promise<unknown>;
   /**
@@ -433,6 +444,9 @@ export const routes: Route[] = [
     const b = await optionalBody(r, z.object({ equip: z.boolean().optional() }).strict());
     return c.player(u).invoke('buyCommentaryPack', u, p.packId!, b?.equip === true, idem(r));
   } },
+  // REQ-A11Y-002/003 (contracts/protocol.md §41): アクセシビリティ設定 — idempotent full replace; also in GET /v1/player and bootstrap
+  { method: 'GET', path: '/v1/settings/accessibility', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('accessibility', u) },
+  { method: 'PUT', path: '/v1/settings/accessibility', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('setAccessibility', u, await body(r, accessibilityBodySchema)) },
   { method: 'PUT', path: '/v1/player/age', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ birthYear: z.number().int(), birthMonth: z.number().int().min(1).max(12), guardianConsent: z.boolean() }));
     return c.player(u).invoke('setAge', u, b.birthYear, b.birthMonth, b.guardianConsent);
@@ -640,6 +654,34 @@ export const routes: Route[] = [
     // REQ-OPS-034: reports of races the player was in go to the review queue
     if (r?.ok && c.ops) await c.ops.integrity.report(p.raceId!, u, (c.clock ?? Date.now)());
     return r;
+  } },
+  // 出走前アドバイス (REQ-ADV-005..009, contracts/protocol.md §39.4): read-only, free, only what the player can already see
+  { method: 'GET', path: '/v1/races/advice', auth: 'player', handler: async (r, _p, c, u) => {
+    const q = new URL(r.url).searchParams;
+    const context = (q.get('context') ?? 'ranked') as AdviceContext;
+    if (!ADVICE_CONTEXTS.includes(context)) throw new AppError('BAD_REQUEST', `context must be one of ${ADVICE_CONTEXTS.join('|')}`);
+    const opt = (k: string, re: RegExp) => {
+      const v = q.get(k);
+      if (v === null || v === '') return undefined;
+      if (!re.test(v)) throw new AppError('BAD_REQUEST', `bad ${k}`);
+      return v;
+    };
+    const going = opt('going', /^[a-z]{1,10}$/);
+    if (going !== undefined && !goingSchema.safeParse(going).success) throw new AppError('BAD_REQUEST', 'bad going');
+    const night = opt('night', /^(0|1|true|false)$/);
+    const field = opt('field', /^(nige|senko|sashi|oikomi)(,(nige|senko|sashi|oikomi)){0,10}$/);
+    const query = {
+      context,
+      ...(opt('trackId', /^[a-z0-9_]{1,64}$/) !== undefined ? { trackId: q.get('trackId')! } : {}),
+      ...(going !== undefined ? { going: going as never } : {}),
+      ...(night !== undefined ? { night: night === '1' || night === 'true' } : {}),
+      ...(opt('challengeId', /^[a-z0-9_]{1,40}$/) !== undefined ? { challengeId: q.get('challengeId')! } : {}),
+      ...(opt('eventId', EVENT_ID_RE) !== undefined ? { eventId: q.get('eventId')! } : {}),
+      ...(opt('horseId', /^[A-Za-z0-9_-]{1,64}$/) !== undefined ? { horseId: q.get('horseId')! } : {}),
+      ...(field !== undefined ? { field: field.split(',') } : {}),
+    };
+    const ruleset = c.activeRuleset ? await c.activeRuleset() : undefined;
+    return c.player(u).invoke('raceAdvice', u, query, ruleset);
   } },
   // spectating (REQ-SPEC-*)
   { method: 'GET', path: '/v1/races/live', auth: 'player', handler: async (_r, _p, c, u) => spectate(c).list(u) },
@@ -920,6 +962,19 @@ export const routes: Route[] = [
     const b = await body(r, z.object({ refs: z.array(z.string().regex(REF_RE)).min(1).max(HISTORY_LIMITS.ticketRefsMax), topic: z.enum(SUPPORT_TOPICS) }).strict());
     return c.player(u).invoke('historyTicket', u, b.refs, b.topic);
   } },
+  // アクティビティ (REQ-ACT-*, contracts/protocol.md §40)
+  { method: 'GET', path: '/v1/activity', auth: 'player', handler: async (r, _p, c, u) => {
+    const q = activityQuery(c.master, new URL(r.url).searchParams);
+    const page = await c.player(u).invoke('activity', u, q.cursor, q.limit);
+    // REQ-ACT-012: names as of now from the directory (deleted / banned → neutral); unreachable → stored names
+    const ids = actorIdsOf(page.items);
+    const profiles = ids.length === 0 ? [] : await c.friends.profilesOf(ids).catch(() => null);
+    return { ...page, items: renderActivityItems(page.items, profiles) };
+  } },
+  { method: 'POST', path: '/v1/activity/read', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ upTo: z.string().max(12).optional() }).strict());
+    return c.player(u).invoke('activityRead', u, parseUpTo(b.upTo));
+  } },
   // admin
   // マイリプレイ (REQ-MYRP-*, contracts/protocol.md §37)
   { method: 'GET', path: '/v1/replays', auth: 'player', handler: async (_r, _p, c, u) => myReplays(c).view(u) },
@@ -938,6 +993,14 @@ export const routes: Route[] = [
   { method: 'GET', path: '/v1/friends/:playerId/replays', auth: 'player', handler: async (_r, p, c, u) => myReplays(c).friendList(u, p.playerId!) },
   { method: 'GET', path: '/v1/friends/:playerId/replays/:raceId/data', auth: 'player', handler: async (_r, p, c, u) => myReplays(c).friendData(u, p.playerId!, p.raceId!) },
   // weekly rival (REQ-RIVAL-*, contracts/protocol.md §28)
+  // photo mode (REQ-PHOTO-*, contracts/protocol.md §38)
+  { method: 'GET', path: '/v1/photo/catalog', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('photoCatalog', u) },
+  { method: 'GET', path: '/v1/photos', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('photos', u) },
+  { method: 'POST', path: '/v1/photos', auth: 'player', handler: async (r, _p, c, u) => {
+    const key = idem(r);
+    return c.player(u).invoke('photoSave', u, await body(r, photoInputSchema), key);
+  } },
+  { method: 'DELETE', path: '/v1/photos/:photoId', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('photoDelete', u, p.photoId!) },
   { method: 'GET', path: '/v1/rival', auth: 'player', handler: async (_r, _p, c, u) => (c.rival ? c.rival.view(u) : { enabled: false }) },
   { method: 'PUT', path: '/v1/rival/settings', auth: 'player', handler: async (r, _p, c, u) => rival(c).setOptOut(u, (await body(r, z.object({ optOut: z.boolean() }).strict())).optOut) },
   { method: 'POST', path: '/v1/rival/block', auth: 'player', handler: async (_r, _p, c, u) => rival(c).block(u) },
@@ -1064,7 +1127,7 @@ export function teamPlayersFrom(player: (uid: string) => PlayerInvoker): TeamPla
     feedMutes: (u) => player(u).invoke('feedMutes', u),
     feedMute: (u, t, muted) => player(u).invoke('feedMute', u, t, muted),
     feedReported: (u, t, seq, by, reason) => player(u).invoke('feedReported', u, t, seq, by, reason),
-    cheerPush: (u, from, name) => player(u).invoke('cheerPush', u, from, name),
+    cheerPush: (u, from, name, ref) => player(u).invoke('cheerPush', u, from, name, ref),
     goalPlayerView: (u) => player(u).invoke('goalPlayerView', u),
   };
 }

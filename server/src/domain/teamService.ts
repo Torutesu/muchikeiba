@@ -86,7 +86,8 @@ export interface TeamPlayers {
   feedMutes(uid: string): Promise<{ muted: string[] }>;
   feedMute(uid: string, target: string, muted: boolean): Promise<{ muted: string[] }>;
   feedReported(uid: string, teamId: string, seq: number, reporter: string, reason: ReportReason): Promise<unknown>;
-  cheerPush(uid: string, fromId: string, fromName: string): Promise<unknown>;
+  /** `ref`: the reaction (`react:{teamId}:{seq}`), the activity entry's source id (REQ-ACT-002). */
+  cheerPush(uid: string, fromId: string, fromName: string, ref?: string): Promise<unknown>;
   /** REQ-TGOAL-008: today's units sent and the last paid week. */
   goalPlayerView(uid: string): Promise<ReturnType<typeof playerGoalView>>;
 }
@@ -305,7 +306,7 @@ export class TeamsService {
     const r = await this.teams.feedReact(info.teamId, uid, seq, stampId);
     if (r.isNew && stampId !== null) {
       await this.players.stampPosted(uid, stampId, 'reaction', info.teamId, `react:${info.teamId}:${seq}`).catch(() => undefined);
-      if (r.kind === 'race' && r.ownerId !== uid) await this.players.cheerPush(r.ownerId, uid, info.displayName).catch(() => undefined);
+      if (r.kind === 'race' && r.ownerId !== uid) await this.players.cheerPush(r.ownerId, uid, info.displayName, `react:${info.teamId}:${seq}`).catch(() => undefined);
     }
     return { teamId: info.teamId, seq, myReaction: stampId };
   }

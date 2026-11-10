@@ -34,6 +34,7 @@ import { signTicket } from './http/ticket.js';
 import { TeamsService, type TeamFeedPage, type TeamGoalView, type TeamLeagueView, type TeamPort, type TeamView } from './domain/teamService.js';
 import { stampsProblems, type FeedItem } from './domain/teamFeed.js';
 import { silksEditorProblems } from './domain/silksEditor.js';
+import { photoProblems } from './domain/photoMode.js';
 import type { TeamSummary } from './domain/teams.js';
 import { EventsService } from './domain/eventService.js';
 import { eventBoardKey, eventCronPlan, validateEvents } from './domain/events.js';
@@ -105,6 +106,7 @@ validateGacha(baseMaster); // fail fast on a broken gacha/master definition (REQ
 validateItems(baseMaster); // REQ-ITEM-*: tickets may not reach paid-only banners, cosmetics reference real assets/patterns
 { const sp = stampsProblems(baseMaster); if (sp.length) throw new Error('master/stamps.json: ' + sp.join('; ')); } // REQ-TEAMFEED-002
 { const sp = silksEditorProblems(baseMaster); if (sp.length) throw new Error('master/silks-editor.json: ' + sp.join('; ')); } // REQ-SILK-013
+{ const pp = photoProblems(baseMaster); if (pp.length) throw new Error('master/photo.json: ' + pp.join('; ')); } // REQ-PHOTO-013
 validateEvents(baseMaster, baseMaster.events); // REQ-EVENT-001
 validateLeagueAndWeather(baseMaster); // REQ-LEAGUE-* and per-course climate (REQ-TRACK-003)
 validateUx(baseMaster, new Set(collectItemIds(baseMaster))); // REQ-UXS-*: onboarding, missions, experiments, deletion
@@ -411,7 +413,7 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
     hall: makeHallService(player, shardedHallDirectory(env.DIRECTORY), () => master), // REQ-HOF-*
     invite: makeInviteService(player, shardedInviteDirectory(env.DIRECTORY), shardedDirectory(env.DIRECTORY), () => master), // REQ-INV-*
     teams: makeTeamsService(env, () => master, player),
-    myReplays: new MyReplaysService(() => master, player, r2ReplayStore(env.REPLAYS)), // REQ-MYRP-*
+    myReplays: new MyReplaysService(() => master, player, r2ReplayStore(env.REPLAYS), friendIdsFrom(player)), // REQ-MYRP-*; friends for the §40 replay_share entry
     rival: new RivalService(() => master, rivalPlayersFrom(player), durableRivalRegistry(env.LEADERBOARD)), // REQ-RIVAL-*
     events: new EventsService(() => master, eventPlayersFrom(player), {
       enqueue: (eventId, p, e) => call(mm().eventEnqueue!(eventId, p, e)),
@@ -470,6 +472,7 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
       clock: () => Date.now(),
       activeRuleset: async () => (await activeConfig(env)).ruleset,
     }),
+    activeRuleset: async () => (await activeConfig(env)).ruleset, // REQ-ADV-005
     paidBalance: () => (stub(env.ACCOUNTING, 'global') as unknown as { summary(): Promise<unknown> }).summary(),
     retainedRefund: (anonId, txId) => (stub(env.ACCOUNTING, 'global') as unknown as { retainedRefund(a: string, t: string, n: number): Promise<unknown | null> }).retainedRefund(anonId, txId, Date.now()),
     adminToken: env.ADMIN_TOKEN,

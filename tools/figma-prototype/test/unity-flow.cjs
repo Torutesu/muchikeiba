@@ -23,6 +23,9 @@
 //     pull; the free-only state; bought packs drawn as 購入済み in the shop.
 //  7. Round 13 (REQ-EXCH-*): the event exchange — point counter, event races up to the daily cap, the grid with the stock
 //     fact, the confirm sheet, a keyed exchange, the grace notice and the closed state with the leftover converted.
+//  8. Round 15 (REQ-PHOTO-*): フォトモード — a time attack paused for a photo (same state, the race waits), camera limits,
+//     looks, a locked / bought frame, stamps, caption rules, names / UI hidden, shutter + share KPI, keyed save; result and
+//     replay entries; the ranked race never pauses.
 // Screenshots: <out>/u-<nn>-<name>.png. Returns { shots, ftue }.
 const path = require('path');
 const fs = require('fs');
@@ -51,7 +54,9 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     if (!inRace) captureMs += Date.now() - a;
   };
   const screen = () => page.evaluate(() => globalThis.__muchi?.screen ?? '');
-  const waitScreen = (name, timeout = 30000) => page.waitForFunction((x) => { const s = globalThis.__muchi?.screen ?? ''; return Array.isArray(x) ? x.includes(s) : s === x; }, name, { timeout, polling: 50 });
+  // on a timeout, say which screen is up and the page errors so far (a timeout alone hides an exception in the screen)
+  const waitScreen = (name, timeout = 30000) => page.waitForFunction((x) => { const s = globalThis.__muchi?.screen ?? ''; return Array.isArray(x) ? x.includes(s) : s === x; }, name, { timeout, polling: 50 })
+    .catch(async (e) => { const now = await screen().catch(() => '?'); throw new Error(`waitScreen(${JSON.stringify(name)}) timed out on "${now}"; errors: ${errors.slice(-5).join(' | ')}\n${e.message}`); });
   const state = () => page.evaluate(() => { const s = globalThis.__muchi.state(); const f = s.lastFrame; return { active: s.raceActive, f: f && { tick: f.tick, distanceM: f.distanceM, departed: f.departed, gateOpen: f.gateOpen, remainingM: f.remainingM, whips: f.whips, done: f.done, chance: f.feel?.whipChance, rank: f.rank } }; });
   const btn = (label) => page.locator(`.screen.in [data-label="${label}"]`).first();
   const click = async (label) => { await btn(label).click(); await page.waitForTimeout(350); };
@@ -128,6 +133,106 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await click('BACK'); await waitScreen('hall'); await click('BACK'); await waitScreen('stable');
   }
 
+  // round 15 (REQ-PHOTO-*): フォトモード — a time attack paused midway (the snapshot equals the live race, the race does not
+  // move), camera limits, a free look, a locked achievement frame, a shop frame bought at its fixed price, stamps, a caption
+  // refused for a betting word then accepted, names hidden, the shutter (photo_take) and share (photo_share), the keyed save;
+  // back to the race, which finishes; the result screen and the replay player open it too; the ranked race never pauses
+  async function photoFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(() => globalThis.__muchi.show('TimeAttack')); await waitScreen('time-attack', 30000); await page.waitForTimeout(400);
+    await page.locator('.screen.in .ta-start').click(); await waitScreen('race', 20000);
+    for (let i = 0; i < 4000; i++) {
+      const s = await state();
+      if (s.f && s.f.gateOpen && !s.f.departed) await tapWhip();
+      if (s.f && s.f.departed && s.f.remainingM < s.f.distanceM * .6) break;
+      await page.waitForTimeout(40);
+    }
+    assert.equal(await page.locator('.screen.in [data-photo]').getAttribute('data-photo'), 'pause', 'a time attack can pause for a photo');
+    await page.locator('.screen.in [data-photo]').click(); await waitScreen('photo'); await waitIn('.ph-state');
+    const st = page.locator('.screen.in .ph-state');
+    assert.equal(await st.getAttribute('data-photo-hash'), 'match', 'the snapshot is the paused race state');
+    assert.equal(await st.getAttribute('data-source'), 'paused');
+    const tick = await st.getAttribute('data-tick');
+    await page.waitForTimeout(800);
+    assert.equal(String((await state()).f.tick), tick, 'the race does not move while photo mode is open');
+    await shot('photo-paused', 600);
+    // camera: closer, lower until the floor, orbit, blur
+    for (let i = 0; i < 4; i++) await page.locator('.screen.in [data-cam="raise-"]').click();
+    for (let i = 0; i < 20; i++) await page.locator('.screen.in [data-cam="raise-"]').click();
+    let cam = JSON.parse(await page.locator('.screen.in [data-camera]').getAttribute('data-camera'));
+    assert.ok(cam.heightDm === 3 && cam.heightM >= 0.3, 'the camera stops above the course');
+    await page.locator('.screen.in [data-cam="orbit+"]').click(); await page.locator('.screen.in [data-cam="orbit+"]').click();
+    await page.locator('.screen.in [data-cam="raise+"]').click(); await page.locator('.screen.in [data-cam="raise+"]').click();
+    await page.locator('.screen.in [data-dof="2"]').click();
+    cam = JSON.parse(await page.locator('.screen.in [data-camera]').getAttribute('data-camera'));
+    assert.ok(cam.orbitDeg === 30 && cam.dof === 2, 'orbit and blur applied');
+    await shot('photo-camera', 500);
+    // look (free), frames (locked: achievement / shop), stamps
+    await page.locator('.screen.in [data-tab="look"]').click(); await page.locator('.screen.in [data-look="film"]').click();
+    assert.equal(await page.locator('.screen.in .ph-view').getAttribute('data-look'), 'film');
+    await page.locator('.screen.in [data-tab="frame"]').click(); await waitIn('[data-frame="victory"]');
+    await page.locator('.screen.in .btn[data-frame][data-unlocked="false"]:not([data-frame="sakura"]):not([data-frame="gold_leaf"])').first().click(); await waitIn('.sheet [data-unlock-text]');
+    assert.match(await page.locator('.screen.in .sheet [data-unlock-text]').textContent(), /^実績「.+」の\d段目で解放$/, 'an achievement frame says how it unlocks');
+    assert.equal(await page.locator('.screen.in .sheet [data-action="ph-buy"]').count(), 0, 'achievement items are not sold');
+    await shot('photo-frame-locked', 400);
+    await page.locator('.screen.in .sheet [data-label="閉じる"]').click(); await page.waitForTimeout(300);
+    await page.locator('.screen.in .btn[data-frame="sakura"]').click(); await waitIn('.sheet [data-action="ph-buy"]');
+    await shot('photo-frame-shop', 400);
+    await page.locator('.screen.in .sheet [data-action="ph-buy"]').click(); await page.waitForTimeout(700);
+    await waitIn('.btn[data-frame="sakura"][data-unlocked="true"]');
+    await page.locator('.screen.in .btn[data-frame="sakura"]').click(); await waitIn('.ph-view[data-frame="sakura"]');
+    await page.locator('.screen.in [data-tab="stamp"]').click(); await page.locator('.screen.in .btn[data-stamp="hoof"]').click(); await page.locator('.screen.in .btn[data-stamp="star"]').click();
+    assert.equal(await page.locator('.screen.in .ph-stamp').count(), 2);
+    // caption: a betting word is refused, then a plain one
+    await page.locator('.screen.in [data-tab="caption"]').click();
+    await page.locator('.screen.in .ph-input').fill('馬券が当たった'); await page.locator('.screen.in [data-action="ph-caption"]').click(); await waitIn('[data-problem]');
+    await page.locator('.screen.in .ph-input').fill('ゴール前の一閃'); await page.locator('.screen.in [data-action="ph-caption"]').click(); await waitIn('.ph-caption');
+    assert.equal(await page.locator('.screen.in .ph-caption').getAttribute('data-caption'), 'ゴール前の一閃');
+    await shot('photo-composed', 500);
+    await page.locator('.screen.in [data-action="ph-names"]').click(); await page.waitForTimeout(200);
+    assert.equal(await page.locator('.screen.in .ph-plate').count(), 0, 'names hidden');
+    await page.locator('.screen.in [data-action="ph-hideui"]').click(); await waitIn('[data-action="ph-showui"]');
+    assert.equal(await page.locator('.screen.in .ph-panel').count(), 0, 'the UI can be hidden');
+    await shot('photo-hide-ui', 400);
+    await page.locator('.screen.in [data-action="ph-showui"]').click(); await waitIn('.ph-panel');
+    // the shutter and the share card; the keyed save
+    await page.locator('.screen.in [data-action="ph-shoot"]').click(); await waitIn('.sheet[data-photo-card="photo_image"]');
+    assert.deepEqual(await page.evaluate(() => globalThis.__muchi.lastPhotoKpi), { name: 'photo_take', s1: 'paused', s2: 'film' });
+    const shareText = await page.locator('.screen.in [data-share-text]').getAttribute('data-share-text');
+    assert.ok(shareText.includes('ゴール前の一閃') && shareText.endsWith('#ムチ一閃') && !shareText.includes('local'), 'share text: horse, course, caption, hashtag — no player id');
+    await shot('photo-card', 500);
+    await page.locator('.screen.in .sheet [data-action="ph-share"]').click(); await page.waitForTimeout(300);
+    assert.deepEqual(await page.evaluate(() => globalThis.__muchi.lastPhotoKpi), { name: 'photo_share', s1: 'paused', s2: 'framed' });
+    const before = (await page.evaluate(() => globalThis.__muchi.logic.photos())).value.count; // the my-replays flow saved one already
+    await page.locator('.screen.in .sheet [data-action="ph-save"]').click(); await page.waitForTimeout(500);
+    await page.locator('.screen.in .sheet [data-action="ph-save"]').click(); await page.waitForTimeout(500);
+    const saved = await page.evaluate(() => globalThis.__muchi.lastPhotoSave);
+    assert.ok(saved && saved.count === before + 1 && saved.photo.frameId === 'sakura' && saved.photo.caption === 'ゴール前の一閃', 'one record (the retry is keyed)');
+    await page.locator('.screen.in .sheet [data-label="閉じる"]').click(); await page.waitForTimeout(300);
+    // back to the race: it continues from the paused tick and finishes
+    await page.locator('.screen.in [data-action="ph-back"]').click(); await waitScreen('race');
+    await rideRace(false);
+    await waitScreen('ta-result', 40000);
+    // the result screen and the replay player
+    await page.locator('.screen.in [data-action="photo-result"]').click(); await waitScreen('photo'); await waitIn('.ph-state[data-source="result"]');
+    await shot('photo-from-result', 500);
+    await page.locator('.screen.in [data-action="ph-back"]').click(); await waitScreen('ta-result');
+    await click('リプレイを共有'); await waitScreen('share'); await page.waitForTimeout(1200);
+    await page.locator('.screen.in [data-action="photo-replay"]').click(); await waitScreen('photo'); await waitIn('.ph-state[data-source="replay"]');
+    await shot('photo-from-replay', 500);
+    await page.locator('.screen.in [data-action="ph-back"]').click(); await waitScreen('share');
+    await click('戻る'); await waitScreen('ta-result');
+    // the ranked race never pauses (photographed from its result or replay)
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
+    await click('レースへ'); await waitScreen('lobby'); await click('ランク戦に出る'); await waitScreen('race', 20000);
+    assert.equal(await page.locator('.screen.in [data-photo]').getAttribute('data-photo'), 'blocked', 'a ranked race shows the photo button locked');
+    await page.locator('.screen.in [data-photo]').click(); await page.waitForTimeout(300);
+    assert.equal(await screen(), 'race', 'tapping it explains, the race goes on');
+    await shot('photo-ranked-blocked', 0, true);
+    await rideRace(false);
+    await waitScreen(['result'], 40000);
+  }
+
   // round 12 (REQ-RIVAL-*): ライバル — the home strip → the detail (public card, score, races, time attack, rules) → a race
   // together, a time attack each, a challenge (no point) → the week ends → the result sheet once (fixed reward, title)
   async function rivalFlow() {
@@ -154,7 +259,10 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await page.locator('.screen.in .rv-result .rv-continue').click(); await page.waitForTimeout(300);
     const free1 = await page.evaluate(async () => (await globalThis.__muchi.logic.view()).wallet.free);
     assert.ok(free1 - free0 <= 20, 'rival: at most the fixed reward');
-    await click('BACK'); await waitScreen('home');
+    // the demo jumped to the end of the week: when that is 7 game days after the last play (it depends on the weekday
+    // the test runs), the comeback welcome rightly comes first — leave it for later
+    await click('BACK'); await waitScreen(['home', 'comeback-welcome']);
+    if ((await screen()) === 'comeback-welcome') { await click('あとで'); await waitScreen('home'); }
     await page.evaluate(() => globalThis.__muchi.logic.setClockMs(null)); // back to the demo day for the next flows
   }
 
@@ -200,6 +308,35 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
   }
 
+  // round 15 (REQ-ADV-*): 出走前アドバイス on the lobby — rows in words (never marks or odds), the tips for the selected horse
+  // (recomputed by the C# mirror in WASM = the server), the honest footnote, the hide switch and back, advice_view once
+  async function raceAdviceFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await waitIn('.adv-panel .adv-row');
+    const panel = page.locator('.screen.in .adv-panel');
+    const text = await panel.innerText();
+    assert.ok(/今日の\d+コースで計算/.test(text) && text.includes('勝ちを約束するものではありません'), 'advice: drawn course counted, the honest footnote');
+    assert.ok(!/勝率|確率|オッズ|本命|穴|%|％|倍|買|購入|ガチャ|ショップ|◎|○|▲|△/.test(text.replace(/[ァ-ヶー]{2,9}/g, '')), 'advice: no odds, marks or purchase words');
+    const rows = await page.locator('.screen.in .adv-row').count();
+    assert.ok(rows >= 1, 'advice: the horses are listed');
+    const views = () => page.evaluate(() => globalThis.__muchi.logic.kpiLog().filter((e) => e.name === 'advice_view').length);
+    const views0 = await views();
+    assert.ok(views0 >= 1, 'advice_view sent when the panel is shown');
+    await shot('race-lobby-advice', 300);
+    if (rows >= 2) {
+      const second = await page.locator('.screen.in .adv-row').nth(1).getAttribute('data-horse');
+      await page.locator('.screen.in .adv-row').nth(1).click();
+      await page.waitForFunction((h) => document.querySelector('.screen.in .adv-panel')?.dataset.focus === h, second, { timeout: 10000 });
+      assert.equal(await page.locator('.screen.in .adv-panel').getAttribute('data-device'), 'true', 'advice: a selection is recomputed on the device');
+      assert.ok((await page.locator('.screen.in').innerText()).includes(await page.locator('.screen.in .adv-row.sel').locator('.label').first().innerText()), 'advice: the selected horse is the one entered');
+      await shot('race-lobby-advice-selected', 300);
+    }
+    await click('アドバイスを隠す'); await waitIn('.adv-off');
+    await shot('race-lobby-advice-off', 300);
+    await click('アドバイスを見る'); await waitIn('.adv-panel .adv-row');
+    assert.equal(await views(), views0, 'advice_view once per lobby visit (not again on a selection or hide / show)');
+  }
+
   // round 13 (REQ-WCH-*): 週替わりチャレンジ from the home card → this week's three (condition lines from the server, the loan
   // horse at the cap, the cosmetic badge, the fairness rules, no shop link) → next week's preview → a race with the loan horse
   // on the real engine, the condition live in the HUD → the result decided by the logic's re-simulation of the issued config
@@ -223,6 +360,11 @@ module.exports = async function unityFlow(browser, base, out, errors) {
       return (ok.find((c) => c.conditions.maxPlace !== undefined) ?? ok[0] ?? v.challenges[0]).id;
     });
     await page.locator(`.screen.in .wch-card[data-challenge="${pick}"]`).click(); await waitIn(`.glass[data-challenge="${pick}"]`);
+    // round 15: the advice sheet (the loan horse among the candidates, CPUs unknown, no skills)
+    await page.locator('.screen.in .adv-open').click(); await waitIn('.adv-sheet .adv-grade');
+    assert.ok(/ムチは残り\d+mから/.test(await page.locator('.screen.in .adv-sheet').innerText()), 'challenge advice: the whip tip for the known course');
+    await shot('challenge-advice', 400);
+    await click('閉じる'); await page.waitForTimeout(300);
     await click('貸し出し馬で挑戦'); await waitScreen('race', 30000); await waitIn('.wch-hud');
     const maxWhips = await page.evaluate(() => globalThis.__muchi.challengeSession.challenge.conditions.maxWhips ?? 2);
     let started = false, w = 0, lastW = 0, hudShot = false;
@@ -359,6 +501,24 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await shot('replay-share', 400);
     await page.locator('.screen.in .rp-share-go').click(); await page.waitForTimeout(300);
     assert.equal(await page.evaluate(() => globalThis.__muchi.lastKpi), 'replay_share');
+    // round 15 integration (§38 × §37): 「この瞬間を撮る」 — photo mode at the frame on screen, the record points at the save
+    await page.waitForFunction(() => !document.querySelector('.screen.in .rp-share-sheet'), null, { timeout: 5000 });
+    await waitScreen('replay-player');
+    const rpTick = await page.evaluate(() => globalThis.__muchi.replay.t);
+    await page.locator('.screen.in [data-action="photo-myreplay"]').click(); await waitScreen('photo', 20000);
+    const phInfo = await page.evaluate(() => globalThis.__muchi.photo.open);
+    assert.equal(phInfo.source.kind, 'replay', 'photo from my replay: a replay source');
+    assert.ok(phInfo.source.replayId && phInfo.source.replayId === phInfo.source.raceId, 'photo from my replay: the record points at the save: ' + JSON.stringify(phInfo.source));
+    assert.ok(Math.abs(phInfo.tick * 50 - rpTick) <= 100, `photo from my replay: the frame on screen (${phInfo.tick} tick vs ${rpTick} ms)`);
+    assert.match(await page.locator('.screen.in .ph-state').textContent(), /マイリプレイから/);
+    await shot('photo-from-my-replay', 400);
+    await page.locator('.screen.in [data-action="ph-shoot"]').click(); await page.waitForTimeout(400);
+    await page.locator('.screen.in .sheet [data-action="ph-save"]').click(); await page.waitForTimeout(500);
+    const phRec = (await page.evaluate(() => globalThis.__muchi.logic.photos())).value.photos[0];
+    assert.equal(phRec.source.replayId, phInfo.source.replayId, 'photo from my replay: saved with the replay id');
+    assert.equal(phRec.replaySaved, true, 'photo from my replay: the save is still there');
+    await page.locator('.screen.in .sheet [data-label="閉じる"]').click(); await page.waitForTimeout(300);
+    await page.locator('.screen.in [data-action="ph-back"]').click(); await waitScreen('replay-player', 30000);
     await click('BACK'); await waitScreen('my-replays');
     // a friend's public replay
     await page.locator('.screen.in .rp-friend').click(); await waitScreen('friend-replays', 30000); await waitIn('.rp-card');
@@ -636,7 +796,9 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await scoutLiveOps();
   await click('厩舎'); await shot('stable', 400); await click('BACK');
   await waitScreen('home');
-  await click('レースへ'); await waitScreen('lobby'); await shot('race-lobby', 400); await click('戻る');
+  await click('レースへ'); await waitScreen('lobby'); await shot('race-lobby', 400);
+  await raceAdviceFlow();
+  await click('戻る');
   await waitScreen('home');
   for (const [name, fn] of [['wardrobe', 'Wardrobe'], ['course-looks', 'CourseThemes'], ['conditions', 'Conditions'], ['care', 'Care']]) {
     await page.evaluate((f) => globalThis.__muchi.show(f), fn); await shot(name, 450);
@@ -678,6 +840,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.equal(await page.locator('.screen.in [data-share="place"]').textContent(), '完走');
   await shot('share-card-time-attack', 200);
   await click('戻る'); await waitScreen('ta-result');
+  await photoFlow(); // round 15: フォトモード
   // account-link prompt right after the first purchase (day 1 after the FTUE), then linking (account_link KPI)
   await demo('day1');
   await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings');
@@ -969,6 +1132,30 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.ok((await page.locator('.screen.in [data-gift][data-status="expired"]').count()) === 1, 'the expired gift is in the history');
   assert.ok((await page.locator('.screen.in [data-gift][data-status="claimed"]').count()) >= 5, 'received gifts are in the history');
   await shot('gift-history', 300);
+  // ------------------------------------------------------------------ 6. round 15: アクティビティ (REQ-ACT-*)
+  // written by the real event sources at their push points (friend request / accept, 12 likes, a cheer, a rival record, a
+  // tournament result, a compensation, the team goal); the home bell, the list (collapsed likes, gift row links to the box,
+  // no claim button), mark read on opening, a deep link
+  await page.evaluate(() => globalThis.__muchi.demo('activity')); await waitScreen('activity', 60000); await page.waitForTimeout(400);
+  const acText = await page.locator('.screen.in').innerText();
+  assert.match(acText, /アサヒさんからフレンド申請が届きました/, 'the newest entry: a friend request with the sender name');
+  assert.match(acText, /マイ厩舎に12件のいいねが届きました/, '12 likes → one row');
+  assert.ok(!/今だけ|残りわずか|倍|お得/.test(acText), 'no urgency or multiplier wording');
+  assert.equal(await page.locator('.screen.in [data-act="stable_like"]').getAttribute('data-count'), '12');
+  assert.equal(await page.locator('.screen.in [data-act="gift_arrived"] [data-act-go="gift_box"]').count(), 1, 'the gift row links to the gift box');
+  assert.equal(await page.locator('.screen.in .act-row .btn[data-label="受け取る"]').count(), 0, 'no claim button on the activity list');
+  assert.ok(Number(await page.locator('.screen.in [data-act-unread]').getAttribute('data-act-unread')) >= 7, 'unread on arrival');
+  await shot('activity', 400);
+  await click('次へ'); await page.waitForTimeout(500); await shot('activity-page2', 300);
+  await click('ホームへ'); await waitScreen(['home', 'link-prompt'], 20000);
+  if (await screen() === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); }
+  await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .btn[data-action="activity"]').getAttribute('data-badge'), '0', 'opened → the bell clears');
+  await shot('home-bell', 300);
+  await click('アクティビティ'); await waitScreen('activity'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .act-row.unread').count(), 0, 'read rows on the next visit');
+  await page.locator('.screen.in [data-act="gift_arrived"] [data-act-go]').click(); await waitScreen('gift-box', 20000);
+  assert.ok((await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name === 'activity_tap').length)) >= 1, 'activity_tap sent');
   // ------------------------------------------------------------------ 6. round 12: かんたん操作 (REQ-ASSIST-*)
   // a week of play, then three last places settled by the real applyRace → the one-time suggestion (calm: 「今はいい」 as big
   // as the rest) → ぜんぶおまかせ → the settings row and the options screen → a ranked race the real InputAssistant rides with
@@ -1060,7 +1247,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.equal(await page.locator('.screen.in .hi-ticket').getAttribute('data-ticket'), 'muchi.support-ticket.v1', 'the draft came back from the server');
   assert.match(await page.locator('.screen.in .hi-ticket').innerText(), /問い合わせ番号：G-\d+/);
   await shot('history-contact', 300);
-  assert.deepEqual(await page.evaluate(() => (globalThis.__muchiKpi ?? []).map((e) => e.tab)), ['purchases', 'coins_paid', 'coins_free', 'gacha'], 'history_view once per tab');
+  assert.deepEqual(await page.evaluate(() => (globalThis.__muchiKpi ?? []).filter((e) => e.name === 'history_view').map((e) => e.tab)), ['purchases', 'coins_paid', 'coins_free', 'gacha'], 'history_view once per tab');
 
   // ------------------------------------------------------------------ 7. round 14: 実況パック (REQ-CMT-*)
   // a week of play (21 races: the 「出走の記録」 pack is owned) → the list (owned / price / achievement), the 10-second sample

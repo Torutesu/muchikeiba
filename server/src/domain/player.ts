@@ -208,10 +208,16 @@ export interface PlayerState {
   assist?: import('./assist.js').AssistState;
   /** REQ-CMT-*: 実況パック — owned packs and the equipped one (commentaryPacks.ts). Absent = the standard pack. */
   commentaryPack?: import('./commentaryPacks.js').CommentaryPackState;
+  /** REQ-A11Y-*: アクセシビリティ設定 (accessibility.ts; absent = defaults). */
+  accessibility?: import('./accessibility.js').AccessibilityState;
   /** REQ-RIVAL-*: opt-out, this week's rival and score, unsettled weeks, results (rival.ts ensureRival). */
   rival?: import('./rival.js').RivalState;
+  /** REQ-PHOTO-010: saved photo records (photoMode.ts ensurePhotos; the images are never stored). */
+  photos?: import('./photoMode.js').PhotoState;
   /** REQ-HIST-004: one record per gacha draw, last 90 days (history.ts recordGachaLog; the Durable Object keeps older ones in SQL). */
   gachaLog?: import('./history.js').GachaLogState;
+  /** REQ-ACT-*: the activity list (activity.ts ensureActivity; bounded by progression.activity). */
+  activity?: import('./activity.js').ActivityState;
   /** REQ-WCH-*: weekly challenge sessions, this and last week's progress, earned badges (weeklyChallenge.ts wchState). */
   weeklyChallenge?: import('./weeklyChallenge.js').WeeklyChallengeState;
   /** REQ-HOF-*: 殿堂 — per-horse careers, retirement ceremonies, permanent plaques, visibility (hallOfFame.ts ensureHall). */

@@ -5,7 +5,8 @@
 import { COMMENTARY_PACKS } from '../../../server/src/domain/commentaryPacks.js';
 import { loadMaster } from '../../../server/src/domain/master.js';
 import { PlayerService, type PlayerRepo, type ShortfallQuery } from '../../../server/src/domain/service.js';
-import type { ClientBatch } from '../../../server/src/domain/kpi.js';
+import { clientBatchSchema, clientToKpi, type ClientBatch } from '../../../server/src/domain/kpi.js';
+import type { AccessibilityBody } from '../../../server/src/domain/accessibility.js';
 import { playerView, type PlayerState } from '../../../server/src/domain/player.js';
 import { oddsDisclosure, findBanner, bannerList, bannerStatus } from '../../../server/src/domain/gacha.js';
 import { cryptoRng } from '../../../server/src/domain/rng.js';
@@ -31,12 +32,15 @@ import { InviteService, MemoryInviteDirectory, deliverInviteOutbox, displayInvit
 import type { Directory } from '../../../server/src/domain/friends.js';
 import { signAdMobQuery, StaticKeySource, verifyAdMobCallback } from '../../../server/src/ads/ssv.js';
 import { MemoryRivalRegistry, RivalService, rivalPlayersFrom } from '../../../server/src/domain/rivalService.js';
-import { noteRivalTa, prevWeekId, rivalCard, weekEndMs, weekIdAt } from '../../../server/src/domain/rival.js';
+import { noteRivalTa, prevWeekId, rivalCard, rivalTrackName, weekEndMs, weekIdAt } from '../../../server/src/domain/rival.js';
+import { actorIdsOf, renderActivityItems } from '../../../server/src/domain/activity.js';
 import type { PlayerInvoker } from '../../../server/src/http/app.js';
 import { HallService, MemoryHallDirectory, hallConfig, hallSnapshot } from '../../../server/src/domain/hallOfFame.js';
 import { hallPlayersFrom } from '../../../server/src/http/hallPorts.js';
 import { MemoryReplayStore, MyReplaysService } from '../../../server/src/domain/myReplaysService.js';
 import { DEFAULT_RULESET } from '../../../server/src/domain/ruleset.js';
+import { computeRaceAdvice, adviceTextProblems, adviceTexts, type AdviceInput } from '../../../server/src/domain/raceAdvice.js';
+import type { AdviceQuery } from '../../../server/src/domain/raceAdviceService.js';
 // REQ-L10N-*: the server's English tables (master/locale-en.json + i18n/en.ts), the client's (ui-en.json) and the
 // prototype's own screen texts (proto-en.json), in one catalog with the server's template rules (katakana names romanized)
 import { compileCatalogWith, translateText, romanizeName } from '../../../server/src/i18n/catalog.js';
@@ -73,6 +77,7 @@ const store = new FakeStoreVerifier();
 // round 10 (REQ-TEAMFEED-*): a demo 支部 on the real team objects (MemoryTeams = TeamCore, the TeamDO logic, in memory)
 const teams = new MemoryTeams(() => master, now);
 const repo = new LocalRepo();
+const serverKpi: { name: string; s1?: string; s2?: string; s3?: string }[] = [];
 const svc = new PlayerService(repo, {
   master, rng: cryptoRng, clock: now, verifiers: { fake: store },
   onTeamPoints: async (p) => { await teams.reportPoints(p.teamId, p.playerId, p.seasonId, p.points, p.displayName).catch(() => undefined); },
@@ -83,12 +88,15 @@ const svc = new PlayerService(repo, {
   // queues the team_goal push for the other members (the daily cap applies)
   onTeamGoal: async (c) => {
     const r = await teams.goalContribute(c.teamId, c);
-    if (r.milestone !== null) for (const to of r.notify) await svc.queuePush(to, 'team_goal', { n: String(r.milestone) }).catch(() => undefined);
+    // round 15 (REQ-ACT-002): the same player call as TeamDO — push + activity entry
+    if (r.milestone !== null) for (const to of r.notify) await svc.teamGoalMilestone(to, c.teamId, r.milestone).catch(() => undefined);
     return r;
   },
   onTeamGoalForget: async (p) => teams.goalForget(p.teamId, p.playerId),
   // round 14 (REQ-HOF-011): the visitors' copy of each hall (DirectoryDO halls in production; memory here)
   onHall: async (id, snap) => { if (snap) await hallDir.put(snap); else await hallDir.remove(id); },
+  // round 15 (REQ-A11Y-014): the server-side KPI rows, kept for the tests (the real Analytics Engine is not here)
+  onKpi: (_id, recs) => { serverKpi.push(...recs.map((r) => ({ name: r.name, s1: r.s1, s2: r.s2, s3: r.s3 }))); if (serverKpi.length > 300) serverKpi.splice(0, serverKpi.length - 300); },
 });
 // round 14 (REQ-HOF-*): 殿堂 on the real HallService. A demo friend (demo_hof_1, アオバ) has a hall of their own to visit.
 const hallDir = new MemoryHallDirectory();
@@ -153,7 +161,8 @@ class LocalReplayStore extends MemoryReplayStore {
   clear() { for (const k of [...this.files.keys()]) { this.files.delete(k); try { localStorage.removeItem(RP_KEY + k); } catch { /* ignore */ } } }
 }
 const replayStore = new LocalReplayStore();
-const myReplaysSvc = new MyReplaysService(() => master, () => rivalInvoker, replayStore);
+// round 15: the friends port — making a save public writes the friends' replay_share activity entry (§40)
+const myReplaysSvc = new MyReplaysService(() => master, () => rivalInvoker, replayStore, async (u) => (await svc.friendsState(u)).ids);
 const RP_FRIEND = 'demo_rp_friend';
 const RP_FRIEND_NAME = 'ハヤテ乗り';
 async function ensureReplayFriend() {
@@ -342,6 +351,13 @@ export const MuchiLogic = {
   // normalised stats, no skills, the loan horse at the cap), and the submit path: prepare builds the replay log from the
   // ISSUED config + the validated inputs, `verify` re-simulates THAT log in the WASM engine (the C# verifier's code), and
   // record evaluates the conditions on the verified result — the device's own verdict is never sent.
+  // ---------------------------------------------------------------- round 15: 出走前アドバイス (REQ-ADV-*, protocol §39)
+  // GET /v1/races/advice on the real service (raceAdviceFor: the player's horses, today's going, the challenge's loan horse)
+  // and the pure scorer itself (the page recomputes the tips for another selected horse; the WASM C# mirror must agree).
+  raceAdvice: (q: AdviceQuery) => wrap(() => svc.raceAdvice(ID, q)),
+  computeAdvice: (input: AdviceInput) => computeRaceAdvice(input),
+  adviceLint: (texts: string[]) => texts.flatMap((t) => adviceTextProblems(t)),
+  adviceTexts: (a: Parameters<typeof adviceTexts>[0]) => adviceTexts(a),
   weeklyChallenges: () => wrap(() => svc.wchView(ID)),
   weeklyChallengeStart: (challengeId: string, horseId: string | null) => wrap(() => svc.wchStart(ID, challengeId, horseId ? { horseId } : { loan: true }, key())),
   async weeklyChallengeSubmit(sessionId: string, inputs: number[][], resultHash: string, verify: (logJson: string) => string) {
@@ -551,6 +567,17 @@ export const MuchiLogic = {
   // What GET /v1/history/* and POST /v1/history/support-ticket return, on the real rules (the local state holds the whole ledger).
   history: (kind: 'summary' | 'purchases' | 'coins' | 'gacha', q: { cursor?: string | null; limit?: number; currency?: 'paid' | 'free' | null } = {}) => wrap(() => svc.history(ID, kind, q)),
   historyTicket: (refs: string[], topic: 'purchase_missing' | 'refund' | 'coins' | 'gacha' | 'other') => wrap(() => svc.historyTicket(ID, refs, topic)),
+
+  // ---------------------------------------------------------------- round 15: フォトモード (REQ-PHOTO-*, contracts/protocol.md §38)
+  // GET /v1/photo/catalog, the photo records and the shop purchase of a photo frame / stamp, on the real rules. The picture
+  // itself (snapshot, camera, card) is the C# PhotoModeModel in WASM.
+  photoCatalog: () => wrap(() => svc.photoCatalog(ID)),
+  photos: () => wrap(() => svc.photos(ID)),
+  photoSave: (spec: unknown, idemKey?: string) => wrap(() => svc.photoSave(ID, spec as never, idemKey ? 'c:/v1/photos:' + idemKey : key())),
+  photoDelete: (photoId: string) => wrap(() => svc.photoDelete(ID, photoId)),
+  buyCosmetic: (itemId: string) => wrap(() => svc.buyCosmetic(ID, itemId, key())),
+  /** KPI rows the client would send (photo_take / photo_share), checked against the server's client-event schema. */
+  photoKpi: (name: 'photo_take' | 'photo_share', props: Record<string, unknown>) => wrap(() => clientBatchSchema.parse({ platform: 'editor', appVersion: 'proto', events: [{ name, at: now(), props }] }).events.map(clientToKpi)[0]),
   /** Demo: a 14-year-old's month (¥5,000 limit): two coin packs bought, one refunded by the store, scouts on paid and free coins. */
   async seedHistory() {
     await this.seedDemo(3, [2, 2, 2]);
@@ -562,6 +589,42 @@ export const MuchiLogic = {
     await buy('coin_1500', 1500);
     await wrap(() => svc.draw(ID, 'standard', 10, key()));
     await wrap(() => svc.draw(ID, 'pickup_akatsuki', 1, key()));
+    return svc.view(ID);
+  },
+
+  // ---------------------------------------------------------------- round 15: アクティビティ (REQ-ACT-*, contracts/protocol.md §40)
+  // What GET /v1/activity returns: the real PlayerService page, names resolved like the HTTP route (a player with no
+  // public profile — deleted — shows the neutral name), and POST /v1/activity/read.
+  activity: (cursor: string | null = null, limit = 20) => wrap(async () => {
+    const p = await svc.activity(ID, cursor === null ? null : Number(cursor), limit);
+    const ids = actorIdsOf(p.items);
+    const profiles = (await Promise.all(ids.map(async (id) => ((await repo.get(id)) ? svc.publicProfile(id) : null)))).filter((x) => x !== null);
+    return { ...p, items: renderActivityItems(p.items, profiles) };
+  }),
+  activityRead: (upTo: string | null = null) => wrap(() => svc.activityRead(ID, upTo === null ? null : Number(upTo))),
+  /**
+   * Demo 「アクティビティ」: what happened while away, written by the real event sources at their push points — a friend
+   * request and an accepted one, likes on My Stable (collapsed), cheer stamps, a rival's time-attack record, a tournament
+   * result (its prize waits in the gift box without a second entry), a compensation in the gift box, the team goal's
+   * milestone and last week's result. The oldest few are already read.
+   */
+  async seedActivity() {
+    await this.seedDemo(3, [2, 2, 2]);
+    const people: [string, string][] = [['demo_act_1', 'アサヒ'], ['demo_act_2', 'カエデ'], ['demo_act_3', 'シノノメ']];
+    for (const [id, name] of people) if (!(await repo.get(id))) { await svc.bootstrap(id); await svc.setDisplayName(id, name); }
+    // the demo rival exactly as rivalDemoSeed makes it (with its partner), so its name shows on the rival row
+    if (!(await repo.get(RIVAL_DEMO))) { await svc.bootstrap(RIVAL_DEMO); await svc.setDisplayName(RIVAL_DEMO, 'ミドリカワ'); await svc.grantPartner(RIVAL_DEMO, 'ハヤテ', key()); }
+    const day = new Date(now() + 9 * 3600e3).toISOString().slice(0, 10);
+    await svc.teamGoalReward(ID, 'demo-week', 'demo_team', 2, 6);
+    await svc.friendAccepted(ID, 'demo_act_2', 'カエデ');
+    await svc.activityRead(ID, null); // the two above were seen on an earlier visit
+    await svc.tournamentClose(ID, 'demo_act_cup', 3, { freeCoins: 100 }, 'デモ杯');
+    await svc.adminGrant(ID, { freeCoins: 200 }, 'maintenance', 'ops', 'demo-act-comp', true, { source: 'ops_compensation', titleKey: 'ops_compensation_maintenance' });
+    await svc.rivalPush(ID, 'ミドリカワ', rivalTrackName('aoba_turf_1600'), RIVAL_DEMO);
+    await svc.teamGoalMilestone(ID, 'demo_team', 1);
+    await svc.cheerPush(ID, 'demo_act_3', 'シノノメ', 'react:demo_team:1');
+    for (let i = 0; i < 12; i++) await svc.stableLikeReceive(ID, `demo_like_${i}`, `demo_like_${i}:${day}:0`);
+    await svc.friendReceive(ID, 'demo_act_1', 'アサヒ');
     return svc.view(ID);
   },
 
@@ -819,6 +882,11 @@ export const MuchiLogic = {
   assist: () => svc.assist(ID),
   setAssist: (level: 'off' | 'whip' | 'full', source: 'settings' | 'prompt' = 'settings') => wrap(() => svc.setAssist(ID, level, source)),
   assistPromptSeen: () => wrap(() => svc.assistPromptSeen(ID)),
+  // ---------------------------------------------------------------- アクセシビリティ設定 (REQ-A11Y-*, contracts/protocol.md §41)
+  // The real server rules: defaults, the idempotent full replace, strict values, one a11y_setting_change per changed key.
+  accessibility: () => svc.accessibility(ID),
+  setAccessibility: (body: AccessibilityBody) => wrap(() => svc.setAccessibility(ID, body)),
+  serverKpiLog: () => serverKpi.slice(),
   /** Demo: three ranked races finishing last (12th of 12), settled by the real applyRace — the prompt becomes due. */
   async demoLastPlaces(n = 3) {
     for (let i = 0; i < n; i++) await svc.applyRace(ID, { raceId: `demo_last_${Date.now().toString(36)}_${i}`, mode: 'ranked', place: 12, fieldSize: 12, newRating: null, void: false, humans: 1 });

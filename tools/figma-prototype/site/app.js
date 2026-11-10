@@ -65,36 +65,70 @@ function translateTree(n) {
 }
 let fitPending = false;
 const l10nObserver = new MutationObserver((muts) => {
-  if (isJa()) return;
-  for (const m of muts) {
-    if (m.type === 'characterData') translateTree(m.target);
-    else m.addedNodes.forEach(translateTree);
+  if (isJa() && textScale() === 1) return;
+  if (!isJa()) {
+    for (const m of muts) {
+      if (m.type === 'characterData') translateTree(m.target);
+      else m.addedNodes.forEach(translateTree);
+    }
   }
-  if (!fitPending) { fitPending = true; requestAnimationFrame(() => { fitPending = false; fitText(cur); }); }
+  if (!fitPending) { fitPending = true; requestAnimationFrame(() => { fitPending = false; scaleText(cur); fitText(cur); }); }
 });
 /**
- * English is longer than Japanese: a text that overflows its box (wider than its element, taller than a fixed height,
- * or below the bottom of its panel) is set smaller, down to 66 % of its size. Japanese is never touched.
+ * English is longer than Japanese, and the larger text sizes (round 15, REQ-A11Y-005) are larger than the layout: a
+ * text that overflows its box (wider than its element, taller than a fixed height, or below the bottom of its panel)
+ * is set smaller, in 5.7 % steps — never below its standard size in Japanese, down to 66 % of it in English.
+ * Japanese at the standard size is never touched.
  */
+/** Line boxes of a text (distinct tops of its client rects). */
+function lineCount(x) { const r = document.createRange(); r.selectNodeContents(x); return new Set([...r.getClientRects()].filter((c) => c.width > 0).map((c) => Math.round(c.top))).size; }
+const rangeRect = (x) => { const r = document.createRange(); r.selectNodeContents(x); return r.getBoundingClientRect(); };
+/** Two texts' glyph boxes cover each other (more than 4 px across and 30 % of the shorter one's height). */
+function textsCollide(a, b, k) {
+  const w = Math.min(a.right, b.right) - Math.max(a.left, b.left), h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+  return w > 4 * k && h > .3 * Math.min(a.height, b.height);
+}
 function fitText(root) {
-  if (isJa() || !root) return;
+  const ja = isJa();
+  if ((ja && textScale() === 1) || !root) return;
   const els = root.querySelectorAll('.label, .kicker, .caption, .btn, .pill, .tag');
+  // round 15: at the larger text sizes a text may also run into its neighbour (a title into its subtitle, a section
+  // label into the first row) — outside the race HUD (repainted every frame) such a text is brought back too
+  const k = $stage.getBoundingClientRect().width / 1600;
+  const neighbours = textScale() > 1 && !root.classList.contains('race') ? [...els].filter((x) => x.offsetParent !== null && x.textContent.trim()) : [];
+  const collides = (e) => {
+    if (!neighbours.length) return false;
+    const a = rangeRect(e);
+    if (!a.width) return false;
+    for (const o of neighbours) {
+      if (o === e || o.contains(e) || e.contains(o)) continue;
+      if (textsCollide(a, rangeRect(o), k)) return true;
+    }
+    return false;
+  };
   for (const e of els) {
     if (e.offsetParent === null) continue;
-    const host = e.classList.contains('btn') ? null : e.parentElement?.closest('.glass, .card, .sheet, .btn');
+    const isBtn = e.classList.contains('btn');
+    const spans = isBtn ? [...e.querySelectorAll(':scope > span')] : [];
+    const host = isBtn ? null : e.parentElement?.closest('.glass, .card, .sheet, .btn');
     const text = () => { const r = document.createRange(); r.selectNodeContents(e); return r.getBoundingClientRect(); };
     const over = () => e.scrollWidth > e.clientWidth + 1 || (e.style.height && e.scrollHeight > e.clientHeight + 1)
       || (host && !host.classList.contains('btn') && text().bottom > host.getBoundingClientRect().bottom + 1)
-      || text().right > $stage.getBoundingClientRect().right + 1;
+      || text().right > $stage.getBoundingClientRect().right + 1 || collides(e)
+      || (isBtn && spans.some((x) => x.dataset.tl && lineCount(x) > +x.dataset.tl));
     // fit again from the base size (a sheet measured mid slide-in must not stay 'overflow' once it has settled)
-    const setSize = (px) => { e.style.fontSize = px; if (e.classList.contains('btn')) e.querySelectorAll('span').forEach((s) => { s.style.fontSize = px; }); };
+    const setSize = (px) => { if (isBtn) spans.forEach((x) => { x.style.fontSize = px; }); else e.style.fontSize = px; };
     if (e.dataset.fitBase) { setSize(e.dataset.fitBase + 'px'); delete e.dataset.fit; }
     if (!over()) continue;
-    const base = parseFloat(e.dataset.fitBase ?? getComputedStyle(e).fontSize);
+    const sized = isBtn ? spans[0] ?? e : e;
+    const base = parseFloat(e.dataset.fitBase ?? getComputedStyle(sized).fontSize);
     e.dataset.fitBase = String(base);
-    for (let k = 1; k <= 6 && over(); k++) {
-      e.style.fontSize = (base * (1 - .057 * k)).toFixed(1) + 'px';
-      if (e.classList.contains('btn')) e.querySelectorAll('span').forEach((s) => { s.style.fontSize = e.style.fontSize; });
+    const std = parseFloat(sized.dataset.ts) || base; // the standard-size font (before the text size step)
+    const floor = ja ? std : std * .66;
+    for (let k = 1; k <= 12 && over(); k++) {
+      const px = Math.max(floor, base * (1 - .057 * k));
+      setSize(px.toFixed(1) + 'px');
+      if (px <= floor) break;
     }
     e.dataset.fit = over() ? 'overflow' : 'shrunk';
   }
@@ -104,6 +138,69 @@ let enTables = null;
 function applyLanguage() {
   document.documentElement.lang = isJa() ? 'ja' : 'en';
   if (engine && enTables) engine.SetLanguage(isJa() ? 'ja' : 'en', isJa() ? enTables.commentaryJa : enTables.commentaryEn, enTables.server, enTables.ui);
+}
+
+// ---------------------------------------------------------------- round 15: アクセシビリティ設定 (REQ-A11Y-*, protocol §41)
+// Mirrors unity/Assets/Muchi/Game/AccessibilityModel.cs: the account's settings on the real server rules (MuchiLogic), a
+// device copy applied from the first frame (and offline), and the values every screen honours: the text size step
+// (body text < 28 px ×1.15 / ×1.3, scaleText), the colour mode (html[data-color-mode] swaps the --a11y-* tokens of
+// contracts/a11y-tokens.json), reduce motion (html[data-reduce-motion]: no drift / shake / speed lines / blinking, short
+// transitions, the scout reveal without its glow wait), haptics, subtitles, the one-handed race layout and the whip hold.
+const A11Y_KEY = 'muchi.a11y.settings', A11Y_DIRTY = 'muchi.a11y.dirty';
+const A11Y_DEFAULTS = { textSize: 'standard', colorMode: 'standard', reduceMotion: false, haptics: true, subtitles: true, oneHanded: 'off', whipInput: 'tap' };
+const A11Y_SCALE = { standard: 1, large: 1.15, largest: 1.3 };
+let a11y = (() => { try { return { ...A11Y_DEFAULTS, ...JSON.parse(prefs.get(A11Y_KEY, '{}')) }; } catch { return { ...A11Y_DEFAULTS }; } })();
+const textScale = () => A11Y_SCALE[a11y.textSize] ?? 1;
+const reduced = () => !!a11y.reduceMotion;
+function applyA11y() {
+  const d = document.documentElement.dataset;
+  d.textSize = a11y.textSize; d.colorMode = a11y.colorMode; d.reduceMotion = a11y.reduceMotion ? 'on' : 'off';
+  d.oneHanded = a11y.oneHanded; d.whipInput = a11y.whipInput;
+  if (engine) engine.SetWhipInput(a11y.whipInput);
+}
+function storeA11y(v, dirty) {
+  a11y = { ...A11Y_DEFAULTS, ...Object.fromEntries(Object.keys(A11Y_DEFAULTS).map((k) => [k, v[k] ?? A11Y_DEFAULTS[k]])) };
+  prefs.set(A11Y_KEY, JSON.stringify({ ...a11y, rev: v.rev ?? 0 })); prefs.set(A11Y_DIRTY, dirty ? '1' : '0');
+  applyA11y();
+}
+/** REQ-A11Y-004: an unsent device change wins; otherwise the account's value replaces the device copy. */
+async function syncA11y() {
+  if (prefs.get(A11Y_DIRTY, '0') === '1') { const r = await L.setAccessibility({ ...a11y }); if (r.ok) storeA11y(r.value, false); return; }
+  storeA11y(await L.accessibility(), false);
+}
+async function setA11y(key, value) {
+  const next = { ...a11y, [key]: value };
+  storeA11y(next, true); // applied at once (and kept if the save fails)
+  const r = await L.setAccessibility(next);
+  if (r.ok) storeA11y(r.value, false);
+  toast(r.ok ? 'アクセシビリティ設定を保存しました' : 'オンラインになったら保存します');
+}
+/**
+ * REQ-A11Y-005: the text size step on every text of the stage. Each text keeps its standard size in data-ts and body
+ * text (< 28 px) is set ×1.15 / ×1.3; headings and big numbers stay. fitText then brings back, towards the standard
+ * size and never below it, only what does not fit its box.
+ */
+const SCALE_SEL = '.label, .kicker, .caption, .btn > span, .pill, .tag, .toast, .stamina .t, .stamina .s, .whipdots b, .marker .nm, .marker .gap, .marker .wind';
+function scaleText(root) {
+  const k = textScale();
+  if (k === 1 || !root) return;
+  for (const e of root.querySelectorAll(SCALE_SEL)) {
+    if (e.dataset.ts) continue;
+    if (e.closest('.btn.whip')) { e.dataset.ts = '0'; continue; } // the whip's label is sized to its ring (like an icon)
+    const base = parseFloat(getComputedStyle(e).fontSize);
+    e.dataset.ts = String(base);
+    if (e.parentElement?.classList.contains('btn')) e.dataset.tl = String(lineCount(e)); // a button label must not start wrapping
+    if (base < 28) e.style.fontSize = (base * k).toFixed(1) + 'px';
+  }
+}
+/** REQ-A11Y-009: every vibration goes through here (off = none at all). */
+function haptic(pattern) { if (!a11y.haptics) return; try { navigator.vibrate?.(pattern); } catch { /* not supported */ } }
+/** REQ-A11Y-008: one-shot lights — at most 3 in any one-second window (the 4th shows its text without the light). */
+const flashTimes = [];
+function flashOk(now = performance.now()) {
+  while (flashTimes.length && now - flashTimes[0] >= 1000) flashTimes.shift();
+  if (flashTimes.length >= 3) return false;
+  flashTimes.push(now); return true;
 }
 
 // ---------------------------------------------------------------- art (Unity Resources paths → site files)
@@ -276,6 +373,7 @@ function toast(text, ms = 2600) {
   const t = document.createElement('div');
   t.className = 'toast'; t.textContent = text;
   $stage.appendChild(t);
+  if (textScale() !== 1) { const b = parseFloat(getComputedStyle(t).fontSize); t.dataset.ts = String(b); t.style.fontSize = (b * textScale()).toFixed(1) + 'px'; }
   setTimeout(() => t.classList.add('gone'), ms); setTimeout(() => t.remove(), ms + 400);
 }
 function show(fn, ...args) { currentScreen = () => fn(...args); return fn(...args); }
@@ -412,16 +510,16 @@ async function StartTutorial() {
   view.useRig = true; view.start(raceInfo, equippedPartner());
   BuildRaceScreen();
 }
-async function StartRace(trackId = null) {
+async function StartRace(trackId = null, horseId = null) {
   await viewReady;
-  const p = partner();
+  const p = (horseId && player.horses.find((h) => h.id === horseId && (h.status ?? 'active') === 'active')) || partner();
   const { config, trackName, beginner } = await L.raceConfig(p.id, trackId);
   // round 12: かんたん操作 rides the race with the real InputAssistant inside the WASM engine (never the tutorial)
   engine.SetAssist(assistLevel());
   // round 14: 実況パック (REQ-CMT-009) — the race speaks the equipped pack (client only; the race itself is unchanged)
   const commentaryPack = engine.SetCommentaryPack(equippedPack());
   raceInfo = JSON.parse(engine.StartConfig(JSON.stringify(config), 'local'));
-  raceCtx = { tutorial: false, config, trackName, beginner, ftue, trackId: config.track.id, commentaryPack };
+  raceCtx = { tutorial: false, config, trackName, beginner, ftue, trackId: config.track.id, commentaryPack, horseId: p.id, advice: advice.lastWhip(config.track.id) };
   view.useRig = true; view.start(raceInfo, equippedPartner());
   BuildRaceScreen();
 }
@@ -458,6 +556,14 @@ function BuildRaceScreen() {
   hud.whip = Btn('ムチ', wx, wy, W, W, Whip, 'whip' + (tut ? ' big' : ''), undefined, tut ? 'まもなく' : 'スタート');
   hud.whipText = hud.whip.querySelector('span');
   hud.whips = el('whipdots', wx + W / 2 - 124, wy - 66, 248, 48);
+  // round 15 (REQ-A11Y-012): hold mode — the button reports press / release; the engine's WhipHold turns it into taps
+  if (holdMode()) {
+    const hw = (v) => (e) => { e.preventDefault(); WhipHoldPress(v); };
+    hud.whip.addEventListener('pointerdown', hw(true)); hud.whip.addEventListener('pointerup', hw(false));
+    hud.whip.addEventListener('pointerleave', hw(false)); hud.whip.addEventListener('pointercancel', hw(false));
+    hud.holdHint = Txt('', wx + W / 2 - 130, wy + W + 4, 260, 14, CYAN, undefined, { align: 'center', weight: 700, ls: '.12em', cls: 'tshadow holdhint' });
+    hud.prevWhips = null;
+  }
   if (tut) {
     // F4: the first race has one control, the whip. The gate countdown is the 3-second scene-setter.
     hud.intro = Txt('最後の直線。前に7頭。', 300, 336, 1000, 60, WHITE, undefined, { align: 'center', cls: 'intro' });
@@ -473,7 +579,7 @@ function BuildRaceScreen() {
   const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 182 104'); svg.setAttribute('width', '182'); svg.setAttribute('height', '104');
   const ov = document.createElementNS(NS, 'ellipse'); Object.entries({ cx: 91, cy: 44, rx: 64, ry: 24, fill: 'none', stroke: '#d5e3ee', 'stroke-width': 3 }).forEach(([k, v]) => ov.setAttribute(k, v)); svg.appendChild(ov);
   const fin = document.createElementNS(NS, 'line'); Object.entries({ x1: 91, y1: 62, x2: 91, y2: 76, stroke: '#ffd34f', 'stroke-width': 2 }).forEach(([k, v]) => fin.setAttribute(k, v)); svg.appendChild(fin);
-  hud.dots = raceInfo.names.map((_, i) => { const c = document.createElementNS(NS, 'circle'); c.setAttribute('r', i === raceInfo.playerSlot ? 6 : 4); c.setAttribute('fill', i === raceInfo.playerSlot ? '#ffd34f' : '#00d2ed'); c.setAttribute('cx', 91); c.setAttribute('cy', 68); svg.appendChild(c); return c; });
+  hud.dots = raceInfo.names.map((_, i) => { const c = document.createElementNS(NS, 'circle'); c.setAttribute('r', i === raceInfo.playerSlot ? 6 : 4); c.style.fill = i === raceInfo.playerSlot ? 'var(--a11y-position-self)' : 'var(--a11y-position-other)'; c.setAttribute('cx', 91); c.setAttribute('cy', 68); svg.appendChild(c); return c; });
   const me = hud.dots[raceInfo.playerSlot]; svg.appendChild(me); // the partner on top
   hud.minimap.appendChild(svg);
   hud.spread = el('who', 0, 0, 182, null, hud.minimap); hud.spread.style.position = 'absolute'; hud.spread.style.top = '80px';
@@ -489,6 +595,31 @@ function BuildRaceScreen() {
   // skill cut-ins (engine Skill events)
   hud.skillBox = el('cutins', 540, 560, 520, 230);
   Btn('中断', 33, 120, 120, 40, () => { raceActive = false; Home(); }, 'quit');
+  // round 15 (REQ-PHOTO-001): a solo race (time attack, weekly challenge) pauses for a photo; a race with other people never does
+  const pb = Btn('フォト', 163, 120, 120, 40, () => (phShared() ? toast('このレースは走っている途中では撮れません。結果画面かリプレイから撮ってください。') : PhotoOpen('paused')), 'quit' + (phShared() ? ' ph-locked' : ''));
+  pb.dataset.photo = phShared() ? 'blocked' : 'pause';
+  oneHandedLayout(); // round 15 (REQ-A11Y-011)
+}
+/**
+ * REQ-A11Y-011 / REQ-UXA-008: one-handed race layout — every control within one thumb, bottom corner of that side: the
+ * whip outermost, the rein beside it, 内／外 stacked above the rein. Left mirrors the right and moves the stamina
+ * plate and the control caption to the other side. Layout only.
+ */
+function oneHandedLayout() {
+  const side = a11y.oneHanded;
+  if (side === 'off' || raceCtx.tutorial) return;
+  const at = (n, x, y) => { if (n) { n.style.left = x + 'px'; n.style.top = y + 'px'; } };
+  cur.dataset.oneHanded = side;
+  const L = side === 'left', X = (x, w) => (L ? 1600 - x - w : x);
+  at(hud.whip, X(1364, 152), 683); at(hud.whips, X(1364, 152) + 76 - 124, 617);
+  if (hud.holdHint) at(hud.holdHint, X(1364, 152) + 76 - 130, 839);
+  at(hud.rein, X(1222, 118), 742);
+  at(hud.laneIn, X(1110, 104), 520); at(hud.laneOut, X(1110, 104), 636);
+  if (L) {
+    at(hud.stamina, 1137, 743);
+    const cap = [...cur.querySelectorAll('.caption')].find((c) => c.textContent.includes('手綱を長押し'));
+    if (cap) { cap.style.left = 'auto'; cap.style.right = '35px'; cap.style.width = 'auto'; }
+  }
 }
 function Lane(dir) { if (!raceActive || raceCtx.tutorial) return; engine.Lane(dir); }
 function Whip() {
@@ -497,17 +628,36 @@ function Whip() {
   if (lastFrame.departed && lastFrame.whips <= 0) return;
   // round 12: with かんたん操作 the whip (and with full auto the start too) is the assistant's; a tap does nothing
   if (!raceCtx.tutorial && lastFrame.assist && lastFrame.assist !== 'off' && (lastFrame.departed || lastFrame.assist === 'full')) return;
+  if (holdMode()) return; // round 15: the hold sends the whip itself (pointerdown → engine.WhipHold)
   engine.Spur();
+  whipFeedback(lastFrame.departed);
+}
+/** Presentation of a whip (06 §6.3): the pop, the button, the FOV kick and speed lines (not with reduce motion), haptics. */
+function whipFeedback(departed) {
   // presentation first (06 §6.3: the button and the horse react within a frame; the engine takes the input next tick)
-  flash(hud.feedback, lastFrame.departed ? '伸びる！' : 'スタート！');
+  flash(hud.feedback, departed ? '伸びる！' : 'スタート！');
   hud.whip.classList.remove('hit'); void hud.whip.offsetWidth; hud.whip.classList.add('hit');
-  // the spurt: an FOV kick on the 3D view and speed lines on the edges (presentation only)
-  if (lastFrame.departed) { view.kick(); const s = document.createElement('div'); s.className = 'speedlines'; cur.insertBefore(s, cur.firstChild); setTimeout(() => s.remove(), 1300); }
-  try { navigator.vibrate?.(lastFrame.departed ? 40 : [12, 40, 12]); } catch { /* not supported */ }
+  // the spurt: an FOV kick on the 3D view and speed lines on the edges (presentation only; REQ-A11Y-007: none when reduced)
+  if (departed && !reduced()) { view.kick(); const s = document.createElement('div'); s.className = 'speedlines'; cur.insertBefore(s, cur.firstChild); setTimeout(() => s.remove(), 1300); }
+  haptic(departed ? 40 : [12, 40, 12]);
+}
+/** Round 15 (REQ-A11Y-012): the whip button is held, not tapped (never while かんたん操作 owns the whip). */
+const holdMode = () => a11y.whipInput === 'hold';
+function WhipHoldPress(down) {
+  if (!lastFrame || !raceActive) return;
+  engine.WhipHold(down);
+  if (!down) return;
+  if (raceCtx.tutorial && !lastFrame.departed) return;
+  if (lastFrame.departed && lastFrame.whips <= 0) return;
+  if (!raceCtx.tutorial && lastFrame.assist && lastFrame.assist !== 'off' && (lastFrame.departed || lastFrame.assist === 'full')) return;
+  hud.holdPressWhips = lastFrame.whips; // the press is a tap: its whip is shown here, the repeats in paintHud
+  whipFeedback(lastFrame.departed);
 }
 function flash(node, text, ms = 1100) {
   node.textContent = text; hud.msgUntil = performance.now() + ms;
-  node.classList.remove('flash'); void node.offsetWidth; node.classList.add('flash');
+  node.classList.remove('flash');
+  if (!flashOk()) return; // REQ-A11Y-008: the text, without the light
+  void node.offsetWidth; node.classList.add('flash');
 }
 function raceLoop() {
   requestAnimationFrame(raceLoop);
@@ -559,11 +709,17 @@ function paintHud(f) {
   setText(hud.hint, hint);
   setProp(hud.hintBox, "className", 'el hintbox' + (hint ? '' : ' empty') + (feel.kakariWarning || feel.level === 'Critical' || feel.level === 'Empty' ? ' warn' : ''));
   for (const c of feel.cues ?? []) {
-    if (c.kind === 'Overtake') { flash(hud.feedback, '抜いた！', 900); try { navigator.vibrate?.(15); } catch { /* */ } }
-    if (c.kind === 'StaminaCritical') { try { navigator.vibrate?.([30, 30, 30]); } catch { /* */ } }
+    if (c.kind === 'Overtake') { flash(hud.feedback, '抜いた！', 900); haptic(15); }
+    if (c.kind === 'StaminaCritical') haptic([30, 30, 30]);
   }
   if (performance.now() > hud.msgUntil) setText(hud.feedback, '');
-  setText(hud.subtitle, f.subtitle);
+  setText(hud.subtitle, a11y.subtitles ? f.subtitle : ''); // REQ-A11Y-010
+  // round 15: the hold's automatic whips (the press was shown on pointerdown) and the 「長押し あと{n}」 hint
+  if (hud.holdHint) {
+    setText(hud.holdHint, f.whipInput === 'hold' && f.departed && !(f.assist && f.assist !== 'off') ? `長押し あと${f.holdLeft}` : '');
+    if (hud.prevWhips != null && f.whips < hud.prevWhips && hud.holdPressWhips !== hud.prevWhips) whipFeedback(true);
+    hud.holdPressWhips = null; hud.prevWhips = f.whips;
+  }
   if (hud.ghost && f.ghostPoses?.[0]) { const gap = f.ghostPoses[0][4]; setText(hud.ghost, `ゴースト ${raceCtx.ghost.name}：${gap >= 0 ? '前' : '後ろ'} ${Math.abs(gap).toFixed(1)}m`); }
   // overhead marker on the partner
   const p = view.project(raceInfo.playerSlot, 3.1);
@@ -602,17 +758,17 @@ function paintHud(f) {
     hud.skillBox.prepend(c);
     while (hud.skillBox.children.length > 2) hud.skillBox.lastChild.remove();
     setTimeout(() => c.classList.add('gone'), 2200); setTimeout(() => c.remove(), 2600);
-    if (mine) try { navigator.vibrate?.(30); } catch { /* */ }
+    if (mine) haptic(30);
   }
 }
 document.addEventListener('keydown', (e) => {
   if (!raceActive || e.repeat) return;
   if (e.key === 'ArrowLeft') Lane(-1);
   else if (e.key === 'ArrowRight') Lane(1);
-  else if (e.key === 'e' || e.key === 'E') Whip();
+  else if (e.key === 'e' || e.key === 'E') { if (holdMode()) WhipHoldPress(true); else Whip(); }
   else if (e.code === 'Space') { keyRein = true; e.preventDefault(); }
 });
-document.addEventListener('keyup', (e) => { if (e.code === 'Space') keyRein = false; });
+document.addEventListener('keyup', (e) => { if (e.code === 'Space') keyRein = false; if ((e.key === 'e' || e.key === 'E') && holdMode() && raceActive) WhipHoldPress(false); });
 window.addEventListener('blur', () => { reinHeld = false; keyRein = false; });
 
 // ---- results (REQ-UXP-005 debrief line, 06 §6.4) — 10-race-result
@@ -658,6 +814,8 @@ function ResultScreen(f, rewards, passXp, pass, missions) {
   Kicker(r.won ? '勝因' : '敗因', 44, 476, p, { rule: false, size: 15, color: r.won ? GOLD : CYAN });
   Txt(r.line || '—', 44, 500, 520, 23, WHITE, p, { weight: 700 }).dataset.debrief = r.code;
   Txt(r.tip ? 'ヒント：' + r.tip : (r.margin ? (r.place > 1 ? '勝ち馬から ' : '2着に ') + r.margin : ''), 44, 542, 520, 16, MUTED, p, { lh: 1.5 });
+  // round 15 (REQ-ADV-014): whether the whip followed the pre-race tip (the C# RaceAdvice.CheckWhipTip on the device's debrief)
+  if (raceCtx.advice) { const wl = engine.AdviceWhipLine(JSON.stringify(raceCtx.advice)); if (wl) Txt('アドバイス：' + wl, 44, 584, 520, 15, CYAN, p, { weight: 500, nowrap: true }).classList.add('adv-debrief'); }
   // primary: もう一度 (F13) — in the first session it continues the onboarding instead
   if (first) {
     Cta('つづける', 44, 640, 478, () => AfterFirstRace(r), p);
@@ -676,6 +834,7 @@ function ResultScreen(f, rewards, passXp, pass, missions) {
     const k = await L.replays.save(raceCtx.config.raceId);
     toast(k.ok ? (k.value.alreadySaved ? '保存済みです' : 'リプレイを保存しました') : k.code === 'REPLAY_LIMIT' ? '保存できるのはここまでです。不要なリプレイを削除してください' : k.message);
   }).classList.add('rp-keep-result');
+  if (!first) Ghost('写真を撮る', 1286, 724, 274, 60, () => PhotoOpen('result', currentScreen)).dataset.action = 'photo-result'; // round 15
   EnToggle();
 }
 function ResultDetails(r, rewards, passXp, pass, missions) {
@@ -873,7 +1032,7 @@ function Reveal(draw, first, bannerId, pity) {
     const back = cardBack(c); holder.appendChild(back);
     const me = cur;
     const face = () => { if (cur !== me || !holder.contains(back)) return; holder.innerHTML = ''; const f = rarityCard(c, true); f.classList.add('flip'); holder.appendChild(f); };
-    setTimeout(face, 380);
+    setTimeout(face, reduced() ? 0 : 380); // REQ-A11Y-007: the order and the results come from the same plan either way
     back.addEventListener('click', face);
     const t = L.master.templates.find((x) => x.id === c.templateId);
     Txt(templateLine(t, L.horseSkill({ templateId: c.templateId })), 0, 678, 1600, 19, WHITE, undefined, { align: 'center', weight: 500, cls: 'tshadow' });
@@ -962,6 +1121,7 @@ async function Home() {
   Wallet();
   EnToggle();
   GiftEnvelope(); // round 12 (REQ-BOX-004): the envelope with the unclaimed count
+  ActivityBell(); // round 15 (REQ-ACT-009): the bell with the unread count
   // right: the thin-divider menu (厩舎 / スカウト / ミッション / 機能)
   const menu = Glass('Menu', 1139, 190, 388, 394, undefined, .77);
   const ms = missions.ok ? missions.value : [];
@@ -1033,9 +1193,11 @@ function Features() {
   });
 }
 // 08-race-entry
-function RaceLobby() {
-  currentScreen = RaceLobby; Clear('lobby'); SetArt(equippedCourse() === 0 ? 'Art/first-ride' : courseArt(equippedCourse()));
-  const p = partner();
+function RaceLobby(fresh = true) {
+  currentScreen = () => RaceLobby(false); Clear('lobby'); SetArt(equippedCourse() === 0 ? 'Art/first-ride' : courseArt(equippedCourse()));
+  if (fresh) { advice.seen = false; lobbyHorseId = null; }
+  const p = (lobbyHorseId && player.horses.find((h) => h.id === lobbyHorseId)) || partner();
+  if (!ftue) AdvicePanel({ context: 'ranked' }, 36, 110, 856, 740, p?.id ?? null, (id) => { lobbyHorseId = id; RaceLobby(false); });
   const beginner = player.rating.rankedRaces < L.master.beginnerRaces;
   const d = Glass('Lobby', 923, 47, 608, 804, undefined, .91); d.classList.add('rise');
   Kicker(`${beginner ? '初心者マッチ' : 'ランク戦'}　/　出走登録`, 44, 52, d);
@@ -1048,7 +1210,7 @@ function RaceLobby() {
   Txt(`${beginner ? `初心者マッチ　あと${L.master.beginnerRaces - player.rating.rankedRaces}戦` : 'ランク戦'}　/　能力上限あり`, 44, 478, 520, 19, WHITE, d, { weight: 500 });
   Txt(`出走馬　/　${p?.name ?? '—'}（${STYLE_JA[p?.style] ?? ''}・${fmt(p?.distMinM ?? 0)}〜${fmt(p?.distMaxM ?? 0)}m）`, 44, 520, 520, 19, WHITE, d, { weight: 500 });
   Txt('参加費なし。報酬は着順のコイン・シーズンpt・パスXP。端末内のエンジンで走るオフライン版です（ランクの変動なし）。', 44, 566, 500, 14, SOFT, d, { lh: 1.6 });
-  Cta('ランク戦に出る', 44, 640, 478, () => StartRace(), d);
+  Cta('ランク戦に出る', 44, 640, 478, () => { advice.follow('ranked', p?.id); StartRace(null, p?.id ?? null); }, d);
   Back(Home, '戻る');
   EnToggle();
 }
@@ -1604,7 +1766,8 @@ async function ShareCard(back) {
   const same = clip.hash === clip.liveHash;
   Txt(`最後の${Math.round(clip.startRemainingM)}m・${(clip.durationMs / 1000).toFixed(1)}秒・${clip.fps}fps（${clip.frames}フレーム）\n端末で再計算：${same ? '結果が一致 ✓' : '不一致'}　カメラ ${clip.modes.map((m) => ({ Follow: '追走', FinalStraight: '直線', Finish: 'ゴール横' }[m] ?? m)).join('→')}`, 36, 566, 440, 13, same ? OK : RED, c, { lh: 1.6 }).dataset.hash = same ? 'match' : 'mismatch';
   Cta('動画で共有', 36, 660, 438, () => toast('書き出しと共有はアプリ（IClipRecorder）で行います'), c, 'gold');
-  Ghost('戻る', 36, 754, 438, 56, back ?? Home, c, 'quiet');
+  Ghost('この瞬間を撮る', 36, 754, 211, 56, () => PhotoOpen('replay', () => ShareCard(back)), c, 'quiet').dataset.action = 'photo-replay'; // round 15: the replay player's frame
+  Ghost('戻る', 263, 754, 211, 56, back ?? Home, c, 'quiet');
   Caption('動画には名前・IDを入れません（選んだ馬の名前だけ）', 32, 614, undefined, 14, MUTED).classList.add('tshadow');
 }
 
@@ -1800,6 +1963,7 @@ function TaResult(f) {
   Cta('もう一度', 44, 640, 478, () => TimeAttack(raceCtx.trackId), p);
   TextLink('ホーム', 44, 734, 90, Home, p);
   Ghost('リプレイを共有', 1286, 800, 274, 60, () => ShareCard(currentScreen));
+  Ghost('写真を撮る', 1286, 724, 274, 60, () => PhotoOpen('result', currentScreen)).dataset.action = 'photo-result'; // round 15
   EnToggle();
 }
 
@@ -1870,6 +2034,7 @@ async function WeeklyChallenge(selectId) {
   const rp = Glass('Challenge detail', 816, 134, 748, 676, undefined, .88);
   rp.dataset.challenge = sel.id;
   Kicker('挑戦する', 36, 30, rp);
+  if (advice.enabled()) Ghost('アドバイス', 532, 22, 180, 46, () => ChallengeAdvice(sel), rp, 'quiet small').classList.add('adv-open');
   Txt(sel.title, 36, 98, 676, 34, WHITE, rp, { ls: '.06em', nowrap: true });
   Txt(`${wchTrack(sel.trackId)}　·　${wchGround(sel)}`, 36, 150, 676, 16, GOLD, rp, { weight: 700, nowrap: true });
   Txt(`${sel.cpuCount + 1}頭立て　·　CPU Lv${sel.cpuLevel}`, 36, 180, 676, 15, MUTED, rp, { nowrap: true });
@@ -1877,8 +2042,8 @@ async function WeeklyChallenge(selectId) {
   if (sel.loan) Txt(`貸し出し馬：${sel.loan.name}（${STYLE_JA[sel.loan.style] ?? sel.loan.style}）　·　能力合計 ${fmt(sel.loan.statTotal)}`, 36, 320, 676, 14, MUTED, rp, { nowrap: true }).classList.add('wch-loan');
   const p = partner();
   const ownOk = !!p && (!sel.conditions.style || p.style === sel.conditions.style);
-  Cta('貸し出し馬で挑戦', 36, 364, 420, () => WeeklyChallengeRace(sel.id, null), rp).classList.add('wch-go');
-  const own = Ghost('相棒で挑戦', 476, 372, 236, 58, () => WeeklyChallengeRace(sel.id, p.id), rp, 'small');
+  Cta('貸し出し馬で挑戦', 36, 364, 420, () => { advice.follow('challenge', `loan_${sel.loan?.templateId}`); WeeklyChallengeRace(sel.id, null); }, rp).classList.add('wch-go');
+  const own = Ghost('相棒で挑戦', 476, 372, 236, 58, () => { advice.follow('challenge', p.id); WeeklyChallengeRace(sel.id, p.id); }, rp, 'small');
   own.classList.add('wch-own');
   if (!ownOk) { disable(own); Txt(`${STYLE_JA[sel.conditions.style] ?? ''}の馬だけ挑戦できます`, 476, 436, 236, 12, SOFT, rp, { lh: 1.4 }); }
   Txt(`今日あと${v.startsLeftToday}回　·　何度でも挑戦できます`, 36, 448, 420, 13, SOFT, rp, { nowrap: true });
@@ -1971,6 +2136,111 @@ function ChallengeResult(f, r) {
   EnToggle();
 }
 
+// ================================================================= round 15: 出走前アドバイス (REQ-ADV-*, contracts/protocol.md §39)
+// Mirrors unity/Assets/Muchi/Game/RaceAdviceModel.cs on the real server code (raceAdviceFor: the player's horses, today's
+// going, the challenge's loan horse) — never invented on the page. A selection change recomputes the tips with the C#
+// RaceAdvice.Compute in WASM from the server's input (the same answer as the server). Words, never ◎○△, never odds.
+const ADV_GRADE = { good: 'よく合う', ok: '合う', poor: '条件外あり' };
+const ADV_GRADE_COLOR = { good: GOLD, ok: CYAN, poor: SOFT };
+const ADV_FOOT = 'アドバイスは馬の適性とルールから計算しています。勝ちを約束するものではありません。';
+let lobbyHorseId = null;
+const advice = {
+  cur: null, seen: false, whipByTrack: {},
+  enabled: () => prefs.get('muchi.advice.enabled', '1') !== '0',
+  setEnabled(v) { prefs.set('muchi.advice.enabled', v ? '1' : '0'); },
+  /** The whip tip shown for this course before the race (for the result line), or null. */
+  lastWhip(trackId) { return this.whipByTrack[trackId] ?? null; },
+  view(ctx, a) {
+    if (this.seen) return;
+    this.seen = true;
+    L.kpi([{ name: 'advice_view', at: L.now(), props: { context: ctx, horses: Math.min(30, a.horses.length), suggested: !!a.suggestedHorseId } }]);
+  },
+  follow(ctx, horseId) {
+    const a = this.cur;
+    if (!a || !this.enabled() || !a.suggestedHorseId || a.context !== ctx) return;
+    L.kpi([{ name: 'advice_follow', at: L.now(), props: { context: ctx, followed: horseId === a.suggestedHorseId } }]);
+    this.cur = null;
+  },
+  /** The advice for a query; with a focus horse the C# mirror recomputes it from the server's input (no second request). */
+  async load(q, focus) {
+    const key = JSON.stringify(q);
+    if (this.cur && this.cur.input && this.cur.query === key) {
+      const out = JSON.parse(engine.AdviceCompute(JSON.stringify({ ...this.cur.input, focusHorseId: focus })));
+      return { ...out, context: q.context, input: this.cur.input, query: key, device: true };
+    }
+    const r = await L.raceAdvice(focus ? { ...q, horseId: focus } : q);
+    if (!r.ok) return null;
+    return { ...r.value, query: key };
+  },
+};
+/** The advice panel (lobby): rows in words, the tips for the selected horse, the honest footnote, a hide switch. */
+async function AdvicePanel(q, x, y, w, h, focus, onPick) {
+  const screen = cur;
+  if (!advice.enabled()) {
+    const g = Glass('Advice off', x, y + h - 128, 460, 128, undefined, .8); g.classList.add('adv-panel', 'adv-off');
+    Txt('アドバイスはオフです（設定で変えられます）', 28, 24, 404, 14, MUTED, g, { lh: 1.5, nowrap: true });
+    Ghost('アドバイスを見る', 28, 60, 240, 46, () => { advice.setEnabled(true); RaceLobby(false); }, g, 'quiet small').classList.add('adv-show');
+    return;
+  }
+  await viewReady;
+  const a = await advice.load(q, focus);
+  if (!a || cur !== screen) return;
+  advice.cur = a;
+  // the whip tip is about one known course; a drawn course gets no result line
+  advice.whipByTrack = a.whip && a.courseCount === 1 ? { [a.input?.courses?.[0]?.trackId]: a.whip } : {};
+  advice.view(q.context, a);
+  const g = Glass('Advice', x, y, w, h, undefined, .86); g.classList.add('adv-panel', 'rise');
+  g.dataset.suggested = a.suggestedHorseId ?? ''; g.dataset.focus = a.focusHorseId ?? ''; g.dataset.device = String(!!a.device);
+  Kicker('出走前アドバイス', 36, 30, g);
+  Ghost('アドバイスを隠す', w - 252, 22, 216, 44, () => { advice.setEnabled(false); RaceLobby(false); }, g, 'quiet small').classList.add('adv-hide');
+  Txt(a.courseCount > 1 ? `コースは出走時に決まります　·　今日の${a.courseCount}コースで計算` : 'このコース・馬場で計算', 36, 100, w - 72, 14, MUTED, g, { nowrap: true });
+  // ① the horses (up to 3), in the order of fit; the selected one is the one that races
+  const rows = a.horses.slice(0, 3);
+  rows.forEach((hr, i) => {
+    const c = Card('Advice ' + hr.horseId, 36, 140 + i * 98, w - 72, 86, g, ADV_GRADE_COLOR[hr.grade]);
+    c.classList.add('adv-row'); c.dataset.horse = hr.horseId; c.dataset.grade = hr.grade;
+    if (hr.horseId === a.focusHorseId) c.classList.add('sel');
+    Txt(hr.name, 24, 14, 380, 21, WHITE, c, { weight: 700, nowrap: true });
+    const tag = hr.horseId === a.suggestedHorseId ? 'おすすめの馬　·　' : '';
+    Txt(tag + ADV_GRADE[hr.grade], w - 72 - 304, 18, 280, 15, ADV_GRADE_COLOR[hr.grade], c, { weight: 700, align: 'right', ls: '.1em', nowrap: true }).classList.add('adv-grade');
+    const why = hr.checks.find((k) => k.mark === 'minus') ?? hr.checks.find((k) => k.mark === 'plus') ?? hr.checks[0];
+    if (why) Txt(why.text, 24, 52, w - 120, 14, why.mark === 'minus' ? SOFT : MUTED, c, { nowrap: true });
+    c.style.cursor = 'pointer';
+    c.addEventListener('click', () => onPick(hr.horseId));
+  });
+  // ② the tips (pick, ground, field, style, whip…) for the selected horse
+  const y0 = 140 + rows.length * 98 + 12;
+  Hair(36, y0, w - 72, g);
+  const lines = a.lines.slice(0, Math.max(3, Math.floor((h - y0 - 96) / 34)));
+  lines.forEach((l, i) => {
+    const t = Txt(l.text, 36, y0 + 20 + i * 34, w - 72, 16, l.kind === 'pick' ? GOLD : l.kind === 'whip' ? CYAN : WHITE, g, { weight: l.kind === 'pick' ? 700 : 500, nowrap: true });
+    t.classList.add('adv-line'); t.dataset.kind = l.kind;
+  });
+  Txt(ADV_FOOT, 36, h - 52, w - 72, 12, SOFT, g, { nowrap: true }).classList.add('adv-foot');
+}
+/** Weekly challenge: the advice sheet (the loan horse and own horses of the right style, the CPUs, no skills). */
+async function ChallengeAdvice(sel) {
+  const r = await L.raceAdvice({ context: 'challenge', challengeId: sel.id });
+  if (!r.ok) { toast(r.message); return; }
+  const a = { ...r.value, query: JSON.stringify({ context: 'challenge', challengeId: sel.id }) };
+  advice.cur = a; advice.seen = false; advice.view('challenge', a);
+  advice.whipByTrack = a.whip ? { [sel.trackId]: a.whip } : {};
+  Sheet(sel.title, '出走前アドバイス', (s, close, y) => {
+    s.classList.add('adv-sheet');
+    a.horses.slice(0, 3).forEach((hr, i) => {
+      const yy = y + i * 70;
+      Txt(hr.name, 48, yy, 330, 19, WHITE, s, { weight: 700, nowrap: true });
+      Txt((hr.horseId === a.suggestedHorseId ? 'おすすめの馬　·　' : '') + ADV_GRADE[hr.grade], 380, yy + 3, 232, 14, ADV_GRADE_COLOR[hr.grade], s, { weight: 700, align: 'right', nowrap: true }).classList.add('adv-grade');
+      const why = hr.checks.find((k) => k.mark === 'minus') ?? hr.checks.find((k) => k.mark === 'plus') ?? hr.checks[0];
+      if (why) Txt(why.text, 48, yy + 32, 564, 13, MUTED, s, { nowrap: true });
+    });
+    const y1 = y + Math.min(3, a.horses.length) * 70 + 8;
+    Hair(48, y1, 564, s);
+    a.lines.filter((l) => l.kind !== 'pick').slice(0, 6).forEach((l, i) => Txt(l.text, 48, y1 + 18 + i * 30, 564, 14, l.kind === 'whip' ? CYAN : WHITE, s, { weight: 500, nowrap: true }).classList.add('adv-line'));
+    Txt(ADV_FOOT, 48, y1 + 18 + 6 * 30 + 8, 564, 11, SOFT, s, { nowrap: true });
+  });
+}
+
 // ================================================================= その他 / settings (language, legal, account deletion, demo states)
 async function Settings() {
   currentScreen = Settings; await refresh();
@@ -2009,7 +2279,7 @@ async function Settings() {
   if (!ftue) {
     Hair(36, 540, 428, a);
     Txt('かんたん操作', 36, 558, 240, 21, WHITE, a, { weight: 500 }).dataset.name = 'Assist';
-    Txt(ASSIST_NAME[assistLevel()], 36, 592, 260, 16, assistLevel() === 'off' ? MUTED : CYAN, a, { weight: 500 }).dataset.assistLevel = assistLevel();
+    Txt(ASSIST_NAME[assistLevel()], 36, 598, 260, 15, assistLevel() === 'off' ? MUTED : CYAN, a, { weight: 500 }).dataset.assistLevel = assistLevel();
     Ghost('変更する', 304, 552, 160, 52, () => AssistSettings(), a, 'quiet small').dataset.action = 'assist';
   }
   // round 13 (REQ-HIST-*): 購入・コイン・ガチャの履歴 (資金決済法・特商法: what was bought, paid and free coins apart)
@@ -2023,30 +2293,37 @@ async function Settings() {
   Kicker('見た目・お世話・仲間', 36, 30, m);
   // round 10: 支部の応援 (team cheer stamps) and 友達招待 next to the looks / care entries
   // round 14: 実況パック (REQ-CMT-011) after the looks entries
-  const moreRows = [['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions], ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite']];
-  moreRows.forEach(([n, go, action], i) => {
-    const b = Btn(n, 36, 90 + i * 46, 408, 46, go, 'row' + (i === moreRows.length - 1 ? ' last' : ''), m); b.style.fontSize = '19px';
+  // round 15: アクセシビリティ (REQ-A11Y-*) first — reachable in the FTUE too (text size before the first race)
+  const moreRows = [['アクセシビリティ', () => A11ySettings(), 'a11y'], ['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions], ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite'],
+    // round 15 (REQ-ADV-009): the pre-race advice switch (a device setting, default on)
+    ['出走前アドバイス', () => { advice.setEnabled(!advice.enabled()); Settings(); }, 'advice', advice.enabled() ? 'オン' : 'オフ']];
+  moreRows.forEach(([n, go, action, state], i) => {
+    // R15 integration: nine rows (a11y, packs, the advice switch…) of 38 px under the kicker, clear of the legal block below
+    const b = Btn(n, 36, 96 + i * 38, 408, 38, go, 'row' + (i === moreRows.length - 1 ? ' last' : ''), m); b.style.fontSize = '19px';
     if (action) b.dataset.action = action;
-    const em = document.createElement('em'); em.textContent = '›'; b.appendChild(em);
+    if (state) b.dataset.state = state;
+    const em = document.createElement('em'); em.textContent = state ?? '›'; b.appendChild(em);
   });
-  Kicker('法定表示・規約', 36, 432, m, { rule: false, size: 15 });
-  [['利用規約', 'terms'], ['プライバシーポリシー', 'privacy'], ['特定商取引法に基づく表記', 'tokushoho'], ['資金決済法に基づく表示', 'shikin']].forEach(([n, k], i) => TextLink(n, 36, 462 + i * 40, 400, () => Legal(k, Settings), m));
+  Kicker('法定表示・規約', 36, 458, m, { rule: false, size: 15 });
+  [['利用規約', 'terms'], ['プライバシーポリシー', 'privacy'], ['特定商取引法に基づく表記', 'tokushoho'], ['資金決済法に基づく表示', 'shikin']].forEach(([n, k], i) => TextLink(n, 36, 484 + i * 36, 400, () => Legal(k, Settings), m));
   // the other front end (Codex's club UI, same logic and engine)
-  TextLink('クラブ版 UI', 36, 626, 400, () => { location.href = 'club.html'; }, m, 'クラブ版 UI を開く ↗');
+  TextLink('クラブ版 UI', 36, 632, 400, () => { location.href = 'club.html'; }, m, 'クラブ版 UI を開く ↗');
   // ③ demo states for review (REQ-UXP-002): the same rules on a moved clock
   const demo = Glass('Demo', 1056, 134, 508, 676, undefined, .78);
   Kicker('デモ（レビュー用）', 36, 30, demo, { color: SOFT });
   Txt(`いま：${player.unlocks.day}日目・${player.unlocks.races}戦`, 36, 100, 436, 17, WHITE, demo, { weight: 500 });
   [['初日', 'day1'], ['3日目', 'day3'], ['7日目', 'day7'], ['最初から', 'new']].forEach(([n, k], i) => { const b = Btn(n, 36 + i * 110, 142, 102, 52, () => Demo(k), 'choice', demo); b.style.fontSize = '16px'; b.style.whiteSpace = 'nowrap'; b.style.padding = '0'; });
   Ghost('初回購入の直後', 36, 222, 436, 56, () => { linkOp('purchase'); if (!MaybeLinkPrompt('PurchaseComplete', Settings)) toast('引き継ぎの案内は出ません（表示済み・登録済み・FTUE中）'); }, demo, 'quiet small');
-  Ghost('タイムアタック', 36, 292, 436, 56, () => TimeAttack(), demo, 'quiet small');
+  Ghost('タイムアタック', 36, 286, 436, 56, () => TimeAttack(), demo, 'quiet small');
   // round 10: a demo purchase of this season's pass (no billing) to see the 購入済み state
-  Ghost('パス購入済み（デモ）', 36, 362, 436, 56, async () => { const r = await L.demoPurchase('season_pass'); toast(r.ok ? '今シーズンのパスを購入済みにしました（決済なし）' : r.code === 'ALREADY_PURCHASED' ? '今シーズンのパスは購入済みです' : r.message); }, demo, 'quiet small');
+  Ghost('パス購入済み（デモ）', 36, 350, 436, 56, async () => { const r = await L.demoPurchase('season_pass'); toast(r.ok ? '今シーズンのパスを購入済みにしました（決済なし）' : r.code === 'ALREADY_PURCHASED' ? '今シーズンのパスは購入済みです' : r.message); }, demo, 'quiet small');
   // round 12: the gift box after a maintenance, a tournament and a promotion (real delivery routes)
-  Ghost('プレゼントボックス（デモ）', 36, 432, 436, 56, () => Demo('gifts'), demo, 'quiet small');
+  Ghost('プレゼントボックス（デモ）', 36, 414, 436, 56, () => Demo('gifts'), demo, 'quiet small');
   // round 12: three last places in a row → the one-time かんたん操作 suggestion (REQ-ASSIST-010)
-  Ghost('最下位が3回続いた（デモ）', 36, 502, 436, 56, () => Demo('assist'), demo, 'quiet small');
-  Txt('サーバーと同じ規則のまま、日付だけ進めてログボとレースを消化します。', 36, 600, 436, 14, SOFT, demo, { lh: 1.6 });
+  Ghost('最下位が3回続いた（デモ）', 36, 478, 436, 56, () => Demo('assist'), demo, 'quiet small');
+  // round 15: what happened while away (friend request, likes, cheers, a tournament result, a gift…), real event sources
+  Ghost('アクティビティ（デモ）', 36, 542, 436, 56, () => Demo('activity'), demo, 'quiet small');
+  Txt('サーバーと同じ規則のまま、日付だけ進めてログボとレースを消化します。', 36, 612, 436, 14, SOFT, demo, { lh: 1.6 });
   NavBar(4);
 }
 // ================================================================= round 12: かんたん操作 (REQ-ASSIST-*, contracts/protocol.md §27)
@@ -2215,6 +2492,52 @@ async function CommentaryPackBuy(packId, from = 'settings') {
   buy.dataset.confirm = 'buy';
   Ghost('やめておく', 532, 400, 420, 73, back, d, 'quiet').dataset.confirm = 'cancel';
 }
+// ================================================================= round 15: アクセシビリティ設定 (REQ-A11Y-*, protocol §41)
+// Mirrors AccessibilityModel.Rows(): two columns (表示 / 操作・音), each row a name, one line and its choices; a change
+// applies to the whole prototype at once (no save button) and is saved on the real server rules.
+const A11Y_ROWS = [
+  ['textSize', 'display', '文字の大きさ', '本文の文字を大きくします', [['standard', '標準'], ['large', '大'], ['largest', '特大']]],
+  ['colorMode', 'display', '色覚サポート', 'ゲージ・順位・状態の色を見分けやすくします', [['standard', '標準'], ['cvd', '色覚サポート']]],
+  ['reduceMotion', 'display', '動きを減らす', '揺れ・点滅・演出の動きを減らします', [[false, 'オフ'], [true, 'オン']]],
+  ['subtitles', 'controls', '字幕（実況）', '実況を文字で表示します', [[true, 'オン'], [false, 'オフ']]],
+  ['haptics', 'controls', '振動', 'ムチや警告で端末を振動させます', [[true, 'オン'], [false, 'オフ']]],
+  ['oneHanded', 'controls', '片手レイアウト', 'レースの操作を片側にまとめます', [['off', 'オフ'], ['left', '左手'], ['right', '右手']]],
+  ['whipInput', 'controls', 'ムチの入力', '長押しで決まった間隔のムチ（1レース3本まで、残りはタップ）', [['tap', 'タップ'], ['hold', '長押し']]],
+];
+async function A11ySettings() {
+  currentScreen = A11ySettings;
+  await syncA11y();
+  Clear('a11y-settings'); SetArt('Art/home-paddock', false); Shade('dim');
+  TopBar('その他　/　アクセシビリティ', '文字・色・動き・操作。アカウントに保存され、オフラインでも使えます', { wallet: false });
+  const p = Glass('Frame', 36, 134, 1528, 676, undefined, .9);
+  const col = (group, x, title) => {
+    Kicker(title, x, 26, p, { size: 16 });
+    let y = 92;
+    for (const [key, g, label, desc, choices] of A11Y_ROWS) {
+      if (g !== group) continue;
+      const row = el('a11y-row', x, y, 700, 104, p); row.dataset.a11yRow = key;
+      Txt(label, 0, 0, 300, 21, WHITE, row, { weight: 500 });
+      Txt(desc, 0, 34, 300, 14, MUTED, row, { lh: 1.45 });
+      const w = choices.length === 3 ? 124 : 172;
+      choices.forEach(([v, l], i) => {
+        const on = a11y[key] === v;
+        const b = Btn(l, 316 + i * (w + 10), 2, w, 52, async () => { if (a11y[key] === v) return; await setA11y(key, v); A11ySettings(); }, 'choice' + (on ? ' on' : ''), row);
+        b.dataset.a11yChoice = String(v); b.style.whiteSpace = 'nowrap';
+      });
+      y += key === 'colorMode' ? 150 : 112;
+    }
+  };
+  col('display', 36, '表示');
+  col('controls', 792, '操作・音');
+  // the colour sample: the gauge levels and the position marks in the current palette (REQ-A11Y-006)
+  const sw = el('a11y-swatch', 36 + 316, 92 + 112 + 62, 380, 34, p);
+  sw.innerHTML = '<i class="g ok"></i><i class="g low"></i><i class="g crit"></i><b class="me"></b><b class="other"></b>';
+  // the fairness line under the whip row, the flash line at the bottom (REQ-UXA / 06 §11.1)
+  Txt('長押しはタップと同じ操作を決まった間隔で送るだけです。ランク戦の強さは変わりません。', 792, 540, 700, 15, SOFT, p, { lh: 1.55 }).dataset.a11yFair = '1';
+  Hair(36, 600, 1456, p);
+  Txt('点滅は1秒に3回までに抑えています', 36, 620, 1000, 15, MUTED, p, { weight: 500 }).dataset.a11yFlash = '1';
+  Back(Settings, 'BACK', 40, 834);
+}
 function ConfirmDeletion(v) {
   currentScreen = () => ConfirmDeletion(v); Clear('delete-confirm'); SetArt('Art/home-paddock', false); Shade('dim heavy');
   const box = Dialog('Confirm delete', 1000, 640);
@@ -2242,6 +2565,7 @@ async function Demo(kind) {
   if (kind === 'collection') { await L.seedCollection(); await refresh(); return Collection('horses'); }
   // round 14: a week of play (21 races: the 「出走の記録」 achievement pack is owned) → the commentary packs
   if (kind === 'packs') { await L.seedDemo(7, [3, 3, 3, 3, 3, 3, 3]); ftue = false; await refresh(); return CommentaryPacks('settings'); }
+  if (kind === 'activity') { await L.seedActivity(); await refresh(); actState.cursor = null; actState.stack = []; return Activity(); }
   if (kind === 'gifts') { await L.seedGifts(); await refresh(); giftState.tab = 'box'; giftState.page = 0; return GiftBox('box'); }
   // round 12: a week of play, then three ranked races in last place (settled by the real applyRace) → the one-time suggestion
   if (kind === 'assist') { await L.seedDemo(7, [3, 3, 3, 3, 3, 3, 3]); ftue = false; await L.demoLastPlaces(3); await refresh(); return AssistThen(Home); }
@@ -2503,6 +2827,8 @@ async function ComebackTrack() {
 // play only and pay free coins. Art: portraits/silhouettes/badges are Codex's (asset keys collection/portrait|silhouette/*,
 // badge/*); until then the partner renders stand in (a silhouette = the same render, blacked out).
 const COL_TABS = [['horses', '競走馬'], ['skills', '固有スキル'], ['courses', 'コース'], ['cosmetics', '見た目']];
+/** The cosmetic kinds in words (never the raw item kind; round 15 integration added 写真の飾り). */
+const COL_COS_KIND = { silks: '勝負服', tack: '馬具', decor: '飾り', stamp: 'スタンプ', silks_part: '勝負服パーツ', photo: '写真の飾り' };
 const COL_STATE = { horses: { obtained: '入手', seen: '出会った', unknown: '未発見' }, skills: { obtained: '入手', seen: '出会った', unknown: '未発見' }, courses: { obtained: '走った', unknown: '未出走' }, cosmetics: { obtained: '所持', unknown: '未所持' } };
 const ACH_CATS = [[null, 'すべて'], ['race', 'レース'], ['course', 'コース'], ['skill', 'スキル'], ['breeding', '配合'], ['time_attack', 'TA'], ['tournament', '大会'], ['stable', '厩舎'], ['team', '支部']];
 const colPct = (permille) => `${Math.floor(permille / 10)}%`;
@@ -2524,7 +2850,10 @@ async function Collection(tab) {
   Txt(counts, 720, 40, 304, 15, MUTED, p, { weight: 500, align: 'right', nowrap: true }).dataset.colCounts = '1';
   Gauge(36, 96, 988, c.total ? c.obtained / c.total : 0, p);
   const horses = colState.tab === 'horses';
-  const cols = horses ? 7 : 4, cw = horses ? 136 : 238, ch = horses ? 124 : 104;
+  // more than 20 cosmetics (R14 silks parts + R15 photo frames / stamps): six shorter rows so the grid stays in the panel
+  const dense = !horses && colState.tab !== 'courses' && c.entries.length > 20;
+  const cols = horses ? 7 : 4, cw = horses ? 136 : 238, ch = horses ? 124 : dense ? 84 : 104;
+  const oy = dense ? [10, 36, 58] : [16, 44, 72];
   const grid = el('col-grid', 36, 124, 988, 520, p);
   c.entries.forEach((e, i) => {
     const cell = el('col-cell ' + e.state + (colState.sel === e.id ? ' sel' : ''), (i % cols) * (cw + 6), Math.floor(i / cols) * (ch + 6), cw, ch, grid);
@@ -2536,10 +2865,10 @@ async function Collection(tab) {
     } else {
       // a course name (racecourse + surface + distance) may take two lines (long in English: "Bellmoor Racecourse, Turf 1200 m (straight)")
       const course = colState.tab === 'courses';
-      Txt(e.name ?? '？？？', 16, course ? 10 : 16, cw - 32, 15, e.state === 'unknown' ? DIM : WHITE, cell, course ? { weight: 700, lh: 1.25 } : { weight: 700, nowrap: true });
-      const sub = colState.tab === 'skills' ? (e.condition ?? e.rarity) : course ? (e.state === 'obtained' ? `出走 ${e.races}　·　1着 ${e.wins}` : `${surfaceJa(e.surface)} ${fmt(e.distanceM)}m`) : e.kind;
-      Txt(sub, 16, course ? 54 : 44, cw - 32, 12, MUTED, cell, { nowrap: true }).style.overflow = 'hidden';
-      Txt(COL_STATE[colState.tab][e.state], 16, course ? 78 : 72, cw - 32, 12, e.state === 'obtained' ? CYAN : SOFT, cell, { weight: 700, ls: '.16em' });
+      Txt(e.name ?? '？？？', 16, course ? 10 : oy[0], cw - 32, 15, e.state === 'unknown' ? DIM : WHITE, cell, course ? { weight: 700, lh: 1.25 } : { weight: 700, nowrap: true });
+      const sub = colState.tab === 'skills' ? (e.condition ?? e.rarity) : course ? (e.state === 'obtained' ? `出走 ${e.races}　·　1着 ${e.wins}` : `${surfaceJa(e.surface)} ${fmt(e.distanceM)}m`) : (COL_COS_KIND[e.kind] ?? e.kind);
+      Txt(sub, 16, course ? 54 : oy[1], cw - 32, 12, MUTED, cell, { nowrap: true }).style.overflow = 'hidden';
+      Txt(COL_STATE[colState.tab][e.state], 16, course ? 78 : oy[2], cw - 32, 12, e.state === 'obtained' ? CYAN : SOFT, cell, { weight: 700, ls: '.16em' });
     }
     cell.addEventListener('click', (ev) => { ev.stopPropagation(); colState.sel = e.id; Collection(); });
   });
@@ -2553,7 +2882,7 @@ async function Collection(tab) {
     if (horses) { ArtImage(colArt(e.id), 36, y, 376, 200, d, e.state === 'unknown' ? 'col-sil' : 'col-por'); y += 214; }
     Txt(e.name ?? '？？？', 36, y, 376, 28, e.state === 'unknown' ? DIM : WHITE, d, { weight: 700, nowrap: true, ls: '.04em' }); y += 46;
     const meta = horses ? (e.state === 'unknown' ? e.rarity : `${e.rarity}　/　${STYLE_JA[e.style] ?? ''}　/　${surfaceJa(e.surface)} ${fmt(e.distance.minM)}〜${fmt(e.distance.maxM)}m`)
-      : colState.tab === 'skills' ? (e.condition ?? e.rarity) : colState.tab === 'courses' ? `${surfaceJa(e.surface)}　${fmt(e.distanceM)}m` : e.kind;
+      : colState.tab === 'skills' ? (e.condition ?? e.rarity) : colState.tab === 'courses' ? `${surfaceJa(e.surface)}　${fmt(e.distanceM)}m` : (COL_COS_KIND[e.kind] ?? e.kind);
     Txt(meta + (e.seasonal ? `　·　${e.seasonal.label}` : ''), 36, y, 376, 15, GOLD, d, { weight: 700 }); y += 34;
     Txt(e.lore ?? (e.state === 'unknown' ? 'まだ出会っていません。レースで出会うと記録されます。' : ''), 36, y, 376, 15, MUTED, d, { lh: 1.65 }).dataset.colLore = '1'; y += 80;
     if (e.stats) [['スピード', e.stats.speed], ['スタミナ', e.stats.stamina], ['瞬発', e.stats.burst]].forEach(([k, v], i) => {
@@ -2688,8 +3017,8 @@ function Odds(bannerId) {
   Kicker(T('PITY'), 36, 330, p, { rule: false, size: 14 });
   const pity = Txt(`${o.pity.pullsRequired} ${T('pulls → exchange')}（${o.pity.label}）\n${o.pity.targets.map(templateName).join(' / ')}\n最大 ${fmt(o.pity.costCoins)}コイン（≈ ${yen(o.pity.estimatedMaxCostYen)}）`, 36, 358, 400, 15, WHITE, p, { weight: 500, lh: 1.6 });
   pity.dataset.pityCost = String(o.pity.costCoins);
-  if (o.pity.carryOver) Txt(o.pity.carryOver.notice, 36, 438, 400, 13, WARN, p, { lh: 1.5 }).dataset.carryOver = '1';
-  else Txt('この天井は期間で閉じません。', 36, 438, 400, 13, MUTED, p);
+  if (o.pity.carryOver) Txt(o.pity.carryOver.notice, 36, 470, 400, 13, WARN, p, { lh: 1.5 }).dataset.carryOver = '1';
+  else Txt('この天井は期間で閉じません。', 36, 470, 400, 13, MUTED, p); // round 15: below the 4-line pity text (it ran into it at the standard size too)
   if (o.limitedNotice) Txt(o.limitedNotice, 36, 540, 400, 12, SOFT, p, { lh: 1.5 });
   Kicker(T('EACH HORSE'), 484, 30, p, { rule: false, size: 14 });
   const items = [...o.items].sort((a, b) => rarityRank(b.rarity) - rarityRank(a.rarity) || b.ppm - a.ppm);
@@ -3468,11 +3797,11 @@ async function RivalStrip() {
   const r = await L.rival.view();
   if (cur?.dataset.screen !== 'home' || !r.ok || !r.value.enabled || r.value.optOut || !r.value.rival) return null;
   const v = r.value;
-  const g = Glass('Rival', 520, 32, 600, 100, undefined, .78);
+  const g = Glass('Rival', 520, 32, 548, 100, undefined, .78); // R15 integration: ends at 1068, left of the envelope / bell column
   g.dataset.homeRival = v.rival.kind; g.classList.add('rv-strip');
   Kicker(v.result ? 'ライバル　/　結果が出ました' : `ライバル　/　あと${rvDaysLeft(v)}日`, 24, 18, g, { rule: false, size: 15 });
-  Txt(rvName(v), 24, 48, 340, 24, WHITE, g, { weight: 700, ls: '.06em', nowrap: true });
-  Txt(v.score ? `${v.score.me} - ${v.score.them}` : '', 400, 34, 170, 40, GOLD, g, { weight: 700, align: 'right', cls: 'num' });
+  Txt(rvName(v), 24, 48, 310, 24, WHITE, g, { weight: 700, ls: '.06em', nowrap: true });
+  Txt(v.score ? `${v.score.me} - ${v.score.them}` : '', 350, 34, 174, 40, GOLD, g, { weight: 700, align: 'right', cls: 'num' });
   g.style.cursor = 'pointer'; g.addEventListener('click', () => Rival());
   return g;
 }
@@ -3926,6 +4255,12 @@ async function ReplayPlayer(raceId, o = {}) {
   seek.addEventListener('click', (e) => { const r = seek.getBoundingClientRect(); ctl('seek', Math.round(info.durationMs * clamp((e.clientX - r.left) / r.width, 0, 1))); });
   const clock = Txt('', 1124, 64, 220, 13, MUTED, bar, { cls: 'num', nowrap: true });
   Ghost('共有', 1362, 30, 140, 60, () => RpShare(o), bar, 'small').classList.add('rp-share');
+  // round 15 (§38 × §37): photo mode at the frame on screen (PhotoModeModel.OpenFromSavedReplay); back to the same moment
+  Ghost('この瞬間を撮る', 1304, 664, 260, 60, () => {
+    const at = globalThis.__muchi?.replay?.t ?? 0;
+    if (!state.paused) ctl('pause', 1);
+    PhotoOpen('myreplay', () => ReplayPlayer(raceId, { ...o, seekMs: at }));
+  }, undefined, 'quiet').dataset.action = 'photo-myreplay';
   Back(back, 'BACK', 40, 640);
   function paint() {
     pause.querySelector('span').textContent = state.paused ? '再生' : '一時停止';
@@ -3935,6 +4270,7 @@ async function ReplayPlayer(raceId, o = {}) {
     view.playerSlot = state.camera;
   }
   paint();
+  if (o.seekMs) { ctl('seek', o.seekMs); ctl('pause', 1); } // back from photo mode: the same moment, paused
   let last = performance.now();
   every(33, () => {
     const now = performance.now(), dt = now - last; last = now;
@@ -4169,6 +4505,78 @@ function GiftResult(c) {
   if (c.held.length) Txt(`${c.held.length}件は持てる上限のため、ボックスに残しました`, 52, 400, 796, 15, WARN, box, { weight: 500 }).dataset.giftHeld = String(c.held.length);
   Cta('つづける', 52, 466, 360, () => GiftBox('box'), box, 'small');
 }
+// ================================================================= round 15: アクティビティ (REQ-ACT-*, contracts/protocol.md §40)
+// The same screen as the Unity ActivityModel: the home bell (unread count), the list (newest first, server cursor), a deep
+// link per row, mark read up to the newest shown entry on opening. Display + links only: a gift row leads to the gift box,
+// never a claim button. Every value comes from L.activity (the real PlayerService and the same name resolution as the route).
+// ムチ一閃 tone: paddock art, translucent navy panels, letter-spaced cyan labels, one skewed cyan CTA ».
+const ACT_LABEL = { friend_request: 'フレンド', friend_accepted: 'フレンド', rival_week: 'ライバル', rival_record: 'ライバル', stable_like: 'マイ厩舎', team_cheer: '支部', tournament_result: '大会', gift_arrived: 'プレゼント', team_goal_tier: '支部', team_goal_week: '支部', replay_share: 'リプレイ' };
+const ACT_PAGE = 7;
+const actState = { cursor: null, stack: [] };
+const actGo = (screen, id) => ({
+  friends: () => Invite(), rival: () => Rival(), stable: () => Stable(), team_feed: () => TeamFeed(), tournaments: () => EventTop(),
+  gift_box: () => GiftBox('box'), team_goal: () => TeamGoal(), whats_new: () => Home(),
+  replay: () => FriendReplays(), // §37: the friend's public replays (the entry's link id is the friend; the demo has one friend)
+})[screen]?.(id);
+/** The home bell (under the gift envelope, clear of the rival strip) with the unread count from the player view (REQ-ACT-009). */
+function ActivityBell(x = 1088, y = 122) {
+  const n = player?.activity?.unread ?? 0;
+  const b = Btn('アクティビティ', x, y, 80, 56, () => { actState.cursor = null; actState.stack = []; Activity(); }, 'bell', undefined, '');
+  b.innerHTML += '<svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><path d="M16 4c-5 0-8 3.6-8 8.6v5.6L5 22.5h22l-3-4.3v-5.6C24 7.6 21 4 16 4z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/><path d="M12.5 25.5a3.6 3.6 0 0 0 7 0" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>';
+  b.dataset.badge = String(n); b.dataset.action = 'activity';
+  if (n > 0) { const i = document.createElement('b'); i.className = 'env-badge num'; i.textContent = n >= 99 ? '99+' : String(n); b.appendChild(i); }
+  return b;
+}
+async function Activity() {
+  currentScreen = () => Activity();
+  const r = await L.activity(actState.cursor, ACT_PAGE);
+  if (!r.ok) { toast(r.message); return Home(); }
+  const P = r.value;
+  // REQ-ACT-015: activity_open once per opening (the first page), with the bell's number then
+  if (actState.cursor === null && !actState.stack.length) {
+    (globalThis.__muchiKpi ??= []).push({ name: 'activity_open', unread: P.unread });
+    // REQ-ACT-008: everything up to the newest entry shown is read (the rows still say unread on this visit)
+    if (P.items.length) { await L.activityRead(P.items[0].id); await refresh(); }
+  }
+  Clear('activity'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('アクティビティ', '留守の間のできごと　·　タップでその画面へ');
+  const p = Glass('Activity list', 36, 134, 1060, 676, undefined, .88);
+  p.classList.add('act-list');
+  Kicker('新しい順', 36, 30, p, { size: 15 });
+  if (!P.items.length) Txt('まだお知らせはありません', 36, 110, 900, 19, MUTED, p).dataset.actEmpty = '1';
+  P.items.forEach((it, i) => {
+    const row = el('act-row' + (it.unread ? ' unread' : ''), 24, 86 + i * 72, 1012, 66, p);
+    row.dataset.act = it.kind; row.dataset.screen = it.link.screen; row.dataset.count = String(it.count); row.dataset.unread = it.unread ? '1' : '0';
+    if (it.unread) el('act-dot', 0, 28, 10, 10, row);
+    Txt(ACT_LABEL[it.kind] ?? 'お知らせ', 22, 8, 160, 12, it.kind === 'gift_arrived' ? GOLD : CYAN, row, { weight: 700, ls: '.18em', nowrap: true });
+    Txt(jstDate(it.at), 190, 8, 220, 12, SOFT, row, { weight: 500, nowrap: true, cls: 'num' });
+    const tx = Txt(it.text, 22, 30, 760, 18, it.unread ? WHITE : MUTED, row, { weight: 700, nowrap: true });
+    tx.style.overflow = 'hidden'; tx.style.textOverflow = 'ellipsis'; // a long course name never runs under the link
+    const go = Ghost(it.link.screen === 'gift_box' ? 'プレゼントボックスへ' : '見る', 800, 10, 200, 46, () => {
+      (globalThis.__muchiKpi ??= []).push({ name: 'activity_tap', kind: it.kind, screen: it.link.screen });
+      actGo(it.link.screen, it.link.id);
+    }, row, 'small quiet');
+    go.dataset.actGo = it.link.screen;
+  });
+  const prev = Ghost('前へ', 640, 600, 180, 52, () => { actState.cursor = actState.stack.pop() ?? null; Activity(); }, p, 'quiet small');
+  if (!actState.stack.length && actState.cursor === null) disable(prev);
+  const next = Ghost('次へ', 836, 600, 188, 52, () => { actState.stack.push(actState.cursor); actState.cursor = P.nextCursor; Activity(); }, p, 'quiet small');
+  if (!P.nextCursor) disable(next);
+  next.dataset.more = P.nextCursor ? '1' : '0';
+  // right: unread on arrival, the what's-new link, how pushes relate, the one CTA
+  const d = Glass('Activity summary', 1116, 134, 448, 676, undefined, .9);
+  Kicker('未読', 36, 30, d, { size: 16 });
+  Txt(`${P.unread}件`, 36, 100, 376, 40, WHITE, d, { weight: 700, cls: 'num' }).dataset.actUnread = String(P.unread);
+  if (P.links.whatsNew > 0) TextLink('新着情報があります', 36, 172, 376, () => Home(), d).dataset.actWhatsnew = String(P.links.whatsNew);
+  Hair(36, 236, 376, d);
+  Kicker('お知らせのきまり', 36, 258, d, { rule: false, size: 14 });
+  Txt('いいね・応援スタンプ・プレゼントは、まとめて1件で表示します。', 36, 292, 376, 13, MUTED, d, { lh: 1.6 });
+  Txt('プレゼントの受け取りはプレゼントボックスで行います。', 36, 366, 376, 13, MUTED, d, { lh: 1.6 });
+  Txt('プッシュ通知の設定はプッシュだけに効きます。この一覧はいつでも見られます。', 36, 440, 376, 13, SOFT, d, { lh: 1.6 });
+  Cta('ホームへ', 36, 576, 376, () => Home(), d, 'small');
+  Back(Home, 'ホームへ', 40, 834);
+}
+
 // ================================================================= round 13: 購入履歴・コイン履歴・ガチャ履歴 (REQ-HIST-*, contracts/protocol.md §33)
 // The same screen as the Unity HistoryModel: a balance header with 有償 / 無償 apart and this month against the age limit,
 // four tabs (購入 / 有償コイン / 無償コイン / ガチャ), pages by the server's cursor, the selected row's detail, and the
@@ -4402,6 +4810,180 @@ async function TeamGoal() {
   }
 }
 
+// ================================================================= round 15: フォトモード (REQ-PHOTO-*, contracts/protocol.md §38)
+// The real PhotoModeModel in WASM (PhotoSnapshot re-simulates the race to the tick — the live race is only paused —,
+// PhotoCamera keeps the camera in the limits and above the course, PhotoShareCard builds the card) and the real server
+// rules in JS (GET /v1/photo/catalog unlocks, the cosmetics shop purchase, the keyed photo record, the KPI schema).
+const PH_TABS = [['camera', 'カメラ'], ['look', 'ルック'], ['frame', 'フレーム'], ['stamp', 'スタンプ'], ['caption', 'ひとこと']];
+const PH_LOOK_CSS = { natural: 'none', film: 'sepia(.28) contrast(1.06) saturate(.9)', mono: 'grayscale(1) contrast(1.08)', dusk: 'sepia(.45) hue-rotate(-18deg) saturate(1.25) brightness(.9)', vivid: 'saturate(1.55) contrast(1.1)' };
+const PH_STAMP_GLYPH = { muchi: '閃', hoof: '∩∩', star: '✦', photo_finish: '◇', crown: '♛', carrot_pop: '🥕' };
+let ph = null;
+/** Is the race on screen run with other people? (the prototype's main race stands for a ranked race) */
+const phShared = () => !raceCtx?.ta && !raceCtx?.challenge && !raceCtx?.tutorial;
+/** kind: paused (race HUD) | result (result screens) | replay (replay share player, at its clip time) | myreplay (§37 player, its frame). */
+async function PhotoOpen(kind, back) {
+  const clipMs = Math.round(globalThis.__muchi?.clipT ?? 0);
+  const info = JSON.parse(engine.PhotoOpen(kind, performance.now(), raceCtx?.config?.raceId ?? '', phShared(), kind === 'replay' ? clipMs : 0));
+  if (!info.ok) { toast(info.message); return; }
+  const cat = await L.photoCatalog();
+  ph = { kind, info, back, cat: cat.ok && cat.value.enabled ? cat.value : null, tab: 'camera', look: 'natural', frame: null, stamps: [], caption: null, names: 'masked', hideUi: false, camera: info.camera, problem: null };
+  if (!ph.cat) { engine.PhotoClose(performance.now()); toast('フォトモードはいま使えません'); return; }
+  globalThis.__muchi.photo = { open: info, catalog: ph.cat };
+  PhotoMode();
+}
+function phItem(cat, id) { return ph.cat[cat].find((x) => x.id === id); }
+function phCard() { return JSON.parse(engine.PhotoCard(ph.look, ph.frame ?? '', ph.stamps.map((s) => `${s.id}:${s.x}:${s.y}`).join(','), ph.caption ?? '', ph.names)); }
+function phCam(op, v = 0) { ph.camera = JSON.parse(engine.PhotoCamera(op, v)); PhotoMode(); }
+function PhotoMode() {
+  currentScreen = PhotoMode;
+  Clear('photo'); cur.classList.add('race', 'photo'); $canvas.hidden = false;
+  $canvas.style.filter = PH_LOOK_CSS[ph.look] ?? 'none';
+  const f = JSON.parse(engine.PhotoFrame());
+  view.draw(f);
+  const card = phCard();
+  // ① the viewfinder: frame, vignette for the depth of field, name plates on the horses, stamps, caption, the logo
+  const vf = Panel('Viewfinder', 30, 30, 1000, 566, 'transparent'); vf.classList.add('clipframe', 'ph-view'); vf.dataset.frame = ph.frame ?? 'none'; vf.dataset.look = ph.look;
+  if (ph.camera.dof > 0) { const v = el('ph-dof', 0, 0, 1000, 566, vf); v.style.setProperty('--dof', String(ph.camera.dof)); }
+  if (ph.frame) { const fr = el('ph-frameart', 0, 0, 1000, 566, vf); fr.dataset.frame = ph.frame; }
+  if (ph.names !== 'hidden') card.plates.forEach((p) => {
+    const at = view.project(p.slot, 2.9);
+    if (!at || at.x < 100 || at.x > 960 || at.y < 60 || at.y > 560) return;
+    const t = el('ph-plate' + (p.you ? ' you' : ''), at.x - 30 - 70, at.y - 30 - 18, 140, 26, vf);
+    t.dataset.rider = p.rider; t.dataset.slot = String(p.slot);
+    Txt(p.rider, 0, 4, 140, 13, p.you ? GOLD : WHITE, t, { align: 'center', weight: 700, nowrap: true });
+  });
+  ph.stamps.forEach((s, i) => { const g = el('ph-stamp', s.x - 30, Math.round(s.y * 0.566) - 26, 60, 52, vf); g.textContent = PH_STAMP_GLYPH[s.id] ?? '★'; g.dataset.stamp = s.id; g.dataset.i = String(i); g.classList.add('keep-ja'); });
+  if (card.spec.caption) { const c = Txt(card.spec.caption, 28, 490, 640, 24, WHITE, vf, { weight: 700, cls: 'tshadow ph-caption keep-ja', nowrap: true }); c.dataset.caption = card.spec.caption; }
+  const wm = Txt(card.watermark, 760, 500, 220, 28, WHITE, vf, { align: 'right', cls: 'tshadow watermark', ls: '.12em' }); wm.dataset.name = 'watermark';
+  // the state line: paused / result / replay, the tick, and the re-simulated state equals the live race
+  const same = !ph.info.liveChecksum || ph.info.liveChecksum === ph.info.fingerprint;
+  const src = { paused: 'レースを一時停止中', result: 'レース結果から', replay: 'リプレイから', myreplay: 'マイリプレイから' }[ph.kind];
+  const st = el('chip ph-state', 54, 50, 380, 50); st.textContent = `${src}　残り ${ph.info.remainingM} m`;
+  st.dataset.photoHash = same ? 'match' : 'mismatch'; st.dataset.tick = String(ph.info.tick); st.dataset.source = ph.info.source.kind; st.dataset.mode = ph.info.source.mode;
+  Caption(`撮影する瞬間：${ph.info.tick}tick　端末で再計算：${same ? 'レースと同じ状態 ✓' : '不一致'}　レースの結果は変わりません`, 34, 614, undefined, 13, same ? OK : RED).classList.add('tshadow');
+  if (ph.hideUi) { Ghost('UIを表示', 1380, 40, 180, 52, () => { ph.hideUi = false; PhotoMode(); }, undefined, 'quiet').dataset.action = 'ph-showui'; return; }
+  Caption(ph.names === 'hidden' ? '名前は表示しません' : '名前：あなた・フレンド・それ以外は p＋枠番・CPU', 34, 640, undefined, 13, MUTED).classList.add('tshadow');
+  // ② the controls: one tab at a time, one CTA
+  const p = Glass('Photo controls', 1060, 30, 510, 840, undefined, .92); p.classList.add('ph-panel'); p.dataset.tab = ph.tab;
+  Kicker('フォトモード', 36, 30, p, { size: 17 });
+  PH_TABS.forEach(([k, name], i) => { const b = Btn(name, 30 + i * 92, 92, 86, 44, () => { ph.tab = k; PhotoMode(); }, 'choice' + (ph.tab === k ? ' on' : ''), p); b.dataset.tab = k; b.style.fontSize = '14px'; b.style.padding = '0'; });
+  const y0 = 164;
+  if (ph.tab === 'camera') {
+    const c = ph.camera;
+    Txt(`回転 ${c.orbitDeg}°　距離 ${(c.distanceDm / 10).toFixed(1)} m　高さ ${(c.heightDm / 10).toFixed(1)} m　画角 ${c.fovDeg}°`, 36, y0, 440, 15, WHITE, p, { weight: 500, cls: 'num', nowrap: true }).dataset.camera = JSON.stringify(c);
+    const row = (y, a, b) => { Ghost(a[0], 36, y, 212, 50, a[1], p, 'small').dataset.cam = a[2]; Ghost(b[0], 264, y, 212, 50, b[1], p, 'small').dataset.cam = b[2]; };
+    row(y0 + 36, ['‹ 左へ回る', () => phCam('orbit', -15), 'orbit-'], ['右へ回る ›', () => phCam('orbit', 15), 'orbit+']);
+    row(y0 + 98, ['寄る', () => phCam('zoom', -10), 'zoom-'], ['引く', () => phCam('zoom', 10), 'zoom+']);
+    row(y0 + 160, ['上から', () => phCam('raise', 5), 'raise+'], ['低く', () => phCam('raise', -5), 'raise-']);
+    row(y0 + 222, ['望遠', () => phCam('fov', -5), 'fov-'], ['広角', () => phCam('fov', 5), 'fov+']);
+    Txt('ぼかし', 36, y0 + 296, 90, 14, MUTED, p, { weight: 500, nowrap: true });
+    [0, 1, 2, 3].forEach((n) => { const b = Btn(n === 0 ? 'なし' : String(n), 130 + n * 88, y0 + 284, 78, 42, () => phCam('dof', n), 'choice' + (c.dof === n ? ' on' : ''), p); b.dataset.dof = String(n); b.style.fontSize = '14px'; });
+    TextLink('カメラを戻す', 36, y0 + 344, 170, () => phCam('reset'), p);
+    Txt('カメラはコースより下に入りません', 214, y0 + 352, 262, 12, SOFT, p, { nowrap: true });
+  } else if (ph.tab === 'look') {
+    ph.cat.looks.forEach((x, i) => { const b = Btn(x.name, 36 + (i % 2) * 228, y0 + Math.floor(i / 2) * 62, 212, 50, () => { ph.look = x.id; PhotoMode(); }, 'choice' + (ph.look === x.id ? ' on' : ''), p); b.dataset.look = x.id; });
+    Txt('ルックはすべて無料です', 36, y0 + 200, 440, 13, SOFT, p);
+  } else if (ph.tab === 'frame' || ph.tab === 'stamp') {
+    const isFrame = ph.tab === 'frame', list = isFrame ? ph.cat.frames : ph.cat.stamps;
+    const items = isFrame ? [{ id: null, name: 'なし', unlocked: true }, ...list] : list;
+    items.forEach((x, i) => {
+      const on = isFrame ? ph.frame === x.id : ph.stamps.some((s) => s.id === x.id);
+      const b = Btn(x.name, 36 + (i % 2) * 228, y0 + Math.floor(i / 2) * 56, 212, 46, () => phPick(isFrame ? 'frames' : 'stamps', x), 'choice' + (on ? ' on' : '') + (x.unlocked ? '' : ' ph-locked'), p);
+      b.dataset[isFrame ? 'frame' : 'stamp'] = x.id ?? 'none'; b.dataset.unlocked = String(!!x.unlocked); b.style.fontSize = '15px';
+    });
+    const yb = y0 + Math.ceil(items.length / 2) * 56 + 6;
+    if (!isFrame) Txt(`置いたスタンプ ${ph.stamps.length} / ${ph.cat.limits.stampsMax}`, 36, yb, 250, 13, MUTED, p, { weight: 500, nowrap: true });
+    if (!isFrame && ph.stamps.length) TextLink('スタンプを外す', 300, yb - 8, 170, () => { ph.stamps.pop(); PhotoMode(); }, p);
+    Txt('鍵の付いた品は実績で解放、または見た目ショップで決まった価格で買えます（ランダムではありません）', 36, yb + 30, 440, 12, SOFT, p, { lh: 1.5 });
+  } else {
+    const box = el('fieldbox', 36, y0, 440, 60, p);
+    const input = document.createElement('input');
+    input.className = 'field ph-input'; input.maxLength = 40; input.value = ph.caption ?? ''; input.placeholder = `ひとこと（${ph.cat.limits.captionMaxChars}文字まで）`; input.setAttribute('aria-label', 'ひとこと');
+    Object.assign(input.style, { left: '18px', top: '10px', width: '404px', height: '40px', fontSize: '20px' });
+    box.appendChild(input);
+    const apply = () => {
+      const r = JSON.parse(engine.PhotoCaption(input.value, ph.cat.limits.captionMaxChars));
+      ph.problem = r.problem; if (r.ok) ph.caption = r.caption;
+      PhotoMode();
+    };
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') apply(); });
+    Ghost('ひとことを決める', 36, y0 + 76, 220, 50, apply, p, 'small').dataset.action = 'ph-caption';
+    if (ph.caption) TextLink('消す', 272, y0 + 82, 80, () => { ph.caption = null; ph.problem = null; PhotoMode(); }, p);
+    if (ph.problem) Txt(ph.problem, 36, y0 + 140, 440, 14, WARN, p, { weight: 500 }).dataset.problem = ph.problem;
+    Txt('ひとことは翻訳されません。URL・賭けを思わせる言葉・ショップの宣伝の言葉は使えません。', 36, y0 + 176, 440, 12, SOFT, p, { lh: 1.6 });
+  }
+  // toggles, the shutter, back
+  const nb = Ghost(ph.names === 'hidden' ? '名前を表示' : '名前を隠す', 36, 570, 212, 50, () => { ph.names = ph.names === 'hidden' ? 'masked' : 'hidden'; PhotoMode(); }, p, 'small'); nb.dataset.action = 'ph-names';
+  Ghost('UIを隠す', 264, 570, 212, 50, () => { ph.hideUi = true; PhotoMode(); }, p, 'small').dataset.action = 'ph-hideui';
+  Cta('撮影する', 36, 660, 440, PhotoShoot, p, 'gold').dataset.action = 'ph-shoot';
+  Ghost(ph.kind === 'paused' ? 'レースに戻る' : '戻る', 36, 754, 440, 56, PhotoBack, p, 'quiet').dataset.action = 'ph-back';
+}
+function phPick(cat, x) {
+  if (x.id === null) { ph.frame = null; return PhotoMode(); }
+  if (!x.unlocked) return phLocked(cat, x);
+  if (cat === 'frames') ph.frame = ph.frame === x.id ? null : x.id;
+  else if (ph.stamps.length < ph.cat.limits.stampsMax) { const n = ph.stamps.length; ph.stamps.push({ id: x.id, x: [880, 160, 520][n] ?? 500, y: [200, 240, 160][n] ?? 500 }); }
+  else toast(`スタンプは${ph.cat.limits.stampsMax}つまでです`);
+  PhotoMode();
+}
+/** A locked item: the server's unlock text; a shop item can be bought at its fixed price (the cosmetics shop path). */
+function phLocked(cat, x) {
+  Sheet(x.name, cat === 'frames' ? 'フレーム　/　未解放' : 'スタンプ　/　未解放', (s, close, y) => {
+    s.dataset.locked = x.id;
+    Txt(x.unlockText, 48, y, 560, 19, WHITE, s, { weight: 500, lh: 1.6 }).dataset.unlockText = x.unlockText;
+    Txt('写真に重ねる見た目だけです。レースの能力には影響しません。', 48, y + 70, 560, 14, MUTED, s, { lh: 1.6 });
+    if (x.price != null) {
+      Txt(`${fmt(x.price)}コイン`, 48, y + 130, 300, 30, GOLD, s, { cls: 'num' });
+      Cta('コインで買う', 48, y + 190, 400, async () => {
+        const r = await L.buyCosmetic(x.unlock.itemId);
+        if (!r.ok) { toast(r.code === 'INSUFFICIENT_COINS' ? 'コインが足りません' : r.message); return; }
+        await refresh();
+        const c = await L.photoCatalog(); if (c.ok) ph.cat = c.value;
+        close(); toast(`${x.name}を購入しました`); PhotoMode();
+      }, s).dataset.action = 'ph-buy';
+    }
+  });
+}
+async function PhotoShoot() {
+  const card = phCard();
+  ph.card = card; ph.saveKey = 'ph_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const k = await L.photoKpi('photo_take', { source: card.spec.source.kind, look: card.spec.lookId });
+  globalThis.__muchi.lastPhotoKpi = k.ok ? k.value : null;
+  globalThis.__muchi.lastPhotoCard = card;
+  Sheet('写真を撮りました', 'フォトモード　/　共有', (s, close, y) => {
+    s.dataset.photoCard = card.kind;
+    Kicker(card.watermark, 48, y, s, { rule: false, size: 17 });
+    Txt(card.horse, 48, y + 40, 560, 30, GOLD, s, { ls: '.06em' });
+    Txt(card.course, 48, y + 86, 300, 16, WHITE, s, { weight: 500, nowrap: true });
+    if (card.mode) Txt(card.mode, 360, y + 86, 250, 16, MUTED, s, { weight: 500, nowrap: true });
+    const parts = [phItem('looks', card.spec.lookId)?.name, card.spec.frameId ? phItem('frames', card.spec.frameId)?.name : null, ...card.spec.stamps.map((x) => phItem('stamps', x.id)?.name)].filter(Boolean);
+    Txt('重ねたもの：' + parts.join('・'), 48, y + 120, 560, 14, MUTED, s, { lh: 1.6 });
+    Txt('共有の文', 48, y + 156, 300, 13, SOFT, s, { weight: 500 });
+    // the text handed to the share sheet as is (your caption is never translated)
+    const t = Txt(card.shareText, 48, y + 178, 560, 14, MUTED, s, { lh: 1.6, cls: 'keep-ja' }); t.dataset.shareText = card.shareText;
+    Txt('共有の文と画像に、ほかのプレイヤーの名前・IDは入れません。', 48, y + 236, 560, 13, SOFT, s, { lh: 1.5 });
+    Cta('共有する', 48, y + 290, 400, async () => {
+      const r = await L.photoKpi('photo_share', { source: card.spec.source.kind, framed: !!card.spec.frameId });
+      globalThis.__muchi.lastPhotoKpi = r.ok ? r.value : null;
+      toast('共有しました（画像の書き出しと共有シートはアプリで行います）');
+    }, s).dataset.action = 'ph-share';
+    Ghost('写真を保存', 48, y + 384, 260, 56, async () => {
+      const r = await L.photoSave(card.spec, ph.saveKey);
+      if (!r.ok) { toast(r.code === 'PHOTO_LIMIT' ? '保存できる写真がいっぱいです。古い写真を消してから保存してください。' : r.code === 'PHOTO_LOCKED' ? 'まだ使えないフレーム・スタンプが含まれています。' : r.message); return; }
+      globalThis.__muchi.lastPhotoSave = r.value;
+      toast(`写真を保存しました（${r.value.count} / ${r.value.max}）`);
+    }, s, 'small').dataset.action = 'ph-save';
+  });
+}
+function PhotoBack() {
+  const kind = ph?.kind, back = ph?.back;
+  engine.PhotoClose(performance.now());
+  $canvas.style.filter = '';
+  ph = null;
+  if (kind === 'paused') return BuildRaceScreen(); // the race resumes where it stopped
+  return (back ?? Home)();
+}
+
 // ================================================================= boot
 function fit() {
   const s = Math.min(window.innerWidth / 1600, window.innerHeight / 900);
@@ -4422,12 +5004,14 @@ async function boot() {
   ART = artIndex;
   const demo = new URLSearchParams(location.search).get('demo');
   if (demo) { L.reset(); }
+  applyA11y(); // round 15: the device copy from the first frame (REQ-A11Y-004)
   await L.bootstrap(); await refresh();
   const { dotnet } = await import('./engine/_framework/dotnet.js');
   const runtime = await dotnet.create();
   engine = (await runtime.getAssemblyExports(runtime.getConfig().mainAssemblyName)).MuchiRace;
   engine.Init(ruleset, commentary);
   engine.SetCommentaryPacks(commentaryPacks); // round 14 (REQ-CMT-001): the client copy of server/master/commentary-packs.json
+  await syncA11y(); // round 15: the unsent device change, or the account's value (REQ-A11Y-004); sets the whip input
   applyLanguage(); // REQ-L10N-012: English commentary when EN is on
   l10nObserver.observe($stage, { subtree: true, childList: true, characterData: true });
   view = new RaceView($canvas, (res) => art(res), partners);
@@ -4436,13 +5020,17 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),
     logic: L, view: () => view,
     // REQ-L10N-013 (test/en-flow.cjs): texts with no English seen so far, and the fit state of the current screen
-    l10n: { misses: () => [...l10nMisses.keys()], clear: () => l10nMisses.clear(), fit: () => fitText(cur) },
+    l10n: { misses: () => [...l10nMisses.keys()], clear: () => l10nMisses.clear(), fit: () => { scaleText(cur); fitText(cur); },
+      // switch the language in place (the screen is drawn again; the race in the engine stays)
+      set: (lang) => { prefs.set('muchi.language', lang); applyLanguage(); currentScreen?.(); } },
+    // round 15 (test/a11y-flow.cjs): the settings in force and the flash limiter
+    a11y: { get: () => ({ ...a11y }), set: (k, v) => setA11y(k, v), flashOk: (t) => flashOk(t) },
   };
   // round 10: index.html?invite=<code> (or unity.html?invite=…, redirected) stands in for muchi://invite/<code> (pre-fills the entry; kept through the FTUE)
   const inviteLink = new URLSearchParams(location.search).get('invite');

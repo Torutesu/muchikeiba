@@ -77,6 +77,7 @@
 | `assist_disable` | サーバー（かんたん操作をオフにした） | 前のレベル | `settings`/`prompt` | | |
 | `assist_prompt_view` | サーバー（一度だけの提案シートが出た） | | | | `double9` 最下位の連続 |
 | `race_assisted` | サーバー（かんたん操作ありで精算されたレース。本人の申告、KPI専用） | `whip`/`full` | モード | | `double4` 着順、`double5` 頭数 |
+| `a11y_setting_change` | サーバー（アクセシビリティ設定の PUT で値が変わったキーごとに1行、REQ-A11Y-014） | キー `textSize`/`colorMode`/`reduceMotion`/`haptics`/`subtitles`/`oneHanded`/`whipInput` | 新しい値（真偽は `on`/`off`） | `settings` | |
 | `event_point_earn` | サーバー（イベントのレースでイベントポイントを得た、REQ-EXCH-010） | イベントID | `full` / `capped`（1日の上限で削られた） | | `double4` 着順、`double9` 得たポイント、`double5` 所持ポイント |
 | `exchange_buy` | サーバー（イベント交換所で交換した） | イベントID | 行のID | 種類 `coins`/`material`/`ticket`/`cosmetic`/`horse` | `double5` 個数、`double9` 使ったポイント |
 | `challenge_start` | サーバー（週替わりチャレンジを始めた、REQ-WCH-014） | チャレンジ id | 週 id | `loan`/`own` | `double5` 今週そのチャレンジを始めた回数 |
@@ -864,3 +865,95 @@ SELECT round(sum(_sample_interval * double9) / sum(_sample_interval)) AS avg_byt
 FROM muchi_kpi
 WHERE blob1 = 'replay_save' AND timestamp > NOW() - INTERVAL '28' DAY
 ```
+
+## アクセシビリティ：どの設定が使われているか（REQ-A11Y-014、contracts/protocol.md §41）
+
+**変更の数と値の分布**（週ごと、キーと新しい値ごと）。行はキーごとなので、1回の保存で2つ変えれば2行。人数は `blob2`（ハッシュ化したプレイヤー）の重複を除く。
+
+```sql
+SELECT
+  toStartOfWeek(timestamp) AS week, blob8 AS setting, blob9 AS value,
+  sum(_sample_interval) AS changes,
+  count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'a11y_setting_change' AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY week, setting, value
+ORDER BY week, setting, changes DESC
+LIMIT 200
+```
+- 個人の情報は入らない（どの設定・どの値かだけ）。今オンになっている人の割合は、最後の行がオンの人を数える必要があるので、プレイヤーごとの最新の行（`argMax(blob9, timestamp)`）で出す。
+- 長押し（`whipInput = hold`）の人の勝率がタップの人より高くならないこと（REQ-A11Y-012）は設計とテスト（`AccessibilityTests.HoldIsCappedBelowSkilledPlay`）で担保している。KPI は使い方の分布を見るためで、強さの判定には使わない。
+
+
+## 出走前アドバイス：表示と「おすすめどおり」（REQ-ADV-011、contracts/protocol.md §39.7）
+
+**どれだけ見られ、おすすめの馬で出走した割合**（コンテキストごと、週ごと）。どちらもクライアントのイベント：`advice_view`（`blob8` = コンテキスト `ranked` / `friend` / `event` / `challenge` / `timeattack` / `tutorial`、`double5` = 並べた馬の数、`double9` = 1 ならおすすめあり）、`advice_follow`（`blob8` = コンテキスト、`double9` = 1 ならおすすめの馬で出走）。アドバイスを切っている人は送らない。
+
+```sql
+SELECT toStartOfWeek(timestamp) AS week, blob8 AS context,
+  sumIf(_sample_interval, blob1 = 'advice_view') AS views,
+  count(DISTINCT if(blob1 = 'advice_view', blob2, NULL)) AS players,
+  sumIf(_sample_interval, blob1 = 'advice_follow') AS entries,
+  sumIf(_sample_interval, blob1 = 'advice_follow' AND double9 = 1) AS followed,
+  followed / entries AS follow_rate
+FROM muchi_kpi
+WHERE blob1 IN ('advice_view', 'advice_follow') AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY week, context ORDER BY week, context
+```
+
+- 課金者と無課金者（`blob7`）で数字を分けても、アドバイスはどちらにも同じ（無料・全員同じ情報、REQ-ADV-006）。差は遊び方の違いとして読む。
+- 「おすすめどおり」の人の着順が良いかは、同じ日の `race_finish`（サーバー）と突き合わせる。アドバイスは勝ちやすさを約束しない（確率は出さない）ので、効果は着順の平均で見る。
+
+## フォトモード（REQ-PHOTO-014、contracts/protocol.md §38、Round 15）
+**撮った・共有した・保存した**：`photo_take`（クライアント、`blob8` = source：paused／result／replay、`blob9` = ルック）、`photo_share`（クライアント、OS の共有シートで共有した時だけ、`blob8` = source、`blob9` = framed／plain）、`photo_save`（サーバー、`blob8` = source、`blob9` = モード、`double5` = 保存後の件数）。
+
+```sql
+SELECT
+  blob6 AS day,
+  sumIf(_sample_interval, blob1 = 'photo_take') AS takes,
+  sumIf(_sample_interval, blob1 = 'photo_share') AS shares,
+  sumIf(_sample_interval, blob1 = 'photo_save') AS saves,
+  round(sumIf(_sample_interval, blob1 = 'photo_share') / sumIf(_sample_interval, blob1 = 'photo_take'), 3) AS share_rate,
+  count(DISTINCT IF(blob1 = 'photo_take', blob2, NULL)) AS players
+FROM muchi_kpi
+WHERE blob1 IN ('photo_take', 'photo_share', 'photo_save') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY day
+ORDER BY day DESC
+```
+
+**どこから撮るか・どのルックが使われるか**：
+
+```sql
+SELECT blob8 AS source, blob9 AS look, sum(_sample_interval) AS takes
+FROM muchi_kpi
+WHERE blob1 = 'photo_take' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY source, look
+ORDER BY takes DESC
+```
+- `photo_save` の `blob9` に `ranked` などがあっても、`blob8` は `result`／`replay` だけのはず（`paused` はサーバーが拒む）。`paused` × 共有レースの行が出たら REQ-PHOTO-001 の実装を調べる。
+- フレーム・スタンプの購入は既存の見た目ショップの購入（台帳 `cosmetic photo_*`）で見る。写真の品の売上がランク戦の勝率と関係しないこと（能力に影響しない）は設計上の前提。
+
+## アクティビティ：開いた・押した（REQ-ACT-015、contracts/protocol.md §40、Round 15）
+
+**ベルから一覧を開く人の割合と、どの種類の項目が押されるか**。`activity_open`（`double9` = 開いたときの未読の数）と `activity_tap`（`blob8` = 種類、`blob9` = 行き先の画面）はクライアントのイベント。一覧は読むだけの GET なので、開いた・押したはアプリが送る。
+
+```sql
+-- 日ごとの開いた人数と、開いたときの未読の平均（未読 0 で開く人が多いなら、ベルが目に入っていない）
+SELECT blob6 AS day, blob7 AS payer,
+  sum(_sample_interval) AS opens, count(DISTINCT blob2) AS players,
+  sum(_sample_interval * double9) / sum(_sample_interval) AS avg_unread
+FROM muchi_kpi
+WHERE blob1 = 'activity_open' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY day, payer ORDER BY day DESC, payer
+```
+
+```sql
+-- 押された項目（種類 × 行き先）：押されない種類は文言か並びを見直す
+SELECT blob8 AS kind, blob9 AS screen, sum(_sample_interval) AS taps, count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'activity_tap' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY kind, screen ORDER BY taps DESC
+```
+
+- **戻ってきた人に効いているか**：`session_start` の日に `activity_open` もある人の割合を、ライバル・支部・フレンドを使っている人とそれ以外で分けて見る。
+- プレゼント（`gift_arrived` → `gift_box`）を押した人のうち、同じ日に `gift_claim` がある割合が低ければ、プレゼントボックスへの導線（ボタンの文言）を見直す。受け取りボタンを一覧に置くことはしない（§40）。

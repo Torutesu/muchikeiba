@@ -257,10 +257,14 @@ namespace Muchi.Client
         public DeletionStatus Deletion;
         /// <summary>REQ-BOX-004: the home envelope badge (unclaimed gifts, and how many expire soon).</summary>
         public GiftBadge GiftBox = new GiftBadge();
+        /// <summary>REQ-ACT-009: the home bell (unread activity entries, capped by the server).</summary>
+        public ActivityBadge Activity = new ActivityBadge();
         /// <summary>REQ-ASSIST-008: かんたん操作 setting and the one-time suggestion (never null; Off when the server sent none).</summary>
         public AssistSettings Assist = new AssistSettings();
         /// <summary>REQ-CMT-009: the equipped commentary pack ("standard" when the server sent none).</summary>
         public string CommentaryPack = CommentaryPackCatalog.StandardPackId;
+        /// <summary>REQ-A11Y-003: アクセシビリティ設定 (contracts/protocol.md §41; defaults from an older server).</summary>
+        public AccessibilitySettings Accessibility = new AccessibilitySettings();
         public int Rating, RatingDeviation, RankedRaces;
         public string SeasonId, ClassId;
         public int SeasonPoints;
@@ -287,13 +291,14 @@ namespace Muchi.Client
                 PartnerHorseId = J.Str(J.Opt(o, "flags"), "partnerHorseId"),
                 Consent = ConsentView.Parse(J.Opt(o, "consent")), Unlocks = UnlocksView.Parse(J.Opt(o, "unlocks")),
                 Experiments = ExperimentsView.Parse(J.Opt(o, "experiments")), Deletion = DeletionStatus.Parse(J.Opt(o, "deletion")),
-                GiftBox = GiftBadge.Parse(J.Opt(o, "giftBox")),
+                GiftBox = GiftBadge.Parse(J.Opt(o, "giftBox")), Activity = ActivityBadge.Parse(J.Opt(o, "activity")),
                 Rating = J.Int(r, "r"), RatingDeviation = J.Int(r, "rd"), RankedRaces = J.Int(r, "rankedRaces"),
                 SeasonId = J.Str(s, "id"), ClassId = J.Str(s, "classId"), SeasonPoints = J.Int(s, "points"),
                 DisplayName = J.Str(pr, "displayName"), TitleId = J.Str(pr, "titleId"), Silks = Silks.Parse(J.Opt(pr, "silks")) ?? new Silks(),
                 Equipment = Equipment.Parse(J.Opt(o, "equipment")),
                 Assist = AssistSettings.Parse(J.Opt(o, "assist")),
                 CommentaryPack = J.Str(J.Opt(o, "commentaryPack"), "equipped") ?? CommentaryPackCatalog.StandardPackId,
+                Accessibility = AccessibilitySettings.Parse(J.Opt(o, "accessibility")),
             };
         }
     }

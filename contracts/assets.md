@@ -55,6 +55,9 @@ C# では `AssetKeys.Resolve(key, exists)` が 1→2→null を返す。古い�
 | `emblem/shape` | `emblem/shape/shield` | `emblem.shapes` | 支部エンブレムの形 |
 | `emblem/symbol` | `emblem/symbol/crown` | `emblem.symbols` | 支部エンブレムの図柄 |
 | `stamp` | `stamp/cheer` | `server/master/stamps.json stamps[].id`（直販の品は items.json `kind: "stamp"` の `asset`） | 支部の応援スタンプ（REQ-TEAMFEED-001）。定型の絵とラベルだけ。未着は `stamp/default`。先読みグループは `home` |
+| `photo/look` | `photo/look/film` | `server/master/photo.json looks[].id` | フォトモードのルック（色味・フィルター。LUT かポストプロセスの設定、REQ-PHOTO-004）。すべて無料。未着は `photo/look/default`（＝ナチュラル） |
+| `photo/frame` | `photo/frame/victory` | `photo.json frames[].id`（直販の品は items.json `kind: "photo"` の `asset`） | フォトモードの写真フレーム（REQ-PHOTO-005）。写真の上に重ねる枠。未着は `photo/frame/default` |
+| `photo/stamp` | `photo/stamp/crown` | `photo.json stamps[].id`（同上） | フォトモードの写真スタンプ（REQ-PHOTO-005）。写真に置く絵（文字の入らない絵）。未着は `photo/stamp/default` |
 | `collection/portrait` | `collection/portrait/t_akatsuki` | `server/master/horses.json templates[].id` | 図鑑の馬の絵（入手・出会った馬、REQ-COL-003）。未着は `collection/portrait/default`。先読みグループは `home` |
 | `collection/silhouette` | `collection/silhouette/t_akatsuki` | 同上 | 図鑑の未発見の馬のシルエット（毛色・模様が分からない黒い形） |
 | `badge` | `badge/races_1` | `server/master/collection.json achievements[].id` × 段（1〜5） | 実績のバッジ（REQ-ACH-004）。文字は入れない。未着は `badge/default` |

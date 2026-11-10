@@ -150,6 +150,58 @@ namespace Muchi.Client
             return new AnalyticsEvent("history_view", atMs, JsonNode.Obj().Set("tab", tab));
         }
 
+        // ---- REQ-ADV-011 pre-race advice (contracts/protocol.md §39.7). Not sent when the player turned advice off.
+        public static readonly string[] AdviceContexts = { "ranked", "friend", "event", "challenge", "timeattack", "tutorial" };
+
+        /// <summary>The advice panel was shown (once per screen visit). horses = horses listed (0..30), suggested = a horse was suggested.</summary>
+        public static AnalyticsEvent AdviceView(long atMs, string context, int horses, bool suggested)
+        {
+            if (IndexIn(AdviceContexts, context) < 0) throw new ArgumentException("unknown advice context " + context);
+            if (horses < 0 || horses > 30) throw new ArgumentOutOfRangeException(nameof(horses));
+            return new AnalyticsEvent("advice_view", atMs, JsonNode.Obj().Set("context", context).Set("horses", horses).Set("suggested", suggested));
+        }
+
+        /// <summary>The race was entered after advice with a suggestion: followed = the entered horse is the suggested one.</summary>
+        public static AnalyticsEvent AdviceFollow(long atMs, string context, bool followed)
+        {
+            if (IndexIn(AdviceContexts, context) < 0) throw new ArgumentException("unknown advice context " + context);
+            return new AnalyticsEvent("advice_follow", atMs, JsonNode.Obj().Set("context", context).Set("followed", followed));
+        }
+
+        // ---- REQ-PHOTO-014 photo mode (saving a record is the server event photo_save; never sent from here)
+        public static readonly string[] PhotoSources = { "paused", "result", "replay" };
+
+        /// <summary>A photo was taken (the shutter). source: paused | result | replay; look: the look id (all looks are free).</summary>
+        public static AnalyticsEvent PhotoTake(long atMs, string source, string lookId)
+        {
+            if (IndexIn(PhotoSources, source) < 0) throw new ArgumentException("unknown photo source " + source);
+            if (string.IsNullOrEmpty(lookId)) throw new ArgumentException("look id required");
+            return new AnalyticsEvent("photo_take", atMs, JsonNode.Obj().Set("source", source).Set("look", lookId));
+        }
+
+        /// <summary>A photo was handed to the OS share sheet and shared (cancelled shares are not sent).</summary>
+        public static AnalyticsEvent PhotoShare(long atMs, string source, bool framed)
+        {
+            if (IndexIn(PhotoSources, source) < 0) throw new ArgumentException("unknown photo source " + source);
+            return new AnalyticsEvent("photo_share", atMs, JsonNode.Obj().Set("source", source).Set("framed", framed));
+        }
+
+        // ---- REQ-ACT-015 activity list (read-only GET; opening and taps are client events)
+        /// <summary>The activity list was opened (once per opening); unread = the bell's number then (0..999).</summary>
+        public static AnalyticsEvent ActivityOpen(long atMs, int unread)
+        {
+            if (unread < 0 || unread > 999) throw new ArgumentOutOfRangeException(nameof(unread));
+            return new AnalyticsEvent("activity_open", atMs, JsonNode.Obj().Set("unread", unread));
+        }
+
+        /// <summary>An entry was tapped: its kind and where it led (ActivityKinds / ActivityScreens).</summary>
+        public static AnalyticsEvent ActivityTap(long atMs, string kind, string screen)
+        {
+            if (IndexIn(ActivityKinds.All, kind) < 0) throw new ArgumentException("unknown activity kind " + kind);
+            if (IndexIn(ActivityScreens.All, screen) < 0) throw new ArgumentException("unknown activity screen " + screen);
+            return new AnalyticsEvent("activity_tap", atMs, JsonNode.Obj().Set("kind", kind).Set("screen", screen));
+        }
+
         // ---- REQ-AD-010 rewarded ads (the reward itself is the server event ad_reward; never sent from here)
         private static readonly string[] AdSurfaces = { "home", "result", "time_attack", "shop" };
         private static readonly string[] AdOutcomes = { "shown", "no_fill", "failed", "closed_early" };

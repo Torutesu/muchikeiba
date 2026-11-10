@@ -104,6 +104,13 @@ export const AD_SURFACE_NAMES = ['home', 'result', 'time_attack', 'shop'] as con
 const adProps = z.object({ placementId: str(32), surface: z.enum(AD_SURFACE_NAMES) }).strict();
 /** REQ-HIST-011: the history screen's tabs (contracts/protocol.md §33.5). */
 export const HISTORY_TABS = ['purchases', 'coins_paid', 'coins_free', 'gacha'] as const;
+/** REQ-ADV-011: where the pre-race advice was shown (contracts/protocol.md §39.7; the same names as the advice contexts). */
+export const ADVICE_KPI_CONTEXTS = ['ranked', 'friend', 'event', 'challenge', 'timeattack', 'tutorial'] as const;
+/** REQ-PHOTO-014: where a photo was taken (photoMode.ts PHOTO_SOURCES). */
+export const PHOTO_SOURCE_NAMES = ['paused', 'result', 'replay'] as const;
+/** REQ-ACT-015: the activity list's kinds and deep-link screens (domain/activity.ts; repeated here to keep kpi.ts import-free). */
+export const ACTIVITY_KIND_NAMES = ['friend_request', 'friend_accepted', 'rival_week', 'rival_record', 'stable_like', 'team_cheer', 'tournament_result', 'gift_arrived', 'team_goal_tier', 'team_goal_week', 'replay_share'] as const;
+export const ACTIVITY_SCREEN_NAMES = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new'] as const;
 /** Events only the client can observe. Server-known events (purchase, gacha, race results…) are not accepted from clients. */
 export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('session_start'), at: z.number().int(), props: z.object({}).strict().optional() }),
@@ -134,6 +141,15 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('ad_start'), at: z.number().int(), props: z.object({ placementId: str(32), surface: z.enum(AD_SURFACE_NAMES), outcome: z.enum(['shown', 'no_fill', 'failed', 'closed_early']) }).strict() }),
   // REQ-HIST-011: a history tab was opened (the lists are read-only GETs, so the view is a client event)
   z.object({ name: z.literal('history_view'), at: z.number().int(), props: z.object({ tab: z.enum(HISTORY_TABS) }).strict() }),
+  // REQ-ADV-011: the advice panel was shown (once per screen visit) / the race was entered with the suggested horse or not
+  z.object({ name: z.literal('advice_view'), at: z.number().int(), props: z.object({ context: z.enum(ADVICE_KPI_CONTEXTS), horses: z.number().int().min(0).max(30), suggested: z.boolean() }).strict() }),
+  z.object({ name: z.literal('advice_follow'), at: z.number().int(), props: z.object({ context: z.enum(ADVICE_KPI_CONTEXTS), followed: z.boolean() }).strict() }),
+  // REQ-PHOTO-014: a photo was taken / handed to the OS share sheet (cancelled shares are not sent; saves are the server's photo_save)
+  z.object({ name: z.literal('photo_take'), at: z.number().int(), props: z.object({ source: z.enum(PHOTO_SOURCE_NAMES), look: z.string().regex(/^[a-z0-9_]{1,32}$/) }).strict() }),
+  z.object({ name: z.literal('photo_share'), at: z.number().int(), props: z.object({ source: z.enum(PHOTO_SOURCE_NAMES), framed: z.boolean() }).strict() }),
+  // REQ-ACT-015: the activity list was opened (unread count then) / an entry was tapped (its kind and deep link)
+  z.object({ name: z.literal('activity_open'), at: z.number().int(), props: z.object({ unread: z.number().int().min(0).max(999) }).strict() }),
+  z.object({ name: z.literal('activity_tap'), at: z.number().int(), props: z.object({ kind: z.enum(ACTIVITY_KIND_NAMES), screen: z.enum(ACTIVITY_SCREEN_NAMES) }).strict() }),
 ]);
 export type ClientEvent = z.infer<typeof clientEventSchema>;
 
@@ -166,6 +182,12 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'ad_offer_view': return { name: e.name, s1: e.props.placementId, s2: e.props.surface };
     case 'ad_start': return { name: e.name, s1: e.props.placementId, s2: e.props.surface, s3: e.props.outcome };
     case 'history_view': return { name: e.name, s1: e.props.tab };
+    case 'advice_view': return { name: e.name, s1: e.props.context, count: e.props.horses, value: e.props.suggested ? 1 : 0 };
+    case 'advice_follow': return { name: e.name, s1: e.props.context, value: e.props.followed ? 1 : 0 };
+    case 'photo_take': return { name: e.name, s1: e.props.source, s2: e.props.look };
+    case 'photo_share': return { name: e.name, s1: e.props.source, s2: e.props.framed ? 'framed' : 'plain' };
+    case 'activity_open': return { name: e.name, value: e.props.unread };
+    case 'activity_tap': return { name: e.name, s1: e.props.kind, s2: e.props.screen };
   }
 }
 

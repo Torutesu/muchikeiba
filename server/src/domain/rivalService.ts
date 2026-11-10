@@ -223,7 +223,7 @@ export interface RivalPlayers {
   challengeCheck(uid: string, idemKey?: string | null): Promise<Ret<'rivalChallengeCheck'>>;
   challengeReceive(uid: string, fromId: string, passphrase: string, fromName: string, idemKey?: string | null): Promise<unknown>;
   seen(uid: string, weekId: string): Promise<unknown>;
-  push(uid: string, byName: string, course: string): Promise<unknown>;
+  push(uid: string, byName: string, course: string, byId?: string): Promise<unknown>;
 }
 
 export function rivalPlayersFrom(player: (uid: string) => PlayerInvoker): RivalPlayers {
@@ -235,7 +235,7 @@ export function rivalPlayersFrom(player: (uid: string) => PlayerInvoker): RivalP
     challengeCheck: (u, k) => player(u).invoke('rivalChallengeCheck', u, k ?? null),
     challengeReceive: (u, f, p, n, k) => player(u).invoke('rivalChallengeReceive', u, f, p, n, k ?? null),
     seen: (u, w) => player(u).invoke('rivalSeen', u, w),
-    push: (u, n, c) => player(u).invoke('rivalPush', u, n, c),
+    push: (u, n, c, b) => player(u).invoke('rivalPush', u, n, c, b),
   };
 }
 
@@ -321,7 +321,7 @@ export class RivalService {
     if (u.dissolve) await this.reg.dissolve(u.weekId, u.playerId);
     for (const t of u.ta ?? []) {
       const r = await this.reg.taBest(u.weekId, u.playerId, t.trackId, t.timeMs);
-      if (r.notify) await this.players.push(r.notify, u.displayName ?? '', rivalTrackName(t.trackId)).catch((e) => console.error('rival push failed', r.notify, (e as Error).message));
+      if (r.notify) await this.players.push(r.notify, u.displayName ?? '', rivalTrackName(t.trackId), u.playerId).catch((e) => console.error('rival push failed', r.notify, (e as Error).message));
     }
   }
 }

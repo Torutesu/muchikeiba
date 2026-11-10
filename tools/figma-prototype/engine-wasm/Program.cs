@@ -215,6 +215,10 @@ public static partial class MuchiRace
     private static AssistLevel _assist = AssistLevel.Off;
     /// <summary>Round 12: the かんたん操作 level ("off" | "whip" | "full", the server setting) used from the next race.</summary>
     [JSExport] public static string SetAssist(string level) { _assist = AssistLevels.Parse(level); return AssistLevels.Wire(_assist); }
+    /// <summary>Round 15 (REQ-A11Y-012): "tap" | "hold" — the whip input of the accessibility settings (AccessibilityModel.ApplyTo).</summary>
+    [JSExport] public static string SetWhipInput(string mode) { _input.WhipMode = mode == "hold" ? WhipInput.Hold : WhipInput.Tap; return mode == "hold" ? "hold" : "tap"; }
+    /// <summary>Round 15: the whip button is held / released (hold mode; RaceInput.SetWhipHeld).</summary>
+    [JSExport] public static void WhipHold(bool held) => _input.SetWhipHeld(held);
 
     /// <summary>One frame: collect input (as MuchiApp.Update does), advance the race to nowMs, return HUD + interpolated poses.</summary>
     [JSExport]
@@ -222,7 +226,8 @@ public static partial class MuchiRace
     {
         if (_driver == null) return "{}";
         long now = (long)nowMs;
-        if (_driver.Sim != null) _driver.Input(_input.Collect(_driver.Sim.GetHorse(_driver.PlayerSlot)));
+        // round 15: RaceInput.Collect(sim, slot) also turns a held whip button into taps (REQ-A11Y-012, WhipHold)
+        if (_driver.Sim != null) _driver.Input(_input.Collect(_driver.Sim, _driver.PlayerSlot));
         _driver.Update(now);
         var hud = _obs.Hud(now);
         if (_driver.Sim != null) { var s = _commentary.Update(_driver.Sim); if (s != null) _subtitle = s; }
@@ -242,6 +247,8 @@ public static partial class MuchiRace
         // round 12: the level riding this race and the HUD chip (HudSnapshot.Assist / AssistLabel)
         sb.Append(",\"assist\":\"").Append(AssistLevels.Wire(hud.Assist)).Append("\",\"assistLabel\":\"").Append(Esc(hud.AssistLabel)).Append("\",\"assistCmds\":")
           .Append(_driver.Race.Assistant?.CommandsSent ?? 0);
+        // round 15: the whip input mode and the hold's remaining automatic whips (「長押し あと{n}」)
+        sb.Append(",\"whipInput\":\"").Append(_input.WhipMode == WhipInput.Hold ? "hold" : "tap").Append("\",\"holdLeft\":").Append(_input.HoldRepeatsLeft(_driver.Sim.P));
         sb.Append(",\"horses\":[");
         int n = _driver.Config.Entrants.Count, laneW = _driver.Config.Ruleset.LaneWidthMm;
         for (int i = 0; i < n; i++)
@@ -611,7 +618,8 @@ public static partial class MuchiRace
             var f = d.Facts;
             sb.Append(",\"facts\":{\"whips\":").Append(f.WhipCount).Append(",\"earlyWhips\":").Append(f.EarlyWhips).Append(",\"mashed\":").Append(f.MashedWhips)
               .Append(",\"passes\":").Append(f.PassesMade).Append(",\"kakari\":").Append(f.KakariCount).Append(",\"lateStart\":").Append(B(f.LateStart))
-              .Append(",\"slipstreamTicks\":").Append(f.SlipstreamTicks).Append(",\"staminaEmptyM\":").Append(f.StaminaEmptyRemainingMm < 0 ? -1 : f.StaminaEmptyRemainingMm / 1000).Append('}');
+              .Append(",\"slipstreamTicks\":").Append(f.SlipstreamTicks).Append(",\"staminaEmptyM\":").Append(f.StaminaEmptyRemainingMm < 0 ? -1 : f.StaminaEmptyRemainingMm / 1000)
+              .Append(",\"firstWhipM\":").Append(f.WhipRemainingMm.Count > 0 ? f.WhipRemainingMm[0] / 1000 : -1).Append('}');
         }
         sb.Append(",\"rows\":[");
         for (int i = 0; i < m.Rows.Count; i++)
@@ -734,6 +742,20 @@ public static partial class MuchiRace
           .Append("\",\"time\":\"").Append(Esc(c.TimeText)).Append("\",\"horse\":\"").Append(Esc(c.HorseName)).Append("\",\"course\":\"").Append(Esc(c.CourseName))
           .Append("\",\"shareText\":\"").Append(Esc(c.ShareText)).Append("\"}");
         return sb.ToString();
+    }
+
+    /// <summary>Round 15 (REQ-ADV-001/002): the C# advice (Muchi.Client RaceAdvice.Compute) on an AdviceInput JSON; the same as the server's.</summary>
+    [JSExport]
+    public static string AdviceCompute(string inputJson) => RaceAdvice.Compute(AdviceInput.FromJson(inputJson)).ToJson().ToString();
+
+    /// <summary>Round 15 (REQ-ADV-014): the result line for the last race's whip against a whip tip JSON ({startRemainingM,…}); "" without a race.</summary>
+    [JSExport]
+    public static string AdviceWhipLine(string tipJson)
+    {
+        var d = _obs?.Debrief();
+        if (d == null) return "";
+        var tip = AdviceWhipTip.Parse(Muchi.Net.JsonNode.Parse(tipJson));
+        return RaceAdvice.WhipTipText(RaceAdvice.CheckWhipTip(tip, d.Facts), tip);
     }
 
     /// <summary>Re-run a golden race file ({log, expected}) in WebAssembly and return the result hash (must equal expected.resultHash).</summary>

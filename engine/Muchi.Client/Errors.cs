@@ -91,6 +91,12 @@ namespace Muchi.Client
         ReplayExpired,
         /// <summary>REQ-MYRP-003: the replay is larger than the per-replay cap (413).</summary>
         ReplayTooLarge,
+        /// <summary>409: at most `maxSaved` photo records (REQ-PHOTO-010).</summary>
+        PhotoLimit,
+        /// <summary>409: a look / frame / stamp that is not unlocked (REQ-PHOTO-011).</summary>
+        PhotoLocked,
+        /// <summary>400: a race run with other people cannot be paused (REQ-PHOTO-001).</summary>
+        PhotoSourceInvalid,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -188,6 +194,9 @@ namespace Muchi.Client
             ["REPLAY_LIMIT"] = ApiErrorCode.ReplayLimit,
             ["REPLAY_EXPIRED"] = ApiErrorCode.ReplayExpired,
             ["REPLAY_TOO_LARGE"] = ApiErrorCode.ReplayTooLarge,
+            ["PHOTO_LIMIT"] = ApiErrorCode.PhotoLimit,
+            ["PHOTO_LOCKED"] = ApiErrorCode.PhotoLocked,
+            ["PHOTO_SOURCE_INVALID"] = ApiErrorCode.PhotoSourceInvalid,
             ["VERIFIER_UNAVAILABLE"] = ApiErrorCode.VerifierUnavailable,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };

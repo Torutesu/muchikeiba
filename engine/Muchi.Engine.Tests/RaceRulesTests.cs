@@ -77,13 +77,27 @@ namespace Muchi.Engine.Tests
         [Fact]
         public void StepPerformanceIsWellUnderBudget()
         {
+            // NFR-001: a 12-horse step costs < 0.1 ms. Wall clock on shared CI runners is noisy (a neighbour can stall one
+            // batch for tens of ms), so: warm up (JIT, tiered compilation), then time several short batches and judge
+            // the fastest batch against the budget and the median against a generous ceiling. A real regression slows
+            // every batch (fastest and median both move); a noisy neighbour only slows some of them.
             var (cfg, inputs) = Scenario(9);
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-            int ticks = 0;
-            for (int i = 0; i < 20; i++) ticks += RaceReplay.Run(cfg, inputs).Result.EndTick + 1;
-            sw.Stop();
-            double msPerTick = sw.Elapsed.TotalMilliseconds / ticks;
-            Assert.True(msPerTick < 0.1, "ms per tick = " + msPerTick); // NFR-001
+            for (int i = 0; i < 3; i++) RaceReplay.Run(cfg, inputs);
+            const int Batches = 9, RunsPerBatch = 3;
+            var samples = new List<double>();
+            for (int b = 0; b < Batches; b++)
+            {
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                int ticks = 0;
+                for (int i = 0; i < RunsPerBatch; i++) ticks += RaceReplay.Run(cfg, inputs).Result.EndTick + 1;
+                sw.Stop();
+                samples.Add(sw.Elapsed.TotalMilliseconds / ticks);
+            }
+            samples.Sort();
+            double best = samples[0], median = samples[Batches / 2];
+            string msg = $"ms per tick: best {best:F4}, median {median:F4} ({string.Join(", ", samples.Select(x => x.ToString("F4")))})";
+            Assert.True(best < 0.1, msg);   // the budget itself, on the least-disturbed batch
+            Assert.True(median < 0.3, msg); // most batches stay near it (3x headroom for shared runners)
         }
     }
 

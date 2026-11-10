@@ -18,6 +18,7 @@ import type { KpiEvent } from './kpi.js';
 import { addItems, grantReward } from './items.js';
 import { grantFree } from './wallet.js';
 import { enqueuePush } from './push.js';
+import { recordActivity } from './activity.js';
 
 export const GIFT_SOURCES = ['ops_compensation', 'ops_grant', 'invite', 'event', 'tournament', 'team', 'league', 'season', 'team_goal', 'exchange'] as const;
 export type GiftSource = typeof GIFT_SOURCES[number];
@@ -193,8 +194,13 @@ export function deliverGift(m: Master, s: PlayerState, d: DeliverInput, now: num
   b.box.push(e);
   emit?.({ name: 'gift_receive', s1: e.source, s2: e.titleKey, freeCoins: contents.freeCoins ?? 0, count: itemCount(contents), value: e.expiresAt === null ? 0 : Math.round((e.expiresAt - now) / DAY) });
   if ((c.pushSources ?? []).includes(d.source)) enqueuePush(m, s, GIFT_PUSH_TEMPLATE, {}, now); // REQ-BOX-011 (daily cap inside)
+  // REQ-ACT-002/004: a link to the box (never a claim here); tournament / team goal prizes have their own result entry
+  if (!ACTIVITY_OWN_ENTRY.includes(d.source)) recordActivity(m, s, { kind: 'gift_arrived', source: `gift:${d.ref}` }, now);
   return { status: 'boxed', giftId: e.id, expiresAt: e.expiresAt, duplicate: false };
 }
+
+/** REQ-ACT-004: gift sources whose result already has its own activity entry (no second 「プレゼントが届きました」). */
+export const ACTIVITY_OWN_ENTRY: readonly GiftSource[] = ['tournament', 'team_goal'];
 
 function defaultTitle(src: GiftSource): GiftTitleKey { return src; }
 

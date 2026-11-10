@@ -46,10 +46,15 @@ node "$HERE/test/round12-giftbox.test.mjs" # round 12: プレゼントボック�
 node "$HERE/test/round12-assist.test.mjs"   # round 12: かんたん操作 — InputAssistant rides a race in WASM, never the tutorial, the setting and the one-time prompt
 node "$HERE/test/round12-rival.test.mjs"    # round 12: ライバル — weekly pairing (public card), head to head, challenge (no points), TA tiebreak, week result once, block / opt-out
 node "$HERE/test/round13-history.test.mjs" # round 13: 購入・コイン・ガチャ履歴 — header (有償/無償), tabs, cursor paging, refunded pack, 問い合わせ draft, English
+node "$HERE/test/round15-activity.test.mjs" # round 15: アクティビティ — demo from the real event sources, collapsed likes, gift link only, bell, mark read, paging, English
 node "$HERE/test/round13-exchange.test.mjs" # round 13: イベント交換所 — points by event race (daily cap), keyed exchange with stock, grace days, leftover → material
 node "$HERE/test/round13-weekly-challenge.test.mjs" # round 13: 週替わりチャレンジ — the week, a loan-horse start, the verdict only from the verified result, once a week, mismatch
 node "$HERE/test/round13-team-goal.test.mjs" # round 13: 支部の共同目標 — the week, settled races with the daily cap, the feed milestone, the week close paying once
 node "$HERE/test/round14-hall.test.mjs"     # round 14: 殿堂 — career from confirmed races, the ceremony once, 殿堂入り and the frame once, paging, a friend's hall
 node "$HERE/test/round14-commentary-packs.test.mjs" # round 14: 実況パック — races speak the equipped pack (never the tutorial), the 10-second sample, owned / equip / buy on the server rules
 node "$HERE/test/round14-my-replays.test.mjs"  # round 14: マイリプレイ — races settled with their replay, save / rename / favourite / public / delete, ReplayPlayer in WASM (speed, camera, last 200 m), 再生できません, a friend replay
+node "$HERE/test/a11y-flash.test.cjs"       # round 15: アクセシビリティ — the --a11y-* tokens equal contracts/a11y-tokens.json, every blink ≤ 3 flashes/s and off with reduce motion
+node "$HERE/test/round15-a11y.test.mjs"     # round 15: アクセシビリティ — the whip hold (RaceInput + WhipHold) in WASM, a hold = taps, the tutorial, the settings on the server rules
+node "$HERE/test/round15-race-advice.test.mjs" # round 15: 出走前アドバイス — TS = C# (WASM) on the shared vectors, the lobby over today's courses, the challenge loan horse, tutorial, KPI, English
+node "$HERE/test/round15-photo.test.mjs" # round 15: フォトモード — pause a solo race (same state, same hash after), camera limits, no pause in ranked, catalog / purchase / keyed record / KPI
 echo "built $SITE ($(du -sh "$SITE" | cut -f1))"

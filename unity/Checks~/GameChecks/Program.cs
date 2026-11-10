@@ -80,6 +80,8 @@ static class Program
         await L10nChecks.Run(Check, Root, Ruleset());
         Console.WriteLine("== round 13: 購入履歴・コイン履歴・ガチャ履歴 (header, tabs, paging, detail, 問い合わせ; REQ-HIST-*)");
         await HistoryChecks.Run(Check);
+        Console.WriteLine("== round 15: アクティビティ (bell, list, paging, mark read, deep links, gift link only; REQ-ACT-*)");
+        await ActivityChecks.Run(Check);
         Console.WriteLine("== round 11: 図鑑, 実績 and titles (CollectionModel / AchievementModel / TitleShowcaseModel; REQ-COL-*, REQ-ACH-*)");
         await CollectionChecks.Run(Check, Ruleset());
         Console.WriteLine("== 調教 (training: menus, timing mini-game, keyed start/finish, fairness wording)");
@@ -90,12 +92,16 @@ static class Program
         await GiftBoxChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 12: かんたん操作 (AssistModel, InputAssistant on a practice race, HUD chip, the one-time suggestion; REQ-ASSIST-*)");
         await AssistChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 15: アクセシビリティ設定 (AccessibilityModel: device copy, sync, rows, tokens, text scale, motion, whip hold; REQ-A11Y-*)");
+        await AccessibilityChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 12: ライバル (home card, detail, week-result sheet, challenge, opt-out / block; REQ-RIVAL-*)");
         await RivalChecks.Run(Check, Ruleset());
         Console.WriteLine("== イベント交換所 (event exchange: point counter, stock, confirm sheet, keyed exchange, grace notice; REQ-EXCH-*)");
         await ExchangeChecks.Run(Check, Ruleset());
         Console.WriteLine("== 週替わりチャレンジ (weekly challenge: list, keyed start, race with the HUD condition, server verdict, badge, English)");
         await WeeklyChallengeChecks.Run(Check, Ruleset(), Root);
+        Console.WriteLine("== round 15: フォトモード (PhotoModeModel: pause a solo race, snapshot, camera limits, locks, shop, caption, plates, share, save; REQ-PHOTO-*)");
+        await PhotoModeChecks.Run(Check, Ruleset(), Root);
         Console.WriteLine("== round 13: 支部の共同目標 (TeamGoalModel: milestone bar, contributions, week result sheet, feed goal rows; REQ-TGOAL-*)");
         Loc.LoadEnglish(File.ReadAllText(Path.Combine(Root, "engine", "Muchi.Client", "Resources", "Muchi", "server-en.json")));
         Loc.LoadEnglish(File.ReadAllText(Path.Combine(Root, "engine", "Muchi.Client", "Resources", "Muchi", "ui-en.json")));
@@ -108,6 +114,8 @@ static class Program
         await CommentaryPackChecks.Run(Check, Ruleset(), Root);
         Console.WriteLine("== round 14: マイリプレイ (list cards, save / rename / favourite / public / delete, ReplayPlayer, 再生できません; REQ-MYRP-*)");
         await MyReplaysChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 15: 出走前アドバイス (RaceAdviceModel: rows in words, device recompute = server, setting, tutorial, offline, KPI, result line; REQ-ADV-*)");
+        await RaceAdviceChecks.Run(Check, Root);
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

@@ -1253,7 +1253,6 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 - 終了後（`grace`）は「交換は ◯月◯日 4:00 まで」と、残りのポイントが換わる素材の数（`leftover.preview`）を出す。日時は `closesAtMs` から作る（演出の残り時間は出さない）。
 - 交換所からショップ（課金）への導線は作らない。
 
-
 ## 31. 週替わりチャレンジ（REQ-WCH-001〜016、`server/src/domain/weeklyChallenge.ts`・`server/src/race/weeklyChallenge.ts`、C# `WeeklyChallenge.cs`（`ChallengeEvaluator`・`ChallengeRun`）・`Muchi.Game.WeeklyChallengeModel`）
 毎ゲーム週、CPU と走る1人用のチャレンジが **3つ** 出る。コース・距離・馬場（重・ダート・ナイター）・相手の強さ（CPU の頭数・レベル・能力の倍率）を既存のレース設定で固定し、条件（「逃げ馬で勝つ」「ムチ3回以内で3着以内」「雨の重馬場で X 以内に完走」など）を付ける。レースは端末で走り（`OfflineRace`）、送るのは入力だけ。**サーバーは発行した設定と送られた入力を C# 検証器で再シミュレーションし**（タイムアタックと同じ §8 の経路）、条件の判定も検証済みの結果からサーバー自身が行う。クライアントの申告だけで達成になることはない。
 
@@ -1365,7 +1364,6 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 - Unity ゲーム層 `WeeklyChallengeModel`：ホームのカード（今週のクリア数・残り日数）、一覧（条件の文・報酬・貸し出し馬）、レース中の HUD の条件の行（「ムチ 2/3」など、満たせなくなったら赤）、結果（クリア／失敗、条件ごとの○×、初クリアの報酬、バッジ）。ホームのカードはタイムアタックの解放（`time_attack`）と同時に出す（サーバーは解放で制限しない）。
 - 解放（Round 13 の統合）：解放キー `weekly_challenge`（`progression.unlocks`、タイムアタックと同じ「4日目 or 20戦」、docs/planning/06 §4.3）。表示だけの解放で、サーバーの API は解放前でも答える（他の解放キーと同じ）。ホームのカードは解放後に出す。
 - デプロイ：モード `challenge` を知っている検証器（`Muchi.Net` の `ParseMode`）を先に出してから、サーバーを出す。
-
 
 ## 32. 支部の共同目標（REQ-TGOAL-001〜012、`server/src/domain/teamGoal.ts`、C# `TeamGoal.cs`・`Muchi.Game` `TeamGoalModel`）
 支部ごとに**週1つの共同目標**（例：「支部で合計60レース」）。支部員みんなのレース結果で段（マイルストーン、3段）が進み、週の終わりに、届いた一番上の段の決まった報酬を、最低限貢献した支部員全員に配る。報酬は無償・ランダムなし・1回 ¥200 以内（景品表示法 総付景品）。課金は関係しない（買って進むものは何も無い）。
@@ -1797,3 +1795,302 @@ TeamGoalView = { "teamId": "tabc123456", "teamName": "あおばRC", "enabled": t
 
 ### 37.7 アカウント削除
 削除の手順に `replays` を足す（`rival` の後）：スナップショットの `replayKeys`（保存した写し `myreplays/<playerId>/<raceId>.json`）を R2 から消す。状態の一覧は最後の `wipe` で消える。
+
+## 38. フォトモード（REQ-PHOTO-001〜018、`server/src/domain/photoMode.ts`・`server/master/photo.json`、C# `PhotoMode.cs`（`PhotoCamera`・`PhotoSnapshot`・`PhotoNames`・`PhotoShareCard`）・`Muchi.Game.PhotoModeModel`）
+レースを一時停止（オフライン・練習・タイムアタック・チュートリアル・週替わりチャレンジ＝**ひとりで走るレースだけ**）するか、終わったレース（結果画面）・リプレイを止めて、1枚の写真を撮る。カメラを動かし（制限つき）、見た目（ルック）・フレーム・スタンプ・ひとことを重ねて、既存のリプレイ共有（Round 9、`ShareCard`・`IClipRecorder.CaptureStillAsync`・`IShareSheet`）で画像として共有する。**表示だけ**：コイン・アイテムを配らない（E は無い）。購入できる品は既存の見た目ショップ（§13・REQ-ITEM-005）の決まった価格だけ。
+
+**決まりごと**
+- **ランク戦・フレンド戦・イベント・大会のレース中は止めない**（他の人のレースに影響するため）。この4つは結果画面（レースが終わった後）とリプレイからだけ撮れる。クライアントは `PhotoModeModel.CanPause(driver)` が false のときポーズのフォトボタンを出さない。サーバーは写真の記録で `source.kind: "paused"` にこれらの `mode` が来たら 400 `PHOTO_SOURCE_INVALID`。
+- **決定論**：写真は `(raceId, tick)` とカメラ・重ねる物の値で決まる。端末はレースの設定＋確定入力をその tick まで**もう一度計算**して馬の位置を出す（`PhotoSnapshot.Capture`、走っているレースの `RaceSim` には触らない）。レースの状態・結果ハッシュ・ゴールデンは変わらない。同じ値なら何度でも同じ写真を作り直せる（`PhotoSnapshot.Fingerprint` が一致する）。
+- **プライバシー**：写真の名札は馬の名前と、乗り手の表示。自分は「あなた」、フレンドはそのプレイヤーの表示名、**フレンドでない他の人間は `p<slot>`**（マイリプレイ §37 と同じ置き換え。1始まりの枠番ではなく 0 始まりの slot）、CPU は「CPU」。`names: "hidden"` で名札をすべて消せる（既定は `masked`）。共有のテキスト（`ShareCard.ShareText`）には他の人の名前を入れない。
+- **ひとこと（caption）**：0〜`captionMaxChars`（既定 24）文字。表示名と同じ規則（NFKC・制御文字なし・URL なし・NG 名リスト、§8 REQ-SOCIAL-006）に加えて、ショップの言葉の規則（「倍」「お得」「今だけ」「残りわずか」「通常価格」）と賭けを思わせる言葉（「馬券」「賭け」「賭博」「ベット」「オッズ」「配当」「払戻」「払い戻し」「的中」「予想」）を使えない（400 `INVALID_NAME`／`NG_NAME`）。**翻訳しない**（英語の応答でも打ったまま、`PLAYER_TEXT_KEYS` の `caption`）。
+- 生成する文（解放の条件・注意書き）も同じ言葉の規則を守る（`photoProblems` が検査）。
+
+### 38.1 カタログ（`server/master/photo.json`）
+```json
+{ "version": 1,
+  "config": { "enabled": true, "maxSaved": 30, "captionMaxChars": 24, "stampsMax": 3,
+              "camera": { "orbitDeg": [-180, 180], "distanceDm": [20, 200], "heightDm": [3, 100], "fovDeg": [20, 70], "dof": [0, 3] } },
+  "looks":  [ { "id": "natural", "name": "ナチュラル", "unlock": { "kind": "default" } } ],
+  "frames": [ { "id": "victory", "name": "勝利の額縁", "unlock": { "kind": "achievement", "achievementId": "wins", "tier": 1 } } ],
+  "stamps": [ { "id": "carrot_pop", "name": "にんじんポップ", "unlock": { "kind": "cosmetic", "itemId": "photo_stamp_carrot_pop" } } ] }
+```
+- 種類：`looks`（色味・フィルター。**すべて無料**＝`default` だけ）、`frames`（写真の枠）、`stamps`（写真に置く絵）。id は `[a-z0-9_]{1,32}`、名前は 1〜16 文字。
+- 解放 `unlock.kind`：`default` 最初から／`achievement` 実績（§24）のその段に届いた（`tierReached`、遊んで解放）／`cosmetic` 見た目ショップでコインで直接買う（`items.json` の `kind: "photo"`・`asset` がその品のアセットキー。決まった価格、`notForSale` 不可、ガチャ・ランダムからは出ない）。購入は既存の `POST /v1/shop/cosmetics/:itemId/buy`（冪等キー、1回だけ）。
+- アセットキー：`photo/look/<id>`・`photo/frame/<id>`・`photo/stamp/<id>`（`contracts/assets.md`、未着は各 kind の `default`）。ゲームのロゴ（ウォーターマーク）は既存の共有画像のもの（`ShareCard.Watermark`）。
+- 検査（起動時・リモート設定）：`photoProblems` — 形・範囲、重複 id、ルックは全部 `default`、フレームとスタンプにそれぞれ `default` が1つ以上、実績と段が実在、`cosmetic` は `kind: "photo"` で asset が一致し直販、写真の品はどれもちょうど1つを解放、文の言葉の規則。
+
+### 38.2 `GET /v1/photo/catalog`（要認証）
+```json
+{ "enabled": true, "version": 1,
+  "limits": { "maxSaved": 30, "captionMaxChars": 24, "stampsMax": 3, "camera": { "orbitDeg": [-180, 180], "distanceDm": [20, 200], "heightDm": [3, 100], "fovDeg": [20, 70], "dof": [0, 3] } },
+  "looks":  [ { "id": "natural", "name": "ナチュラル", "asset": "photo/look/natural", "unlock": { "kind": "default" }, "unlockText": "最初から使える", "unlocked": true } ],
+  "frames": [ { "id": "victory", "name": "勝利の額縁", "asset": "photo/frame/victory", "unlock": { "kind": "achievement", "achievementId": "wins", "tier": 1 }, "unlockText": "実績「勝利の記録」の1段目で解放", "unlocked": false } ],
+  "stamps": [ { "id": "carrot_pop", "name": "にんじんポップ", "asset": "photo/stamp/carrot_pop", "unlock": { "kind": "cosmetic", "itemId": "photo_stamp_carrot_pop" },
+                "price": 100, "currency": "any", "unlockText": "見た目ショップで購入（100コイン）", "unlocked": false } ],
+  "notice": "フォトモードの見た目は写真だけに使われ、レースの能力には影響しません。" }
+```
+- `price`／`currency` は `cosmetic` の品だけ。無効（`enabled: false`）のときは `{ "enabled": false }` だけ。
+
+### 38.3 写真の記録（要認証）
+写真そのもの（画像）はサーバーに置かない。作り直すための小さな記録だけを最大 `maxSaved` 件（既定 30、購入で増えない）。
+| メソッド | パス | 本文 | 応答 |
+|---|---|---|---|
+| GET | `/v1/photos` | — | `{ "photos": PhotoRecord[]（新しい順）, "count", "max" }` |
+| POST | `/v1/photos` | `PhotoInput`（`Idempotency-Key` 必須） | `{ "photo": PhotoRecord, "count", "max" }` |
+| DELETE | `/v1/photos/:photoId` | — | `{ "deleted": true, "count", "max" }`（無い id は 404） |
+
+```json
+PhotoInput = {
+  "source": { "kind": "paused" | "result" | "replay", "mode": "ranked"|"friend"|"tutorial"|"time_attack"|"event"|"tournament"|"challenge"|"practice",
+              "raceId": "r_…"（1〜128、[A-Za-z0-9_:.-]、オフラインはクライアントが付けた id）, "tick": 0〜72000 },
+  "camera": { "focusSlot": 0〜17, "orbitDeg": -180〜180, "distanceDm": 20〜200, "heightDm": 3〜100, "fovDeg": 20〜70, "dof": 0〜3 },
+  "lookId": "natural", "frameId": "plain" | null, "stamps": [ { "id", "xPermille": 0〜1000, "yPermille": 0〜1000, "scalePermille": 250〜2000, "rotDeg": -180〜180 } ]（0〜stampsMax）,
+  "caption": string | null, "names": "masked" | "hidden", "hideUi": true }
+PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `source.replayId` のある記録に `"replaySaved": boolean` を足す）
+```
+- `source.replayId`（任意、Round 15 統合）：§37 のマイリプレイの再生から撮った写真が、**自分の保存したリプレイ**を指す（保存は raceId で引くので `replayId` = `raceId`）。`kind: "replay"` 以外・`raceId` と違う値は 400、保存していないレースは 404。あとでリプレイを消しても写真は残り、一覧の `replaySaved` が false になる（アプリは「リプレイを見る」を出さない）。フレンドの公開リプレイから撮った写真は `replayId` なし。
+- 名札の伏せ方は §37 と同じ一つの規則（`p<slot>`：サーバー `maskedPlayerId`、C# `ReplayPrivacy.MaskedId`。`PhotoNames.Masked` はそれを呼ぶだけ）。
+- カメラの値は整数（dm・度）。範囲は `limits.camera`（範囲外は 400）。高さの下限（0.3 m）は**コースの下にカメラが入らない**ための値で、クライアントの `PhotoCamera` も同じ値で止める。
+- 使ったルック・フレーム・スタンプは**解放済みであること**（未解放は 409 `PHOTO_LOCKED`）。上限に達していたら 409 `PHOTO_LIMIT`（古い記録を消してから）。同じ冪等キーの再送は最初の答え。
+- 削除の予約中も保存・削除はできる（状態の中にあり、アカウント削除で状態ごと消える）。記録は本人だけが読める（他人に公開する API は無い）。
+- 無効（`enabled: false`）のときはどれも 404 `NOT_FOUND`。
+
+### 38.4 KPI
+クライアントのイベント `photo_take`（撮った時。`props.source`：`paused`|`result`|`replay`、`props.look`：ルックの id）→ s1 = source、s2 = look。`photo_share`（OS の共有シートに渡した時だけ。`props.source`、`props.framed`：フレームを付けたか）→ s1 = source、s2 = `framed`|`plain`。サーバーのイベント `photo_save`（記録を保存した時）→ s1 = source.kind、s2 = mode。クエリは `docs/ops/kpi-queries.md`「フォトモード」。
+
+### 38.5 クライアント（`PhotoModeModel`）
+- 入口：レースのポーズ（`CanPause` が true のときだけ）・結果画面（終わったレースはどのモードでも）・リプレイ再生（結果画面の「共有」の `ReplayShareModel`、および §37 マイリプレイの再生画面の「この瞬間を撮る」＝ `OpenFromSavedReplay(ReplayPlayer)`：画面のフレームの tick、自分の保存なら `replayId` 付き）。
+- `PhotoSnapshot.Capture(config, inputs, tick)` で止めた瞬間の全馬を作る。止めたレースの `Sim.Tick` と同じ tick なら、走っているレースの馬と同じ状態になる（テストで確認）。
+- `PhotoCamera`：注目の馬を中心に回る（orbit）・寄る（distance／fov）・高さ。値は `limits.camera` で止め、カメラは常にコース面（Y=0）より 0.3 m 以上上。結果は `RaceCameraShot`（`CourseFrame.ToWorld` で置く）。
+- UI を隠す（`HideUi`）：撮影画面の操作パネルを消して構図を確かめる。写真に HUD（着順・タイム）は入れない。
+- 共有：`PhotoShareCard`（`ShareCard` にひとこと・フレーム・スタンプ・ルックを足したもの、`Kind = "photo_image"`）を `IClipRecorder.CaptureStillAsync` に渡し、`IShareSheet` へ。共有した時だけ `photo_share`。
+- 未解放の品は鍵付きで `unlockText` を出し、`cosmetic` は見た目ショップの購入（既存の `BuyCosmeticAsync`、コイン不足は §29 の案内）。オフラインでもルック（すべて無料）と `default` の品で撮って共有できる（保存だけオンライン）。
+
+## 39. 出走前アドバイス（REQ-ADV-001〜016、`server/src/domain/raceAdvice.ts`・`raceAdviceService.ts`、C# `RaceAdvice.cs`・`Muchi.Game.RaceAdviceModel`、共有ベクター `contracts/race-advice.vectors.json`）
+レースの前（馬を選ぶ画面）に、**データから計算した短いアドバイス**を出す：持っている馬のうちこのコース・距離・馬場に合う馬、その馬の乗り方（位置取りの目安・ムチの打ち始め・手綱）、わかっている範囲の相手の脚質。**勝つ確率・オッズ・印（◎○▲△）は出さない**。購入を勧めない。無料で、全員が同じ情報（プレイヤーが既に見られる情報だけ）から同じアドバイスを受け取る。
+
+### 39.1 計算（REQ-ADV-001〜003、純粋な関数 `computeRaceAdvice`）
+入力は普通のデータだけ（時計・乱数・マスター参照なし）。同じ入力から必ず同じ出力。サーバー（TS）とクライアント（C# `RaceAdvice.Compute`）は同じ手順で、`contracts/race-advice.vectors.json` の全ケースで一致すること（`server/test/race-advice.test.ts`・`engine/Muchi.Engine.Tests/RaceAdviceTests.cs`。ファイルは `npm run gen:advice-vectors` が書き、違えばテストが落ちる）。
+
+入力 `AdviceInput`：
+| キー | 中身 |
+|---|---|
+| `mode` | `ranked`/`friend`/`event`/`tournament`/`challenge`/`timeattack`/`tutorial` |
+| `courses[]` | `{ trackId, surface, distanceM, going, night, corners, finalStraightM }`。1件 = コースが決まっている。複数 = レースがその中から1つを選ぶ（ランク戦：全コース、その日の馬場） |
+| `horses[]` | 候補の馬（自分の現役の馬・貸し出し馬）：能力5つ（調教込み）・脚質・距離適性・芝ダート・得意馬場・固有スキル `{ id, name, trigger }` |
+| `field` | わかっている相手 `{ nige, senko, sashi, oikomi, unknown }`、わからなければ null |
+| `rules` | ルールセットから読む値（`adviceRules`）：`aptitudeOutPenaltyPermille`、`goingSpecialistPermille`、馬場ごとの消耗（芝・ダート各4）、`spurtDistanceM` と距離のキー（1.2）、`maxWhips`・`whipDiminishWindowTicks`、CPU の脚質ごとの目標位置、スキルのキーの有無（1.3）。無い任意キー群は中立の値 |
+| `statCap` / `fixedStats` | 能力の正規化（ランク戦のクラス上限・チャレンジ・タイムアタック）／全員同じ能力（イベント） |
+| `focusHorseId` | 画面で選んでいる馬（乗り方のヒントはこの馬について）。無ければおすすめの馬 |
+
+馬ごとの「合い方」`fitPermille`（コースごとに足し、複数コースなら合計）：
+| 要素 | 値 | 根拠 |
+|---|---|---|
+| 距離が適性外 | −`aptitudeOutPenaltyPermille`（50） | エンジンが最高速とスタミナを5%下げる（RaceSim） |
+| 芝ダートが合わない | −同じ | 同上 |
+| 得意馬場 | エンジンの `GoingSpecialistPermille` そのもの（±8、稍重は±4。0 へ切り捨て） | REQ-RACE-035 |
+| 固有スキルがこのコースで出せる | +3（`cornerRail` はコーナーの無いコース、`finalStraight` は最後が直線でないコースでは出ない → 0）。スキルを使わないレース（チャレンジ・タイムアタック・チュートリアル・能力固定・1.3 未満のルールセット）では 0 | 1.3、balance-targets R9（スキルは理由になるが決め手にしない） |
+| 消耗の多い馬場でスタミナの比率 | 比率（能力合計に対する‰）≥220 で +2、<180 で −2。「消耗が多い」= その面の良馬場より 1.5%以上多い（距離のキーが無いルールセットでは 芝2400m・ダート2000m 以上も） | 馬場ごとの消耗（1.1） |
+並べ方：`fitPermille` の大きい順 → 実効の能力合計（`statCap` があればそこで頭打ち、能力固定なら 0）の大きい順 → id の順。評価 `grade`：1コースなら 適性外か合計が負 → `poor`、正 → `good`、0 → `ok`。複数コースなら 全部合う → `good`、半分未満 → `poor`、他 → `ok`。
+
+おすすめ `suggestedHorseId` と理由 `suggestReason`：1頭だけ → `only`。1位の合い方が2位より上 → `aptitude`。同じで能力合計が上 → `stats`。どちらも同じ → `even`（おすすめなし、「どの馬も条件は互角。乗り方で差がつく」）。
+
+行 `lines[]`（`kind`：`pick`/`going`/`night`/`field`/`style`/`rein`/`skill`/`whip`/`rules`）。日本語の文はサーバーとクライアントが同じに作り、英語は応答の境界で訳す（§23、`i18n/en.ts`）：
+- `going`：その面の良馬場との消耗の比が ≥1015‰ なら「◯の馬場：脚が減りやすい。手綱で脚をためる」、≤985‰ なら「脚が残りやすい」。`night`：「ナイター：走りは昼と同じ（見た目だけ）」（エンジンはナイターで何も変えない）。
+- `field`：わかっている相手の脚質の数と頭数、わからない頭数は「出走時に決まる」。ランク戦・イベントは常に「最大12頭。相手は出走時に決まる」。
+- `style`：距離のキーがあるルールセット（1.2+）では「この距離で脚質の有利不利はない」（balance-targets T2：全コース×全馬場で脚質別勝率が一様の±25%）。無い場合は短い距離（基準 −400m 以下）で「前の馬が残りやすい」、長い距離（+400m 以上）で「後ろの馬が伸びやすい」（1.1.0 の表）。脚質ごとの位置の目安 = CPU の目標位置 `1 + ⌊(頭数−1)×cpuTargetRank‰/1000⌋`（2番手以上、逃げは「先頭」、1頭で走るときは出さない）。逃げの馬で、わかっている相手に逃げが2頭以上 → 「無理に競らず2番手からでもいい」、相手が全部わかっていて逃げが0 → 「楽に先頭に立てる形」。
+- `rein`：気性 < 400（掛かりの起きやすさは 1000 − 気性に比例）→「かかったら手綱を長押し」。`skill`：`goodStart` のスキルが使えるとき「ゲートが開いた瞬間にスタート」。
+- `whip`：スパート区間 = `spurtDistanceM` × 距離の係数（1.2 の `DistanceFactorPermille`）。打ち始め = min(400, スパート区間) を 50m 単位で切り捨て（balance-targets R4d：「残り400mから」はムチなしより速い）、間隔 = `whipDiminishWindowTicks`（秒に切り上げ）、本数 = `maxWhips`。`whip` オブジェクトにも同じ数（`startRemainingM`・`spurtM`・`intervalTicks`・`count`）。コースが決まっていなければ「ムチは最後の直線で、間隔をあけて」だけ。
+- `rules`：正規化（「能力は合計N までにそろえて走る」）、能力固定、スキルを使わないレース。
+
+### 39.2 チュートリアル（REQ-ADV-010）
+`mode: tutorial` は入力に関係なく**決まった短い版**：「合図が出たら、ムチ」「ムチは間隔をあけて打つと伸びる」。馬の並べ替え・おすすめは無い（最初のレースの操作はムチだけ、docs/planning/06 F4）。
+
+### 39.3 正直さ（REQ-ADV-003/004、lint `adviceTextProblems`）
+- 生成する文に使わない言葉：勝率・確率・オッズ・本命・対抗・大穴・穴馬・単勝・複勝・馬券・予想・必勝・勝てる・絶対・確実・%・倍・買・購入・課金・ガチャ・スカウト・ショップ・有償・今だけ・残りわずか・お得・通常価格・◎○▲△☆。英語も同じ（odds・win rate・chance・probability・favourite・long shot・bet・buy・purchase・shop・scout・gacha・guarantee・sure win・%・double・limited time・paid）。テストは全コース×全馬場×昼夜×全モード×マスターの全馬の組み合わせで出る文の全部を日英で検査する（馬の名前はプレイヤーが付けた文なので除く）。
+- 「順位」は並べ方で、予想ではない。出すのは適性・ルールセットの数字から言えることだけ。
+- 公営競技の賭けの語（馬券・オッズ・配当・的中・単勝… / bet・odds・wager・payout・favourite…）は実況パック（§36）の lint と**同じ一つの一覧**（`server/src/domain/bettingWords.ts`）を読む。上の一覧はそれに足すアドバイスだけの語。`bet` は語の境目で見る（better・between は対象外）。
+
+### 39.4 `GET /v1/races/advice`（要認証、読み取りだけ）
+クエリ：
+| キー | 意味 |
+|---|---|
+| `context` | `ranked`（既定）/`friend`/`event`/`challenge`/`timeattack`/`tutorial` |
+| `trackId` | コース（`friend`・`timeattack` で使う。`event` は開催のコースの1つなら使う） |
+| `going` / `night` | 部屋の条件など、画面に出ている馬場・ナイター（コースの面に合わない馬場は 400。ナイターは照明のある競馬場だけ）。無ければその日の馬場（REQ-RACE-037） |
+| `challengeId` | `challenge`：今週のチャレンジ（無ければ 404） |
+| `eventId` | `event`：イベント（無ければ 404） |
+| `horseId` | 選んでいる馬（ヒントの対象） |
+| `field` | `friend`：部屋の他のメンバーの脚質（`nige,sashi`…、最大11） |
+
+コンテキストごとの入力：
+| context | コース | 候補の馬 | 相手 | 正規化・スキル |
+|---|---|---|---|---|
+| `ranked` | 全コース（その日の馬場）。初めてのランク戦でコースが決まっている場合（REQ-UXS-003）はそのコース | 現役の馬 | null（`field` は受け取らない） | クラスの上限、スキルあり |
+| `friend` | `trackId` があればそのコース、無ければ全コース | 現役の馬 | `field` の脚質 | なし、スキルあり |
+| `event` | 開催のコース（`trackId` が開催のコースならそれ） | 現役の馬（脚質の制限があれば合う馬だけ） | null | イベントの上限・能力固定・イベントのルールセット |
+| `challenge` | チャレンジのコース・馬場・ナイター | **貸し出し馬**＋脚質の条件に合う自分の馬 | CPU の頭数（脚質は不明） | `statCap`、スキルなし |
+| `timeattack` | `trackId`（必須、馬場は良、昼） | 現役の馬 | 1頭 | `statCap`、スキルなし |
+| `tutorial` | — | — | — | 39.2 の決まった版 |
+
+応答 = `AdviceOutput` ＋ `context` ＋ `input`（計算に使った `AdviceInput`。端末は選ぶ馬が変わったら `focusHorseId` だけ変えて `RaceAdvice.Compute` で計算し直す。中身は自分の馬とルールセットの値だけ）：
+```json
+{ "v": 1, "context": "friend", "mode": "friend", "tutorial": false, "courseCount": 1,
+  "horses": [ { "horseId": "h2", "name": "ギンガノカナタ", "rank": 1, "fitPermille": 13, "grade": "good", "fits": 1,
+      "checks": [ { "kind": "distance", "mark": "ok", "text": "距離2,400mは適性内（1,800〜2,600m）" }, { "kind": "going", "mark": "plus", "text": "重の馬場が得意" } ] } ],
+  "suggestedHorseId": "h2", "suggestReason": "aptitude", "focusHorseId": "h2",
+  "lines": [ { "kind": "pick", "text": "おすすめはギンガノカナタ。距離・芝ダート・馬場の条件がいちばん合う" }, { "kind": "whip", "text": "ムチは残り400mから、1秒以上あけて6発まで" } ],
+  "whip": { "startRemainingM": 400, "spurtM": 840, "intervalTicks": 20, "count": 6 },
+  "field": { "nige": 3, "senko": 1, "sashi": 0, "oikomi": 0, "unknown": 0, "size": 5 } }
+```
+- `checks[].mark`：`plus`/`ok`/`minus`/`off`。複数コースのときは `kind: "pool"` の1行（「今日の8コースのうち5コースで距離と芝・ダートが合う」）。数は**コースの数**で、確率ではない。
+- ルールセットはリモート設定の有効なもの（`activeRuleset`、§15）。状態は変えない（冪等キー不要）。削除予定中のアカウントも読める。
+- エラー：`BAD_REQUEST`（context・going・field の形）、`NOT_FOUND`（チャレンジ・イベント）、`CONFIG_INVALID`（無いコース）。
+
+### 39.5 公平性（REQ-ADV-006）
+- 無料・回数制限なし・全員同じ。課金や持ち物で内容が変わらない（同じ馬なら課金者も無課金者も同じ応答、テストで確認）。
+- 使う情報はプレイヤーが既に見られるものだけ：自分の馬・コースとその日の馬場（REQ-DAY-001 で全員同じ）・チャレンジのカード・部屋のメンバーの脚質（クライアントが部屋の画面から渡す）。ランク戦の相手（マッチング前）は使わない。
+- アドバイスはレースの結果に一切関わらない（エンジン・設定は変わらない、表示だけ）。ゴールデンは変わらない。
+
+### 39.6 設定・デバッグ（REQ-ADV-009/014）
+- 端末の設定「出走前アドバイス」（既定 ON）。OFF ならパネルを出さず、API も呼ばず、KPI も送らない（`RaceAdviceModel.Enabled`、キー `muchi.advice.enabled`）。チュートリアルは設定にかかわらず決まった版を出す。
+- 結果画面（Round 8 の振り返り）：ムチのアドバイスを見たレースでは、ムチの打ち始めがアドバイスどおりだったかを1行出す（端末の `RaceDebriefRecorder` の最初のスパート区間のムチの残り距離と比べる：最初のムチが残り（打ち始め＋50m）〜（打ち始め−150m）の間なら「アドバイスどおり」、それより前なら早すぎ、後なら遅すぎ、打たなかった）。C# `RaceAdvice.CheckWhipTip`、`RaceAdviceModel.DebriefLine`。
+
+### 39.7 KPI（クライアントのイベント）
+| イベント | props | 列 |
+|---|---|---|
+| `advice_view` | `context`（39.4 の値）、`horses`（並べた馬の数 0〜30）、`suggested`（おすすめがあったか） | s1 = context、count = horses、value = 1/0 |
+| `advice_follow` | `context`、`followed`（出走した馬 = おすすめの馬か） | s1 = context、value = 1/0 |
+`advice_view` はパネルを出した画面ごとに1回、`advice_follow` は出走（ランク戦の登録・部屋への参加・チャレンジの開始など）ごとに1回、おすすめがあった時だけ。クエリは `docs/ops/kpi-queries.md`「出走前アドバイス」。
+
+### 39.8 クライアント
+- `Muchi.Client`：`ApiClient.GetRaceAdviceAsync(RaceAdviceQuery)`、`RaceAdvice.Compute(AdviceInput)`（39.1 と同じ。オフラインのレース・チュートリアル用）、`RaceAdvice.Rules(RulesetParams)`、`RaceAdvice.CheckWhipTip`、`AnalyticsEvents.AdviceView`・`AdviceFollow`。
+- Unity ゲーム層 `RaceAdviceModel`：パネルの行（おすすめ・馬ごとの○△のかわりに「よく合う／合う／条件外あり」の言葉と理由）、選んだ馬が変わったらヒントを計算し直す（サーバーに聞き直さず、受け取った馬の情報から端末で計算。結果はサーバーと同じ）、設定の ON/OFF、KPI、結果画面の1行。オフラインでは端末で計算。
+- デプロイ：新しい GET だけ（検証器は変わらない）。サーバーだけ出せばよい（§7.1 の順番に影響なし）。
+- 大会（§13 のトーナメント）のエントリー画面にはまだアドバイスを出さない（Round 15 統合で確認）：大会の定義（コース・`statCap`）は TournamentDO にあり、アドバイスを計算するプレイヤーのオブジェクトからは引けない。足すときは `context: "tournament"` に大会 id を渡し、ルーターが大会の定義を添えて呼ぶ形にする（`AdviceMode` には `tournament` が既にある）。
+
+## 40. アクティビティ（お知らせ一覧、REQ-ACT-001〜016、`server/src/domain/activity.ts`、C# `Activity.cs`・`Muchi.Game.ActivityModel`）
+留守の間に**自分に起きたこと**を1か所にまとめる一覧と、ホームのベル（未読の数のバッジ）。**表示とリンクだけ**：この一覧はコイン・アイテムを動かさない（受け取りボタンは出さない。プレゼントはプレゼントボックスで受け取る）。E番号なし（経済は変わらない）。
+
+**書く場所（プッシュと同じ箇所、送り元のイベント id ごとに1回）**
+| 種類 `kind` | 書く箇所（プッシュ） | 送り元 id（重複は無視） | まとめる | プッシュの種類 `category` | リンク `link.screen` |
+|---|---|---|---|---|---|
+| `friend_request` | `friendReceive`（`friend_request`） | `friend_request:{from}:{at}` | しない | `friends` | `friends` |
+| `friend_accepted` | `friendAccepted`（`friend_accepted`） | `friend_accepted:{by}:{ゲーム日}` | しない | `friends` | `friends` |
+| `rival_week` | ライバルの週の結果（`settleWeek`、REQ-RIVAL-006） | `rival_week:{weekId}` | しない | `friends` | `rival` |
+| `rival_record` | `rivalPush`（`rival_record`） | `rival_record:{相手}:{ゲーム日}` | しない | `friends` | `rival` |
+| `stable_like` | マイ厩舎のいいね（`stableLikeReceive`、数えたものだけ） | `stable_like:{likeId}` | する | `friends` | `stable` |
+| `team_cheer` | 応援スタンプ（`cheerPush`、`team_cheer`） | `react:{teamId}:{seq}` + 送り主 | する | `friends` | `team_feed` |
+| `tournament_result` | 大会の最終順位（`tournamentClose`） | `tournament:{tournamentId}` | しない | `events` | `tournaments`（`id` = 大会 id） |
+| `gift_arrived` | プレゼントボックスに入ったとき（`deliverGift`、`gift_arrived` は REQ-BOX-011 の送り元だけ） | `gift:{ref}` | する | `gifts` | `gift_box` |
+| `team_goal_tier` | 支部の共同目標の段に到達（`teamGoalMilestone`、`team_goal`） | `team_goal_tier:{teamId}:{週}:{段}` | しない | `friends` | `team_goal` |
+| `team_goal_week` | 共同目標の週の結果（`teamGoalReward`） | `team_goal_week:{週}` | しない | `friends` | `team_goal` |
+| `replay_share` | フレンドがマイリプレイ（§37）の保存を公開にしたとき（`MyReplaysService.update` が非公開→公開の時だけ各フレンドへ `activityReplayShare`、Round 15 統合） | `replay_share:{owner}:{raceId}`（公開を外してまた公開しても1件） | しない | `friends` | `replay`（`id` = 公開した人。フレンドのリプレイ一覧へ） |
+
+- 大会（`tournament`）と共同目標（`team_goal`）の賞品はプレゼントボックスにも入るが、`gift_arrived` は書かない（同じことを2回書かない。各行のリンクから見られる）。
+- おかえり・新着情報（REQ-CB-*）は**項目にしない**：一覧の `links.whatsNew`（新着の数）でその画面へ案内するだけ。週替わりチャレンジ（§31）の結果は自分で走った直後に結果画面で出るので、留守の間の出来事にならない（項目なし）。
+- プッシュの設定（§10 の `categories`・静かな時間帯）は**プッシュだけ**に効く。一覧はいつでも全部見られる。各項目の `category` はプッシュと同じ種類（設定画面と一覧で同じ分け方）。
+- ブロック（支部フィードのミュート＝ブロックの一覧、REQ-RIVAL-011）している相手からは項目を作らない。あとからブロックした相手の分も一覧と未読の数から外す（まとめた項目は、その相手の分だけ数を減らす）。
+- 退会・BAN された相手の名前は出さない：一覧を返すときに公開プロフィール（ディレクトリ）を引き、無い（退会）・BAN（`banned: true`）なら中立の名前「プレイヤー」。名前はプレイヤーが付けたものなので訳さない。
+- 削除が進行中（`deletion.status = deleting`）のアカウントには書かない。アカウント削除で一覧ごと消える（状態の一部）。
+
+**保存（`progression.activity`、起動時とリモート設定で検査、REQ-ACT-010）**
+`{ "maxEntries": 100, "maxDays": 30, "collapseHours": 24, "pageSize": 20, "pageMax": 50, "badgeMax": 99 }`。範囲：`maxEntries` 10〜500、`maxDays` 1〜90、`collapseHours` 0〜168（0 = まとめない）、`pageMax` 1〜100、`pageSize` 1〜`pageMax`、`badgeMax` 9〜999。無ければこの既定値。書くたびに `maxDays` より古い項目を消し、新しい順に `maxEntries` 件だけ残す。送り元 id は直近500件を覚える。
+- **まとめる**：同じ種類のまだ読んでいない項目が `collapseHours` 以内に始まっていれば、新しく作らずに数を足し（`count`）、送り主を先頭に（最大20人、人ごとの数も）、時刻と id を新しくして一覧の先頭へ動かす（未読に戻る）。読んだ後の分は新しい項目になる。
+
+### 40.1 `GET /v1/activity?cursor=&limit=`（要認証、読むだけ）
+```json
+{ "items": [
+    { "id": "42", "kind": "stable_like", "category": "friends", "at": 1796871600000, "count": 12, "unread": true,
+      "actors": [ { "playerId": "p_9", "name": "ハヤテ" } ],
+      "text": "マイ厩舎に12件のいいねが届きました", "link": { "screen": "stable", "id": null } } ],
+  "nextCursor": "17", "unread": 3, "readUpTo": "39",
+  "links": { "whatsNew": 2 } }
+```
+- 新しい順。`cursor` は前の応答の `nextCursor`（不透明な文字列、数字だけ）、`limit` は 1〜`pageMax`（既定 `pageSize`）。おかしい値は 400。
+- `text` は日本語で作り、英語は応答の境界で訳す（§23、`i18n/en.ts`）。1件のときは名前入り（「{name}さんがマイ厩舎にいいねしました」）、まとめたときは数（「マイ厩舎に{n}件のいいねが届きました」）。
+- `unread` は見える項目のうち `readUpTo` より新しいものの数（`badgeMax` で頭打ち）。`links.whatsNew` は新着情報（REQ-CB-008）のまだ見ていない数。
+
+### 40.2 `POST /v1/activity/read`（要認証、何度送っても同じ）
+`{ "upTo": "42" }`（省略 = 今ある全部）。`readUpTo` を `upTo` まで進める（戻さない。今の最新より先は最新まで）。→ `{ "readUpTo": "42", "unread": 0 }`。他のキーは 400。
+
+### 40.3 バッジ
+`GET /v1/player`（と bootstrap）の `activity: { "unread": 3 }`（`badgeMax` で頭打ち）。ホームのベルはこの数を出し、0 なら出さない。
+
+### 40.4 KPI
+クライアントのイベント `activity_open`（`props.unread`：開いたときの未読の数 0〜999）→ value、`activity_tap`（`props.kind`・`props.screen`）→ s1 = 種類、s2 = 行き先。クエリは `docs/ops/kpi-queries.md`「アクティビティ」。
+
+### 40.5 クライアント（`ActivityModel`）
+- ホームのベルとバッジ（0 は非表示、サーバーは `badgeMax` で頭打ちにするので、その数なら「99+」）、一覧（新しい順・`nextCursor` で続き・同時に2回読まない）、項目を押すと `link.screen` の画面へ（`activity_tap`）、一覧を開いたら `activity_open` を1回、見えている一番新しい id まで既読（`POST /v1/activity/read`、失敗しても次に開いたとき送り直す）。オフラインは「オンラインで確認できます」。受け取りボタンは出さない（プレゼントは「プレゼントボックスへ」のリンク）。
+
+## 41. アクセシビリティ設定（REQ-A11Y-001〜016、`server/src/domain/accessibility.ts`、C# `Accessibility.cs`（`AccessibilitySettings`・`AccessibilityTokens`・`TextScale`・`MotionPolicy`・`FlashLimiter`・`WhipHold`）・`Muchi.Game.AccessibilityModel`、色のトークン `contracts/a11y-tokens.json`、docs/planning/06 §11）
+より多くの人が遊べるようにする表示・操作の設定。**アカウントに保存**し（機種変更・再インストールでも残る）、端末にも写しを持ってオフラインでも効く。**どの設定もレースの計算・ルールセット・検証・結果ハッシュ・リプレイを変えない**（ゴールデンも同じ）。
+
+### 41.1 設定と既定値（REQ-A11Y-001）
+| キー | 値（線の値） | 既定 | 効くところ |
+|---|---|---|---|
+| `textSize` | `standard` \| `large` \| `largest` | `standard` | 本文（28px 未満）の文字を ×1.00 / ×1.15 / ×1.30（見出し・大きな数字はそのまま）。§41.4 |
+| `colorMode` | `standard` \| `cvd` | `standard` | 色覚サポート：ゲージ・順位・状態の色をトークンの `cvd` に替える（シアン／紺の基調は同じ）。§41.5 |
+| `reduceMotion` | `true` \| `false` | `false` | 画面の揺れ・FOV キック・スピード線・背景のゆっくりしたズーム・ゲージの点滅をやめ、画面の切り替えとガチャの演出を短くする。§41.6 |
+| `haptics` | `true` \| `false` | `true` | 振動（ムチ・追い抜き・スタミナ警告・固有スキル）。オフなら一切振動しない |
+| `subtitles` | `true` \| `false` | `true` | 実況の字幕（レース・観戦・リプレイ）。既定でオン（音を消しても遊べる） |
+| `oneHanded` | `off` \| `left` \| `right` | `off` | 片手レイアウトの案内：レースの操作（ムチ・手綱・内／外）を片側の親指の届く範囲にまとめる。見た目の配置だけ |
+| `whipInput` | `tap` \| `hold` | `tap` | ムチの入力：長押しの間、決まった間隔でムチを入れる。§41.7 |
+
+### 41.2 `GET /v1/settings/accessibility`・`PUT /v1/settings/accessibility`（要認証）
+```json
+{ "textSize": "standard", "colorMode": "standard", "reduceMotion": false, "haptics": true, "subtitles": true, "oneHanded": "off", "whipInput": "tap",
+  "rev": 0, "updatedAt": null,
+  "textScale": { "standard": 1, "large": 1.15, "largest": 1.3 },
+  "rules": { "affectsRace": false, "whipHold": "same_as_tap", "maxFlashesPerSecond": 3 } }
+```
+- **GET** は保存されている値（無ければ既定値）。読むだけでは状態を作らない。`GET /v1/player` と `POST /v1/player/bootstrap` にも同じ形で `accessibility` が入る（起動1回で揃う）。
+- **PUT** は**全体の置き換え**（冪等）：本文は上の7つのキーのオブジェクト。**送らなかったキーは既定値に戻る**（端末はいつも全部送る）。知らないキー・知らない値・型違いは 400 `BAD_REQUEST`。同じ本文を何度送っても `rev` は変わらず、KPI も出ない（冪等キー不要）。値が1つでも変わると `rev` を1増やし `updatedAt` を更新する。応答は GET と同じ形。
+- 削除予定中のアカウントでも変えられる（見た目だけ）。削除されると他のデータと一緒に消える（墓標のある id は今までどおり 404）。
+
+### 41.3 端末の写しとオフライン（REQ-A11Y-004）
+- 端末は最後の設定を写し（`AccessibilityModel.KeyBlob`）に持ち、起動直後・オフラインでもそれを当てる（サーバーを待たない）。
+- 変えたらすぐ画面に当て、写しに保存し、PUT する。届かなかった時は写しに「未送信」の印を付け、次にオンラインになった時（起動・画面を開いた時）にまとめて PUT する。
+- 起動時：写しが未送信ならサーバーへ PUT（端末が勝つ）。未送信でなければサーバーの値（bootstrap の `accessibility`）を写しに入れる（別の端末で変えた値が届く）。同時に2台で変えた時は後から届いた方（最後の書き込み）が残る。
+
+### 41.4 文字の大きさ（REQ-A11Y-005）
+- 倍率は本文（28px 未満の文字・ボタン・字幕・HUD の小さな文字）だけ。見出し・大きな数字（28px 以上）はすでに大きいので変えない。
+- **どの画面もはみ出さない**：箱に入りきらない文字だけ、標準の大きさまで戻してよい（日本語は標準より小さくしない。英語は従来どおり 66% まで、REQ-L10N-013）。プロトタイプの e2e（`test/a11y-flow.cjs`）が主要な画面を「特大」で日本語・英語の両方で調べ、はみ出し0件と、本文の多くが実際に大きくなったこと（各画面で文字の 60% 以上）を確かめる。
+
+### 41.5 色覚サポート（REQ-A11Y-006、`contracts/a11y-tokens.json`）
+| トークン | standard | cvd | 使うところ |
+|---|---|---|---|
+| `gauge.ok` | `#00d2ed` | `#00d2ed` | スタミナ・ミニゲージ（30%より多い） |
+| `gauge.low` | `#ffd34f` | `#ffff33` | 30% 以下 |
+| `gauge.critical` | `#ff5a4a` | `#cc6633` | 10% 以下・空（cvd では斜線の模様も付ける） |
+| `position.self` | `#ffd34f` | `#ffff33` | ミニマップ・頭上の印の自分 |
+| `position.other` | `#00d2ed` | `#5f8fb3` | ミニマップの他の馬 |
+| `status.ok` | `#8fe3a8` | `#00d2ed` | 登録済み・成功の文字 |
+| `status.danger` | `#ff7a6b` | `#ff9a3d` | 警告・削除・エラーの文字 |
+| `cue.whipChance` | `#ffe661` | `#ffff33` | 「今だ」のムチの光 |
+
+- 検査（`server/test/a11y-tokens.test.ts`、C# `AccessibilityTests`）：どのトークンも紺の背景 `#08182a` に対してコントラスト比 3:1 以上（図形、WCAG 1.4.11）、文字に使う `status.*` は 4.5:1 以上。`cvd` のグループ（ゲージの3色・順位の2色・状態の2色）は、通常の見え方と1型・2型・3型の2色覚の見え方（Machado 2009、強さ 1.0）のどれでも、組の色差 ΔE*ab（CIE76）が 40 以上。`standard` は今の見た目のまま（2型でゲージの黄と赤が 28.7 まで近づく。それを補うのが `cvd`）。
+- 色だけで伝えない（docs/planning/06 §9.3）：スタミナは文字（「脚が残り少ない」等）、自分の馬は大きな印と名前、レア度は形と文字を色と一緒に出す。
+
+### 41.6 動きを減らす・点滅（REQ-A11Y-007/008）
+- `reduceMotion`（`MotionPolicy`）：カメラの揺れ ×0、ムチの FOV キック ×0、スピード線なし、背景のドリフトなし、ゲージの点滅は止めて色と文字だけ、画面の切り替え・シートは 150ms 以下のフェード、ガチャの演出は光の待ち（380ms）なしで表が出てめくりも 150ms 以下。**ガチャの提供割合・抽選・結果・めくる順（`GachaRevealModel`）は同じ**（演出の時間だけ）。
+- 点滅は設定に関係なく常に**1秒間に3回まで**（REQ-A11Y-008）：繰り返す点滅（CSS の `infinite` なアニメーションでコントラストが変わるもの）は周期から数え、1回ずつの光（「伸びる！」・追い抜き・ムチの当たり）は `FlashLimiter`（どの1秒の窓でも3回まで、超えた分は光らせずに文字だけ）を通す。プロトタイプの点滅はすべて 2.5 回/秒以下（`test/a11y-flash.test.cjs`）。
+
+### 41.7 ムチの長押し（REQ-A11Y-012、§27 との関係）
+- `whipInput: "hold"`：押した瞬間はタップと同じ（発走前は START、発走後は WHIP）。押し続けている間は `WhipHold.Spacing` = max(`whipEffectTicks`, `whipDiminishWindowTicks`) + `InputAssistant.WhipSpacingExtraTicks`（§27.1 のムチだけおまかせと同じ間隔、既定 26tick）ごとに WHIP を1回。**自動で入るのは1レースに `WhipHold.MaxRepeats` = ムチの数 ÷ 2 − 1 回まで**（6本なら2回：一度押し続けると3本、残りはタップ）。離すと止まる。1tickに1回まで。チュートリアルではタップと同じ（押した瞬間だけ。REQ-UXS-004 はタップの前提、§27.2 と同じ扱い）。まったくタップできない人には §27 のムチだけおまかせがある。
+- 送るのは普通の入力バイト（§3 の Cmd）だけ。長押しが作る入力の並びは、指でタップすれば必ず作れる並び（テストで、同じムチをタップした乗り手と 240/240 レースで同じ着順）。
+- **自動の回数に上限がある理由**（作りながら測って分かったこと）：ムチの効く範囲は広く、決まった間隔で6本すべてを自動にすると、うまく押し始めた長押しは上手なタップと互角になった（一騎打ち 51.7%、§27.2 の「5割未満」を満たさない）。半分（3本）にすると、R11 と同じ道具で、最も上手に押し始めた長押しでも最良のタップの 0.77 倍の勝率、一騎打ち 43.8%、R11 の上手な乗り手との一騎打ち 48.7%、何もしない人には 99.2%（`AccessibilityTests.HoldIsCappedBelowSkilledPlay`）。課金で買えるものでもない。
+- 同じテストで分かったこと：R11 の基準の `SkilledRider`（ムチの間隔＝減衰の窓 20tick）は最良のタップではなく、もっと広い間隔（約32tick）の方が勝つ（240レースで 48 → 57 勝）。R11 の比はやや弱い基準に対するもの（ぜんぶおまかせは最良のタップに対しても 27/57 で上限の内）。
+- かんたん操作（§27）とは別の設定。補助がムチを持っている時（`whip`/`full`）は長押しも無視される（補助が捨てる）。相手には見えず、`res` の印も付けない（入力の種類は報告しない）。
+
+### 41.8 KPI
+| イベント | 送り手 | s1 | s2 | s3 |
+|---|---|---|---|---|
+| `a11y_setting_change` | サーバー（PUT で値が変わったキーごとに1行） | キー（`textSize` 等） | 新しい値（真偽は `on`/`off`） | `settings` |
+個人を特定する情報は入れない（どの設定か・どの値かだけ）。同じ値の PUT では出ない。クエリは `docs/ops/kpi-queries.md`「アクセシビリティ」。
+
+### 41.9 クライアント
+- `Muchi.Client`：`AccessibilitySettings`（`Parse`・`ToJson`・`Defaults`、知らない値は既定値）、`ApiClient.GetAccessibilityAsync`・`SetAccessibilityAsync`、`PlayerView.Accessibility`、`AccessibilityTokens`（トークンの表、`Color(mode, token)`）、`TextScale`（`Factor`・`Px`）、`MotionPolicy`、`FlashLimiter`、`WhipHold`。
+- `Muchi.Game`：`AccessibilityModel`（端末の写し・未送信の再送・`Changed` イベント・画面が結ぶ値 `TextScale`／`Palette`／`Motion`／`Haptics`／`Subtitles`／`OneHanded`／`WhipInput`・設定画面の行 `Rows()`・`ApplyTo(RaceInput)`）、`RaceInput.WhipMode`・`SetWhipHeld`・`Collect(RaceSim, slot)`。
+- 画面が守ること：docs/handoff-codex-round15-accessibility.md。

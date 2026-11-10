@@ -329,6 +329,8 @@ namespace Muchi.Client
         public string ShareText;
         /// <summary>analytics `share` kind: replay_video or replay_image.</summary>
         public string Kind = "replay_video";
+        /// <summary>REQ-PHOTO-009: photo mode overlays (look, frame, stamps, caption, name plates); null for a replay share.</summary>
+        public PhotoOverlay Photo;
 
         public static string FormatTime(long ms)
         {

@@ -10,6 +10,7 @@
  * Pure rules on the cup's state (one CupDO per cup in production, a map in tests) and on the player's `cups` state.
  */
 import { z } from 'zod';
+import { blockListOf } from './blocks.js';
 import { AppError } from './errors.js';
 import { foldForCompare } from './horses.js';
 import { deletionScheduled } from './accountDeletion.js';
@@ -504,7 +505,8 @@ export function ensureCups(s: PlayerState): PlayerCupsState {
   return s.cups;
 }
 
-const mutedOf = (s: PlayerState): string[] => [...((s as PlayerState & { teamFeed?: { muted: string[] } }).teamFeed?.muted ?? [])];
+/** The one block list (§47.1, blocks.ts) — a copy, the cup keeps it as the join snapshot. */
+const mutedOf = (s: PlayerState): string[] => [...blockListOf(s)];
 
 /** A missed close notice never blocks the limits for good: refs count until the window closed + a day. */
 export const REF_GRACE_MS = 86_400_000;

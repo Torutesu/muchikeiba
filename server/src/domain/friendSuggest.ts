@@ -13,6 +13,7 @@
  * Pure state logic + a small orchestration service (FriendSuggestService) over ports, like friends.ts.
  */
 import { AppError } from './errors.js';
+import { blockListOf } from './blocks.js';
 import type { Master } from './master.js';
 import type { PlayerState } from './player.js';
 import { moderationOf } from './player.js';
@@ -89,8 +90,8 @@ export function ensureFsug(s: PlayerState): FsugState {
   s.friendSuggest ??= { hidden: false, dismissed: [], opponents: [] };
   return s.friendSuggest;
 }
-/** The one block list (team-feed mute, REQ-RIVAL-011). */
-const blockedOf = (s: PlayerState): string[] => (s as PlayerState & { teamFeed?: { muted?: string[] } }).teamFeed?.muted ?? [];
+/** The one block list (§47.1, blocks.ts). */
+const blockedOf = blockListOf;
 const DAY = 86_400_000;
 const ID_RE = /^[A-Za-z0-9_:.-]{1,128}$/;
 export const fsugIdOk = (id: string) => ID_RE.test(id);

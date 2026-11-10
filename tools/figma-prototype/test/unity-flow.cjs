@@ -452,6 +452,110 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
   }
 
+  // round 16 (REQ-ORG-*): 厩舎の整理 — the stable's list → more demo horses → sort (rating) → filter (active) → lock → select two →
+  // the confirmation (every horse, nothing given back, cancel and confirm the same size) → retired, all on the real rules
+  async function rosterFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(() => globalThis.__muchi.show('Stable')); await waitScreen('stable');
+    await click('所属馬の一覧'); await waitScreen('roster'); await waitIn('.org-list');
+    const before = await page.locator('.screen.in .org-row').count();
+    await click('デモ：馬を増やす'); await page.waitForFunction((n) => document.querySelectorAll('.screen.in .org-row').length > n || document.querySelectorAll('.screen.in .org-row').length === 7, before, { timeout: 15000 });
+    await shot('roster', 400);
+    assert.ok((await page.locator('.screen.in').innerText()).includes('返ってきません'), 'roster: the no-refund notice');
+    await page.locator('.screen.in .org-sort').click(); await waitIn('.org-sort-sheet'); await shot('roster-sort-sheet', 400);
+    await page.locator('.screen.in .org-sort-sheet [data-sort="rating"]').click(); await page.waitForTimeout(500); await waitScreen('roster');
+    const ratings = await page.evaluate(async () => {
+      const v = (await globalThis.__muchi.logic.roster.view()).value;
+      const ids = [...document.querySelectorAll('.screen.in .org-row')].map((r) => r.dataset.horseId);
+      return ids.map((id) => v.horses.find((h) => h.horseId === id).rating);
+    });
+    assert.deepEqual([...ratings].sort((a, b) => b - a), ratings, 'roster: sorted by rating, high to low');
+    await page.locator('.screen.in .org-filter').click(); await waitIn('.org-filter-sheet'); await shot('roster-filter-sheet', 400);
+    await page.locator('.screen.in .org-filter-sheet [data-filter="status"][data-value="active"]').click(); await waitIn('.org-filter-sheet [data-filter="status"][data-value="active"].on');
+    await page.locator('.screen.in .org-filter-sheet [data-label="閉じる"]').click(); await page.waitForTimeout(400);
+    assert.match(await page.locator('.screen.in .org-filter').innerText(), /（1）/, 'roster: one filter in use');
+    await page.locator('.screen.in .org-row[data-blocks=""] .org-lock').first().click(); await page.waitForTimeout(500); await waitScreen('roster');
+    assert.equal(await page.locator('.screen.in .org-row[data-locked="true"]').count(), 1, 'roster: one horse locked');
+    await page.locator('.screen.in .org-row[data-locked="false"] .org-fav').first().click(); await page.waitForTimeout(500); await waitScreen('roster');
+    assert.equal(await page.locator('.screen.in .org-row[data-favorite="true"]').count(), 1, 'roster: one favourite');
+    assert.equal(await page.locator('.screen.in .org-row').first().getAttribute('data-favorite'), 'true', 'roster: favourites first');
+    await click('まとめて選ぶ'); await waitIn('.org-check');
+    await page.locator('.screen.in .org-row[data-blocks=""]').first().click(); await page.waitForTimeout(400);
+    await page.locator('.screen.in .org-row[data-blocks=""]:has(.org-check[data-on="false"])').first().click(); await page.waitForTimeout(400);
+    await page.locator('.screen.in .org-row[data-locked="true"]').click(); await page.waitForTimeout(400); // refused: locked
+    assert.equal(await page.locator('.screen.in .org-check[data-on="true"]').count(), 2, 'roster: two selected, the locked horse is not');
+    await shot('roster-select', 300);
+    await click('確認へ'); await waitScreen('roster-confirm'); await waitIn('.org-confirm');
+    const cancel = await page.locator('.screen.in .org-cancel').boundingBox(), ok = await page.locator('.screen.in .org-ok').boundingBox();
+    assert.ok(Math.abs(cancel.width - ok.width) < 1 && Math.abs(cancel.height - ok.height) < 1, 'roster: cancel and confirm are the same size');
+    assert.equal(await page.locator('.screen.in .org-line').count(), 2, 'roster: every horse is listed');
+    assert.match(await page.locator('.screen.in .org-refund').innerText(), /なし/, 'roster: nothing comes back');
+    await shot('roster-confirm', 400);
+    await click('まとめて引退させる'); await waitScreen('roster'); await page.waitForTimeout(400);
+    assert.equal(await page.evaluate(() => globalThis.__muchi.lastBulk?.count), 2, 'roster: two horses retired');
+    await shot('roster-retired', 300);
+    await page.evaluate(() => localStorage.removeItem('muchi.roster.view'));
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
+  }
+
+  // round 16 (REQ-CUP-*): プレイヤー主催カップ — the list → create (name, entries, format, course, going, window; an NG name
+  // refused) → the lobby with the code → friends join (demo) → 出走 ×3 (createRace in the cup mode, simulated in WASM, settled
+  // like a room) → standings with trophies → the result card (no names); join by code (a wrong code says nothing), an
+  // invitation, and the host leaving cancels the cup
+  async function cupsFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(() => globalThis.__muchi.show('HostedCups')); await waitScreen('hosted-cups'); await waitIn('.cup-mine');
+    await shot('cups-empty', 400);
+    await page.locator('.screen.in .cup-make').click(); await waitScreen('cup-create'); await waitIn('.cup-form');
+    await shot('cup-create', 400);
+    const ng = await page.evaluate(() => globalThis.__muchi.logic.cups.ngSample());
+    await page.locator('.screen.in input.cup-name').fill(ng); await page.locator('.screen.in .cup-create').click(); await page.waitForTimeout(500);
+    assert.match(await page.locator('.screen.in .cup-error').textContent(), /使えません/, 'cups: an NG cup name is refused');
+    await page.locator('.screen.in input.cup-name').fill('金曜の夜カップ');
+    await page.locator('.screen.in [data-format="best_of_3"]').click(); await page.waitForTimeout(300);
+    await page.locator('.screen.in .cup-cap-minus').click(); await page.waitForTimeout(300);
+    await page.locator('.screen.in [data-going="yielding"]').click(); await page.waitForTimeout(300);
+    assert.equal(await page.locator('.screen.in .cup-capacity').textContent(), '5人');
+    await page.locator('.screen.in .cup-create').click(); await waitScreen('cup-lobby'); await waitIn('.cup-code-text');
+    assert.match(await page.locator('.screen.in .cup-code-text').textContent(), /^[A-Z2-9]{4}-[A-Z2-9]{4}$/, 'cups: the join code');
+    assert.equal(await page.locator('.screen.in .cup-start.disabled').count(), 1, 'cups: 出走 is off until friends join');
+    await shot('cup-lobby-host', 400);
+    await page.locator('.screen.in .cup-invite-friends').click(); await waitIn('.cup-invite-sheet');
+    await page.locator('.screen.in .cup-friend').first().click(); await shot('cup-invite-sheet', 300);
+    await page.locator('.screen.in .cup-invite-send').click(); await page.waitForTimeout(500);
+    await page.locator('.screen.in .cup-demo-fill').click(); await page.waitForTimeout(600); await waitIn('.cup-start:not(.disabled)');
+    await shot('cup-lobby-ready', 400);
+    for (let i = 0; i < 3; i++) {
+      await page.locator('.screen.in .cup-start').click();
+      await waitScreen(i < 2 ? 'cup-lobby' : 'cup-standings', 30000); await page.waitForTimeout(400);
+    }
+    await waitIn('.cup-row');
+    assert.equal(await page.locator('.screen.in .cup-row').count(), 4, 'cups: four in the standings');
+    await shot('cup-standings', 400);
+    await page.locator('.screen.in .cup-card-open').click(); await waitIn('.cup-share-sheet');
+    assert.doesNotMatch(await page.locator('.screen.in .cup-share-sheet').innerText(), /金曜の夜カップ|ミドリ|サクラ/, 'cups: the result card shows no names');
+    await shot('cup-result-card', 400);
+    await page.locator('.screen.in .cup-share').click(); await page.waitForTimeout(300);
+    // the list: trophy shelf and the result
+    await page.evaluate(() => globalThis.__muchi.show('HostedCups')); await waitScreen('hosted-cups'); await page.waitForTimeout(400);
+    // an invitation from a friend, joined from the list
+    await page.locator('.screen.in .cup-demo-invite').click(); await page.waitForTimeout(600); await waitIn('.cup-invite');
+    await shot('cups-invited', 400);
+    await page.locator('.screen.in .cup-accept').first().click(); await waitScreen('cup-lobby'); await waitIn('.cup-entrant');
+    await shot('cup-lobby-entrant', 400);
+    const code = await page.locator('.screen.in .cup-code-text').textContent();
+    await page.locator('.screen.in .cup-leave-link').click(); await waitIn('.cup-leave-sheet');
+    await page.locator('.screen.in .cup-leave').click(); await waitScreen('hosted-cups');
+    // join by code: a wrong code says nothing, the right one shows the cup and its host only
+    await page.locator('.screen.in .cup-join-code').click(); await waitScreen('cup-join');
+    await page.locator('.screen.in input.cup-code-input').fill('ZZZZ-ZZZZ'); await page.locator('.screen.in .cup-lookup').click(); await page.waitForTimeout(500);
+    assert.match(await page.locator('.screen.in .cup-join-error').textContent(), /見つかりません/, 'cups: a wrong code');
+    await page.locator('.screen.in input.cup-code-input').fill(code.toLowerCase()); await page.locator('.screen.in .cup-lookup').click(); await page.waitForTimeout(500);
+    await waitIn('.cup-join'); await shot('cup-join-preview', 400);
+    await page.locator('.screen.in .cup-join').click(); await waitScreen('cup-lobby');
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
+  }
+
   // round 14 (REQ-MYRP-*): マイリプレイ — two demo races on the real engine → the list (best moments / recent) → 残す → the
   // replay sheet → rename (typed, NG word refused) → favourite, public → the player (WASM re-simulation: 2×, camera on
   // another horse, the last 200 m, share card + replay_share) → a friend's public replay → 「再生できません」 (retired ruleset)
@@ -536,6 +640,65 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await waitScreen('replay-unplayable'); await shot('replay-unplayable', 400);
     assert.match(await page.locator('.screen.in').innerText(), /再生できません/);
     await page.evaluate(() => globalThis.__muchi.logic.replays.demoRetired(false));
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
+  }
+
+  // round 16 (REQ-RECAP-*): シーズンの振り返り — the stable's entry → the list (short / full / year) → a full recap stepped through
+  // (big number, horse as typed, moments) → back → skip to the end (complete) → the share set with 「順位を隠す」 and recap_share →
+  // the short version → reduced motion (no count-up, no slide)
+  async function recapFlow() {
+    const waitIn = (sel, timeout = 20000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    const recap = () => page.evaluate(() => globalThis.__muchi.recap);
+    /** Taps a recap control and waits for the page it leads to (the screen re-renders under the same name). */
+    const go = async (sel, index) => { await page.locator(`.screen.in ${sel}`).first().click(); await page.waitForSelector(`.screen.in[data-index="${index}"]`, { timeout: 10000 }); await page.waitForTimeout(150); };
+    await page.evaluate(() => globalThis.__muchi.show('Stable')); await waitScreen('stable');
+    await page.locator('.screen.in .rc-entry').click(); await waitScreen('recaps', 30000); await waitIn('.rc-card');
+    assert.equal(await page.locator('.screen.in .rc-card').count(), 4, 'recap: four recaps in the demo history');
+    await shot('recap-list', 400);
+    await page.locator('.screen.in .rc-card[data-recap="season:2026-11"]').click(); await waitScreen('recap'); await waitIn('.rc-big');
+    await page.waitForFunction(() => document.querySelector('.screen.in .rc-big .rc-num')?.textContent === '20', null, { timeout: 5000 });
+    assert.equal((await recap()).key, 'races');
+    await shot('recap-races', 300);
+    await go('.rc-next', 1);
+    assert.equal((await recap()).key, 'wins');
+    await go('.rc-next', 2); await go('.rc-next', 3);
+    assert.equal((await recap()).key, 'rank');
+    assert.equal(await page.locator('.screen.in .rc-big .rc-num').textContent(), 'B級');
+    await shot('recap-rank', 300);
+    await go('.rc-next', 4);
+    assert.equal((await recap()).key, 'horse');
+    assert.equal(await page.locator('.screen.in .rc-big.typed .rc-num').textContent(), 'ソラノカナタ', 'recap: the horse as typed');
+    await shot('recap-horse', 300);
+    await go('.rc-back', 3);
+    assert.equal((await recap()).key, 'rank', 'recap: back one page');
+    const total = (await recap()).steps;
+    await go('.rc-skip', total - 1);
+    const r = await recap();
+    assert.equal(r.key, 'end'); assert.equal(r.index, r.steps - 1);
+    const done = await page.evaluate(async () => (await globalThis.__muchi.logic.recap.view('season:2026-11')).value.completedAt);
+    assert.ok(done, 'recap: complete reported at the end');
+    await shot('recap-end', 300);
+    await page.locator('.screen.in .rc-share').click(); await waitIn('.rc-share-sheet');
+    assert.equal(await page.locator('.screen.in .rc-card-share').count(), 4);
+    await shot('recap-share', 400);
+    await page.locator('.screen.in .rc-hide-rank').click(); await page.waitForTimeout(400); await waitIn('.rc-share-sheet[data-hide-rank="true"]');
+    assert.equal(await page.locator('.screen.in .rc-card-share[data-card="rank"]').count(), 0, 'recap: 順位を隠す drops the rank card');
+    await page.locator('.screen.in .rc-card-share[data-card="horse"] .rc-share-go').click(); await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(() => globalThis.__muchi.lastKpi), 'recap_share:horse');
+    await shot('recap-share-hidden-rank', 300);
+    await page.evaluate(() => localStorage.setItem('muchi.recap.hideRank', '0'));
+    // the short version
+    await page.evaluate(() => globalThis.__muchi.show('Recap', 'season:2026-10', 0)); await waitScreen('recap'); await waitIn('.rc-big');
+    assert.equal((await recap()).short, true);
+    assert.equal((await recap()).steps, 4, 'recap: the short version has four pages');
+    // reduced motion: the number is shown at once, the art does not drift
+    await page.evaluate(() => globalThis.__muchi.a11y.set('reduceMotion', true)); // the §41 setting itself (Round 16 integration)
+    await page.evaluate(() => globalThis.__muchi.show('Recap', 'year:2026', 0)); await waitScreen('recap'); await waitIn('.rc-big');
+    assert.equal(await page.locator('.screen.in').getAttribute('data-reduced'), 'true');
+    assert.equal(await page.locator('.screen.in .rc-big .rc-num').textContent(), '26', 'recap: reduced motion shows the number at once');
+    assert.equal(await page.locator('.screen.in .art.drift').count(), 0);
+    await shot('recap-year-reduced-motion', 200);
+    await page.evaluate(() => globalThis.__muchi.a11y.set('reduceMotion', false));
     await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
   }
 
@@ -788,6 +951,9 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await hallFlow();
   await silksFlow();
   await myReplaysFlow();
+  await rosterFlow();
+  await recapFlow();
+  await cupsFlow();
   await page.evaluate(() => globalThis.__muchi.show('Scout')); await waitScreen('scout'); await shot('scout', 500);
   await click('提供割合'); await shot('scout-rates', 400); await click('BACK');
   await waitScreen('scout'); await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal'); await shot('scout-paid-reveal', 700);
@@ -1304,6 +1470,59 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await waitScreen(['result'], 60000); await page.waitForTimeout(600);
   await page.evaluate(() => globalThis.__muchi.logic.equipCommentaryPack('standard'));
   await page.evaluate(() => globalThis.__muchi.logic.setAssist('off'));
+
+  // ------------------------------------------------------------------ 8. round 16: 次にやること (REQ-NEXT-*)
+  // 3 game days of play, a gift expiring in 2 days, 2 owned scout tickets → the server's next card (bottom centre) + chips;
+  // the top bar is untouched; no urgency words or shop; dismiss for today; a chip opens its screen; KPI view once per day
+  await page.evaluate(() => { globalThis.__muchiNextKpi = []; });
+  await page.evaluate(() => globalThis.__muchi.demo('next')); await waitScreen(['home', 'link-prompt'], 60000);
+  if (await screen() === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); }
+  await page.waitForSelector('.screen.in .next-card', { timeout: 10000 }); await page.waitForTimeout(500);
+  const nxPrimary = await page.locator('.screen.in .next-card').getAttribute('data-next');
+  const nxChips = await page.locator('.screen.in [data-next-chip]').evaluateAll((els) => els.map((e) => e.dataset.nextChip));
+  const nxServer = await page.evaluate(async () => (await globalThis.__muchi.logic.nextActions()).value);
+  assert.equal(nxPrimary, nxServer.primary.kind, 'the card is the server\'s primary');
+  assert.deepEqual(nxChips, nxServer.chips.map((c) => c.kind), 'the chips are the server\'s');
+  assert.ok(nxChips.length <= 2 && !nxChips.includes('race'), 'at most two chips, never the race card');
+  assert.notEqual(nxPrimary, 'scout_ticket', 'scout tickets are never the primary card');
+  const nxAll = [nxPrimary, ...nxChips];
+  assert.ok(nxAll.includes('gift_expiring'), 'the gift that expires in 2 days is announced: ' + nxAll.join(', '));
+  const nxGift = page.locator('.screen.in [data-next="gift_expiring"]').first();
+  const nxGiftDeadline = Number(await nxGift.getAttribute('data-deadline'));
+  const nxBox = await page.evaluate(async () => (await globalThis.__muchi.logic.giftBox('box')).value.entries.map((e) => e.expiresAt).filter(Boolean));
+  assert.equal(nxGiftDeadline, Math.min(...nxBox), 'its deadline is the gift\'s real expiry');
+  const nxText = await page.locator('.screen.in .next-card').innerText();
+  assert.ok(!/今だけ|残りわずか|お得|倍|ショップ|購入/.test(nxText), 'no urgency words or shop on the card');
+  if (nxPrimary === 'gift_expiring') assert.match(nxText, /\d+月\d+日 \d\d:\d\dまで/, 'the deadline as a date and time');
+  // the card sits under the top bar (season · rival · envelope · wallet) and clear of the race button
+  const nxRect = await page.locator('.screen.in .next-card').boundingBox();
+  const raceRect = await page.locator('.screen.in .btn.cta.hero').boundingBox();
+  const envRect = await page.locator('.screen.in .btn.envelope').boundingBox();
+  assert.ok(nxRect.y > envRect.y + envRect.height + 20 && nxRect.x + nxRect.width < raceRect.x, 'the next card does not crowd the top bar or the race button');
+  assert.equal(await page.locator('.screen.in .btn.envelope').count(), 1, 'the gift envelope is still there');
+  const nxViews = await page.evaluate(() => (globalThis.__muchiNextKpi ?? []).filter((e) => e.name === 'next_card_view').map((e) => e.kind));
+  assert.deepEqual(nxViews.sort(), [...nxAll].sort(), 'next_card_view once per card shown');
+  await shot('home-next', 300);
+  // 今日は閉じる: the server's next list moves up; home again sends no second view for the same kinds
+  await page.locator('.screen.in [data-next-dismiss]').click(); await page.waitForTimeout(700);
+  const nxAfter = await page.locator('.screen.in .next-card').getAttribute('data-next');
+  assert.notEqual(nxAfter, nxPrimary, 'the closed card is gone for today');
+  assert.deepEqual(await page.evaluate(async () => (await globalThis.__muchi.logic.nextActions()).value.dismissed), [nxPrimary], 'closed on the server for the game day');
+  await shot('home-next-dismissed', 300);
+  await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen(['home', 'link-prompt'], 10000);
+  if (await screen() === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); }
+  await page.waitForSelector('.screen.in .next-card'); await page.waitForTimeout(300);
+  assert.notEqual(await page.locator('.screen.in .next-card').getAttribute('data-next'), nxPrimary, 'still closed when home is drawn again');
+  const nxViews2 = await page.evaluate(() => (globalThis.__muchiNextKpi ?? []).filter((e) => e.name === 'next_card_view').map((e) => e.kind));
+  assert.equal(new Set(nxViews2).size, nxViews2.length, 'next_card_view is never repeated for a kind on the same game day');
+  // the gift card opens the box (a link only: nothing is received from home)
+  const nxFree = await page.evaluate(() => globalThis.__muchi.state().player.wallet.free);
+  await page.locator('.screen.in [data-next="gift_expiring"]').first().click(); await waitScreen('gift-box', 10000);
+  assert.equal(await page.evaluate(() => globalThis.__muchi.state().player.wallet.free), nxFree, 'opening the box from the card receives nothing');
+  assert.ok((await page.evaluate(() => globalThis.__muchiNextKpi.filter((e) => e.name === 'next_card_tap').map((e) => e.kind))).includes('gift_expiring'), 'next_card_tap with the kind');
+  // a brand-new player (before the partner and two races) sees only 「相棒で、本番のコースへ」 — the FTUE stays in charge
+  const nxNew = await page.evaluate(async () => { const L = globalThis.__muchi.logic; L.reset(); await L.bootstrap(); return (await L.nextActions()).value; });
+  assert.equal(nxNew.primary.kind, 'first_race'); assert.equal(nxNew.chips.length, 0); assert.equal(nxNew.onboarding, true);
 
   // a reload on a named player goes straight home
   await demo('day3');

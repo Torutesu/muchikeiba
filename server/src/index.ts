@@ -26,6 +26,9 @@ export { IntegrityDO } from './do/integrity.js';
 export { TeamDO, TeamDirectoryDO } from './do/team.js';
 export { EventDO } from './do/event.js';
 export { TournamentDO } from './do/tournament.js';
+export { CupDO } from './do/cup.js';
+import { durableCupBackend } from './do/cup.js';
+import { HostedCupsService } from './domain/hostedCupService.js';
 import { tournamentSnapshotKey } from './do/tournament.js';
 import { SpectateService, SPECTATE_RATE } from './domain/spectate.js';
 import { TournamentsService, type TournamentBackend } from './domain/tournamentService.js';
@@ -433,6 +436,11 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
       admit: (uid, now) => spectateLimiter.take(uid, 'read', now),
     }),
     ...(env.TOURNAMENTS ? { tournaments: new TournamentsService(() => master, tournamentBackend(env), tournamentPlayersFrom(player)) } : {}),
+    // REQ-CUP-*: player-hosted cups (one CupDO per cup + the join-code index); branch members from the team's object
+    ...(env.CUPS ? {
+      hostedCups: new HostedCupsService(() => master, durableCupBackend(env), player, Date.now,
+        async (teamId, viewer) => ((await makeTeamsService(env, () => master, player).view(teamId, viewer)) as { members?: { playerId: string }[] }).members?.map((x) => x.playerId) ?? []),
+    } : {}),
     leaderboard: {
       board: async (seasonId, board) => {
         const obj = await env.SNAPSHOTS.get(board === 'index' ? indexKey(seasonId) : boardKey(seasonId, board));

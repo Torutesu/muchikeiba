@@ -224,6 +224,14 @@ export interface PlayerState {
   hall?: import('./hallOfFame.js').HallState;
   /** REQ-MYRP-*: マイリプレイ — recent races / best moments and the saved list (myReplays.ts ensureMyReplays). */
   myReplays?: import('./myReplays.js').MyReplaysState;
+  /** REQ-ORG-*: 厩舎の整理 — locked / favourite horse ids and tournament registrations (roster.ts ensureRoster). */
+  roster?: import('./roster.js').RosterState;
+  /** REQ-NEXT-005/008: kinds closed for today's game day and the game day each feature was first seen unlocked (nextAction.ts). */
+  nextAction?: import('./nextAction.js').NextActionState;
+  /** REQ-RECAP-*: シーズンの振り返り — the running season / year records and the closed snapshots (seasonRecap.ts ensureRecap). */
+  seasonRecap?: import('./seasonRecap.js').SeasonRecapState;
+  /** REQ-CUP-*: プレイヤー主催カップ — cups the player is in, invitations, results and trophies (hostedCups.ts ensureCups). */
+  cups?: import('./hostedCups.js').PlayerCupsState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

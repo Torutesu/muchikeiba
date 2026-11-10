@@ -14,7 +14,7 @@ C#（端末・検証サーバー）とTypeScript（Cloudflareサーバー）の�
 {
   "v": 1,
   "raceId": "r_01JC...",
-  "mode": "ranked",                 // "ranked" | "friend" | "tutorial" | "timeattack" | "event" | "tournament"
+  "mode": "ranked",                 // "ranked" | "friend" | "tutorial" | "timeattack" | "event" | "tournament" | "challenge"（§31） | "cup"（§42）
   "seed": "9876543210123456789",    // uint64（10進文字列）
   "track": {
     "id": "tokyo_like_turf_2000",
@@ -1800,7 +1800,7 @@ TeamGoalView = { "teamId": "tabc123456", "teamName": "あおばRC", "enabled": t
 レースを一時停止（オフライン・練習・タイムアタック・チュートリアル・週替わりチャレンジ＝**ひとりで走るレースだけ**）するか、終わったレース（結果画面）・リプレイを止めて、1枚の写真を撮る。カメラを動かし（制限つき）、見た目（ルック）・フレーム・スタンプ・ひとことを重ねて、既存のリプレイ共有（Round 9、`ShareCard`・`IClipRecorder.CaptureStillAsync`・`IShareSheet`）で画像として共有する。**表示だけ**：コイン・アイテムを配らない（E は無い）。購入できる品は既存の見た目ショップ（§13・REQ-ITEM-005）の決まった価格だけ。
 
 **決まりごと**
-- **ランク戦・フレンド戦・イベント・大会のレース中は止めない**（他の人のレースに影響するため）。この4つは結果画面（レースが終わった後）とリプレイからだけ撮れる。クライアントは `PhotoModeModel.CanPause(driver)` が false のときポーズのフォトボタンを出さない。サーバーは写真の記録で `source.kind: "paused"` にこれらの `mode` が来たら 400 `PHOTO_SOURCE_INVALID`。
+- **ランク戦・フレンド戦・イベント・大会・プレイヤー主催カップ（§42 の `cup`、Round 16 統合）のレース中は止めない**（他の人のレースに影響するため）。この5つは結果画面（レースが終わった後）とリプレイからだけ撮れる。クライアントは `PhotoModeModel.CanPause(driver)` が false のときポーズのフォトボタンを出さない。サーバーは写真の記録で `source.kind: "paused"` にこれらの `mode` が来たら 400 `PHOTO_SOURCE_INVALID`。
 - **決定論**：写真は `(raceId, tick)` とカメラ・重ねる物の値で決まる。端末はレースの設定＋確定入力をその tick まで**もう一度計算**して馬の位置を出す（`PhotoSnapshot.Capture`、走っているレースの `RaceSim` には触らない）。レースの状態・結果ハッシュ・ゴールデンは変わらない。同じ値なら何度でも同じ写真を作り直せる（`PhotoSnapshot.Fingerprint` が一致する）。
 - **プライバシー**：写真の名札は馬の名前と、乗り手の表示。自分は「あなた」、フレンドはそのプレイヤーの表示名、**フレンドでない他の人間は `p<slot>`**（マイリプレイ §37 と同じ置き換え。1始まりの枠番ではなく 0 始まりの slot）、CPU は「CPU」。`names: "hidden"` で名札をすべて消せる（既定は `masked`）。共有のテキスト（`ShareCard.ShareText`）には他の人の名前を入れない。
 - **ひとこと（caption）**：0〜`captionMaxChars`（既定 24）文字。表示名と同じ規則（NFKC・制御文字なし・URL なし・NG 名リスト、§8 REQ-SOCIAL-006）に加えて、ショップの言葉の規則（「倍」「お得」「今だけ」「残りわずか」「通常価格」）と賭けを思わせる言葉（「馬券」「賭け」「賭博」「ベット」「オッズ」「配当」「払戻」「払い戻し」「的中」「予想」）を使えない（400 `INVALID_NAME`／`NG_NAME`）。**翻訳しない**（英語の応答でも打ったまま、`PLAYER_TEXT_KEYS` の `caption`）。
@@ -1916,7 +1916,7 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 クエリ：
 | キー | 意味 |
 |---|---|
-| `context` | `ranked`（既定）/`friend`/`event`/`challenge`/`timeattack`/`tutorial` |
+| `context` | `ranked`（既定）/`friend`/`event`/`challenge`/`timeattack`/`tutorial`/`cup`（Round 16 統合：プレイヤー主催カップ §42） |
 | `trackId` | コース（`friend`・`timeattack` で使う。`event` は開催のコースの1つなら使う） |
 | `going` / `night` | 部屋の条件など、画面に出ている馬場・ナイター（コースの面に合わない馬場は 400。ナイターは照明のある競馬場だけ）。無ければその日の馬場（REQ-RACE-037） |
 | `challengeId` | `challenge`：今週のチャレンジ（無ければ 404） |
@@ -1933,6 +1933,7 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 | `challenge` | チャレンジのコース・馬場・ナイター | **貸し出し馬**＋脚質の条件に合う自分の馬 | CPU の頭数（脚質は不明） | `statCap`、スキルなし |
 | `timeattack` | `trackId`（必須、馬場は良、昼） | 現役の馬 | 1頭 | `statCap`、スキルなし |
 | `tutorial` | — | — | — | 39.2 の決まった版 |
+| `cup` | `trackId`（必須）・`going`・`night` はカップの条件（§42、出走前に決まっている） | 現役の馬 | フレンド部屋と同じ（`field` 任意） | 上限なし（入力の `mode` は `friend`：端末の再計算もフレンド部屋のルール） |
 
 応答 = `AdviceOutput` ＋ `context` ＋ `input`（計算に使った `AdviceInput`。端末は選ぶ馬が変わったら `focusHorseId` だけ変えて `RaceAdvice.Compute` で計算し直す。中身は自分の馬とルールセットの値だけ）：
 ```json
@@ -1987,6 +1988,10 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 | `team_goal_tier` | 支部の共同目標の段に到達（`teamGoalMilestone`、`team_goal`） | `team_goal_tier:{teamId}:{週}:{段}` | しない | `friends` | `team_goal` |
 | `team_goal_week` | 共同目標の週の結果（`teamGoalReward`） | `team_goal_week:{週}` | しない | `friends` | `team_goal` |
 | `replay_share` | フレンドがマイリプレイ（§37）の保存を公開にしたとき（`MyReplaysService.update` が非公開→公開の時だけ各フレンドへ `activityReplayShare`、Round 15 統合） | `replay_share:{owner}:{raceId}`（公開を外してまた公開しても1件） | しない | `friends` | `replay`（`id` = 公開した人。フレンドのリプレイ一覧へ） |
+| `cup_invited` | カップへの招待（`cupInvited`、`cup_invite`。§42、Round 16 統合） | `cup_invited:{cupId}` | しない | `invites` | `cups`（`id` = カップ id）。`{cup}` はカップ名（訳さない） |
+| `cup_started` | カップの最初のレースが始まった（`CupRunner.start` → 主催者以外の各参加者へ `cupStarted`、ポート `notifyStarted`。参加中の人だけ） | `cup_started:{cupId}` | しない | `friends` | `cups` |
+| `cup_finished` / `cup_cancelled` | カップが終わった（順位 `{n}`）／中止になった（`cupClosed`、参加していた人だけ。招待されただけの人には書かない） | `cup_closed:{cupId}` | しない | `friends` | `cups` |
+| `recap_ready` | 振り返りができた（§43、`rollRecaps` が作ったものごと。`vars.kind` = `season`／`year`） | `recap_ready:{recapId}` | しない | `season` | `recap`（`id` = `season:2026-11` など） |
 
 - 大会（`tournament`）と共同目標（`team_goal`）の賞品はプレゼントボックスにも入るが、`gift_arrived` は書かない（同じことを2回書かない。各行のリンクから見られる）。
 - おかえり・新着情報（REQ-CB-*）は**項目にしない**：一覧の `links.whatsNew`（新着の数）でその画面へ案内するだけ。週替わりチャレンジ（§31）の結果は自分で走った直後に結果画面で出るので、留守の間の出来事にならない（項目なし）。
@@ -2094,3 +2099,285 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 - `Muchi.Client`：`AccessibilitySettings`（`Parse`・`ToJson`・`Defaults`、知らない値は既定値）、`ApiClient.GetAccessibilityAsync`・`SetAccessibilityAsync`、`PlayerView.Accessibility`、`AccessibilityTokens`（トークンの表、`Color(mode, token)`）、`TextScale`（`Factor`・`Px`）、`MotionPolicy`、`FlashLimiter`、`WhipHold`。
 - `Muchi.Game`：`AccessibilityModel`（端末の写し・未送信の再送・`Changed` イベント・画面が結ぶ値 `TextScale`／`Palette`／`Motion`／`Haptics`／`Subtitles`／`OneHanded`／`WhipInput`・設定画面の行 `Rows()`・`ApplyTo(RaceInput)`）、`RaceInput.WhipMode`・`SetWhipHeld`・`Collect(RaceSim, slot)`。
 - 画面が守ること：docs/handoff-codex-round15-accessibility.md。
+
+## 42. プレイヤー主催カップ（player-hosted cups、REQ-CUP-001〜018、`server/src/domain/hostedCups.ts`・`hostedCupService.ts`・`server/src/do/cup.ts`、C# `HostedCups.cs`・`Muchi.Game.HostedCupModel`）
+フレンドや支部の仲間と小さなカップを開く。主催者がコース・距離・馬場（フレンド部屋の条件 §REQ-ROOM-002 と同じ `RoomConditions`）・人数（`minCapacity`〜`maxCapacity`、既定 4〜8）・形式（1レース／3レースのポイント制）・開催の時間帯を選び、招待（フレンド・支部・参加コード）で集める。レースは**フレンド部屋の仕組み**（マッチメイカーの部屋作り、`RaceRoomDO`、`/v1/match/status` の割り当て、観戦）で走る。**ランク外**：レーティング・シーズン・ライバルの記録・デイリーミッション・パス・コイン・アイテムは一切動かない（経済の目標なし、E 番号なし）。報酬は見た目だけのトロフィー（プロフィールの棚）。
+
+### 42.1 しくみ
+- **レースのモード `cup`**（§2 の `mode` に追加、エンジンの `RaceMode.Cup = 7`）。既存のモードの設定・結果は変わらない（ゴールデンは不変）。設定は部屋の条件（`roomPreset` と同じ `roomGround`／`roomScene`）。人間だけ（CPU なし）、能力の上限なし、絆の補正なし（`friendBond` は使わない：主催者の有利をなくす）。`applyRace` は `mode: "cup"` を**記録だけ**にする（`appliedRaces`・マイリプレイ・`race_finish` の KPI だけ。報酬・ミッション・パス・統計・ライバル・殿堂・支部フィード・共同目標・かんたん操作の連敗は数えない）。
+- **カップの状態**は1カップ1オブジェクト（`CupDO` `cup:<cupId>`）。参加コードの索引は同じクラスの `cupcode:<先頭の1文字>`。プレイヤーの状態（`cups`）には「参加中のカップ」（上限の判定）・招待・結果の履歴・トロフィーを持つ。
+- **形式**：`single`（1レース）・`best_of_3`（3レース、着順のポイント `pointsByPlace`、既定 10/7/5/4/3/2/1/1）。順位はポイント → 最高着順 → 最終レースの着順 → 参加の早い順。1レースの時はそのレースの着順。来なかった人（no-show）・途中で抜けた人は以降 0 点。
+- **主催者に有利をなくす**：主催者は他の人の馬を選べない（馬は各自が参加の時に選ぶ）。条件・人数・形式は**最初のレースの後は変えられない**（そもそも作った後に変える API はない。最初のレースの後は参加・招待もできない）。主催者が決めるのは「出走」の時刻だけ（開催の時間帯の中、参加者が `minEntrants` 人以上）。
+- **締め切り**：`closesAt` を過ぎると、1レースも走っていなければ中止（`expired`）、走ったレースがあればその時点の順位で終わる（`partial: true`）。走っているレースは結果（か `raceTimeoutMinutes` の無効）を待ってから。終わった・中止のカップは `keepDays` 日後に消える（参加コードは終わった時に無効になる）。
+- **主催者が抜ける** = カップを中止（`host_left`）。参加者は最初のレースの前なら抜けられる（枠が空く）。後は「棄権」（以降 0 点、順位には残る）。
+- **解放**：新しい解放キーは作らない。フレンド部屋と同じ `friend_rooms`（2日目 or 10戦、§4.3）の解放で画面に出す（カップはフレンド部屋の延長）。
+- **最後の1枠の取り合い**：参加は1つのオブジェクトの中で順に処理するので、同時に来た2人の片方だけが入り、もう片方は `409 CUP_FULL`（予約した枠はプレイヤー側で戻す）。
+
+### 42.2 API（すべて要認証。冪等キーは `Idempotency-Key`）
+| メソッド | パス | 冪等キー | 本文 → 応答 |
+|---|---|---|---|
+| GET | `/v1/cups` | | → `{ enabled, limits, active: CupView[], invites: CupInvite[], history: CupResult[], trophies }` |
+| POST | `/v1/cups` | 必須 | `{ cupName, capacity, format, opensAt, closesAt, conditions?: RoomConditions, usePreset?: bool, horseId }` → `{ cup: CupView, created: bool }`。同じキーの再送は同じカップ（`created: false`）。主催者も参加者の1人（自分の馬 `horseId`）。`400 INVALID_NAME`／`NG_NAME`（名前）・`BAD_REQUEST`（人数・時間帯・条件）・`409 CUP_LIMIT`（主催中が `maxActivePerHost`、参加中が `maxEntriesPerPlayer`）・`409 DELETION_PENDING`・`403 BANNED` |
+| GET | `/v1/cups/:cupId` | | 主催者・参加者・招待された人 → `CupView`。他は `404` |
+| POST | `/v1/cups/lookup` | | `{ code }` → `CupPreview`（参加前の確認）。試行の回数を数える（`joinCodeAttemptsPerHour`、超えると `429 RATE_LIMITED`）。無い・終わったコードは `404 CUP_CODE_INVALID` |
+| POST | `/v1/cups/join` | 必須 | `{ code?, cupId?, horseId }`（どちらか一方）→ `{ cup: CupView, joined: bool }`。コードは試行を数える。`cupId` は招待された人だけ。同じ人の再送は `joined: false`。`409 CUP_FULL`／`CUP_CLOSED`（締め切り・最初のレースの後・終わった）／`CUP_LIMIT`、ブロックの関係（どちらかがミュート、§28 の一覧）・BAN は `404 CUP_CODE_INVALID`（理由は言わない） |
+| POST | `/v1/cups/:cupId/leave` | 必須 | → `{ left: bool, cancelled: bool, cup: CupView \| null }`。主催者なら中止。参加していなければ `left: false`（冪等） |
+| POST | `/v1/cups/:cupId/invite` | | 主催者だけ、最初のレースの前。`{ friendIds?: string[], team?: true }` → `{ invited: number, skipped: number }`。フレンドでない人・ブロックの関係の人は数えずに飛ばす。`team: true` は主催者の支部の仲間全員。1カップ `invitesPerCup` 人まで。招待された人にはプッシュ `cup_invite` と招待の一覧 |
+| POST | `/v1/cups/:cupId/start` | | 主催者だけ → `{ raceId, raceIndex, startAtMs }`。各参加者は `/v1/match/status` で部屋の割り当てを受け取る（フレンド部屋と同じ）。`409 CUP_NOT_READY`（時間帯の外・人数不足・前のレースが確定していない・全部走った）・`409 ALREADY_IN_RACE`（参加者の誰かが他のレース中）・`403 NOT_HOST` |
+| POST | `/v1/admin/cups/:cupId/delete` | | 運用（operator 以上、監査ログ）`{ reason }` → カップを中止（`ops_deleted`）。参加者の一覧から消える |
+
+### 42.3 形
+```json
+{ "cupId": "cup_k3m9…", "cupName": "金曜の夜カップ", "hostId": "p_1", "hostName": "トオル", "role": "host",
+  "code": "K7PM-Q2XD", "format": "best_of_3", "capacity": 6, "racesTotal": 3, "racesDone": 1,
+  "conditions": { "trackId": "aoba_turf_1600", "going": "good", "night": false, "weather": "sunny", "temperatureC": 18, "windKmh": 0 },
+  "opensAt": 1794279600000, "closesAt": 1794290400000, "status": "running", "partial": false, "cancelReason": null,
+  "entrants": [ { "playerId": "p_1", "displayName": "トオル", "horseName": "アイボウ", "withdrawn": false } ],
+  "races": [ { "index": 0, "raceId": "cup-cup_k3m9-0-0", "status": "done", "places": { "p_1": 1 } } ],
+  "standings": [ { "playerId": "p_1", "displayName": "トオル", "rank": 1, "points": 10, "places": [1] } ],
+  "canStart": true, "minEntrants": 2 }
+```
+- `code` は主催者と参加者にだけ出す（`XXXX-XXXX`、`ABCDEFGHJKMNPQRSTUVWXYZ23456789` の8文字＝31^8 通り、暗号の乱数）。入力は大文字・小文字・ハイフンを問わない。
+- `cupName`（プレイヤーが入力、1〜`nameMaxChars` 文字、NFKC、制御文字・URL 不可、NG 語は表示名と同じ一覧で `NG_NAME`）・`displayName`・`hostName`・`horseName` は**訳さない**（`PLAYER_TEXT_KEYS`）。
+- `CupPreview` = `{ cupId, cupName, hostName, format, capacity, entrants: number, conditions, opensAt, closesAt }`（参加前なので他の人の名前は出さない）。
+- `CupResult`（履歴）= `{ cupId, cupName, format, rank, points, entrants, at, status: "finished" | "cancelled", partial, trophy: "gold" | "silver" | "bronze" | null }`。トロフィーは順位 1〜3（参加者がその人数以上の時）。トロフィーは見た目だけで、何にも効かない。
+- プロフィール（`publicProfile`）に `cupTrophies: { gold, silver, bronze }` を足す（数だけ、カップ名は出さない）。
+
+### 42.4 設定 `progression.hostedCups`（リモート設定で変更可）
+`{ enabled, minCapacity, maxCapacity, minEntrants, maxActivePerHost, maxEntriesPerPlayer, nameMaxChars, minWindowMinutes, maxWindowHours, maxLeadHours, joinCodeAttemptsPerHour, invitesPerCup, pointsByPlace[], raceTimeoutMinutes, keepDays, historyKeep }`。上限（`HOSTED_CUP_HARD_LIMITS`）：capacity 2..12、maxActivePerHost 1..5、maxEntriesPerPlayer 1..10、nameMaxChars 1..30、joinCodeAttemptsPerHour 1..60、invitesPerCup 1..50、pointsByPlace は 1..12 個の非増加の 0..100。起動時と各版で検証。
+
+### 42.5 KPI
+`cup_create`（サーバー、主催者、`s1` = format、`count` = capacity、`s2` = 支部に招待できるか `team`／`solo`）・`cup_join`（サーバー、参加者、`s1` = `code`／`invite`、`s2` = format）・`cup_finish`（サーバー、各参加者、`s1` = `finished`／`cancelled`、`s2` = format、`place` = 順位、`count` = 参加者数、`s3` = 中止の理由）。
+
+### 42.6 アカウント削除
+削除の手順に `cups` を足す（`replays` の後）：主催中のカップは中止（`host_deleted`）、参加中のカップは最初のレースの前なら外し、後なら名前を `DELETED_PLAYER_NAME` にして棄権にする。状態の一覧は最後の `wipe` で消える。
+
+### 42.7 活動（§40）に書くところ（Round 16 の統合で実装：§40 の表の `cup_invited`・`cup_started`・`cup_finished`／`cup_cancelled`）
+招待を受けた（`cupInvited`）・カップが始まった（最初のレースの割り当て）・カップが終わった／中止になった（`cupClosed`、順位とトロフィー）の3つ。
+
+## 43. シーズンの振り返り（season recap、REQ-RECAP-001〜016、`server/src/domain/seasonRecap.ts`、C# `SeasonRecap.cs`（`RecapShare`）・`Muchi.Game.SeasonRecapModel`）
+ランク戦のシーズン（JST の暦月、§13 `seasonIdFor`）が終わるたびに1回、さらにゲームの1年（`time.ts` のゲーム日、`progression.dayRollover` の 04:00 JST で切り替わる年）が終わるたびに1回、プレイヤーの**振り返り**を作る。1画面ずつめくって見られ、共有カードにできる。中身は**サーバーが確定させたデータだけ**から作る（推定・乱数・端末の申告は使わない）。コイン・アイテムは動かない（経済の目標なし、E 番号なし）。課金・支出の数字は一切出さない。
+
+### 43.1 記録（`seasonRecap.acc`）とスナップショット
+- プレイヤーの状態に**集計中の記録**を2つ持つ：`acc.season`（今のシーズン）・`acc.year`（今のゲーム年）。形 `RecapAcc`：`{ periodId, since, races, wins, top3, bestPlace, bestPlaceField, byHorse{horseId:{horseName,races,wins,first}}, byStyle{style:races}, streak, bestStreak, firstWin, bigWin, rival{win,lose,draw}, teamGoal, replaysSaved }`。
+- 書くのは次の場所だけ（どれも1回だけのガードの内側）：
+| 出どころ | 何を数える |
+|---|---|
+| `applyRace`（レースIDのガード内） | `races`・`wins`・`top3`・`bestPlace`（同じ着順なら頭数の多い方）・`byHorse`（`horseId` のある結果だけ）・`byStyle`（`details.style`）・連勝・`firstWin`・`bigWin`（頭数→先に勝った方）。数えるレースは殿堂の戦績（§34.1）・プレイヤー統計と同じ：ランク戦・イベント・大会、人間2人以上のフレンド戦。無効・チュートリアル・タイムアタック・週替わりチャレンジは数えない |
+| `applyRace`／`taRecord` の支部の共同目標（§32 `playerGoalRace`・`playerGoalTa` が数えた時だけ） | `teamGoal`（`races + wins + taPb`） |
+| ライバルの週の確定（§28 `settleWeek`、週ごとに1回） | `rival.win/lose/draw`（`not_enough`・`no_contest` は数えない） |
+| マイリプレイの保存（§37 `commitSave`、同じレースは1回） | `replaysSaved` |
+- 次のものは記録を使わず、もともと時刻つきで残っている確定データから期間で数える：タイムアタックの記録（`timeAttack.seasonBest`、シーズンは `seasonId`、年は記録の時刻 `at`）・殿堂入り（`hall.entries[].inductedAt`）・到達したクラス（`seasonHistory`）。
+- **締め**：プレイヤーのトランザクションの最初（`rollSeason` の直後、`rollRecaps`）で、`acc.season.periodId` が今のシーズンと違えばそのシーズンの、`acc.year.periodId` が今のゲーム年と違えばその年のスナップショットを作り、新しい記録を始める。シーズンの終わりの集計ジョブ（REQ-SEASON-002 の `closeSeason`）もトランザクションなので、ランク戦を走った人は集計ジョブの時点で必ず作られる。ほかの人は次に開いた時に作られる（その間はレースが無いので中身は同じ）。
+- **1プレイヤー・1期間に1つ**（`id` = `season:<YYYY-MM>`／`year:<YYYY>`）。同じ `id` があれば作らない（再試行・二重の締めでも1つ）。何も記録の無い期間（レース 0・ほかの数字も 0）は作らない。
+- 集計ジョブが届けたクラス内の最終順位（`closeSeason` の `rank`）は、まだ `null` の時だけスナップショットに書く（1回）。その年のスナップショットがもう有れば、その年のクラスの行も選び直す。
+- **「〜から」の正直な表示**：記録が期間の途中から始まった（この機能の公開日・その期間の途中で作ったアカウントではない時）なら `since`（記録を始めた時刻）を持ち、画面は「{date}からの記録です」と出す。締めの後に始める次の記録は期間の最初から（`since` なし）。
+- **ゲーム年**：`gameDayKey(now, dayRule).slice(0, 4)`。1月1日の 04:00 JST（日付の切り替えの時刻）に切り替わる。シーズンは暦月（00:00）なので、1月1日 00:00〜04:00 のレースは新しいシーズン・前の年に入る（それぞれの決まりどおり）。
+- 保存：スナップショットは小さく（数字・id・馬の名前だけ、1件 2 KB 未満）、シーズンは新しい方から `keepSeasons` 件・年は `keepYears` 件だけ残す。
+
+### 43.2 中身（`RecapSnapshot`）
+`{ id, kind: "season"|"year", periodId, from, to, builtAt, since|null, short, races, wins, top3, bestFinish{place,fieldSize}|null, rank{classId,nextClassId,finalRank|null,promoted}|null, horse{horseId,horseName,races,wins}|null, timeAttack{trackId,timeMs,horseName,courseBest}|null, style{style,races}|null, rival{win,lose,draw}|null, teamGoal, hall{count,horses[{horseName}]}, replaysSaved, moments[{kind,horseName|null,trackId|null,n|null,from|null,to|null,at}], openedAt|null, completedAt|null }`
+- いちばん一緒に走った馬：`byHorse` のレース数 → 勝ち数 → 先に走った方。
+- タイムアタック：期間の記録のうち、そのコースの自分の歴代最速（`allTimeBest` と同じセッション）を優先 → 新しい記録。コースどうしのタイムは比べない。
+- よく使った脚質：レース数 → 脚質の順（逃げ・先行・差し・追込）。
+- 到達したクラス：シーズンはそのシーズンのクラス・次のクラス（昇格なら `promoted`）・最終順位。年は期間のシーズンのうち最も上のクラス（昇格先も含む）→ その中の最もよい最終順位。
+- 名場面（`moments`、最大 `momentsMax` 件、決まった優先順）：`promotion`（昇格）→ `hall`（殿堂入り、最初の1頭）→ `first_win`（期間の初勝利）→ `big_win`（いちばん頭数の多い勝利、8頭以上）→ `streak`（2連勝以上の最長）→ `ta_best`（歴代最速の更新）。無いものは作らない（足りなければ少ないまま、作り話はしない）。
+- **短い版**：レースが `shortBelowRaces` 戦未満なら `short: true`。画面は「走ったレース」と（あれば）最高着順・いちばん一緒に走った馬・最後の一言だけ（空の画面は出さない）。
+- 他のプレイヤーの名前は持たない（ライバルは勝敗の数だけ、支部は貢献の数だけ）。プレイヤー・馬の名前は訳さない（`horseName` は `PLAYER_TEXT_KEYS`）。
+
+### 43.3 API（すべて要認証）
+| メソッド | パス | 本文 → 応答 |
+|---|---|---|
+| GET | `/v1/recaps` | → `{ "enabled", "recaps": [ { "id", "kind", "periodId", "title", "short", "builtAt", "opened", "completed" } ], "unseen": id\|null }`（新しい順。`unseen` = まだ開いていない一番新しいもの） |
+| GET | `/v1/recaps/:id` | → `RecapView`（43.4）。無い id は `404 NOT_FOUND` |
+| POST | `/v1/recaps/:id/progress` | `{ "step": "open"\|"complete" }` → `{ "openedAt", "completedAt" }`。最初の時刻だけ残す（何度送っても同じ、冪等）。KPI `recap_open`／`recap_complete`（`isFirst`） |
+
+### 43.4 画面の形（`RecapView`）
+```json
+{ "id": "season:2026-11", "kind": "season", "periodId": "2026-11", "title": "2026年11月シーズン", "short": false,
+  "sinceNote": "2026-11-09からの記録です",
+  "steps": [ { "key": "races", "label": "走ったレース", "value": "24", "unit": "戦", "notes": ["3着以内 9回"] },
+             { "key": "horse", "label": "いちばん一緒に走った馬", "value": null, "horseName": "アイボウ", "notes": ["18戦5勝"] },
+             { "key": "moments", "label": "名場面", "moments": [ { "kind": "first_win", "text": "シーズン初勝利（青葉競馬場 芝1600m）", "horseName": "アイボウ" } ] },
+             { "key": "end", "label": "おつかれさまでした", "value": null } ],
+  "shareCards": [ { "card": "summary", "title": "…", "headline": "24", "unit": "戦", "lines": ["…"], "horseName": null, "rank": false } ],
+  "openedAt": null, "completedAt": null }
+```
+- `steps[].key`：`races`・`wins`・`best_finish`・`rank`・`horse`・`time_attack`・`style`・`rival`・`team`・`hall`・`replays`・`moments`・`end`。数字の無いものは出さない。文はサーバーが作り、英語の応答は境界で訳す（REQ-L10N）。
+- 共有カード（`shareCards[].card`）：`summary`（レース・勝利）・`horse`（いちばん一緒に走った馬）・`moment`（最初の名場面）・`rank`（クラス・順位、`rank: true`）。端末は既存の `ShareCard`（REQ-UXS-071、ウォーターマーク「ムチ一閃」・`#ムチ一閃`）で絵にする。**順位を隠す**を選ぶと `rank: true` のカードと順位の行を外す。カードに入るのは自分の馬の名前と自分の数字だけ（プレイヤーID・表示名・他のプレイヤーの名前は入れない）。
+- 文言の決まり：「倍」「お得」「今だけ」など煽り・賭けごとの言葉（賭け・配当・オッズ）・課金を促す言葉は使わない（テストで確認、英語も同じ）。購入・コインの数字は出さない。
+
+### 43.5 設定 `progression.seasonRecap`（リモート設定で変更可）
+`{ enabled, keepSeasons, keepYears, shortBelowRaces, momentsMax }`。範囲（`SEASON_RECAP_LIMITS`）：`keepSeasons` 1..24（`SEASON_HISTORY_KEEP` 以下）、`keepYears` 1..10、`shortBelowRaces` 1..20、`momentsMax` 2..3。起動時と各版で検証。無い／`enabled: false` なら作らず、`GET /v1/recaps` は `enabled: false` と空の一覧。
+
+### 43.6 KPI
+`recap_open`・`recap_complete`（サーバー、`s1` = kind、`s2` = periodId、`s3` = `short`／`full`、`isFirst`）・`recap_share`（クライアント、`props.kind` = `season`／`year`、`props.card` = `summary`／`horse`／`moment`／`rank`、`props.hideRank`）。
+
+### 43.7 アカウント削除・その他
+- 振り返りはプレイヤーの状態の中だけにある（R2・ディレクトリの写しなし）。アカウント削除の `wipe` で消える。削除の実行中（`deleting`）は新しく作らない。削除後に届いた `closeSeason` は何も作らない（`wiped`）。
+- 解放キーは使わない（最初のシーズンが終わった後に出る）。プロフィールから過去の振り返りを開ける。
+- アクティビティ（§40、Round 15）：スナップショットを作った時（`rollRecaps`）に「振り返りができました」の1件を書く場所（本ラウンドでは書かない）。
+
+## 44. 厩舎の整理（horse roster organiser、REQ-ORG-001〜016、`server/src/domain/roster.ts`、C# `Roster.cs`（`RosterQuery`・`RosterSorter`）・`Muchi.Game.RosterOrganiserModel`）
+所属馬が増えても目当ての馬をすぐ見つけ、まとめて片づけられるようにする。**並び替え・絞り込み・名前の検索・端末ごとに覚える表示・お気に入り・ロック・まとめて操作**。コインも素材も動かさない（経済の目標なし、balance-targets の新しい節も E 番号も使わない）。
+
+### 44.1 まとめて操作できること（既存の1頭の決まりのまま）
+- 今のゲームで馬を手放す操作は **引退（`POST /v1/horses/:horseId/retire`、REQ-HORSE-004）だけ**。引退は返金も素材も無い（繁殖馬になる、§34 の引退式が1回だけできる）。まとめて操作の `action` は **`retire` だけ**で、1頭の引退と同じ関数（`horses.ts` `retire` → `hallOfFame.ts` `noteHallRetire`）をそのまま順に呼ぶ。返金の合計はいつも **0**（`refund: { paidCoins: 0, freeCoins: 0, materials: {} , items: {} }`）で、確認画面にもそのまま「返ってくるもの：なし」と出す。
+- **放出・変換（release / convert）は出さない**：1頭の放出・変換の決まり（返金の額）が今のゲームに無いので、まとめて操作だけに新しいコイン・素材の流れを作らない（作るなら経済の目標 E20・balance-targets 4.19 から決める別の仕事）。`action` は列挙なので後から足せる形にしておく（知らない値は `400 BAD_REQUEST`）。
+- **所属馬の上限は今のゲームに無い**（「厩舎がいっぱい」の流れも無い）。上限ができたら、その案内からこの画面（絞り込み「現役」・並び「能力」の低い順）へつなぐ（44.7）。
+
+### 44.2 ロックとお気に入り（REQ-ORG-004/005）
+- `PUT /v1/horses/:horseId/lock` `{ "locked": bool }` → `{ "horseId", "locked" }`。`PUT /v1/horses/:horseId/favorite` `{ "favorite": bool }` → `{ "horseId", "favorite" }`。値を置き換えるだけなので何度送っても同じ（冪等、キー不要）。持っていない馬は `404 HORSE_NOT_FOUND`。現役でも引退でも付けられる。
+- **ロックはサーバーで守る**：ロックした馬は **1頭の引退（`POST /v1/horses/:horseId/retire`）も `409 HORSE_LOCKED`**、まとめて操作でも断る（44.4 の `locked`）。配合・種付けは馬を消費しない（両親は残る）ので、ロックしていても使える。これから馬を消費する操作を足す時は `assertNotLocked` を通す（REQ-ORG-005）。
+- 状態はプレイヤーの部屋の `roster.locked[]`・`roster.favorites[]`（馬IDの一覧、上限なし＝所属馬の数まで）。持っていない馬のIDは読む時に無視する。アカウント削除では状態ごと消える（手順の追加なし）。
+
+### 44.3 一覧 `GET /v1/roster`（REQ-ORG-001〜003）
+```json
+{ "total": 42, "active": 30, "retired": 12, "locked": 3, "favorites": 5, "bulkMax": 50, "actions": ["retire"],
+  "partnerHorseId": "h1",
+  "horses": [ { "horseId": "h7", "name": "ミドリノカゼ", "templateId": "t_ssr_1", "rarity": "SSR", "sex": "male", "style": "sashi",
+                "surface": "turf", "distMinM": 1600, "distMaxM": 2400, "goingAptitude": "any", "status": "active",
+                "rating": 2880, "skillId": "sk_kirameki", "partner": false, "locked": true, "favorite": true,
+                "acquiredSeq": 7, "bornAt": 1794000000000, "ageDays": 12, "races": 34, "wins": 11,
+                "blocks": [], "appearance": { … } } ],
+  "notice": "まとめて引退しても、コインや素材は返ってきません" }
+```
+- `rating`＝能力の合計（覚醒込みの能力 `effectiveStats` ＋調教の上乗せ `trained`、ランク戦の正規化の前）。`races`・`wins`＝§34 の戦績（確定したレースだけ、記録の無い馬は0）。`acquiredSeq`＝馬IDの通し番号（手に入れた順）。`ageDays`＝生まれてからのゲーム日数（04:00 JST 区切り）。
+- `blocks[]`＝今まとめて引退すると断られる理由（44.4 と同じ値・同じ順）。画面はこれで選べない馬を最初から灰色にする。
+- 並び替え・絞り込み・検索は **クエリでサーバーでも、端末でも同じ結果**（`server/src/domain/roster.ts` `applyRosterQuery` と C# `RosterSorter.Apply`、共通のテストベクタ `contracts/roster-query.vectors.json`）。クエリ（すべて任意）：
+  | キー | 値 | 既定 |
+  |---|---|---|
+  | `sort` | `rating`・`aptitude`・`age`・`acquired`・`races`・`rarity`・`name` | `acquired` |
+  | `dir` | `desc`・`asc` | `desc` |
+  | `trackId`・`going` | `aptitude` の基準のコースと馬場（`going` は任意） | なし（`aptitude` は `trackId` が要る。無ければ `400`） |
+  | `surface` | `turf`・`dirt`（`both` の馬はどちらにも入る） | すべて |
+  | `band` | `sprint`（〜1400m）・`mile`（1401〜1800m）・`intermediate`（1801〜2400m）・`long`（2401m〜）。馬の距離適性の範囲が帯と重なれば入る | すべて |
+  | `style` | `nige`・`senko`・`sashi`・`oikomi` | すべて |
+  | `status` | `active`・`retired`・`all` | `all` |
+  | `skill`・`partner`・`locked`・`favorite` | `1`（ある・そう）／`0`（無い・違う） | すべて |
+  | `q` | 名前の一部（NFKC・ひらがな→カタカナ・長音の揺れをそろえて部分一致、最大 20 文字） | なし |
+  | `favoritesFirst` | `1`・`0`：お気に入りを先頭にまとめる | `1` |
+- **適性（`aptitude`）**：エンジンと同じ条件（RaceSim の適性外の罰・馬場の得意）から作る点数 `surface 一致（または both）200 ＋ 距離（範囲内 200、外は 200 − 外れたm ÷ 2、0 未満は 0）＋ 馬場 25 ×（fast の馬：−wet、heavy の馬：+wet、any：0）`。wet は 良/firm/fast＝−2・good＝0・稍重/yielding/muddy＝1・重/soft/sloppy＝2（`going` が無ければ馬場の項は 0）。印は ◎（芝ダ・距離とも合い、馬場の項 ≥ 0）／○（芝ダ・距離とも合う）／△（片方だけ）／×（どちらも合わない）。
+- 並びの同点は `acquiredSeq` の小さい順（いつも同じ順）。名前の並びは馬の名前の文字コード順（読みの辞書は使わない）。
+- **端末ごとに覚える**：選んだ並び・絞り込みはサーバーに保存しない。`RosterQuery.Encode()`（`v1;sort=rating;dir=desc;…`）を端末の設定（Unity の PlayerPrefs、プロトタイプは localStorage）に置き、知らないキー・値は既定に戻す（`Decode`）。
+
+### 44.4 まとめて操作（REQ-ORG-006〜011）
+1. **確認** `POST /v1/roster/bulk/preview` `{ "action": "retire", "horseIds": ["h7", "h9"] }` → 何も変えない。
+```json
+{ "action": "retire", "count": 2, "eligible": 1, "refused": 1,
+  "horses": [ { "horseId": "h7", "name": "ミドリノカゼ", "ok": true, "reasons": [] },
+              { "horseId": "h9", "name": "ハヤテ", "ok": false, "reasons": ["locked"] } ],
+  "refund": { "paidCoins": 0, "freeCoins": 0, "materials": {}, "items": {} },
+  "canConfirm": false, "confirmToken": "r1-6f3a9c01" }
+```
+2. **実行** `POST /v1/roster/bulk`（**冪等キー必須**）`{ "action", "horseIds", "confirmToken" }` → `{ "action", "count", "horses": [ { "horseId", "name", "ceremony" } ], "refund" }`。
+- **全部か何もしないか**：1頭でも断る理由があれば `409 ROSTER_BULK_REFUSED`（`error.details.horses` に断った馬と理由、44.4 の形）で、**1頭も引退しない**（PlayerDO の1回の取引の中で全部を確かめてから順に引退する。途中で失敗すれば取引ごと捨てる）。
+- `confirmToken`：確認の時の中身（action・馬IDの並び・各馬の状態・返金の合計）から作る短いハッシュ。実行の時に作り直して違えば `409 ROSTER_BULK_STALE`（確認の後に何か変わった。もう一度確認から）。安全のための鍵ではなく、「見せた一覧と違うものを実行しない」ための印。
+- 同じ冪等キーの再送は最初の応答をそのまま返す（2回引退しない）。`horseIds` は 1〜`bulkMax`（50）頭・重複不可（`400 BAD_REQUEST`）。
+- 断る理由（`reasons`、この順に全部並べる）：
+  | 理由 | いつ |
+  |---|---|
+  | `not_found` | 持っていない馬 |
+  | `locked` | ロックしている（44.2） |
+  | `partner` | 最初の相棒（`flags.partnerHorseId`）。まとめては引退させない（1頭の引退の画面からなら今までどおりできる） |
+  | `not_active` | もう引退している（引退は現役だけ） |
+  | `on_loan` | 種牡馬として貸し出しに登録中か、貸し出しの手続き中（§ REQ-BREED-010） |
+  | `in_training` | 調教の途中（開いているセッションの馬、期限内） |
+  | `tournament_entry` | 大会に登録中（登録・登録の取り消し・大会の確定でプレイヤーの部屋に書く。記録が残っても大会の開始から 24 時間で外れる） |
+  | `cup_entry` | プレイヤー主催カップ（§42）に参加中（作った・参加した時にプレイヤーの部屋の参加中の一覧 `cups.active` に馬を書く。カップが終わる・中止・抜けると外れる。Round 16 統合） |
+  | `hall_pending` | §34 の引退式をまだ見ていない |
+- アカウント削除の予約中も1頭の引退と同じく止めない（ルールを変えない）。
+- KPI：`roster_bulk_action`（サーバー、実行できた時だけ、`s1` = action、`count` = 頭数）。
+
+### 44.5 確認画面の決まり（クライアントが守る、REQ-ORG-010）
+- 2段階：選ぶ → 確認シート（**選んだ馬を全部**名前・レア度・理由つきで並べ、返ってくるものの合計（引退は「なし」）を出す）→ 実行。元に戻す（undo）は無いので、シートに「元に戻せません」と書く。
+- 「やめる」と「引退させる」は**同じ大きさ**で並べ、どちらも既定の選択にしない。断られる馬が1頭でもいれば実行のボタンは押せず、その馬を外すボタンを出す。
+- 馬の名前はプレイヤーが付けたもの（英語でも訳さない）。
+
+### 44.6 KPI（REQ-ORG-013）
+- `roster_sort`（クライアント、`props: { sort, filters }`：並びのキーと使っている絞り込みの数 0〜10。並びか絞り込みを変えた時、1秒に1回まで）→ `s1` = sort、`value` = filters。
+- `roster_bulk_action`（サーバー、44.4）。
+
+### 44.7 クライアント（REQ-ORG-014/015）
+- `Muchi.Client` `ApiClient.GetRosterAsync(RosterQuery)`・`SetHorseLockAsync`・`SetHorseFavoriteAsync`・`PreviewBulkAsync`・`RunBulkAsync`、`RosterQuery`（Encode/Decode）・`RosterSorter`（並び・絞り込み・検索・適性、サーバーと同じ）、`AnalyticsEvent.RosterSort`。
+- Unity のゲーム層 `RosterOrganiserModel`：一覧の行、並び・絞り込みのシート、検索、ロック・お気に入りの切り替え、まとめて選ぶ、確認シート。端末の設定は `IPrefs`（PlayerPrefs）に `muchi.roster.view`。
+- 大会の登録（`TournamentPlayers.noteEntry`/`clearEntry`）：`TournamentsService.register`/`unregister` が成功した後に呼ぶ（任意のポート、失敗しても登録は成功のまま）。
+- §40 の活動の一覧には書かない（Round 16 統合の決定）：一覧は「留守の間に起きたこと」で、まとめての引退は自分がその場で確かめた操作（確認シートと結果で見えている）。
+
+## 45. 次にやること（ホームの案内カード、REQ-NEXT-001〜014、`server/src/domain/nextAction.ts`、C# `NextAction.cs`・`Muchi.Game.NextActionModel`、docs/planning/06 §6.1）
+ホームに「次にやること」を**主カード1枚＋小さなチップ最大2つ**で出す。戻ってきた人も始めたばかりの人も、ホームを開けば次の1手が分かるようにする（06 §2.2 F10「次にやることが分からない」）。何を出すかはプレイヤーの状態の要約からの**純粋な関数**で決まり（同じ状態・同じ時刻なら同じ結果）、優先順位はデータ（`progression.nextActions`、起動時と各版で検証）にある。コイン・アイテムは動かない（経済の目標なし、E 番号なし）。
+
+### 45.1 種類（`kind`）と開く画面（`screen`）
+開く画面はコードで種類ごとに決まっていて、設定では変えられない（設定から「ショップへ」のカードは作れない）。
+
+| kind | 出る条件（要約から） | screen | 期限 `deadlineAt`（データの本物の時刻だけ） |
+|---|---|---|---|
+| `first_race` | オンボーディング中（45.3）。これだけを出す | `race` | なし |
+| `login_bonus` | `login_bonus` が解放済みで、今日のゲーム日の分が未受け取り | `login_bonus` | なし |
+| `missions_claim` | 達成して未受け取りのデイリーミッションがある（`count` = 本数） | `missions` | なし |
+| `pass_claim` | シーズンパスの受け取れる段がある（無料の列、プレミアムは有効な時だけ。`count` = 段数）。購入の案内ではない | `season_pass` | なし |
+| `gift_expiring` | プレゼントボックスに `threshold` 日以内に期限の来る物がある（`count` = 件数）。**開くだけ**（カードから受け取らない） | `gift_box` | 一番早い `expiresAt` |
+| `training_open` | 調教の途中のセッションがある | `training` | セッションの `expiresAt` |
+| `missions_close` | 未達成のデイリーミッションのうち、残りが `threshold` 以下のものがある（`count` = 一番近いものの残り） | `missions` | なし |
+| `exchange_closing` | 交換所のポイントが残っていて、交換所が `threshold` 日以内に閉まる（`refId` = イベントID、`count` = ポイント）。残りは閉まる時に素材になる（§30、失われない） | `event_exchange` | `closesAtMs` |
+| `feature_unlocked` | `features` に挙げた解放キーが今日のゲーム日に開いた（`featureKey`） | `feature` | なし |
+| `rival_week` | 今週のライバルがいて、今週のランク戦がまだ0回 | `rival` | `weekEndsAt` |
+| `weekly_challenge` | 週替わりチャレンジが解放済みで、今週の未クリアがあり、今日の挑戦回数が残っている（`count` = 未クリア数） | `weekly_challenge` | 週の `endsAt` |
+| `team_goal_near` | 支部の共同目標の次の段まで `threshold` 単位以下（`count` = 残り）。`GET /v1/home/next` だけ（支部の値は TeamDO にある） | `team_goal` | 週の `endsAt` |
+| `training_slots` | 調教の今日の回数が残っている（`count`） | `training` | なし |
+| `first_win` | 今日の初勝利ボーナスが残っていて、今日まだ1着がない | `race` | なし |
+| `scout_ticket` | スカウト券を持っている（`count` = 枚数）。**チップだけ**（主カードにはならない）。持っている券を使う案内で、購入・有償のスカウトの案内ではない | `scout` | なし |
+| `race` | いつでも（最後の受け皿。主カードが他に無い時） | `race` | なし |
+
+- 主カードにしてはいけないもの：購入（ショップ・パスの購入・有償スカウト）。`scout_ticket` はチップだけ（コードで固定）。有償の商品・価格・割引を出す種類は無い。
+- 文言はクライアントが種類と数から作る（日本語＋英語、`ui-en.json`／`proto-en.json`）。期限は「11月12日 4:00まで」のように**日付と時刻**で出し、カウントダウン・「今だけ」「残りわずか」などの煽りは出さない。
+- **アクティビティ（§40）の未読はカードにしない**（Round 16 統合の決定）：未読の数はホームのベル（`activity.unread`）がいつも出しているので、カードやチップに同じことを重ねない（新しい種類はクライアント3つ・設定・KPI に広がり、安くない）。カップの招待・結果・振り返りの知らせはアクティビティの項目（§40 の表）から開く。
+
+### 45.2 選び方（`computeNextActions`、純粋関数）
+1. 要約から当てはまる候補を作る（45.1）。
+2. 今日のゲーム日に閉じた種類（45.4）を除く。
+3. `priority` の大きい順、同じなら 45.1 の表の順で並べる（`priority` は設定で重複不可なので、実際には表の順は使わない）。
+4. 先頭のうちチップだけの種類でない最初の1つが主カード。残りの先頭から `maxChips`（0〜2）個がチップ。`race` は主カードの時だけ出す（チップにはしない）。
+5. 削除の予約中（REQ-UXS-040）は `race` だけ。
+
+### 45.3 オンボーディングとの関係（06 §2.3 FTUE）
+- 相棒がまだいない（`flags.partnerHorseId` なし）か、チュートリアル以外のレースが `onboardingRaces`（既定 2 = デイリーミッションの解放と同じ）回未満の間は、`first_race`（「相棒で、本番のコースへ」）だけを出す。チップは出さず、閉じることもできない。FTUE の流れ（命名 → 無料10連 → 2戦目）と競わない。
+- 解放されていない機能の種類は出さない（`unlock` が無い機能、§4.3 の表のとおり）。
+- 復帰キャンペーンの歓迎画面（§20）とお知らせのカードは今までどおり先に出る（ホームの左のカード枠）。次にやることのカードは別の場所（ホームの下の中央）に出す。
+
+### 45.4 今日は閉じる
+- `POST /v1/home/next/dismiss` `{ "kind" }` → `NextActionsView`。その種類を**今日のゲーム日（既定 4:00 JST 切り替え、REQ-DAY-001）の間**出さない。翌ゲーム日に戻る。値を足すだけなので何度送っても同じ（冪等、冪等キー不要）。
+- `first_race`・`race` は閉じられない（`409 NOT_ELIGIBLE`）。知らない種類は `400 BAD_REQUEST`。
+- `feature_unlocked` は解放を最初に見たゲーム日だけ出る（翌日には消える）。解放を見た日は状態の `nextAction.features` に覚える（ブートストラップ・`GET /v1/home/next`・閉じる時）。この仕組みより前からの状態は、最初に見た時点で開いている機能を「前から開いていた」とみなす（古いプレイヤーに全部の機能を「新しく開いた」と出さない）。
+
+### 45.5 API（要認証）
+| メソッド | パス | 本文 → 応答 |
+|---|---|---|
+| GET | `/v1/home/next` | → `NextActionsView`（支部に入っていれば共同目標も見る） |
+| POST | `/v1/home/next/dismiss` | `{ "kind": NextKind }` → `NextActionsView` |
+
+`/v1/player/bootstrap`・`GET /v1/player` の `nextActions` にも同じ形が入る（共同目標を除く。ホームの最初の描画用）。
+
+```json
+{ "enabled": true, "day": "2026-11-09", "onboarding": false,
+  "primary": { "kind": "gift_expiring", "screen": "gift_box", "count": 2, "deadlineAt": 1794614400000, "featureKey": null, "refId": null, "dismissible": true },
+  "chips": [ { "kind": "rival_week", "screen": "rival", "count": null, "deadlineAt": 1794880800000, "featureKey": null, "refId": null, "dismissible": true } ],
+  "dismissed": ["missions_close"], "nextDayAt": 1794697200000 }
+```
+- `nextDayAt` = 次のゲーム日の始まり（クライアントの予備の計算で、閉じた種類を戻す時刻。画面には出さない）。
+- `enabled: false`（設定なし・無効）の時は `primary: null`, `chips: []`。
+
+### 45.6 クライアントの予備（オフライン）
+サーバーが計算する。クライアントは最後に受け取った `NextActionsView` を覚えておき、取れない時（オフライン・エラー）はそれを使う：`deadlineAt` を過ぎた物を外し、端末で閉じた種類（同じゲーム日の間、`Muchi.Game.GameDay`）を外し、覚えた `day` が今日のゲーム日と違えば（日をまたいだ）`race` だけにする。何も無ければ `race`。オフラインのレース（練習）はいつでも押せる（06 §6.1）。
+
+### 45.7 設定 `progression.nextActions`（リモート設定で変更可）
+`{ enabled, maxChips (0..2), onboardingRaces (0..20), rules: [{ kind, priority (0..1000、重複不可), threshold?, features? }] }`。
+- `kind` は 45.1 の種類だけ・重複不可。`race` は必須（受け皿）。`first_race` は書かない（オンボーディングはコードで決まる）。
+- `threshold`：`gift_expiring`（日 1..14）・`exchange_closing`（日 1..7）・`missions_close`（残り 1..10）・`team_goal_near`（残り 1..100）だけが持ち、他の種類には書けない。
+- `features`：`feature_unlocked` だけ。§4.3 の解放キーのうち、`shop`・`season_pass`・`scout`（購入・ガチャの画面）は書けない。
+
+### 45.8 KPI
+`next_card_view`（クライアント、`props.kind`・`props.slot` = `primary`／`chip`。同じ種類は1ゲーム日に1回）・`next_card_tap`（クライアント、`props.kind`・`props.slot`）・`next_card_dismiss`（サーバー、`s1` = kind、閉じた時に1回）。クエリは `docs/ops/kpi-queries.md`。
+
+### 45.9 アカウント削除
+状態の `nextAction`（今日閉じた種類・機能を見た日）は最後の `wipe` で消える。他の場所に写しは無い。

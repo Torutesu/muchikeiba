@@ -834,7 +834,7 @@
 
 ## 38. フォトモード（TS＋C#、`src/domain/photoMode.ts`・`server/master/photo.json`・`Muchi.Client/PhotoMode.cs`・`Muchi.Game.PhotoModeModel`、`contracts/protocol.md` §38）
 拘束条件：他の人のレースを止めない、レースの結果・ハッシュ・ゴールデンを変えない、ランダムな販売なし、他人の名前を出さない、ひとことは翻訳しない。コイン・アイテムは配らない（E なし）。
-- REQ-PHOTO-001 入口：ひとりで走るレース（オフライン・練習・タイムアタック・チュートリアル・週替わりチャレンジ）はレース中に一時停止して撮れる。ランク戦・フレンド戦・イベント・大会はレース中に止めず、結果画面とリプレイからだけ撮れる（クライアント `PhotoModeModel.CanPause`、サーバーは `source.kind: "paused"` でその4つを 400 `PHOTO_SOURCE_INVALID`）。
+- REQ-PHOTO-001 入口：ひとりで走るレース（オフライン・練習・タイムアタック・チュートリアル・週替わりチャレンジ）はレース中に一時停止して撮れる。ランク戦・フレンド戦・イベント・大会・プレイヤー主催カップ（`cup`、Round 16 統合）はレース中に止めず、結果画面とリプレイからだけ撮れる（クライアント `PhotoModeModel.CanPause`／`PhotoSource.IsShared`、サーバーは `source.kind: "paused"` でその5つを 400 `PHOTO_SOURCE_INVALID`）。
 - REQ-PHOTO-002 決定論：写真は `(raceId, tick)`＋カメラ＋重ねる物で決まる。端末は設定＋確定入力をその tick まで計算し直して馬の状態を作る（`PhotoSnapshot.Capture`）。走っているレースの `RaceSim` を触らず、結果ハッシュ・ゴールデンは変わらない。同じ入力なら `Fingerprint` が同じ。
 - REQ-PHOTO-003 カメラ：注目の馬のまわりを回る・寄る・高さ・画角・被写界深度（0〜3）。範囲は `photo.json config.camera`（サーバーとクライアントで同じ）。高さは 0.3 m 以上（コースの下に入らない）。
 - REQ-PHOTO-004 ルック（色味・フィルター）：いくつか用意し、すべて無料（`unlock: default` だけ。検査で強制）。
@@ -875,7 +875,7 @@
 ## 40. アクティビティ（お知らせ一覧、TS＋C#、`src/domain/activity.ts`、`contracts/protocol.md` §40、docs/planning/06 §3.5）
 拘束条件：表示とリンクだけ（コイン・アイテムは動かない、受け取りボタンなし）、ブロックした相手からは出さない、退会・BAN の相手の名前は出さない。E番号なし。
 - REQ-ACT-001 一覧：留守の間に自分に起きたこと（フレンド申請・成立、ライバルの週の結果・記録更新、マイ厩舎のいいね、応援スタンプ、大会の結果、プレゼントの到着、支部の共同目標の到達・週の結果）を新しい順に1か所で（`GET /v1/activity`）。
-- REQ-ACT-002 書く箇所：プッシュを送るのと同じ箇所で、送り元のイベント id ごとに1回だけ（再送・やり直しで2件にならない）。プッシュの設定・上限・静かな時間帯に関係なく書く。
+- REQ-ACT-002 書く箇所：プッシュを送るのと同じ箇所で、送り元のイベント id ごとに1回だけ（再送・やり直しで2件にならない）。プッシュの設定・上限・静かな時間帯に関係なく書く。Round 16 統合：プレイヤー主催カップ（招待・最初のレースの開始・終了／中止、§42.7）と振り返りができた時（§43）も書く（`cup_invited`・`cup_started`・`cup_finished`・`cup_cancelled`・`recap_ready`、protocol §40 の表）。
 - REQ-ACT-003 リンク：各項目は行き先の画面（`link.screen`、必要なら `link.id`）を持つ。プレゼントは「プレゼントボックスへ」だけで、受け取りはプレゼントボックスで行う。
 - REQ-ACT-004 重複させない：大会・共同目標の賞品は `gift_arrived` にしない。おかえり・新着情報は項目にせず、`links.whatsNew` で案内する。
 - REQ-ACT-005 プッシュの種類：各項目はプッシュと同じ `category`（`friends`・`events`・`gifts`）を持つ。プッシュの設定はプッシュだけに効き、一覧はいつでも全部見られる。
@@ -909,3 +909,79 @@
 - REQ-A11Y-014 KPI：`a11y_setting_change`（変わったキーごと、s1 キー・s2 値。個人情報なし）。
 - REQ-A11Y-015 英語：設定画面のすべての文に英語（`ui-en.json`・`proto-en.json`）。英語・特大の文字でもはみ出さない。
 - REQ-A11Y-016 クライアント：`Muchi.Client`（設定のモデル・API・トークン・`MotionPolicy`・`FlashLimiter`・`WhipHold`）、Unity の `AccessibilityModel`（Codex が結ぶ値）、プロトタイプ（設定画面が文字の大きさ・色・動きを全画面に実際に当てる、日英、e2e と英語の通し）、Codex 向けの引き継ぎ（docs/handoff-codex-round15-accessibility.md）。
+
+## 42. プレイヤー主催カップ（TS＋C#、`src/domain/hostedCups.ts`・`src/domain/hostedCupService.ts`・`src/do/cup.ts`・`Muchi.Client/HostedCups.cs`、`contracts/protocol.md` §42）
+拘束条件：ランク外（レーティング・シーズン・ライバル・ミッション・パス・コイン・アイテムは動かない、経済の目標なし）。主催者に有利をなくす。参加コードは推測・列挙できない。プレイヤーが入力した名前は訳さない。レースは既存のフレンド部屋の仕組みで走る（別の仕組みを作らない）。
+- REQ-CUP-001 作成：`POST /v1/cups`（冪等キー必須、同じキーは同じカップ）。名前・人数（`minCapacity`〜`maxCapacity`）・形式（`single`／`best_of_3`）・時間帯（`opensAt`〜`closesAt`、長さ `minWindowMinutes`〜`maxWindowHours`、開始は `maxLeadHours` 以内）・条件（`RoomConditions`、フレンド部屋と同じ検証、`usePreset` で自分の保存した条件）・自分の馬。
+- REQ-CUP-002 名前：1〜`nameMaxChars` 文字、NFKC、制御文字・URL 不可、NG 語は表示名と同じ一覧（`NG_NAME`）。訳さない（`cupName`・`hostName` は `PLAYER_TEXT_KEYS`）。
+- REQ-CUP-003 参加コード：8文字（31種の文字、暗号の乱数、`XXXX-XXXX`）、索引は先頭の文字で分ける。終わった・中止のカップのコードは無効。コードの照会・参加は1時間 `joinCodeAttemptsPerHour` 回まで（成功も失敗も数える、超えると `RATE_LIMITED`）。無い・使えないコードは理由を言わず `CUP_CODE_INVALID`。
+- REQ-CUP-004 招待：主催者が最初のレースの前に、フレンド（お互いにフレンドの人だけ）か自分の支部の仲間を招待（1カップ `invitesPerCup` 人まで）。招待された人はコードなしで `cupId` で参加できる。プッシュ `cup_invite`。
+- REQ-CUP-005 参加：自分の馬を選んで参加（主催者は他の人の馬を選べない）。最初のレースの前・`closesAt` の前・定員まで。同じ人の再送は1回（`joined: false`）。最後の1枠に同時に2人来ても1人だけが入る（もう1人は `CUP_FULL`）。
+- REQ-CUP-006 ブロック：どちらかがもう一方をミュート（§28・支部フィードと同じ一覧）していれば同じカップに入れない（参加の時に双方向で確かめる、理由は言わない）。招待もしない。BAN・削除の予約中は作成・参加できない。
+- REQ-CUP-007 上限：主催中 `maxActivePerHost`（既定 2）、参加中（主催を含む）`maxEntriesPerPlayer`（既定 4）。終わった・中止のカップは数えない（通知が届かなくても `closesAt` ＋ 余裕で数えなくなる）。
+- REQ-CUP-008 出走：主催者が時間帯の中で、参加者が `minEntrants` 人以上の時に次のレースを始める（`POST /v1/cups/:cupId/start`）。マッチメイカーのフレンド部屋と同じ手順（全員が他のレース・キューにいないこと、部屋を作り、割り当てを `/v1/match/status` に）。モードは `cup`、人間だけ、条件は部屋の条件。レース ID はカップ・回・試行で決まる（再試行は同じ部屋）。
+- REQ-CUP-009 結果：部屋の確定（`heatResult`）で着順。無効なら数えず、主催者がやり直せる。`raceTimeoutMinutes` で確定しなければ無効。`best_of_3` は着順のポイント（`pointsByPlace`）、順位はポイント → 最高着順 → 最終レース → 参加の早い順。全部走ったら終了。
+- REQ-CUP-010 変えられない：作った後に条件・人数・形式を変える API はない。最初のレースの後は参加・招待もできない。
+- REQ-CUP-011 抜ける：主催者が抜けるとカップは中止（`host_left`、参加者の一覧から消え、履歴に「中止」）。参加者は最初のレースの前なら外れ、後なら棄権（以降 0 点）。冪等。
+- REQ-CUP-012 締め切りと片付け：`closesAt` に、走ったレースが無ければ中止（`expired`）、あれば途中の順位で終了（`partial`）。終わったカップは `keepDays` 日後に消える。参加者への結果の通知は届くまで再送する（アラーム）。
+- REQ-CUP-013 ランク外：`mode: "cup"` の結果は `applyRace` で記録だけ（`appliedRaces`・マイリプレイ・`race_finish`）。レーティング・シーズン・ライバル・ミッション・パス・統計・殿堂・支部フィード・共同目標・コインは動かない（テストで確かめる）。Round 16 統合の決定：カップのレースは**マイリプレイに出て保存もできる**（フレンド戦と同じ扱い、§37）。殿堂の戦績（§34 `HALL_MODES`）と振り返り（§43 `COUNTED_MODES`）には**数えない**（どちらも `cup` を含めない。`server/test/r16-integration.test.ts`）。写真はレース中に止めず、結果画面・リプレイから撮る（§38）。
+- REQ-CUP-014 トロフィーと結果のカード：終わったカップの順位 1〜3 にトロフィー（金・銀・銅、見た目だけ）。履歴は `historyKeep` 件。プロフィールに数を出す。結果のカードは既存の共有カード（`ShareCard`）で共有する。
+- REQ-CUP-015 運用の削除：`POST /v1/admin/cups/:cupId/delete`（operator 以上、理由、監査ログ）でカップを中止（`ops_deleted`）。
+- REQ-CUP-016 アカウント削除：手順に `cups`（主催中は中止、参加中は外す／名前を伏せて棄権）。
+- REQ-CUP-017 KPI：`cup_create`・`cup_join`・`cup_finish`（サーバー）。クエリは `docs/ops/kpi-queries.md`。
+- REQ-CUP-018 クライアントとプロトタイプ：`Muchi.Client` `ApiClient.GetCupsAsync`・`CreateCupAsync`・`GetCupAsync`・`LookupCupCodeAsync`・`JoinCupAsync`・`LeaveCupAsync`・`InviteToCupAsync`・`StartCupRaceAsync`、`CupCode`（入力の正規化）・`CupResultCard`（共有カード）。Unity のゲーム層 `HostedCupModel`（作成のフォーム、招待・コードで参加、ロビー、順位表）。プロトタイプの4画面（作成・招待／コード・ロビー・順位表）を日本語・英語で。
+
+## 43. シーズンの振り返り（season recap、TS＋C#、`src/domain/seasonRecap.ts`・`Muchi.Client/SeasonRecap.cs`、`contracts/protocol.md` §43）
+拘束条件：中身はサーバーが確定させたデータだけ（推定・乱数・端末の申告なし）。記録の無かった期間を埋めない（途中からなら「〜からの記録」と正直に出す）。コイン・アイテムは動かない（E 番号なし）。課金の数字・煽り・賭けの言葉・支出を促す言葉は出さない。他のプレイヤーの名前は持たない。
+- REQ-RECAP-001 記録：`applyRace`（レースIDのガード内）でレース・勝利・3着以内・最高着順・馬ごと・脚質・連勝・初勝利・最大の勝利を、支部の共同目標が数えた時に貢献を、ライバルの週の確定で勝敗を、マイリプレイの保存で保存数を、今のシーズンと今のゲーム年の記録（`seasonRecap.acc`）に足す。数えるレースは殿堂の戦績・プレイヤー統計と同じ。
+- REQ-RECAP-002 シーズンの締め：トランザクションの最初（`rollSeason` の後の `rollRecaps`）で前のシーズンのスナップショットを作る。集計ジョブの `closeSeason` もこの経路を通る。
+- REQ-RECAP-003 年の締め：ゲーム年（`gameDayKey` の年、`progression.dayRollover` の時刻＝04:00 JST で切り替わる）が変わったら前の年のスナップショットを作る。
+- REQ-RECAP-004 1つだけ：1プレイヤー・1期間に1つ（`season:<YYYY-MM>`／`year:<YYYY>`）。再試行・二重の締めでも増えない。記録の無い期間は作らない。
+- REQ-RECAP-005 最終順位：`closeSeason` の `rank` を、スナップショットの順位がまだ無い時だけ書く。その年のスナップショットのクラスの行も選び直す。
+- REQ-RECAP-006 正直な期間：記録が期間の途中から始まった時は `since` を持ち「{date}からの記録です」と出す。時刻つきで残っている確定データ（タイムアタックの記録・殿堂入り・シーズンの記録）は期間で数える。
+- REQ-RECAP-007 中身：レース・勝利・最高着順・到達したクラス・いちばん一緒に走った馬・タイムアタックの記録・よく使った脚質・ライバルとの週の勝敗・支部への貢献・殿堂入りした馬・保存したリプレイ・名場面 2〜3（決まった優先順、無いものは作らない）。選び方の同点の決め方は protocol §43.2。
+- REQ-RECAP-008 短い版：レースが `shortBelowRaces` 未満なら短い版（空の画面にしない）。
+- REQ-RECAP-009 保存：スナップショットは小さく（1件 2 KB 未満）、シーズン `keepSeasons`・年 `keepYears` 件まで（新しい方を残す）。
+- REQ-RECAP-010 API：`GET /v1/recaps`・`GET /v1/recaps/:id`・`POST /v1/recaps/:id/progress`（最初の時刻だけ、冪等）。
+- REQ-RECAP-011 共有：共有カード（summary・horse・moment・rank）を既存の `ShareCard` の経路で作る。順位を隠す選択。自分の馬と自分の数字だけ（他のプレイヤーの名前・ID なし）。
+- REQ-RECAP-012 文言：日本語・英語のすべての行。「倍」「お得」「今だけ」・賭けの言葉・支出を促す言葉を使わない（テスト）。プレイヤー・馬の名前は訳さない。
+- REQ-RECAP-013 設定 `progression.seasonRecap`：`keepSeasons` 1..24・`keepYears` 1..10・`shortBelowRaces` 1..20・`momentsMax` 2..3 を起動時と各版で検証。
+- REQ-RECAP-014 アカウント削除：状態の `wipe` で消える。削除の実行中は作らない。削除後の `closeSeason` は何も作らない。
+- REQ-RECAP-015 KPI：`recap_open`・`recap_complete`（サーバー）、`recap_share`（クライアント）。クエリは `docs/ops/kpi-queries.md`。
+- REQ-RECAP-016 クライアント：`Muchi.Client` `ApiClient.GetRecapsAsync`・`GetRecapAsync`・`RecapProgressAsync`、`RecapShare`（`ShareCard` を作る、順位を隠す）。Unity のゲーム層 `SeasonRecapModel`（めくる順・戻る・最後・短い版・動きを減らす設定のフック）。プロトタイプ：全画面でめくる振り返り（日本語・英語）。
+
+## 44. 厩舎の整理（TS＋C#、`src/domain/roster.ts`・`Muchi.Client/Roster.cs`、`contracts/protocol.md` §44）
+拘束条件：コイン・素材は動かない（まとめて操作は既存の1頭の引退をそのまま繰り返すだけ。返金なし。経済の目標なし）。ロックはサーバーで守る。全部か何もしないか。馬の名前は訳さない。
+- REQ-ORG-001 一覧：`GET /v1/roster` が所属馬ごとに能力の合計・適性・脚質・距離・馬場・レア度・スキル・相棒・ロック・お気に入り・手に入れた順・生まれてからの日数・戦数と勝数（§34 の戦績）・今まとめて引退できない理由を返す。
+- REQ-ORG-002 並び替え：能力・適性（選んだコースと馬場）・年齢・手に入れた順・戦数・レア度・名前。昇順／降順。同点は手に入れた順。お気に入りを先頭にまとめられる（既定）。
+- REQ-ORG-003 絞り込みと検索：芝／ダート（両方の馬はどちらにも）、距離の帯（短距離・マイル・中距離・長距離、範囲が重なれば）、脚質、現役／引退、スキルの有無、相棒、ロック、お気に入り、名前の部分一致（NFKC・ひらがな→カタカナ・長音をそろえる）。サーバーのクエリと端末の `RosterSorter` は共通のテストベクタで同じ結果。
+- REQ-ORG-004 端末ごとの表示：選んだ並び・絞り込みは端末に `RosterQuery.Encode()` で覚える（サーバーに保存しない）。知らない値は既定に戻す。
+- REQ-ORG-005 ロック・お気に入り：`PUT /v1/horses/:horseId/lock`・`/favorite`（値の置き換えで冪等）。ロックした馬は1頭の引退（`HORSE_LOCKED`）もまとめて操作も断る。配合・種付けは馬を消費しないので使える。今後の消費する操作も `assertNotLocked` を通す。
+- REQ-ORG-006 まとめて操作：`action` は `retire` だけ（今のゲームで馬を手放す操作は引退だけ）。1頭の引退と同じ関数（`retire`・`noteHallRetire`）を順に呼ぶので、引退式も1頭ずつできる。放出・変換は1頭の決まりが無いので作らない（作るなら経済の目標から）。
+- REQ-ORG-007 確認：`POST /v1/roster/bulk/preview` は何も変えず、全部の馬の可否と理由、返ってくるものの合計（引退は 0）、`confirmToken` を返す。
+- REQ-ORG-008 実行：`POST /v1/roster/bulk`（冪等キー必須、`confirmToken` 必須）。1頭でも断る理由があれば `ROSTER_BULK_REFUSED`（理由つき）で1頭も変えない。確認の後に中身が変わっていれば `ROSTER_BULK_STALE`。同じキーの再送は最初の応答。1〜50頭、重複不可。
+- REQ-ORG-009 断る理由：持っていない・ロック・相棒（まとめてだけ）・引退済み・貸し出し中・調教中・大会に登録中・カップに参加中（`cup_entry`、Round 16 統合、§42）・引退式を見ていない。全部を決まった順で返す。
+- REQ-ORG-010 確認画面：選んだ馬を全部並べ、合計（なし）を出し、「元に戻せません」。「やめる」と「実行」は同じ大きさ、既定の選択なし。断られる馬がいれば実行できない。
+- REQ-ORG-011 大会の登録：登録・取り消しの成功の後と大会の確定でプレイヤーの部屋に記録する（任意のポート）。記録は大会の開始から 24 時間で外れる。
+- REQ-ORG-012 所属馬の上限：今のゲームには無い（「厩舎がいっぱい」の流れも無い）。できたらこの画面へつなぐ。
+- REQ-ORG-013 KPI：`roster_sort`（クライアント：並びのキー・絞り込みの数）、`roster_bulk_action`（サーバー：action・頭数）。クエリは `docs/ops/kpi-queries.md`。
+- REQ-ORG-014 クライアント：`Muchi.Client` の `RosterQuery`・`RosterSorter`・`ApiClient` の各メソッド・`AnalyticsEvent.RosterSort`。Unity のゲーム層 `RosterOrganiserModel`。描画は `docs/handoff-codex-round16-roster-organiser.md`。
+- REQ-ORG-015 英語：理由・並び・絞り込み・確認の文言はすべて英語がある（`l10n:missing` 0）。馬の名前は訳さない。
+- REQ-ORG-016 プロトタイプ：厩舎の所属馬の一覧に並び・絞り込み・検索・ロック・お気に入り・まとめて選ぶ・確認シート（ムチ一閃の見た目、日本語・英語、e2e と英語の流れ）。
+
+## 45. 次にやること（ホームの案内カード、TS＋C#、`src/domain/nextAction.ts`・`Muchi.Client/NextAction.cs`、`contracts/protocol.md` §45、docs/planning/06 §6.1）
+拘束条件：購入を主カードにしない（ショップ・パスの購入・有償スカウトの案内は作らない。スカウト券はチップだけ）。偽の急ぎを作らない（期限はデータの本物の時刻だけを日付・時刻で出す。カウントダウン・「今だけ」「残りわずか」は出さない）。オンボーディング（06 §2.3）と競わない。コイン・アイテムは動かない。
+- REQ-NEXT-001 種類：`first_race`・`login_bonus`・`missions_claim`・`pass_claim`・`gift_expiring`・`training_open`・`missions_close`・`exchange_closing`・`feature_unlocked`・`rival_week`・`weekly_challenge`・`team_goal_near`・`training_slots`・`first_win`・`scout_ticket`・`race`。開く画面は種類ごとにコードで固定（設定で変えられない）。
+- REQ-NEXT-002 純粋関数：`computeNextActions(config, summary, dismissed)` は状態の要約（`nextActionSummary`）だけから主カード1枚とチップ最大 `maxChips`（≤ 2）を決める。同じ入力なら同じ結果。並びは `priority` の大きい順。
+- REQ-NEXT-003 主カードの決まり：チップだけの種類（`scout_ticket`）は主カードにしない。`race` は主カードの時だけ（他が無い時の受け皿）。
+- REQ-NEXT-004 オンボーディング：相棒がいないか、チュートリアル以外のレースが `onboardingRaces` 回未満の間は `first_race` だけ（チップなし・閉じられない）。解放されていない機能の種類は出さない（§4.3）。
+- REQ-NEXT-005 今日は閉じる：`POST /v1/home/next/dismiss {kind}`。その種類を今日のゲーム日（REQ-DAY-001）の間だけ出さない。冪等。`first_race`・`race` は `NOT_ELIGIBLE`。KPI `next_card_dismiss` は閉じた時に1回。
+- REQ-NEXT-006 期限：`deadlineAt` はプレゼントの `expiresAt`・交換所の `closesAtMs`・ライバル／チャレンジ／共同目標の週の終わり・調教のセッションの `expiresAt` だけ。他は null。
+- REQ-NEXT-007 プレゼントの期限：`gift_expiring` は箱を開くだけ（カードから受け取らない）。
+- REQ-NEXT-008 新しく開いた機能：`feature_unlocked` は解放を最初に見たゲーム日だけ（`nextAction.features`）。古い状態は最初に見た時に開いていた機能を「前から」とみなす。`shop`・`season_pass`・`scout` は対象にできない。
+- REQ-NEXT-009 削除の予約中（REQ-UXS-040）は `race` だけ。
+- REQ-NEXT-010 API：`GET /v1/home/next`（支部の共同目標も見る）・`POST /v1/home/next/dismiss`、ブートストラップと `GET /v1/player` の `nextActions`（共同目標なし）。
+- REQ-NEXT-011 設定 `progression.nextActions`：形・種類の重複・`priority` の重複・`race` 必須・`threshold` を持てる種類と範囲・`features` の禁止キーを起動時と各版で検証。
+- REQ-NEXT-012 KPI：`next_card_view`・`next_card_tap`（クライアント、`kind`・`slot`）、`next_card_dismiss`（サーバー）。
+- REQ-NEXT-013 クライアント：`Muchi.Client` `ApiClient.GetNextActionsAsync`・`DismissNextActionAsync`、`NextActionsView`。Unity のゲーム層 `NextActionModel`（主カードとチップの文言、期限の日付表示、オフラインの予備 45.6、今日閉じた種類、KPI の1日1回）。
+- REQ-NEXT-014 プロトタイプ：ムチ一閃のホームの下の中央に主カード＋チップ（上のバーは増やさない：プレゼントの封筒・ライバルの帯・後から来る §40 のベルの場所を空けておく）、閉じる、日本語・英語、e2e と en-flow。

@@ -83,6 +83,8 @@ static class PhotoModeChecks
         var twin = Ride(rs, 31, 900, ref tw);
         check(PhotoModeModel.CanPause(d), "a running practice race can be paused for a photo");
         check(!PhotoModeModel.CanPause(null), "no driver: no photo button");
+        // Round 16 integration: a hosted cup race (§42) is run with other people — its photos name the "cup" mode and never pause live
+        check(PhotoSource.ModeOf(RaceMode.Cup, online: true) == "cup" && PhotoSource.IsShared("cup"), "a cup race is a shared race (no live pause)");
         int tick = d.Sim.Tick;
         string sum = d.Sim.ComputeChecksum();
         var pm = PhotoModeModel.OpenPaused(d, api, null, "練習コース", new Dictionary<string, string>(), () => true, events.Add, () => now);

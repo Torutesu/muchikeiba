@@ -46,6 +46,9 @@ import { HISTORY_LIMITS, historyQuery, REF_RE, SUPPORT_TOPICS } from '../domain/
 import type { DesignInput, SilksDesign } from '../domain/silksEditor.js';
 import type { MyReplaysService } from '../domain/myReplaysService.js';
 import { activityQuery, actorIdsOf, parseUpTo, renderActivityItems } from '../domain/activity.js';
+import { bulkBodySchema } from '../domain/roster.js';
+import type { TeamGoalBrief } from '../domain/nextAction.js';
+import type { HostedCupsService } from '../domain/hostedCupService.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -85,10 +88,14 @@ export type PlayerMethod =
   | 'wchView' | 'wchStart' | 'wchPrepare' | 'wchAbort' | 'wchRecord'
   | 'teamGoalReward' | 'goalPlayerView'
   | 'hallMine' | 'hallViewer' | 'hallNoteView' | 'horseCareer' | 'hallAck' | 'hallSettings'
+  | 'nextActions' | 'dismissNextAction'
+  | 'roster' | 'rosterLock' | 'rosterFavorite' | 'rosterPreview' | 'rosterBulk' | 'rosterTournament'
   | 'myReplays' | 'replayPrepareSave' | 'replayCommitSave' | 'replayForget' | 'replayUpdate' | 'replayDelete' | 'replayOwnRef' | 'replayShared' | 'replayViewed'
   | 'raceAdvice'
   | 'photoCatalog' | 'photos' | 'photoSave' | 'photoDelete'
-  | 'activity' | 'activityRead' | 'activityReplayShare' | 'teamGoalMilestone';
+  | 'activity' | 'activityRead' | 'activityReplayShare' | 'teamGoalMilestone'
+  | 'recaps' | 'recap' | 'recapProgress'
+  | 'cupsMine' | 'cupReserve' | 'cupRelease' | 'cupLeft' | 'cupCommitted' | 'cupCodeAttempt' | 'cupInvited' | 'cupStarted' | 'cupClosed' | 'cupHorseName';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -156,6 +163,8 @@ export interface AppContext {
   myReplays?: MyReplaysService;
   /** REQ-ADV-005: the active (remote config) ruleset the advice reads; absent = the default ruleset. */
   activeRuleset?: () => Promise<Ruleset>;
+  /** REQ-CUP-*: プレイヤー主催カップ (domain/hostedCupService.ts). Absent → the routes answer NOT_FOUND. */
+  hostedCups?: HostedCupsService<RaceEntry>;
   clock?: () => number;
   paidBalance(): Promise<unknown>;
   /**
@@ -269,6 +278,18 @@ const teams = (c: AppContext) => {
   if (!c.teams) throw new AppError('NOT_FOUND', 'teams are not available');
   return c.teams;
 };
+/**
+ * REQ-NEXT-001 `team_goal_near`: the caller's team goal (TeamDO) for the next-action guide. Best effort: no team, no teams
+ * service or a failing read only leaves the team card out — the guide itself never fails because of it.
+ */
+async function teamGoalBrief(c: AppContext, u: string): Promise<TeamGoalBrief | null> {
+  if (!c.teams || !c.master.progression.nextActions?.enabled) return null;
+  try {
+    const g = await c.teams.goal(u);
+    const cur = g.current;
+    return cur ? { endsAt: cur.endsAt, progress: cur.progress, milestones: cur.milestones.map((x) => ({ target: x.target, reached: x.reached })) } : null;
+  } catch { return null; }
+}
 const events = (c: AppContext) => {
   if (!c.events) throw new AppError('NOT_FOUND', 'events are not available');
   return c.events;
@@ -277,11 +298,26 @@ const stud = (c: AppContext) => {
   if (!c.stud || !c.master.progression.stud) throw new AppError('NOT_FOUND', 'stud lending is not available');
   return c.stud;
 };
+/** REQ-RECAP-010: `season:YYYY-MM` / `year:YYYY` (the router has URL-decoded it). */
+const recapIdParam = (id: string) => {
+  if (!/^(season:\d{4}-\d{2}|year:\d{4})$/.test(id)) throw new AppError('NOT_FOUND', 'no such recap');
+  return id;
+};
 const myReplays = (c: AppContext) => {
   if (!c.myReplays) throw new AppError('NOT_FOUND', 'my replays are not available');
   return c.myReplays;
 };
 const replayTitle = z.string().max(200).nullable();
+const hostedCups = (c: AppContext) => {
+  if (!c.hostedCups) throw new AppError('NOT_FOUND', 'hosted cups are not available');
+  return c.hostedCups;
+};
+/** REQ-CUP-001: the rules are a RoomConditions (checked like a friend room's in the domain). */
+const roomConditionsSchema = z.object({
+  trackId: z.string().min(1).max(64).nullable(), going: goingSchema.nullable(), night: z.boolean().nullable(),
+  weather: z.string().min(1).max(32), temperatureC: z.number().int(), windKmh: z.number().int(),
+}).strict();
+const cupIdParamSchema = z.string().min(1).max(64);
 const spectate = (c: AppContext) => {
   if (!c.spectate) throw new AppError('NOT_FOUND', 'spectating is not available');
   return c.spectate;
@@ -524,6 +560,16 @@ export const routes: Route[] = [
   { method: 'POST', path: '/v1/horses/:horseId/awaken', auth: 'player', handler: async (r, p, c, u) => c.player(u).invoke('awaken', u, p.horseId!, idem(r)) },
   { method: 'POST', path: '/v1/horses/:horseId/retire', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('retire', u, p.horseId!) },
   // 殿堂 (REQ-HOF-*): career record, ceremonies, plaques, visiting
+  // 厩舎の整理 (REQ-ORG-*, contracts/protocol.md §44)
+  { method: 'GET', path: '/v1/roster', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('roster', u, Object.fromEntries(new URL(r.url).searchParams)) },
+  { method: 'PUT', path: '/v1/horses/:horseId/lock', auth: 'player', handler: async (r, p, c, u) => c.player(u).invoke('rosterLock', u, p.horseId!, (await body(r, z.object({ locked: z.boolean() }).strict())).locked) },
+  { method: 'PUT', path: '/v1/horses/:horseId/favorite', auth: 'player', handler: async (r, p, c, u) => c.player(u).invoke('rosterFavorite', u, p.horseId!, (await body(r, z.object({ favorite: z.boolean() }).strict())).favorite) },
+  { method: 'POST', path: '/v1/roster/bulk/preview', auth: 'player', handler: async (r, _p, c, u) => { const b = await body(r, bulkBodySchema); return c.player(u).invoke('rosterPreview', u, b.action, b.horseIds); } },
+  { method: 'POST', path: '/v1/roster/bulk', auth: 'player', handler: async (r, _p, c, u) => {
+    const key = idem(r);
+    const b = await body(r, bulkBodySchema);
+    return c.player(u).invoke('rosterBulk', u, b.action, b.horseIds, b.confirmToken, key);
+  } },
   { method: 'GET', path: '/v1/horses/:horseId/career', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('horseCareer', u, p.horseId!) },
   { method: 'GET', path: '/v1/hall', auth: 'player', handler: async (r, _p, c, u) => { const q = hallPage(r); return hall(c).mine(u, q.cursor, q.limit); } },
   { method: 'PUT', path: '/v1/hall/settings', auth: 'player', handler: async (r, _p, c, u) => {
@@ -618,6 +664,12 @@ export const routes: Route[] = [
   { method: 'POST', path: '/v1/comeback/login', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('comebackClaimLogin', u, idem(r)) },
   { method: 'POST', path: '/v1/comeback/missions/:missionId/claim', auth: 'player', handler: async (r, p, c, u) => c.player(u).invoke('comebackClaimMission', u, missionIdParam(p.missionId!), idem(r)) },
   { method: 'POST', path: '/v1/comeback/welcome', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('comebackWelcomed', u) },
+  // 次にやること (REQ-NEXT-010, contracts/protocol.md §45): the home's next card and chips
+  { method: 'GET', path: '/v1/home/next', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('nextActions', u, await teamGoalBrief(c, u)) },
+  { method: 'POST', path: '/v1/home/next/dismiss', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ kind: z.string().min(1).max(32) }));
+    return c.player(u).invoke('dismissNextAction', u, b.kind, await teamGoalBrief(c, u));
+  } },
   { method: 'GET', path: '/v1/whats-new', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('whatsNew', u) },
   { method: 'POST', path: '/v1/whats-new/seen', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ upTo: z.number().int().min(0) }));
@@ -992,6 +1044,41 @@ export const routes: Route[] = [
   { method: 'GET', path: '/v1/replays/:raceId/data', auth: 'player', handler: async (_r, p, c, u) => myReplays(c).data(u, p.raceId!) },
   { method: 'GET', path: '/v1/friends/:playerId/replays', auth: 'player', handler: async (_r, p, c, u) => myReplays(c).friendList(u, p.playerId!) },
   { method: 'GET', path: '/v1/friends/:playerId/replays/:raceId/data', auth: 'player', handler: async (_r, p, c, u) => myReplays(c).friendData(u, p.playerId!, p.raceId!) },
+  // シーズンの振り返り (REQ-RECAP-*, contracts/protocol.md §43)
+  { method: 'GET', path: '/v1/recaps', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('recaps', u) },
+  { method: 'GET', path: '/v1/recaps/:id', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('recap', u, recapIdParam(p.id!)) },
+  { method: 'POST', path: '/v1/recaps/:id/progress', auth: 'player', handler: async (r, p, c, u) => {
+    const b = await body(r, z.object({ step: z.enum(['open', 'complete']) }).strict());
+    return c.player(u).invoke('recapProgress', u, recapIdParam(p.id!), b.step);
+  } },
+  // プレイヤー主催カップ (REQ-CUP-*, contracts/protocol.md §42)
+  { method: 'GET', path: '/v1/cups', auth: 'player', handler: async (_r, _p, c, u) => hostedCups(c).list(u) },
+  { method: 'POST', path: '/v1/cups', auth: 'player', handler: async (r, _p, c, u) => {
+    const key = idem(r);
+    const b = await body(r, z.object({
+      cupName: z.string().max(200), capacity: z.number().int(), format: z.enum(['single', 'best_of_3']),
+      opensAt: z.number().int().nonnegative(), closesAt: z.number().int().nonnegative(),
+      conditions: roomConditionsSchema.optional(), usePreset: z.boolean().optional(), horseId: id,
+    }).strict());
+    return hostedCups(c).create(u, b, key);
+  } },
+  { method: 'POST', path: '/v1/cups/lookup', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ code: z.string().min(1).max(32) }).strict());
+    return hostedCups(c).lookup(u, b.code);
+  } },
+  { method: 'POST', path: '/v1/cups/join', auth: 'player', handler: async (r, _p, c, u) => {
+    const key = idem(r);
+    const b = await body(r, z.object({ code: z.string().min(1).max(32).optional(), cupId: cupIdParamSchema.optional(), horseId: id }).strict());
+    return hostedCups(c).join(u, b, key);
+  } },
+  { method: 'GET', path: '/v1/cups/:cupId', auth: 'player', handler: async (_r, p, c, u) => hostedCups(c).get(u, p.cupId!) },
+  { method: 'POST', path: '/v1/cups/:cupId/leave', auth: 'player', handler: async (r, p, c, u) => { idem(r); return hostedCups(c).leave(u, p.cupId!); } },
+  { method: 'POST', path: '/v1/cups/:cupId/invite', auth: 'player', handler: async (r, p, c, u) => {
+    const b = await body(r, z.object({ friendIds: z.array(id).max(50).optional(), team: z.literal(true).optional() }).strict()
+      .refine((x) => (x.friendIds?.length ?? 0) > 0 || x.team === true, 'nothing to invite'));
+    return hostedCups(c).invite(u, p.cupId!, b);
+  } },
+  { method: 'POST', path: '/v1/cups/:cupId/start', auth: 'player', handler: async (_r, p, c, u) => hostedCups(c).start(u, p.cupId!) },
   // weekly rival (REQ-RIVAL-*, contracts/protocol.md §28)
   // photo mode (REQ-PHOTO-*, contracts/protocol.md §38)
   { method: 'GET', path: '/v1/photo/catalog', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('photoCatalog', u) },
@@ -1036,6 +1123,7 @@ export const handle: Handler = async (req, _p, ctx) => {
       ops: ctx.ops, authenticateAdmin: (r) => ctx.authenticateAdmin!(r), player: ctx.player, leaderboard: ctx.leaderboard,
       paidBalance: () => ctx.paidBalance(), replay: (id) => ctx.race.replay(id), ...(ctx.clock ? { clock: ctx.clock } : {}),
       ...(ctx.tournaments ? { tournaments: ctx.tournaments } : {}),
+      ...(ctx.hostedCups ? { hostedCups: ctx.hostedCups } : {}),
       baseMaster: ctx.baseMaster ?? ctx.master,
       ...(ctx.inviteLookup ? { inviteLookup: ctx.inviteLookup } : {}),
       ...(ctx.adminConsoleOrigins ? { consoleOrigins: ctx.adminConsoleOrigins } : {}),
@@ -1137,6 +1225,7 @@ export function tournamentPlayersFrom(player: (uid: string) => PlayerInvoker): T
   return {
     tournamentEntry: async (u, h) => (await player(u).invoke('tournamentEntry', u, h)) as unknown as TournamentEntryInfo,
     history: (u) => player(u).invoke('tournamentHistory', u),
+    noteEntry: async (u, t, h, until) => { await player(u).invoke('rosterTournament', u, t, h, until); }, // REQ-ORG-011
   };
 }
 

@@ -60,7 +60,8 @@ export async function assignmentsFor(config: RaceStartConfig, startAtMs: number,
 export async function createRace(m: Master, o: CreateRaceOptions): Promise<CreatedRace> {
   const raceId = o.raceId ?? randomId('r', o.rng);
   const ev = o.event;
-  const room = o.mode === 'friend' ? o.roomPreset ?? null : null;
+  // REQ-CUP-008: a hosted cup race uses the cup's rules the same way (bond bump below stays friend-only: no host edge)
+  const room = o.mode === 'friend' || o.mode === 'cup' ? o.roomPreset ?? null : null;
   const trackId = o.trackId
     ?? (room?.trackId && m.tracks.some((t) => t.id === room.trackId) ? room.trackId : undefined)
     ?? (ev ? ev.trackIds[randInt(o.rng, ev.trackIds.length)]! : o.mode === 'tutorial' ? 'aoba_turf_1600' : m.tracks[randInt(o.rng, m.tracks.length)]!.id);

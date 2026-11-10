@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { AppError } from './errors.js';
 import type { PlayerState } from './player.js';
 import { jstDateKey } from './time.js';
+import { NEXT_KINDS, NEXT_SLOTS } from './nextKinds.js';
 
 /** Event-specific fields. Strings go to blob8-10, numbers to double1-6/8/9 (see BLOB/DOUBLE below). */
 export interface KpiEvent {
@@ -105,12 +106,12 @@ const adProps = z.object({ placementId: str(32), surface: z.enum(AD_SURFACE_NAME
 /** REQ-HIST-011: the history screen's tabs (contracts/protocol.md §33.5). */
 export const HISTORY_TABS = ['purchases', 'coins_paid', 'coins_free', 'gacha'] as const;
 /** REQ-ADV-011: where the pre-race advice was shown (contracts/protocol.md §39.7; the same names as the advice contexts). */
-export const ADVICE_KPI_CONTEXTS = ['ranked', 'friend', 'event', 'challenge', 'timeattack', 'tutorial'] as const;
+export const ADVICE_KPI_CONTEXTS = ['ranked', 'friend', 'event', 'challenge', 'timeattack', 'tutorial', 'cup'] as const;
 /** REQ-PHOTO-014: where a photo was taken (photoMode.ts PHOTO_SOURCES). */
 export const PHOTO_SOURCE_NAMES = ['paused', 'result', 'replay'] as const;
 /** REQ-ACT-015: the activity list's kinds and deep-link screens (domain/activity.ts; repeated here to keep kpi.ts import-free). */
-export const ACTIVITY_KIND_NAMES = ['friend_request', 'friend_accepted', 'rival_week', 'rival_record', 'stable_like', 'team_cheer', 'tournament_result', 'gift_arrived', 'team_goal_tier', 'team_goal_week', 'replay_share'] as const;
-export const ACTIVITY_SCREEN_NAMES = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new'] as const;
+export const ACTIVITY_KIND_NAMES = ['friend_request', 'friend_accepted', 'rival_week', 'rival_record', 'stable_like', 'team_cheer', 'tournament_result', 'gift_arrived', 'team_goal_tier', 'team_goal_week', 'replay_share', 'cup_invited', 'cup_started', 'cup_finished', 'cup_cancelled', 'recap_ready'] as const;
+export const ACTIVITY_SCREEN_NAMES = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new', 'cups', 'recap'] as const;
 /** Events only the client can observe. Server-known events (purchase, gacha, race results…) are not accepted from clients. */
 export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('session_start'), at: z.number().int(), props: z.object({}).strict().optional() }),
@@ -135,6 +136,10 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   // REQ-INV-011: the invite code handed to the OS share sheet or copied (redemptions and milestones are server events)
   // REQ-MYRP-014: a saved replay handed to the OS share sheet (own list or a friend's public replay)
   z.object({ name: z.literal('replay_share'), at: z.number().int(), props: z.object({ surface: z.enum(['my_replays', 'friend_replay']) }).strict() }),
+  // REQ-ORG-013: the roster organiser's sort or filters changed (sort key + number of filters in use)
+  z.object({ name: z.literal('roster_sort'), at: z.number().int(), props: z.object({ sort: z.enum(['rating', 'aptitude', 'age', 'acquired', 'races', 'rarity', 'name']), filters: z.number().int().min(0).max(10) }).strict() }),
+  // REQ-RECAP-015: a recap share card handed to the OS share sheet (`hideRank`: the player chose 「順位を隠す」)
+  z.object({ name: z.literal('recap_share'), at: z.number().int(), props: z.object({ kind: z.enum(['season', 'year']), card: z.enum(['summary', 'horse', 'moment', 'rank']), hideRank: z.boolean() }).strict() }),
   z.object({ name: z.literal('invite_share'), at: z.number().int(), props: z.object({ channel: z.enum(['os_share', 'copy_code', 'copy_link']) }).strict() }),
   // REQ-AD-010: rewarded ads. The reward itself is the server event ad_reward (from the SSV callback, never the client).
   z.object({ name: z.literal('ad_offer_view'), at: z.number().int(), props: adProps }),
@@ -150,6 +155,9 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   // REQ-ACT-015: the activity list was opened (unread count then) / an entry was tapped (its kind and deep link)
   z.object({ name: z.literal('activity_open'), at: z.number().int(), props: z.object({ unread: z.number().int().min(0).max(999) }).strict() }),
   z.object({ name: z.literal('activity_tap'), at: z.number().int(), props: z.object({ kind: z.enum(ACTIVITY_KIND_NAMES), screen: z.enum(ACTIVITY_SCREEN_NAMES) }).strict() }),
+  // REQ-NEXT-012: the home's 次にやること card shown (once per kind and game day) / tapped. Closing it is the server event next_card_dismiss.
+  z.object({ name: z.literal('next_card_view'), at: z.number().int(), props: z.object({ kind: z.enum(NEXT_KINDS), slot: z.enum(NEXT_SLOTS) }).strict() }),
+  z.object({ name: z.literal('next_card_tap'), at: z.number().int(), props: z.object({ kind: z.enum(NEXT_KINDS), slot: z.enum(NEXT_SLOTS) }).strict() }),
 ]);
 export type ClientEvent = z.infer<typeof clientEventSchema>;
 
@@ -179,6 +187,8 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'share': return { name: e.name, s1: e.props.kind };
     case 'invite_share': return { name: e.name, s1: e.props.channel };
     case 'replay_share': return { name: e.name, s1: e.props.surface };
+    case 'roster_sort': return { name: e.name, s1: e.props.sort, value: e.props.filters };
+    case 'recap_share': return { name: e.name, s1: e.props.kind, s2: e.props.card, s3: e.props.hideRank ? 'hide_rank' : 'show_rank' };
     case 'ad_offer_view': return { name: e.name, s1: e.props.placementId, s2: e.props.surface };
     case 'ad_start': return { name: e.name, s1: e.props.placementId, s2: e.props.surface, s3: e.props.outcome };
     case 'history_view': return { name: e.name, s1: e.props.tab };
@@ -188,6 +198,7 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'photo_share': return { name: e.name, s1: e.props.source, s2: e.props.framed ? 'framed' : 'plain' };
     case 'activity_open': return { name: e.name, value: e.props.unread };
     case 'activity_tap': return { name: e.name, s1: e.props.kind, s2: e.props.screen };
+    case 'next_card_view': case 'next_card_tap': return { name: e.name, s1: e.props.kind, s2: e.props.slot };
   }
 }
 

@@ -11,7 +11,7 @@ import { loadMaster } from '../domain/master.js';
 import { cryptoRng } from '../domain/rng.js';
 import { AppError } from '../domain/errors.js';
 import type { RaceEntry } from '../http/app.js';
-import { createRace, rankedMatchRules, type Assignment, type CreatedRace } from '../race/orchestrate.js';
+import { assignmentsFor, createRace, rankedMatchRules, type Assignment, type CreatedRace } from '../race/orchestrate.js';
 import { liveRaceOf, LIVE_RACE_TTL_MS, type LiveRace } from '../domain/spectate.js';
 import { wrap, type Envelope } from './rpc.js';
 import type { RaceRoomDO } from './raceRoom.js';
@@ -291,6 +291,43 @@ export class MatchmakerDO extends DurableObject<Env> {
       } catch (e) {
         this.release(members);
         this.friends.restore(r);
+        await this.persist();
+        throw e;
+      }
+    });
+  }
+
+  /**
+   * REQ-CUP-008: a hosted cup race (§42), started like a friend room: every racer must be free (not racing, not
+   * starting a race, not queued), the room is created under the cup's deterministic race id (a retried start reaches
+   * the same room and hands out that room's slots), the racers are assigned (`/v1/match/status`) and it is watchable.
+   */
+  async cupStart(spec: { raceId: string; playerIds: string[]; entries: RaceEntry[]; conditions: RoomConditions }): Promise<Envelope<{ raceId: string; startAtMs: number }>> {
+    return wrap(async () => {
+      const now = Date.now();
+      const mine = spec.playerIds.map((p) => this.assignments.get(p));
+      if (mine.length > 0 && mine.every((a) => a?.raceId === spec.raceId)) return { raceId: spec.raceId, startAtMs: mine[0]!.startAtMs };
+      for (const p of spec.playerIds) this.assertFree(p, now);
+      for (const e of spec.entries) assertMayRace(e);
+      this.reserve(spec.playerIds, now);
+      try {
+        const cfg = await activeConfig(this.env);
+        const created = await createRace(cfg.master, {
+          ruleset: cfg.ruleset, mode: 'cup', humans: spec.entries, cpuCount: 0, cpuLevel: 3, rng: cryptoRng, now, ticketSecret: this.env.TICKET_SECRET,
+          roomPreset: spec.conditions, raceId: spec.raceId,
+        });
+        const room = this.env.RACE_ROOM.get(this.env.RACE_ROOM.idFromName(spec.raceId)) as unknown as DurableObjectStub<RaceRoomDO>;
+        const actual = await room.init({ config: created.config, startAtMs: created.startAtMs, ratings: created.ratings, visuals: created.visuals });
+        const race: CreatedRace = actual.existed
+          ? { ...created, config: actual.config, startAtMs: actual.startAtMs, assignments: await assignmentsFor(actual.config, actual.startAtMs, this.env.TICKET_SECRET) }
+          : created;
+        for (const [pid, a] of Object.entries(race.assignments)) this.assignments.set(pid, { ...a, at: now });
+        const l = liveRaceOf(race, null);
+        if (l) await this.addLive(l, now);
+        await this.persist();
+        return { raceId: spec.raceId, startAtMs: race.startAtMs };
+      } catch (e) {
+        this.release(spec.playerIds);
         await this.persist();
         throw e;
       }

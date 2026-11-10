@@ -920,6 +920,25 @@
     "photoFinishTicks": 1,
     "retiredRulesets": []
   },
+  "hostedCups": {
+    "_note": "REQ-CUP-*（contracts/protocol.md §42）。プレイヤー主催カップ：フレンド・支部の仲間と開く小さなカップ。条件はフレンド部屋と同じ（RoomConditions）。人数 minCapacity〜maxCapacity、形式は1レースか3レースのポイント制（pointsByPlace）。ランク外：レーティング・シーズン・ライバル・ミッション・パス・コイン・アイテムは動かない（経済の目標なし）。報酬は見た目だけのトロフィー。参加コードは8文字（31種）で、照会・参加は1時間 joinCodeAttemptsPerHour 回まで。",
+    "enabled": true,
+    "minCapacity": 4,
+    "maxCapacity": 8,
+    "minEntrants": 2,
+    "maxActivePerHost": 2,
+    "maxEntriesPerPlayer": 4,
+    "nameMaxChars": 20,
+    "minWindowMinutes": 15,
+    "maxWindowHours": 72,
+    "maxLeadHours": 168,
+    "joinCodeAttemptsPerHour": 10,
+    "invitesPerCup": 30,
+    "pointsByPlace": [10, 7, 5, 4, 3, 2, 1, 1],
+    "raceTimeoutMinutes": 20,
+    "keepDays": 7,
+    "historyKeep": 20
+  },
   "rival": {
     "_note": "REQ-RIVAL-*（contracts/protocol.md §28）。週はゲーム日（dayRollover、既定4:00 JST）の weekStartsOn（1=月曜）から7日。先週ランク戦を走った同じクラスのレーティングの近い人（maxRatingGap 以内）と、週IDの seed と並べた候補から決定論で組む。合う人がいなければ cpuRivals から週IDとプレイヤーIDで決まるCPU。報酬は結果で決まる固定の無償コインだけ（1週 ≤ 100 = ¥160 相当、連勝の上乗せなし、乱数なし）。週の自分のランク戦が minRacesForResult 未満なら報酬なし。経済 E16（docs/spec/balance-targets.md 4.14）。",
     "enabled": true,
@@ -1041,5 +1060,36 @@
   "activity": {
     "_comment": "アクティビティ（REQ-ACT-*、contracts/protocol.md §40）。1人あたり maxEntries 件・maxDays 日まで、新しい順。いいね・応援スタンプ・プレゼントは、まだ読んでいない同じ種類が collapseHours 以内にあれば1件にまとめる（0 = まとめない）。badgeMax はホームのベルの数の頭打ち。",
     "maxEntries": 100, "maxDays": 30, "collapseHours": 24, "pageSize": 20, "pageMax": 50, "badgeMax": 99
+  },
+  "nextActions": {
+    "_note": "REQ-NEXT-*（contracts/protocol.md §45）。ホームの「次にやること」：主カード1枚＋チップ maxChips（≤2）。priority の大きい順（重複不可）。開く画面は種類ごとにコードで固定（ショップへのカードは作れない。scout_ticket はチップだけ）。threshold は gift_expiring（日）・exchange_closing（日）・missions_close（残り）・team_goal_near（残り）だけ。features は feature_unlocked だけ（shop・season_pass・scout は不可）。onboardingRaces 回のレースまでは first_race だけ。今日閉じた種類はゲーム日（4:00 JST）が変わると戻る。コイン・アイテムは動かない。",
+    "enabled": true,
+    "maxChips": 2,
+    "onboardingRaces": 2,
+    "rules": [
+      { "kind": "login_bonus", "priority": 900 },
+      { "kind": "missions_claim", "priority": 850 },
+      { "kind": "pass_claim", "priority": 800 },
+      { "kind": "gift_expiring", "priority": 750, "threshold": 3 },
+      { "kind": "training_open", "priority": 700 },
+      { "kind": "feature_unlocked", "priority": 650, "features": ["missions", "training", "bond", "season", "rival", "breeding", "friends", "teams", "time_attack", "weekly_challenge", "events", "tournaments", "my_stable", "stud"] },
+      { "kind": "exchange_closing", "priority": 600, "threshold": 2 },
+      { "kind": "missions_close", "priority": 550, "threshold": 1 },
+      { "kind": "rival_week", "priority": 500 },
+      { "kind": "weekly_challenge", "priority": 450 },
+      { "kind": "team_goal_near", "priority": 400, "threshold": 5 },
+      { "kind": "first_win", "priority": 300 },
+      { "kind": "training_slots", "priority": 250 },
+      { "kind": "scout_ticket", "priority": 200 },
+      { "kind": "race", "priority": 0 }
+    ]
+  },
+  "seasonRecap": {
+    "_note": "REQ-RECAP-*（contracts/protocol.md §43）。シーズン（JSTの暦月）とゲーム年（04:00 JSTで切り替わる）の終わりに、確定したデータだけから振り返りを1つ作る。シーズンは新しい方からkeepSeasons件、年はkeepYears件残す。レースがshortBelowRaces戦未満なら短い版。名場面はmomentsMax件まで。コイン・アイテムは動かない。",
+    "enabled": true,
+    "keepSeasons": 12,
+    "keepYears": 3,
+    "shortBelowRaces": 3,
+    "momentsMax": 3
   }
 }

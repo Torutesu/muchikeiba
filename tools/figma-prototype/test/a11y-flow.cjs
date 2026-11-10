@@ -126,6 +126,14 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     return r;
   };
   const HOME_BAR = ['[data-name="Season"]', '.rv-strip', '.btn.envelope', '.btn.bell', '[data-name="Wallet"]', '.btn.lang', '[data-name="Menu"]'];
+  // Round 16 integration: the whole home — the top bar plus the 次にやること card and chips, the partner card, the big CTA
+  const HOME_ALL = [...HOME_BAR, '[data-name="Partner"]', '.next-card', '.next-chip', '.btn.cta.hero'];
+  /** demo('next') = a player with a next card and two chips (a gift expiring, scout tickets); waits for the card. */
+  const homeWithNext = async () => {
+    await page.evaluate(() => globalThis.__muchi.demo('next')); await waitScreen(['home', 'link-prompt'], 60000);
+    if ((await screen()) === 'link-prompt') { await page.locator('.screen.in [data-label="あとで"]').click(); await waitScreen('home'); }
+    await page.waitForSelector('.screen.in .next-card', { timeout: 15000 }); await page.waitForTimeout(700);
+  };
   const SETTINGS_LISTS = ['[data-name="More"] > .btn', '[data-name="More"] > .kicker', '[data-name="Account"] > .btn', '[data-name="Account"] > .label'];
 
   await page.goto(base + 'index.html?demo=day7');
@@ -137,6 +145,12 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
   await page.waitForTimeout(700);
   const homeBar = await boxesClear('home top bar', HOME_BAR);
   assert.ok(homeBar.n >= 6, 'home top bar: season, rival strip, envelope, bell, wallet, EN and menu are drawn: ' + homeBar.n);
+  // the next card and chips do not run into the top bar, the partner card, the menu or the CTA (standard size)
+  await homeWithNext();
+  const homeNext = await boxesClear('home with the next card', HOME_ALL);
+  assert.ok(homeNext.n >= 10, 'home: top bar + next card + chips + partner + CTA are drawn: ' + homeNext.n);
+  await page.evaluate(() => globalThis.__muchi.demo('day7')); await waitScreen(['home', 'link-prompt'], 60000);
+  if ((await screen()) === 'link-prompt') { await page.locator('.screen.in [data-label="あとで"]').click(); await waitScreen('home'); }
   await show('Settings'); await waitScreen('settings');
   const settingsBoxes = await boxesClear('settings lists', SETTINGS_LISTS);
   assert.ok(settingsBoxes.n >= 12, 'settings: the lists are drawn: ' + settingsBoxes.n);
@@ -190,6 +204,13 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     // Round 15 screens: the pre-race advice panel (the lobby), アクティビティ; the settings rows again at this size
     await show('RaceAdvice'); await waitScreen('lobby'); await page.waitForSelector('.screen.in .adv-row', { timeout: 15000 }); await shot('race-advice', english, 600);
     await show('Activity'); await waitScreen('activity'); await shot('activity', english, 600);
+    // Round 16 screens (integration): 厩舎の整理, シーズンの振り返り (list + a page), プレイヤー主催カップ (list, create, join)
+    await show('Roster'); await waitScreen('roster'); await page.waitForSelector('.screen.in .org-list', { timeout: 15000 }); await shot('roster', english, 600);
+    await show('Recaps'); await waitScreen('recaps', 30000); await page.waitForSelector('.screen.in .rc-card', { timeout: 30000 }); await shot('recaps', english, 600);
+    await show('Recap', 'season:2026-11', 0); await waitScreen('recap'); await page.waitForSelector('.screen.in .rc-big', { timeout: 30000 }); await shot('recap', english, 950);
+    await show('HostedCups'); await waitScreen('hosted-cups', 30000); await shot('cups', english, 600);
+    await show('CupCreate'); await waitScreen('cup-create'); await shot('cup-create', english, 500);
+    await show('CupJoin'); await waitScreen('cup-join'); await shot('cup-join', english, 500);
     await show('Settings'); await waitScreen('settings'); await boxesClear('settings lists (largest)', SETTINGS_LISTS, english);
     await show('Home'); await waitScreen('home'); await page.waitForTimeout(700); await boxesClear('home top bar (largest)', HOME_BAR, english);
   };
@@ -248,6 +269,12 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
   if ((await screen()) === 'link-prompt') await page.locator('.screen.in [data-label="あとで"]').click();
   assert.equal((await a11y()).textSize, 'largest', 'the device copy survives a reload');
   await keyScreens(true);
+  // Round 16 integration: the home with the next card and chips at the largest size, English then Japanese
+  await homeWithNext();
+  await shot('home-next', true, 300); await boxesClear('home with the next card (largest)', HOME_ALL, true);
+  await page.evaluate(() => globalThis.__muchi.l10n.set('ja')); await waitScreen('home');
+  await page.waitForSelector('.screen.in .next-card', { timeout: 15000 }); await page.waitForTimeout(700);
+  await shot('home-next', false, 300); await boxesClear('home with the next card (largest)', HOME_ALL, false);
   await page.evaluate(() => { localStorage.setItem('muchi.language', 'ja'); });
   await ctx.close();
   return { shots, report };

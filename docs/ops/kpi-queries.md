@@ -957,3 +957,109 @@ GROUP BY kind, screen ORDER BY taps DESC
 
 - **戻ってきた人に効いているか**：`session_start` の日に `activity_open` もある人の割合を、ライバル・支部・フレンドを使っている人とそれ以外で分けて見る。
 - プレゼント（`gift_arrived` → `gift_box`）を押した人のうち、同じ日に `gift_claim` がある割合が低ければ、プレゼントボックスへの導線（ボタンの文言）を見直す。受け取りボタンを一覧に置くことはしない（§40）。
+
+## 厩舎の整理：並び替え・まとめて操作（REQ-ORG-013、Round 16、contracts/protocol.md §44）
+列：`roster_sort`（クライアント、並びか絞り込みを変えた時）`blob8` = 並びのキー（rating／aptitude／age／acquired／races／rarity／name）、`double9` = 使っている絞り込みの数。`roster_bulk_action`（サーバー、まとめて操作が実行できた時だけ）`blob8` = action（今は `retire` だけ）、`double5` = 頭数。
+
+**よく使われる並び**（週ごと）：どの並びが使われているか、絞り込みを使う割合。
+
+```sql
+SELECT toStartOfWeek(timestamp) AS week, blob8 AS sort, sum(_sample_interval) AS changes,
+  round(sumIf(_sample_interval, double9 > 0) / sum(_sample_interval), 3) AS with_filters
+FROM muchi_kpi
+WHERE blob1 = 'roster_sort' AND timestamp > NOW() - INTERVAL '56' DAY
+GROUP BY week, sort
+ORDER BY week DESC, changes DESC
+```
+
+**まとめて操作**（週ごと）：使った人・回数・平均の頭数。
+
+```sql
+SELECT toStartOfWeek(timestamp) AS week, blob8 AS action, count(DISTINCT blob2) AS players, sum(_sample_interval) AS runs,
+  round(sum(_sample_interval * double5) / sum(_sample_interval), 1) AS avg_horses
+FROM muchi_kpi
+WHERE blob1 = 'roster_bulk_action' AND timestamp > NOW() - INTERVAL '56' DAY
+GROUP BY week, action
+ORDER BY week DESC
+```
+
+## 次にやること：カードの表示・タップ・閉じる（REQ-NEXT-012、Round 16、contracts/protocol.md §45）
+列：`next_card_view`（クライアント、同じ種類は1ゲーム日に1回）`blob8` = 種類（`gift_expiring` など）、`blob9` = `primary`／`chip`。`next_card_tap`（クライアント）は同じ列。`next_card_dismiss`（サーバー、閉じた時に1回）`blob8` = 種類。
+
+**種類ごとのタップ率と閉じる率**（週ごと）：タップが少なく閉じるが多い種類は、優先度（`progression.nextActions.rules[].priority`）を下げるか条件（`threshold`）を見直す。
+
+```sql
+SELECT
+  toStartOfWeek(timestamp) AS week,
+  blob8 AS kind,
+  sumIf(_sample_interval, blob1 = 'next_card_view') AS views,
+  sumIf(_sample_interval, blob1 = 'next_card_tap') AS taps,
+  sumIf(_sample_interval, blob1 = 'next_card_dismiss') AS dismisses,
+  round(sumIf(_sample_interval, blob1 = 'next_card_tap') / sumIf(_sample_interval, blob1 = 'next_card_view'), 3) AS tap_rate,
+  round(sumIf(_sample_interval, blob1 = 'next_card_dismiss') / sumIf(_sample_interval, blob1 = 'next_card_view'), 3) AS dismiss_rate
+FROM muchi_kpi
+WHERE blob1 IN ('next_card_view', 'next_card_tap', 'next_card_dismiss') AND timestamp > NOW() - INTERVAL '56' DAY
+GROUP BY week, kind
+ORDER BY week DESC, views DESC
+```
+
+**主カードとチップ**：主カードのタップ率がチップより十分高いこと（低ければ主カードの選び方が合っていない）。
+
+```sql
+SELECT blob9 AS slot, sumIf(_sample_interval, blob1 = 'next_card_view') AS views, sumIf(_sample_interval, blob1 = 'next_card_tap') AS taps
+FROM muchi_kpi
+WHERE blob1 IN ('next_card_view', 'next_card_tap') AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY slot
+```
+
+**新規の人の2日目**：カードをタップした人の D1 残存を見る（`cohortDay` と `daysSinceInstall` で、タップあり／なしに分ける）。
+
+
+## シーズンの振り返り：開いた・最後まで見た・共有した（REQ-RECAP-015、Round 16、contracts/protocol.md §43）
+列：`recap_open`・`recap_complete`（サーバー）`blob8` = `season`／`year`、`blob9` = 期間（`2026-11`／`2026`）、`blob10` = `short`／`full`、`double8` = 1 なら最初の1回（`isFirst`）。`recap_share`（クライアント）`blob8` = `season`／`year`、`blob9` = カード（`summary`／`horse`／`moment`／`rank`）、`blob10` = `hide_rank`／`show_rank`。
+
+**期間ごとの漏斗**：開いた人 → 最後まで見た人 → 共有した人（最初の1回だけ数える）。短い版と通常版で分けて見る。
+
+```sql
+SELECT
+  blob9 AS period, blob10 AS version,
+  count(DISTINCT if(blob1 = 'recap_open' AND double8 = 1, blob2, NULL)) AS opened,
+  count(DISTINCT if(blob1 = 'recap_complete' AND double8 = 1, blob2, NULL)) AS completed,
+  round(count(DISTINCT if(blob1 = 'recap_complete' AND double8 = 1, blob2, NULL)) / count(DISTINCT if(blob1 = 'recap_open' AND double8 = 1, blob2, NULL)), 3) AS complete_rate
+FROM muchi_kpi
+WHERE blob1 IN ('recap_open', 'recap_complete') AND timestamp > NOW() - INTERVAL '90' DAY
+GROUP BY period, version
+ORDER BY period DESC, version
+```
+
+**共有**（カードごと・順位を隠した割合）：`rank` のカードが少なく `hide_rank` が多ければ、順位の見せ方を見直す。
+
+```sql
+SELECT blob8 AS kind, blob9 AS card, sum(_sample_interval) AS shares,
+  round(sumIf(_sample_interval, blob10 = 'hide_rank') / sum(_sample_interval), 3) AS hide_rank_share
+FROM muchi_kpi
+WHERE blob1 = 'recap_share' AND timestamp > NOW() - INTERVAL '90' DAY
+GROUP BY kind, card
+ORDER BY shares DESC
+```
+
+## プレイヤー主催カップ：作成・参加・終了（REQ-CUP-017、Round 16、contracts/protocol.md §42）
+列：`cup_create`（サーバー、主催者）`blob8` = 形式（`single`／`best_of_3`）、`blob9` = `team`（支部に入っている主催者）／`solo`、`double5` = 人数（定員）。`cup_join`（サーバー、参加者）`blob8` = `code`／`invite`、`blob9` = 形式。`cup_finish`（サーバー、各参加者に1行）`blob8` = `finished`／`cancelled`、`blob9` = 形式、`blob10` = 中止の理由（`host_left`／`host_deleted`／`ops_deleted`／`expired`）または `partial`、`double4` = 順位（中止は 0）、`double5` = 参加者数。
+
+**使われ方**（週ごと）：作ったカップ、参加（コード／招待）、最後まで走ったカップの割合、中止の理由。
+
+```sql
+SELECT
+  toStartOfWeek(timestamp) AS week,
+  sumIf(_sample_interval, blob1 = 'cup_create') AS cups_created,
+  count(DISTINCT if(blob1 = 'cup_create', blob2, NULL)) AS hosts,
+  sumIf(_sample_interval, blob1 = 'cup_join' AND blob8 = 'code') AS joins_by_code,
+  sumIf(_sample_interval, blob1 = 'cup_join' AND blob8 = 'invite') AS joins_by_invite,
+  sumIf(_sample_interval, blob1 = 'cup_finish' AND blob8 = 'finished' AND double4 = 1) AS cups_finished,
+  sumIf(_sample_interval, blob1 = 'cup_finish' AND blob8 = 'cancelled' AND blob10 = 'expired') AS expired_entries,
+  sumIf(_sample_interval, blob1 = 'cup_finish' AND blob8 = 'cancelled' AND blob10 = 'host_left') AS host_left_entries
+FROM muchi_kpi
+WHERE blob1 IN ('cup_create', 'cup_join', 'cup_finish') AND timestamp > NOW() - INTERVAL '56' DAY
+GROUP BY week
+ORDER BY week DESC
+```

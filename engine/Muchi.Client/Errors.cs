@@ -97,6 +97,22 @@ namespace Muchi.Client
         PhotoLocked,
         /// <summary>400: a race run with other people cannot be paused (REQ-PHOTO-001).</summary>
         PhotoSourceInvalid,
+        /// <summary>REQ-ORG-005: the horse is locked (409); unlock it first.</summary>
+        HorseLocked,
+        /// <summary>REQ-ORG-008: a bulk action refused (409); nothing changed. See <see cref="BulkRefusedException.Horses"/>.</summary>
+        RosterBulkRefused,
+        /// <summary>REQ-ORG-008: the confirmation no longer matches (409); preview again.</summary>
+        RosterBulkStale,
+        /// <summary>REQ-CUP-007: too many hosted / entered cups at once (409).</summary>
+        CupLimit,
+        /// <summary>REQ-CUP-005: the cup is full — another player took the last slot (409).</summary>
+        CupFull,
+        /// <summary>REQ-CUP-005/010: the cup started, closed or is over (409).</summary>
+        CupClosed,
+        /// <summary>REQ-CUP-003/006: no such code (or not available to this player; never says why) (404).</summary>
+        CupCodeInvalid,
+        /// <summary>REQ-CUP-008: the next race cannot start now (window, entrants, a race running) (409).</summary>
+        CupNotReady,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -197,6 +213,14 @@ namespace Muchi.Client
             ["PHOTO_LIMIT"] = ApiErrorCode.PhotoLimit,
             ["PHOTO_LOCKED"] = ApiErrorCode.PhotoLocked,
             ["PHOTO_SOURCE_INVALID"] = ApiErrorCode.PhotoSourceInvalid,
+            ["HORSE_LOCKED"] = ApiErrorCode.HorseLocked,
+            ["ROSTER_BULK_REFUSED"] = ApiErrorCode.RosterBulkRefused,
+            ["ROSTER_BULK_STALE"] = ApiErrorCode.RosterBulkStale,
+            ["CUP_LIMIT"] = ApiErrorCode.CupLimit,
+            ["CUP_FULL"] = ApiErrorCode.CupFull,
+            ["CUP_CLOSED"] = ApiErrorCode.CupClosed,
+            ["CUP_CODE_INVALID"] = ApiErrorCode.CupCodeInvalid,
+            ["CUP_NOT_READY"] = ApiErrorCode.CupNotReady,
             ["VERIFIER_UNAVAILABLE"] = ApiErrorCode.VerifierUnavailable,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };
@@ -229,6 +253,7 @@ namespace Muchi.Client
                 case ApiErrorCode.RoomNotFound:
                 case ApiErrorCode.NotInTeam:
                 case ApiErrorCode.UnknownProduct:
+                case ApiErrorCode.CupCodeInvalid:
                     return new NotFoundException(code, wire, message, status);
                 case ApiErrorCode.AgeRequired:
                 case ApiErrorCode.GuardianConsentRequired:
@@ -241,6 +266,8 @@ namespace Muchi.Client
                     return new InsufficientCoinsException(wire, message, status, CoinShortfall.Parse(J.Opt(details, "shortfall")));
                 case ApiErrorCode.RateLimited:
                     return new RateLimitedException(wire, message, status);
+                case ApiErrorCode.RosterBulkRefused:
+                    return new BulkRefusedException(wire, message, status, J.List(details, "horses", BulkHorseCheck.Parse));
                 case ApiErrorCode.Internal:
                 case ApiErrorCode.ConfigInvalid:
                 case ApiErrorCode.VerifierUnavailable:
@@ -304,6 +331,14 @@ namespace Muchi.Client
     public sealed class ConflictException : ApiException
     {
         public ConflictException(ApiErrorCode c, string wire, string message, int status) : base(c, wire, message, status) { }
+    }
+
+    /// <summary>REQ-ORG-008: 409 ROSTER_BULK_REFUSED — nothing changed; each refused horse with its reasons (protocol §44.4).</summary>
+    public sealed class BulkRefusedException : ApiException
+    {
+        public System.Collections.Generic.List<BulkHorseCheck> Horses { get; }
+        public BulkRefusedException(string wire, string message, int status, System.Collections.Generic.List<BulkHorseCheck> horses)
+            : base(ApiErrorCode.RosterBulkRefused, wire, message, status) { Horses = horses ?? new System.Collections.Generic.List<BulkHorseCheck>(); }
     }
 
     /// <summary>429 RATE_LIMITED (e.g. analytics ingestion quota). Back off before sending again.</summary>

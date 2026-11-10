@@ -44,8 +44,8 @@ export const PHOTO_HARD_LIMITS = { maxSaved: 100, captionMaxChars: 40, stampsMax
 /** 景表法 / shop wording rules (docs/planning/03, same list as the shop and ad lints) plus words that suggest betting. */
 export const PHOTO_BANNED_WORDS = ['倍', 'お得', '今だけ', '残りわずか', '通常価格', '馬券', '賭け', '賭博', 'ベット', 'オッズ', '配当', '払戻', '払い戻し', '的中', '予想'];
 /** Modes raced together with other people: never paused live (REQ-PHOTO-001). */
-export const SHARED_RACE_MODES = ['ranked', 'friend', 'event', 'tournament'] as const;
-export const PHOTO_MODES = ['ranked', 'friend', 'tutorial', 'time_attack', 'event', 'tournament', 'challenge', 'practice'] as const;
+export const SHARED_RACE_MODES = ['ranked', 'friend', 'event', 'tournament', 'cup'] as const; // cup: §42 hosted cups (Round 16 integration)
+export const PHOTO_MODES = ['ranked', 'friend', 'tutorial', 'time_attack', 'event', 'tournament', 'challenge', 'practice', 'cup'] as const;
 export const PHOTO_SOURCES = ['paused', 'result', 'replay'] as const;
 export const PHOTO_NOTICE = 'フォトモードの見た目は写真だけに使われ、レースの能力には影響しません。';
 

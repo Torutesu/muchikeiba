@@ -91,11 +91,18 @@ import {
 } from './history.js';
 import { buildSupportTicket } from '../ops/support.js';
 import { raceAdviceFor, type AdviceQuery } from './raceAdviceService.js';
+import { dismissNextAction, nextActionsView, noteFeatures, type TeamGoalBrief } from './nextAction.js';
+import { attachRecapRank, noteRecapRace, noteRecapReplaySaved, noteRecapTeamGoal, recapProgress, recapView, recapsList, rollRecaps, type RecapStepName } from './seasonRecap.js';
+import {
+  countCodeAttempt, noteCupCommitted, playerCupsView, receiveCupClosed, receiveCupInvite, releaseCup, reserveCup, ensureCups,
+  type CupClosedNotice, type CupFormat, type CupStartedNotice, type PlayerCupInvite,
+} from './hostedCups.js';
 import { abortChallengeSubmit, prepareChallengeSubmit, recordChallengeResult, startChallenge, weeklyChallengeView, type WchStartInput } from './weeklyChallenge.js';
 import {
   ackCeremony, hallSnapshot, hallSnapshotKey, hallViewerOf, horseCareerView, myHallView, noteHallRace, noteHallRetire, noteHallTa, noteHallTournament,
   setHallVisibility, type HallRelation, type HallSnapshot,
 } from './hallOfFame.js';
+import { assertNotLocked, bulkPreview, noteTournamentEntry, parseRosterQuery, pruneRoster, rosterView, runBulk, setFavorite, setLock, type BulkAction } from './roster.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
 export interface PlayerRepo {
@@ -194,7 +201,7 @@ export interface PlayerServiceDeps {
 }
 
 const standingKey = (s: PlayerState) => JSON.stringify([s.season.id, s.season.classId, s.season.points, s.season.races, Math.round(s.rating.r), s.profile.displayName, s.profile.titleId]);
-const profileKey = (s: PlayerState, now: number) => JSON.stringify([s.profile.displayName, s.profile.titleId, s.season.classId, Math.round(s.rating.r), s.stats.races, s.stats.wins, s.stats.top3, moderationOf(s, now) === 'banned']);
+const profileKey = (s: PlayerState, now: number) => JSON.stringify([s.profile.displayName, s.profile.titleId, s.season.classId, Math.round(s.rating.r), s.stats.races, s.stats.wins, s.stats.top3, moderationOf(s, now) === 'banned', s.cups?.trophies ?? null]);
 
 const IDEM_KEEP = 200;
 /**
@@ -240,6 +247,12 @@ export class PlayerService {
     const draft: PlayerState = structuredClone(current);
     const now = this.d.clock();
     rollSeason(this.d.master, draft, now);
+    // REQ-RECAP-002/003: a closed season / game year becomes its recap (once); §43 × §40: one activity entry per recap
+    for (const rid of rollRecaps(this.d.master, draft, now)) {
+      const [kind, period] = rid.split(':') as [string, string];
+      const [y, mo] = period.split('-');
+      recordActivity(this.d.master, draft, { kind: 'recap_ready', source: `recap_ready:${rid}`, vars: kind === 'year' ? { kind, y: String(Number(y)) } : { kind, y: String(Number(y)), m: String(Number(mo)) }, linkId: rid }, now);
+    }
     settlePityGroups(this.d.master, draft, now);
     const paidBefore = draft.wallet.paid;
     const standingBefore = standingKey(draft);
@@ -315,7 +328,7 @@ export class PlayerService {
   /** REQ-UXS-001/014/032/040: computed sections of GET /v1/player and bootstrap. */
   private extras(s: PlayerState, now: number) {
     const m = this.d.master;
-    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s), commentaryPack: commentaryPackBadge(m, s), accessibility: accessibilityView(s), activity: activityBadge(m, s, now) };
+    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s), commentaryPack: commentaryPackBadge(m, s), accessibility: accessibilityView(s), activity: activityBadge(m, s, now), nextActions: nextActionsView(m, s, now) };
   }
 
   async view(id: string) {
@@ -329,6 +342,7 @@ export class PlayerService {
     return this.tx(id, null, (s, now, emit) => {
       const k = ensureKpi(s);
       if (!k.firstOpenSent) { k.firstOpenSent = true; emit({ name: 'first_open' }); }
+      noteFeatures(this.d.master, s, now); // REQ-NEXT-008: the day each feature is first seen unlocked
       const extra = this.extras(s, now);
       // REQ-UXS-032: one ab_assign row per experiment and player, so KPI queries can split any funnel by bucket
       const sent = (k.abSent ??= []);
@@ -340,6 +354,22 @@ export class PlayerService {
       if (sent.length > 50) sent.splice(0, sent.length - 50);
       noteActivity(this.d.master, s, now, emit); // REQ-CB-001: app start = an active day (may start a comeback window)
       return playerView(s, this.d.master.bannedSilks, extra);
+    });
+  }
+
+  // ---- 次にやること (REQ-NEXT-005/010, contracts/protocol.md §45) ----
+  /** GET /v1/home/next. `teamGoal`: the team's weekly goal when the caller is in a team (read from the TeamDO by the route). */
+  nextActions(id: string, teamGoal: TeamGoalBrief | null = null) {
+    return this.tx(id, null, (s, now) => {
+      noteFeatures(this.d.master, s, now);
+      return nextActionsView(this.d.master, s, now, teamGoal);
+    });
+  }
+  /** POST /v1/home/next/dismiss: closes a kind for today's game day (idempotent; KPI next_card_dismiss once). */
+  dismissNextAction(id: string, kind: string, teamGoal: TeamGoalBrief | null = null) {
+    return this.tx(id, null, (s, now, emit) => {
+      if (dismissNextAction(this.d.master, s, kind, now)) emit({ name: 'next_card_dismiss', s1: kind });
+      return nextActionsView(this.d.master, s, now, teamGoal);
     });
   }
 
@@ -535,10 +565,32 @@ export class PlayerService {
   /** REQ-HOF-003: the response also carries the retirement ceremony (null when the hall is disabled). */
   retire(id: string, horseId: string) {
     return this.tx(id, null, (s, now, emit) => {
+      assertNotLocked(s, horseId); // REQ-ORG-005: a locked horse is never retired
       const h = retire(s, horseId);
       const ceremony = noteHallRetire(this.d.master, s, h, now, emit);
       return { ...h, ceremony };
     });
+  }
+
+  // ---- 厩舎の整理 (REQ-ORG-*, roster.ts) ----
+  /** REQ-ORG-001..003: the organiser rows, filtered / sorted by the optional query (the client runs the same rules). */
+  async roster(id: string, query: Record<string, string | undefined> = {}) {
+    const q = parseRosterQuery(this.d.master, query);
+    return rosterView(this.d.master, await this.load(id), this.d.clock(), q);
+  }
+  /** REQ-ORG-005: value replacements (idempotent). */
+  rosterLock(id: string, horseId: string, locked: boolean) { return this.tx(id, null, (s) => setLock(s, horseId, locked)); }
+  rosterFavorite(id: string, horseId: string, favorite: boolean) { return this.tx(id, null, (s) => setFavorite(s, horseId, favorite)); }
+  /** REQ-ORG-007: changes nothing. */
+  async rosterPreview(id: string, action: BulkAction, horseIds: string[]) { return bulkPreview(await this.load(id), action, horseIds, this.d.clock()); }
+  /** REQ-ORG-008: keyed, all or nothing (one transaction). */
+  async rosterBulk(id: string, action: BulkAction, horseIds: string[], confirmToken: string | undefined, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => { pruneRoster(s, now); return runBulk(this.d.master, s, action, horseIds, confirmToken, now, emit); });
+  }
+  /** REQ-ORG-011: TournamentsService registered (horseId) / unregistered (null) the player. */
+  async rosterTournament(id: string, tournamentId: string, horseId: string | null, untilMs: number) {
+    if (await this.wiped(id)) return { ok: false }; // a deleted account is never re-created by a late tournament note
+    return this.tx(id, null, (s, now) => { pruneRoster(s, now); noteTournamentEntry(s, tournamentId, horseId, untilMs); return { ok: true }; });
   }
 
   async breedingPreview(id: string, sireId: string, damId: string) {
@@ -866,7 +918,11 @@ export class PlayerService {
   }
   /** Save step 2, after the copy is in R2 (keyed with the client's key: a retry returns the first answer). */
   replayCommitSave(id: string, raceId: string, title: string | null, sizeBytes: number, idemKey: string | null) {
-    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => commitSave(this.d.master, s, raceId, title, sizeBytes, now, emit));
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => {
+      const r = commitSave(this.d.master, s, raceId, title, sizeBytes, now, emit);
+      if (!r.alreadySaved) noteRecapReplaySaved(this.d.master, s, now); // REQ-RECAP-001
+      return r;
+    });
   }
   replayForget(id: string, raceId: string) { return this.tx(id, null, (s) => { forgetRecent(s, raceId); return true; }); }
   replayUpdate(id: string, raceId: string, patch: ReplayPatch) { return this.tx(id, null, (s) => updateSaved(this.d.master, s, raceId, patch)); }
@@ -877,10 +933,71 @@ export class PlayerService {
     if (await this.wiped(id)) return null;
     return sharedFor(this.d.master, await this.load(id), viewerId, this.d.clock());
   }
+  // ---------------------------------------------------------------- シーズンの振り返り (REQ-RECAP-*, seasonRecap.ts)
+  /** Runs as a transaction so a period that ended since the last request is closed first (rollRecaps). */
+  recaps(id: string) { return this.tx(id, null, (s) => recapsList(this.d.master, s)); }
+  recap(id: string, recapId: string) { return this.tx(id, null, (s) => recapView(this.d.master, s, recapId)); }
+  recapProgress(id: string, recapId: string, step: RecapStepName) {
+    return this.tx(id, null, (s, now, emit) => recapProgress(this.d.master, s, recapId, step, now, emit));
+  }
+
   /** REQ-MYRP-014: replay_view on the viewer's own record. */
   replayViewed(id: string, source: 'own' | 'friend', status: string, mode: string) {
     return this.tx(id, null, (_s, _now, emit) => { emit({ name: 'replay_view', s1: source, s2: status, s3: mode }); return true; });
   }
+
+  // ---------------------------------------------------------------- プレイヤー主催カップ (REQ-CUP-*, hostedCups.ts; the cups by HostedCupsService)
+  async cupsMine(id: string) {
+    const s = await this.load(id);
+    return { ...playerCupsView(this.d.master, s, this.d.clock()), teamId: s.team?.teamId ?? null };
+  }
+  /** REQ-CUP-006/007: limits, deletion, BAN — before the cup accepts a create / join (idempotent per cup). */
+  cupReserve(id: string, cupId: string, role: 'host' | 'entrant', until: number, horseId?: string) {
+    return this.tx(id, null, (s, now) => reserveCup(this.d.master, s, cupId, role, until, now, horseId));
+  }
+  cupRelease(id: string, cupId: string) { return this.tx(id, null, (s) => releaseCup(s, cupId)); }
+  /** The player left a cup before its first race: the slot no longer counts. */
+  cupLeft(id: string, cupId: string) {
+    return this.tx(id, null, (s) => { const st = ensureCups(s); st.active = st.active.filter((r) => r.cupId !== cupId); return true; });
+  }
+  cupCommitted(id: string, cupId: string, kind: 'create' | 'join', meta: { format: CupFormat; capacity?: number; via?: string; team?: boolean }) {
+    return this.tx(id, null, (s, _now, emit) => { noteCupCommitted(s, cupId, kind, meta, emit); return true; });
+  }
+  /** REQ-CUP-003: one code attempt (RATE_LIMITED past the hourly cap). */
+  cupCodeAttempt(id: string) { return this.tx(id, null, (s, now) => countCodeAttempt(this.d.master, s, now)); }
+  /** REQ-CUP-004: an invitation from a host (dropped when muted / deleting) + the cup_invite push. */
+  async cupInvited(id: string, inv: PlayerCupInvite) {
+    if (await this.wiped(id)) return false;
+    return this.tx(id, null, (s, now) => {
+      const ok = receiveCupInvite(this.d.master, s, inv, now);
+      if (ok && this.d.master.push.templates['cup_invite']) { ensurePush(this.d.master, s); enqueuePush(this.d.master, s, 'cup_invite', { name: inv.hostName }, now); }
+      // §42.7 × §40: one activity entry per cup (recordActivity drops a blocked host and a repeat)
+      if (ok) recordActivity(this.d.master, s, { kind: 'cup_invited', source: `cup_invited:${inv.cupId}`, actor: { id: inv.hostId, name: inv.hostName }, vars: { cup: inv.cupName }, linkId: inv.cupId }, now);
+      return ok;
+    });
+  }
+  /** REQ-CUP-012/014: the cup closed (result, trophy; once per cup). A wiped account answers ok (nothing to tell). */
+  async cupClosed(id: string, n: CupClosedNotice) {
+    if (await this.wiped(id)) return { recorded: false };
+    return this.tx(id, null, (s, now, emit) => {
+      const r = receiveCupClosed(this.d.master, s, n, emit);
+      // §42.7 × §40: the result (or the cancellation) once per cup, for those who were in it
+      if (r) {
+        const finished = r.status === 'finished' && r.rank !== null;
+        recordActivity(this.d.master, s, { kind: finished ? 'cup_finished' : 'cup_cancelled', source: `cup_closed:${n.cupId}`, vars: finished ? { cup: n.cupName, n: String(r.rank) } : { cup: n.cupName }, linkId: n.cupId }, now);
+      }
+      return { recorded: r !== null };
+    });
+  }
+  /** §42.7 × §40: the cup's first race started — one activity entry (only while the player is still in that cup). */
+  async cupStarted(id: string, n: CupStartedNotice) {
+    if (await this.wiped(id)) return false;
+    return this.tx(id, null, (s, now) => {
+      if (!s.cups?.active.some((r) => r.cupId === n.cupId)) return false;
+      return recordActivity(this.d.master, s, { kind: 'cup_started', source: `cup_started:${n.cupId}`, vars: { cup: n.cupName }, linkId: n.cupId }, now) === 'recorded';
+    });
+  }
+  async cupHorseName(id: string, horseId: string) { return getHorse(await this.load(id), horseId).name ?? ''; }
 
   async claimPass(id: string, track: 'free' | 'premium', level: number, idemKey: string | null) {
     return this.tx(id, this.requireKey(idemKey), (s, now) => claimPass(this.d.master, s, track, level, now));
@@ -905,12 +1022,20 @@ export class PlayerService {
       applied[r.raceId] = now;
       // REQ-MYRP-002: the course best before this race decides a personal-best moment
       const prevBest = r.details?.trackId ? s.stats.byTrack[r.details.trackId]?.bestFinishTick ?? null : null;
+      if (r.mode === 'cup') {
+        // REQ-CUP-013: a hosted cup race is unranked — recorded only (no coins, missions, pass, rating, season, stats,
+        // rival, hall, team feed / goal, assist streak). The cup's own object keeps the standings.
+        noteRaceForReplays(this.d.master, s, r, prevBest, now);
+        if (!r.void) emit({ name: 'race_finish', s1: r.mode, s2: r.details?.style ?? '', s3: r.details?.trackId ?? '', place: r.place, count: r.fieldSize, value: r.humans ?? 0 });
+        return { coins: 0, seasonPoints: 0, titles: [] as string[], rewarded: false, firstWinBonus: 0, comebackXp: 0, achievements: [] as ReturnType<typeof syncCollection>, event: null };
+      }
       const base0 = applyRaceResult(this.d.master, s, r, now);
       noteRaceForReplays(this.d.master, s, r, prevBest, now); // REQ-MYRP-001: offer the race in マイリプレイ
       noteRivalRace(this.d.master, s, r, now, emit); // REQ-RIVAL-004: head to head (ranked) / challenge (friend)
       // REQ-HOF-001: the horse's career (a ranked race counted against the weekly rival with me ahead is a rival win)
       const rivalWin = r.mode === 'ranked' && !!s.rival?.weeks.some((w) => w.races.some((x) => x.raceId === r.raceId && x.mode === 'ranked' && x.point === 'me'));
       noteHallRace(this.d.master, s, r, now, rivalWin);
+      noteRecapRace(this.d.master, s, r, now); // REQ-RECAP-001: this season's and this game year's records
       // REQ-COL-002 / REQ-ACH-002: what the race showed the 図鑑, a fired skill, and the tiers it unlocked (with titles)
       noteRaceCollection(this.d.master, s, r);
       const achievements = syncCollection(this.d.master, s, now, emit);
@@ -924,6 +1049,7 @@ export class PlayerService {
       }
       // REQ-TGOAL-003/004: the settled result counts toward the team's weekly goal (account-wide daily cap)
       goal = playerGoalRace(this.d.master, s, r, now);
+      noteRecapTeamGoal(this.d.master, s, goal, now); // REQ-RECAP-001
       if (goal) {
         notePostedIn(s, goal.teamId); // REQ-TGOAL-006: the deletion finds this team even after a leave
         emit({ name: 'team_goal_contribute', s1: goal.teamId, s2: goal.wins ? 'win' : 'race', s3: goal.ref, count: goal.races + goal.wins });
@@ -1137,6 +1263,7 @@ export class PlayerService {
       const r = closeSeason(this.d.master, s, seasonId, rank, now, emit);
       if (r.status === 'rewarded') emit({ name: 'season_close', s1: seasonId, s2: r.classId ?? '', s3: r.nextClassId ?? '', ...(rank !== null ? { place: rank } : {}) });
       const titles = evaluateTitles(this.d.master, s); // class titles (promotion happened in rollSeason)
+      attachRecapRank(this.d.master, s, seasonId); // REQ-RECAP-005: the final class rank, once (the recap itself was built by rollRecaps)
       return { ...r, titles };
     });
   }
@@ -1505,6 +1632,7 @@ export class PlayerService {
       // REQ-TGOAL-003: a verified run that set a season best on its course counts once (a re-submit returns the stored result)
       if (!counted && 'seasonBest' in r && r.seasonBest) {
         goal = playerGoalTa(this.d.master, s, sessionId, now);
+        noteRecapTeamGoal(this.d.master, s, goal, now); // REQ-RECAP-001
         if (goal) {
           notePostedIn(s, goal.teamId);
           emit({ name: 'team_goal_contribute', s1: goal.teamId, s2: 'ta_pb', s3: goal.ref, count: 1 });
@@ -1687,6 +1815,7 @@ export class PlayerService {
       recordActivity(this.d.master, s, { kind: 'tournament_result', source: `tournament:${tournamentId}`, vars: { tournament: name, n: String(rank) }, linkId: tournamentId }, now); // REQ-ACT-002
       noteTournamentResult(s, rank); // REQ-ACH-002 (once per tournament, behind the same guard)
       noteHallTournament(this.d.master, s, horseId, tournamentId, name, rank, now); // REQ-HOF-001
+      if (s.roster?.tournaments) delete s.roster.tournaments[tournamentId]; // REQ-ORG-011: the entry ends with the tournament
       const keys = Object.entries(done).sort((a, b) => b[1].at - a[1].at).map(([k]) => k);
       for (const k of keys.slice(TOURNAMENT_HISTORY_KEEP)) delete done[k];
       return { status: 'rewarded' as const, reward };

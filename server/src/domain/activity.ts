@@ -17,9 +17,11 @@ import type { PublicProfile } from './stats.js';
 export const ACTIVITY_KINDS = [
   'friend_request', 'friend_accepted', 'rival_week', 'rival_record', 'stable_like', 'team_cheer', 'tournament_result',
   'gift_arrived', 'team_goal_tier', 'team_goal_week', 'replay_share',
+  // Round 16 (integration): hosted cups (§42.7) and the season recap (§43)
+  'cup_invited', 'cup_started', 'cup_finished', 'cup_cancelled', 'recap_ready',
 ] as const;
 export type ActivityKind = typeof ACTIVITY_KINDS[number];
-export const ACTIVITY_SCREENS = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new'] as const;
+export const ACTIVITY_SCREENS = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new', 'cups', 'recap'] as const;
 export type ActivityScreen = typeof ACTIVITY_SCREENS[number];
 
 interface KindMeta { category: PushCategory; screen: ActivityScreen; collapse: boolean }
@@ -36,6 +38,11 @@ export const ACTIVITY_META: Record<ActivityKind, KindMeta> = {
   team_goal_tier: { category: 'friends', screen: 'team_goal', collapse: false },
   team_goal_week: { category: 'friends', screen: 'team_goal', collapse: false },
   replay_share: { category: 'friends', screen: 'replay', collapse: false },
+  cup_invited: { category: 'invites', screen: 'cups', collapse: false },
+  cup_started: { category: 'friends', screen: 'cups', collapse: false },
+  cup_finished: { category: 'friends', screen: 'cups', collapse: false },
+  cup_cancelled: { category: 'friends', screen: 'cups', collapse: false },
+  recap_ready: { category: 'season', screen: 'recap', collapse: false },
 };
 
 /** REQ-ACT-010: `progression.activity` (absent → ACTIVITY_DEFAULTS). */
@@ -255,6 +262,13 @@ export const ACTIVITY_TEXT = {
   team_goal_week: '先週の支部の共同目標は{n}段目まで届きました',
   team_goal_week_none: '先週の支部の共同目標は段に届きませんでした',
   replay_share: '{name}さんがリプレイを共有しました',
+  // {cup} is the cup name the host typed (never translated)
+  cup_invited: '{name}さんから「{cup}」に招待されました',
+  cup_started: '「{cup}」が始まりました',
+  cup_finished: '「{cup}」の順位は{n}位でした',
+  cup_cancelled: '「{cup}」は中止になりました',
+  recap_season: '{y}年{m}月シーズンの振り返りができました',
+  recap_year: '{y}年の振り返りができました',
 } as const;
 
 const fill = (t: string, v: Record<string, string>) => t.replace(/\{(\w+)\}/g, (_, k: string) => v[k] ?? '');
@@ -277,6 +291,11 @@ export function activityText(kind: ActivityKind, count: number, vars: Record<str
     case 'team_goal_tier': return fill(T.team_goal_tier, v);
     case 'team_goal_week': return vars.n && vars.n !== '0' ? fill(T.team_goal_week, v) : T.team_goal_week_none;
     case 'replay_share': return fill(T.replay_share, v);
+    case 'cup_invited': return fill(T.cup_invited, v);
+    case 'cup_started': return fill(T.cup_started, v);
+    case 'cup_finished': return fill(T.cup_finished, v);
+    case 'cup_cancelled': return fill(T.cup_cancelled, v);
+    case 'recap_ready': return fill(vars.kind === 'year' ? T.recap_year : T.recap_season, v);
   }
 }
 

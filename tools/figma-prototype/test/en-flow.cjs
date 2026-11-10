@@ -3,7 +3,7 @@
 // with the English courtesy note), purchase confirmation, season pass, scout calendar and odds, the stable, settings,
 // the coin shortfall sheet (round 12), a ranked race (HUD) and its result, 調教 (cards, mini-game, result, skip), ライバル (detail, races, week result), 殿堂 (gallery, ceremony, plaque, a friend's hall, round 14), then the 図鑑 (every tab, details), 実績 (claim one / all) and the title chooser,
 // the プレゼントボックス (box, claim one / all, history), the かんたん操作 suggestion, the 実況パック (list, sample, confirm), the weekly challenge (list, next week, a race with the condition in the HUD, the verified result),
-// フォトモード from the result (round 15: tabs, a locked frame, the caption rule, the card).
+// フォトモード from the result (round 15: tabs, a locked frame, the caption rule, the card); 厩舎の整理 (round 16).
 // On every screen:
 //   - no Japanese is left on the stage (outside the .keep-ja legal text and the 日本語 language button);
 //   - no text overflows: nothing is still too wide / too tall for its box after fitText, nothing leaves the stage.
@@ -281,6 +281,29 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await waitScreen('replay-unplayable'); await shot('replay-unplayable', 400);
   await page.evaluate(() => globalThis.__muchi.logic.replays.demoRetired(false));
 
+  // round 16: 厩舎の整理 in English (REQ-ORG-015): the list, the sort and filter sheets, selection, the confirmation; names as typed
+  {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await show('Roster'); await waitScreen('roster'); await waitIn('.org-list');
+    await click('デモ：馬を増やす'); await page.waitForTimeout(800); await waitIn('.org-row');
+    await shot('roster', 500);
+    assert.match(await page.locator('.screen.in').innerText(), /gives back no coins or materials/, 'roster: the notice in English');
+    await page.locator('.screen.in .org-sort').click(); await waitIn('.org-sort-sheet'); await shot('roster-sort', 400);
+    await page.locator('.screen.in .org-sort-sheet .org-track').first().click(); await page.waitForTimeout(600); await waitIn('.org-apt');
+    await shot('roster-aptitude', 300);
+    await page.locator('.screen.in .org-filter').click(); await waitIn('.org-filter-sheet'); await shot('roster-filter', 400);
+    await page.locator('.screen.in .org-filter-sheet [data-label="閉じる"]').click(); await page.waitForTimeout(300);
+    await click('まとめて選ぶ'); await waitIn('.org-check');
+    await page.locator('.screen.in .org-row[data-blocks=""]').first().click(); await page.waitForTimeout(400);
+    await page.locator('.screen.in .org-row[data-blocks=""]:has(.org-check[data-on="false"])').first().click(); await page.waitForTimeout(400);
+    await shot('roster-select', 300);
+    await click('確認へ'); await waitScreen('roster-confirm'); await waitIn('.org-confirm');
+    await shot('roster-confirm', 400);
+    assert.match(await page.locator('.screen.in .org-refund').innerText(), /nothing/, 'roster: nothing comes back (English)');
+    await page.locator('.screen.in .org-cancel').click(); await waitScreen('roster');
+    await page.evaluate(() => localStorage.removeItem('muchi.roster.view'));
+  }
+
   // round 11: 図鑑・実績・称号 in English (REQ-COL-*, REQ-ACH-*): a week of play on the real rules, every tab, a detail,
   // the achievement list (claim one, claim all), the title chooser
   await page.evaluate(() => globalThis.__muchi.demo('collection')); await waitScreen('collection', 60000);
@@ -361,6 +384,41 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await page.locator('.screen.in [data-buy="ochitsuki"]').click(); await waitScreen(['commentary-pack-buy', 'shortfall'], 10000);
   await shot('commentary-pack-buy', 400);
   await page.locator('.screen.in [data-confirm="cancel"]').click(); await waitScreen('commentary-packs');
+
+  // round 16: 次にやること in English (REQ-NEXT-014): the home's next card and chips, then after 「今日は閉じる」
+  await page.evaluate(() => globalThis.__muchi.demo('next')); await waitScreen(['home', 'link-prompt'], 60000);
+  if (await screen() === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); }
+  await page.waitForSelector('.screen.in .next-card', { timeout: 10000 });
+  await shot('home-next', 700);
+  assert.match(await page.locator('.screen.in .next-card').innerText(), /Next up/, 'next card: the kicker in English');
+  await page.locator('.screen.in [data-next-dismiss]').click(); await page.waitForTimeout(800);
+  await shot('home-next-dismissed', 500);
+
+  // round 16: シーズンの振り返り in English (REQ-RECAP-012): the list, every page of a full recap, the share set, the short version
+  {
+    const waitRc = (sel) => page.waitForSelector(`.screen.in ${sel}`, { timeout: 30000 });
+    await show('Recaps'); await waitScreen('recaps', 30000); await waitRc('.rc-card'); await shot('recaps', 400);
+    await show('Recap', 'season:2026-11', 0); await waitScreen('recap'); await waitRc('.rc-big');
+    const rcSteps = await page.evaluate(() => globalThis.__muchi.recap.steps);
+    for (let k = 0; k < rcSteps; k++) {
+      if (k > 0) { await page.locator('.screen.in .rc-next').click(); await page.waitForSelector(`.screen.in[data-index="${k}"]`, { timeout: 10000 }); }
+      await shot('recap-' + (await page.evaluate(() => globalThis.__muchi.recap.key)), 950);
+    }
+    assert.match(await page.locator('.screen.in').innerText(), /Well ridden/, 'recap: the last page in English');
+    await page.locator('.screen.in .rc-share').click(); await waitRc('.rc-share-sheet'); await shot('recap-share', 400);
+    await show('Recap', 'season:2026-10', 0); await waitScreen('recap'); await waitRc('.rc-big'); await shot('recap-short', 950);
+  }
+
+  // round 16: プレイヤー主催カップ in English (REQ-CUP-*): the list, create, the lobby (host), standings, the result card,
+  // join by code. Cup and player names stay as typed.
+  await show('HostedCups'); await waitScreen('hosted-cups', 30000); await shot('cups', 600);
+  await page.locator('.screen.in .cup-make').click(); await waitScreen('cup-create'); await shot('cup-create', 400);
+  await page.locator('.screen.in .cup-create').click(); await waitScreen('cup-lobby', 20000); await shot('cup-lobby', 500);
+  assert.match(await page.locator('.screen.in').innerText(), /unranked/i, 'cups: the unranked note in English');
+  await page.locator('.screen.in .cup-demo-fill').click(); await page.waitForTimeout(700);
+  await page.locator('.screen.in .cup-start').click(); await waitScreen(['cup-lobby', 'cup-standings'], 30000); await page.waitForTimeout(500);
+  await page.locator('.screen.in .cup-standings-open').click(); await waitScreen('cup-standings'); await shot('cup-standings', 500);
+  await show('CupJoin'); await waitScreen('cup-join'); await shot('cup-join', 400);
 
   const misses = await page.evaluate(() => globalThis.__muchi.l10n.misses());
   fs.writeFileSync(path.join(out, 'en-report.json'), JSON.stringify({ report, misses }, null, 2));

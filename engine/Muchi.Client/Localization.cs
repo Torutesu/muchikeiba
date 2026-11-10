@@ -73,7 +73,7 @@ namespace Muchi.Client
         /// <summary>In the English, <c>{n:ord}</c> renders a number as an ordinal ("3着" → "3rd").</summary>
         private static readonly Regex PhEn = new Regex(@"\{(\w+)(:ord)?\}");
         private static readonly HashSet<string> Numeric = new HashSet<string> { "n", "m", "v", "p", "a", "b", "i", "y", "days", "levels", "qty", "minutes", "points" };
-        private static readonly HashSet<string> Verbatim = new HashSet<string> { "name", "team", "url", "code", "id" };
+        private static readonly HashSet<string> Verbatim = new HashSet<string> { "name", "team", "url", "code", "id", "cup" }; // cup: hosted cup name (§42)
         private static readonly string[][] Separators =
         {
             new[] { "　/　", "  /  " }, new[] { "　·　", "  ·  " }, new[] { "  /  ", "  /  " }, new[] { " / ", " / " }, new[] { "\n", "\n" }, new[] { " または ", " or " }, new[] { " ・ ", " · " }, new[] { "＋", " + " }, new[] { "・", ", " }, new[] { "、", ", " }, new[] { "　", "  " },

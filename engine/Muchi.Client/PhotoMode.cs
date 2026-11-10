@@ -163,12 +163,13 @@ namespace Muchi.Client
                 case RaceMode.Event: return "event";
                 case RaceMode.Tournament: return "tournament";
                 case RaceMode.Challenge: return "challenge";
+                case RaceMode.Cup: return "cup"; // §42 hosted cups (Round 16 integration): shared, never paused live
                 default: return online ? "ranked" : "practice";
             }
         }
 
         /// <summary>REQ-PHOTO-001: modes raced together with other people (never paused live).</summary>
-        public static bool IsShared(string mode) => mode == "ranked" || mode == "friend" || mode == "event" || mode == "tournament";
+        public static bool IsShared(string mode) => mode == "ranked" || mode == "friend" || mode == "event" || mode == "tournament" || mode == "cup";
     }
 
     /// <summary>Camera values as the server stores them: integers (degrees, decimetres).</summary>

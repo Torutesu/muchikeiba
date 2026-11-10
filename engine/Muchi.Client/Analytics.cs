@@ -11,7 +11,7 @@ namespace Muchi.Client
     /// One client analytics event (REQ-KPI-003). Only events the server cannot observe itself are accepted;
     /// purchases, gacha, race results etc. are recorded server-side. Build them with the factory methods.
     /// </summary>
-    public sealed class AnalyticsEvent
+    public sealed partial class AnalyticsEvent
     {
         public readonly string Name;
         /// <summary>Unix time in milliseconds when it happened (the server drops events older than 7 days).</summary>
@@ -20,6 +20,8 @@ namespace Muchi.Client
 
         private static readonly Regex Ident = new Regex("^[A-Za-z0-9_\\-.:]{1,64}$");
 
+        /// <summary>The props as JSON (checks and logs).</summary>
+        public string PropsJson => _props.ToString();
         private AnalyticsEvent(string name, long atMs, JsonNode props) { Name = name; AtMs = atMs; _props = props ?? JsonNode.Obj(); }
 
         private static string Id(string v, int max, string what)
@@ -133,6 +135,21 @@ namespace Muchi.Client
             return new AnalyticsEvent("replay_share", atMs, JsonNode.Obj().Set("surface", surface));
         }
 
+        /// <summary>REQ-ORG-013: the roster organiser's sort or filters changed. sort: one of RosterQuery.SortKeys; filters: 0..10 in use.</summary>
+        public static AnalyticsEvent RosterSort(long atMs, string sort, int filters)
+        {
+            if (Array.IndexOf(RosterQuery.SortKeys, sort) < 0) throw new ArgumentException("unknown roster sort " + sort);
+            return new AnalyticsEvent("roster_sort", atMs, JsonNode.Obj().Set("sort", sort).Set("filters", Math.Max(0, Math.Min(filters, 10))));
+        }
+
+        /// <summary>REQ-RECAP-015: a recap share card was handed to the OS share sheet. kind: season | year; card: summary | horse | moment | rank.</summary>
+        public static AnalyticsEvent RecapShare(long atMs, string kind, string card, bool hideRank)
+        {
+            if (kind != "season" && kind != "year") throw new ArgumentException("unknown recap kind " + kind);
+            if (card != "summary" && card != "horse" && card != "moment" && card != "rank") throw new ArgumentException("unknown recap card " + card);
+            return new AnalyticsEvent("recap_share", atMs, JsonNode.Obj().Set("kind", kind).Set("card", card).Set("hideRank", hideRank));
+        }
+
         /// <summary>The invite code was handed to the OS share sheet or copied (REQ-INV-011). channel: os_share | copy_code | copy_link.</summary>
         public static AnalyticsEvent InviteShare(long atMs, string channel)
         {
@@ -151,7 +168,7 @@ namespace Muchi.Client
         }
 
         // ---- REQ-ADV-011 pre-race advice (contracts/protocol.md §39.7). Not sent when the player turned advice off.
-        public static readonly string[] AdviceContexts = { "ranked", "friend", "event", "challenge", "timeattack", "tutorial" };
+        public static readonly string[] AdviceContexts = { "ranked", "friend", "event", "challenge", "timeattack", "tutorial", "cup" };
 
         /// <summary>The advice panel was shown (once per screen visit). horses = horses listed (0..30), suggested = a horse was suggested.</summary>
         public static AnalyticsEvent AdviceView(long atMs, string context, int horses, bool suggested)

@@ -48,6 +48,10 @@ import type { CupRaceSpec, CupState } from '../../../server/src/domain/hostedCup
 import type { HeatOutcome } from '../../../server/src/domain/tournaments.js';
 import { createRace } from '../../../server/src/race/orchestrate.js';
 import type { RaceEntry } from '../../../server/src/http/app.js';
+import { ReportsService, type ReportBody } from '../../../server/src/domain/reportsService.js';
+import { MemoryPlayerReportRepo, PlayerReportsCore } from '../../../server/src/ops/playerReports.js';
+import { blocksView } from '../../../server/src/domain/blocks.js';
+import type { PlayerReportsApi } from '../../../server/src/http/admin.js';
 // REQ-L10N-*: the server's English tables (master/locale-en.json + i18n/en.ts), the client's (ui-en.json) and the
 // prototype's own screen texts (proto-en.json), in one catalog with the server's template rules (katakana names romanized)
 import { compileCatalogWith, translateText, romanizeName } from '../../../server/src/i18n/catalog.js';
@@ -247,6 +251,20 @@ async function rivalDemoSeed() {
     await rivalReg.register(prevWeekId(week), { playerId: s.id, classId: me.season.classId, rating: Math.round(me.rating.r) + (s.id === ID ? 0 : 20), rankedAt: at, blocked: [], card: { ...rivalCard(master, s), classId: me.season.classId }, updatedAt: at });
   }
 }
+// round 17 (REQ-RPT-*): 通報とブロック on the real ReportsService / PlayerService; the ops queue is the IntegrityDO's
+// PlayerReportsCore in memory. A race report is allowed for a race the local player ran (its replay ref is on the state).
+const reportRepo = new MemoryPlayerReportRepo();
+const reportCore = new PlayerReportsCore(reportRepo);
+const reportQueue: PlayerReportsApi = {
+  submit: async (x, t, c) => reportCore.submit(x, t, c), list: async (f) => reportCore.list(f), get: async (id, c) => reportCore.get(id, c),
+  check: async (id, a) => reportCore.assertActionable(id, a), resolve: async (id, a, by, note, t) => reportCore.resolve(id, a, by, note, t), forget: async (u) => reportCore.forgetPlayer(u),
+};
+const reportsSvc = new ReportsService(() => master, () => rivalInvoker, () => reportQueue, async (raceId, pid) => {
+  const s = await svc.state(pid);
+  const mine = [...(s.myReplays?.saved ?? []), ...(s.myReplays?.recent ?? [])].some((r) => r.raceId === raceId);
+  return { ok: mine };
+}, now);
+const BLOCK_DEMO: [string, string][] = [['demo_bl_1', 'ヨルノカラス'], ['demo_bl_2', 'ナギサ']];
 const teamPlayers: TeamPlayers = {
   prepareJoin: (u, t) => svc.teamPrepareJoin(u, t), commitJoin: (u, t) => svc.teamCommitJoin(u, t), abortJoin: (u, t) => svc.teamAbortJoin(u, t),
   addOutgoing: (u, t) => svc.teamAddOutgoing(u, t), removeOutgoing: (u, t) => svc.teamRemoveOutgoing(u, t), left: (u, t, c) => svc.teamLeft(u, t, c),
@@ -407,6 +425,7 @@ export const MuchiLogic = {
     hallDir.rows.clear(); // round 14: the hall copies too
     replayStore.clear(); // round 14: the saved replays and source logs too
     cupBackend.cups.clear(); cupBackend.codes.clear(); try { localStorage.removeItem(CUP_KEY); } catch { /* ignore */ } // round 16
+    reportRepo.rs.clear(); reportRepo.st.clear(); // round 17: the ops report queue too
     dayOffset = 0;
   },
 
@@ -719,6 +738,31 @@ export const MuchiLogic = {
     return svc.view(ID);
   },
 
+  // ---------------------------------------------------------------- round 17: 通報とブロック (REQ-RPT-*, contracts/protocol.md §47)
+  // POST /v1/reports, GET /v1/reports/options, GET / PUT / DELETE /v1/blocks — the same domain code as the routes.
+  reports: {
+    options: () => wrap(() => svc.reportOptions(ID)),
+    submit: (body: Omit<ReportBody, 'targetId'> & { targetId: string }) => wrap(() => reportsSvc.submit(ID, body as ReportBody)),
+    blocks: () => wrap(async () => {
+      const ids = await svc.blockIds(ID);
+      // names as of now from the public profiles (a player with no state — deleted — shows the neutral name)
+      const profiles = (await Promise.all(ids.map(async (id) => ((await repo.get(id)) ? svc.publicProfile(id) : null)))).filter((x) => x !== null);
+      return blocksView(master, ids, profiles);
+    }),
+    block: (playerId: string) => wrap(() => svc.blockSet(ID, playerId, true, 'blocks')),
+    unblock: (playerId: string) => wrap(() => svc.blockSet(ID, playerId, false, 'blocks')),
+    /** Test hook: the ops queue as the console lists it (snapshots, counts, scores; reporters stay ops-only). */
+    queue: () => reportCore.list({ limit: 50 }),
+    /** Demo: two blocked players (one has since deleted the account) and support's request in the activity list. */
+    async seedSafety() {
+      await MuchiLogic.seedDemo(3, [2, 2, 2]);
+      for (const [id, name] of BLOCK_DEMO) if (!(await repo.get(id))) { await svc.bootstrap(id); await svc.setDisplayName(id, name); }
+      for (const [id] of BLOCK_DEMO) await svc.blockSet(ID, id, true, 'blocks');
+      await svc.blockSet(ID, 'demo_bl_gone', true, 'blocks');
+      await svc.reportWarn(ID, 'prp_demo');
+      return svc.view(ID);
+    },
+  },
   // ---------------------------------------------------------------- round 10
   // r10 fix: the shop list with this player's ownership (GET /v1/shop/products?mine=1)
   myShopProducts: () => svc.shopProducts(ID),

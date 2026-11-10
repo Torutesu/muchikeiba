@@ -14,6 +14,8 @@ import { appleAccountToken, googleAccountId } from '../stores/binding.js';
 import { FriendsService, type Directory, type FriendPlayers } from '../domain/friends.js';
 import { dayRule, jstMonthKey } from '../domain/time.js';
 import { handleAdmin, type OpsApi } from './admin.js';
+import { ReportsService, reportBodySchema, type ReportBody } from '../domain/reportsService.js';
+import { blocksView } from '../domain/blocks.js';
 import type { AdminPrincipal } from '../ops/admin.js';
 import { clientBatchSchema } from '../domain/kpi.js';
 import type { TimeAttackService } from '../race/timeAttack.js';
@@ -95,7 +97,8 @@ export type PlayerMethod =
   | 'photoCatalog' | 'photos' | 'photoSave' | 'photoDelete'
   | 'activity' | 'activityRead' | 'activityReplayShare' | 'teamGoalMilestone'
   | 'recaps' | 'recap' | 'recapProgress'
-  | 'cupsMine' | 'cupReserve' | 'cupRelease' | 'cupLeft' | 'cupCommitted' | 'cupCodeAttempt' | 'cupInvited' | 'cupStarted' | 'cupClosed' | 'cupHorseName';
+  | 'cupsMine' | 'cupReserve' | 'cupRelease' | 'cupLeft' | 'cupCommitted' | 'cupCodeAttempt' | 'cupInvited' | 'cupStarted' | 'cupClosed' | 'cupHorseName'
+  | 'reportOptions' | 'reportSnapshot' | 'reportCommit' | 'blockIds' | 'blockSet' | 'reportWarn' | 'replayOpsHide' | 'photoOpsHide';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -1027,6 +1030,20 @@ export const routes: Route[] = [
     const b = await body(r, z.object({ upTo: z.string().max(12).optional() }).strict());
     return c.player(u).invoke('activityRead', u, parseUpTo(b.upTo));
   } },
+  // 通報とブロック管理 (REQ-RPT-*, contracts/protocol.md §47)
+  { method: 'GET', path: '/v1/reports/options', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('reportOptions', u) },
+  { method: 'POST', path: '/v1/reports', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, reportBodySchema);
+    return new ReportsService(() => c.master, c.player, () => c.ops?.playerReports, (raceId, pid) => c.race.report(raceId, pid), c.clock).submit(u, { ...b, targetId: playerIdParam(b.targetId) } as ReportBody);
+  } },
+  { method: 'GET', path: '/v1/blocks', auth: 'player', handler: async (_r, _p, c, u) => {
+    const ids = await c.player(u).invoke('blockIds', u);
+    // REQ-RPT-011: current names from the directory (deleted / banned → neutral; unreachable → neutral too)
+    const profiles = ids.length === 0 ? [] : await c.friends.profilesOf(ids).catch(() => null);
+    return blocksView(c.master, ids, profiles);
+  } },
+  { method: 'PUT', path: '/v1/blocks/:playerId', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('blockSet', u, playerIdParam(p.playerId!), true, 'blocks') },
+  { method: 'DELETE', path: '/v1/blocks/:playerId', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('blockSet', u, playerIdParam(p.playerId!), false, 'blocks') },
   // admin
   // マイリプレイ (REQ-MYRP-*, contracts/protocol.md §37)
   { method: 'GET', path: '/v1/replays', auth: 'player', handler: async (_r, _p, c, u) => myReplays(c).view(u) },

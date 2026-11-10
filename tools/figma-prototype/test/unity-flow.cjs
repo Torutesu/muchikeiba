@@ -1039,10 +1039,14 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.ok(await page.locator('.screen.in .tf-cheer.on').count() >= 1, 'my cheer is on the teammate race result');
   await shot('team-feed-cheered', 300);
   const victim = await page.locator('.screen.in .tf-row.race:not(.mine)').first().getAttribute('data-player');
-  await page.locator(`.screen.in .tf-row[data-player="${victim}"] .tf-link`, { hasText: '非表示' }).first().click(); await page.waitForTimeout(700);
-  assert.equal(await page.locator(`.screen.in .tf-row[data-player="${victim}"]`).count(), 0, 'a muted member disappears from my feed');
+  await page.locator(`.screen.in .tf-row[data-player="${victim}"] .tf-link`, { hasText: 'ブロック' }).first().click(); await page.waitForTimeout(700);
+  assert.equal(await page.locator(`.screen.in .tf-row[data-player="${victim}"]`).count(), 0, 'a blocked (muted) member disappears from my feed');
   const before = Number(await page.locator('.screen.in .tf-list').getAttribute('data-count'));
-  await page.locator('.screen.in .tf-row:not(.mine) .tf-link', { hasText: '報告' }).first().click(); await page.waitForTimeout(700);
+  // round 17 (REQ-RPT-001): 通報 opens the report sheet; once received the item is hidden for me too (REQ-TEAMFEED-007)
+  await page.locator('.screen.in .tf-row:not(.mine) .tf-link', { hasText: '通報' }).first().click(); await page.waitForTimeout(700);
+  assert.equal(await page.locator('.screen.in .rpt-sheet[data-source="team_feed"]').count(), 1, 'the report sheet opens from the feed');
+  await page.locator('.screen.in .rpt-sheet .rpt-reason[data-reason="harassment"]').click(); await page.waitForTimeout(200);
+  await page.locator('.screen.in .rpt-sheet .rpt-send').click(); await page.waitForTimeout(900);
   assert.equal(Number(await page.locator('.screen.in .tf-list').getAttribute('data-count')), before - 1, 'a reported item is hidden for me');
   await shot('team-feed-muted-reported', 300);
   // r10 fix: this season's pass bought (demo receipt, no billing) → 購入済み in the shop and on the pass screen
@@ -1322,6 +1326,49 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.equal(await page.locator('.screen.in .act-row.unread').count(), 0, 'read rows on the next visit');
   await page.locator('.screen.in [data-act="gift_arrived"] [data-act-go]').click(); await waitScreen('gift-box', 20000);
   assert.ok((await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name === 'activity_tap').length)) >= 1, 'activity_tap sent');
+  // ------------------------------------------------------------------ 6. round 17: 通報とブロック (REQ-RPT-*)
+  // two blocked players (one deleted since → 「プレイヤー」) and support's request in the activity list; the block screen
+  // (what a block does per feature), unblock only after the confirmation, the settings row, and the report sheet from a
+  // friend's hall (reasons that fit a name, the note counter, one send, also block)
+  await page.evaluate(() => globalThis.__muchi.demo('safety')); await waitScreen('blocks', 60000); await page.waitForTimeout(400);
+  const blText = await page.locator('.screen.in').innerText();
+  assert.match(blText, /ヨルノカラス/); assert.match(blText, /ナギサ/); assert.match(blText, /プレイヤー/, 'a deleted player shows the neutral name');
+  assert.equal(await page.locator('.screen.in .bl-effect').count(), 7, 'what a block does, one line per feature');
+  assert.match(blText, /相手には、ブロックしたことも通報したことも知らされません/);
+  await shot('blocks', 400);
+  await page.locator('.screen.in .bl-row[data-player="demo_bl_2"] .bl-unblock').click(); await page.waitForTimeout(500);
+  assert.equal(await page.locator('.screen.in .bl-confirm').count(), 1, 'unblock asks first');
+  assert.equal((await page.evaluate(() => globalThis.__muchi.logic.reports.blocks())).value.count, 3, 'nothing changed before the confirmation');
+  await shot('blocks-unblock-confirm', 300);
+  await page.locator('.screen.in .bl-yes').click(); await page.waitForTimeout(800);
+  assert.equal(await page.locator('.screen.in .bl-row[data-player="demo_bl_2"]').count(), 0, 'unblocked');
+  assert.equal(await page.locator('.screen.in .bl-list').getAttribute('data-count'), '2');
+  await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in .btn[data-action="blocks"]').count(), 1, 'その他 has the 通報とブロック row');
+  await page.locator('.screen.in .btn[data-action="blocks"]').click(); await waitScreen('blocks');
+  await page.evaluate(() => globalThis.__muchi.show('Activity')); await waitScreen('activity'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in [data-act="ops_notice"]').count(), 1, "support's request is in the activity list");
+  await page.locator('.screen.in [data-act="ops_notice"] [data-act-go="safety"]').click(); await waitScreen('blocks', 20000);
+  // the report rptSheet from a friend's hall
+  await page.evaluate(() => globalThis.__muchi.logic.hall.demoFriend());
+  await page.evaluate(() => globalThis.__muchi.show('Hall', 'demo_hof_1')); await waitScreen('hall-friend'); await page.waitForTimeout(400);
+  await page.locator('.screen.in .rpt-open').click(); await page.waitForTimeout(700);
+  const rptSheet = page.locator('.screen.in .rpt-sheet');
+  assert.equal(await rptSheet.getAttribute('data-kind'), 'display_name');
+  assert.deepEqual(await rptSheet.locator('.rpt-reason').evaluateAll((els) => els.map((e) => e.dataset.reason)), ['name', 'harassment', 'other'], 'only the reasons that fit a name');
+  assert.match(await rptSheet.locator('.rpt-send').getAttribute('class'), /disabled/, 'no reason → no send');
+  await rptSheet.locator('.rpt-reason[data-reason="name"]').click();
+  await rptSheet.locator('.rpt-note').fill('あ'.repeat(101)); await page.waitForTimeout(200);
+  assert.match(await rptSheet.locator('.rpt-send').getAttribute('class'), /disabled/, 'a note over the limit → no send');
+  await rptSheet.locator('.rpt-note').fill('名前が気になります'); await page.waitForTimeout(200);
+  assert.equal(await rptSheet.locator('.rpt-count').innerText(), '9/100');
+  await rptSheet.locator('.rpt-block').click();
+  await shot('report-sheet', 300);
+  await rptSheet.locator('.rpt-send').click(); await page.waitForTimeout(900);
+  const sent = await page.evaluate(() => globalThis.__muchiReports.at(-1));
+  assert.deepEqual(sent, { kind: 'display_name', category: 'name', source: 'hall', blocked: true }, 'received, and blocked');
+  const queue = await page.evaluate(() => globalThis.__muchi.logic.reports.queue());
+  assert.equal(queue[0].snapshot.text, 'アオバ', "the server's snapshot of the name");
   // ------------------------------------------------------------------ 6. round 12: かんたん操作 (REQ-ASSIST-*)
   // a week of play, then three last places settled by the real applyRace → the one-time suggestion (calm: 「今はいい」 as big
   // as the rest) → ぜんぶおまかせ → the settings row and the options screen → a ranked race the real InputAssistant rides with
@@ -1330,7 +1377,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   const promptText = await page.locator('.screen.in').innerText();
   assert.match(promptText, /かんたん操作を試してみませんか？/);
   assert.match(promptText, /いつでも設定で戻せます/);
-  assert.match(promptText, /相手には表示されません/, 'the sheet states the fairness rule');
+  assert.match(promptText, /相手には表示されません/, 'the rptSheet states the fairness rule');
   assert.ok(!/倍|今だけ|残りわずか|お得/.test(promptText), 'no pressure words on the suggestion');
   const sizes = await page.locator('.screen.in [data-assist-choice]').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
   assert.equal(sizes.length, 3); assert.ok(Math.max(...sizes) - Math.min(...sizes) <= 1, '「今はいい」 is as big as the choices');

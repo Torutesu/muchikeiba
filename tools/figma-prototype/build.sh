@@ -59,4 +59,5 @@ node "$HERE/test/round15-race-advice.test.mjs" # round 15: 出走前アドバイ
 node "$HERE/test/round15-photo.test.mjs" # round 15: フォトモード — pause a solo race (same state, same hash after), camera limits, no pause in ranked, catalog / purchase / keyed record / KPI
 node "$HERE/test/round16-roster.test.mjs"     # round 16: 厩舎の整理 — rows, shared sort / filters / search, lock (the single retire refused too), favourite, bulk preview, all or nothing, keyed, stale
 node "$HERE/test/round16-season-recap.test.mjs" # round 16: シーズンの振り返り — short / full / year recaps from confirmed races, promotion and the hall, open / complete once, English, recap_share
+node "$HERE/test/round17-reports.test.mjs" # round 17: 通報とブロック — options, a server-side snapshot, merged reports, limits, also block on the one list, block list names, unblock, ops_notice, English
 echo "built $SITE ($(du -sh "$SITE" | cut -f1))"

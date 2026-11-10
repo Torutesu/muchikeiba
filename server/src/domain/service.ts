@@ -62,7 +62,7 @@ import {
   nextDeletionWake, notWhileDeleting, requestDeletion, startDeletion, type DeletionStep,
 } from './accountDeletion.js';
 import {
-  ensureFeed, FEED_RACE_MODES, notePostedIn, playerMute, playerReported, playerStampCheck, stampCatalog, stampsOf, type FeedRace, type ReportReason,
+  ensureFeed, FEED_RACE_MODES, notePostedIn, playerReported, playerStampCheck, stampCatalog, stampsOf, type FeedRace, type ReportReason,
 } from './teamFeed.js';
 import {
   dueInviteOutbox, forfeitInviteOutbox, forgetInvitee, forgetInviter, inviteAcked, inviteeCommit, inviteRetryLater, inviterAccept, inviterMilestone,
@@ -90,6 +90,8 @@ import {
   HISTORY_LIMITS, type GachaLogEntry, type GachaPager, type LedgerPager, type SupportTopic,
 } from './history.js';
 import { buildSupportTicket } from '../ops/support.js';
+import { reportOptions, reportSnapshotOf, takeReportAllowance, type ReportCategory, type ReportContent, type ReportSource } from './reports.js';
+import { blockIds, isBlocking, setBlocked, type BlockOrigin } from './blocks.js';
 import { raceAdviceFor, type AdviceQuery } from './raceAdviceService.js';
 import { dismissNextAction, nextActionsView, noteFeatures, type TeamGoalBrief } from './nextAction.js';
 import { attachRecapRank, noteRecapRace, noteRecapReplaySaved, noteRecapTeamGoal, recapProgress, recapView, recapsList, rollRecaps, type RecapStepName } from './seasonRecap.js';
@@ -878,7 +880,13 @@ export class PlayerService {
       return { ...r, view: rivalView(this.d.master, s, now) };
     });
   }
-  rivalBlock(id: string) { return this.tx(id, null, (s, now) => rivalBlock(this.d.master, s, now)); }
+  rivalBlock(id: string) {
+    return this.tx(id, null, (s, now, emit) => {
+      const r = rivalBlock(this.d.master, s, now);
+      emit({ name: 'block_add', s1: 'rival' }); // REQ-RPT-017 (the rival block always adds: a blocked rival is never paired)
+      return r;
+    });
+  }
   /** REQ-RIVAL-008: one daily challenge per call; a resent idempotency key returns the stored answer (no second challenge). */
   rivalChallengeCheck(id: string, idemKey: string | null = null) { return this.tx(id, idemKey, (s, now) => ({ rivalId: rivalChallengeCheck(this.d.master, s, now), displayName: s.profile.displayName })); }
   /** The rival's side; keyed by the challenger's request so a retried challenge never re-sends the invite push. */
@@ -1735,7 +1743,62 @@ export class PlayerService {
     });
   }
   async feedMutes(id: string) { return { muted: [...ensureFeed(await this.load(id)).muted] }; }
-  feedMute(id: string, target: string, muted: boolean) { return this.tx(id, null, (s) => playerMute(this.d.master, s, target, muted)); }
+  /** REQ-TEAMFEED-006 × REQ-RPT-010: the team feed's mute is the one block list (KPI block_add / block_remove, origin team_feed). */
+  feedMute(id: string, target: string, muted: boolean) {
+    return this.tx(id, null, (s, _now, emit) => { setBlocked(this.d.master, s, target, muted, 'team_feed', emit); return { muted: [...ensureFeed(s).muted] }; });
+  }
+
+  // ---- 通報とブロック管理 (REQ-RPT-*, contracts/protocol.md §47) ----
+  async reportOptions(id: string) { return reportOptions(this.d.master, await this.load(id), this.d.clock()); }
+  /** REQ-RPT-004: the reported content copied from THIS (the target's) state; a wiped / unknown account is NOT_FOUND. */
+  async reportSnapshot(id: string, content: ReportContent) {
+    if (await this.wiped(id)) throw new AppError('NOT_FOUND', 'no such player');
+    return reportSnapshotOf(await this.load(id), content, this.d.clock());
+  }
+  /** REQ-RPT-006/009/017: the reporter's daily limits, the optional block and the report_submit KPI row, in one step. */
+  reportCommit(id: string, target: string, category: ReportCategory, kind: ReportContent['kind'], source: ReportSource, alsoBlock: boolean) {
+    return this.tx(id, null, (s, now, emit) => {
+      const r = takeReportAllowance(this.d.master, s, target, now);
+      if (alsoBlock) setBlocked(this.d.master, s, target, true, 'report', emit);
+      emit({ name: 'report_submit', s1: category, s2: kind, s3: source });
+      return { remainingToday: r.remainingToday, blocked: isBlocking(s, target) };
+    });
+  }
+  async blockIds(id: string) { return blockIds(await this.load(id)); }
+  /** REQ-RPT-011: PUT / DELETE /v1/blocks/:playerId (idempotent; the KPI row only when the list changed). */
+  blockSet(id: string, target: string, blocked: boolean, origin: BlockOrigin) {
+    return this.tx(id, null, (s, _now, emit) => {
+      const r = setBlocked(this.d.master, s, target, blocked, origin, emit);
+      return { playerId: r.playerId, blocked: r.blocked, count: r.count, max: r.max };
+    });
+  }
+  /** REQ-RPT-013 warn: one 「運営からのお願い」 activity entry per report (never says who reported). */
+  async reportWarn(id: string, reportId: string) {
+    if (await this.wiped(id)) throw new AppError('NOT_FOUND', 'no such player');
+    return this.tx(id, null, (s, now) => ({ outcome: recordActivity(this.d.master, s, { kind: 'ops_notice', source: `ops_notice:${reportId}` }, now) }));
+  }
+  /** REQ-RPT-013 hide: the saved replay goes private, loses its title and cannot be made public again. */
+  replayOpsHide(id: string, raceId: string) {
+    return this.tx(id, null, (s) => {
+      const rec = s.myReplays?.saved.find((x) => x.raceId === raceId);
+      if (!rec) throw new AppError('NOT_FOUND', 'no such saved replay');
+      const before = { public: rec.public, replayTitle: rec.replayTitle };
+      rec.public = false;
+      rec.replayTitle = null;
+      (rec as typeof rec & { opsHidden?: boolean }).opsHidden = true;
+      return { before, after: { public: false, replayTitle: null, opsHidden: true } };
+    });
+  }
+  /** REQ-RPT-013 hide: the photo's caption is removed. */
+  photoOpsHide(id: string, photoId: string) {
+    return this.tx(id, null, (s) => {
+      const p = s.photos?.records.find((x) => x.id === photoId);
+      if (!p) throw new AppError('NOT_FOUND', 'no such photo');
+      const before = { caption: p.caption };
+      p.caption = null;
+      return { before, after: { caption: null } };
+    });
+  }
   /** REQ-TEAMFEED-007: support flag on the reported player (no-op for a deleted account). */
   async feedReported(id: string, teamId: string, seq: number, reporter: string, reason: ReportReason) {
     if (await this.wiped(id)) return { flagged: false };

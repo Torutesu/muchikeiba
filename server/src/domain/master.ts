@@ -208,6 +208,8 @@ export interface Progression {
   seasonRecap?: import('./seasonRecap.js').SeasonRecapConfig;
   /** REQ-CUP-*: プレイヤー主催カップ (hostedCups.ts, validated by hostedCupsProblems). Absent / disabled = no hosted cups. */
   hostedCups?: import('./hostedCups.js').HostedCupsConfig;
+  /** REQ-RPT-015: 通報 limits and reporter weights (reports.ts, validated by reportsProblems). Absent = REPORTS_DEFAULTS. */
+  reports?: Partial<import('./reports.js').ReportsConfig>;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */

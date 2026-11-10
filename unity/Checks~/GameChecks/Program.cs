@@ -82,6 +82,8 @@ static class Program
         await HistoryChecks.Run(Check);
         Console.WriteLine("== round 15: アクティビティ (bell, list, paging, mark read, deep links, gift link only; REQ-ACT-*)");
         await ActivityChecks.Run(Check);
+        Console.WriteLine("== round 17: 通報とブロック (ReportModel sheet: reasons per content, note count, one send, also block; BlockListModel: list, confirm, effects; REQ-RPT-*)");
+        await ReportChecks.Run(Check);
         Console.WriteLine("== round 11: 図鑑, 実績 and titles (CollectionModel / AchievementModel / TitleShowcaseModel; REQ-COL-*, REQ-ACH-*)");
         await CollectionChecks.Run(Check, Ruleset());
         Console.WriteLine("== 調教 (training: menus, timing mini-game, keyed start/finish, fairness wording)");

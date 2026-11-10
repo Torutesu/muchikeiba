@@ -1209,6 +1209,14 @@
   "カップ名は1〜20文字です（URLは使えません）": "Cup names are 1–20 characters (no URLs)",
   "アカウント削除の手続き中のため、参加できません": "You can't join while your account deletion is pending",
   "{n}着": "{n:ord}",
-  "{n}pt": "{n} pt"
+  "{n}pt": "{n} pt",
+  "_r17_reports": "---- round 17: 通報とブロック (ReportSheet / BlockList, REQ-RPT-*)",
+  "通報": "Report",
+  "厩舎の名前": "Stable name",
+  "リプレイのタイトル": "Replay title",
+  "写真のキャプション": "Photo caption",
+  "ブロックした人と、ブロックするとどうなるか": "Who you blocked, and what a block does",
+  "相手には、ブロックしたことも通報したことも知らされません。": "Players are never told that you blocked or reported them.",
+  "ブロックしました（その他 › 通報とブロックで戻せます）": "Blocked (undo in More › Reports & blocks)"
  }
 }

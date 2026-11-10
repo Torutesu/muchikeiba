@@ -24,9 +24,11 @@ namespace Muchi.Client
             StableLike = "stable_like", TeamCheer = "team_cheer", TournamentResult = "tournament_result", GiftArrived = "gift_arrived",
             TeamGoalTier = "team_goal_tier", TeamGoalWeek = "team_goal_week", ReplayShare = "replay_share",
             // Round 16 integration: hosted cups (§42.7) and the season recap (§43)
-            CupInvited = "cup_invited", CupStarted = "cup_started", CupFinished = "cup_finished", CupCancelled = "cup_cancelled", RecapReady = "recap_ready";
+            CupInvited = "cup_invited", CupStarted = "cup_started", CupFinished = "cup_finished", CupCancelled = "cup_cancelled", RecapReady = "recap_ready",
+            /// <summary>REQ-RPT-013: support's request after a report (no actor; links to 通報とブロック).</summary>
+            OpsNotice = "ops_notice";
         public static readonly string[] All = { FriendRequest, FriendAccepted, RivalWeek, RivalRecord, StableLike, TeamCheer, TournamentResult, GiftArrived, TeamGoalTier, TeamGoalWeek, ReplayShare,
-            CupInvited, CupStarted, CupFinished, CupCancelled, RecapReady };
+            CupInvited, CupStarted, CupFinished, CupCancelled, RecapReady, OpsNotice };
     }
 
     /// <summary>Where an entry leads (`link.screen`).</summary>
@@ -35,8 +37,10 @@ namespace Muchi.Client
         public const string Friends = "friends", Rival = "rival", Stable = "stable", TeamFeed = "team_feed", Tournaments = "tournaments",
             GiftBox = "gift_box", TeamGoal = "team_goal", Replay = "replay", WhatsNew = "whats_new",
             /// <summary>Round 16: the hosted cup (LinkId = cupId) and the season recap (LinkId = recap id, e.g. season:2026-11).</summary>
-            Cups = "cups", Recap = "recap";
-        public static readonly string[] All = { Friends, Rival, Stable, TeamFeed, Tournaments, GiftBox, TeamGoal, Replay, WhatsNew, Cups, Recap };
+            Cups = "cups", Recap = "recap",
+            /// <summary>REQ-RPT-011: 通報とブロック (block list + what a block does + guidelines).</summary>
+            Safety = "safety";
+        public static readonly string[] All = { Friends, Rival, Stable, TeamFeed, Tournaments, GiftBox, TeamGoal, Replay, WhatsNew, Cups, Recap, Safety };
     }
 
     public sealed class ActivityActor

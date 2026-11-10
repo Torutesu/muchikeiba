@@ -19,9 +19,11 @@ export const ACTIVITY_KINDS = [
   'gift_arrived', 'team_goal_tier', 'team_goal_week', 'replay_share',
   // Round 16 (integration): hosted cups (§42.7) and the season recap (§43)
   'cup_invited', 'cup_started', 'cup_finished', 'cup_cancelled', 'recap_ready',
+  // Round 17: support's request after a report (§47)
+  'ops_notice',
 ] as const;
 export type ActivityKind = typeof ACTIVITY_KINDS[number];
-export const ACTIVITY_SCREENS = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new', 'cups', 'recap'] as const;
+export const ACTIVITY_SCREENS = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new', 'cups', 'recap', 'safety'] as const;
 export type ActivityScreen = typeof ACTIVITY_SCREENS[number];
 
 interface KindMeta { category: PushCategory; screen: ActivityScreen; collapse: boolean }
@@ -43,6 +45,8 @@ export const ACTIVITY_META: Record<ActivityKind, KindMeta> = {
   cup_finished: { category: 'friends', screen: 'cups', collapse: false },
   cup_cancelled: { category: 'friends', screen: 'cups', collapse: false },
   recap_ready: { category: 'season', screen: 'recap', collapse: false },
+  // REQ-RPT-013 (§47.7 warn): support's request after a report; no actor, never names the reporter; links to 通報とブロック
+  ops_notice: { category: 'events', screen: 'safety', collapse: false },
 };
 
 /** REQ-ACT-010: `progression.activity` (absent → ACTIVITY_DEFAULTS). */
@@ -269,6 +273,7 @@ export const ACTIVITY_TEXT = {
   cup_cancelled: '「{cup}」は中止になりました',
   recap_season: '{y}年{m}月シーズンの振り返りができました',
   recap_year: '{y}年の振り返りができました',
+  ops_notice: '運営からのお願い：名前や文についてお知らせがありました。ガイドラインをご確認ください',
 } as const;
 
 const fill = (t: string, v: Record<string, string>) => t.replace(/\{(\w+)\}/g, (_, k: string) => v[k] ?? '');
@@ -296,6 +301,7 @@ export function activityText(kind: ActivityKind, count: number, vars: Record<str
     case 'cup_finished': return fill(T.cup_finished, v);
     case 'cup_cancelled': return fill(T.cup_cancelled, v);
     case 'recap_ready': return fill(vars.kind === 'year' ? T.recap_year : T.recap_season, v);
+    case 'ops_notice': return T.ops_notice;
   }
 }
 

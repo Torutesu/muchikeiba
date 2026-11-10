@@ -211,6 +211,10 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('HostedCups'); await waitScreen('hosted-cups', 30000); await shot('cups', english, 600);
     await show('CupCreate'); await waitScreen('cup-create'); await shot('cup-create', english, 500);
     await show('CupJoin'); await waitScreen('cup-join'); await shot('cup-join', english, 500);
+    // Round 17: 通報とブロック — the block list and the report sheet at the largest size (REQ-RPT-019)
+    await show('BlockList'); await waitScreen('blocks'); await shot('blocks', english, 600);
+    await page.evaluate(() => globalThis.__muchi.show('Report', { playerId: 'demo_rpt_x', name: 'ヨルノカラス', kind: 'display_name', source: 'profile' })); await page.waitForTimeout(800);
+    await shot('report-sheet', english, 300);
     await show('Settings'); await waitScreen('settings'); await boxesClear('settings lists (largest)', SETTINGS_LISTS, english);
     await show('Home'); await waitScreen('home'); await page.waitForTimeout(700); await boxesClear('home top bar (largest)', HOME_BAR, english);
   };

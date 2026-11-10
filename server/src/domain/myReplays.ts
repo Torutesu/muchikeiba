@@ -258,6 +258,8 @@ export function updateSaved(m: Master, s: PlayerState, raceId: string, p: Replay
   const rec = peek(s)?.saved.find((x) => x.raceId === raceId);
   if (!rec) throw new AppError('NOT_FOUND', 'no such saved replay');
   if (p.public === true && !rec.public) DELETION_GUARD(s);
+  // REQ-RPT-013: a replay ops hid after a report stays private (its title can be set again, it is only seen by the owner)
+  if (p.public === true && (rec as SavedReplay & { opsHidden?: boolean }).opsHidden) throw new AppError('NOT_ELIGIBLE', 'this replay was hidden by support and cannot be shared');
   if (p.replayTitle !== undefined) rec.replayTitle = validateReplayTitle(m, p.replayTitle);
   if (p.favorite !== undefined) rec.favorite = p.favorite;
   if (p.public !== undefined) rec.public = p.public;

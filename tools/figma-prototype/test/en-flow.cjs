@@ -366,6 +366,22 @@ module.exports = async function enFlow(browser, base, out, errors) {
   if ((await screen()) === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); }
   await shot('home-bell', 400);
 
+  // round 17: 通報とブロック in English (REQ-RPT-018): the block list (player names as written, the effects from the server),
+  // the unblock confirmation and the report sheet (reasons from the server, the note counter)
+  await page.evaluate(() => globalThis.__muchi.demo('safety')); await waitScreen('blocks', 60000);
+  await shot('blocks', 600);
+  const blEn = await page.locator('.screen.in').innerText();
+  assert.match(blEn, /What does blocking do\?/, 'blocks: the effects title in English');
+  assert.match(blEn, /You get no activity notices from them/, 'blocks: a server effect line in English');
+  await page.locator('.screen.in .bl-unblock').first().click(); await page.waitForTimeout(500);
+  await shot('blocks-unblock-confirm', 300);
+  await page.locator('.screen.in .bl-no').click(); await waitScreen('blocks'); await page.waitForTimeout(400);
+  await page.evaluate(() => globalThis.__muchi.show('Report', { playerId: 'demo_bl_1', name: 'ヨルノカラス', kind: 'display_name', source: 'profile' })); await page.waitForTimeout(800);
+  await shot('report-sheet', 300);
+  const rpEn = await page.locator('.screen.in .rpt-sheet').innerText();
+  assert.match(rpEn, /Inappropriate name/, 'report: the reasons in English');
+  assert.match(rpEn, /never told who reported them/, 'report: the lead in English');
+
   // round 13: 支部の共同目標 in English (REQ-TGOAL-*): the week, after the demo races, the week result sheet
   await show('TeamGoal'); await waitScreen('team-goal', 20000); await shot('team-goal', 600);
   assert.match(await page.locator('.screen.in').innerText(), /as a branch/, 'team goal: the goal label in English');

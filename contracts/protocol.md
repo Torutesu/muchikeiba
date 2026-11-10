@@ -90,7 +90,7 @@ C#（端末・検証サーバー）とTypeScript（Cloudflareサーバー）の�
 ### 端末 → 部屋
 | `t` | 形 | 意味 |
 |---|---|---|
-| `hello` | `{"t":"hello","raceId":"…","token":"…","lastTick":-1}` | 参加・再接続。`lastTick`は計算済みの最後のtick（初回は-1） |
+| `hello` | `{"t":"hello","raceId":"…","token":"…","lastTick":-1,"engine":1}` | 参加・再接続。`lastTick`は計算済みの最後のtick（初回は-1）。`engine`は任意（エンジンの水準、Round 17、§46.4） |
 | `in` | `{"t":"in","tick":123,"cmd":32}` | 入力。`tick`は宛先tick |
 | `chk` | `{"t":"chk","tick":120,"h":"0123456789abcdef"}` | チェックサム（`tick`は`checksumIntervalTicks`の倍数） |
 | `res` | `{"t":"res","h":"<64hex>","order":[3,0,…],"finishTicks":[1830,1835,…],"skills":[0,5],"assist":"whip"}` | 結果ハッシュと着順。`finishTicks`は任意（`order`と同じ並び、未完走は-1）。合意した全員が同じ値を送った時だけ戦績のベストタイムに使う。`skills`は任意（固有スキルが発動した枠、§24.4）。合意した2人以上が同じ一覧の時だけ実績に使う（検証に回ったレースは検証サービスの `skillsFired`）。`assist`は任意（`"whip"`/`"full"`、自分の枠のかんたん操作、§27。KPIだけに使い誰にも送らない）。最も速い馬でもゴールできないtickより前の`res`は`err` `RESULT_TOO_EARLY`、2回目以降の`res`は無視 |
@@ -121,6 +121,7 @@ C#（端末・検証サーバー）とTypeScript（Cloudflareサーバー）の�
 | 4000 | `replaced` | 同じ選手の席（または同じプレイヤーの観戦接続）に新しい接続が `hello` した。古い方を閉じる | 再接続しない。`Failed`、`FailureReason` = `REPLACED`（再接続すると新しい方を閉じ返し、2台の端末が席を奪い合い続ける） |
 | 4001 | `unauthorized` | チケットが無効・期限切れ（直前に `err` `UNAUTHORIZED`） | 再接続しない。`UNAUTHORIZED` |
 | 4003 | `spectators full` | 観戦者が上限（直前に `err` `SPECTATORS_FULL`） | 再接続しない。`SPECTATORS_FULL` |
+| 4026 | `version mismatch` | `hello.engine` がそのレースに要るエンジンの水準より小さい（直前に `err` `VERSION_MISMATCH`、§46.4） | 再接続しない。`VERSION_MISMATCH`（更新画面へ） |
 | 1011 | `no race` | 部屋にレースが無い（ランタイム自身の内部エラーも同じ code） | 切断扱いで再接続（回数上限あり。レースが無ければ接続が 404 で失敗し続けて `Failed`） |
 | その他 | — | close フレーム無しの切断・接続失敗（1006）、1000 / 1001 / 1005 / 1012 など | 切断扱いで再接続（指数バックオフ、回数上限あり） |
 
@@ -2094,3 +2095,122 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 - `Muchi.Client`：`AccessibilitySettings`（`Parse`・`ToJson`・`Defaults`、知らない値は既定値）、`ApiClient.GetAccessibilityAsync`・`SetAccessibilityAsync`、`PlayerView.Accessibility`、`AccessibilityTokens`（トークンの表、`Color(mode, token)`）、`TextScale`（`Factor`・`Px`）、`MotionPolicy`、`FlashLimiter`、`WhipHold`。
 - `Muchi.Game`：`AccessibilityModel`（端末の写し・未送信の再送・`Changed` イベント・画面が結ぶ値 `TextScale`／`Palette`／`Motion`／`Haptics`／`Subtitles`／`OneHanded`／`WhipInput`・設定画面の行 `Rows()`・`ApplyTo(RaceInput)`）、`RaceInput.WhipMode`・`SetWhipHeld`・`Collect(RaceSim, slot)`。
 - 画面が守ること：docs/handoff-codex-round15-accessibility.md。
+
+## 46. メンテナンス・強制アップデート（REQ-MNT-001〜016、`server/src/domain/maintenance.ts`、C# `Maintenance.cs`（`MaintenanceInfo`・`UpgradeInfo`・`MaintenanceStatus`・`ClientVersion`）・`Muchi.Net.EngineInfo`・`Muchi.Game.MaintenanceModel`、docs/handoff-codex-round17-maintenance.md）
+運用が**時間を決めて機能を止める**（メンテナンス）仕組みと、**古いアプリを止めて更新へ案内する**仕組み。どちらもリモート設定（§22 の版・有効化・切り戻し・監査）の1区画 `maintenance` で動き、アプリの更新もデプロイも要らない。E番号なし（経済は変わらない。お詫びの補填は既存のプレゼントボックスの補填 §26・REQ-OPS-026 の上限のまま、題名 `ops_compensation_maintenance`「メンテナンスのお詫び」。有償コインはプレゼントボックスに入らない）。
+
+### 46.1 リモート設定 `maintenance`（REQ-MNT-001/002、`ops/config.ts` で他の区画と同じく検査）
+```json
+{ "maintenance": {
+    "windows": [
+      { "id": "m-1112", "startAtMs": 1794416400000, "endAtMs": 1794430800000, "announceAtMs": 1794330000000,
+        "scope": "all",
+        "message": { "ja": "11/12 2:00〜6:00 にメンテナンスを行います。", "en": "Maintenance on 11/12 from 2:00 to 6:00 (JST)." } },
+      { "id": "m-gacha", "startAtMs": 1794500000000, "endAtMs": 1794503600000, "scope": ["gacha", "shop"], "message": { "ja": "…", "en": "…" }, "cancelledAtMs": 1794400000000 }
+    ],
+    "clientVersions": {
+      "ios":     { "min": "1.2.0", "recommended": "1.3.0", "storeUrl": "https://apps.apple.com/jp/app/id…" },
+      "android": { "min": "1.2.0", "recommended": "1.3.0", "storeUrl": "https://play.google.com/store/apps/details?id=…" } },
+    "minEngineLevel": 1 } }
+```
+- 無ければ既定（窓なし、両 OS とも `0.0.0`・`storeUrl: null`、`minEngineLevel: 1`）＝何も止めない。区画を出すと**全体の置き換え**。
+- 時刻は epoch ms で持ち、運用コンソールでは日本時間（`YYYY-MM-DDTHH:mm`）で入れて見る。`announceAtMs` 省略＝開始の24時間前。
+- `scope`：`"all"`、または止めるグループの配列（§46.2 の表。`core` は `"all"` でだけ止まる）。
+- 検査（どれか1つでも版ごと `CONFIG_INVALID`）：`id` は `[a-z0-9_-]{1,40}` で重複なし、`endAtMs > startAtMs`、長さ 5分〜24時間、`announceAtMs` は開始より後でなく14日より前でない、**窓どうしは重ならない**（取り消した窓は取り消した時刻で終わる）、窓は20個まで、`message` は日本語・英語とも必須（日本語 200 字・英語 400 字まで）。メッセージにはショップの表現の決まり（「倍」「お得」「今だけ」「残りわずか」「通常価格」）と公営競技の言葉（`bettingWords.ts`）を使わない。英語は他の文と同じ英語の表現チェック（REQ-L10N-008）。
+- 各窓の英語は、日本語のメッセージをキーにして言語表（`locale.en`）へ足す（応答の境界で英語になる、§23）。
+- `clientVersions`：`x.y.z`、`recommended ≥ min`。どちらかが `0.0.0` より上なら `storeUrl` 必須。`storeUrl` は https で、iOS は `apps.apple.com` / `itunes.apple.com`、Android は `play.google.com` だけ（更新ボタンが他所へ飛ばないように）。
+- `minEngineLevel`：1〜1000。ランク戦などのレースに入れる最低のエンジン（§46.4）。
+
+### 46.2 止まるもの・止まらないもの（REQ-MNT-003）
+| グループ | パス |
+|---|---|
+| `gacha` | `/v1/gacha/*`・`/v1/items/*`（チケット） |
+| `shop` | `/v1/shop/*`・`/v1/silks/parts/*`・`/v1/commentary/packs/*` |
+| `ranked` | `/v1/match/*`・`/v1/friend-rooms/*`・`/v1/race/*`・`/v1/races/*` |
+| `teams` | `/v1/teams/*`・`/v1/league/*`・`/v1/stamps` |
+| `events` / `tournaments` / `training` | `/v1/events/*` / `/v1/tournaments/*` / `/v1/training/*` |
+| `time_attack` | `/v1/time-attack/*`・`/v1/challenges/*` |
+| `social` | `/v1/friends/*`・`/v1/invite*`・`/v1/stable*`・`/v1/rival*` |
+| `core` | それ以外のすべて（プレイヤー・馬・ミッション・プレゼントボックス…） |
+
+**どの窓でも・どのバージョンでも止まらない**（`EXEMPT_ROUTES`）：
+- 状態を見る口：`GET /v1/health`・`/v1/config`・`/v1/maintenance`・`/v1/assets/catalog`・`/v1/visuals`。
+- **購入レシート `POST /v1/shop/purchase`・ストアのサーバー通知 `POST /v1/store/notifications/:platform`・`GET /v1/shop/store-account`**：ストアで支払いが済んだ購入は必ず付与する（資金決済法：有償コインの購入を失わない）。メンテナンス中でも、古いアプリからでも受け付ける。新しい購入の始まり（`purchase-intent`）は `shop` の窓で止まる。
+- リワード広告のサーバー通知 `GET /v1/ads/ssv/admob`（視聴はもう済んでいる）。
+- 退会 `DELETE /v1/player`・取り消し `POST /v1/player/deletion/cancel`（権利なので止めない）。
+- **進行中のものの確定**：レースのソケット `GET /v1/race/:raceId/ws`（始まったレースは最後まで走り、`final` まで確定する）、`POST /v1/time-attack/submit`・`/v1/challenges/weekly/submit`・`/v1/training/:sessionId/finish`、待ち行列から抜ける `POST /v1/match/cancel`・`/v1/events/:eventId/cancel`。
+- KPI の送信 `POST /v1/analytics/events`（`maintenance_block`・`upgrade_prompt` はここを通る）と購入履歴 `GET /v1/history/*`・`POST /v1/history/support-ticket`。
+- 管理API `/v1/admin/*`（運用はメンテナンス中に作業する）。cron（`scheduled`）も止まらない。
+
+### 46.3 1回だけの入口の検査と応答（REQ-MNT-006/007）
+Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateRequest`）。**入口を通った要求は最後まで動く**：窓が始まっても途中で切らない（ガチャ・購入・受け取りは DO の1つのトランザクションで終わる）。順番：
+1. 止まらない口 → そのまま。
+2. **バージョン**：`x-client-platform`（`ios` / `android`）と `x-client-version`（`x.y.z`）が両方あり、`min` より古い → **426 `UPGRADE_REQUIRED`**（待っても直らないので窓より先）。
+3. **エンジン**：レースのグループ（`ranked`・`events`・`tournaments`・`time_attack`）で `x-engine-level` が `max(minEngineLevel, ENGINE_LEVEL)` より小さい → 426 `UPGRADE_REQUIRED`（`reason: "engine"`）。
+4. **窓**：開いている窓（`startAtMs ≤ 今 < 終わり`、終わり＝`endAtMs` か `cancelledAtMs` の早い方）がそのグループを含む → **503 `MAINTENANCE`**。
+
+ヘッダーの無い要求（Round 17 より前のアプリ、ボット、サーバー間）はバージョンとエンジンの検査を通る（窓は効く）。
+
+```json
+503  Retry-After: 12600   Cache-Control: no-store
+{ "error": { "code": "MAINTENANCE", "message": "メンテナンス中です",
+  "details": { "windowId": "m-1112", "group": "gacha", "scope": "all", "startAt": 1794416400000, "endAt": 1794430800000,
+               "endsAtJst": "11/12 06:00", "retryAfterSec": 12600, "message": "11/12 2:00〜6:00 にメンテナンスを行います。" } } }
+
+426
+{ "error": { "code": "UPGRADE_REQUIRED", "message": "アプリを最新版に更新してください",
+  "details": { "reason": "version", "platform": "ios", "version": "1.1.0", "minVersion": "1.2.0", "recommendedVersion": "1.3.0",
+               "storeUrl": "https://apps.apple.com/jp/app/id…" } } }
+```
+- `?lang=en` / `Accept-Language: en` なら `message` と `details.message` は英語（"Under maintenance"、窓の英語）。`reason: "engine"` の時は「レースに参加するにはアプリの更新が必要です」と `engineLevel`・`minEngineLevel`。
+- 503 の他の原因（`VERIFIER_UNAVAILABLE` など）と区別できるのは `code` だけ。クライアントは `MAINTENANCE` を**再試行しない**（`Retry-After` まで待つ）。
+
+### 46.4 レースの握手（REQ-MNT-008、§4 の後方互換な拡張）
+- `hello` に任意の `engine`（整数 1〜1000、C# `Muchi.Net.EngineInfo.Level`、今は 1）。新しいアプリは必ず送る。
+- 部屋はチケットを確かめた後、`engine` がそのレースに要る水準（`ENGINE_LEVEL`）より小さければ `{"t":"err","code":"VERSION_MISMATCH"}` を送り、close **4026 `version mismatch`** で閉じる（席に着かない）。`engine` の無い `hello`（古いアプリ・ボット・検証）は今までどおり。
+- §4.1 の close code に 4026 を足す：クライアントは再接続しない。`Failed`、`FailureReason` = `VERSION_MISMATCH`、更新画面へ。
+- 待ち行列に入る前の HTTP（§46.3 の 3）で同じ水準を先に調べるので、ふつうは部屋まで来ない。部屋の検査は抜け道を塞ぐ二重の守り。エンジンの水準は、レースの計算の形が変わる時に C# と TS で一緒に上げる（今のルールセットの結果は変わらない。ゴールデンも同じ）。
+- 新しいキー `engine` は部屋の厳密なスキーマ（`clientMessageSchema`）に足した。**Worker を先に出し、そのあとアプリ**（古い Worker は知らないキーの `hello` を `BAD_MESSAGE` で断る）。いつもの「検証サーバー → Worker → ストアのアプリ」の順なので特別な手順は無い。
+
+### 46.5 `GET /v1/maintenance`（認証なし、止まらない、REQ-MNT-004/005）
+```json
+{ "serverNowMs": 1794330000000,
+  "active":   [],
+  "upcoming": [ { "id": "m-1112", "scope": "all", "startAt": 1794416400000, "endAt": 1794430800000, "announceAt": 1794330000000,
+                  "startJst": "11/12 02:00", "endJst": "11/12 06:00", "message": "11/12 2:00〜6:00 にメンテナンスを行います。", "status": "announced" } ],
+  "client": { "platform": "ios", "version": "1.2.1", "status": "recommended", "minVersion": "1.2.0", "recommendedVersion": "1.3.0",
+              "storeUrl": "https://apps.apple.com/jp/app/id…", "minEngineLevel": 1 } }
+```
+- `active`：今開いている窓。`upcoming`：お知らせの時刻を過ぎ、まだ始まっていない窓（取り消した窓は出ない）。早い順。
+- `client.status`：`ok` / `recommended`（推奨より古い。任意の更新の案内）/ `required`（最低より古い）/ `unknown`（ヘッダーが無い・他の OS・読めない番号）。
+- アプリは起動時・ホームに戻った時にこれを読み、ホームのお知らせ帯（予定の窓）と推奨の更新の案内を出す。
+- **新着情報（§20）**：お知らせの時刻を過ぎた窓は、終わるまで `GET /v1/whats-new` に `kind: "maintenance"`・`feature: "maintenance"`・題名「メンテナンスのお知らせ」・本文＝窓のメッセージ・`endsAt`＝終わりの項目として出る（見た後は出ない）。押すとメンテナンスのお知らせを開く。アクティビティ（§40）には書かない（自分に起きたことではない）。
+
+### 46.6 運用コンソール（REQ-MNT-011、`/v1/admin/maintenance*`、`tools/ops-console` の「メンテナンス」）
+| メソッド・パス | 役割 | 内容 |
+|---|---|---|
+| `GET /v1/admin/maintenance` | viewer | 有効な版の窓（状態 `scheduled`・`announced`・`active`・`ended`・`ended_early`・`cancelled`、JST の時刻、止まるグループ）と対応バージョン |
+| `POST /v1/admin/maintenance/preview` | viewer | `{ window }` の検査結果と、プレイヤーに見えるお知らせ帯（日本語・英語）。何も保存しない |
+| `POST /v1/admin/maintenance/windows` | admin | `{ window: { id, startJst, endJst, announceJst?, scope, message }, reason }`。過去に始まる窓は 400（緊急は開始＝今） |
+| `POST /v1/admin/maintenance/windows/:id/cancel` | admin | 始まる前なら取り消し、実施中なら今で終わり（`cancelledAtMs` = 今）。終わった窓は 409 |
+| `PUT /v1/admin/maintenance/client-versions` | admin | `{ clientVersions, minEngineLevel?, reason }` |
+
+- 変更はどれも**有効な版から `maintenance` だけを置き換えた新しい版**を作って今すぐ有効にする（他の区画は変わらない。§22 の検査・監査ログ・切り戻しがそのまま効く）。他の版の有効化が予約されている時は 409（その版が後で効くとこの変更が消えるため。先に取り消すか有効にする）。各 isolate はリモート設定を30秒持つので、反映は30秒以内。
+- 書き込みは理由（3〜500字）が必須で、監査ログに前後の値と一緒に残る（`maintenance.schedule`・`maintenance.cancel`・`maintenance.versions`）。
+
+### 46.7 デプロイとの関係（REQ-MNT-010、docs/ops/deploy.md §7.2）
+- ふつうのデプロイ（「検証サーバー → Worker」、§7.1）は止めずに出せる。止める必要があるのは、出している間に古い Worker と新しい Worker が混ざると困る変更（DO のデータの形を変える移行、ストアの設定の切り替え など）だけで、その時は**先にメンテナンスの窓を予定してから**、窓の中で「検証サーバー → Worker」の順に出す。窓の範囲はその変更が触るグループだけにする（購入レシートはいつも通る）。
+- 切り戻しも同じ窓の中で逆の順（Worker → 検証サーバー）。終わったら窓を「今すぐ終える」で閉じる。
+
+### 46.8 KPI（REQ-MNT-013、クライアントのイベント）
+| イベント | いつ | s1 | s2 | s3 |
+|---|---|---|---|---|
+| `maintenance_block` | 503 `MAINTENANCE` を受けた（窓 × グループごとに1回、アプリの起動ごと） | グループ | 窓の id | — |
+| `upgrade_prompt` | 更新の案内を出した／押した | `required` / `recommended` / `engine` | `shown` / `store` / `later` | `ios` / `android` / `other` |
+
+個人を特定する情報は入れない。クエリは `docs/ops/kpi-queries.md`「メンテナンス・強制アップデート」。
+
+### 46.9 クライアント
+- `Muchi.Client`：`ApiClientOptions.AppVersion`・`Platform`（`ios`/`android`）を設定すると全要求に `x-client-platform`・`x-client-version` を、`x-engine-level` はいつも付ける。`ApiClient.Call` の**1か所**で 503 `MAINTENANCE` と 426 `UPGRADE_REQUIRED` を扱う：再試行しない、`MaintenanceException`（`Info`：`MaintenanceInfo`）／`UpgradeRequiredException`（`Info`：`UpgradeInfo`）を投げ、イベント `MaintenanceDetected`／`UpgradeRequired` を出し、`ApiClient.Outage`（`None`／`Offline`／`Maintenance`／`UpgradeRequired`）を更新する（応答が無い＝`Offline`、成功の応答＝`None`）。`GetMaintenanceAsync`（`MaintenanceStatus`）。`ClientVersion.Compare`。`CloseCodes.VersionMismatch`（4026）。
+- `Muchi.Net`：`EngineInfo.Level`。`LockstepClient` の `hello` に `engine`。
+- `Muchi.Game`：`MaintenanceModel`（画面の状態 `None`／`Maintenance`／`UpdateRequired`／`Offline`、メンテナンス画面と更新画面の文、ホームのお知らせ帯、推奨の更新の案内（バージョンごとに1回）、再読み込み、KPI）。画面が守ること：docs/handoff-codex-round17-maintenance.md。

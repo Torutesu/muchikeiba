@@ -41,6 +41,7 @@ import { MemoryReplayStore, MyReplaysService } from '../../../server/src/domain/
 import { DEFAULT_RULESET } from '../../../server/src/domain/ruleset.js';
 import { computeRaceAdvice, adviceTextProblems, adviceTexts, type AdviceInput } from '../../../server/src/domain/raceAdvice.js';
 import type { AdviceQuery } from '../../../server/src/domain/raceAdviceService.js';
+import { DEFAULT_MAINTENANCE, gateRequest, maintenanceStatus, type MaintenanceConfig } from '../../../server/src/domain/maintenance.js';
 // REQ-L10N-*: the server's English tables (master/locale-en.json + i18n/en.ts), the client's (ui-en.json) and the
 // prototype's own screen texts (proto-en.json), in one catalog with the server's template rules (katakana names romanized)
 import { compileCatalogWith, translateText, romanizeName } from '../../../server/src/i18n/catalog.js';
@@ -317,6 +318,7 @@ export const MuchiLogic = {
     hallDir.rows.clear(); // round 14: the hall copies too
     replayStore.clear(); // round 14: the saved replays and source logs too
     dayOffset = 0;
+    delete master.maintenance; // round 17: no maintenance demo
   },
 
   // ---------------------------------------------------------------- round 8 (docs/planning/06, REQ-UXS-*), used by unity.html
@@ -590,6 +592,35 @@ export const MuchiLogic = {
     await wrap(() => svc.draw(ID, 'standard', 10, key()));
     await wrap(() => svc.draw(ID, 'pickup_akatsuki', 1, key()));
     return svc.view(ID);
+  },
+
+  // ---------------------------------------------------------------- round 17: メンテナンス・強制アップデート (REQ-MNT-*, §46)
+  // The real domain (server/src/domain/maintenance.ts): a demo maintenance section on the live master (what's new reads it),
+  // the gate's answer for a request (503 / 426 exactly as the Worker builds them) and GET /v1/maintenance. The prototype
+  // stands in for an iOS app at version 1.1.0 (engine level 1).
+  maintenanceDemo(kind: 'off' | 'announced' | 'all' | 'scoped' | 'update') {
+    const t = now();
+    const hour = 3_600_000;
+    const base = Math.floor(t / hour) * hour;
+    const message = { ja: 'サーバーの増強のため、メンテナンスを行います。', en: 'We are upgrading our servers during this maintenance.' };
+    const store = { ios: 'https://apps.apple.com/jp/app/id0000000000', android: 'https://play.google.com/store/apps/details?id=jp.example.muchi' };
+    const versions = (min: string, rec: string): MaintenanceConfig['clientVersions'] => ({ ios: { min, recommended: rec, storeUrl: store.ios }, android: { min, recommended: rec, storeUrl: store.android } });
+    const cfg: MaintenanceConfig = kind === 'off' ? DEFAULT_MAINTENANCE : {
+      ...DEFAULT_MAINTENANCE,
+      windows: kind === 'announced' ? [{ id: 'demo-next', startAtMs: base + 20 * hour, endAtMs: base + 24 * hour, scope: 'all', message }]
+        : kind === 'all' ? [{ id: 'demo-all', startAtMs: base - hour, endAtMs: base + 3 * hour, scope: 'all', message }]
+          : kind === 'scoped' ? [{ id: 'demo-scout', startAtMs: base - hour, endAtMs: base + 2 * hour, scope: ['gacha', 'shop'], message }] : [],
+      clientVersions: kind === 'update' ? versions('1.2.0', '1.3.0') : versions('1.0.0', '1.0.0'),
+    };
+    if (kind === 'off') delete master.maintenance; else master.maintenance = cfg;
+    return this.maintenanceCheck(kind === 'scoped' ? '/v1/gacha/banners' : '/v1/player');
+  },
+  /** The gate's answer for one request now (null = it would be served) and GET /v1/maintenance, from the live master. */
+  maintenanceCheck(path = '/v1/player') {
+    const cfg = master.maintenance ?? DEFAULT_MAINTENANCE;
+    const h = { platform: 'ios', version: '1.1.0', engine: 1 };
+    const e = gateRequest(cfg, 'GET', path, h, now());
+    return { gate: e ? { code: e.code, status: e.status, message: e.message, details: e.details ?? {} } : null, status: maintenanceStatus(cfg, h, now()) };
   },
 
   // ---------------------------------------------------------------- round 15: アクティビティ (REQ-ACT-*, contracts/protocol.md §40)

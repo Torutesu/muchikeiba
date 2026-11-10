@@ -362,6 +362,16 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await shot('commentary-pack-buy', 400);
   await page.locator('.screen.in [data-confirm="cancel"]').click(); await waitScreen('commentary-packs');
 
+  // round 17: メンテナンス・強制アップデート in English (REQ-MNT-012): the maintenance screen, the update screen, the notice
+  await page.evaluate(() => globalThis.__muchi.demo('maintenance')); await waitScreen('maintenance', 60000);
+  await shot('maintenance', 600);
+  assert.match(await page.locator('.screen.in').innerText(), /Under maintenance[\s\S]*We are upgrading our servers/, 'maintenance: title and the window message in English');
+  await page.evaluate(() => globalThis.__muchi.demo('update')); await waitScreen('update-required', 60000);
+  await shot('update-required', 600);
+  assert.match(await page.locator('.screen.in').innerText(), /Update required/, 'update screen in English');
+  await show('MaintenanceNotice'); await waitScreen('maintenance-notice'); await shot('maintenance-notice', 600);
+  await page.evaluate(() => globalThis.__muchi.logic.maintenanceDemo('off'));
+
   const misses = await page.evaluate(() => globalThis.__muchi.l10n.misses());
   fs.writeFileSync(path.join(out, 'en-report.json'), JSON.stringify({ report, misses }, null, 2));
   await ctx.close();

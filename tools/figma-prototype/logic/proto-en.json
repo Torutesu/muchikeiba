@@ -1072,6 +1072,15 @@
   "プッシュ通知の設定はプッシュだけに効きます。この一覧はいつでも見られます。": "Push settings only change pushes. This list is always available.",
   "アクティビティ（デモ）": "Activity (demo)",
   "リプレイを開きます": "Opening the replay",
-  "デモ杯": "Demo Cup"
+  "デモ杯": "Demo Cup",
+  "メンテナンス": "Maintenance",
+  "アップデート": "Update",
+  "まだメンテナンス中です": "Maintenance is still in progress",
+  "メンテナンスが終わりました": "Maintenance is over",
+  "ストアを開きます（プロトタイプでは開きません）": "Opening the store (not in the prototype)",
+  "予定されているメンテナンスはありません": "No maintenance is scheduled",
+  "日時は日本時間です　·　購入と進行中のレースは止まりません": "Times are in JST · purchases and races in progress are not stopped",
+  "予定": "Scheduled",
+  "サーバーの増強のため、メンテナンスを行います。": "We are upgrading our servers during this maintenance."
  }
 }

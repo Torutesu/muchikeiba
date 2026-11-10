@@ -2565,6 +2565,11 @@ async function Demo(kind) {
   if (kind === 'collection') { await L.seedCollection(); await refresh(); return Collection('horses'); }
   // round 14: a week of play (21 races: the 「出走の記録」 achievement pack is owned) → the commentary packs
   if (kind === 'packs') { await L.seedDemo(7, [3, 3, 3, 3, 3, 3, 3]); ftue = false; await refresh(); return CommentaryPacks('settings'); }
+  // round 17 (REQ-MNT-*): the maintenance screen, a closed feature, the announced window in what's new, the update screen
+  if (kind === 'maintenance') { await L.seedDemo(3, [2, 2, 2]); await refresh(); return Maintenance(L.maintenanceDemo('all').gate.details); }
+  if (kind === 'maintenance-scoped') { await L.seedDemo(3, [2, 2, 2]); await refresh(); const g = L.maintenanceDemo('scoped').gate; await Home(); return MaintenanceSheet(g.details); }
+  if (kind === 'maintenance-news') { await L.seedDemo(3, [2, 2, 2]); L.maintenanceDemo('announced'); await refresh(); return Home(); }
+  if (kind === 'update') { await L.seedDemo(3, [2, 2, 2]); await refresh(); globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }
   if (kind === 'activity') { await L.seedActivity(); await refresh(); actState.cursor = null; actState.stack = []; return Activity(); }
   if (kind === 'gifts') { await L.seedGifts(); await refresh(); giftState.tab = 'box'; giftState.page = 0; return GiftBox('box'); }
   // round 12: a week of play, then three ranked races in last place (settled by the real applyRace) → the one-time suggestion
@@ -2703,13 +2708,15 @@ async function HomeCard(cb) {
 }
 /** REQ-CB-008: the one-time card: what went live since the player last looked. Closing marks it seen. */
 function WhatsNewCard(data, cb) {
-  const KIND = { feature: '新機能', banner: 'スカウト', event: 'イベント', balance: '調整' };
+  const KIND = { feature: '新機能', banner: 'スカウト', event: 'イベント', balance: '調整', maintenance: 'メンテナンス' };
   const card = Glass('What\'s new', HOME_CARD.x, HOME_CARD.y, HOME_CARD.w, 404, undefined, .86);
   card.dataset.homeCard = 'whatsnew'; card.dataset.whatsnew = String(data.items.length); card.classList.add('rise');
   Kicker('前回からのお知らせ', 28, 24, card, { size: 16 });
   const shown = data.items.slice(0, 3);
   shown.forEach((it, i) => {
     const row = el('cb-item', 28, 92 + i * 84, 394, 84, card); row.dataset.item = it.id;
+    // round 17 (REQ-MNT-005): an announced maintenance links to its notice
+    if (it.kind === 'maintenance') { row.dataset.action = 'mnt-notice'; row.setAttribute('role', 'button'); row.style.cursor = 'pointer'; row.addEventListener('click', (e) => { e.stopPropagation(); MaintenanceNotice(); }); }
     Txt(KIND[it.kind] ?? 'お知らせ', 0, 12, 90, 12, CYAN, row, { weight: 700, ls: '.18em' });
     if (it.endsAt) Txt(`${cbDay(it.endsAt)}まで`, 250, 12, 144, 12, GOLD, row, { weight: 700, align: 'right' });
     Txt(it.title, 0, 32, 394, 18, WHITE, row, { weight: 700, nowrap: true });
@@ -4577,6 +4584,106 @@ async function Activity() {
   Back(Home, 'ホームへ', 40, 834);
 }
 
+// ================================================================= round 17: メンテナンス・強制アップデート (REQ-MNT-*, contracts/protocol.md §46)
+// The same screens as the Unity MaintenanceModel, on the real gate (server/src/domain/maintenance.ts through L.maintenance*):
+// the maintenance screen (scope all), the notice over a closed feature (a scoped window), the update-required screen (426)
+// and the announced-window notice opened from what's new. Only the real end time is shown — no countdown, no urgency.
+// ムチ一閃 tone: photoreal art, translucent navy panels, letter-spaced cyan labels, one skewed cyan CTA », sparse.
+const MNT_GROUP = { gacha: 'スカウト', shop: 'ショップ', ranked: 'ランク戦', teams: '支部', events: 'イベント', tournaments: '大会', training: '調教', time_attack: 'タイムアタック', social: 'フレンド', core: 'ゲーム全体' };
+const mntGroups = (scope) => (scope === 'all' || !Array.isArray(scope) || scope.includes('all') ? 'ゲーム全体' : scope.map((g) => MNT_GROUP[g] ?? g).join('・'));
+const MNT_PURCHASE = '購入済みのコインは、メンテナンス中でも必ず受け取れます。';
+const mntRange = (a, b) => `${a}${isJa() ? ' 〜 ' : ' – '}${b}`;
+const mntKpi = (e) => { (globalThis.__muchiKpi ??= []).push(e); };
+const mntBlocked = new Set();
+function mntBlock(d) {
+  const key = `${d.windowId}/${d.group}`;
+  if (!mntBlocked.has(key)) { mntBlocked.add(key); mntKpi({ name: 'maintenance_block', group: d.group, windowId: d.windowId }); }
+}
+/** Full screen: a window with scope all (503 MAINTENANCE on every request). */
+function Maintenance(d) {
+  currentScreen = () => Maintenance(d);
+  mntBlock(d);
+  Clear('maintenance'); SetArt('Art/home-paddock', false); Shade('left');
+  Kicker('メンテナンス', 82, 112, undefined, { size: 18 });
+  Txt('メンテナンス中です', 78, 176, 900, 64, WHITE, undefined, { cls: 'tshadow', ls: '.04em', nowrap: true });
+  Txt(d.message || 'ただいまメンテナンスを行っています。終了までしばらくお待ちください。', 82, 276, 820, 22, WHITE, undefined, { cls: 'tshadow', weight: 500, lh: 1.65 });
+  const box = Glass('Maintenance', 82, 376, 760, 228, undefined, .82);
+  Txt('終了予定（日本時間）', 36, 30, 560, 15, CYAN, box, { weight: 700, ls: '.18em', nowrap: true });
+  Txt(d.endsAtJst, 36, 58, 400, 44, WHITE, box, { weight: 700, cls: 'num', nowrap: true }).dataset.mntEnds = d.endsAtJst;
+  Hair(36, 128, 688, box);
+  Txt('止まっている機能', 36, 146, 560, 15, CYAN, box, { weight: 700, ls: '.18em', nowrap: true });
+  Txt(mntGroups(d.scope), 36, 176, 688, 19, WHITE, box, { weight: 500, nowrap: true });
+  Cta('再読み込み', 82, 648, 420, () => MaintenanceReload()).dataset.action = 'mnt-reload';
+  Txt(MNT_PURCHASE, 82, 764, 900, 15, MUTED, undefined, { cls: 'tshadow', weight: 500 });
+  EnToggle(1466, 31, 98, 88);
+}
+/** 「再読み込み」: GET /v1/maintenance and the gate again; back to the game when nothing covers it any more. */
+function MaintenanceReload() {
+  const r = L.maintenanceCheck('/v1/player');
+  if (r.gate?.code === 'UPGRADE_REQUIRED') return UpdateRequired(r.gate.details);
+  if (r.gate?.code === 'MAINTENANCE') { toast('まだメンテナンス中です'); return Maintenance(r.gate.details); }
+  toast('メンテナンスが終わりました');
+  return Home();
+}
+/** A scoped window: the feature that was opened is closed; a notice over it, the rest of the game keeps working. */
+function MaintenanceSheet(d) {
+  mntBlock(d);
+  const dlg = Dialog('Maintenance notice', 760, 460);
+  dlg.dataset.mntSheet = d.group;
+  Kicker('メンテナンス', 44, 36, dlg, { size: 15 });
+  Txt('この機能はメンテナンス中です', 44, 104, 680, 30, WHITE, dlg, { weight: 700, nowrap: true });
+  Txt('終了予定（日本時間）', 44, 164, 300, 14, CYAN, dlg, { weight: 700, ls: '.18em', nowrap: true });
+  Txt(d.endsAtJst, 44, 190, 300, 30, WHITE, dlg, { weight: 700, cls: 'num', nowrap: true });
+  Txt('止まっている機能', 380, 164, 340, 14, CYAN, dlg, { weight: 700, ls: '.18em', nowrap: true });
+  Txt(mntGroups(d.scope), 380, 194, 340, 19, WHITE, dlg, { weight: 500, nowrap: true });
+  Hair(44, 250, 672, dlg);
+  Txt('ほかの機能はいつもどおり遊べます。', 44, 270, 672, 16, MUTED, dlg, { weight: 500 });
+  Txt(MNT_PURCHASE, 44, 306, 672, 14, SOFT, dlg, { weight: 500 });
+  Cta('ホームへ', 44, 362, 360, () => dlg.remove(), dlg, 'small');
+  return dlg;
+}
+/** 426 UPGRADE_REQUIRED: the update screen with the store button. It does not go away by itself. */
+function UpdateRequired(d) {
+  currentScreen = () => UpdateRequired(d);
+  const kind = d.reason === 'engine' ? 'engine' : 'required';
+  if (!globalThis.__mntPrompted) { globalThis.__mntPrompted = true; mntKpi({ name: 'upgrade_prompt', kind, action: 'shown', platform: 'ios' }); }
+  Clear('update-required'); SetArt('Art/title-screen', false); Shade('left');
+  Kicker('アップデート', 82, 112, undefined, { size: 18 });
+  Txt('アップデートのお願い', 78, 176, 900, 64, WHITE, undefined, { cls: 'tshadow', ls: '.04em', nowrap: true });
+  Txt(kind === 'engine' ? 'レースに参加するには、アプリを最新版に更新してください。' : '新しいバージョンのアプリが公開されています。ストアから更新してください。', 82, 276, 820, 22, WHITE, undefined, { cls: 'tshadow', weight: 500, lh: 1.65 });
+  const box = Glass('Versions', 82, 376, 760, 170, undefined, .82);
+  Txt('お使いのバージョン', 36, 30, 330, 15, CYAN, box, { weight: 700, ls: '.18em', nowrap: true });
+  Txt(d.version ?? '—', 36, 60, 300, 40, WHITE, box, { weight: 700, cls: 'num', nowrap: true });
+  Txt('必要なバージョン', 400, 30, 330, 15, CYAN, box, { weight: 700, ls: '.18em', nowrap: true });
+  Txt(d.minVersion ?? '—', 400, 60, 300, 40, WHITE, box, { weight: 700, cls: 'num', nowrap: true }).dataset.mntMin = d.minVersion ?? '';
+  const go = Cta('ストアへ', 82, 590, 420, () => {
+    mntKpi({ name: 'upgrade_prompt', kind, action: 'store', platform: 'ios' });
+    toast('ストアを開きます（プロトタイプでは開きません）');
+  });
+  go.dataset.action = 'mnt-store'; go.dataset.url = d.storeUrl ?? '';
+  Txt(MNT_PURCHASE, 82, 706, 900, 15, MUTED, undefined, { cls: 'tshadow', weight: 500 });
+  EnToggle(1466, 31, 98, 88);
+}
+/** The announced (or running) window, opened from what's new: when, what stops, and what never stops. */
+function MaintenanceNotice() {
+  currentScreen = () => MaintenanceNotice();
+  const s = L.maintenanceCheck().status;
+  const w = s.active[0] ?? s.upcoming[0];
+  if (!w) { toast('予定されているメンテナンスはありません'); return Home(); }
+  Clear('maintenance-notice'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('メンテナンスのお知らせ', '日時は日本時間です　·　購入と進行中のレースは止まりません');
+  const p = Glass('Maintenance notice', 36, 134, 1060, 676, undefined, .88);
+  Kicker(w.status === 'active' ? 'メンテナンス中' : '予定', 36, 30, p, { size: 15 });
+  Txt(mntRange(w.startJst, w.endJst), 36, 100, 980, 40, WHITE, p, { weight: 700, cls: 'num', nowrap: true }).dataset.mntWindow = w.id;
+  Txt(w.message, 36, 170, 980, 20, WHITE, p, { weight: 500, lh: 1.6 });
+  Hair(36, 262, 988, p);
+  Txt('止まっている機能', 36, 286, 560, 15, CYAN, p, { weight: 700, ls: '.18em', nowrap: true });
+  Txt(mntGroups(w.scope), 36, 316, 980, 19, WHITE, p, { weight: 500, nowrap: true });
+  Txt(MNT_PURCHASE, 36, 386, 980, 15, MUTED, p, { weight: 500, lh: 1.6 });
+  Cta('ホームへ', 36, 576, 376, () => Home(), p, 'small');
+  Back(Home, 'ホームへ', 40, 834);
+}
+
 // ================================================================= round 13: 購入履歴・コイン履歴・ガチャ履歴 (REQ-HIST-*, contracts/protocol.md §33)
 // The same screen as the Unity HistoryModel: a balance header with 有償 / 無償 apart and this month against the age limit,
 // four tabs (購入 / 有償コイン / 無償コイン / ガチャ), pages by the server's cursor, the selected row's detail, and the
@@ -5020,7 +5127,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

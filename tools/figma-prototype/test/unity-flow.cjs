@@ -1156,6 +1156,49 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.equal(await page.locator('.screen.in .act-row.unread').count(), 0, 'read rows on the next visit');
   await page.locator('.screen.in [data-act="gift_arrived"] [data-act-go]').click(); await waitScreen('gift-box', 20000);
   assert.ok((await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name === 'activity_tap').length)) >= 1, 'activity_tap sent');
+  // ------------------------------------------------------------------ 6b. round 17: メンテナンス・強制アップデート (REQ-MNT-*)
+  // on the real gate (server/src/domain/maintenance.ts): the announced window in what's new → its notice; the maintenance
+  // screen (scope all: message, end time in JST, no countdown, reload stays until the window is over); a closed feature
+  // (scoped window) as a notice over home; the update-required screen (426) with the store button; KPI
+  await page.evaluate(() => globalThis.__muchi.demo('maintenance-news')); await waitScreen(['home', 'link-prompt'], 60000);
+  if (await screen() === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); }
+  await page.waitForSelector('.screen.in [data-action="mnt-notice"]', { timeout: 15000 });
+  await shot('maintenance-news', 300);
+  await page.locator('.screen.in [data-action="mnt-notice"]').click(); await waitScreen('maintenance-notice');
+  const mnText = await page.locator('.screen.in').innerText();
+  assert.match(mnText, /サーバーの増強のため/, 'the notice: the window message');
+  assert.match(mnText, /購入済みのコインは、メンテナンス中でも必ず受け取れます/, 'the notice: purchases are never lost');
+  assert.ok(!/今だけ|残りわずか|倍|お得|あと\d+分/.test(mnText), 'no urgency, no countdown');
+  await shot('maintenance-notice', 300);
+  await page.evaluate(() => globalThis.__muchi.demo('maintenance')); await waitScreen('maintenance', 60000);
+  const mText = await page.locator('.screen.in').innerText();
+  assert.match(mText, /メンテナンス中です/); assert.match(mText, /終了予定（日本時間）/); assert.match(mText, /ゲーム全体/);
+  assert.ok(/^\d\d\/\d\d \d\d:\d\d$/.test(await page.locator('.screen.in [data-mnt-ends]').getAttribute('data-mnt-ends')), 'the end time from the 503 details');
+  assert.ok(!/あと\d+分|今だけ|残りわずか/.test(mText), 'no countdown on the maintenance screen');
+  assert.equal(await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name === 'maintenance_block').length), 1, 'maintenance_block once');
+  await shot('maintenance', 300);
+  await page.locator('.screen.in [data-action="mnt-reload"]').click(); await page.waitForTimeout(500);
+  assert.equal(await screen(), 'maintenance', 'reload during the window: still the maintenance screen');
+  assert.equal(await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name === 'maintenance_block').length), 1, 'maintenance_block still once (same window × group)');
+  await page.evaluate(() => globalThis.__muchi.logic.maintenanceDemo('off'));
+  await page.locator('.screen.in [data-action="mnt-reload"]').click(); await waitScreen(['home', 'link-prompt'], 20000);
+  if (await screen() === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); }
+  await page.evaluate(() => globalThis.__muchi.demo('maintenance-scoped')); await waitScreen(['home', 'link-prompt'], 60000);
+  if (await screen() === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); }
+  await page.waitForSelector('.screen.in [data-mnt-sheet="gacha"]', { timeout: 15000 });
+  assert.match(await page.locator('.screen.in [data-mnt-sheet]').innerText(), /スカウト・ショップ/, 'a scoped window names the closed features');
+  await shot('maintenance-scoped', 300);
+  await page.locator('.screen.in [data-mnt-sheet] [data-label="ホームへ"]').click(); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-mnt-sheet]').count(), 0, 'the notice closes; the rest of the game is open');
+  await page.evaluate(() => globalThis.__muchi.demo('update')); await waitScreen('update-required', 60000);
+  const uText = await page.locator('.screen.in').innerText();
+  assert.match(uText, /アップデートのお願い/); assert.match(uText, /1\.1\.0/); assert.match(uText, /1\.2\.0/);
+  assert.match(await page.locator('.screen.in [data-action="mnt-store"]').getAttribute('data-url'), /^https:\/\/apps\.apple\.com\//, 'the store button opens the App Store link from the 426');
+  await page.locator('.screen.in [data-action="mnt-store"]').click(); await page.waitForTimeout(300);
+  const up = await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name === 'upgrade_prompt').map((e) => e.action));
+  assert.deepEqual(up.slice(-2), ['shown', 'store'], 'upgrade_prompt shown, then store');
+  await shot('update-required', 300);
+  await page.evaluate(() => globalThis.__muchi.logic.maintenanceDemo('off'));
   // ------------------------------------------------------------------ 6. round 12: かんたん操作 (REQ-ASSIST-*)
   // a week of play, then three last places settled by the real applyRace → the one-time suggestion (calm: 「今はいい」 as big
   // as the rest) → ぜんぶおまかせ → the settings row and the options screen → a ranked race the real InputAssistant rides with

@@ -22,6 +22,7 @@
  * currency, no paid-only cosmetic, no horse); no mission rewards collecting a set (no コンプガチャ: there is no
  * `collect` kind); the shop only RECOMMENDS an existing product at its normal price with its real sale end (shop.ts).
  */
+import { MAINTENANCE_NEWS_TITLE, maintenanceOf, visibleWindows } from './maintenance.js';
 import { z } from 'zod';
 import { AppError } from './errors.js';
 import { grantReward } from './items.js';
@@ -452,7 +453,7 @@ export function changelogProblems(list: unknown): string[] {
 
 export const WHATS_NEW_MAX = 10;
 
-export interface WhatsNewItem { id: string; kind: ChangelogKind; title: string; body: string; at: number; feature: string | null; bannerId: string | null; eventId: string | null; endsAt: number | null }
+export interface WhatsNewItem { id: string; kind: ChangelogKind | 'maintenance'; title: string; body: string; at: number; feature: string | null; bannerId: string | null; eventId: string | null; endsAt: number | null }
 
 /**
  * REQ-CB-008: what went live after the player last looked (seenUpTo) and up to now, newest first: changelog entries,
@@ -475,6 +476,11 @@ export function whatsNew(m: Master, s: PlayerState, now: number) {
   for (const e of m.events) {
     if (!inRange(e.startAtMs) || e.endAtMs <= now) continue;
     items.push({ id: `event_${e.id}`, kind: 'event', title: e.name, body: 'イベントレースが開催中です', at: e.startAtMs, feature: 'events', bannerId: null, eventId: e.id, endsAt: e.endAtMs });
+  }
+  // REQ-MNT-005 (§46): an announced maintenance window is news until it ends (the row links to the maintenance notice)
+  for (const w of visibleWindows(maintenanceOf(m), now)) {
+    if (!inRange(w.announceAt)) continue;
+    items.push({ id: `maintenance_${w.id}`, kind: 'maintenance', title: MAINTENANCE_NEWS_TITLE, body: w.message, at: w.announceAt, feature: 'maintenance', bannerId: null, eventId: null, endsAt: w.endAt });
   }
   items.sort((a, b) => b.at - a.at || (a.id < b.id ? -1 : 1));
   return { since, upTo: now, showCard: items.length > 0, items: items.slice(0, WHATS_NEW_MAX), more: Math.max(0, items.length - WHATS_NEW_MAX) };

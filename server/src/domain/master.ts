@@ -389,6 +389,8 @@ export interface Master {
    * remote config `locale.en` adds to it). Absent in hand-built test masters (responses then stay Japanese).
    */
   locale?: { en: Record<string, string> };
+  /** REQ-MNT-*: maintenance windows and the client version gate (remote config `maintenance`; absent = DEFAULT_MAINTENANCE). */
+  maintenance?: import('./maintenance.js').MaintenanceConfig;
   /** REQ-COL-* / REQ-ACH-*: 図鑑 lore and achievements (master/collection.json; collection.ts collectionOf falls back to it when absent). */
   collection?: CollectionMaster;
   /** REQ-SILK-*: 勝負服エディタ parts (master/silks-editor.json; silksEditor.ts silksEditorOf falls back to it when absent). */

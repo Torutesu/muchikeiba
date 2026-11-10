@@ -179,6 +179,7 @@ printf '%s' '<管理トークン>' | sha256sum
 | Round 14（殿堂 §34・勝負服エディタ §35・実況パック §36・マイリプレイ §37） | 組み合わせの問題なし：4つとも検証サーバー（`engine/Muchi.Verifier`・`Muchi.Engine`）とその入出力を変えない（変わるのは Worker・`Muchi.Client`・プロトタイプ・Unity のゲーム層だけ）。マイリプレイの保存は既存の R2 `REPLAYS` バインディングの別の接頭辞 `myreplays/`、殿堂の写しは既存の DirectoryDO の新しい表（起動時に `CREATE TABLE IF NOT EXISTS`）で、新しいバインディング・シークレット・マイグレーションは無い | いつもの「検証サーバー → Worker」の順のまま。特別な順番は要らない（4つのブランチのどれも別の順を求めていない、Round 14 の統合で確認） |
 | Round 15（フォトモード §38・出走前アドバイス §39・アクティビティ §40・アクセシビリティ §41） | 組み合わせの問題なし：4つとも検証サーバー（`engine/Muchi.Verifier`・`Muchi.Engine`・`Muchi.Net`）とその入出力・ゴールデンを変えない（Round 15 の統合で差分なしを確認）。新しいのは Worker の API（`/v1/photo/catalog`・`/v1/photos`・`/v1/races/advice`・`/v1/activity`・`/v1/settings/accessibility`）と、プレイヤーのオブジェクトの状態のキー（`photos`・`activity`・`accessibility`、無ければ既定値）、同梱のマスター `server/master/photo.json`、任意のリモート設定 `progression.activity`。wrangler のバインディング・シークレット・マイグレーションは増えない（マイリプレイの公開で各フレンドに書くアクティビティも既存の PlayerDO 呼び出し） | いつもの「検証サーバー → Worker」の順のまま（検証サーバーは出し直さなくてよい）。古いアプリは新しいキー（`accessibility`・`activity` のバッジ、写真の `replaySaved`）を読み飛ばすだけ。切り戻しで Worker を戻すと保存済みの写真の記録・アクティビティ・アクセシビリティ設定は状態に残り、出し直すとまた見える |
 
+| Round 17 メンテナンス・強制アップデート（§46） | 新しいアプリ × 古い Worker：新しいアプリはレースの `hello` に `engine` を付けるが、古い Worker の部屋のスキーマは厳密なので `BAD_MESSAGE` で断られる。古いアプリ × 新しい Worker は問題なし（`engine` は任意、ヘッダー `x-client-*` が無い要求は検査を通る）。検証サーバーとその入出力・ゴールデンは変わらない | いつもの「検証サーバー → Worker」の順のあとでストアにアプリを出す（アプリが最後）。新しいバインディング・シークレット・マイグレーションは無い（設定はリモート設定の区画 `maintenance`）。切り戻しで Worker を戻すと窓と対応バージョンは効かなくなる（リモート設定の版には残る）。さらに古い Worker のリモート設定のスキーマは厳密なので、`maintenance` を含む版を読めず（`CONFIG_INVALID`）、最後に読めた版か同梱の既定に戻ってしまう。Worker を Round 17 より前に戻すときは、**先に `maintenance` を含まない版へリモート設定を切り戻してから** Worker を戻す。Round 17 のアプリが出た後は Worker を Round 17 より前に戻さない |
 - **切り戻しは逆の順**：Worker を先に戻し、そのあと必要なら検証サーバーを戻す。検証サーバーだけを Round 13 より前に戻すと、週替わりチャレンジの送信が `VERIFIER_UNAVAILABLE` になる（その間は `progression.weeklyChallenge.enabled: false` をリモート設定で出しておく）。
 - Round 11 より前の Worker が動いている環境（Round 11 を一度も出していない環境）でも、この順で出せる（上のとおり `skillsFired` は頼まれた時だけ）。Round 11 の時点の検証サーバー（いつも `skillsFired` を返す版）が動いている環境で Worker を Round 11 より前に戻すことはしない。
 - 確認：`bash scripts/integration.sh`（C# のボット ⇄ TS のサーバー ⇄ C# の検証サーバー）が、ヘッダーの往復と `challenge` を含めて通ること。
@@ -192,6 +193,23 @@ cd server && npm run lint:deploy -- --env production --allow-placeholders
 ```bash
 docker build -f engine/Muchi.Verifier/Dockerfile -t muchi-verifier engine
 ```
+
+### 7.2 メンテナンスの窓を使うデプロイ（Round 17、contracts/protocol.md §46.7）
+
+ふつうのデプロイ（§7.1 の順）は**メンテナンスを入れずに**出す。古い Worker と新しい Worker が数十秒混ざっても壊れない変更がほとんどだから。窓を使うのは、混ざると困る変更だけ：
+
+- DO のデータの形を変える移行で、古い Worker が新しい形を読めないもの（wrangler のマイグレーションで新しいクラスを足すだけなら不要）
+- ストアの設定・商品 ID の切り替えなど、途中の購入の扱いが変わるもの
+- ルールセットのエンジンの水準（`ENGINE_LEVEL` / `EngineInfo.Level`）を上げる変更（ランク戦の待ち行列を空にしてから出す）
+
+手順：
+1. 運用コンソールの「メンテナンス」で窓を予定する（範囲はその変更が触るグループだけ。全部止める時だけ「すべて」）。お知らせはふつう24時間前から自動で出る。日英のメッセージが必須。
+2. 窓が始まったら（`GET /v1/maintenance` の `active` を確認）、§7.1 の順に「検証サーバー → Worker」で出す。購入レシート・ストア通知・退会・進行中のレースの確定は窓の中でも通るので、止める必要はない。
+3. smoke（`/v1/health`・`/v1/config`）を確認し、窓を「今すぐ終える」で閉じる（または終わりの時刻を待つ）。
+4. 切り戻しも窓の中で逆の順（Worker → 検証サーバー）。必要なら窓を延ばすのではなく、新しい窓を続けて予定する（窓は重ねられない）。
+5. お詫びを配る時は「補填の承認」から、題名「メンテナンスのお詫び」（`ops_compensation_maintenance`）で。無償コイン・アイテムだけ（有償コインは配らない）、既存の上限と2人ルールのまま。
+
+強制アップデート（対応バージョンの最低）を上げるのは、新しいアプリがストアの審査を通って配信が始まった**後**。先に上げると、まだ更新できない人が締め出される。
 
 ## 8. 初回デプロイのチェックリスト
 

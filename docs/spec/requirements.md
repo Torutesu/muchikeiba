@@ -909,3 +909,22 @@
 - REQ-A11Y-014 KPI：`a11y_setting_change`（変わったキーごと、s1 キー・s2 値。個人情報なし）。
 - REQ-A11Y-015 英語：設定画面のすべての文に英語（`ui-en.json`・`proto-en.json`）。英語・特大の文字でもはみ出さない。
 - REQ-A11Y-016 クライアント：`Muchi.Client`（設定のモデル・API・トークン・`MotionPolicy`・`FlashLimiter`・`WhipHold`）、Unity の `AccessibilityModel`（Codex が結ぶ値）、プロトタイプ（設定画面が文字の大きさ・色・動きを全画面に実際に当てる、日英、e2e と英語の通し）、Codex 向けの引き継ぎ（docs/handoff-codex-round15-accessibility.md）。
+
+## 46. メンテナンス・強制アップデート（TS＋C#、`src/domain/maintenance.ts`・`Muchi.Client/Maintenance.cs`・`Muchi.Game.MaintenanceModel`、`contracts/protocol.md` §46）
+拘束条件：資金決済法（ストアで支払いが済んだ有償コインの購入は、メンテナンス中でも古いアプリからでも必ず付与する）。途中で切らない（入口で1回だけ調べる）。E番号なし（お詫びは既存のプレゼントボックスの補填と上限）。
+- REQ-MNT-001 窓：リモート設定 `maintenance.windows`（開始・終了・お知らせ開始、範囲 `all` かグループ、日本語・英語のメッセージ、取り消し時刻）。日本時間で入れて見る。
+- REQ-MNT-002 検査：`ops/config.ts` で他の区画と同じく検査（長さ 5分〜24時間、重ならない、id 重複なし、メッセージの表現の決まりと公営競技の言葉、英語の表現チェック、ストア URL の宛先、`recommended ≥ min`）。英語は言語表へ足す。
+- REQ-MNT-003 範囲：エンドポイントのグループ（gacha・shop・ranked・teams・events・tournaments・training・time_attack・social・core）。購入レシート・ストア通知・広告の通知・退会・進行中のレースと結果の送信・待ち行列から抜ける・KPI・購入履歴・状態を見る口・管理API は止めない。
+- REQ-MNT-004 状態：`GET /v1/maintenance`（認証なし、止まらない）で実施中・予定の窓とアプリのバージョンの状態。
+- REQ-MNT-005 お知らせ：予定の窓をお知らせ開始から終わるまで、ホームの帯と新着情報（`kind: maintenance`）に出す。
+- REQ-MNT-006 応答：窓の中の要求は 503 `MAINTENANCE`（終わりの時刻・`Retry-After`・窓のメッセージ、日英）。入口を通った要求は窓が始まっても最後まで動く。
+- REQ-MNT-007 強制アップデート：OS ごとの最低・推奨バージョンとストア URL。最低より古いアプリの要求は 426 `UPGRADE_REQUIRED`（ストア URL）。窓より先に調べる。購入レシートと退会は通す。ヘッダーの無い要求は通す。
+- REQ-MNT-008 エンジン：レースのグループの要求は `x-engine-level`、レースの `hello` は `engine` で、最低のエンジン水準より古いものを断る（426 / `VERSION_MISMATCH` と close 4026、再接続しない）。既存の握手を広げる（別の握手は作らない）。`engine` の無い `hello` は今までどおり。
+- REQ-MNT-009 進行中：始まったレースは確定まで走る。始まった購入は付与される。始まったタイムアタック・週替わり・調教の結果は送れる。
+- REQ-MNT-010 デプロイ：止める必要のあるデプロイは窓を先に予定し、その中で §7.1 の順に出す（docs/ops/deploy.md §7.2）。
+- REQ-MNT-011 運用コンソール：窓の予定・取り消し（実施中なら今で終わり）・対応バージョンの変更・お知らせ帯のプレビュー（日英）。どれも理由つきで監査ログに残り、有効な版から `maintenance` だけ置き換えた版として有効になる。他の有効化が予約中なら断る。
+- REQ-MNT-012 英語：メンテナンス画面・更新画面・お知らせのすべての文に英語（サーバーの `en.ts`、`ui-en.json`、`proto-en.json`）。窓のメッセージは運用が英語も書く。
+- REQ-MNT-013 KPI：`maintenance_block`（グループ・窓）、`upgrade_prompt`（種類・操作・OS）。個人情報なし。
+- REQ-MNT-014 クライアント SDK：`ApiClient` の1か所で 503/426 を扱う（再試行しない、例外とイベント、オフラインとメンテナンスの区別 `Outage`）。`MaintenanceInfo`・`UpgradeInfo`・`MaintenanceStatus`。
+- REQ-MNT-015 画面：メンテナンス画面と更新が必要な画面（ムチ一閃の見た目、写真の背景、まばら）。終了予定の時刻だけを出し、カウントダウンや急かす表現は使わない。文字の大きさの設定（§41）に従い、日英ともはみ出さない。プロトタイプの e2e・英語の通し・a11y の通し。
+- REQ-MNT-016 Unity：`MaintenanceModel`（画面の状態・文・お知らせ帯・推奨の案内・再読み込み・KPI）と Codex 向けの引き継ぎ（docs/handoff-codex-round17-maintenance.md）。

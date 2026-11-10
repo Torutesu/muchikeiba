@@ -59,6 +59,8 @@ namespace Muchi.Game
             ["PHOTO_LIMIT"] = "保存できる写真がいっぱいです。古い写真を消してから保存してください。",
             ["PHOTO_LOCKED"] = "まだ使えないフレーム・スタンプが含まれています。",
             ["PHOTO_SOURCE_INVALID"] = "このレースは走っている途中では撮れません。結果画面かリプレイから撮ってください。",
+            ["MAINTENANCE"] = MaintenanceModel.MaintenanceTitle, // REQ-MNT-006: the screen shows the window message and end time
+            ["UPGRADE_REQUIRED"] = MaintenanceModel.UpdateBody, // REQ-MNT-007
             ["NETWORK"] = Offline,
         };
 

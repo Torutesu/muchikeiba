@@ -893,6 +893,27 @@
   "見る": "View",
   "新着情報があります": "There is something new",
   "フレンド": "Friends",
-  "リプレイ": "Replay"
+  "リプレイ": "Replay",
+  "_maintenance": "---- メンテナンス・強制アップデート (Muchi.Game.MaintenanceModel, REQ-MNT-012)",
+  "メンテナンス中です": "Under maintenance",
+  "メンテナンス中": "Maintenance in progress",
+  "ただいまメンテナンスを行っています。終了までしばらくお待ちください。": "Maintenance is in progress. Please check back when it ends.",
+  "この機能はメンテナンス中です": "This feature is under maintenance",
+  "ほかの機能はいつもどおり遊べます。": "Everything else works as usual.",
+  "終了予定（日本時間）": "Scheduled to end (JST)",
+  "止まっている機能": "Paused features",
+  "購入済みのコインは、メンテナンス中でも必ず受け取れます。": "Coins you have paid for are always delivered, even during maintenance.",
+  "再読み込み": "Reload",
+  "ホームへ": "Home",
+  "アップデートのお願い": "Update required",
+  "新しいバージョンのアプリが公開されています。ストアから更新してください。": "A new version of the app is available. Please update it from the store.",
+  "レースに参加するには、アプリを最新版に更新してください。": "Please update the app to the latest version to join races.",
+  "ストアへ": "Open the store",
+  "お使いのバージョン": "Your version",
+  "必要なバージョン": "Required version",
+  "新しいバージョンがあります": "A new version is available",
+  "ストアから更新すると、最新の内容で遊べます。": "Update from the store to play with the latest content.",
+  "メンテナンスのお知らせ": "Scheduled maintenance",
+  "ゲーム全体": "The whole game"
  }
 }

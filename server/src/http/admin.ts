@@ -17,6 +17,7 @@ import { HISTORY_LIMITS, historyQuery, REF_RE } from '../domain/history.js';
 import { BASE_BANNED_SILKS, bannedMatch, bannedSilksListSchema, bannedSilksProblems, combinedBanned, type BannedSilksList } from '../domain/bannedSilks.js';
 import { VISUALS } from '../domain/visuals.js';
 import type { TournamentsService } from '../domain/tournamentService.js';
+import { adminWindowView, bannerPreview, DEFAULT_MAINTENANCE, maintenanceConfigSchema, maintenanceProblems, windowFromInput, windowInputSchema, type MaintenanceConfig, type MaintenanceWindow } from '../domain/maintenance.js';
 import { DEAD_LETTER_SOURCES, type DeadLetterApi, type DeadLetterSource, type DeadLetterStatus } from '../ops/deadLetter.js';
 
 const dl = (ctx: AdminContext): DeadLetterApi => {
@@ -220,6 +221,33 @@ const num = (q: URLSearchParams, k: string, def: number) => {
   return n;
 };
 
+/**
+ * REQ-MNT-011 (§46): a maintenance change is a remote-config version derived from the active one with only the
+ * `maintenance` section replaced, staged and activated now (validated like every version; audited by the route). Refused
+ * while another activation is pending: that version would take effect later without this change.
+ */
+async function activeMaintenance(ctx: AdminContext, now: number): Promise<{ versionId: string; bundle: ConfigBundle; maintenance: MaintenanceConfig }> {
+  const a = await ctx.ops.config.active(now, null);
+  const bundle = a.bundle ?? {};
+  return { versionId: a.versionId, bundle, maintenance: (bundle.maintenance as MaintenanceConfig | undefined) ?? ctx.baseMaster?.maintenance ?? DEFAULT_MAINTENANCE };
+}
+async function changeMaintenance(r: AdminRequest, note: string, change: (m: MaintenanceConfig) => MaintenanceConfig) {
+  const pending = ((await r.ctx.ops.config.list(r.now)) as { pending?: Activation[] }).pending ?? [];
+  if (pending.length) throw new AppError('CONFLICT', `config activation ${pending.map((p) => p.id).join(', ')} is pending; cancel it (or apply it) before changing maintenance`);
+  const cur = await activeMaintenance(r.ctx, r.now);
+  const next = change(structuredClone(cur.maintenance));
+  const problems = maintenanceProblems(next);
+  if (problems.length) throw new AppError('CONFIG_INVALID', problems.join('; '), 400);
+  const staged = await r.ctx.ops.config.stage({ ...cur.bundle, maintenance: next }, r.principal.id, note, r.now);
+  const activation = await r.ctx.ops.config.schedule(staged.version.id, r.now, r.principal.id, r.reason!, r.now);
+  return { before: cur.maintenance, after: next, result: { versionId: staged.version.id, activationId: activation.id, maintenance: next } };
+}
+const findWindow = (m: MaintenanceConfig, id: string): MaintenanceWindow => {
+  const w = m.windows.find((x) => x.id === id);
+  if (!w) throw new AppError('NOT_FOUND', `maintenance window ${id}`);
+  return w;
+};
+
 export const adminRoutes: AdminRoute[] = [
   // ---- who am I / existing reports ----
   { method: 'GET', path: '/v1/admin/whoami', role: 'viewer', write: false, action: 'whoami', handler: async (r) => ({ result: r.principal }) },
@@ -295,6 +323,44 @@ export const adminRoutes: AdminRoute[] = [
     const before = await r.ctx.ops.config.active(r.now, 'x');
     const a = await r.ctx.ops.config.rollback(b.versionId, r.principal.id, r.reason!, r.now);
     return { result: a, target: `config:${a.versionId}`, before: { activeVersion: before.versionId }, after: { activeVersion: a.versionId } };
+  } },
+
+  // ---- maintenance & client versions (REQ-MNT-011, §46.6) ----
+  { method: 'GET', path: '/v1/admin/maintenance', role: 'viewer', write: false, action: 'maintenance.view', handler: async (r) => {
+    const cur = await activeMaintenance(r.ctx, r.now);
+    return { result: { serverNowMs: r.now, versionId: cur.versionId, windows: cur.maintenance.windows.map((w) => adminWindowView(w, r.now)), clientVersions: cur.maintenance.clientVersions, minEngineLevel: cur.maintenance.minEngineLevel } };
+  } },
+  /** The banner as players would see it (ja + en) and the problems of a draft window against the active section. Nothing is stored. */
+  { method: 'POST', path: '/v1/admin/maintenance/preview', role: 'viewer', write: false, action: 'maintenance.preview', handler: async (r) => {
+    const w = windowFromInput(parse(windowInputSchema, r.body.window));
+    const cur = await activeMaintenance(r.ctx, r.now);
+    const problems = maintenanceProblems({ ...cur.maintenance, windows: [...cur.maintenance.windows.filter((x) => x.id !== w.id), w] });
+    if (w.startAtMs < r.now - 60_000) problems.push(`maintenance.windows[${w.id}]: starts in the past`);
+    return { result: { ok: problems.length === 0, problems, window: adminWindowView(w, r.now), banner: bannerPreview(w) } };
+  } },
+  { method: 'POST', path: '/v1/admin/maintenance/windows', role: 'admin', write: true, action: 'maintenance.schedule', handler: async (r) => {
+    const w = windowFromInput(parse(windowInputSchema, r.body.window));
+    if (w.startAtMs < r.now - 60_000) throw new AppError('BAD_REQUEST', 'the window starts in the past (an emergency window starts now)');
+    const out = await changeMaintenance(r, `maintenance: schedule ${w.id}`, (m) => {
+      if (m.windows.some((x) => x.id === w.id)) throw new AppError('CONFLICT', `maintenance window ${w.id} already exists`);
+      return { ...m, windows: [...m.windows, w] };
+    });
+    return { ...out, target: `maintenance:${w.id}` };
+  } },
+  /** Cancel before the start, or end a running window now. Ended windows cannot be changed. */
+  { method: 'POST', path: '/v1/admin/maintenance/windows/:id/cancel', role: 'admin', write: true, action: 'maintenance.cancel', handler: async (r) => {
+    const id = r.params.id!;
+    const out = await changeMaintenance(r, `maintenance: cancel ${id}`, (m) => {
+      const w = findWindow(m, id);
+      if (w.cancelledAtMs !== undefined || w.endAtMs <= r.now) throw new AppError('CONFLICT', `maintenance window ${id} has already ended or was cancelled`);
+      return { ...m, windows: m.windows.map((x) => (x.id === id ? { ...x, cancelledAtMs: r.now } : x)) };
+    });
+    return { ...out, target: `maintenance:${id}` };
+  } },
+  { method: 'PUT', path: '/v1/admin/maintenance/client-versions', role: 'admin', write: true, action: 'maintenance.versions', handler: async (r) => {
+    const b = parse(z.object({ clientVersions: maintenanceConfigSchema.shape.clientVersions, minEngineLevel: maintenanceConfigSchema.shape.minEngineLevel.optional(), reason: z.string() }).strict(), r.body);
+    const out = await changeMaintenance(r, 'maintenance: client versions', (m) => ({ ...m, clientVersions: b.clientVersions, ...(b.minEngineLevel !== undefined ? { minEngineLevel: b.minEngineLevel } : {}) }));
+    return { ...out, target: 'maintenance:client-versions' };
   } },
 
   // ---- support (REQ-OPS-020..025) ----

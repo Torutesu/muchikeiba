@@ -293,6 +293,15 @@ export function makeOpsApi(env: Env): OpsApi | undefined {
       reject: (id, by, note, now) => call(ops().compReject!(id, by, note, now)),
       executed: (id, error, now) => call(ops().compExecuted!(id, error, now)),
     },
+    // REQ-RPT-007/013/016: the player-report queue lives in the same IntegrityDO singleton
+    playerReports: {
+      submit: (x, now, cfg) => call(integ().prSubmit!(x, now, cfg)),
+      list: (f) => call(integ().prList!(f)),
+      get: (id, cfg) => call(integ().prGet!(id, cfg)),
+      check: (id, action) => call(integ().prCheck!(id, action)),
+      resolve: (id, action, by, note, now) => call(integ().prResolve!(id, action, by, note, now)),
+      forget: (uid) => call(integ().prForget!(uid)),
+    },
     integrity: {
       recordRace: (r) => call(integ().recordRace!(r)),
       report: (raceId, reporter, now) => call(integ().report!(raceId, reporter, now)),

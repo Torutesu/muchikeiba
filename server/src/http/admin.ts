@@ -17,6 +17,8 @@ import { HISTORY_LIMITS, historyQuery, REF_RE } from '../domain/history.js';
 import { BASE_BANNED_SILKS, bannedMatch, bannedSilksListSchema, bannedSilksProblems, combinedBanned, type BannedSilksList } from '../domain/bannedSilks.js';
 import { VISUALS } from '../domain/visuals.js';
 import type { TournamentsService } from '../domain/tournamentService.js';
+import { REPORT_ACTIONS, type PlayerReport, type PlayerReportFilter, type ReportAction, type SubmitInput, type SubmitOutcome } from '../ops/playerReports.js';
+import { REPORT_CATEGORIES, REPORT_CONTENT_KINDS, reportsConfig, type ReportCategory, type ReportContentKind, type ReportsConfig } from '../domain/reports.js';
 import { DEAD_LETTER_SOURCES, type DeadLetterApi, type DeadLetterSource, type DeadLetterStatus } from '../ops/deadLetter.js';
 
 const dl = (ctx: AdminContext): DeadLetterApi => {
@@ -68,6 +70,16 @@ export interface OpsApi {
   };
   /** REQ-OPS-041: dead letters (optional so deployments/tests without the owners still boot). */
   deadLetters?: DeadLetterApi;
+  /** REQ-RPT-007/013/016: the player-report queue in IntegrityDO (absent = reports are not available). */
+  playerReports?: PlayerReportsApi;
+}
+export interface PlayerReportsApi {
+  submit(x: SubmitInput, now: number, cfg: ReportsConfig): Promise<{ report: PlayerReport; outcome: SubmitOutcome }>;
+  list(f: PlayerReportFilter): Promise<unknown[]>;
+  get(id: string, cfg: ReportsConfig): Promise<PlayerReport>;
+  check(id: string, action: ReportAction): Promise<PlayerReport>;
+  resolve(id: string, action: ReportAction, by: string, note: string, now: number): Promise<PlayerReport>;
+  forget(uid: string): Promise<{ anonymised: number; marked: number }>;
 }
 
 export interface AdminContext {
@@ -91,6 +103,14 @@ const tours = (ctx: AdminContext) => {
   if (!ctx.tournaments) throw new AppError('NOT_FOUND', 'tournaments are not available');
   return ctx.tournaments;
 };
+const preps = (ctx: AdminContext): PlayerReportsApi => {
+  if (!ctx.ops.playerReports) throw new AppError('NOT_FOUND', 'player reports are not available');
+  return ctx.ops.playerReports;
+};
+/** The reports config of the master in effect (remote config resolved on the shipped master). */
+const reportsCfgOf = async (ctx: AdminContext, now: number) => (ctx.baseMaster ? reportsConfig((await masterFor(ctx, null, now)).master) : reportsConfig({ progression: {} } as never));
+const NAME_RESET_OF: Partial<Record<ReportContentKind, 'display' | 'horse' | 'stable'>> = { display_name: 'display', horse_name: 'horse', stable_name: 'stable' };
+
 const comps = (ctx: AdminContext) => {
   if (!ctx.ops.compensations) throw new AppError('NOT_FOUND', 'compensations are not available');
   return ctx.ops.compensations;
@@ -195,6 +215,7 @@ interface AdminRequest { params: Record<string, string>; query: URLSearchParams;
 /** Every write carries a human reason; it lands in the audit log (REQ-OPS-012). */
 const reasonSchema = z.string().trim().min(3).max(500);
 const pid = z.string().min(1).max(128);
+const reportIdSchema = z.string().regex(/^prp_[0-9]{1,12}$/);
 const opKeySchema = z.string().regex(/^[A-Za-z0-9_.:-]{4,100}$/);
 /** REQ-BOX-010: the gift box title and expiry of an ops grant (days, or null = no expiry). */
 const giftOptsSchema = {
@@ -514,6 +535,50 @@ export const adminRoutes: AdminRoute[] = [
     const st = r.query.get('status');
     if (st && st !== 'open' && st !== 'resolved') throw new AppError('BAD_REQUEST', 'bad status');
     return { result: { reports: await r.ctx.ops.integrity.reports((st ?? undefined) as RaceReport['status'] | undefined, num(r.query, 'limit', 100)) } };
+  } },
+  // ---- player reports (REQ-RPT-013, contracts/protocol.md §47.7) ----
+  { method: 'GET', path: '/v1/admin/player-reports', role: 'viewer', write: false, action: 'player_reports.list', handler: async (r) => {
+    const f: PlayerReportFilter = { limit: num(r.query, 'limit', 100) };
+    const st = r.query.get('status');
+    if (st) { if (st !== 'open' && st !== 'resolved') throw new AppError('BAD_REQUEST', 'status must be open|resolved'); f.status = st; }
+    const cat = r.query.get('category');
+    if (cat) { if (!(REPORT_CATEGORIES as readonly string[]).includes(cat)) throw new AppError('BAD_REQUEST', `category must be one of ${REPORT_CATEGORIES.join('|')}`); f.category = cat as ReportCategory; }
+    const kind = r.query.get('kind');
+    if (kind) { if (!(REPORT_CONTENT_KINDS as readonly string[]).includes(kind)) throw new AppError('BAD_REQUEST', `kind must be one of ${REPORT_CONTENT_KINDS.join('|')}`); f.kind = kind as ReportContentKind; }
+    const t = r.query.get('targetId');
+    if (t) f.targetId = parse(pid, t);
+    return { result: { reports: await preps(r.ctx).list(f) } };
+  } },
+  { method: 'GET', path: '/v1/admin/player-reports/:id', role: 'viewer', write: false, action: 'player_reports.view', handler: async (r) => {
+    const rep = await preps(r.ctx).get(parse(reportIdSchema, r.params.id), await reportsCfgOf(r.ctx, r.now));
+    let race: unknown = null;
+    if (rep.content.kind === 'race' && rep.snapshot.raceId) {
+      // REQ-RPT-005: the replay and the verifier's result (the integrity events of that race for the reported player)
+      const v = (await r.ctx.ops.integrity.view(rep.targetId, r.now)) as { status: string; events: { raceId: string; kind: string; at: number }[] };
+      race = { raceId: rep.snapshot.raceId, replay: `/v1/admin/replays/${rep.snapshot.raceId}`, integrity: { status: v.status, events: v.events.filter((e) => e.raceId === rep.snapshot.raceId) } };
+    }
+    return { result: { ...rep, race }, target: `player:${rep.targetId}` };
+  } },
+  { method: 'POST', path: '/v1/admin/player-reports/:id/action', role: 'operator', write: true, action: 'player_reports.action', handler: async (r) => {
+    const id = parse(reportIdSchema, r.params.id);
+    const b = parse(z.object({ action: z.enum(REPORT_ACTIONS), reason: z.string(), until: z.number().int().nullable().default(null) }).strict(), r.body);
+    if (b.action === 'ban') requireRole(r.principal, 'admin');
+    const pr = preps(r.ctx);
+    const rep = await pr.check(id, b.action);
+    const target = rep.targetId;
+    let effect: unknown = null;
+    if (b.action === 'warn') effect = await r.ctx.player(target).invoke('reportWarn', target, id);
+    else if (b.action === 'rename') {
+      const which = NAME_RESET_OF[rep.content.kind];
+      if (!which) throw new AppError('BAD_REQUEST', `a ${rep.content.kind} report has no name to reset`);
+      effect = await r.ctx.player(target).invoke('adminResetName', target, which, which === 'horse' ? rep.content.ref : null);
+    } else if (b.action === 'hide') {
+      if (rep.content.kind === 'replay_title') effect = await r.ctx.player(target).invoke('replayOpsHide', target, rep.content.ref!);
+      else if (rep.content.kind === 'photo_caption') effect = await r.ctx.player(target).invoke('photoOpsHide', target, rep.content.ref!);
+      else throw new AppError('BAD_REQUEST', `a ${rep.content.kind} report has no caption or replay to hide`);
+    } else if (b.action === 'ban') effect = await r.ctx.ops.integrity.ban(target, b.until, r.reason!, r.principal.id, r.now);
+    const done = await pr.resolve(id, b.action, r.principal.id, r.reason!, r.now);
+    return { result: { report: done, effect }, target: `player:${target}`, before: { status: 'open', report: id }, after: { status: done.status, action: b.action, effect } };
   } },
   { method: 'POST', path: '/v1/admin/reports/:reportId/resolve', role: 'operator', write: true, action: 'reports.resolve', handler: async (r) => {
     const b = parse(z.object({ resolution: z.string().trim().min(2).max(200), reason: z.string() }), r.body);

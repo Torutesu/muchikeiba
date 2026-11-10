@@ -22,16 +22,20 @@ namespace Muchi.Client
     {
         public const string FriendRequest = "friend_request", FriendAccepted = "friend_accepted", RivalWeek = "rival_week", RivalRecord = "rival_record",
             StableLike = "stable_like", TeamCheer = "team_cheer", TournamentResult = "tournament_result", GiftArrived = "gift_arrived",
-            TeamGoalTier = "team_goal_tier", TeamGoalWeek = "team_goal_week", ReplayShare = "replay_share";
-        public static readonly string[] All = { FriendRequest, FriendAccepted, RivalWeek, RivalRecord, StableLike, TeamCheer, TournamentResult, GiftArrived, TeamGoalTier, TeamGoalWeek, ReplayShare };
+            TeamGoalTier = "team_goal_tier", TeamGoalWeek = "team_goal_week", ReplayShare = "replay_share",
+            /// <summary>REQ-RPT-013: support's request after a report (no actor; links to 通報とブロック).</summary>
+            OpsNotice = "ops_notice";
+        public static readonly string[] All = { FriendRequest, FriendAccepted, RivalWeek, RivalRecord, StableLike, TeamCheer, TournamentResult, GiftArrived, TeamGoalTier, TeamGoalWeek, ReplayShare, OpsNotice };
     }
 
     /// <summary>Where an entry leads (`link.screen`).</summary>
     public static class ActivityScreens
     {
         public const string Friends = "friends", Rival = "rival", Stable = "stable", TeamFeed = "team_feed", Tournaments = "tournaments",
-            GiftBox = "gift_box", TeamGoal = "team_goal", Replay = "replay", WhatsNew = "whats_new";
-        public static readonly string[] All = { Friends, Rival, Stable, TeamFeed, Tournaments, GiftBox, TeamGoal, Replay, WhatsNew };
+            GiftBox = "gift_box", TeamGoal = "team_goal", Replay = "replay", WhatsNew = "whats_new",
+            /// <summary>REQ-RPT-011: 通報とブロック (block list + what a block does + guidelines).</summary>
+            Safety = "safety";
+        public static readonly string[] All = { Friends, Rival, Stable, TeamFeed, Tournaments, GiftBox, TeamGoal, Replay, WhatsNew, Safety };
     }
 
     public sealed class ActivityActor

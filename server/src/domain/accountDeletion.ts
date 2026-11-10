@@ -84,7 +84,7 @@ export interface RetainedRecord {
   };
 }
 
-export const DELETION_STEPS = ['friends', 'invites', 'team', 'stud', 'stable', 'leaderboards', 'events', 'tournaments', 'rival', 'replays', 'finalize', 'retain', 'wipe'] as const;
+export const DELETION_STEPS = ['friends', 'invites', 'team', 'stud', 'stable', 'leaderboards', 'events', 'tournaments', 'rival', 'replays', 'reports', 'finalize', 'retain', 'wipe'] as const;
 export type DeletionStep = typeof DELETION_STEPS[number];
 export const DELETED_PLAYER_NAME = '退会したプレイヤー';
 const RETRY_MS = [60_000, 600_000, 3_600_000, 6 * 3_600_000];
@@ -331,6 +331,8 @@ export interface DeletionPorts {
   rival?: { forget(uid: string, now: number): Promise<void> };
   /** REQ-MYRP-012: the saved replay copies in R2 (`myreplays/<playerId>/…`). */
   replays?: { deleteAll(keys: string[]): Promise<void> };
+  /** REQ-RPT-016: reports BY the player are anonymised, reports ABOUT the player are kept and marked (ops queue). */
+  reports?: { forget(uid: string): Promise<unknown> };
   finalize(uid: string): Promise<RetainedRecord>;
   retain(uid: string, record: RetainedRecord): Promise<void>;
   wipe(uid: string): Promise<void>;
@@ -398,6 +400,7 @@ export async function runAccountDeletion(p: DeletionPorts, uid: string, now: num
   await step('tournaments', async () => { await p.tournaments?.forget(uid, now); });
   await step('rival', async () => { await p.rival?.forget(uid, now); });
   await step('replays', async () => { if (snap.replayKeys?.length) await p.replays?.deleteAll(snap.replayKeys); }); // REQ-MYRP-012
+  await step('reports', async () => { await p.reports?.forget(uid); }); // REQ-RPT-016
   await step('finalize', () => p.finalize(uid));
   // finalize again right before storing: a purchase granted since then is given up and included (same anonId)
   let retainedRev: number | null = null;

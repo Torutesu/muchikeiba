@@ -11,6 +11,7 @@ export function stablePlayersFrom(player: (uid: string) => PlayerInvoker): Stabl
     give: (u, t, k) => player(u).invoke('stableLikeGive', u, t, k),
     receive: (t, from, likeId) => player(t).invoke('stableLikeReceive', t, from, likeId),
     friendIds: async (u) => (await player(u).invoke('friendsState', u)).ids,
+    blocks: (u) => player(u).invoke('blockIds', u), // REQ-RPT-012
   };
 }
 

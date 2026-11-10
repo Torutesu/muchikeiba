@@ -68,12 +68,14 @@ namespace Muchi.Game
             [ActivityKinds.FriendRequest] = "フレンド", [ActivityKinds.FriendAccepted] = "フレンド", [ActivityKinds.RivalWeek] = "ライバル", [ActivityKinds.RivalRecord] = "ライバル",
             [ActivityKinds.StableLike] = "マイ厩舎", [ActivityKinds.TeamCheer] = "支部", [ActivityKinds.TournamentResult] = "大会", [ActivityKinds.GiftArrived] = "プレゼント",
             [ActivityKinds.TeamGoalTier] = "支部", [ActivityKinds.TeamGoalWeek] = "支部", [ActivityKinds.ReplayShare] = "リプレイ",
+            [ActivityKinds.OpsNotice] = "運営",
         };
         public static readonly IReadOnlyDictionary<string, string> Icons = new Dictionary<string, string>
         {
             [ActivityKinds.FriendRequest] = "friend", [ActivityKinds.FriendAccepted] = "friend", [ActivityKinds.RivalWeek] = "rival", [ActivityKinds.RivalRecord] = "rival",
             [ActivityKinds.StableLike] = "like", [ActivityKinds.TeamCheer] = "cheer", [ActivityKinds.TournamentResult] = "trophy", [ActivityKinds.GiftArrived] = "gift",
             [ActivityKinds.TeamGoalTier] = "team", [ActivityKinds.TeamGoalWeek] = "team", [ActivityKinds.ReplayShare] = "replay",
+            [ActivityKinds.OpsNotice] = "notice",
         };
 
         private readonly IActivityApi _api;

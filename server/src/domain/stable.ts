@@ -414,10 +414,19 @@ export interface StablePlayers {
   give(u: string, target: string, idemKey: string): Promise<LikeGiven>;
   receive(target: string, from: string, likeId: string): Promise<{ counted: boolean; likes: number; snapshot: StableSnapshot | null }>;
   friendIds(u: string): Promise<string[]>;
+  /** REQ-RPT-012: a player's block list (the one list, §47.1). Absent = no block checks (older wiring). */
+  blocks?(u: string): Promise<string[]>;
 }
 
 export class StableService {
   constructor(private readonly p: StablePlayers, private readonly dir: StableDirectory, private readonly cfg: () => StableConfig) {}
+
+  /** REQ-RPT-012: blocked either way → the same answer as a stable that is not open (never says why). */
+  private async assertNotBlocked(u: string, target: string) {
+    if (!this.p.blocks || u === target) return;
+    const [mine, theirs] = await Promise.all([this.p.blocks(u), this.p.blocks(target)]);
+    if (mine.includes(target) || theirs.includes(u)) throw new AppError('NOT_FOUND', 'this stable is not open yet');
+  }
 
   mine(u: string) { return this.p.mine(u); }
 
@@ -433,6 +442,7 @@ export class StableService {
   async visit(u: string, target: string) {
     const stable = await this.dir.get(target);
     if (!stable) throw new AppError('NOT_FOUND', 'this stable is not open yet');
+    await this.assertNotBlocked(u, target);
     const viewer = await this.p.visit(u, target);
     return { stable, viewer };
   }
@@ -440,9 +450,11 @@ export class StableService {
   /** GET /v1/stable/visits: friends' stables and a few recommended ones (most liked, not mine, not empty). */
   async visits(u: string) {
     const friendIds = await this.p.friendIds(u);
-    const friends = sortStables(await this.dir.ofPlayers(friendIds)).map(summaryOf);
+    // REQ-RPT-012: players I blocked are not listed (a player who blocked me answers 404 when opened)
+    const blocked = new Set(this.p.blocks ? await this.p.blocks(u) : []);
+    const friends = sortStables(await this.dir.ofPlayers(friendIds.filter((f) => !blocked.has(f)))).map(summaryOf);
     const limit = this.cfg().recommendedLimit;
-    const skip = new Set([u, ...friendIds]);
+    const skip = new Set([u, ...friendIds, ...blocked]);
     const recommended = (await this.dir.top(limit * 3)).filter((x) => !skip.has(x.playerId) && (x.slots.some((y) => y !== null) || x.name !== null)).slice(0, limit).map(summaryOf);
     return { friends, recommended };
   }
@@ -451,6 +463,7 @@ export class StableService {
   async like(u: string, target: string, idemKey: string) {
     if (u === target) throw new AppError('NOT_ELIGIBLE', 'you cannot like your own stable');
     if (!(await this.dir.get(target))) throw new AppError('NOT_FOUND', 'this stable is not open yet');
+    await this.assertNotBlocked(u, target);
     const g = await this.p.give(u, target, idemKey);
     const r = await this.p.receive(target, u, g.likeId);
     if (r.snapshot) await this.dir.put(r.snapshot);

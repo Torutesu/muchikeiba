@@ -202,6 +202,8 @@ export interface Progression {
   myReplays?: import('./myReplays.js').MyReplaysConfig;
   /** REQ-ACT-010: アクティビティ limits (activity.ts, validated by activityProblems). Absent = ACTIVITY_DEFAULTS. */
   activity?: Partial<import('./activity.js').ActivityConfig>;
+  /** REQ-RPT-015: 通報 limits and reporter weights (reports.ts, validated by reportsProblems). Absent = REPORTS_DEFAULTS. */
+  reports?: Partial<import('./reports.js').ReportsConfig>;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */

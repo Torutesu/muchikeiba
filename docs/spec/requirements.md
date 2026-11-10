@@ -834,7 +834,7 @@
 
 ## 38. フォトモード（TS＋C#、`src/domain/photoMode.ts`・`server/master/photo.json`・`Muchi.Client/PhotoMode.cs`・`Muchi.Game.PhotoModeModel`、`contracts/protocol.md` §38）
 拘束条件：他の人のレースを止めない、レースの結果・ハッシュ・ゴールデンを変えない、ランダムな販売なし、他人の名前を出さない、ひとことは翻訳しない。コイン・アイテムは配らない（E なし）。
-- REQ-PHOTO-001 入口：ひとりで走るレース（オフライン・練習・タイムアタック・チュートリアル・週替わりチャレンジ）はレース中に一時停止して撮れる。ランク戦・フレンド戦・イベント・大会はレース中に止めず、結果画面とリプレイからだけ撮れる（クライアント `PhotoModeModel.CanPause`、サーバーは `source.kind: "paused"` でその4つを 400 `PHOTO_SOURCE_INVALID`）。
+- REQ-PHOTO-001 入口：ひとりで走るレース（オフライン・練習・タイムアタック・チュートリアル・週替わりチャレンジ）はレース中に一時停止して撮れる。ランク戦・フレンド戦・イベント・大会・プレイヤー主催カップ（`cup`、Round 16 統合）はレース中に止めず、結果画面とリプレイからだけ撮れる（クライアント `PhotoModeModel.CanPause`／`PhotoSource.IsShared`、サーバーは `source.kind: "paused"` でその5つを 400 `PHOTO_SOURCE_INVALID`）。
 - REQ-PHOTO-002 決定論：写真は `(raceId, tick)`＋カメラ＋重ねる物で決まる。端末は設定＋確定入力をその tick まで計算し直して馬の状態を作る（`PhotoSnapshot.Capture`）。走っているレースの `RaceSim` を触らず、結果ハッシュ・ゴールデンは変わらない。同じ入力なら `Fingerprint` が同じ。
 - REQ-PHOTO-003 カメラ：注目の馬のまわりを回る・寄る・高さ・画角・被写界深度（0〜3）。範囲は `photo.json config.camera`（サーバーとクライアントで同じ）。高さは 0.3 m 以上（コースの下に入らない）。
 - REQ-PHOTO-004 ルック（色味・フィルター）：いくつか用意し、すべて無料（`unlock: default` だけ。検査で強制）。

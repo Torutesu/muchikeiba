@@ -34,6 +34,9 @@ export const CODE_EN: Record<string, string> = {
   '現役{days}日・{n}戦': '{days} days and {n} races on the track',
   '殿堂入りは確定したレースの成績だけで決まります（購入やアイテムでは決まりません）。': 'Entry to the Hall of Fame depends only on confirmed race results (never on purchases or items).',
 
+  // ---- 厩舎の整理 (roster.ts, protocol §44; REQ-ORG-015)
+  'まとめて引退しても、コインや素材は返ってきません': 'Retiring several horses at once gives back no coins or materials',
+
   // ---- T6 coin shortfall (shortfall.ts, protocol §29; REQ-SHORT-003)
   'コインが{n}枚足りません': 'You need {n} more coins',
   '有償コインが{n}枚足りません': 'You need {n} more paid coins',

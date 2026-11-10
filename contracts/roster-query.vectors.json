@@ -1,0 +1,1075 @@
+{
+  "_note": "REQ-ORG-002/003 (contracts/protocol.md §44.3): server/src/domain/roster.ts applyRosterQuery and C# Muchi.Client RosterSorter.Apply must give the same order. Regenerate with UPDATE_VECTORS=1 npx vitest run test/roster.test.ts.",
+  "rows": [
+    {
+      "horseId": "h1",
+      "name": "アイボウ",
+      "templateId": null,
+      "rarity": "SR",
+      "sex": "male",
+      "style": "sashi",
+      "surface": "turf",
+      "distMinM": 1600,
+      "distMaxM": 2000,
+      "goingAptitude": "any",
+      "status": "active",
+      "rating": 2600,
+      "skillId": "sk_sueashi",
+      "partner": true,
+      "locked": false,
+      "favorite": false,
+      "acquiredSeq": 1,
+      "bornAt": 0,
+      "ageDays": 40,
+      "races": 30,
+      "wins": 0,
+      "blocks": []
+    },
+    {
+      "horseId": "h2",
+      "name": "ミドリノカゼ",
+      "templateId": null,
+      "rarity": "SSR",
+      "sex": "male",
+      "style": "senko",
+      "surface": "both",
+      "distMinM": 1800,
+      "distMaxM": 2400,
+      "goingAptitude": "heavy",
+      "status": "active",
+      "rating": 3100,
+      "skillId": null,
+      "partner": false,
+      "locked": false,
+      "favorite": true,
+      "acquiredSeq": 2,
+      "bornAt": 0,
+      "ageDays": 30,
+      "races": 12,
+      "wins": 0,
+      "blocks": []
+    },
+    {
+      "horseId": "h3",
+      "name": "ハヤテ",
+      "templateId": null,
+      "rarity": "R",
+      "sex": "male",
+      "style": "nige",
+      "surface": "dirt",
+      "distMinM": 1000,
+      "distMaxM": 1400,
+      "goingAptitude": "any",
+      "status": "active",
+      "rating": 2100,
+      "skillId": null,
+      "partner": false,
+      "locked": false,
+      "favorite": false,
+      "acquiredSeq": 3,
+      "bornAt": 0,
+      "ageDays": 30,
+      "races": 12,
+      "wins": 0,
+      "blocks": []
+    },
+    {
+      "horseId": "h4",
+      "name": "ハヤテボシ",
+      "templateId": null,
+      "rarity": "SR",
+      "sex": "male",
+      "style": "senko",
+      "surface": "turf",
+      "distMinM": 1600,
+      "distMaxM": 2000,
+      "goingAptitude": "any",
+      "status": "retired",
+      "rating": 2600,
+      "skillId": null,
+      "partner": false,
+      "locked": true,
+      "favorite": false,
+      "acquiredSeq": 4,
+      "bornAt": 0,
+      "ageDays": 20,
+      "races": 3,
+      "wins": 0,
+      "blocks": []
+    },
+    {
+      "horseId": "h5",
+      "name": "ゴールドラッシュ",
+      "templateId": null,
+      "rarity": "SSR",
+      "sex": "male",
+      "style": "oikomi",
+      "surface": "turf",
+      "distMinM": 2400,
+      "distMaxM": 3200,
+      "goingAptitude": "fast",
+      "status": "active",
+      "rating": 2950,
+      "skillId": "sk_x",
+      "partner": false,
+      "locked": false,
+      "favorite": false,
+      "acquiredSeq": 5,
+      "bornAt": 0,
+      "ageDays": 5,
+      "races": 0,
+      "wins": 0,
+      "blocks": []
+    },
+    {
+      "horseId": "h6",
+      "name": "アカツキ",
+      "templateId": null,
+      "rarity": "R",
+      "sex": "male",
+      "style": "senko",
+      "surface": "dirt",
+      "distMinM": 1600,
+      "distMaxM": 1800,
+      "goingAptitude": "any",
+      "status": "active",
+      "rating": 1800,
+      "skillId": null,
+      "partner": false,
+      "locked": false,
+      "favorite": false,
+      "acquiredSeq": 6,
+      "bornAt": 0,
+      "ageDays": 18,
+      "races": 8,
+      "wins": 0,
+      "blocks": []
+    },
+    {
+      "horseId": "h7",
+      "name": "ヨゾラ",
+      "templateId": null,
+      "rarity": "SR",
+      "sex": "male",
+      "style": "senko",
+      "surface": "turf",
+      "distMinM": 1200,
+      "distMaxM": 1600,
+      "goingAptitude": "any",
+      "status": "active",
+      "rating": 2400,
+      "skillId": null,
+      "partner": false,
+      "locked": true,
+      "favorite": true,
+      "acquiredSeq": 7,
+      "bornAt": 0,
+      "ageDays": 18,
+      "races": 8,
+      "wins": 0,
+      "blocks": []
+    },
+    {
+      "horseId": "h8",
+      "name": "ミメイ",
+      "templateId": null,
+      "rarity": "R",
+      "sex": "male",
+      "style": "senko",
+      "surface": "both",
+      "distMinM": 1400,
+      "distMaxM": 2000,
+      "goingAptitude": "any",
+      "status": "retired",
+      "rating": 1500,
+      "skillId": null,
+      "partner": false,
+      "locked": false,
+      "favorite": false,
+      "acquiredSeq": 8,
+      "bornAt": 0,
+      "ageDays": 0,
+      "races": 0,
+      "wins": 0,
+      "blocks": []
+    },
+    {
+      "horseId": "h9",
+      "name": "キナコ",
+      "templateId": null,
+      "rarity": "SSR",
+      "sex": "male",
+      "style": "senko",
+      "surface": "turf",
+      "distMinM": 1600,
+      "distMaxM": 2000,
+      "goingAptitude": "heavy",
+      "status": "active",
+      "rating": 3100,
+      "skillId": null,
+      "partner": false,
+      "locked": false,
+      "favorite": false,
+      "acquiredSeq": 9,
+      "bornAt": 0,
+      "ageDays": 60,
+      "races": 50,
+      "wins": 0,
+      "blocks": []
+    },
+    {
+      "horseId": "h10",
+      "name": "シラナミ",
+      "templateId": null,
+      "rarity": "R",
+      "sex": "male",
+      "style": "sashi",
+      "surface": "turf",
+      "distMinM": 2000,
+      "distMaxM": 2600,
+      "goingAptitude": "any",
+      "status": "active",
+      "rating": 2000,
+      "skillId": null,
+      "partner": false,
+      "locked": false,
+      "favorite": false,
+      "acquiredSeq": 10,
+      "bornAt": 0,
+      "ageDays": 2,
+      "races": 2,
+      "wins": 0,
+      "blocks": []
+    }
+  ],
+  "cases": [
+    {
+      "name": "default (favourites first, newest first)",
+      "query": {
+        "sort": "acquired",
+        "dir": "desc",
+        "course": null,
+        "surface": null,
+        "band": null,
+        "style": null,
+        "status": "all",
+        "skill": null,
+        "partner": null,
+        "locked": null,
+        "favorite": null,
+        "favoritesFirst": true,
+        "q": ""
+      },
+      "expect": [
+        "h7",
+        "h2",
+        "h10",
+        "h9",
+        "h8",
+        "h6",
+        "h5",
+        "h4",
+        "h3",
+        "h1"
+      ]
+    },
+    {
+      "name": "no favourites first",
+      "query": {
+        "sort": "acquired",
+        "dir": "desc",
+        "course": null,
+        "surface": null,
+        "band": null,
+        "style": null,
+        "status": "all",
+        "skill": null,
+        "partner": null,
+        "locked": null,
+        "favorite": null,
+        "favoritesFirst": false,
+        "q": ""
+      },
+      "expect": [
+        "h10",
+        "h9",
+        "h8",
+        "h7",
+        "h6",
+        "h5",
+        "h4",
+        "h3",
+        "h2",
+        "h1"
+      ]
+    },
+    {
+      "name": "rating desc",
+      "query": {
+        "sort": "rating",
+        "dir": "desc",
+        "course": null,
+        "surface": null,
+        "band": null,
+        "style": null,
+        "status": "all",
+        "skill": null,
+        "partner": null,
+        "locked": null,
+        "favorite": null,
+        "favoritesFirst": false,
+        "q": ""
+      },
+      "expect": [
+        "h2",
+        "h9",
+        "h5",
+        "h1",
+        "h4",
+        "h7",
+        "h3",
+        "h10",
+        "h6",
+        "h8"
+      ]
+    },
+    {
+      "name": "rating asc",
+      "query": {
+        "sort": "rating",
+        "dir": "asc",
+        "course": null,
+        "surface": null,
+        "band": null,
+        "style": null,
+        "status": "all",
+        "skill": null,
+        "partner": null,
+        "locked": null,
+        "favorite": null,
+        "favoritesFirst": false,
+        "q": ""
+      },
+      "expect": [
+        "h8",
+        "h6",
+        "h10",
+        "h3",
+        "h7",
+        "h1",
+        "h4",
+        "h5",
+        "h2",
+        "h9"
+      ]
+    },
+    {
+      "name": "aptitude turf 2000 soft",
+      "query": {
+        "sort": "aptitude",
+        "dir": "desc",
+        "course": {
+          "surface": "turf",
+          "distanceM": 2000,
+          "going": "soft"
+        },
+        "surface": null,
+        "band": null,
+        "style": null,
+        "status": "all",
+        "skill": null,
+        "partner": null,
+        "locked": null,
+        "favorite": null,
+        "favoritesFirst": false,
+        "q": ""
+      },
+      "expect": [
+        "h2",
+        "h9",
+        "h1",
+        "h4",
+        "h8",
+        "h10",
+        "h7",
+        "h5",
+        "h6",
+        "h3"
+      ]
+    },
+    {
+      "name": "aptitude dirt 1400 no going",
+      "query": {
+        "sort": "aptitude",
+        "dir": "desc",
+        "course": {
+          "surface": "dirt",
+          "distanceM": 1400,
+          "going": null
+        },
+        "surface": null,
+        "band": null,
+        "style": null,
+        "status": "all",
+        "skill": null,
+        "partner": null,
+        "locked": null,
+        "favorite": null,
+        "favoritesFirst": false,
+        "q": ""
+      },
+      "expect": [
+        "h3",
+        "h8",
+        "h6",
+        "h2",
+        "h7",
+        "h1",
+        "h4",
+        "h9",
+        "h5",
+        "h10"
+      ]
+    },
+    {
+      "name": "aptitude turf 2400 firm",
+      "query": {
+        "sort": "aptitude",
+        "dir": "desc",
+        "course": {
+          "surface": "turf",
+          "distanceM": 2400,
+          "going": "firm"
+        },
+        "surface": null,
+        "band": null,
+        "style": null,
+        "status": "all",
+        "skill": null,
+        "partner": null,
+        "locked": null,
+        "favorite": null,
+        "favoritesFirst": false,
+        "q": ""
+      },
+      "expect": [
+        "h5",
+        "h10",
+        "h2",
+        "h1",
+        "h4",
+        "h7",
+        "h8",
+        "h9",
+        "h3",
+        "h6"
+      ]
+    },
+    {
+      "name": "age desc",
+      "query": {
+        "sort": "age",
+        "dir": "desc",
+        "course": null,
+        "surface": null,
+        "band": null,
+        "style": null,
+        "status": "all",
+        "skill": null,
+        "partner": null,
+        "locked": null,
+        "favorite": null,
+        "favoritesFirst": false,
+        "q": ""
+      },
+      "expect": [
+        "h9",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h6",
+        "h7",
+        "h5",
+        "h10",
+        "h8"
+      ]
+    },
+    {
+      "name": "acquired asc",
+      "query": {
+        "sort": "acquired",
+        "dir": "asc",
+        "course": null,
+        "surface": null,
+        "band": null,
+        "style": null,
+        "status": "all",
+        "skill": null,
+        "partner": null,
+        "locked": null,
+        "favorite": null,
+        "favoritesFirst": false,
+        "q": ""
+      },
+      "expect": [
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "h7",
+        "h8",
+        "h9",
+        "h10"
+      ]
+    },
+    {
+      "name": "races desc",
+      "query": {
+        "sort": "races",
+        "dir": "desc",
+        "course": null,
+        "surface": null,
+        "band": null,
+        "style": null,
+        "status": "all",
+        "skill": null,
+        "partner": null,
+        "locked": null,
+        "favorite": null,
+        "favoritesFirst": true,
+        "q": ""
+      },
+      "expect": [
+        "h2",
+        "h7",
+        "h9",
+        "h1",
+        "h3",
+        "h6",
+        "h4",
+        "h10",
+        "h5",
+        "h8"
+      ]
+    },
+    {
+      "name": "rarity desc",
+      "query": {
+        "sort": "rarity",
+        "dir": "desc",
+        "course": null,
+        "surface": null,
+        "band": null,
+        "style": null,
+        "status": "all",
+        "skill": null,
+        "partner": null,
+        "locked": null,
+        "favorite": null,
+        "favoritesFirst": false,
+        "q": ""
+      },
+      "expect": [
+        "h2",
+        "h5",
+        "h9",
+        "h1",
+        "h4",
+        "h7",
+        "h3",
+        "h6",
+        "h8",
+        "h10"
+      ]
+    },
+    {
+      "name": "name asc",
+      "query": {
+        "sort": "name",
+        "dir": "asc",
+        "course": null,
+        "surface": null,
+        "band": null,
+        "style": null,
+        "status": "all",
+        "skill": null,
+        "partner": null,
+        "locked": null,
+        "favorite": null,
+        "favoritesFirst": false,
+        "q": ""
+      },
+      "expect": [
+        "h1",
+        "h6",
+        "h9",
+        "h5",
+        "h10",
+        "h3",
+        "h4",
+        "h2",
+        "h8",
+        "h7"
+      ]
+    },
+    {
+      "name": "surface turf",
+      "query": {
+        "sort": "acquired",
+        "dir": "desc",
+        "course": null,
+        "surface": "turf",
+        "band": null,
+        "style": null,
+        "status": "all",
+        "skill": null,
+        "partner": null,
+        "locked": null,
+        "favorite": null,
+        "favoritesFirst": false,
+        "q": ""
+      },
+      "expect": [
+        "h10",
+        "h9",
+        "h8",
+        "h7",
+        "h5",
+        "h4",
+        "h2",
+        "h1"
+      ]
+    },
+    {
+      "name": "surface dirt",
+      "query": {
+        "sort": "acquired",
+        "dir": "desc",
+        "course": null,
+        "surface": "dirt",
+        "band": null,
+        "style": null,
+        "status": "all",
+        "skill": null,
+        "partner": null,
+        "locked": null,
+        "favorite": null,
+        "favoritesFirst": false,
+        "q": ""
+      },
+      "expect": [
+        "h8",
+        "h6",
+        "h3",
+        "h2"
+      ]
+    },
+    {
+      "name": "band sprint",
+      "query": {
+        "sort": "acquired",
+        "dir": "desc",
+        "course": null,
+        "surface": null,
+        "band": "sprint",
+        "style": null,
+        "status": "all",
+        "skill": null,
+        "partner": null,
+        "locked": null,
+        "favorite": null,
+        "favoritesFirst": false,
+        "q": ""
+      },
+      "expect": [
+        "h8",
+        "h7",
+        "h3"
+      ]
+    },
+    {
+      "name": "band mile",
+      "query": {
+        "sort": "acquired",
+        "dir": "desc",
+        "course": null,
+        "surface": null,
+        "band": "mile",
+        "style": null,
+        "status": "all",
+        "skill": null,
+        "partner": null,
+        "locked": null,
+        "favorite": null,
+        "favoritesFirst": false,
+        "q": ""
+      },
+      "expect": [
+        "h9",
+        "h8",
+        "h7",
+        "h6",
+        "h4",
+        "h2",
+        "h1"
+      ]
+    },
+    {
+      "name": "band intermediate",
+      "query": {
+        "sort": "acquired",
+        "dir": "desc",
+        "course": null,
+        "surface": null,
+        "band": "intermediate",
+        "style": null,
+        "status": "all",
+        "skill": null,
+        "partner": null,
+        "locked": null,
+        "favorite": null,
+        "favoritesFirst": false,
+        "q": ""
+      },
+      "expect": [
+        "h10",
+        "h9",
+        "h8",
+        "h5",
+        "h4",
+        "h2",
+        "h1"
+      ]
+    },
+    {
+      "name": "band long",
+      "query": {
+        "sort": "acquired",
+        "dir": "desc",
+        "course": null,
+        "surface": null,
+        "band": "long",
+        "style": null,
+        "status": "all",
+        "skill": null,
+        "partner": null,
+        "locked": null,
+        "favorite": null,
+        "favoritesFirst": false,
+        "q": ""
+      },
+      "expect": [
+        "h10",
+        "h5"
+      ]
+    },
+    {
+      "name": "style sashi",
+      "query": {
+        "sort": "acquired",
+        "dir": "desc",
+        "course": null,
+        "surface": null,
+        "band": null,
+        "style": "sashi",
+        "status": "all",
+        "skill": null,
+        "partner": null,
+        "locked": null,
+        "favorite": null,
+        "favoritesFirst": false,
+        "q": ""
+      },
+      "expect": [
+        "h10",
+        "h1"
+      ]
+    },
+    {
+      "name": "active",
+      "query": {
+        "sort": "acquired",
+        "dir": "desc",
+        "course": null,
+        "surface": null,
+        "band": null,
+        "style": null,
+        "status": "active",
+        "skill": null,
+        "partner": null,
+        "locked": null,
+        "favorite": null,
+        "favoritesFirst": false,
+        "q": ""
+      },
+      "expect": [
+        "h10",
+        "h9",
+        "h7",
+        "h6",
+        "h5",
+        "h3",
+        "h2",
+        "h1"
+      ]
+    },
+    {
+      "name": "retired",
+      "query": {
+        "sort": "acquired",
+        "dir": "desc",
+        "course": null,
+        "surface": null,
+        "band": null,
+        "style": null,
+        "status": "retired",
+        "skill": null,
+        "partner": null,
+        "locked": null,
+        "favorite": null,
+        "favoritesFirst": false,
+        "q": ""
+      },
+      "expect": [
+        "h8",
+        "h4"
+      ]
+    },
+    {
+      "name": "has skill",
+      "query": {
+        "sort": "acquired",
+        "dir": "desc",
+        "course": null,
+        "surface": null,
+        "band": null,
+        "style": null,
+        "status": "all",
+        "skill": true,
+        "partner": null,
+        "locked": null,
+        "favorite": null,
+        "favoritesFirst": false,
+        "q": ""
+      },
+      "expect": [
+        "h5",
+        "h1"
+      ]
+    },
+    {
+      "name": "no skill",
+      "query": {
+        "sort": "acquired",
+        "dir": "desc",
+        "course": null,
+        "surface": null,
+        "band": null,
+        "style": null,
+        "status": "all",
+        "skill": false,
+        "partner": null,
+        "locked": null,
+        "favorite": null,
+        "favoritesFirst": false,
+        "q": ""
+      },
+      "expect": [
+        "h10",
+        "h9",
+        "h8",
+        "h7",
+        "h6",
+        "h4",
+        "h3",
+        "h2"
+      ]
+    },
+    {
+      "name": "partner",
+      "query": {
+        "sort": "acquired",
+        "dir": "desc",
+        "course": null,
+        "surface": null,
+        "band": null,
+        "style": null,
+        "status": "all",
+        "skill": null,
+        "partner": true,
+        "locked": null,
+        "favorite": null,
+        "favoritesFirst": true,
+        "q": ""
+      },
+      "expect": [
+        "h1"
+      ]
+    },
+    {
+      "name": "locked",
+      "query": {
+        "sort": "acquired",
+        "dir": "desc",
+        "course": null,
+        "surface": null,
+        "band": null,
+        "style": null,
+        "status": "all",
+        "skill": null,
+        "partner": null,
+        "locked": true,
+        "favorite": null,
+        "favoritesFirst": false,
+        "q": ""
+      },
+      "expect": [
+        "h7",
+        "h4"
+      ]
+    },
+    {
+      "name": "not locked",
+      "query": {
+        "sort": "acquired",
+        "dir": "desc",
+        "course": null,
+        "surface": null,
+        "band": null,
+        "style": null,
+        "status": "all",
+        "skill": null,
+        "partner": null,
+        "locked": false,
+        "favorite": null,
+        "favoritesFirst": false,
+        "q": ""
+      },
+      "expect": [
+        "h10",
+        "h9",
+        "h8",
+        "h6",
+        "h5",
+        "h3",
+        "h2",
+        "h1"
+      ]
+    },
+    {
+      "name": "favourite",
+      "query": {
+        "sort": "acquired",
+        "dir": "desc",
+        "course": null,
+        "surface": null,
+        "band": null,
+        "style": null,
+        "status": "all",
+        "skill": null,
+        "partner": null,
+        "locked": null,
+        "favorite": true,
+        "favoritesFirst": false,
+        "q": ""
+      },
+      "expect": [
+        "h7",
+        "h2"
+      ]
+    },
+    {
+      "name": "search はやて",
+      "query": {
+        "sort": "acquired",
+        "dir": "desc",
+        "course": null,
+        "surface": null,
+        "band": null,
+        "style": null,
+        "status": "all",
+        "skill": null,
+        "partner": null,
+        "locked": null,
+        "favorite": null,
+        "favoritesFirst": false,
+        "q": "はやて"
+      },
+      "expect": [
+        "h4",
+        "h3"
+      ]
+    },
+    {
+      "name": "search ﾐ (half width)",
+      "query": {
+        "sort": "acquired",
+        "dir": "desc",
+        "course": null,
+        "surface": null,
+        "band": null,
+        "style": null,
+        "status": "all",
+        "skill": null,
+        "partner": null,
+        "locked": null,
+        "favorite": null,
+        "favoritesFirst": false,
+        "q": "ﾐ"
+      },
+      "expect": [
+        "h10",
+        "h8",
+        "h2"
+      ]
+    },
+    {
+      "name": "search no match",
+      "query": {
+        "sort": "acquired",
+        "dir": "desc",
+        "course": null,
+        "surface": null,
+        "band": null,
+        "style": null,
+        "status": "all",
+        "skill": null,
+        "partner": null,
+        "locked": null,
+        "favorite": null,
+        "favoritesFirst": true,
+        "q": "ZZZ"
+      },
+      "expect": []
+    },
+    {
+      "name": "combined: active turf by rating",
+      "query": {
+        "sort": "rating",
+        "dir": "desc",
+        "course": null,
+        "surface": "turf",
+        "band": null,
+        "style": null,
+        "status": "active",
+        "skill": null,
+        "partner": null,
+        "locked": null,
+        "favorite": null,
+        "favoritesFirst": true,
+        "q": ""
+      },
+      "expect": [
+        "h2",
+        "h7",
+        "h9",
+        "h5",
+        "h1",
+        "h10"
+      ]
+    }
+  ]
+}

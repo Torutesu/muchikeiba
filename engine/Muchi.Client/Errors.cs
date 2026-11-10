@@ -97,6 +97,12 @@ namespace Muchi.Client
         PhotoLocked,
         /// <summary>400: a race run with other people cannot be paused (REQ-PHOTO-001).</summary>
         PhotoSourceInvalid,
+        /// <summary>REQ-ORG-005: the horse is locked (409); unlock it first.</summary>
+        HorseLocked,
+        /// <summary>REQ-ORG-008: a bulk action refused (409); nothing changed. See <see cref="BulkRefusedException.Horses"/>.</summary>
+        RosterBulkRefused,
+        /// <summary>REQ-ORG-008: the confirmation no longer matches (409); preview again.</summary>
+        RosterBulkStale,
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
@@ -197,6 +203,9 @@ namespace Muchi.Client
             ["PHOTO_LIMIT"] = ApiErrorCode.PhotoLimit,
             ["PHOTO_LOCKED"] = ApiErrorCode.PhotoLocked,
             ["PHOTO_SOURCE_INVALID"] = ApiErrorCode.PhotoSourceInvalid,
+            ["HORSE_LOCKED"] = ApiErrorCode.HorseLocked,
+            ["ROSTER_BULK_REFUSED"] = ApiErrorCode.RosterBulkRefused,
+            ["ROSTER_BULK_STALE"] = ApiErrorCode.RosterBulkStale,
             ["VERIFIER_UNAVAILABLE"] = ApiErrorCode.VerifierUnavailable,
             ["INTERNAL"] = ApiErrorCode.Internal,
         };
@@ -241,6 +250,8 @@ namespace Muchi.Client
                     return new InsufficientCoinsException(wire, message, status, CoinShortfall.Parse(J.Opt(details, "shortfall")));
                 case ApiErrorCode.RateLimited:
                     return new RateLimitedException(wire, message, status);
+                case ApiErrorCode.RosterBulkRefused:
+                    return new BulkRefusedException(wire, message, status, J.List(details, "horses", BulkHorseCheck.Parse));
                 case ApiErrorCode.Internal:
                 case ApiErrorCode.ConfigInvalid:
                 case ApiErrorCode.VerifierUnavailable:
@@ -304,6 +315,14 @@ namespace Muchi.Client
     public sealed class ConflictException : ApiException
     {
         public ConflictException(ApiErrorCode c, string wire, string message, int status) : base(c, wire, message, status) { }
+    }
+
+    /// <summary>REQ-ORG-008: 409 ROSTER_BULK_REFUSED — nothing changed; each refused horse with its reasons (protocol §44.4).</summary>
+    public sealed class BulkRefusedException : ApiException
+    {
+        public System.Collections.Generic.List<BulkHorseCheck> Horses { get; }
+        public BulkRefusedException(string wire, string message, int status, System.Collections.Generic.List<BulkHorseCheck> horses)
+            : base(ApiErrorCode.RosterBulkRefused, wire, message, status) { Horses = horses ?? new System.Collections.Generic.List<BulkHorseCheck>(); }
     }
 
     /// <summary>429 RATE_LIMITED (e.g. analytics ingestion quota). Back off before sending again.</summary>

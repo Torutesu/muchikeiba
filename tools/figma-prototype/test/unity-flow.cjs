@@ -452,6 +452,52 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
   }
 
+  // round 16 (REQ-ORG-*): 厩舎の整理 — the stable's list → more demo horses → sort (rating) → filter (active) → lock → select two →
+  // the confirmation (every horse, nothing given back, cancel and confirm the same size) → retired, all on the real rules
+  async function rosterFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(() => globalThis.__muchi.show('Stable')); await waitScreen('stable');
+    await click('所属馬の一覧'); await waitScreen('roster'); await waitIn('.org-list');
+    const before = await page.locator('.screen.in .org-row').count();
+    await click('デモ：馬を増やす'); await page.waitForFunction((n) => document.querySelectorAll('.screen.in .org-row').length > n || document.querySelectorAll('.screen.in .org-row').length === 7, before, { timeout: 15000 });
+    await shot('roster', 400);
+    assert.ok((await page.locator('.screen.in').innerText()).includes('返ってきません'), 'roster: the no-refund notice');
+    await page.locator('.screen.in .org-sort').click(); await waitIn('.org-sort-sheet'); await shot('roster-sort-sheet', 400);
+    await page.locator('.screen.in .org-sort-sheet [data-sort="rating"]').click(); await page.waitForTimeout(500); await waitScreen('roster');
+    const ratings = await page.evaluate(async () => {
+      const v = (await globalThis.__muchi.logic.roster.view()).value;
+      const ids = [...document.querySelectorAll('.screen.in .org-row')].map((r) => r.dataset.horseId);
+      return ids.map((id) => v.horses.find((h) => h.horseId === id).rating);
+    });
+    assert.deepEqual([...ratings].sort((a, b) => b - a), ratings, 'roster: sorted by rating, high to low');
+    await page.locator('.screen.in .org-filter').click(); await waitIn('.org-filter-sheet'); await shot('roster-filter-sheet', 400);
+    await page.locator('.screen.in .org-filter-sheet [data-filter="status"][data-value="active"]').click(); await waitIn('.org-filter-sheet [data-filter="status"][data-value="active"].on');
+    await page.locator('.screen.in .org-filter-sheet [data-label="閉じる"]').click(); await page.waitForTimeout(400);
+    assert.match(await page.locator('.screen.in .org-filter').innerText(), /（1）/, 'roster: one filter in use');
+    await page.locator('.screen.in .org-row[data-blocks=""] .org-lock').first().click(); await page.waitForTimeout(500); await waitScreen('roster');
+    assert.equal(await page.locator('.screen.in .org-row[data-locked="true"]').count(), 1, 'roster: one horse locked');
+    await page.locator('.screen.in .org-row[data-locked="false"] .org-fav').first().click(); await page.waitForTimeout(500); await waitScreen('roster');
+    assert.equal(await page.locator('.screen.in .org-row[data-favorite="true"]').count(), 1, 'roster: one favourite');
+    assert.equal(await page.locator('.screen.in .org-row').first().getAttribute('data-favorite'), 'true', 'roster: favourites first');
+    await click('まとめて選ぶ'); await waitIn('.org-check');
+    await page.locator('.screen.in .org-row[data-blocks=""]').first().click(); await page.waitForTimeout(400);
+    await page.locator('.screen.in .org-row[data-blocks=""]:has(.org-check[data-on="false"])').first().click(); await page.waitForTimeout(400);
+    await page.locator('.screen.in .org-row[data-locked="true"]').click(); await page.waitForTimeout(400); // refused: locked
+    assert.equal(await page.locator('.screen.in .org-check[data-on="true"]').count(), 2, 'roster: two selected, the locked horse is not');
+    await shot('roster-select', 300);
+    await click('確認へ'); await waitScreen('roster-confirm'); await waitIn('.org-confirm');
+    const cancel = await page.locator('.screen.in .org-cancel').boundingBox(), ok = await page.locator('.screen.in .org-ok').boundingBox();
+    assert.ok(Math.abs(cancel.width - ok.width) < 1 && Math.abs(cancel.height - ok.height) < 1, 'roster: cancel and confirm are the same size');
+    assert.equal(await page.locator('.screen.in .org-line').count(), 2, 'roster: every horse is listed');
+    assert.match(await page.locator('.screen.in .org-refund').innerText(), /なし/, 'roster: nothing comes back');
+    await shot('roster-confirm', 400);
+    await click('まとめて引退させる'); await waitScreen('roster'); await page.waitForTimeout(400);
+    assert.equal(await page.evaluate(() => globalThis.__muchi.lastBulk?.count), 2, 'roster: two horses retired');
+    await shot('roster-retired', 300);
+    await page.evaluate(() => localStorage.removeItem('muchi.roster.view'));
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
+  }
+
   // round 14 (REQ-MYRP-*): マイリプレイ — two demo races on the real engine → the list (best moments / recent) → 残す → the
   // replay sheet → rename (typed, NG word refused) → favourite, public → the player (WASM re-simulation: 2×, camera on
   // another horse, the last 200 m, share card + replay_share) → a friend's public replay → 「再生できません」 (retired ruleset)
@@ -788,6 +834,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await hallFlow();
   await silksFlow();
   await myReplaysFlow();
+  await rosterFlow();
   await page.evaluate(() => globalThis.__muchi.show('Scout')); await waitScreen('scout'); await shot('scout', 500);
   await click('提供割合'); await shot('scout-rates', 400); await click('BACK');
   await waitScreen('scout'); await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal'); await shot('scout-paid-reveal', 700);

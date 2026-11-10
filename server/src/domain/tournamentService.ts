@@ -1,4 +1,5 @@
 import { AppError } from './errors.js';
+import { ROSTER_LIMITS } from './roster.js';
 import type { Master } from './master.js';
 import { tournamentDefSchema, tournamentProblems, TOURNAMENT_ID_RE, type EligibilityInfo, type TournamentDef, type TournamentSummary } from './tournaments.js';
 
@@ -25,6 +26,8 @@ export interface TournamentBackend {
 export interface TournamentPlayers {
   tournamentEntry(uid: string, horseId: string): Promise<TournamentEntryInfo>;
   history(uid: string): Promise<unknown>;
+  /** REQ-ORG-011: the player registered `horseId` (null = unregistered) until `untilMs` (optional; a failure never undoes the registration). */
+  noteEntry?(uid: string, tournamentId: string, horseId: string | null, untilMs: number): Promise<void>;
 }
 
 export const tournamentIdParam = (s: string) => {
@@ -64,10 +67,27 @@ export class TournamentsService {
   async register(uid: string, id: string, horseId: string) {
     tournamentIdParam(id);
     const e = await this.players.tournamentEntry(uid, horseId);
-    return this.backend.register(id, uid, horseId, e, this.clock());
+    const r = await this.backend.register(id, uid, horseId, e, this.clock());
+    await this.noteEntry(uid, id, horseId);
+    return r;
   }
 
-  unregister(uid: string, id: string) { return this.backend.unregister(tournamentIdParam(id), uid, this.clock()); }
+  async unregister(uid: string, id: string) {
+    const r = await this.backend.unregister(tournamentIdParam(id), uid, this.clock());
+    await this.noteEntry(uid, id, null);
+    return r;
+  }
+
+  /** REQ-ORG-011: best effort — the horse counts as entered until the start + 24 h (or 14 days when the start is unknown). */
+  private async noteEntry(uid: string, id: string, horseId: string | null) {
+    if (!this.players.noteEntry) return;
+    try {
+      const now = this.clock();
+      const v = horseId ? ((await this.backend.view(id, now)) as { startsAtMs?: number } | null) : null;
+      const until = typeof v?.startsAtMs === 'number' ? v.startsAtMs + ROSTER_LIMITS.tournamentGraceMs : now + ROSTER_LIMITS.tournamentFallbackMs;
+      await this.players.noteEntry(uid, id, horseId, until);
+    } catch (e) { console.error('roster tournament note failed', uid, id, e); }
+  }
 
   history(uid: string) { return this.players.history(uid); }
 

@@ -2094,3 +2094,88 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 - `Muchi.Client`：`AccessibilitySettings`（`Parse`・`ToJson`・`Defaults`、知らない値は既定値）、`ApiClient.GetAccessibilityAsync`・`SetAccessibilityAsync`、`PlayerView.Accessibility`、`AccessibilityTokens`（トークンの表、`Color(mode, token)`）、`TextScale`（`Factor`・`Px`）、`MotionPolicy`、`FlashLimiter`、`WhipHold`。
 - `Muchi.Game`：`AccessibilityModel`（端末の写し・未送信の再送・`Changed` イベント・画面が結ぶ値 `TextScale`／`Palette`／`Motion`／`Haptics`／`Subtitles`／`OneHanded`／`WhipInput`・設定画面の行 `Rows()`・`ApplyTo(RaceInput)`）、`RaceInput.WhipMode`・`SetWhipHeld`・`Collect(RaceSim, slot)`。
 - 画面が守ること：docs/handoff-codex-round15-accessibility.md。
+
+## 44. 厩舎の整理（horse roster organiser、REQ-ORG-001〜016、`server/src/domain/roster.ts`、C# `Roster.cs`（`RosterQuery`・`RosterSorter`）・`Muchi.Game.RosterOrganiserModel`）
+所属馬が増えても目当ての馬をすぐ見つけ、まとめて片づけられるようにする。**並び替え・絞り込み・名前の検索・端末ごとに覚える表示・お気に入り・ロック・まとめて操作**。コインも素材も動かさない（経済の目標なし、balance-targets の新しい節も E 番号も使わない）。
+
+### 44.1 まとめて操作できること（既存の1頭の決まりのまま）
+- 今のゲームで馬を手放す操作は **引退（`POST /v1/horses/:horseId/retire`、REQ-HORSE-004）だけ**。引退は返金も素材も無い（繁殖馬になる、§34 の引退式が1回だけできる）。まとめて操作の `action` は **`retire` だけ**で、1頭の引退と同じ関数（`horses.ts` `retire` → `hallOfFame.ts` `noteHallRetire`）をそのまま順に呼ぶ。返金の合計はいつも **0**（`refund: { paidCoins: 0, freeCoins: 0, materials: {} , items: {} }`）で、確認画面にもそのまま「返ってくるもの：なし」と出す。
+- **放出・変換（release / convert）は出さない**：1頭の放出・変換の決まり（返金の額）が今のゲームに無いので、まとめて操作だけに新しいコイン・素材の流れを作らない（作るなら経済の目標 E20・balance-targets 4.19 から決める別の仕事）。`action` は列挙なので後から足せる形にしておく（知らない値は `400 BAD_REQUEST`）。
+- **所属馬の上限は今のゲームに無い**（「厩舎がいっぱい」の流れも無い）。上限ができたら、その案内からこの画面（絞り込み「現役」・並び「能力」の低い順）へつなぐ（44.7）。
+
+### 44.2 ロックとお気に入り（REQ-ORG-004/005）
+- `PUT /v1/horses/:horseId/lock` `{ "locked": bool }` → `{ "horseId", "locked" }`。`PUT /v1/horses/:horseId/favorite` `{ "favorite": bool }` → `{ "horseId", "favorite" }`。値を置き換えるだけなので何度送っても同じ（冪等、キー不要）。持っていない馬は `404 HORSE_NOT_FOUND`。現役でも引退でも付けられる。
+- **ロックはサーバーで守る**：ロックした馬は **1頭の引退（`POST /v1/horses/:horseId/retire`）も `409 HORSE_LOCKED`**、まとめて操作でも断る（44.4 の `locked`）。配合・種付けは馬を消費しない（両親は残る）ので、ロックしていても使える。これから馬を消費する操作を足す時は `assertNotLocked` を通す（REQ-ORG-005）。
+- 状態はプレイヤーの部屋の `roster.locked[]`・`roster.favorites[]`（馬IDの一覧、上限なし＝所属馬の数まで）。持っていない馬のIDは読む時に無視する。アカウント削除では状態ごと消える（手順の追加なし）。
+
+### 44.3 一覧 `GET /v1/roster`（REQ-ORG-001〜003）
+```json
+{ "total": 42, "active": 30, "retired": 12, "locked": 3, "favorites": 5, "bulkMax": 50, "actions": ["retire"],
+  "partnerHorseId": "h1",
+  "horses": [ { "horseId": "h7", "name": "ミドリノカゼ", "templateId": "t_ssr_1", "rarity": "SSR", "sex": "male", "style": "sashi",
+                "surface": "turf", "distMinM": 1600, "distMaxM": 2400, "goingAptitude": "any", "status": "active",
+                "rating": 2880, "skillId": "sk_kirameki", "partner": false, "locked": true, "favorite": true,
+                "acquiredSeq": 7, "bornAt": 1794000000000, "ageDays": 12, "races": 34, "wins": 11,
+                "blocks": [], "appearance": { … } } ],
+  "notice": "まとめて引退しても、コインや素材は返ってきません" }
+```
+- `rating`＝能力の合計（覚醒込みの能力 `effectiveStats` ＋調教の上乗せ `trained`、ランク戦の正規化の前）。`races`・`wins`＝§34 の戦績（確定したレースだけ、記録の無い馬は0）。`acquiredSeq`＝馬IDの通し番号（手に入れた順）。`ageDays`＝生まれてからのゲーム日数（04:00 JST 区切り）。
+- `blocks[]`＝今まとめて引退すると断られる理由（44.4 と同じ値・同じ順）。画面はこれで選べない馬を最初から灰色にする。
+- 並び替え・絞り込み・検索は **クエリでサーバーでも、端末でも同じ結果**（`server/src/domain/roster.ts` `applyRosterQuery` と C# `RosterSorter.Apply`、共通のテストベクタ `contracts/roster-query.vectors.json`）。クエリ（すべて任意）：
+  | キー | 値 | 既定 |
+  |---|---|---|
+  | `sort` | `rating`・`aptitude`・`age`・`acquired`・`races`・`rarity`・`name` | `acquired` |
+  | `dir` | `desc`・`asc` | `desc` |
+  | `trackId`・`going` | `aptitude` の基準のコースと馬場（`going` は任意） | なし（`aptitude` は `trackId` が要る。無ければ `400`） |
+  | `surface` | `turf`・`dirt`（`both` の馬はどちらにも入る） | すべて |
+  | `band` | `sprint`（〜1400m）・`mile`（1401〜1800m）・`intermediate`（1801〜2400m）・`long`（2401m〜）。馬の距離適性の範囲が帯と重なれば入る | すべて |
+  | `style` | `nige`・`senko`・`sashi`・`oikomi` | すべて |
+  | `status` | `active`・`retired`・`all` | `all` |
+  | `skill`・`partner`・`locked`・`favorite` | `1`（ある・そう）／`0`（無い・違う） | すべて |
+  | `q` | 名前の一部（NFKC・ひらがな→カタカナ・長音の揺れをそろえて部分一致、最大 20 文字） | なし |
+  | `favoritesFirst` | `1`・`0`：お気に入りを先頭にまとめる | `1` |
+- **適性（`aptitude`）**：エンジンと同じ条件（RaceSim の適性外の罰・馬場の得意）から作る点数 `surface 一致（または both）200 ＋ 距離（範囲内 200、外は 200 − 外れたm ÷ 2、0 未満は 0）＋ 馬場 25 ×（fast の馬：−wet、heavy の馬：+wet、any：0）`。wet は 良/firm/fast＝−2・good＝0・稍重/yielding/muddy＝1・重/soft/sloppy＝2（`going` が無ければ馬場の項は 0）。印は ◎（芝ダ・距離とも合い、馬場の項 ≥ 0）／○（芝ダ・距離とも合う）／△（片方だけ）／×（どちらも合わない）。
+- 並びの同点は `acquiredSeq` の小さい順（いつも同じ順）。名前の並びは馬の名前の文字コード順（読みの辞書は使わない）。
+- **端末ごとに覚える**：選んだ並び・絞り込みはサーバーに保存しない。`RosterQuery.Encode()`（`v1;sort=rating;dir=desc;…`）を端末の設定（Unity の PlayerPrefs、プロトタイプは localStorage）に置き、知らないキー・値は既定に戻す（`Decode`）。
+
+### 44.4 まとめて操作（REQ-ORG-006〜011）
+1. **確認** `POST /v1/roster/bulk/preview` `{ "action": "retire", "horseIds": ["h7", "h9"] }` → 何も変えない。
+```json
+{ "action": "retire", "count": 2, "eligible": 1, "refused": 1,
+  "horses": [ { "horseId": "h7", "name": "ミドリノカゼ", "ok": true, "reasons": [] },
+              { "horseId": "h9", "name": "ハヤテ", "ok": false, "reasons": ["locked"] } ],
+  "refund": { "paidCoins": 0, "freeCoins": 0, "materials": {}, "items": {} },
+  "canConfirm": false, "confirmToken": "r1-6f3a9c01" }
+```
+2. **実行** `POST /v1/roster/bulk`（**冪等キー必須**）`{ "action", "horseIds", "confirmToken" }` → `{ "action", "count", "horses": [ { "horseId", "name", "ceremony" } ], "refund" }`。
+- **全部か何もしないか**：1頭でも断る理由があれば `409 ROSTER_BULK_REFUSED`（`error.details.horses` に断った馬と理由、44.4 の形）で、**1頭も引退しない**（PlayerDO の1回の取引の中で全部を確かめてから順に引退する。途中で失敗すれば取引ごと捨てる）。
+- `confirmToken`：確認の時の中身（action・馬IDの並び・各馬の状態・返金の合計）から作る短いハッシュ。実行の時に作り直して違えば `409 ROSTER_BULK_STALE`（確認の後に何か変わった。もう一度確認から）。安全のための鍵ではなく、「見せた一覧と違うものを実行しない」ための印。
+- 同じ冪等キーの再送は最初の応答をそのまま返す（2回引退しない）。`horseIds` は 1〜`bulkMax`（50）頭・重複不可（`400 BAD_REQUEST`）。
+- 断る理由（`reasons`、この順に全部並べる）：
+  | 理由 | いつ |
+  |---|---|
+  | `not_found` | 持っていない馬 |
+  | `locked` | ロックしている（44.2） |
+  | `partner` | 最初の相棒（`flags.partnerHorseId`）。まとめては引退させない（1頭の引退の画面からなら今までどおりできる） |
+  | `not_active` | もう引退している（引退は現役だけ） |
+  | `on_loan` | 種牡馬として貸し出しに登録中か、貸し出しの手続き中（§ REQ-BREED-010） |
+  | `in_training` | 調教の途中（開いているセッションの馬、期限内） |
+  | `tournament_entry` | 大会に登録中（登録・登録の取り消し・大会の確定でプレイヤーの部屋に書く。記録が残っても大会の開始から 24 時間で外れる） |
+  | `hall_pending` | §34 の引退式をまだ見ていない |
+- アカウント削除の予約中も1頭の引退と同じく止めない（ルールを変えない）。
+- KPI：`roster_bulk_action`（サーバー、実行できた時だけ、`s1` = action、`count` = 頭数）。
+
+### 44.5 確認画面の決まり（クライアントが守る、REQ-ORG-010）
+- 2段階：選ぶ → 確認シート（**選んだ馬を全部**名前・レア度・理由つきで並べ、返ってくるものの合計（引退は「なし」）を出す）→ 実行。元に戻す（undo）は無いので、シートに「元に戻せません」と書く。
+- 「やめる」と「引退させる」は**同じ大きさ**で並べ、どちらも既定の選択にしない。断られる馬が1頭でもいれば実行のボタンは押せず、その馬を外すボタンを出す。
+- 馬の名前はプレイヤーが付けたもの（英語でも訳さない）。
+
+### 44.6 KPI（REQ-ORG-013）
+- `roster_sort`（クライアント、`props: { sort, filters }`：並びのキーと使っている絞り込みの数 0〜10。並びか絞り込みを変えた時、1秒に1回まで）→ `s1` = sort、`value` = filters。
+- `roster_bulk_action`（サーバー、44.4）。
+
+### 44.7 クライアント（REQ-ORG-014/015）
+- `Muchi.Client` `ApiClient.GetRosterAsync(RosterQuery)`・`SetHorseLockAsync`・`SetHorseFavoriteAsync`・`PreviewBulkAsync`・`RunBulkAsync`、`RosterQuery`（Encode/Decode）・`RosterSorter`（並び・絞り込み・検索・適性、サーバーと同じ）、`AnalyticsEvent.RosterSort`。
+- Unity のゲーム層 `RosterOrganiserModel`：一覧の行、並び・絞り込みのシート、検索、ロック・お気に入りの切り替え、まとめて選ぶ、確認シート。端末の設定は `IPrefs`（PlayerPrefs）に `muchi.roster.view`。
+- 大会の登録（`TournamentPlayers.noteEntry`/`clearEntry`）：`TournamentsService.register`/`unregister` が成功した後に呼ぶ（任意のポート、失敗しても登録は成功のまま）。
+- §40 の活動の一覧（Round 15）ができたら、まとめて引退した時に「◯頭を引退させました」の1行を書く（ここでは書かない）。

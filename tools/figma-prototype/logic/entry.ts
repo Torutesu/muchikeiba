@@ -41,6 +41,7 @@ import { MemoryReplayStore, MyReplaysService } from '../../../server/src/domain/
 import { DEFAULT_RULESET } from '../../../server/src/domain/ruleset.js';
 import { computeRaceAdvice, adviceTextProblems, adviceTexts, type AdviceInput } from '../../../server/src/domain/raceAdvice.js';
 import type { AdviceQuery } from '../../../server/src/domain/raceAdviceService.js';
+import { applyRosterQuery, aptitudeFor, DEFAULT_QUERY, type RosterQuery, type RosterRow } from '../../../server/src/domain/roster.js';
 // REQ-L10N-*: the server's English tables (master/locale-en.json + i18n/en.ts), the client's (ui-en.json) and the
 // prototype's own screen texts (proto-en.json), in one catalog with the server's template rules (katakana names romanized)
 import { compileCatalogWith, translateText, romanizeName } from '../../../server/src/i18n/catalog.js';
@@ -747,6 +748,26 @@ export const MuchiLogic = {
   },
   /** round 14: a course's display name (server tracks.json). */
   trackName: (id: string) => trackNames.get(id) ?? id,
+  // ---------------------------------------------------------------- round 16: 厩舎の整理 (REQ-ORG-*, contracts/protocol.md §44)
+  // The real PlayerService roster / lock / favourite / bulk retire on the local player; sorting is the shared applyRosterQuery
+  // (the same function the server's GET /v1/roster and the C# RosterSorter run), so the page sorts locally like the app.
+  roster: {
+    view: () => wrap(() => svc.roster(ID)),
+    apply: (rows: RosterRow[], q: Partial<RosterQuery>) => applyRosterQuery(rows, { ...DEFAULT_QUERY, ...q }),
+    aptitude: (row: RosterRow, course: NonNullable<RosterQuery['course']>) => aptitudeFor(row, course),
+    defaults: () => ({ ...DEFAULT_QUERY }),
+    course: (trackId: string) => { const t = master.tracks.find((x) => x.id === trackId)!; return { surface: t.surface, distanceM: t.distanceM, going: null }; },
+    tracks: () => master.tracks.map((t) => ({ id: t.id, name: trackNames.get(t.id) ?? t.id })),
+    lock: (horseId: string, on: boolean) => wrap(() => svc.rosterLock(ID, horseId, on)),
+    favorite: (horseId: string, on: boolean) => wrap(() => svc.rosterFavorite(ID, horseId, on)),
+    preview: (horseIds: string[]) => wrap(() => svc.rosterPreview(ID, 'retire', horseIds)),
+    /** Keyed like the app: one key per confirmation, so a repeated tap returns the first result. */
+    bulk: (horseIds: string[], confirmToken: string, idemKey: string) => wrap(() => svc.rosterBulk(ID, 'retire', horseIds, confirmToken, idemKey)),
+    newKey: () => key(),
+    retire: (horseId: string) => wrap(() => svc.retire(ID, horseId)),
+    /** Demo: a few more horses from the scout table so there is something to sort (the real createHorseFromTemplate). */
+    demoHorses: (n = 6) => wrap(() => svc.tx(ID, null, (s, t) => { const pool = master.templates.filter((x) => !x.giftOnly); for (let i = 0; i < n; i++) createHorseFromTemplate(s, pool[(s.counters.horseSeq * 7 + i * 3) % pool.length]!, t + i); return s.horses.length; })),
+  },
   // ---------------------------------------------------------------- round 14: マイリプレイ (REQ-MYRP-*, contracts/protocol.md §37)
   // The real MyReplaysService / PlayerService rules on the local player. R2 is a local store (localStorage, best effort):
   // `replays/<raceId>.json` is what the race room would write, `myreplays/<player>/<raceId>.json` the saved copies.

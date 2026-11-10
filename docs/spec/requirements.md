@@ -909,3 +909,22 @@
 - REQ-A11Y-014 KPI：`a11y_setting_change`（変わったキーごと、s1 キー・s2 値。個人情報なし）。
 - REQ-A11Y-015 英語：設定画面のすべての文に英語（`ui-en.json`・`proto-en.json`）。英語・特大の文字でもはみ出さない。
 - REQ-A11Y-016 クライアント：`Muchi.Client`（設定のモデル・API・トークン・`MotionPolicy`・`FlashLimiter`・`WhipHold`）、Unity の `AccessibilityModel`（Codex が結ぶ値）、プロトタイプ（設定画面が文字の大きさ・色・動きを全画面に実際に当てる、日英、e2e と英語の通し）、Codex 向けの引き継ぎ（docs/handoff-codex-round15-accessibility.md）。
+
+## 44. 厩舎の整理（TS＋C#、`src/domain/roster.ts`・`Muchi.Client/Roster.cs`、`contracts/protocol.md` §44）
+拘束条件：コイン・素材は動かない（まとめて操作は既存の1頭の引退をそのまま繰り返すだけ。返金なし。経済の目標なし）。ロックはサーバーで守る。全部か何もしないか。馬の名前は訳さない。
+- REQ-ORG-001 一覧：`GET /v1/roster` が所属馬ごとに能力の合計・適性・脚質・距離・馬場・レア度・スキル・相棒・ロック・お気に入り・手に入れた順・生まれてからの日数・戦数と勝数（§34 の戦績）・今まとめて引退できない理由を返す。
+- REQ-ORG-002 並び替え：能力・適性（選んだコースと馬場）・年齢・手に入れた順・戦数・レア度・名前。昇順／降順。同点は手に入れた順。お気に入りを先頭にまとめられる（既定）。
+- REQ-ORG-003 絞り込みと検索：芝／ダート（両方の馬はどちらにも）、距離の帯（短距離・マイル・中距離・長距離、範囲が重なれば）、脚質、現役／引退、スキルの有無、相棒、ロック、お気に入り、名前の部分一致（NFKC・ひらがな→カタカナ・長音をそろえる）。サーバーのクエリと端末の `RosterSorter` は共通のテストベクタで同じ結果。
+- REQ-ORG-004 端末ごとの表示：選んだ並び・絞り込みは端末に `RosterQuery.Encode()` で覚える（サーバーに保存しない）。知らない値は既定に戻す。
+- REQ-ORG-005 ロック・お気に入り：`PUT /v1/horses/:horseId/lock`・`/favorite`（値の置き換えで冪等）。ロックした馬は1頭の引退（`HORSE_LOCKED`）もまとめて操作も断る。配合・種付けは馬を消費しないので使える。今後の消費する操作も `assertNotLocked` を通す。
+- REQ-ORG-006 まとめて操作：`action` は `retire` だけ（今のゲームで馬を手放す操作は引退だけ）。1頭の引退と同じ関数（`retire`・`noteHallRetire`）を順に呼ぶので、引退式も1頭ずつできる。放出・変換は1頭の決まりが無いので作らない（作るなら経済の目標から）。
+- REQ-ORG-007 確認：`POST /v1/roster/bulk/preview` は何も変えず、全部の馬の可否と理由、返ってくるものの合計（引退は 0）、`confirmToken` を返す。
+- REQ-ORG-008 実行：`POST /v1/roster/bulk`（冪等キー必須、`confirmToken` 必須）。1頭でも断る理由があれば `ROSTER_BULK_REFUSED`（理由つき）で1頭も変えない。確認の後に中身が変わっていれば `ROSTER_BULK_STALE`。同じキーの再送は最初の応答。1〜50頭、重複不可。
+- REQ-ORG-009 断る理由：持っていない・ロック・相棒（まとめてだけ）・引退済み・貸し出し中・調教中・大会に登録中・引退式を見ていない。全部を決まった順で返す。
+- REQ-ORG-010 確認画面：選んだ馬を全部並べ、合計（なし）を出し、「元に戻せません」。「やめる」と「実行」は同じ大きさ、既定の選択なし。断られる馬がいれば実行できない。
+- REQ-ORG-011 大会の登録：登録・取り消しの成功の後と大会の確定でプレイヤーの部屋に記録する（任意のポート）。記録は大会の開始から 24 時間で外れる。
+- REQ-ORG-012 所属馬の上限：今のゲームには無い（「厩舎がいっぱい」の流れも無い）。できたらこの画面へつなぐ。
+- REQ-ORG-013 KPI：`roster_sort`（クライアント：並びのキー・絞り込みの数）、`roster_bulk_action`（サーバー：action・頭数）。クエリは `docs/ops/kpi-queries.md`。
+- REQ-ORG-014 クライアント：`Muchi.Client` の `RosterQuery`・`RosterSorter`・`ApiClient` の各メソッド・`AnalyticsEvent.RosterSort`。Unity のゲーム層 `RosterOrganiserModel`。描画は `docs/handoff-codex-round16-roster-organiser.md`。
+- REQ-ORG-015 英語：理由・並び・絞り込み・確認の文言はすべて英語がある（`l10n:missing` 0）。馬の名前は訳さない。
+- REQ-ORG-016 プロトタイプ：厩舎の所属馬の一覧に並び・絞り込み・検索・ロック・お気に入り・まとめて選ぶ・確認シート（ムチ一閃の見た目、日本語・英語、e2e と英語の流れ）。

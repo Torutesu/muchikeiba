@@ -224,6 +224,8 @@ export interface PlayerState {
   hall?: import('./hallOfFame.js').HallState;
   /** REQ-MYRP-*: マイリプレイ — recent races / best moments and the saved list (myReplays.ts ensureMyReplays). */
   myReplays?: import('./myReplays.js').MyReplaysState;
+  /** REQ-ORG-*: 厩舎の整理 — locked / favourite horse ids and tournament registrations (roster.ts ensureRoster). */
+  roster?: import('./roster.js').RosterState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

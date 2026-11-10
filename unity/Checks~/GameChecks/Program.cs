@@ -116,6 +116,8 @@ static class Program
         await MyReplaysChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 15: 出走前アドバイス (RaceAdviceModel: rows in words, device recompute = server, setting, tutorial, offline, KPI, result line; REQ-ADV-*)");
         await RaceAdviceChecks.Run(Check, Root);
+        Console.WriteLine("== round 16: 厩舎の整理 (RosterOrganiserModel: local sort / filters / search per device, lock, favourite, bulk retire two-step, all or nothing; REQ-ORG-*)");
+        await RosterChecks.Run(Check, Ruleset());
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

@@ -957,3 +957,28 @@ GROUP BY kind, screen ORDER BY taps DESC
 
 - **戻ってきた人に効いているか**：`session_start` の日に `activity_open` もある人の割合を、ライバル・支部・フレンドを使っている人とそれ以外で分けて見る。
 - プレゼント（`gift_arrived` → `gift_box`）を押した人のうち、同じ日に `gift_claim` がある割合が低ければ、プレゼントボックスへの導線（ボタンの文言）を見直す。受け取りボタンを一覧に置くことはしない（§40）。
+
+## 厩舎の整理：並び替え・まとめて操作（REQ-ORG-013、Round 16、contracts/protocol.md §44）
+列：`roster_sort`（クライアント、並びか絞り込みを変えた時）`blob8` = 並びのキー（rating／aptitude／age／acquired／races／rarity／name）、`double9` = 使っている絞り込みの数。`roster_bulk_action`（サーバー、まとめて操作が実行できた時だけ）`blob8` = action（今は `retire` だけ）、`double5` = 頭数。
+
+**よく使われる並び**（週ごと）：どの並びが使われているか、絞り込みを使う割合。
+
+```sql
+SELECT toStartOfWeek(timestamp) AS week, blob8 AS sort, sum(_sample_interval) AS changes,
+  round(sumIf(_sample_interval, double9 > 0) / sum(_sample_interval), 3) AS with_filters
+FROM muchi_kpi
+WHERE blob1 = 'roster_sort' AND timestamp > NOW() - INTERVAL '56' DAY
+GROUP BY week, sort
+ORDER BY week DESC, changes DESC
+```
+
+**まとめて操作**（週ごと）：使った人・回数・平均の頭数。
+
+```sql
+SELECT toStartOfWeek(timestamp) AS week, blob8 AS action, count(DISTINCT blob2) AS players, sum(_sample_interval) AS runs,
+  round(sum(_sample_interval * double5) / sum(_sample_interval), 1) AS avg_horses
+FROM muchi_kpi
+WHERE blob1 = 'roster_bulk_action' AND timestamp > NOW() - INTERVAL '56' DAY
+GROUP BY week, action
+ORDER BY week DESC
+```

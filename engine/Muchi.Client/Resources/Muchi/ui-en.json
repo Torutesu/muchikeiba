@@ -892,6 +892,8 @@
   "プレゼントボックスへ": "Go to the gift box",
   "見る": "View",
   "新着情報があります": "There is something new",
+  "カップ": "Cup",
+  "振り返り": "Recap",
   "フレンド": "Friends",
   "リプレイ": "Replay",
   "_roster": "---- REQ-ORG-015 (unity/Assets/Muchi/Game/RosterOrganiserModel.cs, protocol §44): 厩舎の整理. Horse names are never in these texts.",

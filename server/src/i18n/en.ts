@@ -361,6 +361,13 @@ export const CODE_EN: Record<string, string> = {
   '先週の支部の共同目標は{n}段目まで届きました': 'Last week your branch reached milestone {n} of the weekly goal',
   '先週の支部の共同目標は段に届きませんでした': 'Last week your branch did not reach a milestone of the weekly goal',
   '{name}さんがリプレイを共有しました': '{name} shared a replay',
+  // Round 16 integration: hosted cups (§42.7) and the season recap (§43) in the activity list; {cup} is player text
+  '{name}さんから「{cup}」に招待されました': '{name} invited you to “{cup}”',
+  '「{cup}」が始まりました': '“{cup}” has started',
+  '「{cup}」の順位は{n}位でした': 'You finished {n:ord} in “{cup}”',
+  '「{cup}」は中止になりました': '“{cup}” was cancelled',
+  '{y}年{m}月シーズンの振り返りができました': 'Your Season {m}/{y} recap is ready',
+  '{y}年の振り返りができました': 'Your {y} in review is ready',
   'プレイヤー': 'Player',
 
   // ---- error details shown to players (REQ-API-004 messages; codes are the contract)

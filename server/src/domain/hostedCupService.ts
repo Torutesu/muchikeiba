@@ -16,7 +16,7 @@ import type { HeatOutcome } from './tournaments.js';
 import {
   addInvites, applyCupRaceOutcome, cancelCup, closedNoticeFor, CUP_ID_RE, cupIdFor, cupPreview, cupView, expireCup, forgetCupPlayer,
   hostedCupsConfig, isClosed, joinCup, leaveCup, makeCupCode, markRaceStarted, newCup, nextRaceSpec, normalizeCupCode, sameDefinition,
-  validateCupInput, type CupCancelReason, type CupClosedNotice, type CupCreateInput, type CupEntrant, type CupFormat, type CupRaceSpec, type CupState,
+  validateCupInput, type CupCancelReason, type CupClosedNotice, type CupStartedNotice, type CupCreateInput, type CupEntrant, type CupFormat, type CupRaceSpec, type CupState,
 } from './hostedCups.js';
 
 // ------------------------------------------------------------------------------------------------ runner
@@ -28,6 +28,8 @@ export interface CupPorts<E> {
   startRace(spec: CupRaceSpec<E>): Promise<{ raceId: string; startAtMs: number }>;
   raceOutcome(raceId: string): Promise<HeatOutcome | null>;
   notifyClosed(playerId: string, notice: CupClosedNotice): Promise<void>;
+  /** §42.7 × §40 (Round 16 integration): the first race was assigned — each entrant but the host gets one activity entry. Best effort. */
+  notifyStarted?(playerId: string, notice: CupStartedNotice): Promise<void>;
   releaseCode(code: string, cupId: string): Promise<void>;
 }
 
@@ -115,6 +117,12 @@ export class CupRunner<E> {
       for (const e of c.entrants) { const f = c0.entrants.find((x) => x.playerId === e.playerId); if (f) e.entry = f.entry; }
       markRaceStarted(c, s, started.startAtMs, this.clock());
       this.save(c);
+      if (spec.index === 0 && this.ports.notifyStarted) {
+        for (const pid of ids) {
+          if (pid === c.hostId) continue;
+          try { await this.ports.notifyStarted(pid, { cupId: c.id, cupName: c.name, raceIndex: 0 }); } catch (e) { console.error('cup start notice failed', c.id, pid, (e as Error).message); }
+        }
+      }
       return { raceId: started.raceId, raceIndex: spec.index, startAtMs: started.startAtMs, cancelled: false };
     } finally {
       this.startingAt = 0;

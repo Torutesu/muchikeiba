@@ -294,6 +294,7 @@ const cupBackend = new MemoryCupBackend<RaceEntry>(() => master, {
   startRace: async (spec) => { cupSpecs.set(spec.raceId, spec); return { raceId: spec.raceId, startAtMs: now() + 3000 }; },
   raceOutcome: async (raceId) => cupOutcomes.get(raceId) ?? null,
   notifyClosed: async (pid, n) => { await svc.cupClosed(pid, n); },
+  notifyStarted: async (pid, n) => { await svc.cupStarted(pid, n); }, // round 16 integration: the cup started (§42.7 × §40)
 }, now);
 try {
   const saved = JSON.parse(localStorage.getItem(CUP_KEY) ?? 'null') as { cups: CupState<RaceEntry>[]; codes: [string, string][] } | null;

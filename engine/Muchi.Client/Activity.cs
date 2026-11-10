@@ -22,16 +22,21 @@ namespace Muchi.Client
     {
         public const string FriendRequest = "friend_request", FriendAccepted = "friend_accepted", RivalWeek = "rival_week", RivalRecord = "rival_record",
             StableLike = "stable_like", TeamCheer = "team_cheer", TournamentResult = "tournament_result", GiftArrived = "gift_arrived",
-            TeamGoalTier = "team_goal_tier", TeamGoalWeek = "team_goal_week", ReplayShare = "replay_share";
-        public static readonly string[] All = { FriendRequest, FriendAccepted, RivalWeek, RivalRecord, StableLike, TeamCheer, TournamentResult, GiftArrived, TeamGoalTier, TeamGoalWeek, ReplayShare };
+            TeamGoalTier = "team_goal_tier", TeamGoalWeek = "team_goal_week", ReplayShare = "replay_share",
+            // Round 16 integration: hosted cups (§42.7) and the season recap (§43)
+            CupInvited = "cup_invited", CupStarted = "cup_started", CupFinished = "cup_finished", CupCancelled = "cup_cancelled", RecapReady = "recap_ready";
+        public static readonly string[] All = { FriendRequest, FriendAccepted, RivalWeek, RivalRecord, StableLike, TeamCheer, TournamentResult, GiftArrived, TeamGoalTier, TeamGoalWeek, ReplayShare,
+            CupInvited, CupStarted, CupFinished, CupCancelled, RecapReady };
     }
 
     /// <summary>Where an entry leads (`link.screen`).</summary>
     public static class ActivityScreens
     {
         public const string Friends = "friends", Rival = "rival", Stable = "stable", TeamFeed = "team_feed", Tournaments = "tournaments",
-            GiftBox = "gift_box", TeamGoal = "team_goal", Replay = "replay", WhatsNew = "whats_new";
-        public static readonly string[] All = { Friends, Rival, Stable, TeamFeed, Tournaments, GiftBox, TeamGoal, Replay, WhatsNew };
+            GiftBox = "gift_box", TeamGoal = "team_goal", Replay = "replay", WhatsNew = "whats_new",
+            /// <summary>Round 16: the hosted cup (LinkId = cupId) and the season recap (LinkId = recap id, e.g. season:2026-11).</summary>
+            Cups = "cups", Recap = "recap";
+        public static readonly string[] All = { Friends, Rival, Stable, TeamFeed, Tournaments, GiftBox, TeamGoal, Replay, WhatsNew, Cups, Recap };
     }
 
     public sealed class ActivityActor

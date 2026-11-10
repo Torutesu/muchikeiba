@@ -51,6 +51,7 @@ export class CupDO extends DurableObject<Env> {
       startRace: async (spec) => unwrap((await this.stub(this.env.MATCHMAKER, 'ranked-jp').cupStart!({ raceId: spec.raceId, playerIds: spec.playerIds, entries: spec.entries, conditions: spec.conditions })) as Envelope<{ raceId: string; startAtMs: number }>),
       raceOutcome: async (raceId) => (await this.stub(this.env.RACE_ROOM, raceId).heatResult!()) as HeatOutcome | null,
       notifyClosed: async (pid, notice) => { unwrap(await this.player(pid).invoke('cupClosed', [pid, notice])); },
+      notifyStarted: async (pid, notice) => { unwrap(await this.player(pid).invoke('cupStarted', [pid, notice])); }, // §42.7 × §40
       releaseCode: async (code, cupId) => { unwrap((await this.stub(this.env.CUPS!, cupCodeObjectName(code)).codeRelease!(code, cupId)) as Envelope<boolean>); },
     };
   }

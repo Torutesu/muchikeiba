@@ -5295,13 +5295,15 @@ function GiftResult(c) {
 // link per row, mark read up to the newest shown entry on opening. Display + links only: a gift row leads to the gift box,
 // never a claim button. Every value comes from L.activity (the real PlayerService and the same name resolution as the route).
 // ムチ一閃 tone: paddock art, translucent navy panels, letter-spaced cyan labels, one skewed cyan CTA ».
-const ACT_LABEL = { friend_request: 'フレンド', friend_accepted: 'フレンド', rival_week: 'ライバル', rival_record: 'ライバル', stable_like: 'マイ厩舎', team_cheer: '支部', tournament_result: '大会', gift_arrived: 'プレゼント', team_goal_tier: '支部', team_goal_week: '支部', replay_share: 'リプレイ' };
+const ACT_LABEL = { friend_request: 'フレンド', friend_accepted: 'フレンド', rival_week: 'ライバル', rival_record: 'ライバル', stable_like: 'マイ厩舎', team_cheer: '支部', tournament_result: '大会', gift_arrived: 'プレゼント', team_goal_tier: '支部', team_goal_week: '支部', replay_share: 'リプレイ', cup_invited: 'カップ', cup_started: 'カップ', cup_finished: 'カップ', cup_cancelled: 'カップ', recap_ready: '振り返り' };
 const ACT_PAGE = 7;
 const actState = { cursor: null, stack: [] };
 const actGo = (screen, id) => ({
   friends: () => Invite(), rival: () => Rival(), stable: () => Stable(), team_feed: () => TeamFeed(), tournaments: () => EventTop(),
   gift_box: () => GiftBox('box'), team_goal: () => TeamGoal(), whats_new: () => Home(),
   replay: () => FriendReplays(), // §37: the friend's public replays (the entry's link id is the friend; the demo has one friend)
+  cups: (cupId) => (cupId ? CupLobby(cupId) : HostedCups()), // round 16 (§42.7): the cup the entry names
+  recap: (rid) => (rid ? Recap(rid) : Recaps()), // round 16 (§43): the recap that became ready
 })[screen]?.(id);
 /** The home bell (under the gift envelope, clear of the rival strip) with the unread count from the player view (REQ-ACT-009). */
 function ActivityBell(x = 1088, y = 122) {

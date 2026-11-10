@@ -471,6 +471,8 @@ export interface CupClosedNotice {
   cupId: string; cupName: string; format: CupFormat; status: 'finished' | 'cancelled'; partial: boolean;
   cancelReason: CupCancelReason | null; rank: number | null; points: number | null; entrants: number; at: number; role: 'host' | 'entrant' | 'invited';
 }
+/** §42.7 × §40: the cup's first race started (the activity entry of each entrant). */
+export interface CupStartedNotice { cupId: string; cupName: string; raceIndex: number }
 export function closedNoticeFor(c: CupState, playerId: string): CupClosedNotice {
   const st = c.standings?.find((s) => s.playerId === playerId) ?? null;
   const role = roleOf(c, playerId);

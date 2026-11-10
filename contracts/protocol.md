@@ -1987,6 +1987,10 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 | `team_goal_tier` | 支部の共同目標の段に到達（`teamGoalMilestone`、`team_goal`） | `team_goal_tier:{teamId}:{週}:{段}` | しない | `friends` | `team_goal` |
 | `team_goal_week` | 共同目標の週の結果（`teamGoalReward`） | `team_goal_week:{週}` | しない | `friends` | `team_goal` |
 | `replay_share` | フレンドがマイリプレイ（§37）の保存を公開にしたとき（`MyReplaysService.update` が非公開→公開の時だけ各フレンドへ `activityReplayShare`、Round 15 統合） | `replay_share:{owner}:{raceId}`（公開を外してまた公開しても1件） | しない | `friends` | `replay`（`id` = 公開した人。フレンドのリプレイ一覧へ） |
+| `cup_invited` | カップへの招待（`cupInvited`、`cup_invite`。§42、Round 16 統合） | `cup_invited:{cupId}` | しない | `invites` | `cups`（`id` = カップ id）。`{cup}` はカップ名（訳さない） |
+| `cup_started` | カップの最初のレースが始まった（`CupRunner.start` → 主催者以外の各参加者へ `cupStarted`、ポート `notifyStarted`。参加中の人だけ） | `cup_started:{cupId}` | しない | `friends` | `cups` |
+| `cup_finished` / `cup_cancelled` | カップが終わった（順位 `{n}`）／中止になった（`cupClosed`、参加していた人だけ。招待されただけの人には書かない） | `cup_closed:{cupId}` | しない | `friends` | `cups` |
+| `recap_ready` | 振り返りができた（§43、`rollRecaps` が作ったものごと。`vars.kind` = `season`／`year`） | `recap_ready:{recapId}` | しない | `season` | `recap`（`id` = `season:2026-11` など） |
 
 - 大会（`tournament`）と共同目標（`team_goal`）の賞品はプレゼントボックスにも入るが、`gift_arrived` は書かない（同じことを2回書かない。各行のリンクから見られる）。
 - おかえり・新着情報（REQ-CB-*）は**項目にしない**：一覧の `links.whatsNew`（新着の数）でその画面へ案内するだけ。週替わりチャレンジ（§31）の結果は自分で走った直後に結果画面で出るので、留守の間の出来事にならない（項目なし）。
@@ -2147,7 +2151,7 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 ### 42.6 アカウント削除
 削除の手順に `cups` を足す（`replays` の後）：主催中のカップは中止（`host_deleted`）、参加中のカップは最初のレースの前なら外し、後なら名前を `DELETED_PLAYER_NAME` にして棄権にする。状態の一覧は最後の `wipe` で消える。
 
-### 42.7 活動（§40）に書くところ（Round 15 の統合で実装、ここでは書かない）
+### 42.7 活動（§40）に書くところ（Round 16 の統合で実装：§40 の表の `cup_invited`・`cup_started`・`cup_finished`／`cup_cancelled`）
 招待を受けた（`cupInvited`）・カップが始まった（最初のレースの割り当て）・カップが終わった／中止になった（`cupClosed`、順位とトロフィー）の3つ。
 
 ## 43. シーズンの振り返り（season recap、REQ-RECAP-001〜016、`server/src/domain/seasonRecap.ts`、C# `SeasonRecap.cs`（`RecapShare`）・`Muchi.Game.SeasonRecapModel`）

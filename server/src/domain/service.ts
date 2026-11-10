@@ -95,7 +95,7 @@ import { dismissNextAction, nextActionsView, noteFeatures, type TeamGoalBrief } 
 import { attachRecapRank, noteRecapRace, noteRecapReplaySaved, noteRecapTeamGoal, recapProgress, recapView, recapsList, rollRecaps, type RecapStepName } from './seasonRecap.js';
 import {
   countCodeAttempt, noteCupCommitted, playerCupsView, receiveCupClosed, receiveCupInvite, releaseCup, reserveCup, ensureCups,
-  type CupClosedNotice, type CupFormat, type PlayerCupInvite,
+  type CupClosedNotice, type CupFormat, type CupStartedNotice, type PlayerCupInvite,
 } from './hostedCups.js';
 import { abortChallengeSubmit, prepareChallengeSubmit, recordChallengeResult, startChallenge, weeklyChallengeView, type WchStartInput } from './weeklyChallenge.js';
 import {
@@ -247,7 +247,12 @@ export class PlayerService {
     const draft: PlayerState = structuredClone(current);
     const now = this.d.clock();
     rollSeason(this.d.master, draft, now);
-    rollRecaps(this.d.master, draft, now); // REQ-RECAP-002/003: a closed season / game year becomes its recap (once)
+    // REQ-RECAP-002/003: a closed season / game year becomes its recap (once); §43 × §40: one activity entry per recap
+    for (const rid of rollRecaps(this.d.master, draft, now)) {
+      const [kind, period] = rid.split(':') as [string, string];
+      const [y, mo] = period.split('-');
+      recordActivity(this.d.master, draft, { kind: 'recap_ready', source: `recap_ready:${rid}`, vars: kind === 'year' ? { kind, y: String(Number(y)) } : { kind, y: String(Number(y)), m: String(Number(mo)) }, linkId: rid }, now);
+    }
     settlePityGroups(this.d.master, draft, now);
     const paidBefore = draft.wallet.paid;
     const standingBefore = standingKey(draft);
@@ -966,13 +971,31 @@ export class PlayerService {
     return this.tx(id, null, (s, now) => {
       const ok = receiveCupInvite(this.d.master, s, inv, now);
       if (ok && this.d.master.push.templates['cup_invite']) { ensurePush(this.d.master, s); enqueuePush(this.d.master, s, 'cup_invite', { name: inv.hostName }, now); }
+      // §42.7 × §40: one activity entry per cup (recordActivity drops a blocked host and a repeat)
+      if (ok) recordActivity(this.d.master, s, { kind: 'cup_invited', source: `cup_invited:${inv.cupId}`, actor: { id: inv.hostId, name: inv.hostName }, vars: { cup: inv.cupName }, linkId: inv.cupId }, now);
       return ok;
     });
   }
   /** REQ-CUP-012/014: the cup closed (result, trophy; once per cup). A wiped account answers ok (nothing to tell). */
   async cupClosed(id: string, n: CupClosedNotice) {
     if (await this.wiped(id)) return { recorded: false };
-    return this.tx(id, null, (s, _now, emit) => ({ recorded: receiveCupClosed(this.d.master, s, n, emit) !== null }));
+    return this.tx(id, null, (s, now, emit) => {
+      const r = receiveCupClosed(this.d.master, s, n, emit);
+      // §42.7 × §40: the result (or the cancellation) once per cup, for those who were in it
+      if (r) {
+        const finished = r.status === 'finished' && r.rank !== null;
+        recordActivity(this.d.master, s, { kind: finished ? 'cup_finished' : 'cup_cancelled', source: `cup_closed:${n.cupId}`, vars: finished ? { cup: n.cupName, n: String(r.rank) } : { cup: n.cupName }, linkId: n.cupId }, now);
+      }
+      return { recorded: r !== null };
+    });
+  }
+  /** §42.7 × §40: the cup's first race started — one activity entry (only while the player is still in that cup). */
+  async cupStarted(id: string, n: CupStartedNotice) {
+    if (await this.wiped(id)) return false;
+    return this.tx(id, null, (s, now) => {
+      if (!s.cups?.active.some((r) => r.cupId === n.cupId)) return false;
+      return recordActivity(this.d.master, s, { kind: 'cup_started', source: `cup_started:${n.cupId}`, vars: { cup: n.cupName }, linkId: n.cupId }, now) === 'recorded';
+    });
   }
   async cupHorseName(id: string, horseId: string) { return getHorse(await this.load(id), horseId).name ?? ''; }
 

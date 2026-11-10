@@ -239,6 +239,8 @@ async function changeMaintenance(r: AdminRequest, note: string, change: (m: Main
   const problems = maintenanceProblems(next);
   if (problems.length) throw new AppError('CONFIG_INVALID', problems.join('; '), 400);
   const staged = await r.ctx.ops.config.stage({ ...cur.bundle, maintenance: next }, r.principal.id, note, r.now);
+  // two operators at once: activating ours over a version someone activated meanwhile would drop their change
+  if ((await r.ctx.ops.config.active(r.now, 'x')).versionId !== cur.versionId) throw new AppError('CONFLICT', 'the active config changed while this was prepared; reload and try again');
   const activation = await r.ctx.ops.config.schedule(staged.version.id, r.now, r.principal.id, r.reason!, r.now);
   return { before: cur.maintenance, after: next, result: { versionId: staged.version.id, activationId: activation.id, maintenance: next } };
 }

@@ -241,7 +241,7 @@ describe('REQ-RECAP-006/007 sources read by period, and the hooks', () => {
     expect(svc).toMatch(/if \(!r\.alreadySaved\) noteRecapReplaySaved/);
     expect(svc.match(/noteRecapTeamGoal\(this\.d\.master, s, goal, now\)/g)).toHaveLength(2);
     expect(svc).toMatch(/noteRecapRace\(this\.d\.master, s, r, now\)/);
-    expect(svc).toMatch(/rollSeason\(this\.d\.master, draft, now\);\n\s+rollRecaps\(this\.d\.master, draft, now\)/);
+    expect(svc).toMatch(/rollSeason\(this\.d\.master, draft, now\);\n[^\n]*\n\s+for \(const rid of rollRecaps\(this\.d\.master, draft, now\)\)/); // + the recap_ready activity entry (Round 16 integration)
     expect(rival).toMatch(/noteRecapRival\(m, s, outcome, now\)/);
   });
 });

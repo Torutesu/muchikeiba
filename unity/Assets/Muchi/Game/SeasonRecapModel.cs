@@ -43,8 +43,9 @@ namespace Muchi.Game
     ///    Both are idempotent on the server, so a failed report is simply sent again next time;
     ///  - a short recap (little activity) has few pages but is never empty;
     ///  - 「順位を隠す」 is remembered on the device and drops every rank card from the share set;
-    ///  - reduced motion: <see cref="ReducedMotion"/> is the hook for the accessibility setting (§41, Round 15 — not on this
-    ///    base yet). When it answers true, pages cut instead of sliding and numbers do not count up.
+    ///  - reduced motion: the account's accessibility setting (§41 「動きを減らす」, GameBackend.Accessibility — Round 16
+    ///    integration) or <see cref="ReducedMotion"/> (the OS preference the Unity side may pass in). When either is on, pages
+    ///    cut instead of sliding and numbers do not count up.
     /// KPI: recap_open / recap_complete are server events; recap_share (<see cref="Shared"/>) when a card goes to the OS share sheet.
     /// </summary>
     public sealed class SeasonRecapModel : ScreenModel
@@ -62,13 +63,15 @@ namespace Muchi.Game
         public const string TextYearBadge = "1年";
 
         /// <summary>
-        /// §41 hook: the accessibility setting "reduce motion" (Round 15). Defaults to the OS preference the Unity side passes in;
-        /// false until then.
+        /// The OS "reduce motion" preference the Unity side may pass in (false until then). The account's §41 setting is read
+        /// from the backend on its own (<see cref="Reduced"/>), so this hook is only for the OS level.
         /// </summary>
         public static Func<bool> ReducedMotion = () => false;
+        /// <summary>§41 (Round 16 integration): the account setting 「動きを減らす」 or the OS preference.</summary>
+        public bool Reduced => (ReducedMotion?.Invoke() ?? false) || MotionPolicy.For(B?.Accessibility).Reduced;
         /// <summary>Page transition length (0 = cut) and the big number's count-up length (0 = shown at once).</summary>
-        public int TransitionMs => ReducedMotion() ? 0 : 420;
-        public int CountUpMs => ReducedMotion() ? 0 : 900;
+        public int TransitionMs => Reduced ? 0 : 420;
+        public int CountUpMs => Reduced ? 0 : 900;
 
         private readonly NowMs _now;
         private readonly Action<AnalyticsEvent> _track;

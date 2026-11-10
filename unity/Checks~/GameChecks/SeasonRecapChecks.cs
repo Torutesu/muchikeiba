@@ -87,11 +87,17 @@ static class SeasonRecapChecks
         var sh = await m.OpenAsync("season:2026-10");
         check(sh.Ok && m.View.Short && m.Pages.Count == 3 && m.View.SinceNote == "2026-10-20からの記録です" && m.Pages.Last().Label == "次のシーズンも、あなたのペースで。", "recap: the short version (3 pages, honest since-note)");
 
-        // reduced motion hook (§41 not on this base yet)
+        // reduced motion: the OS hook
         check(m.TransitionMs > 0 && m.CountUpMs > 0, "recap: motion on by default");
         SeasonRecapModel.ReducedMotion = () => true;
         check(m.TransitionMs == 0 && m.CountUpMs == 0, "recap: the reduced-motion hook cuts pages and count-ups");
         SeasonRecapModel.ReducedMotion = () => false;
+        // Round 16 integration: the account's §41 setting cuts them too (GameBackend.Accessibility), and switching it back restores them
+        var a11y = b.Accessibility;
+        b.Accessibility = new AccessibilitySettings { ReduceMotion = true };
+        check(m.Reduced && m.TransitionMs == 0 && m.CountUpMs == 0, "recap: the §41 「動きを減らす」 setting cuts pages and count-ups");
+        b.Accessibility = a11y;
+        check(!m.Reduced && m.TransitionMs > 0, "recap: motion back when the setting is off");
 
         // English: the server's lines arrive translated; names stay as typed; the model's own texts have English
         var en = RecapView.FromJson(ViewEn);

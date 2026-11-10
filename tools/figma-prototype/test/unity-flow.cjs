@@ -692,13 +692,13 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     assert.equal((await recap()).short, true);
     assert.equal((await recap()).steps, 4, 'recap: the short version has four pages');
     // reduced motion: the number is shown at once, the art does not drift
-    await page.evaluate(() => localStorage.setItem('muchi.a11y.reduceMotion', '1'));
+    await page.evaluate(() => globalThis.__muchi.a11y.set('reduceMotion', true)); // the §41 setting itself (Round 16 integration)
     await page.evaluate(() => globalThis.__muchi.show('Recap', 'year:2026', 0)); await waitScreen('recap'); await waitIn('.rc-big');
     assert.equal(await page.locator('.screen.in').getAttribute('data-reduced'), 'true');
     assert.equal(await page.locator('.screen.in .rc-big .rc-num').textContent(), '26', 'recap: reduced motion shows the number at once');
     assert.equal(await page.locator('.screen.in .art.drift').count(), 0);
     await shot('recap-year-reduced-motion', 200);
-    await page.evaluate(() => localStorage.removeItem('muchi.a11y.reduceMotion'));
+    await page.evaluate(() => globalThis.__muchi.a11y.set('reduceMotion', false));
     await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
   }
 

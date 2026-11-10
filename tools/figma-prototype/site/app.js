@@ -4959,7 +4959,8 @@ const RC_HIDE_KEY = 'muchi.recap.hideRank';
  * §41 hook (accessibility, Round 15 — not on this base yet): "reduce motion" will come from the accessibility setting. Until then
  * the OS preference and a local key stand in. When on: pages cut instead of sliding, numbers do not count up.
  */
-const rcReducedMotion = () => prefs.get('muchi.a11y.reduceMotion', '0') === '1' || !!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+// Round 16 integration: the real §41 setting (その他 / アクセシビリティ 「動きを減らす」) or the OS preference — not a separate key
+const rcReducedMotion = () => reduced() || !!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 const rcTyped = (node) => { node.classList.add('keep-ja', 'typed'); node.dataset.typed = '1'; return node; };
 
 async function Recaps() {

@@ -447,6 +447,8 @@ export const MuchiLogic = {
   // and the pure scorer itself (the page recomputes the tips for another selected horse; the WASM C# mirror must agree).
   raceAdvice: (q: AdviceQuery) => wrap(() => svc.raceAdvice(ID, q)),
   computeAdvice: (input: AdviceInput) => computeRaceAdvice(input),
+  // round 18 (REQ-PRAC-002): GET /v1/practice/catalog on the real service — read-only; there is no practice result to send anywhere
+  practiceCatalog: () => wrap(() => svc.practiceCatalog(ID)),
   adviceLint: (texts: string[]) => texts.flatMap((t) => adviceTextProblems(t)),
   adviceTexts: (a: Parameters<typeof adviceTexts>[0]) => adviceTexts(a),
   weeklyChallenges: () => wrap(() => svc.wchView(ID)),

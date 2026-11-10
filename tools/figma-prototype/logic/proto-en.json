@@ -1209,6 +1209,11 @@
   "カップ名は1〜20文字です（URLは使えません）": "Cup names are 1–20 characters (no URLs)",
   "アカウント削除の手続き中のため、参加できません": "You can't join while your account deletion is pending",
   "{n}着": "{n:ord}",
-  "{n}pt": "{n} pt"
+  "{n}pt": "{n} pt",
+  "練習レース": "Practice race", "01 / 馬": "01 / Horse", "02 / コース・馬場": "02 / Course and going", "03 / 頭数・相手の強さ": "03 / Runners and rival strength",
+  "ナイター": "Night", "昼": "Day", "照明なし（昼だけ）": "No lights (day only)", "{n}〜{m}頭": "{n}–{m} runners", "練習のオプション": "Practice options",
+  "何回でも走れます。端末の中だけで走るので、オフラインでも遊べます。": "Race as often as you like. Practice runs only on your device, so it works offline too.",
+  "練習のリプレイはマイリプレイに保存されません。写真は撮れます。": "Practice replays are not saved to My Replays. You can take photos.",
+  "練習を始める": "Start practice", "残り距離": "Distance left", "スロー 0.5×": "Slow 0.5×", "やり直す": "Restart"
  }
 }

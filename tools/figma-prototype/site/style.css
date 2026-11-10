@@ -641,3 +641,12 @@ html[data-color-mode="cvd"] .a11y-swatch .g.crit { background: repeating-linear-
 .rc-label { text-shadow: 0 2px 12px rgba(0, 0, 0, .6); }
 .rc-note, .rc-unit, .rc-moment .label { text-shadow: 0 2px 10px rgba(0, 0, 0, .65); }
 .screen.rc-reduced, .screen.rc-reduced * { transition: none !important; animation: none !important; }
+/* round 18: 練習レース (§50.4) — the whip band on a remaining-distance bar (token cue.whipChance; brighter inside, never blinking), the slow chip */
+.pr-bar { background: rgba(var(--navy-rgb), .72); border-radius: var(--radius); padding: 6px 12px; box-sizing: border-box; }
+.pr-bar .t { font-size: 11px; letter-spacing: .2em; color: var(--cyan); font-weight: 700; white-space: nowrap; }
+.pr-bar .track { position: relative; height: 8px; margin-top: 7px; background: rgba(255, 255, 255, .16); border-radius: 4px; }
+.pr-bar .band { position: absolute; top: 0; bottom: 0; background: var(--a11y-cue-whipChance); opacity: .4; border-radius: 4px; transition: opacity .2s; }
+.pr-bar.in .band { opacity: 1; box-shadow: 0 0 10px var(--a11y-cue-whipChance); }
+.pr-bar .me { position: absolute; top: -4px; width: 4px; height: 16px; margin-left: -2px; background: var(--a11y-position-self); border-radius: 2px; }
+.chip.pr-slow { font-size: 14px; letter-spacing: .18em; font-weight: 700; color: var(--cyan); justify-content: center; }
+html[data-reduce-motion="on"] .pr-bar .band { transition: none; }

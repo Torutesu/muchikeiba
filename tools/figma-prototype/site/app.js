@@ -2307,9 +2307,10 @@ async function Settings() {
     // round 17 (REQ-RPT-011): the block list and what a block does
     ['通報とブロック', () => BlockList(), 'blocks']];
   moreRows.forEach(([n, go, action, state], i) => {
-    // R15 integration: nine rows (a11y, packs, the advice switch…) of 38 px under the kicker, clear of the legal block below
-    // round 17: ten rows (ヘルプ first) of 36 px, clear of the legal block below
-    const b = Btn(n, 36, 96 + i * 36, 408, 36, go, 'row' + (i === moreRows.length - 1 ? ' last' : ''), m); b.style.fontSize = '18px';
+    // R15 integration: nine rows of 38 px under the kicker, clear of the legal block below (the kicker at y 466).
+    // R17 integration: eleven rows (ヘルプ first, 通報とブロック last) — the row height follows the count (33 px for 11)
+    const rowH = Math.min(36, Math.floor(364 / moreRows.length));
+    const b = Btn(n, 36, 96 + i * rowH, 408, rowH, go, 'row' + (i === moreRows.length - 1 ? ' last' : ''), m); b.style.fontSize = rowH < 36 ? '17px' : '18px';
     if (action) b.dataset.action = action;
     if (state) b.dataset.state = state;
     const em = document.createElement('em'); em.textContent = state ?? '›'; b.appendChild(em);

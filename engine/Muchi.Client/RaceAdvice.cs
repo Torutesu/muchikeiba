@@ -544,8 +544,11 @@ namespace Muchi.Client
     /// <summary>GET /v1/races/advice query (contracts/protocol.md §39.4).</summary>
     public sealed class RaceAdviceQuery
     {
-        /// <summary>ranked | friend | event | challenge | timeattack | tutorial</summary>
+        /// <summary>ranked | friend | event | challenge | timeattack | tutorial | cup (Round 16: a hosted cup, its course known)</summary>
         public string Context = "ranked";
+        /// <summary>Round 16 integration (§42 × §39): the advice for a hosted cup race — the cup's own course, going and lighting.</summary>
+        public static RaceAdviceQuery ForCup(string trackId, string going, bool night, string horseId = null) =>
+            new RaceAdviceQuery { Context = "cup", TrackId = trackId, Going = going, Night = night, HorseId = horseId };
         public string TrackId, Going, ChallengeId, EventId, HorseId;
         public bool? Night;
         /// <summary>Friend rooms: the other members' running styles as the room shows them (max 11).</summary>

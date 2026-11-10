@@ -106,7 +106,7 @@ const adProps = z.object({ placementId: str(32), surface: z.enum(AD_SURFACE_NAME
 /** REQ-HIST-011: the history screen's tabs (contracts/protocol.md §33.5). */
 export const HISTORY_TABS = ['purchases', 'coins_paid', 'coins_free', 'gacha'] as const;
 /** REQ-ADV-011: where the pre-race advice was shown (contracts/protocol.md §39.7; the same names as the advice contexts). */
-export const ADVICE_KPI_CONTEXTS = ['ranked', 'friend', 'event', 'challenge', 'timeattack', 'tutorial'] as const;
+export const ADVICE_KPI_CONTEXTS = ['ranked', 'friend', 'event', 'challenge', 'timeattack', 'tutorial', 'cup'] as const;
 /** REQ-PHOTO-014: where a photo was taken (photoMode.ts PHOTO_SOURCES). */
 export const PHOTO_SOURCE_NAMES = ['paused', 'result', 'replay'] as const;
 /** REQ-ACT-015: the activity list's kinds and deep-link screens (domain/activity.ts; repeated here to keep kpi.ts import-free). */

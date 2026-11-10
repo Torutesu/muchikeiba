@@ -21,8 +21,9 @@ import {
   type AdviceCourse, type AdviceHorse, type AdviceInput, type AdviceMode, type AdviceOutput,
 } from './raceAdvice.js';
 
-export type AdviceContext = 'ranked' | 'friend' | 'event' | 'challenge' | 'timeattack' | 'tutorial';
-export const ADVICE_CONTEXTS: readonly AdviceContext[] = ['ranked', 'friend', 'event', 'challenge', 'timeattack', 'tutorial'];
+/** `cup` (Round 16 integration, §42): a hosted cup's race — its course and going are known before the start (the cup's conditions). */
+export type AdviceContext = 'ranked' | 'friend' | 'event' | 'challenge' | 'timeattack' | 'tutorial' | 'cup';
+export const ADVICE_CONTEXTS: readonly AdviceContext[] = ['ranked', 'friend', 'event', 'challenge', 'timeattack', 'tutorial', 'cup'];
 
 export interface AdviceQuery {
   context: AdviceContext;
@@ -77,7 +78,7 @@ const activeHorses = (m: Master, s: PlayerState) => s.horses.filter((h) => h.sta
 export function raceAdviceFor(m: Master, s: PlayerState, q: AdviceQuery, now: number, base: Ruleset = DEFAULT_RULESET): AdviceOutput & { context: AdviceContext; input: AdviceInput | null } {
   if (q.context === 'tutorial') return { ...tutorialAdvice(), context: 'tutorial', input: null };
   if (q.field && q.field.length > 11) throw new AppError('BAD_REQUEST', 'field: at most 11 runners');
-  let mode: AdviceMode = q.context;
+  let mode: AdviceMode = q.context === 'cup' ? 'friend' : q.context;
   let courses: AdviceCourse[];
   let horses = activeHorses(m, s);
   let statCap: number | null = null;
@@ -93,6 +94,11 @@ export function raceAdviceFor(m: Master, s: PlayerState, q: AdviceQuery, now: nu
       field = null;
       break;
     }
+    case 'cup':
+      // §42: the cup's conditions are friend-room conditions (no stat cap, no bond); the course is always known
+      if (!q.trackId) throw new AppError('BAD_REQUEST', 'trackId is required');
+      courses = [knownCourse(m, q.trackId, 'friend', q, now)];
+      break;
     case 'friend':
       courses = q.trackId ? [knownCourse(m, q.trackId, 'friend', q, now)] : pool(m, m.tracks.map((t) => t.id), 'friend', now);
       break;
@@ -130,7 +136,7 @@ export function raceAdviceFor(m: Master, s: PlayerState, q: AdviceQuery, now: nu
     default:
       throw new AppError('BAD_REQUEST', `unknown context ${String(q.context)}`);
   }
-  mode = q.context;
+  mode = q.context === 'cup' ? 'friend' : q.context; // the device recompute runs the friend-room rules for a cup
   const input: AdviceInput = {
     v: ADVICE_VERSION, mode, courses, horses, field, rules: adviceRules(ruleset), statCap, fixedStats,
     focusHorseId: q.horseId ?? null,

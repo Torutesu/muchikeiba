@@ -168,7 +168,7 @@ namespace Muchi.Client
         }
 
         // ---- REQ-ADV-011 pre-race advice (contracts/protocol.md §39.7). Not sent when the player turned advice off.
-        public static readonly string[] AdviceContexts = { "ranked", "friend", "event", "challenge", "timeattack", "tutorial" };
+        public static readonly string[] AdviceContexts = { "ranked", "friend", "event", "challenge", "timeattack", "tutorial", "cup" };
 
         /// <summary>The advice panel was shown (once per screen visit). horses = horses listed (0..30), suggested = a horse was suggested.</summary>
         public static AnalyticsEvent AdviceView(long atMs, string context, int horses, bool suggested)

@@ -1916,7 +1916,7 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 クエリ：
 | キー | 意味 |
 |---|---|
-| `context` | `ranked`（既定）/`friend`/`event`/`challenge`/`timeattack`/`tutorial` |
+| `context` | `ranked`（既定）/`friend`/`event`/`challenge`/`timeattack`/`tutorial`/`cup`（Round 16 統合：プレイヤー主催カップ §42） |
 | `trackId` | コース（`friend`・`timeattack` で使う。`event` は開催のコースの1つなら使う） |
 | `going` / `night` | 部屋の条件など、画面に出ている馬場・ナイター（コースの面に合わない馬場は 400。ナイターは照明のある競馬場だけ）。無ければその日の馬場（REQ-RACE-037） |
 | `challengeId` | `challenge`：今週のチャレンジ（無ければ 404） |
@@ -1933,6 +1933,7 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 | `challenge` | チャレンジのコース・馬場・ナイター | **貸し出し馬**＋脚質の条件に合う自分の馬 | CPU の頭数（脚質は不明） | `statCap`、スキルなし |
 | `timeattack` | `trackId`（必須、馬場は良、昼） | 現役の馬 | 1頭 | `statCap`、スキルなし |
 | `tutorial` | — | — | — | 39.2 の決まった版 |
+| `cup` | `trackId`（必須）・`going`・`night` はカップの条件（§42、出走前に決まっている） | 現役の馬 | フレンド部屋と同じ（`field` 任意） | 上限なし（入力の `mode` は `friend`：端末の再計算もフレンド部屋のルール） |
 
 応答 = `AdviceOutput` ＋ `context` ＋ `input`（計算に使った `AdviceInput`。端末は選ぶ馬が変わったら `focusHorseId` だけ変えて `RaceAdvice.Compute` で計算し直す。中身は自分の馬とルールセットの値だけ）：
 ```json

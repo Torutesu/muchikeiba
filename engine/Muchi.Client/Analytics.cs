@@ -219,6 +219,29 @@ namespace Muchi.Client
             return new AnalyticsEvent("activity_tap", atMs, JsonNode.Obj().Set("kind", kind).Set("screen", screen));
         }
 
+        // ---- REQ-MNT-013 (§46.8) maintenance / update prompts (client events: the server does not count blocked requests)
+        public static readonly string[] MaintenanceGroups = { "gacha", "shop", "ranked", "teams", "events", "tournaments", "training", "time_attack", "social", "core" };
+        private static readonly string[] UpgradeKinds = { "required", "recommended", "engine" };
+        private static readonly string[] UpgradeActions = { "shown", "store", "later" };
+        private static readonly System.Text.RegularExpressions.Regex WindowId = new System.Text.RegularExpressions.Regex("^[a-z0-9_-]{1,40}$");
+
+        /// <summary>A 503 MAINTENANCE was met (once per window and group per app run).</summary>
+        public static AnalyticsEvent MaintenanceBlock(long atMs, string group, string windowId)
+        {
+            if (IndexIn(MaintenanceGroups, group) < 0) throw new ArgumentException("unknown maintenance group " + group);
+            if (windowId == null || !WindowId.IsMatch(windowId)) throw new ArgumentException("bad window id");
+            return new AnalyticsEvent("maintenance_block", atMs, JsonNode.Obj().Set("group", group).Set("windowId", windowId));
+        }
+
+        /// <summary>An update prompt was shown or acted on. platform: "ios" | "android" (anything else is sent as "other").</summary>
+        public static AnalyticsEvent UpgradePrompt(long atMs, string kind, string action, string platform)
+        {
+            if (IndexIn(UpgradeKinds, kind) < 0) throw new ArgumentException("unknown upgrade kind " + kind);
+            if (IndexIn(UpgradeActions, action) < 0) throw new ArgumentException("unknown upgrade action " + action);
+            string p = platform == "ios" || platform == "android" ? platform : "other";
+            return new AnalyticsEvent("upgrade_prompt", atMs, JsonNode.Obj().Set("kind", kind).Set("action", action).Set("platform", p));
+        }
+
         // ---- REQ-AD-010 rewarded ads (the reward itself is the server event ad_reward; never sent from here)
         private static readonly string[] AdSurfaces = { "home", "result", "time_attack", "shop" };
         private static readonly string[] AdOutcomes = { "shown", "no_fill", "failed", "closed_early" };

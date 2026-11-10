@@ -110,6 +110,8 @@ static class Program
         await TeamGoalChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 14: 殿堂・引退式 (HallModel: gallery, ceremony once, retire, friend's hall, progress, visibility; REQ-HOF-*)");
         await HallChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 17: メンテナンス・強制アップデート (MaintenanceModel: 503/426 via ApiClient, scoped vs all, offline, reload, home strip, recommended once, KPI; REQ-MNT-*)");
+        await MaintenanceChecks.Run(Check);
         Console.WriteLine("== round 14: 勝負服エディタ (SilksEditorModel: try-on 試着中, keyed part purchase, readability, presets, refund notice; REQ-SILK-*)");
         await SilksEditorChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 14: 実況パック (CommentaryPackModel: list, sample, equip, calm confirm, keyed buy, T6, race templates, offline; REQ-CMT-*)");

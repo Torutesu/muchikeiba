@@ -1080,3 +1080,16 @@ WHERE blob1 IN ('block_add', 'block_remove') AND timestamp > NOW() - INTERVAL '3
 GROUP BY event, origin ORDER BY n DESC
 - 通報の中身（誰が誰を・写し・補足）は KPI ではなく運営コンソールの通報の列（`/v1/admin/player-reports`）で見る。1人が1日に出せる数は `reports.perDay` までなので、通報者ごとの数が多い日は「重み」（§47.7）と合わせて確認する。
 - 「通報したらブロックもする」の割合 = `block_add`（`blob8 = 'report'`）÷ `report_submit`。
+## メンテナンス・強制アップデート（REQ-MNT-013、contracts/protocol.md §46.8、Round 17）
+**メンテナンスで止まった人の数（グループごと）と、更新の案内から実際にストアへ行った割合**。`maintenance_block`（`blob8` = グループ、`blob9` = 窓の id、窓 × グループごとにアプリの起動で1回）と `upgrade_prompt`（`blob8` = `required`/`recommended`/`engine`、`blob9` = `shown`/`store`/`later`、`blob10` = OS）はクライアントのイベント。止められた要求そのものはサーバーで数えない（再読み込みで同じ人が何度も数えられないように）。
+-- 窓ごと・グループごとに止まった人数
+SELECT blob9 AS window_id, blob8 AS grp, count(DISTINCT blob2) AS players, sum(_sample_interval) AS blocks
+WHERE blob1 = 'maintenance_block' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY window_id, grp ORDER BY window_id DESC, players DESC
+-- 更新の案内：出した数とストアへ進んだ割合（種類・OS ごと）
+SELECT blob8 AS kind, blob10 AS os,
+  sumIf(_sample_interval, blob9 = 'shown') AS shown,
+  sumIf(_sample_interval, blob9 = 'store') AS to_store,
+  sumIf(_sample_interval, blob9 = 'later') AS later
+WHERE blob1 = 'upgrade_prompt' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY kind, os ORDER BY kind, os

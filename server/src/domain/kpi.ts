@@ -9,6 +9,7 @@
 import { z } from 'zod';
 import { AppError } from './errors.js';
 import type { PlayerState } from './player.js';
+import { MAINTENANCE_GROUPS } from './maintenance.js';
 import { jstDateKey } from './time.js';
 import { NEXT_KINDS, NEXT_SLOTS } from './nextKinds.js';
 
@@ -153,6 +154,9 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('photo_take'), at: z.number().int(), props: z.object({ source: z.enum(PHOTO_SOURCE_NAMES), look: z.string().regex(/^[a-z0-9_]{1,32}$/) }).strict() }),
   z.object({ name: z.literal('photo_share'), at: z.number().int(), props: z.object({ source: z.enum(PHOTO_SOURCE_NAMES), framed: z.boolean() }).strict() }),
   // REQ-ACT-015: the activity list was opened (unread count then) / an entry was tapped (its kind and deep link)
+  // REQ-MNT-013 (§46): the client met a maintenance window (once per window and endpoint group) / showed or acted on an update prompt
+  z.object({ name: z.literal('maintenance_block'), at: z.number().int(), props: z.object({ group: z.enum(MAINTENANCE_GROUPS), windowId: z.string().regex(/^[a-z0-9_-]{1,40}$/) }).strict() }),
+  z.object({ name: z.literal('upgrade_prompt'), at: z.number().int(), props: z.object({ kind: z.enum(['required', 'recommended', 'engine']), action: z.enum(['shown', 'store', 'later']), platform: z.enum(['ios', 'android', 'other']) }).strict() }),
   z.object({ name: z.literal('activity_open'), at: z.number().int(), props: z.object({ unread: z.number().int().min(0).max(999) }).strict() }),
   z.object({ name: z.literal('activity_tap'), at: z.number().int(), props: z.object({ kind: z.enum(ACTIVITY_KIND_NAMES), screen: z.enum(ACTIVITY_SCREEN_NAMES) }).strict() }),
   // REQ-NEXT-012: the home's 次にやること card shown (once per kind and game day) / tapped. Closing it is the server event next_card_dismiss.
@@ -197,6 +201,8 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'photo_take': return { name: e.name, s1: e.props.source, s2: e.props.look };
     case 'photo_share': return { name: e.name, s1: e.props.source, s2: e.props.framed ? 'framed' : 'plain' };
     case 'activity_open': return { name: e.name, value: e.props.unread };
+    case 'maintenance_block': return { name: e.name, s1: e.props.group, s2: e.props.windowId };
+    case 'upgrade_prompt': return { name: e.name, s1: e.props.kind, s2: e.props.action, s3: e.props.platform };
     case 'activity_tap': return { name: e.name, s1: e.props.kind, s2: e.props.screen };
     case 'next_card_view': case 'next_card_tap': return { name: e.name, s1: e.props.kind, s2: e.props.slot };
   }

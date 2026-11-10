@@ -51,6 +51,7 @@ import { activityQuery, actorIdsOf, parseUpTo, renderActivityItems } from '../do
 import { bulkBodySchema } from '../domain/roster.js';
 import type { TeamGoalBrief } from '../domain/nextAction.js';
 import type { HostedCupsService } from '../domain/hostedCupService.js';
+import { clientHeaders, gateRequest, maintenanceOf, maintenanceStatus } from '../domain/maintenance.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -405,6 +406,8 @@ export const routes: Route[] = [
   { method: 'GET', path: '/v1/health', auth: 'none', handler: async () => ({ ok: true }) },
   // REQ-OPS-007: clients cache master data per config version and refetch when it changes
   { method: 'GET', path: '/v1/config', auth: 'none', handler: async (_r, _p, c) => ({ ...(c.configInfo ? await c.configInfo() : { versionId: 'base', hash: 'base', rulesetVersion: null, activatedAt: null }), visualsVersion: VISUALS.version, assetCatalogVersion: (c.master.assetCatalog ?? EMPTY_ASSET_CATALOG).catalogVersion, dayRollover: dayRule(c.master) }) }, // REQ-DAY-006, REQ-DLV-*
+  // REQ-MNT-004/005 (§46): maintenance windows players can see now and where this app version stands. Public, never gated.
+  { method: 'GET', path: '/v1/maintenance', auth: 'none', handler: async (r, _p, c) => maintenanceStatus(maintenanceOf(c.master), clientHeaders(r.headers), (c.clock ?? Date.now)()) },
   // REQ-DLV-001..004: asset delivery catalog per platform (contracts/protocol.md §16). Public; ETag = view hash, 304 on match.
   { method: 'GET', path: '/v1/assets/catalog', auth: 'none', handler: async (r, _p, c) => {
     const platform = new URL(r.url).searchParams.get('platform');
@@ -1149,6 +1152,15 @@ export const handle: Handler = async (req, _p, ctx) => {
   // REQ-L10N-001..003: `?lang=` / Accept-Language; Japanese is rendered by the domain, English translated here
   const l10n = { lang: resolveLocale(req), cat: catalogFor(ctx.master) };
   try {
+    // REQ-MNT-003/006 (§46): one check at the entry, before any work — a request that passes always completes
+    const gate = gateRequest(maintenanceOf(ctx.master), req.method, url.pathname, clientHeaders(req.headers), (ctx.clock ?? Date.now)());
+    if (gate) {
+      const res = errorResponse(gate, l10n);
+      const retry = gate.details?.retryAfterSec;
+      if (typeof retry === 'number') res.headers.set('retry-after', String(retry));
+      res.headers.set('cache-control', 'no-store');
+      return res;
+    }
     let methodMismatch = false;
     for (const r of routes) {
       const params = match(url.pathname, r.path);

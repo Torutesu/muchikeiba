@@ -116,6 +116,10 @@ namespace Muchi.Client
         Internal,
         /// <summary>No response (network failure) after all retries.</summary>
         Network,
+        /// <summary>503: a maintenance window covers this endpoint (REQ-MNT-006). Never retried; see <see cref="MaintenanceException"/>.</summary>
+        Maintenance,
+        /// <summary>426: this app version / engine level is no longer supported (REQ-MNT-007/008); see <see cref="UpgradeRequiredException"/>.</summary>
+        UpgradeRequired,
     }
 
     public static class ApiErrorCodes
@@ -223,6 +227,8 @@ namespace Muchi.Client
             ["CUP_NOT_READY"] = ApiErrorCode.CupNotReady,
             ["VERIFIER_UNAVAILABLE"] = ApiErrorCode.VerifierUnavailable,
             ["INTERNAL"] = ApiErrorCode.Internal,
+            ["MAINTENANCE"] = ApiErrorCode.Maintenance,
+            ["UPGRADE_REQUIRED"] = ApiErrorCode.UpgradeRequired,
         };
 
         public static IReadOnlyCollection<string> WireCodes => ByWire.Keys;
@@ -268,6 +274,10 @@ namespace Muchi.Client
                     return new RateLimitedException(wire, message, status);
                 case ApiErrorCode.RosterBulkRefused:
                     return new BulkRefusedException(wire, message, status, J.List(details, "horses", BulkHorseCheck.Parse));
+                case ApiErrorCode.Maintenance:
+                    return new MaintenanceException(wire, message, status, details != null ? MaintenanceInfo.Parse(details) : null);
+                case ApiErrorCode.UpgradeRequired:
+                    return new UpgradeRequiredException(wire, message, status, details != null ? UpgradeInfo.Parse(details) : null);
                 case ApiErrorCode.Internal:
                 case ApiErrorCode.ConfigInvalid:
                 case ApiErrorCode.VerifierUnavailable:

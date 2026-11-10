@@ -7,6 +7,12 @@
  * never "2x"/"double", never "limited time only" or other fake urgency, no reference prices.
  */
 export const CODE_EN: Record<string, string> = {
+  // ---- メンテナンス・強制アップデート (maintenance.ts, protocol §46; REQ-MNT-012). Window messages carry their own English.
+  'メンテナンス中です': 'Under maintenance',
+  'メンテナンスのお知らせ': 'Scheduled maintenance',
+  'アプリを最新版に更新してください': 'Please update the app to the latest version',
+  'レースに参加するにはアプリの更新が必要です': 'Update the app to join races',
+
   // ---- shop (shop.ts productContents / firstPurchaseBonusOf; REQ-UXS-022)
   '無償コイン{n}枚': '{n} free coins',
   '有償コイン{n}枚': '{n} paid coins',

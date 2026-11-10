@@ -23,8 +23,6 @@ namespace Muchi.Client
         /// <summary>The props as JSON (checks and logs).</summary>
         public string PropsJson => _props.ToString();
         private AnalyticsEvent(string name, long atMs, JsonNode props) { Name = name; AtMs = atMs; _props = props ?? JsonNode.Obj(); }
-        /// <summary>The props as JSON (for checks and debug logs).</summary>
-        public string PropsJson => _props.ToString();
 
         private static string Id(string v, int max, string what)
         {

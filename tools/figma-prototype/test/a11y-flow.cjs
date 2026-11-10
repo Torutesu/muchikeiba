@@ -190,6 +190,10 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     // Round 15 screens: the pre-race advice panel (the lobby), アクティビティ; the settings rows again at this size
     await show('RaceAdvice'); await waitScreen('lobby'); await page.waitForSelector('.screen.in .adv-row', { timeout: 15000 }); await shot('race-advice', english, 600);
     await show('Activity'); await waitScreen('activity'); await shot('activity', english, 600);
+    // Round 17: 通報とブロック — the block list and the report sheet at the largest size (REQ-RPT-019)
+    await show('BlockList'); await waitScreen('blocks'); await shot('blocks', english, 600);
+    await page.evaluate(() => globalThis.__muchi.show('Report', { playerId: 'demo_rpt_x', name: 'ヨルノカラス', kind: 'display_name', source: 'profile' })); await page.waitForTimeout(800);
+    await shot('report-sheet', english, 300);
     await show('Settings'); await waitScreen('settings'); await boxesClear('settings lists (largest)', SETTINGS_LISTS, english);
     await show('Home'); await waitScreen('home'); await page.waitForTimeout(700); await boxesClear('home top bar (largest)', HOME_BAR, english);
   };

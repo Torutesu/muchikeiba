@@ -2296,10 +2296,13 @@ async function Settings() {
   // round 15: アクセシビリティ (REQ-A11Y-*) first — reachable in the FTUE too (text size before the first race)
   const moreRows = [['アクセシビリティ', () => A11ySettings(), 'a11y'], ['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions], ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite'],
     // round 15 (REQ-ADV-009): the pre-race advice switch (a device setting, default on)
-    ['出走前アドバイス', () => { advice.setEnabled(!advice.enabled()); Settings(); }, 'advice', advice.enabled() ? 'オン' : 'オフ']];
+    ['出走前アドバイス', () => { advice.setEnabled(!advice.enabled()); Settings(); }, 'advice', advice.enabled() ? 'オン' : 'オフ'],
+    // round 17 (REQ-RPT-011): the block list and what a block does
+    ['通報とブロック', () => BlockList(), 'blocks']];
   moreRows.forEach(([n, go, action, state], i) => {
-    // R15 integration: nine rows (a11y, packs, the advice switch…) of 38 px under the kicker, clear of the legal block below
-    const b = Btn(n, 36, 96 + i * 38, 408, 38, go, 'row' + (i === moreRows.length - 1 ? ' last' : ''), m); b.style.fontSize = '19px';
+    // R15 integration: nine rows (a11y, packs, the advice switch…) under the kicker, clear of the legal block below;
+    // R17: ten rows of 36 px (通報とブロック last)
+    const b = Btn(n, 36, 96 + i * 36, 408, 36, go, 'row' + (i === moreRows.length - 1 ? ' last' : ''), m); b.style.fontSize = '19px';
     if (action) b.dataset.action = action;
     if (state) b.dataset.state = state;
     const em = document.createElement('em'); em.textContent = state ?? '›'; b.appendChild(em);
@@ -2566,6 +2569,8 @@ async function Demo(kind) {
   // round 14: a week of play (21 races: the 「出走の記録」 achievement pack is owned) → the commentary packs
   if (kind === 'packs') { await L.seedDemo(7, [3, 3, 3, 3, 3, 3, 3]); ftue = false; await refresh(); return CommentaryPacks('settings'); }
   if (kind === 'activity') { await L.seedActivity(); await refresh(); actState.cursor = null; actState.stack = []; return Activity(); }
+  // round 17: two blocked players (one deleted since) and support's request in the activity list → 通報とブロック
+  if (kind === 'safety') { await L.reports.seedSafety(); await refresh(); return BlockList(); }
   if (kind === 'gifts') { await L.seedGifts(); await refresh(); giftState.tab = 'box'; giftState.page = 0; return GiftBox('box'); }
   // round 12: a week of play, then three ranked races in last place (settled by the real applyRace) → the one-time suggestion
   if (kind === 'assist') { await L.seedDemo(7, [3, 3, 3, 3, 3, 3, 3]); ftue = false; await L.demoLastPlaces(3); await refresh(); return AssistThen(Home); }
@@ -3963,6 +3968,8 @@ async function Hall(owner = null, page = 0) {
     Txt(v.owner.displayName, 30, 210, 320, 26, WHITE, lp, { weight: 700, nowrap: true });
     Txt('名前はプレイヤーが付けたままです', 30, 256, 320, 13, DIM, lp);
     Ghost('自分の殿堂', 30, 600, 320, 50, () => Hall(), lp, 'quiet small');
+    // round 17 (REQ-RPT-001): report this player's name from their hall
+    Ghost('通報する', 30, 536, 320, 50, () => ReportSheet({ playerId: v.owner.playerId, name: v.owner.displayName, kind: 'display_name', source: 'hall' }), lp, 'quiet small').classList.add('rpt-open');
   }
   // ② the plaques, 6 per page, newest first
   const grid = el('hof-grid', 440, 134, 1124, 676);
@@ -4206,6 +4213,8 @@ async function FriendReplays() {
     Txt(`${rpResult(x)}　·　${rpDate(x.at)}`, 24, 56, 250, 15, SOFT, c, { weight: 500, nowrap: true, cls: 'num' });
     Txt(rpCourse(x.trackId), 284, 56, 360, 15, SOFT, c, { weight: 500, nowrap: true });
     c.style.cursor = 'pointer'; c.addEventListener('click', () => ReplayPlayer(x.raceId, { friend: true, title: rpTitle(x), typed: !!x.replayTitle, owner: v.displayName }));
+    // round 17 (REQ-RPT-001): report the title (or the player when the replay has none)
+    Ghost('通報', 616, 30, 112, 46, () => ReportSheet({ playerId: v.playerId, name: v.displayName, kind: x.replayTitle ? 'replay_title' : 'player', ref: x.replayTitle ? x.raceId : undefined, source: 'replay', text: x.replayTitle ?? null }), c, 'small quiet').classList.add('rpt-open');
   });
   Back(MyReplays, 'BACK', 40, 834);
 }
@@ -4364,10 +4373,15 @@ async function TeamFeed() {
       foot.appendChild(cheer);
     }
     if (!it.mine && !goal) { // a goal item is the team's (no author): nothing to mute or report
-      const mute = tfNode('button', 'tf-link', '非表示');
-      mute.addEventListener('click', async (e) => { e.stopPropagation(); const r = await L.muteMember(it.playerId, true); toast(r.ok ? `${it.displayName}さんのスタンプを表示しません（その他から戻せます）` : r.message); TeamFeed(); });
-      const rep = tfNode('button', 'tf-link', '報告');
-      rep.addEventListener('click', async (e) => { e.stopPropagation(); const r = await L.reportFeed(it.seq, 'spam'); toast(r.ok ? '報告しました。ご協力ありがとうございます' : r.message); TeamFeed(); });
+      // round 17 (REQ-RPT-010): the feed's mute is the one block list (undone in その他 › 通報とブロック)
+      const mute = tfNode('button', 'tf-link', 'ブロック');
+      mute.addEventListener('click', async (e) => { e.stopPropagation(); const r = await L.muteMember(it.playerId, true); toast(r.ok ? 'ブロックしました（その他 › 通報とブロックで戻せます）' : r.message); TeamFeed(); });
+      // round 17 (REQ-RPT-001): the report sheet; once received, the item is also hidden for me (REQ-TEAMFEED-007)
+      const rep = tfNode('button', 'tf-link', '通報');
+      rep.addEventListener('click', (e) => {
+        e.stopPropagation();
+        ReportSheet({ playerId: it.playerId, name: it.displayName, kind: 'player', source: 'team_feed', after: async (cat) => { await L.reportFeed(it.seq, cat === 'harassment' ? 'harassment' : 'other'); TeamFeed(); } });
+      });
       foot.appendChild(mute); foot.appendChild(rep);
     }
     row.appendChild(foot);
@@ -4510,13 +4524,14 @@ function GiftResult(c) {
 // link per row, mark read up to the newest shown entry on opening. Display + links only: a gift row leads to the gift box,
 // never a claim button. Every value comes from L.activity (the real PlayerService and the same name resolution as the route).
 // ムチ一閃 tone: paddock art, translucent navy panels, letter-spaced cyan labels, one skewed cyan CTA ».
-const ACT_LABEL = { friend_request: 'フレンド', friend_accepted: 'フレンド', rival_week: 'ライバル', rival_record: 'ライバル', stable_like: 'マイ厩舎', team_cheer: '支部', tournament_result: '大会', gift_arrived: 'プレゼント', team_goal_tier: '支部', team_goal_week: '支部', replay_share: 'リプレイ' };
+const ACT_LABEL = { friend_request: 'フレンド', friend_accepted: 'フレンド', rival_week: 'ライバル', rival_record: 'ライバル', stable_like: 'マイ厩舎', team_cheer: '支部', tournament_result: '大会', gift_arrived: 'プレゼント', team_goal_tier: '支部', team_goal_week: '支部', replay_share: 'リプレイ', ops_notice: '運営' };
 const ACT_PAGE = 7;
 const actState = { cursor: null, stack: [] };
 const actGo = (screen, id) => ({
   friends: () => Invite(), rival: () => Rival(), stable: () => Stable(), team_feed: () => TeamFeed(), tournaments: () => EventTop(),
   gift_box: () => GiftBox('box'), team_goal: () => TeamGoal(), whats_new: () => Home(),
   replay: () => FriendReplays(), // §37: the friend's public replays (the entry's link id is the friend; the demo has one friend)
+  safety: () => BlockList(), // §47: support's request leads to 通報とブロック
 })[screen]?.(id);
 /** The home bell (under the gift envelope, clear of the rival strip) with the unread count from the player view (REQ-ACT-009). */
 function ActivityBell(x = 1088, y = 122) {
@@ -4575,6 +4590,131 @@ async function Activity() {
   Txt('プッシュ通知の設定はプッシュだけに効きます。この一覧はいつでも見られます。', 36, 440, 376, 13, SOFT, d, { lh: 1.6 });
   Cta('ホームへ', 36, 576, 376, () => Home(), d, 'small');
   Back(Home, 'ホームへ', 40, 834);
+}
+
+// ================================================================= round 17: 通報とブロック (REQ-RPT-*, contracts/protocol.md §47)
+// The same sheet and screen as the Unity ReportModel / BlockListModel, on the real ReportsService / PlayerService rules
+// (L.reports). The sheet offers only the reasons that fit what is reported (the server's options), counts the note like the
+// server, sends once, and never says how many others reported. The block screen is the one block list (the team feed's mute
+// list) with current names and what a block does in each feature; unblocking asks first. Player names and the note stay as
+// typed (.keep-ja). ムチ一閃 tone: translucent navy panels, letter-spaced cyan labels, one skewed cyan CTA ».
+const RPT_KINDS_JA = { player: 'プレイヤー', display_name: '名前', horse_name: '馬の名前', stable_name: '厩舎の名前', replay_title: 'リプレイのタイトル', photo_caption: '写真のキャプション', race: 'レース' };
+const RPT_ERRORS = {
+  RATE_LIMITED: '今日はこれ以上通報できません。4:00に戻ります', NOT_FOUND: '通報する内容が見つかりませんでした。変更・削除された可能性があります',
+  NOT_ELIGIBLE: '出走したレースだけ「不正の疑い」で通報できます', BAD_REQUEST: '補足が長すぎます', DELETION_PENDING: 'アカウント削除の手続き中は送れません',
+};
+const cps = (s) => [...(s ?? '').trim()].length;
+/**
+ * The report sheet. t = { playerId, name, kind, ref?, source, text? (the reported text as shown), after?(category) }.
+ * `after` runs once the report is received (the team feed also hides the item for me, REQ-TEAMFEED-007).
+ */
+async function ReportSheet(t) {
+  const o = await L.reports.options();
+  if (!o.ok) { toast(o.message); return; }
+  const opt = o.value;
+  const reasons = opt.categories.filter((c) => c.kinds.includes(t.kind));
+  const st = { reason: null, note: '', block: false, sending: false };
+  return Sheet('通報する', `通報　/　${RPT_KINDS_JA[t.kind] ?? ''}`, (s, close, y) => {
+    s.classList.add('rpt-sheet'); s.dataset.kind = t.kind; s.dataset.source = t.source;
+    Txt('運営が内容を確認します。通報したことは相手に知らされません。', 48, y - 6, 604, 15, MUTED, s, { lh: 1.5 });
+    // ① what is reported (the player's own text: never translated)
+    const c = Card('Reported', 48, y + 44, 604, 78, s, 'var(--cyan)');
+    Txt(RPT_KINDS_JA[t.kind] ?? '', 22, 12, 200, 12, CYAN, c, { weight: 700, ls: '.18em', nowrap: true });
+    Txt(t.name, 22, 34, 260, 20, WHITE, c, { weight: 700, nowrap: true, cls: 'keep-ja' }).dataset.typed = '1';
+    if (t.text && t.text !== t.name) { const x = Txt(`「${t.text}」`, 290, 36, 296, 16, GOLD, c, { weight: 500, nowrap: true, cls: 'keep-ja' }); x.style.overflow = 'hidden'; x.style.textOverflow = 'ellipsis'; x.dataset.typed = '1'; }
+    // ② the reason (only the ones that fit this content)
+    Kicker('理由', 48, y + 140, s, { rule: false, size: 15 });
+    const btns = reasons.map((r, i) => {
+      const b = Btn(r.label, 48 + (i % 2) * 308, y + 170 + Math.floor(i / 2) * 56, 296, 48, () => { st.reason = r.id; btns.forEach((x) => x.classList.toggle('on', x.dataset.reason === r.id)); sync(); }, 'choice rpt-reason', s);
+      b.dataset.reason = r.id; b.style.fontSize = '17px';
+      return b;
+    });
+    // ③ the optional note (length checked like the server; sent as typed, read only by support)
+    const ny = y + 170 + Math.ceil(reasons.length / 2) * 56 + 8;
+    Txt('補足（任意）', 48, ny, 300, 15, WHITE, s, { weight: 500 });
+    const counter = Txt(`0/${opt.noteMaxChars}`, 452, ny, 200, 14, SOFT, s, { align: 'right', cls: 'num rpt-count', nowrap: true });
+    const box = el('fieldbox', 48, ny + 26, 604, 56, s);
+    const input = document.createElement('input');
+    input.className = 'field keep-ja rpt-note'; input.placeholder = '気になった点を短く'; input.setAttribute('aria-label', '補足（任意）');
+    Object.assign(input.style, { left: '18px', top: '8px', width: '566px', height: '40px', fontSize: '20px' });
+    input.addEventListener('input', () => { st.note = input.value; sync(); });
+    box.appendChild(input);
+    // ④ also block (off by default)
+    const blk = Btn('この人をブロックする', 48, ny + 96, 360, 46, () => { st.block = !st.block; blk.classList.toggle('on', st.block); blk.dataset.on = String(st.block); }, 'choice rpt-block', s);
+    blk.style.fontSize = '16px'; blk.dataset.on = 'false';
+    const msg = Txt(opt.remainingToday > 0 ? '' : RPT_ERRORS.RATE_LIMITED, 424, ny + 104, 228, 13, WARN, s, { weight: 500, lh: 1.4 });
+    msg.classList.add('rpt-msg');
+    // ⑤ the one CTA
+    const send = Cta('送る', 48, 736, 380, async () => {
+      if (st.sending) return;
+      st.sending = true; sync();
+      const r = await L.reports.submit({ targetId: t.playerId, category: st.reason, source: t.source, content: { kind: t.kind, ...(t.ref ? { [t.kind === 'horse_name' ? 'horseId' : t.kind === 'photo_caption' ? 'photoId' : 'raceId']: t.ref } : {}) }, note: st.note.trim() || null, alsoBlock: st.block });
+      st.sending = false;
+      if (!r.ok) { msg.textContent = RPT_ERRORS[r.code] ?? r.message; sync(); return; }
+      (globalThis.__muchiReports ??= []).push({ kind: t.kind, category: st.reason, source: t.source, blocked: r.value.blocked });
+      close();
+      toast(r.value.blocked && st.block ? '通報を受け付け、ブロックしました' : '通報を受け付けました。ご協力ありがとうございます');
+      await t.after?.(st.reason);
+    }, s, 'small rpt-send');
+    const sync = () => {
+      const n = cps(st.note);
+      counter.textContent = `${n}/${opt.noteMaxChars}`;
+      counter.style.color = n > opt.noteMaxChars ? 'var(--warn)' : '';
+      send.classList.toggle('disabled', !st.reason || n > opt.noteMaxChars || st.sending || opt.remainingToday <= 0);
+    };
+    sync();
+  }, 700);
+}
+
+const BLOCK_ICON = { activity: 'お知らせ', team_feed: '支部', rival: 'ライバル', stable: 'マイ厩舎', hall: '殿堂', replays: 'リプレイ', cups: 'カップ' };
+/** 通報とブロック: the one block list, what a block does in each feature, and how to report. */
+async function BlockList() {
+  currentScreen = BlockList;
+  const r = await L.reports.blocks();
+  if (!r.ok) { toast('ブロックの一覧はオンラインで確認できます'); return Settings(); }
+  const v = r.value;
+  Clear('blocks'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('通報とブロック', 'ブロックした人と、ブロックするとどうなるか');
+  // ① the list (newest first, current names; a deleted player shows the neutral name)
+  const p = Glass('Block list', 36, 134, 620, 676, undefined, .88);
+  p.classList.add('bl-list'); p.dataset.count = String(v.count);
+  Kicker('ブロック中', 36, 30, p);
+  Txt(`${v.count}/${v.max}`, 380, 72, 204, 15, SOFT, p, { align: 'right', cls: 'num', nowrap: true });
+  if (!v.blocked.length) Txt('ブロックしている人はいません', 36, 120, 540, 19, MUTED, p).dataset.blEmpty = '1';
+  v.blocked.slice(0, 7).forEach((b, i) => {
+    const row = el('bl-row', 24, 112 + i * 72, 572, 64, p);
+    row.dataset.player = b.playerId;
+    Txt(b.name, 18, 18, 320, 20, WHITE, row, { weight: 700, nowrap: true, cls: 'keep-ja' }).dataset.typed = '1';
+    Ghost('ブロック解除', 372, 8, 190, 48, () => UnblockConfirm(b), row, 'small quiet').classList.add('bl-unblock');
+  });
+  Txt('名前・キャプション・ふるまいが気になったら、その人のプロフィールやリプレイの「通報する」から運営に知らせてください。', 36, 620, 548, 13, SOFT, p, { lh: 1.5 });
+  // ② what a block does (from the server, one line per feature)
+  const e = Glass('Block effects', 676, 134, 888, 676, undefined, .86);
+  e.classList.add('bl-effects');
+  Kicker('ブロックするとどうなる？', 36, 30, e);
+  v.effects.forEach((x, i) => {
+    const row = el('bl-effect', 36, 112 + i * 70, 816, 60, e);
+    row.dataset.feature = x.feature;
+    Txt(BLOCK_ICON[x.feature] ?? '', 0, 4, 150, 12, CYAN, row, { weight: 700, ls: '.18em', nowrap: true });
+    Txt(x.text, 0, 26, 816, 17, WHITE, row, { weight: 500, nowrap: true });
+  });
+  Txt('相手には、ブロックしたことも通報したことも知らされません。', 36, 620, 816, 14, MUTED, e, { lh: 1.5 });
+  Back(Settings, 'BACK', 40, 834);
+}
+function UnblockConfirm(b) {
+  Shade('dim heavy');
+  const box = Dialog('Unblock', 860, 420);
+  box.classList.add('bl-confirm'); box.dataset.player = b.playerId;
+  Kicker('ブロック解除', 52, 44, box);
+  Txt('ブロックを解除しますか？', 52, 108, 756, 28, WHITE, box, { weight: 700 });
+  Txt(b.name, 52, 156, 756, 20, GOLD, box, { weight: 700, nowrap: true, cls: 'keep-ja' });
+  Txt('解除すると、この人のお知らせ・マイ厩舎・殿堂・リプレイがまた見えるようになります。相手には知らされません。', 52, 200, 756, 16, MUTED, box, { lh: 1.6 });
+  Cta('解除する', 52, 300, 380, async () => {
+    const r = await L.reports.unblock(b.playerId);
+    toast(r.ok ? 'ブロックを解除しました' : r.message);
+    BlockList();
+  }, box, 'small bl-yes');
+  Ghost('やめる', 456, 306, 200, 50, () => BlockList(), box, 'quiet').classList.add('bl-no');
 }
 
 // ================================================================= round 13: 購入履歴・コイン履歴・ガチャ履歴 (REQ-HIST-*, contracts/protocol.md §33)
@@ -5020,7 +5160,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ BlockList, Report: (t) => ReportSheet(t), Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

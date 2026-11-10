@@ -628,3 +628,8 @@ html[data-color-mode="cvd"] .a11y-swatch .g.crit { background: repeating-linear-
 .btn.bell { color: var(--cyan); justify-content: center; }
 .btn.bell svg { position: relative; }
 .btn.bell .env-badge { position: absolute; right: 6px; top: 6px; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 12px; background: var(--gold); color: var(--navy); font-size: 14px; font-weight: 700; line-height: 24px; text-align: center; font-style: normal; }
+/* round 17: 通報とブロック (REQ-RPT-*): list rows on hairlines, effect lines, the report sheet choices */
+.el.bl-row { border-bottom: 1px solid rgba(var(--cyan-rgb), .14); }
+.el.bl-row .btn.small { font-size: 16px; }
+.el.bl-effect { border-bottom: 1px solid rgba(var(--cyan-rgb), .10); }
+.sheet.rpt-sheet .btn.rpt-reason, .sheet.rpt-sheet .btn.rpt-block { white-space: nowrap; padding: 0 12px; }

@@ -957,3 +957,32 @@ GROUP BY kind, screen ORDER BY taps DESC
 
 - **戻ってきた人に効いているか**：`session_start` の日に `activity_open` もある人の割合を、ライバル・支部・フレンドを使っている人とそれ以外で分けて見る。
 - プレゼント（`gift_arrived` → `gift_box`）を押した人のうち、同じ日に `gift_claim` がある割合が低ければ、プレゼントボックスへの導線（ボタンの文言）を見直す。受け取りボタンを一覧に置くことはしない（§40）。
+
+## 通報とブロック（REQ-RPT-017、contracts/protocol.md §47、Round 17）
+
+**どこから・何の理由で通報されるか、ブロックがどれだけ使われ戻されるか**。3つともサーバーのイベント（受け付けた通報・一覧が本当に変わった時だけ）。相手の id と補足の文は入れない。
+
+| イベント | blob8 | blob9 | blob10 | double5 |
+|---|---|---|---|---|
+| `report_submit` | 理由（`name`・`text`・`cheating`・`harassment`・`other`） | 対象（`display_name` など） | 入口（`profile`・`team_feed`・`hall`・`replay` …） | — |
+| `block_add` | どこから（`blocks`・`report`・`team_feed`・`rival`） | — | — | 一覧の人数 |
+| `block_remove` | どこから（`blocks`・`team_feed`） | — | — | 一覧の人数 |
+
+```sql
+-- 日ごとの通報（理由 × 入口）：ある入口だけ急に増えたら、その画面の名前・文の確認を見直す
+SELECT blob6 AS day, blob8 AS category, blob10 AS source, sum(_sample_interval) AS reports, count(DISTINCT blob2) AS reporters
+FROM muchi_kpi
+WHERE blob1 = 'report_submit' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY day, category, source ORDER BY day DESC, reports DESC
+```
+
+```sql
+-- ブロックの追加と解除（どこから）：解除が多い入口は、ブロックの説明が足りないかもしれない
+SELECT blob1 AS event, blob8 AS origin, sum(_sample_interval) AS n, count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 IN ('block_add', 'block_remove') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY event, origin ORDER BY n DESC
+```
+
+- 通報の中身（誰が誰を・写し・補足）は KPI ではなく運営コンソールの通報の列（`/v1/admin/player-reports`）で見る。1人が1日に出せる数は `reports.perDay` までなので、通報者ごとの数が多い日は「重み」（§47.7）と合わせて確認する。
+- 「通報したらブロックもする」の割合 = `block_add`（`blob8 = 'report'`）÷ `report_submit`。

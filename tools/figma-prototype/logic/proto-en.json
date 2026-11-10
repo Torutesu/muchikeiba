@@ -1072,6 +1072,16 @@
   "プッシュ通知の設定はプッシュだけに効きます。この一覧はいつでも見られます。": "Push settings only change pushes. This list is always available.",
   "アクティビティ（デモ）": "Activity (demo)",
   "リプレイを開きます": "Opening the replay",
-  "デモ杯": "Demo Cup"
+  "デモ杯": "Demo Cup",
+  "_r17_reports": "---- round 17: 通報とブロック (ReportSheet / BlockList, REQ-RPT-*)",
+  "通報": "Report",
+  "名前": "Name",
+  "厩舎の名前": "Stable name",
+  "リプレイのタイトル": "Replay title",
+  "写真のキャプション": "Photo caption",
+  "カップ": "Cups",
+  "ブロックした人と、ブロックするとどうなるか": "Who you blocked, and what a block does",
+  "相手には、ブロックしたことも通報したことも知らされません。": "Players are never told that you blocked or reported them.",
+  "ブロックしました（その他 › 通報とブロックで戻せます）": "Blocked (undo in More › Reports & blocks)"
  }
 }

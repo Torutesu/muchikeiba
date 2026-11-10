@@ -32,7 +32,7 @@ export const ROSTER_LIMITS = { bulkMax: 50, queryMaxChars: 20, tournamentGraceMs
 export const BULK_ACTIONS = ['retire'] as const;
 export type BulkAction = (typeof BULK_ACTIONS)[number];
 /** REQ-ORG-009: refusal reasons, in the order they are listed. */
-export const BULK_REASONS = ['not_found', 'locked', 'partner', 'not_active', 'on_loan', 'in_training', 'tournament_entry', 'hall_pending'] as const;
+export const BULK_REASONS = ['not_found', 'locked', 'partner', 'not_active', 'on_loan', 'in_training', 'tournament_entry', 'cup_entry', 'hall_pending'] as const;
 export type BulkReason = (typeof BULK_REASONS)[number];
 export const ROSTER_NOTICE = 'まとめて引退しても、コインや素材は返ってきません';
 
@@ -101,6 +101,8 @@ export function bulkReasons(s: PlayerState, horseId: string, action: BulkAction,
   const open = s.training?.open;
   if (open && open.horseId === horseId && now < open.expiresAt) out.push('in_training');
   if (tournamentOf(s, horseId, now)) out.push('tournament_entry');
+  // Round 16 integration (§42): entered in a hosted cup that is still active (the ref leaves when the cup closes)
+  if (s.cups?.active.some((r) => r.horseId === horseId && r.until > now)) out.push('cup_entry');
   const cer = s.hall?.ceremonies[horseId];
   if (cer && cer.ackedAt === null) out.push('hall_pending');
   return out;

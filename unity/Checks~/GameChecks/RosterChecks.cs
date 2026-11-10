@@ -136,6 +136,7 @@ static class RosterChecks
             var line = m.Lines.Single(l => l.HorseId == "h4");
             check(line.Name == "ヨゾラ" && line.Meta == "Closer / Turf 1,600–2,400m" && line.RatingText == "Rating 2,400" && line.RecordText == "8 races, 4 wins", "roster (en): row texts; the name stays as typed (" + line.Meta + " | " + line.RecordText + ")");
             check(RosterOrganiserModel.Reason("tournament_entry") == "Entered in a tournament", "roster (en): reasons");
+            check(RosterOrganiserModel.Reason("cup_entry") == "Entered in a cup", "roster (en): a horse in a hosted cup (Round 16 integration)");
         }
         finally { Loc.SetLocale("ja"); }
     }

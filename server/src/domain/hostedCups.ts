@@ -485,7 +485,8 @@ export function closedNoticeFor(c: CupState, playerId: string): CupClosedNotice 
 
 // ------------------------------------------------------------------------------------------------ player side
 
-export interface PlayerCupRef { cupId: string; role: 'host' | 'entrant'; until: number; noted?: boolean }
+/** `horseId` (Round 16 integration): the horse entered — the roster's bulk retire refuses it while the cup is active (§44 `cup_entry`). */
+export interface PlayerCupRef { cupId: string; role: 'host' | 'entrant'; until: number; noted?: boolean; horseId?: string }
 export interface PlayerCupInvite { cupId: string; cupName: string; hostId: string; hostName: string; at: number; until: number }
 export interface PlayerCupResult {
   cupId: string; cupName: string; format: CupFormat; rank: number | null; points: number | null; entrants: number; at: number;
@@ -516,7 +517,7 @@ function pruneCups(s: PlayerState, now: number) {
 }
 
 /** REQ-CUP-006/007: may this player host / enter one more cup? Idempotent for a cup already reserved. */
-export function reserveCup(m: Master, s: PlayerState, cupId: string, role: 'host' | 'entrant', until: number, now: number) {
+export function reserveCup(m: Master, s: PlayerState, cupId: string, role: 'host' | 'entrant', until: number, now: number, horseId?: string) {
   const c = hostedCupsConfig(m);
   if (!c.enabled) throw new AppError('NOT_FOUND', 'hosted cups are not available');
   if (deletionScheduled(s)) throw new AppError('DELETION_PENDING', 'the account is scheduled for deletion');
@@ -526,8 +527,8 @@ export function reserveCup(m: Master, s: PlayerState, cupId: string, role: 'host
   if (!existing) {
     if (role === 'host' && st.active.filter((r) => r.role === 'host').length >= c.maxActivePerHost) throw new AppError('CUP_LIMIT', `at most ${c.maxActivePerHost} hosted cups at a time`);
     if (st.active.length >= c.maxEntriesPerPlayer) throw new AppError('CUP_LIMIT', `at most ${c.maxEntriesPerPlayer} cups at a time`);
-    st.active.push({ cupId, role, until: until + REF_GRACE_MS });
-  }
+    st.active.push({ cupId, role, until: until + REF_GRACE_MS, ...(horseId ? { horseId } : {}) });
+  } else if (horseId && !existing.horseId) existing.horseId = horseId;
   return { displayName: s.profile.displayName, blocks: mutedOf(s), teamId: s.team?.teamId ?? null, friends: [...s.friends.ids], already: !!existing };
 }
 

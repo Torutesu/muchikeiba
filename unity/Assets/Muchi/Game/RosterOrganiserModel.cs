@@ -80,6 +80,7 @@ namespace Muchi.Game
             [BulkReason.OnLoan] = "種牡馬として貸し出し中",
             [BulkReason.InTraining] = "調教中",
             [BulkReason.TournamentEntry] = "大会に登録中",
+            [BulkReason.CupEntry] = "カップに参加中",
             [BulkReason.HallPending] = "引退式をまだ見ていません",
         };
         public const string TextNothingBack = "返ってくるもの：なし（コイン・素材は返ってきません）";

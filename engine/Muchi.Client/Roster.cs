@@ -20,8 +20,8 @@ namespace Muchi.Client
     public static class BulkReason
     {
         public const string NotFound = "not_found", Locked = "locked", Partner = "partner", NotActive = "not_active", OnLoan = "on_loan",
-            InTraining = "in_training", TournamentEntry = "tournament_entry", HallPending = "hall_pending";
-        public static readonly string[] All = { NotFound, Locked, Partner, NotActive, OnLoan, InTraining, TournamentEntry, HallPending };
+            InTraining = "in_training", TournamentEntry = "tournament_entry", CupEntry = "cup_entry", HallPending = "hall_pending";
+        public static readonly string[] All = { NotFound, Locked, Partner, NotActive, OnLoan, InTraining, TournamentEntry, CupEntry, HallPending };
     }
 
     /// <summary>One horse of GET /v1/roster (REQ-ORG-001).</summary>

@@ -952,8 +952,8 @@ export class PlayerService {
     return { ...playerCupsView(this.d.master, s, this.d.clock()), teamId: s.team?.teamId ?? null };
   }
   /** REQ-CUP-006/007: limits, deletion, BAN — before the cup accepts a create / join (idempotent per cup). */
-  cupReserve(id: string, cupId: string, role: 'host' | 'entrant', until: number) {
-    return this.tx(id, null, (s, now) => reserveCup(this.d.master, s, cupId, role, until, now));
+  cupReserve(id: string, cupId: string, role: 'host' | 'entrant', until: number, horseId?: string) {
+    return this.tx(id, null, (s, now) => reserveCup(this.d.master, s, cupId, role, until, now, horseId));
   }
   cupRelease(id: string, cupId: string) { return this.tx(id, null, (s) => releaseCup(s, cupId)); }
   /** The player left a cup before its first race: the slot no longer counts. */

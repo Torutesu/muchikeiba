@@ -3106,9 +3106,9 @@ const ORG_BANDS = [['sprint', '短距離'], ['mile', 'マイル'], ['intermediat
 const ORG_SURF = { turf: '芝', dirt: 'ダート', both: '芝・ダート' };
 const ORG_REASON = {
   not_found: '厩舎にいない馬です', locked: 'ロック中', partner: '最初の相棒はまとめて引退できません', not_active: 'もう引退しています',
-  on_loan: '種牡馬として貸し出し中', in_training: '調教中', tournament_entry: '大会に登録中', hall_pending: '引退式をまだ見ていません',
+  on_loan: '種牡馬として貸し出し中', in_training: '調教中', tournament_entry: '大会に登録中', cup_entry: 'カップに参加中', hall_pending: '引退式をまだ見ていません',
 };
-const ORG_SHORT = { on_loan: '貸し出し中', in_training: '調教中', tournament_entry: '大会に登録中', hall_pending: '引退式を未確認', not_found: '厩舎にいない馬です' };
+const ORG_SHORT = { on_loan: '貸し出し中', in_training: '調教中', tournament_entry: '大会に登録中', cup_entry: 'カップに参加中', hall_pending: '引退式を未確認', not_found: '厩舎にいない馬です' };
 const ORG_VIEW_KEY = 'muchi.roster.view';
 const ORG_PER_PAGE = 7;
 let orgPage = 0, orgSelect = null, orgLastKpi = -1e15, orgCourseName = null;

@@ -296,7 +296,7 @@ export class HostedCupsService<E = unknown> {
       return { cup: cupView(this.master(), existing, uid, now), created: false };
     }
     const p = this.player(uid);
-    const who = await p.invoke('cupReserve', uid, cupId, 'host', def.closesAt);
+    const who = await p.invoke('cupReserve', uid, cupId, 'host', def.closesAt, b.horseId);
     let code: string | null = null;
     try {
       const host = await this.entrantOf(uid, b.horseId, 'host', who);
@@ -365,7 +365,7 @@ export class HostedCupsService<E = unknown> {
     if (c.entrants.some((e) => e.playerId === uid)) return { cup: cupView(this.master(), c, uid, now), joined: false };
     if (await this.blocked(c, uid)) throw new AppError('CUP_CODE_INVALID');
     const p = this.player(uid);
-    const who = await p.invoke('cupReserve', uid, c.id, 'entrant', c.closesAt);
+    const who = await p.invoke('cupReserve', uid, c.id, 'entrant', c.closesAt, b.horseId);
     try {
       const e = await this.entrantOf(uid, b.horseId, via, who);
       const out = await this.backend.join(c.id, e);

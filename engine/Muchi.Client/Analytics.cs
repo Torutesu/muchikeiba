@@ -220,7 +220,7 @@ namespace Muchi.Client
         }
 
         // ---- REQ-MNT-013 (§46.8) maintenance / update prompts (client events: the server does not count blocked requests)
-        public static readonly string[] MaintenanceGroups = { "gacha", "shop", "ranked", "teams", "events", "tournaments", "training", "time_attack", "social", "core" };
+        public static readonly string[] MaintenanceGroups = { "gacha", "shop", "ranked", "teams", "events", "tournaments", "training", "time_attack", "social", "cups", "core" };
         private static readonly string[] UpgradeKinds = { "required", "recommended", "engine" };
         private static readonly string[] UpgradeActions = { "shown", "store", "later" };
         private static readonly System.Text.RegularExpressions.Regex WindowId = new System.Text.RegularExpressions.Regex("^[a-z0-9_-]{1,40}$");

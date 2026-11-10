@@ -2417,8 +2417,9 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 | `teams` | `/v1/teams/*`・`/v1/league/*`・`/v1/stamps` |
 | `events` / `tournaments` / `training` | `/v1/events/*` / `/v1/tournaments/*` / `/v1/training/*` |
 | `time_attack` | `/v1/time-attack/*`・`/v1/challenges/*` |
-| `social` | `/v1/friends/*`・`/v1/invite*`・`/v1/stable*`・`/v1/rival*` |
-| `core` | それ以外のすべて（プレイヤー・馬・ミッション・プレゼントボックス…） |
+| `social` | `/v1/friends/*`（おすすめフレンド §49 を含む）・`/v1/invite*`・`/v1/stable*`・`/v1/rival*` |
+| `cups` | `/v1/cups*`（主催カップ §42、Round 17 統合で追加。レースのグループ） |
+| `core` | それ以外のすべて（プレイヤー・馬・ミッション・プレゼントボックス・振り返り §43・厩舎の整理 §44・次にやること §45…） |
 
 **どの窓でも・どのバージョンでも止まらない**（`EXEMPT_ROUTES`）：
 - 状態を見る口：`GET /v1/health`・`/v1/config`・`/v1/maintenance`・`/v1/assets/catalog`・`/v1/visuals`。
@@ -2428,12 +2429,14 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 - **進行中のものの確定**：レースのソケット `GET /v1/race/:raceId/ws`（始まったレースは最後まで走り、`final` まで確定する）、`POST /v1/time-attack/submit`・`/v1/challenges/weekly/submit`・`/v1/training/:sessionId/finish`、待ち行列から抜ける `POST /v1/match/cancel`・`/v1/events/:eventId/cancel`。
 - KPI の送信 `POST /v1/analytics/events`（`maintenance_block`・`upgrade_prompt` はここを通る）と購入履歴 `GET /v1/history/*`・`POST /v1/history/support-ticket`。
 - 管理API `/v1/admin/*`（運用はメンテナンス中に作業する）。cron（`scheduled`）も止まらない。
+- **サポートへの道**（Round 17 統合で決めたこと）：ヘルプセンター（§48）の `GET /v1/help`・`/v1/help/articles/:articleId`・`/v1/help/search`・お問い合わせ `GET/POST /v1/help/inquiries`・`GET /v1/help/inquiries/:ticketId`・`POST /v1/help/inquiries/:ticketId/read`、通報（§47）`GET /v1/reports/options`・`POST /v1/reports`、ブロック `GET/PUT/DELETE /v1/blocks*`。メンテナンス中も古いアプリからも、運営に知らせる・相手を避ける手段は閉じない（記事の「役に立った」`POST /v1/help/articles/:id/feedback` はサポートではないので止まる）。
+- **主催カップ**（§42）：窓が `cups`（か `all`）を含む間は作成・参加・次のレースの出走が止まる。走っているカップのレースはソケットと結果の確定（Durable Object の中の通知）で最後まで確定し、順位に入る。窓の間に `closesAt` を過ぎたカップは §42 のとおり走ったところまでで終わる（`partial`）。
 
 ### 46.3 1回だけの入口の検査と応答（REQ-MNT-006/007）
 Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateRequest`）。**入口を通った要求は最後まで動く**：窓が始まっても途中で切らない（ガチャ・購入・受け取りは DO の1つのトランザクションで終わる）。順番：
 1. 止まらない口 → そのまま。
 2. **バージョン**：`x-client-platform`（`ios` / `android`）と `x-client-version`（`x.y.z`）が両方あり、`min` より古い → **426 `UPGRADE_REQUIRED`**（待っても直らないので窓より先）。
-3. **エンジン**：レースのグループ（`ranked`・`events`・`tournaments`・`time_attack`）で `x-engine-level` が `max(minEngineLevel, ENGINE_LEVEL)` より小さい → 426 `UPGRADE_REQUIRED`（`reason: "engine"`）。
+3. **エンジン**：レースのグループ（`ranked`・`events`・`tournaments`・`time_attack`・`cups`）で `x-engine-level` が `max(minEngineLevel, ENGINE_LEVEL)` より小さい → 426 `UPGRADE_REQUIRED`（`reason: "engine"`）。
 4. **窓**：開いている窓（`startAtMs ≤ 今 < 終わり`、終わり＝`endAtMs` か `cancelledAtMs` の早い方）がそのグループを含む → **503 `MAINTENANCE`**。
 
 ヘッダーの無い要求（Round 17 より前のアプリ、ボット、サーバー間）はバージョンとエンジンの検査を通る（窓は効く）。

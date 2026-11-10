@@ -1,8 +1,8 @@
 import { can, get, post, put } from '../api.js';
 import { badge, card, confirmWrite, field, h, jst, kv, mount, problemsView, run, statusKind, table } from '../ui.js';
 
-const GROUPS = ['gacha', 'shop', 'ranked', 'teams', 'events', 'tournaments', 'training', 'time_attack', 'social'];
-const GROUP_LABEL = { gacha: 'ガチャ', shop: 'ショップ', ranked: 'ランク戦・フレンドルーム', teams: '支部', events: 'イベント', tournaments: '大会', training: '調教', time_attack: 'タイムアタック・週替わり', social: 'フレンド・招待・厩舎・ライバル', core: 'その他すべて' };
+const GROUPS = ['gacha', 'shop', 'ranked', 'teams', 'events', 'tournaments', 'training', 'time_attack', 'social', 'cups'];
+const GROUP_LABEL = { gacha: 'ガチャ', shop: 'ショップ', ranked: 'ランク戦・フレンドルーム', teams: '支部', events: 'イベント', tournaments: '大会', training: '調教', time_attack: 'タイムアタック・週替わり', social: 'フレンド・招待・厩舎・ライバル・おすすめ', cups: '主催カップ', core: 'その他すべて（振り返り・厩舎の整理・次にやること など）' };
 
 /**
  * メンテナンス・強制アップデート (REQ-MNT-011, contracts/protocol.md §46.6). Each change becomes a remote-config version

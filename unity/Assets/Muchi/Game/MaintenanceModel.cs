@@ -69,7 +69,7 @@ namespace Muchi.Game
         public static readonly IReadOnlyDictionary<string, string> GroupNames = new Dictionary<string, string>
         {
             ["gacha"] = "スカウト", ["shop"] = "ショップ", ["ranked"] = "ランク戦", ["teams"] = "支部", ["events"] = "イベント",
-            ["tournaments"] = "大会", ["training"] = "調教", ["time_attack"] = "タイムアタック", ["social"] = "フレンド", ["core"] = "ゲーム全体",
+            ["tournaments"] = "大会", ["training"] = "調教", ["time_attack"] = "タイムアタック", ["social"] = "フレンド", ["cups"] = "主催カップ", ["core"] = "ゲーム全体",
         };
 
         private readonly IMaintenanceApi _api;

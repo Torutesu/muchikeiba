@@ -17,7 +17,7 @@ import { whatsNew } from '../src/domain/comeback.js';
 import { freshPlayer, m } from './helpers.js';
 import {
   DEFAULT_MAINTENANCE, ENGINE_LEVEL, EXEMPT_ROUTES, LEGAL_WORDS_JA, activeWindowFor, clientStatus, compareVersions, endpointGroup, engineMismatch,
-  gateRequest, isExempt, jstToMs, maintenanceProblems, maintenanceStatus, msToJst, visibleWindows, type MaintenanceConfig, type MaintenanceWindow,
+  RACE_GROUPS, SCOPE_GROUPS, gateRequest, isExempt, jstToMs, maintenanceProblems, maintenanceStatus, msToJst, visibleWindows, type MaintenanceConfig, type MaintenanceWindow,
 } from '../src/domain/maintenance.js';
 
 /** メンテナンス・強制アップデート (REQ-MNT-001..016, contracts/protocol.md §46). */
@@ -105,6 +105,39 @@ describe('endpoint groups and exempt routes (REQ-MNT-003)', () => {
     expect(isExempt('POST', '/v1/shop/purchase-intent')).toBe(false);
     expect(isExempt('GET', '/v1/player')).toBe(false);
     expect(EXEMPT_ROUTES.every((r) => /^(GET|POST|PUT|DELETE) \/v1\//.test(r))).toBe(true);
+  });
+});
+
+describe('Round 16 / 17 routes (Round 17 integration, §46.3)', () => {
+  it('hosted cups are their own race group; recap, roster, the next card are core; suggestions are social', () => {
+    expect(endpointGroup('/v1/cups')).toBe('cups');
+    expect(endpointGroup('/v1/cups/c1/start')).toBe('cups');
+    expect(RACE_GROUPS).toContain('cups');
+    expect(SCOPE_GROUPS).toContain('cups');
+    for (const p of ['/v1/recaps', '/v1/recaps/season:2026-11', '/v1/roster', '/v1/roster/bulk', '/v1/home/next']) expect(endpointGroup(p), p).toBe('core');
+    expect(endpointGroup('/v1/friends/suggestions')).toBe('social');
+    // a cup window closes cups only (friend rooms, the race socket and result settlement stay open)
+    const cc = cfg({ windows: [win({ scope: ['cups'] })] });
+    expect(gateRequest(cc, 'POST', '/v1/cups/c1/start', noHeaders, START)?.code).toBe('MAINTENANCE');
+    expect(gateRequest(cc, 'POST', '/v1/friend-rooms', noHeaders, START)).toBeNull();
+    expect(gateRequest(cc, 'GET', '/v1/race/cup:c1:0:0/ws', noHeaders, START)).toBeNull();
+    // the engine level applies to cup races too
+    expect(gateRequest(cfg({ minEngineLevel: 2 }), 'POST', '/v1/cups/c1/start', { platform: null, version: null, engine: 1 }, NOW)?.code).toBe('UPGRADE_REQUIRED');
+  });
+  it('support stays reachable: the help center, inquiries, reports and blocks are never gated (also from an outdated app)', () => {
+    const c = cfg({ windows: [win({ scope: 'all' })], clientVersions: VERSIONS });
+    const old = { platform: 'ios', version: '1.0.0', engine: null };
+    for (const r of ['GET /v1/help', 'GET /v1/help/articles/pity', 'GET /v1/help/search', 'GET /v1/help/inquiries', 'GET /v1/help/inquiries/q_1',
+      'POST /v1/help/inquiries', 'POST /v1/help/inquiries/q_1/read', 'GET /v1/reports/options', 'POST /v1/reports', 'GET /v1/blocks', 'PUT /v1/blocks/p1', 'DELETE /v1/blocks/p1']) {
+      const [method, path] = r.split(' ');
+      expect(gateRequest(c, method!, path!, noHeaders, START), r).toBeNull();
+      expect(gateRequest(c, method!, path!, old, START), r).toBeNull();
+    }
+    // not support: an article vote, the suggestions, the recap still close with `all`
+    for (const r of ['POST /v1/help/articles/pity/feedback', 'GET /v1/friends/suggestions', 'GET /v1/recaps', 'POST /v1/cups']) {
+      const [method, path] = r.split(' ');
+      expect(gateRequest(c, method!, path!, noHeaders, START)?.code, r).toBe('MAINTENANCE');
+    }
   });
 });
 

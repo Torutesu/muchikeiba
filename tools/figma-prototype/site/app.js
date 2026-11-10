@@ -5531,7 +5531,7 @@ function UnblockConfirm(b) {
 // the maintenance screen (scope all), the notice over a closed feature (a scoped window), the update-required screen (426)
 // and the announced-window notice opened from what's new. Only the real end time is shown — no countdown, no urgency.
 // ムチ一閃 tone: photoreal art, translucent navy panels, letter-spaced cyan labels, one skewed cyan CTA », sparse.
-const MNT_GROUP = { gacha: 'スカウト', shop: 'ショップ', ranked: 'ランク戦', teams: '支部', events: 'イベント', tournaments: '大会', training: '調教', time_attack: 'タイムアタック', social: 'フレンド', core: 'ゲーム全体' };
+const MNT_GROUP = { gacha: 'スカウト', shop: 'ショップ', ranked: 'ランク戦', teams: '支部', events: 'イベント', tournaments: '大会', training: '調教', time_attack: 'タイムアタック', social: 'フレンド', cups: '主催カップ', core: 'ゲーム全体' };
 const mntGroups = (scope) => (scope === 'all' || !Array.isArray(scope) || scope.includes('all') ? 'ゲーム全体' : scope.map((g) => MNT_GROUP[g] ?? g).join('・'));
 const MNT_PURCHASE = '購入済みのコインは、メンテナンス中でも必ず受け取れます。';
 const mntRange = (a, b) => `${a}${isJa() ? ' 〜 ' : ' – '}${b}`;

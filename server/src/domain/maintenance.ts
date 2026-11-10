@@ -22,7 +22,9 @@ import { bettingWordsIn } from './bettingWords.js';
  */
 export const LEGAL_WORDS_JA: readonly string[] = ['倍', 'お得', '今だけ', '残りわずか', '通常価格'];
 
-export const MAINTENANCE_GROUPS = ['gacha', 'shop', 'ranked', 'teams', 'events', 'tournaments', 'training', 'time_attack', 'social', 'core'] as const;
+// cups: Round 16 hosted cups (/v1/cups*), a race group of their own (Round 17 integration). Roster, recap and the home's
+// next card are `core` (closed only by `all`).
+export const MAINTENANCE_GROUPS = ['gacha', 'shop', 'ranked', 'teams', 'events', 'tournaments', 'training', 'time_attack', 'social', 'cups', 'core'] as const;
 export type MaintenanceGroup = typeof MAINTENANCE_GROUPS[number];
 /** Groups a window may name (`core` = everything not in another group; only `all` closes it). */
 export const SCOPE_GROUPS = MAINTENANCE_GROUPS.filter((g) => g !== 'core') as Exclude<MaintenanceGroup, 'core'>[];
@@ -193,6 +195,11 @@ export const EXEMPT_ROUTES: readonly string[] = [
   'POST /v1/match/cancel', 'POST /v1/events/:eventId/cancel',
   'POST /v1/analytics/events',
   'GET /v1/history/summary', 'GET /v1/history/:kind', 'POST /v1/history/support-ticket',
+  // Round 17 integration: support stays reachable during any window and from an outdated app — the help center (articles,
+  // search, inquiries: how players reach support), reports and the block list (safety). An article vote is not support.
+  'GET /v1/help', 'GET /v1/help/articles/:articleId', 'GET /v1/help/search',
+  'GET /v1/help/inquiries', 'GET /v1/help/inquiries/:ticketId', 'POST /v1/help/inquiries', 'POST /v1/help/inquiries/:ticketId/read',
+  'GET /v1/reports/options', 'POST /v1/reports', 'GET /v1/blocks', 'PUT /v1/blocks/:playerId', 'DELETE /v1/blocks/:playerId',
 ];
 
 const PREFIX_GROUPS: [string, MaintenanceGroup][] = [
@@ -205,6 +212,7 @@ const PREFIX_GROUPS: [string, MaintenanceGroup][] = [
   ['/v1/training', 'training'],
   ['/v1/time-attack', 'time_attack'], ['/v1/challenges', 'time_attack'],
   ['/v1/friends', 'social'], ['/v1/invite', 'social'], ['/v1/stable', 'social'], ['/v1/rival', 'social'],
+  ['/v1/cups', 'cups'],
 ];
 
 function patternMatch(path: string, pattern: string): boolean {
@@ -220,7 +228,7 @@ export function endpointGroup(path: string): MaintenanceGroup {
   return 'core';
 }
 /** Groups that run lockstep / verified races (the engine-level gate applies to them). */
-export const RACE_GROUPS: readonly MaintenanceGroup[] = ['ranked', 'events', 'tournaments', 'time_attack'];
+export const RACE_GROUPS: readonly MaintenanceGroup[] = ['ranked', 'events', 'tournaments', 'time_attack', 'cups'];
 
 // ----------------------------------------------------------------------------------------------- the gate
 

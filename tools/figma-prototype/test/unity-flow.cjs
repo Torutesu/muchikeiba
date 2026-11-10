@@ -182,6 +182,8 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await waitIn('.btn[data-frame="sakura"][data-unlocked="true"]');
     await page.locator('.screen.in .btn[data-frame="sakura"]').click(); await waitIn('.ph-view[data-frame="sakura"]');
     await page.locator('.screen.in [data-tab="stamp"]').click(); await page.locator('.screen.in .btn[data-stamp="hoof"]').click(); await page.locator('.screen.in .btn[data-stamp="star"]').click();
+    // wait on the condition, not a fixed time (the second stamp lands a frame later on a loaded machine)
+    await page.waitForFunction(() => document.querySelectorAll('.screen.in .ph-stamp').length === 2, null, { timeout: 15000 }).catch(() => {});
     assert.equal(await page.locator('.screen.in .ph-stamp').count(), 2);
     // caption: a betting word is refused, then a plain one
     await page.locator('.screen.in [data-tab="caption"]').click();
@@ -592,10 +594,12 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await page.locator('.screen.in .rp-sheet .rp-play').click(); await waitScreen('replay-player', 30000);
     await page.waitForFunction(() => (globalThis.__muchi.replay?.t ?? 0) > 500, null, { timeout: 20000 });
     await shot('replay-player', 300);
-    await page.locator('.screen.in .rp-speed').click(); await page.waitForTimeout(200);
+    await page.locator('.screen.in .rp-speed').click();
+    await page.waitForFunction(() => globalThis.__muchi.replay?.speed === 2, null, { timeout: 15000 }).catch(() => {});
     assert.equal(await page.evaluate(() => globalThis.__muchi.replay.speed), 2, 'replay: 2×');
     const cam0 = await page.evaluate(() => globalThis.__muchi.replay.camera);
-    await page.locator('.screen.in .rp-cam-next').click(); await page.locator('.screen.in .rp-cam-next').click(); await page.waitForTimeout(200);
+    await page.locator('.screen.in .rp-cam-next').click(); await page.locator('.screen.in .rp-cam-next').click();
+    await page.waitForFunction((c0) => globalThis.__muchi.replay?.camera !== c0, cam0, { timeout: 15000 }).catch(() => {});
     assert.notEqual(await page.evaluate(() => globalThis.__muchi.replay.camera), cam0, 'replay: the camera follows another horse');
     await page.locator('.screen.in .rp-jump').click();
     await page.waitForFunction(() => globalThis.__muchi.replay.remainingM <= 200, null, { timeout: 5000 });
@@ -791,7 +795,8 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   const raceLag = (startWall, f) => { if (f?.tick) lagMs += Math.max(0, Date.now() - startWall - f.tick * 50); };
   const THINK_MS = 800;
   const tap = async (label) => { await page.waitForTimeout(THINK_MS); await btn(label).click(); taps++; };
-  const tapWhip = async () => { await page.locator('.screen.in .btn.whip').click({ timeout: 5000, force: true }); taps++; raceTaps++; };
+  // the whip button can take a moment to attach after a screen change on a loaded machine: wait for it, not a fixed 5 s
+  const tapWhip = async () => { await page.locator('.screen.in .btn.whip').click({ timeout: 20000, force: true }); taps++; raceTaps++; };
   await page.goto(url); await ready();
   await waitScreen('title'); mark('タイトル表示');
   await shot('title', 300);

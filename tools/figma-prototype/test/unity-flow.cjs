@@ -1183,22 +1183,22 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await page.evaluate(() => globalThis.__muchi.show('Activity')); await waitScreen('activity'); await page.waitForTimeout(400);
   assert.equal(await page.locator('.screen.in [data-act="ops_notice"]').count(), 1, "support's request is in the activity list");
   await page.locator('.screen.in [data-act="ops_notice"] [data-act-go="safety"]').click(); await waitScreen('blocks', 20000);
-  // the report sheet from a friend's hall
+  // the report rptSheet from a friend's hall
   await page.evaluate(() => globalThis.__muchi.logic.hall.demoFriend());
   await page.evaluate(() => globalThis.__muchi.show('Hall', 'demo_hof_1')); await waitScreen('hall-friend'); await page.waitForTimeout(400);
   await page.locator('.screen.in .rpt-open').click(); await page.waitForTimeout(700);
-  const sheet = page.locator('.screen.in .rpt-sheet');
-  assert.equal(await sheet.getAttribute('data-kind'), 'display_name');
-  assert.deepEqual(await sheet.locator('.rpt-reason').evaluateAll((els) => els.map((e) => e.dataset.reason)), ['name', 'harassment', 'other'], 'only the reasons that fit a name');
-  assert.match(await sheet.locator('.rpt-send').getAttribute('class'), /disabled/, 'no reason → no send');
-  await sheet.locator('.rpt-reason[data-reason="name"]').click();
-  await sheet.locator('.rpt-note').fill('あ'.repeat(101)); await page.waitForTimeout(200);
-  assert.match(await sheet.locator('.rpt-send').getAttribute('class'), /disabled/, 'a note over the limit → no send');
-  await sheet.locator('.rpt-note').fill('名前が気になります'); await page.waitForTimeout(200);
-  assert.equal(await sheet.locator('.rpt-count').innerText(), '9/100');
-  await sheet.locator('.rpt-block').click();
+  const rptSheet = page.locator('.screen.in .rpt-sheet');
+  assert.equal(await rptSheet.getAttribute('data-kind'), 'display_name');
+  assert.deepEqual(await rptSheet.locator('.rpt-reason').evaluateAll((els) => els.map((e) => e.dataset.reason)), ['name', 'harassment', 'other'], 'only the reasons that fit a name');
+  assert.match(await rptSheet.locator('.rpt-send').getAttribute('class'), /disabled/, 'no reason → no send');
+  await rptSheet.locator('.rpt-reason[data-reason="name"]').click();
+  await rptSheet.locator('.rpt-note').fill('あ'.repeat(101)); await page.waitForTimeout(200);
+  assert.match(await rptSheet.locator('.rpt-send').getAttribute('class'), /disabled/, 'a note over the limit → no send');
+  await rptSheet.locator('.rpt-note').fill('名前が気になります'); await page.waitForTimeout(200);
+  assert.equal(await rptSheet.locator('.rpt-count').innerText(), '9/100');
+  await rptSheet.locator('.rpt-block').click();
   await shot('report-sheet', 300);
-  await sheet.locator('.rpt-send').click(); await page.waitForTimeout(900);
+  await rptSheet.locator('.rpt-send').click(); await page.waitForTimeout(900);
   const sent = await page.evaluate(() => globalThis.__muchiReports.at(-1));
   assert.deepEqual(sent, { kind: 'display_name', category: 'name', source: 'hall', blocked: true }, 'received, and blocked');
   const queue = await page.evaluate(() => globalThis.__muchi.logic.reports.queue());
@@ -1211,7 +1211,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   const promptText = await page.locator('.screen.in').innerText();
   assert.match(promptText, /かんたん操作を試してみませんか？/);
   assert.match(promptText, /いつでも設定で戻せます/);
-  assert.match(promptText, /相手には表示されません/, 'the sheet states the fairness rule');
+  assert.match(promptText, /相手には表示されません/, 'the rptSheet states the fairness rule');
   assert.ok(!/倍|今だけ|残りわずか|お得/.test(promptText), 'no pressure words on the suggestion');
   const sizes = await page.locator('.screen.in [data-assist-choice]').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
   assert.equal(sizes.length, 3); assert.ok(Math.max(...sizes) - Math.min(...sizes) <= 1, '「今はいい」 is as big as the choices');

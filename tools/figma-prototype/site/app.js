@@ -350,11 +350,15 @@ function NavBar(active) {
   return bar;
 }
 /** Secondary information in a drawer from the right (progressive disclosure). */
-function Sheet(title, kicker, build, width = 660) {
+function Sheet(title, kicker, build, width = 660, o = {}) {
   const host = cur;
+  // o.solo (round 17): the panels behind are set aside while the sheet is open (a dense screen under the scrim would
+  // otherwise crowd the sheet's text at the larger text sizes); they come back on close
+  const behind = o.solo ? [...host.children].filter((c) => c.classList.contains('el')) : [];
+  behind.forEach((c) => c.classList.add('behind-sheet'));
   const scrim = document.createElement('div'); scrim.className = 'scrim'; host.appendChild(scrim);
   const s = document.createElement('div'); s.className = 'sheet'; s.style.width = width + 'px'; host.appendChild(s);
-  const close = () => { s.classList.add('closing'); scrim.remove(); setTimeout(() => s.remove(), 220); };
+  const close = () => { s.classList.add('closing'); scrim.remove(); behind.forEach((c) => c.classList.remove('behind-sheet')); setTimeout(() => s.remove(), 220); };
   scrim.addEventListener('click', close);
   Kicker(kicker, 48, 52, s);
   Txt(title, 48, 116, width - 96, 32, WHITE, s, { weight: 700 });
@@ -4663,7 +4667,7 @@ async function ReportSheet(t) {
       send.classList.toggle('disabled', !st.reason || n > opt.noteMaxChars || st.sending || opt.remainingToday <= 0);
     };
     sync();
-  }, 700);
+  }, 700, { solo: true });
 }
 
 const BLOCK_ICON = { activity: 'お知らせ', team_feed: '支部', rival: 'ライバル', stable: 'マイ厩舎', hall: '殿堂', replays: 'リプレイ', cups: 'カップ' };

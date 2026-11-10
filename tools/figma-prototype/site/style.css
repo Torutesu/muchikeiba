@@ -633,3 +633,4 @@ html[data-color-mode="cvd"] .a11y-swatch .g.crit { background: repeating-linear-
 .el.bl-row .btn.small { font-size: 16px; }
 .el.bl-effect { border-bottom: 1px solid rgba(var(--cyan-rgb), .10); }
 .sheet.rpt-sheet .btn.rpt-reason, .sheet.rpt-sheet .btn.rpt-block { white-space: nowrap; padding: 0 12px; }
+.el.behind-sheet { display: none; }

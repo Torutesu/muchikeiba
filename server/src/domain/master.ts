@@ -202,6 +202,8 @@ export interface Progression {
   myReplays?: import('./myReplays.js').MyReplaysConfig;
   /** REQ-ACT-010: アクティビティ limits (activity.ts, validated by activityProblems). Absent = ACTIVITY_DEFAULTS. */
   activity?: Partial<import('./activity.js').ActivityConfig>;
+  /** REQ-FSUG-012: おすすめフレンド (friendSuggest.ts, validated by fsugProblems). Absent = FSUG_DEFAULTS. */
+  friendSuggest?: Partial<import('./friendSuggest.js').FsugConfig>;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */

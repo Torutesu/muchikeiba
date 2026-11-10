@@ -957,3 +957,28 @@ GROUP BY kind, screen ORDER BY taps DESC
 
 - **戻ってきた人に効いているか**：`session_start` の日に `activity_open` もある人の割合を、ライバル・支部・フレンドを使っている人とそれ以外で分けて見る。
 - プレゼント（`gift_arrived` → `gift_box`）を押した人のうち、同じ日に `gift_claim` がある割合が低ければ、プレゼントボックスへの導線（ボタンの文言）を見直す。受け取りボタンを一覧に置くことはしない（§40）。
+
+## おすすめフレンド：見た・申請した・消した（REQ-FSUG-014、contracts/protocol.md §49、Round 17）
+
+**おすすめからフレンドができているか、どの理由が効いているか**。`fsug_view`（クライアント、`double9` = 出ていた数）、`fsug_request`（サーバー、`blob8` = いちばん大きい理由、`blob9` = `requested` / `friends`）、`fsug_dismiss`（サーバー、`blob8` = 理由、分からなければ `none`）。相手の id は入れていない。
+
+```sql
+-- 日ごとの見た人数・申請した人数・消した数（見た人のうち申請した割合が低いなら、理由の行か並びを見直す）
+SELECT blob6 AS day,
+  count(DISTINCT if(blob1 = 'fsug_view', blob2, NULL)) AS viewers,
+  count(DISTINCT if(blob1 = 'fsug_request', blob2, NULL)) AS requesters,
+  sum(if(blob1 = 'fsug_dismiss', _sample_interval, 0)) AS dismisses
+FROM muchi_kpi
+WHERE blob1 IN ('fsug_view', 'fsug_request', 'fsug_dismiss') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY day ORDER BY day DESC
+```
+
+```sql
+-- 理由ごとの申請と消した数：消される方が多い理由は重みを下げる（progression.friendSuggest.weights、リモート設定）
+SELECT blob1 AS event, blob8 AS reason, sum(_sample_interval) AS n
+FROM muchi_kpi
+WHERE blob1 IN ('fsug_request', 'fsug_dismiss') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY event, reason ORDER BY event, n DESC
+```
+
+- **フレンドができたか**：相手の id を入れていないので、申請と承認を人単位では結ばない。日ごとの `friend_accept`（承認した側のサーバーイベント）の数が、おすすめを出してから増えたかで見る。

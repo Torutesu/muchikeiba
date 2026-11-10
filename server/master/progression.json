@@ -1041,5 +1041,11 @@
   "activity": {
     "_comment": "アクティビティ（REQ-ACT-*、contracts/protocol.md §40）。1人あたり maxEntries 件・maxDays 日まで、新しい順。いいね・応援スタンプ・プレゼントは、まだ読んでいない同じ種類が collapseHours 以内にあれば1件にまとめる（0 = まとめない）。badgeMax はホームのベルの数の頭打ち。",
     "maxEntries": 100, "maxDays": 30, "collapseHours": 24, "pageSize": 20, "pageMax": 50, "badgeMax": 99
+  },
+  "friendSuggest": {
+    "_comment": "おすすめフレンド（REQ-FSUG-*、contracts/protocol.md §49）。何も配らない。理由はフレンド部屋・イベント・大会の最近の対戦相手（ランク戦は使わない）・同じ支部・マイ厩舎のいいね・応援スタンプ・共通のフレンドの数（fofMin 人以上）。表示しない設定・minAgeShown 歳未満・BAN・削除予約中の人は出さない。",
+    "enabled": true, "maxShown": 10, "candidateMax": 60, "fofFriendsMax": 20, "fofMin": 2, "mutualCap": 5,
+    "opponentDays": 30, "opponentKeep": 50, "dismissKeep": 200, "cacheTtlMs": 300000, "minAgeShown": 13,
+    "weights": { "opponent": 40, "team": 30, "liked": 25, "cheered": 25, "mutual": 10 }
   }
 }

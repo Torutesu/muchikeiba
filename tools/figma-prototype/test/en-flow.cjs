@@ -342,6 +342,10 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await click('ホームへ'); await waitScreen(['home', 'link-prompt'], 20000);
   if ((await screen()) === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); }
   await shot('home-bell', 400);
+  // round 17: おすすめフレンド in English (REQ-FSUG-015): reasons from the server, player names as written
+  await page.evaluate(() => globalThis.__muchi.demo('friends')); await waitScreen('friends', 60000);
+  await shot('friends-suggestions', 600);
+  assert.match(await page.locator('.screen.in').innerText(), /Raced you recently, 2 mutual friends/, 'friend suggestions: the reason line in English');
 
   // round 13: 支部の共同目標 in English (REQ-TGOAL-*): the week, after the demo races, the week result sheet
   await show('TeamGoal'); await waitScreen('team-goal', 20000); await shot('team-goal', 600);

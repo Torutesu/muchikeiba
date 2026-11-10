@@ -57,4 +57,5 @@ node "$HERE/test/a11y-flash.test.cjs"       # round 15: アクセシビリティ
 node "$HERE/test/round15-a11y.test.mjs"     # round 15: アクセシビリティ — the whip hold (RaceInput + WhipHold) in WASM, a hold = taps, the tutorial, the settings on the server rules
 node "$HERE/test/round15-race-advice.test.mjs" # round 15: 出走前アドバイス — TS = C# (WASM) on the shared vectors, the lobby over today's courses, the challenge loan horse, tutorial, KPI, English
 node "$HERE/test/round15-photo.test.mjs" # round 15: フォトモード — pause a solo race (same state, same hash after), camera limits, no pause in ranked, catalog / purchase / keyed record / KPI
+node "$HERE/test/round17-friend-suggestions.test.mjs" # round 17: おすすめフレンド — demo from the real race / like / cheer / friends paths, reasons, opt-out and ranked never shown, request via the friend flow, dismiss, KPI, English
 echo "built $SITE ($(du -sh "$SITE" | cut -f1))"

@@ -909,3 +909,22 @@
 - REQ-A11Y-014 KPI：`a11y_setting_change`（変わったキーごと、s1 キー・s2 値。個人情報なし）。
 - REQ-A11Y-015 英語：設定画面のすべての文に英語（`ui-en.json`・`proto-en.json`）。英語・特大の文字でもはみ出さない。
 - REQ-A11Y-016 クライアント：`Muchi.Client`（設定のモデル・API・トークン・`MotionPolicy`・`FlashLimiter`・`WhipHold`）、Unity の `AccessibilityModel`（Codex が結ぶ値）、プロトタイプ（設定画面が文字の大きさ・色・動きを全画面に実際に当てる、日英、e2e と英語の通し）、Codex 向けの引き継ぎ（docs/handoff-codex-round15-accessibility.md）。
+
+## 49. おすすめフレンド（TS＋C#、`src/domain/friendSuggest.ts`・`Muchi.Client/FriendSuggestions.cs`・`Muchi.Game.FriendSuggestionsModel`、`contracts/protocol.md` §49）
+拘束条件：何も配らない（E番号なし、フレンド数の報酬なし）。もう見えているシグナルだけを使い、ブロック・BAN・退会・表示しない設定の人は出さない。申請は今のフレンド申請をそのまま通る。
+- REQ-FSUG-001 一覧：`GET /v1/friends/suggestions` で最大 `maxShown` 人。理由はフレンド部屋・イベント・大会の最近の対戦相手、同じ支部、マイ厩舎のいいね、応援スタンプ、共通のフレンドの数（2人以上、誰かは言わない）。
+- REQ-FSUG-002 並べ方：重みの合計 → いちばん新しいシグナル → `playerId` の順。同じデータなら同じ並び（乱数なし）。
+- REQ-FSUG-003 理由の行：寄与の大きい順に最大2つ（「同じ支部・共通のフレンド3人」）。データにある事実だけ。英語あり。
+- REQ-FSUG-004 除外（関係）：自分・フレンド・申請中（両向き）・消した人・おすすめから申請した人。
+- REQ-FSUG-005 ブロック：自分がブロックした人も、自分をブロックした人も出さない（1つのブロックの一覧）。
+- REQ-FSUG-006 BAN・退会：BAN・削除の予約中・手続き中・退会済みの人は出さない。自分が削除の予約中なら一覧は空。
+- REQ-FSUG-007 プライバシー設定：「おすすめに表示しない」（既定オフ）。オンの人と登録年齢13歳未満の人は他人のおすすめに出ず、共通のフレンドの橋にもならない。ランク戦の相手は使わない。
+- REQ-FSUG-008 申請：`POST …/:playerId/request` はその時点でおすすめに出る人だけ（他は 404）。今のフレンド申請と同じ上限・アクティビティ・プッシュ。送った人は二度と出さない。
+- REQ-FSUG-009 消す：`POST …/:playerId/dismiss`、冪等、新しい順に `dismissKeep` 人まで覚える。
+- REQ-FSUG-010 計算：読むときに計算し、呼び出しの数に上限（自分1・支部1・フレンドのカード ≤20人・候補 ≤60人、ディレクトリはシャードごとにまとめる）。プレイヤーごとの小さなキャッシュ（5分・1000人）。キャッシュでも自分側の除外はその場の状態で行う。
+- REQ-FSUG-011 カード：ブロックの一覧とフレンドの id をディレクトリの写し（他人には返さない）に置き、変わったときだけ書く。表示しない・13歳未満・BAN・削除の予約中は消し、アカウント削除でも消す。
+- REQ-FSUG-012 設定：`progression.friendSuggest`（起動時とリモート設定で範囲を検査）。
+- REQ-FSUG-013 対戦相手の記録：確定したフレンド部屋・イベント・大会のレースの人間の相手を最大 `opponentKeep` 人、`opponentDays` 日まで覚える。ランク戦・チュートリアル・タイムアタック・チャレンジ・無効のレースは記録しない。
+- REQ-FSUG-014 KPI：`fsug_view`（クライアント）、`fsug_request`・`fsug_dismiss`（サーバー、相手の id なし）。
+- REQ-FSUG-015 英語：理由の行・画面の文言すべてに英語。名前は訳さない。
+- REQ-FSUG-016 クライアント：C# の API とモデル、Unity `FriendSuggestionsModel`、プロトタイプのフレンド画面の区画（日英・文字の大きさ）、Codex 向けの引き継ぎ。

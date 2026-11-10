@@ -1,7 +1,7 @@
 import type { Env } from './env.js';
 import { MyReplaysService, type ReplayStore } from './domain/myReplaysService.js';
 import { validateLocale } from './i18n/validate.js';
-import { eventPlayersFrom, friendIdsFrom, handle, makeFriendsService, makeInviteService, makeStudService, teamPlayersFrom, tournamentPlayersFrom, type AppContext, type PlayerInvoker, type RaceEntry } from './http/app.js';
+import { eventPlayersFrom, friendIdsFrom, handle, makeFriendSuggestService, makeFriendsService, makeInviteService, makeStudService, teamPlayersFrom, tournamentPlayersFrom, type AppContext, type PlayerInvoker, type RaceEntry } from './http/app.js';
 import { bearer, verifyFirebaseIdToken } from './http/auth.js';
 import { parseStoreNotification, storeSettingsFromEnv } from './http/stores.js';
 import { accountingStoreIndex } from './do/storeIndex.js';
@@ -45,7 +45,7 @@ import { authenticateAdmin, parseAdminTokens, parseConsoleOrigins, RateLimiter, 
 import { DeadLetterService, type DeadLetterOwner, type DeadLetterRegistry, type DeadLetterSource } from './ops/deadLetter.js';
 import { activeConfig } from './ops/activeConfig.js';
 import type { ResolvedConfig } from './ops/config.js';
-import { shardedDirectory, shardedHallDirectory, shardedInviteDirectory, shardedStableDirectory, shardedStudDirectory } from './do/directory.js';
+import { shardedDirectory, shardedHallDirectory, shardedInviteDirectory, shardedStableDirectory, shardedStudDirectory, shardedSuggestDirectory } from './do/directory.js';
 import { makeStableService } from './http/stablePorts.js';
 import { makeHallService } from './http/hallPorts.js';
 import { RivalService, rivalPlayersFrom } from './domain/rivalService.js';
@@ -408,6 +408,9 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
       },
     },
     friends: makeFriendsService((uid) => player(uid), shardedDirectory(env.DIRECTORY)),
+    // REQ-FSUG-*: おすすめフレンド (cards in the directory shards, the team view for branch members)
+    friendSuggest: makeFriendSuggestService(player, makeFriendsService((uid) => player(uid), shardedDirectory(env.DIRECTORY)), shardedSuggestDirectory(env.DIRECTORY),
+      makeTeamsService(env, () => master, player), () => master),
     stud: makeStudService(player, shardedStudDirectory(env.DIRECTORY), () => master),
     stable: makeStableService(player, shardedStableDirectory(env.DIRECTORY), () => master),
     hall: makeHallService(player, shardedHallDirectory(env.DIRECTORY), () => master), // REQ-HOF-*

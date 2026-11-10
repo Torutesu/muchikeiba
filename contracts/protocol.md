@@ -2094,3 +2094,62 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 - `Muchi.Client`：`AccessibilitySettings`（`Parse`・`ToJson`・`Defaults`、知らない値は既定値）、`ApiClient.GetAccessibilityAsync`・`SetAccessibilityAsync`、`PlayerView.Accessibility`、`AccessibilityTokens`（トークンの表、`Color(mode, token)`）、`TextScale`（`Factor`・`Px`）、`MotionPolicy`、`FlashLimiter`、`WhipHold`。
 - `Muchi.Game`：`AccessibilityModel`（端末の写し・未送信の再送・`Changed` イベント・画面が結ぶ値 `TextScale`／`Palette`／`Motion`／`Haptics`／`Subtitles`／`OneHanded`／`WhipInput`・設定画面の行 `Rows()`・`ApplyTo(RaceInput)`）、`RaceInput.WhipMode`・`SetWhipHeld`・`Collect(RaceSim, slot)`。
 - 画面が守ること：docs/handoff-codex-round15-accessibility.md。
+
+## 49. おすすめフレンド（friend suggestions、REQ-FSUG-001〜016、`server/src/domain/friendSuggest.ts`、C# `FriendSuggestions.cs`・`Muchi.Game.FriendSuggestionsModel`）
+**もうゲームの中で出会った人**の中から、フレンドになれそうな人を並べる。フレンド画面の一区画。**何も配らない**（E番号なし。フレンドの数に応じた報酬は作らない。招待の報酬は §19 のまま）。申請は今のフレンド申請（REQ-SOCIAL-002 の `friendSend`・`friendReceive`）をそのまま通るので、上限（`maxFriends`・`maxOutgoing`・`maxIncoming`）とアクティビティ（§40 の `friend_request`・`friend_accepted`）とプッシュはそのまま効く。
+
+### 49.1 理由（シグナル）と並べ方
+| `kind` | どこから（自分の状態か、もう見えているものだけ） | 日本語（理由の行） | English | 重み（既定） |
+|---|---|---|---|---|
+| `opponent` | 最近 `opponentDays`（30日）のフレンド部屋・イベント・大会のレースで同じレースを走った人（確定した結果の `field`。**ランク戦は使わない**） | 最近のレースで対戦 | Raced you recently | 40 |
+| `team` | 同じ支部のメンバー（支部の画面で見えている一覧） | 同じ支部 | Same branch | 30 |
+| `liked` | マイ厩舎にいいねをくれた人（アクティビティ §40 の `stable_like` に名前が出た人） | マイ厩舎にいいねをくれた | Liked your stable | 25 |
+| `cheered` | 応援スタンプをくれた人（§40 の `team_cheer`） | 応援スタンプをくれた | Cheered your race | 25 |
+| `mutual` | 共通のフレンドの**数だけ**（`fofMin` = 2 人以上のときだけ。誰かは言わない） | 共通のフレンド{n}人 | {n} mutual friends | 1人あたり 10（`mutualCap` = 5 人まで） |
+
+- 点 = 当てはまる理由の重みの合計（`mutual` は重み × min(人数, `mutualCap`)）。並びは点の高い順 → いちばん新しいシグナルの時刻の新しい順 → `playerId` の昇順（同じデータなら必ず同じ並び。乱数なし）。
+- 理由の行 `text` は点への寄与の大きい順に最大2つを「・」でつなぐ（例「同じ支部・共通のフレンド3人」。英語は「, 」で「Same branch, 3 mutual friends」）。データにある事実だけで、作った言葉・急かす言葉は使わない。
+- **ランク戦の相手は使わない**（決めたこと）：ランク戦は知らない人と自動で組まれ、名前を出さない作り（観戦・リプレイは馬の名前と `p<枠>`、§37）なので、相手を名前付きで出すと「ランク戦で当たった人を後から探せる」ことになる。オプトインの設定も置かない（設定を増やすより、使わない方が分かりやすい）。フレンド部屋・イベント・大会は相手が名前付きで見える場なので使う。
+
+### 49.2 出さない人（REQ-FSUG-004〜007）
+- 自分・もうフレンド・申請中（どちら向きでも）・自分が消した人（`dismissed`、§49.4）・自分がおすすめから申請した人（断られても二度と出さない）。
+- **ブロック**：自分がブロックした人、自分をブロックした人（どちらも支部フィードのミュート＝ブロックの1つの一覧、REQ-RIVAL-011）。
+- **BAN・退会**：BAN 中、削除の予約中・手続き中、退会済み（公開プロフィールが無い）。
+- **「おすすめに表示しない」をオンにした人**、登録した年齢が `minAgeShown`（13）歳未満の人（設定に関係なく他の人のおすすめに出ない。自分のおすすめは見られる）。この人たちは「共通のフレンド」の数え方にも使わない（その人のフレンド一覧を橋にしない）。
+- 公開の写し（§49.5 のカード）がまだ無い人（しばらくゲームを開いていない人。ブロックと設定を確かめられないので出さない）。
+
+### 49.3 `GET /v1/friends/suggestions`（要認証、読むだけ）
+```json
+{ "enabled": true,
+  "items": [
+    { "playerId": "p_9", "displayName": "ハヤテ", "titleId": null, "classId": "B",
+      "reasons": [ { "kind": "team" }, { "kind": "mutual", "n": 3 } ],
+      "text": "同じ支部・共通のフレンド3人" } ],
+  "settings": { "hidden": false } }
+```
+- 最大 `maxShown`（10）件。名前はプレイヤーが付けたものなので訳さない。`text` は日本語で作り、英語は応答の境界で訳す（§23、`i18n/en.ts`）。レーティング・戦績・支部名・共通のフレンドの名前は返さない。
+- 自分のアカウントが削除の予約中なら `items` は空。`enabled: false`（`progression.friendSuggest.enabled` が false）なら `items` は空で、フレンド画面は区画を出さない。
+
+### 49.4 申請・消す・設定（要認証）
+- `POST /v1/friends/suggestions/:playerId/request` → `{ "status": "requested" | "friends", "playerId": "p_9" }`（フレンドコードの申請 `POST /v1/friends/requests` と同じ形。相手が先にこちらへ申請していれば `friends`）。**その時点でおすすめに出る人だけ**（キャッシュを使わずに確かめ直す）。出ない人は理由を言わず 404 `NOT_FOUND`（id を当てずっぽうに送っても誰にでも申請できる道にしない）。上限はフレンド申請のまま（`FRIEND_LIMIT`）。送れたら相手を `dismissed`（`why: requested`）に入れる。何度送っても2件にならない（`friendSend` の `already_sent`）。
+- `POST /v1/friends/suggestions/:playerId/dismiss` → `{ "ok": true }`。何度送っても同じ。覚えるのは新しい順に `dismissKeep`（200）人まで（あふれた古い人はまた出ることがある）。
+- `PUT /v1/friends/suggestions/settings` 本文 `{ "hidden": true }` → `{ "hidden": true }`。プロフィール画面の「おすすめに表示しない」。**既定はオフ（表示する）**：出る相手は同じ支部・同じレース・いいね・応援でもう名前を見ている人と、共通のフレンドが2人以上いる人だけで、外の情報（電話帳・SNS）は使わないため。オンにすると、次にカードが書き換わったとき（すぐ）から誰のおすすめにも出ず、共通のフレンドの橋にもならない。他のキーは 400。
+
+### 49.5 保存と計算（REQ-FSUG-010）
+- 自分の状態 `friendSuggest`：`{ hidden, dismissed: [{ id, at, why }]（最大 dismissKeep）, opponents: [{ id, at, mode, n }]（最大 opponentKeep = 50、opponentDays より古いものは数えない）, cardKey }`。アカウント削除で状態と一緒に消える。
+- **カード**（ディレクトリの写し、他のプレイヤーには返さない）：`{ playerId, blocked（ブロックの一覧）, friends（フレンドの id）, updatedAt }`。プレイヤーのトランザクションのたびに作り直し、変わったときだけ書く（`fsug_cards`、DirectoryDO の表。wrangler の移行は不要）。表示しない設定・13歳未満・BAN・削除の予約中はカードを**消す**。アカウント削除でも消す（`forget`）。
+- 計算は読むときに行う：①自分の状態（PlayerDO 1回）②支部のメンバー（TeamDO 1回）③フレンドのカード（新しく加わった順に `fofFriendsMax` = 20 人分、シャードごとにまとめて最大16回）④候補（点の高い順に `candidateMax` = 60 人まで）のカードと公開プロフィール（シャードごとにまとめて最大16回）。結果はプレイヤーごとに `cacheTtlMs`（5分）だけワーカーのメモリに持つ（最大1000人分）。キャッシュを使うときも、自分のフレンド・申請・ブロック・消した人はその場の状態で外す。相手側の変化（相手がブロックした・設定をオンにした）がキャッシュに届くのは最長 `cacheTtlMs` 後（申請のときは確かめ直す）。
+- 設定 `progression.friendSuggest`（起動時とリモート設定で検査、無ければ既定値）：`{ "enabled": true, "maxShown": 10, "candidateMax": 60, "fofFriendsMax": 20, "fofMin": 2, "mutualCap": 5, "opponentDays": 30, "opponentKeep": 50, "dismissKeep": 200, "cacheTtlMs": 300000, "minAgeShown": 13, "weights": { "opponent": 40, "team": 30, "liked": 25, "cheered": 25, "mutual": 10 } }`。範囲：`maxShown` 1〜30、`candidateMax` 10〜200（`maxShown` 以上）、`fofFriendsMax` 0〜50、`fofMin` 1〜10、`mutualCap` 1〜20、`opponentDays` 1〜90、`opponentKeep` 10〜200、`dismissKeep` 10〜1000、`cacheTtlMs` 0〜3600000、`minAgeShown` 0〜18、重みは 0〜100 の整数。
+
+### 49.6 KPI
+| イベント | 送り手 | s1 | s2 | value |
+|---|---|---|---|---|
+| `fsug_view` | クライアント（区画が見えたとき1回、`props.shown` 0〜30） | | | 出ていた数 |
+| `fsug_request` | サーバー（おすすめからの申請が通ったとき） | いちばん大きい理由の `kind` | `requested` / `friends` | |
+| `fsug_dismiss` | サーバー（新しく消したときだけ） | いちばん大きい理由の `kind`（分からなければ `none`） | | |
+相手の id は入れない。クエリは `docs/ops/kpi-queries.md`「おすすめフレンド」。
+
+### 49.7 クライアント
+- `Muchi.Client`：`FriendSuggestions`（`Parse`）、`ApiClient.GetFriendSuggestionsAsync`・`RequestSuggestedFriendAsync`・`DismissSuggestionAsync`・`SetSuggestionsHiddenAsync`、analytics `fsug_view`。
+- `Muchi.Game`：`FriendSuggestionsModel`（読み込み・同時に2回読まない・申請／消すは押した行をすぐ一覧から外す（失敗したら戻す）・同じ人に2回送らない・`fsug_view` は1画面1回・オフラインは「オンラインで表示できます」・空のときの文言・「おすすめに表示しない」の切り替え）。
+- 画面が守ること：docs/handoff-codex-round17-friend-suggestions.md。

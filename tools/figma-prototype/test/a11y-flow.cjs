@@ -190,6 +190,8 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     // Round 15 screens: the pre-race advice panel (the lobby), アクティビティ; the settings rows again at this size
     await show('RaceAdvice'); await waitScreen('lobby'); await page.waitForSelector('.screen.in .adv-row', { timeout: 15000 }); await shot('race-advice', english, 600);
     await show('Activity'); await waitScreen('activity'); await shot('activity', english, 600);
+    // Round 17: おすすめフレンド (the friends screen's suggestions section)
+    await show('Friends'); await waitScreen('friends'); await shot('friends-suggestions', english, 600);
     await show('Settings'); await waitScreen('settings'); await boxesClear('settings lists (largest)', SETTINGS_LISTS, english);
     await show('Home'); await waitScreen('home'); await page.waitForTimeout(700); await boxesClear('home top bar (largest)', HOME_BAR, english);
   };

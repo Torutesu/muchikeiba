@@ -159,6 +159,11 @@ export class FriendsService {
   async request(uid: string, code: string) {
     const target = await this.dir.lookup(code);
     if (!target) throw new AppError('NOT_FOUND', 'unknown friend code');
+    return this.requestTo(uid, target);
+  }
+
+  /** The request itself, by player id (REQ-SOCIAL-002; also おすすめフレンド, REQ-FSUG-008, after its own eligibility check). */
+  async requestTo(uid: string, target: string) {
     if (target === uid) throw new AppError('BAD_REQUEST', 'cannot befriend yourself');
     const out = await this.players.send(uid, target);
     const myName = await this.nameOf(uid);

@@ -1156,6 +1156,29 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.equal(await page.locator('.screen.in .act-row.unread').count(), 0, 'read rows on the next visit');
   await page.locator('.screen.in [data-act="gift_arrived"] [data-act-go]').click(); await waitScreen('gift-box', 20000);
   assert.ok((await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name === 'activity_tap').length)) >= 1, 'activity_tap sent');
+  // ------------------------------------------------------------------ 6. round 17: おすすめフレンド (REQ-FSUG-*)
+  // people met through the real paths (an event, a friend room, a like, a cheer, mutual friends); the opted-out player and
+  // the ranked-only opponent never appear; 申請する goes through the friend request flow; 表示しない is remembered; the switch
+  await page.evaluate(() => globalThis.__muchi.demo('friends')); await waitScreen('friends', 60000); await page.waitForTimeout(400);
+  const fsText = await page.locator('.screen.in').innerText();
+  assert.match(fsText, /アサギ/, 'the event opponent is suggested');
+  assert.match(fsText, /最近のレースで対戦・共通のフレンド2人/, 'the reason line from the server');
+  assert.match(fsText, /共通のフレンド3人/, 'a mutual-friends count (never who)');
+  assert.ok(!/カゲロウ|ランクノヒト/.test(fsText), 'opted out and ranked-only players are not suggested');
+  assert.ok(!/今だけ|残りわずか|倍|お得/.test(fsText), 'no urgency or multiplier wording');
+  assert.equal(await page.locator('.screen.in .fsug-row').count(), 5);
+  assert.equal(await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name === 'fsug_view').length), 1, 'fsug_view once per visit');
+  await shot('friends-suggestions', 400);
+  await page.locator('.screen.in [data-fsug-request="demo_fs_2"]').click(); await page.waitForTimeout(700);
+  assert.equal(await page.locator('.screen.in [data-fsug-id="demo_fs_2"]').count(), 0, 'requested: the card leaves');
+  assert.equal(await page.locator('.screen.in [data-fsug-outgoing]').getAttribute('data-fsug-outgoing'), '1', 'the request is pending');
+  await page.locator('.screen.in [data-fsug-dismiss="demo_fs_4"]').click(); await page.waitForTimeout(700);
+  assert.equal(await page.locator('.screen.in .fsug-row').count(), 3, 'dismissed: remembered');
+  assert.equal(await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name === 'fsug_view').length), 1, 'redrawing the same visit sends no second fsug_view');
+  await page.locator('.screen.in [data-fsug-hidden]').click(); await page.waitForTimeout(600);
+  assert.equal(await page.locator('.screen.in [data-fsug-hidden]').getAttribute('data-fsug-hidden'), '1', 'おすすめに表示しない: on');
+  await shot('friends-suggestions-after', 300);
+  await page.locator('.screen.in [data-fsug-hidden]').click(); await page.waitForTimeout(400);
   // ------------------------------------------------------------------ 6. round 12: かんたん操作 (REQ-ASSIST-*)
   // a week of play, then three last places settled by the real applyRace → the one-time suggestion (calm: 「今はいい」 as big
   // as the rest) → ぜんぶおまかせ → the settings row and the options screen → a ranked race the real InputAssistant rides with

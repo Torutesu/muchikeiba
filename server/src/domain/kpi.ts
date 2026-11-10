@@ -150,6 +150,8 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   // REQ-ACT-015: the activity list was opened (unread count then) / an entry was tapped (its kind and deep link)
   z.object({ name: z.literal('activity_open'), at: z.number().int(), props: z.object({ unread: z.number().int().min(0).max(999) }).strict() }),
   z.object({ name: z.literal('activity_tap'), at: z.number().int(), props: z.object({ kind: z.enum(ACTIVITY_KIND_NAMES), screen: z.enum(ACTIVITY_SCREEN_NAMES) }).strict() }),
+  // REQ-FSUG-014: the おすすめフレンド section was shown (once per screen visit; how many suggestions it held)
+  z.object({ name: z.literal('fsug_view'), at: z.number().int(), props: z.object({ shown: z.number().int().min(0).max(30) }).strict() }),
 ]);
 export type ClientEvent = z.infer<typeof clientEventSchema>;
 
@@ -188,6 +190,7 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'photo_share': return { name: e.name, s1: e.props.source, s2: e.props.framed ? 'framed' : 'plain' };
     case 'activity_open': return { name: e.name, value: e.props.unread };
     case 'activity_tap': return { name: e.name, s1: e.props.kind, s2: e.props.screen };
+    case 'fsug_view': return { name: e.name, value: e.props.shown };
   }
 }
 

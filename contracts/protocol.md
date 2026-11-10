@@ -2679,7 +2679,7 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 ### 48.7 運営（管理 API・ops コンソール、REQ-HELP-015〜017）
 - 一覧の索引（`OpsApi.inquiries`、OpsDO の SQLite `inquiries` 表、ワーカーは問い合わせを受け付けた後と返信の後に書く）：`ticketId`・`playerId`・`category`・`status`・`lang`・`attachments`（件数）・`createdAt`・`updatedAt` だけ。**本文は索引に入れない**（開くときにプレイヤーのオブジェクトから読み、閲覧は監査ログに残る）。索引に書けなかった問い合わせは `indexed: false` のまま残り、本人が一覧を開いたときにもう一度書く（同じ id は上書き）。
 - `GET /v1/admin/inquiries?status=received|answered|closed&category=&limit=`（viewer）：新しい順。
-- `GET /v1/admin/players/:playerId/inquiries/:ticketId`（viewer）：詳細（本文・添えた行・診断情報・やりとり、運営の返信には書いた人）。削除済みのアカウントは 404（`account deleted`）で、索引からそのプレイヤーの行を消す。
+- `GET /v1/admin/players/:playerId/inquiries/:ticketId`（viewer）：詳細（本文・添えた行・診断情報・やりとり、運営の返信には書いた人）。削除済みのアカウントは 404（`account deleted`）で、索引からそのプレイヤーの行を消す。Round 17 統合から、アカウント削除の手順にも `inquiries` の段（`reports` の後、`finalize` の前）があり、索引の行はその時に消える（ここでの削除は取り残しの掃除）。
 - `POST /v1/admin/players/:playerId/inquiries/:ticketId/reply`（operator、`reason` 必須）`{ "opKey": "reply-q3-1", "content": "…", "close": false }`：返信を足して `answered`（`close` で `closed`）。`opKey` ごとに1回（再送は同じ結果）。`content` は1〜`replyMax` 文字。アクティビティに `inquiry_answered`（送り元 `inquiry:{ticketId}:{返信の番号}`、リンク `help_inquiry`・`id` = ticketId）を書く。完了した問い合わせには返せない（409 `CONFLICT`）。
 - 返信は人が書いた文で、運営は問い合わせの `lang` の言語で書く（翻訳しない）。
 

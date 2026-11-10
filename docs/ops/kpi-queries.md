@@ -60,6 +60,8 @@
 | `hof_view` | サーバー（殿堂を見た。書き込みなし） | `self`/`friend`/`team` | | | `double9` そのページの銘板の数 |
 | `stamp_post` | サーバー（支部フィードにスタンプを投稿・応援した、REQ-TEAMFEED-009） | スタンプID | `post`/`reaction` | 支部ID | |
 | `team_feed_view` | サーバー（支部フィードの1ページ目を開いた） | 支部ID | | | `double5` ミュートしている人数 |
+| `qchat_post` | サーバー（支部の定型チャットを投稿した、REQ-QCHAT-011） | 文ID | 支部ID | `mention`/空 | `double5` スロットの数 |
+| `qchat_react` | サーバー（定型チャットに新しくスタンプで応援した） | スタンプID | 文ID | 支部ID | |
 | `session_start` / `session_end` | クライアント | | | | `double6` セッションの長さ |
 | `tutorial_step` | クライアント | ステップ名（固定の8つ：`consent` 1, `race1_start` 2, `race1_whip` 3, `race1_win` 4, `named` 5, `gacha_done` 6, `race2_done` 7, `home` 8） | | | `double9` ステップ番号、`double5` 任意の数値（`race1_win` はやり直し回数）。REQ-UXS-030 |
 | `feature_unlock` | クライアント | 機能キー（`unlocks` のキー） | | | |

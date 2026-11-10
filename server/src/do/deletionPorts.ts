@@ -1,10 +1,12 @@
 import type { Env } from '../env.js';
 import type { DeletionPorts, RetainedRecord } from '../domain/accountDeletion.js';
+import { DELETED_PLAYER_NAME } from '../domain/accountDeletion.js';
 import type { PlayerService } from '../domain/service.js';
 import type { PlayerInvoker, PlayerMethod } from '../http/app.js';
 import { pastSeasons } from '../domain/scheduled.js';
 import { jstMonthKey } from '../domain/time.js';
 import type { TournamentSummary } from '../domain/tournaments.js';
+import { durableCupBackend } from './cup.js';
 import { forgetInDirectory, shardedInviteDirectory, shardedStableDirectory } from './directory.js';
 import { stableDeletionPort } from '../domain/stable.js';
 import { makeStableService } from '../http/stablePorts.js';
@@ -81,6 +83,7 @@ export function deletionPortsFromEnv(env: Env, ctx: DurableObjectState, svc: Pla
       },
     },
     replays: { deleteAll: async (keys) => { for (let i = 0; i < keys.length; i += 1000) await env.REPLAYS.delete(keys.slice(i, i + 1000)); } }, // REQ-MYRP-012
+    ...(env.CUPS ? { cups: { forget: (cupId: string, uid: string) => durableCupBackend(env).forget(cupId, uid, DELETED_PLAYER_NAME) } } : {}), // REQ-CUP-016
     finalize: async (uid) => {
       const r = await svc.deletionFinalize(uid);
       // the state keeps only the recent ledger; the full audit trail lives in this object's ledger table

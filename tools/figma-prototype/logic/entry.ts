@@ -43,6 +43,11 @@ import { DEFAULT_RULESET } from '../../../server/src/domain/ruleset.js';
 import { computeRaceAdvice, adviceTextProblems, adviceTexts, type AdviceInput } from '../../../server/src/domain/raceAdvice.js';
 import type { AdviceQuery } from '../../../server/src/domain/raceAdviceService.js';
 import { applyRosterQuery, aptitudeFor, DEFAULT_QUERY, type RosterQuery, type RosterRow } from '../../../server/src/domain/roster.js';
+import { HostedCupsService, MemoryCupBackend } from '../../../server/src/domain/hostedCupService.js';
+import type { CupRaceSpec, CupState } from '../../../server/src/domain/hostedCups.js';
+import type { HeatOutcome } from '../../../server/src/domain/tournaments.js';
+import { createRace } from '../../../server/src/race/orchestrate.js';
+import type { RaceEntry } from '../../../server/src/http/app.js';
 // REQ-L10N-*: the server's English tables (master/locale-en.json + i18n/en.ts), the client's (ui-en.json) and the
 // prototype's own screen texts (proto-en.json), in one catalog with the server's template rules (katakana names romanized)
 import { compileCatalogWith, translateText, romanizeName } from '../../../server/src/i18n/catalog.js';
@@ -276,6 +281,41 @@ async function wrap<T>(f: () => Promise<T> | T): Promise<{ ok: true; value: T } 
   }
 }
 
+// round 16 (REQ-CUP-*, contracts/protocol.md §42): プレイヤー主催カップ on the real HostedCupsService / CupRunner with the
+// in-memory cup backend (the CupDO logic). Cups and codes are kept in localStorage; the races are built by the server's
+// createRace (mode "cup") and simulated by the page in WASM, then settled like a room (heat outcome → standings).
+const CUP_KEY = 'muchi.proto.cups';
+const CUP_DEMO = [['demo_cup_1', 'ミドリ'], ['demo_cup_2', 'サクラ'], ['demo_cup_3', 'Kenta'], ['demo_cup_4', 'アオイ'], ['demo_cup_5', 'Rin'], ['demo_cup_6', 'ユウキ'], ['demo_cup_7', 'Sora']] as const;
+const CUP_HORSES = ['ミドリノカゼ', 'サクラフブキ', 'ハヤブサ', 'アオイソラ', 'リンドウ', 'ユウヒ', 'ソラノカナタ'];
+const cupSpecs = new Map<string, CupRaceSpec<RaceEntry>>();
+const cupOutcomes = new Map<string, HeatOutcome | null>();
+const cupBackend = new MemoryCupBackend<RaceEntry>(() => master, {
+  refreshEntry: async (pid, horseId) => (await svc.raceEntry(pid, horseId)) as RaceEntry,
+  startRace: async (spec) => { cupSpecs.set(spec.raceId, spec); return { raceId: spec.raceId, startAtMs: now() + 3000 }; },
+  raceOutcome: async (raceId) => cupOutcomes.get(raceId) ?? null,
+  notifyClosed: async (pid, n) => { await svc.cupClosed(pid, n); },
+}, now);
+try {
+  const saved = JSON.parse(localStorage.getItem(CUP_KEY) ?? 'null') as { cups: CupState<RaceEntry>[]; codes: [string, string][] } | null;
+  for (const c of saved?.cups ?? []) cupBackend.cups.set(c.id, c);
+  for (const [k, v] of saved?.codes ?? []) cupBackend.codes.set(k, v);
+} catch { /* memory only */ }
+const saveCups = () => { try { localStorage.setItem(CUP_KEY, JSON.stringify({ cups: [...cupBackend.cups.values()], codes: [...cupBackend.codes] })); } catch { /* ignore */ } };
+const cupsSvc = new HostedCupsService<RaceEntry>(() => master, cupBackend, () => rivalInvoker, now,
+  async (teamId, viewer) => ((await teams.view(teamId, viewer)) as { members?: { playerId: string }[] }).members?.map((x) => x.playerId) ?? []);
+async function ensureCupDemo() {
+  for (const [id, name] of CUP_DEMO) {
+    const st = await svc.state(id);
+    if (st.horses.length === 0) { await svc.bootstrap(id); await svc.grantPartner(id, CUP_HORSES[CUP_DEMO.findIndex((x) => x[0] === id)] ?? 'ハヤブサ', key()); await svc.setDisplayName(id, name); }
+    for (const [a, b] of [[ID, id], [id, ID]] as const) {
+      const x = await svc.state(a);
+      if (!x.friends.ids.includes(b)) { x.friends.ids.push(b); repo.put(x); }
+    }
+  }
+}
+const cupHorse = async (id: string) => { const st = await svc.state(id); return (st.horses.find((h) => h.id === st.flags?.partnerHorseId && h.status === 'active') ?? st.horses.find((h) => h.status === 'active'))?.id ?? ''; };
+const cupCall = <T>(f: () => Promise<T>) => wrap(async () => { try { return await f(); } finally { saveCups(); } });
+
 const enCatalog = compileCatalogWith({ romanize: true }, CODE_EN, master.locale?.en, (uiEn as { strings: Record<string, string> }).strings, (protoEn as { strings: Record<string, string> }).strings);
 
 export const MuchiLogic = {
@@ -365,6 +405,7 @@ export const MuchiLogic = {
     rivalReg.weeks.clear(); // round 12: the rival week registry starts over too
     hallDir.rows.clear(); // round 14: the hall copies too
     replayStore.clear(); // round 14: the saved replays and source logs too
+    cupBackend.cups.clear(); cupBackend.codes.clear(); try { localStorage.removeItem(CUP_KEY); } catch { /* ignore */ } // round 16
     dayOffset = 0;
   },
 
@@ -887,6 +928,64 @@ export const MuchiLogic = {
     marginTicks: (order: number[], finishTicks: number[], slot: number) => marginTicksOf(order, finishTicks, slot),
     /** The stored files (test hook). */
     files: () => [...replayStore.files.keys()],
+  },
+  // ---------------------------------------------------------------- round 16: プレイヤー主催カップ (REQ-CUP-*, contracts/protocol.md §42)
+  cups: {
+    view: () => cupCall(async () => { await ensureCupDemo(); return cupsSvc.list(ID); }),
+    get: (cupId: string) => cupCall(() => cupsSvc.get(ID, cupId)),
+    create: (b: { cupName: string; capacity: number; format: 'single' | 'best_of_3'; opensAt: number; closesAt: number; conditions?: { trackId: string | null; going: string | null; night: boolean | null; weather: string; temperatureC: number; windKmh: number }; usePreset?: boolean }, idem?: string) =>
+      cupCall(async () => cupsSvc.create(ID, { ...b, horseId: await cupHorse(ID) } as never, idem ?? key())),
+    lookup: (code: string) => cupCall(() => cupsSvc.lookup(ID, code)),
+    join: (b: { code?: string; cupId?: string }) => cupCall(async () => cupsSvc.join(ID, { ...b, horseId: await cupHorse(ID) }, key())),
+    leave: (cupId: string) => cupCall(() => cupsSvc.leave(ID, cupId)),
+    invite: (cupId: string, b: { friendIds?: string[]; team?: boolean }) => cupCall(() => cupsSvc.invite(ID, cupId, b)),
+    /** The demo friends of the invite list. */
+    friends: () => CUP_DEMO.map(([id, name]) => ({ playerId: id, displayName: name })),
+    /** Demo: friends join by code until `count` are in (the last slot races like the real object: one wins). */
+    demoFill: (cupId: string, count: number) => cupCall(async () => {
+      await ensureCupDemo();
+      const c = cupBackend.cups.get(cupId);
+      if (!c) throw new AppError('NOT_FOUND');
+      const out: string[] = [];
+      for (const [id] of CUP_DEMO) {
+        if (out.length >= count) break;
+        if (c.entrants.some((e) => e.playerId === id)) continue;
+        try { await cupsSvc.join(id, { code: c.code, horseId: await cupHorse(id) }, key()); out.push(id); } catch { /* full / closed */ }
+      }
+      return out;
+    }),
+    /** Demo: a friend hosts a cup and invites me (the invitation list and joining by invitation). */
+    demoInvite: () => cupCall(async () => {
+      await ensureCupDemo();
+      const [hid] = CUP_DEMO[0];
+      const t = now();
+      const c = await cupsSvc.create(hid, { cupName: '週末の夜カップ', capacity: 6, format: 'single', opensAt: t, closesAt: t + 3 * 3_600_000,
+        conditions: { trackId: 'kirameki_turf_2000', going: 'good', night: false, weather: 'sunny', temperatureC: 18, windKmh: 0 }, horseId: await cupHorse(hid) }, key());
+      await cupsSvc.invite(hid, c.cup.cupId, { friendIds: [ID] });
+      return c.cup.cupId;
+    }),
+    /** The host starts the next race; the page simulates its config (createRace, mode "cup") in WASM. */
+    start: (cupId: string) => cupCall(async () => {
+      const r = await cupsSvc.start(ID, cupId);
+      const spec = cupSpecs.get(r.raceId)!;
+      const created = await createRace(master, { mode: 'cup', humans: spec.entries, cpuCount: 0, cpuLevel: 3, rng: cryptoRng, now: now(), ticketSecret: 'proto', roomPreset: spec.conditions, raceId: spec.raceId });
+      return { ...r, config: created.config };
+    }),
+    /** The room settled: the heat outcome reaches the cup (standings, trophies) and my result is recorded (unranked). */
+    settle: (raceId: string, config: RaceStartConfig, sim: { slot: number; place: number; order: number[]; hash: string; endTick: number; finishTicks: number[]; inputs: [number, number, number][] }) => cupCall(async () => {
+      const slots = config.entrants.filter((e) => e.kind === 'human').map((e) => ({ slot: e.slot, playerId: e.playerId! }));
+      cupOutcomes.set(raceId, { phase: 'finished', final: { status: 'confirmed', order: sim.order }, slots, noShows: [] });
+      await replayStore.put(`replays/${raceId}.json`, JSON.stringify({ v: 1, config, endTick: sim.endTick, inputs: sim.inputs }));
+      await svc.applyRace(ID, { raceId, mode: 'cup', place: sim.place, fieldSize: config.entrants.length, newRating: null, void: false, humans: slots.length,
+        replay: { slot: sim.slot, resultHash: sim.hash, rulesetVersion: String(config.ruleset.rulesetVersion), trackId: config.track.id, marginTicks: marginTicksOf(sim.order, sim.finishTicks, sim.slot) } });
+      await cupBackend.tickAll();
+      return cupsSvc.get(ID, cupBackend.cups.get(config.raceId.split('-').slice(1, -2).join('-'))?.id ?? '');
+    }),
+    /** Demo: the window closes (the cup's alarm). */
+    demoExpire: (cupId: string) => cupCall(async () => { const c = cupBackend.cups.get(cupId); if (c) { c.closesAt = now() - 1; cupBackend.cups.set(cupId, c); } await cupBackend.tickAll(); }),
+    ngSample: () => master.ng.exact[0] ?? '',
+    tracks: () => master.tracks.map((t) => ({ id: t.id, name: trackNames.get(t.id) ?? t.id, surface: t.surface, distanceM: t.distanceM })),
+    limits: () => master.progression.hostedCups,
   },
   // ---------------------------------------------------------------- round 12: ライバル (REQ-RIVAL-*, contracts/protocol.md §28)
   rival: {

@@ -181,7 +181,7 @@ export const ID_KEYS = new Set(['id', 'key', 'voiceName', 'asset', 'assetKey', '
  * Fields that only ever hold what a player typed (display, branch, plate names and the names copied from them): never
  * looked up, even when the name happens to equal a table entry (a player called 「決勝」 stays 「決勝」, QA R11).
  */
-export const PLAYER_TEXT_KEYS = new Set(['displayName', 'teamName', 'plateName', 'ownerName', 'opponentName', 'inviterName', 'inviteeName', 'fromName', 'byName', 'anonName', 'rivalName', 'horseName', 'replayTitle', 'caption']);
+export const PLAYER_TEXT_KEYS = new Set(['displayName', 'teamName', 'plateName', 'ownerName', 'opponentName', 'inviterName', 'inviteeName', 'fromName', 'byName', 'anonName', 'rivalName', 'horseName', 'replayTitle', 'caption', 'cupName', 'hostName']);
 /** `name:シンセイアカツキ`, `voice/ja/name/…`: an identifier, not a text. */
 const ID_LIKE = /^[a-z][a-z0-9_]*[:/]/;
 

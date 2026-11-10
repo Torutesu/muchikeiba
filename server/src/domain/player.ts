@@ -230,6 +230,8 @@ export interface PlayerState {
   nextAction?: import('./nextAction.js').NextActionState;
   /** REQ-RECAP-*: シーズンの振り返り — the running season / year records and the closed snapshots (seasonRecap.ts ensureRecap). */
   seasonRecap?: import('./seasonRecap.js').SeasonRecapState;
+  /** REQ-CUP-*: プレイヤー主催カップ — cups the player is in, invitations, results and trophies (hostedCups.ts ensureCups). */
+  cups?: import('./hostedCups.js').PlayerCupsState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

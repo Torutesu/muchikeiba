@@ -1042,3 +1042,24 @@ WHERE blob1 = 'recap_share' AND timestamp > NOW() - INTERVAL '90' DAY
 GROUP BY kind, card
 ORDER BY shares DESC
 ```
+
+## プレイヤー主催カップ：作成・参加・終了（REQ-CUP-017、Round 16、contracts/protocol.md §42）
+列：`cup_create`（サーバー、主催者）`blob8` = 形式（`single`／`best_of_3`）、`blob9` = `team`（支部に入っている主催者）／`solo`、`double5` = 人数（定員）。`cup_join`（サーバー、参加者）`blob8` = `code`／`invite`、`blob9` = 形式。`cup_finish`（サーバー、各参加者に1行）`blob8` = `finished`／`cancelled`、`blob9` = 形式、`blob10` = 中止の理由（`host_left`／`host_deleted`／`ops_deleted`／`expired`）または `partial`、`double4` = 順位（中止は 0）、`double5` = 参加者数。
+
+**使われ方**（週ごと）：作ったカップ、参加（コード／招待）、最後まで走ったカップの割合、中止の理由。
+
+```sql
+SELECT
+  toStartOfWeek(timestamp) AS week,
+  sumIf(_sample_interval, blob1 = 'cup_create') AS cups_created,
+  count(DISTINCT if(blob1 = 'cup_create', blob2, NULL)) AS hosts,
+  sumIf(_sample_interval, blob1 = 'cup_join' AND blob8 = 'code') AS joins_by_code,
+  sumIf(_sample_interval, blob1 = 'cup_join' AND blob8 = 'invite') AS joins_by_invite,
+  sumIf(_sample_interval, blob1 = 'cup_finish' AND blob8 = 'finished' AND double4 = 1) AS cups_finished,
+  sumIf(_sample_interval, blob1 = 'cup_finish' AND blob8 = 'cancelled' AND blob10 = 'expired') AS expired_entries,
+  sumIf(_sample_interval, blob1 = 'cup_finish' AND blob8 = 'cancelled' AND blob10 = 'host_left') AS host_left_entries
+FROM muchi_kpi
+WHERE blob1 IN ('cup_create', 'cup_join', 'cup_finish') AND timestamp > NOW() - INTERVAL '56' DAY
+GROUP BY week
+ORDER BY week DESC
+```

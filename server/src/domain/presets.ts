@@ -59,6 +59,12 @@ export function setCourseLook(s: PlayerState, lookId: string | null, v: VisualsM
 
 /** REQ-ROOM-002: validate and store private-room conditions. */
 export function setRoomConditions(m: Master, s: PlayerState, input: RoomConditions) {
+  ensurePresets(s).room = validateRoomConditions(m, input);
+  return presetsView(s);
+}
+
+/** REQ-ROOM-002 (and REQ-CUP-001, the rules of a hosted cup): the checked copy of a set of room conditions. */
+export function validateRoomConditions(m: Master, input: RoomConditions): RoomConditions {
   const cfg = m.progression.rooms;
   const c = { ...input };
   if (c.trackId !== null) {
@@ -72,8 +78,7 @@ export function setRoomConditions(m: Master, s: PlayerState, input: RoomConditio
   if (!cfg.weather.includes(c.weather)) throw new AppError('BAD_REQUEST', `weather must be one of ${cfg.weather.join(', ')}`);
   if (!cfg.temperaturesC.includes(c.temperatureC)) throw new AppError('BAD_REQUEST', `temperatureC must be one of ${cfg.temperaturesC.join(', ')}`);
   if (!cfg.windsKmh.includes(c.windKmh)) throw new AppError('BAD_REQUEST', `windKmh must be one of ${cfg.windsKmh.join(', ')}`);
-  ensurePresets(s).room = c;
-  return presetsView(s);
+  return c;
 }
 
 export function clearRoomConditions(s: PlayerState) {

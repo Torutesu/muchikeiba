@@ -154,6 +154,8 @@ export interface PublicProfile {
   tack?: Partial<Record<'bridle' | 'saddlecloth', string>>;
   /** REQ-ACT-012: the account is banned (absent otherwise). */
   banned?: true;
+  /** REQ-CUP-014: hosted cup trophies (counts only; absent until the first one). Cosmetic. */
+  cupTrophies?: { gold: number; silver: number; bronze: number };
 }
 
 export function publicProfile(s: PlayerState, banned?: BannedSilksList, now?: number): PublicProfile {
@@ -163,5 +165,6 @@ export function publicProfile(s: PlayerState, banned?: BannedSilksList, now?: nu
     ...(s.equipment && Object.keys(s.equipment.tack).length > 0 ? { tack: { ...s.equipment.tack } } : {}),
     // REQ-ACT-012: others show a neutral name for a banned account (activity list)
     ...(now !== undefined && moderationOf(s, now) === 'banned' ? { banned: true as const } : {}),
+    ...(s.cups && s.cups.trophies.gold + s.cups.trophies.silver + s.cups.trophies.bronze > 0 ? { cupTrophies: { ...s.cups.trophies } } : {}),
   };
 }

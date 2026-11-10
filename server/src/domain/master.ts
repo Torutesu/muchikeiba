@@ -206,6 +206,8 @@ export interface Progression {
   nextActions?: import('./nextAction.js').NextActionConfig;
   /** REQ-RECAP-*: シーズンの振り返り (seasonRecap.ts, validated by seasonRecapProblems). Absent / disabled = no recaps. */
   seasonRecap?: import('./seasonRecap.js').SeasonRecapConfig;
+  /** REQ-CUP-*: プレイヤー主催カップ (hostedCups.ts, validated by hostedCupsProblems). Absent / disabled = no hosted cups. */
+  hostedCups?: import('./hostedCups.js').HostedCupsConfig;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */

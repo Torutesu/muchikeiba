@@ -13,7 +13,7 @@ import { AppError } from './errors.js';
 import type { Master, Stats } from './master.js';
 import { STAT_KEYS } from './master.js';
 import type { HorseInstance, PlayerState } from './player.js';
-import { effectiveStats, getHorse, normalizeName, retire } from './horses.js';
+import { effectiveStats, getHorse, retire, searchFold } from './horses.js';
 import { noteHallRetire, type Ceremony } from './hallOfFame.js';
 import { dayRule, gameDayIndex } from './time.js';
 import type { Emit } from './service.js';
@@ -211,8 +211,8 @@ export function aptitudeFor(h: Pick<RosterRow, 'surface' | 'distMinM' | 'distMax
   return { score, mark, surfaceOk, distanceOk, goingFit };
 }
 
-/** Name folding for search: normalizeName (NFKC, no spaces, hiragana → katakana, one long-vowel mark), lower case. */
-export const foldSearch = (s: string) => normalizeName(s).toLowerCase();
+/** Name folding for search: the one search fold (horses.ts searchFold, the same as the help center's). */
+export const foldSearch = searchFold;
 
 const RARITY_RANK: Record<string, number> = { R: 1, SR: 2, SSR: 3 };
 

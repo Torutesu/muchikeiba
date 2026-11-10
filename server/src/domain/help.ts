@@ -19,7 +19,7 @@ import { AppError } from './errors.js';
 import type { Master } from './master.js';
 import type { PlayerState } from './player.js';
 import type { KpiEvent } from './kpi.js';
-import { foldForCompare } from './horses.js';
+import { searchFold } from './horses.js';
 import { findBanner, oddsDisclosure } from './gacha.js';
 import { deletionConfig } from './accountDeletion.js';
 import { HISTORY_LIMITS, SUPPORT_TOPIC_TEXT, type ResolvedRef } from './history.js';
@@ -395,9 +395,7 @@ export function helpArticle(m: Master, id: string, lang: Locale, maxWhips = 6) {
 }
 
 /** REQ-HELP-006: the folded form used by search (the NG-name fold + lower-case Latin). Same as C# HelpText.Fold. */
-export function helpFold(s: string): string {
-  return foldForCompare(s.normalize('NFKC').toLowerCase());
-}
+export const helpFold = searchFold;
 /** The query split into folded words (blank → none). */
 export function helpQueryWords(q: string): string[] {
   return q.normalize('NFKC').split(/[\s　]+/).map(helpFold).filter((w) => w.length > 0);

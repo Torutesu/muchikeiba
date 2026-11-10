@@ -49,7 +49,9 @@ namespace Muchi.Engine.Tests
             Assert.Equal(RosterSorter.FoldSearch("ミドリ"), RosterSorter.FoldSearch("みどり"));
             Assert.Equal(RosterSorter.FoldSearch("ミドリ"), RosterSorter.FoldSearch("ﾐﾄﾞﾘ"));
             Assert.Equal("ミドリノカゼ", RosterSorter.FoldSearch("ミドリ ノ カゼ"));
-            Assert.Equal("ハヤテー", RosterSorter.FoldSearch("ハヤテ-"));
+            Assert.Equal(RosterSorter.FoldSearch("ハヤテー"), RosterSorter.FoldSearch("ハヤテ-"));
+            // Round 17 integration: one search fold — the roster folds names like the help center
+            foreach (var x in new[] { "ハヤテー", "ヴィクトリー", "ﾁｮｺ", "ＡＢＣ", "みどり の かぜ" }) Assert.Equal(HelpText.Fold(x), RosterSorter.FoldSearch(x));
         }
 
         [Fact]

@@ -7,6 +7,7 @@ import { MemoryPlayerRepo, PlayerService } from '../src/domain/service.js';
 import { seededRng } from '../src/domain/rng.js';
 import { AppError } from '../src/domain/errors.js';
 import { createHorseFromTemplate } from '../src/domain/horses.js';
+import { helpFold } from '../src/domain/help.js';
 import {
   applyRosterQuery, aptitudeFor, bulkReasons, DEFAULT_QUERY, foldSearch, ROSTER_LIMITS, type RosterQuery, type RosterRow,
 } from '../src/domain/roster.js';
@@ -118,7 +119,10 @@ describe('厩舎の整理: rows and query (REQ-ORG-001..003)', () => {
     expect(foldSearch('みどり')).toBe(foldSearch('ミドリ'));
     expect(foldSearch('ﾐﾄﾞﾘ')).toBe(foldSearch('ミドリ'));
     expect(foldSearch('ミドリ ノ カゼ')).toBe('ミドリノカゼ');
-    expect(foldSearch('ハヤテ-')).toBe('ハヤテー');
+    expect(foldSearch('ハヤテ-')).toBe(foldSearch('ハヤテー'));
+    // Round 17 integration: one search fold — the roster folds names like the help center (long vowels, small kana)
+    for (const x of ['ハヤテー', 'ヴィクトリー', 'ﾁｮｺ', 'ＡＢＣ', 'みどり の かぜ']) expect(foldSearch(x), x).toBe(helpFold(x));
+    expect(foldSearch('チョコ')).toBe(foldSearch('チヨコ'));
   });
 
   it('shared vectors (contracts/roster-query.vectors.json) — the C# RosterSorter reads the same file', () => {

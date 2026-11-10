@@ -72,6 +72,15 @@ export function foldForCompare(name: string): string {
   return normalizeName(name).replace(/[ァィゥェォッャュョヮヵヶ]/g, (c) => SMALL[c]!).replace(/ー/g, '').replace(/ヴ/g, 'ブ');
 }
 
+/**
+ * The one search fold (Round 17 integration): the NG-name fold plus lower-case Latin. The help center search (§48
+ * helpFold) and the roster name search (§44) both use it; C# HelpText.Fold / RosterSorter.FoldSearch are the same
+ * (contracts/help-fold.vectors.json).
+ */
+export function searchFold(s: string): string {
+  return foldForCompare(s.normalize('NFKC').toLowerCase());
+}
+
 export function validateName(m: Master, raw: string): string {
   const name = normalizeName(raw);
   if (!/^[ァ-ヴー]{2,9}$/.test(name) || name.startsWith('ー')) throw new AppError('INVALID_NAME', 'カタカナ2〜9文字');

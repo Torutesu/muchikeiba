@@ -2302,7 +2302,7 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 - `Muchi.Client` `ApiClient.GetRosterAsync(RosterQuery)`・`SetHorseLockAsync`・`SetHorseFavoriteAsync`・`PreviewBulkAsync`・`RunBulkAsync`、`RosterQuery`（Encode/Decode）・`RosterSorter`（並び・絞り込み・検索・適性、サーバーと同じ）、`AnalyticsEvent.RosterSort`。
 - Unity のゲーム層 `RosterOrganiserModel`：一覧の行、並び・絞り込みのシート、検索、ロック・お気に入りの切り替え、まとめて選ぶ、確認シート。端末の設定は `IPrefs`（PlayerPrefs）に `muchi.roster.view`。
 - 大会の登録（`TournamentPlayers.noteEntry`/`clearEntry`）：`TournamentsService.register`/`unregister` が成功した後に呼ぶ（任意のポート、失敗しても登録は成功のまま）。
-- §40 の活動の一覧（Round 15）ができたら、まとめて引退した時に「◯頭を引退させました」の1行を書く（ここでは書かない）。
+- §40 の活動の一覧には書かない（Round 16 統合の決定）：一覧は「留守の間に起きたこと」で、まとめての引退は自分がその場で確かめた操作（確認シートと結果で見えている）。
 
 ## 45. 次にやること（ホームの案内カード、REQ-NEXT-001〜014、`server/src/domain/nextAction.ts`、C# `NextAction.cs`・`Muchi.Game.NextActionModel`、docs/planning/06 §6.1）
 ホームに「次にやること」を**主カード1枚＋小さなチップ最大2つ**で出す。戻ってきた人も始めたばかりの人も、ホームを開けば次の1手が分かるようにする（06 §2.2 F10「次にやることが分からない」）。何を出すかはプレイヤーの状態の要約からの**純粋な関数**で決まり（同じ状態・同じ時刻なら同じ結果）、優先順位はデータ（`progression.nextActions`、起動時と各版で検証）にある。コイン・アイテムは動かない（経済の目標なし、E 番号なし）。

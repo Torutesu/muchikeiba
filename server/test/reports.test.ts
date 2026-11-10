@@ -415,7 +415,7 @@ describe('account deletion and retention (REQ-RPT-016)', () => {
   });
 
   it('the deletion runs a reports step before finalize', () => {
-    expect(DELETION_STEPS.indexOf('reports')).toBe(DELETION_STEPS.indexOf('replays') + 1);
+    expect(DELETION_STEPS.indexOf('reports')).toBe(DELETION_STEPS.indexOf('cups') + 1); // Round 17 integration: after the Round 16 cups step
     expect(DELETION_STEPS.indexOf('reports')).toBeLessThan(DELETION_STEPS.indexOf('finalize'));
   });
 });

@@ -1185,6 +1185,8 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   if (await screen() === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); }
   await page.evaluate(() => globalThis.__muchi.demo('maintenance-scoped')); await waitScreen(['home', 'link-prompt'], 60000);
   if (await screen() === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); }
+  await page.waitForTimeout(500);
+  if (!(await page.locator('.screen.in [data-mnt-sheet]').count())) await page.evaluate(() => globalThis.__muchi.show('MaintenanceScoped')); // opening スカウト again
   await page.waitForSelector('.screen.in [data-mnt-sheet="gacha"]', { timeout: 15000 });
   assert.match(await page.locator('.screen.in [data-mnt-sheet]').innerText(), /スカウト・ショップ/, 'a scoped window names the closed features');
   await shot('maintenance-scoped', 300);

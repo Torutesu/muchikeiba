@@ -2567,7 +2567,7 @@ async function Demo(kind) {
   if (kind === 'packs') { await L.seedDemo(7, [3, 3, 3, 3, 3, 3, 3]); ftue = false; await refresh(); return CommentaryPacks('settings'); }
   // round 17 (REQ-MNT-*): the maintenance screen, a closed feature, the announced window in what's new, the update screen
   if (kind === 'maintenance') { await L.seedDemo(3, [2, 2, 2]); await refresh(); return Maintenance(L.maintenanceDemo('all').gate.details); }
-  if (kind === 'maintenance-scoped') { await L.seedDemo(3, [2, 2, 2]); await refresh(); const g = L.maintenanceDemo('scoped').gate; await Home(); return MaintenanceSheet(g.details); }
+  if (kind === 'maintenance-scoped') { await L.seedDemo(3, [2, 2, 2]); await refresh(); L.maintenanceDemo('scoped'); await Home(); return MaintenanceScoped(); }
   if (kind === 'maintenance-news') { await L.seedDemo(3, [2, 2, 2]); L.maintenanceDemo('announced'); await refresh(); return Home(); }
   if (kind === 'update') { await L.seedDemo(3, [2, 2, 2]); await refresh(); globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }
   if (kind === 'activity') { await L.seedActivity(); await refresh(); actState.cursor = null; actState.stack = []; return Activity(); }
@@ -4642,6 +4642,12 @@ function MaintenanceSheet(d) {
   Cta('ホームへ', 44, 362, 360, () => dlg.remove(), dlg, 'small');
   return dlg;
 }
+/** Opening スカウト while a scoped window covers it: the gate's 503 → the notice over home (only on home, never over a prompt). */
+function MaintenanceScoped() {
+  const g = L.maintenanceCheck('/v1/gacha/banners').gate;
+  if (g?.code !== 'MAINTENANCE' || cur?.dataset.screen !== 'home') return null;
+  return MaintenanceSheet(g.details);
+}
 /** 426 UPGRADE_REQUIRED: the update screen with the store button. It does not go away by itself. */
 function UpdateRequired(d) {
   currentScreen = () => UpdateRequired(d);
@@ -5127,7 +5133,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

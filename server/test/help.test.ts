@@ -224,6 +224,14 @@ describe('search (REQ-HELP-006)', () => {
     expect(readFileSync(join(import.meta.dirname, '../../contracts/help-fold.vectors.json'), 'utf8')).toBe(helpFoldVectorsJson());
   });
 
+  it('Round 17 integration: articles for hosted cups, the season recap and the stable organiser (JA and EN)', () => {
+    expect(searchHelp(m, 'カップ', null, null, 'ja').items[0]!.id).toBe('hosted_cups');
+    expect(searchHelp(m, 'ふりかえり', null, null, 'ja').items[0]!.id).toBe('season_recap');
+    expect(searchHelp(m, 'まとめて引退', null, null, 'ja').items[0]!.id).toBe('roster_organiser');
+    expect(searchHelp(m, 'hosted cup', null, null, 'en').items[0]!.id).toBe('hosted_cups');
+    expect(searchHelp(m, 'recap', null, null, 'en').items[0]!.id).toBe('season_recap');
+    expect(searchHelp(m, 'lock', null, null, 'en').items.map((x) => x.id)).toContain('roster_organiser');
+  });
   it('every word must match; title beats keyword beats body; category filter; snippet', () => {
     const r = searchHelp(m, 'コイン 返金', null, null, 'ja');
     expect(r.items[0]!.id).toBe('refunds');

@@ -197,6 +197,39 @@
       "keywords": { "ja": ["文字", "大きさ", "色覚", "動き", "字幕"], "en": ["text size", "colour", "color", "motion", "subtitles"] },
       "links": [ { "type": "screen", "screen": "accessibility" } ],
       "related": ["whip"]
+    },
+    {
+      "id": "hosted_cups", "category": "races",
+      "title": { "ja": "主催カップ", "en": "Hosted cups" },
+      "body": {
+        "ja": "フレンドや支部の仲間と、小さなカップを開けます。主催者がコース・距離・馬場・人数・形式（1レースか3レースのポイント制）・開催の時間帯を決め、招待か参加コードで集めます。\n\n・ランク外です。レーティング・シーズン・ミッション・コイン・アイテムは動きません\n・もらえるのは見た目だけのトロフィーで、プロフィールの棚に飾られます\n・馬は参加する人がそれぞれ選びます。主催者は出走の時刻だけを決めます\n・ブロックしている相手とは、同じカップに入れません\n・開催の時間が終わると、走ったところまでの順位で決着します",
+        "en": "Open a small cup with friends or your branch. The host picks the course, distance, going, number of players, format (one race, or three races on points) and the time window, then gathers players by invitation or join code.\n\n• Cups are unranked: rating, season, missions, coins and items do not change\n• The reward is a trophy for your profile shelf (looks only)\n• Each player picks their own horse; the host only decides when to start\n• You won't be in the same cup as someone you blocked\n• When the time window ends, the standings so far decide the cup"
+      },
+      "keywords": { "ja": ["カップ", "主催", "参加コード", "トロフィー", "招待"], "en": ["cup", "hosted cup", "join code", "trophy", "invite"] },
+      "links": [ { "type": "screen", "screen": "race_lobby" } ],
+      "related": ["race_modes"]
+    },
+    {
+      "id": "season_recap", "category": "getting_started",
+      "title": { "ja": "シーズンの振り返り", "en": "Season recap" },
+      "body": {
+        "ja": "シーズン（毎月）と1年の終わりに、あなたのレースを振り返るページができます。お知らせ（アクティビティ）から開けます。\n\n・確定したレースの記録だけから作ります\n・レースが少ないシーズンは短い振り返りになります\n・共有できるのは馬の名前と成績だけで、ほかのプレイヤーの名前は入りません",
+        "en": "At the end of each season (every month) and each year, a recap of your races is made. Open it from Activity.\n\n• It is made only from confirmed race results\n• A season with few races gets a short recap\n• What you can share shows your horse and results only, never other players' names"
+      },
+      "keywords": { "ja": ["振り返り", "ふりかえり", "シーズン", "1年", "共有"], "en": ["recap", "season", "year in review", "share"] },
+      "links": [ { "type": "screen", "screen": "activity" } ],
+      "related": ["first_steps"]
+    },
+    {
+      "id": "roster_organiser", "category": "horses",
+      "title": { "ja": "厩舎の整理", "en": "Organising your stable" },
+      "body": {
+        "ja": "マイ厩舎の馬を、能力・適性・年齢・入手順・出走数・レア度・名前で並び替え、絞り込みや名前で探せます。\n\n・ロックした馬は、引退や配合の相手に選べません\n・まとめて引退は、選んだ馬を確認してから一度に行います。1頭でも選べない馬があれば何も変わりません\n・最初の相棒・調教中の馬は引退できません",
+        "en": "Sort the horses in your stable by rating, aptitude, age, acquired order, races, rarity or name, and find them with filters or by name.\n\n• A locked horse cannot be retired or chosen for breeding\n• Retire in bulk shows your selection first and retires them together. If any horse cannot be retired, nothing changes\n• Your first partner and horses in training cannot be retired"
+      },
+      "keywords": { "ja": ["整理", "並び替え", "ロック", "まとめて引退", "絞り込み"], "en": ["organise", "sort", "lock", "retire in bulk", "filter"] },
+      "links": [ { "type": "screen", "screen": "stable" } ],
+      "related": ["breeding", "training"]
     }
   ],
   "contexts": {

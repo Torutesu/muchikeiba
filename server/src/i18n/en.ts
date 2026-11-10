@@ -400,7 +400,7 @@ export const CODE_EN: Record<string, string> = {
   'お互いのマイ厩舎を開けず、いいねもできなくなります': 'Neither of you can open or like the other\'s stable',
   'お互いの殿堂が見られなくなります': 'Neither of you can see the other\'s Hall of Fame',
   'お互いの公開リプレイが見られなくなります': 'Neither of you can see the other\'s shared replays',
-  'カップや大会では同じレースになることがあります（相手からの通知は届きません）': 'You may still meet in cups and tournaments (no notices from them)',
+  '主催カップでは同じカップに入れません（大会では同じレースになることがあります）': 'You won\'t be in the same hosted cup (you may still meet in tournaments)',
 
   // ---- おすすめフレンド (friendSuggest.ts FSUG_TEXT, protocol §49; REQ-FSUG-015). Reasons are joined with 「・」 → ", ".
   '最近のレースで対戦': 'Raced you recently',

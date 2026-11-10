@@ -38,7 +38,7 @@ export const BLOCK_EFFECTS: Record<typeof BLOCK_FEATURES[number], string> = {
   stable: 'お互いのマイ厩舎を開けず、いいねもできなくなります',
   hall: 'お互いの殿堂が見られなくなります',
   replays: 'お互いの公開リプレイが見られなくなります',
-  cups: 'カップや大会では同じレースになることがあります（相手からの通知は届きません）',
+  cups: '主催カップでは同じカップに入れません（大会では同じレースになることがあります）',
 };
 
 /** The ids of GET /v1/blocks, newest block first (names are resolved by the caller from the directory). */

@@ -272,6 +272,9 @@ describe('block management (REQ-RPT-010..012/017)', () => {
     expect(en.blocked[0].name).toBe('Player');
     expect(untranslated(en, new Set(['name']))).toEqual([]);
     expect(Object.keys(BLOCK_EFFECTS)).toEqual([...BLOCK_FEATURES]);
+    // Round 17 integration: since Round 16 a block also keeps the two players out of the same hosted cup (REQ-CUP-006)
+    expect(BLOCK_EFFECTS.cups).toContain('主催カップ');
+    expect(BLOCK_EFFECTS.cups).toContain('同じカップに入れません');
   });
 
   it('PUT / DELETE are idempotent, share the team-feed mute list and write KPI only on change', async () => {

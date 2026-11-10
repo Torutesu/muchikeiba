@@ -61,8 +61,15 @@
 - 急かさない：締め切りは本物の時刻だけ。「残りわずか」「今だけ」・カウントダウン・点滅は使わない。満員の文は事実だけ。
 - 入力された名前（カップ・プレイヤー・馬）は英語でもそのまま。
 
-## 10. 活動（§40、Round 15）に書くところ（このブランチでは書いていない）
+## 10. 活動（§40、Round 15）に書くところ（Round 16 の統合で実装済み）
 
 1. 招待を受けた：`PlayerService.cupInvited`（`receiveCupInvite` が true の時）。
 2. カップが始まった：参加者の最初のレースの割り当て（`MatchmakerDO.cupStart` で `assignments` を書く所。各参加者に1件）。
 3. カップが終わった／中止になった：`PlayerService.cupClosed`（`receiveCupClosed` が履歴を書いた時、順位とトロフィー・中止の理由）。
+
+Round 16 の統合で入ったもの（Codex が描くもの）：
+- アクティビティの行：種類 `cup_invited`／`cup_started`／`cup_finished`／`cup_cancelled`（ラベル「カップ」、アイコン名 `cup`）、リンク先 `ActivityScreens.Cups`（`LinkId` = カップ id → そのカップのロビー）。
+- 写真：カップのレースは走っている途中で止めない（`PhotoSource.IsShared("cup")`）。結果画面・リプレイからは撮れる。
+- 厩舎の整理：カップに参加中の馬はまとめて引退できない（理由 `cup_entry`「カップに参加中」）。
+- 出走前アドバイス：カップのロビーで `RaceAdviceQuery.ForCup(trackId, going, night)` を使える（コース・馬場は決まっている）。プロトタイプのロビーにはまだパネルを置いていない。
+

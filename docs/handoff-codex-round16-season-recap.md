@@ -95,3 +95,9 @@ dotnet test engine/Muchi.Engine.Tests --filter SeasonRecap
 dotnet run --project "unity/Checks~/GameChecks"          # 「recap:」の行がすべて ok
 bash tools/figma-prototype/build.sh && node tools/figma-prototype/test/e2e.cjs   # recap-*.png / en-*-recap-*.png
 ```
+
+## Round 16 の統合で入ったもの
+- 動きを減らす：`SeasonRecapModel.Reduced` は §41 の設定（`GameBackend.Accessibility` の「動きを減らす」）か OS の設定（静的な `ReducedMotion` フック）のどちらかがオンなら true。画面は `TransitionMs`／`CountUpMs` だけを見ればよい。
+- アクティビティ：振り返りができると `recap_ready` の行（ラベル「振り返り」、アイコン名 `recap`、リンク先 `ActivityScreens.Recap`、`LinkId` = 振り返りの id）。
+- 大きな数字の上のラベルは、数字の行の高さに重ならない位置に置く（プロトタイプで最大の文字サイズの時にぶつかっていた）。
+

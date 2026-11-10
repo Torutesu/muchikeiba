@@ -91,7 +91,7 @@ export type PlayerMethod =
   | 'nextActions' | 'dismissNextAction'
   | 'roster' | 'rosterLock' | 'rosterFavorite' | 'rosterPreview' | 'rosterBulk' | 'rosterTournament'
   | 'myReplays' | 'replayPrepareSave' | 'replayCommitSave' | 'replayForget' | 'replayUpdate' | 'replayDelete' | 'replayOwnRef' | 'replayShared' | 'replayViewed'
-  | 'raceAdvice'
+  | 'raceAdvice' | 'practiceCatalog'
   | 'photoCatalog' | 'photos' | 'photoSave' | 'photoDelete'
   | 'activity' | 'activityRead' | 'activityReplayShare' | 'teamGoalMilestone'
   | 'recaps' | 'recap' | 'recapProgress'
@@ -734,6 +734,12 @@ export const routes: Route[] = [
     };
     const ruleset = c.activeRuleset ? await c.activeRuleset() : undefined;
     return c.player(u).invoke('raceAdvice', u, query, ruleset);
+  } },
+  // 練習レース (REQ-PRAC-002, contracts/protocol.md §50.1): read-only catalog. There is deliberately no route that takes a
+  // practice result — practice runs on the device and grants nothing (REQ-PRAC-011).
+  { method: 'GET', path: '/v1/practice/catalog', auth: 'player', handler: async (_r, _p, c, u) => {
+    const ruleset = c.activeRuleset ? await c.activeRuleset() : undefined;
+    return c.player(u).invoke('practiceCatalog', u, ruleset);
   } },
   // spectating (REQ-SPEC-*)
   { method: 'GET', path: '/v1/races/live', auth: 'player', handler: async (_r, _p, c, u) => spectate(c).list(u) },

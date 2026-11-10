@@ -2381,3 +2381,87 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 
 ### 45.9 アカウント削除
 状態の `nextAction`（今日閉じた種類・機能を見た日）は最後の `wipe` で消える。他の場所に写しは無い。
+
+## 50. 練習レース（practice races、REQ-PRAC-001〜018、`server/src/domain/practice.ts`、C# `Practice.cs`（`PracticeCatalog`・`PracticeSession`・`PracticeClock`）・`Muchi.Game.PracticeModel`、`server/master/practice.json`）
+自分の馬で、好きなコース・距離・馬場・昼夜・頭数（2〜12）・CPU の強さを選び、**端末の中だけで**CPU 相手に本物のエンジンで走る。ムチのタイミングと脚質の乗り方を練習するための場所。サーバーに結果を送る経路は無い（オフラインでも遊べる）。
+
+**練習は何も配らない**（E 番号なし）：コイン・アイテム・素材・デイリーミッション・シーズンパスの XP・シーズンpt・レート・戦績（`stats`）・殿堂の成績（§34）・振り返り（§43）・ライバルの点（§28）・支部の共同目標（§32）・交換所のポイント（§30）・図鑑の「見た」（§24）・絆・実績、どれも動かない。サーバーには練習の結果を受け取る API が無く、レースの確定（`applyRace`）を通らないので構造的に動かせない（`server/test/practice.test.ts` で全部の値が変わらないことを確かめる）。
+
+### 50.1 カタログ `GET /v1/practice/catalog`（要認証、読み取りだけ）
+端末がレースを組み立てるのに要るものを1回で返す。端末はこれを覚えておき（`muchi.practice.catalog`）、オフラインでは覚えた物を、一度も取れていなければ内蔵の予備（50.6）を使う。状態は変えない（冪等キー不要）。削除予約中のアカウントも読める。
+```json
+{ "v": 1, "rulesetVersion": "1.3.0",
+  "fieldSize": { "min": 2, "max": 12, "default": 8 },
+  "strengths": [ { "id": "easy", "name": "やさしい", "note": "初心者マッチと同じ相手", "cpuLevel": 1, "cpuStatPermille": 780 },
+                 { "id": "normal", "name": "ふつう", "note": "ランク戦（レート1400〜1600）の相手", "cpuLevel": 3, "cpuStatPermille": 1000 } ],
+  "defaultStrength": "normal",
+  "courses": [ { "trackId": "minato_turf_2400", "name": "みなと競馬場 芝2400m", "surface": "turf", "distanceM": 2400, "segments": [ … ],
+                 "lights": true, "goings": ["firm", "good", "yielding", "soft"], "today": { "going": "good", "night": false } } ],
+  "cpuHorses": [ { "id": "cpu_t_kohaku", "name": "コハクノヒカリ", "speed": 600, …, "style": "nige", "distMinM": 1400, "distMaxM": 2000, "surface": "turf", "skill": { … } } ],
+  "horses": [ { "id": "h_1", "name": "アイボウ", …, "partner": true } ],
+  "ruleset": { … } }
+```
+- `courses`：今のゲームのコース全部（`server/master/tracks.json`。プレイヤーごとのコースの鍵は今のゲームに無いので、全部が「解放済み」）。`goings` はその面の4つ（芝 firm/good/yielding/soft、ダート fast/good/muddy/sloppy）。ナイターは `lights: true` のコースだけ。`today` はその日の馬場（REQ-RACE-037、フレンド部屋と同じ）で、画面の初期値。
+- `strengths`：既存の CPU の定義から（`server/master/practice.json`、起動時に検査）。`easy` = 初心者マッチ（`progression.beginnerMatch` の `cpuLevel`・`cpuStatPermille`）、`normal` / `strong` / `top` = マッチングがレートで選ぶ CPU の段（`cpuLevelFor`：レート1400〜1600 → 3、1600〜1800 → 4、1800以上 → 5）、能力はそのまま。CPU の段は**乗り方の正確さだけ**を変え（CpuBrain）、`cpuStatPermille` は CPU の能力だけを下げる（1000 以下）。
+- `cpuHorses`：CPU になれる馬（`templates` のうち期間限定・プレゼント専用でないもの。`buildRaceConfig` の CPU と同じ範囲）を `RaceHorse` の形で。固有スキルはルールセットの上限で切る（フレンド部屋と同じ）。
+- `horses`：自分の現役の馬（最大 30）を `RaceHorse` の形で（能力は調教込み `raceStats`、スキルはルールセットの上限で切る。上限 `statCap` はかけない＝フレンド部屋と同じ）。`partner: true` は相棒。
+- `ruleset`：リモート設定の有効なルールセット（`activeRuleset`、§15）。端末はこのルールセットでエンジンを動かす。
+
+### 50.2 レースの組み立て（端末、`PracticeSession.BuildConfig`、純粋）
+入力：カタログ・`PracticeSetup { horseId, trackId, going, night, fieldSize, strengthId }`・`seed`（uint64）。同じ入力から必ず同じ `RaceConfig`（テストで確認）。
+1. 検査：馬・コース・強さがカタログにある、`going` がそのコースの面の値、`night` は照明のあるコースだけ、`fieldSize` は 2〜12（かつルールセットのレーン数以下）。違えば組み立てない（理由の1文）。
+2. CPU：`cpuHorses` から自分の馬と同じ名前の馬を除き、`Pcg32(seed, 0x50524143)` で `fieldSize − 1` 頭を重複なしで選ぶ。能力は `⌊能力 × cpuStatPermille / 1000⌋`、`cpuLevel` は強さの値。
+3. ゲート：同じ乱数で全員を並べ替える（Fisher–Yates）。自分の枠は乱数で決まる。
+4. `RaceConfig`：`raceId` = `practice_<seed 16進>`、`mode` = `friend`（エンジンには新しいモードを足さない。オフラインの練習は今までも `friend` の設定で走っていた。ゴールデンは変わらない）、`track` = コース＋`going`・`night`、`net` = 既定、`ruleset` = カタログのもの、自分は `kind: human`・`playerId: "local"`。
+- 練習の判定は `PracticeSession.IsPractice(config)`（`raceId` が `practice_` で始まるか、今までのオフライン練習 `offline_practice`）。写真のカード・共有カードの種類の表示は「練習レース」になる（「フレンド戦」と書かない）。
+
+### 50.3 走る・やり直す・ゴースト
+- `PracticeSession.Start()` → `OfflineRace`（`Muchi.Game.OfflineRaceDriver` で既存の HUD・実況・かんたん操作・ムチの長押しがそのまま乗る）。開始の押しどきは普通のレースと同じ（遅れれば出遅れ）。
+- **すぐやり直す**：`Restart(PracticeRestart.SameSeed)`（同じ相手・同じ枠・同じ展開でもう一度）／`Restart(PracticeRestart.NewSeed)`（新しい相手と枠。次の seed は `SeedMix.Mix(seed)`、端末の時計に頼らない）。レース中でも結果画面でも押せる。確認は出さない（何も失わないので）。
+- **ゴースト**：前の試走（同じセッションで、ゴールまで走ったもの）を半透明で並べて走らせる（タイムアタックの `GhostPlayer`：その試走の設定＋自分の入力を別のシミュレーションで再生。今の試走には一切触れない）。コースが変わったら消す（距離・形が違うと比べられない）。馬・馬場・頭数・強さを変えても残す（ラベルに馬の名前と前のタイム）。オプションで消せる。ゴーストは端末の中だけ（サーバーに送らない、他の人に見せない）。
+- 何回でも走れる（回数制限・スタミナ・待ち時間なし）。
+
+### 50.4 練習のための表示（オプション、端末の設定 `muchi.practice.options`）
+| オプション | 既定 | 中身 |
+|---|---|---|
+| ムチの目安を出す（`whipWindow`） | ON | 残り距離のバーに、出走前アドバイス（§39）のムチの打ち始めの帯を出す：残り（打ち始め＋50m）〜（打ち始め−150m）＝ `RaceAdvice.CheckWhipTip` が「アドバイスどおり」と数える範囲と同じ。帯の中にいる間は帯が明るくなる（点滅はしない）。色は §41 のトークン `cue.whipChance`（色覚の設定で変わる） |
+| 最後の400mをスロー（`slowFinal`） | OFF | 自分の馬の残りが 400m 以下でゴールするまで、時間の進みを 0.5 倍にする（`PracticeClock`）。**表示の時計だけ**が遅くなる：エンジンは同じ 20Hz の tick で進み、入力は tick に乗るので、同じ入力なら結果は同じ。動きを減らす設定（§41）ではスローへの切り替えをなめらかにしない（その場で切り替わる） |
+| ゴーストを出す（`ghost`） | ON | 50.3 |
+
+### 50.5 結果画面
+- Round 8 の振り返り（`RaceDebrief.FromInputs`：勝因・敗因の1行とヒント）。
+- 出走前アドバイスとの比べ（§39.6 と同じ `RaceAdvice.CheckWhipTip`）：「ムチはアドバイスどおり残り400mから」など1行。アドバイスは練習の設定（`mode: friend`、1コース、相手の脚質はわかっている）で端末が `RaceAdvice.Compute` する。§39.6 の設定「出走前アドバイス」が OFF でも練習の結果画面の1行は出す（練習画面のオプション「ムチの目安」が OFF のときは出さない）。
+- 前の試走との差（ゴーストがあれば）：「前回より0.42秒速い」。
+- 「報酬はありません（練習）」の1行を必ず出す。コイン・XP・ミッションの欄は出さない。
+- ボタン：「同じ展開でもう一度」「新しい相手で」「条件を変える」「この瞬間を撮る」（フォトモード §38、`source.mode: "practice"`）。**「リプレイを保存」は出さない**（50.7）。
+
+### 50.6 オフライン・内蔵の予備
+- カタログが一度も取れていない端末（初回起動からずっとオフライン）は内蔵の予備で走る：コース = 練習コース `kirameki_turf_2000`（芝・良・昼）、強さ = `easy`/`normal`/`strong`/`top`（50.1 と同じ値）、CPU = 内蔵の CPU 11頭（`RaceFactory` の練習の馬）、馬 = 相棒（端末にあれば）か既定の相棒、ルールセット = アプリに入っている既定のもの。
+- 覚えたカタログの馬は古いことがある（オフラインの間に引退した馬など）。それでも練習は何も配らないので困らない。オンラインに戻れば取り直す。
+
+### 50.7 リプレイ・写真・共有（決めたこと）
+- **マイリプレイ（§37）には保存できない**。マイリプレイは「確定したレース」をサーバーが持つ元のログで保存する仕組みで、練習はサーバーに無い（`POST /v1/replays` は練習の `raceId` を知らない → 404）。練習の見返し用の再生も作らない（すぐやり直せて、前の試走はゴーストで並べて見られるので）。
+- **フォトモード（§38）は使える**：ひとりで走るレースなので、走っている途中でも止めて撮れる（`PhotoModeModel.CanPause` は練習で true）。写真の記録の `source.mode` は `practice`（§38 に既にある値）。
+- **リプレイ共有（Round 9 の動画・画像カード）は練習では出さない**：着順と頭数の入ったカードは本物のレースに見えるため。写真のカードには「練習レース」と出る（50.2）。
+
+### 50.8 解放・FTUE（docs/planning/06 §2.3・§4.3）
+- サーバーの解放キーは使わない（マイリプレイ §37 と同じ：端末の中だけの機能）。**チュートリアル（FTUE の流れ：初レース → 命名 → 無料10連 → ホーム）が終わったら**いつでも開ける（`PracticeModel.Available` = `OnboardingFlow.InFtue == false`）。FTUE の途中では出さない。
+- FTUE と競わない：次にやること（§45）のカードにはしない、ホームの大きな「レースへ」の行き先は変えない、自分から「練習しませんか」と案内しない。入口はレースの画面の「練習」と「機能・イベント」の一覧。オフラインのエラー（06 §5.3「オフラインです。練習レースは遊べます」）からも開ける。
+
+### 50.9 アクセシビリティ（§41）
+- 文字の大きさ（`TextScale`）：設定画面・結果画面の文字は全部従う（最大でもはみ出さない。a11y-flow に入れる）。
+- ムチの入力（タップ／長押し、`WhipHold`）・かんたん操作（§27）・字幕・片手の配置は普通のレースと同じに効く。
+- 動きを減らす：スローの切り替え・帯の明るさの変化をその場で切り替える（アニメーションしない）。帯は点滅しない（`FlashLimiter` の対象外の静的な表示）。
+- 色：ムチの目安の帯は `cue.whipChance`、ゴーストは位置の色 `position.other` を半透明で。色だけに頼らない（帯には「ムチの目安」の文字、ゴーストには名前の札）。
+
+### 50.10 KPI（クライアントのイベント、任意）
+| イベント | props | 列 |
+|---|---|---|
+| `practice_start` | `trackId`、`fieldSize`（2〜12）、`strength`（50.1 の id）、`restart`（`none`/`same_seed`/`new_seed`） | s1 = trackId、s2 = strength、s3 = restart、count = fieldSize |
+| `practice_finish` | `trackId`、`fieldSize`、`strength`、`place`（1〜12、ゴールしなければ 0） | s1 = trackId、s2 = strength、count = fieldSize、place = place |
+入力・tick・seed・タイムの細かい値は送らない（props は `strict`）。送るのはオンラインの時だけ（既存の送信キュー）。このイベントは何も配らない（KPI の取り込みは状態の報酬に触れない）。クエリは `docs/ops/kpi-queries.md`「練習レース」。
+
+### 50.11 クライアント
+- `Muchi.Client`：`ApiClient.GetPracticeCatalogAsync`、`PracticeCatalog`（`Parse`・`Fallback`）、`PracticeSetup`、`PracticeSession`（`BuildConfig`・`Start`・`Restart`・`Ghost`・`Advice`・`WhipWindow`・`Finish` → `PracticeResult`）、`PracticeClock`、`AnalyticsEvents.PracticeStart`・`PracticeFinish`。`ProtocolCodec.ParseHorse`・`HorseToJson`（設定の馬の読み書きを1か所に。結果は今までと同じ）。
+- Unity ゲーム層 `PracticeModel`：入口の可否（FTUE）、カタログの取得と端末の写し・予備、設定の選択肢（馬・コース・馬場・昼夜・頭数・強さ）と既定、オプション、`OfflineRaceDriver`＋`RaceObserver` でのレース、時計（スロー）、ムチの目安の帯、ゴーストの位置、やり直し、結果の行、写真の可否、KPI。描画は `docs/handoff-codex-round18-practice.md`。
+- デプロイ：新しい GET と KPI の2種類だけ（検証器は変わらない、マイグレーションなし）。サーバーだけ出せばよい。

@@ -985,3 +985,24 @@
 - REQ-NEXT-012 KPI：`next_card_view`・`next_card_tap`（クライアント、`kind`・`slot`）、`next_card_dismiss`（サーバー）。
 - REQ-NEXT-013 クライアント：`Muchi.Client` `ApiClient.GetNextActionsAsync`・`DismissNextActionAsync`、`NextActionsView`。Unity のゲーム層 `NextActionModel`（主カードとチップの文言、期限の日付表示、オフラインの予備 45.6、今日閉じた種類、KPI の1日1回）。
 - REQ-NEXT-014 プロトタイプ：ムチ一閃のホームの下の中央に主カード＋チップ（上のバーは増やさない：プレゼントの封筒・ライバルの帯・後から来る §40 のベルの場所を空けておく）、閉じる、日本語・英語、e2e と en-flow。
+
+## 50. 練習レース（TS＋C#、`src/domain/practice.ts`・`server/master/practice.json`・`Muchi.Client/Practice.cs`・`Muchi.Game.PracticeModel`、`contracts/protocol.md` §50）
+拘束条件：練習は何も配らない（E 番号なし。コイン・アイテム・ミッション・パス XP・シーズンpt・レート・戦績・殿堂・振り返り・ライバル・共同目標・交換所・図鑑・絆・実績のどれも動かない）。サーバーに練習の結果を受け取る経路を作らない。エンジンとゴールデンは変えない。FTUE（06 §2.3）と競わない。
+- REQ-PRAC-001 端末だけで走る：練習のレースは端末の本物のエンジン（`OfflineRace`）で走り、サーバーとの往復は要らない（オフラインで遊べる）。
+- REQ-PRAC-002 カタログ：`GET /v1/practice/catalog`（要認証、読み取りだけ）が頭数の範囲・CPU の強さ・コース（馬場・ナイター・その日の馬場）・CPU の馬・自分の現役の馬・有効なルールセットを返す。状態を変えない。
+- REQ-PRAC-003 強さ：`server/master/practice.json` の強さは既存の CPU の定義から（`easy` = 初心者マッチの `cpuLevel`・`cpuStatPermille`、`normal`/`strong`/`top` = `cpuLevelFor` の段 3/4/5）。起動時に検査（形・id の重複・`cpuLevel` 1〜5・`cpuStatPermille` 500〜1000・`default` が実在・文の言葉）。
+- REQ-PRAC-004 選べるもの：自分の馬のどれでも、コース全部（プレイヤーごとのコースの鍵は無い）、その面の4つの馬場、照明のあるコースだけナイター、頭数 2〜12、強さ。
+- REQ-PRAC-005 組み立て：`PracticeSession.BuildConfig(catalog, setup, seed)` は純粋（同じ入力 → 同じ設定）。CPU は自分の馬と同じ名前を除いて重複なしで選び、ゲートは乱数で並べる。`mode: friend`・`raceId: practice_<seed>`。不正な選択は組み立てない。
+- REQ-PRAC-006 やり直し：同じ seed（同じ相手・枠・展開）か新しい seed（`SeedMix.Mix`）ですぐにやり直す。回数制限なし。
+- REQ-PRAC-007 ゴースト：前の試走（ゴールしたもの）を `GhostPlayer` で別に再生して並べる。今の試走に触れない（同じ入力なら結果のハッシュはゴーストの有無で同じ）。コースが変わったら消す。端末の中だけ。
+- REQ-PRAC-008 ムチの目安：出走前アドバイスのムチの打ち始めから、`CheckWhipTip` の「アドバイスどおり」の範囲と同じ帯を出す。オプション、既定 ON。
+- REQ-PRAC-009 スロー：最後の400m（自分の馬）を 0.5 倍の時計で。エンジンの tick と結果は変わらない。オプション、既定 OFF。
+- REQ-PRAC-010 結果画面：Round 8 の振り返りの1行とヒント、アドバイスとの比べの1行、前の試走との差、「報酬はありません（練習）」。報酬の欄は出さない。
+- REQ-PRAC-011 何も配らない：練習の結果を送る API は無い。KPI を送っても状態の報酬・記録は変わらない（テストで全部の値を比べる）。
+- REQ-PRAC-012 リプレイ・写真：マイリプレイに保存できない（ボタンを出さない、サーバーは練習の raceId を知らない）。フォトモードは使える（途中で止めて撮れる、`source.mode: practice`）。リプレイ共有のカードは出さない。写真のカードの種類は「練習レース」。
+- REQ-PRAC-013 解放：チュートリアル（FTUE の流れ）が終わったらいつでも。サーバーの解放キーは使わない。次にやることのカードにしない・自分から案内しない。オフラインのエラーから開ける。
+- REQ-PRAC-014 アクセシビリティ：§41 の文字の大きさ・ムチの長押し・かんたん操作・字幕・動きを減らす（切り替えをアニメーションしない）・色のトークン（帯 `cue.whipChance`）に従う。
+- REQ-PRAC-015 KPI：`practice_start`・`practice_finish`（コース・頭数・強さ・やり直しの種類・着順だけ。入力や seed は送らない、`strict`）。クエリは `docs/ops/kpi-queries.md`。
+- REQ-PRAC-016 オフラインの予備：カタログが無い端末は内蔵の練習コース・強さ・CPU・既定のルールセットで走る。覚えたカタログはオフラインで使う。
+- REQ-PRAC-017 クライアント：`Muchi.Client` の `PracticeCatalog`・`PracticeSession`・`PracticeClock`・`ApiClient.GetPracticeCatalogAsync`・`AnalyticsEvents.PracticeStart/PracticeFinish`。Unity ゲーム層 `PracticeModel`。描画は `docs/handoff-codex-round18-practice.md`。
+- REQ-PRAC-018 プロトタイプ・英語：ムチ一閃の見た目で練習の設定・レース（WASM の本物のエンジン）・結果、日本語・英語（`l10n:missing` 0、0 untranslated / 0 overflow）、e2e・en-flow・a11y-flow。

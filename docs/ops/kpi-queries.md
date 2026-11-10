@@ -1063,3 +1063,33 @@ WHERE blob1 IN ('cup_create', 'cup_join', 'cup_finish') AND timestamp > NOW() - 
 GROUP BY week
 ORDER BY week DESC
 ```
+
+## 練習レース：始めた・ゴールした（REQ-PRAC-015、Round 18、contracts/protocol.md §50）
+列：`practice_start`（クライアント）`blob8` = コース（trackId）、`blob9` = 強さ（`easy`／`normal`／`strong`／`top`）、`blob10` = やり直しの種類（`none`／`same_seed`／`new_seed`）、`double5` = 頭数（2〜12）。`practice_finish`（クライアント）`blob8` = コース、`blob9` = 強さ、`double5` = 頭数、`double4` = 着順（ゴールしなければ 0）。入力・seed・タイムは送らない。練習は何も配らないので、この行は報酬の集計（コイン・XP・ミッション）には出てこない。
+
+**使われ方**（週ごと）：練習した人、試走の数、やり直しの割合、強さの分布、ゴールまで走った割合。
+
+```sql
+SELECT
+  toStartOfWeek(timestamp) AS week,
+  count(DISTINCT if(blob1 = 'practice_start', blob2, NULL)) AS players,
+  sumIf(_sample_interval, blob1 = 'practice_start') AS runs,
+  sumIf(_sample_interval, blob1 = 'practice_start' AND blob10 != 'none') AS restarts,
+  sumIf(_sample_interval, blob1 = 'practice_finish' AND double4 > 0) AS finished,
+  sumIf(_sample_interval, blob1 = 'practice_start' AND blob9 = 'easy') AS easy,
+  sumIf(_sample_interval, blob1 = 'practice_start' AND blob9 = 'top') AS top
+FROM muchi_kpi
+WHERE blob1 IN ('practice_start', 'practice_finish') AND timestamp > NOW() - INTERVAL '56' DAY
+GROUP BY week
+ORDER BY week DESC
+```
+
+**練習のあとのランク戦**（練習した週に、ランク戦の着順が上がるか。相関で、因果ではない）：
+
+```sql
+SELECT blob9 AS strength, avg(double4) AS avg_place, sum(_sample_interval) AS finishes
+FROM muchi_kpi
+WHERE blob1 = 'practice_finish' AND double4 > 0 AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY strength
+ORDER BY strength
+```

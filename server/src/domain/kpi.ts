@@ -11,6 +11,11 @@ import { AppError } from './errors.js';
 import type { PlayerState } from './player.js';
 import { jstDateKey } from './time.js';
 import { NEXT_KINDS, NEXT_SLOTS } from './nextKinds.js';
+import { PRACTICE_ID_RE, PRACTICE_RESTARTS } from './practiceKinds.js';
+
+const PRACTICE_TRACK = z.string().regex(/^[a-z0-9_]{1,64}$/);
+const PRACTICE_FIELD = z.number().int().min(2).max(12);
+const PRACTICE_STRENGTH = z.string().regex(PRACTICE_ID_RE);
 
 /** Event-specific fields. Strings go to blob8-10, numbers to double1-6/8/9 (see BLOB/DOUBLE below). */
 export interface KpiEvent {
@@ -158,6 +163,10 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   // REQ-NEXT-012: the home's 次にやること card shown (once per kind and game day) / tapped. Closing it is the server event next_card_dismiss.
   z.object({ name: z.literal('next_card_view'), at: z.number().int(), props: z.object({ kind: z.enum(NEXT_KINDS), slot: z.enum(NEXT_SLOTS) }).strict() }),
   z.object({ name: z.literal('next_card_tap'), at: z.number().int(), props: z.object({ kind: z.enum(NEXT_KINDS), slot: z.enum(NEXT_SLOTS) }).strict() }),
+  // REQ-PRAC-015 (§50.10): a practice race started / finished on the device. Course, field size and strength only — no inputs,
+  // ticks, seed or times (strict). Optional, and it grants nothing: ingestion never touches rewards or records.
+  z.object({ name: z.literal('practice_start'), at: z.number().int(), props: z.object({ trackId: PRACTICE_TRACK, fieldSize: PRACTICE_FIELD, strength: PRACTICE_STRENGTH, restart: z.enum(PRACTICE_RESTARTS) }).strict() }),
+  z.object({ name: z.literal('practice_finish'), at: z.number().int(), props: z.object({ trackId: PRACTICE_TRACK, fieldSize: PRACTICE_FIELD, strength: PRACTICE_STRENGTH, place: z.number().int().min(0).max(12) }).strict() }),
 ]);
 export type ClientEvent = z.infer<typeof clientEventSchema>;
 
@@ -198,6 +207,8 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'photo_share': return { name: e.name, s1: e.props.source, s2: e.props.framed ? 'framed' : 'plain' };
     case 'activity_open': return { name: e.name, value: e.props.unread };
     case 'activity_tap': return { name: e.name, s1: e.props.kind, s2: e.props.screen };
+    case 'practice_start': return { name: e.name, s1: e.props.trackId, s2: e.props.strength, s3: e.props.restart, count: e.props.fieldSize };
+    case 'practice_finish': return { name: e.name, s1: e.props.trackId, s2: e.props.strength, count: e.props.fieldSize, place: e.props.place };
     case 'next_card_view': case 'next_card_tap': return { name: e.name, s1: e.props.kind, s2: e.props.slot };
   }
 }

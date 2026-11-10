@@ -374,6 +374,17 @@ export const CODE_EN: Record<string, string> = {
   '「{cup}」は中止になりました': '“{cup}” was cancelled',
   '{y}年{m}月シーズンの振り返りができました': 'Your Season {m}/{y} recap is ready',
   '{y}年の振り返りができました': 'Your {y} in review is ready',
+  // ヘルプセンター (REQ-HELP-020, §48): the activity entry, inquiry categories and statuses (the help routes answer in the
+  // requested language themselves; these cover the activity list and clients that translate a stored Japanese label)
+  'お問い合わせに運営から返信がありました': 'Support replied to your inquiry',
+  'レース・ムチについて': 'About races and the whip',
+  'アカウント・引き継ぎについて': 'About your account and data transfer',
+  'アカウント削除について': 'About account deletion',
+  'アクセシビリティについて': 'About accessibility',
+  '不具合の報告': 'Report a problem',
+  '受付済み': 'Received',
+  '回答済み': 'Answered',
+  '［削除しました］': '[removed]',
   'プレイヤー': 'Player',
   '運営からのお願い：名前や文についてお知らせがありました。ガイドラインをご確認ください': 'A note from support: we received a notice about a name or text. Please check the guidelines',
 

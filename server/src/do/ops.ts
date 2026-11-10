@@ -11,6 +11,37 @@ import type { DryRunOp } from '../ops/config.js';
 import type { AdminPrincipal } from '../ops/admin.js';
 import type { Grant } from '../ops/support.js';
 import { CompensationStore, type CompensationGift, type CompensationQuery, type CompensationRepo, type CompensationRequest } from '../ops/compensation.js';
+import { InquiryIndex, type InquiryIndexRepo, type InquiryQuery } from '../ops/inquiries.js';
+import type { InquirySummary } from '../domain/help.js';
+
+/** REQ-HELP-016: the inquiry index on SQLite (one row per ticket, no text; added with CREATE TABLE IF NOT EXISTS — no migration). */
+export class SqlInquiryIndexRepo implements InquiryIndexRepo {
+  constructor(private readonly sql: SqlStorage) {
+    sql.exec('CREATE TABLE IF NOT EXISTS inquiries (player_id TEXT NOT NULL, ticket_id TEXT NOT NULL, status TEXT NOT NULL, category TEXT NOT NULL, updated_at INTEGER NOT NULL, json TEXT NOT NULL, PRIMARY KEY (player_id, ticket_id))');
+    sql.exec('CREATE INDEX IF NOT EXISTS inquiries_status ON inquiries (status, updated_at)');
+  }
+  get(playerId: string, ticketId: string) {
+    const r = this.sql.exec<{ json: string }>('SELECT json FROM inquiries WHERE player_id = ? AND ticket_id = ?', playerId, ticketId).toArray()[0];
+    return r ? (JSON.parse(r.json) as InquirySummary) : null;
+  }
+  put(r: InquirySummary) {
+    this.sql.exec('INSERT INTO inquiries (player_id, ticket_id, status, category, updated_at, json) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(player_id, ticket_id) DO UPDATE SET status = excluded.status, category = excluded.category, updated_at = excluded.updated_at, json = excluded.json',
+      r.playerId, r.ticketId, r.status, r.category, r.updatedAt, JSON.stringify(r));
+  }
+  list(q: InquiryQuery) {
+    const where: string[] = [];
+    const args: (string | number)[] = [];
+    if (q.status) { where.push('status = ?'); args.push(q.status); }
+    if (q.category) { where.push('category = ?'); args.push(q.category); }
+    const sql = `SELECT json FROM inquiries ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY updated_at DESC LIMIT ?`;
+    return this.sql.exec<{ json: string }>(sql, ...args, q.limit ?? 100).toArray().map((r) => JSON.parse(r.json) as InquirySummary);
+  }
+  removePlayer(playerId: string) {
+    const n = this.sql.exec<{ n: number }>('SELECT COUNT(*) AS n FROM inquiries WHERE player_id = ?', playerId).one().n;
+    this.sql.exec('DELETE FROM inquiries WHERE player_id = ?', playerId);
+    return n;
+  }
+}
 
 /** REQ-OPS-026: compensation requests on SQLite (one JSON row per request; opKey unique). */
 export class SqlCompensationRepo implements CompensationRepo {
@@ -98,6 +129,7 @@ export class OpsDO extends DurableObject<Env> {
   private readonly limiter = new RateLimiter();
   private readonly deadLetters: SqlDeadLetterRegistry;
   private readonly compensations: CompensationStore;
+  private readonly inquiries: InquiryIndex;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -105,7 +137,13 @@ export class OpsDO extends DurableObject<Env> {
     this.audits = new SqlAuditRepo(ctx.storage.sql);
     this.deadLetters = new SqlDeadLetterRegistry(ctx.storage.sql);
     this.compensations = new CompensationStore(new SqlCompensationRepo(ctx.storage.sql));
+    this.inquiries = new InquiryIndex(new SqlInquiryIndexRepo(ctx.storage.sql));
   }
+
+  // ---- inquiry index (REQ-HELP-016) ----
+  inqUpsert(items: InquirySummary[]) { return wrap(() => this.inquiries.upsert(items)); }
+  inqList(q: InquiryQuery) { return wrap(() => this.inquiries.list(q)); }
+  inqForget(playerId: string) { return wrap(() => this.inquiries.forgetPlayer(playerId)); }
 
   // ---- dead-letter index (REQ-OPS-041) ----
   /** Producers register newly dead-lettered items; an item ops already resolved/dismissed is not reopened by a stale report. */

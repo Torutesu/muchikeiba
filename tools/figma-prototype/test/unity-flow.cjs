@@ -1419,6 +1419,39 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.deepEqual(up.slice(-2), ['shown', 'store'], 'upgrade_prompt shown, then store');
   await shot('update-required', 300);
   await page.evaluate(() => globalThis.__muchi.logic.maintenanceDemo('off'));
+  // ------------------------------------------------------------------ 6. round 17: ヘルプセンター (REQ-HELP-*)
+  // an inquiry answered by the real ops reply (unread → read on opening), the help center (eight categories), search with
+  // the Japanese fold, an article with numbers from data and a vote, the rates screen's ? link (→ pity), the inquiry form
+  await page.evaluate(() => globalThis.__muchi.demo('help')); await waitScreen('my-inquiries', 60000); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .inq-detail [data-reply="support"]').count(), 1, 'the answered inquiry shows the support reply');
+  assert.equal(await page.locator('.screen.in .inq-detail').getAttribute('data-status'), 'answered');
+  await shot('help-my-inquiries', 300);
+  await click('戻る'); await waitScreen('help'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-help-cat]').count(), 8, 'eight categories');
+  await shot('help-center', 300);
+  await page.locator('.screen.in input.field').fill('ﾃﾝｼﾞｮｳ'); await click('検索'); await waitScreen('help-search'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-help-article]').first().getAttribute('data-help-article'), 'pity', 'half-width katakana finds the pity article');
+  await shot('help-search', 300);
+  await page.locator('.screen.in [data-help-article="pity"]').click(); await waitScreen('help-article'); await page.waitForTimeout(300);
+  const helpBody = await page.locator('.screen.in .help-body').innerText();
+  assert.match(helpBody, /[0-9]+回分/, 'the pity count is filled from data');
+  assert.ok(!/今だけ|残りわずか|倍|お得/.test(helpBody), 'no urgency or multiplier wording');
+  await page.locator('.screen.in [data-vote="yes"]').click(); await page.waitForTimeout(500);
+  await shot('help-article', 300);
+  const helpKpi = await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name.startsWith('help_')));
+  assert.ok(helpKpi.some((e) => e.name === 'help_search' && e.length === 5 && !Object.values(e).some((v) => typeof v === 'string' && /ﾃﾝ|テン/.test(v))), 'help_search: the folded length, never the query');
+  assert.ok(helpKpi.some((e) => e.name === 'help_article_view' && e.articleId === 'pity' && e.source === 'search'), 'help_article_view with its source');
+  await page.evaluate(() => globalThis.__muchi.show('Odds', 'standard')); await page.waitForTimeout(500);
+  await page.locator('.screen.in [data-help-context="gacha_odds"]').click(); await waitScreen('help-article'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-article]').getAttribute('data-article'), 'pity', 'the rates screen links to the pity article');
+  await page.locator('.screen.in .btn[data-action="inquiry"]').click(); await waitScreen('inquiry-form'); await page.waitForTimeout(300);
+  await page.locator('.screen.in [data-inquiry-cat="bug"]').click(); await page.waitForTimeout(400);
+  await page.locator('.screen.in textarea.field').fill('タイムアタックの結果画面で記録が表示されないことがあります。');
+  assert.match(await page.locator('.screen.in [data-diagnostics]').innerText(), /プレイヤーID/, 'the form says what is attached');
+  await shot('inquiry-form', 300);
+  await page.locator('.screen.in [data-action="inquiry-send"]').click(); await waitScreen('my-inquiries'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .inq-detail').getAttribute('data-status'), 'received', 'the new inquiry is received');
+  await shot('help-inquiry-sent', 300);
   // ------------------------------------------------------------------ 6. round 12: かんたん操作 (REQ-ASSIST-*)
   // a week of play, then three last places settled by the real applyRace → the one-time suggestion (calm: 「今はいい」 as big
   // as the rest) → ぜんぶおまかせ → the settings row and the options screen → a ranked race the real InputAssistant rides with

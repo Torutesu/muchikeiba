@@ -6,6 +6,7 @@ import { CompensationStore, MemoryCompensationRepo } from './compensation.js';
 import { auditValue, MemoryAuditRepo, RateLimiter, ADMIN_RATE, type RateLimitPolicy } from './admin.js';
 import { IntegrityCore, MemoryIntegrityRepo, type ModerationChange } from './integrity.js';
 import { MemoryPlayerReportRepo, PlayerReportsCore } from './playerReports.js';
+import { InquiryIndex, MemoryInquiryIndexRepo } from './inquiries.js';
 import { DeadLetterService, MemoryDeadLetterRegistry, type DeadLetterOwner, type DeadLetterSource } from './deadLetter.js';
 
 /**
@@ -27,6 +28,8 @@ export function memoryOps(base: Master, player: (uid: string) => PlayerInvoker, 
   const compensations = new CompensationStore(compensationRepo);
   const playerReportRepo = new MemoryPlayerReportRepo();
   const playerReports = new PlayerReportsCore(playerReportRepo);
+  const inquiryRepo = new MemoryInquiryIndexRepo();
+  const inquiries = new InquiryIndex(inquiryRepo);
   const api: OpsApi = {
     playerReports: {
       submit: async (x, now, cfg) => playerReports.submit(x, now, cfg),
@@ -59,6 +62,11 @@ export function memoryOps(base: Master, player: (uid: string) => PlayerInvoker, 
       reject: async (id, by, note, now) => compensations.reject(id, by, note, now),
       executed: async (id, error, now) => compensations.executed(id, error, now),
     },
+    inquiries: {
+      upsert: async (items) => inquiries.upsert(items),
+      list: async (q) => inquiries.list(q),
+      forgetPlayer: async (pid) => inquiries.forgetPlayer(pid),
+    },
     integrity: {
       recordRace: async (r) => { const cs = integrity.recordRace(r); await push(cs); return cs; },
       report: async (raceId, reporter, now) => integrity.addReport(raceId, reporter, now),
@@ -71,5 +79,5 @@ export function memoryOps(base: Master, player: (uid: string) => PlayerInvoker, 
       release: async (pid, reason, by, now) => { const c = integrity.release(pid, reason, by, now); await push([c]); return c; },
     },
   };
-  return { api, config, audits, integrity, integrityRepo, deadLetterRegistry, compensationRepo, playerReportRepo };
+  return { api, config, audits, integrity, integrityRepo, deadLetterRegistry, compensationRepo, inquiryRepo, playerReportRepo };
 }

@@ -1,0 +1,216 @@
+{
+  "_note": "REQ-HELP-*: ヘルプセンター (contracts/protocol.md §48). Japanese and English side by side; numbers only through {{tokens}} filled from data at read time (help.ts helpProblems checks ids, links, lengths, tokens and wording at boot and on every remote-config version).",
+  "version": 1,
+  "config": {
+    "enabled": true,
+    "supportSiteHost": "support.muchi-issen.example",
+    "titleMaxChars": 40,
+    "bodyMaxChars": 1200,
+    "searchMaxChars": 40,
+    "searchMaxResults": 20,
+    "feedbackPerDay": 50,
+    "inquiry": { "descriptionMin": 10, "descriptionMax": 1000, "attachMax": 10, "openMax": 3, "perDay": 5, "minIntervalSec": 60, "keepMax": 30, "replyMax": 2000 }
+  },
+  "categories": [
+    { "id": "getting_started", "title": { "ja": "はじめに", "en": "Getting started" }, "icon": "start" },
+    { "id": "races", "title": { "ja": "レース・ムチ", "en": "Races & whip" }, "icon": "race" },
+    { "id": "horses", "title": { "ja": "馬・配合", "en": "Horses & breeding" }, "icon": "horse" },
+    { "id": "scout", "title": { "ja": "スカウト（提供割合・天井）", "en": "Scout (rates & pity)" }, "icon": "scout" },
+    { "id": "purchases", "title": { "ja": "購入・返金", "en": "Purchases & refunds" }, "icon": "coin" },
+    { "id": "account", "title": { "ja": "アカウント・引き継ぎ", "en": "Account & data transfer" }, "icon": "account" },
+    { "id": "deletion", "title": { "ja": "アカウント削除", "en": "Account deletion" }, "icon": "delete" },
+    { "id": "accessibility", "title": { "ja": "アクセシビリティ", "en": "Accessibility" }, "icon": "a11y" }
+  ],
+  "articles": [
+    {
+      "id": "first_steps", "category": "getting_started",
+      "title": { "ja": "最初の遊び方", "en": "How to get started" },
+      "body": {
+        "ja": "まずはチュートリアルのレースでムチの使い方を覚えましょう。走り終えると、相棒の馬に名前を付けられます。\n\n・ホームの「レース」から、ランク戦や練習のレースに出られます\n・ミッションをこなすと、無償コインやアイテムを受け取れます\n・わからないことがあれば、このヘルプセンターで検索できます",
+        "en": "Start with the tutorial race to learn how the whip works. After the finish, you can name your partner horse.\n\n• Tap Race on the home screen to enter ranked or practice races\n• Complete missions to receive free coins and items\n• If anything is unclear, search this help center"
+      },
+      "keywords": { "ja": ["はじめかた", "チュートリアル", "相棒", "遊び方"], "en": ["start", "tutorial", "partner", "beginner"] },
+      "links": [ { "type": "screen", "screen": "race_lobby" } ],
+      "related": ["whip", "gift_box"]
+    },
+    {
+      "id": "gift_box", "category": "getting_started",
+      "title": { "ja": "プレゼントボックスの受け取り", "en": "Receiving gifts from the gift box" },
+      "body": {
+        "ja": "運営からのお詫びや、大会・イベントの報酬はプレゼントボックスに届きます。ホームの封筒から開いて受け取ってください。\n\n・受け取り期限のあるプレゼントは、期限を過ぎると消えます\n・有償コインがプレゼントボックスに入ることはありません",
+        "en": "Apologies from the operator and rewards from tournaments and events arrive in the gift box. Open it from the envelope on the home screen to receive them.\n\n• Gifts with a deadline disappear once it passes\n• Paid coins are never put in the gift box"
+      },
+      "keywords": { "ja": ["プレゼント", "お詫び", "報酬", "受け取り"], "en": ["gift", "present", "reward", "apology"] },
+      "links": [ { "type": "screen", "screen": "gift_box" } ],
+      "related": ["buy_coins"]
+    },
+    {
+      "id": "whip", "category": "races",
+      "title": { "ja": "ムチのタイミング", "en": "When to use the whip" },
+      "body": {
+        "ja": "ムチは1レースに{{max_whips}}回まで使えます。ムチを入れると、しばらくの間スピードが上がります。\n\n・序盤に使うと、馬が落ち着きを失いやすくなります\n・短い間に続けて使うと、効き目が小さくなります\n・かんたん操作で、ムチのタイミングだけ任せることもできます\n・アクセシビリティの設定で、ムチを長押しで入れられます",
+        "en": "You can use the whip up to {{max_whips}} times per race. Each whip raises your speed for a short while.\n\n• Using it early in the race makes your horse lose composure more easily\n• Using it again within a short time has less effect\n• With easy controls, you can leave just the whip timing to the game\n• In the accessibility settings, you can whip by holding the button"
+      },
+      "keywords": { "ja": ["ムチ", "タイミング", "加速", "スパート"], "en": ["whip", "timing", "speed", "sprint"] },
+      "links": [ { "type": "screen", "screen": "accessibility" } ],
+      "related": ["race_modes", "accessibility_settings"]
+    },
+    {
+      "id": "race_modes", "category": "races",
+      "title": { "ja": "レースの種類", "en": "Types of races" },
+      "body": {
+        "ja": "ランク戦：同じくらいの実力の相手と走り、シーズンの順位が決まります。\n\nフレンド戦：あいことばで集まった仲間と走ります。順位のポイントは動きません。\n\nタイムアタック：ひとりで走って、コースの記録を競います。\n\nランク戦の勝ちやすさは、購入できるもので変わることはありません。",
+        "en": "Ranked: race opponents of similar strength. Your season standing is decided here.\n\nFriend races: race friends who joined with a passphrase. Ranking points do not change.\n\nTime attack: run alone and compete on course records.\n\nNothing you can buy makes ranked races easier to win."
+      },
+      "keywords": { "ja": ["ランク戦", "フレンド戦", "タイムアタック", "シーズン"], "en": ["ranked", "friend", "time attack", "season"] },
+      "links": [ { "type": "screen", "screen": "race_lobby" } ],
+      "related": ["whip"]
+    },
+    {
+      "id": "training", "category": "horses",
+      "title": { "ja": "調教で馬を伸ばす", "en": "Improving horses with training" },
+      "body": {
+        "ja": "調教では、リズムに合わせてタップすると馬の能力が少し伸びます。\n\n・調教を受けられる回数は日ごとに決まっています\n・ランク戦では能力に上限があり、だれもが同じ条件で走ります",
+        "en": "In training, tap along with the rhythm to raise your horse's abilities a little.\n\n• The number of training sessions is limited per day\n• Ranked races cap abilities, so everyone runs under the same conditions"
+      },
+      "keywords": { "ja": ["調教", "能力", "トレーニング"], "en": ["training", "ability", "stats"] },
+      "links": [ { "type": "screen", "screen": "training" } ],
+      "related": ["breeding"]
+    },
+    {
+      "id": "breeding", "category": "horses",
+      "title": { "ja": "配合と種付け", "en": "Breeding and studs" },
+      "body": {
+        "ja": "持っている牡馬と牝馬を配合すると、親の特徴を受け継いだ子馬が生まれます。\n\n・フレンドの馬に種付けをお願いすることもできます（種付け料はコインで支払います）\n・生まれる子馬の能力には幅があります",
+        "en": "Breed a stallion and a mare you own to get a foal that inherits traits from its parents.\n\n• You can also ask a friend's horse to sire (the stud fee is paid in coins)\n• A foal's abilities vary"
+      },
+      "keywords": { "ja": ["配合", "種付け", "子馬", "血統"], "en": ["breeding", "stud", "foal", "pedigree"] },
+      "links": [ { "type": "screen", "screen": "breeding" }, { "type": "screen", "screen": "stable" } ],
+      "related": ["training"]
+    },
+    {
+      "id": "scout_rates", "category": "scout",
+      "title": { "ja": "スカウトの提供割合", "en": "Scout rates" },
+      "body": {
+        "ja": "スカウトで出る馬の割合は、スカウトの画面の「提供割合」でいつでも確認できます。常設のスカウトでは、SSRが{{rate:standard:SSR}}、SRが{{rate:standard:SR}}、Rが{{rate:standard:R}}です。\n\n・10連の最後の枠は、それまでの枠にSR以上が出なかった場合だけ保証の表で抽選します（SSRは{{guarantee_rate:standard:SSR}}）\n・提供割合はスカウトごとに違うことがあります。そのスカウトの表を確認してください",
+        "en": "You can check how often each horse appears at any time under Rates on the scout screen. On the standard scout, SSR is {{rate:standard:SSR}}, SR is {{rate:standard:SR}} and R is {{rate:standard:R}}.\n\n• The last slot of a 10-pull is drawn from the guarantee table only if no SR or better appeared in the earlier slots (SSR {{guarantee_rate:standard:SSR}})\n• Rates can differ between scouts. Check the table of that scout"
+      },
+      "keywords": { "ja": ["提供割合", "確率", "ガチャ", "スカウト"], "en": ["rates", "probability", "gacha", "scout"] },
+      "links": [ { "type": "screen", "screen": "gacha_odds" } ],
+      "related": ["pity"]
+    },
+    {
+      "id": "pity", "category": "scout",
+      "title": { "ja": "天井（交換pt）のしくみ", "en": "How the pity (exchange points) works" },
+      "body": {
+        "ja": "スカウトを引いた回数だけ交換ptがたまります。常設のスカウトでは{{pity_pulls:standard}}回分たまると、対象の馬から好きな馬を選んで交換できます。\n\n・天井までに必要なコインは最大{{pity_coins:standard}}コインです\n・期間のあるスカウトの交換ptは、期間が終わると常設の交換ptへ移ります（失効しません）\n・たまった交換ptはスカウトの画面で確認できます",
+        "en": "Every scout pull adds exchange points. On the standard scout, once you have {{pity_pulls:standard}} pulls' worth, you can exchange them for a horse of your choice from the eligible list.\n\n• The coins needed to reach the pity are at most {{pity_coins:standard}}\n• Exchange points of a scout with an end date move to the standard points when it ends (they never expire)\n• You can see your exchange points on the scout screen"
+      },
+      "keywords": { "ja": ["天井", "てんじょう", "交換", "ピティ"], "en": ["pity", "exchange", "points", "ceiling"] },
+      "links": [ { "type": "screen", "screen": "gacha_odds" }, { "type": "screen", "screen": "gacha" } ],
+      "related": ["scout_rates"]
+    },
+    {
+      "id": "buy_coins", "category": "purchases",
+      "title": { "ja": "コインの購入（有償コインと無償コイン）", "en": "Buying coins (paid and free coins)" },
+      "body": {
+        "ja": "ショップで購入したコインは有償コイン、ゲームの中で受け取ったコインは無償コインです。\n\n・コインを使うときは、有償コインから先に使われます\n・有償コインに有効期限はありません\n・購入の前に、年齢に応じた月ごとの上限を確認します\n・資金決済法に基づく表示と特定商取引法に基づく表記は、下のリンクから確認できます",
+        "en": "Coins bought in the shop are paid coins. Coins received in the game are free coins.\n\n• When you spend coins, paid coins are used first\n• Paid coins never expire\n• Before a purchase, the monthly limit for your age is checked\n• The notices required by the Payment Services Act and the Specified Commercial Transactions Act are linked below"
+      },
+      "keywords": { "ja": ["コイン", "購入", "有償", "無償", "課金"], "en": ["coins", "purchase", "paid", "free", "buy"] },
+      "links": [ { "type": "screen", "screen": "shop" }, { "type": "legal", "doc": "shikin" }, { "type": "legal", "doc": "tokushoho" }, { "type": "screen", "screen": "history" } ],
+      "related": ["purchase_missing", "age_limits", "refunds"]
+    },
+    {
+      "id": "purchase_missing", "category": "purchases",
+      "title": { "ja": "購入したコインが届かない", "en": "Purchased coins have not arrived" },
+      "body": {
+        "ja": "ストアの支払いが終わっていないと、コインはまだ届きません。しばらく待ってから、アプリを開き直してください。\n\n・購入履歴に「確認中」と出ているときは、ストアの支払い待ちです\n・それでも届かないときは、購入履歴の記録を添えて問い合わせてください（運営に届くのは問い合わせ番号と記録の内容です）",
+        "en": "Coins do not arrive until the store has finished the payment. Please wait a while, then open the app again.\n\n• If your purchase history shows Pending, the store is still processing the payment\n• If the coins still do not arrive, contact us with the purchase record attached (we receive its reference number and contents)"
+      },
+      "keywords": { "ja": ["届かない", "反映されない", "購入", "コイン"], "en": ["missing", "not received", "purchase", "coins"] },
+      "links": [ { "type": "screen", "screen": "history" }, { "type": "screen", "screen": "inquiry" } ],
+      "related": ["buy_coins", "refunds"]
+    },
+    {
+      "id": "refunds", "category": "purchases",
+      "title": { "ja": "返金について", "en": "About refunds" },
+      "body": {
+        "ja": "購入の返金は、各ストア（App Store・Google Play）の手続きで行います。返金されると、その購入で受け取った有償コインが回収されます。すでに使った分は「未精算の返金」として残ります。\n\n・詳しい条件は特定商取引法に基づく表記をご確認ください\n・ストアでの手続きは公式サポートサイトで案内しています",
+        "en": "Refunds are handled by each store (App Store or Google Play). When a purchase is refunded, the paid coins received with it are taken back. Any part already spent remains as an unsettled refund.\n\n• See the notice under the Specified Commercial Transactions Act for details\n• The official support site explains the store procedures"
+      },
+      "keywords": { "ja": ["返金", "払い返し", "キャンセル"], "en": ["refund", "cancel", "store"] },
+      "links": [ { "type": "legal", "doc": "tokushoho" }, { "type": "url", "url": "https://support.muchi-issen.example/refunds" }, { "type": "screen", "screen": "history" } ],
+      "related": ["buy_coins"]
+    },
+    {
+      "id": "age_limits", "category": "purchases",
+      "title": { "ja": "年齢に応じた購入の上限", "en": "Spending limits by age" },
+      "body": {
+        "ja": "年齢に応じて、月ごとの購入金額に上限があります。\n\n・16歳未満：月{{monthly_limit:under16}}円まで\n・16〜17歳：月{{monthly_limit:16to17}}円まで\n・18〜19歳：月{{monthly_limit:18to19}}円まで\n\n{{guardian_age}}歳未満の方は、保護者の同意を得てから購入してください。年齢の登録を間違えたときは問い合わせてください。",
+        "en": "Depending on your age, there is a monthly limit on how much you can spend.\n\n• Under 16: up to ¥{{monthly_limit:under16}} a month\n• 16–17: up to ¥{{monthly_limit:16to17}} a month\n• 18–19: up to ¥{{monthly_limit:18to19}} a month\n\nIf you are under {{guardian_age}}, get your guardian's consent before buying. If you registered the wrong age, please contact us."
+      },
+      "keywords": { "ja": ["年齢", "上限", "未成年", "保護者"], "en": ["age", "limit", "minor", "guardian"] },
+      "links": [ { "type": "screen", "screen": "shop" }, { "type": "screen", "screen": "inquiry" } ],
+      "related": ["buy_coins"]
+    },
+    {
+      "id": "data_transfer", "category": "account",
+      "title": { "ja": "引き継ぎ（機種変更）", "en": "Data transfer (changing devices)" },
+      "body": {
+        "ja": "機種変更や再インストールの前に、設定の「引き継ぎ」でApple・Googleのアカウントを登録してください。新しい端末で同じアカウントでログインすると、データを引き継げます。\n\n・登録していないと、データを引き継げないことがあります\n・アクセシビリティなどの設定もアカウントに保存されます",
+        "en": "Before changing devices or reinstalling, register an Apple or Google account under Data transfer in the settings. Sign in with the same account on the new device to carry your data over.\n\n• Without registering, your data may not be transferable\n• Settings such as accessibility are saved to your account too"
+      },
+      "keywords": { "ja": ["引き継ぎ", "機種変更", "ログイン", "連携"], "en": ["transfer", "new device", "sign in", "link"] },
+      "links": [ { "type": "screen", "screen": "account_link" } ],
+      "related": ["delete_account"]
+    },
+    {
+      "id": "history_help", "category": "account",
+      "title": { "ja": "購入・コイン・ガチャ履歴の見方", "en": "Your purchase, coin and gacha history" },
+      "body": {
+        "ja": "設定の「購入・コイン・ガチャ履歴」で、これまでの購入、コインの増減、スカウトの結果を確認できます。\n\n・購入履歴は{{purchase_keep_days}}日、コイン履歴は{{coin_history_days}}日、ガチャ履歴は{{gacha_history_days}}日さかのぼれます\n・有償コインと無償コインは分けて記録しています\n・記録を選ぶと、問い合わせ番号を添えて問い合わせできます",
+        "en": "Under Purchase, coin and gacha history in the settings, you can see your purchases, coin changes and scout results.\n\n• Purchases go back {{purchase_keep_days}} days, coins {{coin_history_days}} days and gacha {{gacha_history_days}} days\n• Paid and free coins are recorded separately\n• Select records to contact us with their reference numbers"
+      },
+      "keywords": { "ja": ["履歴", "記録", "問い合わせ番号"], "en": ["history", "record", "reference"] },
+      "links": [ { "type": "screen", "screen": "history" } ],
+      "related": ["purchase_missing"]
+    },
+    {
+      "id": "delete_account", "category": "deletion",
+      "title": { "ja": "アカウントの削除", "en": "Deleting your account" },
+      "body": {
+        "ja": "設定の「アカウント削除」から手続きできます。手続きから{{deletion_days}}日後に、すべてのデータが消えて元に戻せなくなります。\n\n・それまでの間は取り消せます。手続き中は購入できません\n・残っている有償コイン・無償コインは使えなくなります\n・法律で保存が決められている購入の記録は、個人を特定できない形で一定の期間残ります",
+        "en": "You can apply under Account deletion in the settings. {{deletion_days}} days after applying, all data is erased and cannot be restored.\n\n• Until then you can cancel. Purchases are not possible meanwhile\n• Any remaining paid and free coins can no longer be used\n• Purchase records that the law requires us to keep remain for a set period in a form that does not identify you"
+      },
+      "keywords": { "ja": ["削除", "退会", "データ"], "en": ["delete", "deletion", "erase", "data"] },
+      "links": [ { "type": "screen", "screen": "deletion" }, { "type": "legal", "doc": "privacy" } ],
+      "related": ["data_transfer"]
+    },
+    {
+      "id": "accessibility_settings", "category": "accessibility",
+      "title": { "ja": "文字の大きさ・動き・色の設定", "en": "Text size, motion and colour settings" },
+      "body": {
+        "ja": "設定の「アクセシビリティ」で、文字の大きさ（3段階）、動きを減らす、色覚サポート、振動、字幕、ムチの長押しを変えられます。\n\n・設定はアカウントに保存され、機種変更しても残ります\n・どの設定も、レースの結果や公平さには影響しません",
+        "en": "Under Accessibility in the settings, you can change the text size (three steps), reduce motion, colour vision support, vibration, subtitles and whip hold.\n\n• Settings are saved to your account and stay after changing devices\n• No setting affects race results or fairness"
+      },
+      "keywords": { "ja": ["文字", "大きさ", "色覚", "動き", "字幕"], "en": ["text size", "colour", "color", "motion", "subtitles"] },
+      "links": [ { "type": "screen", "screen": "accessibility" } ],
+      "related": ["whip"]
+    }
+  ],
+  "contexts": {
+    "gacha_odds": "pity",
+    "coin_shortfall": "buy_coins",
+    "purchase": "buy_coins",
+    "race_whip": "whip",
+    "race_result": "race_modes",
+    "training": "training",
+    "breeding": "breeding",
+    "history": "history_help",
+    "gift_box": "gift_box",
+    "account_link": "data_transfer",
+    "deletion": "delete_account",
+    "accessibility": "accessibility_settings"
+  }
+}

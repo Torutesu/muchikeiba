@@ -382,6 +382,18 @@ module.exports = async function enFlow(browser, base, out, errors) {
   assert.match(rpEn, /Inappropriate name/, 'report: the reasons in English');
   assert.match(rpEn, /never told who reported them/, 'report: the lead in English');
 
+  // round 17: ヘルプセンター in English (REQ-HELP-020): articles come in English from the master, typed text and replies stay as written
+  await page.evaluate(() => globalThis.__muchi.demo('help')); await waitScreen('my-inquiries', 60000);
+  await shot('help-my-inquiries', 500);
+  assert.match(await page.locator('.screen.in').innerText(), /Answered/, 'my inquiries: the status in English');
+  await show('HelpCenter'); await waitScreen('help'); await shot('help-center', 500);
+  assert.match(await page.locator('.screen.in').innerText(), /Scout \(rates & pity\)/, 'help: the categories in English');
+  await page.locator('.screen.in input.field').fill('pity'); await click('検索'); await waitScreen('help-search'); await shot('help-search', 400);
+  await page.locator('.screen.in [data-help-article="pity"]').click(); await waitScreen('help-article'); await shot('help-article', 500);
+  assert.match(await page.locator('.screen.in .help-body').innerText(), /pulls' worth/, 'help: the article body in English');
+  await show('HelpArticle', 'buy_coins', 'list'); await waitScreen('help-article'); await shot('help-article-coins', 400);
+  await show('InquiryForm'); await waitScreen('inquiry-form'); await shot('inquiry-form', 500);
+
   // round 13: 支部の共同目標 in English (REQ-TGOAL-*): the week, after the demo races, the week result sheet
   await show('TeamGoal'); await waitScreen('team-goal', 20000); await shot('team-goal', 600);
   assert.match(await page.locator('.screen.in').innerText(), /as a branch/, 'team goal: the goal label in English');

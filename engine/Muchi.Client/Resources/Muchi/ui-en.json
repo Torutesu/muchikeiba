@@ -1119,6 +1119,32 @@
   "新しいバージョンがあります": "A new version is available",
   "ストアから更新すると、最新の内容で遊べます。": "Update from the store to play with the latest content.",
   "メンテナンスのお知らせ": "Scheduled maintenance",
-  "ゲーム全体": "The whole game"
+  "ゲーム全体": "The whole game",
+
+  "_help": "---- ヘルプセンター (REQ-HELP-020, HelpCenterModel)",
+  "ヘルプ・お問い合わせ": "Help & contact",
+  "ヘルプはオンラインで見られます": "Help is available online",
+  "キーワードで探す（ひらがな・カタカナどちらでも）": "Search by keyword",
+  "見つかりませんでした。言葉を変えるか、問い合わせてください": "Nothing found. Try other words, or contact us",
+  "この記事は役に立ちましたか？": "Was this article helpful?",
+  "役に立った": "Helpful",
+  "役に立たなかった": "Not helpful",
+  "ご意見ありがとうございます": "Thank you for your feedback",
+  "問い合わせる": "Contact us",
+  "自分の問い合わせ": "My inquiries",
+  "問い合わせを受け付けました。返信はアクティビティでお知らせします": "Your inquiry was received. We will let you know in Activity when support replies",
+  "オフラインのため送信していません。入力した内容は残っています": "Not sent because you are offline. What you wrote is kept",
+  "内容をもう少し詳しく書いてください": "Please describe the problem in a little more detail",
+  "内容が長すぎます": "The message is too long",
+  "いまは送信できません。返信をお待ちいただくか、時間をおいてください": "You cannot send right now. Please wait for a reply or try again later",
+  "添えられる記録の数を超えています": "Too many records attached",
+  "まだ問い合わせはありません": "No inquiries yet",
+  "運営からの返信": "Reply from support",
+  "アプリの版": "App version",
+  "端末の種類": "Device type",
+  "プレイヤーID": "Player ID",
+  "自動で添えます": "Attached automatically",
+  "直近のレースID": "Latest race IDs",
+  "最大3件・自動で添えます": "Up to three, attached automatically"
  }
 }

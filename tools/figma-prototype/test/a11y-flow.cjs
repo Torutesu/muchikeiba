@@ -220,6 +220,11 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('UpdateRequired'); await waitScreen('update-required'); await shot('update-required', english, 600);
     await show('MaintenanceNotice'); await waitScreen('maintenance-notice'); await shot('maintenance-notice', english, 600);
     await page.evaluate(() => globalThis.__muchi.logic.maintenanceDemo('off'));
+    // Round 17: ヘルプセンター (the index, an article, the form, my inquiries) at the largest size
+    await show('HelpCenter'); await waitScreen('help'); await shot('help-center', english, 500);
+    await show('HelpArticle', 'pity', 'list'); await waitScreen('help-article'); await shot('help-article', english, 500);
+    await show('InquiryForm'); await waitScreen('inquiry-form'); await shot('inquiry-form', english, 500);
+    await show('MyInquiries'); await waitScreen('my-inquiries'); await shot('my-inquiries', english, 500);
     await show('Settings'); await waitScreen('settings'); await boxesClear('settings lists (largest)', SETTINGS_LISTS, english);
     await show('Home'); await waitScreen('home'); await page.waitForTimeout(700); await boxesClear('home top bar (largest)', HOME_BAR, english);
   };

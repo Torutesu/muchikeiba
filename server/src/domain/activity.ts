@@ -16,17 +16,19 @@ import type { PublicProfile } from './stats.js';
 
 export const ACTIVITY_KINDS = [
   'friend_request', 'friend_accepted', 'rival_week', 'rival_record', 'stable_like', 'team_cheer', 'tournament_result',
-  'gift_arrived', 'team_goal_tier', 'team_goal_week', 'replay_share',
+  'gift_arrived', 'team_goal_tier', 'team_goal_week', 'replay_share', 'inquiry_answered',
   // Round 16 (integration): hosted cups (§42.7) and the season recap (§43)
   'cup_invited', 'cup_started', 'cup_finished', 'cup_cancelled', 'recap_ready',
   // Round 17: support's request after a report (§47)
   'ops_notice',
 ] as const;
 export type ActivityKind = typeof ACTIVITY_KINDS[number];
-export const ACTIVITY_SCREENS = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new', 'cups', 'recap', 'safety'] as const;
+export const ACTIVITY_SCREENS = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new', 'help_inquiry', 'cups', 'recap', 'safety'] as const;
 export type ActivityScreen = typeof ACTIVITY_SCREENS[number];
 
-interface KindMeta { category: PushCategory; screen: ActivityScreen; collapse: boolean }
+/** `support` (§48.8, a support reply) is not a push category: no push is sent for it. */
+export type ActivityCategory = PushCategory | 'support';
+interface KindMeta { category: ActivityCategory; screen: ActivityScreen; collapse: boolean }
 /** REQ-ACT-003/005/006: the push category (the same split as the push settings), the deep link and whether entries collapse. */
 export const ACTIVITY_META: Record<ActivityKind, KindMeta> = {
   friend_request: { category: 'friends', screen: 'friends', collapse: false },
@@ -47,6 +49,8 @@ export const ACTIVITY_META: Record<ActivityKind, KindMeta> = {
   recap_ready: { category: 'season', screen: 'recap', collapse: false },
   // REQ-RPT-013 (§47.7 warn): support's request after a report; no actor, never names the reporter; links to 通報とブロック
   ops_notice: { category: 'events', screen: 'safety', collapse: false },
+  // §48.8 (REQ-HELP-015): an operator answered the player's inquiry (link: the inquiry's detail)
+  inquiry_answered: { category: 'support', screen: 'help_inquiry', collapse: false },
 };
 
 /** REQ-ACT-010: `progression.activity` (absent → ACTIVITY_DEFAULTS). */
@@ -216,7 +220,7 @@ export const parseUpTo = (x: string | undefined): number | null => {
 };
 
 /** A raw page item (names not resolved yet; renderActivityItems finishes it). */
-export interface ActivityRawItem { id: string; kind: ActivityKind; category: PushCategory; at: number; count: number; unread: boolean; actors: { playerId: string; name: string | null }[]; vars: Record<string, string>; link: { screen: ActivityScreen; id: string | null } }
+export interface ActivityRawItem { id: string; kind: ActivityKind; category: ActivityCategory; at: number; count: number; unread: boolean; actors: { playerId: string; name: string | null }[]; vars: Record<string, string>; link: { screen: ActivityScreen; id: string | null } }
 
 /** REQ-ACT-001/007: one page, newest first. */
 export function activityPage(m: Pick<Master, 'progression'>, s: PlayerState, now: number, cursor: number | null, limit: number, whatsNew = 0) {
@@ -274,6 +278,7 @@ export const ACTIVITY_TEXT = {
   recap_season: '{y}年{m}月シーズンの振り返りができました',
   recap_year: '{y}年の振り返りができました',
   ops_notice: '運営からのお願い：名前や文についてお知らせがありました。ガイドラインをご確認ください',
+  inquiry_answered: 'お問い合わせに運営から返信がありました',
 } as const;
 
 const fill = (t: string, v: Record<string, string>) => t.replace(/\{(\w+)\}/g, (_, k: string) => v[k] ?? '');
@@ -302,6 +307,7 @@ export function activityText(kind: ActivityKind, count: number, vars: Record<str
     case 'cup_cancelled': return fill(T.cup_cancelled, v);
     case 'recap_ready': return fill(vars.kind === 'year' ? T.recap_year : T.recap_season, v);
     case 'ops_notice': return T.ops_notice;
+    case 'inquiry_answered': return T.inquiry_answered;
   }
 }
 

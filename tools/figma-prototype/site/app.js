@@ -1376,6 +1376,8 @@ async function Shortfall(sf, ctx, retry, back) {
   }
   Txt('購入するとこの画面の前の操作に戻ります　·　有償コインから先に使われます', 52, 494, 976, 13, SOFT, d, { nowrap: true });
   Cta('閉じる', 52, 548, 380, back, d);
+  // round 17 (REQ-HELP-008): what paid and free coins are
+  TextLink('コインの購入について（ヘルプ）', 460, 560, 420, () => HelpArticle(L.helpContext('coin_shortfall'), 'context', () => Shortfall(sf, ctx, retry, back)), d).dataset.helpContext = 'coin_shortfall';
   if (shortfallShown !== sf) {
     shortfallShown = sf;
     L.kpi([{ name: 'offer_view', at: L.now(), props: { offerId: 'shortfall', trigger: 'T6' } }]);
@@ -2299,23 +2301,23 @@ async function Settings() {
   // round 10: 支部の応援 (team cheer stamps) and 友達招待 next to the looks / care entries
   // round 14: 実況パック (REQ-CMT-011) after the looks entries
   // round 15: アクセシビリティ (REQ-A11Y-*) first — reachable in the FTUE too (text size before the first race)
-  const moreRows = [['アクセシビリティ', () => A11ySettings(), 'a11y'], ['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions], ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite'],
+  const moreRows = [['ヘルプ・お問い合わせ', () => HelpCenter(Settings), 'help', (player?.help?.unreadReplies ?? 0) > 0 ? `未読 ${player.help.unreadReplies}` : undefined], ['アクセシビリティ', () => A11ySettings(), 'a11y'], ['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions], ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite'],
     // round 15 (REQ-ADV-009): the pre-race advice switch (a device setting, default on)
     ['出走前アドバイス', () => { advice.setEnabled(!advice.enabled()); Settings(); }, 'advice', advice.enabled() ? 'オン' : 'オフ'],
     // round 17 (REQ-RPT-011): the block list and what a block does
     ['通報とブロック', () => BlockList(), 'blocks']];
   moreRows.forEach(([n, go, action, state], i) => {
-    // R15 integration: nine rows (a11y, packs, the advice switch…) under the kicker, clear of the legal block below;
-    // R17: ten rows of 36 px (通報とブロック last)
-    const b = Btn(n, 36, 96 + i * 36, 408, 36, go, 'row' + (i === moreRows.length - 1 ? ' last' : ''), m); b.style.fontSize = '19px';
+    // R15 integration: nine rows (a11y, packs, the advice switch…) of 38 px under the kicker, clear of the legal block below
+    // round 17: ten rows (ヘルプ first) of 36 px, clear of the legal block below
+    const b = Btn(n, 36, 96 + i * 36, 408, 36, go, 'row' + (i === moreRows.length - 1 ? ' last' : ''), m); b.style.fontSize = '18px';
     if (action) b.dataset.action = action;
     if (state) b.dataset.state = state;
     const em = document.createElement('em'); em.textContent = state ?? '›'; b.appendChild(em);
   });
-  Kicker('法定表示・規約', 36, 458, m, { rule: false, size: 15 });
-  [['利用規約', 'terms'], ['プライバシーポリシー', 'privacy'], ['特定商取引法に基づく表記', 'tokushoho'], ['資金決済法に基づく表示', 'shikin']].forEach(([n, k], i) => TextLink(n, 36, 484 + i * 36, 400, () => Legal(k, Settings), m));
+  Kicker('法定表示・規約', 36, 466, m, { rule: false, size: 15 });
+  [['利用規約', 'terms'], ['プライバシーポリシー', 'privacy'], ['特定商取引法に基づく表記', 'tokushoho'], ['資金決済法に基づく表示', 'shikin']].forEach(([n, k], i) => TextLink(n, 36, 492 + i * 34, 400, () => Legal(k, Settings), m));
   // the other front end (Codex's club UI, same logic and engine)
-  TextLink('クラブ版 UI', 36, 632, 400, () => { location.href = 'club.html'; }, m, 'クラブ版 UI を開く ↗');
+  TextLink('クラブ版 UI', 36, 636, 400, () => { location.href = 'club.html'; }, m, 'クラブ版 UI を開く ↗');
   // ③ demo states for review (REQ-UXP-002): the same rules on a moved clock
   const demo = Glass('Demo', 1056, 134, 508, 676, undefined, .78);
   Kicker('デモ（レビュー用）', 36, 30, demo, { color: SOFT });
@@ -2587,6 +2589,8 @@ async function Demo(kind) {
   if (kind === 'history') { await L.seedHistory(); await refresh(); hiState.picked = []; return History('purchases'); }
   // round 16: 3 game days of play, a gift expiring in 2 days and 2 owned scout tickets → the home's next card and chips
   if (kind === 'next') { await L.seedNext(); try { localStorage.removeItem(NEXT_VIEWED); } catch { /* */ } await refresh(); return Home(); }
+  // round 17: two inquiries — one answered by the real ops reply (unread, an activity entry), one waiting (§48)
+  if (kind === 'help') { await L.seedDemo(3, [2, 2, 2]); await L.seedInquiries(); await refresh(); helpState.sel = null; helpState.draft = null; return MyInquiries(); }
   const spec = { day1: [1, [1]], day3: [3, [2, 2, 2]], day7: [7, [3, 3, 3, 3, 3, 3, 3]] }[kind];
   await L.seedDemo(spec[0], spec[1]);
   await refresh();
@@ -3400,6 +3404,8 @@ function Odds(bannerId) {
   }
   const legal = (L.legalLinks ?? []).filter((l) => l.key.startsWith('legal.'));
   legal.forEach((l, i) => TextLink(l.title, 1170, 560 + i * 44, 330, () => Legal(l.key === 'legal.tokushoho' ? 'tokushoho' : 'shikin', () => Odds(bannerId)), p));
+  // round 17 (REQ-HELP-008): the pity article, with numbers from the same data
+  TextLink('天井のしくみ（ヘルプ）', 36, 610, 400, () => HelpArticle(L.helpContext('gacha_odds'), 'context', () => Odds(bannerId)), p).dataset.helpContext = 'gacha_odds';
   Back(() => Scout(bannerId), 'BACK', 40, 834);
 }
 
@@ -5323,12 +5329,13 @@ function GiftResult(c) {
 // link per row, mark read up to the newest shown entry on opening. Display + links only: a gift row leads to the gift box,
 // never a claim button. Every value comes from L.activity (the real PlayerService and the same name resolution as the route).
 // ムチ一閃 tone: paddock art, translucent navy panels, letter-spaced cyan labels, one skewed cyan CTA ».
-const ACT_LABEL = { friend_request: 'フレンド', friend_accepted: 'フレンド', rival_week: 'ライバル', rival_record: 'ライバル', stable_like: 'マイ厩舎', team_cheer: '支部', tournament_result: '大会', gift_arrived: 'プレゼント', team_goal_tier: '支部', team_goal_week: '支部', replay_share: 'リプレイ', cup_invited: 'カップ', cup_started: 'カップ', cup_finished: 'カップ', cup_cancelled: 'カップ', recap_ready: '振り返り', ops_notice: '運営' };
+const ACT_LABEL = { friend_request: 'フレンド', friend_accepted: 'フレンド', rival_week: 'ライバル', rival_record: 'ライバル', stable_like: 'マイ厩舎', team_cheer: '支部', tournament_result: '大会', gift_arrived: 'プレゼント', team_goal_tier: '支部', team_goal_week: '支部', replay_share: 'リプレイ', inquiry_answered: 'お問い合わせ', cup_invited: 'カップ', cup_started: 'カップ', cup_finished: 'カップ', cup_cancelled: 'カップ', recap_ready: '振り返り', ops_notice: '運営' };
 const ACT_PAGE = 7;
 const actState = { cursor: null, stack: [] };
 const actGo = (screen, id) => ({
   friends: () => Invite(), rival: () => Rival(), stable: () => Stable(), team_feed: () => TeamFeed(), tournaments: () => EventTop(),
   gift_box: () => GiftBox('box'), team_goal: () => TeamGoal(), whats_new: () => Home(),
+  help_inquiry: (id) => MyInquiries(id), // §48: the answered inquiry
   replay: () => FriendReplays(), // §37: the friend's public replays (the entry's link id is the friend; the demo has one friend)
   cups: (cupId) => (cupId ? CupLobby(cupId) : HostedCups()), // round 16 (§42.7): the cup the entry names
   recap: (rid) => (rid ? Recap(rid) : Recaps()), // round 16 (§43): the recap that became ready
@@ -6032,6 +6039,287 @@ function PhotoBack() {
 }
 
 // ================================================================= boot
+// ================================================================= round 17: ヘルプセンター (REQ-HELP-*, contracts/protocol.md §48)
+// The same screens as the Unity HelpCenterModel on the real rules (help.ts + PlayerService): categories, search with the
+// Japanese fold (hiragana / katakana / half-width), an article (numbers filled from data), "was this helpful", contextual
+// links (rates → pity, coin shortfall → buying coins), the inquiry form (category, text, history rows, the diagnostics it
+// attaches, one key kept across retries) and my inquiries (status, the support reply, read on opening). Articles come in
+// the language the screen shows (lang = en in English); what the player typed and support's replies stay as written
+// (.keep-ja). ムチ一閃 tone: paddock art, translucent navy panels, letter-spaced cyan kickers, one skewed cyan CTA ».
+const helpState = { back: null, q: '', cat: null, formKey: null, draft: null, sel: null, picks: null };
+const helpLang = () => (isJa() ? 'ja' : 'en');
+const helpKpi = (name, props) => (globalThis.__muchiKpi ??= []).push({ name, ...props });
+const HELP_STATUS_COLOR = { received: GOLD, answered: CYAN, closed: SOFT };
+/** Where an article's screen link leads (protocol §48.1 screens). */
+const helpGo = (screen, back) => ({
+  home: () => Home(), settings: () => Settings(), race_lobby: () => RaceLobby(), tutorial: () => toast('チュートリアルはタイトル画面から始められます'),
+  training: () => Training(), breeding: () => Stable(), stable: () => Stable(), collection: () => Collection('horses'), gacha: () => Scout(),
+  gacha_odds: () => Odds('standard'), shop: () => Store('coins'), history: () => History('purchases'), gift_box: () => GiftBox('box'),
+  activity: () => { actState.cursor = null; actState.stack = []; return Activity(); }, accessibility: () => A11ySettings(),
+  account_link: () => Settings(), deletion: () => Settings(), inquiry: () => InquiryForm(), my_inquiries: () => MyInquiries(),
+})[screen]?.() ?? back?.();
+/** Entry from settings (or a screen's ? link): `back` is where 戻る returns. */
+async function HelpCenter(back = null) {
+  if (back) helpState.back = back;
+  currentScreen = () => HelpCenter();
+  const r = await L.help(helpLang());
+  if (!r.ok) { toast(r.message); return Settings(); }
+  const H = r.value;
+  helpState.index = H;
+  Clear('help'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('ヘルプ・お問い合わせ', 'よくある質問　·　キーワード検索　·　運営への問い合わせ');
+  const p = Glass('Help categories', 36, 134, 1060, 676, undefined, .88);
+  p.classList.add('help-home');
+  Kicker('キーワードで探す', 36, 30, p, { size: 15, rule: false });
+  const box = el('fieldbox', 36, 66, 760, 60, p);
+  const input = document.createElement('input');
+  input.className = 'field'; input.maxLength = 40; input.value = helpState.q; input.placeholder = 'ひらがな・カタカナ・半角どれでも'; input.setAttribute('aria-label', 'キーワード');
+  Object.assign(input.style, { left: '18px', top: '8px', width: '720px', height: '44px', fontSize: '22px' });
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') HelpSearch(input.value, null); });
+  box.appendChild(input);
+  Ghost('検索', 812, 66, 212, 60, () => HelpSearch(input.value, null), p).dataset.action = 'help-search';
+  Kicker('カテゴリ', 36, 150, p, { size: 15, rule: false });
+  H.categories.forEach((c, i) => {
+    const b = Btn(c.title, 36 + (i % 2) * 498, 192 + Math.floor(i / 2) * 92, 486, 80, () => HelpCategory(c.id), 'row help-cat', p, '');
+    b.dataset.helpCat = c.id; b.classList.add('help-card');
+    Txt(c.title, 22, 14, 380, 20, WHITE, b, { weight: 700, nowrap: true });
+    Txt(`${c.count}件`, 22, 46, 200, 13, MUTED, b, { weight: 500, cls: 'num' });
+    const em = document.createElement('em'); em.textContent = '›'; b.appendChild(em);
+  });
+  // right: inquiries
+  const d = Glass('Help contact', 1116, 134, 448, 676, undefined, .9);
+  Kicker('問い合わせ', 36, 30, d, { size: 16, rule: false });
+  Txt('よくある質問で解決しないときは、運営に問い合わせできます。返信はアクティビティでお知らせします。', 36, 84, 376, 15, MUTED, d, { lh: 1.6 });
+  const unread = player?.help?.unreadReplies ?? 0;
+  const mine = Btn('自分の問い合わせ', 36, 200, 376, 56, () => MyInquiries(), 'row last', d); mine.style.fontSize = '19px';
+  mine.dataset.action = 'my-inquiries'; mine.dataset.unread = String(unread);
+  { const em = document.createElement('em'); em.textContent = unread > 0 ? `未読 ${unread}` : '›'; mine.appendChild(em); }
+  Txt('問い合わせには、アプリの版・端末の種類・プレイヤーID・直近のレースIDだけが自動で添えられます。', 36, 290, 376, 13, SOFT, d, { lh: 1.6 });
+  Hair(36, 400, 376, d);
+  TextLink('公式サポートサイト', 36, 418, 376, () => toast(H.supportSite), d).dataset.url = H.supportSite;
+  Cta('問い合わせる', 36, 576, 376, () => InquiryForm(), d).dataset.action = 'inquiry';
+  Back(() => (helpState.back ?? Settings)(), '戻る', 40, 834);
+}
+function helpList(p, items, open, y0 = 86) {
+  if (!items.length) { Txt('見つかりませんでした。言葉を変えるか、問い合わせてください', 36, y0 + 20, 980, 18, MUTED, p).dataset.helpEmpty = '1'; return; }
+  items.slice(0, 7).forEach((a, i) => {
+    const row = el('help-row', 24, y0 + i * 74, 1012, 68, p); row.dataset.helpArticle = a.id; row.setAttribute('role', 'button');
+    Txt(a.title, 22, a.snippet ? 8 : 20, 900, 19, WHITE, row, { weight: 700, nowrap: true });
+    if (a.snippet) { const s = Txt(a.snippet, 22, 38, 900, 13, MUTED, row, { nowrap: true }); s.style.overflow = 'hidden'; s.style.textOverflow = 'ellipsis'; }
+    Txt('›', 960, 16, 30, 26, CYAN, row, { weight: 700 });
+    row.addEventListener('click', () => open(a));
+  });
+}
+async function HelpCategory(cat) {
+  currentScreen = () => HelpCategory(cat);
+  const H = helpState.index ?? (await L.help(helpLang())).value;
+  const c = H.categories.find((x) => x.id === cat);
+  Clear('help-category'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('ヘルプ　/　' + (c?.title ?? ''), 'よくある質問');
+  const p = Glass('Help category', 36, 134, 1060, 676, undefined, .88);
+  p.dataset.cat = cat;
+  Kicker(c?.title ?? '', 36, 30, p, { size: 15 });
+  helpList(p, H.articles.filter((a) => a.category === cat), (a) => HelpArticle(a.id, 'list', () => HelpCategory(cat)));
+  helpSide();
+  Back(() => HelpCenter(), '戻る', 40, 834);
+}
+async function HelpSearch(q, cat) {
+  helpState.q = q ?? ''; helpState.cat = cat;
+  currentScreen = () => HelpSearch(helpState.q, helpState.cat);
+  if (!helpState.q.trim()) return HelpCenter();
+  const r = await L.helpSearch(helpState.q, cat, helpLang());
+  if (!r.ok) { toast(r.code === 'BAD_REQUEST' ? '40文字までで入力してください' : r.message); return HelpCenter(); }
+  // REQ-HELP-021: the folded length, the category and the count — never the query itself
+  helpKpi('help_search', { length: L.helpFoldLength(helpState.q), category: cat ?? 'all', results: r.value.total });
+  Clear('help-search'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('ヘルプ　/　検索', '全部の言葉を含む記事を表示しています');
+  const p = Glass('Help search', 36, 134, 1060, 676, undefined, .88);
+  p.dataset.total = String(r.value.total);
+  Kicker(`検索結果　${r.value.total}件`, 36, 30, p, { size: 15 });
+  const qt = Txt(helpState.q, 300, 34, 700, 15, WHITE, p, { weight: 700, nowrap: true }); qt.classList.add('keep-ja'); // the player's own words
+  helpList(p, r.value.items, (a) => HelpArticle(a.id, 'search', () => HelpSearch(helpState.q, helpState.cat)));
+  helpSide();
+  Back(() => HelpCenter(), '戻る', 40, 834);
+}
+/** The right column of the list screens: the way to contact. */
+function helpSide() {
+  const d = Glass('Help contact', 1116, 134, 448, 676, undefined, .9);
+  Kicker('問い合わせ', 36, 30, d, { size: 16, rule: false });
+  Txt('解決しないときは、運営に問い合わせできます。', 36, 84, 376, 15, MUTED, d, { lh: 1.6 });
+  TextLink('自分の問い合わせ', 36, 160, 376, () => MyInquiries(), d);
+  Cta('問い合わせる', 36, 576, 376, () => InquiryForm(), d).dataset.action = 'inquiry';
+}
+/** An article: `source` = list | search | context | link | related (help_article_view once per opening). */
+async function HelpArticle(id, source = 'list', back = null) {
+  const r = await L.helpArticle(id, helpLang());
+  if (!r.ok) { toast(r.message); return back ? back() : HelpCenter(); }
+  helpKpi('help_article_view', { articleId: id, source });
+  return HelpArticleView(r.value, back ?? (() => HelpCenter()));
+}
+function HelpArticleView(A, back) {
+  currentScreen = () => HelpArticle(A.id, 'link', back);
+  Clear('help-article'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('ヘルプ　/　' + A.categoryTitle, 'よくある質問');
+  const p = Glass('Help article', 36, 134, 1060, 676, undefined, .9);
+  p.dataset.article = A.id; p.classList.add('help-article');
+  Kicker(A.categoryTitle, 36, 30, p, { size: 15, rule: false });
+  Txt(A.title, 36, 70, 980, 28, WHITE, p, { weight: 700, lh: 1.3 });
+  const body = Txt(A.body, 36, 136, 980, 17, WHITE, p, { weight: 500, lh: 1.75, h: 470 });
+  body.classList.add('help-body'); body.style.whiteSpace = 'pre-line'; body.style.overflow = 'hidden';
+  // "was this helpful" (REQ-HELP-007)
+  const voted = helpState.votes?.[A.id];
+  Hair(36, 612, 988, p);
+  Txt('この記事は役に立ちましたか？', 36, 628, 420, 15, MUTED, p, { weight: 500, nowrap: true });
+  const vote = async (helpful) => {
+    const v = await L.helpFeedback(A.id, helpful);
+    if (!v.ok) { toast(v.message); return; }
+    (helpState.votes ??= {})[A.id] = helpful;
+    toast('ご意見ありがとうございます'); HelpArticleView(A, back);
+  };
+  const yes = Ghost('役に立った', 560, 618, 220, 48, () => vote(true), p, 'small' + (voted === true ? ' on' : '')); yes.dataset.vote = 'yes';
+  const no = Ghost('役に立たなかった', 796, 618, 228, 48, () => vote(false), p, 'small quiet' + (voted === false ? ' on' : '')); no.dataset.vote = 'no';
+  // right: links (screens, legal pages, articles, the support site) and related articles
+  const d = Glass('Help links', 1116, 134, 448, 676, undefined, .9);
+  Kicker('関連する画面・ページ', 36, 30, d, { size: 15, rule: false });
+  A.links.forEach((l, i) => {
+    const go = () => (l.type === 'screen' ? helpGo(l.screen, () => HelpArticleView(A, back))
+      : l.type === 'legal' ? Legal(l.doc, () => HelpArticleView(A, back))
+        : l.type === 'article' ? HelpArticle(l.articleId, 'link', () => HelpArticleView(A, back))
+          : toast(l.url));
+    const t = TextLink(l.label, 36, 76 + i * 44, 376, go, d); t.dataset.helpLink = l.type; t.dataset.target = l.screen ?? l.doc ?? l.articleId ?? l.url ?? '';
+  });
+  let y = 96 + A.links.length * 44;
+  if (A.related.length) {
+    Kicker('関連する記事', 36, y, d, { rule: false, size: 14 }); y += 34;
+    A.related.forEach((x) => { TextLink(x.title, 36, y, 376, () => HelpArticle(x.id, 'related', () => HelpArticleView(A, back)), d).dataset.related = x.id; y += 44; });
+  }
+  Cta('問い合わせる', 36, 576, 376, () => InquiryForm(A.category === 'purchases' ? 'purchase_missing' : A.category === 'scout' ? 'gacha' : null), d, 'small').dataset.action = 'inquiry';
+  Back(back, '戻る', 40, 834);
+}
+
+// ---------------------------------------------------------------- the inquiry form
+async function InquiryForm(category = null) {
+  helpState.draft ??= { category: 'other', description: '', refs: [] };
+  if (category) helpState.draft.category = category;
+  currentScreen = () => InquiryForm();
+  const [idx, list] = await Promise.all([helpState.index ? { ok: true, value: helpState.index } : L.help(helpLang()), L.inquiries(helpLang())]);
+  if (!idx.ok) { toast(idx.message); return Settings(); }
+  const H = idx.value; helpState.index = H;
+  const D = helpState.draft;
+  const cat = H.inquiry.categories.find((c) => c.id === D.category) ?? H.inquiry.categories[H.inquiry.categories.length - 1];
+  Clear('inquiry-form'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('問い合わせ', '内容を書いて送信してください　·　返信はアクティビティでお知らせします');
+  const p = Glass('Inquiry form', 36, 134, 1060, 676, undefined, .9);
+  p.classList.add('inquiry-form'); p.dataset.category = D.category;
+  Kicker('種類', 36, 22, p, { size: 15, rule: false });
+  H.inquiry.categories.forEach((c, i) => {
+    const b = Btn(c.title, 36 + (i % 3) * 330, 58 + Math.floor(i / 3) * 50, 318, 42, () => { D.category = c.id; InquiryForm(); }, 'choice' + (D.category === c.id ? ' on' : ''), p);
+    b.dataset.inquiryCat = c.id; b.style.fontSize = '15px'; b.style.whiteSpace = 'nowrap'; b.style.padding = '0';
+  });
+  Kicker('内容', 36, 272, p, { size: 15, rule: false });
+  const box = el('fieldbox', 36, 302, 988, 150, p);
+  const ta = document.createElement('textarea');
+  ta.className = 'field'; ta.maxLength = H.inquiry.descriptionMax; ta.value = D.description; ta.placeholder = 'いつ・どの画面で・何が起きたかを書いてください'; ta.setAttribute('aria-label', '問い合わせの内容');
+  Object.assign(ta.style, { left: '18px', top: '10px', width: '950px', height: '128px', fontSize: '18px', resize: 'none', lineHeight: '1.5' });
+  const counter = Txt('', 824, 460, 200, 13, MUTED, p, { align: 'right', cls: 'num', nowrap: true });
+  const count = () => { D.description = ta.value; counter.textContent = `${[...ta.value.trim()].length} / ${H.inquiry.descriptionMax}`; };
+  ta.addEventListener('input', count); box.appendChild(ta); count();
+  Txt(H.inquiry.privacyNote, 36, 462, 780, 12, SOFT, p, { lh: 1.5 });
+  // the history rows (REQ-HELP-010): the latest purchases and scouts, picked by their reference numbers
+  Kicker(cat.history ? '添える記録（任意・おすすめ）' : '添える記録（任意）', 36, 512, p, { rule: false, size: 14 });
+  if (!helpState.picks) {
+    const [pu, ga] = await Promise.all([L.history('purchases', { limit: 2 }), L.history('gacha', { limit: 2 })]);
+    helpState.picks = [...(pu.ok ? pu.value.items.map((x) => ({ ref: x.ref, title: x.product })) : []), ...(ga.ok ? ga.value.items.map((x) => ({ ref: x.ref, title: x.banner })) : [])];
+  }
+  if (!helpState.picks.length) Txt('添えられる記録はまだありません', 36, 548, 600, 14, MUTED, p);
+  helpState.picks.slice(0, 4).forEach((x, i) => {
+    const on = D.refs.includes(x.ref);
+    const b = Btn(`${x.ref}　${x.title}`, 36 + (i % 2) * 498, 544 + Math.floor(i / 2) * 50, 486, 42, () => {
+      if (on) D.refs = D.refs.filter((r) => r !== x.ref); else if (D.refs.length < H.inquiry.attachMax) D.refs.push(x.ref); else toast('添えられる記録の数を超えています');
+      InquiryForm();
+    }, 'choice' + (on ? ' on' : ''), p);
+    b.dataset.pickRef = x.ref; b.style.fontSize = '14px'; b.style.whiteSpace = 'nowrap'; b.style.padding = '0 12px'; b.style.overflow = 'hidden';
+  });
+  // right: what is attached automatically (REQ-HELP-011), limits, the CTA
+  const d = Glass('Inquiry diagnostics', 1116, 134, 448, 676, undefined, .9);
+  Kicker('自動で添える情報', 36, 30, d, { size: 15, rule: false });
+  [['アプリの版', 'proto'], ['端末の種類', 'Editor'], ['プレイヤーID', '自動で添えます'], ['直近のレースID', '最大3件・自動で添えます']].forEach(([k, v], i) => {
+    Txt(k, 36, 80 + i * 34, 170, 14, MUTED, d, { weight: 500, nowrap: true }); Txt(v, 206, 80 + i * 34, 206, 14, WHITE, d, { weight: 700, nowrap: true });
+  });
+  Txt(H.inquiry.diagnosticsNote, 36, 230, 376, 12, SOFT, d, { lh: 1.6 }).dataset.diagnostics = '1';
+  const lim = list.ok ? list.value.limits : null;
+  if (lim) Txt(`返信待ち ${lim.open} / ${lim.openMax}　·　今日 ${lim.today} / ${lim.perDay}`, 36, 470, 376, 13, MUTED, d, { weight: 500, nowrap: true, cls: 'num' }).dataset.limits = `${lim.open}/${lim.openMax}`;
+  const send = Cta('送信する', 36, 576, 376, async () => {
+    const n = [...D.description.trim()].length;
+    if (n < H.inquiry.descriptionMin) { toast('内容をもう少し詳しく書いてください'); return; }
+    // REQ-HELP-012: one key per form, kept until the server accepted it (a retry returns the same inquiry)
+    helpState.formKey ??= `form-${Date.now()}`;
+    const r = await L.submitInquiry({ category: D.category, description: D.description, refs: D.refs }, helpState.formKey, helpLang());
+    if (!r.ok) { toast(r.code === 'RATE_LIMITED' ? 'いまは送信できません。返信をお待ちいただくか、時間をおいてください' : r.code === 'NOT_FOUND' ? '期間外の記録が含まれています' : r.message); return; }
+    helpState.draft = null; helpState.formKey = null; helpState.picks = null;
+    toast('問い合わせを受け付けました。返信はアクティビティでお知らせします');
+    await refresh();
+    MyInquiries(r.value.ticketId);
+  }, d);
+  send.dataset.action = 'inquiry-send';
+  Back(() => { HelpCenter(); }, '戻る', 40, 834);
+}
+
+// ---------------------------------------------------------------- my inquiries
+async function MyInquiries(sel = helpState.sel) {
+  currentScreen = () => MyInquiries();
+  const r = await L.inquiries(helpLang());
+  if (!r.ok) { toast(r.message); return HelpCenter(); }
+  const P = r.value;
+  // the first unread reply, else the newest
+  if (!P.items.some((x) => x.ticketId === sel)) sel = (P.items.find((x) => x.unread) ?? P.items[0])?.ticketId ?? null;
+  helpState.sel = sel;
+  let T = null;
+  if (sel) {
+    const t = await L.inquiry(sel, helpLang());
+    if (t.ok) {
+      T = t.value;
+      if (T.unread) { await L.inquiryRead(sel); await refresh(); }
+    }
+  }
+  Clear('my-inquiries'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('自分の問い合わせ', '受付済み → 回答済み → 完了　·　返信はアクティビティでもお知らせします');
+  const p = Glass('Inquiry list', 36, 134, 620, 676, undefined, .88);
+  p.classList.add('inq-list');
+  Kicker('新しい順', 36, 30, p, { size: 15 });
+  if (!P.items.length) Txt('まだ問い合わせはありません', 36, 100, 540, 18, MUTED, p).dataset.inqEmpty = '1';
+  P.items.slice(0, 7).forEach((it, i) => {
+    const row = el('help-row' + (it.ticketId === sel ? ' sel' : ''), 24, 90 + i * 74, 572, 68, p);
+    row.dataset.ticket = it.ticketId; row.dataset.status = it.status; row.dataset.unread = it.unread ? '1' : '0'; row.setAttribute('role', 'button');
+    if (it.unread && it.ticketId !== sel) el('act-dot', 6, 30, 10, 10, row);
+    Txt(it.statusText, 22, 8, 160, 12, HELP_STATUS_COLOR[it.status] ?? CYAN, row, { weight: 700, ls: '.18em', nowrap: true });
+    Txt(jstDate(it.createdAt), 200, 8, 220, 12, SOFT, row, { weight: 500, nowrap: true, cls: 'num' });
+    Txt(it.categoryTitle, 22, 30, 520, 18, WHITE, row, { weight: 700, nowrap: true });
+    row.addEventListener('click', () => MyInquiries(it.ticketId));
+  });
+  const d = Glass('Inquiry detail', 676, 134, 888, 676, undefined, .9);
+  d.classList.add('inq-detail');
+  if (T) {
+    d.dataset.ticket = T.ticketId; d.dataset.status = T.status;
+    Kicker(`${T.categoryTitle}　·　${T.ticketId}`, 36, 30, d, { size: 15, rule: false });
+    Txt(T.statusText, 700, 34, 150, 14, HELP_STATUS_COLOR[T.status] ?? CYAN, d, { weight: 700, align: 'right', nowrap: true });
+    Txt('送った内容', 36, 76, 300, 13, MUTED, d, { weight: 500 });
+    const mine = Txt(T.inquiryText, 36, 100, 816, 16, WHITE, d, { lh: 1.6, h: 110 }); mine.classList.add('keep-ja', 'typed'); mine.style.overflow = 'hidden';
+    if (T.attachments.length) Txt(T.attachments.map((a) => a.ref).join('　·　'), 36, 216, 816, 13, CYAN, d, { cls: 'num', nowrap: true });
+    Hair(36, 250, 816, d);
+    let y = 268;
+    if (!T.messages.length) Txt('運営が確認しています。返信が届くとアクティビティでお知らせします。', 36, y, 816, 15, MUTED, d, { lh: 1.6 });
+    T.messages.slice(-2).forEach((m) => {
+      Txt(m.from === 'support' ? '運営からの返信' : 'あなた', 36, y, 300, 13, m.from === 'support' ? CYAN : MUTED, d, { weight: 700, ls: '.12em' });
+      Txt(jstDate(m.at), 560, y, 292, 12, SOFT, d, { align: 'right', cls: 'num', nowrap: true });
+      const tx = Txt(m.messageText, 36, y + 24, 816, 16, WHITE, d, { lh: 1.6, h: 120 }); tx.classList.add('keep-ja', 'typed'); tx.style.overflow = 'hidden'; tx.dataset.reply = m.from;
+      y += 160;
+    });
+  } else Txt('問い合わせを選んでください', 36, 100, 600, 16, MUTED, d);
+  Cta('新しく問い合わせる', 36, 576, 420, () => InquiryForm(), d, 'small').dataset.action = 'inquiry';
+  Back(() => HelpCenter(), '戻る', 40, 834);
+}
+
 function fit() {
   const s = Math.min(window.innerWidth / 1600, window.innerHeight / 900);
   $stage.style.transform = `scale(${s})`;
@@ -6067,7 +6355,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

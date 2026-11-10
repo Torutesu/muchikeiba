@@ -316,7 +316,7 @@ module.exports = async function enFlow(browser, base, out, errors) {
     await shot('practice-setup', 400);
     assert.match(await page.locator('.screen.in').innerText(), /No rewards \(practice\)/, 'practice: the no-reward line in English');
     // the shortest course with 2 runners for the race
-    for (let i = 0; i < 8 && (await page.locator('.screen.in .pr-course').textContent()) !== 'Bellmoor Racecourse, Turf 1200 m'; i++) { await page.locator('.screen.in .pr-course-next').click(); await page.waitForTimeout(300); }
+    for (let i = 0; i < 8 && (await page.locator('.screen.in .pr-course').getAttribute('data-track')) !== 'bellmoor_turf_1200'; i++) { await page.locator('.screen.in .pr-course-next').click(); await page.waitForTimeout(300); }
     for (let i = 0; i < 10; i++) { await page.locator('.screen.in .pr-field-minus').click(); await page.waitForTimeout(120); }
     await page.locator('.screen.in .pr-start').click(); await waitScreen('race', 20000);
     let started = false, lastW = 0, raceShot = false;

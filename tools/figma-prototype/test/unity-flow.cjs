@@ -513,7 +513,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await page.evaluate(() => globalThis.__muchi.show('RaceLobby')); await waitScreen('lobby');
     await page.locator('.screen.in .pr-entry').click(); await waitScreen('practice'); await waitIn('.pr-setup');
     await shot('practice-setup', 400);
-    for (let i = 0; i < 8 && (await page.locator('.screen.in .pr-course').textContent()) !== 'ベルムーア競馬場 芝1200m'; i++) { await page.locator('.screen.in .pr-course-next').click(); await page.waitForTimeout(300); }
+    for (let i = 0; i < 8 && (await page.locator('.screen.in .pr-course').getAttribute('data-track')) !== 'bellmoor_turf_1200'; i++) { await page.locator('.screen.in .pr-course-next').click(); await page.waitForTimeout(300); }
     for (let i = 0; i < 10; i++) { await page.locator('.screen.in .pr-field-minus').click(); await page.waitForTimeout(100); }
     assert.equal(await page.locator('.screen.in .pr-field').textContent(), '2頭', 'practice: down to 2 runners');
     await page.locator('.screen.in .pr-strength[data-strength="easy"]').click(); await page.waitForTimeout(300);

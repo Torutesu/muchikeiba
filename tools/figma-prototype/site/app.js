@@ -2034,7 +2034,7 @@ async function Practice(reload = true) {
   const tids = c.courses.map((x) => x.trackId);
   const pick = (d) => redraw(() => { s.trackId = prCycle(tids, s.trackId, d); const n = c.courses.find((x) => x.trackId === s.trackId); s.going = n.today.going; s.night = n.lights && s.night; });
   Ghost('‹', 36, 246, 70, 54, pick(-1), lp, 'small').classList.add('pr-course-prev');
-  Txt(course.name, 116, 258, 470, 20, WHITE, lp, { weight: 700, align: 'center', nowrap: true }).classList.add('pr-course');
+  const ct = Txt(course.name, 116, 258, 470, 20, WHITE, lp, { weight: 700, align: 'center', nowrap: true }); ct.classList.add('pr-course'); ct.dataset.track = course.trackId;
   Ghost('›', 596, 246, 70, 54, pick(1), lp, 'small').classList.add('pr-course-next');
   course.goings.forEach((g, i) => {
     const b = Ghost(PR_GOING[g] ?? g, 36 + i * 150, 318, 140, 50, redraw(() => { s.going = g; }), lp, 'small' + (s.going === g ? ' on' : ''));
@@ -2048,7 +2048,7 @@ async function Practice(reload = true) {
   // 03 / field size and the CPU strength
   Kicker('03 / 頭数・相手の強さ', 36, 422, lp);
   Ghost('−', 36, 484, 70, 54, redraw(() => { s.fieldSize = Math.max(c.fieldSize.min, s.fieldSize - 1); }), lp, 'small').classList.add('pr-field-minus');
-  Txt(`${s.fieldSize}頭`, 116, 494, 120, 26, WHITE, lp, { weight: 700, align: 'center', cls: 'num' }).classList.add('pr-field');
+  Txt(`${s.fieldSize}頭`, 108, 494, 136, 26, WHITE, lp, { weight: 700, align: 'center', cls: 'num', nowrap: true }).classList.add('pr-field');
   Ghost('+', 246, 484, 70, 54, redraw(() => { s.fieldSize = Math.min(c.fieldSize.max, s.fieldSize + 1); }), lp, 'small').classList.add('pr-field-plus');
   Txt(`${c.fieldSize.min}〜${c.fieldSize.max}頭`, 340, 500, 200, 14, SOFT, lp, { nowrap: true });
   c.strengths.forEach((x, i) => {
@@ -2070,7 +2070,6 @@ async function Practice(reload = true) {
   Txt('練習のリプレイはマイリプレイに保存されません。写真は撮れます。', 36, 436, 532, 14, MUTED, rp, { lh: 1.6 });
   Cta('練習を始める', 36, 560, 532, () => StartPractice('start'), rp).classList.add('pr-start');
   Back(Home, 'BACK', 40, 834);
-  EnToggle();
 }
 
 /** mode: start | same_seed | new_seed. The race runs in the WASM PracticeSession; the HUD is the normal race HUD. */

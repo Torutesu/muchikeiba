@@ -609,7 +609,7 @@
   "「{s}」": "\"{s}\"",
   "絆 Lv{n}": "Bond Lv{n}",
   "調子 {s}": "Condition {s}",
-  "ふつう": "normal",
+  "ふつう": "Normal", "調子 ふつう": "Condition normal",
   "上向き": "improving",
   "好調": "great",
   "{n}日 {t}": "{n}d {t}",

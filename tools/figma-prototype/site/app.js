@@ -5042,7 +5042,7 @@ async function HelpCenter(back = null) {
   });
   // right: inquiries
   const d = Glass('Help contact', 1116, 134, 448, 676, undefined, .9);
-  Kicker('問い合わせ', 36, 30, d, { size: 16 });
+  Kicker('問い合わせ', 36, 30, d, { size: 16, rule: false });
   Txt('よくある質問で解決しないときは、運営に問い合わせできます。返信はアクティビティでお知らせします。', 36, 84, 376, 15, MUTED, d, { lh: 1.6 });
   const unread = player?.help?.unreadReplies ?? 0;
   const mine = Btn('自分の問い合わせ', 36, 200, 376, 56, () => MyInquiries(), 'row last', d); mine.style.fontSize = '19px';
@@ -5098,7 +5098,7 @@ async function HelpSearch(q, cat) {
 /** The right column of the list screens: the way to contact. */
 function helpSide() {
   const d = Glass('Help contact', 1116, 134, 448, 676, undefined, .9);
-  Kicker('問い合わせ', 36, 30, d, { size: 16 });
+  Kicker('問い合わせ', 36, 30, d, { size: 16, rule: false });
   Txt('解決しないときは、運営に問い合わせできます。', 36, 84, 376, 15, MUTED, d, { lh: 1.6 });
   TextLink('自分の問い合わせ', 36, 160, 376, () => MyInquiries(), d);
   Cta('問い合わせる', 36, 576, 376, () => InquiryForm(), d).dataset.action = 'inquiry';
@@ -5134,7 +5134,7 @@ function HelpArticleView(A, back) {
   const no = Ghost('役に立たなかった', 796, 618, 228, 48, () => vote(false), p, 'small quiet' + (voted === false ? ' on' : '')); no.dataset.vote = 'no';
   // right: links (screens, legal pages, articles, the support site) and related articles
   const d = Glass('Help links', 1116, 134, 448, 676, undefined, .9);
-  Kicker('関連する画面・ページ', 36, 30, d, { size: 15 });
+  Kicker('関連する画面・ページ', 36, 30, d, { size: 15, rule: false });
   A.links.forEach((l, i) => {
     const go = () => (l.type === 'screen' ? helpGo(l.screen, () => HelpArticleView(A, back))
       : l.type === 'legal' ? Legal(l.doc, () => HelpArticleView(A, back))
@@ -5225,7 +5225,8 @@ async function MyInquiries(sel = helpState.sel) {
   const r = await L.inquiries(helpLang());
   if (!r.ok) { toast(r.message); return HelpCenter(); }
   const P = r.value;
-  if (!P.items.some((x) => x.ticketId === sel)) sel = P.items[0]?.ticketId ?? null;
+  // the first unread reply, else the newest
+  if (!P.items.some((x) => x.ticketId === sel)) sel = (P.items.find((x) => x.unread) ?? P.items[0])?.ticketId ?? null;
   helpState.sel = sel;
   let T = null;
   if (sel) {

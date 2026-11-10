@@ -8,6 +8,7 @@ import { sortListings, type StudDirectory } from '../domain/studService.js';
 import { sortStables, type StableDirectory, type StableSnapshot } from '../domain/stable.js';
 import { inviteShardOf, makeInviteCode, type InviteDirectory } from '../domain/invite.js';
 import type { HallDirectory, HallSnapshot } from '../domain/hallOfFame.js';
+import { byShard, type FsugCard, type SuggestDirectory } from '../domain/friendSuggest.js';
 
 /**
  * Friend codes and public profiles (REQ-SOCIAL-001/004), sharded by player id into DIRECTORY_SHARDS
@@ -33,6 +34,9 @@ export class DirectoryDO extends DurableObject<Env> {
     // row with no player, so it is never handed out again.
     this.sql.exec(`CREATE TABLE IF NOT EXISTS invite_codes (code TEXT PRIMARY KEY, player_id TEXT UNIQUE, created_at INTEGER NOT NULL, retired_at INTEGER)`);
     // REQ-INV-005: one invite redemption per install, ever (sharded by the install hash; player_id NULL after a deletion)
+    // REQ-FSUG-011: おすすめフレンド cards (block list + friend ids; never returned to other players). No wrangler migration:
+    // a table inside the existing DirectoryDO SQLite storage.
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS fsug_cards (player_id TEXT PRIMARY KEY, updated_at INTEGER NOT NULL, card TEXT NOT NULL)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS invite_installs (install_hash TEXT PRIMARY KEY, player_id TEXT, at INTEGER NOT NULL)`);
   }
 
@@ -113,6 +117,28 @@ export class DirectoryDO extends DurableObject<Env> {
     });
   }
 
+  async fsugPut(c: FsugCard): Promise<Envelope<boolean>> {
+    return wrap(() => {
+      this.sql.exec('INSERT INTO fsug_cards (player_id, updated_at, card) VALUES (?, ?, ?) ON CONFLICT(player_id) DO UPDATE SET updated_at = excluded.updated_at, card = excluded.card',
+        c.playerId, c.updatedAt, JSON.stringify(c));
+      return true;
+    });
+  }
+
+  async fsugRemove(playerId: string): Promise<Envelope<boolean>> {
+    return wrap(() => { this.sql.exec('DELETE FROM fsug_cards WHERE player_id = ?', playerId); return true; });
+  }
+
+  /** REQ-FSUG-010: cards with the same player's public profile (one call per shard). */
+  async fsugCards(ids: string[]): Promise<Envelope<{ card: FsugCard; profile: PublicProfile | null }[]>> {
+    return wrap(() => ids.slice(0, 200).flatMap((id) => {
+      const r = this.sql.exec<{ card: string }>('SELECT card FROM fsug_cards WHERE player_id = ?', id).toArray()[0];
+      if (!r) return [];
+      const p = this.sql.exec<{ profile: string | null }>('SELECT profile FROM players WHERE player_id = ?', id).toArray()[0];
+      return [{ card: JSON.parse(r.card) as FsugCard, profile: p?.profile ? (JSON.parse(p.profile) as PublicProfile) : null }];
+    }));
+  }
+
   async studPut(e: StudEntry): Promise<Envelope<boolean>> {
     return wrap(() => {
       this.sql.exec('INSERT INTO studs (owner_id, horse_id, visibility, listed_at, entry) VALUES (?, ?, ?, ?, ?) ON CONFLICT(owner_id, horse_id) DO UPDATE SET visibility = excluded.visibility, listed_at = excluded.listed_at, entry = excluded.entry',
@@ -140,6 +166,7 @@ export class DirectoryDO extends DurableObject<Env> {
       this.sql.exec('DELETE FROM studs WHERE owner_id = ?', playerId);
       this.sql.exec('DELETE FROM stables WHERE player_id = ?', playerId);
       this.sql.exec('DELETE FROM halls WHERE player_id = ?', playerId); // REQ-HOF-011
+      this.sql.exec('DELETE FROM fsug_cards WHERE player_id = ?', playerId); // REQ-FSUG-011
       this.sql.exec('UPDATE invite_codes SET player_id = NULL, retired_at = ? WHERE player_id = ?', Date.now(), playerId); // REQ-INV-010
       return true;
     });
@@ -197,6 +224,9 @@ type DirStub = {
   hallPut(x: HallSnapshot): Promise<Envelope<boolean>>;
   hallRemove(id: string): Promise<Envelope<boolean>>;
   hallGet(id: string): Promise<Envelope<HallSnapshot | null>>;
+  fsugPut(c: FsugCard): Promise<Envelope<boolean>>;
+  fsugRemove(id: string): Promise<Envelope<boolean>>;
+  fsugCards(ids: string[]): Promise<Envelope<{ card: FsugCard; profile: PublicProfile | null }[]>>;
   inviteCodeOf(p: string, s: number): Promise<Envelope<string>>;
   inviteLookup(c: string): Promise<Envelope<string | null>>;
   inviteRetire(p: string): Promise<Envelope<boolean>>;
@@ -255,6 +285,18 @@ export function shardedHallDirectory(ns: DurableObjectNamespace): HallDirectory 
     async put(x) { unwrap(await shard(shardOf(x.playerId)).hallPut(x)); },
     async remove(id) { unwrap(await shard(shardOf(id)).hallRemove(id)); },
     async get(id) { return unwrap(await shard(shardOf(id)).hallGet(id)); },
+  };
+}
+
+/** REQ-FSUG-010/011: おすすめフレンド cards, sharded by player like profiles (a lookup is at most one call per shard). */
+export function shardedSuggestDirectory(ns: DurableObjectNamespace): SuggestDirectory {
+  const shard = (n: number) => ns.get(ns.idFromName(`dir:${n}`)) as unknown as DirStub;
+  return {
+    async put(c) { unwrap(await shard(shardOf(c.playerId)).fsugPut(c)); },
+    async remove(id) { unwrap(await shard(shardOf(id)).fsugRemove(id)); },
+    async cards(ids) {
+      return (await Promise.all([...byShard(ids)].map(async ([s, g]) => unwrap(await shard(s).fsugCards(g))))).flat();
+    },
   };
 }
 

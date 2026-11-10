@@ -74,6 +74,7 @@ import {
 import { claimAllGifts, claimGift, expireGifts, giftBadge, giftBoxView, giftGiver, giftsNeedExpiry, nextGiftWake, type OpsTitleKey } from './giftBox.js';
 import { activityBadge, activityPage, markActivityRead, recordActivity } from './activity.js';
 import { helpBadge, inquiryDetail, inquiryList, markIndexed, markInquiryRead, replyInquiry, submitInquiry, unindexedSummaries, voteHelp, type InquiryInput } from './help.js';
+import { fsugCard, fsugCardKey, fsugDismiss, fsugSelf, fsugSetHidden, ensureFsug, noteFsugRace, type FsugCard, type FsugDismissed, type FsugKind } from './friendSuggest.js';
 import { finishTraining, startTraining, trainingDelta, trainingTick, trainingView, useTrainingItem } from './training.js';
 import {
   commitSave, deleteSaved, forgetRecent, myReplaysView, noteRaceForReplays, ownReplayRef, prepareSave, sharedFor, updateSaved, validateReplayTitle,
@@ -201,6 +202,8 @@ export interface PlayerServiceDeps {
   onTeamGoalForget?: (p: { teamId: string; playerId: string }) => Promise<unknown>;
   /** REQ-HOF-011: the public hall copy changed (null = remove it: empty, private, banned, deletion). The Durable Object writes the directory. */
   onHall?: (playerId: string, snap: HallSnapshot | null) => void | Promise<void>;
+  /** REQ-FSUG-011: the おすすめフレンド card changed (null = remove it: hidden, under age, banned, deletion). The Durable Object writes the directory. */
+  onFsugCard?: (playerId: string, card: FsugCard | null) => void | Promise<void>;
 }
 
 const standingKey = (s: PlayerState) => JSON.stringify([s.season.id, s.season.classId, s.season.points, s.season.races, Math.round(s.rating.r), s.profile.displayName, s.profile.titleId]);
@@ -291,6 +294,14 @@ export class PlayerService {
     const deleting = draft.deletion?.status === 'deleting';
     const pushProfile = !deleting && this.d.onProfile && (profileKey(draft, now) !== profileBefore || now - draft.profile.lastPushedAt >= this.d.master.progression.social.profilePushIntervalMs);
     if (pushProfile) draft.profile.lastPushedAt = now;
+    // REQ-FSUG-011: the card is re-derived on every transaction and written when it changed (first write included), and
+    // again with the periodic profile push, so a write lost to a directory outage heals within profilePushIntervalMs
+    let fsugOut: { card: FsugCard | null } | null = null;
+    if (this.d.onFsugCard) {
+      const card = fsugCard(this.d.master, draft, now);
+      const key = fsugCardKey(card);
+      if (draft.friendSuggest?.cardKey !== key || (pushProfile && card)) { ensureFsug(draft).cardKey = key; fsugOut = { card }; }
+    }
     await this.repo.put(draft);
     const wake = nextWake(draft);
     if (wake !== null && wake !== wakeBefore && this.d.onPushWake) await this.d.onPushWake(wake);
@@ -300,6 +311,10 @@ export class PlayerService {
     if (this.d.onHall && hallSnapshotKey(this.d.master, draft, now) !== hallBefore) {
       // best effort like the stable copy: the transaction is saved; the next change re-writes the copy
       try { await this.d.onHall(id, hallSnapshot(this.d.master, draft, now)); } catch (e) { console.error('hall copy failed', id, (e as Error).message); }
+    }
+    if (fsugOut) {
+      // best effort like the hall copy: the transaction is saved; the next change or profile push re-writes the card
+      try { await this.d.onFsugCard!(id, fsugOut.card); } catch (e) { console.error('fsug card failed', id, (e as Error).message); }
     }
     if (this.d.onRival) {
       const u = rivalUpdateOf(id, rivalBefore, rivalOutbound(this.d.master, draft, now));
@@ -1041,6 +1056,7 @@ export class PlayerService {
       const base0 = applyRaceResult(this.d.master, s, r, now);
       noteRaceForReplays(this.d.master, s, r, prevBest, now); // REQ-MYRP-001: offer the race in マイリプレイ
       noteRivalRace(this.d.master, s, r, now, emit); // REQ-RIVAL-004: head to head (ranked) / challenge (friend)
+      noteFsugRace(this.d.master, s, r, now); // REQ-FSUG-013: friend-room / event / tournament opponents (never ranked)
       // REQ-HOF-001: the horse's career (a ranked race counted against the weekly rival with me ahead is a rival win)
       const rivalWin = r.mode === 'ranked' && !!s.rival?.weeks.some((w) => w.races.some((x) => x.raceId === r.raceId && x.mode === 'ranked' && x.point === 'me'));
       noteHallRace(this.d.master, s, r, now, rivalWin);
@@ -1335,6 +1351,21 @@ export class PlayerService {
     pruneInvites(this.d.master, s, this.d.clock());
     return { ids: s.friends.ids, incoming: s.friends.incoming, outgoing: s.friends.outgoing, invites: s.friends.invites };
   }
+
+  // ---- おすすめフレンド: per-player steps, orchestrated by FriendSuggestService (REQ-FSUG-*, contracts/protocol.md §49) ----
+  /** REQ-FSUG-010: what the computation needs from my own state (a read; no state is created). */
+  async fsugSelf(id: string) { return fsugSelf(this.d.master, await this.load(id), this.d.clock()); }
+  /** REQ-FSUG-008/009/014: remember a dismissed / requested suggestion; the KPI row only when the record changed. */
+  fsugDismiss(id: string, target: string, why: FsugDismissed['why'], reason: FsugKind | 'none', outcome?: 'requested' | 'friends') {
+    return this.tx(id, null, (s, now, emit) => {
+      const changed = fsugDismiss(this.d.master, s, target, why, now);
+      if (changed && why === 'requested') emit({ name: 'fsug_request', s1: reason, s2: outcome ?? 'requested' });
+      if (changed && why === 'dismiss') emit({ name: 'fsug_dismiss', s1: reason });
+      return { ok: true as const };
+    });
+  }
+  /** REQ-FSUG-007: 「おすすめに表示しない」 (the card follows through onFsugCard). */
+  fsugSetHidden(id: string, hidden: boolean) { return this.tx(id, null, (s) => fsugSetHidden(s, hidden)); }
 
   // ---- friend invite codes: per-player steps, orchestrated by InviteService (REQ-INV-*) ----
   inviteView(id: string, installHash: string | null) {

@@ -216,6 +216,8 @@ export interface PlayerState {
   photos?: import('./photoMode.js').PhotoState;
   /** REQ-HIST-004: one record per gacha draw, last 90 days (history.ts recordGachaLog; the Durable Object keeps older ones in SQL). */
   gachaLog?: import('./history.js').GachaLogState;
+  /** REQ-FSUG-*: おすすめフレンド settings, dismissed players, recent opponents (friendSuggest.ts ensureFsug). */
+  friendSuggest?: import('./friendSuggest.js').FsugState;
   /** REQ-ACT-*: the activity list (activity.ts ensureActivity; bounded by progression.activity). */
   activity?: import('./activity.js').ActivityState;
   /** REQ-WCH-*: weekly challenge sessions, this and last week's progress, earned badges (weeklyChallenge.ts wchState). */

@@ -264,6 +264,14 @@ namespace Muchi.Client
             return new AnalyticsEvent("help_article_view", atMs, JsonNode.Obj().Set("articleId", articleId).Set("source", source));
         }
 
+        // ---- REQ-FSUG-014 おすすめフレンド (the request / dismiss rows are server events; the view is the client's)
+        /// <summary>The suggestions section was on screen (once per friends-screen visit); shown = suggestions in it (0..30). No player ids.</summary>
+        public static AnalyticsEvent FsugView(long atMs, int shown)
+        {
+            if (shown < 0 || shown > 30) throw new ArgumentOutOfRangeException(nameof(shown));
+            return new AnalyticsEvent("fsug_view", atMs, JsonNode.Obj().Set("shown", shown));
+        }
+
         // ---- REQ-AD-010 rewarded ads (the reward itself is the server event ad_reward; never sent from here)
         private static readonly string[] AdSurfaces = { "home", "result", "time_attack", "shop" };
         private static readonly string[] AdOutcomes = { "shown", "no_fill", "failed", "closed_early" };

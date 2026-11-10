@@ -1187,7 +1187,7 @@ function Missions(ms, fw, bonus) {
 }
 /** Feature keys unlocked by races or days (server unlocks), each with its key and condition. */
 function Features() {
-  const keys = [['season_pass', 'シーズンパス', () => SeasonPass()], ['time_attack', 'タイムアタック', () => TimeAttack()], ['collection', '図鑑', () => Collection()], ['achievements', '実績・称号', () => Achievements()], ['breeding', '配合'], ['friends', 'フレンド'], ['teams', '支部'], ['events', 'イベント', () => EventTop()], ['my_stable', 'マイ厩舎'], ['my_replays', 'マイリプレイ', () => MyReplays()], ['friend_rooms', '主催カップ', () => HostedCups()]];
+  const keys = [['season_pass', 'シーズンパス', () => SeasonPass()], ['time_attack', 'タイムアタック', () => TimeAttack()], ['collection', '図鑑', () => Collection()], ['achievements', '実績・称号', () => Achievements()], ['breeding', '配合'], ['friends', 'フレンド', () => Friends()], ['teams', '支部'], ['events', 'イベント', () => EventTop()], ['my_stable', 'マイ厩舎'], ['my_replays', 'マイリプレイ', () => MyReplays()], ['friend_rooms', '主催カップ', () => HostedCups()]];
   Sheet('機能・イベント', '開放', (s, close, y) => {
     keys.forEach(([k, name, go], i) => {
       const f = unlock(k);
@@ -2580,6 +2580,7 @@ async function Demo(kind) {
   if (kind === 'maintenance-scoped') { await L.seedDemo(3, [2, 2, 2]); await refresh(); L.maintenanceDemo('scoped'); await Home(); return MaintenanceScoped(); }
   if (kind === 'maintenance-news') { await L.seedDemo(3, [2, 2, 2]); L.maintenanceDemo('announced'); await refresh(); return Home(); }
   if (kind === 'update') { await L.seedDemo(3, [2, 2, 2]); await refresh(); globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }
+  if (kind === 'friends') { await L.seedFriendSuggest(); await refresh(); return Friends(); } // round 17: おすすめフレンド
   if (kind === 'activity') { await L.seedActivity(); await refresh(); actState.cursor = null; actState.stack = []; return Activity(); }
   // round 17: two blocked players (one deleted since) and support's request in the activity list → 通報とブロック
   if (kind === 'safety') { await L.reports.seedSafety(); await refresh(); return BlockList(); }
@@ -5631,6 +5632,67 @@ function MaintenanceNotice() {
   Back(Home, 'ホームへ', 40, 834);
 }
 
+// ================================================================= round 17: おすすめフレンド (REQ-FSUG-*, contracts/protocol.md §49)
+// The same section as the Unity FriendSuggestionsModel, on the friends screen: people met in the game (an event, a friend
+// room, a like, a cheer, the branch) and a count of mutual friends, with the server's reason line; 「申請する」 goes through
+// the real friend request flow, 「表示しない」 is remembered; the profile switch 「おすすめに表示しない」. Nothing is granted.
+// ムチ一閃 tone: paddock art, translucent navy panels, letter-spaced cyan labels, one skewed cyan CTA ».
+const FSUG_LABEL = { opponent: '対戦', team: '支部', liked: 'いいね', cheered: '応援', mutual: '共通のフレンド' };
+const FSUG_ROWS = 6;
+const fsState = { viewed: false };
+async function Friends(newVisit = true) {
+  currentScreen = () => Friends(false);
+  if (newVisit) { fsState.viewed = false; await L.fsugRepublish(); } // the demo directory is memory only (a reload clears it)
+  const [sr, fr] = await Promise.all([L.friendSuggestions(), L.friendsList()]);
+  if (!sr.ok || !fr.ok) { toast((sr.ok ? fr : sr).message); return Home(); }
+  const S = sr.value, F = fr.value;
+  Clear('friends'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('フレンド', 'ゲームの中で出会った人を、おすすめに表示します');
+  // ① the suggestions (the server's order and reason line; names as the players typed them)
+  const p = Glass('Friend suggestions', 36, 134, 1060, 676, undefined, .88);
+  p.classList.add('fsug-list'); p.dataset.fsug = String(S.items.length);
+  Kicker('おすすめフレンド', 36, 30, p, { size: 15 });
+  if (S.enabled && !S.items.length) Txt('いまはおすすめできる人がいません', 36, 110, 900, 19, MUTED, p).dataset.fsugEmpty = '1';
+  S.items.slice(0, FSUG_ROWS).forEach((it, i) => {
+    const row = el('act-row fsug-row', 24, 86 + i * 86, 1012, 80, p);
+    row.dataset.fsugId = it.playerId; row.dataset.reason = it.reasons[0]?.kind ?? '';
+    Txt(FSUG_LABEL[it.reasons[0]?.kind] ?? 'おすすめ', 22, 8, 220, 12, CYAN, row, { weight: 700, ls: '.18em', nowrap: true });
+    const nm = Txt(it.displayName, 22, 28, 300, 21, WHITE, row, { weight: 700, nowrap: true });
+    nm.style.overflow = 'hidden'; nm.style.textOverflow = 'ellipsis';
+    Txt(`クラス ${it.classId}`, 330, 32, 120, 14, SOFT, row, { weight: 500, nowrap: true });
+    const rs = Txt(it.text, 22, 56, 560, 14, MUTED, row, { nowrap: true });
+    rs.style.overflow = 'hidden'; rs.style.textOverflow = 'ellipsis'; rs.dataset.fsugReason = it.text;
+    Ghost('申請する', 640, 16, 180, 48, async () => {
+      const r = await L.fsugRequest(it.playerId);
+      toast(r.ok ? (r.value.status === 'friends' ? 'フレンドになりました' : 'フレンド申請を送りました') : r.code === 'FRIEND_LIMIT' ? 'フレンドの上限に達しています' : r.message);
+      Friends(false);
+    }, row, 'small').dataset.fsugRequest = it.playerId;
+    Ghost('表示しない', 836, 16, 168, 48, async () => { await L.fsugDismiss(it.playerId); Friends(false); }, row, 'small quiet').dataset.fsugDismiss = it.playerId;
+  });
+  if (S.items.length > FSUG_ROWS) Txt(`ほか${S.items.length - FSUG_ROWS}人`, 36, 616, 400, 14, SOFT, p);
+  // REQ-FSUG-014: fsug_view once per visit (how many were shown; no player ids)
+  if (!fsState.viewed && S.enabled) { fsState.viewed = true; (globalThis.__muchiKpi ??= []).push({ name: 'fsug_view', shown: Math.min(30, S.items.length) }); }
+  // ② my friends, the code entry, the rule in plain words and the profile switch
+  const d = Glass('Friends summary', 1116, 134, 448, 676, undefined, .9);
+  Kicker('フレンド', 36, 30, d, { size: 16 });
+  Txt(`${F.friends.length}人`, 36, 90, 376, 40, WHITE, d, { weight: 700, cls: 'num' }).dataset.fsugFriends = String(F.friends.length);
+  Txt(F.friends.slice(0, 3).map((x) => x.displayName).join('　') || 'まだいません', 36, 150, 376, 15, MUTED, d, { nowrap: true }).style.overflow = 'hidden';
+  if (F.outgoing.length) Txt(`申請中 ${F.outgoing.length}人`, 36, 182, 376, 14, CYAN, d, { weight: 700, ls: '.1em' }).dataset.fsugOutgoing = String(F.outgoing.length);
+  TextLink('フレンドコード・友達招待', 36, 214, 376, () => Invite(), d);
+  Hair(36, 270, 376, d);
+  Kicker('おすすめのきまり', 36, 290, d, { rule: false, size: 14 });
+  Txt('同じ支部・同じレース・いいね・応援で出会った人と、共通のフレンドが2人以上いる人を表示します。ランク戦の相手は表示しません。', 36, 322, 376, 13, MUTED, d, { lh: 1.6 });
+  const sw = Ghost(`おすすめに表示しない：${S.settings.hidden ? 'オン' : 'オフ'}`, 36, 444, 376, 52, async () => {
+    const r = await L.fsugSetHidden(!S.settings.hidden);
+    if (!r.ok) toast(r.message);
+    Friends(false);
+  }, d, 'small quiet');
+  sw.dataset.fsugHidden = S.settings.hidden ? '1' : '0';
+  Txt('オンにすると、ほかのプレイヤーのおすすめにあなたが出なくなります', 36, 508, 376, 12, SOFT, d, { lh: 1.5 });
+  Cta('ホームへ', 36, 576, 376, () => Home(), d, 'small');
+  Back(Home, 'ホームへ', 40, 834);
+}
+
 // ================================================================= round 13: 購入履歴・コイン履歴・ガチャ履歴 (REQ-HIST-*, contracts/protocol.md §33)
 // The same screen as the Unity HistoryModel: a balance header with 有償 / 無償 apart and this month against the age limit,
 // four tabs (購入 / 有償コイン / 無償コイン / ガチャ), pages by the server's cursor, the selected row's detail, and the
@@ -6355,7 +6417,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

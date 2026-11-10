@@ -365,6 +365,10 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await click('ホームへ'); await waitScreen(['home', 'link-prompt'], 20000);
   if ((await screen()) === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); }
   await shot('home-bell', 400);
+  // round 17: おすすめフレンド in English (REQ-FSUG-015): reasons from the server, player names as written
+  await page.evaluate(() => globalThis.__muchi.demo('friends')); await waitScreen('friends', 60000);
+  await shot('friends-suggestions', 600);
+  assert.match(await page.locator('.screen.in').innerText(), /Raced you recently, 2 mutual friends/, 'friend suggestions: the reason line in English');
 
   // round 17: 通報とブロック in English (REQ-RPT-018): the block list (player names as written, the effects from the server),
   // the unblock confirmation and the report sheet (reasons from the server, the note counter)

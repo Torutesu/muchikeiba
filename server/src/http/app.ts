@@ -53,6 +53,7 @@ import type { TeamGoalBrief } from '../domain/nextAction.js';
 import type { HostedCupsService } from '../domain/hostedCupService.js';
 import { clientHeaders, gateRequest, maintenanceOf, maintenanceStatus } from '../domain/maintenance.js';
 import { helpArticle, helpIndex, helpOf, INQUIRY_CATEGORIES, PLATFORMS, searchHelp, type InquirySummary } from '../domain/help.js';
+import { FriendSuggestService, fsugConfig, type FsugCache, type SuggestDirectory, type SuggestPlayers } from '../domain/friendSuggest.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -98,6 +99,7 @@ export type PlayerMethod =
   | 'raceAdvice'
   | 'photoCatalog' | 'photos' | 'photoSave' | 'photoDelete'
   | 'activity' | 'activityRead' | 'activityReplayShare' | 'teamGoalMilestone'
+  | 'fsugSelf' | 'fsugDismiss' | 'fsugSetHidden'
   | 'helpFeedback' | 'helpInquirySubmit' | 'helpInquiries' | 'helpInquiry' | 'helpInquiryRead' | 'helpInquiryIndexed' | 'adminInquiry' | 'adminInquiryReply'
   | 'recaps' | 'recap' | 'recapProgress'
   | 'cupsMine' | 'cupReserve' | 'cupRelease' | 'cupLeft' | 'cupCommitted' | 'cupCodeAttempt' | 'cupInvited' | 'cupStarted' | 'cupClosed' | 'cupHorseName'
@@ -165,6 +167,8 @@ export interface AppContext {
   invite?: InviteService;
   /** REQ-RIVAL-*: weekly rival (domain/rivalService.ts). Absent → the routes answer NOT_FOUND. */
   rival?: RivalService;
+  /** REQ-FSUG-*: おすすめフレンド (makeFriendSuggestService). Absent → the list answers `enabled: false`, the actions NOT_FOUND. */
+  friendSuggest?: FriendSuggestService;
   /** REQ-MYRP-*: マイリプレイ (domain/myReplaysService.ts). Absent → the routes answer NOT_FOUND. */
   myReplays?: MyReplaysService;
   /** REQ-ADV-005: the active (remote config) ruleset the advice reads; absent = the default ruleset. */
@@ -895,6 +899,14 @@ export const routes: Route[] = [
   { method: 'POST', path: '/v1/friends/requests/:fromId/decline', auth: 'player', handler: async (_r, p, c, u) => c.friends.decline(u, p.fromId!) },
   { method: 'DELETE', path: '/v1/friends/requests/:toId', auth: 'player', handler: async (_r, p, c, u) => c.friends.cancel(u, p.toId!) },
   { method: 'DELETE', path: '/v1/friends/:friendId', auth: 'player', handler: async (_r, p, c, u) => c.friends.remove(u, p.friendId!) },
+  // おすすめフレンド (REQ-FSUG-*, contracts/protocol.md §49)
+  { method: 'GET', path: '/v1/friends/suggestions', auth: 'player', handler: async (_r, _p, c, u) => (c.friendSuggest ? c.friendSuggest.list(u) : { enabled: false, items: [], settings: { hidden: false } }) },
+  { method: 'POST', path: '/v1/friends/suggestions/:playerId/request', auth: 'player', handler: async (_r, p, c, u) => fsug(c).request(u, p.playerId!) },
+  { method: 'POST', path: '/v1/friends/suggestions/:playerId/dismiss', auth: 'player', handler: async (_r, p, c, u) => fsug(c).dismiss(u, p.playerId!) },
+  { method: 'PUT', path: '/v1/friends/suggestions/settings', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ hidden: z.boolean() }).strict());
+    return fsug(c).setHidden(u, b.hidden);
+  } },
   { method: 'POST', path: '/v1/friend-rooms/:passphrase/invite', auth: 'player', handler: async (r, p, c, u) => {
     const b = await body(r, z.object({ friendId: id }));
     if (!(await c.match.friendMember(p.passphrase!, u))) throw new AppError('NOT_ELIGIBLE', 'not a member of this room');
@@ -1239,6 +1251,23 @@ export const handle: Handler = async (req, _p, ctx) => {
 };
 
 /** Adapts per-player invocations (Durable Object RPC or PlayerService) to the friends orchestration. */
+const fsug = (c: AppContext) => { if (!c.friendSuggest) throw new AppError('NOT_FOUND'); return c.friendSuggest; };
+
+/** REQ-FSUG-*: おすすめフレンド over per-player invocations, the friend request flow, the card directory and the team view. */
+export function makeFriendSuggestService(player: (uid: string) => PlayerInvoker, friends: FriendsService, dir: SuggestDirectory, teams: TeamsService | undefined, master: () => Master, clock: () => number = Date.now, cache?: FsugCache): FriendSuggestService {
+  const ports: SuggestPlayers = {
+    self: (u) => player(u).invoke('fsugSelf', u),
+    teamMembers: async (teamId, u) => {
+      if (!teams) return [];
+      const v = await teams.view(teamId, u);
+      return v.myRole && !v.disbanded ? v.members.map((x) => x.playerId) : [];
+    },
+    dismiss: (u, t, why, reason, outcome) => player(u).invoke('fsugDismiss', u, t, why, reason, outcome),
+    setHidden: (u, h) => player(u).invoke('fsugSetHidden', u, h),
+  };
+  return new FriendSuggestService(ports, friends, dir, () => fsugConfig(master()), clock, cache);
+}
+
 export function makeFriendsService(player: (uid: string) => PlayerInvoker, dir: Directory): FriendsService {
   const ports: FriendPlayers = {
     send: (u, t) => player(u).invoke('friendSend', u, t),

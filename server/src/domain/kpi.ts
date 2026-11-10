@@ -169,6 +169,8 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   // an article opened (its id and where it was opened from)
   z.object({ name: z.literal('help_search'), at: z.number().int(), props: z.object({ length: z.number().int().min(1).max(64), category: z.enum(HELP_CATEGORY_NAMES), results: z.number().int().min(0).max(100) }).strict() }),
   z.object({ name: z.literal('help_article_view'), at: z.number().int(), props: z.object({ articleId: z.string().regex(/^[a-z0-9_]{2,40}$/), source: z.enum(HELP_VIEW_SOURCES) }).strict() }),
+  // REQ-FSUG-014: the おすすめフレンド section was shown (once per screen visit; how many suggestions it held)
+  z.object({ name: z.literal('fsug_view'), at: z.number().int(), props: z.object({ shown: z.number().int().min(0).max(30) }).strict() }),
 ]);
 export type ClientEvent = z.infer<typeof clientEventSchema>;
 
@@ -214,6 +216,7 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'next_card_view': case 'next_card_tap': return { name: e.name, s1: e.props.kind, s2: e.props.slot };
     case 'help_search': return { name: e.name, s1: e.props.category, value: e.props.length, count: e.props.results };
     case 'help_article_view': return { name: e.name, s1: e.props.articleId, s2: e.props.source };
+    case 'fsug_view': return { name: e.name, value: e.props.shown };
   }
 }
 

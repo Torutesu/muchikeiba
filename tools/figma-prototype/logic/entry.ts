@@ -35,6 +35,8 @@ import { MemoryRivalRegistry, RivalService, rivalPlayersFrom } from '../../../se
 import { noteRivalTa, prevWeekId, rivalCard, rivalTrackName, weekEndMs, weekIdAt } from '../../../server/src/domain/rival.js';
 import { actorIdsOf, renderActivityItems } from '../../../server/src/domain/activity.js';
 import { helpArticle, helpIndex, helpOf, helpQueryWords, searchHelp } from '../../../server/src/domain/help.js';
+import { FriendSuggestService, MemorySuggestDirectory, fsugCard, fsugConfig } from '../../../server/src/domain/friendSuggest.js';
+import { FriendsService, MemoryDirectory } from '../../../server/src/domain/friends.js';
 import type { PlayerInvoker } from '../../../server/src/http/app.js';
 import { HallService, MemoryHallDirectory, hallConfig, hallSnapshot } from '../../../server/src/domain/hallOfFame.js';
 import { hallPlayersFrom } from '../../../server/src/http/hallPorts.js';
@@ -108,9 +110,38 @@ const svc = new PlayerService(repo, {
   onTeamGoalForget: async (p) => teams.goalForget(p.teamId, p.playerId),
   // round 14 (REQ-HOF-011): the visitors' copy of each hall (DirectoryDO halls in production; memory here)
   onHall: async (id, snap) => { if (snap) await hallDir.put(snap); else await hallDir.remove(id); },
+  // round 17 (REQ-FSUG-011): profiles and おすすめフレンド cards (DirectoryDO in production; memory here)
+  onProfile: async (p) => { await fsugProfiles.putProfile(p); },
+  onFsugCard: async (id, card) => { if (card) await fsugCards.put(card); else await fsugCards.remove(id); },
   // round 15 (REQ-A11Y-014): the server-side KPI rows, kept for the tests (the real Analytics Engine is not here)
   onKpi: (_id, recs) => { serverKpi.push(...recs.map((r) => ({ name: r.name, s1: r.s1, s2: r.s2, s3: r.s3 }))); if (serverKpi.length > 300) serverKpi.splice(0, serverKpi.length - 300); },
 });
+// round 17 (REQ-FSUG-*): おすすめフレンド on the real FriendSuggestService + FriendsService (the friend request flow), with
+// the profile / card directory in memory (re-published from the stored states after a reload, see fsugRepublish).
+const fsugProfiles = new MemoryDirectory();
+const fsugCards = new MemorySuggestDirectory(fsugProfiles);
+const fsugInvoker: PlayerInvoker = { invoke: (async (m: string, ...a: unknown[]) => (svc as unknown as Record<string, (...x: unknown[]) => unknown>)[m]!.apply(svc, a)) as PlayerInvoker['invoke'] };
+const fsugFriends = new FriendsService({
+  send: (u, t) => svc.friendSend(u, t), receive: (u, f, name) => svc.friendReceive(u, f, name), accept: (u, f) => svc.friendAccept(u, f),
+  accepted: (u, b, name) => svc.friendAccepted(u, b, name), decline: (u, f) => svc.friendDecline(u, f), cancel: (u, t) => svc.friendCancel(u, t),
+  remove: (u, o) => svc.friendRemove(u, o), invite: (u, f, pass, name) => svc.friendInvite(u, f, pass, name), friendsState: (u) => svc.friendsState(u),
+}, fsugProfiles);
+const fsugSvc = new FriendSuggestService({
+  self: (u) => fsugInvoker.invoke('fsugSelf', u),
+  teamMembers: async (teamId, u) => { try { const v = await teams.view(teamId, u); return v.myRole ? v.members.map((x) => x.playerId) : []; } catch { return []; } },
+  dismiss: (u, t, why, reason, outcome) => fsugInvoker.invoke('fsugDismiss', u, t, why, reason, outcome),
+  setHidden: (u, h) => fsugInvoker.invoke('fsugSetHidden', u, h),
+}, fsugFriends, fsugCards, () => fsugConfig(master), now, new Map());
+const FSUG_PEOPLE: [string, string][] = [['demo_fs_1', 'アサギ'], ['demo_fs_2', 'ツバメ'], ['demo_fs_3', 'コハル'], ['demo_fs_4', 'ヒナタ'], ['demo_fs_5', 'ミナト'], ['demo_fs_6', 'カゲロウ'], ['demo_fs_7', 'ランクノヒト'], ['demo_ff_1', 'イブキ'], ['demo_ff_2', 'サクラ'], ['demo_ff_3', 'トキワ']];
+/** The memory directory does not survive a reload: write each demo player's profile and card again from the stored state. */
+async function fsugRepublish(ids: string[]) {
+  for (const id of ids) {
+    if (!(await repo.get(id))) continue;
+    await fsugProfiles.putProfile(await svc.publicProfile(id));
+    const card = fsugCard(master, await svc.state(id), now());
+    if (card) await fsugCards.put(card); else await fsugCards.remove(id);
+  }
+}
 // round 14 (REQ-HOF-*): 殿堂 on the real HallService. A demo friend (demo_hof_1, アオバ) has a hall of their own to visit.
 const hallDir = new MemoryHallDirectory();
 const hallSvc = new HallService(hallPlayersFrom(() => rivalInvoker), hallDir, () => hallConfig(master));
@@ -428,6 +459,7 @@ export const MuchiLogic = {
     replayStore.clear(); // round 14: the saved replays and source logs too
     cupBackend.cups.clear(); cupBackend.codes.clear(); try { localStorage.removeItem(CUP_KEY); } catch { /* ignore */ } // round 16
     reportRepo.rs.clear(); reportRepo.st.clear(); // round 17: the ops report queue too
+    fsugCards.store.clear(); // round 17: the おすすめフレンド cards too
     dayOffset = 0;
     delete master.maintenance; // round 17: no maintenance demo
   },
@@ -825,6 +857,47 @@ export const MuchiLogic = {
       return svc.view(ID);
     },
   },
+  // ---------------------------------------------------------------- round 17: おすすめフレンド (REQ-FSUG-*, contracts/protocol.md §49)
+  // What GET /v1/friends/suggestions and its actions answer, on the real FriendSuggestService (the request goes through the
+  // real FriendsService → friendSend / friendReceive, so the other side's activity entry and push are written as in production).
+  friendSuggestions: () => wrap(() => fsugSvc.list(ID)),
+  fsugRequest: (id: string) => wrap(() => fsugSvc.request(ID, id)),
+  fsugDismiss: (id: string) => wrap(() => fsugSvc.dismiss(ID, id)),
+  fsugSetHidden: (hidden: boolean) => wrap(() => fsugSvc.setHidden(ID, hidden)),
+  /** GET /v1/friends (names from the public profiles). */
+  friendsList: () => wrap(() => fsugFriends.list(ID)),
+  fsugKpi: (shown: number) => wrap(() => clientBatchSchema.parse({ platform: 'editor', appVersion: 'proto', events: [{ name: 'fsug_view', at: now(), props: { shown } }] }).events.map(clientToKpi)[0]),
+  /** The other side of a demo request (for the tests): their activity page, names resolved. */
+  async fsugActivityOf(id: string) {
+    const p = await svc.activity(id, null, 20);
+    return renderActivityItems(p.items, await Promise.all(actorIdsOf(p.items).map((x) => svc.publicProfile(x))));
+  },
+  /**
+   * Demo 「おすすめフレンド」: people met through the real paths — an event and a friend room (applyRace with the human field),
+   * a like on My Stable and a cheer stamp (activity entries), three friends whose friends overlap (mutual counts) — plus one
+   * player who turned on 「おすすめに表示しない」 and one met only in a ranked race: neither is suggested.
+   */
+  async seedFriendSuggest() {
+    await this.seedDemo(3, [2, 2, 2]);
+    for (const [id, name] of FSUG_PEOPLE) if (!(await repo.get(id))) { await svc.bootstrap(id); await svc.setDisplayName(id, name); }
+    const field = (ids: string[]) => ids.map((playerId, i) => ({ playerId, place: i + 1 }));
+    const race = (raceId: string, mode: 'event' | 'friend' | 'ranked', ids: string[]) => svc.applyRace(ID, { raceId, mode, place: 1, fieldSize: ids.length, newRating: null, void: false, humans: ids.length, field: field([ID, ...ids]) });
+    await race('proto_fs_ev', 'event', ['demo_fs_1', 'demo_fs_6']);
+    await race('proto_fs_fr', 'friend', ['demo_fs_2']);
+    await race('proto_fs_rk', 'ranked', ['demo_fs_7']);
+    const day = new Date(now() + 9 * 3600e3).toISOString().slice(0, 10);
+    await svc.stableLikeReceive(ID, 'demo_fs_3', `demo_fs_3:${day}:0`);
+    await svc.cheerPush(ID, 'demo_fs_4', 'ヒナタ', 'react:demo_team:9');
+    const link = async (a: string, b: string) => { await svc.tx(a, null, (s) => { if (!s.friends.ids.includes(b)) s.friends.ids.push(b); }); await svc.tx(b, null, (s) => { if (!s.friends.ids.includes(a)) s.friends.ids.push(a); }); };
+    for (const f of ['demo_ff_1', 'demo_ff_2', 'demo_ff_3']) { await link(ID, f); await link(f, 'demo_fs_5'); }
+    await link('demo_ff_1', 'demo_fs_1'); await link('demo_ff_2', 'demo_fs_1');
+    await svc.fsugSetHidden('demo_fs_6', true);
+    await fsugRepublish([ID, ...FSUG_PEOPLE.map(([id]) => id)]);
+    return svc.view(ID);
+  },
+  /** After a reload: the memory directory again from the stored states. */
+  fsugRepublish: () => fsugRepublish([ID, ...FSUG_PEOPLE.map(([id]) => id)]),
+
   // ---------------------------------------------------------------- round 10
   // r10 fix: the shop list with this player's ownership (GET /v1/shop/products?mine=1)
   myShopProducts: () => svc.shopProducts(ID),

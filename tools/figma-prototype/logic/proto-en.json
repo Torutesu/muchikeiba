@@ -1266,6 +1266,20 @@
   "天井のしくみ（ヘルプ）": "How the pity works (help)",
   "コインの購入について（ヘルプ）": "About buying coins (help)",
   "お問い合わせ": "Inquiry",
-  "ヘルプ・お問い合わせ（デモ）": "Help & contact (demo)"
+  "ヘルプ・お問い合わせ（デモ）": "Help & contact (demo)",
+  "_fsug": "---- round 17: おすすめフレンド (REQ-FSUG-*)",
+  "ゲームの中で出会った人を、おすすめに表示します": "People you met in the game are suggested here",
+  "対戦": "Raced",
+  "いいね": "Like",
+  "応援": "Cheer",
+  "共通のフレンド": "Mutual friends",
+  "まだいません": "None yet",
+  "申請中 {n}人": "{n} pending",
+  "フレンドコード・友達招待": "Friend code and invites",
+  "おすすめのきまり": "How suggestions work",
+  "同じ支部・同じレース・いいね・応援で出会った人と、共通のフレンドが2人以上いる人を表示します。ランク戦の相手は表示しません。": "Shows people from your branch, your races, likes and cheers, and people with 2 or more mutual friends. Ranked opponents are never shown.",
+  "おすすめに表示しない：オン": "Don't show me in suggestions: on",
+  "おすすめに表示しない：オフ": "Don't show me in suggestions: off",
+  "フレンドの上限に達しています": "You have reached the friend limit"
  }
 }

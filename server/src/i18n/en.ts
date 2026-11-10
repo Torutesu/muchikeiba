@@ -402,6 +402,14 @@ export const CODE_EN: Record<string, string> = {
   'お互いの公開リプレイが見られなくなります': 'Neither of you can see the other\'s shared replays',
   'カップや大会では同じレースになることがあります（相手からの通知は届きません）': 'You may still meet in cups and tournaments (no notices from them)',
 
+  // ---- おすすめフレンド (friendSuggest.ts FSUG_TEXT, protocol §49; REQ-FSUG-015). Reasons are joined with 「・」 → ", ".
+  '最近のレースで対戦': 'Raced you recently',
+  '同じ支部': 'Same branch',
+  'マイ厩舎にいいねをくれた': 'Liked your stable',
+  '応援スタンプをくれた': 'Cheered your race',
+  '共通のフレンド{n}人': '{n} mutual friends',
+  '共通のフレンド1人': '1 mutual friend',
+
   // ---- error details shown to players (REQ-API-004 messages; codes are the contract)
   'カタカナ2〜9文字': '2–9 katakana characters',
   '{a}〜{b}文字': '{a}–{b} characters',

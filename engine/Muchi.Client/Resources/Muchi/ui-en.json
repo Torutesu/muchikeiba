@@ -1145,6 +1145,16 @@
   "プレイヤーID": "Player ID",
   "自動で添えます": "Attached automatically",
   "直近のレースID": "Latest race IDs",
-  "最大3件・自動で添えます": "Up to three, attached automatically"
+  "最大3件・自動で添えます": "Up to three, attached automatically",
+  "_fsug": "---- おすすめフレンド (Muchi.Game.FriendSuggestionsModel, REQ-FSUG-016)",
+  "おすすめフレンド": "Suggested friends",
+  "おすすめフレンドはオンラインで表示できます": "Suggested friends are shown when online",
+  "いまはおすすめできる人がいません": "No suggestions right now",
+  "申請する": "Add friend",
+  "表示しない": "Hide",
+  "フレンド申請を送りました": "Friend request sent",
+  "フレンドになりました": "You are now friends",
+  "おすすめに表示しない": "Don't show me in suggestions",
+  "オンにすると、ほかのプレイヤーのおすすめにあなたが出なくなります": "When on, you will not appear in other players' suggestions"
  }
 }

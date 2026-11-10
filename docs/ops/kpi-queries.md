@@ -1147,3 +1147,28 @@ GROUP BY category ORDER BY answered DESC
 
 - 画面からの案内（`source = context`）の後に同じ日の `inquiry_submit` が少ないほど、案内が効いている。
 - `inquiry_submit` の `double9`（置き換えた個人情報の数）が多い種類は、フォームの注意書きを見直す。
+
+## おすすめフレンド：見た・申請した・消した（REQ-FSUG-014、contracts/protocol.md §49、Round 17）
+
+**おすすめからフレンドができているか、どの理由が効いているか**。`fsug_view`（クライアント、`double9` = 出ていた数）、`fsug_request`（サーバー、`blob8` = いちばん大きい理由、`blob9` = `requested` / `friends`）、`fsug_dismiss`（サーバー、`blob8` = 理由、分からなければ `none`）。相手の id は入れていない。
+
+```sql
+-- 日ごとの見た人数・申請した人数・消した数（見た人のうち申請した割合が低いなら、理由の行か並びを見直す）
+SELECT blob6 AS day,
+  count(DISTINCT if(blob1 = 'fsug_view', blob2, NULL)) AS viewers,
+  count(DISTINCT if(blob1 = 'fsug_request', blob2, NULL)) AS requesters,
+  sum(if(blob1 = 'fsug_dismiss', _sample_interval, 0)) AS dismisses
+FROM muchi_kpi
+WHERE blob1 IN ('fsug_view', 'fsug_request', 'fsug_dismiss') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY day ORDER BY day DESC
+```
+
+```sql
+-- 理由ごとの申請と消した数：消される方が多い理由は重みを下げる（progression.friendSuggest.weights、リモート設定）
+SELECT blob1 AS event, blob8 AS reason, sum(_sample_interval) AS n
+FROM muchi_kpi
+WHERE blob1 IN ('fsug_request', 'fsug_dismiss') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY event, reason ORDER BY event, n DESC
+```
+
+- **フレンドができたか**：相手の id を入れていないので、申請と承認を人単位では結ばない。日ごとの `friend_accept`（承認した側のサーバーイベント）の数が、おすすめを出してから増えたかで見る。

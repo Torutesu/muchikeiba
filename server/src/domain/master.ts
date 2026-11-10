@@ -211,6 +211,8 @@ export interface Progression {
   hostedCups?: import('./hostedCups.js').HostedCupsConfig;
   /** REQ-RPT-015: 通報 limits and reporter weights (reports.ts, validated by reportsProblems). Absent = REPORTS_DEFAULTS. */
   reports?: Partial<import('./reports.js').ReportsConfig>;
+  /** REQ-FSUG-012: おすすめフレンド (friendSuggest.ts, validated by fsugProblems). Absent = FSUG_DEFAULTS. */
+  friendSuggest?: Partial<import('./friendSuggest.js').FsugConfig>;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */

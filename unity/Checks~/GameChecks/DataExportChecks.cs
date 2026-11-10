@@ -20,7 +20,7 @@ static class DataExportChecks
     }
     sealed class Tokens : IAuthTokenProvider { public Task<string> GetTokenAsync(bool f, CancellationToken ct) => Task.FromResult("tok"); }
 
-    const long Now = 1794790800000L; // 2026-11-11 12:00 JST
+    const long Now = 1794790800000L; // 2026-11-16 10:00 JST (expiry / next request: 11-23)
     const string Player = "{\"id\":\"u1\",\"wallet\":{\"paid\":0,\"free\":0,\"total\":0,\"debt\":0},\"season\":{\"id\":\"2026-11\",\"classId\":\"C\",\"points\":0},\"items\":{},\"horses\":[],\"equipment\":{\"tack\":{},\"decor\":[]},\"deletion\":{\"status\":\"none\"}}";
     const string None = "{\"enabled\":true,\"status\":\"none\",\"statusText\":\"まだリクエストしていません\",\"requestId\":null,\"canRequest\":true,\"nextAvailableAt\":null,\"keepDays\":7,\"deletionScheduled\":false,\"notice\":\"…\",\"download\":null}";
     const string Queued = "{\"enabled\":true,\"status\":\"queued\",\"statusText\":\"準備しています\",\"requestId\":\"dex_a\",\"canRequest\":false,\"nextAvailableAt\":null,\"keepDays\":7,\"deletionScheduled\":true,\"deletionNote\":\"アカウントの削除を予定しています。削除が終わるまではダウンロードできます。\",\"created\":true,\"download\":null}";
@@ -53,21 +53,21 @@ static class DataExportChecks
         state = Ready;
         await m.LoadAsync();
         check(m.CanDownload && m.ButtonEnabled && m.ButtonText == "データ（JSON）をダウンロード", "dex: ready → download button");
-        check(m.DateText == "11月18日まで" && m.SizeText == "48 KB", "dex: the expiry as a JST date and the size (" + m.DateText + ", " + m.SizeText + ")");
+        check(m.DateText == "11月23日まで" && m.SizeText == "48 KB", "dex: the expiry as a JST date and the size (" + m.DateText + ", " + m.SizeText + ")");
         check(m.DownloadUrl("json") == "http://fake/v1/data-export/file?p=u1&r=dex_a&f=json&e=1794791400000&s=x" && m.DownloadUrl("summary").Contains("f=summary"), "dex: absolute links for the OS browser");
         now = 1794791400000;
         check(m.LinksStale && m.DownloadUrl("json") == null, "dex: a link past its minutes is not handed out (reload first)");
 
         state = Expired;
         await m.LoadAsync();
-        check(!m.ButtonEnabled && m.ButtonText == "もう一度リクエスト" && m.DateText == "次のリクエストは11月18日から", "dex: expired inside the cooldown → the next date, never a countdown (" + m.DateText + ")");
+        check(!m.ButtonEnabled && m.ButtonText == "もう一度リクエスト" && m.DateText == "次のリクエストは11月23日から", "dex: expired inside the cooldown → the next date, never a countdown (" + m.DateText + ")");
         state = Failed;
         await m.LoadAsync();
         check(m.ButtonEnabled && m.Note == DataExportModel.TextFailedNote, "dex: failed → request again at once");
 
         s.Routes["POST /v1/player/data-export"] = _ => new HttpResponse(429, "{\"error\":{\"code\":\"DATA_EXPORT_COOLDOWN\",\"message\":\"later\",\"details\":{\"availableAt\":1795395600000}}}");
         var cd = await m.RequestAsync();
-        check(!cd.Ok && !m.ButtonEnabled && m.DateText == "次のリクエストは11月18日から", "dex: a cooldown answer shows the date it opens");
+        check(!cd.Ok && !m.ButtonEnabled && m.DateText == "次のリクエストは11月23日から", "dex: a cooldown answer shows the date it opens");
 
         Loc.LoadEnglish(File.ReadAllText(Path.Combine(FindRoot(), "engine", "Muchi.Client", "Resources", "Muchi", "ui-en.json")));
         Loc.SetLocale("en");
@@ -75,10 +75,10 @@ static class DataExportChecks
         {
             var texts = new[] { DataExportModel.TextTitle, DataExportModel.TextSection, DataExportModel.TextRequest, DataExportModel.TextPreparing, DataExportModel.TextRequestAgain,
                 DataExportModel.TextDownloadJson, DataExportModel.TextDownloadSummary, DataExportModel.TextPreparingNote, DataExportModel.TextFailedNote, DataExportModel.TextOffline,
-                DataExportModel.TextUnavailable, "次のリクエストは11月18日から", "11月18日まで" };
+                DataExportModel.TextUnavailable, "次のリクエストは11月23日から", "11月23日まで" };
             var left = texts.Where(t => Loc.HasJapanese(Loc.T(t))).ToList();
             check(left.Count == 0, "dex: every model text has English (" + string.Join(" | ", left) + ")");
-            check(Loc.T("次のリクエストは11月18日から") == "Next request from 11/18", "dex: the cooldown date in English (" + Loc.T("次のリクエストは11月18日から") + ")");
+            check(Loc.T("次のリクエストは11月23日から") == "Next request from 11/23", "dex: the cooldown date in English (" + Loc.T("次のリクエストは11月23日から") + ")");
         }
         finally { Loc.SetLocale("ja"); }
         var all = string.Join("", new[] { DataExportModel.TextRequest, DataExportModel.TextPreparingNote, DataExportModel.TextFailedNote });

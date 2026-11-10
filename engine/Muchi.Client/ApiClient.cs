@@ -845,7 +845,8 @@ namespace Muchi.Client
                     continue;
                 }
 
-                if ((res.Status >= 500 || res.Status == 429) && retryable && attempt < _opt.Retry.MaxRetries)
+                // REQ-DEX-004: DATA_EXPORT_COOLDOWN is a 429 that lasts days — never retried (the answer will not change)
+                if ((res.Status >= 500 || (res.Status == 429 && (res.Body == null || !res.Body.Contains("\"DATA_EXPORT_COOLDOWN\"")))) && retryable && attempt < _opt.Retry.MaxRetries)
                 {
                     await _delay.Delay(_opt.Retry.DelayFor(attempt++), ct);
                     continue;

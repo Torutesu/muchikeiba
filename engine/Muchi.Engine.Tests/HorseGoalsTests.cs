@@ -8,6 +8,7 @@ using Muchi.Net;
 namespace Muchi.Engine.Tests
 {
     /// <summary>REQ-HGOAL-001..016: 馬ごとの目標 — the shared chain rules (contracts/horse-goals.vectors.json) and the client API (protocol §53).</summary>
+    [Collection("Loc")] // EveryGoalTextHasEnglish switches the process-wide Loc
     public class HorseGoalsTests
     {
         private readonly FakeHttp _http = new FakeHttp();

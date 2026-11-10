@@ -300,12 +300,14 @@ describe('account deletion clears Round 16 state (REQ-CUP-016, REQ-RECAP-014, RE
     await w.svc.rosterFavorite('gone', h, true);
     const nx = await w.svc.nextActions('gone') as { primary: { kind: string; dismissible: boolean } | null; chips: { kind: string; dismissible: boolean }[] };
     const dismissible = [nx.primary, ...nx.chips].find((x) => x?.dismissible);
-    if (dismissible) await w.svc.dismissNextAction('gone', dismissible.kind);
+    expect(dismissible).toBeTruthy();
+    await w.svc.dismissNextAction('gone', dismissible!.kind);
     const before = await w.svc.state('gone');
     expect(before.seasonRecap?.recaps.length).toBe(1);
     expect(before.cups?.active.map((r) => r.cupId)).toEqual([cupId]);
     expect(before.roster?.locked).toContain(h);
     expect(before.roster?.favorites).toContain(h);
+    expect(before.nextAction?.dismissed).toContain(dismissible!.kind);
     expect((await w.backend.get(cupId))!.entrants.map((e) => e.playerId)).toContain('gone');
 
     const tok = (await w.svc.requestDeletion('gone', null)) as { confirmToken: string };

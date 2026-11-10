@@ -5024,7 +5024,7 @@ async function HelpCenter(back = null) {
   TopBar('ヘルプ・お問い合わせ', 'よくある質問　·　キーワード検索　·　運営への問い合わせ');
   const p = Glass('Help categories', 36, 134, 1060, 676, undefined, .88);
   p.classList.add('help-home');
-  Kicker('キーワードで探す', 36, 30, p, { size: 15 });
+  Kicker('キーワードで探す', 36, 30, p, { size: 15, rule: false });
   const box = el('fieldbox', 36, 66, 760, 60, p);
   const input = document.createElement('input');
   input.className = 'field'; input.maxLength = 40; input.value = helpState.q; input.placeholder = 'ひらがな・カタカナ・半角どれでも'; input.setAttribute('aria-label', 'キーワード');
@@ -5032,7 +5032,7 @@ async function HelpCenter(back = null) {
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') HelpSearch(input.value, null); });
   box.appendChild(input);
   Ghost('検索', 812, 66, 212, 60, () => HelpSearch(input.value, null), p).dataset.action = 'help-search';
-  Kicker('カテゴリ', 36, 156, p, { size: 15 });
+  Kicker('カテゴリ', 36, 150, p, { size: 15, rule: false });
   H.categories.forEach((c, i) => {
     const b = Btn(c.title, 36 + (i % 2) * 498, 192 + Math.floor(i / 2) * 92, 486, 80, () => HelpCategory(c.id), 'row help-cat', p, '');
     b.dataset.helpCat = c.id; b.classList.add('help-card');
@@ -5116,7 +5116,7 @@ function HelpArticleView(A, back) {
   TopBar('ヘルプ　/　' + A.categoryTitle, 'よくある質問');
   const p = Glass('Help article', 36, 134, 1060, 676, undefined, .9);
   p.dataset.article = A.id; p.classList.add('help-article');
-  Kicker(A.categoryTitle, 36, 30, p, { size: 15 });
+  Kicker(A.categoryTitle, 36, 30, p, { size: 15, rule: false });
   Txt(A.title, 36, 70, 980, 28, WHITE, p, { weight: 700, lh: 1.3 });
   const body = Txt(A.body, 36, 136, 980, 17, WHITE, p, { weight: 500, lh: 1.75, h: 470 });
   body.classList.add('help-body'); body.style.whiteSpace = 'pre-line'; body.style.overflow = 'hidden';
@@ -5165,12 +5165,12 @@ async function InquiryForm(category = null) {
   TopBar('問い合わせ', '内容を書いて送信してください　·　返信はアクティビティでお知らせします');
   const p = Glass('Inquiry form', 36, 134, 1060, 676, undefined, .9);
   p.classList.add('inquiry-form'); p.dataset.category = D.category;
-  Kicker('種類', 36, 26, p, { size: 15 });
+  Kicker('種類', 36, 22, p, { size: 15, rule: false });
   H.inquiry.categories.forEach((c, i) => {
     const b = Btn(c.title, 36 + (i % 3) * 330, 58 + Math.floor(i / 3) * 50, 318, 42, () => { D.category = c.id; InquiryForm(); }, 'choice' + (D.category === c.id ? ' on' : ''), p);
     b.dataset.inquiryCat = c.id; b.style.fontSize = '15px'; b.style.whiteSpace = 'nowrap'; b.style.padding = '0';
   });
-  Kicker('内容', 36, 270, p, { size: 15 });
+  Kicker('内容', 36, 272, p, { size: 15, rule: false });
   const box = el('fieldbox', 36, 302, 988, 150, p);
   const ta = document.createElement('textarea');
   ta.className = 'field'; ta.maxLength = H.inquiry.descriptionMax; ta.value = D.description; ta.placeholder = 'いつ・どの画面で・何が起きたかを書いてください'; ta.setAttribute('aria-label', '問い合わせの内容');
@@ -5196,7 +5196,7 @@ async function InquiryForm(category = null) {
   });
   // right: what is attached automatically (REQ-HELP-011), limits, the CTA
   const d = Glass('Inquiry diagnostics', 1116, 134, 448, 676, undefined, .9);
-  Kicker('自動で添える情報', 36, 30, d, { size: 15 });
+  Kicker('自動で添える情報', 36, 30, d, { size: 15, rule: false });
   [['アプリの版', 'proto'], ['端末の種類', 'Editor'], ['プレイヤーID', '自動で添えます'], ['直近のレースID', '最大3件・自動で添えます']].forEach(([k, v], i) => {
     Txt(k, 36, 80 + i * 34, 170, 14, MUTED, d, { weight: 500, nowrap: true }); Txt(v, 206, 80 + i * 34, 206, 14, WHITE, d, { weight: 700, nowrap: true });
   });
@@ -5242,7 +5242,7 @@ async function MyInquiries(sel = helpState.sel) {
   Kicker('新しい順', 36, 30, p, { size: 15 });
   if (!P.items.length) Txt('まだ問い合わせはありません', 36, 100, 540, 18, MUTED, p).dataset.inqEmpty = '1';
   P.items.slice(0, 7).forEach((it, i) => {
-    const row = el('help-row' + (it.ticketId === sel ? ' sel' : ''), 24, 80 + i * 74, 572, 68, p);
+    const row = el('help-row' + (it.ticketId === sel ? ' sel' : ''), 24, 90 + i * 74, 572, 68, p);
     row.dataset.ticket = it.ticketId; row.dataset.status = it.status; row.dataset.unread = it.unread ? '1' : '0'; row.setAttribute('role', 'button');
     if (it.unread && it.ticketId !== sel) el('act-dot', 6, 30, 10, 10, row);
     Txt(it.statusText, 22, 8, 160, 12, HELP_STATUS_COLOR[it.status] ?? CYAN, row, { weight: 700, ls: '.18em', nowrap: true });
@@ -5254,7 +5254,7 @@ async function MyInquiries(sel = helpState.sel) {
   d.classList.add('inq-detail');
   if (T) {
     d.dataset.ticket = T.ticketId; d.dataset.status = T.status;
-    Kicker(`${T.categoryTitle}　·　${T.ticketId}`, 36, 30, d, { size: 15 });
+    Kicker(`${T.categoryTitle}　·　${T.ticketId}`, 36, 30, d, { size: 15, rule: false });
     Txt(T.statusText, 700, 34, 150, 14, HELP_STATUS_COLOR[T.status] ?? CYAN, d, { weight: 700, align: 'right', nowrap: true });
     Txt('送った内容', 36, 76, 300, 13, MUTED, d, { weight: 500 });
     const mine = Txt(T.inquiryText, 36, 100, 816, 16, WHITE, d, { lh: 1.6, h: 110 }); mine.classList.add('keep-ja', 'typed'); mine.style.overflow = 'hidden';

@@ -48,7 +48,7 @@ import type { CupRaceSpec, CupState } from '../../../server/src/domain/hostedCup
 import type { HeatOutcome } from '../../../server/src/domain/tournaments.js';
 import { createRace } from '../../../server/src/race/orchestrate.js';
 import type { RaceEntry } from '../../../server/src/http/app.js';
-import { DataExportService, runDataExportJob, sweepDataExports, type ExportStore } from '../../../server/src/domain/dataExportService.js';
+import { DataExportService, MemoryExportStore, runDataExportJob, sweepDataExports } from '../../../server/src/domain/dataExportService.js';
 // REQ-L10N-*: the server's English tables (master/locale-en.json + i18n/en.ts), the client's (ui-en.json) and the
 // prototype's own screen texts (proto-en.json), in one catalog with the server's template rules (katakana names romanized)
 import { compileCatalogWith, translateText, romanizeName } from '../../../server/src/i18n/catalog.js';
@@ -282,13 +282,9 @@ async function wrap<T>(f: () => Promise<T> | T): Promise<{ ok: true; value: T } 
   }
 }
 
-// round 18 (REQ-DEX-*): the private export files in localStorage (the R2 prefix private/data-export/), the HTTP-side service
-const DEX_FILES_KEY = 'muchi.proto.dex:';
-const dexStore: ExportStore = {
-  put: async (k, body) => { try { localStorage.setItem(DEX_FILES_KEY + k, body); } catch { /* private mode / full: the download then says it is gone */ } },
-  get: async (k) => { try { return localStorage.getItem(DEX_FILES_KEY + k); } catch { return null; } },
-  delete: async (keys) => { for (const k of keys) try { localStorage.removeItem(DEX_FILES_KEY + k); } catch { /* ignore */ } },
-};
+// round 18 (REQ-DEX-*): the private export files (the R2 prefix private/data-export/) kept in memory — in localStorage they
+// would eat the quota the player state needs (after a reload the status still says ready and the download says it is gone)
+const dexStore = new MemoryExportStore();
 const dexInvoker: PlayerInvoker = { invoke: (async (m: string, ...args: unknown[]) => (svc as unknown as Record<string, (...a: unknown[]) => unknown>)[m]!.apply(svc, args)) as PlayerInvoker['invoke'] };
 const dex = new DataExportService(() => master, () => dexInvoker, dexStore, 'prototype-only-link-secret', now);
 

@@ -118,6 +118,8 @@ static class Program
         await RaceAdviceChecks.Run(Check, Root);
         Console.WriteLine("== round 16: 厩舎の整理 (RosterOrganiserModel: local sort / filters / search per device, lock, favourite, bulk retire two-step, all or nothing; REQ-ORG-*)");
         await RosterChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 18: 馬ごとの目標 (HorseGoalsModel: goals panel rows, ribbon, pin / unpin, home pinned card, KPI, next-action kind, English; REQ-HGOAL-*)");
+        await HorseGoalsChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 16: 次にやること (NextActionModel: primary card + chips, dates not countdowns, dismiss for today, offline fallback, KPI; REQ-NEXT-*)");
         await NextActionChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 16: シーズンの振り返り (SeasonRecapModel: list badge, open / complete once, skip, short version, 順位を隠す, share; REQ-RECAP-*)");

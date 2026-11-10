@@ -21,6 +21,7 @@ import type { RaceResultForPlayer } from './rewards.js';
 import type { KpiEvent } from './kpi.js';
 import { grantReward, logItem } from './items.js';
 import { rivalTrackName } from './rival.js';
+import { bandOf, chainCompleteOf, goalsOf, horseGoalsConfig, type GoalBand } from './horseGoals.js';
 
 // ------------------------------------------------------------------------------------------- config
 
@@ -92,6 +93,8 @@ export interface CareerRecord {
   /** Ranked races in which the weekly human rival finished behind this horse (REQ-RIVAL-004, when known at the race). */
   rivalWins: number;
   firstRaceAt: number | null; lastRaceAt: number | null;
+  /** REQ-HGOAL-003 (§53): tallies the per-horse goals count, written in noteHallRace's guard (absent = none since §53). */
+  goal?: { surfaceWins: { turf?: number; dirt?: number }; bandWins: Partial<Record<GoalBand, number>>; rankedPlaces: number };
 }
 export type HighlightKind = 'tournament_win' | 'partner' | 'wins' | 'biggest_win' | 'rival_wins' | 'ta_best' | 'places' | 'career_span';
 export interface Highlight { kind: HighlightKind; text: string; params: Record<string, string | number> }
@@ -166,6 +169,15 @@ export function noteHallRace(m: Master, s: PlayerState, r: RaceResultForPlayer, 
   }
   if (r.place >= 1 && r.place <= 3) c.places += 1;
   if (rivalWin && r.mode === 'ranked') c.rivalWins += 1;
+  // REQ-HGOAL-003 (§53): the same counted race also feeds the per-horse goals (surface / distance band of the win, ranked top 3)
+  const g = (c.goal ??= { surfaceWins: {}, bandWins: {}, rankedPlaces: 0 });
+  const t = r.details?.trackId ? m.tracks.find((x) => x.id === r.details!.trackId) : undefined;
+  if (r.place === 1 && t) {
+    g.surfaceWins[t.surface] = (g.surfaceWins[t.surface] ?? 0) + 1;
+    const b = bandOf(t.distanceM);
+    g.bandWins[b] = (g.bandWins[b] ?? 0) + 1;
+  }
+  if (r.mode === 'ranked' && r.place >= 1 && r.place <= 3) g.rankedPlaces += 1;
   c.firstRaceAt ??= now;
   c.lastRaceAt = now;
 }
@@ -302,8 +314,11 @@ export function setHallVisibility(s: PlayerState, v: string) {
 // ------------------------------------------------------------------------------------------- views
 
 /** A plaque as shown (my hall and visitors). `horseName` follows the live horse (support name resets reach it). */
-export interface Plaque extends HallEntryRecord { frame: boolean }
-const plaqueOf = (s: PlayerState, e: HallEntryRecord, frame: boolean): Plaque => ({ ...e, horseName: s.horses.find((h) => h.id === e.horseId)?.name ?? e.horseName, frame });
+export interface Plaque extends HallEntryRecord { frame: boolean; goalsComplete?: boolean }
+/** REQ-HGOAL-009 (§53): `goalsComplete` = the horse finished its goal chain (flair only; absent when goals are off or not done). */
+const plaqueOf = (m: Master, s: PlayerState, e: HallEntryRecord, frame: boolean): Plaque => ({
+  ...e, horseName: s.horses.find((h) => h.id === e.horseId)?.name ?? e.horseName, frame, ...(chainCompleteOf(m, s, e.horseId) ? { goalsComplete: true } : {}),
+});
 
 const sortEntries = (xs: Plaque[]) => xs.sort((a, b) => b.inductedAt - a.inductedAt || a.horseId.localeCompare(b.horseId));
 const cursorOf = (e: Plaque) => `${e.inductedAt}_${e.horseId}`;
@@ -341,7 +356,7 @@ export function myHallView(m: Master, s: PlayerState, cursor: string | null, lim
   const cfg = requireCfg(m);
   const st = peek(s);
   const frame = frameOwned(cfg, s);
-  const page = pageOf(cfg, (st?.entries ?? []).map((e) => plaqueOf(s, e, frame)), cursor, limit);
+  const page = pageOf(cfg, (st?.entries ?? []).map((e) => plaqueOf(m, s, e, frame)), cursor, limit);
   const pending = Object.values(st?.ceremonies ?? {}).filter((c) => c.ackedAt === null).sort((a, b) => b.retiredAt - a.retiredAt || a.horseId.localeCompare(b.horseId)).slice(0, 20)
     .map((c) => ({ ...c, horseName: s.horses.find((h) => h.id === c.horseId)?.name ?? c.horseName }));
   return {
@@ -373,7 +388,9 @@ export function horseCareerView(m: Master, s: PlayerState, horseId: string) {
     /** What the ceremony would show if the horse retired now (frozen at retirement). */
     preview: h.status === 'active' ? pickHighlights(m, cfg, c, partner) : null,
     ceremony: cer ? { ...cer, horseName: h.name } : null,
-    entry: entry ? plaqueOf(s, entry, frameOwned(cfg, s)) : null,
+    entry: entry ? plaqueOf(m, s, entry, frameOwned(cfg, s)) : null,
+    /** REQ-HGOAL-009 (§53): the goal chain in one line (null when goals are off). */
+    goals: horseGoalsConfig(m) ? (() => { const g = goalsOf(m, s, h); const d = g.filter((x) => x.done).length; return { doneCount: d, total: g.length, chainComplete: d === g.length }; })() : null,
   };
 }
 
@@ -402,7 +419,7 @@ export function hallSnapshot(m: Master, s: PlayerState, now: number): HallSnapsh
     v: 1, playerId: s.id, displayName: s.profile.displayName, titleId: s.profile.titleId,
     silks: effectiveSilks(s.profile.silks, `p:${s.id}`, m.bannedSilks),
     teamId: s.team?.teamId ?? null, visibility: st.visibility, blocked: [...blockList(s)].sort(),
-    frame, entries: sortEntries(st.entries.map((e) => plaqueOf(s, e, frame))), updatedAt: Math.max(...st.entries.map((e) => e.inductedAt)),
+    frame, entries: sortEntries(st.entries.map((e) => plaqueOf(m, s, e, frame))), updatedAt: Math.max(...st.entries.map((e) => e.inductedAt)),
   };
 }
 

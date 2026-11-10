@@ -1069,6 +1069,26 @@
   "参加": "Entered",
   "{a}位 / {b}人": "{a:ord} of {b}",
   "{n}pt（3レース）": "{n} pt (3 races)",
-  "3レース": "3 races"
+  "3レース": "3 races",
+  "_hgoal": "---- 馬ごとの目標 (round 18, REQ-HGOAL-*, HorseGoalsModel / NextActionModel horse_goal_near). The goal lines themselves are server texts (server-en.json); horse names are never translated",
+  "この馬の目標": "This horse's goals",
+  "物語を走りきった": "Story complete",
+  "ホームに出す": "Pin to home",
+  "ホームから外す": "Unpin from home",
+  "ピン留めした目標": "Pinned goal",
+  "馬の目標はオンラインで見られます": "Horse goals are available when you are online",
+  "目標は確定したレースの成績だけで進みます。達成の印は見た目だけで、能力やレースには影響しません。": "Goals move only with confirmed race results. The ribbon is for show only and never affects stats or races.",
+  "目標 {a} / {b}": "Goals {a} / {b}",
+  "馬の目標まで あと{n}": "{n} more to your horse's goal",
+  "ピン留めした目標（確定したレースで進みます）": "Your pinned goal (moves with confirmed races)",
+  "目標を見る": "See goals",
+  "馬の目標 あと{n}": "Horse goal: {n} more",
+  "はじまり": "Beginnings",
+  "場数": "Experience",
+  "得意の馬場": "Home surface",
+  "コースの記録": "Course record",
+  "得意の外へ": "Beyond its range",
+  "勝ち星": "Wins",
+  "頂点": "The summit"
  }
 }

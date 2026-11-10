@@ -158,6 +158,8 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   // REQ-NEXT-012: the home's 次にやること card shown (once per kind and game day) / tapped. Closing it is the server event next_card_dismiss.
   z.object({ name: z.literal('next_card_view'), at: z.number().int(), props: z.object({ kind: z.enum(NEXT_KINDS), slot: z.enum(NEXT_SLOTS) }).strict() }),
   z.object({ name: z.literal('next_card_tap'), at: z.number().int(), props: z.object({ kind: z.enum(NEXT_KINDS), slot: z.enum(NEXT_SLOTS) }).strict() }),
+  // REQ-HGOAL-012: a horse's goal panel was opened (detail) / the pinned goal was shown on the home (once per game day); done = goals done
+  z.object({ name: z.literal('hgoal_view'), at: z.number().int(), props: z.object({ surface: z.enum(['detail', 'home']), done: z.number().int().min(0).max(8) }).strict() }),
 ]);
 export type ClientEvent = z.infer<typeof clientEventSchema>;
 
@@ -199,6 +201,7 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'activity_open': return { name: e.name, value: e.props.unread };
     case 'activity_tap': return { name: e.name, s1: e.props.kind, s2: e.props.screen };
     case 'next_card_view': case 'next_card_tap': return { name: e.name, s1: e.props.kind, s2: e.props.slot };
+    case 'hgoal_view': return { name: e.name, s1: e.props.surface, value: e.props.done };
   }
 }
 

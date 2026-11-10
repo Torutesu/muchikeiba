@@ -1,0 +1,5694 @@
+{
+  "_note": "REQ-HGOAL-001..003 (contracts/protocol.md §53): server/src/domain/horseGoals.ts horseGoalChain + evaluateHorseGoals and C# Muchi.Client HorseGoalChain.Build + Evaluate must agree. Regenerate with UPDATE_VECTORS=1 npx vitest run test/horse-goals.test.ts.",
+  "v": 1,
+  "tracks": [
+    {
+      "id": "aoba_turf_1600",
+      "name": "青葉競馬場 芝1600m",
+      "surface": "turf",
+      "distanceM": 1600
+    },
+    {
+      "id": "kirameki_turf_2000",
+      "name": "きらめき競馬場 芝2000m",
+      "surface": "turf",
+      "distanceM": 2000
+    },
+    {
+      "id": "minato_turf_2400",
+      "name": "みなと競馬場 芝2400m",
+      "surface": "turf",
+      "distanceM": 2400
+    },
+    {
+      "id": "aoba_dirt_1400",
+      "name": "青葉競馬場 ダート1400m",
+      "surface": "dirt",
+      "distanceM": 1400
+    },
+    {
+      "id": "minato_dirt_1800",
+      "name": "みなと競馬場 ダート1800m",
+      "surface": "dirt",
+      "distanceM": 1800
+    },
+    {
+      "id": "nordhaven_turf_2400",
+      "name": "ノルトハーフェン競馬場 芝2400m",
+      "surface": "turf",
+      "distanceM": 2400
+    },
+    {
+      "id": "santalucera_dirt_1700",
+      "name": "サンタルチェラ競馬場 ダート1700m",
+      "surface": "dirt",
+      "distanceM": 1700
+    },
+    {
+      "id": "bellmoor_turf_1200",
+      "name": "ベルムーア競馬場 芝1200m（直線）",
+      "surface": "turf",
+      "distanceM": 1200
+    }
+  ],
+  "cases": [
+    {
+      "name": "turf mile-intermediate senko / empty",
+      "horse": {
+        "surface": "turf",
+        "distMinM": 1600,
+        "distMaxM": 2000,
+        "style": "senko",
+        "skillId": null
+      },
+      "record": {
+        "races": 0,
+        "wins": 0,
+        "tournamentWins": 0,
+        "taTracks": [],
+        "surfaceWins": {
+          "turf": 0,
+          "dirt": 0
+        },
+        "bandWins": {
+          "sprint": 0,
+          "mile": 0,
+          "intermediate": 0,
+          "long": 0
+        },
+        "rankedPlaces": 0
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:aoba_turf_1600",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "aoba_turf_1600",
+            "course": "青葉競馬場 芝1600m"
+          },
+          "text": "タイムアタック 青葉競馬場 芝1600m で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:sprint",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "sprint"
+          },
+          "text": "短距離（1400m以下）で勝つ",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "turf mile-intermediate senko / started",
+      "horse": {
+        "surface": "turf",
+        "distMinM": 1600,
+        "distMaxM": 2000,
+        "style": "senko",
+        "skillId": null
+      },
+      "record": {
+        "races": 4,
+        "wins": 1,
+        "tournamentWins": 0,
+        "taTracks": [],
+        "surfaceWins": {
+          "turf": 1,
+          "dirt": 0
+        },
+        "bandWins": {
+          "sprint": 0,
+          "mile": 1,
+          "intermediate": 0,
+          "long": 0
+        },
+        "rankedPlaces": 2
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 4,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 1,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:aoba_turf_1600",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "aoba_turf_1600",
+            "course": "青葉競馬場 芝1600m"
+          },
+          "text": "タイムアタック 青葉競馬場 芝1600m で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:sprint",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "sprint"
+          },
+          "text": "短距離（1400m以下）で勝つ",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 2,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "turf mile-intermediate senko / busy",
+      "horse": {
+        "surface": "turf",
+        "distMinM": 1600,
+        "distMaxM": 2000,
+        "style": "senko",
+        "skillId": null
+      },
+      "record": {
+        "races": 25,
+        "wins": 6,
+        "tournamentWins": 0,
+        "taTracks": [
+          "aoba_turf_1600",
+          "aoba_dirt_1400",
+          "minato_dirt_1800",
+          "bellmoor_turf_1200"
+        ],
+        "surfaceWins": {
+          "turf": 3,
+          "dirt": 3
+        },
+        "bandWins": {
+          "sprint": 2,
+          "mile": 2,
+          "intermediate": 2,
+          "long": 0
+        },
+        "rankedPlaces": 7
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 10,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 3,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:aoba_turf_1600",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "aoba_turf_1600",
+            "course": "青葉競馬場 芝1600m"
+          },
+          "text": "タイムアタック 青葉競馬場 芝1600m で記録を残す",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:sprint",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "sprint"
+          },
+          "text": "短距離（1400m以下）で勝つ",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 5,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        }
+      ]
+    },
+    {
+      "name": "turf mile-intermediate senko / stamped beats count",
+      "horse": {
+        "surface": "turf",
+        "distMinM": 1600,
+        "distMaxM": 2000,
+        "style": "senko",
+        "skillId": null
+      },
+      "record": {
+        "races": 2,
+        "wins": 0,
+        "tournamentWins": 0,
+        "taTracks": [],
+        "surfaceWins": {
+          "turf": 0,
+          "dirt": 0
+        },
+        "bandWins": {
+          "sprint": 0,
+          "mile": 0,
+          "intermediate": 0,
+          "long": 0
+        },
+        "rankedPlaces": 0
+      },
+      "stamped": {
+        "races:10": 1794000000000,
+        "first_win": 1793000000000
+      },
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 0,
+          "done": true,
+          "completedAt": 1793000000000,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 2,
+          "done": true,
+          "completedAt": 1794000000000,
+          "current": false
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "ta_course:aoba_turf_1600",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "aoba_turf_1600",
+            "course": "青葉競馬場 芝1600m"
+          },
+          "text": "タイムアタック 青葉競馬場 芝1600m で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:sprint",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "sprint"
+          },
+          "text": "短距離（1400m以下）で勝つ",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "turf mile-intermediate senko / all done",
+      "horse": {
+        "surface": "turf",
+        "distMinM": 1600,
+        "distMaxM": 2000,
+        "style": "senko",
+        "skillId": null
+      },
+      "record": {
+        "races": 40,
+        "wins": 12,
+        "tournamentWins": 1,
+        "taTracks": [
+          "aoba_turf_1600",
+          "kirameki_turf_2000",
+          "minato_turf_2400",
+          "aoba_dirt_1400",
+          "minato_dirt_1800",
+          "nordhaven_turf_2400",
+          "santalucera_dirt_1700",
+          "bellmoor_turf_1200"
+        ],
+        "surfaceWins": {
+          "turf": 6,
+          "dirt": 6
+        },
+        "bandWins": {
+          "sprint": 3,
+          "mile": 3,
+          "intermediate": 3,
+          "long": 0
+        },
+        "rankedPlaces": 9
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 10,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 3,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:aoba_turf_1600",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "aoba_turf_1600",
+            "course": "青葉競馬場 芝1600m"
+          },
+          "text": "タイムアタック 青葉競馬場 芝1600m で記録を残す",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:sprint",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "sprint"
+          },
+          "text": "短距離（1400m以下）で勝つ",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 5,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "turf sprinter oikomi with skill / empty",
+      "horse": {
+        "surface": "turf",
+        "distMinM": 1000,
+        "distMaxM": 1400,
+        "style": "oikomi",
+        "skillId": "sk_sueashi"
+      },
+      "record": {
+        "races": 0,
+        "wins": 0,
+        "tournamentWins": 0,
+        "taTracks": [],
+        "surfaceWins": {
+          "turf": 0,
+          "dirt": 0
+        },
+        "bandWins": {
+          "sprint": 0,
+          "mile": 0,
+          "intermediate": 0,
+          "long": 0
+        },
+        "rankedPlaces": 0
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:bellmoor_turf_1200",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "bellmoor_turf_1200",
+            "course": "ベルムーア競馬場 芝1200m（直線）"
+          },
+          "text": "タイムアタック ベルムーア競馬場 芝1200m（直線） で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:mile",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "mile"
+          },
+          "text": "マイル（1401〜1800m）で勝つ",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "wins:5",
+          "kind": "wins",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "5勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "turf sprinter oikomi with skill / started",
+      "horse": {
+        "surface": "turf",
+        "distMinM": 1000,
+        "distMaxM": 1400,
+        "style": "oikomi",
+        "skillId": "sk_sueashi"
+      },
+      "record": {
+        "races": 4,
+        "wins": 1,
+        "tournamentWins": 0,
+        "taTracks": [],
+        "surfaceWins": {
+          "turf": 1,
+          "dirt": 0
+        },
+        "bandWins": {
+          "sprint": 0,
+          "mile": 1,
+          "intermediate": 0,
+          "long": 0
+        },
+        "rankedPlaces": 2
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 4,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 1,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:bellmoor_turf_1200",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "bellmoor_turf_1200",
+            "course": "ベルムーア競馬場 芝1200m（直線）"
+          },
+          "text": "タイムアタック ベルムーア競馬場 芝1200m（直線） で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:mile",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "mile"
+          },
+          "text": "マイル（1401〜1800m）で勝つ",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "wins:5",
+          "kind": "wins",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "5勝する",
+          "have": 1,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 2,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "turf sprinter oikomi with skill / busy",
+      "horse": {
+        "surface": "turf",
+        "distMinM": 1000,
+        "distMaxM": 1400,
+        "style": "oikomi",
+        "skillId": "sk_sueashi"
+      },
+      "record": {
+        "races": 25,
+        "wins": 6,
+        "tournamentWins": 0,
+        "taTracks": [
+          "aoba_turf_1600",
+          "aoba_dirt_1400",
+          "minato_dirt_1800",
+          "bellmoor_turf_1200"
+        ],
+        "surfaceWins": {
+          "turf": 3,
+          "dirt": 3
+        },
+        "bandWins": {
+          "sprint": 2,
+          "mile": 2,
+          "intermediate": 2,
+          "long": 0
+        },
+        "rankedPlaces": 7
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 10,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 3,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:bellmoor_turf_1200",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "bellmoor_turf_1200",
+            "course": "ベルムーア競馬場 芝1200m（直線）"
+          },
+          "text": "タイムアタック ベルムーア競馬場 芝1200m（直線） で記録を残す",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:mile",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "mile"
+          },
+          "text": "マイル（1401〜1800m）で勝つ",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "wins:5",
+          "kind": "wins",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "5勝する",
+          "have": 5,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 5,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        }
+      ]
+    },
+    {
+      "name": "turf sprinter oikomi with skill / stamped beats count",
+      "horse": {
+        "surface": "turf",
+        "distMinM": 1000,
+        "distMaxM": 1400,
+        "style": "oikomi",
+        "skillId": "sk_sueashi"
+      },
+      "record": {
+        "races": 2,
+        "wins": 0,
+        "tournamentWins": 0,
+        "taTracks": [],
+        "surfaceWins": {
+          "turf": 0,
+          "dirt": 0
+        },
+        "bandWins": {
+          "sprint": 0,
+          "mile": 0,
+          "intermediate": 0,
+          "long": 0
+        },
+        "rankedPlaces": 0
+      },
+      "stamped": {
+        "races:10": 1794000000000,
+        "first_win": 1793000000000
+      },
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 0,
+          "done": true,
+          "completedAt": 1793000000000,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 2,
+          "done": true,
+          "completedAt": 1794000000000,
+          "current": false
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "ta_course:bellmoor_turf_1200",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "bellmoor_turf_1200",
+            "course": "ベルムーア競馬場 芝1200m（直線）"
+          },
+          "text": "タイムアタック ベルムーア競馬場 芝1200m（直線） で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:mile",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "mile"
+          },
+          "text": "マイル（1401〜1800m）で勝つ",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "wins:5",
+          "kind": "wins",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "5勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "turf sprinter oikomi with skill / all done",
+      "horse": {
+        "surface": "turf",
+        "distMinM": 1000,
+        "distMaxM": 1400,
+        "style": "oikomi",
+        "skillId": "sk_sueashi"
+      },
+      "record": {
+        "races": 40,
+        "wins": 12,
+        "tournamentWins": 1,
+        "taTracks": [
+          "aoba_turf_1600",
+          "kirameki_turf_2000",
+          "minato_turf_2400",
+          "aoba_dirt_1400",
+          "minato_dirt_1800",
+          "nordhaven_turf_2400",
+          "santalucera_dirt_1700",
+          "bellmoor_turf_1200"
+        ],
+        "surfaceWins": {
+          "turf": 6,
+          "dirt": 6
+        },
+        "bandWins": {
+          "sprint": 3,
+          "mile": 3,
+          "intermediate": 3,
+          "long": 0
+        },
+        "rankedPlaces": 9
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 10,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 3,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:bellmoor_turf_1200",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "bellmoor_turf_1200",
+            "course": "ベルムーア競馬場 芝1200m（直線）"
+          },
+          "text": "タイムアタック ベルムーア競馬場 芝1200m（直線） で記録を残す",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:mile",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "mile"
+          },
+          "text": "マイル（1401〜1800m）で勝つ",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "wins:5",
+          "kind": "wins",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "5勝する",
+          "have": 5,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 5,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "dirt nige mile / empty",
+      "horse": {
+        "surface": "dirt",
+        "distMinM": 1600,
+        "distMaxM": 1800,
+        "style": "nige",
+        "skillId": null
+      },
+      "record": {
+        "races": 0,
+        "wins": 0,
+        "tournamentWins": 0,
+        "taTracks": [],
+        "surfaceWins": {
+          "turf": 0,
+          "dirt": 0
+        },
+        "bandWins": {
+          "sprint": 0,
+          "mile": 0,
+          "intermediate": 0,
+          "long": 0
+        },
+        "rankedPlaces": 0
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "surface_win:dirt",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "dirt",
+            "n": 3
+          },
+          "text": "ダートで3勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:santalucera_dirt_1700",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "santalucera_dirt_1700",
+            "course": "サンタルチェラ競馬場 ダート1700m"
+          },
+          "text": "タイムアタック サンタルチェラ競馬場 ダート1700m で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:sprint",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "sprint"
+          },
+          "text": "短距離（1400m以下）で勝つ",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "dirt nige mile / started",
+      "horse": {
+        "surface": "dirt",
+        "distMinM": 1600,
+        "distMaxM": 1800,
+        "style": "nige",
+        "skillId": null
+      },
+      "record": {
+        "races": 4,
+        "wins": 1,
+        "tournamentWins": 0,
+        "taTracks": [],
+        "surfaceWins": {
+          "turf": 1,
+          "dirt": 0
+        },
+        "bandWins": {
+          "sprint": 0,
+          "mile": 1,
+          "intermediate": 0,
+          "long": 0
+        },
+        "rankedPlaces": 2
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 4,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "surface_win:dirt",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "dirt",
+            "n": 3
+          },
+          "text": "ダートで3勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:santalucera_dirt_1700",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "santalucera_dirt_1700",
+            "course": "サンタルチェラ競馬場 ダート1700m"
+          },
+          "text": "タイムアタック サンタルチェラ競馬場 ダート1700m で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:sprint",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "sprint"
+          },
+          "text": "短距離（1400m以下）で勝つ",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 2,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "dirt nige mile / busy",
+      "horse": {
+        "surface": "dirt",
+        "distMinM": 1600,
+        "distMaxM": 1800,
+        "style": "nige",
+        "skillId": null
+      },
+      "record": {
+        "races": 25,
+        "wins": 6,
+        "tournamentWins": 0,
+        "taTracks": [
+          "aoba_turf_1600",
+          "aoba_dirt_1400",
+          "minato_dirt_1800",
+          "bellmoor_turf_1200"
+        ],
+        "surfaceWins": {
+          "turf": 3,
+          "dirt": 3
+        },
+        "bandWins": {
+          "sprint": 2,
+          "mile": 2,
+          "intermediate": 2,
+          "long": 0
+        },
+        "rankedPlaces": 7
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 10,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "surface_win:dirt",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "dirt",
+            "n": 3
+          },
+          "text": "ダートで3勝する",
+          "have": 3,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:santalucera_dirt_1700",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "santalucera_dirt_1700",
+            "course": "サンタルチェラ競馬場 ダート1700m"
+          },
+          "text": "タイムアタック サンタルチェラ競馬場 ダート1700m で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "stretch_win:sprint",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "sprint"
+          },
+          "text": "短距離（1400m以下）で勝つ",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 5,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "dirt nige mile / stamped beats count",
+      "horse": {
+        "surface": "dirt",
+        "distMinM": 1600,
+        "distMaxM": 1800,
+        "style": "nige",
+        "skillId": null
+      },
+      "record": {
+        "races": 2,
+        "wins": 0,
+        "tournamentWins": 0,
+        "taTracks": [],
+        "surfaceWins": {
+          "turf": 0,
+          "dirt": 0
+        },
+        "bandWins": {
+          "sprint": 0,
+          "mile": 0,
+          "intermediate": 0,
+          "long": 0
+        },
+        "rankedPlaces": 0
+      },
+      "stamped": {
+        "races:10": 1794000000000,
+        "first_win": 1793000000000
+      },
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 0,
+          "done": true,
+          "completedAt": 1793000000000,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 2,
+          "done": true,
+          "completedAt": 1794000000000,
+          "current": false
+        },
+        {
+          "id": "surface_win:dirt",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "dirt",
+            "n": 3
+          },
+          "text": "ダートで3勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "ta_course:santalucera_dirt_1700",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "santalucera_dirt_1700",
+            "course": "サンタルチェラ競馬場 ダート1700m"
+          },
+          "text": "タイムアタック サンタルチェラ競馬場 ダート1700m で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:sprint",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "sprint"
+          },
+          "text": "短距離（1400m以下）で勝つ",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "dirt nige mile / all done",
+      "horse": {
+        "surface": "dirt",
+        "distMinM": 1600,
+        "distMaxM": 1800,
+        "style": "nige",
+        "skillId": null
+      },
+      "record": {
+        "races": 40,
+        "wins": 12,
+        "tournamentWins": 1,
+        "taTracks": [
+          "aoba_turf_1600",
+          "kirameki_turf_2000",
+          "minato_turf_2400",
+          "aoba_dirt_1400",
+          "minato_dirt_1800",
+          "nordhaven_turf_2400",
+          "santalucera_dirt_1700",
+          "bellmoor_turf_1200"
+        ],
+        "surfaceWins": {
+          "turf": 6,
+          "dirt": 6
+        },
+        "bandWins": {
+          "sprint": 3,
+          "mile": 3,
+          "intermediate": 3,
+          "long": 0
+        },
+        "rankedPlaces": 9
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 10,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "surface_win:dirt",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "dirt",
+            "n": 3
+          },
+          "text": "ダートで3勝する",
+          "have": 3,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:santalucera_dirt_1700",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "santalucera_dirt_1700",
+            "course": "サンタルチェラ競馬場 ダート1700m"
+          },
+          "text": "タイムアタック サンタルチェラ競馬場 ダート1700m で記録を残す",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:sprint",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "sprint"
+          },
+          "text": "短距離（1400m以下）で勝つ",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 5,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "dirt sashi sprint (no longer dirt band runnable beyond) / empty",
+      "horse": {
+        "surface": "dirt",
+        "distMinM": 1000,
+        "distMaxM": 1400,
+        "style": "sashi",
+        "skillId": null
+      },
+      "record": {
+        "races": 0,
+        "wins": 0,
+        "tournamentWins": 0,
+        "taTracks": [],
+        "surfaceWins": {
+          "turf": 0,
+          "dirt": 0
+        },
+        "bandWins": {
+          "sprint": 0,
+          "mile": 0,
+          "intermediate": 0,
+          "long": 0
+        },
+        "rankedPlaces": 0
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "surface_win:dirt",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "dirt",
+            "n": 3
+          },
+          "text": "ダートで3勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:aoba_dirt_1400",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "aoba_dirt_1400",
+            "course": "青葉競馬場 ダート1400m"
+          },
+          "text": "タイムアタック 青葉競馬場 ダート1400m で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:mile",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "mile"
+          },
+          "text": "マイル（1401〜1800m）で勝つ",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "dirt sashi sprint (no longer dirt band runnable beyond) / started",
+      "horse": {
+        "surface": "dirt",
+        "distMinM": 1000,
+        "distMaxM": 1400,
+        "style": "sashi",
+        "skillId": null
+      },
+      "record": {
+        "races": 4,
+        "wins": 1,
+        "tournamentWins": 0,
+        "taTracks": [],
+        "surfaceWins": {
+          "turf": 1,
+          "dirt": 0
+        },
+        "bandWins": {
+          "sprint": 0,
+          "mile": 1,
+          "intermediate": 0,
+          "long": 0
+        },
+        "rankedPlaces": 2
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 4,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "surface_win:dirt",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "dirt",
+            "n": 3
+          },
+          "text": "ダートで3勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:aoba_dirt_1400",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "aoba_dirt_1400",
+            "course": "青葉競馬場 ダート1400m"
+          },
+          "text": "タイムアタック 青葉競馬場 ダート1400m で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:mile",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "mile"
+          },
+          "text": "マイル（1401〜1800m）で勝つ",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 2,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "dirt sashi sprint (no longer dirt band runnable beyond) / busy",
+      "horse": {
+        "surface": "dirt",
+        "distMinM": 1000,
+        "distMaxM": 1400,
+        "style": "sashi",
+        "skillId": null
+      },
+      "record": {
+        "races": 25,
+        "wins": 6,
+        "tournamentWins": 0,
+        "taTracks": [
+          "aoba_turf_1600",
+          "aoba_dirt_1400",
+          "minato_dirt_1800",
+          "bellmoor_turf_1200"
+        ],
+        "surfaceWins": {
+          "turf": 3,
+          "dirt": 3
+        },
+        "bandWins": {
+          "sprint": 2,
+          "mile": 2,
+          "intermediate": 2,
+          "long": 0
+        },
+        "rankedPlaces": 7
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 10,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "surface_win:dirt",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "dirt",
+            "n": 3
+          },
+          "text": "ダートで3勝する",
+          "have": 3,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:aoba_dirt_1400",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "aoba_dirt_1400",
+            "course": "青葉競馬場 ダート1400m"
+          },
+          "text": "タイムアタック 青葉競馬場 ダート1400m で記録を残す",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:mile",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "mile"
+          },
+          "text": "マイル（1401〜1800m）で勝つ",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 5,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        }
+      ]
+    },
+    {
+      "name": "dirt sashi sprint (no longer dirt band runnable beyond) / stamped beats count",
+      "horse": {
+        "surface": "dirt",
+        "distMinM": 1000,
+        "distMaxM": 1400,
+        "style": "sashi",
+        "skillId": null
+      },
+      "record": {
+        "races": 2,
+        "wins": 0,
+        "tournamentWins": 0,
+        "taTracks": [],
+        "surfaceWins": {
+          "turf": 0,
+          "dirt": 0
+        },
+        "bandWins": {
+          "sprint": 0,
+          "mile": 0,
+          "intermediate": 0,
+          "long": 0
+        },
+        "rankedPlaces": 0
+      },
+      "stamped": {
+        "races:10": 1794000000000,
+        "first_win": 1793000000000
+      },
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 0,
+          "done": true,
+          "completedAt": 1793000000000,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 2,
+          "done": true,
+          "completedAt": 1794000000000,
+          "current": false
+        },
+        {
+          "id": "surface_win:dirt",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "dirt",
+            "n": 3
+          },
+          "text": "ダートで3勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "ta_course:aoba_dirt_1400",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "aoba_dirt_1400",
+            "course": "青葉競馬場 ダート1400m"
+          },
+          "text": "タイムアタック 青葉競馬場 ダート1400m で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:mile",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "mile"
+          },
+          "text": "マイル（1401〜1800m）で勝つ",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "dirt sashi sprint (no longer dirt band runnable beyond) / all done",
+      "horse": {
+        "surface": "dirt",
+        "distMinM": 1000,
+        "distMaxM": 1400,
+        "style": "sashi",
+        "skillId": null
+      },
+      "record": {
+        "races": 40,
+        "wins": 12,
+        "tournamentWins": 1,
+        "taTracks": [
+          "aoba_turf_1600",
+          "kirameki_turf_2000",
+          "minato_turf_2400",
+          "aoba_dirt_1400",
+          "minato_dirt_1800",
+          "nordhaven_turf_2400",
+          "santalucera_dirt_1700",
+          "bellmoor_turf_1200"
+        ],
+        "surfaceWins": {
+          "turf": 6,
+          "dirt": 6
+        },
+        "bandWins": {
+          "sprint": 3,
+          "mile": 3,
+          "intermediate": 3,
+          "long": 0
+        },
+        "rankedPlaces": 9
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 10,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "surface_win:dirt",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "dirt",
+            "n": 3
+          },
+          "text": "ダートで3勝する",
+          "have": 3,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:aoba_dirt_1400",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "aoba_dirt_1400",
+            "course": "青葉競馬場 ダート1400m"
+          },
+          "text": "タイムアタック 青葉競馬場 ダート1400m で記録を残す",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:mile",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "mile"
+          },
+          "text": "マイル（1401〜1800m）で勝つ",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 5,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "both nige (dirt has more courses) / empty",
+      "horse": {
+        "surface": "both",
+        "distMinM": 1400,
+        "distMaxM": 1800,
+        "style": "nige",
+        "skillId": "sk_kirameki"
+      },
+      "record": {
+        "races": 0,
+        "wins": 0,
+        "tournamentWins": 0,
+        "taTracks": [],
+        "surfaceWins": {
+          "turf": 0,
+          "dirt": 0
+        },
+        "bandWins": {
+          "sprint": 0,
+          "mile": 0,
+          "intermediate": 0,
+          "long": 0
+        },
+        "rankedPlaces": 0
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "surface_win:dirt",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "dirt",
+            "n": 3
+          },
+          "text": "ダートで3勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:aoba_turf_1600",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "aoba_turf_1600",
+            "course": "青葉競馬場 芝1600m"
+          },
+          "text": "タイムアタック 青葉競馬場 芝1600m で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:intermediate",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "intermediate"
+          },
+          "text": "中距離（1801〜2400m）で勝つ",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "wins:5",
+          "kind": "wins",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "5勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "both nige (dirt has more courses) / started",
+      "horse": {
+        "surface": "both",
+        "distMinM": 1400,
+        "distMaxM": 1800,
+        "style": "nige",
+        "skillId": "sk_kirameki"
+      },
+      "record": {
+        "races": 4,
+        "wins": 1,
+        "tournamentWins": 0,
+        "taTracks": [],
+        "surfaceWins": {
+          "turf": 1,
+          "dirt": 0
+        },
+        "bandWins": {
+          "sprint": 0,
+          "mile": 1,
+          "intermediate": 0,
+          "long": 0
+        },
+        "rankedPlaces": 2
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 4,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "surface_win:dirt",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "dirt",
+            "n": 3
+          },
+          "text": "ダートで3勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:aoba_turf_1600",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "aoba_turf_1600",
+            "course": "青葉競馬場 芝1600m"
+          },
+          "text": "タイムアタック 青葉競馬場 芝1600m で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:intermediate",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "intermediate"
+          },
+          "text": "中距離（1801〜2400m）で勝つ",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "wins:5",
+          "kind": "wins",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "5勝する",
+          "have": 1,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 2,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "both nige (dirt has more courses) / busy",
+      "horse": {
+        "surface": "both",
+        "distMinM": 1400,
+        "distMaxM": 1800,
+        "style": "nige",
+        "skillId": "sk_kirameki"
+      },
+      "record": {
+        "races": 25,
+        "wins": 6,
+        "tournamentWins": 0,
+        "taTracks": [
+          "aoba_turf_1600",
+          "aoba_dirt_1400",
+          "minato_dirt_1800",
+          "bellmoor_turf_1200"
+        ],
+        "surfaceWins": {
+          "turf": 3,
+          "dirt": 3
+        },
+        "bandWins": {
+          "sprint": 2,
+          "mile": 2,
+          "intermediate": 2,
+          "long": 0
+        },
+        "rankedPlaces": 7
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 10,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "surface_win:dirt",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "dirt",
+            "n": 3
+          },
+          "text": "ダートで3勝する",
+          "have": 3,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:aoba_turf_1600",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "aoba_turf_1600",
+            "course": "青葉競馬場 芝1600m"
+          },
+          "text": "タイムアタック 青葉競馬場 芝1600m で記録を残す",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:intermediate",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "intermediate"
+          },
+          "text": "中距離（1801〜2400m）で勝つ",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "wins:5",
+          "kind": "wins",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "5勝する",
+          "have": 5,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 5,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        }
+      ]
+    },
+    {
+      "name": "both nige (dirt has more courses) / stamped beats count",
+      "horse": {
+        "surface": "both",
+        "distMinM": 1400,
+        "distMaxM": 1800,
+        "style": "nige",
+        "skillId": "sk_kirameki"
+      },
+      "record": {
+        "races": 2,
+        "wins": 0,
+        "tournamentWins": 0,
+        "taTracks": [],
+        "surfaceWins": {
+          "turf": 0,
+          "dirt": 0
+        },
+        "bandWins": {
+          "sprint": 0,
+          "mile": 0,
+          "intermediate": 0,
+          "long": 0
+        },
+        "rankedPlaces": 0
+      },
+      "stamped": {
+        "races:10": 1794000000000,
+        "first_win": 1793000000000
+      },
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 0,
+          "done": true,
+          "completedAt": 1793000000000,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 2,
+          "done": true,
+          "completedAt": 1794000000000,
+          "current": false
+        },
+        {
+          "id": "surface_win:dirt",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "dirt",
+            "n": 3
+          },
+          "text": "ダートで3勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "ta_course:aoba_turf_1600",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "aoba_turf_1600",
+            "course": "青葉競馬場 芝1600m"
+          },
+          "text": "タイムアタック 青葉競馬場 芝1600m で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:intermediate",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "intermediate"
+          },
+          "text": "中距離（1801〜2400m）で勝つ",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "wins:5",
+          "kind": "wins",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "5勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "both nige (dirt has more courses) / all done",
+      "horse": {
+        "surface": "both",
+        "distMinM": 1400,
+        "distMaxM": 1800,
+        "style": "nige",
+        "skillId": "sk_kirameki"
+      },
+      "record": {
+        "races": 40,
+        "wins": 12,
+        "tournamentWins": 1,
+        "taTracks": [
+          "aoba_turf_1600",
+          "kirameki_turf_2000",
+          "minato_turf_2400",
+          "aoba_dirt_1400",
+          "minato_dirt_1800",
+          "nordhaven_turf_2400",
+          "santalucera_dirt_1700",
+          "bellmoor_turf_1200"
+        ],
+        "surfaceWins": {
+          "turf": 6,
+          "dirt": 6
+        },
+        "bandWins": {
+          "sprint": 3,
+          "mile": 3,
+          "intermediate": 3,
+          "long": 0
+        },
+        "rankedPlaces": 9
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 10,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "surface_win:dirt",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "dirt",
+            "n": 3
+          },
+          "text": "ダートで3勝する",
+          "have": 3,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:aoba_turf_1600",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "aoba_turf_1600",
+            "course": "青葉競馬場 芝1600m"
+          },
+          "text": "タイムアタック 青葉競馬場 芝1600m で記録を残す",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:intermediate",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "intermediate"
+          },
+          "text": "中距離（1801〜2400m）で勝つ",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "wins:5",
+          "kind": "wins",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "5勝する",
+          "have": 5,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 5,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "both stayer sashi (tie → turf) / empty",
+      "horse": {
+        "surface": "both",
+        "distMinM": 2000,
+        "distMaxM": 2400,
+        "style": "sashi",
+        "skillId": null
+      },
+      "record": {
+        "races": 0,
+        "wins": 0,
+        "tournamentWins": 0,
+        "taTracks": [],
+        "surfaceWins": {
+          "turf": 0,
+          "dirt": 0
+        },
+        "bandWins": {
+          "sprint": 0,
+          "mile": 0,
+          "intermediate": 0,
+          "long": 0
+        },
+        "rankedPlaces": 0
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:kirameki_turf_2000",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "kirameki_turf_2000",
+            "course": "きらめき競馬場 芝2000m"
+          },
+          "text": "タイムアタック きらめき競馬場 芝2000m で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:mile",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "mile"
+          },
+          "text": "マイル（1401〜1800m）で勝つ",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "both stayer sashi (tie → turf) / started",
+      "horse": {
+        "surface": "both",
+        "distMinM": 2000,
+        "distMaxM": 2400,
+        "style": "sashi",
+        "skillId": null
+      },
+      "record": {
+        "races": 4,
+        "wins": 1,
+        "tournamentWins": 0,
+        "taTracks": [],
+        "surfaceWins": {
+          "turf": 1,
+          "dirt": 0
+        },
+        "bandWins": {
+          "sprint": 0,
+          "mile": 1,
+          "intermediate": 0,
+          "long": 0
+        },
+        "rankedPlaces": 2
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 4,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 1,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:kirameki_turf_2000",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "kirameki_turf_2000",
+            "course": "きらめき競馬場 芝2000m"
+          },
+          "text": "タイムアタック きらめき競馬場 芝2000m で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:mile",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "mile"
+          },
+          "text": "マイル（1401〜1800m）で勝つ",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 2,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "both stayer sashi (tie → turf) / busy",
+      "horse": {
+        "surface": "both",
+        "distMinM": 2000,
+        "distMaxM": 2400,
+        "style": "sashi",
+        "skillId": null
+      },
+      "record": {
+        "races": 25,
+        "wins": 6,
+        "tournamentWins": 0,
+        "taTracks": [
+          "aoba_turf_1600",
+          "aoba_dirt_1400",
+          "minato_dirt_1800",
+          "bellmoor_turf_1200"
+        ],
+        "surfaceWins": {
+          "turf": 3,
+          "dirt": 3
+        },
+        "bandWins": {
+          "sprint": 2,
+          "mile": 2,
+          "intermediate": 2,
+          "long": 0
+        },
+        "rankedPlaces": 7
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 10,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 3,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:kirameki_turf_2000",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "kirameki_turf_2000",
+            "course": "きらめき競馬場 芝2000m"
+          },
+          "text": "タイムアタック きらめき競馬場 芝2000m で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "stretch_win:mile",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "mile"
+          },
+          "text": "マイル（1401〜1800m）で勝つ",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 5,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "both stayer sashi (tie → turf) / stamped beats count",
+      "horse": {
+        "surface": "both",
+        "distMinM": 2000,
+        "distMaxM": 2400,
+        "style": "sashi",
+        "skillId": null
+      },
+      "record": {
+        "races": 2,
+        "wins": 0,
+        "tournamentWins": 0,
+        "taTracks": [],
+        "surfaceWins": {
+          "turf": 0,
+          "dirt": 0
+        },
+        "bandWins": {
+          "sprint": 0,
+          "mile": 0,
+          "intermediate": 0,
+          "long": 0
+        },
+        "rankedPlaces": 0
+      },
+      "stamped": {
+        "races:10": 1794000000000,
+        "first_win": 1793000000000
+      },
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 0,
+          "done": true,
+          "completedAt": 1793000000000,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 2,
+          "done": true,
+          "completedAt": 1794000000000,
+          "current": false
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "ta_course:kirameki_turf_2000",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "kirameki_turf_2000",
+            "course": "きらめき競馬場 芝2000m"
+          },
+          "text": "タイムアタック きらめき競馬場 芝2000m で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:mile",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "mile"
+          },
+          "text": "マイル（1401〜1800m）で勝つ",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "both stayer sashi (tie → turf) / all done",
+      "horse": {
+        "surface": "both",
+        "distMinM": 2000,
+        "distMaxM": 2400,
+        "style": "sashi",
+        "skillId": null
+      },
+      "record": {
+        "races": 40,
+        "wins": 12,
+        "tournamentWins": 1,
+        "taTracks": [
+          "aoba_turf_1600",
+          "kirameki_turf_2000",
+          "minato_turf_2400",
+          "aoba_dirt_1400",
+          "minato_dirt_1800",
+          "nordhaven_turf_2400",
+          "santalucera_dirt_1700",
+          "bellmoor_turf_1200"
+        ],
+        "surfaceWins": {
+          "turf": 6,
+          "dirt": 6
+        },
+        "bandWins": {
+          "sprint": 3,
+          "mile": 3,
+          "intermediate": 3,
+          "long": 0
+        },
+        "rankedPlaces": 9
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 10,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 3,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:kirameki_turf_2000",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "kirameki_turf_2000",
+            "course": "きらめき競馬場 芝2000m"
+          },
+          "text": "タイムアタック きらめき競馬場 芝2000m で記録を残す",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:mile",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "mile"
+          },
+          "text": "マイル（1401〜1800m）で勝つ",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 5,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "turf wide range (no stretch) / empty",
+      "horse": {
+        "surface": "turf",
+        "distMinM": 1000,
+        "distMaxM": 2400,
+        "style": "senko",
+        "skillId": null
+      },
+      "record": {
+        "races": 0,
+        "wins": 0,
+        "tournamentWins": 0,
+        "taTracks": [],
+        "surfaceWins": {
+          "turf": 0,
+          "dirt": 0
+        },
+        "bandWins": {
+          "sprint": 0,
+          "mile": 0,
+          "intermediate": 0,
+          "long": 0
+        },
+        "rankedPlaces": 0
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:aoba_turf_1600",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "aoba_turf_1600",
+            "course": "青葉競馬場 芝1600m"
+          },
+          "text": "タイムアタック 青葉競馬場 芝1600m で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "turf wide range (no stretch) / started",
+      "horse": {
+        "surface": "turf",
+        "distMinM": 1000,
+        "distMaxM": 2400,
+        "style": "senko",
+        "skillId": null
+      },
+      "record": {
+        "races": 4,
+        "wins": 1,
+        "tournamentWins": 0,
+        "taTracks": [],
+        "surfaceWins": {
+          "turf": 1,
+          "dirt": 0
+        },
+        "bandWins": {
+          "sprint": 0,
+          "mile": 1,
+          "intermediate": 0,
+          "long": 0
+        },
+        "rankedPlaces": 2
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 4,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 1,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:aoba_turf_1600",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "aoba_turf_1600",
+            "course": "青葉競馬場 芝1600m"
+          },
+          "text": "タイムアタック 青葉競馬場 芝1600m で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 2,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "turf wide range (no stretch) / busy",
+      "horse": {
+        "surface": "turf",
+        "distMinM": 1000,
+        "distMaxM": 2400,
+        "style": "senko",
+        "skillId": null
+      },
+      "record": {
+        "races": 25,
+        "wins": 6,
+        "tournamentWins": 0,
+        "taTracks": [
+          "aoba_turf_1600",
+          "aoba_dirt_1400",
+          "minato_dirt_1800",
+          "bellmoor_turf_1200"
+        ],
+        "surfaceWins": {
+          "turf": 3,
+          "dirt": 3
+        },
+        "bandWins": {
+          "sprint": 2,
+          "mile": 2,
+          "intermediate": 2,
+          "long": 0
+        },
+        "rankedPlaces": 7
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 10,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 3,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:aoba_turf_1600",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "aoba_turf_1600",
+            "course": "青葉競馬場 芝1600m"
+          },
+          "text": "タイムアタック 青葉競馬場 芝1600m で記録を残す",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 5,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        }
+      ]
+    },
+    {
+      "name": "turf wide range (no stretch) / stamped beats count",
+      "horse": {
+        "surface": "turf",
+        "distMinM": 1000,
+        "distMaxM": 2400,
+        "style": "senko",
+        "skillId": null
+      },
+      "record": {
+        "races": 2,
+        "wins": 0,
+        "tournamentWins": 0,
+        "taTracks": [],
+        "surfaceWins": {
+          "turf": 0,
+          "dirt": 0
+        },
+        "bandWins": {
+          "sprint": 0,
+          "mile": 0,
+          "intermediate": 0,
+          "long": 0
+        },
+        "rankedPlaces": 0
+      },
+      "stamped": {
+        "races:10": 1794000000000,
+        "first_win": 1793000000000
+      },
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 0,
+          "done": true,
+          "completedAt": 1793000000000,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 2,
+          "done": true,
+          "completedAt": 1794000000000,
+          "current": false
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "ta_course:aoba_turf_1600",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "aoba_turf_1600",
+            "course": "青葉競馬場 芝1600m"
+          },
+          "text": "タイムアタック 青葉競馬場 芝1600m で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "turf wide range (no stretch) / all done",
+      "horse": {
+        "surface": "turf",
+        "distMinM": 1000,
+        "distMaxM": 2400,
+        "style": "senko",
+        "skillId": null
+      },
+      "record": {
+        "races": 40,
+        "wins": 12,
+        "tournamentWins": 1,
+        "taTracks": [
+          "aoba_turf_1600",
+          "kirameki_turf_2000",
+          "minato_turf_2400",
+          "aoba_dirt_1400",
+          "minato_dirt_1800",
+          "nordhaven_turf_2400",
+          "santalucera_dirt_1700",
+          "bellmoor_turf_1200"
+        ],
+        "surfaceWins": {
+          "turf": 6,
+          "dirt": 6
+        },
+        "bandWins": {
+          "sprint": 3,
+          "mile": 3,
+          "intermediate": 3,
+          "long": 0
+        },
+        "rankedPlaces": 9
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 10,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 3,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:aoba_turf_1600",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "aoba_turf_1600",
+            "course": "青葉競馬場 芝1600m"
+          },
+          "text": "タイムアタック 青葉競馬場 芝1600m で記録を残す",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 5,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "turf stayer nige (shorter side) / empty",
+      "horse": {
+        "surface": "turf",
+        "distMinM": 2200,
+        "distMaxM": 3000,
+        "style": "nige",
+        "skillId": null
+      },
+      "record": {
+        "races": 0,
+        "wins": 0,
+        "tournamentWins": 0,
+        "taTracks": [],
+        "surfaceWins": {
+          "turf": 0,
+          "dirt": 0
+        },
+        "bandWins": {
+          "sprint": 0,
+          "mile": 0,
+          "intermediate": 0,
+          "long": 0
+        },
+        "rankedPlaces": 0
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:minato_turf_2400",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "minato_turf_2400",
+            "course": "みなと競馬場 芝2400m"
+          },
+          "text": "タイムアタック みなと競馬場 芝2400m で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:mile",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "mile"
+          },
+          "text": "マイル（1401〜1800m）で勝つ",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "turf stayer nige (shorter side) / started",
+      "horse": {
+        "surface": "turf",
+        "distMinM": 2200,
+        "distMaxM": 3000,
+        "style": "nige",
+        "skillId": null
+      },
+      "record": {
+        "races": 4,
+        "wins": 1,
+        "tournamentWins": 0,
+        "taTracks": [],
+        "surfaceWins": {
+          "turf": 1,
+          "dirt": 0
+        },
+        "bandWins": {
+          "sprint": 0,
+          "mile": 1,
+          "intermediate": 0,
+          "long": 0
+        },
+        "rankedPlaces": 2
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 4,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 1,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:minato_turf_2400",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "minato_turf_2400",
+            "course": "みなと競馬場 芝2400m"
+          },
+          "text": "タイムアタック みなと競馬場 芝2400m で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:mile",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "mile"
+          },
+          "text": "マイル（1401〜1800m）で勝つ",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 2,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "turf stayer nige (shorter side) / busy",
+      "horse": {
+        "surface": "turf",
+        "distMinM": 2200,
+        "distMaxM": 3000,
+        "style": "nige",
+        "skillId": null
+      },
+      "record": {
+        "races": 25,
+        "wins": 6,
+        "tournamentWins": 0,
+        "taTracks": [
+          "aoba_turf_1600",
+          "aoba_dirt_1400",
+          "minato_dirt_1800",
+          "bellmoor_turf_1200"
+        ],
+        "surfaceWins": {
+          "turf": 3,
+          "dirt": 3
+        },
+        "bandWins": {
+          "sprint": 2,
+          "mile": 2,
+          "intermediate": 2,
+          "long": 0
+        },
+        "rankedPlaces": 7
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 10,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 3,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:minato_turf_2400",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "minato_turf_2400",
+            "course": "みなと競馬場 芝2400m"
+          },
+          "text": "タイムアタック みなと競馬場 芝2400m で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "stretch_win:mile",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "mile"
+          },
+          "text": "マイル（1401〜1800m）で勝つ",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 5,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "turf stayer nige (shorter side) / stamped beats count",
+      "horse": {
+        "surface": "turf",
+        "distMinM": 2200,
+        "distMaxM": 3000,
+        "style": "nige",
+        "skillId": null
+      },
+      "record": {
+        "races": 2,
+        "wins": 0,
+        "tournamentWins": 0,
+        "taTracks": [],
+        "surfaceWins": {
+          "turf": 0,
+          "dirt": 0
+        },
+        "bandWins": {
+          "sprint": 0,
+          "mile": 0,
+          "intermediate": 0,
+          "long": 0
+        },
+        "rankedPlaces": 0
+      },
+      "stamped": {
+        "races:10": 1794000000000,
+        "first_win": 1793000000000
+      },
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 0,
+          "done": true,
+          "completedAt": 1793000000000,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 2,
+          "done": true,
+          "completedAt": 1794000000000,
+          "current": false
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "ta_course:minato_turf_2400",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "minato_turf_2400",
+            "course": "みなと競馬場 芝2400m"
+          },
+          "text": "タイムアタック みなと競馬場 芝2400m で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:mile",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "mile"
+          },
+          "text": "マイル（1401〜1800m）で勝つ",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "turf stayer nige (shorter side) / all done",
+      "horse": {
+        "surface": "turf",
+        "distMinM": 2200,
+        "distMaxM": 3000,
+        "style": "nige",
+        "skillId": null
+      },
+      "record": {
+        "races": 40,
+        "wins": 12,
+        "tournamentWins": 1,
+        "taTracks": [
+          "aoba_turf_1600",
+          "kirameki_turf_2000",
+          "minato_turf_2400",
+          "aoba_dirt_1400",
+          "minato_dirt_1800",
+          "nordhaven_turf_2400",
+          "santalucera_dirt_1700",
+          "bellmoor_turf_1200"
+        ],
+        "surfaceWins": {
+          "turf": 6,
+          "dirt": 6
+        },
+        "bandWins": {
+          "sprint": 3,
+          "mile": 3,
+          "intermediate": 3,
+          "long": 0
+        },
+        "rankedPlaces": 9
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 10,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 3,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:minato_turf_2400",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "minato_turf_2400",
+            "course": "みなと競馬場 芝2400m"
+          },
+          "text": "タイムアタック みなと競馬場 芝2400m で記録を残す",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:mile",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "mile"
+          },
+          "text": "マイル（1401〜1800m）で勝つ",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 5,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "turf out of every course (gap ranks the course) / empty",
+      "horse": {
+        "surface": "turf",
+        "distMinM": 2600,
+        "distMaxM": 3200,
+        "style": "oikomi",
+        "skillId": "sk"
+      },
+      "record": {
+        "races": 0,
+        "wins": 0,
+        "tournamentWins": 0,
+        "taTracks": [],
+        "surfaceWins": {
+          "turf": 0,
+          "dirt": 0
+        },
+        "bandWins": {
+          "sprint": 0,
+          "mile": 0,
+          "intermediate": 0,
+          "long": 0
+        },
+        "rankedPlaces": 0
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:minato_turf_2400",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "minato_turf_2400",
+            "course": "みなと競馬場 芝2400m"
+          },
+          "text": "タイムアタック みなと競馬場 芝2400m で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:intermediate",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "intermediate"
+          },
+          "text": "中距離（1801〜2400m）で勝つ",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "wins:5",
+          "kind": "wins",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "5勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "turf out of every course (gap ranks the course) / started",
+      "horse": {
+        "surface": "turf",
+        "distMinM": 2600,
+        "distMaxM": 3200,
+        "style": "oikomi",
+        "skillId": "sk"
+      },
+      "record": {
+        "races": 4,
+        "wins": 1,
+        "tournamentWins": 0,
+        "taTracks": [],
+        "surfaceWins": {
+          "turf": 1,
+          "dirt": 0
+        },
+        "bandWins": {
+          "sprint": 0,
+          "mile": 1,
+          "intermediate": 0,
+          "long": 0
+        },
+        "rankedPlaces": 2
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 4,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 1,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:minato_turf_2400",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "minato_turf_2400",
+            "course": "みなと競馬場 芝2400m"
+          },
+          "text": "タイムアタック みなと競馬場 芝2400m で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:intermediate",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "intermediate"
+          },
+          "text": "中距離（1801〜2400m）で勝つ",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "wins:5",
+          "kind": "wins",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "5勝する",
+          "have": 1,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 2,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "turf out of every course (gap ranks the course) / busy",
+      "horse": {
+        "surface": "turf",
+        "distMinM": 2600,
+        "distMaxM": 3200,
+        "style": "oikomi",
+        "skillId": "sk"
+      },
+      "record": {
+        "races": 25,
+        "wins": 6,
+        "tournamentWins": 0,
+        "taTracks": [
+          "aoba_turf_1600",
+          "aoba_dirt_1400",
+          "minato_dirt_1800",
+          "bellmoor_turf_1200"
+        ],
+        "surfaceWins": {
+          "turf": 3,
+          "dirt": 3
+        },
+        "bandWins": {
+          "sprint": 2,
+          "mile": 2,
+          "intermediate": 2,
+          "long": 0
+        },
+        "rankedPlaces": 7
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 10,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 3,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:minato_turf_2400",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "minato_turf_2400",
+            "course": "みなと競馬場 芝2400m"
+          },
+          "text": "タイムアタック みなと競馬場 芝2400m で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "stretch_win:intermediate",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "intermediate"
+          },
+          "text": "中距離（1801〜2400m）で勝つ",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "wins:5",
+          "kind": "wins",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "5勝する",
+          "have": 5,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 5,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "turf out of every course (gap ranks the course) / stamped beats count",
+      "horse": {
+        "surface": "turf",
+        "distMinM": 2600,
+        "distMaxM": 3200,
+        "style": "oikomi",
+        "skillId": "sk"
+      },
+      "record": {
+        "races": 2,
+        "wins": 0,
+        "tournamentWins": 0,
+        "taTracks": [],
+        "surfaceWins": {
+          "turf": 0,
+          "dirt": 0
+        },
+        "bandWins": {
+          "sprint": 0,
+          "mile": 0,
+          "intermediate": 0,
+          "long": 0
+        },
+        "rankedPlaces": 0
+      },
+      "stamped": {
+        "races:10": 1794000000000,
+        "first_win": 1793000000000
+      },
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 0,
+          "done": true,
+          "completedAt": 1793000000000,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 2,
+          "done": true,
+          "completedAt": 1794000000000,
+          "current": false
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": true
+        },
+        {
+          "id": "ta_course:minato_turf_2400",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "minato_turf_2400",
+            "course": "みなと競馬場 芝2400m"
+          },
+          "text": "タイムアタック みなと競馬場 芝2400m で記録を残す",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:intermediate",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "intermediate"
+          },
+          "text": "中距離（1801〜2400m）で勝つ",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "wins:5",
+          "kind": "wins",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "5勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 0,
+          "done": false,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    },
+    {
+      "name": "turf out of every course (gap ranks the course) / all done",
+      "horse": {
+        "surface": "turf",
+        "distMinM": 2600,
+        "distMaxM": 3200,
+        "style": "oikomi",
+        "skillId": "sk"
+      },
+      "record": {
+        "races": 40,
+        "wins": 12,
+        "tournamentWins": 1,
+        "taTracks": [
+          "aoba_turf_1600",
+          "kirameki_turf_2000",
+          "minato_turf_2400",
+          "aoba_dirt_1400",
+          "minato_dirt_1800",
+          "nordhaven_turf_2400",
+          "santalucera_dirt_1700",
+          "bellmoor_turf_1200"
+        ],
+        "surfaceWins": {
+          "turf": 6,
+          "dirt": 6
+        },
+        "bandWins": {
+          "sprint": 3,
+          "mile": 3,
+          "intermediate": 3,
+          "long": 0
+        },
+        "rankedPlaces": 9
+      },
+      "stamped": {},
+      "expect": [
+        {
+          "id": "first_win",
+          "kind": "first_win",
+          "need": 1,
+          "params": {},
+          "text": "初勝利をあげる",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "races:10",
+          "kind": "races",
+          "need": 10,
+          "params": {
+            "n": 10
+          },
+          "text": "10戦を走る",
+          "have": 10,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "surface_win:turf",
+          "kind": "surface_win",
+          "need": 3,
+          "params": {
+            "surface": "turf",
+            "n": 3
+          },
+          "text": "芝で3勝する",
+          "have": 3,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ta_course:minato_turf_2400",
+          "kind": "ta_course",
+          "need": 1,
+          "params": {
+            "trackId": "minato_turf_2400",
+            "course": "みなと競馬場 芝2400m"
+          },
+          "text": "タイムアタック みなと競馬場 芝2400m で記録を残す",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "stretch_win:intermediate",
+          "kind": "stretch_win",
+          "need": 1,
+          "params": {
+            "band": "intermediate"
+          },
+          "text": "中距離（1801〜2400m）で勝つ",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "wins:5",
+          "kind": "wins",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "5勝する",
+          "have": 5,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "ranked_top3:5",
+          "kind": "ranked_top3",
+          "need": 5,
+          "params": {
+            "n": 5
+          },
+          "text": "ランク戦で3着以内に5回入る",
+          "have": 5,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        },
+        {
+          "id": "tournament_win",
+          "kind": "tournament_win",
+          "need": 1,
+          "params": {},
+          "text": "大会で優勝する",
+          "have": 1,
+          "done": true,
+          "completedAt": null,
+          "current": false
+        }
+      ]
+    }
+  ]
+}

@@ -267,6 +267,8 @@ namespace Muchi.Client
         public AccessibilitySettings Accessibility = new AccessibilitySettings();
         /// <summary>REQ-NEXT-010: the home's next card at bootstrap (no team goal; GET /v1/home/next has it). Null from an older server.</summary>
         public NextActionsView NextActions;
+        /// <summary>REQ-HGOAL-010: the goal pinned to the home (null = none, or an older server).</summary>
+        public HorseGoalPin HorseGoalPin;
         public int Rating, RatingDeviation, RankedRaces;
         public string SeasonId, ClassId;
         public int SeasonPoints;
@@ -302,6 +304,7 @@ namespace Muchi.Client
                 CommentaryPack = J.Str(J.Opt(o, "commentaryPack"), "equipped") ?? CommentaryPackCatalog.StandardPackId,
                 Accessibility = AccessibilitySettings.Parse(J.Opt(o, "accessibility")),
                 NextActions = NextActionsView.Parse(J.Opt(o, "nextActions")),
+                HorseGoalPin = HorseGoalPin.Parse(J.Opt(o, "horseGoalPin")),
             };
         }
     }

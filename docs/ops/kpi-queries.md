@@ -1064,32 +1064,53 @@ GROUP BY week
 ORDER BY week DESC
 ```
 ## 通報とブロック（REQ-RPT-017、contracts/protocol.md §47、Round 17）
+
 **どこから・何の理由で通報されるか、ブロックがどれだけ使われ戻されるか**。3つともサーバーのイベント（受け付けた通報・一覧が本当に変わった時だけ）。相手の id と補足の文は入れない。
+
 | イベント | blob8 | blob9 | blob10 | double5 |
 |---|---|---|---|---|
 | `report_submit` | 理由（`name`・`text`・`cheating`・`harassment`・`other`） | 対象（`display_name` など） | 入口（`profile`・`team_feed`・`hall`・`replay` …） | — |
 | `block_add` | どこから（`blocks`・`report`・`team_feed`・`rival`） | — | — | 一覧の人数 |
 | `block_remove` | どこから（`blocks`・`team_feed`） | — | — | 一覧の人数 |
+
+```sql
 -- 日ごとの通報（理由 × 入口）：ある入口だけ急に増えたら、その画面の名前・文の確認を見直す
 SELECT blob6 AS day, blob8 AS category, blob10 AS source, sum(_sample_interval) AS reports, count(DISTINCT blob2) AS reporters
+FROM muchi_kpi
 WHERE blob1 = 'report_submit' AND timestamp > NOW() - INTERVAL '30' DAY
 GROUP BY day, category, source ORDER BY day DESC, reports DESC
+```
+
+```sql
 -- ブロックの追加と解除（どこから）：解除が多い入口は、ブロックの説明が足りないかもしれない
 SELECT blob1 AS event, blob8 AS origin, sum(_sample_interval) AS n, count(DISTINCT blob2) AS players
+FROM muchi_kpi
 WHERE blob1 IN ('block_add', 'block_remove') AND timestamp > NOW() - INTERVAL '30' DAY
 GROUP BY event, origin ORDER BY n DESC
+```
+
 - 通報の中身（誰が誰を・写し・補足）は KPI ではなく運営コンソールの通報の列（`/v1/admin/player-reports`）で見る。1人が1日に出せる数は `reports.perDay` までなので、通報者ごとの数が多い日は「重み」（§47.7）と合わせて確認する。
 - 「通報したらブロックもする」の割合 = `block_add`（`blob8 = 'report'`）÷ `report_submit`。
+
 ## メンテナンス・強制アップデート（REQ-MNT-013、contracts/protocol.md §46.8、Round 17）
+
 **メンテナンスで止まった人の数（グループごと）と、更新の案内から実際にストアへ行った割合**。`maintenance_block`（`blob8` = グループ、`blob9` = 窓の id、窓 × グループごとにアプリの起動で1回）と `upgrade_prompt`（`blob8` = `required`/`recommended`/`engine`、`blob9` = `shown`/`store`/`later`、`blob10` = OS）はクライアントのイベント。止められた要求そのものはサーバーで数えない（再読み込みで同じ人が何度も数えられないように）。
+
+```sql
 -- 窓ごと・グループごとに止まった人数
 SELECT blob9 AS window_id, blob8 AS grp, count(DISTINCT blob2) AS players, sum(_sample_interval) AS blocks
+FROM muchi_kpi
 WHERE blob1 = 'maintenance_block' AND timestamp > NOW() - INTERVAL '30' DAY
 GROUP BY window_id, grp ORDER BY window_id DESC, players DESC
+```
+
+```sql
 -- 更新の案内：出した数とストアへ進んだ割合（種類・OS ごと）
 SELECT blob8 AS kind, blob10 AS os,
   sumIf(_sample_interval, blob9 = 'shown') AS shown,
   sumIf(_sample_interval, blob9 = 'store') AS to_store,
   sumIf(_sample_interval, blob9 = 'later') AS later
+FROM muchi_kpi
 WHERE blob1 = 'upgrade_prompt' AND timestamp > NOW() - INTERVAL '30' DAY
 GROUP BY kind, os ORDER BY kind, os
+```

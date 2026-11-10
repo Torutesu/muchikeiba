@@ -5532,6 +5532,7 @@ const mntBlocked = new Set();
 function mntBlock(d) {
   const key = `${d.windowId}/${d.group}`;
   if (!mntBlocked.has(key)) { mntBlocked.add(key); mntKpi({ name: 'maintenance_block', group: d.group, windowId: d.windowId }); }
+}
 /** Full screen: a window with scope all (503 MAINTENANCE on every request). */
 function Maintenance(d) {
   currentScreen = () => Maintenance(d);
@@ -5549,6 +5550,7 @@ function Maintenance(d) {
   Cta('再読み込み', 82, 648, 420, () => MaintenanceReload()).dataset.action = 'mnt-reload';
   Txt(MNT_PURCHASE, 82, 764, 900, 15, MUTED, undefined, { cls: 'tshadow', weight: 500 });
   EnToggle(1466, 31, 98, 88);
+}
 /** 「再読み込み」: GET /v1/maintenance and the gate again; back to the game when nothing covers it any more. */
 function MaintenanceReload() {
   const r = L.maintenanceCheck('/v1/player');
@@ -5556,6 +5558,7 @@ function MaintenanceReload() {
   if (r.gate?.code === 'MAINTENANCE') { toast('まだメンテナンス中です'); return Maintenance(r.gate.details); }
   toast('メンテナンスが終わりました');
   return Home();
+}
 /** A scoped window: the feature that was opened is closed; a notice over it, the rest of the game keeps working. */
 function MaintenanceSheet(d) {
   mntBlock(d);
@@ -5572,11 +5575,13 @@ function MaintenanceSheet(d) {
   Txt(MNT_PURCHASE, 44, 306, 672, 14, SOFT, dlg, { weight: 500 });
   Cta('ホームへ', 44, 362, 360, () => dlg.remove(), dlg, 'small');
   return dlg;
+}
 /** Opening スカウト while a scoped window covers it: the gate's 503 → the notice over home (only on home, never over a prompt). */
 function MaintenanceScoped() {
   const g = L.maintenanceCheck('/v1/gacha/banners').gate;
   if (g?.code !== 'MAINTENANCE' || cur?.dataset.screen !== 'home') return null;
   return MaintenanceSheet(g.details);
+}
 /** 426 UPGRADE_REQUIRED: the update screen with the store button. It does not go away by itself. */
 function UpdateRequired(d) {
   currentScreen = () => UpdateRequired(d);
@@ -5594,9 +5599,11 @@ function UpdateRequired(d) {
   const go = Cta('ストアへ', 82, 590, 420, () => {
     mntKpi({ name: 'upgrade_prompt', kind, action: 'store', platform: 'ios' });
     toast('ストアを開きます（プロトタイプでは開きません）');
+  });
   go.dataset.action = 'mnt-store'; go.dataset.url = d.storeUrl ?? '';
   Txt(MNT_PURCHASE, 82, 706, 900, 15, MUTED, undefined, { cls: 'tshadow', weight: 500 });
   EnToggle(1466, 31, 98, 88);
+}
 /** The announced (or running) window, opened from what's new: when, what stops, and what never stops. */
 function MaintenanceNotice() {
   currentScreen = () => MaintenanceNotice();
@@ -5615,6 +5622,8 @@ function MaintenanceNotice() {
   Txt(MNT_PURCHASE, 36, 386, 980, 15, MUTED, p, { weight: 500, lh: 1.6 });
   Cta('ホームへ', 36, 576, 376, () => Home(), p, 'small');
   Back(Home, 'ホームへ', 40, 834);
+}
+
 // ================================================================= round 13: 購入履歴・コイン履歴・ガチャ履歴 (REQ-HIST-*, contracts/protocol.md §33)
 // The same screen as the Unity HistoryModel: a balance header with 有償 / 無償 apart and this month against the age limit,
 // four tabs (購入 / 有償コイン / 無償コイン / ガチャ), pages by the server's cursor, the selected row's detail, and the

@@ -2385,7 +2385,9 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 
 ## 46. メンテナンス・強制アップデート（REQ-MNT-001〜016、`server/src/domain/maintenance.ts`、C# `Maintenance.cs`（`MaintenanceInfo`・`UpgradeInfo`・`MaintenanceStatus`・`ClientVersion`）・`Muchi.Net.EngineInfo`・`Muchi.Game.MaintenanceModel`、docs/handoff-codex-round17-maintenance.md）
 運用が**時間を決めて機能を止める**（メンテナンス）仕組みと、**古いアプリを止めて更新へ案内する**仕組み。どちらもリモート設定（§22 の版・有効化・切り戻し・監査）の1区画 `maintenance` で動き、アプリの更新もデプロイも要らない。E番号なし（経済は変わらない。お詫びの補填は既存のプレゼントボックスの補填 §26・REQ-OPS-026 の上限のまま、題名 `ops_compensation_maintenance`「メンテナンスのお詫び」。有償コインはプレゼントボックスに入らない）。
+
 ### 46.1 リモート設定 `maintenance`（REQ-MNT-001/002、`ops/config.ts` で他の区画と同じく検査）
+```json
 { "maintenance": {
     "windows": [
       { "id": "m-1112", "startAtMs": 1794416400000, "endAtMs": 1794430800000, "announceAtMs": 1794330000000,
@@ -2397,6 +2399,7 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
       "ios":     { "min": "1.2.0", "recommended": "1.3.0", "storeUrl": "https://apps.apple.com/jp/app/id…" },
       "android": { "min": "1.2.0", "recommended": "1.3.0", "storeUrl": "https://play.google.com/store/apps/details?id=…" } },
     "minEngineLevel": 1 } }
+```
 - 無ければ既定（窓なし、両 OS とも `0.0.0`・`storeUrl: null`、`minEngineLevel: 1`）＝何も止めない。区画を出すと**全体の置き換え**。
 - 時刻は epoch ms で持ち、運用コンソールでは日本時間（`YYYY-MM-DDTHH:mm`）で入れて見る。`announceAtMs` 省略＝開始の24時間前。
 - `scope`：`"all"`、または止めるグループの配列（§46.2 の表。`core` は `"all"` でだけ止まる）。
@@ -2404,8 +2407,10 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 - 各窓の英語は、日本語のメッセージをキーにして言語表（`locale.en`）へ足す（応答の境界で英語になる、§23）。
 - `clientVersions`：`x.y.z`、`recommended ≥ min`。どちらかが `0.0.0` より上なら `storeUrl` 必須。`storeUrl` は https で、iOS は `apps.apple.com` / `itunes.apple.com`、Android は `play.google.com` だけ（更新ボタンが他所へ飛ばないように）。
 - `minEngineLevel`：1〜1000。ランク戦などのレースに入れる最低のエンジン（§46.4）。
+
 ### 46.2 止まるもの・止まらないもの（REQ-MNT-003）
 | グループ | パス |
+|---|---|
 | `gacha` | `/v1/gacha/*`・`/v1/items/*`（チケット） |
 | `shop` | `/v1/shop/*`・`/v1/silks/parts/*`・`/v1/commentary/packs/*` |
 | `ranked` | `/v1/match/*`・`/v1/friend-rooms/*`・`/v1/race/*`・`/v1/races/*` |
@@ -2414,6 +2419,7 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 | `time_attack` | `/v1/time-attack/*`・`/v1/challenges/*` |
 | `social` | `/v1/friends/*`・`/v1/invite*`・`/v1/stable*`・`/v1/rival*` |
 | `core` | それ以外のすべて（プレイヤー・馬・ミッション・プレゼントボックス…） |
+
 **どの窓でも・どのバージョンでも止まらない**（`EXEMPT_ROUTES`）：
 - 状態を見る口：`GET /v1/health`・`/v1/config`・`/v1/maintenance`・`/v1/assets/catalog`・`/v1/visuals`。
 - **購入レシート `POST /v1/shop/purchase`・ストアのサーバー通知 `POST /v1/store/notifications/:platform`・`GET /v1/shop/store-account`**：ストアで支払いが済んだ購入は必ず付与する（資金決済法：有償コインの購入を失わない）。メンテナンス中でも、古いアプリからでも受け付ける。新しい購入の始まり（`purchase-intent`）は `shop` の窓で止まる。
@@ -2422,57 +2428,75 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 - **進行中のものの確定**：レースのソケット `GET /v1/race/:raceId/ws`（始まったレースは最後まで走り、`final` まで確定する）、`POST /v1/time-attack/submit`・`/v1/challenges/weekly/submit`・`/v1/training/:sessionId/finish`、待ち行列から抜ける `POST /v1/match/cancel`・`/v1/events/:eventId/cancel`。
 - KPI の送信 `POST /v1/analytics/events`（`maintenance_block`・`upgrade_prompt` はここを通る）と購入履歴 `GET /v1/history/*`・`POST /v1/history/support-ticket`。
 - 管理API `/v1/admin/*`（運用はメンテナンス中に作業する）。cron（`scheduled`）も止まらない。
+
 ### 46.3 1回だけの入口の検査と応答（REQ-MNT-006/007）
 Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateRequest`）。**入口を通った要求は最後まで動く**：窓が始まっても途中で切らない（ガチャ・購入・受け取りは DO の1つのトランザクションで終わる）。順番：
 1. 止まらない口 → そのまま。
 2. **バージョン**：`x-client-platform`（`ios` / `android`）と `x-client-version`（`x.y.z`）が両方あり、`min` より古い → **426 `UPGRADE_REQUIRED`**（待っても直らないので窓より先）。
 3. **エンジン**：レースのグループ（`ranked`・`events`・`tournaments`・`time_attack`）で `x-engine-level` が `max(minEngineLevel, ENGINE_LEVEL)` より小さい → 426 `UPGRADE_REQUIRED`（`reason: "engine"`）。
 4. **窓**：開いている窓（`startAtMs ≤ 今 < 終わり`、終わり＝`endAtMs` か `cancelledAtMs` の早い方）がそのグループを含む → **503 `MAINTENANCE`**。
+
 ヘッダーの無い要求（Round 17 より前のアプリ、ボット、サーバー間）はバージョンとエンジンの検査を通る（窓は効く）。
+
+```json
 503  Retry-After: 12600   Cache-Control: no-store
 { "error": { "code": "MAINTENANCE", "message": "メンテナンス中です",
   "details": { "windowId": "m-1112", "group": "gacha", "scope": "all", "startAt": 1794416400000, "endAt": 1794430800000,
                "endsAtJst": "11/12 06:00", "retryAfterSec": 12600, "message": "11/12 2:00〜6:00 にメンテナンスを行います。" } } }
+
 426
 { "error": { "code": "UPGRADE_REQUIRED", "message": "アプリを最新版に更新してください",
   "details": { "reason": "version", "platform": "ios", "version": "1.1.0", "minVersion": "1.2.0", "recommendedVersion": "1.3.0",
                "storeUrl": "https://apps.apple.com/jp/app/id…" } } }
+```
 - `?lang=en` / `Accept-Language: en` なら `message` と `details.message` は英語（"Under maintenance"、窓の英語）。`reason: "engine"` の時は「レースに参加するにはアプリの更新が必要です」と `engineLevel`・`minEngineLevel`。
 - 503 の他の原因（`VERIFIER_UNAVAILABLE` など）と区別できるのは `code` だけ。クライアントは `MAINTENANCE` を**再試行しない**（`Retry-After` まで待つ）。
+
 ### 46.4 レースの握手（REQ-MNT-008、§4 の後方互換な拡張）
 - `hello` に任意の `engine`（整数 1〜1000、C# `Muchi.Net.EngineInfo.Level`、今は 1）。新しいアプリは必ず送る。
 - 部屋はチケットを確かめた後、`engine` がそのレースに要る水準（`ENGINE_LEVEL`）より小さければ `{"t":"err","code":"VERSION_MISMATCH"}` を送り、close **4026 `version mismatch`** で閉じる（席に着かない）。`engine` の無い `hello`（古いアプリ・ボット・検証）は今までどおり。
 - §4.1 の close code に 4026 を足す：クライアントは再接続しない。`Failed`、`FailureReason` = `VERSION_MISMATCH`、更新画面へ。
 - 待ち行列に入る前の HTTP（§46.3 の 3）で同じ水準を先に調べるので、ふつうは部屋まで来ない。部屋の検査は抜け道を塞ぐ二重の守り。エンジンの水準は、レースの計算の形が変わる時に C# と TS で一緒に上げる（今のルールセットの結果は変わらない。ゴールデンも同じ）。
 - 新しいキー `engine` は部屋の厳密なスキーマ（`clientMessageSchema`）に足した。**Worker を先に出し、そのあとアプリ**（古い Worker は知らないキーの `hello` を `BAD_MESSAGE` で断る）。いつもの「検証サーバー → Worker → ストアのアプリ」の順なので特別な手順は無い。
+
 ### 46.5 `GET /v1/maintenance`（認証なし、止まらない、REQ-MNT-004/005）
+```json
 { "serverNowMs": 1794330000000,
   "active":   [],
   "upcoming": [ { "id": "m-1112", "scope": "all", "startAt": 1794416400000, "endAt": 1794430800000, "announceAt": 1794330000000,
                   "startJst": "11/12 02:00", "endJst": "11/12 06:00", "message": "11/12 2:00〜6:00 にメンテナンスを行います。", "status": "announced" } ],
   "client": { "platform": "ios", "version": "1.2.1", "status": "recommended", "minVersion": "1.2.0", "recommendedVersion": "1.3.0",
               "storeUrl": "https://apps.apple.com/jp/app/id…", "minEngineLevel": 1 } }
+```
 - `active`：今開いている窓。`upcoming`：お知らせの時刻を過ぎ、まだ始まっていない窓（取り消した窓は出ない）。早い順。
 - `client.status`：`ok` / `recommended`（推奨より古い。任意の更新の案内）/ `required`（最低より古い）/ `unknown`（ヘッダーが無い・他の OS・読めない番号）。
 - アプリは起動時・ホームに戻った時にこれを読み、ホームのお知らせ帯（予定の窓）と推奨の更新の案内を出す。
 - **新着情報（§20）**：お知らせの時刻を過ぎた窓は、終わるまで `GET /v1/whats-new` に `kind: "maintenance"`・`feature: "maintenance"`・題名「メンテナンスのお知らせ」・本文＝窓のメッセージ・`endsAt`＝終わりの項目として出る（見た後は出ない）。押すとメンテナンスのお知らせを開く。アクティビティ（§40）には書かない（自分に起きたことではない）。
+
 ### 46.6 運用コンソール（REQ-MNT-011、`/v1/admin/maintenance*`、`tools/ops-console` の「メンテナンス」）
 | メソッド・パス | 役割 | 内容 |
+|---|---|---|
 | `GET /v1/admin/maintenance` | viewer | 有効な版の窓（状態 `scheduled`・`announced`・`active`・`ended`・`ended_early`・`cancelled`、JST の時刻、止まるグループ）と対応バージョン |
 | `POST /v1/admin/maintenance/preview` | viewer | `{ window }` の検査結果と、プレイヤーに見えるお知らせ帯（日本語・英語）。何も保存しない |
 | `POST /v1/admin/maintenance/windows` | admin | `{ window: { id, startJst, endJst, announceJst?, scope, message }, reason }`。過去に始まる窓は 400（緊急は開始＝今） |
 | `POST /v1/admin/maintenance/windows/:id/cancel` | admin | 始まる前なら取り消し、実施中なら今で終わり（`cancelledAtMs` = 今）。終わった窓は 409 |
 | `PUT /v1/admin/maintenance/client-versions` | admin | `{ clientVersions, minEngineLevel?, reason }` |
+
 - 変更はどれも**有効な版から `maintenance` だけを置き換えた新しい版**を作って今すぐ有効にする（他の区画は変わらない。§22 の検査・監査ログ・切り戻しがそのまま効く）。他の版の有効化が予約されている時は 409（その版が後で効くとこの変更が消えるため。先に取り消すか有効にする）。各 isolate はリモート設定を30秒持つので、反映は30秒以内。
 - 書き込みは理由（3〜500字）が必須で、監査ログに前後の値と一緒に残る（`maintenance.schedule`・`maintenance.cancel`・`maintenance.versions`）。
+
 ### 46.7 デプロイとの関係（REQ-MNT-010、docs/ops/deploy.md §7.2）
 - ふつうのデプロイ（「検証サーバー → Worker」、§7.1）は止めずに出せる。止める必要があるのは、出している間に古い Worker と新しい Worker が混ざると困る変更（DO のデータの形を変える移行、ストアの設定の切り替え など）だけで、その時は**先にメンテナンスの窓を予定してから**、窓の中で「検証サーバー → Worker」の順に出す。窓の範囲はその変更が触るグループだけにする（購入レシートはいつも通る）。
 - 切り戻しも同じ窓の中で逆の順（Worker → 検証サーバー）。終わったら窓を「今すぐ終える」で閉じる。
+
 ### 46.8 KPI（REQ-MNT-013、クライアントのイベント）
 | イベント | いつ | s1 | s2 | s3 |
+|---|---|---|---|---|
 | `maintenance_block` | 503 `MAINTENANCE` を受けた（窓 × グループごとに1回、アプリの起動ごと） | グループ | 窓の id | — |
 | `upgrade_prompt` | 更新の案内を出した／押した | `required` / `recommended` / `engine` | `shown` / `store` / `later` | `ios` / `android` / `other` |
+
 個人を特定する情報は入れない。クエリは `docs/ops/kpi-queries.md`「メンテナンス・強制アップデート」。
+
 ### 46.9 クライアント
 - `Muchi.Client`：`ApiClientOptions.AppVersion`・`Platform`（`ios`/`android`）を設定すると全要求に `x-client-platform`・`x-client-version` を、`x-engine-level` はいつも付ける。`ApiClient.Call` の**1か所**で 503 `MAINTENANCE` と 426 `UPGRADE_REQUIRED` を扱う：再試行しない、`MaintenanceException`（`Info`：`MaintenanceInfo`）／`UpgradeRequiredException`（`Info`：`UpgradeInfo`）を投げ、イベント `MaintenanceDetected`／`UpgradeRequired` を出し、`ApiClient.Outage`（`None`／`Offline`／`Maintenance`／`UpgradeRequired`）を更新する（応答が無い＝`Offline`、成功の応答＝`None`）。`GetMaintenanceAsync`（`MaintenanceStatus`）。`ClientVersion.Compare`。`CloseCodes.VersionMismatch`（4026）。
 - `Muchi.Net`：`EngineInfo.Level`。`LockstepClient` の `hello` に `engine`。
@@ -2480,10 +2504,13 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 
 ## 47. 通報とブロック管理（REQ-RPT-001〜020、`server/src/domain/reports.ts`・`server/src/domain/blocks.ts`・`server/src/ops/playerReports.ts`、C# `Reports.cs`・`Muchi.Game.ReportModel`・`Muchi.Game.BlockListModel`）
 ほかのプレイヤーの名前・文・ふるまいを運営に知らせる「通報」と、自分で相手を見えなくする「ブロック」の管理。**通報は運営の審査の列に入るだけ**で、通報の数だけで誰かを隠したり罰したりはしない（REQ-OPS-034 と同じ考え方。通報を武器にできない）。コイン・アイテムは動かない（E番号なし）。
+
 ### 47.1 ブロックの一覧は1つ（REQ-RPT-010）
 - ブロックの一覧は**支部フィードのミュートの一覧**（`PlayerState.teamFeed.muted`、REQ-TEAMFEED-006、REQ-RIVAL-011）そのもの。2つ目の一覧は作らない。支部フィードのミュート（`PUT /v1/teams/me/feed/mutes`）、ライバルのブロック（`POST /v1/rival/block`）、通報の「ブロックもする」、ブロック管理の画面はどれも同じ一覧を変える。上限は `stamps.config.muteMax`（既定 100）。上限を超えると 409 `TEAM_LIMIT`（既存のコード）。
 - ブロックが効くところ（ブロックした人から見て、相手を）：
+
 | 機能 | ブロックしたとき |
+|---|---|
 | アクティビティ（§40） | 相手からの項目を作らない。前の項目も一覧と未読の数から外す |
 | 支部フィード（§17） | 相手のスタンプ・応援が見えない。相手の応援で通知が来ない |
 | ライバル（§28） | 組まれない。今週の組は解除 |
@@ -2491,22 +2518,32 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 | 殿堂（§34） | お互いに見られない |
 | リプレイ（§37） | 相手の公開リプレイを見られない。相手も自分のを見られない |
 | 大会・カップ（§20） | 同じレースに出ることはある（公平のため、組み合わせはブロックで変えない）。相手の名前は出るが、相手からの通知・応援は来ない |
+
 - 相手には**ブロックしたことを知らせない**（見えない理由はいつも「見られません」・404 で、ブロックとは言わない）。
+
 ### 47.2 `GET /v1/blocks`（要認証、読むだけ）
+```json
 { "blocked": [ { "playerId": "p_9", "name": "ハヤテ" } ], "count": 1, "max": 100,
   "effects": [ { "feature": "activity", "text": "相手からのお知らせが届かなくなります" } ] }
+```
 - 新しくブロックした順。名前は公開プロフィール（ディレクトリ）から今の名前を引く。退会・BAN・見つからない相手は中立の名前「プレイヤー」（§40 と同じ）。プレイヤーが付けた名前なので訳さない。
 - `effects` は上の表の各行の短い説明（日本語で作り、英語は応答の境界で訳す）。`feature` は `activity`・`team_feed`・`rival`・`stable`・`hall`・`replays`・`cups`。
+
 ### 47.3 `PUT /v1/blocks/:playerId`・`DELETE /v1/blocks/:playerId`（要認証、何度送っても同じ）
 - PUT でブロック、DELETE で解除。本文なし。→ `{ "playerId": "p_9", "blocked": true, "count": 1, "max": 100 }`。
 - 自分自身は 400。すでにその状態なら何も変えず同じ応答（KPI も出ない）。ライバルの組の解除は次の同期（`rivalSync`）で起きる（REQ-RIVAL-011 のとおり）。
+
 ### 47.4 `POST /v1/reports`（要認証）
+```json
 { "targetId": "p_9", "category": "name", "source": "profile",
   "content": { "kind": "display_name" }, "note": "（任意・短い補足）", "alsoBlock": true }
+```
 - `category`：`name`（不適切な名前）・`text`（不適切なキャプション・文）・`cheating`（不正の疑い）・`harassment`（嫌がらせ）・`other`（その他）。
 - `source`（どこから通報したか）：`profile`・`friends`・`team_feed`・`stable`・`hall`・`replay`・`photo`・`cup_lobby`。
 - `content.kind` と組み合わせ：
+
 | kind | 何を写すか（スナップショット） | 必要なキー | 使える category |
+|---|---|---|---|
 | `player` | 表示名 | — | `harassment`・`other` |
 | `display_name` | 表示名 | — | `name`・`harassment`・`other` |
 | `horse_name` | その馬の名前 | `horseId` | `name`・`harassment`・`other` |
@@ -2514,6 +2551,7 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 | `replay_title` | 公開しているリプレイのタイトル | `raceId` | `text`・`harassment`・`other` |
 | `photo_caption` | 写真のキャプション | `photoId` | `text`・`harassment`・`other` |
 | `race` | 表示名とレース id | `raceId` | `cheating`・`harassment`・`other` |
+
 - `note`：任意。NFKC・前後の空白を落として `reports.noteMaxChars`（既定 100）文字まで、制御文字は不可（超えたら 400）。**訳さない**（運営だけが読む。プレイヤーの文と同じ扱い）。
 - **スナップショット**：サーバーが**通報を受けた時点で**相手の状態から写す（端末が送る文は信じない）：表示名・対象の文（名前・タイトル・キャプション）・レース id・写した時刻。あとで相手が名前を変えても、運営は通報された文を見られる。対象が無い（馬がいない・リプレイが非公開・写真が無い・相手が退会）なら 404。
 - `cheating` は、通報した人がそのレースに出ていたときだけ（レースの部屋に問い合わせる、`POST /v1/race/:raceId/report` と同じ確認）。出ていなければ 409 `NOT_ELIGIBLE`。受け付けるとそのレースのリプレイは保留（`reported`、REQ-OPS-001）になり、運営は §47.7 からリプレイと検証の結果を開ける。
@@ -2522,10 +2560,13 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 - `alsoBlock: true` なら同じ処理でブロックも行う（§47.3 と同じ一覧）。
 - 応答：`{ "received": true, "blocked": true, "remainingToday": 9 }`。**まとめたかどうか・何人が通報したかは返さない**。
 - **通報した人は相手に知らされない**：相手の画面・API・通知のどこにも通報者・通報の有無を出さない。運営の注意（§47.7 `warn`）も「報告がありました」とだけ言い、誰からかは言わない。
+
 ### 47.5 `GET /v1/reports/options`（要認証、読むだけ）
 通報シートの中身：`{ "categories": [ { "id": "name", "label": "不適切な名前", "kinds": ["display_name", "horse_name", "stable_name"] } ], "noteMaxChars": 100, "remainingToday": 10, "enabled": true }`。`label` は英語で訳す。
+
 ### 47.6 設定（`progression.reports`、起動時とリモート設定で検査、REQ-RPT-015）
 `{ "enabled": true, "perDay": 10, "perTargetPerDay": 2, "noteMaxChars": 100, "minResolved": 5, "lowSharePermille": 500, "lowWeight": 500, "veryLowSharePermille": 800, "veryLowWeight": 250, "resolvedKeepDays": 365 }`。範囲：`perDay` 1〜50、`perTargetPerDay` 1〜`perDay`、`noteMaxChars` 0〜200（0 = 補足なし）、`minResolved` 1〜100、`lowSharePermille` 1〜1000 で `veryLowSharePermille` 以下、重み 1〜1000 で `veryLowWeight` ≤ `lowWeight`、`resolvedKeepDays` 30〜3650。無ければこの既定値。
+
 ### 47.7 運営の審査（ops console、`/v1/admin/player-reports`、監査つき）
 - `GET /v1/admin/player-reports?status=open|resolved&category=&kind=&targetId=&limit=`（viewer）：審査中は**重みの合計**（`score`、千分率）の大きい順、次に新しい順。各行：id・相手・category ごとの数・kind・写し・通報者の数・重みの合計・最初と最後の時刻・状態。
 - `GET /v1/admin/player-reports/:id`（viewer）：写し（通報された時点の文）、通報者ごとの時刻・category・source・重み・補足、相手の今の不正対策の状態。`cheating` は `race: { raceId, replay: "/v1/admin/replays/<raceId>", integrity: { status, events } }`（そのレースの容疑者・ズレの記録＝検証の結果）。
@@ -2537,9 +2578,11 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
   - `ban`：既存の BAN（`integrity.ban`、`until` = null で無期限）。
   - どれも1回だけ（閉じた通報に送ると 409 `CONFLICT`）。監査ログに前後の状態を残す（REQ-OPS-010）。
 - **通報者の重み**（悪用対策、簡単で説明できる決まり）：通報者ごとに審査済みの数（`dismiss` と、それ以外の対応）を数える。審査済みが `minResolved` 件以上で、`dismiss` の割合が `veryLowSharePermille`（80%）以上なら重み `veryLowWeight`（0.25）、`lowSharePermille`（50%）以上なら `lowWeight`（0.5）、それ以外は 1。重みは通報を受けた時点のものを記録し、並び順（`score`）にだけ使う。**重みが低くても通報は消さない**し、重みが高くても自動で処罰しない。
+
 ### 47.8 アカウント削除と保存（REQ-RPT-016）
 - 削除の手順に `reports` の段を足す（`replays` の後、`finalize` の前）。**削除した人が出した通報**は通報者を `deleted` に置き換えて補足を消し（匿名化）、重みの記録も消す。通報そのもの（写し・数）は残す。
 - **削除した人についての通報**は残す：既存の決まり（通報されたレースのリプレイは運営が対応するまで残す REQ-OPS-001a、不正対策の記録と通報の列は削除の手順で消さない REQ-OPS-034）と同じく、審査中のものは運営が閉じるまで残り、相手に `targetDeleted` の印が付く（`rename`・`warn`・`hide` は 409、`dismiss`・`ban` は可）。閉じた通報は `resolvedKeepDays`（既定 365 日）後に消す（通報を受けるたびに古いものを少しずつ）。docs/planning/03-legal-risk.md「通報とブロック」。
+
 ### 47.9 KPI
 | イベント | 送り手 | s1 | s2 | s3 |
 |---|---|---|---|---|
@@ -2547,6 +2590,7 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 | `block_add` | サーバー（一覧に増えたとき） | どこから（`blocks`・`report`・`team_feed`・`rival`） | — | — |
 | `block_remove` | サーバー（一覧から消えたとき） | どこから（`blocks`・`team_feed`） | — | — |
 相手の id・補足は入れない。クエリは `docs/ops/kpi-queries.md`「通報とブロック」。
+
 ### 47.10 クライアント
 - `Muchi.Client`：`ReportCategories`・`ReportContentKinds`・`ReportSources`、`ReportOptions`・`ReportResult`・`BlockList`、`ApiClient.GetReportOptionsAsync`・`SubmitReportAsync`・`GetBlocksAsync`・`BlockAsync`・`UnblockAsync`。
 - `Muchi.Game`：`ReportModel`（通報シート：理由の選択・補足の文字数・ブロックもする・送信中の二重送信を防ぐ・オフライン・結果の文）、`BlockListModel`（一覧・解除の確認・効く機能の説明・オフライン）。

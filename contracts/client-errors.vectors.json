@@ -80,6 +80,22 @@
       "output": "emoji … run <id> done"
     },
     {
+      "input": "resolve failed: https://link.muchi-issen.example/l/kmqxphrabcdefghjkmnpqr",
+      "output": "resolve failed: <url>"
+    },
+    {
+      "input": "open /l/kmqxphrabcdefghjkmnpqr failed",
+      "output": "open <token> failed"
+    },
+    {
+      "input": "token kmqxphrabcdefghjkmnpqr rejected; revoke(k7mq3xphr2abcdefghjkmn)",
+      "output": "token <token> rejected; revoke(<token>)"
+    },
+    {
+      "input": "muchi://l/kmqxphrabcdefghjkmnpqr",
+      "output": "<url>"
+    },
+    {
       "input": "﻿bom first",
       "output": "…bom first"
     }
@@ -127,6 +143,14 @@
     {
       "input": "/v1/time-attack/sakura_2000/me",
       "output": "/v1/time-attack/:id/me"
+    },
+    {
+      "input": "/v1/links/kmqxphrabcdefghjkmnpqr",
+      "output": "/v1/links/:id"
+    },
+    {
+      "input": "/v1/links/k7mq3xphr2abcdefghjkmn",
+      "output": "/v1/links/:id"
     }
   ],
   "devices": [

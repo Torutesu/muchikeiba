@@ -16,6 +16,8 @@ import { seededRng } from '../src/domain/rng.js';
 import { MemoryLinkDirectory } from '../src/domain/linkService.js';
 import { LNOTIF_OWNERSHIP, localRemindersView, planLocalNotifications } from '../src/domain/localNotify.js';
 import type { CalendarExternal } from '../src/domain/calendar.js';
+import { normalizeRoute, scrubMessage, scrubStack } from '../src/domain/clientErrors.js';
+import { TOKEN_ALPHABET, TOKEN_LENGTH } from '../src/domain/deepLinks.js';
 import { buildExportDocument, DEX_CLASSIFICATION } from '../src/domain/dataExport.js';
 import { MemoryExportStore, runDataExportJob, type DataExportJobPorts } from '../src/domain/dataExportService.js';
 import { runAccountDeletion, type DeletionPorts } from '../src/domain/accountDeletion.js';
@@ -86,6 +88,26 @@ describe('§58.11 = §64.6: ONE prompt gate with one priority table (C#, Unity, 
     }
     // every kind is claimed by its model (the C# constant names appear in a TryClaim or CanShow)
     for (const k of ['RecommendedUpdate', 'ConsentPrePrompt', 'ComebackWelcome', 'ReleaseNotes', 'RemindersPrePermission', 'AccountLink', 'ReviewPrompt']) expect(game, k).toMatch(new RegExp(`(TryClaim|CanShow)\\(SessionPrompts\\.${k}\\b`));
+  });
+});
+
+describe('§63 × §60: a link token never reaches a client error report', () => {
+  const TOK = 'kmqxphrabcdefghjkmnpqr'; // 22 characters of the link alphabet without a digit (about 0.2% of real tokens)
+  it('messages, stacks and routes lose the token wherever it appears (URL, scheme, bare path, bare word)', () => {
+    expect(TOK).toMatch(new RegExp(`^[${TOKEN_ALPHABET}]{${TOKEN_LENGTH}}$`));
+    for (const msg of [`resolve failed: https://link.muchi-issen.example/l/${TOK}`, `muchi://l/${TOK}`, `open /l/${TOK} failed`, `token ${TOK} rejected`, `revoke(${TOK})`]) {
+      const out = scrubMessage(msg);
+      expect(out, msg).not.toContain(TOK);
+      expect(scrubStack(`at Muchi.Game.DeepLinkModel.TryOpenAsync () ${msg}`), msg).not.toContain(TOK);
+    }
+    expect(normalizeRoute(`/v1/links/${TOK}`)).toBe('/v1/links/:id');
+    expect(normalizeRoute('/v1/links/k7mq3xphr2abcdefghjkmn')).toBe('/v1/links/:id');
+    // ordinary words are kept (the rule is exactly 22 characters of the link alphabet)
+    expect(scrubMessage('NullReferenceException in DeepLinkModel')).toBe('NullReferenceException in DeepLinkModel');
+    // the shared vectors carry these inputs so the C# ErrorScrubber does the same
+    const v = JSON.parse(read('contracts/client-errors.vectors.json')) as { messages: { input: string; output: string }[]; routes: { input: string; output: string }[] };
+    expect(v.messages.some((x) => x.input.includes(TOK) && !x.output.includes(TOK))).toBe(true);
+    expect(v.routes.some((x) => x.input.includes(TOK) && x.output === '/v1/links/:id')).toBe(true);
   });
 });
 

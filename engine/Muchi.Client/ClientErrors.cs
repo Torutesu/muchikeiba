@@ -45,6 +45,7 @@ namespace Muchi.Client
             (new Regex("\"[^\"\\n]*\"|'[^'\\n]*'|「[^」\\n]*」", O), "\"…\""),
             (new Regex(@"[^\x00-\x7F]+", O), "…"),
             (new Regex(B0 + "[0-9a-fA-F]{12,}" + B1, O), "<id>"),
+            (new Regex(B0 + "[2-9a-hjkmnp-z]{22}" + B1, O), "<token>"), // R21 integration (§63 × §60): a share link token
             (new Regex(B0 + @"(?=[A-Za-z0-9_\-]*[0-9])[A-Za-z0-9_\-]{20,}" + B1, O), "<id>"),
             (new Regex(B0 + "[a-z]{1,4}_(?=[A-Za-z0-9]*[0-9])[A-Za-z0-9]{3,}" + B1, O), "<id>"),
             (new Regex("[0-9]{5,}", O), "<n>"),
@@ -58,6 +59,7 @@ namespace Muchi.Client
         private static readonly Regex DeviceOk = new Regex(@"\A[A-Za-z0-9 ,._()\-]{1,40}\z", O);
         private static readonly Regex PrefixedId = new Regex(@"\A[a-z]{1,4}_(?=[A-Za-z0-9]*[0-9])[A-Za-z0-9]+\z", O);
         private static readonly Regex AllDigits = new Regex(@"\A[0-9]+\z", O);
+        private static readonly Regex LinkToken = new Regex(@"\A[2-9a-hjkmnp-z]{22}\z", O);
         private static readonly Regex QueryCut = new Regex("[?#]", O);
 
         private static string Line(string s)
@@ -94,7 +96,7 @@ namespace Muchi.Client
                 var seg = segs[i];
                 if (seg.Length == 0 || seg[0] == ':') continue;
                 bool hasDigit = seg.Any(c => c >= '0' && c <= '9');
-                if (PrefixedId.IsMatch(seg) || (hasDigit && seg.Length >= 6) || AllDigits.IsMatch(seg)) segs[i] = ":id";
+                if (PrefixedId.IsMatch(seg) || (hasDigit && seg.Length >= 6) || AllDigits.IsMatch(seg) || LinkToken.IsMatch(seg)) segs[i] = ":id"; // R21: a link token
             }
             return string.Join("/", segs);
         }

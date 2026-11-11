@@ -141,6 +141,12 @@ const perfSettingProps = z.object({
 export const TIP_VIEW_SOURCES = ['list', 'context', 'tour', 'lesson'] as const;
 export const TIP_CONTEXT_NAMES = ['gacha_odds', 'breeding', 'training', 'roster_bulk_retire'] as const;
 const tipId = z.string().regex(/^[a-z0-9_]{2,40}$/);
+/** REQ-CAL-015 (§65): the calendar's kinds and views (calendar.ts CALENDAR_KINDS; repeated here to keep kpi.ts import-free, a test keeps them equal). */
+export const CALENDAR_KPI_KINDS = [
+  'event', 'event_exchange', 'weekly_challenge', 'team_goal', 'league_season', 'season', 'season_pass', 'banner',
+  'tournament_registration', 'tournament', 'cup', 'maintenance', 'comeback',
+] as const;
+export const CALENDAR_VIEWS = ['month', 'week'] as const;
 /** REQ-CHEER-013: the watchable modes (domain/cheer.ts CHEER_MODES; repeated here to keep kpi.ts import-free). */
 export const CHEER_KPI_MODES = ['friend', 'cup', 'ranked', 'event', 'tournament'] as const;
 /** Events only the client can observe. Server-known events (purchase, gacha, race results…) are not accepted from clients. */
@@ -212,6 +218,9 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('tutorial_replay'), at: z.number().int(), props: z.object({ tutorialId: tipId, kind: z.enum(['race', 'tour']), stage: z.enum(['start', 'finish']) }).strict() }),
   z.object({ name: z.literal('tip_view'), at: z.number().int(), props: z.object({ tipId, source: z.enum(TIP_VIEW_SOURCES) }).strict() }),
   z.object({ name: z.literal('tip_context_open'), at: z.number().int(), props: z.object({ context: z.enum(TIP_CONTEXT_NAMES), tipId }).strict() }),
+  // REQ-CAL-015 (§65): the calendar shown (month / week and how many rows) and a row opened (its kind). Marks are server events (calendar_mark).
+  z.object({ name: z.literal('calendar_view'), at: z.number().int(), props: z.object({ view: z.enum(CALENDAR_VIEWS), entries: z.number().int().min(0).max(200) }).strict() }),
+  z.object({ name: z.literal('calendar_entry_open'), at: z.number().int(), props: z.object({ kind: z.enum(CALENDAR_KPI_KINDS) }).strict() }),
   // REQ-CHEER-013 (§55.7): ONE row per race, never per tap — cheers this spectator sent / cheers shown to this player (racer
   // with the indicator on, or spectator) in that race. No horse, no target player, no sender ids.
   z.object({ name: z.literal('cheer_send'), at: z.number().int(), props: z.object({ mode: z.enum(CHEER_KPI_MODES), count: z.number().int().min(1).max(1000) }).strict() }),
@@ -270,6 +279,8 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'tutorial_replay': return { name: e.name, s1: e.props.tutorialId, s2: e.props.kind, s3: e.props.stage };
     case 'tip_view': return { name: e.name, s1: e.props.tipId, s2: e.props.source };
     case 'tip_context_open': return { name: e.name, s1: e.props.context, s2: e.props.tipId };
+    case 'calendar_view': return { name: e.name, s1: e.props.view, value: e.props.entries };
+    case 'calendar_entry_open': return { name: e.name, s1: e.props.kind };
     case 'cheer_send': return { name: e.name, s1: e.props.mode, count: e.props.count };
     case 'cheer_seen': return { name: e.name, s1: e.props.mode, s2: e.props.role, count: e.props.count };
   }

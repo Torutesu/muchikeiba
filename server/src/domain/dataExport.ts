@@ -402,6 +402,8 @@ export const DEX_CLASSIFICATION: Record<keyof PlayerState | DexExtensionKey, Dex
   help: x('helpInquiries'), reports: x('reportsMade'),
   // Round 19 integration: §57 tip cards read (ids) and §54 transfer code history / expiry (never the code id or password hash)
   tips: x('play'), transfer: x('account'),
+  // Round 21 (§65, REQ-CAL-016): calendar rows marked for a reminder (ids, kinds, until)
+  calendar: x('play'),
 };
 /** Keys some modules add to the state without declaring them on PlayerState (see the test). */
 export const DEX_EXTENSION_KEYS = ['collection', 'silksEditor', 'stable', 'teamFeed', 'teamGoal', 'help', 'reports'] as const;
@@ -586,6 +588,8 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
     play: {
       // §57 (Round 19 integration): the tip cards this player has read (ids only)
       tips: s.tips ? { seen: [...s.tips.seen] } : null,
+      // §65 (Round 21): the calendar rows this player marked (flags only; no reminder is sent by the server)
+      calendar: s.calendar ? { marks: s.calendar.marks.map((x) => ({ id: x.id, kind: x.kind, until: x.until })) } : null,
       seasonPass: clone(s.seasonPass), passHistory: clone(s.passHistory) ?? [], loginBonus: clone(s.loginBonus), missions: clone(s.missions),
       seasonMissions: clone(s.seasonMissions) ?? null, onboarding: clone(s.onboarding) ?? null, breeding: clone(s.breeding),
       breedingExtra: clone(s.breedingExtra) ?? null, dailyWins: clone(s.dailyWins) ?? null, friendRewards: clone(s.friendRewards),

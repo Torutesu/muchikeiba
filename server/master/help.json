@@ -309,6 +309,8 @@
       "related": ["accessibility_settings", "data_transfer"]
     },
     {"id": "spectator_cheer", "category": "races", "title": {"ja": "観戦中の応援", "en": "Cheering while you watch"}, "body": {"ja": "レースを観戦している時に、馬番を選んで「いけ！」「差せ！」「粘れ！」の応援を送れます。\n\n・応援は無料で、何ももらえず、レースの結果にも影響しません\n・送れるのは{{cheer_interval_sec}}秒ごとに1つまでです。文字は自由に書けません\n・誰が応援したかは表示されず、届くのは数だけです\n・ブロックしている相手（ブロックされている相手）の応援は数えません\n・走っている人には、自分の馬への応援の数が画面の隅に小さく出ます。設定の「レース中の応援表示」でオフにできます\n・動きを減らす設定がオンなら、光や動きは出ません", "en": "While watching a race, pick a horse number and send a cheer: \"Go!\", \"Close in!\" or \"Hang on!\".\n\n• Cheers are free, give no rewards and never change the race result\n• You can send one every {{cheer_interval_sec}} seconds. There is no free text\n• Nobody sees who cheered; only the counts arrive\n• Cheers from players you blocked (or who blocked you) are not counted\n• Riders see the number of cheers for their own horse in a small corner. Turn it off with \"Show cheers during races\" in Settings\n• With Reduce motion on, there is no light or movement"}, "keywords": {"ja": ["応援", "観戦", "いけ", "差せ", "粘れ", "応援表示"], "en": ["cheer", "spectate", "watch", "cheers", "indicator"]}, "links": [{"type": "screen", "screen": "settings"}], "related": ["race_modes", "accessibility_settings"]}
+,
+    {"id": "calendar", "category": "getting_started", "title": {"ja": "予定表（カレンダー）", "en": "Calendar"}, "body": {"ja": "その他の「予定表」で、参加できる予定を日付ごとに見られます。\n\n・イベントレースと交換所、週替わりチャレンジ、ランク戦のシーズン、大会の受付と開始、参加しているカップ、スカウトのバナー、メンテナンスなどが並びます\n・支部の予定は支部のメンバーだけ、カップは参加している人だけに出ます\n・時刻はすべて日本時間です。ゲームの日付は{{day_rollover_hour}}時に切り替わります（シーズンとシーズンパスは暦の月で、月の初めの0時から）\n・一度に見られるのは{{calendar_days}}日分です\n・予定に印を付けておけます（{{calendar_marks}}件まで）。印を付けても、お知らせは届きません\n・シーズンパスとスカウトは期間だけを載せています。中身や提供割合は、それぞれの画面で確かめてください", "en": "Open \"Calendar\" in More to see what you can take part in, day by day.\n\n• Event races and their exchange, the weekly challenge, ranked seasons, tournament registration and start times, cups you joined, scout banners and maintenance\n• Branch dates show only to branch members, cups only to their entrants\n• All times are Japan time (JST). A game day starts at {{day_rollover_hour}}:00 (seasons and the season pass follow calendar months, from midnight on the first)\n• You can see up to {{calendar_days}} days at a time\n• You can mark up to {{calendar_marks}} entries. A mark sends no notification\n• The season pass and scout banners show dates only. Check their contents and rates on their own screens"}, "keywords": {"ja": ["予定表", "カレンダー", "予定", "日程", "印", "日本時間"], "en": ["calendar", "schedule", "dates", "mark", "JST"]}, "links": [{"type": "screen", "screen": "calendar"}], "related": ["first_steps", "hosted_cups"]}
   ],
   "contexts": {
     "gacha_odds": "pity",
@@ -325,6 +327,7 @@
     "accessibility": "accessibility_settings",
     "privacy": "data_export",
     "storage": "data_storage",
-    "practice": "practice_races"
+    "practice": "practice_races",
+    "calendar": "calendar"
   }
 }

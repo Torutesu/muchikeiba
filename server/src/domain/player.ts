@@ -240,6 +240,8 @@ export interface PlayerState {
   dataExport?: import('./dataExport.js').DataExportState;
   /** REQ-TUT-007 (§57): tip cards seen (tips.ts markTipsSeen; ids of open cards only, bounded by tips.config.seenMax). */
   tips?: import('./tips.js').TipsState;
+  /** REQ-CAL-010 (§65): calendar rows marked for a reminder (calendar.ts markCalendar; flags only, bounded by CALENDAR_LIMITS.marksMax, dropped once the row ended). */
+  calendar?: import('./calendar.js').CalendarState;
   /** REQ-TRF-*: 引き継ぎコード — the current code (no password, no hash), daily issues, the old-device cut-off, history (transferCode.ts). */
   transfer?: import('./transferCode.js').TransferState;
 }

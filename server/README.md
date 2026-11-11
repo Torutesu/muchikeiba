@@ -265,6 +265,7 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | POST | `/v1/admin/config/dry-run` | viewer | `{op:{kind:'activate', versionId, at?} \| {kind:'rollback', versionId?} \| {kind:'cancel', activationId}}` 本番と同じ検証を保存せずに実行（REQ-OPS-008）→ `{ok, problems, groups, effect}` |
 | GET | `/v1/admin/config/diff` | viewer | `?from=&to=`（版IDか `base`）パスごとの差分（REQ-OPS-009） |
 | GET | `/v1/admin/gacha/calendar` | viewer | `?versionId=active\|base\|cfg_N` バナーの日程（ゲーム日）・天井グループと引き継ぎの連鎖・ステップアップの価格（REQ-OPS-027） |
+| GET | `/v1/admin/calendar` | viewer | `?from=YYYY-MM-DD&to=YYYY-MM-DD&versionId=` 版の全体の予定表（予告前のバナー・メンテナンスも）と重なり（REQ-CAL-012、protocol §65.3） |
 | GET | `/v1/admin/gacha/:bannerId/odds` | viewer | `?versionId=` プレイヤー向けと同じ提供割合ページ（公開前・終了後も） |
 | GET | `/v1/admin/events` | viewer | `?versionId=` イベントの一覧と状態、コース一覧 |
 | GET | `/v1/admin/tournaments` | viewer | 大会の一覧と状態 |

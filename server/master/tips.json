@@ -90,7 +90,10 @@
       "body": { "ja": "支部のフィードでは、決まった文を選んで仲間に送る。空欄には自分の馬やレースの結果を入れられる。", "en": "On the branch feed, pick a set phrase to send your teammates. Fill the blanks with your horse or a race result." } },
     { "id": "cheer_tip", "topic": "social", "unlock": "friend_rooms", "art": "cups", "help": "spectator_cheer",
       "title": { "ja": "観戦して応援する", "en": "Watch and cheer" },
-      "body": { "ja": "観戦中は馬番を選んで「いけ！」などを送れる。届くのは数だけで、誰が送ったかは出ない。", "en": "While watching, pick a horse and send a cheer such as Go!. Racers see only the count, never who sent it." } }
+      "body": { "ja": "観戦中は馬番を選んで「いけ！」などを送れる。届くのは数だけで、誰が送ったかは出ない。", "en": "While watching, pick a horse and send a cheer such as Go!. Racers see only the count, never who sent it." } },
+    { "id": "calendar_tip", "topic": "social", "unlock": null, "art": "cups", "help": "calendar",
+      "title": { "ja": "予定は予定表で", "en": "Dates in one place" },
+      "body": { "ja": "イベント・大会・カップ・メンテナンスの日付を1つの表で見られる。時刻は日本時間。印は自分用のメモ。", "en": "See event, tournament, cup and maintenance dates in one list. Times are JST. Marks are only a note for you." } }
   ],
   "contexts": {
     "gacha_odds": "scout_pity_tip",

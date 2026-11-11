@@ -1344,3 +1344,28 @@ GROUP BY screen, tip ORDER BY opens DESC
 ```
 
 - `tip_view` の入口が `context` のカードの後に同じ日の `help_article_view`（`source = link`）が多いなら、カードが短すぎる。
+
+## 予定表：見た・開いた・印（REQ-CAL-015、contracts/protocol.md §65.6、Round 21）
+
+**予定表が見られているか、どの種類の行から画面へ進むか、印が使われているか**。`calendar_view`（クライアント、`blob8` = `month` / `week`、`double9` = 行の数）、`calendar_entry_open`（クライアント、`blob8` = 種類：`event`・`event_exchange`・`weekly_challenge`・`team_goal`・`league_season`・`season`・`season_pass`・`banner`・`tournament_registration`・`tournament`・`cup`・`maintenance`・`comeback`）、`calendar_mark`（サーバー、`blob8` = 種類、`blob9` = `on` / `off`、印が実際に変わった時だけ）。印でサーバーが通知を送ることは無い（§65.2）。
+
+```sql
+-- 表示の種類ごとの回数と平均の行の数（行が多すぎる表示は分ける）
+SELECT blob8 AS view, sum(_sample_interval) AS views, sum(double9 * _sample_interval) / sum(_sample_interval) AS avg_entries
+FROM muchi_kpi
+WHERE blob1 = 'calendar_view' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY view
+```
+
+```sql
+-- 種類ごとの「行を開いた」と「印を付けた」
+SELECT blob8 AS kind,
+  sum(if(blob1 = 'calendar_entry_open', _sample_interval, 0)) AS opens,
+  sum(if(blob1 = 'calendar_mark' AND blob9 = 'on', _sample_interval, 0)) AS marks_on,
+  sum(if(blob1 = 'calendar_mark' AND blob9 = 'off', _sample_interval, 0)) AS marks_off
+FROM muchi_kpi
+WHERE blob1 IN ('calendar_entry_open', 'calendar_mark') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY kind ORDER BY opens DESC
+```
+
+- `banner` の行を開いた先は提供割合の画面（購入の画面ではない）。`season_pass` の行には行き先が無いので `calendar_entry_open` は来ない。

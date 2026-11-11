@@ -13,6 +13,20 @@ export const CODE_EN: Record<string, string> = {
   'アプリを最新版に更新してください': 'Please update the app to the latest version',
   'レースに参加するにはアプリの更新が必要です': 'Update the app to join races',
 
+  // ---- イベントカレンダー (calendar.ts CALENDAR_TITLES / CALENDAR_TIME_ZONE, protocol §65; REQ-CAL-003/009). Times stay JST in English.
+  'イベントレース': 'Event race',
+  '週替わりチャレンジ': 'Weekly challenge',
+  '支部の共同目標': 'Branch goal',
+  '支部対抗シーズン': 'Branch league season',
+  'ランク戦のシーズン': 'Ranked season',
+  'シーズンパスを買える期間': 'Season pass purchase period',
+  '大会の受付': 'Tournament registration',
+  '大会の開始': 'Tournament start',
+  '主催カップ': 'Player-hosted cup',
+  'メンテナンス': 'Maintenance',
+  '復帰キャンペーン': 'Welcome-back campaign',
+  '日本時間': 'JST',
+
   // ---- 引き継ぎコード (transferCode.ts passwordRuleTexts / sessionReplacedError, protocol §54; REQ-TRF-003/010)
   '{min}〜{max}文字': '{min}–{max} characters',
   '半角の英数字と記号': 'Letters, numbers and symbols',

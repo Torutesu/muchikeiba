@@ -15,6 +15,7 @@
  * Pure functions on master + state; the PlayerService runs the state changes inside its transaction.
  */
 import { CHEER_MIN_INTERVAL_MS } from './cheer.js';
+import { CALENDAR_LIMITS } from './calendar.js';
 import helpJson from '../../master/help.json';
 import { AppError } from './errors.js';
 import type { Master } from './master.js';
@@ -47,13 +48,15 @@ export const HELP_SCREENS = [
   'performance', 'storage',
   // Round 19 (§57): the ヒント screen (tutorial replays and the tips library)
   'tips',
+  // Round 21 (§65): the 予定表 (event calendar)
+  'calendar',
 ] as const;
 export type HelpScreen = typeof HELP_SCREENS[number];
 /** The existing legal pages (利用規約・プライバシーポリシー・特定商取引法に基づく表記・資金決済法に基づく表示). */
 export const LEGAL_DOCS = ['terms', 'privacy', 'tokushoho', 'shikin'] as const;
 export type LegalDoc = typeof LEGAL_DOCS[number];
 /** REQ-HELP-008: screens that deep-link to an article. */
-export const HELP_CONTEXTS = ['gacha_odds', 'coin_shortfall', 'purchase', 'race_whip', 'race_result', 'training', 'breeding', 'history', 'gift_box', 'account_link', 'deletion', 'accessibility', 'privacy', 'storage', 'practice'] as const; // R19 integration: the practice setup's ? link
+export const HELP_CONTEXTS = ['gacha_odds', 'coin_shortfall', 'purchase', 'race_whip', 'race_result', 'training', 'breeding', 'history', 'gift_box', 'account_link', 'deletion', 'accessibility', 'privacy', 'storage', 'practice', 'calendar'] as const; // R19 integration: the practice setup's ? link; Round 21 (§65): the calendar's ? link
 export type HelpContext = typeof HELP_CONTEXTS[number];
 
 export type HelpLink =
@@ -114,6 +117,7 @@ const SCREEN_LABEL: Record<HelpScreen, Loc> = {
   performance: { ja: '画質・通信量の設定を開く', en: 'Open graphics and data settings' },
   storage: { ja: 'ストレージを開く', en: 'Open storage' },
   tips: { ja: 'ヒントを開く', en: 'Open tips' },
+  calendar: { ja: '予定表を開く', en: 'Open the calendar' },
 };
 const LEGAL_LABEL: Record<LegalDoc, Loc> = {
   terms: { ja: '利用規約', en: 'Terms of service' },
@@ -182,6 +186,10 @@ function tokenValue(env: TokenEnv, name: string, a?: string, b?: string): string
     case 'qchat_interval_sec': return String(Math.round(quickChatOf(m).config.postIntervalMs / 1000));
     case 'qchat_per_day': return String(quickChatOf(m).config.postsPerDay);
     case 'cheer_interval_sec': return String(CHEER_MIN_INTERVAL_MS / 1000); // §55 REQ-CHEER-004
+    // Round 21 (§65, REQ-CAL-017): the calendar's range and marks, and the game-day rollover hour (progression.dayRollover)
+    case 'calendar_days': return String(CALENDAR_LIMITS.maxRangeDays);
+    case 'calendar_marks': return String(CALENDAR_LIMITS.marksMax);
+    case 'day_rollover_hour': return String(dayRule(m).hourJst);
     default: throw new Error(`unknown token ${name}`);
   }
 }

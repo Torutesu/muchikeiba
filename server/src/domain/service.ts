@@ -75,6 +75,7 @@ import {
 import { claimAllGifts, claimGift, expireGifts, giftBadge, giftBoxView, giftGiver, giftsNeedExpiry, nextGiftWake, type OpsTitleKey } from './giftBox.js';
 import { activityBadge, activityPage, markActivityRead, recordActivity } from './activity.js';
 import { markTipsSeen, tipsBadge, tipsIndex } from './tips.js';
+import { calendarView, markCalendar, type CalendarExternal } from './calendar.js';
 import { helpBadge, inquiryDetail, inquiryList, markIndexed, markInquiryRead, replyInquiry, submitInquiry, unindexedSummaries, voteHelp, type InquiryInput } from './help.js';
 import { fsugCard, fsugCardKey, fsugDismiss, fsugSelf, fsugSetHidden, ensureFsug, noteFsugRace, type FsugCard, type FsugDismissed, type FsugKind } from './friendSuggest.js';
 import { finishTraining, startTraining, trainingDelta, trainingTick, trainingView, useTrainingItem } from './training.js';
@@ -1574,6 +1575,12 @@ export class PlayerService {
   async tips(id: string, lang: Locale = 'ja', maxWhips = 6) { return tipsIndex(this.d.master, await this.load(id), this.d.clock(), lang, maxWhips); }
   /** REQ-TUT-007: mark open cards seen (idempotent; never grants anything). */
   tipsSeen(id: string, ids: string[]) { return this.tx(id, null, (s, now) => markTipsSeen(this.d.master, s, ids, now)); }
+
+  // ---- イベントカレンダー (REQ-CAL-*, contracts/protocol.md §65) ----
+  /** REQ-CAL-004: the player's calendar (reads only; `ext` = tournaments and cups the HTTP layer read from their objects). */
+  async calendar(id: string, q: { from?: string | null; to?: string | null }, ext: CalendarExternal) { return calendarView(this.d.master, await this.load(id), q, this.d.clock(), ext); }
+  /** REQ-CAL-010: mark / unmark a row (idempotent; only the flag is stored, nothing is ever pushed for it). */
+  calendarMark(id: string, entryId: string, on: boolean, ext: CalendarExternal) { return this.tx(id, null, (s, now, emit) => markCalendar(this.d.master, s, entryId, on, now, ext, emit)); }
 
   // ---- ヘルプセンター (REQ-HELP-*, contracts/protocol.md §48) ----
   /** REQ-HELP-007: one vote per article (changeable), capped per game day. */

@@ -3403,3 +3403,80 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
 - `Muchi.Client`：`TipsIndex`（`Parse`）・`TipsSeenResult`・`TipsBadge`（`PlayerView.Tips`）、`ApiClient.GetTipsAsync`・`MarkTipsSeenAsync`、`TipContexts`・`RaceLessons`、analytics `AnalyticsEvent.TutorialReplay`・`TipView`・`TipContextOpen`。
 - `Muchi.Game`：`TipsModel`（話題ごとの一覧・NEW・見た印をまとめて送る（オフラインは端末に貯めて後で送る）・「？」の `OpenContext`・ツアーのページ送り・開いていない機能のツアーは開けない）、`TutorialReplayModel`（レッスンのレースを `GameBackend` の既存の部品で作る（ムチ = `OfflinePresets.TutorialRace`、他 = 練習レース）・FTUE の段・回数・KPI に触れない・`tutorial_replay` を送る）。
 - 画面が守ること：docs/handoff-codex-round19-tutorial-replay.md。
+
+## 65. イベントカレンダー（予定表、REQ-CAL-001〜020、`server/src/domain/calendar.ts`、C# `Calendar.cs`・`Muchi.Game.CalendarModel`、docs/handoff-codex-round21-event-calendar.md）
+プレイヤーが参加できる予定を1つの読むだけの予定表にまとめる。**予定のデータは写さない**：どの行も、その機能が持っている唯一の正（マスター・リモート設定・プレイヤーの状態・大会やカップのオブジェクト）を読んだ時に組み立てる。**何も配らない・何も売らない**（E番号なし、経済は変わらない）。
+
+**集める予定（`kind`）**
+| kind | 正（読むだけ） | 時刻の決まり（`rule`） | 見える人 |
+|---|---|---|---|
+| `event` | `master.events`（§ イベント）の `startAtMs`〜`endAtMs` | `exact`（ms で指定、REQ-DAY-004） | 開放キー `events` |
+| `event_exchange` | 交換所のある イベント の開始〜 `exchangeClosesAt`（§30、REQ-EXCH-005） | `game_day`（締めはゲーム日の切り替え） | `events` |
+| `weekly_challenge` | `weekAt`（§31）の週（`gameWeekId`、月曜 04:00） | `game_day` | `weekly_challenge` |
+| `team_goal` | 支部の共同目標の週（§32 `weekKeyOf`） | `game_day` | 支部のメンバーだけ（`team.teamId`）・`teams` |
+| `league_season` | 支部対抗シーズン（league、暦の月 `seasonStartMs`〜月末） | `calendar_month` | 支部のメンバーだけ・`teams` |
+| `season` | ランク戦のシーズン（暦の月、`seasonIdFor`） | `calendar_month` | `season` |
+| `season_pass` | シーズンパスを買える月（`passPurchaseInfo` と同じ暦の月）。期間だけ | `calendar_month` | `season_pass`・パスの商品があるとき |
+| `banner` | スカウトのバナーのうち **予告中・開催中** のもの（`bannerStatus` が `upcoming`／`active`、期間のあるものだけ）。予告前は出さない | `exact`（`startDay`/`endDay` のバナーは読み込み時にゲーム日の切り替えの ms になっている） | `scout` |
+| `tournament_registration` | 大会の受付（`TournamentSummary` の `registrationOpensAtMs`〜`registrationClosesAtMs`） | `exact` | `tournaments` |
+| `tournament` | 大会の開始（`startsAtMs`、終わりの時刻は決まっていないので時刻1点）。観戦できるとき（`spectate`）は `spectate: true` | `exact` | `tournaments` または `spectate` |
+| `cup` | 参加しているプレイヤー主催カップ（§42、`GET /v1/cups` と同じ：自分が出走者の開いているカップ）の `opensAt`〜`closesAt` | `exact` | 参加者だけ |
+| `maintenance` | プレイヤーに見えるメンテナンス（§46 `visibleWindows`：予告中・実施中。予告前・取り消しは出さない） | `exact` | 全員 |
+| `comeback` | 復帰キャンペーン（§20 `comebackView` が `active` のときだけ、`startDay`〜`endDay`） | `game_day` | その期間を持つ本人だけ |
+
+**決まりごと**
+- 時刻は全部 JST。行は `startAt`（含む）・`endAt`（含まない、ms）と、画面に出す `startJst`／`endJst`（`MM/DD HH:mm`、§46 の `shortJst` と同じ）、行が触れる日 `firstDay`〜`lastDay` を持つ。`game_day` と `exact` の日はゲーム日（`gameDayKey`、04:00 の切り替え、REQ-DAY-001）、`calendar_month` の日は暦の日（`jstDateKey`、0:00、REQ-DAY-004）。時刻1点の行（`tournament`）は `endAt = startAt`。
+- 英語でも時刻は JST のまま。応答の `timeZone`（「日本時間」→ 英語は "JST"）を時刻の横に出す。
+- **偽の急かしをしない**：「今だけ」「残りわずか」「お得」「倍」「通常価格」・賭けの言葉（`bettingWords.ts`）・英語の `EN_BANNED` を使わない（検査あり）。残り時間のカウントダウンは出さない（行は日付と時刻だけ。終わりは実際のデータの `endAt`）。
+- **有料のもの（パス・バナー）は日付だけ**：価格・コイン・「買う」の導線を持たない（`paid: true`、`link` はパスは `null`、バナーはスカウトの提供割合の画面 `{ "screen": "gacha_rates", "id": "<bannerId>" }`）。
+- 行の名前：マスターの名前（イベント・バナー）は応答の境界で訳す。大会の名前は運営の書いたまま。カップの名前はプレイヤーの書いたもので訳さない（`cupName`）。
+- 見える範囲：開放キーは `unlocksView`（§4.3）と同じ判定（表にないキーは最初から開いている）。支部の行はメンバーだけ、カップは参加者だけ、復帰キャンペーンは本人の期間だけ。
+- 大会・カップは別のオブジェクトにある。読めなかったとき（落ちている・無い）はその種類を飛ばして `partial: ["tournaments"]` のように返す（予定表そのものは失敗しない）。
+
+### 65.1 `GET /v1/calendar?from=YYYY-MM-DD&to=YYYY-MM-DD`（要認証、読むだけ）
+- `from`・`to` はゲーム日（含む）。省略時は `from` = 今日のゲーム日、`to` = `from` + 34 日。期間は **35日まで**（`to - from + 1 ≤ 35`）、`from` は今日の35日前より後、`to` は今日の90日後まで。形がおかしい・逆・長すぎ・範囲外は 400 `BAD_REQUEST`。
+- 範囲 = `gameDayStartMs(from)`〜`gameDayStartMs(to + 1)`。`endAt > 範囲の始まり` かつ `startAt < 範囲の終わり` の行（時刻1点は `startAt` が範囲の中）。`startAt`・種類の順で最大200行。
+```json
+{ "from": "2026-11-11", "to": "2026-12-15", "today": "2026-11-11", "serverNow": 1794380400000, "timeZone": "日本時間",
+  "partial": [], "marks": { "count": 1, "max": 30 },
+  "entries": [ { "id": "event:sprint_cup_2026_11", "kind": "event", "title": "イベントレース", "name": "青葉スプリント杯",
+                 "startAt": 1793458800000, "endAt": 1796050800000, "startJst": "11/01 00:00", "endJst": "12/01 00:00",
+                 "firstDay": "2026-10-31", "lastDay": "2026-11-30", "rule": "exact", "status": "open",
+                 "paid": false, "link": { "screen": "event", "id": "sprint_cup_2026_11" }, "spectate": false, "groups": null,
+                 "markable": true, "marked": true },
+               { "id": "banner:winter_2026", "kind": "banner", "title": "スカウト", "name": "季節限定：聖夜のセイヤノカネ", "paid": true,
+                 "link": { "screen": "gacha_rates", "id": "winter_2026" }, "…": "…" },
+               { "id": "cup:cup_abcdefghijklmnop", "kind": "cup", "title": "主催カップ", "name": null, "cupName": "週末カップ", "…": "…" } ] }
+```
+- `status`：`upcoming`・`open`・`ended`（`now` と `startAt`／`endAt`）。`groups`：`maintenance` の行だけ、閉じる機能のグループ（§46、`all` は全部）。
+- 行の `id` は `<kind の短い名>:<正の id>`：`event:<eventId>`・`exch:<eventId>`・`wch:<weekId>`・`tgoal:<weekId>`・`league:<YYYY-MM>`・`season:<YYYY-MM>`・`pass:<YYYY-MM>`・`banner:<bannerId>`・`treg:<tournamentId>`・`tour:<tournamentId>`・`cup:<cupId>`・`mnt:<windowId>`・`comeback:<windowId>`（`^[a-z]{3,8}:[A-Za-z0-9_-]{1,64}$`）。
+
+### 65.2 印（リマインダーの準備、`PUT`／`DELETE /v1/calendar/marks/:entryId`、要認証）
+- 行に「印」を付けられる（`markable` = まだ終わっていない行）。サーバーは **印だけ** を持つ：`calendar.marks`（`{ id, kind, until }`、`until` = 行の `endAt`（時刻1点は `startAt`）、30件まで、`until` を過ぎた印は読む・書くたびに落とす）。
+- `PUT`：今日から35日の予定表を同じ組み立てで作り、その `id` の行があって終わっていなければ付ける（何度でも同じ、`{ "marked": true, "id": "…", "count": n, "max": 30 }`）。行が無い・見えない → 404 `NOT_FOUND`、終わっている → 409 `CONFLICT`（`details.reason: "ended"`）、30件ある → 409 `CONFLICT`（`details.reason: "limit"`）。
+- `DELETE`：外す（無い印でも 200、`{ "marked": false, … }`）。
+- **サーバーからは通知を送らない**（プッシュもメールも無し）。
+- §61（端末の通知、Round 20）との結び方（統合のメモ）：§61 が入ったら、クライアントは `GET /v1/calendar` の `marked: true` の行について、端末の通知を `startAt`（始まる前の行）または `endAt`（開催中の行）の少し前（§61 の決まりの静かな時間帯・1日の上限に従う）に予約する。印を外した・行が消えた・`until` を過ぎたら端末の予約も消す。文言は §61 のカタログの「予定」の種類を足して決める（今は無い）。KPI の `calendar_mark` は §58 の分類で決める。
+
+### 65.3 運営コンソール（`GET /v1/admin/calendar?from&to&versionId`、viewer）
+- 指定の版（省略時は有効な版）の **全体の** 予定表：イベント・交換所・週替わりチャレンジ・支部の共同目標とリーグ・シーズン・パス・**予告前を含む** バナー（`announced: false` を付ける）・大会・**予告前を含む** メンテナンス（取り消しは出さない）。プレイヤーだけのもの（カップ・復帰キャンペーン）は出さない。期間は 35 日まで。
+- `overlaps`：重なりの一覧。`maintenance_closes`（メンテナンスが閉じるグループの行と重なる：event/exchange → `events`、tournament → `tournaments`、banner → `gacha`、weekly_challenge → `time_attack`、team_goal/league → `teams`、season_pass → `shop`）と `same_kind`（同じ種類の期間のある行どうし：イベント・バナー・大会）。コンソールの「予定表」の画面で表と重なりを見る。
+
+### 65.4 ゲートのグループ
+`/v1/calendar*` はグループ `core`（`all` のメンテナンスだけが閉じる）。予定表は読むだけで、ガチャやイベントのメンテナンス中にも「いつ戻るか」を見られるようにする。
+
+### 65.5 次にやること（§45）との関係
+新しいカードは足さない。終わりの近い予定のうちホームに出す価値のあるものは既存のカード（`exchange_closing`・`weekly_challenge`・`team_goal_near`）が同じ正を読んで出している。予定表は「次にやること」に何も足さない（二重の呼びかけにしない）。
+
+### 65.6 KPI
+- クライアント：`calendar_view`（`props.view`：`month`・`week`、`props.entries`：0〜200）→ s1 = 表示、value = 行の数。`calendar_entry_open`（`props.kind`：65 の13種類）→ s1 = 種類。
+- サーバー：`calendar_mark`（s1 = 種類、s2 = `on`／`off`）。印が実際に変わった時だけ。
+- クエリは `docs/ops/kpi-queries.md`「予定表」。
+
+### 65.7 データのダウンロード（§51）・アカウント削除
+- `calendar`（印）は `play` に分類し、印の一覧（`id`・`kind`・`until`）を出す。アカウント削除の wipe で消える。
+
+### 65.8 クライアント
+- `Muchi.Client`：`CalendarView`（`Parse`）・`CalendarEntry`・`CalendarMarkResult`・`CalendarKinds`、`ApiClient.GetCalendarAsync(from, to)`・`MarkCalendarAsync(id, on)`、analytics `AnalyticsEvent.CalendarView`・`CalendarEntryOpen`。
+- `Muchi.Game`：`CalendarModel`（月・週の切り替え、日ごとの行、時刻の文字（日本時間／JST）、印の切り替え（オフラインは端末に貯めて後で送る）、行から画面へ（バナーは提供割合、パスは行き先なし））。
+- 画面が守ること：docs/handoff-codex-round21-event-calendar.md。

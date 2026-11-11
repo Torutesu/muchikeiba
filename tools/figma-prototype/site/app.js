@@ -4190,7 +4190,7 @@ function SurveySheet() {
   let nextBtn = null;
   const area = el('sv-area', 48, 240, 944, 330, d);
   if (q.kind === 'single' || q.kind === 'multi') {
-    if (q.kind === 'multi') Txt(`${q.maxChoices}つまで選べます`, 0, -26, 600, 13, SOFT, area, { nowrap: true }).classList.add('sv-note');
+    if (q.kind === 'multi') Txt(`${q.maxChoices}つまで選べます`, q.required ? 0 : 120, -30, 600, 13, SOFT, area, { nowrap: true }).classList.add('sv-note'); // beside 任意
     const two = q.options.length > 3;
     q.options.forEach((o, i) => {
       const on = q.kind === 'single' ? a[q.id] === o.id : (a[q.id] ?? []).includes(o.id);

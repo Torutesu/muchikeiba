@@ -1155,3 +1155,26 @@
 - REQ-HGOAL-014 法務：共通の賭けの言葉の一覧・煽りの言葉を目標の文言に使わない（テスト）。コンプガチャではない（ランダムな品を条件にしない）。
 - REQ-HGOAL-015 設定 `progression.horseGoals { enabled }`：殿堂（§34）が無効なら有効にできない（起動時と各版で検証）。
 - REQ-HGOAL-016 プロトタイプ：馬の詳細の目標の面とホームのピン（ムチ一閃の見た目、日本語・英語、文字の大きさ §41）、e2e・en-flow・a11y-flow。
+
+## 58. 広告・分析の同意管理（ad tracking & analytics consent、TS＋C#、`src/domain/privacyChoices.ts`・`src/domain/kpiConsent.ts`・`Muchi.Client/Consent.cs`・`Muchi.Game.ConsentModel`、`contracts/protocol.md` §58）
+拘束条件：規約・プライバシーポリシーの同意（REQ-UXS-001）とは別。断っても報酬・機能は減らない。FTUE 中に事前の画面・ATT を出さない。本物の ATT・UMP の呼び出しは Codex（インターフェースの後ろ）。コイン・アイテムは動かない（E 番号なし）。メンテナンス・強制アップデートで閉じない。
+- REQ-CNS-001 状態 `privacyChoices`（PlayerState のトップレベル）：選んだ値（未選択は null）・選んだ時のポリシーの版と時刻・`rev`・事前の画面を出した時刻と版・端末の状態（OS・ATT・`gdprApplies`・CMP）・履歴（50件）。§51 の分類は `account`。
+- REQ-CNS-002 API：`GET`／`PUT /v1/privacy/choices`・`PUT /v1/privacy/platform`・`POST /v1/privacy/prompt-shown`、`GET /v1/player`・ブートストラップの `privacyChoices`。
+- REQ-CNS-003 既定：パーソナライズ広告はオフ（オプトイン）。分析はオン、ただし子ども・`gdprApplies` はオフ。
+- REQ-CNS-004 効いている値と `locked`（`minor`・`under18`・`age_unknown`・`att`・`cmp`）：protocol §58.3 の表のとおり。読む時に毎回計算する（年齢の登録・ATT の変更がすぐ効く）。
+- REQ-CNS-005 PUT：`privacyVersion` は今の版（違えば `409 CONSENT_VERSION_MISMATCH`）、送らない項目は効いている値で確定、同じ内容は何も変えない（冪等）、余分な項目は `400`、`deleting` は `DELETION_PENDING`。
+- REQ-CNS-006 子ども：13歳未満、または EEA で16歳未満（既存の年齢と `ageBand` の数え方）。パーソナライズ広告は常にオフ、分析は既定でオフで保護者の同意がある時だけオン（無ければ `403 NOT_ELIGIBLE`）。
+- REQ-CNS-007 事前の画面の時：FTUE 中（§21 の `minRankedRaces`・`minGameDay` を満たす前）は出さない。初めては最初のリワード広告のカードの直前（`ad_offer`、広告が出ない人は `next_home`）。同じ版で1回だけ。
+- REQ-CNS-008 再確認：プライバシーポリシーの版が上がったら `required: true`・`prompt: "next_home"`。選んでいた値はそのまま効く。
+- REQ-CNS-009 端末の状態：`PUT /v1/privacy/platform` は ATT・UMP の結果を記録（変わった項目ごとに KPI）。ATT が `authorized` でない iOS・CMP の同意が無い EEA はパーソナライズ広告が効かない。
+- REQ-CNS-010 広告のリクエスト：§21 の `adRequest` は効いている値から作る（`npa`・`extras.npa`・`tagForChildDirected`）。REQ-AD-009 の判定は残す（強い方）。
+- REQ-CNS-011 SSV：セッションに `npa` を記録し、`npa` で報酬・上限・弾く理由を変えない（非パーソナライズでも同じ報酬）。
+- REQ-CNS-012 KPI の分類：すべてのイベント名を `essential`／`optional` に分類（`KPI_EVENT_CLASS`）。分類の無い名前は `optional`。テストがコードのイベント名を全部集めて確かめる。
+- REQ-CNS-013 サーバーで強制：分析が効いていない人の `optional` のイベントはサーバーのイベントもクライアントのバッチも書かない（`withheld` で数を返す）。`essential`（購入・返金・有償コインの使用・広告の報酬・同意・削除・開示・通報・問い合わせ）はいつも書く。
+- REQ-CNS-014 KPI `consent_change`（essential）：`s1` 項目・`s2` 値・`s3` 入口、変わった項目ごとに1行。クエリは `docs/ops/kpi-queries.md`。
+- REQ-CNS-015 ゲートの群：§46 の `EXEMPT_ROUTES` に入れる（規約の同意と同じく閉じない）。
+- REQ-CNS-016 ヘルプ：記事 `ads_analytics_privacy`（カテゴリ `account`、文脈 `privacy_choices`、画面 `privacy_choices`）。日本語・英語。
+- REQ-CNS-017 クライアント：`Muchi.Client` の `ConsentState`・`IConsentPlatform`・`AdRequestConfig`・`ApiClient` の各メソッド・`AnalyticsClient.Gate`。Unity のゲーム層 `ConsentModel`（`IAdConsent` を実装）。ネイティブは `docs/handoff-codex-round20-consent.md`。
+- REQ-CNS-018 文言：日本語・英語（`l10n:missing` 0）。ATT の事前の画面は理由（広告を出すため・断っても遊べる・あとで変えられる）を書き、煽らない・報酬で釣らない（Apple の指針）。
+- REQ-CNS-019 プロトタイプ：事前の画面のシートと設定 › プライバシーの「広告と分析」（ムチ一閃のトーン、日本語・英語、文字の大きさ §41）。e2e・en-flow・a11y-flow。
+- REQ-CNS-020 法務：`docs/planning/03-legal-risk.md` に方針（個人情報保護法・電気通信事業法の外部送信・GDPR／ePrivacy・Apple ATT）と弁護士の確認事項。

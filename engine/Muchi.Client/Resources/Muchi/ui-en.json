@@ -1396,6 +1396,17 @@
   "通知センターに静かに届きます（仮の許可）": "Delivered quietly to Notification Center (provisional)",
   "端末の設定で通知がオフになっています": "Notifications are turned off in the device settings",
   "通知はまだ許可されていません": "Notifications are not allowed yet",
-  "リマインダーの設定はオンラインで変えられます": "You can change reminders when you are online"
+  "リマインダーの設定はオンラインで変えられます": "You can change reminders when you are online",
+  "アンケート": "Survey",
+  "答える": "Answer",
+  "とばす": "Pass",
+  "任意": "Optional",
+  "答えても何ももらえません。ゲームの内容も変わりません。": "Answering gives you nothing and changes nothing in the game.",
+  "ありがとうございました": "Thank you",
+  "いただいた声は、これからのムチ一閃づくりに使います。": "Your answers help shape the future of Muchi Issen.",
+  "このアンケートは終了しました": "This survey has ended",
+  "名前やメールアドレスなどは書かないでください": "Please do not write your name, email address or other personal details",
+  "{0}つまで選べます": "Choose up to {0}",
+  "あと{0}文字": "{0} characters left"
  }
 }

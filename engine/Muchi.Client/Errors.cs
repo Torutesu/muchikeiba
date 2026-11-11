@@ -143,6 +143,8 @@ namespace Muchi.Client
         TransferIssueLimit,
         /// <summary>REQ-TRF-010: 401 — this account moved to another device. Never retried; see <see cref="SessionReplacedException"/>.</summary>
         SessionReplaced,
+        /// <summary>REQ-SURVEY-009 (§69): 409 — the survey has ended; close the sheet quietly (a neutral message, no retry).</summary>
+        SurveyClosed,
     }
 
     public static class ApiErrorCodes
@@ -264,6 +266,7 @@ namespace Muchi.Client
             ["TRANSFER_REFUSED"] = ApiErrorCode.TransferRefused,
             ["TRANSFER_ISSUE_LIMIT"] = ApiErrorCode.TransferIssueLimit,
             ["SESSION_REPLACED"] = ApiErrorCode.SessionReplaced,
+            ["SURVEY_CLOSED"] = ApiErrorCode.SurveyClosed,
         };
 
         public static IReadOnlyCollection<string> WireCodes => ByWire.Keys;

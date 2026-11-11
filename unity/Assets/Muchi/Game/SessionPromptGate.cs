@@ -14,6 +14,8 @@ namespace Muchi.Game
         Notifications = 1,
         /// <summary>§59: the store review request (soft sheet or the OS sheet).</summary>
         Review = 2,
+        /// <summary>R22 §69: an in-app survey (home card or the sheet after a race result) — the lowest priority.</summary>
+        Survey = 3,
     }
 
     /// <summary>
@@ -52,6 +54,15 @@ namespace Muchi.Game
             return null;
         }
 
+        /// <summary>R22 §69: the same with an in-app survey due (always last: it only ever asks for an opinion).</summary>
+        public SessionPromptKind? Pick(bool consentDue, bool notificationsDue, bool reviewDue, bool surveyDue)
+        {
+            var p = Pick(consentDue, notificationsDue, reviewDue);
+            if (p != null) return p;
+            if (surveyDue && CanShow(SessionPromptKind.Survey)) return SessionPromptKind.Survey;
+            return null;
+        }
+
         /// <summary>A new session (a new account on this device): any prompt may show again under its own rules.</summary>
         public void Reset() => Shown = null;
     }
@@ -80,6 +91,8 @@ namespace Muchi.Game
         public LocalNotificationModel Reminders { get; set; }
         public ClientErrorModel Errors { get; set; }
         public ReviewPromptModel Review { get; set; }
+        /// <summary>R22 §69: the survey card / sheet of the old account closes; a new session for the new one.</summary>
+        public SurveyModel Surveys { get; set; }
         public SessionPromptGate Prompts { get; set; }
         /// <summary>How many times the device state was reset (for checks).</summary>
         public int Resets { get; private set; }
@@ -90,6 +103,7 @@ namespace Muchi.Game
             Guard(() => Reminders?.ForgetAll());
             Guard(() => Errors?.Reporter.AccountChanged());
             Guard(() => Review?.ResetSession());
+            Guard(() => Surveys?.ResetSession());
             Prompts?.Reset();
         }
 

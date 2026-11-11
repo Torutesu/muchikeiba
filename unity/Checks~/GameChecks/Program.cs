@@ -138,6 +138,8 @@ static class Program
         await HorseGoalsChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 20: レビュー依頼のタイミング (ReviewPromptModel: OS API only, FTUE / loss / error / session / offline skips, native, soft sheet → store or inquiry, English; REQ-REV-*)");
         await ReviewPromptChecks.Run(Check, Ruleset(), Root);
+        Console.WriteLine("== round 22: ゲーム内アンケート (SurveyModel: FTUE / offline / one-prompt gate (last), home card → sheet, optional pages, skip in one tap, one key per answer set, SURVEY_CLOSED, account change, English; REQ-SURVEY-*)");
+        await SurveyChecks.Run(Check, Ruleset(), Root);
         Console.WriteLine("== round 20: クライアントのエラー報告 (ClientErrorModel: Unity log lines, no loop, stalls / pause, API failures, desync race id + tick, asset, consent hook, send on pause; REQ-CERR-*)");
         await ClientErrorChecks.Run(Check);
         Console.WriteLine("== round 20: 端末のローカル通知 (LocalNotificationModel: plan from the digest, diff, account switch / deletion / logout, pre-prompt, details, tap, English; REQ-LNOTIF-*)");

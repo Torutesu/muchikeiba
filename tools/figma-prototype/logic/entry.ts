@@ -1264,9 +1264,7 @@ export const MuchiLogic = {
     answer: (id: string, placement: SurveyPlacement, answers: Record<string, unknown>, key: string | null) => wrap(async () => {
       const l = surveyCore.one(id);
       if (!l || now() < l.startAt) throw new AppError('NOT_FOUND', 'unknown survey');
-      const cfg = surveysConfig(master);
-      if (!cfg.enabled || now() >= l.endAt) throw new AppError('SURVEY_CLOSED', 'this survey has ended');
-      const clean = validateSurveyAnswers(l.def, answers, cfg);
+      const clean = validateSurveyAnswers(l.def, answers, surveysConfig(master)); // an ended survey: SURVEY_CLOSED from the player (after its key check)
       const { pending, ...out } = await svc.surveyAnswer(ID, l, { placement, answers: clean, facts: SURVEY_FACTS }, key ?? `c:/v1/surveys/answers:${id}:${++surveyKeySeq}`);
       surveyCore.ingest(pending.map((x) => ({ surveyId: x.surveyId, playerId: ID, rev: x.rev, at: x.at, answers: x.answers, segment: x.segment })));
       await svc.surveySynced(ID, pending.map((x) => x.surveyId));

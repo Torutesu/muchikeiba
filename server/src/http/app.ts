@@ -739,9 +739,9 @@ export const routes: Route[] = [
     const live = await surveyOne(c, p.surveyId!);
     const now = (c.clock ?? Date.now)();
     if (!live || now < live.startAt) throw new AppError('NOT_FOUND', 'unknown survey');
-    const cfg = surveysConfig(c.master);
-    if (!cfg.enabled || now >= live.endAt) throw new AppError('SURVEY_CLOSED', 'this survey has ended');
-    const answers = validateSurveyAnswers(live.def, b.answers, cfg); // strict: 400 before anything is written
+    const answers = validateSurveyAnswers(live.def, b.answers, surveysConfig(c.master)); // strict: 400 before anything is written
+    // an ended survey (or enabled: false) is refused by the player object as SURVEY_CLOSED — after its idempotency check, so
+    // the retry of an answer that was saved just before the close still gets its original result
     const { pending, ...out } = await c.player(u).invoke('surveyAnswer', u, live, { placement: b.placement, answers, facts: surveyFacts(r) }, key);
     await syncSurveyAnswers(c, u, pending);
     return out;

@@ -456,6 +456,19 @@ describe('HTTP: プレイヤーと運営の画面 (REQ-SURVEY-005..011/015..018)
     expect(closed.body.error.code).toBe('SURVEY_CLOSED');
     expect((await call('GET', '/v1/surveys/current?placement=home', { user: 'r', headers: hdr })).body.survey).toBeNull();
   });
+  it('self-QA: the retry of an answer saved just before the close gets its original result, a new one SURVEY_CLOSED', async () => {
+    const { w, call, ops, setNow } = await app();
+    await settled(w, 'p'); await settled(w, 'q');
+    await ops.api.surveys!.create(normalizeSurveyDef(SAMPLE), 'op', NOW);
+    await ops.api.surveys!.publish('sv_whip_feel', NOW, NOW + DAY, 5, 'ad', NOW);
+    const first = await call('POST', '/v1/surveys/sv_whip_feel/answers', { body: { placement: 'home', answers: GOOD }, idem: 'c:r1' });
+    expect(first.status).toBe(200);
+    await ops.api.surveys!.close('sv_whip_feel', 'ad', NOW + HOUR);
+    setNow(NOW + 2 * HOUR);
+    expect(await call('POST', '/v1/surveys/sv_whip_feel/answers', { body: { placement: 'home', answers: GOOD }, idem: 'c:r1' })).toEqual(first);
+    const late = await call('POST', '/v1/surveys/sv_whip_feel/answers', { user: 'q', body: { placement: 'home', answers: GOOD }, idem: 'c:r2' });
+    expect([late.status, late.body.error.code]).toEqual([409, 'SURVEY_CLOSED']);
+  });
   it('an answer the ops table missed is re-sent on the next offer read', async () => {
     const { w, call, ops } = await app();
     await settled(w, 'p');

@@ -9,8 +9,9 @@ import { auditView } from './views/audit.js';
 import { kpiView } from './views/kpi.js';
 import { maintenanceView } from './views/maintenance.js';
 import { inquiriesView } from './views/inquiries.js';
+import { calendarView } from './views/calendar.js';
 
-const views = { config: configView, gacha: gachaView, events: eventsView, players: playersView, compensations: compensationsView, inquiries: inquiriesView, audit: auditView, kpi: kpiView, maintenance: maintenanceView };
+const views = { config: configView, gacha: gachaView, events: eventsView, players: playersView, compensations: compensationsView, inquiries: inquiriesView, audit: auditView, kpi: kpiView, maintenance: maintenanceView, calendar: calendarView };
 const main = document.getElementById('main');
 const nav = document.getElementById('nav');
 const who = document.getElementById('who');

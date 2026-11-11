@@ -318,6 +318,15 @@ try {
     assert.notEqual(s, 503, 'cancel reopens cups');
   });
 
+  await step('viewer: the merged calendar (§65.3) lists the version's dates and the overlaps to check', async () => {
+    await login('viewer');
+    await page.locator('#nav a[data-view=calendar]').click();
+    await tid('cal-overlaps').waitFor();
+    await tid('cal-table').waitFor();
+    assert.ok((await page.locator('[data-testid=cal-table] tbody tr').count()) > 0, 'the calendar lists dates (seasons at least)');
+    await shot('12-calendar');
+  });
+
   await step('KPI quick view lists the documented queries', async () => {
     await page.locator('#nav a[data-view=kpi]').click();
     await tid('kpi-doc').waitFor();

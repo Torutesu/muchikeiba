@@ -3416,7 +3416,7 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
 | `team_goal` | 支部の共同目標の週（§32 `weekKeyOf`） | `game_day` | 支部のメンバーだけ（`team.teamId`）・`teams` |
 | `league_season` | 支部対抗シーズン（league、暦の月 `seasonStartMs`〜月末） | `calendar_month` | 支部のメンバーだけ・`teams` |
 | `season` | ランク戦のシーズン（暦の月、`seasonIdFor`） | `calendar_month` | `season` |
-| `season_pass` | シーズンパスを買える月（`passPurchaseInfo` と同じ暦の月）。期間だけ | `calendar_month` | `season_pass`・パスの商品があるとき |
+| `season_pass` | シーズンパスを買える月（`passPurchaseInfo` と同じ暦の月）。期間だけ | `calendar_month` | `season_pass`・パスの商品があるとき（その月のパスを買った人には出さない） |
 | `banner` | スカウトのバナーのうち **予告中・開催中** のもの（`bannerStatus` が `upcoming`／`active`、期間のあるものだけ）。予告前は出さない | `exact`（`startDay`/`endDay` のバナーは読み込み時にゲーム日の切り替えの ms になっている） | `scout` |
 | `tournament_registration` | 大会の受付（`TournamentSummary` の `registrationOpensAtMs`〜`registrationClosesAtMs`） | `exact` | `tournaments` |
 | `tournament` | 大会の開始（`startsAtMs`、終わりの時刻は決まっていないので時刻1点）。観戦できるとき（`spectate`）は `spectate: true` | `exact` | `tournaments` または `spectate` |
@@ -3453,7 +3453,7 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
 
 ### 65.2 印（リマインダーの準備、`PUT`／`DELETE /v1/calendar/marks/:entryId`、要認証）
 - 行に「印」を付けられる（`markable` = まだ終わっていない行）。サーバーは **印だけ** を持つ：`calendar.marks`（`{ id, kind, until }`、`until` = 行の `endAt`（時刻1点は `startAt`）、30件まで、`until` を過ぎた印は読む・書くたびに落とす）。
-- `PUT`：今日から35日の予定表を同じ組み立てで作り、その `id` の行があって終わっていなければ付ける（何度でも同じ、`{ "marked": true, "id": "…", "count": n, "max": 30 }`）。行が無い・見えない → 404 `NOT_FOUND`、終わっている → 409 `CONFLICT`（`details.reason: "ended"`）、30件ある → 409 `CONFLICT`（`details.reason: "limit"`）。
+- `PUT`：今日から `GET` が見せられる最も先の日（90日後）までの予定表を同じ組み立てで（200行の上限なしで）作り、その `id` の行があって終わっていなければ付ける（何度でも同じ、`{ "marked": true, "id": "…", "count": n, "max": 30 }`）。行が無い・見えない → 404 `NOT_FOUND`、終わっている → 409 `CONFLICT`（`details.reason: "ended"`）、30件ある → 409 `CONFLICT`（`details.reason: "limit"`）。
 - `DELETE`：外す（無い印でも 200、`{ "marked": false, … }`）。
 - **サーバーからは通知を送らない**（プッシュもメールも無し）。
 - §61（端末の通知、Round 20）との結び方（統合のメモ）：§61 が入ったら、クライアントは `GET /v1/calendar` の `marked: true` の行について、端末の通知を `startAt`（始まる前の行）または `endAt`（開催中の行）の少し前（§61 の決まりの静かな時間帯・1日の上限に従う）に予約する。印を外した・行が消えた・`until` を過ぎたら端末の予約も消す。文言は §61 のカタログの「予定」の種類を足して決める（今は無い）。KPI の `calendar_mark` は §58 の分類で決める。

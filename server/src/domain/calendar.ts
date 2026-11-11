@@ -23,6 +23,7 @@ import { weekAt, weeklyChallengeConfig } from './weeklyChallenge.js';
 import { teamGoalConfig, weekEndMs, weekKeyOf, weekStartMs } from './teamGoal.js';
 import { seasonStartMs } from './league.js';
 import { bannerStatus } from './gacha.js';
+import { passPurchasesFor } from './pass.js';
 import { maintenanceOf, msToJst, shortJst, visibleWindows, adminWindowView, type MaintenanceGroup } from './maintenance.js';
 import { windowActive } from './comeback.js';
 import { bettingWordsIn } from './bettingWords.js';
@@ -156,7 +157,7 @@ const seasonName = (monthKey: string) => { const [y, mo] = monthKey.split('-'); 
  * The rows the master and remote config own (events, exchange, weeks, months, banners, maintenance).
  * `audience` player: only what players can see; ops: also unannounced banners and scheduled windows (flagged `announced: false`).
  */
-function masterDrafts(m: Master, range: CalendarRange, now: number, audience: 'player' | 'ops', team: boolean): Draft[] {
+function masterDrafts(m: Master, range: Pick<CalendarRange, 'startMs' | 'endMs'>, now: number, audience: 'player' | 'ops', team: boolean): Draft[] {
   const rule = dayRule(m);
   const out: Draft[] = [];
   for (const ev of m.events) {
@@ -167,7 +168,7 @@ function masterDrafts(m: Master, range: CalendarRange, now: number, audience: 'p
   if (wc?.enabled) {
     // the week ids come from the same weekAt the challenge screen uses; contents are named only once announced (this week, next when previewed)
     const nowWeek = weekAt(m, wc, now).weekId;
-    for (let off = 0; off <= 6; off++) {
+    for (let off = 0; off <= 20; off++) {
       const w = weekAt(m, wc, range.startMs, off);
       if (w.startsAt >= range.endMs) break;
       const named = w.weekId <= nowWeek || (wc.previewNext && w.weekId === weekAt(m, wc, now, 1).weekId);
@@ -237,8 +238,8 @@ function openKinds(m: Master, s: PlayerState, now: number): (k: CalendarKind) =>
 }
 const isTeamMember = (s: PlayerState) => !!s.team?.teamId;
 
-/** The player's rows in a range (marks applied). */
-export function playerCalendarEntries(m: Master, s: PlayerState, range: CalendarRange, now: number, ext: CalendarExternal): CalendarEntry[] {
+/** The player's rows in a range (marks applied), at most `limit` of them. */
+export function playerCalendarEntries(m: Master, s: PlayerState, range: Pick<CalendarRange, 'startMs' | 'endMs'>, now: number, ext: CalendarExternal, limit: number = CALENDAR_LIMITS.maxEntries): CalendarEntry[] {
   const open = openKinds(m, s, now);
   const unlocked = new Map(unlocksView(m, s, now).features.map((x) => [x.key, x.unlocked]));
   const drafts = [...masterDrafts(m, range, now, 'player', isTeamMember(s)), ...externalDrafts(ext, unlocked.get('spectate') ?? true)];
@@ -246,7 +247,9 @@ export function playerCalendarEntries(m: Master, s: PlayerState, range: Calendar
   const w = s.comeback?.window;
   if (m.progression.comeback && windowActive(m, w, now)) drafts.push({ kind: 'comeback', sourceId: w.id, name: null, startAt: w.startedAt, endAt: w.endsAt, rule: 'game_day', link: { screen: 'comeback', id: null } });
   const marked = new Set(liveMarks(s, now).map((x) => x.id));
-  return drafts.filter((d) => open(d.kind) && inRange(d, range)).sort(sortDrafts).slice(0, CALENDAR_LIMITS.maxEntries).map((d) => finish(m, d, now, marked));
+  // a month whose pass this player already bought is not a purchase period for them any more (dates only either way)
+  const owned = (d: Draft) => d.kind === 'season_pass' && passPurchasesFor(s, d.sourceId).length > 0;
+  return drafts.filter((d) => open(d.kind) && inRange(d, range) && !owned(d)).sort(sortDrafts).slice(0, limit).map((d) => finish(m, d, now, marked));
 }
 
 /** GET /v1/calendar (REQ-CAL-004..009). */
@@ -270,8 +273,8 @@ export function ensureCalendar(s: PlayerState): CalendarState {
 export const liveMarks = (s: PlayerState, now: number): CalendarMark[] => (s.calendar?.marks ?? []).filter((x) => x.until > now);
 
 /**
- * PUT / DELETE /v1/calendar/marks/:entryId. A mark is set only on a row this player sees in the next 35 days that has not
- * ended (the same build as GET). Idempotent both ways. Only the flag is stored — no push is ever sent for it (§61 note).
+ * PUT / DELETE /v1/calendar/marks/:entryId. A mark is set only on a row this player can see from today on (as far ahead as
+ * GET reaches) that has not ended (the same build as GET). Idempotent both ways. Only the flag is stored — no push is ever sent for it (§61 note).
  */
 export function markCalendar(m: Master, s: PlayerState, entryId: string, on: boolean, now: number, ext: CalendarExternal, emit?: Emit) {
   if (!CALENDAR_ENTRY_ID_RE.test(entryId)) throw new AppError('NOT_FOUND', 'no such calendar entry');
@@ -285,8 +288,11 @@ export function markCalendar(m: Master, s: PlayerState, entryId: string, on: boo
     }
     return { marked: false, id: entryId, count: st.marks.length, max: CALENDAR_LIMITS.marksMax };
   }
-  const range = calendarRange(m, {}, now);
-  const e = playerCalendarEntries(m, s, range, now, ext).find((x) => x.id === entryId);
+  // every row GET can show from today on (up to CALENDAR_LIMITS.futureDays ahead), uncapped: what the list offers to mark
+  const rule = dayRule(m);
+  const today = gameDayKey(now, rule);
+  const range = { startMs: gameDayStartMs(today, rule), endMs: gameDayStartMs(addJstDays(today, CALENDAR_LIMITS.futureDays + 1), rule) };
+  const e = playerCalendarEntries(m, s, range, now, ext, Number.MAX_SAFE_INTEGER).find((x) => x.id === entryId);
   if (!e) throw new AppError('NOT_FOUND', 'no such calendar entry');
   if (!e.markable) throw new AppError('CONFLICT', 'the entry has ended', undefined, { reason: 'ended' });
   if (!had) {

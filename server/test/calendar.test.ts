@@ -228,6 +228,21 @@ describe('marks (REQ-CAL-010/011)', () => {
   });
 });
 
+describe('self-QA (marks beyond the default window, a bought pass month)', () => {
+  it('a row further ahead than 35 days (but within what GET can show) can be marked', () => {
+    const s = veteran();
+    expect(markCalendar(m, s, 'event:newyear_cup_2027_01', true, NOW, NO_EXT).marked).toBe(true);
+    expect(code(() => markCalendar(m, s, 'season:2027-03', true, NOW, NO_EXT))).toBe('NOT_FOUND'); // beyond 90 days
+  });
+  it('the month whose pass was bought is no longer shown as a purchase period', () => {
+    const s = veteran();
+    s.purchases.push({ txId: 't1', platform: 'fake', productId: 'season_pass', priceYen: 480, at: NOW, paidCoinsGranted: 0, bonusCoinsGranted: 0, lotId: null, refunded: false, limitBreach: false, passSeasonId: '2026-11' });
+    const v = calendarView(m, s, {}, NOW, NO_EXT);
+    expect(ids(v.entries)).not.toContain('pass:2026-11');
+    expect(ids(v.entries)).toContain('pass:2026-12');
+  });
+});
+
 describe('ops console (REQ-CAL-012)', () => {
   it('the whole calendar incl. unannounced banners and scheduled windows, and their overlaps', () => {
     const mm = withMaint([{ id: 'mnt_ev', startAtMs: Date.UTC(2026, 11, 10, 17), endAtMs: Date.UTC(2026, 11, 10, 19), scope: ['events'], message: { ja: '点検', en: 'Check' } }]);

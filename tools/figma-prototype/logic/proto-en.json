@@ -1475,7 +1475,6 @@
   "自分で決めた今月の上限を超えます": "This goes over the monthly limit you set",
   "自分で決めた上限 {limit}　·　今月の支払い {spent}　·　この商品 {price}": "Your limit {limit}  ·  spent this month {spent}  ·  this item {price}",
   "上限は翌月1日に戻ります。上限はご自身で決めたもので、いつでも確かめられます。": "The limit resets on the 1st. You set it yourself and can check it at any time.",
-  "おつかれさまでした": "See you next time",
   "その他　/　購入履歴　/　使いすぎ・遊びすぎの防止": "More  /  Purchase history  /  Spending & play-time limits",
   "自分で決める上限とお知らせ。下げるのはすぐ、上げるのは少し時間をおいてから": "Limits and reminders you set yourself. Lowering applies at once; raising takes a pause",
   "年齢に応じた上限 {limit}　·　効いている上限 {eff}　·　今月の支払い {spent}": "Limit for your age {limit}  ·  in effect {eff}  ·  spent this month {spent}",

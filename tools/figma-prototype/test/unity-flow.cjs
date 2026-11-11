@@ -1580,6 +1580,36 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.equal(await page.locator('.screen.in .act-row.unread').count(), 0, 'read rows on the next visit');
   await page.locator('.screen.in [data-act="gift_arrived"] [data-act-go]').click(); await waitScreen('gift-box', 20000);
   assert.ok((await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name === 'activity_tap').length)) >= 1, 'activity_tap sent');
+  // ------------------------------------------------------------------ round 20: クライアントのエラー報告 (REQ-CERR-*)
+  // the page's window.onerror feeds the WASM ErrorReporter (ClientErrorModel): the demo's report is queued scrubbed; a test
+  // error with a player name collapses / scrubs; the send goes through the server's ingest (one batch, an id, attachPlayer
+  // follows the consent stand-in) and the ops view lists the fingerprints; a resend of the same batch is a duplicate
+  await page.evaluate(() => globalThis.__muchi.demo('errors')); await waitScreen('diagnostics', 60000); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .ce-row').count(), 1, 'the demo error is queued on the device');
+  assert.equal(await page.locator('.screen.in .ce-row').first().getAttribute('data-category'), 'exception');
+  assert.match(await page.locator('.screen.in .ce-row').first().innerText(), /RangeError: Invalid array length <n> at index #/, 'scrubbed and shaped like the fingerprint');
+  await page.locator('.screen.in [data-action="ce-test"]').click(); await page.waitForTimeout(400);
+  await page.locator('.screen.in [data-action="ce-test"]').click(); await page.waitForTimeout(400);
+  const ceRows = await page.locator('.screen.in .ce-row').allInnerTexts();
+  assert.equal(ceRows.length, 2, 'the same error twice is one row');
+  assert.ok(ceRows.some((t) => /×2/.test(t) && /TypeError/.test(t)), 'with a count of 2');
+  assert.ok(!ceRows.join(' ').includes('ハヤテ'), 'the player name never reaches the queue');
+  await shot('diagnostics', 300);
+  await page.locator('.screen.in [data-ce-consent="off"]').click(); await page.waitForTimeout(300);
+  await page.locator('.screen.in [data-action="ce-send"]').click(); await page.waitForTimeout(1200);
+  assert.equal(await page.locator('.screen.in .ce-row').count(), 0, 'sent: nothing left on the device');
+  const ceBatches = await page.evaluate(() => globalThis.__muchiCeBatches);
+  assert.equal(ceBatches.length, 1, 'one batch');
+  assert.match(ceBatches[0].batchId, /^b_[0-9a-f]{16}$/);
+  assert.equal(ceBatches[0].attachPlayer, false, 'consent off → no player id');
+  assert.ok(!JSON.stringify(ceBatches[0]).includes('ハヤテ'), 'no player name leaves the device');
+  assert.equal(await page.locator('.screen.in .ce-ops').getAttribute('data-groups'), '2', 'the ops view lists both fingerprints');
+  const ceDup = await page.evaluate((b) => globalThis.__muchi.logic.clientErrors.ingest(JSON.stringify(b), true).body, ceBatches[0]);
+  assert.equal(ceDup.duplicate, true, 'the same batch id again adds nothing');
+  assert.equal((await page.evaluate(() => globalThis.__muchi.logic.clientErrors.samplesOf('local'))).length, 0, 'no sample carries the player id');
+  await shot('diagnostics-sent', 300);
+  await page.evaluate(() => globalThis.__muchi.show('Privacy')); await waitScreen('privacy'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in .btn[data-action="diagnostics"]').count(), 1, 'プライバシー links to the diagnostics screen');
   // ------------------------------------------------------------------ 6. round 17: 通報とブロック (REQ-RPT-*)
   // two blocked players (one deleted since → 「プレイヤー」) and support's request in the activity list; the block screen
   // (what a block does per feature), unblock only after the confirmation, the settings row, and the report sheet from a

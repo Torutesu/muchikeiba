@@ -215,6 +215,8 @@ export interface Progression {
   dataExport?: Partial<import('./dataExport.js').DataExportConfig> & { enabled: boolean };
   /** REQ-CUP-*: プレイヤー主催カップ (hostedCups.ts, validated by hostedCupsProblems). Absent / disabled = no hosted cups. */
   hostedCups?: import('./hostedCups.js').HostedCupsConfig;
+  /** REQ-CERR-001: client error reports (clientErrors.ts, validated by clientErrorsProblems). Absent = CLIENT_ERRORS_DEFAULTS. */
+  clientErrors?: Partial<import('./clientErrors.js').ClientErrorsConfig>;
   /** REQ-RPT-015: 通報 limits and reporter weights (reports.ts, validated by reportsProblems). Absent = REPORTS_DEFAULTS. */
   reports?: Partial<import('./reports.js').ReportsConfig>;
   /** REQ-FSUG-012: おすすめフレンド (friendSuggest.ts, validated by fsugProblems). Absent = FSUG_DEFAULTS. */

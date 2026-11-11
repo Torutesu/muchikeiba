@@ -216,6 +216,8 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('CupJoin'); await waitScreen('cup-join'); await shot('cup-join', english, 500);
     // Round 17: 通報とブロック — the block list and the report sheet at the largest size (REQ-RPT-019)
     await show('BlockList'); await waitScreen('blocks'); await shot('blocks', english, 600);
+    // Round 20: エラーの自動送信 (REQ-CERR-*) at the largest size
+    await show('Diagnostics'); await waitScreen('diagnostics'); await shot('diagnostics', english, 600);
     await page.evaluate(() => globalThis.__muchi.show('Report', { playerId: 'demo_rpt_x', name: 'ヨルノカラス', kind: 'display_name', source: 'profile' })); await page.waitForTimeout(800);
     await shot('report-sheet', english, 300);
     // Round 17: the maintenance screen, the update-required screen and the maintenance notice (REQ-MNT-015)

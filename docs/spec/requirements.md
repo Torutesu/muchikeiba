@@ -1263,3 +1263,26 @@
 - REQ-CNS-018 文言：日本語・英語（`l10n:missing` 0）。ATT の事前の画面は理由（広告を出すため・断っても遊べる・あとで変えられる）を書き、煽らない・報酬で釣らない（Apple の指針）。
 - REQ-CNS-019 プロトタイプ：事前の画面のシートと設定 › プライバシーの「広告と分析」（ムチ一閃のトーン、日本語・英語、文字の大きさ §41）。e2e・en-flow・a11y-flow。
 - REQ-CNS-020 法務：`docs/planning/03-legal-risk.md` に方針（個人情報保護法・電気通信事業法の外部送信・GDPR／ePrivacy・Apple ATT）と弁護士の確認事項。
+
+## 60. クライアントのエラー報告（TS＋C#、`src/domain/clientErrors.ts`・`src/ops/clientErrors.ts`・`src/do/clientErrors.ts`・`Muchi.Client/ClientErrors.cs`・`Muchi.Game.ClientErrorModel`、`contracts/protocol.md` §60）
+拘束条件：外部の SDK を使わない。個人情報（メール・トークン・プレイヤー名・自由な文・入力の列）を保存しない。プレイヤーの状態に何も足さない。コイン・アイテム・ランク戦は動かない。保存は上限と保存期間つき。
+- REQ-CERR-001 設定 `progression.clientErrors`（§60.10）：起動時とリモート設定の各版で検査。抽出率は種類ごとに 0〜1000‰、ズレ（`desync`）は 1000 のみ。知らないキーは問題。
+- REQ-CERR-002 種類は `exception`・`api`・`desync`・`asset`・`stall` の5つ。種類ごとに決まったキーだけ受け付け（strict）、ズレに入力・チェックサムのキーがあれば 400。
+- REQ-CERR-003 `POST /v1/client-errors`：認証は任意（無効なトークンは匿名として扱い 401 にしない）。応答に次の抽出率と送る間隔。
+- REQ-CERR-004 メンテナンス・アップデート必須の門で閉じない（`EXEMPT_ROUTES`）。
+- REQ-CERR-005 何度送っても同じ：`installId`+`batchId` を 48 時間覚え、2回目は何も足さず `duplicate: true`。
+- REQ-CERR-006 大きさの上限（本文 `maxBodyBytes` → 413、項目 `maxItems`、文字列の長さ）。
+- REQ-CERR-007 回数の制限：プレイヤーごと・端末ごと（1時間の束の数）、匿名の束は全体で1分ごと。超えたら 429 `RATE_LIMITED`。`enabled: false` なら保存せず `enabled: false` を返す。
+- REQ-CERR-008 スクラブ：端末とサーバーの両方で同じ規則（共有ベクター）。パスはファイル名だけ、引用符の中・ASCII 以外の文字・メール・トークン・URL・長い id・長い数字を置き換える。機種と OS の版は決まった文字だけ。
+- REQ-CERR-009 指紋：サーバーがスクラブ後の中身から FNV-1a 64 で計算（行番号・アドレスは入れない）。TS と C# は共有ベクターで同じ。
+- REQ-CERR-010 保存：指紋ごとの集計（数・推定の数・最初と最後・版・プラットフォーム）、日 × 版 × プラットフォームの数、指紋ごとに新しい見本 `samplesPerGroup` 件。
+- REQ-CERR-011 上限：指紋の行は `maxGroups` まで、超えた分は種類ごとの `overflow:<category>` に足す。
+- REQ-CERR-012 保存期間：`retentionDays` を過ぎた日の行・見本・指紋を受け付けるたびに少しずつ消す。重複の記録は 48 時間、回数の記録は 1 時間。
+- REQ-CERR-013 同意のフック：`ErrorReporter.AllowsDiagnostics`（既定 true）が false なら `attachPlayer: false`、サーバーは playerId を残さない。§58 が入ったらその同意につなぐ。
+- REQ-CERR-014 運営の一覧 `GET /v1/admin/client-errors`（viewer）：種類・プラットフォーム・版で絞り、数・最後・最初の順に並べる。直近の通知と種類ごとの合計。
+- REQ-CERR-015 運営の詳細 `GET /v1/admin/client-errors/:fingerprint`（viewer）：直近 14 日の数と見本。
+- REQ-CERR-016 ズレの見本はレースのリプレイ（`/v1/admin/replays/<raceId>`）と、playerId がある時は検証の結果（不正対策の記録）につながる。
+- REQ-CERR-017 通知のフック：新しい指紋（最初に見てから `spikeWindowHours` 以内）の推定の数が `spikeMinCount` に届いたら1回だけ記録し、構造化ログ `client_error_spike` を出す（Logpush の規則で通知）。
+- REQ-CERR-018 アカウント削除：手順に `client_errors` の段。見本の playerId を null に（匿名化）、回数の行を消す。
+- REQ-CERR-019 開示（§51）：`analytics.clientErrors` にそのプレイヤーの id が付いた見本。
+- REQ-CERR-020 クライアント：`Muchi.Client` の `ErrorReporter`（指紋・スクラブ・オフラインの列・抽出・束の id・再送）、`StallDetector`、`ApiClient.SendClientErrorsAsync`・`RequestFailed`、`LockstepClient.Desync`。Unity のゲーム層 `ClientErrorModel`。プロトタイプは `window.onerror` を本物の報告の経路（WASM の `ClientErrorModel` → サーバーのドメイン）につなぐデモ。運営の画面に一覧と詳細。

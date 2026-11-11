@@ -7,6 +7,7 @@ import { auditValue, MemoryAuditRepo, RateLimiter, ADMIN_RATE, type RateLimitPol
 import { IntegrityCore, MemoryIntegrityRepo, type ModerationChange } from './integrity.js';
 import { MemoryPlayerReportRepo, PlayerReportsCore } from './playerReports.js';
 import { InquiryIndex, MemoryInquiryIndexRepo } from './inquiries.js';
+import { ClientErrorsCore, MemoryClientErrorRepo } from './clientErrors.js';
 import { DeadLetterService, MemoryDeadLetterRegistry, type DeadLetterOwner, type DeadLetterSource } from './deadLetter.js';
 
 /**
@@ -30,7 +31,16 @@ export function memoryOps(base: Master, player: (uid: string) => PlayerInvoker, 
   const playerReports = new PlayerReportsCore(playerReportRepo);
   const inquiryRepo = new MemoryInquiryIndexRepo();
   const inquiries = new InquiryIndex(inquiryRepo);
+  const clientErrorRepo = new MemoryClientErrorRepo();
+  const clientErrors = new ClientErrorsCore(clientErrorRepo);
   const api: OpsApi = {
+    clientErrors: {
+      ingest: async (b, who, now, cfg) => { const r = clientErrors.ingest(b, who, now, cfg); return { accepted: r.accepted, dropped: r.dropped, duplicate: r.duplicate }; },
+      list: async (q, now, cfg) => clientErrors.list(q, now, cfg),
+      get: async (fp, now) => clientErrors.get(fp, now),
+      madeBy: async (pid) => clientErrors.madeBy(pid),
+      forget: async (pid) => clientErrors.forgetPlayer(pid),
+    },
     playerReports: {
       submit: async (x, now, cfg) => playerReports.submit(x, now, cfg),
       list: async (f) => playerReports.list(f),
@@ -79,5 +89,5 @@ export function memoryOps(base: Master, player: (uid: string) => PlayerInvoker, 
       release: async (pid, reason, by, now) => { const c = integrity.release(pid, reason, by, now); await push([c]); return c; },
     },
   };
-  return { api, config, audits, integrity, integrityRepo, deadLetterRegistry, compensationRepo, inquiryRepo, playerReportRepo };
+  return { api, config, audits, integrity, integrityRepo, deadLetterRegistry, compensationRepo, inquiryRepo, playerReportRepo, clientErrorRepo, clientErrors };
 }

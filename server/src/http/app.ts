@@ -18,6 +18,7 @@ import { ReportsService, reportBodySchema, type ReportBody } from '../domain/rep
 import { blocksView } from '../domain/blocks.js';
 import type { AdminPrincipal } from '../ops/admin.js';
 import { clientBatchSchema } from '../domain/kpi.js';
+import { clientErrorBatchSchema, clientErrorsClientView, clientErrorsConfig } from '../domain/clientErrors.js';
 import type { TimeAttackService } from '../race/timeAttack.js';
 import type { WeeklyChallengeService } from '../race/weeklyChallenge.js';
 import { TA_BOARD_RE } from '../domain/timeAttack.js';
@@ -279,6 +280,30 @@ async function body<T>(req: Request, schema: z.ZodType<T>): Promise<T> {
   if (!r.success) throw new AppError('BAD_REQUEST', r.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '));
   return r.data;
 }
+/** REQ-CERR-003..007: POST /v1/client-errors (§60.2). */
+async function clientErrorsIngest(r: Request, c: AppContext) {
+  const cfg = clientErrorsConfig(c.master);
+  const view = clientErrorsClientView(cfg);
+  const len = Number(r.headers.get('content-length') ?? '0');
+  if (len > cfg.maxBodyBytes) throw new AppError('BAD_REQUEST', `body over ${cfg.maxBodyBytes} bytes`, 413);
+  const text = await r.text();
+  if (new TextEncoder().encode(text).length > cfg.maxBodyBytes) throw new AppError('BAD_REQUEST', `body over ${cfg.maxBodyBytes} bytes`, 413);
+  let raw: unknown;
+  try { raw = JSON.parse(text); } catch { throw new AppError('BAD_REQUEST', 'invalid JSON'); }
+  const p = clientErrorBatchSchema.safeParse(raw);
+  if (!p.success) throw new AppError('BAD_REQUEST', p.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '));
+  const b = p.data;
+  if (b.items.length > cfg.maxItems) throw new AppError('BAD_REQUEST', `at most ${cfg.maxItems} items per batch`);
+  const store = c.ops?.clientErrors;
+  if (!cfg.enabled || !store) return { accepted: 0, dropped: b.items.length, duplicate: false, ...view, enabled: false };
+  let playerId: string | null = null;
+  if (r.headers.get('authorization') || r.headers.get('x-dev-user')) {
+    try { playerId = await c.authenticate(r); } catch { playerId = null; } // anonymous, never 401
+  }
+  const out = await store.ingest(b, { playerId, installId: b.installId }, (c.clock ?? Date.now)(), cfg);
+  return { ...out, ...view };
+}
+
 /** A JSON body that may be absent (empty request body → null). */
 async function optionalBody<T>(req: Request, schema: z.ZodType<T>): Promise<T | null> {
   const text = await req.text();
@@ -455,7 +480,10 @@ const ok = (x: unknown) => x;
 export const routes: Route[] = [
   { method: 'GET', path: '/v1/health', auth: 'none', handler: async () => ({ ok: true }) },
   // REQ-OPS-007: clients cache master data per config version and refetch when it changes
-  { method: 'GET', path: '/v1/config', auth: 'none', handler: async (_r, _p, c) => ({ ...(c.configInfo ? await c.configInfo() : { versionId: 'base', hash: 'base', rulesetVersion: null, activatedAt: null }), visualsVersion: VISUALS.version, assetCatalogVersion: (c.master.assetCatalog ?? EMPTY_ASSET_CATALOG).catalogVersion, dayRollover: dayRule(c.master) }) }, // REQ-DAY-006, REQ-DLV-*
+  { method: 'GET', path: '/v1/config', auth: 'none', handler: async (_r, _p, c) => ({ ...(c.configInfo ? await c.configInfo() : { versionId: 'base', hash: 'base', rulesetVersion: null, activatedAt: null }), visualsVersion: VISUALS.version, assetCatalogVersion: (c.master.assetCatalog ?? EMPTY_ASSET_CATALOG).catalogVersion, dayRollover: dayRule(c.master), clientErrors: clientErrorsClientView(clientErrorsConfig(c.master)) }) }, // REQ-DAY-006, REQ-DLV-*, REQ-CERR-003
+  // REQ-CERR-003..007 (§60.2): client error reports. Auth optional (an invalid token counts as anonymous, never 401: the
+  // reporter must not loop on sign-in failures); never gated (EXEMPT_ROUTES); idempotent per installId + batchId.
+  { method: 'POST', path: '/v1/client-errors', auth: 'none', handler: async (r, _p, c) => clientErrorsIngest(r, c) },
   // REQ-MNT-004/005 (§46): maintenance windows players can see now and where this app version stands. Public, never gated.
   { method: 'GET', path: '/v1/maintenance', auth: 'none', handler: async (r, _p, c) => maintenanceStatus(maintenanceOf(c.master), clientHeaders(r.headers), (c.clock ?? Date.now)()) },
   // REQ-DLV-001..004: asset delivery catalog per platform (contracts/protocol.md §16). Public; ETag = view hash, 304 on match.

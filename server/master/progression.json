@@ -1118,5 +1118,21 @@
     "enabled": true, "expiryDays": 30, "maxAttemptsPerCode": 5, "codeLockMinutes": 60,
     "ipFailuresPerHour": 20, "deviceFailuresPerHour": 10, "limitLockMinutes": 60,
     "issuesPerDay": 5, "passwordMin": 8, "passwordMax": 32
+  },
+  "clientErrors": {
+    "_note": "REQ-CERR-*（contracts/protocol.md §60）。クライアントのエラー報告。samplingは種類ごとの抽出率（‰、desyncは1000のみ）。束はmaxItems項目・maxBodyBytesまで、プレイヤー・端末ごとに1時間の束の数、匿名は全体で1分の束の数。指紋の行はmaxGroups、見本は指紋ごとにsamplesPerGroup件、retentionDays日で消す。新しい指紋の推定の数がspikeWindowHours時間以内にspikeMinCountに届いたら通知のログ。",
+    "enabled": true,
+    "sampling": { "exception": 1000, "api": 200, "desync": 1000, "asset": 500, "stall": 100 },
+    "maxItems": 20,
+    "maxBodyBytes": 32768,
+    "perPlayerPerHour": 20,
+    "perDevicePerHour": 20,
+    "anonymousPerMinute": 120,
+    "flushIntervalSec": 60,
+    "maxGroups": 2000,
+    "samplesPerGroup": 5,
+    "retentionDays": 30,
+    "spikeMinCount": 50,
+    "spikeWindowHours": 24
   }
 }

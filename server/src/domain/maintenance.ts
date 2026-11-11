@@ -184,7 +184,8 @@ export function maintenanceLocale(c: MaintenanceConfig): Record<string, string> 
  *   - in-flight runs settle: the race socket, and the result submissions of time attack / weekly challenge /
  *     training sessions that were started before the window; leaving a queue (match / event cancel);
  *   - the KPI ingest (maintenance_block / upgrade_prompt are reported through it) and the purchase history;
- *   - the ad / analytics choices (§58: GET/PUT /v1/privacy/choices, PUT /v1/privacy/platform, POST /v1/privacy/prompt-shown).
+ *   - the ad / analytics choices (§58: GET/PUT /v1/privacy/choices, PUT /v1/privacy/platform, POST /v1/privacy/prompt-shown);
+ *   - client error reports (§60).
  */
 export const EXEMPT_ROUTES: readonly string[] = [
   'GET /v1/health', 'GET /v1/config', 'GET /v1/maintenance', 'GET /v1/assets/catalog', 'GET /v1/visuals',
@@ -210,6 +211,8 @@ export const EXEMPT_ROUTES: readonly string[] = [
   // Round 20 (§58, REQ-CNS-015): the ad / analytics choices are a privacy right like the data export — withdrawing consent
   // must work in any window and from an outdated app
   'GET /v1/privacy/choices', 'PUT /v1/privacy/choices', 'PUT /v1/privacy/platform', 'POST /v1/privacy/prompt-shown',
+  // Round 20 (§60, REQ-CERR-004): client error reports — an outdated app's crashes are the ones ops most needs to see
+  'POST /v1/client-errors',
 ];
 
 const PREFIX_GROUPS: [string, MaintenanceGroup][] = [

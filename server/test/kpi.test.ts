@@ -141,7 +141,7 @@ describe('client ingestion (REQ-KPI-003/004)', () => {
     const post = (body: unknown, user = 'u1') => handle(new Request('https://x/v1/analytics/events', { method: 'POST', headers: { 'content-type': 'application/json', 'x-test-user': user }, body: JSON.stringify(body) }), {}, ctx);
     const ok = await post({ platform: 'android', appVersion: '1.2.3', events: [{ name: 'session_end', at: NOON - 1000, props: { durationMs: 420_000 } }, { name: 'race_start', at: NOON, props: { mode: 'offline' } }] });
     expect(ok.status).toBe(200);
-    expect(await ok.json()).toEqual({ accepted: 2, dropped: 0 });
+    expect(await ok.json()).toEqual({ accepted: 2, dropped: 0, withheld: 0 });
     expect(recs.map((r) => [r.name, r.source, r.platform, r.appVersion])).toEqual([['session_end', 'client', 'android', '1.2.3'], ['client_race_start', 'client', 'android', '1.2.3']]);
     expect(recs[0]).toMatchObject({ durationMs: 420_000, at: NOON - 1000 });
     expect((await post({ platform: 'ios', appVersion: '1', events: [{ name: 'gacha_draw', at: NOON }] })).status).toBe(400);

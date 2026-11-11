@@ -10,8 +10,8 @@ namespace Muchi.Game
     ///  - whip: the FTUE tutorial race itself (<see cref="GameBackend.CreateTutorialRace"/> with an explicit attempt 1, so the
     ///    TutorialDirector applies the honest rule — 2+ whips in the last 300 m win, 0–1 finish a close 2nd — and the FTUE's
     ///    stored attempt count is neither read nor written);
-    ///  - position / stamina / reins: the offline practice race (<see cref="GameBackend.CreatePracticeRace(ulong, bool)"/>)
-    ///    without かんたん操作.
+    ///  - position / stamina / reins: the §50 practice race built by PracticeSession (<see cref="GameBackend.CreateLessonRace"/>,
+    ///    R19 integration: one practice path) without かんたん操作.
     /// The in-race coaching is the existing RaceFeel line; <see cref="FocusOf"/> says which cues the lesson highlights.
     /// Nothing here touches <see cref="OnboardingFlow"/> (its step, its tutorial_step KPI) or the server: a replay never
     /// counts as a race and grants nothing. The only trace is the tutorial_replay KPI row (start / finish).
@@ -80,7 +80,7 @@ namespace Muchi.Game
             _track?.Invoke(AnalyticsEvent.TutorialReplay(_clock(), Lesson.Id, TutorialEntry.KindRace, "start"));
             return Lesson.Lesson == RaceLessons.Whip
                 ? _b.CreateTutorialRace(1) // explicit attempt: the FTUE count is not touched and the race is never assisted
-                : _b.CreatePracticeRace(_seed(), assist: false);
+                : _b.CreateLessonRace(PracticeSession.NextSeed(_seed() + (ulong)Tries)); // a new seed per try
         }
 
         /// <summary>The lesson race finished. The whip lesson has a win condition (the tutorial's); the others finish when run.</summary>

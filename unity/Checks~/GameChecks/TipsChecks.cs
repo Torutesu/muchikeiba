@@ -123,8 +123,12 @@ static class TipsChecks
             "the FTUE step, the tutorial attempt count and the sent FTUE KPI steps are untouched");
         check(r.Open(m.Index.Tutorial("race_reins")), "opens the reins lesson");
         var reins = r.StartRace();
-        check(reins is OfflineRaceDriver pd && pd.Config.RaceId == "offline_practice" && AssistModel.RidingLevel(reins) == AssistLevel.Off,
-            "the other lessons ride the offline practice race, without かんたん操作");
+        // R19 integration: one practice path — the lesson race is built by §50's PracticeSession (the built-in catalog offline),
+        // not by a second race builder; it carries no かんたん操作 and the practice options (band, slow, ghost) stay off
+        check(reins is OfflineRaceDriver pd && pd.Config.RaceId.StartsWith(PracticeSession.RaceIdPrefix) && PracticeSession.IsPractice(pd.Config)
+            && AssistModel.RidingLevel(reins) == AssistLevel.Off, "the other lessons ride a §50 practice race (PracticeSession), without かんたん操作");
+        var reins2 = (OfflineRaceDriver)r.StartRace();
+        check(reins2.Config.RaceId != ((OfflineRaceDriver)reins).Config.RaceId, "each lesson try is a new practice seed");
         check(TutorialReplayModel.FocusOf(RaceLessons.Reins).Contains(RaceFeelCueKind.Kakari) && TutorialReplayModel.FocusOf(RaceLessons.Whip).Contains(RaceFeelCueKind.WhipChance)
             && RaceLessons.All.All(l => TutorialReplayModel.FocusOf(l).Length > 0), "each lesson highlights its RaceFeel cues");
         check(b.CreatePracticeRace(1) is IRaceDriver p0 && AssistModel.RidingLevel(p0) == AssistLevel.Full, "the normal practice race still carries かんたん操作 (unchanged)");

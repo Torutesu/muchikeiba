@@ -7203,8 +7203,15 @@ async function StartLesson(id) {
     raceInfo = JSON.parse(engine.StartTutorial(1)); // the FTUE tutorial race itself, attempt 1: the honest rule
     raceCtx = { tutorial: true, attempt: 1, ftue: false, lesson: tipsState.lesson };
   } else {
-    raceInfo = JSON.parse(engine.Start('practice', horseName, '', 1 + (Date.now() % 100000)));
-    raceCtx = { tutorial: false, ftue: false, lesson: tipsState.lesson, trackName: t.title, trackId: raceInfo.trackId, config: null };
+    // R19 integration (§57 × §50): one practice path — the lesson is a §50 practice race built by PracticeSession (the
+    // catalog's default course and field, the partner, the options off), on its own session so the player's practice
+    // attempts and ghost stay as they were. Nothing is applied or sent (LessonResult); かんたん操作 is off (above).
+    const c = prCatalog ?? await prLoad();
+    if (!c) { toast('練習の準備ができていません'); return Tips(); }
+    const info = JSON.parse(engine.LessonBegin(JSON.stringify(c), JSON.stringify(prDefault(c)), Math.floor(Math.random() * 2 ** 31) + 1));
+    if (!info.ok) { toast(info.message); return Tips(); }
+    raceInfo = info;
+    raceCtx = { tutorial: false, ftue: false, lesson: tipsState.lesson, trackName: t.title, trackId: raceInfo.trackId, config: { raceId: info.raceId } };
   }
   view.useRig = true; view.start(raceInfo, equippedPartner());
   BuildRaceScreen();

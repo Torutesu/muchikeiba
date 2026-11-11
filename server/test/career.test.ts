@@ -93,9 +93,8 @@ describe('master (REQ-CAREER-002/010/011)', () => {
     const t = careerTotals(CM);
     expect(t.freeCoins).toBeLessThanOrEqual(CAREER_HARD_LIMITS.lifetimeFreeCoins);
     expect(t.material).toBeLessThanOrEqual(CAREER_HARD_LIMITS.lifetimeMaterial);
-    expect(t.apples).toBeLessThanOrEqual(CAREER_HARD_LIMITS.lifetimeApples);
     expect(Math.round(CAREER_HARD_LIMITS.freeCoinsPerGrant * worstYenPerCoin(m))).toBeLessThanOrEqual(200);
-    expect(JSON.stringify(CM)).not.toMatch(/paidCoins|gacha_ticket|ticket_sr_plus|"horse"/);
+    expect(JSON.stringify(CM)).not.toMatch(/paidCoins|gacha_ticket|ticket_sr_plus|training_apple|"horse"/);
   });
 
   it('refuses a bad master: course, going, lights, partner fit, cap, style pool, objectives, rewards, wording, English', () => {
@@ -120,6 +119,8 @@ describe('master (REQ-CAREER-002/010/011)', () => {
     // schema: unknown items, paid coins, a third optional objective
     const s2 = structuredClone(BASE_CAREER) as unknown as { chapters: { races: { reward: unknown; stars: unknown[] }[] }[] };
     s2.chapters[0]!.races[0]!.reward = { items: [{ itemId: 'gacha_ticket', qty: 1 }] };
+    expect(careerProblems(m, s2).join()).toMatch(/reward\.items/);
+    s2.chapters[0]!.races[0]!.reward = { items: [{ itemId: 'training_apple', qty: 1 }] }; // only the daily missions give it (03 調教)
     expect(careerProblems(m, s2).join()).toMatch(/reward\.items/);
     s2.chapters[0]!.races[0]!.reward = { freeCoins: 101 }; // > the per-grant ceiling (≈ ¥200)
     expect(careerProblems(m, s2).join()).toMatch(/reward\.freeCoins/);
@@ -287,7 +288,7 @@ describe('submit → verifier → objectives on the server (REQ-CAREER-007/008/0
     expect(v.chapters[0]!.races[0]!.progress).toMatchObject({ cleared: true, stars: [1, 2, 3], attempts: 4, bestPlace: 1, rewarded: { clear: true, star2: true, star3: true } });
     expect(v.chapters[0]!.races[1]!.progress.unlocked).toBe(true);
     expect(v.nextRaceId).toBe(R2.id);
-    expect(w.repo.get('p')!.items['training_apple']).toBe(2);
+    expect(w.repo.get('p')!.items['training_apple'] ?? 0).toBe(0); // never the daily missions' apple
     // KPI
     expect(w.kpi.filter((k) => k.name === 'career_clear').map((k) => [k.s1, k.isFirst, k.place])).toEqual([[R1.id, true, 3], [R1.id, false, 3], [R1.id, false, 1], [R1.id, false, 1]]);
     expect(w.kpi.filter((k) => k.name === 'career_star').map((k) => k.value)).toEqual([1, 3, 2]);

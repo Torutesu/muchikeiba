@@ -849,7 +849,7 @@ function paintHud(f) {
   if (tut) return;
   if (raceCtx.challenge) paintChallengeHud(f);
   if (raceCtx.practice) paintPracticeHud(f); // round 18
-  setText(hud.banner, `${raceCtx.ta ? 'タイムアタック' : raceCtx.challenge ? '週替わりチャレンジ' : raceCtx.practice ? '練習レース' : raceCtx.trackName}　/　${!f.departed ? '発走前' : f.remainingM <= 400 ? '最後の直線' : f.remainingM >= f.distanceM - 200 ? 'スタート' : 'レース中'}`);
+  setText(hud.banner, `${raceCtx.ta ? 'タイムアタック' : raceCtx.career ? '騎手の道' : raceCtx.challenge ? '週替わりチャレンジ' : raceCtx.practice ? '練習レース' : raceCtx.trackName}　/　${!f.departed ? '発走前' : f.remainingM <= 400 ? '最後の直線' : f.remainingM >= f.distanceM - 200 ? 'スタート' : 'レース中'}`);
   hud.rein.classList.toggle('need', !!feel.kakariWarning);
   // ⑤ the field on the course oval: each runner at its share of the distance (the partner gold, on top)
   f.progress.forEach((pr, i) => {
@@ -887,6 +887,7 @@ async function RaceResult(f) {
   if (raceCtx.tutorial) return TutorialResult(f);
   if (raceCtx.ta) return show(TaResult, f);
   if (raceCtx.practice) return show(PracticeResult, f); // round 18: nothing is applied — practice grants nothing
+  if (raceCtx.career) return CareerSubmit(f); // round 22: 騎手の道 — the server judges the stars
   if (raceCtx.challenge) return ChallengeSubmit(f); // round 13: the server decides the clear
   const r = f.result;
   const finishTick = r.place > 0 ? f.finishTicks[r.place - 1] : -1;
@@ -1330,9 +1331,10 @@ function RaceLobby(fresh = true) {
   Txt(`出走馬　/　${p?.name ?? '—'}（${STYLE_JA[p?.style] ?? ''}・${fmt(p?.distMinM ?? 0)}〜${fmt(p?.distMaxM ?? 0)}m）`, 44, 520, 520, 19, WHITE, d, { weight: 500 });
   Txt('参加費なし。報酬は着順のコイン・シーズンpt・パスXP。端末内のエンジンで走るオフライン版です（ランクの変動なし）。', 44, 566, 500, 14, SOFT, d, { lh: 1.6 });
   Cta('ランク戦に出る', 44, 640, 478, () => { advice.follow('ranked', p?.id); StartRace(null, p?.id ?? null); }, d);
-  if (!ftue) Ghost('練習レース', 44, 730, 240, 54, () => Practice(), d, 'quiet small').classList.add('pr-entry'); // round 18 (§50.8): after the FTUE only
+  if (!ftue) Ghost('練習レース', 44, 730, 180, 54, () => Practice(), d, 'quiet small').classList.add('pr-entry'); // round 18 (§50.8): after the FTUE only
+  if (!ftue) Ghost('騎手の道', 236, 730, 180, 54, () => Career(), d, 'quiet small').classList.add('cr-entry'); // round 22 (§66.9): after the FTUE, beside practice
   // round 19 (§55): watch a friend room and cheer (R19 integration: beside the practice entry, not on top of it)
-  if (!ftue) TextLink('観戦', 312, 739, 250, () => Spectate(), d, '観戦して応援する').dataset.action = 'spectate';
+  if (!ftue) TextLink('観戦', 428, 739, 140, () => Spectate(), d, '観戦して応援する').dataset.action = 'spectate';
   Back(Home, '戻る');
   EnToggle();
 }
@@ -2428,6 +2430,205 @@ function ChallengeResult(f, r) {
   Txt(`端末の判定：${dev.cleared ? '達成' : '失敗'}`, 44, 574, 500, 13, SOFT, p).dataset.device = String(dev.cleared);
   Cta('一覧へ', 44, 640, 478, () => WeeklyChallenge(s.challengeId), p);
   TextLink('もう一度', 44, 734, 120, () => WeeklyChallengeRace(s.challengeId, raceCtx.horseId ?? null), p);
+  EnToggle();
+}
+
+// ================================================================= round 22: 騎手の道 (REQ-CAREER-*, contracts/protocol.md §66)
+// The single-player career on the real server rules (MuchiLogic: the map from career.json, the unlock order, the issued
+// config with the CPU field at the chapter cap, no skills) and the real engine (WASM ChallengeRun: the career race is a
+// challenge-mode config with raceId car_…). The device submits only its inputs; the "server" re-simulates its own replay
+// log in the WASM verifier and judges every star. Mirrors unity/Assets/Muchi/Game/CareerModel.cs. ムチ一閃 tone: the
+// chapters as a photoreal vertical road (the summit at the top), translucent navy panels, cyan kickers, one cyan CTA ».
+// Stars are shapes and text (「★★☆　星 2/3」, never colour alone, §41); nothing blinks. No energy, no paid continue.
+const careerState = { sel: null, view: null, session: null };
+const CAREER_ART = { dawn: 'Art/Courses/spring-course', rain: 'Art/Weather/rain', night: 'Art/Weather/cloudy', north: 'Art/Weather/fog', summit: 'Art/Courses/autumn-course' };
+const careerArt = (k) => CAREER_ART[k] ?? 'Art/first-ride';
+const CAREER_ERR = {
+  CAREER_LOCKED: '前のレースをクリアすると開きます',
+  CAREER_LIMIT_REACHED: '今日はここまで。4:00からまた走れます。',
+  CAREER_SESSION_EXPIRED: '時間切れのため、このレースは記録できませんでした。もう一度挑戦できます。',
+  CAREER_SESSION_USED: 'このレースは記録済みです。',
+  CAREER_RESULT_MISMATCH: 'レースの記録を確認できませんでした。もう一度挑戦してください。',
+};
+const CAREER_RULES = 'どの馬も章ごとの能力の上限にそろえ、固有スキルは使いません。相棒でも上限まで届きます。報酬は初クリアと星ごとに一度だけ。何度でも無料でやり直せます。';
+const careerLang = () => (isJa() ? 'ja' : 'en');
+const careerStars = (have, max) => `${'★'.repeat(Math.min(have, max))}${'☆'.repeat(Math.max(0, max - have))}`;
+const careerItem = (id) => (id === 'breeding_material' ? '配合素材' : id === 'training_apple' ? 'りんごのおやつ' : id);
+const careerReward = (r) => [r?.freeCoins ? `無償コイン${r.freeCoins}枚` : null, ...(r?.items ?? []).map((i) => `${careerItem(i.itemId)}×${i.qty}`)].filter(Boolean).join('・');
+const careerCourse = (r) => `${r.surface === 'dirt' ? 'ダート' : '芝'}${r.distanceM}m・${WCH_GOING[r.going] ?? '良'}${r.night ? '・ナイター' : ''}`;
+const careerField = (r) => `${r.fieldSize}頭立て・CPU Lv${r.cpuLevel}${r.cpuStyles?.length ? `・相手は${r.cpuStyles.map((x) => STYLE_JA[x] ?? x).join('・')}` : ''}`;
+function careerFind(v, raceId) {
+  for (const [ci, ch] of v.chapters.entries()) { const ri = ch.races.findIndex((r) => r.id === raceId); if (ri >= 0) return { ch, ci, race: ch.races[ri], ri }; }
+  return null;
+}
+async function careerLoad() {
+  const r = await L.career(careerLang());
+  if (!r.ok || !r.value.enabled) return null;
+  careerState.view = r.value;
+  return r.value;
+}
+
+/** The map: chapters as a vertical road (chapter 1 at the bottom, the summit at the top) and the selected race. */
+async function Career(selectId) {
+  currentScreen = () => Career(selectId ?? careerState.sel);
+  const v = await careerLoad();
+  await refresh();
+  if (!v) { toast('騎手の道はオンラインで遊べます。練習レースはオフラインでも遊べます'); RaceLobby(); return; }
+  if (selectId) careerState.sel = selectId;
+  if (!careerFind(v, careerState.sel)) careerState.sel = v.nextRaceId ?? v.chapters[v.chapters.length - 1].races.at(-1).id;
+  const at = careerFind(v, careerState.sel);
+  Clear('career'); SetArt('Art/title-screen', false); Shade('left');
+  TopBar(`騎手の道　/　星 ${v.totalStars}/${v.maxStars}`, `クリア ${v.clearedRaces}/${v.totalRaces}　·　前のレースをクリアすると開きます　·　何度でも無料でやり直せます`);
+  // ① the road: one band per chapter, the summit on top; the road line runs behind the bands
+  const lp = Glass('Career road', 36, 134, 760, 676, undefined, .86);
+  lp.classList.add('cr-road');
+  const road = el('cr-path', 58, 24, 6, 628, lp); road.dataset.name = 'Road';
+  const n = v.chapters.length, bandH = Math.floor((628 - (n - 1) * 8) / n);
+  v.chapters.forEach((ch, ci) => {
+    const y = 24 + (n - 1 - ci) * (bandH + 8);
+    const band = Card('Chapter ' + ch.id, 24, y, 712, bandH, lp, ch.cleared ? GOLD : ch.unlocked ? CYAN : 'var(--text-4)');
+    band.classList.add('cr-band'); band.dataset.chapter = ch.id; band.dataset.unlocked = String(ch.unlocked);
+    if (!ch.unlocked) band.classList.add('cr-locked');
+    ArtImage(careerArt(ch.art), 0, 0, 150, bandH, band, 'cover cr-art');
+    Txt(`第${ci + 1}章`, 168, 12, 120, 13, CYAN, band, { weight: 700, ls: '.18em', nowrap: true });
+    Txt(ch.title, 168, 32, 330, 20, WHITE, band, { weight: 700, ls: '.04em', nowrap: true });
+    const st = Txt(`星 ${ch.stars}/${ch.maxStars}`, 520, 14, 176, 14, ch.cleared ? GOLD : MUTED, band, { weight: 700, align: 'right', nowrap: true });
+    st.classList.add('cr-chstars');
+    if (!ch.unlocked) Txt('前の章をクリアすると開きます', 168, bandH - 34, 520, 13, SOFT, band, { nowrap: true });
+    else ch.races.forEach((r, ri) => {
+      const p = r.progress, w = 128;
+      const node = Btn(r.title, 168 + ri * (w + 6), bandH - 58, w, 48, () => Career(r.id), 'cr-node' + (r.id === careerState.sel ? ' sel' : '') + (p.unlocked ? '' : ' locked') + (r.id === v.nextRaceId ? ' next' : ''), band,
+        p.unlocked ? `${careerStars(p.stars.length, r.objectives.length)}` : '🔒');
+      node.dataset.race = r.id; node.dataset.stars = String(p.stars.length); node.dataset.cleared = String(p.cleared);
+      node.setAttribute('aria-label', `第${ri + 1}戦 ${r.title}　星 ${p.stars.length}/${r.objectives.length}`);
+    });
+  });
+  // ② the selected race: story, conditions, objectives with rewards, one CTA
+  const { ch, ci, race, ri } = at;
+  const p = race.progress;
+  const rp = Glass('Career race', 816, 134, 748, 676, undefined, .88);
+  rp.dataset.race = race.id; rp.classList.add('cr-detail');
+  Kicker(`第${ci + 1}章　${ch.title}　/　第${ri + 1}戦`, 36, 26, rp, { w: 676 });
+  Txt(race.title, 36, 92, 520, 32, WHITE, rp, { ls: '.06em', nowrap: true });
+  const sb = Txt(`${careerStars(p.stars.length, race.objectives.length)}　星 ${p.stars.length}/${race.objectives.length}`, 532, 100, 180, 16, p.cleared ? GOLD : MUTED, rp, { weight: 700, align: 'right', nowrap: true });
+  sb.classList.add('cr-race-stars');
+  Txt(`${careerCourse(race)}　·　${careerField(race)}`, 36, 144, 676, 15, GOLD, rp, { weight: 700, nowrap: true });
+  const story = Txt(race.story.before, 36, 178, 676, 16, WHITE, rp, { lh: 1.7 });
+  story.classList.add('cr-story');
+  Hair(36, 268, 676, rp);
+  Kicker('目標', 36, 284, rp, { rule: false, size: 14 });
+  race.objectives.forEach((o, i) => {
+    const y = 314 + i * 52;
+    const has = p.stars.includes(o.star);
+    const paid = o.star === 1 ? p.rewarded.clear : o.star === 2 ? p.rewarded.star2 : p.rewarded.star3;
+    const line = Txt(`${has ? '★' : '☆'}　星${o.star}　${o.labels.map((l) => l.text).join('・')}`, 36, y, 440, 17, has ? GOLD : WHITE, rp, { weight: 700, nowrap: true });
+    line.classList.add('cr-obj'); line.dataset.star = String(o.star); line.dataset.ok = String(has);
+    if (o.reward) Txt(paid ? '受け取り済み' : `報酬：${careerReward(o.reward)}`, 484, y + 2, 228, 13, paid ? SOFT : MUTED, rp, { align: 'right', nowrap: true });
+  });
+  if (p.attempts) Txt(`挑戦 ${p.attempts}回${p.bestPlace ? `・最高 ${p.bestPlace}着` : ''}`, 36, 476, 420, 13, SOFT, rp, { nowrap: true }).classList.add('cr-progress');
+  if (p.unlocked) Cta('出走前へ', 36, 512, 440, () => CareerPreRace(race.id), rp).classList.add('cr-go');
+  else { disable(Cta('出走前へ', 36, 512, 440, () => {}, rp)).classList.add('cr-go'); Txt('前のレースをクリアすると開きます', 36, 592, 440, 13, SOFT, rp, { nowrap: true }).classList.add('cr-locked-note'); }
+  TextLink('騎手の道とは（ヘルプ）', 496, 526, 216, () => HelpArticle(L.helpContext('career'), 'context', () => Career(race.id)), rp).dataset.helpContext = 'career';
+  Txt(CAREER_RULES, 36, 612, 676, 12, SOFT, rp, { lh: 1.55 }).classList.add('cr-rules');
+  Back(() => RaceLobby(), 'BACK', 40, 834);
+  globalThis.__muchi && (globalThis.__muchi.career = { sel: race.id, next: v.nextRaceId, totalStars: v.totalStars });
+}
+
+/** Pre-race: the chapter's photo, the story before the race, the horse at the chapter cap, the objectives, the gate. */
+async function CareerPreRace(raceId) {
+  currentScreen = () => CareerPreRace(raceId);
+  const v = careerState.view ?? (await careerLoad());
+  const at = v && careerFind(v, raceId);
+  if (!at) return Career();
+  const { ch, ci, race, ri } = at;
+  const h = partner();
+  Clear('career-prerace'); SetArt(careerArt(ch.art), false); Shade('left');
+  const d = Glass('Career pre-race', 36, 48, 820, 804, undefined, .9); d.classList.add('rise', 'cr-prerace');
+  Kicker(`騎手の道　/　第${ci + 1}章　第${ri + 1}戦`, 44, 52, d, { w: 732 });
+  Txt(race.title, 44, 122, 732, 40, WHITE, d, { ls: '.06em', nowrap: true });
+  Txt(race.story.before, 44, 196, 732, 20, WHITE, d, { lh: 1.75 }).classList.add('cr-story');
+  Hair(44, 330, 732, d);
+  Txt(`${careerCourse(race)}　·　${careerField(race)}`, 44, 352, 732, 16, GOLD, d, { weight: 700, nowrap: true });
+  Txt(`出走馬　${h?.name ?? '—'}（${STYLE_JA[h?.style] ?? ''}）`, 44, 392, 732, 18, WHITE, d, { weight: 500, nowrap: true }).classList.add('cr-horse');
+  Txt(`能力は章の上限 ${fmt(race.statCap)} にそろえます　·　固有スキルなし`, 44, 428, 732, 14, MUTED, d, { nowrap: true });
+  race.objectives.forEach((o, i) => Txt(`${race.progress.stars.includes(o.star) ? '★' : '☆'}　星${o.star}　${o.labels.map((l) => l.text).join('・')}`, 44, 476 + i * 36, 732, 16, i === 0 ? WHITE : MUTED, d, { weight: 700, nowrap: true }).classList.add('cr-pre-obj'));
+  Cta('ゲートへ', 44, 640, 478, () => CareerRace(race.id), d).classList.add('cr-gate');
+  TextLink('地図に戻る', 548, 654, 228, () => Career(race.id), d).dataset.action = 'career-map';
+  EnToggle();
+}
+
+async function CareerRace(raceId) {
+  await viewReady;
+  const h = partner();
+  const st = await L.careerStart(raceId, h?.id, careerLang());
+  if (!st.ok) { toast(CAREER_ERR[st.code] ?? st.message); Career(raceId); return; }
+  const s = st.value;
+  careerState.session = s;
+  raceInfo = JSON.parse(engine.StartChallenge(JSON.stringify(s.config), s.playerSlot, JSON.stringify(s.conditions)));
+  // the clear objective drives the challenge HUD (one line, live, red once it can no longer be met)
+  const shim = { challenge: { labels: s.race.objectives[0].labels, conditions: s.conditions, title: s.race.title } };
+  raceCtx = { tutorial: false, ta: false, challenge: shim, career: s, horseId: h?.id, trackId: s.config.track.id, trackName: wchTrack(s.config.track.id), config: s.config };
+  view.useRig = true; view.start(raceInfo, equippedPartner());
+  BuildRaceScreen();
+  hud.challenge = Glass('Career HUD', 33, 172, 450, 24 + shim.challenge.labels.length * 34, undefined, .74);
+  hud.challenge.classList.add('wch-hud', 'cr-hud');
+  hud.chLines = shim.challenge.labels.map((l, i) => { const t = Txt(l.text, 18, 12 + i * 34, 414, 17, WHITE, hud.challenge, { weight: 700, nowrap: true }); t.dataset.kind = l.kind; t.dataset.ok = 'true'; return t; });
+  if (globalThis.__muchi) globalThis.__muchi.careerSession = s;
+}
+
+/** The race has finished: submit the run; the logic re-simulates its own log in the WASM verifier and judges the stars. */
+async function CareerSubmit(f) {
+  const s = raceCtx.career, run = f.challengeRun;
+  const r = await L.careerSubmit(s.sessionId, run.inputs, run.hash, (log) => engine.VerifyReplay(log));
+  if (globalThis.__muchi) globalThis.__muchi.lastCareer = r.ok ? r.value : { error: r.code };
+  await refresh();
+  await careerLoad();
+  show(CareerResult, f, r);
+}
+
+function CareerResult(f, r) {
+  const s = raceCtx.career ?? careerState.session, dev = f.challengeRun;
+  const v = careerState.view;
+  Clear('career-result'); SetArt(r.ok && r.value.cleared ? 'Art/race-result' : careerArt(careerFind(v, s.raceId)?.ch.art));
+  const p = ResultPanel(`騎手の道　/　${s.race.title}`);
+  p.classList.add('cr-result');
+  if (!r.ok) {
+    Txt('記録できませんでした', 40, 118, 540, 40, WHITE, p, { weight: 700 });
+    Txt(CAREER_ERR[r.code] ?? r.message, 44, 190, 520, 17, MUTED, p, { lh: 1.6 });
+    Cta('騎手の道へ', 44, 640, 478, () => Career(s.raceId), p);
+    EnToggle();
+    return;
+  }
+  const res = r.value, ev = res.evaluation, max = s.race.objectives.length;
+  p.dataset.cleared = String(res.cleared);
+  Txt(res.cleared ? 'クリア' : 'あと一歩', 40, 108, 300, 60, res.cleared ? GOLD : WHITE, p, { weight: 700, ls: '.04em', lh: 1.2 }).classList.add('cr-verdict');
+  const big = Txt(careerStars(res.stars.length, max), 330, 118, 230, 40, GOLD, p, { weight: 700, align: 'right', nowrap: true });
+  big.classList.add('cr-stars'); big.setAttribute('aria-hidden', 'true');
+  Txt(`星 ${res.stars.length}/${max}`, 330, 170, 230, 15, MUTED, p, { weight: 700, align: 'right', nowrap: true }).classList.add('cr-stars-text');
+  Txt(`${ev.place ? ev.place + '着' : '完走できず'}　·　${ev.timeMs != null ? fmtMs(ev.timeMs) : '—'}　·　ムチ ${ev.whips}回`, 44, 206, 520, 20, WHITE, p, { weight: 500, nowrap: true });
+  Hair(44, 250, 478, p);
+  s.race.objectives.forEach((o, i) => {
+    const sr = res.objectives.find((x) => x.star === o.star);
+    const row = Txt(`${sr?.ok ? '○' : '×'}　星${o.star}　${o.labels.map((l) => l.text).join('・')}${sr?.newly ? '　NEW' : ''}`, 44, 270 + i * 38, 520, 18, sr?.ok ? OK : RED, p, { weight: 700, nowrap: true });
+    row.dataset.ok = String(!!sr?.ok); row.dataset.star = String(o.star); row.classList.add('cr-check');
+  });
+  let y = 290 + max * 38;
+  for (const g of res.rewards) { Txt(`報酬：${careerReward(g.reward)}`, 44, y, 520, 17, GOLD, p, { weight: 700, nowrap: true }).classList.add('cr-reward'); y += 30; }
+  const next = res.unlockedRaceId && careerFind(v, res.unlockedRaceId);
+  if (next) { Txt(`次のレース「${next.race.title}」が開きました`, 44, y, 520, 16, WHITE, p, { weight: 500, nowrap: true }).classList.add('cr-unlock'); y += 30; }
+  if (res.chapterCleared) { Txt(`第${careerFind(v, res.raceId).ci + 1}章 クリア`, 44, y, 520, 18, GOLD, p, { weight: 700, nowrap: true }).classList.add('cr-chapter'); y += 30; }
+  if (!res.cleared) Txt('何度でも無料でやり直せます', 44, y, 520, 15, MUTED, p, { nowrap: true }).classList.add('cr-retry-note');
+  Txt('判定はサーバーが同じエンジンで再計算して行います。', 44, 560, 500, 13, SOFT, p, { lh: 1.6 });
+  Txt(`端末の判定：${dev.cleared ? 'クリア' : 'あと一歩'}`, 44, 586, 500, 13, SOFT, p).dataset.device = String(dev.cleared);
+  Cta('騎手の道へ', 44, 640, 478, () => Career(next ? res.unlockedRaceId : s.raceId), p).classList.add('cr-back');
+  TextLink('もう一度', 44, 734, 120, () => CareerPreRace(s.raceId), p).dataset.action = 'career-retry';
+  // the story's closing line after a clear (right, on the photo)
+  if (res.cleared) {
+    const after = Glass('Career story', 700, 600, 864, 200, undefined, .84);
+    after.classList.add('rise', 'cr-after');
+    Kicker('その後', 32, 22, after, { rule: false, size: 14 });
+    Txt(s.race.story.after, 32, 56, 800, 20, WHITE, after, { lh: 1.7 });
+  }
   EnToggle();
 }
 
@@ -7658,6 +7859,7 @@ const helpGo = (screen, back) => ({
   privacy_choices: () => PrivacyChoices(), // round 20 (§58)
   // round 20: settings › notifications (push and the device reminders, §61)
   notifications: () => NotifySettings(),
+  career: () => Career(), // round 22 (§66)
 })[screen]?.() ?? back?.();
 /** Entry from settings (or a screen's ? link): `back` is where 戻る returns. */
 async function HelpCenter(back = null) {
@@ -8258,7 +8460,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, Career, CareerPreRace: (id) => CareerPreRace(id ?? 'c1_debut'), HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     // R20 integration (§58.11): the one-prompt gate and a happy moment (review) for the flows
     prompts: { shown: () => sessionPrompt.shown, reset: () => sessionPrompt.reset(), claimForTest: (k) => sessionPrompt.claim(k), review: (m) => reviewMoment(m ?? 'first_win') },

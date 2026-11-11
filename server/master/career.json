@@ -1,5 +1,5 @@
 {
-  "_note": "REQ-CAREER-*: 騎手の道 (single-player career, contracts/protocol.md §66). Chapters of 3–5 races against CPU on fixed conditions, ridden with the player's own horse normalised to the chapter's statCap (never above the partner's stat total, so the free partner always reaches it; no unique skills). Story lines and titles carry their own English side by side. A race clears on its `clear` objective (star 1, unlocks the next race); `stars` are the optional objectives (stars 2 and 3, each needs the clear in the same run). Rewards: first clear and each star once ever, free coins / breeding material / training apples only (career.ts careerProblems checks ids, courses, the partner fit, objectives inside the field, the CPU style pool, wording, per-grant and lifetime ceilings = economy E20), at boot.",
+  "_note": "REQ-CAREER-*: 騎手の道 (single-player career, contracts/protocol.md §66). Chapters of 3–5 races against CPU on fixed conditions, ridden with the player's own horse normalised to the chapter's statCap (never above the partner's stat total, so the free partner always reaches it; no unique skills). Story lines and titles carry their own English side by side. A race clears on its `clear` objective (star 1, unlocks the next race); `stars` are the optional objectives (stars 2 and 3, each needs the clear in the same run). Rewards: first clear and each star once ever, free coins / breeding material only (career.ts careerProblems checks ids, courses, the partner fit, objectives inside the field, the CPU style pool, wording, per-grant and lifetime ceilings = economy E20), at boot.",
   "version": 1,
   "config": { "enabled": true, "sessionTtlMs": 900000, "maxInputs": 400, "startsPerDay": 200, "keepSessions": 30 },
   "chapters": [
@@ -18,8 +18,8 @@
           "clear": { "maxPlace": 3 },
           "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
           "stars": [
-            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } },
-            { "objective": { "maxPlace": 3, "maxWhips": 3 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } }
+            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 3, "maxWhips": 3 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
           ]
         },
         {
@@ -32,8 +32,8 @@
           "clear": { "maxPlace": 3 },
           "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
           "stars": [
-            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } },
-            { "objective": { "maxPlace": 2, "maxWhips": 2 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } }
+            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 2, "maxWhips": 2 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
           ]
         },
         {
@@ -46,8 +46,8 @@
           "clear": { "maxPlace": 1 },
           "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
           "stars": [
-            { "objective": { "maxPlace": 1, "maxWhips": 4 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } },
-            { "objective": { "maxPlace": 1, "maxWhips": 2 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } }
+            { "objective": { "maxPlace": 1, "maxWhips": 4 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 1, "maxWhips": 2 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
           ]
         }
       ]
@@ -67,8 +67,8 @@
           "clear": { "maxPlace": 3 },
           "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
           "stars": [
-            { "objective": { "maxPlace": 2 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } },
-            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } }
+            { "objective": { "maxPlace": 2 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
           ]
         },
         {
@@ -81,8 +81,8 @@
           "clear": { "maxPlace": 3 },
           "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
           "stars": [
-            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } },
-            { "objective": { "maxPlace": 3, "maxWhips": 3 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } }
+            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 3, "maxWhips": 3 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
           ]
         },
         {
@@ -95,8 +95,8 @@
           "clear": { "maxPlace": 2 },
           "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
           "stars": [
-            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } },
-            { "objective": { "maxPlace": 1, "maxWhips": 3 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } }
+            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 1, "maxWhips": 3 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
           ]
         }
       ]
@@ -116,8 +116,8 @@
           "clear": { "maxPlace": 3 },
           "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
           "stars": [
-            { "objective": { "maxPlace": 2 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } },
-            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } }
+            { "objective": { "maxPlace": 2 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
           ]
         },
         {
@@ -130,8 +130,8 @@
           "clear": { "maxPlace": 3 },
           "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
           "stars": [
-            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } },
-            { "objective": { "maxPlace": 3, "maxWhips": 2 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } }
+            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 3, "maxWhips": 2 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
           ]
         },
         {
@@ -144,8 +144,8 @@
           "clear": { "maxPlace": 2 },
           "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
           "stars": [
-            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } },
-            { "objective": { "maxPlace": 1, "maxWhips": 3 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } }
+            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 1, "maxWhips": 3 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
           ]
         }
       ]
@@ -165,8 +165,8 @@
           "clear": { "maxPlace": 3 },
           "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
           "stars": [
-            { "objective": { "maxPlace": 2 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } },
-            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } }
+            { "objective": { "maxPlace": 2 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
           ]
         },
         {
@@ -179,8 +179,8 @@
           "clear": { "maxPlace": 3 },
           "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
           "stars": [
-            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } },
-            { "objective": { "maxPlace": 3, "maxWhips": 2 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } }
+            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 3, "maxWhips": 2 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
           ]
         },
         {
@@ -193,8 +193,8 @@
           "clear": { "maxPlace": 2 },
           "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
           "stars": [
-            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } },
-            { "objective": { "maxPlace": 1, "maxWhips": 3 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } }
+            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 1, "maxWhips": 3 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
           ]
         },
         {
@@ -207,8 +207,8 @@
           "clear": { "maxPlace": 1 },
           "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
           "stars": [
-            { "objective": { "maxPlace": 1, "maxWhips": 3 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } },
-            { "objective": { "maxPlace": 1, "maxWhips": 1 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } }
+            { "objective": { "maxPlace": 1, "maxWhips": 3 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 1, "maxWhips": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
           ]
         }
       ]
@@ -228,8 +228,8 @@
           "clear": { "maxPlace": 3 },
           "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
           "stars": [
-            { "objective": { "maxPlace": 2 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } },
-            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } }
+            { "objective": { "maxPlace": 2 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
           ]
         },
         {
@@ -242,8 +242,8 @@
           "clear": { "maxPlace": 3 },
           "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
           "stars": [
-            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } },
-            { "objective": { "maxPlace": 3, "maxWhips": 2 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } }
+            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 3, "maxWhips": 2 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
           ]
         },
         {
@@ -256,8 +256,8 @@
           "clear": { "maxPlace": 2 },
           "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
           "stars": [
-            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } },
-            { "objective": { "maxPlace": 1, "maxWhips": 3 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } }
+            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 1, "maxWhips": 3 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
           ]
         },
         {
@@ -270,8 +270,8 @@
           "clear": { "maxPlace": 1 },
           "reward": { "items": [ { "itemId": "breeding_material", "qty": 2 } ] },
           "stars": [
-            { "objective": { "maxPlace": 1, "maxWhips": 3 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 1 } ] } },
-            { "objective": { "maxPlace": 1, "maxWhips": 1 }, "reward": { "items": [ { "itemId": "training_apple", "qty": 2 } ] } }
+            { "objective": { "maxPlace": 1, "maxWhips": 3 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 1, "maxWhips": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 2 } ] } }
           ]
         }
       ]

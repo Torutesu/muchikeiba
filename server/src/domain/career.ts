@@ -17,7 +17,7 @@
  * points, season points, leaderboards, stats, missions, pass XP, rival / team / exchange points (structural).
  *
  * Rewards (economy E20): the first clear of a race and each star, once ever per account (the `granted` marks — not the
- * session — make a replayed or doubled submission unable to pay twice), free coins / breeding material / training apples
+ * session — make a replayed or doubled submission unable to pay twice), free coins / breeding material
  * only, ≤ ¥200 a grant at the worst pack price, inside code ceilings for the whole career. Never paid coins, never a random
  * item, nothing for completing a set. Retries are free and unlimited: no stamina, no paid continue, no paid skip
  * (`startsPerDay` is a hidden anti-abuse ceiling far above a day of play, not an energy meter).
@@ -67,8 +67,11 @@ export const careerOf = (m: Pick<Master, 'career'>): CareerMaster => m.career ??
 
 /** The chapter illustrations Codex draws (docs/handoff-codex-round22-career.md). */
 export const CAREER_ARTS = ['dawn', 'rain', 'night', 'north', 'summit', 'coast', 'snow', 'derby'] as const;
-/** Items a career reward may carry (no tickets, no random items, nothing sold for paid coins). */
-export const CAREER_REWARD_ITEMS = ['breeding_material', 'training_apple'] as const;
+/**
+ * Items a career reward may carry: breeding material only (no tickets, no random items, nothing sold for paid coins; never
+ * the training apple, which only the daily missions hand out — docs/planning/03 調教).
+ */
+export const CAREER_REWARD_ITEMS = ['breeding_material'] as const;
 
 /**
  * Code ceilings no master can exceed (景表法: ≤ ¥200 a grant; economy E20: the whole career's lifetime grants). E1 is
@@ -77,7 +80,7 @@ export const CAREER_REWARD_ITEMS = ['breeding_material', 'training_apple'] as co
 export const CAREER_HARD_LIMITS = {
   chapters: 10, racesMin: 3, racesMax: 5, starsPerRace: 3,
   freeCoinsPerGrant: 100, itemQtyPerGrant: 2, maxRewardYen: 200,
-  lifetimeFreeCoins: 300, lifetimeMaterial: 40, lifetimeApples: 60,
+  lifetimeFreeCoins: 300, lifetimeMaterial: 60,
   startsPerDay: 500, keepSessions: 50, maxInputs: 4000,
   titleJa: 16, titleEn: 32, storyJa: 80, storyEn: 200,
 } as const;
@@ -124,12 +127,12 @@ function partnerTemplate(m: Pick<Master, 'progression' | 'templateById'>) {
 
 /** Lifetime totals of a career master (E20). */
 export function careerTotals(c: CareerMaster) {
-  const t = { races: 0, stars: 0, freeCoins: 0, material: 0, apples: 0, grants: 0 };
+  const t = { races: 0, stars: 0, freeCoins: 0, material: 0, grants: 0 };
   const add = (r: Reward | undefined) => {
     if (!r) return;
     t.grants++;
     t.freeCoins += r.freeCoins ?? 0;
-    for (const it of r.items ?? []) { if (it.itemId === 'breeding_material') t.material += it.qty; if (it.itemId === 'training_apple') t.apples += it.qty; }
+    for (const it of r.items ?? []) if (it.itemId === 'breeding_material') t.material += it.qty;
   };
   for (const ch of c.chapters) for (const r of ch.races) { t.races++; t.stars += 1 + r.stars.length; add(r.reward); for (const st of r.stars) add(st.reward); }
   return t;
@@ -206,7 +209,6 @@ export function careerProblems(m: Pick<Master, 'progression' | 'tracks' | 'templ
   const t = careerTotals(cm);
   if (t.freeCoins > H.lifetimeFreeCoins) out.push(`career: ${t.freeCoins} free coins over the whole career, at most ${H.lifetimeFreeCoins} (economy E20)`);
   if (t.material > H.lifetimeMaterial) out.push(`career: ${t.material} breeding material over the whole career, at most ${H.lifetimeMaterial} (economy E20)`);
-  if (t.apples > H.lifetimeApples) out.push(`career: ${t.apples} training apples over the whole career, at most ${H.lifetimeApples} (economy E20)`);
   return out;
 }
 

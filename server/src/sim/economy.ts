@@ -155,14 +155,12 @@ export interface EconomyResult {
   teamGoalCoins: number;
   teamGoalMaterial: number;
   /**
-   * REQ-CAREER-* (E20): 騎手の道 races first cleared, stars earned, and what they paid (free coins, breeding material,
-   * training apples). Upper bound: every open race is cleared with every star as soon as the persona has a horse.
+   * REQ-CAREER-* (E20): 騎手の道 races first cleared, stars earned, and what they paid (free coins, breeding material). Upper bound: every open race is cleared with every star as soon as the persona has a horse.
    */
   careerClears: number;
   careerStars: number;
   careerCoins: number;
   careerMaterial: number;
-  careerApples: number;
   /** Derived. */
   freeCoinsPerActiveDay: number;
   pullsPerMonth: number;
@@ -212,7 +210,7 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
     pityExchanges: 0, firstPityDay: null, breedingMaterial: 0, gachaTickets: 0, ticketPulls: 0, firstWinCoins: 0, allowanceCoins: 0, beginnerCoins: 0, beginnerSteps: 0, seasonMissionXp: 0, inviteCoins: 0, inviteTickets: 0, comebackWindows: 0, comebackValue: 0, comebackXp: 0, adViews: 0, adCoins: 0, adTaAttempts: 0, achievementTiers: 0, achievementCoins: 0, trainingSessions: 0, trainedPoints: 0, giftsClaimed: 0, giftsExpired: 0, rivalWeeks: 0, rivalWins: 0, rivalCoins: 0, rankedTotalByClass: {},
     eventRaces: 0, eventPoints: 0, exchangeCoins: 0, exchangeTickets: 0, exchangeHorses: 0, exchangeMaterial: 0, exchangeCosmetics: 0, leftoverMaterial: 0,
     challengeClears: 0, challengeCoins: 0, challengeMaterial: 0, challengeBadges: 0,
-    teamGoalWeeks: 0, teamGoalCoins: 0, teamGoalMaterial: 0, careerClears: 0, careerStars: 0, careerCoins: 0, careerMaterial: 0, careerApples: 0,
+    teamGoalWeeks: 0, teamGoalCoins: 0, teamGoalMaterial: 0, careerClears: 0, careerStars: 0, careerCoins: 0, careerMaterial: 0,
     freeCoinsPerActiveDay: 0, pullsPerMonth: 0, ssrPerMonth: 0,
   };
   await svc.bootstrap(id);
@@ -386,7 +384,6 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
       r.careerStars += res.newStars.length;
       r.careerCoins += after.wallet.free - before.wallet.free;
       r.careerMaterial += (after.items['breeding_material'] ?? 0) - (before.items['breeding_material'] ?? 0);
-      r.careerApples += (after.items['training_apple'] ?? 0) - (before.items['training_apple'] ?? 0);
     }
   };
   /** REQ-TGOAL-007 (E19): the week-close payout of the persona's team (top milestone reached: the upper bound). */
@@ -637,7 +634,7 @@ export async function simulateAll(master: Master, days = 90, seeds = [1, 2, 3], 
       challengeClears: avg((x) => x.challengeClears), challengeCoins: avg((x) => x.challengeCoins), challengeMaterial: avg((x) => x.challengeMaterial), challengeBadges: avg((x) => x.challengeBadges),
       teamGoalWeeks: avg((x) => x.teamGoalWeeks), teamGoalCoins: avg((x) => x.teamGoalCoins), teamGoalMaterial: avg((x) => x.teamGoalMaterial),
       careerClears: avg((x) => x.careerClears), careerStars: avg((x) => x.careerStars), careerCoins: avg((x) => x.careerCoins),
-      careerMaterial: avg((x) => x.careerMaterial), careerApples: avg((x) => x.careerApples),
+      careerMaterial: avg((x) => x.careerMaterial),
       rankedTotalByClass: Object.fromEntries(master.progression.classes.map((c) => [c.id, {
         trained: avg((x) => x.rankedTotalByClass[c.id]!.trained), untrained: avg((x) => x.rankedTotalByClass[c.id]!.untrained),
       }])),

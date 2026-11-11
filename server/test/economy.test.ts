@@ -278,7 +278,6 @@ describe('economy targets (90 days, 3 seeds)', () => {
       // exactly the master's lifetime totals, never more (rewards are once ever, whatever the number of runs)
       expect(r.careerCoins, id).toBe(t.freeCoins);
       expect(r.careerMaterial, id).toBe(t.material);
-      expect(r.careerApples, id).toBe(t.apples);
     }
     // E20 code ceilings; free coins ≤ 1% of what a free daily player earns by playing in 90 days
     expect(t.freeCoins).toBeLessThanOrEqual(CAREER_HARD_LIMITS.lifetimeFreeCoins);

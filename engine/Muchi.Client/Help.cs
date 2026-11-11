@@ -38,8 +38,10 @@ namespace Muchi.Client
             Privacy = "privacy",
             Storage = "storage", // §56: the storage screen's ? link
             /// <summary>R19 integration: the practice setup (§50) → practice_races.</summary>
-            Practice = "practice";
-        public static readonly string[] All = { GachaOdds, CoinShortfall, Purchase, RaceWhip, RaceResult, Training, Breeding, History, GiftBox, AccountLink, Deletion, Accessibility, Privacy, Storage, Practice };
+            Practice = "practice",
+            /// <summary>Round 21 (§65): the calendar's ? link → calendar.</summary>
+            Calendar = "calendar";
+        public static readonly string[] All = { GachaOdds, CoinShortfall, Purchase, RaceWhip, RaceResult, Training, Breeding, History, GiftBox, AccountLink, Deletion, Accessibility, Privacy, Storage, Practice, Calendar };
     }
 
     /// <summary>Inquiry categories (the first four are the §33 ticket topics).</summary>

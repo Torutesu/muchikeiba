@@ -290,6 +290,24 @@ namespace Muchi.Client
             return new AnalyticsEvent("tip_context_open", atMs, JsonNode.Obj().Set("context", context).Set("tipId", tipId));
         }
 
+        // ---- REQ-CAL-015 イベントカレンダー (§65; marks are the server's calendar_mark rows)
+        public static readonly string[] CalendarViews = { "month", "week" };
+
+        /// <summary>The calendar was shown: month | week and how many rows it had (0..200).</summary>
+        public static AnalyticsEvent CalendarView(long atMs, string view, int entries)
+        {
+            if (IndexIn(CalendarViews, view) < 0) throw new ArgumentException("unknown calendar view " + view);
+            if (entries < 0 || entries > 200) throw new ArgumentOutOfRangeException(nameof(entries));
+            return new AnalyticsEvent("calendar_view", atMs, JsonNode.Obj().Set("view", view).Set("entries", entries));
+        }
+
+        /// <summary>A calendar row was opened (its kind, CalendarKinds).</summary>
+        public static AnalyticsEvent CalendarEntryOpen(long atMs, string kind)
+        {
+            if (IndexIn(CalendarKinds.All, kind) < 0) throw new ArgumentException("unknown calendar kind " + kind);
+            return new AnalyticsEvent("calendar_entry_open", atMs, JsonNode.Obj().Set("kind", kind));
+        }
+
         // ---- REQ-FSUG-014 おすすめフレンド (the request / dismiss rows are server events; the view is the client's)
         /// <summary>The suggestions section was on screen (once per friends-screen visit); shown = suggestions in it (0..30). No player ids.</summary>
         public static AnalyticsEvent FsugView(long atMs, int shown)

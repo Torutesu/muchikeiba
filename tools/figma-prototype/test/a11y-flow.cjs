@@ -255,6 +255,9 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     // Round 18: プライバシー › データのダウンロード, and its help article (context privacy → data_export)
     await show('Privacy'); await waitScreen('privacy'); await page.waitForSelector('.screen.in [data-dex]', { timeout: 15000 }); await shot('privacy', english, 500);
     await page.locator('.screen.in [data-help-context="privacy"]').click(); await waitScreen('help-article'); await shot('help-data-export', english, 500);
+    // Round 19: 画質・通信量 and ストレージ at the largest size (REQ-PERF-017)
+    await show('PerfSettings'); await waitScreen('perf-settings'); await shot('perf-settings', english, 500);
+    await show('Storage'); await waitScreen('storage'); await shot('storage', english, 500);
     await show('Settings'); await waitScreen('settings'); await boxesClear('settings lists (largest)', SETTINGS_LISTS, english);
     await show('Home'); await waitScreen('home'); await page.waitForTimeout(700); await boxesClear('home top bar (largest)', HOME_BAR, english);
   };

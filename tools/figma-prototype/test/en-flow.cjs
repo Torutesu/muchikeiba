@@ -440,6 +440,19 @@ module.exports = async function enFlow(browser, base, out, errors) {
   assert.match(await page.locator('.screen.in .help-body').innerText(), /pulls' worth/, 'help: the article body in English');
   await show('HelpArticle', 'buy_coins', 'list'); await waitScreen('help-article'); await shot('help-article-coins', 400);
   await show('InquiryForm'); await waitScreen('inquiry-form'); await shot('inquiry-form', 500);
+  // round 19: 画質・通信量 and ストレージ in English (REQ-PERF-017): the rows, the auto note, the now line, the storage rows, the confirmations
+  await page.evaluate(() => { globalThis.__muchi.perf.reset(); globalThis.__muchi.perf.resetStorage(); globalThis.__muchi.perf.net('wifi'); });
+  await show('PerfSettings'); await waitScreen('perf-settings'); await shot('perf-settings', 400);
+  assert.match(await page.locator('.screen.in').innerText(), /Graphics & data[\s\S]*Data saver[\s\S]*Results and fairness stay the same/, 'perf settings in English');
+  await page.locator('.screen.in [data-perf-row="batterySaver"] [data-perf-choice="on"]').click(); await page.waitForTimeout(400); await shot('perf-settings-saver', 300);
+  await show('Storage'); await waitScreen('storage'); await shot('storage', 400);
+  assert.match(await page.locator('.screen.in').innerText(), /Required data[\s\S]*Download all/, 'storage in English');
+  await page.locator('.screen.in [data-net="cellular"]').click(); await page.waitForTimeout(350);
+  await page.locator('.screen.in .btn[data-action="predownload"]').click(); await page.waitForTimeout(400); await shot('storage-cellular-confirm', 200);
+  await page.locator('.screen.in [data-confirm="no"]').click(); await waitScreen('storage'); await page.waitForTimeout(300);
+  await page.locator('.screen.in .btn[data-action="clear-cache"]').click(); await page.waitForTimeout(400); await shot('storage-clear-confirm', 200);
+  await page.locator('.screen.in [data-confirm="no"]').click(); await waitScreen('storage');
+  await page.evaluate(() => { globalThis.__muchi.perf.reset(); globalThis.__muchi.perf.net('wifi'); });
 
   // round 13: 支部の共同目標 in English (REQ-TGOAL-*): the week, after the demo races, the week result sheet
   await show('TeamGoal'); await waitScreen('team-goal', 20000); await shot('team-goal', 600);

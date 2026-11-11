@@ -87,7 +87,18 @@ namespace Muchi.Game
         public string TotalSizeLabel => FormatBytes(TotalBytes);
 
         /// <summary>Cellular and the background download is over policy.cellularWarnBytes: show the dialog with the size.</summary>
-        public bool ShowCellularWarning => _network() == NetworkReach.Cellular && BackgroundBytes > Policy.CellularWarnBytes;
+        public bool ShowCellularWarning => !DataSaverHolds && _network() == NetworkReach.Cellular && BackgroundBytes > Policy.CellularWarnBytes;
+
+        /// <summary>
+        /// §56.4 (REQ-PERF-006): the player's data saver, read at each plan (null = off: the §16 behaviour). Required files are
+        /// never affected; optional ones wait for Wi-Fi on cellular and use their low variant when the catalog has one.
+        /// </summary>
+        public Func<AssetDownloadPolicy> DownloadPolicy { get; set; }
+        private AssetDownloadPolicy CurrentPolicy => DownloadPolicy?.Invoke() ?? AssetDownloadPolicy.Default;
+        private AssetNetwork Net => _network() == NetworkReach.Wifi ? AssetNetwork.Wifi : _network() == NetworkReach.Cellular ? AssetNetwork.Cellular : AssetNetwork.None;
+        /// <summary>The data saver holds the background set until Wi-Fi (no cellular dialog: nothing goes over cellular).</summary>
+        public bool DataSaverHolds => CurrentPolicy.HoldsOptional(Net);
+        public const string TextDataSaverWaiting = "データセーバー：残りのデータは Wi-Fi につながったときに取得します";
         /// <summary>The dialog is waiting for an answer (the blocking set downloads meanwhile; the tutorial is not held).</summary>
         public bool NeedsConsent => Background == BackgroundState.Deferred && ShowCellularWarning && !_decided && Phase != PreloadPhase.Offline;
         public string CellularWarningText => "モバイル通信で約" + FormatBytes(BackgroundBytes) + "のデータをダウンロードします。Wi-Fi への接続をおすすめします。";
@@ -120,6 +131,7 @@ namespace Muchi.Game
                     default:
                         if (BlockingReport != null && BlockingReport.QuotaExceeded) return TextDiskFull;
                         if (BlockingReport != null && !BlockingReport.AllOk) return BlockingReport.Offline ? TextOffline : TextPartial;
+                        if (Background == BackgroundState.Deferred && DataSaverHolds && BackgroundBytes > 0) return TextDataSaverWaiting;
                         return TextReady;
                 }
             }
@@ -171,7 +183,7 @@ namespace Muchi.Game
 
             _pendingBackground = background;
             if (BackgroundBytes == 0) Background = BackgroundState.Done;
-            else if (ShowCellularWarning) Background = BackgroundState.Deferred;
+            else if (ShowCellularWarning || DataSaverHolds) Background = BackgroundState.Deferred;
             else StartBackground();
         }
 
@@ -187,8 +199,7 @@ namespace Muchi.Game
             Resolver = new AssetResolver(Catalog, _downloader.Cache, _bundled);
             if (_catalogs.Source == CatalogSource.Network) _downloader.EvictStale(Catalog); // a new version replaces old files
             var blocking = Catalog.InGroups(BlockingGroups, true).Where(e => !_bundled(e.Key)).ToList();
-            var blockingShas = new HashSet<string>(blocking.Select(e => e.Sha256));
-            var background = Catalog.InGroups(BackgroundGroups).Where(e => !_bundled(e.Key) && !blockingShas.Contains(e.Sha256)).ToList();
+            var background = BackgroundSet(); // §56.4: the low variant of optional entries under the data saver
             BlockingBytes = _downloader.PendingBytes(blocking);
             BackgroundBytes = _downloader.PendingBytes(background);
             return (blocking, background);
@@ -211,6 +222,7 @@ namespace Muchi.Game
                 if (BlockingBytes > 0) { Phase = PreloadPhase.Downloading; BlockingTask = RunBlocking(blocking, _ct); }
                 else Phase = PreloadPhase.Ready;
                 if (BackgroundBytes == 0) Background = BackgroundState.Done;
+                else if (DataSaverHolds) Background = BackgroundState.Deferred;
                 else if (ShowCellularWarning && !_acceptedCellular) { Background = BackgroundState.Deferred; _decided = false; }
                 else StartBackground();
             }
@@ -242,16 +254,55 @@ namespace Muchi.Game
         {
             if (Background == BackgroundState.Running || Background == BackgroundState.Done) return;
             Background = BackgroundState.Running;
-            BackgroundTask = RunBackground(_pendingBackground);
+            _bgCts = CancellationTokenSource.CreateLinkedTokenSource(_ct);
+            BackgroundTask = RunBackground(_pendingBackground, _bgCts.Token);
         }
 
+        private CancellationTokenSource _bgCts;
+        private bool _pausedForWifi;
+
         // Stays on the caller's context (Unity main thread): UnityWebRequest must not be used from the thread pool.
-        private async Task RunBackground(List<AssetEntry> list)
+        private async Task RunBackground(List<AssetEntry> list, CancellationToken ct)
         {
             await BlockingTask; // the blocking set gets the bandwidth first
-            try { BackgroundReport = await _downloader.DownloadAsync(Catalog, list, Track, _ct); }
+            try { BackgroundReport = await _downloader.DownloadAsync(Catalog, list, Track, ct); }
             catch (OperationCanceledException) { BackgroundReport = new AssetDownloadReport(); }
+            if (_pausedForWifi && !_ct.IsCancellationRequested)
+            {
+                // §56.4: Wi-Fi dropped under the data saver — partial files stay and resume on Wi-Fi
+                _pausedForWifi = false;
+                _pendingBackground = BackgroundSet();
+                BackgroundBytes = _downloader.PendingBytes(_pendingBackground);
+                Background = BackgroundBytes > 0 ? BackgroundState.Deferred : BackgroundState.Done;
+                return;
+            }
             Background = BackgroundState.Done;
+        }
+
+        /// <summary>The background set under the current policy (optional, not bundled, not in the blocking set).</summary>
+        private List<AssetEntry> BackgroundSet()
+        {
+            if (Catalog == null) return new List<AssetEntry>();
+            var policy = CurrentPolicy;
+            var blockingShas = new HashSet<string>(Catalog.InGroups(BlockingGroups, true).Where(e => !_bundled(e.Key)).Select(e => e.Sha256));
+            return Catalog.InGroups(BackgroundGroups).Where(e => !_bundled(e.Key) && !blockingShas.Contains(e.Sha256)).Select(policy.Pick).ToList();
+        }
+
+        /// <summary>
+        /// §56.4: call when the data saver changes. A background set that has not started is re-planned (low variant or
+        /// normal); one running over cellular when the data saver comes on pauses until Wi-Fi.
+        /// </summary>
+        public void OnDownloadPolicyChanged()
+        {
+            if (Catalog == null || Phase == PreloadPhase.Idle) return;
+            if (Background == BackgroundState.Running) { if (DataSaverHolds) { _pausedForWifi = true; _bgCts?.Cancel(); } return; }
+            if (Background == BackgroundState.Done) return;
+            _pendingBackground = BackgroundSet();
+            BackgroundBytes = _downloader.PendingBytes(_pendingBackground);
+            if (Phase == PreloadPhase.Offline) return;
+            if (BackgroundBytes == 0) Background = BackgroundState.Done;
+            else if (DataSaverHolds || ShowCellularWarning && !_acceptedCellular) Background = BackgroundState.Deferred;
+            else StartBackground();
         }
 
         /// <summary>"Download now" in the cellular dialog.</summary>
@@ -259,7 +310,7 @@ namespace Muchi.Game
         {
             _decided = true;
             _acceptedCellular = true;
-            if (Background == BackgroundState.Deferred && Phase != PreloadPhase.Offline) StartBackground();
+            if (Background == BackgroundState.Deferred && Phase != PreloadPhase.Offline && !DataSaverHolds) StartBackground();
         }
 
         /// <summary>"Later (on Wi-Fi)": keep the background set deferred; the tutorial goes on with placeholders.</summary>
@@ -275,6 +326,8 @@ namespace Muchi.Game
                 return;
             }
             if (Background == BackgroundState.Deferred && Phase != PreloadPhase.Offline && _network() == NetworkReach.Wifi) StartBackground();
+            // §56.4: Wi-Fi → cellular while the data saver is on: the optional downloads pause (they resume on Wi-Fi)
+            else if (Background == BackgroundState.Running && DataSaverHolds) { _pausedForWifi = true; _bgCts?.Cancel(); }
         }
 
         /// <summary>"12.3MB" / "850KB" (decimal units, like the stores show sizes).</summary>

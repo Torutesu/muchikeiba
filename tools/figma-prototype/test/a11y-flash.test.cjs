@@ -58,7 +58,8 @@ assert.ok(/html\[data-reduce-motion="on"\] \.speedlines \{ display: none; \}/.te
 assert.ok(/function flash\([^)]*\) \{[\s\S]{0,200}if \(!flashOk\(\)\) return;/.test(app), 'flash() asks the limiter');
 assert.ok(!/navigator\.vibrate\?\.\((?!pattern)/.test(app.replace(/function haptic[^\n]*\n/, '')), 'every vibration goes through haptic()');
 assert.ok(/setTimeout\(face, reduced\(\) \? 0 : 380\)/.test(app), 'the scout reveal skips its glow wait with reduce motion');
-assert.ok(/if \(departed && !reduced\(\)\) \{ view\.kick\(\)/.test(app), 'no FOV kick / speed lines with reduce motion');
+// round 19: the RenderProfile may drop the kick / speed lines further (low quality, battery saver), never add them under reduce motion
+assert.ok(/if \(departed && !reduced\(\)\) \{\s*(if \(perfNow\?\.fovKick !== false\) )?view\.kick\(\)/.test(app), 'no FOV kick / speed lines with reduce motion');
 // 5) Round 14 / 15 screens (integration): every one-shot motion of the hall ceremony (.hof-*), photo mode (.ph-*), activity
 //    (.act-*), the advice panel (.adv-*), my replays (.rp-*) and the silks editor (.silk-*) has a reduce-motion rule that
 //    stops it or turns it into a short fade; photo mode never lights the screen (no flash() in the photo code).

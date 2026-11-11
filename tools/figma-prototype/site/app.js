@@ -203,6 +203,73 @@ function flashOk(now = performance.now()) {
   flashTimes.push(now); return true;
 }
 
+// ---------------------------------------------------------------- round 19: 画質・省電力・通信量 (REQ-PERF-*, protocol §56)
+// Mirrors unity/Assets/Muchi/Game/PerformanceSettingsModel.cs: four device-only settings (never sent to the server), the
+// device class from what the browser reports, and the real Muchi.Client RenderProfile (WASM PerfResolve) deciding what the
+// prototype draws: the 3D view's pixel ratio and shadows (RaceView.setQuality), the race loop's frame cap, the whip's
+// speed lines and FOV kick, and the home art's slow drift (html[data-perf-ambient]). The engine never sees any of it.
+const PERF_KEY = 'muchi.perf.settings', PERF_NET_KEY = 'muchi.perf.demoNet', PERF_STORE_KEY = 'muchi.perf.demoStorage';
+let perf = (() => { try { return JSON.parse(prefs.get(PERF_KEY, '{}')) || {}; } catch { return {}; } })();
+const perfSettings = () => ({ graphics: perf.graphics ?? 'auto', frameRate: perf.frameRate ?? 'auto', batterySaver: perf.batterySaver === true, dataSaver: perf.dataSaver === true });
+const perfWire = (s, k) => (k === 'batterySaver' || k === 'dataSaver' ? (s[k] ? 'on' : 'off') : s[k]);
+let perfDevice = null, perfNow = null;
+/** REQ-PERF-002: memory, cores and a software renderer from the browser → DeviceClassifier (once). */
+function perfDeviceInfo() {
+  if (perfDevice) return perfDevice;
+  const profile = { memoryMb: Math.round((navigator.deviceMemory ?? 4) * 1024), cores: navigator.hardwareConcurrency ?? 4, gpuMb: 0, software: !!view?.lite, refreshHz: 60 };
+  if (!engine) return { profile, deviceClass: 'mid' };
+  const info = { profile, deviceClass: engine.PerfClassify(JSON.stringify(profile)) };
+  if (view?.renderer) perfDevice = info; // decided once the renderer is known (software GL → low)
+  return info;
+}
+function perfProfile(inRace, settings = perfSettings()) {
+  if (!engine) return null;
+  return JSON.parse(engine.PerfResolve(JSON.stringify(settings), JSON.stringify({ deviceClass: perfDeviceInfo().deviceClass, inRace, lowPower: false, reduceMotion: reduced(), refreshHz: 60 })));
+}
+/** Applies the profile in force now (menus or the race). */
+function applyPerf() {
+  perfNow = perfProfile(raceActive);
+  const d = document.documentElement.dataset;
+  d.perfAmbient = perfNow && !perfNow.ambientMotion ? 'off' : 'on';
+  d.perfTier = perfNow?.tier ?? 'medium';
+  if (perfNow && view?.renderer) view.setQuality(perfNow);
+}
+/** A settings button: stored on the device at once; perf_setting_change only for a real change (REQ-PERF-015). */
+function setPerf(key, value) {
+  const before = perfSettings();
+  const next = { ...before, [key]: key === 'batterySaver' || key === 'dataSaver' ? value === 'on' : value };
+  if (perfWire(next, key) === perfWire(before, key)) return false;
+  perf = next; prefs.set(PERF_KEY, JSON.stringify(next));
+  (globalThis.__muchiKpi ??= []).push({ name: 'perf_setting_change', setting: key, value, deviceClass: perfDeviceInfo().deviceClass });
+  applyPerf();
+  return true;
+}
+// The storage screen's demo catalog (the server's platform view shape; the prototype downloads nothing): required boot /
+// ftue files, optional venues, a coat and a banner with low variants, on-demand voice names. Hashes are made up.
+const demoSha = (s) => { let h = 2166136261 >>> 0, out = ''; for (let k = 0; out.length < 64; k++) { for (const c of s + k) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0; out += h.toString(16).padStart(8, '0'); } return out.slice(0, 64); };
+const DEMO_ASSETS = [
+  ['horse/coat/default', 'boot', true, 180_000], ['sfx/race/default', 'boot', true, 60_000], ['sfx/race/whip', 'ftue', true, 90_000],
+  ['scene/venue/aoba', 'ftue', false, 24_000_000, 8_000_000], ['scene/venue/minato', 'race', false, 38_000_000, 12_500_000], ['scene/venue/kirameki', 'race', false, 41_000_000, 13_000_000],
+  ['horse/coat/bay', 'home', false, 6_200_000, 2_100_000], ['banner/gacha/standard', 'shop', false, 3_400_000, 1_100_000],
+  ['voice/ja/name/n0000000000000001', 'ondemand', false, 260_000], ['voice/ja/name/n0000000000000002', 'ondemand', false, 240_000],
+];
+const DEMO_CATALOG = JSON.stringify({
+  catalogVersion: 5, manifestVersion: 2, platform: 'ios', hash: 'demo5', baseUrl: 'https://assets.example.com', urlTemplate: '{base}/{platform}/{sha256}/{file}',
+  entries: DEMO_ASSETS.map(([key, group, required, size, low]) => ({ key, file: key + '.bundle', sha256: demoSha(key), size, group, required, ...(low ? { low: { file: key + '.low.bundle', sha256: demoSha(key + '.low'), size: low } } : {}) })),
+});
+/** What is "on the device": the required files, the tutorial venue and the coat already preloaded, a partial file, an old version. */
+function storageState() {
+  try { const s = JSON.parse(prefs.get(PERF_STORE_KEY, 'null')); if (s?.blobs) return s; } catch { /* reset below */ }
+  const blobs = {};
+  for (const [key, , , size] of DEMO_ASSETS.slice(0, 4)) blobs[demoSha(key)] = size;
+  blobs[demoSha('horse/coat/bay')] = 6_200_000;
+  blobs[demoSha('scene/venue/aoba@old')] = 2_300_000;
+  return { blobs, partial: 1_200_000 };
+}
+const saveStorage = (s) => prefs.set(PERF_STORE_KEY, JSON.stringify(s));
+const storageReport = (s = storageState()) => JSON.parse(engine.StorageReport(DEMO_CATALOG, JSON.stringify(s.blobs), s.partial, perfSettings().dataSaver));
+const demoNet = () => prefs.get(PERF_NET_KEY, 'wifi');
+
 // ---------------------------------------------------------------- art (Unity Resources paths → site files)
 let ART = {};
 const art = (res) => ART[res] || '';
@@ -222,6 +289,7 @@ function Clear(name) {
   cur = next;
   $canvas.hidden = true;
   globalThis.__muchi && (globalThis.__muchi.screen = name ?? '');
+  if (engine) applyPerf(); // round 19: menus get the menu profile (the battery saver's 30 fps / no drift)
 }
 const every = (ms, f) => { f(); timers.push(setInterval(f, ms)); };
 function el(cls, x, y, w, h, parent) {
@@ -530,6 +598,7 @@ async function StartRace(trackId = null, horseId = null) {
 function BuildRaceScreen() {
   const tut = raceCtx.tutorial;
   currentScreen = BuildRaceScreen; Clear(tut ? 'race-tutorial' : 'race'); cur.classList.add('race', 'hud'); $canvas.hidden = false; raceActive = true;
+  applyPerf(); // round 19 (REQ-PERF-004): the race profile — the frame cap of the setting, never the battery saver's menu rate
   lastFrame = null; reinHeld = false; keyRein = false;
   hud = { msgUntil: 0, cutins: [], shownLane: false, lastWhips: null, lastPos: '' };
   // ② remaining distance chip (top left) and ① the place chip (top right, 「—」 until the gate opens, F7)
@@ -642,7 +711,11 @@ function whipFeedback(departed) {
   flash(hud.feedback, departed ? '伸びる！' : 'スタート！');
   hud.whip.classList.remove('hit'); void hud.whip.offsetWidth; hud.whip.classList.add('hit');
   // the spurt: an FOV kick on the 3D view and speed lines on the edges (presentation only; REQ-A11Y-007: none when reduced)
-  if (departed && !reduced()) { view.kick(); const s = document.createElement('div'); s.className = 'speedlines'; cur.insertBefore(s, cur.firstChild); setTimeout(() => s.remove(), 1300); }
+  // round 19 (REQ-PERF-003/004): the RenderProfile drops speed lines on low quality / battery saver (the FOV kick follows reduce motion only)
+  if (departed && !reduced()) {
+    if (perfNow?.fovKick !== false) view.kick();
+    if (perfNow?.speedLines !== false) { const s = document.createElement('div'); s.className = 'speedlines'; cur.insertBefore(s, cur.firstChild); setTimeout(() => s.remove(), 1300); }
+  }
   haptic(departed ? 40 : [12, 40, 12]);
 }
 /** Round 15 (REQ-A11Y-012): the whip button is held, not tapped (never while かんたん操作 owns the whip). */
@@ -663,12 +736,18 @@ function flash(node, text, ms = 1100) {
   if (!flashOk()) return; // REQ-A11Y-008: the text, without the light
   void node.offsetWidth; node.classList.add('flash');
 }
+let lastDrawMs = 0, drawnFrames = 0;
 function raceLoop() {
   requestAnimationFrame(raceLoop);
   if (!raceActive) return;
+  // round 19 (REQ-PERF-001/010): the frame cap — at 30 fps every other display frame is skipped. The engine steps its
+  // fixed 20 Hz ticks from the clock on the next drawn frame, so the race itself is the same at any frame rate.
+  const now = performance.now();
+  if ((perfNow?.targetFrameRate ?? 60) <= 30 && now - lastDrawMs < 1000 / 30 - 4) return;
+  lastDrawMs = now; drawnFrames++;
   engine.Rein(reinHeld || keyRein);
   // round 18: a practice race runs on its own clock (0.5× in the last 400 m when chosen; the race itself is the same)
-  const f = JSON.parse(raceCtx?.practice ? engine.PracticeFrame(performance.now()) : engine.Frame(performance.now()));
+  const f = JSON.parse(raceCtx?.practice ? engine.PracticeFrame(now) : engine.Frame(now));
   lastFrame = f;
   view.draw(f);
   paintHud(f);
@@ -2475,7 +2554,7 @@ async function Settings() {
   // round 14: 実況パック (REQ-CMT-011) after the looks entries
   // round 15: アクセシビリティ (REQ-A11Y-*) first — reachable in the FTUE too (text size before the first race)
   // round 18: プライバシー (REQ-DEX-001) next to the accessibility settings
-  const moreRows = [['ヘルプ・お問い合わせ', () => HelpCenter(Settings), 'help', (player?.help?.unreadReplies ?? 0) > 0 ? `未読 ${player.help.unreadReplies}` : undefined], ['アクセシビリティ', () => A11ySettings(), 'a11y'], ['プライバシー', () => Privacy(), 'privacy'], ['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions], ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite'],
+  const moreRows = [['ヘルプ・お問い合わせ', () => HelpCenter(Settings), 'help', (player?.help?.unreadReplies ?? 0) > 0 ? `未読 ${player.help.unreadReplies}` : undefined], ['アクセシビリティ', () => A11ySettings(), 'a11y'], ['画質・通信量', () => PerfSettings(), 'perf'], ['プライバシー', () => Privacy(), 'privacy'], ['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions], ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite'],
     // round 15 (REQ-ADV-009): the pre-race advice switch (a device setting, default on)
     ['出走前アドバイス', () => { advice.setEnabled(!advice.enabled()); Settings(); }, 'advice', advice.enabled() ? 'オン' : 'オフ'],
     // round 17 (REQ-RPT-011): the block list and what a block does
@@ -2800,6 +2879,151 @@ async function A11ySettings() {
   Hair(36, 600, 1456, p);
   Txt('点滅は1秒に3回までに抑えています', 36, 620, 1000, 15, MUTED, p, { weight: 500 }).dataset.a11yFlash = '1';
   Back(Settings, 'BACK', 40, 834);
+}
+// ================================================================= round 19: 画質・通信量 / ストレージ (REQ-PERF-*, protocol §56)
+// The Unity PerformanceSettingsModel.Rows() / StorageModel in the ムチ一閃 tone: paddock art, translucent navy panels,
+// letter-spaced cyan kickers, choice buttons like the accessibility rows, one skewed cyan CTA ». Device-only settings.
+const PERF_ROWS = [
+  ['graphics', 'display', '画質', '影・解像度・エフェクトの細かさ', [['auto', '自動'], ['low', '低'], ['medium', '中'], ['high', '高']]],
+  ['frameRate', 'display', 'フレームレート', '1秒に描く枚数の上限', [['auto', '自動'], ['30', '30'], ['60', '60']]],
+  ['batterySaver', 'data', '省電力', 'レースの外は30fps、演出を控えめにします', [['off', 'オフ'], ['on', 'オン']]],
+  ['dataSaver', 'data', 'データセーバー', '必須でないデータは Wi-Fi のときだけ。軽い版を使います', [['off', 'オフ'], ['on', 'オン']]],
+];
+const TIER_JA = { low: '低', medium: '中', high: '高' };
+const nowLine = (p) => `いまの表示：画質 ${TIER_JA[p.tier]}・${p.targetFrameRate}fps・描画 ${Math.round(p.renderScale * 100)}%${p.batterySaverActive ? '・省電力' : ''}`;
+function PerfSettings() {
+  currentScreen = PerfSettings;
+  Clear('perf-settings'); SetArt('Art/home-paddock', false); Shade('dim');
+  TopBar('その他　/　画質・通信量', 'この端末だけの設定です。レースの結果は変わりません', { wallet: false });
+  const p = Glass('Frame', 36, 134, 1528, 676, undefined, .9);
+  const s = perfSettings();
+  const auto = perfProfile(true, { graphics: 'auto', frameRate: 'auto', batterySaver: false, dataSaver: false });
+  const col = (group, x, title) => {
+    Kicker(title, x, 26, p, { size: 16 });
+    let y = 92;
+    for (const [key, g, label, desc, choices] of PERF_ROWS) {
+      if (g !== group) continue;
+      const row = el('perf-row', x, y, 700, 120, p); row.dataset.perfRow = key;
+      Txt(label, 0, 0, 300, 21, WHITE, row, { weight: 500 });
+      Txt(desc, 0, 34, 290, 14, MUTED, row, { lh: 1.45 });
+      if (key === 'graphics' || key === 'frameRate') {
+        const note = Txt(`自動：${key === 'graphics' ? TIER_JA[auto.tier] : auto.targetFrameRate + 'fps'}`, 0, 84, 290, 14, CYAN, row, { weight: 500 });
+        note.dataset.perfAuto = key;
+      }
+      const w = choices.length === 4 ? 88 : choices.length === 3 ? 124 : 172;
+      choices.forEach(([v, l], i) => {
+        const on = perfWire(s, key) === v;
+        const b = Btn(l, 316 + i * (w + 10), 2, w, 52, () => { if (setPerf(key, v)) PerfSettings(); }, 'choice' + (on ? ' on' : ''), row);
+        b.dataset.perfChoice = v; b.style.whiteSpace = 'nowrap';
+      });
+      y += 132;
+    }
+  };
+  col('display', 36, '表示');
+  col('data', 792, '電池・通信');
+  // what is in force now: the menus (this screen) and a race (the battery saver never lowers the race's cap)
+  const menu = perfNow ?? perfProfile(false), race = perfProfile(true);
+  Hair(36, 372, 1456, p);
+  Txt(nowLine(menu), 36, 394, 700, 17, WHITE, p, { weight: 500 }).dataset.perfNow = 'menu';
+  Txt(`レース中：${race.targetFrameRate}fps`, 36, 428, 700, 15, MUTED, p, { weight: 500 }).dataset.perfNow = 'race';
+  Txt('どの設定もレースの計算には関係しません。結果や公平さは同じです。', 792, 394, 700, 15, SOFT, p, { lh: 1.55 }).dataset.perfFair = '1';
+  Hair(36, 492, 1456, p);
+  Kicker('ストレージ', 36, 512, p, { size: 15, rule: false });
+  const r = storageReport();
+  Txt(`合計 ${r.total}`, 36, 548, 420, 24, WHITE, p, { weight: 700 }).dataset.perfStorage = String(r.totalBytes);
+  Ghost('ストレージを開く', 36, 596, 300, 56, () => Storage(), p, 'small').dataset.action = 'storage';
+  TextLink('データ通信量と容量について', 792, 604, 600, () => HelpArticle('data_storage', 'context'), p).dataset.helpContext = 'storage';
+  Back(Settings, 'BACK', 40, 834);
+}
+
+const STORAGE_ROWS = { required: '必須データ', screens: '画面のデータ', ondemand: '都度のデータ（実況の馬名など）', low: '軽量版', partial: '途中のダウンロード', stale: '古いデータ' };
+const NET_LABEL = { wifi: 'Wi-Fi', cellular: 'モバイル通信', none: 'オフライン' };
+let storageRun = null; // { start, bytes, fetch } while 「すべてダウンロード」 runs
+function Storage() {
+  currentScreen = Storage;
+  Clear('storage'); SetArt('Art/home-paddock', false); Shade('dim');
+  TopBar('その他　/　ストレージ', 'ダウンロードしたデータの容量。アカウントや進み具合は消えません', { wallet: false });
+  const st = storageState(), r = storageReport(st), net = demoNet(), saver = perfSettings().dataSaver;
+  // ① usage by row (AssetStorage.Measure in WASM)
+  const u = Glass('Usage', 36, 134, 900, 676, undefined, .9);
+  Kicker('使っている容量', 36, 30, u);
+  Txt(`合計 ${r.total}`, 36, 100, 600, 36, WHITE, u, { weight: 700 }).dataset.storageTotal = String(r.totalBytes);
+  const max = Math.max(1, ...r.rows.map((x) => x.bytes));
+  r.rows.forEach((row, i) => {
+    const y = 176 + i * 74;
+    const line = el('storage-row', 36, y, 828, 64, u); line.dataset.storageRow = row.kind; line.dataset.bytes = String(row.bytes);
+    Txt(STORAGE_ROWS[row.kind], 0, 4, 560, 18, row.kind === 'required' ? WHITE : MUTED, line, { weight: 500 });
+    Txt(row.size, 588, 0, 240, 22, row.bytes ? WHITE : DIM, line, { weight: 700, align: 'right', cls: 'num' });
+    Gauge(0, 40, 828, row.bytes / max, line, { gold: row.kind === 'required' });
+  });
+  // ② download all / clear cache / the demo connection
+  const a = Glass('Actions', 956, 134, 608, 676, undefined, .9);
+  Kicker('すべてダウンロード', 36, 30, a);
+  const sizeLine = r.predownloadBytes > 0 ? `あと ${r.predownload}` : 'すべてダウンロード済みです';
+  Txt(sizeLine, 36, 98, 536, 24, r.predownloadBytes > 0 ? WHITE : OK, a, { weight: 700 }).dataset.predownload = String(r.predownloadBytes);
+  if (saver) Txt('データセーバー：軽量版をダウンロードします', 36, 136, 536, 14, CYAN, a, { weight: 500 }).dataset.variant = 'low';
+  const blocked = storageRun ? null : r.predownloadBytes <= 0 ? 'すべてダウンロード済みです' : net === 'none' ? 'オフラインのためダウンロードできません' : net === 'cellular' && saver ? 'データセーバー中は Wi-Fi に接続すると実行できます' : null;
+  const go = Cta('すべてダウンロード', 36, 168, 536, () => {
+    if (net === 'cellular') return CellularConfirm(r);
+    StartPredownload(r);
+  }, a, 'small');
+  go.dataset.action = 'predownload';
+  if (blocked || storageRun) disable(go);
+  if (blocked && r.predownloadBytes > 0) Txt(blocked, 36, 240, 536, 14, GOLD, a, { weight: 500, lh: 1.5 }).dataset.blocked = '1';
+  if (storageRun) {
+    const g = Gauge(36, 252, 536, 0, a, { thick: true }); g.dataset.progress = '1';
+    every(80, () => { const k = clamp((performance.now() - storageRun.start) / storageRun.ms, 0, 1); g.firstChild.style.width = Math.round(k * 100) + '%'; });
+  }
+  Hair(36, 300, 536, a);
+  Kicker('キャッシュを削除', 36, 320, a, { rule: false, size: 15 });
+  Txt('ダウンロードした絵や音を消します。遊ぶのに必要なデータとアカウント・進み具合は消えません。', 36, 356, 536, 14, MUTED, a, { lh: 1.55 });
+  const clr = Ghost('キャッシュを削除', 36, 420, 300, 56, () => ClearConfirm(r), a, 'danger small');
+  clr.dataset.action = 'clear-cache';
+  if (r.clearableBytes <= 0 || storageRun) disable(clr);
+  Hair(36, 506, 536, a);
+  Kicker('デモ：回線', 36, 526, a, { rule: false, size: 14, color: SOFT });
+  ['wifi', 'cellular', 'none'].forEach((n, i) => {
+    const b = Btn(NET_LABEL[n], 36 + i * 182, 566, 172, 48, () => { prefs.set(PERF_NET_KEY, n); Storage(); }, 'choice' + (net === n ? ' on' : ''), a);
+    b.dataset.net = n; b.style.whiteSpace = 'nowrap'; b.style.fontSize = '15px';
+  });
+  Back(PerfSettings, 'BACK', 40, 834);
+}
+function CellularConfirm(r) {
+  const box = Dialog('Cellular confirm', 900, 420);
+  box.classList.add('perf-confirm');
+  Kicker('モバイル通信', 52, 44, box, { color: GOLD });
+  Txt(`モバイル通信で約${r.predownload}のデータをダウンロードします。Wi-Fi への接続をおすすめします。`, 52, 110, 796, 20, WHITE, box, { lh: 1.6, weight: 500 }).dataset.confirmSize = r.predownload;
+  Cta('ダウンロードする', 52, 300, 420, () => StartPredownload(r), box, 'small').dataset.confirm = 'yes';
+  Ghost('やめておく', 500, 300, 348, 60, () => Storage(), box).dataset.confirm = 'no';
+}
+function ClearConfirm(r) {
+  const box = Dialog('Clear confirm', 900, 420);
+  box.classList.add('perf-confirm');
+  Kicker('キャッシュを削除', 52, 44, box, { color: RED });
+  Txt(`ダウンロードしたデータを削除します（${r.clearable}）。遊ぶのに必要なデータとアカウント・進み具合は消えません。`, 52, 110, 796, 20, WHITE, box, { lh: 1.6, weight: 500 }).dataset.confirmSize = r.clearable;
+  Ghost('削除する', 52, 300, 420, 60, () => {
+    // REQ-PERF-014: only the current catalog's required files stay (nothing is in flight here)
+    const st = storageState(), keep = new Set(r.keep), blobs = {};
+    for (const [sha, n] of Object.entries(st.blobs)) if (keep.has(sha)) blobs[sha] = n;
+    saveStorage({ blobs, partial: 0 });
+    toast(`${r.clearable} を削除しました`);
+    Storage();
+  }, box, 'danger').dataset.confirm = 'clear';
+  Ghost('やめておく', 500, 300, 348, 60, () => Storage(), box).dataset.confirm = 'no';
+}
+function StartPredownload(r) {
+  // REQ-PERF-015: asset_predownload once per start (the size still to fetch as a bucket, the version)
+  const variant = perfSettings().dataSaver ? 'low' : 'full';
+  (globalThis.__muchiKpi ??= []).push({ name: 'asset_predownload', bucket: r.bucket, variant });
+  storageRun = { start: performance.now(), ms: 1400, fetch: r.fetch };
+  Storage();
+  setTimeout(() => {
+    const st = storageState();
+    saveStorage({ blobs: { ...st.blobs, ...storageRun.fetch }, partial: 0 });
+    storageRun = null;
+    toast('ダウンロードが終わりました');
+    if (cur?.dataset.screen === 'storage') Storage();
+  }, 1400);
 }
 function ConfirmDeletion(v) {
   currentScreen = () => ConfirmDeletion(v); Clear('delete-confirm'); SetArt('Art/home-paddock', false); Shade('dim heavy');
@@ -6601,7 +6825,7 @@ const helpGo = (screen, back) => ({
   home: () => Home(), settings: () => Settings(), race_lobby: () => RaceLobby(), tutorial: () => toast('チュートリアルはタイトル画面から始められます'),
   training: () => Training(), breeding: () => Stable(), stable: () => Stable(), collection: () => Collection('horses'), gacha: () => Scout(),
   gacha_odds: () => Odds('standard'), shop: () => Store('coins'), history: () => History('purchases'), gift_box: () => GiftBox('box'),
-  activity: () => { actState.cursor = null; actState.stack = []; return Activity(); }, accessibility: () => A11ySettings(),
+  activity: () => { actState.cursor = null; actState.stack = []; return Activity(); }, accessibility: () => A11ySettings(), performance: () => PerfSettings(), storage: () => Storage(),
   account_link: () => Settings(), deletion: () => Settings(), inquiry: () => InquiryForm(), my_inquiries: () => MyInquiries(),
   // round 18 integration: privacy (§51), the branch feed's quick chat (§52), practice races (§50)
   privacy: () => Privacy(), team_feed: () => TeamFeed('chat'), practice: () => Practice(),
@@ -6900,10 +7124,11 @@ async function boot() {
   view = new RaceView($canvas, (res) => art(res), partners);
   // the 3D models load while the title is up (the first race waits for them)
   viewReady = view.load();
+  viewReady.then(() => applyPerf()); // round 19: the device class once the renderer is known, the profile on the 3D view
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Privacy, QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ PerfSettings, Storage, Privacy, QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),
@@ -6914,6 +7139,8 @@ async function boot() {
       set: (lang) => { prefs.set('muchi.language', lang); applyLanguage(); currentScreen?.(); } },
     // round 15 (test/a11y-flow.cjs): the settings in force and the flash limiter
     a11y: { get: () => ({ ...a11y }), set: (k, v) => setA11y(k, v), flashOk: (t) => flashOk(t) },
+    // round 19 (REQ-PERF-*): the device settings, the profile in force, the device class, the demo storage, frames drawn
+    perf: { get: () => ({ settings: perfSettings(), profile: perfNow, device: perfDeviceInfo(), frames: drawnFrames }), set: (k, v) => setPerf(k, v), resolve: (s, inRace) => perfProfile(inRace, s), storage: () => storageState(), report: () => storageReport(), net: (n) => prefs.set(PERF_NET_KEY, n), resetStorage: () => prefs.set(PERF_STORE_KEY, 'null'), reset: () => { perf = {}; prefs.set(PERF_KEY, '{}'); applyPerf(); } },
   };
   // round 10: index.html?invite=<code> (or unity.html?invite=…, redirected) stands in for muchi://invite/<code> (pre-fills the entry; kept through the FTUE)
   const inviteLink = new URLSearchParams(location.search).get('invite');

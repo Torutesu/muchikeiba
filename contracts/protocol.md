@@ -2629,9 +2629,9 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 ```
 - カテゴリ `id` は8つ：`getting_started`（はじめに）・`races`（レース・ムチ）・`horses`（馬・配合）・`scout`（スカウト・提供割合・天井）・`purchases`（購入・返金）・`account`（アカウント・引き継ぎ）・`deletion`（アカウント削除）・`accessibility`（アクセシビリティ）。全部そろっていて、それぞれ記事が1件以上。
 - 記事 `id` は `^[a-z0-9_]{2,40}$` で重ならない。`title` は1〜`titleMaxChars` 文字、`body` は1〜`bodyMaxChars` 文字（トークンを埋める前）、`keywords` は各言語20個まで・各20文字まで。日本語と英語でトークンの組が同じ。`related` は存在する別の記事。
-- 画面 `screen`：`home`・`settings`・`race_lobby`・`tutorial`・`training`・`breeding`・`stable`・`collection`・`gacha`・`gacha_odds`・`shop`・`history`・`gift_box`・`activity`・`accessibility`・`account_link`・`deletion`・`inquiry`・`my_inquiries`・`privacy`・`team_feed`・`practice`（後ろの3つは Round 18 統合）。
+- 画面 `screen`：`home`・`settings`・`race_lobby`・`tutorial`・`training`・`breeding`・`stable`・`collection`・`gacha`・`gacha_odds`・`shop`・`history`・`gift_box`・`activity`・`accessibility`・`account_link`・`deletion`・`inquiry`・`my_inquiries`・`privacy`・`team_feed`・`practice`（この3つは Round 18 統合）・`performance`・`storage`（§56）。
 - トークン：`pity_pulls:<バナー>`（天井までの回数）・`pity_coins:<バナー>`（天井までのコイン）・`pity_cost:<天井グループ>`・`rate:<バナー>:<レア度>`・`guarantee_rate:<バナー>:<レア度>`（10枠目の保証の表）・`price_single:<バナー>`・`price_ten:<バナー>`・`monthly_limit:<年齢帯>`（上限のある帯だけ）・`guardian_age`・`deletion_days`・`purchase_keep_days`・`coin_history_days`・`gacha_history_days`・`max_whips`。知らないトークン・無いバナー／グループ／帯は検査で落とす（リモート設定でバナーを外して記事が壊れる版は有効にできない）。
-- `contexts`（画面からの案内、REQ-HELP-008）：`gacha_odds`・`coin_shortfall`・`purchase`・`race_whip`・`race_result`・`training`・`breeding`・`history`・`gift_box`・`account_link`・`deletion`・`accessibility`・`privacy`（Round 18 統合：プライバシーの画面 → `data_export`） → 記事 id。Round 18 統合で記事 `data_export`・`quick_chat`・`practice_races`・`horse_goals` を足した（数字はトークン `export_cooldown_days`・`export_keep_days`・`export_link_minutes`・`qchat_interval_sec`・`qchat_per_day` から）。全部そろっていて、存在する記事を指す。
+- `contexts`（画面からの案内、REQ-HELP-008）：`gacha_odds`・`coin_shortfall`・`purchase`・`race_whip`・`race_result`・`training`・`breeding`・`history`・`gift_box`・`account_link`・`deletion`・`accessibility`・`privacy`（Round 18 統合：プライバシーの画面 → `data_export`）・`storage`（§56） → 記事 id。Round 18 統合で記事 `data_export`・`quick_chat`・`practice_races`・`horse_goals` を足した（数字はトークン `export_cooldown_days`・`export_keep_days`・`export_link_minutes`・`qchat_interval_sec`・`qchat_per_day` から）。全部そろっていて、存在する記事を指す。
 
 ### 48.2 `GET /v1/help`（要認証、読むだけ・プレイヤーの状態に触れない）
 ```json
@@ -3089,3 +3089,84 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 
 ### 53.9 アカウント削除
 状態の `horseGoals`（達成の記録・ピン）と戦績の `goal` は最後の `wipe` で消える。殿堂の写し（§34.5）は既存の手順で消える。他の場所に写しは無い。
+
+## 56. 画質・省電力・通信量の設定（REQ-PERF-001〜018、C# `PerformanceSettings.cs`（`PerformanceSettings`・`DeviceClassifier`・`RenderProfile`・`AssetDownloadPolicy`・`AssetStorage`）・`Muchi.Game.PerformanceSettingsModel`／`StorageModel`、§16 のアセット配信に追加、docs/handoff-codex-round19-performance-settings.md）
+端末ごとの「見た目の重さ」と「通信量・容量」の設定。**端末にだけ保存し、アカウントには保存しない**（§56.6）。**どの設定もレースの計算・ルールセット・検証・結果ハッシュ・リプレイを変えない**：エンジンは 20Hz の固定ステップで時計に合わせて進み、設定が変えるのは描画（1秒に何枚描くか・どの細かさで描くか）とダウンロードだけ（§56.5）。アクセシビリティの「動きを減らす」（§41.6）とは別の設定で、両方オンにできる（効果は重なるだけで打ち消し合わない）。
+
+### 56.1 設定と既定値（REQ-PERF-001）
+| キー | 値（線の値） | 既定 | 効くところ |
+|---|---|---|---|
+| `graphics` | `auto` \| `low` \| `medium` \| `high` | `auto` | 画質の段（§56.3）。`auto` は端末の区分（§56.2）で決まる |
+| `frameRate` | `auto` \| `30` \| `60` | `auto` | 1秒に描く枚数の上限。`auto` は区分 `low` で 30、それ以外 60（画面の最大リフレッシュレートが 60 未満なら 30） |
+| `batterySaver` | `true` \| `false` | `false` | 省電力：**レースの外**は 30fps、演出を減らす（§56.3）。レース中の fps は `frameRate` のまま（操作の手触りを落とさない） |
+| `dataSaver` | `true` \| `false` | `false` | データセーバー：必須でないアセットは Wi-Fi のときだけ取得し、軽量版があれば軽量版を使う（§56.4） |
+
+- 端末の「省電力モード」（iOS の低電力モード・Android のバッテリーセーバー）が入っている間は、`batterySaver` がオフでもオンと同じに扱う（設定の値は変えない。画面には「端末の省電力モード中」と出す）。
+- 知らない値・壊れた保存値は既定値に戻す（`PerformanceSettings.Parse`）。
+
+### 56.2 端末の区分（REQ-PERF-002、`DeviceClassifier`）
+起動時に1回、端末の情報（`DeviceProfile`：メモリ MB・CPU コア数・GPU メモリ MB（不明は 0）・ソフトウェア描画か・最大リフレッシュレート）から `low` / `mid` / `high` を決める。Unity では `IDeviceInfo` を `SystemInfo`・`Screen.currentResolution.refreshRateRatio`・OS の省電力の通知で実装する（docs/handoff-codex-round19-performance-settings.md）。
+| 区分 | 条件（上から順に） |
+|---|---|
+| `low` | ソフトウェア描画、またはメモリ < 3000MB、または CPU < 4 コア、または GPU メモリが分かっていて < 512MB |
+| `high` | メモリ ≥ 6000MB かつ CPU ≥ 6 コア かつ（GPU メモリが不明、または ≥ 2048MB） |
+| `mid` | それ以外 |
+- 区分は表示の既定値を選ぶためだけに使い、マッチング・レーティング・報酬には使わない。KPI の `perf_setting_change` には付ける（どの区分の人が何を変えるか）。
+
+### 56.3 画質の段と描画の値（REQ-PERF-003/004、`RenderProfile.Resolve`）
+`auto` は区分 `low` → 低、`mid` → 中、`high` → 高。
+
+| 段 | URP の品質レベル | レンダースケール | 影 | MSAA | パーティクル | ポストエフェクト | 観客の密度 |
+|---|---|---|---|---|---|---|---|
+| 低 `low` | 0 | 0.70 | なし | なし | ×0.35 | なし | ×0.3 |
+| 中 `medium` | 1 | 0.85 | くっきり（hard） | 2x | ×0.70 | あり | ×0.6 |
+| 高 `high` | 2 | 1.00 | やわらか（soft） | 4x | ×1.00 | あり | ×1.0 |
+
+- **省電力が効いている間**（設定オン、または端末の省電力モード）：レースの外の fps は 30、パーティクル ×0.5（段の値に掛ける）、ポストエフェクトなし、影は hard まで、レンダースケールは 0.85 まで、スピード線・背景のゆっくりした動き（ホームのアートのドリフト）なし。レース中の fps は `frameRate` のまま。
+- **動きを減らす（§41.6）との関係**：スピード線・FOV キック・背景のドリフトは「動きを減らす」オンでも消える（`MotionPolicy`）。省電力は fps と描画の重さ、動きを減らすは揺れと動きを決め、どちらも相手の値を変えない（両方オンなら両方の効果）。カメラの揺れは `MotionPolicy` だけが決める。
+- スピード線は段が低でも出さない（重いので）。FOV キックは描画の重さに関係しないので、動きを減らすときだけ消える。
+- 値は `RenderProfile`（`UrpQualityLevel`・`TargetFrameRate`・`RenderScale`・`Shadows`・`Msaa`・`ParticleScale`・`PostProcessing`・`CrowdDensity`・`SpeedLines`・`FovKick`・`AmbientMotion`・`BatterySaverActive`）。Unity は `QualitySettings.SetQualityLevel(UrpQualityLevel)`・`Application.targetFrameRate = TargetFrameRate`（`QualitySettings.vSyncCount = 0`）・URP アセットの `renderScale`・`msaaSampleCount`・影の設定に結ぶ。レースの出入りで `PerformanceSettingsModel.SetInRace` を呼ぶ。
+
+### 56.4 データセーバーとアセット配信（REQ-PERF-005〜009、§16 に追加）
+- **必須（`required: true`、boot・ftue）はいつでも取得する**（モバイル通信でも。チュートリアルを止めない §16.2 は同じ）。
+- **必須でないもの**：データセーバーがオンでモバイル通信のときは取得しない（裏の先読みも `ondemand` も）。Wi-Fi につながったら取得を再開する。取得しないものはいつもどおり同梱 → `<kind>/default` で表示する（§16.4）。このときモバイル通信の確認（`cellularWarnBytes`）は出さない（何もモバイル通信で落とさないため）。データセーバーがオフなら今までどおり（§16.2 の確認つき）。
+- **軽量版（low）**：カタログのエントリーは任意で `low: { "file", "sha256", "size" }` を持てる（§56.7）。データセーバーがオンなら、必須でないエントリーは軽量版があれば軽量版を取得して使う（Wi-Fi でも：容量も節約する）。オフなら通常版。端末に軽量版だけがあるときは通常版が届くまで軽量版を表示する（`AssetResolver` は「通常版 → 軽量版 → 同梱 → `<kind>/default`」）。
+- **まとめてダウンロード**（ストレージ画面の「すべてダウンロード」）：必須でないエントリー全部（`ondemand` も含む）を今のデータセーバーの版で取得する。**押す前に残りのサイズを出す**（`AssetStorage.PredownloadBytes`）。モバイル通信では：データセーバーがオンなら押せない（「Wi-Fi に接続すると実行できます」）、オフなら必ずサイズを出して確認する。空き容量が足りない分は §16.4 のとおり取得しない（途中まで書かない）。何度押しても、取得済みのものは取り直さない（同じファイルは1回の転送）。
+- データセーバーを切り替えたときは、次の先読み（起動時・ストレージ画面・Wi-Fi への切り替わり）から新しい版で取得する。もう端末にある版は消さない（キャッシュの削除か、カタログから外れたときに消える）。
+
+### 56.5 レースの決定性（REQ-PERF-010）
+- 設定は `Muchi.Engine` に一切届かない（`RaceConfig`・`RulesetParams`・`TickHz` = 20 は同じ）。fps が変えるのは `OfflineRace.Update`／`RaceSession` を呼ぶ回数だけで、シミュレーションは時計から決まる tick 数だけ固定ステップで進む。入力は「次の tick」に入るので、同じ tick に同じ入力なら結果ハッシュは同じ。
+- テスト：`PerformanceSettingsTests.RaceHashIsTheSameForEverySetting`（全設定の組み合わせ × 区分 × 省電力モードで、決まった入力のレースを各設定の `RenderProfile.FrameIntervalMs` ごとの描画ループで走らせ、ハッシュがすべて同じ）。プロトタイプでも 30fps と 60fps の描画ループで同じハッシュ（`test/round19-performance.test.mjs`）。ゴールデンも変わらない。
+
+### 56.6 保存（端末だけ、REQ-PERF-011）
+- 4つの設定はすべて**端末にだけ**保存する（`PerformanceSettingsModel.KeyBlob` = `muchi.perf.settings`）。アカウントには保存しない、サーバーの API も `PlayerState` のキーもない。
+- 理由：画質と fps は端末の性能、省電力は端末の電池、データセーバーはその端末の回線（Wi-Fi だけのタブレットと、モバイル通信のスマホ）で決まり、別の端末に持ち込むと逆効果になりやすい。データセーバーだけは同期も考えたが、同じ理由で端末ごとにする（機種変更・再インストールでは既定値の `auto`・オフから始まる）。§41 のアクセシビリティ（体の事情なのでアカウントに保存）とはここが違う。
+- 起動直後から保存値を当てる（サーバーを待たない、オフラインでも同じ）。
+
+### 56.7 カタログの軽量版（REQ-PERF-012、§16.1・§16.3 に追加、後方互換）
+```json
+{ "key": "scene/venue/aoba", "file": "scene/venue/aoba.bundle", "sha256": "<64 hex>", "size": 18342211, "group": "race", "required": false,
+  "low": { "file": "scene/venue/aoba.low.bundle", "sha256": "<64 hex>", "size": 6120400 } }
+```
+- `low` は**任意**で、無いエントリーは今までとまったく同じ形（`low` を持つエントリーが1つも無いカタログは `hash`・ETag も今までと同じ）。古いクライアントは `low` を読まずに通常版を使う。新しい経路は無い（`GET /v1/assets/catalog` のまま、ゲートのグループも今まで通り）。
+- 検証（§16.3 に追加）：`low` は `required: false` のエントリーだけ、`low.size` < `size`、`low.sha256` ≠ `sha256`、`low.file` ≠ `file`、`low.file` も同じ形式（小文字の相対パス）、同じ `file`・同じ `sha256` は同じ内容（通常版と軽量版をまたいで）。
+- スキャナ（`npm run scan:assets`）：`<key>.low.<ext>`（例 `scene/venue/aoba.low.bundle`）を `<key>` の軽量版として付ける。通常版が無い軽量版・必須のキーの軽量版・`bundles.json` の中のファイルの軽量版は孤児として報告する。
+- 端末：`AssetEntry.Low`、`AssetCatalog.ReferencedHashes` は軽量版も含む（古い版の削除で軽量版を消さない）。
+
+### 56.8 ストレージ画面とキャッシュの削除（REQ-PERF-013/014、`AssetStorage`・`StorageModel`）
+- 表示：端末のアセットの使用量を行ごとに（必須データ・画面のデータ（boot/ftue の必須でないもの・home・race・shop）・都度のデータ（ondemand）・軽量版・途中のダウンロード・古いデータ（カタログに無いもの））と合計、「すべてダウンロードするとあと何 MB」。サイズは 10 進（1MB = 1,000,000 バイト、ストアと同じ）。
+- **キャッシュを削除**：確認（消えるサイズを出す）のあと、必須でないファイル・軽量版・途中のファイル・古いデータを消す。**今のカタログの必須のファイルと、取得中のファイルは消さない**（遊んでいる途中で必須のアセットが消えることはない）。消したものは次の先読みで設定どおり取り直す。消してもアカウント・進み具合・設定は消えない（アセットだけ）。
+- どちらも端末の中だけ（サーバーへの送信なし）。
+
+### 56.9 KPI（REQ-PERF-015）
+| イベント | 送り手 | s1 | s2 | s3 |
+|---|---|---|---|---|
+| `perf_setting_change` | クライアント（プレイヤーが値を変えたときだけ。同じ値・起動時の自動の既定値では出さない） | 設定（`graphics` / `frameRate` / `batterySaver` / `dataSaver`） | 新しい値（`auto`・`low`・`medium`・`high`・`30`・`60`・`on`・`off`） | 端末の区分（`low` / `mid` / `high`） |
+| `asset_predownload` | クライアント（「すべてダウンロード」を始めたとき1回） | 残りのサイズの区分（`lt_10mb` / `10_50mb` / `50_200mb` / `200mb_1gb` / `gte_1gb`） | 版（`full` / `low`） | |
+- 値の組み合わせはサーバーで検査する（`graphics` に `30` は 400）。個人を特定する情報・機種名は入れない。クエリは `docs/ops/kpi-queries.md`「画質・省電力・通信量」。
+
+### 56.10 クライアント（REQ-PERF-016〜018）
+- `Muchi.Client`：`PerformanceSettings`（`Parse`・`ToJson`・`Defaults`・`Wire`）、`DeviceProfile`・`IDeviceInfo`・`DeviceClassifier`、`RenderProfile.Resolve(settings, context)`（`PerformanceContext`：区分・レース中か・端末の省電力モード・動きを減らす・最大リフレッシュレート）、`AssetDownloadPolicy`（必須・データセーバー・回線から「取得する／Wi-Fi を待つ」と版を決める）、`AssetStorage`（使用量・まとめてダウンロードの残り・キャッシュの削除）、`AssetEntry.Low`・`AssetResolver` の軽量版、analytics `perf_setting_change`・`asset_predownload`。
+- `Muchi.Game`：`PerformanceSettingsModel`（端末の保存・`Changed` イベント・画面が結ぶ値・設定画面の行 `Rows()`・`SetInRace`・`OnLowPowerModeChanged`）、`StorageModel`（行・合計・まとめてダウンロード（サイズ・確認・Wi-Fi 待ち・進み具合）・キャッシュの削除（確認））、`AssetPreloadModel` にデータセーバーの方針を渡せる（無ければ今まで通り）。
+- プロトタイプ：設定の「画質・通信量」と「ストレージ」画面。画質・fps・省電力は実際にレースの 3D 表示（ピクセル比・影・FOV キック・スピード線）と描画ループの fps、ホームの背景の動きを変える。日英・文字の大きさ。
+- ヘルプ（§48）：記事 `data_storage`（データ通信量と容量、端末ごとの設定であること、レースの結果は変わらないこと）。画面のリンク `storage`。

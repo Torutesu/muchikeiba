@@ -879,6 +879,8 @@ export const MuchiLogic = {
   /** GET /v1/friends (names from the public profiles). */
   friendsList: () => wrap(() => fsugFriends.list(ID)),
   fsugKpi: (shown: number) => wrap(() => clientBatchSchema.parse({ platform: 'editor', appVersion: 'proto', events: [{ name: 'fsug_view', at: now(), props: { shown } }] }).events.map(clientToKpi)[0]),
+  /** Round 19 (REQ-PERF-015): a perf_setting_change / asset_predownload client event through the real schema → its KPI row. */
+  perfKpi: (name: 'perf_setting_change' | 'asset_predownload', props: Record<string, string>) => wrap(() => clientBatchSchema.parse({ platform: 'editor', appVersion: 'proto', events: [{ name, at: now(), props }] }).events.map(clientToKpi)[0]),
   /** The other side of a demo request (for the tests): their activity page, names resolved. */
   async fsugActivityOf(id: string) {
     const p = await svc.activity(id, null, 20);

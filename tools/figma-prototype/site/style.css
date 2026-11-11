@@ -574,6 +574,9 @@ html[data-color-mode="cvd"] .marker .tri { border-top-width: 14px; }
 /* reduce motion: no drift, shake, speed lines or blinking; short fades instead of slides and pops */
 html[data-reduce-motion="on"] .screen { transition-duration: .12s; }
 html[data-reduce-motion="on"] .screen.in .art.drift { animation: none; }
+/* round 19 (REQ-PERF-004, §56.3): the battery saver stops the slow ambient drift too (RenderProfile.AmbientMotion) */
+html[data-perf-ambient="off"] .screen.in .art.drift { animation: none; }
+.perf-confirm { z-index: 30; }
 html[data-reduce-motion="on"] .speedlines { display: none; }
 html[data-reduce-motion="on"] .stamina.blink .fill,
 html[data-reduce-motion="on"] .marker[data-level="Critical"] .mini i, html[data-reduce-motion="on"] .marker[data-level="Empty"] .mini i { animation: none; }

@@ -1323,6 +1323,21 @@
   "概要（テキスト）をダウンロードしました": "Downloaded the summary (text)",
   "準備ができるとお知らせに届きます": "You will get a notice in Activity when it is ready",
   "リクエストを受け付けました": "Request received",
-  "データ": "Data"
+  "データ": "Data",
+  "_perf": "---- round 19: 画質・通信量 / ストレージ (REQ-PERF-017)",
+  "その他　/　画質・通信量": "More / Graphics & data",
+  "その他　/　ストレージ": "More / Storage",
+  "レース中：{n}fps": "In races: {n} fps",
+  "ストレージを開く": "Open storage",
+  "データ通信量と容量について": "About data usage and storage",
+  "使っている容量": "Space used",
+  "ダウンロードした絵や音を消します。遊ぶのに必要なデータとアカウント・進み具合は消えません。": "Removes downloaded art and sound. Data the game needs, your account and your progress stay.",
+  "デモ：回線": "Demo: connection",
+  "Wi-Fi": "Wi-Fi",
+  "モバイル通信": "Mobile data",
+  "オフライン": "Offline",
+  "自動：{tier}": "Auto: {tier}",
+  "自動：{n}fps": "Auto: {n} fps",
+  "画質・通信量の設定を開く": "Open graphics and data settings"
  }
 }

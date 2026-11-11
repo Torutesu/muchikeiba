@@ -1185,7 +1185,7 @@
   "条件を変える": "Change conditions", "この瞬間を撮る": "Photo this moment",
   "自分の馬で、CPU 相手にムチと脚質を練習できます": "Practise the whip and running styles with your own horses against CPU rivals",
   "ムチの目安を出す": "Show the whip guide", "最後の400mをスロー": "Slow motion for the last 400 m", "前回のゴーストを出す": "Show the ghost of the last run",
-  "チュートリアルのあとで遊べます": "Available after the tutorial", "ナイターあり": "Night racing", "今日の馬場": "Today's going", "前回": "Last run", "{n}頭": "{n} runners",
+  "チュートリアルのあとで遊べます": "Available after the tutorial", "ナイターあり": "Night racing", "今日の馬場": "Today's going", "前回": "Last run", "{n}頭": "{n} horses",
   "_qchat": "---- 支部の定型チャット (QuickChatModel, REQ-QCHAT-015). Phrases / previews / rows come from the server in the request language",
   "定型チャット": "Quick chat",
   "決まった文だけで話せます（自由入力はありません）": "Chat with set phrases only (no free typing)",

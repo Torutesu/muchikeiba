@@ -6751,7 +6751,7 @@ async function ReportSheet(t) {
   }, 700, { solo: true });
 }
 
-const BLOCK_ICON = { activity: 'お知らせ', team_feed: '支部', rival: 'ライバル', stable: 'マイ厩舎', hall: '殿堂', replays: 'リプレイ', cups: 'カップ', links: 'リンク・再戦' };
+const BLOCK_ICON = { activity: 'お知らせ', team_feed: '支部', rival: 'ライバル', stable: 'マイ厩舎', hall: '殿堂', replays: 'リプレイ', cups: 'カップ', links: 'リンク・再戦', showcase: 'トレーナーカード' }; // R21 integration: §62
 /** 通報とブロック: the one block list, what a block does in each feature, and how to report. */
 async function BlockList() {
   currentScreen = BlockList;
@@ -6777,13 +6777,14 @@ async function BlockList() {
   const e = Glass('Block effects', 676, 134, 888, 676, undefined, .86);
   e.classList.add('bl-effects');
   Kicker('ブロックするとどうなる？', 36, 30, e);
+  // R21 integration: nine features (§62 showcase) — the note moves above the list
+  Txt('相手には、ブロックしたことも通報したことも知らされません。', 36, 66, 816, 14, MUTED, e, { nowrap: true });
   v.effects.forEach((x, i) => {
-    const row = el('bl-effect', 36, 100 + i * 64, 816, 58, e); // R21: eight features (§63 links) fit above the note
+    const row = el('bl-effect', 36, 104 + i * 63, 816, 58, e); // R21: nine features (§62 showcase, §63 links), the note above
     row.dataset.feature = x.feature;
     Txt(BLOCK_ICON[x.feature] ?? '', 0, 4, 150, 12, CYAN, row, { weight: 700, ls: '.18em', nowrap: true });
     Txt(x.text, 0, 26, 816, 17, WHITE, row, { weight: 500, nowrap: true });
   });
-  Txt('相手には、ブロックしたことも通報したことも知らされません。', 36, 628, 816, 14, MUTED, e, { lh: 1.5 });
   Back(Settings, 'BACK', 40, 834);
 }
 function UnblockConfirm(b) {
@@ -8921,13 +8922,13 @@ async function NotifySettings() {
     Txt(x.on ? 'オン' : 'オフ', 300, 6, 100, 16, x.on ? CYAN : DIM, row, { weight: 700, align: 'right', nowrap: true });
   });
   // R21 integration: seven kinds (calendar_mark) — the details switch moves down one row
-  Hair(36, 516, 400, r);
-  Txt('ロック画面に詳しく表示', 36, 532, 400, 16, WHITE, r, { weight: 500, nowrap: true });
+  Hair(36, 512, 400, r);
+  Txt('ロック画面に詳しく表示', 36, 524, 400, 16, WHITE, r, { weight: 500, nowrap: true });
   [[true, 'オン'], [false, 'オフ']].forEach(([v, l], j) => {
-    const b = Btn(l, 36 + j * 128, 566, 116, 46, () => { lnSet(LN_DETAILS, v ? '1' : null); NotifySettings(); }, 'choice' + (lnDetails() === v ? ' on' : ''), r);
+    const b = Btn(l, 36 + j * 128, 554, 116, 46, () => { lnSet(LN_DETAILS, v ? '1' : null); NotifySettings(); }, 'choice' + (lnDetails() === v ? ' on' : ''), r);
     b.dataset.lnDetails = String(v); b.style.whiteSpace = 'nowrap';
   });
-  Txt('オンにすると、件数や馬の名前が通知に出ます（オフでは出しません）。', 36, 620, 400, 13, SOFT, r, { lh: 1.55 });
+  Txt('オンで件数や馬の名前が出ます', 36, 608, 400, 13, SOFT, r, { nowrap: true });
   // what comes next (in the app language; the notifications themselves follow the device language)
   Kicker('次の予定', 472, 168, r, { size: 15, rule: false, w: 400 });
   const up = el('ln-upcoming', 472, 200, 400, 410, r);
@@ -8940,7 +8941,7 @@ async function NotifySettings() {
     Txt(it.body, 0, 42, 400, 12, MUTED, row, { nowrap: true });
   });
   if (plan.status === 'no_permission' && items.length) Txt('通知が許可されると、この予定で届きます', 472, 616, 400, 12, SOFT, r, { nowrap: true });
-  TextLink('端末のお知らせについて（ヘルプ）', 36, 630, 400, () => HelpArticle(L.helpContext('notifications'), 'context', () => NotifySettings()), r).dataset.helpContext = 'notifications';
+  TextLink('端末のお知らせについて（ヘルプ）', 36, 636, 400, () => HelpArticle(L.helpContext('notifications'), 'context', () => NotifySettings()), r).dataset.helpContext = 'notifications';
   // review only: the demo state and the simulated OS permission
   const demo = el('ln-demo', 472, 640, 400, 30, r);
   Ghost('デモの予定', 0, -6, 132, 36, async () => { await L.localNotify.seedDemo(); ftue = false; await refresh(); NotifySettings(); }, demo, 'quiet small').dataset.action = 'ln-demo';

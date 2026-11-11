@@ -1722,7 +1722,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await page.evaluate(() => globalThis.__muchi.demo('safety')); await waitScreen('blocks', 60000); await page.waitForTimeout(400);
   const blText = await page.locator('.screen.in').innerText();
   assert.match(blText, /ヨルノカラス/); assert.match(blText, /ナギサ/); assert.match(blText, /プレイヤー/, 'a deleted player shows the neutral name');
-  assert.equal(await page.locator('.screen.in .bl-effect').count(), 8, 'what a block does, one line per feature (R21: links)');
+  assert.equal(await page.locator('.screen.in .bl-effect').count(), 9, 'what a block does, one line per feature (R21: links, the trainer card)');
   assert.match(blText, /相手には、ブロックしたことも通報したことも知らされません/);
   await shot('blocks', 400);
   await page.locator('.screen.in .bl-row[data-player="demo_bl_2"] .bl-unblock').click(); await page.waitForTimeout(500);

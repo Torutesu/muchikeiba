@@ -23,7 +23,8 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
   const shots = [], report = [];
   let n = 0;
   const screen = () => page.evaluate(() => globalThis.__muchi?.screen ?? '');
-  const waitScreen = (name, timeout = 30000) => page.waitForFunction((x) => { const s = globalThis.__muchi?.screen ?? ''; return Array.isArray(x) ? x.includes(s) : s === x; }, name, { timeout, polling: 50 });
+  const waitScreen = (name, timeout = 30000) => page.waitForFunction((x) => { const s = globalThis.__muchi?.screen ?? ''; return Array.isArray(x) ? x.includes(s) : s === x; }, name, { timeout, polling: 50 })
+    .catch(async (e) => { const now = await page.evaluate(() => globalThis.__muchi?.screen ?? '').catch(() => '?'); throw new Error(`waitScreen(${JSON.stringify(name)}) timed out on "${now}"\n${e.message}`); });
   const show = async (fn, ...a) => { await page.evaluate(([f, args]) => globalThis.__muchi.show(f, ...args), [fn, a]); await page.waitForTimeout(500); };
   const choose = async (row, value) => { await page.locator(`.screen.in [data-a11y-row="${row}"] [data-a11y-choice="${value}"]`).click(); await page.waitForTimeout(500); await waitScreen('a11y-settings'); };
   const a11y = () => page.evaluate(() => globalThis.__muchi.a11y.get());
@@ -130,7 +131,9 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
   const HOME_ALL = [...HOME_BAR, '[data-name="Partner"]', '.next-card', '.next-chip', '.btn.cta.hero', '.hg-pin-strip']; // round 18: the pinned goal strip (demo('next') pins the partner's goal)
   /** demo('next') = a player with a next card and two chips (a gift expiring, scout tickets); waits for the card. */
   const homeWithNext = async () => {
-    await page.evaluate(() => globalThis.__muchi.demo('next')); await waitScreen(['home', 'link-prompt'], 60000);
+    await page.evaluate(() => globalThis.__muchi.demo('next')); await waitScreen(['home', 'link-prompt', 'release-notes'], 60000);
+    // R21 integration (§58.11 = §64.6): a demo state is a new launch, so the release notes may take its first home
+    if ((await screen()) === 'release-notes') { await page.locator('.screen.in [data-action="rn-skip"]').click(); await waitScreen('home'); }
     if ((await screen()) === 'link-prompt') { await page.locator('.screen.in [data-label="あとで"]').click(); await waitScreen('home'); }
     await page.waitForSelector('.screen.in .next-card', { timeout: 15000 }); await page.waitForTimeout(700);
   };

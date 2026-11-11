@@ -6136,11 +6136,11 @@ async function Activity() {
     Txt(ACT_LABEL[it.kind] ?? 'お知らせ', 22, 8, 160, 12, it.kind === 'gift_arrived' ? GOLD : CYAN, row, { weight: 700, ls: '.18em', nowrap: true });
     Txt(jstDate(it.at), 190, 8, 220, 12, SOFT, row, { weight: 500, nowrap: true, cls: 'num' });
     const actor = it.actors?.[0]?.playerId ?? null;
-    const tx = Txt(it.text, 22, 30, actor ? 600 : 760, 18, it.unread ? WHITE : MUTED, row, { weight: 700, nowrap: true });
-    // round 21 (REQ-SHOW-008): who did it → their トレーナーカード
-    if (actor) TextLink('カード', 632, 16, 150, () => ShowcaseCard(actor, 'activity', () => Activity()), row).dataset.scOpen = actor;
+    const tx = Txt(it.text, 22, 30, actor ? 744 : 760, 18, it.unread ? WHITE : MUTED, row, { weight: 700, nowrap: true });
     tx.style.overflow = 'hidden'; tx.style.textOverflow = 'ellipsis'; // a long course name never runs under the link
-    const go = Ghost(it.link.screen === 'gift_box' ? 'プレゼントボックスへ' : '見る', 800, 10, 200, 46, () => {
+    // round 21 (REQ-SHOW-008): who did it → their トレーナーカード (the 見る button gets narrower beside it)
+    if (actor) Ghost('カード', 776, 10, 104, 46, () => ShowcaseCard(actor, 'activity', () => Activity()), row, 'small quiet').dataset.scOpen = actor;
+    const go = Ghost(it.link.screen === 'gift_box' ? 'プレゼントボックスへ' : '見る', actor ? 892 : 800, 10, actor ? 108 : 200, 46, () => {
       (globalThis.__muchiKpi ??= []).push({ name: 'activity_tap', kind: it.kind, screen: it.link.screen });
       actGo(it.link.screen, it.link.id);
     }, row, 'small quiet');
@@ -6744,8 +6744,10 @@ function ShowcaseShareView(c, back) {
   scTyped(Txt(s.name, 44, 136, 660, 40, WHITE, card, { weight: 700, nowrap: true, ls: '.04em' })).dataset.share = 'name';
   if (s.horse) scTyped(Txt(s.horse, 44, 196, 660, 24, GOLD, card, { weight: 700, nowrap: true })).dataset.share = 'horse';
   Hair(44, 240, 672, card);
-  s.lines.slice(0, 8).forEach((l, i) => Txt(l, 44, 258 + i * 34, 672, 17, WHITE, card, { weight: 500, nowrap: true }).classList.add('sc-share-line'));
-  Txt('共有の文：' + s.shareText, 44, 548, 672, 13, MUTED, card, { lh: 1.5 }).dataset.share = 'text';
+  // a line may hold a player-typed name (cup / horse): each part is translated on its own and the names stay as typed
+  const scLine = (l) => (isJa() ? l : l.split('　').map((x) => (JP_RE.test(x) ? L.l10n.translate(x) ?? x : x)).join('  '));
+  s.lines.slice(0, 8).forEach((l, i) => { const t = Txt(scLine(l), 44, 258 + i * 34, 672, 17, WHITE, card, { weight: 500, nowrap: true }); t.classList.add('sc-share-line', 'keep-ja'); });
+  const st = Txt(isJa() ? '共有の文：' + s.shareText : 'Share text: ' + scLine(s.shareText), 44, 548, 672, 13, MUTED, card, { lh: 1.5 }); st.dataset.share = 'text'; st.classList.add('keep-ja');
   Cta('共有する', 44, 612, 380, () => { scKpi('showcase_share', { pins: s.pins, records: s.records, horse: s.hasHorse }); toast('共有はアプリ（IShareSheet）で行います'); }, card, 'small').dataset.action = 'sc-share-send';
   Ghost('戻る', 444, 616, 272, 52, back, card, 'quiet small');
   Caption('画像にはプレイヤーIDを入れません（名前だけ）', 424, 790, undefined, 14, MUTED).classList.add('tshadow');

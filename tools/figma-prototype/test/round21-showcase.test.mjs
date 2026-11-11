@@ -23,6 +23,7 @@ const L = globalThis.MuchiLogic;
 const JP = /[぀-ヿ㐀-鿿]/;
 
 await L.bootstrap();
+await L.grantPartner('ミドリ');
 const demo = (await L.showcase.demo()).value;
 assert.deepStrictEqual(demo.map((d) => d.playerId), ['demo_sc_1', 'demo_sc_kid', 'demo_sc_blk']);
 

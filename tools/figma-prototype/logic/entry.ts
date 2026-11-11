@@ -186,7 +186,7 @@ async function showcaseDemo() {
         for (const ti of master.titles.slice(0, 2)) if (!s.titles.includes(ti.id)) s.titles.push(ti.id);
         s.timeAttack = { sessions: [], daily: { date: '', count: 0 }, seasonBest: {}, allTimeBest: { [track]: { timeMs: 94_800, finishTick: 1896, finishFrac: 0, sessionId: 'proto_sc', horseId: hid, horseName: d.horse, at: t } }, milestones: [] };
         s.cups = { active: [], invites: [], history: [{ cupId: 'cup_protoshowcasecup1', cupName: '春の小さな杯', format: 'single', rank: 1, points: 10, entrants: 6, at: t, status: 'finished', partial: false, cancelReason: null, trophy: 'gold' }], trophies: { gold: 1, silver: 0, bronze: 0 }, codeAttempts: { hour: 0, count: 0 } };
-        s.tournaments = { ...(s.tournaments ?? {}), proto_sc_autumn: { name: '秋の大会', rank: 1, at: t, reward: null } };
+        s.tournaments = { ...(s.tournaments ?? {}), proto_sc_autumn: { name: '青葉スプリント杯', rank: 1, at: t, reward: null } };
         if (d.birthYear) s.age = { birthYear: d.birthYear, birthMonth: 4, guardianConsent: true, setAt: t };
       });
       const st = await svc.state(d.id);

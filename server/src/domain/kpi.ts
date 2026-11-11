@@ -116,6 +116,22 @@ export const ACTIVITY_SCREEN_NAMES = ['friends', 'rival', 'stable', 'team_feed',
 /** REQ-HELP-021: help categories (domain/help.ts HELP_CATEGORY_IDS) plus `all`, and where an article was opened from. */
 export const HELP_CATEGORY_NAMES = ['all', 'getting_started', 'races', 'horses', 'scout', 'purchases', 'account', 'deletion', 'accessibility'] as const;
 export const HELP_VIEW_SOURCES = ['list', 'search', 'context', 'link', 'related'] as const;
+/**
+ * REQ-PERF-015 (protocol §56.9): the device settings and the values each may take (Muchi.Client PerformanceSettings.Apply).
+ * They live on the device only, so the change is a client event; the server checks the setting/value pair.
+ */
+export const PERF_SETTING_VALUES = {
+  graphics: ['auto', 'low', 'medium', 'high'], frameRate: ['auto', '30', '60'], batterySaver: ['on', 'off'], dataSaver: ['on', 'off'],
+} as const;
+export const PERF_SETTINGS = Object.keys(PERF_SETTING_VALUES) as (keyof typeof PERF_SETTING_VALUES)[];
+export const PERF_DEVICE_CLASSES = ['low', 'mid', 'high'] as const;
+/** REQ-PERF-015: what 「すべてダウンロード」 still had to fetch, in decimal-megabyte buckets (AssetStorage.BytesBucket). */
+export const PREDOWNLOAD_BUCKETS = ['lt_10mb', '10_50mb', '50_200mb', '200mb_1gb', 'gte_1gb'] as const;
+const perfSettingProps = z.object({
+  setting: z.enum(['graphics', 'frameRate', 'batterySaver', 'dataSaver']),
+  value: z.enum(['auto', 'low', 'medium', 'high', '30', '60', 'on', 'off']),
+  deviceClass: z.enum(PERF_DEVICE_CLASSES),
+}).strict().refine((p) => (PERF_SETTING_VALUES[p.setting] as readonly string[]).includes(p.value), { message: 'value is not valid for the setting', path: ['value'] });
 /** Events only the client can observe. Server-known events (purchase, gacha, race results…) are not accepted from clients. */
 export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('session_start'), at: z.number().int(), props: z.object({}).strict().optional() }),
@@ -171,6 +187,9 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('help_article_view'), at: z.number().int(), props: z.object({ articleId: z.string().regex(/^[a-z0-9_]{2,40}$/), source: z.enum(HELP_VIEW_SOURCES) }).strict() }),
   // REQ-FSUG-014: the おすすめフレンド section was shown (once per screen visit; how many suggestions it held)
   z.object({ name: z.literal('fsug_view'), at: z.number().int(), props: z.object({ shown: z.number().int().min(0).max(30) }).strict() }),
+  // REQ-PERF-015 (§56.9): a device setting changed by the player / 「すべてダウンロード」 started (size bucket, version)
+  z.object({ name: z.literal('perf_setting_change'), at: z.number().int(), props: perfSettingProps }),
+  z.object({ name: z.literal('asset_predownload'), at: z.number().int(), props: z.object({ bucket: z.enum(PREDOWNLOAD_BUCKETS), variant: z.enum(['full', 'low']) }).strict() }),
 ]);
 export type ClientEvent = z.infer<typeof clientEventSchema>;
 
@@ -217,6 +236,8 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'help_search': return { name: e.name, s1: e.props.category, value: e.props.length, count: e.props.results };
     case 'help_article_view': return { name: e.name, s1: e.props.articleId, s2: e.props.source };
     case 'fsug_view': return { name: e.name, value: e.props.shown };
+    case 'perf_setting_change': return { name: e.name, s1: e.props.setting, s2: e.props.value, s3: e.props.deviceClass };
+    case 'asset_predownload': return { name: e.name, s1: e.props.bucket, s2: e.props.variant };
   }
 }
 

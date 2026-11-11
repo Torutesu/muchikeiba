@@ -38,13 +38,15 @@ export type HelpCategoryId = typeof HELP_CATEGORY_IDS[number];
 export const HELP_SCREENS = [
   'home', 'settings', 'race_lobby', 'tutorial', 'training', 'breeding', 'stable', 'collection', 'gacha', 'gacha_odds', 'shop', 'history',
   'gift_box', 'activity', 'accessibility', 'account_link', 'deletion', 'inquiry', 'my_inquiries',
+  // §56 (REQ-PERF-018): the 画質・通信量 settings and the storage screen
+  'performance', 'storage',
 ] as const;
 export type HelpScreen = typeof HELP_SCREENS[number];
 /** The existing legal pages (利用規約・プライバシーポリシー・特定商取引法に基づく表記・資金決済法に基づく表示). */
 export const LEGAL_DOCS = ['terms', 'privacy', 'tokushoho', 'shikin'] as const;
 export type LegalDoc = typeof LEGAL_DOCS[number];
 /** REQ-HELP-008: screens that deep-link to an article. */
-export const HELP_CONTEXTS = ['gacha_odds', 'coin_shortfall', 'purchase', 'race_whip', 'race_result', 'training', 'breeding', 'history', 'gift_box', 'account_link', 'deletion', 'accessibility'] as const;
+export const HELP_CONTEXTS = ['gacha_odds', 'coin_shortfall', 'purchase', 'race_whip', 'race_result', 'training', 'breeding', 'history', 'gift_box', 'account_link', 'deletion', 'accessibility', 'storage'] as const;
 export type HelpContext = typeof HELP_CONTEXTS[number];
 
 export type HelpLink =
@@ -99,6 +101,8 @@ const SCREEN_LABEL: Record<HelpScreen, Loc> = {
   deletion: { ja: 'アカウント削除を開く', en: 'Open account deletion' },
   inquiry: { ja: '問い合わせる', en: 'Contact us' },
   my_inquiries: { ja: '自分の問い合わせを見る', en: 'See your inquiries' },
+  performance: { ja: '画質・通信量の設定を開く', en: 'Open graphics and data settings' },
+  storage: { ja: 'ストレージを開く', en: 'Open storage' },
 };
 const LEGAL_LABEL: Record<LegalDoc, Loc> = {
   terms: { ja: '利用規約', en: 'Terms of service' },

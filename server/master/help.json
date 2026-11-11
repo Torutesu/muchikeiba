@@ -230,6 +230,17 @@
       "keywords": { "ja": ["整理", "並び替え", "ロック", "まとめて引退", "絞り込み"], "en": ["organise", "sort", "lock", "retire in bulk", "filter"] },
       "links": [ { "type": "screen", "screen": "stable" } ],
       "related": ["breeding", "training"]
+    },
+    {
+      "id": "data_storage", "category": "getting_started",
+      "title": { "ja": "データ通信量と容量・画質の設定", "en": "Data usage, storage and graphics" },
+      "body": {
+        "ja": "設定の「画質・通信量」で、画質（自動・低・中・高）、フレームレート（30・60）、省電力、データセーバーを選べます。\n\n・データセーバーをオンにすると、必須でないデータは Wi-Fi のときだけダウンロードし、軽い版があれば軽い版を使います（遊ぶのに必要なデータはいつでもダウンロードします）\n・「ストレージ」で使っている容量を確認でき、キャッシュを削除できます。消えるのはダウンロードした絵や音だけで、アカウントや進み具合は消えません\n・「すべてダウンロード」は、先にサイズを表示します。モバイル通信のときは確認してから始めます\n・これらの設定はこの端末にだけ保存されます（機種を変えたら選び直してください）\n・どの設定も、レースの結果や公平さには影響しません",
+        "en": "Under Graphics & data in the settings, you can choose the graphics quality (auto, low, medium, high), the frame rate (30 or 60), battery saver and data saver.\n\n• With data saver on, optional data is downloaded only on Wi-Fi, in a lighter version when there is one (data the game needs is always downloaded)\n• Storage shows how much space is used and lets you clear the cache. Only downloaded art and sound are removed; your account and progress stay\n• Download all shows the size first, and asks before starting on mobile data\n• These settings are saved on this device only (choose them again on a new device)\n• No setting affects race results or fairness"
+      },
+      "keywords": { "ja": ["データ", "通信量", "容量", "ストレージ", "キャッシュ", "画質", "省電力", "Wi-Fi"], "en": ["data", "storage", "cache", "graphics", "battery", "frame rate", "wi-fi", "download"] },
+      "links": [ { "type": "screen", "screen": "storage" }, { "type": "screen", "screen": "performance" } ],
+      "related": ["accessibility_settings", "data_transfer"]
     }
   ],
   "contexts": {
@@ -244,6 +255,7 @@
     "gift_box": "gift_box",
     "account_link": "data_transfer",
     "deletion": "delete_account",
-    "accessibility": "accessibility_settings"
+    "accessibility": "accessibility_settings",
+    "storage": "data_storage"
   }
 }

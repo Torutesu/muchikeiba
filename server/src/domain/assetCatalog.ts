@@ -49,13 +49,23 @@ export const DEFAULT_ASSET_POLICY: AssetPolicy = { ftueBlockingMaxBytes: 3_000_0
 /** Path of the file under `{platform}/` on the CDN, as the scanner found it: lowercase, no `..`, no leading `/`. */
 export const ASSET_FILE_RE = /^[a-z0-9_][a-z0-9_.@-]*(\/[a-z0-9_][a-z0-9_.@-]*)*$/;
 
+const assetFile = z.string().max(200).regex(ASSET_FILE_RE, 'file must be a relative lowercase path');
+const assetSha = z.string().regex(/^[0-9a-f]{64}$/, 'sha256 must be 64 lowercase hex');
+/**
+ * REQ-PERF-012 (protocol §56.7): an optional smaller copy of an optional entry, fetched instead while the player's data
+ * saver is on. Absent on most entries; a catalog without any keeps exactly its old shape and hash.
+ */
+export const assetVariantSchema = z.object({ file: assetFile, sha256: assetSha, size: int.min(1).max(2_000_000_000) }).strict();
+export type AssetVariant = z.infer<typeof assetVariantSchema>;
+
 export const assetEntrySchema = z.object({
   key: z.string().regex(ASSET_KEY_RE, 'malformed asset key'),
-  file: z.string().max(200).regex(ASSET_FILE_RE, 'file must be a relative lowercase path'),
-  sha256: z.string().regex(/^[0-9a-f]{64}$/, 'sha256 must be 64 lowercase hex'),
+  file: assetFile,
+  sha256: assetSha,
   size: int.min(1).max(2_000_000_000),
   group: z.enum(ASSET_GROUPS),
   required: z.boolean(),
+  low: assetVariantSchema.optional(),
 }).strict();
 export type AssetEntry = z.infer<typeof assetEntrySchema>;
 
@@ -108,6 +118,20 @@ export function assetCatalogProblems(c: AssetCatalog): string[] {
       const s = bySha.get(e.sha256);
       if (s !== undefined && s !== e.size) out.push(`${at}: sha256 ${e.sha256.slice(0, 12)}… is listed with different sizes`);
       bySha.set(e.sha256, e.size);
+      if (e.low) {
+        // REQ-PERF-012: only optional entries, a smaller and different file; files and hashes stay consistent across versions
+        const l = e.low;
+        if (e.required) out.push(`${at}: a required entry has no low variant (required files are always fetched in full)`);
+        if (l.size >= e.size) out.push(`${at}: low variant must be smaller than the file (${l.size} >= ${e.size})`);
+        if (l.sha256 === e.sha256 || l.file === e.file) out.push(`${at}: low variant must be another file`);
+        if (l.file.split('/').some((x) => x === '.' || x === '..')) out.push(`${at}: low file must not contain . or .. segments`);
+        const lf = byFile.get(l.file);
+        if (lf && (lf.sha256 !== l.sha256 || lf.size !== l.size)) out.push(`${at}: file ${l.file} is listed with different sha256/size`);
+        byFile.set(l.file, { sha256: l.sha256, size: l.size });
+        const ls = bySha.get(l.sha256);
+        if (ls !== undefined && ls !== l.size) out.push(`${at}: sha256 ${l.sha256.slice(0, 12)}… is listed with different sizes`);
+        bySha.set(l.sha256, l.size);
+      }
       if (e.required && !counted.has(e.sha256)) { counted.add(e.sha256); blocking += e.size; }
     }
     if (blocking > c.policy.ftueBlockingMaxBytes) {

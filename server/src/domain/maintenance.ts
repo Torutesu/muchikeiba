@@ -211,6 +211,9 @@ export const EXEMPT_ROUTES: readonly string[] = [
   // Round 20 (§58, REQ-CNS-015): the ad / analytics choices are a privacy right like the data export — withdrawing consent
   // must work in any window and from an outdated app
   'GET /v1/privacy/choices', 'PUT /v1/privacy/choices', 'PUT /v1/privacy/platform', 'POST /v1/privacy/prompt-shown',
+  // R20 integration (§46.2, REQ-UXS-001): the terms / privacy policy consent is the same kind of privacy right — it was
+  // falling into `core`, so a player asked to re-consent after a policy update was locked out by an `all` window
+  'POST /v1/player/consent',
   // Round 20 (§60, REQ-CERR-004): client error reports — an outdated app's crashes are the ones ops most needs to see
   'POST /v1/client-errors',
 ];

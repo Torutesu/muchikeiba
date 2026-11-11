@@ -14,6 +14,8 @@ import { AppError } from '../src/domain/errors.js';
 import { memoryOps } from '../src/ops/memoryOps.js';
 import { clientErrorBatchSchema } from '../src/domain/clientErrors.js';
 import type { Master } from '../src/domain/master.js';
+import { DEFAULT_MAINTENANCE, EXEMPT_ROUTES, endpointGroup, gateRequest, jstToMs, type MaintenanceConfig } from '../src/domain/maintenance.js';
+import { routes } from '../src/http/app.js';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8');
@@ -121,5 +123,41 @@ describe('§58 × §60: the analytics choice governs the player id on client err
     const p = read('contracts/protocol.md');
     expect(p.slice(p.indexOf('### 58.10'), p.indexOf('## 59.'))).toMatch(/AllowsDiagnostics/);
     expect(p.slice(p.indexOf('## 60.'), p.indexOf('## 61.'))).toMatch(/analytics\.effective/);
+  });
+});
+
+describe('§46 gates × Round 20 routes (and the terms consent, R20 integration)', () => {
+  const START = jstToMs('2026-11-12T02:00')!;
+  const closed: MaintenanceConfig = {
+    ...structuredClone(DEFAULT_MAINTENANCE),
+    windows: [{ id: 'm1', startAtMs: START, endAtMs: START + 4 * 3600_000, scope: 'all', message: { ja: '点検中', en: 'Checks' } }],
+    clientVersions: { ios: { min: '9.0.0', recommended: '9.0.0', storeUrl: 'https://apps.apple.com/jp/app/id1234567890' }, android: DEFAULT_MAINTENANCE.clientVersions.android },
+  };
+  const old = { platform: 'ios', version: '1.0.0', engine: null };
+  const none = { platform: null, version: null, engine: null };
+  const NEVER = ['POST /v1/player/consent', 'GET /v1/privacy/choices', 'PUT /v1/privacy/choices', 'PUT /v1/privacy/platform', 'POST /v1/privacy/prompt-shown', 'POST /v1/client-errors'];
+  const CORE = ['GET /v1/review-prompt', 'POST /v1/review-prompt/check', 'POST /v1/review-prompt/rp_1/answer', 'GET /v1/push/preferences', 'PUT /v1/push/preferences'];
+  it('terms consent, the ad / analytics choices and client error reports are never gated (any window, an outdated app)', () => {
+    for (const r of NEVER) {
+      const [method, path] = r.split(' ');
+      expect(EXEMPT_ROUTES, r).toContain(r);
+      expect(gateRequest(closed, method!, path!, none, START), r).toBeNull();
+      expect(gateRequest(closed, method!, path!, old, START), r).toBeNull();
+    }
+  });
+  it('the review prompt and the push preferences (reminders, §61) are core: closed by an `all` window', () => {
+    for (const r of CORE) {
+      const [method, path] = r.split(' ');
+      expect(endpointGroup(path!), r).toBe('core');
+      expect(EXEMPT_ROUTES.some((e) => e === r || e === `${method} ${path!.replace('rp_1', ':promptId')}`), r).toBe(false);
+      expect(gateRequest(closed, method!, path!, none, START)?.code, r).toBe('MAINTENANCE');
+    }
+  });
+  it('every Round 20 route exists, and §46.2 lists the never-gated ones', () => {
+    const have = new Set(routes.map((r) => `${r.method} ${r.path}`));
+    for (const r of [...NEVER, ...CORE.map((x) => x.replace('rp_1', ':promptId'))]) expect(have.has(r), r).toBe(true);
+    const p = read('contracts/protocol.md');
+    const s46 = p.slice(p.indexOf('### 46.2'), p.indexOf('### 46.3'));
+    for (const r of ['/v1/player/consent', '/v1/privacy/choices', '/v1/privacy/platform', '/v1/privacy/prompt-shown', '/v1/client-errors', '/v1/transfer/redeem', '/v1/review-prompt']) expect(s46, r).toContain(r);
   });
 });

@@ -85,3 +85,13 @@ for (const p of PERSONAS) {
   console.log(`| ${p.label} | ${r.teamGoalWeeks.toFixed(1)} | ${r.teamGoalCoins.toFixed(0)} | ${r.teamGoalMaterial.toFixed(1)} | ${r.pullsPerMonth.toFixed(1)} | ${r.ssrPerMonth.toFixed(2)} |`);
 }
 console.log(`\nE19 共同目標（最上段を毎週）を含めて E1 ${res.f2p!.pullsPerMonth.toFixed(1)}（40〜65）・E2 ${res.f2p!.ssrPerMonth.toFixed(2)}（1.2〜2.8）・招待上限 SSR/月 ${res.f2p_inviter!.ssrPerMonth.toFixed(2)}（≤2.8）`);
+
+// REQ-CAREER-* (E20): 騎手の道 — every persona clears the whole career with every star (upper bound); once ever, the same for everyone
+console.log('');
+console.log('| persona | 騎手の道（初クリア） | 星 | 無償コイン | 配合素材 | りんごのおやつ | 引いた回数/月 | SSR/月 |');
+console.log('|---|---|---|---|---|---|---|---|');
+for (const p of PERSONAS) {
+  const r = res[p.id]!;
+  console.log(`| ${p.label} | ${r.careerClears.toFixed(1)} | ${r.careerStars.toFixed(1)} | ${r.careerCoins.toFixed(0)} | ${r.careerMaterial.toFixed(1)} | ${r.careerApples.toFixed(1)} | ${r.pullsPerMonth.toFixed(1)} | ${r.ssrPerMonth.toFixed(2)} |`);
+}
+console.log(`\nE20 騎手の道（全レース・全部の星）を含めて E1 ${res.f2p!.pullsPerMonth.toFixed(1)}（40〜65）・E2 ${res.f2p!.ssrPerMonth.toFixed(2)}（1.2〜2.8）・招待された ${res.f2p_invited!.pullsPerMonth.toFixed(1)}/${res.f2p_invited!.ssrPerMonth.toFixed(2)}・招待上限 SSR/月 ${res.f2p_inviter!.ssrPerMonth.toFixed(2)}（≤2.8）`);

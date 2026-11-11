@@ -37,7 +37,7 @@
           ]
         },
         {
-          "id": "c1_firstwin", "trackId": "kirameki_turf_2000", "cpuCount": 6, "cpuLevel": 2, "cpuStatPermille": 900,
+          "id": "c1_firstwin", "trackId": "kirameki_turf_2000", "cpuCount": 6, "cpuLevel": 1, "cpuStatPermille": 850,
           "title": { "ja": "初勝利をつかめ", "en": "Grab the First Win" },
           "story": {
             "before": { "ja": "今日は勝ちにいく。スタートを決めて、直線で一閃。", "en": "Today you race to win. Nail the start, then strike in the straight." },

@@ -56,6 +56,12 @@ namespace Muchi.Game
             ["CHALLENGE_SESSION_EXPIRED"] = "時間切れのため、このレースは記録できませんでした。もう一度挑戦できます。",
             ["CHALLENGE_SESSION_USED"] = "このレースは記録済みです。",
             ["CHALLENGE_RESULT_MISMATCH"] = "レースの記録を確認できませんでした。もう一度挑戦してください。",
+            // REQ-CAREER-* (§66): 騎手の道. A retry is always free; the limit is a hidden anti-abuse ceiling
+            ["CAREER_LOCKED"] = "前のレースをクリアすると開きます",
+            ["CAREER_LIMIT_REACHED"] = "今日はここまで。4:00からまた走れます。",
+            ["CAREER_SESSION_EXPIRED"] = "時間切れのため、このレースは記録できませんでした。もう一度挑戦できます。",
+            ["CAREER_SESSION_USED"] = "このレースは記録済みです。",
+            ["CAREER_RESULT_MISMATCH"] = "レースの記録を確認できませんでした。もう一度挑戦してください。",
             ["PHOTO_LIMIT"] = "保存できる写真がいっぱいです。古い写真を消してから保存してください。",
             ["PHOTO_LOCKED"] = "まだ使えないフレーム・スタンプが含まれています。",
             ["PHOTO_SOURCE_INVALID"] = "このレースは走っている途中では撮れません。結果画面かリプレイから撮ってください。",

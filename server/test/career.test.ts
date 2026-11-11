@@ -19,6 +19,9 @@ import { classifyKey } from '../src/domain/dataExport.js';
 import { untranslated, PLAYER_TEXT_KEYS } from '../src/i18n/catalog.js';
 import { masterTexts } from '../src/i18n/validate.js';
 import { worstYenPerCoin } from '../src/domain/invite.js';
+import { careerSampleJson } from '../src/domain/careerSample.js';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 // Thursday 2026-11-05 12:00 JST
 const T0 = Date.UTC(2026, 10, 5, 3);
@@ -427,6 +430,10 @@ describe('submit → verifier → objectives on the server (REQ-CAREER-007/008/0
 });
 
 describe('integration: KPI consent, maintenance, data export, HTTP and English (REQ-CAREER-012..016)', () => {
+  it('contracts/career-configs.sample.json is what the server issues (npm run gen:career-sample)', () => {
+    expect(readFileSync(join(import.meta.dirname, '../../contracts/career-configs.sample.json'), 'utf8')).toBe(careerSampleJson(m));
+  });
+
   it('KPI events are optional analytics; routes are in the time_attack race group, the submit is exempt; the state key is play data', () => {
     for (const n of ['career_start', 'career_clear', 'career_star']) expect(kpiClassOf(n)).toBe('optional');
     expect(endpointGroup('/v1/career')).toBe('time_attack');

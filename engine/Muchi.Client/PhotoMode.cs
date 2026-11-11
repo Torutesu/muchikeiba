@@ -519,7 +519,7 @@ namespace Muchi.Client
                 Kind = Kind, Runners = cfg.Entrants.Count,
                 HorseName = cfg.Entrants[focus].Horse?.Name ?? "",
                 CourseName = string.IsNullOrEmpty(courseName) ? ShareCard.CourseLabel(cfg.Track) : courseName,
-                ModeLabel = PracticeSession.IsPractice(cfg) ? PracticeTexts.ModeLabel : ShareCard.ModeText(cfg.Mode), // §50.2: never 「フレンド戦」 for practice
+                ModeLabel = PracticeSession.IsPractice(cfg) ? PracticeTexts.ModeLabel : CareerRun.IsCareer(cfg) ? CareerRun.ModeLabel : ShareCard.ModeText(cfg.Mode), // §50.2: never 「フレンド戦」 for practice; §66.7 「騎手の道」
             };
             var caption = PhotoCaption.Normalize(spec.Caption);
             var o = new PhotoOverlay

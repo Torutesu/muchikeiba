@@ -317,7 +317,7 @@ export function careerView(m: Master, s: PlayerState, now: number, lang: Locale 
     enabled: true as const, version: cm.version,
     chapters, totalStars, maxStars, clearedRaces, totalRaces: list.length,
     /** The first open race not yet cleared (the map's "next" marker), null when everything is cleared. */
-    nextRaceId: next,
+    nextRaceId: next as string | null,
     startsLeftToday: Math.max(0, cm.config.startsPerDay - used),
     rules: { skills: false, normalized: true, ranked: false, leaderboards: false, missions: false, energy: false, paidContinue: false, paidSkip: false, rewardOnce: true },
   };

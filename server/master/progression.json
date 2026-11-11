@@ -903,6 +903,18 @@
     "_note": "REQ-HGOAL-*（contracts/protocol.md §53）。馬ごとの目標の列は馬の適性から決まり（コードの版 v1、共有ベクター）、確定したレースの成績（§34 の戦績）だけで進む。報酬は見た目だけ（リボン・殿堂の銘板の飾り）。コイン・素材・能力は動かない。hall が無効なら有効にできない。",
     "enabled": true
   },
+  "localNotifications": {
+    "_note": "REQ-LNOTIF-*（contracts/protocol.md §61）。端末のローカル通知。端末が知っている時刻（調教のセッションの期限・次のゲーム日のログインボーナス・週替わりチャレンジ／ライバルの週／交換所の締め・プレゼントの期限）を端末の中で予約する。プッシュと同じ種類（カテゴリ）と静かな時間帯に従い、1日の上限 dailyCap はゲーム日ごと。期限はデータの本当の時刻だけ。購入・ショップへ誘う種類は無い。enabled=false で端末は全部取り消す（停止スイッチ）。コイン・アイテムは動かない。",
+    "enabled": true,
+    "kinds": ["training_session", "gift_expiring", "exchange_closing", "weekly_challenge_closing", "rival_week_closing", "daily_bonus"],
+    "dailyCap": 2,
+    "dailyHourJst": 12,
+    "horizonDays": 7,
+    "maxPending": 8,
+    "trainingLeadMin": 3,
+    "leadHours": { "weekly_challenge_closing": 24, "rival_week_closing": 24, "exchange_closing": 24, "gift_expiring": 24 },
+    "prePrompt": { "maxAsks": 2, "retryDays": 14 }
+  },
   "hall": {
     "_note": "REQ-HOF-*（contracts/protocol.md §34）。殿堂入りは引退の時に、確定したレースの成績だけで判定（winsMin勝以上・大会優勝・相棒でpartnerRacesMin戦以上のどれか）。報酬は最初の殿堂入りの時に1回だけ非売品の飾り（コインなし）。",
     "enabled": true,

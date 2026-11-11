@@ -271,6 +271,8 @@ namespace Muchi.Client
         public NextActionsView NextActions;
         /// <summary>REQ-HGOAL-010: the goal pinned to the home (null = none, or an older server).</summary>
         public HorseGoalPin HorseGoalPin;
+        /// <summary>REQ-LNOTIF-008 (§61.3): the deadlines the device plans local notifications from (null = an older server).</summary>
+        public LocalRemindersDigest LocalReminders;
         public int Rating, RatingDeviation, RankedRaces;
         public string SeasonId, ClassId;
         public int SeasonPoints;
@@ -307,6 +309,7 @@ namespace Muchi.Client
                 Accessibility = AccessibilitySettings.Parse(J.Opt(o, "accessibility")),
                 NextActions = NextActionsView.Parse(J.Opt(o, "nextActions")),
                 HorseGoalPin = HorseGoalPin.Parse(J.Opt(o, "horseGoalPin")),
+                LocalReminders = LocalRemindersDigest.Parse(J.Opt(o, "localReminders")),
             };
         }
     }
@@ -959,6 +962,8 @@ namespace Muchi.Client
         public bool Comeback;
         /// <summary>REQ-BOX-011: a compensation arrived in the gift box (on by default).</summary>
         public bool Gifts;
+        /// <summary>REQ-LNOTIF-009 (§61): on-device reminders (training session, daily bonus). Opt-in, off by default; the server never pushes it.</summary>
+        public bool Reminders;
         /// <summary>Quiet hours in JST (0-23); null = none. Urgent pushes (room invites) are not sent then; others are delayed.</summary>
         public int? QuietStartHour, QuietEndHour;
         public int DailyCap, Devices;
@@ -972,7 +977,7 @@ namespace Muchi.Client
             var t = J.Opt(o, "topics");
             return new PushPreferences
             {
-                Season = J.Bool(c, "season"), Friends = J.Bool(c, "friends"), Invites = J.Bool(c, "invites"), Events = J.Bool(c, "events"), Comeback = J.Bool(c, "comeback"), Gifts = J.Bool(c, "gifts"),
+                Season = J.Bool(c, "season"), Friends = J.Bool(c, "friends"), Invites = J.Bool(c, "invites"), Events = J.Bool(c, "events"), Comeback = J.Bool(c, "comeback"), Gifts = J.Bool(c, "gifts"), Reminders = J.Bool(c, "reminders"),
                 QuietStartHour = q == null ? (int?)null : J.Int(q, "startHour"), QuietEndHour = q == null ? (int?)null : J.Int(q, "endHour"),
                 DailyCap = J.Int(o, "dailyCap"), Devices = J.Int(o, "devices"),
                 SubscribeTopics = J.List(t, "subscribe", x => x.AsString()), UnsubscribeTopics = J.List(t, "unsubscribe", x => x.AsString()),
@@ -983,14 +988,14 @@ namespace Muchi.Client
     /// <summary>Only the fields you set are sent. Set <see cref="ClearQuietHours"/> to turn quiet hours off.</summary>
     public sealed class PushPreferencesPatch
     {
-        public bool? Season, Friends, Invites, Events, Comeback, Gifts;
+        public bool? Season, Friends, Invites, Events, Comeback, Gifts, Reminders;
         public int? QuietStartHour, QuietEndHour;
         public bool ClearQuietHours;
 
         internal JsonNode ToJson()
         {
             var b = JsonNode.Obj();
-            if (Season.HasValue || Friends.HasValue || Invites.HasValue || Events.HasValue || Comeback.HasValue || Gifts.HasValue)
+            if (Season.HasValue || Friends.HasValue || Invites.HasValue || Events.HasValue || Comeback.HasValue || Gifts.HasValue || Reminders.HasValue)
             {
                 var c = JsonNode.Obj();
                 if (Season.HasValue) c.Set("season", Season.Value);
@@ -999,6 +1004,7 @@ namespace Muchi.Client
                 if (Events.HasValue) c.Set("events", Events.Value);
                 if (Comeback.HasValue) c.Set("comeback", Comeback.Value);
                 if (Gifts.HasValue) c.Set("gifts", Gifts.Value);
+                if (Reminders.HasValue) c.Set("reminders", Reminders.Value);
                 b.Set("categories", c);
             }
             if (ClearQuietHours) b.Set("quietHours", JsonNode.Null());

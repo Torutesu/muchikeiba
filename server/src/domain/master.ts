@@ -218,6 +218,8 @@ export interface Progression {
   friendSuggest?: Partial<import('./friendSuggest.js').FsugConfig>;
   /** REQ-HGOAL-*: 馬ごとの目標 (horseGoals.ts, validated by horseGoalsProblems; needs hall). Absent / disabled = no goals. */
   horseGoals?: import('./horseGoals.js').HorseGoalsConfig;
+  /** REQ-LNOTIF-*: 端末のローカル通知 (localNotify.ts, validated by localNotificationsProblems). Absent / disabled = the device schedules nothing. */
+  localNotifications?: import('./localNotify.js').LocalNotifyConfig;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */
@@ -316,8 +318,9 @@ export type TitleCondition =
 export interface TitleDef { id: string; name: string; condition: TitleCondition }
 /** `comeback` (REQ-CB-007): lapse reminders, opt-in (06 §3.5: a re-engagement push needs its own category and consent). */
 /** `gifts` (REQ-BOX-011): a compensation arrived in the gift box. */
-export type PushCategory = 'season' | 'friends' | 'invites' | 'events' | 'comeback' | 'gifts';
-export const PUSH_CATEGORIES: PushCategory[] = ['season', 'friends', 'invites', 'events', 'comeback', 'gifts'];
+/** `reminders` (REQ-LNOTIF-009, §61): on-device reminders (training session, daily bonus), opt-in; the server never pushes it. */
+export type PushCategory = 'season' | 'friends' | 'invites' | 'events' | 'comeback' | 'gifts' | 'reminders';
+export const PUSH_CATEGORIES: PushCategory[] = ['season', 'friends', 'invites', 'events', 'comeback', 'gifts', 'reminders'];
 export interface PushTemplate { category: PushCategory; title: string; body: string; ttlSec: number; timeSensitive: boolean }
 /** REQ-PUSH-*: defaults, limits and Japanese templates (master/push.json). */
 export interface PushMaster {

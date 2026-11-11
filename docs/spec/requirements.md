@@ -1155,3 +1155,26 @@
 - REQ-HGOAL-014 法務：共通の賭けの言葉の一覧・煽りの言葉を目標の文言に使わない（テスト）。コンプガチャではない（ランダムな品を条件にしない）。
 - REQ-HGOAL-015 設定 `progression.horseGoals { enabled }`：殿堂（§34）が無効なら有効にできない（起動時と各版で検証）。
 - REQ-HGOAL-016 プロトタイプ：馬の詳細の目標の面とホームのピン（ムチ一閃の見た目、日本語・英語、文字の大きさ §41）、e2e・en-flow・a11y-flow。
+
+## 61. 端末のローカル通知（TS＋C#、`src/domain/localNotify.ts`・`Muchi.Client/LocalNotifications.cs`・`Muchi.Game.LocalNotificationModel`、`contracts/protocol.md` §61）
+
+- REQ-LNOTIF-001 種類：`training_session`（調教の仕上げの期限）・`daily_bonus`（次のゲーム日のログインボーナス、1日1回）・`weekly_challenge_closing`・`rival_week_closing`・`exchange_closing`・`gift_expiring`。期限はデータの本当の時刻だけ。購入・ショップ・ガチャへ誘う種類は無く、開く画面はコードで固定。
+- REQ-LNOTIF-002 持ち主：出来事ごとにプッシュかローカルのどちらか1つ（`LNOTIF_OWNERSHIP`）。push.json の全テンプレートが表にあり、ローカルの種類と同じ出来事を持たない（テスト）。
+- REQ-LNOTIF-003 純粋な関数：`planLocalNotifications(snapshot)`。同じスナップショットなら同じ結果。TS と C# は共有ベクター `contracts/local-notifications.vectors.json` で同じ。
+- REQ-LNOTIF-004 カテゴリ：各種類はプッシュの種類に対応（`reminders`／`events`／`friends`／`gifts`）。カテゴリがオフなら予約しない。設定画面の「通知」1か所で両方を切り替える。
+- REQ-LNOTIF-005 静かな時間帯：プッシュと同じ JST の `quietHours`。調教は送らない、ほかは終わりへ遅らせ、期限の1時間前を過ぎるなら送らない。
+- REQ-LNOTIF-006 上限：予約する時刻のゲーム日ごとに `dailyCap`（既定2）。優先の順で残す。全体で `maxPending` 件まで、`horizonDays` 日先まで。
+- REQ-LNOTIF-007 文言：日本語・英語を端末の言語で選ぶ。時刻は JST の日付と時刻。プレイヤーが付けた名前は既定で入れない（`showDetails` の時だけ件数・ポイント・馬の名前）。
+- REQ-LNOTIF-008 digest：ブートストラップ・`GET /v1/player` の `localReminders`（読むだけ。新しい状態・エンドポイントなし）。
+- REQ-LNOTIF-009 新しい種類 `reminders`：既定オフ（06 §3.5 の「新しい種類と同意」）。サーバーはこの種類のプッシュを送らない。
+- REQ-LNOTIF-010 許可：初回起動では聞かない。最初の調教の後に前置き（`maxAsks` 回まで、`retryDays` 日あける、最初からチェックなし）。OS で拒否なら OS のダイアログを二度と出さず、設定に OS の設定を開くボタン。仮の許可は予約する。
+- REQ-LNOTIF-011 付け替え：前回の予約との差だけを取り消し・予約。状態が変わる操作（調教の仕上げ・クリア・交換・受け取り・設定の変更・前面に戻る）の後に計画し直す。
+- REQ-LNOTIF-012 取り消し：ログアウト・アカウントの切り替え・引き継ぎ・削除の予約／実行・機能の停止で全部取り消す。覚えた予約はアカウントIDごと。
+- REQ-LNOTIF-013 KPI：`lnotif_scheduled`（kind、新しい id だけ）・`lnotif_opened`（kind）・`lnotif_permission`（granted／provisional／denied／later）。
+- REQ-LNOTIF-014 クライアント SDK：`LocalNotificationPlanner`・`ILocalNotificationPlatform`・`LocalRemindersDigest`・`PushPreferences.Reminders`・`AnalyticsEvent` の3つ。
+- REQ-LNOTIF-015 Unity のゲーム層 `LocalNotificationModel`（設定の行・前置き・次の予定・開いた画面・KPI）。OS の通知パッケージの接続と描画は `docs/handoff-codex-round20-local-notifications.md`。
+- REQ-LNOTIF-016 プロトタイプ：設定の「通知」・前置きのシート・次の予定の一覧（ムチ一閃の見た目、日本語・英語、文字の大きさ §41）、e2e・en-flow・a11y-flow。
+- REQ-LNOTIF-017 法務：共通の賭けの言葉・煽りの言葉を文言に使わない（テスト）。作った期限・カウントダウンなし。
+- REQ-LNOTIF-018 プライバシー：予定はサーバーに送らない（KPI の種類だけ）。`showDetails` は端末の設定。
+- REQ-LNOTIF-019 設定 `progression.localNotifications`（`localNotificationsProblems`、起動時と各版で検証）。`enabled: false` は停止スイッチ。
+- REQ-LNOTIF-020 ヘルプ：ヘルプセンター（§48）に「端末のお知らせ（リマインダー）」の記事。

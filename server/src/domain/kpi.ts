@@ -13,6 +13,7 @@ import { MAINTENANCE_GROUPS } from './maintenance.js';
 import { jstDateKey } from './time.js';
 import { NEXT_KINDS, NEXT_SLOTS } from './nextKinds.js';
 import { PRACTICE_ID_RE, PRACTICE_RESTARTS } from './practiceKinds.js';
+import { LNOTIF_KINDS, LNOTIF_PERMISSION_RESULTS } from './lnotifKinds.js';
 
 const PRACTICE_TRACK = z.string().regex(/^[a-z0-9_]{1,64}$/);
 const PRACTICE_FIELD = z.number().int().min(2).max(12);
@@ -178,6 +179,10 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('fsug_view'), at: z.number().int(), props: z.object({ shown: z.number().int().min(0).max(30) }).strict() }),
   // REQ-HGOAL-012: a horse's goal panel was opened (detail) / the pinned goal was shown on the home (once per game day); done = goals done
   z.object({ name: z.literal('hgoal_view'), at: z.number().int(), props: z.object({ surface: z.enum(['detail', 'home']), done: z.number().int().min(0).max(8) }).strict() }),
+  // REQ-LNOTIF-013 (§61.6): a local notification newly scheduled / opened from the notification; the OS permission answer (or the pre-prompt's later)
+  z.object({ name: z.literal('lnotif_scheduled'), at: z.number().int(), props: z.object({ kind: z.enum(LNOTIF_KINDS) }).strict() }),
+  z.object({ name: z.literal('lnotif_opened'), at: z.number().int(), props: z.object({ kind: z.enum(LNOTIF_KINDS) }).strict() }),
+  z.object({ name: z.literal('lnotif_permission'), at: z.number().int(), props: z.object({ result: z.enum(LNOTIF_PERMISSION_RESULTS) }).strict() }),
   // REQ-PRAC-015 (§50.10): a practice race started / finished on the device. Course, field size and strength only — no inputs,
   // ticks, seed or times (strict). Optional, and it grants nothing: ingestion never touches rewards or records.
   z.object({ name: z.literal('practice_start'), at: z.number().int(), props: z.object({ trackId: PRACTICE_TRACK, fieldSize: PRACTICE_FIELD, strength: PRACTICE_STRENGTH, restart: z.enum(PRACTICE_RESTARTS) }).strict() }),
@@ -231,6 +236,8 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'help_article_view': return { name: e.name, s1: e.props.articleId, s2: e.props.source };
     case 'fsug_view': return { name: e.name, value: e.props.shown };
     case 'hgoal_view': return { name: e.name, s1: e.props.surface, value: e.props.done };
+    case 'lnotif_scheduled': case 'lnotif_opened': return { name: e.name, s1: e.props.kind };
+    case 'lnotif_permission': return { name: e.name, s1: e.props.result };
   }
 }
 

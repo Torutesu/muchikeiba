@@ -3089,3 +3089,85 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 
 ### 53.9 アカウント削除
 状態の `horseGoals`（達成の記録・ピン）と戦績の `goal` は最後の `wipe` で消える。殿堂の写し（§34.5）は既存の手順で消える。他の場所に写しは無い。
+
+## 61. 端末のローカル通知（on-device local notifications、REQ-LNOTIF-001〜020、`server/src/domain/localNotify.ts`、C# `LocalNotifications.cs`（`LocalNotificationPlanner`・`ILocalNotificationPlatform`）・`Muchi.Game.LocalNotificationModel`、共有ベクター `contracts/local-notifications.vectors.json`、docs/handoff-codex-round20-local-notifications.md）
+端末が**もう知っている時刻**（調教のセッションの期限・次のゲーム日・週替わりチャレンジ／ライバルの週／交換所の締め・プレゼントの受け取り期限）を、サーバーを待たずに**端末の中で予約する通知**。サーバーのプッシュ（REQ-PUSH-*、§3.5 の表・push.json）はそのまま。ローカル通知は**プッシュと同じ種類（カテゴリ）と静かな時間帯**に従い、設定画面の「通知」1か所で両方を切り替える。何を予約するかはスナップショットからの**純粋な関数**（`planLocalNotifications`、TS と C# は共有ベクターで同じ結果）。コイン・アイテムは動かない（経済の目標なし、E 番号・balance-targets の節なし）。購入・ショップ・ガチャへ誘う通知は作らない。
+
+### 61.1 種類と持ち主（REQ-LNOTIF-001/002）
+同じ出来事をプッシュとローカルの両方で知らせない。出来事ごとに**持ち主を1つ**に決める（コードの表 `LNOTIF_OWNERSHIP`。push.json のテンプレートは全部 `server`、テストで全テンプレートが表にあることを確かめる＝新しいテンプレートを足す時に持ち主を決めないと落ちる）。
+| ローカルの種類 `kind` | 出来事 | 種類（カテゴリ） | 予約する時刻 | 条件（スナップショットから） | 開く画面 |
+|---|---|---|---|---|---|
+| `training_session` | 始めた調教（§25）の仕上げの期限 | `reminders` | `expiresAt − trainingLeadMin` 分 | 開いたセッションがある。静かな時間帯なら**送らない**（遅れて届く意味がない） | `training` |
+| `daily_bonus` | 次のゲーム日（既定 4:00 JST 切り替え）のログインボーナス | `reminders` | 次のゲーム日の `dailyHourJst` 時（既定 12 時 JST） | ログインボーナスが解放済み。**1日1回まで**・予約は次の1日分だけ（何日も開かなくても1回しか届かない） | `home` |
+| `weekly_challenge_closing` | 週替わりチャレンジ（§31）の週の終わり | `events` | `endsAt − leadHours` | 解放済みで、今週の未クリアがある | `weekly_challenge` |
+| `rival_week_closing` | ライバル（§28）の週の終わり | `friends` | `weekEndsAt − leadHours` | 今週のライバルがいて、今週のランク戦がまだ0回 | `rival` |
+| `exchange_closing` | イベント交換所（§30）が閉まる | `events` | `closesAt − leadHours`（イベントごとに1つ） | ポイントが残っている。文言は「残ったポイントは素材になります」（§30、失われない） | `event_exchange` |
+| `gift_expiring` | プレゼント（§26）の受け取り期限 | `gifts` | 一番早い `expiresAt − leadHours` | 期限のある未受け取りの品がある。**開くだけ**（通知から受け取らない） | `gift_box` |
+
+- 持ち主が `server` の出来事（ローカルでは作らない）：push.json の全テンプレート（フレンド・支部・招待・シーズン開幕／終了・昇級まであと1勝・イベント開始・大会の締切／まもなく・TA記録・ライバルの記録・おかえり（`comeback`）・プレゼントが届いた（`gift_arrived`））。今の6つのローカルの種類と同じ出来事を送るテンプレートは無い。今後サーバーが同じ出来事を送るなら、ローカルの種類の方を外す。
+- 呼び戻しの通知（「調教ができます」「ログインボーナス」）は 06 §3.5 のとおり**新しい種類と同意**が要る：新しい種類 **`reminders`**（「リマインダー」、**既定オフ**、push.json `defaults.categories.reminders: false`）。サーバーはこの種類のプッシュを送らない（テンプレートが無い、テストで確かめる）。受け取るには 61.4 の前置きで本人が選ぶ。
+- 期限の知らせ（週替わりチャレンジ・ライバル・交換所・プレゼント）は**データの本当の期限**だけ。作った時計・カウントダウン・「今だけ」「残りわずか」「お得」などは無い。購入・ショップ・ガチャ・パスの購入へ誘う種類は無い（開く画面はコードで固定、設定で変えられない）。厩舎手当（§13.5）の受け取りはショップの画面にあるので知らせない。
+
+### 61.2 スナップショットと計画（`planLocalNotifications`、REQ-LNOTIF-003〜007）
+入力（端末が持っているものだけ）：`now`・`locale`（端末の言語 `ja`|`en`）・`permission`（`unknown`|`granted`|`provisional`|`denied`）・`showDetails`（ロック画面に詳しく出す、端末の設定、既定オフ）・`signedIn`・`digest`（61.3、サーバーのブートストラップ）・`horseNames`（端末の馬の名前、`showDetails` の時だけ使う）。
+1. `signedIn: false`・`digest.enabled: false`・削除の予約中・オンボーディング中 → 何も予約しない（`status` = `signed_out`／`off`）。`permission` が `unknown`／`denied` でも計画は作る（設定画面に「次の予定」を見せる）が、予約は `granted`／`provisional` の時だけ（`status` = `no_permission`）。
+2. 61.1 の条件から候補を作る。種類の**カテゴリがオフ**なら外す（`category_off`）。設定 `kinds` に無い種類も外す。
+3. 時刻が `now` 以前なら外す（`past`。アプリを開いている間に期限の前の時刻が過ぎたら、もう知らせない）。`now + horizonDays` より後も外す（`horizon`）。
+4. **静かな時間帯**（プッシュと同じ JST の `quietHours`）：`training_session` は外す。`daily_bonus` は静かな時間帯の終わりへ遅らせる（次のゲーム日を越えるなら外す）。期限の種類は終わりへ遅らせ、それが期限の1時間前を過ぎるなら外す（`quiet_hours`）。
+5. **1日の上限** `dailyCap`（既定2、プッシュの上限とは別に数える）：予約する時刻のゲーム日ごとに、優先の高い順（`training_session` > `gift_expiring` > `exchange_closing` > `weekly_challenge_closing` > `rival_week_closing` > `daily_bonus`、同じなら早い時刻）に残す（`daily_cap`）。全体で `maxPending` 件まで（早い順、iOS の上限 64 より十分小さい）。
+6. 出力 `items[]`：`id`（`lnotif.{kind}.{ref}`、出来事ごとに変わらない。ref = セッションID／ゲーム日／`endsAt`／イベントID／一番早い期限）・`kind`・`category`・`fireAt`・`screen`・`refId`・`title`・`body`。並びは時刻の順。外したものは `dropped[]`（`kind`・`reason`）。
+- **文言**（日本語・英語、端末の言語で選ぶ。両方の言語を planner が持つ）：時刻は JST で「11月16日 4:00」／“11/16 at 4:00”。プレイヤーが付けた名前（馬・支部・相手）は**既定で文言に入れない**（ロック画面の覗き見）。`showDetails: true` の時だけ件数・ポイント・調教の馬の名前を入れる（名前は訳さない）。共通の賭けの言葉（`bettingWords.ts`）と煽りの言葉を使わない（テストで全部の文言を確かめる）。
+
+### 61.3 サーバーの digest（`localRemindersView`、REQ-LNOTIF-008）
+`/v1/player/bootstrap`・`GET /v1/player` の **`localReminders`**（読むだけ、状態に書かない。§45 の `nextActionSummary` と同じ読み方）。新しいエンドポイント・新しい状態のキーは無い。
+```json
+{ "v": 1, "enabled": true, "now": 1794880800000, "nextDayAt": 1794891600000,
+  "config": { "kinds": ["training_session","daily_bonus","weekly_challenge_closing","rival_week_closing","exchange_closing","gift_expiring"],
+              "dailyCap": 2, "dailyHourJst": 12, "horizonDays": 7, "maxPending": 8, "trainingLeadMin": 3,
+              "leadHours": { "weekly_challenge_closing": 24, "rival_week_closing": 24, "exchange_closing": 24, "gift_expiring": 24 },
+              "prePrompt": { "maxAsks": 2, "retryDays": 14 } },
+  "categories": { "season": true, "friends": true, "invites": true, "events": true, "comeback": false, "gifts": true, "reminders": false },
+  "quietHours": { "startHour": 22, "endHour": 8 },
+  "deleting": false, "onboarding": false,
+  "loginBonus": { "unlocked": true },
+  "training": { "sessionId": "t1", "horseId": "h1", "expiresAt": 1794881400000, "trainedEver": true },
+  "weeklyChallenge": { "unlocked": true, "endsAt": 1795136400000, "uncleared": 2 },
+  "rival": { "weekEndsAt": 1795136400000, "rankedRaces": 0 },
+  "exchanges": [ { "eventId": "ev_autumn", "points": 120, "closesAt": 1795050000000 } ],
+  "gifts": [ 1795000000000, 1795003600000 ] }
+```
+- `training` は開いたセッションが無ければ `{ sessionId: null, horseId: null, expiresAt: null, trainedEver }`（`trainedEver` = これまでに調教をしたか、61.4 の前置きのきっかけ）。`weeklyChallenge`・`rival` は無ければ `null`。`gifts` は期限のある未受け取りの品の `expiresAt`（早い順、20件まで）。
+- `enabled: false`（設定なし・無効）の時は `{ "v": 1, "enabled": false }` だけ。
+
+### 61.4 OS の許可と前置き（REQ-LNOTIF-009/010）
+- 初回起動では聞かない。**最初の調教を始めた後**（`POST /v1/training/start` が通った後、または `training.trainedEver`）に、`reminders` がオフで、前置きをまだ `maxAsks` 回出しておらず、前回から `retryDays` 日たっている時だけ、前置きのシートを1回出す：「調教の仕上げや、ログインボーナスを受け取れる日を、この端末からお知らせします。1日{n}件まで・静かな時間帯は送りません。あとから設定で変えられます」。最初からチェックの入った選択は無い。
+- 「お知らせを受け取る」→ `PUT /v1/push/preferences { categories: { reminders: true } }`、OS の許可が `unknown` なら OS のダイアログ（結果を KPI `lnotif_permission`）。「今はしない」→ 何も変えない（KPI `later`）。
+- OS で**拒否**（`denied`）なら OS のダイアログは二度と出さない。設定画面に「端末の設定で通知がオフになっています」と OS の設定を開くボタン。**仮の許可**（iOS provisional）は予約する（通知センターに静かに届く）。
+- 既存のプッシュの前置き（REQ-UXU-015、2戦目の3着以内）で OS が許可済みなら、前置きは `reminders` を選ぶだけ（OS のダイアログは出ない）。
+
+### 61.5 予約の付け替え（REQ-LNOTIF-011/012）
+- 端末は前回予約した `id → 指紋`（時刻・文言）を覚え、計画との差だけを取り消し・予約する（`LocalNotificationPlanner.Diff`）。起動・前面に戻った時・調教の開始／仕上げ・ログインボーナス・チャレンジのクリア・ランク戦の後・交換・プレゼントの受け取り・設定の変更で計画し直す（早く仕上げた調教の通知は消える）。
+- **ログアウト・アカウントの切り替え・引き継ぎ・アカウント削除（予約・実行）**：このアプリが予約したローカル通知を**全部取り消し**、覚えた予約を消す（別の人の予定が残らない）。覚えた予約にはアカウントIDを付け、違うアカウントのものは使わない。
+- 通知を開いたら `screen` の画面へ（ショップは無い）。開いた時に計画し直す。
+
+### 61.6 KPI（REQ-LNOTIF-013）
+- `lnotif_scheduled`（クライアント、`props: { kind }`。その `id` を新しく予約した時だけ。時刻の付け替えでは送らない）→ `s1` = kind。
+- `lnotif_opened`（クライアント、`props: { kind }`。通知から開いた時）→ `s1` = kind。
+- `lnotif_permission`（クライアント、`props: { result: granted | provisional | denied | later }`）→ `s1` = result。
+クエリは `docs/ops/kpi-queries.md`「端末のローカル通知」。
+
+### 61.7 設定 `progression.localNotifications`（リモート設定で変更可、`localNotificationsProblems` で検証）
+`{ enabled, kinds[], dailyCap (1..4), dailyHourJst (8..21), horizonDays (1..14), maxPending (1..32), trainingLeadMin (1..9、§25 の sessionTtlMs より短い), leadHours { 種類: 1..72 }, prePrompt { maxAsks (1..3), retryDays (1..90) } }`。`kinds` は 61.1 の6つのうち（重複不可）。`leadHours` は期限の4種類だけ。`enabled: false` で端末は全部取り消す（停止スイッチ）。
+
+### 61.8 クライアント（REQ-LNOTIF-014〜016）
+- `Muchi.Client`：`LocalRemindersDigest.Parse`（`PlayerView.LocalReminders`）、`LocalNotificationSnapshot`、`LocalNotificationPlanner.Plan(snapshot)`・`Diff(previous, planned)`・`KindCategory`、`ILocalNotificationPlatform`（`Permission`・`RequestPermissionAsync`・`Schedule`・`Cancel`・`CancelAll`）、`PushPreferences.Reminders`、`AnalyticsEvent.LocalNotificationScheduled/Opened/Permission`。
+- Unity のゲーム層 `LocalNotificationModel`：計画と付け替え、アカウントの切り替え・ログアウト・削除での全取り消し、前置きの判断と回数、設定画面の「端末のリマインダー」の行（種類ごとのオン／オフ＝カテゴリ、ロック画面に詳しく出す、OS の許可の状態）、次の予定の一覧、開いた時の画面、KPI。OS の通知パッケージ（Unity Mobile Notifications）への接続は Codex（`docs/handoff-codex-round20-local-notifications.md`）。
+- プロトタイプ：設定の「通知」（プッシュの種類・静かな時間帯・端末のリマインダー・ロック画面の表示）、前置きのシート、次の予定の一覧（デモ）。日本語・英語・文字の大きさ（§41）。
+
+### 61.9 法務・プライバシー（REQ-LNOTIF-017/018）
+- 煽りの言葉・作った期限・購入への誘いは無い（61.1）。賭けの言葉は共通の一覧でテスト。
+- ロック画面に出す文言にプレイヤーが付けた名前を既定で入れない（`showDetails` 既定オフ、端末ごとの設定でサーバーに送らない）。
+- ローカル通知は端末の中だけで作られ、サーバーに予定を送らない（KPI の種類だけ）。データの開示（§51）に新しい項目は無い（状態のキーを足さない。`reminders` は既存の `push.prefs` の中）。
+
+### 61.10 アカウント削除
+サーバーに新しい状態は無い（`push.prefs.categories.reminders` は既存の `push` と一緒に消える）。端末は削除の予約・実行を見たら全部取り消す（61.5）。

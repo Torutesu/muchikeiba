@@ -1,7 +1,7 @@
 {
-  "_comment": "プッシュ通知（REQ-PUSH-*）。1日の上限は既定2（REQ-UXS-012）。promotion_near・tournament_closing・ta_beaten は個人あての呼びかけ（docs/planning/06 §3.5）。文言はすべて日本語。{name} などはサーバーが差し込む。timeSensitive=true は静かな時間帯なら送らない（遅れて届くと意味がない）。それ以外は静かな時間帯の終わりまで遅らせる。1日の上限は送る時刻のゲーム日（progression.dayRollover、既定4:00 JST 切り替え、REQ-DAY-005）で数える。comeback（REQ-CB-007）は呼び戻しのお知らせ専用の種類で既定は受け取らない（オプトイン、06 §3.5）。最後に遊んだゲーム日から3日目・7日目の19時（JST）に、上限・静かな時間帯の中で送る。シーズンのお知らせ（seasonReminders）は暦の日付で正午に配信（シーズンは暦の月、REQ-DAY-004）。",
+  "_comment": "プッシュ通知（REQ-PUSH-*）。1日の上限は既定2（REQ-UXS-012）。promotion_near・tournament_closing・ta_beaten は個人あての呼びかけ（docs/planning/06 §3.5）。文言はすべて日本語。{name} などはサーバーが差し込む。timeSensitive=true は静かな時間帯なら送らない（遅れて届くと意味がない）。それ以外は静かな時間帯の終わりまで遅らせる。1日の上限は送る時刻のゲーム日（progression.dayRollover、既定4:00 JST 切り替え、REQ-DAY-005）で数える。comeback（REQ-CB-007）は呼び戻しのお知らせ専用の種類で既定は受け取らない（オプトイン、06 §3.5）。最後に遊んだゲーム日から3日目・7日目の19時（JST）に、上限・静かな時間帯の中で送る。reminders（REQ-LNOTIF-009、protocol §61）は端末のローカル通知（調教の仕上げ・ログインボーナス）の種類で既定は受け取らない（オプトイン）。サーバーはこの種類のプッシュを送らない（テンプレートを作らない）。シーズンのお知らせ（seasonReminders）は暦の日付で正午に配信（シーズンは暦の月、REQ-DAY-004）。",
   "defaults": {
-    "categories": { "season": true, "friends": true, "invites": true, "events": true, "comeback": false, "gifts": true },
+    "categories": { "season": true, "friends": true, "invites": true, "events": true, "comeback": false, "gifts": true, "reminders": false },
     "quietHours": { "startHour": 22, "endHour": 8 },
     "dailyCap": 2
   },

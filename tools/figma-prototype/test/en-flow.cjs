@@ -471,6 +471,12 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await show('LessonBrief', 'race_stamina'); await waitScreen('tip-lesson'); await shot('tip-lesson', 400);
   await show('StartLesson', 'race_whip'); await waitScreen('race-tutorial'); await waitScreen('lesson-result', 90000); await shot('lesson-result', 600);
 
+  // round 21: 予定表 in English (REQ-CAL-003/009): rows, day labels and notes in English; times stay JST and say so
+  await show('Calendar'); await waitScreen('calendar'); await shot('calendar', 500);
+  assert.match(await page.locator('.screen.in .cal-list').innerText(), / JST/, 'calendar: the times say JST in English');
+  await page.locator('.screen.in [data-cal-mode="week"]').click(); await waitScreen('calendar'); await shot('calendar-week', 400);
+  await page.locator('.screen.in [data-cal-mode="month"]').click(); await waitScreen('calendar'); await page.waitForTimeout(300);
+
   // round 13: 支部の共同目標 in English (REQ-TGOAL-*): the week, after the demo races, the week result sheet
   await show('TeamGoal'); await waitScreen('team-goal', 20000); await shot('team-goal', 600);
   assert.match(await page.locator('.screen.in').innerText(), /as a branch/, 'team goal: the goal label in English');

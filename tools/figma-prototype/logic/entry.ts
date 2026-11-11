@@ -36,6 +36,7 @@ import { noteRivalTa, prevWeekId, rivalCard, rivalTrackName, weekEndMs, weekIdAt
 import { actorIdsOf, renderActivityItems } from '../../../server/src/domain/activity.js';
 import { helpArticle, helpIndex, helpOf, helpQueryWords, searchHelp } from '../../../server/src/domain/help.js';
 import { tipsOf } from '../../../server/src/domain/tips.js';
+import type { CalendarExternal } from '../../../server/src/domain/calendar.js';
 import { FriendSuggestService, MemorySuggestDirectory, fsugCard, fsugConfig } from '../../../server/src/domain/friendSuggest.js';
 import { FriendsService, MemoryDirectory } from '../../../server/src/domain/friends.js';
 import type { PlayerInvoker } from '../../../server/src/http/app.js';
@@ -410,6 +411,18 @@ async function ensureCupDemo() {
 const cupHorse = async (id: string) => { const st = await svc.state(id); return (st.horses.find((h) => h.id === st.flags?.partnerHorseId && h.status === 'active') ?? st.horses.find((h) => h.status === 'active'))?.id ?? ''; };
 const cupCall = <T>(f: () => Promise<T>) => wrap(async () => { try { return await f(); } finally { saveCups(); } });
 
+/** REQ-CAL-006: what the calendar reads from other objects (demo tournaments here; the player's open cups for real). */
+async function calendarExt(): Promise<CalendarExternal> {
+  const t = now(), H = 3_600_000, D = 24 * H;
+  const at = (ms: number) => Math.floor(ms / H) * H;
+  const tournaments = [
+    { id: 'proto_winter_mini', name: '冬のミニ大会', status: 'registration' as const, registrationOpensAtMs: at(t - 2 * H), registrationClosesAtMs: at(t + 2 * D), startsAtMs: at(t + 3 * D) },
+    { id: 'proto_night_cup', name: 'ナイター記念大会', status: 'scheduled' as const, registrationOpensAtMs: at(t + 6 * D), registrationClosesAtMs: at(t + 9 * D), startsAtMs: at(t + 10 * D) },
+  ];
+  const cups = await cupsSvc.list(ID).then((r) => r.active.map((x) => ({ cupId: x.cupId, cupName: x.cupName, opensAt: x.opensAt, closesAt: x.closesAt, status: x.status }))).catch(() => null);
+  return { tournaments, cups };
+}
+
 const enCatalog = compileCatalogWith({ romanize: true }, CODE_EN, master.locale?.en, (uiEn as { strings: Record<string, string> }).strings, (protoEn as { strings: Record<string, string> }).strings);
 
 export const MuchiLogic = {
@@ -769,6 +782,18 @@ export const MuchiLogic = {
   tipContext: (ctx: string) => tipsOf(master).contexts[ctx] ?? null,
   /** What the replay must never touch (REQ-TUT-004): the first-time rewards and the race counters, for the checks. */
   tutorialFacts: () => wrap(async () => { const s = await svc.state(ID); return { partner: s.flags.partnerHorseId ?? null, tutorialGacha: !!s.flags.tutorialGachaUsed, races: s.onboarding?.races ?? 0, horses: s.horses.length, free: s.wallet.free, paid: s.wallet.paid, claimed: [...(s.onboarding?.claimed ?? [])] }; }),
+
+  // ---------------------------------------------------------------- round 21: イベントカレンダー (REQ-CAL-*, contracts/protocol.md §65)
+  // What GET /v1/calendar and PUT / DELETE /v1/calendar/marks/:id return on the real rules (calendar.ts + PlayerService):
+  // events, exchange, weeks, seasons, the pass month, announced banners, maintenance and the comeback window from the
+  // master and the player; the player's open cups from the real HostedCupsService. The prototype has no tournament index,
+  // so two demo tournaments (registration open now, the start in three days) stand in for TournamentsService.list().
+  // Japanese like the server; the EN toggle translates the stage (server-en / proto-en), names of cups are the player's.
+  calendar: (q: { from?: string | null; to?: string | null } = {}) => wrap(async () => svc.calendar(ID, q, await calendarExt())),
+  calendarMark: (entryId: string, on: boolean) => wrap(async () => svc.calendarMark(ID, entryId, on, await calendarExt())),
+  calendarKpi: (name: 'calendar_view' | 'calendar_entry_open', props: Record<string, unknown>) => wrap(() => clientBatchSchema.parse({ platform: 'editor', appVersion: 'proto', events: [{ name, at: now(), props }] }).events.map(clientToKpi)[0]),
+  /** The server's calendar_mark rows (REQ-CAL-015) and the stored marks (never a push: REQ-CAL-011). */
+  calendarFacts: () => wrap(async () => { const s = await svc.state(ID); return { marks: (s.calendar?.marks ?? []).map((x) => ({ ...x })), kpi: serverKpi.filter((k) => k.name === 'calendar_mark'), outbox: (s.push?.outbox ?? []).length }; }),
 
   // ---------------------------------------------------------------- round 17: ヘルプセンター (REQ-HELP-*, contracts/protocol.md §48)
   // What GET /v1/help, /v1/help/articles/:id, /v1/help/search and the inquiry routes return, on the real rules, in the

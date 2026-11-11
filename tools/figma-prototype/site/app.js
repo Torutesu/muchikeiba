@@ -180,7 +180,7 @@ async function setA11y(key, value) {
  * text (< 28 px) is set ×1.15 / ×1.3; headings and big numbers stay. fitText then brings back, towards the standard
  * size and never below it, only what does not fit its box.
  */
-const SCALE_SEL = '.label, .kicker, .caption, .btn > span, .pill, .tag, .qc-scale, .toast, .stamina .t, .stamina .s, .whipdots b, .marker .nm, .marker .gap, .marker .wind';
+const SCALE_SEL = '.label, .kicker, .caption, .btn > span, .pill, .tag, .qc-scale, .cal-scale, .toast, .stamina .t, .stamina .s, .whipdots b, .marker .nm, .marker .gap, .marker .wind';
 function scaleText(root) {
   const k = textScale();
   if (k === 1 || !root) return;
@@ -2592,7 +2592,9 @@ async function Settings(tab) {
       ['通報とブロック', () => BlockList(), 'blocks']],
     // round 10: 支部の応援 and 友達招待 next to the looks / care entries; round 14: 実況パック after the looks entries
     looks: [['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions],
-      ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite']],
+      ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite'],
+      // round 21 (REQ-CAL-019): 予定表 — events, tournaments, cups and the branch's dates in one read-only list (8 rows: the page limit)
+      ['予定表', () => Calendar(() => Settings('looks')), 'calendar']],
   };
   Kicker('その他', 36, 30, m);
   [['settings', '設定・サポート'], ['looks', '見た目・お世話・仲間']].forEach(([k, label], i) => {
@@ -3112,6 +3114,8 @@ async function Demo(kind) {
   if (kind === 'next') { await L.seedNext(); try { localStorage.removeItem(NEXT_VIEWED); } catch { /* */ } await refresh(); if (partner()) await L.horseGoals.pin(partner().id); return Home(); } // round 18: the partner's goal pinned too
   // round 17: two inquiries — one answered by the real ops reply (unread, an activity entry), one waiting (§48)
   if (kind === 'help') { await L.seedDemo(3, [2, 2, 2]); await L.seedInquiries(); await refresh(); helpState.sel = null; helpState.draft = null; return MyInquiries(); }
+  // round 21 (REQ-CAL-019): a week of play with 28 races — events, tournaments, the weekly challenge and seasons are open
+  if (kind === 'calendar') { await L.seedDemo(7, [4, 4, 4, 4, 4, 4, 4]); ftue = false; await refresh(); calState.mode = 'month'; calState.weekStart = null; return Calendar(); }
   const spec = { day1: [1, [1]], day3: [3, [2, 2, 2]], day7: [7, [3, 3, 3, 3, 3, 3, 3]] }[kind];
   await L.seedDemo(spec[0], spec[1]);
   await refresh();
@@ -5023,6 +5027,124 @@ function PlaqueDetail(p) {
     (p.highlights ?? []).slice(0, 5).forEach((h, i) => Txt(h.text, 48, y + 350 + i * 34, 564, 15, WHITE, s, { weight: 500, nowrap: true }));
     if (p.frame) Txt('殿堂の額縁つき', 48, y + 530, 564, 13, DIM, s);
   });
+}
+
+// ================================================================= round 21: イベントカレンダー（予定表） (REQ-CAL-*, contracts/protocol.md §65)
+// Mirrors unity/Assets/Muchi/Game/CalendarModel.cs on the real server rules (MuchiLogic.calendar = GET /v1/calendar on
+// calendar.ts): every row comes from its feature's own data — events and the exchange, weekly challenge weeks, the branch
+// goal and league (members only), seasons and the month the pass can be bought, announced banners, tournaments, the cups
+// the player is in, visible maintenance and the comeback window. A month list (35 game days, rows under the day they
+// start; rows already running at the top) or a week list (7 days, every row that touches the day). Times are JST in both
+// languages. Paid rows (pass, banners) carry dates only: no price and no buy button; a banner row opens the rates page, the
+// pass row opens nothing. A mark is a flag (PUT / DELETE, idempotent); the server sends no notification for it (§61 later).
+// KPI calendar_view / calendar_entry_open (globalThis.__muchiKpi, the shape the client sends).
+const calState = { mode: 'month', weekStart: null, view: null, back: null };
+const calKpi = (name, props) => (globalThis.__muchiKpi ??= []).push({ name, ...props });
+const CAL_WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
+/** 「11/14（土）」 for a game day "2026-11-14" (EN: proto-en templates → "Sat 11/14"). */
+const calDay = (day) => { const d = new Date(day + 'T00:00:00Z'); return `${d.getUTCMonth() + 1}/${d.getUTCDate()}（${CAL_WEEKDAYS[d.getUTCDay()]}）`; };
+const calMd = (day) => { const d = new Date(day + 'T00:00:00Z'); return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`; };
+/** The JST line of a row (CalendarModel.TimeText): a span, or one time for a time point. */
+const calTime = (e) => (e.endAt <= e.startAt ? `${e.startJst}（日本時間）` : `${e.startJst}〜${e.endJst}（日本時間）`);
+const CAL_STATUS = { open: '開催中', upcoming: 'これから', ended: '終了' };
+function calDays(from, to) { const out = []; for (let d = from; d <= to && out.length < 62; d = new Date(Date.parse(d + 'T00:00:00Z') + 86_400_000).toISOString().slice(0, 10)) out.push(d); return out; }
+/** Where a row leads in the prototype (the link the server chose; the pass has none). */
+const calGo = (link) => ({
+  event: () => RaceLobby(), event_exchange: () => Exchange(link.id), weekly_challenge: () => WeeklyChallenge(), team_goal: () => TeamGoal(), league: () => TeamGoal(),
+  season: () => RaceLobby(), gacha_rates: () => Odds(link.id), tournament: () => Spectate(), cup: () => CupLobby(link.id), comeback: () => ComebackTrack(),
+})[link.screen];
+async function Calendar(back = null) {
+  if (back) calState.back = back;
+  currentScreen = () => Calendar();
+  const r = await L.calendar({});
+  if (!r.ok) { toast(r.message); return (calState.back ?? Settings)(); }
+  const V = r.value; calState.view = V;
+  const days = calDays(V.from, V.to);
+  if (!calState.weekStart || !days.includes(calState.weekStart)) calState.weekStart = V.from;
+  Clear('calendar'); SetArt('Art/Courses/autumn-course', false); Shade('left');
+  TopBar('予定表', '参加できる予定　·　時刻はすべて日本時間', { wallet: false });
+  // left: view, range, marks and the notes
+  const side = Glass('Calendar side', 36, 134, 440, 676, undefined, .88); side.classList.add('cal-side');
+  Kicker('表示', 36, 30, side, { size: 15 });
+  [['month', '月ごと'], ['week', '週ごと']].forEach(([k, label], i) => {
+    const b = Btn(label, 36 + i * 180, 96, 170, 48, () => { if (calState.mode !== k) { calState.mode = k; Calendar(); } }, 'choice' + (calState.mode === k ? ' on' : ''), side);
+    b.dataset.calMode = k; b.setAttribute('aria-pressed', String(calState.mode === k)); b.style.fontSize = '17px'; b.style.whiteSpace = 'nowrap'; b.style.padding = '0';
+  });
+  const wk = days.slice(days.indexOf(calState.weekStart), days.indexOf(calState.weekStart) + 7);
+  const shown = calState.mode === 'month' ? days : wk;
+  Txt(`${calMd(shown[0])} – ${calMd(shown[shown.length - 1])}`, 36, 170, 368, 30, WHITE, side, { weight: 700, cls: 'num', nowrap: true }).dataset.calRange = `${shown[0]}..${shown[shown.length - 1]}`;
+  Txt('今日', 36, 216, 120, 15, CYAN, side, { weight: 700, ls: '.14em', nowrap: true });
+  Txt(calDay(V.today), 120, 214, 248, 17, WHITE, side, { weight: 500, nowrap: true }).dataset.calToday = V.today;
+  if (calState.mode === 'week') {
+    const i = days.indexOf(calState.weekStart);
+    const prev = Ghost('前の週', 36, 256, 170, 48, () => { calState.weekStart = days[i - 7]; Calendar(); }, side, 'small quiet'); prev.dataset.action = 'cal-prev';
+    if (i - 7 < 0) disable(prev);
+    const next = Ghost('次の週', 216, 256, 170, 48, () => { calState.weekStart = days[i + 7]; Calendar(); }, side, 'small quiet'); next.dataset.action = 'cal-next';
+    if (i + 7 >= days.length) disable(next);
+  }
+  Hair(36, 330, 368, side);
+  Kicker('印', 36, 350, side, { size: 15 });
+  Txt(`${V.marks.count} / ${V.marks.max}`, 36, 414, 200, 26, WHITE, side, { weight: 700, cls: 'num', nowrap: true }).dataset.calMarks = String(V.marks.count);
+  Txt('印を付けても、お知らせは届きません', 36, 456, 368, 15, MUTED, side, { lh: 1.6 }).dataset.calMarkNote = '1';
+  Txt('パスとスカウトは期間だけ。中身はそれぞれの画面で', 36, 506, 368, 14, SOFT, side, { lh: 1.6 }).dataset.calPaidNote = '1';
+  if (V.partial.length) Txt('一部の予定を読み込めませんでした', 36, 556, 368, 14, GOLD, side, { lh: 1.5 }).dataset.calPartial = V.partial.join(',');
+  TextLink('予定表のヘルプ', 36, 596, 200, () => HelpArticle('calendar', 'link', () => Calendar()), side, '予定表のヘルプ ›').dataset.action = 'cal-help';
+  Ghost('デモ：28戦の厩舎で見る', 220, 592, 184, 44, () => Demo('calendar'), side, 'small quiet').dataset.action = 'cal-demo';
+  // right: the list
+  const list = Glass('Calendar list', 496, 134, 1068, 676, undefined, .9); list.classList.add('cal-panel');
+  Kicker(calState.mode === 'month' ? '期間の予定' : '週の予定', 36, 30, list, { size: 15, rule: false });
+  const box = el('cal-list', 36, 72, 996, 580, list);
+  const groups = [];
+  if (calState.mode === 'month') {
+    const running = V.entries.filter((e) => e.firstDay < V.from);
+    if (running.length) groups.push(['始まっている予定', running, 'running']);
+    for (const d of days) { const xs = V.entries.filter((e) => e.firstDay === d); if (xs.length) groups.push([calDay(d), xs, d]); }
+  } else {
+    for (const d of wk) groups.push([calDay(d), V.entries.filter((e) => e.firstDay <= d && d <= e.lastDay), d]);
+  }
+  for (const [title, rows, key] of groups) {
+    const h = document.createElement('div'); h.className = 'cal-scale cal-day' + (key === V.today ? ' today' : ''); h.textContent = title; h.dataset.calDay = key; box.appendChild(h);
+    if (!rows.length) { const n = document.createElement('div'); n.className = 'cal-scale cal-empty'; n.textContent = '予定はありません'; box.appendChild(n); continue; }
+    for (const e of rows) box.appendChild(calRow(e));
+  }
+  if (!groups.length) { const n = document.createElement('div'); n.className = 'cal-scale cal-empty'; n.textContent = '予定はありません'; box.appendChild(n); }
+  calKpi('calendar_view', { view: calState.mode, entries: Math.min(200, calState.mode === 'month' ? V.entries.length : new Set(groups.flatMap((g) => g[1].map((e) => e.id))).size) });
+  Back(() => (calState.back ?? Settings)(), '戻る', 40, 834);
+}
+function calRow(e) {
+  const row = document.createElement('div');
+  row.className = 'cal-row' + (e.link ? ' go' : '') + (e.status === 'ended' ? ' ended' : '') + (e.marked ? ' marked' : '');
+  Object.assign(row.dataset, { calEntry: e.id, calKind: e.kind, paid: e.paid ? '1' : '0', link: e.link ? e.link.screen : '' });
+  const main = document.createElement('div'); main.className = 'cal-main';
+  const meta = document.createElement('div'); meta.className = 'cal-meta';
+  const kind = document.createElement('span'); kind.className = 'cal-scale cal-kind'; kind.textContent = e.title; meta.appendChild(kind);
+  const st = document.createElement('span'); st.className = 'cal-scale cal-status ' + e.status; st.textContent = CAL_STATUS[e.status] ?? ''; meta.appendChild(st);
+  main.appendChild(meta);
+  const name = document.createElement('div'); name.className = 'cal-scale cal-name' + (e.cupName ? ' player-text' : ''); name.textContent = e.cupName ?? e.name ?? e.title; main.appendChild(name);
+  const time = document.createElement('div'); time.className = 'cal-scale cal-time num'; time.textContent = calTime(e); main.appendChild(time);
+  const note = e.paid ? '期間だけを載せています' : e.spectate ? '観戦できます' : null;
+  if (note) { const n = document.createElement('div'); n.className = 'cal-scale cal-note' + (e.paid ? ' paid' : ''); n.textContent = note; main.appendChild(n); }
+  row.appendChild(main);
+  const side = document.createElement('div'); side.className = 'cal-actions';
+  if (e.markable || e.marked) {
+    const m = document.createElement('button'); m.className = 'cal-scale cal-mark' + (e.marked ? ' on' : ''); m.textContent = e.marked ? '印を外す' : '印を付ける';
+    m.dataset.action = 'cal-mark'; m.setAttribute('aria-pressed', String(!!e.marked));
+    m.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      const res = await L.calendarMark(e.id, !e.marked);
+      if (!res.ok) { toast(res.code === 'CONFLICT' ? (res.details?.reason === 'limit' ? '印はこれ以上付けられません' : '終わった予定には印を付けられません') : res.code === 'NOT_FOUND' ? 'この予定は表示できなくなりました' : res.message); return Calendar(); }
+      toast(res.value.marked ? '印を付けました（お知らせは届きません）' : '印を外しました');
+      return Calendar();
+    });
+    side.appendChild(m);
+  }
+  if (e.link) { const go = document.createElement('span'); go.className = 'cal-go'; go.textContent = '›'; side.appendChild(go); }
+  row.appendChild(side);
+  if (e.link) {
+    row.setAttribute('role', 'button');
+    row.addEventListener('click', () => { const f = calGo(e.link); if (!f) return; calKpi('calendar_entry_open', { kind: e.kind }); f(); });
+  }
+  return row;
 }
 
 // ================================================================= round 16: プレイヤー主催カップ (REQ-CUP-*, contracts/protocol.md §42)
@@ -7278,6 +7400,8 @@ const helpGo = (screen, back) => ({
   account_link: () => Settings(), deletion: () => Settings(), inquiry: () => InquiryForm(), my_inquiries: () => MyInquiries(),
   // round 18 integration: privacy (§51), the branch feed's quick chat (§52), practice races (§50)
   privacy: () => Privacy(), team_feed: () => TeamFeed('chat'), practice: () => Practice(),
+  // round 21 (§65): the calendar
+  calendar: () => Calendar(),
 })[screen]?.() ?? back?.();
 /** Entry from settings (or a screen's ? link): `back` is where 戻る returns. */
 async function HelpCenter(back = null) {
@@ -7717,7 +7841,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Calendar: () => Calendar(), TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

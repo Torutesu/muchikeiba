@@ -1342,6 +1342,24 @@
   "{min}〜{max}文字": "{min}–{max} characters",
   "半角の英数字と記号": "Letters, numbers and symbols",
   "英字と数字を両方使う": "Use both letters and numbers",
-  "よく使われるパスワードは使えません": "No common passwords"
+  "よく使われるパスワードは使えません": "No common passwords",
+  "_calendar": "---- round 21: event calendar (CalendarModel, REQ-CAL-*); times stay JST in English",
+  "予定表": "Calendar",
+  "予定表はオンラインで見られます": "The calendar is available online",
+  "月ごと": "By month",
+  "週ごと": "By week",
+  "今日": "Today",
+  "予定はありません": "Nothing scheduled",
+  "印を付ける": "Mark",
+  "印を外す": "Unmark",
+  "印を付けても、お知らせは届きません": "A mark sends no notification",
+  "期間だけを載せています": "Dates only",
+  "一部の予定を読み込めませんでした": "Some dates could not be loaded",
+  "終わった予定には印を付けられません": "Finished entries cannot be marked",
+  "この予定は表示できなくなりました": "This entry is no longer available",
+  "印はこれ以上付けられません": "You cannot add more marks",
+  "これから": "Upcoming",
+  "観戦できます": "You can watch",
+  "（日本時間）": " JST"
  }
 }

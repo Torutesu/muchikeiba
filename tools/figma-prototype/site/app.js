@@ -29,14 +29,26 @@ const prefs = {
   int(k, d) { const v = parseInt(this.get(k, ''), 10); return Number.isFinite(v) ? v : d; },
 };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-// R20 integration (contracts/protocol.md §58.11; = unity SessionPromptGate): at most ONE system-ish prompt per session — the
-// ads / analytics pre-prompt (then ATT), the reminders pre-permission card (then the OS dialog) or the review request. The
-// first one shown claims the session; the others stay due for a later session. Order when several are due: consent →
-// notifications → review. A change of account (transfer) starts a new session.
+// R21 integration (contracts/protocol.md §58.11 = §64.6; = Muchi.Client.SessionPrompts): ONE gate for every prompt that can
+// interrupt the player — at most one per session (one launch, or until the account changes), none during the FTUE. The
+// first one shown claims the session; the others stay due for a later session. When several are due at one moment the
+// table decides (highest first). Round 20's consent → reminders → review gate and Round 21's release-notes list were two
+// gates for one rule; this is the one table both sections point at.
+const PROMPT_PRIORITY = ['recommended_update', 'consent_pre_prompt', 'comeback_welcome', 'release_notes', 'reminders_pre_permission', 'account_link', 'review_prompt'];
 const sessionPrompt = {
   shown: null,
-  can(kind) { return this.shown === null || this.shown === kind; },
-  claim(kind) { if (!this.can(kind)) return false; this.shown = kind; (globalThis.__muchiPrompts ??= []).push(kind); return true; },
+  can(kind) {
+    if (!PROMPT_PRIORITY.includes(kind)) throw new Error(`unknown prompt ${kind}`);
+    return !ftue && (this.shown === null || this.shown === kind);
+  },
+  /** Claims the session unless another prompt took it, the FTUE is on, or a higher prompt in `alsoDue` is due now. */
+  claim(kind, alsoDue = []) {
+    if (!this.can(kind)) return false;
+    if (this.shown !== kind && alsoDue.some((k) => PROMPT_PRIORITY.indexOf(k) >= 0 && PROMPT_PRIORITY.indexOf(k) < PROMPT_PRIORITY.indexOf(kind))) return false;
+    this.shown = kind; (globalThis.__muchiPrompts ??= []).push(kind); return true;
+  },
+  /** Of the prompts due at one moment, the one to show (or null). */
+  pick(due) { return PROMPT_PRIORITY.find((k) => due.includes(k) && this.can(k)) ?? null; },
   reset() { this.shown = null; },
 };
 
@@ -1214,12 +1226,14 @@ async function Home() {
   if (player.loginBonus?.lastClaimDate !== today) { const r = await L.claimLogin(); if (r.ok) { bonus = r.value; await refresh(); } }
   const p = partner();
   if (p) horseName = p.name;
-  // REQ-CB-*: the comeback welcome replaces home once per window (decided before home is drawn)
+  // REQ-CB-*: the comeback welcome replaces home once per window; round 20 (REQ-CNS-008): a new privacy policy version asks
+  // again on the next home. Both are decided before home is drawn; R21 integration (§58.11 = §64.6): when both are due the
+  // one table decides (the consent sheet first), and neither shows once another prompt took this session.
   const comeback = await cbView();
-  if (comeback.active && comeback.window.showWelcome) return ComebackWelcome(comeback);
-  // round 20 (REQ-CNS-008): a new privacy policy version asks again on the next home (decided before home is drawn)
   const cnsDue = await consentHomeDue();
-  if (cnsDue) return ConsentPrompt(Home, cnsDue);
+  const firstPrompt = sessionPrompt.pick([...(comeback.active && comeback.window.showWelcome ? ['comeback_welcome'] : []), ...(cnsDue ? ['consent_pre_prompt'] : [])]);
+  if (firstPrompt === 'consent_pre_prompt') return ConsentPrompt(Home, cnsDue);
+  if (firstPrompt === 'comeback_welcome') return ComebackWelcome(comeback);
   const [missions, fw, bond, training] = await Promise.all([L.missions(), L.firstWinBonus(), p ? L.bond(p.id) : null, unlock('training').unlocked ? L.training() : null]);
   Clear('home'); SetArt('Art/home-paddock');
   const u = player.unlocks;
@@ -1914,13 +1928,14 @@ function linkArgs(context) {
 }
 /** Home / after a result / after a purchase: shows the prompt when the rules say so; returns true when it did. */
 function MaybeLinkPrompt(context, next) {
+  if (!sessionPrompt.can('account_link')) return false; // §58.11 = §64.6 (R21 integration): another prompt took this session
   const r = linkOp('eval', linkArgs(context));
   if (!r.show) return false;
   LinkPrompt(r.trigger, next);
   return true;
 }
 function LinkPrompt(trigger, next = Home) {
-  promptSession.claimed ??= 'account_link'; // round 21 (§64.6): one system prompt per session
+  sessionPrompt.claim('account_link'); // §58.11 = §64.6: one prompt per session (R21 integration: the one gate)
   const v = linkOp('show', { trigger, ios: true }).view; // counts as shown now (once only)
   currentScreen = next; Clear('link-prompt'); SetArt('Art/home-paddock', false); Shade('dim');
   const box = Dialog('Link prompt', 940, 600); box.dataset.trigger = trigger;
@@ -2755,20 +2770,20 @@ const cnsDevice = { get att() { return prefs.get('muchi.att', 'not_determined');
 const cnsView = () => L.privacy.view();
 /** Before the first rewarded ad: the pre-prompt when the server names this moment (never in the FTUE). */
 async function ConsentBeforeAd(next) {
-  if (ftue || !sessionPrompt.can('consent')) return next(); // §58.11: another prompt showed this session → the ad as is
+  if (ftue || !sessionPrompt.can('consent_pre_prompt')) return next(); // §58.11: another prompt showed this session → the ad as is
   const v = await cnsView();
   if (!v.prompt) return next();
   return ConsentPrompt(next, v);
 }
 /** On the home after a policy update (decided before, asked again): drawn before home like the comeback welcome. */
 async function consentHomeDue() {
-  if (ftue || !sessionPrompt.can('consent')) return null;
+  if (ftue || !sessionPrompt.can('consent_pre_prompt')) return null;
   const v = await cnsView();
   return v.prompt === 'next_home' && v.decidedVersion ? v : null;
 }
 async function ConsentPrompt(next, v0) {
   const v = v0 ?? await cnsView();
-  sessionPrompt.claim('consent');
+  sessionPrompt.claim('consent_pre_prompt');
   currentScreen = () => ConsentPrompt(next); Clear('consent-prompt'); SetArt('Art/home-paddock', false); Shade('dim');
   const box = Dialog('Consent prompt', 1040, 700);
   box.dataset.prompt = v.prompt ?? '';
@@ -3667,7 +3682,7 @@ async function ComebackWelcome(v) {
   currentScreen = () => ComebackWelcome();
   v ??= await cbView();
   if (!v.active) return Home();
-  promptSession.claimed ??= 'comeback_welcome'; // round 21 (§64.6): the welcome takes this session
+  sessionPrompt.claim('comeback_welcome'); // §58.11 = §64.6: the welcome takes this session
   const w = v.window;
   Clear('comeback-welcome'); SetArt('Art/first-ride'); Shade('left');
   Kicker('おかえりなさい　/　復帰キャンペーン', 82, 112, undefined, { size: 18 });
@@ -4051,12 +4066,12 @@ let revPrompted = false;
 function revLog(x) { (globalThis.__muchiReview ??= []).push(x); }
 /** A happy moment's screen was closed: ask (or not) on the real rules. Returns the outcome. */
 async function reviewMoment(moment, after = Home) {
-  if (!sessionPrompt.can('review')) { revLog({ moment, skipped: 'session_prompt' }); return 'skipped'; } // §58.11: another prompt showed
+  if (!sessionPrompt.can('review_prompt')) { revLog({ moment, skipped: 'session_prompt' }); return 'skipped'; } // §58.11: another prompt showed
   if (revPrompted) { revLog({ moment, skipped: 'session' }); return 'skipped'; }
   const r = await L.reviewPrompt.check(moment, REV_SESSION, { inFtue: false, minutesSinceLoss: null, minutesSinceError: null, minutesSinceMaintenanceNotice: null });
   if (!r.ok || !r.value.show) { revLog({ moment, skipped: r.ok ? r.value.reason : r.code }); return 'skipped'; }
   revPrompted = true;
-  sessionPrompt.claim('review');
+  sessionPrompt.claim('review_prompt');
   revLog({ moment, style: r.value.style, promptId: r.value.promptId });
   if (r.value.style === 'soft') { ReviewSoft(r.value.promptId, moment, after); return 'soft'; }
   await ReviewNativeSim(r.value.promptId, moment, after); return 'native';
@@ -7149,12 +7164,17 @@ function TransferDone(v) {
 /**
  * R20 integration (§58.11, §54 × §59–§61; = unity AccountChangeReset): the account on this device changed (SESSION_REPLACED on the
  * old device, a redeemed code on the new one) — the device reminders are cancelled and forgotten, the error reporter sends what it
- * queued without a player id, and the review / one-prompt session starts again.
+ * queued without a player id, and the review / one-prompt session starts again (R21: and the waiting link and the release
+ * notes' session state go).
  */
 function deviceAccountChanged() {
   lnSet(LN_SCHEDULED, JSON.stringify({ ids: {} }));
   try { if (ceReady) { engine.CeAccountChanged(); ceSave(); } } catch { /* the reporter never throws into the page */ }
   revPrompted = false;
+  // R21 integration (§54 × §63 / §64): the link waiting on this device came for the old account; the release notes'
+  // "shown this session" goes with the session ("seen" is per account on the server)
+  lkInput = '';
+  rnState.shown = false;
   sessionPrompt.reset();
   globalThis.__muchiAccountChanges = (globalThis.__muchiAccountChanges ?? 0) + 1;
 }
@@ -8199,7 +8219,6 @@ function LessonResult(f) {
 // skipped, and お知らせ › アップデート情報 (from the activity screen and ヒント). Nothing is granted.
 // KPI release_notes_view / release_notes_target / release_notes_history (globalThis.__muchiKpi, the shape the client sends).
 const RN_VERSION = '1.2.0';
-const promptSession = { claimed: null }; // one system prompt per app session (SessionPrompts in the client)
 const rnState = { shown: false, sheet: null, page: 0, back: null, open: null };
 const rnLang = () => (isJa() ? 'ja' : 'en');
 const rnKpi = (name, props) => (globalThis.__muchiKpi ??= []).push({ name, ...props });
@@ -8208,10 +8227,11 @@ const rnArt = (key) => TIP_ART[key] ?? 'Art/home-paddock';
 const rnDate = (d) => String(d ?? '').replace(/-/g, '.');
 /** At a home arrival: shows the sheet when the server says so and the session is free. Returns true when it opened. */
 async function MaybeReleaseNotes() {
-  if (rnState.shown || promptSession.claimed) return false;
+  if (rnState.shown || !sessionPrompt.can('release_notes') || sessionPrompt.shown) return false;
   const r = await L.releaseNotesCheck(RN_VERSION, rnLang());
   if (!r.ok || !r.value.show || !r.value.show.pages.length) return false;
-  promptSession.claimed = 'release_notes'; rnState.shown = true;
+  if (!sessionPrompt.claim('release_notes')) return false;
+  rnState.shown = true;
   await L.releaseNotesSeen(r.value.show.appVersion); // marked when it opens (idempotent)
   rnState.sheet = r.value.show; rnState.page = 0;
   rnKpi('release_notes_view', { appVersion: rnState.sheet.appVersion, stage: 'shown', page: 1, pages: rnState.sheet.pages.length });
@@ -8313,7 +8333,7 @@ function rnOpenHistory(source, back) { rnKpi('release_notes_history', { source }
 /** Demo: the store builds come out after this account was created (an updater), nothing seen yet; the sheet shows now. */
 async function ReleaseNotesDemo() {
   await L.releaseNotesDemo();
-  rnState.shown = false; promptSession.claimed = null;
+  rnState.shown = false; sessionPrompt.reset();
   if (!(await MaybeReleaseNotes())) {
     // an account still in the FTUE gets no sheet on the real rules: show the newest note as the sheet for the demo
     const h = await L.releaseNotes(RN_VERSION, rnLang());
@@ -8826,8 +8846,8 @@ async function LnotifPrePromptCard(after) {
   if (cur?.dataset.screen !== 'training-result') return null;
   lnSet(LN_TRAINED, '1');
   const d = await L.localNotify.digest();
-  if (!lnPrePromptDue(d) || !sessionPrompt.can('notifications') || cur?.dataset.screen !== 'training-result') return null; // §58.11
-  sessionPrompt.claim('notifications');
+  if (!lnPrePromptDue(d) || !sessionPrompt.can('reminders_pre_permission') || cur?.dataset.screen !== 'training-result') return null; // §58.11
+  sessionPrompt.claim('reminders_pre_permission');
   const c = Glass('Reminders primer', 836, 134, 640, 420, undefined, .9);
   c.classList.add('ln-primer', 'rise');
   lnPrimerBody(c, d, after, 600);
@@ -8955,7 +8975,9 @@ async function boot() {
     show: (name, ...a) => ({ Calendar: () => Calendar(), ReleaseNotes: () => ReleaseNotesDemo(), ReleaseNotesHistory: (src) => rnOpenHistory(src ?? 'notices', () => Activity()), Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     // R20 integration (§58.11): the one-prompt gate and a happy moment (review) for the flows
-    prompts: { shown: () => sessionPrompt.shown, reset: () => sessionPrompt.reset(), claimForTest: (k) => sessionPrompt.claim(k), review: (m) => reviewMoment(m ?? 'first_win') },
+    prompts: { shown: () => sessionPrompt.shown, reset: () => sessionPrompt.reset(), claimForTest: (k) => sessionPrompt.claim(k), review: (m) => reviewMoment(m ?? 'first_win'),
+      // R21 integration (§58.11 = §64.6): the one table and the pick among prompts due at one moment
+      priority: () => [...PROMPT_PRIORITY], pick: (due) => sessionPrompt.pick(due), can: (k) => sessionPrompt.can(k), ftue: (on) => { ftue = !!on; } },
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),
     logic: L, view: () => view,

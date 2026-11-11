@@ -48,6 +48,7 @@ namespace Muchi.Game
         public static readonly IReadOnlyDictionary<string, string> Icons = new Dictionary<string, string>
         {
             ["activity"] = "bell", ["team_feed"] = "stamp", ["rival"] = "rival", ["stable"] = "stable", ["hall"] = "trophy", ["replays"] = "replay", ["cups"] = "cup", ["links"] = "link", // §63: shared links and rematch rooms
+            ["showcase"] = "card", // §62 (R21 integration): the trainer card is neutral both ways
         };
 
         private readonly IReportApi _api;

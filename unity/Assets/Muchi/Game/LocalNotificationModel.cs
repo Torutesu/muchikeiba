@@ -159,12 +159,12 @@ namespace Muchi.Game
             Kv.Set(KeyTrainingStarted, "1");
             Refresh();
             bool due = PrePromptDue;
-            if (due) Prompts?.Claim(SessionPromptKind.Notifications); // the caller shows the sheet now
+            if (due && Prompts != null) due = Prompts.TryClaim(SessionPrompts.RemindersPrePermission); // the caller shows the sheet now
             return due;
         }
 
-        /// <summary>R20 integration: the session's one-prompt gate (shared with ConsentModel and ReviewPromptModel).</summary>
-        public SessionPromptGate Prompts { get; set; }
+        /// <summary>§58.11 (R21 integration): the session's one prompt gate, shared by every model that can interrupt the player.</summary>
+        public SessionPrompts Prompts { get; set; }
 
         /// <summary>The sheet is due: reminders off, a training started, not denied by the OS, asks left and retryDays since the last.</summary>
         public bool PrePromptDue
@@ -173,7 +173,7 @@ namespace Muchi.Game
             {
                 var d = Digest;
                 if (d == null || !d.Enabled || d.Onboarding || d.Deleting || d.CategoryOn("reminders")) return false;
-                if (Prompts != null && !Prompts.CanShow(SessionPromptKind.Notifications)) return false; // R20: one prompt per session
+                if (Prompts != null && !Prompts.CanShow(SessionPrompts.RemindersPrePermission)) return false; // §58.11: one prompt per session
                 if (Permission == LocalNotificationPermission.Denied) return false;
                 if (Kv.Get(KeyTrainingStarted) != "1" && !d.TrainedEver) return false;
                 var (asks, last) = Asks();

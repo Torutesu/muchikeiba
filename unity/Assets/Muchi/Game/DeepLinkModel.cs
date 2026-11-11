@@ -140,6 +140,12 @@ namespace Muchi.Game
 
         private void Clear() { _kv.Set(KeyPending, ""); _kv.Set(KeyPendingEntry, ""); }
 
+        /// <summary>
+        /// R21 integration (§54 × §63): the signed-in account changed on this device (SESSION_REPLACED, a redeemed transfer code):
+        /// the link that was waiting is dropped (it came for the old account); the install referrer is not read again.
+        /// </summary>
+        public void ForgetPending() { Clear(); LastRoute = null; Notice = null; }
+
         /// <summary>REQ-LINK-003/024: a link for the share sheet (the server's text, no rewards or names). False when not shared.</summary>
         public async Task<CreatedLink> CreateAsync(string type, IDictionary<string, string> target = null, CancellationToken ct = default)
         {

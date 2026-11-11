@@ -51,7 +51,10 @@ namespace Muchi.Game
         public ComebackView View { get; private set; }
         public bool Active => View != null && View.Active && View.Window != null;
         public ComebackWindow Window => Active ? View.Window : null;
-        public bool ShowWelcome => Active && Window.ShowWelcome;
+        /// <summary>The welcome screen is due (§20) and the session's prompt is free for it (§58.11, R21 integration).</summary>
+        public bool ShowWelcome => Active && Window.ShowWelcome && (Prompts == null || Prompts.CanShow(SessionPrompts.ComebackWelcome));
+        /// <summary>§58.11 (R21 integration): the session's one prompt gate.</summary>
+        public SessionPrompts Prompts { get; set; }
         public bool Blocked => Active && Window.Blocked;
         public List<ComebackDayCell> Days { get; private set; } = new List<ComebackDayCell>();
         public List<ComebackMissionRow> Missions { get; private set; } = new List<ComebackMissionRow>();
@@ -108,6 +111,7 @@ namespace Muchi.Game
         public async Task MarkWelcomedAsync(CancellationToken ct = default)
         {
             if (!Active || !ServerAvailable) return;
+            Prompts?.TryClaim(SessionPrompts.ComebackWelcome); // the welcome is on screen: it took this session
             try { await B.Api.MarkComebackWelcomedAsync(ct); Window.ShowWelcome = false; }
             catch (ApiException e) { Message = UxText.For(e); }
         }

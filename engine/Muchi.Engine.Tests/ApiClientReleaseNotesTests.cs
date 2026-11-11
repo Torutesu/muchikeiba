@@ -1,3 +1,4 @@
+using System.Linq;
 using Muchi.Client;
 using Muchi.Net;
 
@@ -94,8 +95,35 @@ namespace Muchi.Engine.Tests
             outage = OutageKind.None;
             Assert.True(p.TryClaim(SessionPrompts.ReviewPrompt));
             Assert.Throws<ArgumentException>(() => p.TryClaim("banner"));
-            // the order the spec states (protocol §64.6)
-            Assert.Equal(new[] { "recommended_update", "consent_pre_prompt", "comeback_welcome", "release_notes", "account_link", "review_prompt" }, SessionPrompts.Priority);
+            // the order the spec states (protocol §58.11 = §64.6, R21 integration: the one table for every prompt)
+            Assert.Equal(new[] { "recommended_update", "consent_pre_prompt", "comeback_welcome", "release_notes", "reminders_pre_permission", "account_link", "review_prompt" }, SessionPrompts.Priority);
+        }
+
+        [Fact]
+        public void SessionPromptsAreTheOneGateForEveryPromptAndNoneInTheFtue()
+        {
+            bool ftue = true;
+            var p = new SessionPrompts(null, () => ftue);
+            // none during the FTUE, whatever the kind
+            foreach (var k in SessionPrompts.Priority) { Assert.False(p.CanShow(k)); Assert.False(p.TryClaim(k)); }
+            Assert.False(p.Free);
+            Assert.Null(p.Pick(SessionPrompts.Priority));
+            ftue = false;
+            // several due at one moment: the table decides
+            Assert.Equal(SessionPrompts.ReleaseNotes, p.Pick(new[] { SessionPrompts.ReviewPrompt, SessionPrompts.RemindersPrePermission, SessionPrompts.ReleaseNotes }));
+            Assert.Equal(SessionPrompts.RemindersPrePermission, p.Pick(new[] { SessionPrompts.ReviewPrompt, SessionPrompts.AccountLink, SessionPrompts.RemindersPrePermission }));
+            Assert.False(p.TryClaim(SessionPrompts.RemindersPrePermission, new[] { SessionPrompts.ComebackWelcome }));
+            Assert.True(p.TryClaim(SessionPrompts.RemindersPrePermission, new[] { SessionPrompts.AccountLink, SessionPrompts.ReviewPrompt }));
+            // the sheet on screen may be built again (the same kind); nothing else shows this session
+            Assert.True(p.CanShow(SessionPrompts.RemindersPrePermission));
+            Assert.True(p.TryClaim(SessionPrompts.RemindersPrePermission));
+            foreach (var k in SessionPrompts.Priority.Where(k => k != SessionPrompts.RemindersPrePermission)) Assert.False(p.CanShow(k));
+            Assert.Null(p.Pick(new[] { SessionPrompts.RecommendedUpdate, SessionPrompts.ConsentPrePrompt }));
+            Assert.Throws<ArgumentException>(() => p.CanShow("banner"));
+            // a new session (next launch, or another account on this device)
+            p.NewSession();
+            Assert.True(p.Free);
+            Assert.Null(p.Claimed);
         }
 
         [Fact]

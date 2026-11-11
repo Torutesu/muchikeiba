@@ -909,8 +909,8 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await page.evaluate(() => globalThis.__muchi.logic.privacy.publishPolicy('2027-01-01'));
     // R20 integration (§58.11): another prompt already showed this session (the reminders card after the first training) →
     // the home stays the home; the sheet waits for the next launch
-    await page.evaluate(() => { globalThis.__muchi.prompts.reset(); globalThis.__muchi.prompts.claimForTest?.('notifications'); });
-    if (await page.evaluate(() => globalThis.__muchi.prompts.shown()) === 'notifications') {
+    await page.evaluate(() => { globalThis.__muchi.prompts.reset(); globalThis.__muchi.prompts.claimForTest?.('reminders_pre_permission'); });
+    if (await page.evaluate(() => globalThis.__muchi.prompts.shown()) === 'reminders_pre_permission') {
       await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home'); await page.waitForTimeout(500);
       assert.equal(await page.locator('.screen.in').getAttribute('data-screen'), 'home', 'no consent sheet in a session that showed the reminders card');
     }
@@ -920,11 +920,16 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await shot('consent-prompt-policy-update', 250);
     await page.locator('.screen.in [data-cns="later"]').click(); await waitScreen('home');
     // R20 integration (§58.11): the consent sheet claimed this session — no review and no second consent sheet until a new session
-    assert.equal(await page.evaluate(() => globalThis.__muchi.prompts.shown()), 'consent', 'the consent sheet claims the session');
+    assert.equal(await page.evaluate(() => globalThis.__muchi.prompts.shown()), 'consent_pre_prompt', 'the consent sheet claims the session');
     await page.evaluate(() => globalThis.__muchi.logic.reviewPrompt.demo(false));
     assert.equal(await page.evaluate(() => globalThis.__muchi.prompts.review('first_win')), 'skipped', 'no review right after the consent sheet');
     assert.equal((await page.evaluate(() => globalThis.__muchiReview)).at(-1).skipped, 'session_prompt');
     await page.evaluate(() => globalThis.__muchi.prompts.reset()); // the next launch
+    // R21 integration (§58.11 = §64.6): ONE table for every prompt; several due → the table decides; none in the FTUE
+    assert.deepEqual(await page.evaluate(() => globalThis.__muchi.prompts.priority()), ['recommended_update', 'consent_pre_prompt', 'comeback_welcome', 'release_notes', 'reminders_pre_permission', 'account_link', 'review_prompt'], 'the one prompt table');
+    assert.equal(await page.evaluate(() => globalThis.__muchi.prompts.pick(['review_prompt', 'reminders_pre_permission', 'release_notes', 'account_link'])), 'release_notes', 'release notes before the reminders card, the account link and the review');
+    assert.deepEqual(await page.evaluate(() => { const p = globalThis.__muchi.prompts; p.ftue(true); const r = [p.can('review_prompt'), p.can('consent_pre_prompt'), p.pick(['release_notes'])]; p.ftue(false); return r; }), [false, false, null], 'no prompt during the FTUE');
+    assert.deepEqual(await page.evaluate(() => { const p = globalThis.__muchi.prompts; p.claimForTest('release_notes'); const r = [p.can('account_link'), p.can('reminders_pre_permission'), p.can('release_notes')]; p.reset(); return r; }), [false, false, true], 'the release notes took the session: no account link, no reminders card');
     const after = await page.evaluate(() => globalThis.__muchi.logic.privacy.view());
     assert.equal(after.prompt, null, 'later: not again for this version');
     assert.equal(after.analytics.effective, false, 'the earlier choice keeps applying');

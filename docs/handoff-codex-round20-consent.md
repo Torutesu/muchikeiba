@@ -68,7 +68,7 @@
 6. サーバーのプライバシーポリシーの版を上げる → 規約の再同意の後、ホームで事前の画面がもう一度。
 
 ## 9. Round 20 統合で足したこと（protocol §58.10・§58.11）
-- **1セッションに1つ**：起動ごとに `new SessionPromptGate()` を1つ作り、`ConsentModel.Prompts`・`LocalNotificationModel.Prompts`・`ReviewPromptModel.Prompts` に同じものを渡す。事前の画面は `ShouldShowPrePrompt(...)` が true の時だけ出し、出す時に `BuildPrePrompt()` を呼ぶ（これがセッションを取る）。通知の前置きは `OnTrainingStarted()` が true の時だけ、レビューは `OnMomentAsync` の結果に従う。
+- **1セッションに1つ**（R21 統合で1つの仕組みに：`SessionPromptGate` は無くなった）：起動ごとに `new SessionPrompts(() => api.Outage, () => inFtue)` を1つ作り、`MaintenanceModel.Prompts`・`ConsentModel.Prompts`・`ComebackModel.Prompts`・`ReleaseNotesModel`（コンストラクタ）・`LocalNotificationModel.Prompts`・`AccountLinkPrompt.Prompts`・`ReviewPromptModel.Prompts` に同じものを渡す。順は protocol §58.11 の表。事前の画面は `ShouldShowPrePrompt(...)` が true の時だけ出し、出す時に `BuildPrePrompt()` を呼ぶ（これがセッションを取る）。通知の前置きは `OnTrainingStarted()` が true の時だけ、レビューは `OnMomentAsync` の結果に従う。
 - **エラー報告の同意**：`clientErrorModel.FollowConsent(consentModel)`（分析の選択 = プレイヤー ID を付けるかどうか）。`reporter.AllowsDiagnostics` を自分で書かない。
 - **アカウントが変わった時**：`var reset = new AccountChangeReset { Reminders = localNotificationModel, Errors = clientErrorModel, Review = reviewPromptModel, Prompts = gate }; reset.Watch(maintenanceModel); reset.Watch(transferCodeModel);`（`SESSION_REPLACED` の画面が出た時・引き継ぎコードでサインインした時に1回ずつ）。サインアウト・「新しく始める」でも `reset.OnAccountChanged()` を呼ぶ。
 - 設定の「その他」：設定・サポートのページに「通知」を足し、「通報とブロック」は 見た目・お世話・仲間 のページへ（両ページとも8行まで、特大の文字ではみ出さない）。「プライバシー」は データのダウンロード・広告と分析・エラーの自動送信 を並べた画面。

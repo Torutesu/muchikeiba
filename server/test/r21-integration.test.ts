@@ -56,6 +56,37 @@ describe('§58 KPI classification of the Round 21 events (REQ-CNS-012, §58.7)',
   });
 });
 
+describe('§58.11 = §64.6: ONE prompt gate with one priority table (C#, Unity, prototype, spec)', () => {
+  const TABLE = ['recommended_update', 'consent_pre_prompt', 'comeback_welcome', 'release_notes', 'reminders_pre_permission', 'account_link', 'review_prompt'];
+  it('the protocol table (§58.11) is the order, and §64.6 points at it instead of keeping its own list', () => {
+    const p = read('contracts/protocol.md');
+    const s = p.slice(p.indexOf('### 58.11'), p.indexOf('## 59.'));
+    const ids = [...s.matchAll(/^\s*\| \d \| `([a-z_]+)` \|/gm)].map((x) => x[1]);
+    expect(ids).toEqual(TABLE);
+    const s646 = p.slice(p.indexOf('### 64.6'), p.indexOf('### 64.7'));
+    expect(s646).toContain('§58.11');
+    expect(s646).not.toMatch(/^\d\. /m); // no second numbered list
+  });
+  it('Muchi.Client.SessionPrompts.Priority and the prototype PROMPT_PRIORITY are the same table; the Round 20 gate is gone', () => {
+    const cs = read('engine/Muchi.Client/ReleaseNotes.cs');
+    const consts = Object.fromEntries([...cs.matchAll(/(\w+) = "([a-z_]+)"/g)].map((x) => [x[1], x[2]]));
+    const pri = /Priority = \{ ([^}]+) \}/.exec(cs)![1]!.split(',').map((x) => consts[x.trim()]);
+    expect(pri).toEqual(TABLE);
+    const app = read('tools/figma-prototype/site/app.js');
+    expect(JSON.parse(/const PROMPT_PRIORITY = (\[[^\]]+\]);/.exec(app)![1]!.replace(/'/g, '"'))).toEqual(TABLE);
+    expect(app).not.toMatch(/promptSession/);
+    const game = csFiles('unity/Assets/Muchi/Game');
+    expect(game).not.toMatch(/class SessionPromptGate|SessionPromptKind|new SessionPromptGate/);
+    for (const model of ['ConsentModel', 'LocalNotificationModel', 'ReviewPromptModel', 'AccountLinkPrompt', 'ComebackModel', 'MaintenanceModel']) {
+      const i = game.indexOf(`class ${model}`);
+      expect(i, model).toBeGreaterThan(0);
+      expect(game.slice(i, i + 40_000), model).toMatch(/public SessionPrompts Prompts \{ get; set; \}/);
+    }
+    // every kind is claimed by its model (the C# constant names appear in a TryClaim or CanShow)
+    for (const k of ['RecommendedUpdate', 'ConsentPrePrompt', 'ComebackWelcome', 'ReleaseNotes', 'RemindersPrePermission', 'AccountLink', 'ReviewPrompt']) expect(game, k).toMatch(new RegExp(`(TryClaim|CanShow)\\(SessionPrompts\\.${k}\\b`));
+  });
+});
+
 describe('§51 data export and account deletion × Round 21 state', () => {
   const NOW = Date.UTC(2026, 10, 11, 3);
   async function seeded() {

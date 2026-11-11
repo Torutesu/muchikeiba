@@ -126,7 +126,7 @@ static class ReportChecks
         var b = new BlockListModel(bapi);
         await b.OpenAsync();
         check(b.Rows.Count == 2 && b.Rows[0].Name == "ベニ" && b.CountText == "2/100", "list: names as the server sends them, the count");
-        check(b.Effects.Count == 7 && b.Effects.All(e => e.Icon != "info"), "effects: one line per feature, each with an icon");
+        check(b.Effects.Count == 9 && b.Effects.All(e => e.Icon != "info"), "effects: one line per feature, each with an icon");
         b.AskUnblock(b.Rows[0]);
         check(b.Confirming?.PlayerId == "b" && !bapi.Calls.Any(c => c.StartsWith("unblock")), "unblock: asks first, sends nothing yet");
         b.CancelUnblock();

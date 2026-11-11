@@ -98,6 +98,8 @@ namespace Muchi.Game
         public MaintenanceWindowView Banner { get; private set; }
         /// <summary>Show the recommended-update sheet (once per recommended version).</summary>
         public bool ShowRecommend { get; private set; }
+        /// <summary>§58.11 (R21 integration): the session's one prompt gate (null = no gate).</summary>
+        public SessionPrompts Prompts { get; set; }
         public ClientVersionStatus Client { get; private set; }
         /// <summary>The recommended version the player said "あとで" to (the app stores it between launches).</summary>
         public string DismissedVersion { get; set; }
@@ -219,6 +221,8 @@ namespace Muchi.Game
                     if (PartialNotice != null && !s.Active.Any(w => w.Id == PartialNotice.WindowId)) PartialNotice = null;
                 }
                 bool recommend = s.Client.Recommended && s.Client.RecommendedVersion != null && s.Client.RecommendedVersion != DismissedVersion && Screen == MaintenanceScreen.None;
+                // §58.11 (R21 integration): the recommended update is the first prompt of the table; it takes the session when shown
+                if (recommend && !ShowRecommend && Prompts != null) recommend = Prompts.TryClaim(SessionPrompts.RecommendedUpdate);
                 if (recommend && !ShowRecommend) PromptShown("recommended");
                 ShowRecommend = recommend;
             }

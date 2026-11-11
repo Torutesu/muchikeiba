@@ -46,8 +46,10 @@
 2. 広告・分析の同意の事前案内（§58、Round 20）：`ConsentPrePrompt`。
 3. 復帰キャンペーンの歓迎画面（§20）：`ComebackWelcome`。
 4. アップデートのお知らせ：`ReleaseNotes`（このモデルが取る）。
-5. 引き継ぎの案内（REQ-UXS-073）：`AccountLink`。
-6. ストアのレビューの依頼（§59、Round 20）：`ReviewPrompt`。
+5. 端末の通知の前置き（§61、Round 20）：`RemindersPrePermission`（R21 統合で表に入った）。
+6. 引き継ぎの案内（REQ-UXS-073）：`AccountLink`。
+7. ストアのレビューの依頼（§59、Round 20）：`ReviewPrompt`。
+（R21 統合：この表は protocol §58.11 が唯一の正。R20 の `SessionPromptGate` は無くなり、全部のモデルが同じ `SessionPrompts` を `Prompts` に持つ。FTUE の間はどれも出ない＝`new SessionPrompts(outage, inFtue)`。）
 出す前に `sessionPrompts.TryClaim(kind, 同じ瞬間に出せる他の種類)` が true のときだけ出す。コールドスタートで `NewSession()`（`ReleaseNotesModel.NewSession()` は中で呼ぶ）。
 
 ## 6. 絵

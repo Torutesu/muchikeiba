@@ -62,6 +62,9 @@ namespace Muchi.Game
 
         public AccountLinkPrompt(IKeyValueStore store) { _kv = store ?? new MemoryKeyValueStore(); }
 
+        /// <summary>§58.11 (R21 integration): the session's one prompt gate (null = no gate, e.g. in checks of this model alone).</summary>
+        public SessionPrompts Prompts { get; set; }
+
         public string State => _kv.Get(KeyState);
         public bool Shown => State != null;
         public bool Linked => State == "linked";
@@ -89,6 +92,7 @@ namespace Muchi.Game
         public bool ShouldShow(LinkPromptContext context, bool anonymous, int gameDay, bool ftueDone, bool online, bool deletionScheduled = false, bool purchased = false)
         {
             if (Shown || !anonymous || !online || deletionScheduled || !ftueDone) return false;
+            if (Prompts != null && !Prompts.CanShow(SessionPrompts.AccountLink)) return false; // §58.11 (R21 integration): one prompt per session
             if (context != LinkPromptContext.Home && context != LinkPromptContext.ResultClosed && context != LinkPromptContext.PurchaseComplete) return false;
             return TriggerFor(gameDay, purchased) != LinkPromptTrigger.None;
         }
@@ -106,6 +110,7 @@ namespace Muchi.Game
         /// </summary>
         public AccountLinkPromptView Show(LinkPromptTrigger trigger, bool ios = true)
         {
+            Prompts?.TryClaim(SessionPrompts.AccountLink);
             if (!Shown) _kv.Set(KeyState, "shown");
             return new AccountLinkPromptView
             {

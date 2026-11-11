@@ -15,7 +15,8 @@ import { deletionScheduled } from './accountDeletion.js';
 import { bettingWordsIn } from './bettingWords.js';
 import { rivalTrackName } from './rival.js';
 import { formatRaceTime } from './weeklyChallenge.js';
-import { ensureFeed, notePostedIn } from './teamFeed.js';
+import { notePostedIn } from './teamFeed.js';
+import { blockListOf } from './blocks.js';
 import { catalogFor, enWordingProblems, ordinal, translateText } from '../i18n/catalog.js';
 import type { Locale } from '../i18n/locale.js';
 import quickChatJson from '../../master/quick-chat.json';
@@ -171,7 +172,7 @@ export function playerQchatCheck(m: Master, s: PlayerState, phraseId: string, in
   const want = phraseSlots(ph);
   const got = Object.keys(input ?? {});
   if (got.length !== want.length || !want.every((k) => typeof input[k] === 'string')) throw new AppError('BAD_REQUEST', `phrase ${ph.id} takes the slots: ${want.join(', ') || 'none'}`);
-  const muted = [...ensureFeed(s).muted];
+  const muted = [...blockListOf(s)]; // the one block list (§47.1)
   const slots: QSlot[] = want.map((name) => {
     const ref = input[name]!;
     if (!QCHAT_REF_RE.test(ref)) throw new AppError('BAD_REQUEST', `bad ${name}`);
@@ -219,7 +220,7 @@ export function playerQchatOptions(m: Master, s: PlayerState, locale: Locale, no
   const phrases = qc.phrases.map((p) => ({ id: p.id, category: p.category, slots: phraseSlots(p), mention: isMention(p), qchatTemplate: locale === 'ja' ? p.ja : p.en }));
   const empty = { course: [], horse: [], race: [], time: [], cup: [], player: [] } as Record<QChatSlotName, QChatOption[]>;
   const limits = { postIntervalMs: qc.config.postIntervalMs, postsPerDay: qc.config.postsPerDay, mentionsPerDay: qc.config.mentionsPerDay, repeatWindowMs: qc.config.repeatWindowMs };
-  if (!qc.config.enabled || !teamId) return { enabled: qc.config.enabled, teamId, deleting: deletionScheduled(s), limits, phrases, options: empty, muted: [...ensureFeed(s).muted] };
+  if (!qc.config.enabled || !teamId) return { enabled: qc.config.enabled, teamId, deleting: deletionScheduled(s), limits, phrases, options: empty, muted: [...blockListOf(s)] };
   const none = new Map<string, string>();
   const val = (x: QSlot) => slotValue(m, x, locale, none);
   const course = m.tracks.map((t) => ({ ref: t.id, qchatValue: courseLabel(m, t.id, locale) }));
@@ -229,5 +230,5 @@ export function playerQchatOptions(m: Master, s: PlayerState, locale: Locale, no
   const time = Object.entries(s.timeAttack?.allTimeBest ?? {}).filter(([id]) => m.tracks.some((t) => t.id === id))
     .map(([id, b]) => ({ ref: id, qchatValue: val({ name: 'time', ref: id, trackId: id, ms: b.timeMs }) }));
   const cup = (s.cups?.active ?? []).filter((x) => x.noted && x.until > now && !!x.cupName).map((x) => ({ ref: x.cupId, qchatValue: x.cupName! }));
-  return { enabled: true, teamId, deleting: deletionScheduled(s), limits, phrases, options: { course, horse, race, time, cup, player: [] as QChatOption[] }, muted: [...ensureFeed(s).muted] };
+  return { enabled: true, teamId, deleting: deletionScheduled(s), limits, phrases, options: { course, horse, race, time, cup, player: [] as QChatOption[] }, muted: [...blockListOf(s)] };
 }

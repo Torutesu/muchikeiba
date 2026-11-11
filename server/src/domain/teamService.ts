@@ -344,9 +344,20 @@ export class TeamsService {
    */
   async mute(uid: string, target: string, muted: boolean) {
     const r = await this.players.feedMute(uid, target, muted);
-    const st = await this.players.state(uid).catch(() => null);
-    if (st?.teamId) await this.teams.qchatBlocks(st.teamId, uid, r.muted).catch(() => undefined);
+    await this.pushBlocks(uid, r.muted);
     return r;
+  }
+  /**
+   * Round 18 integration (REQ-RPT-010 × REQ-QCHAT-007): the one block list also changes from the block screen, a report's
+   * "also block" and the rival block. After such a change the branch's copy is refreshed at once (best effort, like mute).
+   */
+  async syncBlocks(uid: string) {
+    const r = await this.players.feedMutes(uid).catch(() => null);
+    if (r) await this.pushBlocks(uid, r.muted);
+  }
+  private async pushBlocks(uid: string, muted: string[]) {
+    const st = await this.players.state(uid).catch(() => null);
+    if (st?.teamId) await this.teams.qchatBlocks(st.teamId, uid, muted).catch(() => undefined);
   }
 
   // ---------------------------------------------------------------- quick chat (REQ-QCHAT-*, protocol §52)

@@ -1094,7 +1094,9 @@ export const routes: Route[] = [
   { method: 'GET', path: '/v1/reports/options', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('reportOptions', u) },
   { method: 'POST', path: '/v1/reports', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, reportBodySchema);
-    return new ReportsService(() => c.master, c.player, () => c.ops?.playerReports, (raceId, pid) => c.race.report(raceId, pid), c.clock).submit(u, { ...b, targetId: playerIdParam(b.targetId) } as ReportBody);
+    const res = await new ReportsService(() => c.master, c.player, () => c.ops?.playerReports, (raceId, pid) => c.race.report(raceId, pid), c.clock).submit(u, { ...b, targetId: playerIdParam(b.targetId) } as ReportBody);
+    if (b.alsoBlock) await c.teams?.syncBlocks(u); // the branch's quick chat copy of the one block list (§52.7)
+    return res;
   } },
   { method: 'GET', path: '/v1/blocks', auth: 'player', handler: async (_r, _p, c, u) => {
     const ids = await c.player(u).invoke('blockIds', u);
@@ -1102,8 +1104,9 @@ export const routes: Route[] = [
     const profiles = ids.length === 0 ? [] : await c.friends.profilesOf(ids).catch(() => null);
     return blocksView(c.master, ids, profiles);
   } },
-  { method: 'PUT', path: '/v1/blocks/:playerId', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('blockSet', u, playerIdParam(p.playerId!), true, 'blocks') },
-  { method: 'DELETE', path: '/v1/blocks/:playerId', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('blockSet', u, playerIdParam(p.playerId!), false, 'blocks') },
+  // Round 18 integration: a change also refreshes the branch's quick chat copy of the list (REQ-QCHAT-007)
+  { method: 'PUT', path: '/v1/blocks/:playerId', auth: 'player', handler: async (_r, p, c, u) => { const r = await c.player(u).invoke('blockSet', u, playerIdParam(p.playerId!), true, 'blocks'); await c.teams?.syncBlocks(u); return r; } },
+  { method: 'DELETE', path: '/v1/blocks/:playerId', auth: 'player', handler: async (_r, p, c, u) => { const r = await c.player(u).invoke('blockSet', u, playerIdParam(p.playerId!), false, 'blocks'); await c.teams?.syncBlocks(u); return r; } },
   // ヘルプセンター (REQ-HELP-*, contracts/protocol.md §48): articles and search read the master only (no player state)
   { method: 'GET', path: '/v1/help', auth: 'player', handler: async (r, _p, c) => helpIndex(c.master, resolveLocale(r)) },
   { method: 'GET', path: '/v1/help/articles/:articleId', auth: 'player', handler: async (r, p, c) => {
@@ -1212,7 +1215,7 @@ export const routes: Route[] = [
   { method: 'DELETE', path: '/v1/photos/:photoId', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('photoDelete', u, p.photoId!) },
   { method: 'GET', path: '/v1/rival', auth: 'player', handler: async (_r, _p, c, u) => (c.rival ? c.rival.view(u) : { enabled: false }) },
   { method: 'PUT', path: '/v1/rival/settings', auth: 'player', handler: async (r, _p, c, u) => rival(c).setOptOut(u, (await body(r, z.object({ optOut: z.boolean() }).strict())).optOut) },
-  { method: 'POST', path: '/v1/rival/block', auth: 'player', handler: async (_r, _p, c, u) => rival(c).block(u) },
+  { method: 'POST', path: '/v1/rival/block', auth: 'player', handler: async (_r, _p, c, u) => { const r = await rival(c).block(u); await c.teams?.syncBlocks(u); return r; } },
   { method: 'POST', path: '/v1/rival/challenge', auth: 'player', handler: async (r, _p, c, u) => {
     const key = idem(r); // R12 leftover: a retry after a timeout must not use another daily challenge or re-send the invite
     const b = await body(r, z.object({ passphrase: z.string().min(1).max(64) }).strict());

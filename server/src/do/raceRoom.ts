@@ -9,6 +9,10 @@ import { HttpVerifierClient } from '../domain/verifier.js';
 import type { Rating } from '../domain/rating.js';
 import { verifyTicket } from '../http/ticket.js';
 import { admitSpectator } from '../domain/spectate.js';
+import {
+  blockHidden, cheerAdmit, cheerableMode, cheerFanout, cheerSummary, cheerSummaryKey, emptyTally, tallyAdd, withCheerAdvert,
+  CHEER_WINDOW_MS, type CheerRecipient, type CheerTally, type PendingCheer,
+} from '../domain/cheer.js';
 import { driveSettlement, newSettleMeta, upgradeSettleMeta, type SettleMeta } from '../race/settlement.js';
 import { dismissSettlementItem, retrySettlementItem, settlementDeadLetters, type DeadLetterItem, type RetryOutcome } from '../ops/deadLetter.js';
 import { newlyDead, reportDeadLetters } from './deadLetters.js';
@@ -19,7 +23,8 @@ import type { PlayerDO } from './player.js';
  * Per-socket state, kept by the runtime across hibernation. Spectators (REQ-SPEC-*) have slot null and
  * `spec` set: `sent` = last tick sent to them, `fin` = whether they already got the definitive final.
  */
-interface Attachment { slot: number | null; spec?: { sent: number; fin: boolean; playerId?: string } }
+interface Attachment { slot: number | null; spec?: { sent: number; fin: boolean; playerId?: string; lc?: number } }
+// REQ-CHEER-004 (§55): `spec.lc` = when this spectator's last cheer was accepted (the 2 s rate limit survives hibernation).
 
 /** REQ-SPEC-005: default spectator cap per room (env SPECTATOR_LIMIT overrides). */
 export const DEFAULT_SPECTATOR_LIMIT = 200;
@@ -39,6 +44,14 @@ export class RaceRoomDO extends DurableObject<Env> {
   private core: RaceRoomCore | null = null;
   private meta: SettleMeta | null = null;
   private driving = false;
+  // ---- 観戦中の応援 (REQ-CHEER-*, §55): kept beside the core, never inside it (no input, no log, no hash) ----
+  /** Accepted cheers of the open window and when it opened (memory only: a window lost to eviction is just not shown). */
+  private cheerWindow: PendingCheer[] = [];
+  private cheerWindowAt: number | null = null;
+  /** Block lists of the room's players and spectators (§47 single list), loaded on hello; absent = not known (fail closed). */
+  private cheerLists = new Map<string, ReadonlySet<string>>();
+  /** REQ-CHEER-011: the race's aggregate (storage key `cheer`, written to R2 once at the end). */
+  private tally: CheerTally = emptyTally();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -47,6 +60,7 @@ export class RaceRoomDO extends DurableObject<Env> {
       if (snap) this.core = RaceRoomCore.fromJSON(snap, cryptoRng);
       const meta = await ctx.storage.get<SettleMeta>('meta');
       this.meta = meta ? upgradeSettleMeta(meta) : null;
+      this.tally = (await ctx.storage.get<CheerTally>('cheer')) ?? emptyTally();
     });
   }
 
@@ -58,6 +72,24 @@ export class RaceRoomDO extends DurableObject<Env> {
   private spectatorLimit() {
     const v = Number(this.env.SPECTATOR_LIMIT ?? DEFAULT_SPECTATOR_LIMIT);
     return Number.isFinite(v) && v >= 0 ? Math.floor(v) : DEFAULT_SPECTATOR_LIMIT;
+  }
+
+  /** REQ-CHEER-001/015: cheers are on for watchable modes unless the environment turns them off (`CHEERS = "off"`). */
+  private cheersEnabled() {
+    return !!this.core && this.env.CHEERS !== 'off' && cheerableMode(this.core.config.mode);
+  }
+
+  /** REQ-CHEER-008: one player's block list (the §47 single list), once per room. False = could not be read. */
+  private async loadBlocks(pid: string): Promise<boolean> {
+    if (this.cheerLists.has(pid)) return true;
+    try {
+      const stub = this.env.PLAYER.get(this.env.PLAYER.idFromName(pid)) as unknown as { invoke(m: string, a: unknown[]): Promise<Envelope<unknown>> };
+      const r = unwrap(await stub.invoke('feedMutes', [pid])) as { muted: string[] };
+      this.cheerLists.set(pid, new Set(r.muted));
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async init(o: { config: RaceStartConfig; startAtMs: number; ratings: Record<string, Rating>; eventId?: string | null; visuals?: StartVisuals; spectateDelayMs?: number }) {
@@ -162,7 +194,8 @@ export class RaceRoomDO extends DurableObject<Env> {
       return;
     }
     for (const old of d.replace) { old.serializeAttachment({ slot: null } satisfies Attachment); old.close(4000, 'replaced'); }
-    ws.send(JSON.stringify(core.spectatorStart()));
+    ws.send(JSON.stringify(withCheerAdvert(core.spectatorStart(), this.cheersEnabled()))); // REQ-CHEER-003
+    if (this.cheersEnabled()) await this.loadBlocks(playerId); // REQ-CHEER-008: before the first cheer in or out
     ws.serializeAttachment({ slot: null, spec: { sent: Math.max(-1, Math.min(lastTick, core.spectatorFrontier(now))), fin: false, playerId } } satisfies Attachment);
     this.flushSpectators(now, true);
     await this.scheduleAlarm();
@@ -203,6 +236,8 @@ export class RaceRoomDO extends DurableObject<Env> {
           if (other !== ws && oa?.slot === t.slot) { other.serializeAttachment({ slot: null }); other.close(4000, 'replaced'); }
         }
         ws.serializeAttachment({ slot: t.slot } satisfies Attachment);
+        // REQ-CHEER-008: the racer's block list for the cheer indicator, without delaying the seat (no list yet = no cheers)
+        if (this.cheersEnabled()) void this.loadBlocks(t.playerId);
         const out = core.hello(t.slot, msg.lastTick, now);
         await this.persist(); // connection state and a pending HUMAN_RESUME
         this.send(out);
@@ -212,6 +247,7 @@ export class RaceRoomDO extends DurableObject<Env> {
       }
       return;
     }
+    if (msg.t === 'cheer') return await this.onCheer(ws, att, msg.slot, msg.kind, now); // REQ-CHEER-003..006
     if (att.spec) {
       // REQ-SPEC-002: read-only — spectators never send inputs, checksums or results
       if (msg.t === 'ping') return ws.send(JSON.stringify({ t: 'pong', c: msg.c, s: now }));
@@ -222,6 +258,65 @@ export class RaceRoomDO extends DurableObject<Env> {
     if (msg.t === 'res' || RaceRoomDO.mustPersist(out, phaseBefore, core.phase)) await this.persist();
     this.send(out);
     await this.scheduleAlarm();
+  }
+
+  /**
+   * REQ-CHEER-003..006: a spectator's cheer joins the open window (the alarm sends it out, flushCheers). The rate limit is
+   * taken before any await, so two cheers racing each other cannot both pass. Refusals are plain `err`s that no client
+   * treats as fatal (RaceSession.FatalRoomErrors does not list them).
+   */
+  private async onCheer(ws: WebSocket, att: Attachment, slot: number, kind: PendingCheer['kind'], now: number) {
+    const core = this.core!;
+    const spec = att.spec;
+    const refusal = cheerAdmit({
+      enabled: this.cheersEnabled(), spectator: !!spec, sentTick: spec?.sent ?? -1, fin: spec?.fin ?? true, lastAt: spec?.lc ?? null,
+      slot, entrants: core.config.entrants.length, now,
+    });
+    if (refusal || !spec) return ws.send(JSON.stringify({ t: 'err', code: refusal ?? 'NOT_SPECTATOR' }));
+    if (!spec.playerId) return ws.send(JSON.stringify({ t: 'err', code: 'CHEER_UNAVAILABLE' }));
+    spec.lc = now;
+    ws.serializeAttachment(att);
+    if (!(await this.loadBlocks(spec.playerId))) return ws.send(JSON.stringify({ t: 'err', code: 'CHEER_UNAVAILABLE' }));
+    this.cheerWindow.push({ from: spec.playerId, slot, kind });
+    this.cheerWindowAt ??= now;
+    tallyAdd(this.tally, spec.sent); // REQ-CHEER-011: the tick the sender was watching
+    await this.scheduleAlarm();
+  }
+
+  /**
+   * REQ-CHEER-005/007/008: close the window once it is CHEER_WINDOW_MS old — one `cheers` message per socket at most:
+   * spectators still watching, and racers while the race runs. Each recipient's message leaves out cheers across a block.
+   */
+  private flushCheers(now: number) {
+    const core = this.core;
+    if (!core || this.cheerWindow.length === 0 || this.cheerWindowAt === null || now - this.cheerWindowAt < CHEER_WINDOW_MS) return;
+    const cheers = this.cheerWindow;
+    this.cheerWindow = [];
+    this.cheerWindowAt = null;
+    const recipients: CheerRecipient<WebSocket>[] = [];
+    for (const ws of this.ctx.getWebSockets()) {
+      const a = ws.deserializeAttachment() as Attachment | null;
+      let pid: string | null = null;
+      if (a?.spec) { if (a.spec.fin || a.spec.sent < 0) continue; pid = a.spec.playerId ?? null; }
+      else if (a && a.slot !== null && a.slot !== undefined) { if (core.phase !== 'running') continue; pid = core.config.entrants[a.slot]?.playerId ?? null; }
+      else continue;
+      if (pid && !this.cheerLists.has(pid)) void this.loadBlocks(pid); // evicted memory: fetch again, show from the next window
+      recipients.push({ key: ws, playerId: pid });
+    }
+    for (const [ws, data] of cheerFanout(cheers, recipients, blockHidden(this.cheerLists))) {
+      if (data) try { ws.send(data); } catch { /* closed */ }
+    }
+    this.ctx.storage.put('cheer', this.tally); // small; durable with the next write
+  }
+
+  /** REQ-CHEER-011: once nobody can cheer any more, write the race's aggregate beside the replay log (once, only if there were cheers). */
+  private async finishCheers() {
+    const core = this.core;
+    if (!core || core.phase !== 'final' || this.tally.written || this.tally.total === 0 || this.cheerWindow.length > 0 || this.spectatorsPending()) return;
+    if (this.spectators().some(([, a]) => !a.spec.fin)) return;
+    await this.env.REPLAYS.put(cheerSummaryKey(core.config.raceId), JSON.stringify(cheerSummary(this.tally)), { httpMetadata: { contentType: 'application/json' } });
+    this.tally.written = true;
+    await this.ctx.storage.put('cheer', this.tally);
   }
 
   override async webSocketClose(ws: WebSocket) {
@@ -246,6 +341,8 @@ export class RaceRoomDO extends DurableObject<Env> {
     this.flushSpectators(Date.now());
     if (core.phase === 'verifying' || (core.phase === 'final' && this.meta && !this.meta.settled)) await this.drive();
     this.flushSpectators(Date.now());
+    this.flushCheers(Date.now());
+    try { await this.finishCheers(); } catch (e) { console.error('cheer summary not written', core.config.raceId, (e as Error).message); }
     await this.scheduleAlarm();
   }
 
@@ -323,6 +420,11 @@ export class RaceRoomDO extends DurableObject<Env> {
       // REQ-SPEC-003: keep pacing the delayed stream after the players' race has stopped
       const interval = (1000 / core.config.net.tickHz) * core.config.net.bundleIntervalTicks;
       const t = Math.max(Date.now() + interval, core.startAtMs);
+      next = next === null ? t : Math.min(next, t);
+    }
+    if (this.cheerWindowAt !== null) {
+      // REQ-CHEER-005: close an open cheer window on time even when nothing else needs the alarm
+      const t = this.cheerWindowAt + CHEER_WINDOW_MS;
       next = next === null ? t : Math.min(next, t);
     }
     if (next === null) return;

@@ -116,6 +116,8 @@ export const ACTIVITY_SCREEN_NAMES = ['friends', 'rival', 'stable', 'team_feed',
 /** REQ-HELP-021: help categories (domain/help.ts HELP_CATEGORY_IDS) plus `all`, and where an article was opened from. */
 export const HELP_CATEGORY_NAMES = ['all', 'getting_started', 'races', 'horses', 'scout', 'purchases', 'account', 'deletion', 'accessibility'] as const;
 export const HELP_VIEW_SOURCES = ['list', 'search', 'context', 'link', 'related'] as const;
+/** REQ-CHEER-013: the watchable modes (domain/cheer.ts CHEER_MODES; repeated here to keep kpi.ts import-free). */
+export const CHEER_KPI_MODES = ['friend', 'cup', 'ranked', 'event', 'tournament'] as const;
 /** Events only the client can observe. Server-known events (purchase, gacha, race results…) are not accepted from clients. */
 export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('session_start'), at: z.number().int(), props: z.object({}).strict().optional() }),
@@ -171,6 +173,10 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('help_article_view'), at: z.number().int(), props: z.object({ articleId: z.string().regex(/^[a-z0-9_]{2,40}$/), source: z.enum(HELP_VIEW_SOURCES) }).strict() }),
   // REQ-FSUG-014: the おすすめフレンド section was shown (once per screen visit; how many suggestions it held)
   z.object({ name: z.literal('fsug_view'), at: z.number().int(), props: z.object({ shown: z.number().int().min(0).max(30) }).strict() }),
+  // REQ-CHEER-013 (§55.7): ONE row per race, never per tap — cheers this spectator sent / cheers shown to this player (racer
+  // with the indicator on, or spectator) in that race. No horse, no target player, no sender ids.
+  z.object({ name: z.literal('cheer_send'), at: z.number().int(), props: z.object({ mode: z.enum(CHEER_KPI_MODES), count: z.number().int().min(1).max(1000) }).strict() }),
+  z.object({ name: z.literal('cheer_seen'), at: z.number().int(), props: z.object({ mode: z.enum(CHEER_KPI_MODES), role: z.enum(['racer', 'spectator']), count: z.number().int().min(1).max(100_000) }).strict() }),
 ]);
 export type ClientEvent = z.infer<typeof clientEventSchema>;
 
@@ -217,6 +223,8 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'help_search': return { name: e.name, s1: e.props.category, value: e.props.length, count: e.props.results };
     case 'help_article_view': return { name: e.name, s1: e.props.articleId, s2: e.props.source };
     case 'fsug_view': return { name: e.name, value: e.props.shown };
+    case 'cheer_send': return { name: e.name, s1: e.props.mode, count: e.props.count };
+    case 'cheer_seen': return { name: e.name, s1: e.props.mode, s2: e.props.role, count: e.props.count };
   }
 }
 

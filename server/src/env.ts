@@ -44,6 +44,8 @@ export interface Env {
   ASSET_CDN_BASE?: string;
   /** REQ-SPEC-005: max spectators per race room (default 200). */
   SPECTATOR_LIMIT?: string;
+  /** REQ-CHEER-015 (§55): "off" turns spectator cheers off (rooms stop advertising them and refuse `cheer`). Default on. */
+  CHEERS?: string;
   /** One per tournament `tour:<id>` plus the index `index` (REQ-TOUR-*). */
   TOURNAMENTS?: DurableObjectNamespace;
   /** REQ-CUP-*: one per hosted cup `cup:<cupId>` plus the join-code index shards `cupcode:<c>`. */

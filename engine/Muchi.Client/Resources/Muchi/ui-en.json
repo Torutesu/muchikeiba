@@ -1156,6 +1156,22 @@
   "フレンド申請を送りました": "Friend request sent",
   "フレンドになりました": "You are now friends",
   "おすすめに表示しない": "Don't show me in suggestions",
-  "オンにすると、ほかのプレイヤーのおすすめにあなたが出なくなります": "When on, you will not appear in other players' suggestions"
+  "オンにすると、ほかのプレイヤーのおすすめにあなたが出なくなります": "When on, you will not appear in other players' suggestions",
+  "_cheer": "---- 観戦中の応援 (Muchi.Client Cheer, Muchi.Game.CheerModel, REQ-CHEER-014)",
+  "いけ！": "Go!",
+  "差せ！": "Close in!",
+  "粘れ！": "Hang on!",
+  "応援 ×{n}": "Cheers ×{n}",
+  "応援": "Cheer",
+  "応援する馬": "Horse to cheer",
+  "{n}番": "No. {n}",
+  "応援は2秒に1回まで": "One cheer every 2 seconds",
+  "応援はレースの結果に影響しません": "Cheers never change the race result",
+  "このレースでは応援できません": "Cheering is not available in this race",
+  "{n}番に「{cheer}」": "\"{cheer}\" for No. {n}",
+  "レース中の応援表示": "Show cheers during races",
+  "観戦している人からの応援を、レース中に小さく表示します": "Shows cheers from spectators in a small corner during your races",
+  "応援の多かった瞬間": "Most-cheered moments",
+  "応援 {n}": "{n} cheers"
  }
 }

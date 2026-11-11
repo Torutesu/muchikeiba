@@ -233,6 +233,9 @@ export class RaceRoomCore {
         if (this.confirmedTick < this.minResultTick) return [{ to: slot, msg: { t: 'err', code: 'RESULT_TOO_EARLY' } }];
         this.results.set(slot, { h: msg.h, order: msg.order, ...(msg.finishTicks ? { finishTicks: msg.finishTicks } : {}), ...(msg.skills ? { skills: msg.skills } : {}), ...(msg.assist ? { assist: msg.assist } : {}) });
         return this.checkResults(now);
+      case 'cheer':
+        // REQ-CHEER-006 (§55): only spectators cheer; the core never records a cheer (not an input, not in the log)
+        return [{ to: slot, msg: { t: 'err', code: 'NOT_SPECTATOR' } }];
     }
   }
 

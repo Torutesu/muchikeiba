@@ -1172,3 +1172,25 @@ GROUP BY event, reason ORDER BY event, n DESC
 ```
 
 - **フレンドができたか**：相手の id を入れていないので、申請と承認を人単位では結ばない。日ごとの `friend_accept`（承認した側のサーバーイベント）の数が、おすすめを出してから増えたかで見る。
+
+## 観戦中の応援：送った・見た（REQ-CHEER-013、contracts/protocol.md §55、Round 19）
+
+**観戦が「見るだけ」から「一緒に盛り上がる」になっているか**。どちらもクライアントのイベントで、**1レースに1行**（押すたびには送らない）。`cheer_send`（観戦者、`blob8` = モード、`double5` = そのレースで送った応援の数）、`cheer_seen`（`blob8` = モード、`blob9` = `racer`（表示オンの選手）/ `spectator`、`double5` = そのレースで見た応援の数）。馬・相手・送った人の id は入れていない。
+
+```sql
+-- モードごとの、応援したレース数と1レースあたりの応援の数
+SELECT blob8 AS mode, sum(_sample_interval) AS races, sum(double5 * _sample_interval) / sum(_sample_interval) AS per_race
+FROM muchi_kpi
+WHERE blob1 = 'cheer_send' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY mode ORDER BY races DESC
+```
+
+```sql
+-- 選手が応援を見たレース（表示オフの選手は行が出ない）
+SELECT blob6 AS day, blob8 AS mode, sum(_sample_interval) AS races, sum(double5 * _sample_interval) AS cheers
+FROM muchi_kpi
+WHERE blob1 = 'cheer_seen' AND blob9 = 'racer' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY day, mode ORDER BY day DESC
+```
+
+- 1レースあたりの応援が上限（2秒に1回）にいつも張り付くなら、ボタン連打の遊びになっている。演出（Codex）を控えめにする。

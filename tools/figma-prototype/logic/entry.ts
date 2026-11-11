@@ -305,6 +305,9 @@ const teamPlayers: TeamPlayers = {
   stampCatalog: (u) => svc.stampCatalog(u), stampCheck: (u, s) => svc.stampCheck(u, s), stampPosted: (u, s, k, t, ref) => svc.stampPosted(u, s, k, t, ref ?? null),
   feedViewer: (u, f) => svc.feedViewer(u, f), feedMutes: (u) => svc.feedMutes(u), feedMute: (u, t, m) => svc.feedMute(u, t, m),
   feedReported: (u, t, q, b, r) => svc.feedReported(u, t, q, b, r), cheerPush: (u, f, n) => svc.cheerPush(u, f, n),
+  // round 18 (REQ-QCHAT-*): 支部の定型チャット on the same team objects
+  qchatOptions: (u, l) => svc.qchatOptions(u, l), qchatCheck: (u, p, sl) => svc.qchatCheck(u, p, sl), qchatNote: (u, k, a, b, t, n) => svc.qchatNote(u, k, a, b, t, n),
+  qchatMention: (u, f, n, r) => svc.qchatMention(u, f, n, r),
   goalPlayerView: (u) => svc.goalPlayerView(u),
 };
 const teamsSvc = new TeamsService(() => master, teams, teamPlayers, teams, teams, cryptoRng, now);
@@ -958,6 +961,10 @@ export const MuchiLogic = {
     await svc.applyRace(m2!, { raceId: `proto_tm_${Date.now().toString(36)}_${k}`, mode: k % 2 ? 'tournament' : 'ranked', place: 1 + (k % 3), fieldSize: 12, newRating: null, void: false, humans: 6 });
     await wrap(() => teamsSvc.postStamp(lead!, ['cheer', 'lets_go', 'nice'][k % 3]!));
     await wrap(() => teamsSvc.postStamp(m3!, ['clap', 'thanks', 'gg'][k % 3]!));
+    // round 18: teammates also talk in fixed phrases (members alternate, so each stays within the 15 s rule); every third
+    // call a third member names the player (a mention → an activity entry, §52.8)
+    if (k % 3 === 0) await wrap(() => teamsSvc.postQuickChat(m3!, ['nice_player', 'thanks_player', 'omedeto_player'][Math.floor(k / 3) % 3]!, { player: ID }));
+    else await wrap(() => teamsSvc.postQuickChat(k % 2 ? lead! : m2!, ['otsukare', 'goal_close', 'run_together', 'great_race'][k % 4]!, k % 4 === 2 ? { course: 'kirameki_turf_2000' } : {}));
   },
   // ---------------------------------------------------------------- round 16: 次にやること (REQ-NEXT-*, contracts/protocol.md §45)
   // The real server choice (nextAction.ts): the summary of the player's state, the priorities of progression.nextActions,
@@ -1013,7 +1020,10 @@ export const MuchiLogic = {
     return wrap(() => teamsSvc.goal(ID));
   },
   stamps: () => svc.stampCatalog(ID),
-  teamFeed: (before: number | null = null) => wrap(() => teamsSvc.feed(ID, before, 20)),
+  teamFeed: (before: number | null = null, lang: 'ja' | 'en' = 'ja') => wrap(() => teamsSvc.feed(ID, before, 20, lang)),
+  // round 18: 支部の定型チャット (REQ-QCHAT-*, contracts/protocol.md §52) — the picker and a post on the real rules
+  quickChat: (lang: 'ja' | 'en' = 'ja') => wrap(() => teamsSvc.quickChat(ID, lang)),
+  postQuickChat: (phraseId: string, slots: Record<string, string>) => wrap(() => teamsSvc.postQuickChat(ID, phraseId, slots)),
   postStamp: (stampId: string) => wrap(() => teamsSvc.postStamp(ID, stampId)),
   reactToFeed: (seq: number, stampId: string | null) => wrap(() => teamsSvc.react(ID, seq, stampId)),
   reportFeed: (seq: number, reason: ReportReason) => wrap(() => teamsSvc.report(ID, seq, reason)),

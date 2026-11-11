@@ -2912,3 +2912,93 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 - `Muchi.Client`：`ApiClient.GetPracticeCatalogAsync`、`PracticeCatalog`（`Parse`・`Fallback`）、`PracticeSetup`、`PracticeSession`（`BuildConfig`・`Start`・`Restart`・`Ghost`・`Advice`・`WhipWindow`・`Finish` → `PracticeResult`）、`PracticeClock`、`AnalyticsEvents.PracticeStart`・`PracticeFinish`。`ProtocolCodec.ParseHorse`・`HorseToJson`（設定の馬の読み書きを1か所に。結果は今までと同じ）。
 - Unity ゲーム層 `PracticeModel`：入口の可否（FTUE）、カタログの取得と端末の写し・予備、設定の選択肢（馬・コース・馬場・昼夜・頭数・強さ）と既定、オプション、`OfflineRaceDriver`＋`RaceObserver` でのレース、時計（スロー）、ムチの目安の帯、ゴーストの位置、やり直し、結果の行、写真の可否、KPI。描画は `docs/handoff-codex-round18-practice.md`。
 - デプロイ：新しい GET と KPI の2種類だけ（検証器は変わらない、マイグレーションなし）。サーバーだけ出せばよい。
+
+## 52. 支部の定型チャット（branch quick chat、REQ-QCHAT-001〜016、`server/src/domain/quickChat.ts`・`server/master/quick-chat.json`・§18 の `teamFeed.ts` を拡張、C# `QuickChat.cs`・`Muchi.Game.QuickChatModel`）
+支部の中で、**決まった文（定型文）だけ**で話せるようにする。自由入力は無い（安全のための設計。docs/planning/03「支部の定型チャット」）。文の中の空欄（スロット）には、**サーバーが本人の状態から確かめた安全な値だけ**が入る：自分の馬の名前・コース名・自分のレース結果・タイムアタックの記録・自分が出ているカップ・同じ支部の仲間。§18 の支部フィードに新しい種類 `qchat` として入る（別のフィードは作らない）。応援は §18 のスタンプのリアクションをそのまま使う。コイン・アイテムは動かない（E 番号なし）。
+
+### 52.1 定型文のマスター `server/master/quick-chat.json`
+```json
+{ "version": 1,
+  "config": { "enabled": true, "postIntervalMs": 15000, "postsPerDay": 30, "repeatWindowMs": 600000, "mentionsPerDay": 10, "retainMax": 60, "retainDays": 14 },
+  "phrases": [
+    { "id": "otsukare", "category": "greet", "ja": "おつかれさま！", "en": "Good work today!" },
+    { "id": "run_together", "category": "invite", "ja": "{course}で一緒に走ろう", "en": "Let's race together at {course}" },
+    { "id": "nice_player", "category": "cheer", "ja": "{player}さんナイス！", "en": "Nice one, {player}!" } ] }
+```
+- 1つの文は **日本語と英語の組**（`ja`・`en`）。保存するのは文の `id` とスロットの値だけで、文字列は保存しない。読む人それぞれの言語（`?lang=` / `Accept-Language`、§23）で組み立てる。
+- スロット（`{name}`）は `course`・`horse`・`race`・`time`・`cup`・`player` だけ。1文に最大2つ、同じスロットは1回。`ja` と `en` のスロットは同じ組であること。`{player}` を含む文は「声かけ」（`mention`）。
+- 検証（起動時・リモート設定の各版、REQ-QCHAT-002）：`id` は `^[a-z0-9_]{1,32}$` で重複不可／`category` は `greet`・`cheer`・`team`・`race`・`invite`／`ja` 1〜30 文字・`en` 1〜60 文字／共有の賭け言葉リスト（`bettingWords.ts`）に当たらない（`ja`・`en` とも）／`ja` に「倍」「お得」「今だけ」「残りわずか」「通常価格」が無い／`en` は §23 の英語の文言チェック（`enWordingProblems`）を通る／`ja` に英字の URL・`http`・`www` が無い。`config` の範囲：`postIntervalMs` 3,000..3,600,000、`postsPerDay` 1..200、`repeatWindowMs` 0..86,400,000、`mentionsPerDay` 0..100、`retainMax` 10..§18 の `feedSize`、`retainDays` 1..90。
+- 定型文の英語はマスターの中にあるので、`locale-en.json` には書かない（`npm run l10n:missing` の対象外。§36 の実況パックの文と同じ扱い）。
+
+### 52.2 スロットの値（サーバーが確かめる、REQ-QCHAT-004）
+| スロット | 送る値 | 確かめること（投稿する人の状態） | 表示（ja ／ en） |
+|---|---|---|---|
+| `course` | コースID | `tracks.json` にある | マスターのコース名（英語は §23 の表） |
+| `horse` | 馬ID | 自分の馬（現役・引退どちらも） | 馬の名前（投稿の時点の写し。**翻訳しない**） |
+| `race` | レースID | 自分の最近のレース（マイリプレイ §37 の `recent` にある、確定したレース） | 「{コース}で{n}着」／「{n:ord} at {course}」 |
+| `time` | コースID | そのコースのタイムアタックの自己ベスト（通算）がある | 「{コース} 1:59.8」（同じ形） |
+| `cup` | カップID | 自分が出ている（主催・参加）カップで、名前が分かるもの | カップ名（主催者が付けた名前の写し。**翻訳しない**） |
+| `player` | プレイヤーID | 同じ支部の仲間で、自分ではなく、**どちらかがもう一方をブロックしていない** | その人の今の表示名（**翻訳しない**）。支部を抜けた・消えた人は「元メンバー」／「Former member」 |
+- 足りないスロット・余分なスロット・知らない値は `400 BAD_REQUEST`、確かめられない値（自分の馬でない・記録が無い・カップに出ていない）は `409 NOT_ELIGIBLE`、ブロックの関係にある人の名前は `409 NOT_ELIGIBLE`（理由は言わない）。
+
+### 52.3 投稿（REQ-QCHAT-003/005）
+- `POST /v1/teams/me/feed/quick-chat` `{ "phraseId": "run_together", "slots": { "course": "kirameki_turf_2000" } }` → `{ teamId, seq, at, phraseId }`。本文にはこの2つだけ（`text` などを付けると `BAD_REQUEST`）。`slots` の値はそれぞれ `^[A-Za-z0-9_:\-]{1,64}$`。
+- 支部の仲間だけ（`NOT_IN_TEAM`）。削除の予約中は `DELETION_PENDING`。`config.enabled = false` の間は `404 NOT_FOUND`。
+- 上限（1人ずつ、§18 のスタンプとは別に数える）：`postIntervalMs` に1回、ゲーム日（REQ-DAY-001）ごとに `postsPerDay` 回、同じ文・同じ値を `repeatWindowMs` の間に続けて送らない、声かけ（`{player}` の文）はゲーム日ごとに `mentionsPerDay` 回。超えたら `429 RATE_LIMITED`。
+- 再送で二重に載らないように、クライアントは自動の再試行をしない（スタンプと同じ）。同じ文の連投は上の「同じ文」の決まりでも止まる。
+
+### 52.4 フィードの項目（`GET /v1/teams/me/feed`、§18）
+`kind: "qchat"` の項目が加わる（`qchat` 以外の項目には `qchat: null`）：
+```json
+{ "seq": 41, "at": 1794614400000, "kind": "qchat", "playerId": "p_abc", "displayName": "アオバ", "mine": false,
+  "stampId": null, "stampAsset": null, "race": null, "goal": null,
+  "qchat": { "phraseId": "nice_player", "category": "cheer", "mention": true, "mentionsMe": true, "anon": false,
+             "qchatText": "シノノメさんナイス！",
+             "slots": [ { "name": "player", "ref": "p_me", "qchatValue": "シノノメ" } ],
+             "report": { "kind": "team_feed", "teamId": "t123", "seq": 41 } },
+  "reactions": [ { "stampId": "nice", "count": 2, "mine": true } ], "myReaction": "nice" }
+```
+- `qchatText` は読む人の言語で組み立てた文。`qchatText`・`qchatTemplate`・`qchatValue` は**組み立て済み**なので、応答の境目の翻訳（§23）は触らない（プレイヤーの名前・馬の名前・カップ名が辞書の言葉と同じでも訳されない）。
+- 表示名は §18 と同じく今の名簿から。`anon: true`（抜けた人の投稿、52.6）は `playerId: ""`・`displayName` 「元メンバー」／「Former member」・`mine: false`。
+- **ブロックは両方向**（REQ-QCHAT-007、ブロックの一覧は1つ = §18 のミュート）：私がブロックした人の `qchat` 項目は私に見えない（§18 と同じ）うえに、**私をブロックした人の `qchat` 項目も私に見えない**。そういう項目へのリアクションは `404 NOT_FOUND`。名前のスロットにも選べない（52.2）。TeamDO は仲間ごとのブロックの写しを持ち、フィードを開いた時・ミュートを変えた時・投稿の時に本人の一覧で更新する。
+- 応援（リアクション）は §18 の `PUT /v1/teams/me/feed/:seq/reaction` をそのまま使う（スタンプで1人1つ）。応援の通知（プッシュ）は出さない。
+- 通報は §18 の `POST /v1/teams/me/feed/:seq/report`（いまの通報）がそのまま使える。§47 の通報・ブロック管理（Round 17）が入ったら、`qchat.report`（`{kind:"team_feed", teamId, seq}`）をその通報の対象として渡す（この版では §47 を使わない。docs/handoff-codex-round18-quick-chat.md に書いた続きの作業）。
+
+### 52.5 定型文と選べる値（`GET /v1/teams/me/quick-chat`、REQ-QCHAT-008）
+```json
+{ "enabled": true, "teamId": "t123",
+  "limits": { "postIntervalMs": 15000, "postsPerDay": 30, "mentionsPerDay": 10, "repeatWindowMs": 600000 },
+  "usage": { "postsToday": 3, "mentionsToday": 1, "nextPostAt": 1794614415000 },
+  "phrases": [ { "id": "run_together", "category": "invite", "slots": ["course"], "mention": false, "qchatTemplate": "{course}で一緒に走ろう" } ],
+  "options": {
+    "course": [ { "ref": "kirameki_turf_2000", "qchatValue": "きらめき競馬場 芝2000m" } ],
+    "horse":  [ { "ref": "h12", "qchatValue": "シンセイアカツキ" } ],
+    "race":   [ { "ref": "r9f", "qchatValue": "きらめき競馬場 芝2000mで2着" } ],
+    "time":   [ { "ref": "kirameki_turf_2000", "qchatValue": "きらめき競馬場 芝2000m 2:01.3" } ],
+    "cup":    [ { "ref": "c77", "qchatValue": "夜の芝カップ" } ],
+    "player": [ { "ref": "p_abc", "qchatValue": "アオバ" } ] } }
+```
+- `qchatTemplate` は読む人の言語の文で、スロットは `{course}` のまま（クライアントが選んだ値で埋める。選ぶ前は空欄で見せる）。
+- `options` は投稿の時に受け付ける値だけ（自分の馬は現役から最大 20、最近のレース最大 10、タイムアタックの記録のあるコース、出ているカップ、ブロックの関係にない仲間）。値の並びは名前・新しい順。支部に入っていなければ `teamId: null`・`phrases` はそのまま・`options` は空・`usage` は 0。
+
+### 52.6 支部を抜けた時・アカウント削除（REQ-QCHAT-010、docs/planning/03 の決定）
+- **支部を抜けた・外された**：その人の `qchat` 項目は残し、**名前を出さない**（`anon: true`、「元メンバー」）。文は定型でスロットの値も確かめた安全な値なので、仲間の会話の流れ（返事・応援）を壊さないために消さない。ブロックの写しと上限の数はその時に消す。他の人の文の中でその人を指す名前のスロットも「元メンバー」になる（名簿に居ないので）。§18 のスタンプ・レースの項目は今までどおり。
+- **アカウント削除**：その人の `qchat` 項目は**消す**（§18 の削除の手順 `feedForget` と同じ。投稿した支部と今の支部の全部）。他の人の文の中でその人を指すスロットは値を消して「元メンバー」と出す。ブロックの写し・上限の数も消す。削除の予約中は投稿できない。
+
+### 52.7 保存の量（REQ-QCHAT-006）
+支部ごとに `qchat` 項目は新しい方から `retainMax` 件まで、`retainDays` 日まで（投稿の時と読む時に古い物を落とす）。§18 の `feedSize`（全部の種類で100件）はそのまま上限。チャットでレース・共同目標の項目が押し出されすぎないように `retainMax` は `feedSize` より小さくする。
+
+### 52.8 アクティビティ（§40）と通知
+- 新しいプッシュの種類は**作らない**。声かけ（`{player}` の文）で名前を出された人にだけ、§40 のアクティビティに `qchat_mention` を書く（カテゴリ `friends`、開く画面 `team_feed`、まとめる＝24時間・未読の間は1件にまとめる。文：「{name}さんが支部のチャットであなたに声をかけました」／「支部のチャットで{n}件の声がかかりました」）。
+- 数を抑える：声かけは送る人ごとに1日 `mentionsPerDay` 回（52.3）、受ける側はまとめて1件、ブロックしている相手からは書かない（§40 の決まり）、削除の予約中・削除の手順中の人には書かない。投稿の項目の ID ごとに1回（`qchat:{teamId}:{seq}`）。
+
+### 52.9 KPI（サーバーが書く、REQ-QCHAT-011）
+`qchat_post`（`s1` 文ID、`s2` 支部ID、`s3` `mention`／空、`count` スロットの数）・`qchat_react`（`s1` スタンプID、`s2` 文ID、`s3` 支部ID。新しいリアクションの時だけ）。docs/ops/kpi-queries.md。
+
+### 52.10 API（要認証）
+| メソッド | パス | 本文 → 応答 |
+|---|---|---|
+| GET | `/v1/teams/me/quick-chat` | → 52.5 |
+| POST | `/v1/teams/me/feed/quick-chat` | `{ phraseId, slots }` → `{ teamId, seq, at, phraseId }` |
+| GET | `/v1/teams/me/feed` | §18 の応答に `qchat` 項目（52.4） |
+| PUT | `/v1/teams/me/feed/:seq/reaction` | §18 のまま（`qchat` 項目にも使える） |

@@ -1,0 +1,28 @@
+{
+  "_comment": "支部の定型チャット（REQ-QCHAT-*、contracts/protocol.md §52）。自由入力のない決まった文だけ（docs/planning/03）。1文 = 日本語と英語の組。スロット {course} {horse} {race} {time} {cup} {player} はサーバーが本人の状態から確かめた値だけが入る（1文に最大2つ）。{player} の文は声かけ（名前を出された人にアクティビティ §40）。賭け言葉・「倍」「お得」「今だけ」などは起動時の検証で拒否される。",
+  "version": 1,
+  "config": { "enabled": true, "postIntervalMs": 15000, "postsPerDay": 30, "repeatWindowMs": 600000, "mentionsPerDay": 10, "retainMax": 60, "retainDays": 14 },
+  "phrases": [
+    { "id": "hello", "category": "greet", "ja": "こんにちは！", "en": "Hello!" },
+    { "id": "morning", "category": "greet", "ja": "おはよう！", "en": "Good morning!" },
+    { "id": "evening", "category": "greet", "ja": "こんばんは！", "en": "Good evening!" },
+    { "id": "otsukare", "category": "greet", "ja": "おつかれさま！", "en": "Good work today!" },
+    { "id": "yoroshiku", "category": "greet", "ja": "よろしくお願いします！", "en": "Glad to be racing with you all!" },
+    { "id": "see_you", "category": "greet", "ja": "またあとで！", "en": "See you later!" },
+    { "id": "nice_player", "category": "cheer", "ja": "{player}さんナイス！", "en": "Nice one, {player}!" },
+    { "id": "thanks_player", "category": "cheer", "ja": "{player}さん、ありがとう！", "en": "Thank you, {player}!" },
+    { "id": "omedeto_player", "category": "cheer", "ja": "{player}さん、おめでとう！", "en": "Congratulations, {player}!" },
+    { "id": "great_race", "category": "cheer", "ja": "いいレースだった！", "en": "That was a great race!" },
+    { "id": "goal_close", "category": "team", "ja": "今週の共同目標あと少し", "en": "Almost at this week's team goal" },
+    { "id": "goal_thanks", "category": "team", "ja": "共同目標、みんなありがとう！", "en": "Thanks for the team goal, everyone!" },
+    { "id": "training_done", "category": "team", "ja": "今日の調教おわり！", "en": "Training done for today!" },
+    { "id": "my_horse", "category": "race", "ja": "{horse}でがんばります", "en": "Giving it my all with {horse}" },
+    { "id": "race_report", "category": "race", "ja": "{race}でした！", "en": "My result: {race}!" },
+    { "id": "time_report", "category": "race", "ja": "タイムアタック {time} が出た！", "en": "Time attack: I ran {time}!" },
+    { "id": "ranked_go", "category": "race", "ja": "ランク戦いってきます", "en": "Heading off to a ranked race" },
+    { "id": "run_together", "category": "invite", "ja": "{course}で一緒に走ろう", "en": "Let's race together at {course}" },
+    { "id": "cup_in", "category": "invite", "ja": "「{cup}」に出ています", "en": "I'm racing in \"{cup}\"" },
+    { "id": "cup_meet", "category": "invite", "ja": "「{cup}」で会おう！", "en": "See you at \"{cup}\"!" },
+    { "id": "horse_course", "category": "invite", "ja": "{horse}で{course}に出ます", "en": "Racing {horse} at {course}" }
+  ]
+}

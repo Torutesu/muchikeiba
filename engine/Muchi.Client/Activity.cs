@@ -26,9 +26,11 @@ namespace Muchi.Client
             // Round 16 integration: hosted cups (§42.7) and the season recap (§43)
             CupInvited = "cup_invited", CupStarted = "cup_started", CupFinished = "cup_finished", CupCancelled = "cup_cancelled", RecapReady = "recap_ready",
             /// <summary>REQ-RPT-013: support's request after a report (no actor; links to 通報とブロック).</summary>
-            OpsNotice = "ops_notice", InquiryAnswered = "inquiry_answered";
+            OpsNotice = "ops_notice", InquiryAnswered = "inquiry_answered",
+            // Round 18: a quick chat phrase that named me (§52.8)
+            QchatMention = "qchat_mention";
         public static readonly string[] All = { FriendRequest, FriendAccepted, RivalWeek, RivalRecord, StableLike, TeamCheer, TournamentResult, GiftArrived, TeamGoalTier, TeamGoalWeek, ReplayShare, InquiryAnswered,
-            CupInvited, CupStarted, CupFinished, CupCancelled, RecapReady, OpsNotice };
+            CupInvited, CupStarted, CupFinished, CupCancelled, RecapReady, OpsNotice, QchatMention };
     }
 
     /// <summary>Where an entry leads (`link.screen`).</summary>

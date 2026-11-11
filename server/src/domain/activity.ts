@@ -21,6 +21,8 @@ export const ACTIVITY_KINDS = [
   'cup_invited', 'cup_started', 'cup_finished', 'cup_cancelled', 'recap_ready',
   // Round 17: support's request after a report (§47)
   'ops_notice',
+  // Round 18: a quick chat phrase that named the player (§52.8)
+  'qchat_mention',
 ] as const;
 export type ActivityKind = typeof ACTIVITY_KINDS[number];
 export const ACTIVITY_SCREENS = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new', 'help_inquiry', 'cups', 'recap', 'safety'] as const;
@@ -51,6 +53,7 @@ export const ACTIVITY_META: Record<ActivityKind, KindMeta> = {
   ops_notice: { category: 'events', screen: 'safety', collapse: false },
   // §48.8 (REQ-HELP-015): an operator answered the player's inquiry (link: the inquiry's detail)
   inquiry_answered: { category: 'support', screen: 'help_inquiry', collapse: false },
+  qchat_mention: { category: 'friends', screen: 'team_feed', collapse: true },
 };
 
 /** REQ-ACT-010: `progression.activity` (absent → ACTIVITY_DEFAULTS). */
@@ -279,6 +282,8 @@ export const ACTIVITY_TEXT = {
   recap_year: '{y}年の振り返りができました',
   ops_notice: '運営からのお願い：名前や文についてお知らせがありました。ガイドラインをご確認ください',
   inquiry_answered: 'お問い合わせに運営から返信がありました',
+  qchat_mention_one: '{name}さんが支部のチャットであなたに声をかけました',
+  qchat_mention_many: '支部のチャットで{n}件の声がかかりました',
 } as const;
 
 const fill = (t: string, v: Record<string, string>) => t.replace(/\{(\w+)\}/g, (_, k: string) => v[k] ?? '');
@@ -308,6 +313,7 @@ export function activityText(kind: ActivityKind, count: number, vars: Record<str
     case 'recap_ready': return fill(vars.kind === 'year' ? T.recap_year : T.recap_season, v);
     case 'ops_notice': return T.ops_notice;
     case 'inquiry_answered': return T.inquiry_answered;
+    case 'qchat_mention': return count > 1 ? fill(T.qchat_mention_many, { n: String(count) }) : fill(T.qchat_mention_one, v);
   }
 }
 

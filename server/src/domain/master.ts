@@ -411,6 +411,8 @@ export interface Master {
   silksEditor?: import('./silksEditor.js').SilksEditorMaster;
   /** REQ-CMT-*: 実況パック (master/commentary-packs.json; commentaryPacks.ts commentaryPacksOf falls back to it when absent). */
   commentaryPacks?: import('./commentaryPacks.js').CommentaryPacksMaster;
+  /** REQ-QCHAT-*: 支部の定型チャット (master/quick-chat.json; quickChat.ts quickChatOf falls back to it when absent). Phrases carry their own English. */
+  quickChat?: import('./quickChat.js').QuickChatMaster;
   /** REQ-PHOTO-*: photo mode looks / frames / stamps (master/photo.json; photoMode.ts photoOf falls back to it when absent). */
   photo?: import('./photoMode.js').PhotoMaster;
   /** REQ-HELP-*: ヘルプセンター articles (master/help.json; help.ts helpOf falls back to it when absent; remote config `help` replaces it). */

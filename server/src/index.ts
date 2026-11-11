@@ -34,8 +34,9 @@ import { SpectateService, SPECTATE_RATE } from './domain/spectate.js';
 import { TournamentsService, type TournamentBackend } from './domain/tournamentService.js';
 import type { TournamentSummary } from './domain/tournaments.js';
 import { signTicket } from './http/ticket.js';
-import { TeamsService, type TeamFeedPage, type TeamGoalView, type TeamLeagueView, type TeamPort, type TeamView } from './domain/teamService.js';
-import { stampsProblems, type FeedItem } from './domain/teamFeed.js';
+import { TeamsService, type TeamFeedPage, type TeamGoalView, type TeamLeagueView, type TeamPort, type TeamView, type QchatPostResult } from './domain/teamService.js';
+import { stampsOf, stampsProblems, type FeedItem } from './domain/teamFeed.js';
+import { quickChatProblems } from './domain/quickChat.js';
 import { silksEditorProblems } from './domain/silksEditor.js';
 import { photoProblems } from './domain/photoMode.js';
 import { helpProblems } from './domain/help.js';
@@ -110,6 +111,7 @@ const baseMaster = loadMaster();
 validateGacha(baseMaster); // fail fast on a broken gacha/master definition (REQ-GACHA-003/008)
 validateItems(baseMaster); // REQ-ITEM-*: tickets may not reach paid-only banners, cosmetics reference real assets/patterns
 { const sp = stampsProblems(baseMaster); if (sp.length) throw new Error('master/stamps.json: ' + sp.join('; ')); } // REQ-TEAMFEED-002
+{ const qp = quickChatProblems(baseMaster, stampsOf(baseMaster).config.feedSize); if (qp.length) throw new Error('master/quick-chat.json: ' + qp.join('; ')); } // REQ-QCHAT-002
 { const sp = silksEditorProblems(baseMaster); if (sp.length) throw new Error('master/silks-editor.json: ' + sp.join('; ')); } // REQ-SILK-013
 { const pp = photoProblems(baseMaster); if (pp.length) throw new Error('master/photo.json: ' + pp.join('; ')); } // REQ-PHOTO-013
 { const hp = helpProblems(baseMaster, undefined, Number(DEFAULT_RULESET.maxWhips)); if (hp.length) throw new Error('master/help.json: ' + hp.join('; ')); } // REQ-HELP-003
@@ -147,9 +149,13 @@ function makeTeamsService(env: Env, master: () => Master, player: (uid: string) 
     // REQ-TEAMFEED-*
     feedPost: async (id, p, s) => (await call(team(id).feedPost!(p, s))) as FeedItem,
     feedRace: async (id, p, r) => (await call(team(id).feedRace!(p, r))) as FeedItem | null,
-    feedReact: async (id, p, seq, s) => (await call(team(id).feedReact!(p, seq, s))) as { ownerId: string; isNew: boolean; kind: FeedItem['kind'] },
+    feedReact: async (id, p, seq, s) => (await call(team(id).feedReact!(p, seq, s))) as { ownerId: string; isNew: boolean; kind: FeedItem['kind']; phraseId?: string | null },
     feedReport: async (id, p, seq) => (await call(team(id).feedReport!(p, seq))) as { ownerId: string; first: boolean },
-    feedPage: async (id, v, muted, before, limit) => (await call(team(id).feedPage!(v, muted, before, limit))) as TeamFeedPage,
+    feedPage: async (id, v, muted, before, limit, locale) => (await call(team(id).feedPage!(v, muted, before, limit, locale ?? 'ja'))) as TeamFeedPage,
+    // REQ-QCHAT-*
+    qchatPost: async (id, p, phraseId, slots, muted) => (await call(team(id).qchatPost!(p, phraseId, slots, muted))) as QchatPostResult,
+    qchatMembers: async (id, v, muted, locale) => (await call(team(id).qchatMembers!(v, muted, locale))) as Awaited<ReturnType<TeamPort['qchatMembers']>>,
+    qchatBlocks: async (id, p, muted) => call(team(id).qchatBlocks!(p, muted)),
     feedForget: async (id, p) => (await call(team(id).feedForget!(p))) as { removed: number },
     // REQ-TGOAL-*
     goalView: async (id, v) => (await call(team(id).goalView!(v))) as TeamGoalView,

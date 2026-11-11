@@ -1113,3 +1113,22 @@
 - REQ-PRAC-016 オフラインの予備：カタログが無い端末は内蔵の練習コース・強さ・CPU・既定のルールセットで走る。覚えたカタログはオフラインで使う。
 - REQ-PRAC-017 クライアント：`Muchi.Client` の `PracticeCatalog`・`PracticeSession`・`PracticeClock`・`ApiClient.GetPracticeCatalogAsync`・`AnalyticsEvents.PracticeStart/PracticeFinish`。Unity ゲーム層 `PracticeModel`。描画は `docs/handoff-codex-round18-practice.md`。
 - REQ-PRAC-018 プロトタイプ・英語：ムチ一閃の見た目で練習の設定・レース（WASM の本物のエンジン）・結果、日本語・英語（`l10n:missing` 0、0 untranslated / 0 overflow）、e2e・en-flow・a11y-flow。
+
+## 52. 支部の定型チャット（branch quick chat、TS＋C#、`src/domain/quickChat.ts`・`server/master/quick-chat.json`・`src/domain/teamFeed.ts`・`Muchi.Client/QuickChat.cs`・`Muchi.Game.QuickChatModel`、`contracts/protocol.md` §52、docs/planning/03「支部の定型チャット」）
+拘束条件：自由入力を作らない（定型文の ID とサーバーが確かめたスロットの値だけ）。§18 の支部フィードを拡張する（別のフィードを作らない）。賭け言葉・「倍」「お得」「今だけ」などを文に入れない。プレイヤーが付けた名前（表示名・馬・カップ）は翻訳しない。コイン・アイテムは動かない（E 番号なし）。
+- REQ-QCHAT-001 定型文のマスター `quick-chat.json`：文ごとに ID・分類・日本語と英語の組。保存するのは文 ID とスロットの値で、文字列は読む人の言語で組み立てる。
+- REQ-QCHAT-002 検証（起動時・リモート設定の各版）：ID の形と重複、分類、長さ、スロットは `course`・`horse`・`race`・`time`・`cup`・`player` だけ・最大2つ・日英で同じ組、共有の賭け言葉リスト（日英）、「倍」「お得」「今だけ」「残りわずか」「通常価格」、英語の文言チェック、URL なし、`config` の範囲。
+- REQ-QCHAT-003 投稿 `POST /v1/teams/me/feed/quick-chat {phraseId, slots}`：支部の仲間だけ、削除の予約中は `DELETION_PENDING`、無効の間は `NOT_FOUND`、余分な項目は `BAD_REQUEST`。
+- REQ-QCHAT-004 スロットの値はサーバーが投稿する人の状態から確かめる（自分の馬・最近のレース・タイムアタックの記録・出ているカップ・コース・ブロックの関係にない仲間）。足りない・余分は `BAD_REQUEST`、確かめられない値は `NOT_ELIGIBLE`。
+- REQ-QCHAT-005 上限（1人ずつ）：`postIntervalMs` に1回、ゲーム日ごとに `postsPerDay` 回、同じ文・同じ値の連投は `repeatWindowMs` の間だめ、声かけはゲーム日ごとに `mentionsPerDay` 回（`RATE_LIMITED`）。
+- REQ-QCHAT-006 保存の量：支部ごとに定型チャットの項目は `retainMax` 件・`retainDays` 日まで。§18 の `feedSize` はそのまま。
+- REQ-QCHAT-007 ブロックは両方向（ブロックの一覧は1つ）：ブロックした人・された人の定型チャットは見えず、リアクションできず（`NOT_FOUND`）、名前のスロットにも選べない。TeamDO が仲間のブロックの写しを持ち、フィードを開く・ミュートを変える・投稿する時に更新する。
+- REQ-QCHAT-008 `GET /v1/teams/me/quick-chat`：読む人の言語の定型文（スロットは `{name}` のまま）、投稿で受け付ける値の一覧、上限と今日の使用数。
+- REQ-QCHAT-009 フィードの項目 `kind: "qchat"`：`qchatText`（読む人の言語で組み立て済み、境目の翻訳は触らない）、スロット、`mention`・`mentionsMe`・`anon`、通報の対象 `report`。応援は §18 のスタンプのリアクション。通報は §18 の通報（§47 は後で `report` を渡す）。
+- REQ-QCHAT-010 支部を抜けた・外された人の項目は残して名前を伏せる（「元メンバー」）。アカウント削除ではその人の項目を消し、他の人の文の中のその人の名前も「元メンバー」にする。
+- REQ-QCHAT-011 KPI（サーバー）：`qchat_post`（文 ID・支部・声かけか・スロットの数）・`qchat_react`（スタンプ・文 ID・支部、新しいリアクションの時だけ）。
+- REQ-QCHAT-012 アクティビティ（§40）：声かけで名前を出された人にだけ `qchat_mention`（まとめる、ブロックの相手からは書かない、投稿ごとに1回）。新しいプッシュの種類は作らない。
+- REQ-QCHAT-013 英語：定型文は日英の組。読む人の言語で組み立て、プレイヤーが付けた名前は翻訳しない。コース名は §23 の表で訳す。「元メンバー」は「Former member」。
+- REQ-QCHAT-014 クライアント：`Muchi.Client` `ApiClient.GetQuickChatAsync`・`PostQuickChatAsync`、`FeedItem.QuickChat`。
+- REQ-QCHAT-015 Unity のゲーム層 `QuickChatModel`：定型文の選び方（分類のタブ、スロットの選択肢、埋めた文の見本）、送れない理由（オフライン・支部なし・削除の予約・待ち時間・今日の上限）、フィードの行（両方向のブロックは端末でも隠す）、応援。
+- REQ-QCHAT-016 プロトタイプ：ムチ一閃の支部の画面に定型文の選び方とフィード、日本語・英語、文字の大きさ（§41）。e2e・en-flow・a11y-flow。

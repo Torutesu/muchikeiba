@@ -72,6 +72,7 @@ namespace Muchi.Game
             [ActivityKinds.RecapReady] = "振り返り",
             [ActivityKinds.OpsNotice] = "運営",
             [ActivityKinds.InquiryAnswered] = "お問い合わせ",
+            [ActivityKinds.QchatMention] = "支部",
         };
         public static readonly IReadOnlyDictionary<string, string> Icons = new Dictionary<string, string>
         {
@@ -82,6 +83,7 @@ namespace Muchi.Game
             [ActivityKinds.RecapReady] = "recap",
             [ActivityKinds.OpsNotice] = "notice",
             [ActivityKinds.InquiryAnswered] = "support",
+            [ActivityKinds.QchatMention] = "chat",
         };
 
         private readonly IActivityApi _api;

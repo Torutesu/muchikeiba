@@ -1,4 +1,5 @@
 import { AppError } from './errors.js';
+import { playerQchatCheck, playerQchatOptions, type QChatSlotInput } from './quickChat.js';
 import type { Master, Reward } from './master.js';
 
 const TOURNAMENT_HISTORY_KEEP = 50;
@@ -993,7 +994,7 @@ export class PlayerService {
   cupLeft(id: string, cupId: string) {
     return this.tx(id, null, (s) => { const st = ensureCups(s); st.active = st.active.filter((r) => r.cupId !== cupId); return true; });
   }
-  cupCommitted(id: string, cupId: string, kind: 'create' | 'join', meta: { format: CupFormat; capacity?: number; via?: string; team?: boolean }) {
+  cupCommitted(id: string, cupId: string, kind: 'create' | 'join', meta: { format: CupFormat; capacity?: number; via?: string; team?: boolean; cupName?: string }) {
     return this.tx(id, null, (s, _now, emit) => { noteCupCommitted(s, cupId, kind, meta, emit); return true; });
   }
   /** REQ-CUP-003: one code attempt (RATE_LIMITED past the hourly cap). */
@@ -1909,6 +1910,32 @@ export class PlayerService {
       if (deletionScheduled(s) || ensureFeed(s).muted.includes(fromId)) return { queued: false };
       ensurePush(this.d.master, s);
       return { queued: enqueuePush(this.d.master, s, 'team_cheer', { name: fromName }, now).status === 'queued' };
+    });
+  }
+
+  // ---- 支部の定型チャット (REQ-QCHAT-*, quickChat.ts; the posts live in the team feed) ----
+  /** REQ-QCHAT-008: phrases in the locale and the values of my own state a post would accept. */
+  async qchatOptions(id: string, locale: 'ja' | 'en' = 'ja') { return playerQchatOptions(this.d.master, await this.load(id), locale, this.d.clock()); }
+  /** REQ-QCHAT-003/004: before a post — deletion, membership, phrase and slot checks; returns the checked values. */
+  qchatCheck(id: string, phraseId: string, slots: QChatSlotInput) { return this.tx(id, null, (s, now) => playerQchatCheck(this.d.master, s, phraseId, slots ?? {}, now)); }
+  /** REQ-QCHAT-011: KPI after the team stored the post / a new reaction to a post. */
+  qchatNote(id: string, kind: 'post' | 'react', a: string, b: string, teamId: string, n: number) {
+    return this.tx(id, null, (_s, _now, emit) => {
+      if (kind === 'post') emit({ name: 'qchat_post', s1: a, s2: teamId, s3: b, count: n });
+      else emit({ name: 'qchat_react', s1: a, s2: b, s3: teamId });
+      return { ok: true };
+    });
+  }
+  /**
+   * REQ-QCHAT-012: a phrase named this player — one activity entry per post (collapsed while unread). Never a push. A
+   * blocked sender writes nothing (recordActivity checks the one block list); nothing while deleting.
+   */
+  async qchatMention(id: string, fromId: string, fromName: string, ref: string) {
+    if (await this.wiped(id)) return { recorded: false };
+    return this.tx(id, null, (s, now) => {
+      if (deletionScheduled(s)) return { recorded: false };
+      const r = recordActivity(this.d.master, s, { kind: 'qchat_mention', source: `${ref}:${fromId}`, actor: { id: fromId, name: fromName } }, now);
+      return { recorded: r === 'recorded' || r === 'collapsed' };
     });
   }
 

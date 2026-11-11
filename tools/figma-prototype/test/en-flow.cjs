@@ -504,6 +504,19 @@ module.exports = async function enFlow(browser, base, out, errors) {
   assert.match(await page.locator('.screen.in').innerText(), /Update required/, 'update screen in English');
   await show('MaintenanceNotice'); await waitScreen('maintenance-notice'); await shot('maintenance-notice', 600);
   await page.evaluate(() => globalThis.__muchi.logic.maintenanceDemo('off'));
+  // round 18: 支部の定型チャット in English (REQ-QCHAT-013/016): the picker (tabs, phrases, a value), the posted phrase and a
+  // teammate's mention in the feed. Phrases come from the server in English; a cup name stays as typed.
+  await show('QuickChat'); await waitScreen('team-chat', 30000); await shot('quick-chat', 600);
+  assert.equal(await page.locator('.screen.in input, .screen.in textarea, .screen.in [contenteditable]').count(), 0, 'quick chat: no text field');
+  await page.locator('.screen.in .qc-tab[data-cat="invite"]').click(); await waitScreen('team-chat'); await page.waitForTimeout(400);
+  await page.locator('.screen.in .qc-phrase[data-phrase="run_together"]').click(); await page.waitForTimeout(400);
+  await page.locator('.screen.in .qc-opt').nth(1).click(); await page.waitForTimeout(400);
+  await shot('quick-chat-picked', 300);
+  await page.locator('.screen.in .btn.qc-cta').click(); await page.waitForTimeout(800);
+  assert.match(await page.locator('.screen.in .tf-row.qchat.mine').first().innerText(), /Let's race together at/, 'quick chat: my phrase in English');
+  await click('支部員のデモ'); await page.waitForTimeout(800);
+  await shot('quick-chat-feed', 400);
+
   const misses = await page.evaluate(() => globalThis.__muchi.l10n.misses());
   fs.writeFileSync(path.join(out, 'en-report.json'), JSON.stringify({ report, misses }, null, 2));
   await ctx.close();

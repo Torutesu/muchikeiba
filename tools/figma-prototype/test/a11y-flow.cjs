@@ -232,6 +232,8 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('Friends'); await waitScreen('friends'); await shot('friends-suggestions', english, 600);
     // Round 18: 練習レース (the setup screen at the largest size)
     await show('Practice'); await waitScreen('practice'); await page.waitForSelector('.screen.in .pr-setup', { timeout: 15000 }); await shot('practice', english, 600);
+    // Round 18: 支部の定型チャット (the picker and the feed rows grow with the text size)
+    await show('QuickChat'); await waitScreen('team-chat', 30000); await page.waitForSelector('.screen.in .qc-phrase', { timeout: 20000 }); await shot('quick-chat', english, 600);
     await show('Settings'); await waitScreen('settings'); await boxesClear('settings lists (largest)', SETTINGS_LISTS, english);
     await show('Home'); await waitScreen('home'); await page.waitForTimeout(700); await boxesClear('home top bar (largest)', HOME_BAR, english);
   };

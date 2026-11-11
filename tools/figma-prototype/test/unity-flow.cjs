@@ -1159,6 +1159,34 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.equal(await page.locator('.screen.in .btn[data-label="購入済み"].disabled').count(), 1, 'the bought pass is not buyable');
   assert.equal(await page.locator('.screen.in .btn[data-label="今シーズンは購入済み"].disabled').count(), 1, 'Pass+ is closed too (one per season)');
   await shot('season-pass-owned', 500);
+  // ------------------------------------------------------------------ 4. round 18: 支部の定型チャット (REQ-QCHAT-*)
+  // the same branch screen with the right panel switched to the phrase picker: tabs, phrases, values from the server only,
+  // the post, the 15 s rule, a teammate's mention of me, a stamp on a phrase. No text field anywhere.
+  await page.evaluate(() => globalThis.__muchi.show('TeamFeed')); await waitScreen('team-feed', 20000); await page.waitForTimeout(400);
+  await page.locator('.screen.in .tf-mode').click(); await waitScreen('team-chat', 20000); await page.waitForTimeout(500);
+  assert.equal(await page.locator('.screen.in input, .screen.in textarea, .screen.in [contenteditable]').count(), 0, 'quick chat: no free text');
+  assert.equal(await page.locator('.screen.in .qc-tab').count(), 5, 'quick chat: five category tabs');
+  assert.match(await page.locator('.screen.in .btn.qc-cta').getAttribute('class'), /disabled/, 'quick chat: nothing chosen → the CTA waits');
+  await shot('quick-chat', 300);
+  await page.locator('.screen.in .qc-tab[data-cat="race"]').click(); await waitScreen('team-chat'); await page.waitForTimeout(400);
+  assert.match(await page.locator('.screen.in .qc-phrase[data-phrase="time_report"]').getAttribute('class'), /off/, 'quick chat: no time-attack record → the phrase is off');
+  await page.locator('.screen.in .qc-tab[data-cat="invite"]').click(); await waitScreen('team-chat'); await page.waitForTimeout(400);
+  await page.locator('.screen.in .qc-phrase[data-phrase="run_together"]').click(); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .qc-phrase.sel .qc-blank').count(), 1, 'quick chat: a blank until a course is chosen');
+  await page.locator('.screen.in .qc-slot[data-slot="course"] .qc-opt[data-ref="kirameki_turf_2000"]').click(); await page.waitForTimeout(400);
+  assert.match(await page.locator('.screen.in .qc-phrase.sel').innerText(), /きらめき競馬場 芝2000mで一緒に走ろう/);
+  await shot('quick-chat-picked', 300);
+  await page.locator('.screen.in .btn.qc-cta').click(); await page.waitForTimeout(800);
+  const qMine = page.locator('.screen.in .tf-row.qchat.mine').first();
+  assert.match(await qMine.innerText(), /きらめき競馬場 芝2000mで一緒に走ろう/, 'quick chat: my phrase is on top of the feed');
+  assert.match(await page.locator('.screen.in .btn.qc-cta').getAttribute('class'), /disabled/, 'quick chat: 15 s rule on the CTA');
+  await shot('quick-chat-sent', 300);
+  for (let i = 0; i < 3; i++) { await click('支部員のデモ'); await page.waitForTimeout(600); }
+  assert.ok(await page.locator('.screen.in .tf-row.qchat.me').count() >= 1, 'quick chat: a teammate named me (marked)');
+  await page.locator('.screen.in .tf-row.qchat.me .tf-cheer').first().click(); await page.waitForTimeout(700);
+  assert.ok(await page.locator('.screen.in .tf-row.qchat .tf-cheer.on').count() >= 1, 'quick chat: a stamp on a phrase');
+  await shot('quick-chat-mention', 300);
+  await page.locator('.screen.in .tf-mode').click(); await waitScreen('team-feed', 20000); await page.waitForTimeout(300);
   // ------------------------------------------------------------------ 4. round 13: 支部の共同目標 (REQ-TGOAL-*)
   // the demo team's week on the real TeamCore / PlayerService rules: milestone bar, contributors, the week result sheet
   await page.evaluate(() => globalThis.__muchi.show('TeamFeed')); await waitScreen('team-feed', 20000); await page.waitForTimeout(400);

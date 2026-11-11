@@ -16,7 +16,9 @@ import { hasJapanese } from './locale.js';
  */
 const INTERNAL_SECTIONS = new Set(['ng', 'bannedSilks', 'assetCatalog', 'nicks', 'ageLimits', 'templateById', 'litTracks', 'locale',
   // REQ-HELP-001: the help articles carry their own English side by side (checked by help.ts helpProblems)
-  'help']);
+  'help',
+  // REQ-QCHAT-001: quick chat phrases are JA + EN pairs of their own (checked by quickChat.ts quickChatProblems)
+  'quickChat']);
 
 /** Every Japanese text of the player-facing master data, with where it is. */
 export function masterTexts(m: Master, v: VisualsMaster = VISUALS): { path: string; text: string }[] {

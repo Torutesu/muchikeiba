@@ -1296,6 +1296,12 @@
   "ナイター": "Night", "昼": "Day", "照明なし（昼だけ）": "No lights (day only)", "{n}〜{m}頭": "{n}–{m} runners", "練習のオプション": "Practice options",
   "何回でも走れます。端末の中だけで走るので、オフラインでも遊べます。": "Race as often as you like. Practice runs only on your device, so it works offline too.",
   "練習のリプレイはマイリプレイに保存されません。写真は撮れます。": "Practice replays are not saved to My Replays. You can take photos.",
-  "練習を始める": "Start practice", "残り距離": "Distance left", "スロー 0.5×": "Slow 0.5×", "やり直す": "Restart"
+  "練習を始める": "Start practice", "残り距離": "Distance left", "スロー 0.5×": "Slow 0.5×", "やり直す": "Restart",
+  "_qchat": "---- round 18: 支部の定型チャット (TeamFeed chat mode, REQ-QCHAT-016)",
+  "決まった文だけ（自由入力はありません）": "Set phrases only (no free typing)",
+  "あなたに": "to you",
+  "今日 {n} / {m}": "Today {n} / {m}",
+  "文を選んでください": "Choose a phrase",
+  "この文を送る": "Send this phrase"
  }
 }

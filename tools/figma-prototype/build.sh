@@ -64,4 +64,5 @@ node "$HERE/test/round17-reports.test.mjs" # round 17: 通報とブロック —
 node "$HERE/test/round17-help.test.mjs" # round 17: ヘルプセンター — index (JA/EN), context links, numbers from data, the fold, a vote, one ticket per form key, the ops reply, English
 node "$HERE/test/round17-friend-suggestions.test.mjs" # round 17: おすすめフレンド — demo from the real race / like / cheer / friends paths, reasons, opt-out and ranked never shown, request via the friend flow, dismiss, KPI, English
 node "$HERE/test/round18-practice.test.mjs" # round 18: 練習レース — the catalog, a device race in PracticeSession, the whip band, slow = same race, same seed + ghost, new seed, photo pause, KPI, nothing granted
+node "$HERE/test/round18-quick-chat.test.mjs"   # round 18: 支部の定型チャット — picker JA / EN, a checked value, the 15 s rule, phrases in the shared feed, a mention, both-way block
 echo "built $SITE ($(du -sh "$SITE" | cut -f1))"

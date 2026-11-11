@@ -907,6 +907,14 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await shot('privacy-choices-analytics-off', 200);
     // a new privacy policy version → asked again on the next home; 「あとで」 keeps the earlier choices
     await page.evaluate(() => globalThis.__muchi.logic.privacy.publishPolicy('2027-01-01'));
+    // R20 integration (§58.11): another prompt already showed this session (the reminders card after the first training) →
+    // the home stays the home; the sheet waits for the next launch
+    await page.evaluate(() => { globalThis.__muchi.prompts.reset(); globalThis.__muchi.prompts.claimForTest?.('notifications'); });
+    if (await page.evaluate(() => globalThis.__muchi.prompts.shown()) === 'notifications') {
+      await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home'); await page.waitForTimeout(500);
+      assert.equal(await page.locator('.screen.in').getAttribute('data-screen'), 'home', 'no consent sheet in a session that showed the reminders card');
+    }
+    await page.evaluate(() => globalThis.__muchi.prompts.reset()); // the next launch
     await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('consent-prompt');
     assert.equal(await page.locator('.screen.in [data-prompt]').getAttribute('data-prompt'), 'next_home');
     await shot('consent-prompt-policy-update', 250);

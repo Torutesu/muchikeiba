@@ -3358,6 +3358,8 @@ function ConfirmDeletion(v) {
 async function Demo(kind) {
   L.reset();
   ftue = false; // every demo state is a player past the first run
+  // R20 integration (§58.11): a demo state is a fresh player opening the app — a new session for the one-prompt rule
+  sessionPrompt.reset(); revPrompted = false;
   document.querySelectorAll('.toast').forEach((t) => t.remove());
   for (const k of ['muchi.partner', 'muchi.notify.primer', 'muchi.link.prompt', 'muchi.link.firstPurchase', 'muchi.link.provider', 'muchi.proto.taFriends', 'muchi.att']) { try { localStorage.removeItem(k); } catch { /* */ } }
   try { for (const k of Object.keys(localStorage)) if (k.startsWith('muchi.proto.ta.')) localStorage.removeItem(k); } catch { /* */ }
@@ -4039,8 +4041,8 @@ let revPrompted = false;
 function revLog(x) { (globalThis.__muchiReview ??= []).push(x); }
 /** A happy moment's screen was closed: ask (or not) on the real rules. Returns the outcome. */
 async function reviewMoment(moment, after = Home) {
+  if (!sessionPrompt.can('review')) { revLog({ moment, skipped: 'session_prompt' }); return 'skipped'; } // §58.11: another prompt showed
   if (revPrompted) { revLog({ moment, skipped: 'session' }); return 'skipped'; }
-  if (!sessionPrompt.can('review')) { revLog({ moment, skipped: 'session_prompt' }); return 'skipped'; } // §58.11
   const r = await L.reviewPrompt.check(moment, REV_SESSION, { inFtue: false, minutesSinceLoss: null, minutesSinceError: null, minutesSinceMaintenanceNotice: null });
   if (!r.ok || !r.value.show) { revLog({ moment, skipped: r.ok ? r.value.reason : r.code }); return 'skipped'; }
   revPrompted = true;
@@ -8259,7 +8261,7 @@ async function boot() {
     show: (name, ...a) => ({ NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     // R20 integration (§58.11): the one-prompt gate and a happy moment (review) for the flows
-    prompts: { shown: () => sessionPrompt.shown, reset: () => sessionPrompt.reset(), review: (m) => reviewMoment(m ?? 'first_win') },
+    prompts: { shown: () => sessionPrompt.shown, reset: () => sessionPrompt.reset(), claimForTest: (k) => sessionPrompt.claim(k), review: (m) => reviewMoment(m ?? 'first_win') },
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),
     logic: L, view: () => view,

@@ -13,6 +13,7 @@ import { MemoryExportStore, runDataExportJob, type DataExportJobPorts } from '..
 import { MemoryPlayerReportRepo, PlayerReportsCore } from '../src/ops/playerReports.js';
 import { ReportsService } from '../src/domain/reportsService.js';
 import type { PlayerReportsApi } from '../src/http/admin.js';
+import { DEFAULT_MAINTENANCE, endpointGroup, gateRequest, isExempt, jstToMs } from '../src/domain/maintenance.js';
 
 const T0 = Date.UTC(2026, 11, 2, 3);
 
@@ -92,5 +93,33 @@ describe('§51 data export × Round 17 / 18 state (REQ-DEX-006/007)', () => {
     expect(doc.horses.goals).toMatchObject({ pinned: partnerId });
     // §52 keeps nothing in the player's state; §50 (practice) stores nothing at all
     expect(Object.keys(await w.svc.state('me'))).not.toContain('practice');
+  });
+});
+
+describe('§46 maintenance gate × Round 18 routes (Round 18 integration, §46.2)', () => {
+  const START = jstToMs('2026-12-03T02:00')!;
+  const all = { ...structuredClone(DEFAULT_MAINTENANCE), windows: [{ id: 'm18', startAtMs: START, endAtMs: START + 4 * 3_600_000, scope: 'all' as const, message: { ja: 'メンテナンスを行います。', en: 'Maintenance.' } }],
+    clientVersions: { ios: { min: '1.2.0', recommended: '1.3.0', storeUrl: 'https://apps.apple.com/jp/app/id1234567890' }, android: { min: '1.2.0', recommended: '1.3.0', storeUrl: 'https://play.google.com/store/apps/details?id=jp.example.muchi' } } };
+  const noHeaders = { platform: null, version: null, engine: null };
+  const old = { platform: 'ios', version: '1.0.0', engine: null };
+  it('groups: horse goals and the practice catalog are core, quick chat is teams (with the feed it posts into)', () => {
+    for (const p of ['/v1/horses/h1/goals', '/v1/horse-goals/pin', '/v1/horse-goals/pinned', '/v1/practice/catalog']) expect(endpointGroup(p), p).toBe('core');
+    for (const p of ['/v1/teams/me/quick-chat', '/v1/teams/me/feed/quick-chat']) expect(endpointGroup(p), p).toBe('teams');
+    const teamsOnly = { ...all, windows: [{ ...all.windows[0]!, scope: ['teams' as const] }] };
+    expect(gateRequest(teamsOnly, 'POST', '/v1/teams/me/feed/quick-chat', noHeaders, START)?.code).toBe('MAINTENANCE');
+    expect(gateRequest(teamsOnly, 'GET', '/v1/practice/catalog', noHeaders, START)).toBeNull();
+  });
+  it('the data export (request, status, download) is a legal right: never gated, also from an outdated app', () => {
+    for (const r of ['GET /v1/player/data-export', 'POST /v1/player/data-export', 'GET /v1/data-export/file']) {
+      const [method, path] = r.split(' ');
+      expect(isExempt(method!, path!), r).toBe(true);
+      expect(gateRequest(all, method!, path!, noHeaders, START), r).toBeNull();
+      expect(gateRequest(all, method!, path!, old, START), r).toBeNull();
+    }
+    // the rest of Round 18 closes with `all`
+    for (const r of ['GET /v1/horses/h1/goals', 'PUT /v1/horse-goals/pin', 'GET /v1/practice/catalog', 'POST /v1/teams/me/feed/quick-chat']) {
+      const [method, path] = r.split(' ');
+      expect(gateRequest(all, method!, path!, noHeaders, START)?.code, r).toBe('MAINTENANCE');
+    }
   });
 });

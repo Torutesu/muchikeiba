@@ -40,8 +40,10 @@ namespace Muchi.Client
             /// <summary>R19 integration: the practice setup (§50) → practice_races.</summary>
             Practice = "practice",
             /// <summary>Round 20: settings › privacy › ads and analytics, and the pre-prompt sheet (§58).</summary>
-            PrivacyChoices = "privacy_choices";
-        public static readonly string[] All = { GachaOdds, CoinShortfall, Purchase, RaceWhip, RaceResult, Training, Breeding, History, GiftBox, AccountLink, Deletion, Accessibility, Privacy, Storage, Practice, PrivacyChoices };
+            PrivacyChoices = "privacy_choices",
+            /// <summary>Round 20: settings › notifications (the device reminders article, §61).</summary>
+            Notifications = "notifications";
+        public static readonly string[] All = { GachaOdds, CoinShortfall, Purchase, RaceWhip, RaceResult, Training, Breeding, History, GiftBox, AccountLink, Deletion, Accessibility, Privacy, Storage, Practice, PrivacyChoices, Notifications };
     }
 
     /// <summary>Inquiry categories (the first four are the §33 ticket topics).</summary>

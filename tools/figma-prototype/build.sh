@@ -72,4 +72,5 @@ node "$HERE/test/round19-transfer-code.test.mjs" # round 19: 引き継ぎコー�
 node "$HERE/test/round20-consent.test.mjs"   # round 20: 広告・分析の同意 — no pre-prompt in the FTUE, ad_offer moment, ATT answer, npa, analytics off withholds optional events, policy update, English
 node "$HERE/test/round20-client-errors.test.mjs" # round 20: クライアントのエラー報告 — window.onerror → WASM ErrorReporter (collapse, scrub, saved queue, same batch id on retry, consent) → the server ingest, device fingerprint = server
 node "$HERE/test/round20-review-prompt.test.mjs" # round 20: レビュー依頼 — FTUE / session / cool-down / loss, native once, soft → store or inquiry (never the store after いまいち), no reward, English
+node "$HERE/test/round20-local-notifications.test.mjs" # round 20: 端末のローカル通知 — the digest, the shared planner, push categories / quiet hours switch the local kinds, cap, details off, English, the diff
 echo "built $SITE ($(du -sh "$SITE" | cut -f1))"

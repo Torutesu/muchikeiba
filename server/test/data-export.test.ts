@@ -84,7 +84,7 @@ async function seeded(w: W) {
   s.stud = { listings: [], reservations: {}, settled: {}, lends: { date: '', byHorse: {}, earned: 0 }, applied: {}, outbox: [], borrows: { date: '', count: 0 },
     history: [{ opId: 'op1', role: 'borrowed', at: T0, ownerId: 'owner_secret', borrowerId: 'u1', horseId: 'h9', horseName: 'ヨソノウマ', fee: 10, paid: 10, foalId: 'f9' }] };
   s.referral = { installs: ['hash1'], attempts: [], invitedBy: { playerId: 'inviter_secret', code: 'ABCD-1234', at: T0, installHash: 'hash1', milestones: [] }, invitees: [{ playerId: 'invitee_secret', at: T0, counted: true, milestones: [] }], outbox: [] };
-  s.push = { devices: [{ token: 'fcm-token-very-secret-XYZ123', platform: 'ios', addedAt: T0, lastSeenAt: T0 }], prefs: { categories: { season: true, friends: true, invites: true, events: true, comeback: true, gifts: true }, quietHours: null }, outbox: [], sent: { date: '', count: 0 }, seq: 0 };
+  s.push = { devices: [{ token: 'fcm-token-very-secret-XYZ123', platform: 'ios', addedAt: T0, lastSeenAt: T0 }], prefs: { categories: { season: true, friends: true, invites: true, events: true, comeback: true, gifts: true, reminders: false }, quietHours: null }, outbox: [], sent: { date: '', count: 0 }, seq: 0 };
   s.moderation = { status: 'ok', until: null, reason: 'detector-x internal note', at: T0 };
   await w.repo.put(s);
   w.names.f1 = 'トモダチ'; w.names.f2 = 'ナカマ'; w.names.f3 = 'シリアイ'; w.names.blocked1 = 'イヤナヒト';

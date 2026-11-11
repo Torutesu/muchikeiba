@@ -304,6 +304,16 @@ module.exports = async function enFlow(browser, base, out, errors) {
     await page.evaluate(() => globalThis.__muchi.logic.reviewPrompt.demo(false));
   }
 
+  // round 20: 通知 in English (REQ-LNOTIF-007): settings with the device reminders and the upcoming list, the pre-permission dialog
+  {
+    const waitIn = (sel, timeout = 20000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(async () => { localStorage.setItem('muchi.lnotif.os', 'granted'); await globalThis.__muchi.logic.localNotify.seedDemo(); await globalThis.__muchi.logic.localNotify.setCategory('reminders', true); });
+    await show('NotifySettings'); await waitScreen('notify-settings'); await waitIn('.ln-next'); await shot('notify-settings', 500);
+    assert.ok(!/[぀-ヿ一-鿿]/.test(await page.locator('.screen.in .ln-upcoming').innerText()), 'notify: the upcoming reminders in English');
+    await show('LnotifPrePrompt'); await waitScreen('ln-primer'); await waitIn('.ln-primer'); await shot('reminders-primer', 400);
+    await page.evaluate(async () => { localStorage.removeItem('muchi.lnotif.os'); await globalThis.__muchi.logic.localNotify.setCategory('reminders', false); });
+  }
+
   // round 16: 厩舎の整理 in English (REQ-ORG-015): the list, the sort and filter sheets, selection, the confirmation; names as typed
   {
     const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });

@@ -140,6 +140,8 @@ static class Program
         await ReviewPromptChecks.Run(Check, Ruleset(), Root);
         Console.WriteLine("== round 20: クライアントのエラー報告 (ClientErrorModel: Unity log lines, no loop, stalls / pause, API failures, desync race id + tick, asset, consent hook, send on pause; REQ-CERR-*)");
         await ClientErrorChecks.Run(Check);
+        Console.WriteLine("== round 20: 端末のローカル通知 (LocalNotificationModel: plan from the digest, diff, account switch / deletion / logout, pre-prompt, details, tap, English; REQ-LNOTIF-*)");
+        await LocalNotificationChecks.Run(Check, Ruleset(), Root);
         Console.WriteLine("== round 16: 次にやること (NextActionModel: primary card + chips, dates not countdowns, dismiss for today, offline fallback, KPI; REQ-NEXT-*)");
         await NextActionChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 16: シーズンの振り返り (SeasonRecapModel: list badge, open / complete once, skip, short version, 順位を隠す, share; REQ-RECAP-*)");

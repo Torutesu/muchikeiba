@@ -72,6 +72,7 @@ import { compileCatalogWith, translateText, romanizeName } from '../../../server
 import { CODE_EN } from '../../../server/src/i18n/en.js';
 import uiEn from '../../../engine/Muchi.Client/Resources/Muchi/ui-en.json';
 import protoEn from './proto-en.json';
+import { diffLocalNotifications, localNotifyRows, planLocalNotifications, type LocalNotifySnapshot, type LocalRemindersView } from '../../../server/src/domain/localNotify.js';
 
 const trackNames = new Map((tracksJson as { tracks: { id: string; name?: string }[] }).tracks.map((t) => [t.id, t.name ?? t.id]));
 
@@ -1215,6 +1216,34 @@ export const MuchiLogic = {
       await svc.tx(ID, null, (st) => { st.createdAt = Math.min(st.createdAt, now() - 10 * DAY_MS); st.stats.races = Math.max(st.stats.races, 12); st.flags.tutorialGachaUsed = true; delete st.reviewPrompt; });
       return true;
     }),
+  },
+  // ---------------------------------------------------------------- round 20: 端末のローカル通知 (REQ-LNOTIF-*, contracts/protocol.md §61)
+  // The real digest (bootstrap / GET /v1/player localReminders), the shared planner (= C# LocalNotificationPlanner), the push
+  // preferences the settings screen switches (one screen for push and local) and a demo state with every source present.
+  localNotify: {
+    digest: async (): Promise<LocalRemindersView> => ((await svc.view(ID)) as unknown as { localReminders: LocalRemindersView }).localReminders,
+    plan: (snapshot: LocalNotifySnapshot) => planLocalNotifications(snapshot),
+    rows: (digest: LocalRemindersView | null) => localNotifyRows(digest),
+    diff: (previous: Record<string, string>, items: ReturnType<typeof planLocalNotifications>['items']) => diffLocalNotifications(previous, items),
+    prefs: () => wrap(() => svc.pushPreferences(ID)),
+    setCategory: (category: string, on: boolean) => wrap(() => svc.setPushPreferences(ID, { categories: { [category]: on } })),
+    setQuietHours: (q: { startHour: number; endHour: number } | null) => wrap(() => svc.setPushPreferences(ID, { quietHours: q })),
+    /**
+     * Demo: 4 game days of play for a new player (training, the login bonus and the weekly challenge open), a gift that expires in 2 days, and
+     * a training session left open on the partner (the reminder a few minutes before its deadline).
+     */
+    async seedDemo(openSession = true) {
+      const d0 = await this.digest();
+      if (!d0.enabled || d0.onboarding) await this.seedDemoDays(); // a player already past onboarding keeps its days (and the clock)
+      await svc.adminGrant(ID, { freeCoins: 30 }, 'campaign', 'ops', 'demo-lnotif-gift', true, { expiryDays: 2 });
+      if (openSession) {
+        const s = await svc.state(ID);
+        const h = s.horses.find((x) => x.id === s.flags.partnerHorseId) ?? s.horses.find((x) => x.status === 'active');
+        if (h) await wrap(() => svc.trainingStart(ID, h.id, 'pool', key()));
+      }
+      return this.digest();
+    },
+    seedDemoDays: () => MuchiLogic.seedDemo(4, [3, 3, 3, 3]),
   },
   // ---------------------------------------------------------------- round 18: 個人データの開示・ダウンロード (REQ-DEX-*, contracts/protocol.md §51)
   // ---------------------------------------------------------------- 広告・分析の同意 (REQ-CNS-*, contracts/protocol.md §58)

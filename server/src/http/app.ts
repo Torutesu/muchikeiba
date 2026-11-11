@@ -1035,7 +1035,8 @@ export const routes: Route[] = [
   { method: 'PUT', path: '/v1/push/preferences', auth: 'player', handler: async (r, _p, c, u) => {
     const hour = z.number().int().min(0).max(23);
     const b = await body(r, z.object({
-      categories: z.object({ season: z.boolean(), friends: z.boolean(), invites: z.boolean(), events: z.boolean(), comeback: z.boolean() }).partial().optional(),
+      // gifts (REQ-BOX-011) was missing here and silently dropped; reminders = REQ-LNOTIF-009 (§61, on-device reminders, opt-in)
+      categories: z.object({ season: z.boolean(), friends: z.boolean(), invites: z.boolean(), events: z.boolean(), comeback: z.boolean(), gifts: z.boolean(), reminders: z.boolean() }).partial().optional(),
       quietHours: z.object({ startHour: hour, endHour: hour }).nullable().optional(),
     }));
     return c.player(u).invoke('setPushPreferences', u, {

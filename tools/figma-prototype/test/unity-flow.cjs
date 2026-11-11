@@ -88,6 +88,13 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     assert.ok(r.timing.perfect + r.timing.good === 5 && r.grade !== 'normal', `every beat hit (${JSON.stringify(r.timing)})`);
     assert.ok(r.total > 0 && r.trainedTotal >= r.total, 'growth applied');
     await shot('training-result', 400);
+    // round 20 (REQ-LNOTIF-010): after the first training, the reminders pre-permission card (inline, not modal) → 今はしない
+    await waitIn('.ln-primer');
+    assert.ok(!(await page.locator('.screen.in .ln-primer').innerText()).includes('ショップ'), 'reminders primer: no shop words');
+    await shot('training-result-reminders-primer', 300);
+    await click('今はしない'); await waitScreen('training-result'); await page.waitForTimeout(600);
+    assert.equal(await page.locator('.screen.in .ln-primer').count(), 0, 'reminders primer: not again right after 今はしない');
+    assert.ok(await page.evaluate(() => (globalThis.__muchiLnotifKpi ?? []).some((k) => k.name === 'lnotif_permission' && k.result === 'later')), 'reminders primer: KPI later');
     await click('ミッション報酬を受け取る'); await waitScreen('training-result');
     await page.waitForTimeout(400);
     assert.equal(await page.evaluate(() => globalThis.__muchi.state().player.items.training_apple), 1, 'the daily mission gave the apple');
@@ -801,6 +808,43 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   // nothing built on the request path) → the "alarm" builds it → ready with the expiry date and size → the activity entry →
   // the JSON (own data, paid / free apart, no other players' private data) and the summary downloaded → asking again inside the
   // cooldown is refused with the date
+  // round 20 (REQ-LNOTIF-*): settings › 通知 — the push categories and quiet hours, the device reminders (rows = their category),
+  // no permission → planned only, the demo plan, the OS allowed → scheduled (KPI once per id), reminders on → training / daily
+  // bonus rows on, details off by default, an OS denial → the settings link, the help article, the pre-permission dialog
+  async function notifyFlow() {
+    const waitIn = (sel, timeout = 20000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(() => { localStorage.removeItem('muchi.lnotif.os'); localStorage.removeItem('muchi.lnotif.scheduled'); globalThis.__muchiLnotifKpi = []; });
+    await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings');
+    await page.locator('.screen.in [data-action="notify"]').click(); await waitScreen('notify-settings'); await waitIn('.ln-device');
+    assert.equal(await page.locator('.screen.in .ln-kind').count(), 6, 'notify: six device reminder rows');
+    assert.equal(await page.locator('.screen.in .ln-cat').count(), 7, 'notify: seven push categories (reminders included)');
+    assert.equal(await page.locator('.screen.in .ln-device').getAttribute('data-ln-status'), 'no_permission', 'notify: nothing scheduled before the OS permission');
+    assert.equal(await page.locator('.screen.in .ln-kind[data-ln-kind="daily_bonus"]').getAttribute('data-on'), 'false', 'notify: reminders are off by default');
+    await shot('notify-settings', 400);
+    await page.locator('.screen.in [data-action="ln-demo"]').click(); await waitScreen('notify-settings'); await waitIn('.ln-next');
+    await page.locator('.screen.in [data-ln-os-demo="granted"]').click(); await waitIn('.ln-device[data-ln-status="ok"]');
+    const kpi1 = await page.evaluate(() => (globalThis.__muchiLnotifKpi ?? []).filter((k) => k.name === 'lnotif_scheduled').length);
+    assert.ok(kpi1 >= 1, 'notify: lnotif_scheduled once the OS allows');
+    await page.locator('.screen.in .ln-cat[data-ln-cat="reminders"] [data-ln-choice="true"]').click(); await waitIn('.ln-kind[data-ln-kind="daily_bonus"][data-on="true"]');
+    assert.equal(await page.locator('.screen.in .ln-kind[data-ln-kind="training_session"]').getAttribute('data-on'), 'true');
+    const text = await page.locator('.screen.in').innerText();
+    assert.ok(!/ショップ|今だけ|残りわずか|お得/.test(text), 'notify: no shop or urgency words');
+    await shot('notify-settings-reminders', 400);
+    // the same plan again: nothing new is reported
+    const kpi2 = await page.evaluate(() => (globalThis.__muchiLnotifKpi ?? []).filter((k) => k.name === 'lnotif_scheduled').length);
+    await page.evaluate(() => globalThis.__muchi.show('NotifySettings')); await waitScreen('notify-settings'); await waitIn('.ln-device'); await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(() => (globalThis.__muchiLnotifKpi ?? []).filter((k) => k.name === 'lnotif_scheduled').length), kpi2, 'notify: an unchanged plan reports nothing new');
+    await page.locator('.screen.in [data-ln-os-demo="denied"]').click(); await waitIn('[data-action="ln-os-settings"]');
+    assert.equal(await page.locator('.screen.in .ln-device').getAttribute('data-ln-status'), 'no_permission');
+    await shot('notify-settings-denied', 300);
+    await page.locator('.screen.in [data-help-context="notifications"]').click(); await waitScreen('help-article');
+    assert.match(await page.locator('.screen.in').innerText(), /端末のお知らせ（リマインダー）/, 'notify: the help article');
+    await page.evaluate(() => globalThis.__muchi.show('LnotifPrePrompt')); await waitScreen('ln-primer'); await waitIn('.ln-primer');
+    await shot('reminders-primer', 300);
+    await page.evaluate(async () => { localStorage.removeItem('muchi.lnotif.os'); await globalThis.__muchi.logic.localNotify.setCategory('reminders', false); });
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
+  }
+
   async function privacyFlow() {
     const waitIn = (sel, timeout = 20000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
     await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings');
@@ -1203,6 +1247,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await privacyFlow(); // round 18: プライバシー › データのダウンロード
   await cheerFlow();
   await consentFlow(); // round 20: プライバシー › 広告と分析
+  await notifyFlow(); // round 20: 通知 (push + device reminders)
   await page.evaluate(() => globalThis.__muchi.show('Scout')); await waitScreen('scout'); await shot('scout', 500);
   await click('提供割合'); await shot('scout-rates', 400); await click('BACK');
   await waitScreen('scout'); await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal'); await shot('scout-paid-reveal', 700);
@@ -1658,6 +1703,8 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.equal(await page.locator('.screen.in .bl-row[data-player="demo_bl_2"]').count(), 0, 'unblocked');
   assert.equal(await page.locator('.screen.in .bl-list').getAttribute('data-count'), '2');
   await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings'); await page.waitForTimeout(300);
+  // R20 integration: 通報とブロック is on その他's 見た目・お世話・仲間 page (通知 joined the 設定・サポート page)
+  await page.locator('.screen.in [data-more-tab="looks"]').click(); await waitScreen('settings'); await page.waitForTimeout(300);
   assert.equal(await page.locator('.screen.in .btn[data-action="blocks"]').count(), 1, 'その他 has the 通報とブロック row');
   await page.locator('.screen.in .btn[data-action="blocks"]').click(); await waitScreen('blocks');
   await page.evaluate(() => globalThis.__muchi.show('Activity')); await waitScreen('activity'); await page.waitForTimeout(400);

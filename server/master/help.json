@@ -319,6 +319,17 @@
       "keywords": { "ja": ["広告", "トラッキング", "パーソナライズ", "分析", "同意", "ATT", "プライバシー"], "en": ["ads", "tracking", "personalised", "analytics", "consent", "ATT", "privacy"] },
       "links": [ { "type": "screen", "screen": "privacy_choices" }, { "type": "legal", "doc": "privacy" } ],
       "related": ["data_export", "delete_account"]
+    },
+    {
+      "id": "local_reminders", "category": "account",
+      "title": { "ja": "端末のお知らせ（リマインダー）", "en": "Reminders on your device" },
+      "body": {
+        "ja": "この端末は、すでに分かっている時刻のお知らせを、サーバーを待たずに端末の中で予約できます。設定の「通知」で、プッシュ通知と同じ種類・同じ静かな時間帯でまとめて切り替えられます。\n\n・調教の仕上げ（始めた調教の期限の少し前）とログインボーナス（受け取れるようになった日）は「リマインダー」の種類です。最初はオフで、受け取ると選んだ時だけ届きます\n・週替わりチャレンジの入れ替わり・ライバルの週の締め・イベント交換所が閉まる日・プレゼントの受け取り期限は、本当の期限の前にお知らせします\n・端末のお知らせは一日に{{lnotif_daily_cap}}件まで。静かな時間帯には送りません\n・ロック画面には、最初は馬の名前や件数を出しません（設定の「ロック画面に詳しく表示」で変えられます）\n・ログアウト・アカウントの切り替え・引き継ぎ・アカウント削除の時は、予約したお知らせをすべて取り消します\n・購入やスカウトを勧めるお知らせはありません\n・端末の設定で通知をオフにした場合は、設定の「通知」から端末の設定を開けます",
+        "en": "This device can schedule reminders for times it already knows, without waiting for the server. Under Notifications in the settings, the same types and quiet hours as push notifications switch them too.\n\n• Finishing a training session (shortly before its deadline) and the login bonus (on the day it is ready) are the Reminders type. It starts off, and you only get them if you choose to\n• The weekly challenges changing, the end of the rival week, an event exchange closing and gift box items expiring are reminded before the real deadline\n• Up to {{lnotif_daily_cap}} device reminders a day, never in quiet hours\n• At first the lock screen shows no horse names or counts (change it with Show details on the lock screen)\n• Logging out, switching accounts, transferring or deleting your account cancels every scheduled reminder\n• No reminder ever asks you to buy or scout\n• If notifications are off in the device settings, Notifications in the settings can open them"
+      },
+      "keywords": { "ja": ["通知", "つうち", "リマインダー", "お知らせ", "ロック画面"], "en": ["notification", "notifications", "reminder", "reminders", "lock screen"] },
+      "links": [ { "type": "screen", "screen": "notifications" } ],
+      "related": ["training", "gift_box"]
     }
   ],
   "contexts": {
@@ -337,6 +348,7 @@
     "privacy": "data_export",
     "storage": "data_storage",
     "practice": "practice_races",
-    "privacy_choices": "ads_analytics_privacy"
+    "privacy_choices": "ads_analytics_privacy",
+    "notifications": "local_reminders"
   }
 }

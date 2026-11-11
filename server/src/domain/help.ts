@@ -49,6 +49,8 @@ export const HELP_SCREENS = [
   'tips',
   // Round 20: settings › privacy › ads and analytics (§58)
   'privacy_choices',
+  // Round 20: settings › notifications (push categories, quiet hours and the device reminders, §61)
+  'notifications',
 ] as const;
 export type HelpScreen = typeof HELP_SCREENS[number];
 /** The existing legal pages (利用規約・プライバシーポリシー・特定商取引法に基づく表記・資金決済法に基づく表示). */
@@ -57,7 +59,9 @@ export type LegalDoc = typeof LEGAL_DOCS[number];
 /** REQ-HELP-008: screens that deep-link to an article. */
 export const HELP_CONTEXTS = ['gacha_odds', 'coin_shortfall', 'purchase', 'race_whip', 'race_result', 'training', 'breeding', 'history', 'gift_box', 'account_link', 'deletion', 'accessibility', 'privacy', 'storage', 'practice',  // R19 integration: the practice setup's ? link
   // Round 20 (§58): settings › privacy › ads and analytics, and the pre-prompt sheet
-  'privacy_choices'] as const;
+  'privacy_choices',
+  // Round 20 (§61): settings › notifications (the device reminders article)
+  'notifications'] as const;
 export type HelpContext = typeof HELP_CONTEXTS[number];
 
 export type HelpLink =
@@ -95,6 +99,7 @@ export const HELP_KEYWORD_CHARS = 20;
 const SCREEN_LABEL: Record<HelpScreen, Loc> = {
   home: { ja: 'ホームを開く', en: 'Open the home screen' },
   settings: { ja: '設定を開く', en: 'Open the settings' },
+  notifications: { ja: '通知の設定を開く', en: 'Open the notification settings' },
   race_lobby: { ja: 'レースを開く', en: 'Open races' },
   tutorial: { ja: 'チュートリアルを開く', en: 'Open the tutorial' },
   training: { ja: '調教を開く', en: 'Open training' },
@@ -187,6 +192,8 @@ function tokenValue(env: TokenEnv, name: string, a?: string, b?: string): string
     case 'qchat_interval_sec': return String(Math.round(quickChatOf(m).config.postIntervalMs / 1000));
     case 'qchat_per_day': return String(quickChatOf(m).config.postsPerDay);
     case 'cheer_interval_sec': return String(CHEER_MIN_INTERVAL_MS / 1000); // §55 REQ-CHEER-004
+    // Round 20: §61 the device reminders' daily cap (remote config)
+    case 'lnotif_daily_cap': return String(m.progression.localNotifications?.dailyCap ?? 2);
     default: throw new Error(`unknown token ${name}`);
   }
 }

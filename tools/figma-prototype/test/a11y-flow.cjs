@@ -209,6 +209,10 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('Recaps'); await waitScreen('recaps', 30000); await page.waitForSelector('.screen.in .rc-card', { timeout: 30000 }); await shot('recaps', english, 600);
     await show('Recap', 'season:2026-11', 0); await waitScreen('recap'); await page.waitForSelector('.screen.in .rc-big', { timeout: 30000 }); await shot('recap', english, 950);
     await show('HostedCups'); await waitScreen('hosted-cups', 30000); await shot('cups', english, 600);
+    // Round 20: 通知 — push categories, the device reminders and the upcoming list; the pre-permission dialog
+    await page.evaluate(async () => { localStorage.setItem('muchi.lnotif.os', 'granted'); await globalThis.__muchi.logic.localNotify.seedDemo(); await globalThis.__muchi.logic.localNotify.setCategory('reminders', true); });
+    await show('NotifySettings'); await waitScreen('notify-settings'); await page.waitForSelector('.screen.in .ln-next', { timeout: 20000 }); await shot('notify-settings', english, 600);
+    await show('LnotifPrePrompt'); await waitScreen('ln-primer'); await page.waitForSelector('.screen.in .ln-primer', { timeout: 15000 }); await shot('reminders-primer', english, 500);
     // Round 18: 馬ごとの目標 — the panel on the horse detail and the full chain
     await show('Stable'); await page.waitForSelector('.screen.in .hg-panel', { timeout: 15000 }); await shot('stable-goals', english, 500);
     await show('ReviewPrompt', 'soft'); await waitScreen('review-ask'); await page.waitForSelector('.screen.in .rev-soft', { timeout: 15000 }); await shot('review-soft', english, 500); // round 20 (REQ-REV-015)

@@ -304,6 +304,20 @@ module.exports = async function enFlow(browser, base, out, errors) {
     await page.evaluate(() => globalThis.__muchi.logic.reviewPrompt.demo(false));
   }
 
+  // round 22: アンケート in English (REQ-SURVEY-022): the home card, each question type, the thanks state
+  {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await show('Survey', 'home'); await waitScreen('home'); await waitIn('.sv-card'); await shot('survey-card', 500);
+    assert.match(await page.locator('.screen.in .sv-card').innerText(), /How the whip feels/, 'survey: the title in English');
+    await page.locator('.screen.in .sv-answer').click(); await waitScreen('survey'); await waitIn('.sv-sheet[data-kind="scale"]'); await shot('survey-scale', 400);
+    await page.locator('.screen.in [data-scale="3"]').click(); await page.locator('.screen.in .sv-next').click(); await waitIn('.sv-sheet[data-kind="single"]'); await shot('survey-single', 400);
+    await page.locator('.screen.in [data-option="events"]').click(); await page.locator('.screen.in .sv-next').click(); await waitIn('.sv-sheet[data-kind="multi"]'); await shot('survey-multi', 400);
+    await page.locator('.screen.in .sv-next').click(); await waitIn('.sv-sheet[data-kind="text"]'); await shot('survey-text', 400);
+    await page.locator('.screen.in .sv-next').click(); await waitScreen('survey-thanks'); await waitIn('.sv-thanks'); await shot('survey-thanks', 400);
+    await page.locator('.screen.in .sv-close').click(); await waitScreen('home');
+    await page.evaluate(() => globalThis.__muchi.logic.surveys.clear());
+  }
+
   // round 20: 通知 in English (REQ-LNOTIF-007): settings with the device reminders and the upcoming list, the pre-permission dialog
   {
     const waitIn = (sel, timeout = 20000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });

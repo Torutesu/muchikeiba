@@ -238,6 +238,74 @@ try {
     await shot('05d-client-error-desync');
   });
 
+  await step('surveys (§69): operator drafts (betting words refused, JA / EN preview), admin publishes, a player answers, results without ids, hide, CSV, close', async () => {
+    const id = `sv_e2e_${runId.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20)}`;
+    const def = {
+      id, title: { ja: 'ムチの手ごたえ', en: 'How the whip feels' }, placements: ['home', 'result'], targeting: {},
+      questions: [
+        { id: 'feel', kind: 'scale', required: true, text: { ja: '手ごたえは？', en: 'How does it feel?' }, labels: { low: { ja: '弱い', en: 'Weak' }, high: { ja: '強い', en: 'Strong' } } },
+        { id: 'mode', kind: 'single', required: true, text: { ja: 'いちばん遊ぶのは？', en: 'What do you play most?' }, options: [{ id: 'ranked', text: { ja: 'ランク戦', en: 'Ranked' } }, { id: 'events', text: { ja: 'イベント', en: 'Events' } }] },
+        { id: 'free', kind: 'text', required: false, maxLength: 200, text: { ja: 'ひとことあれば', en: 'Anything else?' } },
+      ],
+    };
+    // viewer: the list, no create button; the server refuses a draft from a viewer
+    await login('viewer');
+    await page.locator('#nav a[data-view=surveys]').click();
+    await tid('sv-table').waitFor();
+    assert.equal(await tid('sv-new').count(), 0, 'viewer: no create button');
+    assert.equal((await asAdmin('viewer', 'POST', '/v1/admin/surveys', { survey: def, reason: 'e2e viewer' })).status, 403);
+    // operator: a betting word is refused by the server's check; the clean draft shows both languages and is saved
+    await login('operator');
+    await page.locator('#nav a[data-view=surveys]').click();
+    await tid('sv-new').click();
+    await tid('sv-json').fill(JSON.stringify({ ...def, title: { ja: 'オッズの見方', en: 'Odds' } }, null, 2));
+    await tid('sv-validate').click();
+    await tid('sv-problems').getByText('betting words', { exact: false }).first().waitFor();
+    await tid('sv-json').fill(JSON.stringify(def, null, 2));
+    await tid('sv-validate').click();
+    await tid('sv-preview-en').getByText('How the whip feels').waitFor();
+    await tid('sv-preview-ja').getByText('ムチの手ごたえ').waitFor();
+    await shot('05e-survey-draft');
+    await tid('sv-save').click();
+    await confirmWith('e2e: a survey draft');
+    await tid('sv-summary').waitFor();
+    assert.equal((await asAdmin('operator', 'POST', `/v1/admin/surveys/${id}/publish`, { startAt: Date.now(), endAt: Date.now() + 86_400_000, reason: 'e2e operator' })).status, 403, 'operator cannot publish');
+    // admin: publish now
+    await login('admin');
+    await page.goto(`${CONSOLE}/#/surveys/${id}`);
+    await tid('sv-start').fill(new Date(Date.now() + 9 * 3600e3 - 120_000).toISOString().slice(0, 16));
+    await tid('sv-publish').click();
+    await confirmWith('e2e: publish the survey');
+    await tid('sv-results').waitFor();
+    // a player answers (strict: an unknown question is 400; the free text is scrubbed); nothing is granted
+    const r400 = await fetch(API + `/v1/surveys/${id}/answers`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-dev-user': PLAYER, 'idempotency-key': `e2e-${runId}-sv0` }, body: JSON.stringify({ placement: 'home', answers: { feel: 4, mode: 'ranked', nope: 1 } }) });
+    assert.equal(r400.status, 400);
+    const walletBefore = (await asAdmin('admin', 'GET', `/v1/admin/players/${PLAYER}`)).body.state.walletDetail;
+    const ans = await asPlayer('POST', `/v1/surveys/${id}/answers`, { placement: 'home', answers: { feel: 4, mode: 'ranked', free: 'メールは e2e@example.com です' } });
+    assert.equal(ans.outcome, 'answered');
+    assert.deepEqual((await asAdmin('admin', 'GET', `/v1/admin/players/${PLAYER}`)).body.state.walletDetail, walletBefore, 'nothing granted');
+    await page.reload();
+    await tid('sv-results').waitFor();
+    const res = await tid('sv-results').innerText();
+    assert.ok(res.includes('<email>') && !res.includes('e2e@example.com') && !res.includes(PLAYER), 'scrubbed, no player id');
+    await tid('sv-avg-feel').getByText('平均 4', { exact: false }).waitFor();
+    await shot('05f-survey-results');
+    await page.locator('[data-testid^="sv-hide-"]').first().click();
+    await confirmWith('e2e: personal details');
+    await tid('sv-results').getByText('（隠しています）').waitFor();
+    const csv = (await asAdmin('viewer', 'GET', `/v1/admin/surveys/${id}/results.csv`)).body;
+    assert.ok(csv.csv.includes('(hidden)') && !csv.csv.includes(PLAYER), 'CSV: hidden text, no player id');
+    await tid('sv-csv').click();
+    await tid('sv-csv-link').waitFor();
+    // close: the player gets the neutral SURVEY_CLOSED
+    await tid('sv-close').click();
+    await confirmWith('e2e: enough answers');
+    await page.getByText('終了しました').first().waitFor();
+    const closed = await fetch(API + `/v1/surveys/${id}/answers`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-dev-user': `${PLAYER}_2`, 'idempotency-key': `e2e-${runId}-sv9` }, body: JSON.stringify({ placement: 'home', answers: { feel: 1, mode: 'events' } }) });
+    assert.equal(closed.status, 409);
+    assert.equal((await closed.json()).error.code, 'SURVEY_CLOSED');
+  });
+
   await step('admin: dry run surfaces the day-rule problem; clean version is activated; diff', async () => {
     await login('admin'); // the §48 inquiry step before this one works as operator
     await page.locator('#nav a[data-view=config]').click();

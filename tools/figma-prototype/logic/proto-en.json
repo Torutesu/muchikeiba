@@ -1469,6 +1469,8 @@
   "許可済み": "Allowed",
   "拒否": "Denied",
   "端末の確認：通知を許可しました（プロトタイプでは確認画面を出しません）": "Device prompt: notifications allowed (the prototype does not show the prompt)",
-  "端末の設定を開きます（プロトタイプでは開きません）": "Opens the device settings (not in the prototype)"
+  "端末の設定を開きます（プロトタイプでは開きません）": "Opens the device settings (not in the prototype)",
+  "_surveys": "---- round 22: in-app surveys (§69)",
+  "{n}つまで選べます": "Choose up to {n}"
  }
 }

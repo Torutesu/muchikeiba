@@ -10,8 +10,9 @@ import { kpiView } from './views/kpi.js';
 import { maintenanceView } from './views/maintenance.js';
 import { inquiriesView } from './views/inquiries.js';
 import { clientErrorsView } from './views/clientErrors.js';
+import { surveysView } from './views/surveys.js';
 
-const views = { config: configView, gacha: gachaView, events: eventsView, players: playersView, compensations: compensationsView, inquiries: inquiriesView, 'client-errors': clientErrorsView, audit: auditView, kpi: kpiView, maintenance: maintenanceView };
+const views = { config: configView, gacha: gachaView, events: eventsView, players: playersView, compensations: compensationsView, inquiries: inquiriesView, 'client-errors': clientErrorsView, surveys: surveysView, audit: auditView, kpi: kpiView, maintenance: maintenanceView };
 const main = document.getElementById('main');
 const nav = document.getElementById('nav');
 const who = document.getElementById('who');

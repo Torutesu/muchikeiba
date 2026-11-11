@@ -128,6 +128,8 @@ static class Program
         await RosterChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 18: 馬ごとの目標 (HorseGoalsModel: goals panel rows, ribbon, pin / unpin, home pinned card, KPI, next-action kind, English; REQ-HGOAL-*)");
         await HorseGoalsChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 20: 端末のローカル通知 (LocalNotificationModel: plan from the digest, diff, account switch / deletion / logout, pre-prompt, details, tap, English; REQ-LNOTIF-*)");
+        await LocalNotificationChecks.Run(Check, Ruleset(), Root);
         Console.WriteLine("== round 16: 次にやること (NextActionModel: primary card + chips, dates not countdowns, dismiss for today, offline fallback, KPI; REQ-NEXT-*)");
         await NextActionChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 16: シーズンの振り返り (SeasonRecapModel: list badge, open / complete once, skip, short version, 順位を隠す, share; REQ-RECAP-*)");

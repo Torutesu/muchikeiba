@@ -114,7 +114,7 @@ describe('§58 × §60: the analytics choice governs the player id on client err
     expect(w.ops.clientErrors.madeBy('p_off')).toHaveLength(1);
     // the player's object cannot answer → anonymous (fail closed), the report is still accepted
     const invoke = w.c.player('p_on').invoke;
-    w.c.player = () => ({ invoke: (async (method: string, ...a: unknown[]) => { if (method === 'privacyChoices') throw new Error('down'); return (invoke as (...x: unknown[]) => unknown)(method, ...a); }) as PlayerInvoker['invoke'] });
+    w.c.player = () => ({ invoke: (async (method: string, ...a: unknown[]) => { if (method === 'clientErrorsAttach') throw new Error('down'); return (invoke as (...x: unknown[]) => unknown)(method, ...a); }) as PlayerInvoker['invoke'] });
     expect((await w.req('POST', '/v1/client-errors', ceBatch(), { authorization: 'Bearer p_on' })).body).toMatchObject({ accepted: 1 });
     expect(w.ops.clientErrors.madeBy('p_on')).toHaveLength(1);
   });
@@ -264,5 +264,26 @@ describe('deploy §7.1: one Round 20 row (v7 before the Worker that uses it, rol
     const wr = read('server/wrangler.toml');
     expect(wr.match(/name = "CLIENT_ERRORS"/g)).toHaveLength(3); // default, staging, production
     expect(wr).toMatch(/tag = "v7"\s+new_sqlite_classes = \["ClientErrorsDO"\]/);
+  });
+});
+
+describe('§60 × deletion: a deleting or wiped account never gets its id back on an error sample', () => {
+  it('deleting → anonymous; after the wipe (tombstone, a token can outlive it) → anonymous', async () => {
+    const w = appWorld();
+    await w.svc.bootstrap('p_bye');
+    const tok = (await w.svc.requestDeletion('p_bye', null)) as { confirmToken: string };
+    await w.svc.requestDeletion('p_bye', tok.confirmToken);
+    // scheduled (still an account, may cancel): attached as before
+    await w.req('POST', '/v1/client-errors', ceBatch(), { authorization: 'Bearer p_bye' });
+    expect(w.ops.clientErrors.madeBy('p_bye')).toHaveLength(1);
+    w.ops.clientErrors.forgetPlayer('p_bye'); // the deletion's client_errors step
+    w.setNow(NOW + 15 * 86_400_000);
+    await w.svc.deletionStart('p_bye');
+    expect((await w.svc.state('p_bye')).deletion?.status).toBe('deleting');
+    expect((await w.req('POST', '/v1/client-errors', ceBatch(), { authorization: 'Bearer p_bye' })).body).toMatchObject({ accepted: 1 });
+    expect(w.ops.clientErrors.madeBy('p_bye')).toEqual([]);
+    await w.svc.wipe('p_bye');
+    expect((await w.req('POST', '/v1/client-errors', ceBatch(), { authorization: 'Bearer p_bye' })).body).toMatchObject({ accepted: 1 });
+    expect(w.ops.clientErrors.madeBy('p_bye')).toEqual([]);
   });
 });

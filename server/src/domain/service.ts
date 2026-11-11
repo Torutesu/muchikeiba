@@ -1839,6 +1839,18 @@ export class PlayerService {
     const now = this.d.clock();
     return privacyChoicesView(this.d.master, s, now, adIneligibility(this.d.master, s, now) === null);
   }
+  /**
+   * R20 integration (§58.10 × §60.6): may a client error sample keep this player's id? Only while analytics is effective,
+   * never for an account being deleted (`deleting`) or already wiped (tombstone) — a token can outlive the wipe by up to an
+   * hour, and the deletion's client_errors step has already run by then. Read-only.
+   */
+  async clientErrorsAttach(id: string): Promise<boolean> {
+    const stored = await this.repo.get(id);
+    if (!stored && (await this.repo.tombstoned?.(id))) return false;
+    const s = await this.load(id);
+    if (s.deletion?.status === 'deleting') return false;
+    return analyticsAllowed(this.d.master, s, this.d.clock());
+  }
   /** PUT /v1/privacy/choices: a decision under the current policy version (idempotent by content). */
   setPrivacyChoices(id: string, body: PrivacyChoicesBody) {
     return this.tx(id, null, (s, now, emit) => setPrivacyChoices(this.d.master, s, body, now, emit, adIneligibility(this.d.master, s, now) === null));

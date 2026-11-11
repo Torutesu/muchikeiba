@@ -94,7 +94,7 @@ export type PlayerMethod =
   | 'assist' | 'setAssist' | 'assistPromptSeen'
   | 'commentaryPacks' | 'equipCommentaryPack' | 'buyCommentaryPack'
   | 'accessibility' | 'setAccessibility'
-  | 'privacyChoices' | 'setPrivacyChoices' | 'setPrivacyPlatform' | 'notePrivacyPromptShown'
+  | 'privacyChoices' | 'setPrivacyChoices' | 'setPrivacyPlatform' | 'notePrivacyPromptShown' | 'clientErrorsAttach'
   | 'rivalPeek' | 'rivalSync' | 'rivalSetOptOut' | 'rivalBlock' | 'rivalChallengeCheck' | 'rivalChallengeReceive' | 'rivalSeen' | 'rivalPush'
   | 'history' | 'historyTicket' | 'adminHistory' | 'adminHistoryRefs'
   | 'exchangeView' | 'exchangeBuy'
@@ -304,12 +304,11 @@ async function clientErrorsIngest(r: Request, c: AppContext) {
   }
   // R20 integration (§58.10 × §60.6): the player's analytics choice governs the player id on the samples, enforced here and
   // not only by the device's ErrorReporter.AllowsDiagnostics — an old app, or a batch made before the choice changed, cannot
-  // attach it. A player the server cannot read (unknown, deleted, a failing object) is anonymous: fail closed. The report
+  // attach it. An account being deleted or already wiped, or an object that cannot answer, is anonymous: fail closed. The report
   // itself is always kept (it carries no personal data, §60.3), and the rate limit stays per install.
   if (playerId && b.attachPlayer) {
     try {
-      const v = (await c.player(playerId).invoke('privacyChoices', playerId)) as { analytics?: { effective?: boolean } } | null;
-      if (v?.analytics?.effective !== true) playerId = null;
+      if ((await c.player(playerId).invoke('clientErrorsAttach', playerId)) !== true) playerId = null;
     } catch { playerId = null; }
   }
   const out = await store.ingest(b, { playerId, installId: b.installId }, (c.clock ?? Date.now)(), cfg);

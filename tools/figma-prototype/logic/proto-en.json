@@ -1323,6 +1323,27 @@
   "概要（テキスト）をダウンロードしました": "Downloaded the summary (text)",
   "準備ができるとお知らせに届きます": "You will get a notice in Activity when it is ready",
   "リクエストを受け付けました": "Request received",
-  "データ": "Data"
+  "データ": "Data",
+  "_lnotif": "---- round 20: 端末のローカル通知 (REQ-LNOTIF-*, protocol §61): settings › 通知, the pre-permission card, the upcoming list",
+  "通知": "Notifications",
+  "その他　/　通知": "More  /  Notifications",
+  "プッシュ通知と端末のリマインダーを、ここでまとめて切り替えます": "Push notifications and the reminders on this device, switched in one place",
+  "通知の種類": "Notification types",
+  "お知らせ（復帰）": "Welcome back",
+  "静かな時間帯": "Quiet hours",
+  "22時〜8時": "22:00–8:00",
+  "23時〜7時": "23:00–7:00",
+  "プッシュは1日{n}件まで。静かな時間帯は端末のリマインダーにも使われます。": "Up to {n} push notifications a day. Quiet hours apply to the device reminders too.",
+  "この端末の中で予約するお知らせです。左の通知の種類と静かな時間帯がそのまま使われます。1日{n}件まで。": "Reminders this device schedules by itself. The notification types and quiet hours on the left apply to them too. Up to {n} a day.",
+  "調教の仕上げや、ログインボーナスを受け取れる日を、この端末からお知らせします。1日{n}件まで・静かな時間帯は送りません。あとから設定で変えられます。": "This device can remind you to finish a training session and when a login bonus is ready. Up to {n} a day, never in quiet hours. You can change this later in Settings.",
+  "購入やスカウトを勧めるお知らせはありません": "No reminder ever asks you to buy or scout",
+  "通知が許可されると、この予定で届きます": "Once notifications are allowed, these will arrive",
+  "端末のお知らせについて（ヘルプ）": "About device reminders (Help)",
+  "デモの予定": "Demo plan",
+  "未確認": "Not asked",
+  "許可": "Allowed",
+  "拒否": "Denied",
+  "端末の確認：通知を許可しました（プロトタイプでは確認画面を出しません）": "Device prompt: notifications allowed (the prototype does not show the prompt)",
+  "端末の設定を開きます（プロトタイプでは開きません）": "Opens the device settings (not in the prototype)"
  }
 }

@@ -1168,6 +1168,7 @@ async function Home() {
   await ChallengeHomeCard(); // round 13: this week's challenges, under the home card
   await NextCard(); // round 16: 次にやること, bottom centre (the top bar stays as it is)
   await GoalPinStrip(); // round 18: the pinned horse goal, above the next card
+  lnRefresh().catch(() => {}); // round 20 (REQ-LNOTIF-011): the app came to the front → plan the device reminders again
   MaybeLinkPrompt('Home', Home);
 }
 /** ③ today's to-do (login bonus, daily missions, first-win bonus) in a drawer. */
@@ -2475,7 +2476,8 @@ async function Settings() {
   // round 14: 実況パック (REQ-CMT-011) after the looks entries
   // round 15: アクセシビリティ (REQ-A11Y-*) first — reachable in the FTUE too (text size before the first race)
   // round 18: プライバシー (REQ-DEX-001) next to the accessibility settings
-  const moreRows = [['ヘルプ・お問い合わせ', () => HelpCenter(Settings), 'help', (player?.help?.unreadReplies ?? 0) > 0 ? `未読 ${player.help.unreadReplies}` : undefined], ['アクセシビリティ', () => A11ySettings(), 'a11y'], ['プライバシー', () => Privacy(), 'privacy'], ['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions], ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite'],
+  // round 20: 通知 (REQ-LNOTIF-004) — push categories, quiet hours and the device reminders on one screen
+  const moreRows = [['ヘルプ・お問い合わせ', () => HelpCenter(Settings), 'help', (player?.help?.unreadReplies ?? 0) > 0 ? `未読 ${player.help.unreadReplies}` : undefined], ['通知', () => NotifySettings(), 'notify'], ['アクセシビリティ', () => A11ySettings(), 'a11y'], ['プライバシー', () => Privacy(), 'privacy'], ['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions], ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite'],
     // round 15 (REQ-ADV-009): the pre-race advice switch (a device setting, default on)
     ['出走前アドバイス', () => { advice.setEnabled(!advice.enabled()); Settings(); }, 'advice', advice.enabled() ? 'オン' : 'オフ'],
     // round 17 (REQ-RPT-011): the block list and what a block does
@@ -2484,6 +2486,7 @@ async function Settings() {
     // R15 integration: nine rows of 38 px under the kicker, clear of the legal block below (the kicker at y 466).
     // R17 integration: eleven rows (ヘルプ first, 通報とブロック last) — the row height follows the count (33 px for 11)
     // R18 integration: twelve rows with プライバシー (30 px each, the last ends at 456, clear of the legal block at 458)
+    // R20: thirteen rows with 通知 (28 px each, the last ends at 460, clear of the legal block's text at 504)
     const rowH = Math.min(36, Math.floor(364 / moreRows.length));
     const b = Btn(n, 36, 96 + i * rowH, 408, rowH, go, 'row' + (i === moreRows.length - 1 ? ' last' : ''), m); b.style.fontSize = rowH < 36 ? '17px' : '18px';
     if (action) b.dataset.action = action;
@@ -4498,6 +4501,8 @@ async function TrainingResult(res) {
   const m = ms.ok ? ms.value.find((x) => x.kind === 'training' && x.progress >= x.target && !x.claimed) : null;
   if (m) Ghost('ミッション報酬を受け取る', 420, 570, 300, 56, async () => { const c = await L.claimMission(m.id); toast(c.ok ? 'りんごのおやつ を受け取りました' : c.message); TrainingResult(res); }, d, 'small').classList.add('tr-claim');
   EnToggle();
+  // round 20 (REQ-LNOTIF-010): after the first training, the reminders pre-permission card (inline, at most maxAsks times)
+  await LnotifPrePromptCard(() => TrainingResult(res));
 }
 
 // ================================================================= round 12: ライバル (REQ-RIVAL-*, contracts/protocol.md §28)
@@ -6605,6 +6610,8 @@ const helpGo = (screen, back) => ({
   account_link: () => Settings(), deletion: () => Settings(), inquiry: () => InquiryForm(), my_inquiries: () => MyInquiries(),
   // round 18 integration: privacy (§51), the branch feed's quick chat (§52), practice races (§50)
   privacy: () => Privacy(), team_feed: () => TeamFeed('chat'), practice: () => Practice(),
+  // round 20: settings › notifications (push and the device reminders, §61)
+  notifications: () => NotifySettings(),
 })[screen]?.() ?? back?.();
 /** Entry from settings (or a screen's ? link): `back` is where 戻る returns. */
 async function HelpCenter(back = null) {
@@ -6875,6 +6882,165 @@ function fit() {
 window.addEventListener('resize', fit);
 fit();
 
+// ================================================================= round 20: 端末のローカル通知 (REQ-LNOTIF-*, contracts/protocol.md §61)
+// One settings screen for push and the device reminders: the push categories and quiet hours (the real push.ts preferences on
+// the local player) switch the local kinds too. The plan is the shared planner (= C# LocalNotificationPlanner) over the real
+// bootstrap digest; the prototype's "OS" is localStorage (the permission state is simulated with the review buttons). The
+// pre-permission card sits on the training result after the first training (never on first launch, never modal); the OS
+// dialog is shown once. Mirrors unity/Assets/Muchi/Game/LocalNotificationModel.cs. No shop link, no urgency words.
+const LN_OS = 'muchi.lnotif.os';
+const LN_DETAILS = 'muchi.lnotif.details';
+const LN_ASKS = 'muchi.lnotif.asks';
+const LN_TRAINED = 'muchi.lnotif.trainingStarted';
+const LN_SCHEDULED = 'muchi.lnotif.scheduled';
+const LN_KIND_LABEL = {
+  training_session: '調教の仕上げ', daily_bonus: 'ログインボーナス（1日1回）', weekly_challenge_closing: '週替わりチャレンジの入れ替わり',
+  rival_week_closing: 'ライバルの週の締め', exchange_closing: 'イベント交換所が閉まる', gift_expiring: 'プレゼントの受け取り期限',
+};
+const LN_CAT_LABEL = { season: 'シーズン', events: 'イベント', friends: 'フレンド', invites: '招待', gifts: 'プレゼント', comeback: 'お知らせ（復帰）', reminders: 'リマインダー' };
+const LN_CATS = ['season', 'events', 'friends', 'invites', 'gifts', 'comeback', 'reminders'];
+const LN_QUIET = [[{ startHour: 22, endHour: 8 }, '22時〜8時'], [{ startHour: 23, endHour: 7 }, '23時〜7時'], [null, 'なし']];
+const LN_OS_TEXT = { granted: '通知は許可されています', provisional: '通知センターに静かに届きます（仮の許可）', denied: '端末の設定で通知がオフになっています', unknown: '通知はまだ許可されていません' };
+const lnGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+const lnSet = (k, v) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch { /* private mode */ } };
+const lnOs = () => lnGet(LN_OS) ?? 'unknown';
+const lnDetails = () => lnGet(LN_DETAILS) === '1';
+/** 「12月9日 12:00」 (JST; EN through the {m}月{n}日 {hm} template). */
+const lnWhen = (ms) => { const d = new Date(ms + 9 * 3600e3); return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日 ${d.getUTCHours()}:${String(d.getUTCMinutes()).padStart(2, '0')}`; };
+function lnSnapshot(digest, locale = isJa() ? 'ja' : 'en') {
+  return { now: L.now(), locale, permission: lnOs(), showDetails: lnDetails(), signedIn: true, digest, horseNames: Object.fromEntries((player?.horses ?? []).map((h) => [h.id, h.name])) };
+}
+function lnKpi(name, props) { L.kpi([{ name, at: L.now(), props }]); (globalThis.__muchiLnotifKpi ??= []).push({ name, ...props }); }
+/** Plan and apply the difference to the simulated OS (KPI lnotif_scheduled once per new id); nothing scheduled without the permission. */
+async function lnRefresh() {
+  const d = await L.localNotify.digest();
+  const plan = L.localNotify.plan(lnSnapshot(d));
+  let prev = {}; try { prev = JSON.parse(lnGet(LN_SCHEDULED) ?? '{}').ids ?? {}; } catch { /* */ }
+  if (plan.status !== 'ok') { lnSet(LN_SCHEDULED, JSON.stringify({ ids: {} })); return { d, plan }; }
+  const diff = L.localNotify.diff(prev, plan.items);
+  for (const id of diff.added) lnKpi('lnotif_scheduled', { kind: plan.items.find((i) => i.id === id).kind });
+  lnSet(LN_SCHEDULED, JSON.stringify({ ids: Object.fromEntries(plan.items.map((i) => [i.id, `${i.fireAt}|${i.title}|${i.body}`])) }));
+  return { d, plan };
+}
+const lnAsks = () => { const [n, t] = (lnGet(LN_ASKS) ?? '0|0').split('|').map(Number); return { n: n || 0, last: t || 0 }; };
+function lnPrePromptDue(d) {
+  if (!d?.enabled || d.onboarding || d.deleting || d.categories.reminders || lnOs() === 'denied') return false;
+  if (lnGet(LN_TRAINED) !== '1' && !d.training.trainedEver) return false;
+  const a = lnAsks();
+  return a.n < d.config.prePrompt.maxAsks && (a.last === 0 || L.now() - a.last >= d.config.prePrompt.retryDays * 86_400_000);
+}
+const lnCountAsk = () => lnSet(LN_ASKS, `${lnAsks().n + 1}|${L.now()}`);
+/** 「お知らせを受け取る」: the reminders category on, then the OS dialog once (simulated: allowed). */
+async function lnAccept(after) {
+  lnCountAsk();
+  const r = await L.localNotify.setCategory('reminders', true);
+  if (!r.ok) { toast(r.message); return after(); }
+  if (lnOs() === 'unknown') { lnSet(LN_OS, 'granted'); toast('端末の確認：通知を許可しました（プロトタイプでは確認画面を出しません）'); }
+  lnKpi('lnotif_permission', { result: lnOs() === 'denied' ? 'denied' : lnOs() });
+  await lnRefresh();
+  after();
+}
+function lnDecline(after) { lnCountAsk(); lnKpi('lnotif_permission', { result: 'later' }); after(); }
+/** The pre-permission card (inline, never modal) on the training result. */
+async function LnotifPrePromptCard(after) {
+  if (cur?.dataset.screen !== 'training-result') return null;
+  lnSet(LN_TRAINED, '1');
+  const d = await L.localNotify.digest();
+  if (!lnPrePromptDue(d) || cur?.dataset.screen !== 'training-result') return null;
+  const c = Glass('Reminders primer', 836, 134, 640, 420, undefined, .9);
+  c.classList.add('ln-primer', 'rise');
+  lnPrimerBody(c, d, after, 600);
+  return c;
+}
+function lnPrimerBody(c, d, after, w) {
+  Kicker('リマインダー', 40, 34, c);
+  Txt('調教とログインボーナスのお知らせ', 40, 98, w - 80, 26, WHITE, c, { weight: 700 });
+  Txt(`調教の仕上げや、ログインボーナスを受け取れる日を、この端末からお知らせします。1日${d.config.dailyCap}件まで・静かな時間帯は送りません。あとから設定で変えられます。`, 40, 150, w - 80, 16, MUTED, c, { lh: 1.7 }).classList.add('ln-primer-body');
+  Txt('購入やスカウトを勧めるお知らせはありません', 40, 262, w - 80, 14, SOFT, c);
+  Cta('お知らせを受け取る', 40, 314, 330, () => lnAccept(after), c, 'small').dataset.action = 'ln-accept';
+  Ghost('今はしない', 392, 320, w - 432, 52, () => lnDecline(after), c, 'quiet small').dataset.action = 'ln-later';
+}
+/** Review: the pre-permission card as a dialog over the training art (show('LnotifPrePrompt')). */
+async function LnotifPrePrompt() {
+  currentScreen = LnotifPrePrompt; Clear('ln-primer'); SetArt('Art/home-paddock', false); Shade('dim');
+  const d = await L.localNotify.digest();
+  const box = Dialog('Reminders primer', 720, 430);
+  box.classList.add('ln-primer');
+  lnPrimerBody(box, d.enabled ? d : { config: { dailyCap: 2 } }, () => NotifySettings(), 720);
+}
+/** Settings › 通知: push categories and quiet hours (left), the device reminders (right). */
+async function NotifySettings() {
+  currentScreen = NotifySettings;
+  const pr = await L.localNotify.prefs();
+  const { d, plan } = await lnRefresh();
+  const shown = L.localNotify.plan(lnSnapshot(d));
+  const rows = L.localNotify.rows(d);
+  Clear('notify-settings'); SetArt('Art/home-paddock', false); Shade('dim');
+  TopBar('その他　/　通知', 'プッシュ通知と端末のリマインダーを、ここでまとめて切り替えます', { wallet: false });
+  // ① push: categories and quiet hours (they apply to the device reminders too)
+  const p = Glass('Push', 36, 134, 600, 676, undefined, .9);
+  p.classList.add('ln-push');
+  Kicker('通知の種類', 36, 26, p, { size: 16 });
+  const cats = pr.ok ? pr.value.categories : {};
+  LN_CATS.forEach((cat, i) => {
+    const row = el('ln-cat', 36, 92 + i * 56, 528, 50, p); row.dataset.lnCat = cat;
+    Txt(LN_CAT_LABEL[cat], 0, 12, 250, 19, WHITE, row, { weight: 500, nowrap: true });
+    [[true, 'オン'], [false, 'オフ']].forEach(([v, l], j) => {
+      const b = Btn(l, 280 + j * 128, 0, 116, 46, async () => { if (!!cats[cat] === v) return; const r = await L.localNotify.setCategory(cat, v); if (!r.ok) toast(r.message); NotifySettings(); }, 'choice' + (!!cats[cat] === v ? ' on' : ''), row);
+      b.dataset.lnChoice = String(v); b.style.whiteSpace = 'nowrap';
+    });
+  });
+  Hair(36, 494, 528, p);
+  Txt('静かな時間帯', 36, 512, 250, 19, WHITE, p, { weight: 500, nowrap: true });
+  const q = pr.ok ? pr.value.quietHours : null;
+  LN_QUIET.forEach(([v, l], i) => {
+    const on = (v === null && q === null) || (v && q && v.startHour === q.startHour && v.endHour === q.endHour);
+    const b = Btn(l, 36 + i * 178, 550, 168, 50, async () => { const r = await L.localNotify.setQuietHours(v); if (!r.ok) toast(r.message); NotifySettings(); }, 'choice' + (on ? ' on' : ''), p);
+    b.dataset.lnQuiet = v ? `${v.startHour}-${v.endHour}` : 'none'; b.style.whiteSpace = 'nowrap'; b.style.fontSize = '16px';
+  });
+  Txt(`プッシュは1日${pr.ok ? pr.value.dailyCap : 2}件まで。静かな時間帯は端末のリマインダーにも使われます。`, 36, 618, 528, 13, SOFT, p, { lh: 1.55 });
+  // ② the device reminders: permission, the kinds (on = their category), details, what comes next
+  const r = Glass('Device reminders', 656, 134, 908, 676, undefined, .9);
+  r.classList.add('ln-device'); r.dataset.lnStatus = plan.status;
+  Kicker('端末のリマインダー', 36, 26, r, { size: 16 });
+  Txt(`この端末の中で予約するお知らせです。左の通知の種類と静かな時間帯がそのまま使われます。1日${d.enabled ? d.config.dailyCap : 2}件まで。`, 36, 82, 836, 14, MUTED, r, { lh: 1.6 });
+  Txt(LN_OS_TEXT[lnOs()], 36, 138, 520, 16, lnOs() === 'denied' ? GOLD : lnOs() === 'unknown' ? MUTED : OK, r, { weight: 500, nowrap: true }).classList.add('ln-os');
+  if (lnOs() === 'denied') Ghost('端末の設定を開く', 600, 118, 272, 46, () => toast('端末の設定を開きます（プロトタイプでは開きません）'), r, 'small').dataset.action = 'ln-os-settings';
+  rows.forEach((x, i) => {
+    const row = el('ln-kind', 36, 186 + i * 46, 400, 42, r); row.dataset.lnKind = x.kind; row.dataset.on = String(x.on);
+    Txt(LN_KIND_LABEL[x.kind], 0, 0, 290, 16, x.on ? WHITE : SOFT, row, { weight: 500, nowrap: true });
+    Txt(LN_CAT_LABEL[x.category], 0, 22, 200, 12, SOFT, row, { nowrap: true, ls: '.08em' });
+    Txt(x.on ? 'オン' : 'オフ', 300, 6, 100, 16, x.on ? CYAN : DIM, row, { weight: 700, align: 'right', nowrap: true });
+  });
+  Hair(36, 470, 400, r);
+  Txt('ロック画面に詳しく表示', 36, 486, 400, 16, WHITE, r, { weight: 500, nowrap: true });
+  [[true, 'オン'], [false, 'オフ']].forEach(([v, l], j) => {
+    const b = Btn(l, 36 + j * 128, 520, 116, 46, () => { lnSet(LN_DETAILS, v ? '1' : null); NotifySettings(); }, 'choice' + (lnDetails() === v ? ' on' : ''), r);
+    b.dataset.lnDetails = String(v); b.style.whiteSpace = 'nowrap';
+  });
+  Txt('オンにすると、件数や馬の名前が通知に出ます（オフでは出しません）。', 36, 574, 400, 13, SOFT, r, { lh: 1.55 });
+  // what comes next (in the app language; the notifications themselves follow the device language)
+  Kicker('次の予定', 472, 168, r, { size: 15, rule: false, w: 400 });
+  const up = el('ln-upcoming', 472, 200, 400, 410, r);
+  const items = shown.items.slice(0, 5);
+  if (!items.length) Txt('予定はありません', 0, 8, 400, 16, MUTED, up);
+  items.forEach((it, i) => {
+    const row = el('ln-next', 0, i * 80, 400, 74, up); row.dataset.lnNext = it.kind;
+    Txt(lnWhen(it.fireAt), 0, 0, 400, 12, CYAN, row, { weight: 700, nowrap: true, ls: '.06em', cls: 'num' });
+    Txt(it.title, 0, 18, 400, 16, WHITE, row, { weight: 700, nowrap: true });
+    Txt(it.body, 0, 42, 400, 12, MUTED, row, { nowrap: true });
+  });
+  if (plan.status === 'no_permission' && items.length) Txt('通知が許可されると、この予定で届きます', 472, 616, 400, 12, SOFT, r, { nowrap: true });
+  TextLink('端末のお知らせについて（ヘルプ）', 36, 630, 400, () => HelpArticle(L.helpContext('notifications'), 'context', () => NotifySettings()), r).dataset.helpContext = 'notifications';
+  // review only: the demo state and the simulated OS permission
+  const demo = el('ln-demo', 472, 640, 400, 30, r);
+  Ghost('デモの予定', 0, -6, 132, 36, async () => { await L.localNotify.seedDemo(); ftue = false; await refresh(); NotifySettings(); }, demo, 'quiet small').dataset.action = 'ln-demo';
+  [['unknown', '未確認'], ['granted', '許可'], ['denied', '拒否']].forEach(([k, l], i) => {
+    const b = Ghost(l, 140 + i * 88, -6, 82, 36, () => { lnSet(LN_OS, k); NotifySettings(); }, demo, 'quiet small' + (lnOs() === k ? ' on' : '')); b.dataset.lnOsDemo = k; b.style.fontSize = '13px';
+  });
+  Back(Settings, 'BACK', 40, 834);
+}
+
 async function boot() {
   const [ja, artIndex, ruleset, commentary, partners, commentaryEn, serverEn, uiEn, commentaryPacks] = await Promise.all([
     fetch('data/ja.json').then((r) => r.json()), fetch('data/art.json').then((r) => r.json()),
@@ -6903,7 +7069,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Privacy, QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ NotifySettings, LnotifPrePrompt, Privacy, QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

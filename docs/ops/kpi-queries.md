@@ -1249,3 +1249,29 @@ WHERE blob1 IN ('dex_request', 'dex_ready', 'dex_download') AND timestamp > NOW(
 GROUP BY week
 ORDER BY week DESC
 ```
+
+## 端末のローカル通知：予約・開いた・許可（REQ-LNOTIF-013、Round 20、contracts/protocol.md §61）
+列：`lnotif_scheduled`（クライアント、その出来事の id を新しく予約した時だけ。時刻・文言の付け替えでは送らない）`blob8` = 種類（`training_session`・`daily_bonus`・`weekly_challenge_closing`・`rival_week_closing`・`exchange_closing`・`gift_expiring`）。`lnotif_opened`（クライアント、通知から開いた時）`blob8` = 種類。`lnotif_permission`（クライアント、前置きの答え）`blob8` = `granted`／`provisional`／`denied`／`later`（前置きで「今はしない」）。予定の時刻・文言・馬の名前は送らない。
+
+**種類ごとの開封率**（週ごと）：予約した数に対して開いた数。低い種類（例：ライバルの週の締め）は `leadHours`・`kinds`（リモート設定 `progression.localNotifications`）で弱める・外す。1日の上限（`dailyCap`）を上げる前に、ここで余計な通知になっていないかを見る。
+
+```sql
+SELECT toStartOfWeek(timestamp) AS week, blob8 AS kind,
+  sumIf(_sample_interval, blob1 = 'lnotif_scheduled') AS scheduled,
+  sumIf(_sample_interval, blob1 = 'lnotif_opened') AS opened,
+  round(sumIf(_sample_interval, blob1 = 'lnotif_opened') / greatest(1, sumIf(_sample_interval, blob1 = 'lnotif_scheduled')), 3) AS open_rate
+FROM muchi_kpi
+WHERE blob1 IN ('lnotif_scheduled', 'lnotif_opened') AND timestamp > NOW() - INTERVAL '56' DAY
+GROUP BY week, kind
+ORDER BY week DESC, scheduled DESC
+```
+
+**前置きの答え**：OS の許可・仮の許可・拒否・あとで。拒否が多ければ前置きの時期（最初の調教の後）か文言を見直す。
+
+```sql
+SELECT blob8 AS result, sum(_sample_interval) AS n, count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'lnotif_permission' AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY result
+ORDER BY n DESC
+```

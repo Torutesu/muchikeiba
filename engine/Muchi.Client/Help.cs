@@ -35,8 +35,10 @@ namespace Muchi.Client
         public const string GachaOdds = "gacha_odds", CoinShortfall = "coin_shortfall", Purchase = "purchase", RaceWhip = "race_whip", RaceResult = "race_result",
             Training = "training", Breeding = "breeding", History = "history", GiftBox = "gift_box", AccountLink = "account_link", Deletion = "deletion", Accessibility = "accessibility",
             /// <summary>Round 18 integration: settings › privacy (the data export article, §51).</summary>
-            Privacy = "privacy";
-        public static readonly string[] All = { GachaOdds, CoinShortfall, Purchase, RaceWhip, RaceResult, Training, Breeding, History, GiftBox, AccountLink, Deletion, Accessibility, Privacy };
+            Privacy = "privacy",
+            /// <summary>Round 20: settings › notifications (the device reminders article, §61).</summary>
+            Notifications = "notifications";
+        public static readonly string[] All = { GachaOdds, CoinShortfall, Purchase, RaceWhip, RaceResult, Training, Breeding, History, GiftBox, AccountLink, Deletion, Accessibility, Privacy, Notifications };
     }
 
     /// <summary>Inquiry categories (the first four are the §33 ticket topics).</summary>

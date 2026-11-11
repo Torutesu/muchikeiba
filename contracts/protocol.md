@@ -2325,6 +2325,7 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 | `rival_week` | 今週のライバルがいて、今週のランク戦がまだ0回 | `rival` | `weekEndsAt` |
 | `weekly_challenge` | 週替わりチャレンジが解放済みで、今週の未クリアがあり、今日の挑戦回数が残っている（`count` = 未クリア数） | `weekly_challenge` | 週の `endsAt` |
 | `team_goal_near` | 支部の共同目標の次の段まで `threshold` 単位以下（`count` = 残り）。`GET /v1/home/next` だけ（支部の値は TeamDO にある） | `team_goal` | 週の `endsAt` |
+| `horse_goal_near` | ピン留めした馬（§53.3）の今の目標が `have ≥ 1` で残りが `threshold` 以下（`count` = 残り、`refId` = 馬ID）。Round 18、§53.4 | `horse_goals` | なし |
 | `training_slots` | 調教の今日の回数が残っている（`count`） | `training` | なし |
 | `first_win` | 今日の初勝利ボーナスが残っていて、今日まだ1着がない | `race` | なし |
 | `scout_ticket` | スカウト券を持っている（`count` = 枚数）。**チップだけ**（主カードにはならない）。持っている券を使う案内で、購入・有償のスカウトの案内ではない | `scout` | なし |
@@ -2374,7 +2375,7 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 ### 45.7 設定 `progression.nextActions`（リモート設定で変更可）
 `{ enabled, maxChips (0..2), onboardingRaces (0..20), rules: [{ kind, priority (0..1000、重複不可), threshold?, features? }] }`。
 - `kind` は 45.1 の種類だけ・重複不可。`race` は必須（受け皿）。`first_race` は書かない（オンボーディングはコードで決まる）。
-- `threshold`：`gift_expiring`（日 1..14）・`exchange_closing`（日 1..7）・`missions_close`（残り 1..10）・`team_goal_near`（残り 1..100）だけが持ち、他の種類には書けない。
+- `threshold`：`gift_expiring`（日 1..14）・`exchange_closing`（日 1..7）・`missions_close`（残り 1..10）・`team_goal_near`（残り 1..100）・`horse_goal_near`（残り 1..10、§53.4）だけが持ち、他の種類には書けない。
 - `features`：`feature_unlocked` だけ。§4.3 の解放キーのうち、`shop`・`season_pass`・`scout`（購入・ガチャの画面）は書けない。
 
 ### 45.8 KPI
@@ -2757,3 +2758,73 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 - `Muchi.Client`：`FriendSuggestions`（`Parse`）、`ApiClient.GetFriendSuggestionsAsync`・`RequestSuggestedFriendAsync`・`DismissSuggestionAsync`・`SetSuggestionsHiddenAsync`、analytics `fsug_view`。
 - `Muchi.Game`：`FriendSuggestionsModel`（読み込み・同時に2回読まない・申請／消すは押した行をすぐ一覧から外す（失敗したら戻す）・同じ人に2回送らない・`fsug_view` は1画面1回・オフラインは「オンラインで表示できます」・空のときの文言・「おすすめに表示しない」の切り替え）。
 - 画面が守ること：docs/handoff-codex-round17-friend-suggestions.md。
+
+## 53. 馬ごとの目標（per-horse goals、REQ-HGOAL-001〜016、`server/src/domain/horseGoals.ts`、C# `HorseGoals.cs`（`HorseGoalChain`）・`Muchi.Game.HorseGoalsModel`、共有ベクター `contracts/horse-goals.vectors.json`）
+馬ごとに**短い目標の列（チェーン）**を出し、その馬の物語にする（初勝利 → 10戦 → 得意の馬場で勝つ → コースで記録 → 得意の距離の外で勝つ → ランク戦で上位 → 大会優勝）。目標は馬の適性（芝ダ・距離・脚質）と固有スキルの有無から**純粋な関数**で決まり、進み具合は §34 の戦績（確定した結果だけ）から数える。報酬は**見た目だけ**（リボン・殿堂の銘板の飾り）。コイン・素材・アイテム・能力は何も動かない（経済の目標なし、E 番号・balance-targets の節なし。ランク戦の強さは変わらない）。設定は `progression.horseGoals`（`horseGoalsProblems` で検証。無い／`enabled: false` なら機能ごと無し。§34 の殿堂が無効なら有効にできない）。
+
+### 53.1 目標の列（`horseGoalChain`、REQ-HGOAL-001/002）
+入力は馬（`surface`・`distMinM`・`distMaxM`・`style`・`skillId`）とコースの一覧（`id`・`name`・`surface`・`distanceM`、master tracks.json）だけ。同じ入力なら同じ列（乱数・時刻・レア度・能力値・課金を見ない）。版 `v: 1`。並びはこの順で、条件の無いものは飛ばす（6〜8個）：
+| 順 | `kind` | `id` | 条件 | `need` | 数えるもの |
+|---|---|---|---|---|---|
+| 1 | `first_win` | `first_win` | いつも | 1 | 戦績の `wins` |
+| 2 | `races` | `races:10` | いつも | 10 | 戦績の `races` |
+| 3 | `surface_win` | `surface_win:{surface}` | いつも。`surface` は馬の芝ダ（`both` は距離の範囲に入るコースが多い方、同数なら芝） | 3 | その馬場での勝ち（`goal.surfaceWins`） |
+| 4 | `ta_course` | `ta_course:{trackId}` | 走れるコース（芝ダが合う）がある。距離の外れが小さい順 → 範囲の真ん中に近い順 → コースID順の先頭 | 1 | そのコースの検証済みタイムアタックの記録（`bestTa[trackId]`）がある |
+| 5 | `stretch_win` | `stretch_win:{band}` | 距離の帯（§44.3 と同じ：`sprint`〜1400m・`mile`1401〜1800m・`intermediate`1801〜2400m・`long`2401m〜）のうち、馬の距離の範囲と重ならず、馬が走れる馬場のコースがある帯。逃げ・先行は短い側の近い帯から、差し・追込は長い側の近い帯から。その側に無ければ反対側。どちらにも無ければこの目標は無い | 1 | その帯の距離のレースでの勝ち（`goal.bandWins`） |
+| 6 | `wins` | `wins:5` | 固有スキルを持つ馬だけ | 5 | 戦績の `wins` |
+| 7 | `ranked_top3` | `ranked_top3:5` | いつも | 5 | ランク戦の3着以内（`goal.rankedPlaces`） |
+| 8 | `tournament_win` | `tournament_win` | いつも | 1 | 戦績の `tournamentWins` |
+
+文言（サーバー・C# が同じものを作る。英語は §23 の境界で訳す。馬の名前は文言に入れない）：
+`初勝利をあげる`／`{n}戦を走る`／`芝で{n}勝する`・`ダートで{n}勝する`／`タイムアタック {course} で記録を残す`／`短距離（1400m以下）で勝つ`・`マイル（1401〜1800m）で勝つ`・`中距離（1801〜2400m）で勝つ`・`長距離（2401m以上）で勝つ`／`{n}勝する`／`ランク戦で3着以内に{n}回入る`／`大会で優勝する`。
+サーバー（TS）とクライアント（C#）は共有ベクター `contracts/horse-goals.vectors.json` で同じ列・文言・進み具合になることを確かめる。
+
+### 53.2 進み具合（REQ-HGOAL-003〜005）
+- 数えるのは **§34.1 の戦績と同じレースだけ**（`noteHallRace`：ランク戦・イベント・大会、人間2人以上のフレンド戦。レースIDごとに1回のガードの中。無効・チュートリアル・週替わりチャレンジ・プレイヤー主催カップ・馬IDの無い結果は数えない）。新しく数えるもの（`career.goal`：`surfaceWins`・`bandWins`・`rankedPlaces`）も `noteHallRace` の同じ場所で書く。コースの芝ダ・距離はレースの `details.trackId` から master で引く（無い結果は芝ダ・帯の勝ちに数えない）。タイムアタックは `noteHallTa`、大会は `noteHallTournament`（どちらも §34 のガードのまま）。
+- **ミッションとは別に数える**：目標はミッション・パス・コインに何も足さず、ミッションの進みは目標に入らない（同じレースが両方に1回ずつ数えられるだけで、報酬が2回出ることは無い。目標の報酬は見た目だけ）。
+- `have = min(数えた値, need)`、`done` は達成の記録（`completedAt`）があるか `have ≥ need`。列のどの目標からでも達成できる（順番は物語の並び）。`current` は並びで最初のまだの目標（全部終われば無し）。
+- `races`・`wins`・タイムアタック・大会は §34 の戦績の公開から、`surfaceWins`・`bandWins`・`rankedPlaces` はこの機能の公開から数える（さかのぼらない）。
+- **達成の記録**：数える場所（レース・タイムアタック・大会）のすぐ後に、その馬の列を見て新しく満たした目標に `completedAt` を書き、KPI `hgoal_complete` を1回送る。同じ目標は2回記録しない。読むだけの画面（GET）は書かない（記録が無くても `have ≥ need` なら `done` で見せる）。
+- **引退した馬**：達成した目標と列はそのまま見られる（戦績は引退で消えない）。引退した馬はもう走らないので進まない。
+- 列の全部を達成すると **`chainComplete: true`**（`chainCompletedAt`）：馬の詳細・戦績（`GET /v1/horses/:horseId/career` の `goals`）・殿堂の銘板（`goalsComplete: true`、友達が見る写しにも出る）に印（リボン）が付く。印は見た目だけで、能力・レース・報酬に何も影響しない。
+
+### 53.3 API（要認証）
+| メソッド | パス | 本文 → 応答 |
+|---|---|---|
+| GET | `/v1/horses/:horseId/goals` | → `HorseGoalsView`（持っていない馬は `404 HORSE_NOT_FOUND`、機能が無効なら `404 NOT_FOUND`） |
+| PUT | `/v1/horse-goals/pin` | `{ "horseId": string \| null }` → `{ "pinned": HorseGoalPin \| null }` |
+| GET | `/v1/horse-goals/pinned` | → `{ "pinned": HorseGoalPin \| null }` |
+```json
+{ "v": 1, "horseId": "h7", "horseName": "ミドリノカゼ", "status": "active", "pinned": true,
+  "goals": [ { "id": "first_win", "kind": "first_win", "params": {}, "text": "初勝利をあげる", "have": 1, "need": 1, "done": true, "completedAt": 1794000000000, "current": false },
+             { "id": "races:10", "kind": "races", "params": { "n": 10 }, "text": "10戦を走る", "have": 7, "need": 10, "done": false, "completedAt": null, "current": true }, "…" ],
+  "doneCount": 1, "total": 7, "chainComplete": false, "chainCompletedAt": null,
+  "notice": "目標は確定したレースの成績だけで進みます。達成の印は見た目だけです。" }
+```
+- `HorseGoalPin` = `{ horseId, horseName, goal: <current の目標>, doneCount, total }`。
+- **ピン留め**（REQ-HGOAL-007）：1頭だけホームに出せる。置き換えるだけなので冪等（キー不要）。`null` で外す。持っていない馬は `404 HORSE_NOT_FOUND`。引退した馬・列を全部達成した馬は `409 NOT_ELIGIBLE`。ピン留めした馬が後で引退・全部達成・手元から消えた時は、読む時に `pinned: null` とみなす（KPI は送らない。新しくピン留めすれば置き換わる）。
+- ブートストラップ・`GET /v1/player` の `horseGoalPin` にも同じ形（ホームの最初の描画用）。
+
+### 53.4 ホームとの関係（§45、REQ-HGOAL-008）
+- ホームに**ピン留めした目標**（馬の名前・目標の文言・`have/need`）を小さく出す。押すとその馬の詳細の目標の面へ。
+- 次にやること（§45）に種類 **`horse_goal_near`** を足す（データの `progression.nextActions.rules` に書く。`threshold` = 残り 1..10）：ピン留めした馬の `current` の目標が、`have ≥ 1` かつ残り（`need − have`）が `threshold` 以下の時。`count` = 残り、`refId` = 馬ID、開く画面は `horse_goals`（コードで固定）。解放の条件なし、期限なし（`deadlineAt: null`）。ショップ・購入には一切つながらない。
+
+### 53.5 KPI（REQ-HGOAL-012）
+- `hgoal_view`（クライアント、`props: { surface: "detail" | "home", done: 0..8 }`。目標の面を開いた／ホームのピンを見た時。ホームは1ゲーム日に1回）→ `s1` = surface、`value` = done。
+- `hgoal_complete`（サーバー、目標を達成した時に1回）→ `s1` = goal kind、`s2` = `chain`（列の最後の1つで全部達成した時）| 空、`count` = 達成した数。
+- `hgoal_pin`（サーバー、ピン留めが変わった時だけ）→ `s1` = `pin` | `unpin`、`s2` = current の goal kind | 空。
+
+### 53.6 文言・法務（REQ-HGOAL-013/014）
+- すべての文言に英語がある（`server-en.json`・`ui-en.json`・`proto-en.json`、`l10n:missing` 0）。馬の名前はプレイヤーが付けたもの（英語でも訳さない）。
+- 賭けを思わせる言葉（`server/src/domain/bettingWords.ts` の共通の一覧）を目標の文言に使わない（テストで全部の文言を確かめる）。「倍」「今だけ」「残りわずか」などの煽り・期限・カウントダウンは無い。
+- コンプガチャではない：目標は確定したレースの成績で進み、ランダムな品の収集を条件にしない。報酬は見た目だけで、購入で近道できない。
+
+### 53.7 クライアント（REQ-HGOAL-010/011）
+- `Muchi.Client` `ApiClient.GetHorseGoalsAsync(horseId)`・`PinHorseGoalAsync(horseId | null)`・`GetPinnedHorseGoalAsync()`、`HorseGoalsView`・`HorseGoalPin`、`HorseGoalChain.Build(horse, tracks)`・`HorseGoalChain.Evaluate(chain, record)`（サーバーと同じ、共有ベクター）、`AnalyticsEvent.HorseGoalView`。`NextKinds` に `horse_goal_near`。
+- Unity のゲーム層 `HorseGoalsModel`：馬の詳細の目標の面（列の行・進み・今の目標・達成の印・ピン留め）、ホームのピン、文言（日本語＋英語）、KPI の1日1回。描画は `docs/handoff-codex-round18-horse-goals.md`。
+
+### 53.8 設定 `progression.horseGoals`
+`{ enabled: bool }`。`enabled: true` は `progression.hall` が有効な時だけ（戦績が無いと数えられない）。目標の数・`need` はコードの版 `v: 1` で決まり（共有ベクターと同じ）、設定では変えない。
+
+### 53.9 アカウント削除
+状態の `horseGoals`（達成の記録・ピン）と戦績の `goal` は最後の `wipe` で消える。殿堂の写し（§34.5）は既存の手順で消える。他の場所に写しは無い。

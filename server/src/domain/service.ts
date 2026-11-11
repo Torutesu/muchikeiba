@@ -106,6 +106,7 @@ import {
   ackCeremony, hallSnapshot, hallSnapshotKey, hallViewerOf, horseCareerView, myHallView, noteHallRace, noteHallRetire, noteHallTa, noteHallTournament,
   setHallVisibility, type HallRelation, type HallSnapshot,
 } from './hallOfFame.js';
+import { horseGoalsView, noteHorseGoals, pinHorseGoal, pinnedGoalView } from './horseGoals.js';
 import { assertNotLocked, bulkPreview, noteTournamentEntry, parseRosterQuery, pruneRoster, rosterView, runBulk, setFavorite, setLock, type BulkAction } from './roster.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
@@ -346,7 +347,7 @@ export class PlayerService {
   /** REQ-UXS-001/014/032/040: computed sections of GET /v1/player and bootstrap. */
   private extras(s: PlayerState, now: number) {
     const m = this.d.master;
-    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s), commentaryPack: commentaryPackBadge(m, s), accessibility: accessibilityView(s), activity: activityBadge(m, s, now), help: helpBadge(s), nextActions: nextActionsView(m, s, now) };
+    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s), commentaryPack: commentaryPackBadge(m, s), accessibility: accessibilityView(s), activity: activityBadge(m, s, now), help: helpBadge(s), nextActions: nextActionsView(m, s, now), horseGoalPin: pinnedGoalView(m, s) };
   }
 
   async view(id: string) {
@@ -589,6 +590,13 @@ export class PlayerService {
       return { ...h, ceremony };
     });
   }
+
+  // ---- 馬ごとの目標 (REQ-HGOAL-*, horseGoals.ts) ----
+  /** REQ-HGOAL-010: a horse's goal chain (a read: completion is recorded where results are counted, never here). */
+  async horseGoals(id: string, horseId: string) { return horseGoalsView(this.d.master, await this.load(id), horseId); }
+  /** REQ-HGOAL-007: pin one horse's goal to the home (null = unpin). Idempotent; hgoal_pin only when the pin changes. */
+  pinHorseGoal(id: string, horseId: string | null) { return this.tx(id, null, (s, _now, emit) => pinHorseGoal(this.d.master, s, horseId, emit)); }
+  async pinnedHorseGoal(id: string) { return { pinned: pinnedGoalView(this.d.master, await this.load(id)) }; }
 
   // ---- 厩舎の整理 (REQ-ORG-*, roster.ts) ----
   /** REQ-ORG-001..003: the organiser rows, filtered / sorted by the optional query (the client runs the same rules). */
@@ -1061,6 +1069,7 @@ export class PlayerService {
       // REQ-HOF-001: the horse's career (a ranked race counted against the weekly rival with me ahead is a rival win)
       const rivalWin = r.mode === 'ranked' && !!s.rival?.weeks.some((w) => w.races.some((x) => x.raceId === r.raceId && x.mode === 'ranked' && x.point === 'me'));
       noteHallRace(this.d.master, s, r, now, rivalWin);
+      noteHorseGoals(this.d.master, s, r.horseId, now, emit); // REQ-HGOAL-005: goals newly met by this counted race
       noteRecapRace(this.d.master, s, r, now); // REQ-RECAP-001: this season's and this game year's records
       // REQ-COL-002 / REQ-ACH-002: what the race showed the 図鑑, a fired skill, and the tiers it unlocked (with titles)
       noteRaceCollection(this.d.master, s, r);
@@ -1732,6 +1741,7 @@ export class PlayerService {
       if (!counted && 'finished' in r && r.finished && r.timeMs !== null) {
         const horseId = s.timeAttack?.sessions.find((x) => x.id === sessionId)?.horseId;
         if (horseId) noteHallTa(this.d.master, s, horseId, r.trackId, r.timeMs, now); // REQ-HOF-001
+        if (horseId) noteHorseGoals(this.d.master, s, horseId, now, emit); // REQ-HGOAL-005
       }
       return r;
     });
@@ -1961,6 +1971,7 @@ export class PlayerService {
       recordActivity(this.d.master, s, { kind: 'tournament_result', source: `tournament:${tournamentId}`, vars: { tournament: name, n: String(rank) }, linkId: tournamentId }, now); // REQ-ACT-002
       noteTournamentResult(s, rank); // REQ-ACH-002 (once per tournament, behind the same guard)
       noteHallTournament(this.d.master, s, horseId, tournamentId, name, rank, now); // REQ-HOF-001
+      noteHorseGoals(this.d.master, s, horseId, now, emit); // REQ-HGOAL-005
       if (s.roster?.tournaments) delete s.roster.tournaments[tournamentId]; // REQ-ORG-011: the entry ends with the tournament
       const keys = Object.entries(done).sort((a, b) => b[1].at - a[1].at).map(([k]) => k);
       for (const k of keys.slice(TOURNAMENT_HISTORY_KEEP)) delete done[k];

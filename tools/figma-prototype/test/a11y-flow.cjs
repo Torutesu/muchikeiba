@@ -127,7 +127,7 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
   };
   const HOME_BAR = ['[data-name="Season"]', '.rv-strip', '.btn.envelope', '.btn.bell', '[data-name="Wallet"]', '.btn.lang', '[data-name="Menu"]'];
   // Round 16 integration: the whole home — the top bar plus the 次にやること card and chips, the partner card, the big CTA
-  const HOME_ALL = [...HOME_BAR, '[data-name="Partner"]', '.next-card', '.next-chip', '.btn.cta.hero'];
+  const HOME_ALL = [...HOME_BAR, '[data-name="Partner"]', '.next-card', '.next-chip', '.btn.cta.hero', '.hg-pin-strip']; // round 18: the pinned goal strip (demo('next') pins the partner's goal)
   /** demo('next') = a player with a next card and two chips (a gift expiring, scout tickets); waits for the card. */
   const homeWithNext = async () => {
     await page.evaluate(() => globalThis.__muchi.demo('next')); await waitScreen(['home', 'link-prompt'], 60000);
@@ -209,6 +209,9 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('Recaps'); await waitScreen('recaps', 30000); await page.waitForSelector('.screen.in .rc-card', { timeout: 30000 }); await shot('recaps', english, 600);
     await show('Recap', 'season:2026-11', 0); await waitScreen('recap'); await page.waitForSelector('.screen.in .rc-big', { timeout: 30000 }); await shot('recap', english, 950);
     await show('HostedCups'); await waitScreen('hosted-cups', 30000); await shot('cups', english, 600);
+    // Round 18: 馬ごとの目標 — the panel on the horse detail and the full chain
+    await show('Stable'); await page.waitForSelector('.screen.in .hg-panel', { timeout: 15000 }); await shot('stable-goals', english, 500);
+    await show('HorseGoals', await page.evaluate(async () => (await globalThis.__muchi.logic.view()).flags.partnerHorseId)); await waitScreen('horse-goals'); await page.waitForSelector('.screen.in .hg-row', { timeout: 15000 }); await shot('horse-goals', english, 500);
     await show('CupCreate'); await waitScreen('cup-create'); await shot('cup-create', english, 500);
     await show('CupJoin'); await waitScreen('cup-join'); await shot('cup-join', english, 500);
     // Round 17: 通報とブロック — the block list and the report sheet at the largest size (REQ-RPT-019)

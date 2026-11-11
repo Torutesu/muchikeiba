@@ -1280,6 +1280,17 @@
   "同じ支部・同じレース・いいね・応援で出会った人と、共通のフレンドが2人以上いる人を表示します。ランク戦の相手は表示しません。": "Shows people from your branch, your races, likes and cheers, and people with 2 or more mutual friends. Ranked opponents are never shown.",
   "おすすめに表示しない：オン": "Don't show me in suggestions: on",
   "おすすめに表示しない：オフ": "Don't show me in suggestions: off",
-  "フレンドの上限に達しています": "You have reached the friend limit"
+  "フレンドの上限に達しています": "You have reached the friend limit",
+  "_hgoal": "---- round 18: 馬ごとの目標 (REQ-HGOAL-*, protocol §53). Goal lines are server texts (i18n/en.ts); panel labels shared with ui-en.json; horse names as typed (romanized in English like every other name).",
+  "目標をすべて見る": "See all goals",
+  "達成の印は見た目だけです": "The ribbon is for show only",
+  "目標": "Goals",
+  "/ {n}　達成": "/ {n} done",
+  "確定したレースで進む、この馬だけの物語　·　達成の印は見た目だけ": "This horse's own story, moved by confirmed races · the ribbon is for show only",
+  "引退した馬の目標は、達成したまま残ります": "A retired horse keeps the goals it reached",
+  "引退した馬・目標をすべて達成した馬はホームに出せません": "A retired horse, or one that reached every goal, cannot be pinned to home",
+  "ホームから外しました": "Unpinned from home",
+  "ホームに出しました": "Pinned to home",
+  "馬の目標は今は表示できません": "Horse goals cannot be shown right now"
  }
 }

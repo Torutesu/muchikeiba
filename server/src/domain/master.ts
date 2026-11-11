@@ -213,6 +213,8 @@ export interface Progression {
   reports?: Partial<import('./reports.js').ReportsConfig>;
   /** REQ-FSUG-012: おすすめフレンド (friendSuggest.ts, validated by fsugProblems). Absent = FSUG_DEFAULTS. */
   friendSuggest?: Partial<import('./friendSuggest.js').FsugConfig>;
+  /** REQ-HGOAL-*: 馬ごとの目標 (horseGoals.ts, validated by horseGoalsProblems; needs hall). Absent / disabled = no goals. */
+  horseGoals?: import('./horseGoals.js').HorseGoalsConfig;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */

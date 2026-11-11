@@ -234,6 +234,8 @@ export interface PlayerState {
   seasonRecap?: import('./seasonRecap.js').SeasonRecapState;
   /** REQ-CUP-*: プレイヤー主催カップ — cups the player is in, invitations, results and trophies (hostedCups.ts ensureCups). */
   cups?: import('./hostedCups.js').PlayerCupsState;
+  /** REQ-HGOAL-*: 馬ごとの目標 — goal completion times per horse and the horse pinned to the home (horseGoals.ts ensureHorseGoals). */
+  horseGoals?: import('./horseGoals.js').HorseGoalsState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

@@ -1034,6 +1034,16 @@ export const MuchiLogic = {
     /** A tournament final rank for one of my horses (tournamentClose with the registered horse). */
     demoTitle: (horseId: string, name: string) => wrap(() => svc.tournamentClose(ID, `proto_cup_${horseId}_${hallRace++}`, 1, null, name, horseId)),
   },
+  // ---------------------------------------------------------------- round 18: 馬ごとの目標 (REQ-HGOAL-*, contracts/protocol.md §53)
+  // The real PlayerService / horseGoals.ts rules on the local player: the chain from the horse's aptitudes, progress from the
+  // §34 career (confirmed races only), the pin and the home's pinned goal (bootstrap horseGoalPin = the same view).
+  horseGoals: {
+    view: (horseId: string) => wrap(() => svc.horseGoals(ID, horseId)),
+    pin: (horseId: string | null) => wrap(() => svc.pinHorseGoal(ID, horseId)),
+    pinned: () => wrap(() => svc.pinnedHorseGoal(ID)),
+    /** Demo: confirmed ranked races for one of my horses (places as given), the race room's result path. */
+    demoRaces: (horseId: string, places: number[]) => wrap(() => hallRaces(ID, horseId, places)),
+  },
   // ---------------------------------------------------------------- round 16: シーズンの振り返り (REQ-RECAP-*, contracts/protocol.md §43)
   // The real PlayerService / seasonRecap rules on a demo history: a separate demo account (its own memory repo and clock, so the
   // local player's season is untouched) rides confirmed races from Oct 2026 to Jan 2027 with the local partner's name: a short

@@ -456,6 +456,33 @@ module.exports = async function unityFlow(browser, base, out, errors) {
 
   // round 16 (REQ-ORG-*): 厩舎の整理 — the stable's list → more demo horses → sort (rating) → filter (active) → lock → select two →
   // the confirmation (every horse, nothing given back, cancel and confirm the same size) → retired, all on the real rules
+  // round 18 (REQ-HGOAL-*): 馬ごとの目標 — confirmed races for the partner → the goals panel on the horse detail → the full chain →
+  // pin to home → the home strip (hgoal_view home once) → tap → back to the chain → unpin, all on the real server rules
+  async function horseGoalsFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(async () => { const L = globalThis.__muchi.logic; const v = await L.view(); await L.horseGoals.pin(null); await L.horseGoals.demoRaces(v.flags.partnerHorseId, [1, 3, 2, 5]); });
+    await page.evaluate(() => globalThis.__muchi.show('Stable')); await waitScreen('stable'); await waitIn('.hg-panel');
+    await shot('stable-goals', 400);
+    assert.match(await page.locator('.screen.in .hg-summary').innerText(), /目標 \d+ \/ \d+/, 'goals: the panel summary');
+    assert.ok(+(await page.locator('.screen.in .hg-panel').getAttribute('data-done')) >= 1, 'goals: the first win is done');
+    await click('目標をすべて見る'); await waitScreen('horse-goals'); await waitIn('.hg-row');
+    const rows = await page.locator('.screen.in .hg-row').count();
+    assert.ok(rows >= 6 && rows <= 8, 'goals: 6..8 goals in the chain: ' + rows);
+    assert.equal(await page.locator('.screen.in .hg-row[data-current="true"]').count(), 1, 'goals: one current goal');
+    assert.equal(await page.locator('.screen.in .hg-row').first().getAttribute('data-done'), 'true', 'goals: the first win row is done');
+    assert.ok(!(await page.locator('.screen.in').innerText()).includes('ショップ'), 'goals: no shop link');
+    await shot('horse-goals', 400);
+    await click('ホームに出す'); await waitIn('.btn[data-label="ホームから外す"]');
+    await page.evaluate(() => { localStorage.removeItem('muchi.hgoal.home_viewed'); globalThis.__muchiHgoalKpi = []; });
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home'); await waitIn('.hg-pin-strip');
+    await shot('home-goal-pin', 600);
+    assert.equal(await page.evaluate(() => (globalThis.__muchiHgoalKpi ?? []).filter((k) => k.surface === 'home').length), 1, 'goals: hgoal_view home once');
+    await page.locator('.screen.in .hg-pin-strip').click(); await waitScreen('horse-goals');
+    await click('ホームから外す'); await waitIn('.btn[data-label="ホームに出す"]');
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home'); await page.waitForTimeout(500);
+    assert.equal(await page.locator('.screen.in .hg-pin-strip').count(), 0, 'goals: no strip once unpinned');
+  }
+
   async function rosterFlow() {
     const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
     await page.evaluate(() => globalThis.__muchi.show('Stable')); await waitScreen('stable');
@@ -961,6 +988,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await hallFlow();
   await silksFlow();
   await myReplaysFlow();
+  await horseGoalsFlow();
   await rosterFlow();
   await recapFlow();
   await cupsFlow();

@@ -40,6 +40,21 @@ export const CODE_EN: Record<string, string> = {
   '現役{days}日・{n}戦': '{days} days and {n} races on the track',
   '殿堂入りは確定したレースの成績だけで決まります（購入やアイテムでは決まりません）。': 'Entry to the Hall of Fame depends only on confirmed race results (never on purchases or items).',
 
+  // ---- 馬ごとの目標 (horseGoals.ts horseGoalChain / HGOAL_NOTICE, protocol §53; REQ-HGOAL-013). {course} = a master track name
+  '初勝利をあげる': 'Win a first race',
+  '{n}戦を走る': 'Run {n} races',
+  '芝で{n}勝する': 'Win {n} races on turf',
+  'ダートで{n}勝する': 'Win {n} races on dirt',
+  'タイムアタック {course} で記録を残す': 'Set a time-attack record at {course}',
+  '短距離（1400m以下）で勝つ': 'Win a sprint (1400 m or shorter)',
+  'マイル（1401〜1800m）で勝つ': 'Win a mile race (1401–1800 m)',
+  '中距離（1801〜2400m）で勝つ': 'Win a middle-distance race (1801–2400 m)',
+  '長距離（2401m以上）で勝つ': 'Win a long-distance race (2401 m or longer)',
+  '{n}勝する': 'Win {n} races',
+  'ランク戦で3着以内に{n}回入る': 'Finish in the top 3 in {n} ranked races',
+  '大会で優勝する': 'Win a tournament',
+  '目標は確定したレースの成績だけで進みます。達成の印は見た目だけです。': 'Goals move only with confirmed race results. The ribbon for finishing them is for show only.',
+
   // ---- 厩舎の整理 (roster.ts, protocol §44; REQ-ORG-015)
   'まとめて引退しても、コインや素材は返ってきません': 'Retiring several horses at once gives back no coins or materials',
 

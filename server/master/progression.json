@@ -899,6 +899,10 @@
       { "id": "ta_attempt", "surface": "time_attack", "title": "動画を見て、タイムアタックをもう1回", "dailyCap": 1, "reward": { "taAttempts": 1 }, "adUnitKey": "REWARDED_TA" }
     ]
   },
+  "horseGoals": {
+    "_note": "REQ-HGOAL-*（contracts/protocol.md §53）。馬ごとの目標の列は馬の適性から決まり（コードの版 v1、共有ベクター）、確定したレースの成績（§34 の戦績）だけで進む。報酬は見た目だけ（リボン・殿堂の銘板の飾り）。コイン・素材・能力は動かない。hall が無効なら有効にできない。",
+    "enabled": true
+  },
   "hall": {
     "_note": "REQ-HOF-*（contracts/protocol.md §34）。殿堂入りは引退の時に、確定したレースの成績だけで判定（winsMin勝以上・大会優勝・相棒でpartnerRacesMin戦以上のどれか）。報酬は最初の殿堂入りの時に1回だけ非売品の飾り（コインなし）。",
     "enabled": true,
@@ -1062,7 +1066,7 @@
     "maxEntries": 100, "maxDays": 30, "collapseHours": 24, "pageSize": 20, "pageMax": 50, "badgeMax": 99
   },
   "nextActions": {
-    "_note": "REQ-NEXT-*（contracts/protocol.md §45）。ホームの「次にやること」：主カード1枚＋チップ maxChips（≤2）。priority の大きい順（重複不可）。開く画面は種類ごとにコードで固定（ショップへのカードは作れない。scout_ticket はチップだけ）。threshold は gift_expiring（日）・exchange_closing（日）・missions_close（残り）・team_goal_near（残り）だけ。features は feature_unlocked だけ（shop・season_pass・scout は不可）。onboardingRaces 回のレースまでは first_race だけ。今日閉じた種類はゲーム日（4:00 JST）が変わると戻る。コイン・アイテムは動かない。",
+    "_note": "REQ-NEXT-*（contracts/protocol.md §45）。ホームの「次にやること」：主カード1枚＋チップ maxChips（≤2）。priority の大きい順（重複不可）。開く画面は種類ごとにコードで固定（ショップへのカードは作れない。scout_ticket はチップだけ）。threshold は gift_expiring（日）・exchange_closing（日）・missions_close（残り）・team_goal_near（残り）・horse_goal_near（残り、§53.4）だけ。features は feature_unlocked だけ（shop・season_pass・scout は不可）。onboardingRaces 回のレースまでは first_race だけ。今日閉じた種類はゲーム日（4:00 JST）が変わると戻る。コイン・アイテムは動かない。",
     "enabled": true,
     "maxChips": 2,
     "onboardingRaces": 2,
@@ -1078,6 +1082,7 @@
       { "kind": "rival_week", "priority": 500 },
       { "kind": "weekly_challenge", "priority": 450 },
       { "kind": "team_goal_near", "priority": 400, "threshold": 5 },
+      { "kind": "horse_goal_near", "priority": 350, "threshold": 2 },
       { "kind": "first_win", "priority": 300 },
       { "kind": "training_slots", "priority": 250 },
       { "kind": "scout_ticket", "priority": 200 },

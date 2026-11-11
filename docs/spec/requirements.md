@@ -1073,3 +1073,22 @@
 - REQ-FSUG-014 KPI：`fsug_view`（クライアント）、`fsug_request`・`fsug_dismiss`（サーバー、相手の id なし）。
 - REQ-FSUG-015 英語：理由の行・画面の文言すべてに英語。名前は訳さない。
 - REQ-FSUG-016 クライアント：C# の API とモデル、Unity `FriendSuggestionsModel`、プロトタイプのフレンド画面の区画（日英・文字の大きさ）、Codex 向けの引き継ぎ。
+
+## 53. 馬ごとの目標（TS＋C#、`src/domain/horseGoals.ts`・`Muchi.Client/HorseGoals.cs`、`contracts/protocol.md` §53）
+拘束条件：報酬は見た目だけ（コイン・素材・アイテム・能力・ランク戦の強さは動かない）。進むのは確定したレースの成績だけ（§34.1 と同じ数え方、同じレースは1回）。ミッションと二重に報酬を出さない。賭けの言葉・煽り・期限なし。
+- REQ-HGOAL-001 目標の列：馬の芝ダ・距離・脚質・固有スキルの有無とコースの一覧からの純粋な関数（`horseGoalChain`）。乱数・時刻・レア度・能力値・課金を見ない。版 `v: 1`。
+- REQ-HGOAL-002 種類と並び：`first_win`・`races`（10）・`surface_win`（3）・`ta_course`・`stretch_win`（得意の距離の外の帯、無ければ無し）・`wins`（5、スキルのある馬だけ）・`ranked_top3`（5）・`tournament_win`。TS と C# は共有ベクター `contracts/horse-goals.vectors.json` で同じ。
+- REQ-HGOAL-003 数え方：§34.1 の `noteHallRace`・`noteHallTa`・`noteHallTournament` の中だけ。芝ダ・帯の勝ち・ランク戦の3着以内は `career.goal` に同じガードの中で書く。カップ・週替わりチャレンジ・無効・チュートリアルは数えない。
+- REQ-HGOAL-004 ミッションとは別：目標はミッション・パス・コインに何も足さず、ミッションの進みは目標に入らない。
+- REQ-HGOAL-005 達成の記録：数えた直後に新しく満たした目標へ `completedAt` を1回だけ書く（KPI `hgoal_complete` も1回）。GET は書かない。
+- REQ-HGOAL-006 引退・削除：引退した馬の達成はそのまま残る。アカウント削除で全部消える。
+- REQ-HGOAL-007 ピン留め：`PUT /v1/horse-goals/pin {horseId|null}`、冪等。1頭だけ。引退・全部達成の馬は `NOT_ELIGIBLE`。後で条件を外れたら読む時に無しとみなす。
+- REQ-HGOAL-008 ホーム：ピン留めした目標を出す。次にやること（§45）の種類 `horse_goal_near`（データの規則、`threshold` 残り 1..10、`have ≥ 1` の時だけ、画面 `horse_goals` はコードで固定）。
+- REQ-HGOAL-009 全部達成の印：`chainComplete`。馬の詳細・戦績の `goals`・殿堂の銘板の `goalsComplete`（友達の写しにも）。見た目だけ。
+- REQ-HGOAL-010 API：`GET /v1/horses/:horseId/goals`・`PUT /v1/horse-goals/pin`・`GET /v1/horse-goals/pinned`、ブートストラップの `horseGoalPin`。
+- REQ-HGOAL-011 クライアント：`Muchi.Client` の `HorseGoalChain`・`HorseGoalsView`・`ApiClient` の各メソッド・`AnalyticsEvent.HorseGoalView`。Unity のゲーム層 `HorseGoalsModel`。描画は `docs/handoff-codex-round18-horse-goals.md`。
+- REQ-HGOAL-012 KPI：`hgoal_view`（クライアント：detail／home・達成数）、`hgoal_complete`（サーバー：goal kind・chain）、`hgoal_pin`（サーバー：pin／unpin）。
+- REQ-HGOAL-013 英語：目標の文言・面の文言はすべて英語がある（`l10n:missing` 0）。馬の名前は訳さない。
+- REQ-HGOAL-014 法務：共通の賭けの言葉の一覧・煽りの言葉を目標の文言に使わない（テスト）。コンプガチャではない（ランダムな品を条件にしない）。
+- REQ-HGOAL-015 設定 `progression.horseGoals { enabled }`：殿堂（§34）が無効なら有効にできない（起動時と各版で検証）。
+- REQ-HGOAL-016 プロトタイプ：馬の詳細の目標の面とホームのピン（ムチ一閃の見た目、日本語・英語、文字の大きさ §41）、e2e・en-flow・a11y-flow。

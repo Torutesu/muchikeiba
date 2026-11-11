@@ -15,6 +15,10 @@ import { blockListOf } from '../src/domain/blocks.js';
 import { authenticateAdmin, type AdminAuthConfig } from '../src/ops/admin.js';
 import { sha256Hex } from '../src/ops/hash.js';
 import { memoryOps } from '../src/ops/memoryOps.js';
+import { ACTIVITY_KINDS, ACTIVITY_META, ACTIVITY_SCREENS } from '../src/domain/activity.js';
+import { ACTIVITY_KIND_NAMES, ACTIVITY_SCREEN_NAMES } from '../src/domain/kpi.js';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { buildExportDocument, classifyKey, DEX_EXTENSION_KEYS } from '../src/domain/dataExport.js';
 import { MemoryExportStore, runDataExportJob, type DataExportJobPorts } from '../src/domain/dataExportService.js';
 import { MemoryPlayerReportRepo, PlayerReportsCore } from '../src/ops/playerReports.js';
@@ -212,5 +216,27 @@ describe('§47 reports × §52 quick chat: a phrase is a report target (Round 18
     expect(hide.status, JSON.stringify(hide.json)).toBe(200);
     expect(await w.qitems('b')).toEqual([]);
     expect(await w.qitems('a')).toEqual([]);
+  });
+});
+
+describe('§40 activity × Round 18 kinds (qchat_mention, data_export_ready)', () => {
+  it('server kinds = KPI names = C#; every screen has a prototype deep link; the prototype and Unity label every kind', () => {
+    const ROOT = join(import.meta.dirname, '..', '..');
+    expect(new Set(ACTIVITY_KINDS)).toEqual(new Set(ACTIVITY_KIND_NAMES));
+    expect(new Set(ACTIVITY_SCREENS)).toEqual(new Set(ACTIVITY_SCREEN_NAMES));
+    expect(ACTIVITY_META.qchat_mention.screen).toBe('team_feed');
+    expect(ACTIVITY_META.data_export_ready).toMatchObject({ screen: 'privacy', category: 'account' });
+    const cs = readFileSync(join(ROOT, 'engine/Muchi.Client/Activity.cs'), 'utf8');
+    for (const k of ACTIVITY_KINDS) expect(cs, k).toContain(`"${k}"`);
+    for (const x of ACTIVITY_SCREENS) expect(cs, x).toContain(`"${x}"`);
+    const app = readFileSync(join(ROOT, 'tools/figma-prototype/site/app.js'), 'utf8');
+    const go = app.slice(app.indexOf('const actGo = '), app.indexOf('})[screen]?.(id);'));
+    for (const x of ACTIVITY_SCREENS) expect(go, x).toMatch(new RegExp(`\\b${x}: \\(`));
+    const label = app.slice(app.indexOf('const ACT_LABEL = {'), app.indexOf('};', app.indexOf('const ACT_LABEL = {')));
+    for (const k of ACTIVITY_KINDS) expect(label, k).toMatch(new RegExp(`\\b${k}: '`));
+    // Unity: a label and an icon for every kind (the C# constant name is the kind in PascalCase)
+    const unity = readFileSync(join(ROOT, 'unity/Assets/Muchi/Game/ActivityModel.cs'), 'utf8');
+    const pascal = (k: string) => k.split('_').map((p) => p[0]!.toUpperCase() + p.slice(1)).join('');
+    for (const k of ACTIVITY_KINDS) expect(unity.match(new RegExp(`ActivityKinds\\.${pascal(k)}\\]`, 'g'))?.length, k).toBe(2);
   });
 });

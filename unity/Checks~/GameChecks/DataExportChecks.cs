@@ -83,6 +83,9 @@ static class DataExportChecks
         finally { Loc.SetLocale("ja"); }
         var all = string.Join("", new[] { DataExportModel.TextRequest, DataExportModel.TextPreparingNote, DataExportModel.TextFailedNote });
         check(!all.Contains("今だけ") && !all.Contains("残りわずか") && !all.Contains("お得"), "dex: no urgency words");
+        // Round 18 integration: the activity entry has its label and icon (it was missing from ActivityModel)
+        var line = ActivityModel.LineOf(new ActivityItem { Id = "1", Kind = ActivityKinds.DataExportReady, Screen = ActivityScreens.Privacy, Text = "データのダウンロードの準備ができました" });
+        check(line.Label == "データ" && ActivityModel.Icons[ActivityKinds.DataExportReady] == "data", "dex: the activity entry is labelled (" + line.Label + ")");
     }
 
     static string FindRoot()

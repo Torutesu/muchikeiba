@@ -31,6 +31,7 @@ import { formatRaceTime } from './weeklyChallenge.js';
 import { bettingWordsIn } from './bettingWords.js';
 import { enWordingProblems } from '../i18n/catalog.js';
 import { ageAt } from './time.js';
+import { seasonIdFor } from './season.js';
 import type { KpiEvent } from './kpi.js';
 import type { Locale } from '../i18n/locale.js';
 import showcaseJson from '../../master/showcase.json';
@@ -165,10 +166,15 @@ export function backgroundUnlocked(s: PlayerState, b: ShowcaseBackground): boole
   return b.unlock.kind === 'default' || tierReached(s, b.unlock.achievementId, b.unlock.tier);
 }
 
-/** A horse that may be the favourite: owned and active (retired / gone → not). */
+/** 貸し出し中 (the roster's on_loan, REQ-ORG-009): listed as a stud or held by a stud reservation. */
+export function horseOnLoan(s: PlayerState, horseId: string): boolean {
+  const st = s.stud;
+  return !!st && (st.listings.some((l) => l.horseId === horseId) || Object.values(st.reservations).some((r) => r.horseId === horseId));
+}
+/** A horse that may be featured: owned, active and not on loan (retired / gone / lent → not). */
 export function favouriteEligible(s: PlayerState, horseId: string): HorseInstance | null {
   const h = s.horses.find((x) => x.id === horseId);
-  return h && h.status === 'active' ? h : null;
+  return h && h.status === 'active' && !horseOnLoan(s, horseId) ? h : null;
 }
 
 /** Highest reached tier of an achievement (0 = none). */
@@ -247,6 +253,7 @@ export function setShowcase(m: Master, s: PlayerState, input: ShowcaseInput, now
     const h = s.horses.find((x) => x.id === input.horseId);
     if (!h) throw new AppError('HORSE_NOT_FOUND', input.horseId);
     if (h.status !== 'active') throw new AppError('HORSE_NOT_ACTIVE', `${input.horseId} is retired`);
+    if (horseOnLoan(s, h.id)) throw new AppError('NOT_ELIGIBLE', `${input.horseId} is on loan as a stud`);
   }
   if (input.pins.length > c.pinsMax) throw new AppError('BAD_REQUEST', `at most ${c.pinsMax} pins`);
   const seen = new Set<string>();
@@ -318,7 +325,8 @@ export function showcaseCopy(m: Master, s: PlayerState, now: number): ShowcaseCo
     phraseId: sel.phraseId && sm.phrases.some((x) => x.id === sel.phraseId) ? sel.phraseId : null,
     horse: h ? { horseId: h.id, name: young ? null : h.name, rarity: h.rarity, sex: h.sex, appearance: appearanceOf(h, s.id) } : null,
     pins, ta,
-    season: s.season.races > 0 ? { seasonId: s.season.id, classId: s.season.classId } : null,
+    // only the current season (a state not rolled over yet must not show last month's class)
+    season: s.season.races > 0 && s.season.id === seasonIdFor(now) ? { seasonId: s.season.id, classId: s.season.classId } : null,
     ...(young ? { young: true as const } : {}),
     updatedAt: sel.updatedAt,
   };
@@ -386,7 +394,7 @@ function pinView(m: Master, p: ShowcasePinCopy): ShowcasePinView | null {
 export function seasonClassLabel(classId: string) { return `今シーズン {cls}クラス`.replace('{cls}', classId); }
 
 /** REQ-SHOW-007: renders a profile + copy for a viewer, re-checking against the current master (removed things drop off). */
-export function renderShowcase(m: Master, p: PublicProfile, copy: ShowcaseCopy | null, locale: Locale, relation: ShowcaseRelation): ShowcaseCardView {
+export function renderShowcase(m: Master, p: PublicProfile, copy: ShowcaseCopy | null, locale: Locale, relation: ShowcaseRelation, seasonId?: string): ShowcaseCardView {
   const sm = showcaseOf(m);
   const bg = (copy && sm.backgrounds.find((b) => b.id === copy.backgroundId)) || defaultBackground(sm);
   const phrase = copy?.phraseId ? sm.phrases.find((x) => x.id === copy.phraseId) ?? null : null;
@@ -403,7 +411,8 @@ export function renderShowcase(m: Master, p: PublicProfile, copy: ShowcaseCopy |
     horse,
     pins: (copy?.pins ?? []).slice(0, c.pinsMax).map((x) => pinView(m, x)).filter((x): x is ShowcasePinView => !!x),
     timeAttack: (copy?.ta ?? []).slice(0, c.taMax).filter((t) => trackExists(m, t.trackId)).map((t) => ({ trackId: t.trackId, course: rivalTrackName(t.trackId), time: formatRaceTime(t.timeMs), timeMs: t.timeMs, horseName: t.horseName })),
-    seasonClass: copy?.season ? { ...copy.season, label: seasonClassLabel(copy.season.classId) } : null,
+    // a copy written last season (the owner has not played since the rollover) shows no season class
+    seasonClass: copy?.season && (seasonId === undefined || copy.season.seasonId === seasonId) ? { ...copy.season, label: seasonClassLabel(copy.season.classId) } : null,
     cupTrophies: p.cupTrophies ? { ...p.cupTrophies } : null,
     relation,
     reportable: relation !== 'self',
@@ -441,12 +450,12 @@ export function showcaseMine(m: Master, s: PlayerState, now: number, locale: Loc
   const sm = showcaseOf(m);
   const young = showcaseYoung(m, s, now);
   const sel = peek(s) ?? null;
-  const preview = renderShowcase(m, ownProfile(s), showcaseCopy(m, s, now) ?? (sel ? null : defaultCopy(m, s, now)), locale, 'self');
+  const preview = renderShowcase(m, ownProfile(s), showcaseCopy(m, s, now) ?? (sel ? null : defaultCopy(m, s, now)), locale, 'self', seasonIdFor(now));
   return {
     saved: !!sel,
     selection: sel ? { horseId: sel.horseId, pins: sel.pins, taTrackIds: sel.taTrackIds, phraseId: sel.phraseId, backgroundId: sel.backgroundId } : { horseId: null, pins: [], taTrackIds: [], phraseId: null, backgroundId: defaultBackground(sm).id },
     limits: { pinsMax: c.pinsMax, taMax: c.taMax },
-    horses: s.horses.filter((h) => h.status === 'active').map((h) => ({ horseId: h.id, horseName: h.name, rarity: h.rarity, sex: h.sex, appearance: appearanceOf(h, s.id) })),
+    horses: s.horses.filter((h) => favouriteEligible(s, h.id)).map((h) => ({ horseId: h.id, horseName: h.name, rarity: h.rarity, sex: h.sex, appearance: appearanceOf(h, s.id) })),
     pins: pinnableRefs(m, s).map((r) => resolvePin(m, s, r, false)).filter((x): x is ShowcasePinCopy => !!x).map((x) => pinView(m, x)).filter((x): x is ShowcasePinView => !!x),
     courses: Object.entries(s.timeAttack?.allTimeBest ?? {}).filter(([t]) => trackExists(m, t)).sort(([a], [b]) => a.localeCompare(b))
       .map(([t, b]) => ({ trackId: t, course: rivalTrackName(t), time: formatRaceTime(b.timeMs), timeMs: b.timeMs, horseName: b.horseName })),
@@ -460,7 +469,7 @@ export function showcaseMine(m: Master, s: PlayerState, now: number, locale: Loc
 
 /** Before the first save the preview shows the default card (default background, no picks) — nothing is published. */
 function defaultCopy(m: Master, s: PlayerState, now: number): ShowcaseCopy {
-  return { v: 1, backgroundId: defaultBackground(showcaseOf(m)).id, phraseId: null, horse: null, pins: [], ta: [], season: s.season.races > 0 ? { seasonId: s.season.id, classId: s.season.classId } : null, updatedAt: now };
+  return { v: 1, backgroundId: defaultBackground(showcaseOf(m)).id, phraseId: null, horse: null, pins: [], ta: [], season: s.season.races > 0 && s.season.id === seasonIdFor(now) ? { seasonId: s.season.id, classId: s.season.classId } : null, updatedAt: now };
 }
 function ownProfile(s: PlayerState): PublicProfile {
   return {
@@ -485,7 +494,7 @@ export interface ShowcasePorts {
 }
 
 export class ShowcaseService {
-  constructor(private readonly p: ShowcasePorts, private readonly master: () => Master) {}
+  constructor(private readonly p: ShowcasePorts, private readonly master: () => Master, private readonly clock: () => number = Date.now) {}
 
   /** GET /v1/showcase/:playerId — never touches the target's state except its block list (like the stable visit). */
   async card(u: string, target: string, locale: Locale): Promise<ShowcaseCardView> {
@@ -496,6 +505,6 @@ export class ShowcaseService {
     if (!profile || profile.playerId !== target || profile.banned) return neutralShowcase(m, target, locale);
     const [v, theirs] = await Promise.all([this.p.viewer(u), this.p.blocks(target)]);
     if (v.blocked.includes(target) || theirs.includes(u)) return neutralShowcase(m, target, locale);
-    return renderShowcase(m, profile, profile.showcase ?? null, locale, v.friendIds.includes(target) ? 'friend' : 'other');
+    return renderShowcase(m, profile, profile.showcase ?? null, locale, v.friendIds.includes(target) ? 'friend' : 'other', seasonIdFor(this.clock()));
   }
 }

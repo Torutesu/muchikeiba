@@ -2591,7 +2591,8 @@ async function Settings(tab) {
       // round 17 (REQ-RPT-011): the block list and what a block does
       ['通報とブロック', () => BlockList(), 'blocks']],
     // round 10: 支部の応援 and 友達招待 next to the looks / care entries; round 14: 実況パック after the looks entries
-    looks: [['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions],
+    // round 21 (REQ-SHOW-008): トレーナーカード — the eighth row of this page (設定・サポート already holds eight)
+    looks: [['トレーナーカード', () => ShowcaseEdit(), 'showcase'], ['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions],
       ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite']],
   };
   Kicker('その他', 36, 30, m);
@@ -4822,6 +4823,8 @@ async function Rival() {
   if (rv.kind === 'human' && !rv.dissolved && rv.card) {
     const pt = rv.card.partner;
     Txt(`${rv.card.classId}級${pt ? `　·　相棒 ${pt.name}（${STYLE_JA[pt.style] ?? pt.style}）` : ''}`, 36, 156, 488, 16, GOLD, lp, { weight: 700, ls: '.04em' });
+    // round 21 (REQ-SHOW-008): the rival's トレーナーカード
+    if (rv.playerId) TextLink('トレーナーカード', 36, 196, 300, () => ShowcaseCard(rv.playerId, 'rival', () => Rival()), lp).dataset.scOpen = rv.playerId;
   } else if (rv.kind === 'cpu') {
     Txt(`${STYLE_JA[rv.style] ?? rv.style}　·　目標${rv.targetPlace}着以内`, 36, 156, 488, 16, GOLD, lp, { weight: 700, ls: '.04em' });
     Txt(`「${rv.line}」`, 36, 188, 488, 15, MUTED, lp, { lh: 1.5 }).classList.add('rv-line');
@@ -4956,6 +4959,8 @@ async function Hall(owner = null, page = 0) {
     Ghost('自分の殿堂', 30, 600, 320, 50, () => Hall(), lp, 'quiet small');
     // round 17 (REQ-RPT-001): report this player's name from their hall
     Ghost('通報する', 30, 536, 320, 50, () => ReportSheet({ playerId: v.owner.playerId, name: v.owner.displayName, kind: 'display_name', source: 'hall' }), lp, 'quiet small').classList.add('rpt-open');
+    // round 21 (REQ-SHOW-008): the owner's トレーナーカード
+    Ghost('トレーナーカード', 30, 472, 320, 50, () => ShowcaseCard(v.owner.playerId, 'hall', () => Hall(owner, page)), lp, 'quiet small').dataset.scOpen = v.owner.playerId;
   }
   // ② the plaques, 6 per page, newest first
   const grid = el('hof-grid', 440, 134, 1124, 676);
@@ -5212,7 +5217,9 @@ async function CupLobby(cupId) {
   Kicker(`参加者　/　${c.entrants.length}/${c.capacity}人`, 36, 76, lp).classList.add('cup-seats');
   c.entrants.slice(0, 8).forEach((e, i) => {
     const row = el('cup-entrant', 36 + (i % 2) * 380, 156 + Math.floor(i / 2) * 72, 360, 64, lp); row.dataset.playerId = e.playerId;
-    cupTyped(Txt(e.displayName, 0, 4, 250, 18, e.withdrawn ? DIM : WHITE, row, { weight: 700, nowrap: true }));
+    const en = cupTyped(Txt(e.displayName, 0, 4, 250, 18, e.withdrawn ? DIM : WHITE, row, { weight: 700, nowrap: true }));
+    // round 21 (REQ-SHOW-008): the name opens the entrant's トレーナーカード
+    if (en) { en.style.cursor = 'pointer'; en.setAttribute('role', 'button'); en.dataset.scOpen = e.playerId; en.addEventListener('click', () => ShowcaseCard(e.playerId, 'cup_lobby', () => CupLobby(cupId))); }
     if (e.horseName) cupTyped(Txt(e.horseName, 0, 34, 250, 13, MUTED, row, { nowrap: true }));
     const badge = e.withdrawn ? ['棄権', 'warn'] : e.playerId === c.hostId ? ['主催', 'gold'] : e.playerId === player?.id ? ['あなた', 'cyan'] : null;
     if (badge) Pills([badge], 260, 8, 100, row);
@@ -6128,7 +6135,10 @@ async function Activity() {
     if (it.unread) el('act-dot', 0, 28, 10, 10, row);
     Txt(ACT_LABEL[it.kind] ?? 'お知らせ', 22, 8, 160, 12, it.kind === 'gift_arrived' ? GOLD : CYAN, row, { weight: 700, ls: '.18em', nowrap: true });
     Txt(jstDate(it.at), 190, 8, 220, 12, SOFT, row, { weight: 500, nowrap: true, cls: 'num' });
-    const tx = Txt(it.text, 22, 30, 760, 18, it.unread ? WHITE : MUTED, row, { weight: 700, nowrap: true });
+    const actor = it.actors?.[0]?.playerId ?? null;
+    const tx = Txt(it.text, 22, 30, actor ? 600 : 760, 18, it.unread ? WHITE : MUTED, row, { weight: 700, nowrap: true });
+    // round 21 (REQ-SHOW-008): who did it → their トレーナーカード
+    if (actor) TextLink('カード', 632, 16, 150, () => ShowcaseCard(actor, 'activity', () => Activity()), row).dataset.scOpen = actor;
     tx.style.overflow = 'hidden'; tx.style.textOverflow = 'ellipsis'; // a long course name never runs under the link
     const go = Ghost(it.link.screen === 'gift_box' ? 'プレゼントボックスへ' : '見る', 800, 10, 200, 46, () => {
       (globalThis.__muchiKpi ??= []).push({ name: 'activity_tap', kind: it.kind, screen: it.link.screen });
@@ -6609,7 +6619,9 @@ async function Friends(newVisit = true) {
   const d = Glass('Friends summary', 1116, 134, 448, 676, undefined, .9);
   Kicker('フレンド', 36, 30, d, { size: 16 });
   Txt(`${F.friends.length}人`, 36, 90, 376, 40, WHITE, d, { weight: 700, cls: 'num' }).dataset.fsugFriends = String(F.friends.length);
-  Txt(F.friends.slice(0, 3).map((x) => x.displayName).join('　') || 'まだいません', 36, 150, 376, 15, MUTED, d, { nowrap: true }).style.overflow = 'hidden';
+  // round 21 (REQ-SHOW-008): a friend's name opens their トレーナーカード (names as typed)
+  if (!F.friends.length) Txt('まだいません', 36, 150, 376, 15, MUTED, d, { nowrap: true });
+  F.friends.slice(-3).reverse().forEach((x, i) => { const n = TextLink(x.displayName, 36 + i * 126, 140, 120, () => ShowcaseCard(x.playerId, 'friends', () => Friends(false)), d); n.classList.add('keep-ja', 'sc-open'); n.dataset.scOpen = x.playerId; n.style.overflow = 'hidden'; });
   if (F.outgoing.length) Txt(`申請中 ${F.outgoing.length}人`, 36, 182, 376, 14, CYAN, d, { weight: 700, ls: '.1em' }).dataset.fsugOutgoing = String(F.outgoing.length);
   TextLink('フレンドコード・友達招待', 36, 214, 376, () => Invite(), d);
   Hair(36, 270, 376, d);
@@ -6623,7 +6635,221 @@ async function Friends(newVisit = true) {
   sw.dataset.fsugHidden = S.settings.hidden ? '1' : '0';
   Txt('オンにすると、ほかのプレイヤーのおすすめにあなたが出なくなります', 36, 508, 376, 12, SOFT, d, { lh: 1.5 });
   Cta('ホームへ', 36, 576, 376, () => Home(), d, 'small');
+  TextLink('自分のトレーナーカード', 36, 636, 376, () => ShowcaseCard(player?.id ?? 'local', 'friends', () => Friends(false)), d).dataset.action = 'sc-mine';
   Back(Home, 'ホームへ', 40, 834);
+}
+
+// ================================================================= round 21: トレーナーカード (REQ-SHOW-*, contracts/protocol.md §62)
+// The same screens as the Unity ShowcaseCardModel / ShowcaseEditorModel on the real rules (showcase.ts + ShowcaseService):
+// a player's card (the featured horse, up to three pins they earned, best records, one fixed phrase, the background their
+// achievements unlocked), opened from friends, the rival, activity, the cup lobby, spectating and the hall; the neutral card
+// for a block either way / a deleted or banned player; the report entry (§47, source profile); the share image built by the
+// real C# ShowcaseShare (WASM, no player id); the editor (その他 › 見た目・お世話・仲間): only what the player has can be picked,
+// no text field anywhere. ムチ一閃 tone: the background art, translucent navy panels, letter-spaced cyan kickers, one cyan CTA ».
+// Names players typed (display names, horse and cup names) are never translated (.keep-ja).
+const scLang = () => (isJa() ? 'ja' : 'en');
+const SC_BG_ART = { dawn: 'Art/title-screen', turf_stretch: 'Art/Courses/spring-course', night_lights: 'Art/Weather/cloudy', dirt_dust: 'Art/Courses/autumn-course',
+  stopwatch: 'Art/first-ride', every_course: 'Art/home-paddock', golden_gate: 'Art/race-result' };
+const SC_COAT = { bay: 0, dark_bay: 0, brown: 0, chestnut: 1, gray: 2, white: 2, black: 3 };
+const SC_KIND = { title: '称号', achievement: '実績', cup_trophy: 'カップ', hall: '殿堂', goal_ribbon: 'リボン', tournament: '大会' };
+const SC_TABS = [['horse', '愛馬'], ['pins', 'ピン留め'], ['courses', 'ベスト記録'], ['phrase', 'ひとこと'], ['background', '背景']];
+const SC_SOURCES = ['settings', 'friends', 'rival', 'activity', 'cup_lobby', 'spectate', 'hall', 'stable', 'leaderboard', 'team'];
+const scState = { viewed: '', tab: 'horse', editor: null, draft: null };
+/** showcase_view / showcase_share through the server's strict client schema (no player id), kept for the tests. */
+async function scKpi(name, props) {
+  const r = await L.showcase.kpi(name, props);
+  if (r.ok) (globalThis.__muchiKpi ??= []).push({ name, ...props });
+}
+const scTyped = (n, typed = true) => { if (typed) { n.classList.add('keep-ja'); n.dataset.typed = '1'; } return n; };
+
+async function ShowcaseCard(playerId, source = 'friends', back = null) {
+  const backTo = back ?? (() => Friends(false));
+  if (!SC_SOURCES.includes(source)) source = 'friends';
+  currentScreen = () => ShowcaseCard(playerId, source, back);
+  const r = await L.showcase.card(playerId, scLang());
+  if (!r.ok) { toast('トレーナーカードはオンラインで見られます'); return backTo(); }
+  const c = r.value;
+  const neutral = c.state === 'neutral';
+  const key = `${playerId}:${source}:${c.state}`;
+  if (scState.viewed !== key) { scState.viewed = key; scKpi('showcase_view', { source, relation: c.relation, neutral }); }
+  Clear('showcase'); SetArt(SC_BG_ART[c.background.id] ?? 'Art/title-screen', false); Shade('left');
+  cur.dataset.bg = c.background.id;
+  TopBar('トレーナーカード', neutral ? 'このカードは表示できません' : '自分で手に入れたものだけが並びます　·　一言は決まった文から', { wallet: false });
+  // ① the featured horse (its look and the rider's silks colours)
+  const lp = Glass('Showcase horse', 36, 134, 500, 676, undefined, .8);
+  lp.classList.add('sc-horse');
+  Kicker('愛馬', 30, 30, lp, { w: 440 });
+  if (c.horse) {
+    ArtImage(partnerPreview(SC_COAT[c.horse.appearance?.coat] ?? 0), 30, 96, 440, 320, lp, 'sc-horse-art');
+    const hn = Txt(c.horse.horseName ?? '愛馬', 30, 432, 440, 30, GOLD, lp, { weight: 700, nowrap: true, ls: '.04em' });
+    hn.classList.add('sc-horse-name'); scTyped(hn, !!c.horse.horseName);
+    Txt(`${c.horse.rarity}　/　${c.horse.sex === 'female' ? '牝馬' : '牡馬'}`, 30, 478, 440, 15, MUTED, lp, { weight: 500, nowrap: true });
+  } else Txt(neutral ? '' : '愛馬はまだ選ばれていません', 30, 110, 440, 17, MUTED, lp, { lh: 1.5 });
+  if (c.silks) {
+    Kicker('勝負服', 30, 530, lp, { rule: false, size: 13 });
+    c.silks.colors.forEach((id, i) => { const chip = el('sc-silk', 30 + i * 46, 562, 36, 36, lp); chip.style.background = L.showcase.hex(id); chip.dataset.silk = id; });
+  }
+  // ② the card
+  const rp = Glass('Showcase card', 556, 134, 1008, 676, undefined, .88);
+  rp.classList.add('sc-card'); rp.dataset.state = c.state; rp.dataset.relation = c.relation;
+  const nm = Txt(c.displayName, 36, 30, 680, 34, WHITE, rp, { weight: 700, nowrap: true, ls: '.04em' });
+  nm.classList.add('sc-name'); scTyped(nm, !neutral);
+  if (neutral) {
+    // REQ-SHOW-009/010: the neutral name and the default background only — no reason, no report, no share
+    Txt('このカードは表示できません', 36, 100, 900, 19, MUTED, rp, { lh: 1.5 }).classList.add('sc-neutral');
+    Back(backTo, 'BACK', 40, 834);
+    return;
+  }
+  Txt(`${c.titleName ?? '称号なし'}　·　クラス ${c.classId}　·　レート ${fmt(c.rating)}`, 36, 82, 920, 16, GOLD, rp, { weight: 700, nowrap: true }).classList.add('sc-title');
+  Txt(`${fmt(c.stats.races)}戦${fmt(c.stats.wins)}勝　·　3着以内 ${fmt(c.stats.top3)}回`, 36, 112, 920, 14, MUTED, rp, { weight: 500, nowrap: true });
+  Kicker('ピン留め', 36, 146, rp, { w: 440, size: 15 });
+  if (!c.pins.length) Txt('まだピン留めはありません', 36, 226, 900, 16, SOFT, rp);
+  c.pins.slice(0, 3).forEach((p, i) => {
+    const card = Card('Showcase pin', 36 + i * 316, 222, 300, 118, rp, p.kind === 'cup_trophy' || p.kind === 'tournament' ? 'var(--gold)' : 'var(--cyan)');
+    card.classList.add('sc-pin'); card.dataset.kind = p.kind; card.dataset.pin = p.id;
+    Txt(SC_KIND[p.kind] ?? '', 20, 16, 260, 12, CYAN, card, { weight: 700, ls: '.18em', nowrap: true });
+    const typed = p.horseName ?? p.cupName ?? null;
+    scTyped(Txt(typed ?? p.label, 20, 40, 260, 20, WHITE, card, { weight: 700, nowrap: true }), !!typed).classList.add('sc-pin-head');
+    Txt(p.sub, 20, 76, 260, 14, MUTED, card, { weight: 500, nowrap: true });
+  });
+  Kicker('ベスト記録', 36, 362, rp, { w: 440, size: 15 });
+  const rec = [...c.timeAttack.map((t) => [t.course, t.time]), ...(c.seasonClass ? [[c.seasonClass.label, '']] : [])];
+  if (!rec.length) Txt('まだ記録はありません', 36, 440, 900, 16, SOFT, rp);
+  rec.slice(0, 3).forEach(([a, b], i) => {
+    const row = el('sc-rec', 36, 436 + i * 36, 936, 34, rp); row.dataset.rec = String(i);
+    Txt(a, 0, 4, 700, 17, WHITE, row, { weight: 500, nowrap: true });
+    if (b) Txt(b, 720, 0, 216, 22, GOLD, row, { weight: 700, align: 'right', nowrap: true, cls: 'num' });
+  });
+  if (c.phrase) Txt(`「${c.phrase.phraseText}」`, 36, 548, 936, 20, WHITE, rp, { weight: 500, nowrap: true }).classList.add('sc-phrase');
+  Cta('画像で共有', 36, 596, 320, () => ShowcaseShareView(c, () => ShowcaseCard(playerId, source, back)), rp, 'small').dataset.action = 'sc-share';
+  if (c.relation === 'self') Ghost('カードを編集', 376, 600, 260, 52, () => ShowcaseEdit(() => ShowcaseCard(playerId, source, back)), rp, 'quiet small').dataset.action = 'sc-edit';
+  if (c.reportable) {
+    // REQ-SHOW-011: the existing report sheet (§47, source profile); the horse name only when the card shows one
+    Ghost('通報する', 376, 600, 220, 52, () => ReportSheet({ playerId: c.playerId, name: c.displayName, kind: 'display_name', source: 'profile' }), rp, 'quiet small').classList.add('rpt-open');
+    if (c.reportableHorseId) Ghost('馬の名前を通報', 612, 600, 260, 52, () => ReportSheet({ playerId: c.playerId, name: c.horse.horseName, kind: 'horse_name', ref: c.reportableHorseId, source: 'profile' }), rp, 'quiet small').classList.add('rpt-open-horse');
+  }
+  Back(backTo, 'BACK', 40, 834);
+}
+
+/** REQ-SHOW-013: the share image (the real C# ShowcaseShare in WASM): the display name and the card's texts, never an id. */
+function ShowcaseShareView(c, back) {
+  const s = JSON.parse(engine.ShowcaseShareCard(JSON.stringify(c)));
+  if (!s.ok) { toast('このカードは共有できません'); return back(); }
+  currentScreen = () => ShowcaseShareView(c, back);
+  Clear('showcase-share'); SetArt(SC_BG_ART[c.background.id] ?? 'Art/title-screen', false); Shade('dim');
+  const card = Glass('Showcase share card', 420, 70, 760, 700, undefined, .9);
+  card.classList.add('sc-share'); card.dataset.kind = s.kind;
+  Kicker(s.watermark, 44, 40, card, { size: 17 });
+  Txt(s.mode, 44, 108, 660, 15, MUTED, card, { weight: 500, nowrap: true });
+  scTyped(Txt(s.name, 44, 136, 660, 40, WHITE, card, { weight: 700, nowrap: true, ls: '.04em' })).dataset.share = 'name';
+  if (s.horse) scTyped(Txt(s.horse, 44, 196, 660, 24, GOLD, card, { weight: 700, nowrap: true })).dataset.share = 'horse';
+  Hair(44, 240, 672, card);
+  s.lines.slice(0, 8).forEach((l, i) => Txt(l, 44, 258 + i * 34, 672, 17, WHITE, card, { weight: 500, nowrap: true }).classList.add('sc-share-line'));
+  Txt('共有の文：' + s.shareText, 44, 548, 672, 13, MUTED, card, { lh: 1.5 }).dataset.share = 'text';
+  Cta('共有する', 44, 612, 380, () => { scKpi('showcase_share', { pins: s.pins, records: s.records, horse: s.hasHorse }); toast('共有はアプリ（IShareSheet）で行います'); }, card, 'small').dataset.action = 'sc-share-send';
+  Ghost('戻る', 444, 616, 272, 52, back, card, 'quiet small');
+  Caption('画像にはプレイヤーIDを入れません（名前だけ）', 424, 790, undefined, 14, MUTED).classList.add('tshadow');
+}
+
+/** The editor: tabs over what the player may pick, a summary of the draft, one Save CTA. */
+async function ShowcaseEdit(back = null, tab = null) {
+  const backTo = back ?? (() => Settings('looks'));
+  if (tab) scState.tab = tab;
+  currentScreen = () => ShowcaseEdit(back);
+  if (!scState.editor || !tab) {
+    const r = await L.showcase.mine(scLang());
+    if (!r.ok) { toast('トレーナーカードはオンラインで編集できます'); return backTo(); }
+    if (!scState.editor || !scState.draft) scState.draft = JSON.parse(JSON.stringify(r.value.selection));
+    scState.editor = r.value;
+  }
+  const E = scState.editor, D = scState.draft;
+  Clear('showcase-edit'); SetArt(SC_BG_ART[D.backgroundId] ?? 'Art/title-screen', false); Shade('left');
+  TopBar('トレーナーカードの編集', '手に入れたものだけが並びます　·　文字を書く欄はありません', { wallet: false });
+  const lp = Glass('Showcase options', 36, 134, 760, 676, undefined, .88);
+  lp.classList.add('sc-options'); lp.dataset.tab = scState.tab;
+  SC_TABS.forEach(([k, label], i) => {
+    const b = Btn(label, 30 + i * 142, 26, 134, 46, () => ShowcaseEdit(back, k), 'choice' + (scState.tab === k ? ' on' : ''), lp);
+    b.dataset.scTab = k; b.style.fontSize = '16px'; b.style.whiteSpace = 'nowrap'; b.style.padding = '0';
+  });
+  const row = (label, i, on, action, o = {}) => {
+    const col = o.cols === 2 ? i % 2 : 0, line = o.cols === 2 ? Math.floor(i / 2) : i;
+    const w = o.cols === 2 ? 340 : 700;
+    const b = Btn(label, 30 + col * 360, 96 + line * 56, w, 48, action, 'choice sc-opt' + (on ? ' on' : '') + (o.locked ? ' locked' : ''), lp);
+    b.style.fontSize = '16px'; b.style.whiteSpace = 'nowrap'; b.style.overflow = 'hidden';
+    if (o.typed) b.classList.add('keep-ja');
+    return b;
+  };
+  const redraw = () => ShowcaseEdit(back, scState.tab);
+  if (scState.tab === 'horse') {
+    row('選ばない', 0, D.horseId === null, () => { D.horseId = null; redraw(); }).dataset.scHorse = '';
+    E.horses.slice(0, 8).forEach((h, i) => { row(h.horseName, i + 1, D.horseId === h.horseId, () => { D.horseId = h.horseId; redraw(); }, { typed: true }).dataset.scHorse = h.horseId; });
+    if (!E.horses.length) Txt('現役の馬がいません（引退した馬・貸し出し中の馬は選べません）', 30, 160, 700, 15, SOFT, lp, { lh: 1.5 });
+  } else if (scState.tab === 'pins') {
+    Txt(`${D.pins.length} / ${E.limits.pinsMax}`, 560, 610, 170, 20, GOLD, lp, { weight: 700, align: 'right', nowrap: true, cls: 'num' }).classList.add('sc-pin-count');
+    if (!E.pins.length) Txt('まだピン留めできるものがありません。称号・実績・トロフィーを手に入れると並びます', 30, 110, 700, 15, SOFT, lp, { lh: 1.6 });
+    E.pins.slice(0, 16).forEach((p, i) => {
+      const on = D.pins.some((x) => x.kind === p.kind && x.id === p.id);
+      const typed = p.horseName ?? p.cupName ?? null;
+      const b = row(`${SC_KIND[p.kind]}　${typed ?? p.label}`, i, on, () => {
+        if (on) D.pins = D.pins.filter((x) => !(x.kind === p.kind && x.id === p.id));
+        else if (D.pins.length >= E.limits.pinsMax) { toast('ピン留めはこれ以上できません'); return; }
+        else D.pins.push({ kind: p.kind, id: p.id });
+        redraw();
+      }, { cols: 2, typed: !!typed });
+      b.dataset.scPin = `${p.kind}:${p.id}`;
+    });
+  } else if (scState.tab === 'courses') {
+    if (!E.courses.length) Txt('タイムアタックの記録がまだありません', 30, 110, 700, 15, SOFT, lp);
+    E.courses.slice(0, 8).forEach((t, i) => {
+      const on = D.taTrackIds.includes(t.trackId);
+      row(`${t.course}　${t.time}`, i, on, () => {
+        if (on) D.taTrackIds = D.taTrackIds.filter((x) => x !== t.trackId);
+        else if (D.taTrackIds.length >= E.limits.taMax) { toast('コースはこれ以上選べません'); return; }
+        else D.taTrackIds.push(t.trackId);
+        redraw();
+      }).dataset.scCourse = t.trackId;
+    });
+    Txt('今シーズンのランク戦のクラスは、走ると自動で出ます', 30, 610, 700, 13, SOFT, lp);
+  } else if (scState.tab === 'phrase') {
+    row('なし', 0, D.phraseId === null, () => { D.phraseId = null; redraw(); }, { cols: 2 }).dataset.scPhrase = '';
+    E.phrases.slice(0, 15).forEach((p, i) => { row(p.phraseText, i + 1, D.phraseId === p.id, () => { D.phraseId = p.id; redraw(); }, { cols: 2 }).dataset.scPhrase = p.id; });
+  } else {
+    E.backgrounds.slice(0, 14).forEach((b, i) => {
+      const x = row(b.unlocked ? b.backgroundName : `🔒 ${b.backgroundName}`, i, D.backgroundId === b.id, () => {
+        if (!b.unlocked) { toast(b.unlockText); return; }
+        D.backgroundId = b.id; redraw();
+      }, { cols: 2, locked: !b.unlocked });
+      x.dataset.scBg = b.id; x.dataset.unlocked = String(b.unlocked);
+    });
+  }
+  // ② the draft in words, the rules and the one CTA
+  const rp = Glass('Showcase draft', 816, 134, 748, 676, undefined, .9);
+  rp.classList.add('sc-draft');
+  Kicker('カードの中身', 36, 30, rp, { size: 15 });
+  const horse = E.horses.find((h) => h.horseId === D.horseId);
+  const lines = [
+    ['愛馬', horse ? horse.horseName : '選ばない', !!horse],
+    ['ピン留め', D.pins.length ? `${D.pins.length}つ` : 'なし', false],
+    ['記録', D.taTrackIds.length ? `${D.taTrackIds.length}コース` : 'なし', false],
+    ['ひとこと', E.phrases.find((p) => p.id === D.phraseId)?.phraseText ?? 'なし', false],
+    ['背景', E.backgrounds.find((b) => b.id === D.backgroundId)?.backgroundName ?? '', false],
+  ];
+  lines.forEach(([k, v, typed], i) => {
+    Txt(k, 36, 104 + i * 52, 150, 14, MUTED, rp, { weight: 700, ls: '.12em', nowrap: true });
+    scTyped(Txt(v, 196, 100 + i * 52, 520, 18, WHITE, rp, { weight: 700, nowrap: true }), typed);
+  });
+  Txt(E.notice, 36, 376, 676, 13, SOFT, rp, { lh: 1.6 });
+  if (E.young) Txt('13歳未満のため、馬の名前などはカードに出ません', 36, 470, 676, 13, WARN, rp, { lh: 1.5 }).classList.add('sc-young');
+  Cta('保存する', 36, 524, 400, async () => {
+    const r = await L.showcase.save(D, scLang());
+    if (!r.ok) { toast(r.code === 'NOT_ELIGIBLE' ? 'まだ条件を満たしていません' : r.message); return; }
+    scState.editor = r.value; scState.draft = JSON.parse(JSON.stringify(r.value.selection));
+    toast('カードを保存しました');
+    ShowcaseEdit(back, scState.tab);
+  }, rp, 'small').dataset.action = 'sc-save';
+  TextLink('カードを見る', 456, 536, 260, () => ShowcaseCard(player?.id ?? 'local', 'settings', () => ShowcaseEdit(back)), rp).dataset.action = 'sc-view';
+  { const q = Ghost('？', 660, 26, 52, 52, () => TipCard('showcase_tip', 'list', () => ShowcaseEdit(back, scState.tab)), rp, 'small quiet tip-q'); q.setAttribute('aria-label', 'ヒント'); q.dataset.action = 'sc-tip'; }
+  Back(() => { scState.editor = null; scState.draft = null; backTo(); }, 'BACK', 40, 834);
 }
 
 // ================================================================= round 13: 購入履歴・コイン履歴・ガチャ履歴 (REQ-HIST-*, contracts/protocol.md §33)
@@ -7575,6 +7801,8 @@ function SpectateDraw(start = false) {
   f.classList.add('cheer-field');
   Kicker('出走馬　/　ライブ', 36, 30, f, { size: 15 });
   const field = el('cheer-rows', 24, 92, 552, 560, f);
+  // round 21 (REQ-SHOW-008): the friend in the room → their トレーナーカード (the demo friend)
+  TextLink('部屋のフレンドのカード', 300, 30, 276, async () => { await L.showcase.demo(); ShowcaseCard('demo_sc_1', 'spectate', () => SpectateDraw()); }, f).dataset.action = 'sc-spectate';
   const drawRows = () => {
     field.innerHTML = '';
     st.names.forEach((nm, i) => {
@@ -7717,7 +7945,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

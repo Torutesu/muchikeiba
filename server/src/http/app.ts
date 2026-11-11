@@ -1153,7 +1153,7 @@ export const routes: Route[] = [
     viewer: (x) => c.player(x).invoke('showcaseViewer', x),
     blocks: (x) => c.player(x).invoke('blockIds', x),
     mine: (x, l) => c.player(x).invoke('showcaseMine', x, l),
-  }, () => c.master).card(u, playerIdParam(p.playerId!), resolveLocale(r)) },
+  }, () => c.master, c.clock).card(u, playerIdParam(p.playerId!), resolveLocale(r)) },
   { method: 'GET', path: '/v1/help', auth: 'player', handler: async (r, _p, c) => helpIndex(c.master, resolveLocale(r)) },
   { method: 'GET', path: '/v1/help/articles/:articleId', auth: 'player', handler: async (r, p, c) => {
     if (!/^[a-z0-9_]{2,40}$/.test(p.articleId!)) throw new AppError('NOT_FOUND', 'NOT_FOUND');

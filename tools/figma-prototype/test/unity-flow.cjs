@@ -1822,6 +1822,60 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.ok(rs.active && rs.f && (rs.f.assist ?? 'off') === 'off', 'the reins lesson rides the practice race, unassisted');
   await shot('lesson-reins-hud', 0, true);
   await click('中断'); await waitScreen('tips');
+  // ------------------------------------------------------------------ 6. round 21: トレーナーカード (REQ-SHOW-*)
+  // その他 › 見た目・お世話・仲間 › トレーナーカード: the editor (tabs over what I have; a locked background refused; no text
+  // field), save → my card; a friend's card from the friends screen (pins, records, the fixed phrase, report), the share image
+  // (the real C# ShowcaseShare, no player id), an under-13 player's card (no player-typed names) and the neutral card of a
+  // player who blocked me; cards from the cup lobby / activity / hall / rival / spectate entry points use the same screen
+  await page.evaluate(async () => { await globalThis.__muchi.logic.showcase.demo(); });
+  await page.evaluate(() => globalThis.__muchi.show('Settings', 'looks')); await waitScreen('settings'); await page.waitForTimeout(300);
+  await page.locator('.screen.in .btn[data-action="showcase"]').click(); await waitScreen('showcase-edit'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in input, .screen.in textarea').count(), 0, 'showcase editor: no text field anywhere');
+  assert.ok(await page.locator('.screen.in [data-sc-horse]').count() >= 2, 'showcase editor: my active horses (and 選ばない)');
+  await page.locator('.screen.in [data-sc-horse]').nth(1).click(); await page.waitForTimeout(300);
+  await shot('showcase-edit', 300);
+  await page.locator('.screen.in [data-sc-tab="phrase"]').click(); await page.waitForTimeout(300);
+  await page.locator('.screen.in [data-sc-phrase="race_anytime"]').click(); await page.waitForTimeout(300);
+  await shot('showcase-edit-phrase', 200);
+  await page.locator('.screen.in [data-sc-tab="background"]').click(); await page.waitForTimeout(300);
+  assert.ok(await page.locator('.screen.in [data-sc-bg][data-unlocked="false"]').count() >= 1, 'showcase editor: locked backgrounds show their lock');
+  await page.locator('.screen.in [data-sc-bg][data-unlocked="false"]').first().click(); await page.waitForTimeout(300);
+  await shot('showcase-edit-background', 200);
+  await page.locator('.screen.in .btn[data-action="sc-save"]').click(); await page.waitForTimeout(700);
+  const scMine = await page.evaluate(async () => (await globalThis.__muchi.logic.showcase.mine('ja')).value);
+  assert.ok(scMine.saved && scMine.selection.phraseId === 'race_anytime' && scMine.selection.horseId, 'showcase: saved (horse + phrase, the default background kept)');
+  await page.locator('.screen.in .btn[data-action="sc-view"]').click(); await waitScreen('showcase'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .sc-card').getAttribute('data-relation'), 'self', 'my own card');
+  assert.equal(await page.locator('.screen.in .rpt-open').count(), 0, 'no report button on my own card');
+  await shot('showcase-mine', 300);
+  await page.evaluate(() => globalThis.__muchi.show('Friends')); await waitScreen('friends', 30000); await page.waitForTimeout(400);
+  if (await page.locator('.screen.in [data-sc-open="demo_sc_1"]').count()) await page.locator('.screen.in [data-sc-open="demo_sc_1"]').click();
+  else await page.evaluate(() => globalThis.__muchi.show('ShowcaseCard', 'demo_sc_1', 'friends'));
+  await waitScreen('showcase'); await page.waitForTimeout(500);
+  const scText = await page.locator('.screen.in').innerText();
+  assert.match(scText, /アオイ[\s\S]*サクラフブキ|サクラフブキ[\s\S]*アオイ/, 'a friend card: name and horse as typed');
+  assert.equal(await page.locator('.screen.in .sc-pin').count(), 3, 'three pins');
+  assert.match(scText, /タイムアタックに夢中/, 'the fixed phrase');
+  assert.ok(!/今だけ|残りわずか|倍|お得|オッズ/.test(scText), 'no urgency, multiplier or betting wording');
+  assert.ok(await page.evaluate(() => globalThis.__muchiKpi.some((e) => e.name === 'showcase_view' && e.source === 'friends' && e.relation === 'friend')), 'showcase_view from the friends screen');
+  await shot('showcase-friend', 300);
+  await page.locator('.screen.in .rpt-open').click(); await page.waitForSelector('.sheet.rpt-sheet[data-source="profile"]', { timeout: 15000 }); await page.waitForTimeout(300);
+  await shot('showcase-report', 0);
+  await page.locator('.sheet.rpt-sheet .btn[data-label="閉じる"]').click(); await page.waitForTimeout(400);
+  await page.locator('.screen.in .btn[data-action="sc-share"]').click(); await waitScreen('showcase-share'); await page.waitForTimeout(400);
+  const scShare = await page.locator('.screen.in .sc-share').innerText();
+  assert.ok(!scShare.includes('demo_sc_1') && /#ムチ一閃/.test(scShare), 'the share image: no player id, the hashtag');
+  await page.locator('.screen.in .btn[data-action="sc-share-send"]').click(); await page.waitForTimeout(300);
+  assert.ok(await page.evaluate(() => globalThis.__muchiKpi.some((e) => e.name === 'showcase_share')), 'showcase_share');
+  await shot('showcase-share', 200);
+  await page.evaluate(() => globalThis.__muchi.show('ShowcaseCard', 'demo_sc_kid', 'cup_lobby')); await waitScreen('showcase'); await page.waitForTimeout(400);
+  assert.ok(!/ハルカゼ|春の小さな杯/.test(await page.locator('.screen.in').innerText()), 'under 13: no horse or cup name on the card');
+  await shot('showcase-young', 300);
+  await page.evaluate(() => globalThis.__muchi.show('ShowcaseCard', 'demo_sc_blk', 'activity')); await waitScreen('showcase'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .sc-card').getAttribute('data-state'), 'neutral', 'blocked by them: the neutral card');
+  assert.ok(!/クロガネ|クロノツバサ/.test(await page.locator('.screen.in').innerText()), 'the neutral card names nobody');
+  assert.equal(await page.locator('.screen.in .btn[data-action="sc-share"], .screen.in .rpt-open').count(), 0, 'no share or report on a neutral card');
+  await shot('showcase-neutral', 300);
   // ------------------------------------------------------------------ 6. round 17: おすすめフレンド (REQ-FSUG-*)
   // people met through the real paths (an event, a friend room, a like, a cheer, mutual friends); the opted-out player and
   // the ranked-only opponent never appear; 申請する goes through the friend request flow; 表示しない is remembered; the switch

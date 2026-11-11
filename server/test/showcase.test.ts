@@ -40,7 +40,7 @@ function world() {
     viewer: (u) => svc.showcaseViewer(u),
     blocks: async (u) => (await svc.showcaseViewer(u)).blocked,
     mine: (u, l) => svc.showcaseMine(u, l),
-  }, () => m);
+  }, () => m, () => now);
   return { svc, repo, dir, kpi, edit, service, advance: (ms: number) => { now += ms; }, now: () => now };
 }
 
@@ -173,6 +173,18 @@ describe('the public copy re-checks on every push (REQ-SHOW-005)', () => {
     const list = await fs.list('b');
     expect(list.friends[0]).not.toHaveProperty('showcase');
   });
+  it('a horse lent out as a stud (貸し出し中) drops off and cannot be chosen; it comes back when the listing ends', async () => {
+    const w = world();
+    const d = await decorated(w, 'a');
+    await w.svc.showcaseSave('a', fullInput(d));
+    const listing = { horseId: d.horseId, visibility: 'friends' as const, fee: 10, dailyLimit: 1, listedAt: NOW };
+    await w.edit('a', (s) => { s.stud = { listings: [listing], reservations: {}, settled: {}, lends: { date: '', byHorse: {}, earned: 0 }, applied: {}, outbox: [], borrows: { date: '', count: 0 }, history: [] }; });
+    expect((await w.dir.profiles(['a']))[0]!.showcase!.horse).toBeNull();
+    expect(await code(w.svc.showcaseSave('a', { ...fullInput(d), phraseId: 'hello' }))).toBe('NOT_ELIGIBLE');
+    expect((await w.svc.showcaseMine('a')).horses).toEqual([]);
+    await w.edit('a', (s) => { s.stud!.listings = []; });
+    expect((await w.dir.profiles(['a']))[0]!.showcase!.horse?.horseId).toBe(d.horseId);
+  });
   it('a pruned cup result drops off; a banned account and a running deletion publish no card', async () => {
     const w = world();
     const d = await decorated(w, 'a');
@@ -235,6 +247,17 @@ describe('opening a card (REQ-SHOW-007..011)', () => {
     expect((await w.service.card('v', 'gone_forever', 'en')).displayName).toBe(SHOWCASE_NEUTRAL_NAME.en);
     await w.svc.setModeration('a', 'banned', null, 'test');
     neutral(await w.service.card('v', 'a', 'ja'));
+  });
+  it('a copy written last season shows no season class once the month rolled over (the owner has not played since)', async () => {
+    const w = world();
+    const d = await decorated(w, 'a');
+    await w.edit('a', (s) => { s.season.races = 3; });
+    await w.svc.showcaseSave('a', fullInput(d));
+    await w.svc.bootstrap('v');
+    expect((await w.service.card('v', 'a', 'ja')).seasonClass?.classId).toBe('C');
+    w.advance(40 * 86_400_000);
+    expect((await w.service.card('v', 'a', 'ja')).seasonClass).toBeNull();
+    expect((await w.svc.showcaseMine('a')).preview.seasonClass).toBeNull(); // own state before its rollover transaction
   });
   it('re-checks against the current master on read: a removed background / title / course falls back or drops off', async () => {
     const w = world();

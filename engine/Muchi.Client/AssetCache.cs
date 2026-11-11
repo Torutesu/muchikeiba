@@ -69,6 +69,19 @@ namespace Muchi.Client
             return n;
         }
 
+        /// <summary>§56.8: every verified file (content hash, length) for the storage screen.</summary>
+        public IEnumerable<(string sha256, long length)> ListBlobs()
+        {
+            foreach (var f in Files(BlobDir)) yield return (f.Name, f.Length);
+        }
+
+        /// <summary>§56.8: every partial download (content hash, bytes so far).</summary>
+        public IEnumerable<(string sha256, long length)> ListPartials()
+        {
+            foreach (var f in Files(PartialDir))
+                yield return (f.Name.EndsWith(".part", StringComparison.Ordinal) ? f.Name.Substring(0, f.Name.Length - 5) : f.Name, f.Length);
+        }
+
         private static IEnumerable<FileInfo> Files(string dir)
         {
             var d = new DirectoryInfo(dir);

@@ -39,23 +39,57 @@ namespace Muchi.Client
         public string Group;
         /// <summary>The group's screen waits for it (only boot/ftue). Everything else degrades to &lt;kind&gt;/default.</summary>
         public bool Required;
+        /// <summary>§56.7: an optional smaller copy (optional entries only), fetched instead while the data saver is on.</summary>
+        public AssetVariant Low;
+        /// <summary>This entry stands for the <see cref="Low"/> variant of its key (<see cref="LowEntry"/>).</summary>
+        public bool IsLowVariant;
 
-        public static AssetEntry Parse(JsonNode o) => new AssetEntry
+        public static AssetEntry Parse(JsonNode o)
         {
-            Key = J.Str(o, "key"), File = J.Str(o, "file"), Sha256 = J.Str(o, "sha256"), Size = J.Long(o, "size"),
-            Group = J.Str(o, "group") ?? AssetGroups.OnDemand, Required = J.Bool(o, "required"),
-        };
+            var e = new AssetEntry
+            {
+                Key = J.Str(o, "key"), File = J.Str(o, "file"), Sha256 = J.Str(o, "sha256"), Size = J.Long(o, "size"),
+                Group = J.Str(o, "group") ?? AssetGroups.OnDemand, Required = J.Bool(o, "required"),
+            };
+            var low = J.Opt(o, "low");
+            if (low != null && low.Kind == JsonKind.Object)
+            {
+                var v = new AssetVariant { File = J.Str(low, "file"), Sha256 = J.Str(low, "sha256"), Size = J.Long(low, "size") };
+                // a malformed variant is ignored (the normal file is used), never the entry
+                if (!e.Required && v.Size > 0 && v.Size < e.Size && v.Sha256 != e.Sha256 && v.File != e.File && WellFormedFile(v.File) && WellFormedSha(v.Sha256)) e.Low = v;
+            }
+            return e;
+        }
+
+        /// <summary>The low variant as an entry of the same key (download and cache it like any entry).</summary>
+        public AssetEntry LowEntry()
+            => Low == null ? this : new AssetEntry { Key = Key, File = Low.File, Sha256 = Low.Sha256, Size = Low.Size, Group = Group, Required = false, IsLowVariant = true };
 
         /// <summary>Defensive check of a server entry: valid key, 64-hex hash, positive size, relative path without "..".</summary>
-        public bool IsWellFormed()
+        public bool IsWellFormed() => AssetKeys.IsValid(Key) && Size > 0 && WellFormedFile(File) && WellFormedSha(Sha256);
+
+        private static bool WellFormedSha(string sha)
         {
-            if (!AssetKeys.IsValid(Key) || Size <= 0 || string.IsNullOrEmpty(File) || File.Length > 200) return false;
-            if (Sha256 == null || Sha256.Length != 64) return false;
-            foreach (char c in Sha256) if (!(c >= '0' && c <= '9' || c >= 'a' && c <= 'f')) return false;
-            if (File.StartsWith("/", StringComparison.Ordinal) || File.Contains("\\") || File.Contains(":")) return false;
-            foreach (var seg in File.Split('/')) if (seg.Length == 0 || seg == "." || seg == "..") return false;
+            if (sha == null || sha.Length != 64) return false;
+            foreach (char c in sha) if (!(c >= '0' && c <= '9' || c >= 'a' && c <= 'f')) return false;
             return true;
         }
+
+        private static bool WellFormedFile(string file)
+        {
+            if (string.IsNullOrEmpty(file) || file.Length > 200) return false;
+            if (file.StartsWith("/", StringComparison.Ordinal) || file.Contains("\\") || file.Contains(":")) return false;
+            foreach (var seg in file.Split('/')) if (seg.Length == 0 || seg == "." || seg == "..") return false;
+            return true;
+        }
+    }
+
+    /// <summary>§56.7: the low-resolution copy of an optional entry.</summary>
+    public sealed class AssetVariant
+    {
+        public string File;
+        public string Sha256;
+        public long Size;
     }
 
     /// <summary>Server-tunable delivery policy (catalog.policy).</summary>
@@ -151,7 +185,7 @@ namespace Muchi.Client
         public HashSet<string> ReferencedHashes()
         {
             var s = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var e in Entries) s.Add(e.Sha256);
+            foreach (var e in Entries) { s.Add(e.Sha256); if (e.Low != null) s.Add(e.Low.Sha256); } // §56.7: low variants are kept too
             return s;
         }
     }

@@ -141,6 +141,8 @@ namespace Muchi.Client
         public List<ReplayEntrant> Entrants = new List<ReplayEntrant>();
         public ReplayLog Log;
         public string LogError;
+        /// <summary>REQ-CHEER-012 (§55.6): 「応援の多かった瞬間」 markers in race order (empty: nobody cheered, or an older server).</summary>
+        public List<CheerMoment> CheerMoments = new List<CheerMoment>();
 
         internal static ReplayData Parse(JsonNode o)
         {
@@ -149,6 +151,7 @@ namespace Muchi.Client
                 RaceId = J.Str(o, "raceId"), Owner = J.Str(o, "owner"), ReplayTitle = J.Str(o, "replayTitle"), ResultHash = J.Str(o, "resultHash"),
                 RulesetVersion = J.Str(o, "rulesetVersion"), Playable = J.Bool(o, "playable"), Reason = J.Str(o, "reason"), OwnerName = J.Str(o, "ownerName"),
                 FocusSlot = J.Int(o, "focusSlot"), Entrants = J.List(o, "entrants", ReplayEntrant.Parse),
+                CheerMoments = J.List(o, "cheerMoments", CheerMoment.Parse),
             };
             try { var l = J.Opt(o, "replayLog"); d.Log = l == null ? null : ProtocolCodec.ParseReplayLog(l); }
             catch (Exception e) { d.Log = null; d.LogError = e.Message; } // an unknown ruleset key / format: unplayable, never a crash

@@ -102,9 +102,26 @@ export function scanAssets(input: ScanInput): { catalog: AssetCatalog; report: S
     return key;
   };
 
+  // REQ-PERF-012 (§56.7): `<key>.low.<ext>` is the low variant of `<key>`, attached after the entries are known
+  const LOW_RE = /\.low(\.[a-z0-9_]+)$/;
+  const lowOf = (path: string): string | null => {
+    const m = LOW_RE.exec(path);
+    if (!m) return null;
+    const name = path.slice(path.lastIndexOf('/') + 1);
+    if (IGNORED(name)) return null;
+    return keyOfPath(path.slice(0, m.index) + m[1]);
+  };
+  const commonLow = new Map<string, ScannedFile>();
+
   // common files are classified once (orphans reported once), then merged into each platform
   const commonByKey = new Map<string, ScannedFile>();
   for (const f of input.common) {
+    if (LOW_RE.test(f.path)) {
+      const k = lowOf(f.path);
+      if (k && ASSET_FILE_RE.test(f.path)) commonLow.set(k, f);
+      else orphans.push({ platform: 'common', file: f.path, reason: 'low variant name must be <kind>/<name>[@vN].low.<ext>' });
+      continue;
+    }
     const key = classify('common', f.path);
     if (key) commonByKey.set(key, f);
   }
@@ -114,8 +131,16 @@ export function scanAssets(input: ScanInput): { catalog: AssetCatalog; report: S
     const byKey = new Map<string, { f: ScannedFile; from: string }>();
     for (const [k, f] of commonByKey) byKey.set(k, { f, from: `common/${f.path}` });
     const inBundles = new Set(Object.keys(src?.bundles ?? {}));
+    const lowByKey = new Map<string, { f: ScannedFile; from: string }>();
+    for (const [k, f] of commonLow) lowByKey.set(k, { f, from: `common/${f.path}` });
     for (const f of src?.files ?? []) {
       if (inBundles.has(f.path)) continue;
+      if (LOW_RE.test(f.path)) {
+        const k = lowOf(f.path);
+        if (k && ASSET_FILE_RE.test(f.path)) lowByKey.set(k, { f, from: `${p}/${f.path}` });
+        else orphans.push({ platform: p, file: f.path, reason: 'low variant name must be <kind>/<name>[@vN].low.<ext>' });
+        continue;
+      }
       const key = classify(p, f.path);
       if (key) byKey.set(key, { f, from: `${p}/${f.path}` });
     }
@@ -131,7 +156,21 @@ export function scanAssets(input: ScanInput): { catalog: AssetCatalog; report: S
       }
     }
 
-    const entries: AssetEntry[] = [...byKey.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([key, { f }]) => ({ key, file: f.path, sha256: f.sha256, size: f.size, ...groupFor(key, input.rules) }));
+    const bundled = new Set(Object.values(src?.bundles ?? {}).flat());
+    const lowFrom = new Map<string, string>();
+    const entries: AssetEntry[] = [...byKey.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([key, { f }]) => {
+      const e: AssetEntry = { key, file: f.path, sha256: f.sha256, size: f.size, ...groupFor(key, input.rules) };
+      const low = lowByKey.get(key);
+      if (low) {
+        lowByKey.delete(key);
+        if (e.required) orphans.push({ platform: p, file: low.f.path, reason: `${key} is required: required files are always fetched in full (no low variant)` });
+        else if (bundled.has(key)) orphans.push({ platform: p, file: low.f.path, reason: `${key} is inside a bundles.json file: low variants are for single-file assets` });
+        else if (low.f.size >= f.size) orphans.push({ platform: p, file: low.f.path, reason: `the low variant is not smaller than ${f.path}` });
+        else { e.low = { file: low.f.path, sha256: low.f.sha256, size: low.f.size }; lowFrom.set(key, low.from); }
+      }
+      return e;
+    });
+    for (const [k, low] of lowByKey) orphans.push({ platform: low.from.startsWith('common/') ? 'common' : p, file: low.f.path, reason: `low variant without its file (${k})` });
     platforms[p] = { entries };
 
     const coveredKeys = new Set([...byKey.keys()].map((k) => k.replace(/@v[0-9]+$/, '')));
@@ -149,6 +188,11 @@ export function scanAssets(input: ScanInput): { catalog: AssetCatalog; report: S
       if (e.required && !blockingSha.has(e.sha256)) { blockingSha.add(e.sha256); blockingBytes += e.size; }
       const to = assetUrl({ baseUrl: '', urlTemplate: input.previous.urlTemplate, platform: p }, e).replace(/^\//, '');
       if (!uploads.has(to)) uploads.set(to, { from: byKey.get(e.key)!.from, to, sha256: e.sha256, size: e.size });
+      if (e.low) {
+        const lto = assetUrl({ baseUrl: '', urlTemplate: input.previous.urlTemplate, platform: p }, e.low).replace(/^\//, '');
+        const from = lowFrom.get(e.key)!;
+        if (!uploads.has(lto)) uploads.set(lto, { from, to: lto, sha256: e.low.sha256, size: e.low.size });
+      }
     }
     reports[p] = {
       covered: input.manifest.keys.length - missing.length, missing, missingByKind,

@@ -54,6 +54,7 @@ import type { TeamGoalBrief } from '../domain/nextAction.js';
 import type { HostedCupsService } from '../domain/hostedCupService.js';
 import { clientHeaders, gateRequest, maintenanceOf, maintenanceStatus } from '../domain/maintenance.js';
 import { helpArticle, helpIndex, helpOf, INQUIRY_CATEGORIES, PLATFORMS, searchHelp, type InquirySummary } from '../domain/help.js';
+import type { TransferService } from '../domain/transferService.js';
 import { FriendSuggestService, fsugConfig, type FsugCache, type SuggestDirectory, type SuggestPlayers } from '../domain/friendSuggest.js';
 import type { DataExportService } from '../domain/dataExportService.js';
 
@@ -104,12 +105,15 @@ export type PlayerMethod =
   | 'photoCatalog' | 'photos' | 'photoSave' | 'photoDelete'
   | 'activity' | 'activityRead' | 'activityReplayShare' | 'teamGoalMilestone'
   | 'fsugSelf' | 'fsugDismiss' | 'fsugSetHidden'
+  | 'tips' | 'tipsSeen'
   | 'helpFeedback' | 'helpInquirySubmit' | 'helpInquiries' | 'helpInquiry' | 'helpInquiryRead' | 'helpInquiryIndexed' | 'adminInquiry' | 'adminInquiryReply'
   | 'recaps' | 'recap' | 'recapProgress'
   | 'dataExportView' | 'dataExportRequest' | 'dataExportTake' | 'dataExportCollect' | 'dataExportReady' | 'dataExportFailed' | 'dataExportFile'
   | 'dataExportDownloaded' | 'dataExportExpiring' | 'dataExportDeleted' | 'dataExportAdmin'
   | 'cupsMine' | 'cupReserve' | 'cupRelease' | 'cupLeft' | 'cupCommitted' | 'cupCodeAttempt' | 'cupInvited' | 'cupStarted' | 'cupClosed' | 'cupHorseName'
-  | 'reportOptions' | 'reportSnapshot' | 'reportCommit' | 'blockIds' | 'blockSet' | 'reportWarn' | 'replayOpsHide' | 'photoOpsHide';
+  | 'reportOptions' | 'reportSnapshot' | 'reportCommit' | 'blockIds' | 'blockSet' | 'reportWarn' | 'replayOpsHide' | 'photoOpsHide'
+  | 'transferView' | 'transferCheckIssue' | 'transferIssued' | 'transferRevoke' | 'transferProgress' | 'transferRedeemed' | 'transferFailed' | 'transferCutoff' | 'adminTransfer'
+  | 'transferRedeemReplay' | 'transferRedeemRemember';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -210,6 +214,14 @@ export interface AppContext {
   ads?: { keys: SsvKeySource; adUnits?: Record<string, string>; admit?(key: string, now: number): void };
   /** REQ-DLV-002: CDN base URL for asset downloads (wrangler var ASSET_CDN_BASE). Unset → catalog baseUrl "" (bundled assets only). */
   assetCdnBase?: string;
+  /** REQ-TRF-*: 引き継ぎコード (domain/transferService.ts). Absent → GET answers `enabled: false`, the others NOT_FOUND. */
+  transfer?: TransferService;
+  /**
+   * REQ-TRF-010: when present, player routes authenticate through this (the account and its Firebase `auth_time`) and
+   * `sessionGuard` refuses a session signed in before the account moved to another device (401 SESSION_REPLACED).
+   */
+  authenticateSession?(req: Request): Promise<{ uid: string; authTime: number | null }>;
+  sessionGuard?(uid: string, authTime: number | null): Promise<void>;
 }
 export interface ClientConfigInfo { versionId: string; hash: string; rulesetVersion: string; activatedAt: number | null }
 
@@ -387,6 +399,10 @@ const rival = (c: AppContext) => {
 const weekIdParam = (s: string) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) throw new AppError('BAD_REQUEST', 'bad week id');
   return s;
+};
+const transfer = (c: AppContext) => {
+  if (!c.transfer) throw new AppError('NOT_FOUND', 'transfer codes are not available');
+  return c.transfer;
 };
 const invite = (c: AppContext) => {
   if (!c.invite || !c.master.progression.invite) throw new AppError('NOT_FOUND', 'invites are not available');
@@ -1109,6 +1125,12 @@ export const routes: Route[] = [
   { method: 'PUT', path: '/v1/blocks/:playerId', auth: 'player', handler: async (_r, p, c, u) => { const r = await c.player(u).invoke('blockSet', u, playerIdParam(p.playerId!), true, 'blocks'); await c.teams?.syncBlocks(u); return r; } },
   { method: 'DELETE', path: '/v1/blocks/:playerId', auth: 'player', handler: async (_r, p, c, u) => { const r = await c.player(u).invoke('blockSet', u, playerIdParam(p.playerId!), false, 'blocks'); await c.teams?.syncBlocks(u); return r; } },
   // ヘルプセンター (REQ-HELP-*, contracts/protocol.md §48): articles and search read the master only (no player state)
+  // REQ-TUT-005/007 (§57): the tips library and replays (gate group `core`: closed only by an `all` window — tips are not support)
+  { method: 'GET', path: '/v1/tips', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('tips', u, resolveLocale(r), await maxWhipsOf(c)) },
+  { method: 'POST', path: '/v1/tips/seen', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ ids: z.array(z.string().regex(/^[a-z0-9_]{2,40}$/)).min(1).max(50) }).strict());
+    return c.player(u).invoke('tipsSeen', u, b.ids);
+  } },
   { method: 'GET', path: '/v1/help', auth: 'player', handler: async (r, _p, c) => helpIndex(c.master, resolveLocale(r)) },
   { method: 'GET', path: '/v1/help/articles/:articleId', auth: 'player', handler: async (r, p, c) => {
     if (!/^[a-z0-9_]{2,40}$/.test(p.articleId!)) throw new AppError('NOT_FOUND', 'NOT_FOUND');
@@ -1224,6 +1246,24 @@ export const routes: Route[] = [
     return rival(c).challenge(u, b.passphrase, key);
   } },
   { method: 'POST', path: '/v1/rival/results/:weekId/seen', auth: 'player', handler: async (_r, p, c, u) => rival(c).seen(u, weekIdParam(p.weekId!)) },
+  // 引き継ぎコード (REQ-TRF-*, contracts/protocol.md §54). Never gated by maintenance or the version gate (§46 EXEMPT_ROUTES).
+  { method: 'GET', path: '/v1/transfer/code', auth: 'player', handler: async (_r, _p, c, u) => (c.transfer ? c.transfer.view(u) : { enabled: false }) },
+  { method: 'POST', path: '/v1/transfer/code', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.discriminatedUnion('mode', [
+      z.object({ mode: z.literal('custom'), password: z.string().min(1).max(200) }).strict(),
+      z.object({ mode: z.literal('generated') }).strict(),
+    ]));
+    return transfer(c).issue(u, b);
+  } },
+  { method: 'DELETE', path: '/v1/transfer/code', auth: 'player', handler: async (_r, _p, c, u) => transfer(c).revoke(u) },
+  { method: 'POST', path: '/v1/transfer/redeem', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ codeId: z.string().min(1).max(64), password: z.string().min(1).max(200), confirmDiscard: z.boolean().optional(), installId: installIdSchema.optional() }).strict());
+    const header = r.headers.get('x-install-id');
+    const installId = b.installId ?? (header && installIdSchema.safeParse(header).success ? header : null);
+    const key = r.headers.get('idempotency-key');
+    if (key !== null && (key.length < 1 || key.length > 128)) throw new AppError('BAD_REQUEST', 'bad idempotency key');
+    return transfer(c).redeem(u, b, { ip: r.headers.get('cf-connecting-ip'), installId, idemKey: key });
+  } },
   { method: 'GET', path: '/v1/admin/paid-balance', auth: 'admin', handler: async (_r, _p, c) => c.paidBalance() },
   { method: 'GET', path: '/v1/admin/replays/:raceId', auth: 'admin', handler: async (_r, p, c) => c.race.replay(p.raceId!) },
 ];
@@ -1251,6 +1291,7 @@ export const handle: Handler = async (req, _p, ctx) => {
       ...(ctx.tournaments ? { tournaments: ctx.tournaments } : {}),
       ...(ctx.hostedCups ? { hostedCups: ctx.hostedCups } : {}),
       ...(ctx.teams ? { teams: ctx.teams } : {}), // Round 18 integration: hide a reported quick chat phrase
+      ...(ctx.transfer ? { transfer: ctx.transfer } : {}),
       baseMaster: ctx.baseMaster ?? ctx.master,
       ...(ctx.inviteLookup ? { inviteLookup: ctx.inviteLookup } : {}),
       ...(ctx.adminConsoleOrigins ? { consoleOrigins: ctx.adminConsoleOrigins } : {}),
@@ -1278,14 +1319,26 @@ export const handle: Handler = async (req, _p, ctx) => {
         return await ctx.race.websocket(params.raceId!, req);
       }
       let uid = '';
-      if (r.auth === 'player') uid = await ctx.authenticate(req);
+      if (r.auth === 'player') {
+        if (ctx.authenticateSession) {
+          // REQ-TRF-010: a session from before the account moved to another device is refused on its next request
+          const s = await ctx.authenticateSession(req);
+          uid = s.uid;
+          if (ctx.sessionGuard) await ctx.sessionGuard(uid, s.authTime);
+        } else uid = await ctx.authenticate(req);
+      }
       if (r.auth === 'admin' && (!ctx.adminToken || !timingSafeEqual(req.headers.get('authorization') ?? '', `Bearer ${ctx.adminToken}`))) throw new AppError('UNAUTHORIZED');
       const out = await r.handler(req, params, ctx, uid);
       return out instanceof Response ? out : json(localize(out, l10n.lang, l10n.cat), 200, l10n.lang);
     }
     return methodMismatch ? json({ error: { code: 'BAD_REQUEST', message: 'method not allowed' } }, 405) : errorResponse(new AppError('NOT_FOUND'), l10n);
   } catch (e) {
-    if (e instanceof AppError) return errorResponse(e, l10n);
+    if (e instanceof AppError) {
+      const res = errorResponse(e, l10n);
+      // REQ-TRF-007: a lock says when to try again
+      if (e.status === 429 && typeof e.details?.retryAfterSec === 'number') res.headers.set('retry-after', String(e.details.retryAfterSec));
+      return res;
+    }
     console.error(e);
     return json({ error: { code: 'INTERNAL', message: 'internal error' } }, 500);
   }

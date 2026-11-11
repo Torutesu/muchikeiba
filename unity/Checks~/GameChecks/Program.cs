@@ -86,8 +86,16 @@ static class Program
         await ReportChecks.Run(Check);
         Console.WriteLine("== round 17: ヘルプセンター (index, context links, search, vote, inquiry form with one key, my inquiries; REQ-HELP-*)");
         await HelpCenterChecks.Run(Check);
+        Console.WriteLine("== round 19: チュートリアルのやり直しとヒント集 (TipsModel: cards, NEW, 「？」, tours, seen batches; TutorialReplayModel: lessons on the device, never the FTUE's state; REQ-TUT-*)");
+        await TipsChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 17: おすすめフレンド (cards, request / dismiss with rollback, fsug_view once, offline, setting; REQ-FSUG-*)");
         await FriendSuggestionsChecks.Run(Check, Root);
+        Console.WriteLine("== round 19: 画質・省電力・通信量 (auto by device class, battery saver, data saver downloads, storage / clear cache; REQ-PERF-*)");
+        await PerformanceChecks.Run(Check);
+        Console.WriteLine("== round 19: 観戦中の応援 (CheerModel: chips, three preset buttons, 2 s pace, burst, racer indicator + setting, reduced motion, KPI per race, replay markers; REQ-CHEER-*)");
+        CheerChecks.Run(Check, Root, Ruleset());
+        Console.WriteLine("== round 19: 引き継ぎコード (issue checklist, generated once, redeem with one key, confirm, custom-token sign-in, SESSION_REPLACED; REQ-TRF-*)");
+        await TransferCodeChecks.Run(Check);
         Console.WriteLine("== round 11: 図鑑, 実績 and titles (CollectionModel / AchievementModel / TitleShowcaseModel; REQ-COL-*, REQ-ACH-*)");
         await CollectionChecks.Run(Check, Ruleset());
         Console.WriteLine("== 調教 (training: menus, timing mini-game, keyed start/finish, fairness wording)");

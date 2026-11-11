@@ -27,7 +27,7 @@ namespace Muchi.Game
     }
 
     /// <summary>Which full screen covers the game. Offline and maintenance are different screens (REQ-MNT-014).</summary>
-    public enum MaintenanceScreen { None, Maintenance, UpdateRequired, Offline }
+    public enum MaintenanceScreen { None, Maintenance, UpdateRequired, Offline, /** R19 integration (§54.6): 401 SESSION_REPLACED. */ SessionReplaced }
 
     /// <summary>
     /// Rules the model keeps:
@@ -105,8 +105,8 @@ namespace Muchi.Game
 
         // ------------------------------------------------------------------ texts the screens bind (Japanese; show Loc.T)
 
-        public string Title => Screen == MaintenanceScreen.UpdateRequired ? UpdateTitle : Screen == MaintenanceScreen.Offline ? UxText.Offline : MaintenanceTitle;
-        public string Body => Screen == MaintenanceScreen.UpdateRequired ? (Upgrade?.Reason == "engine" ? EngineBody : UpdateBody) : Screen == MaintenanceScreen.Maintenance ? (Info?.Message ?? MaintenanceBody) : null;
+        public string Title => Screen == MaintenanceScreen.SessionReplaced ? TransferCodeModel.ReplacedTitle : Screen == MaintenanceScreen.UpdateRequired ? UpdateTitle : Screen == MaintenanceScreen.Offline ? UxText.Offline : MaintenanceTitle;
+        public string Body => Screen == MaintenanceScreen.SessionReplaced ? TransferCodeModel.ReplacedBody : Screen == MaintenanceScreen.UpdateRequired ? (Upgrade?.Reason == "engine" ? EngineBody : UpdateBody) : Screen == MaintenanceScreen.Maintenance ? (Info?.Message ?? MaintenanceBody) : null;
         /// <summary>"11/12 06:00" — the end time (JST) under <see cref="EndsLabel"/>. Not a countdown.</summary>
         public string EndsAt => (Screen == MaintenanceScreen.Maintenance ? Info : PartialNotice)?.EndsAtJst;
         public string StoreUrl => Upgrade?.StoreUrl ?? Client?.StoreUrl;
@@ -123,7 +123,22 @@ namespace Muchi.Game
             if (api == null) throw new ArgumentNullException(nameof(api));
             api.MaintenanceDetected += OnMaintenance;
             api.UpgradeRequired += OnUpgrade;
+            api.SessionReplaced += OnSessionReplaced; // R19 integration: §54.6 through the same one place
         }
+
+        /// <summary>
+        /// R19 integration (REQ-TRF-010): a request met 401 SESSION_REPLACED — this account now lives on another device. The
+        /// strongest screen: maintenance, update, offline and a reload never replace it (the session cannot come back). The
+        /// screen offers 「新しく始める」 / 「引き継ぎコードを入力」 (TransferCodeModel); either calls <see cref="LeaveSessionReplaced"/>.
+        /// </summary>
+        public void OnSessionReplaced()
+        {
+            Screen = MaintenanceScreen.SessionReplaced;
+            Info = null; PartialNotice = null; ShowRecommend = false;
+        }
+
+        /// <summary>The player started new or redeemed a code on this device: back to the game (a fresh session).</summary>
+        public void LeaveSessionReplaced() { if (Screen == MaintenanceScreen.SessionReplaced) Screen = MaintenanceScreen.None; }
 
         /// <summary>A request met 503 MAINTENANCE.</summary>
         public void OnMaintenance(MaintenanceInfo info)
@@ -131,7 +146,7 @@ namespace Muchi.Game
             if (info == null) return;
             if (!string.IsNullOrEmpty(info.WindowId) && Array.IndexOf(AnalyticsEvent.MaintenanceGroups, info.Group) >= 0 && _blockSent.Add(info.WindowId + "/" + info.Group))
                 _track?.Invoke(AnalyticsEvent.MaintenanceBlock(_clock(), info.Group, info.WindowId));
-            if (Screen == MaintenanceScreen.UpdateRequired) return;
+            if (Screen == MaintenanceScreen.UpdateRequired || Screen == MaintenanceScreen.SessionReplaced) return;
             if (info.All || info.Scope.Count == 0) { Info = info; PartialNotice = null; Screen = MaintenanceScreen.Maintenance; }
             else PartialNotice = info;
         }
@@ -140,6 +155,7 @@ namespace Muchi.Game
         public void OnUpgrade(UpgradeInfo info)
         {
             Upgrade = info ?? new UpgradeInfo { Reason = "version" };
+            if (Screen == MaintenanceScreen.SessionReplaced) return;
             Screen = MaintenanceScreen.UpdateRequired;
             PromptShown(Upgrade.Reason == "engine" ? "engine" : "required");
         }
@@ -159,6 +175,7 @@ namespace Muchi.Game
         /// </summary>
         public async Task RefreshAsync(CancellationToken ct = default)
         {
+            if (Screen == MaintenanceScreen.SessionReplaced) return; // nothing a reload can change
             int gen = ++_generation;
             Loading = true;
             try

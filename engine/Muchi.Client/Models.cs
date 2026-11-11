@@ -261,6 +261,8 @@ namespace Muchi.Client
         public ActivityBadge Activity = new ActivityBadge();
         /// <summary>REQ-HELP-014: unread support replies (the settings badge of ヘルプ・お問い合わせ).</summary>
         public HelpBadge Help = new HelpBadge();
+        /// <summary>REQ-TUT-001: new tip cards (the settings badge of ヒント; 0 from an older server).</summary>
+        public TipsBadge Tips = new TipsBadge();
         /// <summary>REQ-ASSIST-008: かんたん操作 setting and the one-time suggestion (never null; Off when the server sent none).</summary>
         public AssistSettings Assist = new AssistSettings();
         /// <summary>REQ-CMT-009: the equipped commentary pack ("standard" when the server sent none).</summary>
@@ -297,7 +299,7 @@ namespace Muchi.Client
                 PartnerHorseId = J.Str(J.Opt(o, "flags"), "partnerHorseId"),
                 Consent = ConsentView.Parse(J.Opt(o, "consent")), Unlocks = UnlocksView.Parse(J.Opt(o, "unlocks")),
                 Experiments = ExperimentsView.Parse(J.Opt(o, "experiments")), Deletion = DeletionStatus.Parse(J.Opt(o, "deletion")),
-                GiftBox = GiftBadge.Parse(J.Opt(o, "giftBox")), Activity = ActivityBadge.Parse(J.Opt(o, "activity")), Help = HelpBadge.Parse(J.Opt(o, "help")),
+                GiftBox = GiftBadge.Parse(J.Opt(o, "giftBox")), Activity = ActivityBadge.Parse(J.Opt(o, "activity")), Help = HelpBadge.Parse(J.Opt(o, "help")), Tips = TipsBadge.Parse(J.Opt(o, "tips")),
                 Rating = J.Int(r, "r"), RatingDeviation = J.Int(r, "rd"), RankedRaces = J.Int(r, "rankedRaces"),
                 SeasonId = J.Str(s, "id"), ClassId = J.Str(s, "classId"), SeasonPoints = J.Int(s, "points"),
                 DisplayName = J.Str(pr, "displayName"), TitleId = J.Str(pr, "titleId"), Silks = Silks.Parse(J.Opt(pr, "silks")) ?? new Silks(),

@@ -191,6 +191,44 @@ namespace Muchi.Client
             return _cache.Evict(keep);
         }
 
+        /// <summary>
+        /// §56.8 「キャッシュを削除」 (REQ-PERF-014): deletes every optional file, low variant, partial download and stale file.
+        /// The current catalog's required files and every file being downloaded right now are kept, so nothing a session
+        /// needs disappears under it. What is deleted is fetched again by the next preload under the current settings.
+        /// </summary>
+        public EvictionResult ClearOptional(AssetCatalog catalog)
+        {
+            var keep = AssetStorage.KeepOnClear(catalog);
+            lock (_gate) foreach (var k in _inflight.Keys) keep.Add(k);
+            return _cache.Evict(keep);
+        }
+
+        /// <summary>The content hashes being downloaded right now (tests, the storage screen).</summary>
+        public IReadOnlyCollection<string> InflightHashes() { lock (_gate) return _inflight.Keys.ToList(); }
+
+        /// <summary>
+        /// §56.4: one key on demand under the data-saver policy. Data saver on cellular: nothing is fetched for an optional
+        /// key (a version already on the device is still returned). Otherwise the policy's version (low variant or normal).
+        /// </summary>
+        public async Task<string> EnsureAsync(AssetCatalog catalog, string key, AssetDownloadPolicy policy, AssetNetwork network, CancellationToken ct = default)
+        {
+            var e = catalog.Find(key);
+            if (e == null) return null;
+            policy = policy ?? AssetDownloadPolicy.Default;
+            string OnDevice()
+            {
+                if (_cache.HasBlob(e.Sha256, e.Size)) return _cache.BlobPath(e.Sha256);
+                if (e.Low != null && _cache.HasBlob(e.Low.Sha256, e.Low.Size)) return _cache.BlobPath(e.Low.Sha256);
+                return null;
+            }
+            var have = OnDevice();
+            if (have != null && (have == _cache.BlobPath(e.Sha256) || policy.UseLow(e))) return have;
+            if (policy.Decide(e, network) != AssetDecision.Download) return have;
+            var pick = policy.Pick(e);
+            var r = await DownloadAsync(catalog, new[] { pick }, null, ct);
+            return r.Keys.TryGetValue(key, out var s) && (s == AssetFileState.Cached || s == AssetFileState.Downloaded) ? _cache.BlobPath(pick.Sha256) : have;
+        }
+
         /// <summary>Downloads every entry of the given groups (all of them, or only the required ones).</summary>
         public Task<AssetDownloadReport> DownloadGroupsAsync(AssetCatalog catalog, IEnumerable<string> groups, bool requiredOnly, Action<AssetGroupProgress> progress = null, CancellationToken ct = default)
             => DownloadAsync(catalog, catalog.InGroups(groups, requiredOnly), progress, ct);
@@ -570,6 +608,8 @@ namespace Muchi.Client
         /// <summary>File path for <see cref="AssetSource.Downloaded"/> (AssetBundle.LoadFromFileAsync / raw file).</summary>
         public string Path;
         public bool IsFallback => Key != null && Key != RequestedKey;
+        /// <summary>§56.4: the downloaded file is the key's low variant (the normal one is not on the device yet).</summary>
+        public bool LowRes;
         public override string ToString() => RequestedKey + " → " + (Key ?? "(none)") + " [" + Source + "]";
     }
 
@@ -591,19 +631,31 @@ namespace Muchi.Client
             _bundled = bundled ?? (_ => false);
         }
 
-        public bool IsDownloaded(string key)
-        {
-            var e = _catalog.Find(key);
-            return e != null && _cache != null && _cache.HasBlob(e.Sha256, e.Size);
-        }
+        /// <summary>The key's normal file, or (§56.4) its low variant, is on the device.</summary>
+        public bool IsDownloaded(string key) => DownloadedFile(key) != null;
 
         public bool Exists(string key) => IsDownloaded(key) || _bundled(key);
+
+        /// <summary>The normal file first, then the low variant (REQ-PERF-007); null when neither is on the device.</summary>
+        private AssetVariant DownloadedFile(string key)
+        {
+            var e = _catalog.Find(key);
+            if (e == null || _cache == null) return null;
+            if (_cache.HasBlob(e.Sha256, e.Size)) return new AssetVariant { File = e.File, Sha256 = e.Sha256, Size = e.Size };
+            if (e.Low != null && _cache.HasBlob(e.Low.Sha256, e.Low.Size)) return e.Low;
+            return null;
+        }
 
         public AssetLocation Resolve(string key)
         {
             var loc = new AssetLocation { RequestedKey = key, Key = AssetKeys.Resolve(key, Exists) };
             if (loc.Key == null) return loc;
-            if (IsDownloaded(loc.Key)) { loc.Source = AssetSource.Downloaded; loc.Path = _cache.BlobPath(_catalog.Find(loc.Key).Sha256); }
+            var f = DownloadedFile(loc.Key);
+            if (f != null)
+            {
+                loc.Source = AssetSource.Downloaded; loc.Path = _cache.BlobPath(f.Sha256);
+                loc.LowRes = f.Sha256 != _catalog.Find(loc.Key).Sha256;
+            }
             else loc.Source = AssetSource.Bundled;
             return loc;
         }

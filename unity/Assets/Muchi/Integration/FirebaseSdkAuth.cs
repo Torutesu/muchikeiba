@@ -14,7 +14,7 @@ using Muchi.Game;
 
 namespace Muchi.Unity
 {
-    public sealed class FirebaseSdkAuthBackend : IFirebaseAuthBackend
+    public sealed class FirebaseSdkAuthBackend : IFirebaseAuthBackend, ICustomTokenAuthBackend
     {
         private static FirebaseAuth Auth => FirebaseAuth.DefaultInstance;
 
@@ -80,6 +80,16 @@ namespace Muchi.Unity
             try { await Auth.SignInWithCredentialAsync(ToCredential(credential)); }
             catch (FirebaseException e) { throw Map(e); }
         }
+
+        // REQ-TRF-009 (§54): the custom token a 引き継ぎコード redeem returned (signed by the Worker for the original uid)
+        public async Task SignInWithCustomTokenAsync(string customToken, CancellationToken ct)
+        {
+            try { await Auth.SignInWithCustomTokenAsync(customToken); }
+            catch (FirebaseException e) { throw Map(e); }
+        }
+
+        // REQ-TRF-010: SESSION_REPLACED — this device no longer owns the account
+        public void SignOut() => Auth.SignOut();
     }
 
     /// <summary>

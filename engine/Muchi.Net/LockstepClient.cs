@@ -86,6 +86,46 @@ namespace Muchi.Net
         public event Action<LockstepClient, int> TicksAdvanced;
         public event Action<LockstepClient, FinalMessage> RaceFinal;
 
+        // ---- 観戦中の応援 (REQ-CHEER-*, contracts/protocol.md §55). Outside the lockstep stream: nothing here touches Sim,
+        // the confirmed inputs, the checksums or the result.
+        /// <summary>What the room offers a spectator (start.spectator.cheer); null = no cheers here.</summary>
+        public CheerOffer CheerOffer { get; private set; }
+        /// <summary>True while this spectator may send a cheer (offered, race seen started, no final yet). Rate limit: Muchi.Client.CheerThrottle.</summary>
+        public bool CanCheer => IsSpectator && CheerOffer != null && Final == null && ConfirmedTick >= 0;
+        /// <summary>A window of cheers arrived (spectators: the burst; racers: their own horse's indicator). Never changes the race.</summary>
+        public event Action<LockstepClient, IReadOnlyList<CheerCount>> CheersReceived;
+
+        /// <summary>
+        /// REQ-CHEER-003: send one preset cheer for a horse. False (nothing sent) when cheering is not possible now, the slot is
+        /// not in the race or the kind is not one the room offered. The room still enforces its own rate limit.
+        /// </summary>
+        public bool SendCheer(int slot, string kind)
+        {
+            if (!CanCheer || Config == null || slot < 0 || slot >= Config.Entrants.Count || kind == null || !CheerOffer.Kinds.Contains(kind)) return false;
+            var o = JsonNode.Obj();
+            o.Set("t", "cheer");
+            o.Set("slot", slot);
+            o.Set("kind", kind);
+            _transport.Send(o.ToString());
+            return true;
+        }
+
+        private void OnCheers(JsonNode m)
+        {
+            if (Config == null) return; // before start: nothing to point at
+            var n = m.Get("n");
+            var list = new List<CheerCount>(n.Count);
+            for (int i = 0; i < n.Count; i++)
+            {
+                var row = n[i];
+                int slot = row[0].AsInt(), count = row[2].AsInt();
+                string kind = row[1].AsString();
+                if (slot < 0 || slot >= Config.Entrants.Count || count <= 0) continue; // ignore what cannot be drawn
+                list.Add(new CheerCount(slot, kind, count));
+            }
+            if (list.Count > 0) CheersReceived?.Invoke(this, list);
+        }
+
         /// <summary>Send hello (first join or reconnect). Reports the last tick we simulated.</summary>
         public void Connect()
         {
@@ -145,6 +185,7 @@ namespace Muchi.Net
                         ServerClockOffsetMs = s - (c + LastRttMs / 2);
                         break;
                     case "err": Errors.Add(m.Get("code").AsString()); break;
+                    case "cheers": OnCheers(m); break; // REQ-CHEER-005 (§55.3); clients before Round 19 file it under UNKNOWN_MESSAGE (not fatal)
                     default: Errors.Add("UNKNOWN_MESSAGE"); break;
                 }
             }
@@ -163,6 +204,7 @@ namespace Muchi.Net
             Slot = m.Get("you").AsInt();
             IsSpectator = Slot < 0;
             SpectatorDelayMs = IsSpectator && m.TryGet("spectator", out var sp) && sp.Kind == JsonKind.Object && sp.TryGet("delayMs", out var d) ? Math.Max(0, d.AsInt()) : 0;
+            CheerOffer = IsSpectator && m.TryGet("spectator", out var sp2) && sp2.Kind == JsonKind.Object && sp2.TryGet("cheer", out var ch) ? CheerOffer.Parse(ch) : null; // REQ-CHEER-003
             StartAtMs = m.Get("startAtMs").AsLong();
             Sim = new RaceSim(Config);
             _scratch = new byte[Config.Entrants.Count];

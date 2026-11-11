@@ -1249,3 +1249,98 @@ WHERE blob1 IN ('dex_request', 'dex_ready', 'dex_download') AND timestamp > NOW(
 GROUP BY week
 ORDER BY week DESC
 ```
+
+## 引き継ぎコード：発行・成功・失敗の分類（REQ-TRF-014、contracts/protocol.md §54.9、Round 19）
+
+**IDとパスワードで機種変更できているか、失敗は何が多いか**。どちらもサーバーのイベント。`transfer_issue`（発行した人、`blob8` = `custom` / `generated`）、`transfer_redeem`（成功は移ったアカウント、失敗は入力した新しい端末のアカウント。`blob8` = `ok` / `fail`、`blob9` = 失敗の分類 `invalid`・`expired`・`locked`・`refused_banned`・`refused_deletion`・`same_account`）。**ID・パスワード・IP は入れていない**（分類だけ）。
+
+```sql
+-- 日ごとの発行・成功・失敗（失敗の分類つき）
+SELECT blob6 AS day, blob1 AS event, blob8 AS kind, blob9 AS reason, sum(_sample_interval) AS n
+FROM muchi_kpi
+WHERE blob1 IN ('transfer_issue', 'transfer_redeem') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY day, event, kind, reason ORDER BY day DESC, event, n DESC
+```
+
+- **`invalid` が急に増えた**：総当たりの疑い。IP・端末のロック（`TRANSFER_LOCKED` = `locked`）が一緒に増えていれば制限が効いている。運用コンソールの監査（`GET /v1/admin/players/:id/transfer`）で特定のアカウントに `failed`・`locked` が集中していないか見る。上限は `progression.transfer`（リモート設定）。
+- **`expired` が多い**：発行から入力までが長い。`expiryDays` を延ばすか、発行の画面の期限の表示を目立たせる。
+- **発行に対する成功の割合**：発行しても使わない人（機種変更の準備だけ）がいるので低くてよい。`custom` と `generated` の差が大きいなら、作ったパスワードのメモの案内を見直す。
+
+## 観戦中の応援：送った・見た（REQ-CHEER-013、contracts/protocol.md §55、Round 19）
+
+**観戦が「見るだけ」から「一緒に盛り上がる」になっているか**。どちらもクライアントのイベントで、**1レースに1行**（押すたびには送らない）。`cheer_send`（観戦者、`blob8` = モード、`double5` = そのレースで送った応援の数）、`cheer_seen`（`blob8` = モード、`blob9` = `racer`（表示オンの選手）/ `spectator`、`double5` = そのレースで見た応援の数）。馬・相手・送った人の id は入れていない。
+
+```sql
+-- モードごとの、応援したレース数と1レースあたりの応援の数
+SELECT blob8 AS mode, sum(_sample_interval) AS races, sum(double5 * _sample_interval) / sum(_sample_interval) AS per_race
+FROM muchi_kpi
+WHERE blob1 = 'cheer_send' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY mode ORDER BY races DESC
+```
+
+```sql
+-- 選手が応援を見たレース（表示オフの選手は行が出ない）
+SELECT blob6 AS day, blob8 AS mode, sum(_sample_interval) AS races, sum(double5 * _sample_interval) AS cheers
+FROM muchi_kpi
+WHERE blob1 = 'cheer_seen' AND blob9 = 'racer' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY day, mode ORDER BY day DESC
+```
+
+- 1レースあたりの応援が上限（2秒に1回）にいつも張り付くなら、ボタン連打の遊びになっている。演出（Codex）を控えめにする。
+
+## 画質・省電力・通信量：設定の変更・まとめてダウンロード（REQ-PERF-015、contracts/protocol.md §56.9、Round 19）
+
+**自動の既定値が合っているか、どの区分の端末が何を変えているか、まとめてダウンロードがどのくらいの大きさで使われているか**。どちらもクライアントのイベント（設定は端末だけに保存されるため）。`perf_setting_change`（`blob8` = 設定、`blob9` = 新しい値、`blob10` = 端末の区分 `low`/`mid`/`high`。プレイヤーが変えた時だけ、自動の既定値では出ない）、`asset_predownload`（`blob8` = 残りのサイズの区分、`blob9` = `full`/`low`）。機種名・容量の実数は入れていない。
+
+```sql
+-- 区分ごとに、画質・fps を自動から変えた人の数（low 区分で high に上げる人が多ければ区分の境目を見直す：DeviceClassifier）
+SELECT blob10 AS device_class, blob8 AS setting, blob9 AS value, count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'perf_setting_change' AND blob8 IN ('graphics', 'frameRate') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY device_class, setting, value ORDER BY device_class, setting, players DESC
+```
+
+```sql
+-- 省電力・データセーバーをオンにした人の数（日ごと）と、まとめてダウンロードを始めた人の数
+SELECT blob6 AS day,
+  count(DISTINCT if(blob1 = 'perf_setting_change' AND blob8 = 'batterySaver' AND blob9 = 'on', blob2, NULL)) AS battery_saver_on,
+  count(DISTINCT if(blob1 = 'perf_setting_change' AND blob8 = 'dataSaver' AND blob9 = 'on', blob2, NULL)) AS data_saver_on,
+  count(DISTINCT if(blob1 = 'asset_predownload', blob2, NULL)) AS predownloaders
+FROM muchi_kpi
+WHERE blob1 IN ('perf_setting_change', 'asset_predownload') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY day ORDER BY day DESC
+```
+
+```sql
+-- まとめてダウンロードの大きさの分布（gte_1gb が多いなら軽量版を用意するキーを増やす）
+SELECT blob8 AS bucket, blob9 AS variant, sum(_sample_interval) AS starts
+FROM muchi_kpi
+WHERE blob1 = 'asset_predownload' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY bucket, variant ORDER BY bucket, variant
+```
+
+- **見方**：オンにした人の数は、その後オフに戻した人を引いていない（今の値は端末にしかない）。
+
+## ヒント：やり直し・カード・「？」（REQ-TUT-015、contracts/protocol.md §57.6、Round 19）
+
+**やり直しとカードが使われているか、どの画面の「？」が押されているか**。どれもクライアントのイベント（やり直しは端末の中だけで、サーバーには結果が来ない）。`tutorial_replay`（`blob8` = レッスン／ツアーの id、`blob9` = `race` / `tour`、`blob10` = `start` / `finish`）、`tip_view`（`blob8` = カード、`blob9` = 入口 `list`・`context`・`tour`・`lesson`）、`tip_context_open`（`blob8` = 画面 `gacha_odds`・`breeding`・`training`・`roster_bulk_retire`、`blob9` = カード）。
+
+```sql
+-- やり直しごとの開始・完了と完了率（完了率が低いレッスンは短くする）
+SELECT blob8 AS tutorial, blob9 AS kind,
+  sum(if(blob10 = 'start', _sample_interval, 0)) AS starts,
+  sum(if(blob10 = 'finish', _sample_interval, 0)) AS finishes
+FROM muchi_kpi
+WHERE blob1 = 'tutorial_replay' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY tutorial, kind ORDER BY starts DESC
+```
+
+```sql
+-- 画面ごとの「？」の回数（多い画面は画面そのものの説明を見直す）
+SELECT blob8 AS screen, blob9 AS tip, sum(_sample_interval) AS opens
+FROM muchi_kpi
+WHERE blob1 = 'tip_context_open' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY screen, tip ORDER BY opens DESC
+```
+
+- `tip_view` の入口が `context` のカードの後に同じ日の `help_article_view`（`source = link`）が多いなら、カードが短すぎる。

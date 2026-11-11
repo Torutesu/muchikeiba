@@ -35,6 +35,7 @@ import { MemoryRivalRegistry, RivalService, rivalPlayersFrom } from '../../../se
 import { noteRivalTa, prevWeekId, rivalCard, rivalTrackName, weekEndMs, weekIdAt } from '../../../server/src/domain/rival.js';
 import { actorIdsOf, renderActivityItems } from '../../../server/src/domain/activity.js';
 import { helpArticle, helpIndex, helpOf, helpQueryWords, searchHelp } from '../../../server/src/domain/help.js';
+import { tipsOf } from '../../../server/src/domain/tips.js';
 import { FriendSuggestService, MemorySuggestDirectory, fsugCard, fsugConfig } from '../../../server/src/domain/friendSuggest.js';
 import { FriendsService, MemoryDirectory } from '../../../server/src/domain/friends.js';
 import type { PlayerInvoker } from '../../../server/src/http/app.js';
@@ -55,6 +56,12 @@ import { ReportsService, type ReportBody } from '../../../server/src/domain/repo
 import { MemoryPlayerReportRepo, PlayerReportsCore } from '../../../server/src/ops/playerReports.js';
 import { blocksView } from '../../../server/src/domain/blocks.js';
 import type { PlayerReportsApi } from '../../../server/src/http/admin.js';
+import {
+  blockHidden, cheerAdmit, cheerFanout, cheerMoments, cheerSummary, emptyTally, isCheerKind, tallyAdd, CHEER_KINDS, CHEER_MIN_INTERVAL_MS, CHEER_TEXT, CHEER_WINDOW_MS,
+  type CheerTally, type PendingCheer,
+} from '../../../server/src/domain/cheer.js';
+import { MemoryTransferDirectory, TransferService, type TransferRecord } from '../../../server/src/domain/transferService.js';
+import { normalizeCodeId, normalizeInput, passwordProblems, transferConfig } from '../../../server/src/domain/transferCode.js';
 import { DEFAULT_MAINTENANCE, gateRequest, maintenanceStatus, type MaintenanceConfig } from '../../../server/src/domain/maintenance.js';
 import { DataExportService, MemoryExportStore, runDataExportJob, sweepDataExports } from '../../../server/src/domain/dataExportService.js';
 // REQ-L10N-*: the server's English tables (master/locale-en.json + i18n/en.ts), the client's (ui-en.json) and the
@@ -162,6 +169,10 @@ async function hallDemoHorse(uid: string, tpl: number, name: string, wins: numbe
   if (title) await svc.tournamentClose(uid, `proto_cup_${horseId}`, 1, null, title, horseId);
   return retire ? (await svc.retire(uid, horseId)).ceremony : horseId;
 }
+// round 19 (REQ-CHEER-*): the demo room of 観戦中の応援 (see MuchiLogic.cheer). Spectator ids are never shown to anyone.
+const CHEER_CROWD = ['demo_cheer_1', 'demo_cheer_2', 'demo_cheer_3', 'demo_cheer_4', 'demo_cheer_5'];
+const CHEER_TROLL = 'demo_cheer_blocked';
+let cheerRoom: { entrants: number; pending: PendingCheer[]; lastAt: number | null; tally: CheerTally; seed: number; n: number; lists: Map<string, ReadonlySet<string>> } | null = null;
 // round 16 (REQ-RECAP-*): the demo history of シーズンの振り返り (see MuchiLogic.recap)
 const RC_ID = 'demo_recap';
 const recapRepo = new MemoryPlayerRepo();
@@ -327,6 +338,27 @@ async function nextTeamGoal() {
     return c ? { endsAt: c.endsAt, progress: c.progress, milestones: c.milestones.map((x) => ({ target: x.target, reached: x.reached })) } : null;
   } catch { return null; }
 }
+// round 19 (REQ-TRF-*, contracts/protocol.md §54): 引き継ぎコード on the real TransferService (PBKDF2 at 100,000 iterations in
+// WebCrypto, the same attempt limits) with the directory in memory, kept in localStorage so a code survives a reload. The
+// custom token is a stand-in (the Worker signs it with the service-account secret); the prototype never switches accounts.
+const TRF_KEY = 'muchi.proto.transfer';
+const TRF_OLD = 'demo_trf_old';
+const TRF_OLD_PASSWORD = 'Haneda2026!';
+class StoredTransferDirectory extends MemoryTransferDirectory {
+  load() { try { for (const r of JSON.parse(localStorage.getItem(TRF_KEY) ?? '[]') as (TransferRecord & { attempts: number; lockedUntil: number })[]) this.codes.set(r.codeId, r); } catch { /* fresh */ } return this; }
+  private save() { try { localStorage.setItem(TRF_KEY, JSON.stringify([...this.codes.values()])); } catch { /* private mode */ } }
+  override async put(rec: TransferRecord, t: number) { const ok = await super.put(rec, t); this.save(); return ok; }
+  override async begin(id: string, t: number, max: number, lockMs: number) { const r = await super.begin(id, t, max, lockMs); this.save(); return r; }
+  override async remove(id: string, p: string) { await super.remove(id, p); this.save(); }
+}
+const trfDir = new StoredTransferDirectory().load();
+const trfSvc = new TransferService({
+  view: (u) => svc.transferView(u), checkIssue: (u) => svc.transferCheckIssue(u), issued: (u, c, mode) => svc.transferIssued(u, c, mode),
+  revoke: (u, by) => svc.transferRevoke(u, by), progress: (u) => svc.transferProgress(u), redeemed: (u, c) => svc.transferRedeemed(u, c),
+  noteFail: (u, r) => svc.transferFailed(u, r), admin: (u) => svc.adminTransfer(u),
+  redeemReplay: (u, k) => svc.transferRedeemReplay(u, k), redeemRemember: (u, k, pid, name) => svc.transferRedeemRemember(u, k, pid, name),
+}, trfDir, () => transferConfig(master), { sign: async (uid, t) => `proto-custom-token.${uid}.${Math.floor(t / 1000)}` }, { clock: now });
+
 async function wrap<T>(f: () => Promise<T> | T): Promise<{ ok: true; value: T } | { ok: false; code: string; message: string; details?: Record<string, unknown> }> {
   try { return { ok: true, value: await f() }; }
   catch (e) {
@@ -470,6 +502,7 @@ export const MuchiLogic = {
     cupBackend.cups.clear(); cupBackend.codes.clear(); try { localStorage.removeItem(CUP_KEY); } catch { /* ignore */ } // round 16
     reportRepo.rs.clear(); reportRepo.st.clear(); // round 17: the ops report queue too
     fsugCards.store.clear(); // round 17: the おすすめフレンド cards too
+    trfDir.codes.clear(); trfDir.limits.clear(); trfDir.rows.length = 0; try { localStorage.removeItem(TRF_KEY); } catch { /* ignore */ } // round 19
     dayOffset = 0;
     delete master.maintenance; // round 17: no maintenance demo
   },
@@ -725,6 +758,18 @@ export const MuchiLogic = {
   history: (kind: 'summary' | 'purchases' | 'coins' | 'gacha', q: { cursor?: string | null; limit?: number; currency?: 'paid' | 'free' | null } = {}) => wrap(() => svc.history(ID, kind, q)),
   historyTicket: (refs: string[], topic: 'purchase_missing' | 'refund' | 'coins' | 'gacha' | 'other') => wrap(() => svc.historyTicket(ID, refs, topic)),
 
+  // ---------------------------------------------------------------- round 19: チュートリアルのやり直しとヒント集 (REQ-TUT-*, contracts/protocol.md §57)
+  // What GET /v1/tips and POST /v1/tips/seen return on the real rules (tips.ts + PlayerService), in the language the screen
+  // shows. A replay itself never reaches the logic: the race lessons run in the WASM engine like practice and the tours are
+  // pages of these cards; only the KPI rows say it happened (checked against the server's client-event schema).
+  tips: (lang: 'ja' | 'en' = 'ja') => wrap(() => svc.tips(ID, lang, Number(DEFAULT_RULESET.maxWhips))),
+  tipsSeen: (ids: string[]) => wrap(() => svc.tipsSeen(ID, ids)),
+  tipsKpi: (name: 'tutorial_replay' | 'tip_view' | 'tip_context_open', props: Record<string, unknown>) => wrap(() => clientBatchSchema.parse({ platform: 'editor', appVersion: 'proto', events: [{ name, at: now(), props }] }).events.map(clientToKpi)[0]),
+  /** REQ-TUT-008: the card a screen's 「？」 opens (master/tips.json contexts). */
+  tipContext: (ctx: string) => tipsOf(master).contexts[ctx] ?? null,
+  /** What the replay must never touch (REQ-TUT-004): the first-time rewards and the race counters, for the checks. */
+  tutorialFacts: () => wrap(async () => { const s = await svc.state(ID); return { partner: s.flags.partnerHorseId ?? null, tutorialGacha: !!s.flags.tutorialGachaUsed, races: s.onboarding?.races ?? 0, horses: s.horses.length, free: s.wallet.free, paid: s.wallet.paid, claimed: [...(s.onboarding?.claimed ?? [])] }; }),
+
   // ---------------------------------------------------------------- round 17: ヘルプセンター (REQ-HELP-*, contracts/protocol.md §48)
   // What GET /v1/help, /v1/help/articles/:id, /v1/help/search and the inquiry routes return, on the real rules, in the
   // language the screen shows (lang = 'ja' | 'en', like the server's Accept-Language). Support replies come from the real
@@ -878,7 +923,57 @@ export const MuchiLogic = {
   fsugSetHidden: (hidden: boolean) => wrap(() => fsugSvc.setHidden(ID, hidden)),
   /** GET /v1/friends (names from the public profiles). */
   friendsList: () => wrap(() => fsugFriends.list(ID)),
+  // ---------------------------------------------------------------- round 19: 観戦中の応援 (REQ-CHEER-*, contracts/protocol.md §55)
+  // The race room's cheer rules on the real server code: the 2 s pace (cheerAdmit), the 1 s window fanned out to you with the
+  // single block list (cheerFanout + blockHidden), the race's counts and the replay moments. The crowd is simulated (a fixed
+  // seed); one demo spectator is on your block list, so their cheers never reach you.
+  cheer: {
+    kinds: CHEER_KINDS, text: CHEER_TEXT, minIntervalMs: CHEER_MIN_INTERVAL_MS, windowMs: CHEER_WINDOW_MS,
+    /** Start watching (or riding) a demo friend room of `entrants` horses. */
+    start(entrants = 12) {
+      cheerRoom = { entrants, pending: [], lastAt: null, tally: emptyTally(), seed: 19, n: 0,
+        lists: new Map<string, ReadonlySet<string>>([[ID, new Set([CHEER_TROLL])], ...CHEER_CROWD.map((c) => [c, new Set<string>()] as [string, ReadonlySet<string>]), [CHEER_TROLL, new Set<string>()]]) };
+      return { kinds: [...CHEER_KINDS], minIntervalMs: CHEER_MIN_INTERVAL_MS, windowMs: CHEER_WINDOW_MS };
+    },
+    /** One cheer from you (spectator) for a horse, through the room's admission rule. */
+    send(slot: number, kind: string, tick: number) {
+      const r = cheerRoom;
+      if (!r) return { ok: false, code: 'CHEER_OFF' };
+      if (!isCheerKind(kind)) return { ok: false, code: 'BAD_MESSAGE' };
+      const t = Date.now();
+      const refusal = cheerAdmit({ enabled: true, spectator: true, sentTick: tick, fin: false, lastAt: r.lastAt, slot, entrants: r.entrants, now: t });
+      if (refusal) return { ok: false, code: refusal };
+      r.lastAt = t;
+      r.pending.push({ from: ID, slot, kind });
+      tallyAdd(r.tally, tick);
+      return { ok: true };
+    },
+    /** Close the window: the crowd's cheers (focus = a horse the crowd likes) plus yours, as the room sends them to you. */
+    window(tick: number, focus = -1) {
+      const r = cheerRoom;
+      if (!r) return [];
+      r.n++;
+      const rnd = () => { r.seed = (r.seed * 1103515245 + 12345) & 0x7fffffff; return r.seed / 0x7fffffff; };
+      const crowd = [...CHEER_CROWD, CHEER_TROLL];
+      for (const from of crowd) {
+        if (rnd() < 0.45) continue;
+        const slot = focus >= 0 && (rnd() < 0.5 || r.n % 3 === 1) ? focus : Math.floor(rnd() * r.entrants);
+        r.pending.push({ from, slot, kind: CHEER_KINDS[Math.floor(rnd() * CHEER_KINDS.length)]! });
+        tallyAdd(r.tally, tick);
+      }
+      const cheers = r.pending; r.pending = [];
+      const msg = cheerFanout(cheers, [{ key: 'you', playerId: ID }], blockHidden(r.lists)).get('you');
+      return msg ? (JSON.parse(msg) as { n: [number, string, number][] }).n : [];
+    },
+    /** 「応援の多かった瞬間」 of the race so far (the replay markers). */
+    moments: () => (cheerRoom ? cheerMoments(cheerSummary(cheerRoom.tally)) : []),
+    blockedSpectator: () => CHEER_TROLL,
+    /** REQ-CHEER-013: the one KPI row of a race, as the server stores it. */
+    kpi: (name: 'cheer_send' | 'cheer_seen', props: Record<string, unknown>) => wrap(() => clientBatchSchema.parse({ platform: 'editor', appVersion: 'proto', events: [{ name, at: now(), props }] }).events.map(clientToKpi)[0]),
+  },
   fsugKpi: (shown: number) => wrap(() => clientBatchSchema.parse({ platform: 'editor', appVersion: 'proto', events: [{ name: 'fsug_view', at: now(), props: { shown } }] }).events.map(clientToKpi)[0]),
+  /** Round 19 (REQ-PERF-015): a perf_setting_change / asset_predownload client event through the real schema → its KPI row. */
+  perfKpi: (name: 'perf_setting_change' | 'asset_predownload', props: Record<string, string>) => wrap(() => clientBatchSchema.parse({ platform: 'editor', appVersion: 'proto', events: [{ name, at: now(), props }] }).events.map(clientToKpi)[0]),
   /** The other side of a demo request (for the tests): their activity page, names resolved. */
   async fsugActivityOf(id: string) {
     const p = await svc.activity(id, null, 20);
@@ -1161,6 +1256,33 @@ export const MuchiLogic = {
     marginTicks: (order: number[], finishTicks: number[], slot: number) => marginTicksOf(order, finishTicks, slot),
     /** The stored files (test hook). */
     files: () => [...replayStore.files.keys()],
+  },
+  // ---------------------------------------------------------------- round 19: 引き継ぎコード (REQ-TRF-*, contracts/protocol.md §54)
+  // What GET/POST/DELETE /v1/transfer/code and POST /v1/transfer/redeem answer, on the real TransferService.
+  transfer: {
+    status: () => wrap(() => trfSvc.view(ID)),
+    /** null = let the server create the password (returned once). */
+    issue: (password: string | null) => wrap(() => trfSvc.issue(ID, password === null ? { mode: 'generated' } : { mode: 'custom', password })),
+    revoke: () => wrap(() => trfSvc.revoke(ID)),
+    /** This device (the local player, who has progress) enters another account's code. */
+    redeem: (codeId: string, password: string, confirmDiscard: boolean, idem: string) =>
+      wrap(() => trfSvc.redeem(ID, { codeId, password, confirmDiscard }, { ip: '198.51.100.20', installId: 'proto-install-0001', idemKey: idem })),
+    /** The live checklist: the rules a typed password breaks (the server's passwordProblems). */
+    problems: (password: string) => passwordProblems(normalizeInput(password), transferConfig(master)),
+    validId: (raw: string) => normalizeCodeId(raw) !== null,
+    /** Demo: 「前の端末」 — another account (ハヤテ) with a code and a known password, issued once and reused. */
+    demoOld: () => wrap(async () => {
+      if (!(await repo.get(TRF_OLD))) { await svc.bootstrap(TRF_OLD); await svc.setDisplayName(TRF_OLD, 'ハヤテ'); }
+      const v = await svc.transferView(TRF_OLD);
+      const live = v.code && !v.code.expired && trfDir.codes.has(normalizeCodeId(v.code.codeId)!);
+      const codeId = live ? v.code!.codeId : (await trfSvc.issue(TRF_OLD, { mode: 'custom', password: TRF_OLD_PASSWORD })).codeId;
+      return { codeId, password: TRF_OLD_PASSWORD, name: 'ハヤテ' };
+    }),
+    /** The old device's next request after the move (the SESSION_REPLACED check the Worker runs). */
+    oldDeviceCutoff: () => svc.transferCutoff(TRF_OLD),
+    kpi: () => serverKpi.filter((k) => k.name.startsWith('transfer_')),
+    audit: () => trfDir.rows.map((r) => ({ ...r })),
+    storedRecords: () => JSON.stringify([...trfDir.codes.values()]),
   },
   // ---------------------------------------------------------------- round 16: プレイヤー主催カップ (REQ-CUP-*, contracts/protocol.md §42)
   cups: {

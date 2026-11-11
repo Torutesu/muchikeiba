@@ -63,6 +63,8 @@ Apple / Google：レシート検証・サーバー通知
    - 起動時に `await MuchiFirebase.InitializeAsync()` を呼んでから `MuchiServices.Create()` を呼ぶ（匿名ログインまで済ませ、`MuchiServices.FirebaseTokens` を設定する）。
    - Sign in with Apple はランダムな nonce を作り、SHA-256 したものを Apple に、元の値を `FederatedCredential.FromApple(idToken, rawNonce)` に渡す。Google は Google Sign-In の ID トークンを `FromGoogle(idToken)` に渡す。
    - 引き継ぎ：`LinkAsync` が `CredentialInUse` を返したら、プレイヤーに「この端末の進行は残りません」と確認してから `SwitchToExistingAccountAsync` を呼ぶ。
+   - 引き継ぎコード（REQ-TRF-*、§54）：入力の応答の `customToken` を `FirebaseAuthTokenProvider.SignInWithCustomTokenAsync` に渡す。`401 SESSION_REPLACED` を受けたら `SignOutReplacedSession()` で案内の画面へ。
+7. **引き継ぎコードのカスタムトークンの鍵**（REQ-TRF-011、§54.7）：手順は §9.6。Worker のシークレット `FIREBASE_AUTH_SERVICE_ACCOUNT_JSON`。入れない環境では引き継ぎコードが出ない（Apple／Google だけ）。
 
 ## 3. GCP（検証サーバー：Cloud Run）
 
@@ -136,6 +138,8 @@ npx wrangler secret put TICKET_SECRET --env staging
 | `FCM_SERVICE_ACCOUNT_JSON` | シークレット（任意） | | | 未設定なら `GOOGLE_SERVICE_ACCOUNT_JSON` |
 | `KPI_SQL_ACCOUNT_ID` | 変数（任意） | | | Round 18（§51）：個人データのダウンロードに、そのプレイヤーの分析イベント（Analytics Engine）を入れるためのアカウント ID。シークレットではない |
 | `KPI_SQL_TOKEN` | シークレット（任意） | | | 同上。権限「Account Analytics: Read」だけの API トークン。2つとも無ければダウンロードの分析イベントは「取得できませんでした」 |
+| `FIREBASE_AUTH_SERVICE_ACCOUNT_JSON` | シークレット（任意） | 推奨 | 推奨 | 引き継ぎコード（§54）のカスタムトークンに署名する、その環境の Firebase プロジェクトのサービスアカウントの鍵 JSON。未設定なら引き継ぎコードは `enabled: false`。入れ替えは §9.6 |
+| `CHEERS` | 変数（任意） | | | Round 19（§55）：`off` で観戦中の応援を止める（部屋が案内を出さない）。未設定ならオン |
 | `DEV_MODE` | — | **禁止** | **禁止** | local の `--var DEV_MODE:1` だけ |
 
 管理トークンのハッシュは次で作ります（トークン本体はパスワード管理ツールに保管）。
@@ -187,6 +191,7 @@ printf '%s' '<管理トークン>' | sha256sum
 | Round 16（プレイヤー主催カップ §42・シーズンの振り返り §43・厩舎の整理 §44・次にやること §45） | **カップだけが組み合わせを持つ**：レースの種類 `cup`（`RaceMode.Cup = 7`、`Muchi.Net.ProtocolCodec` が `"cup"` を読む）。新しい Worker × 古い検証サーバー：古い検証サーバーは `mode: "cup"` を知らず検証を断る → カップのレースが無効（`raceTimeoutMinutes` の後に無効として次へ）になる。Worker 側は新しい Durable Object **`CupDO`（マイグレーション `v6`、`new_sqlite_classes`）とバインディング `CUPS`**（`wrangler.toml` の既定・`env.staging`・`env.production` の3つすべてにある。`npm run lint:deploy` が確かめる）。振り返り・厩舎の整理・次にやることは検証サーバーもバインディングも変えない（プレイヤーのオブジェクトの状態のキー `seasonRecap`・`roster`・`nextAction`、任意のリモート設定 `progression.seasonRecap`・`nextActions`・`hostedCups`、プッシュの型 `cup_invite`）。既存のモードの結果・ゴールデンは変わらない（Round 16 の統合で差分なしを確認） | **検証サーバー → Worker（マイグレーション `v6` 付き）**：`wrangler deploy` がマイグレーションを当てるので、Worker を出した時に `CupDO` ができる。検証サーバーが先なので、最初のカップのレースの時には検証サーバーはもう `cup` を知っている。切り戻し：Worker のコードを `CupDO` の無い版に戻すと、当たったマイグレーションのクラスが見つからず `wrangler deploy` が断る。カップを止めたい時は `progression.hostedCups.enabled: false` をリモート設定で出す（作成・参加は `NOT_FOUND`、走っているカップは締め切りで終わる）。`CupDO` を本当に消す時は `deleted_classes` のマイグレーション（`v7`）を足して出す |
 | Round 17（メンテナンス・強制アップデート §46・通報とブロック §47・ヘルプセンター §48・おすすめフレンド §49） | 検証サーバー（`engine/Muchi.Verifier`・`Muchi.Engine`・`Muchi.Net` のレースの計算）とその入出力・ゴールデンは変わらない（Round 17 の統合で差分なしを確認）。**組み合わせがあるのはレースの `hello` の `engine`（§46、REQ-MNT-008）だけ**：新しいアプリは `hello` に `engine` を付けるが、古い Worker の部屋のスキーマは厳密なので `BAD_MESSAGE` で断られる（古いアプリ × 新しい Worker は問題なし：`engine` は任意、ヘッダー `x-client-*` の無い要求は検査を通る）。**マイグレーションは無い**：Durable Object のクラス・バインディング・シークレットは増えない。新しい表は最初の呼び出しで `CREATE TABLE IF NOT EXISTS`：IntegrityDO（`global`）の `player_reports`・`player_report_reporters`・`player_report_seq`（§47）、OpsDO の `inquiries`（§48、本文は持たない索引）、DirectoryDO の `fsug_cards`（§49）。アカウント削除の段 `reports`・`inquiries`（`cups` の後、`finalize` の前。途中の削除は再開時にその段から続く）。任意のリモート設定 `maintenance`（§46）・`help`（§48）・`progression.reports`・`progression.friendSuggest`。サポートサイトのホスト `help.config.supportSiteHost` は仮の値（`support.muchi-issen.example`）のまま：本番の前に実際のホストへ差し替える。古いアプリは新しいアクティビティの種類 `ops_notice`（行き先 `safety`）・`inquiry_answered`（行き先 `help_inquiry`）を知らない種類として表示するだけ | **検証サーバー → Worker → ストアのアプリ**の順（検証サーバーは出し直さなくてよいが、順は変えない。`hello.engine` を知る Worker が先、`engine` を送るアプリが最後）。**切り戻し**：Worker を Round 17 より前に戻すときは、**先に `maintenance`（と `help`）を含まない版へリモート設定を切り戻してから** Worker を戻す（古い Worker のリモート設定のスキーマは厳密なので、その版を読めず `CONFIG_INVALID` になり、最後に読めた版か同梱の既定に戻ってしまう）。メンテナンスの窓の取り消しは ops コンソール（§46.6、窓の `cancelledAtMs`）で、Worker の出し直しは要らない。Round 17 のアプリが出た後は Worker を Round 17 より前に戻さない。戻した Worker では通報・問い合わせの索引・おすすめのカードの表は残り（読まれないだけ）、出し直すとそのまま続く |
 | Round 18（練習レース §50・個人データの開示 §51・支部の定型チャット §52・馬ごとの目標 §53） | 検証サーバーのレースの計算・入出力・ゴールデンは変わらない（Round 18 の統合で差分なしを確認）。練習は端末の中だけで走り、サーバーに結果を送る経路も新しいレースの種類も無い（`Muchi.Net.ProtocolCodec` は読み取りの関数を分けただけで、読む形は同じ）。**マイグレーション・Durable Object のクラス・バインディングは増えない**。§51 のファイルは既存のバケット `REPLAYS`（`muchi-replays-*`）の非公開の接頭辞 `private/data-export/<playerId>/` に置く：**リリースの前に R2 のライフサイクルルール**（接頭辞 `private/data-export/`、作成から `keepDays + 1` 日 = 8 日で削除。§2 の手順）を staging・production の両方に付ける（アプリはプレイヤーのアラームで `keepDays` に消すので、ルールは予備）。ダウンロードのリンクの HMAC は既存の `TICKET_SECRET` に目的の文字列を足した鍵で署名する：**新しい必須のシークレットは無い**（`TICKET_SECRET` を変えると出ているリンクが切れるだけ）。任意で `KPI_SQL_ACCOUNT_ID`（変数）・`KPI_SQL_TOKEN`（`wrangler secret put KPI_SQL_TOKEN --env …`、権限は Account Analytics: Read だけ。値はリポジトリに書かない）：無ければエクスポートの分析イベントは「取得できませんでした」。新しいプレイヤーの状態のキー `horseGoals`・`dataExport`（無ければ既定）、TeamDO のフィードに `qchat` の項目と `qchat` の数・ブロックの写し、同梱のマスター `server/master/practice.json`・`quick-chat.json`（起動時に検査）、任意のリモート設定 `progression.horseGoals`・`progression.dataExport`・`quickChat`。アカウント削除の段 `data_export`（`inquiries` の後、`finalize` の前）。§51 の要求・状態・ダウンロードはメンテナンスの窓でも止まらない（§46.2）。古いアプリは新しいアクティビティの種類 `qchat_mention`（行き先 `team_feed`）・`data_export_ready`（行き先 `privacy`）と、フィードの `qchat` の項目を知らない種類として読み飛ばす | **検証サーバー → Worker → ストアのアプリ**（検証サーバーは出し直さなくてよい）。順番の前に R2 のライフサイクルルールを付ける。**切り戻し**：Worker を Round 18 より前に戻すときは、先に `quickChat`・`progression.dataExport`・`progression.horseGoals` を含まない版へリモート設定を切り戻す（古い Worker のスキーマは厳密）。戻した Worker では `private/data-export/` のファイルを誰も消さないので、ライフサイクルルールが消す（8 日）。フィードの `qchat` の項目は古い TeamDO が知らない種類として残り、出し直すとまた見える |
+| Round 19（引き継ぎコード §54・観戦中の応援 §55・画質・通信量 §56・ヒント §57） | 検証サーバーのレースの計算・入出力・ゴールデンは変わらない（`Muchi.Engine` は変わらず、`Muchi.Net` には観戦者の部屋の応援のメッセージ（`CheerWire`・`LockstepClient.SendCheer`）を足しただけで検証サーバーは使わない。Round 19 の統合でゴールデンの差分なしを確認）。**部屋の組み合わせ（§55.3）**：新しいアプリ × 古い Worker：古い部屋は観戦者の `start.spectator.cheer` を出さないので、アプリは `cheer` を送らない（ボタンを出さない）。古いアプリ × 新しい Worker：選手・観戦者に届く `{"t":"cheers"}` は古い `LockstepClient` が `UNKNOWN_MESSAGE` として記録するだけ（致命的なエラーの一覧 `FatalRoomErrors` に無い、切断しない）。応援は環境変数 `CHEERS = "off"` で止められる（部屋が案内を出さなくなる）。**マイグレーション・Durable Object のクラス・バインディングは増えない**：DirectoryDO の新しい表 `transfer_codes`・`transfer_limits`・`transfer_audit`（最初の呼び出しで `CREATE TABLE IF NOT EXISTS`）、応援の集計は既存の R2 `REPLAYS` の `replays/<raceId>.cheers.json`（リプレイのログの隣、数だけ・id なし）。**任意のシークレット `FIREBASE_AUTH_SERVICE_ACCOUNT_JSON`**（環境ごとにその環境の Firebase プロジェクトの鍵、§9.6。`wrangler secret put FIREBASE_AUTH_SERVICE_ACCOUNT_JSON --env …`。値はリポジトリに書かない）：無ければ引き継ぎコードは `enabled: false`（Apple／Google の引き継ぎだけ）。新しいプレイヤーの状態のキー `tips`・`transfer`（無ければ既定）、同梱のマスター `server/master/tips.json`（起動時に検査）、任意のリモート設定 `tips`・`progression.transfer`、アセットのカタログの任意の `low`（軽量版、古いアプリは読み飛ばす）。§56 の設定は端末だけでサーバーの状態は無い。引き継ぎコードの API（`/v1/transfer/*`）はメンテナンスの窓でも止まらない（§46.2、サインイン・削除と同じ）。アカウント削除は既存の段 `stud`（DirectoryDO の `forget`）が引き継ぎコードと記録も消す（新しい段は無い）。古い端末の締め出し `401 SESSION_REPLACED`（§54.6）：古いアプリはトークンを取り直して1回だけ再試行し、そのあと `UNAUTHORIZED` として扱う（引き継ぎは新しい端末で新しいアプリが使うので、古い端末のアプリが古くても締め出し自体は効く） | **検証サーバー → Worker → ストアのアプリ**（検証サーバーは出し直さなくてよい。応援の部屋のメッセージは Worker が先に知っていればよく、検証サーバーとの順は関係しない）。シークレットは Worker を出す前に入れる（入れなくても出せる：引き継ぎコードが出ないだけ）。**切り戻し**：Worker を Round 19 より前に戻すときは、先に `tips`・`progression.transfer` を含まない版へリモート設定を切り戻す（古い Worker のスキーマは厳密）。戻した Worker では発行済みの引き継ぎコードは使えない（表は残り、出し直すとまた使える。期限は変わらず進む）。古い端末の締め出しも効かなくなるので、引き継ぎの直後に戻すことは避ける |
 - **切り戻しは逆の順**：Worker を先に戻し、そのあと必要なら検証サーバーを戻す。検証サーバーだけを Round 13 より前に戻すと、週替わりチャレンジの送信が `VERIFIER_UNAVAILABLE` になる（その間は `progression.weeklyChallenge.enabled: false` をリモート設定で出しておく）。
 - Round 11 より前の Worker が動いている環境（Round 11 を一度も出していない環境）でも、この順で出せる（上のとおり `skillsFired` は頼まれた時だけ）。Round 11 の時点の検証サーバー（いつも `skillsFired` を返す版）が動いている環境で Worker を Round 11 より前に戻すことはしない。
 - 確認：`bash scripts/integration.sh`（C# のボット ⇄ TS のサーバー ⇄ C# の検証サーバー）が、ヘッダーの往復と `challenge` を含めて通ること。`integration.sh` は `server/wrangler.toml` の既定の設定で `wrangler dev` を起こすので、`CupDO`（`v6`）と `CUPS` も一緒に立ち上がる（Round 16）。
@@ -255,6 +260,31 @@ gcloud run services update-traffic muchi-verifier-production --to-revisions=<前
 - **失敗リスト**（REQ-OPS-041）：シーズン締め・支部の報酬・イベント報酬・レース精算・隔離の反映で、自動の再試行を使い切った項目は `GET /v1/admin/dead-letters` に出る。原因を直したら `POST …/:itemId/retry`（operator）、手作業で対応したら `POST …/:itemId/dismiss`（admin、メモ必須）。シーズン締めのあとは `GET /v1/admin/dead-letters/season/<YYYY-MM>` と `…/team/<YYYY-MM>` を確認する。
 - **禁止勝負服**（REQ-OPS-040）：公開されている登録服色と照合した一覧を `POST /v1/admin/silks/banned/import` で取り込む（設定の新しい版として登録されるので、`/v1/admin/config/activations` で有効化）。`server/master/banned-silks.json` も同じ内容に更新しておく。
 - **リプレイの保存**：「検証で確定」の保留は既定90日で削除される（`progression.replayHoldDays`）。通報・不一致・無効は残る。
+
+## 9.6 引き継ぎコードの鍵（`FIREBASE_AUTH_SERVICE_ACCOUNT_JSON`、REQ-TRF-011、contracts/protocol.md §54.7）
+
+この鍵があると、**どのアカウントにでもサインインできるトークン**を作れる。リポジトリ・CI・チャット・問い合わせのメモに貼らない。パスワード管理ツールと Worker のシークレットにだけ置く。
+
+**最初に入れる**（環境ごと。staging と production で別の Firebase プロジェクト・別の鍵）
+1. Google Cloud コンソール（Firebase と同じプロジェクト）→ IAM → サービスアカウントで、引き継ぎ専用のサービスアカウント（例 `muchi-transfer-signer@<project>.iam.gserviceaccount.com`、ロールなし）を作る。カスタムトークンは Worker の中で鍵で署名するだけなので、IAM のロールは要らない（Firebase の管理者 SDK のサービスアカウントの鍵でも動くが、漏れた時の被害が大きいので専用のものを使う）。
+2. そのサービスアカウントの「鍵」→「鍵を追加」→ JSON。ダウンロードしたファイルを次で入れ、**ファイルはすぐ消す**：
+   ```bash
+   npx wrangler secret put FIREBASE_AUTH_SERVICE_ACCOUNT_JSON --env staging < key.json && shred -u key.json
+   ```
+3. 確かめる：テスト用のアカウントで `GET /v1/transfer/code` が `"enabled": true`。staging で発行 → 別の匿名アカウントで入力 → 返った `customToken` で Firebase にサインインでき、`uid` が元のアカウントになること（Unity の開発ビルド、または curl で発行 → 入力 → Identity Toolkit の `accounts:signInWithCustomToken`（Web API キー）で ID トークンを取り、その `sub` を見る）。
+
+**入れ替え**（90日ごと、担当者が抜けた時、漏れた疑いがある時はすぐ）
+1. 同じサービスアカウントに**新しい鍵**を作る（古い鍵はまだ消さない）。
+2. `npx wrangler secret put FIREBASE_AUTH_SERVICE_ACCOUNT_JSON --env <env>` で新しい鍵を入れる（Worker の新しい版としてすぐ効く。デプロイの順番 §7.1 には関係しない）。
+3. 上の 3 と同じ確認をする。
+4. Google Cloud で**古い鍵を削除**する。古い鍵で署名され、まだ使われていないカスタムトークン（有効1時間）はその時点で使えなくなる（入力の途中だった人は「引き継ぐ」をもう一度押せば、同じキーの再送で新しい鍵のトークンを受け取れる）。
+5. 監査のため、入れ替えた日と鍵の ID（JSON の `private_key_id`）を運用の記録に残す（鍵そのものは残さない）。
+
+**漏れた時**：すぐに古い鍵を削除（4）→ 新しい鍵（1〜3）。その後、`transfer_redeem` の KPI（`docs/ops/kpi-queries.md`「引き継ぎコード」）とディレクトリの監査で、漏れた期間の `redeemed` を確認する。鍵だけで作ったトークンは引き継ぎコードを通らないので監査に残らない — Firebase の Authentication のログ（カスタムトークンでのサインイン）を期間で確認する。
+
+**止めたい時**：鍵を消さなくても、リモート設定で `progression.transfer.enabled = false` にすれば発行・入力の口が `404` になる（30秒以内に反映、§22）。古い端末の無効化（`cutoffAt`）はそのまま効く。
+
+**Firebase の匿名ユーザーの自動削除**（§2）との関係：カスタムトークンのサインインは、Firebase 側でユーザーが消されていても同じ `uid` で作り直す。ゲームのデータは `uid` の Durable Object にあるので、引き継ぎの後も変わらない。引き継いだ後のユーザーは匿名ではない（自動削除の対象外）。
 
 ## 10. 費用のガードレール
 

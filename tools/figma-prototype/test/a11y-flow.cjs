@@ -228,6 +228,11 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('HelpArticle', 'pity', 'list'); await waitScreen('help-article'); await shot('help-article', english, 500);
     await show('InquiryForm'); await waitScreen('inquiry-form'); await shot('inquiry-form', english, 500);
     await show('MyInquiries'); await waitScreen('my-inquiries'); await shot('my-inquiries', english, 500);
+    // Round 19: ヒント (the library, a card, a tour page, a lesson briefing) at the largest size (REQ-TUT-018)
+    await show('Tips'); await waitScreen('tips'); await shot('tips', english, 500);
+    await show('TipCard', 'scout_pity_tip', 'list'); await waitScreen('tip-card'); await shot('tip-card', english, 500);
+    await show('TipTour', 'tour_scout'); await waitScreen('tip-card'); await shot('tip-tour', english, 500);
+    await show('LessonBrief', 'race_whip'); await waitScreen('tip-lesson'); await shot('tip-lesson', english, 500);
     // Round 17: おすすめフレンド (the friends screen's suggestions section)
     await show('Friends'); await waitScreen('friends'); await shot('friends-suggestions', english, 600);
     // Round 18: 練習レース (the setup screen at the largest size)
@@ -255,13 +260,26 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     // Round 18: プライバシー › データのダウンロード, and its help article (context privacy → data_export)
     await show('Privacy'); await waitScreen('privacy'); await page.waitForSelector('.screen.in [data-dex]', { timeout: 15000 }); await shot('privacy', english, 500);
     await page.locator('.screen.in [data-help-context="privacy"]').click(); await waitScreen('help-article'); await shot('help-data-export', english, 500);
+    // Round 19: 画質・通信量 and ストレージ at the largest size (REQ-PERF-017)
+    await show('PerfSettings'); await waitScreen('perf-settings'); await shot('perf-settings', english, 500);
+    await show('Storage'); await waitScreen('storage'); await shot('storage', english, 500);
+    // Round 19: 観戦中の応援 (the spectate screen with a window of cheers) at the largest size
+    await show('Spectate'); await waitScreen('spectate'); await page.waitForTimeout(1300); await shot('spectate', english, 300);
+    // Round 19: 引き継ぎコード — the issue screen (checklist, ID), the redeem screen and the old device's notice (REQ-TRF-020)
+    await show('TransferIssue'); await waitScreen('transfer-issue'); await shot('transfer-issue', english, 600);
+    await show('TransferRedeem'); await waitScreen('transfer-redeem'); await shot('transfer-redeem', english, 500);
+    await show('TransferReplaced'); await waitScreen('transfer-replaced'); await shot('transfer-replaced', english, 500);
     await show('Settings'); await waitScreen('settings'); await boxesClear('settings lists (largest)', SETTINGS_LISTS, english);
+    // R19 integration: その他's second page (見た目・お世話・仲間) at the largest size too
+    await page.locator('.screen.in [data-more-tab="looks"]').click(); await waitScreen('settings'); await page.waitForTimeout(400);
+    await boxesClear('settings lists, looks page (largest)', SETTINGS_LISTS, english); await shot('settings-looks', english, 0);
+    await page.locator('.screen.in [data-more-tab="settings"]').click(); await waitScreen('settings'); await page.waitForTimeout(300);
     await show('Home'); await waitScreen('home'); await page.waitForTimeout(700); await boxesClear('home top bar (largest)', HOME_BAR, english);
   };
   await keyScreens(false);
 
   // 3) a race: reduce motion, haptics off, one-handed right, whip hold
-  await page.evaluate(() => { globalThis.__vibrations = 0; });
+  await page.evaluate(() => { globalThis.__vibrations = 0; globalThis.__muchi.cheerStats = null; });
   await show('Home'); await waitScreen('home');
   await page.locator('.screen.in [data-label="レースへ"]').click(); await waitScreen('lobby');
   await page.locator('.screen.in [data-label="ランク戦に出る"]').click(); await waitScreen('race', 20000);
@@ -288,6 +306,9 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
   assert.match(hint, /^長押し あと\d$/, 'the hold hint: ' + hint);
   assert.equal(sawSpeed, false, 'reduce motion: no speed lines');
   assert.equal(await page.evaluate(() => globalThis.__vibrations), 0, 'haptics off: no vibration at all');
+  // Round 19 (REQ-CHEER-010): reduce motion — the racer's cheer chip shows its text, never a pulse
+  const cst = await page.evaluate(() => globalThis.__muchi.cheerStats);
+  assert.ok(cst && cst.shown > 0 && cst.pulses === 0, 'reduce motion: cheers shown without a pulse: ' + JSON.stringify(cst));
   await shot('result', false, 1000);
   // Round 15 photo mode at the largest size: Japanese, then English in place (the finished race stays in the engine)
   await page.locator('.screen.in [data-action="photo-result"]').click(); await waitScreen('photo', 20000); await shot('photo', false, 600);

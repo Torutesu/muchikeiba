@@ -34,6 +34,17 @@
       "related": ["whip", "gift_box"]
     },
     {
+      "id": "tips_replay", "category": "getting_started",
+      "title": { "ja": "チュートリアルのやり直しとヒント", "en": "Replaying tutorials and tips" },
+      "body": {
+        "ja": "設定の「ヒント」から、レースのチュートリアル（ムチのタイミング・位置取り・スタミナ・手綱）と、機能の案内（配合・調教・スカウト・ショップとコイン・支部・カップ）をいつでもやり直せます。\n\n・レースのチュートリアルは端末の中だけで走ります。成績・ランク・ミッションには数えられず、報酬もありません\n・最初のチュートリアルの報酬（相棒の馬・入厩祝いのスカウト）は一度だけです。やり直しても、もう一度は受け取れません\n・ヒントのカードは、その機能が開放されると読めるようになります。まだ読んでいないカードには「NEW」が付きます\n・調教・配合・提供割合・まとめて引退の画面の「？」から、その画面のヒントを開けます。くわしい説明はヒントの「くわしく」からこのヘルプへ進めます",
+        "en": "From Tips in the settings, you can replay the race tutorials (whip timing, positioning, stamina and reins) and the feature tours (breeding, training, scout, shop and coins, branches and cups) at any time.\n\n• Race tutorials run on your device only. They don't count toward your record, rank or missions, and give no rewards\n• The rewards of the first tutorial (your partner horse and the welcome scout) are given once. Replaying never gives them again\n• A tip card can be read once its feature is unlocked. Cards you haven't read yet are marked NEW\n• The ? button on the training, breeding, rates and bulk retire screens opens that screen's tip. Tap More in a tip for the full help article"
+      },
+      "keywords": { "ja": ["ヒント", "チュートリアル", "やり直し", "練習"], "en": ["tips", "tutorial", "replay", "tour"] },
+      "links": [ { "type": "screen", "screen": "tips" } ],
+      "related": ["first_steps", "whip"]
+    },
+    {
       "id": "gift_box", "category": "getting_started",
       "title": { "ja": "プレゼントボックスの受け取り", "en": "Receiving gifts from the gift box" },
       "body": {
@@ -163,7 +174,18 @@
       },
       "keywords": { "ja": ["引き継ぎ", "機種変更", "ログイン", "連携"], "en": ["transfer", "new device", "sign in", "link"] },
       "links": [ { "type": "screen", "screen": "account_link" } ],
-      "related": ["delete_account"]
+      "related": ["transfer_code", "delete_account"]
+    },
+    {
+      "id": "transfer_code", "category": "account",
+      "title": { "ja": "引き継ぎコード（IDとパスワード）", "en": "Transfer code (ID and password)" },
+      "body": {
+        "ja": "Apple・Googleのアカウントを使わずに、IDとパスワードで機種変更できます。\n\nまず、いまの端末で、設定の「引き継ぎ」から「IDとパスワード」を開き、パスワードを決めて発行します（自動で作ることもできます。自動のパスワードは発行したときに一度だけ表示されます）。次に、新しい端末のタイトル画面で「データ引き継ぎ」を開き、IDとパスワードを入れます\n\n・コードは一度だけ使えます。使った後や発行し直した後は、前のコードは使えません\n・有効期限は発行の画面に表示されます。期限が過ぎたら発行し直してください\n・新しい端末にあったデータは引き継ぎの後に使えなくなります（確認の画面が出ます）\n・引き継ぐと、前の端末ではそのアカウントで遊べなくなります\n・有償コイン・購入の記録もそのまま引き継がれます\n・パスワードは運営にも分かりません。IDとパスワードは人に教えないでください\n・何度も間違えると、しばらく入力できなくなります",
+        "en": "You can change devices with an ID and password instead of an Apple or Google account.\n\nFirst, on your current device, open Data transfer in the settings, choose ID and password, set a password and issue the code (or let the app create one; a created password is shown only once, when it is issued). Then, on the new device, open Data transfer on the title screen and enter the ID and password\n\n• A code works once. After it is used or a new one is issued, the old code stops working\n• The expiry date is shown on the issue screen. Issue a new code after it expires\n• Data that was on the new device can no longer be used after the transfer (you will be asked to confirm)\n• After the transfer, the account can no longer be played on the old device\n• Paid coins and your purchase records move with the account\n• Not even support can see your password. Never share your ID and password\n• After too many wrong entries, you have to wait a while before trying again"
+      },
+      "keywords": { "ja": ["引き継ぎコード", "パスワード", "ID", "機種変更", "引き継ぎ"], "en": ["transfer code", "password", "ID", "new device", "transfer"] },
+      "links": [ { "type": "screen", "screen": "account_link" } ],
+      "related": ["data_transfer"]
     },
     {
       "id": "history_help", "category": "account",
@@ -274,7 +296,19 @@
       "keywords": { "ja": ["目標", "もくひょう", "リボン", "ピン留め", "物語"], "en": ["goal", "goals", "ribbon", "pin", "story"] },
       "links": [ { "type": "screen", "screen": "stable" } ],
       "related": ["race_modes", "roster_organiser"]
-    }
+    },
+    {
+      "id": "data_storage", "category": "getting_started",
+      "title": { "ja": "データ通信量と容量・画質の設定", "en": "Data usage, storage and graphics" },
+      "body": {
+        "ja": "設定の「画質・通信量」で、画質（自動・低・中・高）、フレームレート（30・60）、省電力、データセーバーを選べます。\n\n・データセーバーをオンにすると、必須でないデータは Wi-Fi のときだけダウンロードし、軽い版があれば軽い版を使います（遊ぶのに必要なデータはいつでもダウンロードします）\n・「ストレージ」で使っている容量を確認でき、キャッシュを削除できます。消えるのはダウンロードした絵や音だけで、アカウントや進み具合は消えません\n・「すべてダウンロード」は、先にサイズを表示します。モバイル通信のときは確認してから始めます\n・これらの設定はこの端末にだけ保存されます（機種を変えたら選び直してください）\n・どの設定も、レースの結果や公平さには影響しません",
+        "en": "Under Graphics & data in the settings, you can choose the graphics quality (auto, low, medium, high), the frame rate (30 or 60), battery saver and data saver.\n\n• With data saver on, optional data is downloaded only on Wi-Fi, in a lighter version when there is one (data the game needs is always downloaded)\n• Storage shows how much space is used and lets you clear the cache. Only downloaded art and sound are removed; your account and progress stay\n• Download all shows the size first, and asks before starting on mobile data\n• These settings are saved on this device only (choose them again on a new device)\n• No setting affects race results or fairness"
+      },
+      "keywords": { "ja": ["データ", "通信量", "容量", "ストレージ", "キャッシュ", "画質", "省電力", "Wi-Fi"], "en": ["data", "storage", "cache", "graphics", "battery", "frame rate", "wi-fi", "download"] },
+      "links": [ { "type": "screen", "screen": "storage" }, { "type": "screen", "screen": "performance" } ],
+      "related": ["accessibility_settings", "data_transfer"]
+    },
+    {"id": "spectator_cheer", "category": "races", "title": {"ja": "観戦中の応援", "en": "Cheering while you watch"}, "body": {"ja": "レースを観戦している時に、馬番を選んで「いけ！」「差せ！」「粘れ！」の応援を送れます。\n\n・応援は無料で、何ももらえず、レースの結果にも影響しません\n・送れるのは{{cheer_interval_sec}}秒ごとに1つまでです。文字は自由に書けません\n・誰が応援したかは表示されず、届くのは数だけです\n・ブロックしている相手（ブロックされている相手）の応援は数えません\n・走っている人には、自分の馬への応援の数が画面の隅に小さく出ます。設定の「レース中の応援表示」でオフにできます\n・動きを減らす設定がオンなら、光や動きは出ません", "en": "While watching a race, pick a horse number and send a cheer: \"Go!\", \"Close in!\" or \"Hang on!\".\n\n• Cheers are free, give no rewards and never change the race result\n• You can send one every {{cheer_interval_sec}} seconds. There is no free text\n• Nobody sees who cheered; only the counts arrive\n• Cheers from players you blocked (or who blocked you) are not counted\n• Riders see the number of cheers for their own horse in a small corner. Turn it off with \"Show cheers during races\" in Settings\n• With Reduce motion on, there is no light or movement"}, "keywords": {"ja": ["応援", "観戦", "いけ", "差せ", "粘れ", "応援表示"], "en": ["cheer", "spectate", "watch", "cheers", "indicator"]}, "links": [{"type": "screen", "screen": "settings"}], "related": ["race_modes", "accessibility_settings"]}
   ],
   "contexts": {
     "gacha_odds": "pity",
@@ -289,6 +323,8 @@
     "account_link": "data_transfer",
     "deletion": "delete_account",
     "accessibility": "accessibility_settings",
-    "privacy": "data_export"
+    "privacy": "data_export",
+    "storage": "data_storage",
+    "practice": "practice_races"
   }
 }

@@ -4,7 +4,10 @@ import { DataExportService } from './domain/dataExportService.js';
 import { r2ExportStore } from './do/dataExportPorts.js';
 import { validateLocale } from './i18n/validate.js';
 import { eventPlayersFrom, friendIdsFrom, handle, makeFriendSuggestService, makeFriendsService, makeInviteService, makeStudService, teamPlayersFrom, tournamentPlayersFrom, type AppContext, type PlayerInvoker, type RaceEntry } from './http/app.js';
-import { bearer, verifyFirebaseIdToken } from './http/auth.js';
+import { bearer, verifyFirebaseSession } from './http/auth.js';
+import { signerFromEnv } from './http/customToken.js';
+import { TransferService } from './domain/transferService.js';
+import { SessionGuard, transferConfig } from './domain/transferCode.js';
 import { parseStoreNotification, storeSettingsFromEnv } from './http/stores.js';
 import { accountingStoreIndex } from './do/storeIndex.js';
 import { loadMaster } from './domain/master.js';
@@ -43,6 +46,7 @@ import { silksEditorProblems } from './domain/silksEditor.js';
 import { photoProblems } from './domain/photoMode.js';
 import { helpProblems } from './domain/help.js';
 import { practiceProblems } from './domain/practice.js';
+import { tipsProblems } from './domain/tips.js';
 import type { TeamSummary } from './domain/teams.js';
 import { EventsService } from './domain/eventService.js';
 import { eventBoardKey, eventCronPlan, validateEvents } from './domain/events.js';
@@ -53,7 +57,7 @@ import { authenticateAdmin, parseAdminTokens, parseConsoleOrigins, RateLimiter, 
 import { DeadLetterService, type DeadLetterOwner, type DeadLetterRegistry, type DeadLetterSource } from './ops/deadLetter.js';
 import { activeConfig } from './ops/activeConfig.js';
 import type { ResolvedConfig } from './ops/config.js';
-import { shardedDirectory, shardedHallDirectory, shardedInviteDirectory, shardedStableDirectory, shardedStudDirectory, shardedSuggestDirectory } from './do/directory.js';
+import { shardedDirectory, shardedHallDirectory, shardedInviteDirectory, shardedStableDirectory, shardedStudDirectory, shardedSuggestDirectory, shardedTransferDirectory } from './do/directory.js';
 import { makeStableService } from './http/stablePorts.js';
 import { makeHallService } from './http/hallPorts.js';
 import { RivalService, rivalPlayersFrom } from './domain/rivalService.js';
@@ -110,6 +114,12 @@ async function broadcastSeasonReminder(env: Env, now: number): Promise<string | 
 }
 
 const baseMaster = loadMaster();
+/**
+ * REQ-TRF-010: one per isolate — each account's old-device cut-off cached 30 s (one PlayerDO read per player per isolate and
+ * half minute). The isolate that served a redeem learns the new cut-off at once.
+ */
+let sessionGuard: SessionGuard | null = null;
+const sessionGuardFor = (env: Env) => (sessionGuard ??= new SessionGuard(async (uid) => unwrap(await (stub(env.PLAYER, uid) as unknown as { invoke(m: string, a: unknown[]): Promise<Envelope<unknown>> }).invoke("transferCutoff", [uid])) as number | null));
 validateGacha(baseMaster); // fail fast on a broken gacha/master definition (REQ-GACHA-003/008)
 validateItems(baseMaster); // REQ-ITEM-*: tickets may not reach paid-only banners, cosmetics reference real assets/patterns
 { const sp = stampsProblems(baseMaster); if (sp.length) throw new Error('master/stamps.json: ' + sp.join('; ')); } // REQ-TEAMFEED-002
@@ -118,6 +128,7 @@ validateItems(baseMaster); // REQ-ITEM-*: tickets may not reach paid-only banner
 { const pp = photoProblems(baseMaster); if (pp.length) throw new Error('master/photo.json: ' + pp.join('; ')); } // REQ-PHOTO-013
 { const hp = helpProblems(baseMaster, undefined, Number(DEFAULT_RULESET.maxWhips)); if (hp.length) throw new Error('master/help.json: ' + hp.join('; ')); } // REQ-HELP-003
 { const pr = practiceProblems(baseMaster); if (pr.length) throw new Error('master/practice.json: ' + pr.join('; ')); } // REQ-PRAC-003
+{ const tp = tipsProblems(baseMaster, undefined, Number(DEFAULT_RULESET.maxWhips)); if (tp.length) throw new Error('master/tips.json: ' + tp.join('; ')); } // REQ-TUT-010
 validateEvents(baseMaster, baseMaster.events); // REQ-EVENT-001
 validateLeagueAndWeather(baseMaster); // REQ-LEAGUE-* and per-course climate (REQ-TRACK-003)
 validateUx(baseMaster, new Set(collectItemIds(baseMaster))); // REQ-UXS-*: onboarding, missions, experiments, deletion
@@ -412,13 +423,36 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
     const s = stub(env.PLAYER, uid);
     return { invoke: (async (m: string, ...args: unknown[]) => call(s.invoke!(m, args))) as PlayerInvoker['invoke'] };
   };
+  // REQ-TRF-010: the account and when it signed in (dev users count as signed in now unless x-dev-auth-time says otherwise)
+  const authenticateSession = async (req: Request) => {
+    const devUser = req.headers.get('x-dev-user');
+    if (dev && devUser) {
+      const t = req.headers.get('x-dev-auth-time');
+      return { uid: devUser, authTime: t && /^\d{1,12}$/.test(t) ? Number(t) : Math.floor(Date.now() / 1000) };
+    }
+    return verifyFirebaseSession(bearer(req), env.FIREBASE_PROJECT_ID);
+  };
   return {
     master,
-    async authenticate(req) {
-      const devUser = req.headers.get('x-dev-user');
-      if (dev && devUser) return devUser;
-      return verifyFirebaseIdToken(bearer(req), env.FIREBASE_PROJECT_ID);
-    },
+    authenticate: async (req) => (await authenticateSession(req)).uid,
+    authenticateSession,
+    sessionGuard: (uid, authTime) => sessionGuardFor(env).check(uid, authTime),
+    // REQ-TRF-*: 引き継ぎコード (directory shards + player objects + the custom token key; no key = enabled: false)
+    transfer: new TransferService({
+      view: (u) => player(u).invoke('transferView', u),
+      checkIssue: (u) => player(u).invoke('transferCheckIssue', u),
+      issued: (u, c, mode) => player(u).invoke('transferIssued', u, c, mode),
+      revoke: (u, by) => player(u).invoke('transferRevoke', u, by),
+      progress: (u) => player(u).invoke('transferProgress', u),
+      redeemed: (u, c) => player(u).invoke('transferRedeemed', u, c),
+      noteFail: (u, reason) => player(u).invoke('transferFailed', u, reason),
+      admin: (u) => player(u).invoke('adminTransfer', u),
+      redeemReplay: (u, k) => player(u).invoke('transferRedeemReplay', u, k),
+      redeemRemember: (u, k, p, n) => player(u).invoke('transferRedeemRemember', u, k, p, n),
+    }, shardedTransferDirectory(env.DIRECTORY), () => transferConfig(master), signerFromEnv(env.FIREBASE_AUTH_SERVICE_ACCOUNT_JSON), {
+      ...(env.KPI_SALT ? { limitSalt: env.KPI_SALT } : {}),
+      onRedeemed: (uid, cutoffAt) => sessionGuardFor(env).note(uid, cutoffAt),
+    }),
     player,
     match: {
       enqueue: (p, e: RaceEntry) => call(mm().enqueue!(p, e)),

@@ -408,6 +408,14 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await click('ホームへ'); await waitScreen(['home', 'link-prompt'], 20000);
   if ((await screen()) === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); }
   await shot('home-bell', 400);
+  // round 19: 観戦中の応援 in English (REQ-CHEER-014): the spectate screen, a cheer (toast), the windows
+  await show('Spectate'); await waitScreen('spectate'); await page.waitForTimeout(400);
+  await page.locator('.screen.in [data-cheer="close"]').click(); await page.waitForTimeout(1600);
+  await shot('spectate', 300);
+  const spEn = await page.locator('.screen.in').innerText();
+  assert.match(spEn, /Close in!/, 'cheer: the preset phrase in English');
+  assert.match(spEn, /One cheer every 2 seconds/, 'cheer: the pace line in English');
+  assert.match(spEn, /Cheers never change the race result/, 'cheer: the fairness line in English');
   // round 17: おすすめフレンド in English (REQ-FSUG-015): reasons from the server, player names as written
   await page.evaluate(() => globalThis.__muchi.demo('friends')); await waitScreen('friends', 60000);
   await shot('friends-suggestions', 600);
@@ -440,6 +448,28 @@ module.exports = async function enFlow(browser, base, out, errors) {
   assert.match(await page.locator('.screen.in .help-body').innerText(), /pulls' worth/, 'help: the article body in English');
   await show('HelpArticle', 'buy_coins', 'list'); await waitScreen('help-article'); await shot('help-article-coins', 400);
   await show('InquiryForm'); await waitScreen('inquiry-form'); await shot('inquiry-form', 500);
+  // round 19: 画質・通信量 and ストレージ in English (REQ-PERF-017): the rows, the auto note, the now line, the storage rows, the confirmations
+  await page.evaluate(() => { globalThis.__muchi.perf.reset(); globalThis.__muchi.perf.resetStorage(); globalThis.__muchi.perf.net('wifi'); });
+  await show('PerfSettings'); await waitScreen('perf-settings'); await shot('perf-settings', 400);
+  assert.match(await page.locator('.screen.in').innerText(), /Graphics & data[\s\S]*Data saver[\s\S]*Results and fairness stay the same/, 'perf settings in English');
+  await page.locator('.screen.in [data-perf-row="batterySaver"] [data-perf-choice="on"]').click(); await page.waitForTimeout(400); await shot('perf-settings-saver', 300);
+  await show('Storage'); await waitScreen('storage'); await shot('storage', 400);
+  assert.match(await page.locator('.screen.in').innerText(), /Required data[\s\S]*Download all/, 'storage in English');
+  await page.locator('.screen.in [data-net="cellular"]').click(); await page.waitForTimeout(350);
+  await page.locator('.screen.in .btn[data-action="predownload"]').click(); await page.waitForTimeout(400); await shot('storage-cellular-confirm', 200);
+  await page.locator('.screen.in [data-confirm="no"]').click(); await waitScreen('storage'); await page.waitForTimeout(300);
+  await page.locator('.screen.in .btn[data-action="clear-cache"]').click(); await page.waitForTimeout(400); await shot('storage-clear-confirm', 200);
+  await page.locator('.screen.in [data-confirm="no"]').click(); await waitScreen('storage');
+  await page.evaluate(() => { globalThis.__muchi.perf.reset(); globalThis.__muchi.perf.net('wifi'); });
+
+  // round 19: ヒント in English (REQ-TUT-014): cards and replays come in English from the master; the lesson result
+  await show('Tips'); await waitScreen('tips'); await shot('tips', 500);
+  assert.match(await page.locator('.screen.in').innerText(), /Race lessons/, 'tips: the replays in English');
+  await page.locator('.screen.in [data-tip="whip_window"]').click(); await waitScreen('tip-card'); await shot('tip-card', 500);
+  assert.match(await page.locator('.screen.in .tip-body').innerText(), /home stretch/, 'tips: the card body in English');
+  await show('TipTour', 'tour_shop'); await waitScreen(['tip-card', 'tips']); await shot('tip-tour', 400);
+  await show('LessonBrief', 'race_stamina'); await waitScreen('tip-lesson'); await shot('tip-lesson', 400);
+  await show('StartLesson', 'race_whip'); await waitScreen('race-tutorial'); await waitScreen('lesson-result', 90000); await shot('lesson-result', 600);
 
   // round 13: 支部の共同目標 in English (REQ-TGOAL-*): the week, after the demo races, the week result sheet
   await show('TeamGoal'); await waitScreen('team-goal', 20000); await shot('team-goal', 600);
@@ -525,6 +555,26 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await page.waitForSelector('.screen.in [data-dex="json"]', { timeout: 20000 }); await shot('privacy-ready', 400);
   assert.match(await page.locator('.screen.in .dex-status').innerText(), /Ready to download/, 'privacy: the status in English');
 
+
+  // round 19: 引き継ぎコード in English (REQ-TRF-020): the issue screen (rules from the server, the generated password), the
+  // redeem screen, the confirm sheet, done (the player name as typed) and the old device's notice
+  await show('TransferIssue'); await waitScreen('transfer-issue', 30000); await page.waitForTimeout(400);
+  await page.locator('.screen.in .trf-generate').click(); await page.waitForTimeout(900);
+  await shot('transfer-issue', 400);
+  assert.match(await page.locator('.screen.in').innerText(), /YOUR ID[\s\S]*No common passwords/i, 'transfer: the issue screen and the server rule lines in English');
+  await show('TransferRedeem'); await waitScreen('transfer-redeem'); await page.waitForTimeout(300);
+  await page.locator('.screen.in .trf-demo').click(); await page.waitForTimeout(1200);
+  await shot('transfer-redeem', 400);
+  await page.locator('.screen.in .trf-redeem-go').click(); await page.waitForTimeout(1200);
+  if (await page.locator('.screen.in .trf-confirm').count()) { // this device has progress (it does after the flow above)
+    await shot('transfer-confirm', 300);
+    assert.match(await page.locator('.screen.in .trf-confirm-line').innerText(), /can no longer be used after the transfer/, 'transfer: the confirm line in English');
+    await page.locator('.screen.in .trf-confirm-yes').click(); await page.waitForTimeout(1200);
+  }
+  assert.equal(await page.locator('.screen.in .trf-done').count(), 1, 'transfer: done');
+  await shot('transfer-done', 300);
+  await show('TransferReplaced'); await waitScreen('transfer-replaced'); await shot('transfer-replaced', 400);
+  assert.match(await page.locator('.screen.in').innerText(), /Moved to another device/);
   const misses = await page.evaluate(() => globalThis.__muchi.l10n.misses());
   fs.writeFileSync(path.join(out, 'en-report.json'), JSON.stringify({ report, misses }, null, 2));
   await ctx.close();

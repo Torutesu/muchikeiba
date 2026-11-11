@@ -74,6 +74,7 @@ import {
 } from './comeback.js';
 import { claimAllGifts, claimGift, expireGifts, giftBadge, giftBoxView, giftGiver, giftsNeedExpiry, nextGiftWake, type OpsTitleKey } from './giftBox.js';
 import { activityBadge, activityPage, markActivityRead, recordActivity } from './activity.js';
+import { markTipsSeen, tipsBadge, tipsIndex } from './tips.js';
 import { helpBadge, inquiryDetail, inquiryList, markIndexed, markInquiryRead, replyInquiry, submitInquiry, unindexedSummaries, voteHelp, type InquiryInput } from './help.js';
 import { fsugCard, fsugCardKey, fsugDismiss, fsugSelf, fsugSetHidden, ensureFsug, noteFsugRace, type FsugCard, type FsugDismissed, type FsugKind } from './friendSuggest.js';
 import { finishTraining, startTraining, trainingDelta, trainingTick, trainingView, useTrainingItem } from './training.js';
@@ -113,6 +114,7 @@ import {
   dataExportAdminView, dataExportDeleted, dataExportDeletionKeys, dataExportFile, dataExportView, markDataExportFailed, markDataExportReady,
   nextDataExportWake, noteDataExportDownload, requestDataExport, takeDataExport, takeExpiredDataExport, type DexFile, type DexLang, type DexReadyInfo,
 } from './dataExport.js';
+import { REDEEM_REPLAY_MS, ensureTransfer, assertMayIssue, formatCodeId, issueTransfer, progressOf, redeemTransfer, revokeTransfer, transferStateView, type TransferMode } from './transferCode.js';
 import { assertNotLocked, bulkPreview, noteTournamentEntry, parseRosterQuery, pruneRoster, rosterView, runBulk, setFavorite, setLock, type BulkAction } from './roster.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
@@ -353,7 +355,7 @@ export class PlayerService {
   /** REQ-UXS-001/014/032/040: computed sections of GET /v1/player and bootstrap. */
   private extras(s: PlayerState, now: number) {
     const m = this.d.master;
-    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s), commentaryPack: commentaryPackBadge(m, s), accessibility: accessibilityView(s), activity: activityBadge(m, s, now), help: helpBadge(s), nextActions: nextActionsView(m, s, now), horseGoalPin: pinnedGoalView(m, s) };
+    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s), commentaryPack: commentaryPackBadge(m, s), accessibility: accessibilityView(s), activity: activityBadge(m, s, now), help: helpBadge(s), tips: tipsBadge(m, s, now), nextActions: nextActionsView(m, s, now), horseGoalPin: pinnedGoalView(m, s) };
   }
 
   async view(id: string) {
@@ -1469,6 +1471,46 @@ export class PlayerService {
   /** REQ-FSUG-007: 「おすすめに表示しない」 (the card follows through onFsugCard). */
   fsugSetHidden(id: string, hidden: boolean) { return this.tx(id, null, (s) => fsugSetHidden(s, hidden)); }
 
+  // ---- 引き継ぎコード: per-player steps, orchestrated by TransferService (REQ-TRF-*, contracts/protocol.md §54) ----
+  async transferView(id: string) { return transferStateView(this.d.master, await this.load(id), this.d.clock()); }
+  /** REQ-TRF-001: banned / deletion / today's issues, checked before the hash is computed (read only). */
+  async transferCheckIssue(id: string) { assertMayIssue(this.d.master, await this.load(id), this.d.clock()); return { ok: true as const }; }
+  transferIssued(id: string, codeId: string, mode: TransferMode) {
+    return this.tx(id, null, (s, now, emit) => {
+      const r = issueTransfer(this.d.master, s, codeId, mode, now);
+      emit({ name: 'transfer_issue', s1: mode });
+      return { previous: r.previous, issuedAt: now, expiresAt: r.expiresAt };
+    });
+  }
+  transferRevoke(id: string, by: 'player' | 'ops') { return this.tx(id, null, (s, now) => ({ revoked: revokeTransfer(s, now, by) })); }
+  /** REQ-TRF-009: what the redeeming device would leave behind (read only; a never-stored account has none). */
+  async transferProgress(id: string) { return progressOf(await this.repo.get(id)); }
+  /** REQ-TRF-005/012: consume the code on the owner's object (serialised: one success per code). */
+  transferRedeemed(id: string, codeId: string) {
+    return this.tx(id, null, (s, now, emit) => {
+      redeemTransfer(s, codeId, now);
+      emit({ name: 'transfer_redeem', s1: 'ok' });
+      return { displayName: s.profile.displayName, cutoffAt: now };
+    });
+  }
+  /** REQ-TRF-014: a failed redeem, counted on the requesting account (the reason category only). */
+  transferFailed(id: string, reason: string) { return this.tx(id, null, (_s, _now, emit) => { emit({ name: 'transfer_redeem', s1: 'fail', s2: reason }); return { ok: true as const }; }); }
+  /** REQ-TRF-009: a retried redeem (same idempotency key, within an hour) on the requesting account (read only). */
+  async transferRedeemReplay(id: string, key: string) {
+    const r = (await this.repo.get(id))?.transfer?.redeemedAs;
+    return r && r.key === key && this.d.clock() - r.at < REDEEM_REPLAY_MS ? { playerId: r.playerId, displayName: r.displayName } : null;
+  }
+  transferRedeemRemember(id: string, key: string, playerId: string, displayName: string) {
+    return this.tx(id, null, (s, now) => { ensureTransfer(s).redeemedAs = { key, playerId, displayName, at: now }; return { ok: true as const }; });
+  }
+  /** REQ-TRF-010: the old-device cut-off (read only; null for accounts that never moved). */
+  async transferCutoff(id: string) { return (await this.repo.get(id))?.transfer?.cutoffAt ?? null; }
+  async adminTransfer(id: string) {
+    const s = await this.repo.get(id);
+    const t = s?.transfer;
+    return { exists: s !== null, code: t?.code ? { codeId: formatCodeId(t.code.id), mode: t.code.mode, issuedAt: t.code.issuedAt, expiresAt: t.code.expiresAt } : null, cutoffAt: t?.cutoffAt ?? null, lastRedeemedAt: t?.lastRedeemedAt ?? null, history: t?.history ?? [] };
+  }
+
   // ---- friend invite codes: per-player steps, orchestrated by InviteService (REQ-INV-*) ----
   inviteView(id: string, installHash: string | null) {
     return this.tx(id, null, (s, now) => {
@@ -1526,6 +1568,12 @@ export class PlayerService {
   }
   /** REQ-ACT-008: mark read up to an id (idempotent). */
   activityRead(id: string, upTo: number | null) { return this.tx(id, null, (s, now) => markActivityRead(this.d.master, s, upTo, now)); }
+
+  // ---- チュートリアルのやり直しとヒント集 (REQ-TUT-*, contracts/protocol.md §57) ----
+  /** REQ-TUT-005: the tips index for this player (reads only: cards open with the §4.3 unlocks, "new" = open and not seen). */
+  async tips(id: string, lang: Locale = 'ja', maxWhips = 6) { return tipsIndex(this.d.master, await this.load(id), this.d.clock(), lang, maxWhips); }
+  /** REQ-TUT-007: mark open cards seen (idempotent; never grants anything). */
+  tipsSeen(id: string, ids: string[]) { return this.tx(id, null, (s, now) => markTipsSeen(this.d.master, s, ids, now)); }
 
   // ---- ヘルプセンター (REQ-HELP-*, contracts/protocol.md §48) ----
   /** REQ-HELP-007: one vote per article (changeable), capped per game day. */

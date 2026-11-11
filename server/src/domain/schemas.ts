@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { StartVisuals } from './visuals.js';
 import { rulesetKeyProblems } from './ruleset.js';
+import { CHEER_KINDS, type cheerAdvert, type CheersMessage } from './cheer.js';
 
 const U64_MAX = (1n << 64n) - 1n;
 export const u64Decimal = z.string().regex(/^(0|[1-9]\d{0,19})$/).refine((s) => BigInt(s) <= U64_MAX, 'exceeds uint64');
@@ -122,6 +123,8 @@ export const clientMessageSchema = z.discriminatedUnion('t', [
   // finishTicks (optional, same order as `order`, -1 = did not finish) lets the server keep best times without the verifier
   z.object({ t: z.literal('res'), h: hex64, order: z.array(int.min(0).max(11)).min(1).max(12), finishTicks: z.array(int.min(-1).max(1_000_000)).max(12).optional(), skills: z.array(int.min(0).max(11)).max(12).optional(), assist: z.enum(['whip', 'full']).optional() }).strict(),
   z.object({ t: z.literal('ping'), c: z.number() }).strict(),
+  // REQ-CHEER-003 (§55): a spectator's preset cheer for a horse. Outside the lockstep stream: never an input, never logged
+  z.object({ t: z.literal('cheer'), slot: int.min(0).max(11), kind: z.enum(CHEER_KINDS) }).strict(),
 ]);
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
 
@@ -130,7 +133,9 @@ export type InputTriple = z.infer<typeof inputTripleSchema>;
 
 export type ServerMessage =
   /** `you` = -1 and `spectator` set for a read-only spectator (REQ-SPEC-002). */
-  | { t: 'start'; you: number; startAtMs: number; config: RaceStartConfig; visuals?: StartVisuals; spectator?: { delayMs: number } }
+  | { t: 'start'; you: number; startAtMs: number; config: RaceStartConfig; visuals?: StartVisuals; spectator?: { delayMs: number; cheer?: ReturnType<typeof cheerAdvert> } }
+  /** REQ-CHEER-005 (§55.3): one window of cheers ([slot, kind, count]); old clients ignore the unknown type. */
+  | CheersMessage
   | { t: 'b'; from: number; to: number; in: InputTriple[] }
   | { t: 'desync'; tick: number }
   | { t: 'final'; status: 'confirmed' | 'verifying' | 'void'; order: number[]; h: string }

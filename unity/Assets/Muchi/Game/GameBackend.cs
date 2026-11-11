@@ -340,8 +340,25 @@ namespace Muchi.Game
         /// <summary>Offline practice race with the partner (server horse when known).</summary>
         public IRaceDriver CreatePracticeRace(ulong seed)
         {
-            var spec = Partner != null ? RaceFactory.FromServer(Partner) : RaceFactory.DefaultPartner(_kv.Get(KeyPartnerName));
-            return AssistModel.Attach(new OfflineRaceDriver(RaceFactory.Practice(_ruleset, spec, seed), 0, autoStart: false), AssistLevel);
+            var d = new OfflineRaceDriver(RaceFactory.Practice(_ruleset, PartnerSpec(), seed), 0, autoStart: false);
+            return AssistModel.Attach(d, AssistLevel);
+        }
+
+        private HorseSpec PartnerSpec() => Partner != null ? RaceFactory.FromServer(Partner) : RaceFactory.DefaultPartner(_kv.Get(KeyPartnerName));
+
+        /// <summary>
+        /// §57 race lessons (position / stamina / reins), R19 integration: the §50 practice race — one practice path, built by
+        /// <see cref="PracticeSession"/> from the practice catalog (<paramref name="catalog"/>, else the built-in one of §50.6
+        /// with the partner) and its default setup. かんたん操作 stays off (a lesson teaches the controls, like the tutorial) and
+        /// the practice options (whip band, slow motion, ghost) are off. Offline only: never reaches the server or any count —
+        /// practice grants nothing (<see cref="PracticeSession.GrantsRewards"/>).
+        /// </summary>
+        public OfflineRaceDriver CreateLessonRace(ulong seed, PracticeCatalog catalog = null)
+        {
+            var c = catalog ?? PracticeCatalog.Fallback(_ruleset, PartnerSpec());
+            if (c.Horses.Count == 0) c.Horses.Add(new PracticeHorse { Spec = PartnerSpec(), Partner = true });
+            var session = new PracticeSession(c, PracticeSetup.Default(c), seed == 0 ? 1 : seed, new PracticeOptions { WhipWindow = false, SlowFinal = false, Ghost = false });
+            return new OfflineRaceDriver(session.Start());
         }
 
         /// <summary>

@@ -111,6 +111,27 @@ static class MaintenanceChecks
         m.OnUpgrade(new UpgradeInfo { Reason = "engine" });
         check(m.Body == MaintenanceModel.EngineBody, "engine: race-specific text");
 
+        // R19 integration (REQ-TRF-010 × REQ-MNT-014): 401 SESSION_REPLACED reaches the same model through ApiClient's one place,
+        // never retried; it is the strongest screen (the account lives on another device now): maintenance, update and offline
+        // do not replace it and a reload does not leave it — only starting new or redeeming a code does (LeaveSessionReplaced)
+        {
+            var http2 = new ScriptHttp();
+            var c2 = new ApiClient(http2, null, new ApiClientOptions { BaseUrl = "https://x", DevUserId = "p1", Platform = "ios", AppVersion = "1.2.1" }, new NoDelay());
+            var m2 = new MaintenanceModel(new FakeApi { Next = Status("ok") }, "ios", null, () => 1);
+            m2.Attach(c2);
+            http2.Replies.Enqueue(new HttpResponse(401, "{\"error\":{\"code\":\"SESSION_REPLACED\",\"message\":\"moved\"}}"));
+            try { await c2.GetPlayerAsync(); check(false, "401 SESSION_REPLACED throws"); } catch (SessionReplacedException) { }
+            check(http2.Sent == 1, "SESSION_REPLACED is not retried (no token refresh)");
+            check(m2.Screen == MaintenanceScreen.SessionReplaced && m2.Title == TransferCodeModel.ReplacedTitle && m2.Body == TransferCodeModel.ReplacedBody, "SESSION_REPLACED: the moved-to-another-device screen");
+            m2.OnMaintenance(new MaintenanceInfo { WindowId = "w", Group = "core", Scope = new List<string> { "all" } });
+            m2.OnUpgrade(new UpgradeInfo { Reason = "version" });
+            m2.OnOffline();
+            await m2.RefreshAsync();
+            check(m2.Screen == MaintenanceScreen.SessionReplaced, "maintenance, update, offline and a reload never replace it");
+            m2.LeaveSessionReplaced();
+            check(m2.Screen == MaintenanceScreen.None, "starting new / redeeming leaves it");
+        }
+
         // English
         Loc.SetLocale("en");
         try

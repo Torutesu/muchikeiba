@@ -203,6 +203,9 @@ export const EXEMPT_ROUTES: readonly string[] = [
   // Round 18 integration: the personal data export (§51) is a legal right like the account deletion — asking for it, its
   // status and the signed download stay open in any window and from an outdated app (the build runs in the player's alarm)
   'GET /v1/player/data-export', 'POST /v1/player/data-export', 'GET /v1/data-export/file',
+  // Round 19 (§54, REQ-TRF-016): 引き継ぎコード is account access like sign-in and deletion — a player changing phones is
+  // never locked out by a window or an old app. It moves no coins; ops stop it with progression.transfer.enabled.
+  'GET /v1/transfer/code', 'POST /v1/transfer/code', 'DELETE /v1/transfer/code', 'POST /v1/transfer/redeem',
 ];
 
 const PREFIX_GROUPS: [string, MaintenanceGroup][] = [

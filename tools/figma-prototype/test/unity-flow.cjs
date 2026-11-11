@@ -655,6 +655,33 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   // round 14 (REQ-MYRP-*): マイリプレイ — two demo races on the real engine → the list (best moments / recent) → 残す → the
   // replay sheet → rename (typed, NG word refused) → favourite, public → the player (WASM re-simulation: 2×, camera on
   // another horse, the last 200 m, share card + replay_share) → a friend's public replay → 「再生できません」 (retired ruleset)
+  // round 19 (REQ-CHEER-*, protocol §55): 観戦中の応援 — the lobby link → the spectate screen of a demo friend room → pick a horse
+  // → いけ！ (toast, the three buttons greyed for 2 s, back after) → the windows (lines, per-horse totals) → back (one cheer_send row)
+  async function cheerFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(() => globalThis.__muchi.show('RaceLobby')); await waitScreen('lobby');
+    await click('観戦'); await waitScreen('spectate'); await waitIn('.cheer-row');
+    assert.equal(await page.locator('.screen.in .cheer-row').count(), 12, 'cheer: one chip per horse');
+    assert.equal(await page.locator('.screen.in [data-cheer]').count(), 3, 'cheer: three preset buttons');
+    assert.equal(await page.locator('.screen.in input, .screen.in textarea, .screen.in [contenteditable]').count(), 0, 'cheer: no free text');
+    await shot('spectate', 400);
+    await page.locator('.screen.in .cheer-row[data-slot="4"]').click(); await waitIn('[data-target="4"]');
+    await page.locator('.screen.in [data-cheer="go"]').click(); await page.waitForTimeout(250);
+    assert.match(await page.locator('.toast').last().textContent(), /5番に「いけ！」/, 'cheer: the toast names the horse and the cheer');
+    assert.equal(await page.locator('.screen.in [data-cheer].disabled').count(), 3, 'cheer: the buttons grey for 2 s');
+    await shot('spectate-cheered-toast', 100);
+    await page.waitForFunction(() => document.querySelectorAll('.screen.in [data-cheer].disabled').length === 0, null, { timeout: 4000 });
+    await page.waitForFunction(() => Number(document.querySelector('.screen.in .cheer-burst')?.dataset.lines ?? 0) > 0, null, { timeout: 8000 });
+    assert.ok(await page.locator('.screen.in .cheer-row [data-total]:not([data-total="0"])').count() > 0, 'cheer: per-horse totals grow');
+    assert.ok(!/倍|お得|今だけ|残りわずか|コイン|ギフト|投げ銭/.test(await page.locator('.screen.in').innerText()), 'cheer: nothing sold, no pressure words');
+    await shot('spectate-burst', 300);
+    await click('戻る'); await waitScreen('lobby'); await page.waitForTimeout(300);
+    const kpi = await page.evaluate(() => globalThis.__muchi.lastCheerKpi);
+    assert.deepEqual(kpi.find((k) => k.name === 'cheer_send'), { name: 'cheer_send', s1: 'friend', count: 1 }, 'cheer: one cheer_send row for the visit');
+    assert.ok(kpi.some((k) => k.name === 'cheer_seen' && k.s2 === 'spectator'), 'cheer: one cheer_seen row');
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
+  }
+
   async function myReplaysFlow() {
     const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
     await page.evaluate(() => globalThis.__muchi.show('MyReplays')); await waitScreen('my-replays'); await waitIn('.rp-saved');
@@ -1096,6 +1123,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await cupsFlow();
   await practiceFlow(); // round 18: 練習レース
   await privacyFlow(); // round 18: プライバシー › データのダウンロード
+  await cheerFlow();
   await page.evaluate(() => globalThis.__muchi.show('Scout')); await waitScreen('scout'); await shot('scout', 500);
   await click('提供割合'); await shot('scout-rates', 400); await click('BACK');
   await waitScreen('scout'); await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal'); await shot('scout-paid-reveal', 700);
@@ -1114,8 +1142,13 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   // the race HUD (full layout) and the result screen in a race from the lobby
   await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
   await click('レースへ'); await waitScreen('lobby'); await click('ランク戦に出る'); await waitScreen('race', 20000);
+  await page.evaluate(() => { globalThis.__muchi.cheerStats = null; globalThis.__muchi.lastCheerKpi = null; });
   await rideRace(true);
   await waitScreen(['result'], 30000); await shot('race-result-day7', 900);
+  // round 19 (REQ-CHEER-007/013): spectators' cheers reached the racer's quiet chip; one cheer_seen (racer) row for the race
+  const cs = await page.evaluate(() => ({ stats: globalThis.__muchi.cheerStats, kpi: globalThis.__muchi.lastCheerKpi }));
+  assert.ok(cs.stats && cs.stats.shown > 0, 'race: the cheer chip showed cheers for the partner: ' + JSON.stringify(cs));
+  assert.ok(cs.kpi && cs.kpi.filter((k) => k.name === 'cheer_seen' && k.s2 === 'racer').length === 1 && !cs.kpi.some((k) => k.name === 'cheer_send'), 'race: one cheer_seen (racer) row, no cheer_send');
 
   // ------------------------------------------------------------------ 3. round 9
   // replay share card: the last 200 m re-simulated by ReplayClip (same hash as the live race), looping on the 3D view
@@ -1254,6 +1287,8 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   // my code + share, demo friends redeeming it (real InviteService), milestone rewards via the outbox, entering a code
   await demo('day1');
   await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings');
+  // R19 integration: 友達招待 is on その他's second page (見た目・お世話・仲間)
+  await page.locator('.screen.in [data-more-tab="looks"]').click(); await waitScreen('settings'); await page.waitForTimeout(300);
   await page.locator('.screen.in [data-action="invite"]').click(); await waitScreen('invite'); await page.waitForTimeout(400);
   const myCode = await page.locator('.screen.in [data-code]').getAttribute('data-code');
   assert.match(myCode, /^[23456789BCDFGHJKMNPQRSTVWXZ]{8}$/, 'my invite code');
@@ -1617,6 +1652,176 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await page.locator('.screen.in [data-action="inquiry-send"]').click(); await waitScreen('my-inquiries'); await page.waitForTimeout(400);
   assert.equal(await page.locator('.screen.in .inq-detail').getAttribute('data-status'), 'received', 'the new inquiry is received');
   await shot('help-inquiry-sent', 300);
+  // ------------------------------------------------------------------ 6. round 19: 画質・通信量 / ストレージ (REQ-PERF-*)
+  // the settings row → four rows with what auto means here; a choice applies at once (the 3D view's pixel ratio and
+  // shadows, the frame cap, the home art's drift) and is stored on this device only; perf_setting_change only for a real
+  // change; the battery saver lowers menus but not the race; the storage screen: rows, the size before 「すべてダウンロード」,
+  // Wi-Fi only under the data saver, the cellular confirmation, the download, and clearing keeps the required files
+  {
+    await page.evaluate(() => { globalThis.__muchiKpi = []; globalThis.__muchi.perf.resetStorage(); globalThis.__muchi.perf.net('wifi'); });
+    await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings'); await page.waitForTimeout(300);
+    await page.locator('.screen.in .btn[data-action="perf"]').click(); await waitScreen('perf-settings'); await page.waitForTimeout(400);
+    assert.equal(await page.locator('.screen.in [data-perf-row]').count(), 4, 'four rows');
+    assert.match(await page.locator('.screen.in [data-perf-auto="graphics"]').innerText(), /^自動：(低|中|高)$/, 'what auto means on this device');
+    assert.match(await page.locator('.screen.in [data-perf-now="menu"]').innerText(), /^いまの表示：画質 (低|中|高)・(30|60)fps・描画 \d+%$/);
+    assert.match(await page.locator('.screen.in [data-perf-fair]').innerText(), /結果や公平さは同じ/);
+    await shot('perf-settings', 300);
+    const choose = async (row, v) => { await page.locator(`.screen.in [data-perf-row="${row}"] [data-perf-choice="${v}"]`).click(); await page.waitForTimeout(350); };
+    await choose('graphics', 'high');
+    let pf = await page.evaluate(() => globalThis.__muchi.perf.get());
+    assert.equal(pf.profile.tier, 'high', 'graphics high in force');
+    const q = await page.evaluate(() => ({ ...document.getElementById('race-canvas').dataset }));
+    assert.ok(Number(q.pixelRatio) > 0 && (q.shadows === 'soft' || (pf.device.profile.software && q.shadows === 'off')), 'the 3D view took the quality: ' + JSON.stringify(q));
+    await choose('graphics', 'low');
+    const qLow = await page.evaluate(() => ({ ...document.getElementById('race-canvas').dataset }));
+    assert.equal(qLow.shadows, 'off', 'low quality: no shadows');
+    assert.ok(Number(qLow.pixelRatio) <= Number(q.pixelRatio), 'low quality: a lower render scale');
+    await choose('graphics', 'low'); // the same value: nothing
+    await choose('batterySaver', 'on');
+    pf = await page.evaluate(() => globalThis.__muchi.perf.get());
+    assert.equal(pf.profile.targetFrameRate, 30, 'battery saver: menus at 30 fps');
+    assert.equal(await page.evaluate(() => document.documentElement.dataset.perfAmbient), 'off', 'battery saver: no ambient drift');
+    assert.match(await page.locator('.screen.in [data-perf-now="menu"]').innerText(), /・省電力$/);
+    assert.equal(await page.locator('.screen.in [data-perf-now="race"]').innerText(), `レース中：${(await page.evaluate(() => globalThis.__muchi.perf.resolve(globalThis.__muchi.perf.get().settings, true))).targetFrameRate}fps`);
+    await choose('frameRate', '60');
+    assert.equal((await page.evaluate(() => globalThis.__muchi.perf.resolve(globalThis.__muchi.perf.get().settings, true))).targetFrameRate, 60, 'the race keeps its 60 fps cap under the battery saver');
+    await choose('dataSaver', 'on');
+    await shot('perf-settings-changed', 300);
+    const pk = await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name === 'perf_setting_change'));
+    assert.deepEqual(pk.map((e) => `${e.setting}=${e.value}`), ['graphics=high', 'graphics=low', 'batterySaver=on', 'frameRate=60', 'dataSaver=on'], 'perf_setting_change only for real changes');
+    for (const e of pk) assert.ok((await page.evaluate((x) => globalThis.__muchi.logic.perfKpi('perf_setting_change', { setting: x.setting, value: x.value, deviceClass: x.deviceClass }), e)).ok, 'accepted by the server schema');
+    assert.deepEqual(JSON.parse(await page.evaluate(() => localStorage.getItem('muchi.perf.settings'))), { graphics: 'low', frameRate: '60', batterySaver: true, dataSaver: true }, 'stored on the device');
+    // the storage screen
+    await page.locator('.screen.in .btn[data-action="storage"]').click(); await waitScreen('storage'); await page.waitForTimeout(400);
+    assert.equal(await page.locator('.screen.in [data-storage-row]').count(), 6, 'six rows');
+    const reqBytes = Number(await page.locator('.screen.in [data-storage-row="required"]').getAttribute('data-bytes'));
+    assert.ok(reqBytes > 0 && Number(await page.locator('.screen.in [data-storage-row="stale"]').getAttribute('data-bytes')) > 0);
+    const pre = Number(await page.locator('.screen.in [data-predownload]').getAttribute('data-predownload'));
+    assert.ok(pre > 0, 'download all: the size first');
+    assert.match(await page.locator('.screen.in [data-predownload]').innerText(), /^あと \d+(\.\d)?(MB|KB|GB)$/);
+    assert.equal(await page.locator('.screen.in [data-variant="low"]').count(), 1, 'data saver: light versions');
+    await shot('storage', 300);
+    await page.locator('.screen.in [data-net="cellular"]').click(); await page.waitForTimeout(350);
+    assert.ok(await page.locator('.screen.in .btn[data-action="predownload"]').evaluate((e) => e.classList.contains('disabled')), 'cellular + data saver: Wi-Fi only');
+    assert.match(await page.locator('.screen.in [data-blocked]').innerText(), /Wi-Fi に接続すると実行できます/);
+    await shot('storage-wifi-only', 200);
+    // data saver off on cellular: the confirmation with the size; やめる starts nothing
+    await page.evaluate(() => globalThis.__muchi.perf.set('dataSaver', 'off'));
+    await page.evaluate(() => globalThis.__muchi.show('Storage')); await waitScreen('storage'); await page.waitForTimeout(300);
+    const preFull = Number(await page.locator('.screen.in [data-predownload]').getAttribute('data-predownload'));
+    assert.ok(preFull > pre, 'normal files are bigger than the light versions');
+    await page.locator('.screen.in .btn[data-action="predownload"]').click(); await page.waitForTimeout(400);
+    assert.match(await page.locator('.screen.in .perf-confirm').innerText(), /モバイル通信で約.+のデータをダウンロードします/);
+    await shot('storage-cellular-confirm', 200);
+    await page.locator('.screen.in [data-confirm="no"]').click(); await waitScreen('storage'); await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name === 'asset_predownload').length), 0, 'やめる: nothing starts');
+    await page.locator('.screen.in .btn[data-action="predownload"]').click(); await page.waitForTimeout(300);
+    await page.locator('.screen.in [data-confirm="yes"]').click(); await page.waitForTimeout(500);
+    await shot('storage-downloading', 0);
+    await page.waitForFunction(() => document.querySelector('.screen.in [data-predownload]')?.dataset.predownload === '0', null, { timeout: 10000 });
+    const pd = await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name === 'asset_predownload'));
+    assert.equal(pd.length, 1); assert.equal(pd[0].variant, 'full');
+    assert.ok((await page.evaluate((x) => globalThis.__muchi.logic.perfKpi('asset_predownload', { bucket: x.bucket, variant: x.variant }), pd[0])).ok, 'asset_predownload accepted by the server schema');
+    assert.match(await page.locator('.screen.in [data-predownload]').innerText(), /すべてダウンロード済みです/);
+    await shot('storage-done', 300);
+    // clear cache: the size first, then only the required files stay
+    await page.locator('.screen.in .btn[data-action="clear-cache"]').click(); await page.waitForTimeout(400);
+    assert.match(await page.locator('.screen.in .perf-confirm').innerText(), /遊ぶのに必要なデータとアカウント・進み具合は消えません/);
+    await shot('storage-clear-confirm', 200);
+    await page.locator('.screen.in [data-confirm="clear"]').click(); await waitScreen('storage'); await page.waitForTimeout(400);
+    assert.equal(Number(await page.locator('.screen.in [data-storage-row="required"]').getAttribute('data-bytes')), reqBytes, 'required files stay');
+    for (const k of ['screens', 'ondemand', 'low', 'partial', 'stale']) assert.equal(await page.locator(`.screen.in [data-storage-row="${k}"]`).getAttribute('data-bytes'), '0', `${k} cleared`);
+    assert.equal(Number(await page.locator('.screen.in [data-storage-total]').getAttribute('data-storage-total')), reqBytes);
+    // the help article from the settings screen
+    await page.evaluate(() => globalThis.__muchi.show('PerfSettings')); await waitScreen('perf-settings'); await page.waitForTimeout(300);
+    await page.locator('.screen.in [data-help-context="storage"]').click(); await waitScreen('help-article'); await page.waitForTimeout(300);
+    assert.equal(await page.locator('.screen.in [data-article]').getAttribute('data-article'), 'data_storage');
+    await shot('help-data-storage', 300);
+    // back to the defaults for the rest of the flow
+    await page.evaluate(() => { globalThis.__muchi.perf.reset(); globalThis.__muchi.perf.resetStorage(); globalThis.__muchi.perf.net('wifi'); });
+    await page.evaluate(() => globalThis.__muchi.show('PerfSettings')); await waitScreen('perf-settings'); await page.waitForTimeout(200);
+  }
+  // ------------------------------------------------------------------ 6. round 19: チュートリアルのやり直しとヒント集 (REQ-TUT-*)
+  // settings › ヒント (NEW badge), the library by topic, a card with numbers from data and 「くわしく」 → help, a tour (pages,
+  // start / finish), the 「？」 of the rates / training / stable / bulk retire screens, and the whip lesson = the FTUE tutorial
+  // race in the real engine (two whips win) — the FTUE state and the first-time rewards never change
+  await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings'); await page.waitForTimeout(300);
+  const tipsRow = page.locator('.screen.in .btn[data-action="tips"]');
+  assert.match(await tipsRow.innerText(), /NEW \d+/, 'settings: the ヒント row carries the NEW count');
+  await tipsRow.click(); await waitScreen('tips'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in [data-tip-topic]').count(), 5, 'five topics');
+  assert.equal(await page.locator('.screen.in .tip-lesson').count(), 4, 'four race lessons');
+  assert.equal(await page.locator('.screen.in .tip-tour').count(), 6, 'six feature tours');
+  const tipsText = await page.locator('.screen.in').innerText();
+  assert.ok(!/今だけ|残りわずか|倍|お得|オッズ/.test(tipsText), 'no urgency, multiplier or betting wording');
+  await shot('tips', 400);
+  const ftue0 = await page.evaluate(() => { const s = globalThis.__muchi.state(); return { ftue: s.ftue, attempt: s.tutorialAttempt }; });
+  const facts0 = await page.evaluate(async () => (await globalThis.__muchi.logic.tutorialFacts()).value);
+  await page.locator('.screen.in [data-tip="whip_window"]').click(); await waitScreen('tip-card'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in [data-tip-help]').getAttribute('data-tip-help'), 'whip', 'くわしく links the help article');
+  await shot('tip-card', 300);
+  await page.locator('.screen.in [data-tip-help]').click(); await waitScreen('help-article'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-article]').getAttribute('data-article'), 'whip', 'the long text lives in the help article');
+  await page.evaluate(() => globalThis.__muchi.show('Tips')); await waitScreen('tips'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-tip="whip_window"]').getAttribute('data-new'), '0', 'read: NEW cleared');
+  await page.locator('.screen.in [data-tip-topic="scout"]').click(); await waitScreen('tips'); await page.waitForTimeout(300);
+  await page.locator('.screen.in [data-tip="scout_pity_tip"]').click(); await waitScreen('tip-card'); await page.waitForTimeout(300);
+  assert.match(await page.locator('.screen.in .tip-body').innerText(), /[0-9]+回分/, 'the pity count is filled from data');
+  // a tour: every page, then finish
+  await page.evaluate(() => globalThis.__muchi.show('Tips')); await waitScreen('tips'); await page.waitForTimeout(300);
+  await page.locator('.screen.in [data-tutorial="tour_scout"]').click(); await waitScreen('tip-card'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-tour-page]').getAttribute('data-tour-page'), '1');
+  await shot('tip-tour', 300);
+  for (let i = 0; i < 6 && (await screen()) === 'tip-card'; i++) { await page.locator('.screen.in [data-action="tour-next"]').click(); await page.waitForTimeout(450); }
+  assert.equal(await screen(), 'tips', 'the tour ends back on ヒント');
+  // the 「？」 buttons
+  await page.evaluate(() => globalThis.__muchi.show('Odds', 'standard')); await page.waitForTimeout(500);
+  await page.locator('.screen.in [data-tip-context="gacha_odds"]').click(); await waitScreen('tip-card'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in .tip-reader').getAttribute('data-tip'), 'scout_pity_tip', 'rates 「？」 → the pity card');
+  await page.locator('.screen.in [data-action="tip-close"]').click(); await page.waitForTimeout(500);
+  assert.equal(await screen(), 'odds', 'closing returns to the rates');
+  await page.evaluate(() => globalThis.__muchi.show('Roster')); await waitScreen('roster'); await page.waitForSelector('.screen.in .org-list', { timeout: 15000 });
+  await page.locator('.screen.in [data-tip-context="roster_bulk_retire"]').click(); await waitScreen('tip-card'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in .tip-reader').getAttribute('data-tip'), 'roster_retire', 'bulk retire 「？」 → its card');
+  await shot('tip-context-roster', 300);
+  await page.evaluate(() => globalThis.__muchi.show('Training')); await waitScreen('training'); await page.waitForTimeout(500);
+  await page.locator('.screen.in [data-tip-context="training"]').click(); await page.waitForTimeout(600);
+  if (await screen() === 'tip-card') assert.equal(await page.locator('.screen.in .tip-reader').getAttribute('data-tip'), 'training_timing', 'training 「？」 → its card');
+  await page.evaluate(() => globalThis.__muchi.show('Stable')); await page.waitForTimeout(500);
+  assert.equal(await page.locator('.screen.in [data-tip-context="breeding"]').count(), 1, 'the stable carries the breeding 「？」');
+  const tk = await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name.startsWith('tip') || e.name === 'tutorial_replay'));
+  assert.ok(tk.some((e) => e.name === 'tip_context_open' && e.context === 'gacha_odds' && e.tipId === 'scout_pity_tip'), 'tip_context_open');
+  assert.ok(tk.some((e) => e.name === 'tip_view' && e.tipId === 'scout_pity_tip' && e.source === 'context'), 'tip_view (context)');
+  assert.ok(tk.some((e) => e.name === 'tutorial_replay' && e.tutorialId === 'tour_scout' && e.stage === 'finish'), 'tutorial_replay finish for the tour');
+  // the whip lesson: the briefing, then the FTUE tutorial race in WASM; two whips in the last 300 m win
+  await page.evaluate(() => globalThis.__muchi.show('Tips')); await waitScreen('tips'); await page.waitForTimeout(300);
+  await page.locator('.screen.in [data-tutorial="race_whip"]').click(); await waitScreen('tip-lesson'); await page.waitForTimeout(400);
+  assert.match(await page.locator('.screen.in').innerText(), /成績・ミッション・報酬には数えません/, 'the briefing says a lesson is practice');
+  await shot('tip-lesson', 300);
+  await page.locator('.screen.in [data-action="lesson-start"]').click(); await waitScreen('race-tutorial'); await page.waitForTimeout(300);
+  let lw = 0, lastLw = 0;
+  for (let i = 0; i < 600; i++) {
+    const s = await state();
+    if (s.f?.done || (await screen()) !== 'race-tutorial') break;
+    if (s.f && s.f.departed && lw < 2 && (s.f.chance || s.f.remainingM <= 280) && Date.now() - lastLw > 700) { await page.locator('.screen.in .btn.whip').click({ force: true }); lw++; lastLw = Date.now(); }
+    await page.waitForTimeout(60);
+  }
+  await waitScreen('lesson-result', 20000); await page.waitForTimeout(500);
+  assert.equal(await page.locator('.screen.in [data-lesson]').getAttribute('data-won'), '1', 'two whips win the whip lesson');
+  await shot('lesson-result', 400);
+  const ftue1 = await page.evaluate(() => { const s = globalThis.__muchi.state(); return { ftue: s.ftue, attempt: s.tutorialAttempt }; });
+  assert.deepEqual(ftue1, ftue0, 'the FTUE step and tutorial attempt are untouched');
+  const facts1 = await page.evaluate(async () => (await globalThis.__muchi.logic.tutorialFacts()).value);
+  assert.deepEqual(facts1, facts0, 'no reward, no race counted, the first-time rewards unchanged');
+  const tk2 = await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name === 'tutorial_replay' && e.tutorialId === 'race_whip').map((e) => e.stage));
+  assert.deepEqual(tk2, ['start', 'finish'], 'tutorial_replay start / finish for the lesson');
+  // a practice lesson (reins) starts in the real engine without かんたん操作 and quits back to ヒント
+  await page.locator('.screen.in [data-action="lesson-back"]').click(); await waitScreen('tips'); await page.waitForTimeout(300);
+  await page.evaluate(() => globalThis.__muchi.show('StartLesson', 'race_reins')); await waitScreen('race', 20000); await page.waitForTimeout(1500);
+  const rs = await state();
+  assert.ok(rs.active && rs.f && (rs.f.assist ?? 'off') === 'off', 'the reins lesson rides the practice race, unassisted');
+  await shot('lesson-reins-hud', 0, true);
+  await click('中断'); await waitScreen('tips');
   // ------------------------------------------------------------------ 6. round 17: おすすめフレンド (REQ-FSUG-*)
   // people met through the real paths (an event, a friend room, a like, a cheer, mutual friends); the opted-out player and
   // the ranked-only opponent never appear; 申請する goes through the friend request flow; 表示しない is remembered; the switch
@@ -1841,6 +2046,57 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   // a brand-new player (before the partner and two races) sees only 「相棒で、本番のコースへ」 — the FTUE stays in charge
   const nxNew = await page.evaluate(async () => { const L = globalThis.__muchi.logic; L.reset(); await L.bootstrap(); return (await L.nextActions()).value; });
   assert.equal(nxNew.primary.kind, 'first_race'); assert.equal(nxNew.chips.length, 0); assert.equal(nxNew.onboarding, true);
+
+  // ------------------------------------------------------------------ round 19: 引き継ぎコード (REQ-TRF-*)
+  // settings → IDとパスワード: the checklist ticks as the player types, issue, the generated password once (gone after
+  // leaving); title → データ引き継ぎ: a wrong password is one neutral message, this device's progress is confirmed first,
+  // the previous phone's account arrives, and the old device's notice
+  await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in .btn[data-action="transfer-code"]').count(), 1, 'その他 has the ID & password button next to Apple / Google');
+  await page.locator('.screen.in .btn[data-action="transfer-code"]').click(); await waitScreen('transfer-issue'); await page.waitForTimeout(400);
+  assert.match(await page.locator('.screen.in .trf-id').innerText(), /まだ発行していません/);
+  const trfRules = () => page.locator('.screen.in .trf-rule').evaluateAll((els) => els.map((e) => e.dataset.rule + ':' + e.dataset.ok));
+  await page.locator('.screen.in .trf-pw').fill('abc'); await page.waitForTimeout(150);
+  assert.deepEqual(await trfRules(), ['length:0', 'charset:1', 'mix:0', 'common:1'], 'the checklist follows the typing');
+  await page.locator('.screen.in .trf-pw').fill('Haneda2026!'); await page.locator('.screen.in .trf-pw2').fill('Haneda2026!'); await page.waitForTimeout(150);
+  assert.deepEqual(await trfRules(), ['length:1', 'charset:1', 'mix:1', 'common:1']);
+  await shot('transfer-issue-rules', 300);
+  await page.locator('.screen.in .trf-issue').click(); await page.waitForTimeout(900);
+  assert.match(await page.locator('.screen.in .trf-id').innerText(), /^[2-9A-Z]{3}-[2-9A-Z]{3}-[2-9A-Z]{3}$/, 'the ID is shown');
+  assert.match(await page.locator('.screen.in .trf-expiry').innerText(), /有効期限：/);
+  assert.equal(await page.locator('.screen.in .trf-password').count(), 0, 'a custom password is never shown back');
+  assert.ok(!(await page.locator('.screen.in').innerText()).includes('Haneda2026!'));
+  await shot('transfer-issue', 400);
+  await page.locator('.screen.in .trf-generate').click(); await page.waitForTimeout(900);
+  assert.match(await page.locator('.screen.in .trf-password').innerText(), /^[2-9a-z]{4}-[2-9a-z]{4}-[2-9a-z]{4}$/, 'the generated password, once');
+  await shot('transfer-issue-generated', 300);
+  await page.locator('.screen.in .btn.back').click(); await waitScreen('settings');
+  await page.evaluate(() => globalThis.__muchi.show('TransferIssue')); await waitScreen('transfer-issue'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .trf-password').count(), 0, 'leaving the screen forgets the generated password');
+  assert.ok(!(await page.locator('.screen.in').innerText()).match(/今だけ|残りわずか|倍|お得/), 'no urgency wording');
+  await page.evaluate(() => globalThis.__muchi.show('Title')); await waitScreen('title'); await page.waitForTimeout(300);
+  await page.locator('.screen.in .trf-title-link').click(); await waitScreen('transfer-redeem'); await page.waitForTimeout(400);
+  await page.locator('.screen.in .trf-demo').click(); await page.waitForTimeout(1200);
+  assert.match(await page.locator('.screen.in .trf-id-input').inputValue(), /^[2-9A-Z]{3}-[2-9A-Z]{3}-[2-9A-Z]{3}$/, 'the previous phone\'s ID is filled in');
+  await shot('transfer-redeem', 400);
+  await page.locator('.screen.in .trf-pw-input').fill('Wrong2026!'); await page.locator('.screen.in .trf-redeem-go').click(); await page.waitForTimeout(1200);
+  // this device has progress: the confirm sheet comes first (before any code is tried), then the wrong password
+  assert.equal(await page.locator('.screen.in .trf-confirm').count(), 1, 'confirm before the code is tried');
+  await page.locator('.screen.in .trf-confirm-yes').click(); await page.waitForTimeout(1200);
+  assert.equal(await page.locator('.screen.in .trf-redeem-error').innerText(), 'IDまたはパスワードが違います', 'one neutral message');
+  await page.locator('.screen.in .trf-pw-input').fill('Haneda2026!'); await page.locator('.screen.in .trf-redeem-go').click(); await page.waitForTimeout(1200);
+  assert.equal(await page.locator('.screen.in .trf-confirm').count(), 1, 'this device has progress: confirm first');
+  assert.match(await page.locator('.screen.in .trf-confirm-line').innerText(), /この端末のデータ（.+）は、引き継ぎの後に使えなくなります。/);
+  await shot('transfer-confirm', 300);
+  await page.locator('.screen.in .trf-confirm-yes').click(); await page.waitForTimeout(1200);
+  assert.equal(await page.locator('.screen.in .trf-done').count(), 1);
+  assert.match(await page.locator('.screen.in .trf-done').innerText(), /ハヤテ/);
+  assert.ok(typeof (await page.evaluate(() => globalThis.__muchi.logic.transfer.oldDeviceCutoff())) === 'number', 'the previous phone is cut off');
+  assert.deepEqual(await page.evaluate(() => globalThis.__muchi.logic.transfer.kpi().filter((k) => k.name === 'transfer_redeem').map((k) => k.s1 + ':' + (k.s2 ?? ''))), ['fail:invalid', 'ok:'], 'KPI: outcome and reason category only');
+  await shot('transfer-done', 300);
+  await page.locator('.screen.in .trf-done-old').click(); await waitScreen('transfer-replaced'); await page.waitForTimeout(300);
+  assert.match(await page.locator('.screen.in').innerText(), /別の端末に引き継がれました/);
+  await shot('transfer-replaced', 300);
 
   // a reload on a named player goes straight home
   await demo('day3');

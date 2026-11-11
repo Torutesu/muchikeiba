@@ -105,6 +105,11 @@ C#（端末・検証サーバー）とTypeScript（Cloudflareサーバー）の�
 | `final` | `{"t":"final","status":"confirmed","order":[3,0,…],"h":"<64hex>"}` | `status`: `confirmed` / `verifying` / `void` |
 | `pong` | `{"t":"pong","c":…,"s":…}` | `s`はサーバー時刻 |
 | `err` | `{"t":"err","code":"…"}` | `BAD_MESSAGE` / `NOT_IN_RACE` / `RACE_OVER` / `TOO_EARLY` / `RESULT_TOO_EARLY` など |
+| `cheers` | `{"t":"cheers","n":[[3,"go",2]]}` | Round 19（§55）：観戦者の応援の1秒ごとの集計。**入力でもハッシュの材料でもない**（リプレイログ・チェックサム・結果に入らない） |
+
+互換性の注意（Round 19、§55）
+- 部屋 → 端末の**知らない `t` は無視する**こと（C# `LockstepClient` は `Errors` に `UNKNOWN_MESSAGE` を足すだけで、致命的ではない。Round 19 より前の端末も `cheers` を受け取って困らない）。
+- 端末 → 部屋の新しい `t`（`cheer`）は、部屋が `start` で案内した時（`spectator.cheer`）だけ送る。古い部屋は厳格なスキーマで知らない `t` を `BAD_MESSAGE` にする。`hello` に新しいフィールドを足さない（古い部屋が拒むため）。
 
 確定の規則
 - tick `n` は、部屋の時計が `startAtMs + (n + 1) * 1000 / tickHz` を過ぎた時点で確定。
@@ -188,6 +193,7 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 - 観戦者は `in` / `chk` / `res` を送らない（送ると `err` `SPECTATOR_READ_ONLY`）。`ping` には `pong` を返す。
 - 1部屋の観戦者数の上限は既定 200（`SPECTATOR_LIMIT`）。超えると `err` `SPECTATORS_FULL` で閉じる（close code 4003）。観戦の接続はプレイヤーごとに1本：同じプレイヤーの新しい観戦接続が来ると古い接続は close code 4000（`replaced`）で閉じる（選手の席と同じ。閉じられた側は再接続しない、§4.1）。観戦チケットの発行は1人あたり連続10回・その後6秒に1回まで（超過は `429 RATE_LIMITED`）。
 - 描画：観戦クライアントは `delayMs` だけ遅れて描く（`LockstepClient.RenderTickPermille` が自動で引く）。
+- 応援（Round 19、§55）：観戦者は `cheer` を送れ、観戦者と選手に `cheers`（1秒の集計）が届く。`start.spectator.cheer` が案内。レースの結果には入らない。
 
 ## 8.5 種牡馬の貸し借り（REQ-BREED-012）
 - `POST /v1/stud/breed` の本文 `{ "ownerId", "horseId", "damId", "useMaterial"?, "expectedFee"? }`（`Idempotency-Key` 必須）。
@@ -2629,9 +2635,9 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 ```
 - カテゴリ `id` は8つ：`getting_started`（はじめに）・`races`（レース・ムチ）・`horses`（馬・配合）・`scout`（スカウト・提供割合・天井）・`purchases`（購入・返金）・`account`（アカウント・引き継ぎ）・`deletion`（アカウント削除）・`accessibility`（アクセシビリティ）。全部そろっていて、それぞれ記事が1件以上。
 - 記事 `id` は `^[a-z0-9_]{2,40}$` で重ならない。`title` は1〜`titleMaxChars` 文字、`body` は1〜`bodyMaxChars` 文字（トークンを埋める前）、`keywords` は各言語20個まで・各20文字まで。日本語と英語でトークンの組が同じ。`related` は存在する別の記事。
-- 画面 `screen`：`home`・`settings`・`race_lobby`・`tutorial`・`training`・`breeding`・`stable`・`collection`・`gacha`・`gacha_odds`・`shop`・`history`・`gift_box`・`activity`・`accessibility`・`account_link`・`deletion`・`inquiry`・`my_inquiries`・`privacy`・`team_feed`・`practice`（後ろの3つは Round 18 統合）。
-- トークン：`pity_pulls:<バナー>`（天井までの回数）・`pity_coins:<バナー>`（天井までのコイン）・`pity_cost:<天井グループ>`・`rate:<バナー>:<レア度>`・`guarantee_rate:<バナー>:<レア度>`（10枠目の保証の表）・`price_single:<バナー>`・`price_ten:<バナー>`・`monthly_limit:<年齢帯>`（上限のある帯だけ）・`guardian_age`・`deletion_days`・`purchase_keep_days`・`coin_history_days`・`gacha_history_days`・`max_whips`。知らないトークン・無いバナー／グループ／帯は検査で落とす（リモート設定でバナーを外して記事が壊れる版は有効にできない）。
-- `contexts`（画面からの案内、REQ-HELP-008）：`gacha_odds`・`coin_shortfall`・`purchase`・`race_whip`・`race_result`・`training`・`breeding`・`history`・`gift_box`・`account_link`・`deletion`・`accessibility`・`privacy`（Round 18 統合：プライバシーの画面 → `data_export`） → 記事 id。Round 18 統合で記事 `data_export`・`quick_chat`・`practice_races`・`horse_goals` を足した（数字はトークン `export_cooldown_days`・`export_keep_days`・`export_link_minutes`・`qchat_interval_sec`・`qchat_per_day` から）。全部そろっていて、存在する記事を指す。
+- 画面 `screen`：`home`・`settings`・`race_lobby`・`tutorial`・`training`・`breeding`・`stable`・`collection`・`gacha`・`gacha_odds`・`shop`・`history`・`gift_box`・`activity`・`accessibility`・`account_link`・`deletion`・`inquiry`・`my_inquiries`・`privacy`・`team_feed`・`practice`（この3つは Round 18 統合）・`performance`・`storage`（§56）。
+- トークン：`pity_pulls:<バナー>`（天井までの回数）・`pity_coins:<バナー>`（天井までのコイン）・`pity_cost:<天井グループ>`・`rate:<バナー>:<レア度>`・`guarantee_rate:<バナー>:<レア度>`（10枠目の保証の表）・`price_single:<バナー>`・`price_ten:<バナー>`・`monthly_limit:<年齢帯>`（上限のある帯だけ）・`guardian_age`・`deletion_days`・`purchase_keep_days`・`coin_history_days`・`gacha_history_days`・`max_whips`・`cheer_interval_sec`（Round 19、§55 の応援の間隔の秒）。知らないトークン・無いバナー／グループ／帯は検査で落とす（リモート設定でバナーを外して記事が壊れる版は有効にできない）。
+- `contexts`（画面からの案内、REQ-HELP-008）：`gacha_odds`・`coin_shortfall`・`purchase`・`race_whip`・`race_result`・`training`・`breeding`・`history`・`gift_box`・`account_link`・`deletion`・`accessibility`・`privacy`（Round 18 統合：プライバシーの画面 → `data_export`）・`storage`（§56）・`practice`（Round 19 統合：練習の条件の画面 → `practice_races`） → 記事 id。Round 18 統合で記事 `data_export`・`quick_chat`・`practice_races`・`horse_goals` を足した（数字はトークン `export_cooldown_days`・`export_keep_days`・`export_link_minutes`・`qchat_interval_sec`・`qchat_per_day` から）。全部そろっていて、存在する記事を指す。
 
 ### 48.2 `GET /v1/help`（要認証、読むだけ・プレイヤーの状態に触れない）
 ```json
@@ -2887,7 +2893,7 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 | キー | 中身 |
 |---|---|
 | `format` `version` `requestId` `playerId` `generatedAt` `language` `timeUnit` `sections` `truncated` `notIncluded` `unclassified` | ヘッダー。`truncated` = `[{section, omitted}]`、`notIncluded` = 持っているが入れていないもの `[{key, reason}]`、`unclassified` = 分類されていないキー（常に空、テストで確認） |
-| `account` | `playerId`・`createdAt`・`lastSeenAt`・`age`（生年月・保護者の同意）・`consent`（規約・プライバシーポリシーの版と履歴）・`flags`・`deletion`（予定の状態・日時、確認トークンなし）・`moderation`（状態・期限・日時。検知の理由は入れない） |
+| `account` | `playerId`・`createdAt`・`lastSeenAt`・`age`（生年月・保護者の同意）・`consent`（規約・プライバシーポリシーの版と履歴）・`flags`・`deletion`（予定の状態・日時、確認トークンなし）・`moderation`（状態・期限・日時。検知の理由は入れない）・`transfer`（§54 引き継ぎコード、Round 19 統合：今のコードの種類・発行日時・期限・期限切れか、今日の発行数、前の端末の締め出しの時刻、発行・取り消し・引き継ぎの履歴。**コードの ID・パスワード・ハッシュ・塩・引き継ぎの再送用の記録は入れない**） |
 | `profile` | 表示名・称号・勝負服・勝負服エディタのプリセット・統計・レーティング（丸め）・シーズン・シーズンの記録 |
 | `settings` | アクセシビリティ（§41）・かんたん操作・実況パック・コース／部屋の条件・装備・厩舎の整理・プッシュの設定・広告の設定と視聴の記録（広告ネットワークの取引 ID なし）・殿堂の公開範囲・ライバルの不参加 |
 | `horses` | 馬（`studSire` は他のプレイヤーの ID を外し、馬の名前だけ）・絆・調教・`goals`（§53 馬ごとの目標の達成日時とホームのピン、Round 18 統合） |
@@ -2904,7 +2910,7 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 | `photos` | 保存した写真の記録（§38、画像は元から保存しない） |
 | `cups` | 参加中・履歴・トロフィー・受けた招待（主催者の ID なし） |
 | `recaps` | 振り返りのスナップショット（§43） |
-| `play` | シーズンパス・ログインボーナス・ミッション・オンボーディング・配合・タイムアタック（記録・走行）・週替わりチャレンジ・イベント・大会・ライバル（**結果だけ**、相手の ID・名前なし）・種付け（自分の出品と記録、相手の ID なし）・殿堂・図鑑・支部の共同目標・復帰・次にやること・プッシュの予定 |
+| `play` | シーズンパス・ログインボーナス・ミッション・オンボーディング・配合・タイムアタック（記録・走行）・週替わりチャレンジ・イベント・大会・ライバル（**結果だけ**、相手の ID・名前なし）・種付け（自分の出品と記録、相手の ID なし）・殿堂・図鑑・支部の共同目標・復帰・次にやること・プッシュの予定・`tips`（§57 読んだヒントのカードの ID、Round 19 統合） |
 | `devices` | 登録した端末（OS・登録日・最終利用・言語・プッシュトークンの末尾6文字だけ） |
 | `analytics` | KPI の状態・実験の割り当て、`events`：仮名の分析 ID（塩つきハッシュ）に結び付いた KPI の行（Analytics Engine の保存期間 90 日以内、`KPI_SQL_ACCOUNT_ID`／`KPI_SQL_TOKEN` が無ければ `available: false`） |
 | `helpInquiries` | ゲーム内のお問い合わせ（§48、Round 18 統合）：`items` = 問い合わせごとに種類・状態・言語・日時・**自分が書いた内容**（個人情報を置き換えた後の文と置き換えた数）・添えた記録・自動で添えた情報・メッセージ（`from: player/support`・本文・日時。**返信した運営の ID は入れない**＝運営のメモ）、`articleVotes` = 記事の「役に立った」 |
@@ -2916,6 +2922,7 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 - `operator_notes`：`supportFlags`（通報した人の ID を含みうる）・`supportGrants`・`adminOps`（運営の操作の記録。付与されたものはコインの履歴・プレゼント・アイテムにある）
 - `export_meta`：`dataExport`（このエクスポート自身の記録）
 - `third_party`：他のプレイヤーについての情報（申請・招待を送ってきた人、ライバル・種付けの相手、お知らせを送った人の ID）。**他のプレイヤーが自分について送った通報**は入れない（通報した人を特定できてしまい、第三者の権利利益を害するおそれ（法33条2項1号）と、モデレーションの業務に著しい支障（同2号）。弁護士の確認待ち、`docs/planning/03-legal-risk.md`）。
+- Round 19 統合：§55 の応援は誰が送ったかを保存しない（部屋の中で数えるだけ、`replays/<raceId>.cheers.json` も時間の区切りごとの数だけ）ので、エクスポートに入れるものは無い。§56 の画質・通信量の設定は端末だけに保存され、サーバーには無い。
 - 新しい状態のキーは `DEX_CLASSIFICATION`（`Record<keyof PlayerState | 拡張キー, …>`）にどちらかを書かないと型チェックとテスト（`test/data-export.test.ts`：インターフェース・`PlayerState & { … }` の拡張・実際の状態）が失敗する。Round 18 統合で分類したキー：`friendSuggest`→`social`、`horseGoals`→`horses`、拡張キー `help`→`helpInquiries`、`reports`（通報の1日の数）→`reportsMade`。§46 メンテナンス・§50 練習レースはプレイヤーの状態に何も置かない。§52 定型チャットの投稿は支部のフィード（TeamDO）にあり、プレイヤーの状態には無い：支部のフィードは支部員の共有の場で、決まった文と選んだ値だけ・保存は `retainDays` 日と件数まで（§52.6）なので、エクスポートには入れない（`docs/planning/03-legal-risk.md` の確認事項）。
 
 ### 51.6 人が読める概要（`.txt`）
@@ -3089,3 +3096,310 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 
 ### 53.9 アカウント削除
 状態の `horseGoals`（達成の記録・ピン）と戦績の `goal` は最後の `wipe` で消える。殿堂の写し（§34.5）は既存の手順で消える。他の場所に写しは無い。
+
+## 54. 引き継ぎコード（ID＋パスワード、REQ-TRF-001〜020、`server/src/domain/transferCode.ts`・`transferService.ts`・`server/src/http/customToken.ts`、C# `TransferCode.cs`（`TransferCodeRules`）・`Muchi.Game.TransferCodeModel`、docs/handoff-codex-round19-transfer-code.md）
+Apple／Google の連携（REQ-API-005）に加えて、日本のゲームでおなじみの **ID＋パスワード** で機種変更できるようにする。古い端末の設定で引き継ぎコードを発行し、新しい端末でIDとパスワードを入れると、サーバーが確かめて **元のアカウント（同じ uid）の Firebase カスタムトークン** を返す。新しい端末はそのトークンで Firebase にサインインし、元のアカウントとして遊ぶ。**コインもアイテムも動かさない**（E番号なし）：アカウントそのもの（uid）が新しい端末に移るので、有償コイン・購入記録・ストアのレシートの紐付けは uid のまま変わらない（資金決済法：有償コインは失われない）。
+
+**決まりごと**
+- コードは **1回だけ**使える。使ったら消える（次の機種変更には新しく発行する）。発行し直すと前のコードは使えなくなる。**有効期限**は `expiryDays`（既定30日、1〜90）。
+- パスワードは**サーバーに保存しない**。保存するのは PBKDF2-HMAC-SHA256（WebCrypto、反復 100,000 回＝Workers の上限、記録ごとに16バイトのソルト、32バイト）の結果だけ。反復回数とアルゴリズムは記録ごとに持つ（後で上げられる）。比較は定数時間。
+- **どの口でも ID が有るか無いかを教えない**（オラクルを作らない）：知らない ID・違うパスワード・ロック中のコード・使用済み・取り消し済みは**同じ** `TRANSFER_INVALID`。知らない ID でも同じ計算（ダミーの PBKDF2）をして時間でも区別できないようにする。期限切れはパスワードが合っていた時だけ `TRANSFER_EXPIRED` と言う。
+- **回数の制限**：コードごと（`maxAttemptsPerCode` 回で `codeLockMinutes` 分ロック。ロックは外からは `TRANSFER_INVALID` と同じに見える）、IP ごと・端末ごと（失敗が1時間に `ipFailuresPerHour`／`deviceFailuresPerHour` 回で `limitLockMinutes` 分、`429 TRANSFER_LOCKED`。こちらはコードに関係しないのでオラクルにならない）。IP（`cf-connecting-ip`）と端末（インストール ID `x-install-id`、無ければ要求したアカウント）は SHA-256 にしてから数える。
+- **ID とパスワードはログ・KPI・監査に残さない**。監査はコードの参照（ID の SHA-256 の先頭8桁）と、IP・端末のハッシュの先頭8桁だけ。
+- 新しい端末に移った後、**古い端末のセッションは次の要求で無効**になる（§54.6）。
+- 認証やアカウント削除と同じく、**メンテナンスの窓でも古いアプリからでも止めない**（§46 の `EXEMPT_ROUTES`。決めたこと：機種変更の途中で閉じ込めない。経済に触れない）。止めたい時は運用がリモート設定の `progression.transfer.enabled` を false にする。
+
+### 54.1 コードの形（REQ-TRF-002/003）
+- **ID**：9文字、`23456789ABCDEFGHJKMNPQRSTUVWXYZ`（0・1・O・I・L を使わない31文字）。表示は `ABC-DEF-GHJ`。1文字目がディレクトリのシャード（文字の位置 mod 16 ＝ プレイヤーのシャード）。
+- **入力の正規化**（ID・パスワードとも、発行と入力で同じ）：NFKC（全角→半角）、空白とハイフン（`-`・`ー`・`－` は NFKC 後の `-`）を取り除く。ID は大文字にする。
+- **自分で決めるパスワード**（`mode: "custom"`）の決まり（どれか1つでも破れば `400 TRANSFER_PASSWORD_WEAK`、`details.rules` に破った規則の id）：
+
+| id | 規則 | 画面の文（English） |
+|---|---|---|
+| `length` | 正規化した後で `passwordMin`〜`passwordMax` 文字（既定 8〜32） | 8〜32文字（8–32 characters） |
+| `charset` | 半角の英字・数字・記号だけ（`!`〜`~`、空白なし） | 半角の英数字と記号（Letters, numbers and symbols） |
+| `mix` | 英字と数字を両方ふくむ | 英字と数字を両方使う（Use both letters and numbers） |
+| `common` | よくあるパスワード（`password1`・`qwerty123`・`abcd1234` など、`COMMON_PASSWORDS`）でない（大文字小文字を区別しない） | よく使われるパスワードは使えません（No common passwords） |
+
+- **サーバーが作るパスワード**（`mode: "generated"`）：12文字、`23456789abcdefghjkmnpqrstuvwxyz`。表示は `abcd-efgh-jkmn`。**発行の応答で1回だけ**返す（もう一度見る口は無い。忘れたら発行し直す）。
+
+### 54.2 `GET /v1/transfer/code`（要認証、読むだけ）
+```json
+{ "enabled": true,
+  "code": { "codeId": "K7M-Q3X-PHR", "mode": "custom", "issuedAt": 1794279600000, "expiresAt": 1796871600000, "expired": false },
+  "lastTransferredAt": null,
+  "issuesToday": 1, "issuesPerDay": 5,
+  "rules": [ { "id": "length", "text": "8〜32文字" }, { "id": "charset", "text": "半角の英数字と記号" }, { "id": "mix", "text": "英字と数字を両方使う" }, { "id": "common", "text": "よく使われるパスワードは使えません" } ],
+  "passwordMin": 8, "passwordMax": 32, "expiryDays": 30 }
+```
+- `code` は今使えるコード（無ければ null）。ID は秘密ではないので全部見せる。パスワードは返さない。
+- `enabled: false`（設定で切った、またはカスタムトークンの鍵が無い）なら発行・入力の画面は出さない（Apple／Google だけ）。
+
+### 54.3 `POST /v1/transfer/code`（要認証）・`DELETE /v1/transfer/code`
+- 本文 `{ "mode": "custom", "password": "…" }` または `{ "mode": "generated" }`。
+- 応答 `{ "codeId": "K7M-Q3X-PHR", "mode": "generated", "password": "abcd-efgh-jkmn", "issuedAt": …, "expiresAt": … }`（`password` は `generated` の時だけ。`custom` は返さない）。
+- 前のコードは取り消される。発行はゲーム日（§DAY、04:00 JST 区切り）ごとに `issuesPerDay`（既定5）回まで → 超えたら `429 TRANSFER_ISSUE_LIMIT`。BAN 中は `403 BANNED`、削除の予約中は `409 DELETION_PENDING`。
+- `DELETE` は今のコードを取り消す（`{ "revoked": true | false }`、何度送っても同じ）。
+
+### 54.4 `POST /v1/transfer/redeem`（要認証＝新しい端末の匿名アカウント）
+本文 `{ "codeId": "K7M-Q3X-PHR", "password": "…", "confirmDiscard": false, "installId": "…"? }`。順番：
+1. `progression.transfer.enabled` とカスタムトークンの鍵（§54.7）が無ければ `404 NOT_FOUND`。
+2. **この端末のデータの確認**：要求したアカウントに進行（馬・購入の記録・コイン（有償・無償）・レース・プレゼントボックスの中身のどれか）があり、`confirmDiscard` が true でなければ `409 TRANSFER_CONFIRM_REQUIRED`、`details: { paidCoins, freeCoins, horses, races, purchases }`（確認画面に出す：「この端末のデータ（馬3頭・有償コイン120枚）は引き継ぎ後に使えなくなります」。Apple／Google でアカウントを切り替える時と同じ扱い）。
+3. IP・端末がロック中 → `429 TRANSFER_LOCKED`（`details.retryAfterSec`、`Retry-After`）。
+4. コードを引き、パスワードを確かめる。合わない・無い → `400 TRANSFER_INVALID`（IP と端末の失敗に数える）。期限切れでパスワードが合った → `410 TRANSFER_EXPIRED`。
+5. 自分のコードを自分の端末で入れた → `409 TRANSFER_SAME_ACCOUNT`。
+6. 元のアカウントの検査（PlayerDO の1トランザクション）：BAN 中 → `403 TRANSFER_REFUSED`（`details.reason: "banned"`）、削除の予約中・手続き中 → `403 TRANSFER_REFUSED`（`"deletion_pending"`。元の端末で削除を取り消すか、お問い合わせへ）、コードがもう違う（取り消し・発行し直し・同時の入力の2回目）→ `TRANSFER_INVALID`。通れば**コードを消費**し、`cutoffAt`（§54.6）を今にする。
+7. 応答 `{ "customToken": "<JWT>", "expiresInSec": 3600, "displayName": "ハヤテ" }`。新しい端末は `signInWithCustomToken` する（Unity：`FirebaseAuthTokenProvider.SignInWithCustomTokenAsync`）。
+
+- 鍵の署名（ネットワークを使わない）はコードを消費する**前**に行う：署名できなければ何も消費しない。
+- **応答が届かなかった時の再送**：`Idempotency-Key`（任意、1〜128文字）を付けると、同じアカウントから同じキーで1時間以内に送り直した要求には、同じ元のアカウントのカスタムトークンを**署名し直して**返す（コードはもう使われているが `TRANSFER_INVALID` にしない。トークンそのものは保存しない。記録は要求したアカウントの `transfer.redeemedAs`）。違うキー・違うアカウントからは `TRANSFER_INVALID`。クライアントはサインインが終わるまで同じキーを使う。
+- 同じコードを2台で同時に入れても、消費できるのは PlayerDO の直列化で1回だけ。
+
+### 54.5 保存
+- **プレイヤーの状態** `transfer`（新しいトップレベルのキー）：`{ code: { id, mode, issuedAt, expiresAt } | null, issues: { day, count }, cutoffAt: number | null, lastRedeemedAt: number | null, history: [{ at, event: "issued" | "revoked" | "redeemed" | "ops_revoked", mode? }]（新しい20件）, redeemedAs?: { key, playerId, displayName, at } }`（`redeemedAs` は**入力した側**＝新しい端末のアカウントにだけ、再送のための記録、1時間）。パスワードもハッシュもトークンも持たない。
+- **ディレクトリ**（`DirectoryDO` のシャード、ID の1文字目＝プレイヤーのシャード。wrangler の移行は不要：既存の SQLite に表を足すだけ）：
+  - `transfer_codes`：`code_id`・`player_id`・`salt`・`hash`・`kdf`（`pbkdf2-sha256`）・`iterations`・`issued_at`・`expires_at`・`attempts`・`locked_until`。消費・取り消しで行を消す。期限切れから7日で消す。
+  - `transfer_limits`：`key`（`ip:<hash>`／`dev:<hash>`、ハッシュの先頭でシャード）・`window_start`・`failures`・`locked_until`。
+  - `transfer_audit`：`player_id`・`at`・`event`（`issued`・`revoked`・`ops_revoked`・`redeemed`・`failed`・`locked`・`expired`・`refused`）・`code_ref`・`ip_ref`・`dev_ref`。プレイヤーごとに新しい100件、180日で消す。
+- **アカウント削除**（§UXS-040）：状態と一緒に `transfer` が消え、ディレクトリの `forget` がそのプレイヤーのコード・監査の行を消す。
+
+### 54.6 古い端末の無効化（REQ-TRF-010）
+- Worker は ID トークンの `auth_time`（Firebase にサインインした時刻）を読み、そのアカウントの `cutoffAt` より前（時計のずれ30秒を見込む）なら **`401 SESSION_REPLACED`**（「この端末のデータは別の端末に引き継がれました」）を返す。全てのプレイヤーの口（`auth: player`）で、メンテナンスの検査の後・ルートの前に1回。
+- `cutoffAt` は PlayerDO から読み、Worker の isolate ごとに30秒持つ（引き継いだ isolate はすぐ覚える）。引き継ぎの無いアカウントは `null` を持つ。
+- クライアントは `SESSION_REPLACED` を再試行しない（トークンを取り直しても同じ）。Firebase からサインアウトして「別の端末に引き継がれました」の画面を出す。そこから新しく始めるか、引き継ぎコードを入れる。
+
+- Round 19 統合：503／426 と同じ `ApiClient` の1か所（`Send`）で判定し、`ApiClient.SessionReplaced` を出す。Unity では `MaintenanceModel` が受けて全画面の案内（`MaintenanceScreen.SessionReplaced`）にし、メンテナンス・強制アップデート・オフライン・再読み込みはそれを置き換えない。
+
+### 54.7 カスタムトークンの鍵（REQ-TRF-011、docs/ops/deploy.md §9.6）
+- Worker のシークレット **`FIREBASE_AUTH_SERVICE_ACCOUNT_JSON`**（Firebase プロジェクトのサービスアカウントの JSON 鍵）。リポジトリに鍵を置かない。無ければ引き継ぎコードは `enabled: false`（Apple／Google の連携だけ）。
+- JWT：RS256、`iss` = `sub` = サービスアカウントのメール、`aud` = `https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit`、`iat`、`exp` = `iat` + 3600、`uid` = 元のアカウント。追加のクレームは入れない。
+- 鍵の入れ替え：新しい鍵を作る → `wrangler secret put` → 確認 → 古い鍵を Google Cloud で削除する（手順は docs/ops/deploy.md §9.6。90日ごと・漏れた疑いがあればすぐ）。
+
+### 54.8 運用（REQ-TRF-013、`/v1/admin/players/:playerId/transfer*`）
+| メソッド・パス | 役割 | 内容 |
+|---|---|---|
+| `GET /v1/admin/players/:playerId/transfer` | viewer | 今のコード（ID・発行日時・期限・種類）、`cutoffAt`、状態の履歴、ディレクトリの監査（新しい100件） |
+| `POST /v1/admin/players/:playerId/transfer/revoke` | operator | `{ reason }`。今のコードを取り消す（盗まれた・本人からの依頼）。監査ログ `player.transfer.revoke` |
+
+### 54.9 KPI（REQ-TRF-014）
+| イベント | 送り手 | s1 | s2 |
+|---|---|---|---|
+| `transfer_issue` | サーバー（発行した人） | `custom` / `generated` | |
+| `transfer_redeem` | サーバー（成功＝移ったアカウント、失敗＝要求したアカウント） | `ok` / `fail` | 失敗の分類：`invalid`・`expired`・`locked`・`refused_banned`・`refused_deletion`・`same_account` |
+ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.md`「引き継ぎコード」。
+
+### 54.10 クライアント
+- `Muchi.Client`：`TransferCodeStatus`・`IssuedTransferCode`・`TransferRedeemResult`・`TransferConfirm`、`ApiClient.GetTransferCodeAsync`・`IssueTransferCodeAsync`・`RevokeTransferCodeAsync`・`RedeemTransferCodeAsync`、`TransferCodeRules`（正規化・表示の形・パスワードの規則をサーバーと同じに）、`ApiErrorCode.SessionReplaced` と `ApiClient.SessionReplaced` イベント（再試行しない）。
+- `Muchi.Game`：`TransferCodeModel`（発行の画面：ID・規則のチェック表示・コピー・作ったパスワードは1回だけ；入力の画面：ID とパスワード・確認の画面・ロック・期限切れ・成功で `FirebaseAuthTokenProvider.SignInWithCustomTokenAsync`）。`IFirebaseAuthBackend` はそのまま、カスタムトークンは別のインターフェース `ICustomTokenAuthBackend`（`MUCHI_FIREBASE` の時の `FirebaseSdkAuthBackend` が実装）。
+- 画面が守ること：docs/handoff-codex-round19-transfer-code.md。
+
+## 55. 観戦中の応援（spectator cheering、REQ-CHEER-001〜016、`server/src/domain/cheer.ts`・`server/src/do/raceRoom.ts`、C# `Muchi.Net.CheerWire`（`CheerOffer`・`CheerCount`）・`LockstepClient.SendCheer`/`CheersReceived`・`Muchi.Client.Cheer`（`CheerKinds`・`CheerThrottle`・`CheerIndicator`・`CheerBurst`・`CheerRaceTally`・`CheerMoment`）・`Muchi.Game.CheerModel`）
+観戦者（§8.4）が、レース中に決まった応援（「いけ！」「差せ！」「粘れ！」）を**馬番を選んで**送れる。観戦者には応援の盛り上がり（その1秒の集計）が、選手には自分の馬への応援の数（「応援 ×12」）が、邪魔にならない形で出る。**レースには一切影響しない**：応援はロックステップの入力の流れ（§4 の `in`・`b`）の外を通り、入力・リプレイログ（§7）・チェックサム（§5）・結果ハッシュ（§6）に入らない。部屋の中でも応援は `RaceRoomCore`（入力と結果の芯）に渡らない。**何も配らない・何も売らない**（E番号なし。有料の応援・投げ銭・ギフトは作らない、docs/planning/03）。自由な文字は送れない（決まった3種類だけ）。新しい HTTP の口は無い（観戦チケット `POST /v1/race/:raceId/spectate` は §8.4 のまま、§46 の口の組もそのまま `ranked`（`/v1/race`・`/v1/races` の接頭辞。WebSocket の `GET /v1/race/:raceId/ws` はレース中に止めない口のまま））。
+
+### 55.1 応援の種類（REQ-CHEER-002、`CHEER_KINDS`・`CHEER_TEXT`）
+| `kind` | 日本語 | English |
+|---|---|---|
+| `go` | いけ！ | Go! |
+| `close` | 差せ！ | Close in! |
+| `hold` | 粘れ！ | Hang on! |
+
+- 並びはボタンの並び。文は共有の賭けの言葉の一覧（`domain/bettingWords.ts`）に当たらない（`cheerTextProblems`、テスト）。クライアントの文（`CheerKinds.Label*`）と `ui-en.json` は同じ表（テストで照合）。
+
+### 55.2 どのレースで・誰が（REQ-CHEER-001/003/006）
+- 観戦できるレースすべて：フレンド部屋・主催カップ（`cup`）・ランク戦・イベント・大会のヒート（ランク戦の観戦は Round 7 からあるので含める。チュートリアル・タイムアタックは観戦が無いので無し）。環境変数 `CHEERS = "off"` で全部止まる（部屋が応援を案内しなくなり、`cheer` は `err` `CHEER_OFF`）。
+- 部屋は観戦者の `start` の `spectator` に `cheer` を足して案内する：`"spectator":{"delayMs":0,"cheer":{"kinds":["go","close","hold"],"minIntervalMs":2000,"windowMs":1000}}`。**`cheer` が無い部屋（古いサーバー・止めてある）には、クライアントは `cheer` を送らない**（古い部屋のスキーマは厳格で、知らない `t` は `BAD_MESSAGE` になるため）。選手の `start` は変わらない。
+- 送れるのは観戦の接続だけ（チケットの slot = -1）。選手の接続からの `cheer` は `err` `NOT_SPECTATOR`（芯は何も記録しない）。
+
+### 55.3 メッセージ（§4 の後方互換な拡張）
+| 向き | 形 | 意味 |
+|---|---|---|
+| 観戦者 → 部屋 | `{"t":"cheer","slot":3,"kind":"go"}` | 応援1回。`slot` は出走馬の枠（0〜出走数−1、画面の馬番は slot+1）、`kind` は §55.1 のどれか。ほかのフィールドは付けられない（厳格、自由な文字なし） |
+| 部屋 → 観戦者・選手 | `{"t":"cheers","n":[[1,"hold",1],[3,"go",2],[3,"close",1]]}` | 1つの窓（1秒）の集計。`[slot, kind, 数]` を slot → kind の並びの順。**送った人の id は無い**。窓に見せるものが無い接続には送らない |
+
+- 断る時は `err`：`CHEER_OFF`（止めてある・観戦できないモード）、`NOT_SPECTATOR`、`CHEER_NOT_LIVE`（その観戦者にまだレースが始まっていない・`final` を受け取った後）、`CHEER_RATE_LIMITED`（2秒に1回より速い）、`CHEER_UNAVAILABLE`（ブロックの一覧が読めない）、`BAD_MESSAGE`（形違い・出走数を超える枠）。**どれも切断しない・致命的でない**（`RaceSession.FatalRoomErrors` に入れない。テストで確認）。
+
+### 55.4 間隔と窓（REQ-CHEER-004/005、帯域の上限）
+- 観戦者ごとに **2秒に1回**（`CHEER_MIN_INTERVAL_MS`）。最後に受け付けた時刻は観戦の接続の attachment（`spec.lc`）に持ち、休止（hibernation）をまたいでも効く。部屋のメモリにもプレイヤーごとに持つので、つなぎ直しても間隔は戻らない。時計が戻った時は止めない。間隔は `await` の前に取るので、同時に来た2つが両方通ることはない。クライアントは `CheerThrottle` で同じ間隔だけボタンを灰色にする（押して断られることがない）。
+- 部屋は受け付けた応援を **1秒の窓**（`CHEER_WINDOW_MS`）にためて、窓が閉じたら各接続に**多くて1通**の `cheers` を送る（部屋のアラームで閉じる。ほかに用が無くても窓を閉じる時刻にアラームを置く）。受け取るのは：まだ見ている観戦者（`final` 前・tick を1つ以上受け取った）と、レースが `running` の間の選手。
+- 1通の大きさは最大で 出走数 × 3 行（12頭で36行）。観戦者の上限は 200（§8.4）なので、1部屋の応援は多くて毎秒100回、送るのは1接続毎秒1通まで。ブロックが無ければ全員に同じ文字列を1回だけ作る。
+- 窓はメモリだけ（追い出されたら、その窓は出ないだけ）。応援はタイミングを競わないので遅れても困らない。ランク戦・イベント・大会は観戦が10秒遅れなので、観戦者の応援は10秒前の場面への応援として選手に届く（未来の情報は含まない）。
+
+### 55.5 ブロック（REQ-CHEER-008、§47 の1つのブロックの一覧）
+- 部屋は観戦者の `hello` の時に、その人のブロックの一覧（支部フィードのミュート＝`feedMutes`）を読む（選手は席の準備を遅らせないよう待たずに読む）。
+- 窓を送る時、受け取る人 R ごとに、R がブロックした人と R をブロックした人からの応援を数えない（両向き）。一覧がまだ読めていない R には何も送らない（安全側）。送った人の一覧が分からない応援は隠す。自分の応援は自分には必ず見える。
+- Round 19 統合：部屋の一覧の写しは `CHEER_BLOCK_REFRESH_MS`（10秒）より古ければ窓を送る時に読み直す（裏で読み、届くまでは前の写し。読み直しに失敗したら前の写しのまま）。ブロックの画面・通報の「ブロックもする」・ライバルのブロックはどれも同じ PlayerDO の一覧に書くので、レースの途中のブロックも10秒ほどで効く（Round 18 の定型チャットの写しの更新と同じ考え）。集計しか届かないので、誰が応援したかはそもそも分からない。
+
+### 55.6 リプレイの「応援の多かった瞬間」（REQ-CHEER-011/012）
+- 部屋はレースごとに応援の**数だけ**を数える：送った人が見ていた tick（`spec.sent`）を 40 tick（20Hz で2秒、`CHEER_BUCKET_TICKS`）ごとの区切りに入れる。送った人の id・誰がどの馬に、は残さない。部屋のストレージの別のキー `cheer` に置き、芯のスナップショット（`core`）には入れない。
+- 応援があったレースは、最後の観戦者が見終わり結果が出た後に1回だけ、R2 の `replays/<raceId>.cheers.json` に書く：`{"v":1,"bucketTicks":40,"total":18,"buckets":[[10,5],[20,4]]}`（数百バイト）。リプレイのログ（`replays/<raceId>.json`）とは別のファイルで、同じ接頭辞なので保存期間（REQ-OPS-001）と一緒に消える。
+- マイリプレイ（§37）：保存する時にこのファイルがあれば写しの中（`SavedReplayFile.cheers`）に入れ、`GET /v1/replays/:raceId`・フレンドの公開リプレイの応答に `cheerMoments` を付ける：`[{"tick":400,"count":5}]`。応援が3回以上の区切りのうち多い順に最大3つ（同数は早い方）を、レースの順に並べる。無い時は `[]`。古いクライアントは知らないフィールドを無視する。リプレイのログ・結果ハッシュは変わらない。
+
+### 55.7 KPI（REQ-CHEER-013、クライアントのイベント）
+- `cheer_send`：`props {mode, count}` — そのレースで送った応援の数。**1レースに1行**（押すたびには送らない）。
+- `cheer_seen`：`props {mode, role, count}` — そのレースで画面に出た応援の数。`role` = `racer`（表示オンの選手だけ。オフの選手は行が無い）/ `spectator`。
+- `mode` は `friend` / `cup` / `ranked` / `event` / `tournament`。馬・相手・送った人の id は入れない。クエリは docs/ops/kpi-queries.md。
+
+### 55.8 表示（REQ-CHEER-007/010、docs/planning/06、docs/handoff-codex-round19-spectator-cheer.md）
+- 観戦画面：馬番のチップ（1つ選ぶ）と3つのボタン。2秒の間は灰色。下に「応援は2秒に1回まで」「応援はレースの結果に影響しません」。窓が届いたら、多い順に最大3行の小さなバースト（「3番 粘れ！ ×9」）を2.5秒。
+- 選手：自分の馬への応援があった時だけ、操作の邪魔にならない隅に「応援 ×12」（レース中の合計）を4秒。設定「レース中の応援表示」（既定オン、端末に保存、レース中でもすぐ効く）でオフにできる。オフの間は出さない（数は数えておくので、オンに戻すと合計が出る）。
+- 動きを減らす（§41）がオンなら、文字だけで光・脈打ちは無し。光は `FlashLimiter`（1秒に3回まで）を通す。
+- 英語・文字の大きさ（特大）ではみ出さない（プロトタイプの `test/en-flow.cjs`・`test/a11y-flow.cjs`）。
+
+### 55.9 クライアント
+- `Muchi.Net`：`LockstepClient.CheerOffer`（`start.spectator.cheer`、無ければ null）・`CanCheer`・`SendCheer(slot, kind)`（案内された種類・枠の範囲・観戦者・`final` 前のときだけ送る）・`CheersReceived`（`cheers` の窓。`Sim`・確定入力・チェックサムには触れない）。
+- `Muchi.Client`：`CheerKinds`（文・モード名）、`CheerThrottle`、`CheerIndicator`（選手）、`CheerBurst`（観戦者）、`CheerRaceTally`（KPI を1レース1回）、`CheerMoment`（`ReplayData.CheerMoments`）、`AnalyticsEvent.CheerSend`・`CheerSeen`。
+- `Muchi.Game`：`CheerModel`（チップ・ボタン・間隔・トースト・バースト・選手の表示と設定・動きを減らす・`Finish` で KPI・`MomentMarkers`）。
+
+### 55.10 ヘルプ（§48）
+- 記事 `spectator_cheer`（カテゴリ `races`）：応援の送り方・無料で何ももらえないこと・間隔（トークン `cheer_interval_sec`）・自由な文字なし・匿名・ブロック・選手の表示のオフ・動きを減らす。設定画面へのリンク。
+
+## 56. 画質・省電力・通信量の設定（REQ-PERF-001〜018、C# `PerformanceSettings.cs`（`PerformanceSettings`・`DeviceClassifier`・`RenderProfile`・`AssetDownloadPolicy`・`AssetStorage`）・`Muchi.Game.PerformanceSettingsModel`／`StorageModel`、§16 のアセット配信に追加、docs/handoff-codex-round19-performance-settings.md）
+端末ごとの「見た目の重さ」と「通信量・容量」の設定。**端末にだけ保存し、アカウントには保存しない**（§56.6）。**どの設定もレースの計算・ルールセット・検証・結果ハッシュ・リプレイを変えない**：エンジンは 20Hz の固定ステップで時計に合わせて進み、設定が変えるのは描画（1秒に何枚描くか・どの細かさで描くか）とダウンロードだけ（§56.5）。アクセシビリティの「動きを減らす」（§41.6）とは別の設定で、両方オンにできる（効果は重なるだけで打ち消し合わない）。
+
+### 56.1 設定と既定値（REQ-PERF-001）
+| キー | 値（線の値） | 既定 | 効くところ |
+|---|---|---|---|
+| `graphics` | `auto` \| `low` \| `medium` \| `high` | `auto` | 画質の段（§56.3）。`auto` は端末の区分（§56.2）で決まる |
+| `frameRate` | `auto` \| `30` \| `60` | `auto` | 1秒に描く枚数の上限。`auto` は区分 `low` で 30、それ以外 60（画面の最大リフレッシュレートが 60 未満なら 30） |
+| `batterySaver` | `true` \| `false` | `false` | 省電力：**レースの外**は 30fps、演出を減らす（§56.3）。レース中の fps は `frameRate` のまま（操作の手触りを落とさない） |
+| `dataSaver` | `true` \| `false` | `false` | データセーバー：必須でないアセットは Wi-Fi のときだけ取得し、軽量版があれば軽量版を使う（§56.4） |
+
+- 端末の「省電力モード」（iOS の低電力モード・Android のバッテリーセーバー）が入っている間は、`batterySaver` がオフでもオンと同じに扱う（設定の値は変えない。画面には「端末の省電力モード中」と出す）。
+- 知らない値・壊れた保存値は既定値に戻す（`PerformanceSettings.Parse`）。
+
+### 56.2 端末の区分（REQ-PERF-002、`DeviceClassifier`）
+起動時に1回、端末の情報（`DeviceProfile`：メモリ MB・CPU コア数・GPU メモリ MB（不明は 0）・ソフトウェア描画か・最大リフレッシュレート）から `low` / `mid` / `high` を決める。Unity では `IDeviceInfo` を `SystemInfo`・`Screen.currentResolution.refreshRateRatio`・OS の省電力の通知で実装する（docs/handoff-codex-round19-performance-settings.md）。
+| 区分 | 条件（上から順に） |
+|---|---|
+| `low` | ソフトウェア描画、またはメモリ < 3000MB、または CPU < 4 コア、または GPU メモリが分かっていて < 512MB |
+| `high` | メモリ ≥ 6000MB かつ CPU ≥ 6 コア かつ（GPU メモリが不明、または ≥ 2048MB） |
+| `mid` | それ以外 |
+- 区分は表示の既定値を選ぶためだけに使い、マッチング・レーティング・報酬には使わない。KPI の `perf_setting_change` には付ける（どの区分の人が何を変えるか）。
+
+### 56.3 画質の段と描画の値（REQ-PERF-003/004、`RenderProfile.Resolve`）
+`auto` は区分 `low` → 低、`mid` → 中、`high` → 高。
+
+| 段 | URP の品質レベル | レンダースケール | 影 | MSAA | パーティクル | ポストエフェクト | 観客の密度 |
+|---|---|---|---|---|---|---|---|
+| 低 `low` | 0 | 0.70 | なし | なし | ×0.35 | なし | ×0.3 |
+| 中 `medium` | 1 | 0.85 | くっきり（hard） | 2x | ×0.70 | あり | ×0.6 |
+| 高 `high` | 2 | 1.00 | やわらか（soft） | 4x | ×1.00 | あり | ×1.0 |
+
+- **省電力が効いている間**（設定オン、または端末の省電力モード）：レースの外の fps は 30、パーティクル ×0.5（段の値に掛ける）、ポストエフェクトなし、影は hard まで、レンダースケールは 0.85 まで、スピード線・背景のゆっくりした動き（ホームのアートのドリフト）なし。レース中の fps は `frameRate` のまま。
+- **動きを減らす（§41.6）との関係**：スピード線・FOV キック・背景のドリフトは「動きを減らす」オンでも消える（`MotionPolicy`）。省電力は fps と描画の重さ、動きを減らすは揺れと動きを決め、どちらも相手の値を変えない（両方オンなら両方の効果）。カメラの揺れは `MotionPolicy` だけが決める。
+- スピード線は段が低でも出さない（重いので）。FOV キックは描画の重さに関係しないので、動きを減らすときだけ消える。
+- 値は `RenderProfile`（`UrpQualityLevel`・`TargetFrameRate`・`RenderScale`・`Shadows`・`Msaa`・`ParticleScale`・`PostProcessing`・`CrowdDensity`・`SpeedLines`・`FovKick`・`AmbientMotion`・`BatterySaverActive`）。Unity は `QualitySettings.SetQualityLevel(UrpQualityLevel)`・`Application.targetFrameRate = TargetFrameRate`（`QualitySettings.vSyncCount = 0`）・URP アセットの `renderScale`・`msaaSampleCount`・影の設定に結ぶ。レースの出入りで `PerformanceSettingsModel.SetInRace` を呼ぶ。
+
+### 56.4 データセーバーとアセット配信（REQ-PERF-005〜009、§16 に追加）
+- **必須（`required: true`、boot・ftue）はいつでも取得する**（モバイル通信でも。チュートリアルを止めない §16.2 は同じ）。
+- **必須でないもの**：データセーバーがオンでモバイル通信のときは取得しない（裏の先読みも `ondemand` も）。Wi-Fi につながったら取得を再開する。取得しないものはいつもどおり同梱 → `<kind>/default` で表示する（§16.4）。このときモバイル通信の確認（`cellularWarnBytes`）は出さない（何もモバイル通信で落とさないため）。データセーバーがオフなら今までどおり（§16.2 の確認つき）。
+- **軽量版（low）**：カタログのエントリーは任意で `low: { "file", "sha256", "size" }` を持てる（§56.7）。データセーバーがオンなら、必須でないエントリーは軽量版があれば軽量版を取得して使う（Wi-Fi でも：容量も節約する）。オフなら通常版。端末に軽量版だけがあるときは通常版が届くまで軽量版を表示する（`AssetResolver` は「通常版 → 軽量版 → 同梱 → `<kind>/default`」）。
+- **まとめてダウンロード**（ストレージ画面の「すべてダウンロード」）：必須でないエントリー全部（`ondemand` も含む）を今のデータセーバーの版で取得する。**押す前に残りのサイズを出す**（`AssetStorage.PredownloadBytes`）。モバイル通信では：データセーバーがオンなら押せない（「Wi-Fi に接続すると実行できます」）、オフなら必ずサイズを出して確認する。空き容量が足りない分は §16.4 のとおり取得しない（途中まで書かない）。何度押しても、取得済みのものは取り直さない（同じファイルは1回の転送）。
+- データセーバーを切り替えたときは、次の先読み（起動時・ストレージ画面・Wi-Fi への切り替わり）から新しい版で取得する。もう端末にある版は消さない（キャッシュの削除か、カタログから外れたときに消える）。
+
+### 56.5 レースの決定性（REQ-PERF-010）
+- 設定は `Muchi.Engine` に一切届かない（`RaceConfig`・`RulesetParams`・`TickHz` = 20 は同じ）。fps が変えるのは `OfflineRace.Update`／`RaceSession` を呼ぶ回数だけで、シミュレーションは時計から決まる tick 数だけ固定ステップで進む。入力は「次の tick」に入るので、同じ tick に同じ入力なら結果ハッシュは同じ。
+- テスト：`PerformanceSettingsTests.RaceHashIsTheSameForEverySetting`（全設定の組み合わせ × 区分 × 省電力モードで、決まった入力のレースを各設定の `RenderProfile.FrameIntervalMs` ごとの描画ループで走らせ、ハッシュがすべて同じ）。プロトタイプでも 30fps と 60fps の描画ループで同じハッシュ（`test/round19-performance.test.mjs`）。ゴールデンも変わらない。
+
+### 56.6 保存（端末だけ、REQ-PERF-011）
+- 4つの設定はすべて**端末にだけ**保存する（`PerformanceSettingsModel.KeyBlob` = `muchi.perf.settings`）。アカウントには保存しない、サーバーの API も `PlayerState` のキーもない。
+- 理由：画質と fps は端末の性能、省電力は端末の電池、データセーバーはその端末の回線（Wi-Fi だけのタブレットと、モバイル通信のスマホ）で決まり、別の端末に持ち込むと逆効果になりやすい。データセーバーだけは同期も考えたが、同じ理由で端末ごとにする（機種変更・再インストールでは既定値の `auto`・オフから始まる）。§41 のアクセシビリティ（体の事情なのでアカウントに保存）とはここが違う。
+- 起動直後から保存値を当てる（サーバーを待たない、オフラインでも同じ）。
+
+### 56.7 カタログの軽量版（REQ-PERF-012、§16.1・§16.3 に追加、後方互換）
+```json
+{ "key": "scene/venue/aoba", "file": "scene/venue/aoba.bundle", "sha256": "<64 hex>", "size": 18342211, "group": "race", "required": false,
+  "low": { "file": "scene/venue/aoba.low.bundle", "sha256": "<64 hex>", "size": 6120400 } }
+```
+- `low` は**任意**で、無いエントリーは今までとまったく同じ形（`low` を持つエントリーが1つも無いカタログは `hash`・ETag も今までと同じ）。古いクライアントは `low` を読まずに通常版を使う。新しい経路は無い（`GET /v1/assets/catalog` のまま、ゲートのグループも今まで通り）。
+- 検証（§16.3 に追加）：`low` は `required: false` のエントリーだけ、`low.size` < `size`、`low.sha256` ≠ `sha256`、`low.file` ≠ `file`、`low.file` も同じ形式（小文字の相対パス）、同じ `file`・同じ `sha256` は同じ内容（通常版と軽量版をまたいで）。
+- スキャナ（`npm run scan:assets`）：`<key>.low.<ext>`（例 `scene/venue/aoba.low.bundle`）を `<key>` の軽量版として付ける。通常版が無い軽量版・必須のキーの軽量版・`bundles.json` の中のファイルの軽量版は孤児として報告する。
+- 端末：`AssetEntry.Low`、`AssetCatalog.ReferencedHashes` は軽量版も含む（古い版の削除で軽量版を消さない）。
+
+### 56.8 ストレージ画面とキャッシュの削除（REQ-PERF-013/014、`AssetStorage`・`StorageModel`）
+- 表示：端末のアセットの使用量を行ごとに（必須データ・画面のデータ（boot/ftue の必須でないもの・home・race・shop）・都度のデータ（ondemand）・軽量版・途中のダウンロード・古いデータ（カタログに無いもの））と合計、「すべてダウンロードするとあと何 MB」。サイズは 10 進（1MB = 1,000,000 バイト、ストアと同じ）。
+- **キャッシュを削除**：確認（消えるサイズを出す）のあと、必須でないファイル・軽量版・途中のファイル・古いデータを消す。**今のカタログの必須のファイルと、取得中のファイルは消さない**（遊んでいる途中で必須のアセットが消えることはない）。消したものは次の先読みで設定どおり取り直す。消してもアカウント・進み具合・設定は消えない（アセットだけ）。
+- どちらも端末の中だけ（サーバーへの送信なし）。
+
+### 56.9 KPI（REQ-PERF-015）
+| イベント | 送り手 | s1 | s2 | s3 |
+|---|---|---|---|---|
+| `perf_setting_change` | クライアント（プレイヤーが値を変えたときだけ。同じ値・起動時の自動の既定値では出さない） | 設定（`graphics` / `frameRate` / `batterySaver` / `dataSaver`） | 新しい値（`auto`・`low`・`medium`・`high`・`30`・`60`・`on`・`off`） | 端末の区分（`low` / `mid` / `high`） |
+| `asset_predownload` | クライアント（「すべてダウンロード」を始めたとき1回） | 残りのサイズの区分（`lt_10mb` / `10_50mb` / `50_200mb` / `200mb_1gb` / `gte_1gb`） | 版（`full` / `low`） | |
+- 値の組み合わせはサーバーで検査する（`graphics` に `30` は 400）。個人を特定する情報・機種名は入れない。クエリは `docs/ops/kpi-queries.md`「画質・省電力・通信量」。
+
+### 56.10 クライアント（REQ-PERF-016〜018）
+- `Muchi.Client`：`PerformanceSettings`（`Parse`・`ToJson`・`Defaults`・`Wire`）、`DeviceProfile`・`IDeviceInfo`・`DeviceClassifier`、`RenderProfile.Resolve(settings, context)`（`PerformanceContext`：区分・レース中か・端末の省電力モード・動きを減らす・最大リフレッシュレート）、`AssetDownloadPolicy`（必須・データセーバー・回線から「取得する／Wi-Fi を待つ」と版を決める）、`AssetStorage`（使用量・まとめてダウンロードの残り・キャッシュの削除）、`AssetEntry.Low`・`AssetResolver` の軽量版、analytics `perf_setting_change`・`asset_predownload`。
+- `Muchi.Game`：`PerformanceSettingsModel`（端末の保存・`Changed` イベント・画面が結ぶ値・設定画面の行 `Rows()`・`SetInRace`・`OnLowPowerModeChanged`）、`StorageModel`（行・合計・まとめてダウンロード（サイズ・確認・Wi-Fi 待ち・進み具合）・キャッシュの削除（確認））、`AssetPreloadModel` にデータセーバーの方針を渡せる（無ければ今まで通り）。
+- プロトタイプ：設定の「画質・通信量」と「ストレージ」画面。画質・fps・省電力は実際にレースの 3D 表示（ピクセル比・影・FOV キック・スピード線）と描画ループの fps、ホームの背景の動きを変える。日英・文字の大きさ。
+- ヘルプ（§48）：記事 `data_storage`（データ通信量と容量、端末ごとの設定であること、レースの結果は変わらないこと）。画面のリンク `storage`。
+
+## 57. チュートリアルのやり直しとヒント集（replay tutorials & tips library、REQ-TUT-001〜018、`server/src/domain/tips.ts`・`server/master/tips.json`、C# `Tips.cs`・`Muchi.Game.TipsModel`／`TutorialReplayModel`、docs/handoff-codex-round19-tutorial-replay.md）
+設定の「ヒント」から、レースのチュートリアル（ムチのタイミング・位置取り・スタミナ・手綱）と機能のツアー（配合・調教・スカウトの提供割合と天井・ショップとコインの種類（有償・無償）・支部・カップ）をいつでもやり直せる。あわせて、機能が開くと読めるようになる短い絵付きのカード（日本語・英語）と、複雑な画面の「？」ボタン。**何も配らない**（E番号なし、経済は変わらない）。
+
+**決まりごと**
+- やり直しは**端末の中だけ**：レースのレッスンは練習と同じく端末のエンジンで走る（ムチは FTUE のチュートリアルのレース（`OfflinePresets.TutorialRace`、`TutorialDirector` 付き）そのもの、位置取り・スタミナ・手綱は端末の練習レース（`RaceFactory.Practice`）。どちらも既存の部品を使い、写しを作らない）。**サーバーに結果を送らない・レースに数えない・オンボーディングの状態（FTUE の段・チュートリアルの回数・KPI の `tutorial_step`）に触れない・報酬なし**。最初のチュートリアルの報酬（相棒 `PARTNER_ALREADY_GRANTED`・入厩祝いの10連 `TUTORIAL_GACHA_USED`・初心者ミッション `ALREADY_CLAIMED`）は一度だけのまま。
+- ツアーはカードのページ送り（同じカードを使う。文を二重に持たない）。開放前の機能のツアーは開けない。
+- カードは `server/master/tips.json`（リモート設定の `tips` で丸ごと置き換え）に**日本語と英語の両方**を持ち、要求の言語で返す。**数字はカードに書かない**：ヘルプセンター（§48.1）の `{{トークン}}` を同じ仕組み（`fillTokens`）で埋める（天井・提供割合は提供割合の画面と同じ計算）。
+- **ヒントは短く、ヘルプは長く**：カードは `bodyMaxChars` 文字まで。くわしい説明はカードの `help`（ヘルプ記事 id）へのリンクで、**カードはヘルプ記事の文をそのまま繰り返さない**（12文字以上の文が一致したら検査で落とす）。
+- 言葉：§48 と同じ（日本語の「倍」「お得」「今だけ」「残りわずか」「通常価格」・賭けの言葉（`bettingWords.ts`）・英語の `EN_BANNED`）。スカウトとショップの話題のカードはトークンの外に数字を置けない（「10連」だけ例外）。
+- 見たカードは**アカウントに保存**（`tips.seen`、開いているカードの id だけ、`seenMax` 件まで、マスターから消えた id は落とす）。端末をまたいでも「NEW」がそろう。
+
+### 57.1 マスター（`server/master/tips.json`）
+```json
+{ "version": 1,
+  "config": { "enabled": true, "titleMaxChars": 24, "bodyMaxChars": 160, "seenMax": 200, "seenPerRequest": 20 },
+  "topics": [ { "id": "race", "title": { "ja": "レース", "en": "Racing" } } ],
+  "tips": [ { "id": "scout_pity_tip", "topic": "scout", "unlock": null, "art": "pity", "help": "pity",
+              "title": { "ja": "交換ptで選べる", "en": "Exchange points" },
+              "body": { "ja": "…常設では{{pity_pulls:standard}}回分で…", "en": "…{{pity_pulls:standard}} pulls' worth…" } } ],
+  "contexts": { "gacha_odds": "scout_pity_tip", "breeding": "breeding_pair", "training": "training_timing", "roster_bulk_retire": "roster_retire" },
+  "tutorials": [ { "id": "race_whip", "kind": "race", "lesson": "whip", "unlock": null, "title": { "ja": "ムチのタイミング", "en": "Whip timing" }, "tips": ["whip_window", "whip_spacing"] },
+                 { "id": "tour_scout", "kind": "tour", "unlock": "scout", "title": { "ja": "スカウトのツアー", "en": "Scout tour" }, "tips": ["scout_rates_tip", "scout_pity_tip", "scout_guarantee"] } ] }
+```
+- `config`：`titleMaxChars` 8〜40、`bodyMaxChars` 40〜240、`seenMax` 20〜500、`seenPerRequest` 20〜50（クライアントは20件ずつ送るので、それより下げない）。
+- 話題 `topics` は5つ：`race`（レース）・`horses`（馬を育てる）・`scout`（スカウト）・`shop`（ショップ・コイン）・`social`（支部・カップ）。全部そろって重ならない。
+- カード `tips`（120枚まで）：`id` は `^[a-z0-9_]{2,40}$` で重ならない（ツアーの id とも）。`unlock` は §4.3 の開放キー（`UNLOCK_KEYS`）か `null`（最初から）。`art` は絵の種類（`whip`・`slipstream`・`lanes`・`stamina`・`reins`・`breeding`・`stud`・`training`・`roster`・`scout`・`pity`・`coins`・`branch`・`cups`、Codex が描く）。`help` は存在するヘルプ記事（リモート設定でヘルプからその記事を外す版は有効にできない）。日本語と英語でトークンの組が同じ。英語に日本語を入れない。
+- `contexts`（「？」の画面 → カード）：`gacha_odds`（提供割合）・`breeding`（配合）・`training`（調教）・`roster_bulk_retire`（まとめて引退）。全部そろって、存在するカードを指す。
+- `tutorials`（30件まで）：`kind` は `race`（レッスン）か `tour`（ツアー）。レッスン `lesson` は `whip`・`position`・`stamina`・`reins` が1つずつ、`unlock: null`（最初から）。`tips` は存在するカード1〜6枚（重ならない）。
+
+- Round 19 統合：Round 18／19 の機能のカードを足した（`practice_tip` → 記事 `practice_races`、`goals_tip` → `horse_goals`、`qchat_tip` → `quick_chat`（`teams` で開く）、`cheer_tip` → `spectator_cheer`（`friend_rooms` で開く））。絵は既存の `art` キーだけを使う（Codex の追加の絵なし）。データのダウンロード（§51）はどの話題にも合わないのでカードを作らず、プライバシーの画面の「？」（ヘルプの文脈 `privacy`）から読む。
+
+### 57.2 `GET /v1/tips`（要認証、読むだけ）
+```json
+{ "enabled": true, "version": 1, "lang": "ja", "newCount": 9,
+  "topics": [ { "id": "scout", "title": "スカウト", "count": 3, "unlocked": 3, "newCount": 3 } ],
+  "tips": [ { "id": "scout_pity_tip", "topic": "scout", "art": "pity", "unlock": null, "unlocked": true, "new": true,
+              "title": "交換ptで選べる", "body": "…常設では200回分で…", "help": { "articleId": "pity", "title": "天井（交換pt）のしくみ" } },
+            { "id": "breeding_pair", "topic": "horses", "art": "breeding", "unlock": "breeding", "unlocked": false, "new": false,
+              "title": "配合のきほん", "body": null, "help": { "articleId": "breeding", "title": "配合と種付け" } } ],
+  "tutorials": [ { "id": "race_whip", "kind": "race", "lesson": "whip", "unlock": null, "unlocked": true, "title": "ムチのタイミング", "tips": ["whip_window", "whip_spacing"] } ],
+  "contexts": { "gacha_odds": "scout_pity_tip" } }
+```
+- 開放は `GET /v1/player` の `unlocks`（§4.3）と同じ判定。表にないキーは最初から開いている（ホームと同じ）。
+- 開いていないカードはタイトルと開放キーだけ（`body: null`）。`new` = 開いていて、まだ見ていない。
+- `enabled: false` のときは `topics`・`tips`・`tutorials`・`contexts` が空、`newCount: 0`。
+- `GET /v1/player`・bootstrap に `tips: { "newCount": n }`（設定の「ヒント」のバッジ）。
+
+### 57.3 `POST /v1/tips/seen`（要認証）
+`{ "ids": ["whip_window", "whip_spacing"] }`（1〜`seenPerRequest` 件、`^[a-z0-9_]{2,40}$`、他のキーは 400）→ `{ "marked": ["whip_window"], "skipped": [], "newCount": 8 }`。何度送っても同じ（見たものは見たまま）。開いていないカードは `skipped`（見たことにしない）。無い id が1つでもあれば 404 `NOT_FOUND` で何も記録しない。ライブラリが止まっているときは 404。
+
+### 57.4 やり直し（端末）
+- レッスンの流れ：カード（そのレッスンの `tips`）→ レース → 結果（「もう一度」「ヒントに戻る」）。ムチのレッスンは FTUE と同じ勝ち方（最後の300mでムチ2回以上で差し切り）。やり直しの回数は FTUE のチュートリアルの回数（`muchi.tutorial.attempts`）とは別で、補正（3回目で勝つ）も使わない。
+- レース中の案内は既存の `RaceFeel` の1行（「今だ、ムチ！」「掛かっている：手綱を長押し」「脚が上がった」など）。レッスンごとに見せたい案内の種類を `TutorialReplayModel.FocusOf` が決める。
+- かんたん操作（§30）はレッスンでも付けない（チュートリアルと同じ）。
+- Round 19 統合（§50 との関係）：位置取り・スタミナ・手綱のレッスンは §50 の練習レースそのもの（`PracticeSession` が練習のカタログ（無ければ §50.6 の内蔵のカタログと相棒）と既定の条件から組む。Unity は `GameBackend.CreateLessonRace`、プロトタイプは WASM の `LessonBegin`）。練習のオプション（ムチの目安・スロー・ゴースト）は付けず、プレイヤーの練習のセッション（回数・ゴースト）には触れない。練習のレースを組む経路は1つ（§57 が別の組み方を足さない）。`practice_start`／`practice_finish` の KPI は送らない（`tutorial_replay` だけ）。
+
+### 57.5 ゲートのグループ
+`/v1/tips*` はエンドポイントのグループ `core`（`all` のメンテナンスだけが閉じる）。サポート（§48 のヘルプ・問い合わせ）ではないので、免除のルートには入れない。
+
+### 57.6 KPI（クライアントのイベント）
+- `tutorial_replay`（`props.tutorialId`、`props.kind`：`race`・`tour`、`props.stage`：`start`・`finish`）→ s1 = id、s2 = 種類、s3 = 段。
+- `tip_view`（`props.tipId`、`props.source`：`list`・`context`・`tour`・`lesson`）→ s1 = カード、s2 = 入口。
+- `tip_context_open`（`props.context`：§57.1 の4つ、`props.tipId`）→ s1 = 画面、s2 = カード。
+- クエリは `docs/ops/kpi-queries.md`「ヒント」。
+
+### 57.7 クライアント
+- `Muchi.Client`：`TipsIndex`（`Parse`）・`TipsSeenResult`・`TipsBadge`（`PlayerView.Tips`）、`ApiClient.GetTipsAsync`・`MarkTipsSeenAsync`、`TipContexts`・`RaceLessons`、analytics `AnalyticsEvent.TutorialReplay`・`TipView`・`TipContextOpen`。
+- `Muchi.Game`：`TipsModel`（話題ごとの一覧・NEW・見た印をまとめて送る（オフラインは端末に貯めて後で送る）・「？」の `OpenContext`・ツアーのページ送り・開いていない機能のツアーは開けない）、`TutorialReplayModel`（レッスンのレースを `GameBackend` の既存の部品で作る（ムチ = `OfflinePresets.TutorialRace`、他 = 練習レース）・FTUE の段・回数・KPI に触れない・`tutorial_replay` を送る）。
+- 画面が守ること：docs/handoff-codex-round19-tutorial-replay.md。

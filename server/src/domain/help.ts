@@ -14,6 +14,7 @@
  *
  * Pure functions on master + state; the PlayerService runs the state changes inside its transaction.
  */
+import { CHEER_MIN_INTERVAL_MS } from './cheer.js';
 import helpJson from '../../master/help.json';
 import { AppError } from './errors.js';
 import type { Master } from './master.js';
@@ -42,13 +43,17 @@ export const HELP_SCREENS = [
   'gift_box', 'activity', 'accessibility', 'account_link', 'deletion', 'inquiry', 'my_inquiries',
   // Round 18 integration: settings › privacy (§51), the branch feed (§52 quick chat), practice races (§50)
   'privacy', 'team_feed', 'practice',
+  // §56 (REQ-PERF-018): the 画質・通信量 settings and the storage screen
+  'performance', 'storage',
+  // Round 19 (§57): the ヒント screen (tutorial replays and the tips library)
+  'tips',
 ] as const;
 export type HelpScreen = typeof HELP_SCREENS[number];
 /** The existing legal pages (利用規約・プライバシーポリシー・特定商取引法に基づく表記・資金決済法に基づく表示). */
 export const LEGAL_DOCS = ['terms', 'privacy', 'tokushoho', 'shikin'] as const;
 export type LegalDoc = typeof LEGAL_DOCS[number];
 /** REQ-HELP-008: screens that deep-link to an article. */
-export const HELP_CONTEXTS = ['gacha_odds', 'coin_shortfall', 'purchase', 'race_whip', 'race_result', 'training', 'breeding', 'history', 'gift_box', 'account_link', 'deletion', 'accessibility', 'privacy'] as const;
+export const HELP_CONTEXTS = ['gacha_odds', 'coin_shortfall', 'purchase', 'race_whip', 'race_result', 'training', 'breeding', 'history', 'gift_box', 'account_link', 'deletion', 'accessibility', 'privacy', 'storage', 'practice'] as const; // R19 integration: the practice setup's ? link
 export type HelpContext = typeof HELP_CONTEXTS[number];
 
 export type HelpLink =
@@ -106,6 +111,9 @@ const SCREEN_LABEL: Record<HelpScreen, Loc> = {
   privacy: { ja: 'プライバシーを開く', en: 'Open privacy' },
   team_feed: { ja: '支部のフィードを開く', en: 'Open the branch feed' },
   practice: { ja: '練習レースを開く', en: 'Open practice races' },
+  performance: { ja: '画質・通信量の設定を開く', en: 'Open graphics and data settings' },
+  storage: { ja: 'ストレージを開く', en: 'Open storage' },
+  tips: { ja: 'ヒントを開く', en: 'Open tips' },
 };
 const LEGAL_LABEL: Record<LegalDoc, Loc> = {
   terms: { ja: '利用規約', en: 'Terms of service' },
@@ -173,8 +181,19 @@ function tokenValue(env: TokenEnv, name: string, a?: string, b?: string): string
     case 'export_link_minutes': return String({ ...DATA_EXPORT_DEFAULTS, ...(m.progression.dataExport ?? {}) }.linkTtlMinutes);
     case 'qchat_interval_sec': return String(Math.round(quickChatOf(m).config.postIntervalMs / 1000));
     case 'qchat_per_day': return String(quickChatOf(m).config.postsPerDay);
+    case 'cheer_interval_sec': return String(CHEER_MIN_INTERVAL_MS / 1000); // §55 REQ-CHEER-004
     default: throw new Error(`unknown token ${name}`);
   }
+}
+
+/** Round 19 (§57 tips): why each token of a text cannot be filled (empty = every token is fillable; the same check as articles). */
+export function tokenProblems(env: TokenEnv, at: string, text: string): string[] {
+  const out: string[] = [];
+  for (const mt of text.matchAll(TOKEN_RE)) {
+    try { tokenValue(env, mt[1]!, mt[2], mt[3]); } catch (e) { out.push(`${at}: ${mt[0]}: ${(e as Error).message}`); }
+  }
+  if (/\{\{|\}\}/.test(text.replace(TOKEN_RE, ''))) out.push(`${at}: malformed token`);
+  return out;
 }
 
 export function tokensOf(text: string): string[] {
@@ -197,7 +216,7 @@ const NUMBER_UNIT_EN = new RegExp(`${DIGIT}+(?:[.,]${DIGIT}+)*\\s*(?:%|pt\\b|poi
 /** The only digits a scout article may carry outside tokens (the product word). */
 const ALLOWED_SCOUT_DIGITS = /10連|10-pulls?/g;
 
-function digitsProblems(at: string, text: string, strict: boolean, en: boolean): string[] {
+export function digitsProblems(at: string, text: string, strict: boolean, en: boolean): string[] {
   const bare = text.replace(TOKEN_RE, '').replace(ALLOWED_SCOUT_DIGITS, '');
   const out: string[] = [];
   if ((en ? NUMBER_UNIT_EN : NUMBER_UNIT_JA).test(bare)) out.push(`${at}: a number with a unit must come from a {{token}}`);
@@ -213,7 +232,7 @@ function urlProblems(at: string, url: string, host: string): string[] {
   return [];
 }
 
-const wordingProblems = (at: string, ja: string, en: string): string[] => [
+export const wordingProblems = (at: string, ja: string, en: string): string[] => [
   ...HELP_BANNED_JA.filter((w) => ja.includes(w)).map((w) => `${at}.ja: shop word 「${w}」`),
   ...bettingWordsIn(ja).map((w) => `${at}.ja: betting word ${w}`),
   ...enWordingProblems(en).map((p) => `${at}.en: ${p}`),

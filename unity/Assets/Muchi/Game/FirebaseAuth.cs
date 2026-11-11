@@ -24,6 +24,18 @@ namespace Muchi.Game
         Task SignInWithAsync(FederatedCredential credential, CancellationToken ct);
     }
 
+    /// <summary>
+    /// REQ-TRF-009/010 (§54): the custom-token side of Firebase Auth, kept out of <see cref="IFirebaseAuthBackend"/> so existing
+    /// backends keep compiling. The SDK backend (MUCHI_FIREBASE) implements both.
+    /// </summary>
+    public interface ICustomTokenAuthBackend
+    {
+        /// <summary>Signs in as the account a 引き継ぎコード redeem returned a custom token for.</summary>
+        Task SignInWithCustomTokenAsync(string customToken, CancellationToken ct);
+        /// <summary>Forgets the current user (after SESSION_REPLACED); the next request signs in anonymously again.</summary>
+        void SignOut();
+    }
+
     /// <summary>An Apple or Google sign-in result to link or sign in with.</summary>
     public sealed class FederatedCredential
     {
@@ -170,6 +182,34 @@ namespace Muchi.Game
             await _auth.SignInWithAsync(use, ct);
             PendingSwitchCredential = null;
             UserChanged?.Invoke(_auth.UserId);
+        }
+
+        /// <summary>True when the backend can sign in with a custom token (引き継ぎコード, REQ-TRF-009).</summary>
+        public bool SupportsCustomToken => _auth is ICustomTokenAuthBackend;
+
+        /// <summary>
+        /// 引き継ぎコード (REQ-TRF-009): sign in as the original account with the custom token the redeem returned. Like
+        /// <see cref="SwitchToExistingAccountAsync"/>, this device's anonymous progress is left behind (the server asked first).
+        /// </summary>
+        public async Task SignInWithCustomTokenAsync(string customToken, CancellationToken ct = default)
+        {
+            if (string.IsNullOrEmpty(customToken)) throw new ArgumentException("custom token required");
+            if (!(_auth is ICustomTokenAuthBackend c)) throw new NotSupportedException("this auth backend cannot sign in with a custom token");
+            await c.SignInWithCustomTokenAsync(customToken, ct);
+            PendingSwitchCredential = null;
+            UserChanged?.Invoke(_auth.UserId);
+        }
+
+        /// <summary>
+        /// REQ-TRF-010: after SESSION_REPLACED (the account moved to another device) — forget the user; the next request signs
+        /// in anonymously as a new player. Returns false when the backend cannot sign out (nothing changed).
+        /// </summary>
+        public bool SignOutReplacedSession()
+        {
+            if (!(_auth is ICustomTokenAuthBackend c)) return false;
+            c.SignOut();
+            lock (_gate) _signIn = null;
+            return true;
         }
     }
 }

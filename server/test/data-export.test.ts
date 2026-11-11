@@ -124,6 +124,28 @@ describe('REQ-DEX-006 every PlayerState key is classified (exported or excluded 
     expect(doc.unclassified).toEqual([]);
     expect(doc.notIncluded.map((x) => x.key)).toEqual(expect.arrayContaining(['idem', 'supportFlags', 'otherPlayersData']));
   });
+  it('Round 19 integration: tips (seen ids) and transfer (history, code expiry — never the code id, password or hash) are exported', async () => {
+    const w = world();
+    await seeded(w);
+    const s = await w.svc.state('u1');
+    s.tips = { seen: ['whip_window', 'scout_pity_tip'] };
+    s.transfer = {
+      code: { id: 'ABCD2345EFGH', mode: 'custom', issuedAt: T0, expiresAt: T0 + 30 * DAY }, issues: { day: '2026-11-10', count: 1 },
+      cutoffAt: T0 - DAY, lastRedeemedAt: T0 - DAY, history: [{ at: T0 - DAY, event: 'redeemed' }, { at: T0, event: 'issued', mode: 'custom' }],
+      redeemedAs: { key: 'idem-secret-key', playerId: 'other_account_secret', displayName: 'ベツノカオ', at: T0 - DAY },
+    };
+    expect(classifyKey('tips')).toEqual({ section: 'play' });
+    expect(classifyKey('transfer')).toEqual({ section: 'account' });
+    const doc = buildExportDocument(m, s, { ledger: s.ledger, gacha: [], names: {}, reportsMade: [], kpiEvents: null }, 'dex_x', 'ja', w.now());
+    expect(doc.unclassified).toEqual([]);
+    expect(doc.play.tips).toEqual({ seen: ['whip_window', 'scout_pity_tip'] });
+    expect(doc.account.transfer).toEqual({
+      code: { mode: 'custom', issuedAt: T0, expiresAt: T0 + 30 * DAY, expired: false }, issuesToday: { day: '2026-11-10', count: 1 },
+      lastTransferredAt: T0 - DAY, oldDeviceCutoffAt: T0 - DAY, history: [{ at: T0 - DAY, event: 'redeemed' }, { at: T0, event: 'issued', mode: 'custom' }],
+    });
+    const raw = JSON.stringify(doc);
+    for (const secret of ['ABCD2345EFGH', 'ABCD-2345-EFGH', 'idem-secret-key', 'other_account_secret']) expect(raw).not.toContain(secret);
+  });
   it('an unknown key shows up as unclassified (the test above would then fail)', async () => {
     const w = world();
     await seeded(w);

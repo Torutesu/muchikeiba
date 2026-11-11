@@ -35,6 +35,11 @@ export interface Env {
   /** "local" | "staging" | "production" (wrangler.toml). DEV_MODE is refused unless this is "local". */
   ENVIRONMENT?: string;
   FIREBASE_PROJECT_ID: string;
+  /**
+   * REQ-TRF-011 (§54.7): secret — the Firebase project's service-account JSON key that signs custom tokens for 引き継ぎコード.
+   * Unset => transfer codes report enabled: false (Apple / Google linking only). Rotation: docs/ops/deploy.md §8.
+   */
+  FIREBASE_AUTH_SERVICE_ACCOUNT_JSON?: string;
   TICKET_SECRET: string;
   ADMIN_TOKEN?: string;
   /** "1" enables the fake store and the x-dev-user header. Never set in production. */
@@ -44,6 +49,8 @@ export interface Env {
   ASSET_CDN_BASE?: string;
   /** REQ-SPEC-005: max spectators per race room (default 200). */
   SPECTATOR_LIMIT?: string;
+  /** REQ-CHEER-015 (§55): "off" turns spectator cheers off (rooms stop advertising them and refuse `cheer`). Default on. */
+  CHEERS?: string;
   /** One per tournament `tour:<id>` plus the index `index` (REQ-TOUR-*). */
   TOURNAMENTS?: DurableObjectNamespace;
   /** REQ-CUP-*: one per hosted cup `cup:<cupId>` plus the join-code index shards `cupcode:<c>`. */

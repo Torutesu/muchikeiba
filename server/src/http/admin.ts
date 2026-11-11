@@ -112,6 +112,8 @@ export interface AdminContext {
   inviteLookup?(code: string): Promise<string | null>;
   /** REQ-OPS-015: browser origins of the ops console allowed to call the admin API (CORS, no credentials). */
   consoleOrigins?: readonly string[];
+  /** REQ-TRF-013: 引き継ぎコード (absent = the transfer routes answer NOT_FOUND). */
+  transfer?: import('../domain/transferService.js').TransferService;
 }
 const cups = (ctx: AdminContext) => {
   if (!ctx.hostedCups) throw new AppError('NOT_FOUND', 'hosted cups are not available');
@@ -503,6 +505,19 @@ export const adminRoutes: AdminRoute[] = [
     const b = parse(z.object({ birthYear: z.number().int(), birthMonth: z.number().int().min(1).max(12), guardianConsent: z.boolean(), reason: z.string() }), r.body);
     const out = await r.ctx.player(id).invoke('adminCorrectAge', id, b.birthYear, b.birthMonth, b.guardianConsent, r.principal.id);
     return { result: out, target: `player:${id}`, before: out.before, after: out.after };
+  } },
+  // REQ-TRF-013 (contracts/protocol.md §54.8): 引き継ぎコード — view (state + directory audit) and revoke (stolen / on request)
+  { method: 'GET', path: '/v1/admin/players/:playerId/transfer', role: 'viewer', write: false, action: 'player.transfer.view', handler: async (r) => {
+    const id = parse(pid, r.params.playerId);
+    if (!r.ctx.transfer) throw new AppError('NOT_FOUND', 'transfer codes are not available');
+    return { result: await r.ctx.transfer.adminView(id), target: `player:${id}` };
+  } },
+  { method: 'POST', path: '/v1/admin/players/:playerId/transfer/revoke', role: 'operator', write: true, action: 'player.transfer.revoke', handler: async (r) => {
+    const id = parse(pid, r.params.playerId);
+    parse(z.object({ reason: z.string() }).strict(), r.body);
+    if (!r.ctx.transfer) throw new AppError('NOT_FOUND', 'transfer codes are not available');
+    const out = await r.ctx.transfer.revoke(id, 'ops');
+    return { result: out, target: `player:${id}`, before: null, after: out };
   } },
   { method: 'POST', path: '/v1/admin/players/:playerId/name-reset', role: 'operator', write: true, action: 'player.name.reset', handler: async (r) => {
     const id = parse(pid, r.params.playerId);

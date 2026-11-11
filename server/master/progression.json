@@ -1112,5 +1112,11 @@
     "maxBytes": 20000000,
     "maxAttempts": 5,
     "auditKeep": 50
+  },
+  "transfer": {
+    "_note": "引き継ぎコード（REQ-TRF-*、contracts/protocol.md §54）。IDとパスワードで機種変更。コードは1回だけ・expiryDays日で期限切れ。パスワードはPBKDF2の結果だけを保存。コードごと・IPごと・端末ごとの失敗の上限でロック。何も配らない。",
+    "enabled": true, "expiryDays": 30, "maxAttemptsPerCode": 5, "codeLockMinutes": 60,
+    "ipFailuresPerHour": 20, "deviceFailuresPerHour": 10, "limitLockMinutes": 60,
+    "issuesPerDay": 5, "passwordMin": 8, "passwordMax": 32
   }
 }

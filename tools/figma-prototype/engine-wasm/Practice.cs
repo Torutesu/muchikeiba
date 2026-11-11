@@ -82,6 +82,24 @@ public static partial class MuchiRace
         return sb.ToString();
     }
 
+    /// <summary>
+    /// R19 integration (§57 × §50): a race lesson (position / stamina / reins) is a practice race built by PracticeSession — one
+    /// practice path, the same builder as 練習レース — on its own session (the player's practice session, its attempts and
+    /// ghost are left alone), with the practice options off. It runs on the normal clock; nothing is sent anywhere.
+    /// </summary>
+    [JSExport]
+    public static string LessonBegin(string catalogJson, string setupJson, double seed)
+    {
+        var c = CatalogOf(catalogJson);
+        var setup = ParseSetup(setupJson);
+        var p = setup.Problem(c);
+        if (p != null) return "{\"ok\":false,\"message\":\"" + Esc(p) + "\"}";
+        var session = new PracticeSession(c, setup, (ulong)Math.Max(1, seed), new PracticeOptions { WhipWindow = false, SlowFinal = false, Ghost = false });
+        _taRun = null; _chRun = null;
+        var info = Begin("practice", new OfflineRaceDriver(session.Start()));
+        return info.Substring(0, info.Length - 1) + ",\"ok\":true,\"raceId\":\"" + Esc(session.Config.RaceId) + "\"}";
+    }
+
     /// <summary>The practice race clock for a real time (photo mode pauses and resumes the race on this clock).</summary>
     [JSExport]
     public static double PracticeNow(double realMs) => _practice == null ? realMs : _practice.RaceNow((long)realMs);

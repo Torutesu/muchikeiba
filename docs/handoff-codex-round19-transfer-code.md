@@ -57,6 +57,7 @@
 - キッカー「引き継ぎ」、題 `ReplacedTitle`（「別の端末に引き継がれました」）、本文 `ReplacedBody`、灰の補足「心当たりがないときは、ヘルプのお問い合わせから運営に知らせてください。」（ヘルプの問い合わせはこのアカウントでは送れないので、新しく始めた後のアカウントから）。
 - 主ボタン `ReplacedRedeemCta`「引き継ぎコードを入力 »」（入力の画面へ）、ゴースト `ReplacedNewCta`「新しく始める」。どちらも先に `MuchiFirebase.Tokens.SignOutReplacedSession()` を呼ぶ（次の要求で新しい匿名アカウントになる）。
 - 再試行のボタンは置かない（直らない）。レース中に来た場合もレースの画面を閉じて案内へ。
+- R19 統合：この画面はメンテナンスと同じ「1か所」から出す。`MaintenanceModel.Attach(api)` が `ApiClient.SessionReplaced` も受け、`Screen == MaintenanceScreen.SessionReplaced`（`Title`／`Body` は上の文言）になる。メンテナンス・強制アップデート・オフライン・再読み込みはこの画面を置き換えない。2つのボタンのどちらかを押したら `MaintenanceModel.LeaveSessionReplaced()`。
 
 ## 7. 入口
 

@@ -3168,6 +3168,8 @@ Apple／Google の連携（REQ-API-005）に加えて、日本のゲームでお
 - `cutoffAt` は PlayerDO から読み、Worker の isolate ごとに30秒持つ（引き継いだ isolate はすぐ覚える）。引き継ぎの無いアカウントは `null` を持つ。
 - クライアントは `SESSION_REPLACED` を再試行しない（トークンを取り直しても同じ）。Firebase からサインアウトして「別の端末に引き継がれました」の画面を出す。そこから新しく始めるか、引き継ぎコードを入れる。
 
+- Round 19 統合：503／426 と同じ `ApiClient` の1か所（`Send`）で判定し、`ApiClient.SessionReplaced` を出す。Unity では `MaintenanceModel` が受けて全画面の案内（`MaintenanceScreen.SessionReplaced`）にし、メンテナンス・強制アップデート・オフライン・再読み込みはそれを置き換えない。
+
 ### 54.7 カスタムトークンの鍵（REQ-TRF-011、docs/ops/deploy.md §9.6）
 - Worker のシークレット **`FIREBASE_AUTH_SERVICE_ACCOUNT_JSON`**（Firebase プロジェクトのサービスアカウントの JSON 鍵）。リポジトリに鍵を置かない。無ければ引き継ぎコードは `enabled: false`（Apple／Google の連携だけ）。
 - JWT：RS256、`iss` = `sub` = サービスアカウントのメール、`aud` = `https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit`、`iat`、`exp` = `iat` + 3600、`uid` = 元のアカウント。追加のクレームは入れない。

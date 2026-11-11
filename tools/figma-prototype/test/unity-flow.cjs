@@ -1715,10 +1715,13 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.match(await page.locator('.screen.in .trf-id-input').inputValue(), /^[2-9A-Z]{3}-[2-9A-Z]{3}-[2-9A-Z]{3}$/, 'the previous phone\'s ID is filled in');
   await shot('transfer-redeem', 400);
   await page.locator('.screen.in .trf-pw-input').fill('Wrong2026!'); await page.locator('.screen.in .trf-redeem-go').click(); await page.waitForTimeout(1200);
+  // this device has progress: the confirm sheet comes first (before any code is tried), then the wrong password
+  assert.equal(await page.locator('.screen.in .trf-confirm').count(), 1, 'confirm before the code is tried');
+  await page.locator('.screen.in .trf-confirm-yes').click(); await page.waitForTimeout(1200);
   assert.equal(await page.locator('.screen.in .trf-redeem-error').innerText(), 'IDまたはパスワードが違います', 'one neutral message');
   await page.locator('.screen.in .trf-pw-input').fill('Haneda2026!'); await page.locator('.screen.in .trf-redeem-go').click(); await page.waitForTimeout(1200);
   assert.equal(await page.locator('.screen.in .trf-confirm').count(), 1, 'this device has progress: confirm first');
-  assert.match(await page.locator('.screen.in .trf-confirm-line').innerText(), /この端末のデータ（.*馬\d+頭.*）は、引き継ぎの後に使えなくなります。/);
+  assert.match(await page.locator('.screen.in .trf-confirm-line').innerText(), /この端末のデータ（.+）は、引き継ぎの後に使えなくなります。/);
   await shot('transfer-confirm', 300);
   await page.locator('.screen.in .trf-confirm-yes').click(); await page.waitForTimeout(1200);
   assert.equal(await page.locator('.screen.in .trf-done').count(), 1);

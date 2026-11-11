@@ -2719,14 +2719,14 @@ async function PrivacyChoices() {
   // the policy version and what is always kept
   const q = Glass('Policy', 996, 134, 568, 676, undefined, .86);
   Kicker('プライバシーポリシー', 36, 30, q);
-  Txt('いまの版', 36, 84, 200, 14, MUTED, q, { weight: 500, nowrap: true });
-  Txt(v.policyVersion ?? '', 36, 104, 496, 30, WHITE, q, { weight: 700, nowrap: true, cls: 'num' }).classList.add('cns-version');
-  Txt(v.decidedAt ? `最後に選んだ日：${dexDay(v.decidedAt)}` : 'まだ選んでいません', 36, 146, 496, 16, MUTED, q, { weight: 500, nowrap: true }).classList.add('cns-decided');
-  TextLink('プライバシーポリシーを読む', 36, 186, 496, () => Legal('privacy', PrivacyChoices), q);
-  Hair(36, 252, 496, q);
-  Kicker('いつも保存するもの', 36, 272, q, { rule: false, size: 15 });
-  Txt('購入・返金・同意・アカウント削除・データの開示・通報の記録は、法律や安全のために保存します。', 36, 306, 496, 15, MUTED, q, { lh: 1.6 });
-  Txt('チュートリアル中に確認の画面は出ません。', 36, 420, 496, 15, MUTED, q, { lh: 1.6 });
+  Txt('いまの版', 36, 112, 300, 14, MUTED, q, { weight: 500, nowrap: true });
+  Txt(v.policyVersion ?? '', 36, 136, 496, 30, WHITE, q, { weight: 700, nowrap: true, cls: 'num' }).classList.add('cns-version');
+  Txt(v.decidedAt ? `最後に選んだ日：${dexDay(v.decidedAt)}` : 'まだ選んでいません', 36, 190, 496, 16, MUTED, q, { weight: 500, nowrap: true }).classList.add('cns-decided');
+  TextLink('プライバシーポリシーを読む', 36, 230, 496, () => Legal('privacy', PrivacyChoices), q);
+  Hair(36, 292, 496, q);
+  Kicker('いつも保存するもの', 36, 312, q, { rule: false, size: 15 });
+  Txt('購入・返金・同意・アカウント削除・データの開示・通報の記録は、法律や安全のために保存します。', 36, 346, 496, 15, MUTED, q, { lh: 1.6 });
+  Txt('チュートリアル中に確認の画面は出ません。', 36, 460, 496, 15, MUTED, q, { lh: 1.6 });
   TextLink('広告と分析について（ヘルプ）', 36, 600, 496, () => HelpArticle(L.helpContext('privacy_choices'), 'context', () => PrivacyChoices()), q).dataset.helpContext = 'privacy_choices';
   Back(Privacy, 'BACK', 40, 834);
 }

@@ -270,6 +270,10 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('TransferRedeem'); await waitScreen('transfer-redeem'); await shot('transfer-redeem', english, 500);
     await show('TransferReplaced'); await waitScreen('transfer-replaced'); await shot('transfer-replaced', english, 500);
     await show('Settings'); await waitScreen('settings'); await boxesClear('settings lists (largest)', SETTINGS_LISTS, english);
+    // R19 integration: その他's second page (見た目・お世話・仲間) at the largest size too
+    await page.locator('.screen.in [data-more-tab="looks"]').click(); await waitScreen('settings'); await page.waitForTimeout(400);
+    await boxesClear('settings lists, looks page (largest)', SETTINGS_LISTS, english); await shot('settings-looks', english, 0);
+    await page.locator('.screen.in [data-more-tab="settings"]').click(); await waitScreen('settings'); await page.waitForTimeout(300);
     await show('Home'); await waitScreen('home'); await page.waitForTimeout(700); await boxesClear('home top bar (largest)', HOME_BAR, english);
   };
   await keyScreens(false);

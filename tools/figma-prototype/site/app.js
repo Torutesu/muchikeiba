@@ -1195,6 +1195,7 @@ function SecondRaceIntro() {
 
 // ================================================================= home (REQ-UXP-002, 06 §6.1 / §4.3) — 06-home
 async function Home() {
+  Settings.backTab = undefined; // R19 integration: その他 opens on its first page after the home
   currentScreen = Home;
   await refresh();
   // the day's login bonus is received automatically and shown as a toast (06 §4.2)
@@ -2521,7 +2522,7 @@ async function ChallengeAdvice(sel) {
 }
 
 // ================================================================= その他 / settings (language, legal, account deletion, demo states)
-async function Settings() {
+async function Settings(tab) {
   currentScreen = Settings; await refresh();
   Clear('settings'); SetArt('Art/home-paddock', false);
   TopBar('その他　/　設定', '言語・引き継ぎ・アカウント・法定表示');
@@ -2571,27 +2572,42 @@ async function Settings() {
   { const em = document.createElement('em'); em.textContent = '›'; hist.appendChild(em); }
   // ② looks / care and the legal pages: thin-divider lists
   const m = Glass('More', 556, 134, 480, 676, undefined, .9);
-  Kicker('見た目・お世話・仲間', 36, 30, m);
-  // round 10: 支部の応援 (team cheer stamps) and 友達招待 next to the looks / care entries
-  // round 14: 実況パック (REQ-CMT-011) after the looks entries
-  // round 15: アクセシビリティ (REQ-A11Y-*) first — reachable in the FTUE too (text size before the first race)
-  // round 18: プライバシー (REQ-DEX-001) next to the accessibility settings
-  const moreRows = [['ヘルプ・お問い合わせ', () => HelpCenter(Settings), 'help', (player?.help?.unreadReplies ?? 0) > 0 ? `未読 ${player.help.unreadReplies}` : undefined],
-    // round 19 (REQ-TUT-001): ヒント — race lessons, feature tours and the tips library (NEW = cards not read yet)
-    ['ヒント', () => Tips(Settings), 'tips', (player?.tips?.newCount ?? 0) > 0 ? `NEW ${player.tips.newCount}` : undefined], ['アクセシビリティ', () => A11ySettings(), 'a11y'], ['画質・通信量', () => PerfSettings(), 'perf'], ['プライバシー', () => Privacy(), 'privacy'], ['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions], ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite'],
-    // round 15 (REQ-ADV-009): the pre-race advice switch (a device setting, default on)
-    ['出走前アドバイス', () => { advice.setEnabled(!advice.enabled()); Settings(); }, 'advice', advice.enabled() ? 'オン' : 'オフ'],
-    // round 19 (REQ-CHEER-010): spectators' cheers during your races (a device setting, default on)
-    ['レース中の応援表示', () => { prefs.set(CHEER_INDICATOR_KEY, cheerIndicatorOn() ? '0' : '1'); Settings(); }, 'cheer-indicator', cheerIndicatorOn() ? 'オン' : 'オフ'],
-    // round 17 (REQ-RPT-011): the block list and what a block does
-    ['通報とブロック', () => BlockList(), 'blocks']];
-  moreRows.forEach(([n, go, action, state], i) => {
-    // R15 integration: nine rows of 38 px under the kicker, clear of the legal block below (the kicker at y 466).
-    // R17 integration: eleven rows (ヘルプ first, 通報とブロック last) — the row height follows the count (33 px for 11)
-    // R18 integration: twelve rows with プライバシー (30 px each, the last ends at 456, clear of the legal block at 458)
-    // R19: ヒント and 画質・通信量 join — fourteen rows; the R19 integration groups them (see below)
-    const rowH = Math.min(36, Math.floor(364 / moreRows.length));
-    const b = Btn(n, 36, 96 + i * rowH, 408, rowH, go, 'row' + (i === moreRows.length - 1 ? ' last' : ''), m); b.style.fontSize = rowH < 36 ? '17px' : '18px';
+  // R19 integration: fifteen rows no longer fit one list at the largest text (R18 left twelve at 30 px), so その他 has two
+  // pages behind letter-spaced tabs — 設定・サポート (help, tips, accessibility, graphics & data, privacy, the two race
+  // switches, blocks) and 見た目・お世話・仲間 (the looks / care / friends entries). Rows are 36 px again; a NEW / unread
+  // badge on a row of the other page puts a dot on its tab. Coming back from a looks entry opens the looks page again.
+  const moreTab = tab === 'looks' || tab === 'settings' ? tab : Settings.backTab ?? 'settings';
+  Settings.backTab = undefined;
+  const helpBadge = (player?.help?.unreadReplies ?? 0) > 0 ? `未読 ${player.help.unreadReplies}` : undefined;
+  const tipsBadge = (player?.tips?.newCount ?? 0) > 0 ? `NEW ${player.tips.newCount}` : undefined;
+  const morePages = {
+    // round 15: アクセシビリティ — reachable in the FTUE too (text size before the first race); round 18: プライバシー;
+    // round 19: ヒント (REQ-TUT-001), 画質・通信量 (REQ-PERF-016), レース中の応援表示 (REQ-CHEER-010, a device setting)
+    settings: [['ヘルプ・お問い合わせ', () => HelpCenter(Settings), 'help', helpBadge], ['ヒント', () => Tips(Settings), 'tips', tipsBadge],
+      ['アクセシビリティ', () => A11ySettings(), 'a11y'], ['画質・通信量', () => PerfSettings(), 'perf'], ['プライバシー', () => Privacy(), 'privacy'],
+      // round 15 (REQ-ADV-009): the pre-race advice switch (a device setting, default on)
+      ['出走前アドバイス', () => { advice.setEnabled(!advice.enabled()); Settings(); }, 'advice', advice.enabled() ? 'オン' : 'オフ'],
+      ['レース中の応援表示', () => { prefs.set(CHEER_INDICATOR_KEY, cheerIndicatorOn() ? '0' : '1'); Settings(); }, 'cheer-indicator', cheerIndicatorOn() ? 'オン' : 'オフ'],
+      // round 17 (REQ-RPT-011): the block list and what a block does
+      ['通報とブロック', () => BlockList(), 'blocks']],
+    // round 10: 支部の応援 and 友達招待 next to the looks / care entries; round 14: 実況パック after the looks entries
+    looks: [['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions],
+      ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite']],
+  };
+  Kicker('その他', 36, 30, m);
+  [['settings', '設定・サポート'], ['looks', '見た目・お世話・仲間']].forEach(([k, label], i) => {
+    const t = Btn(label, 36 + i * 208, 106, 200, 44, () => Settings(k), 'choice' + (moreTab === k ? ' on' : ''), m);
+    t.style.fontSize = '16px'; t.style.whiteSpace = 'nowrap'; t.style.padding = '0';
+    t.dataset.moreTab = k; t.setAttribute('aria-pressed', String(moreTab === k));
+    if (k !== moreTab && morePages[k].some((r) => r[3] && /^(NEW|未読)/.test(r[3]))) { const dot = document.createElement('i'); dot.className = 'tip-dot'; t.appendChild(dot); }
+  });
+  const moreRows = morePages[moreTab];
+  moreRows.forEach(([n, open, action, state], i) => {
+    const go = moreTab === 'looks' ? () => { Settings.backTab = 'looks'; open(); } : open;
+    // R15 integration: rows clear of the legal block below (the kicker at y 466). R19 integration: at most eight rows per
+    // page at 36 px under the tabs (the last ends at 156 + 8 × 36 = 444, clear of the legal kicker at 466)
+    const rowH = 36;
+    const b = Btn(n, 36, 156 + i * rowH, 408, rowH, go, 'row' + (i === moreRows.length - 1 ? ' last' : ''), m); b.style.fontSize = '18px';
     if (action) b.dataset.action = action;
     if (state) b.dataset.state = state;
     const em = document.createElement('em'); em.textContent = state ?? '›'; b.appendChild(em);

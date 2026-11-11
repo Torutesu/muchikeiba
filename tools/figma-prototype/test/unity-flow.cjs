@@ -1287,6 +1287,8 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   // my code + share, demo friends redeeming it (real InviteService), milestone rewards via the outbox, entering a code
   await demo('day1');
   await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings');
+  // R19 integration: 友達招待 is on その他's second page (見た目・お世話・仲間)
+  await page.locator('.screen.in [data-more-tab="looks"]').click(); await waitScreen('settings'); await page.waitForTimeout(300);
   await page.locator('.screen.in [data-action="invite"]').click(); await waitScreen('invite'); await page.waitForTimeout(400);
   const myCode = await page.locator('.screen.in [data-code]').getAttribute('data-code');
   assert.match(myCode, /^[23456789BCDFGHJKMNPQRSTVWXZ]{8}$/, 'my invite code');

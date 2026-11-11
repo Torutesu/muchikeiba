@@ -53,7 +53,7 @@
 
 ## 7. 通報（Round 17 の §47 との続き）
 
-この版は §18 の通報（`POST /v1/teams/me/feed/:seq/report`）を使う。各行に `FeedQuickChat.ReportKind / ReportTeamId / ReportSeq`（`{kind:"team_feed", teamId, seq}`）が入っているので、§47 の通報・ブロック管理（Round 17）がマージされたら、その通報の画面にこの対象を渡すだけにしてある（サーバー側の受け口は §47 の担当が作る）。ブロックの一覧は1つ（§18 のミュート＝§47 のブロック管理の一覧）。
+Round 18 統合で §47 の通報につないだ：各行の「通報」は `FeedQuickChat.ReportTargetFor(authorId)`（kind `qchat`、`feedRef = "<teamId>:<seq>"`）を §47 の通報シート（`ReportModel`）に渡す。サーバーが支部の TeamDO から表示された文と値を写す。受け付けたら §18 の通報（`POST /v1/teams/me/feed/:seq/report`）で自分のフィードから隠す。抜けた人の文（`Anon`、ReportTargetFor が null）は §18 の通報だけ。ブロックの一覧は1つ（§18 のミュート＝§47 のブロック管理の一覧）で、ブロックの画面から変えても支部の写しはすぐ更新される。
 
 ## 8. アクティビティ
 

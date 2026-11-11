@@ -1094,7 +1094,8 @@ export const routes: Route[] = [
   { method: 'GET', path: '/v1/reports/options', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('reportOptions', u) },
   { method: 'POST', path: '/v1/reports', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, reportBodySchema);
-    const res = await new ReportsService(() => c.master, c.player, () => c.ops?.playerReports, (raceId, pid) => c.race.report(raceId, pid), c.clock).submit(u, { ...b, targetId: playerIdParam(b.targetId) } as ReportBody);
+    const res = await new ReportsService(() => c.master, c.player, () => c.ops?.playerReports, (raceId, pid) => c.race.report(raceId, pid), c.clock,
+      c.teams ? (r, teamId, seq) => c.teams!.qchatReportCopy(r, teamId, seq) : undefined).submit(u, { ...b, targetId: playerIdParam(b.targetId) } as ReportBody);
     if (b.alsoBlock) await c.teams?.syncBlocks(u); // the branch's quick chat copy of the one block list (§52.7)
     return res;
   } },
@@ -1249,6 +1250,7 @@ export const handle: Handler = async (req, _p, ctx) => {
       paidBalance: () => ctx.paidBalance(), replay: (id) => ctx.race.replay(id), ...(ctx.clock ? { clock: ctx.clock } : {}),
       ...(ctx.tournaments ? { tournaments: ctx.tournaments } : {}),
       ...(ctx.hostedCups ? { hostedCups: ctx.hostedCups } : {}),
+      ...(ctx.teams ? { teams: ctx.teams } : {}), // Round 18 integration: hide a reported quick chat phrase
       baseMaster: ctx.baseMaster ?? ctx.master,
       ...(ctx.inviteLookup ? { inviteLookup: ctx.inviteLookup } : {}),
       ...(ctx.adminConsoleOrigins ? { consoleOrigins: ctx.adminConsoleOrigins } : {}),

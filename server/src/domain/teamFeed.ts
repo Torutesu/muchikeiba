@@ -315,6 +315,28 @@ export function feedReport(m: Master, f: TeamFeedState, seq: number, reporter: s
   return { ownerId: it.playerId, first: true };
 }
 
+/**
+ * Round 18 integration (§47 × §52): the report copy of a quick chat item — the phrase rendered in Japanese (the queue's
+ * language) with each value, as members saw it. Unknown / not a phrase / the reporter's own → NOT_FOUND / BAD_REQUEST.
+ */
+export function qchatReportCopy(m: Master, f: TeamFeedState, seq: number, reporter: string, names: Map<string, string>) {
+  const it = f.items.find((x) => x.seq === seq && x.kind === 'qchat');
+  if (!it?.qchat) throw new AppError('NOT_FOUND', 'no such phrase');
+  if (it.playerId === reporter) throw new AppError('BAD_REQUEST', 'cannot report your own phrase');
+  return {
+    playerId: it.playerId, phraseId: it.qchat.phraseId, at: it.at,
+    text: renderPhrase(m, it.qchat.phraseId, it.qchat.slots, 'ja', names),
+    slots: it.qchat.slots.map((s) => ({ name: s.name, value: slotValue(m, s, 'ja', names) })),
+  };
+}
+/** Round 18 integration (REQ-RPT-013 hide): support removes a reported quick chat phrase from the branch feed. */
+export function qchatOpsHide(f: TeamFeedState, seq: number) {
+  const i = f.items.findIndex((x) => x.seq === seq && x.kind === 'qchat');
+  if (i < 0) return { removed: false, seq };
+  const [it] = f.items.splice(i, 1);
+  return { removed: true, seq, playerId: it!.playerId, phraseId: it!.qchat?.phraseId ?? null };
+}
+
 /** REQ-TEAMFEED-008 × REQ-UXS-040: removes a deleted player's items, reactions, reports and rate entry. */
 export function feedForget(f: TeamFeedState, playerId: string) {
   const before = f.items.length;

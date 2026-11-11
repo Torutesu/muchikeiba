@@ -21,8 +21,10 @@ namespace Muchi.Client
     public static class ReportContentKinds
     {
         public const string Player = "player", DisplayName = "display_name", HorseName = "horse_name", StableName = "stable_name",
-            ReplayTitle = "replay_title", PhotoCaption = "photo_caption", Race = "race";
-        public static readonly string[] All = { Player, DisplayName, HorseName, StableName, ReplayTitle, PhotoCaption, Race };
+            ReplayTitle = "replay_title", PhotoCaption = "photo_caption", Race = "race",
+            /// <summary>Round 18 integration: a §52 quick chat phrase in the branch feed (key "feedRef" = "teamId:seq").</summary>
+            Qchat = "qchat";
+        public static readonly string[] All = { Player, DisplayName, HorseName, StableName, ReplayTitle, PhotoCaption, Race, Qchat };
 
         /// <summary>The content key each kind needs (protocol §47.4), or null.</summary>
         public static string RefKey(string kind)
@@ -32,6 +34,7 @@ namespace Muchi.Client
                 case HorseName: return "horseId";
                 case ReplayTitle: case Race: return "raceId";
                 case PhotoCaption: return "photoId";
+                case Qchat: return "feedRef";
                 default: return null;
             }
         }

@@ -5576,11 +5576,16 @@ async function TeamFeed(mode = 'stamp') {
         mute.addEventListener('click', async (e) => { e.stopPropagation(); const r = await L.muteMember(it.playerId, true); toast(r.ok ? 'ブロックしました（その他 › 通報とブロックで戻せます）' : r.message); TeamFeed(mode); });
         foot.appendChild(mute);
       }
-      // round 17 (REQ-RPT-001): the report sheet; once received, the item is also hidden for me (REQ-TEAMFEED-007)
+      // round 17 (REQ-RPT-001): the report sheet; once received, the item is also hidden for me (REQ-TEAMFEED-007).
+      // Round 18 integration: a quick chat phrase is its own target (kind qchat: the server copies the phrase and its values
+      // from the branch); a former member's phrase has no author to name, so it keeps the §18 feed report.
       const rep = tfNode('button', 'tf-link', '通報');
-      rep.addEventListener('click', (e) => {
+      rep.dataset.report = q ? (q.anon ? 'feed' : 'qchat') : 'player';
+      rep.addEventListener('click', async (e) => {
         e.stopPropagation();
-        ReportSheet({ playerId: it.playerId, name: it.displayName, kind: 'player', source: 'team_feed', after: async (cat) => { await L.reportFeed(it.seq, cat === 'harassment' ? 'harassment' : 'other'); TeamFeed(mode); } });
+        if (q?.anon) { const r = await L.reportFeed(it.seq, 'other'); toast(r.ok ? '通報を受け付けました。ご協力ありがとうございます' : r.message); TeamFeed(mode); return; }
+        const target = q ? { kind: 'qchat', ref: `${q.report.teamId}:${q.report.seq}`, text: q.qchatText } : { kind: 'player' };
+        ReportSheet({ playerId: it.playerId, name: it.displayName, ...target, source: 'team_feed', after: async (cat) => { await L.reportFeed(it.seq, cat === 'harassment' ? 'harassment' : 'other'); TeamFeed(mode); } });
       });
       foot.appendChild(rep);
     }
@@ -5879,7 +5884,7 @@ async function Activity() {
 // server, sends once, and never says how many others reported. The block screen is the one block list (the team feed's mute
 // list) with current names and what a block does in each feature; unblocking asks first. Player names and the note stay as
 // typed (.keep-ja). ムチ一閃 tone: translucent navy panels, letter-spaced cyan labels, one skewed cyan CTA ».
-const RPT_KINDS_JA = { player: 'プレイヤー', display_name: '名前', horse_name: '馬の名前', stable_name: '厩舎の名前', replay_title: 'リプレイのタイトル', photo_caption: '写真のキャプション', race: 'レース' };
+const RPT_KINDS_JA = { player: 'プレイヤー', display_name: '名前', horse_name: '馬の名前', stable_name: '厩舎の名前', replay_title: 'リプレイのタイトル', photo_caption: '写真のキャプション', race: 'レース', qchat: '定型チャット' };
 const RPT_ERRORS = {
   RATE_LIMITED: '今日はこれ以上通報できません。4:00に戻ります', NOT_FOUND: '通報する内容が見つかりませんでした。変更・削除された可能性があります',
   NOT_ELIGIBLE: '出走したレースだけ「不正の疑い」で通報できます', BAD_REQUEST: '補足が長すぎます', DELETION_PENDING: 'アカウント削除の手続き中は送れません',
@@ -5929,7 +5934,7 @@ async function ReportSheet(t) {
     const send = Cta('送る', 48, 736, 380, async () => {
       if (st.sending) return;
       st.sending = true; sync();
-      const r = await L.reports.submit({ targetId: t.playerId, category: st.reason, source: t.source, content: { kind: t.kind, ...(t.ref ? { [t.kind === 'horse_name' ? 'horseId' : t.kind === 'photo_caption' ? 'photoId' : 'raceId']: t.ref } : {}) }, note: st.note.trim() || null, alsoBlock: st.block });
+      const r = await L.reports.submit({ targetId: t.playerId, category: st.reason, source: t.source, content: { kind: t.kind, ...(t.ref ? { [t.kind === 'horse_name' ? 'horseId' : t.kind === 'photo_caption' ? 'photoId' : t.kind === 'qchat' ? 'feedRef' : 'raceId']: t.ref } : {}) }, note: st.note.trim() || null, alsoBlock: st.block });
       st.sending = false;
       if (!r.ok) { msg.textContent = RPT_ERRORS[r.code] ?? r.message; sync(); return; }
       (globalThis.__muchiReports ??= []).push({ kind: t.kind, category: st.reason, source: t.source, blocked: r.value.blocked });

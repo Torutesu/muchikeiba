@@ -11,7 +11,7 @@ import { jstMonthKey } from './time.js';
 import { leagueTick, newLeague, teamLeagueView, type LeagueState } from './league.js';
 import {
   feedForget, feedGoal, feedPage, feedPost, feedRace, feedReact, feedReport, newFeed, type FeedItem, type FeedRace, type ReportReason, type TeamFeedState,
-  type stampCatalog, qchatLeft, qchatPost, qchatSetBlocks, qchatUsage,
+  type stampCatalog, qchatLeft, qchatOpsHide, qchatPost, qchatReportCopy, qchatSetBlocks, qchatUsage,
 } from './teamFeed.js';
 import { slotValue, type QChatOption, type QChatSlotInput, type QSlot, type playerQchatOptions } from './quickChat.js';
 import type { Locale } from '../i18n/locale.js';
@@ -67,6 +67,9 @@ export interface TeamPort {
   /** The members a phrase may name (no block relation either way) and the viewer's usage today. */
   qchatMembers(teamId: string, viewer: string, muted: string[], locale: Locale): Promise<{ player: QChatOption[]; usage: ReturnType<typeof qchatUsage> }>;
   qchatBlocks(teamId: string, playerId: string, muted: string[]): Promise<unknown>;
+  /** Round 18 integration (§47 × §52): the report copy of a phrase (members only) / support's hide. */
+  qchatReportCopy(teamId: string, reporter: string, seq: number): Promise<ReturnType<typeof qchatReportCopy>>;
+  qchatOpsHide(teamId: string, seq: number): Promise<ReturnType<typeof qchatOpsHide>>;
   /** REQ-UXS-040: removes a deleted player's items and reactions (no membership needed). Also their team goal contribution (REQ-TGOAL-006). */
   feedForget(teamId: string, playerId: string): Promise<{ removed: number }>;
   // REQ-TGOAL-*: the weekly goal lives in the team object
@@ -355,6 +358,17 @@ export class TeamsService {
     const r = await this.players.feedMutes(uid).catch(() => null);
     if (r) await this.pushBlocks(uid, r.muted);
   }
+  /**
+   * Round 18 integration (§47 × §52): what a report of a quick chat phrase copies — only from the reporter's own branch
+   * (anything else answers NOT_FOUND, like an unknown item).
+   */
+  async qchatReportCopy(reporter: string, teamId: string, seq: number) {
+    const st = await this.players.state(reporter);
+    if (st.teamId !== teamId) throw new AppError('NOT_FOUND', 'no such phrase');
+    return this.teams.qchatReportCopy(teamId, reporter, seq);
+  }
+  /** REQ-RPT-013 hide for a quick chat report: the phrase leaves the branch feed. */
+  qchatOpsHide(teamId: string, seq: number) { return this.teams.qchatOpsHide(teamId, seq); }
   private async pushBlocks(uid: string, muted: string[]) {
     const st = await this.players.state(uid).catch(() => null);
     if (st?.teamId) await this.teams.qchatBlocks(st.teamId, uid, muted).catch(() => undefined);
@@ -525,6 +539,8 @@ export class TeamCore {
     qchatSetBlocks(this.master(), this.feed, playerId, muted);
     return { updated: true };
   }
+  qchatReportCopy(reporter: string, seq: number) { this.member(reporter); return qchatReportCopy(this.master(), this.feed, seq, reporter, this.names()); }
+  qchatOpsHide(seq: number) { return qchatOpsHide(this.feed, seq); }
   feedForget(playerId: string) { this.goalForget(playerId); return feedForget(this.feed, playerId); }
 
   // REQ-TGOAL-*
@@ -637,6 +653,8 @@ export class MemoryTeams implements TeamPort, TeamDirectoryPort, TeamBoardPort {
   qchatPost(teamId: string, p: string, phraseId: string, slots: QSlot[], muted: string[]) { return this.run(teamId, (c) => c.qchatPost(p, phraseId, slots, muted)); }
   qchatMembers(teamId: string, viewer: string, muted: string[], locale: Locale) { return this.run(teamId, (c) => c.qchatMembers(viewer, muted, locale)); }
   async qchatBlocks(teamId: string, p: string, muted: string[]) { return this.cores.has(teamId) ? this.run(teamId, (c) => c.qchatBlocks(p, muted)) : { updated: false }; }
+  qchatReportCopy(teamId: string, reporter: string, seq: number) { return this.run(teamId, (c) => c.qchatReportCopy(reporter, seq)); }
+  async qchatOpsHide(teamId: string, seq: number) { return this.cores.has(teamId) ? this.run(teamId, (c) => c.qchatOpsHide(seq)) : { removed: false, seq }; }
   async feedForget(teamId: string, p: string) { return this.cores.has(teamId) ? this.run(teamId, (c) => c.feedForget(p)) : { removed: 0 }; }
   // REQ-TGOAL-* (pushes for milestones are sent by the caller in tests, by TeamDO in production)
   async goalContribute(teamId: string, c: GoalContribution) {

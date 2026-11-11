@@ -158,6 +158,8 @@ function makeTeamsService(env: Env, master: () => Master, player: (uid: string) 
     qchatPost: async (id, p, phraseId, slots, muted) => (await call(team(id).qchatPost!(p, phraseId, slots, muted))) as QchatPostResult,
     qchatMembers: async (id, v, muted, locale) => (await call(team(id).qchatMembers!(v, muted, locale))) as Awaited<ReturnType<TeamPort['qchatMembers']>>,
     qchatBlocks: async (id, p, muted) => call(team(id).qchatBlocks!(p, muted)),
+    qchatReportCopy: async (id, r, seq) => (await call(team(id).qchatReportCopy!(r, seq))) as Awaited<ReturnType<TeamPort['qchatReportCopy']>>,
+    qchatOpsHide: async (id, seq) => (await call(team(id).qchatOpsHide!(seq))) as Awaited<ReturnType<TeamPort['qchatOpsHide']>>,
     feedForget: async (id, p) => (await call(team(id).feedForget!(p))) as { removed: number },
     // REQ-TGOAL-*
     goalView: async (id, v) => (await call(team(id).goalView!(v))) as TeamGoalView,

@@ -102,6 +102,8 @@ export interface AdminContext {
   clock?: () => number;
   /** REQ-TOUR-001/010 (absent = tournament routes answer NOT_FOUND). */
   tournaments?: TournamentsService;
+  /** Round 18 integration: the branch feed, for the hide action of a quick chat report (absent = NOT_FOUND). */
+  teams?: import('../domain/teamService.js').TeamsService;
   /** REQ-CUP-015: player-hosted cups (absent = the cup routes answer NOT_FOUND). */
   hostedCups?: import('../domain/hostedCupService.js').HostedCupsService<unknown>;
   /** The shipped master (remote-config versions are resolved on top of it). Absent = no gacha calendar / events view. */
@@ -714,6 +716,11 @@ export const adminRoutes: AdminRoute[] = [
     } else if (b.action === 'hide') {
       if (rep.content.kind === 'replay_title') effect = await r.ctx.player(target).invoke('replayOpsHide', target, rep.content.ref!);
       else if (rep.content.kind === 'photo_caption') effect = await r.ctx.player(target).invoke('photoOpsHide', target, rep.content.ref!);
+      else if (rep.content.kind === 'qchat') { // Round 18 integration: the phrase leaves the branch feed
+        if (!r.ctx.teams) throw new AppError('NOT_FOUND', 'teams are not available');
+        const [teamId, seq] = rep.content.ref!.split(':') as [string, string];
+        effect = await r.ctx.teams.qchatOpsHide(teamId, Number(seq));
+      }
       else throw new AppError('BAD_REQUEST', `a ${rep.content.kind} report has no caption or replay to hide`);
     } else if (b.action === 'ban') effect = await r.ctx.ops.integrity.ban(target, b.until, r.reason!, r.principal.id, r.now);
     const done = await pr.resolve(id, b.action, r.principal.id, r.reason!, r.now);

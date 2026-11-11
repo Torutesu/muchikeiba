@@ -86,9 +86,16 @@ namespace Muchi.Client
         /// <summary>The author left the branch: shown as 「元メンバー」 (no player id; nothing to mute).</summary>
         public bool Anon;
         public List<QuickChatSlotValue> Slots = new List<QuickChatSlotValue>();
-        /// <summary>The report target (§18 report now; Round 17's §47 report centre takes the same descriptor).</summary>
+        /// <summary>The report target descriptor ({kind:"team_feed", teamId, seq}).</summary>
         public string ReportKind, ReportTeamId;
         public long ReportSeq;
+        /// <summary>
+        /// Round 18 integration: the §47 report target for this phrase (content kind "qchat"; the server copies the phrase from
+        /// the branch). Null for a former member's phrase (no author id): use the §18 feed report for those.
+        /// </summary>
+        public ReportTarget ReportTargetFor(string authorId) =>
+            Anon || string.IsNullOrEmpty(authorId) || string.IsNullOrEmpty(ReportTeamId) ? null
+                : new ReportTarget(authorId, ReportContentKinds.Qchat, ReportTeamId + ":" + ReportSeq.ToString(System.Globalization.CultureInfo.InvariantCulture));
         internal static FeedQuickChat Parse(JsonNode o)
         {
             if (o == null) return null;

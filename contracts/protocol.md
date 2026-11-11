@@ -2556,6 +2556,7 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 | `stable_name` | マイ厩舎の名前 | — | `name`・`harassment`・`other` |
 | `replay_title` | 公開しているリプレイのタイトル | `raceId` | `text`・`harassment`・`other` |
 | `photo_caption` | 写真のキャプション | `photoId` | `text`・`harassment`・`other` |
+| `qchat` | 支部の定型チャットの1件（§52、Round 18 統合） | `feedRef`（`"<teamId>:<seq>"` = フィードの `qchat.report`） | `text`・`harassment`・`other` |
 | `race` | 表示名とレース id | `raceId` | `cheating`・`harassment`・`other` |
 
 - `note`：任意。NFKC・前後の空白を落として `reports.noteMaxChars`（既定 100）文字まで、制御文字は不可（超えたら 400）。**訳さない**（運営だけが読む。プレイヤーの文と同じ扱い）。
@@ -2580,7 +2581,8 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
   - `dismiss`：問題なしで閉じる。
   - `warn`：相手のアクティビティに「運営からのお願い」（`ops_notice`、§40、通報者は出さない）を1件。
   - `rename`：既存の名前のリセット（`/v1/admin/players/:id/name-reset` と同じ処理、NG リストの名前に戻す流れ）。`display_name`→表示名、`horse_name`→その馬、`stable_name`→厩舎名。ほかの kind は 400。
-  - `hide`：`replay_title` はそのリプレイを非公開にしてタイトルを消し、運営の印（`opsHidden`）で再公開できなくする。`photo_caption` はキャプションを消す。ほかの kind は 400。
+  - `hide`：`replay_title` はそのリプレイを非公開にしてタイトルを消し、運営の印（`opsHidden`）で再公開できなくする。`photo_caption` はキャプションを消す。`qchat` はその1件を支部のフィードから消す（全員に見えなくなる、Round 18 統合）。ほかの kind は 400。
+  - `qchat` の写し（Round 18 統合）：対象のプレイヤーの状態ではなく**通報した人の支部の TeamDO** から、表示された文（日本語）とスロットごとの値（`snapshot.qchat = {teamId, seq, phraseId, slots:[{name, value}], postedAt}`）を写す。通報した人がその支部の仲間でない・その項目が無い・`targetId` が書いた人でない時は 404（数えない）。抜けた人の文（`anon`）は書いた人の ID を出さないので、§18 のフィードの通報だけを使う。
   - `ban`：既存の BAN（`integrity.ban`、`until` = null で無期限）。
   - どれも1回だけ（閉じた通報に送ると 409 `CONFLICT`）。監査ログに前後の状態を残す（REQ-OPS-010）。
 - **通報者の重み**（悪用対策、簡単で説明できる決まり）：通報者ごとに審査済みの数（`dismiss` と、それ以外の対応）を数える。審査済みが `minResolved` 件以上で、`dismiss` の割合が `veryLowSharePermille`（80%）以上なら重み `veryLowWeight`（0.25）、`lowSharePermille`（50%）以上なら `lowWeight`（0.5）、それ以外は 1。重みは通報を受けた時点のものを記録し、並び順（`score`）にだけ使う。**重みが低くても通報は消さない**し、重みが高くても自動で処罰しない。
@@ -2963,7 +2965,7 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 - 表示名は §18 と同じく今の名簿から。`anon: true`（抜けた人の投稿、52.6）は `playerId: ""`・`displayName` 「元メンバー」／「Former member」・`mine: false`。
 - **ブロックは両方向**（REQ-QCHAT-007、ブロックの一覧は1つ = §18 のミュート）：私がブロックした人の `qchat` 項目は私に見えない（§18 と同じ）うえに、**私をブロックした人の `qchat` 項目も私に見えない**。そういう項目へのリアクションは `404 NOT_FOUND`。名前のスロットにも選べない（52.2）。TeamDO は仲間ごとのブロックの写しを持ち、フィードを開いた時・ミュートを変えた時・投稿の時に本人の一覧で更新する。Round 18 統合：§47 のブロックの画面（`PUT`／`DELETE /v1/blocks/:playerId`）・通報の「ブロックもする」・ライバルのブロック（`POST /v1/rival/block`）の後も、すぐに写しを更新する（`TeamsService.syncBlocks`、失敗しても次にフィードを開いた時に直る）。
 - 応援（リアクション）は §18 の `PUT /v1/teams/me/feed/:seq/reaction` をそのまま使う（スタンプで1人1つ）。応援の通知（プッシュ）は出さない。
-- 通報は §18 の `POST /v1/teams/me/feed/:seq/report`（いまの通報）がそのまま使える。§47 の通報・ブロック管理（Round 17）が入ったら、`qchat.report`（`{kind:"team_feed", teamId, seq}`）をその通報の対象として渡す（この版では §47 を使わない。docs/handoff-codex-round18-quick-chat.md に書いた続きの作業）。
+- 通報：§47 の `POST /v1/reports` に `content: {kind: "qchat", feedRef: "<teamId>:<seq>"}`（`qchat.report` から作る、Round 18 統合。§47.4）。受け付けた後は §18 の `POST /v1/teams/me/feed/:seq/report` で自分のフィードから隠す（§47 の支部フィードの通報と同じ流れ）。抜けた人の文（`anon`）は §18 の通報だけ。
 
 ### 52.5 定型文と選べる値（`GET /v1/teams/me/quick-chat`、REQ-QCHAT-008）
 ```json

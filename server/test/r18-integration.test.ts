@@ -12,6 +12,9 @@ import { AppError } from '../src/domain/errors.js';
 import { MemoryDirectory } from '../src/domain/friends.js';
 import { MemoryTeams, TeamsService } from '../src/domain/teamService.js';
 import { blockListOf } from '../src/domain/blocks.js';
+import { authenticateAdmin, type AdminAuthConfig } from '../src/ops/admin.js';
+import { sha256Hex } from '../src/ops/hash.js';
+import { memoryOps } from '../src/ops/memoryOps.js';
 import { buildExportDocument, classifyKey, DEX_EXTENSION_KEYS } from '../src/domain/dataExport.js';
 import { MemoryExportStore, runDataExportJob, type DataExportJobPorts } from '../src/domain/dataExportService.js';
 import { MemoryPlayerReportRepo, PlayerReportsCore } from '../src/ops/playerReports.js';
@@ -129,26 +132,26 @@ describe('§46 maintenance gate × Round 18 routes (Round 18 integration, §46.2
 });
 
 /** A branch world: players, the team service and the HTTP layer (quick chat, blocks, reports). */
-function branchWorld() {
+async function branchWorld() {
   let t = T0;
+  const auth: AdminAuthConfig = { tokens: [{ name: 'op', role: 'operator', sha256: await sha256Hex('operator-token-0123456789') }] };
   const clock = () => t;
   const repo = new MemoryPlayerRepo();
   const teamsMem = new MemoryTeams(() => m, clock);
   const svc = new PlayerService(repo, { master: m, rng: seededRng(5), clock, verifiers: {}, onTeamFeed: async (p) => { await teamsMem.feedRace(p.teamId, p.playerId, p.race); } });
   const invoker: PlayerInvoker = { invoke: (async (method: string, ...args: unknown[]) => (svc as unknown as Record<string, (...a: unknown[]) => unknown>)[method]!.apply(svc, args)) as PlayerInvoker['invoke'] };
   const ts = new TeamsService(() => m, teamsMem, teamPlayersFrom(() => invoker), teamsMem, teamsMem, seededRng(9), clock);
-  const reportRepo = new MemoryPlayerReportRepo();
-  const core = new PlayerReportsCore(reportRepo);
-  const playerReports: PlayerReportsApi = {
-    submit: async (x, at, cfg) => core.submit(x, at, cfg), list: async (f) => core.list(f), get: async (id, cfg) => core.get(id, cfg),
-    check: async (id, a) => core.assertActionable(id, a), resolve: async (id, a, by, note, at) => core.resolve(id, a, by, note, at),
-    forget: async (uid) => core.forgetPlayer(uid),
-  };
+  const ops = memoryOps(m, () => invoker);
   const c = {
     master: m, authenticate: async (req: Request) => { const u = req.headers.get('x-test-user'); if (!u) throw new AppError('UNAUTHORIZED'); return u; },
-    player: () => invoker, friends: makeFriendsService(() => invoker, new MemoryDirectory()), clock, teams: ts, ops: { playerReports },
-    race: { report: async () => ({ ok: true }) }, paidBalance: async () => ({}), adminToken: 'x', parseStoreNotification: async () => null,
+    player: () => invoker, friends: makeFriendsService(() => invoker, new MemoryDirectory()), clock, teams: ts, ops: ops.api,
+    race: { report: async () => ({ ok: true }) }, paidBalance: async () => ({}), adminToken: undefined, parseStoreNotification: async () => null,
+    authenticateAdmin: (req: Request) => authenticateAdmin(req, auth), baseMaster: m,
   } as unknown as AppContext;
+  const admin = async (method: string, path: string, body?: unknown) => {
+    const res = await handle(new Request(`https://x${path}`, { method, headers: { 'content-type': 'application/json', authorization: 'Bearer operator-token-0123456789' }, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) }), {}, c);
+    return { status: res.status, json: (await res.json()) as Record<string, unknown> };
+  };
   const http = async (method: string, path: string, user: string, body?: unknown) => {
     const res = await handle(new Request(`https://x${path}`, { method, headers: { 'x-test-user': user, 'content-type': 'application/json', 'idempotency-key': `k${Math.random()}` }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }), {}, c);
     return { status: res.status, json: (await res.json()) as Record<string, unknown> };
@@ -160,12 +163,12 @@ function branchWorld() {
     return v.teamId;
   };
   const qitems = async (u: string) => (await ts.feed(u, null, null, 'ja')).items.filter((x) => x.kind === 'qchat');
-  return { svc, repo, ts, teamsMem, core, http, team, qitems, advance: (ms: number) => { t += ms; } };
+  return { svc, repo, ts, teamsMem, ops, http, admin, team, qitems, advance: (ms: number) => { t += ms; } };
 }
 
 describe('§47 one block list × §52 quick chat (Round 18 integration)', () => {
   it('a block from the block screen or a report reaches the branch at once: the blocked member no longer sees my phrases', async () => {
-    const w = branchWorld();
+    const w = await branchWorld();
     await w.team('a', 'b', 'c');
     await w.ts.postQuickChat('a', 'otsukare', {});
     expect((await w.qitems('b')).map((x) => x.playerId)).toEqual(['a']);
@@ -181,5 +184,33 @@ describe('§47 one block list × §52 quick chat (Round 18 integration)', () => 
     expect((await w.qitems('a')).map((x) => x.playerId)).toEqual(['a']); // a sees only its own
     // friend suggestions read the same list (one list, no copy of their own)
     expect(blockListOf(await w.svc.state('c'))).toEqual(['a']);
+  });
+});
+
+describe('§47 reports × §52 quick chat: a phrase is a report target (Round 18 integration)', () => {
+  it('the server copies the rendered phrase and its values from the branch; only a member can report; ops can hide it for everyone', async () => {
+    const w = await branchWorld();
+    const teamId = await w.team('a', 'b', 'c');
+    await w.svc.grantPartner('a', 'カゼノコ', 'c:p');
+    const horse = (await w.svc.state('a')).horses[0]!;
+    const { seq } = await w.ts.postQuickChat('a', 'my_horse', { horse: horse.id }) as { seq: number };
+    const body = (target: string, ref: string) => ({ targetId: target, category: 'text', source: 'team_feed', content: { kind: 'qchat', feedRef: ref }, note: '同じ文を何度も' });
+    // a non-member, a wrong author or an unknown item: 404 (nothing counted)
+    await w.svc.bootstrap('outsider');
+    expect((await w.http('POST', '/v1/reports', 'outsider', body('a', `${teamId}:${seq}`))).status).toBe(404);
+    expect((await w.http('POST', '/v1/reports', 'c', body('b', `${teamId}:${seq}`))).status).toBe(404);
+    expect((await w.http('POST', '/v1/reports', 'c', body('a', `${teamId}:999`))).status).toBe(404);
+    // a member: received, and the queue holds the phrase as the branch showed it (server-side copy, not the device's)
+    expect((await w.http('POST', '/v1/reports', 'c', body('a', `${teamId}:${seq}`))).status).toBe(200);
+    const [rep] = (await w.admin('GET', '/v1/admin/player-reports?status=open')).json.reports as { id: string; content: { kind: string; ref: string }; snapshot: { text: string; qchat?: { phraseId: string; slots: { name: string; value: string }[] } } }[];
+    expect(rep!.content).toEqual({ kind: 'qchat', ref: `${teamId}:${seq}` });
+    const items = await w.qitems('b');
+    expect(rep!.snapshot.text).toBe(items[0]!.qchat!.qchatText);
+    expect(rep!.snapshot.qchat!.phraseId).toBe(items[0]!.qchat!.phraseId);
+    // ops hide: the item leaves the branch feed for every member
+    const hide = await w.admin('POST', `/v1/admin/player-reports/${rep!.id}/action`, { action: 'hide', reason: 'spam phrase' });
+    expect(hide.status, JSON.stringify(hide.json)).toBe(200);
+    expect(await w.qitems('b')).toEqual([]);
+    expect(await w.qitems('a')).toEqual([]);
   });
 });

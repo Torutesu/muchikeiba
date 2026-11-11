@@ -135,6 +135,9 @@ export class TeamDO extends DurableObject<Env> {
   qchatPost(playerId: string, phraseId: string, slots: QSlot[], muted: string[]) { return this.run((c) => c.qchatPost(playerId, phraseId, slots, muted), false); }
   qchatMembers(viewer: string, muted: string[], locale: Locale) { return this.run((c) => c.qchatMembers(viewer, muted, locale), false); }
   qchatBlocks(playerId: string, muted: string[]) { return this.run((c) => c.qchatBlocks(playerId, muted), false); }
+  // Round 18 integration (§47 × §52): a report's copy of a phrase; support's hide
+  qchatReportCopy(reporter: string, seq: number) { return this.run((c) => c.qchatReportCopy(reporter, seq), false); }
+  qchatOpsHide(seq: number) { return this.run((c) => c.qchatOpsHide(seq), false); }
   feedForget(playerId: string) { return this.run((c) => c.feedForget(playerId), false); }
 
   // REQ-TGOAL-*: the weekly goal (the summary does not change, so nothing is published)

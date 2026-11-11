@@ -297,7 +297,7 @@ const reportsSvc = new ReportsService(() => master, () => rivalInvoker, () => re
   const s = await svc.state(pid);
   const mine = [...(s.myReplays?.saved ?? []), ...(s.myReplays?.recent ?? [])].some((r) => r.raceId === raceId);
   return { ok: mine };
-}, now);
+}, now, (r, teamId, seq) => teamsSvc.qchatReportCopy(r, teamId, seq)); // round 18 integration: a quick chat phrase is a report target
 const BLOCK_DEMO: [string, string][] = [['demo_bl_1', 'ヨルノカラス'], ['demo_bl_2', 'ナギサ']];
 const teamPlayers: TeamPlayers = {
   prepareJoin: (u, t) => svc.teamPrepareJoin(u, t), commitJoin: (u, t) => svc.teamCommitJoin(u, t), abortJoin: (u, t) => svc.teamAbortJoin(u, t),

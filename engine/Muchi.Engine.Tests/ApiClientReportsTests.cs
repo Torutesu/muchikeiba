@@ -58,6 +58,9 @@ namespace Muchi.Engine.Tests
             Assert.Throws<ArgumentException>(() => new ReportTarget("p9", ReportContentKinds.DisplayName, "x"));
             Assert.Throws<ArgumentException>(() => new ReportTarget("p9", "chat"));
             Assert.Throws<ArgumentException>(() => new ReportTarget("", ReportContentKinds.Player));
+            // Round 18 integration: a quick chat phrase needs its feed reference
+            Assert.Throws<ArgumentException>(() => new ReportTarget("p9", ReportContentKinds.Qchat));
+            Assert.Equal("feedRef", ReportContentKinds.RefKey(ReportContentKinds.Qchat));
             await Assert.ThrowsAsync<ArgumentException>(() => _api.SubmitReportAsync(new ReportTarget("p9", ReportContentKinds.Player), "spam", ReportSources.Profile));
             await Assert.ThrowsAsync<ArgumentException>(() => _api.SubmitReportAsync(new ReportTarget("p9", ReportContentKinds.Player), ReportCategories.Other, "chat"));
         }

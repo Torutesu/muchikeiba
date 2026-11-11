@@ -96,6 +96,8 @@ static class Program
         CheerChecks.Run(Check, Root, Ruleset());
         Console.WriteLine("== round 19: 引き継ぎコード (issue checklist, generated once, redeem with one key, confirm, custom-token sign-in, SESSION_REPLACED; REQ-TRF-*)");
         await TransferCodeChecks.Run(Check);
+        Console.WriteLine("== round 21: ディープリンク・再戦 (DeepLinkModel: parse, FTUE queue, offline, one neutral notice, never auto-spend, referrer once, KPI without the token; RematchModel; REQ-LINK-*)");
+        await DeepLinkChecks.Run(Check);
         Console.WriteLine("== round 11: 図鑑, 実績 and titles (CollectionModel / AchievementModel / TitleShowcaseModel; REQ-COL-*, REQ-ACH-*)");
         await CollectionChecks.Run(Check, Ruleset());
         Console.WriteLine("== 調教 (training: menus, timing mini-game, keyed start/finish, fairness wording)");

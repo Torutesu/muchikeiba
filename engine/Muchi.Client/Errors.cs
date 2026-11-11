@@ -143,6 +143,8 @@ namespace Muchi.Client
         TransferIssueLimit,
         /// <summary>REQ-TRF-010: 401 — this account moved to another device. Never retried; see <see cref="SessionReplacedException"/>.</summary>
         SessionReplaced,
+        /// <summary>REQ-LINK-003: 429 — too many links made today (the same target again is not counted).</summary>
+        LinkLimit,
     }
 
     public static class ApiErrorCodes
@@ -264,6 +266,7 @@ namespace Muchi.Client
             ["TRANSFER_REFUSED"] = ApiErrorCode.TransferRefused,
             ["TRANSFER_ISSUE_LIMIT"] = ApiErrorCode.TransferIssueLimit,
             ["SESSION_REPLACED"] = ApiErrorCode.SessionReplaced,
+            ["LINK_LIMIT"] = ApiErrorCode.LinkLimit,
         };
 
         public static IReadOnlyCollection<string> WireCodes => ByWire.Keys;

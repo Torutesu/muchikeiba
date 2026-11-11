@@ -1342,6 +1342,12 @@
   "{min}〜{max}文字": "{min}–{max} characters",
   "半角の英数字と記号": "Letters, numbers and symbols",
   "英字と数字を両方使う": "Use both letters and numbers",
-  "よく使われるパスワードは使えません": "No common passwords"
+  "よく使われるパスワードは使えません": "No common passwords",
+  "_releaseNotes": "---- round 21: what's new per app version (ReleaseNotesModel, REQ-NEW-*)",
+  "アップデート情報": "What's new",
+  "はじめる": "Let's go",
+  "過去のアップデート情報": "Past updates",
+  "アップデート情報はオンラインで見られます": "What's new is available online",
+  "まだアップデート情報はありません": "No updates yet"
  }
 }

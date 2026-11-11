@@ -2420,13 +2420,13 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 |---|---|
 | `gacha` | `/v1/gacha/*`・`/v1/items/*`（チケット） |
 | `shop` | `/v1/shop/*`・`/v1/silks/parts/*`・`/v1/commentary/packs/*` |
-| `ranked` | `/v1/match/*`・`/v1/friend-rooms/*`・`/v1/race/*`・`/v1/races/*` |
+| `ranked` | `/v1/match/*`・`/v1/friend-rooms/*`（フレンド部屋の再戦 `/v1/friend-rooms/rematch/:raceId` §63 を含む：レースを始める口。R21 統合）・`/v1/race/*`・`/v1/races/*` |
 | `teams` | `/v1/teams/*`（定型チャット §52 の候補・投稿を含む：投稿先の支部フィードと同じグループ。Round 18 統合）・`/v1/league/*`・`/v1/stamps` |
 | `events` / `tournaments` / `training` | `/v1/events/*` / `/v1/tournaments/*` / `/v1/training/*` |
 | `time_attack` | `/v1/time-attack/*`・`/v1/challenges/*` |
-| `social` | `/v1/friends/*`（おすすめフレンド §49 を含む）・`/v1/invite*`・`/v1/stable*`・`/v1/rival*`・`/v1/showcase*`（§62、Round 21） |
+| `social` | `/v1/friends/*`（おすすめフレンド §49 を含む）・`/v1/invite*`・`/v1/stable*`・`/v1/rival*`・`/v1/showcase*`（§62、Round 21）・`/v1/links`（リンクを作る・一覧・取り消す `GET`／`POST /v1/links`・`DELETE /v1/links/:token`、§63） |
 | `cups` | `/v1/cups*`（主催カップ §42、Round 17 統合で追加。レースのグループ） |
-| `core` | それ以外のすべて（プレイヤー・馬・ミッション・プレゼントボックス・振り返り §43・厩舎の整理 §44・次にやること §45・馬ごとの目標 §53・練習レースのカタログ §50（止まっても端末の写しで練習できる）…） |
+| `core` | それ以外のすべて（アップデートのお知らせ `/v1/release-notes*` §64・予定表 `/v1/calendar*` §65（R21 統合）・プレイヤー・馬・ミッション・プレゼントボックス・振り返り §43・厩舎の整理 §44・次にやること §45・馬ごとの目標 §53・練習レースのカタログ §50（止まっても端末の写しで練習できる）…） |
 
 **どの窓でも・どのバージョンでも止まらない**（`EXEMPT_ROUTES`）：
 - 状態を見る口：`GET /v1/health`・`/v1/config`・`/v1/maintenance`・`/v1/assets/catalog`・`/v1/visuals`。
@@ -2438,6 +2438,7 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 - **進行中のものの確定**：レースのソケット `GET /v1/race/:raceId/ws`（始まったレースは最後まで走り、`final` まで確定する）、`POST /v1/time-attack/submit`・`/v1/challenges/weekly/submit`・`/v1/training/:sessionId/finish`、待ち行列から抜ける `POST /v1/match/cancel`・`/v1/events/:eventId/cancel`。
 - KPI の送信 `POST /v1/analytics/events`（`maintenance_block`・`upgrade_prompt` はここを通る）と購入履歴 `GET /v1/history/*`・`POST /v1/history/support-ticket`。
 - 管理API `/v1/admin/*`（運用はメンテナンス中に作業する）。cron（`scheduled`）も止まらない。
+- **リンクを開く口**（§63、R21 統合）：`POST /v1/links/resolve` は止めない。窓の間・古いアプリからは、行き先の状態（`maintenance`／`update_required`）を答えの `state` で返し、リンクは捨てない（その画面がいつ開けるかを言う）。`/v1` の外にある Web の代わりのページ `GET /l/:token` と、ユニバーサルリンク・App Links の検証ファイル `GET /.well-known/apple-app-site-association`・`/.well-known/assetlinks.json` は入口の検査の外（窓の間も OS の検証が切れない）。
 - **サポートへの道**（Round 17 統合で決めたこと）：ヘルプセンター（§48）の `GET /v1/help`・`/v1/help/articles/:articleId`・`/v1/help/search`・お問い合わせ `GET/POST /v1/help/inquiries`・`GET /v1/help/inquiries/:ticketId`・`POST /v1/help/inquiries/:ticketId/read`、通報（§47）`GET /v1/reports/options`・`POST /v1/reports`、ブロック `GET/PUT/DELETE /v1/blocks*`。メンテナンス中も古いアプリからも、運営に知らせる・相手を避ける手段は閉じない（記事の「役に立った」`POST /v1/help/articles/:id/feedback` はサポートではないので止まる）。
 - **主催カップ**（§42）：窓が `cups`（か `all`）を含む間は作成・参加・次のレースの出走が止まる。走っているカップのレースはソケットと結果の確定（Durable Object の中の通知）で最後まで確定し、順位に入る。窓の間に `closesAt` を過ぎたカップは §42 のとおり走ったところまでで終わる（`partial`）。
 

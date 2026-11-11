@@ -3105,7 +3105,7 @@ function Stable() {
   TextLink('お世話', 300, 734, 120, Care, d, 'お世話・餌');
   TextLink('調教', 440, 734, 100, () => { trHorse = p?.id ?? null; Training(); }, d, '調教');
   // round 19 (REQ-TUT-008): the breeding card (the prototype has no breeding screen; the stable is where breeding starts)
-  TipQ('breeding', 517, 40, d, () => Stable());
+  TipQ('breeding', 517, 516, d, () => Stable()); // beside 適性, clear of the language toggle at the largest text size
   Back(Home);
   Ghost('殿堂', 196, 36, 150, 46, () => Hall(), undefined, 'quiet small').classList.add('hof-entry'); // round 14 (REQ-HOF-*)
   Ghost('振り返り', 362, 36, 170, 46, () => Recaps(), undefined, 'quiet small').classList.add('rc-entry'); // round 16 (REQ-RECAP-*)

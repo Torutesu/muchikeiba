@@ -25,7 +25,8 @@ export type ErrorCode =
   | 'PHOTO_LIMIT' | 'PHOTO_LOCKED' | 'PHOTO_SOURCE_INVALID'
   | 'HORSE_LOCKED' | 'ROSTER_BULK_REFUSED' | 'ROSTER_BULK_STALE'
   | 'CUP_LIMIT' | 'CUP_FULL' | 'CUP_CLOSED' | 'CUP_CODE_INVALID' | 'CUP_NOT_READY'
-  | 'MAINTENANCE' | 'UPGRADE_REQUIRED';
+  | 'MAINTENANCE' | 'UPGRADE_REQUIRED'
+  | 'DATA_EXPORT_COOLDOWN' | 'LINK_INVALID' | 'LINK_EXPIRED';
 
 const STATUS: Partial<Record<ErrorCode, number>> = {
   BAD_REQUEST: 400, CONFIG_INVALID: 500, UNAUTHORIZED: 401, NOT_FOUND: 404, HORSE_NOT_FOUND: 404,
@@ -38,6 +39,8 @@ const STATUS: Partial<Record<ErrorCode, number>> = {
   CUP_CODE_INVALID: 404,
   // REQ-MNT-003/006 (§46): a maintenance window covers the endpoint / the app is below the supported version
   MAINTENANCE: 503, UPGRADE_REQUIRED: 426,
+  // REQ-DEX-* (§51): one request per cooldown; a download link that does not verify / has expired
+  DATA_EXPORT_COOLDOWN: 429, LINK_INVALID: 403, LINK_EXPIRED: 410,
 };
 
 export class AppError extends Error {

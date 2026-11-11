@@ -445,6 +445,11 @@ export const adminRoutes: AdminRoute[] = [
     if (kind !== 'summary' && kind !== 'purchases' && kind !== 'coins' && kind !== 'gacha') throw new AppError('BAD_REQUEST', 'kind must be summary|purchases|coins|gacha');
     return { result: await r.ctx.player(id).invoke('adminHistory', id, kind, historyQuery(r.query, kind)), target: `player:${id}` };
   } },
+  // REQ-DEX-014 (contracts/protocol.md §51.7): the player's data export status and audit log — never the contents or a link
+  { method: 'GET', path: '/v1/admin/players/:playerId/data-export', role: 'viewer', write: false, action: 'player.data_export.view', handler: async (r) => {
+    const id = parse(pid, r.params.playerId);
+    return { result: await r.ctx.player(id).invoke('dataExportAdmin', id), target: `player:${id}` };
+  } },
   { method: 'POST', path: '/v1/admin/players/:playerId/grants', role: 'operator', write: true, action: 'player.grant', handler: async (r) => {
     const id = parse(pid, r.params.playerId);
     const b = parse(z.object({ grant: grantSchema, opKey: opKeySchema, reason: z.string(), ...giftOptsSchema }), r.body);

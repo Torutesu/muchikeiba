@@ -741,6 +741,46 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
   }
 
+  // round 18 (REQ-DEX-*): プライバシー › データのダウンロード — settings row → the screen (nothing requested) → request (preparing,
+  // nothing built on the request path) → the "alarm" builds it → ready with the expiry date and size → the activity entry →
+  // the JSON (own data, paid / free apart, no other players' private data) and the summary downloaded → asking again inside the
+  // cooldown is refused with the date
+  async function privacyFlow() {
+    const waitIn = (sel, timeout = 20000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings');
+    await page.locator('.screen.in [data-action="privacy"]').click(); await waitScreen('privacy'); await waitIn('[data-dex="request"]');
+    assert.equal(await page.locator('.screen.in [data-dex-status]').getAttribute('data-dex-status'), 'none');
+    assert.equal(await page.locator('.screen.in .dex-inc').count(), 7, 'privacy: what is included, listed');
+    await shot('privacy', 400);
+    await page.locator('.screen.in [data-dex="request"]').click();
+    await waitIn('[data-dex="preparing"]', 5000);
+    assert.match(await page.locator('.screen.in .dex-status').innerText(), /準備しています/);
+    await shot('privacy-preparing', 200);
+    await waitIn('[data-dex="json"]', 20000);
+    assert.match(await page.locator('.screen.in .dex-date').innerText(), /^\d+月\d+日まで$/, 'privacy: the expiry as a date, never a countdown');
+    assert.match(await page.locator('.screen.in .dex-size').innerText(), /\d+ (B|KB|MB)$/);
+    assert.match(await page.locator('.screen.in').innerText(), /他の人に送らないでください/, 'privacy: the link note');
+    await shot('privacy-ready', 300);
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('.screen.in [data-dex="json"]').click()]);
+    assert.match(dl.suggestedFilename(), /^muchi-issen-data-\d{4}-\d{2}-\d{2}\.json$/);
+    const doc = JSON.parse(fs.readFileSync(await dl.path(), 'utf8'));
+    assert.equal(doc.format, 'muchi-issen/personal-data-export');
+    assert.deepEqual(doc.unclassified, [], 'privacy: every state key is classified');
+    assert.ok(Array.isArray(doc.coinHistory.paid) && Array.isArray(doc.coinHistory.free), 'privacy: paid and free coin history apart');
+    assert.ok(doc.horses.items.length > 0 && doc.settings.accessibility !== undefined);
+    const [sm] = await Promise.all([page.waitForEvent('download'), page.locator('.screen.in [data-dex="summary"]').click()]);
+    assert.match(fs.readFileSync(await sm.path(), 'utf8'), /プレイヤーID: local/);
+    const kpi = (await page.evaluate(() => globalThis.__muchi.logic.serverKpiLog())).map((k) => k.name).filter((x) => x.startsWith('dex_'));
+    assert.deepEqual(kpi, ['dex_request', 'dex_ready', 'dex_download', 'dex_download'], 'privacy: KPI dex_request / dex_ready / dex_download');
+    // the activity entry links back here
+    await page.evaluate(() => globalThis.__muchi.show('Activity')); await waitScreen('activity'); await waitIn('[data-act="data_export_ready"]');
+    await page.locator('.screen.in [data-act="data_export_ready"] [data-act-go="privacy"]').click(); await waitScreen('privacy');
+    // inside the cooldown a new request is refused with the date it opens
+    const again = await page.evaluate(async () => { await globalThis.__muchi.logic.dataExport.view(); return globalThis.__muchi.logic.dataExport.request('ja'); });
+    assert.ok(again.ok && again.value.created === false, 'privacy: asking again while ready returns the same export');
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
+  }
+
   // round 16 (REQ-RECAP-*): シーズンの振り返り — the stable's entry → the list (short / full / year) → a full recap stepped through
   // (big number, horse as typed, moments) → back → skip to the end (complete) → the share set with 「順位を隠す」 and recap_share →
   // the short version → reduced motion (no count-up, no slide)
@@ -1055,6 +1095,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await recapFlow();
   await cupsFlow();
   await practiceFlow(); // round 18: 練習レース
+  await privacyFlow(); // round 18: プライバシー › データのダウンロード
   await page.evaluate(() => globalThis.__muchi.show('Scout')); await waitScreen('scout'); await shot('scout', 500);
   await click('提供割合'); await shot('scout-rates', 400); await click('BACK');
   await waitScreen('scout'); await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal'); await shot('scout-paid-reveal', 700);

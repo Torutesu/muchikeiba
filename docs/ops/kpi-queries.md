@@ -1229,3 +1229,23 @@ WHERE blob1 = 'practice_finish' AND double4 > 0 AND timestamp > NOW() - INTERVAL
 GROUP BY strength
 ORDER BY strength
 ```
+
+## 個人データの開示・ダウンロード：リクエスト・準備・ダウンロード（REQ-DEX-017、Round 18、contracts/protocol.md §51）
+列：`dex_request`（サーバー）`blob8` = 言語（`ja`／`en`）。`dex_ready`（サーバー）`blob8` = 言語、`double9` = JSON のバイト数、`double6` = リクエストから準備までのミリ秒、`double5` = 大きさの上限で省略したコインの履歴の行（ふつう 0）。`dex_download`（サーバー）`blob8` = `json`／`summary`、`double8` = 1 ならそのリクエストで最初のダウンロード。中身・リンクは記録しない。
+
+**届いているか**（週ごと）：リクエスト・準備できた数・ダウンロードされた割合・準備までの時間（中央値）・省略が起きた数。準備できた割合が下がる、時間が延びる、省略が増えるときは `GET /v1/admin/players/:id/data-export` の `failReason` と Worker のログ（`data export build failed`）を見る。
+
+```sql
+SELECT
+  toStartOfWeek(timestamp) AS week,
+  sumIf(_sample_interval, blob1 = 'dex_request') AS requests,
+  sumIf(_sample_interval, blob1 = 'dex_ready') AS ready,
+  sumIf(_sample_interval, blob1 = 'dex_download' AND double8 = 1) AS downloaded,
+  round(sumIf(_sample_interval, blob1 = 'dex_download' AND double8 = 1) / sumIf(_sample_interval, blob1 = 'dex_ready'), 3) AS download_rate,
+  quantileWeighted(0.5)(if(blob1 = 'dex_ready', double6, NULL), _sample_interval) AS median_ready_ms,
+  sumIf(_sample_interval, blob1 = 'dex_ready' AND double5 > 0) AS truncated_exports
+FROM muchi_kpi
+WHERE blob1 IN ('dex_request', 'dex_ready', 'dex_download') AND timestamp > NOW() - INTERVAL '56' DAY
+GROUP BY week
+ORDER BY week DESC
+```

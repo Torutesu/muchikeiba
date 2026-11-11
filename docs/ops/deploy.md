@@ -40,6 +40,10 @@ Apple / Google：レシート検証・サーバー通知
    npx wrangler r2 bucket create muchi-public-production
    ```
    - `muchi-public-*` はランキングのスナップショット置き場です。CDNから配る場合は、R2 のカスタムドメインを割り当てます。
+   - **個人データのダウンロード（Round 18、protocol §51）**：`muchi-replays-*` の `private/data-export/` に置く。このバケットには公開のカスタムドメイン・r2.dev の公開 URL を付けない。予備の削除として、接頭辞 `private/data-export/` に「作成から 8 日で削除」のライフサイクルルールを付ける（アプリは `keepDays`（7日）で消す。`keepDays` を変えたら `keepDays + 1` 日に合わせる）：
+     ```bash
+     npx wrangler r2 bucket lifecycle add muchi-replays-production data-export-expiry private/data-export/ --expire-days 8
+     ```
 3. **Analytics Engine** を有効にする。データセット（`muchi_kpi_staging` / `muchi_kpi_production`）は最初の書き込み時に自動で作られます。
 4. **カスタムドメイン**：`wrangler.toml` の `routes`（`api-staging.<ドメイン>` / `api.<ドメイン>`）を、Cloudflare で管理しているゾーンに合わせて書き換えます。
 5. **APIトークン**（GitHub Actions用）：権限は「Workers Scripts: Edit」「Workers R2 Storage: Edit」「Account Analytics: Read」「Workers Routes: Edit（対象ゾーン）」。アカウントIDと一緒に GitHub の環境シークレットに入れます（§6）。
@@ -130,6 +134,8 @@ npx wrangler secret put TICKET_SECRET --env staging
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | シークレット | 必須 | 必須 | Play Developer API（とFCMの代わり） |
 | `KPI_SALT` | シークレット | 必須 | 必須 | 分析用のプレイヤーIDハッシュの塩。**途中で変えると継続率が途切れる** |
 | `FCM_SERVICE_ACCOUNT_JSON` | シークレット（任意） | | | 未設定なら `GOOGLE_SERVICE_ACCOUNT_JSON` |
+| `KPI_SQL_ACCOUNT_ID` | 変数（任意） | | | Round 18（§51）：個人データのダウンロードに、そのプレイヤーの分析イベント（Analytics Engine）を入れるためのアカウント ID。シークレットではない |
+| `KPI_SQL_TOKEN` | シークレット（任意） | | | 同上。権限「Account Analytics: Read」だけの API トークン。2つとも無ければダウンロードの分析イベントは「取得できませんでした」 |
 | `DEV_MODE` | — | **禁止** | **禁止** | local の `--var DEV_MODE:1` だけ |
 
 管理トークンのハッシュは次で作ります（トークン本体はパスワード管理ツールに保管）。

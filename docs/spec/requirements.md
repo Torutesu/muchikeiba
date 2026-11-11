@@ -1132,3 +1132,26 @@
 - REQ-QCHAT-014 クライアント：`Muchi.Client` `ApiClient.GetQuickChatAsync`・`PostQuickChatAsync`、`FeedItem.QuickChat`。
 - REQ-QCHAT-015 Unity のゲーム層 `QuickChatModel`：定型文の選び方（分類のタブ、スロットの選択肢、埋めた文の見本）、送れない理由（オフライン・支部なし・削除の予約・待ち時間・今日の上限）、フィードの行（両方向のブロックは端末でも隠す）、応援。
 - REQ-QCHAT-016 プロトタイプ：ムチ一閃の支部の画面に定型文の選び方とフィード、日本語・英語、文字の大きさ（§41）。e2e・en-flow・a11y-flow。
+
+## 51. 個人データの開示・ダウンロード（personal data export、TS＋C#、`src/domain/dataExport.ts`・`src/domain/dataExportService.ts`・`Muchi.Client/DataExport.cs`、`contracts/protocol.md` §51）
+拘束条件：本人（ログイン中のプレイヤー）だけ。メールアドレスを集めない。他のプレイヤーの個人的な情報は入れない。有償・無償コインは分けて出す。作成は非同期（リクエストの経路で作らない）。運用は状態を見られるが中身は見られない。コイン・アイテムは動かない（E 番号なし）。
+- REQ-DEX-001 入口：設定 › プライバシーの「データのダウンロード」。`GET`／`POST /v1/player/data-export`。
+- REQ-DEX-002 リクエスト：`POST` は `Idempotency-Key` 必須・本文なし。状態に1件の `queued` を作り KPI `dex_request`。
+- REQ-DEX-003 状態：`none`・`queued`・`building`・`ready`・`failed`・`expired` と文・次に申し込める日・削除の予定の注意。
+- REQ-DEX-004 回数の制限：最後に準備できたリクエストから `cooldownDays` 日（`429 DATA_EXPORT_COOLDOWN`、`availableAt`）。失敗は数えない。
+- REQ-DEX-005 冪等：進行中・期限内のものがあれば新しく作らずそれを返す。同じキーは同じ応答。
+- REQ-DEX-006 分類：`PlayerState` のすべてのトップレベルのキー（モジュールの拡張キーを含む）を「出す（セクション）」か「出さない（理由）」に分類する。分類の無いキーで型チェックとテストが失敗する。
+- REQ-DEX-007 中身：protocol §51.4 のセクション（アカウント・プロフィール・設定（アクセシビリティ含む）・馬・アイテム・有償／無償の残高とロット・コインの履歴・購入・ガチャ（90日）・プレゼント・フレンド（ID と名前だけ）・ブロック・自分が送った通報・お知らせ・リプレイと写真のメタデータ・カップ・振り返り・遊びの記録・端末・分析イベント・お問い合わせ）。
+- REQ-DEX-008 概要：人が読めるテキスト（件数と説明、言語はプレイヤーの言語、値は訳さない）。
+- REQ-DEX-009 形式：固定のフィールド名と `version`。ヘッダーが先・大きな一覧は1要素1行。`maxBytes` を超えたら古いコインの履歴から省略して `truncated` と概要に書く。非公開の R2 `private/data-export/<playerId>/`。
+- REQ-DEX-010 ダウンロード：`linkTtlMinutes` 分の署名つきリンク（1人・1リクエスト・1ファイル、エクスポートの期限を超えない）。改ざん `403`・期限切れ `410`・今のものでなければ `404`。`cache-control: private, no-store`。KPI `dex_download`。
+- REQ-DEX-011 期限と削除：`keepDays` 日後にアラームが R2 から削除（失敗は10分ごとに再試行、ライフサイクルルールが予備）。
+- REQ-DEX-012 お知らせ：準備できた時にアクティビティ（§40）`data_export_ready` を1件。
+- REQ-DEX-013 アカウント削除：予定中はリクエスト・ダウンロードできる。実行中は `DELETION_PENDING`。削除の段 `data_export` で R2 のファイルを消す。削除後のリンク・アラームは何も作らない。
+- REQ-DEX-014 運用・監査：`GET /v1/admin/players/:id/data-export`（viewer、監査あり）は状態・時刻・大きさ・回数・監査ログだけ。プレイヤーの状態に監査ログ（`auditKeep` 件）。
+- REQ-DEX-015 文言：日本語・英語（テストで日本語の残りなし）。プレイヤー・馬の名前は訳さない。
+- REQ-DEX-016 設定 `progression.dataExport`：範囲と `keepDays ≤ cooldownDays` を起動時と各版で検証。
+- REQ-DEX-017 KPI：`dex_request`・`dex_ready`・`dex_download`（サーバー）。クエリは `docs/ops/kpi-queries.md`。
+- REQ-DEX-018 クライアント：`ApiClient.GetDataExportAsync`・`RequestDataExportAsync`・`DataExportFileUrl`、`DataExportStatus`。Unity のゲーム層 `DataExportModel`。
+- REQ-DEX-019 プロトタイプ：設定のプライバシー（リクエスト・状態・ダウンロード、ムチ一閃のトーン、日本語・英語、文字の大きさ）。e2e・en-flow・a11y-flow。
+- REQ-DEX-020 法務：`docs/planning/03-legal-risk.md` に方針と弁護士の確認事項（開示の範囲・通報の扱い・保存期間・本人確認）。

@@ -28,9 +28,11 @@ namespace Muchi.Client
             /// <summary>REQ-RPT-013: support's request after a report (no actor; links to 通報とブロック).</summary>
             OpsNotice = "ops_notice", InquiryAnswered = "inquiry_answered",
             // Round 18: a quick chat phrase that named me (§52.8)
-            QchatMention = "qchat_mention";
+            QchatMention = "qchat_mention",
+            // Round 18: the personal data export is ready (§51; Category "account", LinkId = requestId)
+            DataExportReady = "data_export_ready";
         public static readonly string[] All = { FriendRequest, FriendAccepted, RivalWeek, RivalRecord, StableLike, TeamCheer, TournamentResult, GiftArrived, TeamGoalTier, TeamGoalWeek, ReplayShare, InquiryAnswered,
-            CupInvited, CupStarted, CupFinished, CupCancelled, RecapReady, OpsNotice, QchatMention };
+            CupInvited, CupStarted, CupFinished, CupCancelled, RecapReady, OpsNotice, QchatMention, DataExportReady };
     }
 
     /// <summary>Where an entry leads (`link.screen`).</summary>
@@ -41,8 +43,10 @@ namespace Muchi.Client
             /// <summary>Round 16: the hosted cup (LinkId = cupId) and the season recap (LinkId = recap id, e.g. season:2026-11).</summary>
             Cups = "cups", Recap = "recap",
             /// <summary>REQ-RPT-011: 通報とブロック (block list + what a block does + guidelines).</summary>
-            Safety = "safety";
-        public static readonly string[] All = { Friends, Rival, Stable, TeamFeed, Tournaments, GiftBox, TeamGoal, Replay, WhatsNew, HelpInquiry, Cups, Recap, Safety };
+            Safety = "safety",
+            /// <summary>Round 18: settings › privacy (the data export, §51).</summary>
+            Privacy = "privacy";
+        public static readonly string[] All = { Friends, Rival, Stable, TeamFeed, Tournaments, GiftBox, TeamGoal, Replay, WhatsNew, HelpInquiry, Cups, Recap, Safety, Privacy };
     }
 
     public sealed class ActivityActor

@@ -1102,5 +1102,15 @@
     "enabled": true, "maxShown": 10, "candidateMax": 60, "fofFriendsMax": 20, "fofMin": 2, "mutualCap": 5,
     "opponentDays": 30, "opponentKeep": 50, "dismissKeep": 200, "cacheTtlMs": 300000, "minAgeShown": 13,
     "weights": { "opponent": 40, "team": 30, "liked": 25, "cheered": 25, "mutual": 10 }
+  },
+  "dataExport": {
+    "_note": "REQ-DEX-*（contracts/protocol.md §51）。個人データの開示・ダウンロード。リクエストはcooldownDays日に1回（準備できたものだけ数える）、ファイルはkeepDays日後に削除（cooldownDays以下）、ダウンロードのリンクはlinkTtlMinutes分だけ有効、JSONはmaxBytesまで（超えたら古いコインの履歴から省略）。作成はmaxAttempts回まで再試行。",
+    "enabled": true,
+    "cooldownDays": 7,
+    "keepDays": 7,
+    "linkTtlMinutes": 10,
+    "maxBytes": 20000000,
+    "maxAttempts": 5,
+    "auditKeep": 50
   }
 }

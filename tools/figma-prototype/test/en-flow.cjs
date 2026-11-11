@@ -517,6 +517,14 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await click('支部員のデモ'); await page.waitForTimeout(800);
   await shot('quick-chat-feed', 400);
 
+  // round 18 (REQ-DEX-015): プライバシー › データのダウンロード in English — nothing requested, preparing, ready (dates, notes)
+  await show('Privacy'); await waitScreen('privacy'); await page.waitForSelector('.screen.in [data-dex]', { timeout: 15000 }); await shot('privacy', 400);
+  if (await page.locator('.screen.in [data-dex="request"]').count()) {
+    await page.locator('.screen.in [data-dex="request"]').click(); await page.waitForSelector('.screen.in [data-dex="preparing"]', { timeout: 5000 }); await shot('privacy-preparing', 200);
+  }
+  await page.waitForSelector('.screen.in [data-dex="json"]', { timeout: 20000 }); await shot('privacy-ready', 400);
+  assert.match(await page.locator('.screen.in .dex-status').innerText(), /Ready to download/, 'privacy: the status in English');
+
   const misses = await page.evaluate(() => globalThis.__muchi.l10n.misses());
   fs.writeFileSync(path.join(out, 'en-report.json'), JSON.stringify({ report, misses }, null, 2));
   await ctx.close();

@@ -132,6 +132,8 @@ static class Program
         await NextActionChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 16: シーズンの振り返り (SeasonRecapModel: list badge, open / complete once, skip, short version, 順位を隠す, share; REQ-RECAP-*)");
         await SeasonRecapChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 18: 個人データの開示・ダウンロード (DataExportModel: request, preparing, ready links, expiry / cooldown dates, deletion note, English; REQ-DEX-*)");
+        await DataExportChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 16: プレイヤー主催カップ (HostedCupModel: list, create form, codes, lobby, standings, result card, English; REQ-CUP-*)");
         await HostedCupChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 18: 練習レース (PracticeModel: catalog + offline copy + fallback, FTUE gate, setup, device race, whip band, slow, ghost, result, KPI, English; REQ-PRAC-*)");

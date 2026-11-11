@@ -93,11 +93,12 @@ export class SqlIntegrityRepo implements IntegrityRepo {
   markRace(id: string, at: number) { this.sql.exec('INSERT OR IGNORE INTO integrity_races (race_id, at) VALUES (?, ?)', id, at); }
   report(id: string) { const r = this.sql.exec<{ json: string }>('SELECT json FROM race_reports WHERE id = ?', id).toArray()[0]; return r ? (JSON.parse(r.json) as RaceReport) : null; }
   putReport(r: RaceReport) { this.sql.exec('INSERT INTO race_reports (id, race_id, status, at, json) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET status = excluded.status, json = excluded.json', r.id, r.raceId, r.status, r.at, JSON.stringify(r)); }
-  reports(f: { status?: RaceReport['status']; raceId?: string; limit: number }) {
+  reports(f: { status?: RaceReport['status']; raceId?: string; reporterId?: string; limit: number }) {
     const where: string[] = [];
     const args: string[] = [];
     if (f.status) { where.push('status = ?'); args.push(f.status); }
     if (f.raceId) { where.push('race_id = ?'); args.push(f.raceId); }
+    if (f.reporterId) { where.push("json_extract(json, '$.reporterId') = ?"); args.push(f.reporterId); }
     return this.sql.exec<{ json: string }>(`SELECT json FROM race_reports ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY at DESC LIMIT ?`, ...args, f.limit).toArray().map((r) => JSON.parse(r.json) as RaceReport);
   }
 }
@@ -177,6 +178,8 @@ export class IntegrityDO extends DurableObject<Env> {
   }
   report(raceId: string, reporterId: string, now: number) { return wrap(() => this.core.addReport(raceId, reporterId, now)); }
   reports(status: RaceReport['status'] | undefined, limit: number) { return wrap(() => this.core.reports(status, limit)); }
+  /** REQ-DEX-007: the reports a player made (their data export; no resolution notes). */
+  reportsBy(reporterId: string) { return wrap(() => this.core.reportsBy(reporterId)); }
   resolveReport(id: string, resolution: string, by: string, now: number) { return wrap(() => this.core.resolveReport(id, resolution, by, now)); }
   view(playerId: string, now: number) { return wrap(() => this.core.view(playerId, now)); }
   // ---- player reports (REQ-RPT-007/013/014/016, §47.7–47.8) ----

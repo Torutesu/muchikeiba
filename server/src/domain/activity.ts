@@ -23,13 +23,18 @@ export const ACTIVITY_KINDS = [
   'ops_notice',
   // Round 18: a quick chat phrase that named the player (§52.8)
   'qchat_mention',
+  // Round 18: the personal data export is ready (§51)
+  'data_export_ready',
 ] as const;
 export type ActivityKind = typeof ACTIVITY_KINDS[number];
-export const ACTIVITY_SCREENS = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new', 'help_inquiry', 'cups', 'recap', 'safety'] as const;
+export const ACTIVITY_SCREENS = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new', 'help_inquiry', 'cups', 'recap', 'safety', 'privacy'] as const;
 export type ActivityScreen = typeof ACTIVITY_SCREENS[number];
 
-/** `support` (§48.8, a support reply) is not a push category: no push is sent for it. */
-export type ActivityCategory = PushCategory | 'support';
+/**
+ * Not push categories (no push is sent for them): `support` (§48.8, a support reply) and `account` (REQ-DEX-012, about the
+ * account itself — the data export).
+ */
+export type ActivityCategory = PushCategory | 'support' | 'account';
 interface KindMeta { category: ActivityCategory; screen: ActivityScreen; collapse: boolean }
 /** REQ-ACT-003/005/006: the push category (the same split as the push settings), the deep link and whether entries collapse. */
 export const ACTIVITY_META: Record<ActivityKind, KindMeta> = {
@@ -54,6 +59,7 @@ export const ACTIVITY_META: Record<ActivityKind, KindMeta> = {
   // §48.8 (REQ-HELP-015): an operator answered the player's inquiry (link: the inquiry's detail)
   inquiry_answered: { category: 'support', screen: 'help_inquiry', collapse: false },
   qchat_mention: { category: 'friends', screen: 'team_feed', collapse: true },
+  data_export_ready: { category: 'account', screen: 'privacy', collapse: false },
 };
 
 /** REQ-ACT-010: `progression.activity` (absent → ACTIVITY_DEFAULTS). */
@@ -284,6 +290,7 @@ export const ACTIVITY_TEXT = {
   inquiry_answered: 'お問い合わせに運営から返信がありました',
   qchat_mention_one: '{name}さんが支部のチャットであなたに声をかけました',
   qchat_mention_many: '支部のチャットで{n}件の声がかかりました',
+  data_export_ready: 'データのダウンロードの準備ができました',
 } as const;
 
 const fill = (t: string, v: Record<string, string>) => t.replace(/\{(\w+)\}/g, (_, k: string) => v[k] ?? '');
@@ -314,6 +321,7 @@ export function activityText(kind: ActivityKind, count: number, vars: Record<str
     case 'ops_notice': return T.ops_notice;
     case 'inquiry_answered': return T.inquiry_answered;
     case 'qchat_mention': return count > 1 ? fill(T.qchat_mention_many, { n: String(count) }) : fill(T.qchat_mention_one, v);
+    case 'data_export_ready': return T.data_export_ready;
   }
 }
 

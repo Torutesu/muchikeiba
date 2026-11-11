@@ -1205,6 +1205,19 @@
   "馬": "Horse",
   "レース結果": "Race result",
   "支部の仲間": "Branch member",
-  "元メンバー": "Former member"
+  "元メンバー": "Former member",
+  "_dataExport": "---- 個人データの開示・ダウンロード (DataExportModel, protocol §51)",
+  "プライバシー": "Privacy",
+  "データのダウンロード": "Download your data",
+  "データをリクエスト": "Request my data",
+  "準備しています": "Preparing",
+  "もう一度リクエスト": "Request again",
+  "データ（JSON）をダウンロード": "Download data (JSON)",
+  "概要（テキスト）をダウンロード": "Download summary (text)",
+  "準備ができるとお知らせに届きます。この画面を閉じても大丈夫です。": "You will get a notice in Activity when it is ready. You can close this screen.",
+  "時間をおいて、もう一度リクエストしてください。": "Please wait a little and request it again.",
+  "オフラインのためリクエストできません": "You are offline, so you cannot request it now",
+  "この機能は現在ご利用いただけません": "This feature is not available right now",
+  "次のリクエストは{date}から": "Next request from {date}"
  }
 }

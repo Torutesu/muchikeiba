@@ -136,6 +136,9 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | POST | `/v1/whats-new/seen` | 要 | | 本文 `{ upTo }`。見た位置を進める |
 | GET | `/v1/home/next` | 要 | | 次にやること（REQ-NEXT-010、protocol §45）：主カード1枚＋チップ最大2つ。支部に入っていれば共同目標も見る |
 | POST | `/v1/home/next/dismiss` | 要 | | 本文 `{ kind }`。その種類を今日のゲーム日だけ閉じる（冪等。`first_race`／`race` は 409 NOT_ELIGIBLE） |
+| GET | `/v1/player/data-export` | 要 | | 個人データの開示・ダウンロード（REQ-DEX-*、protocol §51）：状態、準備できていれば10分の署名つきリンク（JSON・概要） |
+| POST | `/v1/player/data-export` | 要 | 必須 | 本文なし。リクエスト（進行中なら同じものを返す、7日に1回 = 429 DATA_EXPORT_COOLDOWN）。作成はアラームで非同期 |
+| GET | `/v1/data-export/file` | 不要（署名） | | `?p&r&f&e&s`。期限切れ 410 LINK_EXPIRED、改ざん 403 LINK_INVALID。`cache-control: private, no-store` |
 | GET | `/v1/season-pass` | 要 | | シーズン（暦月）限りのパス：レベル・30段の報酬・期間・残り日数・前シーズンの自動付与（§13.6） |
 | POST | `/v1/season-pass/claim` | 要 | 必須 | `{track: free\|premium, level}` |
 | POST | `/v1/match/enqueue` | 要 | | `{horseId}` ランク戦の待ち行列へ |

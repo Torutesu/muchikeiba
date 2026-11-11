@@ -663,6 +663,13 @@ function BuildRaceScreen() {
   const rein = Btn('手綱', 1222, 742, 118, 118, () => {}, 'pad rein', undefined, '手綱'); hud.rein = rein;
   // round 12: 「かんたん操作 ON」 (REQ-ASSIST-009) — a small chip between the distance and the banner, only while it rides
   hud.assist = el('chip assist', 300, 50, 228, 44); hud.assist.hidden = true; hud.assist.dataset.assist = 'off'; hud.lastAssist = '';
+  // round 19 (REQ-CHEER-007/010): spectators' cheers for your horse — a quiet chip under the quit / photo buttons, only in races
+  // with other people (a solo race has no spectators), hidden when 「レース中の応援表示」 is off
+  if (phShared()) {
+    hud.cheer = el('chip cheer num', 33, 172, 250, 44); hud.cheer.hidden = true; hud.cheer.dataset.total = '0';
+    hud.cheerState = { total: 0, seen: 0, until: 0, next: performance.now() + 1500, kpiDone: false };
+    L.cheer.start(raceInfo.names.length);
+  }
   const hold = (v) => (e) => { e.preventDefault(); reinHeld = v; rein.classList.toggle('held', v); };
   rein.addEventListener('pointerdown', hold(true)); rein.addEventListener('pointerup', hold(false)); rein.addEventListener('pointerleave', hold(false)); rein.addEventListener('pointercancel', hold(false));
   // skill cut-ins (engine Skill events)
@@ -751,7 +758,12 @@ function raceLoop() {
   lastFrame = f;
   view.draw(f);
   paintHud(f);
-  if (f.done) { raceActive = false; setTimeout(() => RaceResult(f), 1100); }
+  if (f.done) {
+    raceActive = false;
+    // round 19 (REQ-CHEER-013): one cheer_seen row for the race (only what was on screen; none with the indicator off)
+    if (hud.cheerState) cheerKpiOnce(hud.cheerState, ['friend', 'cup', 'event', 'tournament'].includes(raceCtx.config?.mode) ? raceCtx.config.mode : 'ranked', 'racer');
+    setTimeout(() => RaceResult(f), 1100);
+  }
 }
 /** Writes only what changed: the HUD repaints every frame, and identical text still costs a layout. */
 const setText = (n, v) => { v = v ?? ''; if (n.textContent !== v) n.textContent = v; };
@@ -798,6 +810,7 @@ function paintHud(f) {
   }
   if (performance.now() > hud.msgUntil) setText(hud.feedback, '');
   setText(hud.subtitle, a11y.subtitles ? f.subtitle : ''); // REQ-A11Y-010
+  if (hud.cheer) { cheerHudTick(f); cheerHudPaint(); } // round 19 (§55)
   // round 15: the hold's automatic whips (the press was shown on pointerdown) and the 「長押し あと{n}」 hint
   if (hud.holdHint) {
     setText(hud.holdHint, f.whipInput === 'hold' && f.departed && !(f.assist && f.assist !== 'off') ? `長押し あと${f.holdLeft}` : '');
@@ -1301,6 +1314,8 @@ function RaceLobby(fresh = true) {
   Txt('参加費なし。報酬は着順のコイン・シーズンpt・パスXP。端末内のエンジンで走るオフライン版です（ランクの変動なし）。', 44, 566, 500, 14, SOFT, d, { lh: 1.6 });
   Cta('ランク戦に出る', 44, 640, 478, () => { advice.follow('ranked', p?.id); StartRace(null, p?.id ?? null); }, d);
   if (!ftue) Ghost('練習レース', 44, 730, 240, 54, () => Practice(), d, 'quiet small').classList.add('pr-entry'); // round 18 (§50.8): after the FTUE only
+  // round 19 (§55): watch a friend room and cheer (R19 integration: beside the practice entry, not on top of it)
+  if (!ftue) TextLink('観戦', 312, 739, 250, () => Spectate(), d, '観戦して応援する').dataset.action = 'spectate';
   Back(Home, '戻る');
   EnToggle();
 }
@@ -2560,6 +2575,8 @@ async function Settings() {
     ['ヒント', () => Tips(Settings), 'tips', (player?.tips?.newCount ?? 0) > 0 ? `NEW ${player.tips.newCount}` : undefined], ['アクセシビリティ', () => A11ySettings(), 'a11y'], ['画質・通信量', () => PerfSettings(), 'perf'], ['プライバシー', () => Privacy(), 'privacy'], ['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions], ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite'],
     // round 15 (REQ-ADV-009): the pre-race advice switch (a device setting, default on)
     ['出走前アドバイス', () => { advice.setEnabled(!advice.enabled()); Settings(); }, 'advice', advice.enabled() ? 'オン' : 'オフ'],
+    // round 19 (REQ-CHEER-010): spectators' cheers during your races (a device setting, default on)
+    ['レース中の応援表示', () => { prefs.set(CHEER_INDICATOR_KEY, cheerIndicatorOn() ? '0' : '1'); Settings(); }, 'cheer-indicator', cheerIndicatorOn() ? 'オン' : 'オフ'],
     // round 17 (REQ-RPT-011): the block list and what a block does
     ['通報とブロック', () => BlockList(), 'blocks']];
   moreRows.forEach(([n, go, action, state], i) => {
@@ -7316,6 +7333,146 @@ async function MyInquiries(sel = helpState.sel) {
   Back(() => HelpCenter(), '戻る', 40, 834);
 }
 
+// ---------------------------------------------------------------- round 19: 観戦中の応援 (REQ-CHEER-*, contracts/protocol.md §55)
+// The spectate screen of a demo friend room: the field as horse-number chips (pick one), three preset cheers (いけ！ / 差せ！
+// / 粘れ！) greyed for 2 s after each, and the 1 s windows the room sends (the busiest lines, per-horse totals). The rules are
+// the server's (MuchiLogic.cheer: cheerAdmit, cheerFanout with the block list — the demo crowd has one player you blocked,
+// whose cheers never arrive). Nothing is granted or sold; there is no free text; reduced motion = no pulse; lights ≤ 3/s.
+const CHEER_LABEL = { go: 'いけ！', close: '差せ！', hold: '粘れ！' };
+const CHEER_INDICATOR_KEY = 'muchi.cheer.indicator';
+const cheerIndicatorOn = () => prefs.get(CHEER_INDICATOR_KEY, '1') !== '0';
+let cheerSpec = null;
+async function cheerKpiOnce(st, mode, role) {
+  if (!st || st.kpiDone) return;
+  st.kpiDone = true;
+  const rows = [];
+  if (st.sent > 0) rows.push(L.cheer.kpi('cheer_send', { mode, count: Math.min(st.sent, 1000) }));
+  if (st.seen > 0) rows.push(L.cheer.kpi('cheer_seen', { mode, role, count: Math.min(st.seen, 100000) }));
+  globalThis.__muchi.lastCheerKpi = (await Promise.all(rows)).filter((r) => r.ok).map((r) => r.value);
+}
+function Spectate() {
+  currentScreen = () => SpectateDraw();
+  const names = L.master.templates.slice(0, 12).map((t) => t.name);
+  while (names.length < 12) names.push(names[names.length % Math.max(1, names.length)] ?? 'ウマ');
+  cheerSpec = { names, sel: 2, totals: names.map(() => 0), lines: [], at: 0, tick: 0, sent: 0, seen: 0, lastSent: -1e9, kpiDone: false, pulse: false };
+  L.cheer.start(names.length);
+  return SpectateDraw(true);
+}
+function SpectateDraw(start = false) {
+  const st = cheerSpec;
+  Clear('spectate'); SetArt('Art/race-result', false); Shade('left');
+  TopBar('観戦', 'フレンド部屋　·　ライブ', { wallet: false });
+  // ① the field: horse number + name, the cheers this horse got (tap = the horse your cheers go to)
+  const f = Glass('Live field', 36, 134, 600, 676, undefined, .88);
+  f.classList.add('cheer-field');
+  Kicker('出走馬　/　ライブ', 36, 30, f, { size: 15 });
+  const field = el('cheer-rows', 24, 92, 552, 560, f);
+  const drawRows = () => {
+    field.innerHTML = '';
+    st.names.forEach((nm, i) => {
+      const row = el('cheer-row' + (i === st.sel ? ' on' : ''), (i % 2) * 280, Math.floor(i / 2) * 92, 272, 84, field);
+      row.dataset.slot = String(i); row.setAttribute('role', 'button');
+      Txt(`${i + 1}番`, 16, 10, 90, 15, CYAN, row, { weight: 700, ls: '.12em', nowrap: true });
+      Txt(nm, 16, 36, 240, 19, WHITE, row, { weight: 700, nowrap: true });
+      const c = Txt(String(st.totals[i]), 180, 10, 76, 15, st.totals[i] ? GOLD : SOFT, row, { weight: 700, align: 'right', nowrap: true, cls: 'num' });
+      c.dataset.total = String(st.totals[i]);
+      row.addEventListener('click', () => { st.sel = i; drawRows(); drawCheer(); });
+    });
+  };
+  // ② what the room sent in the last window (the busiest three lines), and the replay's 「応援の多かった瞬間」 so far
+  const b = Glass('Cheer burst', 664, 134, 900, 300, undefined, .82);
+  Kicker('いまの応援', 36, 30, b, { size: 15 });
+  const burst = el('cheer-burst', 36, 96, 828, 132, b);
+  const mom = el('cheer-moments', 36, 244, 828, 40, b);
+  const drawBurst = () => {
+    burst.innerHTML = ''; burst.dataset.lines = String(st.lines.length);
+    if (!st.lines.length) Txt('応援が届くと、ここに出ます', 0, 8, 820, 16, MUTED, burst);
+    st.lines.forEach(([slot, kind, n], i) => {
+      const line = el('cheer-line' + (st.pulse && i === 0 ? ' pulse' : ''), 0, i * 44, 820, 40, burst);
+      line.dataset.slot = String(slot); line.dataset.kind = kind;
+      Txt(`${slot + 1}番`, 0, 6, 96, 18, CYAN, line, { weight: 700, nowrap: true });
+      Txt(CHEER_LABEL[kind], 110, 2, 320, 24, WHITE, line, { weight: 700, nowrap: true });
+      Txt(`×${n}`, 440, 4, 140, 22, GOLD, line, { weight: 700, nowrap: true, cls: 'num' });
+    });
+    mom.innerHTML = '';
+    const ms = L.cheer.moments();
+    Txt('応援の多かった瞬間', 0, 8, 240, 13, SOFT, mom, { weight: 700, ls: '.14em', nowrap: true });
+    const bar = el('cheer-bar', 250, 18, 570, 4, mom);
+    bar.dataset.moments = String(ms.length);
+    for (const m of ms) { const d = el('cheer-mark', Math.round(570 * Math.min(1, m.tick / 2400)) - 5, -5, 10, 14, bar); d.title = String(m.count); }
+  };
+  // ③ the cheer panel: the horse it goes to, three preset buttons (greyed for 2 s), the pace and fairness lines
+  const c = Glass('Cheer', 664, 456, 900, 354, undefined, .9);
+  c.classList.add('cheer-panel');
+  const drawCheer = () => {
+    c.innerHTML = '';
+    el('rule', 36, 30, 86, 3, c);
+    Txt('応援', 36, 50, 200, 15, CYAN, c, { weight: 700, ls: '.22em', cls: 'kicker' });
+    Txt('応援する馬', 36, 96, 200, 15, MUTED, c, { weight: 500, nowrap: true });
+    const tgt = Txt(`${st.sel + 1}番`, 200, 90, 120, 24, CYAN, c, { weight: 700, nowrap: true });
+    tgt.dataset.target = String(st.sel);
+    Txt(st.names[st.sel], 320, 92, 520, 22, WHITE, c, { weight: 700, nowrap: true });
+    const wait = st.lastSent + L.cheer.minIntervalMs - Date.now();
+    L.cheer.kinds.forEach((k, i) => {
+      const btn = Cta(CHEER_LABEL[k], 36 + i * 280, 150, 260, () => SpectateCheer(k), c, 'small cheer');
+      btn.dataset.cheer = k;
+      if (wait > 0) disable(btn);
+    });
+    Txt('応援は2秒に1回まで', 36, 244, 820, 15, MUTED, c, { weight: 500, nowrap: true });
+    Txt('応援はレースの結果に影響しません', 36, 276, 820, 15, SOFT, c, { weight: 500, nowrap: true });
+    if (wait > 0) setTimeout(() => { if (cheerSpec === st && globalThis.__muchi.screen === 'spectate') drawCheer(); }, wait + 20);
+  };
+  st.redraw = () => { drawRows(); drawBurst(); };
+  st.redrawCheer = drawCheer;
+  drawRows(); drawBurst(); drawCheer();
+  // the room's 1 s window (the demo race clock moves 20 ticks a second)
+  timers.push(setInterval(() => {
+    st.tick += 20;
+    const rows = L.cheer.window(st.tick, 6);
+    st.lines = [...rows].sort((x, y) => y[2] - x[2] || x[0] - y[0]).slice(0, 3);
+    for (const [slot, , n] of rows) { st.totals[slot] += n; st.seen += n; }
+    st.pulse = rows.length > 0 && !reduced() && flashOk();
+    const t = globalThis.__muchi.cheerStats ??= { windows: 0, pulses: 0, shown: 0 };
+    if (rows.length) { t.windows++; if (st.pulse) t.pulses++; }
+    drawRows(); drawBurst();
+  }, L.cheer.windowMs));
+  Back(() => { cheerKpiOnce(st, 'friend', 'spectator'); RaceLobby(); }, '戻る', 40, 834);
+  if (start) globalThis.__muchi.lastCheerKpi = null;
+}
+function SpectateCheer(kind) {
+  const st = cheerSpec;
+  if (!st) return;
+  const r = L.cheer.send(st.sel, kind, Math.max(0, st.tick));
+  if (!r.ok) { toast(r.code === 'CHEER_RATE_LIMITED' ? '応援は2秒に1回まで' : 'このレースでは応援できません'); return; }
+  st.sent++; st.lastSent = Date.now();
+  toast(`${st.sel + 1}番に「${CHEER_LABEL[kind]}」`);
+  st.redrawCheer();
+}
+/** REQ-CHEER-007/010: the racer's quiet 「応援 ×n」 (top left, under the quit / photo buttons, never over the controls). */
+function cheerHudTick(f) {
+  const c = hud.cheerState;
+  if (!c || !f.departed || f.done) return;
+  const now = performance.now();
+  if (now < c.next) return;
+  c.next = now + L.cheer.windowMs;
+  const mine = L.cheer.window(f.tick, raceInfo.playerSlot).filter(([s]) => s === raceInfo.playerSlot).reduce((a, r) => a + r[2], 0);
+  if (!mine) return;
+  c.total += mine; c.until = now + 4000;
+  if (cheerIndicatorOn()) c.seen += mine;
+  hud.cheer.dataset.total = String(c.total);
+  setText(hud.cheer, `応援 ×${c.total}`);
+  const pulse = cheerIndicatorOn() && !reduced() && flashOk();
+  hud.cheer.classList.toggle('pulse', pulse);
+  const t = globalThis.__muchi.cheerStats ??= { windows: 0, pulses: 0, shown: 0 };
+  t.windows++; if (pulse) t.pulses++; if (cheerIndicatorOn()) t.shown += mine;
+}
+function cheerHudPaint() {
+  const c = hud.cheerState;
+  if (!c) return;
+  const show = cheerIndicatorOn() && c.total > 0 && performance.now() < c.until;
+  if (hud.cheer.hidden === show) hud.cheer.hidden = !show;
+}
+
 function fit() {
   const s = Math.min(window.innerWidth / 1600, window.innerHeight / 900);
   $stage.style.transform = `scale(${s})`;
@@ -7352,7 +7509,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

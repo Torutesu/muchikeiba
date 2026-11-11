@@ -18,6 +18,7 @@ import type { Master } from './master.js';
 import type { RaceMode, RaceStartConfig, ReplayLog } from './schemas.js';
 import type { RaceResultForPlayer } from './rewards.js';
 import type { Emit } from './service.js';
+import { cheerMoments, parseCheerSummary, type CheerSummary } from './cheer.js';
 
 // ------------------------------------------------------------------------------------------------ config
 
@@ -103,8 +104,8 @@ const peek = (s: PlayerState): MyReplaysState | undefined => s.myReplays;
 export const savedReplayKey = (playerId: string, raceId: string) => `myreplays/${playerId}/${raceId}.json`;
 /** R2 key of the source log the race room wrote (§7). */
 export const sourceReplayKey = (raceId: string) => `replays/${raceId}.json`;
-/** The stored file (REQ-MYRP-003). */
-export interface SavedReplayFile { v: 1; log: ReplayLog; resultHash: string }
+/** The stored file (REQ-MYRP-003). `cheers` (optional, REQ-CHEER-012): the race's cheer counts (no player ids, never in the log). */
+export interface SavedReplayFile { v: 1; log: ReplayLog; resultHash: string; cheers?: CheerSummary }
 
 /** Every saved copy of the player (account deletion, REQ-MYRP-012). */
 export const savedReplayKeys = (s: PlayerState) => (peek(s)?.saved ?? []).map((r) => savedReplayKey(s.id, r.raceId));
@@ -325,6 +326,8 @@ export function replayDataOf(m: Master, ownerId: string, viewer: 'me' | 'friend'
     rulesetVersion: meta.rulesetVersion, ...playabilityOf(m, meta.rulesetVersion, cfg.ruleset as Record<string, unknown>),
     entrants: cfg.entrants.map((e) => ({ slot: e.slot, horseName: e.horse.name, owner: owner(e) })),
     replayLog: log,
+    // REQ-CHEER-012 (§55.6): 「応援の多かった瞬間」 markers (empty when nobody cheered or the counts were not kept). Not in the log or hash.
+    cheerMoments: cheerMoments(file.cheers ? parseCheerSummary(JSON.stringify(file.cheers)) : null),
   };
 }
 

@@ -92,6 +92,8 @@ static class Program
         await FriendSuggestionsChecks.Run(Check, Root);
         Console.WriteLine("== round 19: 画質・省電力・通信量 (auto by device class, battery saver, data saver downloads, storage / clear cache; REQ-PERF-*)");
         await PerformanceChecks.Run(Check);
+        Console.WriteLine("== round 19: 観戦中の応援 (CheerModel: chips, three preset buttons, 2 s pace, burst, racer indicator + setting, reduced motion, KPI per race, replay markers; REQ-CHEER-*)");
+        CheerChecks.Run(Check, Root, Ruleset());
         Console.WriteLine("== round 11: 図鑑, 実績 and titles (CollectionModel / AchievementModel / TitleShowcaseModel; REQ-COL-*, REQ-ACH-*)");
         await CollectionChecks.Run(Check, Ruleset());
         Console.WriteLine("== 調教 (training: menus, timing mini-game, keyed start/finish, fairness wording)");

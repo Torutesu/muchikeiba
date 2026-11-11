@@ -14,6 +14,7 @@
  *
  * Pure functions on master + state; the PlayerService runs the state changes inside its transaction.
  */
+import { CHEER_MIN_INTERVAL_MS } from './cheer.js';
 import helpJson from '../../master/help.json';
 import { AppError } from './errors.js';
 import type { Master } from './master.js';
@@ -180,6 +181,7 @@ function tokenValue(env: TokenEnv, name: string, a?: string, b?: string): string
     case 'export_link_minutes': return String({ ...DATA_EXPORT_DEFAULTS, ...(m.progression.dataExport ?? {}) }.linkTtlMinutes);
     case 'qchat_interval_sec': return String(Math.round(quickChatOf(m).config.postIntervalMs / 1000));
     case 'qchat_per_day': return String(quickChatOf(m).config.postsPerDay);
+    case 'cheer_interval_sec': return String(CHEER_MIN_INTERVAL_MS / 1000); // §55 REQ-CHEER-004
     default: throw new Error(`unknown token ${name}`);
   }
 }

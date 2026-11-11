@@ -7,6 +7,7 @@ import {
   friendSavedView, isReplayId, replayDataOf, savedReplayKey, sourceReplayKey, type ReplayPatch, type SavedReplay, type SavedReplayFile,
 } from './myReplays.js';
 import { replayLogSchema, type ReplayLog } from './schemas.js';
+import { cheerSummaryKey, parseCheerSummary } from './cheer.js';
 import type { Master } from './master.js';
 import type { PlayerInvoker } from '../http/app.js';
 
@@ -56,7 +57,9 @@ export class MyReplaysService {
     try { log = replayLogSchema.parse(JSON.parse(src)); } catch { throw new AppError('REPLAY_EXPIRED', 'the stored replay cannot be read'); }
     // the race must be the one the player rode, in the slot the room settled
     if (log.config.raceId !== raceId || log.config.entrants[race.slot]?.playerId !== uid) throw new AppError('NOT_FOUND', 'not one of your races');
-    const file: SavedReplayFile = { v: 1, log, resultHash: race.resultHash };
+    // REQ-CHEER-012 (§55.6): the race's cheer counts travel with the copy when the room wrote them (optional, small)
+    const cheers = parseCheerSummary(await this.store.get(cheerSummaryKey(raceId)).catch(() => null));
+    const file: SavedReplayFile = { v: 1, log, resultHash: race.resultHash, ...(cheers ? { cheers } : {}) };
     const body = JSON.stringify(file);
     const size = bytesOf(body);
     const max = (this.master().progression as { myReplays?: { maxBytes: number } }).myReplays?.maxBytes ?? 0;
@@ -115,7 +118,8 @@ export class MyReplaysService {
     if (ref.kind === 'saved') file = await this.readFile(savedReplayKey(uid, raceId));
     else {
       const src = await this.store.get(sourceReplayKey(raceId));
-      file = src === null ? null : { v: 1, log: JSON.parse(src) as ReplayLog, resultHash: ref.rec.resultHash };
+      const cheers = src === null ? null : parseCheerSummary(await this.store.get(cheerSummaryKey(raceId)).catch(() => null));
+      file = src === null ? null : { v: 1, log: JSON.parse(src) as ReplayLog, resultHash: ref.rec.resultHash, ...(cheers ? { cheers } : {}) };
       if (!file) await p.invoke('replayForget', uid, raceId);
     }
     if (!file) throw new AppError('REPLAY_EXPIRED', 'the replay of this race is no longer kept');

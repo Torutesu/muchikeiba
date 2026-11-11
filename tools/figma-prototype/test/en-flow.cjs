@@ -408,6 +408,14 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await click('ホームへ'); await waitScreen(['home', 'link-prompt'], 20000);
   if ((await screen()) === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); }
   await shot('home-bell', 400);
+  // round 19: 観戦中の応援 in English (REQ-CHEER-014): the spectate screen, a cheer (toast), the windows
+  await show('Spectate'); await waitScreen('spectate'); await page.waitForTimeout(400);
+  await page.locator('.screen.in [data-cheer="close"]').click(); await page.waitForTimeout(1600);
+  await shot('spectate', 300);
+  const spEn = await page.locator('.screen.in').innerText();
+  assert.match(spEn, /Close in!/, 'cheer: the preset phrase in English');
+  assert.match(spEn, /One cheer every 2 seconds/, 'cheer: the pace line in English');
+  assert.match(spEn, /Cheers never change the race result/, 'cheer: the fairness line in English');
   // round 17: おすすめフレンド in English (REQ-FSUG-015): reasons from the server, player names as written
   await page.evaluate(() => globalThis.__muchi.demo('friends')); await waitScreen('friends', 60000);
   await shot('friends-suggestions', 600);

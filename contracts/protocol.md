@@ -105,6 +105,11 @@ C#（端末・検証サーバー）とTypeScript（Cloudflareサーバー）の�
 | `final` | `{"t":"final","status":"confirmed","order":[3,0,…],"h":"<64hex>"}` | `status`: `confirmed` / `verifying` / `void` |
 | `pong` | `{"t":"pong","c":…,"s":…}` | `s`はサーバー時刻 |
 | `err` | `{"t":"err","code":"…"}` | `BAD_MESSAGE` / `NOT_IN_RACE` / `RACE_OVER` / `TOO_EARLY` / `RESULT_TOO_EARLY` など |
+| `cheers` | `{"t":"cheers","n":[[3,"go",2]]}` | Round 19（§55）：観戦者の応援の1秒ごとの集計。**入力でもハッシュの材料でもない**（リプレイログ・チェックサム・結果に入らない） |
+
+互換性の注意（Round 19、§55）
+- 部屋 → 端末の**知らない `t` は無視する**こと（C# `LockstepClient` は `Errors` に `UNKNOWN_MESSAGE` を足すだけで、致命的ではない。Round 19 より前の端末も `cheers` を受け取って困らない）。
+- 端末 → 部屋の新しい `t`（`cheer`）は、部屋が `start` で案内した時（`spectator.cheer`）だけ送る。古い部屋は厳格なスキーマで知らない `t` を `BAD_MESSAGE` にする。`hello` に新しいフィールドを足さない（古い部屋が拒むため）。
 
 確定の規則
 - tick `n` は、部屋の時計が `startAtMs + (n + 1) * 1000 / tickHz` を過ぎた時点で確定。
@@ -188,6 +193,7 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 - 観戦者は `in` / `chk` / `res` を送らない（送ると `err` `SPECTATOR_READ_ONLY`）。`ping` には `pong` を返す。
 - 1部屋の観戦者数の上限は既定 200（`SPECTATOR_LIMIT`）。超えると `err` `SPECTATORS_FULL` で閉じる（close code 4003）。観戦の接続はプレイヤーごとに1本：同じプレイヤーの新しい観戦接続が来ると古い接続は close code 4000（`replaced`）で閉じる（選手の席と同じ。閉じられた側は再接続しない、§4.1）。観戦チケットの発行は1人あたり連続10回・その後6秒に1回まで（超過は `429 RATE_LIMITED`）。
 - 描画：観戦クライアントは `delayMs` だけ遅れて描く（`LockstepClient.RenderTickPermille` が自動で引く）。
+- 応援（Round 19、§55）：観戦者は `cheer` を送れ、観戦者と選手に `cheers`（1秒の集計）が届く。`start.spectator.cheer` が案内。レースの結果には入らない。
 
 ## 8.5 種牡馬の貸し借り（REQ-BREED-012）
 - `POST /v1/stud/breed` の本文 `{ "ownerId", "horseId", "damId", "useMaterial"?, "expectedFee"? }`（`Idempotency-Key` 必須）。
@@ -2630,7 +2636,7 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 - カテゴリ `id` は8つ：`getting_started`（はじめに）・`races`（レース・ムチ）・`horses`（馬・配合）・`scout`（スカウト・提供割合・天井）・`purchases`（購入・返金）・`account`（アカウント・引き継ぎ）・`deletion`（アカウント削除）・`accessibility`（アクセシビリティ）。全部そろっていて、それぞれ記事が1件以上。
 - 記事 `id` は `^[a-z0-9_]{2,40}$` で重ならない。`title` は1〜`titleMaxChars` 文字、`body` は1〜`bodyMaxChars` 文字（トークンを埋める前）、`keywords` は各言語20個まで・各20文字まで。日本語と英語でトークンの組が同じ。`related` は存在する別の記事。
 - 画面 `screen`：`home`・`settings`・`race_lobby`・`tutorial`・`training`・`breeding`・`stable`・`collection`・`gacha`・`gacha_odds`・`shop`・`history`・`gift_box`・`activity`・`accessibility`・`account_link`・`deletion`・`inquiry`・`my_inquiries`・`privacy`・`team_feed`・`practice`（この3つは Round 18 統合）・`performance`・`storage`（§56）。
-- トークン：`pity_pulls:<バナー>`（天井までの回数）・`pity_coins:<バナー>`（天井までのコイン）・`pity_cost:<天井グループ>`・`rate:<バナー>:<レア度>`・`guarantee_rate:<バナー>:<レア度>`（10枠目の保証の表）・`price_single:<バナー>`・`price_ten:<バナー>`・`monthly_limit:<年齢帯>`（上限のある帯だけ）・`guardian_age`・`deletion_days`・`purchase_keep_days`・`coin_history_days`・`gacha_history_days`・`max_whips`。知らないトークン・無いバナー／グループ／帯は検査で落とす（リモート設定でバナーを外して記事が壊れる版は有効にできない）。
+- トークン：`pity_pulls:<バナー>`（天井までの回数）・`pity_coins:<バナー>`（天井までのコイン）・`pity_cost:<天井グループ>`・`rate:<バナー>:<レア度>`・`guarantee_rate:<バナー>:<レア度>`（10枠目の保証の表）・`price_single:<バナー>`・`price_ten:<バナー>`・`monthly_limit:<年齢帯>`（上限のある帯だけ）・`guardian_age`・`deletion_days`・`purchase_keep_days`・`coin_history_days`・`gacha_history_days`・`max_whips`・`cheer_interval_sec`（Round 19、§55 の応援の間隔の秒）。知らないトークン・無いバナー／グループ／帯は検査で落とす（リモート設定でバナーを外して記事が壊れる版は有効にできない）。
 - `contexts`（画面からの案内、REQ-HELP-008）：`gacha_odds`・`coin_shortfall`・`purchase`・`race_whip`・`race_result`・`training`・`breeding`・`history`・`gift_box`・`account_link`・`deletion`・`accessibility`・`privacy`（Round 18 統合：プライバシーの画面 → `data_export`）・`storage`（§56） → 記事 id。Round 18 統合で記事 `data_export`・`quick_chat`・`practice_races`・`horse_goals` を足した（数字はトークン `export_cooldown_days`・`export_keep_days`・`export_link_minutes`・`qchat_interval_sec`・`qchat_per_day` から）。全部そろっていて、存在する記事を指す。
 
 ### 48.2 `GET /v1/help`（要認証、読むだけ・プレイヤーの状態に触れない）
@@ -3089,6 +3095,66 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 
 ### 53.9 アカウント削除
 状態の `horseGoals`（達成の記録・ピン）と戦績の `goal` は最後の `wipe` で消える。殿堂の写し（§34.5）は既存の手順で消える。他の場所に写しは無い。
+
+## 55. 観戦中の応援（spectator cheering、REQ-CHEER-001〜016、`server/src/domain/cheer.ts`・`server/src/do/raceRoom.ts`、C# `Muchi.Net.CheerWire`（`CheerOffer`・`CheerCount`）・`LockstepClient.SendCheer`/`CheersReceived`・`Muchi.Client.Cheer`（`CheerKinds`・`CheerThrottle`・`CheerIndicator`・`CheerBurst`・`CheerRaceTally`・`CheerMoment`）・`Muchi.Game.CheerModel`）
+観戦者（§8.4）が、レース中に決まった応援（「いけ！」「差せ！」「粘れ！」）を**馬番を選んで**送れる。観戦者には応援の盛り上がり（その1秒の集計）が、選手には自分の馬への応援の数（「応援 ×12」）が、邪魔にならない形で出る。**レースには一切影響しない**：応援はロックステップの入力の流れ（§4 の `in`・`b`）の外を通り、入力・リプレイログ（§7）・チェックサム（§5）・結果ハッシュ（§6）に入らない。部屋の中でも応援は `RaceRoomCore`（入力と結果の芯）に渡らない。**何も配らない・何も売らない**（E番号なし。有料の応援・投げ銭・ギフトは作らない、docs/planning/03）。自由な文字は送れない（決まった3種類だけ）。新しい HTTP の口は無い（観戦チケット `POST /v1/race/:raceId/spectate` は §8.4 のまま、§46 の口の組もそのまま `ranked`（`/v1/race`・`/v1/races` の接頭辞。WebSocket の `GET /v1/race/:raceId/ws` はレース中に止めない口のまま））。
+
+### 55.1 応援の種類（REQ-CHEER-002、`CHEER_KINDS`・`CHEER_TEXT`）
+| `kind` | 日本語 | English |
+|---|---|---|
+| `go` | いけ！ | Go! |
+| `close` | 差せ！ | Close in! |
+| `hold` | 粘れ！ | Hang on! |
+
+- 並びはボタンの並び。文は共有の賭けの言葉の一覧（`domain/bettingWords.ts`）に当たらない（`cheerTextProblems`、テスト）。クライアントの文（`CheerKinds.Label*`）と `ui-en.json` は同じ表（テストで照合）。
+
+### 55.2 どのレースで・誰が（REQ-CHEER-001/003/006）
+- 観戦できるレースすべて：フレンド部屋・主催カップ（`cup`）・ランク戦・イベント・大会のヒート（ランク戦の観戦は Round 7 からあるので含める。チュートリアル・タイムアタックは観戦が無いので無し）。環境変数 `CHEERS = "off"` で全部止まる（部屋が応援を案内しなくなり、`cheer` は `err` `CHEER_OFF`）。
+- 部屋は観戦者の `start` の `spectator` に `cheer` を足して案内する：`"spectator":{"delayMs":0,"cheer":{"kinds":["go","close","hold"],"minIntervalMs":2000,"windowMs":1000}}`。**`cheer` が無い部屋（古いサーバー・止めてある）には、クライアントは `cheer` を送らない**（古い部屋のスキーマは厳格で、知らない `t` は `BAD_MESSAGE` になるため）。選手の `start` は変わらない。
+- 送れるのは観戦の接続だけ（チケットの slot = -1）。選手の接続からの `cheer` は `err` `NOT_SPECTATOR`（芯は何も記録しない）。
+
+### 55.3 メッセージ（§4 の後方互換な拡張）
+| 向き | 形 | 意味 |
+|---|---|---|
+| 観戦者 → 部屋 | `{"t":"cheer","slot":3,"kind":"go"}` | 応援1回。`slot` は出走馬の枠（0〜出走数−1、画面の馬番は slot+1）、`kind` は §55.1 のどれか。ほかのフィールドは付けられない（厳格、自由な文字なし） |
+| 部屋 → 観戦者・選手 | `{"t":"cheers","n":[[1,"hold",1],[3,"go",2],[3,"close",1]]}` | 1つの窓（1秒）の集計。`[slot, kind, 数]` を slot → kind の並びの順。**送った人の id は無い**。窓に見せるものが無い接続には送らない |
+
+- 断る時は `err`：`CHEER_OFF`（止めてある・観戦できないモード）、`NOT_SPECTATOR`、`CHEER_NOT_LIVE`（その観戦者にまだレースが始まっていない・`final` を受け取った後）、`CHEER_RATE_LIMITED`（2秒に1回より速い）、`CHEER_UNAVAILABLE`（ブロックの一覧が読めない）、`BAD_MESSAGE`（形違い・出走数を超える枠）。**どれも切断しない・致命的でない**（`RaceSession.FatalRoomErrors` に入れない。テストで確認）。
+
+### 55.4 間隔と窓（REQ-CHEER-004/005、帯域の上限）
+- 観戦者ごとに **2秒に1回**（`CHEER_MIN_INTERVAL_MS`）。最後に受け付けた時刻は観戦の接続の attachment（`spec.lc`）に持ち、休止（hibernation）をまたいでも効く。部屋のメモリにもプレイヤーごとに持つので、つなぎ直しても間隔は戻らない。時計が戻った時は止めない。間隔は `await` の前に取るので、同時に来た2つが両方通ることはない。クライアントは `CheerThrottle` で同じ間隔だけボタンを灰色にする（押して断られることがない）。
+- 部屋は受け付けた応援を **1秒の窓**（`CHEER_WINDOW_MS`）にためて、窓が閉じたら各接続に**多くて1通**の `cheers` を送る（部屋のアラームで閉じる。ほかに用が無くても窓を閉じる時刻にアラームを置く）。受け取るのは：まだ見ている観戦者（`final` 前・tick を1つ以上受け取った）と、レースが `running` の間の選手。
+- 1通の大きさは最大で 出走数 × 3 行（12頭で36行）。観戦者の上限は 200（§8.4）なので、1部屋の応援は多くて毎秒100回、送るのは1接続毎秒1通まで。ブロックが無ければ全員に同じ文字列を1回だけ作る。
+- 窓はメモリだけ（追い出されたら、その窓は出ないだけ）。応援はタイミングを競わないので遅れても困らない。ランク戦・イベント・大会は観戦が10秒遅れなので、観戦者の応援は10秒前の場面への応援として選手に届く（未来の情報は含まない）。
+
+### 55.5 ブロック（REQ-CHEER-008、§47 の1つのブロックの一覧）
+- 部屋は観戦者の `hello` の時に、その人のブロックの一覧（支部フィードのミュート＝`feedMutes`）を読む（選手は席の準備を遅らせないよう待たずに読む）。
+- 窓を送る時、受け取る人 R ごとに、R がブロックした人と R をブロックした人からの応援を数えない（両向き）。一覧がまだ読めていない R には何も送らない（安全側）。送った人の一覧が分からない応援は隠す。自分の応援は自分には必ず見える。
+- 一覧はレースの途中では読み直さない（次の `hello` から効く）。集計しか届かないので、誰が応援したかはそもそも分からない。
+
+### 55.6 リプレイの「応援の多かった瞬間」（REQ-CHEER-011/012）
+- 部屋はレースごとに応援の**数だけ**を数える：送った人が見ていた tick（`spec.sent`）を 40 tick（20Hz で2秒、`CHEER_BUCKET_TICKS`）ごとの区切りに入れる。送った人の id・誰がどの馬に、は残さない。部屋のストレージの別のキー `cheer` に置き、芯のスナップショット（`core`）には入れない。
+- 応援があったレースは、最後の観戦者が見終わり結果が出た後に1回だけ、R2 の `replays/<raceId>.cheers.json` に書く：`{"v":1,"bucketTicks":40,"total":18,"buckets":[[10,5],[20,4]]}`（数百バイト）。リプレイのログ（`replays/<raceId>.json`）とは別のファイルで、同じ接頭辞なので保存期間（REQ-OPS-001）と一緒に消える。
+- マイリプレイ（§37）：保存する時にこのファイルがあれば写しの中（`SavedReplayFile.cheers`）に入れ、`GET /v1/replays/:raceId`・フレンドの公開リプレイの応答に `cheerMoments` を付ける：`[{"tick":400,"count":5}]`。応援が3回以上の区切りのうち多い順に最大3つ（同数は早い方）を、レースの順に並べる。無い時は `[]`。古いクライアントは知らないフィールドを無視する。リプレイのログ・結果ハッシュは変わらない。
+
+### 55.7 KPI（REQ-CHEER-013、クライアントのイベント）
+- `cheer_send`：`props {mode, count}` — そのレースで送った応援の数。**1レースに1行**（押すたびには送らない）。
+- `cheer_seen`：`props {mode, role, count}` — そのレースで画面に出た応援の数。`role` = `racer`（表示オンの選手だけ。オフの選手は行が無い）/ `spectator`。
+- `mode` は `friend` / `cup` / `ranked` / `event` / `tournament`。馬・相手・送った人の id は入れない。クエリは docs/ops/kpi-queries.md。
+
+### 55.8 表示（REQ-CHEER-007/010、docs/planning/06、docs/handoff-codex-round19-spectator-cheer.md）
+- 観戦画面：馬番のチップ（1つ選ぶ）と3つのボタン。2秒の間は灰色。下に「応援は2秒に1回まで」「応援はレースの結果に影響しません」。窓が届いたら、多い順に最大3行の小さなバースト（「3番 粘れ！ ×9」）を2.5秒。
+- 選手：自分の馬への応援があった時だけ、操作の邪魔にならない隅に「応援 ×12」（レース中の合計）を4秒。設定「レース中の応援表示」（既定オン、端末に保存、レース中でもすぐ効く）でオフにできる。オフの間は出さない（数は数えておくので、オンに戻すと合計が出る）。
+- 動きを減らす（§41）がオンなら、文字だけで光・脈打ちは無し。光は `FlashLimiter`（1秒に3回まで）を通す。
+- 英語・文字の大きさ（特大）ではみ出さない（プロトタイプの `test/en-flow.cjs`・`test/a11y-flow.cjs`）。
+
+### 55.9 クライアント
+- `Muchi.Net`：`LockstepClient.CheerOffer`（`start.spectator.cheer`、無ければ null）・`CanCheer`・`SendCheer(slot, kind)`（案内された種類・枠の範囲・観戦者・`final` 前のときだけ送る）・`CheersReceived`（`cheers` の窓。`Sim`・確定入力・チェックサムには触れない）。
+- `Muchi.Client`：`CheerKinds`（文・モード名）、`CheerThrottle`、`CheerIndicator`（選手）、`CheerBurst`（観戦者）、`CheerRaceTally`（KPI を1レース1回）、`CheerMoment`（`ReplayData.CheerMoments`）、`AnalyticsEvent.CheerSend`・`CheerSeen`。
+- `Muchi.Game`：`CheerModel`（チップ・ボタン・間隔・トースト・バースト・選手の表示と設定・動きを減らす・`Finish` で KPI・`MomentMarkers`）。
+
+### 55.10 ヘルプ（§48）
+- 記事 `spectator_cheer`（カテゴリ `races`）：応援の送り方・無料で何ももらえないこと・間隔（トークン `cheer_interval_sec`）・自由な文字なし・匿名・ブロック・選手の表示のオフ・動きを減らす。設定画面へのリンク。
 
 ## 56. 画質・省電力・通信量の設定（REQ-PERF-001〜018、C# `PerformanceSettings.cs`（`PerformanceSettings`・`DeviceClassifier`・`RenderProfile`・`AssetDownloadPolicy`・`AssetStorage`）・`Muchi.Game.PerformanceSettingsModel`／`StorageModel`、§16 のアセット配信に追加、docs/handoff-codex-round19-performance-settings.md）
 端末ごとの「見た目の重さ」と「通信量・容量」の設定。**端末にだけ保存し、アカウントには保存しない**（§56.6）。**どの設定もレースの計算・ルールセット・検証・結果ハッシュ・リプレイを変えない**：エンジンは 20Hz の固定ステップで時計に合わせて進み、設定が変えるのは描画（1秒に何枚描くか・どの細かさで描くか）とダウンロードだけ（§56.5）。アクセシビリティの「動きを減らす」（§41.6）とは別の設定で、両方オンにできる（効果は重なるだけで打ち消し合わない）。

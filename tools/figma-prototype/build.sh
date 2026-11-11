@@ -67,4 +67,5 @@ node "$HERE/test/round17-friend-suggestions.test.mjs" # round 17: おすすめ�
 node "$HERE/test/round18-practice.test.mjs" # round 18: 練習レース — the catalog, a device race in PracticeSession, the whip band, slow = same race, same seed + ghost, new seed, photo pause, KPI, nothing granted
 node "$HERE/test/round18-quick-chat.test.mjs"   # round 18: 支部の定型チャット — picker JA / EN, a checked value, the 15 s rule, phrases in the shared feed, a mention, both-way block
 node "$HERE/test/round19-tips.test.mjs" # round 19: ヒント — index (JA/EN), numbers from data, unlocks, seen marks, the 「？」 contexts, KPI, the whip lesson = the FTUE tutorial race in WASM (never assisted), no first-time reward touched
+node "$HERE/test/round19-cheer.test.mjs" # round 19: 観戦中の応援 — the 2 s pace, windows fanned out with the block list, no ids, moments, one KPI row per race, English
 echo "built $SITE ($(du -sh "$SITE" | cut -f1))"

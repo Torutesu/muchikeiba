@@ -1352,6 +1352,13 @@
   "練習のレース。前の馬の後ろについて、直線で外へ。": "A practice race. Sit behind a horse, then move out in the stretch.",
   "練習のレース。スタミナの帯を見ながら、前半は抑えて。": "A practice race. Watch the stamina bar and hold back in the first half.",
   "練習のレース。掛かったら手綱を長押し。": "A practice race. If your horse pulls, hold the reins.",
-  "残り300mからのムチで差し切った": "Got up with the whip from 300 m out"
+  "残り300mからのムチで差し切った": "Got up with the whip from 300 m out",
+  "_cheer": "---- round 19: 観戦中の応援 (REQ-CHEER-*, §55; the cheer phrases and 「応援 ×{n}」 are in ui-en.json)",
+  "観戦": "Watch",
+  "フレンド部屋　·　ライブ": "Friend room · Live",
+  "出走馬　/　ライブ": "Runners / Live",
+  "いまの応援": "Cheers now",
+  "応援が届くと、ここに出ます": "Cheers show up here as they arrive",
+  "観戦して応援する": "Watch and cheer"
  }
 }

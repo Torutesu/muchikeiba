@@ -1156,6 +1156,25 @@
 - REQ-HGOAL-015 設定 `progression.horseGoals { enabled }`：殿堂（§34）が無効なら有効にできない（起動時と各版で検証）。
 - REQ-HGOAL-016 プロトタイプ：馬の詳細の目標の面とホームのピン（ムチ一閃の見た目、日本語・英語、文字の大きさ §41）、e2e・en-flow・a11y-flow。
 
+## 55. 観戦中の応援（TS＋C#、`src/domain/cheer.ts`・`src/do/raceRoom.ts`・`Muchi.Net.CheerWire`・`Muchi.Client/Cheer.cs`・`Muchi.Game.CheerModel`、`contracts/protocol.md` §55）
+拘束条件：レースに一切影響しない（入力・リプレイログ・チェックサム・結果ハッシュの外）。何も配らない・売らない（E番号なし、有料の応援・投げ銭なし）。自由な文字なし。プロトコルの追加は後方互換。新しい HTTP の口なし。
+- REQ-CHEER-001 対象：観戦できるレース（フレンド部屋・主催カップ・ランク戦・イベント・大会のヒート）。チュートリアル・タイムアタックは無し。環境変数 `CHEERS = "off"` で止まる。
+- REQ-CHEER-002 種類：「いけ！」「差せ！」「粘れ！」の3つ（`go` / `close` / `hold`）。馬番（枠）を選んで送る。英語あり。
+- REQ-CHEER-003 案内と送信：部屋は観戦者の `start.spectator.cheer` で案内し、クライアントは案内された時だけ `{"t":"cheer","slot","kind"}` を送る（厳格、ほかのフィールドなし）。
+- REQ-CHEER-004 間隔：観戦者ごとに2秒に1回（部屋が attachment で強制、`await` の前に取る、時計が戻っても止めない）。クライアントは同じ間隔でボタンを灰色にする。
+- REQ-CHEER-005 窓：部屋は1秒の窓にためて、各接続に多くて1通の `cheers`（`[slot, kind, 数]`、送った人の id なし）。帯域は 出走数×3 行 × 毎秒1通 が上限。ブロックが無ければ1回だけ作って全員に送る。
+- REQ-CHEER-006 送れる人：観戦の接続だけ。選手は `NOT_SPECTATOR`。始まる前・`final` の後は `CHEER_NOT_LIVE`。断りはどれも致命的でない（切断しない、再接続の判断を変えない）。
+- REQ-CHEER-007 見え方：観戦者は直近の窓の多い順に最大3行のバーストと馬ごとの合計、選手は自分の馬だけ「応援 ×n」（レース中の合計）。どちらも操作をふさがない。
+- REQ-CHEER-008 ブロック：§47 の1つのブロックの一覧で両向きに隠す。受け取る人の一覧が分からなければ送らない、送った人の一覧が分からなければ隠す（安全側）。一覧は `hello` で読む。
+- REQ-CHEER-009 影響しない：応援は `RaceRoomCore` に渡らず、リプレイログ・スナップショット・入力・チェックサム・結果ハッシュに入らない。クライアントの `cheers` の処理はシミュレーションに触れない（同じ確定入力なら同じハッシュ、テストで確認）。
+- REQ-CHEER-010 選手の設定とアクセシビリティ：「レース中の応援表示」（既定オン、端末に保存、すぐ効く）。動きを減らす（§41）なら文字だけ。光は `FlashLimiter`（1秒に3回まで）。
+- REQ-CHEER-011 レースの集計：数だけを40 tick ごとの区切りで数え（送った人の id なし）、部屋の別のキーに置き、応援があったレースは終わってから1回 `replays/<raceId>.cheers.json` に書く（ログと同じ保存期間）。
+- REQ-CHEER-012 リプレイの印：マイリプレイの応答の `cheerMoments`（3回以上の区切りの多い順に最大3つ、レース順）。保存した写しに数を入れておく。無ければ `[]`。ログとハッシュは変わらない。
+- REQ-CHEER-013 KPI：`cheer_send`（送った数）・`cheer_seen`（見た数、`racer`/`spectator`）を**1レースに1行**、クライアントから。id なし。
+- REQ-CHEER-014 言葉：決まった文だけ、賭けの言葉の共有の一覧に当たらない（テスト）。「倍」「今だけ」などの急かす言葉なし。
+- REQ-CHEER-015 運用：`CHEERS` で止められる。止めても観戦そのものは今のまま。
+- REQ-CHEER-016 クライアント：C# の送信・受信・選手の表示・観戦者のバースト・KPI・リプレイの印、Unity `CheerModel`、プロトタイプの観戦画面の応援ボタンと選手の表示（日英・文字の大きさ）、Codex 向けの引き継ぎ。
+
 ## 56. 画質・省電力・通信量の設定（C#＋TS（KPI・カタログの軽量版・ヘルプ）、`Muchi.Client/PerformanceSettings.cs`・`Muchi.Game.PerformanceSettingsModel`／`StorageModel`・`src/domain/assetCatalog.ts`・`src/domain/kpi.ts`、`contracts/protocol.md` §56）
 拘束条件：描画とダウンロードだけを変え、レースの結果を変えない（ゴールデン・結果ハッシュ同じ）。端末にだけ保存する（アカウント・サーバーの状態なし）。何も配らない（E番号なし）。カタログへの追加は任意のフィールドだけ（古いクライアント・古いカタログはそのまま）。
 - REQ-PERF-001 設定：`graphics`（auto/low/medium/high）・`frameRate`（auto/30/60）・`batterySaver`・`dataSaver`。既定は auto・auto・オフ・オフ。壊れた保存値は既定値。

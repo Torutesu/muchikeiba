@@ -1250,6 +1250,28 @@ GROUP BY week
 ORDER BY week DESC
 ```
 
+## 観戦中の応援：送った・見た（REQ-CHEER-013、contracts/protocol.md §55、Round 19）
+
+**観戦が「見るだけ」から「一緒に盛り上がる」になっているか**。どちらもクライアントのイベントで、**1レースに1行**（押すたびには送らない）。`cheer_send`（観戦者、`blob8` = モード、`double5` = そのレースで送った応援の数）、`cheer_seen`（`blob8` = モード、`blob9` = `racer`（表示オンの選手）/ `spectator`、`double5` = そのレースで見た応援の数）。馬・相手・送った人の id は入れていない。
+
+```sql
+-- モードごとの、応援したレース数と1レースあたりの応援の数
+SELECT blob8 AS mode, sum(_sample_interval) AS races, sum(double5 * _sample_interval) / sum(_sample_interval) AS per_race
+FROM muchi_kpi
+WHERE blob1 = 'cheer_send' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY mode ORDER BY races DESC
+```
+
+```sql
+-- 選手が応援を見たレース（表示オフの選手は行が出ない）
+SELECT blob6 AS day, blob8 AS mode, sum(_sample_interval) AS races, sum(double5 * _sample_interval) AS cheers
+FROM muchi_kpi
+WHERE blob1 = 'cheer_seen' AND blob9 = 'racer' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY day, mode ORDER BY day DESC
+```
+
+- 1レースあたりの応援が上限（2秒に1回）にいつも張り付くなら、ボタン連打の遊びになっている。演出（Codex）を控えめにする。
+
 ## 画質・省電力・通信量：設定の変更・まとめてダウンロード（REQ-PERF-015、contracts/protocol.md §56.9、Round 19）
 
 **自動の既定値が合っているか、どの区分の端末が何を変えているか、まとめてダウンロードがどのくらいの大きさで使われているか**。どちらもクライアントのイベント（設定は端末だけに保存されるため）。`perf_setting_change`（`blob8` = 設定、`blob9` = 新しい値、`blob10` = 端末の区分 `low`/`mid`/`high`。プレイヤーが変えた時だけ、自動の既定値では出ない）、`asset_predownload`（`blob8` = 残りのサイズの区分、`blob9` = `full`/`low`）。機種名・容量の実数は入れていない。

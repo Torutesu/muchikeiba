@@ -126,5 +126,19 @@ static class Round21IntegrationChecks
         reset.Watch(transfer);
         check(deep.Receive("muchi://l/k7mq3xphr2abcdefghjkmn") && deep.Pending != null, "account: (another link waits)");
         check(await transfer.RedeemAsync("K7M-Q3X-PHR", "Haneda2026!") && reset.Resets == 2 && deep.Pending == null, "account: a redeemed transfer code drops it too");
+
+        // §65 × §61: a calendar mark is planned by the one local planner (reminders category, lead before the start, the
+        // settings row says so); with reminders off it is dropped like every reminders kind
+        string CalDigest(bool remindersOn) => LocalNotificationChecks.Digest(remindersOn, null)
+            .Replace("\"rival_week_closing\",\"daily_bonus\"]", "\"rival_week_closing\",\"calendar_mark\",\"daily_bonus\"]")
+            .Replace("\"gift_expiring\":24}", "\"gift_expiring\":24,\"calendar_mark\":2}")
+            .Replace("\"gifts\":[", "\"calendarMarks\":[{\"id\":\"tournament_registration:t_winter\",\"startAt\":" + (Now + 27 * 3600_000L) + "}],\"gifts\":[");
+        var calOn = LocalNotificationPlanner.Plan(new LocalNotificationSnapshot { Now = Now, Locale = "ja", Permission = LocalNotificationPermission.Granted, SignedIn = true, Digest = LocalRemindersDigest.Parse(JsonNode.Parse(CalDigest(true))) });
+        var cal = calOn.Items.FirstOrDefault(i => i.Kind == "calendar_mark");
+        check(cal != null && cal.Screen == "calendar" && cal.Category == "reminders" && cal.FireAt == Now + 25 * 3600_000L && cal.Body.Contains("印を付けた予定が"), "calendar × reminders: a marked row → one device reminder 2 h before its start, opening the calendar");
+        var calOff = LocalNotificationPlanner.Plan(new LocalNotificationSnapshot { Now = Now, Locale = "ja", Permission = LocalNotificationPermission.Granted, SignedIn = true, Digest = LocalRemindersDigest.Parse(JsonNode.Parse(CalDigest(false))) });
+        check(calOff.Items.All(i => i.Kind != "calendar_mark") && calOff.Dropped.Any(x => x.Kind == "calendar_mark" && x.Reason == "category_off"), "calendar × reminders: reminders off (the default) → no calendar reminder");
+        check(LocalNotificationPlanner.Kinds.All(k => LocalNotificationModel.KindLabel(k) != null), "calendar × reminders: every local kind has a settings row label");
+        check(CalendarModel.MarkNote.Contains("リマインダー"), "calendar: the mark note says the reminders switch decides");
     }
 }

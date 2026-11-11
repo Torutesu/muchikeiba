@@ -3729,6 +3729,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 | `rival_week_closing` | ライバル（§28）の週の終わり | `friends` | `weekEndsAt − leadHours` | 今週のライバルがいて、今週のランク戦がまだ0回 | `rival` |
 | `exchange_closing` | イベント交換所（§30）が閉まる | `events` | `closesAt − leadHours`（イベントごとに1つ） | ポイントが残っている。文言は「残ったポイントは素材になります」（§30、失われない） | `event_exchange` |
 | `gift_expiring` | プレゼント（§26）の受け取り期限 | `gifts` | 一番早い `expiresAt − leadHours` | 期限のある未受け取りの品がある。**開くだけ**（通知から受け取らない） | `gift_box` |
+| `calendar_mark`（R21 統合） | 予定表（§65）で印を付けた行の**始まり** | `reminders`（自分で付けた印なので呼び戻しと同じ種類、既定オフ） | `startAt − leadHours.calendar_mark`（既定 2 時間） | 印があり、まだ始まっていない（始まった行・印を外した行・`until` を過ぎた行は予約しない）。名前は文言に入れない（「印を付けた予定が{date}に始まります」） | `calendar` |
 
 - 持ち主が `server` の出来事（ローカルでは作らない）：push.json の全テンプレート（フレンド・支部・招待・シーズン開幕／終了・昇級まであと1勝・イベント開始・大会の締切／まもなく・TA記録・ライバルの記録・おかえり（`comeback`）・プレゼントが届いた（`gift_arrived`））。今の6つのローカルの種類と同じ出来事を送るテンプレートは無い。今後サーバーが同じ出来事を送るなら、ローカルの種類の方を外す。
 - 呼び戻しの通知（「調教ができます」「ログインボーナス」）は 06 §3.5 のとおり**新しい種類と同意**が要る：新しい種類 **`reminders`**（「リマインダー」、**既定オフ**、push.json `defaults.categories.reminders: false`）。サーバーはこの種類のプッシュを送らない（テンプレートが無い、テストで確かめる）。受け取るには 61.4 の前置きで本人が選ぶ。
@@ -3740,7 +3741,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 2. 61.1 の条件から候補を作る。種類の**カテゴリがオフ**なら外す（`category_off`）。設定 `kinds` に無い種類も外す。
 3. 時刻が `now` 以前なら外す（`past`。アプリを開いている間に期限の前の時刻が過ぎたら、もう知らせない）。`now + horizonDays` より後も外す（`horizon`）。
 4. **静かな時間帯**（プッシュと同じ JST の `quietHours`）：`training_session` は外す。`daily_bonus` は静かな時間帯の終わりへ遅らせる（次のゲーム日を越えるなら外す）。期限の種類は終わりへ遅らせ、それが期限の1時間前を過ぎるなら外す（`quiet_hours`）。
-5. **1日の上限** `dailyCap`（既定2、プッシュの上限とは別に数える）：予約する時刻のゲーム日ごとに、優先の高い順（`training_session` > `gift_expiring` > `exchange_closing` > `weekly_challenge_closing` > `rival_week_closing` > `daily_bonus`、同じなら早い時刻）に残す（`daily_cap`）。全体で `maxPending` 件まで（早い順、iOS の上限 64 より十分小さい）。
+5. **1日の上限** `dailyCap`（既定2、プッシュの上限とは別に数える）：予約する時刻のゲーム日ごとに、優先の高い順（`training_session` > `gift_expiring` > `exchange_closing` > `weekly_challenge_closing` > `rival_week_closing` > `calendar_mark` > `daily_bonus`、同じなら早い時刻）に残す（`daily_cap`）。全体で `maxPending` 件まで（早い順、iOS の上限 64 より十分小さい）。
 6. 出力 `items[]`：`id`（`lnotif.{kind}.{ref}`、出来事ごとに変わらない。ref = セッションID／ゲーム日／`endsAt`／イベントID／一番早い期限）・`kind`・`category`・`fireAt`・`screen`・`refId`・`title`・`body`。並びは時刻の順。外したものは `dropped[]`（`kind`・`reason`）。
 - **文言**（日本語・英語、端末の言語で選ぶ。両方の言語を planner が持つ）：時刻は JST で「11月16日 4:00」／“11/16 at 4:00”。プレイヤーが付けた名前（馬・支部・相手）は**既定で文言に入れない**（ロック画面の覗き見）。`showDetails: true` の時だけ件数・ポイント・調教の馬の名前を入れる（名前は訳さない）。共通の賭けの言葉（`bettingWords.ts`）と煽りの言葉を使わない（テストで全部の文言を確かめる）。
 
@@ -3750,7 +3751,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 { "v": 1, "enabled": true, "now": 1794880800000, "nextDayAt": 1794891600000, "nextDay": "2026-11-12",
   "config": { "kinds": ["training_session","daily_bonus","weekly_challenge_closing","rival_week_closing","exchange_closing","gift_expiring"],
               "dailyCap": 2, "dailyHourJst": 12, "horizonDays": 7, "maxPending": 8, "trainingLeadMin": 3,
-              "leadHours": { "weekly_challenge_closing": 24, "rival_week_closing": 24, "exchange_closing": 24, "gift_expiring": 24 },
+              "leadHours": { "weekly_challenge_closing": 24, "rival_week_closing": 24, "exchange_closing": 24, "gift_expiring": 24, "calendar_mark": 2 },
               "prePrompt": { "maxAsks": 2, "retryDays": 14 } },
   "categories": { "season": true, "friends": true, "invites": true, "events": true, "comeback": false, "gifts": true, "reminders": false },
   "quietHours": { "startHour": 22, "endHour": 8 },
@@ -3762,6 +3763,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
   "exchanges": [ { "eventId": "ev_autumn", "points": 120, "closesAt": 1795050000000 } ],
   "gifts": [ 1795000000000, 1795003600000 ] }
 ```
+- R21 統合：`calendarMarks`（`[{ id, startAt }]`）＝予定表（§65）の印のうち、まだ始まっていない行（始まりの早い順、30件まで）。R21 統合の前に付けた印は始まりを持たないので入らない。
 - `training` は開いたセッションが無ければ `{ sessionId: null, horseId: null, expiresAt: null, trainedEver }`（`trainedEver` = これまでに調教をしたか、61.4 の前置きのきっかけ）。`weeklyChallenge`・`rival` は無ければ `null`。`gifts` は期限のある未受け取りの品の `expiresAt`（早い順、20件まで）。
 - `enabled: false`（設定なし・無効）の時は `{ "v": 1, "enabled": false }` だけ。
 
@@ -4119,7 +4121,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 - `PUT`：今日から `GET` が見せられる最も先の日（90日後）までの予定表を同じ組み立てで（200行の上限なしで）作り、その `id` の行があって終わっていなければ付ける（何度でも同じ、`{ "marked": true, "id": "…", "count": n, "max": 30 }`）。行が無い・見えない → 404 `NOT_FOUND`、終わっている → 409 `CONFLICT`（`details.reason: "ended"`）、30件ある → 409 `CONFLICT`（`details.reason: "limit"`）。
 - `DELETE`：外す（無い印でも 200、`{ "marked": false, … }`）。
 - **サーバーからは通知を送らない**（プッシュもメールも無し）。
-- §61（端末の通知、Round 20）との結び方（統合のメモ）：§61 が入ったら、クライアントは `GET /v1/calendar` の `marked: true` の行について、端末の通知を `startAt`（始まる前の行）または `endAt`（開催中の行）の少し前（§61 の決まりの静かな時間帯・1日の上限に従う）に予約する。印を外した・行が消えた・`until` を過ぎたら端末の予約も消す。文言は §61 のカタログの「予定」の種類を足して決める（今は無い）。KPI の `calendar_mark` は §58 の分類で決める。
+- **§61（端末の通知）との結び方（R21 統合で実装）**：印は `startAt`（行の始まり）も持つ（`{ id, kind, until, startAt }`）。端末は §61 の1つの計画（`planLocalNotifications`／C# `LocalNotificationPlanner`）で、まだ始まっていない印の行に種類 `calendar_mark` の通知を `startAt − leadHours.calendar_mark` に予約する。種類（カテゴリ）は `reminders`（既定オフ）、静かな時間帯・1日の上限・`horizonDays`・止めるスイッチ（`kinds`）は §61 のまま。持ち主は端末（`LNOTIF_OWNERSHIP.local`、サーバーのプッシュのテンプレートは無い）。印を外す・行が終わる・始まる → 次の計画で予約が消える。アカウントが変わる・削除の予約・サインアウト → §61.5 のとおり全部取り消す。開催中の行の終わりは知らせない（交換所・週替わりチャレンジの締めは §61 の他の種類が受け持つ）。KPI の `calendar_mark` は `optional`（§58.7）。
 
 ### 65.3 運営コンソール（`GET /v1/admin/calendar?from&to&versionId`、viewer）
 - 指定の版（省略時は有効な版）の **全体の** 予定表：イベント・交換所・週替わりチャレンジ・支部の共同目標とリーグ・シーズン・パス・**予告前を含む** バナー（`announced: false` を付ける）・大会・**予告前を含む** メンテナンス（取り消しは出さない）。プレイヤーだけのもの（カップ・復帰キャンペーン）は出さない。期間は 35 日まで。

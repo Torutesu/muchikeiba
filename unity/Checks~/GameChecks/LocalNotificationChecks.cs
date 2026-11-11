@@ -79,7 +79,7 @@ static class LocalNotificationChecks
         check(p0.Status == "no_permission" && os.Pending.Count == 0 && os.Requests == 0, "lnotif: no OS permission → planned, nothing scheduled, the OS dialog not shown on launch");
         check(!m.PrePromptDue, "lnotif: no pre-prompt before the first training");
         check(m.Upcoming.Count > 0 && m.Upcoming.All(u => u.Kind != "daily_bonus" && u.Kind != "training_session"), "lnotif: the reminders category is off by default → no daily bonus / training rows (" + string.Join(",", m.Upcoming.Select(u => u.Kind)) + ")");
-        check(m.Rows.Count == 6 && !m.Rows.First(r => r.Kind == "daily_bonus").On && m.Rows.First(r => r.Kind == "gift_expiring").On && m.Rows.First(r => r.Kind == "daily_bonus").CategoryLabel == "リマインダー", "lnotif: settings rows follow the push categories");
+        check(m.Rows.Count == 7 && !m.Rows.First(r => r.Kind == "daily_bonus").On && m.Rows.First(r => r.Kind == "gift_expiring").On && m.Rows.First(r => r.Kind == "daily_bonus").CategoryLabel == "リマインダー", "lnotif: settings rows follow the push categories");
         check(m.PermissionText == "通知はまだ許可されていません", "lnotif: the permission line");
 
         // the first training: the pre-prompt is due; accept → reminders on, OS dialog once, KPI granted, scheduled with KPI per id

@@ -117,7 +117,7 @@ namespace Muchi.Client
             return Call("GET", "/v1/calendar" + (q.Count > 0 ? "?" + string.Join("&", q) : ""), null, true, null, true, CalendarView.Parse, ct);
         }
 
-        /// <summary>REQ-CAL-010: mark (true) or unmark (false) a row. Idempotent both ways; the server sends no notification for it.</summary>
+        /// <summary>REQ-CAL-010: mark (true) or unmark (false) a row. Idempotent both ways; the server sends no notification for it (the device plans one through §61 `calendar_mark`, R21 integration).</summary>
         public Task<CalendarMarkResult> MarkCalendarAsync(string entryId, bool on, CancellationToken ct = default)
         {
             if (!IsCalendarEntryId(entryId)) throw new ArgumentException("bad calendar entry id " + entryId, nameof(entryId));

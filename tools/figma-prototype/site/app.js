@@ -5424,7 +5424,8 @@ function PlaqueDetail(p) {
 // the player is in, visible maintenance and the comeback window. A month list (35 game days, rows under the day they
 // start; rows already running at the top) or a week list (7 days, every row that touches the day). Times are JST in both
 // languages. Paid rows (pass, banners) carry dates only: no price and no buy button; a banner row opens the rates page, the
-// pass row opens nothing. A mark is a flag (PUT / DELETE, idempotent); the server sends no notification for it (§61 later).
+// pass row opens nothing. A mark is a flag (PUT / DELETE, idempotent); the server sends no notification for it — R21 integration:
+// the device plans one through the §61 planner (`calendar_mark`, reminders category, before the start).
 // KPI calendar_view / calendar_entry_open (globalThis.__muchiKpi, the shape the client sends).
 const calState = { mode: 'month', weekStart: null, view: null, back: null };
 const calKpi = (name, props) => (globalThis.__muchiKpi ??= []).push({ name, ...props });
@@ -5473,7 +5474,7 @@ async function Calendar(back = null) {
   Hair(36, 330, 368, side);
   Kicker('印', 36, 350, side, { size: 15 });
   Txt(`${V.marks.count} / ${V.marks.max}`, 36, 414, 200, 26, WHITE, side, { weight: 700, cls: 'num', nowrap: true }).dataset.calMarks = String(V.marks.count);
-  Txt('印を付けても、お知らせは届きません', 36, 456, 368, 15, MUTED, side, { lh: 1.6 }).dataset.calMarkNote = '1';
+  Txt('印の予定は、通知のリマインダーがオンなら始まる前に知らせます', 36, 456, 368, 15, MUTED, side, { lh: 1.6 }).dataset.calMarkNote = '1';
   Txt('パスとスカウトは期間だけ。中身はそれぞれの画面で', 36, 506, 368, 14, SOFT, side, { lh: 1.6 }).dataset.calPaidNote = '1';
   if (V.partial.length) Txt('一部の予定を読み込めませんでした', 36, 556, 368, 14, GOLD, side, { lh: 1.5 }).dataset.calPartial = V.partial.join(',');
   TextLink('予定表のヘルプ', 36, 596, 200, () => HelpArticle('calendar', 'link', () => Calendar()), side, '予定表のヘルプ ›').dataset.action = 'cal-help';
@@ -5521,7 +5522,7 @@ function calRow(e) {
       ev.stopPropagation();
       const res = await L.calendarMark(e.id, !e.marked);
       if (!res.ok) { toast(res.code === 'CONFLICT' ? (res.details?.reason === 'limit' ? '印はこれ以上付けられません' : '終わった予定には印を付けられません') : res.code === 'NOT_FOUND' ? 'この予定は表示できなくなりました' : res.message); return Calendar(); }
-      toast(res.value.marked ? '印を付けました（お知らせは届きません）' : '印を外しました');
+      toast(res.value.marked ? '印を付けました' : '印を外しました'); lnRefresh().catch(() => {}); // §61 (R21 integration): plan / cancel the device reminder now
       return Calendar();
     });
     side.appendChild(m);
@@ -8796,6 +8797,7 @@ const LN_SCHEDULED = 'muchi.lnotif.scheduled';
 const LN_KIND_LABEL = {
   training_session: '調教の仕上げ', daily_bonus: 'ログインボーナス（1日1回）', weekly_challenge_closing: '週替わりチャレンジの入れ替わり',
   rival_week_closing: 'ライバルの週の締め', exchange_closing: 'イベント交換所が閉まる', gift_expiring: 'プレゼントの受け取り期限',
+  calendar_mark: '予定表で印を付けた予定', // R21 integration (§65 × §61)
 };
 const LN_CAT_LABEL = { season: 'シーズン', events: 'イベント', friends: 'フレンド', invites: '招待', gifts: 'プレゼント', comeback: 'お知らせ（復帰）', reminders: 'リマインダー' };
 const LN_CATS = ['season', 'events', 'friends', 'invites', 'gifts', 'comeback', 'reminders'];

@@ -615,7 +615,7 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
       // §64 (Round 21): which app versions' release notes were shown (version strings only)
       releaseNotes: s.releaseNotes ? { seen: [...s.releaseNotes.seen], baseline: s.releaseNotes.baseline ?? null } : null,
       // §65 (Round 21): the calendar rows this player marked (flags only; no reminder is sent by the server)
-      calendar: s.calendar ? { marks: s.calendar.marks.map((x) => ({ id: x.id, kind: x.kind, until: x.until })) } : null,
+      calendar: s.calendar ? { marks: s.calendar.marks.map((x) => ({ id: x.id, kind: x.kind, until: x.until, ...(x.startAt !== undefined ? { startAt: x.startAt } : {}) })) } : null,
       seasonPass: clone(s.seasonPass), passHistory: clone(s.passHistory) ?? [], loginBonus: clone(s.loginBonus), missions: clone(s.missions),
       seasonMissions: clone(s.seasonMissions) ?? null, onboarding: clone(s.onboarding) ?? null, breeding: clone(s.breeding),
       breedingExtra: clone(s.breedingExtra) ?? null, dailyWins: clone(s.dailyWins) ?? null, friendRewards: clone(s.friendRewards),

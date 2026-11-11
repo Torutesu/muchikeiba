@@ -14,6 +14,8 @@ import { m } from './helpers.js';
 import { MemoryPlayerRepo, PlayerService } from '../src/domain/service.js';
 import { seededRng } from '../src/domain/rng.js';
 import { MemoryLinkDirectory } from '../src/domain/linkService.js';
+import { LNOTIF_OWNERSHIP, localRemindersView, planLocalNotifications } from '../src/domain/localNotify.js';
+import type { CalendarExternal } from '../src/domain/calendar.js';
 import { buildExportDocument, DEX_CLASSIFICATION } from '../src/domain/dataExport.js';
 import { MemoryExportStore, runDataExportJob, type DataExportJobPorts } from '../src/domain/dataExportService.js';
 import { runAccountDeletion, type DeletionPorts } from '../src/domain/accountDeletion.js';
@@ -84,6 +86,39 @@ describe('§58.11 = §64.6: ONE prompt gate with one priority table (C#, Unity, 
     }
     // every kind is claimed by its model (the C# constant names appear in a TryClaim or CanShow)
     for (const k of ['RecommendedUpdate', 'ConsentPrePrompt', 'ComebackWelcome', 'ReleaseNotes', 'RemindersPrePermission', 'AccountLink', 'ReviewPrompt']) expect(game, k).toMatch(new RegExp(`(TryClaim|CanShow)\\(SessionPrompts\\.${k}\\b`));
+  });
+});
+
+describe('§65 × §61: a calendar mark becomes one device reminder through the one planner', () => {
+  it('mark over the real service → the digest carries its start → the planner owns it (local), reminders category (default off)', async () => {
+    const NOW = Date.UTC(2026, 10, 11, 3);
+    const svc = new PlayerService(new MemoryPlayerRepo(), { master: m, rng: seededRng(65), clock: () => NOW, verifiers: {} });
+    await svc.bootstrap('cal');
+    await svc.tx('cal', null, (st) => { st.createdAt = NOW - 60 * 86_400_000; st.onboarding = { races: 200, breedings: 9, counts: {}, claimed: [] }; st.rating.rankedRaces = 80; st.flags.partnerHorseId = st.horses[0]?.id ?? 'h_partner'; return true; }); // every feature open, past the FTUE
+    const ext = { tournaments: [{ id: 't_r21', name: 'R21カップ', status: 'registration', registrationOpensAtMs: NOW + 86_400_000, registrationClosesAtMs: NOW + 3 * 86_400_000, startsAtMs: NOW + 4 * 86_400_000 }], cups: [] } as unknown as CalendarExternal;
+    const v = await svc.calendar('cal', {}, ext);
+    const row = v.entries.find((e) => e.markable && e.startAt > NOW + 3 * 3_600_000)!;
+    expect(row).toBeTruthy();
+    await svc.calendarMark('cal', row.id, true, ext);
+    const s = await svc.state('cal');
+    expect(s.calendar!.marks[0]).toMatchObject({ id: row.id, startAt: row.startAt });
+    const d = localRemindersView(m, s, NOW);
+    expect(d.enabled && d.calendarMarks).toEqual([{ id: row.id, startAt: row.startAt }]);
+    expect(d.enabled && d.categories.reminders).toBe(false); // the default: nothing until the player turns reminders on
+    const off = planLocalNotifications({ now: NOW, locale: 'ja', permission: 'granted', showDetails: false, signedIn: true, digest: d });
+    expect(off.dropped.find((x) => x.kind === 'calendar_mark')?.reason).toBe('category_off');
+    const on = planLocalNotifications({ now: NOW, locale: 'en', permission: 'granted', showDetails: false, signedIn: true, digest: d.enabled ? { ...d, categories: { ...d.categories, reminders: true } } : d });
+    const item = on.items.find((i) => i.kind === 'calendar_mark') ?? on.dropped.find((x) => x.kind === 'calendar_mark');
+    expect(item).toBeTruthy(); // planned, or dropped only by the shared rules (cap / quiet hours / horizon)
+    expect(LNOTIF_OWNERSHIP.local.calendar_mark).toBeTruthy();
+    expect(Object.values(LNOTIF_OWNERSHIP.server)).not.toContain(LNOTIF_OWNERSHIP.local.calendar_mark);
+    // unmark → gone from the digest (the next plan cancels the device reminder)
+    await svc.calendarMark('cal', row.id, false, ext);
+    const d2 = localRemindersView(m, await svc.state('cal'), NOW);
+    expect(d2.enabled && d2.calendarMarks).toEqual([]);
+    // the server never pushes for a mark
+    const st = await svc.state('cal') as { pendingEventPushes?: unknown[]; push?: { outbox?: unknown[] } };
+    expect(st.push?.outbox ?? []).toEqual([]);
   });
 });
 

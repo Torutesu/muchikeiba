@@ -99,7 +99,8 @@ export interface CalendarExternal {
   cups: CalendarCup[] | null;
 }
 
-export interface CalendarMark { id: string; kind: CalendarKind; until: number }
+/** `startAt` (R21 integration): the row's start, for the device reminder before it (§61 `calendar_mark`); absent on marks made before. */
+export interface CalendarMark { id: string; kind: CalendarKind; until: number; startAt?: number }
 export interface CalendarState { marks: CalendarMark[] }
 
 // ------------------------------------------------------------------------------------------------ range
@@ -297,7 +298,7 @@ export function markCalendar(m: Master, s: PlayerState, entryId: string, on: boo
   if (!e.markable) throw new AppError('CONFLICT', 'the entry has ended', undefined, { reason: 'ended' });
   if (!had) {
     if (st.marks.length >= CALENDAR_LIMITS.marksMax) throw new AppError('CONFLICT', `at most ${CALENDAR_LIMITS.marksMax} marks`, undefined, { reason: 'limit' });
-    st.marks.push({ id: e.id, kind: e.kind, until: e.endAt > e.startAt ? e.endAt : e.startAt });
+    st.marks.push({ id: e.id, kind: e.kind, until: e.endAt > e.startAt ? e.endAt : e.startAt, startAt: e.startAt });
     emit?.({ name: 'calendar_mark', s1: e.kind, s2: 'on' });
   }
   return { marked: true, id: entryId, count: st.marks.length, max: CALENDAR_LIMITS.marksMax };

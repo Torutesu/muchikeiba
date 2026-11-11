@@ -44,7 +44,10 @@ namespace Muchi.Client
         public List<ExchangeInfo> Exchanges = new List<ExchangeInfo>();
         /// <summary>expiresAt of the unclaimed gifts that have one (earliest first, at most 20).</summary>
         public List<long> Gifts = new List<long>();
+        /// <summary>R21 integration (§65 × §61): the calendar rows the player marked that have not started (id, start).</summary>
+        public List<CalendarMarkInfo> CalendarMarks = new List<CalendarMarkInfo>();
 
+        public sealed class CalendarMarkInfo { public string Id; public long StartAt; }
         public sealed class WeeklyInfo { public bool Unlocked; public long EndsAt; public int Uncleared; }
         public sealed class RivalInfo { public long WeekEndsAt; public int RankedRaces; }
         public sealed class ExchangeInfo { public string EventId; public int Points; public long ClosesAt; }
@@ -78,6 +81,7 @@ namespace Muchi.Client
             if (r != null) d.Rival = new RivalInfo { WeekEndsAt = J.Long(r, "weekEndsAt"), RankedRaces = J.Int(r, "rankedRaces") };
             d.Exchanges = J.List(o, "exchanges", x => new ExchangeInfo { EventId = J.Str(x, "eventId"), Points = J.Int(x, "points"), ClosesAt = J.Long(x, "closesAt") });
             d.Gifts = J.List(o, "gifts", x => x.AsLong());
+            d.CalendarMarks = J.List(o, "calendarMarks", x => new CalendarMarkInfo { Id = J.Str(x, "id"), StartAt = J.Long(x, "startAt") });
             return d;
         }
     }
@@ -139,13 +143,14 @@ namespace Muchi.Client
     public static class LocalNotificationPlanner
     {
         /// <summary>Highest priority first (the daily cap keeps the first ones).</summary>
-        public static readonly string[] Kinds = { "training_session", "gift_expiring", "exchange_closing", "weekly_challenge_closing", "rival_week_closing", "daily_bonus" };
+        public static readonly string[] Kinds = { "training_session", "gift_expiring", "exchange_closing", "weekly_challenge_closing", "rival_week_closing", "calendar_mark", "daily_bonus" };
 
         /// <summary>The push category that switches each kind (one settings screen for push and local).</summary>
         public static readonly IReadOnlyDictionary<string, string> KindCategory = new Dictionary<string, string>
         {
             { "training_session", "reminders" }, { "daily_bonus", "reminders" }, { "weekly_challenge_closing", "events" },
             { "rival_week_closing", "friends" }, { "exchange_closing", "events" }, { "gift_expiring", "gifts" },
+            { "calendar_mark", "reminders" }, // R21 integration: a §65 row the player marked
         };
 
         /// <summary>The screen a tap opens, fixed in code (never the shop).</summary>
@@ -153,6 +158,7 @@ namespace Muchi.Client
         {
             { "training_session", "training" }, { "daily_bonus", "home" }, { "weekly_challenge_closing", "weekly_challenge" },
             { "rival_week_closing", "rival" }, { "exchange_closing", "event_exchange" }, { "gift_expiring", "gift_box" },
+            { "calendar_mark", "calendar" },
         };
 
         private sealed class KindText { public string Title, Body, Detail, DetailOne; }
@@ -176,6 +182,9 @@ namespace Muchi.Client
             { "exchange_closing", new[] {
                 K("イベント交換所", "交換所は{date}に閉まります。残ったポイントは素材になります", "{n}ポイント残っています。交換所は{date}に閉まります（残りは素材になります）"),
                 K("Event exchange", "The exchange closes on {date}. Leftover points become materials", "{n} points left. The exchange closes on {date} (leftovers become materials)", "1 point left. The exchange closes on {date} (leftovers become materials)") } },
+            { "calendar_mark", new[] {
+                K("予定表", "印を付けた予定が{date}に始まります", "印を付けた予定が{date}に始まります"),
+                K("Calendar", "An entry you marked starts on {date}", "An entry you marked starts on {date}") } },
             { "gift_expiring", new[] {
                 K("プレゼントボックス", "受け取り期限が{date}の品があります", "受け取り期限が近い品が{n}件あります（最初は{date}）"),
                 K("Gift box", "A gift box item can be collected until {date}", "{n} gift box items expire soon (the first on {date})", "1 gift box item can be collected until {date}") } },
@@ -256,6 +265,14 @@ namespace Muchi.Client
             {
                 long first = gifts[0];
                 cands.Add(new Cand { Kind = "gift_expiring", Id = "lnotif.gift_expiring." + first.ToString(CultureInfo.InvariantCulture), FireAt = first - Lead("gift_expiring"), Deadline = first, N = gifts.Count(g => g <= first + Day), DateAt = first });
+            }
+            // R21 integration (§65 × §61): each marked calendar row that has not started, a lead before its start (never a name)
+            var marks = d.CalendarMarks.ToList();
+            marks.Sort((a, b) => a.StartAt != b.StartAt ? a.StartAt.CompareTo(b.StartAt) : string.CompareOrdinal(a.Id, b.Id));
+            foreach (var k in marks)
+            {
+                if (k.StartAt <= now) continue;
+                cands.Add(new Cand { Kind = "calendar_mark", Id = "lnotif.calendar_mark." + k.Id, FireAt = k.StartAt - Lead("calendar_mark"), Deadline = k.StartAt, RefId = k.Id, DateAt = k.StartAt });
             }
 
             var plan = new LocalNotificationPlan();

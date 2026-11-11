@@ -1309,7 +1309,7 @@
 
 ## 61. 端末のローカル通知（TS＋C#、`src/domain/localNotify.ts`・`Muchi.Client/LocalNotifications.cs`・`Muchi.Game.LocalNotificationModel`、`contracts/protocol.md` §61）
 
-- REQ-LNOTIF-001 種類：`training_session`（調教の仕上げの期限）・`daily_bonus`（次のゲーム日のログインボーナス、1日1回）・`weekly_challenge_closing`・`rival_week_closing`・`exchange_closing`・`gift_expiring`。期限はデータの本当の時刻だけ。購入・ショップ・ガチャへ誘う種類は無く、開く画面はコードで固定。
+- REQ-LNOTIF-001 種類：`training_session`（調教の仕上げの期限）・`daily_bonus`（次のゲーム日のログインボーナス、1日1回）・`weekly_challenge_closing`・`rival_week_closing`・`exchange_closing`・`gift_expiring`・`calendar_mark`（R21 統合：予定表で印を付けた行の始まり、`reminders`）。期限はデータの本当の時刻だけ。購入・ショップ・ガチャへ誘う種類は無く、開く画面はコードで固定。
 - REQ-LNOTIF-002 持ち主：出来事ごとにプッシュかローカルのどちらか1つ（`LNOTIF_OWNERSHIP`）。push.json の全テンプレートが表にあり、ローカルの種類と同じ出来事を持たない（テスト）。
 - REQ-LNOTIF-003 純粋な関数：`planLocalNotifications(snapshot)`。同じスナップショットなら同じ結果。TS と C# は共有ベクター `contracts/local-notifications.vectors.json` で同じ。
 - REQ-LNOTIF-004 カテゴリ：各種類はプッシュの種類に対応（`reminders`／`events`／`friends`／`gifts`）。カテゴリがオフなら予約しない。設定画面の「通知」1か所で両方を切り替える。
@@ -1413,7 +1413,7 @@
 - REQ-CAL-008 言葉：「今だけ」「残りわずか」「お得」「倍」「通常価格」・賭けの言葉（共通の表）・英語の禁止語を使わない。カウントダウンを出さない（終わりは実データの時刻だけ）。
 - REQ-CAL-009 名前：マスターの名前は応答の境界で訳す。大会の名前は運営の書いたまま。カップの名前（`cupName`）はプレイヤーの文字で訳さない。英語の応答に組み立てた日本語が残らない。
 - REQ-CAL-010 印：`PUT`／`DELETE /v1/calendar/marks/:entryId`。見えていて終わっていない行だけ（無い → 404、終わった → 409 `ended`、30件 → 409 `limit`）。何度でも同じ。過ぎた印は落とす。
-- REQ-CAL-011 通知を送らない：印でサーバーからプッシュ・メールを送らない。§61（端末の通知）が入ったら端末が印の行を予約する（統合のメモは §65.2）。
+- REQ-CAL-011 通知：印でサーバーからプッシュ・メールを送らない。R21 統合：端末が §61 の計画で、まだ始まっていない印の行の始まりの `leadHours.calendar_mark` 前に通知を予約する（種類 `calendar_mark`、カテゴリ `reminders`＝既定オフ、静かな時間帯・1日の上限・アカウントが変わった時の取り消しは §61 のまま。protocol §61.1・§65.2）。
 - REQ-CAL-012 運営コンソール：`GET /v1/admin/calendar` で版ごとの全体の予定表（予告前のバナー・メンテナンスも）と重なり（メンテナンスが閉じるグループの行・同じ種類の行どうし）を見る。
 - REQ-CAL-013 ゲート：`/v1/calendar*` はグループ `core`（`all` のメンテナンスだけが閉じる）。
 - REQ-CAL-014 次にやること：新しいカードは足さない（既存の `exchange_closing`・`weekly_challenge`・`team_goal_near` が同じ正を読む）。

@@ -58,7 +58,10 @@ namespace Muchi.Game
         {
             { "training_session", "調教の仕上げ" }, { "daily_bonus", "ログインボーナス（1日1回）" }, { "weekly_challenge_closing", "週替わりチャレンジの入れ替わり" },
             { "rival_week_closing", "ライバルの週の締め" }, { "exchange_closing", "イベント交換所が閉まる" }, { "gift_expiring", "プレゼントの受け取り期限" },
+            { "calendar_mark", "予定表で印を付けた予定" }, // R21 integration (§65 × §61)
         };
+        /// <summary>The settings row label of a local kind (null = unknown kind).</summary>
+        public static string KindLabel(string kind) => kind != null && KindLabels.TryGetValue(kind, out var l) ? l : null;
         private static readonly Dictionary<string, string> CategoryLabels = new Dictionary<string, string>
         {
             { "reminders", "リマインダー" }, { "events", "イベント" }, { "friends", "フレンド" }, { "gifts", "プレゼント" },

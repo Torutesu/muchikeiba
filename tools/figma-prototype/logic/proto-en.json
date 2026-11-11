@@ -1598,7 +1598,7 @@
   "{m}/{d}（土）": "Sat {m}/{d}",
   "{start}〜{end}（日本時間）": "{start}–{end} JST",
   "{at}（日本時間）": "{at} JST",
-  "印を付けました（お知らせは届きません）": "Marked (no notification is sent)",
+  "印を付けました": "Marked",
   "印を外しました": "Mark removed",
   "冬のミニ大会": "Winter mini tournament",
   "ナイター記念大会": "Night race memorial tournament"

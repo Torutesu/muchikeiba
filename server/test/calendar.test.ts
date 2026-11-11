@@ -203,7 +203,7 @@ describe('marks (REQ-CAL-010/011)', () => {
     const outboxBefore = JSON.stringify(s.push ?? null);
     expect(markCalendar(m, s, 'event:sprint_cup_2026_11', true, NOW, NO_EXT, emit)).toEqual({ marked: true, id: 'event:sprint_cup_2026_11', count: 1, max: 30 });
     expect(markCalendar(m, s, 'event:sprint_cup_2026_11', true, NOW, NO_EXT, emit).count).toBe(1);
-    expect(s.calendar!.marks).toEqual([{ id: 'event:sprint_cup_2026_11', kind: 'event', until: m.events[0]!.endAtMs }]);
+    expect(s.calendar!.marks).toEqual([{ id: 'event:sprint_cup_2026_11', kind: 'event', until: m.events[0]!.endAtMs, startAt: m.events[0]!.startAtMs }]); // R21 integration: the start, for the §61 device reminder
     expect(calendarView(m, s, {}, NOW, NO_EXT).entries.find((e) => e.marked)?.id).toBe('event:sprint_cup_2026_11');
     expect(markCalendar(m, s, 'event:sprint_cup_2026_11', false, NOW, NO_EXT, emit)).toMatchObject({ marked: false, count: 0 });
     expect(markCalendar(m, s, 'event:sprint_cup_2026_11', false, NOW, NO_EXT, emit)).toMatchObject({ marked: false, count: 0 });
@@ -295,7 +295,7 @@ describe('help, tips, data export, deletion (REQ-CAL-016/017)', () => {
     markCalendar(m, s, 'event:sprint_cup_2026_11', true, NOW, NO_EXT);
     const doc = buildExportDocument(m, s, { ledger: s.ledger, gacha: [], names: {}, reportsMade: [], kpiEvents: null }, 'dex_x', 'ja', NOW);
     expect(doc.unclassified).toEqual([]);
-    expect((doc.play as Record<string, unknown>).calendar).toEqual({ marks: [{ id: 'event:sprint_cup_2026_11', kind: 'event', until: m.events[0]!.endAtMs }] });
+    expect((doc.play as Record<string, unknown>).calendar).toEqual({ marks: [{ id: 'event:sprint_cup_2026_11', kind: 'event', until: m.events[0]!.endAtMs, startAt: m.events[0]!.startAtMs }] });
     const repo = new MemoryPlayerRepo();
     const svc = new PlayerService(repo, { master: m, rng: seededRng(21), clock: () => NOW, verifiers: { fake: new FakeStoreVerifier() } });
     repo.put({ ...s, id: 'gone' });

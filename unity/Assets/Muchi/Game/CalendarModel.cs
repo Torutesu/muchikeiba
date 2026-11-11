@@ -49,7 +49,7 @@ namespace Muchi.Game
         public const string EmptyDayText = "予定はありません";
         public const string MarkLabel = "印を付ける";
         public const string UnmarkLabel = "印を外す";
-        public const string MarkNote = "印を付けても、お知らせは届きません";
+        public const string MarkNote = "印の予定は、通知のリマインダーがオンなら始まる前に知らせます"; // R21 integration (§65 × §61)
         public const string PaidNote = "期間だけを載せています";
         public const string PartialText = "一部の予定を読み込めませんでした";
         public const string EndedText = "終わった予定には印を付けられません";

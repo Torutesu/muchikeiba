@@ -115,6 +115,8 @@ const SCREEN_LABEL: Record<HelpScreen, Loc> = {
   storage: { ja: 'ストレージを開く', en: 'Open storage' },
   tips: { ja: 'ヒントを開く', en: 'Open tips' },
 };
+/** Round 21 (§64 release notes): the link label of an in-app screen, in the request's language. */
+export function screenLabel(screen: HelpScreen, lang: Locale): string { return pick(SCREEN_LABEL[screen], lang); }
 const LEGAL_LABEL: Record<LegalDoc, Loc> = {
   terms: { ja: '利用規約', en: 'Terms of service' },
   privacy: { ja: 'プライバシーポリシー', en: 'Privacy policy' },

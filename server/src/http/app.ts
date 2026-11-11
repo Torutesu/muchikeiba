@@ -106,6 +106,7 @@ export type PlayerMethod =
   | 'activity' | 'activityRead' | 'activityReplayShare' | 'teamGoalMilestone'
   | 'fsugSelf' | 'fsugDismiss' | 'fsugSetHidden'
   | 'tips' | 'tipsSeen'
+  | 'releaseNotesCheck' | 'releaseNotesSeen' | 'releaseNotes'
   | 'helpFeedback' | 'helpInquirySubmit' | 'helpInquiries' | 'helpInquiry' | 'helpInquiryRead' | 'helpInquiryIndexed' | 'adminInquiry' | 'adminInquiryReply'
   | 'recaps' | 'recap' | 'recapProgress'
   | 'dataExportView' | 'dataExportRequest' | 'dataExportTake' | 'dataExportCollect' | 'dataExportReady' | 'dataExportFailed' | 'dataExportFile'
@@ -1131,6 +1132,13 @@ export const routes: Route[] = [
     const b = await body(r, z.object({ ids: z.array(z.string().regex(/^[a-z0-9_]{2,40}$/)).min(1).max(50) }).strict());
     return c.player(u).invoke('tipsSeen', u, b.ids);
   } },
+  // REQ-NEW-006..010 (§64): what's new per app version (x-client-version; gate group `core` — not support, not exempt)
+  { method: 'POST', path: '/v1/release-notes/check', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('releaseNotesCheck', u, clientHeaders(r.headers).version, resolveLocale(r), await maxWhipsOf(c)) },
+  { method: 'POST', path: '/v1/release-notes/seen', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ appVersion: z.string().regex(/^\d{1,4}\.\d{1,4}\.\d{1,4}$/) }).strict());
+    return c.player(u).invoke('releaseNotesSeen', u, b.appVersion);
+  } },
+  { method: 'GET', path: '/v1/release-notes', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('releaseNotes', u, clientHeaders(r.headers).version, resolveLocale(r), await maxWhipsOf(c)) },
   { method: 'GET', path: '/v1/help', auth: 'player', handler: async (r, _p, c) => helpIndex(c.master, resolveLocale(r)) },
   { method: 'GET', path: '/v1/help/articles/:articleId', auth: 'player', handler: async (r, p, c) => {
     if (!/^[a-z0-9_]{2,40}$/.test(p.articleId!)) throw new AppError('NOT_FOUND', 'NOT_FOUND');

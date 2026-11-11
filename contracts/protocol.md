@@ -3403,3 +3403,101 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
 - `Muchi.Client`：`TipsIndex`（`Parse`）・`TipsSeenResult`・`TipsBadge`（`PlayerView.Tips`）、`ApiClient.GetTipsAsync`・`MarkTipsSeenAsync`、`TipContexts`・`RaceLessons`、analytics `AnalyticsEvent.TutorialReplay`・`TipView`・`TipContextOpen`。
 - `Muchi.Game`：`TipsModel`（話題ごとの一覧・NEW・見た印をまとめて送る（オフラインは端末に貯めて後で送る）・「？」の `OpenContext`・ツアーのページ送り・開いていない機能のツアーは開けない）、`TutorialReplayModel`（レッスンのレースを `GameBackend` の既存の部品で作る（ムチ = `OfflinePresets.TutorialRace`、他 = 練習レース）・FTUE の段・回数・KPI に触れない・`tutorial_replay` を送る）。
 - 画面が守ること：docs/handoff-codex-round19-tutorial-replay.md。
+
+## 64. アップデートのお知らせ（新機能の紹介、What's New、REQ-NEW-001〜020、`server/src/domain/releaseNotes.ts`・`server/master/release-notes.json`、C# `ReleaseNotes.cs`（`ReleaseNotesCheck`・`ReleaseNotesHistory`・`SessionPrompts`）・`Muchi.Game.ReleaseNotesModel`、docs/handoff-codex-round21-whats-new.md）
+アプリを**更新した人**が、更新後はじめてホームに来たときに1回だけ、その版の新しい機能を絵付きのページ（1〜5枚）で紹介する。過去の版の紹介は「お知らせ › アップデート情報」でいつでも読める。**何も配らない**（E番号なし、経済は変わらない。お詫びや記念の配布を付けたいときは既存のプレゼントボックスの補填 §26 を使い、この節の外）。
+
+§20 の「新着情報」（`GET /v1/whats-new`、バナー・イベント・調整など**サーバーの中身**が変わったこと）とは別物：こちらは**アプリの版**ごとの紹介で、元はアプリの版と結びついた運営の原稿だけ。
+
+**決まりごと**
+- 原稿は運営がデータで書く：`server/master/release-notes.json`（リモート設定の `releaseNotes` で丸ごと置き換え）。版（`x.y.z`）ごとに1〜5ページ。各ページは**既にある絵のキー**（§57 のヒントの絵 `TIP_ARTS`。新しい絵は作らない）・短い題と本文（日本語と英語の両方）・任意の行き先（アプリの画面・ヘルプ記事 §48・ヒントのカード §57）。
+- **数字は書かない**：ヘルプセンター（§48.1）の `{{トークン}}` を同じ仕組み（`fillTokens`）で埋める。トークンの外に数字を置けない（「10連」だけ例外、§48 と同じ）。
+- 言葉：§48 と同じ（日本語の「倍」「今だけ」「残りわずか」「お得」「通常価格」・賭けの言葉（`bettingWords.ts`）・英語の `EN_BANNED`）。
+- **ショップへ連れていかない**：ページの行き先はそのページの**ただ1つの CTA**なので、ショップ・スカウト（`shop`・`gacha`・`gacha_odds`）や有償の商品の画面は行き先にできない（検査で落とす）。
+- 出す相手：**更新した人だけ**。FTUE の途中の人・その版から始めた新しい人（FTUE が代わりに案内する）には出さない。古いアプリ（版のヘッダーが無い）・オフラインでは何も出さない。
+- 見た記録は**アカウントに保存**（`releaseNotes.seen`、版の文字列の有限のリスト）。入れ直しても同じ版は二度と出ない。
+- 1つのアプリのセッションで出す「システムの案内」は1つだけ（§64.6 の優先順位）。メンテナンス・更新の画面（§46）の上には決して出さない。
+
+### 64.1 マスター（`server/master/release-notes.json`）
+```json
+{ "version": 1,
+  "config": { "enabled": true, "titleMaxChars": 24, "bodyMaxChars": 140, "seenMax": 30, "historyMax": 20 },
+  "notes": [
+    { "appVersion": "1.2.0", "releasedOn": "2026-11-05",
+      "pages": [
+        { "art": "cups", "title": { "ja": "観戦中に応援できる", "en": "Cheer while you watch" },
+          "body": { "ja": "フレンドのレースを見ながらスタンプで応援。{{cheer_interval_sec}}秒ごとに送れます。", "en": "Send a stamp while you watch a friend race, once every {{cheer_interval_sec}} seconds." },
+          "target": { "kind": "help", "id": "spectator_cheer" } } ] } ] }
+```
+- `config`：`titleMaxChars` 8〜40、`bodyMaxChars` 40〜240、`seenMax` 10〜100、`historyMax` 5〜50。
+- `notes`（50件まで）：`appVersion` は `x.y.z`（§46 の `parseVersion`）で重ならない。`releasedOn` はストアに出した日（`YYYY-MM-DD`、日本時間）。版の順に並べたとき `releasedOn` は戻らない。
+- `pages`（1〜5枚）：`art` は `TIP_ARTS` のどれか。`title`・`body` は日本語・英語とも必須（`titleMaxChars`・`bodyMaxChars` 文字まで、制御文字なし、英語に日本語を入れない、日本語と英語でトークンの組が同じ、トークンは埋められる）。
+- `target`（任意）：`{ "kind": "screen", "id": <§48.1 の画面のうち shop・gacha・gacha_odds 以外> }`・`{ "kind": "help", "id": <存在するヘルプ記事> }`・`{ "kind": "tip", "id": <存在するヒントのカード> }`。リモート設定でヘルプやヒントから記事・カードを外す版は、それを指すページがある限り有効にできない。
+- 検査は起動時（`index.ts`）とリモート設定の版ごと（`ops/config.ts`、`CONFIG_INVALID`）。
+
+### 64.2 `POST /v1/release-notes/check`（要認証。ホームに来たたびに呼ぶ。本文なし）
+アプリの版は `x-client-version`（§46.3 のヘッダー）。
+```json
+{ "enabled": true, "appVersion": "1.2.0", "reason": null,
+  "show": { "appVersion": "1.2.0", "releasedOn": "2026-11-05", "skipped": 1, "hasPast": true,
+    "pages": [ { "art": "cups", "title": "観戦中に応援できる", "body": "…2秒ごとに送れます。",
+                 "target": { "kind": "help", "id": "spectator_cheer", "label": "観戦中の応援" } } ] } }
+```
+- `show` は次の全部を満たす版のうち**いちばん新しい1つ**（無ければ `null` と `reason`）：
+  1. 版 ≤ アプリの版（新しいサーバーと古いアプリの組み合わせで、まだ持っていない機能を紹介しない）。
+  2. 版 > `baseline`（そのアカウントがはじめて紹介の判定を受けた版。下の 4）と、版 > 見た版のいちばん新しいもの（一度見たら、それより古い版は出ない）。
+  3. アカウントの作成時刻 < その版の `releasedOn`（日本時間 0:00）。その版の後に始めた人には「新しくなったこと」は無い。
+- `reason`：`disabled`（止まっている）・`unknown_version`（ヘッダーが無い・読めない：Round 21 より前のアプリ・ボット）・`ftue`（FTUE の途中：相棒がまだいない、または `nextActions.onboardingRaces` 回のレースが済んでいない。§45 と同じ判定）・`new_install`（3 で外れた）・`seen`（見た）・`none`（紹介のある版が無い）。
+- **FTUE の途中の呼び出しだけが書き込む**：`baseline` = max(`baseline`, アプリの版)。だから FTUE の途中で更新した人にも、FTUE を終えた後にその版は出ない。
+- `skipped`：同じ条件を満たすが、それより古い版の数（いくつか飛ばして更新した人）。`hasPast`：アプリの版以下の紹介が他にもある（最後のページに「過去のアップデート情報」へのリンク）。
+- `target` はその人が開けるものだけ（閉じているヒントのカード・止まっているヘルプやヒントは `null`）。`label` は行き先の名前（画面は §48.1 の画面のラベル、ヘルプは記事の題、ヒントはカードの題）。
+- 見た印はここでは付けない（アプリが他の案内を先に出すことがあるため）。
+
+### 64.3 `POST /v1/release-notes/seen`（要認証）
+`{ "appVersion": "1.2.0" }` → `{ "marked": true, "seen": ["1.1.0", "1.2.0"] }`。シートを出したら（1ページ目が見えたら）送る。何度送っても同じ（2回目は `marked: false`）。マスターに無い版は 404 `NOT_FOUND`（何も記録しない）、止まっているときも 404。リストは版の順で、いちばん古いものから落として `seenMax` 件まで。
+
+### 64.4 `GET /v1/release-notes`（要認証、読むだけ）
+「お知らせ › アップデート情報」の一覧。`{ "enabled": true, "appVersion": "1.2.0", "notes": [ { "appVersion", "releasedOn", "seen", "pages": [ …64.2 と同じ… ] } ] }`。新しい順、`historyMax` 件まで。アプリの版以下だけ（ヘッダーが無いときは全部）。一覧には FTUE・作成時刻の条件をかけない（読みたい人はいつでも読める）。止まっているときは `notes: []`。
+
+### 64.5 ゲート・削除・データの開示
+- `/v1/release-notes*` はエンドポイントのグループ `core`（`all` のメンテナンスだけが閉じる）。サポートではないので免除のルートには入れない。
+- 新しい PlayerState のキー `releaseNotes`（`{ seen: string[], baseline?: string }`）。データの開示（§51）では `play`（見た版と `baseline`）。アカウント削除で状態ごと消える。
+
+### 64.6 1セッションに1つの案内（統合する人へ）
+クライアントは**アプリのセッション（起動から次の起動まで）ごとに「システムの案内」を1つだけ**出す（`Muchi.Client.SessionPrompts`）。ホームに来た時点で出せるものが複数あれば、上から1つ：
+1. **メンテナンス・強制アップデート（§46）**：案内ではなく画面。`ApiClient.Outage` が `None` 以外の間は、下のどれも出さない（判定もしない）。推奨の更新の案内（§46.9、バージョンごとに1回）も「システムの案内」として数える。
+2. **広告・分析の同意の事前案内（§58、Round 20）**：法令・ストアの決まりなので最優先。
+3. **復帰キャンペーンの歓迎画面（§20）**：ホームの代わりに出る。
+4. **アップデートのお知らせ（§64）**。
+5. 引き継ぎの案内（REQ-UXS-073）。
+6. **ストアのレビューの依頼（§59、Round 20）**：いちばん低い。同じセッションで他の案内を出した後には決して出さない。
+
+出せなかった案内は次のセッションに回る（§64 は見た印を付けていないので、次のホームでまた `show` が返る）。FTUE の間は 4〜6 を出さない。Round 20 の統合では、§58 と §59 の判定の前に `SessionPrompts.TryClaim` を呼ぶ（種類 `ConsentPrePrompt`・`ReviewPrompt` は用意済み）。
+
+### 64.7 画面
+- **シート**（ホームの上、1回だけ）：ページ送り（絵・題・本文・行き先のリンク「〇〇を開く ›」）。「次へ »」、最後のページは「はじめる »」。いつでも「スキップ」で閉じられる。行き先を押すとシートを閉じてその画面へ。飛ばした版があれば最後のページに「過去のアップデート情報 ›」。
+- **「お知らせ › アップデート情報」**：アクティビティ（§40、お知らせの一覧）の右の欄のリンクから開く一覧。版ごとに日付とページ。アクティビティに新しい種類は足さない（自分に起きたことではない、§46.5 と同じ考え）。
+- **設定 › ヒント（§57）** からも同じ一覧へリンクする。
+- 文字の大きさの設定（§41）の最大でもはみ出さない。日本語・英語。
+
+### 64.8 運用コンソール（`/v1/admin/release-notes*`、`tools/ops-console` の「アップデート情報」）
+| メソッド・パス | 役割 | 内容 |
+|---|---|---|
+| `GET /v1/admin/release-notes` | viewer | 有効な版の原稿：版ごとのページを日本語・英語で（トークンを埋めた形）、行き先の名前、検査の結果 |
+| `POST /v1/admin/release-notes/preview` | viewer | `{ releaseNotes }`（下書きの区画まるごと）を有効な版のヘルプ・ヒント・ガチャで検査し、同じ形で返す。何も保存しない |
+
+変更は §22 のリモート設定の版（`releaseNotes` の区画）で出す（検査・監査ログ・切り戻しがそのまま効く）。
+
+### 64.9 KPI（クライアントのイベント）
+| イベント | いつ | s1 | s2 | s3 | value | count |
+|---|---|---|---|---|---|---|
+| `release_notes_view` | シートを出した（`shown`）・最後まで見た（`finished`）・途中で閉じた（`skipped`） | 版 | 段 | — | 閉じたときのページ（1〜5） | ページ数 |
+| `release_notes_target` | ページの行き先を押した | 版 | `screen`・`help`・`tip` | 行き先の id | ページ | — |
+| `release_notes_history` | アップデート情報の一覧を開いた | 入口 `notices`・`tips`・`sheet` | — | — | — | — |
+
+個人を特定する情報は入れない。§58 の必須／任意の分類は Round 20 の統合で付ける（3つとも「任意」の想定）。クエリは `docs/ops/kpi-queries.md`「アップデートのお知らせ」。
+
+### 64.10 クライアント
+- `Muchi.Client`：`ReleaseNotesCheck`・`ReleaseNotesHistory`・`ReleaseNotePage`・`ReleaseNoteTarget`、`ApiClient.CheckReleaseNotesAsync`・`MarkReleaseNotesSeenAsync`・`GetReleaseNotesAsync`、`SessionPrompts`（1セッション1つ・優先順位・`Outage` で止める）、analytics `AnalyticsEvent.ReleaseNotesView`・`ReleaseNotesTarget`・`ReleaseNotesHistory`。
+- `Muchi.Game`：`ReleaseNotesModel`（ホームに来たら判定 → `SessionPrompts` を取れたらシート・ページ送り・スキップ・行き先・見た印（出した時に送る。失敗しても出し直さない＝同じセッションで二度出さない）・オフライン／メンテナンス中は何もしない・一覧の読み込み）。
+- 画面が守ること：docs/handoff-codex-round21-whats-new.md。

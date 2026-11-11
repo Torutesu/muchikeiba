@@ -22,6 +22,8 @@ import { REPORT_ACTIONS, type PlayerReport, type PlayerReportFilter, type Report
 import { REPORT_CATEGORIES, REPORT_CONTENT_KINDS, reportsConfig, type ReportCategory, type ReportContentKind, type ReportsConfig } from '../domain/reports.js';
 import { adminWindowView, bannerPreview, DEFAULT_MAINTENANCE, maintenanceConfigSchema, maintenanceProblems, windowFromInput, windowInputSchema, type MaintenanceConfig, type MaintenanceWindow } from '../domain/maintenance.js';
 import { INQUIRY_CATEGORIES, type InquiryCategory, type InquirySummary } from '../domain/help.js';
+import { releaseNotesPreview, type ReleaseNotesMaster } from '../domain/releaseNotes.js';
+import { DEFAULT_RULESET } from '../domain/ruleset.js';
 import { INQUIRY_STATUSES, type InquiryQuery } from '../ops/inquiries.js';
 import { DEAD_LETTER_SOURCES, type DeadLetterApi, type DeadLetterSource, type DeadLetterStatus } from '../ops/deadLetter.js';
 
@@ -378,6 +380,18 @@ export const adminRoutes: AdminRoute[] = [
     const before = await r.ctx.ops.config.active(r.now, 'x');
     const a = await r.ctx.ops.config.rollback(b.versionId, r.principal.id, r.reason!, r.now);
     return { result: a, target: `config:${a.versionId}`, before: { activeVersion: before.versionId }, after: { activeVersion: a.versionId } };
+  } },
+
+  // ---- アップデートのお知らせ (REQ-NEW-016, §64.8): read-only previews; changes go through a remote-config version ----
+  { method: 'GET', path: '/v1/admin/release-notes', role: 'viewer', write: false, action: 'release_notes.view', handler: async (r) => {
+    const { versionId, master } = await masterFor(r.ctx, null, r.now);
+    return { result: { versionId, ...releaseNotesPreview(master, undefined, Number(DEFAULT_RULESET.maxWhips), r.now) } };
+  } },
+  /** A draft `releaseNotes` section checked against the active version's help, tips and gacha, in both languages. Nothing is stored. */
+  { method: 'POST', path: '/v1/admin/release-notes/preview', role: 'viewer', write: false, action: 'release_notes.preview', handler: async (r) => {
+    const b = parse(z.object({ releaseNotes: z.record(z.string(), z.unknown()) }).strict(), r.body);
+    const { versionId, master } = await masterFor(r.ctx, null, r.now);
+    return { result: { versionId, ...releaseNotesPreview(master, b.releaseNotes as unknown as ReleaseNotesMaster, Number(DEFAULT_RULESET.maxWhips), r.now) } };
   } },
 
   // ---- maintenance & client versions (REQ-MNT-011, §46.6) ----

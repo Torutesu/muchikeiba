@@ -75,6 +75,7 @@ import {
 import { claimAllGifts, claimGift, expireGifts, giftBadge, giftBoxView, giftGiver, giftsNeedExpiry, nextGiftWake, type OpsTitleKey } from './giftBox.js';
 import { activityBadge, activityPage, markActivityRead, recordActivity } from './activity.js';
 import { markTipsSeen, tipsBadge, tipsIndex } from './tips.js';
+import { checkReleaseNotes, markReleaseNotesSeen, releaseNotesHistory } from './releaseNotes.js';
 import { helpBadge, inquiryDetail, inquiryList, markIndexed, markInquiryRead, replyInquiry, submitInquiry, unindexedSummaries, voteHelp, type InquiryInput } from './help.js';
 import { fsugCard, fsugCardKey, fsugDismiss, fsugSelf, fsugSetHidden, ensureFsug, noteFsugRace, type FsugCard, type FsugDismissed, type FsugKind } from './friendSuggest.js';
 import { finishTraining, startTraining, trainingDelta, trainingTick, trainingView, useTrainingItem } from './training.js';
@@ -1574,6 +1575,14 @@ export class PlayerService {
   async tips(id: string, lang: Locale = 'ja', maxWhips = 6) { return tipsIndex(this.d.master, await this.load(id), this.d.clock(), lang, maxWhips); }
   /** REQ-TUT-007: mark open cards seen (idempotent; never grants anything). */
   tipsSeen(id: string, ids: string[]) { return this.tx(id, null, (s, now) => markTipsSeen(this.d.master, s, ids, now)); }
+
+  // ---- アップデートのお知らせ (REQ-NEW-*, contracts/protocol.md §64) ----
+  /** REQ-NEW-006/007: the release notes to show at this home arrival (writes only the FTUE baseline; never marks seen, never grants). */
+  releaseNotesCheck(id: string, appVersion: string | null, lang: Locale = 'ja', maxWhips = 6) { return this.tx(id, null, (s, now) => checkReleaseNotes(this.d.master, s, appVersion, lang, now, maxWhips)); }
+  /** REQ-NEW-009: the sheet was shown (idempotent). */
+  releaseNotesSeen(id: string, appVersion: string) { return this.tx(id, null, (s) => markReleaseNotesSeen(this.d.master, s, appVersion)); }
+  /** REQ-NEW-010: past notes (reads only). */
+  async releaseNotes(id: string, appVersion: string | null, lang: Locale = 'ja', maxWhips = 6) { return releaseNotesHistory(this.d.master, await this.load(id), appVersion, lang, this.d.clock(), maxWhips); }
 
   // ---- ヘルプセンター (REQ-HELP-*, contracts/protocol.md §48) ----
   /** REQ-HELP-007: one vote per article (changeable), capped per game day. */

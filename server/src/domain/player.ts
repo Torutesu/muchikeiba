@@ -240,6 +240,8 @@ export interface PlayerState {
   dataExport?: import('./dataExport.js').DataExportState;
   /** REQ-TUT-007 (§57): tip cards seen (tips.ts markTipsSeen; ids of open cards only, bounded by tips.config.seenMax). */
   tips?: import('./tips.js').TipsState;
+  /** REQ-NEW-009 (§64): app versions whose release notes were shown, and the FTUE baseline (releaseNotes.ts; bounded by releaseNotes.config.seenMax). */
+  releaseNotes?: import('./releaseNotes.js').ReleaseNotesState;
   /** REQ-TRF-*: 引き継ぎコード — the current code (no password, no hash), daily issues, the old-device cut-off, history (transferCode.ts). */
   transfer?: import('./transferCode.js').TransferState;
 }

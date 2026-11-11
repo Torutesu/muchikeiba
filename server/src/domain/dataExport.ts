@@ -402,6 +402,8 @@ export const DEX_CLASSIFICATION: Record<keyof PlayerState | DexExtensionKey, Dex
   help: x('helpInquiries'), reports: x('reportsMade'),
   // Round 19 integration: §57 tip cards read (ids) and §54 transfer code history / expiry (never the code id or password hash)
   tips: x('play'), transfer: x('account'),
+  // Round 21 (§64): the app versions whose release notes were shown, and the FTUE baseline
+  releaseNotes: x('play'),
 };
 /** Keys some modules add to the state without declaring them on PlayerState (see the test). */
 export const DEX_EXTENSION_KEYS = ['collection', 'silksEditor', 'stable', 'teamFeed', 'teamGoal', 'help', 'reports'] as const;
@@ -586,6 +588,8 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
     play: {
       // §57 (Round 19 integration): the tip cards this player has read (ids only)
       tips: s.tips ? { seen: [...s.tips.seen] } : null,
+      // §64 (Round 21): which app versions' release notes were shown (version strings only)
+      releaseNotes: s.releaseNotes ? { seen: [...s.releaseNotes.seen], baseline: s.releaseNotes.baseline ?? null } : null,
       seasonPass: clone(s.seasonPass), passHistory: clone(s.passHistory) ?? [], loginBonus: clone(s.loginBonus), missions: clone(s.missions),
       seasonMissions: clone(s.seasonMissions) ?? null, onboarding: clone(s.onboarding) ?? null, breeding: clone(s.breeding),
       breedingExtra: clone(s.breedingExtra) ?? null, dailyWins: clone(s.dailyWins) ?? null, friendRewards: clone(s.friendRewards),

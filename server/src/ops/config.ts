@@ -10,6 +10,7 @@ import { silksEditorProblems } from '../domain/silksEditor.js';
 import { photoProblems } from '../domain/photoMode.js';
 import { helpProblems, type HelpMaster } from '../domain/help.js';
 import { tipsProblems, type TipsMaster } from '../domain/tips.js';
+import { releaseNotesProblems, type ReleaseNotesMaster } from '../domain/releaseNotes.js';
 import { holdPolicyProblems } from '../domain/retention.js';
 import { roomsProblems } from '../domain/presets.js';
 import { studConfigProblems } from '../domain/stud.js';
@@ -97,6 +98,8 @@ export const configBundleSchema = z.object({
   help: z.record(z.string(), z.unknown()).optional(),
   /** REQ-TUT-010 (§57): replaces the tip cards and replays (master/tips.json); checked like at boot against this version's help, gacha and ruleset. */
   tips: z.record(z.string(), z.unknown()).optional(),
+  /** REQ-NEW-002 (§64): replaces the release notes per app version (master/release-notes.json); checked like at boot against this version's help, tips, gacha and ruleset. */
+  releaseNotes: z.record(z.string(), z.unknown()).optional(),
 }).strict();
 export type ConfigBundle = z.infer<typeof configBundleSchema>;
 
@@ -198,12 +201,14 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
   const maintenance = (b.maintenance as MaintenanceConfig | undefined) ?? base.maintenance;
   if (b.maintenance) problems.push(...maintenanceProblems(b.maintenance));
   const localeEn = b.locale || b.maintenance ? { ...base.locale?.en, ...b.locale?.en, ...(b.maintenance ? maintenanceLocale(b.maintenance as MaintenanceConfig) : {}) } : null;
-  const master: Master = { ...base, tracks, litTracks, gacha: { ...base.gacha, pityGroups, banners, daySchedules: { banners: b.gacha?.banners ? gameDaySchedules(b.gacha.banners as RawBanner[], {}).banners : baseGacha.daySchedules?.banners ?? {}, pityEndDays: b.gacha?.pityGroups ? gameDaySchedules([], b.gacha.pityGroups).pityEndDays : baseGacha.daySchedules?.pityEndDays ?? {} } }, progression, ng: b.ng ?? base.ng, events, bannedSilks, ...(stable ? { stable } : {}), ...(assetCatalog ? { assetCatalog } : {}), ...(b.changelog ? { changelog: b.changelog as unknown as ChangelogEntry[] } : {}), ...(localeEn && (base.locale || b.locale) ? { locale: { en: localeEn } } : {}), ...(maintenance ? { maintenance } : {}), ...(b.help ? { help: b.help as unknown as HelpMaster } : {}), ...(b.tips ? { tips: b.tips as unknown as TipsMaster } : {}) };
+  const master: Master = { ...base, tracks, litTracks, gacha: { ...base.gacha, pityGroups, banners, daySchedules: { banners: b.gacha?.banners ? gameDaySchedules(b.gacha.banners as RawBanner[], {}).banners : baseGacha.daySchedules?.banners ?? {}, pityEndDays: b.gacha?.pityGroups ? gameDaySchedules([], b.gacha.pityGroups).pityEndDays : baseGacha.daySchedules?.pityEndDays ?? {} } }, progression, ng: b.ng ?? base.ng, events, bannedSilks, ...(stable ? { stable } : {}), ...(assetCatalog ? { assetCatalog } : {}), ...(b.changelog ? { changelog: b.changelog as unknown as ChangelogEntry[] } : {}), ...(localeEn && (base.locale || b.locale) ? { locale: { en: localeEn } } : {}), ...(maintenance ? { maintenance } : {}), ...(b.help ? { help: b.help as unknown as HelpMaster } : {}), ...(b.tips ? { tips: b.tips as unknown as TipsMaster } : {}), ...(b.releaseNotes ? { releaseNotes: b.releaseNotes as unknown as ReleaseNotesMaster } : {}) };
   problems.push(...eventProblems(master, events, ruleset));
   // REQ-HELP-003/005: articles, links and tokens against this version (a banner an article quotes cannot be removed)
   problems.push(...helpProblems(master, undefined, Number(ruleset.maxWhips) || 6));
   // REQ-TUT-010/012: cards, tokens and help links against this version (a help article a card links to cannot be removed)
   problems.push(...tipsProblems(master, undefined, Number(ruleset.maxWhips) || 6));
+  // REQ-NEW-002 (§64): pages, tokens, wording and targets against this version (a help article / tip card a page opens cannot be removed)
+  problems.push(...releaseNotesProblems(master, undefined, Number(ruleset.maxWhips) || 6));
   problems.push(...localeProblems(master)); // REQ-L10N-005
   // QA r6 #1: tickets must never reach a paid-only banner, including after a remote-config banner change
   if (master.items) problems.push(...itemsProblems(master));

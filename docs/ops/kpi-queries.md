@@ -1344,3 +1344,36 @@ GROUP BY screen, tip ORDER BY opens DESC
 ```
 
 - `tip_view` の入口が `context` のカードの後に同じ日の `help_article_view`（`source = link`）が多いなら、カードが短すぎる。
+
+## アップデートのお知らせ：出した・最後まで見た・行き先・一覧（REQ-NEW-019、contracts/protocol.md §64.9、Round 21）
+
+**更新した人にシートが届いているか、最後まで読まれているか、どのページの行き先が押されるか**。どれもクライアントのイベント。`release_notes_view`（`blob8` = 版、`blob9` = 段 `shown`・`finished`・`skipped`、`double9` = 閉じたページ、`double5` = ページ数）、`release_notes_target`（`blob8` = 版、`blob9` = `screen`・`help`・`tip`、`blob10` = 行き先の id、`double9` = ページ）、`release_notes_history`（`blob8` = 入口 `notices`・`tips`・`sheet`）。個人を特定する情報は入れない。§58 の必須／任意の分類は Round 20 の統合で付ける（3つとも任意の想定）。
+
+```sql
+-- 版ごとに、出した・最後まで見た・途中で閉じた（最後まで見た率が低い版はページを減らす）
+SELECT blob8 AS version,
+  sum(if(blob9 = 'shown', _sample_interval, 0)) AS shown,
+  sum(if(blob9 = 'finished', _sample_interval, 0)) AS finished,
+  sum(if(blob9 = 'skipped', _sample_interval, 0)) AS skipped
+FROM muchi_kpi
+WHERE blob1 = 'release_notes_view' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY version ORDER BY version DESC
+```
+
+```sql
+-- 途中で閉じたページ（同じページで閉じる人が多いなら、そのページを短くするか外す）
+SELECT blob8 AS version, double9 AS page, sum(_sample_interval) AS closes
+FROM muchi_kpi
+WHERE blob1 = 'release_notes_view' AND blob9 = 'skipped' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY version, page ORDER BY version DESC, page
+```
+
+```sql
+-- 行き先ごとの押された回数と、一覧の入口
+SELECT blob1 AS event, blob8, blob9, blob10, sum(_sample_interval) AS n
+FROM muchi_kpi
+WHERE blob1 IN ('release_notes_target', 'release_notes_history') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY event, blob8, blob9, blob10 ORDER BY n DESC
+```
+
+- `shown` に比べて `finished`＋`skipped` が少ない版は、シートが他の案内に押し出されたか、アプリが落ちている（§64.6 の優先順位と §60 のエラー報告を見る）。

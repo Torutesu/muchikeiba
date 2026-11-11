@@ -2172,6 +2172,8 @@ async function Practice(reload = true) {
   Txt(PR_NO_REWARD, 36, 342, 532, 20, GOLD, rp, { weight: 700 }).classList.add('pr-no-reward');
   Txt('何回でも走れます。端末の中だけで走るので、オフラインでも遊べます。', 36, 384, 532, 14, MUTED, rp, { lh: 1.6 });
   Txt('練習のリプレイはマイリプレイに保存されません。写真は撮れます。', 36, 436, 532, 14, MUTED, rp, { lh: 1.6 });
+  // R19 integration: the practice setup's 「?」 — the help article through the context (practice → practice_races)
+  TextLink('練習レースについて（ヘルプ）', 36, 500, 532, () => HelpArticle(L.helpContext('practice'), 'context', () => Practice(false)), rp).dataset.helpContext = 'practice';
   Cta('練習を始める', 36, 560, 532, () => StartPractice('start'), rp).classList.add('pr-start');
   Back(Home, 'BACK', 40, 834);
 }

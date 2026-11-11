@@ -2637,7 +2637,7 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 - 記事 `id` は `^[a-z0-9_]{2,40}$` で重ならない。`title` は1〜`titleMaxChars` 文字、`body` は1〜`bodyMaxChars` 文字（トークンを埋める前）、`keywords` は各言語20個まで・各20文字まで。日本語と英語でトークンの組が同じ。`related` は存在する別の記事。
 - 画面 `screen`：`home`・`settings`・`race_lobby`・`tutorial`・`training`・`breeding`・`stable`・`collection`・`gacha`・`gacha_odds`・`shop`・`history`・`gift_box`・`activity`・`accessibility`・`account_link`・`deletion`・`inquiry`・`my_inquiries`・`privacy`・`team_feed`・`practice`（この3つは Round 18 統合）・`performance`・`storage`（§56）。
 - トークン：`pity_pulls:<バナー>`（天井までの回数）・`pity_coins:<バナー>`（天井までのコイン）・`pity_cost:<天井グループ>`・`rate:<バナー>:<レア度>`・`guarantee_rate:<バナー>:<レア度>`（10枠目の保証の表）・`price_single:<バナー>`・`price_ten:<バナー>`・`monthly_limit:<年齢帯>`（上限のある帯だけ）・`guardian_age`・`deletion_days`・`purchase_keep_days`・`coin_history_days`・`gacha_history_days`・`max_whips`・`cheer_interval_sec`（Round 19、§55 の応援の間隔の秒）。知らないトークン・無いバナー／グループ／帯は検査で落とす（リモート設定でバナーを外して記事が壊れる版は有効にできない）。
-- `contexts`（画面からの案内、REQ-HELP-008）：`gacha_odds`・`coin_shortfall`・`purchase`・`race_whip`・`race_result`・`training`・`breeding`・`history`・`gift_box`・`account_link`・`deletion`・`accessibility`・`privacy`（Round 18 統合：プライバシーの画面 → `data_export`）・`storage`（§56） → 記事 id。Round 18 統合で記事 `data_export`・`quick_chat`・`practice_races`・`horse_goals` を足した（数字はトークン `export_cooldown_days`・`export_keep_days`・`export_link_minutes`・`qchat_interval_sec`・`qchat_per_day` から）。全部そろっていて、存在する記事を指す。
+- `contexts`（画面からの案内、REQ-HELP-008）：`gacha_odds`・`coin_shortfall`・`purchase`・`race_whip`・`race_result`・`training`・`breeding`・`history`・`gift_box`・`account_link`・`deletion`・`accessibility`・`privacy`（Round 18 統合：プライバシーの画面 → `data_export`）・`storage`（§56）・`practice`（Round 19 統合：練習の条件の画面 → `practice_races`） → 記事 id。Round 18 統合で記事 `data_export`・`quick_chat`・`practice_races`・`horse_goals` を足した（数字はトークン `export_cooldown_days`・`export_keep_days`・`export_link_minutes`・`qchat_interval_sec`・`qchat_per_day` から）。全部そろっていて、存在する記事を指す。
 
 ### 48.2 `GET /v1/help`（要認証、読むだけ・プレイヤーの状態に触れない）
 ```json
@@ -3362,6 +3362,8 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
 - カード `tips`（120枚まで）：`id` は `^[a-z0-9_]{2,40}$` で重ならない（ツアーの id とも）。`unlock` は §4.3 の開放キー（`UNLOCK_KEYS`）か `null`（最初から）。`art` は絵の種類（`whip`・`slipstream`・`lanes`・`stamina`・`reins`・`breeding`・`stud`・`training`・`roster`・`scout`・`pity`・`coins`・`branch`・`cups`、Codex が描く）。`help` は存在するヘルプ記事（リモート設定でヘルプからその記事を外す版は有効にできない）。日本語と英語でトークンの組が同じ。英語に日本語を入れない。
 - `contexts`（「？」の画面 → カード）：`gacha_odds`（提供割合）・`breeding`（配合）・`training`（調教）・`roster_bulk_retire`（まとめて引退）。全部そろって、存在するカードを指す。
 - `tutorials`（30件まで）：`kind` は `race`（レッスン）か `tour`（ツアー）。レッスン `lesson` は `whip`・`position`・`stamina`・`reins` が1つずつ、`unlock: null`（最初から）。`tips` は存在するカード1〜6枚（重ならない）。
+
+- Round 19 統合：Round 18／19 の機能のカードを足した（`practice_tip` → 記事 `practice_races`、`goals_tip` → `horse_goals`、`qchat_tip` → `quick_chat`（`teams` で開く）、`cheer_tip` → `spectator_cheer`（`friend_rooms` で開く））。絵は既存の `art` キーだけを使う（Codex の追加の絵なし）。データのダウンロード（§51）はどの話題にも合わないのでカードを作らず、プライバシーの画面の「？」（ヘルプの文脈 `privacy`）から読む。
 
 ### 57.2 `GET /v1/tips`（要認証、読むだけ）
 ```json

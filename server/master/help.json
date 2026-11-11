@@ -324,6 +324,7 @@
     "deletion": "delete_account",
     "accessibility": "accessibility_settings",
     "privacy": "data_export",
-    "storage": "data_storage"
+    "storage": "data_storage",
+    "practice": "practice_races"
   }
 }

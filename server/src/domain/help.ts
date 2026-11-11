@@ -53,7 +53,7 @@ export type HelpScreen = typeof HELP_SCREENS[number];
 export const LEGAL_DOCS = ['terms', 'privacy', 'tokushoho', 'shikin'] as const;
 export type LegalDoc = typeof LEGAL_DOCS[number];
 /** REQ-HELP-008: screens that deep-link to an article. */
-export const HELP_CONTEXTS = ['gacha_odds', 'coin_shortfall', 'purchase', 'race_whip', 'race_result', 'training', 'breeding', 'history', 'gift_box', 'account_link', 'deletion', 'accessibility', 'privacy', 'storage'] as const;
+export const HELP_CONTEXTS = ['gacha_odds', 'coin_shortfall', 'purchase', 'race_whip', 'race_result', 'training', 'breeding', 'history', 'gift_box', 'account_link', 'deletion', 'accessibility', 'privacy', 'storage', 'practice'] as const; // R19 integration: the practice setup's ? link
 export type HelpContext = typeof HELP_CONTEXTS[number];
 
 export type HelpLink =

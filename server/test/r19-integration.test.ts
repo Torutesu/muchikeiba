@@ -12,6 +12,8 @@ import { transferConfig } from '../src/domain/transferCode.js';
 import { MemoryTransferDirectory, TransferService } from '../src/domain/transferService.js';
 import { DELETION_STEPS, runAccountDeletion, type DeletionPorts } from '../src/domain/accountDeletion.js';
 import { EXEMPT_ROUTES } from '../src/domain/maintenance.js';
+import { tipsIndex, tipsProblems } from '../src/domain/tips.js';
+import { helpIndex } from '../src/domain/help.js';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8');
@@ -85,5 +87,21 @@ describe('§46 maintenance × §54: transfer is account access — never gated (
   it('the transfer routes are exempt next to the deletion and data export routes', () => {
     for (const r of ['GET /v1/transfer/code', 'POST /v1/transfer/code', 'DELETE /v1/transfer/code', 'POST /v1/transfer/redeem', 'GET /v1/player/data-export', 'POST /v1/player/data-export'])
       expect(EXEMPT_ROUTES as readonly string[], r).toContain(r);
+  });
+});
+
+describe('§57 tips × §48 help × Round 18 / 19 features (R19 integration)', () => {
+  it('a tip card links the article of practice, horse goals, quick chat and spectator cheers; the practice setup has a "?" context', async () => {
+    expect(tipsProblems(m, undefined, 6)).toEqual([]);
+    const repo = new MemoryPlayerRepo();
+    const svc = new PlayerService(repo, { master: m, rng: seededRng(3), clock: () => Date.UTC(2026, 10, 11, 3), verifiers: { fake: new FakeStoreVerifier() } });
+    await svc.bootstrap('t1');
+    const ja = tipsIndex(m, await svc.state('t1'), Date.UTC(2026, 10, 11, 3), 'ja', 6);
+    const links = new Map(ja.tips.map((t) => [t.id, t.help?.articleId ?? null]));
+    expect(Object.fromEntries(['practice_tip', 'goals_tip', 'qchat_tip', 'cheer_tip'].map((id) => [id, links.get(id)])))
+      .toEqual({ practice_tip: 'practice_races', goals_tip: 'horse_goals', qchat_tip: 'quick_chat', cheer_tip: 'spectator_cheer' });
+    expect(helpIndex(m, 'ja').contexts).toMatchObject({ practice: 'practice_races', privacy: 'data_export', storage: 'data_storage' });
+    expect(read('engine/Muchi.Client/Help.cs')).toContain('Practice = "practice"');
+    expect(read('tools/figma-prototype/site/app.js')).toMatch(/dataset\.helpContext = 'practice'/);
   });
 });

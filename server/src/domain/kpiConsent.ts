@@ -34,6 +34,10 @@ export const KPI_ESSENTIAL: Readonly<Record<string, string>> = Object.freeze({
   block_remove: 'safety record (blocks)',
   inquiry_submit: 'support record',
   inquiry_answered: 'support record',
+  // R20 integration: Round 19 §54 引き継ぎコード — account access like sign-in; the issue / redeem rows (with the failure class,
+  // never the ID or password) are the audit trail ops need to spot brute force and account takeover (§54.9)
+  transfer_issue: 'account access audit (transfer code issued, §54)',
+  transfer_redeem: 'account access audit and brute-force detection (transfer code redeemed / failed, §54)',
 });
 
 /** Every other event name the server emits or accepts from clients: optional analytics. */
@@ -48,12 +52,17 @@ export const KPI_OPTIONAL: readonly string[] = Object.freeze([
   'rival_race', 'rival_view', 'rival_week_result', 'roster_bulk_action', 'season_close', 'silks_edit', 'stable_like', 'stable_save',
   'stable_visit', 'stamp_post', 'stud_breed', 'team_feed_view', 'team_goal_contribute', 'team_goal_milestone', 'team_goal_reward',
   'team_join', 'team_leave', 'training_done', 'training_start', 'tutorial_gacha',
+  // R20 integration: §59 レビュー依頼 (server rows of an engagement prompt)
+  'review_prompt_eligible', 'review_prompt_shown', 'review_soft_answer',
   // client (POST /v1/analytics/events, after clientToKpi)
   'session_start', 'session_end', 'tutorial_step', 'screen_view', 'commentary_pack_sample', 'client_race_start', 'purchase_flow',
   'push_open', 'push_permission', 'feature_unlock', 'offer_view', 'offer_click', 'race_quit', 'account_link', 'share', 'invite_share',
   'replay_share', 'roster_sort', 'recap_share', 'ad_offer_view', 'ad_start', 'history_view', 'advice_view', 'advice_follow', 'photo_take',
   'photo_share', 'activity_open', 'activity_tap', 'maintenance_block', 'upgrade_prompt', 'next_card_view', 'next_card_tap', 'help_search',
   'help_article_view', 'fsug_view', 'hgoal_view', 'practice_start', 'practice_finish',
+  // R20 integration: Round 19 §55 応援 / §56 画質・通信量 / §57 ヒント and Round 20 §61 端末のローカル通知 — engagement only
+  'cheer_send', 'cheer_seen', 'perf_setting_change', 'asset_predownload', 'tutorial_replay', 'tip_view', 'tip_context_open',
+  'lnotif_scheduled', 'lnotif_opened', 'lnotif_permission',
 ]);
 
 export const KPI_EVENT_CLASS: Readonly<Record<string, KpiClass>> = Object.freeze({

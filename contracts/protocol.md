@@ -3471,6 +3471,13 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
 ### 58.7 KPI の分類（REQ-CNS-012〜014、`server/src/domain/kpiConsent.ts`）
 - すべての KPI イベント名を **`essential`（必須：法定の記録・不正対策・同意の証跡）** か **`optional`（任意：分析）** に分類する（`KPI_EVENT_CLASS`）。分類の無い名前は `optional` として扱う（迷ったら送らない）。テストがサーバーのコードから出すイベント名・クライアントのイベント名を全部集め、分類が無ければ失敗する。
 - `essential`：`purchase`・`refund`・`pass_renew`・`pass_status`（資金決済法・返金の記録）、有償コインを使ったかもしれないもの `gacha_draw`・`silks_part_buy`・`commentary_pack_buy`（前払式支払手段の使用の記録）、`ad_reward`・`ad_reject`（広告ネットワークとの照合・不正対策）、`consent`・`consent_change`（同意の証跡）、`account_delete`・`dex_request`・`dex_ready`・`dex_download`（本人の権利の記録）、`report_submit`・`block_add`・`block_remove`・`inquiry_submit`・`inquiry_answered`（安全・サポートの記録）。それ以外はすべて `optional`（クライアントのイベントは全部 `optional`）。
+- **Round 19・20 のイベント（R20 統合で決めたこと）**：
+  | イベント | 送り手 | 分類 | 理由 |
+  |---|---|---|---|
+  | `transfer_issue`・`transfer_redeem`（§54.9） | サーバー | `essential` | アカウントへの入口の監査（サインインと同じ扱い）。失敗の分類で総当たり・乗っ取りを見つける。ID・パスワード・IP は元から入れない |
+  | `review_prompt_eligible`・`review_prompt_shown`・`review_soft_answer`（§59） | サーバー | `optional` | 頼む時の調整のための分析。分析がオフでもレビュー依頼の規則（間隔・回数）は状態 `reviewPrompt` で守られ、KPI に頼らない |
+  | `cheer_send`・`cheer_seen`（§55）、`perf_setting_change`・`asset_predownload`（§56）、`tutorial_replay`・`tip_view`・`tip_context_open`（§57）、`lnotif_scheduled`・`lnotif_opened`・`lnotif_permission`（§61） | クライアント | `optional` | 遊び方・設定の分析だけ。端末の `ConsentState.AllowsClientEvent` が捨て、サーバーも捨てる |
+  - クライアントのエラー報告（§60）は KPI ではない（別の口 `POST /v1/client-errors`）。急増の知らせ `client_error_spike` は Worker のログのアラートで、KPI のイベントではない。§60 との関係は 58.10。
 - **サーバーで強制**：分析が効いていない（`analytics.effective = false`）プレイヤーの `optional` のイベントは、サーバーのトランザクションのイベントもクライアントの `POST /v1/analytics/events` も **Analytics Engine に書かない**。クライアントのバッチの応答は `{ accepted, dropped, withheld }`（`withheld` = 同意が無いので書かなかった数。レート制限の数には入れる）。
 - `consent_change`（サーバー、essential）：`s1` = `personalized_ads`／`analytics`／`att`／`cmp`、`s2` = 新しい値（`on`／`off`、ATT・CMP は状態の名前）、`s3` = `prompt`／`settings`／`platform`。変わった項目ごとに1行。
 

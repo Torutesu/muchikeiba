@@ -8345,6 +8345,7 @@ async function ReleaseNotesDemo() {
     const top = h.ok ? h.value.notes[0] : null;
     if (!top) return Home();
     rnState.sheet = { ...top, skipped: Math.max(0, h.value.notes.length - 1), hasPast: h.value.notes.length > 1 }; rnState.page = 0;
+    rnState.shown = true; sessionPrompt.claim('release_notes'); // R21 integration: the demo sheet counts as this session's sheet too
     ReleaseNotesSheet();
   }
 }

@@ -238,6 +238,8 @@ export interface PlayerState {
   horseGoals?: import('./horseGoals.js').HorseGoalsState;
   /** REQ-DEX-*: 個人データの開示・ダウンロード — the current request, cooldown start, audit log, R2 keys still to delete (dataExport.ts). */
   dataExport?: import('./dataExport.js').DataExportState;
+  /** REQ-CNS-*: 広告・分析の同意 — personalised ads / analytics choices, policy version, ATT / CMP status, history (privacyChoices.ts). */
+  privacyChoices?: import('./privacyChoices.js').PrivacyChoicesState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

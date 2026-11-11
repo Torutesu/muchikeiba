@@ -42,13 +42,17 @@ export const HELP_SCREENS = [
   'gift_box', 'activity', 'accessibility', 'account_link', 'deletion', 'inquiry', 'my_inquiries',
   // Round 18 integration: settings › privacy (§51), the branch feed (§52 quick chat), practice races (§50)
   'privacy', 'team_feed', 'practice',
+  // Round 20: settings › privacy › ads and analytics (§58)
+  'privacy_choices',
 ] as const;
 export type HelpScreen = typeof HELP_SCREENS[number];
 /** The existing legal pages (利用規約・プライバシーポリシー・特定商取引法に基づく表記・資金決済法に基づく表示). */
 export const LEGAL_DOCS = ['terms', 'privacy', 'tokushoho', 'shikin'] as const;
 export type LegalDoc = typeof LEGAL_DOCS[number];
 /** REQ-HELP-008: screens that deep-link to an article. */
-export const HELP_CONTEXTS = ['gacha_odds', 'coin_shortfall', 'purchase', 'race_whip', 'race_result', 'training', 'breeding', 'history', 'gift_box', 'account_link', 'deletion', 'accessibility', 'privacy'] as const;
+export const HELP_CONTEXTS = ['gacha_odds', 'coin_shortfall', 'purchase', 'race_whip', 'race_result', 'training', 'breeding', 'history', 'gift_box', 'account_link', 'deletion', 'accessibility', 'privacy',
+  // Round 20 (§58): settings › privacy › ads and analytics, and the pre-prompt sheet
+  'privacy_choices'] as const;
 export type HelpContext = typeof HELP_CONTEXTS[number];
 
 export type HelpLink =
@@ -106,6 +110,7 @@ const SCREEN_LABEL: Record<HelpScreen, Loc> = {
   privacy: { ja: 'プライバシーを開く', en: 'Open privacy' },
   team_feed: { ja: '支部のフィードを開く', en: 'Open the branch feed' },
   practice: { ja: '練習レースを開く', en: 'Open practice races' },
+  privacy_choices: { ja: '広告と分析の設定を開く', en: 'Open the ads and analytics settings' },
 };
 const LEGAL_LABEL: Record<LegalDoc, Loc> = {
   terms: { ja: '利用規約', en: 'Terms of service' },

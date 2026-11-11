@@ -267,6 +267,8 @@ namespace Muchi.Client
         public string CommentaryPack = CommentaryPackCatalog.StandardPackId;
         /// <summary>REQ-A11Y-003: アクセシビリティ設定 (contracts/protocol.md §41; defaults from an older server).</summary>
         public AccessibilitySettings Accessibility = new AccessibilitySettings();
+        /// <summary>REQ-CNS-002: 広告・分析の同意 (contracts/protocol.md §58; non-personalised / analytics-on defaults from an older server).</summary>
+        public ConsentState PrivacyChoices = new ConsentState();
         /// <summary>REQ-NEXT-010: the home's next card at bootstrap (no team goal; GET /v1/home/next has it). Null from an older server.</summary>
         public NextActionsView NextActions;
         /// <summary>REQ-HGOAL-010: the goal pinned to the home (null = none, or an older server).</summary>
@@ -305,6 +307,7 @@ namespace Muchi.Client
                 Assist = AssistSettings.Parse(J.Opt(o, "assist")),
                 CommentaryPack = J.Str(J.Opt(o, "commentaryPack"), "equipped") ?? CommentaryPackCatalog.StandardPackId,
                 Accessibility = AccessibilitySettings.Parse(J.Opt(o, "accessibility")),
+                PrivacyChoices = ConsentState.Parse(J.Opt(o, "privacyChoices")),
                 NextActions = NextActionsView.Parse(J.Opt(o, "nextActions")),
                 HorseGoalPin = HorseGoalPin.Parse(J.Opt(o, "horseGoalPin")),
             };
@@ -1020,7 +1023,9 @@ namespace Muchi.Client
     public sealed class AnalyticsIngestResult
     {
         public int Accepted, Dropped;
-        internal static AnalyticsIngestResult Parse(JsonNode o) => new AnalyticsIngestResult { Accepted = J.Int(o, "accepted"), Dropped = J.Int(o, "dropped") };
+        /// <summary>REQ-CNS-013: accepted but not written because the player's analytics choice is off (§58.7).</summary>
+        public int Withheld;
+        internal static AnalyticsIngestResult Parse(JsonNode o) => new AnalyticsIngestResult { Accepted = J.Int(o, "accepted"), Dropped = J.Int(o, "dropped"), Withheld = J.Int(o, "withheld") };
     }
 
     public sealed class FriendOpResult

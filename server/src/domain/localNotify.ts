@@ -23,7 +23,7 @@ import type { PlayerState } from './player.js';
 import { inQuietHours, quietHoursEnd, jstHour, type QuietHours } from './push.js';
 import { nextActionSummary } from './nextAction.js';
 import { deletionScheduled } from './accountDeletion.js';
-import { addJstDays, dayRule, gameDayKey, gameDayStartMs, jstDateKey } from './time.js';
+import { addJstDays, dayRule, gameDayKey, gameDayStartMs } from './time.js';
 
 import { LNOTIF_KINDS, LNOTIF_PERMISSION_RESULTS, type LnotifKind } from './lnotifKinds.js';
 
@@ -105,6 +105,8 @@ export function localNotifyConfig(m: Pick<Master, 'progression'>): LocalNotifyCo
 
 export interface LocalRemindersDigest {
   v: 1; enabled: true; now: number; nextDayAt: number;
+  /** The next game day ("YYYY-MM-DD", progression.dayRollover): the daily bonus reminder's id. */
+  nextDay: string;
   config: Omit<LocalNotifyConfig, '_note' | 'enabled'>;
   categories: Record<PushCategory, boolean>;
   quietHours: QuietHours | null;
@@ -123,7 +125,8 @@ export function localRemindersView(m: Master, s: PlayerState, now: number): Loca
   const c = localNotifyConfig(m);
   if (!c) return { v: LNOTIF_VERSION, enabled: false };
   const rule = dayRule(m);
-  const nextDayAt = gameDayStartMs(addJstDays(gameDayKey(now, rule), 1), rule);
+  const nextDay = addJstDays(gameDayKey(now, rule), 1);
+  const nextDayAt = gameDayStartMs(nextDay, rule);
   const x = nextActionSummary(m, s, now);
   // read-only: the stored preferences over the master defaults (ensurePush would write a push state)
   const stored = (s as PlayerState & { push?: { prefs: { categories: Partial<Record<PushCategory, boolean>>; quietHours: QuietHours | null } } }).push?.prefs;
@@ -132,7 +135,7 @@ export function localRemindersView(m: Master, s: PlayerState, now: number): Loca
   const open = s.training?.open && x.trainingOpenExpiresAt !== null ? s.training.open : null;
   const { _note: _n, enabled: _e, ...config } = c;
   return {
-    v: LNOTIF_VERSION, enabled: true, now, nextDayAt,
+    v: LNOTIF_VERSION, enabled: true, now, nextDayAt, nextDay,
     config: { ...config, kinds: [...config.kinds], leadHours: { ...config.leadHours }, prePrompt: { ...config.prePrompt } },
     categories, quietHours: quietHours ? { startHour: quietHours.startHour, endHour: quietHours.endHour } : null,
     deleting: deletionScheduled(s), onboarding: x.onboarding,
@@ -232,7 +235,7 @@ export function planLocalNotifications(x: LocalNotifySnapshot): LocalNotifyPlan 
   }
   if (d.loginBonus.unlocked) {
     const at = d.nextDayAt + (((c.dailyHourJst - jstHour(d.nextDayAt)) % 24) + 24) % 24 * HOUR;
-    cands.push({ kind: 'daily_bonus', id: `lnotif.daily_bonus.${jstDateKey(d.nextDayAt)}`, fireAt: at, deadline: d.nextDayAt + DAY, refId: null, n: null, horseId: null, dateAt: at });
+    cands.push({ kind: 'daily_bonus', id: `lnotif.daily_bonus.${d.nextDay}`, fireAt: at, deadline: d.nextDayAt + DAY, refId: null, n: null, horseId: null, dateAt: at });
   }
   const lead = (k: LnotifDeadlineKind) => c.leadHours[k] * HOUR;
   const wc = d.weeklyChallenge;

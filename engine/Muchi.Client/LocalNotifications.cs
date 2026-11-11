@@ -23,6 +23,8 @@ namespace Muchi.Client
     {
         public bool Enabled;
         public long Now, NextDayAt;
+        /// <summary>The next game day ("YYYY-MM-DD", the server's day rule): the daily bonus reminder's id.</summary>
+        public string NextDay;
         public List<string> Kinds = new List<string>();
         public int DailyCap = 2, DailyHourJst = 12, HorizonDays = 7, MaxPending = 8, TrainingLeadMin = 3;
         public Dictionary<string, int> LeadHours = new Dictionary<string, int>();
@@ -55,7 +57,7 @@ namespace Muchi.Client
             if (o == null || o.Kind != JsonKind.Object) return null;
             var d = new LocalRemindersDigest { Enabled = J.Bool(o, "enabled") };
             if (!d.Enabled) return d;
-            d.Now = J.Long(o, "now"); d.NextDayAt = J.Long(o, "nextDayAt");
+            d.Now = J.Long(o, "now"); d.NextDayAt = J.Long(o, "nextDayAt"); d.NextDay = J.Str(o, "nextDay");
             var c = J.Opt(o, "config");
             d.Kinds = J.Strs(c, "kinds").ToList();
             d.DailyCap = J.Int(c, "dailyCap", 2); d.DailyHourJst = J.Int(c, "dailyHourJst", 12); d.HorizonDays = J.Int(c, "horizonDays", 7);
@@ -233,7 +235,7 @@ namespace Muchi.Client
             if (d.LoginBonusUnlocked)
             {
                 long at = d.NextDayAt + (((d.DailyHourJst - JstHour(d.NextDayAt)) % 24 + 24) % 24) * Hour;
-                cands.Add(new Cand { Kind = "daily_bonus", Id = "lnotif.daily_bonus." + JstAt(d.NextDayAt).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), FireAt = at, Deadline = d.NextDayAt + Day, DateAt = at });
+                cands.Add(new Cand { Kind = "daily_bonus", Id = "lnotif.daily_bonus." + (d.NextDay ?? JstAt(d.NextDayAt).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)), FireAt = at, Deadline = d.NextDayAt + Day, DateAt = at });
             }
             long Lead(string k) => (d.LeadHours.TryGetValue(k, out var h) ? h : 24) * Hour;
             var wc = d.WeeklyChallenge;

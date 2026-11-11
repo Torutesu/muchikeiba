@@ -3121,7 +3121,7 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 ### 61.3 サーバーの digest（`localRemindersView`、REQ-LNOTIF-008）
 `/v1/player/bootstrap`・`GET /v1/player` の **`localReminders`**（読むだけ、状態に書かない。§45 の `nextActionSummary` と同じ読み方）。新しいエンドポイント・新しい状態のキーは無い。
 ```json
-{ "v": 1, "enabled": true, "now": 1794880800000, "nextDayAt": 1794891600000,
+{ "v": 1, "enabled": true, "now": 1794880800000, "nextDayAt": 1794891600000, "nextDay": "2026-11-12",
   "config": { "kinds": ["training_session","daily_bonus","weekly_challenge_closing","rival_week_closing","exchange_closing","gift_expiring"],
               "dailyCap": 2, "dailyHourJst": 12, "horizonDays": 7, "maxPending": 8, "trainingLeadMin": 3,
               "leadHours": { "weekly_challenge_closing": 24, "rival_week_closing": 24, "exchange_closing": 24, "gift_expiring": 24 },

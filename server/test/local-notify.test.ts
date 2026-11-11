@@ -32,7 +32,7 @@ const withCfg = (patch: Partial<LocalNotifyConfig> | undefined): Master => ({ ..
 function digest(o: Partial<LocalRemindersDigest> = {}): LocalRemindersDigest {
   const { _note: _n, enabled: _e, ...config } = cfg;
   return {
-    v: 1, enabled: true, now: T0, nextDayAt: NEXT_DAY, config: structuredClone(config),
+    v: 1, enabled: true, now: T0, nextDayAt: NEXT_DAY, nextDay: '2026-12-09', config: structuredClone(config),
     categories: { season: true, friends: true, invites: true, events: true, comeback: false, gifts: true, reminders: true },
     quietHours: { startHour: 22, endHour: 8 }, deleting: false, onboarding: false,
     loginBonus: { unlocked: true },
@@ -165,7 +165,7 @@ describe('§61.2 the plan (REQ-LNOTIF-003..007)', () => {
   });
   it('the daily cap per game day keeps the higher priority, maxPending keeps the earliest', () => {
     // Sunday 12-13: weekly challenge, rival (both moved to 08:00) and the daily bonus (12:00) → cap 2 drops the daily bonus
-    const all = planLocalNotifications(snap({}, { gifts: [], exchanges: [], training: { sessionId: null, horseId: null, expiresAt: null, trainedEver: true }, nextDayAt: Date.UTC(2026, 11, 12, 19) }));
+    const all = planLocalNotifications(snap({}, { gifts: [], exchanges: [], training: { sessionId: null, horseId: null, expiresAt: null, trainedEver: true }, nextDayAt: Date.UTC(2026, 11, 12, 19), nextDay: '2026-12-13' }));
     expect(all.items.map((i) => i.kind).sort()).toEqual(['rival_week_closing', 'weekly_challenge_closing']);
     expect(all.dropped).toEqual([{ id: 'lnotif.daily_bonus.2026-12-13', kind: 'daily_bonus', reason: 'daily_cap' }]);
     const one = planLocalNotifications(snap({}, { config: { ...digest().config, dailyCap: 1 }, gifts: [], exchanges: [], training: { sessionId: null, horseId: null, expiresAt: null, trainedEver: true } }));
@@ -270,6 +270,7 @@ describe('§61.3 the digest in bootstrap / GET /v1/player (REQ-LNOTIF-008)', () 
     expect(b.localReminders.categories.reminders).toBe(false);
     expect(b.localReminders.quietHours).toEqual(m.push.defaults.quietHours);
     expect(b.localReminders.nextDayAt).toBe(NEXT_DAY);
+    expect(b.localReminders.nextDay).toBe('2026-12-09');
     expect(planLocalNotifications({ now: T0, locale: 'ja', permission: 'granted', showDetails: false, signedIn: true, digest: b.localReminders }).items).toEqual([]);
   });
 
@@ -379,7 +380,7 @@ function vectors() {
     ['rival raced, challenge cleared', {}, { rival: { weekEndsAt: WEEK_END, rankedRaces: 2 }, weeklyChallenge: { unlocked: true, endsAt: WEEK_END, uncleared: 0 } }],
     ['locked bonus and challenge', {}, { loginBonus: { unlocked: false }, weeklyChallenge: { unlocked: false, endsAt: WEEK_END, uncleared: 3 } }],
     ['kinds subset', {}, { config: { ...c, kinds: ['gift_expiring', 'daily_bonus'] } }],
-    ['daily hour 21, next day Sunday', {}, { config: { ...c, dailyHourJst: 21 }, nextDayAt: Date.UTC(2026, 11, 12, 19) }],
+    ['daily hour 21, next day Sunday', {}, { config: { ...c, dailyHourJst: 21 }, nextDayAt: Date.UTC(2026, 11, 12, 19), nextDay: '2026-12-13' }],
     ['no permission', { permission: 'denied' }, {}],
     ['provisional', { permission: 'provisional' }, {}],
     ['signed out', { signedIn: false }, {}],

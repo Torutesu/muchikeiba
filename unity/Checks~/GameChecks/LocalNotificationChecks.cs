@@ -42,7 +42,7 @@ static class LocalNotificationChecks
     const long WeekEnd = 1797188400000L; // 2026-12-14 04:00 JST
 
     static string Digest(bool reminders, string session, bool deleting = false, bool trainedEver = false) =>
-        "{\"v\":1,\"enabled\":true,\"now\":" + Now + ",\"nextDayAt\":" + NextDay + ",\"config\":{\"kinds\":[\"training_session\",\"gift_expiring\",\"exchange_closing\",\"weekly_challenge_closing\",\"rival_week_closing\",\"daily_bonus\"],"
+        "{\"v\":1,\"enabled\":true,\"now\":" + Now + ",\"nextDayAt\":" + NextDay + ",\"nextDay\":\"2026-12-09\",\"config\":{\"kinds\":[\"training_session\",\"gift_expiring\",\"exchange_closing\",\"weekly_challenge_closing\",\"rival_week_closing\",\"daily_bonus\"],"
         + "\"dailyCap\":2,\"dailyHourJst\":12,\"horizonDays\":7,\"maxPending\":8,\"trainingLeadMin\":3,\"leadHours\":{\"weekly_challenge_closing\":24,\"rival_week_closing\":24,\"exchange_closing\":24,\"gift_expiring\":24},\"prePrompt\":{\"maxAsks\":2,\"retryDays\":14}},"
         + "\"categories\":{\"season\":true,\"friends\":true,\"invites\":true,\"events\":true,\"comeback\":false,\"gifts\":true,\"reminders\":" + (reminders ? "true" : "false") + "},\"quietHours\":{\"startHour\":22,\"endHour\":8},"
         + "\"deleting\":" + (deleting ? "true" : "false") + ",\"onboarding\":false,\"loginBonus\":{\"unlocked\":true},"

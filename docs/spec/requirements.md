@@ -1329,3 +1329,30 @@
 - REQ-LNOTIF-018 プライバシー：予定はサーバーに送らない（KPI の種類だけ）。`showDetails` は端末の設定。
 - REQ-LNOTIF-019 設定 `progression.localNotifications`（`localNotificationsProblems`、起動時と各版で検証）。`enabled: false` は停止スイッチ。
 - REQ-LNOTIF-020 ヘルプ：ヘルプセンター（§48）に「端末のお知らせ（リマインダー）」の記事。
+
+## 69. ゲーム内アンケート（ops-run in-app surveys、TS＋C#、`src/domain/surveys.ts`・`src/ops/surveys.ts`（OpsDO）・`Muchi.Client/Surveys.cs`・`Muchi.Game.SurveyModel`、`contracts/protocol.md` §69）
+拘束条件：答えても何も配らない（偏り・景表法の懸賞を避ける。E 番号なし）。スキップは1タップで、そのアンケートは二度と聞かない。FTUE の間は出さない。§58.11 の「1セッションに1つ」の門を最も低い優先度で通る。新しい Durable Object・wrangler の移行は無い（OpsDO の表を足す）。
+- REQ-SURVEY-001 定義：id・題・前置き・1〜5 問（`single`・`multi`・`scale` 1〜5・`text` 200 字までの任意の文）・日本語と英語の両方・`placements`（`home`／`result`）・`targeting`（ランク戦の数・インストールからの日数・プラットフォーム・アプリの版の範囲・クラス・安定したハッシュでの抽出率）。知らないキーは問題。
+- REQ-SURVEY-002 文言の検査：共通の賭けの言葉・煽りの言葉・NG の名前に当たる文言、報酬を思わせるキーは問題（`surveyDefProblems`）。運営の作成・編集・検査の API で同じ検査。
+- REQ-SURVEY-003 公開：`draft` → `publish { startAt, endAt }`（90 日まで、`maxLive` 本まで）→ `scheduled`／`live`／`ended`、`close`。公開後は定義を変えない。保存は OpsDO の表（移行なし）。プレイヤーの経路は 30 秒キャッシュ。
+- REQ-SURVEY-004 設定 `progression.surveys`（`enabled`・`coolDownHours`・`maxShowsPerSurvey`・`maxLive`・`textMax`）。起動時と各リモート設定の版で検査。報酬のキー・知らないキーは問題。
+- REQ-SURVEY-005 出す判断（`GET /v1/surveys/current`）：§69.4 の順（disabled → account_closing → ftue → 続きの1本 → cool_down → 最初に当たる1本 → none）。読むだけ。同時に1本だけ。
+- REQ-SURVEY-006 出す場所：ホームのカードかレース結果の後のシートだけ。FTUE の間は端末もサーバーも出さない。`SessionPromptGate`／`sessionPrompt` の `survey`（最も低い優先度）を通る。
+- REQ-SURVEY-007 `shown`：回数と `current`。`maxShowsPerSurvey` 回出して答えがなければもう出さない。
+- REQ-SURVEY-008 `skip`：1タップ。二度と出さない。間隔が始まる。何度送っても同じ。
+- REQ-SURVEY-009 `answers`：冪等キー必須。厳しい検査（知らない問い・型・選択肢・必須・長さ → 400）。1人1回（違うキーの2回目は 409）。終わったアンケートは 409 `SURVEY_CLOSED`、未公開・知らない id は 404。削除済みは 404、削除の予約中・対象外は 409 `NOT_ELIGIBLE`。
+- REQ-SURVEY-010 報酬なし：答え・スキップ・出したのどれでもウォレット・アイテム・ミッション・称号・XP が変わらない（テスト。§59 と同じ形）。
+- REQ-SURVEY-011 書く順と再送：PlayerDO → OpsDO（`(surveyId, playerId)` で1回）→ 送った印。届かなかった答えは次の `current` で再送。
+- REQ-SURVEY-012 自由な文：サーバーで §60.3 の規則（メール・トークン・URL・長い id・長い数字、電話番号）でスクラブし、長さで切る。日本語の文はそのまま。
+- REQ-SURVEY-013 分析の選択（§58）：オフでも答えられる。オフなら区分（segment）を付けない。KPI は optional。
+- REQ-SURVEY-014 開示・削除：状態のキー `surveys`（分類 `analytics`）、開示の `analytics.surveys`。削除の段 `surveys`：OpsDO の行を匿名化し、自由な文を消す。
+- REQ-SURVEY-015 運営の一覧・詳細・検査とプレビュー（viewer）。
+- REQ-SURVEY-016 下書きの作成・編集（operator、`rev` で競合を防ぐ）、公開・早く閉じる（admin）。監査ログ。
+- REQ-SURVEY-017 結果（viewer）：合計、区分のある数、プラットフォーム別、問いごとの数と割合、1〜5 の平均、自由な文の一覧（プレイヤー id なし）。CSV（id なし、隠した文は `(hidden)`、式の注入を防ぐ）。
+- REQ-SURVEY-018 モデレーション：自由な文を隠す・戻す（operator）。隠した文は結果と CSV に出ない。
+- REQ-SURVEY-019 KPI：`survey_shown`・`survey_skip`・`survey_answer`（optional、`kpiConsent.ts`）。答えの中身は入れない。
+- REQ-SURVEY-020 メンテナンス：`/v1/surveys*` は `core`。
+- REQ-SURVEY-021 クライアント SDK：`SurveyAnswerBuilder`・`SurveyRules`・`ApiClient` の4メソッド（冪等キーは答えの組ごとに1回）。
+- REQ-SURVEY-022 Unity のゲーム層 `SurveyModel`（カード・シート・問い・ありがとう・スキップ・門・FTUE・オフライン・`SURVEY_CLOSED`）。描画は docs/handoff-codex-round22-surveys.md。プロトタイプ（ホームのカード・シート 4 種類・ありがとう、日本語・英語、文字の大きさ、e2e・en-flow・a11y-flow）と運営の画面（console e2e）。
+- REQ-SURVEY-023 ヘルプ：記事 `surveys`「アンケートについて」。
+- REQ-SURVEY-024 法務：景品・抽選を付けない（経路が無い）。煽り・賭けの言葉なし。

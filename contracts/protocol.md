@@ -3783,3 +3783,91 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 
 ### 61.10 アカウント削除
 サーバーに新しい状態は無い（`push.prefs.categories.reminders` は既存の `push` と一緒に消える）。端末は削除の予約・実行を見たら全部取り消す（61.5）。
+
+## 69. ゲーム内アンケート（ops-run in-app surveys、REQ-SURVEY-001〜024、`server/src/domain/surveys.ts`・`server/src/ops/surveys.ts`（OpsDO の表）、C# `Surveys.cs`（`SurveyRules`・`SurveyAnswerBuilder`）・`Muchi.Game.SurveyModel`、docs/handoff-codex-round22-surveys.md）
+運営（ライブオプス）がプレイヤーに短い質問をして、製品の方向を決める材料にする。体験を邪魔しないことが最優先：**答えても何も配らない**（偏りを生む報酬・景表法の懸賞の扱いを避ける。E 番号なし）、**スキップは1タップでその後は二度と聞かない**、FTUE の間は出さない、§58.11 の「1セッションに1つ」の門を最も低い優先度で通る。
+
+### 69.1 アンケートの定義（運営が作る、REQ-SURVEY-001/002）
+```json
+{ "id": "sv_whip_feel_2026_11", "title": { "ja": "ムチの手ごたえ", "en": "How the whip feels" },
+  "intro": { "ja": "1分で終わる質問です。", "en": "Takes about a minute." },
+  "placements": ["home", "result"],
+  "targeting": { "minRankedRaces": 10, "minDaysSinceInstall": 3, "platforms": ["ios", "android"], "appVersion": { "min": "1.4.0" }, "classes": ["C", "B"], "samplePercent": 50 },
+  "questions": [
+    { "id": "feel", "kind": "scale", "required": true, "text": { "ja": "ムチを入れた時の手ごたえは？", "en": "How does the whip feel?" },
+      "labels": { "low": { "ja": "弱い", "en": "Weak" }, "high": { "ja": "強い", "en": "Strong" } } },
+    { "id": "mode", "kind": "single", "required": true, "text": { "ja": "いちばん遊ぶのは？", "en": "What do you play most?" },
+      "options": [ { "id": "ranked", "text": { "ja": "ランク戦", "en": "Ranked" } }, { "id": "events", "text": { "ja": "イベント", "en": "Events" } } ] },
+    { "id": "wish", "kind": "multi", "required": false, "maxChoices": 2, "text": { "ja": "増えてほしいものは？", "en": "What would you like more of?" }, "options": [ … ] },
+    { "id": "free", "kind": "text", "required": false, "maxLength": 200, "text": { "ja": "ひとことあれば", "en": "Anything else?" } } ] }
+```
+- `id`：`sv_` + 英小文字・数字・`_` 2〜40 字。1〜5 問。問いの `id` は英小文字で始まる 1〜24 字（重複なし）。
+- 種類（`kind`）：`single`（1つ選ぶ、選択肢 2〜6）・`multi`（いくつでも、`maxChoices` 1〜選択肢の数、既定は全部）・`scale`（1〜5、両端の言葉 `labels.low`／`labels.high`）・`text`（自由な短い文、`maxLength` 1〜`textMax`（既定・上限 200 字）、**必ず任意**＝`required: false`）。
+- 文言はどれも**日本語と英語の両方**が必要：題 40 字・前置き 120 字・問い 120 字・選択肢 40 字・両端の言葉 20 字まで。
+- **言葉の検査**（`surveyDefProblems`）：共通の賭けの言葉（`bettingWords.ts`）、煽りの言葉（「倍」「お得」「今だけ」「残りわずか」「通常価格」）、実在の名前の NG リスト（`ng-names.json`、名前と同じ正規化）に当たる文言は問題。**報酬を思わせるキー**（`reward`・`coins`・`items`・`grant`・`gift`・`bonus`・`incentive`）はどこにあっても「答えには何も配らない」問題。知らないキーも問題（strict）。
+- `placements`：`home`（ホームのカード）・`result`（レース結果を閉じた後のシート）の1つ以上。
+- `targeting`（すべて任意、書いたものは全部満たす＝AND）：`minRankedRaces`（ランク戦の数 `rating.rankedRaces` 以上、0〜100000）・`minDaysSinceInstall`／`maxDaysSinceInstall`（`createdAt` からの日数、0〜3650、min ≤ max）・`platforms`（`ios`・`android`・`editor` の部分集合、要求の `x-client-platform`）・`appVersion { min?, max? }`（`x.y.z`、両端を含む、要求の `x-client-version`。無い・読めない版は当たらない）・`classes`（今のクラス `season.classId`、マスターのクラス id）・`samplePercent`（1〜100：`fnv1a64("<surveyId>:<playerId>")` を 100 で割った余り < 値。同じ人はいつも同じ側＝安定した抽出）。
+
+### 69.2 状態と公開の窓（REQ-SURVEY-003）
+保存先は既存の **OpsDO**（シングルトン `global`）の新しい表 `surveys`・`survey_answers`（`CREATE TABLE IF NOT EXISTS`、**wrangler の移行は無い**：新しい Durable Object を足さない）。
+- 状態：`draft`（作成・編集できる。`rev` が編集ごとに 1 増える）→ 公開（`publish { startAt, endAt }`：`startAt < endAt`、`endAt` は未来、長さ 90 日まで）で `scheduled`（`startAt` 前）／`live`（窓の中）／`ended`（`endAt` を過ぎた・`close` した）。公開後は定義を変えない（質問の意味が途中で変わると集計が壊れる）。`close` は早く閉じるだけ。
+- 同時に `live`（と `scheduled`）にできるのは `maxLive` 本（既定 5）まで。
+- プレイヤーの経路は `live` の定義を Worker ごとに 30 秒キャッシュして読む（§22 のリモート設定と同じ）。運営の書き込みがあった Worker はすぐに捨てる。
+
+### 69.3 設定 `progression.surveys`（起動時とリモート設定の各版で検査、REQ-SURVEY-004）
+`{ "enabled": true, "coolDownHours": 72, "maxShowsPerSurvey": 2, "maxLive": 5, "textMax": 200 }`。範囲：`coolDownHours` 0〜2160（アンケートとアンケートの間、答えた・スキップした時から）、`maxShowsPerSurvey` 1〜5（出したのに答えも スキップもしなかった回数の上限。超えたらもう出さない）、`maxLive` 1〜20、`textMax` 20〜200。知らないキー・報酬を思わせるキーは問題。`enabled: false` で全員に出さない（答えの受け付けも閉じる）。無ければこの既定値。
+
+### 69.4 出すかどうか（`GET /v1/surveys/current?placement=home|result`、REQ-SURVEY-005/006）
+`{ "survey": { "id", "rev", "title", "intro", "questions": [ … 要求の言語の文言だけ … ], "placement" } | null, "reason": null | "disabled" | "account_closing" | "ftue" | "cool_down" | "none" }`
+判断の順（最初に当たった理由）：`disabled`（設定）→ `account_closing`（削除の予約中）→ `ftue`（無料10連が未使用＝FTUE の途中、§59 と同じ）→ 続きの1本（出したが答えていない `current`）があれば、それが `live` で対象のままならそれを返す（間隔に関係なく、**同時に1本**）→ `cool_down`（最後に答えた・スキップした時から `coolDownHours`）→ `live` の定義を `endAt` の早い順・id 順に見て、答えた・スキップした・`placement` が合わない・`maxShowsPerSurvey` に達した・対象外のものを除いた最初の1本。無ければ `none`。読むだけ（状態を変えない）。
+**端末の決まり**：ホームのカードか結果の後のシートとしてだけ出す（レース中・ガチャの演出中・購入の途中には出さない）。端末も FTUE なら聞かない。§58.11 の門（`SessionPromptGate`／プロトタイプ `sessionPrompt`）を `Survey`（`survey`）で通り、**優先度は最も低い**（同意 → 通知 → レビュー → アンケート）。ホームのカードは門を取る（同じセッションでほかのシートを出さない）。
+
+### 69.5 出した・スキップ・答え（REQ-SURVEY-007〜011）
+- `POST /v1/surveys/:surveyId/shown { "placement" }`：出した回数を数え、`current` にする。KPI `survey_shown`。`live` でない → 409 `SURVEY_CLOSED`。
+- `POST /v1/surveys/:surveyId/skip { "placement" }`：**1タップ**。そのアンケートは二度と出さない（`done[id] = skipped`）、間隔が始まる。KPI `survey_skip`。何度送っても同じ。答えた後は 409 `CONFLICT`。
+- `POST /v1/surveys/:surveyId/answers`（**冪等キー必須**）：
+```json
+{ "placement": "home", "answers": { "feel": 4, "mode": "ranked", "wish": ["events", "stables"], "free": "ムチの音がもっと欲しい" } }
+```
+  - 検査は厳しく（400 `BAD_REQUEST`）：知らない問いの id、型の違い（`single` は選択肢 id の文字列、`multi` は重複なしの配列 1〜`maxChoices`、`scale` は 1〜5 の整数、`text` は文字列）、知らない選択肢、必須の問いが無い、`text` が `maxLength` を超える。空白だけの文は「答えなし」。
+  - 自由な文は**サーバーで**§60.3 のスクラブの規則（メール・トークン・URL・長い id・長い数字。§60 と同じ `SCRUB_RULES` のうち、日本語の文と引用符はそのまま残す）を通し、`maxLength` で切る。
+  - 定義が無い・`draft`・`scheduled` → 404 `NOT_FOUND`。`ended` → 409 `SURVEY_CLOSED`（「このアンケートは終了しました」だけ。端末は静かに閉じる）。設定の `enabled: false` も `SURVEY_CLOSED`。
+  - プレイヤー：削除済み（tombstone）→ 404、削除の予約中 → 409 `NOT_ELIGIBLE`、対象外（69.1 の `targeting`）→ 409 `NOT_ELIGIBLE`、もう答えた（違う冪等キー）→ 409 `CONFLICT`、スキップした → 409 `CONFLICT`。同じ冪等キーの再送は同じ応答。**1人1回**。
+  - 応答：`{ "surveyId", "outcome": "answered", "at" }`。KPI `survey_answer`。**ウォレット・アイテム・ミッション・称号・XP は何も変わらない**（テスト）。
+- 書く順：PlayerDO が先に記録（1人1回の判定と冪等はここ）→ OpsDO の `survey_answers` に `(surveyId, playerId)` の主キーで1回だけ（何度来ても同じ）→ PlayerDO に「送った」の印。OpsDO に届かなかった答えは、次の `GET /v1/surveys/current` の時に Worker がもう一度送る（削除の予約中・削除後は送らない）。
+
+### 69.6 プライバシー（REQ-SURVEY-012〜014）
+- 答えはサーバーに**プレイヤー id ごと**に持つ（重複を防ぐため）。運営の画面の自由な文の一覧には**プレイヤー id を出さない**（既定）。
+- **§58 の分析の選択がオフでも答えられる**（本人がはっきり選んで送るもの）。ただし**分析の区分（segment：プラットフォーム・クラス・ランク戦の数の帯・インストールからの日数の帯）を付けない**（`segment: null`）。オンの時だけ付く。KPI（`survey_*`）は optional なので、オフなら §58 の規則どおり書かれない。決めたこと：アンケートの答えは「プレイヤーが運営に直接送る意見」で、分析の計測ではない。区分は分析の目的の結び付けなので、分析の同意に従う。
+- 開示（§51）：状態のキー `surveys`（分類 `analytics`）。`analytics.surveys` に本人が答えた・スキップしたアンケート（id・題・時刻・答え（スクラブ後））。
+- アカウント削除：手順に `surveys` の段（`client_errors` の後、`data_export` の前）。OpsDO の答えの行は**匿名化**（プレイヤー id を消し `anon:<n>` に、区分を消し、**自由な文は消す**）。選択と 1〜5 の数は集計に残る（誰のものか分からない）。プレイヤーの状態は `wipe` で消える。
+
+### 69.7 運営の画面（ops console、`/v1/admin/surveys`、REQ-SURVEY-015〜018）
+| メソッド・パス | 役割 | 内容 |
+|---|---|---|
+| `GET /v1/admin/surveys` | viewer | 一覧（状態・窓・答えの数） |
+| `GET /v1/admin/surveys/:id` | viewer | 定義・状態・`rev` |
+| `POST /v1/admin/surveys/validate` | viewer | 定義の検査（問題の一覧）と日本語・英語のプレビュー（保存しない） |
+| `POST /v1/admin/surveys` | operator | 下書きを作る（同じ id があれば 409） |
+| `PUT /v1/admin/surveys/:id` | operator | 下書きを直す（`draft` の間だけ、`rev` を送り、違えば 409） |
+| `POST /v1/admin/surveys/:id/publish` | admin | `{ startAt, endAt }` で公開 |
+| `POST /v1/admin/surveys/:id/close` | admin | 早く閉じる |
+| `GET /v1/admin/surveys/:id/results` | viewer | 合計・区分のある答えの数・プラットフォーム別・問いごとの数と割合・1〜5 の平均・自由な文の一覧（`ref`・文・時刻・隠したか。**id なし**） |
+| `GET /v1/admin/surveys/:id/results.csv` | viewer | `{ filename, csv }`：1行1回答（id なし、隠した文は `(hidden)`、式の注入を防ぐ `'` 付け） |
+| `POST /v1/admin/surveys/:id/texts/:ref/hide` | operator | `{ hidden }`：自由な文を隠す・戻す（モデレーション） |
+すべて監査ログに残る。検査で問題があれば 400 `BAD_REQUEST`（`details.problems`）。
+
+### 69.8 KPI（REQ-SURVEY-019、`kpiConsent.ts` で **optional**）
+`survey_shown`（s1 = survey id、s2 = placement、n1 = 出した回数）・`survey_skip`（s1、s2）・`survey_answer`（s1、s2、n1 = 答えた問いの数）。答えの中身は KPI に入れない。
+
+### 69.9 メンテナンスの区分（§46.2、REQ-SURVEY-020）
+`/v1/surveys*` は `core`（`all` の窓で止まる）。管理API `/v1/admin/surveys*` は止まらない。
+
+### 69.10 クライアント（REQ-SURVEY-021/022）
+- `Muchi.Client`：`SurveyView`・`SurveyQuestion`・`SurveyOffer`・`SurveyAnswerBuilder`（種類ごとの検査をサーバーと同じ規則で、送る前に）・`SurveyRules`（`MaxTextLength`・FTUE）・`ApiClient.GetSurveyAsync`／`SurveyShownAsync`／`SkipSurveyAsync`／`AnswerSurveyAsync`（冪等キーは答えの組ごとに1回作り再送でも同じ）。
+- `Muchi.Game`：`SurveyModel`（ホームのカード・結果の後のシート・問いごとの画面・ありがとう、スキップ1タップ、`SessionPromptGate` の `Survey`（最も低い優先度）、FTUE・オフラインでは出さない、`SURVEY_CLOSED` は静かに閉じる）。描画は docs/handoff-codex-round22-surveys.md。
+- プロトタイプ：ホームのカード・アンケートのシート（4 種類）・ありがとう（ムチ一閃の見た目、日本語・英語、文字の大きさ §41）。運営の画面に一覧・作成・プレビュー・公開・結果・CSV。
+
+### 69.11 ヘルプ（REQ-SURVEY-023）・法務（REQ-SURVEY-024）
+- ヘルプセンター（§48）に記事 `surveys`「アンケートについて」：任意であること、答えても何も配られないこと、スキップしたら二度と聞かないこと、自由な文に個人情報を書かないこと、分析の選択との関係、開示と削除。
+- 景表法：答えに景品・抽選を付けない（コード上の経路が無い。定義に報酬のキーは書けない）。将来「抽選でプレゼント」をするなら一般懸賞の上限と告知が要るので、別の機能として法務のレビューを通す。

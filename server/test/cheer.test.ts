@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { m, makeConfig } from './helpers.js';
 import {
   blockHidden, cheerAdmit, cheerAdvert, cheerFanout, cheerMoments, cheerSummary, cheerSummaryKey, cheerTextProblems, cheerableMode, emptyTally,
-  parseCheerSummary, tallyAdd, withCheerAdvert, CHEER_BUCKET_TICKS, CHEER_KINDS, CHEER_MIN_INTERVAL_MS, CHEER_TEXT, CHEER_WINDOW_MS, type PendingCheer,
+  parseCheerSummary, tallyAdd, withCheerAdvert, blockListStale, CHEER_BLOCK_REFRESH_MS, CHEER_BUCKET_TICKS, CHEER_KINDS, CHEER_MIN_INTERVAL_MS, CHEER_TEXT, CHEER_WINDOW_MS, type PendingCheer,
 } from '../src/domain/cheer.js';
 import { clientMessageSchema, type RaceStartConfig } from '../src/domain/schemas.js';
 import { RaceRoomCore } from '../src/domain/raceRoom.js';
@@ -144,6 +144,18 @@ describe('REQ-CHEER-005/007/008 window fan-out with the single block list', () =
     expect(JSON.parse(out.get('s')!).n).toEqual([[0, 'go', 1]]);
     // a window whose only cheers are hidden sends nothing
     expect(cheerFanout([C('ghost', 0, 'go')], [{ key: 'a', playerId: 'a' }], blockHidden(l)).get('a')).toBeNull();
+  });
+
+  it('R19 integration: a block made mid-race (block screen, a report\'s also-block, the rival block) reaches the room — the room re-reads a list older than CHEER_BLOCK_REFRESH_MS', () => {
+    expect(CHEER_BLOCK_REFRESH_MS).toBeGreaterThan(0);
+    expect(CHEER_BLOCK_REFRESH_MS).toBeLessThanOrEqual(15_000);
+    expect(blockListStale(undefined, 0)).toBe(true); // never read
+    expect(blockListStale(1000, 1000 + CHEER_BLOCK_REFRESH_MS - 1)).toBe(false);
+    expect(blockListStale(1000, 1000 + CHEER_BLOCK_REFRESH_MS)).toBe(true);
+    // the room reads the one list (§47.1) — the same PlayerDO list the block screen, reports and the rival block write
+    const room = readFileSync(join(__dirname, '../src/do/raceRoom.ts'), 'utf8');
+    expect(room).toMatch(/invoke\('feedMutes'/);
+    expect(room).toMatch(/blockListStale\(/);
   });
 
   it('bandwidth is bounded: 200 spectators cheering at the cap still make one small message per socket per window', () => {

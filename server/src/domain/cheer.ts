@@ -32,6 +32,13 @@ export const CHEER_BUCKET_TICKS = 40;
 export const CHEER_MOMENT_MIN = 3;
 /** REQ-CHEER-011: at most this many moments per race. */
 export const CHEER_MOMENTS_MAX = 3;
+/**
+ * R19 integration (REQ-CHEER-008 × §47.1): the room keeps each player's copy of the one block list and re-reads a copy older
+ * than this, so a block made mid-race (the block screen, a report's "also block", the rival block — all write the same
+ * PlayerDO list) hides cheers within seconds, not only from the next room.
+ */
+export const CHEER_BLOCK_REFRESH_MS = 10_000;
+export const blockListStale = (loadedAt: number | undefined, now: number) => loadedAt === undefined || now - loadedAt >= CHEER_BLOCK_REFRESH_MS;
 
 export const isCheerKind = (k: unknown): k is CheerKind => typeof k === 'string' && (CHEER_KINDS as readonly string[]).includes(k);
 

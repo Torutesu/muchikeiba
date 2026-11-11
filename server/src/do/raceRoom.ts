@@ -10,7 +10,7 @@ import type { Rating } from '../domain/rating.js';
 import { verifyTicket } from '../http/ticket.js';
 import { admitSpectator } from '../domain/spectate.js';
 import {
-  blockHidden, cheerAdmit, cheerableMode, cheerFanout, cheerSummary, cheerSummaryKey, emptyTally, tallyAdd, withCheerAdvert,
+  blockHidden, blockListStale, cheerAdmit, cheerableMode, cheerFanout, cheerSummary, cheerSummaryKey, emptyTally, tallyAdd, withCheerAdvert,
   CHEER_WINDOW_MS, type CheerRecipient, type CheerTally, type PendingCheer,
 } from '../domain/cheer.js';
 import { driveSettlement, newSettleMeta, upgradeSettleMeta, type SettleMeta } from '../race/settlement.js';
@@ -50,6 +50,8 @@ export class RaceRoomDO extends DurableObject<Env> {
   private cheerWindowAt: number | null = null;
   /** Block lists of the room's players and spectators (§47 single list), loaded on hello; absent = not known (fail closed). */
   private cheerLists = new Map<string, ReadonlySet<string>>();
+  /** When each copy above was read (R19 integration: re-read after CHEER_BLOCK_REFRESH_MS). */
+  private cheerListAt = new Map<string, number>();
   /** REQ-CHEER-004: last accepted cheer per player as well (a reconnect gets a fresh attachment; this keeps the pace). */
   private cheerLast = new Map<string, number>();
   /** REQ-CHEER-011: the race's aggregate (storage key `cheer`, written to R2 once at the end). */
@@ -82,15 +84,16 @@ export class RaceRoomDO extends DurableObject<Env> {
   }
 
   /** REQ-CHEER-008: one player's block list (the §47 single list), once per room. False = could not be read. */
-  private async loadBlocks(pid: string): Promise<boolean> {
-    if (this.cheerLists.has(pid)) return true;
+  private async loadBlocks(pid: string, refresh = false): Promise<boolean> {
+    if (this.cheerLists.has(pid) && !refresh) return true;
     try {
       const stub = this.env.PLAYER.get(this.env.PLAYER.idFromName(pid)) as unknown as { invoke(m: string, a: unknown[]): Promise<Envelope<unknown>> };
       const r = unwrap(await stub.invoke('feedMutes', [pid])) as { muted: string[] };
       this.cheerLists.set(pid, new Set(r.muted));
+      this.cheerListAt.set(pid, Date.now());
       return true;
     } catch {
-      return false;
+      return this.cheerLists.has(pid); // a failed re-read keeps the copy it had
     }
   }
 
@@ -304,7 +307,9 @@ export class RaceRoomDO extends DurableObject<Env> {
       if (a?.spec) { if (a.spec.fin || a.spec.sent < 0) continue; pid = a.spec.playerId ?? null; }
       else if (a && a.slot !== null && a.slot !== undefined) { if (core.phase !== 'running') continue; pid = core.config.entrants[a.slot]?.playerId ?? null; }
       else continue;
-      if (pid && !this.cheerLists.has(pid)) void this.loadBlocks(pid); // evicted memory: fetch again, show from the next window
+      // evicted memory: fetch again, show from the next window. R19 integration: a copy older than CHEER_BLOCK_REFRESH_MS is
+      // re-read in the background (a block made mid-race), the old copy serving until the new one arrives
+      if (pid && (!this.cheerLists.has(pid) || blockListStale(this.cheerListAt.get(pid), now))) void this.loadBlocks(pid, this.cheerLists.has(pid));
       recipients.push({ key: ws, playerId: pid });
     }
     for (const [ws, data] of cheerFanout(cheers, recipients, blockHidden(this.cheerLists))) {

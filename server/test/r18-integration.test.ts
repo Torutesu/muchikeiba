@@ -17,6 +17,7 @@ import { sha256Hex } from '../src/ops/hash.js';
 import { memoryOps } from '../src/ops/memoryOps.js';
 import { ACTIVITY_KINDS, ACTIVITY_META, ACTIVITY_SCREENS } from '../src/domain/activity.js';
 import { ACTIVITY_KIND_NAMES, ACTIVITY_SCREEN_NAMES } from '../src/domain/kpi.js';
+import { DELETION_STEPS, runAccountDeletion, type DeletionPorts } from '../src/domain/accountDeletion.js';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildExportDocument, classifyKey, DEX_EXTENSION_KEYS } from '../src/domain/dataExport.js';
@@ -167,7 +168,7 @@ async function branchWorld() {
     return v.teamId;
   };
   const qitems = async (u: string) => (await ts.feed(u, null, null, 'ja')).items.filter((x) => x.kind === 'qchat');
-  return { svc, repo, ts, teamsMem, ops, http, admin, team, qitems, advance: (ms: number) => { t += ms; } };
+  return { svc, repo, ts, teamsMem, ops, http, admin, team, qitems, now: clock, advance: (ms: number) => { t += ms; } };
 }
 
 describe('§47 one block list × §52 quick chat (Round 18 integration)', () => {
@@ -238,5 +239,52 @@ describe('§40 activity × Round 18 kinds (qchat_mention, data_export_ready)', (
     const unity = readFileSync(join(ROOT, 'unity/Assets/Muchi/Game/ActivityModel.cs'), 'utf8');
     const pascal = (k: string) => k.split('_').map((p) => p[0]!.toUpperCase() + p.slice(1)).join('');
     for (const k of ACTIVITY_KINDS) expect(unity.match(new RegExp(`ActivityKinds\\.${pascal(k)}\\]`, 'g'))?.length, k).toBe(2);
+  });
+});
+
+describe('account deletion clears Round 18 state (REQ-DEX-013, REQ-QCHAT-010, REQ-HGOAL-*; §50 keeps nothing)', () => {
+  it('the export files are deleted, the phrases leave the branch (and the name in others\' phrases), the goals and the pin go with the state', async () => {
+    const w = await branchWorld();
+    const teamId = await w.team('gone', 'stay');
+    await w.svc.grantPartner('gone', 'キエルウマ', 'c:p');
+    const horse = (await w.svc.state('gone')).horses[0]!;
+    await w.svc.pinHorseGoal('gone', horse.id);
+    await w.ts.postQuickChat('gone', 'my_horse', { horse: horse.id });
+    // a ready data export (two files in the private store)
+    const store = new MemoryExportStore();
+    await w.svc.dataExportRequest('gone', 'ja', 'c:dex');
+    expect((await runDataExportJob({
+      master: () => m, take: (u) => w.svc.dataExportTake(u), collect: (u) => w.svc.dataExportCollect(u), store,
+      ready: (u, r, i) => w.svc.dataExportReady(u, r, i), failed: (u, r, why) => w.svc.dataExportFailed(u, r, why),
+    }, 'gone')).status).toBe('ready');
+    expect(store.files.size).toBe(2);
+    expect((await w.qitems('stay')).map((x) => x.qchat!.phraseId)).toEqual(['my_horse']);
+    const tok = (await w.svc.requestDeletion('gone', null)) as { confirmToken: string };
+    await w.svc.requestDeletion('gone', tok.confirmToken);
+    w.advance(15 * 86_400_000);
+    // (phrases are kept retainDays; a teammate names the member on the day the deletion runs)
+    await w.ts.postQuickChat('stay', 'thanks_player', { player: 'gone' });
+    const ports = {
+      start: async (u: string) => { await w.svc.deletionStart(u); }, snapshot: (u: string) => w.svc.deletionSnapshot(u),
+      markStep: async (u: string, st: never) => { await w.svc.deletionMarkStep(u, st); },
+      friends: { removeFriend: async () => undefined, dropOutgoing: async () => undefined, dropIncoming: async () => undefined },
+      directory: { forget: async () => undefined }, leaderboards: { forget: async () => undefined, deleteGhosts: async () => undefined },
+      team: {
+        members: async (tid: string, u: string) => ((await w.ts.view(u, tid)) as { members: { playerId: string; role: string; joinedAt: number }[] }).members,
+        leave: (tid: string, u: string) => w.teamsMem.leave(tid, u), transfer: (tid: string, u: string, to: string) => w.teamsMem.transfer(tid, u, to),
+        dropRequest: (tid: string, u: string) => w.teamsMem.dropRequest(tid, u), forgetFeed: (tid: string, u: string) => w.teamsMem.feedForget(tid, u),
+      },
+      dataExports: { deleteAll: (keys: string[]) => store.delete(keys) },
+      finalize: (u: string) => w.svc.deletionFinalize(u), retain: async () => undefined, wipe: (u: string) => w.svc.wipe(u),
+    } as unknown as DeletionPorts;
+    const r = await runAccountDeletion(ports, 'gone', w.now());
+    expect(r.done).toEqual(expect.arrayContaining(['team', 'data_export', 'wipe']));
+    expect(DELETION_STEPS.indexOf('data_export')).toBeGreaterThan(DELETION_STEPS.indexOf('inquiries'));
+    expect(store.files.size).toBe(0);
+    expect(w.repo.get('gone')).toBeNull(); // horse goals, the pin and the export record went with the state
+    const items = await w.qitems('stay');
+    expect(items.map((x) => x.qchat!.phraseId)).toEqual(['thanks_player']);
+    expect(items[0]!.qchat!.slots[0]).toMatchObject({ name: 'player', ref: '', qchatValue: '元メンバー' });
+    expect(JSON.stringify(w.teamsMem.cores.get(teamId)!.feed)).not.toContain('"gone"');
   });
 });

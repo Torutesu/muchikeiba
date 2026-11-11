@@ -2817,7 +2817,7 @@ Apple／Google の連携（REQ-API-005）に加えて、日本のゲームでお
 - 同じコードを2台で同時に入れても、消費できるのは PlayerDO の直列化で1回だけ。
 
 ### 54.5 保存
-- **プレイヤーの状態** `transfer`（新しいトップレベルのキー）：`{ code: { id, mode, issuedAt, expiresAt } | null, issues: { day, count }, cutoffAt: number | null, lastRedeemedAt: number | null, history: [{ at, event: "issued" | "revoked" | "redeemed" | "ops_revoked", mode? }]（新しい20件） }`。パスワードもハッシュも持たない。
+- **プレイヤーの状態** `transfer`（新しいトップレベルのキー）：`{ code: { id, mode, issuedAt, expiresAt } | null, issues: { day, count }, cutoffAt: number | null, lastRedeemedAt: number | null, history: [{ at, event: "issued" | "revoked" | "redeemed" | "ops_revoked", mode? }]（新しい20件）, redeemedAs?: { key, playerId, displayName, at } }`（`redeemedAs` は**入力した側**＝新しい端末のアカウントにだけ、再送のための記録、1時間）。パスワードもハッシュもトークンも持たない。
 - **ディレクトリ**（`DirectoryDO` のシャード、ID の1文字目＝プレイヤーのシャード。wrangler の移行は不要：既存の SQLite に表を足すだけ）：
   - `transfer_codes`：`code_id`・`player_id`・`salt`・`hash`・`kdf`（`pbkdf2-sha256`）・`iterations`・`issued_at`・`expires_at`・`attempts`・`locked_until`。消費・取り消しで行を消す。期限切れから7日で消す。
   - `transfer_limits`：`key`（`ip:<hash>`／`dev:<hash>`、ハッシュの先頭でシャード）・`window_start`・`failures`・`locked_until`。
@@ -2829,10 +2829,10 @@ Apple／Google の連携（REQ-API-005）に加えて、日本のゲームでお
 - `cutoffAt` は PlayerDO から読み、Worker の isolate ごとに30秒持つ（引き継いだ isolate はすぐ覚える）。引き継ぎの無いアカウントは `null` を持つ。
 - クライアントは `SESSION_REPLACED` を再試行しない（トークンを取り直しても同じ）。Firebase からサインアウトして「別の端末に引き継がれました」の画面を出す。そこから新しく始めるか、引き継ぎコードを入れる。
 
-### 54.7 カスタムトークンの鍵（REQ-TRF-011、docs/ops/deploy.md §8）
+### 54.7 カスタムトークンの鍵（REQ-TRF-011、docs/ops/deploy.md §9.6）
 - Worker のシークレット **`FIREBASE_AUTH_SERVICE_ACCOUNT_JSON`**（Firebase プロジェクトのサービスアカウントの JSON 鍵）。リポジトリに鍵を置かない。無ければ引き継ぎコードは `enabled: false`（Apple／Google の連携だけ）。
 - JWT：RS256、`iss` = `sub` = サービスアカウントのメール、`aud` = `https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit`、`iat`、`exp` = `iat` + 3600、`uid` = 元のアカウント。追加のクレームは入れない。
-- 鍵の入れ替え：新しい鍵を作る → `wrangler secret put` → デプロイ → 古い鍵を Google Cloud で無効にする（手順は deploy.md）。
+- 鍵の入れ替え：新しい鍵を作る → `wrangler secret put` → 確認 → 古い鍵を Google Cloud で削除する（手順は docs/ops/deploy.md §9.6。90日ごと・漏れた疑いがあればすぐ）。
 
 ### 54.8 運用（REQ-TRF-013、`/v1/admin/players/:playerId/transfer*`）
 | メソッド・パス | 役割 | 内容 |

@@ -1172,3 +1172,19 @@ GROUP BY event, reason ORDER BY event, n DESC
 ```
 
 - **フレンドができたか**：相手の id を入れていないので、申請と承認を人単位では結ばない。日ごとの `friend_accept`（承認した側のサーバーイベント）の数が、おすすめを出してから増えたかで見る。
+
+## 引き継ぎコード：発行・成功・失敗の分類（REQ-TRF-014、contracts/protocol.md §54.9、Round 19）
+
+**IDとパスワードで機種変更できているか、失敗は何が多いか**。どちらもサーバーのイベント。`transfer_issue`（発行した人、`blob8` = `custom` / `generated`）、`transfer_redeem`（成功は移ったアカウント、失敗は入力した新しい端末のアカウント。`blob8` = `ok` / `fail`、`blob9` = 失敗の分類 `invalid`・`expired`・`locked`・`refused_banned`・`refused_deletion`・`same_account`）。**ID・パスワード・IP は入れていない**（分類だけ）。
+
+```sql
+-- 日ごとの発行・成功・失敗（失敗の分類つき）
+SELECT blob6 AS day, blob1 AS event, blob8 AS kind, blob9 AS reason, sum(_sample_interval) AS n
+FROM muchi_kpi
+WHERE blob1 IN ('transfer_issue', 'transfer_redeem') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY day, event, kind, reason ORDER BY day DESC, event, n DESC
+```
+
+- **`invalid` が急に増えた**：総当たりの疑い。IP・端末のロック（`TRANSFER_LOCKED` = `locked`）が一緒に増えていれば制限が効いている。運用コンソールの監査（`GET /v1/admin/players/:id/transfer`）で特定のアカウントに `failed`・`locked` が集中していないか見る。上限は `progression.transfer`（リモート設定）。
+- **`expired` が多い**：発行から入力までが長い。`expiryDays` を延ばすか、発行の画面の期限の表示を目立たせる。
+- **発行に対する成功の割合**：発行しても使わない人（機種変更の準備だけ）がいるので低くてよい。`custom` と `generated` の差が大きいなら、作ったパスワードのメモの案内を見直す。

@@ -464,6 +464,8 @@ function Title() {
   Cta('同意してはじめる', 78, 690, 404, Consent, undefined, 'hero');
   Caption('タップして騎乗', 87, 790, undefined, 14, WHITE).style.letterSpacing = '.3em';
   Caption('シーズン 01　/　芝シリーズ', 1139, 836, undefined, 14, WHITE).style.letterSpacing = '.22em';
+  // round 19 (REQ-TRF-009): a new phone enters the transfer code before starting
+  TextLink('データ引き継ぎ', 1139, 772, 300, () => TransferRedeem({ back: 'title' })).classList.add('trf-title-link');
   EnToggle();
 }
 async function Consent() {
@@ -2266,7 +2268,9 @@ async function Settings() {
   Txt('引き継ぎ（Apple・Google）', 36, 186, 428, 21, WHITE, a, { weight: 500 });
   const lp = linkedProvider();
   Txt(lp ? `${lp === 'apple' ? 'Apple' : 'Google'}で登録済み` : '未登録（機種変更の前に登録してください）', 36, 222, 428, 15, lp ? OK : MUTED, a, { weight: 500 }).dataset.name = 'Link';
-  if (!lp) { Ghost('Apple', 36, 258, 160, 52, () => Link('apple', Settings), a); Ghost('Google', 212, 258, 160, 52, () => Link('google', Settings), a); }
+  if (!lp) { Ghost('Apple', 36, 258, 120, 52, () => Link('apple', Settings), a); Ghost('Google', 166, 258, 120, 52, () => Link('google', Settings), a); }
+  // round 19 (REQ-TRF-001): 引き継ぎコード — ID and password, with or without Apple / Google
+  Ghost('IDとパスワード', lp ? 36 : 296, 258, lp ? 220 : 168, 52, () => TransferIssue(), a, 'small').dataset.action = 'transfer-code';
   Hair(36, 336, 428, a);
   // REQ-UXS-040 (UXP-007 preview): two-step deletion with a 14-day cancel window; purchases are blocked meanwhile
   Txt('アカウント削除', 36, 360, 428, 21, WHITE, a, { weight: 500 }).dataset.name = 'Delete';
@@ -5529,6 +5533,185 @@ function UnblockConfirm(b) {
   Ghost('やめる', 456, 306, 200, 50, () => BlockList(), box, 'quiet').classList.add('bl-no');
 }
 
+// ================================================================= round 19: 引き継ぎコード (REQ-TRF-*, contracts/protocol.md §54)
+// The same screens as the Unity TransferCodeModel on the real TransferService (L.transfer): the issue screen (settings →
+// 引き継ぎ → IDとパスワード: the ID, the expiry, the rule checklist, copy, a generated password shown once), the redeem screen
+// (title → データ引き継ぎ: ID + password, the confirm sheet when this device has its own progress, one idempotency key per
+// attempt) and the notice the old device sees after the move. Never says whether an ID exists. ムチ一閃 tone.
+const TRF_RULE_TEXT = { length: '8〜32文字', charset: '半角の英数字と記号', mix: '英字と数字を両方使う', common: 'よく使われるパスワードは使えません' };
+let trfDraft = { pw: '', again: '' }, trfShown = null, trfRedeem = { id: '', pw: '', key: null, keyFor: null };
+const trfErr = (r) => ({
+  TRANSFER_INVALID: 'IDまたはパスワードが違います', TRANSFER_EXPIRED: 'このコードは有効期限が切れています。前の端末で発行し直してください',
+  TRANSFER_LOCKED: r.details?.retryAfterSec ? `入力の回数が多すぎます。${Math.ceil(r.details.retryAfterSec / 60)}分ほど待ってからお試しください` : '入力の回数が多すぎます。しばらく待ってからお試しください',
+  TRANSFER_SAME_ACCOUNT: 'この端末で使っているアカウントのコードです',
+  TRANSFER_REFUSED: r.details?.reason === 'deletion_pending' ? 'このアカウントは削除の手続き中のため引き継げません。前の端末で削除を取り消すか、お問い合わせください' : 'このアカウントは引き継げません。お問い合わせください',
+  TRANSFER_ISSUE_LIMIT: '今日はこれ以上発行できません。明日もう一度お試しください', TRANSFER_PASSWORD_WEAK: 'パスワードの決まりを満たしていません',
+  NOT_FOUND: '引き継ぎコードはいま使えません。Apple・Googleで引き継いでください',
+  DELETION_PENDING: 'アカウント削除の手続き中は発行できません', BANNED: 'このアカウントは引き継げません。お問い合わせください',
+})[r.code] ?? '引き継げませんでした。時間をおいてお試しください';
+function trfField(parent, x, y, w, value, label, cls, onInput, o = {}) {
+  const box = el('fieldbox', x, y, w, o.h ?? 64, parent);
+  const input = document.createElement('input');
+  input.className = 'field keep-ja ' + cls; input.value = value; input.setAttribute('aria-label', label); input.autocomplete = 'off'; input.spellcheck = false;
+  if (o.password) input.type = 'password';
+  if (o.placeholder) input.placeholder = o.placeholder;
+  input.maxLength = o.max ?? 64;
+  Object.assign(input.style, { left: '20px', top: '9px', width: (w - 40) + 'px', height: ((o.h ?? 64) - 18) + 'px', fontSize: (o.size ?? 22) + 'px', letterSpacing: o.ls ?? '.04em' });
+  input.addEventListener('input', () => onInput(input.value));
+  box.appendChild(input);
+  return input;
+}
+/** 発行の画面 (settings → 引き継ぎ → IDとパスワード). */
+async function TransferIssue(state = {}) {
+  currentScreen = () => TransferIssue(state);
+  const r = await L.transfer.status();
+  if (!r.ok) { toast(trfErr(r)); return Settings(); }
+  const v = r.value;
+  Clear('transfer-issue'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('引き継ぎコード', 'IDとパスワードで機種変更できます（Apple・Googleがなくても引き継げます）');
+  if (!v.enabled) { Txt('引き継ぎコードはいま使えません。Apple・Googleで引き継いでください', 82, 200, 900, 22, WHITE); Back(() => { trfShown = null; Settings(); }, 'BACK', 40, 834); return; }
+  // ① the code: the ID (not a secret on its own), the expiry, copy; a generated password while it is shown
+  const lp = Glass('Transfer code', 36, 134, 760, 676, undefined, .9);
+  lp.classList.add('trf-code');
+  Kicker('あなたのID', 36, 30, lp);
+  const c = v.code;
+  Txt(c ? c.codeId : 'まだ発行していません', 36, 100, 688, c ? 48 : 22, c ? WHITE : MUTED, lp, { weight: 700, cls: c ? 'num keep-ja trf-id' : 'trf-id', ls: c ? '.12em' : undefined, nowrap: true }).dataset.code = c?.codeId ?? '';
+  if (c) Txt(c.expired ? '有効期限が切れています' : `有効期限：${jstDate(c.expiresAt - 60_000)}まで`, 36, 168, 688, 16, c.expired ? WARN : GOLD, lp, { weight: 500, cls: 'trf-expiry' });
+  if (trfShown && c && trfShown.codeId === c.codeId) {
+    const g = el('trf-generated', 36, 214, 688, 168, lp);
+    Txt('パスワード', 24, 18, 300, 14, CYAN, g, { weight: 700, ls: '.18em', nowrap: true });
+    Txt(trfShown.password, 24, 46, 640, 40, WHITE, g, { weight: 700, cls: 'num keep-ja trf-password', ls: '.1em', nowrap: true });
+    Txt('このパスワードはこの画面でしか表示されません。メモしてから閉じてください', 24, 112, 640, 14, GOLD, g, { weight: 500, lh: 1.5 });
+  }
+  const cy = trfShown && c ? 406 : 214;
+  if (c) {
+    Ghost('コピー', 36, cy, 200, 54, () => {
+      const text = trfShown ? `ID：${c.codeId}\nパスワード：${trfShown.password}` : c.codeId;
+      try { navigator.clipboard?.writeText(text).catch(() => undefined); } catch { /* no clipboard in the preview */ }
+      toast('コピーしました');
+    }, lp, 'small').classList.add('trf-copy');
+    TextLink('このコードを取り消す', 256, cy + 9, 300, async () => { const x = await L.transfer.revoke(); trfShown = null; toast(x.ok ? 'コードを取り消しました' : trfErr(x)); TransferIssue(); }, lp).classList.add('trf-revoke');
+  }
+  Hair(36, 500, 688, lp);
+  Txt('コードは1回だけ使えます。使った後は新しく発行してください', 36, 520, 688, 14, MUTED, lp, { lh: 1.55 });
+  Txt('IDとパスワードは人に教えないでください。運営からたずねることはありません', 36, 556, 688, 14, MUTED, lp, { lh: 1.55 });
+  Txt(`新しい端末のタイトル画面で「データ引き継ぎ」を開き、IDとパスワードを入れてください。有償コインと購入の記録もそのまま引き継がれます。`, 36, 600, 688, 13, SOFT, lp, { lh: 1.55 });
+  // ② the password: two fields, the checklist ticking as the player types, issue / create one for me
+  const rp = Glass('Password', 820, 134, 744, 676, undefined, .86);
+  rp.classList.add('trf-form');
+  Kicker(c ? '新しく発行する（前のコードは使えなくなります）' : 'パスワードを決める', 36, 30, rp, { w: 672 });
+  const rules = el('trf-rules', 36, 250, 672, 150, rp);
+  const err = Txt(state.error ?? '', 36, 404, 672, 15, WARN, rp, { weight: 500, cls: 'trf-error' });
+  const drawRules = () => {
+    rules.textContent = '';
+    const broken = L.transfer.problems(trfDraft.pw);
+    (v.rules?.length ? v.rules : Object.entries(TRF_RULE_TEXT).map(([id, text]) => ({ id, text }))).forEach((x, i) => {
+      const ok = trfDraft.pw !== '' && !broken.includes(x.id);
+      const row = Txt(`${ok ? '✓' : '・'}　${x.text}`, 0, i * 34, 672, 16, ok ? CYAN : SOFT, rules, { weight: ok ? 700 : 400, nowrap: true });
+      row.dataset.rule = x.id; row.dataset.ok = ok ? '1' : '0'; row.classList.add('trf-rule');
+    });
+  };
+  trfField(rp, 36, 96, 672, trfDraft.pw, 'パスワード', 'trf-pw', (s) => { trfDraft.pw = s; drawRules(); err.textContent = ''; }, { password: true, placeholder: 'パスワード' });
+  trfField(rp, 36, 172, 672, trfDraft.again, 'パスワード（確認）', 'trf-pw2', (s) => { trfDraft.again = s; err.textContent = ''; }, { password: true, placeholder: 'パスワード（確認）' });
+  drawRules();
+  Cta('発行する', 36, 448, 420, async () => {
+    if (L.transfer.problems(trfDraft.pw).length) return TransferIssue({ error: 'パスワードの決まりを満たしていません' });
+    if (trfDraft.pw !== trfDraft.again) return TransferIssue({ error: 'パスワードが一致しません' });
+    const x = await L.transfer.issue(trfDraft.pw);
+    if (!x.ok) return TransferIssue({ error: trfErr(x) });
+    trfDraft = { pw: '', again: '' }; trfShown = null; toast('引き継ぎコードを発行しました'); TransferIssue();
+  }, rp).classList.add('trf-issue');
+  Ghost('自動で作る', 480, 455, 228, 60, async () => {
+    const x = await L.transfer.issue(null);
+    if (!x.ok) return TransferIssue({ error: trfErr(x) });
+    trfDraft = { pw: '', again: '' }; trfShown = { codeId: x.value.codeId, password: x.value.password }; TransferIssue();
+  }, rp, 'small').classList.add('trf-generate');
+  Txt(`発行は1日${v.issuesPerDay}回まで（今日 ${v.issuesToday}回）。有効期限は発行から${v.expiryDays}日です。何度も間違えると、しばらく入力できなくなります。`, 36, 560, 672, 13, SOFT, rp, { lh: 1.55 });
+  Back(() => { trfShown = null; trfDraft = { pw: '', again: '' }; Settings(); }, 'BACK', 40, 834); // leaving forgets the generated password
+}
+/** 入力の画面 (title → データ引き継ぎ). `back`: where BACK leads (the title before the FTUE, the settings after). */
+function TransferRedeem(state = {}) {
+  const back = state.back ?? (player?.flags?.partnerHorseId ? 'settings' : 'title');
+  currentScreen = () => TransferRedeem(state);
+  Clear('transfer-redeem'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('データ引き継ぎ', '前の端末で発行したIDとパスワードを入力してください', { wallet: false });
+  const lp = Glass('Redeem', 36, 134, 760, 676, undefined, .9);
+  lp.classList.add('trf-redeem');
+  Kicker('ID　/　XXX-XXX-XXX', 36, 30, lp);
+  trfField(lp, 36, 96, 688, trfRedeem.id, 'ID', 'trf-id-input', (s) => { trfRedeem.id = s; }, { placeholder: 'K7M-Q3X-PHR', size: 30, ls: '.16em', h: 76, max: 20 });
+  Kicker('パスワード', 36, 200, lp);
+  trfField(lp, 36, 266, 688, trfRedeem.pw, 'パスワード', 'trf-pw-input', (s) => { trfRedeem.pw = s; }, { password: true, placeholder: 'パスワード' });
+  Txt(state.error ?? '', 36, 344, 688, 15, WARN, lp, { weight: 500, cls: 'trf-redeem-error' });
+  Cta('引き継ぐ', 36, 392, 420, () => trfSend(false, state), lp).classList.add('trf-redeem-go');
+  Txt('大文字・小文字・ハイフン・全角はどちらでもかまいません。何度も間違えると、しばらく入力できなくなります', 36, 494, 688, 13, SOFT, lp, { lh: 1.55 });
+  const rp = Glass('About', 820, 134, 744, 676, undefined, .86);
+  Kicker('引き継ぐとどうなる？', 36, 30, rp);
+  ['前の端末のアカウント（馬・有償コイン・購入の記録）で、この端末から遊べます', 'この端末にあったデータは、引き継ぎの後に使えなくなります（先に確認します）', '前の端末では、そのアカウントで遊べなくなります', 'コードは1回だけ使えます'].forEach((t, i) => Txt('・' + t, 36, 104 + i * 58, 672, 16, WHITE, rp, { weight: 500, lh: 1.5 }));
+  // demo (review): another account's code, as if issued on the previous phone
+  Hair(36, 456, 672, rp);
+  Kicker('デモ（レビュー用）', 36, 474, rp, { rule: false, size: 15, color: SOFT });
+  Ghost('前の端末のコードを入れる', 36, 520, 360, 56, async () => {
+    const d = await L.transfer.demoOld();
+    if (!d.ok) { toast(trfErr(d)); return; }
+    trfRedeem.id = d.value.codeId; trfRedeem.pw = d.value.password; TransferRedeem(state);
+  }, rp, 'quiet small').classList.add('trf-demo');
+  Txt('前の端末（ハヤテ）で発行したコードを入力欄に入れます', 36, 590, 672, 13, SOFT, rp, { lh: 1.5 });
+  Back(() => (back === 'title' ? Title() : Settings()), 'BACK', 40, 834);
+}
+function trfKey() {
+  const at = (L.transfer.validId(trfRedeem.id) ? trfRedeem.id.toUpperCase().replace(/[\s-]/g, '') : trfRedeem.id) + '\n' + trfRedeem.pw;
+  if (!trfRedeem.key || trfRedeem.keyFor !== at) { trfRedeem.key = `c:/v1/transfer/redeem:proto-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; trfRedeem.keyFor = at; }
+  return trfRedeem.key;
+}
+async function trfSend(confirm, state) {
+  if (!L.transfer.validId(trfRedeem.id)) return TransferRedeem({ ...state, error: 'IDは9文字です（例：K7M-Q3X-PHR）' });
+  const r = await L.transfer.redeem(trfRedeem.id, trfRedeem.pw, confirm, trfKey());
+  if (!r.ok && r.code === 'TRANSFER_CONFIRM_REQUIRED') return TransferConfirm(r.details, state);
+  if (!r.ok) { trfRedeem.key = null; return TransferRedeem({ ...state, error: trfErr(r) }); }
+  trfRedeem = { id: '', pw: '', key: null, keyFor: null };
+  TransferDone(r.value);
+}
+/** The confirm sheet: this device's own progress, paid coins first (資金決済法: say what is left behind). */
+function TransferConfirm(d, state) {
+  Shade('dim heavy');
+  const box = Dialog('Transfer confirm', 920, 470);
+  box.classList.add('trf-confirm');
+  Kicker('確認', 52, 44, box);
+  Txt('この端末のデータは使えなくなります', 52, 108, 816, 28, WHITE, box, { weight: 700 });
+  const parts = [];
+  if (d?.paidCoins) parts.push(`有償コイン${d.paidCoins}枚`);
+  if (d?.freeCoins) parts.push(`無償コイン${d.freeCoins}枚`);
+  if (d?.horses) parts.push(`馬${d.horses}頭`);
+  if (d?.races) parts.push(`レース${d.races}回`);
+  Txt(`${parts.length ? `この端末のデータ（${parts.join('・')}）` : 'この端末のデータ'}は、引き継ぎの後に使えなくなります。`, 52, 160, 816, 18, GOLD, box, { weight: 500, lh: 1.6, cls: 'trf-confirm-line' });
+  Txt('Apple・Googleでアカウントを切り替える時と同じです。残したいときは「やめる」を押してください。', 52, 246, 816, 15, MUTED, box, { lh: 1.6 });
+  Cta('引き継ぐ', 52, 330, 420, () => trfSend(true, state), box, 'small trf-confirm-yes');
+  Ghost('やめる', 496, 336, 220, 50, () => TransferRedeem(state), box, 'quiet').classList.add('trf-confirm-no');
+}
+function TransferDone(v) {
+  Shade('dim heavy');
+  const box = Dialog('Transfer done', 880, 440);
+  box.classList.add('trf-done');
+  Kicker('引き継ぎ完了', 52, 44, box);
+  Txt('データを引き継ぎました', 52, 108, 776, 30, WHITE, box, { weight: 700 });
+  Txt(v.displayName, 52, 162, 776, 22, GOLD, box, { weight: 700, nowrap: true, cls: 'keep-ja' }).dataset.typed = '1';
+  Txt('アプリではこのあと、引き継いだアカウントでホームが開きます（プロトタイプでは切り替えを省略します）。前の端末は、次に通信したときに「別の端末に引き継がれました」と表示されます。', 52, 212, 776, 15, MUTED, box, { lh: 1.6 });
+  Cta('前の端末の画面を見る', 52, 326, 420, () => TransferReplaced(), box, 'small trf-done-old');
+  Ghost('ホームへ', 496, 332, 200, 50, () => Home(), box, 'quiet');
+}
+/** The old device after the move (401 SESSION_REPLACED on its next request). */
+function TransferReplaced() {
+  currentScreen = TransferReplaced;
+  Clear('transfer-replaced'); SetArt('Art/home-paddock', false); Shade('left');
+  Kicker('引き継ぎ', 82, 112, undefined, { size: 18 });
+  Txt('別の端末に引き継がれました', 78, 176, 1000, 56, WHITE, undefined, { cls: 'tshadow', ls: '.04em', nowrap: true });
+  Txt('このアカウントは別の端末に引き継がれたため、この端末では遊べません。新しく始めるか、引き継ぎコードを入力してください。', 82, 268, 860, 21, WHITE, undefined, { cls: 'tshadow', weight: 500, lh: 1.65 });
+  Txt('心当たりがないときは、ヘルプのお問い合わせから運営に知らせてください。', 82, 368, 860, 15, MUTED, undefined, { cls: 'tshadow', lh: 1.6 });
+  Cta('引き継ぎコードを入力', 78, 440, 440, () => TransferRedeem({ back: 'title' })).classList.add('trf-replaced-redeem');
+  Ghost('新しく始める', 542, 447, 260, 60, () => Title()).classList.add('trf-replaced-new');
+  EnToggle();
+}
+
 // ================================================================= round 17: メンテナンス・強制アップデート (REQ-MNT-*, contracts/protocol.md §46)
 // The same screens as the Unity MaintenanceModel, on the real gate (server/src/domain/maintenance.ts through L.maintenance*):
 // the maintenance screen (scope all), the notice over a closed feature (a scoped window), the update-required screen (426)
@@ -6420,7 +6603,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

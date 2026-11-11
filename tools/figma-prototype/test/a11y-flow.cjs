@@ -227,6 +227,10 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('MyInquiries'); await waitScreen('my-inquiries'); await shot('my-inquiries', english, 500);
     // Round 17: おすすめフレンド (the friends screen's suggestions section)
     await show('Friends'); await waitScreen('friends'); await shot('friends-suggestions', english, 600);
+    // Round 19: 引き継ぎコード — the issue screen (checklist, ID), the redeem screen and the old device's notice (REQ-TRF-020)
+    await show('TransferIssue'); await waitScreen('transfer-issue'); await shot('transfer-issue', english, 600);
+    await show('TransferRedeem'); await waitScreen('transfer-redeem'); await shot('transfer-redeem', english, 500);
+    await show('TransferReplaced'); await waitScreen('transfer-replaced'); await shot('transfer-replaced', english, 500);
     await show('Settings'); await waitScreen('settings'); await boxesClear('settings lists (largest)', SETTINGS_LISTS, english);
     await show('Home'); await waitScreen('home'); await page.waitForTimeout(700); await boxesClear('home top bar (largest)', HOME_BAR, english);
   };

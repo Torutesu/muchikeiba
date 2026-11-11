@@ -2124,8 +2124,11 @@ function PracticeResult(f) {
   Clear('practice-result'); SetArt('Art/race-result');
   const p = ResultPanel(`練習レース　/　${raceCtx.trackName}`);
   p.classList.add('pr-result'); p.dataset.place = String(r.place); p.dataset.verdict = r.verdict ?? 'none';
-  Txt(r.finished ? `${r.place}着` : '完走ならず', 40, 112, 300, r.finished ? 96 : 44, r.place === 1 ? GOLD : WHITE, p, { cls: 'num', lh: 1.2 }).classList.add('pr-place');
-  if (r.finished) Txt(`${r.runners}頭`, 300, 176, 160, 26, MUTED, p, { cls: 'num' });
+  // R18 integration (a11y-flow): a long course name at the largest text wrapped the kicker into the place: one line, fitted,
+  // and the place 10 px lower (the ranked result's spacing)
+  p.querySelector('.kicker').style.whiteSpace = 'nowrap';
+  Txt(r.finished ? `${r.place}着` : '完走ならず', 40, 122, 300, r.finished ? 96 : 44, r.place === 1 ? GOLD : WHITE, p, { cls: 'num', lh: 1.2 }).classList.add('pr-place');
+  if (r.finished) Txt(`${r.runners}頭`, 300, 184, 160, 26, MUTED, p, { cls: 'num' });
   Txt(r.time, 44, 246, 520, 30, WHITE, p, { cls: 'num' });
   Hair(44, 300, 478, p);
   let y = 324;

@@ -3403,3 +3403,81 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
 - `Muchi.Client`：`TipsIndex`（`Parse`）・`TipsSeenResult`・`TipsBadge`（`PlayerView.Tips`）、`ApiClient.GetTipsAsync`・`MarkTipsSeenAsync`、`TipContexts`・`RaceLessons`、analytics `AnalyticsEvent.TutorialReplay`・`TipView`・`TipContextOpen`。
 - `Muchi.Game`：`TipsModel`（話題ごとの一覧・NEW・見た印をまとめて送る（オフラインは端末に貯めて後で送る）・「？」の `OpenContext`・ツアーのページ送り・開いていない機能のツアーは開けない）、`TutorialReplayModel`（レッスンのレースを `GameBackend` の既存の部品で作る（ムチ = `OfflinePresets.TutorialRace`、他 = 練習レース）・FTUE の段・回数・KPI に触れない・`tutorial_replay` を送る）。
 - 画面が守ること：docs/handoff-codex-round19-tutorial-replay.md。
+
+## 58. 広告・分析の同意管理（ad tracking & analytics consent、REQ-CNS-001〜020、`server/src/domain/privacyChoices.ts`・`server/src/domain/kpiConsent.ts`、C# `Consent.cs`（`ConsentState`・`IConsentPlatform`・`AdRequestConfig`）・`Muchi.Game.ConsentModel`、docs/handoff-codex-round20-consent.md）
+利用規約・プライバシーポリシーへの同意（REQ-UXS-001、`POST /v1/player/consent`）とは**別に**、プレイヤーが**パーソナライズ広告**と**分析（KPI）**を自分で選べるようにする。iOS は App Tracking Transparency（ATT）のシステムの確認の前に**理由を説明する事前の画面**を出し、Android／EEA は Google UMP 型の同意管理（CMP）を**インターフェースの後ろ**に置く（本物の SDK の呼び出しは Codex、docs/handoff-codex-round20-consent.md）。選んだ結果・版・日時はプレイヤーごとにサーバーに保存し、リワード広告（§21）の広告リクエストと KPI の受け付け（REQ-KPI-003）がそれに従う。コイン・アイテムは動かない（E 番号なし）。断っても報酬・機能は何も減らない（Apple 5.1.1(iv)・GDPR の「自由な同意」）。
+
+### 58.1 状態 `privacyChoices`（PlayerState のトップレベルのキー、§51 の分類は `account`）
+```ts
+{ personalizedAds: boolean | null, analytics: boolean | null,   // null = まだ選んでいない（58.3 の既定が効く）
+  decidedVersion: string | null, decidedAt: number | null,      // 最後に選んだ時のプライバシーポリシーの版と時刻
+  updatedAt: number, rev: number,                               // 値が変わるたびに +1
+  promptShownAt: number | null, promptShownVersion: string | null, // 事前の画面を出した時刻と版（同じ版では二度出さない）
+  platform: { os: 'ios'|'android'|'other', att: AttStatus | null, gdprApplies: boolean | null, cmp: CmpStatus | null, at: number } | null,
+  history: { at, key: 'personalized_ads'|'analytics'|'att'|'cmp'|'prompt', value: string, source: 'prompt'|'settings'|'platform', version: string }[] } // 新しい50件
+```
+`AttStatus` = `not_determined`・`restricted`・`denied`・`authorized`・`unavailable`（iOS 14 未満・ATT の無い OS）。`CmpStatus` = `not_required`・`required`・`obtained`・`unknown`（UMP の `ConsentStatus` と同じ）。
+
+### 58.2 子ども（REQ-CNS-006）
+既存の年齢（REQ-PUR-002 `age`、`ageBand` と同じ数え方）で **13歳未満**、または **EEA（`platform.gdprApplies = true`）で16歳未満** を「子ども」とする（GDPR 8条の上限、地域が分からない時は 13歳）。子どもは
+- パーソナライズ広告：**常にオフ**（変えられない、`locked: "minor"`）。広告は非パーソナライズで出る（§21 の `minAge` 未満はそもそも出ない）。
+- 分析：**既定でオフ（最小限）**。保護者の同意（`age.guardianConsent`）がある時だけオンにできる（無い時は `locked: "minor"`、PUT で `true` を送ると `403 NOT_ELIGIBLE`）。
+- 既存の REQ-AD-009 はそのまま：年齢が分からない・18歳未満はパーソナライズ広告を出さない（`locked: "age_unknown"`／`"under18"`）。
+
+### 58.3 既定と「効いている値」（REQ-CNS-003/004）
+| 項目 | まだ選んでいない時の既定 | 効いている値（`effective`） |
+|---|---|---|
+| パーソナライズ広告 | **オフ**（オプトイン） | 選んだ値 かつ 子どもでない かつ 18歳以上の年齢が登録済み（REQ-AD-009）かつ（iOS なら `att = authorized`）かつ（`gdprApplies` なら `cmp = obtained` か `not_required`） |
+| 分析 | オン。ただし子ども・`gdprApplies = true` はオフ | 選んだ値（子どもは保護者の同意がある時だけオン） |
+`locked`（スイッチを変えても効かない理由、画面に出す）：`minor`・`under18`・`age_unknown`・`att`・`cmp`・`null`。強い順に1つ。
+
+### 58.4 事前の画面と再確認（REQ-CNS-007/008）
+- `required` = 今のプライバシーポリシーの版（`progression.consent.privacyVersion`）で選んでいない（`decidedVersion ≠ 今の版`）。
+- `prompt`（端末が事前の画面を出す時）：
+  - **FTUE 中は出さない**：§21 の `minRankedRaces` 戦（既定 3）と `minGameDay` 日目（既定 2 = インストール当日は出さない、06 §2.3 の「2日目以降」）を満たすまで `null`。
+  - 一度も選んでいない → `"ad_offer"`：**最初のリワード広告のカードを出す直前**に1回（`GET /v1/ads` が `eligible` の時）。広告が出ない人（広告が無効・オフ・年齢など）は `"next_home"`。
+  - 前の版で選んだ人（ポリシーの版が上がった）→ `"next_home"`：規約の再同意（REQ-UXS-001）の後、次にホームを開いた時に1回。選んでいた値はそのまま効き続ける（勝手にオフ・オンにしない）。
+  - 同じ版で事前の画面を一度出したら（`promptShownVersion = 今の版`）`null`。設定からはいつでも変えられる。
+- iOS：事前の画面で「続ける」→ ATT のシステムの確認（`not_determined` の時だけ、OS が1回しか出さない）→ 結果を `PUT /v1/privacy/platform` で送る。「あとで」は ATT を出さない（次は設定から）。ATT を断った・制限中の時、設定の「パーソナライズ広告」は iOS の設定アプリを開く案内になる。
+- Android／EEA：`gdprApplies` の時は UMP の同意フォーム（CMP）を出し、結果（`cmp`）を送る。設定の「広告の同意を見直す」は UMP の privacy options フォームを開く（`privacyOptionsRequired` の時）。
+
+### 58.5 API（要認証、メンテナンス・強制アップデートで**閉じない**（規約の同意と同じ、§46 `EXEMPT_ROUTES`））
+| メソッド | パス | 本文 → 応答 |
+|---|---|---|
+| GET | `/v1/privacy/choices` | → `PrivacyChoicesView`（読むだけ、状態を作らない） |
+| PUT | `/v1/privacy/choices` | `{ privacyVersion, source: "prompt"\|"settings", personalizedAds?: bool, analytics?: bool }` → `PrivacyChoicesView` |
+| PUT | `/v1/privacy/platform` | `{ os: "ios"\|"android"\|"other", att?: AttStatus, gdprApplies?: bool\|null, cmp?: CmpStatus }` → `PrivacyChoicesView` |
+| POST | `/v1/privacy/prompt-shown` | `{ privacyVersion }` → `PrivacyChoicesView`（事前の画面を出した記録。同じ版は1回だけ書く） |
+- `privacyVersion` が今の版でなければ `409 CONSENT_VERSION_MISMATCH`（端末は取り直す）。送らなかった項目は今の効いている値のまま（既定を確定させる）。PUT は選んだ記録になる（`decidedVersion`・`decidedAt`）。
+- 同じ内容をもう一度送っても何も変わらない（`rev` も KPI も増えない）→ 冪等キー不要。
+- 余分な項目・不正な値は `400 BAD_REQUEST`。削除の手続き中（`deleting`）は `DELETION_PENDING`（予定中は変えられる：法的な権利）。
+- `privacyChoices` は `GET /v1/player`・ブートストラップの `extra` にも入る（`required`・`prompt`・`personalizedAds`・`analytics`・`adRequest`）。
+
+```json
+{ "policyVersion": "2026-11-01", "decidedVersion": "2026-11-01", "decidedAt": 1794790800000, "updatedAt": 1794790800000, "rev": 2,
+  "required": false, "prompt": null, "minor": false,
+  "personalizedAds": { "value": true, "effective": false, "locked": "age_unknown" },
+  "analytics": { "value": true, "effective": true, "locked": null },
+  "platform": { "os": "ios", "att": "authorized", "gdprApplies": false, "cmp": "not_required", "at": 1794790700000 },
+  "adRequest": { "npa": 1, "nonPersonalized": true, "underAgeOfConsent": false, "ageKnown": false, "tagForChildDirected": false, "extras": { "npa": "1" } },
+  "kpi": { "optional": true } }
+```
+
+### 58.6 リワード広告（§21）との関係（REQ-CNS-010/011）
+- `GET /v1/ads` と `POST /v1/ads/:placementId/start` の `adRequest` は **58.3 の効いている値**から作る：`nonPersonalized = REQ-AD-009 の判定 || パーソナライズ広告が効いていない`、`npa = nonPersonalized ? 1 : 0`、`extras.npa = "1"`（AdMob のネットワーク追加パラメータ）、子どもは `tagForChildDirected: true`。
+- セッションに開いた時の `npa` を記録する（`AdSession.npa`、`GET /v1/ads/sessions/:id` にも出す）。SSV のコールバック（§21.4）は `npa` で**報酬を変えない・弾かない**：非パーソナライズでも同じ無償コイン・同じ上限（断っても損をしない）。
+- 同意を後から変えても、すでに開いたセッションはそのまま（次のリクエストから効く）。
+
+### 58.7 KPI の分類（REQ-CNS-012〜014、`server/src/domain/kpiConsent.ts`）
+- すべての KPI イベント名を **`essential`（必須：法定の記録・不正対策・同意の証跡）** か **`optional`（任意：分析）** に分類する（`KPI_EVENT_CLASS`）。分類の無い名前は `optional` として扱う（迷ったら送らない）。テストがサーバーのコードから出すイベント名・クライアントのイベント名を全部集め、分類が無ければ失敗する。
+- `essential`：`purchase`・`refund`・`pass_renew`・`pass_status`（資金決済法・返金の記録）、有償コインを使ったかもしれないもの `gacha_draw`・`silks_part_buy`・`commentary_pack_buy`（前払式支払手段の使用の記録）、`ad_reward`・`ad_reject`（広告ネットワークとの照合・不正対策）、`consent`・`consent_change`（同意の証跡）、`account_delete`・`dex_request`・`dex_ready`・`dex_download`（本人の権利の記録）、`report_submit`・`block_add`・`block_remove`・`inquiry_submit`・`inquiry_answered`（安全・サポートの記録）。それ以外はすべて `optional`（クライアントのイベントは全部 `optional`）。
+- **サーバーで強制**：分析が効いていない（`analytics.effective = false`）プレイヤーの `optional` のイベントは、サーバーのトランザクションのイベントもクライアントの `POST /v1/analytics/events` も **Analytics Engine に書かない**。クライアントのバッチの応答は `{ accepted, dropped, withheld }`（`withheld` = 同意が無いので書かなかった数。レート制限の数には入れる）。
+- `consent_change`（サーバー、essential）：`s1` = `personalized_ads`／`analytics`／`att`／`cmp`、`s2` = 新しい値（`on`／`off`、ATT・CMP は状態の名前）、`s3` = `prompt`／`settings`／`platform`。変わった項目ごとに1行。
+
+### 58.8 個人データの開示（§51）・アカウント削除
+- `privacyChoices` は `account` セクションに全部入る（選んだ値・版・時刻・端末の状態・履歴）。
+- アカウント削除の最後の `wipe` で消える。他の場所に写しは無い（KPI の行は §51 の分析イベントと同じ扱い）。
+
+### 58.9 クライアント
+- `Muchi.Client`：`ConsentState`（ビューの読み取り・`AllowsClientEvent(name)`・`AdRequestConfig`）、`IConsentPlatform`（`AttStatus`・`RequestAttAsync`・`GatherCmpAsync`・`PrivacyOptionsRequired`・`ShowPrivacyOptionsAsync`・`OpenAppSettings`）、`ApiClient.GetPrivacyChoicesAsync`・`SetPrivacyChoicesAsync`・`ReportPrivacyPlatformAsync`・`NotePrivacyPromptShownAsync`、`AnalyticsClient.Gate`（同意の無い時に任意のイベントを端末で捨てる。サーバーも捨てる）。
+- `Muchi.Game.ConsentModel`：事前の画面を出すかどうか（FTUE・広告の直前・ホーム）、ATT・CMP の流れ、設定の行、`IAdConsent` の実装（§21 の `RewardedAdModel` に渡す）。

@@ -808,6 +808,42 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
   }
 
+  // round 20 (REQ-CNS-*): プライバシー › 広告と分析 — the privacy screen's link → the two switches with their reasons, the device's
+  // ATT status, the policy version → analytics off (optional client events withheld by the server, essential ones still written)
+  // → a new privacy policy version asks again on the next home → 「あとで」 → home
+  async function consentFlow() {
+    const waitIn = (sel, timeout = 20000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(() => globalThis.__muchi.show('Privacy')); await waitScreen('privacy');
+    await page.locator('.screen.in [data-action="privacy-choices"]').click(); await waitScreen('privacy-choices'); await waitIn('[data-cns-row="analytics"]');
+    assert.equal(await page.locator('.screen.in .cns-version').innerText(), await page.evaluate(() => globalThis.__muchi.logic.consentVersions.privacyVersion), 'privacy choices: the policy version');
+    assert.match(await page.locator('.screen.in [data-cns-row="personalized_ads"]').innerText(), /年齢が未登録|トラッキングが許可されていません/, 'privacy choices: why personalised ads do not apply');
+    await shot('privacy-choices', 300);
+    await page.locator('.screen.in [data-cns-row="analytics"] [data-cns-choice="false"]').click();
+    await page.waitForFunction(() => document.querySelector('.screen.in [data-cns-row="analytics"] [data-cns-choice="false"].on'), null, { timeout: 10000 });
+    const r = await page.evaluate(async () => {
+      const L = globalThis.__muchi.logic;
+      const v = await L.privacy.view();
+      // a client batch while analytics is off: accepted (rate limit) but withheld by the server
+      const k = await L.kpi([{ name: 'screen_view', at: L.now(), props: { screen: 'privacy_choices' } }]);
+      return { analytics: v.analytics.effective, optional: v.kpi.optional, withheld: k.ok ? k.value.withheld : -1 };
+    });
+    assert.equal(r.analytics, false); assert.equal(r.optional, false);
+    assert.equal(r.withheld, 1, 'analytics off: the optional client event is withheld by the server');
+    const kpi = (await page.evaluate(() => globalThis.__muchi.logic.serverKpiLog())).filter((k) => k.name === 'consent_change').map((k) => `${k.s1}:${k.s2}:${k.s3}`);
+    assert.ok(kpi.includes('analytics:off:settings'), 'consent_change analytics off (essential, still written): ' + kpi.join(' '));
+    await shot('privacy-choices-analytics-off', 200);
+    // a new privacy policy version → asked again on the next home; 「あとで」 keeps the earlier choices
+    await page.evaluate(() => globalThis.__muchi.logic.privacy.publishPolicy('2027-01-01'));
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('consent-prompt');
+    assert.equal(await page.locator('.screen.in [data-prompt]').getAttribute('data-prompt'), 'next_home');
+    await shot('consent-prompt-policy-update', 250);
+    await page.locator('.screen.in [data-cns="later"]').click(); await waitScreen('home');
+    const after = await page.evaluate(() => globalThis.__muchi.logic.privacy.view());
+    assert.equal(after.prompt, null, 'later: not again for this version');
+    assert.equal(after.analytics.effective, false, 'the earlier choice keeps applying');
+    await page.evaluate(() => globalThis.__muchi.logic.privacy.publishPolicy(globalThis.__muchi.logic.consentVersions.privacyVersion));
+  }
+
   // round 16 (REQ-RECAP-*): シーズンの振り返り — the stable's entry → the list (short / full / year) → a full recap stepped through
   // (big number, horse as typed, moments) → back → skip to the end (complete) → the share set with 「順位を隠す」 and recap_share →
   // the short version → reduced motion (no count-up, no slide)
@@ -1047,7 +1083,19 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await shot('ad-offer-home', 200);
   const free0 = await page.evaluate(() => globalThis.__muchi.state().player.wallet.free);
   const paid0 = await page.evaluate(() => globalThis.__muchi.state().player.wallet.paid);
-  await click('動画を見る'); await waitScreen('ad-player'); await shot('ad-player-simulated', 300);
+  // round 20 (REQ-CNS-007): the first 「動画を見る」 brings the pre-prompt (why, refusing costs nothing) → the simulated ATT dialog
+  await click('動画を見る'); await waitScreen('consent-prompt');
+  assert.equal(await page.locator('.screen.in [data-prompt]').getAttribute('data-prompt'), 'ad_offer');
+  const cnsText = await page.locator('.screen.in').innerText();
+  assert.match(cnsText, /許可しなくても、受け取れる無償コインや遊べる内容は変わりません/, 'pre-prompt: refusing changes nothing');
+  assert.ok(!/倍|お得|今だけ|残りわずか/.test(cnsText), 'pre-prompt: no pressure words');
+  await shot('consent-prompt', 300);
+  await page.locator('.screen.in [data-cns="continue"]').click(); await waitScreen('att-dialog'); await shot('att-dialog-simulated', 250);
+  await page.locator('.screen.in [data-att="denied"]').click(); await waitScreen('ad-player'); await shot('ad-player-simulated', 300);
+  const cns = await page.evaluate(() => globalThis.__muchi.logic.privacy.view());
+  assert.equal(cns.required, false, 'pre-prompt: decided under the current policy version');
+  assert.equal(cns.personalizedAds.effective, false, 'ATT denied → non-personalised');
+  assert.equal(cns.adRequest.npa, 1, 'the ad request carries npa=1');
   await waitScreen('ad-watched', 30000);
   assert.equal(await page.evaluate(() => globalThis.__muchi.lastAd), 'rewarded');
   await shot('ad-watched', 300);
@@ -1124,6 +1172,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await practiceFlow(); // round 18: 練習レース
   await privacyFlow(); // round 18: プライバシー › データのダウンロード
   await cheerFlow();
+  await consentFlow(); // round 20: プライバシー › 広告と分析
   await page.evaluate(() => globalThis.__muchi.show('Scout')); await waitScreen('scout'); await shot('scout', 500);
   await click('提供割合'); await shot('scout-rates', 400); await click('BACK');
   await waitScreen('scout'); await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal'); await shot('scout-paid-reveal', 700);

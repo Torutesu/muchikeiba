@@ -269,6 +269,10 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('TransferIssue'); await waitScreen('transfer-issue'); await shot('transfer-issue', english, 600);
     await show('TransferRedeem'); await waitScreen('transfer-redeem'); await shot('transfer-redeem', english, 500);
     await show('TransferReplaced'); await waitScreen('transfer-replaced'); await shot('transfer-replaced', english, 500);
+    // Round 20: the pre-prompt sheet, settings › privacy › ads and analytics and its help article (context privacy_choices)
+    await show('ConsentPrompt'); await waitScreen('consent-prompt'); await page.waitForSelector('.screen.in [data-cns="continue"]', { timeout: 15000 }); await shot('consent-prompt', english, 500);
+    await show('PrivacyChoices'); await waitScreen('privacy-choices'); await page.waitForSelector('.screen.in [data-cns-row="analytics"]', { timeout: 15000 }); await shot('privacy-choices', english, 500);
+    await page.locator('.screen.in [data-help-context="privacy_choices"]').click(); await waitScreen('help-article'); await shot('help-ads-analytics', english, 500);
     await show('Settings'); await waitScreen('settings'); await boxesClear('settings lists (largest)', SETTINGS_LISTS, english);
     // R19 integration: その他's second page (見た目・お世話・仲間) at the largest size too
     await page.locator('.screen.in [data-more-tab="looks"]').click(); await waitScreen('settings'); await page.waitForTimeout(400);

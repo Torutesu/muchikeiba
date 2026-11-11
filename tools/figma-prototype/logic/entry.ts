@@ -84,6 +84,8 @@ class LocalRepo implements PlayerRepo {
 }
 
 const master = loadMaster();
+/** Round 20 (§58): the shipped policy versions (a demo may publish a newer privacy policy; reset puts it back). */
+const SHIPPED_CONSENT = master.progression.consent;
 // Demo clock (REQ-UXP-002 home states 初日 / 3日目 / 7日目): the real rules run on Date.now() + whole days, so
 // unlocks by day, the beginner login bonus and the season end all come from the server code, not from the UI.
 const DAY_KEY = 'muchi.proto.dayOffset';
@@ -505,6 +507,7 @@ export const MuchiLogic = {
     trfDir.codes.clear(); trfDir.limits.clear(); trfDir.rows.length = 0; try { localStorage.removeItem(TRF_KEY); } catch { /* ignore */ } // round 19
     dayOffset = 0;
     delete master.maintenance; // round 17: no maintenance demo
+    master.progression.consent = SHIPPED_CONSENT; // round 20: the shipped privacy policy version
   },
 
   // ---------------------------------------------------------------- round 8 (docs/planning/06, REQ-UXS-*), used by unity.html
@@ -1159,6 +1162,17 @@ export const MuchiLogic = {
     demoRaces: (horseId: string, places: number[]) => wrap(() => hallRaces(ID, horseId, places)),
   },
   // ---------------------------------------------------------------- round 18: 個人データの開示・ダウンロード (REQ-DEX-*, contracts/protocol.md §51)
+  // ---------------------------------------------------------------- 広告・分析の同意 (REQ-CNS-*, contracts/protocol.md §58)
+  // The real privacyChoices rules on the local player: the pre-prompt moment (never in the FTUE; first before the first ad offer),
+  // the choices under the current policy version, the simulated ATT answer (the prototype plays an iPhone), KPI gating.
+  privacy: {
+    view: () => svc.privacyChoices(ID),
+    set: (body: { privacyVersion: string; source: 'prompt' | 'settings'; personalizedAds?: boolean; analytics?: boolean }) => wrap(() => svc.setPrivacyChoices(ID, body)),
+    platform: (body: { os: 'ios' | 'android' | 'other'; att?: 'not_determined' | 'restricted' | 'denied' | 'authorized' | 'unavailable'; gdprApplies?: boolean | null; cmp?: 'not_required' | 'required' | 'obtained' | 'unknown' }) => wrap(() => svc.setPrivacyPlatform(ID, body)),
+    shown: (privacyVersion: string) => wrap(() => svc.notePrivacyPromptShown(ID, privacyVersion)),
+    /** Demo / tests: the operator publishes a new privacy policy version (the server asks again on the next home). */
+    publishPolicy(privacyVersion: string) { master.progression.consent = { ...master.progression.consent!, privacyVersion }; return svc.privacyChoices(ID); },
+  },
   // The real DataExportService / dataExport rules on the local player. The "alarm" (runDataExportJob) is started by the page a
   // moment after the request (the server builds it in the player object's alarm, never on the request path); the files are kept
   // in localStorage (the private R2 prefix) and handed to the browser as a download through the signed link.

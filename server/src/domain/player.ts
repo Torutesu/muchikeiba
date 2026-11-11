@@ -242,6 +242,8 @@ export interface PlayerState {
   tips?: import('./tips.js').TipsState;
   /** REQ-TRF-*: 引き継ぎコード — the current code (no password, no hash), daily issues, the old-device cut-off, history (transferCode.ts). */
   transfer?: import('./transferCode.js').TransferState;
+  /** REQ-CNS-*: 広告・分析の同意 — personalised ads / analytics choices, policy version, ATT / CMP status, history (privacyChoices.ts). */
+  privacyChoices?: import('./privacyChoices.js').PrivacyChoicesState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

@@ -554,6 +554,11 @@ module.exports = async function enFlow(browser, base, out, errors) {
   }
   await page.waitForSelector('.screen.in [data-dex="json"]', { timeout: 20000 }); await shot('privacy-ready', 400);
   assert.match(await page.locator('.screen.in .dex-status').innerText(), /Ready to download/, 'privacy: the status in English');
+  // round 20 (REQ-CNS-018/019): the pre-prompt sheet, the simulated ATT dialog and settings › privacy › ads and analytics in English
+  await show('ConsentPrompt'); await waitScreen('consent-prompt'); await page.waitForSelector('.screen.in [data-cns="continue"]', { timeout: 15000 }); await shot('consent-prompt', 400);
+  assert.match(await page.locator('.screen.in').innerText(), /About ads and analytics/, 'consent: the sheet in English');
+  await show('PrivacyChoices'); await waitScreen('privacy-choices'); await page.waitForSelector('.screen.in [data-cns-row="analytics"]', { timeout: 15000 }); await shot('privacy-choices', 400);
+  assert.match(await page.locator('.screen.in [data-cns-row="personalized_ads"]').innerText(), /Personalised ads/, 'consent: the settings rows in English');
 
 
   // round 19: 引き継ぎコード in English (REQ-TRF-020): the issue screen (rules from the server, the generated password), the

@@ -148,6 +148,8 @@ static class Program
         await PracticeChecks.Run(Check, Ruleset(), Root);
         Console.WriteLine("== round 18: 支部の定型チャット (QuickChatModel: tabs, phrases, slots from the server's options, preview, cooldown, errors as sentences, rows; REQ-QCHAT-*)");
         await QuickChatChecks.Run(Check, Ruleset(), Root);
+        Console.WriteLine("== round 20: 広告・分析の同意 (ConsentModel: pre-prompt moment, ATT once, later, rows and reasons, OS settings, UMP review, IAdConsent, analytics gate, English; REQ-CNS-*)");
+        await ConsentChecks.Run(Check, Ruleset());
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

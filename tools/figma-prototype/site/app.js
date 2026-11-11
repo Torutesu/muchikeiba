@@ -1207,6 +1207,9 @@ async function Home() {
   // REQ-CB-*: the comeback welcome replaces home once per window (decided before home is drawn)
   const comeback = await cbView();
   if (comeback.active && comeback.window.showWelcome) return ComebackWelcome(comeback);
+  // round 20 (REQ-CNS-008): a new privacy policy version asks again on the next home (decided before home is drawn)
+  const cnsDue = await consentHomeDue();
+  if (cnsDue) return ConsentPrompt(Home, cnsDue);
   const [missions, fw, bond, training] = await Promise.all([L.missions(), L.firstWinBonus(), p ? L.bond(p.id) : null, unlock('training').unlocked ? L.training() : null]);
   Clear('home'); SetArt('Art/home-paddock');
   const u = player.unlocks;
@@ -1944,7 +1947,8 @@ async function AdOfferSlot(surface, x, y, w, h, back, parent) {
   Kicker('動画で受け取る', 28, 24, card, { size: 16, color: p.left > 0 ? CYAN : SOFT });
   Txt(p.left > 0 ? p.rewardLabel : '今日の分は受け取りました', 28, 84, w - 56, p.left > 0 ? 24 : 19, p.left > 0 ? WHITE : MUTED, card, { weight: 700, nowrap: true });
   Txt(p.left > 0 ? `今日あと${p.left}回　·　自分で選んだ時だけ再生します` : 'また明日どうぞ（4:00 にリセット）', 28, 120, w - 56, 14, MUTED, card);
-  if (p.left > 0) Cta('動画を見る', 28, h - 72, Math.min(260, w - 56), () => AdPlayer(p, back), card, 'small ad-cta');
+  // round 20 (§58): the pre-prompt comes right before the first rewarded ad, when the server names this moment
+  if (p.left > 0) Cta('動画を見る', 28, h - 72, Math.min(260, w - 56), () => ConsentBeforeAd(() => AdPlayer(p, back)), card, 'small ad-cta');
   globalThis.__muchi && (globalThis.__muchi.lastKpi = p.left > 0 ? 'ad_offer_view' : globalThis.__muchi.lastKpi);
   return card;
 }
@@ -2709,7 +2713,144 @@ async function Privacy() {
   Txt('JSON は機械で読める形式、概要は人が読めるテキストです。', 36, 520, 496, 15, MUTED, q, { lh: 1.6 });
   // round 18 integration: the help article for this screen (§48 context `privacy`)
   TextLink('データのダウンロードについて（ヘルプ）', 36, 600, 496, () => HelpArticle(L.helpContext('privacy'), 'context', () => Privacy()), q).dataset.helpContext = 'privacy';
+  // round 20 (§58): settings › privacy › ads and analytics
+  TextLink('広告と分析の設定 ›', 36, 636, 496, () => PrivacyChoices(), q).dataset.action = 'privacy-choices';
   Back(Settings, 'BACK', 40, 834);
+}
+// ================================================================= round 20: 広告・分析の同意 (REQ-CNS-*, contracts/protocol.md §58)
+// Mirrors unity/Assets/Muchi/Game/ConsentModel.cs on the real privacyChoices rules. The pre-prompt comes right before the first
+// rewarded ad (「動画を見る」), never in the FTUE, once per policy version; after a policy update it comes on the next home.
+// The prototype plays an iPhone: 「続ける」 is followed by a simulated system dialog (App Tracking Transparency) whose answer is
+// the personalised-ads choice. 「あとで」 never shows it. Refusing changes no reward (the copy says so; the server never uses it).
+const CNS_LOCK = {
+  minor: '年齢の設定により、オフになっています', under18: '18歳未満のため、オフになっています',
+  age_unknown: '年齢が未登録のため、広告はパーソナライズされません', att: '端末の設定でトラッキングが許可されていません', cmp: '広告の同意がまだのため、オフになっています',
+};
+const CNS_ATT = { authorized: '許可', denied: '許可しない', restricted: '制限されています', not_determined: 'まだ確認していません', unavailable: 'なし' };
+/** The simulated device (an iPhone): its ATT status lives on the device, like the real OS. */
+const cnsDevice = { get att() { return prefs.get('muchi.att', 'not_determined'); }, set att(v) { prefs.set('muchi.att', v); } };
+const cnsView = () => L.privacy.view();
+/** Before the first rewarded ad: the pre-prompt when the server names this moment (never in the FTUE). */
+async function ConsentBeforeAd(next) {
+  if (ftue) return next();
+  const v = await cnsView();
+  if (!v.prompt) return next();
+  return ConsentPrompt(next, v);
+}
+/** On the home after a policy update (decided before, asked again): drawn before home like the comeback welcome. */
+async function consentHomeDue() {
+  if (ftue) return null;
+  const v = await cnsView();
+  return v.prompt === 'next_home' && v.decidedVersion ? v : null;
+}
+async function ConsentPrompt(next, v0) {
+  const v = v0 ?? await cnsView();
+  currentScreen = () => ConsentPrompt(next); Clear('consent-prompt'); SetArt('Art/home-paddock', false); Shade('dim');
+  const box = Dialog('Consent prompt', 1040, 700);
+  box.dataset.prompt = v.prompt ?? '';
+  Kicker('プライバシー', 52, 44, box);
+  Txt('広告と分析について', 52, 108, 936, 32, WHITE, box, { weight: 700 });
+  const attNext = cnsDevice.att === 'not_determined' && !v.minor;
+  const lines = ['動画広告は、見たい時だけ自分で選んで再生します。', '許可すると、興味に合った広告が出やすくなります。許可しなくても、受け取れる無償コインや遊べる内容は変わりません。',
+    '遊び方の分析（よく使う画面など）はゲームの改善に使います。購入などの記録は法律に基づき保存します。'];
+  lines.forEach((t, i) => Txt(t, 52, 172 + i * 70, 936, 17, i === 0 ? WHITE : MUTED, box, { weight: i === 0 ? 500 : 400, lh: 1.6 }).classList.add('cns-line'));
+  // the analytics choice on the sheet (personalised ads follow the device's question)
+  let analytics = v.analytics.value;
+  const row = el('cns-row', 52, 392, 936, 64, box);
+  Txt('分析への協力', 0, 14, 360, 20, WHITE, row, { weight: 500 });
+  const draw = () => {
+    row.querySelectorAll('.btn').forEach((b) => b.remove());
+    [[false, 'オフ'], [true, 'オン']].forEach(([val, l], i) => {
+      const b = Btn(l, 560 + i * 188, 0, 176, 56, () => { analytics = val; draw(); }, 'choice' + (analytics === val ? ' on' : '') + (v.analytics.locked ? ' disabled' : ''), row);
+      b.dataset.cnsAnalytics = String(val);
+    });
+  };
+  draw();
+  Txt(attNext ? 'このあと端末の確認が表示されます。' : '', 52, 480, 936, 15, SOFT, box, { lh: 1.6 }).classList.add('cns-line');
+  Txt('設定 › プライバシー から、いつでも変えられます。', 52, 510, 936, 15, SOFT, box, { lh: 1.6 }).classList.add('cns-line');
+  const go = Cta('続ける', 52, 584, 420, async () => {
+    disable(go);
+    await L.privacy.shown(v.policyVersion);
+    let att = cnsDevice.att;
+    if (att === 'not_determined' && !v.minor) att = await AttSimulated();
+    await L.privacy.platform({ os: 'ios', att });
+    const adsLocked = v.personalizedAds.locked === 'minor' || v.personalizedAds.locked === 'under18';
+    const r = await L.privacy.set({ privacyVersion: v.policyVersion, source: 'prompt', ...(adsLocked ? {} : { personalizedAds: att === 'authorized' }), ...(v.analytics.locked ? {} : { analytics }) });
+    toast(r.ok ? '保存しました' : r.message);
+    globalThis.__muchi && (globalThis.__muchi.lastConsent = r.ok ? r.value : null);
+    next();
+  }, box);
+  go.dataset.cns = 'continue';
+  Ghost('あとで', 600, 590, 388, 60, async () => { await L.privacy.shown(v.policyVersion); next(); }, box, 'quiet').dataset.cns = 'later';
+}
+/** The simulated system dialog of iOS App Tracking Transparency (the real one is the OS's; Codex calls ATTrackingManager). */
+function AttSimulated() {
+  return new Promise((done) => {
+    Clear('att-dialog'); SetArt('Art/home-paddock', false); Shade('dim heavy');
+    const box = Dialog('ATT simulated', 720, 420);
+    Kicker('端末の確認　/　シミュレーション', 48, 40, box, { size: 15, color: SOFT });
+    Txt('「ムチ一閃」に、ほかの会社のアプリやウェブサイトでのアクティビティの追跡を許可しますか？', 48, 104, 624, 20, WHITE, box, { weight: 500, lh: 1.6 });
+    Txt('広告を興味に合わせるために使います。', 48, 220, 624, 15, MUTED, box);
+    const pick = (a) => { cnsDevice.att = a; done(a); };
+    Ghost('許可しない', 48, 300, 300, 64, () => pick('denied'), box, 'quiet').dataset.att = 'denied';
+    Ghost('許可', 372, 300, 300, 64, () => pick('authorized'), box).dataset.att = 'authorized';
+  });
+}
+/** Settings › Privacy › 広告と分析 (ConsentModel.Rows). */
+async function PrivacyChoices() {
+  currentScreen = PrivacyChoices;
+  // the device may have changed ATT in the OS settings: report it first (like ConsentModel.SyncPlatformAsync)
+  let v = await cnsView();
+  if (!v.platform || v.platform.att !== cnsDevice.att) { const r = await L.privacy.platform({ os: 'ios', att: cnsDevice.att }); if (r.ok) v = r.value; }
+  Clear('privacy-choices'); SetArt('Art/home-paddock', false); Shade('dim');
+  TopBar('その他　/　プライバシー　/　広告と分析', '広告と分析への協力を選べます。いつでも変えられます', { wallet: false });
+  const p = Glass('Choices', 36, 134, 940, 676, undefined, .9);
+  Kicker('広告と分析', 36, 30, p);
+  const save = async (body) => {
+    const r = await L.privacy.set({ privacyVersion: v.policyVersion, source: 'settings', ...body });
+    toast(r.ok ? '保存しました' : r.message);
+    PrivacyChoices();
+  };
+  const rowOf = (key, y, label, desc, choice, onPick, note, noteColor) => {
+    const row = el('cns-row', 36, y, 868, 150, p); row.dataset.cnsRow = key;
+    Txt(label, 0, 0, 440, 21, WHITE, row, { weight: 500 });
+    Txt(desc, 0, 36, 440, 14, MUTED, row, { lh: 1.5 });
+    const locked = choice.locked === 'minor' || choice.locked === 'under18' || (key === 'analytics' && !!choice.locked);
+    [[false, 'オフ'], [true, 'オン']].forEach(([val, l], i) => {
+      const on = (locked ? choice.effective : choice.value) === val;
+      const b = Btn(l, 480 + i * 196, 0, 184, 56, () => { if (on || locked) return; onPick(val); }, 'choice' + (on ? ' on' : '') + (locked ? ' disabled' : ''), row);
+      b.dataset.cnsChoice = String(val); b.style.whiteSpace = 'nowrap';
+    });
+    if (note) Txt(note, 0, 104, 868, 15, noteColor ?? SOFT, row, { lh: 1.5 }).classList.add('cns-note');
+    return row;
+  };
+  const ads = v.personalizedAds;
+  rowOf('personalized_ads', 96, 'パーソナライズ広告', '興味に合った動画広告が出やすくなります。オフでも受け取れる無償コインは同じです', ads, async (val) => {
+    if (val && cnsDevice.att === 'not_determined') { const a = await AttSimulated(); await L.privacy.platform({ os: 'ios', att: a }); if (a !== 'authorized') return PrivacyChoices(); }
+    else if (val && cnsDevice.att !== 'authorized') { toast('端末の設定でトラッキングが許可されていません'); return PrivacyChoices(); }
+    save({ personalizedAds: val });
+  }, ads.locked ? CNS_LOCK[ads.locked] : null, ads.locked ? GOLD : SOFT);
+  const an = v.analytics;
+  rowOf('analytics', 270, '分析への協力', 'よく使う画面などの記録をゲームの改善に使います', an, (val) => save({ analytics: val }),
+    an.locked === 'minor' ? '保護者の同意があるとオンにできます' : '購入などの記録は、オフでも法律に基づき保存します');
+  Hair(36, 444, 868, p);
+  Kicker('端末のトラッキング許可', 36, 466, p, { rule: false, size: 15 });
+  Txt(CNS_ATT[cnsDevice.att] ?? '', 36, 500, 400, 22, WHITE, p, { weight: 700, nowrap: true }).classList.add('cns-att');
+  if (cnsDevice.att === 'denied' || cnsDevice.att === 'restricted') TextLink('端末の設定を開く', 36, 546, 400, () => toast('iPhone の設定アプリが開きます（プロトタイプでは開きません）'), p).dataset.cns = 'os-settings';
+  Txt('iPhone では、端末の設定アプリでも変えられます。', 36, 604, 868, 14, SOFT, p, { lh: 1.5 });
+  // the policy version and what is always kept
+  const q = Glass('Policy', 996, 134, 568, 676, undefined, .86);
+  Kicker('プライバシーポリシー', 36, 30, q);
+  Txt('いまの版', 36, 112, 300, 14, MUTED, q, { weight: 500, nowrap: true });
+  Txt(v.policyVersion ?? '', 36, 136, 496, 30, WHITE, q, { weight: 700, nowrap: true, cls: 'num' }).classList.add('cns-version');
+  Txt(v.decidedAt ? `最後に選んだ日：${dexDay(v.decidedAt)}` : 'まだ選んでいません', 36, 190, 496, 16, MUTED, q, { weight: 500, nowrap: true }).classList.add('cns-decided');
+  TextLink('プライバシーポリシーを読む', 36, 230, 496, () => Legal('privacy', PrivacyChoices), q);
+  Hair(36, 292, 496, q);
+  Kicker('いつも保存するもの', 36, 312, q, { rule: false, size: 15 });
+  Txt('購入・返金・同意・アカウント削除・データの開示・通報の記録は、法律や安全のために保存します。', 36, 346, 496, 15, MUTED, q, { lh: 1.6 });
+  Txt('チュートリアル中に確認の画面は出ません。', 36, 460, 496, 15, MUTED, q, { lh: 1.6 });
+  TextLink('広告と分析について（ヘルプ）', 36, 600, 496, () => HelpArticle(L.helpContext('privacy_choices'), 'context', () => PrivacyChoices()), q).dataset.helpContext = 'privacy_choices';
+  Back(Privacy, 'BACK', 40, 834);
 }
 // ================================================================= round 12: かんたん操作 (REQ-ASSIST-*, contracts/protocol.md §27)
 // Mirrors unity/Assets/Muchi/Game/AssistModel.cs on the real server rules (setting default off, the last-place streak, the
@@ -3085,7 +3226,7 @@ async function Demo(kind) {
   L.reset();
   ftue = false; // every demo state is a player past the first run
   document.querySelectorAll('.toast').forEach((t) => t.remove());
-  for (const k of ['muchi.partner', 'muchi.notify.primer', 'muchi.link.prompt', 'muchi.link.firstPurchase', 'muchi.link.provider', 'muchi.proto.taFriends']) { try { localStorage.removeItem(k); } catch { /* */ } }
+  for (const k of ['muchi.partner', 'muchi.notify.primer', 'muchi.link.prompt', 'muchi.link.firstPurchase', 'muchi.link.provider', 'muchi.proto.taFriends', 'muchi.att']) { try { localStorage.removeItem(k); } catch { /* */ } }
   try { for (const k of Object.keys(localStorage)) if (k.startsWith('muchi.proto.ta.')) localStorage.removeItem(k); } catch { /* */ }
   taCache = null;
   globalThis.__cbWhatsNewClosed = false;
@@ -7278,6 +7419,7 @@ const helpGo = (screen, back) => ({
   account_link: () => Settings(), deletion: () => Settings(), inquiry: () => InquiryForm(), my_inquiries: () => MyInquiries(),
   // round 18 integration: privacy (§51), the branch feed's quick chat (§52), practice races (§50)
   privacy: () => Privacy(), team_feed: () => TeamFeed('chat'), practice: () => Practice(),
+  privacy_choices: () => PrivacyChoices(), // round 20 (§58)
 })[screen]?.() ?? back?.();
 /** Entry from settings (or a screen's ? link): `back` is where 戻る returns. */
 async function HelpCenter(back = null) {
@@ -7717,7 +7859,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

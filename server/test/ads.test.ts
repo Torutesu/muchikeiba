@@ -116,13 +116,16 @@ describe('REQ-AD-001/003 who sees offers', () => {
   it('ad request hints: non-personalised unless a registered adult; the under-age-of-consent tag under 16', async () => {
     const w = world();
     await w.veteran('p');
-    expect((await w.svc.ads('p')).adRequest).toEqual({ nonPersonalized: true, underAgeOfConsent: false, ageKnown: false });
+    expect((await w.svc.ads('p')).adRequest).toMatchObject({ npa: 1, nonPersonalized: true, underAgeOfConsent: false, ageKnown: false });
     await w.svc.setAge('p', 2011, 1, true); // 15
-    expect((await w.svc.ads('p')).adRequest).toEqual({ nonPersonalized: true, underAgeOfConsent: true, ageKnown: true });
+    expect((await w.svc.ads('p')).adRequest).toMatchObject({ npa: 1, nonPersonalized: true, underAgeOfConsent: true, ageKnown: true, tagForChildDirected: false });
     const a = world();
     await a.veteran('a');
     await a.svc.setAge('a', 1990, 1, false);
-    expect((await a.svc.ads('a')).adRequest.nonPersonalized).toBe(false);
+    // §58 (REQ-CNS-003/010): personalised ads are opt-in — a registered adult is non-personalised until they choose it
+    expect((await a.svc.ads('a')).adRequest.nonPersonalized).toBe(true);
+    await a.svc.setPrivacyChoices('a', { privacyVersion: m.progression.consent!.privacyVersion, source: 'settings', personalizedAds: true });
+    expect((await a.svc.ads('a')).adRequest).toMatchObject({ npa: 0, nonPersonalized: false });
   });
   it('an account scheduled for deletion gets no offers', async () => {
     const w = world();

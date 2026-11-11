@@ -394,6 +394,8 @@ export const DEX_CLASSIFICATION: Record<keyof PlayerState | DexExtensionKey, Dex
   rival: x('play'), photos: x('photos'), gachaLog: x('gacha'), activity: x('activity'), weeklyChallenge: x('play'), hall: x('play'),
   myReplays: x('replays'), roster: x('settings'), nextAction: x('play'), seasonRecap: x('recaps'), cups: x('cups'),
   dataExport: no('export_meta'),
+  // Round 20 (§58): the ad / analytics choices, versions, ATT / CMP status and their history are consent records
+  privacyChoices: x('account'),
   // Round 18 integration: Round 17 / 18 keys (§49 suggestion settings and dismissals, §53 goals and the pin)
   friendSuggest: x('social'), horseGoals: x('horses'),
   // keys added by modules through `PlayerState & { … }`
@@ -483,6 +485,8 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
     account: {
       playerId: s.id, createdAt: s.createdAt, lastSeenAt: s.profile.lastSeenAt,
       age: s.age ? clone(s.age) : null, consent: clone(s.consent) ?? null, flags: clone(s.flags),
+      // §58 (Round 20): personalised ads / analytics choices, the policy version they were made under, ATT / CMP, history
+      privacyChoices: clone(s.privacyChoices) ?? null,
       deletion: s.deletion && s.deletion.status !== 'confirming' ? { status: s.deletion.status, requestedAt: s.deletion.requestedAt ?? null, deleteAt: s.deletion.deleteAt ?? null } : null,
       // anti-cheat: the status and dates; the detection reason is an operator note (protocol §51.5)
       moderation: s.moderation ? { status: s.moderation.status, until: s.moderation.until, at: s.moderation.at } : null,

@@ -27,7 +27,7 @@ import { deletePhoto, photoCatalog, photosView, savePhoto, type PhotoInput } fro
 import { applyRaceResult, claimLoginBonus, claimMission, claimPass, firstWinBonusView, missionsView, type RaceResultForPlayer } from './rewards.js';
 import { allowanceView, claimAllowance, markOfferViewed, noteRaceForOffers, shopOffers, shopProducts } from './shop.js';
 import { passScreen } from './pass.js';
-import { adSessionView, adsView, applyAdCallback, setAdPref, startAd, type AdCallback, type AdPref, type AdRewardResult } from './ads.js';
+import { adIneligibility, adSessionView, adsView, applyAdCallback, setAdPref, startAd, type AdCallback, type AdPref, type AdRewardResult } from './ads.js';
 import { toRaceHorse } from './raceConfig.js';
 import { paidBalanceYen, invariantsHold } from './wallet.js';
 import type { PaidBalanceSnapshot } from './accounting.js';
@@ -85,6 +85,8 @@ import {
 import { assistView, markAssistPromptSeen, noteRaceForAssist, setAssist, type AssistLevel, type AssistSource } from './assist.js';
 import { buyPack, commentaryPackBadge, equipPack, packsView, type EquipSource } from './commentaryPacks.js';
 import { accessibilityView, setAccessibility, type AccessibilityBody } from './accessibility.js';
+import { analyticsAllowed, notePrivacyPromptShown, privacyChoicesBadge, privacyChoicesView, setPrivacyChoices, setPrivacyPlatform, type PrivacyChoicesBody, type PrivacyPlatformBody } from './privacyChoices.js';
+import { filterKpi } from './kpiConsent.js';
 import {
   ensureRival, noteRivalRace, noteRivalTa, rivalBlock, rivalChallengeCheck, rivalChallengeReceive, rivalOutbound, rivalSeen, rivalSetOptOut, rivalSync,
   rivalUpdateOf, rivalView, rivalWithdrawn, weekIdAt, weeksToSync, type RegistryWeek, type RivalUpdate,
@@ -314,7 +316,7 @@ export class PlayerService {
     await this.repo.put(draft);
     const wake = nextWake(draft);
     if (wake !== null && wake !== wakeBefore && this.d.onPushWake) await this.d.onPushWake(wake);
-    if (kpi.length > 0 && this.d.onKpi) await this.d.onKpi(id, kpi);
+    if (kpi.length > 0 && this.d.onKpi) await this.writeKpi(id, draft, now, kpi); // REQ-CNS-013: optional events only with analytics on
     if (pushProfile) await this.d.onProfile!(publicProfile(draft, this.d.master.bannedSilks, now));
     if (this.d.onStable && stableSnapshotKey(this.d.master, draft, now) !== stableBefore) await this.d.onStable(id, stableSnapshot(this.d.master, draft, now));
     if (this.d.onHall && hallSnapshotKey(this.d.master, draft, now) !== hallBefore) {
@@ -355,7 +357,7 @@ export class PlayerService {
   /** REQ-UXS-001/014/032/040: computed sections of GET /v1/player and bootstrap. */
   private extras(s: PlayerState, now: number) {
     const m = this.d.master;
-    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s), commentaryPack: commentaryPackBadge(m, s), accessibility: accessibilityView(s), activity: activityBadge(m, s, now), help: helpBadge(s), tips: tipsBadge(m, s, now), nextActions: nextActionsView(m, s, now), horseGoalPin: pinnedGoalView(m, s) };
+    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s), commentaryPack: commentaryPackBadge(m, s), accessibility: accessibilityView(s), activity: activityBadge(m, s, now), help: helpBadge(s), tips: tipsBadge(m, s, now), nextActions: nextActionsView(m, s, now), horseGoalPin: pinnedGoalView(m, s), privacyChoices: privacyChoicesBadge(m, s, now, adIneligibility(m, s, now) === null) };
   }
 
   async view(id: string) {
@@ -1734,7 +1736,7 @@ export class PlayerService {
     const s = await this.load(id);
     const now = this.d.clock();
     const v = myHallView(this.d.master, s, cursor, limit);
-    if (this.d.onKpi) await this.d.onKpi(id, [kpiRecord(s, now, { name: 'hof_view', s1: 'self', value: v.entries.length })]);
+    if (this.d.onKpi) await this.writeKpi(id, s, now, [kpiRecord(s, now, { name: 'hof_view', s1: 'self', value: v.entries.length })]);
     return v;
   }
   /** REQ-HOF-012: the visitor's side of a visit (friends, branch, block list), read only. */
@@ -1743,7 +1745,8 @@ export class PlayerService {
   async hallNoteView(id: string, relation: HallRelation, count: number) {
     if (!this.d.onKpi) return { noted: false };
     const s = await this.load(id);
-    await this.d.onKpi(id, [kpiRecord(s, this.d.clock(), { name: 'hof_view', s1: relation, value: count })]);
+    const now = this.d.clock();
+    await this.writeKpi(id, s, now, [kpiRecord(s, now, { name: 'hof_view', s1: relation, value: count })]);
     return { noted: true };
   }
   async horseCareer(id: string, horseId: string) { return horseCareerView(this.d.master, await this.load(id), horseId); }
@@ -1765,7 +1768,7 @@ export class PlayerService {
     const s = await this.load(id);
     const now = this.d.clock();
     const v = viewerStatus(this.d.master, s, target, now);
-    if (this.d.onKpi && v.relation !== 'self') await this.d.onKpi(id, [kpiRecord(s, now, { name: 'stable_visit', s1: v.relation })]);
+    if (this.d.onKpi && v.relation !== 'self') await this.writeKpi(id, s, now, [kpiRecord(s, now, { name: 'stable_visit', s1: v.relation })]);
     return v;
   }
   stableLikeGive(id: string, target: string, idemKey: string | null) {
@@ -1815,6 +1818,26 @@ export class PlayerService {
     });
   }
 
+  // ---------------------------------------------------------------- 広告・分析の同意 (REQ-CNS-*, privacyChoices.ts, §58)
+  /** GET /v1/privacy/choices: read-only (defaults when never chosen; never creates state). */
+  async privacyChoices(id: string) {
+    const s = await this.load(id);
+    const now = this.d.clock();
+    return privacyChoicesView(this.d.master, s, now, adIneligibility(this.d.master, s, now) === null);
+  }
+  /** PUT /v1/privacy/choices: a decision under the current policy version (idempotent by content). */
+  setPrivacyChoices(id: string, body: PrivacyChoicesBody) {
+    return this.tx(id, null, (s, now, emit) => setPrivacyChoices(this.d.master, s, body, now, emit, adIneligibility(this.d.master, s, now) === null));
+  }
+  /** PUT /v1/privacy/platform: ATT / UMP results from the device. */
+  setPrivacyPlatform(id: string, body: PrivacyPlatformBody) {
+    return this.tx(id, null, (s, now, emit) => setPrivacyPlatform(this.d.master, s, body, now, emit, adIneligibility(this.d.master, s, now) === null));
+  }
+  /** POST /v1/privacy/prompt-shown: the pre-prompt was shown (once per policy version). */
+  notePrivacyPromptShown(id: string, privacyVersion: string) {
+    return this.tx(id, null, (s, now) => notePrivacyPromptShown(this.d.master, s, privacyVersion, now, adIneligibility(this.d.master, s, now) === null));
+  }
+
   // ---------------------------------------------------------------- アクセシビリティ設定 (REQ-A11Y-*, accessibility.ts)
   /** GET /v1/settings/accessibility: read-only (defaults when never set). */
   async accessibility(id: string) { return accessibilityView(await this.load(id)); }
@@ -1837,15 +1860,26 @@ export class PlayerService {
     return this.tx(id, null, (s, now) => { ensurePush(this.d.master, s); return enqueuePush(this.d.master, s, templateId, vars, now); });
   }
 
+  /** REQ-CNS-013: writes the records the player's analytics choice allows (essential ones always). */
+  private async writeKpi(id: string, s: PlayerState, now: number, records: KpiRecord[]) {
+    if (!this.d.onKpi) return 0;
+    const f = filterKpi(records, analyticsAllowed(this.d.master, s, now));
+    if (f.kept.length > 0) await this.d.onKpi(id, f.kept);
+    return f.withheld;
+  }
+
   // ---- analytics (REQ-KPI-003/004) ----
   /** Client events: rate-limited per player, enriched with cohort/payer like server events, then emitted via onKpi. */
   async kpiIngest(id: string, batch: ClientBatch) {
     const r = await this.tx(id, null, (s, now) => {
       const events = admitClientBatch(s, batch, now);
-      return { accepted: events.length, dropped: batch.events.length - events.length, records: events.map((e) => kpiRecord(s, now, clientToKpi(e), 'client', { platform: batch.platform, appVersion: batch.appVersion, at: e.at })) };
+      const records = events.map((e) => kpiRecord(s, now, clientToKpi(e), 'client', { platform: batch.platform, appVersion: batch.appVersion, at: e.at }));
+      // REQ-CNS-013: counted against the rate limit either way; optional events are not written while analytics is off
+      const f = filterKpi(records, analyticsAllowed(this.d.master, s, now));
+      return { accepted: events.length, dropped: batch.events.length - events.length, withheld: f.withheld, records: f.kept };
     });
     if (r.records.length > 0 && this.d.onKpi) await this.d.onKpi(id, r.records);
-    return { accepted: r.accepted, dropped: r.dropped };
+    return { accepted: r.accepted, dropped: r.dropped, withheld: r.withheld };
   }
 
   // ---- time attack (REQ-TA-*) ----

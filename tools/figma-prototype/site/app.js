@@ -1331,10 +1331,10 @@ function RaceLobby(fresh = true) {
   Txt(`出走馬　/　${p?.name ?? '—'}（${STYLE_JA[p?.style] ?? ''}・${fmt(p?.distMinM ?? 0)}〜${fmt(p?.distMaxM ?? 0)}m）`, 44, 520, 520, 19, WHITE, d, { weight: 500 });
   Txt('参加費なし。報酬は着順のコイン・シーズンpt・パスXP。端末内のエンジンで走るオフライン版です（ランクの変動なし）。', 44, 566, 500, 14, SOFT, d, { lh: 1.6 });
   Cta('ランク戦に出る', 44, 640, 478, () => { advice.follow('ranked', p?.id); StartRace(null, p?.id ?? null); }, d);
-  if (!ftue) Ghost('練習レース', 44, 730, 180, 54, () => Practice(), d, 'quiet small').classList.add('pr-entry'); // round 18 (§50.8): after the FTUE only
-  if (!ftue) Ghost('騎手の道', 236, 730, 180, 54, () => Career(), d, 'quiet small').classList.add('cr-entry'); // round 22 (§66.9): after the FTUE, beside practice
+  if (!ftue) Ghost('練習レース', 44, 730, 150, 54, () => Practice(), d, 'quiet small').classList.add('pr-entry'); // round 18 (§50.8): after the FTUE only
+  if (!ftue) Ghost('騎手の道', 206, 730, 150, 54, () => Career(), d, 'quiet small').classList.add('cr-entry'); // round 22 (§66.9): after the FTUE, beside practice
   // round 19 (§55): watch a friend room and cheer (R19 integration: beside the practice entry, not on top of it)
-  if (!ftue) TextLink('観戦', 428, 739, 140, () => Spectate(), d, '観戦して応援する').dataset.action = 'spectate';
+  if (!ftue) TextLink('観戦', 368, 739, 210, () => Spectate(), d, '観戦して応援する').dataset.action = 'spectate';
   Back(Home, '戻る');
   EnToggle();
 }
@@ -2415,7 +2415,7 @@ function ChallengeResult(f, r) {
   const res = r.value, ev = res.evaluation;
   p.dataset.cleared = String(res.cleared);
   Txt(res.cleared ? 'チャレンジ達成' : 'チャレンジ失敗', 40, 112, 540, 60, res.cleared ? GOLD : WHITE, p, { weight: 700, ls: '.04em', lh: 1.2 }).classList.add('wch-verdict');
-  Txt(`${ev.place ? ev.place + '着' : '完走できず'}　·　${ev.timeMs != null ? fmtMs(ev.timeMs) : '—'}　·　ムチ ${ev.whips}回`, 44, 206, 520, 20, WHITE, p, { weight: 500, nowrap: true });
+  Txt(`${ev.place ? ev.place + '着' : '完走できず'}　·　${ev.timeMs != null ? fmtMs(ev.timeMs) : '—'}　·　ムチ ${ev.whips}回`, 44, 214, 520, 20, WHITE, p, { weight: 500, nowrap: true });
   Hair(44, 254, 478, p);
   s.challenge.labels.forEach((l, i) => {
     const chk = ev.checks.find((c) => c.kind === l.kind) ?? ev.checks[0];
@@ -2497,7 +2497,7 @@ async function Career(selectId) {
     if (!ch.unlocked) Txt('前の章をクリアすると開きます', 168, bandH - 34, 520, 13, SOFT, band, { nowrap: true });
     else ch.races.forEach((r, ri) => {
       const p = r.progress, w = 128;
-      const node = Btn(r.title, 168 + ri * (w + 6), bandH - 58, w, 48, () => Career(r.id), 'cr-node' + (r.id === careerState.sel ? ' sel' : '') + (p.unlocked ? '' : ' locked') + (r.id === v.nextRaceId ? ' next' : ''), band,
+      const node = Btn(r.title, 168 + ri * (w + 6), bandH - 58, w, 48, () => Career(r.id), 'ghost small cr-node' + (r.id === careerState.sel ? ' sel' : '') + (p.unlocked ? '' : ' locked') + (r.id === v.nextRaceId ? ' next' : ''), band,
         p.unlocked ? `${careerStars(p.stars.length, r.objectives.length)}` : '🔒');
       node.dataset.race = r.id; node.dataset.stars = String(p.stars.length); node.dataset.cleared = String(p.cleared);
       node.setAttribute('aria-label', `第${ri + 1}戦 ${r.title}　星 ${p.stars.length}/${r.objectives.length}`);
@@ -2601,10 +2601,10 @@ function CareerResult(f, r) {
   }
   const res = r.value, ev = res.evaluation, max = s.race.objectives.length;
   p.dataset.cleared = String(res.cleared);
-  Txt(res.cleared ? 'クリア' : 'あと一歩', 40, 108, 300, 60, res.cleared ? GOLD : WHITE, p, { weight: 700, ls: '.04em', lh: 1.2 }).classList.add('cr-verdict');
-  const big = Txt(careerStars(res.stars.length, max), 330, 118, 230, 40, GOLD, p, { weight: 700, align: 'right', nowrap: true });
+  Txt(res.cleared ? 'クリア' : 'あと一歩', 40, 128, 300, 54, res.cleared ? GOLD : WHITE, p, { weight: 700, ls: '.04em', lh: 1.2 }).classList.add('cr-verdict');
+  const big = Txt(careerStars(res.stars.length, max), 330, 132, 230, 40, GOLD, p, { weight: 700, align: 'right', nowrap: true });
   big.classList.add('cr-stars'); big.setAttribute('aria-hidden', 'true');
-  Txt(`星 ${res.stars.length}/${max}`, 330, 170, 230, 15, MUTED, p, { weight: 700, align: 'right', nowrap: true }).classList.add('cr-stars-text');
+  Txt(`星 ${res.stars.length}/${max}`, 330, 182, 230, 15, MUTED, p, { weight: 700, align: 'right', nowrap: true }).classList.add('cr-stars-text');
   Txt(`${ev.place ? ev.place + '着' : '完走できず'}　·　${ev.timeMs != null ? fmtMs(ev.timeMs) : '—'}　·　ムチ ${ev.whips}回`, 44, 206, 520, 20, WHITE, p, { weight: 500, nowrap: true });
   Hair(44, 250, 478, p);
   s.race.objectives.forEach((o, i) => {
@@ -2624,7 +2624,7 @@ function CareerResult(f, r) {
   TextLink('もう一度', 44, 734, 120, () => CareerPreRace(s.raceId), p).dataset.action = 'career-retry';
   // the story's closing line after a clear (right, on the photo)
   if (res.cleared) {
-    const after = Glass('Career story', 700, 600, 864, 200, undefined, .84);
+    const after = Glass('Career story', 700, 640, 864, 160, undefined, .84);
     after.classList.add('rise', 'cr-after');
     Kicker('その後', 32, 22, after, { rule: false, size: 14 });
     Txt(s.race.story.after, 32, 56, 800, 20, WHITE, after, { lh: 1.7 });

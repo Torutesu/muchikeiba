@@ -54,6 +54,8 @@ export const KPI_OPTIONAL: readonly string[] = Object.freeze([
   'team_join', 'team_leave', 'training_done', 'training_start', 'tutorial_gacha',
   // R20 integration: §59 レビュー依頼 (server rows of an engagement prompt)
   'review_prompt_eligible', 'review_prompt_shown', 'review_soft_answer',
+  // Round 22: §66 騎手の道 (server rows of single-player progress; engagement only)
+  'career_start', 'career_clear', 'career_star',
   // client (POST /v1/analytics/events, after clientToKpi)
   'session_start', 'session_end', 'tutorial_step', 'screen_view', 'commentary_pack_sample', 'client_race_start', 'purchase_flow',
   'push_open', 'push_permission', 'feature_unlock', 'offer_view', 'offer_click', 'race_quit', 'account_link', 'share', 'invite_share',

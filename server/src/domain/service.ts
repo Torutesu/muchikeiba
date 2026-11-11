@@ -106,6 +106,7 @@ import {
   countCodeAttempt, noteCupCommitted, playerCupsView, receiveCupClosed, receiveCupInvite, releaseCup, reserveCup, ensureCups,
   type CupClosedNotice, type CupFormat, type CupStartedNotice, type PlayerCupInvite,
 } from './hostedCups.js';
+import { abortCareerSubmit, careerView, prepareCareerSubmit, recordCareerResult, startCareerRace } from './career.js';
 import { abortChallengeSubmit, prepareChallengeSubmit, recordChallengeResult, startChallenge, weeklyChallengeView, type WchStartInput } from './weeklyChallenge.js';
 import {
   ackCeremony, hallSnapshot, hallSnapshotKey, hallViewerOf, horseCareerView, myHallView, noteHallRace, noteHallRetire, noteHallTa, noteHallTournament,
@@ -1974,6 +1975,36 @@ export class PlayerService {
   wchAbort(id: string, sessionId: string) { return this.tx(id, null, (s) => abortChallengeSubmit(s, sessionId)); }
   wchRecord(id: string, sessionId: string, out: VerifierOutput, claimedHash: string) {
     return this.tx(id, null, (s, now, emit) => { notWhileDeleting(s); return recordChallengeResult(this.d.master, s, sessionId, out, claimedHash, now, emit); });
+  }
+
+  // ---- 騎手の道 single-player career (REQ-CAREER-*, contracts/protocol.md §66; orchestrated by race/career.ts) ----
+  async careerView(id: string, lang: Locale = 'ja') { return careerView(this.d.master, await this.load(id), this.d.clock(), lang); }
+  /** Keyed (a retry returns the same session). Refused for a wiped (tombstoned) account and while the deletion runs. */
+  async careerStart(id: string, raceId: string, horseId: string, idemKey: string | null = null, ruleset?: Ruleset, lang: Locale = 'ja') {
+    await this.notTombstoned(id);
+    return this.tx(id, idemKey, (s, now, emit) => {
+      notWhileDeleting(s);
+      const rng = this.d.challengeRng ?? this.d.rng;
+      const sessionId = 'k' + [0, 0, 0].map(() => rng.nextU32().toString(36)).join('');
+      return startCareerRace(this.d.master, s, raceId, horseId, sessionId, rng, now, emit, ruleset, lang);
+    });
+  }
+  async careerPrepare(id: string, sessionId: string, inputs: unknown, resultHash: string, echoedConfig: unknown) {
+    await this.notTombstoned(id);
+    return this.tx(id, null, (s, now) => { notWhileDeleting(s); return prepareCareerSubmit(this.d.master, s, sessionId, inputs, resultHash, echoedConfig, now); });
+  }
+  async careerAbort(id: string, sessionId: string) {
+    await this.notTombstoned(id);
+    return this.tx(id, null, (s) => abortCareerSubmit(s, sessionId));
+  }
+  /** REQ-CAREER-009: a result verified after the account was wiped never re-creates it (no write, NOT_FOUND). */
+  async careerRecord(id: string, sessionId: string, out: VerifierOutput, claimedHash: string) {
+    await this.notTombstoned(id);
+    return this.tx(id, null, (s, now, emit) => { notWhileDeleting(s); return recordCareerResult(this.d.master, s, sessionId, out, claimedHash, now, emit); });
+  }
+  /** A wiped account (state gone, tombstone kept) is never written again by a career call. */
+  private async notTombstoned(id: string) {
+    if (await this.wiped(id) && (await this.repo.tombstoned?.(id))) throw new AppError('NOT_FOUND', 'account deleted');
   }
 
   // ---- teams: per-player steps, orchestrated by TeamsService (REQ-TEAM-*) ----

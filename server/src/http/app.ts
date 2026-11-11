@@ -21,6 +21,7 @@ import { clientBatchSchema } from '../domain/kpi.js';
 import { clientErrorBatchSchema, clientErrorsClientView, clientErrorsConfig } from '../domain/clientErrors.js';
 import type { TimeAttackService } from '../race/timeAttack.js';
 import type { WeeklyChallengeService } from '../race/weeklyChallenge.js';
+import type { CareerService } from '../race/career.js';
 import { TA_BOARD_RE } from '../domain/timeAttack.js';
 import { LEAGUE_BOARD_RE } from '../domain/league.js';
 import { TeamsService, type TeamPlayers } from '../domain/teamService.js';
@@ -99,6 +100,7 @@ export type PlayerMethod =
   | 'history' | 'historyTicket' | 'adminHistory' | 'adminHistoryRefs'
   | 'exchangeView' | 'exchangeBuy'
   | 'wchView' | 'wchStart' | 'wchPrepare' | 'wchAbort' | 'wchRecord'
+  | 'careerView' | 'careerStart' | 'careerPrepare' | 'careerAbort' | 'careerRecord'
   | 'teamGoalReward' | 'goalPlayerView'
   | 'hallMine' | 'hallViewer' | 'hallNoteView' | 'horseCareer' | 'hallAck' | 'hallSettings'
   | 'nextActions' | 'dismissNextAction'
@@ -164,6 +166,8 @@ export interface AppContext {
   timeAttack: TimeAttackService;
   /** REQ-WCH-*: 週替わりチャレンジ. Absent → the routes answer NOT_FOUND. */
   weeklyChallenge?: WeeklyChallengeService;
+  /** REQ-CAREER-* (§66): 騎手の道 (the weekly challenge verifier path). Absent = 404. */
+  career?: CareerService;
   /** REQ-TEAM-*: 支部. Absent in contexts that do not serve teams (routes answer NOT_FOUND). */
   teams?: TeamsService;
   /** REQ-EVENT-*: event races. */
@@ -361,6 +365,10 @@ const id = z.string().min(1).max(64);
 const weekly = (c: AppContext) => {
   if (!c.weeklyChallenge) throw new AppError('NOT_FOUND', 'weekly challenges are not available');
   return c.weeklyChallenge;
+};
+const career = (c: AppContext) => {
+  if (!c.career) throw new AppError('NOT_FOUND', '騎手の道 is not available');
+  return c.career;
 };
 const teams = (c: AppContext) => {
   if (!c.teams) throw new AppError('NOT_FOUND', 'teams are not available');
@@ -1094,6 +1102,20 @@ export const routes: Route[] = [
       inputs: z.array(z.unknown()).max(4000), config: z.unknown().optional(),
     }).strict());
     return weekly(c).submit(u, b);
+  } },
+  // 騎手の道 single-player career (REQ-CAREER-*, contracts/protocol.md §66; gate group time_attack, the submit is exempt like §31's)
+  { method: 'GET', path: '/v1/career', auth: 'player', handler: async (r, _p, c, u) => career(c).view(u, resolveLocale(r)) },
+  { method: 'POST', path: '/v1/career/races/:raceId/start', auth: 'player', handler: async (r, p, c, u) => {
+    if (!/^[a-z0-9_]{2,40}$/.test(p.raceId!)) throw new AppError('BAD_REQUEST', 'bad race id');
+    const b = await body(r, z.object({ horseId: id }).strict());
+    return career(c).start(u, p.raceId!, b.horseId, idem(r), resolveLocale(r));
+  } },
+  { method: 'POST', path: '/v1/career/submit', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({
+      sessionId: id, token: z.string().min(1).max(2048), resultHash: z.string().regex(/^[0-9a-f]{64}$/),
+      inputs: z.array(z.unknown()).max(4000), config: z.unknown().optional(),
+    }).strict());
+    return career(c).submit(u, b);
   } },
   // rewarded ads (REQ-AD-*, contracts/protocol.md §21)
   { method: 'GET', path: '/v1/ads', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('ads', u) },

@@ -194,6 +194,8 @@ export const EXEMPT_ROUTES: readonly string[] = [
   'DELETE /v1/player', 'POST /v1/player/deletion/cancel',
   'GET /v1/race/:raceId/ws',
   'POST /v1/time-attack/submit', 'POST /v1/challenges/weekly/submit', 'POST /v1/training/:sessionId/finish',
+  // Round 22 (§66, REQ-CAREER-014): a 騎手の道 run already raced on the device settles like the weekly challenge's
+  'POST /v1/career/submit',
   'POST /v1/match/cancel', 'POST /v1/events/:eventId/cancel',
   'POST /v1/analytics/events',
   'GET /v1/history/summary', 'GET /v1/history/:kind', 'POST /v1/history/support-ticket',
@@ -226,7 +228,7 @@ const PREFIX_GROUPS: [string, MaintenanceGroup][] = [
   ['/v1/events', 'events'],
   ['/v1/tournaments', 'tournaments'],
   ['/v1/training', 'training'],
-  ['/v1/time-attack', 'time_attack'], ['/v1/challenges', 'time_attack'],
+  ['/v1/time-attack', 'time_attack'], ['/v1/challenges', 'time_attack'], ['/v1/career', 'time_attack'], // §66: verified solo races
   ['/v1/friends', 'social'], ['/v1/invite', 'social'], ['/v1/stable', 'social'], ['/v1/rival', 'social'],
   ['/v1/cups', 'cups'],
 ];

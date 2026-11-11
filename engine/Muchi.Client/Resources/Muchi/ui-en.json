@@ -1265,6 +1265,20 @@
   "{size} を削除しました": "Removed {size}",
   "削除できるデータはありません": "There is no data to remove",
   "データセーバー：軽量版をダウンロードします": "Data saver: light versions are downloaded",
-  "データセーバー：残りのデータは Wi-Fi につながったときに取得します": "Data saver: the remaining data downloads when you connect to Wi-Fi"
+  "データセーバー：残りのデータは Wi-Fi につながったときに取得します": "Data saver: the remaining data downloads when you connect to Wi-Fi",
+  "_tips": "---- round 19: tutorial replay & tips (TipsModel / TutorialReplayModel, REQ-TUT-*)",
+  "ヒント": "Tips",
+  "ヒントはオンラインで見られます": "Tips are available online",
+  "機能が開くと読めます": "Unlocks with its feature",
+  "くわしく": "More",
+  "レースのレッスン": "Race lessons",
+  "機能のツアー": "Feature tours",
+  "おわり": "Done",
+  "この機能が開いたら見られます": "Available once this feature unlocks",
+  "レッスンを始める": "Start the lesson",
+  "ヒントに戻る": "Back to tips",
+  "あと少し。残り300mからムチを2回": "So close. Whip twice from 300 m out",
+  "レッスン完了": "Lesson complete",
+  "レッスンは練習です。成績・ミッション・報酬には数えません": "Lessons are practice. They don't count toward your record or missions, and give no rewards"
  }
 }

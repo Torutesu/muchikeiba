@@ -454,6 +454,15 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await page.locator('.screen.in [data-confirm="no"]').click(); await waitScreen('storage');
   await page.evaluate(() => { globalThis.__muchi.perf.reset(); globalThis.__muchi.perf.net('wifi'); });
 
+  // round 19: ヒント in English (REQ-TUT-014): cards and replays come in English from the master; the lesson result
+  await show('Tips'); await waitScreen('tips'); await shot('tips', 500);
+  assert.match(await page.locator('.screen.in').innerText(), /Race lessons/, 'tips: the replays in English');
+  await page.locator('.screen.in [data-tip="whip_window"]').click(); await waitScreen('tip-card'); await shot('tip-card', 500);
+  assert.match(await page.locator('.screen.in .tip-body').innerText(), /home stretch/, 'tips: the card body in English');
+  await show('TipTour', 'tour_shop'); await waitScreen(['tip-card', 'tips']); await shot('tip-tour', 400);
+  await show('LessonBrief', 'race_stamina'); await waitScreen('tip-lesson'); await shot('tip-lesson', 400);
+  await show('StartLesson', 'race_whip'); await waitScreen('race-tutorial'); await waitScreen('lesson-result', 90000); await shot('lesson-result', 600);
+
   // round 13: 支部の共同目標 in English (REQ-TGOAL-*): the week, after the demo races, the week result sheet
   await show('TeamGoal'); await waitScreen('team-goal', 20000); await shot('team-goal', 600);
   assert.match(await page.locator('.screen.in').innerText(), /as a branch/, 'team goal: the goal label in English');

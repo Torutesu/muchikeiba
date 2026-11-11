@@ -640,7 +640,7 @@ function BuildRaceScreen() {
   if (tut) {
     // F4: the first race has one control, the whip. The gate countdown is the 3-second scene-setter.
     hud.intro = Txt('最後の直線。前に7頭。', 300, 336, 1000, 60, WHITE, undefined, { align: 'center', cls: 'intro' });
-    Caption('はじめてのレース　/　チュートリアル', 35, 704).classList.add('tshadow');
+    Caption(raceCtx.lesson ? 'レッスン　/　' + raceCtx.lesson.title : 'はじめてのレース　/　チュートリアル', 35, 704).classList.add('tshadow');
     hud.coach = Caption('合図が出たら、仕掛ける', wx + W / 2 - 160, wy + W + 12, undefined, 14, MUTED);
     hud.coach.style.width = '320px'; hud.coach.style.textAlign = 'center';
     return;
@@ -667,7 +667,7 @@ function BuildRaceScreen() {
   rein.addEventListener('pointerdown', hold(true)); rein.addEventListener('pointerup', hold(false)); rein.addEventListener('pointerleave', hold(false)); rein.addEventListener('pointercancel', hold(false));
   // skill cut-ins (engine Skill events)
   hud.skillBox = el('cutins', 540, 560, 520, 230);
-  Btn('中断', 33, 120, 120, 40, () => { raceActive = false; Home(); }, 'quit');
+  Btn('中断', 33, 120, 120, 40, () => { raceActive = false; if (raceCtx.lesson) Tips(); else Home(); }, 'quit');
   // round 15 (REQ-PHOTO-001): a solo race (time attack, weekly challenge) pauses for a photo; a race with other people never does
   const pb = Btn('フォト', 163, 120, 120, 40, () => (phShared() ? toast('このレースは走っている途中では撮れません。結果画面かリプレイから撮ってください。') : PhotoOpen('paused')), 'quit' + (phShared() ? ' ph-locked' : ''));
   pb.dataset.photo = phShared() ? 'blocked' : 'pause';
@@ -858,6 +858,7 @@ window.addEventListener('blur', () => { reinHeld = false; keyRein = false; });
 
 // ---- results (REQ-UXP-005 debrief line, 06 §6.4) — 10-race-result
 async function RaceResult(f) {
+  if (raceCtx.lesson) return LessonResult(f); // round 19 (REQ-TUT-004): a lesson is practice — nothing applied, nothing granted
   if (raceCtx.tutorial) return TutorialResult(f);
   if (raceCtx.ta) return show(TaResult, f);
   if (raceCtx.practice) return show(PracticeResult, f); // round 18: nothing is applied — practice grants nothing
@@ -2554,7 +2555,9 @@ async function Settings() {
   // round 14: 実況パック (REQ-CMT-011) after the looks entries
   // round 15: アクセシビリティ (REQ-A11Y-*) first — reachable in the FTUE too (text size before the first race)
   // round 18: プライバシー (REQ-DEX-001) next to the accessibility settings
-  const moreRows = [['ヘルプ・お問い合わせ', () => HelpCenter(Settings), 'help', (player?.help?.unreadReplies ?? 0) > 0 ? `未読 ${player.help.unreadReplies}` : undefined], ['アクセシビリティ', () => A11ySettings(), 'a11y'], ['画質・通信量', () => PerfSettings(), 'perf'], ['プライバシー', () => Privacy(), 'privacy'], ['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions], ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite'],
+  const moreRows = [['ヘルプ・お問い合わせ', () => HelpCenter(Settings), 'help', (player?.help?.unreadReplies ?? 0) > 0 ? `未読 ${player.help.unreadReplies}` : undefined],
+    // round 19 (REQ-TUT-001): ヒント — race lessons, feature tours and the tips library (NEW = cards not read yet)
+    ['ヒント', () => Tips(Settings), 'tips', (player?.tips?.newCount ?? 0) > 0 ? `NEW ${player.tips.newCount}` : undefined], ['アクセシビリティ', () => A11ySettings(), 'a11y'], ['画質・通信量', () => PerfSettings(), 'perf'], ['プライバシー', () => Privacy(), 'privacy'], ['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions], ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite'],
     // round 15 (REQ-ADV-009): the pre-race advice switch (a device setting, default on)
     ['出走前アドバイス', () => { advice.setEnabled(!advice.enabled()); Settings(); }, 'advice', advice.enabled() ? 'オン' : 'オフ'],
     // round 17 (REQ-RPT-011): the block list and what a block does
@@ -2563,6 +2566,7 @@ async function Settings() {
     // R15 integration: nine rows of 38 px under the kicker, clear of the legal block below (the kicker at y 466).
     // R17 integration: eleven rows (ヘルプ first, 通報とブロック last) — the row height follows the count (33 px for 11)
     // R18 integration: twelve rows with プライバシー (30 px each, the last ends at 456, clear of the legal block at 458)
+    // R19: ヒント and 画質・通信量 join — fourteen rows; the R19 integration groups them (see below)
     const rowH = Math.min(36, Math.floor(364 / moreRows.length));
     const b = Btn(n, 36, 96 + i * rowH, 408, rowH, go, 'row' + (i === moreRows.length - 1 ? ' last' : ''), m); b.style.fontSize = rowH < 36 ? '17px' : '18px';
     if (action) b.dataset.action = action;
@@ -3577,6 +3581,8 @@ function Stable() {
   TextLink('所属馬の一覧', 43, 734, 240, () => Roster(), d, `所属馬の一覧（${horses.length}頭）`); // round 16: 厩舎の整理 (REQ-ORG-*)
   TextLink('お世話', 300, 734, 120, Care, d, 'お世話・餌');
   TextLink('調教', 440, 734, 100, () => { trHorse = p?.id ?? null; Training(); }, d, '調教');
+  // round 19 (REQ-TUT-008): the breeding card (the prototype has no breeding screen; the stable is where breeding starts)
+  TipQ('breeding', 517, 516, d, () => Stable()); // beside 適性, clear of the language toggle at the largest text size
   Back(Home);
   Ghost('殿堂', 196, 36, 150, 46, () => Hall(), undefined, 'quiet small').classList.add('hof-entry'); // round 14 (REQ-HOF-*)
   Ghost('振り返り', 362, 36, 170, 46, () => Recaps(), undefined, 'quiet small').classList.add('rc-entry'); // round 16 (REQ-RECAP-*)
@@ -3813,6 +3819,7 @@ async function Roster() {
   // right: the bulk retire and the rules
   const rp = Glass('Roster actions', 1140, 134, 424, 676, undefined, .88); rp.classList.add('org-side');
   Kicker('まとめて引退', 36, 30, rp);
+  TipQ('roster_bulk_retire', 348, 24, rp, () => Roster()); // round 19 (REQ-TUT-008)
   if (orgSelect) {
     Txt(`${orgSelect.size}頭を選択中`, 36, 100, 352, 30, WHITE, rp, { weight: 700, nowrap: true }).classList.add('org-count');
     Txt('ロック中・最初の相棒・調教中などの馬は選べません', 36, 150, 352, 13, SOFT, rp, { lh: 1.5 });
@@ -3991,6 +3998,7 @@ function Odds(bannerId) {
   legal.forEach((l, i) => TextLink(l.title, 1170, 560 + i * 44, 330, () => Legal(l.key === 'legal.tokushoho' ? 'tokushoho' : 'shikin', () => Odds(bannerId)), p));
   // round 17 (REQ-HELP-008): the pity article, with numbers from the same data
   TextLink('天井のしくみ（ヘルプ）', 36, 610, 400, () => HelpArticle(L.helpContext('gacha_odds'), 'context', () => Odds(bannerId)), p).dataset.helpContext = 'gacha_odds';
+  TipQ('gacha_odds', 1452, 24, p, () => Odds(bannerId)); // round 19 (REQ-TUT-008)
   Back(() => Scout(bannerId), 'BACK', 40, 834);
 }
 
@@ -4555,6 +4563,7 @@ async function Training() {
   // ① the horse: condition, fatigue, potential, what it has grown
   const hp = Glass('Training horse', 36, 134, 560, 676, undefined, .88);
   hp.classList.add('tr-horse');
+  TipQ('training', 484, 24, hp, () => Training()); // round 19 (REQ-TUT-008)
   Kicker(`相棒　/　${v.horses.length}頭`, 36, 30, hp);
   if (!h) { Txt('調教できる馬がいません', 36, 120, 480, 22, WHITE, hp); Back(Home, 'BACK', 40, 834); return; }
   hp.dataset.horse = h.horseId;
@@ -6808,6 +6817,221 @@ function PhotoBack() {
   return (back ?? Home)();
 }
 
+// ================================================================= round 19: チュートリアルのやり直しとヒント集 (REQ-TUT-*, contracts/protocol.md §57)
+// The same screens as the Unity TipsModel / TutorialReplayModel on the real rules (tips.ts + PlayerService): the ヒント
+// screen (race lessons, feature tours, the tips library by topic with NEW badges, closed cards with their unlock), a card
+// (art, title, a short text with numbers from data, 「くわしく」 → the help article), the tours (pages of cards) and the
+// race lessons run in the real WASM engine like practice — the whip lesson is the FTUE tutorial race itself
+// (engine.StartTutorial(1): the TutorialDirector's honest rule, never assisted), the others the offline practice race
+// without かんたん操作. A lesson never touches the FTUE (tutorialAttempt, ftue) and never reaches the server: no
+// applyRace, no reward. The 「？」 buttons of the rates, training, stable (breeding) and bulk retire screens open their card.
+// KPI tutorial_replay / tip_view / tip_context_open (globalThis.__muchiKpi, the shape the client sends).
+const tipsState = { back: null, topic: null, index: null, tour: null, page: 0, lesson: null };
+const tipsLang = () => (isJa() ? 'ja' : 'en');
+const tipsKpi = (name, props) => (globalThis.__muchiKpi ??= []).push({ name, ...props });
+/** Placeholder art per card kind (Codex draws the real ones: docs/handoff-codex-round19-tutorial-replay.md). */
+const TIP_ART = {
+  whip: 'Art/first-ride', slipstream: 'Art/race-result', lanes: 'Art/Courses/spring-course', stamina: 'Art/Courses/autumn-course', reins: 'Art/Cosmetics/bridle',
+  breeding: 'Art/3DPreviews/Partner_Chestnut_Azure', stud: 'Art/3DPreviews/Partner_Black_Emerald', training: 'Art/home-paddock', roster: 'Art/Cosmetics/stable-plaque',
+  scout: 'Art/scout-reveal', pity: 'Art/scout-reveal', coins: 'Art/Cosmetics/silk-jacket', branch: 'Art/Cosmetics/jockey-cyan', cups: 'Art/race-result',
+};
+async function tipsLoad() {
+  const r = await L.tips(tipsLang());
+  if (r.ok) { tipsState.index = r.value; if (!tipsState.topic || !r.value.topics.some((t) => t.id === tipsState.topic)) tipsState.topic = r.value.topics[0]?.id ?? null; }
+  return r;
+}
+/** Marks cards read: tip_view for each, NEW cleared at once, POST /v1/tips/seen for the new ones (one call, idempotent). */
+async function tipsRead(cards, source) {
+  const fresh = [];
+  for (const c of cards) {
+    if (!c?.unlocked) continue;
+    tipsKpi('tip_view', { tipId: c.id, source });
+    if (c.new) { c.new = false; fresh.push(c.id); }
+  }
+  if (!fresh.length) return;
+  const r = await L.tipsSeen(fresh);
+  if (r.ok && tipsState.index) tipsState.index.newCount = r.value.newCount;
+  await refresh();
+}
+/** A screen's 「？」 (REQ-TUT-008): opens its card, or says the library is closed. */
+function TipQ(context, x, y, parent, back) {
+  const b = Ghost('？', x, y, 52, 52, () => TipContext(context, back), parent, 'small quiet tip-q');
+  b.dataset.tipContext = context; b.setAttribute('aria-label', 'ヒント');
+  return b;
+}
+async function TipContext(context, back) {
+  const r = await tipsLoad();
+  const id = r.ok ? r.value.contexts[context] : null;
+  const c = id ? r.value.tips.find((t) => t.id === id) : null;
+  if (!c || !c.unlocked) { toast('ヒントはオンラインで見られます'); return; }
+  tipsKpi('tip_context_open', { context, tipId: id });
+  return TipCard(id, 'context', back);
+}
+async function Tips(back = null) {
+  if (back) tipsState.back = back;
+  currentScreen = () => Tips();
+  const r = await tipsLoad();
+  if (!r.ok) { toast(r.message); return Settings(); }
+  const I = r.value;
+  Clear('tips'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('ヒント', 'レースのレッスン　·　機能のツアー　·　ヒント集');
+  // left: the replays (race lessons on the device, feature tours)
+  const lp = Glass('Tips replays', 36, 134, 560, 676, undefined, .88); lp.classList.add('tips-replays');
+  Kicker('レースのレッスン', 36, 30, lp, { size: 15 });
+  I.tutorials.filter((t) => t.kind === 'race').forEach((t, i) => {
+    const row = el('help-row tip-lesson', 36 + (i % 2) * 248, 92 + Math.floor(i / 2) * 84, 236, 74, lp); row.dataset.tutorial = t.id; row.setAttribute('role', 'button');
+    Txt(t.title, 18, 12, 200, 19, WHITE, row, { weight: 700, nowrap: true });
+    Txt('端末で練習', 18, 44, 200, 13, CYAN, row, { weight: 700, ls: '.12em', nowrap: true });
+    row.addEventListener('click', () => LessonBrief(t.id));
+  });
+  Kicker('機能のツアー', 36, 280, lp, { size: 15 });
+  I.tutorials.filter((t) => t.kind === 'tour').forEach((t, i) => {
+    const row = el('help-row tip-tour' + (t.unlocked ? '' : ' locked'), 36 + (i % 2) * 248, 342 + Math.floor(i / 2) * 78, 236, 68, lp);
+    row.dataset.tutorial = t.id; row.dataset.unlocked = t.unlocked ? '1' : '0'; row.setAttribute('role', 'button');
+    Txt(t.title, 18, 10, 200, 18, t.unlocked ? WHITE : SOFT, row, { weight: 700, nowrap: true });
+    Txt(t.unlocked ? `${t.tips.length}枚` : '機能が開くと見られます', 18, 40, 200, 13, t.unlocked ? MUTED : SOFT, row, { weight: 500, nowrap: true });
+    row.addEventListener('click', () => (t.unlocked ? TipTour(t.id) : toast('この機能が開いたら見られます')));
+  });
+  Txt('レッスンは練習です。成績・ミッション・報酬には数えません', 36, 600, 488, 13, SOFT, lp, { lh: 1.5 }).dataset.practiceNote = '1';
+  // right: the library by topic
+  const rp = Glass('Tips library', 616, 134, 948, 676, undefined, .9); rp.classList.add('tips-library');
+  rp.dataset.newCount = String(I.newCount);
+  Kicker('ヒント集', 36, 30, rp, { size: 15, rule: false });
+  if (I.newCount > 0) { const pl = Pills([[`NEW ${I.newCount}`, 'gold']], 220, 26, 200, rp); pl.dataset.tipsNew = String(I.newCount); }
+  I.topics.forEach((t, i) => {
+    const b = Btn(t.title, 36 + i * 178, 72, 168, 48, () => { tipsState.topic = t.id; Tips(); }, 'choice' + (t.id === tipsState.topic ? ' on' : ''), rp);
+    b.dataset.tipTopic = t.id; b.style.fontSize = '16px'; b.style.whiteSpace = 'nowrap'; b.style.padding = '0';
+    if (t.newCount > 0) { const dot = document.createElement('i'); dot.className = 'tip-dot'; b.appendChild(dot); }
+  });
+  I.tips.filter((c) => c.topic === tipsState.topic).slice(0, 8).forEach((c, i) => {
+    const card = el('help-row tip-card' + (c.unlocked ? '' : ' locked'), 36 + (i % 2) * 446, 140 + Math.floor(i / 2) * 124, 430, 112, rp);
+    card.dataset.tip = c.id; card.dataset.unlocked = c.unlocked ? '1' : '0'; card.dataset.new = c.new ? '1' : '0'; card.setAttribute('role', 'button');
+    const im = ArtImage(TIP_ART[c.art] ?? 'Art/home-paddock', 12, 12, 120, 88, card, 'cover tip-thumb'); if (!c.unlocked) im.style.opacity = '.35';
+    Txt(c.title, 148, 16, 266, 18, c.unlocked ? WHITE : SOFT, card, { weight: 700, lh: 1.35 });
+    if (c.new) Pills([['NEW', 'gold']], 148, 70, 120, card).classList.add('tip-new');
+    else if (!c.unlocked) Txt('機能が開くと読めます', 148, 74, 266, 13, SOFT, card, { weight: 500, nowrap: true });
+    card.addEventListener('click', () => (c.unlocked ? TipCard(c.id, 'list', () => Tips()) : toast('機能が開くと読めます')));
+  });
+  Back(() => (tipsState.back ?? Settings)(), '戻る', 40, 834);
+}
+/** One card: `source` = list | context | tour (tip_view once per opening). In a tour, 次へ / おわり instead of 閉じる. */
+async function TipCard(id, source = 'list', back = null) {
+  const I = tipsState.index ?? (await tipsLoad()).value;
+  const c = I?.tips.find((t) => t.id === id);
+  if (!c || !c.unlocked) { toast('機能が開くと読めます'); return (back ?? (() => Tips()))(); }
+  const tour = source === 'tour' ? tipsState.tour : null;
+  currentScreen = () => TipCard(id, 'list', back);
+  Clear('tip-card'); SetArt('Art/home-paddock', false); Shade('dim heavy');
+  const topic = I.topics.find((t) => t.id === c.topic);
+  TopBar('ヒント　/　' + (tour ? tour.title : topic?.title ?? ''), tour ? '機能のツアー' : 'ヒント集');
+  const p = Glass('Tip card', 196, 150, 1208, 640, undefined, .93); p.classList.add('tip-reader'); p.dataset.tip = c.id;
+  ArtImage(TIP_ART[c.art] ?? 'Art/home-paddock', 36, 36, 520, 568, p, 'cover tip-art');
+  Kicker(topic?.title ?? '', 600, 40, p, { size: 15 });
+  Txt(c.title, 600, 116, 560, 34, WHITE, p, { weight: 700, lh: 1.3 }).classList.add('tip-title');
+  const body = Txt(c.body, 600, 200, 560, 22, WHITE, p, { weight: 500, lh: 1.75, h: 250 }); body.classList.add('tip-body');
+  if (c.help) TextLink('くわしく', 600, 470, 560, () => HelpArticle(c.help.articleId, 'link', () => TipCard(id, source, back)), p, `くわしく：${c.help.title} ›`).dataset.tipHelp = c.help.articleId;
+  if (tour) {
+    const last = tipsState.page >= tour.pages.length - 1;
+    Txt(`${tipsState.page + 1} / ${tour.pages.length}`, 600, 540, 120, 18, MUTED, p, { cls: 'num', weight: 700 }).dataset.tourPage = String(tipsState.page + 1);
+    Cta(last ? 'おわり' : '次へ', 760, 520, 400, () => TourNext(), p, 'small').dataset.action = 'tour-next';
+    Back(() => { tipsState.tour = null; Tips(); }, '戻る', 40, 834);
+  } else {
+    Cta('閉じる', 760, 520, 400, () => (back ?? (() => Tips()))(), p, 'small').dataset.action = 'tip-close';
+    Back(() => (back ?? (() => Tips()))(), '戻る', 40, 834);
+  }
+  await tipsRead([c], source);
+}
+/** REQ-TUT-009: a feature tour — its open cards as pages; tutorial_replay start, then finish after the last page. */
+async function TipTour(id) {
+  const I = tipsState.index ?? (await tipsLoad()).value;
+  const t = I.tutorials.find((x) => x.id === id);
+  if (!t || t.kind !== 'tour' || !t.unlocked) { toast('この機能が開いたら見られます'); return Tips(); }
+  const pages = t.tips.map((x) => I.tips.find((c) => c.id === x)).filter((c) => c?.unlocked);
+  if (!pages.length) { toast('この機能が開いたら見られます'); return Tips(); }
+  tipsState.tour = { id, title: t.title, pages }; tipsState.page = 0;
+  tipsKpi('tutorial_replay', { tutorialId: id, kind: 'tour', stage: 'start' });
+  return TipCard(pages[0].id, 'tour');
+}
+function TourNext() {
+  const tour = tipsState.tour;
+  if (!tour) return Tips();
+  if (tipsState.page >= tour.pages.length - 1) {
+    tipsKpi('tutorial_replay', { tutorialId: tour.id, kind: 'tour', stage: 'finish' });
+    tipsState.tour = null; toast('ツアーを最後まで見ました'); return Tips();
+  }
+  tipsState.page += 1;
+  return TipCard(tour.pages[tipsState.page].id, 'tour');
+}
+/** REQ-TUT-002: a race lesson's briefing — its cards, the practice note and one CTA. */
+async function LessonBrief(id) {
+  const I = tipsState.index ?? (await tipsLoad()).value;
+  const t = I.tutorials.find((x) => x.id === id && x.kind === 'race');
+  if (!t) return Tips();
+  currentScreen = () => LessonBrief(id);
+  Clear('tip-lesson'); SetArt('Art/first-ride', false); Shade('left');
+  TopBar('ヒント　/　' + t.title, 'レースのレッスン　·　端末で練習');
+  const p = Glass('Lesson brief', 36, 134, 1060, 676, undefined, .9); p.dataset.tutorial = id; p.classList.add('tip-lesson-brief');
+  Kicker('レッスン', 36, 30, p);
+  const cards = t.tips.map((x) => I.tips.find((c) => c.id === x)).filter((c) => c?.unlocked).slice(0, 2);
+  cards.forEach((c, i) => {
+    const x = 36 + i * 504;
+    ArtImage(TIP_ART[c.art] ?? 'Art/first-ride', x, 96, 480, 200, p, 'cover tip-art');
+    Txt(c.title, x, 316, 480, 24, WHITE, p, { weight: 700, lh: 1.3 });
+    Txt(c.body, x, 362, 480, 17, WHITE, p, { weight: 500, lh: 1.7, h: 200 }).classList.add('tip-body');
+  });
+  const d = Glass('Lesson start', 1116, 134, 448, 676, undefined, .9);
+  Kicker(t.title, 36, 30, d, { size: 16 });
+  const how = { whip: '最後の直線だけの短いレース。合図が出たら、ムチを2回。', position: '練習のレース。前の馬の後ろについて、直線で外へ。', stamina: '練習のレース。スタミナの帯を見ながら、前半は抑えて。', reins: '練習のレース。掛かったら手綱を長押し。' }[t.lesson] ?? '';
+  Txt(how, 36, 112, 376, 18, WHITE, d, { weight: 500, lh: 1.7 }).dataset.lessonHow = t.lesson;
+  Txt('レッスンは練習です。成績・ミッション・報酬には数えません', 36, 420, 376, 14, SOFT, d, { lh: 1.6 }).dataset.practiceNote = '1';
+  Cta('レッスンを始める', 36, 560, 376, () => StartLesson(id), d).dataset.action = 'lesson-start';
+  Back(() => Tips(), '戻る', 40, 834);
+  await tipsRead(cards, 'lesson');
+}
+/** The lesson race in the real engine: never the FTUE's tutorialAttempt / ftue, never assisted, never sent anywhere. */
+async function StartLesson(id) {
+  const I = tipsState.index ?? (await tipsLoad()).value;
+  const t = I.tutorials.find((x) => x.id === id && x.kind === 'race');
+  if (!t) return Tips();
+  const prev = tipsState.lesson?.id === id ? tipsState.lesson.tries : 0;
+  tipsState.lesson = { id, lesson: t.lesson, title: t.title, tries: prev + 1 };
+  tipsKpi('tutorial_replay', { tutorialId: id, kind: 'race', stage: 'start' });
+  await viewReady;
+  engine.SetAssist('off'); // a lesson teaches the controls: かんたん操作 stays off (like the tutorial)
+  engine.SetCommentaryPack(equippedPack());
+  if (t.lesson === 'whip') {
+    raceInfo = JSON.parse(engine.StartTutorial(1)); // the FTUE tutorial race itself, attempt 1: the honest rule
+    raceCtx = { tutorial: true, attempt: 1, ftue: false, lesson: tipsState.lesson };
+  } else {
+    raceInfo = JSON.parse(engine.Start('practice', horseName, '', 1 + (Date.now() % 100000)));
+    raceCtx = { tutorial: false, ftue: false, lesson: tipsState.lesson, trackName: t.title, trackId: raceInfo.trackId, config: null };
+  }
+  view.useRig = true; view.start(raceInfo, equippedPartner());
+  BuildRaceScreen();
+}
+/** The lesson's result: the whip lesson has the tutorial's win rule; the others finish when run. Nothing is applied. */
+function LessonResult(f) {
+  const ls = raceCtx.lesson, r = f.result;
+  const whip = ls.lesson === 'whip';
+  const won = whip ? !!r.won : true;
+  tipsKpi('tutorial_replay', { tutorialId: ls.id, kind: 'race', stage: 'finish' });
+  Clear('lesson-result'); SetArt(won ? 'Art/race-result' : 'Art/first-ride');
+  const p = ResultPanel('レッスン　/　' + ls.title);
+  p.dataset.lesson = ls.id; p.dataset.won = won ? '1' : '0';
+  Txt(whip ? (won ? '差し切った！' : 'おしい！') : 'レッスン完了', 40, 120, 560, 72, GOLD, p, { weight: 700, lh: 1.2 });
+  Txt(whip ? (won ? (r.line || '残り300mからのムチで差し切った') : 'あと少し。残り300mからムチを2回') : `${r.place}着　/　${r.time ?? ''}`, 44, 236, 520, 22, WHITE, p, { weight: 700, lh: 1.5 });
+  Hair(44, 330, 478, p);
+  Kicker('ヒント', 44, 356, p, { rule: false, size: 15 });
+  const tips = tipsState.index?.tutorials.find((x) => x.id === ls.id)?.tips ?? [];
+  const first = tipsState.index?.tips.find((c) => c.id === tips[0]);
+  if (first) Txt(first.title, 44, 386, 520, 20, WHITE, p, { weight: 700 });
+  Txt('レッスンは練習です。成績・ミッション・報酬には数えません', 44, 500, 520, 15, MUTED, p, { lh: 1.6 }).dataset.practiceNote = '1';
+  Cta('もう一度', 44, 600, 478, () => StartLesson(ls.id), p, 'small').dataset.action = 'lesson-retry';
+  TextLink('ヒントに戻る', 44, 700, 300, () => { tipsState.lesson = null; Tips(); }, p).dataset.action = 'lesson-back';
+  globalThis.__muchi && (globalThis.__muchi.lastLesson = { id: ls.id, won, place: r.place, tries: ls.tries });
+  EnToggle();
+}
+
 // ================================================================= boot
 // ================================================================= round 17: ヘルプセンター (REQ-HELP-*, contracts/protocol.md §48)
 // The same screens as the Unity HelpCenterModel on the real rules (help.ts + PlayerService): categories, search with the
@@ -6822,7 +7046,7 @@ const helpKpi = (name, props) => (globalThis.__muchiKpi ??= []).push({ name, ...
 const HELP_STATUS_COLOR = { received: GOLD, answered: CYAN, closed: SOFT };
 /** Where an article's screen link leads (protocol §48.1 screens). */
 const helpGo = (screen, back) => ({
-  home: () => Home(), settings: () => Settings(), race_lobby: () => RaceLobby(), tutorial: () => toast('チュートリアルはタイトル画面から始められます'),
+  home: () => Home(), settings: () => Settings(), race_lobby: () => RaceLobby(), tutorial: () => Tips(), tips: () => Tips(),
   training: () => Training(), breeding: () => Stable(), stable: () => Stable(), collection: () => Collection('horses'), gacha: () => Scout(),
   gacha_odds: () => Odds('standard'), shop: () => Store('coins'), history: () => History('purchases'), gift_box: () => GiftBox('box'),
   activity: () => { actState.cursor = null; actState.stack = []; return Activity(); }, accessibility: () => A11ySettings(), performance: () => PerfSettings(), storage: () => Storage(),
@@ -7128,7 +7352,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ PerfSettings, Storage, Privacy, QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

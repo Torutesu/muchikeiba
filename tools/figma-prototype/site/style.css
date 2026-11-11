@@ -694,3 +694,10 @@ html[data-reduce-motion="on"] .pr-bar .band { transition: none; }
 .qc-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
 .qc-opt { font-size: 15px; font-weight: 700; padding: 7px 16px; background: rgba(var(--navy-rgb), .75); box-shadow: inset 0 0 0 1px rgba(150, 173, 187, .45); transform: skewX(-10deg); }
 .qc-opt.sel { color: var(--navy); background: var(--cyan); box-shadow: none; }
+
+/* round 19: チュートリアルのやり直しとヒント集 (REQ-TUT-*) */
+.help-row.tip-card .img.tip-thumb { border-radius: 3px; }
+.help-row.locked { cursor: default; background: rgba(var(--navy-rgb), .35); }
+.btn.choice .tip-dot { position: absolute; right: 10px; top: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--gold); }
+.btn.tip-q { font-size: 22px; font-weight: 700; padding: 0; }
+.glass.tip-reader .img.tip-art, .glass.tip-lesson-brief .img.tip-art { border-radius: 4px; }

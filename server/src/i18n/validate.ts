@@ -18,7 +18,9 @@ const INTERNAL_SECTIONS = new Set(['ng', 'bannedSilks', 'assetCatalog', 'nicks',
   // REQ-HELP-001: the help articles carry their own English side by side (checked by help.ts helpProblems)
   'help',
   // REQ-QCHAT-001: quick chat phrases are JA + EN pairs of their own (checked by quickChat.ts quickChatProblems)
-  'quickChat']);
+  'quickChat',
+  // REQ-TUT-010: the tip cards carry their own English side by side (checked by tips.ts tipsProblems)
+  'tips']);
 
 /** Every Japanese text of the player-facing master data, with where it is. */
 export function masterTexts(m: Master, v: VisualsMaster = VISUALS): { path: string; text: string }[] {

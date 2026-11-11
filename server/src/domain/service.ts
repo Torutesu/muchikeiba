@@ -74,6 +74,7 @@ import {
 } from './comeback.js';
 import { claimAllGifts, claimGift, expireGifts, giftBadge, giftBoxView, giftGiver, giftsNeedExpiry, nextGiftWake, type OpsTitleKey } from './giftBox.js';
 import { activityBadge, activityPage, markActivityRead, recordActivity } from './activity.js';
+import { markTipsSeen, tipsBadge, tipsIndex } from './tips.js';
 import { helpBadge, inquiryDetail, inquiryList, markIndexed, markInquiryRead, replyInquiry, submitInquiry, unindexedSummaries, voteHelp, type InquiryInput } from './help.js';
 import { fsugCard, fsugCardKey, fsugDismiss, fsugSelf, fsugSetHidden, ensureFsug, noteFsugRace, type FsugCard, type FsugDismissed, type FsugKind } from './friendSuggest.js';
 import { finishTraining, startTraining, trainingDelta, trainingTick, trainingView, useTrainingItem } from './training.js';
@@ -353,7 +354,7 @@ export class PlayerService {
   /** REQ-UXS-001/014/032/040: computed sections of GET /v1/player and bootstrap. */
   private extras(s: PlayerState, now: number) {
     const m = this.d.master;
-    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s), commentaryPack: commentaryPackBadge(m, s), accessibility: accessibilityView(s), activity: activityBadge(m, s, now), help: helpBadge(s), nextActions: nextActionsView(m, s, now), horseGoalPin: pinnedGoalView(m, s) };
+    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s), commentaryPack: commentaryPackBadge(m, s), accessibility: accessibilityView(s), activity: activityBadge(m, s, now), help: helpBadge(s), tips: tipsBadge(m, s, now), nextActions: nextActionsView(m, s, now), horseGoalPin: pinnedGoalView(m, s) };
   }
 
   async view(id: string) {
@@ -1526,6 +1527,12 @@ export class PlayerService {
   }
   /** REQ-ACT-008: mark read up to an id (idempotent). */
   activityRead(id: string, upTo: number | null) { return this.tx(id, null, (s, now) => markActivityRead(this.d.master, s, upTo, now)); }
+
+  // ---- チュートリアルのやり直しとヒント集 (REQ-TUT-*, contracts/protocol.md §57) ----
+  /** REQ-TUT-005: the tips index for this player (reads only: cards open with the §4.3 unlocks, "new" = open and not seen). */
+  async tips(id: string, lang: Locale = 'ja', maxWhips = 6) { return tipsIndex(this.d.master, await this.load(id), this.d.clock(), lang, maxWhips); }
+  /** REQ-TUT-007: mark open cards seen (idempotent; never grants anything). */
+  tipsSeen(id: string, ids: string[]) { return this.tx(id, null, (s, now) => markTipsSeen(this.d.master, s, ids, now)); }
 
   // ---- ヘルプセンター (REQ-HELP-*, contracts/protocol.md §48) ----
   /** REQ-HELP-007: one vote per article (changeable), capped per game day. */

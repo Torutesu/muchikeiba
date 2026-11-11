@@ -137,6 +137,10 @@ const perfSettingProps = z.object({
   value: z.enum(['auto', 'low', 'medium', 'high', '30', '60', 'on', 'off']),
   deviceClass: z.enum(PERF_DEVICE_CLASSES),
 }).strict().refine((p) => (PERF_SETTING_VALUES[p.setting] as readonly string[]).includes(p.value), { message: 'value is not valid for the setting', path: ['value'] });
+/** REQ-TUT-015 (§57): where a tip card was read, and the "?" screens (domain/tips.ts TIP_CONTEXTS; repeated here to keep kpi.ts import-free). */
+export const TIP_VIEW_SOURCES = ['list', 'context', 'tour', 'lesson'] as const;
+export const TIP_CONTEXT_NAMES = ['gacha_odds', 'breeding', 'training', 'roster_bulk_retire'] as const;
+const tipId = z.string().regex(/^[a-z0-9_]{2,40}$/);
 /** Events only the client can observe. Server-known events (purchase, gacha, race results…) are not accepted from clients. */
 export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('session_start'), at: z.number().int(), props: z.object({}).strict().optional() }),
@@ -201,6 +205,11 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   // REQ-PERF-015 (§56.9): a device setting changed by the player / 「すべてダウンロード」 started (size bucket, version)
   z.object({ name: z.literal('perf_setting_change'), at: z.number().int(), props: perfSettingProps }),
   z.object({ name: z.literal('asset_predownload'), at: z.number().int(), props: z.object({ bucket: z.enum(PREDOWNLOAD_BUCKETS), variant: z.enum(['full', 'low']) }).strict() }),
+  // REQ-TUT-015: a replay started / finished on the device (which one: its id and kind; a replay never reaches the server
+  // otherwise), a card read (its id and where), and a screen's "?" button (the screen and the card it opened)
+  z.object({ name: z.literal('tutorial_replay'), at: z.number().int(), props: z.object({ tutorialId: tipId, kind: z.enum(['race', 'tour']), stage: z.enum(['start', 'finish']) }).strict() }),
+  z.object({ name: z.literal('tip_view'), at: z.number().int(), props: z.object({ tipId, source: z.enum(TIP_VIEW_SOURCES) }).strict() }),
+  z.object({ name: z.literal('tip_context_open'), at: z.number().int(), props: z.object({ context: z.enum(TIP_CONTEXT_NAMES), tipId }).strict() }),
 ]);
 export type ClientEvent = z.infer<typeof clientEventSchema>;
 
@@ -252,6 +261,9 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'hgoal_view': return { name: e.name, s1: e.props.surface, value: e.props.done };
     case 'perf_setting_change': return { name: e.name, s1: e.props.setting, s2: e.props.value, s3: e.props.deviceClass };
     case 'asset_predownload': return { name: e.name, s1: e.props.bucket, s2: e.props.variant };
+    case 'tutorial_replay': return { name: e.name, s1: e.props.tutorialId, s2: e.props.kind, s3: e.props.stage };
+    case 'tip_view': return { name: e.name, s1: e.props.tipId, s2: e.props.source };
+    case 'tip_context_open': return { name: e.name, s1: e.props.context, s2: e.props.tipId };
   }
 }
 

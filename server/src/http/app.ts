@@ -104,6 +104,7 @@ export type PlayerMethod =
   | 'photoCatalog' | 'photos' | 'photoSave' | 'photoDelete'
   | 'activity' | 'activityRead' | 'activityReplayShare' | 'teamGoalMilestone'
   | 'fsugSelf' | 'fsugDismiss' | 'fsugSetHidden'
+  | 'tips' | 'tipsSeen'
   | 'helpFeedback' | 'helpInquirySubmit' | 'helpInquiries' | 'helpInquiry' | 'helpInquiryRead' | 'helpInquiryIndexed' | 'adminInquiry' | 'adminInquiryReply'
   | 'recaps' | 'recap' | 'recapProgress'
   | 'dataExportView' | 'dataExportRequest' | 'dataExportTake' | 'dataExportCollect' | 'dataExportReady' | 'dataExportFailed' | 'dataExportFile'
@@ -1109,6 +1110,12 @@ export const routes: Route[] = [
   { method: 'PUT', path: '/v1/blocks/:playerId', auth: 'player', handler: async (_r, p, c, u) => { const r = await c.player(u).invoke('blockSet', u, playerIdParam(p.playerId!), true, 'blocks'); await c.teams?.syncBlocks(u); return r; } },
   { method: 'DELETE', path: '/v1/blocks/:playerId', auth: 'player', handler: async (_r, p, c, u) => { const r = await c.player(u).invoke('blockSet', u, playerIdParam(p.playerId!), false, 'blocks'); await c.teams?.syncBlocks(u); return r; } },
   // ヘルプセンター (REQ-HELP-*, contracts/protocol.md §48): articles and search read the master only (no player state)
+  // REQ-TUT-005/007 (§57): the tips library and replays (gate group `core`: closed only by an `all` window — tips are not support)
+  { method: 'GET', path: '/v1/tips', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('tips', u, resolveLocale(r), await maxWhipsOf(c)) },
+  { method: 'POST', path: '/v1/tips/seen', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ ids: z.array(z.string().regex(/^[a-z0-9_]{2,40}$/)).min(1).max(50) }).strict());
+    return c.player(u).invoke('tipsSeen', u, b.ids);
+  } },
   { method: 'GET', path: '/v1/help', auth: 'player', handler: async (r, _p, c) => helpIndex(c.master, resolveLocale(r)) },
   { method: 'GET', path: '/v1/help/articles/:articleId', auth: 'player', handler: async (r, p, c) => {
     if (!/^[a-z0-9_]{2,40}$/.test(p.articleId!)) throw new AppError('NOT_FOUND', 'NOT_FOUND');

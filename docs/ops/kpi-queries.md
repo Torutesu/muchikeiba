@@ -1282,3 +1282,27 @@ GROUP BY bucket, variant ORDER BY bucket, variant
 ```
 
 - **見方**：オンにした人の数は、その後オフに戻した人を引いていない（今の値は端末にしかない）。
+
+## ヒント：やり直し・カード・「？」（REQ-TUT-015、contracts/protocol.md §57.6、Round 19）
+
+**やり直しとカードが使われているか、どの画面の「？」が押されているか**。どれもクライアントのイベント（やり直しは端末の中だけで、サーバーには結果が来ない）。`tutorial_replay`（`blob8` = レッスン／ツアーの id、`blob9` = `race` / `tour`、`blob10` = `start` / `finish`）、`tip_view`（`blob8` = カード、`blob9` = 入口 `list`・`context`・`tour`・`lesson`）、`tip_context_open`（`blob8` = 画面 `gacha_odds`・`breeding`・`training`・`roster_bulk_retire`、`blob9` = カード）。
+
+```sql
+-- やり直しごとの開始・完了と完了率（完了率が低いレッスンは短くする）
+SELECT blob8 AS tutorial, blob9 AS kind,
+  sum(if(blob10 = 'start', _sample_interval, 0)) AS starts,
+  sum(if(blob10 = 'finish', _sample_interval, 0)) AS finishes
+FROM muchi_kpi
+WHERE blob1 = 'tutorial_replay' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY tutorial, kind ORDER BY starts DESC
+```
+
+```sql
+-- 画面ごとの「？」の回数（多い画面は画面そのものの説明を見直す）
+SELECT blob8 AS screen, blob9 AS tip, sum(_sample_interval) AS opens
+FROM muchi_kpi
+WHERE blob1 = 'tip_context_open' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY screen, tip ORDER BY opens DESC
+```
+
+- `tip_view` の入口が `context` のカードの後に同じ日の `help_article_view`（`source = link`）が多いなら、カードが短すぎる。

@@ -238,6 +238,8 @@ export interface PlayerState {
   horseGoals?: import('./horseGoals.js').HorseGoalsState;
   /** REQ-DEX-*: 個人データの開示・ダウンロード — the current request, cooldown start, audit log, R2 keys still to delete (dataExport.ts). */
   dataExport?: import('./dataExport.js').DataExportState;
+  /** REQ-TUT-007 (§57): tip cards seen (tips.ts markTipsSeen; ids of open cards only, bounded by tips.config.seenMax). */
+  tips?: import('./tips.js').TipsState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

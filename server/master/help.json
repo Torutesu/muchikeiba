@@ -34,6 +34,17 @@
       "related": ["whip", "gift_box"]
     },
     {
+      "id": "tips_replay", "category": "getting_started",
+      "title": { "ja": "チュートリアルのやり直しとヒント", "en": "Replaying tutorials and tips" },
+      "body": {
+        "ja": "設定の「ヒント」から、レースのチュートリアル（ムチのタイミング・位置取り・スタミナ・手綱）と、機能の案内（配合・調教・スカウト・ショップとコイン・支部・カップ）をいつでもやり直せます。\n\n・レースのチュートリアルは端末の中だけで走ります。成績・ランク・ミッションには数えられず、報酬もありません\n・最初のチュートリアルの報酬（相棒の馬・入厩祝いのスカウト）は一度だけです。やり直しても、もう一度は受け取れません\n・ヒントのカードは、その機能が開放されると読めるようになります。まだ読んでいないカードには「NEW」が付きます\n・調教・配合・提供割合・まとめて引退の画面の「？」から、その画面のヒントを開けます。くわしい説明はヒントの「くわしく」からこのヘルプへ進めます",
+        "en": "From Tips in the settings, you can replay the race tutorials (whip timing, positioning, stamina and reins) and the feature tours (breeding, training, scout, shop and coins, branches and cups) at any time.\n\n• Race tutorials run on your device only. They don't count toward your record, rank or missions, and give no rewards\n• The rewards of the first tutorial (your partner horse and the welcome scout) are given once. Replaying never gives them again\n• A tip card can be read once its feature is unlocked. Cards you haven't read yet are marked NEW\n• The ? button on the training, breeding, rates and bulk retire screens opens that screen's tip. Tap More in a tip for the full help article"
+      },
+      "keywords": { "ja": ["ヒント", "チュートリアル", "やり直し", "練習"], "en": ["tips", "tutorial", "replay", "tour"] },
+      "links": [ { "type": "screen", "screen": "tips" } ],
+      "related": ["first_steps", "whip"]
+    },
+    {
       "id": "gift_box", "category": "getting_started",
       "title": { "ja": "プレゼントボックスの受け取り", "en": "Receiving gifts from the gift box" },
       "body": {

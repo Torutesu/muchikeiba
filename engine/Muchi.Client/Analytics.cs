@@ -262,6 +262,34 @@ namespace Muchi.Client
             return new AnalyticsEvent("help_article_view", atMs, JsonNode.Obj().Set("articleId", articleId).Set("source", source));
         }
 
+        // ---- REQ-TUT-015 チュートリアルのやり直しとヒント集 (a replay runs on the device: these rows are all the server hears of it)
+        public static readonly string[] TipViewSources = { "list", "context", "tour", "lesson" };
+
+        /// <summary>A replay started or finished: which one (its id), race lesson or tour, start | finish.</summary>
+        public static AnalyticsEvent TutorialReplay(long atMs, string tutorialId, string kind, string stage)
+        {
+            if (!ApiClient.IsTipId(tutorialId)) throw new ArgumentException("bad tutorial id " + tutorialId);
+            if (kind != TutorialEntry.KindRace && kind != TutorialEntry.KindTour) throw new ArgumentException("unknown tutorial kind " + kind);
+            if (stage != "start" && stage != "finish") throw new ArgumentException("unknown stage " + stage);
+            return new AnalyticsEvent("tutorial_replay", atMs, JsonNode.Obj().Set("tutorialId", tutorialId).Set("kind", kind).Set("stage", stage));
+        }
+
+        /// <summary>A card was read: its id and where (list | context | tour | lesson).</summary>
+        public static AnalyticsEvent TipView(long atMs, string tipId, string source)
+        {
+            if (!ApiClient.IsTipId(tipId)) throw new ArgumentException("bad tip id " + tipId);
+            if (IndexIn(TipViewSources, source) < 0) throw new ArgumentException("unknown tip view source " + source);
+            return new AnalyticsEvent("tip_view", atMs, JsonNode.Obj().Set("tipId", tipId).Set("source", source));
+        }
+
+        /// <summary>A screen's "?" button: the screen (TipContexts) and the card it opened.</summary>
+        public static AnalyticsEvent TipContextOpen(long atMs, string context, string tipId)
+        {
+            if (IndexIn(TipContexts.All, context) < 0) throw new ArgumentException("unknown tip context " + context);
+            if (!ApiClient.IsTipId(tipId)) throw new ArgumentException("bad tip id " + tipId);
+            return new AnalyticsEvent("tip_context_open", atMs, JsonNode.Obj().Set("context", context).Set("tipId", tipId));
+        }
+
         // ---- REQ-FSUG-014 おすすめフレンド (the request / dismiss rows are server events; the view is the client's)
         /// <summary>The suggestions section was on screen (once per friends-screen visit); shown = suggestions in it (0..30). No player ids.</summary>
         public static AnalyticsEvent FsugView(long atMs, int shown)

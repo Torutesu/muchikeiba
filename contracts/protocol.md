@@ -3170,3 +3170,70 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 - `Muchi.Game`：`PerformanceSettingsModel`（端末の保存・`Changed` イベント・画面が結ぶ値・設定画面の行 `Rows()`・`SetInRace`・`OnLowPowerModeChanged`）、`StorageModel`（行・合計・まとめてダウンロード（サイズ・確認・Wi-Fi 待ち・進み具合）・キャッシュの削除（確認））、`AssetPreloadModel` にデータセーバーの方針を渡せる（無ければ今まで通り）。
 - プロトタイプ：設定の「画質・通信量」と「ストレージ」画面。画質・fps・省電力は実際にレースの 3D 表示（ピクセル比・影・FOV キック・スピード線）と描画ループの fps、ホームの背景の動きを変える。日英・文字の大きさ。
 - ヘルプ（§48）：記事 `data_storage`（データ通信量と容量、端末ごとの設定であること、レースの結果は変わらないこと）。画面のリンク `storage`。
+
+## 57. チュートリアルのやり直しとヒント集（replay tutorials & tips library、REQ-TUT-001〜018、`server/src/domain/tips.ts`・`server/master/tips.json`、C# `Tips.cs`・`Muchi.Game.TipsModel`／`TutorialReplayModel`、docs/handoff-codex-round19-tutorial-replay.md）
+設定の「ヒント」から、レースのチュートリアル（ムチのタイミング・位置取り・スタミナ・手綱）と機能のツアー（配合・調教・スカウトの提供割合と天井・ショップとコインの種類（有償・無償）・支部・カップ）をいつでもやり直せる。あわせて、機能が開くと読めるようになる短い絵付きのカード（日本語・英語）と、複雑な画面の「？」ボタン。**何も配らない**（E番号なし、経済は変わらない）。
+
+**決まりごと**
+- やり直しは**端末の中だけ**：レースのレッスンは練習と同じく端末のエンジンで走る（ムチは FTUE のチュートリアルのレース（`OfflinePresets.TutorialRace`、`TutorialDirector` 付き）そのもの、位置取り・スタミナ・手綱は端末の練習レース（`RaceFactory.Practice`）。どちらも既存の部品を使い、写しを作らない）。**サーバーに結果を送らない・レースに数えない・オンボーディングの状態（FTUE の段・チュートリアルの回数・KPI の `tutorial_step`）に触れない・報酬なし**。最初のチュートリアルの報酬（相棒 `PARTNER_ALREADY_GRANTED`・入厩祝いの10連 `TUTORIAL_GACHA_USED`・初心者ミッション `ALREADY_CLAIMED`）は一度だけのまま。
+- ツアーはカードのページ送り（同じカードを使う。文を二重に持たない）。開放前の機能のツアーは開けない。
+- カードは `server/master/tips.json`（リモート設定の `tips` で丸ごと置き換え）に**日本語と英語の両方**を持ち、要求の言語で返す。**数字はカードに書かない**：ヘルプセンター（§48.1）の `{{トークン}}` を同じ仕組み（`fillTokens`）で埋める（天井・提供割合は提供割合の画面と同じ計算）。
+- **ヒントは短く、ヘルプは長く**：カードは `bodyMaxChars` 文字まで。くわしい説明はカードの `help`（ヘルプ記事 id）へのリンクで、**カードはヘルプ記事の文をそのまま繰り返さない**（12文字以上の文が一致したら検査で落とす）。
+- 言葉：§48 と同じ（日本語の「倍」「お得」「今だけ」「残りわずか」「通常価格」・賭けの言葉（`bettingWords.ts`）・英語の `EN_BANNED`）。スカウトとショップの話題のカードはトークンの外に数字を置けない（「10連」だけ例外）。
+- 見たカードは**アカウントに保存**（`tips.seen`、開いているカードの id だけ、`seenMax` 件まで、マスターから消えた id は落とす）。端末をまたいでも「NEW」がそろう。
+
+### 57.1 マスター（`server/master/tips.json`）
+```json
+{ "version": 1,
+  "config": { "enabled": true, "titleMaxChars": 24, "bodyMaxChars": 160, "seenMax": 200, "seenPerRequest": 20 },
+  "topics": [ { "id": "race", "title": { "ja": "レース", "en": "Racing" } } ],
+  "tips": [ { "id": "scout_pity_tip", "topic": "scout", "unlock": null, "art": "pity", "help": "pity",
+              "title": { "ja": "交換ptで選べる", "en": "Exchange points" },
+              "body": { "ja": "…常設では{{pity_pulls:standard}}回分で…", "en": "…{{pity_pulls:standard}} pulls' worth…" } } ],
+  "contexts": { "gacha_odds": "scout_pity_tip", "breeding": "breeding_pair", "training": "training_timing", "roster_bulk_retire": "roster_retire" },
+  "tutorials": [ { "id": "race_whip", "kind": "race", "lesson": "whip", "unlock": null, "title": { "ja": "ムチのタイミング", "en": "Whip timing" }, "tips": ["whip_window", "whip_spacing"] },
+                 { "id": "tour_scout", "kind": "tour", "unlock": "scout", "title": { "ja": "スカウトのツアー", "en": "Scout tour" }, "tips": ["scout_rates_tip", "scout_pity_tip", "scout_guarantee"] } ] }
+```
+- `config`：`titleMaxChars` 8〜40、`bodyMaxChars` 40〜240、`seenMax` 20〜500、`seenPerRequest` 20〜50（クライアントは20件ずつ送るので、それより下げない）。
+- 話題 `topics` は5つ：`race`（レース）・`horses`（馬を育てる）・`scout`（スカウト）・`shop`（ショップ・コイン）・`social`（支部・カップ）。全部そろって重ならない。
+- カード `tips`（120枚まで）：`id` は `^[a-z0-9_]{2,40}$` で重ならない（ツアーの id とも）。`unlock` は §4.3 の開放キー（`UNLOCK_KEYS`）か `null`（最初から）。`art` は絵の種類（`whip`・`slipstream`・`lanes`・`stamina`・`reins`・`breeding`・`stud`・`training`・`roster`・`scout`・`pity`・`coins`・`branch`・`cups`、Codex が描く）。`help` は存在するヘルプ記事（リモート設定でヘルプからその記事を外す版は有効にできない）。日本語と英語でトークンの組が同じ。英語に日本語を入れない。
+- `contexts`（「？」の画面 → カード）：`gacha_odds`（提供割合）・`breeding`（配合）・`training`（調教）・`roster_bulk_retire`（まとめて引退）。全部そろって、存在するカードを指す。
+- `tutorials`（30件まで）：`kind` は `race`（レッスン）か `tour`（ツアー）。レッスン `lesson` は `whip`・`position`・`stamina`・`reins` が1つずつ、`unlock: null`（最初から）。`tips` は存在するカード1〜6枚（重ならない）。
+
+### 57.2 `GET /v1/tips`（要認証、読むだけ）
+```json
+{ "enabled": true, "version": 1, "lang": "ja", "newCount": 9,
+  "topics": [ { "id": "scout", "title": "スカウト", "count": 3, "unlocked": 3, "newCount": 3 } ],
+  "tips": [ { "id": "scout_pity_tip", "topic": "scout", "art": "pity", "unlock": null, "unlocked": true, "new": true,
+              "title": "交換ptで選べる", "body": "…常設では200回分で…", "help": { "articleId": "pity", "title": "天井（交換pt）のしくみ" } },
+            { "id": "breeding_pair", "topic": "horses", "art": "breeding", "unlock": "breeding", "unlocked": false, "new": false,
+              "title": "配合のきほん", "body": null, "help": { "articleId": "breeding", "title": "配合と種付け" } } ],
+  "tutorials": [ { "id": "race_whip", "kind": "race", "lesson": "whip", "unlock": null, "unlocked": true, "title": "ムチのタイミング", "tips": ["whip_window", "whip_spacing"] } ],
+  "contexts": { "gacha_odds": "scout_pity_tip" } }
+```
+- 開放は `GET /v1/player` の `unlocks`（§4.3）と同じ判定。表にないキーは最初から開いている（ホームと同じ）。
+- 開いていないカードはタイトルと開放キーだけ（`body: null`）。`new` = 開いていて、まだ見ていない。
+- `enabled: false` のときは `topics`・`tips`・`tutorials`・`contexts` が空、`newCount: 0`。
+- `GET /v1/player`・bootstrap に `tips: { "newCount": n }`（設定の「ヒント」のバッジ）。
+
+### 57.3 `POST /v1/tips/seen`（要認証）
+`{ "ids": ["whip_window", "whip_spacing"] }`（1〜`seenPerRequest` 件、`^[a-z0-9_]{2,40}$`、他のキーは 400）→ `{ "marked": ["whip_window"], "skipped": [], "newCount": 8 }`。何度送っても同じ（見たものは見たまま）。開いていないカードは `skipped`（見たことにしない）。無い id が1つでもあれば 404 `NOT_FOUND` で何も記録しない。ライブラリが止まっているときは 404。
+
+### 57.4 やり直し（端末）
+- レッスンの流れ：カード（そのレッスンの `tips`）→ レース → 結果（「もう一度」「ヒントに戻る」）。ムチのレッスンは FTUE と同じ勝ち方（最後の300mでムチ2回以上で差し切り）。やり直しの回数は FTUE のチュートリアルの回数（`muchi.tutorial.attempts`）とは別で、補正（3回目で勝つ）も使わない。
+- レース中の案内は既存の `RaceFeel` の1行（「今だ、ムチ！」「掛かっている：手綱を長押し」「脚が上がった」など）。レッスンごとに見せたい案内の種類を `TutorialReplayModel.FocusOf` が決める。
+- かんたん操作（§30）はレッスンでも付けない（チュートリアルと同じ）。
+
+### 57.5 ゲートのグループ
+`/v1/tips*` はエンドポイントのグループ `core`（`all` のメンテナンスだけが閉じる）。サポート（§48 のヘルプ・問い合わせ）ではないので、免除のルートには入れない。
+
+### 57.6 KPI（クライアントのイベント）
+- `tutorial_replay`（`props.tutorialId`、`props.kind`：`race`・`tour`、`props.stage`：`start`・`finish`）→ s1 = id、s2 = 種類、s3 = 段。
+- `tip_view`（`props.tipId`、`props.source`：`list`・`context`・`tour`・`lesson`）→ s1 = カード、s2 = 入口。
+- `tip_context_open`（`props.context`：§57.1 の4つ、`props.tipId`）→ s1 = 画面、s2 = カード。
+- クエリは `docs/ops/kpi-queries.md`「ヒント」。
+
+### 57.7 クライアント
+- `Muchi.Client`：`TipsIndex`（`Parse`）・`TipsSeenResult`・`TipsBadge`（`PlayerView.Tips`）、`ApiClient.GetTipsAsync`・`MarkTipsSeenAsync`、`TipContexts`・`RaceLessons`、analytics `AnalyticsEvent.TutorialReplay`・`TipView`・`TipContextOpen`。
+- `Muchi.Game`：`TipsModel`（話題ごとの一覧・NEW・見た印をまとめて送る（オフラインは端末に貯めて後で送る）・「？」の `OpenContext`・ツアーのページ送り・開いていない機能のツアーは開けない）、`TutorialReplayModel`（レッスンのレースを `GameBackend` の既存の部品で作る（ムチ = `OfflinePresets.TutorialRace`、他 = 練習レース）・FTUE の段・回数・KPI に触れない・`tutorial_replay` を送る）。
+- 画面が守ること：docs/handoff-codex-round19-tutorial-replay.md。

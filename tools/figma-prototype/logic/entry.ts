@@ -35,6 +35,7 @@ import { MemoryRivalRegistry, RivalService, rivalPlayersFrom } from '../../../se
 import { noteRivalTa, prevWeekId, rivalCard, rivalTrackName, weekEndMs, weekIdAt } from '../../../server/src/domain/rival.js';
 import { actorIdsOf, renderActivityItems } from '../../../server/src/domain/activity.js';
 import { helpArticle, helpIndex, helpOf, helpQueryWords, searchHelp } from '../../../server/src/domain/help.js';
+import { tipsOf } from '../../../server/src/domain/tips.js';
 import { FriendSuggestService, MemorySuggestDirectory, fsugCard, fsugConfig } from '../../../server/src/domain/friendSuggest.js';
 import { FriendsService, MemoryDirectory } from '../../../server/src/domain/friends.js';
 import type { PlayerInvoker } from '../../../server/src/http/app.js';
@@ -724,6 +725,18 @@ export const MuchiLogic = {
   // What GET /v1/history/* and POST /v1/history/support-ticket return, on the real rules (the local state holds the whole ledger).
   history: (kind: 'summary' | 'purchases' | 'coins' | 'gacha', q: { cursor?: string | null; limit?: number; currency?: 'paid' | 'free' | null } = {}) => wrap(() => svc.history(ID, kind, q)),
   historyTicket: (refs: string[], topic: 'purchase_missing' | 'refund' | 'coins' | 'gacha' | 'other') => wrap(() => svc.historyTicket(ID, refs, topic)),
+
+  // ---------------------------------------------------------------- round 19: チュートリアルのやり直しとヒント集 (REQ-TUT-*, contracts/protocol.md §57)
+  // What GET /v1/tips and POST /v1/tips/seen return on the real rules (tips.ts + PlayerService), in the language the screen
+  // shows. A replay itself never reaches the logic: the race lessons run in the WASM engine like practice and the tours are
+  // pages of these cards; only the KPI rows say it happened (checked against the server's client-event schema).
+  tips: (lang: 'ja' | 'en' = 'ja') => wrap(() => svc.tips(ID, lang, Number(DEFAULT_RULESET.maxWhips))),
+  tipsSeen: (ids: string[]) => wrap(() => svc.tipsSeen(ID, ids)),
+  tipsKpi: (name: 'tutorial_replay' | 'tip_view' | 'tip_context_open', props: Record<string, unknown>) => wrap(() => clientBatchSchema.parse({ platform: 'editor', appVersion: 'proto', events: [{ name, at: now(), props }] }).events.map(clientToKpi)[0]),
+  /** REQ-TUT-008: the card a screen's 「？」 opens (master/tips.json contexts). */
+  tipContext: (ctx: string) => tipsOf(master).contexts[ctx] ?? null,
+  /** What the replay must never touch (REQ-TUT-004): the first-time rewards and the race counters, for the checks. */
+  tutorialFacts: () => wrap(async () => { const s = await svc.state(ID); return { partner: s.flags.partnerHorseId ?? null, tutorialGacha: !!s.flags.tutorialGachaUsed, races: s.onboarding?.races ?? 0, horses: s.horses.length, free: s.wallet.free, paid: s.wallet.paid, claimed: [...(s.onboarding?.claimed ?? [])] }; }),
 
   // ---------------------------------------------------------------- round 17: ヘルプセンター (REQ-HELP-*, contracts/protocol.md §48)
   // What GET /v1/help, /v1/help/articles/:id, /v1/help/search and the inquiry routes return, on the real rules, in the

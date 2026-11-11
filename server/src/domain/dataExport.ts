@@ -400,6 +400,8 @@ export const DEX_CLASSIFICATION: Record<keyof PlayerState | DexExtensionKey, Dex
   collection: x('play'), silksEditor: x('profile'), stable: x('social'), teamFeed: x('social'), teamGoal: x('play'),
   // Round 18 integration: §48 inquiries (text, replies, votes) and §47 the reporter's daily counter (its target ids are not exported)
   help: x('helpInquiries'), reports: x('reportsMade'),
+  // Round 19 integration: §57 tip cards read (ids) and §54 transfer code history / expiry (never the code id or password hash)
+  tips: x('play'), transfer: x('account'),
 };
 /** Keys some modules add to the state without declaring them on PlayerState (see the test). */
 export const DEX_EXTENSION_KEYS = ['collection', 'silksEditor', 'stable', 'teamFeed', 'teamGoal', 'help', 'reports'] as const;
@@ -484,6 +486,14 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
       deletion: s.deletion && s.deletion.status !== 'confirming' ? { status: s.deletion.status, requestedAt: s.deletion.requestedAt ?? null, deleteAt: s.deletion.deleteAt ?? null } : null,
       // anti-cheat: the status and dates; the detection reason is an operator note (protocol §51.5)
       moderation: s.moderation ? { status: s.moderation.status, until: s.moderation.until, at: s.moderation.at } : null,
+      // §54 (Round 19 integration): 引き継ぎコード — the code's mode and expiry, today's issues, the old-device cut-off and the
+      // issue / revoke / redeem history. Never the code id (half of the credential), the password, its hash or salt (those
+      // live only in the directory), nor the redeem replay guard (it names the account signed into)
+      transfer: s.transfer ? {
+        code: s.transfer.code ? { mode: s.transfer.code.mode, issuedAt: s.transfer.code.issuedAt, expiresAt: s.transfer.code.expiresAt, expired: now >= s.transfer.code.expiresAt } : null,
+        issuesToday: clone(s.transfer.issues), lastTransferredAt: s.transfer.lastRedeemedAt, oldDeviceCutoffAt: s.transfer.cutoffAt,
+        history: clone(s.transfer.history),
+      } : null,
     },
     profile: {
       displayName: s.profile.displayName, titleId: s.profile.titleId, titles: [...s.titles], silks: clone(s.profile.silks) ?? null,
@@ -574,6 +584,8 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
     } : null,
     recaps: clone(s.seasonRecap?.recaps) ?? [],
     play: {
+      // §57 (Round 19 integration): the tip cards this player has read (ids only)
+      tips: s.tips ? { seen: [...s.tips.seen] } : null,
       seasonPass: clone(s.seasonPass), passHistory: clone(s.passHistory) ?? [], loginBonus: clone(s.loginBonus), missions: clone(s.missions),
       seasonMissions: clone(s.seasonMissions) ?? null, onboarding: clone(s.onboarding) ?? null, breeding: clone(s.breeding),
       breedingExtra: clone(s.breedingExtra) ?? null, dailyWins: clone(s.dailyWins) ?? null, friendRewards: clone(s.friendRewards),

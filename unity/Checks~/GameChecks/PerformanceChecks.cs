@@ -189,6 +189,13 @@ static class PerformanceChecks
             check(freed.Bytes == 180_000 + 697_000 && st.Report.Row("required").Bytes == 28_000 && st.Report.ClearableBytes == 0, "clear cache: optional and low files go, required files stay (" + st.Message + ")");
             check(new AssetResolver(pre.Catalog, cache, null).Resolve("horse/coat/default").Source == AssetSource.Downloaded, "a required asset still resolves after clearing");
             check(st.ClearConfirmText == null && st.ClearCache().Bytes == 0 && st.Message == StorageModel.TextNothingToClear, "nothing left to clear");
+            // QA: 「キャッシュを削除」 is not offered while 「すべてダウンロード」 runs (it would delete what the run just fetched)
+            cdn.Gate = new TaskCompletionSource<bool>();
+            var run = st.StartPredownloadAsync(confirmed: true);
+            check(st.State == PredownloadState.Running && !st.CanClear && st.ClearConfirmText == null && st.ClearCache().Bytes == 0 && !st.CanPredownload, "no clearing and no second start while download-all runs");
+            cdn.Gate.SetResult(true); cdn.Gate = null;
+            await run;
+            check(st.State == PredownloadState.Done && st.PredownloadBytes == 0 && kpi.Count == 2, "the second run finished (asset_predownload once per start)");
             try { Directory.Delete(dir, true); } catch (IOException) { }
         }
 

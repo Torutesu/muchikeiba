@@ -330,11 +330,14 @@ namespace Muchi.Game
         }
 
         /// <summary>The confirmation of 「キャッシュを削除」 (with what it frees), or null when there is nothing to delete.</summary>
-        public string ClearConfirmText => Report.ClearableBytes > 0 ? Loc.T(TextClearConfirm).Replace("{size}", Size(Report.ClearableBytes)) : null;
+        public string ClearConfirmText => CanClear ? Loc.T(TextClearConfirm).Replace("{size}", Size(Report.ClearableBytes)) : null;
+        /// <summary>Something can be deleted and 「すべてダウンロード」 is not running (it would delete what that run just fetched).</summary>
+        public bool CanClear => State != PredownloadState.Running && Report.ClearableBytes > 0;
 
         /// <summary>Confirmed 「削除する」: optional, low, partial and stale files go; required and in-flight files stay (REQ-PERF-014).</summary>
         public EvictionResult ClearCache()
         {
+            if (State == PredownloadState.Running) return new EvictionResult(); // QA: never under a running download-all
             var r = _downloader.ClearOptional(Catalog);
             Refresh();
             Message = r.Bytes > 0 ? Loc.T(TextCleared).Replace("{size}", Size(r.Bytes)) : Loc.T(TextNothingToClear);

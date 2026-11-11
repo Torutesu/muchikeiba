@@ -342,18 +342,18 @@ try {
     await login('viewer');
     await page.locator('#nav a[data-view=release-notes]').click();
     await tid('rn-active-problems').waitFor();
-    await tid('rn-active-en-1.2.0-1').getByText('Cheer while you watch').waitFor();
-    await tid('rn-active-ja-1.2.0-1').getByText('観戦中に応援できる').waitFor();
+    await tid('rn-active-en-1.2.0-1').getByText('Cheer while you watch', { exact: true }).waitFor();
+    await tid('rn-active-ja-1.2.0-1').getByText('観戦中に応援できる', { exact: true }).waitFor();
     const draft = { version: 1, config: { enabled: true, titleMaxChars: 24, bodyMaxChars: 140, seenMax: 30, historyMax: 20 },
       notes: [{ appVersion: '1.3.0', releasedOn: '2026-12-01', pages: [{ art: 'coins', title: { ja: 'ショップが新しく', en: 'A new shop' }, body: { ja: 'ショップを見てください。', en: 'Take a look at the shop.' }, target: { kind: 'screen', id: 'shop' } }] }] };
     await tid('rn-draft').fill(JSON.stringify(draft));
     await tid('rn-preview-btn').click();
     await tid('rn-problems').getByText(/paid product/).waitFor();
-    await tid('rn-draft-en-1.3.0-1').getByText('A new shop').waitFor();
+    await tid('rn-draft-en-1.3.0-1').getByText('A new shop', { exact: true }).waitFor();
     await shot('12-release-notes');
   });
 
-  await step('viewer: the merged calendar (§65.3) lists the version's dates and the overlaps to check', async () => {
+  await step('viewer: the merged calendar (§65.3) lists the dates of the version and the overlaps to check', async () => {
     await login('viewer');
     await page.locator('#nav a[data-view=calendar]').click();
     await tid('cal-overlaps').waitFor();

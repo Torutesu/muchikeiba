@@ -63,6 +63,12 @@ export const KPI_OPTIONAL: readonly string[] = Object.freeze([
   // R20 integration: Round 19 §55 応援 / §56 画質・通信量 / §57 ヒント and Round 20 §61 端末のローカル通知 — engagement only
   'cheer_send', 'cheer_seen', 'perf_setting_change', 'asset_predownload', 'tutorial_replay', 'tip_view', 'tip_context_open',
   'lnotif_scheduled', 'lnotif_opened', 'lnotif_permission',
+  // R21 integration: §62 トレーナーカード, §63 ディープリンク・再戦, §64 アップデートのお知らせ, §65 予定表 — engagement only
+  // (no payment, legal or account-access record among them; link rows never carry a token, a target or an id)
+  'showcase_save', 'showcase_view', 'showcase_share',
+  'link_create', 'link_resolve', 'link_revoke', 'rematch', 'deep_link_open',
+  'release_notes_view', 'release_notes_target', 'release_notes_history',
+  'calendar_view', 'calendar_entry_open', 'calendar_mark',
 ]);
 
 export const KPI_EVENT_CLASS: Readonly<Record<string, KpiClass>> = Object.freeze({

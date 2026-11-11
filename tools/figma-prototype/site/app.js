@@ -8919,13 +8919,14 @@ async function NotifySettings() {
     Txt(LN_CAT_LABEL[x.category], 0, 22, 200, 12, SOFT, row, { nowrap: true, ls: '.08em' });
     Txt(x.on ? 'オン' : 'オフ', 300, 6, 100, 16, x.on ? CYAN : DIM, row, { weight: 700, align: 'right', nowrap: true });
   });
-  Hair(36, 470, 400, r);
-  Txt('ロック画面に詳しく表示', 36, 486, 400, 16, WHITE, r, { weight: 500, nowrap: true });
+  // R21 integration: seven kinds (calendar_mark) — the details switch moves down one row
+  Hair(36, 516, 400, r);
+  Txt('ロック画面に詳しく表示', 36, 532, 400, 16, WHITE, r, { weight: 500, nowrap: true });
   [[true, 'オン'], [false, 'オフ']].forEach(([v, l], j) => {
-    const b = Btn(l, 36 + j * 128, 520, 116, 46, () => { lnSet(LN_DETAILS, v ? '1' : null); NotifySettings(); }, 'choice' + (lnDetails() === v ? ' on' : ''), r);
+    const b = Btn(l, 36 + j * 128, 566, 116, 46, () => { lnSet(LN_DETAILS, v ? '1' : null); NotifySettings(); }, 'choice' + (lnDetails() === v ? ' on' : ''), r);
     b.dataset.lnDetails = String(v); b.style.whiteSpace = 'nowrap';
   });
-  Txt('オンにすると、件数や馬の名前が通知に出ます（オフでは出しません）。', 36, 574, 400, 13, SOFT, r, { lh: 1.55 });
+  Txt('オンにすると、件数や馬の名前が通知に出ます（オフでは出しません）。', 36, 620, 400, 13, SOFT, r, { lh: 1.55 });
   // what comes next (in the app language; the notifications themselves follow the device language)
   Kicker('次の予定', 472, 168, r, { size: 15, rule: false, w: 400 });
   const up = el('ln-upcoming', 472, 200, 400, 410, r);

@@ -67,6 +67,9 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   // → プール skipped (no mini-game line) → the apple on the horse → the horse's daily limit on every card
   async function trainingFlow() {
     const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    // R21 integration (§58.11): the day's home may have shown the account-link prompt / release notes (one prompt per
+    // session) — the reminders card below is checked on a fresh launch
+    if (await page.evaluate(() => globalThis.__muchi.prompts.shown()) !== null) await page.evaluate(() => globalThis.__muchi.prompts.reset());
     await click('調教'); await waitScreen('training'); await waitIn('.tr-menu[data-menu="hill"]');
     const text = await page.locator('.screen.in').innerText();
     assert.ok(text.includes('クラスの上限') && text.includes('疲れはどのレースにも影響しません'), 'training: the fairness rules are on the screen');
@@ -816,7 +819,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await page.evaluate(() => { localStorage.removeItem('muchi.lnotif.os'); localStorage.removeItem('muchi.lnotif.scheduled'); globalThis.__muchiLnotifKpi = []; });
     await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings');
     await page.locator('.screen.in [data-action="notify"]').click(); await waitScreen('notify-settings'); await waitIn('.ln-device');
-    assert.equal(await page.locator('.screen.in .ln-kind').count(), 6, 'notify: six device reminder rows');
+    assert.equal(await page.locator('.screen.in .ln-kind').count(), 7, 'notify: seven device reminder rows (R21 integration: calendar marks)');
     assert.equal(await page.locator('.screen.in .ln-cat').count(), 7, 'notify: seven push categories (reminders included)');
     assert.equal(await page.locator('.screen.in .ln-device').getAttribute('data-ln-status'), 'no_permission', 'notify: nothing scheduled before the OS permission');
     assert.equal(await page.locator('.screen.in .ln-kind[data-ln-kind="daily_bonus"]').getAttribute('data-on'), 'false', 'notify: reminders are off by default');
@@ -1176,6 +1179,9 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   const free0 = await page.evaluate(() => globalThis.__muchi.state().player.wallet.free);
   const paid0 = await page.evaluate(() => globalThis.__muchi.state().player.wallet.paid);
   // round 20 (REQ-CNS-007): the first 「動画を見る」 brings the pre-prompt (why, refusing costs nothing) → the simulated ATT dialog
+  // R21 integration (§58.11): the day-3 account-link prompt (or the release notes) may have taken this session — then the
+  // ad plays without the sheet; the next launch brings it
+  if (await page.evaluate(() => globalThis.__muchi.prompts.shown()) !== null) await page.evaluate(() => globalThis.__muchi.prompts.reset());
   await click('動画を見る'); await waitScreen('consent-prompt');
   assert.equal(await page.locator('.screen.in [data-prompt]').getAttribute('data-prompt'), 'ad_offer');
   const cnsText = await page.locator('.screen.in').innerText();
@@ -1328,6 +1334,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   // account-link prompt right after the first purchase (day 1 after the FTUE), then linking (account_link KPI)
   await demo('day1');
   await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings');
+  await page.evaluate(() => globalThis.__muchi.prompts.reset()); // R21 integration (§58.11): a fresh launch (one prompt per session)
   await click('初回購入の直後'); await waitScreen('link-prompt');
   assert.equal(await page.locator('.screen.in [data-trigger]').getAttribute('data-trigger'), 'FirstPurchase');
   await shot('link-prompt-first-purchase', 300);

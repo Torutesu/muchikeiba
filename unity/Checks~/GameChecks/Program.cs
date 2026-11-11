@@ -142,6 +142,8 @@ static class Program
         await ClientErrorChecks.Run(Check);
         Console.WriteLine("== round 20: 端末のローカル通知 (LocalNotificationModel: plan from the digest, diff, account switch / deletion / logout, pre-prompt, details, tap, English; REQ-LNOTIF-*)");
         await LocalNotificationChecks.Run(Check, Ruleset(), Root);
+        Console.WriteLine("== round 22: 使いすぎ・遊びすぎの防止 (SelfLimitsModel: rows, lower now / raise waits / cancel, custom amount, refusal sentence, play-time sheet at safe points only, KPI, restart, English; REQ-LIMIT-*)");
+        await SelfLimitsChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 20 integration: one system-ish prompt per session (consent → reminders → review), the error reporter follows the analytics choice, an account change resets reminders / error queue / review session");
         await Round20IntegrationChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 16: 次にやること (NextActionModel: primary card + chips, dates not countdowns, dismiss for today, offline fallback, KPI; REQ-NEXT-*)");

@@ -6408,7 +6408,7 @@ async function LinkConfirm(v) {
     replay: ['リプレイの画面へ', () => MyReplays()],
   }[v.type];
   if (go) Cta(go[0], 36, 250, 460, go[1], p).classList.add('lk-confirm-go');
-  Ghost('やめる', 520, 257, 220, 60, () => Links(), p, 'quiet').classList.add('lk-confirm-no');
+  Ghost('開かない', 520, 257, 220, 60, () => Links(), p, 'quiet').classList.add('lk-confirm-no');
   if (v.type === 'invite') Txt('招待コードの特典は、これまでどおり入力した時だけです', 36, 370, 828, 14, SOFT, p, { lh: 1.6 });
   Back(() => Links(), 'BACK', 40, 834);
 }
@@ -6421,7 +6421,7 @@ function RoomLobby(passphrase, names) {
   const p = Glass('Room', 36, 134, 900, 676, undefined, .9);
   p.classList.add('lk-room');
   Kicker('参加している人', 36, 30, p);
-  (info?.members ?? names ?? []).forEach((n, i) => Txt(n, 36, 96 + i * 44, 600, 22, i === 0 ? GOLD : WHITE, p, { weight: 700, nowrap: true, cls: 'keep-ja' }));
+  (info?.members ?? names ?? []).forEach((n, i) => Txt(n, 36, 96 + i * 44, 600, 22, i === 0 ? GOLD : WHITE, p, { weight: 700, nowrap: true, cls: n === 'あなた' ? '' : 'keep-ja' }));
   if (info?.conditions) Txt('前のレースと同じ条件・新しいレース', 36, 300, 828, 16, CYAN, p, { weight: 700, ls: '.06em' }).classList.add('lk-same');
   Txt('出走は主催者が押します（2人から）。順位は表示しますが、ランク戦の点・レートには入りません', 36, 340, 828, 14, MUTED, p, { lh: 1.6 });
   Cta('部屋のリンクを送る', 36, 420, 460, () => lkShare('room', { passphrase }, () => RoomLobby(passphrase, names)), p, 'small').classList.add('lk-room-share');
@@ -6435,7 +6435,7 @@ function rmStatus(v) {
   if (v.state === 'opened') return '新しい部屋ができました';
   if (v.state === 'closed') return RM_REASON[v.reason] ?? RM_REASON.not_included;
   if (v.you !== 'pressed') return '';
-  return `再戦を待っています（${v.pressed}/${v.eligible}人・あと${Math.max(0, Math.ceil((v.deadlineAt - Date.now()) / 1000))}秒）`;
+  return `再戦を待っています（${v.pressed}/${v.eligible}人・あと${v.secondsLeft ?? 0}秒）`; // the server's deadline on the server's clock
 }
 async function FriendRoomResult(fin, view) {
   const f = fin ?? L.rematch.demoFinish();
@@ -6448,7 +6448,7 @@ async function FriendRoomResult(fin, view) {
   f.places.forEach((x, i) => {
     const row = el('lk-place', 36, 96 + i * 62, 688, 56, lp);
     Txt(`${x.place}着`, 0, 10, 120, 26, x.place === 1 ? GOLD : WHITE, row, { weight: 700, cls: 'num' });
-    Txt(x.name, 140, 14, 520, 22, x.you ? CYAN : WHITE, row, { weight: 700, nowrap: true, cls: 'keep-ja' });
+    Txt(x.name, 140, 14, 520, 22, x.you ? CYAN : WHITE, row, { weight: 700, nowrap: true, cls: x.you ? '' : 'keep-ja' }); // names as typed; 「あなた」 is UI text
     Hair(0, 55, 688, row);
   });
   const rp = Glass('Rematch', 820, 134, 744, 676, undefined, .86);
@@ -6459,7 +6459,7 @@ async function FriendRoomResult(fin, view) {
   if (!view || view.state === 'waiting') {
     const b = Cta(view?.you === 'pressed' ? '待っています' : '再戦', 36, 270, 420, async () => { const r = await L.rematch.press(); if (!r.ok) { toast('今は再戦できません'); return; } FriendRoomResult(f, r.value); }, rp);
     b.classList.add('rm-press'); if (view?.you === 'pressed') disable(b);
-    Ghost('やめる', 480, 277, 220, 60, async () => { const r = await L.rematch.decline(); toast('再戦をやめました'); Links(); }, rp, 'quiet').classList.add('rm-decline');
+    Ghost('再戦をやめる', 480, 277, 236, 60, async () => { await L.rematch.decline(); toast('再戦をやめました'); Links(); }, rp, 'quiet').classList.add('rm-decline');
   }
   if (view?.state === 'opened') Cta('新しい部屋へ', 36, 270, 420, () => RoomLobby(view.room.passphrase), rp).classList.add('rm-room');
   Hair(36, 400, 672, rp);

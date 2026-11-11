@@ -381,6 +381,8 @@ const rmName = (id: string) => (id === ID ? 'あなた' : RM_RACERS.find((x) => 
 const rematches = new Rematches<string>();
 let rmRace: string | null = null;
 const rmRules = () => { const c = linksConfig(master); return { windowSec: c.rematchWindowSec, offerMinutes: c.rematchOfferMinutes }; };
+/** The view plus the seconds left on the prototype's clock (the demo may move the clock by days; RematchView.SecondsLeft in C#). */
+const rmView = (raceId: string) => { const v = rematches.view(raceId, ID, now(), rmRules()); return { ...v, secondsLeft: v.deadlineAt === null || v.state !== 'waiting' ? 0 : Math.max(0, Math.ceil((v.deadlineAt - now()) / 1000)) }; };
 /** The matchmaker's settle step (MatchmakerDO.settleRematch) on the prototype's rooms. */
 function rmSettle(raceId: string) {
   const o = rematches.offers.get(raceId);
@@ -1382,11 +1384,11 @@ export const MuchiLogic = {
       rematches.decline(rmRace, RM_RACERS[1]![0], now());
       return { raceId: rmRace, places: [[ID, 1], ['demo_rm_1', 2], ['demo_rm_3', 3], ['demo_rm_2', 4]].map(([id, place]) => ({ name: rmName(id as string), place, you: id === ID })) };
     },
-    press: () => wrap(() => { const rules = rmRules(); if (rematches.press(rmRace!, ID, 'entry', [], now(), rules)) rmSettle(rmRace!); return rematches.view(rmRace!, ID, now(), rules); }),
-    status: () => wrap(() => { rmSettle(rmRace!); return rematches.view(rmRace!, ID, now(), rmRules()); }),
-    decline: () => wrap(() => { if (rematches.decline(rmRace!, ID, now())) rmSettle(rmRace!); return rematches.view(rmRace!, ID, now(), rmRules()); }),
+    press: () => wrap(() => { if (rematches.press(rmRace!, ID, 'entry', [], now(), rmRules())) rmSettle(rmRace!); return rmView(rmRace!); }),
+    status: () => wrap(() => { rmSettle(rmRace!); return rmView(rmRace!); }),
+    decline: () => wrap(() => { if (rematches.decline(rmRace!, ID, now())) rmSettle(rmRace!); return rmView(rmRace!); }),
     /** Demo: ナギサ presses too — everyone still in has pressed, so the window closes at once. */
-    demoOthers: () => wrap(() => { if (rematches.press(rmRace!, RM_RACERS[2]![0], 'entry', [], now(), rmRules())) rmSettle(rmRace!); return rematches.view(rmRace!, ID, now(), rmRules()); }),
+    demoOthers: () => wrap(() => { if (rematches.press(rmRace!, RM_RACERS[2]![0], 'entry', [], now(), rmRules())) rmSettle(rmRace!); return rmView(rmRace!); }),
     /** The new room (members by name, the snapshot conditions). */
     room: (passphrase: string) => { const r = linkRooms.rooms.get(passphrase); return r ? { passphrase, host: rmName(r.hostId), members: r.members.map((m) => rmName(m.playerId)), conditions: r.conditions ?? null } : null; },
   },

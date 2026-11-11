@@ -6,7 +6,14 @@ using Muchi.Net;
 
 namespace Muchi.Engine.Tests
 {
+    /// <summary>The concurrency tests here rely on async continuations being scheduled promptly. Other test classes block
+    /// pool threads (.Result, Thread.Sleep); on a 2-core CI runner running them in parallel starved the pool for minutes
+    /// and a joiner's cancel looked hung (CI r16, r17). This collection runs alone, after the parallel ones.</summary>
+    [CollectionDefinition(nameof(AssetDeliverySerial), DisableParallelization = true)]
+    public sealed class AssetDeliverySerial { }
+
     /// <summary>REQ-DLV-001..010: catalog fetch/cache (ETag/304, offline), downloader (corruption, resume, quota, concurrency, eviction), resolution.</summary>
+    [Collection(nameof(AssetDeliverySerial))]
     public class AssetDeliveryTests : IDisposable
     {
         private readonly string _dir = Path.Combine(Path.GetTempPath(), "muchi-dlv-" + Guid.NewGuid().ToString("N"));

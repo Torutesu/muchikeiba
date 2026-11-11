@@ -227,6 +227,8 @@ export interface Progression {
   reviewPrompt?: import('./reviewPrompt.js').ReviewPromptRules;
   /** REQ-LNOTIF-*: 端末のローカル通知 (localNotify.ts, validated by localNotificationsProblems). Absent / disabled = the device schedules nothing. */
   localNotifications?: import('./localNotify.js').LocalNotifyConfig;
+  /** REQ-SURVEY-004 (§69): ゲーム内アンケート (surveys.ts, validated by surveysProblems). Absent = SURVEYS_DEFAULTS. */
+  surveys?: Partial<import('./surveys.js').SurveysConfig>;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */

@@ -63,6 +63,8 @@ export const KPI_OPTIONAL: readonly string[] = Object.freeze([
   // R20 integration: Round 19 §55 応援 / §56 画質・通信量 / §57 ヒント and Round 20 §61 端末のローカル通知 — engagement only
   'cheer_send', 'cheer_seen', 'perf_setting_change', 'asset_predownload', 'tutorial_replay', 'tip_view', 'tip_context_open',
   'lnotif_scheduled', 'lnotif_opened', 'lnotif_permission',
+  // R22 §69 ゲーム内アンケート (server rows; the answers themselves are never in KPI)
+  'survey_shown', 'survey_skip', 'survey_answer',
 ]);
 
 export const KPI_EVENT_CLASS: Readonly<Record<string, KpiClass>> = Object.freeze({

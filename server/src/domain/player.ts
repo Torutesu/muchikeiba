@@ -246,6 +246,8 @@ export interface PlayerState {
   transfer?: import('./transferCode.js').TransferState;
   /** REQ-CNS-*: 広告・分析の同意 — personalised ads / analytics choices, policy version, ATT / CMP status, history (privacyChoices.ts). */
   privacyChoices?: import('./privacyChoices.js').PrivacyChoicesState;
+  /** REQ-SURVEY-* (§69): surveys shown / answered / skipped and the player's own answers (surveys.ts). Nothing is ever granted. */
+  surveys?: import('./surveys.js').SurveysState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

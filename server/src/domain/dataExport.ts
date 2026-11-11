@@ -13,6 +13,7 @@
  * This module is pure state logic plus the document builder (no I/O). What every top-level PlayerState key becomes in
  * the export is decided in DEX_CLASSIFICATION — a test fails when a new key is added without a decision.
  */
+import { surveysExport } from './surveys.js';
 import { AppError } from './errors.js';
 import type { Master } from './master.js';
 import type { HorseInstance, LedgerEntry, PlayerState } from './player.js';
@@ -406,6 +407,8 @@ export const DEX_CLASSIFICATION: Record<keyof PlayerState | DexExtensionKey, Dex
   help: x('helpInquiries'), reports: x('reportsMade'),
   // Round 19 integration: §57 tip cards read (ids) and §54 transfer code history / expiry (never the code id or password hash)
   tips: x('play'), transfer: x('account'),
+  // R22 §69 (REQ-SURVEY-014): surveys shown / skipped / answered and the player's own (scrubbed) answers
+  surveys: x('analytics'),
 };
 /** Keys some modules add to the state without declaring them on PlayerState (see the test). */
 export const DEX_EXTENSION_KEYS = ['collection', 'silksEditor', 'stable', 'teamFeed', 'teamGoal', 'help', 'reports'] as const;
@@ -624,6 +627,8 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
       reviewPrompts: (s.reviewPrompt?.history ?? []).map((h) => ({ at: h.at, moment: h.moment, platform: h.platform, style: h.style, answer: h.answer, storeReviewAskedAt: h.nativeAt })),
       events: ext.kpiEvents === null ? { available: false, windowDays: null, rows: [] as Record<string, unknown>[] } : { available: true, windowDays: ext.kpiEvents.windowDays, rows: ext.kpiEvents.rows },
       // §60.9 (REQ-CERR-019): the error reports this device sent with the player's id (scrubbed; no stack, no free text)
+      // §69 (REQ-SURVEY-014): the in-app surveys the player answered or skipped, with their own answers
+      surveys: surveysExport(s),
       clientErrors: ext.clientErrors === null ? { available: false, rows: [] as DexClientErrorRow[] } : { available: true, rows: (ext.clientErrors ?? []).map((r) => ({ ...r })) },
     },
     // §48 (Round 18 integration): the player's inquiries — what they wrote, what they attached, the replies (without the

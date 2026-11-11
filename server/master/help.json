@@ -330,6 +330,17 @@
       "keywords": { "ja": ["通知", "つうち", "リマインダー", "お知らせ", "ロック画面"], "en": ["notification", "notifications", "reminder", "reminders", "lock screen"] },
       "links": [ { "type": "screen", "screen": "notifications" } ],
       "related": ["training", "gift_box"]
+    },
+    {
+      "id": "surveys", "category": "account",
+      "title": { "ja": "アンケートについて", "en": "About surveys" },
+      "body": {
+        "ja": "運営から、ゲームをよくするための短いアンケートをお願いすることがあります。ホームのカードか、レースの結果を閉じた後に出ます。\n\n・答えるかどうかは自由です。「スキップ」を押せば、そのアンケートはもう出ません\n・答えても答えなくても、コインやアイテムなどは何ももらえず、ゲームの内容も変わりません\n・はじめのチュートリアルの間や、ほかのお知らせが出たのと同じ起動のあいだには出しません。続けて出すこともありません\n・自由に書く欄は任意です。名前・メールアドレス・電話番号などの個人情報は書かないでください（自動で消しますが、すべては消せません）\n・運営は、だれの答えかが分からない形で集計を見ます\n・設定の「プライバシー」で分析をオフにしていても答えられます。その場合、答えに端末の種類やクラスなどの分析用の区分を付けません\n・自分の答えは「個人データの開示」でダウンロードでき、アカウントを削除すると、答えはだれのものか分からない形になり、自由に書いた文は消えます",
+        "en": "We sometimes ask a short survey to help improve the game. It appears as a card on the home screen or after you close a race result.\n\n• Answering is up to you. Tap Skip once and that survey never comes back\n• Answering or not gives you nothing (no coins or items) and changes nothing in the game\n• Surveys never appear during the first tutorial or in an app session where another notice was shown, and never back to back\n• The free-text box is optional. Please do not write your name, email address, phone number or other personal details (we remove what we can automatically, but not everything)\n• The team sees the answers without knowing who gave them\n• You can answer even with analytics turned off under Privacy in the settings; your answers then carry no analytics groups such as device type or class\n• Your own answers are in your personal data download, and deleting your account makes them anonymous and removes anything you wrote"
+      },
+      "keywords": { "ja": ["アンケート", "あんけーと", "質問", "意見", "スキップ"], "en": ["survey", "surveys", "questionnaire", "feedback", "skip"] },
+      "links": [ { "type": "screen", "screen": "privacy_choices" } ],
+      "related": ["ads_analytics_privacy", "data_export"]
     }
   ],
   "contexts": {

@@ -119,6 +119,10 @@ import {
   nextDataExportWake, noteDataExportDownload, requestDataExport, takeDataExport, takeExpiredDataExport, type DexFile, type DexLang, type DexReadyInfo,
 } from './dataExport.js';
 import { REDEEM_REPLAY_MS, ensureTransfer, assertMayIssue, formatCodeId, issueTransfer, progressOf, redeemTransfer, revokeTransfer, transferStateView, type TransferMode } from './transferCode.js';
+import {
+  answerSurvey, decideSurveyOffer, markSurveySynced, noteSurveyShown, pendingSurveyAnswers, skipSurvey, surveysConfig,
+  type LiveSurvey, type SurveyAnswers, type SurveyFacts, type SurveyLang, type SurveyPlacement,
+} from './surveys.js';
 import { assertNotLocked, bulkPreview, noteTournamentEntry, parseRosterQuery, pruneRoster, rosterView, runBulk, setFavorite, setLock, type BulkAction } from './roster.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
@@ -621,6 +625,37 @@ export class PlayerService {
   reviewPromptAnswer(id: string, promptId: string, step: ReviewStep) {
     return this.tx(id, null, (s, now, emit) => answerReviewPrompt(s, promptId, step, now, emit));
   }
+
+  // ---- ゲーム内アンケート (REQ-SURVEY-*, surveys.ts, protocol §69) — nothing here ever grants anything ----
+  private async notWiped(id: string) {
+    if (await this.wiped(id) && (await this.repo.tombstoned?.(id))) throw new AppError('NOT_FOUND', 'account deleted');
+  }
+  /** REQ-SURVEY-005/011: the one survey to show here (a read) and the answers the ops table has not confirmed yet. */
+  async surveyOffer(id: string, live: LiveSurvey[], facts: SurveyFacts, placement: SurveyPlacement, lang: SurveyLang) {
+    await this.notWiped(id);
+    const s = await this.load(id);
+    return { ...decideSurveyOffer(surveysConfig(this.d.master), live, s, facts, placement, lang, this.d.clock()), pending: pendingSurveyAnswers(s) };
+  }
+  /** REQ-SURVEY-007: the survey was put on screen. */
+  async surveyShown(id: string, live: LiveSurvey | null, placement: SurveyPlacement) {
+    await this.notWiped(id);
+    return this.tx(id, null, (s, now, emit) => noteSurveyShown(surveysConfig(this.d.master), s, live, placement, now, emit));
+  }
+  /** REQ-SURVEY-008: one tap; never asked again. */
+  async surveySkip(id: string, live: LiveSurvey | null, placement: SurveyPlacement) {
+    await this.notWiped(id);
+    return this.tx(id, null, (s, now, emit) => skipSurvey(s, live, placement, now, emit));
+  }
+  /** REQ-SURVEY-009/013: one answer per player (keyed); the segment only while analytics is effective (§58). */
+  async surveyAnswer(id: string, live: LiveSurvey | null, input: { placement: SurveyPlacement; answers: SurveyAnswers; facts: SurveyFacts }, idemKey: string | null) {
+    await this.notWiped(id);
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => {
+      const r = answerSurvey(surveysConfig(this.d.master), s, live, { ...input, analytics: analyticsAllowed(this.d.master, s, now) }, now, emit);
+      return { ...r, pending: pendingSurveyAnswers(s).filter((x) => x.surveyId === r.surveyId) };
+    });
+  }
+  /** REQ-SURVEY-011: the ops table has these answers. */
+  surveySynced(id: string, surveyIds: string[]) { return this.tx(id, null, (s) => markSurveySynced(s, surveyIds)); }
 
   // ---- 厩舎の整理 (REQ-ORG-*, roster.ts) ----
   /** REQ-ORG-001..003: the organiser rows, filtered / sorted by the optional query (the client runs the same rules). */

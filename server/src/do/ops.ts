@@ -13,6 +13,8 @@ import type { Grant } from '../ops/support.js';
 import { CompensationStore, type CompensationGift, type CompensationQuery, type CompensationRepo, type CompensationRequest } from '../ops/compensation.js';
 import { InquiryIndex, type InquiryIndexRepo, type InquiryQuery } from '../ops/inquiries.js';
 import type { InquirySummary } from '../domain/help.js';
+import { SurveysCore, type SurveyAnswerRow, type SurveyIngest, type SurveyRecord, type SurveyRepo } from '../ops/surveys.js';
+import type { SurveyDef } from '../domain/surveys.js';
 
 /** REQ-HELP-016: the inquiry index on SQLite (one row per ticket, no text; added with CREATE TABLE IF NOT EXISTS — no migration). */
 export class SqlInquiryIndexRepo implements InquiryIndexRepo {
@@ -41,6 +43,39 @@ export class SqlInquiryIndexRepo implements InquiryIndexRepo {
     this.sql.exec('DELETE FROM inquiries WHERE player_id = ?', playerId);
     return n;
   }
+}
+
+/**
+ * REQ-SURVEY-003/011 (§69.2): surveys and their answers on SQLite (CREATE TABLE IF NOT EXISTS — no wrangler migration).
+ * One answer row per (survey, owner): the owner is the player id, or `anon:<seq>` after the account was deleted.
+ */
+export class SqlSurveyRepo implements SurveyRepo {
+  constructor(private readonly sql: SqlStorage) {
+    sql.exec('CREATE TABLE IF NOT EXISTS surveys (id TEXT PRIMARY KEY, updated_at INTEGER NOT NULL, json TEXT NOT NULL)');
+    sql.exec('CREATE TABLE IF NOT EXISTS survey_answers (seq INTEGER PRIMARY KEY AUTOINCREMENT, survey_id TEXT NOT NULL, owner TEXT NOT NULL, at INTEGER NOT NULL, json TEXT NOT NULL)');
+    sql.exec('CREATE UNIQUE INDEX IF NOT EXISTS survey_answers_owner ON survey_answers (survey_id, owner)');
+    sql.exec('CREATE INDEX IF NOT EXISTS survey_answers_by_owner ON survey_answers (owner)');
+  }
+  private row = (r: { seq: number; json: string }) => ({ ...(JSON.parse(r.json) as Omit<SurveyAnswerRow, 'seq'>), seq: r.seq }) as SurveyAnswerRow;
+  get(id: string) { const r = this.sql.exec<{ json: string }>('SELECT json FROM surveys WHERE id = ?', id).toArray()[0]; return r ? (JSON.parse(r.json) as SurveyRecord) : null; }
+  put(r: SurveyRecord) {
+    this.sql.exec('INSERT INTO surveys (id, updated_at, json) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET updated_at = excluded.updated_at, json = excluded.json', r.def.id, r.updatedAt, JSON.stringify(r));
+  }
+  list() { return this.sql.exec<{ json: string }>('SELECT json FROM surveys ORDER BY updated_at DESC LIMIT 500').toArray().map((r) => JSON.parse(r.json) as SurveyRecord); }
+  answer(s: string, o: string) { const r = this.sql.exec<{ seq: number; json: string }>('SELECT seq, json FROM survey_answers WHERE survey_id = ? AND owner = ?', s, o).toArray()[0]; return r ? this.row(r) : null; }
+  insertAnswer(r: Omit<SurveyAnswerRow, 'seq'>) {
+    this.sql.exec('INSERT INTO survey_answers (survey_id, owner, at, json) VALUES (?, ?, ?, ?)', r.surveyId, r.owner, r.at, JSON.stringify(r));
+    const seq = this.sql.exec<{ s: number }>('SELECT last_insert_rowid() AS s').one().s;
+    return { ...r, seq };
+  }
+  putAnswer(r: SurveyAnswerRow) {
+    const { seq, ...rest } = r;
+    this.sql.exec('UPDATE survey_answers SET owner = ?, json = ? WHERE seq = ?', r.owner, JSON.stringify(rest), seq);
+  }
+  answers(s: string) { return this.sql.exec<{ seq: number; json: string }>('SELECT seq, json FROM survey_answers WHERE survey_id = ? ORDER BY seq', s).toArray().map(this.row); }
+  answerBySeq(s: string, seq: number) { const r = this.sql.exec<{ seq: number; json: string }>('SELECT seq, json FROM survey_answers WHERE survey_id = ? AND seq = ?', s, seq).toArray()[0]; return r ? this.row(r) : null; }
+  count(s: string) { return this.sql.exec<{ n: number }>('SELECT COUNT(*) AS n FROM survey_answers WHERE survey_id = ?', s).one().n; }
+  ofOwner(o: string) { return this.sql.exec<{ seq: number; json: string }>('SELECT seq, json FROM survey_answers WHERE owner = ?', o).toArray().map(this.row); }
 }
 
 /** REQ-OPS-026: compensation requests on SQLite (one JSON row per request; opKey unique). */
@@ -130,6 +165,7 @@ export class OpsDO extends DurableObject<Env> {
   private readonly deadLetters: SqlDeadLetterRegistry;
   private readonly compensations: CompensationStore;
   private readonly inquiries: InquiryIndex;
+  private readonly surveys: SurveysCore;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -138,7 +174,23 @@ export class OpsDO extends DurableObject<Env> {
     this.deadLetters = new SqlDeadLetterRegistry(ctx.storage.sql);
     this.compensations = new CompensationStore(new SqlCompensationRepo(ctx.storage.sql));
     this.inquiries = new InquiryIndex(new SqlInquiryIndexRepo(ctx.storage.sql));
+    this.surveys = new SurveysCore(new SqlSurveyRepo(ctx.storage.sql));
   }
+
+  // ---- in-app surveys (REQ-SURVEY-*, §69) ----
+  svCreate(d: SurveyDef, by: string, now: number) { return wrap(() => this.surveys.create(d, by, now)); }
+  svUpdate(id: string, d: SurveyDef, rev: number, by: string, now: number) { return wrap(() => this.surveys.update(id, d, rev, by, now)); }
+  svPublish(id: string, startAt: number, endAt: number, maxLive: number, by: string, now: number) { return wrap(() => this.surveys.publish(id, startAt, endAt, maxLive, by, now)); }
+  svClose(id: string, by: string, now: number) { return wrap(() => this.surveys.close(id, by, now)); }
+  svList(now: number) { return wrap(() => this.surveys.list(now)); }
+  svGet(id: string, now: number) { return wrap(() => this.surveys.get(id, now)); }
+  svLive(now: number) { return wrap(() => this.surveys.live(now)); }
+  svOne(id: string) { return wrap(() => this.surveys.one(id)); }
+  svIngest(xs: SurveyIngest[]) { return wrap(() => this.surveys.ingest(xs)); }
+  svResults(id: string, now: number) { return wrap(() => this.surveys.results(id, now)); }
+  svCsv(id: string, now: number) { return wrap(() => this.surveys.csv(id, now)); }
+  svHideText(id: string, ref: string, hidden: boolean) { return wrap(() => this.surveys.hideText(id, ref, hidden)); }
+  svForget(playerId: string) { return wrap(() => this.surveys.forgetPlayer(playerId)); }
 
   // ---- inquiry index (REQ-HELP-016) ----
   inqUpsert(items: InquirySummary[]) { return wrap(() => this.inquiries.upsert(items)); }

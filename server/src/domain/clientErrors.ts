@@ -183,6 +183,14 @@ export const SCRUB_RULES: [RegExp, string][] = [
   [RE.quoted, '"…"'], [RE.nonAscii, '…'], [RE.hex, '<id>'], [RE.longId, '<id>'], [RE.idPrefix, '<id>'], [RE.digits, '<n>'], [RE.spaces, ' '], [RE.edges, ''],
 ];
 
+/**
+ * R22 §69 (REQ-SURVEY-012): the PII part of the rules for free text a player wrote on purpose (survey answers): emails,
+ * tokens, URLs, long ids and long numbers. Japanese text and quotes stay (they are the answer).
+ */
+export const FREE_TEXT_SCRUB_RULES: [RegExp, string][] = [
+  [RE.email, '<email>'], [RE.bearer, '<token>'], [RE.jwt, '<token>'], [RE.url, '<url>'], [RE.hex, '<id>'], [RE.longId, '<id>'], [RE.idPrefix, '<id>'], [RE.digits, '<n>'],
+];
+
 /** One line of free text: the §60.3 rules in order. */
 function scrubLine(s: string): string {
   let out = s;

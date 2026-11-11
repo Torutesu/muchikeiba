@@ -60,6 +60,8 @@ import type { TransferService } from '../domain/transferService.js';
 import { FriendSuggestService, fsugConfig, type FsugCache, type SuggestDirectory, type SuggestPlayers } from '../domain/friendSuggest.js';
 import type { DataExportService } from '../domain/dataExportService.js';
 import { REVIEW_PLATFORMS, REVIEW_STEPS } from '../domain/reviewPrompt.js';
+import { SURVEY_ID_RE, SURVEY_PLACEMENTS, surveysConfig, validateSurveyAnswers, type LiveSurvey, type PendingSurveyAnswer, type SurveyFacts } from '../domain/surveys.js';
+import { liveSurveysCached } from '../ops/surveys.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -105,6 +107,7 @@ export type PlayerMethod =
   | 'roster' | 'rosterLock' | 'rosterFavorite' | 'rosterPreview' | 'rosterBulk' | 'rosterTournament'
   | 'horseGoals' | 'pinHorseGoal' | 'pinnedHorseGoal'
   | 'reviewPrompt' | 'reviewPromptCheck' | 'reviewPromptAnswer'
+  | 'surveyOffer' | 'surveyShown' | 'surveySkip' | 'surveyAnswer' | 'surveySynced'
   | 'myReplays' | 'replayPrepareSave' | 'replayCommitSave' | 'replayForget' | 'replayUpdate' | 'replayDelete' | 'replayOwnRef' | 'replayShared' | 'replayViewed'
   | 'raceAdvice' | 'practiceCatalog'
   | 'photoCatalog' | 'photos' | 'photoSave' | 'photoDelete'
@@ -335,6 +338,28 @@ export const clientIdemKey = (req: Request) => {
   return `c:${new URL(req.url).pathname}:${k}`;
 };
 const idem = clientIdemKey;
+
+// ---------------------------------------------------------------- ゲーム内アンケート (REQ-SURVEY-*, §69)
+const surveyPlacementBody = z.object({ placement: z.enum(SURVEY_PLACEMENTS) }).strict();
+function surveyPlacementOf(v: string | null) {
+  if (v === null || !(SURVEY_PLACEMENTS as readonly string[]).includes(v)) throw new AppError('BAD_REQUEST', `placement must be ${SURVEY_PLACEMENTS.join('|')}`);
+  return v as (typeof SURVEY_PLACEMENTS)[number];
+}
+/** The targeting facts of a request: the §46 client headers (platform, app version). */
+const surveyFacts = (r: Request): SurveyFacts => { const h = clientHeaders(r.headers); return { platform: h.platform, appVersion: h.version }; };
+/** One survey by id, read through to the store (null = unknown / draft; the domain answers NOT_FOUND or SURVEY_CLOSED). */
+async function surveyOne(c: AppContext, id: string): Promise<LiveSurvey | null> {
+  if (!SURVEY_ID_RE.test(id) || !c.ops?.surveys) return null;
+  return c.ops.surveys.one(id);
+}
+/** REQ-SURVEY-011: write answers to the ops table (one row per survey and player), then mark them sent. Best effort. */
+async function syncSurveyAnswers(c: AppContext, uid: string, pending: PendingSurveyAnswer[]) {
+  if (!c.ops?.surveys || pending.length === 0) return;
+  try {
+    await c.ops.surveys.ingest(pending.map((x) => ({ surveyId: x.surveyId, playerId: uid, rev: x.rev, at: x.at, answers: x.answers, segment: x.segment })));
+    await c.player(uid).invoke('surveySynced', uid, pending.map((x) => x.surveyId));
+  } catch (e) { console.error('survey answers not synced yet', uid, (e as Error).message); }
+}
 /** REQ-REV-005 (§59.4): the device's half of the review-prompt summary. Minutes are capped at a year (null = none / unknown). */
 const reviewMinutes = z.number().int().min(0).max(525_600).nullable();
 const reviewCheckSchema = z.object({
@@ -689,6 +714,37 @@ export const routes: Route[] = [
   { method: 'POST', path: '/v1/review-prompt/:promptId/answer', auth: 'player', handler: async (r, p, c, u) => {
     if (!/^rp_[0-9]{1,9}$/.test(p.promptId!)) throw new AppError('NOT_FOUND', 'unknown review prompt');
     return c.player(u).invoke('reviewPromptAnswer', u, p.promptId!, (await body(r, z.object({ step: z.enum(REVIEW_STEPS) }).strict())).step);
+  } },
+  // ゲーム内アンケート (REQ-SURVEY-*, contracts/protocol.md §69): nothing is ever granted for answering
+  { method: 'GET', path: '/v1/surveys/current', auth: 'player', handler: async (r, _p, c, u) => {
+    const placement = surveyPlacementOf(new URL(r.url).searchParams.get('placement'));
+    const now = (c.clock ?? Date.now)();
+    const live = c.ops?.surveys ? await liveSurveysCached(c.ops.surveys, now) : [];
+    const { pending, ...offer } = await c.player(u).invoke('surveyOffer', u, live, surveyFacts(r), placement, resolveLocale(r));
+    await syncSurveyAnswers(c, u, pending); // REQ-SURVEY-011: answers the ops table has not confirmed yet
+    return offer;
+  } },
+  { method: 'POST', path: '/v1/surveys/:surveyId/shown', auth: 'player', handler: async (r, p, c, u) => {
+    const b = await body(r, surveyPlacementBody);
+    return c.player(u).invoke('surveyShown', u, await surveyOne(c, p.surveyId!), b.placement);
+  } },
+  { method: 'POST', path: '/v1/surveys/:surveyId/skip', auth: 'player', handler: async (r, p, c, u) => {
+    const b = await body(r, surveyPlacementBody);
+    return c.player(u).invoke('surveySkip', u, await surveyOne(c, p.surveyId!), b.placement);
+  } },
+  { method: 'POST', path: '/v1/surveys/:surveyId/answers', auth: 'player', handler: async (r, p, c, u) => {
+    const key = idem(r);
+    if (!key) throw new AppError('IDEMPOTENCY_KEY_REQUIRED', 'Idempotency-Key required');
+    const b = await body(r, z.object({ placement: z.enum(SURVEY_PLACEMENTS), answers: z.record(z.string(), z.unknown()) }).strict());
+    const live = await surveyOne(c, p.surveyId!);
+    const now = (c.clock ?? Date.now)();
+    if (!live || now < live.startAt) throw new AppError('NOT_FOUND', 'unknown survey');
+    const cfg = surveysConfig(c.master);
+    if (!cfg.enabled || now >= live.endAt) throw new AppError('SURVEY_CLOSED', 'this survey has ended');
+    const answers = validateSurveyAnswers(live.def, b.answers, cfg); // strict: 400 before anything is written
+    const { pending, ...out } = await c.player(u).invoke('surveyAnswer', u, live, { placement: b.placement, answers, facts: surveyFacts(r) }, key);
+    await syncSurveyAnswers(c, u, pending);
+    return out;
   } },
   { method: 'GET', path: '/v1/horses/:horseId/career', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('horseCareer', u, p.horseId!) },
   { method: 'GET', path: '/v1/hall', auth: 'player', handler: async (r, _p, c, u) => { const q = hallPage(r); return hall(c).mine(u, q.cursor, q.limit); } },

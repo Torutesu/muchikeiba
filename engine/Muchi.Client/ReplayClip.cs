@@ -369,7 +369,7 @@ namespace Muchi.Client
                 Place = clip.FocusPlace, Runners = cfg.Entrants.Count, TimeMs = clip.FocusTimeMs,
                 HorseName = cfg.Entrants[clip.FocusSlot].Horse?.Name ?? "",
                 CourseName = string.IsNullOrEmpty(courseName) ? CourseLabel(cfg.Track) : courseName,
-                ModeLabel = ModeText(cfg.Mode),
+                ModeLabel = PracticeSession.IsPractice(cfg) ? PracticeTexts.ModeLabel : ModeText(cfg.Mode), // §50.2
             };
             bool finished = clip.FocusTimeMs >= 0;
             bool solo = c.Runners <= 1; // time attack: a place out of 1 means nothing

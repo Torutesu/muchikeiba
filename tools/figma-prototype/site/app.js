@@ -667,7 +667,8 @@ function raceLoop() {
   requestAnimationFrame(raceLoop);
   if (!raceActive) return;
   engine.Rein(reinHeld || keyRein);
-  const f = JSON.parse(engine.Frame(performance.now()));
+  // round 18: a practice race runs on its own clock (0.5× in the last 400 m when chosen; the race itself is the same)
+  const f = JSON.parse(raceCtx?.practice ? engine.PracticeFrame(performance.now()) : engine.Frame(performance.now()));
   lastFrame = f;
   view.draw(f);
   paintHud(f);
@@ -743,7 +744,8 @@ function paintHud(f) {
   setText(hud.staminaText, feel.level === 'Empty' ? '脚が上がった' : f.kakari ? (f.reining ? '手綱で抑えている' : '掛かっている') : f.reining ? '手綱：抑えて脚をためる' : feel.level === 'Low' ? '脚が残り少ない' : feel.level === 'Critical' ? '脚がもうない！' : '');
   if (tut) return;
   if (raceCtx.challenge) paintChallengeHud(f);
-  setText(hud.banner, `${raceCtx.ta ? 'タイムアタック' : raceCtx.challenge ? '週替わりチャレンジ' : raceCtx.trackName}　/　${!f.departed ? '発走前' : f.remainingM <= 400 ? '最後の直線' : f.remainingM >= f.distanceM - 200 ? 'スタート' : 'レース中'}`);
+  if (raceCtx.practice) paintPracticeHud(f); // round 18
+  setText(hud.banner, `${raceCtx.ta ? 'タイムアタック' : raceCtx.challenge ? '週替わりチャレンジ' : raceCtx.practice ? '練習レース' : raceCtx.trackName}　/　${!f.departed ? '発走前' : f.remainingM <= 400 ? '最後の直線' : f.remainingM >= f.distanceM - 200 ? 'スタート' : 'レース中'}`);
   hud.rein.classList.toggle('need', !!feel.kakariWarning);
   // ⑤ the field on the course oval: each runner at its share of the distance (the partner gold, on top)
   f.progress.forEach((pr, i) => {
@@ -779,6 +781,7 @@ window.addEventListener('blur', () => { reinHeld = false; keyRein = false; });
 async function RaceResult(f) {
   if (raceCtx.tutorial) return TutorialResult(f);
   if (raceCtx.ta) return show(TaResult, f);
+  if (raceCtx.practice) return show(PracticeResult, f); // round 18: nothing is applied — practice grants nothing
   if (raceCtx.challenge) return ChallengeSubmit(f); // round 13: the server decides the clear
   const r = f.result;
   const finishTick = r.place > 0 ? f.finishTicks[r.place - 1] : -1;
@@ -1188,7 +1191,7 @@ function Missions(ms, fw, bonus) {
 }
 /** Feature keys unlocked by races or days (server unlocks), each with its key and condition. */
 function Features() {
-  const keys = [['season_pass', 'シーズンパス', () => SeasonPass()], ['time_attack', 'タイムアタック', () => TimeAttack()], ['collection', '図鑑', () => Collection()], ['achievements', '実績・称号', () => Achievements()], ['breeding', '配合'], ['friends', 'フレンド', () => Friends()], ['teams', '支部'], ['events', 'イベント', () => EventTop()], ['my_stable', 'マイ厩舎'], ['my_replays', 'マイリプレイ', () => MyReplays()], ['friend_rooms', '主催カップ', () => HostedCups()]];
+  const keys = [['season_pass', 'シーズンパス', () => SeasonPass()], ['time_attack', 'タイムアタック', () => TimeAttack()], ['collection', '図鑑', () => Collection()], ['achievements', '実績・称号', () => Achievements()], ['breeding', '配合'], ['friends', 'フレンド', () => Friends()], ['teams', '支部'], ['events', 'イベント', () => EventTop()], ['my_stable', 'マイ厩舎'], ['my_replays', 'マイリプレイ', () => MyReplays()], ['friend_rooms', '主催カップ', () => HostedCups()], ['practice', '練習レース', () => Practice()]];
   Sheet('機能・イベント', '開放', (s, close, y) => {
     keys.forEach(([k, name, go], i) => {
       const f = unlock(k);
@@ -1217,6 +1220,7 @@ function RaceLobby(fresh = true) {
   Txt(`出走馬　/　${p?.name ?? '—'}（${STYLE_JA[p?.style] ?? ''}・${fmt(p?.distMinM ?? 0)}〜${fmt(p?.distMaxM ?? 0)}m）`, 44, 520, 520, 19, WHITE, d, { weight: 500 });
   Txt('参加費なし。報酬は着順のコイン・シーズンpt・パスXP。端末内のエンジンで走るオフライン版です（ランクの変動なし）。', 44, 566, 500, 14, SOFT, d, { lh: 1.6 });
   Cta('ランク戦に出る', 44, 640, 478, () => { advice.follow('ranked', p?.id); StartRace(null, p?.id ?? null); }, d);
+  if (!ftue) Ghost('練習レース', 44, 730, 240, 54, () => Practice(), d, 'quiet small').classList.add('pr-entry'); // round 18 (§50.8): after the FTUE only
   Back(Home, '戻る');
   EnToggle();
 }
@@ -1972,6 +1976,171 @@ function TaResult(f) {
   TextLink('ホーム', 44, 734, 90, Home, p);
   Ghost('リプレイを共有', 1286, 800, 274, 60, () => ShareCard(currentScreen));
   Ghost('写真を撮る', 1286, 724, 274, 60, () => PhotoOpen('result', currentScreen)).dataset.action = 'photo-result'; // round 15
+  EnToggle();
+}
+
+// ================================================================= round 18: 練習レース (REQ-PRAC-*, contracts/protocol.md §50)
+// Any own horse, any course / going / night, 2–12 runners and a CPU strength taken from the existing CPU definitions, raced
+// ON THE DEVICE by the real engine (WASM PracticeSession: the config built from MuchiLogic.practiceCatalog = GET
+// /v1/practice/catalog; restarts with the same or a new seed; the previous finished attempt as a ghost; the whip band from the
+// advice check range; 0.5× for the last 400 m). Practice grants nothing: no reward call, no replay save, no share card.
+// Opens only after the FTUE and never prompts by itself. ムチ一閃 tone: photoreal art, two translucent navy panels,
+// letter-spaced cyan kickers, one skewed cyan CTA ».
+let prCatalog = null, prSetup = null;
+const PR_KEYS = { options: 'muchi.practice.options', setup: 'muchi.practice.setup', catalog: 'muchi.practice.catalog' };
+const PR_GOING = { firm: '良（硬め）', good: '良', yielding: '稍重', soft: '重', fast: '良', muddy: '稍重', sloppy: '不良' };
+const PR_NO_REWARD = '報酬はありません（練習）';
+function prOptions() {
+  const d = { whipWindow: true, slowFinal: false, ghost: true };
+  try { return { ...d, ...JSON.parse(prefs.get(PR_KEYS.options, '{}')) }; } catch { return d; }
+}
+/** The catalog: the server's (kept on the device), else the copy kept from the last time (offline, §50.6). */
+async function prLoad() {
+  const r = await L.practiceCatalog();
+  if (r.ok) { prCatalog = r.value; prefs.set(PR_KEYS.catalog, JSON.stringify(r.value)); }
+  else if (!prCatalog) { try { prCatalog = JSON.parse(prefs.get(PR_KEYS.catalog, 'null')); } catch { prCatalog = null; } }
+  return prCatalog;
+}
+function prDefault(c) {
+  const horse = c.horses.find((h) => h.partner) ?? c.horses[0];
+  const course = c.courses.find((x) => x.trackId === 'kirameki_turf_2000') ?? c.courses[0];
+  return { horseId: horse?.id, trackId: course.trackId, going: course.today.going, night: course.lights && course.today.night, fieldSize: c.fieldSize.default, strengthId: c.defaultStrength };
+}
+function prValid(c, s) {
+  const course = c.courses.find((x) => x.trackId === s?.trackId);
+  return !!(s && course && c.horses.some((h) => h.id === s.horseId) && course.goings.includes(s.going) && (!s.night || course.lights)
+    && s.fieldSize >= c.fieldSize.min && s.fieldSize <= c.fieldSize.max && c.strengths.some((x) => x.id === s.strengthId));
+}
+function prSave() { prefs.set(PR_KEYS.setup, JSON.stringify(prSetup)); }
+const prCycle = (list, cur, d) => list[(list.indexOf(cur) + d + list.length) % list.length];
+
+async function Practice(reload = true) {
+  if (ftue) { toast('チュートリアルのあとで遊べます'); return; }
+  currentScreen = () => Practice(false);
+  const c = reload || !prCatalog ? await prLoad() : prCatalog;
+  if (!c) { toast('練習の準備ができていません'); return Home(); }
+  if (!prValid(c, prSetup)) { try { prSetup = JSON.parse(prefs.get(PR_KEYS.setup, 'null')); } catch { prSetup = null; } }
+  if (!prValid(c, prSetup)) prSetup = prDefault(c);
+  const s = prSetup, opt = prOptions();
+  const horse = c.horses.find((h) => h.id === s.horseId), course = c.courses.find((x) => x.trackId === s.trackId);
+  const strength = c.strengths.find((x) => x.id === s.strengthId);
+  const redraw = (f) => () => { f(); prSave(); Practice(false); };
+  Clear('practice'); SetArt(course.surface === 'dirt' ? 'Art/race-result' : 'Art/first-ride', false); Shade('left');
+  TopBar('練習レース', '自分の馬で、CPU 相手にムチと脚質を練習できます', { wallet: false });
+  const lp = Glass('Practice setup', 36, 134, 900, 676, undefined, .9);
+  lp.classList.add('pr-setup');
+  // 01 / the horse (any of my own)
+  Kicker('01 / 馬', 36, 30, lp);
+  const ids = c.horses.map((h) => h.id);
+  Ghost('‹', 36, 92, 70, 54, redraw(() => { s.horseId = prCycle(ids, s.horseId, -1); }), lp, 'small').classList.add('pr-horse-prev');
+  const hn = Txt(horse.name, 116, 104, 390, 22, WHITE, lp, { weight: 700, align: 'center', nowrap: true }); hn.classList.add('pr-horse', 'keep-ja'); hn.dataset.horse = horse.id;
+  Ghost('›', 516, 92, 70, 54, redraw(() => { s.horseId = prCycle(ids, s.horseId, 1); }), lp, 'small').classList.add('pr-horse-next');
+  Txt(`${STYLE_JA[horse.style] ?? ''}　/　${fmt(horse.distMinM)}〜${fmt(horse.distMaxM)}m${horse.partner ? '　/　相棒' : ''}`, 610, 108, 260, 15, MUTED, lp, { nowrap: true });
+  // 02 / course, going, night (night only where the course has lights)
+  Kicker('02 / コース・馬場', 36, 184, lp);
+  const tids = c.courses.map((x) => x.trackId);
+  const pick = (d) => redraw(() => { s.trackId = prCycle(tids, s.trackId, d); const n = c.courses.find((x) => x.trackId === s.trackId); s.going = n.today.going; s.night = n.lights && s.night; });
+  Ghost('‹', 36, 246, 70, 54, pick(-1), lp, 'small').classList.add('pr-course-prev');
+  const ct = Txt(course.name, 116, 258, 470, 20, WHITE, lp, { weight: 700, align: 'center', nowrap: true }); ct.classList.add('pr-course'); ct.dataset.track = course.trackId;
+  Ghost('›', 596, 246, 70, 54, pick(1), lp, 'small').classList.add('pr-course-next');
+  course.goings.forEach((g, i) => {
+    const b = Ghost(PR_GOING[g] ?? g, 36 + i * 150, 318, 140, 50, redraw(() => { s.going = g; }), lp, 'small' + (s.going === g ? ' on' : ''));
+    b.dataset.going = g; b.classList.add('pr-going');
+  });
+  if (course.lights) {
+    const n = Ghost(s.night ? 'ナイター' : '昼', 660, 318, 170, 50, redraw(() => { s.night = !s.night; }), lp, 'small' + (s.night ? ' on' : ''));
+    n.classList.add('pr-night'); n.dataset.night = String(s.night);
+  } else Txt('照明なし（昼だけ）', 660, 334, 210, 14, SOFT, lp, { nowrap: true }).classList.add('pr-no-lights');
+  Txt(`今日の馬場　/　${PR_GOING[course.today.going] ?? '良'}`, 36, 380, 600, 14, SOFT, lp);
+  // 03 / field size and the CPU strength
+  Kicker('03 / 頭数・相手の強さ', 36, 422, lp);
+  Ghost('−', 36, 484, 70, 54, redraw(() => { s.fieldSize = Math.max(c.fieldSize.min, s.fieldSize - 1); }), lp, 'small').classList.add('pr-field-minus');
+  Txt(`${s.fieldSize}頭`, 108, 494, 136, 26, WHITE, lp, { weight: 700, align: 'center', cls: 'num', nowrap: true }).classList.add('pr-field');
+  Ghost('+', 246, 484, 70, 54, redraw(() => { s.fieldSize = Math.min(c.fieldSize.max, s.fieldSize + 1); }), lp, 'small').classList.add('pr-field-plus');
+  Txt(`${c.fieldSize.min}〜${c.fieldSize.max}頭`, 340, 500, 200, 14, SOFT, lp, { nowrap: true });
+  c.strengths.forEach((x, i) => {
+    const b = Ghost(x.name, 36 + i * 206, 562, 196, 50, redraw(() => { s.strengthId = x.id; }), lp, 'small' + (s.strengthId === x.id ? ' on' : ''));
+    b.dataset.strength = x.id; b.classList.add('pr-strength');
+  });
+  Txt(strength.note, 36, 626, 828, 15, MUTED, lp, { weight: 500 }).classList.add('pr-strength-note');
+  // right: the options and the honest notes
+  const rp = Glass('Practice options', 960, 134, 604, 676, undefined, .86);
+  Kicker('練習のオプション', 36, 30, rp);
+  const opts = [['whipWindow', 'ムチの目安を出す'], ['slowFinal', '最後の400mをスロー'], ['ghost', '前回のゴーストを出す']];
+  opts.forEach(([k, label], i) => {
+    const b = Ghost(`${label}　${opt[k] ? 'ON' : 'OFF'}`, 36, 92 + i * 70, 532, 58, () => { prefs.set(PR_KEYS.options, JSON.stringify({ ...opt, [k]: !opt[k] })); Practice(false); }, rp, 'small' + (opt[k] ? ' on' : ''));
+    b.dataset.option = k; b.dataset.on = String(!!opt[k]); b.classList.add('pr-option');
+  });
+  Hair(36, 318, 532, rp);
+  Txt(PR_NO_REWARD, 36, 342, 532, 20, GOLD, rp, { weight: 700 }).classList.add('pr-no-reward');
+  Txt('何回でも走れます。端末の中だけで走るので、オフラインでも遊べます。', 36, 384, 532, 14, MUTED, rp, { lh: 1.6 });
+  Txt('練習のリプレイはマイリプレイに保存されません。写真は撮れます。', 36, 436, 532, 14, MUTED, rp, { lh: 1.6 });
+  Cta('練習を始める', 36, 560, 532, () => StartPractice('start'), rp).classList.add('pr-start');
+  Back(Home, 'BACK', 40, 834);
+}
+
+/** mode: start | same_seed | new_seed. The race runs in the WASM PracticeSession; the HUD is the normal race HUD. */
+async function StartPractice(mode) {
+  await viewReady;
+  if (!prCatalog || !prSetup) return Practice();
+  engine.SetAssist(assistLevel()); // practice is an offline race: かんたん操作 rides it like any other
+  const commentaryPack = engine.SetCommentaryPack(equippedPack());
+  const seed = Math.floor(Math.random() * 2 ** 31) + 1;
+  const info = JSON.parse(engine.PracticeBegin(JSON.stringify(prCatalog), JSON.stringify(prSetup), JSON.stringify(prOptions()), seed, mode));
+  if (!info.ok) { toast(info.message); return Practice(false); }
+  raceInfo = info;
+  const course = prCatalog.courses.find((x) => x.trackId === prSetup.trackId);
+  const pr = info.practice;
+  raceCtx = { tutorial: false, practice: pr, trackId: prSetup.trackId, trackName: course.name, config: { raceId: pr.raceId }, commentaryPack, ghost: pr.ghost ? { name: pr.ghost.horse } : null, prFinishSent: false };
+  view.useRig = true; view.start(raceInfo, equippedPartner()); view.setGhosts(pr.ghost ? 1 : 0, equippedPartner());
+  BuildRaceScreen();
+  L.kpi([{ name: 'practice_start', at: L.now(), props: { trackId: prSetup.trackId, fieldSize: pr.fieldSize, strength: pr.strength, restart: pr.restart } }]);
+  globalThis.__muchi.lastPractice = { raceId: pr.raceId, seed: pr.seed, restart: pr.restart, attempt: pr.attempt, ghost: !!pr.ghost, band: pr.band };
+  // the practice extras over the normal HUD: the whip band on a remaining-distance bar (§50.4), slow motion, restart
+  if (raceCtx.ghost) hud.ghost = Txt('', 545, 122, 510, 17, '#cfe8ff', undefined, { align: 'center', cls: 'tshadow', weight: 500 });
+  hud.prBar = el('pr-bar', 33, 172, 250, 46); hud.prBar.dataset.band = pr.band ? 'on' : 'off';
+  const span = Math.max(600, (pr.band?.from ?? 400) + 200);
+  const pos = (m) => (100 * (1 - clamp(m / span, 0, 1))).toFixed(1) + '%';
+  hud.prBar.innerHTML = `<div class="t"></div><div class="track">${pr.band ? `<b class="band" style="left:${pos(pr.band.from)};width:calc(${pos(pr.band.to)} - ${pos(pr.band.from)})"></b>` : ''}<i class="me"></i></div>`;
+  hud.prBar.querySelector('.t').textContent = pr.band ? 'ムチの目安' : '残り距離';
+  hud.prMe = hud.prBar.querySelector('.me'); hud.prSpan = span;
+  hud.prSlow = el('chip pr-slow', 33, 228, 250, 36); hud.prSlow.hidden = true; hud.prSlow.textContent = 'スロー 0.5×';
+  Btn('やり直す', 293, 120, 150, 40, () => { raceActive = false; StartPractice('same_seed'); }, 'quit pr-restart');
+}
+function paintPracticeHud(f) {
+  const p = f.practice ?? {};
+  if (hud.prMe) hud.prMe.style.left = (100 * (1 - clamp(f.remainingM / hud.prSpan, 0, 1))).toFixed(1) + '%';
+  if (hud.prBar) { hud.prBar.classList.toggle('in', !!p.inBand); hud.prBar.dataset.in = String(!!p.inBand); }
+  if (hud.prSlow) { hud.prSlow.hidden = !p.slow; if (p.slow) hud.prSlow.dataset.seen = '1'; }
+}
+/** §50.5: place and time, the Round 8 debrief, the advice comparison, the ghost delta, no reward. No save / share buttons. */
+function PracticeResult(f) {
+  const r = JSON.parse(engine.PracticeResultJson());
+  currentScreen = () => PracticeResult(f);
+  if (r.ok && !raceCtx.prFinishSent) {
+    raceCtx.prFinishSent = true;
+    L.kpi([{ name: 'practice_finish', at: L.now(), props: { trackId: raceCtx.trackId, fieldSize: r.runners, strength: raceCtx.practice.strength, place: r.kpiPlace } }]);
+  }
+  Clear('practice-result'); SetArt('Art/race-result');
+  const p = ResultPanel(`練習レース　/　${raceCtx.trackName}`);
+  p.classList.add('pr-result'); p.dataset.place = String(r.place); p.dataset.verdict = r.verdict ?? 'none';
+  Txt(r.finished ? `${r.place}着` : '完走ならず', 40, 112, 300, r.finished ? 96 : 44, r.place === 1 ? GOLD : WHITE, p, { cls: 'num', lh: 1.2 }).classList.add('pr-place');
+  if (r.finished) Txt(`${r.runners}頭`, 300, 176, 160, 26, MUTED, p, { cls: 'num' });
+  Txt(r.time, 44, 246, 520, 30, WHITE, p, { cls: 'num' });
+  Hair(44, 300, 478, p);
+  let y = 324;
+  for (const [line, cls, color] of [[r.debriefLine, 'pr-debrief', WHITE], [r.debriefTip, 'pr-tip', MUTED], [r.adviceLine, 'pr-advice', CYAN], [r.ghostLine, 'pr-ghost', '#cfe8ff']]) {
+    if (!line) continue;
+    Txt(line, 44, y, 520, 17, color, p, { weight: 500, lh: 1.5 }).classList.add(cls);
+    y += 50;
+  }
+  Txt(r.noReward, 44, 548, 520, 18, GOLD, p, { weight: 700 }).classList.add('pr-no-reward');
+  Cta('同じ展開でもう一度', 44, 640, 478, () => StartPractice('same_seed'), p).classList.add('pr-again');
+  TextLink('ホーム', 44, 734, 90, Home, p);
+  Ghost('新しい相手で', 1286, 648, 274, 60, () => StartPractice('new_seed')).classList.add('pr-new');
+  Ghost('条件を変える', 1286, 724, 274, 60, () => Practice()).classList.add('pr-change');
+  Ghost('この瞬間を撮る', 1286, 800, 274, 60, () => PhotoOpen('result', currentScreen)).dataset.action = 'photo-result';
+  globalThis.__muchi.lastPracticeResult = r;
   EnToggle();
 }
 
@@ -6046,15 +6215,17 @@ const PH_LOOK_CSS = { natural: 'none', film: 'sepia(.28) contrast(1.06) saturate
 const PH_STAMP_GLYPH = { muchi: '閃', hoof: '∩∩', star: '✦', photo_finish: '◇', crown: '♛', carrot_pop: '🥕' };
 let ph = null;
 /** Is the race on screen run with other people? (the prototype's main race stands for a ranked race) */
-const phShared = () => !raceCtx?.ta && !raceCtx?.challenge && !raceCtx?.tutorial;
+const phShared = () => !raceCtx?.ta && !raceCtx?.challenge && !raceCtx?.tutorial && !raceCtx?.practice; // round 18: practice is a solo race
+/** The race clock photo mode pauses / resumes on (a practice race runs on its own clock, §50.4). */
+const raceNowMs = () => (raceCtx?.practice ? engine.PracticeNow(performance.now()) : performance.now());
 /** kind: paused (race HUD) | result (result screens) | replay (replay share player, at its clip time) | myreplay (§37 player, its frame). */
 async function PhotoOpen(kind, back) {
   const clipMs = Math.round(globalThis.__muchi?.clipT ?? 0);
-  const info = JSON.parse(engine.PhotoOpen(kind, performance.now(), raceCtx?.config?.raceId ?? '', phShared(), kind === 'replay' ? clipMs : 0));
+  const info = JSON.parse(engine.PhotoOpen(kind, raceNowMs(), raceCtx?.config?.raceId ?? '', phShared(), kind === 'replay' ? clipMs : 0));
   if (!info.ok) { toast(info.message); return; }
   const cat = await L.photoCatalog();
   ph = { kind, info, back, cat: cat.ok && cat.value.enabled ? cat.value : null, tab: 'camera', look: 'natural', frame: null, stamps: [], caption: null, names: 'masked', hideUi: false, camera: info.camera, problem: null };
-  if (!ph.cat) { engine.PhotoClose(performance.now()); toast('フォトモードはいま使えません'); return; }
+  if (!ph.cat) { engine.PhotoClose(raceNowMs()); toast('フォトモードはいま使えません'); return; }
   globalThis.__muchi.photo = { open: info, catalog: ph.cat };
   PhotoMode();
 }
@@ -6204,7 +6375,7 @@ async function PhotoShoot() {
 }
 function PhotoBack() {
   const kind = ph?.kind, back = ph?.back;
-  engine.PhotoClose(performance.now());
+  engine.PhotoClose(raceNowMs());
   $canvas.style.filter = '';
   ph = null;
   if (kind === 'paused') return BuildRaceScreen(); // the race resumes where it stopped
@@ -6528,7 +6699,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

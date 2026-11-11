@@ -26,6 +26,7 @@ import type { CollectionMaster } from './collection.js';
 import collectionJson from '../../master/collection.json';
 import photoJson from '../../master/photo.json';
 import helpJson from '../../master/help.json';
+import practiceJson from '../../master/practice.json';
 import { trackSchema, type GoingAptitude, type Going, type Track } from './schemas.js';
 import { AppError } from './errors.js';
 import { loadSkills, type SkillsMaster } from './skills.js';
@@ -414,6 +415,8 @@ export interface Master {
   photo?: import('./photoMode.js').PhotoMaster;
   /** REQ-HELP-*: ヘルプセンター articles (master/help.json; help.ts helpOf falls back to it when absent; remote config `help` replaces it). */
   help?: import('./help.js').HelpMaster;
+  /** REQ-PRAC-*: 練習レース — field size and CPU strengths (master/practice.json; practice.ts practiceOf falls back to it when absent). */
+  practice?: import('./practice.js').PracticeMaster;
 }
 
 export const PPM_TOTAL = 1_000_000;
@@ -568,6 +571,7 @@ export function loadMaster(): Master {
     collection: collectionJson as unknown as CollectionMaster,
     photo: photoJson as unknown as import('./photoMode.js').PhotoMaster,
     help: helpJson as unknown as import('./help.js').HelpMaster,
+    practice: practiceJson as unknown as import('./practice.js').PracticeMaster,
   };
   cached = m;
   return m;

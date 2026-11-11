@@ -230,6 +230,8 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('MyInquiries'); await waitScreen('my-inquiries'); await shot('my-inquiries', english, 500);
     // Round 17: おすすめフレンド (the friends screen's suggestions section)
     await show('Friends'); await waitScreen('friends'); await shot('friends-suggestions', english, 600);
+    // Round 18: 練習レース (the setup screen at the largest size)
+    await show('Practice'); await waitScreen('practice'); await page.waitForSelector('.screen.in .pr-setup', { timeout: 15000 }); await shot('practice', english, 600);
     await show('Settings'); await waitScreen('settings'); await boxesClear('settings lists (largest)', SETTINGS_LISTS, english);
     await show('Home'); await waitScreen('home'); await page.waitForTimeout(700); await boxesClear('home top bar (largest)', HOME_BAR, english);
   };

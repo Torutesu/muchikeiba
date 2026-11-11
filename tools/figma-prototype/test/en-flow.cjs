@@ -316,6 +316,37 @@ module.exports = async function enFlow(browser, base, out, errors) {
     await page.evaluate(() => localStorage.removeItem('muchi.roster.view'));
   }
 
+  // round 18: 練習レース in English (REQ-PRAC-018): the setup (a lit course at night, strengths, options), a short race on the
+  // device, the result lines (debrief, advice, no reward) — horse names as typed
+  {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(() => { localStorage.removeItem('muchi.practice.setup'); localStorage.removeItem('muchi.practice.options'); });
+    await show('Practice'); await waitScreen('practice'); await waitIn('.pr-setup');
+    for (let i = 0; i < 8 && !(await page.locator('.screen.in .pr-night').count()); i++) { await page.locator('.screen.in .pr-course-next').click(); await page.waitForTimeout(350); }
+    await page.locator('.screen.in .pr-night').click(); await page.waitForTimeout(350);
+    await page.locator('.screen.in .pr-strength[data-strength="top"]').click(); await page.waitForTimeout(350);
+    await shot('practice-setup', 400);
+    assert.match(await page.locator('.screen.in').innerText(), /No rewards \(practice\)/, 'practice: the no-reward line in English');
+    // the shortest course with 2 runners for the race
+    for (let i = 0; i < 8 && (await page.locator('.screen.in .pr-course').getAttribute('data-track')) !== 'bellmoor_turf_1200'; i++) { await page.locator('.screen.in .pr-course-next').click(); await page.waitForTimeout(300); }
+    for (let i = 0; i < 10; i++) { await page.locator('.screen.in .pr-field-minus').click(); await page.waitForTimeout(120); }
+    await page.locator('.screen.in .pr-start').click(); await waitScreen('race', 20000);
+    let started = false, lastW = 0, raceShot = false;
+    for (let i = 0; i < 6000; i++) {
+      const f = await page.evaluate(() => globalThis.__muchi.state().lastFrame);
+      if (!f) { await page.waitForTimeout(50); continue; }
+      if (f.done || (await page.evaluate(() => globalThis.__muchi.screen)) !== 'race') break;
+      if (!started && f.gateOpen && !f.departed) { await page.locator('.screen.in .btn.whip').click({ force: true }); started = true; }
+      if (f.departed && f.remainingM <= 420 && f.whips > 0 && Date.now() - lastW > 1400) { await page.locator('.screen.in .btn.whip').click({ force: true }); lastW = Date.now(); }
+      if (!raceShot && f.departed && f.remainingM < 700) { raceShot = true; await shot('practice-race', 0); }
+      await page.waitForTimeout(40);
+    }
+    await waitScreen('practice-result', 40000); await waitIn('.pr-result');
+    await shot('practice-result', 500);
+    assert.match(await page.locator('.screen.in .pr-no-reward').innerText(), /No rewards/, 'practice result: no reward (English)');
+    assert.equal(await page.locator('.screen.in [data-label="リプレイを保存"], .screen.in [data-label="リプレイを共有"]').count(), 0, 'practice result: no replay save / share');
+  }
+
   // round 11: 図鑑・実績・称号 in English (REQ-COL-*, REQ-ACH-*): a week of play on the real rules, every tab, a detail,
   // the achievement list (claim one, claim all), the title chooser
   await page.evaluate(() => globalThis.__muchi.demo('collection')); await waitScreen('collection', 60000);

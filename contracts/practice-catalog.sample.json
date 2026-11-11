@@ -1,0 +1,1075 @@
+{
+ "v": 1,
+ "enabled": true,
+ "rulesetVersion": "1.3.0",
+ "fieldSize": {
+  "min": 2,
+  "max": 12,
+  "default": 8
+ },
+ "strengths": [
+  {
+   "id": "easy",
+   "name": "やさしい",
+   "note": "初心者マッチと同じ相手",
+   "cpuLevel": 1,
+   "cpuStatPermille": 780
+  },
+  {
+   "id": "normal",
+   "name": "ふつう",
+   "note": "ランク戦（レート1400〜1600）の相手",
+   "cpuLevel": 3,
+   "cpuStatPermille": 1000
+  },
+  {
+   "id": "strong",
+   "name": "つよい",
+   "note": "ランク戦（レート1600〜1800）の相手",
+   "cpuLevel": 4,
+   "cpuStatPermille": 1000
+  },
+  {
+   "id": "top",
+   "name": "いちばん強い",
+   "note": "ランク戦（レート1800以上）の相手",
+   "cpuLevel": 5,
+   "cpuStatPermille": 1000
+  }
+ ],
+ "defaultStrength": "normal",
+ "courses": [
+  {
+   "trackId": "aoba_turf_1600",
+   "name": "青葉競馬場 芝1600m",
+   "surface": "turf",
+   "distanceM": 1600,
+   "segments": [
+    {
+     "kind": "straight",
+     "lengthM": 350
+    },
+    {
+     "kind": "corner",
+     "lengthM": 600,
+     "radiusM": 120
+    },
+    {
+     "kind": "straight",
+     "lengthM": 650
+    }
+   ],
+   "lights": false,
+   "goings": [
+    "firm",
+    "good",
+    "yielding",
+    "soft"
+   ],
+   "today": {
+    "going": "firm",
+    "night": false
+   }
+  },
+  {
+   "trackId": "kirameki_turf_2000",
+   "name": "きらめき競馬場 芝2000m",
+   "surface": "turf",
+   "distanceM": 2000,
+   "segments": [
+    {
+     "kind": "straight",
+     "lengthM": 300
+    },
+    {
+     "kind": "corner",
+     "lengthM": 300,
+     "radiusM": 110
+    },
+    {
+     "kind": "straight",
+     "lengthM": 450
+    },
+    {
+     "kind": "corner",
+     "lengthM": 450,
+     "radiusM": 110
+    },
+    {
+     "kind": "straight",
+     "lengthM": 500
+    }
+   ],
+   "lights": false,
+   "goings": [
+    "firm",
+    "good",
+    "yielding",
+    "soft"
+   ],
+   "today": {
+    "going": "good",
+    "night": false
+   }
+  },
+  {
+   "trackId": "minato_turf_2400",
+   "name": "みなと競馬場 芝2400m",
+   "surface": "turf",
+   "distanceM": 2400,
+   "segments": [
+    {
+     "kind": "straight",
+     "lengthM": 400
+    },
+    {
+     "kind": "corner",
+     "lengthM": 300,
+     "radiusM": 130
+    },
+    {
+     "kind": "straight",
+     "lengthM": 500
+    },
+    {
+     "kind": "corner",
+     "lengthM": 600,
+     "radiusM": 130
+    },
+    {
+     "kind": "straight",
+     "lengthM": 600
+    }
+   ],
+   "lights": true,
+   "goings": [
+    "firm",
+    "good",
+    "yielding",
+    "soft"
+   ],
+   "today": {
+    "going": "soft",
+    "night": false
+   }
+  },
+  {
+   "trackId": "aoba_dirt_1400",
+   "name": "青葉競馬場 ダート1400m",
+   "surface": "dirt",
+   "distanceM": 1400,
+   "segments": [
+    {
+     "kind": "straight",
+     "lengthM": 350
+    },
+    {
+     "kind": "corner",
+     "lengthM": 550,
+     "radiusM": 100
+    },
+    {
+     "kind": "straight",
+     "lengthM": 500
+    }
+   ],
+   "lights": false,
+   "goings": [
+    "fast",
+    "good",
+    "muddy",
+    "sloppy"
+   ],
+   "today": {
+    "going": "good",
+    "night": false
+   }
+  },
+  {
+   "trackId": "minato_dirt_1800",
+   "name": "みなと競馬場 ダート1800m",
+   "surface": "dirt",
+   "distanceM": 1800,
+   "segments": [
+    {
+     "kind": "straight",
+     "lengthM": 300
+    },
+    {
+     "kind": "corner",
+     "lengthM": 500,
+     "radiusM": 100
+    },
+    {
+     "kind": "straight",
+     "lengthM": 350
+    },
+    {
+     "kind": "corner",
+     "lengthM": 300,
+     "radiusM": 95
+    },
+    {
+     "kind": "straight",
+     "lengthM": 350
+    }
+   ],
+   "lights": true,
+   "goings": [
+    "fast",
+    "good",
+    "muddy",
+    "sloppy"
+   ],
+   "today": {
+    "going": "muddy",
+    "night": false
+   }
+  },
+  {
+   "trackId": "nordhaven_turf_2400",
+   "name": "ノルトハーフェン競馬場 芝2400m",
+   "surface": "turf",
+   "distanceM": 2400,
+   "segments": [
+    {
+     "kind": "straight",
+     "lengthM": 400
+    },
+    {
+     "kind": "corner",
+     "lengthM": 500,
+     "radiusM": 160
+    },
+    {
+     "kind": "straight",
+     "lengthM": 300
+    },
+    {
+     "kind": "corner",
+     "lengthM": 500,
+     "radiusM": 160
+    },
+    {
+     "kind": "straight",
+     "lengthM": 700
+    }
+   ],
+   "lights": false,
+   "goings": [
+    "firm",
+    "good",
+    "yielding",
+    "soft"
+   ],
+   "today": {
+    "going": "good",
+    "night": false
+   }
+  },
+  {
+   "trackId": "santalucera_dirt_1700",
+   "name": "サンタルチェラ競馬場 ダート1700m",
+   "surface": "dirt",
+   "distanceM": 1700,
+   "segments": [
+    {
+     "kind": "straight",
+     "lengthM": 250
+    },
+    {
+     "kind": "corner",
+     "lengthM": 400,
+     "radiusM": 85
+    },
+    {
+     "kind": "straight",
+     "lengthM": 300
+    },
+    {
+     "kind": "corner",
+     "lengthM": 400,
+     "radiusM": 85
+    },
+    {
+     "kind": "straight",
+     "lengthM": 350
+    }
+   ],
+   "lights": true,
+   "goings": [
+    "fast",
+    "good",
+    "muddy",
+    "sloppy"
+   ],
+   "today": {
+    "going": "fast",
+    "night": false
+   }
+  },
+  {
+   "trackId": "bellmoor_turf_1200",
+   "name": "ベルムーア競馬場 芝1200m（直線）",
+   "surface": "turf",
+   "distanceM": 1200,
+   "segments": [
+    {
+     "kind": "straight",
+     "lengthM": 1200
+    }
+   ],
+   "lights": false,
+   "goings": [
+    "firm",
+    "good",
+    "yielding",
+    "soft"
+   ],
+   "today": {
+    "going": "good",
+    "night": false
+   }
+  }
+ ],
+ "cpuHorses": [
+  {
+   "id": "cpu_t_akatsuki",
+   "name": "シンセイアカツキ",
+   "speed": 820,
+   "stamina": 700,
+   "burst": 900,
+   "guts": 650,
+   "temper": 520,
+   "style": "sashi",
+   "distMinM": 1600,
+   "distMaxM": 2400,
+   "surface": "turf",
+   "skill": {
+    "id": "sk_kireaji",
+    "name": "切れ味鋭く",
+    "trigger": "spurtBehind",
+    "value": 3,
+    "speedPermille": 20,
+    "accelPermille": 0,
+    "drainSavePermille": 0,
+    "recoverPermille": 0,
+    "durationTicks": 100
+   }
+  },
+  {
+   "id": "cpu_t_ginga",
+   "name": "ギンガノカナタ",
+   "speed": 800,
+   "stamina": 820,
+   "burst": 760,
+   "guts": 720,
+   "temper": 600,
+   "style": "senko",
+   "distMinM": 1800,
+   "distMaxM": 2600,
+   "surface": "turf",
+   "goingAptitude": "heavy",
+   "skill": {
+    "id": "sk_oudou",
+    "name": "王道の構え",
+    "trigger": "finalStraight",
+    "value": 4,
+    "speedPermille": 20,
+    "accelPermille": 0,
+    "drainSavePermille": 0,
+    "recoverPermille": 0,
+    "durationTicks": 80
+   }
+  },
+  {
+   "id": "cpu_t_kohaku",
+   "name": "コハクノヒカリ",
+   "speed": 860,
+   "stamina": 640,
+   "burst": 700,
+   "guts": 780,
+   "temper": 480,
+   "style": "nige",
+   "distMinM": 1400,
+   "distMaxM": 2000,
+   "surface": "turf",
+   "goingAptitude": "fast",
+   "skill": {
+    "id": "sk_shippu",
+    "name": "疾風の先駆け",
+    "trigger": "leading",
+    "value": 600,
+    "speedPermille": 20,
+    "accelPermille": 0,
+    "drainSavePermille": 0,
+    "recoverPermille": 0,
+    "durationTicks": 80
+   }
+  },
+  {
+   "id": "cpu_t_tsukikage",
+   "name": "ツキカゲロード",
+   "speed": 780,
+   "stamina": 860,
+   "burst": 880,
+   "guts": 600,
+   "temper": 560,
+   "style": "oikomi",
+   "distMinM": 2000,
+   "distMaxM": 3000,
+   "surface": "turf",
+   "goingAptitude": "heavy",
+   "skill": {
+    "id": "sk_goukyaku",
+    "name": "豪脚",
+    "trigger": "spurtBehind",
+    "value": 5,
+    "speedPermille": 20,
+    "accelPermille": 0,
+    "drainSavePermille": 0,
+    "recoverPermille": 0,
+    "durationTicks": 100
+   }
+  },
+  {
+   "id": "cpu_t_harukaze",
+   "name": "ハルカゼノミチ",
+   "speed": 700,
+   "stamina": 680,
+   "burst": 600,
+   "guts": 650,
+   "temper": 500,
+   "style": "nige",
+   "distMinM": 1600,
+   "distMaxM": 2200,
+   "surface": "turf",
+   "skill": {
+    "id": "sk_kagefumase",
+    "name": "影踏ませず",
+    "trigger": "leading",
+    "value": 400,
+    "speedPermille": 18,
+    "accelPermille": 0,
+    "drainSavePermille": 0,
+    "recoverPermille": 0,
+    "durationTicks": 80
+   }
+  },
+  {
+   "id": "cpu_t_kurogane",
+   "name": "クロガネオウジ",
+   "speed": 680,
+   "stamina": 720,
+   "burst": 740,
+   "guts": 600,
+   "temper": 450,
+   "style": "oikomi",
+   "distMinM": 1800,
+   "distMaxM": 2600,
+   "surface": "turf",
+   "goingAptitude": "heavy",
+   "skill": {
+    "id": "sk_jinrai",
+    "name": "迅雷",
+    "trigger": "spurtBehind",
+    "value": 7,
+    "speedPermille": 18,
+    "accelPermille": 0,
+    "drainSavePermille": 0,
+    "recoverPermille": 0,
+    "durationTicks": 100
+   }
+  },
+  {
+   "id": "cpu_t_hanabi",
+   "name": "ハナビシャトル",
+   "speed": 730,
+   "stamina": 600,
+   "burst": 680,
+   "guts": 640,
+   "temper": 520,
+   "style": "senko",
+   "distMinM": 1200,
+   "distMaxM": 1800,
+   "surface": "both",
+   "skill": {
+    "id": "sk_uchirachi",
+    "name": "内ラチの申し子",
+    "trigger": "cornerRail",
+    "value": 0,
+    "speedPermille": 0,
+    "accelPermille": 0,
+    "drainSavePermille": 250,
+    "recoverPermille": 0,
+    "durationTicks": 100
+   }
+  },
+  {
+   "id": "cpu_t_umineko",
+   "name": "ウミネコパレード",
+   "speed": 690,
+   "stamina": 700,
+   "burst": 720,
+   "guts": 580,
+   "temper": 560,
+   "style": "sashi",
+   "distMinM": 1600,
+   "distMaxM": 2400,
+   "surface": "turf",
+   "skill": {
+    "id": "sk_sueashi",
+    "name": "末脚一閃",
+    "trigger": "spurtBehind",
+    "value": 5,
+    "speedPermille": 18,
+    "accelPermille": 0,
+    "drainSavePermille": 0,
+    "recoverPermille": 0,
+    "durationTicks": 100
+   }
+  },
+  {
+   "id": "cpu_t_inazuma",
+   "name": "イナズマランナー",
+   "speed": 750,
+   "stamina": 580,
+   "burst": 620,
+   "guts": 700,
+   "temper": 420,
+   "style": "nige",
+   "distMinM": 1200,
+   "distMaxM": 1800,
+   "surface": "turf",
+   "goingAptitude": "fast",
+   "skill": {
+    "id": "sk_ninoashi",
+    "name": "根性の二の脚",
+    "trigger": "lowStamina",
+    "value": 120,
+    "speedPermille": 0,
+    "accelPermille": 0,
+    "drainSavePermille": 0,
+    "recoverPermille": 30,
+    "durationTicks": 0
+   }
+  },
+  {
+   "id": "cpu_t_sakura",
+   "name": "サクラナミキ",
+   "speed": 700,
+   "stamina": 690,
+   "burst": 660,
+   "guts": 660,
+   "temper": 580,
+   "style": "senko",
+   "distMinM": 1600,
+   "distMaxM": 2400,
+   "surface": "turf",
+   "skill": {
+    "id": "sk_nukedashi",
+    "name": "先行抜け出し",
+    "trigger": "finalStraight",
+    "value": 2,
+    "speedPermille": 18,
+    "accelPermille": 0,
+    "drainSavePermille": 0,
+    "recoverPermille": 0,
+    "durationTicks": 80
+   }
+  },
+  {
+   "id": "cpu_t_yukimi",
+   "name": "ユキミザクラ",
+   "speed": 600,
+   "stamina": 580,
+   "burst": 560,
+   "guts": 560,
+   "temper": 500,
+   "style": "senko",
+   "distMinM": 1400,
+   "distMaxM": 2000,
+   "surface": "turf",
+   "skill": {
+    "id": "sk_kouinonebari",
+    "name": "好位の粘り",
+    "trigger": "finalStraight",
+    "value": 1,
+    "speedPermille": 15,
+    "accelPermille": 0,
+    "drainSavePermille": 0,
+    "recoverPermille": 0,
+    "durationTicks": 80
+   }
+  },
+  {
+   "id": "cpu_t_natsu",
+   "name": "ナツノアラシ",
+   "speed": 610,
+   "stamina": 600,
+   "burst": 540,
+   "guts": 580,
+   "temper": 470,
+   "style": "senko",
+   "distMinM": 1600,
+   "distMaxM": 2200,
+   "surface": "turf",
+   "skill": {
+    "id": "sk_hitonobi",
+    "name": "ラストひと伸び",
+    "trigger": "remaining",
+    "value": 150,
+    "speedPermille": 15,
+    "accelPermille": 0,
+    "drainSavePermille": 0,
+    "recoverPermille": 0,
+    "durationTicks": 60
+   }
+  },
+  {
+   "id": "cpu_t_aozora",
+   "name": "アオゾラマーチ",
+   "speed": 630,
+   "stamina": 520,
+   "burst": 520,
+   "guts": 600,
+   "temper": 480,
+   "style": "nige",
+   "distMinM": 1200,
+   "distMaxM": 1800,
+   "surface": "turf",
+   "goingAptitude": "fast",
+   "skill": {
+    "id": "sk_ichibanyari",
+    "name": "一番槍",
+    "trigger": "goodStart",
+    "value": 1,
+    "speedPermille": 0,
+    "accelPermille": 200,
+    "drainSavePermille": 0,
+    "recoverPermille": 0,
+    "durationTicks": 40
+   }
+  },
+  {
+   "id": "cpu_t_yuyake",
+   "name": "ユウヤケボシ",
+   "speed": 590,
+   "stamina": 610,
+   "burst": 600,
+   "guts": 540,
+   "temper": 520,
+   "style": "sashi",
+   "distMinM": 1600,
+   "distMaxM": 2400,
+   "surface": "turf",
+   "skill": {
+    "id": "sk_kazeyomi",
+    "name": "風読み",
+    "trigger": "slipstream",
+    "value": 60,
+    "speedPermille": 0,
+    "accelPermille": 0,
+    "drainSavePermille": 250,
+    "recoverPermille": 0,
+    "durationTicks": 100
+   }
+  },
+  {
+   "id": "cpu_t_minamo",
+   "name": "ミナモノリズム",
+   "speed": 580,
+   "stamina": 640,
+   "burst": 620,
+   "guts": 520,
+   "temper": 540,
+   "style": "oikomi",
+   "distMinM": 1800,
+   "distMaxM": 2600,
+   "surface": "turf",
+   "goingAptitude": "heavy",
+   "skill": {
+    "id": "sk_ooso",
+    "name": "大外一気",
+    "trigger": "spurtBehind",
+    "value": 9,
+    "speedPermille": 15,
+    "accelPermille": 0,
+    "drainSavePermille": 0,
+    "recoverPermille": 0,
+    "durationTicks": 100
+   }
+  },
+  {
+   "id": "cpu_t_hoshifuru",
+   "name": "ホシフルオカ",
+   "speed": 600,
+   "stamina": 600,
+   "burst": 590,
+   "guts": 560,
+   "temper": 500,
+   "style": "sashi",
+   "distMinM": 1600,
+   "distMaxM": 2400,
+   "surface": "turf",
+   "skill": {
+    "id": "sk_hitoiki",
+    "name": "ひと息入れて",
+    "trigger": "lowStamina",
+    "value": 250,
+    "speedPermille": 0,
+    "accelPermille": 0,
+    "drainSavePermille": 0,
+    "recoverPermille": 25,
+    "durationTicks": 0
+   }
+  },
+  {
+   "id": "cpu_t_kazamidori",
+   "name": "カザミドリノウタ",
+   "speed": 595,
+   "stamina": 570,
+   "burst": 560,
+   "guts": 590,
+   "temper": 530,
+   "style": "senko",
+   "distMinM": 1400,
+   "distMaxM": 2000,
+   "surface": "both",
+   "skill": {
+    "id": "sk_kouinonebari",
+    "name": "好位の粘り",
+    "trigger": "finalStraight",
+    "value": 1,
+    "speedPermille": 15,
+    "accelPermille": 0,
+    "drainSavePermille": 0,
+    "recoverPermille": 0,
+    "durationTicks": 80
+   }
+  },
+  {
+   "id": "cpu_t_morino",
+   "name": "モリノシズク",
+   "speed": 620,
+   "stamina": 540,
+   "burst": 530,
+   "guts": 590,
+   "temper": 460,
+   "style": "nige",
+   "distMinM": 1200,
+   "distMaxM": 1800,
+   "surface": "turf",
+   "skill": {
+    "id": "sk_hitoiki",
+    "name": "ひと息入れて",
+    "trigger": "lowStamina",
+    "value": 250,
+    "speedPermille": 0,
+    "accelPermille": 0,
+    "drainSavePermille": 0,
+    "recoverPermille": 25,
+    "durationTicks": 0
+   }
+  },
+  {
+   "id": "cpu_t_hinode",
+   "name": "ヒノデエクスプレス",
+   "speed": 640,
+   "stamina": 530,
+   "burst": 500,
+   "guts": 610,
+   "temper": 440,
+   "style": "nige",
+   "distMinM": 1400,
+   "distMaxM": 2000,
+   "surface": "turf",
+   "goingAptitude": "fast",
+   "skill": {
+    "id": "sk_ichibanyari",
+    "name": "一番槍",
+    "trigger": "goodStart",
+    "value": 1,
+    "speedPermille": 0,
+    "accelPermille": 200,
+    "drainSavePermille": 0,
+    "recoverPermille": 0,
+    "durationTicks": 40
+   }
+  },
+  {
+   "id": "cpu_t_akanegumo",
+   "name": "アカネグモ",
+   "speed": 570,
+   "stamina": 650,
+   "burst": 630,
+   "guts": 530,
+   "temper": 510,
+   "style": "oikomi",
+   "distMinM": 1800,
+   "distMaxM": 2600,
+   "surface": "turf",
+   "skill": {
+    "id": "sk_hitonobi",
+    "name": "ラストひと伸び",
+    "trigger": "remaining",
+    "value": 150,
+    "speedPermille": 15,
+    "accelPermille": 0,
+    "drainSavePermille": 0,
+    "recoverPermille": 0,
+    "durationTicks": 60
+   }
+  },
+  {
+   "id": "cpu_t_sunaarashi",
+   "name": "スナアラシ",
+   "speed": 720,
+   "stamina": 640,
+   "burst": 600,
+   "guts": 720,
+   "temper": 470,
+   "style": "nige",
+   "distMinM": 1200,
+   "distMaxM": 1800,
+   "surface": "dirt",
+   "goingAptitude": "heavy",
+   "skill": {
+    "id": "sk_kagefumase",
+    "name": "影踏ませず",
+    "trigger": "leading",
+    "value": 400,
+    "speedPermille": 18,
+    "accelPermille": 0,
+    "drainSavePermille": 0,
+    "recoverPermille": 0,
+    "durationTicks": 80
+   }
+  },
+  {
+   "id": "cpu_t_dorobune",
+   "name": "ドロブネ",
+   "speed": 600,
+   "stamina": 600,
+   "burst": 540,
+   "guts": 600,
+   "temper": 510,
+   "style": "senko",
+   "distMinM": 1400,
+   "distMaxM": 2000,
+   "surface": "dirt",
+   "goingAptitude": "heavy",
+   "skill": {
+    "id": "sk_hitoiki",
+    "name": "ひと息入れて",
+    "trigger": "lowStamina",
+    "value": 250,
+    "speedPermille": 0,
+    "accelPermille": 0,
+    "drainSavePermille": 0,
+    "recoverPermille": 25,
+    "durationTicks": 0
+   }
+  },
+  {
+   "id": "cpu_t_kawarabi",
+   "name": "カワラビ",
+   "speed": 590,
+   "stamina": 590,
+   "burst": 610,
+   "guts": 560,
+   "temper": 520,
+   "style": "sashi",
+   "distMinM": 1400,
+   "distMaxM": 2000,
+   "surface": "dirt",
+   "skill": {
+    "id": "sk_kazeyomi",
+    "name": "風読み",
+    "trigger": "slipstream",
+    "value": 60,
+    "speedPermille": 0,
+    "accelPermille": 0,
+    "drainSavePermille": 250,
+    "recoverPermille": 0,
+    "durationTicks": 100
+   }
+  }
+ ],
+ "horses": [
+  {
+   "id": "h1",
+   "name": "コハクノヒカリ",
+   "speed": 860,
+   "stamina": 640,
+   "burst": 700,
+   "guts": 780,
+   "temper": 480,
+   "style": "nige",
+   "distMinM": 1400,
+   "distMaxM": 2000,
+   "surface": "turf",
+   "goingAptitude": "fast",
+   "skill": {
+    "id": "sk_shippu",
+    "name": "疾風の先駆け",
+    "trigger": "leading",
+    "value": 600,
+    "speedPermille": 20,
+    "accelPermille": 0,
+    "drainSavePermille": 0,
+    "recoverPermille": 0,
+    "durationTicks": 80
+   },
+   "partner": true
+  },
+  {
+   "id": "h2",
+   "name": "ギンガノカナタ",
+   "speed": 800,
+   "stamina": 820,
+   "burst": 760,
+   "guts": 720,
+   "temper": 600,
+   "style": "senko",
+   "distMinM": 1800,
+   "distMaxM": 2600,
+   "surface": "turf",
+   "goingAptitude": "heavy",
+   "skill": {
+    "id": "sk_oudou",
+    "name": "王道の構え",
+    "trigger": "finalStraight",
+    "value": 4,
+    "speedPermille": 20,
+    "accelPermille": 0,
+    "drainSavePermille": 0,
+    "recoverPermille": 0,
+    "durationTicks": 80
+   },
+   "partner": false
+  },
+  {
+   "id": "h3",
+   "name": "スナアラシ",
+   "speed": 720,
+   "stamina": 640,
+   "burst": 600,
+   "guts": 720,
+   "temper": 470,
+   "style": "nige",
+   "distMinM": 1200,
+   "distMaxM": 1800,
+   "surface": "dirt",
+   "goingAptitude": "heavy",
+   "skill": {
+    "id": "sk_kagefumase",
+    "name": "影踏ませず",
+    "trigger": "leading",
+    "value": 400,
+    "speedPermille": 18,
+    "accelPermille": 0,
+    "drainSavePermille": 0,
+    "recoverPermille": 0,
+    "durationTicks": 80
+   },
+   "partner": false
+  }
+ ],
+ "ruleset": {
+  "rulesetVersion": "1.3.0",
+  "maxTicks": 4800,
+  "gateOpenTick": 60,
+  "startReactionWindowTicks": 4,
+  "startBoostPermille": 500,
+  "startBoostTicks": 40,
+  "autoStartDelayTicks": 10,
+  "laneCount": 12,
+  "laneWidthMm": 500,
+  "laneChangeTicks": 6,
+  "laneChangeClearanceMm": 2500,
+  "blockRangeMm": 2000,
+  "minGapMm": 1000,
+  "slipstreamRangeMm": 6000,
+  "slipstreamSavePermille": 300,
+  "baseCruiseSpeedMmPerSec": 21000,
+  "speedStatBonusMmPerSecPer1000": 5000,
+  "cruiseSpeedPermille": 940,
+  "accelMmPerSec2": 3500,
+  "decelMmPerSec2": 2500,
+  "reinSpeedPermille": 950,
+  "reinDrainPermille": 450,
+  "spurtDistanceM": 700,
+  "spurtSpeedBonusMaxMmPerSec": 5000,
+  "staminaBase": 4000,
+  "staminaPerStatPoint": 10,
+  "drainMicroPerSpeedSqPerTick": 11300,
+  "gutsFloorMinPermille": 600,
+  "gutsFloorMaxPermille": 850,
+  "aptitudeOutPenaltyPermille": 50,
+  "badComposureThreshold": 40,
+  "badComposureExtraDrainPermille": 300,
+  "kakariChancePer100000PerTickAtTemper0": 60,
+  "kakariDurationTicks": 40,
+  "kakariComposureLossPerTick": 2,
+  "reinComposureRecoverPerTick": 2,
+  "naturalComposureRecoverPerTick": 0,
+  "blockedComposureLossIntervalTicks": 20,
+  "maxWhips": 6,
+  "whipEffectTicks": 20,
+  "whipAccelBonusMmPerSec2": 2000,
+  "whipSpeedBonusMmPerSec": 2000,
+  "whipDiminishWindowTicks": 20,
+  "whipDiminishPermille": 500,
+  "earlyWhipEffectPermille": 150,
+  "earlyWhipComposurePenalty": 10,
+  "whipStaminaCost": 25,
+  "cpuDecisionIntervalTicks": 4,
+  "cpuWhipIntervalTicks": 24,
+  "cpuWhipStartDistanceM": 400,
+  "cpuTargetRankNigePermille": 0,
+  "cpuTargetRankSenkoPermille": 400,
+  "cpuTargetRankSashiPermille": 550,
+  "cpuTargetRankOikomiPermille": 800,
+  "goingTurfFirmSpeedPermille": 1008,
+  "goingTurfGoodSpeedPermille": 1000,
+  "goingTurfYieldingSpeedPermille": 975,
+  "goingTurfSoftSpeedPermille": 948,
+  "goingDirtFastSpeedPermille": 995,
+  "goingDirtGoodSpeedPermille": 1000,
+  "goingDirtMuddySpeedPermille": 1005,
+  "goingDirtSloppySpeedPermille": 1010,
+  "goingTurfFirmDrainPermille": 970,
+  "goingTurfGoodDrainPermille": 1000,
+  "goingTurfYieldingDrainPermille": 1020,
+  "goingTurfSoftDrainPermille": 1040,
+  "goingDirtFastDrainPermille": 1110,
+  "goingDirtGoodDrainPermille": 1100,
+  "goingDirtMuddyDrainPermille": 1100,
+  "goingDirtSloppyDrainPermille": 1120,
+  "dirtSpeedPermille": 965,
+  "goingSpecialistPermille": 8,
+  "conditionVariancePermille": 25,
+  "cpuStaminaReinMinLevel": 1,
+  "cpuRailMinLevel": 3,
+  "autoRailIntervalTicks": 10,
+  "autoRailHoldTicks": 60,
+  "cpuSloppyMaxLevel": 3,
+  "distanceRefM": 2000,
+  "distanceRefDirtM": 1850,
+  "staminaDistanceScalePermille": 1000,
+  "spurtDistanceScalePermille": 1000,
+  "skillMaxSpeedPermille": 30,
+  "skillMaxAccelPermille": 400,
+  "skillMaxDrainSavePermille": 400,
+  "skillMaxRecoverPermille": 80,
+  "skillMaxDurationTicks": 160
+ },
+ "net": {
+  "tickHz": 20,
+  "inputDelayTicks": 3,
+  "bundleIntervalTicks": 2,
+  "checksumIntervalTicks": 20,
+  "disconnectGraceMs": 3000
+ }
+}

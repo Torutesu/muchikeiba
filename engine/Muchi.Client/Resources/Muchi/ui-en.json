@@ -1176,6 +1176,15 @@
   "コースの記録": "Course record",
   "得意の外へ": "Beyond its range",
   "勝ち星": "Wins",
-  "頂点": "The summit"
+  "頂点": "The summit",
+  "練習レース": "Practice race", "報酬はありません（練習）": "No rewards (practice)", "練習の準備ができていません": "Practice is not ready yet",
+  "このコースは選べません": "This course is not available", "この馬場はこのコースにありません": "This going is not used on this course",
+  "ナイターは照明のある競馬場だけです": "Night races only at racecourses with lights", "頭数は{n}〜{m}頭です": "Choose {n} to {m} runners",
+  "強さを選んでください": "Choose a strength", "前回より{n}秒速い": "{n} s faster than last time", "前回より{n}秒遅い": "{n} s slower than last time",
+  "前回と同じタイム": "The same time as last time", "ムチの目安": "Whip guide", "同じ展開でもう一度": "Same race again", "新しい相手で": "New rivals",
+  "条件を変える": "Change conditions", "この瞬間を撮る": "Photo this moment",
+  "自分の馬で、CPU 相手にムチと脚質を練習できます": "Practise the whip and running styles with your own horses against CPU rivals",
+  "ムチの目安を出す": "Show the whip guide", "最後の400mをスロー": "Slow motion for the last 400 m", "前回のゴーストを出す": "Show the ghost of the last run",
+  "チュートリアルのあとで遊べます": "Available after the tutorial", "ナイターあり": "Night racing", "今日の馬場": "Today's going", "前回": "Last run", "{n}頭": "{n} runners"
  }
 }

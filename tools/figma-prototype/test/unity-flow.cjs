@@ -531,6 +531,68 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   // refused) → the lobby with the code → friends join (demo) → 出走 ×3 (createRace in the cup mode, simulated in WASM, settled
   // like a room) → standings with trophies → the result card (no names); join by code (a wrong code says nothing), an
   // invitation, and the host leaving cancels the cup
+  // round 18 (REQ-PRAC-*): 練習レース — from the lobby, the setup (course, 2 runners, strength, slow motion), a race on the
+  // device with the whip band and the slow chip, a mid-race 「やり直す」 (same seed), the result (debrief / advice / no reward,
+  // no save or share), a photo from the result, 「新しい相手で」 (new seed), and nothing granted (wallet / pass unchanged)
+  async function practiceFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    const before = await page.evaluate(async () => { const v = await globalThis.__muchi.logic.view(); return JSON.stringify({ w: v.wallet, r: v.rating, s: v.season }); });
+    const passBefore = await page.evaluate(async () => (await globalThis.__muchi.logic.passView()).xp);
+    await page.evaluate(() => { localStorage.removeItem('muchi.practice.setup'); localStorage.setItem('muchi.practice.options', JSON.stringify({ whipWindow: true, slowFinal: true, ghost: true })); });
+    await page.evaluate(() => globalThis.__muchi.show('RaceLobby')); await waitScreen('lobby');
+    await page.locator('.screen.in .pr-entry').click(); await waitScreen('practice'); await waitIn('.pr-setup');
+    await shot('practice-setup', 400);
+    for (let i = 0; i < 8 && (await page.locator('.screen.in .pr-course').getAttribute('data-track')) !== 'bellmoor_turf_1200'; i++) { await page.locator('.screen.in .pr-course-next').click(); await page.waitForTimeout(300); }
+    for (let i = 0; i < 10; i++) { await page.locator('.screen.in .pr-field-minus').click(); await page.waitForTimeout(100); }
+    assert.equal(await page.locator('.screen.in .pr-field').textContent(), '2頭', 'practice: down to 2 runners');
+    await page.locator('.screen.in .pr-strength[data-strength="easy"]').click(); await page.waitForTimeout(300);
+    assert.equal(await page.locator('.screen.in .pr-strength-note').textContent(), '初心者マッチと同じ相手');
+    await page.locator('.screen.in .pr-start').click(); await waitScreen('race', 20000);
+    let lp = await page.evaluate(() => globalThis.__muchi.lastPractice);
+    assert.ok(lp.raceId.startsWith('practice_') && lp.restart === 'none' && lp.band, 'practice: started with the whip band');
+    // ride a little, then restart (same seed)
+    for (let i = 0; i < 2000; i++) {
+      const s = await state();
+      if (s.f && s.f.gateOpen && !s.f.departed) await tapWhip();
+      if (s.f && s.f.departed && s.f.remainingM < 900) break;
+      await page.waitForTimeout(40);
+    }
+    await page.locator('.screen.in .pr-restart').click(); await waitScreen('race'); await page.waitForTimeout(300);
+    lp = await page.evaluate(() => globalThis.__muchi.lastPractice);
+    assert.equal(lp.restart, 'same_seed', 'practice: 「やり直す」 = the same seed');
+    let started = false, lastW = 0, sawBand = false, sawSlow = false, shotHud = false;
+    for (let i = 0; i < 6000; i++) {
+      const s = await state();
+      if (!s.f) { await page.waitForTimeout(50); continue; }
+      if (s.f.done || (await screen()) !== 'race') break;
+      if (!started && s.f.gateOpen && !s.f.departed) { await tapWhip(); started = true; }
+      if (s.f.departed && s.f.remainingM <= lp.band.start && s.f.whips > 0 && Date.now() - lastW > 1400) { await tapWhip(); lastW = Date.now(); }
+      if (!sawBand && await page.locator('.screen.in .pr-bar.in').count()) { sawBand = true; if (!shotHud) { shotHud = true; await shot('practice-race-band', 0, true); } }
+      if (!sawSlow && await page.locator('.screen.in .pr-slow:not([hidden])').count()) sawSlow = true;
+      await page.waitForTimeout(40);
+    }
+    assert.ok(sawBand, 'practice: the band lit inside the advised range');
+    assert.ok(sawSlow, 'practice: slow motion in the last 400 m');
+    await waitScreen('practice-result', 40000); await waitIn('.pr-result');
+    await shot('practice-result', 500);
+    const text = await page.locator('.screen.in').innerText();
+    assert.ok(text.includes('報酬はありません（練習）'), 'practice result: no reward');
+    assert.equal(await page.locator('.screen.in [data-label="リプレイを保存"], .screen.in [data-label="リプレイを共有"]').count(), 0, 'practice result: no replay save / share');
+    const r = await page.evaluate(() => globalThis.__muchi.lastPracticeResult);
+    assert.ok(r.ok && r.runners === 2 && r.lines[r.lines.length - 1] === '報酬はありません（練習）', 'practice result lines');
+    const kpi = await page.evaluate(() => globalThis.__muchi.logic.kpiLog().filter((e) => e.name.startsWith('practice_')).map((e) => e.name));
+    assert.deepEqual(kpi.slice(-3), ['practice_start', 'practice_start', 'practice_finish'], 'practice KPI: start, restart, finish');
+    await page.locator('.screen.in [data-action="photo-result"]').click(); await waitScreen('photo'); await waitIn('.ph-state[data-mode="practice"]');
+    await page.locator('.screen.in [data-action="ph-back"]').click(); await waitScreen('practice-result');
+    await page.locator('.screen.in .pr-new').click(); await waitScreen('race', 20000);
+    lp = await page.evaluate(() => globalThis.__muchi.lastPractice);
+    assert.ok(lp.restart === 'new_seed' && lp.ghost, 'practice: a new seed, with the ghost of the finished attempt');
+    await click('中断'); await waitScreen('home');
+    const after = await page.evaluate(async () => { const v = await globalThis.__muchi.logic.view(); return JSON.stringify({ w: v.wallet, r: v.rating, s: v.season }); });
+    assert.equal(after, before, 'practice granted nothing (wallet, rating, season)');
+    assert.equal(await page.evaluate(async () => (await globalThis.__muchi.logic.passView()).xp), passBefore, 'practice: no pass XP');
+  }
+
   async function cupsFlow() {
     const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
     await page.evaluate(() => globalThis.__muchi.show('HostedCups')); await waitScreen('hosted-cups'); await waitIn('.cup-mine');
@@ -992,6 +1054,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await rosterFlow();
   await recapFlow();
   await cupsFlow();
+  await practiceFlow(); // round 18: 練習レース
   await page.evaluate(() => globalThis.__muchi.show('Scout')); await waitScreen('scout'); await shot('scout', 500);
   await click('提供割合'); await shot('scout-rates', 400); await click('BACK');
   await waitScreen('scout'); await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal'); await shot('scout-paid-reveal', 700);

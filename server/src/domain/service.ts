@@ -95,6 +95,7 @@ import { buildSupportTicket } from '../ops/support.js';
 import { reportOptions, reportSnapshotOf, takeReportAllowance, type ReportCategory, type ReportContent, type ReportSource } from './reports.js';
 import { blockIds, isBlocking, setBlocked, type BlockOrigin } from './blocks.js';
 import { raceAdviceFor, type AdviceQuery } from './raceAdviceService.js';
+import { practiceCatalog } from './practice.js';
 import { dismissNextAction, nextActionsView, noteFeatures, type TeamGoalBrief } from './nextAction.js';
 import { attachRecapRank, noteRecapRace, noteRecapReplaySaved, noteRecapTeamGoal, recapProgress, recapView, recapsList, rollRecaps, type RecapStepName } from './seasonRecap.js';
 import {
@@ -1756,6 +1757,8 @@ export class PlayerService {
   // ---- 週替わりチャレンジ weekly challenge (REQ-WCH-*, contracts/protocol.md §31; orchestrated by race/weeklyChallenge.ts) ----
   // ---- 出走前アドバイス pre-race coach (REQ-ADV-*, contracts/protocol.md §39): read-only, free, the same for everyone ----
   async raceAdvice(id: string, q: AdviceQuery, ruleset?: Ruleset) { return raceAdviceFor(this.d.master, await this.load(id), q, this.d.clock(), ruleset); }
+  /** REQ-PRAC-002 (§50.1): the practice catalog — read-only, never saves; practice results have no server path at all. */
+  async practiceCatalog(id: string, ruleset?: Ruleset) { return practiceCatalog(this.d.master, await this.load(id), this.d.clock(), ruleset); }
   async wchView(id: string) { return weeklyChallengeView(this.d.master, await this.load(id), this.d.clock()); }
   /** Keyed (a retry returns the same session). `ruleset` = the active remote-config ruleset (the day's form is switched off). */
   wchStart(id: string, challengeId: string, input: WchStartInput, idemKey: string | null = null, ruleset?: Ruleset) {

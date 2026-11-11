@@ -12,6 +12,11 @@ import type { PlayerState } from './player.js';
 import { MAINTENANCE_GROUPS } from './maintenance.js';
 import { jstDateKey } from './time.js';
 import { NEXT_KINDS, NEXT_SLOTS } from './nextKinds.js';
+import { PRACTICE_ID_RE, PRACTICE_RESTARTS } from './practiceKinds.js';
+
+const PRACTICE_TRACK = z.string().regex(/^[a-z0-9_]{1,64}$/);
+const PRACTICE_FIELD = z.number().int().min(2).max(12);
+const PRACTICE_STRENGTH = z.string().regex(PRACTICE_ID_RE);
 
 /** Event-specific fields. Strings go to blob8-10, numbers to double1-6/8/9 (see BLOB/DOUBLE below). */
 export interface KpiEvent {
@@ -173,6 +178,10 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('fsug_view'), at: z.number().int(), props: z.object({ shown: z.number().int().min(0).max(30) }).strict() }),
   // REQ-HGOAL-012: a horse's goal panel was opened (detail) / the pinned goal was shown on the home (once per game day); done = goals done
   z.object({ name: z.literal('hgoal_view'), at: z.number().int(), props: z.object({ surface: z.enum(['detail', 'home']), done: z.number().int().min(0).max(8) }).strict() }),
+  // REQ-PRAC-015 (§50.10): a practice race started / finished on the device. Course, field size and strength only — no inputs,
+  // ticks, seed or times (strict). Optional, and it grants nothing: ingestion never touches rewards or records.
+  z.object({ name: z.literal('practice_start'), at: z.number().int(), props: z.object({ trackId: PRACTICE_TRACK, fieldSize: PRACTICE_FIELD, strength: PRACTICE_STRENGTH, restart: z.enum(PRACTICE_RESTARTS) }).strict() }),
+  z.object({ name: z.literal('practice_finish'), at: z.number().int(), props: z.object({ trackId: PRACTICE_TRACK, fieldSize: PRACTICE_FIELD, strength: PRACTICE_STRENGTH, place: z.number().int().min(0).max(12) }).strict() }),
 ]);
 export type ClientEvent = z.infer<typeof clientEventSchema>;
 
@@ -215,6 +224,8 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'maintenance_block': return { name: e.name, s1: e.props.group, s2: e.props.windowId };
     case 'upgrade_prompt': return { name: e.name, s1: e.props.kind, s2: e.props.action, s3: e.props.platform };
     case 'activity_tap': return { name: e.name, s1: e.props.kind, s2: e.props.screen };
+    case 'practice_start': return { name: e.name, s1: e.props.trackId, s2: e.props.strength, s3: e.props.restart, count: e.props.fieldSize };
+    case 'practice_finish': return { name: e.name, s1: e.props.trackId, s2: e.props.strength, count: e.props.fieldSize, place: e.props.place };
     case 'next_card_view': case 'next_card_tap': return { name: e.name, s1: e.props.kind, s2: e.props.slot };
     case 'help_search': return { name: e.name, s1: e.props.category, value: e.props.length, count: e.props.results };
     case 'help_article_view': return { name: e.name, s1: e.props.articleId, s2: e.props.source };

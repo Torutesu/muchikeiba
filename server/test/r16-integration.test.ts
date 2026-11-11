@@ -225,7 +225,8 @@ describe('§38 photo mode × §42 hosted cups (REQ-PHOTO-001)', () => {
     expect(cs).toContain('case RaceMode.Cup: return "cup";');
     const app = readFileSync(join(ROOT, 'tools/figma-prototype/site/app.js'), 'utf8');
     // the prototype pauses only the solo races it names (time attack, weekly challenge, tutorial): a cup race never pauses
-    expect(app).toContain('const phShared = () => !raceCtx?.ta && !raceCtx?.challenge && !raceCtx?.tutorial;');
+    // (Round 18 §50: practice races are solo too)
+    expect(app).toContain('const phShared = () => !raceCtx?.ta && !raceCtx?.challenge && !raceCtx?.tutorial && !raceCtx?.practice;');
   });
 });
 

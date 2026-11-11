@@ -2592,7 +2592,9 @@ async function Settings(tab) {
       ['通報とブロック', () => BlockList(), 'blocks']],
     // round 10: 支部の応援 and 友達招待 next to the looks / care entries; round 14: 実況パック after the looks entries
     looks: [['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions],
-      ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite']],
+      ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite'],
+      // round 21 (REQ-LINK-024): share links, 「リンクを開く」 and the rematch demo (eight rows: the page's maximum)
+      ['リンクで招待・共有', () => Links(), 'links']],
   };
   Kicker('その他', 36, 30, m);
   [['settings', '設定・サポート'], ['looks', '見た目・お世話・仲間']].forEach(([k, label], i) => {
@@ -6229,7 +6231,7 @@ async function ReportSheet(t) {
   }, 700, { solo: true });
 }
 
-const BLOCK_ICON = { activity: 'お知らせ', team_feed: '支部', rival: 'ライバル', stable: 'マイ厩舎', hall: '殿堂', replays: 'リプレイ', cups: 'カップ' };
+const BLOCK_ICON = { activity: 'お知らせ', team_feed: '支部', rival: 'ライバル', stable: 'マイ厩舎', hall: '殿堂', replays: 'リプレイ', cups: 'カップ', links: 'リンク・再戦' };
 /** 通報とブロック: the one block list, what a block does in each feature, and how to report. */
 async function BlockList() {
   currentScreen = BlockList;
@@ -6256,12 +6258,12 @@ async function BlockList() {
   e.classList.add('bl-effects');
   Kicker('ブロックするとどうなる？', 36, 30, e);
   v.effects.forEach((x, i) => {
-    const row = el('bl-effect', 36, 112 + i * 70, 816, 60, e);
+    const row = el('bl-effect', 36, 100 + i * 64, 816, 58, e); // R21: eight features (§63 links) fit above the note
     row.dataset.feature = x.feature;
     Txt(BLOCK_ICON[x.feature] ?? '', 0, 4, 150, 12, CYAN, row, { weight: 700, ls: '.18em', nowrap: true });
     Txt(x.text, 0, 26, 816, 17, WHITE, row, { weight: 500, nowrap: true });
   });
-  Txt('相手には、ブロックしたことも通報したことも知らされません。', 36, 620, 816, 14, MUTED, e, { lh: 1.5 });
+  Txt('相手には、ブロックしたことも通報したことも知らされません。', 36, 628, 816, 14, MUTED, e, { lh: 1.5 });
   Back(Settings, 'BACK', 40, 834);
 }
 function UnblockConfirm(b) {
@@ -6278,6 +6280,203 @@ function UnblockConfirm(b) {
     BlockList();
   }, box, 'small bl-yes');
   Ghost('やめる', 456, 306, 200, 50, () => BlockList(), box, 'quiet').classList.add('bl-no');
+}
+
+// ================================================================= round 21: ディープリンク・招待リンクと再戦 (REQ-LINK-*, contracts/protocol.md §63)
+// The same flows as the Unity DeepLinkModel / RematchModel on the real LinkService and Rematches (L.links / L.rematch): send a
+// link from the share sheet (one link per target, no id or name in the URL, the server's text), the links you shared (revoke),
+// 「リンクを開く」 (a URL or the code typed from the web page) → the screen the link opens, which always starts on a confirmation
+// (nothing is joined, redeemed or spent by the link), and 再戦 on the friend-room result. ムチ一閃 tone.
+const LK_TYPE = { room: 'フレンド部屋', cup: '主催カップ', replay: 'リプレイ', invite: '友達招待コード', friend: 'フレンド申請', team: '支部', help: 'ヘルプの記事' };
+const LK_NOTICE = {
+  unavailable: 'このリンクは開けません', friends_only: 'このリプレイはフレンドだけが見られます', maintenance: 'メンテナンス中です。終わってからもう一度開いてください',
+  update_required: 'このリンクを開くにはアプリの更新が必要です', RATE_LIMITED: 'しばらくしてからお試しください', invalid: 'リンクの形が正しくありません',
+};
+const lkErr = (r) => (r.code === 'LINK_LIMIT' ? '今日はこれ以上リンクを作れません' : r.code === 'NOT_FOUND' ? '共有できるものがありません' : r.code === 'RATE_LIMITED' ? LK_NOTICE.RATE_LIMITED : 'リンクを作れませんでした');
+let lkInput = '';
+async function lkShare(type, target, back) {
+  const r = await L.links.create(type, target);
+  if (!r.ok) { toast(lkErr(r)); return; }
+  ShareSheet(r.value, back);
+}
+/** その他 › 見た目・お世話・仲間 › リンクで招待・共有. */
+async function Links() {
+  currentScreen = Links;
+  const r = await L.links.list();
+  Clear('links'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('リンクで招待・共有', 'リンクを開いても、何ももらえず、何も使いません');
+  const lp = Glass('Send links', 36, 134, 760, 676, undefined, .9);
+  lp.classList.add('lk-send');
+  Kicker('リンクを送る', 36, 30, lp);
+  [['フレンド申請（あなたのプロフィール）', () => lkShare('friend', {}, Links), 'friend'], ['友達招待コード', () => lkShare('invite', {}, Links), 'invite'],
+    ['フレンド部屋（デモ）', () => lkShare('room', { passphrase: L.links.demoMyRoom() }, Links), 'room'], ['ヘルプ：リンクについて', () => lkShare('help', { articleId: 'share_links' }, Links), 'help']]
+    .forEach(([label, go, type], i) => { const b = Ghost(label, 36, 92 + i * 66, 688, 56, go, lp, 'small'); b.dataset.lkShare = type; });
+  Hair(36, 368, 688, lp);
+  Kicker('共有したリンク', 36, 388, lp, { rule: false, size: 15 });
+  const links = r.ok ? r.value.links : [];
+  if (!links.length) Txt('まだありません', 36, 430, 688, 16, MUTED, lp).classList.add('lk-none');
+  links.slice(0, 4).forEach((x, i) => {
+    const row = el('lk-row', 36, 424 + i * 54, 688, 50, lp);
+    row.dataset.lkType = x.type;
+    Txt(LK_TYPE[x.type] ?? x.type, 0, 4, 260, 17, WHITE, row, { weight: 700, nowrap: true });
+    Txt(`期限 ${jstDate(x.expiresAt)}`, 0, 28, 360, 13, SOFT, row, { nowrap: true });
+    TextLink('取り消す', 520, 6, 168, async () => { const v = await L.links.revoke(x.token); toast(v.ok && v.value.revoked ? 'リンクを取り消しました' : 'もう取り消されています'); Links(); }, row).dataset.lkRevoke = x.type;
+    Hair(0, 49, 688, row);
+  });
+  if (r.ok) Txt(`今日作ったリンク ${r.value.createsToday} / ${r.value.createsPerDay}`, 36, 642, 688, 13, SOFT, lp, { nowrap: true });
+  const rp = Glass('Open a link', 820, 134, 744, 676, undefined, .86);
+  Kicker('リンクを開く', 36, 30, rp);
+  Txt('受け取ったリンクや、ストアのページに出ていたコードを入れて開けます', 36, 92, 672, 16, MUTED, rp, { lh: 1.6 });
+  Cta('リンクを開く', 36, 170, 420, () => OpenLink(), rp).dataset.action = 'open-link';
+  Hair(36, 290, 672, rp);
+  Kicker('デモ（レビュー用）', 36, 310, rp, { rule: false, size: 15, color: SOFT });
+  Ghost('フレンド部屋の結果（再戦）', 36, 356, 420, 56, () => FriendRoomResult(), rp, 'quiet small').dataset.action = 'rematch-demo';
+  Txt('フレンド部屋のレースの後、押した人どうしで同じ条件の新しい部屋に入ります。ランク戦には影響しません', 36, 432, 672, 14, SOFT, rp, { lh: 1.6 });
+  Back(() => Settings('looks'), 'BACK', 40, 834);
+}
+/** The share sheet: the server's text and link (no id, no name), expiry, share / copy. */
+function ShareSheet(link, back) {
+  Shade('dim heavy');
+  const box = Dialog('Share sheet', 920, 500);
+  box.classList.add('lk-sheet'); box.dataset.lkType = link.type;
+  Kicker('共有', 52, 44, box);
+  Txt(link.shareText.split('\n')[0], 52, 104, 816, 26, WHITE, box, { weight: 700, nowrap: true });
+  Txt(link.url, 52, 160, 816, 18, CYAN, box, { cls: 'keep-ja lk-url', nowrap: true }).style.overflow = 'hidden';
+  Txt(`リンクにあなたのIDや名前は入りません。期限は${jstDate(link.expiresAt)}までです。`, 52, 210, 816, 15, MUTED, box, { lh: 1.6 });
+  Cta('共有する', 52, 300, 420, async () => {
+    try { if (navigator.share) await navigator.share({ text: link.shareText }); else await navigator.clipboard?.writeText(link.shareText); } catch { /* cancelled / no clipboard */ }
+    toast('共有しました');
+  }, box, 'small lk-share-go');
+  Ghost('閉じる', 496, 306, 220, 50, () => (back ?? Links)(), box, 'quiet').classList.add('lk-sheet-close');
+  Txt('リンクを開くと画面が開くだけです。参加や申請は、受け取った人が決めます', 52, 400, 816, 13, SOFT, box, { lh: 1.5 });
+}
+/** 「リンクを開く」: a URL, the muchi:// link or the typed code → the screen (FTUE: waits until the tutorial is over). */
+function OpenLink(state = {}) {
+  currentScreen = () => OpenLink(state);
+  Clear('open-link'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('リンクを開く', 'リンクを開くだけでは、何も使わず、何にも参加しません', { wallet: false });
+  const lp = Glass('Open link', 36, 134, 760, 676, undefined, .9);
+  lp.classList.add('lk-open');
+  Kicker('リンクまたはコード', 36, 30, lp);
+  trfField(lp, 36, 96, 688, lkInput, 'リンクまたはコード', 'lk-input', (s) => { lkInput = s; }, { placeholder: 'https://… / abcd-efgh-…', size: 18, ls: '.02em', max: 300 });
+  const note = Txt(state.notice ?? '', 36, 186, 688, 16, state.notice ? WARN : MUTED, lp, { weight: 500, lh: 1.5, cls: 'lk-notice' });
+  note.dataset.state = state.state ?? '';
+  Cta('開く', 36, 260, 420, () => lkOpen(), lp).classList.add('lk-open-go');
+  Txt('iPhoneでストアから入れた時は、リンクのページに出ているコードをここに入れてください（自動では開きません）', 36, 370, 688, 14, SOFT, lp, { lh: 1.6 });
+  const rp = Glass('Demo links', 820, 134, 744, 676, undefined, .86);
+  Kicker('デモ（レビュー用）', 36, 30, rp, { color: SOFT });
+  Txt('フレンドのミドリカワさんから届いたリンク', 36, 88, 672, 15, MUTED, rp);
+  [['フレンド部屋のリンク', 'room'], ['ヘルプのリンク', 'help'], ['フレンド申請のリンク', 'friend'], ['閉じた部屋のリンク', 'expired']].forEach(([label, kind], i) => {
+    Ghost(label, 36, 130 + i * 70, 420, 56, async () => {
+      const r = await L.links.demoIncoming(kind);
+      if (!r.ok) { toast(r.message); return; }
+      lkInput = r.value; lkOpen();
+    }, rp, 'quiet small').dataset.lkDemo = kind;
+  });
+  Back(() => Links(), 'BACK', 40, 834);
+}
+async function lkOpen() {
+  if (!L.links.parse(lkInput)) return OpenLink({ notice: LK_NOTICE.invalid, state: 'invalid' });
+  if (!player?.flags?.partnerHorseId) return OpenLink({ notice: 'チュートリアルの後で開きます', state: 'queued' }); // REQ-LINK-023: FTUE first
+  const r = await L.links.resolve(lkInput);
+  if (!r.ok) return OpenLink({ notice: LK_NOTICE[r.code] ?? LK_NOTICE.unavailable, state: r.code });
+  (globalThis.__muchiKpi ??= []).push({ name: 'deep_link_open', entry: lkInput.startsWith('https://') ? 'universal' : 'typed', type: r.value.state === 'ok' ? r.value.type : 'none' });
+  if (r.value.state !== 'ok') return OpenLink({ notice: LK_NOTICE[r.value.state] ?? LK_NOTICE.unavailable, state: r.value.state });
+  lkInput = '';
+  LinkConfirm(r.value);
+}
+/** Where a link leads — always a confirmation first (the link itself joins, redeems, requests and spends nothing). */
+async function LinkConfirm(v) {
+  currentScreen = () => LinkConfirm(v);
+  const t = v.target ?? {};
+  const help = v.type === 'help' ? await L.helpArticle(t.articleId, helpLang()) : null;
+  Clear('link-confirm'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('リンク', LK_TYPE[v.type] ?? '', { wallet: false });
+  const p = Glass('Link target', 36, 134, 900, 676, undefined, .9);
+  p.classList.add('lk-confirm'); p.dataset.lkType = v.type; p.dataset.screen = v.screen;
+  Kicker(LK_TYPE[v.type] ?? 'リンク', 36, 30, p);
+  const head = { room: `部屋 ${t.passphrase}`, help: help?.ok ? help.value.title : 'ヘルプ', friend: t.displayName, invite: t.code, cup: t.preview?.cupName, team: t.teamName, replay: t.replayTitle ?? 'リプレイ' }[v.type] ?? '';
+  Txt(head ?? '', 36, 96, 828, 34, WHITE, p, { weight: 700, nowrap: true, cls: v.type === 'friend' || v.type === 'team' || v.type === 'cup' ? 'keep-ja lk-head' : 'lk-head' });
+  Txt('まだ何もしていません。どうするかを選んでください', 36, 164, 828, 16, MUTED, p, { lh: 1.6 });
+  const go = {
+    room: ['この部屋に参加する', async () => { const r = await L.links.joinRoom(t.passphrase); if (!r.ok) { toast('この部屋には入れませんでした'); return Links(); } toast('部屋に入りました'); RoomLobby(t.passphrase, r.value.members); }],
+    help: ['記事を読む', () => HelpArticle(t.articleId, 'list')],
+    friend: [t.self ? 'あなたのリンクです' : 'フレンド画面へ', () => Friends()],
+    invite: ['招待コードの入力へ', () => Invite()],
+    cup: ['カップの画面へ', () => HostedCups()],
+    team: ['支部の画面へ', () => TeamFeed()],
+    replay: ['リプレイの画面へ', () => MyReplays()],
+  }[v.type];
+  if (go) Cta(go[0], 36, 250, 460, go[1], p).classList.add('lk-confirm-go');
+  Ghost('やめる', 520, 257, 220, 60, () => Links(), p, 'quiet').classList.add('lk-confirm-no');
+  if (v.type === 'invite') Txt('招待コードの特典は、これまでどおり入力した時だけです', 36, 370, 828, 14, SOFT, p, { lh: 1.6 });
+  Back(() => Links(), 'BACK', 40, 834);
+}
+/** A friend room as the lobby shows it (members, the same conditions, the room link). */
+function RoomLobby(passphrase, names) {
+  currentScreen = () => RoomLobby(passphrase, names);
+  const info = L.rematch.room(passphrase);
+  Clear('room-lobby'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('フレンド部屋', `部屋 ${passphrase}`, { wallet: false });
+  const p = Glass('Room', 36, 134, 900, 676, undefined, .9);
+  p.classList.add('lk-room');
+  Kicker('参加している人', 36, 30, p);
+  (info?.members ?? names ?? []).forEach((n, i) => Txt(n, 36, 96 + i * 44, 600, 22, i === 0 ? GOLD : WHITE, p, { weight: 700, nowrap: true, cls: 'keep-ja' }));
+  if (info?.conditions) Txt('前のレースと同じ条件・新しいレース', 36, 300, 828, 16, CYAN, p, { weight: 700, ls: '.06em' }).classList.add('lk-same');
+  Txt('出走は主催者が押します（2人から）。順位は表示しますが、ランク戦の点・レートには入りません', 36, 340, 828, 14, MUTED, p, { lh: 1.6 });
+  Cta('部屋のリンクを送る', 36, 420, 460, () => lkShare('room', { passphrase }, () => RoomLobby(passphrase, names)), p, 'small').classList.add('lk-room-share');
+  Back(() => Links(), 'BACK', 40, 834);
+}
+// ---- 再戦 on the friend-room result (REQ-LINK-014..019)
+let rmTimer = null;
+const RM_REASON = { too_few: '人数がそろわず、再戦は開きませんでした', not_included: 'この再戦には入れませんでした', expired: '再戦の受付は終わりました' };
+function rmStatus(v) {
+  if (!v) return '';
+  if (v.state === 'opened') return '新しい部屋ができました';
+  if (v.state === 'closed') return RM_REASON[v.reason] ?? RM_REASON.not_included;
+  if (v.you !== 'pressed') return '';
+  return `再戦を待っています（${v.pressed}/${v.eligible}人・あと${Math.max(0, Math.ceil((v.deadlineAt - Date.now()) / 1000))}秒）`;
+}
+async function FriendRoomResult(fin, view) {
+  const f = fin ?? L.rematch.demoFinish();
+  currentScreen = () => FriendRoomResult(f, view);
+  clearTimeout(rmTimer);
+  Clear('friend-room-result'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('フレンド部屋　/　結果', 'ランク戦の点・レートには入りません', { wallet: false });
+  const lp = Glass('Friend room result', 36, 134, 760, 676, undefined, .9);
+  Kicker('着順', 36, 30, lp);
+  f.places.forEach((x, i) => {
+    const row = el('lk-place', 36, 96 + i * 62, 688, 56, lp);
+    Txt(`${x.place}着`, 0, 10, 120, 26, x.place === 1 ? GOLD : WHITE, row, { weight: 700, cls: 'num' });
+    Txt(x.name, 140, 14, 520, 22, x.you ? CYAN : WHITE, row, { weight: 700, nowrap: true, cls: 'keep-ja' });
+    Hair(0, 55, 688, row);
+  });
+  const rp = Glass('Rematch', 820, 134, 744, 676, undefined, .86);
+  rp.classList.add('rm-panel'); rp.dataset.state = view?.state ?? 'none';
+  Kicker('再戦', 36, 30, rp);
+  Txt('押した人どうしで、同じ条件の新しい部屋に入ります。最初に押されてから20秒で締め切ります', 36, 92, 672, 16, MUTED, rp, { lh: 1.6 });
+  const status = Txt(rmStatus(view), 36, 190, 672, 18, view?.state === 'closed' ? WARN : WHITE, rp, { weight: 700, lh: 1.5, cls: 'rm-status' });
+  if (!view || view.state === 'waiting') {
+    const b = Cta(view?.you === 'pressed' ? '待っています' : '再戦', 36, 270, 420, async () => { const r = await L.rematch.press(); if (!r.ok) { toast('今は再戦できません'); return; } FriendRoomResult(f, r.value); }, rp);
+    b.classList.add('rm-press'); if (view?.you === 'pressed') disable(b);
+    Ghost('やめる', 480, 277, 220, 60, async () => { const r = await L.rematch.decline(); toast('再戦をやめました'); Links(); }, rp, 'quiet').classList.add('rm-decline');
+  }
+  if (view?.state === 'opened') Cta('新しい部屋へ', 36, 270, 420, () => RoomLobby(view.room.passphrase), rp).classList.add('rm-room');
+  Hair(36, 400, 672, rp);
+  Kicker('デモ（レビュー用）', 36, 420, rp, { rule: false, size: 15, color: SOFT });
+  Txt('ハヤテさんは押しました。クロサキさんは抜けました', 36, 456, 672, 14, SOFT, rp, { lh: 1.5 });
+  if (view?.state === 'waiting' && view.you === 'pressed') Ghost('ナギサさんも押す', 36, 500, 420, 56, async () => { const r = await L.rematch.demoOthers(); FriendRoomResult(f, r.value); }, rp, 'quiet small').classList.add('rm-demo-others');
+  if (view?.state === 'waiting' && view.you === 'pressed') {
+    const tick = async () => {
+      if (!document.querySelector('.screen.in .rm-status')) return;
+      const r = await L.rematch.status();
+      if (r.ok && r.value.state !== 'waiting') return FriendRoomResult(f, r.value);
+      status.textContent = rmStatus(r.ok ? r.value : view);
+      rmTimer = setTimeout(tick, 1000);
+    };
+    rmTimer = setTimeout(tick, 1000);
+  }
+  Back(() => { clearTimeout(rmTimer); Links(); }, 'BACK', 40, 834);
 }
 
 // ================================================================= round 19: 引き継ぎコード (REQ-TRF-*, contracts/protocol.md §54)
@@ -7717,7 +7916,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

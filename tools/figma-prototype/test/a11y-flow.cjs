@@ -227,6 +227,9 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('MyInquiries'); await waitScreen('my-inquiries'); await shot('my-inquiries', english, 500);
     // Round 17: おすすめフレンド (the friends screen's suggestions section)
     await show('Friends'); await waitScreen('friends'); await shot('friends-suggestions', english, 600);
+    // Round 19: 画質・通信量 and ストレージ at the largest size (REQ-PERF-017)
+    await show('PerfSettings'); await waitScreen('perf-settings'); await shot('perf-settings', english, 500);
+    await show('Storage'); await waitScreen('storage'); await shot('storage', english, 500);
     await show('Settings'); await waitScreen('settings'); await boxesClear('settings lists (largest)', SETTINGS_LISTS, english);
     await show('Home'); await waitScreen('home'); await page.waitForTimeout(700); await boxesClear('home top bar (largest)', HOME_BAR, english);
   };

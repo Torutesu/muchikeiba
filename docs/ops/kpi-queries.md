@@ -1172,3 +1172,36 @@ GROUP BY event, reason ORDER BY event, n DESC
 ```
 
 - **フレンドができたか**：相手の id を入れていないので、申請と承認を人単位では結ばない。日ごとの `friend_accept`（承認した側のサーバーイベント）の数が、おすすめを出してから増えたかで見る。
+
+## 画質・省電力・通信量：設定の変更・まとめてダウンロード（REQ-PERF-015、contracts/protocol.md §56.9、Round 19）
+
+**自動の既定値が合っているか、どの区分の端末が何を変えているか、まとめてダウンロードがどのくらいの大きさで使われているか**。どちらもクライアントのイベント（設定は端末だけに保存されるため）。`perf_setting_change`（`blob8` = 設定、`blob9` = 新しい値、`blob10` = 端末の区分 `low`/`mid`/`high`。プレイヤーが変えた時だけ、自動の既定値では出ない）、`asset_predownload`（`blob8` = 残りのサイズの区分、`blob9` = `full`/`low`）。機種名・容量の実数は入れていない。
+
+```sql
+-- 区分ごとに、画質・fps を自動から変えた人の数（low 区分で high に上げる人が多ければ区分の境目を見直す：DeviceClassifier）
+SELECT blob10 AS device_class, blob8 AS setting, blob9 AS value, count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'perf_setting_change' AND blob8 IN ('graphics', 'frameRate') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY device_class, setting, value ORDER BY device_class, setting, players DESC
+```
+
+```sql
+-- 省電力・データセーバーをオンにした人の数（日ごと）と、まとめてダウンロードを始めた人の数
+SELECT blob6 AS day,
+  count(DISTINCT if(blob1 = 'perf_setting_change' AND blob8 = 'batterySaver' AND blob9 = 'on', blob2, NULL)) AS battery_saver_on,
+  count(DISTINCT if(blob1 = 'perf_setting_change' AND blob8 = 'dataSaver' AND blob9 = 'on', blob2, NULL)) AS data_saver_on,
+  count(DISTINCT if(blob1 = 'asset_predownload', blob2, NULL)) AS predownloaders
+FROM muchi_kpi
+WHERE blob1 IN ('perf_setting_change', 'asset_predownload') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY day ORDER BY day DESC
+```
+
+```sql
+-- まとめてダウンロードの大きさの分布（gte_1gb が多いなら軽量版を用意するキーを増やす）
+SELECT blob8 AS bucket, blob9 AS variant, sum(_sample_interval) AS starts
+FROM muchi_kpi
+WHERE blob1 = 'asset_predownload' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY bucket, variant ORDER BY bucket, variant
+```
+
+- **見方**：オンにした人の数は、その後オフに戻した人を引いていない（今の値は端末にしかない）。

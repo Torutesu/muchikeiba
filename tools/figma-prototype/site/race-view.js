@@ -271,6 +271,27 @@ export class RaceView {
   /** The whip: a short FOV kick (presentation of the spur; the engine takes the input itself). */
   kick() { this.fovKick = 7; }
 
+  /**
+   * Round 19 (REQ-PERF-003, §56.3): the RenderProfile of Muchi.Client (via WASM) on this view — render scale on the pixel
+   * ratio, shadows off / hard / soft. Presentation only: nothing here reaches the engine. Software GL keeps its own floor.
+   */
+  setQuality(p) {
+    const r = this.renderer;
+    if (!r || !p) return;
+    this.quality = p;
+    const base = Math.max(.75, Math.min(2, (globalThis.devicePixelRatio || 1) * Math.min(innerWidth / 1600, innerHeight / 900)));
+    const ratio = this.lite ? Math.min(.5, base * p.renderScale) : base * p.renderScale;
+    if (Math.abs(r.getPixelRatio() - ratio) > .001) { r.setPixelRatio(ratio); r.setSize(1600, 900, false); }
+    const shadows = !this.lite && p.shadows !== 'off';
+    const type = p.shadows === 'soft' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    if (r.shadowMap.enabled !== shadows || r.shadowMap.type !== type) {
+      r.shadowMap.enabled = shadows; r.shadowMap.type = type;
+      this.sun.castShadow = shadows;
+      this.scene.traverse((o) => { if (o.material) for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.needsUpdate = true; });
+    }
+    this.canvas.dataset.pixelRatio = ratio.toFixed(3); this.canvas.dataset.shadows = shadows ? p.shadows : 'off';
+  }
+
   /** Time attack ghosts (GhostPlayer, their own simulation): the partner model, translucent, never interacting. */
   setGhosts(n, playerPartner = 0) {
     for (const g of this.ghosts ?? []) this.scene.remove(g.anchor);

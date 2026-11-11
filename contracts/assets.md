@@ -214,6 +214,7 @@ Addressables の代わりに、ロジック側の配信の仕組みを使う（U
 - グループ（boot/ftue/home/race/shop/ondemand）と required は `contracts/assets.groups.json` の規則で決まる。required は boot・ftue だけで、合計は `policy.ftueBlockingMaxBytes`（3MB）以下。
 - CDN 上の置き場所は `<platform>/<sha256>/<file>`（`--json` のレポートの `uploads[].to`）。中身が変わればパスも変わるので、上書きは起きない。
 - 端末では `AssetResolver.Resolve(key)` が「ダウンロード済み → アプリ同梱（`Resources`／`StreamingAssets`）→ `<kind>/default` → 何も出さない」を返す。
+- **軽量版**（Round 19、`contracts/protocol.md` §56.7）：必須でないキーは、同じ場所に `<key>.low.<ext>`（例 `common/scene/venue/aoba.low.bundle`）を置くと、カタログのエントリーに `low` として付く（通常版より小さいこと。必須のキー・`bundles.json` の中のファイルには付けられない）。プレイヤーがデータセーバーをオンにしている端末は軽量版を取得し、`AssetResolver` は「通常版 → 軽量版 → 同梱 → `<kind>/default`」の順に使う。
 
 ## 7. 変更するとき
 

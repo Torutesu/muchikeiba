@@ -1457,6 +1457,95 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await page.locator('.screen.in [data-action="inquiry-send"]').click(); await waitScreen('my-inquiries'); await page.waitForTimeout(400);
   assert.equal(await page.locator('.screen.in .inq-detail').getAttribute('data-status'), 'received', 'the new inquiry is received');
   await shot('help-inquiry-sent', 300);
+  // ------------------------------------------------------------------ 6. round 19: 画質・通信量 / ストレージ (REQ-PERF-*)
+  // the settings row → four rows with what auto means here; a choice applies at once (the 3D view's pixel ratio and
+  // shadows, the frame cap, the home art's drift) and is stored on this device only; perf_setting_change only for a real
+  // change; the battery saver lowers menus but not the race; the storage screen: rows, the size before 「すべてダウンロード」,
+  // Wi-Fi only under the data saver, the cellular confirmation, the download, and clearing keeps the required files
+  {
+    await page.evaluate(() => { globalThis.__muchiKpi = []; globalThis.__muchi.perf.resetStorage(); globalThis.__muchi.perf.net('wifi'); });
+    await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings'); await page.waitForTimeout(300);
+    await page.locator('.screen.in .btn[data-action="perf"]').click(); await waitScreen('perf-settings'); await page.waitForTimeout(400);
+    assert.equal(await page.locator('.screen.in [data-perf-row]').count(), 4, 'four rows');
+    assert.match(await page.locator('.screen.in [data-perf-auto="graphics"]').innerText(), /^自動：(低|中|高)$/, 'what auto means on this device');
+    assert.match(await page.locator('.screen.in [data-perf-now="menu"]').innerText(), /^いまの表示：画質 (低|中|高)・(30|60)fps・描画 \d+%$/);
+    assert.match(await page.locator('.screen.in [data-perf-fair]').innerText(), /結果や公平さは同じ/);
+    await shot('perf-settings', 300);
+    const choose = async (row, v) => { await page.locator(`.screen.in [data-perf-row="${row}"] [data-perf-choice="${v}"]`).click(); await page.waitForTimeout(350); };
+    await choose('graphics', 'high');
+    let pf = await page.evaluate(() => globalThis.__muchi.perf.get());
+    assert.equal(pf.profile.tier, 'high', 'graphics high in force');
+    const q = await page.evaluate(() => ({ ...document.getElementById('race-canvas').dataset }));
+    assert.ok(Number(q.pixelRatio) > 0 && (q.shadows === 'soft' || (pf.device.profile.software && q.shadows === 'off')), 'the 3D view took the quality: ' + JSON.stringify(q));
+    await choose('graphics', 'low');
+    const qLow = await page.evaluate(() => ({ ...document.getElementById('race-canvas').dataset }));
+    assert.equal(qLow.shadows, 'off', 'low quality: no shadows');
+    assert.ok(Number(qLow.pixelRatio) <= Number(q.pixelRatio), 'low quality: a lower render scale');
+    await choose('graphics', 'low'); // the same value: nothing
+    await choose('batterySaver', 'on');
+    pf = await page.evaluate(() => globalThis.__muchi.perf.get());
+    assert.equal(pf.profile.targetFrameRate, 30, 'battery saver: menus at 30 fps');
+    assert.equal(await page.evaluate(() => document.documentElement.dataset.perfAmbient), 'off', 'battery saver: no ambient drift');
+    assert.match(await page.locator('.screen.in [data-perf-now="menu"]').innerText(), /・省電力$/);
+    assert.equal(await page.locator('.screen.in [data-perf-now="race"]').innerText(), `レース中：${(await page.evaluate(() => globalThis.__muchi.perf.resolve(globalThis.__muchi.perf.get().settings, true))).targetFrameRate}fps`);
+    await choose('frameRate', '60');
+    assert.equal((await page.evaluate(() => globalThis.__muchi.perf.resolve(globalThis.__muchi.perf.get().settings, true))).targetFrameRate, 60, 'the race keeps its 60 fps cap under the battery saver');
+    await choose('dataSaver', 'on');
+    await shot('perf-settings-changed', 300);
+    const pk = await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name === 'perf_setting_change'));
+    assert.deepEqual(pk.map((e) => `${e.setting}=${e.value}`), ['graphics=high', 'graphics=low', 'batterySaver=on', 'frameRate=60', 'dataSaver=on'], 'perf_setting_change only for real changes');
+    for (const e of pk) assert.ok((await page.evaluate((x) => globalThis.__muchi.logic.perfKpi('perf_setting_change', { setting: x.setting, value: x.value, deviceClass: x.deviceClass }), e)).ok, 'accepted by the server schema');
+    assert.deepEqual(JSON.parse(await page.evaluate(() => localStorage.getItem('muchi.perf.settings'))), { graphics: 'low', frameRate: '60', batterySaver: true, dataSaver: true }, 'stored on the device');
+    // the storage screen
+    await page.locator('.screen.in .btn[data-action="storage"]').click(); await waitScreen('storage'); await page.waitForTimeout(400);
+    assert.equal(await page.locator('.screen.in [data-storage-row]').count(), 6, 'six rows');
+    const reqBytes = Number(await page.locator('.screen.in [data-storage-row="required"]').getAttribute('data-bytes'));
+    assert.ok(reqBytes > 0 && Number(await page.locator('.screen.in [data-storage-row="stale"]').getAttribute('data-bytes')) > 0);
+    const pre = Number(await page.locator('.screen.in [data-predownload]').getAttribute('data-predownload'));
+    assert.ok(pre > 0, 'download all: the size first');
+    assert.match(await page.locator('.screen.in [data-predownload]').innerText(), /^あと \d+(\.\d)?(MB|KB|GB)$/);
+    assert.equal(await page.locator('.screen.in [data-variant="low"]').count(), 1, 'data saver: light versions');
+    await shot('storage', 300);
+    await page.locator('.screen.in [data-net="cellular"]').click(); await page.waitForTimeout(350);
+    assert.ok(await page.locator('.screen.in .btn[data-action="predownload"]').evaluate((e) => e.classList.contains('disabled')), 'cellular + data saver: Wi-Fi only');
+    assert.match(await page.locator('.screen.in [data-blocked]').innerText(), /Wi-Fi に接続すると実行できます/);
+    await shot('storage-wifi-only', 200);
+    // data saver off on cellular: the confirmation with the size; やめる starts nothing
+    await page.evaluate(() => globalThis.__muchi.perf.set('dataSaver', 'off'));
+    await page.evaluate(() => globalThis.__muchi.show('Storage')); await waitScreen('storage'); await page.waitForTimeout(300);
+    const preFull = Number(await page.locator('.screen.in [data-predownload]').getAttribute('data-predownload'));
+    assert.ok(preFull > pre, 'normal files are bigger than the light versions');
+    await page.locator('.screen.in .btn[data-action="predownload"]').click(); await page.waitForTimeout(400);
+    assert.match(await page.locator('.screen.in .perf-confirm').innerText(), /モバイル通信で約.+のデータをダウンロードします/);
+    await shot('storage-cellular-confirm', 200);
+    await page.locator('.screen.in [data-confirm="no"]').click(); await waitScreen('storage'); await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name === 'asset_predownload').length), 0, 'やめる: nothing starts');
+    await page.locator('.screen.in .btn[data-action="predownload"]').click(); await page.waitForTimeout(300);
+    await page.locator('.screen.in [data-confirm="yes"]').click(); await page.waitForTimeout(500);
+    await shot('storage-downloading', 0);
+    await page.waitForFunction(() => document.querySelector('.screen.in [data-predownload]')?.dataset.predownload === '0', null, { timeout: 10000 });
+    const pd = await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name === 'asset_predownload'));
+    assert.equal(pd.length, 1); assert.equal(pd[0].variant, 'full');
+    assert.ok((await page.evaluate((x) => globalThis.__muchi.logic.perfKpi('asset_predownload', { bucket: x.bucket, variant: x.variant }), pd[0])).ok, 'asset_predownload accepted by the server schema');
+    assert.match(await page.locator('.screen.in [data-predownload]').innerText(), /すべてダウンロード済みです/);
+    await shot('storage-done', 300);
+    // clear cache: the size first, then only the required files stay
+    await page.locator('.screen.in .btn[data-action="clear-cache"]').click(); await page.waitForTimeout(400);
+    assert.match(await page.locator('.screen.in .perf-confirm').innerText(), /遊ぶのに必要なデータとアカウント・進み具合は消えません/);
+    await shot('storage-clear-confirm', 200);
+    await page.locator('.screen.in [data-confirm="clear"]').click(); await waitScreen('storage'); await page.waitForTimeout(400);
+    assert.equal(Number(await page.locator('.screen.in [data-storage-row="required"]').getAttribute('data-bytes')), reqBytes, 'required files stay');
+    for (const k of ['screens', 'ondemand', 'low', 'partial', 'stale']) assert.equal(await page.locator(`.screen.in [data-storage-row="${k}"]`).getAttribute('data-bytes'), '0', `${k} cleared`);
+    assert.equal(Number(await page.locator('.screen.in [data-storage-total]').getAttribute('data-storage-total')), reqBytes);
+    // the help article from the settings screen
+    await page.evaluate(() => globalThis.__muchi.show('PerfSettings')); await waitScreen('perf-settings'); await page.waitForTimeout(300);
+    await page.locator('.screen.in [data-help-context="storage"]').click(); await waitScreen('help-article'); await page.waitForTimeout(300);
+    assert.equal(await page.locator('.screen.in [data-article]').getAttribute('data-article'), 'data_storage');
+    await shot('help-data-storage', 300);
+    // back to the defaults for the rest of the flow
+    await page.evaluate(() => { globalThis.__muchi.perf.reset(); globalThis.__muchi.perf.resetStorage(); globalThis.__muchi.perf.net('wifi'); });
+    await page.evaluate(() => globalThis.__muchi.show('PerfSettings')); await waitScreen('perf-settings'); await page.waitForTimeout(200);
+  }
   // ------------------------------------------------------------------ 6. round 17: おすすめフレンド (REQ-FSUG-*)
   // people met through the real paths (an event, a friend room, a like, a cheer, mutual friends); the opted-out player and
   // the ranked-only opponent never appear; 申請する goes through the friend request flow; 表示しない is remembered; the switch

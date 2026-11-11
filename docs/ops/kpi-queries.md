@@ -1249,3 +1249,28 @@ WHERE blob1 IN ('dex_request', 'dex_ready', 'dex_download') AND timestamp > NOW(
 GROUP BY week
 ORDER BY week DESC
 ```
+
+## レビュー依頼：頼めた・OS の API を呼んだ・前置きの答え（REQ-REV-012、Round 20、contracts/protocol.md §59）
+列（すべてサーバー）：`review_prompt_eligible`（check が頼むと決めた時に1回）`blob8` = 瞬間（`first_win`・`first_tournament_win`・`hall_induction`・`horse_goal_chain`）、`blob9` = platform（`ios`・`android`・`editor`）、`blob10` = `native`／`soft`。`review_prompt_shown`（端末が OS の API を呼んだ時に1回）`blob8` = 瞬間、`blob9` = platform、`blob10` = style。`review_soft_answer`（前置きの答え、1回）`blob8` = `yes`／`not_really`／`dismissed`、`blob9` = 瞬間、`blob10` = platform。星の数・レビューの本文は取れない（OS が返さない）。
+
+**瞬間ごとに頼めた数と OS の API を呼んだ数**（週ごと。`shown / eligible` が低ければ端末が落ちている・OS の上限に当たっている）：
+
+```sql
+SELECT toStartOfWeek(timestamp) AS week, blob8 AS moment, blob9 AS platform,
+  sumIf(_sample_interval, blob1 = 'review_prompt_eligible') AS eligible,
+  sumIf(_sample_interval, blob1 = 'review_prompt_shown') AS shown
+FROM muchi_kpi
+WHERE blob1 IN ('review_prompt_eligible', 'review_prompt_shown') AND timestamp > NOW() - INTERVAL '56' DAY
+GROUP BY week, moment, platform
+ORDER BY week DESC, eligible DESC
+```
+
+**前置きの答え**（前置きを ON にした時だけ。`not_really` はお問い合わせの「その他」と合わせて読む）：
+
+```sql
+SELECT blob8 AS answer, blob9 AS moment, sum(_sample_interval) AS n, count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'review_soft_answer' AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY answer, moment
+ORDER BY n DESC
+```

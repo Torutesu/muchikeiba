@@ -94,6 +94,8 @@ const store = new FakeStoreVerifier();
 const teams = new MemoryTeams(() => master, now);
 const repo = new LocalRepo();
 const serverKpi: { name: string; s1?: string; s2?: string; s3?: string }[] = [];
+// round 20 (REQ-REV-005): each review check carries its own idempotency key (two checks in one millisecond must not share one)
+let revKeySeq = 0;
 const svc = new PlayerService(repo, {
   master, rng: cryptoRng, clock: now, verifiers: { fake: store },
   onTeamPoints: async (p) => { await teams.reportPoints(p.teamId, p.playerId, p.seasonId, p.points, p.displayName).catch(() => undefined); },
@@ -1062,6 +1064,26 @@ export const MuchiLogic = {
     pinned: () => wrap(() => svc.pinnedHorseGoal(ID)),
     /** Demo: confirmed ranked races for one of my horses (places as given), the race room's result path. */
     demoRaces: (horseId: string, places: number[]) => wrap(() => hallRaces(ID, horseId, places)),
+  },
+  // ---------------------------------------------------------------- round 20: レビュー依頼のタイミング (REQ-REV-*, contracts/protocol.md §59)
+  // The real PlayerService / reviewPrompt.ts rules on the local player: GET (rules + server facts), check (records only a yes),
+  // answer (soft → store / help inquiry; native_requested once). The prototype plays an iOS device; the OS sheet is simulated.
+  // Nothing is granted for a review, anywhere.
+  reviewPrompt: {
+    status: () => wrap(() => svc.reviewPrompt(ID)),
+    check: (moment: string, sessionId: string, client: { inFtue: boolean; minutesSinceLoss: number | null; minutesSinceError: number | null; minutesSinceMaintenanceNotice: number | null }) =>
+      wrap(() => svc.reviewPromptCheck(ID, { moment, platform: 'ios', sessionId, client }, `c:/v1/review-prompt/check:${sessionId}:${moment}:${Date.now()}:${++revKeySeq}`)),
+    answer: (promptId: string, step: 'soft_yes' | 'soft_no' | 'soft_dismiss' | 'native_requested') => wrap(() => svc.reviewPromptAnswer(ID, promptId, step)),
+    /**
+     * Demo state: a settled player (installed 10 days ago, 12 races, FTUE done, no earlier prompt) and the pre-question on or off
+     * for iOS (the shipped rules keep it off; ops may turn it on for iOS only — §59.6).
+     */
+    demo: (soft: boolean) => wrap(async () => {
+      const rp = (master.progression as { reviewPrompt?: { softAsk: { ios: boolean; android: boolean } } }).reviewPrompt;
+      if (rp) rp.softAsk = { ios: soft, android: false };
+      await svc.tx(ID, null, (st) => { st.createdAt = Math.min(st.createdAt, now() - 10 * DAY_MS); st.stats.races = Math.max(st.stats.races, 12); st.flags.tutorialGachaUsed = true; delete st.reviewPrompt; });
+      return true;
+    }),
   },
   // ---------------------------------------------------------------- round 18: 個人データの開示・ダウンロード (REQ-DEX-*, contracts/protocol.md §51)
   // The real DataExportService / dataExport rules on the local player. The "alarm" (runDataExportJob) is started by the page a

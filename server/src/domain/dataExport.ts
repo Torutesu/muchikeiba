@@ -396,6 +396,8 @@ export const DEX_CLASSIFICATION: Record<keyof PlayerState | DexExtensionKey, Dex
   dataExport: no('export_meta'),
   // Round 18 integration: Round 17 / 18 keys (§49 suggestion settings and dismissals, §53 goals and the pin)
   friendSuggest: x('social'), horseGoals: x('horses'),
+  // §59 (Round 20): when the store review was asked, the moment, the pre-question answer (nothing is ever granted for it)
+  reviewPrompt: x('analytics'),
   // keys added by modules through `PlayerState & { … }`
   collection: x('play'), silksEditor: x('profile'), stable: x('social'), teamFeed: x('social'), teamGoal: x('play'),
   // Round 18 integration: §48 inquiries (text, replies, votes) and §47 the reporter's daily counter (its target ids are not exported)
@@ -598,6 +600,8 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
     devices: (push?.devices ?? []).map((d) => ({ platform: d.platform, addedAt: d.addedAt, lastSeenAt: d.lastSeenAt, locale: d.locale ?? null, pushTokenEnd: maskToken(d.token) })),
     analytics: {
       kpiState: clone(s.kpi) ?? null,
+      // §59: the store review prompts (time, moment, platform, style, the pre-question answer); the session id is internal
+      reviewPrompts: (s.reviewPrompt?.history ?? []).map((h) => ({ at: h.at, moment: h.moment, platform: h.platform, style: h.style, answer: h.answer, storeReviewAskedAt: h.nativeAt })),
       events: ext.kpiEvents === null ? { available: false, windowDays: null, rows: [] as Record<string, unknown>[] } : { available: true, windowDays: ext.kpiEvents.windowDays, rows: ext.kpiEvents.rows },
     },
     // §48 (Round 18 integration): the player's inquiries — what they wrote, what they attached, the replies (without the

@@ -1219,6 +1219,12 @@
   "時間をおいて、もう一度リクエストしてください。": "Please wait a little and request it again.",
   "オフラインのためリクエストできません": "You are offline, so you cannot request it now",
   "この機能は現在ご利用いただけません": "This feature is not available right now",
-  "次のリクエストは{date}から": "Next request from {date}"
+  "次のリクエストは{date}から": "Next request from {date}",
+  "_review": "---- レビュー依頼 (round 20, REQ-REV-*, ReviewPromptModel soft pre-question). Never a reward, never a star count",
+  "ムチ一閃を楽しんでいますか？": "Are you enjoying Muchi Issen?",
+  "はい": "Yes",
+  "いまいち": "Not really",
+  "ひとこと": "A quick question",
+  "ご意見をお聞かせください。お問い合わせの画面を開きます。": "We'd love to hear what we can do better. Opening the inquiry form."
  }
 }

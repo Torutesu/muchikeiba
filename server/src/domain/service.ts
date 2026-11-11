@@ -109,6 +109,7 @@ import {
   setHallVisibility, type HallRelation, type HallSnapshot,
 } from './hallOfFame.js';
 import { horseGoalsView, noteHorseGoals, pinHorseGoal, pinnedGoalView } from './horseGoals.js';
+import { answerReviewPrompt, checkReviewPrompt, reviewPromptStatus, type ReviewCheckInput, type ReviewStep } from './reviewPrompt.js';
 import {
   dataExportAdminView, dataExportDeleted, dataExportDeletionKeys, dataExportFile, dataExportView, markDataExportFailed, markDataExportReady,
   nextDataExportWake, noteDataExportDownload, requestDataExport, takeDataExport, takeExpiredDataExport, type DexFile, type DexLang, type DexReadyInfo,
@@ -603,6 +604,18 @@ export class PlayerService {
   /** REQ-HGOAL-007: pin one horse's goal to the home (null = unpin). Idempotent; hgoal_pin only when the pin changes. */
   pinHorseGoal(id: string, horseId: string | null) { return this.tx(id, null, (s, _now, emit) => pinHorseGoal(this.d.master, s, horseId, emit)); }
   async pinnedHorseGoal(id: string) { return { pinned: pinnedGoalView(this.d.master, await this.load(id)) }; }
+
+  // ---- レビュー依頼のタイミング (REQ-REV-*, reviewPrompt.ts) — nothing here ever grants anything ----
+  /** REQ-REV-005: the rules and the server's facts for the device's pre-check (a read). */
+  async reviewPrompt(id: string) { return reviewPromptStatus(this.d.master, await this.load(id), this.d.clock()); }
+  /** REQ-REV-005/006: decide (and record only a yes). Idempotent by key. */
+  reviewPromptCheck(id: string, input: ReviewCheckInput, idemKey: string) {
+    return this.tx(id, idemKey, (s, now, emit) => checkReviewPrompt(this.d.master, s, input, now, emit));
+  }
+  /** REQ-REV-007: the pre-question answer / the native API was called (each written once). */
+  reviewPromptAnswer(id: string, promptId: string, step: ReviewStep) {
+    return this.tx(id, null, (s, now, emit) => answerReviewPrompt(s, promptId, step, now, emit));
+  }
 
   // ---- 厩舎の整理 (REQ-ORG-*, roster.ts) ----
   /** REQ-ORG-001..003: the organiser rows, filtered / sorted by the optional query (the client runs the same rules). */

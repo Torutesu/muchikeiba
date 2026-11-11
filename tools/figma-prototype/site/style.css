@@ -691,3 +691,9 @@ html[data-reduce-motion="on"] .pr-bar .band { transition: none; }
 .qc-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
 .qc-opt { font-size: 15px; font-weight: 700; padding: 7px 16px; background: rgba(var(--navy-rgb), .75); box-shadow: inset 0 0 0 1px rgba(150, 173, 187, .45); transform: skewX(-10deg); }
 .qc-opt.sel { color: var(--navy); background: var(--cyan); box-shadow: none; }
+/* round 20: レビュー依頼 (§59) — the simulated OS review sheet of the demo (system look, not the game's panels) */
+.rev-os { background: rgba(246, 246, 248, .97); border-radius: 18px; box-shadow: 0 24px 70px rgba(0, 0, 0, .55); overflow: hidden; }
+.rev-os .hair { background: rgba(0, 0, 0, .14); }
+.rev-os .btn .bg { display: none; }
+.rev-os .btn.rev-star span { color: #0a84ff; font-size: 40px; }
+.rev-os .btn.rev-os-later span { color: #0a84ff; font-size: 20px; font-weight: 500; }

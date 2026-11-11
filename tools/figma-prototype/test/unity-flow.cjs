@@ -456,6 +456,35 @@ module.exports = async function unityFlow(browser, base, out, errors) {
 
   // round 16 (REQ-ORG-*): 厩舎の整理 — the stable's list → more demo horses → sort (rating) → filter (active) → lock → select two →
   // the confirmation (every horse, nothing given back, cancel and confirm the same size) → retired, all on the real rules
+  // round 20 (REQ-REV-*): レビュー依頼 — a settled player's first win: the OS review sheet (simulated, native by default), once per
+  // session; the soft pre-question (ops on, iOS): いまいち → the inquiry form (never the store), はい → the OS sheet; no reward
+  async function reviewPromptFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    const wallet = await page.evaluate(async () => (await globalThis.__muchi.logic.view()).wallet);
+    await page.evaluate(() => { globalThis.__muchiReview = []; return globalThis.__muchi.show('ReviewPrompt', 'native'); });
+    await waitScreen('review-native'); await waitIn('.rev-os');
+    assert.match(await page.locator('.screen.in .rev-demo-note').innerText(), /ゲームは結果を受け取りません/, 'review: the demo note');
+    await shot('review-native', 500);
+    await click('今はしない'); await waitScreen('home');
+    assert.equal(await page.evaluate(() => globalThis.__muchi.logic.serverKpiLog().filter((k) => k.name === 'review_prompt_shown').length), 1, 'review: native_requested once');
+    await page.evaluate(() => globalThis.__muchi.show('ReviewPrompt', 'soft')); await waitScreen('review-ask'); await waitIn('.rev-soft');
+    const yes = await page.locator('.screen.in .rev-yes').boundingBox(), no = await page.locator('.screen.in .rev-no').boundingBox();
+    assert.ok(Math.abs(yes.width - no.width) < 1 && Math.abs(yes.height - no.height) < 1, 'review: はい and いまいち are the same size');
+    assert.equal(await page.locator('.screen.in .rev-soft .btn.cta').count(), 0, 'review: neither answer is the primary CTA');
+    const text = await page.locator('.screen.in').innerText();
+    for (const w of ['報酬', 'もらえる', 'プレゼント', 'コイン', '★', '倍', '今だけ']) assert.ok(!text.includes(w), 'review: no reward / star / urgency word: ' + w);
+    await shot('review-soft', 500);
+    await click('いまいち'); await waitScreen('inquiry-form'); await waitIn('.inquiry-form[data-category="other"]');
+    await shot('review-soft-inquiry', 500);
+    await page.evaluate(() => globalThis.__muchi.show('ReviewPrompt', 'soft')); await waitScreen('review-ask'); await waitIn('.rev-soft');
+    await click('はい'); await waitScreen('review-native'); await waitIn('.rev-os');
+    await page.locator('.screen.in .rev-star').nth(4).click(); await waitScreen('home');
+    const log = await page.evaluate(() => globalThis.__muchiReview);
+    assert.deepEqual(log.filter((x) => x.step).map((x) => `${x.step}>${x.next}`), ['soft_no>help_inquiry', 'soft_yes>store_review'], 'review: soft answers');
+    assert.deepEqual(await page.evaluate(async () => (await globalThis.__muchi.logic.view()).wallet), wallet, 'review: nothing granted');
+    await page.evaluate(() => globalThis.__muchi.logic.reviewPrompt.demo(false));
+  }
+
   // round 18 (REQ-HGOAL-*): 馬ごとの目標 — confirmed races for the partner → the goals panel on the horse detail → the full chain →
   // pin to home → the home strip (hgoal_view home once) → tap → back to the chain → unpin, all on the real server rules
   async function horseGoalsFlow() {
@@ -1091,6 +1120,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await silksFlow();
   await myReplaysFlow();
   await horseGoalsFlow();
+  await reviewPromptFlow();
   await rosterFlow();
   await recapFlow();
   await cupsFlow();

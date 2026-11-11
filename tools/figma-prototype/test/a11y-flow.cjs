@@ -211,6 +211,9 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('HostedCups'); await waitScreen('hosted-cups', 30000); await shot('cups', english, 600);
     // Round 18: 馬ごとの目標 — the panel on the horse detail and the full chain
     await show('Stable'); await page.waitForSelector('.screen.in .hg-panel', { timeout: 15000 }); await shot('stable-goals', english, 500);
+    await show('ReviewPrompt', 'soft'); await waitScreen('review-ask'); await page.waitForSelector('.screen.in .rev-soft', { timeout: 15000 }); await shot('review-soft', english, 500); // round 20 (REQ-REV-015)
+    await page.locator('.screen.in .rev-yes').click(); await waitScreen('review-native'); await page.waitForSelector('.screen.in .rev-os', { timeout: 15000 }); await shot('review-native', english, 500);
+    await page.evaluate(() => globalThis.__muchi.logic.reviewPrompt.demo(false));
     await show('HorseGoals', await page.evaluate(async () => (await globalThis.__muchi.logic.view()).flags.partnerHorseId)); await waitScreen('horse-goals'); await page.waitForSelector('.screen.in .hg-row', { timeout: 15000 }); await shot('horse-goals', english, 500);
     await show('CupCreate'); await waitScreen('cup-create'); await shot('cup-create', english, 500);
     await show('CupJoin'); await waitScreen('cup-join'); await shot('cup-join', english, 500);

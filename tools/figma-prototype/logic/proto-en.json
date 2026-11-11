@@ -1323,6 +1323,15 @@
   "概要（テキスト）をダウンロードしました": "Downloaded the summary (text)",
   "準備ができるとお知らせに届きます": "You will get a notice in Activity when it is ready",
   "リクエストを受け付けました": "Request received",
-  "データ": "Data"
+  "データ": "Data",
+  "初勝利": "First win",
+  "大会の初優勝": "First tournament title",
+  "目標の物語を走りきった": "Story complete",
+  "答えなくてもかまいません。ゲームの内容は何も変わりません。": "You don't have to answer. Nothing in the game changes either way.",
+  "デモ：OS の標準のレビュー画面です。実機では OS が表示し、ゲームは結果を受け取りません。": "Demo: the system's own review sheet. On a phone the system shows it, and the game never learns the result.",
+  "「ムチ一閃」を気に入っていますか？": "Enjoying Muchi Issen?",
+  "App Store で評価するには、星をタップしてください。": "Tap a star to rate it on the App Store.",
+  "今はしない": "Not Now",
+  "今回は依頼しません": "No review request this time"
  }
 }

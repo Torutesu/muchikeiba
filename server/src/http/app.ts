@@ -6,7 +6,7 @@ import { bannerList, findVisibleBanner, oddsDisclosure } from '../domain/gacha.j
 import { shopProducts } from '../domain/shop.js';
 import { skillCatalog } from '../domain/skills.js';
 import { ticketDisclosure } from '../domain/itemShop.js';
-import type { Master } from '../domain/master.js';
+import { PUSH_CATEGORIES, type Master } from '../domain/master.js';
 import type { PlayerService, ShortfallQuery } from '../domain/service.js';
 import type { SubscriptionStatus, VerifiedReceipt } from '../domain/purchase.js';
 import type { PurchaseRecord } from '../domain/player.js';
@@ -1045,8 +1045,9 @@ export const routes: Route[] = [
   { method: 'PUT', path: '/v1/push/preferences', auth: 'player', handler: async (r, _p, c, u) => {
     const hour = z.number().int().min(0).max(23);
     const b = await body(r, z.object({
-      // gifts (REQ-BOX-011) was missing here and silently dropped; reminders = REQ-LNOTIF-009 (§61, on-device reminders, opt-in)
-      categories: z.object({ season: z.boolean(), friends: z.boolean(), invites: z.boolean(), events: z.boolean(), comeback: z.boolean(), gifts: z.boolean(), reminders: z.boolean() }).partial().optional(),
+      // gifts (REQ-BOX-011) was missing here and silently dropped; reminders = REQ-LNOTIF-009 (§61, on-device reminders, opt-in).
+      // R20 integration: built from PUSH_CATEGORIES (a new category cannot be forgotten again) and strict (an unknown one is 400)
+      categories: z.object(Object.fromEntries(PUSH_CATEGORIES.map((k) => [k, z.boolean()])) as Record<(typeof PUSH_CATEGORIES)[number], z.ZodBoolean>).partial().strict().optional(),
       quietHours: z.object({ startHour: hour, endHour: hour }).nullable().optional(),
     }));
     return c.player(u).invoke('setPushPreferences', u, {

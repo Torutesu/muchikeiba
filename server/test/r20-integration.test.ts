@@ -16,6 +16,7 @@ import { clientErrorBatchSchema } from '../src/domain/clientErrors.js';
 import type { Master } from '../src/domain/master.js';
 import { DEFAULT_MAINTENANCE, EXEMPT_ROUTES, endpointGroup, gateRequest, jstToMs, type MaintenanceConfig } from '../src/domain/maintenance.js';
 import { routes } from '../src/http/app.js';
+import { PUSH_CATEGORIES } from '../src/domain/master.js';
 import { buildExportDocument } from '../src/domain/dataExport.js';
 import { ClientErrorsCore, MemoryClientErrorRepo } from '../src/ops/clientErrors.js';
 import { CLIENT_ERRORS_DEFAULTS } from '../src/domain/clientErrors.js';
@@ -217,5 +218,26 @@ describe('§51 data export and account deletion × Round 20 state', () => {
     expect(w.repo.get('dx')).toBeNull(); // privacyChoices and reviewPrompt go with the state
     expect(w.core.madeBy('dx')).toEqual([]);
     expect(w.store.sampleRows.map((x) => x.playerId)).toEqual([null]);
+  });
+});
+
+describe('push preferences: every category goes through PUT /v1/push/preferences (incl. gifts and §61 reminders)', () => {
+  it('the categories are exactly the known list, reminders defaults off, each one can be switched over HTTP', async () => {
+    expect([...PUSH_CATEGORIES].sort()).toEqual(['comeback', 'events', 'friends', 'gifts', 'invites', 'reminders', 'season']);
+    expect(m.push.defaults.categories.reminders).toBe(false);
+    const w = appWorld();
+    await w.svc.bootstrap('p_push');
+    const auth = { authorization: 'Bearer p_push' };
+    for (const c of PUSH_CATEGORIES) {
+      const before = (await w.req('GET', '/v1/push/preferences', undefined, auth)).body.categories[c] as boolean;
+      const r = await w.req('PUT', '/v1/push/preferences', { categories: { [c]: !before } }, auth);
+      expect(r.status, c).toBe(200);
+      expect(r.body.categories[c], c).toBe(!before);
+    }
+  });
+  it('an unknown category is refused (400), never silently dropped', async () => {
+    const w = appWorld();
+    await w.svc.bootstrap('p_push2');
+    expect((await w.req('PUT', '/v1/push/preferences', { categories: { shop: true } }, { authorization: 'Bearer p_push2' })).status).toBe(400);
   });
 });

@@ -3750,6 +3750,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 
 ### 61.4 OS の許可と前置き（REQ-LNOTIF-009/010）
 - 初回起動では聞かない。**最初の調教を始めた後**（`POST /v1/training/start` が通った後、または `training.trainedEver`）に、`reminders` がオフで、前置きをまだ `maxAsks` 回出しておらず、前回から `retryDays` 日たっている時だけ、前置きのシートを1回出す：「調教の仕上げや、ログインボーナスを受け取れる日を、この端末からお知らせします。1日{n}件まで・静かな時間帯は送りません。あとから設定で変えられます」。最初からチェックの入った選択は無い。
+- `PUT /v1/push/preferences` の `categories` は `season`・`friends`・`invites`・`events`・`comeback`・`gifts`・`reminders` の7つ（`PUSH_CATEGORIES` から作る。R20 統合：知らない種類は今までの「黙って捨てる」ではなく `400 BAD_REQUEST`。古いアプリは知っている種類だけ送るので影響しない）。
 - 「お知らせを受け取る」→ `PUT /v1/push/preferences { categories: { reminders: true } }`、OS の許可が `unknown` なら OS のダイアログ（結果を KPI `lnotif_permission`）。「今はしない」→ 何も変えない（KPI `later`）。
 - OS で**拒否**（`denied`）なら OS のダイアログは二度と出さない。設定画面に「端末の設定で通知がオフになっています」と OS の設定を開くボタン。**仮の許可**（iOS provisional）は予約する（通知センターに静かに届く）。
 - 既存のプッシュの前置き（REQ-UXU-015、2戦目の3着以内）で OS が許可済みなら、前置きは `reminders` を選ぶだけ（OS のダイアログは出ない）。

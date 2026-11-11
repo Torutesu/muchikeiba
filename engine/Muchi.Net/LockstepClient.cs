@@ -85,6 +85,13 @@ namespace Muchi.Net
         public event Action<LockstepClient> RaceStarted;
         public event Action<LockstepClient, int> TicksAdvanced;
         public event Action<LockstepClient, FinalMessage> RaceFinal;
+        /// <summary>
+        /// REQ-CERR-002 (§60): the room said our checksum disagreed at this tick (also added to <see cref="DesyncTicks"/>).
+        /// Diagnostics only: the race itself is unchanged. Muchi.Client ErrorReporter.WatchRace reports race id + tick.
+        /// </summary>
+        public event Action<LockstepClient, int> Desync;
+        /// <summary>The race this client joined.</summary>
+        public string RaceId => _raceId;
 
         /// <summary>Send hello (first join or reconnect). Reports the last tick we simulated.</summary>
         public void Connect()
@@ -137,7 +144,11 @@ namespace Muchi.Net
                 {
                     case "start": OnStart(m); break;
                     case "b": OnBundle(m); break;
-                    case "desync": DesyncTicks.Add(m.Get("tick").AsInt()); break;
+                    case "desync":
+                        int dt = m.Get("tick").AsInt();
+                        DesyncTicks.Add(dt);
+                        try { Desync?.Invoke(this, dt); } catch (Exception) { /* a diagnostics listener never breaks the race */ }
+                        break;
                     case "final": OnFinal(m); break;
                     case "pong":
                         long c = m.Get("c").AsLong(), s = m.Get("s").AsLong();

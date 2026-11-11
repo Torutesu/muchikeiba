@@ -415,6 +415,9 @@ module.exports = async function enFlow(browser, base, out, errors) {
 
   // round 17: 通報とブロック in English (REQ-RPT-018): the block list (player names as written, the effects from the server),
   // the unblock confirmation and the report sheet (reasons from the server, the note counter)
+// round 20 (REQ-CERR-*): the diagnostics screen (queue, consent stand-in, the ops view) in English
+await page.evaluate(() => globalThis.__muchi.demo('errors')); await waitScreen('diagnostics', 60000); await page.waitForTimeout(400);
+await shot('diagnostics', 600);
   await page.evaluate(() => globalThis.__muchi.demo('safety')); await waitScreen('blocks', 60000);
   await shot('blocks', 600);
   const blEn = await page.locator('.screen.in').innerText();

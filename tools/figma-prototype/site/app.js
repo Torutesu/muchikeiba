@@ -2587,7 +2587,107 @@ async function Privacy() {
   Txt('JSON は機械で読める形式、概要は人が読めるテキストです。', 36, 520, 496, 15, MUTED, q, { lh: 1.6 });
   // round 18 integration: the help article for this screen (§48 context `privacy`)
   TextLink('データのダウンロードについて（ヘルプ）', 36, 600, 496, () => HelpArticle(L.helpContext('privacy'), 'context', () => Privacy()), q).dataset.helpContext = 'privacy';
+  // round 20 (REQ-CERR-*): what the app sends when something goes wrong
+  TextLink('エラーの自動送信', 36, 636, 496, () => Diagnostics(), q).dataset.action = 'diagnostics';
   Back(Settings, 'BACK', 40, 834);
+}
+// ================================================================= round 20: クライアントのエラー報告 (REQ-CERR-*, contracts/protocol.md §60)
+// window.onerror / unhandledrejection feed the REAL reporter: Muchi.Game ClientErrorModel + Muchi.Client ErrorReporter in WASM
+// (scrubber, fingerprint, sampling, the queue kept across reloads, batch ids), and its batches go to the server's domain code
+// (L.clientErrors.ingest = POST /v1/client-errors on ClientErrorsCore). The screen shows what the device holds before
+// sending (already scrubbed), the consent stand-in (§58 is not on this base: ErrorReporter.AllowsDiagnostics) and the ops
+// console's view of the same data. Nothing here is player-facing in the app: the screen exists to make the pipeline visible.
+const CE_KEY = 'muchi.clientErrors.queue';
+const CE_CAT = { exception: '例外', api: '通信', desync: 'レースの同期', asset: 'ダウンロード', stall: '画面の固まり' };
+let ceReady = false;
+function ceSave() { try { localStorage.setItem(CE_KEY, JSON.parse(engine.CeState()).stored); } catch { /* private mode */ } }
+function ceInit() {
+  if (ceReady || !engine) return;
+  let stored = '';
+  try { stored = localStorage.getItem(CE_KEY) ?? ''; } catch { /* */ }
+  engine.CeInit('editor', 'proto', 'Browser', 'Web', Date.now(), stored);
+  ceReady = true;
+  const report = (name, message, stack) => {
+    try {
+      engine.CeOnError(`${name || 'Error'}: ${message || ''}`, stack || '', cur?.dataset.screen ?? '', Date.now());
+      ceSave();
+      if (currentScreen === Diagnostics) Diagnostics();
+    } catch { /* the reporter never throws into the page */ }
+  };
+  window.addEventListener('error', (e) => { const er = e.error; report(er?.name, er?.message ?? e.message, er?.stack); });
+  window.addEventListener('unhandledrejection', (e) => { const er = e.reason; report(er?.name ?? 'UnhandledRejection', er?.message ?? String(er), er?.stack); });
+}
+/** Sends the queue now (as the app does on going to the background): the WASM reporter's batch → the server code → the answer. */
+async function ceSend() {
+  if (!ceReady) return;
+  engine.CeFlush(Date.now());
+  for (let i = 0, idle = 0; i < 40 && idle < 4; i++) {
+    await new Promise((r) => setTimeout(r, 0));
+    const b = engine.CeTakeOutbox();
+    if (!b) { idle += 1; continue; }
+    idle = 0;
+    (globalThis.__muchiCeBatches ??= []).push(JSON.parse(b));
+    const res = L.clientErrors.ingest(b, true);
+    engine.CeAnswer(res.status, JSON.stringify(res.body));
+  }
+  ceSave();
+}
+async function Diagnostics() {
+  currentScreen = Diagnostics;
+  ceInit();
+  const st = ceReady ? JSON.parse(engine.CeState()) : { items: [], pending: 0, sent: 0, consent: true };
+  Clear('diagnostics'); SetArt('Art/home-paddock', false); Shade('dim');
+  TopBar('その他　/　エラーの自動送信', 'アプリで起きた問題を、原因を調べるために運営へ知らせます', { wallet: false });
+  // ① what is sent / never sent, and the consent stand-in
+  const a = Glass('What is sent', 36, 134, 560, 676, undefined, .9);
+  Kicker('エラーの自動送信', 36, 30, a);
+  Txt('アプリが止まった・通信に失敗した・レースの同期がずれた時に、短い記録を運営に送ります。', 36, 92, 488, 16, MUTED, a, { lh: 1.7 });
+  Hair(36, 186, 488, a);
+  Kicker('送るもの', 36, 206, a, { rule: false, size: 14 });
+  Txt('エラーの種類・アプリの版・端末の機種・OSの版', 36, 238, 488, 16, WHITE, a, { weight: 500, nowrap: true });
+  Kicker('送らないもの', 36, 290, a, { rule: false, size: 14 });
+  Txt('メールアドレス・名前・入力した文・レースの操作', 36, 322, 488, 16, WHITE, a, { weight: 500, nowrap: true });
+  Hair(36, 378, 488, a);
+  Txt('プレイヤーIDを添える', 36, 404, 300, 19, WHITE, a, { weight: 500, nowrap: true });
+  const on = Btn('オン', 316, 396, 96, 46, () => { engine?.CeSetConsent(true); Diagnostics(); }, 'choice' + (st.consent ? ' on' : ''), a);
+  const off = Btn('オフ', 420, 396, 96, 46, () => { engine?.CeSetConsent(false); Diagnostics(); }, 'choice' + (!st.consent ? ' on' : ''), a);
+  on.dataset.ceConsent = 'on'; off.dataset.ceConsent = 'off';
+  Txt('オフにすると、記録は名前のない記録として届きます。', 36, 460, 488, 15, SOFT, a, { lh: 1.6 });
+  Txt('レースの同期のずれは公平さに関わるため、いつも送ります（レースの番号と時点だけ）。', 36, 540, 488, 15, SOFT, a, { lh: 1.6 });
+  // ② the device's queue (scrubbed) and the send
+  const q = Glass('Queue', 616, 134, 948, 400, undefined, .88);
+  q.classList.add('ce-queue'); q.dataset.pending = String(st.pending);
+  Kicker('送る前の記録（この端末）', 36, 30, q);
+  Txt(`${st.items.length}件`, 700, 72, 212, 15, SOFT, q, { align: 'right', cls: 'num', nowrap: true });
+  if (!st.items.length) Txt('いまは送る記録はありません', 36, 112, 860, 18, MUTED, q).dataset.ceEmpty = '1';
+  st.items.slice(0, 4).forEach((it, i) => {
+    const row = el('ce-row', 36, 106 + i * 56, 876, 50, q);
+    row.dataset.category = it.category; row.dataset.fingerprint = it.fingerprint;
+    Txt(CE_CAT[it.category] ?? it.category, 0, 2, 150, 12, CYAN, row, { weight: 700, ls: '.18em', nowrap: true });
+    Txt(it.title, 0, 22, 760, 16, WHITE, row, { weight: 500, nowrap: true, cls: 'keep-ja' });
+    Txt(`×${it.count}`, 776, 20, 100, 16, GOLD, row, { align: 'right', cls: 'num', nowrap: true });
+  });
+  Ghost('テスト用のエラーを起こす', 36, 324, 360, 52, () => {
+    // a synthetic error event: the same window.onerror path as a real uncaught exception (the page keeps running)
+    const err = new TypeError("Cannot read properties of undefined (reading 'horse') for player ハヤテ");
+    window.dispatchEvent(new ErrorEvent('error', { error: err, message: err.message }));
+  }, q, 'quiet small').dataset.action = 'ce-test';
+  Cta('今すぐ送る', 552, 316, 360, async () => { await ceSend(); toast('記録を送りました'); Diagnostics(); }, q, 'small').dataset.action = 'ce-send';
+  // ③ the ops console's view of the same data (aggregated by fingerprint on the server)
+  const o = Glass('Ops view', 616, 554, 948, 256, undefined, .82);
+  o.classList.add('ce-ops');
+  Kicker('運営の画面での見え方', 36, 24, o);
+  const top = L.clientErrors.list().groups.slice(0, 3);
+  o.dataset.groups = String(top.length);
+  if (!top.length) Txt('まだ届いた記録はありません', 36, 92, 860, 16, MUTED, o);
+  top.forEach((g, i) => {
+    const row = el('ce-op', 36, 84 + i * 50, 876, 44, o);
+    row.dataset.fingerprint = g.fingerprint;
+    Txt(g.title, 0, 4, 620, 15, WHITE, row, { weight: 500, nowrap: true, cls: 'keep-ja' });
+    Txt(g.fingerprint, 0, 26, 300, 12, SOFT, row, { cls: 'num keep-ja', nowrap: true });
+    Txt(`${g.count}件`, 676, 10, 200, 16, GOLD, row, { align: 'right', cls: 'num', nowrap: true });
+  });
+  Back(Privacy, 'BACK', 40, 834);
 }
 // ================================================================= round 12: かんたん操作 (REQ-ASSIST-*, contracts/protocol.md §27)
 // Mirrors unity/Assets/Muchi/Game/AssistModel.cs on the real server rules (setting default off, the last-place streak, the
@@ -2837,6 +2937,14 @@ async function Demo(kind) {
   if (kind === 'activity') { await L.seedActivity(); await refresh(); actState.cursor = null; actState.stack = []; return Activity(); }
   // round 17: two blocked players (one deleted since) and support's request in the activity list → 通報とブロック
   if (kind === 'safety') { await L.reports.seedSafety(); await refresh(); return BlockList(); }
+  // round 20 (REQ-CERR-*): a fresh queue with one report from the page's window.onerror → the diagnostics screen
+  if (kind === 'errors') {
+    await L.seedDemo(3, [2, 2, 2]); await refresh(); ceInit();
+    try { localStorage.removeItem(CE_KEY); } catch { /* */ }
+    const err = new RangeError('Invalid array length 4294967296 at index 12');
+    window.dispatchEvent(new ErrorEvent('error', { error: err, message: err.message }));
+    return Diagnostics();
+  }
   if (kind === 'gifts') { await L.seedGifts(); await refresh(); giftState.tab = 'box'; giftState.page = 0; return GiftBox('box'); }
   // round 12: a week of play, then three ranked races in last place (settled by the real applyRace) → the one-time suggestion
   if (kind === 'assist') { await L.seedDemo(7, [3, 3, 3, 3, 3, 3, 3]); ftue = false; await L.demoLastPlaces(3); await refresh(); return AssistThen(Home); }
@@ -6894,6 +7002,7 @@ async function boot() {
   engine = (await runtime.getAssemblyExports(runtime.getConfig().mainAssemblyName)).MuchiRace;
   engine.Init(ruleset, commentary);
   engine.SetCommentaryPacks(commentaryPacks); // round 14 (REQ-CMT-001): the client copy of server/master/commentary-packs.json
+  ceInit(); // round 20 (REQ-CERR-*): window.onerror → the WASM ErrorReporter
   await syncA11y(); // round 15: the unsent device change, or the account's value (REQ-A11Y-004); sets the whip input
   applyLanguage(); // REQ-L10N-012: English commentary when EN is on
   l10nObserver.observe($stage, { subtree: true, childList: true, characterData: true });
@@ -6903,7 +7012,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Privacy, QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Privacy, Diagnostics, QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

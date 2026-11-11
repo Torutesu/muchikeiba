@@ -183,7 +183,8 @@ export function maintenanceLocale(c: MaintenanceConfig): Record<string, string> 
  *   - account deletion and its cancellation, and the personal data export (§51: request, status, download) — legal rights, never closed;
  *   - in-flight runs settle: the race socket, and the result submissions of time attack / weekly challenge /
  *     training sessions that were started before the window; leaving a queue (match / event cancel);
- *   - the KPI ingest (maintenance_block / upgrade_prompt are reported through it) and the purchase history.
+ *   - the KPI ingest (maintenance_block / upgrade_prompt are reported through it) and the purchase history;
+ *   - client error reports (§60).
  */
 export const EXEMPT_ROUTES: readonly string[] = [
   'GET /v1/health', 'GET /v1/config', 'GET /v1/maintenance', 'GET /v1/assets/catalog', 'GET /v1/visuals',
@@ -203,6 +204,8 @@ export const EXEMPT_ROUTES: readonly string[] = [
   // Round 18 integration: the personal data export (§51) is a legal right like the account deletion — asking for it, its
   // status and the signed download stay open in any window and from an outdated app (the build runs in the player's alarm)
   'GET /v1/player/data-export', 'POST /v1/player/data-export', 'GET /v1/data-export/file',
+  // Round 20 (§60, REQ-CERR-004): client error reports — an outdated app's crashes are the ones ops most needs to see
+  'POST /v1/client-errors',
 ];
 
 const PREFIX_GROUPS: [string, MaintenanceGroup][] = [

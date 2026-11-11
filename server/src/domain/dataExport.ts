@@ -433,7 +433,11 @@ export interface DexExternal {
   playerReportsMade?: PlayerReportMade[] | null;
   /** KPI rows tied to the player's pseudonymous analytics id. null = not configured / unreachable. */
   kpiEvents: { rows: Record<string, unknown>[]; windowDays: number } | null;
+  /** REQ-CERR-019 (§60.9): client error samples that carry this player's id. Absent = none; null = could not be read. */
+  clientErrors?: DexClientErrorRow[] | null;
 }
+/** One client error sample as its player sees it in the export (ops/clientErrors.ts madeBy). */
+export interface DexClientErrorRow { at: number; category: string | null; title: string | null; appVersion: string; platform: string; deviceModel: string; osVersion: string }
 
 const clone = <T>(v: T): T => (v === undefined ? v : JSON.parse(JSON.stringify(v)) as T);
 const omit = <T extends object, K extends keyof T>(o: T | undefined | null, ...keys: K[]) => {
@@ -599,6 +603,8 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
     analytics: {
       kpiState: clone(s.kpi) ?? null,
       events: ext.kpiEvents === null ? { available: false, windowDays: null, rows: [] as Record<string, unknown>[] } : { available: true, windowDays: ext.kpiEvents.windowDays, rows: ext.kpiEvents.rows },
+      // §60.9 (REQ-CERR-019): the error reports this device sent with the player's id (scrubbed; no stack, no free text)
+      clientErrors: ext.clientErrors === null ? { available: false, rows: [] as DexClientErrorRow[] } : { available: true, rows: (ext.clientErrors ?? []).map((r) => ({ ...r })) },
     },
     // §48 (Round 18 integration): the player's inquiries — what they wrote, what they attached, the replies (without the
     // operator's id: an operator note) — and their article votes

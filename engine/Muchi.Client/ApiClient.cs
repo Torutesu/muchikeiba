@@ -839,6 +839,7 @@ namespace Muchi.Client
                     }
                     var offline = new NetworkException(method + " " + path + ": " + e.Message, e);
                     NoteOutage(OutageKind.Offline, offline);
+                    NoteFailure(method, path, 0, null, IsTimeout(e) ? "timeout" : "network"); // REQ-CERR-002
                     throw offline;
                 }
 
@@ -871,7 +872,9 @@ namespace Muchi.Client
                 }
 
                 NoteOutage(OutageKind.None, null); // the server answered: not offline, not closed
-                throw ParseError(res);
+                var failure = ParseError(res);
+                NoteFailure(method, path, res.Status, failure.WireCode, "http"); // REQ-CERR-002
+                throw failure;
             }
         }
 

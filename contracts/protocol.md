@@ -3089,3 +3089,80 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 
 ### 53.9 アカウント削除
 状態の `horseGoals`（達成の記録・ピン）と戦績の `goal` は最後の `wipe` で消える。殿堂の写し（§34.5）は既存の手順で消える。他の場所に写しは無い。
+
+## 60. クライアントのエラー報告（client error & crash reporting、REQ-CERR-001〜020、`server/src/domain/clientErrors.ts`・`server/src/ops/clientErrors.ts`・`server/src/do/clientErrors.ts`、C# `ClientErrors.cs`（`ErrorReporter`・`ErrorScrubber`・`ErrorFingerprint`・`StallDetector`）・`Muchi.Game.ClientErrorModel`、共有ベクター `contracts/client-errors.vectors.json`、docs/handoff-codex-round20-client-errors.md）
+外部の SDK を入れずに、端末で起きた問題を運営が見られるようにする小さな自前の経路。端末は**捕まえなかった例外・API の失敗（種類ごと）・ロックステップのズレ（チェックサムの不一致）・アセットのダウンロード失敗・長いフレーム／固まり（ANR に近いもの）**を小さな列にためて（オフラインでも保存）、種類ごとの抽出率で間引いて `POST /v1/client-errors` にまとめて送る。サーバーは**まとめた数（集計）**と少数の見本だけを、上限と保存期間のある表に持ち、運営の画面（ops console）に「多いエラー」を出す。コイン・アイテムは動かない（E番号なし）。KPI は増やさない（この経路そのものが計測）。Crashlytics などのネイティブのクラッシュ収集は後で Codex が足せる（§60.10）。
+
+### 60.1 種類（`category`）と送る中身（REQ-CERR-002）
+| category | いつ | 端末が送るキー（これ以外は 400） |
+|---|---|---|
+| `exception` | 捕まえなかった例外（Unity `Application.logMessageReceivedThreaded` の Exception／Assert、C# の未処理例外） | `type`（例外のクラス名）・`message`・`stack`・`handled`（bool）・`screen`（任意） |
+| `api` | API の失敗（通信できない・タイムアウト・5xx・400/401/403/413/422）。業務のエラー（409 `INSUFFICIENT_COINS` など、404、429）は送らない | `method`・`route`（id を `:id` にした形）・`status`（0 = 応答なし）・`code`（任意）・`reason`（`network`・`timeout`・`http`） |
+| `desync` | ロックステップのズレ（部屋からの `desync`、§4。エンジンが既に見つけている） | `raceId`・`tick`・`mode`・`engineLevel`（任意）。**入力（コマンド列）・チェックサム・状態は送らない**（キーがあれば 400） |
+| `asset` | アセットのダウンロード失敗（§16） | `assetKey`・`reason`（`http`・`hash`・`disk`・`timeout`・`network`・`other`）・`status`（任意） |
+| `stall` | 長いフレーム（既定 700 ms 以上）・固まり（5,000 ms 以上） | `kind`（`long_frame`・`anr`）・`durationMs`・`screen` |
+
+どの項目にも `at`（端末の時刻 ms）・`count`（端末で同じ指紋をまとめた数、1〜10,000）・`sampleRate`（その時の抽出率‰、1〜1000）。
+
+### 60.2 `POST /v1/client-errors`（REQ-CERR-003〜007）
+```json
+{ "batchId": "b_1f0c9a7e4d2b", "platform": "ios", "appVersion": "1.4.0", "osVersion": "iOS 18.1", "deviceModel": "iPhone15,2",
+  "installId": "6c1f0b9e2a7d4c3b", "attachPlayer": true,
+  "items": [ { "category": "exception", "at": 1793000000000, "count": 2, "sampleRate": 1000,
+               "type": "NullReferenceException", "message": "Object reference not set to an instance of an object",
+               "stack": "Muchi.Game.HudModel.Update () (at Assets/Muchi/Game/HudModel.cs:120)", "handled": false } ] }
+```
+- **認証は任意**：`Authorization` があり有効ならそのプレイヤーとして数える。無い・無効なら匿名（401 にはしない：報告がサインインの失敗で回り続けないため）。
+- **門（§46）**：メンテナンスの窓・アップデート必須でも**閉じない**（`EXEMPT_ROUTES`）。古い版のクラッシュこそ見たい。KPI の送信と同じ扱い。
+- **何度送っても同じ**：`installId` + `batchId` を 48 時間覚える。同じ組がもう一度来たら何も足さず `{ "accepted": 0, "duplicate": true, … }`（端末は送れたものとして列から消す）。端末は列の束ごとに `batchId` を1回作り、再送でも同じ id を使う。
+- **大きさの上限**：本文 `maxBodyBytes`（既定 32 KB、超えたら 413）、項目 `maxItems`（既定 20）、`message` 300 字、`stack` 4,000 字・40 行、そのほかの文字列は表のとおり短い。
+- **回数の制限**：プレイヤーごと（認証あり）に `perPlayerPerHour`（既定 20 束）、端末（`installId`）ごとに `perDevicePerHour`（既定 20 束）、匿名の束は全体で `anonymousPerMinute`（既定 120）。超えたら 429 `RATE_LIMITED`（端末は列を残して待つ）。
+- **設定で止める**：`enabled: false` なら何も保存せず `{ "accepted": 0, "enabled": false }`（200。端末はその起動の間は送らない）。保存先が無い環境（ローカルの最小構成）も同じ。
+- 応答：`{ "accepted": 3, "dropped": 0, "duplicate": false, "enabled": true, "sampling": { "exception": 1000, "api": 200, "desync": 1000, "asset": 500, "stall": 100 }, "flushIntervalSec": 60 }`。`sampling` は端末が次から使う抽出率。`GET /v1/config` にも同じ `clientErrors: { enabled, sampling, flushIntervalSec }` を載せる。
+
+### 60.3 個人情報を落とす（スクラブ、REQ-CERR-008）
+端末で落とし、**サーバーでも同じ規則でもう一度落とす**（端末を信じない）。TS と C# は共有ベクター `contracts/client-errors.vectors.json` で同じ結果。
+1. メールアドレス → `<email>`、`Bearer …`・JWT（`eyJ….….…`）→ `<token>`、URL → `<url>`。
+2. ファイルのパスはファイル名だけ（`/Users/alice/proj/Assets/Muchi/Game/HudModel.cs:120` → `HudModel.cs:120`、`C:\Users\…\x.cs` も同じ）。
+3. 引用符の中（`"…"`・`'…'`・`「…」`）は自由な文やプレイヤーが付けた名前なので `"…"` に置き換える。
+4. ASCII 以外の文字の並び（日本語の文・名前）は `…` に置き換える。
+5. 長い id・トークンらしい並び（数字を含む 20 字以上の英数字、12 字以上の16進）→ `<id>`、`p_…`・`h_…` のような id → `<id>`、5 桁以上の数字 → `<n>`。
+6. 空白をまとめ、上限の長さで切る。
+**送ってよいもの**：端末の機種（`deviceModel`）と OS の版（`osVersion`、英数字と ` ,._()-` の 40 字まで。ほかの文字は `other`）、アプリの版、プラットフォーム。**送らないもの**：メール・トークン・プレイヤー名・馬の名前・自由な文・入力の列・位置・広告 id。`installId` はアプリが最初の起動で作る乱数（端末の識別子・広告 id から作らない）で、回数の制限と重複の判定にだけ使い、見本には残さない。
+
+### 60.4 指紋（`fingerprint`、REQ-CERR-009）
+同じ原因のエラーを1行にまとめる鍵。**サーバーが**スクラブした中身から計算する（端末も同じ計算で列の中をまとめる）。FNV-1a 64 bit（UTF-8）の16進16字。元の文字列：
+- `exception|<type>|<message の型>|<上から5つのフレーム>`：message の型 = スクラブ後の数字を `#` に。フレーム = スタックの各行からアドレス（`[0x…]`・`<…>`）と行番号（`:120`）を消したもの。行番号は入れない（小さな修正で指紋が変わらないように）。
+- `api|<METHOD>|<route>|<status>|<code または ->`：`route` の id らしい部分（数字を含む 6 字以上・`x_…` の形）は `:id`。
+- `desync|<mode>`（ズレはモードごとに1行。どのレースかは見本で見る）。
+- `asset|<reason>|<assetKey の先頭2段>`、`stall|<kind>|<screen>`。
+
+### 60.5 保存（集計と見本、上限と保存期間、REQ-CERR-010〜012）
+保存先は専用の Durable Object `ClientErrorsDO`（シングルトン `global`、SQLite、**wrangler の移行 v7**）。プレイヤーの状態（PlayerState）には何も足さない（§51 の分類に新しいキーは無い）。
+- `groups`：指紋ごとに1行 — category・題（例外の型と message の型／route と status など）・合計の数・推定の数（`count × 1000 / sampleRate` の合計）・最初と最後の時刻・最初と最後のアプリの版・版ごとの数（多い順に 20 まで）・プラットフォームごとの数・通知の記録。上限 `maxGroups`（既定 2,000）。超えた新しい指紋は category ごとの `overflow:<category>` の行に足す。
+- `days`：指紋 × 日（UTC）× アプリの版 × プラットフォームの数。
+- `samples`：指紋ごとに新しい `samplesPerGroup`（既定 5）件だけ — 時刻・版・機種・OS・スクラブ済みの message／stack・種類ごとの中身（desync なら `raceId`・`tick`・`mode`）・**`playerId`（認証あり かつ `attachPlayer: true` の時だけ、そうでなければ null）**。
+- `retentionDays`（既定 30）を過ぎた日の行・見本と、最後に見てから過ぎた指紋の行は、受け付けるたびに少しずつ消す。重複の判定は 48 時間、回数の行は 1 時間で消える。
+
+### 60.6 同意のフック（REQ-CERR-013）
+端末の `ErrorReporter.AllowsDiagnostics`（`Func<bool>`、既定 `true`）が false の時は `attachPlayer: false` で送る（サーバーは playerId を残さない。報告そのものは匿名で届く）。§58（分析の同意）はこのブランチの土台に無いので、§58 が入ったらその「診断データ」の同意をこのフックにつなぐ（既定 true のまま）。`attachPlayer` は束ごとの値で、過去に送った見本は変えない。
+
+### 60.7 運営の画面（ops console、`/v1/admin/client-errors`、REQ-CERR-014〜016）
+- `GET /v1/admin/client-errors?category=&platform=&appVersion=&sort=count|last|new&limit=`（viewer）：`{ groups: [ { fingerprint, category, title, count, estimated, firstSeen, lastSeen, firstVersion, lastVersion, versions: [{ appVersion, count }], platforms: { ios, android, editor }, alert } ], alerts: [ … 直近の通知 ], totals: { groups, byCategory } }`。`sort=count`（既定）は数の多い順、`last` は最後に見た順、`new` は最初に見た順。
+- `GET /v1/admin/client-errors/:fingerprint`（viewer）：その行・直近 14 日の `days`・見本。`desync` の見本には `race: { raceId, tick, replay: "/v1/admin/replays/<raceId>", integrity: { status, events } | null }`（`integrity` は見本に playerId がある時だけ、§47.7 と同じ不正対策の記録＝検証の結果）。ズレは公平さに関わるので、画面は desync を一番上の絞り込みに出す。
+- 読むだけ（書き込みの操作は無い）。プレイヤーの API からはこの表を読めない。
+
+### 60.8 通知のフック（新しい指紋の急増、REQ-CERR-017）
+最初に見てから `spikeWindowHours`（既定 24）時間以内の指紋の推定の数が `spikeMinCount`（既定 50）に届いた時、その指紋に1回だけ `alert: { at, appVersion, estimated }` を記録し、構造化ログ `{"alert":"client_error_spike","fingerprint":…,"category":…,"appVersion":…,"estimated":…,"title":…}` を `console.warn` に出す（Workers Logs／Logpush の通知の規則でつかまえる。docs/ops/console.md「クライアントのエラー」）。リリース直後に新しく出たエラーが増えた時に気づくため。外への通知（Slack など）は Logpush の規則側で行い、サーバーは外へ送らない。
+
+### 60.9 アカウント削除・開示（REQ-CERR-018〜019）
+- 削除の手順に `client_errors` の段（`inquiries` の後、`data_export` の前）。見本の `playerId` が削除した人のものは **null に置き換える**（匿名化。エラーそのものは運営のデータとして残す）。回数の行（`p:<playerId>`）は消す。集計の行（groups・days）にはもともとプレイヤーが入らない。
+- §51 の開示では `analytics.clientErrors`（そのプレイヤーの id が付いた見本：時刻・category・題・版・プラットフォーム・機種・OS）を出す。読めない時は `available: false`。
+
+### 60.10 設定（`progression.clientErrors`、起動時とリモート設定で検査、REQ-CERR-001）
+`{ "enabled": true, "sampling": { "exception": 1000, "api": 200, "desync": 1000, "asset": 500, "stall": 100 }, "maxItems": 20, "maxBodyBytes": 32768, "perPlayerPerHour": 20, "perDevicePerHour": 20, "anonymousPerMinute": 120, "flushIntervalSec": 60, "maxGroups": 2000, "samplesPerGroup": 5, "retentionDays": 30, "spikeMinCount": 50, "spikeWindowHours": 24 }`。範囲：`sampling` の各値は 0〜1000 の整数（‰）で 5 種類すべて必要、**`desync` は 1000 のみ**（公平さのため間引かない）、`maxItems` 1〜50、`maxBodyBytes` 4096〜65536、`perPlayerPerHour`・`perDevicePerHour` 1〜600、`anonymousPerMinute` 1〜6000、`flushIntervalSec` 10〜3600、`maxGroups` 100〜20000、`samplesPerGroup` 1〜20、`retentionDays` 7〜90、`spikeMinCount` 1〜100000、`spikeWindowHours` 1〜168。知らないキーは問題。無ければこの既定値。
+
+### 60.11 クライアント（REQ-CERR-020）
+- `Muchi.Client`：`ClientErrorCategories`・`ClientErrorItem`（`Exception`・`Api`・`Desync`・`Asset`・`Stall`）・`ErrorScrubber`・`ErrorFingerprint`・`ClientErrorSampling`・`IClientErrorStore`・`ClientErrorOptions`・`ErrorReporter`（指紋で列の中をまとめる・抽出・オフラインで保存・束ごとの `batchId`・待ち時間を延ばす再送・429 で待つ・400 は捨てる・`enabled: false` で止まる・自分の送信の失敗は報告しない）・`StallDetector`・`ApiClient.SendClientErrorsAsync`・`ApiClient.RequestFailed`（API の失敗のイベント）・`LockstepClient.Desync`（ズレのイベント、`RaceId`）。
+- `Muchi.Game`：`ClientErrorModel`（Unity のログ・フレーム・API・ズレ・アセットをつなぐ。報告の中で起きた例外を報告しない）。Unity での取り付け（`Application.logMessageReceivedThreaded`・`OnApplicationPause`）は docs/handoff-codex-round20-client-errors.md。
+- ネイティブのクラッシュ（Crashlytics）：後で Codex が足すなら、同じ `AllowsDiagnostics` で止め、プレイヤー名・自由な文を送らない（§60.3）。この経路とは別に動く。

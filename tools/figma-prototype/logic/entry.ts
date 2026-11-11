@@ -57,6 +57,8 @@ import { blocksView } from '../../../server/src/domain/blocks.js';
 import type { PlayerReportsApi } from '../../../server/src/http/admin.js';
 import { DEFAULT_MAINTENANCE, gateRequest, maintenanceStatus, type MaintenanceConfig } from '../../../server/src/domain/maintenance.js';
 import { DataExportService, MemoryExportStore, runDataExportJob, sweepDataExports } from '../../../server/src/domain/dataExportService.js';
+import { clientErrorBatchSchema, clientErrorsClientView, clientErrorsConfig } from '../../../server/src/domain/clientErrors.js';
+import { ClientErrorsCore, MemoryClientErrorRepo } from '../../../server/src/ops/clientErrors.js';
 // REQ-L10N-*: the server's English tables (master/locale-en.json + i18n/en.ts), the client's (ui-en.json) and the
 // prototype's own screen texts (proto-en.json), in one catalog with the server's template rules (katakana names romanized)
 import { compileCatalogWith, translateText, romanizeName } from '../../../server/src/i18n/catalog.js';
@@ -287,6 +289,8 @@ async function rivalDemoSeed() {
 }
 // round 17 (REQ-RPT-*): 通報とブロック on the real ReportsService / PlayerService; the ops queue is the IntegrityDO's
 // PlayerReportsCore in memory. A race report is allowed for a race the local player ran (its replay ref is on the state).
+// round 20 (REQ-CERR-*): the client error store (ClientErrorsDO's core) in memory
+const clientErrorCore = new ClientErrorsCore(new MemoryClientErrorRepo());
 const reportRepo = new MemoryPlayerReportRepo();
 const reportCore = new PlayerReportsCore(reportRepo);
 const reportQueue: PlayerReportsApi = {
@@ -842,6 +846,35 @@ export const MuchiLogic = {
     for (let i = 0; i < 12; i++) await svc.stableLikeReceive(ID, `demo_like_${i}`, `demo_like_${i}:${day}:0`);
     await svc.friendReceive(ID, 'demo_act_1', 'アサヒ');
     return svc.view(ID);
+  },
+
+  // ---------------------------------------------------------------- round 20: クライアントのエラー報告 (REQ-CERR-*, contracts/protocol.md §60)
+  // POST /v1/client-errors on the real route logic (schema, size cap, config, ClientErrorsCore = the ClientErrorsDO's core in
+  // memory) and the console view (GET /v1/admin/client-errors). The batch comes from the WASM ErrorReporter (window.onerror).
+  clientErrors: {
+    /** → { status, body } like the route: 200 with the answer, 400 / 413 / 429 with the error. */
+    ingest: (batchJson: string, signedIn = true) => {
+      const cfg = clientErrorsConfig(master);
+      const view = clientErrorsClientView(cfg);
+      if (new TextEncoder().encode(batchJson).length > cfg.maxBodyBytes) return { status: 413, body: { error: { code: 'BAD_REQUEST', message: 'too large' } } };
+      let raw: unknown;
+      try { raw = JSON.parse(batchJson); } catch { return { status: 400, body: { error: { code: 'BAD_REQUEST', message: 'invalid JSON' } } }; }
+      const p = clientErrorBatchSchema.safeParse(raw);
+      if (!p.success || p.data.items.length > cfg.maxItems) return { status: 400, body: { error: { code: 'BAD_REQUEST', message: p.success ? 'too many items' : p.error.issues[0]?.message ?? 'invalid' } } };
+      if (!cfg.enabled) return { status: 200, body: { accepted: 0, dropped: p.data.items.length, duplicate: false, ...view, enabled: false } };
+      try {
+        const r = clientErrorCore.ingest(p.data, { playerId: signedIn ? ID : null, installId: p.data.installId }, now(), cfg);
+        return { status: 200, body: { accepted: r.accepted, dropped: r.dropped, duplicate: r.duplicate, ...view } };
+      } catch (e) {
+        const err = e as AppError;
+        return { status: err.status ?? 500, body: { error: { code: err.code ?? 'INTERNAL', message: err.message } } };
+      }
+    },
+    /** The ops console's list (top errors by fingerprint). */
+    list: () => clientErrorCore.list({ limit: 20 }, now(), clientErrorsConfig(master)),
+    get: (fp: string) => clientErrorCore.get(fp, now()),
+    /** Test hook: the samples that carry the local player's id (only when the batch allowed it). */
+    samplesOf: (pid: string) => clientErrorCore.madeBy(pid),
   },
 
   // ---------------------------------------------------------------- round 17: 通報とブロック (REQ-RPT-*, contracts/protocol.md §47)

@@ -218,6 +218,26 @@ try {
     assert.equal(mine.messages[0].messageText, 'ストアの支払いを確認し、コインを付与しました。');
   });
 
+  await step('viewer: client errors (§60) — top errors by fingerprint, a desync sample links to the replay, nothing personal shown', async () => {
+    const post = async (b, headers = {}) => (await fetch(API + '/v1/client-errors', { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(b) })).json();
+    const base = { platform: 'android', appVersion: `9.${runId.length}.0`, osVersion: 'Android 14', deviceModel: 'Pixel 8', installId: `e2e_${runId}_dev` };
+    const exc = { category: 'exception', at: Date.now(), type: 'NullReferenceException', message: 'Horse "ハヤテ" missing for e2e@example.com', stack: 'Muchi.Game.HudModel.Update () (at /Users/qa/Assets/Muchi/Game/HudModel.cs:120)', handled: false, count: 3 };
+    const r1 = await post({ ...base, batchId: `b_${runId}_one`, items: [exc, { category: 'desync', at: Date.now(), raceId: `race_e2e_${runId}`, tick: 812, mode: 'ranked' }] }, { 'x-dev-user': PLAYER });
+    assert.equal(r1.accepted, 2, JSON.stringify(r1));
+    assert.equal((await post({ ...base, batchId: `b_${runId}_one`, items: [exc] })).duplicate, true, 'the same batch id is counted once');
+    await login('viewer');
+    await page.locator('#nav a[data-view=client-errors]').click();
+    await tid('ce-table').waitFor();
+    const text = await tid('ce-table').innerText();
+    assert.ok(text.includes('NullReferenceException') && !text.includes('ハヤテ') && !text.includes('e2e@example.com'), 'scrubbed titles');
+    await shot('05c-client-errors');
+    await tid('ce-category').selectOption('desync');
+    await tid('ce-table').locator('a').first().click();
+    await tid('ce-replay').first().getByText(`/v1/admin/replays/race_e2e_${runId}`, { exact: false }).waitFor();
+    assert.ok(!(await tid('ce-samples').innerText()).includes('inputs'), 'a desync sample has no inputs');
+    await shot('05d-client-error-desync');
+  });
+
   await step('admin: dry run surfaces the day-rule problem; clean version is activated; diff', async () => {
     await login('admin'); // the §48 inquiry step before this one works as operator
     await page.locator('#nav a[data-view=config]').click();

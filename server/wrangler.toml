@@ -37,6 +37,11 @@ new_sqlite_classes = ["TournamentDO"]
 tag = "v6"
 new_sqlite_classes = ["CupDO"]
 
+# REQ-CERR-* (contracts/protocol.md §60): client error reports (aggregates + samples, its own singleton)
+[[migrations]]
+tag = "v7"
+new_sqlite_classes = ["ClientErrorsDO"]
+
 # ------------------------------------------------------------------------------------------------ local (dev)
 [vars]
 ENVIRONMENT = "local"
@@ -112,6 +117,10 @@ class_name = "TournamentDO"
 [[durable_objects.bindings]]
 name = "CUPS"
 class_name = "CupDO"
+
+[[durable_objects.bindings]]
+name = "CLIENT_ERRORS"
+class_name = "ClientErrorsDO"
 
 [[r2_buckets]]
 binding = "REPLAYS"
@@ -203,6 +212,10 @@ class_name = "TournamentDO"
 name = "CUPS"
 class_name = "CupDO"
 
+[[env.staging.durable_objects.bindings]]
+name = "CLIENT_ERRORS"
+class_name = "ClientErrorsDO"
+
 [[env.staging.r2_buckets]]
 binding = "REPLAYS"
 bucket_name = "muchi-replays-staging"
@@ -291,6 +304,10 @@ class_name = "TournamentDO"
 [[env.production.durable_objects.bindings]]
 name = "CUPS"
 class_name = "CupDO"
+
+[[env.production.durable_objects.bindings]]
+name = "CLIENT_ERRORS"
+class_name = "ClientErrorsDO"
 
 [[env.production.r2_buckets]]
 binding = "REPLAYS"

@@ -16,6 +16,8 @@ export interface Env {
   EVENTS: DurableObjectNamespace;
   /** Singleton `global`: remote config versions, admin audit log, admin rate limits (REQ-OPS-*). */
   OPS?: DurableObjectNamespace;
+  /** REQ-CERR-*: singleton `global`, client error reports (aggregates + a few samples, §60; wrangler migration v7). */
+  CLIENT_ERRORS?: DurableObjectNamespace;
   /** Singleton `global`: anti-cheat flags, moderation (quarantine/ban), race reports queue (REQ-OPS-03x). */
   INTEGRITY?: DurableObjectNamespace;
   /** Secret: JSON `[{"name":"alice","role":"admin","sha256":"<hex sha-256 of the token>"}]` (REQ-OPS-010). */

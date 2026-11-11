@@ -1,0 +1,265 @@
+{
+  "_note": "REQ-CERR-008/009 (contracts/protocol.md §60.3–60.4): the TS server (server/src/domain/clientErrors.ts) and the C# client (Muchi.Client ErrorScrubber / ErrorFingerprint) turn every input into exactly these outputs. npm run gen:client-error-vectors rewrites this file.",
+  "fnv": [
+    {
+      "input": "",
+      "hash": "cbf29ce484222325"
+    },
+    {
+      "input": "a",
+      "hash": "af63dc4c8601ec8c"
+    },
+    {
+      "input": "exception|X|y|z",
+      "hash": "40f5f13d4176aaef"
+    },
+    {
+      "input": "ムチ一閃",
+      "hash": "ed8af0df438d326a"
+    }
+  ],
+  "messages": [
+    {
+      "input": "Object reference not set to an instance of an object",
+      "output": "Object reference not set to an instance of an object"
+    },
+    {
+      "input": "Login failed for alice.smith@example.com with token Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.c2lnbmF0dXJl",
+      "output": "Login failed for <email> with token <token>"
+    },
+    {
+      "input": "Horse \"ハヤテ号\" not found for player p_9f2k31",
+      "output": "Horse \"…\" not found for player <id>"
+    },
+    {
+      "input": "Could not load https://assets.example.com/ios/abc/def.bundle?sig=xyz in 12345 ms",
+      "output": "Could not load <url> in <n> ms"
+    },
+    {
+      "input": "Failed to open C:\\Users\\bob\\AppData\\LocalLow\\Muchi\\save.json",
+      "output": "Failed to open save.json"
+    },
+    {
+      "input": "File /Users/alice/proj/Assets/Muchi/Game/HudModel.cs line 120",
+      "output": "File HudModel.cs line 120"
+    },
+    {
+      "input": "Key 6c1f0b9e2a7d4c3b8a9e already present (index 42)",
+      "output": "Key <id> already present (index 42)"
+    },
+    {
+      "input": "チームに参加できません",
+      "output": "…"
+    },
+    {
+      "input": "Unexpected char 'x' at position 7",
+      "output": "Unexpected char \"…\" at position 7"
+    },
+    {
+      "input": "名前「サクラ」は使えません",
+      "output": "…\"…\"…"
+    },
+    {
+      "input": "Session 1a2b3c4d5e6f7a8b9c0d1e2f expired",
+      "output": "Session <id> expired"
+    },
+    {
+      "input": "  multiple   spaces\tand\ttabs  ",
+      "output": "multiple spaces and tabs"
+    },
+    {
+      "input": "あBearer secret123 sent",
+      "output": "…<token> sent"
+    },
+    {
+      "input": "Kelvin K and　wide space, BEARER abc",
+      "output": "Kelvin … and…wide space, <token>"
+    },
+    {
+      "input": "emoji 🐎 run p_1x2 done",
+      "output": "emoji … run <id> done"
+    },
+    {
+      "input": "﻿bom first",
+      "output": "…bom first"
+    }
+  ],
+  "stacks": [
+    {
+      "input": "Muchi.Game.HudModel.Update () (at Assets/Muchi/Game/HudModel.cs:120)\nMuchi.Game.RaceDrivers.Tick (System.Int32 t) (at Assets/Muchi/Game/RaceDrivers.cs:88)\nUnityEngine.Events.InvokableCall.Invoke () (at /Users/build/unity/Runtime/Export/UnityEvent.cs:178)",
+      "output": "Muchi.Game.HudModel.Update () (at HudModel.cs:120)\nMuchi.Game.RaceDrivers.Tick (System.Int32 t) (at RaceDrivers.cs:88)\nUnityEngine.Events.InvokableCall.Invoke () (at UnityEvent.cs:178)",
+      "frames": [
+        "Muchi.Game.HudModel.Update () (at HudModel.cs)",
+        "Muchi.Game.RaceDrivers.Tick (System.Int# t) (at RaceDrivers.cs)",
+        "UnityEngine.Events.InvokableCall.Invoke () (at UnityEvent.cs)"
+      ]
+    },
+    {
+      "input": "  at Muchi.Client.ApiClient+<Call>d__12`1[T].MoveNext () [0x0012f] in <8c2f1a9b3d4e4f5a>:0\n  at System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start () [0x00000] in /home/runner/work/x.cs:12",
+      "output": "at Muchi.Client.ApiClient+<Call>d__12`1[T].MoveNext ()\nat System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start () in x.cs:12",
+      "frames": [
+        "at Muchi.Client.ApiClient+<Call>d__#`#[T].MoveNext ()",
+        "at System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start () in x.cs"
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "input": "/v1/horses/h_9f2k/goals",
+      "output": "/v1/horses/:id/goals"
+    },
+    {
+      "input": "/v1/gacha/standard/draw",
+      "output": "/v1/gacha/standard/draw"
+    },
+    {
+      "input": "/v1/race/race_20261111_0042/report",
+      "output": "/v1/race/:id/report"
+    },
+    {
+      "input": "/v1/teams/123456/feed?cursor=9",
+      "output": "/v1/teams/:id/feed"
+    },
+    {
+      "input": "/v1/player",
+      "output": "/v1/player"
+    },
+    {
+      "input": "/v1/time-attack/sakura_2000/me",
+      "output": "/v1/time-attack/:id/me"
+    }
+  ],
+  "devices": [
+    {
+      "input": "iPhone15,2",
+      "output": "iPhone15,2"
+    },
+    {
+      "input": "iOS 18.1",
+      "output": "iOS 18.1"
+    },
+    {
+      "input": "SM-S918B",
+      "output": "SM-S918B"
+    },
+    {
+      "input": "Android 14 (API 34)",
+      "output": "Android 14 (API 34)"
+    },
+    {
+      "input": "Pixel 8 Pro — test",
+      "output": "other"
+    },
+    {
+      "input": "<script>",
+      "output": "other"
+    },
+    {
+      "input": "",
+      "output": ""
+    },
+    {
+      "input": "﻿iPhone",
+      "output": "other"
+    },
+    {
+      "input": " \t iPad13,1 ",
+      "output": "iPad13,1"
+    }
+  ],
+  "fingerprints": [
+    {
+      "input": {
+        "category": "exception",
+        "at": 1,
+        "type": "NullReferenceException",
+        "message": "Object reference not set to an instance of an object",
+        "stack": "Muchi.Game.HudModel.Update () (at Assets/Muchi/Game/HudModel.cs:120)\nMuchi.Game.RaceDrivers.Tick (System.Int32 t) (at Assets/Muchi/Game/RaceDrivers.cs:88)",
+        "handled": false
+      },
+      "source": "exception|NullReferenceException|Object reference not set to an instance of an object|Muchi.Game.HudModel.Update () (at HudModel.cs);Muchi.Game.RaceDrivers.Tick (System.Int# t) (at RaceDrivers.cs)",
+      "fingerprint": "1efac35ba68e0d10"
+    },
+    {
+      "input": {
+        "category": "exception",
+        "at": 1,
+        "type": "NullReferenceException",
+        "message": "Object reference not set to an instance of an object",
+        "stack": "Muchi.Game.HudModel.Update () (at /Users/carol/other/Assets/Muchi/Game/HudModel.cs:131)\nMuchi.Game.RaceDrivers.Tick (System.Int32 t) (at Assets/Muchi/Game/RaceDrivers.cs:90)",
+        "handled": false
+      },
+      "source": "exception|NullReferenceException|Object reference not set to an instance of an object|Muchi.Game.HudModel.Update () (at HudModel.cs);Muchi.Game.RaceDrivers.Tick (System.Int# t) (at RaceDrivers.cs)",
+      "fingerprint": "1efac35ba68e0d10"
+    },
+    {
+      "input": {
+        "category": "exception",
+        "at": 1,
+        "type": "InvalidOperationException",
+        "message": "Sequence contains 3 elements",
+        "stack": "",
+        "handled": true
+      },
+      "source": "exception|InvalidOperationException|Sequence contains # elements|",
+      "fingerprint": "2306d008793b6553"
+    },
+    {
+      "input": {
+        "category": "api",
+        "at": 1,
+        "method": "POST",
+        "route": "/v1/horses/h_9f2k/goals",
+        "status": 500,
+        "code": "INTERNAL",
+        "reason": "http"
+      },
+      "source": "api|POST|/v1/horses/:id/goals|500|INTERNAL",
+      "fingerprint": "d5c2fbc71d214d17"
+    },
+    {
+      "input": {
+        "category": "api",
+        "at": 1,
+        "method": "GET",
+        "route": "/v1/player",
+        "status": 0,
+        "reason": "network"
+      },
+      "source": "api|GET|/v1/player|0|-",
+      "fingerprint": "d899a77ea6de7dba"
+    },
+    {
+      "input": {
+        "category": "desync",
+        "at": 1,
+        "raceId": "race_1",
+        "tick": 812,
+        "mode": "ranked"
+      },
+      "source": "desync|ranked",
+      "fingerprint": "792c74a93e332464"
+    },
+    {
+      "input": {
+        "category": "asset",
+        "at": 1,
+        "assetKey": "ios/horses/sakura.bundle",
+        "reason": "hash"
+      },
+      "source": "asset|hash|ios/horses",
+      "fingerprint": "fdd6cc825ed28bbb"
+    },
+    {
+      "input": {
+        "category": "stall",
+        "at": 1,
+        "kind": "anr",
+        "durationMs": 6200,
+        "screen": "gacha_reveal"
+      },
+      "source": "stall|anr|gacha_reveal",
+      "fingerprint": "685a8f07a50bee30"
+    }
+  ]
+}

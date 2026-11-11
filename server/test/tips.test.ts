@@ -116,6 +116,7 @@ describe('the shipped tips master (REQ-TUT-010..013)', () => {
     expect(broken((t) => { t.tutorials.find((x) => x.id === 'tour_scout')!.tips.push('nope'); })).toMatch(/unknown tip nope/);
     expect(broken((t) => { t.tutorials.find((x) => x.id === 'race_whip')!.unlock = 'breeding'; })).toMatch(/open from the start/);
     expect(broken((t) => { t.config.seenMax = 5; })).toMatch(/seenMax/);
+    expect(broken((t) => { t.config.seenPerRequest = 10; })).toMatch(/seenPerRequest must be an integer 20\.\.50/); // clients batch 20
   });
   it('remote config: a valid replacement applies; a broken card, or a help change that drops a linked article, refuses the version', () => {
     const t = clone();

@@ -1457,6 +1457,87 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await page.locator('.screen.in [data-action="inquiry-send"]').click(); await waitScreen('my-inquiries'); await page.waitForTimeout(400);
   assert.equal(await page.locator('.screen.in .inq-detail').getAttribute('data-status'), 'received', 'the new inquiry is received');
   await shot('help-inquiry-sent', 300);
+  // ------------------------------------------------------------------ 6. round 19: チュートリアルのやり直しとヒント集 (REQ-TUT-*)
+  // settings › ヒント (NEW badge), the library by topic, a card with numbers from data and 「くわしく」 → help, a tour (pages,
+  // start / finish), the 「？」 of the rates / training / stable / bulk retire screens, and the whip lesson = the FTUE tutorial
+  // race in the real engine (two whips win) — the FTUE state and the first-time rewards never change
+  await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings'); await page.waitForTimeout(300);
+  const tipsRow = page.locator('.screen.in .btn[data-action="tips"]');
+  assert.match(await tipsRow.innerText(), /NEW \d+/, 'settings: the ヒント row carries the NEW count');
+  await tipsRow.click(); await waitScreen('tips'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in [data-tip-topic]').count(), 5, 'five topics');
+  assert.equal(await page.locator('.screen.in .tip-lesson').count(), 4, 'four race lessons');
+  assert.equal(await page.locator('.screen.in .tip-tour').count(), 6, 'six feature tours');
+  const tipsText = await page.locator('.screen.in').innerText();
+  assert.ok(!/今だけ|残りわずか|倍|お得|オッズ/.test(tipsText), 'no urgency, multiplier or betting wording');
+  await shot('tips', 400);
+  const ftue0 = await page.evaluate(() => { const s = globalThis.__muchi.state(); return { ftue: s.ftue, attempt: s.tutorialAttempt }; });
+  const facts0 = await page.evaluate(async () => (await globalThis.__muchi.logic.tutorialFacts()).value);
+  await page.locator('.screen.in [data-tip="whip_window"]').click(); await waitScreen('tip-card'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in [data-tip-help]').getAttribute('data-tip-help'), 'whip', 'くわしく links the help article');
+  await shot('tip-card', 300);
+  await page.locator('.screen.in [data-tip-help]').click(); await waitScreen('help-article'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-article]').getAttribute('data-article'), 'whip', 'the long text lives in the help article');
+  await page.evaluate(() => globalThis.__muchi.show('Tips')); await waitScreen('tips'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-tip="whip_window"]').getAttribute('data-new'), '0', 'read: NEW cleared');
+  await page.locator('.screen.in [data-tip-topic="scout"]').click(); await waitScreen('tips'); await page.waitForTimeout(300);
+  await page.locator('.screen.in [data-tip="scout_pity_tip"]').click(); await waitScreen('tip-card'); await page.waitForTimeout(300);
+  assert.match(await page.locator('.screen.in .tip-body').innerText(), /[0-9]+回分/, 'the pity count is filled from data');
+  // a tour: every page, then finish
+  await page.evaluate(() => globalThis.__muchi.show('Tips')); await waitScreen('tips'); await page.waitForTimeout(300);
+  await page.locator('.screen.in [data-tutorial="tour_scout"]').click(); await waitScreen('tip-card'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-tour-page]').getAttribute('data-tour-page'), '1');
+  await shot('tip-tour', 300);
+  for (let i = 0; i < 6 && (await screen()) === 'tip-card'; i++) { await page.locator('.screen.in [data-action="tour-next"]').click(); await page.waitForTimeout(450); }
+  assert.equal(await screen(), 'tips', 'the tour ends back on ヒント');
+  // the 「？」 buttons
+  await page.evaluate(() => globalThis.__muchi.show('Odds', 'standard')); await page.waitForTimeout(500);
+  await page.locator('.screen.in [data-tip-context="gacha_odds"]').click(); await waitScreen('tip-card'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in .tip-reader').getAttribute('data-tip'), 'scout_pity_tip', 'rates 「？」 → the pity card');
+  await page.locator('.screen.in [data-action="tip-close"]').click(); await page.waitForTimeout(500);
+  assert.equal(await screen(), 'odds', 'closing returns to the rates');
+  await page.evaluate(() => globalThis.__muchi.show('Roster')); await waitScreen('roster'); await page.waitForSelector('.screen.in .org-list', { timeout: 15000 });
+  await page.locator('.screen.in [data-tip-context="roster_bulk_retire"]').click(); await waitScreen('tip-card'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in .tip-reader').getAttribute('data-tip'), 'roster_retire', 'bulk retire 「？」 → its card');
+  await shot('tip-context-roster', 300);
+  await page.evaluate(() => globalThis.__muchi.show('Training')); await waitScreen('training'); await page.waitForTimeout(500);
+  await page.locator('.screen.in [data-tip-context="training"]').click(); await page.waitForTimeout(600);
+  if (await screen() === 'tip-card') assert.equal(await page.locator('.screen.in .tip-reader').getAttribute('data-tip'), 'training_timing', 'training 「？」 → its card');
+  await page.evaluate(() => globalThis.__muchi.show('Stable')); await page.waitForTimeout(500);
+  assert.equal(await page.locator('.screen.in [data-tip-context="breeding"]').count(), 1, 'the stable carries the breeding 「？」');
+  const tk = await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name.startsWith('tip') || e.name === 'tutorial_replay'));
+  assert.ok(tk.some((e) => e.name === 'tip_context_open' && e.context === 'gacha_odds' && e.tipId === 'scout_pity_tip'), 'tip_context_open');
+  assert.ok(tk.some((e) => e.name === 'tip_view' && e.tipId === 'scout_pity_tip' && e.source === 'context'), 'tip_view (context)');
+  assert.ok(tk.some((e) => e.name === 'tutorial_replay' && e.tutorialId === 'tour_scout' && e.stage === 'finish'), 'tutorial_replay finish for the tour');
+  // the whip lesson: the briefing, then the FTUE tutorial race in WASM; two whips in the last 300 m win
+  await page.evaluate(() => globalThis.__muchi.show('Tips')); await waitScreen('tips'); await page.waitForTimeout(300);
+  await page.locator('.screen.in [data-tutorial="race_whip"]').click(); await waitScreen('tip-lesson'); await page.waitForTimeout(400);
+  assert.match(await page.locator('.screen.in').innerText(), /成績・ミッション・報酬には数えません/, 'the briefing says a lesson is practice');
+  await shot('tip-lesson', 300);
+  await page.locator('.screen.in [data-action="lesson-start"]').click(); await waitScreen('race-tutorial'); await page.waitForTimeout(300);
+  let lw = 0, lastLw = 0;
+  for (let i = 0; i < 600; i++) {
+    const s = await state();
+    if (s.f?.done || (await screen()) !== 'race-tutorial') break;
+    if (s.f && s.f.departed && lw < 2 && (s.f.chance || s.f.remainingM <= 280) && Date.now() - lastLw > 700) { await page.locator('.screen.in .btn.whip').click({ force: true }); lw++; lastLw = Date.now(); }
+    await page.waitForTimeout(60);
+  }
+  await waitScreen('lesson-result', 20000); await page.waitForTimeout(500);
+  assert.equal(await page.locator('.screen.in [data-lesson]').getAttribute('data-won'), '1', 'two whips win the whip lesson');
+  await shot('lesson-result', 400);
+  const ftue1 = await page.evaluate(() => { const s = globalThis.__muchi.state(); return { ftue: s.ftue, attempt: s.tutorialAttempt }; });
+  assert.deepEqual(ftue1, ftue0, 'the FTUE step and tutorial attempt are untouched');
+  const facts1 = await page.evaluate(async () => (await globalThis.__muchi.logic.tutorialFacts()).value);
+  assert.deepEqual(facts1, facts0, 'no reward, no race counted, the first-time rewards unchanged');
+  const tk2 = await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name === 'tutorial_replay' && e.tutorialId === 'race_whip').map((e) => e.stage));
+  assert.deepEqual(tk2, ['start', 'finish'], 'tutorial_replay start / finish for the lesson');
+  // a practice lesson (reins) starts in the real engine without かんたん操作 and quits back to ヒント
+  await page.locator('.screen.in [data-action="lesson-back"]').click(); await waitScreen('tips'); await page.waitForTimeout(300);
+  await page.evaluate(() => globalThis.__muchi.show('StartLesson', 'race_reins')); await waitScreen('race', 20000); await page.waitForTimeout(1500);
+  const rs = await state();
+  assert.ok(rs.active && rs.f && (rs.f.assist ?? 'off') === 'off', 'the reins lesson rides the practice race, unassisted');
+  await shot('lesson-reins-hud', 0, true);
+  await click('中断'); await waitScreen('tips');
   // ------------------------------------------------------------------ 6. round 17: おすすめフレンド (REQ-FSUG-*)
   // people met through the real paths (an event, a friend room, a like, a cheer, mutual friends); the opted-out player and
   // the ranked-only opponent never appear; 申請する goes through the friend request flow; 表示しない is remembered; the switch

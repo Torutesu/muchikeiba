@@ -655,3 +655,10 @@ html[data-color-mode="cvd"] .a11y-swatch .g.crit { background: repeating-linear-
 .btn.help-card { text-align: left; }
 .btn.help-card > .label { pointer-events: none; }
 textarea.field { resize: none; }
+
+/* round 19: チュートリアルのやり直しとヒント集 (REQ-TUT-*) */
+.help-row.tip-card .img.tip-thumb { border-radius: 3px; }
+.help-row.locked { cursor: default; background: rgba(var(--navy-rgb), .35); }
+.btn.choice .tip-dot { position: absolute; right: 10px; top: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--gold); }
+.btn.tip-q { font-size: 22px; font-weight: 700; padding: 0; }
+.glass.tip-reader .img.tip-art, .glass.tip-lesson-brief .img.tip-art { border-radius: 4px; }

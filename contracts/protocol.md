@@ -2781,7 +2781,7 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
   "tutorials": [ { "id": "race_whip", "kind": "race", "lesson": "whip", "unlock": null, "title": { "ja": "ムチのタイミング", "en": "Whip timing" }, "tips": ["whip_window", "whip_spacing"] },
                  { "id": "tour_scout", "kind": "tour", "unlock": "scout", "title": { "ja": "スカウトのツアー", "en": "Scout tour" }, "tips": ["scout_rates_tip", "scout_pity_tip", "scout_guarantee"] } ] }
 ```
-- `config`：`titleMaxChars` 8〜40、`bodyMaxChars` 40〜240、`seenMax` 20〜500、`seenPerRequest` 1〜50。
+- `config`：`titleMaxChars` 8〜40、`bodyMaxChars` 40〜240、`seenMax` 20〜500、`seenPerRequest` 20〜50（クライアントは20件ずつ送るので、それより下げない）。
 - 話題 `topics` は5つ：`race`（レース）・`horses`（馬を育てる）・`scout`（スカウト）・`shop`（ショップ・コイン）・`social`（支部・カップ）。全部そろって重ならない。
 - カード `tips`（120枚まで）：`id` は `^[a-z0-9_]{2,40}$` で重ならない（ツアーの id とも）。`unlock` は §4.3 の開放キー（`UNLOCK_KEYS`）か `null`（最初から）。`art` は絵の種類（`whip`・`slipstream`・`lanes`・`stamina`・`reins`・`breeding`・`stud`・`training`・`roster`・`scout`・`pity`・`coins`・`branch`・`cups`、Codex が描く）。`help` は存在するヘルプ記事（リモート設定でヘルプからその記事を外す版は有効にできない）。日本語と英語でトークンの組が同じ。英語に日本語を入れない。
 - `contexts`（「？」の画面 → カード）：`gacha_odds`（提供割合）・`breeding`（配合）・`training`（調教）・`roster_bulk_retire`（まとめて引退）。全部そろって、存在するカードを指す。

@@ -62,4 +62,5 @@ node "$HERE/test/round16-season-recap.test.mjs" # round 16: シーズンの振�
 node "$HERE/test/round17-reports.test.mjs" # round 17: 通報とブロック — options, a server-side snapshot, merged reports, limits, also block on the one list, block list names, unblock, ops_notice, English
 node "$HERE/test/round17-help.test.mjs" # round 17: ヘルプセンター — index (JA/EN), context links, numbers from data, the fold, a vote, one ticket per form key, the ops reply, English
 node "$HERE/test/round17-friend-suggestions.test.mjs" # round 17: おすすめフレンド — demo from the real race / like / cheer / friends paths, reasons, opt-out and ranked never shown, request via the friend flow, dismiss, KPI, English
+node "$HERE/test/round19-tips.test.mjs" # round 19: ヒント — index (JA/EN), numbers from data, unlocks, seen marks, the 「？」 contexts, KPI, the whip lesson = the FTUE tutorial race in WASM (never assisted), no first-time reward touched
 echo "built $SITE ($(du -sh "$SITE" | cut -f1))"

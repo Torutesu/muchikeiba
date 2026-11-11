@@ -1280,6 +1280,20 @@
   "同じ支部・同じレース・いいね・応援で出会った人と、共通のフレンドが2人以上いる人を表示します。ランク戦の相手は表示しません。": "Shows people from your branch, your races, likes and cheers, and people with 2 or more mutual friends. Ranked opponents are never shown.",
   "おすすめに表示しない：オン": "Don't show me in suggestions: on",
   "おすすめに表示しない：オフ": "Don't show me in suggestions: off",
-  "フレンドの上限に達しています": "You have reached the friend limit"
+  "フレンドの上限に達しています": "You have reached the friend limit",
+  "_tips": "---- round 19: tutorial replay & tips (REQ-TUT-*)",
+  "ヒント集": "Tips library",
+  "端末で練習": "PRACTICE ON DEVICE",
+  "レッスン": "Lesson",
+  "{n}枚": "{n} cards",
+  "機能が開くと見られます": "Unlocks with its feature",
+  "ツアーを最後まで見ました": "Tour complete",
+  "？": "?",
+  "くわしく：{title} ›": "More: {title} ›",
+  "最後の直線だけの短いレース。合図が出たら、ムチを2回。": "A short race that is all home stretch. When the cue comes, whip twice.",
+  "練習のレース。前の馬の後ろについて、直線で外へ。": "A practice race. Sit behind a horse, then move out in the stretch.",
+  "練習のレース。スタミナの帯を見ながら、前半は抑えて。": "A practice race. Watch the stamina bar and hold back in the first half.",
+  "練習のレース。掛かったら手綱を長押し。": "A practice race. If your horse pulls, hold the reins.",
+  "残り300mからのムチで差し切った": "Got up with the whip from 300 m out"
  }
 }

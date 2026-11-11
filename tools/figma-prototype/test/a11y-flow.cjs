@@ -225,6 +225,11 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('HelpArticle', 'pity', 'list'); await waitScreen('help-article'); await shot('help-article', english, 500);
     await show('InquiryForm'); await waitScreen('inquiry-form'); await shot('inquiry-form', english, 500);
     await show('MyInquiries'); await waitScreen('my-inquiries'); await shot('my-inquiries', english, 500);
+    // Round 19: ヒント (the library, a card, a tour page, a lesson briefing) at the largest size (REQ-TUT-018)
+    await show('Tips'); await waitScreen('tips'); await shot('tips', english, 500);
+    await show('TipCard', 'scout_pity_tip', 'list'); await waitScreen('tip-card'); await shot('tip-card', english, 500);
+    await show('TipTour', 'tour_scout'); await waitScreen('tip-card'); await shot('tip-tour', english, 500);
+    await show('LessonBrief', 'race_whip'); await waitScreen('tip-lesson'); await shot('tip-lesson', english, 500);
     // Round 17: おすすめフレンド (the friends screen's suggestions section)
     await show('Friends'); await waitScreen('friends'); await shot('friends-suggestions', english, 600);
     await show('Settings'); await waitScreen('settings'); await boxesClear('settings lists (largest)', SETTINGS_LISTS, english);

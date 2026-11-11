@@ -48,7 +48,7 @@ export interface TipsMaster { version: number; config: TipsConfig; topics: { id:
 export const BASE_TIPS = tipsJson as unknown as TipsMaster;
 export const tipsOf = (m: Pick<Master, 'tips'>): TipsMaster => m.tips ?? BASE_TIPS;
 
-export const TIPS_LIMITS = { titleMaxChars: [8, 40], bodyMaxChars: [40, 240], seenMax: [20, 500], seenPerRequest: [1, 50] } as const;
+export const TIPS_LIMITS = { titleMaxChars: [8, 40], bodyMaxChars: [40, 240], seenMax: [20, 500], seenPerRequest: [20, 50] } as const; // clients send batches of 20 (ApiClient.TipsSeenMaxPerRequest), so the per-request cap never goes below it
 export const TIPS_MAX = 120;
 export const TUTORIALS_MAX = 30;
 export const TOUR_PAGES_MAX = 6;

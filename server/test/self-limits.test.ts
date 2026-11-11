@@ -185,6 +185,11 @@ describe('REQ-LIMIT-005..007 every purchase path', () => {
     await u.svc.setSpendingLimit('p', 5000);
     await u.buy('p', 'coin_5000');
     expect(await code(u.svc.purchaseIntent('p', 'coin_160'))).toBe('AGE_LIMIT_EXCEEDED');
+    // the own limit below the age cap names the refusal even when the age cap is passed too
+    const v = world();
+    await under16(v);
+    await v.svc.setSpendingLimit('p', 3000);
+    expect(await code(v.svc.purchaseIntent('p', 'coin_10000'))).toBe('SELF_LIMIT_EXCEEDED');
   });
   it('a lowered limit applies to the next confirmation at once; a pending raise does not until it matures', async () => {
     const w = world();

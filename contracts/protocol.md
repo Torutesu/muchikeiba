@@ -1151,7 +1151,7 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 - 「足りる」は**そのパックの有償コインだけ**で数える（初回購入ボーナスの無償コインは数えない。`paid` のときは無償コインは使えないため、`any` のときも案内を控えめにするため）。
 - 足りるもののうち価格の安い順（同じ価格ならコインのパック `kind: "coins"` を先、次に有償コインの少ない順）で**1つ**。`status: "covered"`。
 - 足りるものが無ければ、買えるもののうち有償コインが一番多いもの（同じなら安い方）を返し `covers: false`・`status: "largest_only"`（「いちばん大きい〜でも、あと◯枚足りません」）。
-- 買えるものが1つも無ければ `offer: null`・`status: "none_buyable"`・`blockedCode`（`AGE_LIMIT_EXCEEDED` / `UNSETTLED_DEBT` / `DELETION_PENDING` / `BANNED`）。
+- 買えるものが1つも無ければ `offer: null`・`status: "none_buyable"`・`blockedCode`（`AGE_LIMIT_EXCEEDED` / `SELF_LIMIT_EXCEEDED`（§67、Round 22：自分で決めた上限。クライアントは設定へのリンクだけを出す） / `UNSETTLED_DEBT` / `DELETION_PENDING` / `BANNED`）。自分で決めた上限（§67）を超えるパックは候補から除く。
 - 初回購入ボーナスは**ショップと同じ表示**（§13 `firstPurchaseBonus.label`「はじめての購入時のみ：無償コイン◯枚をプレゼント」）を、そのパックでまだ受け取っていない時だけ付ける。「倍」「お得」「今だけ」「残りわずか」・残り時間は使わない（テストで確認）。
 
 ### 29.3 形（`CoinShortfall`）
@@ -1461,6 +1461,7 @@ TeamGoalView = { "teamId": "tabc123456", "teamName": "あおばRC", "enabled": t
   "notice": "有償コインに有効期限はありません。使うときは有償コインから先に使われます。無償コインはゲーム内で受け取ったコインです。",
   "windows": { "purchasesDays": 2557, "coinsDays": 365, "gachaDays": 90 } }
 ```
+- Round 22（§67.3）：自分で決めた上限を後方互換で足す（`selfLimitYen`・`effectiveLimitYen`・`selfRemainingYen`・`selfLimitPending`・`selfLimitText`）。画面は `limitText` の下に `selfLimitText` と「上限の設定」のリンク（§67 の画面の入口）。
 - `monthlyLimitYen` は年齢区分（`ageLimits`）の月額上限。上限なし（20歳以上）・年齢未登録は `null`、`ageLimited` は上限がある区分（16歳未満・16〜17歳・18〜19歳）のとき true、`limitText` は上限があるときだけ（無ければ `null`）。
 
 ### 33.2 一覧（要認証、カーソル式）
@@ -2433,7 +2434,7 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 - **購入レシート `POST /v1/shop/purchase`・ストアのサーバー通知 `POST /v1/store/notifications/:platform`・`GET /v1/shop/store-account`**：ストアで支払いが済んだ購入は必ず付与する（資金決済法：有償コインの購入を失わない）。メンテナンス中でも、古いアプリからでも受け付ける。新しい購入の始まり（`purchase-intent`）は `shop` の窓で止まる。
 - リワード広告のサーバー通知 `GET /v1/ads/ssv/admob`（視聴はもう済んでいる）。
 - 退会 `DELETE /v1/player`・取り消し `POST /v1/player/deletion/cancel`（権利なので止めない）。
-- **アカウントとプライバシーの口**（Round 19・20 統合）：引き継ぎコード（§54）`GET`／`POST`／`DELETE /v1/transfer/code`・`POST /v1/transfer/redeem`、規約・プライバシーポリシーへの同意 `POST /v1/player/consent`（REQ-UXS-001。R20 統合で `core` から外した：ポリシーの版が上がった後の再同意を窓で閉じ込めない）、広告・分析の選択（§58）`GET`／`PUT /v1/privacy/choices`・`PUT /v1/privacy/platform`・`POST /v1/privacy/prompt-shown`、クライアントのエラー報告（§60）`POST /v1/client-errors`。レビュー依頼（§59）`/v1/review-prompt*` と通知の設定 `/v1/push/preferences`（§61 の `reminders` を含む）は `core`（`all` の窓で止まる）。
+- **アカウントとプライバシーの口**（Round 19・20 統合）：引き継ぎコード（§54）`GET`／`POST`／`DELETE /v1/transfer/code`・`POST /v1/transfer/redeem`、規約・プライバシーポリシーへの同意 `POST /v1/player/consent`（REQ-UXS-001。R20 統合で `core` から外した：ポリシーの版が上がった後の再同意を窓で閉じ込めない）、広告・分析の選択（§58）`GET`／`PUT /v1/privacy/choices`・`PUT /v1/privacy/platform`・`POST /v1/privacy/prompt-shown`、クライアントのエラー報告（§60）`POST /v1/client-errors`、**使いすぎ・遊びすぎの防止（§67、Round 22）`GET /v1/self-limits`・`PUT /v1/self-limits/spending`・`DELETE /v1/self-limits/spending/pending`・`PUT /v1/self-limits/playtime`**（上限を下げることは購入ができる間いつでもできないといけない。ストアのレシートはどの窓でも通るため。上げる・外すは冷却期間の後でしか効かない。コインを動かさない。`/v1/shop` の下に置かないので `shop` の窓でも閉じない）。レビュー依頼（§59）`/v1/review-prompt*` と通知の設定 `/v1/push/preferences`（§61 の `reminders` を含む）は `core`（`all` の窓で止まる）。
 - **個人データの開示・ダウンロード**（§51、Round 18 統合）：`GET`／`POST /v1/player/data-export`・`GET /v1/data-export/file`。退会と同じく法律上の権利なので、どの窓でも・古いアプリからでも止めない（準備はプレイヤーのアラームで動き、ダウンロードは署名つきリンク）。
 - **進行中のものの確定**：レースのソケット `GET /v1/race/:raceId/ws`（始まったレースは最後まで走り、`final` まで確定する）、`POST /v1/time-attack/submit`・`/v1/challenges/weekly/submit`・`/v1/training/:sessionId/finish`、待ち行列から抜ける `POST /v1/match/cancel`・`/v1/events/:eventId/cancel`。
 - KPI の送信 `POST /v1/analytics/events`（`maintenance_block`・`upgrade_prompt` はここを通る）と購入履歴 `GET /v1/history/*`・`POST /v1/history/support-ticket`。
@@ -3503,6 +3504,7 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
 - 同意の事前の画面がこの規則で出せなかった時、最初の広告は今の効いている値（まだ選んでいなければ非パーソナライズ）で出る。報酬は同じ（58.6）。
 - 端末：Unity は `SessionPromptGate`（`ConsentModel.Prompts`・`LocalNotificationModel.Prompts`・`ReviewPromptModel.Prompts` に同じものを渡す）、プロトタイプは `sessionPrompt`。サーバーには状態を足さない（セッションは端末のもの）。
 - **アカウントが変わった時（§54）**：`SESSION_REPLACED`・引き継ぎコードの入力で `AccountChangeReset` がローカル通知を全部取り消し（§61.5）、エラー報告の溜まった分を ID なしにし（§60.6）、レビューのセッション（id と「このセッションで頼んだ」）を新しくし、この1つの規則を最初に戻す。
+- **Round 22（§67.4）遊ぶ時間のお知らせはこの規則の外**：本人が頼んだお知らせでお願いの画面ではないので、`sessionPrompt`／`SessionPromptGate` を通らず、枠を使わない・取られない。同じ区切りではこのシートを先に出し、お願いの画面は次の区切りに回す（Unity は `SelfLimitsModel.SheetVisible`）。
 - **`reminders`（§61）と同意**：呼び戻しの種類なので既定オフで、前置きで選んだ人だけ（§3.5 の「新しい種類と同意」）。トラッキング・広告には使わず、パーソナライズ広告の選択とは関係しない。`lnotif_*` の KPI は `optional`（分析がオフなら送らない・書かない、58.7）。子どもにも同じ規則（購入・広告への誘いは無い、§61.1）。
 
 ## 59. レビュー依頼のタイミング（in-app store review prompt、REQ-REV-001〜016、`server/src/domain/reviewPrompt.ts`・`progression.reviewPrompt`、C# `ReviewPrompt.cs`（`ReviewPromptPolicy`・`IStoreReview`）・`Muchi.Game.ReviewPromptModel`、共有ベクター `contracts/review-prompt.vectors.json`）
@@ -3713,6 +3715,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 | `exchange_closing` | イベント交換所（§30）が閉まる | `events` | `closesAt − leadHours`（イベントごとに1つ） | ポイントが残っている。文言は「残ったポイントは素材になります」（§30、失われない） | `event_exchange` |
 | `gift_expiring` | プレゼント（§26）の受け取り期限 | `gifts` | 一番早い `expiresAt − leadHours` | 期限のある未受け取りの品がある。**開くだけ**（通知から受け取らない） | `gift_box` |
 
+- Round 22（§67）：遊ぶ時間のお知らせは**アプリの中のシート**（通知ではない）。OS の通知・プッシュのどちらにも持ち主を作らない（`LNOTIF_OWNERSHIP` に足さない）。
 - 持ち主が `server` の出来事（ローカルでは作らない）：push.json の全テンプレート（フレンド・支部・招待・シーズン開幕／終了・昇級まであと1勝・イベント開始・大会の締切／まもなく・TA記録・ライバルの記録・おかえり（`comeback`）・プレゼントが届いた（`gift_arrived`））。今の6つのローカルの種類と同じ出来事を送るテンプレートは無い。今後サーバーが同じ出来事を送るなら、ローカルの種類の方を外す。
 - 呼び戻しの通知（「調教ができます」「ログインボーナス」）は 06 §3.5 のとおり**新しい種類と同意**が要る：新しい種類 **`reminders`**（「リマインダー」、**既定オフ**、push.json `defaults.categories.reminders: false`）。サーバーはこの種類のプッシュを送らない（テンプレートが無い、テストで確かめる）。受け取るには 61.4 の前置きで本人が選ぶ。
 - 期限の知らせ（週替わりチャレンジ・ライバル・交換所・プレゼント）は**データの本当の期限**だけ。作った時計・カウントダウン・「今だけ」「残りわずか」「お得」などは無い。購入・ショップ・ガチャ・パスの購入へ誘う種類は無い（開く画面はコードで固定、設定で変えられない）。厩舎手当（§13.5）の受け取りはショップの画面にあるので知らせない。

@@ -108,10 +108,12 @@ export function productBlock(m: Master, s: PlayerState, p: Product, now: number,
   if (s.purchases.some((x) => x.limitBreach && !x.sandbox && (x.month ?? jstMonthKey(x.at)) === month)) return { code: 'AGE_LIMIT_EXCEEDED', message: 'monthly limit already exceeded this month' };
   const spent = s.monthlySpendYen[month] ?? 0;
   const limit = ab?.band.monthlyLimitYen ?? null;
-  if (ab && limit !== null && spent + p.priceYen > limit) return { code: 'AGE_LIMIT_EXCEEDED', message: `monthly ${spent}+${p.priceYen} > ${limit}` };
   // REQ-LIMIT-005/006 (§67.2): the player's own limit, judged where the age cap is (every purchase path reads productBlock).
-  // Equal to the age cap → the age cap already refused above. Judged even before the age is registered.
+  // The binding cap names the refusal: the own limit only when it is strictly below the age cap (equal → the age code, as
+  // changing the own limit would not help). Judged even before the age is registered.
   const own = selfLimitYenAt(s, now);
+  const ownBinds = own !== null && (limit === null || own < limit);
+  if (ab && limit !== null && !ownBinds && spent + p.priceYen > limit) return { code: 'AGE_LIMIT_EXCEEDED', message: `monthly ${spent}+${p.priceYen} > ${limit}` };
   if (own !== null && spent + p.priceYen > own) {
     return { code: 'SELF_LIMIT_EXCEEDED', message: `own monthly limit ${spent}+${p.priceYen} > ${own}`, details: { selfLimitYen: own, monthSpentYen: spent, priceYen: p.priceYen, month, settings: 'self_limits' } };
   }

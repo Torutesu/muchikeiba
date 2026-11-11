@@ -44,6 +44,9 @@ await asPlayer('POST', '/v1/player/bootstrap');
 await asPlayer('PUT', '/v1/player/age', { birthYear: 1990, birthMonth: 1, guardianConsent: false });
 await asPlayer('POST', '/v1/shop/purchase-intent', { productId: 'coin_1500' });
 await asPlayer('POST', '/v1/shop/purchase', { platform: 'fake', productId: 'coin_1500', receipt: JSON.stringify({ transactionId: `T_${PLAYER}`, productId: 'coin_1500', purchasedAt: Date.now(), priceYen: 1500 }) });
+// §67: the player's own limit (¥3,000) and a waiting removal, shown read-only on the player page
+await asPlayer('PUT', '/v1/self-limits/spending', { limitYen: 3000 });
+await asPlayer('PUT', '/v1/self-limits/spending', { limitYen: null });
 const invite = await asPlayer('GET', '/v1/invite');
 const inviteCode = invite.displayCode; // what a player reads out to support ("XXXX-XXXX")
 assert.ok(inviteCode, `invite code in ${JSON.stringify(invite)}`);
@@ -138,6 +141,9 @@ try {
     assert.equal((await tid('wallet-paid').textContent()).replace(/,/g, ''), String(paid0));
     assert.equal((await tid('wallet-free').textContent()).replace(/,/g, ''), String(free0));
     await tid('purchases-table').getByText(`T_${PLAYER}`).waitFor();
+    // §67.10: the own limit and the waiting change are visible; there is no control to raise or remove it
+    await tid('self-limits-kv').getByText('¥3,000').first().waitFor();
+    await tid('self-limits-kv').getByText(/なし（.*から）/).waitFor();
     await shot('03-player-support');
   });
 

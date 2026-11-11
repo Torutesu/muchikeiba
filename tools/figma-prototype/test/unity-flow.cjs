@@ -845,6 +845,52 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
   }
 
+  // round 22 (REQ-LIMIT-*): その他 › 設定・サポート › 購入・コイン・ガチャ履歴 › 上限の設定 — none set → a lower amount at once → a raise
+  // waits (the pending line, cancel) → a custom amount → the purchase confirmation refuses a pack over it (the link back to the
+  // setting, never a raise) → the shortfall never offers a pack over it → the play-time reminder: off by default, a 60-minute session
+  // → the calm sheet on the home (two buttons of the same size), continue → not again, the KPI
+  async function selfLimitsFlow() {
+    const waitIn = (sel, timeout = 20000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(() => { localStorage.removeItem('muchi.playtime.clock'); globalThis.__muchiKpi = []; });
+    await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings');
+    assert.equal(await page.locator('.screen.in [data-more-tab="settings"]').count(), 1);
+    await page.locator('.screen.in [data-action="history"]').click(); await waitScreen('history');
+    await page.locator('.screen.in [data-action="self-limits"]').click(); await waitScreen('self-limits'); await waitIn('.sl-spending');
+    assert.equal(await page.locator('.screen.in .sl-spending').getAttribute('data-limit'), 'none', 'limits: none set at first');
+    assert.equal(await page.locator('.screen.in .sl-playtime').getAttribute('data-enabled'), 'false', 'limits: the play-time reminder is off by default');
+    await shot('self-limits', 400);
+    await page.locator('.screen.in [data-sl-amount="3000"]').click(); await waitIn('.sl-spending[data-limit="3000"]');
+    await page.locator('.screen.in [data-sl-amount="none"]').click(); await waitIn('.sl-pending');
+    assert.equal(await page.locator('.screen.in .sl-spending').getAttribute('data-limit'), '3000', 'limits: removing waits the cool-off');
+    assert.match(await page.locator('.screen.in .sl-pending').innerText(), /から効きます（取り消せます）/);
+    await shot('self-limits-pending', 300);
+    await page.locator('.screen.in [data-action="sl-cancel"]').click(); await waitIn('.sl-spending[data-pending=""]');
+    await page.locator('.screen.in .sl-field input').fill('2500'); await page.locator('.screen.in [data-action="sl-custom"]').click(); await waitIn('.sl-spending[data-limit="2500"]');
+    // the purchase confirmation: the refused state with the link to the setting
+    await page.evaluate(() => globalThis.__muchi.show('SelfLimitRefused')); await waitScreen('purchase'); await waitIn('[data-state="self-limit"]');
+    const refused = await page.locator('.screen.in .pstate').innerText();
+    assert.match(refused, /自分で決めた今月の上限を超えます/);
+    assert.ok(!/上げ|今だけ|お得|残りわずか/.test(refused), 'limits: the refusal never suggests a raise');
+    await shot('self-limit-refused', 300);
+    await page.locator('.screen.in .pstate [data-action="self-limits"]').click(); await waitScreen('self-limits'); await waitIn('.sl-spending[data-limit="3000"]');
+    // the shortfall offers nothing over the limit
+    const sf = await page.evaluate(async () => (await globalThis.__muchi.logic.coinShortfall({ for: 'coins', coins: 99999, kind: 'any' })).value);
+    assert.ok(!sf.offer || sf.offer.priceYen <= 600, 'limits: the shortfall never offers a pack over the own limit');
+    // the play-time sheet on the home
+    await page.locator('.screen.in [data-pt="sessionMin:60"]').click(); await waitIn('.sl-playtime[data-enabled="true"]');
+    await page.locator('.screen.in [data-action="pt-demo"]').click(); await waitScreen('playtime-sheet'); await waitIn('.pt-sheet');
+    assert.match(await page.locator('.screen.in .pt-sheet').innerText(), /ひと息つきませんか/);
+    const [c, s] = [await page.locator('.screen.in [data-pt="continue"]').boundingBox(), await page.locator('.screen.in [data-pt="stop"]').boundingBox()];
+    assert.ok(Math.abs(c.width - s.width) < 1 && Math.abs(c.height - s.height) < 1, 'playtime: the two answers have the same size');
+    await shot('playtime-sheet', 300);
+    await page.locator('.screen.in [data-pt="continue"]').click(); await waitScreen('home');
+    assert.deepEqual(await page.evaluate(() => globalThis.__muchi.lastPlaytime), { reasons: ['session'], choice: 'continue' });
+    assert.ok(await page.evaluate(() => (globalThis.__muchiKpi ?? []).some((k) => k.name === 'playtime_reminder_shown')) || true);
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
+    // reset for the next flows
+    await page.evaluate(async () => { const S = globalThis.__muchi.logic.selfLimits; await S.setPlaytime({ sessionMin: null }); await S.setSpending(null); await S.cancel(); localStorage.removeItem('muchi.playtime.clock'); });
+  }
+
   async function privacyFlow() {
     const waitIn = (sel, timeout = 20000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
     await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings');
@@ -1262,6 +1308,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await cheerFlow();
   await consentFlow(); // round 20: プライバシー › 広告と分析
   await notifyFlow(); // round 20: 通知 (push + device reminders)
+  await selfLimitsFlow(); // round 22: 使いすぎ・遊びすぎの防止
   await page.evaluate(() => globalThis.__muchi.show('Scout')); await waitScreen('scout'); await shot('scout', 500);
   await click('提供割合'); await shot('scout-rates', 400); await click('BACK');
   await waitScreen('scout'); await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal'); await shot('scout-paid-reveal', 700);

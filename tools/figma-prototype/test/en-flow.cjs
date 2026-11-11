@@ -314,6 +314,18 @@ module.exports = async function enFlow(browser, base, out, errors) {
     await page.evaluate(async () => { localStorage.removeItem('muchi.lnotif.os'); await globalThis.__muchi.logic.localNotify.setCategory('reminders', false); });
   }
 
+  // round 22: 使いすぎ・遊びすぎの防止 in English (REQ-LIMIT-022): the screen, the refused purchase, the play-time sheet
+  {
+    const waitIn = (sel, timeout = 20000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(async () => { await globalThis.__muchi.logic.selfLimits.seedDemo(); await globalThis.__muchi.logic.selfLimits.setSpending(null); });
+    await show('SelfLimits'); await waitScreen('self-limits'); await waitIn('.sl-pending'); await shot('self-limits', 500);
+    await show('SelfLimitRefused'); await waitScreen('purchase'); await waitIn('[data-state="self-limit"]'); await shot('self-limit-refused', 400);
+    assert.match(await page.locator('.screen.in .pstate').innerText(), /monthly limit you set/, 'limits: the refusal in English');
+    await show('PlaytimeSheet'); await waitScreen('playtime-sheet'); await waitIn('.pt-sheet'); await shot('playtime-sheet', 400);
+    assert.match(await page.locator('.screen.in .pt-sheet').innerText(), /Time for a short break\?/, 'playtime: the sheet in English');
+    await page.evaluate(async () => { const S = globalThis.__muchi.logic.selfLimits; await S.cancel(); await S.setPlaytime({ sessionMin: null }); localStorage.removeItem('muchi.playtime.clock'); });
+  }
+
   // round 16: 厩舎の整理 in English (REQ-ORG-015): the list, the sort and filter sheets, selection, the confirmation; names as typed
   {
     const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });

@@ -234,6 +234,8 @@ export interface PlayerState {
   seasonRecap?: import('./seasonRecap.js').SeasonRecapState;
   /** REQ-CUP-*: プレイヤー主催カップ — cups the player is in, invitations, results and trophies (hostedCups.ts ensureCups). */
   cups?: import('./hostedCups.js').PlayerCupsState;
+  /** REQ-TRF-*: 引き継ぎコード — the current code (no password, no hash), daily issues, the old-device cut-off, history (transferCode.ts). */
+  transfer?: import('./transferCode.js').TransferState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

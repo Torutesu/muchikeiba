@@ -163,7 +163,18 @@
       },
       "keywords": { "ja": ["引き継ぎ", "機種変更", "ログイン", "連携"], "en": ["transfer", "new device", "sign in", "link"] },
       "links": [ { "type": "screen", "screen": "account_link" } ],
-      "related": ["delete_account"]
+      "related": ["transfer_code", "delete_account"]
+    },
+    {
+      "id": "transfer_code", "category": "account",
+      "title": { "ja": "引き継ぎコード（IDとパスワード）", "en": "Transfer code (ID and password)" },
+      "body": {
+        "ja": "Apple・Googleのアカウントを使わずに、IDとパスワードで機種変更できます。\n\n1. いまの端末で、設定の「引き継ぎ」から「IDとパスワード」を開き、パスワードを決めて発行します（自動で作ることもできます。自動のパスワードは発行したときに1回だけ表示されます）\n2. 新しい端末のタイトル画面で「データ引き継ぎ」を開き、IDとパスワードを入れます\n\n・コードは1回だけ使えます。使った後や発行し直した後は、前のコードは使えません\n・有効期限は発行の画面に表示されます。期限が過ぎたら発行し直してください\n・新しい端末にあったデータは引き継ぎの後に使えなくなります（確認の画面が出ます）\n・引き継ぐと、前の端末ではそのアカウントで遊べなくなります\n・有償コイン・購入の記録もそのまま引き継がれます\n・パスワードは運営にも分かりません。IDとパスワードは人に教えないでください\n・何度も間違えると、しばらく入力できなくなります",
+        "en": "You can change devices with an ID and password instead of an Apple or Google account.\n\n1. On your current device, open Data transfer in the settings, choose ID and password, set a password and issue the code (or let the app create one; a created password is shown only once, when it is issued)\n2. On the new device, open Data transfer on the title screen and enter the ID and password\n\n• A code works once. After it is used or a new one is issued, the old code stops working\n• The expiry date is shown on the issue screen. Issue a new code after it expires\n• Data that was on the new device can no longer be used after the transfer (you will be asked to confirm)\n• After the transfer, the account can no longer be played on the old device\n• Paid coins and your purchase records move with the account\n• Not even support can see your password. Never share your ID and password\n• After too many wrong entries, you have to wait a while before trying again"
+      },
+      "keywords": { "ja": ["引き継ぎコード", "パスワード", "ID", "機種変更", "引き継ぎ"], "en": ["transfer code", "password", "ID", "new device", "transfer"] },
+      "links": [ { "type": "screen", "screen": "account_link" } ],
+      "related": ["data_transfer"]
     },
     {
       "id": "history_help", "category": "account",

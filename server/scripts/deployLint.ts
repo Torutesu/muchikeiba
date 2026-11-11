@@ -18,7 +18,7 @@ export type DeployEnv = (typeof DEPLOY_ENVS)[number];
 /** Secrets every deployed environment needs (`wrangler secret put <NAME> --env <env>`). */
 export const REQUIRED_SECRETS = ['TICKET_SECRET', 'VERIFIER_TOKEN', 'ADMIN_TOKENS', 'GOOGLE_SERVICE_ACCOUNT_JSON', 'KPI_SALT'] as const;
 /** Secrets that may be set (FCM falls back to GOOGLE_SERVICE_ACCOUNT_JSON; ADMIN_TOKEN is the legacy single token). */
-export const OPTIONAL_SECRETS = ['FCM_SERVICE_ACCOUNT_JSON', 'ADMIN_TOKEN'] as const;
+export const OPTIONAL_SECRETS = ['FCM_SERVICE_ACCOUNT_JSON', 'ADMIN_TOKEN', 'FIREBASE_AUTH_SERVICE_ACCOUNT_JSON'] as const;
 /** Names that must never appear in [vars] (they would be visible in the dashboard and in git). */
 const SECRET_NAMES = new Set<string>([...REQUIRED_SECRETS, ...OPTIONAL_SECRETS]);
 

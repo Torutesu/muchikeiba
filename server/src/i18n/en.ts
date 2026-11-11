@@ -13,6 +13,13 @@ export const CODE_EN: Record<string, string> = {
   'アプリを最新版に更新してください': 'Please update the app to the latest version',
   'レースに参加するにはアプリの更新が必要です': 'Update the app to join races',
 
+  // ---- 引き継ぎコード (transferCode.ts passwordRuleTexts / sessionReplacedError, protocol §54; REQ-TRF-003/010)
+  '{min}〜{max}文字': '{min}–{max} characters',
+  '半角の英数字と記号': 'Letters, numbers and symbols',
+  '英字と数字を両方使う': 'Use both letters and numbers',
+  'よく使われるパスワードは使えません': 'No common passwords',
+  'この端末のデータは別の端末に引き継がれました': 'This account has moved to another device',
+
   // ---- shop (shop.ts productContents / firstPurchaseBonusOf; REQ-UXS-022)
   '無償コイン{n}枚': '{n} free coins',
   '有償コイン{n}枚': '{n} paid coins',

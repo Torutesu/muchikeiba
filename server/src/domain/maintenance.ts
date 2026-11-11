@@ -200,6 +200,9 @@ export const EXEMPT_ROUTES: readonly string[] = [
   'GET /v1/help', 'GET /v1/help/articles/:articleId', 'GET /v1/help/search',
   'GET /v1/help/inquiries', 'GET /v1/help/inquiries/:ticketId', 'POST /v1/help/inquiries', 'POST /v1/help/inquiries/:ticketId/read',
   'GET /v1/reports/options', 'POST /v1/reports', 'GET /v1/blocks', 'PUT /v1/blocks/:playerId', 'DELETE /v1/blocks/:playerId',
+  // Round 19 (§54, REQ-TRF-016): 引き継ぎコード is account access like sign-in and deletion — a player changing phones is
+  // never locked out by a window or an old app. It moves no coins; ops stop it with progression.transfer.enabled.
+  'GET /v1/transfer/code', 'POST /v1/transfer/code', 'DELETE /v1/transfer/code', 'POST /v1/transfer/redeem',
 ];
 
 const PREFIX_GROUPS: [string, MaintenanceGroup][] = [

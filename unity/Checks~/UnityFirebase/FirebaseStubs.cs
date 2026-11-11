@@ -31,6 +31,8 @@ namespace Firebase.Auth
         public FirebaseUser CurrentUser { get; }
         public Task<AuthResult> SignInAnonymouslyAsync() => Task.FromResult(new AuthResult());
         public Task<FirebaseUser> SignInWithCredentialAsync(Credential credential) => Task.FromResult(new FirebaseUser());
+        public Task<AuthResult> SignInWithCustomTokenAsync(string token) => Task.FromResult(new AuthResult());
+        public void SignOut() { }
     }
     public static class OAuthProvider { public static Credential GetCredential(string providerId, string idToken, string rawNonce, string accessToken) => new Credential(); }
     public static class GoogleAuthProvider { public static Credential GetCredential(string idToken, string accessToken) => new Credential(); }

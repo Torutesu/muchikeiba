@@ -32,7 +32,7 @@ namespace Muchi.Engine.Tests
             Assert.Equal(300, v.Line);
             Assert.Equal(3, v.Rules.TopPlace);
             Assert.Equal("昇級戦 2/3", PromotionPips.HomeLabel(v));
-            Assert.Equal("○◌◌", PromotionPips.Marks(v.Series));
+            Assert.Equal("○··", PromotionPips.Marks(v.Series));
             Assert.Equal("3戦で3着以内が2回で突破", PromotionPips.RuleLine(v.Series));
             Assert.Null(PromotionPips.OutcomeTitle(v));
             Assert.Null(PromotionPips.GraceLabel(v));

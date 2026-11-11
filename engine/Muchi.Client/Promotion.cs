@@ -109,7 +109,7 @@ namespace Muchi.Client
     /// <summary>The words and marks the screens use (Japanese; the view shows Loc.T(text)).</summary>
     public static class PromotionPips
     {
-        /// <summary>○ top, ● miss, ◌ open, – skip (the same marks as the prototype; none of them is a Japanese character).</summary>
+        /// <summary>○ top, ● miss, · open, – skip (the same marks as the prototype; none of them is a Japanese character).</summary>
         public static string Glyph(string pip)
         {
             switch (pip)
@@ -117,7 +117,7 @@ namespace Muchi.Client
                 case PromotionPip.Top: return "○";
                 case PromotionPip.Miss: return "●";
                 case PromotionPip.Skip: return "–";
-                default: return "◌";
+                default: return "·";
             }
         }
 

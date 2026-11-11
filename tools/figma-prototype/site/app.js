@@ -955,15 +955,16 @@ function ResultScreen(f, rewards, passXp, pass, missions) {
 }
 // ================================================================= round 22: 昇級戦と降級の猶予 (REQ-PROMO-*, contracts/protocol.md §68)
 // The ranked result shows the promotion series on the real promotion.ts rules: the start banner on the race that reached the
-// line, the pips (○ top · ● miss · ◌ to run · – not run), the rule line, and when the series is decided the outcome sheet —
+// line, the pips (○ top · ● miss · · to run · – not run), the rule line, and when the series is decided the outcome sheet —
 // through the session's one-prompt gate (§58.11): when another prompt already showed this session the outcome stays on the
 // card only and the sheet waits for the home. The class still changes at the season close. Nothing is sold or granted.
 // Mirrors unity/Assets/Muchi/Game/PromotionModel.cs.
-const PROMO_GLYPH = { top: '○', miss: '●', open: '◌', skip: '–' };
-const promoMarks = (x) => (x?.pips ?? []).map((p) => PROMO_GLYPH[p] ?? '◌').join('');
+const PROMO_GLYPH = { top: '○', miss: '●', open: '·', skip: '–' };
+const promoMarks = (x) => (x?.pips ?? []).map((p) => PROMO_GLYPH[p] ?? '·').join('');
 const promoHomeLabel = (v) => (v?.enabled && v.series?.status === 'active' && v.series.next ? `昇級戦 ${v.series.next}/${v.series.races}` : null);
 const promoRuleLine = (x) => `${x.races}戦で${x.topPlace}着以内が${x.needTop}回で突破`;
 const promoPending = (v) => !!(v?.enabled && v.series && (v.series.status === 'passed' || v.series.status === 'failed') && !v.series.seen);
+let promoDeferred = null; // the series whose sheet waited for a later session (the gate was taken on its result screen)
 function promoLog(x) { (globalThis.__muchiPromo ??= []).push(x); }
 /** The pips row: one circle per race of the series. */
 function PromoPips(x, px, py, parent, size = 34) {
@@ -978,19 +979,19 @@ function PromoResultCard(ctx) {
   const v = ctx.view, x = v?.series;
   if (!v?.enabled || !x) return null;
   const started = x.status === 'active' && x.results.length === 0 && x.id !== ctx.beforeId;
-  const c = Glass('Promotion series', 900, 196, 520, 318, undefined, .86); c.classList.add('pp-card', 'rise');
+  const c = Glass('Promotion series', 900, 180, 520, started ? 340 : 300, undefined, .86); c.classList.add('pp-card', 'rise');
   c.dataset.status = started ? 'start' : x.status;
   Kicker('昇級戦　/　' + v.classId + '級 → ' + v.toClassId + '級', 28, 22, c, { w: 460, size: 15 });
   const title = started ? '昇級戦 開始' : x.status === 'passed' ? `${v.toClassId}級へ昇級確定` : x.status === 'failed' ? '昇級ならず' : promoHomeLabel(v);
-  Txt(title, 28, 74, 464, 34, x.status === 'passed' || started ? GOLD : WHITE, c, { weight: 700, ls: '.06em', nowrap: true }).classList.add('pp-title');
-  if (started) Txt('昇級ラインに到達。ここからが本番だ', 28, 122, 464, 16, WHITE, c, { weight: 500, nowrap: true }).classList.add('pp-lead');
-  PromoPips(x, 28, started ? 162 : 134, c);
-  Txt(promoRuleLine(x), 28, started ? 214 : 190, 464, 16, MUTED, c, { nowrap: true }).classList.add('pp-rule');
+  Txt(title, 28, 92, 464, 34, x.status === 'passed' || started ? GOLD : WHITE, c, { weight: 700, ls: '.06em', nowrap: true }).classList.add('pp-title');
+  if (started) Txt('昇級ラインに到達。ここからが本番だ', 28, 142, 464, 16, WHITE, c, { weight: 500, nowrap: true }).classList.add('pp-lead');
+  PromoPips(x, 28, started ? 182 : 148, c);
+  Txt(promoRuleLine(x), 28, started ? 234 : 200, 464, 16, MUTED, c, { nowrap: true }).classList.add('pp-rule');
   const foot = x.status === 'failed' && x.setbackTo != null ? `ポイントは${fmt(x.setbackTo)}ptに戻りました` : x.status === 'passed' ? 'クラスが上がるのはシーズンの締め' : `ライン ${fmt(v.line ?? 0)}pt　·　いま ${fmt(v.points)}pt`;
-  Txt(foot, 28, started ? 250 : 226, 464, 15, SOFT, c, { nowrap: true }).classList.add('pp-foot');
+  Txt(foot, 28, started ? 270 : 236, 464, 15, SOFT, c, { nowrap: true }).classList.add('pp-foot');
   if (promoPending(v)) {
     if (sessionPrompt.claim('promotion')) PromoOutcome(v, () => {});
-    else promoLog({ sheet: 'deferred', id: x.id });
+    else { promoDeferred = x.id; promoLog({ sheet: 'deferred', id: x.id }); }
   }
   return c;
 }
@@ -1351,10 +1352,10 @@ async function Home() {
   } else Txt('無料スカウトで相棒を迎えよう', 29, 124, 400, 18, WHITE, pc);
   pc.style.cursor = 'pointer'; pc.addEventListener('click', () => Stable());
   // ② race: the largest, bottom right
-  Caption(player.rating.rankedRaces < L.master.beginnerRaces ? `初心者マッチ　あと${L.master.beginnerRaces - player.rating.rankedRaces}戦　·　12頭` : 'ランク戦　·　12頭　·　約90秒', 1134, 604, undefined, 15, WHITE).classList.add('tshadow');
-  // round 22 (§68, REQ-PROMO-017): 「昇級戦 2/3」 with the pips over the race button; the grace window under the class
-  if (promoHomeLabel(promo)) { const pl = Caption(`${promoHomeLabel(promo)}　${promoMarks(promo.series)}`, 1134, 572, undefined, 17, GOLD); pl.classList.add('tshadow', 'pp-home'); }
-  else if (promo?.enabled && promo.grace) { const gl = Caption(`降級の猶予 残り${promo.grace.racesLeft}戦`, 1134, 572, undefined, 15, CYAN); gl.classList.add('tshadow', 'pp-grace'); }
+  // round 22 (§68, REQ-PROMO-017): over the race button 「昇級戦 2/3」 with the pips, or the grace window, in place of the caption
+  if (promoHomeLabel(promo)) Caption(`${promoHomeLabel(promo)}　${promoMarks(promo.series)}`, 1134, 602, undefined, 17, GOLD).classList.add('tshadow', 'pp-home');
+  else if (promo?.enabled && promo.grace && player.rating.rankedRaces >= L.master.beginnerRaces) Caption(`ランク戦　·　降級の猶予 残り${promo.grace.racesLeft}戦`, 1134, 604, undefined, 15, CYAN).classList.add('tshadow', 'pp-grace');
+  else Caption(player.rating.rankedRaces < L.master.beginnerRaces ? `初心者マッチ　あと${L.master.beginnerRaces - player.rating.rankedRaces}戦　·　12頭` : 'ランク戦　·　12頭　·　約90秒', 1134, 604, undefined, 15, WHITE).classList.add('tshadow');
   Cta('レースへ', 1110, 636, 416, RaceLobby, undefined, 'hero');
   if (bonus) toast(`ログインボーナス ${bonus.track === 'beginner' ? '初心者' : ''}${bonus.day}日目：${rewardText(bonus.reward)}`);
   NavBar(0);
@@ -1364,7 +1365,7 @@ async function Home() {
   await NextCard(); // round 16: 次にやること, bottom centre (the top bar stays as it is)
   await GoalPinStrip(); // round 18: the pinned horse goal, above the next card
   lnRefresh().catch(() => {}); // round 20 (REQ-LNOTIF-011): the app came to the front → plan the device reminders again
-  if (promoPending(promo) && sessionPrompt.claim('promotion')) PromoOutcome(promo, () => {}); // round 22: an outcome that waited
+  if (promoPending(promo) && promo.series.id === promoDeferred && sessionPrompt.claim('promotion')) { promoDeferred = null; PromoOutcome(promo, () => {}); } // round 22: an outcome that waited
   MaybeLinkPrompt('Home', Home);
 }
 /** ③ today's to-do (login bonus, daily missions, first-win bonus) in a drawer. */

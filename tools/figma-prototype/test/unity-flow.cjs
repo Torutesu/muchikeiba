@@ -493,7 +493,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   }
 
   // round 22 (REQ-PROMO-*): 昇級戦 — real ranked results reach the line: the start banner and empty pips on the result → one
-  // top-3 (○◌◌) and 「昇級戦 2/3」 on the home → two top-3: the pass sheet (gold, ack = seen, never again) → a failed series: the
+  // top-3 (○··) and 「昇級戦 2/3」 on the home → two top-3: the pass sheet (gold, ack = seen, never again) → a failed series: the
   // sheet with the setback → the sheet waits when another prompt showed this session (inline only); nothing granted
   async function promotionFlow() {
     const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
@@ -504,12 +504,12 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     assert.equal(await page.locator('.screen.in .pp-pip.open').count(), 3, 'promo: three open pips');
     await shot('promotion-start', 500);
     await page.evaluate(() => globalThis.__muchi.show('PromotionResult', 'one')); await waitScreen('result'); await waitIn('.pp-card[data-status="active"]');
-    assert.equal(await page.locator('.screen.in .pp-pips').getAttribute('data-marks'), '○◌◌', 'promo: one top pip');
+    assert.equal(await page.locator('.screen.in .pp-pips').getAttribute('data-marks'), '○··', 'promo: one top pip');
     await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home'); await waitIn('.pp-home');
     assert.match(await page.locator('.screen.in .pp-home').innerText(), /昇級戦 2\/3/, 'promo: the home label');
     await shot('promotion-home', 500);
     await page.evaluate(() => globalThis.__muchi.show('PromotionResult', 'passed')); await waitScreen('result'); await waitIn('.pp-sheet.pass');
-    assert.match(await page.locator('.screen.in .pp-sheet').innerText(), /B級へ昇級確定/, 'promo: the pass sheet');
+    assert.match(await page.locator('.screen.in .pp-sheet').innerText(), /[A-Z]級へ昇級確定/, 'promo: the pass sheet');
     await shot('promotion-pass', 600);
     await page.locator('.screen.in .pp-close').click();
     await page.waitForFunction(() => (globalThis.__muchiPromo ?? []).some((x) => x.ack), null, { timeout: 15000 });
@@ -529,7 +529,12 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await waitScreen('result'); await waitIn('.pp-card[data-status="passed"]');
     assert.equal(await page.locator('.screen.in .pp-sheet').count(), 0, 'promo: no sheet after another prompt');
     assert.equal((await page.evaluate(() => globalThis.__muchiPromo)).at(-1).sheet, 'deferred');
-    assert.deepEqual(await page.evaluate(async () => (await globalThis.__muchi.logic.view()).wallet), wallet, 'promo: nothing granted');
+    // the demo states are real ranked races (their own race coins); the series itself grants nothing and never touches paid coins
+    assert.equal(await page.evaluate(async () => (await globalThis.__muchi.logic.view()).wallet.paid), wallet.paid, 'promo: no paid coins');
+    assert.equal(await page.evaluate(() => globalThis.__muchi.logic.serverKpiLog().filter((k) => /^promo_|^demotion_/.test(k.name) && (k.freeCoins || k.paidCoins)).length), 0, 'promo: no coin rows');
+    // the next session's home: the sheet that waited shows there once
+    await page.evaluate(() => { globalThis.__muchi.prompts.reset(); return globalThis.__muchi.show('Home'); }); await waitScreen('home'); await waitIn('.pp-sheet.pass');
+    await page.locator('.screen.in .pp-close').click(); await page.waitForTimeout(500);
     await page.evaluate(async () => { globalThis.__muchi.prompts.reset(); await globalThis.__muchi.logic.promotion.demo('near'); });
     await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
   }

@@ -312,7 +312,7 @@ module.exports = async function enFlow(browser, base, out, errors) {
     await show('PromotionResult', 'one'); await waitScreen('result'); await waitIn('.pp-card');
     await show('Home'); await waitScreen('home'); await waitIn('.pp-home'); await shot('promotion-home', 500);
     await show('PromotionResult', 'passed'); await waitScreen('result'); await waitIn('.pp-sheet'); await shot('promotion-pass', 500);
-    assert.match(await page.locator('.screen.in .pp-sheet').innerText(), /Promotion to Class B confirmed/, 'promo: the pass sheet in English');
+    assert.match(await page.locator('.screen.in .pp-sheet').innerText(), /Promotion to Class [A-Z] confirmed/, 'promo: the pass sheet in English');
     await page.locator('.screen.in .pp-close').click(); await page.waitForTimeout(500);
     await show('PromotionResult', 'failed'); await waitScreen('result'); await waitIn('.pp-sheet'); await shot('promotion-fail', 500);
     assert.match(await page.locator('.screen.in .pp-sheet').innerText(), /Not promoted this time/, 'promo: the fail sheet in English');

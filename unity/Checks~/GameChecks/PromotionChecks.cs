@@ -55,19 +55,19 @@ static class PromotionChecks
         // the race that reached the line: the start banner, three open pips
         view = View(Series("active", "\"open\",\"open\",\"open\"", 0, "1"));
         await m.AfterRankedResultAsync();
-        check(m.ResultBanner == PromotionModel.StartBanner && m.Marks == "◌◌◌" && m.HomeLabel == "昇級戦 1/3", "promo: start banner, pips, 「昇級戦 1/3」 (" + m.Marks + " / " + m.HomeLabel + ")");
+        check(m.ResultBanner == PromotionModel.StartBanner && m.Marks == "···" && m.HomeLabel == "昇級戦 1/3", "promo: start banner, pips, 「昇級戦 1/3」 (" + m.Marks + " / " + m.HomeLabel + ")");
         check(m.RuleLine == "3戦で3着以内が2回で突破", "promo: the rule line");
 
         // one top-3: no banner again, 「昇級戦 2/3」
         view = View(Series("active", "\"top\",\"open\",\"open\"", 1, "2"));
         await m.AfterRankedResultAsync();
-        check(m.ResultBanner == null && m.Marks == "○◌◌" && m.HomeLabel == "昇級戦 2/3" && !m.OutcomeSheetVisible, "promo: the second race is up, no banner");
+        check(m.ResultBanner == null && m.Marks == "○··" && m.HomeLabel == "昇級戦 2/3" && !m.OutcomeSheetVisible, "promo: the second race is up, no banner");
 
         // offline: the home still says 「昇級戦 2/3」 from the copy
         var off = new GameBackend(new GameSettings { BaseUrl = "http://fake" }, null, null, kv, ruleset);
         var mo = new PromotionModel(off);
         await mo.RefreshAsync();
-        check(mo.HomeLabel == "昇級戦 2/3" && mo.Marks == "○◌◌", "promo: offline copy for the home (" + mo.HomeLabel + ")");
+        check(mo.HomeLabel == "昇級戦 2/3" && mo.Marks == "○··", "promo: offline copy for the home (" + mo.HomeLabel + ")");
 
         // passed while another prompt already showed this session: inline only, the sheet waits
         gate.Claim(SessionPromptKind.Consent);

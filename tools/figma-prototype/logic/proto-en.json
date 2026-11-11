@@ -1474,6 +1474,7 @@
   "昇級戦　/　{c}級 → {d}級": "Promotion series  /  Class {c} → Class {d}",
   "{n}pt　·　昇級戦 {a}/{b}": "{n} pts  ·  promotion series {a}/{b}",
   "昇級戦 {a}/{b}　{s}": "Promotion series {a}/{b}  {s}",
+  "ランク戦　·　降級の猶予 残り{n}戦": "Ranked  ·  demotion protection: {n} races left",
   "ポイントは{n}ptに戻りました": "Your points went back to {n}",
   "クラスが上がるのはシーズンの締め": "Your class goes up when the season closes",
   "ライン {n}pt　·　いま {m}pt": "Line {n} pts  ·  now {m} pts",

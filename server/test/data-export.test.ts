@@ -278,7 +278,7 @@ describe('REQ-DEX-007/008 the document: complete, own data only, paid and free a
     // other players' ids / private data, operator notes and secrets never appear
     for (const secret of ['stranger', 'reporter_secret', 'owner_secret', 'inviter_secret', 'invitee_secret', 'fcm-token-very-secret', 'detector-x']) expect(raw).not.toContain(secret);
     expect(doc.play.stud.history).toEqual([{ role: 'borrowed', at: T0, horseId: 'h9', horseName: 'ヨソノウマ', fee: 10, paid: 10, foalId: 'f9' }]);
-    expect(doc.reportsMade).toEqual({ available: false, items: [] });
+    expect(doc.reportsMade).toEqual({ available: false, items: [], today: null });
     expect(doc.analytics.events.available).toBe(false);
     expect(doc.unclassified).toEqual([]);
   });
@@ -297,7 +297,7 @@ describe('REQ-DEX-007/008 the document: complete, own data only, paid and free a
     }), 'u1');
     const v = await w.dex.view('u1');
     const doc = jsonOf(w, 'u1', v.requestId!);
-    expect(doc.reportsMade).toEqual({ available: true, items: [{ kind: 'race', raceId: 'race_1', at: T0, status: 'resolved' }] });
+    expect(doc.reportsMade).toEqual({ available: true, items: [{ kind: 'race', raceId: 'race_1', at: T0, status: 'resolved' }], today: null });
     expect(JSON.stringify(doc)).not.toContain('operator note');
     expect(JSON.stringify(doc)).not.toContain('ops-bob');
     expect(doc.analytics.events).toEqual({ available: true, windowDays: 90, rows: [{ event: 'first_open', timestamp: '2026-11-10 03:00:00' }] });

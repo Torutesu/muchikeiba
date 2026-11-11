@@ -189,6 +189,8 @@ export class IntegrityDO extends DurableObject<Env> {
   prCheck(id: string, action: ReportAction) { return wrap(() => this.playerReports.assertActionable(id, action)); }
   prResolve(id: string, action: ReportAction, by: string, note: string, now: number) { return wrap(() => this.playerReports.resolve(id, action, by, note, now)); }
   prForget(uid: string) { return wrap(() => this.playerReports.forgetPlayer(uid)); }
+  /** REQ-DEX-007 (Round 18 integration): the §47 reports a player made, for their data export (no target, no decision note). */
+  prMadeBy(uid: string) { return wrap(() => this.playerReports.madeBy(uid)); }
   list(status: ModerationStatus | 'flagged' | undefined, now: number, limit: number) { return wrap(() => this.core.list(status, now, limit)); }
   ban(playerId: string, until: number | null, reason: string, by: string, now: number) {
     return wrap(async () => { const c = this.core.ban(playerId, until, reason, by, now); await this.push([c]); return c; });

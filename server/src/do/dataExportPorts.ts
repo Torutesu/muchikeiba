@@ -2,6 +2,7 @@ import type { Env } from '../env.js';
 import type { Master } from '../domain/master.js';
 import type { PlayerService } from '../domain/service.js';
 import type { DataExportJobPorts, ExportStore } from '../domain/dataExportService.js';
+import type { PlayerReportMade } from '../domain/dataExport.js';
 import { shardedDirectory } from './directory.js';
 import { unwrap, type Envelope } from './rpc.js';
 import { kpiEventSourceFromEnv } from '../push/kpiExport.js';
@@ -30,6 +31,11 @@ export function dataExportPortsFromEnv(env: Env, svc: PlayerService, master: () 
       reportsMade: async (uid: string) => {
         const s = env.INTEGRITY!.get(env.INTEGRITY!.idFromName('global')) as unknown as { reportsBy(u: string): Promise<Envelope<{ raceId: string; at: number; status: string }[]>> };
         return unwrap(await s.reportsBy(uid));
+      },
+      // §47 (Round 18 integration): the player reports this player made, from the same singleton
+      playerReportsMade: async (uid: string) => {
+        const s = env.INTEGRITY!.get(env.INTEGRITY!.idFromName('global')) as unknown as { prMadeBy(u: string): Promise<Envelope<PlayerReportMade[]>> };
+        return unwrap(await s.prMadeBy(uid));
       },
     } : {}),
     ...(kpiEvents ? { kpiEvents } : {}),

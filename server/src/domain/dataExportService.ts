@@ -18,6 +18,7 @@ import {
   buildExportDocument, dataExportConfig, dexKey, renderSummary, serializeExport, summaryLines, DEX_FILES,
   type DexExternal, type DexFile, type DexLang, type DexReadyInfo,
 } from './dataExport.js';
+import type { PlayerReportMade } from './dataExport.js';
 import type { GachaLogEntry } from './history.js';
 import type { LedgerEntry, PlayerState } from './player.js';
 
@@ -42,6 +43,8 @@ export interface DataExportJobPorts {
   profiles?(ids: string[]): Promise<{ playerId: string; displayName: string }[]>;
   /** Race reports this player made (IntegrityDO). Optional. */
   reportsMade?(uid: string): Promise<{ raceId: string; at: number; status: string }[]>;
+  /** §47 player reports this player made (ops queue, Round 18 integration). Optional. */
+  playerReportsMade?(uid: string): Promise<PlayerReportMade[]>;
   /** Analytics rows tied to the player's pseudonymous id. Optional; null = not configured. */
   kpiEvents?(uid: string): Promise<{ rows: Record<string, unknown>[]; windowDays: number } | null>;
   store: ExportStore;
@@ -69,12 +72,13 @@ export async function runDataExportJob(p: DataExportJobPorts, uid: string): Prom
     const src = await p.collect(uid);
     const s = src.state;
     const feed = (s as PlayerState & { teamFeed?: { muted?: string[] } }).teamFeed;
-    const ids = [...new Set([...s.friends.ids, ...s.friends.outgoing.map((o) => o.to), ...(feed?.muted ?? [])])];
+    const ids = [...new Set([...s.friends.ids, ...s.friends.outgoing.map((o) => o.to), ...(feed?.muted ?? []), ...(s.friendSuggest?.dismissed ?? []).map((d) => d.id)])];
     const profiles = ids.length ? await soft(p.profiles ? () => p.profiles!(ids) : undefined) : [];
     const ext: DexExternal = {
       ledger: src.ledger, gacha: src.gacha,
       names: profiles === null ? null : Object.fromEntries(profiles.map((x) => [x.playerId, x.displayName])),
       reportsMade: await soft(p.reportsMade ? () => p.reportsMade!(uid) : undefined),
+      playerReportsMade: p.playerReportsMade ? await soft(() => p.playerReportsMade!(uid)) : [],
       kpiEvents: await soft(p.kpiEvents ? () => p.kpiEvents!(uid) : undefined),
     };
     let doc = buildExportDocument(m, s, ext, t.requestId, t.lang, src.now);

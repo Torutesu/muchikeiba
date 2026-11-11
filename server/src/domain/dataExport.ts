@@ -21,6 +21,8 @@ import { coinRow, gachaRow, HISTORY_LIMITS, purchaseRef, purchaseRow, type Gacha
 import { deletionConfig } from './accountDeletion.js';
 import { activityText, type ActivityState } from './activity.js';
 import { randomId, type Rng } from './rng.js';
+import type { HelpState } from './help.js';
+import type { ReporterState } from './reports.js';
 
 // ------------------------------------------------------------------------------------------------ config (REQ-DEX-016)
 
@@ -392,11 +394,15 @@ export const DEX_CLASSIFICATION: Record<keyof PlayerState | DexExtensionKey, Dex
   rival: x('play'), photos: x('photos'), gachaLog: x('gacha'), activity: x('activity'), weeklyChallenge: x('play'), hall: x('play'),
   myReplays: x('replays'), roster: x('settings'), nextAction: x('play'), seasonRecap: x('recaps'), cups: x('cups'),
   dataExport: no('export_meta'),
+  // Round 18 integration: Round 17 / 18 keys (§49 suggestion settings and dismissals, §53 goals and the pin)
+  friendSuggest: x('social'), horseGoals: x('horses'),
   // keys added by modules through `PlayerState & { … }`
   collection: x('play'), silksEditor: x('profile'), stable: x('social'), teamFeed: x('social'), teamGoal: x('play'),
+  // Round 18 integration: §48 inquiries (text, replies, votes) and §47 the reporter's daily counter (its target ids are not exported)
+  help: x('helpInquiries'), reports: x('reportsMade'),
 };
 /** Keys some modules add to the state without declaring them on PlayerState (see the test). */
-export const DEX_EXTENSION_KEYS = ['collection', 'silksEditor', 'stable', 'teamFeed', 'teamGoal'] as const;
+export const DEX_EXTENSION_KEYS = ['collection', 'silksEditor', 'stable', 'teamFeed', 'teamGoal', 'help', 'reports'] as const;
 export type DexExtensionKey = typeof DEX_EXTENSION_KEYS[number];
 
 /** `null` = a key nobody classified (the builder lists it under `unclassified` and the test fails). */
@@ -406,6 +412,9 @@ export const classifyKey = (k: string): DexClass | null => (DEX_CLASSIFICATION a
 
 export const DEX_FORMAT = 'muchi-issen/personal-data-export';
 export const DEX_VERSION = 1;
+
+/** One §47 report as its reporter sees it in the export (ops/playerReports.ts madeBy). */
+export interface PlayerReportMade { at: number; category: string; source: string; contentKind: string; note: string | null; status: string }
 
 /** What the job gathers outside the state. Each part is optional: missing = `available: false` in its section. */
 export interface DexExternal {
@@ -417,6 +426,11 @@ export interface DexExternal {
   names: Record<string, string> | null;
   /** Race reports this player made (IntegrityDO). null = could not be read. */
   reportsMade: { raceId: string; at: number; status: string }[] | null;
+  /**
+   * §47 player reports this player made (ops queue; Round 18 integration). Never the reported player's id or the operator's
+   * decision note. Absent / null = could not be read (the race reports above still show).
+   */
+  playerReportsMade?: PlayerReportMade[] | null;
   /** KPI rows tied to the player's pseudonymous analytics id. null = not configured / unreachable. */
   kpiEvents: { rows: Record<string, unknown>[]; windowDays: number } | null;
 }
@@ -455,6 +469,8 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
   const stud = s.stud;
   const ref = s.referral;
   const push = s.push;
+  const help = (st as unknown as { help?: HelpState }).help;
+  const reportsToday = (st as unknown as { reports?: ReporterState }).reports;
   const doc = {
     format: DEX_FORMAT, version: DEX_VERSION, requestId, playerId: s.id, generatedAt: now, language: lang,
     timeUnit: 'unix_ms_utc',
@@ -485,6 +501,8 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
     },
     horses: {
       items: s.horses.map(horseOut), bond: clone(s.bond) ?? null, training: clone(s.training) ?? null,
+      // §53 (Round 18 integration): goal completion times per horse and the horse pinned to the home
+      goals: s.horseGoals ? { done: clone(s.horseGoals.done), pinned: s.horseGoals.pinned } : null,
     },
     items: { items: clone(s.items), materials: clone(s.materials), itemDebt: clone(s.itemDebt) ?? {}, itemLog: clone(s.itemLog) ?? [] },
     // 資金決済法: paid and free are never mixed
@@ -518,6 +536,13 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
       friendRequestsReceived: s.friends.incoming.length,
       roomInvitesReceived: s.friends.invites.length,
       blocks: (feed?.muted ?? []).map((id) => ({ playerId: id, name: name(id) })),
+      // §49 (Round 18 integration): the opt-out and the players this player dismissed (current public name, like blocks);
+      // the recent opponents are other players' presence in races — only their number
+      friendSuggest: s.friendSuggest ? {
+        hidden: s.friendSuggest.hidden,
+        dismissed: s.friendSuggest.dismissed.map((d) => ({ playerId: d.id, name: name(d.id), at: d.at, why: d.why })),
+        recentOpponents: s.friendSuggest.opponents.length,
+      } : null,
       team: s.team ? { teamId: s.team.teamId, joinedAt: s.team.joinedAt, cooldownUntil: s.team.cooldownUntil, joinRequests: s.team.outgoing.map((o) => ({ teamId: o.teamId, at: o.at })) } : null,
       teamFeedTeams: [...(feed?.postedIn ?? [])],
       stable: stable ? { layout: clone(stable.layout) ?? null, likesReceived: stable.likes ?? 0 } : null,
@@ -528,9 +553,15 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
       } : null,
       namesAvailable: ext.names !== null,
     },
-    reportsMade: ext.reportsMade === null
-      ? { available: false, items: [] as { kind: string; raceId: string; at: number; status: string }[] }
-      : { available: true, items: ext.reportsMade.map((r) => ({ kind: 'race', raceId: r.raceId, at: r.at, status: r.status })) },
+    reportsMade: {
+      available: ext.reportsMade !== null && ext.playerReportsMade !== null,
+      items: [
+        ...(ext.reportsMade ?? []).map((r) => ({ kind: 'race', raceId: r.raceId, at: r.at, status: r.status })),
+        // §47 (Round 18 integration): what was reported and why, with the reporter's own note — the target is not named
+        ...(ext.playerReportsMade ?? []).map((r) => ({ kind: 'player', at: r.at, category: r.category, source: r.source, content: r.contentKind, note: r.note, status: r.status })),
+      ] as Record<string, unknown>[],
+      today: reportsToday ? { day: reportsToday.day, count: reportsToday.count } : null,
+    },
     activity: (act?.entries ?? []).map((e) => ({ at: e.at, kind: e.kind, count: e.count, text: activityText(e.kind, e.count, e.vars, e.actors[0]?.name ?? 'プレイヤー') })),
     replays: {
       saved: (s.myReplays?.saved ?? []).map((r) => clone(r)),
@@ -569,8 +600,19 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
       kpiState: clone(s.kpi) ?? null,
       events: ext.kpiEvents === null ? { available: false, windowDays: null, rows: [] as Record<string, unknown>[] } : { available: true, windowDays: ext.kpiEvents.windowDays, rows: ext.kpiEvents.rows },
     },
-    // §48 (help center, Round 17) adds the player's inquiries; until it is merged nothing is stored in the game
-    helpInquiries: { available: true, items: [] as unknown[] },
+    // §48 (Round 18 integration): the player's inquiries — what they wrote, what they attached, the replies (without the
+    // operator's id: an operator note) — and their article votes
+    helpInquiries: {
+      available: true,
+      items: (help?.tickets ?? []).map((t) => ({
+        ticketId: t.id, category: t.category, status: t.status, language: t.lang, createdAt: t.createdAt, updatedAt: t.updatedAt, firstReplyAt: t.firstReplyAt,
+        description: t.description, redactedParts: t.redacted,
+        attachments: t.attachments.map((a) => ({ kind: a.kind, ref: a.ref, at: a.at, title: a.title, detail: a.detail })),
+        diagnostics: clone(t.diagnostics),
+        messages: t.messages.map((x) => ({ from: x.from, content: x.content, at: x.at })),
+      })) as unknown[],
+      articleVotes: Object.entries(help?.votes ?? {}).map(([articleId, v]) => ({ articleId, helpful: v.helpful, at: v.at })),
+    },
   };
   return doc;
 }

@@ -2054,6 +2054,13 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await page.evaluate(() => globalThis.__muchi.demo('calendar')); await waitScreen('calendar', 60000); await page.waitForTimeout(400);
   await page.evaluate(() => globalThis.__muchi.show('Settings', 'looks')); await waitScreen('settings'); await page.waitForTimeout(300);
   assert.equal(await page.locator('.screen.in [data-name="More"] .btn.row').count(), 8, 'the looks page holds eight rows (its limit)');
+  // R21 integration: no 予定表 row in その他 — it opens from お知らせ (the home bell) and from the event hub (日程)
+  assert.equal(await page.locator('.screen.in .btn[data-action="calendar"], .screen.in .btn[data-action="showcase"], .screen.in .btn[data-action="links"]').count(), 0, 'その他 has no Round 21 rows');
+  await page.evaluate(() => globalThis.__muchi.show('Settings', 'settings')); await waitScreen('settings'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-name="More"] .btn.row').count(), 8, 'the settings page holds eight rows (its limit)');
+  await page.evaluate(() => globalThis.__muchi.show('EventTop')); await waitScreen('event-top'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in .btn[data-action="calendar"]').count(), 1, 'the event hub opens the calendar');
+  await page.evaluate(() => globalThis.__muchi.show('Activity')); await waitScreen('activity'); await page.waitForTimeout(400);
   await page.locator('.screen.in .btn[data-action="calendar"]').click(); await waitScreen('calendar'); await page.waitForTimeout(500);
   const calKinds = await page.locator('.screen.in .cal-row').evaluateAll((xs) => [...new Set(xs.map((x) => x.dataset.calKind))]);
   for (const k of ['season', 'season_pass', 'tournament_registration', 'tournament']) assert.ok(calKinds.includes(k), `calendar: a ${k} row`);
@@ -2126,8 +2133,10 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   // (the real C# ShowcaseShare, no player id), an under-13 player's card (no player-typed names) and the neutral card of a
   // player who blocked me; cards from the cup lobby / activity / hall / rival / spectate entry points use the same screen
   await page.evaluate(async () => { await globalThis.__muchi.logic.showcase.demo(); });
-  await page.evaluate(() => globalThis.__muchi.show('Settings', 'looks')); await waitScreen('settings'); await page.waitForTimeout(300);
-  await page.locator('.screen.in .btn[data-action="showcase"]').click(); await waitScreen('showcase-edit'); await page.waitForTimeout(400);
+  // R21 integration: the editor opens from the profile — フレンド › 自分のトレーナーカード › カードを編集 (no その他 row)
+  await page.evaluate(() => globalThis.__muchi.show('Friends')); await waitScreen('friends'); await page.waitForTimeout(400);
+  await page.locator('.screen.in [data-action="sc-mine"]').click(); await waitScreen('showcase'); await page.waitForTimeout(400);
+  await page.locator('.screen.in [data-action="sc-edit"]').click(); await waitScreen('showcase-edit'); await page.waitForTimeout(400);
   assert.equal(await page.locator('.screen.in input, .screen.in textarea').count(), 0, 'showcase editor: no text field anywhere');
   assert.ok(await page.locator('.screen.in [data-sc-horse]').count() >= 2, 'showcase editor: my active horses (and 選ばない)');
   await page.locator('.screen.in [data-sc-horse]').nth(1).click(); await page.waitForTimeout(300);
@@ -2442,8 +2451,10 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await page.locator('.screen.in [data-lk-demo="room"]').click(); await page.waitForTimeout(900);
   assert.equal(await page.locator('.screen.in .lk-notice').innerText(), 'チュートリアルの後で開きます', 'during the FTUE the link waits');
   await demo('day3');
+  // R21 integration: the links hub opens from 友達招待 (その他 › 見た目・お世話・仲間 › 友達招待 › リンクで招待・共有 ›)
   await page.evaluate(() => globalThis.__muchi.show('Settings', 'looks')); await waitScreen('settings'); await page.waitForTimeout(300);
-  assert.equal(await page.locator('.screen.in .btn[data-action="links"]').count(), 1, 'その他 › 見た目・お世話・仲間 has リンクで招待・共有');
+  await page.locator('.screen.in .btn[data-action="invite"]').click(); await waitScreen('invite'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .btn[data-action="links"]').count(), 1, '友達招待 has リンクで招待・共有');
   await page.locator('.screen.in .btn[data-action="links"]').click(); await waitScreen('links'); await page.waitForTimeout(300);
   await page.locator('.screen.in [data-lk-share="friend"]').click(); await page.waitForSelector('.screen.in .lk-sheet', { timeout: 10000 });
   const lkUrl = await page.locator('.screen.in .lk-url').innerText();

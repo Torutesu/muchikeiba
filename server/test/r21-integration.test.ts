@@ -91,6 +91,58 @@ describe('§58.11 = §64.6: ONE prompt gate with one priority table (C#, Unity, 
   });
 });
 
+describe('その他 stays at eight rows per page; Round 21 entries live on their hubs (06 「その他 のページ」)', () => {
+  it('the prototype pages are the 06 table, eight rows each, and no Round 21 row', () => {
+    const app = read('tools/figma-prototype/site/app.js');
+    const block = app.slice(app.indexOf('const morePages = {'), app.indexOf("Kicker('その他', 36, 30, m);"));
+    const page = (k: string, next: string | null) => {
+      const s = block.slice(block.indexOf(`${k}: [`), next ? block.indexOf(`${next}: [`) : undefined);
+      return [...s.matchAll(/\[\s*'([^']+)',\s*(?:\(\)|[A-Z][A-Za-z]+[,\]])/g)].map((x) => x[1]);
+    };
+    const settings = page('settings', 'looks');
+    const looks = page('looks', null);
+    expect(settings).toHaveLength(8);
+    expect(looks).toHaveLength(8);
+    for (const r of ['トレーナーカード', '予定表', 'リンクで招待・共有', 'アップデート情報']) expect([...settings, ...looks], r).not.toContain(r);
+    const ux = read('docs/planning/06-ux-experience-spec.md');
+    const tbl = ux.slice(ux.indexOf('### その他 のページ'));
+    expect(tbl).toContain(`| 設定・サポート | ${settings.join('／')} |`);
+    expect(tbl).toContain(`| 見た目・お世話・仲間 | ${looks.join('／')} |`);
+    // the hubs
+    for (const [screen, action] of [['Invite', 'links'], ['EventTop', 'calendar'], ['Activity', 'calendar']]) {
+      const i = app.indexOf(`async function ${screen}(`);
+      const body = app.slice(i, app.indexOf('\n}\n', i));
+      expect(body, `${screen} → ${action}`).toContain(`dataset.action = '${action}'`);
+    }
+  });
+});
+
+describe('deploy §7.1: one Round 21 row (no migration, v8 still reserved; the before-production items for deep links)', () => {
+  it('the row exists once after Round 20 and covers the order, rollback, kill switches and the native / host / team id / fingerprints', () => {
+    const d = read('docs/ops/deploy.md');
+    const rows = d.split('\n').filter((l) => l.startsWith('| Round 21'));
+    expect(rows).toHaveLength(1);
+    expect(d.indexOf('| Round 20')).toBeLessThan(d.indexOf('| Round 21'));
+    for (const s of ['§62', '§63', '§64', '§65', 'マイグレーションは無い', '`v8`', '切り戻し', 'progression.links.baseUrl', 'apple.appIds', 'sha256CertFingerprints', 'Codex', 'Associated Domains', 'intent-filter', 'calendar_mark']) expect(rows[0], s).toContain(s);
+    const wr = read('server/wrangler.toml');
+    expect(wr).not.toMatch(/tag = "v8"/);
+    expect(wr.match(/tag = "v\d+"/g)!.at(-1)).toBe('tag = "v7"');
+  });
+});
+
+describe('§48 help / §57 tips × Round 21', () => {
+  it('every Round 21 feature has a help article; the social ones also a tip card that links it', () => {
+    const help = JSON.parse(read('server/master/help.json')) as { articles: { id: string }[] };
+    const tips = JSON.parse(read('server/master/tips.json')) as { tips: { id: string; help: string; body: { ja: string } }[] };
+    for (const id of ['showcase', 'share_links', 'whats_new', 'calendar']) expect(help.articles.map((a) => a.id), id).toContain(id);
+    for (const id of ['showcase', 'share_links', 'calendar']) {
+      const t = tips.tips.find((x) => x.help === id);
+      expect(t, id).toBeTruthy();
+      expect(t!.body.ja, id).not.toMatch(/[0-9０-９]/);
+    }
+  });
+});
+
 describe('§63 × §60: a link token never reaches a client error report', () => {
   const TOK = 'kmqxphrabcdefghjkmnpqr'; // 22 characters of the link alphabet without a digit (about 0.2% of real tokens)
   it('messages, stacks and routes lose the token wherever it appears (URL, scheme, bare path, bare word)', () => {

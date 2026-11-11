@@ -2624,15 +2624,13 @@ async function Settings(tab) {
       ['出走前アドバイス', () => { advice.setEnabled(!advice.enabled()); Settings(); }, 'advice', advice.enabled() ? 'オン' : 'オフ'],
       ['レース中の応援表示', () => { prefs.set(CHEER_INDICATOR_KEY, cheerIndicatorOn() ? '0' : '1'); Settings(); }, 'cheer-indicator', cheerIndicatorOn() ? 'オン' : 'オフ']],
     // round 10: 支部の応援 and 友達招待 next to the looks / care entries; round 14: 実況パック after the looks entries
-    // round 21 (REQ-SHOW-008): トレーナーカード — the eighth row of this page (設定・サポート already holds eight)
-    looks: [['トレーナーカード', () => ShowcaseEdit(), 'showcase'], ['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions],
+    // R21 integration (06 §その他): eight rows, the page's limit. Round 21's three entries live on their hubs instead of a 9th–11th
+    // row: トレーナーカード → フレンド › 自分のトレーナーカード › カードを編集 (the profile), 予定表 → イベント (日程) and お知らせ,
+    // リンクで招待・共有 → 友達招待. The release notes history stays in お知らせ and ヒント (no row).
+    looks: [['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions],
       ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite'],
       // round 17 (REQ-RPT-011): the block list and what a block does (R20 integration: on this page, see above)
-      ['通報とブロック', () => BlockList(), 'blocks'],
-      // round 21 (REQ-LINK-024): share links, 「リンクを開く」 and the rematch demo (eight rows: the page's maximum)
-      ['リンクで招待・共有', () => Links(), 'links'],
-      // round 21 (REQ-CAL-019): 予定表 — events, tournaments, cups and the branch's dates in one read-only list (8 rows: the page limit)
-      ['予定表', () => Calendar(() => Settings('looks')), 'calendar']],
+      ['通報とブロック', () => BlockList(), 'blocks']],
   };
   Kicker('その他', 36, 30, m);
   [['settings', '設定・サポート'], ['looks', '見た目・お世話・仲間']].forEach(([k, label], i) => {
@@ -3556,6 +3554,8 @@ async function Invite(demoNote = '') {
   }, me).dataset.action = 'share';
   Ghost('コピー', 444, 290, 130, 60, async () => { try { await navigator.clipboard?.writeText(v.displayCode); } catch { /* */ } toast('コードをコピーしました'); }, me, 'small');
   TextLink('規約', 600, 302, 96, () => Legal('terms', Invite), me, '規約').dataset.terms = v.termsKey;
+  // R21 integration (§63): the links hub (room, cup, replay, friend request, branch, help links and 「リンクを開く」) from here
+  TextLink('リンクで招待・共有', 44, 352, 652, () => Links(), me, 'リンクで招待・共有 ›').dataset.action = 'links';
   Hair(44, 394, 652, me);
   Kicker(`招待ボーナス　/　${v.cap}人まで`, 44, 420, me, { rule: false, size: 16 });
   Txt('友達1人につき、友達が到達したときに届きます（インストールだけでは届きません）', 44, 452, 652, 14, SOFT, me);
@@ -4898,6 +4898,8 @@ async function EventTop(eventId) {
   // ② the schedule and what the exchange has (from the definition)
   const rp = Glass('Event schedule', 760, 134, 804, 676, undefined, .84);
   Kicker('日程', 36, 30, rp);
+  // R21 integration (§65): every date in one list — the calendar opens from the event hub
+  TextLink('予定表', 528, 30, 240, () => Calendar(() => EventTop(eventId)), rp, '予定表 ›').dataset.action = 'calendar';
   const row = (y, k, val) => { Txt(k, 36, y, 220, 15, MUTED, rp, { weight: 500 }); Txt(val, 260, y - 2, 508, 17, WHITE, rp, { weight: 700, nowrap: true }); Hair(36, y + 34, 732, rp); };
   row(110, 'イベント', `${jstDate(v.startAtMs)} 〜 ${jstDate(v.endAtMs - 60_000)}`);
   row(166, '交換の締切', `${jstDate(v.closesAtMs - 60_000)}（終了後 ${v.graceDays} 日）`);
@@ -6669,6 +6671,8 @@ async function Activity() {
   Txt('いいね・応援スタンプ・プレゼントは、まとめて1件で表示します。', 36, 292, 376, 13, MUTED, d, { lh: 1.6 });
   Txt('プレゼントの受け取りはプレゼントボックスで行います。', 36, 366, 376, 13, MUTED, d, { lh: 1.6 });
   Txt('プッシュ通知の設定はプッシュだけに効きます。この一覧はいつでも見られます。', 36, 440, 376, 13, SOFT, d, { lh: 1.6 });
+  // R21 integration (§65): お知らせ › 予定表 (the home's bell is one tap from home)
+  TextLink('予定表', 36, 520, 376, () => Calendar(Activity), d, '予定表 ›').dataset.action = 'calendar';
   Cta('ホームへ', 36, 576, 376, () => Home(), d, 'small');
   Back(Home, 'ホームへ', 40, 834);
 }
@@ -6848,7 +6852,7 @@ async function Links() {
   Kicker('デモ（レビュー用）', 36, 310, rp, { rule: false, size: 15, color: SOFT });
   Ghost('フレンド部屋の結果（再戦）', 36, 356, 420, 56, () => FriendRoomResult(), rp, 'quiet small').dataset.action = 'rematch-demo';
   Txt('フレンド部屋のレースの後、押した人どうしで同じ条件の新しい部屋に入ります。ランク戦には影響しません', 36, 432, 672, 14, SOFT, rp, { lh: 1.6 });
-  Back(() => Settings('looks'), 'BACK', 40, 834);
+  Back(() => Invite(), 'BACK', 40, 834); // R21 integration: the links hub opens from 友達招待
 }
 /** The share sheet: the server's text and link (no id, no name), expiry, share / copy. */
 function ShareSheet(link, back) {
@@ -7479,7 +7483,7 @@ function ShowcaseShareView(c, back) {
 
 /** The editor: tabs over what the player may pick, a summary of the draft, one Save CTA. */
 async function ShowcaseEdit(back = null, tab = null) {
-  const backTo = back ?? (() => Settings('looks'));
+  const backTo = back ?? (() => Friends()); // R21 integration: the editor lives under フレンド › 自分のトレーナーカード
   if (tab) scState.tab = tab;
   currentScreen = () => ShowcaseEdit(back);
   if (!scState.editor || !tab) {

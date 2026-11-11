@@ -12,11 +12,11 @@
 | サーバー | ✅ `GET /v1/calendar?from&to`（35日まで、各機能の正から組み立てる。写しのデータは無い）・`PUT`／`DELETE /v1/calendar/marks/:entryId`（印だけ。通知は送らない）・運営向け `GET /v1/admin/calendar`（重なりの一覧）。ヘルプ記事 `calendar`（画面リンク `calendar`、「？」の文脈 `calendar`）、ヒントのカード `calendar_tip` |
 | C# | ✅ `engine/Muchi.Client/Calendar.cs`：`ApiClient.GetCalendarAsync(from, to)` / `MarkCalendarAsync(id, on)`、`CalendarView`（`Entry(id)`・`OnDay(day)`）、`CalendarEntry`（`DisplayName`・`IsPoint`・`OnDay`・`LinkScreen`/`LinkId`・`Paid`）、定数 `CalendarKinds` / `CalendarRules`、`AnalyticsEvent.CalendarView` / `CalendarEntryOpen`、`HelpContexts.Calendar` |
 | ゲーム層 | ✅ `Muchi.Game.CalendarModel`（`unity/Assets/Muchi/Game/CalendarModel.cs`）。チェックは `unity/Checks~/GameChecks/CalendarChecks.cs`。`new CalendarModel(new ApiCalendar(backend.Api), backend.Store, () => backend.Online, analytics.Track)` |
-| 見本 | ✅ `tools/figma-prototype/site/index.html`：その他 →「見た目・お世話・仲間」の8行目「予定表」。月ごと／週ごと、印、ヘルプ。デモは左下「デモ：28戦の厩舎で見る」 |
+| 見本 | ✅ `tools/figma-prototype/site/index.html`：お知らせ（ベル）または イベントの画面の「予定表 ›」（R21 統合）。月ごと／週ごと、印、ヘルプ。デモは左下「デモ：28戦の厩舎で見る」 |
 | **Codex** | 入口（§2）、予定表の画面（§3）、行（§4）、印（§5）、状態・英語・文字の大きさ（§6）、絵（§7） |
 
 ## 2. 入口
-- **その他 › 見た目・お世話・仲間 の8行目**に行「予定表」（このページの上限は8行。これ以上足さない）。
+- **入口（R21 統合で変更）**：その他には行を置かない。「お知らせ（ホームのベル）」の右の欄の「予定表 ›」と、イベントの画面の「日程」の右上「予定表 ›」（06 の「その他 のページ」）。
 - ヘルプ記事の画面リンク `calendar` も予定表を開く。画面の右上の「？」は `HelpCenterModel.OpenContext(HelpContexts.Calendar)`（記事 `calendar`）。
 - 画面を開いたら `CalendarModel.LoadAsync()`（オフラインで付けた印もここで送られる）。
 
@@ -27,7 +27,7 @@
 - 右パネル（1068×676）：キッカー「期間の予定」（月ごと）／「週の予定」（週ごと）。その下が**パネルの中でスクロールする一覧**（文字を大きくしても縮めず、行が伸びてスクロールが長くなる）。
   - 月ごと：一番上に「始まっている予定」（範囲の前から続いているもの）、その後は**始まる日ごと**の見出し（シアンの字間の広い「11/14（土）」、細い線）と行。今日の見出しの右に金の小さな点。
   - 週ごと：7日分の見出しと、**その日にかかる全部の行**（`CalendarModel.RowsOn(day)`）。予定の無い日は薄い字で `EmptyDayText`。
-- 戻るで その他（見た目・お世話・仲間のページ）へ。
+- 戻るで開いた画面（お知らせ・イベント）へ。
 
 ## 4. 行
 紺の半透明の帯（角は直線、薄い枠）。左から：

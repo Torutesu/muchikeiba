@@ -118,8 +118,11 @@ export class ClientErrorsCore {
       g.lastSeen = now;
       g.lastVersion = appVersion;
       g.versions[appVersion] = (g.versions[appVersion] ?? 0) + item.count;
-      const vs = Object.entries(g.versions).sort((a, b2) => b2[1] - a[1] || (a[0] < b2[0] ? -1 : 1));
-      if (vs.length > VERSIONS_KEPT) g.versions = Object.fromEntries(vs.slice(0, VERSIONS_KEPT));
+      // at most 20 versions: the least counted one leaves, never the version just seen (a new release always shows)
+      while (Object.keys(g.versions).length > VERSIONS_KEPT) {
+        const [drop] = Object.entries(g.versions).filter(([v]) => v !== appVersion).sort((a, b2) => a[1] - b2[1] || (a[0] < b2[0] ? -1 : 1))[0]!;
+        delete g.versions[drop];
+      }
       g.platforms[platform] = (g.platforms[platform] ?? 0) + item.count;
       // REQ-CERR-017: a new fingerprint (first seen inside the window) reaching the threshold — once
       if (!g.alert && !fp.startsWith('overflow:') && now - g.firstSeen <= c.spikeWindowHours * HOUR_MS && g.estimated >= c.spikeMinCount) {
@@ -127,7 +130,9 @@ export class ClientErrorsCore {
         alerts.push({ ...g });
       }
       this.repo.putGroup(g);
-      this.repo.addDay(fp, day, appVersion, platform, item.count);
+      // at most 20 versions per fingerprint and day; more are counted as 'other' (random versions cannot grow the table)
+      const today = this.repo.days(fp, day).filter((d) => d.day === day).map((d) => d.appVersion);
+      this.repo.addDay(fp, day, today.includes(appVersion) || new Set(today).size < VERSIONS_KEPT ? appVersion : 'other', platform, item.count);
       this.repo.addSample({
         fingerprint: fp, at: now, platform, appVersion, osVersion, deviceModel, playerId,
         message: s.category === 'exception' ? s.message : null, stack: s.category === 'exception' ? s.stack : null,

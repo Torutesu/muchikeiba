@@ -158,6 +158,16 @@ describe('the store (REQ-CERR-005/007/010..013/017/018)', () => {
     warn.mockRestore();
   });
 
+  it('random app versions cannot grow the day rows: versions outside the top 20 count as other', () => {
+    const { repo, core: c } = core();
+    const lim = cfg({ perDevicePerHour: 600, perPlayerPerHour: 600 });
+    for (let i = 0; i < 30; i++) c.ingest(batch([exc()], { appVersion: `1.0.${i}` }), { playerId: 'p1', installId: 'inst_0000000001' }, NOW + i, lim);
+    const versions = new Set([...repo.dayRows.values()].map((d) => d.appVersion));
+    expect(versions.size).toBeLessThanOrEqual(21);
+    expect(versions.has('other')).toBe(true);
+    expect([...repo.groups.values()][0]!.count).toBe(30);
+  });
+
   it('a new fingerprint reaching spikeMinCount inside the window alerts once (structured log + hook); an old one does not', () => {
     const hook = vi.fn();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);

@@ -627,12 +627,8 @@ namespace Muchi.Client
             return o;
         }
 
-        private string NewBatchId()
-        {
-            var sb = new StringBuilder("b_");
-            for (int i = 0; i < 16; i++) sb.Append("0123456789abcdef"[(int)(_random() * 16) & 15]);
-            return sb.ToString();
-        }
+        /// <summary>A fresh id per batch (its own randomness: an injected sampling roll must never make two batches share an id).</summary>
+        private static string NewBatchId() => "b_" + Guid.NewGuid().ToString("N").Substring(0, 16);
 
         private static string ValidId(string s) => !string.IsNullOrEmpty(s) && s.Length >= 8 && s.Length <= 64 && s.All(c => ErrorScrubber.AsciiAlnum(c) || c == '_' || c == '-') ? s : null;
 

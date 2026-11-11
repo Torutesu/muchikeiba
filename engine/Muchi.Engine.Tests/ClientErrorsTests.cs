@@ -191,6 +191,20 @@ namespace Muchi.Engine.Tests
         }
 
         [Fact]
+        public async Task EveryNewBatchGetsItsOwnIdEvenWithAFixedSamplingRoll()
+        {
+            var s = new FakeSend().Ok().Ok();
+            var r = Reporter(s, roll: 0.0);
+            r.Report(ClientErrorItem.Exception(1, "E", "a", ""));
+            await r.FlushAllAsync(100);
+            r.Report(ClientErrorItem.Exception(2, "F", "b", ""));
+            await r.FlushAllAsync(200);
+            Assert.Equal(2, s.Batches.Count);
+            Assert.NotEqual(s.Batches[0].Get("batchId").AsString(), s.Batches[1].Get("batchId").AsString());
+            Assert.Matches("^b_[0-9a-f]{16}$", s.Batches[1].Get("batchId").AsString());
+        }
+
+        [Fact]
         public void AnAssetRunReportsItsFailedFilesButNotAnOfflineRun()
         {
             var r = Reporter(new FakeSend(), roll: 0.0);

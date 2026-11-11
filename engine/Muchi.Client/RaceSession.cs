@@ -40,6 +40,8 @@ namespace Muchi.Client
         public const int Unauthorized = 4001;
         /// <summary>The spectator seats are taken (after err SPECTATORS_FULL). Fatal "SPECTATORS_FULL".</summary>
         public const int SpectatorsFull = 4003;
+        /// <summary>This app's engine cannot run the race (after err VERSION_MISMATCH, §46.4). Fatal "VERSION_MISMATCH": show the update screen.</summary>
+        public const int VersionMismatch = 4026;
 
         /// <summary>The <see cref="RaceSession.FailureReason"/> for a close code after which reconnecting cannot help; null = reconnect.</summary>
         public static string FatalReason(int code)
@@ -49,6 +51,7 @@ namespace Muchi.Client
                 case Replaced: return "REPLACED";
                 case Unauthorized: return "UNAUTHORIZED";
                 case SpectatorsFull: return "SPECTATORS_FULL";
+                case VersionMismatch: return "VERSION_MISMATCH";
                 default: return null;
             }
         }

@@ -9,6 +9,7 @@
 import { z } from 'zod';
 import { AppError } from './errors.js';
 import type { PlayerState } from './player.js';
+import { MAINTENANCE_GROUPS } from './maintenance.js';
 import { jstDateKey } from './time.js';
 import { NEXT_KINDS, NEXT_SLOTS } from './nextKinds.js';
 
@@ -110,8 +111,11 @@ export const ADVICE_KPI_CONTEXTS = ['ranked', 'friend', 'event', 'challenge', 't
 /** REQ-PHOTO-014: where a photo was taken (photoMode.ts PHOTO_SOURCES). */
 export const PHOTO_SOURCE_NAMES = ['paused', 'result', 'replay'] as const;
 /** REQ-ACT-015: the activity list's kinds and deep-link screens (domain/activity.ts; repeated here to keep kpi.ts import-free). */
-export const ACTIVITY_KIND_NAMES = ['friend_request', 'friend_accepted', 'rival_week', 'rival_record', 'stable_like', 'team_cheer', 'tournament_result', 'gift_arrived', 'team_goal_tier', 'team_goal_week', 'replay_share', 'cup_invited', 'cup_started', 'cup_finished', 'cup_cancelled', 'recap_ready'] as const;
-export const ACTIVITY_SCREEN_NAMES = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new', 'cups', 'recap'] as const;
+export const ACTIVITY_KIND_NAMES = ['friend_request', 'friend_accepted', 'rival_week', 'rival_record', 'stable_like', 'team_cheer', 'tournament_result', 'gift_arrived', 'team_goal_tier', 'team_goal_week', 'replay_share', 'inquiry_answered', 'cup_invited', 'cup_started', 'cup_finished', 'cup_cancelled', 'recap_ready', 'ops_notice'] as const;
+export const ACTIVITY_SCREEN_NAMES = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new', 'help_inquiry', 'cups', 'recap', 'safety'] as const;
+/** REQ-HELP-021: help categories (domain/help.ts HELP_CATEGORY_IDS) plus `all`, and where an article was opened from. */
+export const HELP_CATEGORY_NAMES = ['all', 'getting_started', 'races', 'horses', 'scout', 'purchases', 'account', 'deletion', 'accessibility'] as const;
+export const HELP_VIEW_SOURCES = ['list', 'search', 'context', 'link', 'related'] as const;
 /** Events only the client can observe. Server-known events (purchase, gacha, race results…) are not accepted from clients. */
 export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('session_start'), at: z.number().int(), props: z.object({}).strict().optional() }),
@@ -153,11 +157,20 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('photo_take'), at: z.number().int(), props: z.object({ source: z.enum(PHOTO_SOURCE_NAMES), look: z.string().regex(/^[a-z0-9_]{1,32}$/) }).strict() }),
   z.object({ name: z.literal('photo_share'), at: z.number().int(), props: z.object({ source: z.enum(PHOTO_SOURCE_NAMES), framed: z.boolean() }).strict() }),
   // REQ-ACT-015: the activity list was opened (unread count then) / an entry was tapped (its kind and deep link)
+  // REQ-MNT-013 (§46): the client met a maintenance window (once per window and endpoint group) / showed or acted on an update prompt
+  z.object({ name: z.literal('maintenance_block'), at: z.number().int(), props: z.object({ group: z.enum(MAINTENANCE_GROUPS), windowId: z.string().regex(/^[a-z0-9_-]{1,40}$/) }).strict() }),
+  z.object({ name: z.literal('upgrade_prompt'), at: z.number().int(), props: z.object({ kind: z.enum(['required', 'recommended', 'engine']), action: z.enum(['shown', 'store', 'later']), platform: z.enum(['ios', 'android', 'other']) }).strict() }),
   z.object({ name: z.literal('activity_open'), at: z.number().int(), props: z.object({ unread: z.number().int().min(0).max(999) }).strict() }),
   z.object({ name: z.literal('activity_tap'), at: z.number().int(), props: z.object({ kind: z.enum(ACTIVITY_KIND_NAMES), screen: z.enum(ACTIVITY_SCREEN_NAMES) }).strict() }),
   // REQ-NEXT-012: the home's 次にやること card shown (once per kind and game day) / tapped. Closing it is the server event next_card_dismiss.
   z.object({ name: z.literal('next_card_view'), at: z.number().int(), props: z.object({ kind: z.enum(NEXT_KINDS), slot: z.enum(NEXT_SLOTS) }).strict() }),
   z.object({ name: z.literal('next_card_tap'), at: z.number().int(), props: z.object({ kind: z.enum(NEXT_KINDS), slot: z.enum(NEXT_SLOTS) }).strict() }),
+  // REQ-HELP-021: a help search (the normalised length, the category and the number of results — never the query) /
+  // an article opened (its id and where it was opened from)
+  z.object({ name: z.literal('help_search'), at: z.number().int(), props: z.object({ length: z.number().int().min(1).max(64), category: z.enum(HELP_CATEGORY_NAMES), results: z.number().int().min(0).max(100) }).strict() }),
+  z.object({ name: z.literal('help_article_view'), at: z.number().int(), props: z.object({ articleId: z.string().regex(/^[a-z0-9_]{2,40}$/), source: z.enum(HELP_VIEW_SOURCES) }).strict() }),
+  // REQ-FSUG-014: the おすすめフレンド section was shown (once per screen visit; how many suggestions it held)
+  z.object({ name: z.literal('fsug_view'), at: z.number().int(), props: z.object({ shown: z.number().int().min(0).max(30) }).strict() }),
 ]);
 export type ClientEvent = z.infer<typeof clientEventSchema>;
 
@@ -197,8 +210,13 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'photo_take': return { name: e.name, s1: e.props.source, s2: e.props.look };
     case 'photo_share': return { name: e.name, s1: e.props.source, s2: e.props.framed ? 'framed' : 'plain' };
     case 'activity_open': return { name: e.name, value: e.props.unread };
+    case 'maintenance_block': return { name: e.name, s1: e.props.group, s2: e.props.windowId };
+    case 'upgrade_prompt': return { name: e.name, s1: e.props.kind, s2: e.props.action, s3: e.props.platform };
     case 'activity_tap': return { name: e.name, s1: e.props.kind, s2: e.props.screen };
     case 'next_card_view': case 'next_card_tap': return { name: e.name, s1: e.props.kind, s2: e.props.slot };
+    case 'help_search': return { name: e.name, s1: e.props.category, value: e.props.length, count: e.props.results };
+    case 'help_article_view': return { name: e.name, s1: e.props.articleId, s2: e.props.source };
+    case 'fsug_view': return { name: e.name, value: e.props.shown };
   }
 }
 

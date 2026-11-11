@@ -25,6 +25,7 @@ import localeEnJson from '../../master/locale-en.json';
 import type { CollectionMaster } from './collection.js';
 import collectionJson from '../../master/collection.json';
 import photoJson from '../../master/photo.json';
+import helpJson from '../../master/help.json';
 import { trackSchema, type GoingAptitude, type Going, type Track } from './schemas.js';
 import { AppError } from './errors.js';
 import { loadSkills, type SkillsMaster } from './skills.js';
@@ -208,6 +209,10 @@ export interface Progression {
   seasonRecap?: import('./seasonRecap.js').SeasonRecapConfig;
   /** REQ-CUP-*: プレイヤー主催カップ (hostedCups.ts, validated by hostedCupsProblems). Absent / disabled = no hosted cups. */
   hostedCups?: import('./hostedCups.js').HostedCupsConfig;
+  /** REQ-RPT-015: 通報 limits and reporter weights (reports.ts, validated by reportsProblems). Absent = REPORTS_DEFAULTS. */
+  reports?: Partial<import('./reports.js').ReportsConfig>;
+  /** REQ-FSUG-012: おすすめフレンド (friendSuggest.ts, validated by fsugProblems). Absent = FSUG_DEFAULTS. */
+  friendSuggest?: Partial<import('./friendSuggest.js').FsugConfig>;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */
@@ -395,6 +400,8 @@ export interface Master {
    * remote config `locale.en` adds to it). Absent in hand-built test masters (responses then stay Japanese).
    */
   locale?: { en: Record<string, string> };
+  /** REQ-MNT-*: maintenance windows and the client version gate (remote config `maintenance`; absent = DEFAULT_MAINTENANCE). */
+  maintenance?: import('./maintenance.js').MaintenanceConfig;
   /** REQ-COL-* / REQ-ACH-*: 図鑑 lore and achievements (master/collection.json; collection.ts collectionOf falls back to it when absent). */
   collection?: CollectionMaster;
   /** REQ-SILK-*: 勝負服エディタ parts (master/silks-editor.json; silksEditor.ts silksEditorOf falls back to it when absent). */
@@ -403,6 +410,8 @@ export interface Master {
   commentaryPacks?: import('./commentaryPacks.js').CommentaryPacksMaster;
   /** REQ-PHOTO-*: photo mode looks / frames / stamps (master/photo.json; photoMode.ts photoOf falls back to it when absent). */
   photo?: import('./photoMode.js').PhotoMaster;
+  /** REQ-HELP-*: ヘルプセンター articles (master/help.json; help.ts helpOf falls back to it when absent; remote config `help` replaces it). */
+  help?: import('./help.js').HelpMaster;
 }
 
 export const PPM_TOTAL = 1_000_000;
@@ -556,6 +565,7 @@ export function loadMaster(): Master {
     locale: { en: (localeEnJson as unknown as { strings: Record<string, string> }).strings },
     collection: collectionJson as unknown as CollectionMaster,
     photo: photoJson as unknown as import('./photoMode.js').PhotoMaster,
+    help: helpJson as unknown as import('./help.js').HelpMaster,
   };
   cached = m;
   return m;

@@ -1,7 +1,7 @@
 import type { Env } from './env.js';
 import { MyReplaysService, type ReplayStore } from './domain/myReplaysService.js';
 import { validateLocale } from './i18n/validate.js';
-import { eventPlayersFrom, friendIdsFrom, handle, makeFriendsService, makeInviteService, makeStudService, teamPlayersFrom, tournamentPlayersFrom, type AppContext, type PlayerInvoker, type RaceEntry } from './http/app.js';
+import { eventPlayersFrom, friendIdsFrom, handle, makeFriendSuggestService, makeFriendsService, makeInviteService, makeStudService, teamPlayersFrom, tournamentPlayersFrom, type AppContext, type PlayerInvoker, type RaceEntry } from './http/app.js';
 import { bearer, verifyFirebaseIdToken } from './http/auth.js';
 import { parseStoreNotification, storeSettingsFromEnv } from './http/stores.js';
 import { accountingStoreIndex } from './do/storeIndex.js';
@@ -38,6 +38,7 @@ import { TeamsService, type TeamFeedPage, type TeamGoalView, type TeamLeagueView
 import { stampsProblems, type FeedItem } from './domain/teamFeed.js';
 import { silksEditorProblems } from './domain/silksEditor.js';
 import { photoProblems } from './domain/photoMode.js';
+import { helpProblems } from './domain/help.js';
 import type { TeamSummary } from './domain/teams.js';
 import { EventsService } from './domain/eventService.js';
 import { eventBoardKey, eventCronPlan, validateEvents } from './domain/events.js';
@@ -48,7 +49,7 @@ import { authenticateAdmin, parseAdminTokens, parseConsoleOrigins, RateLimiter, 
 import { DeadLetterService, type DeadLetterOwner, type DeadLetterRegistry, type DeadLetterSource } from './ops/deadLetter.js';
 import { activeConfig } from './ops/activeConfig.js';
 import type { ResolvedConfig } from './ops/config.js';
-import { shardedDirectory, shardedHallDirectory, shardedInviteDirectory, shardedStableDirectory, shardedStudDirectory } from './do/directory.js';
+import { shardedDirectory, shardedHallDirectory, shardedInviteDirectory, shardedStableDirectory, shardedStudDirectory, shardedSuggestDirectory } from './do/directory.js';
 import { makeStableService } from './http/stablePorts.js';
 import { makeHallService } from './http/hallPorts.js';
 import { RivalService, rivalPlayersFrom } from './domain/rivalService.js';
@@ -110,6 +111,7 @@ validateItems(baseMaster); // REQ-ITEM-*: tickets may not reach paid-only banner
 { const sp = stampsProblems(baseMaster); if (sp.length) throw new Error('master/stamps.json: ' + sp.join('; ')); } // REQ-TEAMFEED-002
 { const sp = silksEditorProblems(baseMaster); if (sp.length) throw new Error('master/silks-editor.json: ' + sp.join('; ')); } // REQ-SILK-013
 { const pp = photoProblems(baseMaster); if (pp.length) throw new Error('master/photo.json: ' + pp.join('; ')); } // REQ-PHOTO-013
+{ const hp = helpProblems(baseMaster, undefined, Number(DEFAULT_RULESET.maxWhips)); if (hp.length) throw new Error('master/help.json: ' + hp.join('; ')); } // REQ-HELP-003
 validateEvents(baseMaster, baseMaster.events); // REQ-EVENT-001
 validateLeagueAndWeather(baseMaster); // REQ-LEAGUE-* and per-course climate (REQ-TRACK-003)
 validateUx(baseMaster, new Set(collectItemIds(baseMaster))); // REQ-UXS-*: onboarding, missions, experiments, deletion
@@ -296,6 +298,15 @@ export function makeOpsApi(env: Env): OpsApi | undefined {
       reject: (id, by, note, now) => call(ops().compReject!(id, by, note, now)),
       executed: (id, error, now) => call(ops().compExecuted!(id, error, now)),
     },
+    // REQ-RPT-007/013/016: the player-report queue lives in the same IntegrityDO singleton
+    playerReports: {
+      submit: (x, now, cfg) => call(integ().prSubmit!(x, now, cfg)),
+      list: (f) => call(integ().prList!(f)),
+      get: (id, cfg) => call(integ().prGet!(id, cfg)),
+      check: (id, action) => call(integ().prCheck!(id, action)),
+      resolve: (id, action, by, note, now) => call(integ().prResolve!(id, action, by, note, now)),
+      forget: (uid) => call(integ().prForget!(uid)),
+    },
     integrity: {
       recordRace: (r) => call(integ().recordRace!(r)),
       report: (raceId, reporter, now) => call(integ().report!(raceId, reporter, now)),
@@ -308,6 +319,12 @@ export function makeOpsApi(env: Env): OpsApi | undefined {
       release: (pid, reason, by, now) => call(integ().release!(pid, reason, by, now)),
     },
     deadLetters: makeDeadLetters(env),
+    // REQ-HELP-016: the inquiry index (OpsDO)
+    inquiries: {
+      upsert: (items) => call(ops().inqUpsert!(items)),
+      list: (q) => call(ops().inqList!(q)),
+      forgetPlayer: (pid) => call(ops().inqForget!(pid)),
+    },
   };
 }
 
@@ -411,6 +428,9 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
       },
     },
     friends: makeFriendsService((uid) => player(uid), shardedDirectory(env.DIRECTORY)),
+    // REQ-FSUG-*: おすすめフレンド (cards in the directory shards, the team view for branch members)
+    friendSuggest: makeFriendSuggestService(player, makeFriendsService((uid) => player(uid), shardedDirectory(env.DIRECTORY)), shardedSuggestDirectory(env.DIRECTORY),
+      makeTeamsService(env, () => master, player), () => master),
     stud: makeStudService(player, shardedStudDirectory(env.DIRECTORY), () => master),
     stable: makeStableService(player, shardedStableDirectory(env.DIRECTORY), () => master),
     hall: makeHallService(player, shardedHallDirectory(env.DIRECTORY), () => master), // REQ-HOF-*

@@ -1091,5 +1091,11 @@
     "keepYears": 3,
     "shortBelowRaces": 3,
     "momentsMax": 3
+  },
+  "friendSuggest": {
+    "_comment": "おすすめフレンド（REQ-FSUG-*、contracts/protocol.md §49）。何も配らない。理由はフレンド部屋・イベント・大会の最近の対戦相手（ランク戦は使わない）・同じ支部・マイ厩舎のいいね・応援スタンプ・共通のフレンドの数（fofMin 人以上）。表示しない設定・minAgeShown 歳未満・BAN・削除予約中の人は出さない。",
+    "enabled": true, "maxShown": 10, "candidateMax": 60, "fofFriendsMax": 20, "fofMin": 2, "mutualCap": 5,
+    "opponentDays": 30, "opponentKeep": 50, "dismissKeep": 200, "cacheTtlMs": 300000, "minAgeShown": 13,
+    "weights": { "opponent": 40, "team": 30, "liked": 25, "cheered": 25, "mutual": 10 }
   }
 }

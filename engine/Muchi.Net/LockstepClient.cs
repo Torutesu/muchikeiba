@@ -94,6 +94,7 @@ namespace Muchi.Net
             o.Set("raceId", _raceId);
             o.Set("token", _token);
             o.Set("lastTick", Sim == null ? -1 : Sim.Tick - 1);
+            o.Set("engine", EngineInfo.Level); // REQ-MNT-008 (§46.4): the room refuses a level it cannot race with (close 4026)
             _transport.Send(o.ToString());
             // The socket may have dropped right after our result went out: send it again so the room does not
             // wait until maxTicks. The room ignores a second "res" from the same slot.

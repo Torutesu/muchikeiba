@@ -6,7 +6,14 @@ using Muchi.Net;
 
 namespace Muchi.Engine.Tests
 {
+    /// <summary>The concurrency tests here rely on async continuations being scheduled promptly. Other test classes block
+    /// pool threads (.Result, Thread.Sleep); on a 2-core CI runner running them in parallel starved the pool for minutes
+    /// and a joiner's cancel looked hung (CI r16, r17). This collection runs alone, after the parallel ones.</summary>
+    [CollectionDefinition(nameof(AssetDeliverySerial), DisableParallelization = true)]
+    public sealed class AssetDeliverySerial { }
+
     /// <summary>REQ-DLV-001..010: catalog fetch/cache (ETag/304, offline), downloader (corruption, resume, quota, concurrency, eviction), resolution.</summary>
+    [Collection(nameof(AssetDeliverySerial))]
     public class AssetDeliveryTests : IDisposable
     {
         private readonly string _dir = Path.Combine(Path.GetTempPath(), "muchi-dlv-" + Guid.NewGuid().ToString("N"));
@@ -322,17 +329,22 @@ namespace Muchi.Engine.Tests
             cdn.Gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             var owner = dl.DownloadAsync(c, c.Entries);
             using var joinCts = new CancellationTokenSource();
+            // Both calls register synchronously (the owner is parked on the gate, the joiner on the shared transfer), so
+            // no wall-clock wait is needed. CI r16: a fixed 30 ms + 10 s bound failed on a starved thread pool.
             var joiner = dl.EnsureAsync(c, "horse/coat/bay", joinCts.Token);
             try
             {
-                await Task.Delay(30);
                 joinCts.Cancel();
-                var done = await Task.WhenAny(joiner, Task.Delay(10_000));
-                Assert.Same(joiner, done); // the joiner's own cancel is honoured while the owner's transfer is still held
+                // the joiner's own cancel is honoured while the owner's transfer is still held by the gate (the test
+                // controls it); the generous bound only stops a regression from hanging the run
+                var done = await Task.WhenAny(joiner, Task.Delay(TimeSpan.FromMinutes(2)));
+                Assert.Same(joiner, done);
                 await Assert.ThrowsAnyAsync<OperationCanceledException>(() => joiner);
+                Assert.False(owner.IsCompleted, "the owner's transfer is still held, not stopped by the joiner");
             }
             finally { cdn.Gate.TrySetResult(true); }
             Assert.True((await owner).AllOk);
+            Assert.Single(cdn.Requests); // one transfer: the joiner joined the owner's and never started its own
         }
 
         [Fact]

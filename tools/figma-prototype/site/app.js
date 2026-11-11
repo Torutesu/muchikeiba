@@ -350,11 +350,15 @@ function NavBar(active) {
   return bar;
 }
 /** Secondary information in a drawer from the right (progressive disclosure). */
-function Sheet(title, kicker, build, width = 660) {
+function Sheet(title, kicker, build, width = 660, o = {}) {
   const host = cur;
+  // o.solo (round 17): the panels behind are set aside while the sheet is open (a dense screen under the scrim would
+  // otherwise crowd the sheet's text at the larger text sizes); they come back on close
+  const behind = o.solo ? [...host.children].filter((c) => c.classList.contains('el')) : [];
+  behind.forEach((c) => c.classList.add('behind-sheet'));
   const scrim = document.createElement('div'); scrim.className = 'scrim'; host.appendChild(scrim);
   const s = document.createElement('div'); s.className = 'sheet'; s.style.width = width + 'px'; host.appendChild(s);
-  const close = () => { s.classList.add('closing'); scrim.remove(); setTimeout(() => s.remove(), 220); };
+  const close = () => { s.classList.add('closing'); scrim.remove(); behind.forEach((c) => c.classList.remove('behind-sheet')); setTimeout(() => s.remove(), 220); };
   scrim.addEventListener('click', close);
   Kicker(kicker, 48, 52, s);
   Txt(title, 48, 116, width - 96, 32, WHITE, s, { weight: 700 });
@@ -1183,7 +1187,7 @@ function Missions(ms, fw, bonus) {
 }
 /** Feature keys unlocked by races or days (server unlocks), each with its key and condition. */
 function Features() {
-  const keys = [['season_pass', 'シーズンパス', () => SeasonPass()], ['time_attack', 'タイムアタック', () => TimeAttack()], ['collection', '図鑑', () => Collection()], ['achievements', '実績・称号', () => Achievements()], ['breeding', '配合'], ['friends', 'フレンド'], ['teams', '支部'], ['events', 'イベント', () => EventTop()], ['my_stable', 'マイ厩舎'], ['my_replays', 'マイリプレイ', () => MyReplays()], ['friend_rooms', '主催カップ', () => HostedCups()]];
+  const keys = [['season_pass', 'シーズンパス', () => SeasonPass()], ['time_attack', 'タイムアタック', () => TimeAttack()], ['collection', '図鑑', () => Collection()], ['achievements', '実績・称号', () => Achievements()], ['breeding', '配合'], ['friends', 'フレンド', () => Friends()], ['teams', '支部'], ['events', 'イベント', () => EventTop()], ['my_stable', 'マイ厩舎'], ['my_replays', 'マイリプレイ', () => MyReplays()], ['friend_rooms', '主催カップ', () => HostedCups()]];
   Sheet('機能・イベント', '開放', (s, close, y) => {
     keys.forEach(([k, name, go], i) => {
       const f = unlock(k);
@@ -1372,6 +1376,8 @@ async function Shortfall(sf, ctx, retry, back) {
   }
   Txt('購入するとこの画面の前の操作に戻ります　·　有償コインから先に使われます', 52, 494, 976, 13, SOFT, d, { nowrap: true });
   Cta('閉じる', 52, 548, 380, back, d);
+  // round 17 (REQ-HELP-008): what paid and free coins are
+  TextLink('コインの購入について（ヘルプ）', 460, 560, 420, () => HelpArticle(L.helpContext('coin_shortfall'), 'context', () => Shortfall(sf, ctx, retry, back)), d).dataset.helpContext = 'coin_shortfall';
   if (shortfallShown !== sf) {
     shortfallShown = sf;
     L.kpi([{ name: 'offer_view', at: L.now(), props: { offerId: 'shortfall', trigger: 'T6' } }]);
@@ -2295,20 +2301,24 @@ async function Settings() {
   // round 10: 支部の応援 (team cheer stamps) and 友達招待 next to the looks / care entries
   // round 14: 実況パック (REQ-CMT-011) after the looks entries
   // round 15: アクセシビリティ (REQ-A11Y-*) first — reachable in the FTUE too (text size before the first race)
-  const moreRows = [['アクセシビリティ', () => A11ySettings(), 'a11y'], ['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions], ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite'],
+  const moreRows = [['ヘルプ・お問い合わせ', () => HelpCenter(Settings), 'help', (player?.help?.unreadReplies ?? 0) > 0 ? `未読 ${player.help.unreadReplies}` : undefined], ['アクセシビリティ', () => A11ySettings(), 'a11y'], ['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions], ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite'],
     // round 15 (REQ-ADV-009): the pre-race advice switch (a device setting, default on)
-    ['出走前アドバイス', () => { advice.setEnabled(!advice.enabled()); Settings(); }, 'advice', advice.enabled() ? 'オン' : 'オフ']];
+    ['出走前アドバイス', () => { advice.setEnabled(!advice.enabled()); Settings(); }, 'advice', advice.enabled() ? 'オン' : 'オフ'],
+    // round 17 (REQ-RPT-011): the block list and what a block does
+    ['通報とブロック', () => BlockList(), 'blocks']];
   moreRows.forEach(([n, go, action, state], i) => {
-    // R15 integration: nine rows (a11y, packs, the advice switch…) of 38 px under the kicker, clear of the legal block below
-    const b = Btn(n, 36, 96 + i * 38, 408, 38, go, 'row' + (i === moreRows.length - 1 ? ' last' : ''), m); b.style.fontSize = '19px';
+    // R15 integration: nine rows of 38 px under the kicker, clear of the legal block below (the kicker at y 466).
+    // R17 integration: eleven rows (ヘルプ first, 通報とブロック last) — the row height follows the count (33 px for 11)
+    const rowH = Math.min(36, Math.floor(364 / moreRows.length));
+    const b = Btn(n, 36, 96 + i * rowH, 408, rowH, go, 'row' + (i === moreRows.length - 1 ? ' last' : ''), m); b.style.fontSize = rowH < 36 ? '17px' : '18px';
     if (action) b.dataset.action = action;
     if (state) b.dataset.state = state;
     const em = document.createElement('em'); em.textContent = state ?? '›'; b.appendChild(em);
   });
-  Kicker('法定表示・規約', 36, 458, m, { rule: false, size: 15 });
-  [['利用規約', 'terms'], ['プライバシーポリシー', 'privacy'], ['特定商取引法に基づく表記', 'tokushoho'], ['資金決済法に基づく表示', 'shikin']].forEach(([n, k], i) => TextLink(n, 36, 484 + i * 36, 400, () => Legal(k, Settings), m));
+  Kicker('法定表示・規約', 36, 466, m, { rule: false, size: 15 });
+  [['利用規約', 'terms'], ['プライバシーポリシー', 'privacy'], ['特定商取引法に基づく表記', 'tokushoho'], ['資金決済法に基づく表示', 'shikin']].forEach(([n, k], i) => TextLink(n, 36, 492 + i * 34, 400, () => Legal(k, Settings), m));
   // the other front end (Codex's club UI, same logic and engine)
-  TextLink('クラブ版 UI', 36, 632, 400, () => { location.href = 'club.html'; }, m, 'クラブ版 UI を開く ↗');
+  TextLink('クラブ版 UI', 36, 636, 400, () => { location.href = 'club.html'; }, m, 'クラブ版 UI を開く ↗');
   // ③ demo states for review (REQ-UXP-002): the same rules on a moved clock
   const demo = Glass('Demo', 1056, 134, 508, 676, undefined, .78);
   Kicker('デモ（レビュー用）', 36, 30, demo, { color: SOFT });
@@ -2566,13 +2576,23 @@ async function Demo(kind) {
   if (kind === 'collection') { await L.seedCollection(); await refresh(); return Collection('horses'); }
   // round 14: a week of play (21 races: the 「出走の記録」 achievement pack is owned) → the commentary packs
   if (kind === 'packs') { await L.seedDemo(7, [3, 3, 3, 3, 3, 3, 3]); ftue = false; await refresh(); return CommentaryPacks('settings'); }
+  // round 17 (REQ-MNT-*): the maintenance screen, a closed feature, the announced window in what's new, the update screen
+  if (kind === 'maintenance') { await L.seedDemo(3, [2, 2, 2]); await refresh(); return Maintenance(L.maintenanceDemo('all').gate.details); }
+  if (kind === 'maintenance-scoped') { await L.seedDemo(3, [2, 2, 2]); await refresh(); L.maintenanceDemo('scoped'); await Home(); return MaintenanceScoped(); }
+  if (kind === 'maintenance-news') { await L.seedDemo(3, [2, 2, 2]); L.maintenanceDemo('announced'); await refresh(); return Home(); }
+  if (kind === 'update') { await L.seedDemo(3, [2, 2, 2]); await refresh(); globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }
+  if (kind === 'friends') { await L.seedFriendSuggest(); await refresh(); return Friends(); } // round 17: おすすめフレンド
   if (kind === 'activity') { await L.seedActivity(); await refresh(); actState.cursor = null; actState.stack = []; return Activity(); }
+  // round 17: two blocked players (one deleted since) and support's request in the activity list → 通報とブロック
+  if (kind === 'safety') { await L.reports.seedSafety(); await refresh(); return BlockList(); }
   if (kind === 'gifts') { await L.seedGifts(); await refresh(); giftState.tab = 'box'; giftState.page = 0; return GiftBox('box'); }
   // round 12: a week of play, then three ranked races in last place (settled by the real applyRace) → the one-time suggestion
   if (kind === 'assist') { await L.seedDemo(7, [3, 3, 3, 3, 3, 3, 3]); ftue = false; await L.demoLastPlaces(3); await refresh(); return AssistThen(Home); }
   if (kind === 'history') { await L.seedHistory(); await refresh(); hiState.picked = []; return History('purchases'); }
   // round 16: 3 game days of play, a gift expiring in 2 days and 2 owned scout tickets → the home's next card and chips
   if (kind === 'next') { await L.seedNext(); try { localStorage.removeItem(NEXT_VIEWED); } catch { /* */ } await refresh(); return Home(); }
+  // round 17: two inquiries — one answered by the real ops reply (unread, an activity entry), one waiting (§48)
+  if (kind === 'help') { await L.seedDemo(3, [2, 2, 2]); await L.seedInquiries(); await refresh(); helpState.sel = null; helpState.draft = null; return MyInquiries(); }
   const spec = { day1: [1, [1]], day3: [3, [2, 2, 2]], day7: [7, [3, 3, 3, 3, 3, 3, 3]] }[kind];
   await L.seedDemo(spec[0], spec[1]);
   await refresh();
@@ -2797,13 +2817,15 @@ async function HomeCard(cb) {
 }
 /** REQ-CB-008: the one-time card: what went live since the player last looked. Closing marks it seen. */
 function WhatsNewCard(data, cb) {
-  const KIND = { feature: '新機能', banner: 'スカウト', event: 'イベント', balance: '調整' };
+  const KIND = { feature: '新機能', banner: 'スカウト', event: 'イベント', balance: '調整', maintenance: 'メンテナンス' };
   const card = Glass('What\'s new', HOME_CARD.x, HOME_CARD.y, HOME_CARD.w, 404, undefined, .86);
   card.dataset.homeCard = 'whatsnew'; card.dataset.whatsnew = String(data.items.length); card.classList.add('rise');
   Kicker('前回からのお知らせ', 28, 24, card, { size: 16 });
   const shown = data.items.slice(0, 3);
   shown.forEach((it, i) => {
     const row = el('cb-item', 28, 92 + i * 84, 394, 84, card); row.dataset.item = it.id;
+    // round 17 (REQ-MNT-005): an announced maintenance links to its notice
+    if (it.kind === 'maintenance') { row.dataset.action = 'mnt-notice'; row.setAttribute('role', 'button'); row.style.cursor = 'pointer'; row.addEventListener('click', (e) => { e.stopPropagation(); MaintenanceNotice(); }); }
     Txt(KIND[it.kind] ?? 'お知らせ', 0, 12, 90, 12, CYAN, row, { weight: 700, ls: '.18em' });
     if (it.endsAt) Txt(`${cbDay(it.endsAt)}まで`, 250, 12, 144, 12, GOLD, row, { weight: 700, align: 'right' });
     Txt(it.title, 0, 32, 394, 18, WHITE, row, { weight: 700, nowrap: true });
@@ -3384,6 +3406,8 @@ function Odds(bannerId) {
   }
   const legal = (L.legalLinks ?? []).filter((l) => l.key.startsWith('legal.'));
   legal.forEach((l, i) => TextLink(l.title, 1170, 560 + i * 44, 330, () => Legal(l.key === 'legal.tokushoho' ? 'tokushoho' : 'shikin', () => Odds(bannerId)), p));
+  // round 17 (REQ-HELP-008): the pity article, with numbers from the same data
+  TextLink('天井のしくみ（ヘルプ）', 36, 610, 400, () => HelpArticle(L.helpContext('gacha_odds'), 'context', () => Odds(bannerId)), p).dataset.helpContext = 'gacha_odds';
   Back(() => Scout(bannerId), 'BACK', 40, 834);
 }
 
@@ -4299,6 +4323,8 @@ async function Hall(owner = null, page = 0) {
     Txt(v.owner.displayName, 30, 210, 320, 26, WHITE, lp, { weight: 700, nowrap: true });
     Txt('名前はプレイヤーが付けたままです', 30, 256, 320, 13, DIM, lp);
     Ghost('自分の殿堂', 30, 600, 320, 50, () => Hall(), lp, 'quiet small');
+    // round 17 (REQ-RPT-001): report this player's name from their hall
+    Ghost('通報する', 30, 536, 320, 50, () => ReportSheet({ playerId: v.owner.playerId, name: v.owner.displayName, kind: 'display_name', source: 'hall' }), lp, 'quiet small').classList.add('rpt-open');
   }
   // ② the plaques, 6 per page, newest first
   const grid = el('hof-grid', 440, 134, 1124, 676);
@@ -4559,6 +4585,8 @@ async function CupLobby(cupId) {
     if (e.horseName) cupTyped(Txt(e.horseName, 0, 34, 250, 13, MUTED, row, { nowrap: true }));
     const badge = e.withdrawn ? ['棄権', 'warn'] : e.playerId === c.hostId ? ['主催', 'gold'] : e.playerId === player?.id ? ['あなた', 'cyan'] : null;
     if (badge) Pills([badge], 260, 8, 100, row);
+    // §47 (Round 17 integration): anyone else in the lobby can be reported from here (source cup_lobby); names stay as typed
+    if (e.playerId !== player?.id) TextLink('通報', 270, 30, 90, () => ReportSheet({ playerId: e.playerId, name: e.displayName, kind: 'display_name', source: 'cup_lobby' }), row).classList.add('cup-report');
     Hair(0, 63, 360, row);
   });
   if (c.code) {
@@ -4849,6 +4877,8 @@ async function FriendReplays() {
     Txt(`${rpResult(x)}　·　${rpDate(x.at)}`, 24, 56, 250, 15, SOFT, c, { weight: 500, nowrap: true, cls: 'num' });
     Txt(rpCourse(x.trackId), 284, 56, 360, 15, SOFT, c, { weight: 500, nowrap: true });
     c.style.cursor = 'pointer'; c.addEventListener('click', () => ReplayPlayer(x.raceId, { friend: true, title: rpTitle(x), typed: !!x.replayTitle, owner: v.displayName }));
+    // round 17 (REQ-RPT-001): report the title (or the player when the replay has none)
+    Ghost('通報', 616, 30, 112, 46, () => ReportSheet({ playerId: v.playerId, name: v.displayName, kind: x.replayTitle ? 'replay_title' : 'player', ref: x.replayTitle ? x.raceId : undefined, source: 'replay', text: x.replayTitle ?? null }), c, 'small quiet').classList.add('rpt-open');
   });
   Back(MyReplays, 'BACK', 40, 834);
 }
@@ -5152,10 +5182,15 @@ async function TeamFeed() {
       foot.appendChild(cheer);
     }
     if (!it.mine && !goal) { // a goal item is the team's (no author): nothing to mute or report
-      const mute = tfNode('button', 'tf-link', '非表示');
-      mute.addEventListener('click', async (e) => { e.stopPropagation(); const r = await L.muteMember(it.playerId, true); toast(r.ok ? `${it.displayName}さんのスタンプを表示しません（その他から戻せます）` : r.message); TeamFeed(); });
-      const rep = tfNode('button', 'tf-link', '報告');
-      rep.addEventListener('click', async (e) => { e.stopPropagation(); const r = await L.reportFeed(it.seq, 'spam'); toast(r.ok ? '報告しました。ご協力ありがとうございます' : r.message); TeamFeed(); });
+      // round 17 (REQ-RPT-010): the feed's mute is the one block list (undone in その他 › 通報とブロック)
+      const mute = tfNode('button', 'tf-link', 'ブロック');
+      mute.addEventListener('click', async (e) => { e.stopPropagation(); const r = await L.muteMember(it.playerId, true); toast(r.ok ? 'ブロックしました（その他 › 通報とブロックで戻せます）' : r.message); TeamFeed(); });
+      // round 17 (REQ-RPT-001): the report sheet; once received, the item is also hidden for me (REQ-TEAMFEED-007)
+      const rep = tfNode('button', 'tf-link', '通報');
+      rep.addEventListener('click', (e) => {
+        e.stopPropagation();
+        ReportSheet({ playerId: it.playerId, name: it.displayName, kind: 'player', source: 'team_feed', after: async (cat) => { await L.reportFeed(it.seq, cat === 'harassment' ? 'harassment' : 'other'); TeamFeed(); } });
+      });
       foot.appendChild(mute); foot.appendChild(rep);
     }
     row.appendChild(foot);
@@ -5298,15 +5333,17 @@ function GiftResult(c) {
 // link per row, mark read up to the newest shown entry on opening. Display + links only: a gift row leads to the gift box,
 // never a claim button. Every value comes from L.activity (the real PlayerService and the same name resolution as the route).
 // ムチ一閃 tone: paddock art, translucent navy panels, letter-spaced cyan labels, one skewed cyan CTA ».
-const ACT_LABEL = { friend_request: 'フレンド', friend_accepted: 'フレンド', rival_week: 'ライバル', rival_record: 'ライバル', stable_like: 'マイ厩舎', team_cheer: '支部', tournament_result: '大会', gift_arrived: 'プレゼント', team_goal_tier: '支部', team_goal_week: '支部', replay_share: 'リプレイ', cup_invited: 'カップ', cup_started: 'カップ', cup_finished: 'カップ', cup_cancelled: 'カップ', recap_ready: '振り返り' };
+const ACT_LABEL = { friend_request: 'フレンド', friend_accepted: 'フレンド', rival_week: 'ライバル', rival_record: 'ライバル', stable_like: 'マイ厩舎', team_cheer: '支部', tournament_result: '大会', gift_arrived: 'プレゼント', team_goal_tier: '支部', team_goal_week: '支部', replay_share: 'リプレイ', inquiry_answered: 'お問い合わせ', cup_invited: 'カップ', cup_started: 'カップ', cup_finished: 'カップ', cup_cancelled: 'カップ', recap_ready: '振り返り', ops_notice: '運営' };
 const ACT_PAGE = 7;
 const actState = { cursor: null, stack: [] };
 const actGo = (screen, id) => ({
   friends: () => Invite(), rival: () => Rival(), stable: () => Stable(), team_feed: () => TeamFeed(), tournaments: () => EventTop(),
   gift_box: () => GiftBox('box'), team_goal: () => TeamGoal(), whats_new: () => Home(),
+  help_inquiry: (id) => MyInquiries(id), // §48: the answered inquiry
   replay: () => FriendReplays(), // §37: the friend's public replays (the entry's link id is the friend; the demo has one friend)
   cups: (cupId) => (cupId ? CupLobby(cupId) : HostedCups()), // round 16 (§42.7): the cup the entry names
   recap: (rid) => (rid ? Recap(rid) : Recaps()), // round 16 (§43): the recap that became ready
+  safety: () => BlockList(), // §47: support's request leads to 通報とブロック
 })[screen]?.(id);
 /** The home bell (under the gift envelope, clear of the rival strip) with the unread count from the player view (REQ-ACT-009). */
 function ActivityBell(x = 1088, y = 122) {
@@ -5363,6 +5400,298 @@ async function Activity() {
   Txt('いいね・応援スタンプ・プレゼントは、まとめて1件で表示します。', 36, 292, 376, 13, MUTED, d, { lh: 1.6 });
   Txt('プレゼントの受け取りはプレゼントボックスで行います。', 36, 366, 376, 13, MUTED, d, { lh: 1.6 });
   Txt('プッシュ通知の設定はプッシュだけに効きます。この一覧はいつでも見られます。', 36, 440, 376, 13, SOFT, d, { lh: 1.6 });
+  Cta('ホームへ', 36, 576, 376, () => Home(), d, 'small');
+  Back(Home, 'ホームへ', 40, 834);
+}
+
+// ================================================================= round 17: 通報とブロック (REQ-RPT-*, contracts/protocol.md §47)
+// The same sheet and screen as the Unity ReportModel / BlockListModel, on the real ReportsService / PlayerService rules
+// (L.reports). The sheet offers only the reasons that fit what is reported (the server's options), counts the note like the
+// server, sends once, and never says how many others reported. The block screen is the one block list (the team feed's mute
+// list) with current names and what a block does in each feature; unblocking asks first. Player names and the note stay as
+// typed (.keep-ja). ムチ一閃 tone: translucent navy panels, letter-spaced cyan labels, one skewed cyan CTA ».
+const RPT_KINDS_JA = { player: 'プレイヤー', display_name: '名前', horse_name: '馬の名前', stable_name: '厩舎の名前', replay_title: 'リプレイのタイトル', photo_caption: '写真のキャプション', race: 'レース' };
+const RPT_ERRORS = {
+  RATE_LIMITED: '今日はこれ以上通報できません。4:00に戻ります', NOT_FOUND: '通報する内容が見つかりませんでした。変更・削除された可能性があります',
+  NOT_ELIGIBLE: '出走したレースだけ「不正の疑い」で通報できます', BAD_REQUEST: '補足が長すぎます', DELETION_PENDING: 'アカウント削除の手続き中は送れません',
+};
+const cps = (s) => [...(s ?? '').trim()].length;
+/**
+ * The report sheet. t = { playerId, name, kind, ref?, source, text? (the reported text as shown), after?(category) }.
+ * `after` runs once the report is received (the team feed also hides the item for me, REQ-TEAMFEED-007).
+ */
+async function ReportSheet(t) {
+  const o = await L.reports.options();
+  if (!o.ok) { toast(o.message); return; }
+  const opt = o.value;
+  const reasons = opt.categories.filter((c) => c.kinds.includes(t.kind));
+  const st = { reason: null, note: '', block: false, sending: false };
+  return Sheet('通報する', `通報　/　${RPT_KINDS_JA[t.kind] ?? ''}`, (s, close, y) => {
+    s.classList.add('rpt-sheet'); s.dataset.kind = t.kind; s.dataset.source = t.source;
+    Txt('運営が内容を確認します。通報したことは相手に知らされません。', 48, y - 6, 604, 15, MUTED, s, { lh: 1.5 });
+    // ① what is reported (the player's own text: never translated)
+    const c = Card('Reported', 48, y + 44, 604, 78, s, 'var(--cyan)');
+    Txt(RPT_KINDS_JA[t.kind] ?? '', 22, 12, 200, 12, CYAN, c, { weight: 700, ls: '.18em', nowrap: true });
+    Txt(t.name, 22, 34, 260, 20, WHITE, c, { weight: 700, nowrap: true, cls: 'keep-ja' }).dataset.typed = '1';
+    if (t.text && t.text !== t.name) { const x = Txt(`「${t.text}」`, 290, 36, 296, 16, GOLD, c, { weight: 500, nowrap: true, cls: 'keep-ja' }); x.style.overflow = 'hidden'; x.style.textOverflow = 'ellipsis'; x.dataset.typed = '1'; }
+    // ② the reason (only the ones that fit this content)
+    Kicker('理由', 48, y + 140, s, { rule: false, size: 15 });
+    const btns = reasons.map((r, i) => {
+      const b = Btn(r.label, 48 + (i % 2) * 308, y + 170 + Math.floor(i / 2) * 56, 296, 48, () => { st.reason = r.id; btns.forEach((x) => x.classList.toggle('on', x.dataset.reason === r.id)); sync(); }, 'choice rpt-reason', s);
+      b.dataset.reason = r.id; b.style.fontSize = '17px';
+      return b;
+    });
+    // ③ the optional note (length checked like the server; sent as typed, read only by support)
+    const ny = y + 170 + Math.ceil(reasons.length / 2) * 56 + 8;
+    Txt('補足（任意）', 48, ny, 300, 15, WHITE, s, { weight: 500 });
+    const counter = Txt(`0/${opt.noteMaxChars}`, 452, ny, 200, 14, SOFT, s, { align: 'right', cls: 'num rpt-count', nowrap: true });
+    const box = el('fieldbox', 48, ny + 26, 604, 56, s);
+    const input = document.createElement('input');
+    input.className = 'field keep-ja rpt-note'; input.placeholder = '気になった点を短く'; input.setAttribute('aria-label', '補足（任意）');
+    Object.assign(input.style, { left: '18px', top: '8px', width: '566px', height: '40px', fontSize: '20px' });
+    input.addEventListener('input', () => { st.note = input.value; sync(); });
+    box.appendChild(input);
+    // ④ also block (off by default)
+    const blk = Btn('この人をブロックする', 48, ny + 96, 360, 46, () => { st.block = !st.block; blk.classList.toggle('on', st.block); blk.dataset.on = String(st.block); }, 'choice rpt-block', s);
+    blk.style.fontSize = '16px'; blk.dataset.on = 'false';
+    const msg = Txt(opt.remainingToday > 0 ? '' : RPT_ERRORS.RATE_LIMITED, 424, ny + 104, 228, 13, WARN, s, { weight: 500, lh: 1.4 });
+    msg.classList.add('rpt-msg');
+    // ⑤ the one CTA
+    const send = Cta('送る', 48, 736, 380, async () => {
+      if (st.sending) return;
+      st.sending = true; sync();
+      const r = await L.reports.submit({ targetId: t.playerId, category: st.reason, source: t.source, content: { kind: t.kind, ...(t.ref ? { [t.kind === 'horse_name' ? 'horseId' : t.kind === 'photo_caption' ? 'photoId' : 'raceId']: t.ref } : {}) }, note: st.note.trim() || null, alsoBlock: st.block });
+      st.sending = false;
+      if (!r.ok) { msg.textContent = RPT_ERRORS[r.code] ?? r.message; sync(); return; }
+      (globalThis.__muchiReports ??= []).push({ kind: t.kind, category: st.reason, source: t.source, blocked: r.value.blocked });
+      close();
+      toast(r.value.blocked && st.block ? '通報を受け付け、ブロックしました' : '通報を受け付けました。ご協力ありがとうございます');
+      await t.after?.(st.reason);
+    }, s, 'small rpt-send');
+    const sync = () => {
+      const n = cps(st.note);
+      counter.textContent = `${n}/${opt.noteMaxChars}`;
+      counter.style.color = n > opt.noteMaxChars ? 'var(--warn)' : '';
+      send.classList.toggle('disabled', !st.reason || n > opt.noteMaxChars || st.sending || opt.remainingToday <= 0);
+    };
+    sync();
+  }, 700, { solo: true });
+}
+
+const BLOCK_ICON = { activity: 'お知らせ', team_feed: '支部', rival: 'ライバル', stable: 'マイ厩舎', hall: '殿堂', replays: 'リプレイ', cups: 'カップ' };
+/** 通報とブロック: the one block list, what a block does in each feature, and how to report. */
+async function BlockList() {
+  currentScreen = BlockList;
+  const r = await L.reports.blocks();
+  if (!r.ok) { toast('ブロックの一覧はオンラインで確認できます'); return Settings(); }
+  const v = r.value;
+  Clear('blocks'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('通報とブロック', 'ブロックした人と、ブロックするとどうなるか');
+  // ① the list (newest first, current names; a deleted player shows the neutral name)
+  const p = Glass('Block list', 36, 134, 620, 676, undefined, .88);
+  p.classList.add('bl-list'); p.dataset.count = String(v.count);
+  Kicker('ブロック中', 36, 30, p);
+  Txt(`${v.count}/${v.max}`, 380, 72, 204, 15, SOFT, p, { align: 'right', cls: 'num', nowrap: true });
+  if (!v.blocked.length) Txt('ブロックしている人はいません', 36, 120, 540, 19, MUTED, p).dataset.blEmpty = '1';
+  v.blocked.slice(0, 7).forEach((b, i) => {
+    const row = el('bl-row', 24, 112 + i * 72, 572, 64, p);
+    row.dataset.player = b.playerId;
+    Txt(b.name, 18, 18, 320, 20, WHITE, row, { weight: 700, nowrap: true, cls: 'keep-ja' }).dataset.typed = '1';
+    Ghost('ブロック解除', 372, 8, 190, 48, () => UnblockConfirm(b), row, 'small quiet').classList.add('bl-unblock');
+  });
+  Txt('名前・キャプション・ふるまいが気になったら、その人のプロフィールやリプレイの「通報する」から運営に知らせてください。', 36, 620, 548, 13, SOFT, p, { lh: 1.5 });
+  // ② what a block does (from the server, one line per feature)
+  const e = Glass('Block effects', 676, 134, 888, 676, undefined, .86);
+  e.classList.add('bl-effects');
+  Kicker('ブロックするとどうなる？', 36, 30, e);
+  v.effects.forEach((x, i) => {
+    const row = el('bl-effect', 36, 112 + i * 70, 816, 60, e);
+    row.dataset.feature = x.feature;
+    Txt(BLOCK_ICON[x.feature] ?? '', 0, 4, 150, 12, CYAN, row, { weight: 700, ls: '.18em', nowrap: true });
+    Txt(x.text, 0, 26, 816, 17, WHITE, row, { weight: 500, nowrap: true });
+  });
+  Txt('相手には、ブロックしたことも通報したことも知らされません。', 36, 620, 816, 14, MUTED, e, { lh: 1.5 });
+  Back(Settings, 'BACK', 40, 834);
+}
+function UnblockConfirm(b) {
+  Shade('dim heavy');
+  const box = Dialog('Unblock', 860, 420);
+  box.classList.add('bl-confirm'); box.dataset.player = b.playerId;
+  Kicker('ブロック解除', 52, 44, box);
+  Txt('ブロックを解除しますか？', 52, 108, 756, 28, WHITE, box, { weight: 700 });
+  Txt(b.name, 52, 156, 756, 20, GOLD, box, { weight: 700, nowrap: true, cls: 'keep-ja' });
+  Txt('解除すると、この人のお知らせ・マイ厩舎・殿堂・リプレイがまた見えるようになります。相手には知らされません。', 52, 200, 756, 16, MUTED, box, { lh: 1.6 });
+  Cta('解除する', 52, 300, 380, async () => {
+    const r = await L.reports.unblock(b.playerId);
+    toast(r.ok ? 'ブロックを解除しました' : r.message);
+    BlockList();
+  }, box, 'small bl-yes');
+  Ghost('やめる', 456, 306, 200, 50, () => BlockList(), box, 'quiet').classList.add('bl-no');
+}
+
+// ================================================================= round 17: メンテナンス・強制アップデート (REQ-MNT-*, contracts/protocol.md §46)
+// The same screens as the Unity MaintenanceModel, on the real gate (server/src/domain/maintenance.ts through L.maintenance*):
+// the maintenance screen (scope all), the notice over a closed feature (a scoped window), the update-required screen (426)
+// and the announced-window notice opened from what's new. Only the real end time is shown — no countdown, no urgency.
+// ムチ一閃 tone: photoreal art, translucent navy panels, letter-spaced cyan labels, one skewed cyan CTA », sparse.
+const MNT_GROUP = { gacha: 'スカウト', shop: 'ショップ', ranked: 'ランク戦', teams: '支部', events: 'イベント', tournaments: '大会', training: '調教', time_attack: 'タイムアタック', social: 'フレンド', cups: '主催カップ', core: 'ゲーム全体' };
+const mntGroups = (scope) => (scope === 'all' || !Array.isArray(scope) || scope.includes('all') ? 'ゲーム全体' : scope.map((g) => MNT_GROUP[g] ?? g).join('・'));
+const MNT_PURCHASE = '購入済みのコインは、メンテナンス中でも必ず受け取れます。';
+const mntRange = (a, b) => `${a}${isJa() ? ' 〜 ' : ' – '}${b}`;
+const mntKpi = (e) => { (globalThis.__muchiKpi ??= []).push(e); };
+const mntBlocked = new Set();
+function mntBlock(d) {
+  const key = `${d.windowId}/${d.group}`;
+  if (!mntBlocked.has(key)) { mntBlocked.add(key); mntKpi({ name: 'maintenance_block', group: d.group, windowId: d.windowId }); }
+}
+/** Full screen: a window with scope all (503 MAINTENANCE on every request). */
+function Maintenance(d) {
+  currentScreen = () => Maintenance(d);
+  mntBlock(d);
+  Clear('maintenance'); SetArt('Art/home-paddock', false); Shade('left');
+  Kicker('メンテナンス', 82, 112, undefined, { size: 18 });
+  Txt('メンテナンス中です', 78, 176, 900, 64, WHITE, undefined, { cls: 'tshadow', ls: '.04em', nowrap: true });
+  Txt(d.message || 'ただいまメンテナンスを行っています。終了までしばらくお待ちください。', 82, 276, 820, 22, WHITE, undefined, { cls: 'tshadow', weight: 500, lh: 1.65 });
+  const box = Glass('Maintenance', 82, 376, 760, 228, undefined, .82);
+  Txt('終了予定（日本時間）', 36, 30, 560, 15, CYAN, box, { weight: 700, ls: '.18em', nowrap: true });
+  Txt(d.endsAtJst, 36, 58, 400, 44, WHITE, box, { weight: 700, cls: 'num', nowrap: true }).dataset.mntEnds = d.endsAtJst;
+  Hair(36, 128, 688, box);
+  Txt('止まっている機能', 36, 146, 560, 15, CYAN, box, { weight: 700, ls: '.18em', nowrap: true });
+  Txt(mntGroups(d.scope), 36, 176, 688, 19, WHITE, box, { weight: 500, nowrap: true });
+  Cta('再読み込み', 82, 648, 420, () => MaintenanceReload()).dataset.action = 'mnt-reload';
+  Txt(MNT_PURCHASE, 82, 764, 900, 15, MUTED, undefined, { cls: 'tshadow', weight: 500 });
+  EnToggle(1466, 31, 98, 88);
+}
+/** 「再読み込み」: GET /v1/maintenance and the gate again; back to the game when nothing covers it any more. */
+function MaintenanceReload() {
+  const r = L.maintenanceCheck('/v1/player');
+  if (r.gate?.code === 'UPGRADE_REQUIRED') return UpdateRequired(r.gate.details);
+  if (r.gate?.code === 'MAINTENANCE') { toast('まだメンテナンス中です'); return Maintenance(r.gate.details); }
+  toast('メンテナンスが終わりました');
+  return Home();
+}
+/** A scoped window: the feature that was opened is closed; a notice over it, the rest of the game keeps working. */
+function MaintenanceSheet(d) {
+  mntBlock(d);
+  const dlg = Dialog('Maintenance notice', 760, 460);
+  dlg.dataset.mntSheet = d.group;
+  Kicker('メンテナンス', 44, 36, dlg, { size: 15 });
+  Txt('この機能はメンテナンス中です', 44, 104, 680, 30, WHITE, dlg, { weight: 700, nowrap: true });
+  Txt('終了予定（日本時間）', 44, 164, 300, 14, CYAN, dlg, { weight: 700, ls: '.18em', nowrap: true });
+  Txt(d.endsAtJst, 44, 190, 300, 30, WHITE, dlg, { weight: 700, cls: 'num', nowrap: true });
+  Txt('止まっている機能', 380, 164, 340, 14, CYAN, dlg, { weight: 700, ls: '.18em', nowrap: true });
+  Txt(mntGroups(d.scope), 380, 194, 340, 19, WHITE, dlg, { weight: 500, nowrap: true });
+  Hair(44, 250, 672, dlg);
+  Txt('ほかの機能はいつもどおり遊べます。', 44, 270, 672, 16, MUTED, dlg, { weight: 500 });
+  Txt(MNT_PURCHASE, 44, 306, 672, 14, SOFT, dlg, { weight: 500 });
+  Cta('ホームへ', 44, 362, 360, () => dlg.remove(), dlg, 'small');
+  return dlg;
+}
+/** Opening スカウト while a scoped window covers it: the gate's 503 → the notice over home (only on home, never over a prompt). */
+function MaintenanceScoped() {
+  const g = L.maintenanceCheck('/v1/gacha/banners').gate;
+  if (g?.code !== 'MAINTENANCE' || cur?.dataset.screen !== 'home') return null;
+  return MaintenanceSheet(g.details);
+}
+/** 426 UPGRADE_REQUIRED: the update screen with the store button. It does not go away by itself. */
+function UpdateRequired(d) {
+  currentScreen = () => UpdateRequired(d);
+  const kind = d.reason === 'engine' ? 'engine' : 'required';
+  if (!globalThis.__mntPrompted) { globalThis.__mntPrompted = true; mntKpi({ name: 'upgrade_prompt', kind, action: 'shown', platform: 'ios' }); }
+  Clear('update-required'); SetArt('Art/title-screen', false); Shade('left');
+  Kicker('アップデート', 82, 112, undefined, { size: 18 });
+  Txt('アップデートのお願い', 78, 176, 900, 64, WHITE, undefined, { cls: 'tshadow', ls: '.04em', nowrap: true });
+  Txt(kind === 'engine' ? 'レースに参加するには、アプリを最新版に更新してください。' : '新しいバージョンのアプリが公開されています。ストアから更新してください。', 82, 276, 820, 22, WHITE, undefined, { cls: 'tshadow', weight: 500, lh: 1.65 });
+  const box = Glass('Versions', 82, 376, 760, 170, undefined, .82);
+  Txt('お使いのバージョン', 36, 30, 330, 15, CYAN, box, { weight: 700, ls: '.18em', nowrap: true });
+  Txt(d.version ?? '—', 36, 60, 300, 40, WHITE, box, { weight: 700, cls: 'num', nowrap: true });
+  Txt('必要なバージョン', 400, 30, 330, 15, CYAN, box, { weight: 700, ls: '.18em', nowrap: true });
+  Txt(d.minVersion ?? '—', 400, 60, 300, 40, WHITE, box, { weight: 700, cls: 'num', nowrap: true }).dataset.mntMin = d.minVersion ?? '';
+  const go = Cta('ストアへ', 82, 590, 420, () => {
+    mntKpi({ name: 'upgrade_prompt', kind, action: 'store', platform: 'ios' });
+    toast('ストアを開きます（プロトタイプでは開きません）');
+  });
+  go.dataset.action = 'mnt-store'; go.dataset.url = d.storeUrl ?? '';
+  Txt(MNT_PURCHASE, 82, 706, 900, 15, MUTED, undefined, { cls: 'tshadow', weight: 500 });
+  EnToggle(1466, 31, 98, 88);
+}
+/** The announced (or running) window, opened from what's new: when, what stops, and what never stops. */
+function MaintenanceNotice() {
+  currentScreen = () => MaintenanceNotice();
+  const s = L.maintenanceCheck().status;
+  const w = s.active[0] ?? s.upcoming[0];
+  if (!w) { toast('予定されているメンテナンスはありません'); return Home(); }
+  Clear('maintenance-notice'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('メンテナンスのお知らせ', '日時は日本時間です　·　購入と進行中のレースは止まりません');
+  const p = Glass('Maintenance notice', 36, 134, 1060, 676, undefined, .88);
+  Kicker(w.status === 'active' ? 'メンテナンス中' : '予定', 36, 30, p, { size: 15 });
+  Txt(mntRange(w.startJst, w.endJst), 36, 100, 980, 40, WHITE, p, { weight: 700, cls: 'num', nowrap: true }).dataset.mntWindow = w.id;
+  Txt(w.message, 36, 170, 980, 20, WHITE, p, { weight: 500, lh: 1.6 });
+  Hair(36, 262, 988, p);
+  Txt('止まっている機能', 36, 286, 560, 15, CYAN, p, { weight: 700, ls: '.18em', nowrap: true });
+  Txt(mntGroups(w.scope), 36, 316, 980, 19, WHITE, p, { weight: 500, nowrap: true });
+  Txt(MNT_PURCHASE, 36, 386, 980, 15, MUTED, p, { weight: 500, lh: 1.6 });
+  Cta('ホームへ', 36, 576, 376, () => Home(), p, 'small');
+  Back(Home, 'ホームへ', 40, 834);
+}
+
+// ================================================================= round 17: おすすめフレンド (REQ-FSUG-*, contracts/protocol.md §49)
+// The same section as the Unity FriendSuggestionsModel, on the friends screen: people met in the game (an event, a friend
+// room, a like, a cheer, the branch) and a count of mutual friends, with the server's reason line; 「申請する」 goes through
+// the real friend request flow, 「表示しない」 is remembered; the profile switch 「おすすめに表示しない」. Nothing is granted.
+// ムチ一閃 tone: paddock art, translucent navy panels, letter-spaced cyan labels, one skewed cyan CTA ».
+const FSUG_LABEL = { opponent: '対戦', team: '支部', liked: 'いいね', cheered: '応援', mutual: '共通のフレンド' };
+const FSUG_ROWS = 6;
+const fsState = { viewed: false };
+async function Friends(newVisit = true) {
+  currentScreen = () => Friends(false);
+  if (newVisit) { fsState.viewed = false; await L.fsugRepublish(); } // the demo directory is memory only (a reload clears it)
+  const [sr, fr] = await Promise.all([L.friendSuggestions(), L.friendsList()]);
+  if (!sr.ok || !fr.ok) { toast((sr.ok ? fr : sr).message); return Home(); }
+  const S = sr.value, F = fr.value;
+  Clear('friends'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('フレンド', 'ゲームの中で出会った人を、おすすめに表示します');
+  // ① the suggestions (the server's order and reason line; names as the players typed them)
+  const p = Glass('Friend suggestions', 36, 134, 1060, 676, undefined, .88);
+  p.classList.add('fsug-list'); p.dataset.fsug = String(S.items.length);
+  Kicker('おすすめフレンド', 36, 30, p, { size: 15 });
+  if (S.enabled && !S.items.length) Txt('いまはおすすめできる人がいません', 36, 110, 900, 19, MUTED, p).dataset.fsugEmpty = '1';
+  S.items.slice(0, FSUG_ROWS).forEach((it, i) => {
+    const row = el('act-row fsug-row', 24, 86 + i * 86, 1012, 80, p);
+    row.dataset.fsugId = it.playerId; row.dataset.reason = it.reasons[0]?.kind ?? '';
+    Txt(FSUG_LABEL[it.reasons[0]?.kind] ?? 'おすすめ', 22, 8, 220, 12, CYAN, row, { weight: 700, ls: '.18em', nowrap: true });
+    const nm = Txt(it.displayName, 22, 28, 300, 21, WHITE, row, { weight: 700, nowrap: true });
+    nm.style.overflow = 'hidden'; nm.style.textOverflow = 'ellipsis';
+    Txt(`クラス ${it.classId}`, 330, 32, 120, 14, SOFT, row, { weight: 500, nowrap: true });
+    const rs = Txt(it.text, 22, 56, 560, 14, MUTED, row, { nowrap: true });
+    rs.style.overflow = 'hidden'; rs.style.textOverflow = 'ellipsis'; rs.dataset.fsugReason = it.text;
+    Ghost('申請する', 640, 16, 180, 48, async () => {
+      const r = await L.fsugRequest(it.playerId);
+      toast(r.ok ? (r.value.status === 'friends' ? 'フレンドになりました' : 'フレンド申請を送りました') : r.code === 'FRIEND_LIMIT' ? 'フレンドの上限に達しています' : r.message);
+      Friends(false);
+    }, row, 'small').dataset.fsugRequest = it.playerId;
+    Ghost('表示しない', 836, 16, 168, 48, async () => { await L.fsugDismiss(it.playerId); Friends(false); }, row, 'small quiet').dataset.fsugDismiss = it.playerId;
+  });
+  if (S.items.length > FSUG_ROWS) Txt(`ほか${S.items.length - FSUG_ROWS}人`, 36, 616, 400, 14, SOFT, p);
+  // REQ-FSUG-014: fsug_view once per visit (how many were shown; no player ids)
+  if (!fsState.viewed && S.enabled) { fsState.viewed = true; (globalThis.__muchiKpi ??= []).push({ name: 'fsug_view', shown: Math.min(30, S.items.length) }); }
+  // ② my friends, the code entry, the rule in plain words and the profile switch
+  const d = Glass('Friends summary', 1116, 134, 448, 676, undefined, .9);
+  Kicker('フレンド', 36, 30, d, { size: 16 });
+  Txt(`${F.friends.length}人`, 36, 90, 376, 40, WHITE, d, { weight: 700, cls: 'num' }).dataset.fsugFriends = String(F.friends.length);
+  Txt(F.friends.slice(0, 3).map((x) => x.displayName).join('　') || 'まだいません', 36, 150, 376, 15, MUTED, d, { nowrap: true }).style.overflow = 'hidden';
+  if (F.outgoing.length) Txt(`申請中 ${F.outgoing.length}人`, 36, 182, 376, 14, CYAN, d, { weight: 700, ls: '.1em' }).dataset.fsugOutgoing = String(F.outgoing.length);
+  TextLink('フレンドコード・友達招待', 36, 214, 376, () => Invite(), d);
+  Hair(36, 270, 376, d);
+  Kicker('おすすめのきまり', 36, 290, d, { rule: false, size: 14 });
+  Txt('同じ支部・同じレース・いいね・応援で出会った人と、共通のフレンドが2人以上いる人を表示します。ランク戦の相手は表示しません。', 36, 322, 376, 13, MUTED, d, { lh: 1.6 });
+  const sw = Ghost(`おすすめに表示しない：${S.settings.hidden ? 'オン' : 'オフ'}`, 36, 444, 376, 52, async () => {
+    const r = await L.fsugSetHidden(!S.settings.hidden);
+    if (!r.ok) toast(r.message);
+    Friends(false);
+  }, d, 'small quiet');
+  sw.dataset.fsugHidden = S.settings.hidden ? '1' : '0';
+  Txt('オンにすると、ほかのプレイヤーのおすすめにあなたが出なくなります', 36, 508, 376, 12, SOFT, d, { lh: 1.5 });
   Cta('ホームへ', 36, 576, 376, () => Home(), d, 'small');
   Back(Home, 'ホームへ', 40, 834);
 }
@@ -5775,6 +6104,287 @@ function PhotoBack() {
 }
 
 // ================================================================= boot
+// ================================================================= round 17: ヘルプセンター (REQ-HELP-*, contracts/protocol.md §48)
+// The same screens as the Unity HelpCenterModel on the real rules (help.ts + PlayerService): categories, search with the
+// Japanese fold (hiragana / katakana / half-width), an article (numbers filled from data), "was this helpful", contextual
+// links (rates → pity, coin shortfall → buying coins), the inquiry form (category, text, history rows, the diagnostics it
+// attaches, one key kept across retries) and my inquiries (status, the support reply, read on opening). Articles come in
+// the language the screen shows (lang = en in English); what the player typed and support's replies stay as written
+// (.keep-ja). ムチ一閃 tone: paddock art, translucent navy panels, letter-spaced cyan kickers, one skewed cyan CTA ».
+const helpState = { back: null, q: '', cat: null, formKey: null, draft: null, sel: null, picks: null };
+const helpLang = () => (isJa() ? 'ja' : 'en');
+const helpKpi = (name, props) => (globalThis.__muchiKpi ??= []).push({ name, ...props });
+const HELP_STATUS_COLOR = { received: GOLD, answered: CYAN, closed: SOFT };
+/** Where an article's screen link leads (protocol §48.1 screens). */
+const helpGo = (screen, back) => ({
+  home: () => Home(), settings: () => Settings(), race_lobby: () => RaceLobby(), tutorial: () => toast('チュートリアルはタイトル画面から始められます'),
+  training: () => Training(), breeding: () => Stable(), stable: () => Stable(), collection: () => Collection('horses'), gacha: () => Scout(),
+  gacha_odds: () => Odds('standard'), shop: () => Store('coins'), history: () => History('purchases'), gift_box: () => GiftBox('box'),
+  activity: () => { actState.cursor = null; actState.stack = []; return Activity(); }, accessibility: () => A11ySettings(),
+  account_link: () => Settings(), deletion: () => Settings(), inquiry: () => InquiryForm(), my_inquiries: () => MyInquiries(),
+})[screen]?.() ?? back?.();
+/** Entry from settings (or a screen's ? link): `back` is where 戻る returns. */
+async function HelpCenter(back = null) {
+  if (back) helpState.back = back;
+  currentScreen = () => HelpCenter();
+  const r = await L.help(helpLang());
+  if (!r.ok) { toast(r.message); return Settings(); }
+  const H = r.value;
+  helpState.index = H;
+  Clear('help'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('ヘルプ・お問い合わせ', 'よくある質問　·　キーワード検索　·　運営への問い合わせ');
+  const p = Glass('Help categories', 36, 134, 1060, 676, undefined, .88);
+  p.classList.add('help-home');
+  Kicker('キーワードで探す', 36, 30, p, { size: 15, rule: false });
+  const box = el('fieldbox', 36, 66, 760, 60, p);
+  const input = document.createElement('input');
+  input.className = 'field'; input.maxLength = 40; input.value = helpState.q; input.placeholder = 'ひらがな・カタカナ・半角どれでも'; input.setAttribute('aria-label', 'キーワード');
+  Object.assign(input.style, { left: '18px', top: '8px', width: '720px', height: '44px', fontSize: '22px' });
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') HelpSearch(input.value, null); });
+  box.appendChild(input);
+  Ghost('検索', 812, 66, 212, 60, () => HelpSearch(input.value, null), p).dataset.action = 'help-search';
+  Kicker('カテゴリ', 36, 150, p, { size: 15, rule: false });
+  H.categories.forEach((c, i) => {
+    const b = Btn(c.title, 36 + (i % 2) * 498, 192 + Math.floor(i / 2) * 92, 486, 80, () => HelpCategory(c.id), 'row help-cat', p, '');
+    b.dataset.helpCat = c.id; b.classList.add('help-card');
+    Txt(c.title, 22, 14, 380, 20, WHITE, b, { weight: 700, nowrap: true });
+    Txt(`${c.count}件`, 22, 46, 200, 13, MUTED, b, { weight: 500, cls: 'num' });
+    const em = document.createElement('em'); em.textContent = '›'; b.appendChild(em);
+  });
+  // right: inquiries
+  const d = Glass('Help contact', 1116, 134, 448, 676, undefined, .9);
+  Kicker('問い合わせ', 36, 30, d, { size: 16, rule: false });
+  Txt('よくある質問で解決しないときは、運営に問い合わせできます。返信はアクティビティでお知らせします。', 36, 84, 376, 15, MUTED, d, { lh: 1.6 });
+  const unread = player?.help?.unreadReplies ?? 0;
+  const mine = Btn('自分の問い合わせ', 36, 200, 376, 56, () => MyInquiries(), 'row last', d); mine.style.fontSize = '19px';
+  mine.dataset.action = 'my-inquiries'; mine.dataset.unread = String(unread);
+  { const em = document.createElement('em'); em.textContent = unread > 0 ? `未読 ${unread}` : '›'; mine.appendChild(em); }
+  Txt('問い合わせには、アプリの版・端末の種類・プレイヤーID・直近のレースIDだけが自動で添えられます。', 36, 290, 376, 13, SOFT, d, { lh: 1.6 });
+  Hair(36, 400, 376, d);
+  TextLink('公式サポートサイト', 36, 418, 376, () => toast(H.supportSite), d).dataset.url = H.supportSite;
+  Cta('問い合わせる', 36, 576, 376, () => InquiryForm(), d).dataset.action = 'inquiry';
+  Back(() => (helpState.back ?? Settings)(), '戻る', 40, 834);
+}
+function helpList(p, items, open, y0 = 86) {
+  if (!items.length) { Txt('見つかりませんでした。言葉を変えるか、問い合わせてください', 36, y0 + 20, 980, 18, MUTED, p).dataset.helpEmpty = '1'; return; }
+  items.slice(0, 7).forEach((a, i) => {
+    const row = el('help-row', 24, y0 + i * 74, 1012, 68, p); row.dataset.helpArticle = a.id; row.setAttribute('role', 'button');
+    Txt(a.title, 22, a.snippet ? 8 : 20, 900, 19, WHITE, row, { weight: 700, nowrap: true });
+    if (a.snippet) { const s = Txt(a.snippet, 22, 38, 900, 13, MUTED, row, { nowrap: true }); s.style.overflow = 'hidden'; s.style.textOverflow = 'ellipsis'; }
+    Txt('›', 960, 16, 30, 26, CYAN, row, { weight: 700 });
+    row.addEventListener('click', () => open(a));
+  });
+}
+async function HelpCategory(cat) {
+  currentScreen = () => HelpCategory(cat);
+  const H = helpState.index ?? (await L.help(helpLang())).value;
+  const c = H.categories.find((x) => x.id === cat);
+  Clear('help-category'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('ヘルプ　/　' + (c?.title ?? ''), 'よくある質問');
+  const p = Glass('Help category', 36, 134, 1060, 676, undefined, .88);
+  p.dataset.cat = cat;
+  Kicker(c?.title ?? '', 36, 30, p, { size: 15 });
+  helpList(p, H.articles.filter((a) => a.category === cat), (a) => HelpArticle(a.id, 'list', () => HelpCategory(cat)));
+  helpSide();
+  Back(() => HelpCenter(), '戻る', 40, 834);
+}
+async function HelpSearch(q, cat) {
+  helpState.q = q ?? ''; helpState.cat = cat;
+  currentScreen = () => HelpSearch(helpState.q, helpState.cat);
+  if (!helpState.q.trim()) return HelpCenter();
+  const r = await L.helpSearch(helpState.q, cat, helpLang());
+  if (!r.ok) { toast(r.code === 'BAD_REQUEST' ? '40文字までで入力してください' : r.message); return HelpCenter(); }
+  // REQ-HELP-021: the folded length, the category and the count — never the query itself
+  helpKpi('help_search', { length: L.helpFoldLength(helpState.q), category: cat ?? 'all', results: r.value.total });
+  Clear('help-search'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('ヘルプ　/　検索', '全部の言葉を含む記事を表示しています');
+  const p = Glass('Help search', 36, 134, 1060, 676, undefined, .88);
+  p.dataset.total = String(r.value.total);
+  Kicker(`検索結果　${r.value.total}件`, 36, 30, p, { size: 15 });
+  const qt = Txt(helpState.q, 300, 34, 700, 15, WHITE, p, { weight: 700, nowrap: true }); qt.classList.add('keep-ja'); // the player's own words
+  helpList(p, r.value.items, (a) => HelpArticle(a.id, 'search', () => HelpSearch(helpState.q, helpState.cat)));
+  helpSide();
+  Back(() => HelpCenter(), '戻る', 40, 834);
+}
+/** The right column of the list screens: the way to contact. */
+function helpSide() {
+  const d = Glass('Help contact', 1116, 134, 448, 676, undefined, .9);
+  Kicker('問い合わせ', 36, 30, d, { size: 16, rule: false });
+  Txt('解決しないときは、運営に問い合わせできます。', 36, 84, 376, 15, MUTED, d, { lh: 1.6 });
+  TextLink('自分の問い合わせ', 36, 160, 376, () => MyInquiries(), d);
+  Cta('問い合わせる', 36, 576, 376, () => InquiryForm(), d).dataset.action = 'inquiry';
+}
+/** An article: `source` = list | search | context | link | related (help_article_view once per opening). */
+async function HelpArticle(id, source = 'list', back = null) {
+  const r = await L.helpArticle(id, helpLang());
+  if (!r.ok) { toast(r.message); return back ? back() : HelpCenter(); }
+  helpKpi('help_article_view', { articleId: id, source });
+  return HelpArticleView(r.value, back ?? (() => HelpCenter()));
+}
+function HelpArticleView(A, back) {
+  currentScreen = () => HelpArticle(A.id, 'link', back);
+  Clear('help-article'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('ヘルプ　/　' + A.categoryTitle, 'よくある質問');
+  const p = Glass('Help article', 36, 134, 1060, 676, undefined, .9);
+  p.dataset.article = A.id; p.classList.add('help-article');
+  Kicker(A.categoryTitle, 36, 30, p, { size: 15, rule: false });
+  Txt(A.title, 36, 70, 980, 28, WHITE, p, { weight: 700, lh: 1.3 });
+  const body = Txt(A.body, 36, 136, 980, 17, WHITE, p, { weight: 500, lh: 1.75, h: 470 });
+  body.classList.add('help-body'); body.style.whiteSpace = 'pre-line'; body.style.overflow = 'hidden';
+  // "was this helpful" (REQ-HELP-007)
+  const voted = helpState.votes?.[A.id];
+  Hair(36, 612, 988, p);
+  Txt('この記事は役に立ちましたか？', 36, 628, 420, 15, MUTED, p, { weight: 500, nowrap: true });
+  const vote = async (helpful) => {
+    const v = await L.helpFeedback(A.id, helpful);
+    if (!v.ok) { toast(v.message); return; }
+    (helpState.votes ??= {})[A.id] = helpful;
+    toast('ご意見ありがとうございます'); HelpArticleView(A, back);
+  };
+  const yes = Ghost('役に立った', 560, 618, 220, 48, () => vote(true), p, 'small' + (voted === true ? ' on' : '')); yes.dataset.vote = 'yes';
+  const no = Ghost('役に立たなかった', 796, 618, 228, 48, () => vote(false), p, 'small quiet' + (voted === false ? ' on' : '')); no.dataset.vote = 'no';
+  // right: links (screens, legal pages, articles, the support site) and related articles
+  const d = Glass('Help links', 1116, 134, 448, 676, undefined, .9);
+  Kicker('関連する画面・ページ', 36, 30, d, { size: 15, rule: false });
+  A.links.forEach((l, i) => {
+    const go = () => (l.type === 'screen' ? helpGo(l.screen, () => HelpArticleView(A, back))
+      : l.type === 'legal' ? Legal(l.doc, () => HelpArticleView(A, back))
+        : l.type === 'article' ? HelpArticle(l.articleId, 'link', () => HelpArticleView(A, back))
+          : toast(l.url));
+    const t = TextLink(l.label, 36, 76 + i * 44, 376, go, d); t.dataset.helpLink = l.type; t.dataset.target = l.screen ?? l.doc ?? l.articleId ?? l.url ?? '';
+  });
+  let y = 96 + A.links.length * 44;
+  if (A.related.length) {
+    Kicker('関連する記事', 36, y, d, { rule: false, size: 14 }); y += 34;
+    A.related.forEach((x) => { TextLink(x.title, 36, y, 376, () => HelpArticle(x.id, 'related', () => HelpArticleView(A, back)), d).dataset.related = x.id; y += 44; });
+  }
+  Cta('問い合わせる', 36, 576, 376, () => InquiryForm(A.category === 'purchases' ? 'purchase_missing' : A.category === 'scout' ? 'gacha' : null), d, 'small').dataset.action = 'inquiry';
+  Back(back, '戻る', 40, 834);
+}
+
+// ---------------------------------------------------------------- the inquiry form
+async function InquiryForm(category = null) {
+  helpState.draft ??= { category: 'other', description: '', refs: [] };
+  if (category) helpState.draft.category = category;
+  currentScreen = () => InquiryForm();
+  const [idx, list] = await Promise.all([helpState.index ? { ok: true, value: helpState.index } : L.help(helpLang()), L.inquiries(helpLang())]);
+  if (!idx.ok) { toast(idx.message); return Settings(); }
+  const H = idx.value; helpState.index = H;
+  const D = helpState.draft;
+  const cat = H.inquiry.categories.find((c) => c.id === D.category) ?? H.inquiry.categories[H.inquiry.categories.length - 1];
+  Clear('inquiry-form'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('問い合わせ', '内容を書いて送信してください　·　返信はアクティビティでお知らせします');
+  const p = Glass('Inquiry form', 36, 134, 1060, 676, undefined, .9);
+  p.classList.add('inquiry-form'); p.dataset.category = D.category;
+  Kicker('種類', 36, 22, p, { size: 15, rule: false });
+  H.inquiry.categories.forEach((c, i) => {
+    const b = Btn(c.title, 36 + (i % 3) * 330, 58 + Math.floor(i / 3) * 50, 318, 42, () => { D.category = c.id; InquiryForm(); }, 'choice' + (D.category === c.id ? ' on' : ''), p);
+    b.dataset.inquiryCat = c.id; b.style.fontSize = '15px'; b.style.whiteSpace = 'nowrap'; b.style.padding = '0';
+  });
+  Kicker('内容', 36, 272, p, { size: 15, rule: false });
+  const box = el('fieldbox', 36, 302, 988, 150, p);
+  const ta = document.createElement('textarea');
+  ta.className = 'field'; ta.maxLength = H.inquiry.descriptionMax; ta.value = D.description; ta.placeholder = 'いつ・どの画面で・何が起きたかを書いてください'; ta.setAttribute('aria-label', '問い合わせの内容');
+  Object.assign(ta.style, { left: '18px', top: '10px', width: '950px', height: '128px', fontSize: '18px', resize: 'none', lineHeight: '1.5' });
+  const counter = Txt('', 824, 460, 200, 13, MUTED, p, { align: 'right', cls: 'num', nowrap: true });
+  const count = () => { D.description = ta.value; counter.textContent = `${[...ta.value.trim()].length} / ${H.inquiry.descriptionMax}`; };
+  ta.addEventListener('input', count); box.appendChild(ta); count();
+  Txt(H.inquiry.privacyNote, 36, 462, 780, 12, SOFT, p, { lh: 1.5 });
+  // the history rows (REQ-HELP-010): the latest purchases and scouts, picked by their reference numbers
+  Kicker(cat.history ? '添える記録（任意・おすすめ）' : '添える記録（任意）', 36, 512, p, { rule: false, size: 14 });
+  if (!helpState.picks) {
+    const [pu, ga] = await Promise.all([L.history('purchases', { limit: 2 }), L.history('gacha', { limit: 2 })]);
+    helpState.picks = [...(pu.ok ? pu.value.items.map((x) => ({ ref: x.ref, title: x.product })) : []), ...(ga.ok ? ga.value.items.map((x) => ({ ref: x.ref, title: x.banner })) : [])];
+  }
+  if (!helpState.picks.length) Txt('添えられる記録はまだありません', 36, 548, 600, 14, MUTED, p);
+  helpState.picks.slice(0, 4).forEach((x, i) => {
+    const on = D.refs.includes(x.ref);
+    const b = Btn(`${x.ref}　${x.title}`, 36 + (i % 2) * 498, 544 + Math.floor(i / 2) * 50, 486, 42, () => {
+      if (on) D.refs = D.refs.filter((r) => r !== x.ref); else if (D.refs.length < H.inquiry.attachMax) D.refs.push(x.ref); else toast('添えられる記録の数を超えています');
+      InquiryForm();
+    }, 'choice' + (on ? ' on' : ''), p);
+    b.dataset.pickRef = x.ref; b.style.fontSize = '14px'; b.style.whiteSpace = 'nowrap'; b.style.padding = '0 12px'; b.style.overflow = 'hidden';
+  });
+  // right: what is attached automatically (REQ-HELP-011), limits, the CTA
+  const d = Glass('Inquiry diagnostics', 1116, 134, 448, 676, undefined, .9);
+  Kicker('自動で添える情報', 36, 30, d, { size: 15, rule: false });
+  [['アプリの版', 'proto'], ['端末の種類', 'Editor'], ['プレイヤーID', '自動で添えます'], ['直近のレースID', '最大3件・自動で添えます']].forEach(([k, v], i) => {
+    Txt(k, 36, 80 + i * 34, 170, 14, MUTED, d, { weight: 500, nowrap: true }); Txt(v, 206, 80 + i * 34, 206, 14, WHITE, d, { weight: 700, nowrap: true });
+  });
+  Txt(H.inquiry.diagnosticsNote, 36, 230, 376, 12, SOFT, d, { lh: 1.6 }).dataset.diagnostics = '1';
+  const lim = list.ok ? list.value.limits : null;
+  if (lim) Txt(`返信待ち ${lim.open} / ${lim.openMax}　·　今日 ${lim.today} / ${lim.perDay}`, 36, 470, 376, 13, MUTED, d, { weight: 500, nowrap: true, cls: 'num' }).dataset.limits = `${lim.open}/${lim.openMax}`;
+  const send = Cta('送信する', 36, 576, 376, async () => {
+    const n = [...D.description.trim()].length;
+    if (n < H.inquiry.descriptionMin) { toast('内容をもう少し詳しく書いてください'); return; }
+    // REQ-HELP-012: one key per form, kept until the server accepted it (a retry returns the same inquiry)
+    helpState.formKey ??= `form-${Date.now()}`;
+    const r = await L.submitInquiry({ category: D.category, description: D.description, refs: D.refs }, helpState.formKey, helpLang());
+    if (!r.ok) { toast(r.code === 'RATE_LIMITED' ? 'いまは送信できません。返信をお待ちいただくか、時間をおいてください' : r.code === 'NOT_FOUND' ? '期間外の記録が含まれています' : r.message); return; }
+    helpState.draft = null; helpState.formKey = null; helpState.picks = null;
+    toast('問い合わせを受け付けました。返信はアクティビティでお知らせします');
+    await refresh();
+    MyInquiries(r.value.ticketId);
+  }, d);
+  send.dataset.action = 'inquiry-send';
+  Back(() => { HelpCenter(); }, '戻る', 40, 834);
+}
+
+// ---------------------------------------------------------------- my inquiries
+async function MyInquiries(sel = helpState.sel) {
+  currentScreen = () => MyInquiries();
+  const r = await L.inquiries(helpLang());
+  if (!r.ok) { toast(r.message); return HelpCenter(); }
+  const P = r.value;
+  // the first unread reply, else the newest
+  if (!P.items.some((x) => x.ticketId === sel)) sel = (P.items.find((x) => x.unread) ?? P.items[0])?.ticketId ?? null;
+  helpState.sel = sel;
+  let T = null;
+  if (sel) {
+    const t = await L.inquiry(sel, helpLang());
+    if (t.ok) {
+      T = t.value;
+      if (T.unread) { await L.inquiryRead(sel); await refresh(); }
+    }
+  }
+  Clear('my-inquiries'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('自分の問い合わせ', '受付済み → 回答済み → 完了　·　返信はアクティビティでもお知らせします');
+  const p = Glass('Inquiry list', 36, 134, 620, 676, undefined, .88);
+  p.classList.add('inq-list');
+  Kicker('新しい順', 36, 30, p, { size: 15 });
+  if (!P.items.length) Txt('まだ問い合わせはありません', 36, 100, 540, 18, MUTED, p).dataset.inqEmpty = '1';
+  P.items.slice(0, 7).forEach((it, i) => {
+    const row = el('help-row' + (it.ticketId === sel ? ' sel' : ''), 24, 90 + i * 74, 572, 68, p);
+    row.dataset.ticket = it.ticketId; row.dataset.status = it.status; row.dataset.unread = it.unread ? '1' : '0'; row.setAttribute('role', 'button');
+    if (it.unread && it.ticketId !== sel) el('act-dot', 6, 30, 10, 10, row);
+    Txt(it.statusText, 22, 8, 160, 12, HELP_STATUS_COLOR[it.status] ?? CYAN, row, { weight: 700, ls: '.18em', nowrap: true });
+    Txt(jstDate(it.createdAt), 200, 8, 220, 12, SOFT, row, { weight: 500, nowrap: true, cls: 'num' });
+    Txt(it.categoryTitle, 22, 30, 520, 18, WHITE, row, { weight: 700, nowrap: true });
+    row.addEventListener('click', () => MyInquiries(it.ticketId));
+  });
+  const d = Glass('Inquiry detail', 676, 134, 888, 676, undefined, .9);
+  d.classList.add('inq-detail');
+  if (T) {
+    d.dataset.ticket = T.ticketId; d.dataset.status = T.status;
+    Kicker(`${T.categoryTitle}　·　${T.ticketId}`, 36, 30, d, { size: 15, rule: false });
+    Txt(T.statusText, 700, 34, 150, 14, HELP_STATUS_COLOR[T.status] ?? CYAN, d, { weight: 700, align: 'right', nowrap: true });
+    Txt('送った内容', 36, 76, 300, 13, MUTED, d, { weight: 500 });
+    const mine = Txt(T.inquiryText, 36, 100, 816, 16, WHITE, d, { lh: 1.6, h: 110 }); mine.classList.add('keep-ja', 'typed'); mine.style.overflow = 'hidden';
+    if (T.attachments.length) Txt(T.attachments.map((a) => a.ref).join('　·　'), 36, 216, 816, 13, CYAN, d, { cls: 'num', nowrap: true });
+    Hair(36, 250, 816, d);
+    let y = 268;
+    if (!T.messages.length) Txt('運営が確認しています。返信が届くとアクティビティでお知らせします。', 36, y, 816, 15, MUTED, d, { lh: 1.6 });
+    T.messages.slice(-2).forEach((m) => {
+      Txt(m.from === 'support' ? '運営からの返信' : 'あなた', 36, y, 300, 13, m.from === 'support' ? CYAN : MUTED, d, { weight: 700, ls: '.12em' });
+      Txt(jstDate(m.at), 560, y, 292, 12, SOFT, d, { align: 'right', cls: 'num', nowrap: true });
+      const tx = Txt(m.messageText, 36, y + 24, 816, 16, WHITE, d, { lh: 1.6, h: 120 }); tx.classList.add('keep-ja', 'typed'); tx.style.overflow = 'hidden'; tx.dataset.reply = m.from;
+      y += 160;
+    });
+  } else Txt('問い合わせを選んでください', 36, 100, 600, 16, MUTED, d);
+  Cta('新しく問い合わせる', 36, 576, 420, () => InquiryForm(), d, 'small').dataset.action = 'inquiry';
+  Back(() => HelpCenter(), '戻る', 40, 834);
+}
+
 function fit() {
   const s = Math.min(window.innerWidth / 1600, window.innerHeight / 900);
   $stage.style.transform = `scale(${s})`;
@@ -5810,7 +6420,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

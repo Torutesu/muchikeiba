@@ -34,6 +34,9 @@ import { signAdMobQuery, StaticKeySource, verifyAdMobCallback } from '../../../s
 import { MemoryRivalRegistry, RivalService, rivalPlayersFrom } from '../../../server/src/domain/rivalService.js';
 import { noteRivalTa, prevWeekId, rivalCard, rivalTrackName, weekEndMs, weekIdAt } from '../../../server/src/domain/rival.js';
 import { actorIdsOf, renderActivityItems } from '../../../server/src/domain/activity.js';
+import { helpArticle, helpIndex, helpOf, helpQueryWords, searchHelp } from '../../../server/src/domain/help.js';
+import { FriendSuggestService, MemorySuggestDirectory, fsugCard, fsugConfig } from '../../../server/src/domain/friendSuggest.js';
+import { FriendsService, MemoryDirectory } from '../../../server/src/domain/friends.js';
 import type { PlayerInvoker } from '../../../server/src/http/app.js';
 import { HallService, MemoryHallDirectory, hallConfig, hallSnapshot } from '../../../server/src/domain/hallOfFame.js';
 import { hallPlayersFrom } from '../../../server/src/http/hallPorts.js';
@@ -48,6 +51,11 @@ import type { CupRaceSpec, CupState } from '../../../server/src/domain/hostedCup
 import type { HeatOutcome } from '../../../server/src/domain/tournaments.js';
 import { createRace } from '../../../server/src/race/orchestrate.js';
 import type { RaceEntry } from '../../../server/src/http/app.js';
+import { ReportsService, type ReportBody } from '../../../server/src/domain/reportsService.js';
+import { MemoryPlayerReportRepo, PlayerReportsCore } from '../../../server/src/ops/playerReports.js';
+import { blocksView } from '../../../server/src/domain/blocks.js';
+import type { PlayerReportsApi } from '../../../server/src/http/admin.js';
+import { DEFAULT_MAINTENANCE, gateRequest, maintenanceStatus, type MaintenanceConfig } from '../../../server/src/domain/maintenance.js';
 // REQ-L10N-*: the server's English tables (master/locale-en.json + i18n/en.ts), the client's (ui-en.json) and the
 // prototype's own screen texts (proto-en.json), in one catalog with the server's template rules (katakana names romanized)
 import { compileCatalogWith, translateText, romanizeName } from '../../../server/src/i18n/catalog.js';
@@ -102,9 +110,38 @@ const svc = new PlayerService(repo, {
   onTeamGoalForget: async (p) => teams.goalForget(p.teamId, p.playerId),
   // round 14 (REQ-HOF-011): the visitors' copy of each hall (DirectoryDO halls in production; memory here)
   onHall: async (id, snap) => { if (snap) await hallDir.put(snap); else await hallDir.remove(id); },
+  // round 17 (REQ-FSUG-011): profiles and おすすめフレンド cards (DirectoryDO in production; memory here)
+  onProfile: async (p) => { await fsugProfiles.putProfile(p); },
+  onFsugCard: async (id, card) => { if (card) await fsugCards.put(card); else await fsugCards.remove(id); },
   // round 15 (REQ-A11Y-014): the server-side KPI rows, kept for the tests (the real Analytics Engine is not here)
   onKpi: (_id, recs) => { serverKpi.push(...recs.map((r) => ({ name: r.name, s1: r.s1, s2: r.s2, s3: r.s3 }))); if (serverKpi.length > 300) serverKpi.splice(0, serverKpi.length - 300); },
 });
+// round 17 (REQ-FSUG-*): おすすめフレンド on the real FriendSuggestService + FriendsService (the friend request flow), with
+// the profile / card directory in memory (re-published from the stored states after a reload, see fsugRepublish).
+const fsugProfiles = new MemoryDirectory();
+const fsugCards = new MemorySuggestDirectory(fsugProfiles);
+const fsugInvoker: PlayerInvoker = { invoke: (async (m: string, ...a: unknown[]) => (svc as unknown as Record<string, (...x: unknown[]) => unknown>)[m]!.apply(svc, a)) as PlayerInvoker['invoke'] };
+const fsugFriends = new FriendsService({
+  send: (u, t) => svc.friendSend(u, t), receive: (u, f, name) => svc.friendReceive(u, f, name), accept: (u, f) => svc.friendAccept(u, f),
+  accepted: (u, b, name) => svc.friendAccepted(u, b, name), decline: (u, f) => svc.friendDecline(u, f), cancel: (u, t) => svc.friendCancel(u, t),
+  remove: (u, o) => svc.friendRemove(u, o), invite: (u, f, pass, name) => svc.friendInvite(u, f, pass, name), friendsState: (u) => svc.friendsState(u),
+}, fsugProfiles);
+const fsugSvc = new FriendSuggestService({
+  self: (u) => fsugInvoker.invoke('fsugSelf', u),
+  teamMembers: async (teamId, u) => { try { const v = await teams.view(teamId, u); return v.myRole ? v.members.map((x) => x.playerId) : []; } catch { return []; } },
+  dismiss: (u, t, why, reason, outcome) => fsugInvoker.invoke('fsugDismiss', u, t, why, reason, outcome),
+  setHidden: (u, h) => fsugInvoker.invoke('fsugSetHidden', u, h),
+}, fsugFriends, fsugCards, () => fsugConfig(master), now, new Map());
+const FSUG_PEOPLE: [string, string][] = [['demo_fs_1', 'アサギ'], ['demo_fs_2', 'ツバメ'], ['demo_fs_3', 'コハル'], ['demo_fs_4', 'ヒナタ'], ['demo_fs_5', 'ミナト'], ['demo_fs_6', 'カゲロウ'], ['demo_fs_7', 'ランクノヒト'], ['demo_ff_1', 'イブキ'], ['demo_ff_2', 'サクラ'], ['demo_ff_3', 'トキワ']];
+/** The memory directory does not survive a reload: write each demo player's profile and card again from the stored state. */
+async function fsugRepublish(ids: string[]) {
+  for (const id of ids) {
+    if (!(await repo.get(id))) continue;
+    await fsugProfiles.putProfile(await svc.publicProfile(id));
+    const card = fsugCard(master, await svc.state(id), now());
+    if (card) await fsugCards.put(card); else await fsugCards.remove(id);
+  }
+}
 // round 14 (REQ-HOF-*): 殿堂 on the real HallService. A demo friend (demo_hof_1, アオバ) has a hall of their own to visit.
 const hallDir = new MemoryHallDirectory();
 const hallSvc = new HallService(hallPlayersFrom(() => rivalInvoker), hallDir, () => hallConfig(master));
@@ -247,6 +284,20 @@ async function rivalDemoSeed() {
     await rivalReg.register(prevWeekId(week), { playerId: s.id, classId: me.season.classId, rating: Math.round(me.rating.r) + (s.id === ID ? 0 : 20), rankedAt: at, blocked: [], card: { ...rivalCard(master, s), classId: me.season.classId }, updatedAt: at });
   }
 }
+// round 17 (REQ-RPT-*): 通報とブロック on the real ReportsService / PlayerService; the ops queue is the IntegrityDO's
+// PlayerReportsCore in memory. A race report is allowed for a race the local player ran (its replay ref is on the state).
+const reportRepo = new MemoryPlayerReportRepo();
+const reportCore = new PlayerReportsCore(reportRepo);
+const reportQueue: PlayerReportsApi = {
+  submit: async (x, t, c) => reportCore.submit(x, t, c), list: async (f) => reportCore.list(f), get: async (id, c) => reportCore.get(id, c),
+  check: async (id, a) => reportCore.assertActionable(id, a), resolve: async (id, a, by, note, t) => reportCore.resolve(id, a, by, note, t), forget: async (u) => reportCore.forgetPlayer(u),
+};
+const reportsSvc = new ReportsService(() => master, () => rivalInvoker, () => reportQueue, async (raceId, pid) => {
+  const s = await svc.state(pid);
+  const mine = [...(s.myReplays?.saved ?? []), ...(s.myReplays?.recent ?? [])].some((r) => r.raceId === raceId);
+  return { ok: mine };
+}, now);
+const BLOCK_DEMO: [string, string][] = [['demo_bl_1', 'ヨルノカラス'], ['demo_bl_2', 'ナギサ']];
 const teamPlayers: TeamPlayers = {
   prepareJoin: (u, t) => svc.teamPrepareJoin(u, t), commitJoin: (u, t) => svc.teamCommitJoin(u, t), abortJoin: (u, t) => svc.teamAbortJoin(u, t),
   addOutgoing: (u, t) => svc.teamAddOutgoing(u, t), removeOutgoing: (u, t) => svc.teamRemoveOutgoing(u, t), left: (u, t, c) => svc.teamLeft(u, t, c),
@@ -407,7 +458,10 @@ export const MuchiLogic = {
     hallDir.rows.clear(); // round 14: the hall copies too
     replayStore.clear(); // round 14: the saved replays and source logs too
     cupBackend.cups.clear(); cupBackend.codes.clear(); try { localStorage.removeItem(CUP_KEY); } catch { /* ignore */ } // round 16
+    reportRepo.rs.clear(); reportRepo.st.clear(); // round 17: the ops report queue too
+    fsugCards.store.clear(); // round 17: the おすすめフレンド cards too
     dayOffset = 0;
+    delete master.maintenance; // round 17: no maintenance demo
   },
 
   // ---------------------------------------------------------------- round 8 (docs/planning/06, REQ-UXS-*), used by unity.html
@@ -659,6 +713,36 @@ export const MuchiLogic = {
   history: (kind: 'summary' | 'purchases' | 'coins' | 'gacha', q: { cursor?: string | null; limit?: number; currency?: 'paid' | 'free' | null } = {}) => wrap(() => svc.history(ID, kind, q)),
   historyTicket: (refs: string[], topic: 'purchase_missing' | 'refund' | 'coins' | 'gacha' | 'other') => wrap(() => svc.historyTicket(ID, refs, topic)),
 
+  // ---------------------------------------------------------------- round 17: ヘルプセンター (REQ-HELP-*, contracts/protocol.md §48)
+  // What GET /v1/help, /v1/help/articles/:id, /v1/help/search and the inquiry routes return, on the real rules, in the
+  // language the screen shows (lang = 'ja' | 'en', like the server's Accept-Language). Support replies come from the real
+  // ops reply (adminInquiryReply) in the demo.
+  help: (lang: 'ja' | 'en' = 'ja') => wrap(() => helpIndex(master, lang)),
+  helpArticle: (id: string, lang: 'ja' | 'en' = 'ja') => wrap(() => helpArticle(master, id, lang, Number(DEFAULT_RULESET.maxWhips))),
+  helpSearch: (q: string, category: string | null = null, lang: 'ja' | 'en' = 'ja') => wrap(() => searchHelp(master, q, category, null, lang, Number(DEFAULT_RULESET.maxWhips))),
+  helpFeedback: (id: string, helpful: boolean) => wrap(() => svc.helpFeedback(ID, id, helpful)),
+  inquiries: (lang: 'ja' | 'en' = 'ja') => wrap(async () => { const { unindexed: _u, ...l } = await svc.helpInquiries(ID, lang); return l; }),
+  inquiry: (ticketId: string, lang: 'ja' | 'en' = 'ja') => wrap(() => svc.helpInquiry(ID, ticketId, lang)),
+  inquiryRead: (ticketId: string) => wrap(() => svc.helpInquiryRead(ID, ticketId)),
+  /** POST /v1/help/inquiries with the form's key (the same key on a retry returns the same ticket). */
+  submitInquiry: (input: { category: string; description: string; refs: string[] }, formKey: string, lang: 'ja' | 'en' = 'ja') =>
+    wrap(() => svc.helpInquirySubmit(ID, { category: input.category as never, description: input.description, refs: input.refs, diagnostics: { appVersion: 'proto', platform: 'editor' } }, 'c:/v1/help/inquiries:' + formKey, lang)),
+  /** KPI rows the client would send (help_search / help_article_view), checked against the server's client-event schema. */
+  helpKpi: (name: 'help_search' | 'help_article_view', props: Record<string, unknown>) => wrap(() => clientBatchSchema.parse({ platform: 'editor', appVersion: 'proto', events: [{ name, at: now(), props }] }).events.map(clientToKpi)[0]),
+  /** REQ-HELP-008: the article a screen's ? link opens (master/help.json contexts). */
+  helpContext: (ctx: string) => helpOf(master).contexts[ctx] ?? 'first_steps',
+  helpFoldLength: (q: string) => Math.max(1, Math.min(64, helpQueryWords(q).join('').length)),
+  /** Demo: an answered inquiry (the real ops reply → status, unread, the activity entry) and one waiting for an answer. */
+  async seedInquiries() {
+    clockShift += 61_000; // past the minimum interval since any earlier inquiry
+    const a = await wrap(() => svc.helpInquirySubmit(ID, { category: 'purchase_missing', description: 'コイン1,020を購入しましたが、残高に反映されていません。', refs: [], diagnostics: { appVersion: 'proto', platform: 'editor' } }, key(), 'ja'));
+    if (a.ok) await wrap(() => svc.adminInquiryReply(ID, a.value.ticketId, 'お問い合わせありがとうございます。ストアの支払いを確認し、コインの付与が完了しました。ご不便をおかけしました。', false, 'ops-demo', `demo-${a.value.ticketId}`));
+    clockShift += 61_000;
+    await wrap(() => svc.helpInquirySubmit(ID, { category: 'bug', description: 'タイムアタックの結果画面で、まれに記録が表示されません。', refs: [], diagnostics: { appVersion: 'proto', platform: 'editor' } }, key(), 'ja'));
+    clockShift += 61_000;
+    return svc.view(ID);
+  },
+
   // ---------------------------------------------------------------- round 15: フォトモード (REQ-PHOTO-*, contracts/protocol.md §38)
   // GET /v1/photo/catalog, the photo records and the shop purchase of a photo frame / stamp, on the real rules. The picture
   // itself (snapshot, camera, card) is the C# PhotoModeModel in WASM.
@@ -681,6 +765,35 @@ export const MuchiLogic = {
     await wrap(() => svc.draw(ID, 'standard', 10, key()));
     await wrap(() => svc.draw(ID, 'pickup_akatsuki', 1, key()));
     return svc.view(ID);
+  },
+
+  // ---------------------------------------------------------------- round 17: メンテナンス・強制アップデート (REQ-MNT-*, §46)
+  // The real domain (server/src/domain/maintenance.ts): a demo maintenance section on the live master (what's new reads it),
+  // the gate's answer for a request (503 / 426 exactly as the Worker builds them) and GET /v1/maintenance. The prototype
+  // stands in for an iOS app at version 1.1.0 (engine level 1).
+  maintenanceDemo(kind: 'off' | 'announced' | 'all' | 'scoped' | 'update') {
+    const t = now();
+    const hour = 3_600_000;
+    const base = Math.floor(t / hour) * hour;
+    const message = { ja: 'サーバーの増強のため、メンテナンスを行います。', en: 'We are upgrading our servers during this maintenance.' };
+    const store = { ios: 'https://apps.apple.com/jp/app/id0000000000', android: 'https://play.google.com/store/apps/details?id=jp.example.muchi' };
+    const versions = (min: string, rec: string): MaintenanceConfig['clientVersions'] => ({ ios: { min, recommended: rec, storeUrl: store.ios }, android: { min, recommended: rec, storeUrl: store.android } });
+    const cfg: MaintenanceConfig = kind === 'off' ? DEFAULT_MAINTENANCE : {
+      ...DEFAULT_MAINTENANCE,
+      windows: kind === 'announced' ? [{ id: 'demo-next', startAtMs: base + 20 * hour, endAtMs: base + 24 * hour, scope: 'all', message }]
+        : kind === 'all' ? [{ id: 'demo-all', startAtMs: base - hour, endAtMs: base + 3 * hour, scope: 'all', message }]
+          : kind === 'scoped' ? [{ id: 'demo-scout', startAtMs: base - hour, endAtMs: base + 2 * hour, scope: ['gacha', 'shop'], message }] : [],
+      clientVersions: kind === 'update' ? versions('1.2.0', '1.3.0') : versions('1.0.0', '1.0.0'),
+    };
+    if (kind === 'off') delete master.maintenance; else master.maintenance = cfg;
+    return this.maintenanceCheck(kind === 'scoped' ? '/v1/gacha/banners' : '/v1/player');
+  },
+  /** The gate's answer for one request now (null = it would be served) and GET /v1/maintenance, from the live master. */
+  maintenanceCheck(path = '/v1/player') {
+    const cfg = master.maintenance ?? DEFAULT_MAINTENANCE;
+    const h = { platform: 'ios', version: '1.1.0', engine: 1 };
+    const e = gateRequest(cfg, 'GET', path, h, now());
+    return { gate: e ? { code: e.code, status: e.status, message: e.message, details: e.details ?? {} } : null, status: maintenanceStatus(cfg, h, now()) };
   },
 
   // ---------------------------------------------------------------- round 15: アクティビティ (REQ-ACT-*, contracts/protocol.md §40)
@@ -718,6 +831,72 @@ export const MuchiLogic = {
     await svc.friendReceive(ID, 'demo_act_1', 'アサヒ');
     return svc.view(ID);
   },
+
+  // ---------------------------------------------------------------- round 17: 通報とブロック (REQ-RPT-*, contracts/protocol.md §47)
+  // POST /v1/reports, GET /v1/reports/options, GET / PUT / DELETE /v1/blocks — the same domain code as the routes.
+  reports: {
+    options: () => wrap(() => svc.reportOptions(ID)),
+    submit: (body: Omit<ReportBody, 'targetId'> & { targetId: string }) => wrap(() => reportsSvc.submit(ID, body as ReportBody)),
+    blocks: () => wrap(async () => {
+      const ids = await svc.blockIds(ID);
+      // names as of now from the public profiles (a player with no state — deleted — shows the neutral name)
+      const profiles = (await Promise.all(ids.map(async (id) => ((await repo.get(id)) ? svc.publicProfile(id) : null)))).filter((x) => x !== null);
+      return blocksView(master, ids, profiles);
+    }),
+    block: (playerId: string) => wrap(() => svc.blockSet(ID, playerId, true, 'blocks')),
+    unblock: (playerId: string) => wrap(() => svc.blockSet(ID, playerId, false, 'blocks')),
+    /** Test hook: the ops queue as the console lists it (snapshots, counts, scores; reporters stay ops-only). */
+    queue: () => reportCore.list({ limit: 50 }),
+    /** Demo: two blocked players (one has since deleted the account) and support's request in the activity list. */
+    async seedSafety() {
+      await MuchiLogic.seedDemo(3, [2, 2, 2]);
+      for (const [id, name] of BLOCK_DEMO) if (!(await repo.get(id))) { await svc.bootstrap(id); await svc.setDisplayName(id, name); }
+      for (const [id] of BLOCK_DEMO) await svc.blockSet(ID, id, true, 'blocks');
+      await svc.blockSet(ID, 'demo_bl_gone', true, 'blocks');
+      await svc.reportWarn(ID, 'prp_demo');
+      return svc.view(ID);
+    },
+  },
+  // ---------------------------------------------------------------- round 17: おすすめフレンド (REQ-FSUG-*, contracts/protocol.md §49)
+  // What GET /v1/friends/suggestions and its actions answer, on the real FriendSuggestService (the request goes through the
+  // real FriendsService → friendSend / friendReceive, so the other side's activity entry and push are written as in production).
+  friendSuggestions: () => wrap(() => fsugSvc.list(ID)),
+  fsugRequest: (id: string) => wrap(() => fsugSvc.request(ID, id)),
+  fsugDismiss: (id: string) => wrap(() => fsugSvc.dismiss(ID, id)),
+  fsugSetHidden: (hidden: boolean) => wrap(() => fsugSvc.setHidden(ID, hidden)),
+  /** GET /v1/friends (names from the public profiles). */
+  friendsList: () => wrap(() => fsugFriends.list(ID)),
+  fsugKpi: (shown: number) => wrap(() => clientBatchSchema.parse({ platform: 'editor', appVersion: 'proto', events: [{ name: 'fsug_view', at: now(), props: { shown } }] }).events.map(clientToKpi)[0]),
+  /** The other side of a demo request (for the tests): their activity page, names resolved. */
+  async fsugActivityOf(id: string) {
+    const p = await svc.activity(id, null, 20);
+    return renderActivityItems(p.items, await Promise.all(actorIdsOf(p.items).map((x) => svc.publicProfile(x))));
+  },
+  /**
+   * Demo 「おすすめフレンド」: people met through the real paths — an event and a friend room (applyRace with the human field),
+   * a like on My Stable and a cheer stamp (activity entries), three friends whose friends overlap (mutual counts) — plus one
+   * player who turned on 「おすすめに表示しない」 and one met only in a ranked race: neither is suggested.
+   */
+  async seedFriendSuggest() {
+    await this.seedDemo(3, [2, 2, 2]);
+    for (const [id, name] of FSUG_PEOPLE) if (!(await repo.get(id))) { await svc.bootstrap(id); await svc.setDisplayName(id, name); }
+    const field = (ids: string[]) => ids.map((playerId, i) => ({ playerId, place: i + 1 }));
+    const race = (raceId: string, mode: 'event' | 'friend' | 'ranked', ids: string[]) => svc.applyRace(ID, { raceId, mode, place: 1, fieldSize: ids.length, newRating: null, void: false, humans: ids.length, field: field([ID, ...ids]) });
+    await race('proto_fs_ev', 'event', ['demo_fs_1', 'demo_fs_6']);
+    await race('proto_fs_fr', 'friend', ['demo_fs_2']);
+    await race('proto_fs_rk', 'ranked', ['demo_fs_7']);
+    const day = new Date(now() + 9 * 3600e3).toISOString().slice(0, 10);
+    await svc.stableLikeReceive(ID, 'demo_fs_3', `demo_fs_3:${day}:0`);
+    await svc.cheerPush(ID, 'demo_fs_4', 'ヒナタ', 'react:demo_team:9');
+    const link = async (a: string, b: string) => { await svc.tx(a, null, (s) => { if (!s.friends.ids.includes(b)) s.friends.ids.push(b); }); await svc.tx(b, null, (s) => { if (!s.friends.ids.includes(a)) s.friends.ids.push(a); }); };
+    for (const f of ['demo_ff_1', 'demo_ff_2', 'demo_ff_3']) { await link(ID, f); await link(f, 'demo_fs_5'); }
+    await link('demo_ff_1', 'demo_fs_1'); await link('demo_ff_2', 'demo_fs_1');
+    await svc.fsugSetHidden('demo_fs_6', true);
+    await fsugRepublish([ID, ...FSUG_PEOPLE.map(([id]) => id)]);
+    return svc.view(ID);
+  },
+  /** After a reload: the memory directory again from the stored states. */
+  fsugRepublish: () => fsugRepublish([ID, ...FSUG_PEOPLE.map(([id]) => id)]),
 
   // ---------------------------------------------------------------- round 10
   // r10 fix: the shop list with this player's ownership (GET /v1/shop/products?mine=1)

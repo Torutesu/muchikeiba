@@ -11,7 +11,7 @@ import { SqlPlayerRepo } from './sqlRepo.js';
 import { unwrap, wrap, type Envelope } from './rpc.js';
 import { retryStudOutbox } from '../domain/studService.js';
 import { activeConfig } from '../ops/activeConfig.js';
-import { shardedDirectory, shardedHallDirectory, shardedStableDirectory } from './directory.js';
+import { shardedDirectory, shardedHallDirectory, shardedStableDirectory, shardedSuggestDirectory } from './directory.js';
 import { fcmFromEnv, type PushSender } from '../push/fcm.js';
 import { deliverDuePushes } from '../push/dispatch.js';
 import { makeKpiWriter } from '../push/analytics.js';
@@ -55,6 +55,11 @@ export class PlayerDO extends DurableObject<Env> {
       onHall: (id, snap) => {
         const dir = shardedHallDirectory(env.DIRECTORY);
         ctx.waitUntil((snap ? dir.put(snap) : dir.remove(id)).catch((e) => console.error('hall copy failed', id, e)));
+      },
+      // REQ-FSUG-011: the おすすめフレンド card (null = never suggested: hidden, under age, banned, deletion)
+      onFsugCard: (id, card) => {
+        const dir = shardedSuggestDirectory(env.DIRECTORY);
+        ctx.waitUntil((card ? dir.put(card) : dir.remove(id)).catch((e) => console.error('fsug card failed', id, e)));
       },
       // REQ-TEAM-005: the team recomputes its points from members' reported standings
       onTeamPoints: (p) => {

@@ -365,6 +365,38 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await click('ホームへ'); await waitScreen(['home', 'link-prompt'], 20000);
   if ((await screen()) === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); }
   await shot('home-bell', 400);
+  // round 17: おすすめフレンド in English (REQ-FSUG-015): reasons from the server, player names as written
+  await page.evaluate(() => globalThis.__muchi.demo('friends')); await waitScreen('friends', 60000);
+  await shot('friends-suggestions', 600);
+  assert.match(await page.locator('.screen.in').innerText(), /Raced you recently, 2 mutual friends/, 'friend suggestions: the reason line in English');
+
+  // round 17: 通報とブロック in English (REQ-RPT-018): the block list (player names as written, the effects from the server),
+  // the unblock confirmation and the report sheet (reasons from the server, the note counter)
+  await page.evaluate(() => globalThis.__muchi.demo('safety')); await waitScreen('blocks', 60000);
+  await shot('blocks', 600);
+  const blEn = await page.locator('.screen.in').innerText();
+  assert.match(blEn, /What does blocking do\?/, 'blocks: the effects title in English');
+  assert.match(blEn, /You get no activity notices from them/, 'blocks: a server effect line in English');
+  await page.locator('.screen.in .bl-unblock').first().click(); await page.waitForTimeout(500);
+  await shot('blocks-unblock-confirm', 300);
+  await page.locator('.screen.in .bl-no').click(); await waitScreen('blocks'); await page.waitForTimeout(400);
+  await page.evaluate(() => globalThis.__muchi.show('Report', { playerId: 'demo_bl_1', name: 'ヨルノカラス', kind: 'display_name', source: 'profile' })); await page.waitForTimeout(800);
+  await shot('report-sheet', 300);
+  const rpEn = await page.locator('.screen.in .rpt-sheet').innerText();
+  assert.match(rpEn, /Inappropriate name/, 'report: the reasons in English');
+  assert.match(rpEn, /never told who reported them/, 'report: the lead in English');
+
+  // round 17: ヘルプセンター in English (REQ-HELP-020): articles come in English from the master, typed text and replies stay as written
+  await page.evaluate(() => globalThis.__muchi.demo('help')); await waitScreen('my-inquiries', 60000);
+  await shot('help-my-inquiries', 500);
+  assert.match(await page.locator('.screen.in').innerText(), /Answered/, 'my inquiries: the status in English');
+  await show('HelpCenter'); await waitScreen('help'); await shot('help-center', 500);
+  assert.match(await page.locator('.screen.in').innerText(), /Scout \(rates & pity\)/, 'help: the categories in English');
+  await page.locator('.screen.in input.field').fill('pity'); await click('検索'); await waitScreen('help-search'); await shot('help-search', 400);
+  await page.locator('.screen.in [data-help-article="pity"]').click(); await waitScreen('help-article'); await shot('help-article', 500);
+  assert.match(await page.locator('.screen.in .help-body').innerText(), /pulls' worth/, 'help: the article body in English');
+  await show('HelpArticle', 'buy_coins', 'list'); await waitScreen('help-article'); await shot('help-article-coins', 400);
+  await show('InquiryForm'); await waitScreen('inquiry-form'); await shot('inquiry-form', 500);
 
   // round 13: 支部の共同目標 in English (REQ-TGOAL-*): the week, after the demo races, the week result sheet
   await show('TeamGoal'); await waitScreen('team-goal', 20000); await shot('team-goal', 600);
@@ -420,6 +452,15 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await page.locator('.screen.in .cup-standings-open').click(); await waitScreen('cup-standings'); await shot('cup-standings', 500);
   await show('CupJoin'); await waitScreen('cup-join'); await shot('cup-join', 400);
 
+  // round 17: メンテナンス・強制アップデート in English (REQ-MNT-012): the maintenance screen, the update screen, the notice
+  await page.evaluate(() => globalThis.__muchi.demo('maintenance')); await waitScreen('maintenance', 60000);
+  await shot('maintenance', 600);
+  assert.match(await page.locator('.screen.in').innerText(), /Under maintenance[\s\S]*We are upgrading our servers/, 'maintenance: title and the window message in English');
+  await page.evaluate(() => globalThis.__muchi.demo('update')); await waitScreen('update-required', 60000);
+  await shot('update-required', 600);
+  assert.match(await page.locator('.screen.in').innerText(), /Update required/, 'update screen in English');
+  await show('MaintenanceNotice'); await waitScreen('maintenance-notice'); await shot('maintenance-notice', 600);
+  await page.evaluate(() => globalThis.__muchi.logic.maintenanceDemo('off'));
   const misses = await page.evaluate(() => globalThis.__muchi.l10n.misses());
   fs.writeFileSync(path.join(out, 'en-report.json'), JSON.stringify({ report, misses }, null, 2));
   await ctx.close();

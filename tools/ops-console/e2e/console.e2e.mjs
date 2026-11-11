@@ -198,7 +198,28 @@ try {
     assert.equal((await asAdmin('admin2', 'POST', `/v1/admin/compensations/${own.body.request.id}/reject`, { reason: 'not needed' })).body.request.status, 'rejected');
   });
 
+  await step('operator: a player inquiry (§48) is listed without its text, opened from the player object and answered once', async () => {
+    const t = await asPlayer('POST', '/v1/help/inquiries', { category: 'purchase_missing', description: 'コインを購入しましたが反映されていません。確認をお願いします。', diagnostics: { appVersion: 'e2e', platform: 'ios' } });
+    const list = await asAdmin('viewer', 'GET', '/v1/admin/inquiries?status=received');
+    const row = list.body.items.find((x) => x.playerId === PLAYER && x.ticketId === t.ticketId);
+    assert.ok(row && !('inquiryText' in row), 'the index has no text');
+    await login('operator');
+    await page.locator('#nav a[data-view=inquiries]').click();
+    await tid(`inq-open-${t.ticketId}`).first().click();
+    await tid('inq-text').getByText('反映されていません', { exact: false }).waitFor();
+    await tid('inq-reply').fill('ストアの支払いを確認し、コインを付与しました。');
+    await shot('05b-inquiry-detail');
+    await tid('inq-send').click();
+    await confirmWith('e2e: answer the inquiry');
+    await page.getByText('返信しました').waitFor();
+    const mine = await asPlayer('GET', `/v1/help/inquiries/${t.ticketId}`);
+    assert.equal(mine.status, 'answered');
+    assert.equal(mine.messages.length, 1, 'one reply');
+    assert.equal(mine.messages[0].messageText, 'ストアの支払いを確認し、コインを付与しました。');
+  });
+
   await step('admin: dry run surfaces the day-rule problem; clean version is activated; diff', async () => {
+    await login('admin'); // the §48 inquiry step before this one works as operator
     await page.locator('#nav a[data-view=config]').click();
     const dayRow = tid('versions-table').locator('tr', { hasText: `e2e day rule ${runId}` });
     await dayRow.getByRole('button', { name: '有効化…' }).click();
@@ -260,6 +281,41 @@ try {
     assert.equal(approve.before.free, free0);
     assert.equal(approve.after.free, free0);
     assert.ok(approve.after.gift?.giftId, 'the audit names the gift box entry');
+  });
+
+  await step('admin: a maintenance window (§46) for hosted cups — preview, schedule, 503 for cups only, support stays open, cancel reopens', async () => {
+    await login('admin');
+    await page.locator('#nav a[data-view=maintenance]').click();
+    await tid('mnt-table').waitFor();
+    const jstMin = (ms) => new Date(ms + 9 * 3600_000).toISOString().slice(0, 16);
+    const now = Date.now();
+    const id = `e2e-${runId}`;
+    await tid('mnt-id').fill(id);
+    await tid('mnt-start').fill(jstMin(now + 120_000)); // a window may not start in the past: the next minute but one
+    await tid('mnt-end').fill(jstMin(now + 30 * 60_000));
+    await tid('mnt-all').uncheck();
+    await tid('mnt-g-cups').check();
+    await tid('mnt-ja').fill('主催カップのメンテナンスを行います。');
+    await tid('mnt-en').fill('Hosted cups are under maintenance.');
+    await tid('mnt-preview-btn').click();
+    await tid('mnt-banner-en').getByText('Hosted cups are under maintenance.').waitFor();
+    await shot('11-maintenance-preview');
+    await tid('mnt-schedule').click();
+    await confirmWith('e2e: hosted cup maintenance');
+    await tid(`mnt-cancel-${id}`).waitFor();
+    // the window starts within two minutes; the gate reads the active config (cached up to 30 s per isolate)
+    const status = async (path) => (await fetch(API + path, { headers: { 'x-dev-user': PLAYER } })).status;
+    let s = 0;
+    for (let i = 0; i < 200 && s !== 503; i++) { s = await status('/v1/cups'); if (s !== 503) await new Promise((r) => setTimeout(r, 1000)); }
+    assert.equal(s, 503, 'cups are closed by the window');
+    assert.equal(await status('/v1/help'), 200, 'the help center stays open');
+    assert.equal(await status('/v1/blocks'), 200, 'the block list stays open');
+    assert.notEqual(await status('/v1/player'), 503, 'core stays open (scope cups)');
+    await tid(`mnt-cancel-${id}`).click();
+    await confirmWith('e2e: end the window');
+    await page.getByText('変更しました').waitFor();
+    for (let i = 0; i < 40 && s === 503; i++) { s = await status('/v1/cups'); if (s === 503) await new Promise((r) => setTimeout(r, 1000)); }
+    assert.notEqual(s, 503, 'cancel reopens cups');
   });
 
   await step('KPI quick view lists the documented queries', async () => {

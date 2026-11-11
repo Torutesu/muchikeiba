@@ -219,6 +219,57 @@ namespace Muchi.Client
             return new AnalyticsEvent("activity_tap", atMs, JsonNode.Obj().Set("kind", kind).Set("screen", screen));
         }
 
+        // ---- REQ-MNT-013 (§46.8) maintenance / update prompts (client events: the server does not count blocked requests)
+        public static readonly string[] MaintenanceGroups = { "gacha", "shop", "ranked", "teams", "events", "tournaments", "training", "time_attack", "social", "cups", "core" };
+        private static readonly string[] UpgradeKinds = { "required", "recommended", "engine" };
+        private static readonly string[] UpgradeActions = { "shown", "store", "later" };
+        private static readonly System.Text.RegularExpressions.Regex WindowId = new System.Text.RegularExpressions.Regex("^[a-z0-9_-]{1,40}$");
+
+        /// <summary>A 503 MAINTENANCE was met (once per window and group per app run).</summary>
+        public static AnalyticsEvent MaintenanceBlock(long atMs, string group, string windowId)
+        {
+            if (IndexIn(MaintenanceGroups, group) < 0) throw new ArgumentException("unknown maintenance group " + group);
+            if (windowId == null || !WindowId.IsMatch(windowId)) throw new ArgumentException("bad window id");
+            return new AnalyticsEvent("maintenance_block", atMs, JsonNode.Obj().Set("group", group).Set("windowId", windowId));
+        }
+
+        /// <summary>An update prompt was shown or acted on. platform: "ios" | "android" (anything else is sent as "other").</summary>
+        public static AnalyticsEvent UpgradePrompt(long atMs, string kind, string action, string platform)
+        {
+            if (IndexIn(UpgradeKinds, kind) < 0) throw new ArgumentException("unknown upgrade kind " + kind);
+            if (IndexIn(UpgradeActions, action) < 0) throw new ArgumentException("unknown upgrade action " + action);
+            string p = platform == "ios" || platform == "android" ? platform : "other";
+            return new AnalyticsEvent("upgrade_prompt", atMs, JsonNode.Obj().Set("kind", kind).Set("action", action).Set("platform", p));
+        }
+
+        // ---- REQ-HELP-021 help center (feedback and inquiries are server events; the query itself is never sent)
+        public static readonly string[] HelpViewSources = { "list", "search", "context", "link", "related" };
+
+        /// <summary>A help search: the folded query length (1..64, HelpText.KpiLength), the category (null = all) and the result count.</summary>
+        public static AnalyticsEvent HelpSearch(long atMs, int length, string category, int results)
+        {
+            if (length < 1 || length > 64) throw new ArgumentOutOfRangeException(nameof(length));
+            if (results < 0) throw new ArgumentOutOfRangeException(nameof(results));
+            if (category != null && IndexIn(HelpCategories.All, category) < 0) throw new ArgumentException("unknown help category " + category);
+            return new AnalyticsEvent("help_search", atMs, JsonNode.Obj().Set("length", length).Set("category", category ?? "all").Set("results", Math.Min(100, results)));
+        }
+
+        /// <summary>An article was opened: its id and where from (list | search | context | link | related).</summary>
+        public static AnalyticsEvent HelpArticleView(long atMs, string articleId, string source)
+        {
+            if (!ApiClient.IsHelpArticleId(articleId)) throw new ArgumentException("bad article id " + articleId);
+            if (IndexIn(HelpViewSources, source) < 0) throw new ArgumentException("unknown help view source " + source);
+            return new AnalyticsEvent("help_article_view", atMs, JsonNode.Obj().Set("articleId", articleId).Set("source", source));
+        }
+
+        // ---- REQ-FSUG-014 おすすめフレンド (the request / dismiss rows are server events; the view is the client's)
+        /// <summary>The suggestions section was on screen (once per friends-screen visit); shown = suggestions in it (0..30). No player ids.</summary>
+        public static AnalyticsEvent FsugView(long atMs, int shown)
+        {
+            if (shown < 0 || shown > 30) throw new ArgumentOutOfRangeException(nameof(shown));
+            return new AnalyticsEvent("fsug_view", atMs, JsonNode.Obj().Set("shown", shown));
+        }
+
         // ---- REQ-AD-010 rewarded ads (the reward itself is the server event ad_reward; never sent from here)
         private static readonly string[] AdSurfaces = { "home", "result", "time_attack", "shop" };
         private static readonly string[] AdOutcomes = { "shown", "no_fill", "failed", "closed_early" };

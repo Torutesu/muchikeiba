@@ -1063,3 +1063,112 @@ WHERE blob1 IN ('cup_create', 'cup_join', 'cup_finish') AND timestamp > NOW() - 
 GROUP BY week
 ORDER BY week DESC
 ```
+## 通報とブロック（REQ-RPT-017、contracts/protocol.md §47、Round 17）
+
+**どこから・何の理由で通報されるか、ブロックがどれだけ使われ戻されるか**。3つともサーバーのイベント（受け付けた通報・一覧が本当に変わった時だけ）。相手の id と補足の文は入れない。
+
+| イベント | blob8 | blob9 | blob10 | double5 |
+|---|---|---|---|---|
+| `report_submit` | 理由（`name`・`text`・`cheating`・`harassment`・`other`） | 対象（`display_name` など） | 入口（`profile`・`team_feed`・`hall`・`replay` …） | — |
+| `block_add` | どこから（`blocks`・`report`・`team_feed`・`rival`） | — | — | 一覧の人数 |
+| `block_remove` | どこから（`blocks`・`team_feed`） | — | — | 一覧の人数 |
+
+```sql
+-- 日ごとの通報（理由 × 入口）：ある入口だけ急に増えたら、その画面の名前・文の確認を見直す
+SELECT blob6 AS day, blob8 AS category, blob10 AS source, sum(_sample_interval) AS reports, count(DISTINCT blob2) AS reporters
+FROM muchi_kpi
+WHERE blob1 = 'report_submit' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY day, category, source ORDER BY day DESC, reports DESC
+```
+
+```sql
+-- ブロックの追加と解除（どこから）：解除が多い入口は、ブロックの説明が足りないかもしれない
+SELECT blob1 AS event, blob8 AS origin, sum(_sample_interval) AS n, count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 IN ('block_add', 'block_remove') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY event, origin ORDER BY n DESC
+```
+
+- 通報の中身（誰が誰を・写し・補足）は KPI ではなく運営コンソールの通報の列（`/v1/admin/player-reports`）で見る。1人が1日に出せる数は `reports.perDay` までなので、通報者ごとの数が多い日は「重み」（§47.7）と合わせて確認する。
+- 「通報したらブロックもする」の割合 = `block_add`（`blob8 = 'report'`）÷ `report_submit`。
+
+## メンテナンス・強制アップデート（REQ-MNT-013、contracts/protocol.md §46.8、Round 17）
+
+**メンテナンスで止まった人の数（グループごと）と、更新の案内から実際にストアへ行った割合**。`maintenance_block`（`blob8` = グループ、`blob9` = 窓の id、窓 × グループごとにアプリの起動で1回）と `upgrade_prompt`（`blob8` = `required`/`recommended`/`engine`、`blob9` = `shown`/`store`/`later`、`blob10` = OS）はクライアントのイベント。止められた要求そのものはサーバーで数えない（再読み込みで同じ人が何度も数えられないように）。
+
+```sql
+-- 窓ごと・グループごとに止まった人数
+SELECT blob9 AS window_id, blob8 AS grp, count(DISTINCT blob2) AS players, sum(_sample_interval) AS blocks
+FROM muchi_kpi
+WHERE blob1 = 'maintenance_block' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY window_id, grp ORDER BY window_id DESC, players DESC
+```
+
+```sql
+-- 更新の案内：出した数とストアへ進んだ割合（種類・OS ごと）
+SELECT blob8 AS kind, blob10 AS os,
+  sumIf(_sample_interval, blob9 = 'shown') AS shown,
+  sumIf(_sample_interval, blob9 = 'store') AS to_store,
+  sumIf(_sample_interval, blob9 = 'later') AS later
+FROM muchi_kpi
+WHERE blob1 = 'upgrade_prompt' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY kind, os ORDER BY kind, os
+```
+
+## ヘルプセンター：検索・記事・役に立った・問い合わせ（REQ-HELP-021、contracts/protocol.md §48.9、Round 17）
+
+**自分で解決できているか**。`help_search`（`blob8` = カテゴリか `all`、`double9` = 正規化した検索語の長さ、`double5` = 件数）と `help_article_view`（`blob8` = 記事、`blob9` = 入口 `list`・`search`・`context`・`link`・`related`）はクライアントのイベント。**検索語そのものはどこにも残らない**（個人情報が入りうるため）。`help_feedback`（`blob8` = 記事、`blob9` = カテゴリ、`double9` = 1 役に立った／0）・`inquiry_submit`（`blob8` = 種類、`double5` = 添えた記録の数、`double9` = 置き換えた個人情報の数）・`inquiry_answered`（`blob8` = 種類、`double6` = 受付から最初の返信までの ms）はサーバーのイベント。
+
+```sql
+-- 0件の検索の割合（カテゴリ別）：多ければ記事やキーワードを足す
+SELECT blob8 AS category, sum(_sample_interval) AS searches,
+  sum(if(double5 = 0, _sample_interval, 0)) / sum(_sample_interval) AS zero_rate
+FROM muchi_kpi
+WHERE blob1 = 'help_search' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY category ORDER BY searches DESC
+```
+
+```sql
+-- 記事ごとの表示と入口
+SELECT blob8 AS article, blob9 AS source, sum(_sample_interval) AS views
+FROM muchi_kpi
+WHERE blob1 = 'help_article_view' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY article, source ORDER BY views DESC
+```
+
+```sql
+-- 問い合わせの最初の返信までの時間（種類別、時間）
+SELECT blob8 AS category, sum(_sample_interval) AS answered,
+  sum(_sample_interval * double6) / sum(_sample_interval) / 3600000 AS avg_hours_to_first_reply
+FROM muchi_kpi
+WHERE blob1 = 'inquiry_answered' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY category ORDER BY answered DESC
+```
+
+- 画面からの案内（`source = context`）の後に同じ日の `inquiry_submit` が少ないほど、案内が効いている。
+- `inquiry_submit` の `double9`（置き換えた個人情報の数）が多い種類は、フォームの注意書きを見直す。
+
+## おすすめフレンド：見た・申請した・消した（REQ-FSUG-014、contracts/protocol.md §49、Round 17）
+
+**おすすめからフレンドができているか、どの理由が効いているか**。`fsug_view`（クライアント、`double9` = 出ていた数）、`fsug_request`（サーバー、`blob8` = いちばん大きい理由、`blob9` = `requested` / `friends`）、`fsug_dismiss`（サーバー、`blob8` = 理由、分からなければ `none`）。相手の id は入れていない。
+
+```sql
+-- 日ごとの見た人数・申請した人数・消した数（見た人のうち申請した割合が低いなら、理由の行か並びを見直す）
+SELECT blob6 AS day,
+  count(DISTINCT if(blob1 = 'fsug_view', blob2, NULL)) AS viewers,
+  count(DISTINCT if(blob1 = 'fsug_request', blob2, NULL)) AS requesters,
+  sum(if(blob1 = 'fsug_dismiss', _sample_interval, 0)) AS dismisses
+FROM muchi_kpi
+WHERE blob1 IN ('fsug_view', 'fsug_request', 'fsug_dismiss') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY day ORDER BY day DESC
+```
+
+```sql
+-- 理由ごとの申請と消した数：消される方が多い理由は重みを下げる（progression.friendSuggest.weights、リモート設定）
+SELECT blob1 AS event, blob8 AS reason, sum(_sample_interval) AS n
+FROM muchi_kpi
+WHERE blob1 IN ('fsug_request', 'fsug_dismiss') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY event, reason ORDER BY event, n DESC
+```
+
+- **フレンドができたか**：相手の id を入れていないので、申請と承認を人単位では結ばない。日ごとの `friend_accept`（承認した側のサーバーイベント）の数が、おすすめを出してから増えたかで見る。

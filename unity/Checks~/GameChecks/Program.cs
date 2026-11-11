@@ -82,6 +82,12 @@ static class Program
         await HistoryChecks.Run(Check);
         Console.WriteLine("== round 15: アクティビティ (bell, list, paging, mark read, deep links, gift link only; REQ-ACT-*)");
         await ActivityChecks.Run(Check);
+        Console.WriteLine("== round 17: 通報とブロック (ReportModel sheet: reasons per content, note count, one send, also block; BlockListModel: list, confirm, effects; REQ-RPT-*)");
+        await ReportChecks.Run(Check);
+        Console.WriteLine("== round 17: ヘルプセンター (index, context links, search, vote, inquiry form with one key, my inquiries; REQ-HELP-*)");
+        await HelpCenterChecks.Run(Check);
+        Console.WriteLine("== round 17: おすすめフレンド (cards, request / dismiss with rollback, fsug_view once, offline, setting; REQ-FSUG-*)");
+        await FriendSuggestionsChecks.Run(Check, Root);
         Console.WriteLine("== round 11: 図鑑, 実績 and titles (CollectionModel / AchievementModel / TitleShowcaseModel; REQ-COL-*, REQ-ACH-*)");
         await CollectionChecks.Run(Check, Ruleset());
         Console.WriteLine("== 調教 (training: menus, timing mini-game, keyed start/finish, fairness wording)");
@@ -108,6 +114,8 @@ static class Program
         await TeamGoalChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 14: 殿堂・引退式 (HallModel: gallery, ceremony once, retire, friend's hall, progress, visibility; REQ-HOF-*)");
         await HallChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 17: メンテナンス・強制アップデート (MaintenanceModel: 503/426 via ApiClient, scoped vs all, offline, reload, home strip, recommended once, KPI; REQ-MNT-*)");
+        await MaintenanceChecks.Run(Check);
         Console.WriteLine("== round 14: 勝負服エディタ (SilksEditorModel: try-on 試着中, keyed part purchase, readability, presets, refund notice; REQ-SILK-*)");
         await SilksEditorChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 14: 実況パック (CommentaryPackModel: list, sample, equip, calm confirm, keyed buy, T6, race templates, offline; REQ-CMT-*)");

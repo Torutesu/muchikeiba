@@ -24,7 +24,8 @@ export type ErrorCode =
   | 'REPLAY_LIMIT' | 'REPLAY_EXPIRED' | 'REPLAY_TOO_LARGE'
   | 'PHOTO_LIMIT' | 'PHOTO_LOCKED' | 'PHOTO_SOURCE_INVALID'
   | 'HORSE_LOCKED' | 'ROSTER_BULK_REFUSED' | 'ROSTER_BULK_STALE'
-  | 'CUP_LIMIT' | 'CUP_FULL' | 'CUP_CLOSED' | 'CUP_CODE_INVALID' | 'CUP_NOT_READY';
+  | 'CUP_LIMIT' | 'CUP_FULL' | 'CUP_CLOSED' | 'CUP_CODE_INVALID' | 'CUP_NOT_READY'
+  | 'MAINTENANCE' | 'UPGRADE_REQUIRED';
 
 const STATUS: Partial<Record<ErrorCode, number>> = {
   BAD_REQUEST: 400, CONFIG_INVALID: 500, UNAUTHORIZED: 401, NOT_FOUND: 404, HORSE_NOT_FOUND: 404,
@@ -35,6 +36,8 @@ const STATUS: Partial<Record<ErrorCode, number>> = {
   REPLAY_EXPIRED: 410, REPLAY_TOO_LARGE: 413,
   PHOTO_SOURCE_INVALID: 400,
   CUP_CODE_INVALID: 404,
+  // REQ-MNT-003/006 (§46): a maintenance window covers the endpoint / the app is below the supported version
+  MAINTENANCE: 503, UPGRADE_REQUIRED: 426,
 };
 
 export class AppError extends Error {

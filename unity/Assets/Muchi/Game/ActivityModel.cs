@@ -70,6 +70,8 @@ namespace Muchi.Game
             [ActivityKinds.TeamGoalTier] = "支部", [ActivityKinds.TeamGoalWeek] = "支部", [ActivityKinds.ReplayShare] = "リプレイ",
             [ActivityKinds.CupInvited] = "カップ", [ActivityKinds.CupStarted] = "カップ", [ActivityKinds.CupFinished] = "カップ", [ActivityKinds.CupCancelled] = "カップ",
             [ActivityKinds.RecapReady] = "振り返り",
+            [ActivityKinds.OpsNotice] = "運営",
+            [ActivityKinds.InquiryAnswered] = "お問い合わせ",
         };
         public static readonly IReadOnlyDictionary<string, string> Icons = new Dictionary<string, string>
         {
@@ -78,6 +80,8 @@ namespace Muchi.Game
             [ActivityKinds.TeamGoalTier] = "team", [ActivityKinds.TeamGoalWeek] = "team", [ActivityKinds.ReplayShare] = "replay",
             [ActivityKinds.CupInvited] = "cup", [ActivityKinds.CupStarted] = "cup", [ActivityKinds.CupFinished] = "cup", [ActivityKinds.CupCancelled] = "cup",
             [ActivityKinds.RecapReady] = "recap",
+            [ActivityKinds.OpsNotice] = "notice",
+            [ActivityKinds.InquiryAnswered] = "support",
         };
 
         private readonly IActivityApi _api;

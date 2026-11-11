@@ -115,7 +115,8 @@ const hex64 = z.string().regex(/^[0-9a-f]{64}$/);
 const tickN = int.min(0).max(1_000_000);
 
 export const clientMessageSchema = z.discriminatedUnion('t', [
-  z.object({ t: z.literal('hello'), raceId: z.string().min(1), token: z.string().min(1), lastTick: int.min(-1) }).strict(),
+  // REQ-MNT-008 (§46): `engine` (optional) = the client's lockstep engine level; below the race's need → err VERSION_MISMATCH + close 4026
+  z.object({ t: z.literal('hello'), raceId: z.string().min(1), token: z.string().min(1), lastTick: int.min(-1), engine: int.min(1).max(1000).optional() }).strict(),
   z.object({ t: z.literal('in'), tick: tickN, cmd: int.min(0).max(255) }).strict(),
   z.object({ t: z.literal('chk'), tick: tickN, h: hex16 }).strict(),
   // finishTicks (optional, same order as `order`, -1 = did not finish) lets the server keep best times without the verifier

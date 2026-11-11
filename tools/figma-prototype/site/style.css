@@ -641,3 +641,17 @@ html[data-color-mode="cvd"] .a11y-swatch .g.crit { background: repeating-linear-
 .rc-label { text-shadow: 0 2px 12px rgba(0, 0, 0, .6); }
 .rc-note, .rc-unit, .rc-moment .label { text-shadow: 0 2px 10px rgba(0, 0, 0, .65); }
 .screen.rc-reduced, .screen.rc-reduced * { transition: none !important; animation: none !important; }
+/* round 17: 通報とブロック (REQ-RPT-*): list rows on hairlines, effect lines, the report sheet choices */
+.el.bl-row { border-bottom: 1px solid rgba(var(--cyan-rgb), .14); }
+.el.bl-row .btn.small { font-size: 16px; }
+.el.bl-effect { border-bottom: 1px solid rgba(var(--cyan-rgb), .10); }
+.sheet.rpt-sheet .btn.rpt-reason, .sheet.rpt-sheet .btn.rpt-block { white-space: nowrap; padding: 0 12px; }
+.el.behind-sheet { display: none; }
+
+/* round 17: ヘルプセンター (REQ-HELP-*) */
+.help-row { position: absolute; border-radius: var(--radius-card); cursor: pointer; background: rgba(var(--navy-rgb), .55); }
+.help-row.sel { box-shadow: inset 0 0 0 2px var(--cyan); background: rgba(var(--cyan-rgb), .08); }
+.help-row .act-dot { position: absolute; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 8px rgba(var(--cyan-rgb), .7); }
+.btn.help-card { text-align: left; }
+.btn.help-card > .label { pointer-events: none; }
+textarea.field { resize: none; }

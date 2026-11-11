@@ -7,6 +7,7 @@ import { itemsProblems } from '../domain/itemShop.js';
 import { stampsProblems } from '../domain/teamFeed.js';
 import { silksEditorProblems } from '../domain/silksEditor.js';
 import { photoProblems } from '../domain/photoMode.js';
+import { helpProblems, type HelpMaster } from '../domain/help.js';
 import { holdPolicyProblems } from '../domain/retention.js';
 import { roomsProblems } from '../domain/presets.js';
 import { studConfigProblems } from '../domain/stud.js';
@@ -26,6 +27,7 @@ import type { EventDef } from '../domain/master.js';
 import { canonicalJson, hashOf } from './hash.js';
 import { dayRolloverChangeProblems, dayRolloverProblems, dayRule, type DayRollover } from '../domain/time.js';
 import { localeProblems } from '../i18n/validate.js';
+import { maintenanceConfigSchema, maintenanceLocale, maintenanceProblems, type MaintenanceConfig } from '../domain/maintenance.js';
 import { assetCatalogProblems, assetCatalogSchema, EMPTY_ASSET_CATALOG, sameCatalogContent, type AssetCatalog } from '../domain/assetCatalog.js';
 
 /**
@@ -84,6 +86,13 @@ export const configBundleSchema = z.object({
    * ships with its translation).
    */
   locale: z.object({ en: z.record(z.string().min(1).max(2000), z.string().min(1).max(4000)) }).strict().optional(),
+  /**
+   * REQ-MNT-001/002 (§46): replaces the maintenance section (windows, client versions, minimum engine level). Each window's
+   * English message is added to the locale table (keyed by its Japanese message).
+   */
+  maintenance: maintenanceConfigSchema.optional(),
+  /** REQ-HELP-001/003: replaces the ヘルプセンター (master/help.json); checked like at boot against this version's gacha and ruleset. */
+  help: z.record(z.string(), z.unknown()).optional(),
 }).strict();
 export type ConfigBundle = z.infer<typeof configBundleSchema>;
 
@@ -182,8 +191,13 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
   if (b.stable) problems.push(...stableConfigProblems(b.stable as StableConfig, base));
   const assetCatalog = (b.assets as AssetCatalog | undefined) ?? base.assetCatalog;
   if (b.assets) problems.push(...assetCatalogVersionProblems(b.assets as AssetCatalog, base.assetCatalog ?? EMPTY_ASSET_CATALOG));
-  const master: Master = { ...base, tracks, litTracks, gacha: { ...base.gacha, pityGroups, banners, daySchedules: { banners: b.gacha?.banners ? gameDaySchedules(b.gacha.banners as RawBanner[], {}).banners : baseGacha.daySchedules?.banners ?? {}, pityEndDays: b.gacha?.pityGroups ? gameDaySchedules([], b.gacha.pityGroups).pityEndDays : baseGacha.daySchedules?.pityEndDays ?? {} } }, progression, ng: b.ng ?? base.ng, events, bannedSilks, ...(stable ? { stable } : {}), ...(assetCatalog ? { assetCatalog } : {}), ...(b.changelog ? { changelog: b.changelog as unknown as ChangelogEntry[] } : {}), ...(b.locale ? { locale: { en: { ...base.locale?.en, ...b.locale.en } } } : {}) };
+  const maintenance = (b.maintenance as MaintenanceConfig | undefined) ?? base.maintenance;
+  if (b.maintenance) problems.push(...maintenanceProblems(b.maintenance));
+  const localeEn = b.locale || b.maintenance ? { ...base.locale?.en, ...b.locale?.en, ...(b.maintenance ? maintenanceLocale(b.maintenance as MaintenanceConfig) : {}) } : null;
+  const master: Master = { ...base, tracks, litTracks, gacha: { ...base.gacha, pityGroups, banners, daySchedules: { banners: b.gacha?.banners ? gameDaySchedules(b.gacha.banners as RawBanner[], {}).banners : baseGacha.daySchedules?.banners ?? {}, pityEndDays: b.gacha?.pityGroups ? gameDaySchedules([], b.gacha.pityGroups).pityEndDays : baseGacha.daySchedules?.pityEndDays ?? {} } }, progression, ng: b.ng ?? base.ng, events, bannedSilks, ...(stable ? { stable } : {}), ...(assetCatalog ? { assetCatalog } : {}), ...(b.changelog ? { changelog: b.changelog as unknown as ChangelogEntry[] } : {}), ...(localeEn && (base.locale || b.locale) ? { locale: { en: localeEn } } : {}), ...(maintenance ? { maintenance } : {}), ...(b.help ? { help: b.help as unknown as HelpMaster } : {}) };
   problems.push(...eventProblems(master, events, ruleset));
+  // REQ-HELP-003/005: articles, links and tokens against this version (a banner an article quotes cannot be removed)
+  problems.push(...helpProblems(master, undefined, Number(ruleset.maxWhips) || 6));
   problems.push(...localeProblems(master)); // REQ-L10N-005
   // QA r6 #1: tickets must never reach a paid-only banner, including after a remote-config banner change
   if (master.items) problems.push(...itemsProblems(master));

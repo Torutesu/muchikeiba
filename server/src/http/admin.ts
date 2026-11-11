@@ -13,10 +13,16 @@ import { requireRole, type AdminPrincipal, type AdminRole, type AuditEntry, type
 import { checkGrantLimits, grantSchema, itemIdSchema, TWO_PERSON_REQUIRED, type Grant } from '../ops/support.js';
 import type { ModerationChange, ModerationStatus, RaceIntegrityReport, RaceReport } from '../ops/integrity.js';
 import type { LeaderboardApi, PlayerInvoker } from './app.js';
+import type { PlayerService } from '../domain/service.js';
 import { HISTORY_LIMITS, historyQuery, REF_RE } from '../domain/history.js';
 import { BASE_BANNED_SILKS, bannedMatch, bannedSilksListSchema, bannedSilksProblems, combinedBanned, type BannedSilksList } from '../domain/bannedSilks.js';
 import { VISUALS } from '../domain/visuals.js';
 import type { TournamentsService } from '../domain/tournamentService.js';
+import { REPORT_ACTIONS, type PlayerReport, type PlayerReportFilter, type ReportAction, type SubmitInput, type SubmitOutcome } from '../ops/playerReports.js';
+import { REPORT_CATEGORIES, REPORT_CONTENT_KINDS, reportsConfig, type ReportCategory, type ReportContentKind, type ReportsConfig } from '../domain/reports.js';
+import { adminWindowView, bannerPreview, DEFAULT_MAINTENANCE, maintenanceConfigSchema, maintenanceProblems, windowFromInput, windowInputSchema, type MaintenanceConfig, type MaintenanceWindow } from '../domain/maintenance.js';
+import { INQUIRY_CATEGORIES, type InquiryCategory, type InquirySummary } from '../domain/help.js';
+import { INQUIRY_STATUSES, type InquiryQuery } from '../ops/inquiries.js';
 import { DEAD_LETTER_SOURCES, type DeadLetterApi, type DeadLetterSource, type DeadLetterStatus } from '../ops/deadLetter.js';
 
 const dl = (ctx: AdminContext): DeadLetterApi => {
@@ -68,6 +74,22 @@ export interface OpsApi {
   };
   /** REQ-OPS-041: dead letters (optional so deployments/tests without the owners still boot). */
   deadLetters?: DeadLetterApi;
+  /** REQ-RPT-007/013/016: the player-report queue in IntegrityDO (absent = reports are not available). */
+  playerReports?: PlayerReportsApi;
+  /** REQ-HELP-016: the inquiry index (no text; absent = the inquiry list answers NOT_FOUND). */
+  inquiries?: {
+    upsert(items: InquirySummary[]): Promise<{ stored: number }>;
+    list(q: InquiryQuery): Promise<InquirySummary[]>;
+    forgetPlayer(playerId: string): Promise<{ removed: number }>;
+  };
+}
+export interface PlayerReportsApi {
+  submit(x: SubmitInput, now: number, cfg: ReportsConfig): Promise<{ report: PlayerReport; outcome: SubmitOutcome }>;
+  list(f: PlayerReportFilter): Promise<unknown[]>;
+  get(id: string, cfg: ReportsConfig): Promise<PlayerReport>;
+  check(id: string, action: ReportAction): Promise<PlayerReport>;
+  resolve(id: string, action: ReportAction, by: string, note: string, now: number): Promise<PlayerReport>;
+  forget(uid: string): Promise<{ anonymised: number; marked: number }>;
 }
 
 export interface AdminContext {
@@ -97,6 +119,27 @@ const tours = (ctx: AdminContext) => {
   if (!ctx.tournaments) throw new AppError('NOT_FOUND', 'tournaments are not available');
   return ctx.tournaments;
 };
+const preps = (ctx: AdminContext): PlayerReportsApi => {
+  if (!ctx.ops.playerReports) throw new AppError('NOT_FOUND', 'player reports are not available');
+  return ctx.ops.playerReports;
+};
+/** The reports config of the master in effect (remote config resolved on the shipped master). */
+const reportsCfgOf = async (ctx: AdminContext, now: number) => (ctx.baseMaster ? reportsConfig((await masterFor(ctx, null, now)).master) : reportsConfig({ progression: {} } as never));
+const NAME_RESET_OF: Partial<Record<ReportContentKind, 'display' | 'horse' | 'stable'>> = { display_name: 'display', horse_name: 'horse', stable_name: 'stable' };
+
+const inq = (ctx: AdminContext) => {
+  if (!ctx.ops.inquiries) throw new AppError('NOT_FOUND', 'inquiries are not available');
+  return ctx.ops.inquiries;
+};
+const ticketIdSchema = z.string().regex(/^q_[0-9]{1,9}$/);
+/** REQ-HELP-016: write ticket summaries to the index and tell the player object (best effort: an unindexed ticket is re-sent later). */
+async function reindex(ctx: AdminContext, playerId: string, items: InquirySummary[]) {
+  if (!ctx.ops.inquiries || items.length === 0) return;
+  try {
+    await ctx.ops.inquiries.upsert(items);
+    await ctx.player(playerId).invoke('helpInquiryIndexed', playerId, items.map((x) => ({ ticketId: x.ticketId, updatedAt: x.updatedAt })));
+  } catch (e) { console.error('inquiry index write failed', playerId, (e as Error).message); }
+}
 const comps = (ctx: AdminContext) => {
   if (!ctx.ops.compensations) throw new AppError('NOT_FOUND', 'compensations are not available');
   return ctx.ops.compensations;
@@ -201,6 +244,7 @@ interface AdminRequest { params: Record<string, string>; query: URLSearchParams;
 /** Every write carries a human reason; it lands in the audit log (REQ-OPS-012). */
 const reasonSchema = z.string().trim().min(3).max(500);
 const pid = z.string().min(1).max(128);
+const reportIdSchema = z.string().regex(/^prp_[0-9]{1,12}$/);
 const opKeySchema = z.string().regex(/^[A-Za-z0-9_.:-]{4,100}$/);
 /** REQ-BOX-010: the gift box title and expiry of an ops grant (days, or null = no expiry). */
 const giftOptsSchema = {
@@ -224,6 +268,35 @@ const num = (q: URLSearchParams, k: string, def: number) => {
   const n = Number(v);
   if (!Number.isInteger(n) || n < 0) throw new AppError('BAD_REQUEST', `${k} must be a non-negative integer`);
   return n;
+};
+
+/**
+ * REQ-MNT-011 (§46): a maintenance change is a remote-config version derived from the active one with only the
+ * `maintenance` section replaced, staged and activated now (validated like every version; audited by the route). Refused
+ * while another activation is pending: that version would take effect later without this change.
+ */
+async function activeMaintenance(ctx: AdminContext, now: number): Promise<{ versionId: string; bundle: ConfigBundle; maintenance: MaintenanceConfig }> {
+  const a = await ctx.ops.config.active(now, null);
+  const bundle = a.bundle ?? {};
+  return { versionId: a.versionId, bundle, maintenance: (bundle.maintenance as MaintenanceConfig | undefined) ?? ctx.baseMaster?.maintenance ?? DEFAULT_MAINTENANCE };
+}
+async function changeMaintenance(r: AdminRequest, note: string, change: (m: MaintenanceConfig) => MaintenanceConfig) {
+  const pending = ((await r.ctx.ops.config.list(r.now)) as { pending?: Activation[] }).pending ?? [];
+  if (pending.length) throw new AppError('CONFLICT', `config activation ${pending.map((p) => p.id).join(', ')} is pending; cancel it (or apply it) before changing maintenance`);
+  const cur = await activeMaintenance(r.ctx, r.now);
+  const next = change(structuredClone(cur.maintenance));
+  const problems = maintenanceProblems(next);
+  if (problems.length) throw new AppError('CONFIG_INVALID', problems.join('; '), 400);
+  const staged = await r.ctx.ops.config.stage({ ...cur.bundle, maintenance: next }, r.principal.id, note, r.now);
+  // two operators at once: activating ours over a version someone activated meanwhile would drop their change
+  if ((await r.ctx.ops.config.active(r.now, 'x')).versionId !== cur.versionId) throw new AppError('CONFLICT', 'the active config changed while this was prepared; reload and try again');
+  const activation = await r.ctx.ops.config.schedule(staged.version.id, r.now, r.principal.id, r.reason!, r.now);
+  return { before: cur.maintenance, after: next, result: { versionId: staged.version.id, activationId: activation.id, maintenance: next } };
+}
+const findWindow = (m: MaintenanceConfig, id: string): MaintenanceWindow => {
+  const w = m.windows.find((x) => x.id === id);
+  if (!w) throw new AppError('NOT_FOUND', `maintenance window ${id}`);
+  return w;
 };
 
 export const adminRoutes: AdminRoute[] = [
@@ -301,6 +374,44 @@ export const adminRoutes: AdminRoute[] = [
     const before = await r.ctx.ops.config.active(r.now, 'x');
     const a = await r.ctx.ops.config.rollback(b.versionId, r.principal.id, r.reason!, r.now);
     return { result: a, target: `config:${a.versionId}`, before: { activeVersion: before.versionId }, after: { activeVersion: a.versionId } };
+  } },
+
+  // ---- maintenance & client versions (REQ-MNT-011, §46.6) ----
+  { method: 'GET', path: '/v1/admin/maintenance', role: 'viewer', write: false, action: 'maintenance.view', handler: async (r) => {
+    const cur = await activeMaintenance(r.ctx, r.now);
+    return { result: { serverNowMs: r.now, versionId: cur.versionId, windows: cur.maintenance.windows.map((w) => adminWindowView(w, r.now)), clientVersions: cur.maintenance.clientVersions, minEngineLevel: cur.maintenance.minEngineLevel } };
+  } },
+  /** The banner as players would see it (ja + en) and the problems of a draft window against the active section. Nothing is stored. */
+  { method: 'POST', path: '/v1/admin/maintenance/preview', role: 'viewer', write: false, action: 'maintenance.preview', handler: async (r) => {
+    const w = windowFromInput(parse(windowInputSchema, r.body.window));
+    const cur = await activeMaintenance(r.ctx, r.now);
+    const problems = maintenanceProblems({ ...cur.maintenance, windows: [...cur.maintenance.windows.filter((x) => x.id !== w.id), w] });
+    if (w.startAtMs < r.now - 60_000) problems.push(`maintenance.windows[${w.id}]: starts in the past`);
+    return { result: { ok: problems.length === 0, problems, window: adminWindowView(w, r.now), banner: bannerPreview(w) } };
+  } },
+  { method: 'POST', path: '/v1/admin/maintenance/windows', role: 'admin', write: true, action: 'maintenance.schedule', handler: async (r) => {
+    const w = windowFromInput(parse(windowInputSchema, r.body.window));
+    if (w.startAtMs < r.now - 60_000) throw new AppError('BAD_REQUEST', 'the window starts in the past (an emergency window starts now)');
+    const out = await changeMaintenance(r, `maintenance: schedule ${w.id}`, (m) => {
+      if (m.windows.some((x) => x.id === w.id)) throw new AppError('CONFLICT', `maintenance window ${w.id} already exists`);
+      return { ...m, windows: [...m.windows, w] };
+    });
+    return { ...out, target: `maintenance:${w.id}` };
+  } },
+  /** Cancel before the start, or end a running window now. Ended windows cannot be changed. */
+  { method: 'POST', path: '/v1/admin/maintenance/windows/:id/cancel', role: 'admin', write: true, action: 'maintenance.cancel', handler: async (r) => {
+    const id = r.params.id!;
+    const out = await changeMaintenance(r, `maintenance: cancel ${id}`, (m) => {
+      const w = findWindow(m, id);
+      if (w.cancelledAtMs !== undefined || w.endAtMs <= r.now) throw new AppError('CONFLICT', `maintenance window ${id} has already ended or was cancelled`);
+      return { ...m, windows: m.windows.map((x) => (x.id === id ? { ...x, cancelledAtMs: r.now } : x)) };
+    });
+    return { ...out, target: `maintenance:${id}` };
+  } },
+  { method: 'PUT', path: '/v1/admin/maintenance/client-versions', role: 'admin', write: true, action: 'maintenance.versions', handler: async (r) => {
+    const b = parse(z.object({ clientVersions: maintenanceConfigSchema.shape.clientVersions, minEngineLevel: maintenanceConfigSchema.shape.minEngineLevel.optional(), reason: z.string() }).strict(), r.body);
+    const out = await changeMaintenance(r, 'maintenance: client versions', (m) => ({ ...m, clientVersions: b.clientVersions, ...(b.minEngineLevel !== undefined ? { minEngineLevel: b.minEngineLevel } : {}) }));
+    return { ...out, target: 'maintenance:client-versions' };
   } },
 
   // ---- support (REQ-OPS-020..025) ----
@@ -522,10 +633,86 @@ export const adminRoutes: AdminRoute[] = [
     return { result: { ...out, entries: list.entries.length, note: 'staged; activate it with POST /v1/admin/config/activations' }, target: `config:${out.version.id}`, before: { entries: before.entries.length, basedOn: active.versionId }, after: { entries: list.entries.length, version: out.version.id } };
   } },
 
+  // ---- ヘルプセンターの問い合わせ (REQ-HELP-016/017, contracts/protocol.md §48.7) ----
+  { method: 'GET', path: '/v1/admin/inquiries', role: 'viewer', write: false, action: 'inquiry.list', handler: async (r) => {
+    const st = r.query.get('status');
+    const cat = r.query.get('category');
+    if (st && !(INQUIRY_STATUSES as string[]).includes(st)) throw new AppError('BAD_REQUEST', `status must be one of ${INQUIRY_STATUSES.join('|')}`);
+    if (cat && !(INQUIRY_CATEGORIES as readonly string[]).includes(cat)) throw new AppError('BAD_REQUEST', 'unknown category');
+    return { result: { items: await inq(r.ctx).list({ ...(st ? { status: st as InquiryQuery['status'] } : {}), ...(cat ? { category: cat as InquiryCategory } : {}), limit: num(r.query, 'limit', 100) }) } };
+  } },
+  { method: 'GET', path: '/v1/admin/players/:playerId/inquiries/:ticketId', role: 'viewer', write: false, action: 'inquiry.view', handler: async (r) => {
+    const playerId = parse(pid, r.params.playerId);
+    const ticketId = parse(ticketIdSchema, r.params.ticketId);
+    let v: Awaited<ReturnType<PlayerService['adminInquiry']>>;
+    try { v = await r.ctx.player(playerId).invoke('adminInquiry', playerId, ticketId); }
+    catch (e) {
+      // REQ-HELP-018: a deleted account — its rows leave the index (the ticket is gone with the state)
+      if (e instanceof AppError && e.code === 'NOT_FOUND' && e.message === 'account deleted') await r.ctx.ops.inquiries?.forgetPlayer(playerId).catch(() => null);
+      throw e;
+    }
+    const { unindexed, ...ticket } = v;
+    if (unindexed?.length) await reindex(r.ctx, playerId, unindexed);
+    return { result: ticket, target: `player:${playerId}` };
+  } },
+  { method: 'POST', path: '/v1/admin/players/:playerId/inquiries/:ticketId/reply', role: 'operator', write: true, action: 'inquiry.reply', handler: async (r) => {
+    const playerId = parse(pid, r.params.playerId);
+    const ticketId = parse(ticketIdSchema, r.params.ticketId);
+    const b = parse(z.object({ opKey: opKeySchema, content: z.string().trim().min(1).max(8000), close: z.boolean().optional(), reason: z.string() }).strict(), r.body);
+    const out = await r.ctx.player(playerId).invoke('adminInquiryReply', playerId, ticketId, b.content, b.close ?? false, r.principal.id, b.opKey);
+    const { replies, duplicate, ...summary } = out;
+    await reindex(r.ctx, playerId, [summary]);
+    return { result: { ...summary, replies, duplicate }, target: `player:${playerId}`, before: null, after: { ticketId, status: summary.status, replies } };
+  } },
+
   { method: 'GET', path: '/v1/admin/reports', role: 'viewer', write: false, action: 'reports.list', handler: async (r) => {
     const st = r.query.get('status');
     if (st && st !== 'open' && st !== 'resolved') throw new AppError('BAD_REQUEST', 'bad status');
     return { result: { reports: await r.ctx.ops.integrity.reports((st ?? undefined) as RaceReport['status'] | undefined, num(r.query, 'limit', 100)) } };
+  } },
+  // ---- player reports (REQ-RPT-013, contracts/protocol.md §47.7) ----
+  { method: 'GET', path: '/v1/admin/player-reports', role: 'viewer', write: false, action: 'player_reports.list', handler: async (r) => {
+    const f: PlayerReportFilter = { limit: num(r.query, 'limit', 100) };
+    const st = r.query.get('status');
+    if (st) { if (st !== 'open' && st !== 'resolved') throw new AppError('BAD_REQUEST', 'status must be open|resolved'); f.status = st; }
+    const cat = r.query.get('category');
+    if (cat) { if (!(REPORT_CATEGORIES as readonly string[]).includes(cat)) throw new AppError('BAD_REQUEST', `category must be one of ${REPORT_CATEGORIES.join('|')}`); f.category = cat as ReportCategory; }
+    const kind = r.query.get('kind');
+    if (kind) { if (!(REPORT_CONTENT_KINDS as readonly string[]).includes(kind)) throw new AppError('BAD_REQUEST', `kind must be one of ${REPORT_CONTENT_KINDS.join('|')}`); f.kind = kind as ReportContentKind; }
+    const t = r.query.get('targetId');
+    if (t) f.targetId = parse(pid, t);
+    return { result: { reports: await preps(r.ctx).list(f) } };
+  } },
+  { method: 'GET', path: '/v1/admin/player-reports/:id', role: 'viewer', write: false, action: 'player_reports.view', handler: async (r) => {
+    const rep = await preps(r.ctx).get(parse(reportIdSchema, r.params.id), await reportsCfgOf(r.ctx, r.now));
+    let race: unknown = null;
+    if (rep.content.kind === 'race' && rep.snapshot.raceId) {
+      // REQ-RPT-005: the replay and the verifier's result (the integrity events of that race for the reported player)
+      const v = (await r.ctx.ops.integrity.view(rep.targetId, r.now)) as { status: string; events: { raceId: string; kind: string; at: number }[] };
+      race = { raceId: rep.snapshot.raceId, replay: `/v1/admin/replays/${rep.snapshot.raceId}`, integrity: { status: v.status, events: v.events.filter((e) => e.raceId === rep.snapshot.raceId) } };
+    }
+    return { result: { ...rep, race }, target: `player:${rep.targetId}` };
+  } },
+  { method: 'POST', path: '/v1/admin/player-reports/:id/action', role: 'operator', write: true, action: 'player_reports.action', handler: async (r) => {
+    const id = parse(reportIdSchema, r.params.id);
+    const b = parse(z.object({ action: z.enum(REPORT_ACTIONS), reason: z.string(), until: z.number().int().nullable().default(null) }).strict(), r.body);
+    if (b.action === 'ban') requireRole(r.principal, 'admin');
+    const pr = preps(r.ctx);
+    const rep = await pr.check(id, b.action);
+    const target = rep.targetId;
+    let effect: unknown = null;
+    if (b.action === 'warn') effect = await r.ctx.player(target).invoke('reportWarn', target, id);
+    else if (b.action === 'rename') {
+      const which = NAME_RESET_OF[rep.content.kind];
+      if (!which) throw new AppError('BAD_REQUEST', `a ${rep.content.kind} report has no name to reset`);
+      effect = await r.ctx.player(target).invoke('adminResetName', target, which, which === 'horse' ? rep.content.ref : null);
+    } else if (b.action === 'hide') {
+      if (rep.content.kind === 'replay_title') effect = await r.ctx.player(target).invoke('replayOpsHide', target, rep.content.ref!);
+      else if (rep.content.kind === 'photo_caption') effect = await r.ctx.player(target).invoke('photoOpsHide', target, rep.content.ref!);
+      else throw new AppError('BAD_REQUEST', `a ${rep.content.kind} report has no caption or replay to hide`);
+    } else if (b.action === 'ban') effect = await r.ctx.ops.integrity.ban(target, b.until, r.reason!, r.principal.id, r.now);
+    const done = await pr.resolve(id, b.action, r.principal.id, r.reason!, r.now);
+    return { result: { report: done, effect }, target: `player:${target}`, before: { status: 'open', report: id }, after: { status: done.status, action: b.action, effect } };
   } },
   { method: 'POST', path: '/v1/admin/reports/:reportId/resolve', role: 'operator', write: true, action: 'reports.resolve', handler: async (r) => {
     const b = parse(z.object({ resolution: z.string().trim().min(2).max(200), reason: z.string() }), r.body);

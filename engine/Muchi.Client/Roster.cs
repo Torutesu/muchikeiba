@@ -268,17 +268,8 @@ namespace Muchi.Client
             return new RosterAptitude { Score = score, GoingFit = fit, SurfaceOk = surfaceOk, DistanceOk = distanceOk, Mark = mark };
         }
 
-        private static readonly Regex Spaces = new Regex(@"\s+", RegexOptions.CultureInvariant);
-        private static readonly Regex Dashes = new Regex("[-‐‑‒–—―−ｰ～〜]", RegexOptions.CultureInvariant);
-        /// <summary>The server's normalizeName (NFKC, no spaces, hiragana → katakana, one long-vowel mark), lower case.</summary>
-        public static string FoldSearch(string s)
-        {
-            if (string.IsNullOrEmpty(s)) return "";
-            var t = Spaces.Replace(s.Normalize(NormalizationForm.FormKC), "");
-            var sb = new StringBuilder(t.Length);
-            foreach (var ch in t) sb.Append(ch >= 'ぁ' && ch <= 'ゖ' ? (char)(ch + 0x60) : ch);
-            return Dashes.Replace(sb.ToString(), "ー").ToLowerInvariant();
-        }
+        /// <summary>The one search fold (the server's searchFold): the same as the help center's HelpText.Fold.</summary>
+        public static string FoldSearch(string s) => HelpText.Fold(s);
 
         private static int Value(RosterRow r, RosterQuery q)
         {

@@ -24,19 +24,23 @@ namespace Muchi.Client
             StableLike = "stable_like", TeamCheer = "team_cheer", TournamentResult = "tournament_result", GiftArrived = "gift_arrived",
             TeamGoalTier = "team_goal_tier", TeamGoalWeek = "team_goal_week", ReplayShare = "replay_share",
             // Round 16 integration: hosted cups (§42.7) and the season recap (§43)
-            CupInvited = "cup_invited", CupStarted = "cup_started", CupFinished = "cup_finished", CupCancelled = "cup_cancelled", RecapReady = "recap_ready";
-        public static readonly string[] All = { FriendRequest, FriendAccepted, RivalWeek, RivalRecord, StableLike, TeamCheer, TournamentResult, GiftArrived, TeamGoalTier, TeamGoalWeek, ReplayShare,
-            CupInvited, CupStarted, CupFinished, CupCancelled, RecapReady };
+            CupInvited = "cup_invited", CupStarted = "cup_started", CupFinished = "cup_finished", CupCancelled = "cup_cancelled", RecapReady = "recap_ready",
+            /// <summary>REQ-RPT-013: support's request after a report (no actor; links to 通報とブロック).</summary>
+            OpsNotice = "ops_notice", InquiryAnswered = "inquiry_answered";
+        public static readonly string[] All = { FriendRequest, FriendAccepted, RivalWeek, RivalRecord, StableLike, TeamCheer, TournamentResult, GiftArrived, TeamGoalTier, TeamGoalWeek, ReplayShare, InquiryAnswered,
+            CupInvited, CupStarted, CupFinished, CupCancelled, RecapReady, OpsNotice };
     }
 
     /// <summary>Where an entry leads (`link.screen`).</summary>
     public static class ActivityScreens
     {
         public const string Friends = "friends", Rival = "rival", Stable = "stable", TeamFeed = "team_feed", Tournaments = "tournaments",
-            GiftBox = "gift_box", TeamGoal = "team_goal", Replay = "replay", WhatsNew = "whats_new",
+            GiftBox = "gift_box", TeamGoal = "team_goal", Replay = "replay", WhatsNew = "whats_new", HelpInquiry = "help_inquiry",
             /// <summary>Round 16: the hosted cup (LinkId = cupId) and the season recap (LinkId = recap id, e.g. season:2026-11).</summary>
-            Cups = "cups", Recap = "recap";
-        public static readonly string[] All = { Friends, Rival, Stable, TeamFeed, Tournaments, GiftBox, TeamGoal, Replay, WhatsNew, Cups, Recap };
+            Cups = "cups", Recap = "recap",
+            /// <summary>REQ-RPT-011: 通報とブロック (block list + what a block does + guidelines).</summary>
+            Safety = "safety";
+        public static readonly string[] All = { Friends, Rival, Stable, TeamFeed, Tournaments, GiftBox, TeamGoal, Replay, WhatsNew, HelpInquiry, Cups, Recap, Safety };
     }
 
     public sealed class ActivityActor
@@ -46,7 +50,7 @@ namespace Muchi.Client
         internal static ActivityActor Parse(JsonNode o) => new ActivityActor { PlayerId = J.Str(o, "playerId"), Name = J.Str(o, "name") };
     }
 
-    /// <summary>One entry. Count &gt; 1 = collapsed (「12件のいいね」). Category = the push category (friends | events | gifts).</summary>
+    /// <summary>One entry. Count &gt; 1 = collapsed (「12件のいいね」). Category = the push category (friends | events | gifts), or support (a support reply, §48.8: no push).</summary>
     public sealed class ActivityItem
     {
         public string Id, Kind, Category, Text, Screen, LinkId;

@@ -182,6 +182,8 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await waitIn('.btn[data-frame="sakura"][data-unlocked="true"]');
     await page.locator('.screen.in .btn[data-frame="sakura"]').click(); await waitIn('.ph-view[data-frame="sakura"]');
     await page.locator('.screen.in [data-tab="stamp"]').click(); await page.locator('.screen.in .btn[data-stamp="hoof"]').click(); await page.locator('.screen.in .btn[data-stamp="star"]').click();
+    // wait on the condition, not a fixed time (the second stamp lands a frame later on a loaded machine)
+    await page.waitForFunction(() => document.querySelectorAll('.screen.in .ph-stamp').length === 2, null, { timeout: 15000 }).catch(() => {});
     assert.equal(await page.locator('.screen.in .ph-stamp').count(), 2);
     // caption: a betting word is refused, then a plain one
     await page.locator('.screen.in [data-tab="caption"]').click();
@@ -525,6 +527,11 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await page.locator('.screen.in .cup-invite-send').click(); await page.waitForTimeout(500);
     await page.locator('.screen.in .cup-demo-fill').click(); await page.waitForTimeout(600); await waitIn('.cup-start:not(.disabled)');
     await shot('cup-lobby-ready', 400);
+    // §47 (Round 17 integration): a cup mate can be reported from the lobby (source cup_lobby, the name reasons)
+    await page.locator('.screen.in .cup-report').first().click(); await waitIn('.rpt-sheet');
+    assert.equal(await page.locator('.screen.in .rpt-sheet').getAttribute('data-source'), 'cup_lobby');
+    assert.deepEqual(await page.locator('.screen.in .rpt-sheet .rpt-reason').evaluateAll((els) => els.map((e) => e.dataset.reason)), ['name', 'harassment', 'other']);
+    await page.locator('.screen.in .sheet [data-label="閉じる"]').click(); await page.waitForTimeout(300);
     for (let i = 0; i < 3; i++) {
       await page.locator('.screen.in .cup-start').click();
       await waitScreen(i < 2 ? 'cup-lobby' : 'cup-standings', 30000); await page.waitForTimeout(400);
@@ -592,10 +599,12 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await page.locator('.screen.in .rp-sheet .rp-play').click(); await waitScreen('replay-player', 30000);
     await page.waitForFunction(() => (globalThis.__muchi.replay?.t ?? 0) > 500, null, { timeout: 20000 });
     await shot('replay-player', 300);
-    await page.locator('.screen.in .rp-speed').click(); await page.waitForTimeout(200);
+    await page.locator('.screen.in .rp-speed').click();
+    await page.waitForFunction(() => globalThis.__muchi.replay?.speed === 2, null, { timeout: 15000 }).catch(() => {});
     assert.equal(await page.evaluate(() => globalThis.__muchi.replay.speed), 2, 'replay: 2×');
     const cam0 = await page.evaluate(() => globalThis.__muchi.replay.camera);
-    await page.locator('.screen.in .rp-cam-next').click(); await page.locator('.screen.in .rp-cam-next').click(); await page.waitForTimeout(200);
+    await page.locator('.screen.in .rp-cam-next').click(); await page.locator('.screen.in .rp-cam-next').click();
+    await page.waitForFunction((c0) => globalThis.__muchi.replay?.camera !== c0, cam0, { timeout: 15000 }).catch(() => {});
     assert.notEqual(await page.evaluate(() => globalThis.__muchi.replay.camera), cam0, 'replay: the camera follows another horse');
     await page.locator('.screen.in .rp-jump').click();
     await page.waitForFunction(() => globalThis.__muchi.replay.remainingM <= 200, null, { timeout: 5000 });
@@ -791,7 +800,8 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   const raceLag = (startWall, f) => { if (f?.tick) lagMs += Math.max(0, Date.now() - startWall - f.tick * 50); };
   const THINK_MS = 800;
   const tap = async (label) => { await page.waitForTimeout(THINK_MS); await btn(label).click(); taps++; };
-  const tapWhip = async () => { await page.locator('.screen.in .btn.whip').click({ timeout: 5000, force: true }); taps++; raceTaps++; };
+  // the whip button can take a moment to attach after a screen change on a loaded machine: wait for it, not a fixed 5 s
+  const tapWhip = async () => { await page.locator('.screen.in .btn.whip').click({ timeout: 20000, force: true }); taps++; raceTaps++; };
   await page.goto(url); await ready();
   await waitScreen('title'); mark('タイトル表示');
   await shot('title', 300);
@@ -1039,10 +1049,14 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.ok(await page.locator('.screen.in .tf-cheer.on').count() >= 1, 'my cheer is on the teammate race result');
   await shot('team-feed-cheered', 300);
   const victim = await page.locator('.screen.in .tf-row.race:not(.mine)').first().getAttribute('data-player');
-  await page.locator(`.screen.in .tf-row[data-player="${victim}"] .tf-link`, { hasText: '非表示' }).first().click(); await page.waitForTimeout(700);
-  assert.equal(await page.locator(`.screen.in .tf-row[data-player="${victim}"]`).count(), 0, 'a muted member disappears from my feed');
+  await page.locator(`.screen.in .tf-row[data-player="${victim}"] .tf-link`, { hasText: 'ブロック' }).first().click(); await page.waitForTimeout(700);
+  assert.equal(await page.locator(`.screen.in .tf-row[data-player="${victim}"]`).count(), 0, 'a blocked (muted) member disappears from my feed');
   const before = Number(await page.locator('.screen.in .tf-list').getAttribute('data-count'));
-  await page.locator('.screen.in .tf-row:not(.mine) .tf-link', { hasText: '報告' }).first().click(); await page.waitForTimeout(700);
+  // round 17 (REQ-RPT-001): 通報 opens the report sheet; once received the item is hidden for me too (REQ-TEAMFEED-007)
+  await page.locator('.screen.in .tf-row:not(.mine) .tf-link', { hasText: '通報' }).first().click(); await page.waitForTimeout(700);
+  assert.equal(await page.locator('.screen.in .rpt-sheet[data-source="team_feed"]').count(), 1, 'the report sheet opens from the feed');
+  await page.locator('.screen.in .rpt-sheet .rpt-reason[data-reason="harassment"]').click(); await page.waitForTimeout(200);
+  await page.locator('.screen.in .rpt-sheet .rpt-send').click(); await page.waitForTimeout(900);
   assert.equal(Number(await page.locator('.screen.in .tf-list').getAttribute('data-count')), before - 1, 'a reported item is hidden for me');
   await shot('team-feed-muted-reported', 300);
   // r10 fix: this season's pass bought (demo receipt, no billing) → 購入済み in the shop and on the pass screen
@@ -1322,6 +1336,150 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.equal(await page.locator('.screen.in .act-row.unread').count(), 0, 'read rows on the next visit');
   await page.locator('.screen.in [data-act="gift_arrived"] [data-act-go]').click(); await waitScreen('gift-box', 20000);
   assert.ok((await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name === 'activity_tap').length)) >= 1, 'activity_tap sent');
+  // ------------------------------------------------------------------ 6. round 17: 通報とブロック (REQ-RPT-*)
+  // two blocked players (one deleted since → 「プレイヤー」) and support's request in the activity list; the block screen
+  // (what a block does per feature), unblock only after the confirmation, the settings row, and the report sheet from a
+  // friend's hall (reasons that fit a name, the note counter, one send, also block)
+  await page.evaluate(() => globalThis.__muchi.demo('safety')); await waitScreen('blocks', 60000); await page.waitForTimeout(400);
+  const blText = await page.locator('.screen.in').innerText();
+  assert.match(blText, /ヨルノカラス/); assert.match(blText, /ナギサ/); assert.match(blText, /プレイヤー/, 'a deleted player shows the neutral name');
+  assert.equal(await page.locator('.screen.in .bl-effect').count(), 7, 'what a block does, one line per feature');
+  assert.match(blText, /相手には、ブロックしたことも通報したことも知らされません/);
+  await shot('blocks', 400);
+  await page.locator('.screen.in .bl-row[data-player="demo_bl_2"] .bl-unblock').click(); await page.waitForTimeout(500);
+  assert.equal(await page.locator('.screen.in .bl-confirm').count(), 1, 'unblock asks first');
+  assert.equal((await page.evaluate(() => globalThis.__muchi.logic.reports.blocks())).value.count, 3, 'nothing changed before the confirmation');
+  await shot('blocks-unblock-confirm', 300);
+  await page.locator('.screen.in .bl-yes').click(); await page.waitForTimeout(800);
+  assert.equal(await page.locator('.screen.in .bl-row[data-player="demo_bl_2"]').count(), 0, 'unblocked');
+  assert.equal(await page.locator('.screen.in .bl-list').getAttribute('data-count'), '2');
+  await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in .btn[data-action="blocks"]').count(), 1, 'その他 has the 通報とブロック row');
+  await page.locator('.screen.in .btn[data-action="blocks"]').click(); await waitScreen('blocks');
+  await page.evaluate(() => globalThis.__muchi.show('Activity')); await waitScreen('activity'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in [data-act="ops_notice"]').count(), 1, "support's request is in the activity list");
+  await page.locator('.screen.in [data-act="ops_notice"] [data-act-go="safety"]').click(); await waitScreen('blocks', 20000);
+  // the report rptSheet from a friend's hall
+  await page.evaluate(() => globalThis.__muchi.logic.hall.demoFriend());
+  await page.evaluate(() => globalThis.__muchi.show('Hall', 'demo_hof_1')); await waitScreen('hall-friend'); await page.waitForTimeout(400);
+  await page.locator('.screen.in .rpt-open').click(); await page.waitForTimeout(700);
+  const rptSheet = page.locator('.screen.in .rpt-sheet');
+  assert.equal(await rptSheet.getAttribute('data-kind'), 'display_name');
+  assert.deepEqual(await rptSheet.locator('.rpt-reason').evaluateAll((els) => els.map((e) => e.dataset.reason)), ['name', 'harassment', 'other'], 'only the reasons that fit a name');
+  assert.match(await rptSheet.locator('.rpt-send').getAttribute('class'), /disabled/, 'no reason → no send');
+  await rptSheet.locator('.rpt-reason[data-reason="name"]').click();
+  await rptSheet.locator('.rpt-note').fill('あ'.repeat(101)); await page.waitForTimeout(200);
+  assert.match(await rptSheet.locator('.rpt-send').getAttribute('class'), /disabled/, 'a note over the limit → no send');
+  await rptSheet.locator('.rpt-note').fill('名前が気になります'); await page.waitForTimeout(200);
+  assert.equal(await rptSheet.locator('.rpt-count').innerText(), '9/100');
+  await rptSheet.locator('.rpt-block').click();
+  await shot('report-sheet', 300);
+  await rptSheet.locator('.rpt-send').click(); await page.waitForTimeout(900);
+  const sent = await page.evaluate(() => globalThis.__muchiReports.at(-1));
+  assert.deepEqual(sent, { kind: 'display_name', category: 'name', source: 'hall', blocked: true }, 'received, and blocked');
+  const queue = await page.evaluate(() => globalThis.__muchi.logic.reports.queue());
+  assert.equal(queue[0].snapshot.text, 'アオバ', "the server's snapshot of the name");
+  // ------------------------------------------------------------------ 6b. round 17: メンテナンス・強制アップデート (REQ-MNT-*)
+  // on the real gate (server/src/domain/maintenance.ts): the announced window in what's new → its notice; the maintenance
+  // screen (scope all: message, end time in JST, no countdown, reload stays until the window is over); a closed feature
+  // (scoped window) as a notice over home; the update-required screen (426) with the store button; KPI
+  await page.evaluate(() => globalThis.__muchi.demo('maintenance-news')); await waitScreen(['home', 'link-prompt'], 60000);
+  if (await screen() === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); }
+  await page.waitForSelector('.screen.in [data-action="mnt-notice"]', { timeout: 15000 });
+  await shot('maintenance-news', 300);
+  await page.locator('.screen.in [data-action="mnt-notice"]').click(); await waitScreen('maintenance-notice');
+  const mnText = await page.locator('.screen.in').innerText();
+  assert.match(mnText, /サーバーの増強のため/, 'the notice: the window message');
+  assert.match(mnText, /購入済みのコインは、メンテナンス中でも必ず受け取れます/, 'the notice: purchases are never lost');
+  assert.ok(!/今だけ|残りわずか|倍|お得|あと\d+分/.test(mnText), 'no urgency, no countdown');
+  await shot('maintenance-notice', 300);
+  await page.evaluate(() => globalThis.__muchi.demo('maintenance')); await waitScreen('maintenance', 60000);
+  const mText = await page.locator('.screen.in').innerText();
+  assert.match(mText, /メンテナンス中です/); assert.match(mText, /終了予定（日本時間）/); assert.match(mText, /ゲーム全体/);
+  assert.ok(/^\d\d\/\d\d \d\d:\d\d$/.test(await page.locator('.screen.in [data-mnt-ends]').getAttribute('data-mnt-ends')), 'the end time from the 503 details');
+  assert.ok(!/あと\d+分|今だけ|残りわずか/.test(mText), 'no countdown on the maintenance screen');
+  assert.equal(await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name === 'maintenance_block').length), 1, 'maintenance_block once');
+  await shot('maintenance', 300);
+  await page.locator('.screen.in [data-action="mnt-reload"]').click(); await page.waitForTimeout(500);
+  assert.equal(await screen(), 'maintenance', 'reload during the window: still the maintenance screen');
+  assert.equal(await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name === 'maintenance_block').length), 1, 'maintenance_block still once (same window × group)');
+  await page.evaluate(() => globalThis.__muchi.logic.maintenanceDemo('off'));
+  await page.locator('.screen.in [data-action="mnt-reload"]').click(); await waitScreen(['home', 'link-prompt'], 20000);
+  if (await screen() === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); }
+  await page.evaluate(() => globalThis.__muchi.demo('maintenance-scoped')); await waitScreen(['home', 'link-prompt'], 60000);
+  if (await screen() === 'link-prompt') { await click('あとで'); await waitScreen('home', 10000); }
+  await page.waitForTimeout(500);
+  if (!(await page.locator('.screen.in [data-mnt-sheet]').count())) await page.evaluate(() => globalThis.__muchi.show('MaintenanceScoped')); // opening スカウト again
+  await page.waitForSelector('.screen.in [data-mnt-sheet="gacha"]', { timeout: 15000 });
+  assert.match(await page.locator('.screen.in [data-mnt-sheet]').innerText(), /スカウト・ショップ/, 'a scoped window names the closed features');
+  await shot('maintenance-scoped', 300);
+  await page.locator('.screen.in [data-mnt-sheet] [data-label="ホームへ"]').click(); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-mnt-sheet]').count(), 0, 'the notice closes; the rest of the game is open');
+  await page.evaluate(() => globalThis.__muchi.demo('update')); await waitScreen('update-required', 60000);
+  const uText = await page.locator('.screen.in').innerText();
+  assert.match(uText, /アップデートのお願い/); assert.match(uText, /1\.1\.0/); assert.match(uText, /1\.2\.0/);
+  assert.match(await page.locator('.screen.in [data-action="mnt-store"]').getAttribute('data-url'), /^https:\/\/apps\.apple\.com\//, 'the store button opens the App Store link from the 426');
+  await page.locator('.screen.in [data-action="mnt-store"]').click(); await page.waitForTimeout(300);
+  const up = await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name === 'upgrade_prompt').map((e) => e.action));
+  assert.deepEqual(up.slice(-2), ['shown', 'store'], 'upgrade_prompt shown, then store');
+  await shot('update-required', 300);
+  await page.evaluate(() => globalThis.__muchi.logic.maintenanceDemo('off'));
+  // ------------------------------------------------------------------ 6. round 17: ヘルプセンター (REQ-HELP-*)
+  // an inquiry answered by the real ops reply (unread → read on opening), the help center (eight categories), search with
+  // the Japanese fold, an article with numbers from data and a vote, the rates screen's ? link (→ pity), the inquiry form
+  await page.evaluate(() => globalThis.__muchi.demo('help')); await waitScreen('my-inquiries', 60000); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .inq-detail [data-reply="support"]').count(), 1, 'the answered inquiry shows the support reply');
+  assert.equal(await page.locator('.screen.in .inq-detail').getAttribute('data-status'), 'answered');
+  await shot('help-my-inquiries', 300);
+  await click('戻る'); await waitScreen('help'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-help-cat]').count(), 8, 'eight categories');
+  await shot('help-center', 300);
+  await page.locator('.screen.in input.field').fill('ﾃﾝｼﾞｮｳ'); await click('検索'); await waitScreen('help-search'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-help-article]').first().getAttribute('data-help-article'), 'pity', 'half-width katakana finds the pity article');
+  await shot('help-search', 300);
+  await page.locator('.screen.in [data-help-article="pity"]').click(); await waitScreen('help-article'); await page.waitForTimeout(300);
+  const helpBody = await page.locator('.screen.in .help-body').innerText();
+  assert.match(helpBody, /[0-9]+回分/, 'the pity count is filled from data');
+  assert.ok(!/今だけ|残りわずか|倍|お得/.test(helpBody), 'no urgency or multiplier wording');
+  await page.locator('.screen.in [data-vote="yes"]').click(); await page.waitForTimeout(500);
+  await shot('help-article', 300);
+  const helpKpi = await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name.startsWith('help_')));
+  assert.ok(helpKpi.some((e) => e.name === 'help_search' && e.length === 5 && !Object.values(e).some((v) => typeof v === 'string' && /ﾃﾝ|テン/.test(v))), 'help_search: the folded length, never the query');
+  assert.ok(helpKpi.some((e) => e.name === 'help_article_view' && e.articleId === 'pity' && e.source === 'search'), 'help_article_view with its source');
+  await page.evaluate(() => globalThis.__muchi.show('Odds', 'standard')); await page.waitForTimeout(500);
+  await page.locator('.screen.in [data-help-context="gacha_odds"]').click(); await waitScreen('help-article'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-article]').getAttribute('data-article'), 'pity', 'the rates screen links to the pity article');
+  await page.locator('.screen.in .btn[data-action="inquiry"]').click(); await waitScreen('inquiry-form'); await page.waitForTimeout(300);
+  await page.locator('.screen.in [data-inquiry-cat="bug"]').click(); await page.waitForTimeout(400);
+  await page.locator('.screen.in textarea.field').fill('タイムアタックの結果画面で記録が表示されないことがあります。');
+  assert.match(await page.locator('.screen.in [data-diagnostics]').innerText(), /プレイヤーID/, 'the form says what is attached');
+  await shot('inquiry-form', 300);
+  await page.locator('.screen.in [data-action="inquiry-send"]').click(); await waitScreen('my-inquiries'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .inq-detail').getAttribute('data-status'), 'received', 'the new inquiry is received');
+  await shot('help-inquiry-sent', 300);
+  // ------------------------------------------------------------------ 6. round 17: おすすめフレンド (REQ-FSUG-*)
+  // people met through the real paths (an event, a friend room, a like, a cheer, mutual friends); the opted-out player and
+  // the ranked-only opponent never appear; 申請する goes through the friend request flow; 表示しない is remembered; the switch
+  await page.evaluate(() => globalThis.__muchi.demo('friends')); await waitScreen('friends', 60000); await page.waitForTimeout(400);
+  const fsText = await page.locator('.screen.in').innerText();
+  assert.match(fsText, /アサギ/, 'the event opponent is suggested');
+  assert.match(fsText, /最近のレースで対戦・共通のフレンド2人/, 'the reason line from the server');
+  assert.match(fsText, /共通のフレンド3人/, 'a mutual-friends count (never who)');
+  assert.ok(!/カゲロウ|ランクノヒト/.test(fsText), 'opted out and ranked-only players are not suggested');
+  assert.ok(!/今だけ|残りわずか|倍|お得/.test(fsText), 'no urgency or multiplier wording');
+  assert.equal(await page.locator('.screen.in .fsug-row').count(), 5);
+  assert.equal(await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name === 'fsug_view').length), 1, 'fsug_view once per visit');
+  await shot('friends-suggestions', 400);
+  await page.locator('.screen.in [data-fsug-request="demo_fs_2"]').click(); await page.waitForTimeout(700);
+  assert.equal(await page.locator('.screen.in [data-fsug-id="demo_fs_2"]').count(), 0, 'requested: the card leaves');
+  assert.equal(await page.locator('.screen.in [data-fsug-outgoing]').getAttribute('data-fsug-outgoing'), '1', 'the request is pending');
+  await page.locator('.screen.in [data-fsug-dismiss="demo_fs_4"]').click(); await page.waitForTimeout(700);
+  assert.equal(await page.locator('.screen.in .fsug-row').count(), 3, 'dismissed: remembered');
+  assert.equal(await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name === 'fsug_view').length), 1, 'redrawing the same visit sends no second fsug_view');
+  await page.locator('.screen.in [data-fsug-hidden]').click(); await page.waitForTimeout(600);
+  assert.equal(await page.locator('.screen.in [data-fsug-hidden]').getAttribute('data-fsug-hidden'), '1', 'おすすめに表示しない: on');
+  await shot('friends-suggestions-after', 300);
+  await page.locator('.screen.in [data-fsug-hidden]').click(); await page.waitForTimeout(400);
   // ------------------------------------------------------------------ 6. round 12: かんたん操作 (REQ-ASSIST-*)
   // a week of play, then three last places settled by the real applyRace → the one-time suggestion (calm: 「今はいい」 as big
   // as the rest) → ぜんぶおまかせ → the settings row and the options screen → a ranked race the real InputAssistant rides with
@@ -1330,7 +1488,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   const promptText = await page.locator('.screen.in').innerText();
   assert.match(promptText, /かんたん操作を試してみませんか？/);
   assert.match(promptText, /いつでも設定で戻せます/);
-  assert.match(promptText, /相手には表示されません/, 'the sheet states the fairness rule');
+  assert.match(promptText, /相手には表示されません/, 'the rptSheet states the fairness rule');
   assert.ok(!/倍|今だけ|残りわずか|お得/.test(promptText), 'no pressure words on the suggestion');
   const sizes = await page.locator('.screen.in [data-assist-choice]').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
   assert.equal(sizes.length, 3); assert.ok(Math.max(...sizes) - Math.min(...sizes) <= 1, '「今はいい」 is as big as the choices');

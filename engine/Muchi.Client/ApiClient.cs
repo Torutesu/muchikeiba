@@ -24,6 +24,12 @@ namespace Muchi.Client
         /// change it at runtime with <see cref="ApiClient.Locale"/> (the settings language toggle).
         /// </summary>
         public string Locale = Loc.Ja;
+        /// <summary>
+        /// REQ-MNT-007 (§46): "ios" or "android" and the app's x.y.z version, sent as x-client-platform / x-client-version on
+        /// every request so the server can answer 426 UPGRADE_REQUIRED below the supported version. Leave null in tools and tests.
+        /// </summary>
+        public string Platform;
+        public string AppVersion;
     }
 
     /// <summary>
@@ -805,6 +811,7 @@ namespace Muchi.Client
                 var req = new HttpRequest { Method = method, Path = path, Body = body?.ToString() };
                 req.Headers["accept"] = "application/json";
                 req.Headers["accept-language"] = Locale; // REQ-L10N-001
+                AddClientHeaders(req); // REQ-MNT-007/008
                 if (body != null) req.Headers["content-type"] = "application/json";
                 if (idemKey != null) req.Headers["idempotency-key"] = idemKey;
                 if (extraHeaders != null) foreach (var kv in extraHeaders) req.Headers[kv.Key] = kv.Value;
@@ -830,11 +837,22 @@ namespace Muchi.Client
                         await _delay.Delay(_opt.Retry.DelayFor(attempt++), ct);
                         continue;
                     }
-                    throw new NetworkException(method + " " + path + ": " + e.Message, e);
+                    var offline = new NetworkException(method + " " + path + ": " + e.Message, e);
+                    NoteOutage(OutageKind.Offline, offline);
+                    throw offline;
+                }
+
+                // REQ-MNT-006/007 (§46): maintenance and upgrade-required are answered here, once for every endpoint — never retried
+                if (res.Status == 503 || res.Status == 426)
+                {
+                    var gate = ParseError(res);
+                    if (gate is MaintenanceException) { NoteOutage(OutageKind.Maintenance, gate); throw gate; }
+                    if (gate is UpgradeRequiredException) { NoteOutage(OutageKind.UpgradeRequired, gate); throw gate; }
                 }
 
                 if (res.Status >= 200 && res.Status < 300)
                 {
+                    NoteOutage(OutageKind.None, null);
                     JsonNode node = string.IsNullOrWhiteSpace(res.Body) ? JsonNode.Null() : JsonNode.Parse(res.Body);
                     return parse(node);
                 }
@@ -851,6 +869,7 @@ namespace Muchi.Client
                     continue;
                 }
 
+                NoteOutage(OutageKind.None, null); // the server answered: not offline, not closed
                 throw ParseError(res);
             }
         }

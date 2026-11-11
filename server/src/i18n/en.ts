@@ -7,6 +7,12 @@
  * never "2x"/"double", never "limited time only" or other fake urgency, no reference prices.
  */
 export const CODE_EN: Record<string, string> = {
+  // ---- メンテナンス・強制アップデート (maintenance.ts, protocol §46; REQ-MNT-012). Window messages carry their own English.
+  'メンテナンス中です': 'Under maintenance',
+  'メンテナンスのお知らせ': 'Scheduled maintenance',
+  'アプリを最新版に更新してください': 'Please update the app to the latest version',
+  'レースに参加するにはアプリの更新が必要です': 'Update the app to join races',
+
   // ---- shop (shop.ts productContents / firstPurchaseBonusOf; REQ-UXS-022)
   '無償コイン{n}枚': '{n} free coins',
   '有償コイン{n}枚': '{n} paid coins',
@@ -368,7 +374,41 @@ export const CODE_EN: Record<string, string> = {
   '「{cup}」は中止になりました': '“{cup}” was cancelled',
   '{y}年{m}月シーズンの振り返りができました': 'Your Season {m}/{y} recap is ready',
   '{y}年の振り返りができました': 'Your {y} in review is ready',
+  // ヘルプセンター (REQ-HELP-020, §48): the activity entry, inquiry categories and statuses (the help routes answer in the
+  // requested language themselves; these cover the activity list and clients that translate a stored Japanese label)
+  'お問い合わせに運営から返信がありました': 'Support replied to your inquiry',
+  'レース・ムチについて': 'About races and the whip',
+  'アカウント・引き継ぎについて': 'About your account and data transfer',
+  'アカウント削除について': 'About account deletion',
+  'アクセシビリティについて': 'About accessibility',
+  '不具合の報告': 'Report a problem',
+  '受付済み': 'Received',
+  '回答済み': 'Answered',
+  '［削除しました］': '[removed]',
   'プレイヤー': 'Player',
+  '運営からのお願い：名前や文についてお知らせがありました。ガイドラインをご確認ください': 'A note from support: we received a notice about a name or text. Please check the guidelines',
+
+  // ---- 通報とブロック (reports.ts REPORT_CATEGORY_LABELS, blocks.ts BLOCK_EFFECTS; protocol §47, REQ-RPT-018)
+  '不適切な名前': 'Inappropriate name',
+  '不適切なキャプション・文': 'Inappropriate caption or text',
+  '不正の疑い': 'Suspected cheating',
+  '嫌がらせ': 'Harassment',
+  'その他': 'Other',
+  '相手からのお知らせが届かなくなります': 'You get no activity notices from them',
+  '支部フィードで相手のスタンプと応援が見えなくなります': 'Their stamps and cheers disappear from your branch feed',
+  'ライバルに組まれなくなります': 'You are never paired as rivals',
+  'お互いのマイ厩舎を開けず、いいねもできなくなります': 'Neither of you can open or like the other\'s stable',
+  'お互いの殿堂が見られなくなります': 'Neither of you can see the other\'s Hall of Fame',
+  'お互いの公開リプレイが見られなくなります': 'Neither of you can see the other\'s shared replays',
+  '主催カップでは同じカップに入れません（大会では同じレースになることがあります）': 'You won\'t be in the same hosted cup (you may still meet in tournaments)',
+
+  // ---- おすすめフレンド (friendSuggest.ts FSUG_TEXT, protocol §49; REQ-FSUG-015). Reasons are joined with 「・」 → ", ".
+  '最近のレースで対戦': 'Raced you recently',
+  '同じ支部': 'Same branch',
+  'マイ厩舎にいいねをくれた': 'Liked your stable',
+  '応援スタンプをくれた': 'Cheered your race',
+  '共通のフレンド{n}人': '{n} mutual friends',
+  '共通のフレンド1人': '1 mutual friend',
 
   // ---- error details shown to players (REQ-API-004 messages; codes are the contract)
   'カタカナ2〜9文字': '2–9 katakana characters',

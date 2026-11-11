@@ -62,7 +62,7 @@ import {
   nextDeletionWake, notWhileDeleting, requestDeletion, startDeletion, type DeletionStep,
 } from './accountDeletion.js';
 import {
-  ensureFeed, FEED_RACE_MODES, notePostedIn, playerMute, playerReported, playerStampCheck, stampCatalog, stampsOf, type FeedRace, type ReportReason,
+  ensureFeed, FEED_RACE_MODES, notePostedIn, playerReported, playerStampCheck, stampCatalog, stampsOf, type FeedRace, type ReportReason,
 } from './teamFeed.js';
 import {
   dueInviteOutbox, forfeitInviteOutbox, forgetInvitee, forgetInviter, inviteAcked, inviteeCommit, inviteRetryLater, inviterAccept, inviterMilestone,
@@ -73,6 +73,8 @@ import {
 } from './comeback.js';
 import { claimAllGifts, claimGift, expireGifts, giftBadge, giftBoxView, giftGiver, giftsNeedExpiry, nextGiftWake, type OpsTitleKey } from './giftBox.js';
 import { activityBadge, activityPage, markActivityRead, recordActivity } from './activity.js';
+import { helpBadge, inquiryDetail, inquiryList, markIndexed, markInquiryRead, replyInquiry, submitInquiry, unindexedSummaries, voteHelp, type InquiryInput } from './help.js';
+import { fsugCard, fsugCardKey, fsugDismiss, fsugSelf, fsugSetHidden, ensureFsug, noteFsugRace, type FsugCard, type FsugDismissed, type FsugKind } from './friendSuggest.js';
 import { finishTraining, startTraining, trainingDelta, trainingTick, trainingView, useTrainingItem } from './training.js';
 import {
   commitSave, deleteSaved, forgetRecent, myReplaysView, noteRaceForReplays, ownReplayRef, prepareSave, sharedFor, updateSaved, validateReplayTitle,
@@ -90,6 +92,8 @@ import {
   HISTORY_LIMITS, type GachaLogEntry, type GachaPager, type LedgerPager, type SupportTopic,
 } from './history.js';
 import { buildSupportTicket } from '../ops/support.js';
+import { reportOptions, reportSnapshotOf, takeReportAllowance, type ReportCategory, type ReportContent, type ReportSource } from './reports.js';
+import { blockIds, isBlocking, setBlocked, type BlockOrigin } from './blocks.js';
 import { raceAdviceFor, type AdviceQuery } from './raceAdviceService.js';
 import { dismissNextAction, nextActionsView, noteFeatures, type TeamGoalBrief } from './nextAction.js';
 import { attachRecapRank, noteRecapRace, noteRecapReplaySaved, noteRecapTeamGoal, recapProgress, recapView, recapsList, rollRecaps, type RecapStepName } from './seasonRecap.js';
@@ -198,6 +202,8 @@ export interface PlayerServiceDeps {
   onTeamGoalForget?: (p: { teamId: string; playerId: string }) => Promise<unknown>;
   /** REQ-HOF-011: the public hall copy changed (null = remove it: empty, private, banned, deletion). The Durable Object writes the directory. */
   onHall?: (playerId: string, snap: HallSnapshot | null) => void | Promise<void>;
+  /** REQ-FSUG-011: the おすすめフレンド card changed (null = remove it: hidden, under age, banned, deletion). The Durable Object writes the directory. */
+  onFsugCard?: (playerId: string, card: FsugCard | null) => void | Promise<void>;
 }
 
 const standingKey = (s: PlayerState) => JSON.stringify([s.season.id, s.season.classId, s.season.points, s.season.races, Math.round(s.rating.r), s.profile.displayName, s.profile.titleId]);
@@ -288,6 +294,14 @@ export class PlayerService {
     const deleting = draft.deletion?.status === 'deleting';
     const pushProfile = !deleting && this.d.onProfile && (profileKey(draft, now) !== profileBefore || now - draft.profile.lastPushedAt >= this.d.master.progression.social.profilePushIntervalMs);
     if (pushProfile) draft.profile.lastPushedAt = now;
+    // REQ-FSUG-011: the card is re-derived on every transaction and written when it changed (first write included), and
+    // again with the periodic profile push, so a write lost to a directory outage heals within profilePushIntervalMs
+    let fsugOut: { card: FsugCard | null } | null = null;
+    if (this.d.onFsugCard) {
+      const card = fsugCard(this.d.master, draft, now);
+      const key = fsugCardKey(card);
+      if (draft.friendSuggest?.cardKey !== key || (pushProfile && card)) { ensureFsug(draft).cardKey = key; fsugOut = { card }; }
+    }
     await this.repo.put(draft);
     const wake = nextWake(draft);
     if (wake !== null && wake !== wakeBefore && this.d.onPushWake) await this.d.onPushWake(wake);
@@ -297,6 +311,10 @@ export class PlayerService {
     if (this.d.onHall && hallSnapshotKey(this.d.master, draft, now) !== hallBefore) {
       // best effort like the stable copy: the transaction is saved; the next change re-writes the copy
       try { await this.d.onHall(id, hallSnapshot(this.d.master, draft, now)); } catch (e) { console.error('hall copy failed', id, (e as Error).message); }
+    }
+    if (fsugOut) {
+      // best effort like the hall copy: the transaction is saved; the next change or profile push re-writes the card
+      try { await this.d.onFsugCard!(id, fsugOut.card); } catch (e) { console.error('fsug card failed', id, (e as Error).message); }
     }
     if (this.d.onRival) {
       const u = rivalUpdateOf(id, rivalBefore, rivalOutbound(this.d.master, draft, now));
@@ -328,7 +346,7 @@ export class PlayerService {
   /** REQ-UXS-001/014/032/040: computed sections of GET /v1/player and bootstrap. */
   private extras(s: PlayerState, now: number) {
     const m = this.d.master;
-    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s), commentaryPack: commentaryPackBadge(m, s), accessibility: accessibilityView(s), activity: activityBadge(m, s, now), nextActions: nextActionsView(m, s, now) };
+    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s), commentaryPack: commentaryPackBadge(m, s), accessibility: accessibilityView(s), activity: activityBadge(m, s, now), help: helpBadge(s), nextActions: nextActionsView(m, s, now) };
   }
 
   async view(id: string) {
@@ -878,7 +896,13 @@ export class PlayerService {
       return { ...r, view: rivalView(this.d.master, s, now) };
     });
   }
-  rivalBlock(id: string) { return this.tx(id, null, (s, now) => rivalBlock(this.d.master, s, now)); }
+  rivalBlock(id: string) {
+    return this.tx(id, null, (s, now, emit) => {
+      const r = rivalBlock(this.d.master, s, now);
+      emit({ name: 'block_add', s1: 'rival' }); // REQ-RPT-017 (the rival block always adds: a blocked rival is never paired)
+      return r;
+    });
+  }
   /** REQ-RIVAL-008: one daily challenge per call; a resent idempotency key returns the stored answer (no second challenge). */
   rivalChallengeCheck(id: string, idemKey: string | null = null) { return this.tx(id, idemKey, (s, now) => ({ rivalId: rivalChallengeCheck(this.d.master, s, now), displayName: s.profile.displayName })); }
   /** The rival's side; keyed by the challenger's request so a retried challenge never re-sends the invite push. */
@@ -1026,12 +1050,14 @@ export class PlayerService {
         // REQ-CUP-013: a hosted cup race is unranked — recorded only (no coins, missions, pass, rating, season, stats,
         // rival, hall, team feed / goal, assist streak). The cup's own object keeps the standings.
         noteRaceForReplays(this.d.master, s, r, prevBest, now);
+        noteFsugRace(this.d.master, s, r, now); // REQ-FSUG-013: cup mates are people met in the game (Round 17 integration)
         if (!r.void) emit({ name: 'race_finish', s1: r.mode, s2: r.details?.style ?? '', s3: r.details?.trackId ?? '', place: r.place, count: r.fieldSize, value: r.humans ?? 0 });
         return { coins: 0, seasonPoints: 0, titles: [] as string[], rewarded: false, firstWinBonus: 0, comebackXp: 0, achievements: [] as ReturnType<typeof syncCollection>, event: null };
       }
       const base0 = applyRaceResult(this.d.master, s, r, now);
       noteRaceForReplays(this.d.master, s, r, prevBest, now); // REQ-MYRP-001: offer the race in マイリプレイ
       noteRivalRace(this.d.master, s, r, now, emit); // REQ-RIVAL-004: head to head (ranked) / challenge (friend)
+      noteFsugRace(this.d.master, s, r, now); // REQ-FSUG-013: friend-room / event / tournament opponents (never ranked)
       // REQ-HOF-001: the horse's career (a ranked race counted against the weekly rival with me ahead is a rival win)
       const rivalWin = r.mode === 'ranked' && !!s.rival?.weeks.some((w) => w.races.some((x) => x.raceId === r.raceId && x.mode === 'ranked' && x.point === 'me'));
       noteHallRace(this.d.master, s, r, now, rivalWin);
@@ -1327,6 +1353,21 @@ export class PlayerService {
     return { ids: s.friends.ids, incoming: s.friends.incoming, outgoing: s.friends.outgoing, invites: s.friends.invites };
   }
 
+  // ---- おすすめフレンド: per-player steps, orchestrated by FriendSuggestService (REQ-FSUG-*, contracts/protocol.md §49) ----
+  /** REQ-FSUG-010: what the computation needs from my own state (a read; no state is created). */
+  async fsugSelf(id: string) { return fsugSelf(this.d.master, await this.load(id), this.d.clock()); }
+  /** REQ-FSUG-008/009/014: remember a dismissed / requested suggestion; the KPI row only when the record changed. */
+  fsugDismiss(id: string, target: string, why: FsugDismissed['why'], reason: FsugKind | 'none', outcome?: 'requested' | 'friends') {
+    return this.tx(id, null, (s, now, emit) => {
+      const changed = fsugDismiss(this.d.master, s, target, why, now);
+      if (changed && why === 'requested') emit({ name: 'fsug_request', s1: reason, s2: outcome ?? 'requested' });
+      if (changed && why === 'dismiss') emit({ name: 'fsug_dismiss', s1: reason });
+      return { ok: true as const };
+    });
+  }
+  /** REQ-FSUG-007: 「おすすめに表示しない」 (the card follows through onFsugCard). */
+  fsugSetHidden(id: string, hidden: boolean) { return this.tx(id, null, (s) => fsugSetHidden(s, hidden)); }
+
   // ---- friend invite codes: per-player steps, orchestrated by InviteService (REQ-INV-*) ----
   inviteView(id: string, installHash: string | null) {
     return this.tx(id, null, (s, now) => {
@@ -1384,6 +1425,56 @@ export class PlayerService {
   }
   /** REQ-ACT-008: mark read up to an id (idempotent). */
   activityRead(id: string, upTo: number | null) { return this.tx(id, null, (s, now) => markActivityRead(this.d.master, s, upTo, now)); }
+
+  // ---- ヘルプセンター (REQ-HELP-*, contracts/protocol.md §48) ----
+  /** REQ-HELP-007: one vote per article (changeable), capped per game day. */
+  helpFeedback(id: string, articleId: string, helpful: boolean) {
+    return this.tx(id, null, (s, now, emit) => voteHelp(this.d.master, s, articleId, helpful, now, emit));
+  }
+  /**
+   * REQ-HELP-009..013: a new inquiry, keyed with the client's key (a retry returns the stored ticket, even after the
+   * attached rows left their windows). The §33 rows are resolved before the transaction (they are read from SQL pages).
+   */
+  async helpInquirySubmit(id: string, input: InquiryInput, idemKey: string | null, lang: Locale = 'ja') {
+    const key = this.requireKey(idemKey);
+    const s = await this.historyState(id);
+    const known = s.idem.find((e) => e.key === key);
+    if (known) return known.result as ReturnType<typeof inquiryDetail>;
+    const prev = (s as { help?: { tickets: { id: string; key: string }[] } }).help?.tickets.find((t) => t.key === key);
+    if (prev) return inquiryDetail(this.d.master, s, prev.id, lang);
+    let rows: Awaited<ReturnType<typeof resolveRefs>> = [];
+    if (input.refs.length) {
+      if (new Set(input.refs).size !== input.refs.length) throw new AppError('BAD_REQUEST', 'refs must be distinct');
+      const p = this.pagers(id, s);
+      rows = await resolveRefs(this.d.master, s, p.ledger, p.gacha, this.d.clock(), input.refs);
+      const missing = rows.find((r) => r.kind === null);
+      if (missing) throw new AppError('NOT_FOUND', `reference ${missing.ref}`);
+    }
+    return this.tx(id, key, (st, now, emit) => submitInquiry(this.d.master, st, input, rows as Exclude<typeof rows[number], { kind: null }>[], key, lang, now, emit));
+  }
+  /** REQ-HELP-014: the player's inquiries, newest first, with the limits. */
+  async helpInquiries(id: string, lang: Locale = 'ja') {
+    const s = await this.load(id);
+    return { ...inquiryList(this.d.master, s, lang, this.d.clock()), unindexed: unindexedSummaries(s) };
+  }
+  async helpInquiry(id: string, ticketId: string, lang: Locale = 'ja') { return inquiryDetail(this.d.master, await this.load(id), ticketId, lang); }
+  helpInquiryRead(id: string, ticketId: string) { return this.tx(id, null, (s) => markInquiryRead(s, ticketId)); }
+  /** REQ-HELP-016: the ops index stored these ticket versions. */
+  async helpInquiryIndexed(id: string, items: { ticketId: string; updatedAt: number }[]) {
+    if (await this.wiped(id)) return { indexed: 0 };
+    return this.tx(id, null, (s) => markIndexed(s, items));
+  }
+  /** REQ-HELP-016: the ops view of one inquiry (who replied; a deleted account is NOT_FOUND). */
+  async adminInquiry(id: string, ticketId: string) {
+    const s = await this.historyState(id);
+    return { playerId: id, ...inquiryDetail(this.d.master, s, ticketId, 'ja', true), unindexed: unindexedSummaries(s) };
+  }
+  /** REQ-HELP-015/017: an operator's reply (once per opKey; never on a deleted account). */
+  async adminInquiryReply(id: string, ticketId: string, content: string, close: boolean, actor: string, opKey: string) {
+    await this.historyState(id);
+    if (await this.wiped(id)) throw new AppError('NOT_FOUND', `inquiry ${ticketId}`);
+    return this.tx(id, null, (s, now, emit) => replyInquiry(this.d.master, s, ticketId, content, close, actor, opKey, now, emit));
+  }
 
   // ---- 購入履歴・コイン履歴・ガチャ履歴 (REQ-HIST-*, contracts/protocol.md §33; read only) ----
   /** REQ-HIST-006: a deleted (wiped) account has no history here; its anonymised legal record is never reachable by player id. */
@@ -1735,7 +1826,62 @@ export class PlayerService {
     });
   }
   async feedMutes(id: string) { return { muted: [...ensureFeed(await this.load(id)).muted] }; }
-  feedMute(id: string, target: string, muted: boolean) { return this.tx(id, null, (s) => playerMute(this.d.master, s, target, muted)); }
+  /** REQ-TEAMFEED-006 × REQ-RPT-010: the team feed's mute is the one block list (KPI block_add / block_remove, origin team_feed). */
+  feedMute(id: string, target: string, muted: boolean) {
+    return this.tx(id, null, (s, _now, emit) => { setBlocked(this.d.master, s, target, muted, 'team_feed', emit); return { muted: [...ensureFeed(s).muted] }; });
+  }
+
+  // ---- 通報とブロック管理 (REQ-RPT-*, contracts/protocol.md §47) ----
+  async reportOptions(id: string) { return reportOptions(this.d.master, await this.load(id), this.d.clock()); }
+  /** REQ-RPT-004: the reported content copied from THIS (the target's) state; a wiped / unknown account is NOT_FOUND. */
+  async reportSnapshot(id: string, content: ReportContent) {
+    if (await this.wiped(id)) throw new AppError('NOT_FOUND', 'no such player');
+    return reportSnapshotOf(await this.load(id), content, this.d.clock());
+  }
+  /** REQ-RPT-006/009/017: the reporter's daily limits, the optional block and the report_submit KPI row, in one step. */
+  reportCommit(id: string, target: string, category: ReportCategory, kind: ReportContent['kind'], source: ReportSource, alsoBlock: boolean) {
+    return this.tx(id, null, (s, now, emit) => {
+      const r = takeReportAllowance(this.d.master, s, target, now);
+      if (alsoBlock) setBlocked(this.d.master, s, target, true, 'report', emit);
+      emit({ name: 'report_submit', s1: category, s2: kind, s3: source });
+      return { remainingToday: r.remainingToday, blocked: isBlocking(s, target) };
+    });
+  }
+  async blockIds(id: string) { return blockIds(await this.load(id)); }
+  /** REQ-RPT-011: PUT / DELETE /v1/blocks/:playerId (idempotent; the KPI row only when the list changed). */
+  blockSet(id: string, target: string, blocked: boolean, origin: BlockOrigin) {
+    return this.tx(id, null, (s, _now, emit) => {
+      const r = setBlocked(this.d.master, s, target, blocked, origin, emit);
+      return { playerId: r.playerId, blocked: r.blocked, count: r.count, max: r.max };
+    });
+  }
+  /** REQ-RPT-013 warn: one 「運営からのお願い」 activity entry per report (never says who reported). */
+  async reportWarn(id: string, reportId: string) {
+    if (await this.wiped(id)) throw new AppError('NOT_FOUND', 'no such player');
+    return this.tx(id, null, (s, now) => ({ outcome: recordActivity(this.d.master, s, { kind: 'ops_notice', source: `ops_notice:${reportId}` }, now) }));
+  }
+  /** REQ-RPT-013 hide: the saved replay goes private, loses its title and cannot be made public again. */
+  replayOpsHide(id: string, raceId: string) {
+    return this.tx(id, null, (s) => {
+      const rec = s.myReplays?.saved.find((x) => x.raceId === raceId);
+      if (!rec) throw new AppError('NOT_FOUND', 'no such saved replay');
+      const before = { public: rec.public, replayTitle: rec.replayTitle };
+      rec.public = false;
+      rec.replayTitle = null;
+      (rec as typeof rec & { opsHidden?: boolean }).opsHidden = true;
+      return { before, after: { public: false, replayTitle: null, opsHidden: true } };
+    });
+  }
+  /** REQ-RPT-013 hide: the photo's caption is removed. */
+  photoOpsHide(id: string, photoId: string) {
+    return this.tx(id, null, (s) => {
+      const p = s.photos?.records.find((x) => x.id === photoId);
+      if (!p) throw new AppError('NOT_FOUND', 'no such photo');
+      const before = { caption: p.caption };
+      p.caption = null;
+      return { before, after: { caption: null } };
+    });
+  }
   /** REQ-TEAMFEED-007: support flag on the reported player (no-op for a deleted account). */
   async feedReported(id: string, teamId: string, seq: number, reporter: string, reason: ReportReason) {
     if (await this.wiped(id)) return { flagged: false };

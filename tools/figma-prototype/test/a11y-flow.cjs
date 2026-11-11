@@ -211,6 +211,22 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('HostedCups'); await waitScreen('hosted-cups', 30000); await shot('cups', english, 600);
     await show('CupCreate'); await waitScreen('cup-create'); await shot('cup-create', english, 500);
     await show('CupJoin'); await waitScreen('cup-join'); await shot('cup-join', english, 500);
+    // Round 17: 通報とブロック — the block list and the report sheet at the largest size (REQ-RPT-019)
+    await show('BlockList'); await waitScreen('blocks'); await shot('blocks', english, 600);
+    await page.evaluate(() => globalThis.__muchi.show('Report', { playerId: 'demo_rpt_x', name: 'ヨルノカラス', kind: 'display_name', source: 'profile' })); await page.waitForTimeout(800);
+    await shot('report-sheet', english, 300);
+    // Round 17: the maintenance screen, the update-required screen and the maintenance notice (REQ-MNT-015)
+    await show('Maintenance'); await waitScreen('maintenance'); await shot('maintenance', english, 600);
+    await show('UpdateRequired'); await waitScreen('update-required'); await shot('update-required', english, 600);
+    await show('MaintenanceNotice'); await waitScreen('maintenance-notice'); await shot('maintenance-notice', english, 600);
+    await page.evaluate(() => globalThis.__muchi.logic.maintenanceDemo('off'));
+    // Round 17: ヘルプセンター (the index, an article, the form, my inquiries) at the largest size
+    await show('HelpCenter'); await waitScreen('help'); await shot('help-center', english, 500);
+    await show('HelpArticle', 'pity', 'list'); await waitScreen('help-article'); await shot('help-article', english, 500);
+    await show('InquiryForm'); await waitScreen('inquiry-form'); await shot('inquiry-form', english, 500);
+    await show('MyInquiries'); await waitScreen('my-inquiries'); await shot('my-inquiries', english, 500);
+    // Round 17: おすすめフレンド (the friends screen's suggestions section)
+    await show('Friends'); await waitScreen('friends'); await shot('friends-suggestions', english, 600);
     await show('Settings'); await waitScreen('settings'); await boxesClear('settings lists (largest)', SETTINGS_LISTS, english);
     await show('Home'); await waitScreen('home'); await page.waitForTimeout(700); await boxesClear('home top bar (largest)', HOME_BAR, english);
   };

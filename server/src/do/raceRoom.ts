@@ -50,6 +50,8 @@ export class RaceRoomDO extends DurableObject<Env> {
   private cheerWindowAt: number | null = null;
   /** Block lists of the room's players and spectators (§47 single list), loaded on hello; absent = not known (fail closed). */
   private cheerLists = new Map<string, ReadonlySet<string>>();
+  /** REQ-CHEER-004: last accepted cheer per player as well (a reconnect gets a fresh attachment; this keeps the pace). */
+  private cheerLast = new Map<string, number>();
   /** REQ-CHEER-011: the race's aggregate (storage key `cheer`, written to R2 once at the end). */
   private tally: CheerTally = emptyTally();
 
@@ -268,13 +270,15 @@ export class RaceRoomDO extends DurableObject<Env> {
   private async onCheer(ws: WebSocket, att: Attachment, slot: number, kind: PendingCheer['kind'], now: number) {
     const core = this.core!;
     const spec = att.spec;
+    const last = Math.max(spec?.lc ?? -Infinity, (spec?.playerId && this.cheerLast.get(spec.playerId)) || -Infinity);
     const refusal = cheerAdmit({
-      enabled: this.cheersEnabled(), spectator: !!spec, sentTick: spec?.sent ?? -1, fin: spec?.fin ?? true, lastAt: spec?.lc ?? null,
+      enabled: this.cheersEnabled(), spectator: !!spec, sentTick: spec?.sent ?? -1, fin: spec?.fin ?? true, lastAt: Number.isFinite(last) ? last : null,
       slot, entrants: core.config.entrants.length, now,
     });
     if (refusal || !spec) return ws.send(JSON.stringify({ t: 'err', code: refusal ?? 'NOT_SPECTATOR' }));
     if (!spec.playerId) return ws.send(JSON.stringify({ t: 'err', code: 'CHEER_UNAVAILABLE' }));
     spec.lc = now;
+    this.cheerLast.set(spec.playerId, now);
     ws.serializeAttachment(att);
     if (!(await this.loadBlocks(spec.playerId))) return ws.send(JSON.stringify({ t: 'err', code: 'CHEER_UNAVAILABLE' }));
     this.cheerWindow.push({ from: spec.playerId, slot, kind });

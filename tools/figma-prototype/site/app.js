@@ -4228,6 +4228,7 @@ function SurveySheet() {
       counter.textContent = isJa() ? `あと${max - n}文字` : `${max - n} characters left`;
       counter.style.color = n > max ? 'var(--danger)' : '';
       nextBtn?.classList.toggle('disabled', n > max);
+      if (nextBtn) { const l2 = a[q.id] !== undefined ? (v.index === s.questions.length - 1 ? '送る' : '次へ') : 'とばす'; nextBtn.dataset.label = l2; nextBtn.querySelector('span').textContent = T(l2); nextBtn.dataset.action = l2 === '送る' ? 'send' : l2 === 'とばす' ? 'pass' : 'next'; }
     };
     ta.addEventListener('input', count); box.appendChild(ta);
     Txt('名前やメールアドレスなどは書かないでください', 0, 204, 600, 13, SOFT, area, { nowrap: true }).classList.add('sv-hint');

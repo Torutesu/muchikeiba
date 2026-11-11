@@ -253,3 +253,16 @@ describe('§57 tips × §48 help × Round 20 articles', () => {
     expect(tipsProblems(m)).toEqual([]);
   });
 });
+
+describe('deploy §7.1: one Round 20 row (v7 before the Worker that uses it, rollback, the spike alert per env)', () => {
+  it('the row exists once, after Round 19, and covers the migration, the order, rollback and client_error_spike', () => {
+    const d = read('docs/ops/deploy.md');
+    const rows = d.split('\n').filter((l) => l.startsWith('| Round 20'));
+    expect(rows).toHaveLength(1);
+    expect(d.indexOf('| Round 19')).toBeLessThan(d.indexOf('| Round 20'));
+    for (const s of ['ClientErrorsDO', 'v7', 'CLIENT_ERRORS', '切り戻し', 'client_error_spike', 'staging', 'production', '§58', '§59', '§60', '§61']) expect(rows[0], s).toContain(s);
+    const wr = read('server/wrangler.toml');
+    expect(wr.match(/name = "CLIENT_ERRORS"/g)).toHaveLength(3); // default, staging, production
+    expect(wr).toMatch(/tag = "v7"\s+new_sqlite_classes = \["ClientErrorsDO"\]/);
+  });
+});

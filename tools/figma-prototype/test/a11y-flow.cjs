@@ -232,10 +232,29 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('Friends'); await waitScreen('friends'); await shot('friends-suggestions', english, 600);
     // Round 18: 練習レース (the setup screen at the largest size)
     await show('Practice'); await waitScreen('practice'); await page.waitForSelector('.screen.in .pr-setup', { timeout: 15000 }); await shot('practice', english, 600);
+    // Round 18 integration: a practice race at the largest size (the shortest course, two runners; the whip band and the
+    // slow chip on the HUD), run to the practice result
+    for (let i = 0; i < 8 && (await page.locator('.screen.in .pr-course').getAttribute('data-track')) !== 'bellmoor_turf_1200'; i++) { await page.locator('.screen.in .pr-course-next').click(); await page.waitForTimeout(300); }
+    for (let i = 0; i < 10; i++) { await page.locator('.screen.in .pr-field-minus').click(); await page.waitForTimeout(100); }
+    await page.locator('.screen.in .pr-start').click(); await waitScreen('race', 20000);
+    for (let i = 0, raceShot = false, kicked = false; i < 6000; i++) {
+      const f = await page.evaluate(() => globalThis.__muchi.state().lastFrame);
+      if (!f) { await page.waitForTimeout(50); continue; }
+      if (f.done || (await screen()) !== 'race') break;
+      if (!kicked && f.gateOpen && !f.departed) { await page.locator('.screen.in .btn.whip').click({ force: true }); kicked = true; }
+      if (!raceShot && f.departed && f.remainingM < 700) { raceShot = true; await shot('practice-race', english, 0); }
+      await page.waitForTimeout(40);
+    }
+    await waitScreen('practice-result', 40000); await page.waitForSelector('.screen.in .pr-result', { timeout: 15000 }); await shot('practice-result', english, 500);
     // Round 18: 支部の定型チャット (the picker and the feed rows grow with the text size)
     await show('QuickChat'); await waitScreen('team-chat', 30000); await page.waitForSelector('.screen.in .qc-phrase', { timeout: 20000 }); await shot('quick-chat', english, 600);
-    // Round 18: プライバシー › データのダウンロード
+    // Round 18 integration: a teammate's phrase reported from its row (the §47 sheet with the phrase, kind qchat)
+    await page.locator('.screen.in [data-label="支部員のデモ"]').click(); await page.waitForSelector('.screen.in .tf-link[data-report="qchat"]', { timeout: 20000 });
+    await page.locator('.screen.in .tf-link[data-report="qchat"]').first().click(); await page.waitForSelector('.sheet.rpt-sheet[data-kind="qchat"]', { timeout: 15000 });
+    await shot('qchat-report-sheet', english, 300);
+    // Round 18: プライバシー › データのダウンロード, and its help article (context privacy → data_export)
     await show('Privacy'); await waitScreen('privacy'); await page.waitForSelector('.screen.in [data-dex]', { timeout: 15000 }); await shot('privacy', english, 500);
+    await page.locator('.screen.in [data-help-context="privacy"]').click(); await waitScreen('help-article'); await shot('help-data-export', english, 500);
     await show('Settings'); await waitScreen('settings'); await boxesClear('settings lists (largest)', SETTINGS_LISTS, english);
     await show('Home'); await waitScreen('home'); await page.waitForTimeout(700); await boxesClear('home top bar (largest)', HOME_BAR, english);
   };

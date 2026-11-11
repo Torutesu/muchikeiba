@@ -2102,6 +2102,11 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   // その他 › 見た目・お世話・仲間 › リンクで招待・共有: the share sheet (no id in the URL, one link per target), the links I
   // shared, 「リンクを開く」 → the screen behind a confirmation (a room joins only after the button), one neutral notice for a
   // closed room or a non-link, and 再戦 on the friend-room result (waiting with the real seconds, everyone in → a new room)
+  // the player here is brand new (reset above, before the partner): a link waits for the end of the FTUE (REQ-LINK-023)
+  await page.evaluate(() => globalThis.__muchi.show('OpenLink')); await waitScreen('open-link'); await page.waitForTimeout(300);
+  await page.locator('.screen.in [data-lk-demo="room"]').click(); await page.waitForTimeout(900);
+  assert.equal(await page.locator('.screen.in .lk-notice').innerText(), 'チュートリアルの後で開きます', 'during the FTUE the link waits');
+  await demo('day3');
   await page.evaluate(() => globalThis.__muchi.show('Settings', 'looks')); await waitScreen('settings'); await page.waitForTimeout(300);
   assert.equal(await page.locator('.screen.in .btn[data-action="links"]').count(), 1, 'その他 › 見た目・お世話・仲間 has リンクで招待・共有');
   await page.locator('.screen.in .btn[data-action="links"]').click(); await waitScreen('links'); await page.waitForTimeout(300);

@@ -338,10 +338,17 @@ namespace Muchi.Game
         }
 
         /// <summary>Offline practice race with the partner (server horse when known).</summary>
-        public IRaceDriver CreatePracticeRace(ulong seed)
+        public IRaceDriver CreatePracticeRace(ulong seed) => CreatePracticeRace(seed, assist: true);
+
+        /// <summary>
+        /// The same offline practice race; <paramref name="assist"/> false leaves かんたん操作 off (the §57 race lessons teach
+        /// the controls themselves, like the tutorial). Offline only: never reaches the server or any count.
+        /// </summary>
+        public IRaceDriver CreatePracticeRace(ulong seed, bool assist)
         {
             var spec = Partner != null ? RaceFactory.FromServer(Partner) : RaceFactory.DefaultPartner(_kv.Get(KeyPartnerName));
-            return AssistModel.Attach(new OfflineRaceDriver(RaceFactory.Practice(_ruleset, spec, seed), 0, autoStart: false), AssistLevel);
+            var d = new OfflineRaceDriver(RaceFactory.Practice(_ruleset, spec, seed), 0, autoStart: false);
+            return assist ? AssistModel.Attach(d, AssistLevel) : d;
         }
 
         /// <summary>

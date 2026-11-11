@@ -234,6 +234,8 @@ export interface PlayerState {
   seasonRecap?: import('./seasonRecap.js').SeasonRecapState;
   /** REQ-CUP-*: プレイヤー主催カップ — cups the player is in, invitations, results and trophies (hostedCups.ts ensureCups). */
   cups?: import('./hostedCups.js').PlayerCupsState;
+  /** REQ-TUT-007 (§57): tip cards seen (tips.ts markTipsSeen; ids of open cards only, bounded by tips.config.seenMax). */
+  tips?: import('./tips.js').TipsState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

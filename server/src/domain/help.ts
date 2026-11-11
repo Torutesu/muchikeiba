@@ -38,6 +38,8 @@ export type HelpCategoryId = typeof HELP_CATEGORY_IDS[number];
 export const HELP_SCREENS = [
   'home', 'settings', 'race_lobby', 'tutorial', 'training', 'breeding', 'stable', 'collection', 'gacha', 'gacha_odds', 'shop', 'history',
   'gift_box', 'activity', 'accessibility', 'account_link', 'deletion', 'inquiry', 'my_inquiries',
+  // Round 19 (§57): the ヒント screen (tutorial replays and the tips library)
+  'tips',
 ] as const;
 export type HelpScreen = typeof HELP_SCREENS[number];
 /** The existing legal pages (利用規約・プライバシーポリシー・特定商取引法に基づく表記・資金決済法に基づく表示). */
@@ -99,6 +101,7 @@ const SCREEN_LABEL: Record<HelpScreen, Loc> = {
   deletion: { ja: 'アカウント削除を開く', en: 'Open account deletion' },
   inquiry: { ja: '問い合わせる', en: 'Contact us' },
   my_inquiries: { ja: '自分の問い合わせを見る', en: 'See your inquiries' },
+  tips: { ja: 'ヒントを開く', en: 'Open tips' },
 };
 const LEGAL_LABEL: Record<LegalDoc, Loc> = {
   terms: { ja: '利用規約', en: 'Terms of service' },
@@ -164,6 +167,16 @@ function tokenValue(env: TokenEnv, name: string, a?: string, b?: string): string
   }
 }
 
+/** Round 19 (§57 tips): why each token of a text cannot be filled (empty = every token is fillable; the same check as articles). */
+export function tokenProblems(env: TokenEnv, at: string, text: string): string[] {
+  const out: string[] = [];
+  for (const mt of text.matchAll(TOKEN_RE)) {
+    try { tokenValue(env, mt[1]!, mt[2], mt[3]); } catch (e) { out.push(`${at}: ${mt[0]}: ${(e as Error).message}`); }
+  }
+  if (/\{\{|\}\}/.test(text.replace(TOKEN_RE, ''))) out.push(`${at}: malformed token`);
+  return out;
+}
+
 export function tokensOf(text: string): string[] {
   return [...text.matchAll(TOKEN_RE)].map((x) => x[0]).sort();
 }
@@ -184,7 +197,7 @@ const NUMBER_UNIT_EN = new RegExp(`${DIGIT}+(?:[.,]${DIGIT}+)*\\s*(?:%|pt\\b|poi
 /** The only digits a scout article may carry outside tokens (the product word). */
 const ALLOWED_SCOUT_DIGITS = /10連|10-pulls?/g;
 
-function digitsProblems(at: string, text: string, strict: boolean, en: boolean): string[] {
+export function digitsProblems(at: string, text: string, strict: boolean, en: boolean): string[] {
   const bare = text.replace(TOKEN_RE, '').replace(ALLOWED_SCOUT_DIGITS, '');
   const out: string[] = [];
   if ((en ? NUMBER_UNIT_EN : NUMBER_UNIT_JA).test(bare)) out.push(`${at}: a number with a unit must come from a {{token}}`);
@@ -200,7 +213,7 @@ function urlProblems(at: string, url: string, host: string): string[] {
   return [];
 }
 
-const wordingProblems = (at: string, ja: string, en: string): string[] => [
+export const wordingProblems = (at: string, ja: string, en: string): string[] => [
   ...HELP_BANNED_JA.filter((w) => ja.includes(w)).map((w) => `${at}.ja: shop word 「${w}」`),
   ...bettingWordsIn(ja).map((w) => `${at}.ja: betting word ${w}`),
   ...enWordingProblems(en).map((p) => `${at}.en: ${p}`),

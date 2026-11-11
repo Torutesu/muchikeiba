@@ -1156,6 +1156,20 @@
   "フレンド申請を送りました": "Friend request sent",
   "フレンドになりました": "You are now friends",
   "おすすめに表示しない": "Don't show me in suggestions",
-  "オンにすると、ほかのプレイヤーのおすすめにあなたが出なくなります": "When on, you will not appear in other players' suggestions"
+  "オンにすると、ほかのプレイヤーのおすすめにあなたが出なくなります": "When on, you will not appear in other players' suggestions",
+  "_tips": "---- round 19: tutorial replay & tips (TipsModel / TutorialReplayModel, REQ-TUT-*)",
+  "ヒント": "Tips",
+  "ヒントはオンラインで見られます": "Tips are available online",
+  "機能が開くと読めます": "Unlocks with its feature",
+  "くわしく": "More",
+  "レースのレッスン": "Race lessons",
+  "機能のツアー": "Feature tours",
+  "おわり": "Done",
+  "この機能が開いたら見られます": "Available once this feature unlocks",
+  "レッスンを始める": "Start the lesson",
+  "ヒントに戻る": "Back to tips",
+  "あと少し。残り300mからムチを2回": "So close. Whip twice from 300 m out",
+  "レッスン完了": "Lesson complete",
+  "レッスンは練習です。成績・ミッション・報酬には数えません": "Lessons are practice. They don't count toward your record or missions, and give no rewards"
  }
 }

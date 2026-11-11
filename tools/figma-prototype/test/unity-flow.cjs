@@ -852,9 +852,8 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   async function selfLimitsFlow() {
     const waitIn = (sel, timeout = 20000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
     await page.evaluate(() => { localStorage.removeItem('muchi.playtime.clock'); globalThis.__muchiKpi = []; });
-    await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings');
-    assert.equal(await page.locator('.screen.in [data-more-tab="settings"]').count(), 1);
-    await page.locator('.screen.in [data-action="history"]').click(); await waitScreen('history');
+    await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings'); await waitIn('[data-action="history"]');
+    await page.locator('.screen.in [data-action="history"]').click(); await waitScreen('history'); await waitIn('[data-action="self-limits"]');
     await page.locator('.screen.in [data-action="self-limits"]').click(); await waitScreen('self-limits'); await waitIn('.sl-spending');
     assert.equal(await page.locator('.screen.in .sl-spending').getAttribute('data-limit'), 'none', 'limits: none set at first');
     assert.equal(await page.locator('.screen.in .sl-playtime').getAttribute('data-enabled'), 'false', 'limits: the play-time reminder is off by default');

@@ -911,6 +911,12 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     assert.equal(await page.locator('.screen.in [data-prompt]').getAttribute('data-prompt'), 'next_home');
     await shot('consent-prompt-policy-update', 250);
     await page.locator('.screen.in [data-cns="later"]').click(); await waitScreen('home');
+    // R20 integration (§58.11): the consent sheet claimed this session — no review and no second consent sheet until a new session
+    assert.equal(await page.evaluate(() => globalThis.__muchi.prompts.shown()), 'consent', 'the consent sheet claims the session');
+    await page.evaluate(() => globalThis.__muchi.logic.reviewPrompt.demo(false));
+    assert.equal(await page.evaluate(() => globalThis.__muchi.prompts.review('first_win')), 'skipped', 'no review right after the consent sheet');
+    assert.equal((await page.evaluate(() => globalThis.__muchiReview)).at(-1).skipped, 'session_prompt');
+    await page.evaluate(() => globalThis.__muchi.prompts.reset()); // the next launch
     const after = await page.evaluate(() => globalThis.__muchi.logic.privacy.view());
     assert.equal(after.prompt, null, 'later: not again for this version');
     assert.equal(after.analytics.effective, false, 'the earlier choice keeps applying');
@@ -2248,8 +2254,14 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.equal(await page.locator('.screen.in .trf-confirm').count(), 1, 'this device has progress: confirm first');
   assert.match(await page.locator('.screen.in .trf-confirm-line').innerText(), /この端末のデータ（.+）は、引き継ぎの後に使えなくなります。/);
   await shot('transfer-confirm', 300);
+  // R20 integration (§58.11 / §54 × §59–§61): a prompt claimed the session and reminders were planned before the redeem
+  await page.evaluate(() => { localStorage.setItem('muchi.lnotif.scheduled', JSON.stringify({ ids: { 'lnotif.daily_bonus.x': '1|a|b' } })); });
+  const changesBefore = await page.evaluate(() => globalThis.__muchiAccountChanges ?? 0);
   await page.locator('.screen.in .trf-confirm-yes').click(); await page.waitForTimeout(1200);
   assert.equal(await page.locator('.screen.in .trf-done').count(), 1);
+  assert.equal(await page.evaluate(() => globalThis.__muchiAccountChanges), changesBefore + 1, 'a redeemed code resets the device state once');
+  assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('muchi.lnotif.scheduled')).ids), {}, 'the old account\'s device reminders are forgotten');
+  assert.equal(await page.evaluate(() => globalThis.__muchi.prompts.shown()), null, 'a new session: any prompt may show again');
   assert.match(await page.locator('.screen.in .trf-done').innerText(), /ハヤテ/);
   assert.ok(typeof (await page.evaluate(() => globalThis.__muchi.logic.transfer.oldDeviceCutoff())) === 'number', 'the previous phone is cut off');
   assert.deepEqual(await page.evaluate(() => globalThis.__muchi.logic.transfer.kpi().filter((k) => k.name === 'transfer_redeem').map((k) => k.s1 + ':' + (k.s2 ?? ''))), ['fail:invalid', 'ok:'], 'KPI: outcome and reason category only');

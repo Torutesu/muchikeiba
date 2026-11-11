@@ -62,6 +62,10 @@ public static partial class MuchiRace
     [JSExport]
     public static void CeSetConsent(bool allows) => _ceConsent = allows;
 
+    /// <summary>R20 integration (§54 × §60.6): the account changed — what is queued goes without a player id.</summary>
+    [JSExport]
+    public static void CeAccountChanged() => _ceReporter?.AccountChanged();
+
     /// <summary>Starts a send of everything queued (as on going to the background). Poll <see cref="CeTakeOutbox"/> next.</summary>
     [JSExport]
     public static void CeFlush(double nowMs)

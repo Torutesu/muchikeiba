@@ -56,6 +56,17 @@ namespace Muchi.Game
         public void Reset() => Shown = null;
     }
 
+    /// <summary>R20 integration (§58.10): <c>clientErrorModel.FollowConsent(consentModel)</c>.</summary>
+    public static class ClientErrorConsentExtensions
+    {
+        public static void FollowConsent(this ClientErrorModel errors, ConsentModel consent)
+        {
+            if (errors == null) throw new ArgumentNullException(nameof(errors));
+            if (consent == null) throw new ArgumentNullException(nameof(consent));
+            errors.FollowConsent(() => consent.State);
+        }
+    }
+
     /// <summary>
     /// R20 integration (§54 × §59 / §60 / §61): what this device forgets when the signed-in account changes — a 401
     /// SESSION_REPLACED (the account moved to another phone), a redeemed 引き継ぎコード, or a new start / sign-out:

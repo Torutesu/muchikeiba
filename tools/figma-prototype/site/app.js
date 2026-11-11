@@ -29,6 +29,16 @@ const prefs = {
   int(k, d) { const v = parseInt(this.get(k, ''), 10); return Number.isFinite(v) ? v : d; },
 };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+// R20 integration (contracts/protocol.md §58.11; = unity SessionPromptGate): at most ONE system-ish prompt per session — the
+// ads / analytics pre-prompt (then ATT), the reminders pre-permission card (then the OS dialog) or the review request. The
+// first one shown claims the session; the others stay due for a later session. Order when several are due: consent →
+// notifications → review. A change of account (transfer) starts a new session.
+const sessionPrompt = {
+  shown: null,
+  can(kind) { return this.shown === null || this.shown === kind; },
+  claim(kind) { if (!this.can(kind)) return false; this.shown = kind; (globalThis.__muchiPrompts ??= []).push(kind); return true; },
+  reset() { this.shown = null; },
+};
 
 // ---------------------------------------------------------------- localisation (LocaleService; Japanese is the default)
 let JA = {};
@@ -2738,19 +2748,20 @@ const cnsDevice = { get att() { return prefs.get('muchi.att', 'not_determined');
 const cnsView = () => L.privacy.view();
 /** Before the first rewarded ad: the pre-prompt when the server names this moment (never in the FTUE). */
 async function ConsentBeforeAd(next) {
-  if (ftue) return next();
+  if (ftue || !sessionPrompt.can('consent')) return next(); // §58.11: another prompt showed this session → the ad as is
   const v = await cnsView();
   if (!v.prompt) return next();
   return ConsentPrompt(next, v);
 }
 /** On the home after a policy update (decided before, asked again): drawn before home like the comeback welcome. */
 async function consentHomeDue() {
-  if (ftue) return null;
+  if (ftue || !sessionPrompt.can('consent')) return null;
   const v = await cnsView();
   return v.prompt === 'next_home' && v.decidedVersion ? v : null;
 }
 async function ConsentPrompt(next, v0) {
   const v = v0 ?? await cnsView();
+  sessionPrompt.claim('consent');
   currentScreen = () => ConsentPrompt(next); Clear('consent-prompt'); SetArt('Art/home-paddock', false); Shade('dim');
   const box = Dialog('Consent prompt', 1040, 700);
   box.dataset.prompt = v.prompt ?? '';
@@ -4029,9 +4040,11 @@ function revLog(x) { (globalThis.__muchiReview ??= []).push(x); }
 /** A happy moment's screen was closed: ask (or not) on the real rules. Returns the outcome. */
 async function reviewMoment(moment, after = Home) {
   if (revPrompted) { revLog({ moment, skipped: 'session' }); return 'skipped'; }
+  if (!sessionPrompt.can('review')) { revLog({ moment, skipped: 'session_prompt' }); return 'skipped'; } // §58.11
   const r = await L.reviewPrompt.check(moment, REV_SESSION, { inFtue: false, minutesSinceLoss: null, minutesSinceError: null, minutesSinceMaintenanceNotice: null });
   if (!r.ok || !r.value.show) { revLog({ moment, skipped: r.ok ? r.value.reason : r.code }); return 'skipped'; }
   revPrompted = true;
+  sessionPrompt.claim('review');
   revLog({ moment, style: r.value.style, promptId: r.value.promptId });
   if (r.value.style === 'soft') { ReviewSoft(r.value.promptId, moment, after); return 'soft'; }
   await ReviewNativeSim(r.value.promptId, moment, after); return 'native';
@@ -4085,6 +4098,7 @@ async function ReviewNativeSim(promptId, moment, after = Home) {
 async function ReviewDemo(style = 'native') {
   await L.reviewPrompt.demo(style === 'soft');
   revPrompted = false;
+  sessionPrompt.reset(); // the demo state is a settled player opening the app (a new session)
   const o = await reviewMoment('first_win');
   if (o === 'skipped') { toast('今回は依頼しません'); Home(); }
   return o;
@@ -6783,6 +6797,7 @@ function TransferConfirm(d, state) {
   Ghost('やめる', 496, 336, 220, 50, () => TransferRedeem(state), box, 'quiet').classList.add('trf-confirm-no');
 }
 function TransferDone(v) {
+  deviceAccountChanged();
   Shade('dim heavy');
   const box = Dialog('Transfer done', 880, 440);
   box.classList.add('trf-done');
@@ -6793,8 +6808,21 @@ function TransferDone(v) {
   Cta('前の端末の画面を見る', 52, 326, 420, () => TransferReplaced(), box, 'small trf-done-old');
   Ghost('ホームへ', 496, 332, 200, 50, () => Home(), box, 'quiet');
 }
+/**
+ * R20 integration (§58.11, §54 × §59–§61; = unity AccountChangeReset): the account on this device changed (SESSION_REPLACED on the
+ * old device, a redeemed code on the new one) — the device reminders are cancelled and forgotten, the error reporter sends what it
+ * queued without a player id, and the review / one-prompt session starts again.
+ */
+function deviceAccountChanged() {
+  lnSet(LN_SCHEDULED, JSON.stringify({ ids: {} }));
+  try { if (ceReady) { engine.CeAccountChanged(); ceSave(); } } catch { /* the reporter never throws into the page */ }
+  revPrompted = false;
+  sessionPrompt.reset();
+  globalThis.__muchiAccountChanges = (globalThis.__muchiAccountChanges ?? 0) + 1;
+}
 /** The old device after the move (401 SESSION_REPLACED on its next request). */
 function TransferReplaced() {
+  deviceAccountChanged();
   currentScreen = TransferReplaced;
   Clear('transfer-replaced'); SetArt('Art/home-paddock', false); Shade('left');
   Kicker('引き継ぎ', 82, 112, undefined, { size: 18 });
@@ -8102,7 +8130,8 @@ async function LnotifPrePromptCard(after) {
   if (cur?.dataset.screen !== 'training-result') return null;
   lnSet(LN_TRAINED, '1');
   const d = await L.localNotify.digest();
-  if (!lnPrePromptDue(d) || cur?.dataset.screen !== 'training-result') return null;
+  if (!lnPrePromptDue(d) || !sessionPrompt.can('notifications') || cur?.dataset.screen !== 'training-result') return null; // §58.11
+  sessionPrompt.claim('notifications');
   const c = Glass('Reminders primer', 836, 134, 640, 420, undefined, .9);
   c.classList.add('ln-primer', 'rise');
   lnPrimerBody(c, d, after, 600);
@@ -8229,6 +8258,8 @@ async function boot() {
     ready: false, screen: '',
     show: (name, ...a) => ({ NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
+    // R20 integration (§58.11): the one-prompt gate and a happy moment (review) for the flows
+    prompts: { shown: () => sessionPrompt.shown, reset: () => sessionPrompt.reset(), review: (m) => reviewMoment(m ?? 'first_win') },
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),
     logic: L, view: () => view,

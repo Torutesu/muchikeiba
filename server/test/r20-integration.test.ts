@@ -16,6 +16,10 @@ import { clientErrorBatchSchema } from '../src/domain/clientErrors.js';
 import type { Master } from '../src/domain/master.js';
 import { DEFAULT_MAINTENANCE, EXEMPT_ROUTES, endpointGroup, gateRequest, jstToMs, type MaintenanceConfig } from '../src/domain/maintenance.js';
 import { routes } from '../src/http/app.js';
+import { buildExportDocument } from '../src/domain/dataExport.js';
+import { ClientErrorsCore, MemoryClientErrorRepo } from '../src/ops/clientErrors.js';
+import { CLIENT_ERRORS_DEFAULTS } from '../src/domain/clientErrors.js';
+import { runAccountDeletion, type DeletionPorts } from '../src/domain/accountDeletion.js';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8');
@@ -159,5 +163,59 @@ describe('§46 gates × Round 20 routes (and the terms consent, R20 integration)
     const p = read('contracts/protocol.md');
     const s46 = p.slice(p.indexOf('### 46.2'), p.indexOf('### 46.3'));
     for (const r of ['/v1/player/consent', '/v1/privacy/choices', '/v1/privacy/platform', '/v1/privacy/prompt-shown', '/v1/client-errors', '/v1/transfer/redeem', '/v1/review-prompt']) expect(s46, r).toContain(r);
+  });
+});
+
+describe('§51 data export and account deletion × Round 20 state', () => {
+  async function seeded() {
+    let now = NOW;
+    const repo = new MemoryPlayerRepo();
+    const svc = new PlayerService(repo, { master: m, rng: seededRng(51), clock: () => now, verifiers: {} });
+    await svc.bootstrap('dx');
+    await svc.setDisplayName('dx', 'ハヤテ');
+    await svc.setPrivacyChoices('dx', { privacyVersion: V, source: 'settings', analytics: true, personalizedAds: false });
+    await svc.tx('dx', null, (st) => {
+      st.reviewPrompt = { v: 1, seq: 1, lastSessionId: 's_1', history: [{ id: 'rp_1', at: now - 86_400_000, moment: 'first_win', platform: 'ios', style: 'native', sessionId: 's_1', answer: null, nativeAt: now - 86_400_000 }] };
+      return true;
+    });
+    const store = new MemoryClientErrorRepo();
+    const core = new ClientErrorsCore(store);
+    core.ingest(ceBatch(), { playerId: 'dx', installId: 'inst_r20_000001' }, now, CLIENT_ERRORS_DEFAULTS);
+    return { svc, repo, core, store, now: () => now, advance: (ms: number) => { now += ms; } };
+  }
+  it('privacyChoices (account), reviewPrompt (analytics) and analytics.clientErrors are exported; nothing is unclassified', async () => {
+    const w = await seeded();
+    const s = await w.svc.state('dx');
+    const doc = buildExportDocument(m, s, { ledger: [], gacha: [], names: {}, reportsMade: [], kpiEvents: null, clientErrors: w.core.madeBy('dx') }, 'dex_r20', 'ja', w.now());
+    expect(doc.unclassified).toEqual([]);
+    expect(doc.account.privacyChoices).toMatchObject({ personalizedAds: false, analytics: true, decidedVersion: V });
+    expect(doc.analytics.reviewPrompts).toEqual([expect.objectContaining({ moment: 'first_win', style: 'native' })]);
+    expect(doc.analytics.clientErrors).toMatchObject({ available: true, rows: [expect.objectContaining({ category: 'exception' })] });
+    // §61 schedules live on the device only; §51.5 says so
+    const p = read('contracts/protocol.md');
+    const s515 = p.slice(p.indexOf('### 51.5'), p.indexOf('### 51.6'));
+    for (const k of ['§58', '§59', '§60', '§61']) expect(s515, k).toContain(k);
+  });
+  it('deletion clears privacyChoices and reviewPrompt with the wipe and anonymises the client error samples', async () => {
+    const w = await seeded();
+    const tok = (await w.svc.requestDeletion('dx', null)) as { confirmToken: string };
+    await w.svc.requestDeletion('dx', tok.confirmToken);
+    w.advance(15 * 86_400_000);
+    const ports = {
+      start: async (u: string) => { await w.svc.deletionStart(u); }, snapshot: (u: string) => w.svc.deletionSnapshot(u),
+      markStep: async (u: string, st: never) => { await w.svc.deletionMarkStep(u, st); },
+      friends: { removeFriend: async () => undefined, dropOutgoing: async () => undefined, dropIncoming: async () => undefined },
+      directory: { forget: async () => undefined }, leaderboards: { forget: async () => undefined, deleteGhosts: async () => undefined },
+      clientErrors: { forget: async (u: string) => w.core.forgetPlayer(u) },
+      finalize: (u: string) => w.svc.deletionFinalize(u), retain: async () => undefined, wipe: (u: string) => w.svc.wipe(u),
+    } as unknown as DeletionPorts;
+    const before = await w.svc.state('dx');
+    expect(before.privacyChoices).toBeTruthy();
+    expect(before.reviewPrompt?.history).toHaveLength(1);
+    const r = await runAccountDeletion(ports, 'dx', w.now());
+    expect(r.done).toEqual(expect.arrayContaining(['client_errors', 'wipe']));
+    expect(w.repo.get('dx')).toBeNull(); // privacyChoices and reviewPrompt go with the state
+    expect(w.core.madeBy('dx')).toEqual([]);
+    expect(w.store.sampleRows.map((x) => x.playerId)).toEqual([null]);
   });
 });

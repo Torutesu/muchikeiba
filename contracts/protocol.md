@@ -2924,6 +2924,7 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 - `export_meta`：`dataExport`（このエクスポート自身の記録）
 - `third_party`：他のプレイヤーについての情報（申請・招待を送ってきた人、ライバル・種付けの相手、お知らせを送った人の ID）。**他のプレイヤーが自分について送った通報**は入れない（通報した人を特定できてしまい、第三者の権利利益を害するおそれ（法33条2項1号）と、モデレーションの業務に著しい支障（同2号）。弁護士の確認待ち、`docs/planning/03-legal-risk.md`）。
 - Round 19 統合：§55 の応援は誰が送ったかを保存しない（部屋の中で数えるだけ、`replays/<raceId>.cheers.json` も時間の区切りごとの数だけ）ので、エクスポートに入れるものは無い。§56 の画質・通信量の設定は端末だけに保存され、サーバーには無い。
+- Round 20 統合：§58 の `privacyChoices` は `account` に全部（選んだ値・版・時刻・端末の状態・履歴）。§59 の `reviewPrompt` は `analytics.reviewPrompts`（頼んだ時刻・瞬間・プラットフォーム・形・答え。セッション id は入れない）。§60 のエラー報告は状態のキーを足さず、自分の id が付いた見本を `analytics.clientErrors` に出す（読めない時は `available: false`）。§61 の端末のリマインダーは**端末の中だけ**（予約・前に予約した id・「ロック画面に詳しく表示」・前置きを出した回数はどれもサーバーに無い）ので出すものは無い（`reminders` の選択は既存の `push.prefs` と一緒に出る）。§58.11 の「1セッションに1つ」の記録も端末の中だけ。
 - 新しい状態のキーは `DEX_CLASSIFICATION`（`Record<keyof PlayerState | 拡張キー, …>`）にどちらかを書かないと型チェックとテスト（`test/data-export.test.ts`：インターフェース・`PlayerState & { … }` の拡張・実際の状態）が失敗する。Round 18 統合で分類したキー：`friendSuggest`→`social`、`horseGoals`→`horses`、拡張キー `help`→`helpInquiries`、`reports`（通報の1日の数）→`reportsMade`。§46 メンテナンス・§50 練習レースはプレイヤーの状態に何も置かない。§52 定型チャットの投稿は支部のフィード（TeamDO）にあり、プレイヤーの状態には無い：支部のフィードは支部員の共有の場で、決まった文と選んだ値だけ・保存は `retainDays` 日と件数まで（§52.6）なので、エクスポートには入れない（`docs/planning/03-legal-risk.md` の確認事項）。
 
 ### 51.6 人が読める概要（`.txt`）

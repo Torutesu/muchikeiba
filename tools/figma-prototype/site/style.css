@@ -715,3 +715,10 @@ html[data-reduce-motion="on"] .pr-bar .band { transition: none; }
 .hud .chip.cheer.pulse { animation: cheerpulse .6s ease-out both; }
 @keyframes cheerpulse { 0% { box-shadow: 0 0 0 0 rgba(var(--cyan-rgb), .55); } 100% { box-shadow: 0 0 0 14px rgba(var(--cyan-rgb), 0); } }
 html[data-reduce-motion="on"] .cheer-line.pulse, html[data-reduce-motion="on"] .hud .chip.cheer.pulse { animation: none; }
+
+/* round 21: アップデートのお知らせ (REQ-NEW-*) */
+.glass.rn-sheet .img.rn-art { border-radius: 4px; }
+.el.rn-dots { display: flex; gap: 10px; justify-content: flex-end; align-items: center; }
+.el.rn-dots i { width: 10px; height: 10px; border-radius: 50%; background: rgba(255, 255, 255, .28); }
+.el.rn-dots i.on { background: var(--cyan); }
+.help-row.rn-version.on { box-shadow: inset 3px 0 0 var(--cyan); }

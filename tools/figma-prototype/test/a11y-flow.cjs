@@ -233,6 +233,11 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('TipCard', 'scout_pity_tip', 'list'); await waitScreen('tip-card'); await shot('tip-card', english, 500);
     await show('TipTour', 'tour_scout'); await waitScreen('tip-card'); await shot('tip-tour', english, 500);
     await show('LessonBrief', 'race_whip'); await waitScreen('tip-lesson'); await shot('tip-lesson', english, 500);
+    // Round 21: アップデートのお知らせ (the sheet's first and last page, the past list) at the largest size (REQ-NEW-015)
+    await show('ReleaseNotes'); await waitScreen('release-notes'); await shot('release-notes', english, 500);
+    for (let i = 0; i < 4 && (await page.locator('.screen.in [data-action="rn-next"]').count()); i++) { await page.locator('.screen.in [data-action="rn-next"]').click(); await page.waitForTimeout(450); }
+    await shot('release-notes-last', english, 500);
+    await show('ReleaseNotesHistory', 'notices'); await waitScreen('release-notes-history'); await shot('release-notes-history', english, 500);
     // Round 17: おすすめフレンド (the friends screen's suggestions section)
     await show('Friends'); await waitScreen('friends'); await shot('friends-suggestions', english, 600);
     // Round 18: 練習レース (the setup screen at the largest size)

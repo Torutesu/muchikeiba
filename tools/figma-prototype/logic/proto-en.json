@@ -1389,6 +1389,16 @@
   "前の端末の画面を見る": "See the previous device",
   "引き継ぎ": "TRANSFER",
   "心当たりがないときは、ヘルプのお問い合わせから運営に知らせてください。": "If you did not do this, let us know from Help > Contact us.",
-  "ID": "ID"
+  "ID": "ID",
+  "_releaseNotes": "---- round 21: what's new per app version (REQ-NEW-*)",
+  "アップデート情報": "What's new",
+  "アップデート情報 ›": "What's new ›",
+  "過去のアップデート情報": "Past updates",
+  "過去のアップデート情報 ›": "Past updates ›",
+  "過去のアップデート情報（ほか{n}件） ›": "Past updates ({n} more) ›",
+  "はじめる": "Let's go",
+  "まだアップデート情報はありません": "No updates yet",
+  "アップデート情報はオンラインで見られます": "What's new is available online",
+  "アプリの版ごとの新しい機能　·　お知らせから、いつでも読めます": "New features by app version  ·  Read them any time from Activity"
  }
 }

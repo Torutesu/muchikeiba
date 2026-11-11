@@ -69,4 +69,5 @@ node "$HERE/test/round18-quick-chat.test.mjs"   # round 18: 支部の定型チ�
 node "$HERE/test/round19-tips.test.mjs" # round 19: ヒント — index (JA/EN), numbers from data, unlocks, seen marks, the 「？」 contexts, KPI, the whip lesson = the FTUE tutorial race in WASM (never assisted), no first-time reward touched
 node "$HERE/test/round19-cheer.test.mjs" # round 19: 観戦中の応援 — the 2 s pace, windows fanned out with the block list, no ids, moments, one KPI row per race, English
 node "$HERE/test/round19-transfer-code.test.mjs" # round 19: 引き継ぎコード — issue (rules, generated once, hash only), redeem with confirm / one key / replay, single use, the old-device cut-off, no oracle, KPI, English
+node "$HERE/test/round21-release-notes.test.mjs" # round 21: アップデートのお知らせ — a new install never, the updater once (skipped count, numbers from data, never the shop), seen idempotent, the past list JA / EN, KPI, nothing granted
 echo "built $SITE ($(du -sh "$SITE" | cut -f1))"

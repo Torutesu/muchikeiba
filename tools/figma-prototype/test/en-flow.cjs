@@ -471,6 +471,14 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await show('LessonBrief', 'race_stamina'); await waitScreen('tip-lesson'); await shot('tip-lesson', 400);
   await show('StartLesson', 'race_whip'); await waitScreen('race-tutorial'); await waitScreen('lesson-result', 90000); await shot('lesson-result', 600);
 
+  // round 21: アップデートのお知らせ in English (REQ-NEW-014): the sheet's pages and target labels from the master's English
+  await show('ReleaseNotes'); await waitScreen('release-notes'); await shot('release-notes', 500);
+  assert.match(await page.locator('.screen.in .rn-title').innerText(), /[A-Za-z]/, 'release notes: the page title in English');
+  await page.locator('.screen.in [data-action="rn-next"]').click(); await page.waitForTimeout(400);
+  await page.locator('.screen.in [data-action="rn-next"]').click(); await page.waitForTimeout(400); await shot('release-notes-last', 400);
+  await show('ReleaseNotesHistory', 'notices'); await waitScreen('release-notes-history'); await shot('release-notes-history', 500);
+  assert.match(await page.locator('.screen.in').innerText(), /Cheer while you watch/, 'release notes: the list in English');
+
   // round 13: 支部の共同目標 in English (REQ-TGOAL-*): the week, after the demo races, the week result sheet
   await show('TeamGoal'); await waitScreen('team-goal', 20000); await shot('team-goal', 600);
   assert.match(await page.locator('.screen.in').innerText(), /as a branch/, 'team goal: the goal label in English');

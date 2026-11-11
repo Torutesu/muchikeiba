@@ -6778,9 +6778,9 @@ async function BlockList() {
   e.classList.add('bl-effects');
   Kicker('ブロックするとどうなる？', 36, 30, e);
   // R21 integration: nine features (§62 showcase) — the note moves above the list
-  Txt('相手には、ブロックしたことも通報したことも知らされません。', 36, 66, 816, 14, MUTED, e, { nowrap: true });
+  Txt('相手には、ブロックしたことも通報したことも知らされません。', 36, 104, 816, 14, MUTED, e, { nowrap: true });
   v.effects.forEach((x, i) => {
-    const row = el('bl-effect', 36, 104 + i * 63, 816, 58, e); // R21: nine features (§62 showcase, §63 links), the note above
+    const row = el('bl-effect', 36, 136 + i * 60, 816, 54, e); // R21: nine features (§62 showcase, §63 links), the note above
     row.dataset.feature = x.feature;
     Txt(BLOCK_ICON[x.feature] ?? '', 0, 4, 150, 12, CYAN, row, { weight: 700, ls: '.18em', nowrap: true });
     Txt(x.text, 0, 26, 816, 17, WHITE, row, { weight: 500, nowrap: true });

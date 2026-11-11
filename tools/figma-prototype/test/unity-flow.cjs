@@ -1160,7 +1160,9 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     if (await c.count()) { await c.first().click(); await page.waitForTimeout(250); }
   };
   const demo = async (k) => {
-    await page.evaluate((x) => globalThis.__muchi.demo(x), k); await waitScreen(['home', 'link-prompt'], 20000); await page.waitForTimeout(500);
+    await page.evaluate((x) => globalThis.__muchi.demo(x), k); await waitScreen(['home', 'link-prompt', 'release-notes'], 20000); await page.waitForTimeout(500);
+    // R21 integration (§58.11 = §64.6): a demo state is a new launch — the release notes may take its first home
+    if (await screen() === 'release-notes') { await page.locator('.screen.in [data-action="rn-skip"]').click(); await waitScreen(['home', 'link-prompt'], 20000); await page.waitForTimeout(300); }
     await closeWhatsNew();
     if (await screen() === 'link-prompt') {
       assert.notEqual(k, 'day1', 'no account-link prompt on day 1');

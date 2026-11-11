@@ -242,6 +242,12 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('TipCard', 'scout_pity_tip', 'list'); await waitScreen('tip-card'); await shot('tip-card', english, 500);
     await show('TipTour', 'tour_scout'); await waitScreen('tip-card'); await shot('tip-tour', english, 500);
     await show('LessonBrief', 'race_whip'); await waitScreen('tip-lesson'); await shot('tip-lesson', english, 500);
+    // Round 21: ディープリンク・再戦 (the links hub, 「リンクを開く」, the confirmation, the friend-room result with 再戦) (REQ-LINK-024)
+    await show('Links'); await waitScreen('links'); await shot('links', english, 500);
+    await show('OpenLink'); await waitScreen('open-link'); await shot('open-link', english, 500);
+    await show('LinkConfirm'); await waitScreen('link-confirm'); await shot('link-confirm', english, 500);
+    await show('FriendRoomResult'); await waitScreen('friend-room-result'); await page.locator('.screen.in .rm-press').click(); await page.waitForTimeout(600); await shot('rematch-waiting', english, 200);
+    await show('RoomLobby'); await waitScreen('room-lobby'); await shot('room-lobby', english, 500);
     // Round 17: おすすめフレンド (the friends screen's suggestions section)
     await show('Friends'); await waitScreen('friends'); await shot('friends-suggestions', english, 600);
     // Round 18: 練習レース (the setup screen at the largest size)

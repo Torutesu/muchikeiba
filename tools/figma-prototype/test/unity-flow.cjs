@@ -1710,7 +1710,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await page.evaluate(() => globalThis.__muchi.demo('safety')); await waitScreen('blocks', 60000); await page.waitForTimeout(400);
   const blText = await page.locator('.screen.in').innerText();
   assert.match(blText, /ヨルノカラス/); assert.match(blText, /ナギサ/); assert.match(blText, /プレイヤー/, 'a deleted player shows the neutral name');
-  assert.equal(await page.locator('.screen.in .bl-effect').count(), 7, 'what a block does, one line per feature');
+  assert.equal(await page.locator('.screen.in .bl-effect').count(), 8, 'what a block does, one line per feature (R21: links)');
   assert.match(blText, /相手には、ブロックしたことも通報したことも知らされません/);
   await shot('blocks', 400);
   await page.locator('.screen.in .bl-row[data-player="demo_bl_2"] .bl-unblock').click(); await page.waitForTimeout(500);
@@ -2331,6 +2331,63 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await page.locator('.screen.in .trf-done-old').click(); await waitScreen('transfer-replaced'); await page.waitForTimeout(300);
   assert.match(await page.locator('.screen.in').innerText(), /別の端末に引き継がれました/);
   await shot('transfer-replaced', 300);
+
+  // ------------------------------------------------------------------ round 21: ディープリンク・再戦 (REQ-LINK-*)
+  // その他 › 見た目・お世話・仲間 › リンクで招待・共有: the share sheet (no id in the URL, one link per target), the links I
+  // shared, 「リンクを開く」 → the screen behind a confirmation (a room joins only after the button), one neutral notice for a
+  // closed room or a non-link, and 再戦 on the friend-room result (waiting with the real seconds, everyone in → a new room)
+  // the player here is brand new (reset above, before the partner): a link waits for the end of the FTUE (REQ-LINK-023)
+  await page.evaluate(() => globalThis.__muchi.show('OpenLink')); await waitScreen('open-link'); await page.waitForTimeout(300);
+  await page.locator('.screen.in [data-lk-demo="room"]').click(); await page.waitForTimeout(900);
+  assert.equal(await page.locator('.screen.in .lk-notice').innerText(), 'チュートリアルの後で開きます', 'during the FTUE the link waits');
+  await demo('day3');
+  await page.evaluate(() => globalThis.__muchi.show('Settings', 'looks')); await waitScreen('settings'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in .btn[data-action="links"]').count(), 1, 'その他 › 見た目・お世話・仲間 has リンクで招待・共有');
+  await page.locator('.screen.in .btn[data-action="links"]').click(); await waitScreen('links'); await page.waitForTimeout(300);
+  await page.locator('.screen.in [data-lk-share="friend"]').click(); await page.waitForSelector('.screen.in .lk-sheet', { timeout: 10000 });
+  const lkUrl = await page.locator('.screen.in .lk-url').innerText();
+  assert.match(lkUrl, /^https:\/\/link\.muchi-issen\.example\/l\/[2-9a-hj-km-np-z]{22}$/, 'one opaque token in the URL');
+  assert.ok(!lkUrl.includes('local'), 'no player id in the URL');
+  await shot('link-share-sheet', 300);
+  await page.locator('.screen.in .lk-sheet-close').click(); await waitScreen('links'); await page.waitForTimeout(300);
+  await page.locator('.screen.in [data-lk-share="friend"]').click(); await page.waitForSelector('.screen.in .lk-sheet', { timeout: 10000 });
+  assert.equal(await page.locator('.screen.in .lk-url').innerText(), lkUrl, 'the same link for the same target');
+  await page.locator('.screen.in .lk-sheet-close').click(); await waitScreen('links'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in .lk-row').count(), 1, 'the shared links list');
+  await shot('links', 300);
+  await page.locator('.screen.in [data-action="open-link"]').click(); await waitScreen('open-link'); await page.waitForTimeout(300);
+  await page.locator('.screen.in .lk-input').fill('hello'); await page.locator('.screen.in .lk-open-go').click(); await page.waitForTimeout(500);
+  assert.equal(await page.locator('.screen.in .lk-notice').innerText(), 'リンクの形が正しくありません');
+  await page.locator('.screen.in [data-lk-demo="expired"]').click(); await page.waitForTimeout(900);
+  assert.equal(await page.locator('.screen.in .lk-notice').innerText(), 'このリンクは開けません', 'a closed room: the one neutral notice');
+  await shot('open-link-unavailable', 300);
+  await page.locator('.screen.in [data-lk-demo="room"]').click(); await waitScreen('link-confirm', 10000); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in .lk-confirm').getAttribute('data-screen'), 'friend_room_join');
+  assert.match(await page.locator('.screen.in .lk-head').innerText(), /^部屋 \d{6}$/);
+  await shot('link-confirm-room', 300);
+  await page.locator('.screen.in .lk-confirm-go').click(); await waitScreen('room-lobby', 10000); await page.waitForTimeout(300);
+  assert.match(await page.locator('.screen.in').innerText(), /ミドリカワ[\s\S]*あなた/, 'joined only after the confirmation');
+  await page.evaluate(() => globalThis.__muchi.show('OpenLink')); await waitScreen('open-link'); await page.waitForTimeout(300);
+  await page.locator('.screen.in [data-lk-demo="help"]').click(); await waitScreen('link-confirm', 10000); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in .lk-confirm').getAttribute('data-lk-type'), 'help');
+  await page.locator('.screen.in .lk-confirm-go').click(); await waitScreen('help-article', 10000);
+  assert.match(await page.locator('.screen.in').innerText(), /リンクで招待・共有する/, 'the help link opens the article');
+  const lkKpi = await page.evaluate(() => globalThis.__muchi.logic.links.kpi());
+  assert.ok(lkKpi.some((k) => k.name === 'link_resolve' && k.s1 === 'room' && k.s2 === 'ok') && lkKpi.some((k) => k.name === 'link_resolve' && k.s2 === 'unavailable'), 'KPI: type and outcome');
+  assert.ok(!JSON.stringify(lkKpi).includes(lkUrl.split('/l/')[1]), 'no token in KPI');
+  await page.evaluate(() => globalThis.__muchi.show('FriendRoomResult')); await waitScreen('friend-room-result'); await page.waitForTimeout(300);
+  await shot('friend-room-result', 300);
+  await page.locator('.screen.in .rm-press').click(); await page.waitForTimeout(700);
+  assert.match(await page.locator('.screen.in .rm-status').innerText(), /^再戦を待っています（2\/3人・あと\d+秒）$/, 'waiting: who pressed and the real seconds left');
+  await shot('rematch-waiting', 200);
+  await page.locator('.screen.in .rm-demo-others').click(); await page.waitForTimeout(700);
+  assert.equal(await page.locator('.screen.in .rm-panel').getAttribute('data-state'), 'opened');
+  assert.equal(await page.locator('.screen.in .rm-status').innerText(), '新しい部屋ができました');
+  await shot('rematch-opened', 300);
+  await page.locator('.screen.in .rm-room').click(); await waitScreen('room-lobby'); await page.waitForTimeout(300);
+  assert.match(await page.locator('.screen.in .lk-same').innerText(), /前のレースと同じ条件/, 'the same conditions, a new race');
+  assert.ok(!(await page.locator('.screen.in').innerText()).match(/今だけ|残りわずか|倍|お得/), 'no urgency wording');
+  await shot('rematch-room', 300);
 
   // a reload on a named player goes straight home
   await demo('day3');

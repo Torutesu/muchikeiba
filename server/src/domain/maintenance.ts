@@ -216,6 +216,9 @@ export const EXEMPT_ROUTES: readonly string[] = [
   'POST /v1/player/consent',
   // Round 20 (§60, REQ-CERR-004): client error reports — an outdated app's crashes are the ones ops most needs to see
   'POST /v1/client-errors',
+  // Round 21 (§63, REQ-LINK-009): opening a link answers with a maintenance / update state of its target instead of failing
+  // (the link is kept; the screen says when to open it again). Making, listing and revoking links stay in group `social`.
+  'POST /v1/links/resolve',
 ];
 
 const PREFIX_GROUPS: [string, MaintenanceGroup][] = [
@@ -227,7 +230,7 @@ const PREFIX_GROUPS: [string, MaintenanceGroup][] = [
   ['/v1/tournaments', 'tournaments'],
   ['/v1/training', 'training'],
   ['/v1/time-attack', 'time_attack'], ['/v1/challenges', 'time_attack'],
-  ['/v1/friends', 'social'], ['/v1/invite', 'social'], ['/v1/stable', 'social'], ['/v1/rival', 'social'],
+  ['/v1/friends', 'social'], ['/v1/invite', 'social'], ['/v1/stable', 'social'], ['/v1/rival', 'social'], ['/v1/links', 'social'],
   ['/v1/showcase', 'social'], // REQ-SHOW-016 (§62): the trainer card is a social view
   ['/v1/cups', 'cups'],
 ];

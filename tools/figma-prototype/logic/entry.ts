@@ -65,6 +65,12 @@ import {
 } from '../../../server/src/domain/cheer.js';
 import { MemoryTransferDirectory, TransferService, type TransferRecord } from '../../../server/src/domain/transferService.js';
 import { normalizeCodeId, normalizeInput, passwordProblems, transferConfig } from '../../../server/src/domain/transferCode.js';
+import { LinkService, MemoryLinkDirectory, type LinkTargets } from '../../../server/src/domain/linkService.js';
+import { formatToken, linksConfig, parseLink, LINK_SCREENS, type LinkType } from '../../../server/src/domain/deepLinks.js';
+import { Rematches } from '../../../server/src/domain/rematch.js';
+import { FriendRooms } from '../../../server/src/domain/matchmaker.js';
+import { maintenanceOf } from '../../../server/src/domain/maintenance.js';
+import type { RoomConditions } from '../../../server/src/domain/presets.js';
 import { DEFAULT_MAINTENANCE, gateRequest, maintenanceStatus, type MaintenanceConfig } from '../../../server/src/domain/maintenance.js';
 import { DataExportService, MemoryExportStore, runDataExportJob, sweepDataExports } from '../../../server/src/domain/dataExportService.js';
 import { clientErrorBatchSchema, clientErrorsClientView, clientErrorsConfig } from '../../../server/src/domain/clientErrors.js';
@@ -421,6 +427,64 @@ const trfSvc = new TransferService({
   noteFail: (u, r) => svc.transferFailed(u, r), admin: (u) => svc.adminTransfer(u),
   redeemReplay: (u, k) => svc.transferRedeemReplay(u, k), redeemRemember: (u, k, pid, name) => svc.transferRedeemRemember(u, k, pid, name),
 }, trfDir, () => transferConfig(master), { sign: async (uid, t) => `proto-custom-token.${uid}.${Math.floor(t / 1000)}` }, { clock: now });
+
+// round 21 (REQ-LINK-*, contracts/protocol.md §63): ディープリンク on the real LinkService (directory in memory: a reload forgets the
+// links, like a fresh demo) and 再戦 on the real Rematches + FriendRooms (the matchmaker's logic). The demo friend ミドリカワ owns
+// the incoming links; three demo racers ran the friend-room race with the local player.
+const linkDir = new MemoryLinkDirectory();
+const linkSvc = new LinkService({
+  party: (u) => svc.linkParty(u), checkCreate: (u) => svc.linkCheckCreate(u), note: (u, nm, s1, s2, c) => svc.linkNote(u, nm, s1, s2, c),
+}, linkDir, () => linksConfig(master), { clock: now, limitSalt: 'proto', maintenance: () => maintenanceOf(master), dayRule: () => dayRule(master) });
+const LINK_FRIEND = 'demo_link_friend';
+const LINK_FRIEND_NAME = 'ミドリカワ';
+const linkRooms = new FriendRooms<string>();
+const RM_CONDITIONS: RoomConditions = { trackId: 'aoba_turf_1600', going: 'good', night: false, weather: 'sunny', temperatureC: 18, windKmh: 2 };
+const RM_RACERS: [string, string][] = [['demo_rm_1', 'ハヤテ'], ['demo_rm_2', 'クロサキ'], ['demo_rm_3', 'ナギサ']];
+const rmName = (id: string) => (id === ID ? 'あなた' : RM_RACERS.find((x) => x[0] === id)?.[1] ?? LINK_FRIEND_NAME);
+const rematches = new Rematches<string>();
+let rmRace: string | null = null;
+const rmRules = () => { const c = linksConfig(master); return { windowSec: c.rematchWindowSec, offerMinutes: c.rematchOfferMinutes }; };
+/** The view plus the seconds left on the prototype's clock (the demo may move the clock by days; RematchView.SecondsLeft in C#). */
+const rmView = (raceId: string) => { const v = rematches.view(raceId, ID, now(), rmRules()); return { ...v, secondsLeft: v.deadlineAt === null || v.state !== 'waiting' ? 0 : Math.max(0, Math.ceil((v.deadlineAt - now()) / 1000)) }; };
+/** The matchmaker's settle step (MatchmakerDO.settleRematch) on the prototype's rooms. */
+function rmSettle(raceId: string) {
+  const o = rematches.offers.get(raceId);
+  if (!o || !rematches.due(o, now())) return;
+  const plan = rematches.plan(raceId, { isFree: () => true, mayHost: (p) => linkRooms.hostedBy(p) === null });
+  if (!plan) { rematches.settle(raceId, now(), null); return; }
+  const room = linkRooms.createWith(plan.hostId, plan.members.map((m) => ({ playerId: m.playerId, payload: m.entry })), o.conditions, raceId, now(), cryptoRng);
+  rematches.settle(raceId, now(), { passphrase: room.passphrase, hostId: room.hostId, members: room.members.map((m) => m.playerId) });
+}
+/** What each link type needs (the prototype's version of http/app.ts linkTargetsFrom, on the local services). */
+const linkTargets: LinkTargets = {
+  async prepare(uid, type, t) {
+    const str = (k: string) => { const v = t[k]; if (typeof v !== 'string' || !v) throw new AppError('BAD_REQUEST', `target.${k} is required`); return v; };
+    switch (type) {
+      case 'room': { const pass = str('passphrase'); if (!linkRooms.isMember(pass, uid, now())) throw new AppError('NOT_FOUND'); return { targetKey: pass, data: { passphrase: pass } }; }
+      case 'help': { const id = str('articleId'); helpArticle(master, id, 'ja'); return { targetKey: id, data: { articleId: id } }; }
+      case 'friend': return { targetKey: 'me', data: { friendCode: await fsugProfiles.codeOf(uid) } };
+      case 'invite': return { targetKey: 'me', data: { code: (await inviteSvc.view(uid, null)).code } };
+      case 'cup': { const cupId = str('cupId'); const v = await cupsSvc.get(uid, cupId); if (!v.code) throw new AppError('NOT_FOUND'); return { targetKey: cupId, data: { cupId, code: v.code }, endsAt: v.closesAt }; }
+      case 'replay': { const raceId = str('raceId'); const v = await myReplaysSvc.view(uid) as unknown as { saved: { raceId: string; public: boolean }[] }; if (!v.saved.some((x) => x.raceId === raceId && x.public)) throw new AppError('NOT_FOUND'); return { targetKey: raceId, data: { raceId } }; }
+      case 'team': { const me = await teamsSvc.me(uid); if (!me.team) throw new AppError('NOT_FOUND'); return { targetKey: me.team.teamId, data: { teamId: me.team.teamId } }; }
+    }
+  },
+  async open(viewer, rec) {
+    const d = rec.data;
+    switch (rec.type) {
+      case 'room': return linkRooms.isOpen(d.passphrase!, now()) ? { state: 'ok', target: { passphrase: d.passphrase } } : null;
+      case 'help': helpArticle(master, d.articleId!, 'ja'); return { state: 'ok', target: { articleId: d.articleId } };
+      case 'friend': return { state: 'ok', target: { friendCode: d.friendCode, displayName: (await svc.linkParty(rec.ownerId)).displayName, self: viewer === rec.ownerId } };
+      case 'invite': return { state: 'ok', target: { code: d.code } };
+      case 'cup': return { state: 'ok', target: { code: d.code, preview: await cupsSvc.lookup(viewer, d.code!) } };
+      case 'replay': return viewer === rec.ownerId || (await svc.friendsState(viewer)).ids.includes(rec.ownerId) ? { state: 'ok', target: { ownerId: rec.ownerId, raceId: d.raceId, replayTitle: null } } : { state: 'friends_only' };
+      case 'team': { const v = await teamsSvc.view(d.teamId!, viewer); return v.disbanded ? null : { state: 'ok', target: { teamId: v.teamId, teamName: v.name } }; }
+    }
+  },
+};
+async function linkFriend() {
+  if (!(await repo.get(LINK_FRIEND))) { await svc.bootstrap(LINK_FRIEND); await svc.setDisplayName(LINK_FRIEND, LINK_FRIEND_NAME); }
+}
 
 async function wrap<T>(f: () => Promise<T> | T): Promise<{ ok: true; value: T } | { ok: false; code: string; message: string; details?: Record<string, unknown> }> {
   try { return { ok: true, value: await f() }; }
@@ -1457,6 +1521,50 @@ export const MuchiLogic = {
     kpi: () => serverKpi.filter((k) => k.name.startsWith('transfer_')),
     audit: () => trfDir.rows.map((r) => ({ ...r })),
     storedRecords: () => JSON.stringify([...trfDir.codes.values()]),
+  },
+  // ---------------------------------------------------------------- round 21: ディープリンク・再戦 (REQ-LINK-*, contracts/protocol.md §63)
+  // What POST/GET/DELETE /v1/links and POST /v1/links/resolve answer, on the real LinkService.
+  links: {
+    create: (type: LinkType, target: Record<string, unknown> = {}) => wrap(() => linkSvc.create(ID, type, target, linkTargets)),
+    resolve: (raw: string) => wrap(() => linkSvc.resolve(ID, raw, { ip: '198.51.100.21', platform: null, version: null }, linkTargets)),
+    list: () => wrap(() => linkSvc.list(ID)),
+    revoke: (token: string) => wrap(() => linkSvc.revoke(ID, token)),
+    parse: (raw: string) => parseLink(raw),
+    format: (token: string) => formatToken(token),
+    screens: () => ({ ...LINK_SCREENS }),
+    /** Demo: a link the friend ミドリカワ sent — `room` (their open friend room), `help`, `friend`, or `expired` (a room link whose room closed). */
+    demoIncoming: (kind: 'room' | 'help' | 'friend' | 'expired') => wrap(async () => {
+      await linkFriend();
+      if (kind === 'help') return (await linkSvc.create(LINK_FRIEND, 'help', { articleId: 'share_links' }, linkTargets)).url;
+      if (kind === 'friend') return (await linkSvc.create(LINK_FRIEND, 'friend', {}, linkTargets)).url;
+      const room = linkRooms.create(LINK_FRIEND, 'entry', now(), cryptoRng);
+      const url = (await linkSvc.create(LINK_FRIEND, 'room', { passphrase: room.passphrase }, linkTargets)).url;
+      if (kind === 'expired') linkRooms.rooms.delete(room.passphrase); // the room closed (started or timed out): the link no longer opens
+      return url;
+    }),
+    /** The local player's own demo room (for the room link on the share sheet). */
+    demoMyRoom: () => { const r = linkRooms.hostedBy(ID) ?? linkRooms.create(ID, 'entry', now(), cryptoRng); if (!linkRooms.isMember(r.passphrase, RM_RACERS[0]![0], now())) linkRooms.join(r.passphrase, RM_RACERS[0]![0], 'entry', now()); return r.passphrase; },
+    /** Joins the friend's room after the confirmation (the link never joins by itself). */
+    joinRoom: (passphrase: string) => wrap(() => { const r = linkRooms.join(passphrase, ID, 'entry', now()); return { passphrase: r.passphrase, members: r.members.map((m) => rmName(m.playerId)) }; }),
+    kpi: () => serverKpi.filter((k) => k.name.startsWith('link_') || k.name === 'rematch'),
+    stored: () => JSON.stringify([...linkDir.links.values()]),
+  },
+  rematch: {
+    /** Demo: a friend-room race just finished (you + three racers). ハヤテ presses 再戦 at once; クロサキ leaves. */
+    demoFinish: () => {
+      rmRace = `r-proto-rm-${Date.now().toString(36)}`;
+      rematches.offer(rmRace, RM_RACERS[0]![0], [ID, ...RM_RACERS.map((x) => x[0])], RM_CONDITIONS, now());
+      rematches.press(rmRace, RM_RACERS[0]![0], 'entry', [], now(), rmRules());
+      rematches.decline(rmRace, RM_RACERS[1]![0], now());
+      return { raceId: rmRace, places: [[ID, 1], ['demo_rm_1', 2], ['demo_rm_3', 3], ['demo_rm_2', 4]].map(([id, place]) => ({ name: rmName(id as string), place, you: id === ID })) };
+    },
+    press: () => wrap(() => { if (rematches.press(rmRace!, ID, 'entry', [], now(), rmRules())) rmSettle(rmRace!); return rmView(rmRace!); }),
+    status: () => wrap(() => { rmSettle(rmRace!); return rmView(rmRace!); }),
+    decline: () => wrap(() => { if (rematches.decline(rmRace!, ID, now())) rmSettle(rmRace!); return rmView(rmRace!); }),
+    /** Demo: ナギサ presses too — everyone still in has pressed, so the window closes at once. */
+    demoOthers: () => wrap(() => { if (rematches.press(rmRace!, RM_RACERS[2]![0], 'entry', [], now(), rmRules())) rmSettle(rmRace!); return rmView(rmRace!); }),
+    /** The new room (members by name, the snapshot conditions). */
+    room: (passphrase: string) => { const r = linkRooms.rooms.get(passphrase); return r ? { passphrase, host: rmName(r.hostId), members: r.members.map((m) => rmName(m.playerId)), conditions: r.conditions ?? null } : null; },
   },
   // ---------------------------------------------------------------- round 16: プレイヤー主催カップ (REQ-CUP-*, contracts/protocol.md §42)
   cups: {

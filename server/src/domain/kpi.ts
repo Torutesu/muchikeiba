@@ -15,6 +15,9 @@ import { NEXT_KINDS, NEXT_SLOTS } from './nextKinds.js';
 import { PRACTICE_ID_RE, PRACTICE_RESTARTS } from './practiceKinds.js';
 import { LNOTIF_KINDS, LNOTIF_PERMISSION_RESULTS } from './lnotifKinds.js';
 
+/** REQ-LINK-021: how a link reached the app (universal / app link, the custom scheme, the Android install referrer, typed). */
+export const DEEP_LINK_ENTRIES = ['universal', 'scheme', 'referrer', 'typed'] as const;
+export const DEEP_LINK_KPI_TYPES = ['room', 'cup', 'replay', 'invite', 'friend', 'team', 'help', 'none'] as const;
 const PRACTICE_TRACK = z.string().regex(/^[a-z0-9_]{1,64}$/);
 const PRACTICE_FIELD = z.number().int().min(2).max(12);
 const PRACTICE_STRENGTH = z.string().regex(PRACTICE_ID_RE);
@@ -227,6 +230,9 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   // handed to the OS share sheet (how many pins and records it showed). Never the other player's id.
   z.object({ name: z.literal('showcase_view'), at: z.number().int(), props: z.object({ source: z.enum(SHOWCASE_SOURCES), relation: z.enum(['self', 'friend', 'other']), neutral: z.boolean() }).strict() }),
   z.object({ name: z.literal('showcase_share'), at: z.number().int(), props: z.object({ pins: z.number().int().min(0).max(3), records: z.number().int().min(0).max(4), horse: z.boolean() }).strict() }),
+  // REQ-LINK-021 (§63.9): a link reached the app — how it arrived and its type once resolved (`none` when it did not open).
+  // Never the token, the target or any id (strict).
+  z.object({ name: z.literal('deep_link_open'), at: z.number().int(), props: z.object({ entry: z.enum(DEEP_LINK_ENTRIES), type: z.enum(DEEP_LINK_KPI_TYPES) }).strict() }),
 ]);
 export type ClientEvent = z.infer<typeof clientEventSchema>;
 
@@ -287,6 +293,7 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'lnotif_permission': return { name: e.name, s1: e.props.result };
     case 'showcase_view': return { name: e.name, s1: e.props.source, s2: e.props.relation, s3: e.props.neutral ? 'neutral' : 'card' };
     case 'showcase_share': return { name: e.name, count: e.props.pins, value: e.props.records, s1: e.props.horse ? 'horse' : 'none' };
+    case 'deep_link_open': return { name: e.name, s1: e.props.entry, s2: e.props.type };
   }
 }
 

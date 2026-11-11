@@ -615,6 +615,23 @@ await shot('diagnostics', 600);
   await shot('transfer-done', 300);
   await show('TransferReplaced'); await waitScreen('transfer-replaced'); await shot('transfer-replaced', 400);
   assert.match(await page.locator('.screen.in').innerText(), /Moved to another device/);
+  // round 21: ディープリンク・再戦 in English (REQ-LINK-024): the links hub, the share sheet, 「リンクを開く」 with a notice, the
+  // confirmation, the friend-room result with 再戦 waiting and opened, the new room
+  await show('Links'); await waitScreen('links', 30000); await page.waitForTimeout(300);
+  await page.locator('.screen.in [data-lk-share="room"]').click(); await page.waitForSelector('.screen.in .lk-sheet', { timeout: 10000 });
+  await shot('link-share-sheet', 300);
+  assert.match(await page.locator('.screen.in .lk-sheet').innerText(), /Join my friend room in Muchi Issen/, 'links: the share text in English');
+  await page.locator('.screen.in .lk-sheet-close').click(); await waitScreen('links'); await shot('links', 300);
+  await show('OpenLink'); await waitScreen('open-link');
+  await page.locator('.screen.in [data-lk-demo="expired"]').click(); await page.waitForTimeout(900);
+  await shot('open-link', 300);
+  assert.match(await page.locator('.screen.in .lk-notice').innerText(), /This link cannot be opened/, 'links: the neutral notice in English');
+  await page.locator('.screen.in [data-lk-demo="room"]').click(); await waitScreen('link-confirm', 10000); await shot('link-confirm', 300);
+  await show('FriendRoomResult'); await waitScreen('friend-room-result'); await shot('friend-room-result', 300);
+  await page.locator('.screen.in .rm-press').click(); await page.waitForTimeout(700); await shot('rematch-waiting', 100);
+  await page.locator('.screen.in .rm-demo-others').click(); await page.waitForTimeout(700); await shot('rematch-opened', 300);
+  assert.match(await page.locator('.screen.in .rm-status').innerText(), /A new room is ready/, 'rematch: the outcome in English');
+  await page.locator('.screen.in .rm-room').click(); await waitScreen('room-lobby'); await shot('room-lobby', 300);
   const misses = await page.evaluate(() => globalThis.__muchi.l10n.misses());
   fs.writeFileSync(path.join(out, 'en-report.json'), JSON.stringify({ report, misses }, null, 2));
   await ctx.close();

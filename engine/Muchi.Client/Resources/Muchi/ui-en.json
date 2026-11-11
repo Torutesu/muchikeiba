@@ -1418,6 +1418,25 @@
   "ピン留めはこれ以上できません": "You can't pin any more",
   "コースはこれ以上選べません": "You can't pick any more courses",
   "13歳未満のため、馬の名前などはカードに出ません": "Because you're under 13, names such as horse names don't appear on your card",
-  "トレーナーカードはオンラインで編集できます": "Trainer cards can be edited online"
+  "トレーナーカードはオンラインで編集できます": "Trainer cards can be edited online",
+  "_links": "---- ディープリンク・再戦 (DeepLinkModel / RematchModel, §63)",
+  "このリンクは開けません": "This link cannot be opened",
+  "このリプレイはフレンドだけが見られます": "Only friends can watch this replay",
+  "メンテナンス中です。終わってからもう一度開いてください": "Under maintenance. Open the link again when it is over",
+  "このリンクを開くにはアプリの更新が必要です": "Update the app to open this link",
+  "しばらくしてからお試しください": "Please try again later",
+  "チュートリアルの後で開きます": "Opens after the tutorial",
+  "リンクの形が正しくありません": "This is not a link",
+  "今日はこれ以上リンクを作れません": "You cannot make more links today",
+  "共有できるものがありません": "There is nothing to share",
+  "待っています": "Waiting",
+  "再戦 »": "Rematch »",
+  "再戦を待っています（{a}/{b}人・あと{n}秒）": "Waiting for a rematch ({a}/{b} players, {n} s left)",
+  "新しい部屋ができました": "A new room is ready",
+  "人数がそろわず、再戦は開きませんでした": "Not enough players; the rematch did not open",
+  "再戦の受付は終わりました": "The rematch is closed",
+  "この再戦には入れませんでした": "You are not in this rematch",
+  "今は再戦できません": "You cannot rematch right now",
+  "通信できませんでした": "Could not connect"
  }
 }

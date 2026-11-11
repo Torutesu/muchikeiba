@@ -14,6 +14,8 @@ import type { RaceEntry } from '../http/app.js';
 import { assignmentsFor, createRace, rankedMatchRules, type Assignment, type CreatedRace } from '../race/orchestrate.js';
 import { liveRaceOf, LIVE_RACE_TTL_MS, type LiveRace } from '../domain/spectate.js';
 import { wrap, type Envelope } from './rpc.js';
+import { Rematches, type RematchOffer, type RematchRules } from '../domain/rematch.js';
+import { linksConfig } from '../domain/deepLinks.js';
 import type { RaceRoomDO } from './raceRoom.js';
 
 const ASSIGNMENT_TTL_MS = 10 * 60_000;
@@ -47,6 +49,8 @@ export class MatchmakerDO extends DurableObject<Env> {
   private events = new EventPools<RaceEntry>();
   /** REQ-SPEC-001: races that can be watched right now (friend rooms, ranked, events, tournament heats). */
   private live = new Map<string, LiveRace>();
+  /** REQ-LINK-014..017: rematch offers of friend-room races (one instance: presses are processed one after the other). */
+  private rematches = new Rematches<RaceEntry>();
   /** Rows as last written, so persist() writes only what changed. */
   private persisted: RowMap = new Map();
 
@@ -76,6 +80,7 @@ export class MatchmakerDO extends DurableObject<Env> {
   private load(rows: RowMap, eventsDefs: Parameters<typeof EventPools.fromJSON>[1]) {
     const queues = new Map<string, QueueEntry<RaceEntry>[]>();
     const rooms: FriendRoom<RaceEntry>[] = [];
+    const offers: RematchOffer<RaceEntry>[] = [];
     for (const [k, v] of rows) {
       const [kind, ...rest] = k.split('|');
       if (kind === 'q') {
@@ -89,6 +94,8 @@ export class MatchmakerDO extends DurableObject<Env> {
         rooms.push(JSON.parse(v) as FriendRoom<RaceEntry>);
       } else if (kind === 'l') {
         this.live.set(rest.join('|'), JSON.parse(v) as LiveRace);
+      } else if (kind === 'm') {
+        offers.push(JSON.parse(v) as RematchOffer<RaceEntry>);
       }
     }
     for (const list of queues.values()) list.sort((a, b) => a.enqueuedAt - b.enqueuedAt);
@@ -96,6 +103,7 @@ export class MatchmakerDO extends DurableObject<Env> {
     queues.delete(RANKED_POOL);
     this.events = EventPools.fromJSON(Object.fromEntries(queues), eventsDefs);
     this.friends = FriendRooms.fromJSON(rooms);
+    this.rematches = Rematches.fromJSON(offers);
   }
 
   /** Current state as rows (pending placeholders are in-memory only: they guard the await gap). */
@@ -106,6 +114,7 @@ export class MatchmakerDO extends DurableObject<Env> {
     for (const [pid, a] of this.assignments) if (!isPendingAssignment(a)) m.set(`a|${pid}`, JSON.stringify(a));
     for (const r of this.friends.toJSON()) m.set(`r|${r.passphrase}`, JSON.stringify(r));
     for (const [raceId, l] of this.live) m.set(`l|${raceId}`, JSON.stringify(l));
+    for (const o of this.rematches.toJSON()) m.set(`m|${o.raceId}`, JSON.stringify(o));
     return m;
   }
 
@@ -284,8 +293,11 @@ export class MatchmakerDO extends DurableObject<Env> {
       try {
         const cfg = await activeConfig(this.env);
         const host = r.members.find((m) => m.playerId === r.hostId)?.payload as { roomPreset?: RoomConditions | null } | undefined;
-        const created = await createRace(cfg.master, { ruleset: cfg.ruleset, mode: 'friend', humans: r.members.map((m) => m.payload), cpuCount: 0, cpuLevel: 3, rng: cryptoRng, now, ticketSecret: this.env.TICKET_SECRET, roomPreset: host?.roomPreset ?? null });
+        // REQ-LINK-015: a rematch room keeps the previous race's conditions; other rooms use the host's preset (as before)
+        const roomPreset = r.conditions !== undefined ? r.conditions : host?.roomPreset ?? null;
+        const created = await createRace(cfg.master, { ruleset: cfg.ruleset, mode: 'friend', humans: r.members.map((m) => m.payload), cpuCount: 0, cpuLevel: 3, rng: cryptoRng, now, ticketSecret: this.env.TICKET_SECRET, roomPreset });
         await this.startRace(created, now);
+        this.rematches.offer(created.config.raceId, r.hostId, members, roomPreset, now); // REQ-LINK-014
         await this.persist();
         return created.assignments[playerId];
       } catch (e) {
@@ -352,6 +364,67 @@ export class MatchmakerDO extends DurableObject<Env> {
     });
   }
 
+  // ---- 再戦 (REQ-LINK-014..019, contracts/protocol.md §63.6) ----
+  private async rematchRules(): Promise<RematchRules> {
+    const c = linksConfig((await activeConfig(this.env)).master);
+    return { windowSec: c.rematchWindowSec, offerMinutes: c.rematchOfferMinutes };
+  }
+
+  /** Settles an offer that is due: a new room with everyone who may go in, or none (fewer than two). Null when not due. */
+  private settleRematch(raceId: string, now: number): { opened: boolean; members: number } | null {
+    const o = this.rematches.offers.get(raceId);
+    if (!o || !this.rematches.due(o, now)) return null;
+    const isFree = (p: string) => { try { this.assertFree(p, now); return true; } catch { return false; } };
+    const plan = this.rematches.plan(raceId, { isFree, mayHost: (p) => this.friends.hostedBy(p) === null });
+    if (!plan) { this.rematches.settle(raceId, now, null); return { opened: false, members: 0 }; }
+    const room = this.friends.createWith(plan.hostId, plan.members.map((m) => ({ playerId: m.playerId, payload: m.entry })), o.conditions, raceId, now, cryptoRng);
+    this.rematches.settle(raceId, now, { passphrase: room.passphrase, hostId: room.hostId, members: room.members.map((m) => m.playerId) });
+    return { opened: true, members: room.members.length };
+  }
+
+  private async rematchWake(now: number) {
+    const at = this.rematches.nextWake();
+    if (at !== null) await this.wakeAt(Math.max(now + 250, at));
+    if (this.friends.rooms.size > 0) await this.wakeAt(now + 10 * 60_000); // prune idle rooms (a rematch room too)
+  }
+
+  async rematchPress(raceId: string, playerId: string, entry: RaceEntry, blocks: string[]): Promise<Envelope<unknown>> {
+    return wrap(async () => {
+      assertMayRace(entry);
+      const now = Date.now();
+      const rules = await this.rematchRules();
+      const settled = this.rematches.press(raceId, playerId, entry, blocks, now, rules) ? this.settleRematch(raceId, now) : null;
+      await this.persist();
+      await this.rematchWake(now);
+      return { view: this.rematches.view(raceId, playerId, now, rules), settled };
+    });
+  }
+
+  async rematchDecline(raceId: string, playerId: string): Promise<Envelope<unknown>> {
+    return wrap(async () => {
+      const now = Date.now();
+      const rules = await this.rematchRules();
+      const settled = this.rematches.decline(raceId, playerId, now) ? this.settleRematch(raceId, now) : null;
+      await this.persist();
+      return { view: this.rematches.view(raceId, playerId, now, rules), settled };
+    });
+  }
+
+  async rematchStatus(raceId: string, playerId: string): Promise<Envelope<unknown>> {
+    return wrap(async () => {
+      const now = Date.now();
+      const rules = await this.rematchRules();
+      const settled = this.settleRematch(raceId, now);
+      if (settled) await this.persist();
+      return { view: this.rematches.view(raceId, playerId, now, rules), settled };
+    });
+  }
+
+  /** REQ-LINK-007: a room link opens only while the room is open. */
+  async friendRoomOpen(passphrase: string): Promise<Envelope<boolean>> {
+    return wrap(() => this.friends.isOpen(passphrase, Date.now()));
+  }
+
   /** Friend room membership (used to authorize invitations, REQ-SOCIAL-005). */
   async friendMember(passphrase: string, playerId: string): Promise<Envelope<boolean>> {
     return wrap(() => this.friends.isMember(passphrase, playerId, Date.now()));
@@ -402,10 +475,17 @@ export class MatchmakerDO extends DurableObject<Env> {
     }
     for (const [k, a] of this.assignments) if (!isPendingAssignment(a) && now - a.at > ASSIGNMENT_TTL_MS) this.assignments.delete(k);
     this.friends.prune(now);
+    // REQ-LINK-017: rematch windows that ended while nobody asked are settled here
+    const rules = await this.rematchRules();
+    for (const id of this.rematches.dueIds(now)) this.settleRematch(id, now);
+    this.rematches.prune(now, rules);
     for (const [k, l] of this.live) if (now - l.startAtMs >= LIVE_RACE_TTL_MS) this.live.delete(k);
     await this.persist();
     if (this.core.size > 0 || this.events.size > 0) await this.ctx.storage.setAlarm(now + TICK_MS);
     else if (this.friends.rooms.size > 0) await this.ctx.storage.setAlarm(now + 10 * 60_000); // prune idle rooms
     else if (this.live.size > 0) await this.ctx.storage.setAlarm(now + LIVE_RACE_TTL_MS); // prune finished races
+    const wake = this.rematches.nextWake();
+    if (wake !== null) await this.wakeAt(Math.max(now + 250, wake));
+    else if (this.rematches.offers.size > 0) await this.wakeAt(now + rules.offerMinutes * 60_000); // prune old offers
   }
 }

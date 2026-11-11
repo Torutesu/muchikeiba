@@ -98,7 +98,7 @@ import {
 } from './history.js';
 import { buildSupportTicket } from '../ops/support.js';
 import { reportOptions, reportSnapshotOf, takeReportAllowance, type ReportCategory, type ReportContent, type ReportSource } from './reports.js';
-import { blockIds, isBlocking, setBlocked, type BlockOrigin } from './blocks.js';
+import { blockIds, blockListOf, isBlocking, setBlocked, type BlockOrigin } from './blocks.js';
 import { raceAdviceFor, type AdviceQuery } from './raceAdviceService.js';
 import { practiceCatalog } from './practice.js';
 import { dismissNextAction, nextActionsView, noteFeatures, type TeamGoalBrief } from './nextAction.js';
@@ -1527,6 +1527,28 @@ export class PlayerService {
     const s = await this.repo.get(id);
     const t = s?.transfer;
     return { exists: s !== null, code: t?.code ? { codeId: formatCodeId(t.code.id), mode: t.code.mode, issuedAt: t.code.issuedAt, expiresAt: t.code.expiresAt } : null, cutoffAt: t?.cutoffAt ?? null, lastRedeemedAt: t?.lastRedeemedAt ?? null, history: t?.history ?? [] };
+  }
+
+  // ---- ディープリンク・再戦: per-player steps, orchestrated by LinkService / the HTTP layer (REQ-LINK-*, contracts/protocol.md §63) ----
+  /** REQ-LINK-006: ban / deletion / block list of an owner or viewer (read only; a never-stored or wiped account does not exist). */
+  async linkParty(id: string) {
+    const s = await this.repo.get(id);
+    if (!s) return { exists: false, banned: false, deleting: false, blocks: [] as string[], displayName: '' };
+    return { exists: true, banned: moderationOf(s, this.d.clock()) === 'banned', deleting: deletionScheduled(s), blocks: blockListOf(s), displayName: s.profile.displayName };
+  }
+  /** REQ-LINK-003: banned → BANNED, deletion scheduled → DELETION_PENDING (read only). */
+  async linkCheckCreate(id: string) {
+    const s = await this.load(id);
+    if (moderationOf(s, this.d.clock()) === 'banned') throw new AppError('BANNED', 'links are disabled for this account');
+    if (deletionScheduled(s)) throw new AppError('DELETION_PENDING', 'the account is scheduled for deletion');
+    return { ok: true as const };
+  }
+  /** REQ-LINK-021: one KPI row (the type / outcome categories only — never a token, a target or an id). */
+  linkNote(id: string, name: 'link_create' | 'link_resolve' | 'link_revoke' | 'rematch', s1: string, s2?: string, count?: number) {
+    return this.tx(id, null, (_s, _now, emit) => {
+      emit({ name, s1, ...(s2 !== undefined ? { s2 } : {}), ...(count !== undefined ? { count } : {}) });
+      return { ok: true as const };
+    });
   }
 
   // ---- friend invite codes: per-player steps, orchestrated by InviteService (REQ-INV-*) ----

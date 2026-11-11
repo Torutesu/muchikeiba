@@ -1442,3 +1442,36 @@ GROUP BY background ORDER BY saves DESC
 ```
 
 - `showcase_share` ÷ `showcase_view`（`relation = self`）が共有の割合。共有は何も配らない（報酬なし）。
+
+## ディープリンク・再戦：作った・開いた・開けなかった・再戦（REQ-LINK-021、contracts/protocol.md §63.9、Round 21）
+
+**リンクで人が来ているか、開けないリンクが多くないか、再戦が使われているか**。サーバーのイベント：`link_create`（作った人、`blob8` = 種類 `room`・`cup`・`replay`・`invite`・`friend`・`team`・`help`、`blob9` = `new` / `existing`）、`link_resolve`（開いた人、`blob8` = 種類（開けなかった時は `none`）、`blob9` = `ok`・`unavailable`・`friends_only`・`maintenance`・`update_required`）、`link_revoke`（`blob8` = 種類）、`rematch`（`blob8` = `press`・`decline`・`opened`・`too_few`、`double5` = 部屋の人数。`opened`／`too_few` は窓を締めた要求の人に1行）。クライアントのイベント：`deep_link_open`（`blob8` = 入口 `universal`・`scheme`・`referrer`・`typed`、`blob9` = 種類か `none`）。**トークン・行き先・プレイヤー ID は入れていない**。
+
+```sql
+-- 種類ごとの、作ったリンクと開いた結果（30日）
+SELECT blob1 AS event, blob8 AS kind, blob9 AS outcome, sum(_sample_interval) AS n
+FROM muchi_kpi
+WHERE blob1 IN ('link_create', 'link_resolve', 'link_revoke') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY event, kind, outcome ORDER BY event, n DESC
+```
+
+```sql
+-- アプリへの入口（あとから開く＝referrer / typed がどれだけあるか）
+SELECT blob8 AS entry, blob9 AS kind, sum(_sample_interval) AS n
+FROM muchi_kpi
+WHERE blob1 = 'deep_link_open' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY entry, kind ORDER BY n DESC
+```
+
+```sql
+-- 再戦：押した・やめた・開いた（部屋の平均の人数）・人数不足
+SELECT blob8 AS step, sum(_sample_interval) AS n, sum(double5 * _sample_interval) / sum(_sample_interval) AS avg_members
+FROM muchi_kpi
+WHERE blob1 = 'rematch' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY step ORDER BY n DESC
+```
+
+- **`unavailable` が急に増えた**：総当たりか、期限の短い部屋のリンクが遅れて開かれている。`link_resolve` の `none` を IP の制限（`429 RATE_LIMITED`、KPI には出ない）と合わせて見る。部屋のリンクの期限は `progression.links.roomMinutes`。
+- **`update_required` が多い**：`minClientVersion` を上げすぎ。ストアの審査が終わる前に上げていないか。
+- **`referrer` が少なく `typed` が多い**：iOS の人がコードを入れている（期待どおり）。Android で `referrer` が 0 なら、案内のページの Google Play の URL（`storeUrl`）を確かめる。
+- **再戦の `too_few` が `opened` より多い**：窓が短い。`rematchWindowSec` を延ばす（最大120秒）。

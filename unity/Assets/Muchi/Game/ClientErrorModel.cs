@@ -92,6 +92,13 @@ namespace Muchi.Game
         /// <summary>Reports the client's failed API calls (ApiClient.RequestFailed; business answers are skipped).</summary>
         public void Attach(ApiClient api) => Reporter.AttachTo(api, _clock);
 
+        /// <summary>R20 integration (§58.10): the player id goes with a report only while the §58 analytics choice is effective.</summary>
+        public void FollowConsent(ConsentModel consent)
+        {
+            if (consent == null) throw new ArgumentNullException(nameof(consent));
+            Reporter.FollowConsent(() => consent.State);
+        }
+
         /// <summary>Reports the room's desync messages for an online race (race id and tick; never inputs).</summary>
         public void WatchRace(LockstepClient race, string mode) => Reporter.WatchRace(race, mode, _clock);
 

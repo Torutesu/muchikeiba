@@ -93,6 +93,14 @@ namespace Muchi.Client
         /// </summary>
         public bool AllowsClientEvent(string name) => OptionalAnalytics;
 
+        /// <summary>
+        /// R20 integration (§58.10 × §60.6): the diagnostics consent of the error reporter is the <b>analytics</b> choice — a
+        /// report may carry the player id only while analytics is effective (a minor without a guardian's consent, an EEA
+        /// default or a withdrawn choice → anonymous reports). The reports themselves are always sent (no personal data).
+        /// The server applies the same rule (POST /v1/client-errors), so an old app cannot attach the id either.
+        /// </summary>
+        public bool AllowsDiagnostics => Analytics.Effective && OptionalAnalytics;
+
         public static ConsentState Parse(JsonNode o)
         {
             var s = new ConsentState();

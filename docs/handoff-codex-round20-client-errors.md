@@ -17,8 +17,8 @@ var reporter = new ErrorReporter(api, new ClientErrorOptions
     OsVersion = ShortOs(SystemInfo.operatingSystem), // e.g. "iOS 18.1" / "Android 14 (API 34)"; keep it short
     // InstallId: leave null — the reporter makes a random id and keeps it in the store. NEVER use SystemInfo.deviceUniqueIdentifier or an ad id.
 }, store, NowMs());
-reporter.AllowsDiagnostics = () => true; // §58 consent hook: when §58 lands, return its "diagnostics" consent here (default true)
 var errors = new ClientErrorModel(reporter, NowMs);
+errors.FollowConsent(consentModel);      // R20 integration (§58.10): the player id only while the §58 analytics choice is effective
 errors.Attach(api);                       // ApiClient.RequestFailed → api items (business answers and its own endpoint are skipped)
 ```
 

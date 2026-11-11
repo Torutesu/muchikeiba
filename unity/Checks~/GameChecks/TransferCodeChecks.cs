@@ -5,7 +5,7 @@ using Muchi.Game;
 
 static class TransferCodeChecks
 {
-    sealed class FakeApi : ITransferCodeApi
+    internal sealed class FakeApi : ITransferCodeApi
     {
         public readonly List<string> Calls = new List<string>();
         public readonly List<string> Keys = new List<string>();

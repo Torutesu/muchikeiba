@@ -1263,6 +1263,7 @@
 - REQ-CNS-018 文言：日本語・英語（`l10n:missing` 0）。ATT の事前の画面は理由（広告を出すため・断っても遊べる・あとで変えられる）を書き、煽らない・報酬で釣らない（Apple の指針）。
 - REQ-CNS-019 プロトタイプ：事前の画面のシートと設定 › プライバシーの「広告と分析」（ムチ一閃のトーン、日本語・英語、文字の大きさ §41）。e2e・en-flow・a11y-flow。
 - REQ-CNS-020 法務：`docs/planning/03-legal-risk.md` に方針（個人情報保護法・電気通信事業法の外部送信・GDPR／ePrivacy・Apple ATT）と弁護士の確認事項。
+- REQ-CNS-021 R20 統合：お願いの画面（§58 の事前の画面・§61 の通知の前置き・§59 のレビュー依頼）は1セッションに1つ、重なる時は 同意 → 通知 → レビュー の順（`SessionPromptGate`、プロトタイプ `sessionPrompt`、テスト）。エラー報告の同意は分析の選択（§58.10）。アカウントが変わったら（§54）ローカル通知を取り消し、エラー報告の溜まった分を ID なしにし、レビューのセッションとこの規則を最初に戻す（`AccountChangeReset`）。protocol §58.10・§58.11。
 
 ## 59. レビュー依頼のタイミング（in-app store review prompt、TS＋C#、`src/domain/reviewPrompt.ts`・`progression.reviewPrompt`・`Muchi.Client/ReviewPrompt.cs`・`Muchi.Game.ReviewPromptModel`、`contracts/protocol.md` §59、docs/planning/03「レビュー依頼」）
 拘束条件：レビューには何も配らない（Apple 5.6.1・Google Play のポリシー。E 番号なし）。OS の標準のアプリ内レビュー API だけを使い、独自の★の画面を作らない。負け・購入・エラー・返金・メンテナンスのお知らせの直後と FTUE の途中には頼まない。1セッションに1回まで。
@@ -1297,7 +1298,7 @@
 - REQ-CERR-010 保存：指紋ごとの集計（数・推定の数・最初と最後・版・プラットフォーム）、日 × 版 × プラットフォームの数、指紋ごとに新しい見本 `samplesPerGroup` 件。
 - REQ-CERR-011 上限：指紋の行は `maxGroups` まで、超えた分は種類ごとの `overflow:<category>` に足す。
 - REQ-CERR-012 保存期間：`retentionDays` を過ぎた日の行・見本・指紋を受け付けるたびに少しずつ消す。重複の記録は 48 時間、回数の記録は 1 時間。
-- REQ-CERR-013 同意のフック：`ErrorReporter.AllowsDiagnostics`（既定 true）が false なら `attachPlayer: false`、サーバーは playerId を残さない。§58 が入ったらその同意につなぐ。
+- REQ-CERR-013 同意のフック：`ErrorReporter.AllowsDiagnostics`（既定 true）が false なら `attachPlayer: false`、サーバーは playerId を残さない。R20 統合：フックは §58 の分析の選択（`ConsentState.AllowsDiagnostics` = `analytics.effective`、`ErrorReporter.FollowConsent`）。サーバーも認証された束でプレイヤーの `analytics.effective` を確かめ、true でなければ playerId を残さない（読めない時も）。アカウントが変わった時（§54 の `SESSION_REPLACED`・引き継ぎ）は `ErrorReporter.AccountChanged()` で、それまでの項目を ID なしで送る（protocol §58.10・§60.6）。
 - REQ-CERR-014 運営の一覧 `GET /v1/admin/client-errors`（viewer）：種類・プラットフォーム・版で絞り、数・最後・最初の順に並べる。直近の通知と種類ごとの合計。
 - REQ-CERR-015 運営の詳細 `GET /v1/admin/client-errors/:fingerprint`（viewer）：直近 14 日の数と見本。
 - REQ-CERR-016 ズレの見本はレースのリプレイ（`/v1/admin/replays/<raceId>`）と、playerId がある時は検証の結果（不正対策の記録）につながる。

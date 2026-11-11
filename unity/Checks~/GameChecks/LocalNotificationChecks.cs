@@ -23,7 +23,7 @@ static class LocalNotificationChecks
     }
     sealed class Tokens : IAuthTokenProvider { public Task<string> GetTokenAsync(bool f, CancellationToken ct) => Task.FromResult("tok"); }
 
-    sealed class FakeOs : ILocalNotificationPlatform
+    internal sealed class FakeOs : ILocalNotificationPlatform
     {
         public LocalNotificationPermission Current = LocalNotificationPermission.Unknown;
         public LocalNotificationPermission Answer = LocalNotificationPermission.Granted;
@@ -41,7 +41,7 @@ static class LocalNotificationChecks
     const long NextDay = 1796756400000L; // 2026-12-09 04:00 JST
     const long WeekEnd = 1797188400000L; // 2026-12-14 04:00 JST
 
-    static string Digest(bool reminders, string session, bool deleting = false, bool trainedEver = false) =>
+    internal static string Digest(bool reminders, string session, bool deleting = false, bool trainedEver = false) =>
         "{\"v\":1,\"enabled\":true,\"now\":" + Now + ",\"nextDayAt\":" + NextDay + ",\"nextDay\":\"2026-12-09\",\"config\":{\"kinds\":[\"training_session\",\"gift_expiring\",\"exchange_closing\",\"weekly_challenge_closing\",\"rival_week_closing\",\"daily_bonus\"],"
         + "\"dailyCap\":2,\"dailyHourJst\":12,\"horizonDays\":7,\"maxPending\":8,\"trainingLeadMin\":3,\"leadHours\":{\"weekly_challenge_closing\":24,\"rival_week_closing\":24,\"exchange_closing\":24,\"gift_expiring\":24},\"prePrompt\":{\"maxAsks\":2,\"retryDays\":14}},"
         + "\"categories\":{\"season\":true,\"friends\":true,\"invites\":true,\"events\":true,\"comeback\":false,\"gifts\":true,\"reminders\":" + (reminders ? "true" : "false") + "},\"quietHours\":{\"startHour\":22,\"endHour\":8},"
@@ -49,7 +49,7 @@ static class LocalNotificationChecks
         + "\"training\":" + (session == null ? "{\"sessionId\":null,\"horseId\":null,\"expiresAt\":null,\"trainedEver\":" + (trainedEver ? "true" : "false") + "}" : "{\"sessionId\":\"" + session + "\",\"horseId\":\"h1\",\"expiresAt\":" + (Now + 480000) + ",\"trainedEver\":true}") + ","
         + "\"weeklyChallenge\":{\"unlocked\":true,\"endsAt\":" + WeekEnd + ",\"uncleared\":2},\"rival\":null,\"exchanges\":[],\"gifts\":[" + (Now + 3 * 86400000L) + "]}";
 
-    static string Player(string id, string digest) =>
+    internal static string Player(string id, string digest) =>
         "{\"id\":\"" + id + "\",\"wallet\":{\"paid\":0,\"free\":0,\"total\":0,\"debt\":0},\"season\":{\"id\":\"2026-12\",\"classId\":\"C\",\"points\":0},\"items\":{},"
         + "\"horses\":[{\"id\":\"h1\",\"name\":\"アカツキ\",\"rarity\":\"SR\",\"status\":\"active\"}],\"equipment\":{\"tack\":{},\"decor\":[]},\"deletion\":{\"status\":\"none\"},\"localReminders\":" + digest + "}";
 

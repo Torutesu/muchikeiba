@@ -133,9 +133,14 @@ namespace Muchi.Game
         /// </summary>
         public void OnSessionReplaced()
         {
+            bool first = Screen != MaintenanceScreen.SessionReplaced;
             Screen = MaintenanceScreen.SessionReplaced;
             Info = null; PartialNotice = null; ShowRecommend = false;
+            if (first) SessionReplacedShown?.Invoke(); // R20 integration: AccountChangeReset (reminders, error queue, prompts)
         }
+
+        /// <summary>R20 integration (§54 × §59–§61): raised once when the SESSION_REPLACED screen appears (see AccountChangeReset).</summary>
+        public event Action SessionReplacedShown;
 
         /// <summary>The player started new or redeemed a code on this device: back to the game (a fresh session).</summary>
         public void LeaveSessionReplaced() { if (Screen == MaintenanceScreen.SessionReplaced) Screen = MaintenanceScreen.None; }

@@ -400,6 +400,9 @@ namespace Muchi.Client
     ///  - 429 waits, 400 drops the batch (one bad item cannot block the queue), other failures back off;
     ///  - the server's `enabled: false` stops reporting for this run; its `sampling` is used from then on;
     ///  - <see cref="AllowsDiagnostics"/> (the §58 consent hook, default true) decides `attachPlayer` for each batch;
+    ///    <see cref="FollowConsent"/> binds it to the analytics choice (§58.10);
+    ///  - <see cref="AccountChanged"/> (SESSION_REPLACED, a redeemed transfer code, sign-out): everything recorded so far is
+    ///    sent without a player id, so the old account's errors never land on the new one (§60.6, R20 integration);
     ///  - the reporter never reports its own sending failures (no loop).
     /// </summary>
     public sealed class ErrorReporter
@@ -415,11 +418,39 @@ namespace Muchi.Client
         private long _nextFlushAt, _retryAt;
         private int _failures;
         private string _installId;
+        /// <summary>How many items at the front of the queue were recorded under a previous account (sent with attachPlayer false).</summary>
+        private int _anonQueued;
 
         private sealed class InFlight { public string Id; public bool AttachPlayer; public List<ClientErrorItem> Items; }
 
         /// <summary>The §58 consent hook: false sends `attachPlayer: false` (the server keeps no player id). Default: true.</summary>
         public Func<bool> AllowsDiagnostics { get; set; } = () => true;
+
+        /// <summary>
+        /// R20 integration (§58.10): the consent hook follows the player's analytics choice (<see cref="ConsentState.AllowsDiagnostics"/>),
+        /// read at every batch. No view yet (signed out, first launch) → true: such batches carry no auth, and the server
+        /// checks the choice itself for signed-in ones.
+        /// </summary>
+        public void FollowConsent(Func<ConsentState> state)
+        {
+            if (state == null) throw new ArgumentNullException(nameof(state));
+            AllowsDiagnostics = () => state()?.AllowsDiagnostics ?? true;
+        }
+
+        /// <summary>
+        /// R20 integration (§54 × §60.6): the signed-in account changed on this device (401 SESSION_REPLACED, a redeemed
+        /// transfer code, sign-out / new start). The unanswered batch keeps its id but goes without a player id, and every
+        /// item queued so far is sent in batches of its own without a player id. Kept across restarts.
+        /// </summary>
+        public void AccountChanged()
+        {
+            lock (_gate)
+            {
+                if (_batch != null) _batch.AttachPlayer = false;
+                _anonQueued = _queue.Count;
+                Persist();
+            }
+        }
         public ClientErrorSampling Sampling { get; private set; } = new ClientErrorSampling();
         public bool Enabled { get; private set; } = true;
         public int Sent { get; private set; }
@@ -462,7 +493,7 @@ namespace Muchi.Client
                 else
                 {
                     _queue.Add(item);
-                    if (_queue.Count > _opt.MaxQueue) { _queue.RemoveAt(0); Dropped++; }
+                    if (_queue.Count > _opt.MaxQueue) { _queue.RemoveAt(0); Dropped++; if (_anonQueued > 0) _anonQueued--; }
                 }
                 Persist();
                 return true;
@@ -558,14 +589,19 @@ namespace Muchi.Client
             InFlight b;
             lock (_gate)
             {
-                int stale = _queue.RemoveAll(x => x.AtMs < nowMs - _opt.MaxAgeMs);
+                long cutoff = nowMs - _opt.MaxAgeMs;
+                _anonQueued -= _queue.Take(_anonQueued).Count(x => x.AtMs < cutoff);
+                int stale = _queue.RemoveAll(x => x.AtMs < cutoff);
                 Dropped += stale;
                 if (_batch == null)
                 {
-                    if (_queue.Count == 0) { if (stale > 0) Persist(); return false; }
-                    var items = _queue.GetRange(0, Math.Min(_opt.MaxBatch, _queue.Count));
+                    if (_queue.Count == 0) { _anonQueued = 0; if (stale > 0) Persist(); return false; }
+                    // a previous account's items go first, on their own and without a player id (AccountChanged)
+                    bool anon = _anonQueued > 0;
+                    var items = _queue.GetRange(0, Math.Min(_opt.MaxBatch, anon ? _anonQueued : _queue.Count));
                     _queue.RemoveRange(0, items.Count);
-                    _batch = new InFlight { Id = NewBatchId(), AttachPlayer = SafeAllows(), Items = items };
+                    if (anon) _anonQueued -= items.Count;
+                    _batch = new InFlight { Id = NewBatchId(), AttachPlayer = !anon && SafeAllows(), Items = items };
                 }
                 b = _batch;
                 Persist();
@@ -582,7 +618,7 @@ namespace Muchi.Client
                     if (r.Sampling != null) Sampling = r.Sampling;
                     if (r.FlushIntervalSec > 0) _opt.FlushIntervalMs = r.FlushIntervalSec * 1000L;
                     _nextFlushAt = nowMs + _opt.FlushIntervalMs;
-                    if (!r.Enabled) { Enabled = false; Dropped += _queue.Count; _queue.Clear(); }
+                    if (!r.Enabled) { Enabled = false; Dropped += _queue.Count; _queue.Clear(); _anonQueued = 0; }
                     Persist();
                 }
                 return true;
@@ -650,6 +686,7 @@ namespace Muchi.Client
                 var q = JsonNode.Arr();
                 foreach (var i in _queue) q.Add(i.ToJson());
                 o.Set("queue", q);
+                if (_anonQueued > 0) o.Set("anon", _anonQueued);
                 if (_batch != null)
                 {
                     var b = JsonNode.Obj();
@@ -675,6 +712,7 @@ namespace Muchi.Client
                 var o = JsonNode.Parse(s);
                 _installId = ValidId(J.Str(o, "installId"));
                 foreach (var it in J.List(o, "queue", ClientErrorItem.FromJson)) if (it != null && _queue.Count < _opt.MaxQueue) _queue.Add(it);
+                _anonQueued = Math.Max(0, Math.Min(_queue.Count, J.Int(o, "anon")));
                 var b = J.Opt(o, "batch");
                 var id = J.Str(b, "id");
                 if (b != null && id != null && id.Length >= 8 && id.Length <= 64)
@@ -683,7 +721,7 @@ namespace Muchi.Client
                     if (items.Count > 0) _batch = new InFlight { Id = id, AttachPlayer = J.Bool(b, "attachPlayer", true), Items = items };
                 }
             }
-            catch (Exception e) { LastStorageError = e; _queue.Clear(); _batch = null; }
+            catch (Exception e) { LastStorageError = e; _queue.Clear(); _batch = null; _anonQueued = 0; }
         }
     }
 

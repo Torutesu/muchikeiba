@@ -21,7 +21,7 @@ static class ReviewPromptChecks
         }
     }
     sealed class Tokens : IAuthTokenProvider { public Task<string> GetTokenAsync(bool f, CancellationToken ct) => Task.FromResult("tok"); }
-    sealed class FakeStore : IStoreReview
+    internal sealed class FakeStore : IStoreReview
     {
         public bool Available { get; set; } = true;
         public string Platform => "ios";
@@ -31,7 +31,7 @@ static class ReviewPromptChecks
 
     const long Now = 1796698800000L;
     const string Player = "{\"id\":\"g\",\"wallet\":{\"paid\":0,\"free\":0,\"total\":0,\"debt\":0},\"season\":{\"id\":\"2026-12\",\"classId\":\"C\",\"points\":0},\"items\":{},\"horses\":[],\"equipment\":{\"tack\":{},\"decor\":[]},\"deletion\":{\"status\":\"none\"}}";
-    static string Status(bool soft) => "{\"v\":1,\"rules\":{\"enabled\":true,\"moments\":[\"first_win\",\"first_tournament_win\",\"hall_induction\",\"horse_goal_chain\"],\"minDaysSinceInstall\":3,\"minRacesPlayed\":10,\"maxPerYear\":3,\"coolDownDays\":120," +
+    internal static string Status(bool soft) => "{\"v\":1,\"rules\":{\"enabled\":true,\"moments\":[\"first_win\",\"first_tournament_win\",\"hall_induction\",\"horse_goal_chain\"],\"minDaysSinceInstall\":3,\"minRacesPlayed\":10,\"maxPerYear\":3,\"coolDownDays\":120," +
         "\"quietMinutes\":{\"loss\":30,\"purchase\":1440,\"refund\":43200,\"error\":30,\"maintenanceNotice\":60},\"softAsk\":{\"ios\":" + (soft ? "true" : "false") + ",\"android\":false}},\"history\":{\"count365\":0,\"lastAt\":null}," +
         "\"serverSummary\":{\"installedAt\":1790000000000,\"racesPlayed\":20,\"inFtue\":false,\"accountClosing\":false,\"maintenanceVisible\":false,\"coinDebt\":false,\"minutesSincePurchase\":null,\"minutesSinceRefund\":null,\"lastSessionId\":null,\"history\":[]}}";
 

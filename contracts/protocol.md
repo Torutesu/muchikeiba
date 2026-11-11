@@ -3489,6 +3489,20 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
 - `Muchi.Client`：`ConsentState`（ビューの読み取り・`AllowsClientEvent(name)`・`AdRequestConfig`）、`IConsentPlatform`（`AttStatus`・`RequestAttAsync`・`GatherCmpAsync`・`PrivacyOptionsRequired`・`ShowPrivacyOptionsAsync`・`OpenAppSettings`）、`ApiClient.GetPrivacyChoicesAsync`・`SetPrivacyChoicesAsync`・`ReportPrivacyPlatformAsync`・`NotePrivacyPromptShownAsync`、`AnalyticsClient.Gate`（同意の無い時に任意のイベントを端末で捨てる。サーバーも捨てる）。
 - `Muchi.Game.ConsentModel`：事前の画面を出すかどうか（FTUE・広告の直前・ホーム）、ATT・CMP の流れ、設定の行、`IAdConsent` の実装（§21 の `RewardedAdModel` に渡す）。
 
+### 58.10 クライアントのエラー報告（§60）との関係（R20 統合）
+- §60 のエラー報告の「診断データの同意」（`ErrorReporter.AllowsDiagnostics`）は **分析（`analytics`）の選択**で決める（パーソナライズ広告ではない）。分析が効いている（`analytics.effective`）時だけ、エラーの見本にプレイヤー ID を付ける。子ども（保護者の同意なし）・EEA の既定・オフにした人の報告は匿名で届く。報告そのもの（個人情報を落とした種類・版・機種）は分析をオフにしても送る（不具合の修正は運営の正当な目的で、ID の無い報告は個人データにならない。§60.3）。
+- 端末：`ErrorReporter.FollowConsent(() => ConsentState)`、Unity は `ClientErrorModel.FollowConsent(ConsentModel)`。`ConsentState.AllowsDiagnostics` = `analytics.effective && kpi.optional`。ビューがまだ無い時は true（その束は認証が無いか、サーバーが判定する）。
+- サーバー：`POST /v1/client-errors` は認証された束でもプレイヤーの `analytics.effective` を確かめ、true でなければ playerId を残さない（§60.6）。
+- 設定の画面では「プライバシー」の中に「広告と分析」と「エラーの自動送信」を並べ、エラーの自動送信の画面は「プレイヤーIDを添えるかは『分析への協力』に従います」と案内する。
+
+### 58.11 事前の画面は1セッションに1つ（§59・§61 との関係、R20 統合）
+- **1セッション（アプリの起動から終了まで、またはアカウントが変わるまで）に出す「お願いの画面」は1つだけ**：§58 の事前の画面（続く ATT・CMP を含む）、§61.4 の通知の前置き（続く OS の通知の許可を含む）、§59 のレビュー依頼（前置きの質問・OS のシート）。最初に出たものがそのセッションを取り、ほかは次のセッションに回る（それぞれの規則で「まだ出していない」ままなので、失われない）。
+- **同じ時に2つ以上が出せる時の順**：① 同意（§58。パーソナライズ広告・分析を使う前に決めてもらう）→ ② 通知の前置き（§61。調教の直後に役に立つ）→ ③ レビュー（§59。お願いだけ）。どれも FTUE の間は出さない（それぞれの規則）。だから ATT・同意の画面と通知の画面が続けて出ることは無く、レビューがそのどちらかのすぐ後に出ることも無い。
+- 同意の事前の画面がこの規則で出せなかった時、最初の広告は今の効いている値（まだ選んでいなければ非パーソナライズ）で出る。報酬は同じ（58.6）。
+- 端末：Unity は `SessionPromptGate`（`ConsentModel.Prompts`・`LocalNotificationModel.Prompts`・`ReviewPromptModel.Prompts` に同じものを渡す）、プロトタイプは `sessionPrompt`。サーバーには状態を足さない（セッションは端末のもの）。
+- **アカウントが変わった時（§54）**：`SESSION_REPLACED`・引き継ぎコードの入力で `AccountChangeReset` がローカル通知を全部取り消し（§61.5）、エラー報告の溜まった分を ID なしにし（§60.6）、レビューのセッション（id と「このセッションで頼んだ」）を新しくし、この1つの規則を最初に戻す。
+- **`reminders`（§61）と同意**：呼び戻しの種類なので既定オフで、前置きで選んだ人だけ（§3.5 の「新しい種類と同意」）。トラッキング・広告には使わず、パーソナライズ広告の選択とは関係しない。`lnotif_*` の KPI は `optional`（分析がオフなら送らない・書かない、58.7）。子どもにも同じ規則（購入・広告への誘いは無い、§61.1）。
+
 ## 59. レビュー依頼のタイミング（in-app store review prompt、REQ-REV-001〜016、`server/src/domain/reviewPrompt.ts`・`progression.reviewPrompt`、C# `ReviewPrompt.cs`（`ReviewPromptPolicy`・`IStoreReview`）・`Muchi.Game.ReviewPromptModel`、共有ベクター `contracts/review-prompt.vectors.json`）
 App Store / Google Play の評価を、**OS の標準のアプリ内レビュー API**（iOS `SKStoreReviewController` / `AppStore.requestReview`、Android Play In-App Review）でだけ頼む。頼むのは**うれしい瞬間**（初勝利・大会の初優勝・殿堂入り・馬の目標の列を全部達成）だけで、負けた直後・購入・エラー・返金・メンテナンスのお知らせの直後・チュートリアル（FTUE）の途中には頼まない。決めるのはデータの規則（`progression.reviewPrompt`、起動時と各リモート設定の版で検証）と**純粋な関数**（`decideReviewPrompt`、C# `ReviewPromptPolicy.Decide`、共有ベクター）。頼んだ記録はサーバーが持つ（新しい状態のキー `reviewPrompt`）ので、入れ直しても繰り返し頼まない。
 
@@ -3571,6 +3585,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 ### 59.5 端末（`IStoreReview`）
 - `IStoreReview.RequestReviewAsync()` が OS の標準 API を呼ぶ（中身は Codex が SDK でつなぐ。iOS は `AppStore.requestReview(in:)`、Android は `ReviewManager.requestReviewFlow` → `launchReviewFlow`）。**結果は「呼んだ」だけ**：OS は出したかどうか・何点かを教えない（教えてもらおうとしない）。呼んだら `native_requested` を送る。
 - `IStoreReview.Available` が false（エディター・未対応の端末）なら check を呼ばない。
+- R20 統合（§58.11）：同じセッションで同意の事前の画面か通知の前置きが出ていたら頼まない（理由 `session_prompt`、check を呼ばない）。アカウントが変わったら（§54）セッションを新しくする（`ReviewPromptModel.ResetSession`）。
 - 標準の API の外で「★を付けてください」の独自の画面は作らない（Apple 5.6.1）。ストアのページへのリンク（設定の「アプリを評価する」）は、プレイヤーが自分で押す時だけ（自動では出さない）。
 - 端末の事前の判断（`ReviewPromptPolicy.Decide`）は GET の規則とサーバーの要約で同じ関数を回し、明らかに頼めない時はサーバーを呼ばない。最後に決めるのはサーバー。
 
@@ -3658,7 +3673,9 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 - `retentionDays`（既定 30）を過ぎた日の行・見本と、最後に見てから過ぎた指紋の行は、受け付けるたびに少しずつ消す。重複の判定は 48 時間、回数の行は 1 時間で消える。
 
 ### 60.6 同意のフック（REQ-CERR-013）
-端末の `ErrorReporter.AllowsDiagnostics`（`Func<bool>`、既定 `true`）が false の時は `attachPlayer: false` で送る（サーバーは playerId を残さない。報告そのものは匿名で届く）。§58（分析の同意）はこのブランチの土台に無いので、§58 が入ったらその「診断データ」の同意をこのフックにつなぐ（既定 true のまま）。`attachPlayer` は束ごとの値で、過去に送った見本は変えない。
+端末の `ErrorReporter.AllowsDiagnostics`（`Func<bool>`、既定 `true`）が false の時は `attachPlayer: false` で送る（サーバーは playerId を残さない。報告そのものは匿名で届く）。`attachPlayer` は束ごとの値で、過去に送った見本は変えない。
+- **R20 統合で決めたこと（§58.10）**：このフックの同意は §58 の **分析（`analytics`）** の選択。端末は `ErrorReporter.FollowConsent(() => ConsentState)` で `ConsentState.AllowsDiagnostics`（= `analytics.effective`）を束ごとに読む。**サーバーも同じ規則を守る**：認証された束で `attachPlayer: true` でも、そのプレイヤーの `analytics.effective` が true でなければ playerId を残さない（`POST /v1/client-errors` が PlayerDO のビューを読む。読めない時も残さない＝閉じる側に倒す）。古いアプリ・選択を変える前に作った束でも id は付かない。報告と回数の制限（端末ごと）はそのまま。
+- **アカウントが変わった時（§54、R20 統合）**：`401 SESSION_REPLACED`・引き継ぎコードの入力・サインアウト（新しく始める）の時、端末は `ErrorReporter.AccountChanged()` を呼ぶ。まだ返事の無い束は同じ id のまま `attachPlayer: false` になり、それまでに溜めた項目は自分たちだけの束で `attachPlayer: false` で送る（再起動しても続く）。古いアカウントのエラーが新しいアカウントの id で残ることは無い。
 
 ### 60.7 運営の画面（ops console、`/v1/admin/client-errors`、REQ-CERR-014〜016）
 - `GET /v1/admin/client-errors?category=&platform=&appVersion=&sort=count|last|new&limit=`（viewer）：`{ groups: [ { fingerprint, category, title, count, estimated, firstSeen, lastSeen, firstVersion, lastVersion, versions: [{ appVersion, count }], platforms: { ios, android, editor }, alert } ], alerts: [ … 直近の通知 ], totals: { groups, byCategory } }`。`sort=count`（既定）は数の多い順、`last` は最後に見た順、`new` は最初に見た順。
@@ -3734,6 +3751,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 - 「お知らせを受け取る」→ `PUT /v1/push/preferences { categories: { reminders: true } }`、OS の許可が `unknown` なら OS のダイアログ（結果を KPI `lnotif_permission`）。「今はしない」→ 何も変えない（KPI `later`）。
 - OS で**拒否**（`denied`）なら OS のダイアログは二度と出さない。設定画面に「端末の設定で通知がオフになっています」と OS の設定を開くボタン。**仮の許可**（iOS provisional）は予約する（通知センターに静かに届く）。
 - 既存のプッシュの前置き（REQ-UXU-015、2戦目の3着以内）で OS が許可済みなら、前置きは `reminders` を選ぶだけ（OS のダイアログは出ない）。
+- R20 統合（§58.11）：同じセッションで §58 の事前の画面（ATT）か §59 のレビューが出ていたら、前置きは出さない（次のセッションの調教の後）。
 
 ### 61.5 予約の付け替え（REQ-LNOTIF-011/012）
 - 端末は前回予約した `id → 指紋`（時刻・文言）を覚え、計画との差だけを取り消し・予約する（`LocalNotificationPlanner.Diff`）。起動・前面に戻った時・調教の開始／仕上げ・ログインボーナス・チャレンジのクリア・ランク戦の後・交換・プレゼントの受け取り・設定の変更で計画し直す（早く仕上げた調教の通知は消える）。

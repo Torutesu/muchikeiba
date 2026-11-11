@@ -22,7 +22,7 @@ static class ConsentChecks
     }
     sealed class Tokens : IAuthTokenProvider { public Task<string> GetTokenAsync(bool f, CancellationToken ct) => Task.FromResult("tok"); }
 
-    sealed class Platform : IConsentPlatform
+    internal sealed class Platform : IConsentPlatform
     {
         public string Os { get; set; } = "ios";
         public AttStatus AttStatus { get; set; } = AttStatus.NotDetermined;
@@ -39,7 +39,7 @@ static class ConsentChecks
     const string Player = "{\"id\":\"u1\",\"wallet\":{\"paid\":0,\"free\":0,\"total\":0,\"debt\":0},\"season\":{\"id\":\"2026-11\",\"classId\":\"C\",\"points\":0},\"items\":{},\"horses\":[],\"equipment\":{\"tack\":{},\"decor\":[]},\"deletion\":{\"status\":\"none\"}}";
 
     /// <summary>A tiny copy of the server rules (privacyChoices.ts) good enough to drive the model.</summary>
-    sealed class Rules
+    internal sealed class Rules
     {
         public string Version = "2026-11-01", Decided, Prompt = "ad_offer", ShownVersion, Os, Att, Cmp;
         public bool? Ads, Analytics;

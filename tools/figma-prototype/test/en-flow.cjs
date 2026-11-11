@@ -281,6 +281,18 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await waitScreen('replay-unplayable'); await shot('replay-unplayable', 400);
   await page.evaluate(() => globalThis.__muchi.logic.replays.demoRetired(false));
 
+  // round 18: 馬ごとの目標 in English (REQ-HGOAL-013): the panel on the horse detail, the full chain, the home strip; names as typed
+  {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    const pid = await page.evaluate(async () => { const L = globalThis.__muchi.logic; const v = await L.view(); await L.horseGoals.demoRaces(v.flags.partnerHorseId, [1, 2, 4]); return v.flags.partnerHorseId; });
+    await show('Stable'); await waitIn('.hg-panel'); await shot('stable-goals', 500);
+    await show('HorseGoals', pid); await waitScreen('horse-goals'); await waitIn('.hg-row'); await shot('horse-goals', 500);
+    assert.match(await page.locator('.screen.in').innerText(), /Win a first race/, 'goals: the goal lines in English');
+    await page.evaluate((id) => globalThis.__muchi.logic.horseGoals.pin(id), pid);
+    await show('Home'); await waitScreen('home'); await waitIn('.hg-pin-strip'); await shot('home-goal-pin', 600);
+    await page.evaluate(() => globalThis.__muchi.logic.horseGoals.pin(null));
+  }
+
   // round 16: 厩舎の整理 in English (REQ-ORG-015): the list, the sort and filter sheets, selection, the confirmation; names as typed
   {
     const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
@@ -302,6 +314,37 @@ module.exports = async function enFlow(browser, base, out, errors) {
     assert.match(await page.locator('.screen.in .org-refund').innerText(), /nothing/, 'roster: nothing comes back (English)');
     await page.locator('.screen.in .org-cancel').click(); await waitScreen('roster');
     await page.evaluate(() => localStorage.removeItem('muchi.roster.view'));
+  }
+
+  // round 18: 練習レース in English (REQ-PRAC-018): the setup (a lit course at night, strengths, options), a short race on the
+  // device, the result lines (debrief, advice, no reward) — horse names as typed
+  {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(() => { localStorage.removeItem('muchi.practice.setup'); localStorage.removeItem('muchi.practice.options'); });
+    await show('Practice'); await waitScreen('practice'); await waitIn('.pr-setup');
+    for (let i = 0; i < 8 && !(await page.locator('.screen.in .pr-night').count()); i++) { await page.locator('.screen.in .pr-course-next').click(); await page.waitForTimeout(350); }
+    await page.locator('.screen.in .pr-night').click(); await page.waitForTimeout(350);
+    await page.locator('.screen.in .pr-strength[data-strength="top"]').click(); await page.waitForTimeout(350);
+    await shot('practice-setup', 400);
+    assert.match(await page.locator('.screen.in').innerText(), /No rewards \(practice\)/, 'practice: the no-reward line in English');
+    // the shortest course with 2 runners for the race
+    for (let i = 0; i < 8 && (await page.locator('.screen.in .pr-course').getAttribute('data-track')) !== 'bellmoor_turf_1200'; i++) { await page.locator('.screen.in .pr-course-next').click(); await page.waitForTimeout(300); }
+    for (let i = 0; i < 10; i++) { await page.locator('.screen.in .pr-field-minus').click(); await page.waitForTimeout(120); }
+    await page.locator('.screen.in .pr-start').click(); await waitScreen('race', 20000);
+    let started = false, lastW = 0, raceShot = false;
+    for (let i = 0; i < 6000; i++) {
+      const f = await page.evaluate(() => globalThis.__muchi.state().lastFrame);
+      if (!f) { await page.waitForTimeout(50); continue; }
+      if (f.done || (await page.evaluate(() => globalThis.__muchi.screen)) !== 'race') break;
+      if (!started && f.gateOpen && !f.departed) { await page.locator('.screen.in .btn.whip').click({ force: true }); started = true; }
+      if (f.departed && f.remainingM <= 420 && f.whips > 0 && Date.now() - lastW > 1400) { await page.locator('.screen.in .btn.whip').click({ force: true }); lastW = Date.now(); }
+      if (!raceShot && f.departed && f.remainingM < 700) { raceShot = true; await shot('practice-race', 0); }
+      await page.waitForTimeout(40);
+    }
+    await waitScreen('practice-result', 40000); await waitIn('.pr-result');
+    await shot('practice-result', 500);
+    assert.match(await page.locator('.screen.in .pr-no-reward').innerText(), /No rewards/, 'practice result: no reward (English)');
+    assert.equal(await page.locator('.screen.in [data-label="リプレイを保存"], .screen.in [data-label="リプレイを共有"]').count(), 0, 'practice result: no replay save / share');
   }
 
   // round 11: 図鑑・実績・称号 in English (REQ-COL-*, REQ-ACH-*): a week of play on the real rules, every tab, a detail,
@@ -461,6 +504,27 @@ module.exports = async function enFlow(browser, base, out, errors) {
   assert.match(await page.locator('.screen.in').innerText(), /Update required/, 'update screen in English');
   await show('MaintenanceNotice'); await waitScreen('maintenance-notice'); await shot('maintenance-notice', 600);
   await page.evaluate(() => globalThis.__muchi.logic.maintenanceDemo('off'));
+  // round 18: 支部の定型チャット in English (REQ-QCHAT-013/016): the picker (tabs, phrases, a value), the posted phrase and a
+  // teammate's mention in the feed. Phrases come from the server in English; a cup name stays as typed.
+  await show('QuickChat'); await waitScreen('team-chat', 30000); await shot('quick-chat', 600);
+  assert.equal(await page.locator('.screen.in input, .screen.in textarea, .screen.in [contenteditable]').count(), 0, 'quick chat: no text field');
+  await page.locator('.screen.in .qc-tab[data-cat="invite"]').click(); await waitScreen('team-chat'); await page.waitForTimeout(400);
+  await page.locator('.screen.in .qc-phrase[data-phrase="run_together"]').click(); await page.waitForTimeout(400);
+  await page.locator('.screen.in .qc-opt').nth(1).click(); await page.waitForTimeout(400);
+  await shot('quick-chat-picked', 300);
+  await page.locator('.screen.in .btn.qc-cta').click(); await page.waitForTimeout(800);
+  assert.match(await page.locator('.screen.in .tf-row.qchat.mine').first().innerText(), /Let's race together at/, 'quick chat: my phrase in English');
+  await click('支部員のデモ'); await page.waitForTimeout(800);
+  await shot('quick-chat-feed', 400);
+
+  // round 18 (REQ-DEX-015): プライバシー › データのダウンロード in English — nothing requested, preparing, ready (dates, notes)
+  await show('Privacy'); await waitScreen('privacy'); await page.waitForSelector('.screen.in [data-dex]', { timeout: 15000 }); await shot('privacy', 400);
+  if (await page.locator('.screen.in [data-dex="request"]').count()) {
+    await page.locator('.screen.in [data-dex="request"]').click(); await page.waitForSelector('.screen.in [data-dex="preparing"]', { timeout: 5000 }); await shot('privacy-preparing', 200);
+  }
+  await page.waitForSelector('.screen.in [data-dex="json"]', { timeout: 20000 }); await shot('privacy-ready', 400);
+  assert.match(await page.locator('.screen.in .dex-status').innerText(), /Ready to download/, 'privacy: the status in English');
+
   const misses = await page.evaluate(() => globalThis.__muchi.l10n.misses());
   fs.writeFileSync(path.join(out, 'en-report.json'), JSON.stringify({ report, misses }, null, 2));
   await ctx.close();

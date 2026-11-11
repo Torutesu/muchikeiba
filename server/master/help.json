@@ -230,6 +230,50 @@
       "keywords": { "ja": ["整理", "並び替え", "ロック", "まとめて引退", "絞り込み"], "en": ["organise", "sort", "lock", "retire in bulk", "filter"] },
       "links": [ { "type": "screen", "screen": "stable" } ],
       "related": ["breeding", "training"]
+    },
+    {
+      "id": "data_export", "category": "account",
+      "title": { "ja": "自分のデータのダウンロード", "en": "Downloading your data" },
+      "body": {
+        "ja": "設定の「プライバシー」から、アカウントに保存されているあなたのデータ（プロフィール・設定・馬・コインと購入の履歴・フレンド・お問い合わせ・送った通報など）をまとめてダウンロードできます。\n\n・リクエストは{{export_cooldown_days}}日ごとにできます。準備ができるとお知らせ（アクティビティ）に届きます\n・機械で読める JSON と、人が読める概要（テキスト）の2つのファイルです\n・ダウンロードのリンクは{{export_link_minutes}}分で切れます。リンクを他の人に送らないでください\n・ファイルは{{export_keep_days}}日後に削除されます\n・他のプレイヤーの情報・運営のメモ・処理用の内部記録は含めません\n・アカウント削除の手続き中も、削除が終わるまではダウンロードできます",
+        "en": "Under Privacy in the settings, you can download a copy of the data stored on your account (profile, settings, horses, coin and purchase history, friends, inquiries, reports you sent and more).\n\n• You can request it once every {{export_cooldown_days}} days. You will get a notice in Activity when it is ready\n• There are two files: JSON that machines can read, and a summary you can read as text\n• Download links stop working after {{export_link_minutes}} minutes. Do not send the links to anyone else\n• The files are deleted after {{export_keep_days}} days\n• Other players' information, operator notes and processing records are not included\n• While your account deletion is pending, you can still download your data until the deletion is complete"
+      },
+      "keywords": { "ja": ["データ", "ダウンロード", "開示", "個人情報", "プライバシー"], "en": ["data", "download", "export", "personal data", "privacy"] },
+      "links": [ { "type": "screen", "screen": "privacy" }, { "type": "legal", "doc": "privacy" } ],
+      "related": ["delete_account", "data_transfer"]
+    },
+    {
+      "id": "quick_chat", "category": "getting_started",
+      "title": { "ja": "支部の定型チャット", "en": "Branch quick chat" },
+      "body": {
+        "ja": "支部のフィードの「定型チャット」から、決まった文を選んで仲間に送れます。自由に文字を入力することはできません。\n\n・コース・馬・レースの結果・カップ・仲間の名前など、文の空欄は選べる物の中から選びます\n・送れるのは{{qchat_interval_sec}}秒ごと、一日に{{qchat_per_day}}回までです。同じ文は続けて送れません\n・名前を入れた仲間には、お知らせ（アクティビティ）が届きます\n・ブロックしている人・あなたをブロックしている人の文は見えず、名前にも選べません\n・気になる文は、その行の「通報」から運営に知らせられます",
+        "en": "From Quick chat on your branch feed, you can send your teammates a phrase from a fixed list. There is no free text input.\n\n• Blanks in a phrase (course, horse, race result, cup, a teammate's name) are filled from the choices offered\n• You can send one phrase every {{qchat_interval_sec}} seconds, up to {{qchat_per_day}} a day. The same phrase can't be sent again right away\n• A teammate you name gets a notice in Activity\n• Phrases from players you blocked, or who blocked you, are hidden, and you can't name each other\n• If a phrase bothers you, tell support with Report on that row"
+      },
+      "keywords": { "ja": ["チャット", "定型", "支部", "フィード", "メッセージ"], "en": ["chat", "quick chat", "branch", "feed", "message"] },
+      "links": [ { "type": "screen", "screen": "team_feed" } ],
+      "related": ["first_steps"]
+    },
+    {
+      "id": "practice_races", "category": "races",
+      "title": { "ja": "練習レース", "en": "Practice races" },
+      "body": {
+        "ja": "自分の馬で、好きなコース・距離・馬場・頭数・CPU の強さを選んで、CPU 相手に練習できます。レースは端末の中だけで走るので、オフラインでも遊べます。\n\n・ムチのタイミングが分かる帯と、スロー再生・同じ条件でのやり直しがあります\n・練習では何ももらえず、何も減りません。コイン・アイテム・ミッション・レーティング・戦績・馬の目標は動きません\n・チュートリアルを終えると遊べます",
+        "en": "Practise against CPU horses with your own horse on the course, distance, going, field size and CPU strength you choose. The race runs only on your device, so you can play offline.\n\n• A band shows the whip timing, and you can slow the race down or restart with the same conditions\n• Practice gives and takes nothing: coins, items, missions, rating, career records and horse goals do not change\n• Available after the tutorial"
+      },
+      "keywords": { "ja": ["練習", "れんしゅう", "CPU", "オフライン", "ムチの練習"], "en": ["practice", "practise", "CPU", "offline", "whip practice"] },
+      "links": [ { "type": "screen", "screen": "practice" } ],
+      "related": ["whip", "race_modes"]
+    },
+    {
+      "id": "horse_goals", "category": "horses",
+      "title": { "ja": "馬ごとの目標", "en": "Horse goals" },
+      "body": {
+        "ja": "馬ごとに、初勝利から大会優勝までの短い目標の列があります。目標はその馬の適性（芝・ダート・距離・脚質）から決まり、馬の詳細で見られます。1頭をホームに出して、次の目標を表示することもできます。\n\n・進むのは、確定したランク戦・イベント・大会と、人間2人以上のフレンド戦だけです。主催カップ・練習・週替わりチャレンジでは進みません\n・全部達成するとリボンの印が付きます。印は見た目だけで、能力やレース・報酬には影響しません\n・引退した馬の目標は、達成したまま残ります",
+        "en": "Each horse has a short list of goals, from its first win to a tournament victory. The goals come from the horse's aptitudes (turf or dirt, distance, running style) and are shown in the horse's details. You can pin one horse to the home screen to show its next goal.\n\n• Goals move only with confirmed ranked, event and tournament races, and friend races with two or more players. Hosted cups, practice and weekly challenges do not count\n• Reaching every goal adds a ribbon. The ribbon is for show only and does not affect stats, races or rewards\n• A retired horse keeps the goals it reached"
+      },
+      "keywords": { "ja": ["目標", "もくひょう", "リボン", "ピン留め", "物語"], "en": ["goal", "goals", "ribbon", "pin", "story"] },
+      "links": [ { "type": "screen", "screen": "stable" } ],
+      "related": ["race_modes", "roster_organiser"]
     }
   ],
   "contexts": {
@@ -244,6 +288,7 @@
     "gift_box": "gift_box",
     "account_link": "data_transfer",
     "deletion": "delete_account",
-    "accessibility": "accessibility_settings"
+    "accessibility": "accessibility_settings",
+    "privacy": "data_export"
   }
 }

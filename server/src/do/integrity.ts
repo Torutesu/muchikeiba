@@ -93,11 +93,12 @@ export class SqlIntegrityRepo implements IntegrityRepo {
   markRace(id: string, at: number) { this.sql.exec('INSERT OR IGNORE INTO integrity_races (race_id, at) VALUES (?, ?)', id, at); }
   report(id: string) { const r = this.sql.exec<{ json: string }>('SELECT json FROM race_reports WHERE id = ?', id).toArray()[0]; return r ? (JSON.parse(r.json) as RaceReport) : null; }
   putReport(r: RaceReport) { this.sql.exec('INSERT INTO race_reports (id, race_id, status, at, json) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET status = excluded.status, json = excluded.json', r.id, r.raceId, r.status, r.at, JSON.stringify(r)); }
-  reports(f: { status?: RaceReport['status']; raceId?: string; limit: number }) {
+  reports(f: { status?: RaceReport['status']; raceId?: string; reporterId?: string; limit: number }) {
     const where: string[] = [];
     const args: string[] = [];
     if (f.status) { where.push('status = ?'); args.push(f.status); }
     if (f.raceId) { where.push('race_id = ?'); args.push(f.raceId); }
+    if (f.reporterId) { where.push("json_extract(json, '$.reporterId') = ?"); args.push(f.reporterId); }
     return this.sql.exec<{ json: string }>(`SELECT json FROM race_reports ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY at DESC LIMIT ?`, ...args, f.limit).toArray().map((r) => JSON.parse(r.json) as RaceReport);
   }
 }
@@ -177,6 +178,8 @@ export class IntegrityDO extends DurableObject<Env> {
   }
   report(raceId: string, reporterId: string, now: number) { return wrap(() => this.core.addReport(raceId, reporterId, now)); }
   reports(status: RaceReport['status'] | undefined, limit: number) { return wrap(() => this.core.reports(status, limit)); }
+  /** REQ-DEX-007: the reports a player made (their data export; no resolution notes). */
+  reportsBy(reporterId: string) { return wrap(() => this.core.reportsBy(reporterId)); }
   resolveReport(id: string, resolution: string, by: string, now: number) { return wrap(() => this.core.resolveReport(id, resolution, by, now)); }
   view(playerId: string, now: number) { return wrap(() => this.core.view(playerId, now)); }
   // ---- player reports (REQ-RPT-007/013/014/016, §47.7–47.8) ----
@@ -186,6 +189,8 @@ export class IntegrityDO extends DurableObject<Env> {
   prCheck(id: string, action: ReportAction) { return wrap(() => this.playerReports.assertActionable(id, action)); }
   prResolve(id: string, action: ReportAction, by: string, note: string, now: number) { return wrap(() => this.playerReports.resolve(id, action, by, note, now)); }
   prForget(uid: string) { return wrap(() => this.playerReports.forgetPlayer(uid)); }
+  /** REQ-DEX-007 (Round 18 integration): the §47 reports a player made, for their data export (no target, no decision note). */
+  prMadeBy(uid: string) { return wrap(() => this.playerReports.madeBy(uid)); }
   list(status: ModerationStatus | 'flagged' | undefined, now: number, limit: number) { return wrap(() => this.core.list(status, now, limit)); }
   ban(playerId: string, until: number | null, reason: string, by: string, now: number) {
     return wrap(async () => { const c = this.core.ban(playerId, until, reason, by, now); await this.push([c]); return c; });

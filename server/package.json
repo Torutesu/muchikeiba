@@ -13,6 +13,7 @@
     "gen:client-locale": "tsx scripts/gen-client-locale.ts",
     "gen:advice-vectors": "tsx scripts/gen-advice-vectors.ts",
     "gen:help-vectors": "tsx scripts/gen-help-vectors.ts",
+    "gen:practice-sample": "tsx scripts/gen-practice-sample.ts",
     "lint:deploy": "tsx scripts/lint-deploy.ts",
     "economy": "tsx scripts/economy.ts",
     "smoke": "tsx scripts/smoke.ts",

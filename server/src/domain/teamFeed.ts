@@ -18,6 +18,8 @@ import type { PlayerState } from './player.js';
 import { deletionScheduled } from './accountDeletion.js';
 import { dayRule, gameDayKey } from './time.js';
 import stampsJson from '../../master/stamps.json';
+import { FORMER_MEMBER, findPhrase, isMention, quickChatOf, renderPhrase, slotValue, type QSlot } from './quickChat.js';
+import type { Locale } from '../i18n/locale.js';
 
 export type StampUnlock = { kind: 'default' } | { kind: 'races'; count: number } | { kind: 'pass' } | { kind: 'cosmetic'; itemId: string };
 export interface StampDef { id: string; label: string; unlock: StampUnlock }
@@ -201,18 +203,33 @@ export interface FeedRace { raceId: string; mode: typeof FEED_RACE_MODES[number]
 export interface FeedReaction { playerId: string; stampId: string; at: number }
 /** REQ-TGOAL-008: a milestone of the team's weekly goal (a team item: no author, `playerId` is empty). */
 export interface FeedGoal { week: string; goalId: string; label: string; tier: number; target: number; tiers: number }
+/**
+ * REQ-QCHAT-009: a quick chat post (§52) — the phrase id and the checked slot values, never a text. `anon`: the author
+ * left the branch (REQ-QCHAT-010: shown as 元メンバー; the id stays for the account deletion and reports).
+ */
+export interface FeedQchat { phraseId: string; slots: QSlot[]; anon?: boolean }
+export type FeedKind = 'stamp' | 'race' | 'goal' | 'qchat';
 export interface FeedItem {
-  seq: number; at: number; kind: 'stamp' | 'race' | 'goal';
+  seq: number; at: number; kind: FeedKind;
   playerId: string; displayName: string;
   stampId?: string;
   race?: FeedRace;
   goal?: FeedGoal;
+  qchat?: FeedQchat;
   reactions: FeedReaction[];
   /** Members who reported this item (hidden for them). */
   reportedBy?: string[];
 }
 export interface MemberRate { last: number; day: string; posts: number; reportDay: string; reports: number }
-export interface TeamFeedState { v: 1; seq: number; items: FeedItem[]; rate: Record<string, MemberRate> }
+/** REQ-QCHAT-005: one member's quick chat counters (separate from the stamp limits). `sig` = the last phrase + values. */
+export interface QchatRate { last: number; day: string; posts: number; mentions: number; sig: string; sigAt: number }
+/**
+ * REQ-QCHAT-005/007: quick chat state of the branch — per-member counters and a copy of each member's block list (the
+ * one block list = the §18 mute list, kept on the player), refreshed when the member opens the feed, changes a mute or
+ * posts. Absent on feeds stored before §52.
+ */
+export interface QchatTeamState { rate: Record<string, QchatRate>; blocks: Record<string, string[]> }
+export interface TeamFeedState { v: 1; seq: number; items: FeedItem[]; rate: Record<string, MemberRate>; qchat?: QchatTeamState }
 
 export const newFeed = (): TeamFeedState => ({ v: 1, seq: 0, items: [], rate: {} });
 
@@ -269,6 +286,8 @@ export function feedGoal(m: Master, f: TeamFeedState, goal: FeedGoal, now: numbe
 export function feedReact(m: Master, f: TeamFeedState, seq: number, playerId: string, stampId: string | null, now: number) {
   const cfg = stampsOf(m).config;
   const it = itemOf(f, seq);
+  // REQ-QCHAT-007: a quick chat post of someone in a block relation (either way) is not there for this member
+  if (it.kind === 'qchat' && qchatBlockedBetween(f, it.playerId, playerId)) throw new AppError('NOT_FOUND', 'feed item');
   if (stampId !== null) findStamp(m, stampId);
   const r = rateOf(f, playerId);
   if (now - r.last < Math.min(cfg.postIntervalMs, 2000)) throw new AppError('RATE_LIMITED', 'too fast');
@@ -276,7 +295,7 @@ export function feedReact(m: Master, f: TeamFeedState, seq: number, playerId: st
   it.reactions = it.reactions.filter((x) => x.playerId !== playerId);
   if (stampId !== null) it.reactions.push({ playerId, stampId, at: now });
   r.last = now;
-  return { ownerId: it.playerId, isNew: stampId !== null && !had, kind: it.kind };
+  return { ownerId: it.playerId, isNew: stampId !== null && !had, kind: it.kind, phraseId: it.qchat?.phraseId ?? null };
 }
 
 /** REQ-TEAMFEED-007: report an item (reportsPerDay per member and game day). */
@@ -296,6 +315,28 @@ export function feedReport(m: Master, f: TeamFeedState, seq: number, reporter: s
   return { ownerId: it.playerId, first: true };
 }
 
+/**
+ * Round 18 integration (§47 × §52): the report copy of a quick chat item — the phrase rendered in Japanese (the queue's
+ * language) with each value, as members saw it. Unknown / not a phrase / the reporter's own → NOT_FOUND / BAD_REQUEST.
+ */
+export function qchatReportCopy(m: Master, f: TeamFeedState, seq: number, reporter: string, names: Map<string, string>) {
+  const it = f.items.find((x) => x.seq === seq && x.kind === 'qchat');
+  if (!it?.qchat) throw new AppError('NOT_FOUND', 'no such phrase');
+  if (it.playerId === reporter) throw new AppError('BAD_REQUEST', 'cannot report your own phrase');
+  return {
+    playerId: it.playerId, phraseId: it.qchat.phraseId, at: it.at,
+    text: renderPhrase(m, it.qchat.phraseId, it.qchat.slots, 'ja', names),
+    slots: it.qchat.slots.map((s) => ({ name: s.name, value: slotValue(m, s, 'ja', names) })),
+  };
+}
+/** Round 18 integration (REQ-RPT-013 hide): support removes a reported quick chat phrase from the branch feed. */
+export function qchatOpsHide(f: TeamFeedState, seq: number) {
+  const i = f.items.findIndex((x) => x.seq === seq && x.kind === 'qchat');
+  if (i < 0) return { removed: false, seq };
+  const [it] = f.items.splice(i, 1);
+  return { removed: true, seq, playerId: it!.playerId, phraseId: it!.qchat?.phraseId ?? null };
+}
+
 /** REQ-TEAMFEED-008 × REQ-UXS-040: removes a deleted player's items, reactions, reports and rate entry. */
 export function feedForget(f: TeamFeedState, playerId: string) {
   const before = f.items.length;
@@ -305,14 +346,32 @@ export function feedForget(f: TeamFeedState, playerId: string) {
     if (it.reportedBy) it.reportedBy = it.reportedBy.filter((x) => x !== playerId);
   }
   delete f.rate[playerId];
+  // REQ-QCHAT-010: other members' phrases that named the deleted player show 元メンバー; the block copies forget them
+  for (const it of f.items) for (const sl of it.qchat?.slots ?? []) if (sl.name === 'player' && sl.ref === playerId) sl.ref = '';
+  if (f.qchat) {
+    delete f.qchat.rate[playerId];
+    delete f.qchat.blocks[playerId];
+    for (const k of Object.keys(f.qchat.blocks)) f.qchat.blocks[k] = f.qchat.blocks[k]!.filter((x) => x !== playerId);
+  }
   return { removed: before - f.items.length };
 }
 
+/** REQ-QCHAT-009: a quick chat post as one viewer reads it (texts already in the viewer's language). */
+export interface FeedQchatView {
+  phraseId: string; category: string | null; mention: boolean; mentionsMe: boolean; anon: boolean;
+  /** The phrase in the viewer's language with its slots filled (never translated again at the boundary). */
+  qchatText: string;
+  slots: { name: string; ref: string; qchatValue: string }[];
+  /** The report target (§18 report now; the §47 report centre takes the same descriptor). */
+  report: { kind: 'team_feed'; teamId: string; seq: number };
+}
 export interface FeedItemView {
-  seq: number; at: number; kind: 'stamp' | 'race' | 'goal'; playerId: string; displayName: string; mine: boolean;
+  seq: number; at: number; kind: FeedKind; playerId: string; displayName: string; mine: boolean;
   stampId: string | null; stampAsset: string | null; race: FeedRace | null;
   /** REQ-TGOAL-008: set on `goal` items. */
   goal: FeedGoal | null;
+  /** REQ-QCHAT-009: set on `qchat` items. */
+  qchat: FeedQchatView | null;
   reactions: { stampId: string; count: number; mine: boolean }[];
   myReaction: string | null;
 }
@@ -321,11 +380,14 @@ export interface FeedItemView {
  * REQ-TEAMFEED-005/006: a page of the feed for one viewer, newest first. `before` = seq to page down from (exclusive).
  * Muted members' items and reactions and items the viewer reported are left out. Names follow the member list.
  */
-export function feedPage(m: Master, f: TeamFeedState, viewer: string, muted: string[], names: Map<string, string>, before: number | null, limit: number | null) {
+export function feedPage(m: Master, f: TeamFeedState, viewer: string, muted: string[], names: Map<string, string>, before: number | null, limit: number | null, locale: Locale = 'ja', teamId = '', now: number | null = null) {
   const cfg = stampsOf(m).config;
   const n = Math.max(1, Math.min(cfg.pageMax, limit ?? cfg.pageDefault));
   const mute = new Set(muted);
-  const visible = f.items.filter((x) => (x.kind === 'goal' || !mute.has(x.playerId)) && !(x.reportedBy ?? []).includes(viewer) && (before === null || x.seq < before));
+  const keepAfter = now === null ? -Infinity : now - quickChatOf(m).config.retainDays * DAY_MS;
+  const visible = f.items.filter((x) => (x.kind === 'goal' || !mute.has(x.playerId)) && !(x.reportedBy ?? []).includes(viewer) && (before === null || x.seq < before)
+    // REQ-QCHAT-006/007: quick chat — within the retention, and hidden both ways in a block relation
+    && (x.kind !== 'qchat' || (x.at > keepAfter && !(f.qchat?.blocks[x.playerId] ?? []).includes(viewer))));
   const page = visible.slice(-n).reverse();
   const items: FeedItemView[] = page.map((x) => {
     const reacts = x.reactions.filter((r) => !mute.has(r.playerId));
@@ -337,8 +399,9 @@ export function feedPage(m: Master, f: TeamFeedState, viewer: string, muted: str
       counts.set(r.stampId, c);
     }
     return {
-      seq: x.seq, at: x.at, kind: x.kind, playerId: x.playerId, displayName: names.get(x.playerId) ?? x.displayName, mine: x.playerId !== '' && x.playerId === viewer,
+      ...authorOf(x, viewer, names, locale),
       stampId: x.stampId ?? null, stampAsset: x.stampId ? stampAsset(x.stampId) : null, race: x.race ?? null, goal: x.goal ?? null,
+      qchat: x.qchat ? qchatView(m, x, viewer, names, locale, teamId) : null,
       reactions: [...counts.entries()].map(([stampId, c]) => ({ stampId, ...c })).sort((a, b) => b.count - a.count || (a.stampId < b.stampId ? -1 : 1)),
       myReaction: reacts.find((r) => r.playerId === viewer)?.stampId ?? null,
     };
@@ -346,4 +409,113 @@ export function feedPage(m: Master, f: TeamFeedState, viewer: string, muted: str
   const oldest = page[page.length - 1];
   const more = oldest !== undefined && visible.some((x) => x.seq < oldest.seq);
   return { items, nextBefore: more ? oldest!.seq : null, latestSeq: f.seq };
+}
+
+const DAY_MS = 86_400_000;
+
+/** The author fields of a view item; an anonymized quick chat post has no author to show (REQ-QCHAT-010). */
+function authorOf(x: FeedItem, viewer: string, names: Map<string, string>, locale: Locale) {
+  if (x.qchat?.anon) return { seq: x.seq, at: x.at, kind: x.kind, playerId: '', displayName: FORMER_MEMBER[locale], mine: false };
+  return { seq: x.seq, at: x.at, kind: x.kind, playerId: x.playerId, displayName: names.get(x.playerId) ?? x.displayName, mine: x.playerId !== '' && x.playerId === viewer };
+}
+
+function qchatView(m: Master, x: FeedItem, viewer: string, names: Map<string, string>, locale: Locale, teamId: string): FeedQchatView {
+  const q = x.qchat!;
+  const ph = quickChatOf(m).phrases.find((p) => p.id === q.phraseId);
+  return {
+    phraseId: q.phraseId, category: ph?.category ?? null, mention: ph ? isMention(ph) : false,
+    mentionsMe: q.slots.some((s) => s.name === 'player' && s.ref !== '' && s.ref === viewer), anon: !!q.anon,
+    qchatText: renderPhrase(m, q.phraseId, q.slots, locale, names),
+    slots: q.slots.map((s) => ({ name: s.name, ref: s.name === 'player' && !names.has(s.ref) ? '' : s.ref, qchatValue: slotValue(m, s, locale, names) })),
+    report: { kind: 'team_feed', teamId, seq: x.seq },
+  };
+}
+
+// ------------------------------------------------------------------------------------- quick chat, team side (REQ-QCHAT-*)
+
+export function ensureQchat(f: TeamFeedState): QchatTeamState {
+  f.qchat ??= { rate: {}, blocks: {} };
+  return f.qchat;
+}
+
+/** REQ-QCHAT-007: either member blocked the other (the copies of the one block list). */
+export function qchatBlockedBetween(f: TeamFeedState, a: string, b: string): boolean {
+  const bl = f.qchat?.blocks ?? {};
+  return (bl[a] ?? []).includes(b) || (bl[b] ?? []).includes(a);
+}
+
+/** REQ-QCHAT-007: refresh a member's block copy (bounded by the mute list's own size). */
+export function qchatSetBlocks(m: Master, f: TeamFeedState, playerId: string, muted: string[]) {
+  const cur = f.qchat?.blocks[playerId] ?? [];
+  const next = [...new Set(muted)].slice(0, stampsOf(m).config.muteMax);
+  if (next.length === cur.length && next.every((x, i) => x === cur[i])) return;
+  const q = ensureQchat(f);
+  if (next.length === 0) delete q.blocks[playerId];
+  else q.blocks[playerId] = next;
+}
+
+/** REQ-QCHAT-006: drop quick chat items past the retention (count and age); other kinds are untouched. */
+export function qchatPrune(m: Master, f: TeamFeedState, now: number) {
+  const c = quickChatOf(m).config;
+  const cut = now - c.retainDays * DAY_MS;
+  let q = f.items.filter((x) => x.kind === 'qchat');
+  const drop = new Set(q.filter((x) => x.at <= cut));
+  q = q.filter((x) => !drop.has(x));
+  if (q.length > c.retainMax) for (const x of q.slice(0, q.length - c.retainMax)) drop.add(x);
+  if (drop.size) f.items = f.items.filter((x) => !drop.has(x));
+}
+
+const sigOf = (phraseId: string, slots: QSlot[]) => phraseId + '|' + slots.map((s) => `${s.name}=${s.ref}`).join('&');
+
+/** Today's counters of a member (reset on the game day). */
+function qrateOf(m: Master, f: TeamFeedState, playerId: string, now: number): QchatRate {
+  const q = ensureQchat(f);
+  const r = (q.rate[playerId] ??= { last: 0, day: '', posts: 0, mentions: 0, sig: '', sigAt: 0 });
+  const day = gameDayKey(now, dayRule(m));
+  if (r.day !== day) { r.day = day; r.posts = 0; r.mentions = 0; }
+  return r;
+}
+
+/**
+ * REQ-QCHAT-003/004/005/007: store a member's quick chat post. `slots` were checked on the poster's object; here the
+ * `{player}` slot must be another current member with no block relation either way, then the limits apply. Returns the
+ * stored item and the member it names (for the §40 activity entry).
+ */
+export function qchatPost(m: Master, f: TeamFeedState, member: { playerId: string; displayName: string }, memberIds: Set<string>, phraseId: string, slots: QSlot[], now: number) {
+  const qc = quickChatOf(m);
+  if (!qc.config.enabled) throw new AppError('NOT_FOUND', 'quick chat is not available');
+  const ph = findPhrase(m, phraseId);
+  const target = slots.find((s) => s.name === 'player')?.ref ?? null;
+  if (target !== null) {
+    if (target === member.playerId) throw new AppError('BAD_REQUEST', 'cannot name yourself');
+    if (!memberIds.has(target) || qchatBlockedBetween(f, member.playerId, target)) throw new AppError('NOT_ELIGIBLE', 'this member cannot be named');
+  }
+  const r = qrateOf(m, f, member.playerId, now);
+  const c = qc.config;
+  if (now - r.last < c.postIntervalMs) throw new AppError('RATE_LIMITED', `one phrase per ${Math.round(c.postIntervalMs / 1000)} s`);
+  if (r.posts >= c.postsPerDay) throw new AppError('RATE_LIMITED', `at most ${c.postsPerDay} phrases a day`);
+  const sig = sigOf(ph.id, slots);
+  if (c.repeatWindowMs > 0 && r.sig === sig && now - r.sigAt < c.repeatWindowMs) throw new AppError('RATE_LIMITED', 'the same phrase again: please wait a little');
+  if (isMention(ph) && r.mentions >= c.mentionsPerDay) throw new AppError('RATE_LIMITED', `at most ${c.mentionsPerDay} mentions a day`);
+  r.last = now; r.posts += 1; r.sig = sig; r.sigAt = now;
+  if (isMention(ph)) r.mentions += 1;
+  const item = push(f, stampsOf(m).config, { at: now, kind: 'qchat', playerId: member.playerId, displayName: member.displayName, qchat: { phraseId: ph.id, slots: slots.map((s) => ({ ...s })) }, reactions: [] });
+  qchatPrune(m, f, now);
+  return { item, mention: target };
+}
+
+/** REQ-QCHAT-005/008: a member's usage today (for the picker). */
+export function qchatUsage(m: Master, f: TeamFeedState, playerId: string, now: number) {
+  const c = quickChatOf(m).config;
+  const r = f.qchat?.rate[playerId];
+  const today = !!r && r.day === gameDayKey(now, dayRule(m));
+  return { postsToday: today ? r!.posts : 0, mentionsToday: today ? r!.mentions : 0, nextPostAt: r ? Math.max(now, r.last + c.postIntervalMs) : now };
+}
+
+/** REQ-QCHAT-010: a member left (or was removed from) the branch: their quick chat stays, without their name. */
+export function qchatLeft(f: TeamFeedState, playerId: string) {
+  let n = 0;
+  for (const it of f.items) if (it.kind === 'qchat' && it.playerId === playerId && !it.qchat?.anon) { it.qchat!.anon = true; it.displayName = ''; n++; }
+  if (f.qchat) { delete f.qchat.rate[playerId]; delete f.qchat.blocks[playerId]; }
+  return { anonymized: n };
 }

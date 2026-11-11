@@ -26,6 +26,7 @@ import { weekAt, weeklyChallengeConfig } from './weeklyChallenge.js';
 import { weekEndMs, weekIdAt, rivalConfig } from './rival.js';
 import { exchangeSummary } from './exchange.js';
 import { firstWinBonusView } from './rewards.js';
+import { horseGoalBrief } from './horseGoals.js';
 
 // ------------------------------------------------------------------------------------------------ kinds
 
@@ -36,7 +37,7 @@ export { NEXT_KINDS, NEXT_SLOTS, type NextKind } from './nextKinds.js';
 export const KIND_SCREEN: Record<NextKind, string> = {
   first_race: 'race', login_bonus: 'login_bonus', missions_claim: 'missions', pass_claim: 'season_pass', gift_expiring: 'gift_box',
   training_open: 'training', missions_close: 'missions', exchange_closing: 'event_exchange', feature_unlocked: 'feature', rival_week: 'rival',
-  weekly_challenge: 'weekly_challenge', team_goal_near: 'team_goal', training_slots: 'training', first_win: 'race', scout_ticket: 'scout', race: 'race',
+  weekly_challenge: 'weekly_challenge', team_goal_near: 'team_goal', horse_goal_near: 'horse_goals', training_slots: 'training', first_win: 'race', scout_ticket: 'scout', race: 'race',
 };
 /** REQ-NEXT-003: never the primary card (a scout, even with an owned ticket, is not pushed as "the" thing to do). */
 export const CHIP_ONLY: ReadonlySet<NextKind> = new Set(['scout_ticket']);
@@ -51,6 +52,7 @@ const KIND_UNLOCK: Partial<Record<NextKind, UnlockKey>> = {
 export const THRESHOLDS: Partial<Record<NextKind, { min: number; max: number; unit: 'days' | 'units' }>> = {
   gift_expiring: { min: 1, max: 14, unit: 'days' }, exchange_closing: { min: 1, max: 7, unit: 'days' },
   missions_close: { min: 1, max: 10, unit: 'units' }, team_goal_near: { min: 1, max: 100, unit: 'units' },
+  horse_goal_near: { min: 1, max: 10, unit: 'units' },
 };
 /** REQ-NEXT-008: purchase / gacha screens can never be announced as a newly opened feature. */
 export const FORBIDDEN_FEATURES: readonly string[] = ['shop', 'season_pass', 'scout'];
@@ -158,6 +160,8 @@ export interface NextSummary {
   rival: { weekEndsAt: number; rankedRaces: number } | null;
   weeklyChallenge: { endsAt: number; uncleared: number; startsLeftToday: number } | null;
   teamGoal: { endsAt: number; unitsLeft: number } | null;
+  /** REQ-HGOAL-008 (§53.4): the pinned horse's current goal (optional: summaries built before §53 have none). */
+  horseGoal?: { horseId: string; have: number; unitsLeft: number } | null;
   firstWin: { remaining: number; winsToday: number } | null;
   scoutTickets: number;
 }
@@ -235,7 +239,7 @@ export function nextActionSummary(m: Master, s: PlayerState, now: number, teamGo
     unlocked, newFeatures,
     loginBonusClaimable: !sameGameDay(s.loginBonus.lastClaimDate, today),
     missions, passClaimable, giftExpiries, trainingOpenExpiresAt, trainingSlotsLeft, exchanges, rival, weeklyChallenge,
-    teamGoal: tg, firstWin: fw ? { remaining: fw.remaining, winsToday: fw.winsToday } : null, scoutTickets: tickets,
+    teamGoal: tg, horseGoal: safe(() => horseGoalBrief(m, s), null), firstWin: fw ? { remaining: fw.remaining, winsToday: fw.winsToday } : null, scoutTickets: tickets,
   };
 }
 
@@ -291,6 +295,11 @@ function candidate(r: NextRule, x: NextSummary): Candidate | null {
     case 'team_goal_near': {
       const g = x.teamGoal;
       return g && g.unitsLeft > 0 && g.unitsLeft <= th ? item(r.kind, { count: g.unitsLeft, deadlineAt: g.endsAt }) : null;
+    }
+    case 'horse_goal_near': {
+      // REQ-HGOAL-008: real progress only (have ≥ 1), so a one-step goal never turns the pin into a standing card
+      const g = x.horseGoal;
+      return g && g.have >= 1 && g.unitsLeft > 0 && g.unitsLeft <= th ? item(r.kind, { count: g.unitsLeft, refId: g.horseId }) : null;
     }
     case 'first_win': return x.firstWin && x.firstWin.remaining > 0 && x.firstWin.winsToday === 0 ? item(r.kind) : null;
     case 'scout_ticket': return x.scoutTickets > 0 ? item(r.kind, { count: x.scoutTickets }) : null;

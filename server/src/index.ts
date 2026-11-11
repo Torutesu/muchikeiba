@@ -1,5 +1,7 @@
 import type { Env } from './env.js';
 import { MyReplaysService, type ReplayStore } from './domain/myReplaysService.js';
+import { DataExportService } from './domain/dataExportService.js';
+import { r2ExportStore } from './do/dataExportPorts.js';
 import { validateLocale } from './i18n/validate.js';
 import { eventPlayersFrom, friendIdsFrom, handle, makeFriendSuggestService, makeFriendsService, makeInviteService, makeStudService, teamPlayersFrom, tournamentPlayersFrom, type AppContext, type PlayerInvoker, type RaceEntry } from './http/app.js';
 import { bearer, verifyFirebaseIdToken } from './http/auth.js';
@@ -34,11 +36,13 @@ import { SpectateService, SPECTATE_RATE } from './domain/spectate.js';
 import { TournamentsService, type TournamentBackend } from './domain/tournamentService.js';
 import type { TournamentSummary } from './domain/tournaments.js';
 import { signTicket } from './http/ticket.js';
-import { TeamsService, type TeamFeedPage, type TeamGoalView, type TeamLeagueView, type TeamPort, type TeamView } from './domain/teamService.js';
-import { stampsProblems, type FeedItem } from './domain/teamFeed.js';
+import { TeamsService, type TeamFeedPage, type TeamGoalView, type TeamLeagueView, type TeamPort, type TeamView, type QchatPostResult } from './domain/teamService.js';
+import { stampsOf, stampsProblems, type FeedItem } from './domain/teamFeed.js';
+import { quickChatProblems } from './domain/quickChat.js';
 import { silksEditorProblems } from './domain/silksEditor.js';
 import { photoProblems } from './domain/photoMode.js';
 import { helpProblems } from './domain/help.js';
+import { practiceProblems } from './domain/practice.js';
 import type { TeamSummary } from './domain/teams.js';
 import { EventsService } from './domain/eventService.js';
 import { eventBoardKey, eventCronPlan, validateEvents } from './domain/events.js';
@@ -109,9 +113,11 @@ const baseMaster = loadMaster();
 validateGacha(baseMaster); // fail fast on a broken gacha/master definition (REQ-GACHA-003/008)
 validateItems(baseMaster); // REQ-ITEM-*: tickets may not reach paid-only banners, cosmetics reference real assets/patterns
 { const sp = stampsProblems(baseMaster); if (sp.length) throw new Error('master/stamps.json: ' + sp.join('; ')); } // REQ-TEAMFEED-002
+{ const qp = quickChatProblems(baseMaster, stampsOf(baseMaster).config.feedSize); if (qp.length) throw new Error('master/quick-chat.json: ' + qp.join('; ')); } // REQ-QCHAT-002
 { const sp = silksEditorProblems(baseMaster); if (sp.length) throw new Error('master/silks-editor.json: ' + sp.join('; ')); } // REQ-SILK-013
 { const pp = photoProblems(baseMaster); if (pp.length) throw new Error('master/photo.json: ' + pp.join('; ')); } // REQ-PHOTO-013
 { const hp = helpProblems(baseMaster, undefined, Number(DEFAULT_RULESET.maxWhips)); if (hp.length) throw new Error('master/help.json: ' + hp.join('; ')); } // REQ-HELP-003
+{ const pr = practiceProblems(baseMaster); if (pr.length) throw new Error('master/practice.json: ' + pr.join('; ')); } // REQ-PRAC-003
 validateEvents(baseMaster, baseMaster.events); // REQ-EVENT-001
 validateLeagueAndWeather(baseMaster); // REQ-LEAGUE-* and per-course climate (REQ-TRACK-003)
 validateUx(baseMaster, new Set(collectItemIds(baseMaster))); // REQ-UXS-*: onboarding, missions, experiments, deletion
@@ -145,9 +151,15 @@ function makeTeamsService(env: Env, master: () => Master, player: (uid: string) 
     // REQ-TEAMFEED-*
     feedPost: async (id, p, s) => (await call(team(id).feedPost!(p, s))) as FeedItem,
     feedRace: async (id, p, r) => (await call(team(id).feedRace!(p, r))) as FeedItem | null,
-    feedReact: async (id, p, seq, s) => (await call(team(id).feedReact!(p, seq, s))) as { ownerId: string; isNew: boolean; kind: FeedItem['kind'] },
+    feedReact: async (id, p, seq, s) => (await call(team(id).feedReact!(p, seq, s))) as { ownerId: string; isNew: boolean; kind: FeedItem['kind']; phraseId?: string | null },
     feedReport: async (id, p, seq) => (await call(team(id).feedReport!(p, seq))) as { ownerId: string; first: boolean },
-    feedPage: async (id, v, muted, before, limit) => (await call(team(id).feedPage!(v, muted, before, limit))) as TeamFeedPage,
+    feedPage: async (id, v, muted, before, limit, locale) => (await call(team(id).feedPage!(v, muted, before, limit, locale ?? 'ja'))) as TeamFeedPage,
+    // REQ-QCHAT-*
+    qchatPost: async (id, p, phraseId, slots, muted) => (await call(team(id).qchatPost!(p, phraseId, slots, muted))) as QchatPostResult,
+    qchatMembers: async (id, v, muted, locale) => (await call(team(id).qchatMembers!(v, muted, locale))) as Awaited<ReturnType<TeamPort['qchatMembers']>>,
+    qchatBlocks: async (id, p, muted) => call(team(id).qchatBlocks!(p, muted)),
+    qchatReportCopy: async (id, r, seq) => (await call(team(id).qchatReportCopy!(r, seq))) as Awaited<ReturnType<TeamPort['qchatReportCopy']>>,
+    qchatOpsHide: async (id, seq) => (await call(team(id).qchatOpsHide!(seq))) as Awaited<ReturnType<TeamPort['qchatOpsHide']>>,
     feedForget: async (id, p) => (await call(team(id).feedForget!(p))) as { removed: number },
     // REQ-TGOAL-*
     goalView: async (id, v) => (await call(team(id).goalView!(v))) as TeamGoalView,
@@ -438,6 +450,7 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
     teams: makeTeamsService(env, () => master, player),
     myReplays: new MyReplaysService(() => master, player, r2ReplayStore(env.REPLAYS), friendIdsFrom(player)), // REQ-MYRP-*; friends for the §40 replay_share entry
     rival: new RivalService(() => master, rivalPlayersFrom(player), durableRivalRegistry(env.LEADERBOARD)), // REQ-RIVAL-*
+    dataExport: new DataExportService(() => master, player, r2ExportStore(env.REPLAYS), env.TICKET_SECRET), // REQ-DEX-* (links signed with the ticket secret + purpose)
     events: new EventsService(() => master, eventPlayersFrom(player), {
       enqueue: (eventId, p, e) => call(mm().eventEnqueue!(eventId, p, e)),
       cancel: (eventId, p) => call(mm().eventCancel!(eventId, p)),

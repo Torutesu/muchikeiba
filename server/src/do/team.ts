@@ -8,6 +8,8 @@ import type { LeaguePlace } from '../domain/league.js';
 import { closeSeasonStep, type JoinPolicy, type MemberSnapshot, type TeamState, type TeamSummary } from '../domain/teams.js';
 import { jstMonthKey } from '../domain/time.js';
 import { newFeed, type FeedRace, type TeamFeedState } from '../domain/teamFeed.js';
+import type { QSlot } from '../domain/quickChat.js';
+import type { Locale } from '../i18n/locale.js';
 import { newGoalState, type GoalContribution, type TeamGoalState } from '../domain/teamGoal.js';
 import { unwrap, wrap, type Envelope } from './rpc.js';
 
@@ -128,7 +130,14 @@ export class TeamDO extends DurableObject<Env> {
   feedRace(playerId: string, race: FeedRace) { return this.run((c) => c.feedRace(playerId, race), false); }
   feedReact(playerId: string, seq: number, stampId: string | null) { return this.run((c) => c.feedReact(playerId, seq, stampId), false); }
   feedReport(playerId: string, seq: number) { return this.run((c) => c.feedReport(playerId, seq), false); }
-  feedPage(viewer: string, muted: string[], before: number | null, limit: number | null) { return this.run((c) => c.feedPage(viewer, muted, before, limit), false); }
+  feedPage(viewer: string, muted: string[], before: number | null, limit: number | null, locale: Locale = 'ja') { return this.run((c) => c.feedPage(viewer, muted, before, limit, locale), false); }
+  // REQ-QCHAT-*: quick chat posts in the same feed (the summary does not change, so nothing is published)
+  qchatPost(playerId: string, phraseId: string, slots: QSlot[], muted: string[]) { return this.run((c) => c.qchatPost(playerId, phraseId, slots, muted), false); }
+  qchatMembers(viewer: string, muted: string[], locale: Locale) { return this.run((c) => c.qchatMembers(viewer, muted, locale), false); }
+  qchatBlocks(playerId: string, muted: string[]) { return this.run((c) => c.qchatBlocks(playerId, muted), false); }
+  // Round 18 integration (§47 × §52): a report's copy of a phrase; support's hide
+  qchatReportCopy(reporter: string, seq: number) { return this.run((c) => c.qchatReportCopy(reporter, seq), false); }
+  qchatOpsHide(seq: number) { return this.run((c) => c.qchatOpsHide(seq), false); }
   feedForget(playerId: string) { return this.run((c) => c.feedForget(playerId), false); }
 
   // REQ-TGOAL-*: the weekly goal (the summary does not change, so nothing is published)

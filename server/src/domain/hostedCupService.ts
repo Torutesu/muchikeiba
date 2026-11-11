@@ -304,7 +304,7 @@ export class HostedCupsService<E = unknown> {
       if (!code) throw new Error('cup code space exhausted');
       const out = await this.backend.create(newCup(cupId, code, def, { ...host, joinedAt: now }, who.teamId, now), def);
       if (out.state.code !== code) { await this.backend.releaseCode(code, cupId).catch(() => undefined); code = null; } // a concurrent retry made the cup
-      await p.invoke('cupCommitted', uid, cupId, 'create', { format: def.format, capacity: def.capacity, team: !!who.teamId });
+      await p.invoke('cupCommitted', uid, cupId, 'create', { format: def.format, capacity: def.capacity, team: !!who.teamId, cupName: def.cupName });
       return { cup: cupView(this.master(), out.state, uid, now), created: out.created };
     } catch (e) {
       if (code) await this.backend.releaseCode(code, cupId).catch(() => undefined);
@@ -369,7 +369,7 @@ export class HostedCupsService<E = unknown> {
     try {
       const e = await this.entrantOf(uid, b.horseId, via, who);
       const out = await this.backend.join(c.id, e);
-      if (out.joined) await p.invoke('cupCommitted', uid, c.id, 'join', { format: c.format, via });
+      if (out.joined) await p.invoke('cupCommitted', uid, c.id, 'join', { format: c.format, via, cupName: c.name });
       else if (!who.already) await p.invoke('cupRelease', uid, c.id);
       void idemKey;
       return { cup: cupView(this.master(), out.state, uid, this.clock()), joined: out.joined };

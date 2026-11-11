@@ -12,6 +12,11 @@ import type { PlayerState } from './player.js';
 import { MAINTENANCE_GROUPS } from './maintenance.js';
 import { jstDateKey } from './time.js';
 import { NEXT_KINDS, NEXT_SLOTS } from './nextKinds.js';
+import { PRACTICE_ID_RE, PRACTICE_RESTARTS } from './practiceKinds.js';
+
+const PRACTICE_TRACK = z.string().regex(/^[a-z0-9_]{1,64}$/);
+const PRACTICE_FIELD = z.number().int().min(2).max(12);
+const PRACTICE_STRENGTH = z.string().regex(PRACTICE_ID_RE);
 
 /** Event-specific fields. Strings go to blob8-10, numbers to double1-6/8/9 (see BLOB/DOUBLE below). */
 export interface KpiEvent {
@@ -111,8 +116,8 @@ export const ADVICE_KPI_CONTEXTS = ['ranked', 'friend', 'event', 'challenge', 't
 /** REQ-PHOTO-014: where a photo was taken (photoMode.ts PHOTO_SOURCES). */
 export const PHOTO_SOURCE_NAMES = ['paused', 'result', 'replay'] as const;
 /** REQ-ACT-015: the activity list's kinds and deep-link screens (domain/activity.ts; repeated here to keep kpi.ts import-free). */
-export const ACTIVITY_KIND_NAMES = ['friend_request', 'friend_accepted', 'rival_week', 'rival_record', 'stable_like', 'team_cheer', 'tournament_result', 'gift_arrived', 'team_goal_tier', 'team_goal_week', 'replay_share', 'inquiry_answered', 'cup_invited', 'cup_started', 'cup_finished', 'cup_cancelled', 'recap_ready', 'ops_notice'] as const;
-export const ACTIVITY_SCREEN_NAMES = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new', 'help_inquiry', 'cups', 'recap', 'safety'] as const;
+export const ACTIVITY_KIND_NAMES = ['friend_request', 'friend_accepted', 'rival_week', 'rival_record', 'stable_like', 'team_cheer', 'tournament_result', 'gift_arrived', 'team_goal_tier', 'team_goal_week', 'replay_share', 'inquiry_answered', 'cup_invited', 'cup_started', 'cup_finished', 'cup_cancelled', 'recap_ready', 'ops_notice', 'qchat_mention', 'data_export_ready'] as const;
+export const ACTIVITY_SCREEN_NAMES = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new', 'help_inquiry', 'cups', 'recap', 'safety', 'privacy'] as const;
 /** REQ-HELP-021: help categories (domain/help.ts HELP_CATEGORY_IDS) plus `all`, and where an article was opened from. */
 export const HELP_CATEGORY_NAMES = ['all', 'getting_started', 'races', 'horses', 'scout', 'purchases', 'account', 'deletion', 'accessibility'] as const;
 export const HELP_VIEW_SOURCES = ['list', 'search', 'context', 'link', 'related'] as const;
@@ -171,6 +176,12 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('help_article_view'), at: z.number().int(), props: z.object({ articleId: z.string().regex(/^[a-z0-9_]{2,40}$/), source: z.enum(HELP_VIEW_SOURCES) }).strict() }),
   // REQ-FSUG-014: the おすすめフレンド section was shown (once per screen visit; how many suggestions it held)
   z.object({ name: z.literal('fsug_view'), at: z.number().int(), props: z.object({ shown: z.number().int().min(0).max(30) }).strict() }),
+  // REQ-HGOAL-012: a horse's goal panel was opened (detail) / the pinned goal was shown on the home (once per game day); done = goals done
+  z.object({ name: z.literal('hgoal_view'), at: z.number().int(), props: z.object({ surface: z.enum(['detail', 'home']), done: z.number().int().min(0).max(8) }).strict() }),
+  // REQ-PRAC-015 (§50.10): a practice race started / finished on the device. Course, field size and strength only — no inputs,
+  // ticks, seed or times (strict). Optional, and it grants nothing: ingestion never touches rewards or records.
+  z.object({ name: z.literal('practice_start'), at: z.number().int(), props: z.object({ trackId: PRACTICE_TRACK, fieldSize: PRACTICE_FIELD, strength: PRACTICE_STRENGTH, restart: z.enum(PRACTICE_RESTARTS) }).strict() }),
+  z.object({ name: z.literal('practice_finish'), at: z.number().int(), props: z.object({ trackId: PRACTICE_TRACK, fieldSize: PRACTICE_FIELD, strength: PRACTICE_STRENGTH, place: z.number().int().min(0).max(12) }).strict() }),
 ]);
 export type ClientEvent = z.infer<typeof clientEventSchema>;
 
@@ -213,10 +224,13 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'maintenance_block': return { name: e.name, s1: e.props.group, s2: e.props.windowId };
     case 'upgrade_prompt': return { name: e.name, s1: e.props.kind, s2: e.props.action, s3: e.props.platform };
     case 'activity_tap': return { name: e.name, s1: e.props.kind, s2: e.props.screen };
+    case 'practice_start': return { name: e.name, s1: e.props.trackId, s2: e.props.strength, s3: e.props.restart, count: e.props.fieldSize };
+    case 'practice_finish': return { name: e.name, s1: e.props.trackId, s2: e.props.strength, count: e.props.fieldSize, place: e.props.place };
     case 'next_card_view': case 'next_card_tap': return { name: e.name, s1: e.props.kind, s2: e.props.slot };
     case 'help_search': return { name: e.name, s1: e.props.category, value: e.props.length, count: e.props.results };
     case 'help_article_view': return { name: e.name, s1: e.props.articleId, s2: e.props.source };
     case 'fsug_view': return { name: e.name, value: e.props.shown };
+    case 'hgoal_view': return { name: e.name, s1: e.props.surface, value: e.props.done };
   }
 }
 

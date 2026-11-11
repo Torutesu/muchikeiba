@@ -126,12 +126,20 @@ static class Program
         await RaceAdviceChecks.Run(Check, Root);
         Console.WriteLine("== round 16: 厩舎の整理 (RosterOrganiserModel: local sort / filters / search per device, lock, favourite, bulk retire two-step, all or nothing; REQ-ORG-*)");
         await RosterChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 18: 馬ごとの目標 (HorseGoalsModel: goals panel rows, ribbon, pin / unpin, home pinned card, KPI, next-action kind, English; REQ-HGOAL-*)");
+        await HorseGoalsChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 16: 次にやること (NextActionModel: primary card + chips, dates not countdowns, dismiss for today, offline fallback, KPI; REQ-NEXT-*)");
         await NextActionChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 16: シーズンの振り返り (SeasonRecapModel: list badge, open / complete once, skip, short version, 順位を隠す, share; REQ-RECAP-*)");
         await SeasonRecapChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 18: 個人データの開示・ダウンロード (DataExportModel: request, preparing, ready links, expiry / cooldown dates, deletion note, English; REQ-DEX-*)");
+        await DataExportChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 16: プレイヤー主催カップ (HostedCupModel: list, create form, codes, lobby, standings, result card, English; REQ-CUP-*)");
         await HostedCupChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 18: 練習レース (PracticeModel: catalog + offline copy + fallback, FTUE gate, setup, device race, whip band, slow, ghost, result, KPI, English; REQ-PRAC-*)");
+        await PracticeChecks.Run(Check, Ruleset(), Root);
+        Console.WriteLine("== round 18: 支部の定型チャット (QuickChatModel: tabs, phrases, slots from the server's options, preview, cooldown, errors as sentences, rows; REQ-QCHAT-*)");
+        await QuickChatChecks.Run(Check, Ruleset(), Root);
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

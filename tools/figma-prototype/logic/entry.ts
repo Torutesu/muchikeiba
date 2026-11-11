@@ -56,6 +56,7 @@ import { MemoryPlayerReportRepo, PlayerReportsCore } from '../../../server/src/o
 import { blocksView } from '../../../server/src/domain/blocks.js';
 import type { PlayerReportsApi } from '../../../server/src/http/admin.js';
 import { DEFAULT_MAINTENANCE, gateRequest, maintenanceStatus, type MaintenanceConfig } from '../../../server/src/domain/maintenance.js';
+import { DataExportService, MemoryExportStore, runDataExportJob, sweepDataExports } from '../../../server/src/domain/dataExportService.js';
 // REQ-L10N-*: the server's English tables (master/locale-en.json + i18n/en.ts), the client's (ui-en.json) and the
 // prototype's own screen texts (proto-en.json), in one catalog with the server's template rules (katakana names romanized)
 import { compileCatalogWith, translateText, romanizeName } from '../../../server/src/i18n/catalog.js';
@@ -296,7 +297,7 @@ const reportsSvc = new ReportsService(() => master, () => rivalInvoker, () => re
   const s = await svc.state(pid);
   const mine = [...(s.myReplays?.saved ?? []), ...(s.myReplays?.recent ?? [])].some((r) => r.raceId === raceId);
   return { ok: mine };
-}, now);
+}, now, (r, teamId, seq) => teamsSvc.qchatReportCopy(r, teamId, seq)); // round 18 integration: a quick chat phrase is a report target
 const BLOCK_DEMO: [string, string][] = [['demo_bl_1', 'ヨルノカラス'], ['demo_bl_2', 'ナギサ']];
 const teamPlayers: TeamPlayers = {
   prepareJoin: (u, t) => svc.teamPrepareJoin(u, t), commitJoin: (u, t) => svc.teamCommitJoin(u, t), abortJoin: (u, t) => svc.teamAbortJoin(u, t),
@@ -305,6 +306,9 @@ const teamPlayers: TeamPlayers = {
   stampCatalog: (u) => svc.stampCatalog(u), stampCheck: (u, s) => svc.stampCheck(u, s), stampPosted: (u, s, k, t, ref) => svc.stampPosted(u, s, k, t, ref ?? null),
   feedViewer: (u, f) => svc.feedViewer(u, f), feedMutes: (u) => svc.feedMutes(u), feedMute: (u, t, m) => svc.feedMute(u, t, m),
   feedReported: (u, t, q, b, r) => svc.feedReported(u, t, q, b, r), cheerPush: (u, f, n) => svc.cheerPush(u, f, n),
+  // round 18 (REQ-QCHAT-*): 支部の定型チャット on the same team objects
+  qchatOptions: (u, l) => svc.qchatOptions(u, l), qchatCheck: (u, p, sl) => svc.qchatCheck(u, p, sl), qchatNote: (u, k, a, b, t, n) => svc.qchatNote(u, k, a, b, t, n),
+  qchatMention: (u, f, n, r) => svc.qchatMention(u, f, n, r),
   goalPlayerView: (u) => svc.goalPlayerView(u),
 };
 const teamsSvc = new TeamsService(() => master, teams, teamPlayers, teams, teams, cryptoRng, now);
@@ -331,6 +335,12 @@ async function wrap<T>(f: () => Promise<T> | T): Promise<{ ok: true; value: T } 
     return { ok: false, code: 'INTERNAL', message: String((e as Error)?.message ?? e) };
   }
 }
+
+// round 18 (REQ-DEX-*): the private export files (the R2 prefix private/data-export/) kept in memory — in localStorage they
+// would eat the quota the player state needs (after a reload the status still says ready and the download says it is gone)
+const dexStore = new MemoryExportStore();
+const dexInvoker: PlayerInvoker = { invoke: (async (m: string, ...args: unknown[]) => (svc as unknown as Record<string, (...a: unknown[]) => unknown>)[m]!.apply(svc, args)) as PlayerInvoker['invoke'] };
+const dex = new DataExportService(() => master, () => dexInvoker, dexStore, 'prototype-only-link-secret', now);
 
 // round 16 (REQ-CUP-*, contracts/protocol.md §42): プレイヤー主催カップ on the real HostedCupsService / CupRunner with the
 // in-memory cup backend (the CupDO logic). Cups and codes are kept in localStorage; the races are built by the server's
@@ -501,6 +511,8 @@ export const MuchiLogic = {
   // and the pure scorer itself (the page recomputes the tips for another selected horse; the WASM C# mirror must agree).
   raceAdvice: (q: AdviceQuery) => wrap(() => svc.raceAdvice(ID, q)),
   computeAdvice: (input: AdviceInput) => computeRaceAdvice(input),
+  // round 18 (REQ-PRAC-002): GET /v1/practice/catalog on the real service — read-only; there is no practice result to send anywhere
+  practiceCatalog: () => wrap(() => svc.practiceCatalog(ID)),
   adviceLint: (texts: string[]) => texts.flatMap((t) => adviceTextProblems(t)),
   adviceTexts: (a: Parameters<typeof adviceTexts>[0]) => adviceTexts(a),
   weeklyChallenges: () => wrap(() => svc.wchView(ID)),
@@ -956,6 +968,10 @@ export const MuchiLogic = {
     await svc.applyRace(m2!, { raceId: `proto_tm_${Date.now().toString(36)}_${k}`, mode: k % 2 ? 'tournament' : 'ranked', place: 1 + (k % 3), fieldSize: 12, newRating: null, void: false, humans: 6 });
     await wrap(() => teamsSvc.postStamp(lead!, ['cheer', 'lets_go', 'nice'][k % 3]!));
     await wrap(() => teamsSvc.postStamp(m3!, ['clap', 'thanks', 'gg'][k % 3]!));
+    // round 18: teammates also talk in fixed phrases (members alternate, so each stays within the 15 s rule); every third
+    // call a third member names the player (a mention → an activity entry, §52.8)
+    if (k % 3 === 0) await wrap(() => teamsSvc.postQuickChat(m3!, ['nice_player', 'thanks_player', 'omedeto_player'][Math.floor(k / 3) % 3]!, { player: ID }));
+    else await wrap(() => teamsSvc.postQuickChat(k % 2 ? lead! : m2!, ['otsukare', 'goal_close', 'run_together', 'great_race'][k % 4]!, k % 4 === 2 ? { course: 'kirameki_turf_2000' } : {}));
   },
   // ---------------------------------------------------------------- round 16: 次にやること (REQ-NEXT-*, contracts/protocol.md §45)
   // The real server choice (nextAction.ts): the summary of the player's state, the priorities of progression.nextActions,
@@ -1011,7 +1027,10 @@ export const MuchiLogic = {
     return wrap(() => teamsSvc.goal(ID));
   },
   stamps: () => svc.stampCatalog(ID),
-  teamFeed: (before: number | null = null) => wrap(() => teamsSvc.feed(ID, before, 20)),
+  teamFeed: (before: number | null = null, lang: 'ja' | 'en' = 'ja') => wrap(() => teamsSvc.feed(ID, before, 20, lang)),
+  // round 18: 支部の定型チャット (REQ-QCHAT-*, contracts/protocol.md §52) — the picker and a post on the real rules
+  quickChat: (lang: 'ja' | 'en' = 'ja') => wrap(() => teamsSvc.quickChat(ID, lang)),
+  postQuickChat: (phraseId: string, slots: Record<string, string>) => wrap(() => teamsSvc.postQuickChat(ID, phraseId, slots)),
   postStamp: (stampId: string) => wrap(() => teamsSvc.postStamp(ID, stampId)),
   reactToFeed: (seq: number, stampId: string | null) => wrap(() => teamsSvc.react(ID, seq, stampId)),
   reportFeed: (seq: number, reason: ReportReason) => wrap(() => teamsSvc.report(ID, seq, reason)),
@@ -1033,6 +1052,40 @@ export const MuchiLogic = {
     demoRetire: (name: string, wins: number, others: number, title: string | null) => wrap(() => hallDemoHorse(ID, 2 + hallRace % 9, name, wins, others, title, true)),
     /** A tournament final rank for one of my horses (tournamentClose with the registered horse). */
     demoTitle: (horseId: string, name: string) => wrap(() => svc.tournamentClose(ID, `proto_cup_${horseId}_${hallRace++}`, 1, null, name, horseId)),
+  },
+  // ---------------------------------------------------------------- round 18: 馬ごとの目標 (REQ-HGOAL-*, contracts/protocol.md §53)
+  // The real PlayerService / horseGoals.ts rules on the local player: the chain from the horse's aptitudes, progress from the
+  // §34 career (confirmed races only), the pin and the home's pinned goal (bootstrap horseGoalPin = the same view).
+  horseGoals: {
+    view: (horseId: string) => wrap(() => svc.horseGoals(ID, horseId)),
+    pin: (horseId: string | null) => wrap(() => svc.pinHorseGoal(ID, horseId)),
+    pinned: () => wrap(() => svc.pinnedHorseGoal(ID)),
+    /** Demo: confirmed ranked races for one of my horses (places as given), the race room's result path. */
+    demoRaces: (horseId: string, places: number[]) => wrap(() => hallRaces(ID, horseId, places)),
+  },
+  // ---------------------------------------------------------------- round 18: 個人データの開示・ダウンロード (REQ-DEX-*, contracts/protocol.md §51)
+  // The real DataExportService / dataExport rules on the local player. The "alarm" (runDataExportJob) is started by the page a
+  // moment after the request (the server builds it in the player object's alarm, never on the request path); the files are kept
+  // in localStorage (the private R2 prefix) and handed to the browser as a download through the signed link.
+  dataExport: {
+    view: () => wrap(() => dex.view(ID)),
+    request: (lang: 'ja' | 'en') => wrap(() => dex.request(ID, lang, `c:/v1/player/data-export:${Date.now()}`)),
+    /** The alarm: build a due export, then delete expired files. */
+    build: () => wrap(async () => {
+      const r = await runDataExportJob({
+        master: () => master, take: (u) => svc.dataExportTake(u), collect: (u) => svc.dataExportCollect(u),
+        profiles: async (ids) => (await Promise.all(ids.map(async (i) => ((await repo.get(i)) ? svc.publicProfile(i) : null)))).filter((x) => x !== null).map((p) => ({ playerId: p!.playerId, displayName: p!.displayName })),
+        store: dexStore, ready: (u, rid, info) => svc.dataExportReady(u, rid, info), failed: (u, rid, why) => svc.dataExportFailed(u, rid, why),
+      }, ID);
+      await sweepDataExports({ expiring: (u) => svc.dataExportExpiring(u), deleted: (u, k) => svc.dataExportDeleted(u, k), store: dexStore }, ID);
+      return r;
+    }),
+    /** Opens a signed link like the OS browser would: the file's text, name and type (or the server's error). */
+    download: (url: string) => wrap(async () => {
+      const res = await dex.download(new URL(url, 'https://proto.local').searchParams);
+      const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? 'data.json';
+      return { name, type: res.headers.get('content-type') ?? 'application/octet-stream', text: await res.text() };
+    }),
   },
   // ---------------------------------------------------------------- round 16: シーズンの振り返り (REQ-RECAP-*, contracts/protocol.md §43)
   // The real PlayerService / seasonRecap rules on a demo history: a separate demo account (its own memory repo and clock, so the

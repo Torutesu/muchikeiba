@@ -20,13 +20,14 @@ export const REPORT_CATEGORIES = ['name', 'text', 'cheating', 'harassment', 'oth
 export type ReportCategory = typeof REPORT_CATEGORIES[number];
 export const REPORT_SOURCES = ['profile', 'friends', 'team_feed', 'stable', 'hall', 'replay', 'photo', 'cup_lobby'] as const;
 export type ReportSource = typeof REPORT_SOURCES[number];
-export const REPORT_CONTENT_KINDS = ['player', 'display_name', 'horse_name', 'stable_name', 'replay_title', 'photo_caption', 'race'] as const;
+// qchat: a §52 quick chat phrase in the branch feed (Round 18 integration; ref = `<teamId>:<seq>`, the copy comes from the branch)
+export const REPORT_CONTENT_KINDS = ['player', 'display_name', 'horse_name', 'stable_name', 'replay_title', 'photo_caption', 'race', 'qchat'] as const;
 export type ReportContentKind = typeof REPORT_CONTENT_KINDS[number];
 
 /** protocol §47.4: which content each category may be about (anything else is 400). */
 export const CATEGORY_KINDS: Record<ReportCategory, readonly ReportContentKind[]> = {
   name: ['display_name', 'horse_name', 'stable_name'],
-  text: ['replay_title', 'photo_caption'],
+  text: ['replay_title', 'photo_caption', 'qchat'],
   cheating: ['race'],
   harassment: REPORT_CONTENT_KINDS,
   other: REPORT_CONTENT_KINDS,
@@ -40,18 +41,21 @@ export const REPORT_CATEGORY_LABELS: Record<ReportCategory, string> = {
   other: 'その他',
 };
 
-export interface ReportContent { kind: ReportContentKind; horseId?: string; raceId?: string; photoId?: string }
+export interface ReportContent { kind: ReportContentKind; horseId?: string; raceId?: string; photoId?: string; feedRef?: string }
+/** A branch feed item: `<teamId>:<seq>` (§52 quick chat). */
+export const FEED_REF_RE = /^[A-Za-z0-9_-]{1,64}:\d{1,9}$/;
 const refRe = /^[A-Za-z0-9_:.-]{1,128}$/;
 export const reportContentSchema = z.object({
   kind: z.enum(REPORT_CONTENT_KINDS),
   horseId: z.string().min(1).max(40).regex(refRe).optional(),
   raceId: z.string().min(1).max(128).regex(refRe).optional(),
   photoId: z.string().min(1).max(40).regex(refRe).optional(),
+  feedRef: z.string().max(80).regex(FEED_REF_RE).optional(),
 }).strict();
 
 /** The key each content kind needs (protocol §47.4). */
-export const CONTENT_REF: Record<ReportContentKind, 'horseId' | 'raceId' | 'photoId' | null> = {
-  player: null, display_name: null, stable_name: null, horse_name: 'horseId', replay_title: 'raceId', photo_caption: 'photoId', race: 'raceId',
+export const CONTENT_REF: Record<ReportContentKind, 'horseId' | 'raceId' | 'photoId' | 'feedRef' | null> = {
+  player: null, display_name: null, stable_name: null, horse_name: 'horseId', replay_title: 'raceId', photo_caption: 'photoId', race: 'raceId', qchat: 'feedRef',
 };
 export const contentRef = (c: ReportContent): string | null => {
   const k = CONTENT_REF[c.kind];
@@ -175,7 +179,12 @@ export function reportOptions(m: Master, s: PlayerState, now: number) {
 
 // ------------------------------------------------------------------------------------------- target side
 
-export interface ReportSnapshot { displayName: string; text: string | null; raceId: string | null; takenAt: number }
+export interface ReportSnapshot {
+  displayName: string; text: string | null; raceId: string | null; takenAt: number;
+  /** `qchat` reports (Round 18 integration): the phrase and its values as the branch showed them (JA), and when it was posted. */
+  qchat?: QchatReportCopy;
+}
+export interface QchatReportCopy { teamId: string; seq: number; phraseId: string; slots: { name: string; value: string }[]; postedAt: number }
 
 /**
  * REQ-RPT-004: what was reported, copied from the TARGET's state when the report arrives. Content that is not there
@@ -209,6 +218,9 @@ export function reportSnapshotOf(s: PlayerState, content: ReportContent, now: nu
     }
     case 'race':
       return { ...base, text: null, raceId: content.raceId ?? null };
+    case 'qchat':
+      // the phrase itself lives in the branch feed: ReportsService adds it from the TeamDO (§47 × §52)
+      return { ...base, text: null };
   }
 }
 

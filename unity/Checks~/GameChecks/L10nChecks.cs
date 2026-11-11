@@ -34,7 +34,7 @@ static class L10nChecks
     static void Literals(Action<bool, string> check, string root)
     {
         var files = Directory.GetFiles(Path.Combine(root, "unity", "Assets", "Muchi", "Game"), "*.cs")
-            .Concat(new[] { "RaceDebrief.cs", "RaceFeel.cs", "ReplayClip.cs" }.Select(f => Path.Combine(root, "engine", "Muchi.Client", f)));
+            .Concat(new[] { "RaceDebrief.cs", "RaceFeel.cs", "ReplayClip.cs", "Practice.cs" }.Select(f => Path.Combine(root, "engine", "Muchi.Client", f)));
         // not shown as text: the forbidden-word list of the shop lint, kana test characters
         var skip = new HashSet<string> { "倍", "×2", "お得", "通常価格" };
         // pieces of a concatenation chosen by a ternary (the whole line is checked in Composites)

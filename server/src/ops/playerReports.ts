@@ -5,6 +5,7 @@ import {
   type ReporterStats, type ReportsConfig,
 } from '../domain/reports.js';
 import { foldForCompare } from '../domain/horses.js';
+import type { PlayerReportMade } from '../domain/dataExport.js';
 
 /**
  * The player-report review queue (REQ-RPT-007/013/014/016, contracts/protocol.md §47.7–47.8). Lives in the singleton
@@ -143,6 +144,15 @@ export class PlayerReportsCore {
    * REQ-RPT-016 (account deletion, idempotent): reports BY the player keep their entry with the reporter replaced by
    * `deleted` and the note dropped; the reporter stats go. Reports ABOUT the player are kept and marked `targetDeleted`.
    */
+  /**
+   * REQ-DEX-007 (Round 18 integration): the reports this player made, for their data export — what, why, from where, their
+   * own note and whether support has looked at it. Never the reported player's id, the snapshot or the decision note.
+   */
+  madeBy(uid: string): PlayerReportMade[] {
+    return this.repo.byReporter(uid).flatMap((r) => r.reporters.filter((e) => e.reporterId === uid).map((e) => ({
+      at: e.at, category: e.category, source: e.source, contentKind: r.content.kind, note: e.note, status: r.status,
+    }))).sort((a, b) => a.at - b.at);
+  }
   forgetPlayer(uid: string) {
     let anonymised = 0;
     let marked = 0;

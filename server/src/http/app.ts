@@ -26,6 +26,7 @@ import { TeamsService, type TeamPlayers } from '../domain/teamService.js';
 import { EventsService, type EventPlayers } from '../domain/eventService.js';
 import { TEAM_ID_RE } from '../domain/teams.js';
 import { REPORT_REASONS, STAMP_ID_RE } from '../domain/teamFeed.js';
+import { QCHAT_ID_RE, QCHAT_REF_RE } from '../domain/quickChat.js';
 import { EVENT_ID_RE } from '../domain/events.js';
 import { goingSchema } from '../domain/schemas.js';
 import { StudService, type StudDirectory, type StudPlayers } from '../domain/studService.js';
@@ -54,6 +55,7 @@ import type { HostedCupsService } from '../domain/hostedCupService.js';
 import { clientHeaders, gateRequest, maintenanceOf, maintenanceStatus } from '../domain/maintenance.js';
 import { helpArticle, helpIndex, helpOf, INQUIRY_CATEGORIES, PLATFORMS, searchHelp, type InquirySummary } from '../domain/help.js';
 import { FriendSuggestService, fsugConfig, type FsugCache, type SuggestDirectory, type SuggestPlayers } from '../domain/friendSuggest.js';
+import type { DataExportService } from '../domain/dataExportService.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -77,6 +79,7 @@ export type PlayerMethod =
   | 'recordConsent' | 'grantPartner' | 'missionsAll' | 'requestDeletion' | 'cancelDeletion' | 'deletionDue' | 'deletionSnapshot' | 'deletionMarkStep'
   | 'deletionRetryLater' | 'deletionFinalize' | 'deletionStart' | 'runNudges' | 'nudgeTaBeaten' | 'nudgeTournamentClosing'
   | 'stampCatalog' | 'stampCheck' | 'stampPosted' | 'feedViewer' | 'feedMutes' | 'feedMute' | 'feedReported' | 'cheerPush'
+  | 'qchatOptions' | 'qchatCheck' | 'qchatNote' | 'qchatMention'
   | 'inviteView' | 'inviteAttempt' | 'inviteAccept' | 'inviteRevert' | 'inviteCommit' | 'inviteFlag' | 'inviteMilestone' | 'inviteDue' | 'inviteAcked'
   | 'inviteRetryLater' | 'inviteForgetInvitee' | 'inviteForgetInviter' | 'inviteForfeit'
   | 'comeback' | 'comebackClaimLogin' | 'comebackClaimMission' | 'comebackWelcomed' | 'whatsNew' | 'whatsNewSeen'
@@ -95,13 +98,16 @@ export type PlayerMethod =
   | 'hallMine' | 'hallViewer' | 'hallNoteView' | 'horseCareer' | 'hallAck' | 'hallSettings'
   | 'nextActions' | 'dismissNextAction'
   | 'roster' | 'rosterLock' | 'rosterFavorite' | 'rosterPreview' | 'rosterBulk' | 'rosterTournament'
+  | 'horseGoals' | 'pinHorseGoal' | 'pinnedHorseGoal'
   | 'myReplays' | 'replayPrepareSave' | 'replayCommitSave' | 'replayForget' | 'replayUpdate' | 'replayDelete' | 'replayOwnRef' | 'replayShared' | 'replayViewed'
-  | 'raceAdvice'
+  | 'raceAdvice' | 'practiceCatalog'
   | 'photoCatalog' | 'photos' | 'photoSave' | 'photoDelete'
   | 'activity' | 'activityRead' | 'activityReplayShare' | 'teamGoalMilestone'
   | 'fsugSelf' | 'fsugDismiss' | 'fsugSetHidden'
   | 'helpFeedback' | 'helpInquirySubmit' | 'helpInquiries' | 'helpInquiry' | 'helpInquiryRead' | 'helpInquiryIndexed' | 'adminInquiry' | 'adminInquiryReply'
   | 'recaps' | 'recap' | 'recapProgress'
+  | 'dataExportView' | 'dataExportRequest' | 'dataExportTake' | 'dataExportCollect' | 'dataExportReady' | 'dataExportFailed' | 'dataExportFile'
+  | 'dataExportDownloaded' | 'dataExportExpiring' | 'dataExportDeleted' | 'dataExportAdmin'
   | 'cupsMine' | 'cupReserve' | 'cupRelease' | 'cupLeft' | 'cupCommitted' | 'cupCodeAttempt' | 'cupInvited' | 'cupStarted' | 'cupClosed' | 'cupHorseName'
   | 'reportOptions' | 'reportSnapshot' | 'reportCommit' | 'blockIds' | 'blockSet' | 'reportWarn' | 'replayOpsHide' | 'photoOpsHide';
 
@@ -175,6 +181,8 @@ export interface AppContext {
   activeRuleset?: () => Promise<Ruleset>;
   /** REQ-CUP-*: プレイヤー主催カップ (domain/hostedCupService.ts). Absent → the routes answer NOT_FOUND. */
   hostedCups?: HostedCupsService<RaceEntry>;
+  /** REQ-DEX-*: 個人データの開示・ダウンロード (domain/dataExportService.ts). Absent → the routes answer NOT_FOUND. */
+  dataExport?: DataExportService;
   clock?: () => number;
   paidBalance(): Promise<unknown>;
   /**
@@ -332,6 +340,10 @@ const myReplays = (c: AppContext) => {
   return c.myReplays;
 };
 const replayTitle = z.string().max(200).nullable();
+const dataExport = (c: AppContext) => {
+  if (!c.dataExport || !c.master.progression.dataExport?.enabled) throw new AppError('NOT_FOUND', 'data export is not available');
+  return c.dataExport;
+};
 const hostedCups = (c: AppContext) => {
   if (!c.hostedCups) throw new AppError('NOT_FOUND', 'hosted cups are not available');
   return c.hostedCups;
@@ -596,6 +608,10 @@ export const routes: Route[] = [
     const b = await body(r, bulkBodySchema);
     return c.player(u).invoke('rosterBulk', u, b.action, b.horseIds, b.confirmToken, key);
   } },
+  // 馬ごとの目標 (REQ-HGOAL-*, contracts/protocol.md §53)
+  { method: 'GET', path: '/v1/horses/:horseId/goals', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('horseGoals', u, p.horseId!) },
+  { method: 'PUT', path: '/v1/horse-goals/pin', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('pinHorseGoal', u, (await body(r, z.object({ horseId: z.string().min(1).max(32).nullable() }).strict())).horseId) },
+  { method: 'GET', path: '/v1/horse-goals/pinned', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('pinnedHorseGoal', u) },
   { method: 'GET', path: '/v1/horses/:horseId/career', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('horseCareer', u, p.horseId!) },
   { method: 'GET', path: '/v1/hall', auth: 'player', handler: async (r, _p, c, u) => { const q = hallPage(r); return hall(c).mine(u, q.cursor, q.limit); } },
   { method: 'PUT', path: '/v1/hall/settings', auth: 'player', handler: async (r, _p, c, u) => {
@@ -761,6 +777,12 @@ export const routes: Route[] = [
     const ruleset = c.activeRuleset ? await c.activeRuleset() : undefined;
     return c.player(u).invoke('raceAdvice', u, query, ruleset);
   } },
+  // 練習レース (REQ-PRAC-002, contracts/protocol.md §50.1): read-only catalog. There is deliberately no route that takes a
+  // practice result — practice runs on the device and grants nothing (REQ-PRAC-011).
+  { method: 'GET', path: '/v1/practice/catalog', auth: 'player', handler: async (_r, _p, c, u) => {
+    const ruleset = c.activeRuleset ? await c.activeRuleset() : undefined;
+    return c.player(u).invoke('practiceCatalog', u, ruleset);
+  } },
   // spectating (REQ-SPEC-*)
   { method: 'GET', path: '/v1/races/live', auth: 'player', handler: async (_r, _p, c, u) => spectate(c).list(u) },
   { method: 'POST', path: '/v1/race/:raceId/spectate', auth: 'player', handler: async (_r, p, c, u) => spectate(c).spectate(u, p.raceId!) },
@@ -854,7 +876,14 @@ export const routes: Route[] = [
       if (!/^\d{1,9}$/.test(v) || Number(v) < 1 || Number(v) > max) throw new AppError('BAD_REQUEST', `bad ${k}`);
       return Number(v);
     };
-    return teams(c).feed(u, num('before', 999_999_999), num('limit', 500));
+    return teams(c).feed(u, num('before', 999_999_999), num('limit', 500), resolveLocale(r));
+  } },
+  // REQ-QCHAT-*: 支部の定型チャット (contracts/protocol.md §52) — fixed phrases only, slot values checked by the server
+  { method: 'GET', path: '/v1/teams/me/quick-chat', auth: 'player', handler: async (r, _p, c, u) => teams(c).quickChat(u, resolveLocale(r)) },
+  { method: 'POST', path: '/v1/teams/me/feed/quick-chat', auth: 'player', handler: async (r, _p, c, u) => {
+    const ref = z.string().regex(QCHAT_REF_RE);
+    const b = await body(r, z.object({ phraseId: z.string().regex(QCHAT_ID_RE), slots: z.object({ course: ref, horse: ref, race: ref, time: ref, cup: ref, player: ref }).partial().strict().default({}) }).strict());
+    return teams(c).postQuickChat(u, b.phraseId, b.slots);
   } },
   { method: 'POST', path: '/v1/teams/me/feed/stamps', auth: 'player', handler: async (r, _p, c, u) => teams(c).postStamp(u, (await body(r, z.object({ stampId: stampId }).strict())).stampId) },
   { method: 'PUT', path: '/v1/teams/me/feed/:seq/reaction', auth: 'player', handler: async (r, p, c, u) => teams(c).react(u, seqParam(p.seq!), (await body(r, z.object({ stampId: stampId.nullable() }).strict())).stampId) },
@@ -1065,7 +1094,10 @@ export const routes: Route[] = [
   { method: 'GET', path: '/v1/reports/options', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('reportOptions', u) },
   { method: 'POST', path: '/v1/reports', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, reportBodySchema);
-    return new ReportsService(() => c.master, c.player, () => c.ops?.playerReports, (raceId, pid) => c.race.report(raceId, pid), c.clock).submit(u, { ...b, targetId: playerIdParam(b.targetId) } as ReportBody);
+    const res = await new ReportsService(() => c.master, c.player, () => c.ops?.playerReports, (raceId, pid) => c.race.report(raceId, pid), c.clock,
+      c.teams ? (r, teamId, seq) => c.teams!.qchatReportCopy(r, teamId, seq) : undefined).submit(u, { ...b, targetId: playerIdParam(b.targetId) } as ReportBody);
+    if (b.alsoBlock) await c.teams?.syncBlocks(u); // the branch's quick chat copy of the one block list (§52.7)
+    return res;
   } },
   { method: 'GET', path: '/v1/blocks', auth: 'player', handler: async (_r, _p, c, u) => {
     const ids = await c.player(u).invoke('blockIds', u);
@@ -1073,8 +1105,9 @@ export const routes: Route[] = [
     const profiles = ids.length === 0 ? [] : await c.friends.profilesOf(ids).catch(() => null);
     return blocksView(c.master, ids, profiles);
   } },
-  { method: 'PUT', path: '/v1/blocks/:playerId', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('blockSet', u, playerIdParam(p.playerId!), true, 'blocks') },
-  { method: 'DELETE', path: '/v1/blocks/:playerId', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('blockSet', u, playerIdParam(p.playerId!), false, 'blocks') },
+  // Round 18 integration: a change also refreshes the branch's quick chat copy of the list (REQ-QCHAT-007)
+  { method: 'PUT', path: '/v1/blocks/:playerId', auth: 'player', handler: async (_r, p, c, u) => { const r = await c.player(u).invoke('blockSet', u, playerIdParam(p.playerId!), true, 'blocks'); await c.teams?.syncBlocks(u); return r; } },
+  { method: 'DELETE', path: '/v1/blocks/:playerId', auth: 'player', handler: async (_r, p, c, u) => { const r = await c.player(u).invoke('blockSet', u, playerIdParam(p.playerId!), false, 'blocks'); await c.teams?.syncBlocks(u); return r; } },
   // ヘルプセンター (REQ-HELP-*, contracts/protocol.md §48): articles and search read the master only (no player state)
   { method: 'GET', path: '/v1/help', auth: 'player', handler: async (r, _p, c) => helpIndex(c.master, resolveLocale(r)) },
   { method: 'GET', path: '/v1/help/articles/:articleId', auth: 'player', handler: async (r, p, c) => {
@@ -1130,6 +1163,13 @@ export const routes: Route[] = [
   { method: 'GET', path: '/v1/replays/:raceId/data', auth: 'player', handler: async (_r, p, c, u) => myReplays(c).data(u, p.raceId!) },
   { method: 'GET', path: '/v1/friends/:playerId/replays', auth: 'player', handler: async (_r, p, c, u) => myReplays(c).friendList(u, p.playerId!) },
   { method: 'GET', path: '/v1/friends/:playerId/replays/:raceId/data', auth: 'player', handler: async (_r, p, c, u) => myReplays(c).friendData(u, p.playerId!, p.raceId!) },
+  // 個人データの開示・ダウンロード (REQ-DEX-*, contracts/protocol.md §51): only the caller's own data, no email, no body
+  { method: 'GET', path: '/v1/player/data-export', auth: 'player', handler: async (_r, _p, c, u) => dataExport(c).view(u) },
+  { method: 'POST', path: '/v1/player/data-export', auth: 'player', handler: async (r, _p, c, u) => {
+    await optionalBody(r, z.object({}).strict()); // nothing to send (identity = the signed-in player)
+    return dataExport(c).request(u, resolveLocale(r), idem(r));
+  } },
+  { method: 'GET', path: '/v1/data-export/file', auth: 'none', handler: async (r, _p, c) => dataExport(c).download(new URL(r.url).searchParams) },
   // シーズンの振り返り (REQ-RECAP-*, contracts/protocol.md §43)
   { method: 'GET', path: '/v1/recaps', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('recaps', u) },
   { method: 'GET', path: '/v1/recaps/:id', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('recap', u, recapIdParam(p.id!)) },
@@ -1176,7 +1216,7 @@ export const routes: Route[] = [
   { method: 'DELETE', path: '/v1/photos/:photoId', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('photoDelete', u, p.photoId!) },
   { method: 'GET', path: '/v1/rival', auth: 'player', handler: async (_r, _p, c, u) => (c.rival ? c.rival.view(u) : { enabled: false }) },
   { method: 'PUT', path: '/v1/rival/settings', auth: 'player', handler: async (r, _p, c, u) => rival(c).setOptOut(u, (await body(r, z.object({ optOut: z.boolean() }).strict())).optOut) },
-  { method: 'POST', path: '/v1/rival/block', auth: 'player', handler: async (_r, _p, c, u) => rival(c).block(u) },
+  { method: 'POST', path: '/v1/rival/block', auth: 'player', handler: async (_r, _p, c, u) => { const r = await rival(c).block(u); await c.teams?.syncBlocks(u); return r; } },
   { method: 'POST', path: '/v1/rival/challenge', auth: 'player', handler: async (r, _p, c, u) => {
     const key = idem(r); // R12 leftover: a retry after a timeout must not use another daily challenge or re-send the invite
     const b = await body(r, z.object({ passphrase: z.string().min(1).max(64) }).strict());
@@ -1210,6 +1250,7 @@ export const handle: Handler = async (req, _p, ctx) => {
       paidBalance: () => ctx.paidBalance(), replay: (id) => ctx.race.replay(id), ...(ctx.clock ? { clock: ctx.clock } : {}),
       ...(ctx.tournaments ? { tournaments: ctx.tournaments } : {}),
       ...(ctx.hostedCups ? { hostedCups: ctx.hostedCups } : {}),
+      ...(ctx.teams ? { teams: ctx.teams } : {}), // Round 18 integration: hide a reported quick chat phrase
       baseMaster: ctx.baseMaster ?? ctx.master,
       ...(ctx.inviteLookup ? { inviteLookup: ctx.inviteLookup } : {}),
       ...(ctx.adminConsoleOrigins ? { consoleOrigins: ctx.adminConsoleOrigins } : {}),
@@ -1329,6 +1370,10 @@ export function teamPlayersFrom(player: (uid: string) => PlayerInvoker): TeamPla
     feedReported: (u, t, seq, by, reason) => player(u).invoke('feedReported', u, t, seq, by, reason),
     cheerPush: (u, from, name, ref) => player(u).invoke('cheerPush', u, from, name, ref),
     goalPlayerView: (u) => player(u).invoke('goalPlayerView', u),
+    qchatOptions: (u, locale) => player(u).invoke('qchatOptions', u, locale),
+    qchatCheck: (u, ph, sl) => player(u).invoke('qchatCheck', u, ph, sl),
+    qchatNote: (u, k, a, b, t, n) => player(u).invoke('qchatNote', u, k, a, b, t, n),
+    qchatMention: (u, from, name, ref) => player(u).invoke('qchatMention', u, from, name, ref),
   };
 }
 

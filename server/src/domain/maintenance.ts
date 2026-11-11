@@ -180,7 +180,7 @@ export function maintenanceLocale(c: MaintenanceConfig): Record<string, string> 
  *   - POST /v1/shop/purchase (store receipts) and store server notifications: a purchase already paid in the store is
  *     always granted (資金決済法), also from an outdated app; GET /v1/shop/store-account (the token the receipt carries);
  *   - the rewarded-ad server callback (the view already happened);
- *   - account deletion and its cancellation (a legal right, never closed);
+ *   - account deletion and its cancellation, and the personal data export (§51: request, status, download) — legal rights, never closed;
  *   - in-flight runs settle: the race socket, and the result submissions of time attack / weekly challenge /
  *     training sessions that were started before the window; leaving a queue (match / event cancel);
  *   - the KPI ingest (maintenance_block / upgrade_prompt are reported through it) and the purchase history.
@@ -200,6 +200,9 @@ export const EXEMPT_ROUTES: readonly string[] = [
   'GET /v1/help', 'GET /v1/help/articles/:articleId', 'GET /v1/help/search',
   'GET /v1/help/inquiries', 'GET /v1/help/inquiries/:ticketId', 'POST /v1/help/inquiries', 'POST /v1/help/inquiries/:ticketId/read',
   'GET /v1/reports/options', 'POST /v1/reports', 'GET /v1/blocks', 'PUT /v1/blocks/:playerId', 'DELETE /v1/blocks/:playerId',
+  // Round 18 integration: the personal data export (§51) is a legal right like the account deletion — asking for it, its
+  // status and the signed download stay open in any window and from an outdated app (the build runs in the player's alarm)
+  'GET /v1/player/data-export', 'POST /v1/player/data-export', 'GET /v1/data-export/file',
 ];
 
 const PREFIX_GROUPS: [string, MaintenanceGroup][] = [

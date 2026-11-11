@@ -456,6 +456,33 @@ module.exports = async function unityFlow(browser, base, out, errors) {
 
   // round 16 (REQ-ORG-*): 厩舎の整理 — the stable's list → more demo horses → sort (rating) → filter (active) → lock → select two →
   // the confirmation (every horse, nothing given back, cancel and confirm the same size) → retired, all on the real rules
+  // round 18 (REQ-HGOAL-*): 馬ごとの目標 — confirmed races for the partner → the goals panel on the horse detail → the full chain →
+  // pin to home → the home strip (hgoal_view home once) → tap → back to the chain → unpin, all on the real server rules
+  async function horseGoalsFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(async () => { const L = globalThis.__muchi.logic; const v = await L.view(); await L.horseGoals.pin(null); await L.horseGoals.demoRaces(v.flags.partnerHorseId, [1, 3, 2, 5]); });
+    await page.evaluate(() => globalThis.__muchi.show('Stable')); await waitScreen('stable'); await waitIn('.hg-panel');
+    await shot('stable-goals', 400);
+    assert.match(await page.locator('.screen.in .hg-summary').innerText(), /目標 \d+ \/ \d+/, 'goals: the panel summary');
+    assert.ok(+(await page.locator('.screen.in .hg-panel').getAttribute('data-done')) >= 1, 'goals: the first win is done');
+    await click('目標をすべて見る'); await waitScreen('horse-goals'); await waitIn('.hg-row');
+    const rows = await page.locator('.screen.in .hg-row').count();
+    assert.ok(rows >= 6 && rows <= 8, 'goals: 6..8 goals in the chain: ' + rows);
+    assert.equal(await page.locator('.screen.in .hg-row[data-current="true"]').count(), 1, 'goals: one current goal');
+    assert.equal(await page.locator('.screen.in .hg-row').first().getAttribute('data-done'), 'true', 'goals: the first win row is done');
+    assert.ok(!(await page.locator('.screen.in').innerText()).includes('ショップ'), 'goals: no shop link');
+    await shot('horse-goals', 400);
+    await click('ホームに出す'); await waitIn('.btn[data-label="ホームから外す"]');
+    await page.evaluate(() => { localStorage.removeItem('muchi.hgoal.home_viewed'); globalThis.__muchiHgoalKpi = []; });
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home'); await waitIn('.hg-pin-strip');
+    await shot('home-goal-pin', 600);
+    assert.equal(await page.evaluate(() => (globalThis.__muchiHgoalKpi ?? []).filter((k) => k.surface === 'home').length), 1, 'goals: hgoal_view home once');
+    await page.locator('.screen.in .hg-pin-strip').click(); await waitScreen('horse-goals');
+    await click('ホームから外す'); await waitIn('.btn[data-label="ホームに出す"]');
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home'); await page.waitForTimeout(500);
+    assert.equal(await page.locator('.screen.in .hg-pin-strip').count(), 0, 'goals: no strip once unpinned');
+  }
+
   async function rosterFlow() {
     const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
     await page.evaluate(() => globalThis.__muchi.show('Stable')); await waitScreen('stable');
@@ -504,6 +531,68 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   // refused) → the lobby with the code → friends join (demo) → 出走 ×3 (createRace in the cup mode, simulated in WASM, settled
   // like a room) → standings with trophies → the result card (no names); join by code (a wrong code says nothing), an
   // invitation, and the host leaving cancels the cup
+  // round 18 (REQ-PRAC-*): 練習レース — from the lobby, the setup (course, 2 runners, strength, slow motion), a race on the
+  // device with the whip band and the slow chip, a mid-race 「やり直す」 (same seed), the result (debrief / advice / no reward,
+  // no save or share), a photo from the result, 「新しい相手で」 (new seed), and nothing granted (wallet / pass unchanged)
+  async function practiceFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    const before = await page.evaluate(async () => { const v = await globalThis.__muchi.logic.view(); return JSON.stringify({ w: v.wallet, r: v.rating, s: v.season }); });
+    const passBefore = await page.evaluate(async () => (await globalThis.__muchi.logic.passView()).xp);
+    await page.evaluate(() => { localStorage.removeItem('muchi.practice.setup'); localStorage.setItem('muchi.practice.options', JSON.stringify({ whipWindow: true, slowFinal: true, ghost: true })); });
+    await page.evaluate(() => globalThis.__muchi.show('RaceLobby')); await waitScreen('lobby');
+    await page.locator('.screen.in .pr-entry').click(); await waitScreen('practice'); await waitIn('.pr-setup');
+    await shot('practice-setup', 400);
+    for (let i = 0; i < 8 && (await page.locator('.screen.in .pr-course').getAttribute('data-track')) !== 'bellmoor_turf_1200'; i++) { await page.locator('.screen.in .pr-course-next').click(); await page.waitForTimeout(300); }
+    for (let i = 0; i < 10; i++) { await page.locator('.screen.in .pr-field-minus').click(); await page.waitForTimeout(100); }
+    assert.equal(await page.locator('.screen.in .pr-field').textContent(), '2頭', 'practice: down to 2 runners');
+    await page.locator('.screen.in .pr-strength[data-strength="easy"]').click(); await page.waitForTimeout(300);
+    assert.equal(await page.locator('.screen.in .pr-strength-note').textContent(), '初心者マッチと同じ相手');
+    await page.locator('.screen.in .pr-start').click(); await waitScreen('race', 20000);
+    let lp = await page.evaluate(() => globalThis.__muchi.lastPractice);
+    assert.ok(lp.raceId.startsWith('practice_') && lp.restart === 'none' && lp.band, 'practice: started with the whip band');
+    // ride a little, then restart (same seed)
+    for (let i = 0; i < 2000; i++) {
+      const s = await state();
+      if (s.f && s.f.gateOpen && !s.f.departed) await tapWhip();
+      if (s.f && s.f.departed && s.f.remainingM < 900) break;
+      await page.waitForTimeout(40);
+    }
+    await page.locator('.screen.in .pr-restart').click(); await waitScreen('race'); await page.waitForTimeout(300);
+    lp = await page.evaluate(() => globalThis.__muchi.lastPractice);
+    assert.equal(lp.restart, 'same_seed', 'practice: 「やり直す」 = the same seed');
+    let started = false, lastW = 0, sawBand = false, sawSlow = false, shotHud = false;
+    for (let i = 0; i < 6000; i++) {
+      const s = await state();
+      if (!s.f) { await page.waitForTimeout(50); continue; }
+      if (s.f.done || (await screen()) !== 'race') break;
+      if (!started && s.f.gateOpen && !s.f.departed) { await tapWhip(); started = true; }
+      if (s.f.departed && s.f.remainingM <= lp.band.start && s.f.whips > 0 && Date.now() - lastW > 1400) { await tapWhip(); lastW = Date.now(); }
+      if (!sawBand && await page.locator('.screen.in .pr-bar.in').count()) { sawBand = true; if (!shotHud) { shotHud = true; await shot('practice-race-band', 0, true); } }
+      if (!sawSlow && await page.locator('.screen.in .pr-slow:not([hidden])').count()) sawSlow = true;
+      await page.waitForTimeout(40);
+    }
+    assert.ok(sawBand, 'practice: the band lit inside the advised range');
+    assert.ok(sawSlow, 'practice: slow motion in the last 400 m');
+    await waitScreen('practice-result', 40000); await waitIn('.pr-result');
+    await shot('practice-result', 500);
+    const text = await page.locator('.screen.in').innerText();
+    assert.ok(text.includes('報酬はありません（練習）'), 'practice result: no reward');
+    assert.equal(await page.locator('.screen.in [data-label="リプレイを保存"], .screen.in [data-label="リプレイを共有"]').count(), 0, 'practice result: no replay save / share');
+    const r = await page.evaluate(() => globalThis.__muchi.lastPracticeResult);
+    assert.ok(r.ok && r.runners === 2 && r.lines[r.lines.length - 1] === '報酬はありません（練習）', 'practice result lines');
+    const kpi = await page.evaluate(() => globalThis.__muchi.logic.kpiLog().filter((e) => e.name.startsWith('practice_')).map((e) => e.name));
+    assert.deepEqual(kpi.slice(-3), ['practice_start', 'practice_start', 'practice_finish'], 'practice KPI: start, restart, finish');
+    await page.locator('.screen.in [data-action="photo-result"]').click(); await waitScreen('photo'); await waitIn('.ph-state[data-mode="practice"]');
+    await page.locator('.screen.in [data-action="ph-back"]').click(); await waitScreen('practice-result');
+    await page.locator('.screen.in .pr-new').click(); await waitScreen('race', 20000);
+    lp = await page.evaluate(() => globalThis.__muchi.lastPractice);
+    assert.ok(lp.restart === 'new_seed' && lp.ghost, 'practice: a new seed, with the ghost of the finished attempt');
+    await click('中断'); await waitScreen('home');
+    const after = await page.evaluate(async () => { const v = await globalThis.__muchi.logic.view(); return JSON.stringify({ w: v.wallet, r: v.rating, s: v.season }); });
+    assert.equal(after, before, 'practice granted nothing (wallet, rating, season)');
+    assert.equal(await page.evaluate(async () => (await globalThis.__muchi.logic.passView()).xp), passBefore, 'practice: no pass XP');
+  }
+
   async function cupsFlow() {
     const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
     await page.evaluate(() => globalThis.__muchi.show('HostedCups')); await waitScreen('hosted-cups'); await waitIn('.cup-mine');
@@ -649,6 +738,46 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await waitScreen('replay-unplayable'); await shot('replay-unplayable', 400);
     assert.match(await page.locator('.screen.in').innerText(), /再生できません/);
     await page.evaluate(() => globalThis.__muchi.logic.replays.demoRetired(false));
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
+  }
+
+  // round 18 (REQ-DEX-*): プライバシー › データのダウンロード — settings row → the screen (nothing requested) → request (preparing,
+  // nothing built on the request path) → the "alarm" builds it → ready with the expiry date and size → the activity entry →
+  // the JSON (own data, paid / free apart, no other players' private data) and the summary downloaded → asking again inside the
+  // cooldown is refused with the date
+  async function privacyFlow() {
+    const waitIn = (sel, timeout = 20000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings');
+    await page.locator('.screen.in [data-action="privacy"]').click(); await waitScreen('privacy'); await waitIn('[data-dex="request"]');
+    assert.equal(await page.locator('.screen.in [data-dex-status]').getAttribute('data-dex-status'), 'none');
+    assert.equal(await page.locator('.screen.in .dex-inc').count(), 7, 'privacy: what is included, listed');
+    await shot('privacy', 400);
+    await page.locator('.screen.in [data-dex="request"]').click();
+    await waitIn('[data-dex="preparing"]', 5000);
+    assert.match(await page.locator('.screen.in .dex-status').innerText(), /準備しています/);
+    await shot('privacy-preparing', 200);
+    await waitIn('[data-dex="json"]', 20000);
+    assert.match(await page.locator('.screen.in .dex-date').innerText(), /^\d+月\d+日まで$/, 'privacy: the expiry as a date, never a countdown');
+    assert.match(await page.locator('.screen.in .dex-size').innerText(), /\d+ (B|KB|MB)$/);
+    assert.match(await page.locator('.screen.in').innerText(), /他の人に送らないでください/, 'privacy: the link note');
+    await shot('privacy-ready', 300);
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('.screen.in [data-dex="json"]').click()]);
+    assert.match(dl.suggestedFilename(), /^muchi-issen-data-\d{4}-\d{2}-\d{2}\.json$/);
+    const doc = JSON.parse(fs.readFileSync(await dl.path(), 'utf8'));
+    assert.equal(doc.format, 'muchi-issen/personal-data-export');
+    assert.deepEqual(doc.unclassified, [], 'privacy: every state key is classified');
+    assert.ok(Array.isArray(doc.coinHistory.paid) && Array.isArray(doc.coinHistory.free), 'privacy: paid and free coin history apart');
+    assert.ok(doc.horses.items.length > 0 && doc.settings.accessibility !== undefined);
+    const [sm] = await Promise.all([page.waitForEvent('download'), page.locator('.screen.in [data-dex="summary"]').click()]);
+    assert.match(fs.readFileSync(await sm.path(), 'utf8'), /プレイヤーID: local/);
+    const kpi = (await page.evaluate(() => globalThis.__muchi.logic.serverKpiLog())).map((k) => k.name).filter((x) => x.startsWith('dex_'));
+    assert.deepEqual(kpi, ['dex_request', 'dex_ready', 'dex_download', 'dex_download'], 'privacy: KPI dex_request / dex_ready / dex_download');
+    // the activity entry links back here
+    await page.evaluate(() => globalThis.__muchi.show('Activity')); await waitScreen('activity'); await waitIn('[data-act="data_export_ready"]');
+    await page.locator('.screen.in [data-act="data_export_ready"] [data-act-go="privacy"]').click(); await waitScreen('privacy');
+    // inside the cooldown a new request is refused with the date it opens
+    const again = await page.evaluate(async () => { await globalThis.__muchi.logic.dataExport.view(); return globalThis.__muchi.logic.dataExport.request('ja'); });
+    assert.ok(again.ok && again.value.created === false, 'privacy: asking again while ready returns the same export');
     await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
   }
 
@@ -961,9 +1090,12 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await hallFlow();
   await silksFlow();
   await myReplaysFlow();
+  await horseGoalsFlow();
   await rosterFlow();
   await recapFlow();
   await cupsFlow();
+  await practiceFlow(); // round 18: 練習レース
+  await privacyFlow(); // round 18: プライバシー › データのダウンロード
   await page.evaluate(() => globalThis.__muchi.show('Scout')); await waitScreen('scout'); await shot('scout', 500);
   await click('提供割合'); await shot('scout-rates', 400); await click('BACK');
   await waitScreen('scout'); await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal'); await shot('scout-paid-reveal', 700);
@@ -1068,6 +1200,34 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.equal(await page.locator('.screen.in .btn[data-label="購入済み"].disabled').count(), 1, 'the bought pass is not buyable');
   assert.equal(await page.locator('.screen.in .btn[data-label="今シーズンは購入済み"].disabled').count(), 1, 'Pass+ is closed too (one per season)');
   await shot('season-pass-owned', 500);
+  // ------------------------------------------------------------------ 4. round 18: 支部の定型チャット (REQ-QCHAT-*)
+  // the same branch screen with the right panel switched to the phrase picker: tabs, phrases, values from the server only,
+  // the post, the 15 s rule, a teammate's mention of me, a stamp on a phrase. No text field anywhere.
+  await page.evaluate(() => globalThis.__muchi.show('TeamFeed')); await waitScreen('team-feed', 20000); await page.waitForTimeout(400);
+  await page.locator('.screen.in .tf-mode').click(); await waitScreen('team-chat', 20000); await page.waitForTimeout(500);
+  assert.equal(await page.locator('.screen.in input, .screen.in textarea, .screen.in [contenteditable]').count(), 0, 'quick chat: no free text');
+  assert.equal(await page.locator('.screen.in .qc-tab').count(), 5, 'quick chat: five category tabs');
+  assert.match(await page.locator('.screen.in .btn.qc-cta').getAttribute('class'), /disabled/, 'quick chat: nothing chosen → the CTA waits');
+  await shot('quick-chat', 300);
+  await page.locator('.screen.in .qc-tab[data-cat="race"]').click(); await waitScreen('team-chat'); await page.waitForTimeout(400);
+  assert.match(await page.locator('.screen.in .qc-phrase[data-phrase="time_report"]').getAttribute('class'), /off/, 'quick chat: no time-attack record → the phrase is off');
+  await page.locator('.screen.in .qc-tab[data-cat="invite"]').click(); await waitScreen('team-chat'); await page.waitForTimeout(400);
+  await page.locator('.screen.in .qc-phrase[data-phrase="run_together"]').click(); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .qc-phrase.sel .qc-blank').count(), 1, 'quick chat: a blank until a course is chosen');
+  await page.locator('.screen.in .qc-slot[data-slot="course"] .qc-opt[data-ref="kirameki_turf_2000"]').click(); await page.waitForTimeout(400);
+  assert.match(await page.locator('.screen.in .qc-phrase.sel').innerText(), /きらめき競馬場 芝2000mで一緒に走ろう/);
+  await shot('quick-chat-picked', 300);
+  await page.locator('.screen.in .btn.qc-cta').click(); await page.waitForTimeout(800);
+  const qMine = page.locator('.screen.in .tf-row.qchat.mine').first();
+  assert.match(await qMine.innerText(), /きらめき競馬場 芝2000mで一緒に走ろう/, 'quick chat: my phrase is on top of the feed');
+  assert.match(await page.locator('.screen.in .btn.qc-cta').getAttribute('class'), /disabled/, 'quick chat: 15 s rule on the CTA');
+  await shot('quick-chat-sent', 300);
+  for (let i = 0; i < 3; i++) { await click('支部員のデモ'); await page.waitForTimeout(600); }
+  assert.ok(await page.locator('.screen.in .tf-row.qchat.me').count() >= 1, 'quick chat: a teammate named me (marked)');
+  await page.locator('.screen.in .tf-row.qchat.me .tf-cheer').first().click(); await page.waitForTimeout(700);
+  assert.ok(await page.locator('.screen.in .tf-row.qchat .tf-cheer.on').count() >= 1, 'quick chat: a stamp on a phrase');
+  await shot('quick-chat-mention', 300);
+  await page.locator('.screen.in .tf-mode').click(); await waitScreen('team-feed', 20000); await page.waitForTimeout(300);
   // ------------------------------------------------------------------ 4. round 13: 支部の共同目標 (REQ-TGOAL-*)
   // the demo team's week on the real TeamCore / PlayerService rules: milestone bar, contributors, the week result sheet
   await page.evaluate(() => globalThis.__muchi.show('TeamFeed')); await waitScreen('team-feed', 20000); await page.waitForTimeout(400);

@@ -26,6 +26,7 @@ import type { CollectionMaster } from './collection.js';
 import collectionJson from '../../master/collection.json';
 import photoJson from '../../master/photo.json';
 import helpJson from '../../master/help.json';
+import practiceJson from '../../master/practice.json';
 import { trackSchema, type GoingAptitude, type Going, type Track } from './schemas.js';
 import { AppError } from './errors.js';
 import { loadSkills, type SkillsMaster } from './skills.js';
@@ -207,12 +208,16 @@ export interface Progression {
   nextActions?: import('./nextAction.js').NextActionConfig;
   /** REQ-RECAP-*: シーズンの振り返り (seasonRecap.ts, validated by seasonRecapProblems). Absent / disabled = no recaps. */
   seasonRecap?: import('./seasonRecap.js').SeasonRecapConfig;
+  /** REQ-DEX-*: 個人データの開示・ダウンロード (dataExport.ts, validated by dataExportProblems). Absent / disabled = no export. */
+  dataExport?: Partial<import('./dataExport.js').DataExportConfig> & { enabled: boolean };
   /** REQ-CUP-*: プレイヤー主催カップ (hostedCups.ts, validated by hostedCupsProblems). Absent / disabled = no hosted cups. */
   hostedCups?: import('./hostedCups.js').HostedCupsConfig;
   /** REQ-RPT-015: 通報 limits and reporter weights (reports.ts, validated by reportsProblems). Absent = REPORTS_DEFAULTS. */
   reports?: Partial<import('./reports.js').ReportsConfig>;
   /** REQ-FSUG-012: おすすめフレンド (friendSuggest.ts, validated by fsugProblems). Absent = FSUG_DEFAULTS. */
   friendSuggest?: Partial<import('./friendSuggest.js').FsugConfig>;
+  /** REQ-HGOAL-*: 馬ごとの目標 (horseGoals.ts, validated by horseGoalsProblems; needs hall). Absent / disabled = no goals. */
+  horseGoals?: import('./horseGoals.js').HorseGoalsConfig;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */
@@ -408,10 +413,14 @@ export interface Master {
   silksEditor?: import('./silksEditor.js').SilksEditorMaster;
   /** REQ-CMT-*: 実況パック (master/commentary-packs.json; commentaryPacks.ts commentaryPacksOf falls back to it when absent). */
   commentaryPacks?: import('./commentaryPacks.js').CommentaryPacksMaster;
+  /** REQ-QCHAT-*: 支部の定型チャット (master/quick-chat.json; quickChat.ts quickChatOf falls back to it when absent). Phrases carry their own English. */
+  quickChat?: import('./quickChat.js').QuickChatMaster;
   /** REQ-PHOTO-*: photo mode looks / frames / stamps (master/photo.json; photoMode.ts photoOf falls back to it when absent). */
   photo?: import('./photoMode.js').PhotoMaster;
   /** REQ-HELP-*: ヘルプセンター articles (master/help.json; help.ts helpOf falls back to it when absent; remote config `help` replaces it). */
   help?: import('./help.js').HelpMaster;
+  /** REQ-PRAC-*: 練習レース — field size and CPU strengths (master/practice.json; practice.ts practiceOf falls back to it when absent). */
+  practice?: import('./practice.js').PracticeMaster;
 }
 
 export const PPM_TOTAL = 1_000_000;
@@ -566,6 +575,7 @@ export function loadMaster(): Master {
     collection: collectionJson as unknown as CollectionMaster,
     photo: photoJson as unknown as import('./photoMode.js').PhotoMaster,
     help: helpJson as unknown as import('./help.js').HelpMaster,
+    practice: practiceJson as unknown as import('./practice.js').PracticeMaster,
   };
   cached = m;
   return m;

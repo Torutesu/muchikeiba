@@ -17,7 +17,7 @@ namespace Muchi.Client
         public static readonly string[] All =
         {
             "first_race", "login_bonus", "missions_claim", "pass_claim", "gift_expiring", "training_open", "missions_close", "exchange_closing",
-            "feature_unlocked", "rival_week", "weekly_challenge", "team_goal_near", "training_slots", "first_win", "scout_ticket", "race",
+            "feature_unlocked", "rival_week", "weekly_challenge", "team_goal_near", "horse_goal_near", "training_slots", "first_win", "scout_ticket", "race",
         };
         public static readonly string[] Slots = { "primary", "chip" };
         /// <summary>Never the primary card (REQ-NEXT-003).</summary>

@@ -72,21 +72,24 @@ namespace Muchi.Client
     public sealed class FeedItem
     {
         public long Seq, At;
-        /// <summary>"stamp" | "race" | "goal" (REQ-TGOAL-008: a team item, no author: not reportable, never hidden by a mute).</summary>
+        /// <summary>"stamp" | "race" | "goal" | "qchat" (REQ-QCHAT-009: a fixed phrase) (REQ-TGOAL-008: a team item, no author: not reportable, never hidden by a mute).</summary>
         public string Kind;
         public string PlayerId, DisplayName;
         public bool Mine;
         public string StampId, StampAsset;
         public FeedRaceInfo Race;
         public FeedGoalInfo Goal;
+        /// <summary>REQ-QCHAT-009: set on "qchat" items (a fixed phrase; its text already in my language).</summary>
+        public FeedQuickChat QuickChat;
         public List<FeedReactionCount> Reactions = new List<FeedReactionCount>();
         public string MyReaction;
         public bool IsRace => Kind == "race";
         public bool IsGoal => Kind == "goal";
+        public bool IsQuickChat => Kind == "qchat";
         internal static FeedItem Parse(JsonNode o) => new FeedItem
         {
             Seq = J.Long(o, "seq"), At = J.Long(o, "at"), Kind = J.Str(o, "kind"), PlayerId = J.Str(o, "playerId"), DisplayName = J.Str(o, "displayName"),
-            Mine = J.Bool(o, "mine"), StampId = J.Str(o, "stampId"), StampAsset = J.Str(o, "stampAsset"), Race = FeedRaceInfo.Parse(J.Opt(o, "race")), Goal = FeedGoalInfo.Parse(J.Opt(o, "goal")),
+            Mine = J.Bool(o, "mine"), StampId = J.Str(o, "stampId"), StampAsset = J.Str(o, "stampAsset"), Race = FeedRaceInfo.Parse(J.Opt(o, "race")), Goal = FeedGoalInfo.Parse(J.Opt(o, "goal")), QuickChat = FeedQuickChat.Parse(J.Opt(o, "qchat")),
             Reactions = J.List(o, "reactions", FeedReactionCount.Parse), MyReaction = J.Str(o, "myReaction"),
         };
     }

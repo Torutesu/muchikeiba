@@ -60,6 +60,8 @@
 | `hof_view` | サーバー（殿堂を見た。書き込みなし） | `self`/`friend`/`team` | | | `double9` そのページの銘板の数 |
 | `stamp_post` | サーバー（支部フィードにスタンプを投稿・応援した、REQ-TEAMFEED-009） | スタンプID | `post`/`reaction` | 支部ID | |
 | `team_feed_view` | サーバー（支部フィードの1ページ目を開いた） | 支部ID | | | `double5` ミュートしている人数 |
+| `qchat_post` | サーバー（支部の定型チャットを投稿した、REQ-QCHAT-011） | 文ID | 支部ID | `mention`/空 | `double5` スロットの数 |
+| `qchat_react` | サーバー（定型チャットに新しくスタンプで応援した） | スタンプID | 文ID | 支部ID | |
 | `session_start` / `session_end` | クライアント | | | | `double6` セッションの長さ |
 | `tutorial_step` | クライアント | ステップ名（固定の8つ：`consent` 1, `race1_start` 2, `race1_whip` 3, `race1_win` 4, `named` 5, `gacha_done` 6, `race2_done` 7, `home` 8） | | | `double9` ステップ番号、`double5` 任意の数値（`race1_win` はやり直し回数）。REQ-UXS-030 |
 | `feature_unlock` | クライアント | 機能キー（`unlocks` のキー） | | | |
@@ -1172,3 +1174,78 @@ GROUP BY event, reason ORDER BY event, n DESC
 ```
 
 - **フレンドができたか**：相手の id を入れていないので、申請と承認を人単位では結ばない。日ごとの `friend_accept`（承認した側のサーバーイベント）の数が、おすすめを出してから増えたかで見る。
+
+
+## 馬ごとの目標：見た・達成・ピン留め（REQ-HGOAL-012、Round 18、contracts/protocol.md §53）
+列：`hgoal_view`（クライアント）`blob8` = `detail`（馬の目標の面を開いた）／`home`（ホームのピンを見た、1ゲーム日に1回）、`double9` = その時の達成数。`hgoal_complete`（サーバー、目標を達成した時に1回）`blob8` = 目標の種類（`first_win`・`races`・`surface_win`・`ta_course`・`stretch_win`・`wins`・`ranked_top3`・`tournament_win`）、`blob9` = `chain`（列を全部達成した最後の1つ）／空、`double5` = その馬の達成数。`hgoal_pin`（サーバー、ピン留めが変わった時だけ）`blob8` = `pin`／`unpin`、`blob9` = その時の目標の種類。
+
+**種類ごとの達成数**（週ごと）：極端に少ない種類（`stretch_win`・`tournament_win` など）は物語の終わりとして妥当か、多すぎる種類は簡単すぎないかを見る。`need` はコードの版（v1）と共有ベクター `contracts/horse-goals.vectors.json` で決まるので、変える時は版を上げる。
+
+```sql
+SELECT toStartOfWeek(timestamp) AS week, blob8 AS kind, sum(_sample_interval) AS completes,
+  sumIf(_sample_interval, blob9 = 'chain') AS chains_done
+FROM muchi_kpi
+WHERE blob1 = 'hgoal_complete' AND timestamp > NOW() - INTERVAL '56' DAY
+GROUP BY week, kind
+ORDER BY week DESC, completes DESC
+```
+
+**面を開いた人・ピン留めした人**：
+
+```sql
+SELECT blob1 AS name, blob8 AS what, sum(_sample_interval) AS n, count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 IN ('hgoal_view', 'hgoal_pin') AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY name, what
+ORDER BY name, n DESC
+```
+
+## 練習レース：始めた・ゴールした（REQ-PRAC-015、Round 18、contracts/protocol.md §50）
+列：`practice_start`（クライアント）`blob8` = コース（trackId）、`blob9` = 強さ（`easy`／`normal`／`strong`／`top`）、`blob10` = やり直しの種類（`none`／`same_seed`／`new_seed`）、`double5` = 頭数（2〜12）。`practice_finish`（クライアント）`blob8` = コース、`blob9` = 強さ、`double5` = 頭数、`double4` = 着順（ゴールしなければ 0）。入力・seed・タイムは送らない。練習は何も配らないので、この行は報酬の集計（コイン・XP・ミッション）には出てこない。
+
+**使われ方**（週ごと）：練習した人、試走の数、やり直しの割合、強さの分布、ゴールまで走った割合。
+
+```sql
+SELECT
+  toStartOfWeek(timestamp) AS week,
+  count(DISTINCT if(blob1 = 'practice_start', blob2, NULL)) AS players,
+  sumIf(_sample_interval, blob1 = 'practice_start') AS runs,
+  sumIf(_sample_interval, blob1 = 'practice_start' AND blob10 != 'none') AS restarts,
+  sumIf(_sample_interval, blob1 = 'practice_finish' AND double4 > 0) AS finished,
+  sumIf(_sample_interval, blob1 = 'practice_start' AND blob9 = 'easy') AS easy,
+  sumIf(_sample_interval, blob1 = 'practice_start' AND blob9 = 'top') AS top
+FROM muchi_kpi
+WHERE blob1 IN ('practice_start', 'practice_finish') AND timestamp > NOW() - INTERVAL '56' DAY
+GROUP BY week
+ORDER BY week DESC
+```
+
+**練習のあとのランク戦**（練習した週に、ランク戦の着順が上がるか。相関で、因果ではない）：
+
+```sql
+SELECT blob9 AS strength, avg(double4) AS avg_place, sum(_sample_interval) AS finishes
+FROM muchi_kpi
+WHERE blob1 = 'practice_finish' AND double4 > 0 AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY strength
+ORDER BY strength
+```
+
+## 個人データの開示・ダウンロード：リクエスト・準備・ダウンロード（REQ-DEX-017、Round 18、contracts/protocol.md §51）
+列：`dex_request`（サーバー）`blob8` = 言語（`ja`／`en`）。`dex_ready`（サーバー）`blob8` = 言語、`double9` = JSON のバイト数、`double6` = リクエストから準備までのミリ秒、`double5` = 大きさの上限で省略したコインの履歴の行（ふつう 0）。`dex_download`（サーバー）`blob8` = `json`／`summary`、`double8` = 1 ならそのリクエストで最初のダウンロード。中身・リンクは記録しない。
+
+**届いているか**（週ごと）：リクエスト・準備できた数・ダウンロードされた割合・準備までの時間（中央値）・省略が起きた数。準備できた割合が下がる、時間が延びる、省略が増えるときは `GET /v1/admin/players/:id/data-export` の `failReason` と Worker のログ（`data export build failed`）を見る。
+
+```sql
+SELECT
+  toStartOfWeek(timestamp) AS week,
+  sumIf(_sample_interval, blob1 = 'dex_request') AS requests,
+  sumIf(_sample_interval, blob1 = 'dex_ready') AS ready,
+  sumIf(_sample_interval, blob1 = 'dex_download' AND double8 = 1) AS downloaded,
+  round(sumIf(_sample_interval, blob1 = 'dex_download' AND double8 = 1) / sumIf(_sample_interval, blob1 = 'dex_ready'), 3) AS download_rate,
+  quantileWeighted(0.5)(if(blob1 = 'dex_ready', double6, NULL), _sample_interval) AS median_ready_ms,
+  sumIf(_sample_interval, blob1 = 'dex_ready' AND double5 > 0) AS truncated_exports
+FROM muchi_kpi
+WHERE blob1 IN ('dex_request', 'dex_ready', 'dex_download') AND timestamp > NOW() - INTERVAL '56' DAY
+GROUP BY week
+ORDER BY week DESC
+```

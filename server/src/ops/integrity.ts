@@ -50,7 +50,7 @@ export interface IntegrityRepo {
   markRace(raceId: string, at: number): void;
   report(id: string): RaceReport | null;
   putReport(r: RaceReport): void;
-  reports(filter: { status?: RaceReport['status']; raceId?: string; limit: number }): RaceReport[];
+  reports(filter: { status?: RaceReport['status']; raceId?: string; reporterId?: string; limit: number }): RaceReport[];
 }
 
 export function statusOf(p: PlayerIntegrity | null, now: number): ModerationStatus {
@@ -152,6 +152,14 @@ export class IntegrityCore {
     return this.repo.reports({ ...(status ? { status } : {}), limit: Math.min(500, limit) });
   }
 
+  /**
+   * REQ-DEX-007 (§51): the reports a player made, for their data export — the race, when, and whether it is still open.
+   * Never the resolution note or who resolved it (operator notes about the race, possibly about another player).
+   */
+  reportsBy(reporterId: string, limit = 500) {
+    return this.repo.reports({ reporterId, limit: Math.min(1000, limit) }).map((r) => ({ raceId: r.raceId, at: r.at, status: r.status }));
+  }
+
   resolveReport(id: string, resolution: string, by: string, now: number): RaceReport {
     const r = this.repo.report(id);
     if (!r) throw new AppError('NOT_FOUND', `report ${id}`);
@@ -178,7 +186,7 @@ export class MemoryIntegrityRepo implements IntegrityRepo {
   markRace(id: string, at: number) { this.races.set(id, at); }
   report(id: string) { return this.rs.get(id) ?? null; }
   putReport(r: RaceReport) { this.rs.set(r.id, r); }
-  reports(f: { status?: RaceReport['status']; raceId?: string; limit: number }) {
-    return [...this.rs.values()].filter((r) => (!f.status || r.status === f.status) && (!f.raceId || r.raceId === f.raceId)).sort((a, b) => b.at - a.at).slice(0, f.limit);
+  reports(f: { status?: RaceReport['status']; raceId?: string; reporterId?: string; limit: number }) {
+    return [...this.rs.values()].filter((r) => (!f.status || r.status === f.status) && (!f.raceId || r.raceId === f.raceId) && (!f.reporterId || r.reporterId === f.reporterId)).sort((a, b) => b.at - a.at).slice(0, f.limit);
   }
 }

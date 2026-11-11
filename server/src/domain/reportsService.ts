@@ -34,6 +34,8 @@ export class ReportsService {
     private readonly queue: () => PlayerReportsApi | undefined,
     private readonly raceReport: (raceId: string, playerId: string) => Promise<unknown>,
     private readonly clock: () => number = Date.now,
+    /** Round 18 integration (§52): the branch's copy of a quick chat phrase. Absent → `qchat` reports answer NOT_FOUND. */
+    private readonly qchatCopy?: (reporter: string, teamId: string, seq: number) => Promise<{ playerId: string; phraseId: string; at: number; text: string; slots: { name: string; value: string }[] }>,
   ) {}
 
   async submit(u: string, b: ReportBody) {
@@ -44,7 +46,15 @@ export class ReportsService {
     checkReportShape(b.category, b.content);
     const note = validateNote(m, b.note);
     if (b.targetId === u) throw new AppError('BAD_REQUEST', 'you cannot report yourself');
-    const snapshot = await this.player(b.targetId).invoke('reportSnapshot', b.targetId, b.content);
+    let snapshot = await this.player(b.targetId).invoke('reportSnapshot', b.targetId, b.content);
+    if (b.content.kind === 'qchat') {
+      // §47 × §52: the phrase as the branch showed it, copied from the TeamDO (only from the reporter's own branch)
+      const [teamId, seqText] = b.content.feedRef!.split(':') as [string, string];
+      if (!this.qchatCopy) throw new AppError('NOT_FOUND', 'no such phrase');
+      const q = await this.qchatCopy(u, teamId, Number(seqText));
+      if (q.playerId !== b.targetId) throw new AppError('NOT_FOUND', 'no such phrase');
+      snapshot = { ...snapshot, text: q.text, qchat: { teamId, seq: Number(seqText), phraseId: q.phraseId, slots: q.slots, postedAt: q.at } };
+    }
     if (b.content.kind === 'race') {
       const r = (await this.raceReport(b.content.raceId!, u)) as { ok?: boolean } | null;
       if (!r?.ok) throw new AppError('NOT_ELIGIBLE', 'you can only report a race you were in');

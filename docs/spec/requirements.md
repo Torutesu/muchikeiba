@@ -1073,3 +1073,85 @@
 - REQ-FSUG-014 KPI：`fsug_view`（クライアント）、`fsug_request`・`fsug_dismiss`（サーバー、相手の id なし）。
 - REQ-FSUG-015 英語：理由の行・画面の文言すべてに英語。名前は訳さない。
 - REQ-FSUG-016 クライアント：C# の API とモデル、Unity `FriendSuggestionsModel`、プロトタイプのフレンド画面の区画（日英・文字の大きさ）、Codex 向けの引き継ぎ。
+
+## 50. 練習レース（TS＋C#、`src/domain/practice.ts`・`server/master/practice.json`・`Muchi.Client/Practice.cs`・`Muchi.Game.PracticeModel`、`contracts/protocol.md` §50）
+拘束条件：練習は何も配らない（E 番号なし。コイン・アイテム・ミッション・パス XP・シーズンpt・レート・戦績・殿堂・振り返り・ライバル・共同目標・交換所・図鑑・絆・実績のどれも動かない）。サーバーに練習の結果を受け取る経路を作らない。エンジンとゴールデンは変えない。FTUE（06 §2.3）と競わない。
+- REQ-PRAC-001 端末だけで走る：練習のレースは端末の本物のエンジン（`OfflineRace`）で走り、サーバーとの往復は要らない（オフラインで遊べる）。
+- REQ-PRAC-002 カタログ：`GET /v1/practice/catalog`（要認証、読み取りだけ）が頭数の範囲・CPU の強さ・コース（馬場・ナイター・その日の馬場）・CPU の馬・自分の現役の馬・有効なルールセットを返す。状態を変えない。
+- REQ-PRAC-003 強さ：`server/master/practice.json` の強さは既存の CPU の定義から（`easy` = 初心者マッチの `cpuLevel`・`cpuStatPermille`、`normal`/`strong`/`top` = `cpuLevelFor` の段 3/4/5）。起動時に検査（形・id の重複・`cpuLevel` 1〜5・`cpuStatPermille` 500〜1000・`default` が実在・文の言葉）。
+- REQ-PRAC-004 選べるもの：自分の馬のどれでも、コース全部（プレイヤーごとのコースの鍵は無い）、その面の4つの馬場、照明のあるコースだけナイター、頭数 2〜12、強さ。
+- REQ-PRAC-005 組み立て：`PracticeSession.BuildConfig(catalog, setup, seed)` は純粋（同じ入力 → 同じ設定）。CPU は自分の馬と同じ名前を除いて重複なしで選び、ゲートは乱数で並べる。`mode: friend`・`raceId: practice_<seed>`。不正な選択は組み立てない。
+- REQ-PRAC-006 やり直し：同じ seed（同じ相手・枠・展開）か新しい seed（`SeedMix.Mix`）ですぐにやり直す。回数制限なし。
+- REQ-PRAC-007 ゴースト：前の試走（ゴールしたもの）を `GhostPlayer` で別に再生して並べる。今の試走に触れない（同じ入力なら結果のハッシュはゴーストの有無で同じ）。コースが変わったら消す。端末の中だけ。
+- REQ-PRAC-008 ムチの目安：出走前アドバイスのムチの打ち始めから、`CheckWhipTip` の「アドバイスどおり」の範囲と同じ帯を出す。オプション、既定 ON。
+- REQ-PRAC-009 スロー：最後の400m（自分の馬）を 0.5 倍の時計で。エンジンの tick と結果は変わらない。オプション、既定 OFF。
+- REQ-PRAC-010 結果画面：Round 8 の振り返りの1行とヒント、アドバイスとの比べの1行、前の試走との差、「報酬はありません（練習）」。報酬の欄は出さない。
+- REQ-PRAC-011 何も配らない：練習の結果を送る API は無い。KPI を送っても状態の報酬・記録は変わらない（テストで全部の値を比べる）。
+- REQ-PRAC-012 リプレイ・写真：マイリプレイに保存できない（ボタンを出さない、サーバーは練習の raceId を知らない）。フォトモードは使える（途中で止めて撮れる、`source.mode: practice`）。リプレイ共有のカードは出さない。写真のカードの種類は「練習レース」。
+- REQ-PRAC-013 解放：チュートリアル（FTUE の流れ）が終わったらいつでも。サーバーの解放キーは使わない。次にやることのカードにしない・自分から案内しない。オフラインのエラーから開ける。
+- REQ-PRAC-014 アクセシビリティ：§41 の文字の大きさ・ムチの長押し・かんたん操作・字幕・動きを減らす（切り替えをアニメーションしない）・色のトークン（帯 `cue.whipChance`）に従う。
+- REQ-PRAC-015 KPI：`practice_start`・`practice_finish`（コース・頭数・強さ・やり直しの種類・着順だけ。入力や seed は送らない、`strict`）。クエリは `docs/ops/kpi-queries.md`。
+- REQ-PRAC-016 オフラインの予備：カタログが無い端末は内蔵の練習コース・強さ・CPU・既定のルールセットで走る。覚えたカタログはオフラインで使う。
+- REQ-PRAC-017 クライアント：`Muchi.Client` の `PracticeCatalog`・`PracticeSession`・`PracticeClock`・`ApiClient.GetPracticeCatalogAsync`・`AnalyticsEvents.PracticeStart/PracticeFinish`。Unity ゲーム層 `PracticeModel`。描画は `docs/handoff-codex-round18-practice.md`。
+- REQ-PRAC-018 プロトタイプ・英語：ムチ一閃の見た目で練習の設定・レース（WASM の本物のエンジン）・結果、日本語・英語（`l10n:missing` 0、0 untranslated / 0 overflow）、e2e・en-flow・a11y-flow。
+
+## 51. 個人データの開示・ダウンロード（personal data export、TS＋C#、`src/domain/dataExport.ts`・`src/domain/dataExportService.ts`・`Muchi.Client/DataExport.cs`、`contracts/protocol.md` §51）
+拘束条件：本人（ログイン中のプレイヤー）だけ。メールアドレスを集めない。他のプレイヤーの個人的な情報は入れない。有償・無償コインは分けて出す。作成は非同期（リクエストの経路で作らない）。運用は状態を見られるが中身は見られない。コイン・アイテムは動かない（E 番号なし）。
+- REQ-DEX-001 入口：設定 › プライバシーの「データのダウンロード」。`GET`／`POST /v1/player/data-export`。
+- REQ-DEX-002 リクエスト：`POST` は `Idempotency-Key` 必須・本文なし。状態に1件の `queued` を作り KPI `dex_request`。
+- REQ-DEX-003 状態：`none`・`queued`・`building`・`ready`・`failed`・`expired` と文・次に申し込める日・削除の予定の注意。
+- REQ-DEX-004 回数の制限：最後に準備できたリクエストから `cooldownDays` 日（`429 DATA_EXPORT_COOLDOWN`、`availableAt`）。失敗は数えない。
+- REQ-DEX-005 冪等：進行中・期限内のものがあれば新しく作らずそれを返す。同じキーは同じ応答。
+- REQ-DEX-006 分類：`PlayerState` のすべてのトップレベルのキー（モジュールの拡張キーを含む）を「出す（セクション）」か「出さない（理由）」に分類する。分類の無いキーで型チェックとテストが失敗する。
+- REQ-DEX-007 中身：protocol §51.4 のセクション（アカウント・プロフィール・設定（アクセシビリティ含む）・馬・アイテム・有償／無償の残高とロット・コインの履歴・購入・ガチャ（90日）・プレゼント・フレンド（ID と名前だけ）・ブロック・自分が送った通報・お知らせ・リプレイと写真のメタデータ・カップ・振り返り・遊びの記録・端末・分析イベント・お問い合わせ）。
+- REQ-DEX-008 概要：人が読めるテキスト（件数と説明、言語はプレイヤーの言語、値は訳さない）。
+- REQ-DEX-009 形式：固定のフィールド名と `version`。ヘッダーが先・大きな一覧は1要素1行。`maxBytes` を超えたら古いコインの履歴から省略して `truncated` と概要に書く。非公開の R2 `private/data-export/<playerId>/`。
+- REQ-DEX-010 ダウンロード：`linkTtlMinutes` 分の署名つきリンク（1人・1リクエスト・1ファイル、エクスポートの期限を超えない）。改ざん `403`・期限切れ `410`・今のものでなければ `404`。`cache-control: private, no-store`。KPI `dex_download`。
+- REQ-DEX-011 期限と削除：`keepDays` 日後にアラームが R2 から削除（失敗は10分ごとに再試行、ライフサイクルルールが予備）。
+- REQ-DEX-012 お知らせ：準備できた時にアクティビティ（§40）`data_export_ready` を1件。
+- REQ-DEX-013 アカウント削除：予定中はリクエスト・ダウンロードできる。実行中は `DELETION_PENDING`。削除の段 `data_export` で R2 のファイルを消す。削除後のリンク・アラームは何も作らない。
+- REQ-DEX-014 運用・監査：`GET /v1/admin/players/:id/data-export`（viewer、監査あり）は状態・時刻・大きさ・回数・監査ログだけ。プレイヤーの状態に監査ログ（`auditKeep` 件）。
+- REQ-DEX-015 文言：日本語・英語（テストで日本語の残りなし）。プレイヤー・馬の名前は訳さない。
+- REQ-DEX-016 設定 `progression.dataExport`：範囲と `keepDays ≤ cooldownDays` を起動時と各版で検証。
+- REQ-DEX-017 KPI：`dex_request`・`dex_ready`・`dex_download`（サーバー）。クエリは `docs/ops/kpi-queries.md`。
+- REQ-DEX-018 クライアント：`ApiClient.GetDataExportAsync`・`RequestDataExportAsync`・`DataExportFileUrl`、`DataExportStatus`。Unity のゲーム層 `DataExportModel`。
+- REQ-DEX-019 プロトタイプ：設定のプライバシー（リクエスト・状態・ダウンロード、ムチ一閃のトーン、日本語・英語、文字の大きさ）。e2e・en-flow・a11y-flow。
+- REQ-DEX-020 法務：`docs/planning/03-legal-risk.md` に方針と弁護士の確認事項（開示の範囲・通報の扱い・保存期間・本人確認）。
+
+## 52. 支部の定型チャット（branch quick chat、TS＋C#、`src/domain/quickChat.ts`・`server/master/quick-chat.json`・`src/domain/teamFeed.ts`・`Muchi.Client/QuickChat.cs`・`Muchi.Game.QuickChatModel`、`contracts/protocol.md` §52、docs/planning/03「支部の定型チャット」）
+拘束条件：自由入力を作らない（定型文の ID とサーバーが確かめたスロットの値だけ）。§18 の支部フィードを拡張する（別のフィードを作らない）。賭け言葉・「倍」「お得」「今だけ」などを文に入れない。プレイヤーが付けた名前（表示名・馬・カップ）は翻訳しない。コイン・アイテムは動かない（E 番号なし）。
+- REQ-QCHAT-001 定型文のマスター `quick-chat.json`：文ごとに ID・分類・日本語と英語の組。保存するのは文 ID とスロットの値で、文字列は読む人の言語で組み立てる。
+- REQ-QCHAT-002 検証（起動時・リモート設定の各版）：ID の形と重複、分類、長さ、スロットは `course`・`horse`・`race`・`time`・`cup`・`player` だけ・最大2つ・日英で同じ組、共有の賭け言葉リスト（日英）、「倍」「お得」「今だけ」「残りわずか」「通常価格」、英語の文言チェック、URL なし、`config` の範囲。
+- REQ-QCHAT-003 投稿 `POST /v1/teams/me/feed/quick-chat {phraseId, slots}`：支部の仲間だけ、削除の予約中は `DELETION_PENDING`、無効の間は `NOT_FOUND`、余分な項目は `BAD_REQUEST`。
+- REQ-QCHAT-004 スロットの値はサーバーが投稿する人の状態から確かめる（自分の馬・最近のレース・タイムアタックの記録・出ているカップ・コース・ブロックの関係にない仲間）。足りない・余分は `BAD_REQUEST`、確かめられない値は `NOT_ELIGIBLE`。
+- REQ-QCHAT-005 上限（1人ずつ）：`postIntervalMs` に1回、ゲーム日ごとに `postsPerDay` 回、同じ文・同じ値の連投は `repeatWindowMs` の間だめ、声かけはゲーム日ごとに `mentionsPerDay` 回（`RATE_LIMITED`）。
+- REQ-QCHAT-006 保存の量：支部ごとに定型チャットの項目は `retainMax` 件・`retainDays` 日まで。§18 の `feedSize` はそのまま。
+- REQ-QCHAT-007 ブロックは両方向（ブロックの一覧は1つ）：ブロックした人・された人の定型チャットは見えず、リアクションできず（`NOT_FOUND`）、名前のスロットにも選べない。TeamDO が仲間のブロックの写しを持ち、フィードを開く・ミュートを変える・投稿する時に更新する。
+- REQ-QCHAT-008 `GET /v1/teams/me/quick-chat`：読む人の言語の定型文（スロットは `{name}` のまま）、投稿で受け付ける値の一覧、上限と今日の使用数。
+- REQ-QCHAT-009 フィードの項目 `kind: "qchat"`：`qchatText`（読む人の言語で組み立て済み、境目の翻訳は触らない）、スロット、`mention`・`mentionsMe`・`anon`、通報の対象 `report`。応援は §18 のスタンプのリアクション。通報は §18 の通報（§47 は後で `report` を渡す）。
+- REQ-QCHAT-010 支部を抜けた・外された人の項目は残して名前を伏せる（「元メンバー」）。アカウント削除ではその人の項目を消し、他の人の文の中のその人の名前も「元メンバー」にする。
+- REQ-QCHAT-011 KPI（サーバー）：`qchat_post`（文 ID・支部・声かけか・スロットの数）・`qchat_react`（スタンプ・文 ID・支部、新しいリアクションの時だけ）。
+- REQ-QCHAT-012 アクティビティ（§40）：声かけで名前を出された人にだけ `qchat_mention`（まとめる、ブロックの相手からは書かない、投稿ごとに1回）。新しいプッシュの種類は作らない。
+- REQ-QCHAT-013 英語：定型文は日英の組。読む人の言語で組み立て、プレイヤーが付けた名前は翻訳しない。コース名は §23 の表で訳す。「元メンバー」は「Former member」。
+- REQ-QCHAT-014 クライアント：`Muchi.Client` `ApiClient.GetQuickChatAsync`・`PostQuickChatAsync`、`FeedItem.QuickChat`。
+- REQ-QCHAT-015 Unity のゲーム層 `QuickChatModel`：定型文の選び方（分類のタブ、スロットの選択肢、埋めた文の見本）、送れない理由（オフライン・支部なし・削除の予約・待ち時間・今日の上限）、フィードの行（両方向のブロックは端末でも隠す）、応援。
+- REQ-QCHAT-016 プロトタイプ：ムチ一閃の支部の画面に定型文の選び方とフィード、日本語・英語、文字の大きさ（§41）。e2e・en-flow・a11y-flow。
+
+## 53. 馬ごとの目標（TS＋C#、`src/domain/horseGoals.ts`・`Muchi.Client/HorseGoals.cs`、`contracts/protocol.md` §53）
+拘束条件：報酬は見た目だけ（コイン・素材・アイテム・能力・ランク戦の強さは動かない）。進むのは確定したレースの成績だけ（§34.1 と同じ数え方、同じレースは1回）。ミッションと二重に報酬を出さない。賭けの言葉・煽り・期限なし。
+- REQ-HGOAL-001 目標の列：馬の芝ダ・距離・脚質・固有スキルの有無とコースの一覧からの純粋な関数（`horseGoalChain`）。乱数・時刻・レア度・能力値・課金を見ない。版 `v: 1`。
+- REQ-HGOAL-002 種類と並び：`first_win`・`races`（10）・`surface_win`（3）・`ta_course`・`stretch_win`（得意の距離の外の帯、無ければ無し）・`wins`（5、スキルのある馬だけ）・`ranked_top3`（5）・`tournament_win`。TS と C# は共有ベクター `contracts/horse-goals.vectors.json` で同じ。
+- REQ-HGOAL-003 数え方：§34.1 の `noteHallRace`・`noteHallTa`・`noteHallTournament` の中だけ。芝ダ・帯の勝ち・ランク戦の3着以内は `career.goal` に同じガードの中で書く。カップ・週替わりチャレンジ・無効・チュートリアルは数えない。
+- REQ-HGOAL-004 ミッションとは別：目標はミッション・パス・コインに何も足さず、ミッションの進みは目標に入らない。
+- REQ-HGOAL-005 達成の記録：数えた直後に新しく満たした目標へ `completedAt` を1回だけ書く（KPI `hgoal_complete` も1回）。GET は書かない。
+- REQ-HGOAL-006 引退・削除：引退した馬の達成はそのまま残る。アカウント削除で全部消える。
+- REQ-HGOAL-007 ピン留め：`PUT /v1/horse-goals/pin {horseId|null}`、冪等。1頭だけ。引退・全部達成の馬は `NOT_ELIGIBLE`。後で条件を外れたら読む時に無しとみなす。
+- REQ-HGOAL-008 ホーム：ピン留めした目標を出す。次にやること（§45）の種類 `horse_goal_near`（データの規則、`threshold` 残り 1..10、`have ≥ 1` の時だけ、画面 `horse_goals` はコードで固定）。
+- REQ-HGOAL-009 全部達成の印：`chainComplete`。馬の詳細・戦績の `goals`・殿堂の銘板の `goalsComplete`（友達の写しにも）。見た目だけ。
+- REQ-HGOAL-010 API：`GET /v1/horses/:horseId/goals`・`PUT /v1/horse-goals/pin`・`GET /v1/horse-goals/pinned`、ブートストラップの `horseGoalPin`。
+- REQ-HGOAL-011 クライアント：`Muchi.Client` の `HorseGoalChain`・`HorseGoalsView`・`ApiClient` の各メソッド・`AnalyticsEvent.HorseGoalView`。Unity のゲーム層 `HorseGoalsModel`。描画は `docs/handoff-codex-round18-horse-goals.md`。
+- REQ-HGOAL-012 KPI：`hgoal_view`（クライアント：detail／home・達成数）、`hgoal_complete`（サーバー：goal kind・chain）、`hgoal_pin`（サーバー：pin／unpin）。
+- REQ-HGOAL-013 英語：目標の文言・面の文言はすべて英語がある（`l10n:missing` 0）。馬の名前は訳さない。
+- REQ-HGOAL-014 法務：共通の賭けの言葉の一覧・煽りの言葉を目標の文言に使わない（テスト）。コンプガチャではない（ランダムな品を条件にしない）。
+- REQ-HGOAL-015 設定 `progression.horseGoals { enabled }`：殿堂（§34）が無効なら有効にできない（起動時と各版で検証）。
+- REQ-HGOAL-016 プロトタイプ：馬の詳細の目標の面とホームのピン（ムチ一閃の見た目、日本語・英語、文字の大きさ §41）、e2e・en-flow・a11y-flow。

@@ -274,6 +274,10 @@
   "標準": "Standard", "いつもの実況。はっきり、わかりやすく伝えます。": "The usual commentary: clear and easy to follow.",
   "熱血": "Fired Up", "叫んで盛り上げる、熱い実況。": "Hot-blooded commentary that shouts the race home.",
   "落ち着いた解説": "Calm Analyst", "展開を静かに読み解く、解説者の語り口。": "An analyst who calmly reads how the race unfolds.",
-  "古風な名調子": "Classic Caller", "昔ながらの名調子で、レースを語り上げます。": "Calls the race in the grand old broadcasting style."
+  "古風な名調子": "Classic Caller", "昔ながらの名調子で、レースを語り上げます。": "Calls the race in the grand old broadcasting style.",
+  "やさしい": "Easy", "初心者マッチと同じ相手": "The same rivals as the beginner matches",
+  "ふつう": "Normal", "ランク戦（レート1400〜1600）の相手": "Rivals of ranked races (rating 1400–1600)",
+  "つよい": "Strong", "ランク戦（レート1600〜1800）の相手": "Rivals of ranked races (rating 1600–1800)",
+  "いちばん強い": "Strongest", "ランク戦（レート1800以上）の相手": "Rivals of ranked races (rating 1800 and up)"
  }
 }

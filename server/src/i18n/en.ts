@@ -40,6 +40,21 @@ export const CODE_EN: Record<string, string> = {
   '現役{days}日・{n}戦': '{days} days and {n} races on the track',
   '殿堂入りは確定したレースの成績だけで決まります（購入やアイテムでは決まりません）。': 'Entry to the Hall of Fame depends only on confirmed race results (never on purchases or items).',
 
+  // ---- 馬ごとの目標 (horseGoals.ts horseGoalChain / HGOAL_NOTICE, protocol §53; REQ-HGOAL-013). {course} = a master track name
+  '初勝利をあげる': 'Win a first race',
+  '{n}戦を走る': 'Run {n} races',
+  '芝で{n}勝する': 'Win {n} races on turf',
+  'ダートで{n}勝する': 'Win {n} races on dirt',
+  'タイムアタック {course} で記録を残す': 'Set a time-attack record at {course}',
+  '短距離（1400m以下）で勝つ': 'Win a sprint (1400 m or shorter)',
+  'マイル（1401〜1800m）で勝つ': 'Win a mile race (1401–1800 m)',
+  '中距離（1801〜2400m）で勝つ': 'Win a middle-distance race (1801–2400 m)',
+  '長距離（2401m以上）で勝つ': 'Win a long-distance race (2401 m or longer)',
+  '{n}勝する': 'Win {n} races',
+  'ランク戦で3着以内に{n}回入る': 'Finish in the top 3 in {n} ranked races',
+  '大会で優勝する': 'Win a tournament',
+  '目標は確定したレースの成績だけで進みます。達成の印は見た目だけです。': 'Goals move only with confirmed race results. The ribbon for finishing them is for show only.',
+
   // ---- 厩舎の整理 (roster.ts, protocol §44; REQ-ORG-015)
   'まとめて引退しても、コインや素材は返ってきません': 'Retiring several horses at once gives back no coins or materials',
 
@@ -361,6 +376,9 @@ export const CODE_EN: Record<string, string> = {
   '{name}さんがマイ厩舎にいいねしました': '{name} liked My Stable',
   'マイ厩舎に{n}件のいいねが届きました': 'My Stable got {n} likes',
   'あなたのレースに{n}件の応援スタンプが届きました': 'Your races got {n} cheer stamps',
+  // §52.8 quick chat mentions ({name} is a display name, never translated)
+  '{name}さんが支部のチャットであなたに声をかけました': '{name} mentioned you in the branch chat',
+  '支部のチャットで{n}件の声がかかりました': 'You were mentioned {n} times in the branch chat',
   '「{tournament}」の最終順位は{n}位でした': 'You finished {n:ord} in “{tournament}”',
   'プレゼントボックスにプレゼントが届きました': 'A gift arrived in your gift box',
   'プレゼントボックスに{n}件のプレゼントが届きました': '{n} gifts arrived in your gift box',
@@ -409,6 +427,41 @@ export const CODE_EN: Record<string, string> = {
   '応援スタンプをくれた': 'Cheered your race',
   '共通のフレンド{n}人': '{n} mutual friends',
   '共通のフレンド1人': '1 mutual friend',
+  'データのダウンロードの準備ができました': 'Your data download is ready',
+
+  // ---- 個人データの開示・ダウンロード (dataExport.ts, protocol §51; REQ-DEX-015). Values in the summary are never translated
+  'アカウントに保存されているあなたのデータ（プロフィール・設定・馬・コインと購入の履歴・フレンドなど）をまとめてダウンロードできます。準備ができるとお知らせに届きます。ファイルは{days}日後に削除されます。':
+    'Download a copy of the data stored on your account (profile, settings, horses, coin and purchase history, friends and more). You will get a notice in Activity when it is ready. The files are deleted after {days} days.',
+  'まだリクエストしていません': 'Not requested yet',
+  'ダウンロードのリンクは{minutes}分で切れます。リンクを他の人に送らないでください。': 'Download links stop working after {minutes} minutes. Do not send the links to anyone else.',
+  '準備しています': 'Preparing',
+  'ダウンロードできます': 'Ready to download',
+  '準備できませんでした。もう一度リクエストしてください': 'It could not be prepared. Please request it again',
+  'ダウンロードの期限が過ぎました': 'The download has expired',
+  'アカウントの削除を予定しています。削除が終わるまではダウンロードできます。': 'Your account is scheduled for deletion. You can download your data until the deletion is complete.',
+  'ムチ一閃 保存されているデータの概要': 'Muchi Issen: summary of your stored data',
+  'このファイルは、あなたのアカウントに保存されているデータの概要です。すべての項目は同じリクエストの JSON ファイルにあります。': 'This file summarises the data stored on your account. Every item is in the JSON file of the same request.',
+  '作成日時（UTC）': 'Created (UTC)',
+  'プレイヤーID': 'Player ID',
+  '表示名': 'Display name',
+  'アカウント作成日（UTC）': 'Account created (UTC)',
+  '有償コインの残高': 'Paid coin balance',
+  '無償コインの残高': 'Free coin balance',
+  '馬の数': 'Horses',
+  '購入の記録': 'Purchase records',
+  'コインの履歴（行）': 'Coin history (rows)',
+  'スカウトの記録（90日以内）': 'Scout records (last 90 days)',
+  'ブロック': 'Blocked players',
+  'あなたが送った通報': 'Reports you sent',
+  'お知らせ': 'Activity',
+  '保存した写真': 'Saved photos',
+  '振り返り': 'Recaps',
+  '登録した端末': 'Registered devices',
+  '分析イベント': 'Analytics events',
+  '取得できませんでした': 'Could not be read',
+  'ファイルの大きさの上限のため、古いコインの履歴を{n}行省略しました。全件はお問い合わせからご請求いただけます。': 'Because of the file size limit, {n} older coin history rows were left out. You can ask for all of them through Contact.',
+  '含めていないもの：重複や処理用の内部記録、運営のメモ、他のプレイヤーの情報。': 'Not included: duplicate and processing records, operator notes, and other players\' information.',
+  'ご不明な点はゲーム内のお問い合わせからご連絡ください。': 'If you have questions, please use Contact in the game.',
 
   // ---- error details shown to players (REQ-API-004 messages; codes are the contract)
   'カタカナ2〜9文字': '2–9 katakana characters',

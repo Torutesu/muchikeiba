@@ -112,6 +112,14 @@ static class ReportChecks
         bool threw = false;
         try { new ReportModel(api, new ReportTarget("p9", ReportContentKinds.Player), "chat"); } catch (ArgumentException) { threw = true; }
         check(threw, "unknown source refused");
+        // Round 18 integration: a quick chat phrase row hands its §47 target (kind qchat, feedRef "teamId:seq") to the sheet
+        var phrase = new FeedQuickChat { PhraseId = "otsukare", ReportKind = "team_feed", ReportTeamId = "t1", ReportSeq = 4 };
+        var qt = phrase.ReportTargetFor("p9");
+        check(qt != null && qt.Kind == ReportContentKinds.Qchat && qt.Ref == "t1:4", "quick chat: the phrase is a report target (" + qt?.Ref + ")");
+        check(new FeedQuickChat { Anon = true, ReportTeamId = "t1", ReportSeq = 5 }.ReportTargetFor("") == null, "quick chat: a former member's phrase keeps the feed report");
+        var qm = new ReportModel(api, qt, ReportSources.TeamFeed);
+        await qm.OpenAsync();
+        check(qm.Reasons.Count > 0, "quick chat: the sheet opens with reasons for a phrase");
 
         // ---- the block list
         var bapi = new FakeApi();

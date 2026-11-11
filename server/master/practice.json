@@ -1,0 +1,13 @@
+{
+  "_note": "練習レース（contracts/protocol.md §50）。強さは既存の CPU の定義から決める：from beginnerMatch = progression.beginnerMatch の cpuLevel と cpuStatPermille（初心者マッチと同じ相手）、from rating = マッチングの cpuLevelFor(rating)（能力はそのまま）。練習は何も配らない（報酬の項目は無い）。",
+  "version": 1,
+  "enabled": true,
+  "fieldSize": { "min": 2, "max": 12, "default": 8 },
+  "defaultStrength": "normal",
+  "strengths": [
+    { "id": "easy", "name": "やさしい", "note": "初心者マッチと同じ相手", "from": "beginnerMatch" },
+    { "id": "normal", "name": "ふつう", "note": "ランク戦（レート1400〜1600）の相手", "from": "rating", "rating": 1500 },
+    { "id": "strong", "name": "つよい", "note": "ランク戦（レート1600〜1800）の相手", "from": "rating", "rating": 1700 },
+    { "id": "top", "name": "いちばん強い", "note": "ランク戦（レート1800以上）の相手", "from": "rating", "rating": 1900 }
+  ]
+}

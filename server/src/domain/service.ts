@@ -1,4 +1,5 @@
 import { AppError } from './errors.js';
+import { playerQchatCheck, playerQchatOptions, type QChatSlotInput } from './quickChat.js';
 import type { Master, Reward } from './master.js';
 
 const TOURNAMENT_HISTORY_KEEP = 50;
@@ -30,7 +31,7 @@ import { adSessionView, adsView, applyAdCallback, setAdPref, startAd, type AdCal
 import { toRaceHorse } from './raceConfig.js';
 import { paidBalanceYen, invariantsHold } from './wallet.js';
 import type { PaidBalanceSnapshot } from './accounting.js';
-import { dayRule, gameDayKey, jstDateKey } from './time.js';
+import { DAY_MS, dayRule, gameDayKey, jstDateKey } from './time.js';
 const gameDayKeyOf = (m: Master, now: number) => gameDayKey(now, dayRule(m));
 import type { Locale } from '../i18n/locale.js';
 import { enqueuePush, ensurePush, nextPushWake, pushPrefsView, registerDevice, setPushPrefs, settlePushes, takeDuePushes, unregisterDevice, type DeliveryOutcome, type DevicePlatform, type PrefsPatch } from './push.js';
@@ -58,7 +59,7 @@ import {
 } from './onboarding.js';
 import { armPromotionNudge, nextNudgeWake, nudgeTaBeaten, nudgeTournamentClosing, runDueNudges, type TournamentClosingInfo } from './nudges.js';
 import {
-  cancelDeletion, deletionDue, deletionRetryLater, deletionScheduled, deletionSnapshot, deletionView, finalizeDeletion, markDeletionStep,
+  cancelDeletion, deletionConfig, deletionDue, deletionRetryLater, deletionScheduled, deletionSnapshot, deletionView, finalizeDeletion, markDeletionStep,
   nextDeletionWake, notWhileDeleting, requestDeletion, startDeletion, type DeletionStep,
 } from './accountDeletion.js';
 import {
@@ -95,6 +96,7 @@ import { buildSupportTicket } from '../ops/support.js';
 import { reportOptions, reportSnapshotOf, takeReportAllowance, type ReportCategory, type ReportContent, type ReportSource } from './reports.js';
 import { blockIds, isBlocking, setBlocked, type BlockOrigin } from './blocks.js';
 import { raceAdviceFor, type AdviceQuery } from './raceAdviceService.js';
+import { practiceCatalog } from './practice.js';
 import { dismissNextAction, nextActionsView, noteFeatures, type TeamGoalBrief } from './nextAction.js';
 import { attachRecapRank, noteRecapRace, noteRecapReplaySaved, noteRecapTeamGoal, recapProgress, recapView, recapsList, rollRecaps, type RecapStepName } from './seasonRecap.js';
 import {
@@ -106,6 +108,11 @@ import {
   ackCeremony, hallSnapshot, hallSnapshotKey, hallViewerOf, horseCareerView, myHallView, noteHallRace, noteHallRetire, noteHallTa, noteHallTournament,
   setHallVisibility, type HallRelation, type HallSnapshot,
 } from './hallOfFame.js';
+import { horseGoalsView, noteHorseGoals, pinHorseGoal, pinnedGoalView } from './horseGoals.js';
+import {
+  dataExportAdminView, dataExportDeleted, dataExportDeletionKeys, dataExportFile, dataExportView, markDataExportFailed, markDataExportReady,
+  nextDataExportWake, noteDataExportDownload, requestDataExport, takeDataExport, takeExpiredDataExport, type DexFile, type DexLang, type DexReadyInfo,
+} from './dataExport.js';
 import { assertNotLocked, bulkPreview, noteTournamentEntry, parseRosterQuery, pruneRoster, rosterView, runBulk, setFavorite, setLock, type BulkAction } from './roster.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
@@ -216,7 +223,7 @@ const IDEM_KEEP = 200;
  * comeback lapse reminders (REQ-CB-007) and gift box expiry (REQ-BOX-006).
  */
 const nextWake = (s: PlayerState) => {
-  const all = [nextPushWake(s), nextStudWake(s), nextNudgeWake(s), nextDeletionWake(s), nextInviteWake(s), nextComebackWake(s), nextGiftWake(s)].filter((x): x is number => x !== null);
+  const all = [nextPushWake(s), nextStudWake(s), nextNudgeWake(s), nextDeletionWake(s), nextInviteWake(s), nextComebackWake(s), nextGiftWake(s), nextDataExportWake(s)].filter((x): x is number => x !== null);
   return all.length ? Math.min(...all) : null;
 };
 /** How long applied race ids are remembered (well beyond any settlement/dead-letter retry window). */
@@ -346,7 +353,7 @@ export class PlayerService {
   /** REQ-UXS-001/014/032/040: computed sections of GET /v1/player and bootstrap. */
   private extras(s: PlayerState, now: number) {
     const m = this.d.master;
-    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s), commentaryPack: commentaryPackBadge(m, s), accessibility: accessibilityView(s), activity: activityBadge(m, s, now), help: helpBadge(s), nextActions: nextActionsView(m, s, now) };
+    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s), commentaryPack: commentaryPackBadge(m, s), accessibility: accessibilityView(s), activity: activityBadge(m, s, now), help: helpBadge(s), nextActions: nextActionsView(m, s, now), horseGoalPin: pinnedGoalView(m, s) };
   }
 
   async view(id: string) {
@@ -441,7 +448,7 @@ export class PlayerService {
   /** Next nudge / deletion time (the object's alarm keeps them armed; push and stud have their own). */
   async nextWakeOf(id: string) {
     const s = await this.load(id);
-    const all = [nextNudgeWake(s), nextDeletionWake(s), nextInviteWake(s), nextComebackWake(s), nextGiftWake(s)].filter((x): x is number => x !== null);
+    const all = [nextNudgeWake(s), nextDeletionWake(s), nextInviteWake(s), nextComebackWake(s), nextGiftWake(s), nextDataExportWake(s)].filter((x): x is number => x !== null);
     return all.length ? Math.min(...all) : null;
   }
   /**
@@ -589,6 +596,13 @@ export class PlayerService {
       return { ...h, ceremony };
     });
   }
+
+  // ---- 馬ごとの目標 (REQ-HGOAL-*, horseGoals.ts) ----
+  /** REQ-HGOAL-010: a horse's goal chain (a read: completion is recorded where results are counted, never here). */
+  async horseGoals(id: string, horseId: string) { return horseGoalsView(this.d.master, await this.load(id), horseId); }
+  /** REQ-HGOAL-007: pin one horse's goal to the home (null = unpin). Idempotent; hgoal_pin only when the pin changes. */
+  pinHorseGoal(id: string, horseId: string | null) { return this.tx(id, null, (s, _now, emit) => pinHorseGoal(this.d.master, s, horseId, emit)); }
+  async pinnedHorseGoal(id: string) { return { pinned: pinnedGoalView(this.d.master, await this.load(id)) }; }
 
   // ---- 厩舎の整理 (REQ-ORG-*, roster.ts) ----
   /** REQ-ORG-001..003: the organiser rows, filtered / sorted by the optional query (the client runs the same rules). */
@@ -957,6 +971,92 @@ export class PlayerService {
     if (await this.wiped(id)) return null;
     return sharedFor(this.d.master, await this.load(id), viewerId, this.d.clock());
   }
+  // ---------------------------------------------------------------- 個人データの開示 (REQ-DEX-*, dataExport.ts, protocol §51)
+  /** REQ-DEX-003: the status (read only; the HTTP layer adds signed links when ready). A wiped account has nothing. */
+  async dataExportView(id: string) {
+    if (await this.wiped(id) && (await this.repo.tombstoned?.(id))) throw new AppError('NOT_FOUND', 'account deleted');
+    return dataExportView(this.d.master, await this.load(id), this.d.clock());
+  }
+  /** REQ-DEX-002/004/005: request (or the running one again). Keyed by the client's idempotency key. */
+  dataExportRequest(id: string, lang: DexLang, idemKey: string | null) {
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => {
+      const r = requestDataExport(this.d.master, s, lang, this.d.rng, now);
+      if (r.created) emit({ name: 'dex_request', s1: lang });
+      return { ...dataExportView(this.d.master, s, now), created: r.created };
+    });
+  }
+  /** Alarm: take a due build (null = nothing to build). */
+  async dataExportTake(id: string) {
+    if (await this.wiped(id)) return null;
+    const at = nextDataExportWake(await this.load(id));
+    if (at === null || at > this.d.clock()) return null; // nothing due: no write
+    return this.tx(id, null, (s, now) => takeDataExport(this.d.master, s, now));
+  }
+  /**
+   * Alarm: what the document is built from — the state, every ledger row inside the legal retention window and the
+   * gacha records of the last 90 days (the Durable Object's SQL tables hold the rows the state JSON no longer keeps).
+   */
+  async dataExportCollect(id: string) {
+    const s = await this.load(id);
+    const now = this.d.clock();
+    const p = this.pagers(id, s);
+    const ledger: LedgerEntry[] = [];
+    const ledgerSince = now - deletionConfig(this.d.master).ledgerRetentionDays * DAY_MS;
+    for (let before: number | null = null; ;) {
+      const page = await p.ledger({ beforeSeq: before, sinceAt: ledgerSince, limit: 500, currency: null });
+      ledger.push(...page);
+      if (page.length < 500) break;
+      before = page[page.length - 1]!.seq;
+    }
+    const gacha: GachaLogEntry[] = [];
+    for (let before: number | null = null; ;) {
+      const page = await p.gacha({ beforeSeq: before, sinceAt: now - HISTORY_LIMITS.gachaDays * DAY_MS, limit: 500 });
+      gacha.push(...page);
+      if (page.length < 500) break;
+      before = page[page.length - 1]!.seq;
+    }
+    return { state: s, ledger, gacha, now };
+  }
+  /** Alarm: the files are in R2 → ready, one activity entry (§40), KPI dex_ready. A stale request deletes its files instead. */
+  dataExportReady(id: string, requestId: string, info: DexReadyInfo) {
+    return this.tx(id, null, (s, now, emit) => {
+      const requestedAt = s.dataExport?.current?.requestedAt ?? now;
+      const lang = s.dataExport?.current?.lang ?? 'ja';
+      if (!markDataExportReady(this.d.master, s, requestId, info, now)) return false;
+      recordActivity(this.d.master, s, { kind: 'data_export_ready', source: `data_export_ready:${requestId}`, linkId: requestId }, now);
+      emit({ name: 'dex_ready', s1: lang, value: info.sizeBytes, durationMs: now - requestedAt, count: info.truncated });
+      return true;
+    });
+  }
+  dataExportFailed(id: string, requestId: string, reason: string) { return this.tx(id, null, (s, now) => markDataExportFailed(this.d.master, s, requestId, reason, now)); }
+  /** REQ-DEX-010: the stored file behind a verified signed link (never re-creates a deleted account). */
+  async dataExportFile(id: string, requestId: string, f: DexFile) {
+    if (await this.wiped(id)) throw new AppError('NOT_FOUND', 'this download is no longer available');
+    return dataExportFile(await this.load(id), requestId, f, this.d.clock());
+  }
+  /** REQ-DEX-010/017: audit + KPI dex_download (isFirst = the first download of this request). */
+  async dataExportDownloaded(id: string, requestId: string, f: DexFile) {
+    if (await this.wiped(id)) return false;
+    return this.tx(id, null, (s, now, emit) => {
+      if (!noteDataExportDownload(this.d.master, s, requestId, f, now)) return false;
+      emit({ name: 'dex_download', s1: f, isFirst: s.dataExport!.current!.downloads === 1 });
+      return true;
+    });
+  }
+  /** Alarm: R2 keys to delete now (marks an expired export). */
+  async dataExportExpiring(id: string) {
+    if (await this.wiped(id)) return [] as string[];
+    const at = nextDataExportWake(await this.load(id));
+    if (at === null || at > this.d.clock()) return [] as string[]; // nothing due: no write
+    return this.tx(id, null, (s, now) => takeExpiredDataExport(this.d.master, s, now));
+  }
+  async dataExportDeleted(id: string, keys: string[]) {
+    if (await this.wiped(id)) return;
+    await this.tx(id, null, (s, now) => dataExportDeleted(this.d.master, s, keys, now));
+  }
+  /** REQ-DEX-014: ops status and audit (admin API; never contents or links). */
+  async dataExportAdmin(id: string) { return dataExportAdminView(this.d.master, await this.load(id), this.d.clock()); }
+
   // ---------------------------------------------------------------- シーズンの振り返り (REQ-RECAP-*, seasonRecap.ts)
   /** Runs as a transaction so a period that ended since the last request is closed first (rollRecaps). */
   recaps(id: string) { return this.tx(id, null, (s) => recapsList(this.d.master, s)); }
@@ -984,7 +1084,7 @@ export class PlayerService {
   cupLeft(id: string, cupId: string) {
     return this.tx(id, null, (s) => { const st = ensureCups(s); st.active = st.active.filter((r) => r.cupId !== cupId); return true; });
   }
-  cupCommitted(id: string, cupId: string, kind: 'create' | 'join', meta: { format: CupFormat; capacity?: number; via?: string; team?: boolean }) {
+  cupCommitted(id: string, cupId: string, kind: 'create' | 'join', meta: { format: CupFormat; capacity?: number; via?: string; team?: boolean; cupName?: string }) {
     return this.tx(id, null, (s, _now, emit) => { noteCupCommitted(s, cupId, kind, meta, emit); return true; });
   }
   /** REQ-CUP-003: one code attempt (RATE_LIMITED past the hourly cap). */
@@ -1061,6 +1161,7 @@ export class PlayerService {
       // REQ-HOF-001: the horse's career (a ranked race counted against the weekly rival with me ahead is a rival win)
       const rivalWin = r.mode === 'ranked' && !!s.rival?.weeks.some((w) => w.races.some((x) => x.raceId === r.raceId && x.mode === 'ranked' && x.point === 'me'));
       noteHallRace(this.d.master, s, r, now, rivalWin);
+      noteHorseGoals(this.d.master, s, r.horseId, now, emit); // REQ-HGOAL-005: goals newly met by this counted race
       noteRecapRace(this.d.master, s, r, now); // REQ-RECAP-001: this season's and this game year's records
       // REQ-COL-002 / REQ-ACH-002: what the race showed the 図鑑, a fired skill, and the tiers it unlocked (with titles)
       noteRaceCollection(this.d.master, s, r);
@@ -1732,6 +1833,7 @@ export class PlayerService {
       if (!counted && 'finished' in r && r.finished && r.timeMs !== null) {
         const horseId = s.timeAttack?.sessions.find((x) => x.id === sessionId)?.horseId;
         if (horseId) noteHallTa(this.d.master, s, horseId, r.trackId, r.timeMs, now); // REQ-HOF-001
+        if (horseId) noteHorseGoals(this.d.master, s, horseId, now, emit); // REQ-HGOAL-005
       }
       return r;
     });
@@ -1746,6 +1848,8 @@ export class PlayerService {
   // ---- 週替わりチャレンジ weekly challenge (REQ-WCH-*, contracts/protocol.md §31; orchestrated by race/weeklyChallenge.ts) ----
   // ---- 出走前アドバイス pre-race coach (REQ-ADV-*, contracts/protocol.md §39): read-only, free, the same for everyone ----
   async raceAdvice(id: string, q: AdviceQuery, ruleset?: Ruleset) { return raceAdviceFor(this.d.master, await this.load(id), q, this.d.clock(), ruleset); }
+  /** REQ-PRAC-002 (§50.1): the practice catalog — read-only, never saves; practice results have no server path at all. */
+  async practiceCatalog(id: string, ruleset?: Ruleset) { return practiceCatalog(this.d.master, await this.load(id), this.d.clock(), ruleset); }
   async wchView(id: string) { return weeklyChallengeView(this.d.master, await this.load(id), this.d.clock()); }
   /** Keyed (a retry returns the same session). `ruleset` = the active remote-config ruleset (the day's form is switched off). */
   wchStart(id: string, challengeId: string, input: WchStartInput, idemKey: string | null = null, ruleset?: Ruleset) {
@@ -1899,6 +2003,32 @@ export class PlayerService {
     });
   }
 
+  // ---- 支部の定型チャット (REQ-QCHAT-*, quickChat.ts; the posts live in the team feed) ----
+  /** REQ-QCHAT-008: phrases in the locale and the values of my own state a post would accept. */
+  async qchatOptions(id: string, locale: 'ja' | 'en' = 'ja') { return playerQchatOptions(this.d.master, await this.load(id), locale, this.d.clock()); }
+  /** REQ-QCHAT-003/004: before a post — deletion, membership, phrase and slot checks; returns the checked values. */
+  qchatCheck(id: string, phraseId: string, slots: QChatSlotInput) { return this.tx(id, null, (s, now) => playerQchatCheck(this.d.master, s, phraseId, slots ?? {}, now)); }
+  /** REQ-QCHAT-011: KPI after the team stored the post / a new reaction to a post. */
+  qchatNote(id: string, kind: 'post' | 'react', a: string, b: string, teamId: string, n: number) {
+    return this.tx(id, null, (_s, _now, emit) => {
+      if (kind === 'post') emit({ name: 'qchat_post', s1: a, s2: teamId, s3: b, count: n });
+      else emit({ name: 'qchat_react', s1: a, s2: b, s3: teamId });
+      return { ok: true };
+    });
+  }
+  /**
+   * REQ-QCHAT-012: a phrase named this player — one activity entry per post (collapsed while unread). Never a push. A
+   * blocked sender writes nothing (recordActivity checks the one block list); nothing while deleting.
+   */
+  async qchatMention(id: string, fromId: string, fromName: string, ref: string) {
+    if (await this.wiped(id)) return { recorded: false };
+    return this.tx(id, null, (s, now) => {
+      if (deletionScheduled(s)) return { recorded: false };
+      const r = recordActivity(this.d.master, s, { kind: 'qchat_mention', source: `${ref}:${fromId}`, actor: { id: fromId, name: fromName } }, now);
+      return { recorded: r === 'recorded' || r === 'collapsed' };
+    });
+  }
+
   // ---- event races (REQ-EVENT-*) ----
   async eventsView(id: string) { return eventsForPlayer(this.d.master, await this.load(id), this.d.clock()); }
   /** Takes (or returns the already held) entry fee; the caller then queues the player in the event pool. */
@@ -1961,6 +2091,7 @@ export class PlayerService {
       recordActivity(this.d.master, s, { kind: 'tournament_result', source: `tournament:${tournamentId}`, vars: { tournament: name, n: String(rank) }, linkId: tournamentId }, now); // REQ-ACT-002
       noteTournamentResult(s, rank); // REQ-ACH-002 (once per tournament, behind the same guard)
       noteHallTournament(this.d.master, s, horseId, tournamentId, name, rank, now); // REQ-HOF-001
+      noteHorseGoals(this.d.master, s, horseId, now, emit); // REQ-HGOAL-005
       if (s.roster?.tournaments) delete s.roster.tournaments[tournamentId]; // REQ-ORG-011: the entry ends with the tournament
       const keys = Object.entries(done).sort((a, b) => b[1].at - a[1].at).map(([k]) => k);
       for (const k of keys.slice(TOURNAMENT_HISTORY_KEEP)) delete done[k];

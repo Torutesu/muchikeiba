@@ -184,15 +184,7 @@ namespace Muchi.Net
                 Surface = ParseSurface(t.Get("surface").AsString(), false),
                 DistanceM = t.Get("distanceM").AsInt(),
             };
-            foreach (var s in t.Get("segments").Items)
-            {
-                string kind = s.Get("kind").AsString();
-                var seg = new TrackSegment { LengthM = s.Get("lengthM").AsInt() };
-                if (kind == "straight") seg.Kind = SegmentKind.Straight;
-                else if (kind == "corner") { seg.Kind = SegmentKind.Corner; seg.RadiusM = s.Get("radiusM").AsInt(); }
-                else throw new FormatException("invalid segment kind: " + kind);
-                c.Track.Segments.Add(seg);
-            }
+            c.Track.Segments.AddRange(ParseSegments(t.Get("segments")));
             if (t.TryGet("going", out var gn) && !gn.IsNull) c.Track.Going = ParseGoing(gn.AsString(), c.Track.Surface);
             if (t.TryGet("night", out var nn) && !nn.IsNull) c.Track.Night = nn.AsBool();
 
@@ -218,28 +210,69 @@ namespace Muchi.Net
                     PlayerId = e.Get("playerId").IsNull ? null : e.Get("playerId").AsString(),
                     CpuLevel = e.Get("cpuLevel").AsInt(),
                 };
-                var h = e.Get("horse");
-                ent.Horse = new HorseSpec
-                {
-                    Id = h.Get("id").AsString(),
-                    Name = h.Get("name").AsString(),
-                    Speed = h.Get("speed").AsInt(),
-                    Stamina = h.Get("stamina").AsInt(),
-                    Burst = h.Get("burst").AsInt(),
-                    Guts = h.Get("guts").AsInt(),
-                    Temper = h.Get("temper").AsInt(),
-                    Style = ParseStyle(h.Get("style").AsString()),
-                    DistMinM = h.Get("distMinM").AsInt(),
-                    DistMaxM = h.Get("distMaxM").AsInt(),
-                    Surface = ParseSurface(h.Get("surface").AsString(), true),
-                };
-                if (h.TryGet("goingAptitude", out var ga) && !ga.IsNull) ent.Horse.GoingAptitude = ParseGoingAptitude(ga.AsString());
-                if (h.TryGet("skill", out var sk) && !sk.IsNull) ent.Horse.Skill = ParseSkill(sk);
+                ent.Horse = ParseHorse(e.Get("horse"));
                 c.Entrants.Add(ent);
             }
             try { c.Validate(); }
             catch (ArgumentException ex) { throw new FormatException(ex.Message); }
             return c;
+        }
+
+        /// <summary>Track segments as the config writes them (also the practice catalog's courses, protocol §50.1).</summary>
+        public static List<TrackSegment> ParseSegments(JsonNode arr)
+        {
+            var list = new List<TrackSegment>();
+            foreach (var s in arr.Items)
+            {
+                string kind = s.Get("kind").AsString();
+                var seg = new TrackSegment { LengthM = s.Get("lengthM").AsInt() };
+                if (kind == "straight") seg.Kind = SegmentKind.Straight;
+                else if (kind == "corner") { seg.Kind = SegmentKind.Corner; seg.RadiusM = s.Get("radiusM").AsInt(); }
+                else throw new FormatException("invalid segment kind: " + kind);
+                list.Add(seg);
+            }
+            return list;
+        }
+
+        /// <summary>An entrant's horse (RaceHorse, protocol §2); also the practice catalog's horses (§50.1).</summary>
+        public static HorseSpec ParseHorse(JsonNode h)
+        {
+            var horse = new HorseSpec
+            {
+                Id = h.Get("id").AsString(),
+                Name = h.Get("name").AsString(),
+                Speed = h.Get("speed").AsInt(),
+                Stamina = h.Get("stamina").AsInt(),
+                Burst = h.Get("burst").AsInt(),
+                Guts = h.Get("guts").AsInt(),
+                Temper = h.Get("temper").AsInt(),
+                Style = ParseStyle(h.Get("style").AsString()),
+                DistMinM = h.Get("distMinM").AsInt(),
+                DistMaxM = h.Get("distMaxM").AsInt(),
+                Surface = ParseSurface(h.Get("surface").AsString(), true),
+            };
+            if (h.TryGet("goingAptitude", out var ga) && !ga.IsNull) horse.GoingAptitude = ParseGoingAptitude(ga.AsString());
+            if (h.TryGet("skill", out var sk) && !sk.IsNull) horse.Skill = ParseSkill(sk);
+            return horse;
+        }
+
+        public static JsonNode HorseToJson(HorseSpec h)
+        {
+            var ho = JsonNode.Obj();
+            ho.Set("id", h.Id);
+            ho.Set("name", h.Name);
+            ho.Set("speed", h.Speed);
+            ho.Set("stamina", h.Stamina);
+            ho.Set("burst", h.Burst);
+            ho.Set("guts", h.Guts);
+            ho.Set("temper", h.Temper);
+            ho.Set("style", StyleToString(h.Style));
+            ho.Set("distMinM", h.DistMinM);
+            ho.Set("distMaxM", h.DistMaxM);
+            ho.Set("surface", SurfaceToString(h.Surface));
+            if (h.GoingAptitude.HasValue) ho.Set("goingAptitude", GoingAptitudeToString(h.GoingAptitude.Value));
+            if (h.Skill != null) ho.Set("skill", SkillToJson(h.Skill));
+            return ho;
         }
 
         public static JsonNode ConfigToJson(RaceConfig c)
@@ -283,22 +316,7 @@ namespace Muchi.Net
                 eo.Set("kind", e.Kind == EntrantKind.Human ? "human" : "cpu");
                 eo.Set("playerId", JsonNode.Str(e.PlayerId));
                 eo.Set("cpuLevel", e.CpuLevel);
-                var h = e.Horse;
-                var ho = JsonNode.Obj();
-                ho.Set("id", h.Id);
-                ho.Set("name", h.Name);
-                ho.Set("speed", h.Speed);
-                ho.Set("stamina", h.Stamina);
-                ho.Set("burst", h.Burst);
-                ho.Set("guts", h.Guts);
-                ho.Set("temper", h.Temper);
-                ho.Set("style", StyleToString(h.Style));
-                ho.Set("distMinM", h.DistMinM);
-                ho.Set("distMaxM", h.DistMaxM);
-                ho.Set("surface", SurfaceToString(h.Surface));
-                if (h.GoingAptitude.HasValue) ho.Set("goingAptitude", GoingAptitudeToString(h.GoingAptitude.Value));
-                if (h.Skill != null) ho.Set("skill", SkillToJson(h.Skill));
-                eo.Set("horse", ho);
+                eo.Set("horse", HorseToJson(e.Horse));
                 es.Add(eo);
             }
             o.Set("entrants", es);

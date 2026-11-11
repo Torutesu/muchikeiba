@@ -179,6 +179,7 @@ namespace Muchi.Game
                 case "rival_week": r.Title = "今週のライバルと、まだ走っていません"; r.Detail = "同じランク戦で先着すれば1点"; r.CtaText = "ライバルを見る"; r.ChipText = "ライバル"; break;
                 case "weekly_challenge": r.Title = "週替わりチャレンジ"; r.Detail = "未クリア " + n + "つ"; r.CtaText = "挑戦する"; r.ChipText = "チャレンジ 未クリア" + n; break;
                 case "team_goal_near": r.Title = "支部の共同目標、次の段まで あと" + n; r.Detail = "確定したレース結果で進みます"; r.CtaText = "共同目標を見る"; r.ChipText = "共同目標 あと" + n; break;
+                case "horse_goal_near": r.Title = "馬の目標まで あと" + n; r.Detail = "ピン留めした目標（確定したレースで進みます）"; r.CtaText = "目標を見る"; r.ChipText = "馬の目標 あと" + n; break;
                 case "training_slots": r.Title = "今日の調教 あと" + n + "回"; r.Detail = "タイミングよく押すと、伸びが少しだけ良くなります"; r.CtaText = "調教する"; r.ChipText = "調教 あと" + n + "回"; break;
                 case "first_win": r.Title = "今日の初勝利ボーナスがあります"; r.Detail = "ランク戦の1着で受け取れます"; r.CtaText = "レースへ"; r.ChipText = "初勝利ボーナス"; break;
                 case "scout_ticket": r.Title = "スカウト券 " + n + "枚"; r.Detail = "持っている券で引けます"; r.CtaText = "スカウトへ"; r.ChipText = "スカウト券 " + n + "枚"; break;

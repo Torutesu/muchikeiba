@@ -3482,6 +3482,120 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
 - `Muchi.Client`：`ConsentState`（ビューの読み取り・`AllowsClientEvent(name)`・`AdRequestConfig`）、`IConsentPlatform`（`AttStatus`・`RequestAttAsync`・`GatherCmpAsync`・`PrivacyOptionsRequired`・`ShowPrivacyOptionsAsync`・`OpenAppSettings`）、`ApiClient.GetPrivacyChoicesAsync`・`SetPrivacyChoicesAsync`・`ReportPrivacyPlatformAsync`・`NotePrivacyPromptShownAsync`、`AnalyticsClient.Gate`（同意の無い時に任意のイベントを端末で捨てる。サーバーも捨てる）。
 - `Muchi.Game.ConsentModel`：事前の画面を出すかどうか（FTUE・広告の直前・ホーム）、ATT・CMP の流れ、設定の行、`IAdConsent` の実装（§21 の `RewardedAdModel` に渡す）。
 
+## 59. レビュー依頼のタイミング（in-app store review prompt、REQ-REV-001〜016、`server/src/domain/reviewPrompt.ts`・`progression.reviewPrompt`、C# `ReviewPrompt.cs`（`ReviewPromptPolicy`・`IStoreReview`）・`Muchi.Game.ReviewPromptModel`、共有ベクター `contracts/review-prompt.vectors.json`）
+App Store / Google Play の評価を、**OS の標準のアプリ内レビュー API**（iOS `SKStoreReviewController` / `AppStore.requestReview`、Android Play In-App Review）でだけ頼む。頼むのは**うれしい瞬間**（初勝利・大会の初優勝・殿堂入り・馬の目標の列を全部達成）だけで、負けた直後・購入・エラー・返金・メンテナンスのお知らせの直後・チュートリアル（FTUE）の途中には頼まない。決めるのはデータの規則（`progression.reviewPrompt`、起動時と各リモート設定の版で検証）と**純粋な関数**（`decideReviewPrompt`、C# `ReviewPromptPolicy.Decide`、共有ベクター）。頼んだ記録はサーバーが持つ（新しい状態のキー `reviewPrompt`）ので、入れ直しても繰り返し頼まない。
+
+**レビューには何も配らない**（E 番号なし、balance-targets の節なし）。Apple（App Store Review Guidelines 5.6.1：レビューは標準の API で、報酬と引き換えにしない）と Google（Play のユーザー評価のポリシー：インセンティブを付けたレビューの禁止）の決まり。コイン・アイテム・XP・称号・ミッションの進み、どれもレビューに結び付かない。サーバーは端末が本当にレビューを書いたかを知らない（OS は結果を返さない）し、知る経路も作らない。規則に報酬の項目を書くと検証で落ちる（`reward`・`rewards`・`coins`・`items`・`freeCoins` は知らないキー、テストで確認）。
+
+### 59.1 うれしい瞬間（`moment`）
+| `moment` | いつ（端末が判断して送る） |
+|---|---|
+| `first_win` | 初めての1着（チュートリアルを除く確定したレース。結果画面を閉じた後） |
+| `first_tournament_win` | 大会（§20）の初めての優勝（表彰の後） |
+| `hall_induction` | 殿堂入り（§34 の引退の式の後） |
+| `horse_goal_chain` | 馬の目標の列を全部達成（§53 の印が付いた後） |
+- 瞬間は端末の言葉をそのまま使う（サーバーは数え直さない）。レビュー依頼は何も配らないので、偽っても得をする物が無い。規則の `moments` に無い瞬間は頼まない（運用で1つずつ止められる）。
+- 画面の途中（レース中・演出の途中・購入の途中）では出さない。端末は結果・表彰・式の画面を閉じてホームに戻った所で1回だけ聞く。
+
+### 59.2 規則 `progression.reviewPrompt`（`reviewPromptProblems`、起動時と各版）
+```json
+{ "enabled": true,
+  "moments": ["first_win", "first_tournament_win", "hall_induction", "horse_goal_chain"],
+  "minDaysSinceInstall": 3, "minRacesPlayed": 10,
+  "maxPerYear": 3, "coolDownDays": 120,
+  "quietMinutes": { "loss": 30, "purchase": 1440, "refund": 43200, "error": 30, "maintenanceNotice": 60 },
+  "softAsk": { "ios": false, "android": false } }
+```
+| キー | 検証 |
+|---|---|
+| `enabled` | bool。`false` なら誰にも頼まない（止めるスイッチ） |
+| `moments` | 59.1 の値だけ、重複なし（`enabled: true` なら1つ以上） |
+| `minDaysSinceInstall` | 整数 0〜365（インストール＝アカウントを作った時から） |
+| `minRacesPlayed` | 整数 0〜1000（戦績 `stats.races`） |
+| `maxPerYear` | 整数 1〜3（直近 365 日に頼んだ回数の上限。Apple は1年に3回までしか出さないので、それより多くは書けない） |
+| `coolDownDays` | 整数 30〜365（前に頼んでから空ける日数） |
+| `quietMinutes` | `loss`・`purchase`・`refund`・`error`・`maintenanceNotice` の5つ全部、整数 0〜525600（365日） |
+| `softAsk` | `{ ios: bool, android: bool }`。**`android: true` は検証で落ちる**（59.6）。既定は両方 `false` |
+知らないキーは落ちる（報酬の項目を足せない）。
+
+### 59.3 判断（`decideReviewPrompt(rules, summary)`、純粋、REQ-REV-003）
+入力の要約（`ReviewPromptSummary`）：
+```json
+{ "platform": "ios", "moment": "first_win", "now": 1796698800000,
+  "installedAt": 1795000000000, "racesPlayed": 14, "inFtue": false, "accountClosing": false,
+  "sessionPrompted": false, "maintenanceVisible": false, "coinDebt": false,
+  "minutesSince": { "loss": null, "purchase": 9000, "refund": null, "error": null, "maintenanceNotice": null },
+  "history": [1780000000000] }
+```
+`minutesSince.*` は「最後のその出来事から何分たったか」（`null` = 無い・知らない）。上から順に見て、最初に当たった理由で頼まない：
+| 順 | `reason` | 条件 |
+|---|---|---|
+| 1 | `disabled` | `enabled: false` |
+| 2 | `moment` | `moment` が `moments` に無い |
+| 3 | `account_closing` | アカウント削除の予約中 |
+| 4 | `ftue` | FTUE の途中（端末の `inFtue`、またはサーバーで無料10連がまだ） |
+| 5 | `session` | このセッションで既に頼んだ（端末の旗、またはサーバーの最後の `sessionId` と同じ） |
+| 6 | `maintenance` | メンテナンスのお知らせが今見えている（§46 の `visibleWindows`）、または `minutesSince.maintenanceNotice < quietMinutes.maintenanceNotice` |
+| 7 | `refund` | コインの借り（`coinDebt`）がある、または `minutesSince.refund < quietMinutes.refund` |
+| 8 | `purchase` | `minutesSince.purchase < quietMinutes.purchase` |
+| 9 | `error` | `minutesSince.error < quietMinutes.error` |
+| 10 | `loss` | `minutesSince.loss < quietMinutes.loss` |
+| 11 | `too_new` | `⌊(now − installedAt) / 1日⌋ < minDaysSinceInstall` |
+| 12 | `too_few_races` | `racesPlayed < minRacesPlayed` |
+| 13 | `year_cap` | `history` のうち `now − at < 365日` の数 ≥ `maxPerYear` |
+| 14 | `cool_down` | `history` の最新が `now − at < coolDownDays 日` |
+どれにも当たらなければ頼む：`style` = `softAsk[platform]` が true なら `soft`（59.6 の前置きの質問）、でなければ `native`（`editor` は `ios` の値）。出力 `{ show, reason, style }`（頼まない時 `style: null`、頼む時 `reason: null`）。サーバー（TS）とクライアント（C#）は `contracts/review-prompt.vectors.json` で同じ答えになることを確かめる。
+
+### 59.4 API（要認証、メンテナンスの区分 `core`）
+| メソッド | パス | 本文 → 応答 |
+|---|---|---|
+| GET | `/v1/review-prompt` | → `{ v: 1, rules, history: { count365, lastAt }, serverSummary }`（端末の事前の判断用。状態を変えない） |
+| POST | `/v1/review-prompt/check` | `Idempotency-Key` 必須。`{ moment, platform, sessionId, client: { inFtue, minutesSinceLoss, minutesSinceError, minutesSinceMaintenanceNotice } }` → `ReviewPromptCheck` |
+| POST | `/v1/review-prompt/:promptId/answer` | `{ step: "soft_yes" \| "soft_no" \| "soft_dismiss" \| "native_requested" }` → `{ promptId, next: "store_review" \| "help_inquiry" \| "none", helpCategory: "other" \| null }` |
+```json
+{ "v": 1, "show": true, "style": "native", "reason": null, "promptId": "rp_3" }
+```
+- **check**：サーバーが自分の知っていること（インストール日・戦績・削除の予約・無料10連・最後の購入・返金とコインの借り・メンテナンスのお知らせ・頼んだ記録・最後の `sessionId`）と端末の言うこと（FTUE・負け・エラー・メンテナンスのお知らせを見てからの分）を合わせて 59.3 で決める。端末の FTUE とサーバーの FTUE は **どちらかが途中なら途中**（安全な側）。
+- 頼むと決めた時だけ記録する：`history` に `{ id, at, moment, platform, style, sessionId, answer: null, nativeAt: null }`（最新 10 件、400 日より古いものは消す）と KPI `review_prompt_eligible`。**頼んだ時点で回数に数える**（端末が落ちても、OS が実際には出さなくても、繰り返し頼まないため）。同じ冪等キーの再送は同じ答え（記録も KPI も1回）。頼まない時は状態を変えない（理由を返すだけ）。
+- **answer**：`soft_yes` → `next: store_review`（端末はそのまま標準の API を呼ぶ）、`soft_no` → `next: help_inquiry`・`helpCategory: other`（§48 のお問い合わせの画面を開く。ストアには送らない）、`soft_dismiss` → `none`。前置きの答えは1回だけ書く（同じ答えの再送はそのまま、違う答えは `409 CONFLICT`）。`native_requested` は `style: native` か、`soft_yes` の後だけ（それ以外 `409 NOT_ELIGIBLE`）。標準の API を呼んだ時刻 `nativeAt` を1回だけ書き、KPI `review_prompt_shown` を1回。知らない `promptId` は `404 NOT_FOUND`。
+- 削除の予約中は check がいつも `account_closing` を返す。オフラインの端末は頼まない（サーバーの記録が無いと回数を守れないため）。
+- 応答にもどこにも報酬の欄は無い（ウォレット・アイテム・ミッションを変えないことをテストで確かめる）。
+
+### 59.5 端末（`IStoreReview`）
+- `IStoreReview.RequestReviewAsync()` が OS の標準 API を呼ぶ（中身は Codex が SDK でつなぐ。iOS は `AppStore.requestReview(in:)`、Android は `ReviewManager.requestReviewFlow` → `launchReviewFlow`）。**結果は「呼んだ」だけ**：OS は出したかどうか・何点かを教えない（教えてもらおうとしない）。呼んだら `native_requested` を送る。
+- `IStoreReview.Available` が false（エディター・未対応の端末）なら check を呼ばない。
+- 標準の API の外で「★を付けてください」の独自の画面は作らない（Apple 5.6.1）。ストアのページへのリンク（設定の「アプリを評価する」）は、プレイヤーが自分で押す時だけ（自動では出さない）。
+- 端末の事前の判断（`ReviewPromptPolicy.Decide`）は GET の規則とサーバーの要約で同じ関数を回し、明らかに頼めない時はサーバーを呼ばない。最後に決めるのはサーバー。
+
+### 59.6 前置きの質問（ソフト質問）とストアの決まり（決めたこと）
+- 前置き：「ムチ一閃を楽しんでいますか？」［はい］［いまいち］（閉じる＝答えない）。はい → 標準の API。いまいち → 「ご意見をお聞かせください」でお問い合わせ（§48、`other`）を開く。
+- **既定は OFF**（`softAsk.ios: false`・`softAsk.android: false`）。理由：
+  - Google Play の In-App Review API のガイドラインは、評価のカードの前やその最中に「アプリを気に入っていますか？」のような意見を聞く質問をすることを禁じている → **`android: true` は検証で落ちる**（運用でも入れられない）。
+  - Apple は前置きの質問そのものは禁じていないが、満足した人だけをストアに送る「振り分け（ゲーティング）」を嫌う（5.6.1 は独自のレビューの画面を禁止）。いまいちの人をストアに送らない形はゲーティングに当たりうる → iOS は運用で入れられるが、入れるのは法務とストアの担当の確認の後（docs/planning/03「レビュー依頼」）。
+- 前置きを OFF にしても、いまいちの声の受け皿は今までどおりヘルプセンターのお問い合わせ（設定・ヘルプから）。
+
+### 59.7 KPI（REQ-REV-012、すべてサーバー）
+| イベント | いつ | 列 |
+|---|---|---|
+| `review_prompt_eligible` | check が頼むと決めた時（1回） | `s1` = moment、`s2` = platform、`s3` = style |
+| `review_prompt_shown` | `native_requested` を受けた時（1回） | `s1` = moment、`s2` = platform、`s3` = style（soft の後なら `soft`） |
+| `review_soft_answer` | 前置きの答え（1回） | `s1` = `yes` \| `not_really` \| `dismissed`、`s2` = moment、`s3` = platform |
+クエリは `docs/ops/kpi-queries.md`「レビュー依頼」。星の数・レビューの本文は取れない（OS が返さない）。
+
+### 59.8 状態・個人データ・削除
+- 状態の `reviewPrompt`：`{ v: 1, history: [...], lastSessionId }`。§51 の個人データの開示では `analytics` の欄に入れる（`DEX_CLASSIFICATION.reviewPrompt = analytics`、頼んだ時刻・瞬間・前置きの答え）。
+- アカウント削除の最後の `wipe` で消える。他に写しは無い。
+
+### 59.9 文言・アクセシビリティ
+- 前置きの文言は端末（`ui-en.json`・`proto-en.json`）に日本語と英語がある。サーバーは理由のコードだけを返す（文言は返さない）。
+- 煽り・期限・「★5で」などの点数の誘導は書かない（「倍」「今だけ」「残りわずか」「お得」無し、テスト）。報酬を約束する言葉（「もらえる」「プレゼント」「報酬」）を書かない。
+- 前置きのシートは文字の大きさ（§41 `TextScale`）に従う（最大でもはみ出さない、a11y-flow）。ボタンは2つとも同じ大きさ・同じ強さ（「はい」だけを目立たせない）。
+
+### 59.10 クライアント
+- `Muchi.Client`：`ReviewPromptRules`・`ReviewPromptSummary`・`ReviewPromptPolicy.Decide`（共有ベクター）、`IStoreReview`（`NullStoreReview` はエディター用）、`ApiClient.GetReviewPromptAsync`・`CheckReviewPromptAsync`・`AnswerReviewPromptAsync`、`ReviewPromptCheck`・`ReviewPromptStatus`。
+- Unity のゲーム層 `ReviewPromptModel`：セッションの旗（1セッション1回）、負け・エラー・メンテナンスのお知らせの時刻を覚える、瞬間を受けて check → 前置き or 標準の API → answer。描画は `docs/handoff-codex-round20-review-prompt.md`。
+- デプロイ：新しい GET 1つ・POST 2つと KPI 3種類、状態のキー1つ（マイグレーションなし、検証器は変わらない）。サーバーを先に出し、アプリは後（古いサーバーには 404 → 端末は頼まない）。
+
 ## 60. クライアントのエラー報告（client error & crash reporting、REQ-CERR-001〜020、`server/src/domain/clientErrors.ts`・`server/src/ops/clientErrors.ts`・`server/src/do/clientErrors.ts`、C# `ClientErrors.cs`（`ErrorReporter`・`ErrorScrubber`・`ErrorFingerprint`・`StallDetector`）・`Muchi.Game.ClientErrorModel`、共有ベクター `contracts/client-errors.vectors.json`、docs/handoff-codex-round20-client-errors.md）
 外部の SDK を入れずに、端末で起きた問題を運営が見られるようにする小さな自前の経路。端末は**捕まえなかった例外・API の失敗（種類ごと）・ロックステップのズレ（チェックサムの不一致）・アセットのダウンロード失敗・長いフレーム／固まり（ANR に近いもの）**を小さな列にためて（オフラインでも保存）、種類ごとの抽出率で間引いて `POST /v1/client-errors` にまとめて送る。サーバーは**まとめた数（集計）**と少数の見本だけを、上限と保存期間のある表に持ち、運営の画面（ops console）に「多いエラー」を出す。コイン・アイテムは動かない（E番号なし）。KPI は増やさない（この経路そのものが計測）。Crashlytics などのネイティブのクラッシュ収集は後で Codex が足せる（§60.10）。
 

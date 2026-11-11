@@ -1367,6 +1367,12 @@
   "オフラインのため変更できません": "You are offline, so you cannot change this now",
   "プライバシーポリシーが更新されました。もう一度ご確認ください": "The privacy policy was updated. Please check again",
   "プライバシーポリシー ": "Privacy policy ",
-  "版": " version"
+  "版": " version",
+  "_review": "---- レビュー依頼 (round 20, REQ-REV-*, ReviewPromptModel soft pre-question). Never a reward, never a star count",
+  "ムチ一閃を楽しんでいますか？": "Are you enjoying Muchi Issen?",
+  "はい": "Yes",
+  "いまいち": "Not really",
+  "ひとこと": "A quick question",
+  "ご意見をお聞かせください。お問い合わせの画面を開きます。": "We'd love to hear what we can do better. Opening the inquiry form."
  }
 }

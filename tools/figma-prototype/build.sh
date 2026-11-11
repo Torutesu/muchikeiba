@@ -71,4 +71,5 @@ node "$HERE/test/round19-cheer.test.mjs" # round 19: 観戦中の応援 — the 
 node "$HERE/test/round19-transfer-code.test.mjs" # round 19: 引き継ぎコード — issue (rules, generated once, hash only), redeem with confirm / one key / replay, single use, the old-device cut-off, no oracle, KPI, English
 node "$HERE/test/round20-consent.test.mjs"   # round 20: 広告・分析の同意 — no pre-prompt in the FTUE, ad_offer moment, ATT answer, npa, analytics off withholds optional events, policy update, English
 node "$HERE/test/round20-client-errors.test.mjs" # round 20: クライアントのエラー報告 — window.onerror → WASM ErrorReporter (collapse, scrub, saved queue, same batch id on retry, consent) → the server ingest, device fingerprint = server
+node "$HERE/test/round20-review-prompt.test.mjs" # round 20: レビュー依頼 — FTUE / session / cool-down / loss, native once, soft → store or inquiry (never the store after いまいち), no reward, English
 echo "built $SITE ($(du -sh "$SITE" | cut -f1))"

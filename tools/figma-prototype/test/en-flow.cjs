@@ -293,6 +293,17 @@ module.exports = async function enFlow(browser, base, out, errors) {
     await page.evaluate(() => globalThis.__muchi.logic.horseGoals.pin(null));
   }
 
+  // round 20: レビュー依頼 in English (REQ-REV-015): the soft pre-question and the simulated OS sheet
+  {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await show('ReviewPrompt', 'soft'); await waitScreen('review-ask'); await waitIn('.rev-soft'); await shot('review-soft', 500);
+    assert.match(await page.locator('.screen.in').innerText(), /Are you enjoying Muchi Issen\?/, 'review: the question in English');
+    await page.locator('.screen.in .rev-yes').click(); await waitScreen('review-native'); await waitIn('.rev-os'); await shot('review-native', 500);
+    assert.match(await page.locator('.screen.in').innerText(), /Not Now/, 'review: the OS sheet in English');
+    await page.locator('.screen.in .rev-os-later').click(); await waitScreen('home');
+    await page.evaluate(() => globalThis.__muchi.logic.reviewPrompt.demo(false));
+  }
+
   // round 16: 厩舎の整理 in English (REQ-ORG-015): the list, the sort and filter sheets, selection, the confirmation; names as typed
   {
     const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });

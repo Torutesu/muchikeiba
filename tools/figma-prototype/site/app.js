@@ -3994,6 +3994,80 @@ async function GoalPinStrip() {
   return s;
 }
 
+// ================================================================= round 20: レビュー依頼のタイミング (REQ-REV-*, contracts/protocol.md §59)
+// The store review is asked only through the OS's own in-app review API, only at a happy moment (first win, first tournament
+// title, hall induction, a horse's goal chain complete), on the real reviewPrompt.ts rules (never after a loss / purchase /
+// error / refund / maintenance notice, never in the FTUE, once per session, ≤ 3 a year with a cool-down). The optional soft
+// pre-question (ops, iOS only, default off): はい → the OS sheet, いまいち → the inquiry form (never the store). The OS sheet is
+// simulated here (a demo state). Nothing is granted for a review, ever. Mirrors unity/Assets/Muchi/Game/ReviewPromptModel.cs.
+const REV_SESSION = 's_' + Math.random().toString(36).slice(2, 12).padEnd(10, '0');
+const REV_MOMENT_JA = { first_win: '初勝利', first_tournament_win: '大会の初優勝', hall_induction: '殿堂入り', horse_goal_chain: '目標の物語を走りきった' };
+let revPrompted = false;
+function revLog(x) { (globalThis.__muchiReview ??= []).push(x); }
+/** A happy moment's screen was closed: ask (or not) on the real rules. Returns the outcome. */
+async function reviewMoment(moment, after = Home) {
+  if (revPrompted) { revLog({ moment, skipped: 'session' }); return 'skipped'; }
+  const r = await L.reviewPrompt.check(moment, REV_SESSION, { inFtue: false, minutesSinceLoss: null, minutesSinceError: null, minutesSinceMaintenanceNotice: null });
+  if (!r.ok || !r.value.show) { revLog({ moment, skipped: r.ok ? r.value.reason : r.code }); return 'skipped'; }
+  revPrompted = true;
+  revLog({ moment, style: r.value.style, promptId: r.value.promptId });
+  if (r.value.style === 'soft') { ReviewSoft(r.value.promptId, moment, after); return 'soft'; }
+  await ReviewNativeSim(r.value.promptId, moment, after); return 'native';
+}
+/** The scene behind both sheets: the moment that just closed (art, one quiet line), nothing else on screen. */
+function revScene(name, moment) {
+  Clear(name); SetArt('Art/race-result', false); Shade('left');
+  Kicker(REV_MOMENT_JA[moment] ?? '', 64, 48, undefined, { w: 600, size: 16 }).classList.add('rev-moment');
+}
+/** The soft pre-question: one question, two answers of the same size and weight, close = no answer. */
+function ReviewSoft(promptId, moment, after = Home) {
+  currentScreen = () => ReviewSoft(promptId, moment, after);
+  revScene('review-ask', moment);
+  const d = Dialog('Review ask', 720, 400);
+  d.classList.add('rev-soft'); d.dataset.prompt = promptId;
+  Kicker('ひとこと', 48, 36, d, { w: 400 });
+  Txt('ムチ一閃を楽しんでいますか？', 48, 118, 624, 30, WHITE, d, { weight: 700, nowrap: true }).classList.add('rev-question');
+  Txt('答えなくてもかまいません。ゲームの内容は何も変わりません。', 48, 172, 624, 15, MUTED, d, { lh: 1.5 });
+  const answer = async (step) => {
+    const a = await L.reviewPrompt.answer(promptId, step);
+    revLog({ step, next: a.ok ? a.value.next : a.code });
+    if (!a.ok) { toast(a.message); return after(); }
+    if (a.value.next === 'store_review') return ReviewNativeSim(promptId, moment, after);
+    if (a.value.next === 'help_inquiry') { toast('ご意見をお聞かせください。お問い合わせの画面を開きます。'); return InquiryForm(a.value.helpCategory ?? 'other'); }
+    return after();
+  };
+  Ghost('はい', 48, 236, 300, 64, () => answer('soft_yes'), d).classList.add('rev-yes');
+  Ghost('いまいち', 372, 236, 300, 64, () => answer('soft_no'), d).classList.add('rev-no');
+  TextLink('閉じる', 48, 324, 200, () => answer('soft_dismiss'), d).classList.add('rev-close');
+}
+/** DEMO: what the OS shows for the in-app review API (on a phone the OS draws it; the game never learns the result). */
+async function ReviewNativeSim(promptId, moment, after = Home) {
+  currentScreen = () => ReviewNativeSim(promptId, moment, after);
+  revScene('review-native', moment);
+  await L.reviewPrompt.answer(promptId, 'native_requested'); // the API was called (once; the result is never known)
+  const note = Glass('Review demo note', 64, 770, 1000, 60, undefined, .8);
+  Txt('デモ：OS の標準のレビュー画面です。実機では OS が表示し、ゲームは結果を受け取りません。', 24, 18, 952, 15, MUTED, note, { nowrap: true }).classList.add('rev-demo-note');
+  const os = el('rev-os', 530, 220, 540, 344);
+  os.dataset.name = 'OS review sheet';
+  Txt('「ムチ一閃」を気に入っていますか？', 30, 34, 480, 22, '#111', os, { weight: 700, align: 'center', nowrap: true });
+  Txt('App Store で評価するには、星をタップしてください。', 30, 82, 480, 15, '#444', os, { align: 'center', lh: 1.5 });
+  const stars = el('rev-stars', 120, 150, 300, 56, os);
+  for (let i = 0; i < 5; i++) {
+    const b = Btn(`rev-star-${i + 1}`, i * 60, 0, 56, 56, () => { revLog({ osStars: i + 1 }); after(); }, 'rev-star', stars, '☆');
+    b.setAttribute('aria-label', String(i + 1));
+  }
+  Hair(0, 268, 540, os).classList.add('rev-os-hair');
+  Btn('今はしない', 0, 276, 540, 60, () => { revLog({ osDismissed: true }); after(); }, 'rev-os-later', os);
+}
+/** Demo entry (show('ReviewPrompt', 'soft' | 'native')): a settled player, the first win's result just closed. */
+async function ReviewDemo(style = 'native') {
+  await L.reviewPrompt.demo(style === 'soft');
+  revPrompted = false;
+  const o = await reviewMoment('first_win');
+  if (o === 'skipped') { toast('今回は依頼しません'); Home(); }
+  return o;
+}
+
 // ================================================================= round 16: 厩舎の整理 (REQ-ORG-*, contracts/protocol.md §44)
 // The stable list on the real PlayerService roster rules: sort / filters / search run locally with the server's own
 // applyRosterQuery (the C# RosterSorter is the same), the chosen view is kept on this device (localStorage = PlayerPrefs),
@@ -7968,7 +8042,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),

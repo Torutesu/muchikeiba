@@ -59,6 +59,7 @@ import { helpArticle, helpIndex, helpOf, INQUIRY_CATEGORIES, PLATFORMS, searchHe
 import type { TransferService } from '../domain/transferService.js';
 import { FriendSuggestService, fsugConfig, type FsugCache, type SuggestDirectory, type SuggestPlayers } from '../domain/friendSuggest.js';
 import type { DataExportService } from '../domain/dataExportService.js';
+import { REVIEW_PLATFORMS, REVIEW_STEPS } from '../domain/reviewPrompt.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -103,6 +104,7 @@ export type PlayerMethod =
   | 'nextActions' | 'dismissNextAction'
   | 'roster' | 'rosterLock' | 'rosterFavorite' | 'rosterPreview' | 'rosterBulk' | 'rosterTournament'
   | 'horseGoals' | 'pinHorseGoal' | 'pinnedHorseGoal'
+  | 'reviewPrompt' | 'reviewPromptCheck' | 'reviewPromptAnswer'
   | 'myReplays' | 'replayPrepareSave' | 'replayCommitSave' | 'replayForget' | 'replayUpdate' | 'replayDelete' | 'replayOwnRef' | 'replayShared' | 'replayViewed'
   | 'raceAdvice' | 'practiceCatalog'
   | 'photoCatalog' | 'photos' | 'photoSave' | 'photoDelete'
@@ -324,6 +326,12 @@ export const clientIdemKey = (req: Request) => {
   return `c:${new URL(req.url).pathname}:${k}`;
 };
 const idem = clientIdemKey;
+/** REQ-REV-005 (§59.4): the device's half of the review-prompt summary. Minutes are capped at a year (null = none / unknown). */
+const reviewMinutes = z.number().int().min(0).max(525_600).nullable();
+const reviewCheckSchema = z.object({
+  moment: z.string().regex(/^[a-z_]{1,32}$/), platform: z.enum(REVIEW_PLATFORMS), sessionId: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/),
+  client: z.object({ inFtue: z.boolean(), minutesSinceLoss: reviewMinutes, minutesSinceError: reviewMinutes, minutesSinceMaintenanceNotice: reviewMinutes }).strict(),
+}).strict();
 const ticketParam = (x: string) => { if (!/^q_[0-9]{1,9}$/.test(x)) throw new AppError('NOT_FOUND', 'NOT_FOUND'); return x; };
 /** REQ-HELP-005: the whip count of the ruleset in effect (the help article's {{max_whips}}). */
 async function maxWhipsOf(c: AppContext): Promise<number> {
@@ -663,6 +671,16 @@ export const routes: Route[] = [
   { method: 'GET', path: '/v1/horses/:horseId/goals', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('horseGoals', u, p.horseId!) },
   { method: 'PUT', path: '/v1/horse-goals/pin', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('pinHorseGoal', u, (await body(r, z.object({ horseId: z.string().min(1).max(32).nullable() }).strict())).horseId) },
   { method: 'GET', path: '/v1/horse-goals/pinned', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('pinnedHorseGoal', u) },
+  // レビュー依頼のタイミング (REQ-REV-*, contracts/protocol.md §59): no reward path anywhere (Apple 5.6.1 / Google Play)
+  { method: 'GET', path: '/v1/review-prompt', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('reviewPrompt', u) },
+  { method: 'POST', path: '/v1/review-prompt/check', auth: 'player', handler: async (r, _p, c, u) => {
+    const key = idem(r);
+    return c.player(u).invoke('reviewPromptCheck', u, await body(r, reviewCheckSchema), key);
+  } },
+  { method: 'POST', path: '/v1/review-prompt/:promptId/answer', auth: 'player', handler: async (r, p, c, u) => {
+    if (!/^rp_[0-9]{1,9}$/.test(p.promptId!)) throw new AppError('NOT_FOUND', 'unknown review prompt');
+    return c.player(u).invoke('reviewPromptAnswer', u, p.promptId!, (await body(r, z.object({ step: z.enum(REVIEW_STEPS) }).strict())).step);
+  } },
   { method: 'GET', path: '/v1/horses/:horseId/career', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('horseCareer', u, p.horseId!) },
   { method: 'GET', path: '/v1/hall', auth: 'player', handler: async (r, _p, c, u) => { const q = hallPage(r); return hall(c).mine(u, q.cursor, q.limit); } },
   { method: 'PUT', path: '/v1/hall/settings', auth: 'player', handler: async (r, _p, c, u) => {

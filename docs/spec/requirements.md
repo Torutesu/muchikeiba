@@ -1264,6 +1264,25 @@
 - REQ-CNS-019 プロトタイプ：事前の画面のシートと設定 › プライバシーの「広告と分析」（ムチ一閃のトーン、日本語・英語、文字の大きさ §41）。e2e・en-flow・a11y-flow。
 - REQ-CNS-020 法務：`docs/planning/03-legal-risk.md` に方針（個人情報保護法・電気通信事業法の外部送信・GDPR／ePrivacy・Apple ATT）と弁護士の確認事項。
 
+## 59. レビュー依頼のタイミング（in-app store review prompt、TS＋C#、`src/domain/reviewPrompt.ts`・`progression.reviewPrompt`・`Muchi.Client/ReviewPrompt.cs`・`Muchi.Game.ReviewPromptModel`、`contracts/protocol.md` §59、docs/planning/03「レビュー依頼」）
+拘束条件：レビューには何も配らない（Apple 5.6.1・Google Play のポリシー。E 番号なし）。OS の標準のアプリ内レビュー API だけを使い、独自の★の画面を作らない。負け・購入・エラー・返金・メンテナンスのお知らせの直後と FTUE の途中には頼まない。1セッションに1回まで。
+- REQ-REV-001 うれしい瞬間：`first_win`・`first_tournament_win`・`hall_induction`・`horse_goal_chain`。規則の `moments` に無いものは頼まない。端末は結果・表彰・式の画面を閉じた後に1回だけ聞く。
+- REQ-REV-002 規則 `progression.reviewPrompt`：`enabled`・`moments`・`minDaysSinceInstall`（0〜365）・`minRacesPlayed`（0〜1000）・`maxPerYear`（1〜3）・`coolDownDays`（30〜365）・`quietMinutes`（5つ全部、0〜525600）・`softAsk { ios, android }`。知らないキー（報酬の項目を含む）は落ちる。起動時と各リモート設定の版で検証。
+- REQ-REV-003 判断：`decideReviewPrompt(rules, summary)` は純粋な関数。理由の順は §59.3 の表のとおり。TS と C# `ReviewPromptPolicy.Decide` は共有ベクター `contracts/review-prompt.vectors.json` で同じ。
+- REQ-REV-004 サーバーの要約：インストール日（`createdAt`）・戦績のレース数・削除の予約・無料10連の有無（FTUE）・最後の購入・返金（台帳の `refund`／`debt`）とコインの借り・メンテナンスのお知らせ（§46 `visibleWindows`）・頼んだ記録・最後のセッション。端末の言うことと合わせ、FTUE はどちらかが途中なら途中。
+- REQ-REV-005 check：`POST /v1/review-prompt/check`（冪等キー必須）。頼む時だけ記録（最新10件・400日）と `review_prompt_eligible`。頼んだ時点で回数に数える。頼まない時は状態を変えない。
+- REQ-REV-006 回数：直近365日に `maxPerYear` 回まで、前回から `coolDownDays` 日あける、同じ `sessionId` では2回目を頼まない。記録はサーバーにあるので入れ直しても数え直さない。
+- REQ-REV-007 answer：`POST /v1/review-prompt/:promptId/answer`。前置きの答えは1回（同じ答えは冪等、違う答えは 409）。`native_requested` は native か soft_yes の後だけ、1回だけ `review_prompt_shown`。いまいち → お問い合わせ（§48 `other`）、ストアには送らない。
+- REQ-REV-008 前置きの質問：既定 OFF。`softAsk.android: true` は検証で落ちる（Google Play の In-App Review のガイドライン）。iOS は運用で入れられるが、法務・ストアの確認の後（docs/planning/03）。
+- REQ-REV-009 報酬なし：check・answer・規則のどこにも報酬の経路が無い（ウォレット・アイテム・ミッション・XP が変わらないことをテスト、規則に報酬のキーを書くと落ちる）。OS からレビューの有無・点数を受け取らない。
+- REQ-REV-010 端末 `IStoreReview`：標準 API を呼ぶだけ（結果は「呼んだ」だけ）。`Available` が false なら check を呼ばない。オフラインでは頼まない。
+- REQ-REV-011 状態 `reviewPrompt`：§51 の分類は `analytics`。アカウント削除の `wipe` で消える。
+- REQ-REV-012 KPI（サーバー）：`review_prompt_eligible`（moment・platform・style）、`review_prompt_shown`（moment・platform・style）、`review_soft_answer`（yes／not_really／dismissed・moment・platform）。
+- REQ-REV-013 メンテナンスの区分：3つの経路は `core`。
+- REQ-REV-014 クライアント：`Muchi.Client` の `ReviewPromptPolicy`・`IStoreReview`・`ApiClient` の3メソッド。Unity のゲーム層 `ReviewPromptModel`（セッションの旗・負け／エラー／お知らせの時刻・瞬間 → check → 前置き or 標準 API → answer）。描画は `docs/handoff-codex-round20-review-prompt.md`。
+- REQ-REV-015 文言：前置きの文言に英語（`ui-en.json`・`proto-en.json`）。煽り・点数の誘導・報酬を約束する言葉なし。2つのボタンは同じ強さ。
+- REQ-REV-016 プロトタイプ：前置きのシート（ムチ一閃の見た目）と標準のレビューのシミュレーション（デモの状態）、日本語・英語、文字の大きさ（§41）。e2e・en-flow・a11y-flow。
+
 ## 60. クライアントのエラー報告（TS＋C#、`src/domain/clientErrors.ts`・`src/ops/clientErrors.ts`・`src/do/clientErrors.ts`・`Muchi.Client/ClientErrors.cs`・`Muchi.Game.ClientErrorModel`、`contracts/protocol.md` §60）
 拘束条件：外部の SDK を使わない。個人情報（メール・トークン・プレイヤー名・自由な文・入力の列）を保存しない。プレイヤーの状態に何も足さない。コイン・アイテム・ランク戦は動かない。保存は上限と保存期間つき。
 - REQ-CERR-001 設定 `progression.clientErrors`（§60.10）：起動時とリモート設定の各版で検査。抽出率は種類ごとに 0〜1000‰、ズレ（`desync`）は 1000 のみ。知らないキーは問題。

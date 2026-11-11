@@ -1827,8 +1827,8 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   // was created) gets the paged sheet once (3 pages, 次へ / はじめる, the skipped version's past link), marked seen when it
   // opens; お知らせ › アップデート情報 and ヒント › アップデート情報; a page's target; nothing granted
   const rnFacts0 = await page.evaluate(async () => (await globalThis.__muchi.logic.releaseNotesFacts()).value);
-  await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home'); await page.waitForTimeout(500);
-  assert.equal(await screen(), 'home', 'a player who started on this build gets no sheet');
+  await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen(['home', 'link-prompt']); await page.waitForTimeout(500);
+  assert.notEqual(await screen(), 'release-notes', 'a player who started on this build gets no sheet (the account-link prompt may take the session)');
   await page.evaluate(() => globalThis.__muchi.show('ReleaseNotes')); await waitScreen('release-notes'); await page.waitForTimeout(400);
   const rnSheet = page.locator('.screen.in .rn-sheet');
   assert.deepEqual([await rnSheet.getAttribute('data-version'), await rnSheet.getAttribute('data-page'), await rnSheet.getAttribute('data-pages')], ['1.2.0', '1', '3'], 'the newest note, page 1 of 3');
@@ -1850,8 +1850,8 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.equal(await page.locator('.screen.in [data-rn-page]').count(), 2, 'Ver. 1.1.0 has two pages');
   await page.locator('.screen.in [data-rn-target="screen:tips"]').click(); await waitScreen('tips'); await page.waitForTimeout(300);
   // back home: never twice (seen on the server, and once per session)
-  await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home'); await page.waitForTimeout(500);
-  assert.equal(await screen(), 'home', 'the sheet never comes back');
+  await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen(['home', 'link-prompt']); await page.waitForTimeout(500);
+  assert.notEqual(await screen(), 'release-notes', 'the sheet never comes back');
   // the entry points: お知らせ (activity) and ヒント
   await page.evaluate(() => globalThis.__muchi.show('Activity')); await waitScreen('activity'); await page.waitForTimeout(400);
   await page.locator('.screen.in .btn[data-action="release-notes"]').click(); await waitScreen('release-notes-history'); await page.waitForTimeout(300);

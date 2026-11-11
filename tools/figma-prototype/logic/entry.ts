@@ -1229,6 +1229,8 @@ export const MuchiLogic = {
   promotion: {
     view: () => wrap(() => svc.promotion(ID)),
     ack: (seriesId: string) => wrap(() => svc.promotionAck(ID, seriesId)),
+    /** The kill switch (progression.promotion.enabled) on the local master; the walkthroughs that race for other reasons turn it off. */
+    setEnabled: (on: boolean) => { const prog = master.progression as { promotion?: { enabled: boolean } }; if (prog.promotion) prog.promotion.enabled = on; return on; },
     demo: (state: 'near' | 'start' | 'one' | 'passed' | 'failed' | 'grace' | 'off') => wrap(async () => {
       const prog = master.progression as { promotion?: { enabled: boolean } };
       if (prog.promotion) prog.promotion.enabled = state !== 'off';

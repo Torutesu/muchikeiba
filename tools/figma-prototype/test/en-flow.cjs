@@ -113,6 +113,7 @@ module.exports = async function enFlow(browser, base, out, errors) {
   // round 12: かんたん操作 in English — the options screen; the ranked race below rides with the whip assist (the HUD chip)
   await show('AssistSettings'); await waitScreen('assist-settings'); await shot('assist-settings', 400);
   assert.match(await page.locator('.screen.in').innerText(), /never rides better than skilled play/i, 'assist: the fairness rule in English');
+  await page.evaluate(() => globalThis.__muchi.logic.promotion.setEnabled(false)); // round 22: the promotion series has its own block below
   await page.evaluate(() => globalThis.__muchi.logic.setAssist('whip'));
   // round 15: アクセシビリティ in English at the standard size (a11y-flow.cjs audits the largest size in both languages)
   await show('A11ySettings'); await waitScreen('a11y-settings'); await shot('a11y-settings', 400);
@@ -317,7 +318,7 @@ module.exports = async function enFlow(browser, base, out, errors) {
     await show('PromotionResult', 'failed'); await waitScreen('result'); await waitIn('.pp-sheet'); await shot('promotion-fail', 500);
     assert.match(await page.locator('.screen.in .pp-sheet').innerText(), /Not promoted this time/, 'promo: the fail sheet in English');
     await page.locator('.screen.in .pp-close').click(); await page.waitForTimeout(500);
-    await page.evaluate(() => globalThis.__muchi.logic.promotion.demo('near'));
+    await page.evaluate(async () => { await globalThis.__muchi.logic.promotion.demo('near'); globalThis.__muchi.logic.promotion.setEnabled(false); });
   }
 
   // round 20: 通知 in English (REQ-LNOTIF-007): settings with the device reminders and the upcoming list, the pre-permission dialog

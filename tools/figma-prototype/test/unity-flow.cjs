@@ -629,6 +629,69 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     assert.equal(await page.evaluate(async () => (await globalThis.__muchi.logic.passView()).xp), passBefore, 'practice: no pass XP');
   }
 
+  // round 22 (REQ-CAREER-*): 騎手の道 — from the lobby: the map (the road, stars as text and shapes, the next marker, a locked
+  // race), the first race's detail (story, objectives, rewards), the pre-race (story, the horse at the chapter cap), a race on
+  // the device with the clear objective in the HUD, the verified result (stars, rewards once, the opened race, the story's
+  // closing line), back on the map; a replay of the same race pays nothing again; rating / season / paid coins unchanged
+  async function careerFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    const before = await page.evaluate(async () => { const v = await globalThis.__muchi.logic.view(); return JSON.stringify({ r: v.rating, s: v.season, paid: v.wallet.paid }); });
+    await page.evaluate(() => globalThis.__muchi.show('RaceLobby')); await waitScreen('lobby');
+    await page.locator('.screen.in .cr-entry').click(); await waitScreen('career'); await waitIn('.cr-band');
+    await shot('career-map', 500);
+    assert.equal(await page.locator('.screen.in .cr-band').count(), 5, 'career: five chapters on the road');
+    const c0 = await page.evaluate(() => globalThis.__muchi.career);
+    assert.equal(c0.sel, 'c1_debut', 'career: the first race is selected');
+    assert.match(await page.locator('.screen.in .cr-race-stars').innerText(), /星 \d\/3/, 'career: stars as text');
+    assert.equal(await page.locator('.screen.in .cr-band[data-unlocked="false"]').count() >= 1, true, 'career: later chapters are locked');
+    await page.locator('.screen.in .cr-node[data-race="c1_straight"]').click(); await waitIn('.cr-detail[data-race="c1_straight"]');
+    if (c0.totalStars === 0) assert.equal(await page.locator('.screen.in .cr-go.disabled').count(), 1, 'career: a locked race cannot start');
+    await page.locator('.screen.in .cr-node[data-race="c1_debut"]').click(); await waitIn('.cr-detail[data-race="c1_debut"]');
+    await page.locator('.screen.in .cr-go').click(); await waitScreen('career-prerace'); await waitIn('.cr-prerace');
+    await shot('career-prerace', 400);
+    await page.locator('.screen.in .cr-gate').click(); await waitScreen('race', 20000); await waitIn('.cr-hud');
+    for (let i = 0, kicked = false, w = 0, last = 0; i < 6000; i++) {
+      const f = await page.evaluate(() => globalThis.__muchi.state().lastFrame);
+      if (!f) { await page.waitForTimeout(50); continue; }
+      if (f.done || (await page.evaluate(() => globalThis.__muchi.screen)) !== 'race') break;
+      if (!kicked && f.gateOpen && !f.departed) { await page.locator('.screen.in .btn.whip').click({ force: true }); kicked = true; }
+      if (f.departed && w < 3 && f.remainingM <= 400 && f.whips > 0 && Date.now() - last > 1400) { await page.locator('.screen.in .btn.whip').click({ force: true }); w++; last = Date.now(); }
+      if (f.departed && f.remainingM < 700 && !globalThis.__crShot) { globalThis.__crShot = 1; await shot('career-race-hud', 0, true); }
+      await page.waitForTimeout(40);
+    }
+    await waitScreen('career-result', 60000); await waitIn('.cr-verdict');
+    await shot('career-result', 600);
+    const res = await page.evaluate(() => globalThis.__muchi.lastCareer);
+    assert.ok(res && !res.error, 'career: the run was verified');
+    assert.match(await page.locator('.screen.in .cr-stars-text').innerText(), /^星 \d\/3$/, 'career result: stars as text');
+    if (res.cleared) {
+      assert.ok(res.firstClear && res.rewards.some((g) => g.kind === 'clear') && res.unlockedRaceId === 'c1_straight', 'career: the first clear pays once and opens the next race');
+      assert.equal(await page.locator('.screen.in .cr-after').count(), 1, 'career: the story closes after a clear');
+    }
+    // replay the same race: whatever happens, the clear and the stars already earned never pay again
+    await page.locator('.screen.in [data-action="career-retry"]').click(); await waitScreen('career-prerace');
+    await page.locator('.screen.in .cr-gate').click(); await waitScreen('race', 20000);
+    for (let i = 0, kicked = false, w = 0, last = 0; i < 6000; i++) {
+      const f = await page.evaluate(() => globalThis.__muchi.state().lastFrame);
+      if (!f) { await page.waitForTimeout(50); continue; }
+      if (f.done || (await page.evaluate(() => globalThis.__muchi.screen)) !== 'race') break;
+      if (!kicked && f.gateOpen && !f.departed) { await page.locator('.screen.in .btn.whip').click({ force: true }); kicked = true; }
+      if (f.departed && w < 3 && f.remainingM <= 400 && f.whips > 0 && Date.now() - last > 1400) { await page.locator('.screen.in .btn.whip').click({ force: true }); w++; last = Date.now(); }
+      
+      await page.waitForTimeout(40);
+    }
+    await waitScreen('career-result', 60000); await waitIn('.cr-verdict');
+    const res2 = await page.evaluate(() => globalThis.__muchi.lastCareer);
+    for (const g of res2.rewards) assert.ok(!res.rewards.some((x) => x.kind === g.kind), 'career: no reward is paid twice (' + g.kind + ')');
+    await page.locator('.screen.in .cr-back').click(); await waitScreen('career'); await waitIn('.cr-band');
+    await shot('career-map-after', 400);
+    const after = await page.evaluate(async () => { const v = await globalThis.__muchi.logic.view(); return JSON.stringify({ r: v.rating, s: v.season, paid: v.wallet.paid }); });
+    assert.equal(after, before, 'career: rating, season and paid coins unchanged');
+    const kpi = await page.evaluate(() => globalThis.__muchi.logic.kpiLog().filter((e) => e.name.startsWith('career_')).map((e) => e.name));
+    assert.ok(kpi.filter((x) => x === 'career_start').length >= 2, 'career KPI: career_start per run');
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
+  }
+
   async function cupsFlow() {
     const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
     await page.evaluate(() => globalThis.__muchi.show('HostedCups')); await waitScreen('hosted-cups'); await waitIn('.cup-mine');
@@ -1258,6 +1321,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await recapFlow();
   await cupsFlow();
   await practiceFlow(); // round 18: 練習レース
+  await careerFlow(); // round 22: 騎手の道
   await privacyFlow(); // round 18: プライバシー › データのダウンロード
   await cheerFlow();
   await consentFlow(); // round 20: プライバシー › 広告と分析

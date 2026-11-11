@@ -244,6 +244,18 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('LessonBrief', 'race_whip'); await waitScreen('tip-lesson'); await shot('tip-lesson', english, 500);
     // Round 17: おすすめフレンド (the friends screen's suggestions section)
     await show('Friends'); await waitScreen('friends'); await shot('friends-suggestions', english, 600);
+    // Round 22: 騎手の道 (the map, the race detail, the pre-race) at the largest size (REQ-CAREER-022)
+    await show('Career'); await waitScreen('career'); await page.waitForSelector('.screen.in .cr-band', { timeout: 15000 }); await shot('career-map', english, 600);
+    await show('CareerPreRace', 'c1_debut'); await waitScreen('career-prerace'); await page.waitForSelector('.screen.in .cr-prerace', { timeout: 15000 }); await shot('career-prerace', english, 500);
+    await page.locator('.screen.in .cr-gate').click(); await waitScreen('race', 20000);
+    for (let i = 0, kicked = false; i < 6000; i++) {
+      const f = await page.evaluate(() => globalThis.__muchi.state().lastFrame);
+      if (!f) { await page.waitForTimeout(50); continue; }
+      if (f.done || (await screen()) !== 'race') break;
+      if (!kicked && f.gateOpen && !f.departed) { await page.locator('.screen.in .btn.whip').click({ force: true }); kicked = true; }
+      await page.waitForTimeout(40);
+    }
+    await waitScreen('career-result', 60000); await page.waitForSelector('.screen.in .cr-verdict', { timeout: 15000 }); await shot('career-result', english, 500);
     // Round 18: 練習レース (the setup screen at the largest size)
     await show('Practice'); await waitScreen('practice'); await page.waitForSelector('.screen.in .pr-setup', { timeout: 15000 }); await shot('practice', english, 600);
     // Round 18 integration: a practice race at the largest size (the shortest course, two runners; the whip band and the

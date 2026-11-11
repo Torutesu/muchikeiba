@@ -90,6 +90,7 @@
 | `commentary_pack_buy` | サーバー（実況パックをコインで買った） | パック | 通貨 `any`/`paidOnly` | | `double2` 有償コイン、`double3` 無償コイン、`double9` 値段 |
 | `commentary_pack_sample` | クライアント（試聴を始めた） | パック | `owned`/`not_owned` | | |
 | `consent` | サーバー | 規約の版 | プライバシーポリシーの版 | | |
+| `consent_change` | サーバー（広告・分析の同意が変わった項目ごとに1行、必須のイベント、REQ-CNS-014） | `personalized_ads`／`analytics`／`att`／`cmp` | 新しい値 | `prompt`／`settings`／`platform` | |
 | `partner_granted` | サーバー | テンプレートID（`t_partner`） | | | |
 | `ab_assign` | サーバー（初回の bootstrap、実験ごとに1回） | 実験ID | バケットID | | |
 | `account_delete` | サーバー | `requested`/`cancelled`/`deleted` | | | `deleted` は `double2`/`double3` 放棄したコイン |
@@ -1246,6 +1247,28 @@ SELECT
   sumIf(_sample_interval, blob1 = 'dex_ready' AND double5 > 0) AS truncated_exports
 FROM muchi_kpi
 WHERE blob1 IN ('dex_request', 'dex_ready', 'dex_download') AND timestamp > NOW() - INTERVAL '56' DAY
+GROUP BY week
+ORDER BY week DESC
+```
+
+## 広告・分析の同意：選択の変化（REQ-CNS-014、Round 20、contracts/protocol.md §58）
+列：`consent_change`（サーバー、**必須**のイベント＝分析がオフの人でも書く）`blob8` = 項目（`personalized_ads`／`analytics`／`att`／`cmp`）、`blob9` = 新しい値（`on`／`off`、ATT は `not_determined`／`restricted`／`denied`／`authorized`／`unavailable`、CMP は `not_required`／`required`／`obtained`／`unknown`）、`blob10` = 入口（`prompt` 事前の画面／`settings` 設定／`platform` 端末の報告）。
+
+**注意（§58.7）**：分析がオフのプレイヤーの任意のイベント（セッション・画面・レースの結果など、`server/src/domain/kpiConsent.ts` の `optional`）はこの表に**書かれない**。継続率・ファネルのクエリは「分析に協力している人」の数字になる（偏りの目安として下のオフの割合を一緒に見る）。購入・返金・ガチャ・広告の報酬・同意・削除・開示・通報は `essential` で全員の分が残る。
+
+**事前の画面の結果と ATT の許可率**（週ごと）：
+
+```sql
+SELECT
+  toStartOfWeek(timestamp) AS week,
+  sumIf(_sample_interval, blob8 = 'analytics' AND blob9 = 'off') AS analytics_off,
+  sumIf(_sample_interval, blob8 = 'analytics' AND blob9 = 'on') AS analytics_on,
+  sumIf(_sample_interval, blob8 = 'personalized_ads' AND blob9 = 'on') AS personalized_on,
+  sumIf(_sample_interval, blob8 = 'att' AND blob9 = 'authorized') AS att_authorized,
+  sumIf(_sample_interval, blob8 = 'att' AND blob9 IN ('denied', 'restricted')) AS att_denied,
+  round(sumIf(_sample_interval, blob8 = 'att' AND blob9 = 'authorized') / sumIf(_sample_interval, blob8 = 'att' AND blob9 IN ('authorized', 'denied', 'restricted')), 3) AS att_rate
+FROM muchi_kpi
+WHERE blob1 = 'consent_change' AND timestamp > NOW() - INTERVAL '56' DAY
 GROUP BY week
 ORDER BY week DESC
 ```

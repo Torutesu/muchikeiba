@@ -35,6 +35,11 @@ export interface Env {
   /** "local" | "staging" | "production" (wrangler.toml). DEV_MODE is refused unless this is "local". */
   ENVIRONMENT?: string;
   FIREBASE_PROJECT_ID: string;
+  /**
+   * REQ-TRF-011 (§54.7): secret — the Firebase project's service-account JSON key that signs custom tokens for 引き継ぎコード.
+   * Unset => transfer codes report enabled: false (Apple / Google linking only). Rotation: docs/ops/deploy.md §8.
+   */
+  FIREBASE_AUTH_SERVICE_ACCOUNT_JSON?: string;
   TICKET_SECRET: string;
   ADMIN_TOKEN?: string;
   /** "1" enables the fake store and the x-dev-user header. Never set in production. */

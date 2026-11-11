@@ -125,6 +125,24 @@ namespace Muchi.Client
         Maintenance,
         /// <summary>426: this app version / engine level is no longer supported (REQ-MNT-007/008); see <see cref="UpgradeRequiredException"/>.</summary>
         UpgradeRequired,
+        /// <summary>REQ-TRF-008: 400 — wrong id or password (also unknown, used, revoked or locked codes: one answer). <see cref="TransferException"/>.</summary>
+        TransferInvalid,
+        /// <summary>REQ-TRF-006: 410 — the code expired (said only to the right password); issue a new one on the old device.</summary>
+        TransferExpired,
+        /// <summary>REQ-TRF-007: 429 — too many failures from this network / device; wait <see cref="TransferException.RetryAfterSec"/>.</summary>
+        TransferLocked,
+        /// <summary>REQ-TRF-003: 400 — the password breaks <see cref="TransferException.Rules"/>.</summary>
+        TransferPasswordWeak,
+        /// <summary>REQ-TRF-009: 409 — this device's own progress would be left behind; confirm (<see cref="TransferException.Confirm"/>) and send again.</summary>
+        TransferConfirmRequired,
+        /// <summary>REQ-TRF-012: 409 — the code belongs to the account already on this device.</summary>
+        TransferSameAccount,
+        /// <summary>REQ-TRF-012: 403 — the account is banned or scheduled for deletion (<see cref="TransferException.Reason"/>).</summary>
+        TransferRefused,
+        /// <summary>REQ-TRF-001: 429 — too many codes issued today.</summary>
+        TransferIssueLimit,
+        /// <summary>REQ-TRF-010: 401 — this account moved to another device. Never retried; see <see cref="SessionReplacedException"/>.</summary>
+        SessionReplaced,
     }
 
     public static class ApiErrorCodes
@@ -237,6 +255,15 @@ namespace Muchi.Client
             ["INTERNAL"] = ApiErrorCode.Internal,
             ["MAINTENANCE"] = ApiErrorCode.Maintenance,
             ["UPGRADE_REQUIRED"] = ApiErrorCode.UpgradeRequired,
+            ["TRANSFER_INVALID"] = ApiErrorCode.TransferInvalid,
+            ["TRANSFER_EXPIRED"] = ApiErrorCode.TransferExpired,
+            ["TRANSFER_LOCKED"] = ApiErrorCode.TransferLocked,
+            ["TRANSFER_PASSWORD_WEAK"] = ApiErrorCode.TransferPasswordWeak,
+            ["TRANSFER_CONFIRM_REQUIRED"] = ApiErrorCode.TransferConfirmRequired,
+            ["TRANSFER_SAME_ACCOUNT"] = ApiErrorCode.TransferSameAccount,
+            ["TRANSFER_REFUSED"] = ApiErrorCode.TransferRefused,
+            ["TRANSFER_ISSUE_LIMIT"] = ApiErrorCode.TransferIssueLimit,
+            ["SESSION_REPLACED"] = ApiErrorCode.SessionReplaced,
         };
 
         public static IReadOnlyCollection<string> WireCodes => ByWire.Keys;
@@ -284,6 +311,17 @@ namespace Muchi.Client
                     return new DataExportCooldownException(wire, message, status, J.LongN(details, "availableAt"));
                 case ApiErrorCode.RosterBulkRefused:
                     return new BulkRefusedException(wire, message, status, J.List(details, "horses", BulkHorseCheck.Parse));
+                case ApiErrorCode.TransferInvalid:
+                case ApiErrorCode.TransferExpired:
+                case ApiErrorCode.TransferLocked:
+                case ApiErrorCode.TransferPasswordWeak:
+                case ApiErrorCode.TransferConfirmRequired:
+                case ApiErrorCode.TransferSameAccount:
+                case ApiErrorCode.TransferRefused:
+                case ApiErrorCode.TransferIssueLimit:
+                    return new TransferException(code, wire, message, status, details);
+                case ApiErrorCode.SessionReplaced:
+                    return new SessionReplacedException(wire, message, status);
                 case ApiErrorCode.Maintenance:
                     return new MaintenanceException(wire, message, status, details != null ? MaintenanceInfo.Parse(details) : null);
                 case ApiErrorCode.UpgradeRequired:

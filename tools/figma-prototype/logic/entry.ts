@@ -60,6 +60,8 @@ import {
   blockHidden, cheerAdmit, cheerFanout, cheerMoments, cheerSummary, emptyTally, isCheerKind, tallyAdd, CHEER_KINDS, CHEER_MIN_INTERVAL_MS, CHEER_TEXT, CHEER_WINDOW_MS,
   type CheerTally, type PendingCheer,
 } from '../../../server/src/domain/cheer.js';
+import { MemoryTransferDirectory, TransferService, type TransferRecord } from '../../../server/src/domain/transferService.js';
+import { normalizeCodeId, normalizeInput, passwordProblems, transferConfig } from '../../../server/src/domain/transferCode.js';
 import { DEFAULT_MAINTENANCE, gateRequest, maintenanceStatus, type MaintenanceConfig } from '../../../server/src/domain/maintenance.js';
 import { DataExportService, MemoryExportStore, runDataExportJob, sweepDataExports } from '../../../server/src/domain/dataExportService.js';
 // REQ-L10N-*: the server's English tables (master/locale-en.json + i18n/en.ts), the client's (ui-en.json) and the
@@ -336,6 +338,27 @@ async function nextTeamGoal() {
     return c ? { endsAt: c.endsAt, progress: c.progress, milestones: c.milestones.map((x) => ({ target: x.target, reached: x.reached })) } : null;
   } catch { return null; }
 }
+// round 19 (REQ-TRF-*, contracts/protocol.md §54): 引き継ぎコード on the real TransferService (PBKDF2 at 100,000 iterations in
+// WebCrypto, the same attempt limits) with the directory in memory, kept in localStorage so a code survives a reload. The
+// custom token is a stand-in (the Worker signs it with the service-account secret); the prototype never switches accounts.
+const TRF_KEY = 'muchi.proto.transfer';
+const TRF_OLD = 'demo_trf_old';
+const TRF_OLD_PASSWORD = 'Haneda2026!';
+class StoredTransferDirectory extends MemoryTransferDirectory {
+  load() { try { for (const r of JSON.parse(localStorage.getItem(TRF_KEY) ?? '[]') as (TransferRecord & { attempts: number; lockedUntil: number })[]) this.codes.set(r.codeId, r); } catch { /* fresh */ } return this; }
+  private save() { try { localStorage.setItem(TRF_KEY, JSON.stringify([...this.codes.values()])); } catch { /* private mode */ } }
+  override async put(rec: TransferRecord, t: number) { const ok = await super.put(rec, t); this.save(); return ok; }
+  override async begin(id: string, t: number, max: number, lockMs: number) { const r = await super.begin(id, t, max, lockMs); this.save(); return r; }
+  override async remove(id: string, p: string) { await super.remove(id, p); this.save(); }
+}
+const trfDir = new StoredTransferDirectory().load();
+const trfSvc = new TransferService({
+  view: (u) => svc.transferView(u), checkIssue: (u) => svc.transferCheckIssue(u), issued: (u, c, mode) => svc.transferIssued(u, c, mode),
+  revoke: (u, by) => svc.transferRevoke(u, by), progress: (u) => svc.transferProgress(u), redeemed: (u, c) => svc.transferRedeemed(u, c),
+  noteFail: (u, r) => svc.transferFailed(u, r), admin: (u) => svc.adminTransfer(u),
+  redeemReplay: (u, k) => svc.transferRedeemReplay(u, k), redeemRemember: (u, k, pid, name) => svc.transferRedeemRemember(u, k, pid, name),
+}, trfDir, () => transferConfig(master), { sign: async (uid, t) => `proto-custom-token.${uid}.${Math.floor(t / 1000)}` }, { clock: now });
+
 async function wrap<T>(f: () => Promise<T> | T): Promise<{ ok: true; value: T } | { ok: false; code: string; message: string; details?: Record<string, unknown> }> {
   try { return { ok: true, value: await f() }; }
   catch (e) {
@@ -479,6 +502,7 @@ export const MuchiLogic = {
     cupBackend.cups.clear(); cupBackend.codes.clear(); try { localStorage.removeItem(CUP_KEY); } catch { /* ignore */ } // round 16
     reportRepo.rs.clear(); reportRepo.st.clear(); // round 17: the ops report queue too
     fsugCards.store.clear(); // round 17: the おすすめフレンド cards too
+    trfDir.codes.clear(); trfDir.limits.clear(); trfDir.rows.length = 0; try { localStorage.removeItem(TRF_KEY); } catch { /* ignore */ } // round 19
     dayOffset = 0;
     delete master.maintenance; // round 17: no maintenance demo
   },
@@ -1232,6 +1256,33 @@ export const MuchiLogic = {
     marginTicks: (order: number[], finishTicks: number[], slot: number) => marginTicksOf(order, finishTicks, slot),
     /** The stored files (test hook). */
     files: () => [...replayStore.files.keys()],
+  },
+  // ---------------------------------------------------------------- round 19: 引き継ぎコード (REQ-TRF-*, contracts/protocol.md §54)
+  // What GET/POST/DELETE /v1/transfer/code and POST /v1/transfer/redeem answer, on the real TransferService.
+  transfer: {
+    status: () => wrap(() => trfSvc.view(ID)),
+    /** null = let the server create the password (returned once). */
+    issue: (password: string | null) => wrap(() => trfSvc.issue(ID, password === null ? { mode: 'generated' } : { mode: 'custom', password })),
+    revoke: () => wrap(() => trfSvc.revoke(ID)),
+    /** This device (the local player, who has progress) enters another account's code. */
+    redeem: (codeId: string, password: string, confirmDiscard: boolean, idem: string) =>
+      wrap(() => trfSvc.redeem(ID, { codeId, password, confirmDiscard }, { ip: '198.51.100.20', installId: 'proto-install-0001', idemKey: idem })),
+    /** The live checklist: the rules a typed password breaks (the server's passwordProblems). */
+    problems: (password: string) => passwordProblems(normalizeInput(password), transferConfig(master)),
+    validId: (raw: string) => normalizeCodeId(raw) !== null,
+    /** Demo: 「前の端末」 — another account (ハヤテ) with a code and a known password, issued once and reused. */
+    demoOld: () => wrap(async () => {
+      if (!(await repo.get(TRF_OLD))) { await svc.bootstrap(TRF_OLD); await svc.setDisplayName(TRF_OLD, 'ハヤテ'); }
+      const v = await svc.transferView(TRF_OLD);
+      const live = v.code && !v.code.expired && trfDir.codes.has(normalizeCodeId(v.code.codeId)!);
+      const codeId = live ? v.code!.codeId : (await trfSvc.issue(TRF_OLD, { mode: 'custom', password: TRF_OLD_PASSWORD })).codeId;
+      return { codeId, password: TRF_OLD_PASSWORD, name: 'ハヤテ' };
+    }),
+    /** The old device's next request after the move (the SESSION_REPLACED check the Worker runs). */
+    oldDeviceCutoff: () => svc.transferCutoff(TRF_OLD),
+    kpi: () => serverKpi.filter((k) => k.name.startsWith('transfer_')),
+    audit: () => trfDir.rows.map((r) => ({ ...r })),
+    storedRecords: () => JSON.stringify([...trfDir.codes.values()]),
   },
   // ---------------------------------------------------------------- round 16: プレイヤー主催カップ (REQ-CUP-*, contracts/protocol.md §42)
   cups: {

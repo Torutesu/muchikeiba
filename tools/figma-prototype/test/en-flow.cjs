@@ -555,6 +555,26 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await page.waitForSelector('.screen.in [data-dex="json"]', { timeout: 20000 }); await shot('privacy-ready', 400);
   assert.match(await page.locator('.screen.in .dex-status').innerText(), /Ready to download/, 'privacy: the status in English');
 
+
+  // round 19: 引き継ぎコード in English (REQ-TRF-020): the issue screen (rules from the server, the generated password), the
+  // redeem screen, the confirm sheet, done (the player name as typed) and the old device's notice
+  await show('TransferIssue'); await waitScreen('transfer-issue', 30000); await page.waitForTimeout(400);
+  await page.locator('.screen.in .trf-generate').click(); await page.waitForTimeout(900);
+  await shot('transfer-issue', 400);
+  assert.match(await page.locator('.screen.in').innerText(), /YOUR ID[\s\S]*No common passwords/i, 'transfer: the issue screen and the server rule lines in English');
+  await show('TransferRedeem'); await waitScreen('transfer-redeem'); await page.waitForTimeout(300);
+  await page.locator('.screen.in .trf-demo').click(); await page.waitForTimeout(1200);
+  await shot('transfer-redeem', 400);
+  await page.locator('.screen.in .trf-redeem-go').click(); await page.waitForTimeout(1200);
+  if (await page.locator('.screen.in .trf-confirm').count()) { // this device has progress (it does after the flow above)
+    await shot('transfer-confirm', 300);
+    assert.match(await page.locator('.screen.in .trf-confirm-line').innerText(), /can no longer be used after the transfer/, 'transfer: the confirm line in English');
+    await page.locator('.screen.in .trf-confirm-yes').click(); await page.waitForTimeout(1200);
+  }
+  assert.equal(await page.locator('.screen.in .trf-done').count(), 1, 'transfer: done');
+  await shot('transfer-done', 300);
+  await show('TransferReplaced'); await waitScreen('transfer-replaced'); await shot('transfer-replaced', 400);
+  assert.match(await page.locator('.screen.in').innerText(), /Moved to another device/);
   const misses = await page.evaluate(() => globalThis.__muchi.l10n.misses());
   fs.writeFileSync(path.join(out, 'en-report.json'), JSON.stringify({ report, misses }, null, 2));
   await ctx.close();

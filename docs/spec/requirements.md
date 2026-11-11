@@ -1156,6 +1156,29 @@
 - REQ-HGOAL-015 設定 `progression.horseGoals { enabled }`：殿堂（§34）が無効なら有効にできない（起動時と各版で検証）。
 - REQ-HGOAL-016 プロトタイプ：馬の詳細の目標の面とホームのピン（ムチ一閃の見た目、日本語・英語、文字の大きさ §41）、e2e・en-flow・a11y-flow。
 
+## 54. 引き継ぎコード（ID＋パスワード、TS＋C#、`src/domain/transferCode.ts`・`src/domain/transferService.ts`・`src/http/customToken.ts`・`Muchi.Client/TransferCode.cs`・`Muchi.Game.TransferCodeModel`、`contracts/protocol.md` §54）
+拘束条件：コイン・アイテムを動かさない（E番号なし）。アカウント（uid）そのものが移るので、有償コイン・購入記録・ストアのレシートは uid のまま。パスワードは保存しない。ID の有無を教える口を作らない。
+- REQ-TRF-001 発行：設定から引き継ぎコードを発行する。自分で決めるパスワード（`custom`）か、サーバーが作るパスワード（`generated`、発行の応答で1回だけ見せる）。発行し直すと前のコードは使えない。ゲーム日ごとに `issuesPerDay` 回まで。BAN 中・削除の予約中は発行できない。
+- REQ-TRF-002 ID：9文字の読みやすい文字（0・1・O・I・L なし）、`ABC-DEF-GHJ` で表示、1文字目がディレクトリのシャード。入力は NFKC・空白とハイフンを無視・大文字にする。
+- REQ-TRF-003 パスワードの規則：8〜32文字（設定）、半角の英数字と記号、英字と数字の両方、よくあるパスワードでない。破った規則を全部返す（`TRANSFER_PASSWORD_WEAK`、`details.rules`）。C# の `TransferCodeRules` も同じ規則・同じ正規化。
+- REQ-TRF-004 保存：PBKDF2-HMAC-SHA256（反復 100,000 回、記録ごとのソルト16バイト、32バイト）の結果だけ。反復とアルゴリズムは記録ごと。比較は定数時間。
+- REQ-TRF-005 1回だけ：成功でコードを消費（行を消す）。同時に2台で入れても成功は1回（PlayerDO の直列化）。次は新しく発行する。
+- REQ-TRF-006 期限：`expiryDays`（既定30日、1〜90 を検査）。期限切れはパスワードが合った時だけ `TRANSFER_EXPIRED`。
+- REQ-TRF-007 回数の制限：コードごと `maxAttemptsPerCode` 回でロック（外からは `TRANSFER_INVALID` と同じ）、IP ごと・端末ごとの1時間の失敗でロック（`429 TRANSFER_LOCKED`、`retryAfterSec`）。IP と端末は SHA-256 にして数える。
+- REQ-TRF-008 オラクルなし：知らない ID・違うパスワード・ロック中・使用済み・取り消し済みは同じ `TRANSFER_INVALID`。知らない ID でもダミーの PBKDF2 を計算する。
+- REQ-TRF-009 入力（新しい端末）：`POST /v1/transfer/redeem`。この端末のアカウントに進行があれば先に確認（`TRANSFER_CONFIRM_REQUIRED`、有償コイン・馬の数などを返す。Apple／Google の切り替えと同じく、この端末の進行は残らない）。成功で元の uid の Firebase カスタムトークンを返す。
+- REQ-TRF-010 古い端末：引き継いだ時刻（`cutoffAt`）より前にサインインしたトークンは、次の要求で `401 SESSION_REPLACED`（ずれ30秒、isolate のキャッシュ30秒）。クライアントは再試行せず、サインアウトして案内を出す。
+- REQ-TRF-011 鍵：カスタムトークンは Worker のシークレット `FIREBASE_AUTH_SERVICE_ACCOUNT_JSON` で RS256 署名（ネットワーク不要）。鍵はリポジトリに置かない。鍵が無ければ機能は `enabled: false`。入れ替えの手順は docs/ops/deploy.md。署名はコードの消費の前。
+- REQ-TRF-012 断る：元のアカウントが BAN 中（`TRANSFER_REFUSED` `banned`）・削除の予約中か手続き中（`deletion_pending`）・退会済み（`TRANSFER_INVALID`）なら移さない。自分のコードを自分で入れたら `TRANSFER_SAME_ACCOUNT`。
+- REQ-TRF-013 監査と運用：発行・取り消し・成功・失敗・ロック・期限切れ・拒否をディレクトリの監査に残す（コードの参照と IP・端末のハッシュの先頭8桁だけ）。運用は閲覧（viewer）と取り消し（operator、理由必須、監査ログ）ができる。
+- REQ-TRF-014 KPI：`transfer_issue`（`custom`／`generated`）・`transfer_redeem`（`ok`／`fail` と失敗の分類だけ）。ID・パスワード・IP はログにも KPI にも出さない。
+- REQ-TRF-015 購入：有償コイン・購入記録・ストアのレシートとサブスクリプションは uid に紐付いたまま移る（引き継ぎの後の返金・更新も同じアカウントに効く）。テストで確かめる。
+- REQ-TRF-016 メンテナンス：認証と同じく、引き継ぎの4つの口はメンテナンスの窓でも古いアプリからでも止めない（§46 の `EXEMPT_ROUTES`）。止めるのは `progression.transfer.enabled`。
+- REQ-TRF-017 アカウント削除：状態の `transfer` と、ディレクトリのそのプレイヤーのコード・監査の行を消す。
+- REQ-TRF-018 設定：`progression.transfer`（起動時とリモート設定で範囲を検査）。
+- REQ-TRF-019 ヘルプ：記事「引き継ぎコード（IDとパスワード）」（`account` カテゴリ、日英）。
+- REQ-TRF-020 クライアント：C# の API・モデル・`TransferCodeRules`・`SessionReplaced`、Unity `TransferCodeModel`（`MUCHI_FIREBASE` の時のカスタムトークンのサインイン）、プロトタイプの発行・入力の画面（ムチ一閃のトーン、日英、文字の大きさ）、Codex 向けの引き継ぎ。
+
 ## 55. 観戦中の応援（TS＋C#、`src/domain/cheer.ts`・`src/do/raceRoom.ts`・`Muchi.Net.CheerWire`・`Muchi.Client/Cheer.cs`・`Muchi.Game.CheerModel`、`contracts/protocol.md` §55）
 拘束条件：レースに一切影響しない（入力・リプレイログ・チェックサム・結果ハッシュの外）。何も配らない・売らない（E番号なし、有料の応援・投げ銭なし）。自由な文字なし。プロトコルの追加は後方互換。新しい HTTP の口なし。
 - REQ-CHEER-001 対象：観戦できるレース（フレンド部屋・主催カップ・ランク戦・イベント・大会のヒート）。チュートリアル・タイムアタックは無し。環境変数 `CHEERS = "off"` で止まる。

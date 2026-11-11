@@ -3096,6 +3096,100 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 ### 53.9 アカウント削除
 状態の `horseGoals`（達成の記録・ピン）と戦績の `goal` は最後の `wipe` で消える。殿堂の写し（§34.5）は既存の手順で消える。他の場所に写しは無い。
 
+## 54. 引き継ぎコード（ID＋パスワード、REQ-TRF-001〜020、`server/src/domain/transferCode.ts`・`transferService.ts`・`server/src/http/customToken.ts`、C# `TransferCode.cs`（`TransferCodeRules`）・`Muchi.Game.TransferCodeModel`、docs/handoff-codex-round19-transfer-code.md）
+Apple／Google の連携（REQ-API-005）に加えて、日本のゲームでおなじみの **ID＋パスワード** で機種変更できるようにする。古い端末の設定で引き継ぎコードを発行し、新しい端末でIDとパスワードを入れると、サーバーが確かめて **元のアカウント（同じ uid）の Firebase カスタムトークン** を返す。新しい端末はそのトークンで Firebase にサインインし、元のアカウントとして遊ぶ。**コインもアイテムも動かさない**（E番号なし）：アカウントそのもの（uid）が新しい端末に移るので、有償コイン・購入記録・ストアのレシートの紐付けは uid のまま変わらない（資金決済法：有償コインは失われない）。
+
+**決まりごと**
+- コードは **1回だけ**使える。使ったら消える（次の機種変更には新しく発行する）。発行し直すと前のコードは使えなくなる。**有効期限**は `expiryDays`（既定30日、1〜90）。
+- パスワードは**サーバーに保存しない**。保存するのは PBKDF2-HMAC-SHA256（WebCrypto、反復 100,000 回＝Workers の上限、記録ごとに16バイトのソルト、32バイト）の結果だけ。反復回数とアルゴリズムは記録ごとに持つ（後で上げられる）。比較は定数時間。
+- **どの口でも ID が有るか無いかを教えない**（オラクルを作らない）：知らない ID・違うパスワード・ロック中のコード・使用済み・取り消し済みは**同じ** `TRANSFER_INVALID`。知らない ID でも同じ計算（ダミーの PBKDF2）をして時間でも区別できないようにする。期限切れはパスワードが合っていた時だけ `TRANSFER_EXPIRED` と言う。
+- **回数の制限**：コードごと（`maxAttemptsPerCode` 回で `codeLockMinutes` 分ロック。ロックは外からは `TRANSFER_INVALID` と同じに見える）、IP ごと・端末ごと（失敗が1時間に `ipFailuresPerHour`／`deviceFailuresPerHour` 回で `limitLockMinutes` 分、`429 TRANSFER_LOCKED`。こちらはコードに関係しないのでオラクルにならない）。IP（`cf-connecting-ip`）と端末（インストール ID `x-install-id`、無ければ要求したアカウント）は SHA-256 にしてから数える。
+- **ID とパスワードはログ・KPI・監査に残さない**。監査はコードの参照（ID の SHA-256 の先頭8桁）と、IP・端末のハッシュの先頭8桁だけ。
+- 新しい端末に移った後、**古い端末のセッションは次の要求で無効**になる（§54.6）。
+- 認証やアカウント削除と同じく、**メンテナンスの窓でも古いアプリからでも止めない**（§46 の `EXEMPT_ROUTES`。決めたこと：機種変更の途中で閉じ込めない。経済に触れない）。止めたい時は運用がリモート設定の `progression.transfer.enabled` を false にする。
+
+### 54.1 コードの形（REQ-TRF-002/003）
+- **ID**：9文字、`23456789ABCDEFGHJKMNPQRSTUVWXYZ`（0・1・O・I・L を使わない31文字）。表示は `ABC-DEF-GHJ`。1文字目がディレクトリのシャード（文字の位置 mod 16 ＝ プレイヤーのシャード）。
+- **入力の正規化**（ID・パスワードとも、発行と入力で同じ）：NFKC（全角→半角）、空白とハイフン（`-`・`ー`・`－` は NFKC 後の `-`）を取り除く。ID は大文字にする。
+- **自分で決めるパスワード**（`mode: "custom"`）の決まり（どれか1つでも破れば `400 TRANSFER_PASSWORD_WEAK`、`details.rules` に破った規則の id）：
+
+| id | 規則 | 画面の文（English） |
+|---|---|---|
+| `length` | 正規化した後で `passwordMin`〜`passwordMax` 文字（既定 8〜32） | 8〜32文字（8–32 characters） |
+| `charset` | 半角の英字・数字・記号だけ（`!`〜`~`、空白なし） | 半角の英数字と記号（Letters, numbers and symbols） |
+| `mix` | 英字と数字を両方ふくむ | 英字と数字を両方使う（Use both letters and numbers） |
+| `common` | よくあるパスワード（`password1`・`qwerty123`・`abcd1234` など、`COMMON_PASSWORDS`）でない（大文字小文字を区別しない） | よく使われるパスワードは使えません（No common passwords） |
+
+- **サーバーが作るパスワード**（`mode: "generated"`）：12文字、`23456789abcdefghjkmnpqrstuvwxyz`。表示は `abcd-efgh-jkmn`。**発行の応答で1回だけ**返す（もう一度見る口は無い。忘れたら発行し直す）。
+
+### 54.2 `GET /v1/transfer/code`（要認証、読むだけ）
+```json
+{ "enabled": true,
+  "code": { "codeId": "K7M-Q3X-PHR", "mode": "custom", "issuedAt": 1794279600000, "expiresAt": 1796871600000, "expired": false },
+  "lastTransferredAt": null,
+  "issuesToday": 1, "issuesPerDay": 5,
+  "rules": [ { "id": "length", "text": "8〜32文字" }, { "id": "charset", "text": "半角の英数字と記号" }, { "id": "mix", "text": "英字と数字を両方使う" }, { "id": "common", "text": "よく使われるパスワードは使えません" } ],
+  "passwordMin": 8, "passwordMax": 32, "expiryDays": 30 }
+```
+- `code` は今使えるコード（無ければ null）。ID は秘密ではないので全部見せる。パスワードは返さない。
+- `enabled: false`（設定で切った、またはカスタムトークンの鍵が無い）なら発行・入力の画面は出さない（Apple／Google だけ）。
+
+### 54.3 `POST /v1/transfer/code`（要認証）・`DELETE /v1/transfer/code`
+- 本文 `{ "mode": "custom", "password": "…" }` または `{ "mode": "generated" }`。
+- 応答 `{ "codeId": "K7M-Q3X-PHR", "mode": "generated", "password": "abcd-efgh-jkmn", "issuedAt": …, "expiresAt": … }`（`password` は `generated` の時だけ。`custom` は返さない）。
+- 前のコードは取り消される。発行はゲーム日（§DAY、04:00 JST 区切り）ごとに `issuesPerDay`（既定5）回まで → 超えたら `429 TRANSFER_ISSUE_LIMIT`。BAN 中は `403 BANNED`、削除の予約中は `409 DELETION_PENDING`。
+- `DELETE` は今のコードを取り消す（`{ "revoked": true | false }`、何度送っても同じ）。
+
+### 54.4 `POST /v1/transfer/redeem`（要認証＝新しい端末の匿名アカウント）
+本文 `{ "codeId": "K7M-Q3X-PHR", "password": "…", "confirmDiscard": false, "installId": "…"? }`。順番：
+1. `progression.transfer.enabled` とカスタムトークンの鍵（§54.7）が無ければ `404 NOT_FOUND`。
+2. **この端末のデータの確認**：要求したアカウントに進行（馬・購入の記録・コイン（有償・無償）・レース・プレゼントボックスの中身のどれか）があり、`confirmDiscard` が true でなければ `409 TRANSFER_CONFIRM_REQUIRED`、`details: { paidCoins, freeCoins, horses, races, purchases }`（確認画面に出す：「この端末のデータ（馬3頭・有償コイン120枚）は引き継ぎ後に使えなくなります」。Apple／Google でアカウントを切り替える時と同じ扱い）。
+3. IP・端末がロック中 → `429 TRANSFER_LOCKED`（`details.retryAfterSec`、`Retry-After`）。
+4. コードを引き、パスワードを確かめる。合わない・無い → `400 TRANSFER_INVALID`（IP と端末の失敗に数える）。期限切れでパスワードが合った → `410 TRANSFER_EXPIRED`。
+5. 自分のコードを自分の端末で入れた → `409 TRANSFER_SAME_ACCOUNT`。
+6. 元のアカウントの検査（PlayerDO の1トランザクション）：BAN 中 → `403 TRANSFER_REFUSED`（`details.reason: "banned"`）、削除の予約中・手続き中 → `403 TRANSFER_REFUSED`（`"deletion_pending"`。元の端末で削除を取り消すか、お問い合わせへ）、コードがもう違う（取り消し・発行し直し・同時の入力の2回目）→ `TRANSFER_INVALID`。通れば**コードを消費**し、`cutoffAt`（§54.6）を今にする。
+7. 応答 `{ "customToken": "<JWT>", "expiresInSec": 3600, "displayName": "ハヤテ" }`。新しい端末は `signInWithCustomToken` する（Unity：`FirebaseAuthTokenProvider.SignInWithCustomTokenAsync`）。
+
+- 鍵の署名（ネットワークを使わない）はコードを消費する**前**に行う：署名できなければ何も消費しない。
+- **応答が届かなかった時の再送**：`Idempotency-Key`（任意、1〜128文字）を付けると、同じアカウントから同じキーで1時間以内に送り直した要求には、同じ元のアカウントのカスタムトークンを**署名し直して**返す（コードはもう使われているが `TRANSFER_INVALID` にしない。トークンそのものは保存しない。記録は要求したアカウントの `transfer.redeemedAs`）。違うキー・違うアカウントからは `TRANSFER_INVALID`。クライアントはサインインが終わるまで同じキーを使う。
+- 同じコードを2台で同時に入れても、消費できるのは PlayerDO の直列化で1回だけ。
+
+### 54.5 保存
+- **プレイヤーの状態** `transfer`（新しいトップレベルのキー）：`{ code: { id, mode, issuedAt, expiresAt } | null, issues: { day, count }, cutoffAt: number | null, lastRedeemedAt: number | null, history: [{ at, event: "issued" | "revoked" | "redeemed" | "ops_revoked", mode? }]（新しい20件）, redeemedAs?: { key, playerId, displayName, at } }`（`redeemedAs` は**入力した側**＝新しい端末のアカウントにだけ、再送のための記録、1時間）。パスワードもハッシュもトークンも持たない。
+- **ディレクトリ**（`DirectoryDO` のシャード、ID の1文字目＝プレイヤーのシャード。wrangler の移行は不要：既存の SQLite に表を足すだけ）：
+  - `transfer_codes`：`code_id`・`player_id`・`salt`・`hash`・`kdf`（`pbkdf2-sha256`）・`iterations`・`issued_at`・`expires_at`・`attempts`・`locked_until`。消費・取り消しで行を消す。期限切れから7日で消す。
+  - `transfer_limits`：`key`（`ip:<hash>`／`dev:<hash>`、ハッシュの先頭でシャード）・`window_start`・`failures`・`locked_until`。
+  - `transfer_audit`：`player_id`・`at`・`event`（`issued`・`revoked`・`ops_revoked`・`redeemed`・`failed`・`locked`・`expired`・`refused`）・`code_ref`・`ip_ref`・`dev_ref`。プレイヤーごとに新しい100件、180日で消す。
+- **アカウント削除**（§UXS-040）：状態と一緒に `transfer` が消え、ディレクトリの `forget` がそのプレイヤーのコード・監査の行を消す。
+
+### 54.6 古い端末の無効化（REQ-TRF-010）
+- Worker は ID トークンの `auth_time`（Firebase にサインインした時刻）を読み、そのアカウントの `cutoffAt` より前（時計のずれ30秒を見込む）なら **`401 SESSION_REPLACED`**（「この端末のデータは別の端末に引き継がれました」）を返す。全てのプレイヤーの口（`auth: player`）で、メンテナンスの検査の後・ルートの前に1回。
+- `cutoffAt` は PlayerDO から読み、Worker の isolate ごとに30秒持つ（引き継いだ isolate はすぐ覚える）。引き継ぎの無いアカウントは `null` を持つ。
+- クライアントは `SESSION_REPLACED` を再試行しない（トークンを取り直しても同じ）。Firebase からサインアウトして「別の端末に引き継がれました」の画面を出す。そこから新しく始めるか、引き継ぎコードを入れる。
+
+### 54.7 カスタムトークンの鍵（REQ-TRF-011、docs/ops/deploy.md §9.6）
+- Worker のシークレット **`FIREBASE_AUTH_SERVICE_ACCOUNT_JSON`**（Firebase プロジェクトのサービスアカウントの JSON 鍵）。リポジトリに鍵を置かない。無ければ引き継ぎコードは `enabled: false`（Apple／Google の連携だけ）。
+- JWT：RS256、`iss` = `sub` = サービスアカウントのメール、`aud` = `https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit`、`iat`、`exp` = `iat` + 3600、`uid` = 元のアカウント。追加のクレームは入れない。
+- 鍵の入れ替え：新しい鍵を作る → `wrangler secret put` → 確認 → 古い鍵を Google Cloud で削除する（手順は docs/ops/deploy.md §9.6。90日ごと・漏れた疑いがあればすぐ）。
+
+### 54.8 運用（REQ-TRF-013、`/v1/admin/players/:playerId/transfer*`）
+| メソッド・パス | 役割 | 内容 |
+|---|---|---|
+| `GET /v1/admin/players/:playerId/transfer` | viewer | 今のコード（ID・発行日時・期限・種類）、`cutoffAt`、状態の履歴、ディレクトリの監査（新しい100件） |
+| `POST /v1/admin/players/:playerId/transfer/revoke` | operator | `{ reason }`。今のコードを取り消す（盗まれた・本人からの依頼）。監査ログ `player.transfer.revoke` |
+
+### 54.9 KPI（REQ-TRF-014）
+| イベント | 送り手 | s1 | s2 |
+|---|---|---|---|
+| `transfer_issue` | サーバー（発行した人） | `custom` / `generated` | |
+| `transfer_redeem` | サーバー（成功＝移ったアカウント、失敗＝要求したアカウント） | `ok` / `fail` | 失敗の分類：`invalid`・`expired`・`locked`・`refused_banned`・`refused_deletion`・`same_account` |
+ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.md`「引き継ぎコード」。
+
+### 54.10 クライアント
+- `Muchi.Client`：`TransferCodeStatus`・`IssuedTransferCode`・`TransferRedeemResult`・`TransferConfirm`、`ApiClient.GetTransferCodeAsync`・`IssueTransferCodeAsync`・`RevokeTransferCodeAsync`・`RedeemTransferCodeAsync`、`TransferCodeRules`（正規化・表示の形・パスワードの規則をサーバーと同じに）、`ApiErrorCode.SessionReplaced` と `ApiClient.SessionReplaced` イベント（再試行しない）。
+- `Muchi.Game`：`TransferCodeModel`（発行の画面：ID・規則のチェック表示・コピー・作ったパスワードは1回だけ；入力の画面：ID とパスワード・確認の画面・ロック・期限切れ・成功で `FirebaseAuthTokenProvider.SignInWithCustomTokenAsync`）。`IFirebaseAuthBackend` はそのまま、カスタムトークンは別のインターフェース `ICustomTokenAuthBackend`（`MUCHI_FIREBASE` の時の `FirebaseSdkAuthBackend` が実装）。
+- 画面が守ること：docs/handoff-codex-round19-transfer-code.md。
+
 ## 55. 観戦中の応援（spectator cheering、REQ-CHEER-001〜016、`server/src/domain/cheer.ts`・`server/src/do/raceRoom.ts`、C# `Muchi.Net.CheerWire`（`CheerOffer`・`CheerCount`）・`LockstepClient.SendCheer`/`CheersReceived`・`Muchi.Client.Cheer`（`CheerKinds`・`CheerThrottle`・`CheerIndicator`・`CheerBurst`・`CheerRaceTally`・`CheerMoment`）・`Muchi.Game.CheerModel`）
 観戦者（§8.4）が、レース中に決まった応援（「いけ！」「差せ！」「粘れ！」）を**馬番を選んで**送れる。観戦者には応援の盛り上がり（その1秒の集計）が、選手には自分の馬への応援の数（「応援 ×12」）が、邪魔にならない形で出る。**レースには一切影響しない**：応援はロックステップの入力の流れ（§4 の `in`・`b`）の外を通り、入力・リプレイログ（§7）・チェックサム（§5）・結果ハッシュ（§6）に入らない。部屋の中でも応援は `RaceRoomCore`（入力と結果の芯）に渡らない。**何も配らない・何も売らない**（E番号なし。有料の応援・投げ銭・ギフトは作らない、docs/planning/03）。自由な文字は送れない（決まった3種類だけ）。新しい HTTP の口は無い（観戦チケット `POST /v1/race/:raceId/spectate` は §8.4 のまま、§46 の口の組もそのまま `ranked`（`/v1/race`・`/v1/races` の接頭辞。WebSocket の `GET /v1/race/:raceId/ws` はレース中に止めない口のまま））。
 

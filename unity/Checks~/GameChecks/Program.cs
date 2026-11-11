@@ -94,6 +94,8 @@ static class Program
         await PerformanceChecks.Run(Check);
         Console.WriteLine("== round 19: 観戦中の応援 (CheerModel: chips, three preset buttons, 2 s pace, burst, racer indicator + setting, reduced motion, KPI per race, replay markers; REQ-CHEER-*)");
         CheerChecks.Run(Check, Root, Ruleset());
+        Console.WriteLine("== round 19: 引き継ぎコード (issue checklist, generated once, redeem with one key, confirm, custom-token sign-in, SESSION_REPLACED; REQ-TRF-*)");
+        await TransferCodeChecks.Run(Check);
         Console.WriteLine("== round 11: 図鑑, 実績 and titles (CollectionModel / AchievementModel / TitleShowcaseModel; REQ-COL-*, REQ-ACH-*)");
         await CollectionChecks.Run(Check, Ruleset());
         Console.WriteLine("== 調教 (training: menus, timing mini-game, keyed start/finish, fairness wording)");

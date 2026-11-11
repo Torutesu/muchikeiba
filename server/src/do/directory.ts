@@ -9,6 +9,8 @@ import { sortStables, type StableDirectory, type StableSnapshot } from '../domai
 import { inviteShardOf, makeInviteCode, type InviteDirectory } from '../domain/invite.js';
 import type { HallDirectory, HallSnapshot } from '../domain/hallOfFame.js';
 import { byShard, type FsugCard, type SuggestDirectory } from '../domain/friendSuggest.js';
+import { AUDIT_DAYS, AUDIT_KEEP, beginStep, limitStep, PURGE_AFTER_MS, type AuditRow, type BeginResult, type LimitRule, type TransferDirectory, type TransferRecord } from '../domain/transferService.js';
+import { codeShard } from '../domain/transferCode.js';
 
 /**
  * Friend codes and public profiles (REQ-SOCIAL-001/004), sharded by player id into DIRECTORY_SHARDS
@@ -38,6 +40,77 @@ export class DirectoryDO extends DurableObject<Env> {
     // a table inside the existing DirectoryDO SQLite storage.
     this.sql.exec(`CREATE TABLE IF NOT EXISTS fsug_cards (player_id TEXT PRIMARY KEY, updated_at INTEGER NOT NULL, card TEXT NOT NULL)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS invite_installs (install_hash TEXT PRIMARY KEY, player_id TEXT, at INTEGER NOT NULL)`);
+    // REQ-TRF-004/007/013 (§54.5): 引き継ぎコード — hash records (shard = the code's first character = the owner's shard),
+    // IP / device attempt limits (shard = the key hash) and the audit (shard = the player). New tables in the existing
+    // DirectoryDO SQLite storage: no wrangler migration.
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS transfer_codes (code_id TEXT PRIMARY KEY, player_id TEXT NOT NULL, salt TEXT NOT NULL, hash TEXT NOT NULL, kdf TEXT NOT NULL, iterations INTEGER NOT NULL, issued_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, locked_until INTEGER NOT NULL DEFAULT 0)`);
+    this.sql.exec(`CREATE INDEX IF NOT EXISTS transfer_codes_player ON transfer_codes (player_id)`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS transfer_limits (key TEXT PRIMARY KEY, window_start INTEGER NOT NULL, failures INTEGER NOT NULL, locked_until INTEGER NOT NULL)`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS transfer_audit (id INTEGER PRIMARY KEY AUTOINCREMENT, player_id TEXT NOT NULL, at INTEGER NOT NULL, event TEXT NOT NULL, code_ref TEXT NOT NULL, ip_ref TEXT, dev_ref TEXT)`);
+    this.sql.exec(`CREATE INDEX IF NOT EXISTS transfer_audit_player ON transfer_audit (player_id, id)`);
+  }
+
+  // ---- 引き継ぎコード (REQ-TRF-*): one shard's rows; the sharding is in shardedTransferDirectory ----
+  async transferPut(rec: TransferRecord, now: number): Promise<Envelope<boolean>> {
+    return wrap(() => {
+      this.sql.exec('DELETE FROM transfer_codes WHERE expires_at < ?', now - PURGE_AFTER_MS);
+      this.sql.exec('DELETE FROM transfer_limits WHERE locked_until < ? AND window_start < ?', now, now - 3_600_000);
+      if (this.sql.exec('SELECT 1 FROM transfer_codes WHERE code_id = ?', rec.codeId).toArray().length) return false;
+      this.sql.exec('INSERT INTO transfer_codes (code_id, player_id, salt, hash, kdf, iterations, issued_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        rec.codeId, rec.playerId, rec.salt, rec.hash, rec.kdf, rec.iterations, rec.issuedAt, rec.expiresAt);
+      return true;
+    });
+  }
+  async transferBegin(codeId: string, now: number, maxAttempts: number, lockMs: number): Promise<Envelope<BeginResult>> {
+    return wrap((): BeginResult => {
+      type Row = { code_id: string; player_id: string; salt: string; hash: string; kdf: string; iterations: number; issued_at: number; expires_at: number; attempts: number; locked_until: number };
+      const r = this.sql.exec<Row>('SELECT * FROM transfer_codes WHERE code_id = ?', codeId).toArray()[0];
+      if (!r) return { status: 'none' };
+      if (r.locked_until > now) return { status: 'locked', playerId: r.player_id };
+      const s = beginStep(r.attempts, now, maxAttempts, lockMs);
+      this.sql.exec('UPDATE transfer_codes SET attempts = ?, locked_until = ? WHERE code_id = ?', s.attempts, s.lockedUntil, codeId);
+      const rec: TransferRecord = { codeId: r.code_id, playerId: r.player_id, salt: r.salt, hash: r.hash, kdf: r.kdf, iterations: r.iterations, issuedAt: r.issued_at, expiresAt: r.expires_at };
+      return { status: now >= r.expires_at ? 'expired' : 'ok', rec, lockedNow: s.lockedNow };
+    });
+  }
+  async transferRemove(codeId: string, playerId: string): Promise<Envelope<boolean>> {
+    return wrap(() => { this.sql.exec('DELETE FROM transfer_codes WHERE code_id = ? AND player_id = ?', codeId, playerId); return true; });
+  }
+  async transferLimitCheck(keys: string[], now: number): Promise<Envelope<number | null>> {
+    return wrap(() => {
+      let wait: number | null = null;
+      for (const k of keys) {
+        const u = this.sql.exec<{ locked_until: number }>('SELECT locked_until FROM transfer_limits WHERE key = ?', k).toArray()[0]?.locked_until ?? 0;
+        if (u > now) wait = Math.max(wait ?? 0, u - now);
+      }
+      return wait;
+    });
+  }
+  async transferLimitFail(keys: string[], now: number, rules: LimitRule[], lockMs: number): Promise<Envelope<boolean>> {
+    return wrap(() => {
+      for (const k of keys) {
+        const per = rules.find((r) => k.startsWith(r.prefix))?.perHour;
+        if (!per) continue;
+        const row = this.sql.exec<{ window_start: number; failures: number; locked_until: number }>('SELECT window_start, failures, locked_until FROM transfer_limits WHERE key = ?', k).toArray()[0];
+        const n = limitStep(row ? { windowStart: row.window_start, failures: row.failures, lockedUntil: row.locked_until } : null, now, per, lockMs);
+        this.sql.exec('INSERT INTO transfer_limits (key, window_start, failures, locked_until) VALUES (?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET window_start = excluded.window_start, failures = excluded.failures, locked_until = excluded.locked_until',
+          k, n.windowStart, n.failures, n.lockedUntil);
+      }
+      return true;
+    });
+  }
+  async transferAudit(row: AuditRow): Promise<Envelope<boolean>> {
+    return wrap(() => {
+      this.sql.exec('INSERT INTO transfer_audit (player_id, at, event, code_ref, ip_ref, dev_ref) VALUES (?, ?, ?, ?, ?, ?)', row.playerId, row.at, row.event, row.codeRef, row.ipRef, row.devRef);
+      this.sql.exec('DELETE FROM transfer_audit WHERE player_id = ? AND id NOT IN (SELECT id FROM transfer_audit WHERE player_id = ? ORDER BY id DESC LIMIT ?)', row.playerId, row.playerId, AUDIT_KEEP);
+      this.sql.exec('DELETE FROM transfer_audit WHERE at < ?', row.at - AUDIT_DAYS * 86_400_000);
+      return true;
+    });
+  }
+  async transferAuditOf(playerId: string, limit: number): Promise<Envelope<AuditRow[]>> {
+    return wrap(() => this.sql.exec<{ player_id: string; at: number; event: string; code_ref: string; ip_ref: string | null; dev_ref: string | null }>(
+      'SELECT player_id, at, event, code_ref, ip_ref, dev_ref FROM transfer_audit WHERE player_id = ? ORDER BY id DESC LIMIT ?', playerId, Math.min(Math.max(limit, 1), AUDIT_KEEP)).toArray()
+      .map((r) => ({ playerId: r.player_id, at: r.at, event: r.event as AuditRow['event'], codeRef: r.code_ref, ipRef: r.ip_ref, devRef: r.dev_ref })));
   }
 
   async inviteCodeOf(playerId: string, shard: number): Promise<Envelope<string>> {
@@ -168,6 +241,9 @@ export class DirectoryDO extends DurableObject<Env> {
       this.sql.exec('DELETE FROM halls WHERE player_id = ?', playerId); // REQ-HOF-011
       this.sql.exec('DELETE FROM fsug_cards WHERE player_id = ?', playerId); // REQ-FSUG-011
       this.sql.exec('UPDATE invite_codes SET player_id = NULL, retired_at = ? WHERE player_id = ?', Date.now(), playerId); // REQ-INV-010
+      // REQ-TRF-017: the player's 引き継ぎコード and its audit live in the player's shard (the code's first character)
+      this.sql.exec('DELETE FROM transfer_codes WHERE player_id = ?', playerId);
+      this.sql.exec('DELETE FROM transfer_audit WHERE player_id = ?', playerId);
       return true;
     });
   }
@@ -233,7 +309,41 @@ type DirStub = {
   installClaim(h: string, p: string): Promise<Envelope<string>>;
   installRelease(h: string, p: string): Promise<Envelope<boolean>>;
   installAnonymize(h: string): Promise<Envelope<boolean>>;
+  transferPut(rec: TransferRecord, now: number): Promise<Envelope<boolean>>;
+  transferBegin(codeId: string, now: number, maxAttempts: number, lockMs: number): Promise<Envelope<BeginResult>>;
+  transferRemove(codeId: string, playerId: string): Promise<Envelope<boolean>>;
+  transferLimitCheck(keys: string[], now: number): Promise<Envelope<number | null>>;
+  transferLimitFail(keys: string[], now: number, rules: LimitRule[], lockMs: number): Promise<Envelope<boolean>>;
+  transferAudit(row: AuditRow): Promise<Envelope<boolean>>;
+  transferAuditOf(playerId: string, limit: number): Promise<Envelope<AuditRow[]>>;
 };
+
+/**
+ * REQ-TRF-*: 引き継ぎコード over the directory shards. A code lives in the shard its first character names (= the owner's
+ * shard, so the account deletion's forget finds it); limit keys in the shard of their hash; the audit in the player's shard.
+ */
+export function shardedTransferDirectory(ns: DurableObjectNamespace): TransferDirectory {
+  const shard = (n: number) => ns.get(ns.idFromName(`dir:${n}`)) as unknown as DirStub;
+  const keyShard = (k: string) => parseInt(k.slice(k.indexOf(':') + 1, k.indexOf(':') + 3), 16) % DIRECTORY_SHARDS;
+  const byKey = (keys: string[]) => {
+    const g = new Map<number, string[]>();
+    for (const k of keys) g.set(keyShard(k), [...(g.get(keyShard(k)) ?? []), k]);
+    return [...g];
+  };
+  return {
+    async put(rec, now) { return unwrap(await shard(codeShard(rec.codeId)).transferPut(rec, now)); },
+    async begin(id, now, max, lockMs) { return unwrap(await shard(codeShard(id)).transferBegin(id, now, max, lockMs)); },
+    async remove(id, p) { unwrap(await shard(codeShard(id)).transferRemove(id, p)); },
+    async limitCheck(keys, now) {
+      const waits = await Promise.all(byKey(keys).map(async ([s, ks]) => unwrap(await shard(s).transferLimitCheck(ks, now))));
+      const w = waits.filter((x): x is number => x !== null);
+      return w.length ? Math.max(...w) : null;
+    },
+    async limitFail(keys, now, rules, lockMs) { await Promise.all(byKey(keys).map(async ([s, ks]) => unwrap(await shard(s).transferLimitFail(ks, now, rules, lockMs)))); },
+    async audit(row) { unwrap(await shard(shardOf(row.playerId)).transferAudit(row)); },
+    async auditOf(p, limit) { return unwrap(await shard(shardOf(p)).transferAuditOf(p, limit)); },
+  };
+}
 
 /** Install hashes are hex: their first byte picks the shard. */
 const installShard = (hash: string) => parseInt(hash.slice(0, 2), 16) % DIRECTORY_SHARDS;

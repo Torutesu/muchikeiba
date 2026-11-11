@@ -58,6 +58,7 @@ ASSET_CDN_BASE = "https://assets.example.invalid"
 # Stores (server/README.md「ストア連携」). Unset => that store rejects every receipt:
 #   APPLE_BUNDLE_ID, APPLE_ACCEPT_SANDBOX, GOOGLE_PACKAGE_NAME, GOOGLE_ACCEPT_TEST, GOOGLE_PUBSUB_AUDIENCE, GOOGLE_PUBSUB_SERVICE_ACCOUNT
 # Push notifications: FCM_PROJECT_ID (+ secret FCM_SERVICE_ACCOUNT_JSON). KPI: secret KPI_SALT.
+# 引き継ぎコード (contracts/protocol.md §54): secret FIREBASE_AUTH_SERVICE_ACCOUNT_JSON signs Firebase custom tokens (unset => transfer codes off). Rotation: docs/ops/deploy.md §9.6.
 
 [[durable_objects.bindings]]
 name = "RACE_ROOM"

@@ -857,6 +857,13 @@ namespace Muchi.Client
                     return parse(node);
                 }
 
+                if (res.Status == 401 && auth)
+                {
+                    // REQ-TRF-010 (§54.6): the account moved to another device — a fresh token cannot help; never retried
+                    var moved = ParseError(res);
+                    if (moved is SessionReplacedException) { NoteOutage(OutageKind.None, null); NoteSessionReplaced(); throw moved; }
+                }
+
                 if (res.Status == 401 && auth && string.IsNullOrEmpty(_opt.DevUserId) && !refreshedToken)
                 {
                     refreshedToken = true;
@@ -864,7 +871,8 @@ namespace Muchi.Client
                 }
 
                 // REQ-DEX-004: DATA_EXPORT_COOLDOWN is a 429 that lasts days — never retried (the answer will not change)
-                if ((res.Status >= 500 || (res.Status == 429 && (res.Body == null || !res.Body.Contains("\"DATA_EXPORT_COOLDOWN\"")))) && retryable && attempt < _opt.Retry.MaxRetries)
+                // REQ-TRF-007: a transfer lock says when to try again — waiting a few seconds would only add failures
+                if ((res.Status >= 500 || (res.Status == 429 && (res.Body == null || !res.Body.Contains("\"DATA_EXPORT_COOLDOWN\"")) && !(ParseError(res) is TransferException))) && retryable && attempt < _opt.Retry.MaxRetries)
                 {
                     await _delay.Delay(_opt.Retry.DelayFor(attempt++), ct);
                     continue;

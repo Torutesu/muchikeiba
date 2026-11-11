@@ -2045,6 +2045,57 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   const nxNew = await page.evaluate(async () => { const L = globalThis.__muchi.logic; L.reset(); await L.bootstrap(); return (await L.nextActions()).value; });
   assert.equal(nxNew.primary.kind, 'first_race'); assert.equal(nxNew.chips.length, 0); assert.equal(nxNew.onboarding, true);
 
+  // ------------------------------------------------------------------ round 19: 引き継ぎコード (REQ-TRF-*)
+  // settings → IDとパスワード: the checklist ticks as the player types, issue, the generated password once (gone after
+  // leaving); title → データ引き継ぎ: a wrong password is one neutral message, this device's progress is confirmed first,
+  // the previous phone's account arrives, and the old device's notice
+  await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in .btn[data-action="transfer-code"]').count(), 1, 'その他 has the ID & password button next to Apple / Google');
+  await page.locator('.screen.in .btn[data-action="transfer-code"]').click(); await waitScreen('transfer-issue'); await page.waitForTimeout(400);
+  assert.match(await page.locator('.screen.in .trf-id').innerText(), /まだ発行していません/);
+  const trfRules = () => page.locator('.screen.in .trf-rule').evaluateAll((els) => els.map((e) => e.dataset.rule + ':' + e.dataset.ok));
+  await page.locator('.screen.in .trf-pw').fill('abc'); await page.waitForTimeout(150);
+  assert.deepEqual(await trfRules(), ['length:0', 'charset:1', 'mix:0', 'common:1'], 'the checklist follows the typing');
+  await page.locator('.screen.in .trf-pw').fill('Haneda2026!'); await page.locator('.screen.in .trf-pw2').fill('Haneda2026!'); await page.waitForTimeout(150);
+  assert.deepEqual(await trfRules(), ['length:1', 'charset:1', 'mix:1', 'common:1']);
+  await shot('transfer-issue-rules', 300);
+  await page.locator('.screen.in .trf-issue').click(); await page.waitForTimeout(900);
+  assert.match(await page.locator('.screen.in .trf-id').innerText(), /^[2-9A-Z]{3}-[2-9A-Z]{3}-[2-9A-Z]{3}$/, 'the ID is shown');
+  assert.match(await page.locator('.screen.in .trf-expiry').innerText(), /有効期限：/);
+  assert.equal(await page.locator('.screen.in .trf-password').count(), 0, 'a custom password is never shown back');
+  assert.ok(!(await page.locator('.screen.in').innerText()).includes('Haneda2026!'));
+  await shot('transfer-issue', 400);
+  await page.locator('.screen.in .trf-generate').click(); await page.waitForTimeout(900);
+  assert.match(await page.locator('.screen.in .trf-password').innerText(), /^[2-9a-z]{4}-[2-9a-z]{4}-[2-9a-z]{4}$/, 'the generated password, once');
+  await shot('transfer-issue-generated', 300);
+  await page.locator('.screen.in .btn.back').click(); await waitScreen('settings');
+  await page.evaluate(() => globalThis.__muchi.show('TransferIssue')); await waitScreen('transfer-issue'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .trf-password').count(), 0, 'leaving the screen forgets the generated password');
+  assert.ok(!(await page.locator('.screen.in').innerText()).match(/今だけ|残りわずか|倍|お得/), 'no urgency wording');
+  await page.evaluate(() => globalThis.__muchi.show('Title')); await waitScreen('title'); await page.waitForTimeout(300);
+  await page.locator('.screen.in .trf-title-link').click(); await waitScreen('transfer-redeem'); await page.waitForTimeout(400);
+  await page.locator('.screen.in .trf-demo').click(); await page.waitForTimeout(1200);
+  assert.match(await page.locator('.screen.in .trf-id-input').inputValue(), /^[2-9A-Z]{3}-[2-9A-Z]{3}-[2-9A-Z]{3}$/, 'the previous phone\'s ID is filled in');
+  await shot('transfer-redeem', 400);
+  await page.locator('.screen.in .trf-pw-input').fill('Wrong2026!'); await page.locator('.screen.in .trf-redeem-go').click(); await page.waitForTimeout(1200);
+  // this device has progress: the confirm sheet comes first (before any code is tried), then the wrong password
+  assert.equal(await page.locator('.screen.in .trf-confirm').count(), 1, 'confirm before the code is tried');
+  await page.locator('.screen.in .trf-confirm-yes').click(); await page.waitForTimeout(1200);
+  assert.equal(await page.locator('.screen.in .trf-redeem-error').innerText(), 'IDまたはパスワードが違います', 'one neutral message');
+  await page.locator('.screen.in .trf-pw-input').fill('Haneda2026!'); await page.locator('.screen.in .trf-redeem-go').click(); await page.waitForTimeout(1200);
+  assert.equal(await page.locator('.screen.in .trf-confirm').count(), 1, 'this device has progress: confirm first');
+  assert.match(await page.locator('.screen.in .trf-confirm-line').innerText(), /この端末のデータ（.+）は、引き継ぎの後に使えなくなります。/);
+  await shot('transfer-confirm', 300);
+  await page.locator('.screen.in .trf-confirm-yes').click(); await page.waitForTimeout(1200);
+  assert.equal(await page.locator('.screen.in .trf-done').count(), 1);
+  assert.match(await page.locator('.screen.in .trf-done').innerText(), /ハヤテ/);
+  assert.ok(typeof (await page.evaluate(() => globalThis.__muchi.logic.transfer.oldDeviceCutoff())) === 'number', 'the previous phone is cut off');
+  assert.deepEqual(await page.evaluate(() => globalThis.__muchi.logic.transfer.kpi().filter((k) => k.name === 'transfer_redeem').map((k) => k.s1 + ':' + (k.s2 ?? ''))), ['fail:invalid', 'ok:'], 'KPI: outcome and reason category only');
+  await shot('transfer-done', 300);
+  await page.locator('.screen.in .trf-done-old').click(); await waitScreen('transfer-replaced'); await page.waitForTimeout(300);
+  assert.match(await page.locator('.screen.in').innerText(), /別の端末に引き継がれました/);
+  await shot('transfer-replaced', 300);
+
   // a reload on a named player goes straight home
   await demo('day3');
   await page.goto(url); await ready(); await waitScreen('home'); await shot('home-reload', 500);

@@ -207,6 +207,8 @@ export interface Progression {
   activity?: Partial<import('./activity.js').ActivityConfig>;
   /** REQ-NEXT-*: the home's 次にやること card (nextAction.ts, validated by nextActionProblems). Absent / disabled = no card. */
   nextActions?: import('./nextAction.js').NextActionConfig;
+  /** REQ-TRF-018: 引き継ぎコード (transferCode.ts, validated by transferProblems). Absent = defaults. */
+  transfer?: import('./transferCode.js').TransferConfig;
   /** REQ-RECAP-*: シーズンの振り返り (seasonRecap.ts, validated by seasonRecapProblems). Absent / disabled = no recaps. */
   seasonRecap?: import('./seasonRecap.js').SeasonRecapConfig;
   /** REQ-DEX-*: 個人データの開示・ダウンロード (dataExport.ts, validated by dataExportProblems). Absent / disabled = no export. */

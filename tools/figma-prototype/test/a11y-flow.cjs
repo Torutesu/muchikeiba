@@ -265,6 +265,10 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('Storage'); await waitScreen('storage'); await shot('storage', english, 500);
     // Round 19: 観戦中の応援 (the spectate screen with a window of cheers) at the largest size
     await show('Spectate'); await waitScreen('spectate'); await page.waitForTimeout(1300); await shot('spectate', english, 300);
+    // Round 19: 引き継ぎコード — the issue screen (checklist, ID), the redeem screen and the old device's notice (REQ-TRF-020)
+    await show('TransferIssue'); await waitScreen('transfer-issue'); await shot('transfer-issue', english, 600);
+    await show('TransferRedeem'); await waitScreen('transfer-redeem'); await shot('transfer-redeem', english, 500);
+    await show('TransferReplaced'); await waitScreen('transfer-replaced'); await shot('transfer-replaced', english, 500);
     await show('Settings'); await waitScreen('settings'); await boxesClear('settings lists (largest)', SETTINGS_LISTS, english);
     await show('Home'); await waitScreen('home'); await page.waitForTimeout(700); await boxesClear('home top bar (largest)', HOME_BAR, english);
   };

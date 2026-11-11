@@ -63,6 +63,8 @@ Apple / Google：レシート検証・サーバー通知
    - 起動時に `await MuchiFirebase.InitializeAsync()` を呼んでから `MuchiServices.Create()` を呼ぶ（匿名ログインまで済ませ、`MuchiServices.FirebaseTokens` を設定する）。
    - Sign in with Apple はランダムな nonce を作り、SHA-256 したものを Apple に、元の値を `FederatedCredential.FromApple(idToken, rawNonce)` に渡す。Google は Google Sign-In の ID トークンを `FromGoogle(idToken)` に渡す。
    - 引き継ぎ：`LinkAsync` が `CredentialInUse` を返したら、プレイヤーに「この端末の進行は残りません」と確認してから `SwitchToExistingAccountAsync` を呼ぶ。
+   - 引き継ぎコード（REQ-TRF-*、§54）：入力の応答の `customToken` を `FirebaseAuthTokenProvider.SignInWithCustomTokenAsync` に渡す。`401 SESSION_REPLACED` を受けたら `SignOutReplacedSession()` で案内の画面へ。
+7. **引き継ぎコードのカスタムトークンの鍵**（REQ-TRF-011、§54.7）：手順は §9.6。Worker のシークレット `FIREBASE_AUTH_SERVICE_ACCOUNT_JSON`。入れない環境では引き継ぎコードが出ない（Apple／Google だけ）。
 
 ## 3. GCP（検証サーバー：Cloud Run）
 
@@ -136,6 +138,7 @@ npx wrangler secret put TICKET_SECRET --env staging
 | `FCM_SERVICE_ACCOUNT_JSON` | シークレット（任意） | | | 未設定なら `GOOGLE_SERVICE_ACCOUNT_JSON` |
 | `KPI_SQL_ACCOUNT_ID` | 変数（任意） | | | Round 18（§51）：個人データのダウンロードに、そのプレイヤーの分析イベント（Analytics Engine）を入れるためのアカウント ID。シークレットではない |
 | `KPI_SQL_TOKEN` | シークレット（任意） | | | 同上。権限「Account Analytics: Read」だけの API トークン。2つとも無ければダウンロードの分析イベントは「取得できませんでした」 |
+| `FIREBASE_AUTH_SERVICE_ACCOUNT_JSON` | シークレット（任意） | 推奨 | 推奨 | 引き継ぎコード（§54）のカスタムトークンに署名する、その環境の Firebase プロジェクトのサービスアカウントの鍵 JSON。未設定なら引き継ぎコードは `enabled: false`。入れ替えは §9.6 |
 | `DEV_MODE` | — | **禁止** | **禁止** | local の `--var DEV_MODE:1` だけ |
 
 管理トークンのハッシュは次で作ります（トークン本体はパスワード管理ツールに保管）。
@@ -255,6 +258,31 @@ gcloud run services update-traffic muchi-verifier-production --to-revisions=<前
 - **失敗リスト**（REQ-OPS-041）：シーズン締め・支部の報酬・イベント報酬・レース精算・隔離の反映で、自動の再試行を使い切った項目は `GET /v1/admin/dead-letters` に出る。原因を直したら `POST …/:itemId/retry`（operator）、手作業で対応したら `POST …/:itemId/dismiss`（admin、メモ必須）。シーズン締めのあとは `GET /v1/admin/dead-letters/season/<YYYY-MM>` と `…/team/<YYYY-MM>` を確認する。
 - **禁止勝負服**（REQ-OPS-040）：公開されている登録服色と照合した一覧を `POST /v1/admin/silks/banned/import` で取り込む（設定の新しい版として登録されるので、`/v1/admin/config/activations` で有効化）。`server/master/banned-silks.json` も同じ内容に更新しておく。
 - **リプレイの保存**：「検証で確定」の保留は既定90日で削除される（`progression.replayHoldDays`）。通報・不一致・無効は残る。
+
+## 9.6 引き継ぎコードの鍵（`FIREBASE_AUTH_SERVICE_ACCOUNT_JSON`、REQ-TRF-011、contracts/protocol.md §54.7）
+
+この鍵があると、**どのアカウントにでもサインインできるトークン**を作れる。リポジトリ・CI・チャット・問い合わせのメモに貼らない。パスワード管理ツールと Worker のシークレットにだけ置く。
+
+**最初に入れる**（環境ごと。staging と production で別の Firebase プロジェクト・別の鍵）
+1. Google Cloud コンソール（Firebase と同じプロジェクト）→ IAM → サービスアカウントで、引き継ぎ専用のサービスアカウント（例 `muchi-transfer-signer@<project>.iam.gserviceaccount.com`、ロールなし）を作る。カスタムトークンは Worker の中で鍵で署名するだけなので、IAM のロールは要らない（Firebase の管理者 SDK のサービスアカウントの鍵でも動くが、漏れた時の被害が大きいので専用のものを使う）。
+2. そのサービスアカウントの「鍵」→「鍵を追加」→ JSON。ダウンロードしたファイルを次で入れ、**ファイルはすぐ消す**：
+   ```bash
+   npx wrangler secret put FIREBASE_AUTH_SERVICE_ACCOUNT_JSON --env staging < key.json && shred -u key.json
+   ```
+3. 確かめる：テスト用のアカウントで `GET /v1/transfer/code` が `"enabled": true`。staging で発行 → 別の匿名アカウントで入力 → 返った `customToken` で Firebase にサインインでき、`uid` が元のアカウントになること（Unity の開発ビルド、または curl で発行 → 入力 → Identity Toolkit の `accounts:signInWithCustomToken`（Web API キー）で ID トークンを取り、その `sub` を見る）。
+
+**入れ替え**（90日ごと、担当者が抜けた時、漏れた疑いがある時はすぐ）
+1. 同じサービスアカウントに**新しい鍵**を作る（古い鍵はまだ消さない）。
+2. `npx wrangler secret put FIREBASE_AUTH_SERVICE_ACCOUNT_JSON --env <env>` で新しい鍵を入れる（Worker の新しい版としてすぐ効く。デプロイの順番 §7.1 には関係しない）。
+3. 上の 3 と同じ確認をする。
+4. Google Cloud で**古い鍵を削除**する。古い鍵で署名され、まだ使われていないカスタムトークン（有効1時間）はその時点で使えなくなる（入力の途中だった人は「引き継ぐ」をもう一度押せば、同じキーの再送で新しい鍵のトークンを受け取れる）。
+5. 監査のため、入れ替えた日と鍵の ID（JSON の `private_key_id`）を運用の記録に残す（鍵そのものは残さない）。
+
+**漏れた時**：すぐに古い鍵を削除（4）→ 新しい鍵（1〜3）。その後、`transfer_redeem` の KPI（`docs/ops/kpi-queries.md`「引き継ぎコード」）とディレクトリの監査で、漏れた期間の `redeemed` を確認する。鍵だけで作ったトークンは引き継ぎコードを通らないので監査に残らない — Firebase の Authentication のログ（カスタムトークンでのサインイン）を期間で確認する。
+
+**止めたい時**：鍵を消さなくても、リモート設定で `progression.transfer.enabled = false` にすれば発行・入力の口が `404` になる（30秒以内に反映、§22）。古い端末の無効化（`cutoffAt`）はそのまま効く。
+
+**Firebase の匿名ユーザーの自動削除**（§2）との関係：カスタムトークンのサインインは、Firebase 側でユーザーが消されていても同じ `uid` で作り直す。ゲームのデータは `uid` の Durable Object にあるので、引き継ぎの後も変わらない。引き継いだ後のユーザーは匿名ではない（自動削除の対象外）。
 
 ## 10. 費用のガードレール
 

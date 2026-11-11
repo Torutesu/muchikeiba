@@ -17,6 +17,7 @@ import type { Master } from '../src/domain/master.js';
 import { DEFAULT_MAINTENANCE, EXEMPT_ROUTES, endpointGroup, gateRequest, jstToMs, type MaintenanceConfig } from '../src/domain/maintenance.js';
 import { routes } from '../src/http/app.js';
 import { PUSH_CATEGORIES } from '../src/domain/master.js';
+import { tipsProblems } from '../src/domain/tips.js';
 import { buildExportDocument } from '../src/domain/dataExport.js';
 import { ClientErrorsCore, MemoryClientErrorRepo } from '../src/ops/clientErrors.js';
 import { CLIENT_ERRORS_DEFAULTS } from '../src/domain/clientErrors.js';
@@ -239,5 +240,16 @@ describe('push preferences: every category goes through PUT /v1/push/preferences
     const w = appWorld();
     await w.svc.bootstrap('p_push2');
     expect((await w.req('PUT', '/v1/push/preferences', { categories: { shop: true } }, { authorization: 'Bearer p_push2' })).status).toBe(400);
+  });
+});
+
+describe('§57 tips × §48 help × Round 20 articles', () => {
+  it('a training tip links the device reminders article; the privacy articles stay in settings (no tip topic fits); links valid', () => {
+    const tips = JSON.parse(read('server/master/tips.json')) as { tips: { id: string; unlock: string | null; help: string; body: { ja: string; en: string } }[] };
+    const t = tips.tips.find((x) => x.help === 'local_reminders');
+    expect(t?.unlock).toBe('training');
+    expect(t!.body.ja).not.toMatch(/[0-9０-９]/); // numbers come from data, never from a tip's text
+    expect(tips.tips.some((x) => x.help === 'ads_analytics_privacy')).toBe(false);
+    expect(tipsProblems(m)).toEqual([]);
   });
 });

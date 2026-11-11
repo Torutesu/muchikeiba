@@ -3774,6 +3774,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 - `Muchi.Client`：`LocalRemindersDigest.Parse`（`PlayerView.LocalReminders`）、`LocalNotificationSnapshot`、`LocalNotificationPlanner.Plan(snapshot)`・`Diff(previous, planned)`・`KindCategory`、`ILocalNotificationPlatform`（`Permission`・`RequestPermissionAsync`・`Schedule`・`Cancel`・`CancelAll`）、`PushPreferences.Reminders`、`AnalyticsEvent.LocalNotificationScheduled/Opened/Permission`。
 - Unity のゲーム層 `LocalNotificationModel`：計画と付け替え、アカウントの切り替え・ログアウト・削除での全取り消し、前置きの判断と回数、設定画面の「端末のリマインダー」の行（種類ごとのオン／オフ＝カテゴリ、ロック画面に詳しく出す、OS の許可の状態）、次の予定の一覧、開いた時の画面、KPI。OS の通知パッケージ（Unity Mobile Notifications）への接続は Codex（`docs/handoff-codex-round20-local-notifications.md`）。
 - プロトタイプ：設定の「通知」（プッシュの種類・静かな時間帯・端末のリマインダー・ロック画面の表示）、前置きのシート、次の予定の一覧（デモ）。日本語・英語・文字の大きさ（§41）。
+- ヒント（§57、R20 統合）：調教が開くと読めるカード `training_reminder`（「仕上げを知らせる」）がヘルプの `local_reminders` へつなぐ。広告と分析・エラーの自動送信の記事（`ads_analytics_privacy`）は合うヒントの話題が無いので、設定 › プライバシーの「？」からだけ開く。
 
 ### 61.9 法務・プライバシー（REQ-LNOTIF-017/018）
 - 煽りの言葉・作った期限・購入への誘いは無い（61.1）。賭けの言葉は共通の一覧でテスト。

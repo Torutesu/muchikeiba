@@ -3403,3 +3403,87 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
 - `Muchi.Client`：`TipsIndex`（`Parse`）・`TipsSeenResult`・`TipsBadge`（`PlayerView.Tips`）、`ApiClient.GetTipsAsync`・`MarkTipsSeenAsync`、`TipContexts`・`RaceLessons`、analytics `AnalyticsEvent.TutorialReplay`・`TipView`・`TipContextOpen`。
 - `Muchi.Game`：`TipsModel`（話題ごとの一覧・NEW・見た印をまとめて送る（オフラインは端末に貯めて後で送る）・「？」の `OpenContext`・ツアーのページ送り・開いていない機能のツアーは開けない）、`TutorialReplayModel`（レッスンのレースを `GameBackend` の既存の部品で作る（ムチ = `OfflinePresets.TutorialRace`、他 = 練習レース）・FTUE の段・回数・KPI に触れない・`tutorial_replay` を送る）。
 - 画面が守ること：docs/handoff-codex-round19-tutorial-replay.md。
+
+## 62. プロフィールのショーケース（トレーナーカード、REQ-SHOW-001〜018、`server/src/domain/showcase.ts`・`server/master/showcase.json`、C# `Showcase.cs`（`ShowcaseCard`・`ShowcaseEditor`・`ShowcaseSelection`・`ShowcaseShare`）・`Muchi.Game.ShowcaseCardModel`／`ShowcaseEditorModel`、docs/handoff-codex-round21-profile-showcase.md）
+公開プロフィール（REQ-SOCIAL-004：名前・称号・クラス・レート・戦績の要約・最終ログイン）に**トレーナーカード**を足す。カードには愛馬・自分で手に入れたもののピン留め・ベスト記録・決まった文の一言・実績で解放した背景を飾れる。**何も配らず、何も売らない**（E 番号なし、balance-targets の節なし。背景・ピン留めは見た目だけで、能力・レース・ランク戦の勝率に影響しない）。設定は `master/showcase.json`（リモート設定 `showcase` で置き換え可、`showcaseProblems` で検証。`config.enabled: false` なら機能ごと無し：API は `404 NOT_FOUND`、公開プロフィールにカードは載らない）。
+
+### 62.1 カードの中身（REQ-SHOW-001）
+| 欄 | 中身 | 出せる条件 |
+|---|---|---|
+| 愛馬 | 自分の馬 1 頭（名前・レア度・性別・見た目 §17、勝負服 §35 はプロフィールの `silks`） | 持っていて現役（`status: active`）。引退・手元から消えた馬は外れる |
+| ピン留め | 最大 `pinsMax`（3）つ。種類 `title`（称号 §24）・`achievement`（実績 §24、到達した一番上の段）・`cup_trophy`（主催カップのトロフィー §42、終わったカップの結果に `trophy` があるもの）・`hall`（殿堂入りの馬 §34）・`goal_ribbon`（目標をすべて達成した馬 §53）・`tournament`（大会の 1〜3 位） | 自分の状態に今あるもの（`resolvePin`）。称号の取り消し・カードの結果の整理などで無くなれば外れる |
+| ベスト記録 | タイムアタックの全期間ベストを選んだコースごとに最大 `taMax`（2）つ（コース名・タイム・その時の馬の名前）、と**今シーズンのランク戦のクラス**（今シーズンにランク戦を 1 回以上走った時だけ。自動） | 記録があるコース（`timeAttack.allTimeBest`）。マスターから消えたコースは外れる |
+| 一言 | `phrases` の決まった文 1 つ（日本語と英語の組。§52 の定型チャットと同じく自由入力なし・スロットなし） | 一覧にある id |
+| 背景 | `backgrounds` の 1 つ。`unlock` は `default`（1 つだけ）か `achievement`（実績の段）。**購入で解放するものは無い**（検証で拒否） | 解放済み。解放されていない・消えた背景は既定の背景になる |
+
+### 62.2 保存と検証（REQ-SHOW-003/004）
+- `PUT /v1/showcase` は本文の id をプレイヤーの状態と照らし、**全部が今持っている／手に入れたもの**の時だけ保存する（置き換えなので冪等。キー不要）。持っていない馬 `404 HORSE_NOT_FOUND`、引退した馬 `409 HORSE_NOT_ACTIVE`、手に入れていないピン・記録の無いコース・解放されていない背景 `409 NOT_ELIGIBLE`、無いコース・一言・背景 `404 NOT_FOUND`、上限超え・重複 `400 BAD_REQUEST`、停止中のアカウント `403 BANNED`、削除の予約中 `409 DELETION_PENDING`。拒否された保存は何も残さない。
+- 同じ選択をもう一度送っても何も変わらない（`updatedAt` も KPI も変わらない）。
+- 本文は `{ horseId: string|null, pins: [{kind, id}] (≤3), taTrackIds: string[] (≤3), phraseId: string|null, backgroundId: string }`（strict。文字を書く欄は無い）。
+
+### 62.3 公開の写しと、読むときの再確認（REQ-SHOW-005〜007）
+- 他のプレイヤーが見るのは、状態から作る**言語によらない写し** `ShowcaseCopy`（id・数・プレイヤーが付けた名前だけ）で、公開プロフィールの `showcase` としてディレクトリに送る（REQ-SOCIAL-004 の送り方そのまま。新しい DO・表は無い）。写しはプレイヤーの**取引ごとに作り直し**、公開プロフィールの変更の判定（`profileKey`）に入れるので、引退・手放した馬・取り消された称号・整理されたカップの結果は次の送信で**黙って外れる**（選択そのものは残り、取り戻せばまた出る）。
+- 停止中のアカウント・削除の予約中／実行中は写しを作らない（`showcase` なし）。
+- `GET /v1/showcase/:playerId` はディレクトリの写しを読み（相手の状態は見ない。ブロックの一覧だけ相手から読む、厩舎の訪問 REQ-STABLE と同じ）、**今のマスターでもう一度確かめる**：消えた称号・実績・コース・一言は外れ、消えた背景は既定の背景になる。文言は**見る人の言語**で返す（一言と背景の名前は組から選んで返す＝境界で訳さない `phraseText`・`backgroundName`、他の文言は §23 の境界で訳す。プレイヤーが付けた名前 `displayName`・`horseName`・`cupName` は訳さない）。
+- 自分のカード（`:playerId` = 自分）は自分の状態から作る（保存前は既定の背景・ピン留めなしで基本の欄だけ）。
+- フレンドの一覧（`GET /v1/friends`）はカードを運ばない（`showcase` を落とす）。カードは開いた時に 1 枚ずつ読む。
+
+### 62.4 プライバシー（REQ-SHOW-009〜012）
+- **ブロック**（§47.1 の 1 つの一覧）：見る人が相手をブロックしている・相手が見る人をブロックしている、どちらでも**空のカード**（`state: "neutral"`）。空のカードは中立の名前（「プレイヤー」／"Player"、REQ-ACT-012 と同じ）と既定の背景だけで、称号・クラス・戦績・愛馬・ピン・一言・記録・通報・共有は無い。どちらがブロックしたか・削除か停止かは区別できない。
+- **削除・停止**：公開プロフィールが無い（削除済み・知らない id）・`banned` のプロフィールも同じ空のカード（エラーにしない）。
+- **13 歳未満**（登録した年齢が `minAgeFreeText` 未満）：写しに**表示名以外のプレイヤーが付けた文字を入れない**（愛馬・殿堂・目標のリボン・タイムアタックの馬の名前、カップの名前は `null`。カードは「愛馬」「殿堂入りの馬」「プレイヤー主催カップ」などの決まった名前を出す）。一言は決まった文なのでそのまま。`young: true`。
+- **通報**（§47）：他の人のカード（空でない）に通報の入口（`reportable: true`、`source: profile`）。内容は `display_name`・`player`、愛馬の名前を出している時だけ `horse_name`（`reportableHorseId`）。新しい通報の種類は足さない。
+
+### 62.5 API（要認証、ゲートのグループ `social`）
+| メソッド | パス | 本文 → 応答 |
+|---|---|---|
+| GET | `/v1/showcase` | → `ShowcaseEditor`（自分の選択・選べるもの・プレビュー） |
+| PUT | `/v1/showcase` | 62.2 の本文 → `ShowcaseEditor` |
+| GET | `/v1/showcase/:playerId` | → `ShowcaseCard` |
+```json
+{ "playerId": "a", "state": "ok", "displayName": "はやて", "titleId": "debut", "titleName": "デビュー", "classId": "C", "rating": 1500,
+  "stats": { "races": 12, "wins": 3, "top3": 0 }, "lastSeenAt": 1794366000000, "silks": { "pattern": "cross_sashes", "colors": ["green", "blue"], "cap": "star" },
+  "background": { "id": "turf_stretch", "key": "showcase/bg/turf_stretch", "backgroundName": "芝の直線" },
+  "phrase": { "id": "race_anytime", "phraseText": "いつでもレースしよう！" },
+  "horse": { "horseId": "h1", "horseName": "ミドリノカゼ", "rarity": "SR", "sex": "male", "appearance": { "coat": "chestnut", "face": "blaze", "legs": ["none", "none", "sock", "none"], "mane": "normal", "build": "standard" } },
+  "pins": [ { "kind": "title", "id": "debut", "label": "デビュー", "sub": "称号", "icon": "title/debut" },
+            { "kind": "cup_trophy", "id": "cup_aaaaaaaaaaaaaaaa", "label": "プレイヤー主催カップ", "sub": "金トロフィー", "icon": null, "cupName": "春の小さな杯" },
+            { "kind": "achievement", "id": "wins", "label": "勝利の記録", "sub": "実績 1段目", "icon": "badge/wins_1" } ],
+  "timeAttack": [ { "trackId": "aoba_turf_1600", "course": "青葉競馬場 芝1600m", "time": "1:35.4", "timeMs": 95400, "horseName": "ミドリノカゼ" } ],
+  "seasonClass": { "seasonId": "2026-11", "classId": "C", "label": "今シーズン Cクラス" }, "cupTrophies": { "gold": 1, "silver": 0, "bronze": 0 },
+  "relation": "other", "reportable": true, "reportableHorseId": "h1", "young": false }
+```
+- `ShowcaseEditor` = `{ saved, selection, limits: { pinsMax, taMax }, horses[] (現役の馬), pins[] (今ピン留めできるもの、`ShowcasePin` と同じ形), courses[] (記録のあるコース), phrases[] ({id, phraseText}), backgrounds[] ({id, key, backgroundName, unlocked, unlockText}), young, preview: ShowcaseCard, notice }`。
+- `icon`：称号は `title/<id>`、実績は `badge/<id>_<段>`（既存のキー）。それ以外は `null`（クライアントが種類の印を描く）。背景のアセットキーは新しい種類 **`showcase/bg/<id>`**（contracts/assets.md、未着は `showcase/bg/default`）。
+
+### 62.6 画面と開く場所（REQ-SHOW-008）
+- 編集：設定（その他 › 設定・サポート）の「トレーナーカード」。愛馬・ピン留め・コース・一言・背景を選び、プレビューを見て保存。文字を書く欄は無い。
+- 開く：フレンド一覧・ライバル・お知らせ（§40）・カップの待合室（§42）・観戦（§55）・殿堂（§34）・厩舎の訪問・ランキング・支部から、名前を押すとカード（KPI の入口 `friends`・`rival`・`activity`・`cup_lobby`・`spectate`・`hall`・`stable`・`leaderboard`・`team`、自分の編集は `settings`）。
+- カードから：通報（§47 のシート、`source: profile`）、画像で共有（62.7）。空のカードには何も無い。
+
+### 62.7 共有の画像（REQ-SHOW-013）
+- 既存の共有の経路（§17 のリプレイの共有カード `ShareCard`・§38 のフォトモードと同じ。ウォーターマーク「ムチ一閃」、`#ムチ一閃`）で、`ShowcaseShare.Build(card)` → `Kind = "showcase_card"`。
+- 画像と共有の文に入るのは**表示名**と、カードの文言（称号・今シーズンのクラス・一言・ピン・記録。**見る人の言語**、サーバーが返したまま）と本人の馬の名前だけ。**プレイヤー ID・フレンドコード・他のプレイヤーの情報は入れない**。空のカードは共有できない。
+
+### 62.8 マスター `master/showcase.json`（REQ-SHOW-002）
+`{ version, config: { enabled, pinsMax (0..3), taMax (0..3), minAgeFreeText (13..18) }, phrases: [{ id, ja (1..20), en (1..40) }] (1..60), backgrounds: [{ id, ja (1..12), en (1..24), unlock }] (1..40) }`。検証：id の形・重複、既定の背景がちょうど 1 つ、実績と段が存在する、**購入の解放は無い**、文に `{スロット}`・URL を入れない、賭けの言葉（`bettingWords.ts`）・「倍」「お得」「今だけ」「残りわずか」「通常価格」・英語の禁止語を使わない、英語に日本語が残らない。上限は `SHOWCASE_HARD_LIMITS` を超えられない。
+
+### 62.9 KPI（REQ-SHOW-015）
+- `showcase_save`（サーバー、選択が変わった保存だけ）→ `s1` = 背景 id、`s2` = `horse` | `none`、`s3` = `phrase` | `none`、`count` = ピン留めの数、`value` = コースの数。
+- `showcase_view`（クライアント、`props: { source, relation: "self"|"friend"|"other", neutral: bool }`）→ `s1` = source、`s2` = relation、`s3` = `card` | `neutral`。
+- `showcase_share`（クライアント、`props: { pins: 0..3, records: 0..4, horse: bool }`）→ `count` = pins、`value` = records、`s1` = `horse` | `none`。
+- どれも相手のプレイヤー ID を持たない（strict）。§58 の必須／任意の分類は Round 20 の統合で決める。
+
+### 62.10 ゲート・データの開示・アカウント削除（REQ-SHOW-016〜018）
+- メンテナンスのゲート（§46）：`/v1/showcase*` はグループ **`social`**（フレンド・厩舎と同じ。例外にしない）。
+- 個人データの開示（§51）：状態の新しいキー `showcase` は **`profile`** の節（自分の馬・ピン・コース・一言・背景の id だけ。他のプレイヤーのことは無い）。
+- アカウント削除：状態の `showcase` は最後の `wipe` で消え、写しは公開プロフィールの行と一緒に `forget` で消える（他に写しは無い）。削除の予約中から写しは送らない。`PlayerService.showcaseForget` は明示の手順（冪等）。
+
+### 62.11 文言・法務（REQ-SHOW-014）
+- すべての文言に英語（`server-en.json`・`ui-en.json`・`proto-en.json`、`l10n:missing` 0）。一言と背景の名前はマスターに日英の組で持つ。
+- コンプガチャではない：ピン・背景はランダムな品の収集を条件にしない（実績の段・確定した成績だけ）。何も売らず、購入で近道できない。カードは能力・マッチング・ランク戦に影響しない。
+- 自由入力は無い（一言は決まった文、本文 strict）。英語の "favourite" は競馬の賭けの言葉に当たるので使わない（「愛馬」は "featured horse"）。
+
+### 62.12 クライアント
+- `Muchi.Client`：`ApiClient.GetShowcaseAsync`・`SaveShowcaseAsync(ShowcaseSelection)`・`GetShowcaseCardAsync(playerId)`、`ShowcaseCard`（`IsNeutral`）・`ShowcaseEditor`・`ShowcaseSelection`（`Problem`・`ToJson`）・`ShowcasePinKinds`・`ShowcaseSources`、`ShowcaseShare.Build`、`AnalyticsEvent.ShowcaseView`・`ShowcaseShared`、`AssetKeys.ShowcaseBg`。
+- `Muchi.Game`：`ShowcaseCardModel`（開く・行・空のカード・通報の対象・共有・KPI）、`ShowcaseEditorModel`（下書き・上限・解放されていない背景・保存）。描画は docs/handoff-codex-round21-profile-showcase.md。

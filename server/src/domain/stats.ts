@@ -3,6 +3,7 @@ import { maxBondLevel } from './bond.js';
 import { tierReached } from './collection.js';
 import { effectiveSilks, type Silks } from './visuals.js';
 import type { BannedSilksList } from './bannedSilks.js';
+import type { ShowcaseCopy } from './showcase.js';
 import { foldForCompare } from './horses.js';
 import type { Master, Style, TitleCondition } from './master.js';
 import { moderationOf, type PlayerState } from './player.js';
@@ -156,9 +157,11 @@ export interface PublicProfile {
   banned?: true;
   /** REQ-CUP-014: hosted cup trophies (counts only; absent until the first one). Cosmetic. */
   cupTrophies?: { gold: number; silver: number; bronze: number };
+  /** REQ-SHOW-005 (§62): the showcase card's language-neutral copy (absent = never saved, banned, deletion, feature off; older builds). */
+  showcase?: import('./showcase.js').ShowcaseCopy;
 }
 
-export function publicProfile(s: PlayerState, banned?: BannedSilksList, now?: number): PublicProfile {
+export function publicProfile(s: PlayerState, banned?: BannedSilksList, now?: number, showcase?: ShowcaseCopy | null): PublicProfile {
   return {
     playerId: s.id, displayName: s.profile.displayName, titleId: s.profile.titleId, silks: effectiveSilks(s.profile.silks, `p:${s.id}`, banned), classId: s.season.classId,
     rating: Math.round(s.rating.r), stats: { races: s.stats.races, wins: s.stats.wins, top3: s.stats.top3 }, lastSeenAt: s.profile.lastSeenAt,
@@ -166,5 +169,7 @@ export function publicProfile(s: PlayerState, banned?: BannedSilksList, now?: nu
     // REQ-ACT-012: others show a neutral name for a banned account (activity list)
     ...(now !== undefined && moderationOf(s, now) === 'banned' ? { banned: true as const } : {}),
     ...(s.cups && s.cups.trophies.gold + s.cups.trophies.silver + s.cups.trophies.bronze > 0 ? { cupTrophies: { ...s.cups.trophies } } : {}),
+    // REQ-SHOW-005: the caller derives the copy (showcaseCopy needs the master); never on a banned account
+    ...(showcase && !(now !== undefined && moderationOf(s, now) === 'banned') ? { showcase } : {}),
   };
 }

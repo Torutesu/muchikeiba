@@ -47,13 +47,15 @@ export const HELP_SCREENS = [
   'performance', 'storage',
   // Round 19 (§57): the ヒント screen (tutorial replays and the tips library)
   'tips',
+  // Round 21 (§62): the トレーナーカード editor (settings)
+  'showcase',
 ] as const;
 export type HelpScreen = typeof HELP_SCREENS[number];
 /** The existing legal pages (利用規約・プライバシーポリシー・特定商取引法に基づく表記・資金決済法に基づく表示). */
 export const LEGAL_DOCS = ['terms', 'privacy', 'tokushoho', 'shikin'] as const;
 export type LegalDoc = typeof LEGAL_DOCS[number];
 /** REQ-HELP-008: screens that deep-link to an article. */
-export const HELP_CONTEXTS = ['gacha_odds', 'coin_shortfall', 'purchase', 'race_whip', 'race_result', 'training', 'breeding', 'history', 'gift_box', 'account_link', 'deletion', 'accessibility', 'privacy', 'storage', 'practice'] as const; // R19 integration: the practice setup's ? link
+export const HELP_CONTEXTS = ['gacha_odds', 'coin_shortfall', 'purchase', 'race_whip', 'race_result', 'training', 'breeding', 'history', 'gift_box', 'account_link', 'deletion', 'accessibility', 'privacy', 'storage', 'practice', 'showcase'] as const; // R19 integration: the practice setup's ? link
 export type HelpContext = typeof HELP_CONTEXTS[number];
 
 export type HelpLink =
@@ -114,6 +116,7 @@ const SCREEN_LABEL: Record<HelpScreen, Loc> = {
   performance: { ja: '画質・通信量の設定を開く', en: 'Open graphics and data settings' },
   storage: { ja: 'ストレージを開く', en: 'Open storage' },
   tips: { ja: 'ヒントを開く', en: 'Open tips' },
+  showcase: { ja: 'トレーナーカードを開く', en: 'Open the trainer card' },
 };
 const LEGAL_LABEL: Record<LegalDoc, Loc> = {
   terms: { ja: '利用規約', en: 'Terms of service' },

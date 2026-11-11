@@ -87,6 +87,8 @@ export const assetKeys = {
   photoStamp: (id: string) => `photo/stamp/${id}`,
   /** REQ-STABLE-*: マイ厩舎 room theme (walls/floor), master/stable.json `themes[].id`. */
   stableTheme: (id: string) => `stable/theme/${id}`,
+  /** REQ-SHOW-006 (§62): trainer card background, master/showcase.json `backgrounds[].id`. */
+  showcaseBg: (id: string) => `showcase/bg/${id}`,
   gate: (bracket: number) => `ui/gate/${bracket}`,
   item: (id: string) => `item/${id}`,
   gachaBanner: (id: string) => `banner/gacha/${id}`,
@@ -133,6 +135,7 @@ export const ASSET_KINDS: Record<string, { description: string; dynamic?: boolea
   'photo/frame': { description: 'フォトモードの写真フレーム（REQ-PHOTO-005）' },
   'photo/stamp': { description: 'フォトモードの写真スタンプ（REQ-PHOTO-005）' },
   'stable/theme': { description: 'マイ厩舎の部屋のテーマ（壁・床。REQ-STABLE-001）' },
+  'showcase/bg': { description: 'トレーナーカード（ショーケース）の背景（実績で解放。REQ-SHOW-006）' },
   item: { description: 'アイテムのアイコン' },
   'banner/gacha': { description: 'ガチャのバナー' },
   'banner/event': { description: 'イベントのバナー' },

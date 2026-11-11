@@ -35,6 +35,8 @@ namespace Muchi.Client
         public static string PhotoStamp(string id) => "photo/stamp/" + id;
         /// <summary>マイ厩舎 room theme (REQ-STABLE-001); the server sends it as theme.key.</summary>
         public static string StableTheme(string id) => "stable/theme/" + id;
+        /// <summary>REQ-SHOW-006 (§62): trainer card background, master/showcase.json id (the server sends it as background.key).</summary>
+        public static string ShowcaseBg(string id) => "showcase/bg/" + id;
         public static string GachaBanner(string id) => "banner/gacha/" + id;
         public static string EventBanner(string id) => "banner/event/" + id;
         public static string Title(string id) => "title/" + id;

@@ -130,6 +130,8 @@ const SCREEN_LABEL: Record<HelpScreen, Loc> = {
   privacy_choices: { ja: '広告と分析の設定を開く', en: 'Open the ads and analytics settings' },
   showcase: { ja: 'トレーナーカードを開く', en: 'Open the trainer card' },
 };
+/** Round 21 (§64 release notes): the link label of an in-app screen, in the request's language. */
+export function screenLabel(screen: HelpScreen, lang: Locale): string { return pick(SCREEN_LABEL[screen], lang); }
 const LEGAL_LABEL: Record<LegalDoc, Loc> = {
   terms: { ja: '利用規約', en: 'Terms of service' },
   privacy: { ja: 'プライバシーポリシー', en: 'Privacy policy' },

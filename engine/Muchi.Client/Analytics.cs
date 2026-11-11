@@ -290,6 +290,37 @@ namespace Muchi.Client
             return new AnalyticsEvent("tip_context_open", atMs, JsonNode.Obj().Set("context", context).Set("tipId", tipId));
         }
 
+        // ---- REQ-NEW-019 アップデートのお知らせ (protocol §64.9; client events only, no player ids)
+        public static readonly string[] ReleaseNotesStages = { "shown", "finished", "skipped" };
+        public static readonly string[] ReleaseNotesHistorySources = { "notices", "tips", "sheet" };
+        public const int ReleaseNotesMaxPages = 5;
+
+        /// <summary>The what's-new sheet: shown | finished (read to the end) | skipped (closed early), on page (1-based) of pages.</summary>
+        public static AnalyticsEvent ReleaseNotesView(long atMs, string appVersion, string stage, int page, int pages)
+        {
+            if (!ApiClient.IsAppVersion(appVersion)) throw new ArgumentException("bad app version " + appVersion);
+            if (IndexIn(ReleaseNotesStages, stage) < 0) throw new ArgumentException("unknown release notes stage " + stage);
+            if (pages < 1 || pages > ReleaseNotesMaxPages || page < 1 || page > pages) throw new ArgumentException("page " + page + " of " + pages);
+            return new AnalyticsEvent("release_notes_view", atMs, JsonNode.Obj().Set("appVersion", appVersion).Set("stage", stage).Set("page", page).Set("pages", pages));
+        }
+
+        /// <summary>A page's target was tapped: its kind (screen | help | tip) and id.</summary>
+        public static AnalyticsEvent ReleaseNotesTarget(long atMs, string appVersion, int page, string kind, string target)
+        {
+            if (!ApiClient.IsAppVersion(appVersion)) throw new ArgumentException("bad app version " + appVersion);
+            if (page < 1 || page > ReleaseNotesMaxPages) throw new ArgumentException("page " + page);
+            if (IndexIn(Muchi.Client.ReleaseNoteTarget.Kinds, kind) < 0) throw new ArgumentException("unknown target kind " + kind);
+            if (!ApiClient.IsTipId(target)) throw new ArgumentException("bad target id " + target);
+            return new AnalyticsEvent("release_notes_target", atMs, JsonNode.Obj().Set("appVersion", appVersion).Set("page", page).Set("kind", kind).Set("target", target));
+        }
+
+        /// <summary>The past notes list was opened: from お知らせ (notices), ヒント (tips) or the sheet's last page (sheet).</summary>
+        public static AnalyticsEvent ReleaseNotesHistory(long atMs, string source)
+        {
+            if (IndexIn(ReleaseNotesHistorySources, source) < 0) throw new ArgumentException("unknown release notes source " + source);
+            return new AnalyticsEvent("release_notes_history", atMs, JsonNode.Obj().Set("source", source));
+        }
+
         // ---- REQ-FSUG-014 おすすめフレンド (the request / dismiss rows are server events; the view is the client's)
         /// <summary>The suggestions section was on screen (once per friends-screen visit); shown = suggestions in it (0..30). No player ids.</summary>
         public static AnalyticsEvent FsugView(long atMs, int shown)

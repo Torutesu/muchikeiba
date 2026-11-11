@@ -29,6 +29,7 @@ import helpJson from '../../master/help.json';
 import practiceJson from '../../master/practice.json';
 import tipsJson from '../../master/tips.json';
 import showcaseJson from '../../master/showcase.json';
+import releaseNotesJson from '../../master/release-notes.json';
 import { trackSchema, type GoingAptitude, type Going, type Track } from './schemas.js';
 import { AppError } from './errors.js';
 import { loadSkills, type SkillsMaster } from './skills.js';
@@ -438,6 +439,8 @@ export interface Master {
   tips?: import('./tips.js').TipsMaster;
   /** REQ-SHOW-* (§62): プロフィールのショーケース — phrases and backgrounds (master/showcase.json; showcase.ts showcaseOf falls back to it; remote config `showcase` replaces it). */
   showcase?: import('./showcase.js').ShowcaseMaster;
+  /** REQ-NEW-*: アップデートのお知らせ per app version (master/release-notes.json; releaseNotes.ts releaseNotesOf falls back to it when absent; remote config `releaseNotes` replaces it). */
+  releaseNotes?: import('./releaseNotes.js').ReleaseNotesMaster;
 }
 
 export const PPM_TOTAL = 1_000_000;
@@ -595,6 +598,7 @@ export function loadMaster(): Master {
     practice: practiceJson as unknown as import('./practice.js').PracticeMaster,
     tips: tipsJson as unknown as import('./tips.js').TipsMaster,
     showcase: showcaseJson as unknown as import('./showcase.js').ShowcaseMaster,
+    releaseNotes: releaseNotesJson as unknown as import('./releaseNotes.js').ReleaseNotesMaster,
   };
   cached = m;
   return m;

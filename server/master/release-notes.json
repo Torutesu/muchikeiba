@@ -1,0 +1,49 @@
+{
+  "_note": "REQ-NEW-*（contracts/protocol.md §64）。アプリの版ごとの新機能の紹介（1〜5ページ）。数字は書かずヘルプの {{トークン}}。art は §57 のヒントの絵（TIP_ARTS）。target は screen（shop・gacha・gacha_odds 以外）・help（記事 id）・tip（カード id）。何も配らない。リモート設定 releaseNotes で丸ごと置き換え。",
+  "version": 1,
+  "config": { "enabled": true, "titleMaxChars": 24, "bodyMaxChars": 140, "seenMax": 30, "historyMax": 20 },
+  "notes": [
+    {
+      "appVersion": "1.1.0",
+      "releasedOn": "2026-10-20",
+      "pages": [
+        {
+          "art": "whip",
+          "title": { "ja": "レッスンをやり直せる", "en": "Replay the lessons" },
+          "body": { "ja": "ムチのタイミング・位置取り・スタミナ・手綱のレッスンを、その他 › ヒントからいつでも練習できます。", "en": "Practice whip timing, positioning, stamina and reins any time from More › Tips." },
+          "target": { "kind": "screen", "id": "tips" }
+        },
+        {
+          "art": "roster",
+          "title": { "ja": "機種変更は引き継ぎコードで", "en": "Move devices with a code" },
+          "body": { "ja": "IDとパスワードを決めておくと、別の端末にデータを引き継げます。", "en": "Set an ID and password to move your data to another device." },
+          "target": { "kind": "help", "id": "transfer_code" }
+        }
+      ]
+    },
+    {
+      "appVersion": "1.2.0",
+      "releasedOn": "2026-11-05",
+      "pages": [
+        {
+          "art": "cups",
+          "title": { "ja": "観戦中に応援できる", "en": "Cheer while you watch" },
+          "body": { "ja": "フレンドのレースを見ながら、スタンプで応援できます。応援は{{cheer_interval_sec}}秒ごとに送れます。レースの結果には影響しません。", "en": "Send a cheer while you watch a friend race, up to once every {{cheer_interval_sec}} seconds. Cheers never change the result." },
+          "target": { "kind": "help", "id": "spectator_cheer" }
+        },
+        {
+          "art": "stamina",
+          "title": { "ja": "画質と省電力を選べる", "en": "Graphics and battery" },
+          "body": { "ja": "その他 › 設定で、画質・省電力・通信量を選べます。端末に合わせた設定から始まります。", "en": "Choose graphics quality, battery saving and data use in More › Settings. It starts from a setting that suits your device." },
+          "target": { "kind": "help", "id": "data_storage" }
+        },
+        {
+          "art": "training",
+          "title": { "ja": "馬ごとの目標", "en": "Goals for each horse" },
+          "body": { "ja": "馬ごとに次の目標が出ます。達成すると、次の目標が見えてきます。", "en": "Each horse now shows its next goal. Reach it and the next one appears." },
+          "target": { "kind": "tip", "id": "goals_tip" }
+        }
+      ]
+    }
+  ]
+}

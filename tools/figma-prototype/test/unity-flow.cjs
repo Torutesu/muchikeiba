@@ -1996,6 +1996,52 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.ok(rs.active && rs.f && (rs.f.assist ?? 'off') === 'off', 'the reins lesson rides the practice race, unassisted');
   await shot('lesson-reins-hud', 0, true);
   await click('中断'); await waitScreen('tips');
+  // ------------------------------------------------------------------ 6. round 21: アップデートのお知らせ (REQ-NEW-*)
+  // this account started on the current build: home shows no sheet; the demo updater (the builds come out after the account
+  // was created) gets the paged sheet once (3 pages, 次へ / はじめる, the skipped version's past link), marked seen when it
+  // opens; お知らせ › アップデート情報 and ヒント › アップデート情報; a page's target; nothing granted
+  const rnFacts0 = await page.evaluate(async () => (await globalThis.__muchi.logic.releaseNotesFacts()).value);
+  await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen(['home', 'link-prompt']); await page.waitForTimeout(500);
+  assert.notEqual(await screen(), 'release-notes', 'a player who started on this build gets no sheet (the account-link prompt may take the session)');
+  await page.evaluate(() => globalThis.__muchi.show('ReleaseNotes')); await waitScreen('release-notes'); await page.waitForTimeout(400);
+  const rnSheet = page.locator('.screen.in .rn-sheet');
+  assert.deepEqual([await rnSheet.getAttribute('data-version'), await rnSheet.getAttribute('data-page'), await rnSheet.getAttribute('data-pages')], ['1.2.0', '1', '3'], 'the newest note, page 1 of 3');
+  assert.match(await page.locator('.screen.in .rn-body').innerText(), /[0-9]+秒ごと/, 'the cheer interval is filled from data');
+  assert.ok(!/今だけ|残りわずか|倍|お得|通常価格|オッズ/.test(await page.locator('.screen.in').innerText()), 'no urgency, multiplier or betting wording');
+  assert.equal(await page.locator('.screen.in [data-rn-target]').getAttribute('data-rn-target'), 'help:spectator_cheer', 'page 1 links its help article');
+  assert.deepEqual((await page.evaluate(async () => (await globalThis.__muchi.logic.releaseNotesFacts()).value)).seen, ['1.2.0'], 'marked seen when it opens');
+  await shot('release-notes', 300);
+  await page.locator('.screen.in [data-action="rn-next"]').click(); await page.waitForTimeout(400);
+  await page.locator('.screen.in [data-action="rn-next"]').click(); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .rn-sheet').getAttribute('data-page'), '3');
+  assert.equal(await page.locator('.screen.in [data-action="rn-start"]').count(), 1, 'the last page says はじめる');
+  assert.equal(await page.locator('.screen.in [data-rn-past]').getAttribute('data-rn-past'), '1', 'the skipped version: 「過去のアップデート情報（ほか1件）」');
+  await shot('release-notes-last', 300);
+  await page.locator('.screen.in [data-rn-past]').click(); await waitScreen('release-notes-history'); await page.waitForTimeout(400);
+  assert.deepEqual(await page.locator('.screen.in [data-rn-version]').evaluateAll((els) => els.map((e) => e.dataset.rnVersion)), ['1.2.0', '1.1.0'], 'the past list, newest first');
+  await shot('release-notes-history', 300);
+  await page.locator('.screen.in [data-rn-version="1.1.0"]').click(); await page.waitForTimeout(500);
+  assert.equal(await page.locator('.screen.in [data-rn-page]').count(), 2, 'Ver. 1.1.0 has two pages');
+  await page.locator('.screen.in [data-rn-target="screen:tips"]').click(); await waitScreen('tips'); await page.waitForTimeout(300);
+  // back home: never twice (seen on the server, and once per session)
+  await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen(['home', 'link-prompt']); await page.waitForTimeout(500);
+  assert.notEqual(await screen(), 'release-notes', 'the sheet never comes back');
+  // the entry points: お知らせ (activity) and ヒント
+  await page.evaluate(() => globalThis.__muchi.show('Activity')); await waitScreen('activity'); await page.waitForTimeout(400);
+  await page.locator('.screen.in .btn[data-action="release-notes"]').click(); await waitScreen('release-notes-history'); await page.waitForTimeout(300);
+  await page.evaluate(() => globalThis.__muchi.show('Tips')); await waitScreen('tips'); await page.waitForTimeout(300);
+  await page.locator('.screen.in .btn[data-action="release-notes"]').click(); await waitScreen('release-notes-history'); await page.waitForTimeout(300);
+  // the demo again: a page's target closes the sheet and opens it
+  await page.evaluate(() => globalThis.__muchi.show('ReleaseNotes')); await waitScreen('release-notes'); await page.waitForTimeout(400);
+  await page.locator('.screen.in [data-rn-target]').click(); await waitScreen('help-article'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-article]').getAttribute('data-article'), 'spectator_cheer', 'the target opens the help article');
+  const rk = await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name.startsWith('release_notes_')));
+  assert.ok(rk.some((e) => e.name === 'release_notes_view' && e.stage === 'shown' && e.pages === 3), 'release_notes_view shown');
+  assert.ok(rk.some((e) => e.name === 'release_notes_view' && e.stage === 'finished' && e.page === 3), 'release_notes_view finished on the last page');
+  assert.ok(rk.some((e) => e.name === 'release_notes_target' && e.kind === 'help' && e.target === 'spectator_cheer'), 'release_notes_target');
+  assert.deepEqual([...new Set(rk.filter((e) => e.name === 'release_notes_history').map((e) => e.source))].sort(), ['notices', 'sheet', 'tips'], 'release_notes_history from all three entry points');
+  const rnFacts1 = await page.evaluate(async () => (await globalThis.__muchi.logic.releaseNotesFacts()).value);
+  assert.deepEqual([rnFacts1.free, rnFacts1.paid, rnFacts1.items], [rnFacts0.free, rnFacts0.paid, rnFacts0.items], 'nothing is granted');
   // ------------------------------------------------------------------ 6. round 17: おすすめフレンド (REQ-FSUG-*)
   // people met through the real paths (an event, a friend room, a like, a cheer, mutual friends); the opted-out player and
   // the ranked-only opponent never appear; 申請する goes through the friend request flow; 表示しない is remembered; the switch

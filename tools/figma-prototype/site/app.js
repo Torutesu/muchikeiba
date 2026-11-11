@@ -1278,6 +1278,7 @@ async function Home() {
   await NextCard(); // round 16: 次にやること, bottom centre (the top bar stays as it is)
   await GoalPinStrip(); // round 18: the pinned horse goal, above the next card
   lnRefresh().catch(() => {}); // round 20 (REQ-LNOTIF-011): the app came to the front → plan the device reminders again
+  if (await MaybeReleaseNotes()) return; // round 21 (REQ-NEW-006/012): what's new once per updated version, before the account-link prompt
   MaybeLinkPrompt('Home', Home);
 }
 /** ③ today's to-do (login bonus, daily missions, first-win bonus) in a drawer. */
@@ -1919,6 +1920,7 @@ function MaybeLinkPrompt(context, next) {
   return true;
 }
 function LinkPrompt(trigger, next = Home) {
+  promptSession.claimed ??= 'account_link'; // round 21 (§64.6): one system prompt per session
   const v = linkOp('show', { trigger, ios: true }).view; // counts as shown now (once only)
   currentScreen = next; Clear('link-prompt'); SetArt('Art/home-paddock', false); Shade('dim');
   const box = Dialog('Link prompt', 940, 600); box.dataset.trigger = trigger;
@@ -3661,6 +3663,7 @@ async function ComebackWelcome(v) {
   currentScreen = () => ComebackWelcome();
   v ??= await cbView();
   if (!v.active) return Home();
+  promptSession.claimed ??= 'comeback_welcome'; // round 21 (§64.6): the welcome takes this session
   const w = v.window;
   Clear('comeback-welcome'); SetArt('Art/first-ride'); Shade('left');
   Kicker('おかえりなさい　/　復帰キャンペーン', 82, 112, undefined, { size: 18 });
@@ -6520,8 +6523,10 @@ async function Activity() {
   const d = Glass('Activity summary', 1116, 134, 448, 676, undefined, .9);
   Kicker('未読', 36, 30, d, { size: 16 });
   Txt(`${P.unread}件`, 36, 100, 376, 40, WHITE, d, { weight: 700, cls: 'num' }).dataset.actUnread = String(P.unread);
-  if (P.links.whatsNew > 0) TextLink('新着情報があります', 36, 172, 376, () => Home(), d).dataset.actWhatsnew = String(P.links.whatsNew);
-  Hair(36, 236, 376, d);
+  if (P.links.whatsNew > 0) TextLink('新着情報があります', 36, 152, 376, () => Home(), d).dataset.actWhatsnew = String(P.links.whatsNew);
+  // round 21 (REQ-NEW-013): お知らせ › アップデート情報 (past release notes; no new activity kind)
+  TextLink('アップデート情報', 36, 192, 376, () => rnOpenHistory('notices', Activity), d, 'アップデート情報 ›').dataset.action = 'release-notes';
+  Hair(36, 240, 376, d);
   Kicker('お知らせのきまり', 36, 258, d, { rule: false, size: 14 });
   Txt('いいね・応援スタンプ・プレゼントは、まとめて1件で表示します。', 36, 292, 376, 13, MUTED, d, { lh: 1.6 });
   Txt('プレゼントの受け取りはプレゼントボックスで行います。', 36, 366, 376, 13, MUTED, d, { lh: 1.6 });
@@ -7935,6 +7940,8 @@ async function Tips(back = null) {
     card.addEventListener('click', () => (c.unlocked ? TipCard(c.id, 'list', () => Tips()) : toast('機能が開くと読めます')));
   });
   Back(() => (tipsState.back ?? Settings)(), '戻る', 40, 834);
+  // round 21 (REQ-NEW-013): the past release notes from ヒント
+  Ghost('アップデート情報', 1300, 826, 264, 52, () => rnOpenHistory('tips', () => Tips()), undefined, 'quiet small').dataset.action = 'release-notes';
 }
 /** One card: `source` = list | context | tour (tip_view once per opening). In a tour, 次へ / おわり instead of 閉じる. */
 async function TipCard(id, source = 'list', back = null) {
@@ -8059,6 +8066,140 @@ function LessonResult(f) {
   TextLink('ヒントに戻る', 44, 700, 300, () => { tipsState.lesson = null; Tips(); }, p).dataset.action = 'lesson-back';
   globalThis.__muchi && (globalThis.__muchi.lastLesson = { id: ls.id, won, place: r.place, tries: ls.tries });
   EnToggle();
+}
+
+// ================================================================= round 21: アップデートのお知らせ (REQ-NEW-*, contracts/protocol.md §64)
+// The same sheet and list as the Unity ReleaseNotesModel on the real rules (releaseNotes.ts + PlayerService): at a home
+// arrival POST /v1/release-notes/check (the prototype stands in for the store build 1.2.0 here), the sheet only when the
+// server shows a note and no other system prompt took this session (the comeback welcome, the account-link prompt;
+// protocol §64.6), marked seen once when it opens, paged (次へ » / はじめる »), スキップ at any time, a page's one target
+// (a screen, a help article or a tip card — never the shop), 「過去のアップデート情報 ›」 on the last page when versions were
+// skipped, and お知らせ › アップデート情報 (from the activity screen and ヒント). Nothing is granted.
+// KPI release_notes_view / release_notes_target / release_notes_history (globalThis.__muchiKpi, the shape the client sends).
+const RN_VERSION = '1.2.0';
+const promptSession = { claimed: null }; // one system prompt per app session (SessionPrompts in the client)
+const rnState = { shown: false, sheet: null, page: 0, back: null, open: null };
+const rnLang = () => (isJa() ? 'ja' : 'en');
+const rnKpi = (name, props) => (globalThis.__muchiKpi ??= []).push({ name, ...props });
+/** Placeholder art per art key: the §57 tip card art (Codex draws them once for both: docs/handoff-codex-round21-whats-new.md). */
+const rnArt = (key) => TIP_ART[key] ?? 'Art/home-paddock';
+const rnDate = (d) => String(d ?? '').replace(/-/g, '.');
+/** At a home arrival: shows the sheet when the server says so and the session is free. Returns true when it opened. */
+async function MaybeReleaseNotes() {
+  if (rnState.shown || promptSession.claimed) return false;
+  const r = await L.releaseNotesCheck(RN_VERSION, rnLang());
+  if (!r.ok || !r.value.show || !r.value.show.pages.length) return false;
+  promptSession.claimed = 'release_notes'; rnState.shown = true;
+  await L.releaseNotesSeen(r.value.show.appVersion); // marked when it opens (idempotent)
+  rnState.sheet = r.value.show; rnState.page = 0;
+  rnKpi('release_notes_view', { appVersion: rnState.sheet.appVersion, stage: 'shown', page: 1, pages: rnState.sheet.pages.length });
+  ReleaseNotesSheet();
+  return true;
+}
+/** The paged sheet over the home (one page at a time: art, title, short body, the one target link). */
+function ReleaseNotesSheet() {
+  const n = rnState.sheet;
+  if (!n) return Home();
+  const i = Math.min(rnState.page, n.pages.length - 1), pg = n.pages[i], last = i >= n.pages.length - 1;
+  currentScreen = () => ReleaseNotesSheet();
+  Clear('release-notes'); SetArt(rnArt(pg.art), false); Shade('dim heavy');
+  const p = Glass('Release notes', 136, 96, 1328, 708, undefined, .93); p.classList.add('rn-sheet', 'rise');
+  p.dataset.version = n.appVersion; p.dataset.page = String(i + 1); p.dataset.pages = String(n.pages.length);
+  ArtImage(rnArt(pg.art), 36, 36, 560, 636, p, 'cover rn-art');
+  Kicker('アップデート情報', 640, 40, p, { size: 15 });
+  Txt(`Ver. ${n.appVersion}　·　${rnDate(n.releasedOn)}`, 640, 112, 420, 15, MUTED, p, { weight: 700, nowrap: true, cls: 'num' });
+  // page dots (1..5)
+  const dots = el('rn-dots', 1100, 116, 190, 14, p);
+  n.pages.forEach((_, k) => { const d = document.createElement('i'); if (k === i) d.className = 'on'; dots.appendChild(d); });
+  dots.setAttribute('aria-label', `${i + 1} / ${n.pages.length}`);
+  Txt(pg.title, 640, 168, 650, 34, WHITE, p, { weight: 700, lh: 1.3, h: 96 }).classList.add('rn-title');
+  Txt(pg.body, 640, 284, 650, 20, WHITE, p, { weight: 500, lh: 1.75, h: 196 }).classList.add('rn-body');
+  if (pg.target) {
+    const t = pg.target;
+    TextLink(t.label, 640, 494, 650, () => ReleaseNotesTarget(i), p, `${t.label} ›`).dataset.rnTarget = `${t.kind}:${t.id}`;
+  }
+  if (last && (n.skipped > 0 || n.hasPast)) {
+    TextLink('過去のアップデート情報', 640, 540, 650, () => { rnClose('skip'); rnKpi('release_notes_history', { source: 'sheet' }); ReleaseNotesHistory(Home); }, p, n.skipped > 0 ? `過去のアップデート情報（ほか${n.skipped}件） ›` : '過去のアップデート情報 ›').dataset.rnPast = String(n.skipped);
+  }
+  Ghost('スキップ', 640, 600, 200, 60, () => { rnClose('skip'); Home(); }, p, 'quiet small').dataset.action = 'rn-skip';
+  Cta(last ? 'はじめる' : '次へ', 880, 600, 410, () => {
+    if (last) { rnClose('finish'); return Home(); }
+    rnState.page += 1; ReleaseNotesSheet();
+  }, p, 'small').dataset.action = last ? 'rn-start' : 'rn-next';
+  EnToggle();
+}
+/** Closes the sheet: finished on the last page (or はじめる), otherwise skipped on the page shown. */
+function rnClose(how) {
+  const n = rnState.sheet;
+  if (!n) return;
+  const page = Math.min(rnState.page, n.pages.length - 1) + 1;
+  const stage = how === 'finish' || page >= n.pages.length ? 'finished' : 'skipped';
+  rnKpi('release_notes_view', { appVersion: n.appVersion, stage, page, pages: n.pages.length });
+  rnState.sheet = null; rnState.page = 0;
+}
+/** A page's target: closes the sheet and opens the screen / help article / tip card (back = home). */
+function ReleaseNotesTarget(i) {
+  const n = rnState.sheet, t = n?.pages[i]?.target;
+  if (!t) return;
+  rnKpi('release_notes_target', { appVersion: n.appVersion, page: i + 1, kind: t.kind, target: t.id });
+  rnClose('skip');
+  return rnGo(t, Home);
+}
+function rnGo(t, back) {
+  if (t.kind === 'help') return HelpArticle(t.id, 'link', back);
+  if (t.kind === 'tip') return TipCard(t.id, 'list', back);
+  return helpGo(t.id, back);
+}
+/** お知らせ › アップデート情報: versions on the left (newest first), the pages of the one selected on the right. */
+async function ReleaseNotesHistory(back = null, version = null) {
+  if (back) rnState.back = back;
+  currentScreen = () => ReleaseNotesHistory(null, rnState.open);
+  const r = await L.releaseNotes(RN_VERSION, rnLang());
+  if (!r.ok) { toast('アップデート情報はオンラインで見られます'); return (rnState.back ?? Activity)(); }
+  const H = r.value;
+  const sel = H.notes.find((x) => x.appVersion === (version ?? rnState.open)) ?? H.notes[0] ?? null;
+  rnState.open = sel?.appVersion ?? null;
+  Clear('release-notes-history'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('アップデート情報', 'アプリの版ごとの新しい機能　·　お知らせから、いつでも読めます');
+  const lp = Glass('Release versions', 36, 134, 400, 676, undefined, .88); lp.classList.add('rn-versions');
+  Kicker('新しい順', 36, 30, lp, { size: 15 });
+  if (!H.notes.length) Txt('まだアップデート情報はありません', 36, 110, 328, 17, MUTED, lp, { lh: 1.6 }).dataset.rnEmpty = '1';
+  H.notes.slice(0, 6).forEach((x, k) => {
+    const row = el('help-row rn-version' + (x.appVersion === rnState.open ? ' on' : ''), 24, 92 + k * 92, 352, 80, lp);
+    row.dataset.rnVersion = x.appVersion; row.setAttribute('role', 'button');
+    Txt(`Ver. ${x.appVersion}`, 18, 12, 200, 20, WHITE, row, { weight: 700, nowrap: true, cls: 'num' });
+    Txt(rnDate(x.releasedOn), 18, 46, 200, 13, SOFT, row, { weight: 500, nowrap: true, cls: 'num' });
+    if (!x.seen) Pills([['NEW', 'gold']], 250, 26, 90, row).classList.add('rn-new');
+    row.addEventListener('click', () => ReleaseNotesHistory(null, x.appVersion));
+  });
+  const rp = Glass('Release pages', 456, 134, 1108, 676, undefined, .9); rp.classList.add('rn-pages');
+  if (sel) {
+    rp.dataset.version = sel.appVersion;
+    Kicker(`Ver. ${sel.appVersion}`, 36, 30, rp, { size: 15 });
+    sel.pages.slice(0, 5).forEach((pg, k) => {
+      const card = el('help-row rn-page', 24, 92 + k * 112, 1060, 102, rp); card.dataset.rnPage = String(k + 1);
+      ArtImage(rnArt(pg.art), 12, 11, 128, 80, card, 'cover tip-thumb');
+      Txt(pg.title, 160, 12, 520, 18, WHITE, card, { weight: 700, nowrap: true });
+      const b = Txt(pg.body, 160, 42, 560, 13, MUTED, card, { lh: 1.5, h: 52 }); b.classList.add('rn-page-body');
+      if (pg.target) Ghost(pg.target.label, 740, 22, 300, 56, () => rnGo(pg.target, () => ReleaseNotesHistory(null, sel.appVersion)), card, 'small quiet').dataset.rnTarget = `${pg.target.kind}:${pg.target.id}`;
+    });
+  }
+  Back(() => (rnState.back ?? Activity)(), '戻る', 40, 834);
+}
+/** The entry points: お知らせ (activity) and ヒント. */
+function rnOpenHistory(source, back) { rnKpi('release_notes_history', { source }); return ReleaseNotesHistory(back); }
+/** Demo: the store builds come out after this account was created (an updater), nothing seen yet; the sheet shows now. */
+async function ReleaseNotesDemo() {
+  await L.releaseNotesDemo();
+  rnState.shown = false; promptSession.claimed = null;
+  if (!(await MaybeReleaseNotes())) {
+    // an account still in the FTUE gets no sheet on the real rules: show the newest note as the sheet for the demo
+    const h = await L.releaseNotes(RN_VERSION, rnLang());
+    const top = h.ok ? h.value.notes[0] : null;
+    if (!top) return Home();
+    rnState.sheet = { ...top, skipped: Math.max(0, h.value.notes.length - 1), hasPast: h.value.notes.length > 1 }; rnState.page = 0;
+    ReleaseNotesSheet();
+  }
 }
 
 // ================================================================= boot
@@ -8687,7 +8828,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ ReleaseNotes: () => ReleaseNotesDemo(), ReleaseNotesHistory: (src) => rnOpenHistory(src ?? 'notices', () => Activity()), Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     // R20 integration (§58.11): the one-prompt gate and a happy moment (review) for the flows
     prompts: { shown: () => sessionPrompt.shown, reset: () => sessionPrompt.reset(), claimForTest: (k) => sessionPrompt.claim(k), review: (m) => reviewMoment(m ?? 'first_win') },

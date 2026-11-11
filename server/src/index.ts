@@ -54,6 +54,7 @@ import { helpProblems } from './domain/help.js';
 import { practiceProblems } from './domain/practice.js';
 import { tipsProblems } from './domain/tips.js';
 import { showcaseProblems } from './domain/showcase.js';
+import { releaseNotesProblems } from './domain/releaseNotes.js';
 import type { TeamSummary } from './domain/teams.js';
 import { EventsService } from './domain/eventService.js';
 import { eventBoardKey, eventCronPlan, validateEvents } from './domain/events.js';
@@ -137,6 +138,7 @@ validateItems(baseMaster); // REQ-ITEM-*: tickets may not reach paid-only banner
 { const pr = practiceProblems(baseMaster); if (pr.length) throw new Error('master/practice.json: ' + pr.join('; ')); } // REQ-PRAC-003
 { const tp = tipsProblems(baseMaster, undefined, Number(DEFAULT_RULESET.maxWhips)); if (tp.length) throw new Error('master/tips.json: ' + tp.join('; ')); } // REQ-TUT-010
 { const sp = showcaseProblems(baseMaster); if (sp.length) throw new Error('master/showcase.json: ' + sp.join('; ')); } // REQ-SHOW-002
+{ const rp = releaseNotesProblems(baseMaster, undefined, Number(DEFAULT_RULESET.maxWhips)); if (rp.length) throw new Error('master/release-notes.json: ' + rp.join('; ')); } // REQ-NEW-002
 validateEvents(baseMaster, baseMaster.events); // REQ-EVENT-001
 validateLeagueAndWeather(baseMaster); // REQ-LEAGUE-* and per-course climate (REQ-TRACK-003)
 validateUx(baseMaster, new Set(collectItemIds(baseMaster))); // REQ-UXS-*: onboarding, missions, experiments, deletion

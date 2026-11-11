@@ -94,6 +94,8 @@ static class Program
         await PerformanceChecks.Run(Check);
         Console.WriteLine("== round 19: 観戦中の応援 (CheerModel: chips, three preset buttons, 2 s pace, burst, racer indicator + setting, reduced motion, KPI per race, replay markers; REQ-CHEER-*)");
         CheerChecks.Run(Check, Root, Ruleset());
+        Console.WriteLine("== round 21: アップデートのお知らせ (ReleaseNotesModel: once per updated version, one system prompt per session, nothing over maintenance / offline, pages, skip, target, past list, KPI; REQ-NEW-*)");
+        await ReleaseNotesChecks.Run(Check);
         Console.WriteLine("== round 19: 引き継ぎコード (issue checklist, generated once, redeem with one key, confirm, custom-token sign-in, SESSION_REPLACED; REQ-TRF-*)");
         await TransferCodeChecks.Run(Check);
         Console.WriteLine("== round 21: ディープリンク・再戦 (DeepLinkModel: parse, FTUE queue, offline, one neutral notice, never auto-spend, referrer once, KPI without the token; RematchModel; REQ-LINK-*)");

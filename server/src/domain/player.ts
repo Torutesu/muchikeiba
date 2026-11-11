@@ -244,6 +244,8 @@ export interface PlayerState {
   tips?: import('./tips.js').TipsState;
   /** REQ-SHOW-* (§62): プロフィールのショーケース — the card's selection (showcase.ts setShowcase; re-checked whenever the card is derived). */
   showcase?: import('./showcase.js').ShowcaseState;
+  /** REQ-NEW-009 (§64): app versions whose release notes were shown, and the FTUE baseline (releaseNotes.ts; bounded by releaseNotes.config.seenMax). */
+  releaseNotes?: import('./releaseNotes.js').ReleaseNotesState;
   /** REQ-TRF-*: 引き継ぎコード — the current code (no password, no hash), daily issues, the old-device cut-off, history (transferCode.ts). */
   transfer?: import('./transferCode.js').TransferState;
   /** REQ-CNS-*: 広告・分析の同意 — personalised ads / analytics choices, policy version, ATT / CMP status, history (privacyChoices.ts). */

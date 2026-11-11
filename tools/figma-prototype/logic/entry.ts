@@ -47,6 +47,7 @@ import { hallPlayersFrom } from '../../../server/src/http/hallPorts.js';
 import { MemoryPlayerRepo } from '../../../server/src/domain/service.js';
 import { MemoryReplayStore, MyReplaysService } from '../../../server/src/domain/myReplaysService.js';
 import { DEFAULT_RULESET } from '../../../server/src/domain/ruleset.js';
+import { BASE_RELEASE_NOTES } from '../../../server/src/domain/releaseNotes.js';
 import { computeRaceAdvice, adviceTextProblems, adviceTexts, type AdviceInput } from '../../../server/src/domain/raceAdvice.js';
 import type { AdviceQuery } from '../../../server/src/domain/raceAdviceService.js';
 import { applyRosterQuery, aptitudeFor, DEFAULT_QUERY, type RosterQuery, type RosterRow } from '../../../server/src/domain/roster.js';
@@ -897,6 +898,26 @@ export const MuchiLogic = {
   tipContext: (ctx: string) => tipsOf(master).contexts[ctx] ?? null,
   /** What the replay must never touch (REQ-TUT-004): the first-time rewards and the race counters, for the checks. */
   tutorialFacts: () => wrap(async () => { const s = await svc.state(ID); return { partner: s.flags.partnerHorseId ?? null, tutorialGacha: !!s.flags.tutorialGachaUsed, races: s.onboarding?.races ?? 0, horses: s.horses.length, free: s.wallet.free, paid: s.wallet.paid, claimed: [...(s.onboarding?.claimed ?? [])] }; }),
+
+  // ---------------------------------------------------------------- round 21: アップデートのお知らせ (REQ-NEW-*, contracts/protocol.md §64)
+  // What POST /v1/release-notes/check, POST /v1/release-notes/seen and GET /v1/release-notes return on the real rules
+  // (releaseNotes.ts + PlayerService), for an app version (x-client-version) and the language the screen shows.
+  releaseNotesCheck: (version: string | null, lang: 'ja' | 'en' = 'ja') => wrap(() => svc.releaseNotesCheck(ID, version, lang, Number(DEFAULT_RULESET.maxWhips))),
+  releaseNotesSeen: (version: string) => wrap(() => svc.releaseNotesSeen(ID, version)),
+  releaseNotes: (version: string | null, lang: 'ja' | 'en' = 'ja') => wrap(() => svc.releaseNotes(ID, version, lang, Number(DEFAULT_RULESET.maxWhips))),
+  releaseNotesKpi: (name: 'release_notes_view' | 'release_notes_target' | 'release_notes_history', props: Record<string, unknown>) => wrap(() => clientBatchSchema.parse({ platform: 'editor', appVersion: 'proto', events: [{ name, at: now(), props }] }).events.map(clientToKpi)[0]),
+  /**
+   * Demo only: the store builds come out tomorrow (the notes' release day moves after this account was created, so the
+   * account is an updater, not a new install) and nothing is seen yet. The account itself (its creation day, unlocks) is
+   * untouched; a reload brings the shipped notes back.
+   */
+  releaseNotesDemo: () => wrap(async () => {
+    const day = new Date(now() + 9 * 3_600_000 + DAY_MS).toISOString().slice(0, 10);
+    master.releaseNotes = { ...BASE_RELEASE_NOTES, notes: BASE_RELEASE_NOTES.notes.map((n) => ({ ...n, releasedOn: day })) };
+    const st = (await repo.get(ID))!; delete st.releaseNotes; await repo.put(st);
+    return day;
+  }),
+  releaseNotesFacts: () => wrap(async () => { const st = await svc.state(ID); return { seen: [...(st.releaseNotes?.seen ?? [])], baseline: st.releaseNotes?.baseline ?? null, free: st.wallet.free, paid: st.wallet.paid, items: { ...st.items } }; }),
 
   // ---------------------------------------------------------------- round 17: ヘルプセンター (REQ-HELP-*, contracts/protocol.md §48)
   // What GET /v1/help, /v1/help/articles/:id, /v1/help/search and the inquiry routes return, on the real rules, in the

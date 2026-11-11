@@ -75,4 +75,5 @@ node "$HERE/test/round20-review-prompt.test.mjs" # round 20: レビュー依頼 
 node "$HERE/test/round20-local-notifications.test.mjs" # round 20: 端末のローカル通知 — the digest, the shared planner, push categories / quiet hours switch the local kinds, cap, details off, English, the diff
 node "$HERE/test/round21-showcase.test.mjs" # round 21: トレーナーカード — demo cards (friend, under 13, blocked → neutral), the editor (earned only, strict save), my card, the share image in WASM without a player id, KPI
 node "$HERE/test/round21-deep-links.test.mjs" # round 21: ディープリンク・再戦 — share (one link per target, no id in the URL), open → the screen behind a confirmation, one neutral answer, revoke, KPI without tokens, rematch (window, someone left, everyone in → a new room on the same conditions)
+node "$HERE/test/round21-release-notes.test.mjs" # round 21: アップデートのお知らせ — a new install never, the updater once (skipped count, numbers from data, never the shop), seen idempotent, the past list JA / EN, KPI, nothing granted
 echo "built $SITE ($(du -sh "$SITE" | cut -f1))"

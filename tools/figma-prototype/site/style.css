@@ -726,3 +726,10 @@ html[data-reduce-motion="on"] .cheer-line.pulse, html[data-reduce-motion="on"] .
 .sc-rec { position: absolute; border-bottom: 1px solid rgba(150, 173, 187, .18); }
 .btn.choice.sc-opt.locked { opacity: .55; }
 .sc-horse-art { object-fit: contain; }
+
+/* round 21: アップデートのお知らせ (REQ-NEW-*) */
+.glass.rn-sheet .img.rn-art { border-radius: 4px; }
+.el.rn-dots { display: flex; gap: 10px; justify-content: flex-end; align-items: center; }
+.el.rn-dots i { width: 10px; height: 10px; border-radius: 50%; background: rgba(255, 255, 255, .28); }
+.el.rn-dots i.on { background: var(--cyan); }
+.help-row.rn-version.on { box-shadow: inset 3px 0 0 var(--cyan); }

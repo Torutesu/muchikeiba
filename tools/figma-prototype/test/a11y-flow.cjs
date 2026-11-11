@@ -248,6 +248,11 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('LinkConfirm'); await waitScreen('link-confirm'); await shot('link-confirm', english, 500);
     await show('FriendRoomResult'); await waitScreen('friend-room-result'); await page.locator('.screen.in .rm-press').click(); await page.waitForTimeout(600); await shot('rematch-waiting', english, 200);
     await show('RoomLobby'); await waitScreen('room-lobby'); await shot('room-lobby', english, 500);
+    // Round 21: アップデートのお知らせ (the sheet's first and last page, the past list) at the largest size (REQ-NEW-015)
+    await show('ReleaseNotes'); await waitScreen('release-notes'); await shot('release-notes', english, 500);
+    for (let i = 0; i < 4 && (await page.locator('.screen.in [data-action="rn-next"]').count()); i++) { await page.locator('.screen.in [data-action="rn-next"]').click(); await page.waitForTimeout(450); }
+    await shot('release-notes-last', english, 500);
+    await show('ReleaseNotesHistory', 'notices'); await waitScreen('release-notes-history'); await shot('release-notes-history', english, 500);
     // Round 17: おすすめフレンド (the friends screen's suggestions section)
     await show('Friends'); await waitScreen('friends'); await shot('friends-suggestions', english, 600);
     // Round 18: 練習レース (the setup screen at the largest size)

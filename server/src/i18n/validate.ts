@@ -22,7 +22,9 @@ const INTERNAL_SECTIONS = new Set(['ng', 'bannedSilks', 'assetCatalog', 'nicks',
   // REQ-TUT-010: the tip cards carry their own English side by side (checked by tips.ts tipsProblems)
   'tips',
   // REQ-SHOW-002 (§62): the showcase phrases and background names are JA + EN pairs of their own (checked by showcase.ts showcaseProblems)
-  'showcase']);
+  'showcase',
+  // REQ-NEW-002: the release notes carry their own English side by side (checked by releaseNotes.ts releaseNotesProblems)
+  'releaseNotes']);
 
 /** Every Japanese text of the player-facing master data, with where it is. */
 export function masterTexts(m: Master, v: VisualsMaster = VISUALS): { path: string; text: string }[] {

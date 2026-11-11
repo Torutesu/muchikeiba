@@ -1437,6 +1437,12 @@
   "再戦の受付は終わりました": "The rematch is closed",
   "この再戦には入れませんでした": "You are not in this rematch",
   "今は再戦できません": "You cannot rematch right now",
-  "通信できませんでした": "Could not connect"
+  "通信できませんでした": "Could not connect",
+  "_releaseNotes": "---- round 21: what's new per app version (ReleaseNotesModel, REQ-NEW-*)",
+  "アップデート情報": "What's new",
+  "はじめる": "Let's go",
+  "過去のアップデート情報": "Past updates",
+  "アップデート情報はオンラインで見られます": "What's new is available online",
+  "まだアップデート情報はありません": "No updates yet"
  }
 }

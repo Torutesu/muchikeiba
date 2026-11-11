@@ -1280,6 +1280,13 @@
   "同じ支部・同じレース・いいね・応援で出会った人と、共通のフレンドが2人以上いる人を表示します。ランク戦の相手は表示しません。": "Shows people from your branch, your races, likes and cheers, and people with 2 or more mutual friends. Ranked opponents are never shown.",
   "おすすめに表示しない：オン": "Don't show me in suggestions: on",
   "おすすめに表示しない：オフ": "Don't show me in suggestions: off",
-  "フレンドの上限に達しています": "You have reached the friend limit"
+  "フレンドの上限に達しています": "You have reached the friend limit",
+  "_cheer": "---- round 19: 観戦中の応援 (REQ-CHEER-*, §55; the cheer phrases and 「応援 ×{n}」 are in ui-en.json)",
+  "観戦": "Watch",
+  "フレンド部屋　·　ライブ": "Friend room · Live",
+  "出走馬　/　ライブ": "Runners / Live",
+  "いまの応援": "Cheers now",
+  "応援が届くと、ここに出ます": "Cheers show up here as they arrive",
+  "観戦して応援する": "Watch and cheer"
  }
 }

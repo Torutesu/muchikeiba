@@ -227,13 +227,15 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('MyInquiries'); await waitScreen('my-inquiries'); await shot('my-inquiries', english, 500);
     // Round 17: おすすめフレンド (the friends screen's suggestions section)
     await show('Friends'); await waitScreen('friends'); await shot('friends-suggestions', english, 600);
+    // Round 19: 観戦中の応援 (the spectate screen with a window of cheers) at the largest size
+    await show('Spectate'); await waitScreen('spectate'); await page.waitForTimeout(1300); await shot('spectate', english, 300);
     await show('Settings'); await waitScreen('settings'); await boxesClear('settings lists (largest)', SETTINGS_LISTS, english);
     await show('Home'); await waitScreen('home'); await page.waitForTimeout(700); await boxesClear('home top bar (largest)', HOME_BAR, english);
   };
   await keyScreens(false);
 
   // 3) a race: reduce motion, haptics off, one-handed right, whip hold
-  await page.evaluate(() => { globalThis.__vibrations = 0; });
+  await page.evaluate(() => { globalThis.__vibrations = 0; globalThis.__muchi.cheerStats = null; });
   await show('Home'); await waitScreen('home');
   await page.locator('.screen.in [data-label="レースへ"]').click(); await waitScreen('lobby');
   await page.locator('.screen.in [data-label="ランク戦に出る"]').click(); await waitScreen('race', 20000);
@@ -260,6 +262,9 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
   assert.match(hint, /^長押し あと\d$/, 'the hold hint: ' + hint);
   assert.equal(sawSpeed, false, 'reduce motion: no speed lines');
   assert.equal(await page.evaluate(() => globalThis.__vibrations), 0, 'haptics off: no vibration at all');
+  // Round 19 (REQ-CHEER-010): reduce motion — the racer's cheer chip shows its text, never a pulse
+  const cst = await page.evaluate(() => globalThis.__muchi.cheerStats);
+  assert.ok(cst && cst.shown > 0 && cst.pulses === 0, 'reduce motion: cheers shown without a pulse: ' + JSON.stringify(cst));
   await shot('result', false, 1000);
   // Round 15 photo mode at the largest size: Japanese, then English in place (the finished race stays in the engine)
   await page.locator('.screen.in [data-action="photo-result"]').click(); await waitScreen('photo', 20000); await shot('photo', false, 600);

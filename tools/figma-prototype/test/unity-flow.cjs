@@ -566,6 +566,33 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   // round 14 (REQ-MYRP-*): マイリプレイ — two demo races on the real engine → the list (best moments / recent) → 残す → the
   // replay sheet → rename (typed, NG word refused) → favourite, public → the player (WASM re-simulation: 2×, camera on
   // another horse, the last 200 m, share card + replay_share) → a friend's public replay → 「再生できません」 (retired ruleset)
+  // round 19 (REQ-CHEER-*, protocol §55): 観戦中の応援 — the lobby link → the spectate screen of a demo friend room → pick a horse
+  // → いけ！ (toast, the three buttons greyed for 2 s, back after) → the windows (lines, per-horse totals) → back (one cheer_send row)
+  async function cheerFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(() => globalThis.__muchi.show('RaceLobby')); await waitScreen('lobby');
+    await click('観戦'); await waitScreen('spectate'); await waitIn('.cheer-row');
+    assert.equal(await page.locator('.screen.in .cheer-row').count(), 12, 'cheer: one chip per horse');
+    assert.equal(await page.locator('.screen.in [data-cheer]').count(), 3, 'cheer: three preset buttons');
+    assert.equal(await page.locator('.screen.in input, .screen.in textarea, .screen.in [contenteditable]').count(), 0, 'cheer: no free text');
+    await shot('spectate', 400);
+    await page.locator('.screen.in .cheer-row[data-slot="4"]').click(); await waitIn('[data-target="4"]');
+    await page.locator('.screen.in [data-cheer="go"]').click(); await page.waitForTimeout(250);
+    assert.match(await page.locator('.toast').last().textContent(), /5番に「いけ！」/, 'cheer: the toast names the horse and the cheer');
+    assert.equal(await page.locator('.screen.in [data-cheer].disabled').count(), 3, 'cheer: the buttons grey for 2 s');
+    await shot('spectate-cheered-toast', 100);
+    await page.waitForFunction(() => document.querySelectorAll('.screen.in [data-cheer].disabled').length === 0, null, { timeout: 4000 });
+    await page.waitForFunction(() => Number(document.querySelector('.screen.in .cheer-burst')?.dataset.lines ?? 0) > 0, null, { timeout: 8000 });
+    assert.ok(await page.locator('.screen.in .cheer-row [data-total]:not([data-total="0"])').count() > 0, 'cheer: per-horse totals grow');
+    assert.ok(!/倍|お得|今だけ|残りわずか|コイン|ギフト|投げ銭/.test(await page.locator('.screen.in').innerText()), 'cheer: nothing sold, no pressure words');
+    await shot('spectate-burst', 300);
+    await click('戻る'); await waitScreen('lobby'); await page.waitForTimeout(300);
+    const kpi = await page.evaluate(() => globalThis.__muchi.lastCheerKpi);
+    assert.deepEqual(kpi.find((k) => k.name === 'cheer_send'), { name: 'cheer_send', s1: 'friend', count: 1 }, 'cheer: one cheer_send row for the visit');
+    assert.ok(kpi.some((k) => k.name === 'cheer_seen' && k.s2 === 'spectator'), 'cheer: one cheer_seen row');
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
+  }
+
   async function myReplaysFlow() {
     const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
     await page.evaluate(() => globalThis.__muchi.show('MyReplays')); await waitScreen('my-replays'); await waitIn('.rp-saved');
@@ -964,6 +991,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await rosterFlow();
   await recapFlow();
   await cupsFlow();
+  await cheerFlow();
   await page.evaluate(() => globalThis.__muchi.show('Scout')); await waitScreen('scout'); await shot('scout', 500);
   await click('提供割合'); await shot('scout-rates', 400); await click('BACK');
   await waitScreen('scout'); await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal'); await shot('scout-paid-reveal', 700);
@@ -982,8 +1010,13 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   // the race HUD (full layout) and the result screen in a race from the lobby
   await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
   await click('レースへ'); await waitScreen('lobby'); await click('ランク戦に出る'); await waitScreen('race', 20000);
+  await page.evaluate(() => { globalThis.__muchi.cheerStats = null; globalThis.__muchi.lastCheerKpi = null; });
   await rideRace(true);
   await waitScreen(['result'], 30000); await shot('race-result-day7', 900);
+  // round 19 (REQ-CHEER-007/013): spectators' cheers reached the racer's quiet chip; one cheer_seen (racer) row for the race
+  const cs = await page.evaluate(() => ({ stats: globalThis.__muchi.cheerStats, kpi: globalThis.__muchi.lastCheerKpi }));
+  assert.ok(cs.stats && cs.stats.shown > 0, 'race: the cheer chip showed cheers for the partner: ' + JSON.stringify(cs));
+  assert.ok(cs.kpi && cs.kpi.filter((k) => k.name === 'cheer_seen' && k.s2 === 'racer').length === 1 && !cs.kpi.some((k) => k.name === 'cheer_send'), 'race: one cheer_seen (racer) row, no cheer_send');
 
   // ------------------------------------------------------------------ 3. round 9
   // replay share card: the last 200 m re-simulated by ReplayClip (same hash as the live race), looping on the 3D view

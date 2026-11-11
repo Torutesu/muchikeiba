@@ -55,6 +55,10 @@ import { ReportsService, type ReportBody } from '../../../server/src/domain/repo
 import { MemoryPlayerReportRepo, PlayerReportsCore } from '../../../server/src/ops/playerReports.js';
 import { blocksView } from '../../../server/src/domain/blocks.js';
 import type { PlayerReportsApi } from '../../../server/src/http/admin.js';
+import {
+  blockHidden, cheerAdmit, cheerFanout, cheerMoments, cheerSummary, emptyTally, isCheerKind, tallyAdd, CHEER_KINDS, CHEER_MIN_INTERVAL_MS, CHEER_TEXT, CHEER_WINDOW_MS,
+  type CheerTally, type PendingCheer,
+} from '../../../server/src/domain/cheer.js';
 import { DEFAULT_MAINTENANCE, gateRequest, maintenanceStatus, type MaintenanceConfig } from '../../../server/src/domain/maintenance.js';
 // REQ-L10N-*: the server's English tables (master/locale-en.json + i18n/en.ts), the client's (ui-en.json) and the
 // prototype's own screen texts (proto-en.json), in one catalog with the server's template rules (katakana names romanized)
@@ -161,6 +165,10 @@ async function hallDemoHorse(uid: string, tpl: number, name: string, wins: numbe
   if (title) await svc.tournamentClose(uid, `proto_cup_${horseId}`, 1, null, title, horseId);
   return retire ? (await svc.retire(uid, horseId)).ceremony : horseId;
 }
+// round 19 (REQ-CHEER-*): the demo room of 観戦中の応援 (see MuchiLogic.cheer). Spectator ids are never shown to anyone.
+const CHEER_CROWD = ['demo_cheer_1', 'demo_cheer_2', 'demo_cheer_3', 'demo_cheer_4', 'demo_cheer_5'];
+const CHEER_TROLL = 'demo_cheer_blocked';
+let cheerRoom: { entrants: number; pending: PendingCheer[]; lastAt: number | null; tally: CheerTally; seed: number; n: number; lists: Map<string, ReadonlySet<string>> } | null = null;
 // round 16 (REQ-RECAP-*): the demo history of シーズンの振り返り (see MuchiLogic.recap)
 const RC_ID = 'demo_recap';
 const recapRepo = new MemoryPlayerRepo();
@@ -866,6 +874,54 @@ export const MuchiLogic = {
   fsugSetHidden: (hidden: boolean) => wrap(() => fsugSvc.setHidden(ID, hidden)),
   /** GET /v1/friends (names from the public profiles). */
   friendsList: () => wrap(() => fsugFriends.list(ID)),
+  // ---------------------------------------------------------------- round 19: 観戦中の応援 (REQ-CHEER-*, contracts/protocol.md §55)
+  // The race room's cheer rules on the real server code: the 2 s pace (cheerAdmit), the 1 s window fanned out to you with the
+  // single block list (cheerFanout + blockHidden), the race's counts and the replay moments. The crowd is simulated (a fixed
+  // seed); one demo spectator is on your block list, so their cheers never reach you.
+  cheer: {
+    kinds: CHEER_KINDS, text: CHEER_TEXT, minIntervalMs: CHEER_MIN_INTERVAL_MS, windowMs: CHEER_WINDOW_MS,
+    /** Start watching (or riding) a demo friend room of `entrants` horses. */
+    start(entrants = 12) {
+      cheerRoom = { entrants, pending: [], lastAt: null, tally: emptyTally(), seed: 19, n: 0,
+        lists: new Map<string, ReadonlySet<string>>([[ID, new Set([CHEER_TROLL])], ...CHEER_CROWD.map((c) => [c, new Set<string>()] as [string, ReadonlySet<string>]), [CHEER_TROLL, new Set<string>()]]) };
+      return { kinds: [...CHEER_KINDS], minIntervalMs: CHEER_MIN_INTERVAL_MS, windowMs: CHEER_WINDOW_MS };
+    },
+    /** One cheer from you (spectator) for a horse, through the room's admission rule. */
+    send(slot: number, kind: string, tick: number) {
+      const r = cheerRoom;
+      if (!r) return { ok: false, code: 'CHEER_OFF' };
+      if (!isCheerKind(kind)) return { ok: false, code: 'BAD_MESSAGE' };
+      const t = Date.now();
+      const refusal = cheerAdmit({ enabled: true, spectator: true, sentTick: tick, fin: false, lastAt: r.lastAt, slot, entrants: r.entrants, now: t });
+      if (refusal) return { ok: false, code: refusal };
+      r.lastAt = t;
+      r.pending.push({ from: ID, slot, kind });
+      tallyAdd(r.tally, tick);
+      return { ok: true };
+    },
+    /** Close the window: the crowd's cheers (focus = a horse the crowd likes) plus yours, as the room sends them to you. */
+    window(tick: number, focus = -1) {
+      const r = cheerRoom;
+      if (!r) return [];
+      r.n++;
+      const rnd = () => { r.seed = (r.seed * 1103515245 + 12345) & 0x7fffffff; return r.seed / 0x7fffffff; };
+      const crowd = [...CHEER_CROWD, CHEER_TROLL];
+      for (const from of crowd) {
+        if (rnd() < 0.45) continue;
+        const slot = focus >= 0 && (rnd() < 0.5 || r.n % 3 === 1) ? focus : Math.floor(rnd() * r.entrants);
+        r.pending.push({ from, slot, kind: CHEER_KINDS[Math.floor(rnd() * CHEER_KINDS.length)]! });
+        tallyAdd(r.tally, tick);
+      }
+      const cheers = r.pending; r.pending = [];
+      const msg = cheerFanout(cheers, [{ key: 'you', playerId: ID }], blockHidden(r.lists)).get('you');
+      return msg ? (JSON.parse(msg) as { n: [number, string, number][] }).n : [];
+    },
+    /** 「応援の多かった瞬間」 of the race so far (the replay markers). */
+    moments: () => (cheerRoom ? cheerMoments(cheerSummary(cheerRoom.tally)) : []),
+    blockedSpectator: () => CHEER_TROLL,
+    /** REQ-CHEER-013: the one KPI row of a race, as the server stores it. */
+    kpi: (name: 'cheer_send' | 'cheer_seen', props: Record<string, unknown>) => wrap(() => clientBatchSchema.parse({ platform: 'editor', appVersion: 'proto', events: [{ name, at: now(), props }] }).events.map(clientToKpi)[0]),
+  },
   fsugKpi: (shown: number) => wrap(() => clientBatchSchema.parse({ platform: 'editor', appVersion: 'proto', events: [{ name: 'fsug_view', at: now(), props: { shown } }] }).events.map(clientToKpi)[0]),
   /** The other side of a demo request (for the tests): their activity page, names resolved. */
   async fsugActivityOf(id: string) {

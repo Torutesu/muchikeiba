@@ -153,6 +153,12 @@ export const RELEASE_TARGET_KIND_NAMES = ['screen', 'help', 'tip'] as const;
 export const RELEASE_HISTORY_SOURCES = ['notices', 'tips', 'sheet'] as const;
 const appVersionStr = z.string().regex(/^\d{1,4}\.\d{1,4}\.\d{1,4}$/);
 const releasePage = z.number().int().min(1).max(5);
+/** REQ-CAL-015 (§65): the calendar's kinds and views (calendar.ts CALENDAR_KINDS; repeated here to keep kpi.ts import-free, a test keeps them equal). */
+export const CALENDAR_KPI_KINDS = [
+  'event', 'event_exchange', 'weekly_challenge', 'team_goal', 'league_season', 'season', 'season_pass', 'banner',
+  'tournament_registration', 'tournament', 'cup', 'maintenance', 'comeback',
+] as const;
+export const CALENDAR_VIEWS = ['month', 'week'] as const;
 /** REQ-CHEER-013: the watchable modes (domain/cheer.ts CHEER_MODES; repeated here to keep kpi.ts import-free). */
 export const CHEER_KPI_MODES = ['friend', 'cup', 'ranked', 'event', 'tournament'] as const;
 /** Events only the client can observe. Server-known events (purchase, gacha, race results…) are not accepted from clients. */
@@ -233,6 +239,9 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('release_notes_view'), at: z.number().int(), props: z.object({ appVersion: appVersionStr, stage: z.enum(RELEASE_NOTES_STAGES), page: releasePage, pages: releasePage }).strict().refine((p) => p.page <= p.pages, { message: 'page is past the last page', path: ['page'] }) }),
   z.object({ name: z.literal('release_notes_target'), at: z.number().int(), props: z.object({ appVersion: appVersionStr, page: releasePage, kind: z.enum(RELEASE_TARGET_KIND_NAMES), target: tipId }).strict() }),
   z.object({ name: z.literal('release_notes_history'), at: z.number().int(), props: z.object({ source: z.enum(RELEASE_HISTORY_SOURCES) }).strict() }),
+  // REQ-CAL-015 (§65): the calendar shown (month / week and how many rows) and a row opened (its kind). Marks are server events (calendar_mark).
+  z.object({ name: z.literal('calendar_view'), at: z.number().int(), props: z.object({ view: z.enum(CALENDAR_VIEWS), entries: z.number().int().min(0).max(200) }).strict() }),
+  z.object({ name: z.literal('calendar_entry_open'), at: z.number().int(), props: z.object({ kind: z.enum(CALENDAR_KPI_KINDS) }).strict() }),
   // REQ-CHEER-013 (§55.7): ONE row per race, never per tap — cheers this spectator sent / cheers shown to this player (racer
   // with the indicator on, or spectator) in that race. No horse, no target player, no sender ids.
   z.object({ name: z.literal('cheer_send'), at: z.number().int(), props: z.object({ mode: z.enum(CHEER_KPI_MODES), count: z.number().int().min(1).max(1000) }).strict() }),
@@ -301,6 +310,8 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'release_notes_view': return { name: e.name, s1: e.props.appVersion, s2: e.props.stage, value: e.props.page, count: e.props.pages };
     case 'release_notes_target': return { name: e.name, s1: e.props.appVersion, s2: e.props.kind, s3: e.props.target, value: e.props.page };
     case 'release_notes_history': return { name: e.name, s1: e.props.source };
+    case 'calendar_view': return { name: e.name, s1: e.props.view, value: e.props.entries };
+    case 'calendar_entry_open': return { name: e.name, s1: e.props.kind };
     case 'cheer_send': return { name: e.name, s1: e.props.mode, count: e.props.count };
     case 'cheer_seen': return { name: e.name, s1: e.props.mode, s2: e.props.role, count: e.props.count };
     case 'lnotif_scheduled': case 'lnotif_opened': return { name: e.name, s1: e.props.kind };

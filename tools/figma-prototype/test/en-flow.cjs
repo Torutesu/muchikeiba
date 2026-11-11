@@ -503,6 +503,12 @@ await shot('diagnostics', 600);
   await show('ReleaseNotesHistory', 'notices'); await waitScreen('release-notes-history'); await shot('release-notes-history', 500);
   assert.match(await page.locator('.screen.in').innerText(), /Cheer while you watch/, 'release notes: the list in English');
 
+  // round 21: 予定表 in English (REQ-CAL-003/009): rows, day labels and notes in English; times stay JST and say so
+  await show('Calendar'); await waitScreen('calendar'); await shot('calendar', 500);
+  assert.match(await page.locator('.screen.in .cal-list').innerText(), / JST/, 'calendar: the times say JST in English');
+  await page.locator('.screen.in [data-cal-mode="week"]').click(); await waitScreen('calendar'); await shot('calendar-week', 400);
+  await page.locator('.screen.in [data-cal-mode="month"]').click(); await waitScreen('calendar'); await page.waitForTimeout(300);
+
   // round 13: 支部の共同目標 in English (REQ-TGOAL-*): the week, after the demo races, the week result sheet
 
   // round 21: トレーナーカード in English (REQ-SHOW-014): the phrase and background from their JA + EN pair, labels from the

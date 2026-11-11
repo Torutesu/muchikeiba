@@ -88,6 +88,8 @@ static class Program
         await HelpCenterChecks.Run(Check);
         Console.WriteLine("== round 19: チュートリアルのやり直しとヒント集 (TipsModel: cards, NEW, 「？」, tours, seen batches; TutorialReplayModel: lessons on the device, never the FTUE's state; REQ-TUT-*)");
         await TipsChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 21: イベントカレンダー (CalendarModel: month / week lists, JST lines, paid rows dates only, marks with offline queue and rollback, KPI; REQ-CAL-*)");
+        await CalendarChecks.Run(Check, Root);
         Console.WriteLine("== round 17: おすすめフレンド (cards, request / dismiss with rollback, fsug_view once, offline, setting; REQ-FSUG-*)");
         await FriendSuggestionsChecks.Run(Check, Root);
         Console.WriteLine("== round 19: 画質・省電力・通信量 (auto by device class, battery saver, data saver downloads, storage / clear cache; REQ-PERF-*)");

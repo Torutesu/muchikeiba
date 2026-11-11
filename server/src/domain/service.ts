@@ -77,6 +77,7 @@ import { activityBadge, activityPage, markActivityRead, recordActivity } from '.
 import { markTipsSeen, tipsBadge, tipsIndex } from './tips.js';
 import { forgetShowcase, setShowcase, showcaseCopy, showcaseCopyKey, showcaseMine, type ShowcaseInput } from './showcase.js';
 import { checkReleaseNotes, markReleaseNotesSeen, releaseNotesHistory } from './releaseNotes.js';
+import { calendarView, markCalendar, type CalendarExternal } from './calendar.js';
 import { helpBadge, inquiryDetail, inquiryList, markIndexed, markInquiryRead, replyInquiry, submitInquiry, unindexedSummaries, voteHelp, type InquiryInput } from './help.js';
 import { fsugCard, fsugCardKey, fsugDismiss, fsugSelf, fsugSetHidden, ensureFsug, noteFsugRace, type FsugCard, type FsugDismissed, type FsugKind } from './friendSuggest.js';
 import { finishTraining, startTraining, trainingDelta, trainingTick, trainingView, useTrainingItem } from './training.js';
@@ -1635,6 +1636,12 @@ export class PlayerService {
   releaseNotesSeen(id: string, appVersion: string) { return this.tx(id, null, (s) => markReleaseNotesSeen(this.d.master, s, appVersion)); }
   /** REQ-NEW-010: past notes (reads only). */
   async releaseNotes(id: string, appVersion: string | null, lang: Locale = 'ja', maxWhips = 6) { return releaseNotesHistory(this.d.master, await this.load(id), appVersion, lang, this.d.clock(), maxWhips); }
+
+  // ---- イベントカレンダー (REQ-CAL-*, contracts/protocol.md §65) ----
+  /** REQ-CAL-004: the player's calendar (reads only; `ext` = tournaments and cups the HTTP layer read from their objects). */
+  async calendar(id: string, q: { from?: string | null; to?: string | null }, ext: CalendarExternal) { return calendarView(this.d.master, await this.load(id), q, this.d.clock(), ext); }
+  /** REQ-CAL-010: mark / unmark a row (idempotent; only the flag is stored, nothing is ever pushed for it). */
+  calendarMark(id: string, entryId: string, on: boolean, ext: CalendarExternal) { return this.tx(id, null, (s, now, emit) => markCalendar(this.d.master, s, entryId, on, now, ext, emit)); }
 
   // ---- ヘルプセンター (REQ-HELP-*, contracts/protocol.md §48) ----
   /** REQ-HELP-007: one vote per article (changeable), capped per game day. */

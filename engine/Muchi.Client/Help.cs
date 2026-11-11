@@ -42,8 +42,10 @@ namespace Muchi.Client
             /// <summary>Round 20: settings › privacy › ads and analytics, and the pre-prompt sheet (§58).</summary>
             PrivacyChoices = "privacy_choices",
             /// <summary>Round 20: settings › notifications (the device reminders article, §61).</summary>
-            Notifications = "notifications";
-        public static readonly string[] All = { GachaOdds, CoinShortfall, Purchase, RaceWhip, RaceResult, Training, Breeding, History, GiftBox, AccountLink, Deletion, Accessibility, Privacy, Storage, Practice, PrivacyChoices, Notifications };
+            Notifications = "notifications",
+            /// <summary>Round 21 (§65): the calendar's ? link → calendar.</summary>
+            Calendar = "calendar";
+        public static readonly string[] All = { GachaOdds, CoinShortfall, Purchase, RaceWhip, RaceResult, Training, Breeding, History, GiftBox, AccountLink, Deletion, Accessibility, Privacy, Storage, Practice, PrivacyChoices, Notifications, Calendar };
     }
 
     /// <summary>Inquiry categories (the first four are the §33 ticket topics).</summary>

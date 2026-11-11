@@ -1400,3 +1400,26 @@
 - REQ-NEW-018 データ：新しい PlayerState のキー `releaseNotes` はデータの開示（§51）で `play`。アカウント削除で消える。
 - REQ-NEW-019 KPI：`release_notes_view`（版・段・ページ）・`release_notes_target`（版・種類・行き先）・`release_notes_history`（入口）。§58 の分類は Round 20 の統合で付ける。
 - REQ-NEW-020 クライアント：C# の API とモデル・`SessionPrompts`、Unity `ReleaseNotesModel`、プロトタイプ（ムチ一閃の調子のシートと一覧、日英、文字の大きさ、e2e・英語の流れ・アクセシビリティの流れ）、Codex 向けの引き継ぎ。
+
+## 65. イベントカレンダー（予定表、TS＋C#、`src/domain/calendar.ts`・`Muchi.Client/Calendar.cs`・`Muchi.Game.CalendarModel`、`contracts/protocol.md` §65）
+拘束条件：読むだけ。予定のデータを写さず、各機能の唯一の正から組み立てる。何も配らない・何も売らない（E番号なし）。偽の急かしをしない。
+- REQ-CAL-001 集める予定：イベントレースと交換所（§30）・週替わりチャレンジ（§31）・支部の共同目標と支部対抗シーズン（§32・league）・ランク戦のシーズン・シーズンパスを買える月・大会の受付と開始（観戦）・参加しているプレイヤー主催カップ（§42）・予告中と開催中のスカウトのバナー・プレイヤーに見えるメンテナンス（§46）・本人の復帰キャンペーン（§20）。
+- REQ-CAL-002 唯一の正：どの行もその機能の正（`master.events`・`exchangeClosesAt`・`weekAt`・`weekKeyOf`・`seasonStartMs`・`seasonIdFor`・`passPurchaseInfo` の月・`bannerStatus`・`TournamentSummary`・カップのオブジェクト・`visibleWindows`・`comebackView`）を読んだ時に作る。予定表のための保存データは無い（印だけ）。
+- REQ-CAL-003 時刻：JST。`game_day` の行と `exact` の行の日はゲーム日（`progression.dayRollover`、REQ-DAY-001）、シーズン・パス・リーグは暦の月（REQ-DAY-004）。英語でも JST のまま「JST」と書く。
+- REQ-CAL-004 範囲：`GET /v1/calendar?from&to`（ゲーム日、含む）。35日まで。`from` は今日の35日前より後、`to` は今日の90日後まで。省略時は今日から35日。最大200行。
+- REQ-CAL-005 見える範囲：§4.3 の開放キー（`unlocksView` と同じ判定）。支部の行はメンバーだけ、カップは参加者だけ、復帰キャンペーンは本人の期間だけ。予告前のバナー・予告前や取り消したメンテナンスは出さない。
+- REQ-CAL-006 他のオブジェクト：大会・カップが読めないときはその種類を飛ばし `partial` に書く（予定表は失敗しない）。
+- REQ-CAL-007 有料のもの：パスとバナーは日付だけ（`paid: true`）。価格・コイン・購入の導線なし。バナーはスカウトの提供割合の画面へ、パスは行き先なし。
+- REQ-CAL-008 言葉：「今だけ」「残りわずか」「お得」「倍」「通常価格」・賭けの言葉（共通の表）・英語の禁止語を使わない。カウントダウンを出さない（終わりは実データの時刻だけ）。
+- REQ-CAL-009 名前：マスターの名前は応答の境界で訳す。大会の名前は運営の書いたまま。カップの名前（`cupName`）はプレイヤーの文字で訳さない。英語の応答に組み立てた日本語が残らない。
+- REQ-CAL-010 印：`PUT`／`DELETE /v1/calendar/marks/:entryId`。見えていて終わっていない行だけ（無い → 404、終わった → 409 `ended`、30件 → 409 `limit`）。何度でも同じ。過ぎた印は落とす。
+- REQ-CAL-011 通知を送らない：印でサーバーからプッシュ・メールを送らない。§61（端末の通知）が入ったら端末が印の行を予約する（統合のメモは §65.2）。
+- REQ-CAL-012 運営コンソール：`GET /v1/admin/calendar` で版ごとの全体の予定表（予告前のバナー・メンテナンスも）と重なり（メンテナンスが閉じるグループの行・同じ種類の行どうし）を見る。
+- REQ-CAL-013 ゲート：`/v1/calendar*` はグループ `core`（`all` のメンテナンスだけが閉じる）。
+- REQ-CAL-014 次にやること：新しいカードは足さない（既存の `exchange_closing`・`weekly_challenge`・`team_goal_near` が同じ正を読む）。
+- REQ-CAL-015 KPI：クライアント `calendar_view`（表示・行の数）・`calendar_entry_open`（種類）、サーバー `calendar_mark`（種類・on/off、変わった時だけ）。
+- REQ-CAL-016 データのダウンロード・削除：`calendar` は `play` に分類して印を出す。アカウント削除で消える。
+- REQ-CAL-017 ヘルプ：記事 `calendar`（予定表の見方・時刻・印・有料のものは日付だけ）と、ヒントのカード `calendar_tip`（記事へのリンク）。
+- REQ-CAL-018 クライアント：C# `ApiClient.GetCalendarAsync`・`MarkCalendarAsync`、Unity `CalendarModel`（月・週・日ごとの行・JST の表示・印の切り替えとオフラインの貯め置き・行き先）。
+- REQ-CAL-019 プロトタイプ：その他の「予定表」から月・週の一覧。ムチ一閃の調子（写真の背景・半透明の紺のパネル・シアンの小さなラベル・斜めのシアンの » ボタン）。日本語と英語、文字「特大」ではみ出さない。e2e・英語の流れ・アクセシビリティの流れで確かめる。
+- REQ-CAL-020 Codex への引き継ぎ：docs/handoff-codex-round21-event-calendar.md。

@@ -7,6 +7,7 @@ import type { Master } from '../domain/master.js';
 import { bannerStatus, carryOverRule, findBanner, finalPityGroup, oddsDisclosure, pityLabel } from '../domain/gacha.js';
 import { eventStatus } from '../domain/events.js';
 import { exchangeClosesAt } from '../domain/exchange.js';
+import { opsCalendar } from '../domain/calendar.js';
 import { dayRule, gameDayKey } from '../domain/time.js';
 import { normalizeInviteCode } from '../domain/invite.js';
 import { requireRole, type AdminPrincipal, type AdminRole, type AuditEntry, type AuditInput, type AuditQuery } from '../ops/admin.js';
@@ -371,6 +372,12 @@ export const adminRoutes: AdminRoute[] = [
   { method: 'GET', path: '/v1/admin/gacha/:bannerId/odds', role: 'viewer', write: false, action: 'gacha.odds.preview', handler: async (r) => {
     const { versionId, master } = await masterFor(r.ctx, r.query.get('versionId'), r.now);
     return { result: { versionId, odds: oddsDisclosure(master, findBanner(master, r.params.bannerId!)) } };
+  } },
+  // ---- イベントカレンダー (REQ-CAL-012, §65.3): the whole calendar of a version (unannounced banners and scheduled windows too) and its overlaps ----
+  { method: 'GET', path: '/v1/admin/calendar', role: 'viewer', write: false, action: 'calendar.view', handler: async (r) => {
+    const { versionId, master } = await masterFor(r.ctx, r.query.get('versionId'), r.now);
+    const tournaments = r.ctx.tournaments ? await r.ctx.tournaments.list().then((x) => x.tournaments).catch(() => null) : [];
+    return { result: { versionId, ...opsCalendar(master, { from: r.query.get('from'), to: r.query.get('to') }, r.now, tournaments), partial: tournaments === null ? ['tournaments'] : [] } };
   } },
   // ---- events (REQ-EVENT-*) ----
   { method: 'GET', path: '/v1/admin/events', role: 'viewer', write: false, action: 'events.list', handler: async (r) => {

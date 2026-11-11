@@ -2042,6 +2042,56 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.deepEqual([...new Set(rk.filter((e) => e.name === 'release_notes_history').map((e) => e.source))].sort(), ['notices', 'sheet', 'tips'], 'release_notes_history from all three entry points');
   const rnFacts1 = await page.evaluate(async () => (await globalThis.__muchi.logic.releaseNotesFacts()).value);
   assert.deepEqual([rnFacts1.free, rnFacts1.paid, rnFacts1.items], [rnFacts0.free, rnFacts0.paid, rnFacts0.items], 'nothing is granted');
+  // ------------------------------------------------------------------ 6. round 21: イベントカレンダー（予定表） (REQ-CAL-*)
+  // その他 › 見た目・お世話・仲間 › 予定表 (the eighth row), the month list (rows from each feature's own data, JST lines, paid
+  // rows dates only: the pass opens nothing, a banner opens its rates page), the week list, a mark (idempotent; the server's
+  // calendar_mark row; nothing pushed) and the KPI rows
+  await page.evaluate(() => globalThis.__muchi.demo('calendar')); await waitScreen('calendar', 60000); await page.waitForTimeout(400);
+  await page.evaluate(() => globalThis.__muchi.show('Settings', 'looks')); await waitScreen('settings'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-name="More"] .btn.row').count(), 8, 'the looks page holds eight rows (its limit)');
+  await page.locator('.screen.in .btn[data-action="calendar"]').click(); await waitScreen('calendar'); await page.waitForTimeout(500);
+  const calKinds = await page.locator('.screen.in .cal-row').evaluateAll((xs) => [...new Set(xs.map((x) => x.dataset.calKind))]);
+  for (const k of ['season', 'season_pass', 'tournament_registration', 'tournament']) assert.ok(calKinds.includes(k), `calendar: a ${k} row`);
+  const calText = await page.locator('.screen.in').innerText();
+  assert.match(calText, /（日本時間）/, 'calendar: times are labelled JST');
+  assert.ok(!/今だけ|残りわずか|倍|お得|通常価格|オッズ|購入する|買う/.test(calText), 'calendar: no urgency, price or buy wording');
+  assert.ok(!/[◎◈]\s*\d/.test(calText), 'calendar: no coin amounts');
+  const passRow = page.locator('.screen.in .cal-row[data-cal-kind="season_pass"]').first();
+  assert.equal(await passRow.getAttribute('data-link'), '', 'calendar: the pass row leads nowhere');
+  assert.match(await passRow.innerText(), /期間だけを載せています/, 'calendar: the pass row says dates only');
+  await shot('calendar-month', 300);
+  // a mark on the tournament registration: on, the count moves, then off; the server row once per change, no push
+  const outbox0 = await page.evaluate(async () => (await globalThis.__muchi.logic.calendarFacts()).value.outbox);
+  const regRow = page.locator('.screen.in .cal-row[data-cal-kind="tournament_registration"]').first();
+  const regId = await regRow.getAttribute('data-cal-entry');
+  await regRow.locator('[data-action="cal-mark"]').click(); await waitScreen('calendar'); await page.waitForTimeout(500);
+  assert.equal(await page.locator(`.screen.in .cal-row[data-cal-entry="${regId}"] [data-action="cal-mark"]`).getAttribute('aria-pressed'), 'true', 'calendar: the row is marked');
+  assert.equal(await page.locator('.screen.in [data-cal-marks]').getAttribute('data-cal-marks'), '1', 'calendar: one mark');
+  await shot('calendar-marked', 300);
+  await page.locator(`.screen.in .cal-row[data-cal-entry="${regId}"] [data-action="cal-mark"]`).click(); await waitScreen('calendar'); await page.waitForTimeout(500);
+  const calFacts = await page.evaluate(async () => (await globalThis.__muchi.logic.calendarFacts()).value);
+  assert.deepEqual(calFacts.kpi.slice(-2).map((k) => k.s2), ['on', 'off'], 'calendar: calendar_mark on / off');
+  assert.equal(calFacts.outbox, outbox0, 'calendar: a mark queues no push');
+  // the week list: seven days, every row touching each day
+  await page.locator('.screen.in [data-cal-mode="week"]').click(); await waitScreen('calendar'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .cal-day').count(), 7, 'calendar: the week list shows seven days');
+  await shot('calendar-week', 300);
+  await page.locator('.screen.in [data-action="cal-next"]').click(); await waitScreen('calendar'); await page.waitForTimeout(300);
+  assert.notEqual(await page.locator('.screen.in [data-cal-range]').getAttribute('data-cal-range'), null);
+  // a banner row (when one is announced in the range) opens its rates page; a tournament row the spectate list
+  await page.locator('.screen.in [data-cal-mode="month"]').click(); await waitScreen('calendar'); await page.waitForTimeout(400);
+  const bannerRow = page.locator('.screen.in .cal-row[data-cal-kind="banner"]').first();
+  if (await bannerRow.count()) {
+    assert.equal(await bannerRow.getAttribute('data-link'), 'gacha_rates', 'calendar: a banner row links to its rates page');
+    await bannerRow.click(); await waitScreen('odds'); await page.waitForTimeout(300);
+    await page.evaluate(() => globalThis.__muchi.show('Calendar')); await waitScreen('calendar'); await page.waitForTimeout(300);
+  }
+  const ck = await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name.startsWith('calendar_')));
+  assert.ok(ck.some((e) => e.name === 'calendar_view' && e.view === 'month' && e.entries > 0), 'calendar_view (month)');
+  assert.ok(ck.some((e) => e.name === 'calendar_view' && e.view === 'week'), 'calendar_view (week)');
+  // the help article from the side panel
+  await page.locator('.screen.in [data-action="cal-help"]').click(); await waitScreen('help-article'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-article]').getAttribute('data-article'), 'calendar', 'calendar: its help article');
   // ------------------------------------------------------------------ 6. round 17: おすすめフレンド (REQ-FSUG-*)
   // people met through the real paths (an event, a friend room, a like, a cheer, mutual friends); the opted-out player and
   // the ranked-only opponent never appear; 申請する goes through the friend request flow; 表示しない is remembered; the switch

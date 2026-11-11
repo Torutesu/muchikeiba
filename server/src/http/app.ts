@@ -56,6 +56,7 @@ import { bulkBodySchema } from '../domain/roster.js';
 import type { TeamGoalBrief } from '../domain/nextAction.js';
 import type { HostedCupsService } from '../domain/hostedCupService.js';
 import { clientHeaders, gateRequest, maintenanceOf, maintenanceStatus } from '../domain/maintenance.js';
+import { CALENDAR_ENTRY_ID_RE, type CalendarExternal } from '../domain/calendar.js';
 import { helpArticle, helpIndex, helpOf, INQUIRY_CATEGORIES, PLATFORMS, searchHelp, type InquirySummary } from '../domain/help.js';
 import type { TransferService } from '../domain/transferService.js';
 import type { LinkService, LinkTargets } from '../domain/linkService.js';
@@ -117,6 +118,7 @@ export type PlayerMethod =
   | 'tips' | 'tipsSeen'
   | 'showcaseMine' | 'showcaseSave' | 'showcaseViewer' | 'showcaseForget'
   | 'releaseNotesCheck' | 'releaseNotesSeen' | 'releaseNotes'
+  | 'calendar' | 'calendarMark'
   | 'helpFeedback' | 'helpInquirySubmit' | 'helpInquiries' | 'helpInquiry' | 'helpInquiryRead' | 'helpInquiryIndexed' | 'adminInquiry' | 'adminInquiryReply'
   | 'recaps' | 'recap' | 'recapProgress'
   | 'dataExportView' | 'dataExportRequest' | 'dataExportTake' | 'dataExportCollect' | 'dataExportReady' | 'dataExportFailed' | 'dataExportFile'
@@ -371,6 +373,20 @@ async function indexInquiries(c: AppContext, u: string, items: InquirySummary[])
     await c.player(u).invoke('helpInquiryIndexed', u, items.map((x) => ({ ticketId: x.ticketId, updatedAt: x.updatedAt })));
   } catch (e) { console.error('inquiry index write failed', (e as Error).message); }
 }
+
+/**
+ * REQ-CAL-006 (§65): what the calendar reads from other objects — the tournament index and the player's open cups (the
+ * same reads as GET /v1/tournaments and GET /v1/cups). A failing read is null (the calendar lists it under `partial`);
+ * a service this deployment does not run is an empty list.
+ */
+async function calendarExternal(c: AppContext, u: string): Promise<CalendarExternal> {
+  const [tournaments, cups] = await Promise.all([
+    c.tournaments ? c.tournaments.list().then((r) => r.tournaments).catch(() => null) : Promise.resolve([]),
+    c.hostedCups ? c.hostedCups.list(u).then((r) => r.active.map((x) => ({ cupId: x.cupId, cupName: x.cupName, opensAt: x.opensAt, closesAt: x.closesAt, status: x.status }))).catch(() => null) : Promise.resolve([]),
+  ]);
+  return { tournaments, cups };
+}
+const calendarEntryParam = (s: string) => { if (!CALENDAR_ENTRY_ID_RE.test(s)) throw new AppError('NOT_FOUND', 'no such calendar entry'); return s; };
 
 const id = z.string().min(1).max(64);
 
@@ -1298,6 +1314,13 @@ export const routes: Route[] = [
     return c.player(u).invoke('releaseNotesSeen', u, b.appVersion);
   } },
   { method: 'GET', path: '/v1/release-notes', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('releaseNotes', u, clientHeaders(r.headers).version, resolveLocale(r), await maxWhipsOf(c)) },
+  // REQ-CAL-004/010 (§65): the calendar (gate group `core`: closed only by an `all` window; it reads only) and its marks
+  { method: 'GET', path: '/v1/calendar', auth: 'player', handler: async (r, _p, c, u) => {
+    const q = new URL(r.url).searchParams;
+    return c.player(u).invoke('calendar', u, { from: q.get('from'), to: q.get('to') }, await calendarExternal(c, u));
+  } },
+  { method: 'PUT', path: '/v1/calendar/marks/:entryId', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('calendarMark', u, calendarEntryParam(p.entryId!), true, await calendarExternal(c, u)) },
+  { method: 'DELETE', path: '/v1/calendar/marks/:entryId', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('calendarMark', u, calendarEntryParam(p.entryId!), false, { tournaments: [], cups: [] }) },
   { method: 'GET', path: '/v1/help', auth: 'player', handler: async (r, _p, c) => helpIndex(c.master, resolveLocale(r)) },
   { method: 'GET', path: '/v1/help/articles/:articleId', auth: 'player', handler: async (r, p, c) => {
     if (!/^[a-z0-9_]{2,40}$/.test(p.articleId!)) throw new AppError('NOT_FOUND', 'NOT_FOUND');

@@ -253,6 +253,11 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     for (let i = 0; i < 4 && (await page.locator('.screen.in [data-action="rn-next"]').count()); i++) { await page.locator('.screen.in [data-action="rn-next"]').click(); await page.waitForTimeout(450); }
     await shot('release-notes-last', english, 500);
     await show('ReleaseNotesHistory', 'notices'); await waitScreen('release-notes-history'); await shot('release-notes-history', english, 500);
+    // Round 21: 予定表 (the month list, the week list, the その他 looks page with its eighth row) at the largest size (REQ-CAL-019)
+    await show('Calendar'); await waitScreen('calendar'); await shot('calendar', english, 500);
+    await page.locator('.screen.in [data-cal-mode="week"]').click(); await waitScreen('calendar'); await shot('calendar-week', english, 400);
+    await page.locator('.screen.in [data-cal-mode="month"]').click(); await waitScreen('calendar'); await page.waitForTimeout(300);
+    await show('Settings', 'looks'); await waitScreen('settings'); await shot('settings-looks', english, 400);
     // Round 17: おすすめフレンド (the friends screen's suggestions section)
     await show('Friends'); await waitScreen('friends'); await shot('friends-suggestions', english, 600);
     // Round 18: 練習レース (the setup screen at the largest size)

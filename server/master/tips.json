@@ -96,7 +96,10 @@
       "body": { "ja": "観戦中は馬番を選んで「いけ！」などを送れる。届くのは数だけで、誰が送ったかは出ない。", "en": "While watching, pick a horse and send a cheer such as Go!. Racers see only the count, never who sent it." } },
     { "id": "showcase_tip", "topic": "social", "unlock": null, "art": "branch", "help": "showcase",
       "title": { "ja": "トレーナーカードを飾る", "en": "Your trainer card" },
-      "body": { "ja": "愛馬と、自分で手に入れた記録を飾れる。一言は決まった文から選ぶ。背景は実績で増える。", "en": "Show off a horse of yours and records you earned. Your line comes from a fixed list. Achievements add backgrounds." } }
+      "body": { "ja": "愛馬と、自分で手に入れた記録を飾れる。一言は決まった文から選ぶ。背景は実績で増える。", "en": "Show off a horse of yours and records you earned. Your line comes from a fixed list. Achievements add backgrounds." } },
+    { "id": "calendar_tip", "topic": "social", "unlock": null, "art": "cups", "help": "calendar",
+      "title": { "ja": "予定は予定表で", "en": "Dates in one place" },
+      "body": { "ja": "イベント・大会・カップ・メンテナンスの日付を1つの表で見られる。時刻は日本時間。印は自分用のメモ。", "en": "See event, tournament, cup and maintenance dates in one list. Times are JST. Marks are only a note for you." } }
   ],
   "contexts": {
     "gacha_odds": "scout_pity_tip",

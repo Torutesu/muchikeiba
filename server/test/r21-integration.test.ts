@@ -8,6 +8,13 @@ import { clientEventSchema } from '../src/domain/kpi.js';
 import { KPI_ESSENTIAL, KPI_EVENT_CLASS, kpiClassOf } from '../src/domain/kpiConsent.js';
 import { DEFAULT_MAINTENANCE, EXEMPT_ROUTES, endpointGroup, gateRequest, jstToMs, type MaintenanceConfig } from '../src/domain/maintenance.js';
 import { routes } from '../src/http/app.js';
+import { m } from './helpers.js';
+import { MemoryPlayerRepo, PlayerService } from '../src/domain/service.js';
+import { seededRng } from '../src/domain/rng.js';
+import { MemoryLinkDirectory } from '../src/domain/linkService.js';
+import { buildExportDocument, DEX_CLASSIFICATION } from '../src/domain/dataExport.js';
+import { MemoryExportStore, runDataExportJob, type DataExportJobPorts } from '../src/domain/dataExportService.js';
+import { runAccountDeletion, type DeletionPorts } from '../src/domain/accountDeletion.js';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8');
@@ -44,6 +51,86 @@ describe('§58 KPI classification of the Round 21 events (REQ-CNS-012, §58.7)',
       expect(cs, n).toContain(`"${n}"`);
     }
     for (const n of ALL_R21_KPI) expect(q, n).toContain(n);
+  });
+});
+
+describe('§51 data export and account deletion × Round 21 state', () => {
+  const NOW = Date.UTC(2026, 10, 11, 3);
+  async function seeded() {
+    let now = NOW;
+    const repo = new MemoryPlayerRepo();
+    const svc = new PlayerService(repo, { master: m, rng: seededRng(21), clock: () => now, verifiers: {} });
+    await svc.bootstrap('dx');
+    await svc.tx('dx', null, (st) => {
+      st.showcase = { horseId: null, pins: [], taTrackIds: [], phraseId: null, backgroundId: 'bg_default', updatedAt: now };
+      st.releaseNotes = { seen: ['1.2.0'], baseline: '1.1.0' };
+      st.calendar = { marks: [{ id: 'season_1', kind: 'season', until: now + 86_400_000 }] };
+      return true;
+    });
+    const links = new MemoryLinkDirectory();
+    await links.put({ token: 'AbCd2345EfGh', ownerId: 'dx', type: 'room', targetKey: 'room:123456', data: {}, day: '2026-11-11', createdAt: now, expiresAt: now + 86_400_000, revokedAt: null }, 30, now);
+    return { svc, repo, links, now: () => now, advance: (ms: number) => { now += ms; } };
+  }
+  it('showcase (profile), releaseNotes and calendar (play) are exported and classified; the links the player made are listed without their tokens', async () => {
+    const w = await seeded();
+    const s = await w.svc.state('dx');
+    const mine = (await w.links.listOf('dx', '2026-11-11', w.now())).links;
+    const doc = buildExportDocument(m, s, { ledger: [], gacha: [], names: {}, reportsMade: [], kpiEvents: null, linksMade: mine }, 'dex_r21', 'ja', w.now());
+    expect(doc.unclassified).toEqual([]);
+    expect(DEX_CLASSIFICATION.showcase).toEqual({ section: 'profile' });
+    expect(DEX_CLASSIFICATION.releaseNotes).toEqual({ section: 'play' });
+    expect(DEX_CLASSIFICATION.calendar).toEqual({ section: 'play' });
+    expect(doc.profile.showcase).toMatchObject({ backgroundId: 'bg_default' });
+    expect(doc.play.releaseNotes).toEqual({ seen: ['1.2.0'], baseline: '1.1.0' });
+    expect(doc.play.calendar).toEqual({ marks: [{ id: 'season_1', kind: 'season', until: w.now() + 86_400_000 }] });
+    expect(doc.social.links).toEqual({ available: true, items: [{ type: 'room', createdAt: w.now(), expiresAt: w.now() + 86_400_000 }] });
+    expect(JSON.stringify(doc)).not.toContain('AbCd2345EfGh');
+    // the directory could not be read → said so, the export still completes
+    const doc2 = buildExportDocument(m, s, { ledger: [], gacha: [], names: {}, reportsMade: [], kpiEvents: null, linksMade: null }, 'dex_r21b', 'ja', w.now());
+    expect(doc2.social.links).toEqual({ available: false, items: [] });
+    // §51.5 names the Round 21 parts
+    const p = read('contracts/protocol.md');
+    const s515 = p.slice(p.indexOf('### 51.5'), p.indexOf('### 51.6'));
+    for (const k of ['§62', '§63', '§64', '§65']) expect(s515, k).toContain(k);
+  });
+  it('the export job reads the links through its optional port (a failing directory never fails the export)', async () => {
+    const w = await seeded();
+    const store = new MemoryExportStore();
+    let ready: unknown = null;
+    const ports: DataExportJobPorts = {
+      master: () => m,
+      take: async () => ({ requestId: 'dex_job', lang: 'ja', attempt: 1 }),
+      collect: async (u) => ({ state: await w.svc.state(u), ledger: [], gacha: [], now: w.now() }),
+      linksMade: async (u) => (await w.links.listOf(u, '2026-11-11', w.now())).links,
+      store, ready: async (_u, _r, info) => { ready = info; }, failed: async () => undefined,
+    };
+    expect((await runDataExportJob(ports, 'dx')).status).toBe('ready');
+    const body = JSON.parse([...store.files.values()].find((f) => f.contentType.startsWith('application/json'))!.body) as { social: { links: unknown } };
+    expect(body.social.links).toMatchObject({ available: true, items: [{ type: 'room' }] });
+    expect(ready).toBeTruthy();
+    const broken: DataExportJobPorts = { ...ports, linksMade: async () => { throw new Error('down'); } };
+    store.files.clear();
+    expect((await runDataExportJob(broken, 'dx')).status).toBe('ready');
+    const body2 = JSON.parse([...store.files.values()].find((f) => f.contentType.startsWith('application/json'))!.body) as { social: { links: unknown } };
+    expect(body2.social.links).toEqual({ available: false, items: [] });
+  });
+  it('deletion wipes showcase, releaseNotes and calendar with the state, and the directory forgets the links (every link turns unavailable)', async () => {
+    const w = await seeded();
+    const tok = (await w.svc.requestDeletion('dx', null)) as { confirmToken: string };
+    await w.svc.requestDeletion('dx', tok.confirmToken);
+    w.advance(15 * 86_400_000);
+    const ports = {
+      start: async (u: string) => { await w.svc.deletionStart(u); }, snapshot: (u: string) => w.svc.deletionSnapshot(u),
+      markStep: async (u: string, st: never) => { await w.svc.deletionMarkStep(u, st); },
+      friends: { removeFriend: async () => undefined, dropOutgoing: async () => undefined, dropIncoming: async () => undefined },
+      directory: { forget: async (u: string) => { w.links.forget(u); } }, leaderboards: { forget: async () => undefined, deleteGhosts: async () => undefined },
+      finalize: (u: string) => w.svc.deletionFinalize(u), retain: async () => undefined, wipe: (u: string) => w.svc.wipe(u),
+    } as unknown as DeletionPorts;
+    const before = await w.svc.state('dx');
+    expect([!!before.showcase, !!before.releaseNotes, !!before.calendar]).toEqual([true, true, true]);
+    await runAccountDeletion(ports, 'dx', w.now());
+    expect(w.repo.get('dx')).toBeNull();
+    expect(await w.links.get('AbCd2345EfGh')).toBeNull();
   });
 });
 

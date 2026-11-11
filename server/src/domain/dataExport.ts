@@ -447,6 +447,11 @@ export interface DexExternal {
   kpiEvents: { rows: Record<string, unknown>[]; windowDays: number } | null;
   /** REQ-CERR-019 (§60.9): client error samples that carry this player's id. Absent = none; null = could not be read. */
   clientErrors?: DexClientErrorRow[] | null;
+  /**
+   * R21 integration (§63.7): the share links this player made that still open (DirectoryDO). Never the token (a link is a
+   * key to its target; the links screen shows it). Absent = none read; null = could not be read.
+   */
+  linksMade?: { type: string; createdAt: number; expiresAt: number }[] | null;
 }
 /** One client error sample as its player sees it in the export (ops/clientErrors.ts madeBy). */
 export interface DexClientErrorRow { at: number; category: string | null; title: string | null; appVersion: string; platform: string; deviceModel: string; osVersion: string }
@@ -573,6 +578,9 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
       } : null,
       team: s.team ? { teamId: s.team.teamId, joinedAt: s.team.joinedAt, cooldownUntil: s.team.cooldownUntil, joinRequests: s.team.outgoing.map((o) => ({ teamId: o.teamId, at: o.at })) } : null,
       teamFeedTeams: [...(feed?.postedIn ?? [])],
+      // §63 (R21 integration): the links this player made that still open — the kind and the dates, never the token
+      links: ext.linksMade === null ? { available: false, items: [] as { type: string; createdAt: number; expiresAt: number }[] }
+        : { available: true, items: (ext.linksMade ?? []).map((l) => ({ type: l.type, createdAt: l.createdAt, expiresAt: l.expiresAt })) },
       stable: stable ? { layout: clone(stable.layout) ?? null, likesReceived: stable.likes ?? 0 } : null,
       invite: ref ? {
         redeemedCode: ref.invitedBy?.code ?? null, redeemedAt: ref.invitedBy?.at ?? null, milestones: [...(ref.invitedBy?.milestones ?? [])],

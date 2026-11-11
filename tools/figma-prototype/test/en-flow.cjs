@@ -304,6 +304,22 @@ module.exports = async function enFlow(browser, base, out, errors) {
     await page.evaluate(() => globalThis.__muchi.logic.reviewPrompt.demo(false));
   }
 
+  // round 22: 昇級戦 in English (REQ-PROMO-020): the start card, the home label, the pass and fail sheets
+  {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await show('PromotionResult', 'start'); await waitScreen('result'); await waitIn('.pp-card'); await shot('promotion-start', 500);
+    assert.match(await page.locator('.screen.in .pp-card').innerText(), /Promotion series begins/, 'promo: the banner in English');
+    await show('PromotionResult', 'one'); await waitScreen('result'); await waitIn('.pp-card');
+    await show('Home'); await waitScreen('home'); await waitIn('.pp-home'); await shot('promotion-home', 500);
+    await show('PromotionResult', 'passed'); await waitScreen('result'); await waitIn('.pp-sheet'); await shot('promotion-pass', 500);
+    assert.match(await page.locator('.screen.in .pp-sheet').innerText(), /Promotion to Class B confirmed/, 'promo: the pass sheet in English');
+    await page.locator('.screen.in .pp-close').click(); await page.waitForTimeout(500);
+    await show('PromotionResult', 'failed'); await waitScreen('result'); await waitIn('.pp-sheet'); await shot('promotion-fail', 500);
+    assert.match(await page.locator('.screen.in .pp-sheet').innerText(), /Not promoted this time/, 'promo: the fail sheet in English');
+    await page.locator('.screen.in .pp-close').click(); await page.waitForTimeout(500);
+    await page.evaluate(() => globalThis.__muchi.logic.promotion.demo('near'));
+  }
+
   // round 20: 通知 in English (REQ-LNOTIF-007): settings with the device reminders and the upcoming list, the pre-permission dialog
   {
     const waitIn = (sel, timeout = 20000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });

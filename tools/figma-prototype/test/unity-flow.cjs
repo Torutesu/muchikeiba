@@ -492,6 +492,48 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await page.evaluate(() => globalThis.__muchi.logic.reviewPrompt.demo(false));
   }
 
+  // round 22 (REQ-PROMO-*): 昇級戦 — real ranked results reach the line: the start banner and empty pips on the result → one
+  // top-3 (○◌◌) and 「昇級戦 2/3」 on the home → two top-3: the pass sheet (gold, ack = seen, never again) → a failed series: the
+  // sheet with the setback → the sheet waits when another prompt showed this session (inline only); nothing granted
+  async function promotionFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    const wallet = await page.evaluate(async () => (await globalThis.__muchi.logic.view()).wallet);
+    await page.evaluate(() => { globalThis.__muchiPromo = []; return globalThis.__muchi.show('PromotionResult', 'start'); });
+    await waitScreen('result'); await waitIn('.pp-card[data-status="start"]');
+    assert.match(await page.locator('.screen.in .pp-card').innerText(), /昇級戦 開始/, 'promo: the start banner');
+    assert.equal(await page.locator('.screen.in .pp-pip.open').count(), 3, 'promo: three open pips');
+    await shot('promotion-start', 500);
+    await page.evaluate(() => globalThis.__muchi.show('PromotionResult', 'one')); await waitScreen('result'); await waitIn('.pp-card[data-status="active"]');
+    assert.equal(await page.locator('.screen.in .pp-pips').getAttribute('data-marks'), '○◌◌', 'promo: one top pip');
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home'); await waitIn('.pp-home');
+    assert.match(await page.locator('.screen.in .pp-home').innerText(), /昇級戦 2\/3/, 'promo: the home label');
+    await shot('promotion-home', 500);
+    await page.evaluate(() => globalThis.__muchi.show('PromotionResult', 'passed')); await waitScreen('result'); await waitIn('.pp-sheet.pass');
+    assert.match(await page.locator('.screen.in .pp-sheet').innerText(), /B級へ昇級確定/, 'promo: the pass sheet');
+    await shot('promotion-pass', 600);
+    await page.locator('.screen.in .pp-close').click();
+    await page.waitForFunction(() => (globalThis.__muchiPromo ?? []).some((x) => x.ack), null, { timeout: 15000 });
+    assert.equal(await page.locator('.screen.in .pp-sheet').count(), 0, 'promo: the sheet closed');
+    assert.equal(await page.evaluate(async () => (await globalThis.__muchi.logic.promotion.view()).value.series.seen), true, 'promo: seen after the sheet');
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
+    assert.equal(await page.locator('.screen.in .pp-sheet').count(), 0, 'promo: a seen outcome never shows again');
+    await page.evaluate(() => globalThis.__muchi.show('PromotionResult', 'failed')); await waitScreen('result'); await waitIn('.pp-sheet.fail');
+    assert.match(await page.locator('.screen.in .pp-sheet').innerText(), /昇級ならず/, 'promo: the fail sheet');
+    assert.match(await page.locator('.screen.in .pp-sheet').innerText(), /ptに戻りました/, 'promo: the setback');
+    const text = await page.locator('.screen.in').innerText();
+    for (const w of ['今だけ', '残りわずか', 'お得', '倍']) assert.ok(!text.includes(w), 'promo: no urgency / shop word: ' + w);
+    await shot('promotion-fail', 600);
+    await page.locator('.screen.in .pp-close').click(); await page.waitForTimeout(400);
+    // §58.11: another prompt already showed this session — the outcome stays on the card, the sheet waits
+    await page.evaluate(async () => { await globalThis.__muchi.logic.promotion.demo('passed'); globalThis.__muchi.prompts.reset(); globalThis.__muchi.prompts.claimForTest('consent'); return globalThis.__muchi.show('PromotionResult', 'passed', false); });
+    await waitScreen('result'); await waitIn('.pp-card[data-status="passed"]');
+    assert.equal(await page.locator('.screen.in .pp-sheet').count(), 0, 'promo: no sheet after another prompt');
+    assert.equal((await page.evaluate(() => globalThis.__muchiPromo)).at(-1).sheet, 'deferred');
+    assert.deepEqual(await page.evaluate(async () => (await globalThis.__muchi.logic.view()).wallet), wallet, 'promo: nothing granted');
+    await page.evaluate(async () => { globalThis.__muchi.prompts.reset(); await globalThis.__muchi.logic.promotion.demo('near'); });
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
+  }
+
   // round 18 (REQ-HGOAL-*): 馬ごとの目標 — confirmed races for the partner → the goals panel on the horse detail → the full chain →
   // pin to home → the home strip (hgoal_view home once) → tap → back to the chain → unpin, all on the real server rules
   async function horseGoalsFlow() {
@@ -1254,6 +1296,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await myReplaysFlow();
   await horseGoalsFlow();
   await reviewPromptFlow();
+  await promotionFlow(); // round 22: 昇級戦
   await rosterFlow();
   await recapFlow();
   await cupsFlow();

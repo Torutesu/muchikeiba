@@ -218,6 +218,12 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('ReviewPrompt', 'soft'); await waitScreen('review-ask'); await page.waitForSelector('.screen.in .rev-soft', { timeout: 15000 }); await shot('review-soft', english, 500); // round 20 (REQ-REV-015)
     await page.locator('.screen.in .rev-yes').click(); await waitScreen('review-native'); await page.waitForSelector('.screen.in .rev-os', { timeout: 15000 }); await shot('review-native', english, 500);
     await page.evaluate(() => globalThis.__muchi.logic.reviewPrompt.demo(false));
+    await show('PromotionResult', 'start'); await waitScreen('result'); await page.waitForSelector('.screen.in .pp-card', { timeout: 15000 }); await shot('promotion-start', english, 500); // round 22 (REQ-PROMO-020)
+    await show('PromotionResult', 'passed'); await waitScreen('result'); await page.waitForSelector('.screen.in .pp-sheet', { timeout: 15000 }); await shot('promotion-pass', english, 500);
+    await page.locator('.screen.in .pp-close').click(); await page.waitForTimeout(400);
+    await show('PromotionResult', 'failed'); await waitScreen('result'); await page.waitForSelector('.screen.in .pp-sheet', { timeout: 15000 }); await shot('promotion-fail', english, 500);
+    await page.locator('.screen.in .pp-close').click(); await page.waitForTimeout(400);
+    await page.evaluate(() => globalThis.__muchi.logic.promotion.demo('near'));
     await show('HorseGoals', await page.evaluate(async () => (await globalThis.__muchi.logic.view()).flags.partnerHorseId)); await waitScreen('horse-goals'); await page.waitForSelector('.screen.in .hg-row', { timeout: 15000 }); await shot('horse-goals', english, 500);
     await show('CupCreate'); await waitScreen('cup-create'); await shot('cup-create', english, 500);
     await show('CupJoin'); await waitScreen('cup-join'); await shot('cup-join', english, 500);

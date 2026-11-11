@@ -1396,6 +1396,17 @@
   "通知センターに静かに届きます（仮の許可）": "Delivered quietly to Notification Center (provisional)",
   "端末の設定で通知がオフになっています": "Notifications are turned off in the device settings",
   "通知はまだ許可されていません": "Notifications are not allowed yet",
-  "リマインダーの設定はオンラインで変えられます": "You can change reminders when you are online"
+  "リマインダーの設定はオンラインで変えられます": "You can change reminders when you are online",
+  "_promotion": "---- round 22: 昇級戦と降級の猶予 (§68, Promotion.cs / PromotionModel)",
+  "昇級戦 {n}/{m}": "Promotion series {n}/{m}",
+  "{a}戦で{b}着以内が{n}回で突破": "Finish top {b} {n} times in {a} races to win",
+  "降級の猶予 残り{n}戦": "Demotion protection: {n} races left",
+  "{c}級へ昇級確定": "Promotion to Class {c} confirmed",
+  "昇級ならず": "Not promoted this time",
+  "シーズンの締めで{c}級に上がります": "You move up to Class {c} when the season closes",
+  "ポイントは{n}ptに戻りました。あと{m}ptでもう一度挑めます": "Your points went back to {n}. {m} more points and you can try again",
+  "昇級戦 開始": "Promotion series begins",
+  "昇級ラインに到達。ここからが本番だ": "Promotion line reached. Now it counts",
+  "昇級戦のルール": "Promotion series rules"
  }
 }

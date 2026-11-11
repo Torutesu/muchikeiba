@@ -85,6 +85,8 @@ export const CODE_EN: Record<string, string> = {
   '{cls}級': 'Class {cls}',
   '最終順位 {n}位': 'Final position: {n:ord}',
   '{from}級から{to}級へ昇格': 'Promoted from Class {from} to Class {to}',
+  '昇級戦を突破して{to}級へ昇格': 'Won the promotion series: up to Class {to}',
+  '昇級戦を突破': 'Won the promotion series',
   'タイムアタックの記録': 'Time attack record',
   'このコースの自己ベスト': 'Your best on this course',
   'よく使った脚質': 'Most-used running style',
@@ -435,6 +437,9 @@ export const CODE_EN: Record<string, string> = {
   '共通のフレンド{n}人': '{n} mutual friends',
   '共通のフレンド1人': '1 mutual friend',
   'データのダウンロードの準備ができました': 'Your data download is ready',
+  // Round 22 (§68 × §40): a promotion at the season close
+  '昇級戦を突破して{to}級に昇級しました': 'You won your promotion series and moved up to Class {to}',
+  '{from}級から{to}級に昇級しました': 'You moved up from Class {from} to Class {to}',
 
   // ---- 個人データの開示・ダウンロード (dataExport.ts, protocol §51; REQ-DEX-015). Values in the summary are never translated
   'アカウントに保存されているあなたのデータ（プロフィール・設定・馬・コインと購入の履歴・フレンドなど）をまとめてダウンロードできます。準備ができるとお知らせに届きます。ファイルは{days}日後に削除されます。':

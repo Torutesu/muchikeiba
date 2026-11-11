@@ -16,6 +16,7 @@
  */
 import { CHEER_MIN_INTERVAL_MS } from './cheer.js';
 import helpJson from '../../master/help.json';
+import { promotionRulesOf } from './promotion.js';
 import { AppError } from './errors.js';
 import type { Master } from './master.js';
 import type { PlayerState } from './player.js';
@@ -194,6 +195,12 @@ function tokenValue(env: TokenEnv, name: string, a?: string, b?: string): string
     case 'cheer_interval_sec': return String(CHEER_MIN_INTERVAL_MS / 1000); // §55 REQ-CHEER-004
     // Round 20: §61 the device reminders' daily cap (remote config)
     case 'lnotif_daily_cap': return String(m.progression.localNotifications?.dailyCap ?? 2);
+    // Round 22: §68 the promotion series rules (remote config; the article reads them, never a number in its text)
+    case 'promo_races': return String(promotionRulesOf(m).races);
+    case 'promo_need': return String(promotionRulesOf(m).needTop);
+    case 'promo_place': return String(promotionRulesOf(m).topPlace);
+    case 'promo_setback': return fmtInt(promotionRulesOf(m).setbackPoints);
+    case 'promo_grace': return String(promotionRulesOf(m).graceRaces);
     default: throw new Error(`unknown token ${name}`);
   }
 }

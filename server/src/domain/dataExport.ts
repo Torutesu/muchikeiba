@@ -400,6 +400,8 @@ export const DEX_CLASSIFICATION: Record<keyof PlayerState | DexExtensionKey, Dex
   friendSuggest: x('social'), horseGoals: x('horses'),
   // §59 (Round 20): when the store review was asked, the moment, the pre-question answer (nothing is ever granted for it)
   reviewPrompt: x('analytics'),
+  // §68 (Round 22): the promotion series (own places in ranked races), passed keys, setback, grace window and shields
+  promotion: x('play'),
   // keys added by modules through `PlayerState & { … }`
   collection: x('play'), silksEditor: x('profile'), stable: x('social'), teamFeed: x('social'), teamGoal: x('play'),
   // Round 18 integration: §48 inquiries (text, replies, votes) and §47 the reporter's daily counter (its target ids are not exported)
@@ -616,6 +618,7 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
       } : null,
       hall: clone(s.hall) ?? null, collection: omit(st.collection as { cheerRefs?: unknown } | undefined, 'cheerRefs'), teamGoal: omit(st.teamGoal as { pending?: unknown } | undefined, 'pending'),
       comeback: clone(s.comeback) ?? null, nextAction: clone(s.nextAction) ?? null, nudges: clone(s.nudges) ?? null,
+      promotion: clone(s.promotion) ?? null, // §68: own results only (no other player)
     },
     devices: (push?.devices ?? []).map((d) => ({ platform: d.platform, addedAt: d.addedAt, lastSeenAt: d.lastSeenAt, locale: d.locale ?? null, pushTokenEnd: maskToken(d.token) })),
     analytics: {

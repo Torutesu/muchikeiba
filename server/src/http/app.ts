@@ -105,6 +105,7 @@ export type PlayerMethod =
   | 'roster' | 'rosterLock' | 'rosterFavorite' | 'rosterPreview' | 'rosterBulk' | 'rosterTournament'
   | 'horseGoals' | 'pinHorseGoal' | 'pinnedHorseGoal'
   | 'reviewPrompt' | 'reviewPromptCheck' | 'reviewPromptAnswer'
+  | 'promotion' | 'promotionAck'
   | 'myReplays' | 'replayPrepareSave' | 'replayCommitSave' | 'replayForget' | 'replayUpdate' | 'replayDelete' | 'replayOwnRef' | 'replayShared' | 'replayViewed'
   | 'raceAdvice' | 'practiceCatalog'
   | 'photoCatalog' | 'photos' | 'photoSave' | 'photoDelete'
@@ -689,6 +690,12 @@ export const routes: Route[] = [
   { method: 'POST', path: '/v1/review-prompt/:promptId/answer', auth: 'player', handler: async (r, p, c, u) => {
     if (!/^rp_[0-9]{1,9}$/.test(p.promptId!)) throw new AppError('NOT_FOUND', 'unknown review prompt');
     return c.player(u).invoke('reviewPromptAnswer', u, p.promptId!, (await body(r, z.object({ step: z.enum(REVIEW_STEPS) }).strict())).step);
+  } },
+  // 昇級戦と降級の猶予 (REQ-PROMO-013/014, contracts/protocol.md §68): reads and a seen mark — maintenance group `core`
+  { method: 'GET', path: '/v1/promotion', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('promotion', u) },
+  { method: 'POST', path: '/v1/promotion/ack', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ seriesId: z.string().regex(/^\d{4}-\d{2}:[A-Za-z0-9_]{1,16}:\d{1,3}$/) }).strict());
+    return c.player(u).invoke('promotionAck', u, b.seriesId);
   } },
   { method: 'GET', path: '/v1/horses/:horseId/career', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('horseCareer', u, p.horseId!) },
   { method: 'GET', path: '/v1/hall', auth: 'player', handler: async (r, _p, c, u) => { const q = hallPage(r); return hall(c).mine(u, q.cursor, q.limit); } },

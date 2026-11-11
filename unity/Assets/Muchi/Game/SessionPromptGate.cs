@@ -14,6 +14,9 @@ namespace Muchi.Game
         Notifications = 1,
         /// <summary>§59: the store review request (soft sheet or the OS sheet).</summary>
         Review = 2,
+        /// <summary>§68 (Round 22): the promotion series outcome sheet (passed / failed). Not in <see cref="SessionPromptGate.Pick"/>:
+        /// it is claimed on the result screen or the home when due; when the gate is taken the outcome shows inline only.</summary>
+        PromotionOutcome = 3,
     }
 
     /// <summary>

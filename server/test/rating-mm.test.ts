@@ -36,12 +36,15 @@ describe('season classes (REQ-RATE-002)', () => {
     s.season.points = 350;
     s.seasonPass.xp = 900;
     const r = rollSeason(m, s, Date.UTC(2026, 11, 2));
-    expect(r).toEqual({ closed: true, from: 'C', to: 'B' });
+    expect(r).toMatchObject({ closed: true, from: 'C', to: 'B', seasonId: '2026-11' });
     expect(s.season).toEqual({ id: '2026-12', classId: 'B', points: 0, races: 0 });
     expect(s.seasonPass.xp).toBe(0);
     s.season.points = 10;
-    expect(rollSeason(m, s, Date.UTC(2027, 0, 2)).to).toBe('C');
-    expect(rollSeason(m, s, Date.UTC(2027, 0, 3)).closed).toBe(false);
+    // §68: the first close after a promotion is inside the grace window — the shield keeps B once (REQ-PROMO-011)
+    expect(rollSeason(m, s, Date.UTC(2027, 0, 2)).to).toBe('B');
+    s.season.points = 10;
+    expect(rollSeason(m, s, Date.UTC(2027, 1, 2)).to).toBe('C');
+    expect(rollSeason(m, s, Date.UTC(2027, 1, 3)).closed).toBe(false);
   });
 });
 

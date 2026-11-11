@@ -1469,6 +1469,21 @@
   "許可済み": "Allowed",
   "拒否": "Denied",
   "端末の確認：通知を許可しました（プロトタイプでは確認画面を出しません）": "Device prompt: notifications allowed (the prototype does not show the prompt)",
-  "端末の設定を開きます（プロトタイプでは開きません）": "Opens the device settings (not in the prototype)"
+  "端末の設定を開きます（プロトタイプでは開きません）": "Opens the device settings (not in the prototype)",
+  "_promotion": "---- round 22: 昇級戦と降級の猶予 (§68)",
+  "昇級戦　/　{c}級 → {d}級": "Promotion series  /  Class {c} → Class {d}",
+  "{n}pt　·　昇級戦 {a}/{b}": "{n} pts  ·  promotion series {a}/{b}",
+  "昇級戦 {a}/{b}　{s}": "Promotion series {a}/{b}  {s}",
+  "ポイントは{n}ptに戻りました": "Your points went back to {n}",
+  "クラスが上がるのはシーズンの締め": "Your class goes up when the season closes",
+  "ライン {n}pt　·　いま {m}pt": "Line {n} pts  ·  now {m} pts",
+  "昇級戦　/　突破": "Promotion series  /  won",
+  "昇級戦　/　届かず": "Promotion series  /  fell short",
+  "一閃、届いた。": "One flash of the whip, and it landed.",
+  "次の一閃で取り返せ。": "Win it back with the next flash.",
+  "シーズンの締めで{c}級に上がります。上がった後の最初の{n}戦は、締めで一度だけ降級しません。": "You move up to Class {c} when the season closes. For your first {n} races after that, a season close will not demote you, once.",
+  "ポイントは{n}ptに戻りました。あと{m}ptでもう一度挑めます。": "Your points went back to {n}. {m} more points and you can try again.",
+  "直線の一閃が届いた": "The whip in the straight got there",
+  "仕掛けが一歩遅れた": "Your move came a step too late"
  }
 }

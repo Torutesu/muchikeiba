@@ -891,6 +891,7 @@ async function RaceResult(f) {
   const r = f.result;
   const finishTick = r.place > 0 ? f.finishTicks[r.place - 1] : -1;
   const passBefore = await L.passView();
+  const promoBefore = await L.promotion.view(); // round 22 (§68): which series was running before this race
   // round 11: the field met (図鑑) and whether the partner's skill fired (実績) go with the result, like a room's settlement
   // round 14 (REQ-MYRP-001): the race's confirmed inputs + hash go with the result, so it shows in マイリプレイ
   const li = JSON.parse(engine.LastRaceInputs());
@@ -900,6 +901,8 @@ async function RaceResult(f) {
   const missions = await L.missions();
   await refresh();
   const rewards = applied.ok ? applied.value : { coins: 0, seasonPoints: 0, firstWinBonus: 0 };
+  const promoAfter = await L.promotion.view();
+  raceCtx.promo = promoAfter.ok ? { view: promoAfter.value, beforeId: promoBefore.ok ? promoBefore.value.series?.id ?? null : null } : null;
   show(ResultScreen, f, rewards, passAfter.xp - passBefore.xp, passAfter, missions.ok ? missions.value : []);
 }
 /** The left result panel of 10-race-result (kicker, big place, stats, one CTA); x/y are the panel's corner. */
@@ -947,7 +950,86 @@ function ResultScreen(f, rewards, passXp, pass, missions) {
     toast(k.ok ? (k.value.alreadySaved ? '保存済みです' : 'リプレイを保存しました') : k.code === 'REPLAY_LIMIT' ? '保存できるのはここまでです。不要なリプレイを削除してください' : k.message);
   }).classList.add('rp-keep-result');
   if (!first) Ghost('写真を撮る', 1286, 724, 274, 60, () => PhotoOpen('result', currentScreen)).dataset.action = 'photo-result'; // round 15
+  if (!first && raceCtx.promo) PromoResultCard(raceCtx.promo); // round 22 (§68)
   EnToggle();
+}
+// ================================================================= round 22: 昇級戦と降級の猶予 (REQ-PROMO-*, contracts/protocol.md §68)
+// The ranked result shows the promotion series on the real promotion.ts rules: the start banner on the race that reached the
+// line, the pips (○ top · ● miss · ◌ to run · – not run), the rule line, and when the series is decided the outcome sheet —
+// through the session's one-prompt gate (§58.11): when another prompt already showed this session the outcome stays on the
+// card only and the sheet waits for the home. The class still changes at the season close. Nothing is sold or granted.
+// Mirrors unity/Assets/Muchi/Game/PromotionModel.cs.
+const PROMO_GLYPH = { top: '○', miss: '●', open: '◌', skip: '–' };
+const promoMarks = (x) => (x?.pips ?? []).map((p) => PROMO_GLYPH[p] ?? '◌').join('');
+const promoHomeLabel = (v) => (v?.enabled && v.series?.status === 'active' && v.series.next ? `昇級戦 ${v.series.next}/${v.series.races}` : null);
+const promoRuleLine = (x) => `${x.races}戦で${x.topPlace}着以内が${x.needTop}回で突破`;
+const promoPending = (v) => !!(v?.enabled && v.series && (v.series.status === 'passed' || v.series.status === 'failed') && !v.series.seen);
+function promoLog(x) { (globalThis.__muchiPromo ??= []).push(x); }
+/** The pips row: one circle per race of the series. */
+function PromoPips(x, px, py, parent, size = 34) {
+  const row = el('pp-pips', px, py, x.races * (size + 18), size, parent);
+  row.dataset.marks = promoMarks(x);
+  row.setAttribute('aria-label', promoMarks(x));
+  x.pips.forEach((p, i) => { const c = el('pp-pip ' + p, i * (size + 18), 0, size, size, row); c.dataset.pip = p; });
+  return row;
+}
+/** The card on the ranked result: start banner / progress / outcome, the rule line. */
+function PromoResultCard(ctx) {
+  const v = ctx.view, x = v?.series;
+  if (!v?.enabled || !x) return null;
+  const started = x.status === 'active' && x.results.length === 0 && x.id !== ctx.beforeId;
+  const c = Glass('Promotion series', 900, 196, 520, 318, undefined, .86); c.classList.add('pp-card', 'rise');
+  c.dataset.status = started ? 'start' : x.status;
+  Kicker('昇級戦　/　' + v.classId + '級 → ' + v.toClassId + '級', 28, 22, c, { w: 460, size: 15 });
+  const title = started ? '昇級戦 開始' : x.status === 'passed' ? `${v.toClassId}級へ昇級確定` : x.status === 'failed' ? '昇級ならず' : promoHomeLabel(v);
+  Txt(title, 28, 74, 464, 34, x.status === 'passed' || started ? GOLD : WHITE, c, { weight: 700, ls: '.06em', nowrap: true }).classList.add('pp-title');
+  if (started) Txt('昇級ラインに到達。ここからが本番だ', 28, 122, 464, 16, WHITE, c, { weight: 500, nowrap: true }).classList.add('pp-lead');
+  PromoPips(x, 28, started ? 162 : 134, c);
+  Txt(promoRuleLine(x), 28, started ? 214 : 190, 464, 16, MUTED, c, { nowrap: true }).classList.add('pp-rule');
+  const foot = x.status === 'failed' && x.setbackTo != null ? `ポイントは${fmt(x.setbackTo)}ptに戻りました` : x.status === 'passed' ? 'クラスが上がるのはシーズンの締め' : `ライン ${fmt(v.line ?? 0)}pt　·　いま ${fmt(v.points)}pt`;
+  Txt(foot, 28, started ? 250 : 226, 464, 15, SOFT, c, { nowrap: true }).classList.add('pp-foot');
+  if (promoPending(v)) {
+    if (sessionPrompt.claim('promotion')) PromoOutcome(v, () => {});
+    else promoLog({ sheet: 'deferred', id: x.id });
+  }
+  return c;
+}
+/** The outcome sheet (passed / failed). Close = seen (POST /v1/promotion/ack); the sheet never shows again for this series. */
+function PromoOutcome(v, after) {
+  const x = v.series, pass = x.status === 'passed';
+  promoLog({ sheet: x.status, id: x.id });
+  const host = cur;
+  const scrim = document.createElement('div'); scrim.className = 'scrim'; host.appendChild(scrim);
+  const d = Dialog('Promotion outcome', 760, 470); d.classList.add('pp-sheet', pass ? 'pass' : 'fail'); d.style.zIndex = 41;
+  Kicker(pass ? '昇級戦　/　突破' : '昇級戦　/　届かず', 48, 36, d, { w: 600, gold: pass });
+  Txt(pass ? `${v.toClassId}級へ昇級確定` : '昇級ならず', 48, 112, 664, 44, pass ? GOLD : WHITE, d, { weight: 700, ls: '.06em', nowrap: true }).classList.add('pp-sheet-title');
+  Txt(pass ? '一閃、届いた。' : '次の一閃で取り返せ。', 48, 172, 664, 20, WHITE, d, { weight: 500, nowrap: true }).classList.add('pp-tag');
+  PromoPips(x, 48, 222, d, 40);
+  const body = pass
+    ? `シーズンの締めで${v.toClassId}級に上がります。上がった後の最初の${v.rules.graceRaces}戦は、締めで一度だけ降級しません。`
+    : `ポイントは${fmt(x.setbackTo ?? v.points)}ptに戻りました。あと${fmt(Math.max(0, (v.line ?? 0) - (x.setbackTo ?? v.points)))}ptでもう一度挑めます。`;
+  Txt(body, 48, 290, 664, 16, MUTED, d, { lh: 1.6 }).classList.add('pp-body');
+  const close = async () => {
+    const a = await L.promotion.ack(x.id);
+    promoLog({ ack: x.id, ok: a.ok });
+    scrim.remove(); d.remove();
+    after();
+  };
+  Cta('つづける', 48, 368, 330, close, d).classList.add('pp-close');
+  TextLink('昇級戦のルール', 420, 386, 220, () => HelpArticle('promotion_series', 'list', currentScreen), d).classList.add('pp-help');
+  return d;
+}
+/** Demo entry (show('PromotionResult', state)): a ranked result after the real results of the demo state. */
+async function PromoResultDemo(state = 'start', fresh = true) {
+  if (fresh) sessionPrompt.reset(); // the demo state is a player opening the app (a new session), like the review demo
+  await L.promotion.demo(state);
+  const v = await L.promotion.view();
+  await refresh();
+  const place = state === 'failed' ? 9 : state === 'start' ? 2 : state === 'one' ? 1 : 3;
+  raceCtx = { tutorial: false, trackName: '青葉競馬場 芝1600m', trackId: 'aoba_turf_1600', beginner: false, ftue: false, config: { raceId: 'demo_promo' },
+    promo: v.ok ? { view: v.value, beforeId: state === 'start' ? null : v.value.series?.id ?? null } : null };
+  const f = { result: { place, runners: 12, won: place === 1, time: '1:35.8', line: place <= 3 ? '直線の一閃が届いた' : '仕掛けが一歩遅れた', code: 'demo', tip: '', margin: '', rows: [] } };
+  return ResultScreen(f, { coins: 0, seasonPoints: 0, firstWinBonus: 0 }, 0, { level: 1, xpToNextLevel: 0 }, []);
 }
 function ResultDetails(r, rewards, passXp, pass, missions) {
   Sheet('着順と報酬', 'レース結果　/　詳細', (s, close, y) => {
@@ -1220,7 +1302,8 @@ async function Home() {
   // round 20 (REQ-CNS-008): a new privacy policy version asks again on the next home (decided before home is drawn)
   const cnsDue = await consentHomeDue();
   if (cnsDue) return ConsentPrompt(Home, cnsDue);
-  const [missions, fw, bond, training] = await Promise.all([L.missions(), L.firstWinBonus(), p ? L.bond(p.id) : null, unlock('training').unlocked ? L.training() : null]);
+  const [missions, fw, bond, training, promoR] = await Promise.all([L.missions(), L.firstWinBonus(), p ? L.bond(p.id) : null, unlock('training').unlocked ? L.training() : null, L.promotion.view()]);
+  const promo = promoR.ok ? promoR.value : null; // round 22 (§68)
   Clear('home'); SetArt('Art/home-paddock');
   const u = player.unlocks;
   // top left: season / class (④)
@@ -1229,7 +1312,7 @@ async function Home() {
   const cls = L.master.classes.find((c) => c.id === player.season.classId);
   if (unlock('season').unlocked) {
     Txt(`クラス ${player.season.classId}`, 24, 54, 200, 22, WHITE, season, { weight: 700, ls: '.08em' });
-    Txt(cls?.promotePoints ? (player.season.points >= cls.promotePoints ? `${fmt(player.season.points)}pt　·　昇級ラインに到達` : `${fmt(player.season.points)}pt　·　昇級まで あと${fmt(cls.promotePoints - player.season.points)}pt`) : `${fmt(player.season.points)}pt　·　最上位クラス`, 150, 59, 300, 15, MUTED, season, { weight: 500, nowrap: true });
+    Txt(promoHomeLabel(promo) ? `${fmt(player.season.points)}pt　·　${promoHomeLabel(promo)}` : cls?.promotePoints ? (player.season.points >= cls.promotePoints ? `${fmt(player.season.points)}pt　·　昇級ラインに到達` : `${fmt(player.season.points)}pt　·　昇級まで あと${fmt(cls.promotePoints - player.season.points)}pt`) : `${fmt(player.season.points)}pt　·　最上位クラス`, 150, 59, 300, 15, MUTED, season, { weight: 500, nowrap: true });
   } else {
     Txt('ルーキー', 24, 54, 200, 22, WHITE, season, { weight: 700, ls: '.08em' });
     Txt('シーズン・クラスは' + unlockText('season'), 150, 59, 300, 14, SOFT, season, { nowrap: true });
@@ -1269,6 +1352,9 @@ async function Home() {
   pc.style.cursor = 'pointer'; pc.addEventListener('click', () => Stable());
   // ② race: the largest, bottom right
   Caption(player.rating.rankedRaces < L.master.beginnerRaces ? `初心者マッチ　あと${L.master.beginnerRaces - player.rating.rankedRaces}戦　·　12頭` : 'ランク戦　·　12頭　·　約90秒', 1134, 604, undefined, 15, WHITE).classList.add('tshadow');
+  // round 22 (§68, REQ-PROMO-017): 「昇級戦 2/3」 with the pips over the race button; the grace window under the class
+  if (promoHomeLabel(promo)) { const pl = Caption(`${promoHomeLabel(promo)}　${promoMarks(promo.series)}`, 1134, 572, undefined, 17, GOLD); pl.classList.add('tshadow', 'pp-home'); }
+  else if (promo?.enabled && promo.grace) { const gl = Caption(`降級の猶予 残り${promo.grace.racesLeft}戦`, 1134, 572, undefined, 15, CYAN); gl.classList.add('tshadow', 'pp-grace'); }
   Cta('レースへ', 1110, 636, 416, RaceLobby, undefined, 'hero');
   if (bonus) toast(`ログインボーナス ${bonus.track === 'beginner' ? '初心者' : ''}${bonus.day}日目：${rewardText(bonus.reward)}`);
   NavBar(0);
@@ -1278,6 +1364,7 @@ async function Home() {
   await NextCard(); // round 16: 次にやること, bottom centre (the top bar stays as it is)
   await GoalPinStrip(); // round 18: the pinned horse goal, above the next card
   lnRefresh().catch(() => {}); // round 20 (REQ-LNOTIF-011): the app came to the front → plan the device reminders again
+  if (promoPending(promo) && sessionPrompt.claim('promotion')) PromoOutcome(promo, () => {}); // round 22: an outcome that waited
   MaybeLinkPrompt('Home', Home);
 }
 /** ③ today's to-do (login bonus, daily missions, first-win bonus) in a drawer. */
@@ -6446,7 +6533,7 @@ function GiftResult(c) {
 // link per row, mark read up to the newest shown entry on opening. Display + links only: a gift row leads to the gift box,
 // never a claim button. Every value comes from L.activity (the real PlayerService and the same name resolution as the route).
 // ムチ一閃 tone: paddock art, translucent navy panels, letter-spaced cyan labels, one skewed cyan CTA ».
-const ACT_LABEL = { friend_request: 'フレンド', friend_accepted: 'フレンド', rival_week: 'ライバル', rival_record: 'ライバル', stable_like: 'マイ厩舎', team_cheer: '支部', tournament_result: '大会', gift_arrived: 'プレゼント', team_goal_tier: '支部', team_goal_week: '支部', replay_share: 'リプレイ', inquiry_answered: 'お問い合わせ', cup_invited: 'カップ', cup_started: 'カップ', cup_finished: 'カップ', cup_cancelled: 'カップ', recap_ready: '振り返り', ops_notice: '運営', qchat_mention: '支部', data_export_ready: 'データ' };
+const ACT_LABEL = { friend_request: 'フレンド', friend_accepted: 'フレンド', rival_week: 'ライバル', rival_record: 'ライバル', stable_like: 'マイ厩舎', team_cheer: '支部', tournament_result: '大会', gift_arrived: 'プレゼント', team_goal_tier: '支部', team_goal_week: '支部', replay_share: 'リプレイ', inquiry_answered: 'お問い合わせ', cup_invited: 'カップ', cup_started: 'カップ', cup_finished: 'カップ', cup_cancelled: 'カップ', recap_ready: '振り返り', ops_notice: '運営', qchat_mention: '支部', data_export_ready: 'データ', class_promoted: '昇級' };
 const ACT_PAGE = 7;
 const actState = { cursor: null, stack: [] };
 const actGo = (screen, id) => ({
@@ -8258,7 +8345,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ PromotionResult: (s, fresh) => PromoResultDemo(s ?? 'start', fresh !== false), NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     // R20 integration (§58.11): the one-prompt gate and a happy moment (review) for the flows
     prompts: { shown: () => sessionPrompt.shown, reset: () => sessionPrompt.reset(), claimForTest: (k) => sessionPrompt.claim(k), review: (m) => reviewMoment(m ?? 'first_win') },

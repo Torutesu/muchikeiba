@@ -1329,3 +1329,28 @@
 - REQ-LNOTIF-018 プライバシー：予定はサーバーに送らない（KPI の種類だけ）。`showDetails` は端末の設定。
 - REQ-LNOTIF-019 設定 `progression.localNotifications`（`localNotificationsProblems`、起動時と各版で検証）。`enabled: false` は停止スイッチ。
 - REQ-LNOTIF-020 ヘルプ：ヘルプセンター（§48）に「端末のお知らせ（リマインダー）」の記事。
+
+## 67. 使いすぎ・遊びすぎの防止（自分で決める上限、TS＋C#、`src/domain/selfLimits.ts`・`Muchi.Client/SelfLimits.cs`・`Muchi.Game.SelfLimitsModel`、`contracts/protocol.md` §67、docs/planning/03「自分で決める上限」）
+
+- REQ-LIMIT-001 自分で決める月の購入上限：設定の選択肢（`spendingChoicesYen`）・自分で入力（`customStepYen` 刻み、`customMinYen`〜`customMaxYen`）・上限なし。年齢帯の上限（REQ-PUR-002）より高い額は決められない（400）。年齢未登録でも決められる。
+- REQ-LIMIT-002 下げる（上限なし→額を含む）はすぐ効き、待っている引き上げを取り消す。上げる・外すは `coolOffHours`（既定72時間）の後に効き、その間はいつでも取り消せる。待っている間の別の引き上げは時計を最初から。同じ額をもう一度送っても何も変わらない（冪等）。
+- REQ-LIMIT-003 効いている上限 = min(年齢帯の上限, 自分の上限)。期間の過ぎた引き上げは読む時・買う時に効き、次の書き込みで履歴に `raise_applied` を残す。
+- REQ-LIMIT-004 月の境目は年齢帯の上限と同じ JST の暦月（`jstMonthKey`）、数えるのは同じ `monthlySpendYen`。
+- REQ-LIMIT-005 購入の確認（`checkPurchaseIntent`）が今月の支払い＋価格 > 自分の上限で `409 SELF_LIMIT_EXCEEDED`（`details`：`selfLimitYen`・`monthSpentYen`・`priceYen`・`month`・`settings: "self_limits"`）。自分の上限が年齢帯の上限と同じなら `AGE_LIMIT_EXCEEDED`。確認の応答に `selfLimitYen`・`effectiveLimitYen`・`selfLimitPending`。
+- REQ-LIMIT-006 同じ判定（`productBlock`）を使う全部の経路で守る：コイン不足の案内（§29）は自分の上限を超えるパックを勧めない（買えるものが無ければ `blockedCode: "SELF_LIMIT_EXCEEDED"`）、1回限りの案内（§13.3）は `showPopup: false`・`selfLimitBlocked: true`。
+- REQ-LIMIT-007 ストアから届いた購入は上限を超えていても付与して今月の支払いに数え、記録に `selfLimitBreach: true`（資金決済法：支払い済みの購入を失わない）。その月の以降の確認は断る。
+- REQ-LIMIT-008 履歴（§33 `GET /v1/history/summary`）に `selfLimitYen`・`effectiveLimitYen`・`selfRemainingYen`・`selfLimitPending`・`selfLimitText`。年齢帯の `limitText` の横に並べる。
+- REQ-LIMIT-009 遊ぶ時間のお知らせ：既定オフ。1回の時間・1日の合計・「◯時を過ぎたら」（端末の時刻）をそれぞれ選択肢から、または使わない。設定はサーバーに保存し端末どうしで同じ。
+- REQ-LIMIT-010 時間は端末で測る（前面の時間だけ、背面30分以上で新しいセッション、1日は端末の時刻の4:00で切り替え）。時間はサーバーに送らない。
+- REQ-LIMIT-011 出すのはレースの結果の後とホームだけ。レース中・マッチング中・購入の途中・チュートリアルでは出さず、次の区切りまで持ち越す。同じ区切りの複数の理由は1枚のシートに。セッションの区切りごと・1日1回ずつ。純粋な関数 `decidePlaytimeReminder`（TS）＝ `PlaytimeReminderPolicy.Decide`（C#）、共有ベクター `contracts/self-limits.vectors.json`。
+- REQ-LIMIT-012 シートは本人が頼んだお知らせなので §58.11 の「1セッションに1つ」の枠を使わない・取られない（同じ区切りではこのシートが先）。§61 の通知ではない（アプリ内だけ）。ボタンは同じ大きさの「続ける」「今日はここまで」、何ももらえない・何も失わない。
+- REQ-LIMIT-013 API：`GET /v1/self-limits`・`PUT /v1/self-limits/spending`・`DELETE /v1/self-limits/spending/pending`・`PUT /v1/self-limits/playtime`（本文は厳密、内容で冪等）。ブートストラップ・`GET /v1/player` に `selfLimits` の写し。
+- REQ-LIMIT-014 §46：4つとも `EXEMPT_ROUTES`（下げることは購入ができる間いつでもできる。上げるのは冷却期間の後。コインを動かさない）。
+- REQ-LIMIT-015 状態 `selfLimits`（PlayerState のトップレベル）。§51 の分類は `settings`、開示の `settings.selfLimits`。削除の `wipe` で消える。
+- REQ-LIMIT-016 KPI：`self_limit_set`（essential：本人が決めた支払いの上限の記録）・`self_limit_block`・`playtime_setting_change`・`playtime_reminder_shown`（optional、クライアント）。
+- REQ-LIMIT-017 運用コンソールは見るだけ（`viewer`）：今の上限・効いている上限・待っている変更・遊ぶ時間・履歴、購入の `selfLimitBreach` の印。上げる・外す・早める管理 API は作らない（テスト）。
+- REQ-LIMIT-018 入口：購入履歴の画面（その他 › 設定・サポート の左の面）・購入の確認のシート「上限を設定」・断られた時と不足の案内のリンク・シートの「お知らせの設定」。その他のページに行を足さない。ヘルプの記事 `self_limits`（冷却期間はトークン）とヒント `self_limits`。
+- REQ-LIMIT-019 設定 `progression.selfLimits`（`selfLimitsProblems`、起動時と各版で検証）。停止スイッチは無い（無ければ既定値）。
+- REQ-LIMIT-020 クライアント SDK：`SelfLimitsView`・`SelfLimitsDigest`・`PlaytimeReminderPolicy`・`PlaytimeClock`・`ApiClient` の4つの呼び出し・`ApiErrorCode.SelfLimitExceeded`・`AnalyticsEvent.PlaytimeReminderShown`。
+- REQ-LIMIT-021 Unity のゲーム層 `SelfLimitsModel`（設定の行・断られた時の文とリンク・シートの判断・KPI）。描画は `docs/handoff-codex-round22-self-limits.md`。
+- REQ-LIMIT-022 法務・文言：急かす言い回し・「倍」「今だけ」「残りわずか」「お得」「通常価格」・賭けの言葉を使わない（テスト）。上限の変更・お知らせの答えに報酬・罰は無い。プロトタイプ（設定・断られた状態・シート、日本語・英語、文字の大きさ §41、e2e・en-flow・a11y-flow）。

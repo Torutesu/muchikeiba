@@ -16,6 +16,7 @@ import { hasItemDebt } from './items.js';
 import { deletionScheduled } from './accountDeletion.js';
 import { moderationOf, type PlayerState } from './player.js';
 import { unclaimedFreeCoins } from './giftBox.js';
+import { SELF_LIMIT_TEXT } from './selfLimits.js';
 
 export const SHORTFALL_OFFER_ID = 'shortfall';
 /** Products that put paid coins in the wallet at once (the pass and the daily pack are not coin products). */
@@ -52,6 +53,8 @@ const HEADLINE: Record<CoinNeed['coinKind'], (n: number) => string> = {
 };
 const BLOCKED_LINE: Partial<Record<ErrorCode, string>> = {
   AGE_LIMIT_EXCEEDED: '今月の購入上限に達しているため、いま購入できるパックはありません',
+  // REQ-LIMIT-006 (§67.2): the player's own limit — the client links to the setting, never suggests raising it
+  SELF_LIMIT_EXCEEDED: SELF_LIMIT_TEXT.blocked,
   UNSETTLED_DEBT: '未精算の返金があるため、いまは購入できません',
   DELETION_PENDING: 'アカウント削除の手続き中のため、購入できません',
   BANNED: 'このアカウントでは購入できません',
@@ -121,7 +124,7 @@ export function coinShortfall(m: Master, s: PlayerState, n: { coinKind: CoinNeed
   }
   // nothing buyable: the reason of the smallest pack that would have covered it (else of any pack)
   const why = [...blocks].sort((a, b) => Number(b.p.paidCoins >= shortfall) - Number(a.p.paidCoins >= shortfall) || smallestFirst(a.p, b.p))[0]?.b?.code ?? null;
-  const blockedCode = why === 'AGE_LIMIT_EXCEEDED' ? why : null;
+  const blockedCode = why === 'AGE_LIMIT_EXCEEDED' || why === 'SELF_LIMIT_EXCEEDED' ? why : null;
   return { ...base, short: true, headline, status: 'none_buyable', blockedCode, ageCheck, line: (blockedCode && BLOCKED_LINE[blockedCode]) || NONE_LINE, notes };
 }
 

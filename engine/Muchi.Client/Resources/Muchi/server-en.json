@@ -890,6 +890,17 @@
   "ファイルの大きさの上限のため、古いコインの履歴を{n}行省略しました。全件はお問い合わせからご請求いただけます。": "Because of the file size limit, {n} older coin history rows were left out. You can ask for all of them through Contact.",
   "含めていないもの：重複や処理用の内部記録、運営のメモ、他のプレイヤーの情報。": "Not included: duplicate and processing records, operator notes, and other players' information.",
   "ご不明な点はゲーム内のお問い合わせからご連絡ください。": "If you have questions, please use Contact in the game.",
+  "自分で決めた上限 ¥{limit}（今月の残り ¥{left}）": "Your own limit: ¥{limit} (¥{left} left this month)",
+  "自分で決めた上限はありません": "You have not set your own limit",
+  "¥{yen}への変更は {at} から効きます（取り消せます）": "The change to ¥{yen} takes effect from {at} JST (you can cancel it)",
+  "上限なしへの変更は {at} から効きます（取り消せます）": "Removing the limit takes effect from {at} JST (you can cancel it)",
+  "下げた上限はすぐに効きます": "A lower limit applies at once",
+  "上げる・外す変更は{h}時間たってから効きます（その間は取り消せます）": "Raising or removing it takes effect after {h} hours (you can cancel it until then)",
+  "年齢に応じた上限より高くはできません": "It cannot be higher than the limit for your age",
+  "ストアで支払いが済んだ購入は、上限を超えていても受け取れます（今月の支払いに数えます）": "A purchase already paid in the store is still delivered over the limit (it counts toward this month)",
+  "レースの途中には出しません。結果の後かホームで知らせます": "Never during a race: the reminder appears after a race result or on the home screen",
+  "時間は端末で数えます（サーバーには送りません）": "The time is counted on this device (never sent to the server)",
+  "自分で決めた今月の上限に達しているため、いま購入できるパックはありません": "You have reached the monthly limit you set, so no pack can be bought now",
   "カタカナ2〜9文字": "2–9 katakana characters",
   "{a}〜{b}文字": "{a}–{b} characters"
  }

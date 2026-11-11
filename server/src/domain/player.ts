@@ -66,6 +66,8 @@ export interface PurchaseRecord {
   passSeasonId?: string;
   /** REQ-UXS-018/021: free coins granted later because of this purchase (daily pack, pass rewards); held from stud fees like the bonus. */
   linkedFree?: number;
+  /** REQ-LIMIT-007 (§67.2): a store purchase that arrived over the player's own monthly limit (granted and counted anyway). */
+  selfLimitBreach?: true;
 }
 
 /** REQ-STAT-001: per-player race statistics (ranked + friend races; tutorial excluded). */
@@ -246,6 +248,8 @@ export interface PlayerState {
   transfer?: import('./transferCode.js').TransferState;
   /** REQ-CNS-*: 広告・分析の同意 — personalised ads / analytics choices, policy version, ATT / CMP status, history (privacyChoices.ts). */
   privacyChoices?: import('./privacyChoices.js').PrivacyChoicesState;
+  /** REQ-LIMIT-*: 使いすぎ・遊びすぎの防止 — the player's own monthly spending limit (and a pending raise), play-time reminder settings, history (selfLimits.ts). */
+  selfLimits?: import('./selfLimits.js').SelfLimitsState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

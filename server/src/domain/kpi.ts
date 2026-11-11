@@ -145,6 +145,9 @@ const tipId = z.string().regex(/^[a-z0-9_]{2,40}$/);
 /** REQ-CHEER-013: the watchable modes (domain/cheer.ts CHEER_MODES; repeated here to keep kpi.ts import-free). */
 export const CHEER_KPI_MODES = ['friend', 'cup', 'ranked', 'event', 'tournament'] as const;
 /** Events only the client can observe. Server-known events (purchase, gacha, race results…) are not accepted from clients. */
+/** §67.8: `session`, `daily`, `quiet_after` in sheet order, comma-joined (selfLimits.ts PLAYTIME_REASONS). */
+const PLAYTIME_REASONS_RE = /^(quiet_after|daily|session)(,(daily|session)){0,2}$/;
+const playMin = z.number().int().min(0).max(1440).refine((n) => n % 5 === 0, 'rounded to 5 minutes');
 export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('session_start'), at: z.number().int(), props: z.object({}).strict().optional() }),
   z.object({ name: z.literal('session_end'), at: z.number().int(), props: z.object({ durationMs: z.number().int().min(0).max(86_400_000) }) }),
@@ -221,6 +224,11 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   // with the indicator on, or spectator) in that race. No horse, no target player, no sender ids.
   z.object({ name: z.literal('cheer_send'), at: z.number().int(), props: z.object({ mode: z.enum(CHEER_KPI_MODES), count: z.number().int().min(1).max(1000) }).strict() }),
   z.object({ name: z.literal('cheer_seen'), at: z.number().int(), props: z.object({ mode: z.enum(CHEER_KPI_MODES), role: z.enum(['racer', 'spectator']), count: z.number().int().min(1).max(100_000) }).strict() }),
+  // REQ-LIMIT-016 (§67.8): the play-time reminder sheet was shown — why (sheet order, comma-joined), the minutes rounded to 5
+  // (never the exact play time) and how the player answered. Optional; nothing is granted or taken either way.
+  z.object({ name: z.literal('playtime_reminder_shown'), at: z.number().int(), props: z.object({
+    reasons: z.string().regex(PLAYTIME_REASONS_RE), sessionMin: playMin, dayMin: playMin, choice: z.enum(['continue', 'stop', 'settings']),
+  }).strict() }),
 ]);
 export type ClientEvent = z.infer<typeof clientEventSchema>;
 
@@ -279,6 +287,7 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'cheer_seen': return { name: e.name, s1: e.props.mode, s2: e.props.role, count: e.props.count };
     case 'lnotif_scheduled': case 'lnotif_opened': return { name: e.name, s1: e.props.kind };
     case 'lnotif_permission': return { name: e.name, s1: e.props.result };
+    case 'playtime_reminder_shown': return { name: e.name, s1: e.props.reasons, s2: e.props.choice, value: e.props.sessionMin, count: e.props.dayMin };
   }
 }
 

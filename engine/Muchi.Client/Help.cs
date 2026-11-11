@@ -42,8 +42,10 @@ namespace Muchi.Client
             /// <summary>Round 20: settings › privacy › ads and analytics, and the pre-prompt sheet (§58).</summary>
             PrivacyChoices = "privacy_choices",
             /// <summary>Round 20: settings › notifications (the device reminders article, §61).</summary>
-            Notifications = "notifications";
-        public static readonly string[] All = { GachaOdds, CoinShortfall, Purchase, RaceWhip, RaceResult, Training, Breeding, History, GiftBox, AccountLink, Deletion, Accessibility, Privacy, Storage, Practice, PrivacyChoices, Notifications };
+            Notifications = "notifications",
+            /// <summary>Round 22: the self-limits screen, a purchase refused by the own limit and the play-time sheet (§67).</summary>
+            SelfLimits = "self_limits";
+        public static readonly string[] All = { GachaOdds, CoinShortfall, Purchase, RaceWhip, RaceResult, Training, Breeding, History, GiftBox, AccountLink, Deletion, Accessibility, Privacy, Storage, Practice, PrivacyChoices, Notifications, SelfLimits };
     }
 
     /// <summary>Inquiry categories (the first four are the §33 ticket topics).</summary>

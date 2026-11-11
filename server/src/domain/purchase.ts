@@ -7,6 +7,7 @@ import { addItems, clawbackItems, hasItemDebt } from './items.js';
 import { grantSeasonPass, passPurchaseInfo, passPurchasesFor, refundSeasonPass } from './pass.js';
 import { revalidateEquippedSilks } from './silksEditor.js';
 import { classReached, firstPurchaseBonusOf, grantAllowance, pendingAllowance, refundAllowance } from './shop.js';
+import { bindingCap, effectiveLimitYen, pendingAt, selfLimitYenAt, type AgeCap } from './selfLimits.js';
 
 /** Store receipt verification result (Apple App Store Server API / Google Play Developer API behind an adapter). */
 export interface VerifiedReceipt {
@@ -62,6 +63,12 @@ export function ageBand(m: Master, s: PlayerState, now: number) {
   return { age, band };
 }
 
+/** REQ-LIMIT-001 (§67): the age band's cap as selfLimits.ts takes it (null limit = adult or age not registered). */
+export function ageCapOf(m: Master, s: PlayerState, now: number): AgeCap {
+  const ab = s.age ? ageBand(m, s, now) : null;
+  return { limitYen: ab?.band.monthlyLimitYen ?? null, band: ab?.band.id ?? null };
+}
+
 /**
  * REQ-PUR-002 age registration. Write-once from the app: a registered birth date may only move later
  * (younger ⇒ stricter limits), so a minor cannot re-register as an adult to lift the monthly cap.
@@ -86,7 +93,7 @@ export function registerAge(m: Master, s: PlayerState, birthYear: number, birthM
  * bought now). The player-level ones (age not registered, unsettled refund, guardian consent) stay in checkPurchaseIntent.
  * `ab` null = age not registered yet: the monthly limit is not judged (the purchase confirmation asks for it first).
  */
-export function productBlock(m: Master, s: PlayerState, p: Product, now: number, ab: ReturnType<typeof ageBand>): { code: ErrorCode; message?: string } | null {
+export function productBlock(m: Master, s: PlayerState, p: Product, now: number, ab: ReturnType<typeof ageBand>): { code: ErrorCode; message?: string; details?: Record<string, unknown> } | null {
   // once-only products stay used even if refunded (otherwise buy → refund → buy farms the bundle).
   if (p.once && s.purchases.some((x) => x.productId === p.id)) return { code: 'ALREADY_PURCHASED' };
   // REQ-UXS-019: a promotion pack is sold once its class has been reached
@@ -99,10 +106,15 @@ export function productBlock(m: Master, s: PlayerState, p: Product, now: number,
   // A purchase that went over the limit this month (e.g. the app skipped this check) blocks further purchases.
   // the breach belongs to the month of purchase (as monthlySpendYen and the support flag), not of grant
   if (s.purchases.some((x) => x.limitBreach && !x.sandbox && (x.month ?? jstMonthKey(x.at)) === month)) return { code: 'AGE_LIMIT_EXCEEDED', message: 'monthly limit already exceeded this month' };
-  if (!ab) return null;
   const spent = s.monthlySpendYen[month] ?? 0;
-  const limit = ab.band.monthlyLimitYen;
-  if (limit !== null && spent + p.priceYen > limit) return { code: 'AGE_LIMIT_EXCEEDED', message: `monthly ${spent}+${p.priceYen} > ${limit}` };
+  const limit = ab?.band.monthlyLimitYen ?? null;
+  if (ab && limit !== null && spent + p.priceYen > limit) return { code: 'AGE_LIMIT_EXCEEDED', message: `monthly ${spent}+${p.priceYen} > ${limit}` };
+  // REQ-LIMIT-005/006 (§67.2): the player's own limit, judged where the age cap is (every purchase path reads productBlock).
+  // Equal to the age cap → the age cap already refused above. Judged even before the age is registered.
+  const own = selfLimitYenAt(s, now);
+  if (own !== null && spent + p.priceYen > own) {
+    return { code: 'SELF_LIMIT_EXCEEDED', message: `own monthly limit ${spent}+${p.priceYen} > ${own}`, details: { selfLimitYen: own, monthSpentYen: spent, priceYen: p.priceYen, month, settings: 'self_limits' } };
+  }
   return null;
 }
 
@@ -114,14 +126,20 @@ export function checkPurchaseIntent(m: Master, s: PlayerState, productId: string
   const ab = ageBand(m, s, now)!;
   if (ab.age < m.ageLimits.guardianConsentUnderAge && !s.age.guardianConsent) throw new AppError('GUARDIAN_CONSENT_REQUIRED');
   const block = productBlock(m, s, p, now, ab);
-  if (block) throw new AppError(block.code, block.message);
+  if (block) throw new AppError(block.code, block.message, undefined, block.details);
   const month = jstMonthKey(now);
   const spent = s.monthlySpendYen[month] ?? 0;
   const limit = ab.band.monthlyLimitYen;
+  // REQ-LIMIT-005 (§67.2): what the confirmation sheet shows next to the age cap (additive)
+  const own = selfLimitYenAt(s, now);
+  const pend = pendingAt(s, now);
+  const age = { limitYen: limit, band: ab.band.id };
   // REQ-UXS-020/022: what the confirmation sheet shows besides the price (server-built, per player)
   const bonus = p.kind === 'coins' && !s.firstPurchased.includes(p.id) ? firstPurchaseBonusOf(m, p) : null;
   return {
     product: p, monthSpentYen: spent, monthlyLimitYen: limit, remainingYen: limit === null ? null : limit - spent,
+    selfLimitYen: own, effectiveLimitYen: effectiveLimitYen(age, own), selfLimitBinding: bindingCap(age, own) === 'self',
+    selfLimitPending: pend ? { limitYen: pend.limitYen, effectiveAt: pend.effectiveAt } : null,
     firstPurchaseBonus: bonus,
     ...(p.kind === 'season_pass' && p.storeType !== 'auto_renewing' ? { pass: passPurchaseInfo(m, p, now) } : {}),
     ...(p.allowance ? { allowance: { days: p.allowance.days, dailyFreeCoins: p.allowance.dailyFreeCoins, autoRenew: false } } : {}),
@@ -147,6 +165,11 @@ export function applyVerifiedPurchase(m: Master, s: PlayerState, platform: Purch
   const spentBefore = s.monthlySpendYen[month] ?? 0;
   const limitBreach = s.age === null || (limit !== null && spentBefore + r.priceYen > limit);
   s.monthlySpendYen[month] = spentBefore + r.priceYen;
+
+  // REQ-LIMIT-007 (§67.2): over the player's own limit — granted and counted all the same (the store has been paid);
+  // the record carries it, and the month's later confirmations refuse. Judged on the limit in effect at the grant.
+  const own = selfLimitYenAt(s, now);
+  const selfLimitBreach = !r.sandbox && own !== null && spentBefore + r.priceYen > own;
 
   if (limitBreach && !r.sandbox) {
     s.supportFlags ??= [];
@@ -198,6 +221,7 @@ export function applyVerifiedPurchase(m: Master, s: PlayerState, platform: Purch
     ...(sandboxFree > 0 ? { sandboxFreeGranted: sandboxFree } : {}), month,
     ...(r.sandbox ? { sandbox: true } : {}), ...(r.originalTransactionId ? { originalTxId: r.originalTransactionId } : {}),
     ...(bonusLotId ? { bonusLotId } : {}), ...(passUntil !== undefined ? { passUntil } : {}), ...(passSeasonId ? { passSeasonId } : {}),
+    ...(selfLimitBreach ? { selfLimitBreach: true as const } : {}),
   };
   s.purchases.push(record);
   return { record, duplicate: false };

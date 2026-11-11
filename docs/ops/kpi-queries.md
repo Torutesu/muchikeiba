@@ -1418,3 +1418,36 @@ WHERE blob1 = 'lnotif_permission' AND timestamp > NOW() - INTERVAL '28' DAY
 GROUP BY result
 ORDER BY n DESC
 ```
+
+## 使いすぎ・遊びすぎの防止：自分の上限・遊ぶ時間のお知らせ（REQ-LIMIT-016、Round 22、contracts/protocol.md §67）
+列：`self_limit_set`（サーバー、**essential**＝分析をオフにしても書く。本人が決めた支払いの上限の記録）`blob8` = 変更（`set`＝すぐ効いた変更・`raise_requested`・`remove_requested`・`raise_cancelled`）、`double1` = 新しい額（上限なしは 0）、`double9` = 前の額（無しは 0）。`self_limit_block`（サーバー、optional）`blob8` = 商品、`double1` = 価格（購入の確認が自分の上限で断られた）。`playtime_setting_change`（サーバー、optional）`blob8` = 変えた項目（`session`・`daily`・`quiet_after`、複数は `,`）、`blob9` = `on`／`off`（変更後にどれか有効か）。`playtime_reminder_shown`（クライアント、optional）`blob8` = 理由（`quiet_after,daily,session` のシートの順）、`blob9` = 答え（`continue`／`stop`／`settings`）、`double9` = セッションの分（5分に丸め）、`double5` = その日の分（5分に丸め）。正確な遊んだ時間・時刻は送らない。
+
+**上限を決めた人と変更の種類**（下げる・上げる・外す・取り消し。引き上げの取り消しが多いのは冷却期間が働いているしるし）：
+
+```sql
+SELECT toStartOfWeek(timestamp) AS week, blob8 AS change, sum(_sample_interval) AS n, count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'self_limit_set' AND timestamp > NOW() - INTERVAL '84' DAY
+GROUP BY week, change
+ORDER BY week DESC, n DESC
+```
+
+**自分の上限で断られた購入**（売上の目標にしない。断られた後にサポートへの問い合わせが増えていないかを見る）：
+
+```sql
+SELECT blob8 AS product, sum(_sample_interval) AS n, count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'self_limit_block' AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY product
+ORDER BY n DESC
+```
+
+**遊ぶ時間のお知らせ：理由と答え**（「今日はここまで」の割合は目標にしない。シートが区切りで出ているか・設定を見直す人がいるかを見る）：
+
+```sql
+SELECT blob8 AS reasons, blob9 AS choice, sum(_sample_interval) AS n, count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'playtime_reminder_shown' AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY reasons, choice
+ORDER BY n DESC
+```

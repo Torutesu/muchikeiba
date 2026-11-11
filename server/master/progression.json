@@ -1157,5 +1157,15 @@
     "retentionDays": 30,
     "spikeMinCount": 50,
     "spikeWindowHours": 24
+  },
+  "selfLimits": {
+    "_note": "REQ-LIMIT-*（contracts/protocol.md §67）。使いすぎ・遊びすぎの防止。自分で決める月の購入上限（年齢帯の上限以下だけ。下げるのはすぐ、上げる・外すのは coolOffHours 後で、その間は取り消せる。JST の暦月）と、遊ぶ時間のお知らせ（既定オフ、端末が数えて区切りで知らせる）。停止スイッチは無い（区画が無ければ既定値）。コイン・アイテムは動かない。",
+    "spendingChoicesYen": [1000, 3000, 5000, 10000, 30000],
+    "customMinYen": 100,
+    "customMaxYen": 1000000,
+    "customStepYen": 100,
+    "coolOffHours": 72,
+    "historyKeep": 30,
+    "playtime": { "sessionChoicesMin": [30, 60, 90, 120], "dailyChoicesMin": [60, 120, 180, 240], "quietAfterChoicesHour": [21, 22, 23, 0] }
   }
 }

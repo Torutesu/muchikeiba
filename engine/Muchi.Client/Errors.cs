@@ -143,6 +143,8 @@ namespace Muchi.Client
         TransferIssueLimit,
         /// <summary>REQ-TRF-010: 401 — this account moved to another device. Never retried; see <see cref="SessionReplacedException"/>.</summary>
         SessionReplaced,
+        /// <summary>REQ-LIMIT-005: 409 — over the player's own monthly limit; see <see cref="SelfLimitExceededException"/> (open the setting).</summary>
+        SelfLimitExceeded,
     }
 
     public static class ApiErrorCodes
@@ -264,6 +266,7 @@ namespace Muchi.Client
             ["TRANSFER_REFUSED"] = ApiErrorCode.TransferRefused,
             ["TRANSFER_ISSUE_LIMIT"] = ApiErrorCode.TransferIssueLimit,
             ["SESSION_REPLACED"] = ApiErrorCode.SessionReplaced,
+            ["SELF_LIMIT_EXCEEDED"] = ApiErrorCode.SelfLimitExceeded,
         };
 
         public static IReadOnlyCollection<string> WireCodes => ByWire.Keys;
@@ -303,6 +306,8 @@ namespace Muchi.Client
                 case ApiErrorCode.UnsettledDebt:
                 case ApiErrorCode.DeletionPending:
                     return new PurchaseBlockedException(code, wire, message, status);
+                case ApiErrorCode.SelfLimitExceeded:
+                    return new SelfLimitExceededException(wire, message, status, details);
                 case ApiErrorCode.InsufficientCoins:
                     return new InsufficientCoinsException(wire, message, status, CoinShortfall.Parse(J.Opt(details, "shortfall")));
                 case ApiErrorCode.RateLimited:
@@ -370,7 +375,7 @@ namespace Muchi.Client
     }
 
     /// <summary>The purchase must not start: age not registered, consent missing, monthly limit, once-only product, unsettled refund.</summary>
-    public sealed class PurchaseBlockedException : ApiException
+    public class PurchaseBlockedException : ApiException
     {
         public PurchaseBlockedException(ApiErrorCode c, string wire, string message, int status) : base(c, wire, message, status) { }
     }

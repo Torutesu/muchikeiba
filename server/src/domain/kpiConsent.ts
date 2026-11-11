@@ -38,6 +38,9 @@ export const KPI_ESSENTIAL: Readonly<Record<string, string>> = Object.freeze({
   // never the ID or password) are the audit trail ops need to spot brute force and account takeover (§54.9)
   transfer_issue: 'account access audit (transfer code issued, §54)',
   transfer_redeem: 'account access audit and brute-force detection (transfer code redeemed / failed, §54)',
+  // Round 22 (§67): the spending limit the player set for themself — needed to answer "I set a limit but could / could not
+  // buy" and to check refunds, like the §58 choice records
+  self_limit_set: 'record of the player\'s own spending limit changes (§67, support and refund checks)',
 });
 
 /** Every other event name the server emits or accepts from clients: optional analytics. */
@@ -63,6 +66,8 @@ export const KPI_OPTIONAL: readonly string[] = Object.freeze([
   // R20 integration: Round 19 §55 応援 / §56 画質・通信量 / §57 ヒント and Round 20 §61 端末のローカル通知 — engagement only
   'cheer_send', 'cheer_seen', 'perf_setting_change', 'asset_predownload', 'tutorial_replay', 'tip_view', 'tip_context_open',
   'lnotif_scheduled', 'lnotif_opened', 'lnotif_permission',
+  // Round 22 (§67): a purchase confirmation refused by the own limit, play-time settings (server) and the reminder sheet (client)
+  'self_limit_block', 'playtime_setting_change', 'playtime_reminder_shown',
 ]);
 
 export const KPI_EVENT_CLASS: Readonly<Record<string, KpiClass>> = Object.freeze({

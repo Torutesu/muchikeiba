@@ -2762,76 +2762,6 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 - `Muchi.Game`：`FriendSuggestionsModel`（読み込み・同時に2回読まない・申請／消すは押した行をすぐ一覧から外す（失敗したら戻す）・同じ人に2回送らない・`fsug_view` は1画面1回・オフラインは「オンラインで表示できます」・空のときの文言・「おすすめに表示しない」の切り替え）。
 - 画面が守ること：docs/handoff-codex-round17-friend-suggestions.md。
 
-## 53. 馬ごとの目標（per-horse goals、REQ-HGOAL-001〜016、`server/src/domain/horseGoals.ts`、C# `HorseGoals.cs`（`HorseGoalChain`）・`Muchi.Game.HorseGoalsModel`、共有ベクター `contracts/horse-goals.vectors.json`）
-馬ごとに**短い目標の列（チェーン）**を出し、その馬の物語にする（初勝利 → 10戦 → 得意の馬場で勝つ → コースで記録 → 得意の距離の外で勝つ → ランク戦で上位 → 大会優勝）。目標は馬の適性（芝ダ・距離・脚質）と固有スキルの有無から**純粋な関数**で決まり、進み具合は §34 の戦績（確定した結果だけ）から数える。報酬は**見た目だけ**（リボン・殿堂の銘板の飾り）。コイン・素材・アイテム・能力は何も動かない（経済の目標なし、E 番号・balance-targets の節なし。ランク戦の強さは変わらない）。設定は `progression.horseGoals`（`horseGoalsProblems` で検証。無い／`enabled: false` なら機能ごと無し。§34 の殿堂が無効なら有効にできない）。
-
-### 53.1 目標の列（`horseGoalChain`、REQ-HGOAL-001/002）
-入力は馬（`surface`・`distMinM`・`distMaxM`・`style`・`skillId`）とコースの一覧（`id`・`name`・`surface`・`distanceM`、master tracks.json）だけ。同じ入力なら同じ列（乱数・時刻・レア度・能力値・課金を見ない）。版 `v: 1`。並びはこの順で、条件の無いものは飛ばす（6〜8個）：
-| 順 | `kind` | `id` | 条件 | `need` | 数えるもの |
-|---|---|---|---|---|---|
-| 1 | `first_win` | `first_win` | いつも | 1 | 戦績の `wins` |
-| 2 | `races` | `races:10` | いつも | 10 | 戦績の `races` |
-| 3 | `surface_win` | `surface_win:{surface}` | いつも。`surface` は馬の芝ダ（`both` は距離の範囲に入るコースが多い方、同数なら芝） | 3 | その馬場での勝ち（`goal.surfaceWins`） |
-| 4 | `ta_course` | `ta_course:{trackId}` | 走れるコース（芝ダが合う）がある。距離の外れが小さい順 → 範囲の真ん中に近い順 → コースID順の先頭 | 1 | そのコースの検証済みタイムアタックの記録（`bestTa[trackId]`）がある |
-| 5 | `stretch_win` | `stretch_win:{band}` | 距離の帯（§44.3 と同じ：`sprint`〜1400m・`mile`1401〜1800m・`intermediate`1801〜2400m・`long`2401m〜）のうち、馬の距離の範囲と重ならず、馬が走れる馬場のコースがある帯。逃げ・先行は短い側の近い帯から、差し・追込は長い側の近い帯から。その側に無ければ反対側。どちらにも無ければこの目標は無い | 1 | その帯の距離のレースでの勝ち（`goal.bandWins`） |
-| 6 | `wins` | `wins:5` | 固有スキルを持つ馬だけ | 5 | 戦績の `wins` |
-| 7 | `ranked_top3` | `ranked_top3:5` | いつも | 5 | ランク戦の3着以内（`goal.rankedPlaces`） |
-| 8 | `tournament_win` | `tournament_win` | いつも | 1 | 戦績の `tournamentWins` |
-
-文言（サーバー・C# が同じものを作る。英語は §23 の境界で訳す。馬の名前は文言に入れない）：
-`初勝利をあげる`／`{n}戦を走る`／`芝で{n}勝する`・`ダートで{n}勝する`／`タイムアタック {course} で記録を残す`／`短距離（1400m以下）で勝つ`・`マイル（1401〜1800m）で勝つ`・`中距離（1801〜2400m）で勝つ`・`長距離（2401m以上）で勝つ`／`{n}勝する`／`ランク戦で3着以内に{n}回入る`／`大会で優勝する`。
-サーバー（TS）とクライアント（C#）は共有ベクター `contracts/horse-goals.vectors.json` で同じ列・文言・進み具合になることを確かめる。
-
-### 53.2 進み具合（REQ-HGOAL-003〜005）
-- 数えるのは **§34.1 の戦績と同じレースだけ**（`noteHallRace`：ランク戦・イベント・大会、人間2人以上のフレンド戦。レースIDごとに1回のガードの中。無効・チュートリアル・週替わりチャレンジ・プレイヤー主催カップ・馬IDの無い結果は数えない）。新しく数えるもの（`career.goal`：`surfaceWins`・`bandWins`・`rankedPlaces`）も `noteHallRace` の同じ場所で書く。コースの芝ダ・距離はレースの `details.trackId` から master で引く（無い結果は芝ダ・帯の勝ちに数えない）。タイムアタックは `noteHallTa`、大会は `noteHallTournament`（どちらも §34 のガードのまま）。
-- **ミッションとは別に数える**：目標はミッション・パス・コインに何も足さず、ミッションの進みは目標に入らない（同じレースが両方に1回ずつ数えられるだけで、報酬が2回出ることは無い。目標の報酬は見た目だけ）。
-- `have = min(数えた値, need)`、`done` は達成の記録（`completedAt`）があるか `have ≥ need`。列のどの目標からでも達成できる（順番は物語の並び）。`current` は並びで最初のまだの目標（全部終われば無し）。
-- `races`・`wins`・タイムアタック・大会は §34 の戦績の公開から、`surfaceWins`・`bandWins`・`rankedPlaces` はこの機能の公開から数える（さかのぼらない）。
-- **達成の記録**：数える場所（レース・タイムアタック・大会）のすぐ後に、その馬の列を見て新しく満たした目標に `completedAt` を書き、KPI `hgoal_complete` を1回送る。同じ目標は2回記録しない。読むだけの画面（GET）は書かない（記録が無くても `have ≥ need` なら `done` で見せる）。
-- **引退した馬**：達成した目標と列はそのまま見られる（戦績は引退で消えない）。引退した馬はもう走らないので進まない。
-- 列の全部を達成すると **`chainComplete: true`**（`chainCompletedAt`）：馬の詳細・戦績（`GET /v1/horses/:horseId/career` の `goals`）・殿堂の銘板（`goalsComplete: true`、友達が見る写しにも出る）に印（リボン）が付く。印は見た目だけで、能力・レース・報酬に何も影響しない。
-
-### 53.3 API（要認証）
-| メソッド | パス | 本文 → 応答 |
-|---|---|---|
-| GET | `/v1/horses/:horseId/goals` | → `HorseGoalsView`（持っていない馬は `404 HORSE_NOT_FOUND`、機能が無効なら `404 NOT_FOUND`） |
-| PUT | `/v1/horse-goals/pin` | `{ "horseId": string \| null }` → `{ "pinned": HorseGoalPin \| null }` |
-| GET | `/v1/horse-goals/pinned` | → `{ "pinned": HorseGoalPin \| null }` |
-```json
-{ "v": 1, "horseId": "h7", "horseName": "ミドリノカゼ", "status": "active", "pinned": true,
-  "goals": [ { "id": "first_win", "kind": "first_win", "params": {}, "text": "初勝利をあげる", "have": 1, "need": 1, "done": true, "completedAt": 1794000000000, "current": false },
-             { "id": "races:10", "kind": "races", "params": { "n": 10 }, "text": "10戦を走る", "have": 7, "need": 10, "done": false, "completedAt": null, "current": true }, "…" ],
-  "doneCount": 1, "total": 7, "chainComplete": false, "chainCompletedAt": null,
-  "notice": "目標は確定したレースの成績だけで進みます。達成の印は見た目だけです。" }
-```
-- `HorseGoalPin` = `{ horseId, horseName, goal: <current の目標>, doneCount, total }`。
-- **ピン留め**（REQ-HGOAL-007）：1頭だけホームに出せる。置き換えるだけなので冪等（キー不要）。`null` で外す。持っていない馬は `404 HORSE_NOT_FOUND`。引退した馬・列を全部達成した馬は `409 NOT_ELIGIBLE`。ピン留めした馬が後で引退・全部達成・手元から消えた時は、読む時に `pinned: null` とみなす（KPI は送らない。新しくピン留めすれば置き換わる）。
-- ブートストラップ・`GET /v1/player` の `horseGoalPin` にも同じ形（ホームの最初の描画用）。
-
-### 53.4 ホームとの関係（§45、REQ-HGOAL-008）
-- ホームに**ピン留めした目標**（馬の名前・目標の文言・`have/need`）を小さく出す。押すとその馬の詳細の目標の面へ。
-- 次にやること（§45）に種類 **`horse_goal_near`** を足す（データの `progression.nextActions.rules` に書く。`threshold` = 残り 1..10）：ピン留めした馬の `current` の目標が、`have ≥ 1` かつ残り（`need − have`）が `threshold` 以下の時。`count` = 残り、`refId` = 馬ID、開く画面は `horse_goals`（コードで固定）。解放の条件なし、期限なし（`deadlineAt: null`）。ショップ・購入には一切つながらない。
-
-### 53.5 KPI（REQ-HGOAL-012）
-- `hgoal_view`（クライアント、`props: { surface: "detail" | "home", done: 0..8 }`。目標の面を開いた／ホームのピンを見た時。ホームは1ゲーム日に1回）→ `s1` = surface、`value` = done。
-- `hgoal_complete`（サーバー、目標を達成した時に1回）→ `s1` = goal kind、`s2` = `chain`（列の最後の1つで全部達成した時）| 空、`count` = 達成した数。
-- `hgoal_pin`（サーバー、ピン留めが変わった時だけ）→ `s1` = `pin` | `unpin`、`s2` = current の goal kind | 空。
-
-### 53.6 文言・法務（REQ-HGOAL-013/014）
-- すべての文言に英語がある（`server-en.json`・`ui-en.json`・`proto-en.json`、`l10n:missing` 0）。馬の名前はプレイヤーが付けたもの（英語でも訳さない）。
-- 賭けを思わせる言葉（`server/src/domain/bettingWords.ts` の共通の一覧）を目標の文言に使わない（テストで全部の文言を確かめる）。「倍」「今だけ」「残りわずか」などの煽り・期限・カウントダウンは無い。
-- コンプガチャではない：目標は確定したレースの成績で進み、ランダムな品の収集を条件にしない。報酬は見た目だけで、購入で近道できない。
-
-### 53.7 クライアント（REQ-HGOAL-010/011）
-- `Muchi.Client` `ApiClient.GetHorseGoalsAsync(horseId)`・`PinHorseGoalAsync(horseId | null)`・`GetPinnedHorseGoalAsync()`、`HorseGoalsView`・`HorseGoalPin`、`HorseGoalChain.Build(horse, tracks)`・`HorseGoalChain.Evaluate(chain, record)`（サーバーと同じ、共有ベクター）、`AnalyticsEvent.HorseGoalView`。`NextKinds` に `horse_goal_near`。
-- Unity のゲーム層 `HorseGoalsModel`：馬の詳細の目標の面（列の行・進み・今の目標・達成の印・ピン留め）、ホームのピン、文言（日本語＋英語）、KPI の1日1回。描画は `docs/handoff-codex-round18-horse-goals.md`。
-
-### 53.8 設定 `progression.horseGoals`
-`{ enabled: bool }`。`enabled: true` は `progression.hall` が有効な時だけ（戦績が無いと数えられない）。目標の数・`need` はコードの版 `v: 1` で決まり（共有ベクターと同じ）、設定では変えない。
-
-### 53.9 アカウント削除
-状態の `horseGoals`（達成の記録・ピン）と戦績の `goal` は最後の `wipe` で消える。殿堂の写し（§34.5）は既存の手順で消える。他の場所に写しは無い。
-
 ## 50. 練習レース（practice races、REQ-PRAC-001〜018、`server/src/domain/practice.ts`、C# `Practice.cs`（`PracticeCatalog`・`PracticeSession`・`PracticeClock`）・`Muchi.Game.PracticeModel`、`server/master/practice.json`）
 自分の馬で、好きなコース・距離・馬場・昼夜・頭数（2〜12）・CPU の強さを選び、**端末の中だけで**CPU 相手に本物のエンジンで走る。ムチのタイミングと脚質の乗り方を練習するための場所。サーバーに結果を送る経路は無い（オフラインでも遊べる）。
 
@@ -2915,6 +2845,90 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 - `Muchi.Client`：`ApiClient.GetPracticeCatalogAsync`、`PracticeCatalog`（`Parse`・`Fallback`）、`PracticeSetup`、`PracticeSession`（`BuildConfig`・`Start`・`Restart`・`Ghost`・`Advice`・`WhipWindow`・`Finish` → `PracticeResult`）、`PracticeClock`、`AnalyticsEvents.PracticeStart`・`PracticeFinish`。`ProtocolCodec.ParseHorse`・`HorseToJson`（設定の馬の読み書きを1か所に。結果は今までと同じ）。
 - Unity ゲーム層 `PracticeModel`：入口の可否（FTUE）、カタログの取得と端末の写し・予備、設定の選択肢（馬・コース・馬場・昼夜・頭数・強さ）と既定、オプション、`OfflineRaceDriver`＋`RaceObserver` でのレース、時計（スロー）、ムチの目安の帯、ゴーストの位置、やり直し、結果の行、写真の可否、KPI。描画は `docs/handoff-codex-round18-practice.md`。
 - デプロイ：新しい GET と KPI の2種類だけ（検証器は変わらない、マイグレーションなし）。サーバーだけ出せばよい。
+
+## 51. 個人データの開示・ダウンロード（personal data export / disclosure request、REQ-DEX-001〜020、`server/src/domain/dataExport.ts`・`dataExportService.ts`・`server/src/do/dataExportPorts.ts`、C# `DataExport.cs`・`Muchi.Game.DataExportModel`）
+個人情報保護法の**保有個人データの開示請求**（法33条、電磁的記録での提供を含む）と、海外のプレイヤーが期待する「データのダウンロード」（GDPR 15条・20条の水準）に応える。設定 › プライバシーからプレイヤー本人だけがリクエストでき、サーバーが**非同期に**、機械で読める JSON と人が読める概要（テキスト）を作り、非公開の R2 に置いて、短い時間だけ有効な署名つきリンクで渡す。メールアドレスは集めない（本人確認 = ログイン中のプレイヤー）。コイン・アイテムは動かない（E 番号なし）。
+
+### 51.1 流れ
+1. `POST /v1/player/data-export`（要認証・`Idempotency-Key` 必須・本文なし）→ プレイヤーの状態に `queued` のリクエストを1件作る。KPI `dex_request`。言語は `Accept-Language`／`?lang=`（`ja`／`en`、概要と履歴の文の言語）。
+2. プレイヤーの Durable Object の**アラーム**が作る（リクエストの経路では作らない）：状態・SQL の履歴（コインの台帳は法定保存期間内、ガチャの記録は 90 日以内）・ディレクトリの公開名・自分が送った通報・分析イベントを集め、JSON と概要を R2 の `private/data-export/<playerId>/<requestId>.json`／`.txt`（非公開バケット `REPLAYS`、公開の `SNAPSHOTS` には置かない）に書き、`ready` にする。
+3. `ready` になった時、アクティビティ（§40）に1件（`data_export_ready`、`category: "account"`、リンク先 `privacy`、`linkId` = requestId）。KPI `dex_ready`。プッシュは送らない。
+4. `GET /v1/player/data-export` が `ready` の間、JSON と概要それぞれの**署名つきリンク**（`linkTtlMinutes` 分、ただしエクスポートの期限を超えない）を返す。画面を開くたびに新しいリンク。
+5. `keepDays` 日後にファイルを削除（アラーム。R2 のライフサイクルルール（接頭辞 `private/data-export/`、`keepDays + 1` 日）を予備に設定する、`docs/ops/deploy.md`）。状態は `expired`。
+
+### 51.2 状態とルール
+- 状態 `dataExport`：`{ current: DexRequest|null, lastReadyRequestAt, audit[], pendingDeletes[], deletesTriedAt? }`。`DexRequest`：`{ requestId, status: queued|building|ready|failed|expired, lang, requestedAt, nextAt, attempts, readyAt?, expiresAt?, sizeBytes?, summaryBytes?, sha256?, failReason?, downloads, filesDeleted? }`。
+- **1件ずつ・冪等**：`queued`／`building`／`ready`（期限内）の間にもう一度リクエストすると、新しく作らずに今のものを返す（`created: false`）。同じ `Idempotency-Key` は最初の応答。
+- **回数の制限**：新しいリクエストは、最後に `ready` になったリクエストの `requestedAt` から `cooldownDays` 日後から（`429 DATA_EXPORT_COOLDOWN`、`details.availableAt`）。`failed` は数えない（すぐにもう一度リクエストできる）。`keepDays ≤ cooldownDays`（同時に2つのファイルが残らない）。
+- **作成の再試行**：アラームが取ると `building`（リース 5 分。アラームが途中で止まっても5分後に取り直す）。失敗は 1分・10分・1時間・6時間の間隔で `maxAttempts` 回まで、その後 `failed`（途中まで書いたファイルは削除の予定に入る）。遅れて届いた古いリクエストの完了は無視し、そのファイルを削除の予定に入れる。R2 の削除に失敗したキーは `pendingDeletes` に残り、10分ごとに再試行する。
+- **アカウント削除の予定中**（§9.4 `scheduled`）もリクエスト・ダウンロードできる（画面に「削除が終わるまではダウンロードできます」）。削除の実行が始まったら（`deleting`）新しいリクエストは `DELETION_PENDING`、作成も止まる。削除の手順に `data_export` の段（`finalize` の前）を足し、R2 のファイル（今のものと削除待ちのもの）を消す。削除後のリンクは `404`、アラームの掃除は何も作らない（`wiped`）。
+- **監査ログ**：`requested`・`building`・`ready`・`retry`・`failed`・`downloaded`・`expired`・`files_deleted`（時刻・requestId・短い詳細、`auditKeep` 件）。中身は書かない。
+
+### 51.3 API
+| メソッド | パス | 認証 | 本文 → 応答 |
+|---|---|---|---|
+| GET | `/v1/player/data-export` | プレイヤー | → `DataExportView` |
+| POST | `/v1/player/data-export` | プレイヤー（`Idempotency-Key`） | なし → `DataExportView` ＋ `created` |
+| GET | `/v1/data-export/file?p&r&f&e&s` | なし（署名） | → ファイル本体（`content-disposition: attachment`、`cache-control: private, no-store`、JSON は `x-content-sha256`） |
+| GET | `/v1/admin/players/:playerId/data-export` | 運用（viewer、監査あり） | → 状態・時刻・大きさ・試行回数・ダウンロード回数・監査ログ（**中身・リンク・R2 のキーは返さない**） |
+
+```json
+{ "enabled": true, "status": "ready", "statusText": "ダウンロードできます", "requestId": "dex_…", "requestedAt": 1794790800000,
+  "readyAt": 1794790860000, "expiresAt": 1795395660000, "sizeBytes": 48211, "canRequest": false, "nextAvailableAt": null, "keepDays": 7,
+  "deletionScheduled": false, "deletionNote": null, "notice": "アカウントに保存されているあなたのデータ（…）をまとめてダウンロードできます。…",
+  "download": { "json": { "url": "/v1/data-export/file?p=…&r=dex_…&f=json&e=…&s=…" }, "summary": { "url": "…&f=summary&…" }, "linkExpiresAt": 1794791460000 } }
+```
+- `status`：`none`・`queued`・`building`・`ready`・`failed`・`expired`（`ready` で期限を過ぎたものはアラームの前でも `expired`）。`download` は `ready` の時だけ。`url` は API のベースからの相対パス。
+- 署名：`s = base64url(HMAC-SHA256(TICKET_SECRET + "|data-export", "dex1|p|r|f|e"))`。リンクは1人・1リクエスト・1ファイルに結び付き、`e` を過ぎると `410 LINK_EXPIRED`、形・署名が違えば `403 LINK_INVALID`、今の `ready` のリクエストでなければ `404`。
+- `progression.dataExport` が無い／`enabled: false` なら `404 NOT_FOUND`。
+
+### 51.4 JSON の形（`format: "muchi-issen/personal-data-export"`, `version: 1`、フィールド名は固定。足す時は後ろに足し、意味を変える時は `version` を上げる）
+時刻はすべて Unix ミリ秒（UTC、`timeUnit: "unix_ms_utc"`）。先頭にヘッダー、その後に下の順で1行ずつの区切り（大きな一覧は1要素1行）で、行単位のツール・ストリームのパーサーで読める。
+| キー | 中身 |
+|---|---|
+| `format` `version` `requestId` `playerId` `generatedAt` `language` `timeUnit` `sections` `truncated` `notIncluded` `unclassified` | ヘッダー。`truncated` = `[{section, omitted}]`、`notIncluded` = 持っているが入れていないもの `[{key, reason}]`、`unclassified` = 分類されていないキー（常に空、テストで確認） |
+| `account` | `playerId`・`createdAt`・`lastSeenAt`・`age`（生年月・保護者の同意）・`consent`（規約・プライバシーポリシーの版と履歴）・`flags`・`deletion`（予定の状態・日時、確認トークンなし）・`moderation`（状態・期限・日時。検知の理由は入れない） |
+| `profile` | 表示名・称号・勝負服・勝負服エディタのプリセット・統計・レーティング（丸め）・シーズン・シーズンの記録 |
+| `settings` | アクセシビリティ（§41）・かんたん操作・実況パック・コース／部屋の条件・装備・厩舎の整理・プッシュの設定・広告の設定と視聴の記録（広告ネットワークの取引 ID なし）・殿堂の公開範囲・ライバルの不参加 |
+| `horses` | 馬（`studSire` は他のプレイヤーの ID を外し、馬の名前だけ）・絆・調教・`goals`（§53 馬ごとの目標の達成日時とホームのピン、Round 18 統合） |
+| `items` | アイテム・素材・アイテムの未精算・アイテムの記録 |
+| `wallet` | **有償・無償を分けた**残高・未精算・有償コインのロット（付与・残り・日時・購入の参照）。有償コインに有効期限はない旨の表示 |
+| `coinHistory` | `paid`／`free` を**別の一覧**で（§33 の `CoinRow`：参照・日時・増減・残高・分類・文）。法定保存期間内の全行（大きさの上限を超えた時だけ古い行から省略し `truncated` に書く） |
+| `purchases` | 購入（§33 の `PurchaseRow` ＋ `storeTransactionId`＝ストアのレシートの番号）・月ごとの購入額・初回購入・定期購入・厩舎手当・オファーの表示記録 |
+| `gacha` | ガチャの記録（90 日以内、§33 の `GachaRow`）・天井のポイント・ステップアップ |
+| `giftBox` | 受け取り前・履歴（運営の内部メモ `note` は外す） |
+| `social` | フレンド（ID と今の公開名だけ）・送ったフレンド申請（ID・名前・日時）・受けた申請／部屋の招待（数だけ）・**ブロック**（`teamFeed.muted`、ID と名前）・支部（ID・加入日・申請）・スタンプを送った支部・マイ厩舎（配置・いいねの数）・招待（使ったコード・日時・端末のハッシュ・招待した人の到達。相手の ID なし）・`friendSuggest`（§49：「おすすめに表示しない」・自分が消した人の ID・今の公開名・日時・理由、最近の対戦相手は**数だけ**。Round 18 統合）・`namesAvailable` |
+| `reportsMade` | **自分が送った**通報：レースの通報（`kind: "race"`、レース・日時・未対応／対応済み）と §47 のプレイヤーの通報（`kind: "player"`、日時・理由・入口・対象の種類・**自分の補足**・`open`／`resolved`。Round 18 統合）。**通報した相手の ID・写し・対応の内容・担当者は入れない**。`today` = 今日の通報の数（相手ごとの数は相手の ID なので入れない）。どちらかが読めない時は `available: false` |
+| `activity` | お知らせ（日時・種類・件数・文。送った人の ID なし） |
+| `replays` | マイリプレイの保存・最近のレース（メタデータ。リプレイ本体は入れない） |
+| `photos` | 保存した写真の記録（§38、画像は元から保存しない） |
+| `cups` | 参加中・履歴・トロフィー・受けた招待（主催者の ID なし） |
+| `recaps` | 振り返りのスナップショット（§43） |
+| `play` | シーズンパス・ログインボーナス・ミッション・オンボーディング・配合・タイムアタック（記録・走行）・週替わりチャレンジ・イベント・大会・ライバル（**結果だけ**、相手の ID・名前なし）・種付け（自分の出品と記録、相手の ID なし）・殿堂・図鑑・支部の共同目標・復帰・次にやること・プッシュの予定 |
+| `devices` | 登録した端末（OS・登録日・最終利用・言語・プッシュトークンの末尾6文字だけ） |
+| `analytics` | KPI の状態・実験の割り当て、`events`：仮名の分析 ID（塩つきハッシュ）に結び付いた KPI の行（Analytics Engine の保存期間 90 日以内、`KPI_SQL_ACCOUNT_ID`／`KPI_SQL_TOKEN` が無ければ `available: false`） |
+| `helpInquiries` | ゲーム内のお問い合わせ（§48、Round 18 統合）：`items` = 問い合わせごとに種類・状態・言語・日時・**自分が書いた内容**（個人情報を置き換えた後の文と置き換えた数）・添えた記録・自動で添えた情報・メッセージ（`from: player/support`・本文・日時。**返信した運営の ID は入れない**＝運営のメモ）、`articleVotes` = 記事の「役に立った」 |
+
+### 51.5 入れないもの（`notIncluded[].reason`）
+- `internal_idempotency`：`idem`・`appliedRaces`（再試行の防止。結果は他のセクションにある）
+- `internal_counter`：`v`・`ledgerSeq`・`counters`
+- `internal_queue`：`pendingEventPushes`（配信待ち。届いた結果は他のセクション）
+- `operator_notes`：`supportFlags`（通報した人の ID を含みうる）・`supportGrants`・`adminOps`（運営の操作の記録。付与されたものはコインの履歴・プレゼント・アイテムにある）
+- `export_meta`：`dataExport`（このエクスポート自身の記録）
+- `third_party`：他のプレイヤーについての情報（申請・招待を送ってきた人、ライバル・種付けの相手、お知らせを送った人の ID）。**他のプレイヤーが自分について送った通報**は入れない（通報した人を特定できてしまい、第三者の権利利益を害するおそれ（法33条2項1号）と、モデレーションの業務に著しい支障（同2号）。弁護士の確認待ち、`docs/planning/03-legal-risk.md`）。
+- 新しい状態のキーは `DEX_CLASSIFICATION`（`Record<keyof PlayerState | 拡張キー, …>`）にどちらかを書かないと型チェックとテスト（`test/data-export.test.ts`：インターフェース・`PlayerState & { … }` の拡張・実際の状態）が失敗する。Round 18 統合で分類したキー：`friendSuggest`→`social`、`horseGoals`→`horses`、拡張キー `help`→`helpInquiries`、`reports`（通報の1日の数）→`reportsMade`。§46 メンテナンス・§50 練習レースはプレイヤーの状態に何も置かない。§52 定型チャットの投稿は支部のフィード（TeamDO）にあり、プレイヤーの状態には無い：支部のフィードは支部員の共有の場で、決まった文と選んだ値だけ・保存は `retainDays` 日と件数まで（§52.6）なので、エクスポートには入れない（`docs/planning/03-legal-risk.md` の確認事項）。
+
+### 51.6 人が読める概要（`.txt`）
+タイトル・説明・作成日時・プレイヤー ID・表示名・作成日・有償／無償の残高・馬・購入・コインの履歴・ガチャ・フレンド・ブロック・通報・お知らせ・リプレイ・写真・振り返り・端末・分析イベントの件数、省略した行（あれば）、入れていないもの、問い合わせ先。ラベルはプレイヤーの言語（英語はカタログで訳す）、値（名前など）は訳さない。
+
+### 51.7 設定 `progression.dataExport`（リモート設定で変更可）
+`{ enabled, cooldownDays (1..30), keepDays (1..30, ≤ cooldownDays), linkTtlMinutes (1..60), maxBytes (1,000,000..50,000,000), maxAttempts (1..10), auditKeep (10..200) }`。起動時と各版で検証（`dataExportProblems`）。既定 `{ true, 7, 7, 10, 20000000, 5, 50 }`。
+
+### 51.8 KPI
+`dex_request`（`s1` = 言語）・`dex_ready`（`s1` = 言語、`value` = バイト数、`durationMs` = リクエストから準備まで、`count` = 省略した行）・`dex_download`（`s1` = `json`／`summary`、`isFirst` = そのリクエストで最初のダウンロード）。すべてサーバー。クエリは `docs/ops/kpi-queries.md`。
+
+### 51.9 クライアント
+`Muchi.Client` `ApiClient.GetDataExportAsync`・`RequestDataExportAsync`・`DataExportFileUrl`、`DataExportStatus`（`DataExport.cs`）。リンクは API のベースにつないで OS のブラウザ／共有シートで開く（アプリの中に保存しない）。Unity のゲーム層 `Muchi.Game.DataExportModel`（状態ごとの文・ボタン・次に申し込める日・削除の予定の注意・期限の表示）。
 
 ## 52. 支部の定型チャット（branch quick chat、REQ-QCHAT-001〜016、`server/src/domain/quickChat.ts`・`server/master/quick-chat.json`・§18 の `teamFeed.ts` を拡張、C# `QuickChat.cs`・`Muchi.Game.QuickChatModel`）
 支部の中で、**決まった文（定型文）だけ**で話せるようにする。自由入力は無い（安全のための設計。docs/planning/03「支部の定型チャット」）。文の中の空欄（スロット）には、**サーバーが本人の状態から確かめた安全な値だけ**が入る：自分の馬の名前・コース名・自分のレース結果・タイムアタックの記録・自分が出ているカップ・同じ支部の仲間。§18 の支部フィードに新しい種類 `qchat` として入る（別のフィードは作らない）。応援は §18 のスタンプのリアクションをそのまま使う。コイン・アイテムは動かない（E 番号なし）。
@@ -3006,86 +3020,72 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 | GET | `/v1/teams/me/feed` | §18 の応答に `qchat` 項目（52.4） |
 | PUT | `/v1/teams/me/feed/:seq/reaction` | §18 のまま（`qchat` 項目にも使える） |
 
-## 51. 個人データの開示・ダウンロード（personal data export / disclosure request、REQ-DEX-001〜020、`server/src/domain/dataExport.ts`・`dataExportService.ts`・`server/src/do/dataExportPorts.ts`、C# `DataExport.cs`・`Muchi.Game.DataExportModel`）
-個人情報保護法の**保有個人データの開示請求**（法33条、電磁的記録での提供を含む）と、海外のプレイヤーが期待する「データのダウンロード」（GDPR 15条・20条の水準）に応える。設定 › プライバシーからプレイヤー本人だけがリクエストでき、サーバーが**非同期に**、機械で読める JSON と人が読める概要（テキスト）を作り、非公開の R2 に置いて、短い時間だけ有効な署名つきリンクで渡す。メールアドレスは集めない（本人確認 = ログイン中のプレイヤー）。コイン・アイテムは動かない（E 番号なし）。
+## 53. 馬ごとの目標（per-horse goals、REQ-HGOAL-001〜016、`server/src/domain/horseGoals.ts`、C# `HorseGoals.cs`（`HorseGoalChain`）・`Muchi.Game.HorseGoalsModel`、共有ベクター `contracts/horse-goals.vectors.json`）
+馬ごとに**短い目標の列（チェーン）**を出し、その馬の物語にする（初勝利 → 10戦 → 得意の馬場で勝つ → コースで記録 → 得意の距離の外で勝つ → ランク戦で上位 → 大会優勝）。目標は馬の適性（芝ダ・距離・脚質）と固有スキルの有無から**純粋な関数**で決まり、進み具合は §34 の戦績（確定した結果だけ）から数える。報酬は**見た目だけ**（リボン・殿堂の銘板の飾り）。コイン・素材・アイテム・能力は何も動かない（経済の目標なし、E 番号・balance-targets の節なし。ランク戦の強さは変わらない）。設定は `progression.horseGoals`（`horseGoalsProblems` で検証。無い／`enabled: false` なら機能ごと無し。§34 の殿堂が無効なら有効にできない）。
 
-### 51.1 流れ
-1. `POST /v1/player/data-export`（要認証・`Idempotency-Key` 必須・本文なし）→ プレイヤーの状態に `queued` のリクエストを1件作る。KPI `dex_request`。言語は `Accept-Language`／`?lang=`（`ja`／`en`、概要と履歴の文の言語）。
-2. プレイヤーの Durable Object の**アラーム**が作る（リクエストの経路では作らない）：状態・SQL の履歴（コインの台帳は法定保存期間内、ガチャの記録は 90 日以内）・ディレクトリの公開名・自分が送った通報・分析イベントを集め、JSON と概要を R2 の `private/data-export/<playerId>/<requestId>.json`／`.txt`（非公開バケット `REPLAYS`、公開の `SNAPSHOTS` には置かない）に書き、`ready` にする。
-3. `ready` になった時、アクティビティ（§40）に1件（`data_export_ready`、`category: "account"`、リンク先 `privacy`、`linkId` = requestId）。KPI `dex_ready`。プッシュは送らない。
-4. `GET /v1/player/data-export` が `ready` の間、JSON と概要それぞれの**署名つきリンク**（`linkTtlMinutes` 分、ただしエクスポートの期限を超えない）を返す。画面を開くたびに新しいリンク。
-5. `keepDays` 日後にファイルを削除（アラーム。R2 のライフサイクルルール（接頭辞 `private/data-export/`、`keepDays + 1` 日）を予備に設定する、`docs/ops/deploy.md`）。状態は `expired`。
+### 53.1 目標の列（`horseGoalChain`、REQ-HGOAL-001/002）
+入力は馬（`surface`・`distMinM`・`distMaxM`・`style`・`skillId`）とコースの一覧（`id`・`name`・`surface`・`distanceM`、master tracks.json）だけ。同じ入力なら同じ列（乱数・時刻・レア度・能力値・課金を見ない）。版 `v: 1`。並びはこの順で、条件の無いものは飛ばす（6〜8個）：
+| 順 | `kind` | `id` | 条件 | `need` | 数えるもの |
+|---|---|---|---|---|---|
+| 1 | `first_win` | `first_win` | いつも | 1 | 戦績の `wins` |
+| 2 | `races` | `races:10` | いつも | 10 | 戦績の `races` |
+| 3 | `surface_win` | `surface_win:{surface}` | いつも。`surface` は馬の芝ダ（`both` は距離の範囲に入るコースが多い方、同数なら芝） | 3 | その馬場での勝ち（`goal.surfaceWins`） |
+| 4 | `ta_course` | `ta_course:{trackId}` | 走れるコース（芝ダが合う）がある。距離の外れが小さい順 → 範囲の真ん中に近い順 → コースID順の先頭 | 1 | そのコースの検証済みタイムアタックの記録（`bestTa[trackId]`）がある |
+| 5 | `stretch_win` | `stretch_win:{band}` | 距離の帯（§44.3 と同じ：`sprint`〜1400m・`mile`1401〜1800m・`intermediate`1801〜2400m・`long`2401m〜）のうち、馬の距離の範囲と重ならず、馬が走れる馬場のコースがある帯。逃げ・先行は短い側の近い帯から、差し・追込は長い側の近い帯から。その側に無ければ反対側。どちらにも無ければこの目標は無い | 1 | その帯の距離のレースでの勝ち（`goal.bandWins`） |
+| 6 | `wins` | `wins:5` | 固有スキルを持つ馬だけ | 5 | 戦績の `wins` |
+| 7 | `ranked_top3` | `ranked_top3:5` | いつも | 5 | ランク戦の3着以内（`goal.rankedPlaces`） |
+| 8 | `tournament_win` | `tournament_win` | いつも | 1 | 戦績の `tournamentWins` |
 
-### 51.2 状態とルール
-- 状態 `dataExport`：`{ current: DexRequest|null, lastReadyRequestAt, audit[], pendingDeletes[], deletesTriedAt? }`。`DexRequest`：`{ requestId, status: queued|building|ready|failed|expired, lang, requestedAt, nextAt, attempts, readyAt?, expiresAt?, sizeBytes?, summaryBytes?, sha256?, failReason?, downloads, filesDeleted? }`。
-- **1件ずつ・冪等**：`queued`／`building`／`ready`（期限内）の間にもう一度リクエストすると、新しく作らずに今のものを返す（`created: false`）。同じ `Idempotency-Key` は最初の応答。
-- **回数の制限**：新しいリクエストは、最後に `ready` になったリクエストの `requestedAt` から `cooldownDays` 日後から（`429 DATA_EXPORT_COOLDOWN`、`details.availableAt`）。`failed` は数えない（すぐにもう一度リクエストできる）。`keepDays ≤ cooldownDays`（同時に2つのファイルが残らない）。
-- **作成の再試行**：アラームが取ると `building`（リース 5 分。アラームが途中で止まっても5分後に取り直す）。失敗は 1分・10分・1時間・6時間の間隔で `maxAttempts` 回まで、その後 `failed`（途中まで書いたファイルは削除の予定に入る）。遅れて届いた古いリクエストの完了は無視し、そのファイルを削除の予定に入れる。R2 の削除に失敗したキーは `pendingDeletes` に残り、10分ごとに再試行する。
-- **アカウント削除の予定中**（§9.4 `scheduled`）もリクエスト・ダウンロードできる（画面に「削除が終わるまではダウンロードできます」）。削除の実行が始まったら（`deleting`）新しいリクエストは `DELETION_PENDING`、作成も止まる。削除の手順に `data_export` の段（`finalize` の前）を足し、R2 のファイル（今のものと削除待ちのもの）を消す。削除後のリンクは `404`、アラームの掃除は何も作らない（`wiped`）。
-- **監査ログ**：`requested`・`building`・`ready`・`retry`・`failed`・`downloaded`・`expired`・`files_deleted`（時刻・requestId・短い詳細、`auditKeep` 件）。中身は書かない。
+文言（サーバー・C# が同じものを作る。英語は §23 の境界で訳す。馬の名前は文言に入れない）：
+`初勝利をあげる`／`{n}戦を走る`／`芝で{n}勝する`・`ダートで{n}勝する`／`タイムアタック {course} で記録を残す`／`短距離（1400m以下）で勝つ`・`マイル（1401〜1800m）で勝つ`・`中距離（1801〜2400m）で勝つ`・`長距離（2401m以上）で勝つ`／`{n}勝する`／`ランク戦で3着以内に{n}回入る`／`大会で優勝する`。
+サーバー（TS）とクライアント（C#）は共有ベクター `contracts/horse-goals.vectors.json` で同じ列・文言・進み具合になることを確かめる。
 
-### 51.3 API
-| メソッド | パス | 認証 | 本文 → 応答 |
-|---|---|---|---|
-| GET | `/v1/player/data-export` | プレイヤー | → `DataExportView` |
-| POST | `/v1/player/data-export` | プレイヤー（`Idempotency-Key`） | なし → `DataExportView` ＋ `created` |
-| GET | `/v1/data-export/file?p&r&f&e&s` | なし（署名） | → ファイル本体（`content-disposition: attachment`、`cache-control: private, no-store`、JSON は `x-content-sha256`） |
-| GET | `/v1/admin/players/:playerId/data-export` | 運用（viewer、監査あり） | → 状態・時刻・大きさ・試行回数・ダウンロード回数・監査ログ（**中身・リンク・R2 のキーは返さない**） |
+### 53.2 進み具合（REQ-HGOAL-003〜005）
+- 数えるのは **§34.1 の戦績と同じレースだけ**（`noteHallRace`：ランク戦・イベント・大会、人間2人以上のフレンド戦。レースIDごとに1回のガードの中。無効・チュートリアル・週替わりチャレンジ・プレイヤー主催カップ・馬IDの無い結果は数えない）。新しく数えるもの（`career.goal`：`surfaceWins`・`bandWins`・`rankedPlaces`）も `noteHallRace` の同じ場所で書く。コースの芝ダ・距離はレースの `details.trackId` から master で引く（無い結果は芝ダ・帯の勝ちに数えない）。タイムアタックは `noteHallTa`、大会は `noteHallTournament`（どちらも §34 のガードのまま）。
+- **ミッションとは別に数える**：目標はミッション・パス・コインに何も足さず、ミッションの進みは目標に入らない（同じレースが両方に1回ずつ数えられるだけで、報酬が2回出ることは無い。目標の報酬は見た目だけ）。
+- `have = min(数えた値, need)`、`done` は達成の記録（`completedAt`）があるか `have ≥ need`。列のどの目標からでも達成できる（順番は物語の並び）。`current` は並びで最初のまだの目標（全部終われば無し）。
+- `races`・`wins`・タイムアタック・大会は §34 の戦績の公開から、`surfaceWins`・`bandWins`・`rankedPlaces` はこの機能の公開から数える（さかのぼらない）。
+- **達成の記録**：数える場所（レース・タイムアタック・大会）のすぐ後に、その馬の列を見て新しく満たした目標に `completedAt` を書き、KPI `hgoal_complete` を1回送る。同じ目標は2回記録しない。読むだけの画面（GET）は書かない（記録が無くても `have ≥ need` なら `done` で見せる）。
+- **引退した馬**：達成した目標と列はそのまま見られる（戦績は引退で消えない）。引退した馬はもう走らないので進まない。
+- 列の全部を達成すると **`chainComplete: true`**（`chainCompletedAt`）：馬の詳細・戦績（`GET /v1/horses/:horseId/career` の `goals`）・殿堂の銘板（`goalsComplete: true`、友達が見る写しにも出る）に印（リボン）が付く。印は見た目だけで、能力・レース・報酬に何も影響しない。
 
+### 53.3 API（要認証）
+| メソッド | パス | 本文 → 応答 |
+|---|---|---|
+| GET | `/v1/horses/:horseId/goals` | → `HorseGoalsView`（持っていない馬は `404 HORSE_NOT_FOUND`、機能が無効なら `404 NOT_FOUND`） |
+| PUT | `/v1/horse-goals/pin` | `{ "horseId": string \| null }` → `{ "pinned": HorseGoalPin \| null }` |
+| GET | `/v1/horse-goals/pinned` | → `{ "pinned": HorseGoalPin \| null }` |
 ```json
-{ "enabled": true, "status": "ready", "statusText": "ダウンロードできます", "requestId": "dex_…", "requestedAt": 1794790800000,
-  "readyAt": 1794790860000, "expiresAt": 1795395660000, "sizeBytes": 48211, "canRequest": false, "nextAvailableAt": null, "keepDays": 7,
-  "deletionScheduled": false, "deletionNote": null, "notice": "アカウントに保存されているあなたのデータ（…）をまとめてダウンロードできます。…",
-  "download": { "json": { "url": "/v1/data-export/file?p=…&r=dex_…&f=json&e=…&s=…" }, "summary": { "url": "…&f=summary&…" }, "linkExpiresAt": 1794791460000 } }
+{ "v": 1, "horseId": "h7", "horseName": "ミドリノカゼ", "status": "active", "pinned": true,
+  "goals": [ { "id": "first_win", "kind": "first_win", "params": {}, "text": "初勝利をあげる", "have": 1, "need": 1, "done": true, "completedAt": 1794000000000, "current": false },
+             { "id": "races:10", "kind": "races", "params": { "n": 10 }, "text": "10戦を走る", "have": 7, "need": 10, "done": false, "completedAt": null, "current": true }, "…" ],
+  "doneCount": 1, "total": 7, "chainComplete": false, "chainCompletedAt": null,
+  "notice": "目標は確定したレースの成績だけで進みます。達成の印は見た目だけです。" }
 ```
-- `status`：`none`・`queued`・`building`・`ready`・`failed`・`expired`（`ready` で期限を過ぎたものはアラームの前でも `expired`）。`download` は `ready` の時だけ。`url` は API のベースからの相対パス。
-- 署名：`s = base64url(HMAC-SHA256(TICKET_SECRET + "|data-export", "dex1|p|r|f|e"))`。リンクは1人・1リクエスト・1ファイルに結び付き、`e` を過ぎると `410 LINK_EXPIRED`、形・署名が違えば `403 LINK_INVALID`、今の `ready` のリクエストでなければ `404`。
-- `progression.dataExport` が無い／`enabled: false` なら `404 NOT_FOUND`。
+- `HorseGoalPin` = `{ horseId, horseName, goal: <current の目標>, doneCount, total }`。
+- **ピン留め**（REQ-HGOAL-007）：1頭だけホームに出せる。置き換えるだけなので冪等（キー不要）。`null` で外す。持っていない馬は `404 HORSE_NOT_FOUND`。引退した馬・列を全部達成した馬は `409 NOT_ELIGIBLE`。ピン留めした馬が後で引退・全部達成・手元から消えた時は、読む時に `pinned: null` とみなす（KPI は送らない。新しくピン留めすれば置き換わる）。
+- ブートストラップ・`GET /v1/player` の `horseGoalPin` にも同じ形（ホームの最初の描画用）。
 
-### 51.4 JSON の形（`format: "muchi-issen/personal-data-export"`, `version: 1`、フィールド名は固定。足す時は後ろに足し、意味を変える時は `version` を上げる）
-時刻はすべて Unix ミリ秒（UTC、`timeUnit: "unix_ms_utc"`）。先頭にヘッダー、その後に下の順で1行ずつの区切り（大きな一覧は1要素1行）で、行単位のツール・ストリームのパーサーで読める。
-| キー | 中身 |
-|---|---|
-| `format` `version` `requestId` `playerId` `generatedAt` `language` `timeUnit` `sections` `truncated` `notIncluded` `unclassified` | ヘッダー。`truncated` = `[{section, omitted}]`、`notIncluded` = 持っているが入れていないもの `[{key, reason}]`、`unclassified` = 分類されていないキー（常に空、テストで確認） |
-| `account` | `playerId`・`createdAt`・`lastSeenAt`・`age`（生年月・保護者の同意）・`consent`（規約・プライバシーポリシーの版と履歴）・`flags`・`deletion`（予定の状態・日時、確認トークンなし）・`moderation`（状態・期限・日時。検知の理由は入れない） |
-| `profile` | 表示名・称号・勝負服・勝負服エディタのプリセット・統計・レーティング（丸め）・シーズン・シーズンの記録 |
-| `settings` | アクセシビリティ（§41）・かんたん操作・実況パック・コース／部屋の条件・装備・厩舎の整理・プッシュの設定・広告の設定と視聴の記録（広告ネットワークの取引 ID なし）・殿堂の公開範囲・ライバルの不参加 |
-| `horses` | 馬（`studSire` は他のプレイヤーの ID を外し、馬の名前だけ）・絆・調教・`goals`（§53 馬ごとの目標の達成日時とホームのピン、Round 18 統合） |
-| `items` | アイテム・素材・アイテムの未精算・アイテムの記録 |
-| `wallet` | **有償・無償を分けた**残高・未精算・有償コインのロット（付与・残り・日時・購入の参照）。有償コインに有効期限はない旨の表示 |
-| `coinHistory` | `paid`／`free` を**別の一覧**で（§33 の `CoinRow`：参照・日時・増減・残高・分類・文）。法定保存期間内の全行（大きさの上限を超えた時だけ古い行から省略し `truncated` に書く） |
-| `purchases` | 購入（§33 の `PurchaseRow` ＋ `storeTransactionId`＝ストアのレシートの番号）・月ごとの購入額・初回購入・定期購入・厩舎手当・オファーの表示記録 |
-| `gacha` | ガチャの記録（90 日以内、§33 の `GachaRow`）・天井のポイント・ステップアップ |
-| `giftBox` | 受け取り前・履歴（運営の内部メモ `note` は外す） |
-| `social` | フレンド（ID と今の公開名だけ）・送ったフレンド申請（ID・名前・日時）・受けた申請／部屋の招待（数だけ）・**ブロック**（`teamFeed.muted`、ID と名前）・支部（ID・加入日・申請）・スタンプを送った支部・マイ厩舎（配置・いいねの数）・招待（使ったコード・日時・端末のハッシュ・招待した人の到達。相手の ID なし）・`friendSuggest`（§49：「おすすめに表示しない」・自分が消した人の ID・今の公開名・日時・理由、最近の対戦相手は**数だけ**。Round 18 統合）・`namesAvailable` |
-| `reportsMade` | **自分が送った**通報：レースの通報（`kind: "race"`、レース・日時・未対応／対応済み）と §47 のプレイヤーの通報（`kind: "player"`、日時・理由・入口・対象の種類・**自分の補足**・`open`／`resolved`。Round 18 統合）。**通報した相手の ID・写し・対応の内容・担当者は入れない**。`today` = 今日の通報の数（相手ごとの数は相手の ID なので入れない）。どちらかが読めない時は `available: false` |
-| `activity` | お知らせ（日時・種類・件数・文。送った人の ID なし） |
-| `replays` | マイリプレイの保存・最近のレース（メタデータ。リプレイ本体は入れない） |
-| `photos` | 保存した写真の記録（§38、画像は元から保存しない） |
-| `cups` | 参加中・履歴・トロフィー・受けた招待（主催者の ID なし） |
-| `recaps` | 振り返りのスナップショット（§43） |
-| `play` | シーズンパス・ログインボーナス・ミッション・オンボーディング・配合・タイムアタック（記録・走行）・週替わりチャレンジ・イベント・大会・ライバル（**結果だけ**、相手の ID・名前なし）・種付け（自分の出品と記録、相手の ID なし）・殿堂・図鑑・支部の共同目標・復帰・次にやること・プッシュの予定 |
-| `devices` | 登録した端末（OS・登録日・最終利用・言語・プッシュトークンの末尾6文字だけ） |
-| `analytics` | KPI の状態・実験の割り当て、`events`：仮名の分析 ID（塩つきハッシュ）に結び付いた KPI の行（Analytics Engine の保存期間 90 日以内、`KPI_SQL_ACCOUNT_ID`／`KPI_SQL_TOKEN` が無ければ `available: false`） |
-| `helpInquiries` | ゲーム内のお問い合わせ（§48、Round 18 統合）：`items` = 問い合わせごとに種類・状態・言語・日時・**自分が書いた内容**（個人情報を置き換えた後の文と置き換えた数）・添えた記録・自動で添えた情報・メッセージ（`from: player/support`・本文・日時。**返信した運営の ID は入れない**＝運営のメモ）、`articleVotes` = 記事の「役に立った」 |
+### 53.4 ホームとの関係（§45、REQ-HGOAL-008）
+- ホームに**ピン留めした目標**（馬の名前・目標の文言・`have/need`）を小さく出す。押すとその馬の詳細の目標の面へ。
+- 次にやること（§45）に種類 **`horse_goal_near`** を足す（データの `progression.nextActions.rules` に書く。`threshold` = 残り 1..10）：ピン留めした馬の `current` の目標が、`have ≥ 1` かつ残り（`need − have`）が `threshold` 以下の時。`count` = 残り、`refId` = 馬ID、開く画面は `horse_goals`（コードで固定）。解放の条件なし、期限なし（`deadlineAt: null`）。ショップ・購入には一切つながらない。
 
-### 51.5 入れないもの（`notIncluded[].reason`）
-- `internal_idempotency`：`idem`・`appliedRaces`（再試行の防止。結果は他のセクションにある）
-- `internal_counter`：`v`・`ledgerSeq`・`counters`
-- `internal_queue`：`pendingEventPushes`（配信待ち。届いた結果は他のセクション）
-- `operator_notes`：`supportFlags`（通報した人の ID を含みうる）・`supportGrants`・`adminOps`（運営の操作の記録。付与されたものはコインの履歴・プレゼント・アイテムにある）
-- `export_meta`：`dataExport`（このエクスポート自身の記録）
-- `third_party`：他のプレイヤーについての情報（申請・招待を送ってきた人、ライバル・種付けの相手、お知らせを送った人の ID）。**他のプレイヤーが自分について送った通報**は入れない（通報した人を特定できてしまい、第三者の権利利益を害するおそれ（法33条2項1号）と、モデレーションの業務に著しい支障（同2号）。弁護士の確認待ち、`docs/planning/03-legal-risk.md`）。
-- 新しい状態のキーは `DEX_CLASSIFICATION`（`Record<keyof PlayerState | 拡張キー, …>`）にどちらかを書かないと型チェックとテスト（`test/data-export.test.ts`：インターフェース・`PlayerState & { … }` の拡張・実際の状態）が失敗する。Round 18 統合で分類したキー：`friendSuggest`→`social`、`horseGoals`→`horses`、拡張キー `help`→`helpInquiries`、`reports`（通報の1日の数）→`reportsMade`。§46 メンテナンス・§50 練習レースはプレイヤーの状態に何も置かない。§52 定型チャットの投稿は支部のフィード（TeamDO）にあり、プレイヤーの状態には無い：支部のフィードは支部員の共有の場で、決まった文と選んだ値だけ・保存は `retainDays` 日と件数まで（§52.6）なので、エクスポートには入れない（`docs/planning/03-legal-risk.md` の確認事項）。
+### 53.5 KPI（REQ-HGOAL-012）
+- `hgoal_view`（クライアント、`props: { surface: "detail" | "home", done: 0..8 }`。目標の面を開いた／ホームのピンを見た時。ホームは1ゲーム日に1回）→ `s1` = surface、`value` = done。
+- `hgoal_complete`（サーバー、目標を達成した時に1回）→ `s1` = goal kind、`s2` = `chain`（列の最後の1つで全部達成した時）| 空、`count` = 達成した数。
+- `hgoal_pin`（サーバー、ピン留めが変わった時だけ）→ `s1` = `pin` | `unpin`、`s2` = current の goal kind | 空。
 
-### 51.6 人が読める概要（`.txt`）
-タイトル・説明・作成日時・プレイヤー ID・表示名・作成日・有償／無償の残高・馬・購入・コインの履歴・ガチャ・フレンド・ブロック・通報・お知らせ・リプレイ・写真・振り返り・端末・分析イベントの件数、省略した行（あれば）、入れていないもの、問い合わせ先。ラベルはプレイヤーの言語（英語はカタログで訳す）、値（名前など）は訳さない。
+### 53.6 文言・法務（REQ-HGOAL-013/014）
+- すべての文言に英語がある（`server-en.json`・`ui-en.json`・`proto-en.json`、`l10n:missing` 0）。馬の名前はプレイヤーが付けたもの（英語でも訳さない）。
+- 賭けを思わせる言葉（`server/src/domain/bettingWords.ts` の共通の一覧）を目標の文言に使わない（テストで全部の文言を確かめる）。「倍」「今だけ」「残りわずか」などの煽り・期限・カウントダウンは無い。
+- コンプガチャではない：目標は確定したレースの成績で進み、ランダムな品の収集を条件にしない。報酬は見た目だけで、購入で近道できない。
 
-### 51.7 設定 `progression.dataExport`（リモート設定で変更可）
-`{ enabled, cooldownDays (1..30), keepDays (1..30, ≤ cooldownDays), linkTtlMinutes (1..60), maxBytes (1,000,000..50,000,000), maxAttempts (1..10), auditKeep (10..200) }`。起動時と各版で検証（`dataExportProblems`）。既定 `{ true, 7, 7, 10, 20000000, 5, 50 }`。
+### 53.7 クライアント（REQ-HGOAL-010/011）
+- `Muchi.Client` `ApiClient.GetHorseGoalsAsync(horseId)`・`PinHorseGoalAsync(horseId | null)`・`GetPinnedHorseGoalAsync()`、`HorseGoalsView`・`HorseGoalPin`、`HorseGoalChain.Build(horse, tracks)`・`HorseGoalChain.Evaluate(chain, record)`（サーバーと同じ、共有ベクター）、`AnalyticsEvent.HorseGoalView`。`NextKinds` に `horse_goal_near`。
+- Unity のゲーム層 `HorseGoalsModel`：馬の詳細の目標の面（列の行・進み・今の目標・達成の印・ピン留め）、ホームのピン、文言（日本語＋英語）、KPI の1日1回。描画は `docs/handoff-codex-round18-horse-goals.md`。
 
-### 51.8 KPI
-`dex_request`（`s1` = 言語）・`dex_ready`（`s1` = 言語、`value` = バイト数、`durationMs` = リクエストから準備まで、`count` = 省略した行）・`dex_download`（`s1` = `json`／`summary`、`isFirst` = そのリクエストで最初のダウンロード）。すべてサーバー。クエリは `docs/ops/kpi-queries.md`。
+### 53.8 設定 `progression.horseGoals`
+`{ enabled: bool }`。`enabled: true` は `progression.hall` が有効な時だけ（戦績が無いと数えられない）。目標の数・`need` はコードの版 `v: 1` で決まり（共有ベクターと同じ）、設定では変えない。
 
-### 51.9 クライアント
-`Muchi.Client` `ApiClient.GetDataExportAsync`・`RequestDataExportAsync`・`DataExportFileUrl`、`DataExportStatus`（`DataExport.cs`）。リンクは API のベースにつないで OS のブラウザ／共有シートで開く（アプリの中に保存しない）。Unity のゲーム層 `Muchi.Game.DataExportModel`（状態ごとの文・ボタン・次に申し込める日・削除の予定の注意・期限の表示）。
+### 53.9 アカウント削除
+状態の `horseGoals`（達成の記録・ピン）と戦績の `goal` は最後の `wipe` で消える。殿堂の写し（§34.5）は既存の手順で消える。他の場所に写しは無い。

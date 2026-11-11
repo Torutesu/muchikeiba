@@ -8,6 +8,8 @@ import { clientEventSchema } from '../src/domain/kpi.js';
 import { KPI_ESSENTIAL, KPI_EVENT_CLASS, kpiClassOf } from '../src/domain/kpiConsent.js';
 import { DEFAULT_MAINTENANCE, EXEMPT_ROUTES, endpointGroup, gateRequest, jstToMs, type MaintenanceConfig } from '../src/domain/maintenance.js';
 import { routes } from '../src/http/app.js';
+import { BLOCK_FEATURES, blocksView } from '../src/domain/blocks.js';
+import { catalogFor, localize, untranslated } from '../src/i18n/catalog.js';
 import { m } from './helpers.js';
 import { MemoryPlayerRepo, PlayerService } from '../src/domain/service.js';
 import { seededRng } from '../src/domain/rng.js';
@@ -131,6 +133,20 @@ describe('§51 data export and account deletion × Round 21 state', () => {
     await runAccountDeletion(ports, 'dx', w.now());
     expect(w.repo.get('dx')).toBeNull();
     expect(await w.links.get('AbCd2345EfGh')).toBeNull();
+  });
+});
+
+describe('§47 one block list × Round 21 (the trainer card, links, rematch)', () => {
+  it('the block list screen says what a block does to the trainer card and to links / rematch, in English too', async () => {
+    expect(BLOCK_FEATURES).toEqual(expect.arrayContaining(['links', 'showcase']));
+    const v = blocksView(m, [], []);
+    for (const f of ['links', 'showcase'] as const) {
+      const t = v.effects.find((e) => e.feature === f)!.text;
+      expect(t, f).toBeTruthy();
+      expect(untranslated(localize({ t }, 'en', catalogFor(m))), f).toEqual([]);
+    }
+    const p = read('contracts/protocol.md');
+    expect(p.slice(p.indexOf('### 47.'), p.indexOf('## 48.'))).toContain('`showcase`');
   });
 });
 

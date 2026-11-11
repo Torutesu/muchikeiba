@@ -29,7 +29,7 @@ export function setBlocked(m: Master, s: PlayerState, target: string, blocked: b
   return { playerId: target, blocked, count: r.muted.length, max: stampsOf(m).config.muteMax, changed: had !== blocked };
 }
 
-export const BLOCK_FEATURES = ['activity', 'team_feed', 'rival', 'stable', 'hall', 'replays', 'cups', 'links'] as const;
+export const BLOCK_FEATURES = ['activity', 'team_feed', 'rival', 'stable', 'hall', 'replays', 'cups', 'links', 'showcase'] as const;
 /** REQ-RPT-011: what a block does, one line per feature (protocol §47.1; English in i18n/en.ts). */
 export const BLOCK_EFFECTS: Record<typeof BLOCK_FEATURES[number], string> = {
   activity: '相手からのお知らせが届かなくなります',
@@ -41,6 +41,8 @@ export const BLOCK_EFFECTS: Record<typeof BLOCK_FEATURES[number], string> = {
   cups: '主催カップでは同じカップに入れません（大会では同じレースになることがあります）',
   // §63 (REQ-LINK-006/016)
   links: 'お互いの共有リンクが開けず、再戦でも同じ部屋に入りません',
+  // §62 (R21 integration): the trainer card is shown as the neutral card both ways (REQ-SHOW-009)
+  showcase: 'お互いのトレーナーカードが見られなくなります',
 };
 
 /** The ids of GET /v1/blocks, newest block first (names are resolved by the caller from the directory). */

@@ -26,7 +26,7 @@ await L.reports.seedSafety();
 // the block list: newest first, current names, the deleted one neutral; effects for every feature
 const b = (await L.reports.blocks()).value;
 assert.deepStrictEqual(b.blocked.map((x) => x.name), ['プレイヤー', 'ナギサ', 'ヨルノカラス'], 'current names, newest first, a deleted player is neutral');
-assert.deepStrictEqual(b.effects.map((e) => e.feature), ['activity', 'team_feed', 'rival', 'stable', 'hall', 'replays', 'cups', 'links'], 'what a block does, per feature');
+assert.deepStrictEqual(b.effects.map((e) => e.feature), ['activity', 'team_feed', 'rival', 'stable', 'hall', 'replays', 'cups', 'links', 'showcase'], 'what a block does, per feature');
 assert.strictEqual(b.count, 3);
 
 // support's request in the activity list (no actor, links to 通報とブロック)

@@ -38,7 +38,7 @@ static class ReportChecks
         {
             var l = new BlockList { Count = Blocked.Count, Max = 100 };
             l.Blocked.AddRange(Blocked);
-            foreach (var f in new[] { "activity", "team_feed", "rival", "stable", "hall", "replays", "cups" }) l.Effects.Add(new BlockEffect { Feature = f, Text = "効果:" + f });
+            foreach (var f in new[] { "activity", "team_feed", "rival", "stable", "hall", "replays", "cups", "links", "showcase" }) l.Effects.Add(new BlockEffect { Feature = f, Text = "効果:" + f });
             return Task.FromResult(l);
         }
 
